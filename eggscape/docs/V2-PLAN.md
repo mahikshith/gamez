@@ -44,8 +44,19 @@ here with what v2 does about it. Status: `v2` = built on branch `eggscape-v2`, `
 | F32 | (20:20) Easy / Medium / Hard modes instead of silently raising difficulty; kids under 5 play Easy/Medium; default Medium; changeable in the menu | Mode setting on the title and pause screens, saved. Same levels, tuned per mode: **Easy** longer fuse (x1.6), slower and wider nest, thorns crack instead of break, no meteor rule. **Medium** as designed. **Hard** shorter fuse (x0.8), faster nest, harder landings crack. Stars and coins are tracked per mode | v2 |
 | F31 | Use sub-agents, cheaper models where fine; new branch; push for tracking | Branch `eggscape-v2` in mahikshith/gamez; art, weather, store and research done by helpers | v2 |
 
-## Claude's own additions
-- Meteor rule (F15a) is the physics answer to the align-everything exploit: it is honest physics, not an arbitrary block.
-- Gap shutters and geared rings give real puzzles instead of just reflex.
-- Mystery-orb discovery is saved so a returning player sees known icons (learning curve, no tutorial walls).
-- Difficulty is the player's choice (F32), never a hidden tweak: fair for kids and honest for adults.
+## Claude's own ideas (tasks, built in v2)
+
+| # | Idea | Why | Status |
+|---|------|-----|--------|
+| C1 | Meteor rule (F15a): 3+ rings in one fall cracks the egg, even in the nest | Physics answer to the align-every-gap shortcut | v2 |
+| C2 | Gap shutters and geared rings | Real puzzles, not reflex; a fixed alignment stops working | v2 |
+| C3 | Bonus objective per level (shown on the intro card): e.g. "use 6 turns or fewer", "save the golden egg", "collect every orb", "finish under 40 s". Meeting it pays bonus coins | Replay value without making the base level harder; good for kids on Easy too | v2 |
+| C4 | Hint for a rewarded ad: the game runs its own solver for a moment and shows a ghost arrow on the ring to turn and which way | Ad = clear reward (core rule); helps stuck players instead of punishing them | v2 |
+| C5 | Star chests: every 15 stars opens a chest (coins + a booster) on the level map | Progress goal between levels; pairs with the shop | v2 |
+| C6 | Three worlds of 10 levels (Farm, Wilds, Fox's Fortress); each world opens with one new mechanic and a one-screen intro of it | Teaches one thing at a time; clearer progression | v2 |
+| C7 | Daily Vault: one generated level per day (seeded by the date), same for every player | Reason to come back daily; free content from the generator | v2 |
+| C8 | Egg skins in the shop (speckled, striped, dino, golden-cosmetic), cosmetic only | Coin sink that never sells difficulty | v2 |
+| C9 | Last-egg moment: when the final needed egg falls toward the nest, brief slow motion, the hen leans in, then a cheer | Peak-end feel; makes wins memorable | v2 |
+| C10 | Accessibility: every orb has an emblem, not just a colour (colour-blind safe); "reduced motion" setting turns off shake and flashes; phone vibration on cracks (where supported) | Kids and more players can play | v2 |
+| C11 | Mystery-orb discoveries saved, so a returning player sees known icons | Learning curve without tutorial walls | v2 |
+| C12 | Difficulty is the player's choice (F32), never a hidden tweak | Fair for kids, honest for adults | v2 |
