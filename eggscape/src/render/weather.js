@@ -167,6 +167,7 @@ export function createWeather(kind, seed = 1, opts = {}) {
   const api = {
     kind,
     shakeX: 0, shakeY: 0, flash: 0,
+    calm: !!opts.calm, // reduced motion: no flash, no bolt flicker (the caller may change it any time)
     resize, update, drawBack, drawFront, trigger,
   };
 
@@ -250,8 +251,8 @@ export function createWeather(kind, seed = 1, opts = {}) {
     ctx.save();
     if (K && K.front) K.front(ctx);
     drawEvents(ctx);
-    drawBolts(ctx);
-    if (api.flash > 0.01) {
+    if (!api.calm) drawBolts(ctx);
+    if (api.flash > 0.01 && !api.calm) {
       const a = 0.58 * Math.pow(api.flash, 1.4);
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = a; ctx.fillStyle = '#e4ecff'; ctx.fillRect(0, 0, S.w, S.h);

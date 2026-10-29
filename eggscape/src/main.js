@@ -20,12 +20,12 @@ import { botTick } from './dev/bot.js';
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 
 // ---------------------------------------------------------------- save
-const SAVE_VER = 1;
+const SAVE_VER = 2; // v2 levels: progress resets; settings, wallet and discoveries carry over
 // mode: difficulty (F32); stars/best are kept per mode (Medium uses the v1 keys); calm = reduced motion
 const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), adClaim: 0 });
 let save = defaultSave();
 const MODE_LIST = ['easy', 'medium', 'hard'];
-const sk = (id) => (save.mode === 'medium' ? String(id) : save.mode[0] + id);
+const sk = (id, mode = save.mode) => (mode === 'medium' ? String(id) : mode[0] + id);
 const starsOf = (id) => save.stars[sk(id)] || 0;
 function loadSave(s) {
   save = { ...defaultSave(), ...s };
@@ -37,7 +37,7 @@ function loadSave(s) {
 const THEME_WEATHER = { farm: 'leaves', orchard: 'leaves', bramble: 'leaves', mushroom: 'fireflies', frozen: 'snow', blizzard: 'snow', dunes: 'sandstorm', haunted: 'ghosts', dragon: 'ash' };
 // three worlds of ten (C6)
 const WORLDS = ['The Farm', 'The Wilds', 'The Fox\u2019s Fortress'];
-const BONUS_TEXT = (b) => ({ turns: `${b.n} turns or fewer`, prize: 'Save the speckled egg', orbs: 'Collect every orb', time: `Finish within ${b.s} s` })[b.kind] || '';
+const BONUS_TEXT = (b, fuse = 1) => ({ turns: `${b.n} turns or fewer`, prize: 'Save the speckled egg', orbs: 'Collect every orb', time: `Finish within ${Math.round(b.s * fuse)} s` })[b.kind] || '';
 const BONUS_COINS = 15;
 const powerInfo = (id) => POWER_INFO[id] || { name: id, line: '', color: '#fff' };
 function persist() {
@@ -369,7 +369,11 @@ async function press(id) {
     case 'go': {
       // owned boosters picked on the intro card are spent now and the level restarts with them
       const boost = {};
-      for (const b of G.boostSel) { const w = E.useBooster(save.wallet, b); if (w) { save.wallet = w; boost[b] = true; } }
+      for (const b of G.boostSel) {
+        if (b === 'golden' && G.golden) continue; // the golden-shell ad already gave one
+        const w = E.useBooster(save.wallet, b);
+        if (w) { save.wallet = w; boost[b] = true; }
+      }
       G.boostSel.clear();
       if (Object.keys(boost).length) {
         persist();
@@ -415,7 +419,7 @@ async function press(id) {
       const ok = await rewarded('hint');
       if (ok && G.sim && G.sim.state === 'play') {
         const out = {};
-        G.hint = { out, cpu: 0, gen: hintSearch(Sim, G.level, G.sim.fullState(), { mode: save.mode, ...G.boost }, out) };
+        G.hint = { out, gen: hintSearch(Sim, G.level, G.sim.fullState(), { mode: G.sim.mode, ...G.boost }, out) };
       }
       break;
     }
@@ -434,7 +438,9 @@ async function press(id) {
       break;
     }
     case 'pause':
-      if (G.screen === 'play') { setScreen('pause'); portal.gameplayStop(); releaseAll(); }
+      // once the level is decided the end card is coming: pausing then would strand the player
+      if (G.screen === 'play' && G.sim.state === 'play') { setScreen('pause'); portal.gameplayStop(); releaseAll(); }
+      else if (G.screen === 'intro') setScreen('levels');
       break;
     case 'resume':
       setScreen('play');
@@ -464,6 +470,8 @@ async function press(id) {
         G.sim = back;
         G.run = (G.run || 0) + 1;
         G.usedRewind = true;
+        G.lastEgg = false;
+        G.hint = G.hintShow = G.card = G.slow = null;
         G.fx = new FX();
         setScreen('play');
         portal.gameplayStart();
@@ -802,7 +810,7 @@ function computeResult() {
   const total = Math.round(base * streakMult);
   // coins (F7) and the bonus objective (C3): bonus coins are paid the first time it is met, per mode
   const bonus = !!L.bonus && sim.bonusMet();
-  const bonusCoins = bonus && !save.bonus[sk(L.id)] ? BONUS_COINS : 0;
+  const bonusCoins = bonus && !save.bonus[sk(L.id, sim.mode)] ? BONUS_COINS : 0;
   const coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id }).total + bonusCoins;
   return { stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus };
 }
@@ -811,8 +819,9 @@ function recordResult() {
   const r = G.result;
   const id = G.level.id;
   if (r.stars > 0) {
-    save.stars[sk(id)] = Math.max(save.stars[sk(id)] || 0, r.stars);
-    save.best[sk(id)] = Math.max(save.best[sk(id)] || 0, r.total);
+    const key = sk(id, G.sim.mode); // the mode this run was played in, even if changed on the pause card
+    save.stars[key] = Math.max(save.stars[key] || 0, r.stars);
+    save.best[key] = Math.max(save.best[key] || 0, r.total);
     save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, id + 1));
     save.streak = r.streak;
   }
@@ -826,7 +835,7 @@ function onWin() {
   G.sim.burstVault();
   G.result = computeResult();
   save.wallet = E.addCoins(save.wallet, G.result.coins);
-  if (G.result.bonus) save.bonus[sk(G.level.id)] = 1;
+  if (G.result.bonus) save.bonus[sk(G.level.id, G.sim.mode)] = 1;
   recordResult();
   portal.gameplayStop();
   portal.happy();
@@ -869,6 +878,13 @@ function update(dt) {
     handleEvents();
   }
   for (const r of sim.rings) if (r.denied > 0) r.denied -= dt;
+  // safety net: if an end-card timer was missed, route a decided level to its card
+  if (G.screen === 'play' && (sim.state === 'won' || sim.state === 'failed')) {
+    if ((G.endWait = (G.endWait || 0) + dt) > 2.5) {
+      if (sim.state === 'won' && G.result) { setScreen('win'); audio.play('level_win'); }
+      else if (sim.state === 'failed') { setScreen('fail'); audio.play('level_fail'); }
+    }
+  } else G.endWait = 0;
   lastEggMoment(sim);
   const heavy = W_ < 500 && ['current', 'fog', 'sandstorm'].includes(G.weather.kind);
   G.weather.update(dt, { wind: sim.wind, intensity: heavy ? 0.6 : 1 });
@@ -939,14 +955,13 @@ function update(dt) {
   }
 }
 
-// The in-game hint (C4): a depth-1 search from a frozen copy of the world, ~12 ms per frame and at
-// most 1.5 s of CPU in all, then a ghost arrow on the ring to turn.
+// The in-game hint (C4): a depth-1 search from a frozen copy of the world, ~10 ms per frame (the
+// search yields every 30 sim steps and tries at most 24 moves), then a ghost arrow on the ring to turn.
 function hintWork() {
   const H = G.hint, t0 = performance.now();
   let done = false;
-  while (performance.now() - t0 < 12) if (H.gen.next().done) { done = true; break; }
-  H.cpu += performance.now() - t0;
-  if (!done && H.cpu < 1500) return;
+  while (performance.now() - t0 < 10) if (H.gen.next().done) { done = true; break; }
+  if (!done) return;
   G.hint = null;
   const b = H.out.best;
   if (b) G.hintShow = { ring: b.ring, dir: Math.sign(b.delta), amt: Math.min(Math.abs(b.delta), 2), t: 6 };
@@ -1041,6 +1056,7 @@ function render() {
   for (const e of sim.aliveEggs()) W.drawEggMult(ctx, e, k, FONT);
 
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  G.weather.calm = save.calm;
   G.weather.drawFront(ctx);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   G.backdrop.drawAmbient(ctx, t, G.cam);
@@ -1050,12 +1066,7 @@ function render() {
     ctx.fillRect(0, 0, W_, H_);
     ctx.globalAlpha = 1;
   }
-  if (G.weather.flash > 0 && !save.calm) {
-    ctx.globalAlpha = Math.min(1, G.weather.flash) * 0.55;
-    ctx.fillStyle = '#eef6ff';
-    ctx.fillRect(0, 0, W_, H_);
-    ctx.globalAlpha = 1;
-  }
+
 
   // UI
   if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store') drawHUD();
@@ -1381,12 +1392,13 @@ function drawIntro() {
       } },
       lineBlock(`Save ${L.target} of ${L.eggs} eggs before the fuse burns out`, 15 * s, { color: '#ffe066', tag: 'intro:goal' }),
       ...tip.map((l, i) => lineBlock(l, 15 * s, { color: 'rgba(255,255,255,0.85)', tag: 'intro:tip' + i, gap: i ? 2 * s : 8 * s })),
-      ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus), 14 * s, { color: '#9fe8ff', tag: 'intro:bonus', gap: 6 * s })] : []),
+      ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus, G.sim.MD.fuse), 14 * s, { color: '#9fe8ff', tag: 'intro:bonus', gap: 6 * s })] : []),
       { h: 58 * s, gap: 16 * s, draw: (x, y, w) => ui.button('go', 'PLAY', x, y, w, 58 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.play, size: 24 * s }) },
       // start boosters bought in the store (F7/F21): tap to pick, each shows its one-liner
-      { h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
+      { h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
     ];
     if (!G.golden) B.push({ h: 48 * s, draw: (x, y, w) => ui.button('golden', 'Start with a golden shell', x, y, w, 48 * s, { color: '#d49a1c', dark: '#8a5f0a', ad: true, size: 15 * s }) });
+    B.push({ h: 40 * s, draw: (x, y, w) => ui.button('levels', 'Levels', x + w * 0.25, y, w * 0.5, 40 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 15 * s }) });
     return B;
   });
 }
@@ -1398,14 +1410,14 @@ function drawPause() {
       { h: 56 * s, gap: 4 * s, draw: (x, y, w) => ui.button('resume', 'RESUME', x, y, w, 56 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.play }) },
       G.hint
         ? lineBlock('Finding a good move\u2026', 17 * s, { color: '#ffe066', tag: 'pause:hint' })
-        : { h: 46 * s, draw: (x, y, w) => ui.button('hint', 'Show me a move', x, y, w, 46 * s, { color: '#d49a1c', dark: '#8a5f0a', ad: true, size: 16 * s }) },
+        : G.sim.state !== 'play' ? null : { h: 46 * s, draw: (x, y, w) => ui.button('hint', 'Show me a move', x, y, w, 46 * s, { color: '#d49a1c', dark: '#8a5f0a', ad: true, size: 16 * s }) },
       { h: 48 * s, draw: (x, y, w) => {
         const hw = (w - 10 * s) / 2;
         ui.button('restart', 'Restart', x, y, hw, 48 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.retry, size: 17 * s });
         ui.button('levels', 'Levels', x + hw + 10 * s, y, hw, 48 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 17 * s });
       } },
       { h: 40 * s, gap: 14 * s, draw: (x, y, w) => modeRow(x, y, w, 40 * s, s) },
-    ];
+    ].filter(Boolean);
     if (G.sim.mode !== save.mode) B.push(lineBlock('The new mode starts when you restart', 13 * s, { color: 'rgba(255,255,255,0.75)', tag: 'pause:modenote', gap: 4 * s }));
     B.push({ h: 40 * s, draw: (x, y, w) => ui.button('calm', save.calm ? 'Reduced motion: on' : 'Reduced motion: off', x, y, w, 40 * s, { color: save.calm ? '#8a6a4a' : '#5a4a3a', dark: '#4a3420', size: 15 * s }) });
     if (portal.showMuteButton) B.push({ h: 46 * s, gap: 14 * s, draw: (x, y, w) => {
@@ -1646,6 +1658,7 @@ async function boot() {
     if (raw) {
       const s = JSON.parse(raw);
       if (s && s.v === SAVE_VER) loadSave(s);
+      else if (s && s.v === 1) loadSave({ sfx: s.sfx, music: s.music, mode: s.mode, calm: s.calm, wallet: s.wallet, seen: s.seen });
     }
   } catch (_) { save = defaultSave(); }
   applyAudioSettings();

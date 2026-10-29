@@ -6,6 +6,12 @@ const DELTAS = [35, 75, 120, 180, 240].flatMap((d) => [d * DEG, -d * DEG]);
 
 // Execute one action on a sim: turn ring i by delta at full speed, then let things settle.
 export function act(sim, a, maxSettle = 2.5) {
+  for (const _ of actSteps(sim, a, maxSettle)) { /* run to the end */ }
+}
+
+// The same as a generator that yields every `every` sim steps (the in-game hint spreads it over frames).
+export function* actSteps(sim, a, maxSettle = 2.5, every = Infinity) {
+  let n = 0;
   const ring = a.ring >= 0 ? sim.rings[a.ring] : null;
   const goal = ring ? ring.body.getAngle() + a.delta : 0;
   let t = 0;
@@ -16,6 +22,7 @@ export function act(sim, a, maxSettle = 2.5) {
     sim.step();
     sim.events.length = 0;
     t += DT;
+    if (++n % every === 0) yield;
     if (ring && Math.abs(goal - ring.body.getAngle()) < 0.01) break;
   }
   // settle
@@ -25,6 +32,7 @@ export function act(sim, a, maxSettle = 2.5) {
     sim.step();
     sim.events.length = 0;
     s += DT;
+    if (++n % every === 0) yield;
     if (s > 0.4 && sim.aliveEggs().every((e) => e.body.getLinearVelocity().length() < 0.25)) break;
   }
   while ((sim.state === 'winning' || sim.state === 'failing')) { sim.step(); sim.events.length = 0; }
@@ -68,10 +76,10 @@ export function actions(sim) {
 // The in-game hint: tries each ring move from state S, one per call of next(), so the caller can spread
 // the work over frames. The best move found so far is kept in out.best.
 export function* hintSearch(Sim, level, S, opts, out) {
-  const acts = actions(Sim.fromState(level, S, opts)).filter((a) => a.ring >= 0);
+  const acts = actions(Sim.fromState(level, S, opts)).filter((a) => a.ring >= 0).slice(0, 24);
   for (const a of acts) {
     const c = Sim.fromState(level, S, opts);
-    act(c, a, 1.2);
+    yield* actSteps(c, a, 1.2, 30);
     const v = value(c);
     if (!out.best || v > out.best.v) out.best = { ring: a.ring, delta: a.delta, v };
     yield;

@@ -240,7 +240,7 @@ export class Sim {
     const base = side === 'in' ? r - RING_TH / 2 + 0.03 : r + RING_TH / 2 - 0.03;
     const tip = side === 'in' ? base - h : base + h;
     const p = (rad, ang) => Vec2(rad * Math.cos(ang), rad * Math.sin(ang));
-    const thorn = { a, side, h, base, tip, alive: true, ring, ext: 1, kind };
+    const thorn = { a, side, h, base, tip, alive: true, ring, ext: 1, kind, key: ring.i * 1000 + ring.thorns.length };
     const verts = side === 'in' ? [p(base, a - half), p(base, a + half), p(tip, a)] : [p(base, a + half), p(base, a - half), p(tip, a)];
     thorn.fix = ring.body.createFixture({ shape: new Polygon(verts), friction: 0.3, ...filt('RING'), userData: { kind: 'thorn', thorn } });
     ring.thorns.push(thorn);
@@ -253,7 +253,7 @@ export class Sim {
     const egg = {
       id: this.nextEggId++, body, fix, cracks, alive: true, saved: false,
       fire: 0, fireKind: null, stone: 0, bubble: 0, bubbleFix: null, magnet: 0, joint: null, golden: extra.golden || 0,
-      water: 0, zap: 0, glow: 0, chick: 0, meteor: 0, honey: 0, hold: null, honeyCD: 0, prize: 0,
+      water: 0, zap: 0, glow: 0, chick: 0, meteor: 0, honey: 0, hold: null, honeyCD: 0, prize: 0, spk: new Set(), // spk: blunt spikes touching now
       crackCD: 0, nestT: 0, inNest: 0, safeT: this.t < 0.5 ? 1.5 : 0, portalCD: 0, born: this.t,
       seed: (this.rand() * 1e9) | 0, impact: 0, lastV: 0, fear: 0,
       ch: 0, mult: 1, freefall: 0, comet: 0, cometUsed: false,
@@ -657,8 +657,17 @@ export class Sim {
       if (egg.safeT > 0) return;
       // blunt spikes (and every thorn on Easy) only crack, and stay solid; a chick has no shell
       if ((th.kind === 'blunt' || this.MD.softThorns) && !egg.chick) {
-        egg.safeT = 0.6;
-        this.defer(() => this.crack(egg, 0, 'spike'));
+        // one crack per touch (never the breaking one), and the spike shoves the egg off
+        if (!egg.spk.has(th.key)) {
+          egg.spk.add(th.key);
+          this.defer(() => {
+            if (!egg.alive || egg.saved) return;
+            if (egg.cracks < 2) this.crack(egg, 0, 'spike'); // blunt: cracks, never breaks
+            const b = egg.body, p = b.getPosition(), t = th.ring.body.getWorldPoint(Vec2(th.tip * Math.cos(th.a), th.tip * Math.sin(th.a)));
+            const dx = p.x - t.x, dy = p.y - t.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 1.6;
+            b.applyLinearImpulse(Vec2((dx / d) * m, (dy / d) * m), p, true);
+          });
+        }
         return;
       }
       egg.safeT = 1; // one break only
@@ -720,6 +729,8 @@ export class Sim {
 
   endContact(c) {
     const [, , ua, ub] = this.parts(c);
+    if (ua.kind === 'egg' && ub.kind === 'thorn') ua.egg.spk.delete(ub.thorn.key);
+    if (ub.kind === 'egg' && ua.kind === 'thorn') ub.egg.spk.delete(ua.thorn.key);
     if (ua.kind === 'egg' && ub.kind === 'nestIn') ua.egg.inNest = Math.max(0, ua.egg.inNest - 1);
     if (ub.kind === 'egg' && ua.kind === 'nestIn') ub.egg.inNest = Math.max(0, ub.egg.inNest - 1);
   }
@@ -1168,6 +1179,7 @@ export class Sim {
         const o = {};
         for (const k of EGG_KEYS) o[k] = e[k];
         o.gates = [...(e.gates || [])];
+        o.spk = [...(e.spk || [])];
         o.hold = e.hold ? { ...e.hold } : null;
         o.b = e.alive && !e.saved ? bodyS(e.body) : null;
         return o;
@@ -1206,8 +1218,8 @@ export class Sim {
       if (es.b) {
         const egg = sim.addEgg(es.b[0], es.b[1], es.cracks, { golden: es.golden });
         setB(egg.body, es.b);
-        const { b, gates, stone, bubble, magnet, chick, hold, alive, saved, ...rest } = es;
-        Object.assign(egg, rest, { gates: new Set(gates || []), hold: hold ? { ...hold } : null });
+        const { b, gates, spk, stone, bubble, magnet, chick, hold, alive, saved, ...rest } = es;
+        Object.assign(egg, rest, { gates: new Set(gates || []), spk: new Set(spk || []), hold: hold ? { ...hold } : null });
         if (stone > 0) { sim.setStone(egg, true); egg.stone = stone; }
         if (bubble > 0) { sim.setBubble(egg); egg.bubble = bubble; }
         if (chick) sim.hatch(egg, true);
