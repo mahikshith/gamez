@@ -1,0 +1,5 @@
+dist/
+node_modules/
+tools/audio/out/
+tools/gen-out/
+tools/shots/

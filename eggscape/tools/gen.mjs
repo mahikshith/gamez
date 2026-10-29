@@ -1,0 +1,298 @@
+// Level generator: turns src/data/specs.js into src/data/levels.js.
+// Each spec is laid out many times under placement rules, then every candidate is played by
+// the lookahead planner twice: once exact (a strong player) and once with real replay drift (a rough one). A layout is
+// kept only if the planner clears it with no broken eggs in at least minMoves moves. Among the
+// keepers, early levels take the easiest and late levels the hardest, so the curve climbs.
+//
+// Usage: node tools/gen.mjs [ids] [--tries N] [--jobs N]     (writes src/data/levels.js)
+//        node tools/gen.mjs --assemble                         (rewrite levels.js from tools/gen-out)
+//        node tools/gen.mjs --worker <id> --tries N --out <file>
+import { fork } from 'node:child_process';
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { SPECS } from '../src/data/specs.js';
+import { rng } from '../src/sim/geom.js';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(HERE, '..');
+const OUT_DIR = join(ROOT, 'tools', 'gen-out');
+const BOTTOM = -90;
+const GAP_LEN = 0.78;
+const THORN_STEP = 11;
+
+const wrapD = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
+const dist = (a, b) => Math.abs(wrapD(a - b));
+const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
+
+// ---------- layout ----------
+function radii(spec) {
+  const out = [];
+  let r = 1.05;
+  spec.rings.forEach((_, i) => { if (i > 0) r += spec.spacing ?? 1; out.push(r); });
+  return out;
+}
+
+function channelPoint(spec, rs, ch, a) {
+  const r = ch === 0 ? 0.45 : ch >= rs.length ? rs[rs.length - 1] + 0.55 : (rs[ch - 1] + rs[ch]) / 2;
+  const t = (a * Math.PI) / 180;
+  return [+(r * Math.cos(t)).toFixed(2), +(r * Math.sin(t)).toFixed(2)];
+}
+
+// pads per ring when the spec does not say: generous early, scarce late
+function defaultPads(spec, i) {
+  if (i === 0) return spec.id <= 6 ? 1 : 0;
+  return spec.id <= 8 ? 2 : spec.id <= 15 ? 2 : 1;
+}
+
+function layRing(spec, i, r, R, prev) {
+  const rs = spec.rings[i];
+  const ring = {};
+  if (rs.mat) ring.mat = rs.mat;
+  if (rs.motor) ring.motor = rs.motor;
+  if (rs.motorFlip) ring.motorFlip = rs.motorFlip;
+  if (rs.retract) ring.retract = { phase: +(R() * rs.retract.period).toFixed(2), ...rs.retract };
+
+  // gaps: never at the bottom at start, spread apart, not stacked on the ring inside
+  const gaps = [];
+  const nG = rs.noGap ? 0 : rs.gaps ?? 1;
+  const xs = [...(rs.gapX || [])];
+  for (let g = 0; g < nG; g++) {
+    let ok = false;
+    // a swinging ring (motorFlip) only turns through motor * flip degrees and back, so its first
+    // gap must lie inside that swing or it never passes under the eggs
+    const swing = rs.motorFlip ? Math.abs(rs.motor) * rs.motorFlip : 0;
+    for (let t = 0; t < 200 && !ok; t++) {
+      const a = g === 0 && swing ? Math.round(wrapD(BOTTOM - Math.sign(rs.motor) * (45 + R() * (swing - 60)))) : Math.round(R() * 360 - 180);
+      if (dist(a, BOTTOM) < (i === 0 ? 55 : 42)) continue;
+      if (gaps.some((o) => dist(o.a, a) < 75)) continue;
+      if (prev && prev.gaps.some((o) => dist(o.a, a) < 30)) continue;
+      const len = xs.length && Math.max(...xs) >= 3 && g === 0 ? 0.7 : GAP_LEN;
+      gaps.push({ a, x: 1, len });
+      ok = true;
+    }
+    if (!ok) return null;
+  }
+  // biggest multiplier goes on the narrowest gap
+  xs.sort((p, q) => q - p).forEach((x, k) => { if (gaps[k]) gaps[k].x = x; });
+  gaps.forEach((g) => { if (g.len === GAP_LEN) delete g.len; if (g.x === 1) delete g.x; });
+  ring.gaps = gaps;
+  const gapHalf = (g) => halfDeg(g.len || GAP_LEN, r);
+
+  // thorn clusters. Every pocket between two floor clusters must hold a gap: an egg that lands in a
+  // pocket with no way out can never leave it (turning the ring drags a thorn into it). So floor
+  // clusters sit one per arc between gaps, and clusters beyond that become ceiling thorns pointing
+  // out. Retracting and motor rings are exempt (their thorns open on a rhythm / point out anyway).
+  const thorns = [];
+  const [smin, smax] = rs.size || [1, 2];
+  const nT = rs.thorns ?? 0;
+  const span = (n) => ((n - 1) * THORN_STEP) / 2 + 7;
+  const free = rs.retract || rs.motor || !gaps.length;
+  const sortedG = [...gaps].sort((p, q) => p.a - q.a);
+  for (let k = 0; k < nT; k++) {
+    const floor = free || k < sortedG.length;
+    let ok = false;
+    for (let t = 0; t < 300 && !ok; t++) {
+      const n = floor ? smin + Math.floor(R() * (smax - smin + 1)) : Math.min(2, smin);
+      const w = span(n);
+      let a;
+      if (floor && !free) {
+        const g0 = sortedG[k], g1 = sortedG[(k + 1) % sortedG.length];
+        const lo = g0.a + gapHalf(g0) + w + 12;
+        const hi = (g1.a <= g0.a ? g1.a + 360 : g1.a) - gapHalf(g1) - w - 12;
+        if (hi < lo) return null;
+        a = Math.round(wrapD(lo + R() * (hi - lo)));
+      } else a = Math.round(R() * 360 - 180);
+      if (floor && dist(a, BOTTOM) < (i === 0 ? 60 : 35) + w) continue;
+      if (gaps.some((g) => dist(g.a, a) < gapHalf(g) + w + 12)) continue;
+      if (thorns.some((o) => !o.side === floor && dist(o.a, a) < span(o.n) + w + 22)) continue;
+      thorns.push(floor ? { a, n } : { a, n, side: 'out', h: 0.26 });
+      ok = true;
+    }
+    if (!ok) return null;
+  }
+  // a motor ring's floor never stops, so floor thorns on it would be certain death: they point out
+  // instead and become a low ceiling that punishes bouncy landings in the channel beyond
+  if (rs.motor) for (const t of thorns) { t.side = 'out'; t.h = 0.2; t.n = Math.min(t.n, 2); }
+  for (let k = 0; k < (rs.out || 0); k++) {
+    let ok = false;
+    for (let t = 0; t < 200 && !ok; t++) {
+      const a = Math.round(R() * 360 - 180);
+      if (gaps.some((g) => dist(g.a, a) < gapHalf(g) + 18)) continue;
+      if (thorns.some((o) => o.side === 'out' && dist(o.a, a) < 40)) continue;
+      thorns.push({ a, n: 1, side: 'out', h: 0.3 });
+      ok = true;
+    }
+  }
+
+  // the puzzle: from the start bottom, at least one way round reaches a gap without sweeping thorns
+  if (!rs.motor && gaps.length && i > 0) {
+    const inner = thorns.filter((t) => t.side !== 'out');
+    const safe = (dir) => {
+      const gapAt = Math.min(...gaps.map((g) => (((dir * (g.a - BOTTOM)) % 360) + 360) % 360 - gapHalf(g)));
+      const thornAt = Math.min(Infinity, ...inner.map((t) => (((dir * (t.a - BOTTOM)) % 360) + 360) % 360 - span(t.n)));
+      return gapAt < thornAt;
+    };
+    const s1 = safe(1), s2 = safe(-1);
+    if (!s1 && !s2) return null;
+    if (spec.id >= 4 && s1 && s2 && inner.length >= 2 && R() < 0.7) return null; // usually one wrong way
+  }
+
+  // items on free floor, away from where eggs start
+  const items = [];
+  for (const type of rs.items || []) {
+    let ok = false;
+    for (let t = 0; t < 200 && !ok; t++) {
+      const a = Math.round(R() * 360 - 180);
+      if (dist(a, BOTTOM) < 40) continue;
+      if (gaps.some((g) => dist(g.a, a) < gapHalf(g) + 14)) continue;
+      if (thorns.some((o) => o.side !== 'out' && dist(o.a, a) < span(o.n) + 16)) continue;
+      if (items.some((o) => dist(o.a, a) < 40)) continue;
+      items.push({ type, a });
+      ok = true;
+    }
+    if (!ok) return null;
+  }
+
+  // sponge pads sit between thorns and gaps; early levels pad the first landing
+  const pads = [];
+  const nP = rs.pads ?? defaultPads(spec, i);
+  const blocked = (a, w) => gaps.some((g) => dist(g.a, a) < gapHalf(g) + w + 4) ||
+    thorns.some((o) => o.side !== 'out' && dist(o.a, a) < span(o.n) + w + 2) ||
+    pads.some((p) => dist(p.a, a) < halfDeg(p.len, r) + w + 8);
+  for (let k = 0; k < nP; k++) {
+    for (let t = 0; t < 200; t++) {
+      const len = +(1.0 + R() * 0.9).toFixed(2);
+      const w = halfDeg(len, r);
+      const a = k === 0 && i > 0 && spec.id <= 5 ? BOTTOM + Math.round((R() - 0.5) * 20) : Math.round(R() * 360 - 180);
+      if (blocked(a, w)) continue;
+      pads.push({ a, len });
+      break;
+    }
+  }
+  if (thorns.length) ring.thorns = thorns.map((t) => ({ a: t.a, n: t.n, ...(t.side ? { side: t.side, h: t.h } : {}) }));
+  if (items.length) ring.items = items;
+  if (pads.length) ring.pads = pads;
+  return ring;
+}
+
+export function layout(spec, seed) {
+  const R = rng(seed);
+  const rs = radii(spec);
+  const rings = [];
+  if (spec.rings[spec.rings.length - 1].motor) throw new Error(`L${spec.id}: the outermost ring cannot be a motor ring`);
+  for (let i = 0; i < spec.rings.length; i++) {
+    const ring = layRing(spec, i, rs[i], R, rings[i - 1]);
+    if (!ring) return null;
+    rings.push(ring);
+  }
+  const L = { id: spec.id, theme: spec.theme, name: spec.name, eggs: spec.eggs, target: spec.target, time: 150, spacing: spec.spacing, material: spec.material };
+  for (const k of ['gravity', 'water', 'lava', 'wind', 'nest']) if (spec[k] !== undefined) L[k] = spec[k];
+  L.tip = spec.tip;
+  if (spec.portals) L.portals = spec.portals.map((p) => ({ a: channelPoint(spec, rs, ...p.from), b: channelPoint(spec, rs, ...p.to) }));
+  if (spec.bombs) L.bombs = spec.bombs.map((b) => { const [x, y] = channelPoint(spec, rs, b.ch, b.a); return { x, y }; });
+  if (spec.rocks) L.rocks = spec.rocks.map((k) => { const [x, y] = channelPoint(spec, rs, k.ch, k.a); return { x, y, ...(k.s ? { s: k.s } : {}) }; });
+  L.rings = rings;
+  L.seed = seed;
+  return L;
+}
+
+// ---------- evaluation (worker) ----------
+async function worker(id, tries, out) {
+  const { solve } = await import('./planner.mjs');
+  const spec = SPECS.find((s) => s.id === id);
+  const found = [];
+  let seed = id * 7919;
+  for (let n = 0; n < tries; n++) {
+    let L = null;
+    for (let g = 0; g < 500 && !L; g++) L = layout(spec, ++seed);
+    if (!L) break;
+    const t0 = Date.now();
+    const p = solve(L);
+    const stars = p.state === 'won' ? (p.broken === 0 ? (p.perfect ? 3 : 2) : 1) : 0;
+    // a second, sloppier pass: same search, but each move is replayed for real, so small drifts
+    // in timing and position play out the way they would for a human. Robust layouts survive it.
+    const q = stars >= 2 ? solve(L, { replay: true }) : null;
+    const rec = { seed: L.seed, stars, plannerT: p.t, moves: p.moves, pSaved: p.saved, pBroken: p.broken, roughState: q?.state ?? '-', roughBroken: q?.broken ?? 0, roughSaved: q?.saved ?? 0, secs: Math.round((Date.now() - t0) / 1000) };
+    const ok = stars >= 2 && p.moves >= (spec.minMoves || 2) && (spec.id > 5 || q.state === 'won');
+    console.error(`L${id} #${n} seed=${L.seed} ${ok ? 'KEEP' : 'drop'} ${JSON.stringify(rec)}`);
+    if (ok) found.push({ ...rec, level: L });
+    if (found.length >= 4) break;
+  }
+  writeFileSync(out, JSON.stringify(found));
+}
+
+// difficulty of a kept layout, for picking along the curve
+const hardness = (c) => c.moves * 1.5 + c.plannerT / 8 + c.roughBroken * 2 + (c.roughState === 'won' ? 0 : 6) + (c.stars === 2 ? 1 : 0);
+
+function pick(id, found) {
+  if (!found.length) return null;
+  // a layout where the rough pass ran out of moves has a stall in it: avoid those when we can
+  const pool = found.filter((c) => c.roughState !== 'play');
+  const sorted = [...(pool.length ? pool : found)].sort((a, b) => hardness(a) - hardness(b));
+  const q = id <= 3 ? 0 : id >= 15 ? 1 : (id - 3) / 12;
+  return sorted[Math.round(q * (sorted.length - 1))];
+}
+
+function fuse(c) {
+  return Math.max(45, Math.min(110, Math.round((c.plannerT * 3 + 25) / 5) * 5));
+}
+
+function writeLevels(chosen) {
+  const head = `// GENERATED by tools/gen.mjs from src/data/specs.js. Do not hand-edit: change the spec and regenerate.
+// Every level here was cleared by the lookahead planner with no broken eggs.
+// Angles in degrees, ring-local at start; -90 is straight down.
+// gaps: {a, len (m), x (score multiplier)}; thorns: {a, n, side 'in'|'out', h}; pads: sponge {a, len (m)}
+// items: {type, a} rest on the ring's inner face and turn with it. time = the fox's fuse in seconds.
+
+export const LEVELS = [\n`;
+  const body = chosen.map((L) => {
+    const { rings, ...rest } = L;
+    const top = JSON.stringify(rest).replace(/"(\w+)":/g, '$1: ').replace(/,(?=\w+: )/g, ', ');
+    const rl = rings.map((r) => '      ' + JSON.stringify(r).replace(/"(\w+)":/g, '$1: ').replace(/,(?=\w+: )/g, ', ')).join(',\n');
+    return `  {\n    ${top.slice(1, -1)},\n    rings: [\n${rl},\n    ],\n  }`;
+  }).join(',\n');
+  writeFileSync(join(ROOT, 'src', 'data', 'levels.js'), head + body + ',\n];\n');
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
+  if (args[0] === '--worker') return worker(Number(args[1]), Number(opt('--tries', 10)), opt('--out'));
+  const assembleOnly = args.includes('--assemble'); // rebuild levels.js from tools/gen-out without searching
+  const ids = args[0] && !args[0].startsWith('--') ? args[0].split(',').map(Number) : SPECS.map((s) => s.id);
+  const tries = Number(opt('--tries', 10));
+  const jobs = Number(opt('--jobs', 3));
+  mkdirSync(OUT_DIR, { recursive: true });
+  const queue = [...ids].sort((a, b) => b - a); // big levels first, they take longest
+  const run = (id) => new Promise((res) => {
+    const out = join(OUT_DIR, `L${id}.json`);
+    const p = fork(fileURLToPath(import.meta.url), ['--worker', String(id), '--tries', String(tries), '--out', out], { stdio: 'inherit' });
+    p.on('exit', res);
+  });
+  if (assembleOnly) queue.length = 0;
+  await Promise.all(Array.from({ length: jobs }, async () => { while (queue.length) await run(queue.shift()); }));
+
+  // assemble: every spec, using fresh results where we have them
+  const chosen = [];
+  const report = [];
+  for (const spec of SPECS) {
+    const f = join(OUT_DIR, `L${spec.id}.json`);
+    const found = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : [];
+    const c = pick(spec.id, found);
+    if (!c) { report.push(`L${spec.id}: NO VALID LAYOUT`); continue; }
+    // names, tips, nest and other non-layout fields always come from the current spec
+    for (const k of ['theme', 'name', 'eggs', 'target', 'material', 'tip', 'nest', 'gravity', 'water', 'lava', 'wind']) {
+      if (spec[k] !== undefined) c.level[k] = spec[k]; else delete c.level[k];
+    }
+    c.level.time = fuse(c);
+    delete c.level.seed;
+    chosen.push(c.level);
+    report.push(`L${spec.id}: kept ${found.length}, seed ${c.seed}, stars ${c.stars}, planner ${c.plannerT}s/${c.moves} moves, rough ${c.roughState} (broke ${c.roughBroken}), fuse ${c.level.time}s, hardness ${hardness(c).toFixed(1)}`);
+  }
+  console.log(report.join('\n'));
+  if (chosen.length === SPECS.length) writeLevels(chosen);
+  else console.log(`\nNot writing levels.js: ${SPECS.length - chosen.length} level(s) have no valid layout.`);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();

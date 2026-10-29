@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1b1410">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Eggscape</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1b1410; }
+  body {
+    position: fixed; inset: 0;
+    touch-action: none; -ms-touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  canvas#game { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+  #loading {
+    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+    text-align: center; color: #f3d9a4; font-size: 22px; letter-spacing: .04em; pointer-events: none;
+  }
+</style>
+<!--PORTAL_HEAD-->
+</head>
+<body>
+<canvas id="game" tabindex="0"></canvas>
+<div id="loading">Loading…</div>
+<!--GAME_SCRIPT-->
+</body>
+</html>

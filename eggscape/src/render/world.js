@@ -1,0 +1,980 @@
+// Draws the playfield in world space: ctx is pre-transformed (meters, y up).
+import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
+
+const EGG_PATH = (() => {
+  const pts = [];
+  for (let i = 0; i < 40; i++) pts.push(eggPoint((i / 40) * TAU));
+  return pts;
+})();
+
+function eggPath(ctx, s = 1) {
+  ctx.beginPath();
+  for (let i = 0; i < EGG_PATH.length; i++) {
+    const p = EGG_PATH[i];
+    if (i) ctx.lineTo(p.x * s, p.y * s);
+    else ctx.moveTo(p.x * s, p.y * s);
+  }
+  ctx.closePath();
+}
+
+// Crack polylines per egg, deterministic.
+const crackCache = new Map();
+function crackLines(seed) {
+  if (crackCache.has(seed)) return crackCache.get(seed);
+  const r = rng(seed);
+  const lines = [];
+  for (let k = 0; k < 3; k++) {
+    const t0 = (k / 3) * TAU + r() * 1.2;
+    const st = eggPoint(t0);
+    const pts = [{ x: st.x * 0.98, y: st.y * 0.98 }];
+    let x = st.x, y = st.y;
+    const dx = -st.x, dy = -st.y;
+    const n = 5 + ((r() * 3) | 0);
+    for (let i = 0; i < n; i++) {
+      x += dx * 0.13 + (r() - 0.5) * 0.08;
+      y += dy * 0.13 + (r() - 0.5) * 0.08;
+      pts.push({ x, y });
+    }
+    const branch = pts[2 + ((r() * 2) | 0)];
+    lines.push({ pts, branch: [branch, { x: branch.x + (r() - 0.5) * 0.14, y: branch.y + (r() - 0.5) * 0.14 }] });
+  }
+  crackCache.set(seed, lines);
+  return lines;
+}
+
+function annulus(ctx, ri, ro, a0, a1) {
+  ctx.beginPath();
+  ctx.arc(0, 0, ro, a0, a1);
+  ctx.arc(0, 0, ri, a1, a0, true);
+  ctx.closePath();
+}
+
+// Contiguous alive arcs of a ring.
+function liveArcs(ring) {
+  const arcs = [];
+  let cur = null;
+  for (const s of ring.segs) {
+    if (!s.alive) { cur = null; continue; }
+    if (cur && Math.abs(cur[1] - s.a0) < 1e-4) cur[1] = s.a1;
+    else { cur = [s.a0, s.a1]; arcs.push(cur); }
+  }
+  // merge wrap-around
+  if (arcs.length > 1) {
+    const f = arcs[0], l = arcs[arcs.length - 1];
+    if (Math.abs(l[1] - TAU - f[0]) < 1e-4 || Math.abs(l[1] - (f[0] + TAU)) < 1e-4) { f[0] = l[0] - TAU; arcs.pop(); }
+  }
+  return arcs;
+}
+
+const MAT_STYLE = {
+  wood: { seam: 0.55, grain: true },
+  stone: { seam: 0.42, blocks: true },
+  ice: { alpha: 0.78, shine: true },
+  mushroom: { dots: true },
+  glass: { alpha: 0.55, shine: true },
+  metal: { rivets: true, shine: true },
+  coral: { bumps: true },
+  vine: { leaves: true },
+  cloud: { puffs: true },
+  obsidian: { veins: true },
+  bone: { seam: 0.3 },
+  gold: { shine: true, rivets: true },
+};
+
+const DEFAULT_RING = { base: '#b27a45', light: '#d9a46a', dark: '#5a3a20' };
+const MAT_COLORS = {
+  ice: { base: '#a8dcf5', light: '#eaf8ff', dark: '#3f7fa8' },
+  mushroom: { base: '#d8423a', light: '#ff8a78', dark: '#6e1c18' },
+  glass: { base: '#9fe6e8', light: '#ffffff', dark: '#3b8f9c' },
+  metal: { base: '#8e9aa8', light: '#d7dfe8', dark: '#3c4552' },
+  cloud: { base: '#eef3fb', light: '#ffffff', dark: '#8fa0bf' },
+  obsidian: { base: '#4a3f55', light: '#8d7aa0', dark: '#140f19' },
+  gold: { base: '#e2ac2f', light: '#ffe58a', dark: '#7a5208' },
+  stone: { base: '#a39a8c', light: '#d1c8b8', dark: '#5a5248' },
+  vine: { base: '#4f8a3a', light: '#86c25e', dark: '#21401a' },
+  coral: { base: '#ef7f6b', light: '#ffb7a3', dark: '#8e3a35' },
+  bone: { base: '#e6dcc4', light: '#fffaf0', dark: '#8c826c' },
+};
+
+export function ringColors(ring, theme) {
+  const own = theme?.material === ring.mat && theme?.palette?.ring;
+  return own || MAT_COLORS[ring.mat] || theme?.palette?.ring || DEFAULT_RING;
+}
+
+export function drawRing(ctx, ring, theme, k, t, opts = {}) {
+  const st = MAT_STYLE[ring.mat] || MAT_STYLE.wood;
+  const col = ringColors(ring, theme);
+  const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2;
+  const px = 1 / k;
+  ctx.save();
+  ctx.rotate(ring.body.getAngle());
+  const arcs = liveArcs(ring);
+  // dark halo separates the ring from any backdrop
+  ctx.strokeStyle = 'rgba(10,6,4,0.45)';
+  ctx.lineWidth = RING_TH + 7 * px;
+  for (const [a0, a1] of arcs) {
+    ctx.beginPath();
+    ctx.arc(0, 0, r, a0, a1);
+    ctx.stroke();
+  }
+  // body + shading
+  for (const [a0, a1] of arcs) {
+    annulus(ctx, ri, ro, a0, a1);
+    ctx.globalAlpha = st.alpha || 1;
+    ctx.fillStyle = col.base;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // inner shadow band and outer light band
+    annulus(ctx, ri, ri + RING_TH * 0.28, a0, a1);
+    ctx.fillStyle = col.dark;
+    ctx.globalAlpha = 0.35;
+    ctx.fill();
+    annulus(ctx, ro - RING_TH * 0.22, ro, a0, a1);
+    ctx.fillStyle = col.light;
+    ctx.globalAlpha = st.shine ? 0.75 : 0.45;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  // details along the arcs
+  for (const [a0, a1] of arcs) {
+    const len = (a1 - a0) * r;
+    if (st.seam) {
+      ctx.strokeStyle = col.dark;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = Math.max(px, 0.014);
+      const n = Math.max(1, Math.round(len / st.seam));
+      ctx.beginPath();
+      for (let i = 1; i < n; i++) {
+        const a = a0 + ((a1 - a0) * i) / n;
+        ctx.moveTo(ri * Math.cos(a), ri * Math.sin(a));
+        ctx.lineTo(ro * Math.cos(a), ro * Math.sin(a));
+      }
+      ctx.stroke();
+      if (st.grain) {
+        ctx.globalAlpha = 0.25;
+        ctx.beginPath();
+        ctx.arc(0, 0, r + 0.012, a0 + 0.02, a1 - 0.02);
+        ctx.stroke();
+      }
+      if (st.blocks) {
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, a0, a1);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (st.rivets) {
+      ctx.fillStyle = col.dark;
+      const n = Math.max(1, Math.round(len / 0.32));
+      for (let i = 0; i < n; i++) {
+        const a = a0 + ((a1 - a0) * (i + 0.5)) / n;
+        ctx.beginPath();
+        ctx.arc(r * Math.cos(a), r * Math.sin(a), 0.022, 0, TAU);
+        ctx.fill();
+      }
+    }
+    if (st.dots) {
+      ctx.fillStyle = '#fff4ea';
+      const n = Math.max(1, Math.round(len / 0.3));
+      for (let i = 0; i < n; i++) {
+        const a = a0 + ((a1 - a0) * (i + 0.5)) / n;
+        const rr = r + (i % 2 ? 0.025 : -0.02);
+        ctx.beginPath();
+        ctx.arc(rr * Math.cos(a), rr * Math.sin(a), i % 3 ? 0.028 : 0.04, 0, TAU);
+        ctx.fill();
+      }
+    }
+    if (st.leaves) {
+      // leaves lie flat along the vine (tangent) and are rounded, so they never read as thorns
+      const n = Math.max(1, Math.round(len / 0.6));
+      ctx.lineWidth = 0.008;
+      for (let i = 0; i < n; i++) {
+        const a = a0 + ((a1 - a0) * (i + 0.5)) / n;
+        const rr = ro - 0.005;
+        ctx.save();
+        ctx.translate(rr * Math.cos(a), rr * Math.sin(a));
+        ctx.rotate(a + Math.PI / 2 + (i % 2 ? 0.25 : -0.25));
+        ctx.fillStyle = col.light;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 0.065, 0.04, 0, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = col.dark;
+        ctx.beginPath();
+        ctx.moveTo(-0.05, 0);
+        ctx.lineTo(0.05, 0);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    if (st.puffs) {
+      ctx.fillStyle = col.light;
+      const n = Math.max(1, Math.round(len / 0.22));
+      for (let i = 0; i < n; i++) {
+        const a = a0 + ((a1 - a0) * (i + 0.5)) / n;
+        ctx.beginPath();
+        ctx.arc((ro - 0.02) * Math.cos(a), (ro - 0.02) * Math.sin(a), 0.07 + (i % 3) * 0.015, 0, TAU);
+        ctx.fill();
+      }
+    }
+    if (st.bumps) {
+      ctx.fillStyle = col.light;
+      const n = Math.max(1, Math.round(len / 0.2));
+      for (let i = 0; i < n; i++) {
+        const a = a0 + ((a1 - a0) * (i + 0.5)) / n;
+        const rr = r + ((i * 7) % 3 - 1) * 0.035;
+        ctx.beginPath();
+        ctx.arc(rr * Math.cos(a), rr * Math.sin(a), 0.026, 0, TAU);
+        ctx.fill();
+      }
+    }
+    if (st.veins) {
+      ctx.strokeStyle = '#ff7a2a';
+      ctx.lineWidth = 0.018;
+      ctx.globalAlpha = 0.55 + 0.25 * Math.sin(t * 2 + r);
+      const n = Math.max(1, Math.round(len / 0.5));
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const a = a0 + ((a1 - a0) * (i + 0.3)) / n;
+        ctx.moveTo((ri + 0.03) * Math.cos(a), (ri + 0.03) * Math.sin(a));
+        ctx.lineTo(r * Math.cos(a + 0.06), r * Math.sin(a + 0.06));
+        ctx.lineTo((ro - 0.03) * Math.cos(a + 0.02), (ro - 0.03) * Math.sin(a + 0.02));
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    // end caps
+    ctx.strokeStyle = col.dark;
+    ctx.lineWidth = Math.max(1.5 * px, 0.02);
+    ctx.lineCap = 'round';
+    for (const a of [a0, a1]) {
+      ctx.beginPath();
+      ctx.moveTo(ri * Math.cos(a), ri * Math.sin(a));
+      ctx.lineTo(ro * Math.cos(a), ro * Math.sin(a));
+      ctx.stroke();
+    }
+  }
+  // outline
+  ctx.strokeStyle = col.dark;
+  ctx.lineWidth = Math.max(1.4 * px, 0.016);
+  for (const [a0, a1] of arcs) {
+    ctx.beginPath();
+    ctx.arc(0, 0, ro, a0, a1);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, ri, a0, a1);
+    ctx.stroke();
+  }
+  // rim light on the outer edge
+  ctx.strokeStyle = 'rgba(255,255,255,0.38)';
+  ctx.lineWidth = Math.max(1.2 * px, 0.012);
+  for (const [a0, a1] of arcs) {
+    ctx.beginPath();
+    ctx.arc(0, 0, ro - 1.5 * px, a0 + 0.01, a1 - 0.01);
+    ctx.stroke();
+  }
+  // glass damage
+  if (ring.M.hp) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 0.012;
+    for (const s of ring.segs) {
+      if (!s.alive || s.hp >= ring.M.hp) continue;
+      const a = (s.a0 + s.a1) / 2;
+      const dmg = ring.M.hp - s.hp;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      for (let j = 0; j < dmg + 1; j++) {
+        const aa = a + (j - dmg / 2) * 0.04;
+        ctx.moveTo(ri * Math.cos(aa), ri * Math.sin(aa));
+        ctx.lineTo((r + 0.02) * Math.cos(aa + 0.03), (r + 0.02) * Math.sin(aa + 0.03));
+        ctx.lineTo(ro * Math.cos(aa - 0.01), ro * Math.sin(aa - 0.01));
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+  // charring where fire is working on a segment
+  for (const s of ring.segs) {
+    if (!s.alive || s.burn <= 0) continue;
+    annulus(ctx, ri, ro, s.a0, s.a1);
+    ctx.fillStyle = '#1b0f08';
+    ctx.globalAlpha = Math.min(0.85, s.burn * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  // motor teeth (clockwork / sandstone mechanisms)
+  if (ring.motor) {
+    ctx.fillStyle = col.dark;
+    for (const [a0, a1] of arcs) {
+      const n = Math.max(1, Math.round(((a1 - a0) * ro) / 0.22));
+      for (let i = 0; i < n; i++) {
+        const a = a0 + ((a1 - a0) * (i + 0.5)) / n;
+        const w = 0.05 / ro;
+        ctx.beginPath();
+        ctx.moveTo(ro * Math.cos(a - w), ro * Math.sin(a - w));
+        ctx.lineTo((ro + 0.07) * Math.cos(a - w * 0.6), (ro + 0.07) * Math.sin(a - w * 0.6));
+        ctx.lineTo((ro + 0.07) * Math.cos(a + w * 0.6), (ro + 0.07) * Math.sin(a + w * 0.6));
+        ctx.lineTo(ro * Math.cos(a + w), ro * Math.sin(a + w));
+        ctx.fill();
+      }
+    }
+  }
+  drawPads(ctx, ring, theme, px, t, opts.eggs || [], opts.simT || 0);
+  // thorns
+  drawThorns(ctx, ring, theme, px);
+  ctx.restore();
+
+  // grab highlight (screen-constant width, not a glow)
+  if (opts.held || opts.hover) {
+    ctx.save();
+    ctx.rotate(ring.body.getAngle());
+    ctx.strokeStyle = opts.held ? '#ffffff' : 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = (opts.held ? 3 : 2) * px;
+    ctx.setLineDash(opts.held ? [] : [8 * px, 6 * px]);
+    for (const [a0, a1] of arcs) {
+      ctx.beginPath();
+      ctx.arc(0, 0, ro + 3 * px, a0, a1);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, ri - 3 * px, a0, a1);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+}
+
+// Sponge cushions on the inner face: soft, dented where eggs rest, jiggle on impact.
+const PAD_H = 0.11;
+function padArcs(ring) {
+  const arcs = [];
+  let cur = null;
+  for (const s of ring.segs) {
+    if (!s.alive || !s.pad) { cur = null; continue; }
+    if (cur && Math.abs(cur.a1 - s.a0) < 1e-4) { cur.a1 = s.a1; cur.segs.push(s); }
+    else { cur = { a0: s.a0, a1: s.a1, segs: [s] }; arcs.push(cur); }
+  }
+  return arcs;
+}
+
+function drawPads(ctx, ring, theme, px, t, eggs, simT) {
+  const arcs = padArcs(ring);
+  if (!arcs.length) return;
+  const r = ring.r, ri = r - RING_TH / 2;
+  const ang = ring.body.getAngle();
+  // eggs near this ring's inner face, in ring-local polar coordinates
+  const near = [];
+  for (const e of eggs) {
+    const rho = Math.hypot(e.x, e.y);
+    if (Math.abs(rho - (ri - 0.27)) < 0.22) near.push(Math.atan2(e.y, e.x) - ang);
+  }
+  const base = theme?.palette?.sponge || '#ffd257';
+  for (const A of arcs) {
+    const n = Math.max(6, Math.ceil(((A.a1 - A.a0) * r) / 0.03));
+    const top = [];
+    for (let i = 0; i <= n; i++) {
+      const th = A.a0 + ((A.a1 - A.a0) * i) / n;
+      let h = PAD_H;
+      // pillow scallops
+      h += 0.028 * Math.abs(Math.sin(((th - A.a0) * r * Math.PI) / 0.24));
+      // ends taper
+      const ed = Math.min(th - A.a0, A.a1 - th) * r;
+      if (ed < 0.1) h *= 0.3 + 0.7 * (ed / 0.1);
+      // dents from resting eggs
+      for (const phi of near) {
+        const d = Math.abs(wrapA(th - phi)) * r;
+        if (d < 0.3) h -= 0.085 * (1 - d / 0.3) * (1 - d / 0.3); // the egg sinks into the foam
+      }
+      // jiggle after a hit
+      const seg = A.segs[Math.min(A.segs.length - 1, Math.floor(((th - A.a0) / (A.a1 - A.a0)) * A.segs.length))];
+      const dt = simT - seg.hitT;
+      if (dt >= 0 && dt < 0.6) h += Math.min(0.045, seg.hitV * 0.009) * Math.exp(-dt * 7) * Math.sin(dt * 45 + th * 12);
+      top.push([th, ri - Math.max(0.015, h)]);
+    }
+    const ro = r + RING_TH / 2 + 0.025;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const th = A.a0 + ((A.a1 - A.a0) * i) / n;
+      const ed = Math.min(th - A.a0, A.a1 - th) * r;
+      const rr = ro + 0.012 * Math.abs(Math.sin(((th - A.a0) * r * Math.PI) / 0.24)) * Math.min(1, ed / 0.1);
+      if (i) ctx.lineTo(rr * Math.cos(th), rr * Math.sin(th)); else ctx.moveTo(rr * Math.cos(th), rr * Math.sin(th));
+    }
+    for (let i = top.length - 1; i >= 0; i--) {
+      const [th, rr] = top[i];
+      ctx.lineTo(rr * Math.cos(th), rr * Math.sin(th));
+    }
+    ctx.closePath();
+    ctx.fillStyle = base;
+    ctx.fill();
+    // soft shading toward the ring
+    ctx.save();
+    ctx.clip();
+    const sh = ctx.createRadialGradient(0, 0, ri - PAD_H - 0.03, 0, 0, ro);
+    sh.addColorStop(0, 'rgba(255,255,235,0.35)');
+    sh.addColorStop(0.45, 'rgba(255,255,255,0)');
+    sh.addColorStop(1, 'rgba(150,80,0,0.35)');
+    ctx.fillStyle = sh;
+    ctx.fillRect(-ro, -ro, ro * 2, ro * 2);
+    // pores
+    ctx.fillStyle = 'rgba(170,105,20,0.45)';
+    const pr = rng(Math.round(A.a0 * 1000) + ring.i * 97);
+    const pn = Math.ceil(((A.a1 - A.a0) * r) / 0.025);
+    for (let i = 0; i < pn; i++) {
+      const th = A.a0 + pr() * (A.a1 - A.a0);
+      const rr = ro - 0.02 - pr() * (ro - ri + PAD_H - 0.04);
+      ctx.beginPath();
+      ctx.ellipse(rr * Math.cos(th), rr * Math.sin(th), 0.008 + pr() * 0.01, 0.006 + pr() * 0.008, th, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+    // top highlight + outline
+    ctx.strokeStyle = 'rgba(255,248,210,0.9)';
+    ctx.lineWidth = Math.max(1.5 * px, 0.014);
+    ctx.beginPath();
+    top.forEach(([th, rr], i) => (i ? ctx.lineTo((rr + 0.008) * Math.cos(th), (rr + 0.008) * Math.sin(th)) : ctx.moveTo((rr + 0.008) * Math.cos(th), (rr + 0.008) * Math.sin(th))));
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,70,10,0.85)';
+    ctx.lineWidth = Math.max(1.2 * px, 0.012);
+    ctx.beginPath();
+    top.forEach(([th, rr], i) => (i ? ctx.lineTo(rr * Math.cos(th), rr * Math.sin(th)) : ctx.moveTo(rr * Math.cos(th), rr * Math.sin(th))));
+    ctx.stroke();
+  }
+}
+
+function wrapA(a) {
+  a = (a + Math.PI) % TAU;
+  if (a < 0) a += TAU;
+  return a - Math.PI;
+}
+
+function drawThorns(ctx, ring, theme, px) {
+  const c = theme?.palette?.thorn || '#3a2a2a';
+  for (const th of ring.thorns) {
+    if (!th.alive) continue;
+    const e = 0.25 + 0.75 * th.ext;
+    const half = 0.13 / ring.r;
+    const tip = th.base + (th.tip - th.base) * e;
+    const a = th.a;
+    const P = (rad, an) => [rad * Math.cos(an), rad * Math.sin(an)];
+    const [x0, y0] = P(th.base, a - half), [x1, y1] = P(th.base, a + half), [x2, y2] = P(tip, a);
+    const [mx, my] = P(th.base + (tip - th.base) * 0.45, a);
+    // body with a curved, hooked silhouette
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(mx + (y1 - y0) * 0.12, my - (x1 - x0) * 0.12, x2, y2);
+    ctx.quadraticCurveTo(mx - (y1 - y0) * 0.05, my + (x1 - x0) * 0.05, x1, y1);
+    ctx.closePath();
+    ctx.fillStyle = '#d23a3a';
+    ctx.fill();
+    ctx.lineWidth = Math.max(2 * px, 0.022);
+    ctx.strokeStyle = '#3a0d0d';
+    ctx.stroke();
+    // inner shade with theme tint
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo((x0 + x1) / 2, (y0 + y1) / 2);
+    ctx.closePath();
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.35;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // highlight
+    ctx.strokeStyle = 'rgba(255,220,200,0.8)';
+    ctx.lineWidth = Math.max(px, 0.01);
+    ctx.beginPath();
+    ctx.moveTo(x0 * 0.7 + x2 * 0.3, y0 * 0.7 + y2 * 0.3);
+    ctx.lineTo(x0 * 0.25 + x2 * 0.75, y0 * 0.25 + y2 * 0.75);
+    ctx.stroke();
+  }
+}
+
+// Items sit on the ring and stay upright.
+export function drawItems(ctx, ring, t, fx) {
+  const a0 = ring.body.getAngle();
+  for (const it of ring.items) {
+    if (!it.alive) continue;
+    const a = a0 + it.a;
+    const x = it.rr * Math.cos(a), y = it.rr * Math.sin(a);
+    const bob = Math.sin(t * 3 + it.a * 5) * 0.02;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    drawItemIcon(ctx, it.type, t, fx, x, y);
+    ctx.restore();
+  }
+}
+
+export function drawItemIcon(ctx, type, t, fx, wx, wy) {
+  if (type === 'fire') {
+    // a living flame: layered tongues + emitted particles
+    if (fx && Math.random() < 0.5) fx.flameAt(wx, wy - 0.08, 0.9);
+    const f = (s, c, ph) => {
+      const w = 0.12 * s, h = 0.3 * s * (1 + 0.08 * Math.sin(t * 12 + ph));
+      ctx.beginPath();
+      ctx.moveTo(0, -0.12);
+      ctx.bezierCurveTo(w * 1.4, -0.1, w, h * 0.4, Math.sin(t * 8 + ph) * 0.03, h);
+      ctx.bezierCurveTo(-w, h * 0.4, -w * 1.4, -0.1, 0, -0.12);
+      ctx.fillStyle = c;
+      ctx.fill();
+    };
+    f(1.15, '#e3331b', 0);
+    f(0.85, '#ff8a1c', 1.3);
+    f(0.55, '#ffd84a', 2.1);
+    f(0.3, '#fff6c4', 3);
+  } else if (type === 'twin') {
+    ctx.save();
+    ctx.scale(0.62, 0.62);
+    eggPath(ctx);
+    const g = ctx.createLinearGradient(-0.2, -0.28, 0.2, 0.28);
+    g.addColorStop(0, '#b7790f');
+    g.addColorStop(0.5, '#ffd34d');
+    g.addColorStop(1, '#fff2b0');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = '#7a4f06';
+    ctx.lineWidth = 0.03;
+    ctx.stroke();
+    ctx.fillStyle = '#7a4f06';
+    ctx.font = 'bold 0.22px sans-serif';
+    ctx.restore();
+    // plus sign
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 0.04;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-0.06, 0);
+    ctx.lineTo(0.06, 0);
+    ctx.moveTo(0, -0.06);
+    ctx.lineTo(0, 0.06);
+    ctx.stroke();
+    if (fx && Math.random() < 0.06) fx.add({ x: wx + (Math.random() - 0.5) * 0.3, y: wy + (Math.random() - 0.5) * 0.3, vy: 0.3, life: 0.6, size: 0.05, color: '#fff3b0', type: 'star', vr: 3 });
+  } else if (type === 'steel') {
+    // iron shell half: dome with rivets
+    const g = ctx.createLinearGradient(-0.18, 0.2, 0.18, -0.1);
+    g.addColorStop(0, '#f1f5fa');
+    g.addColorStop(0.45, '#9aa6b4');
+    g.addColorStop(1, '#4a5563');
+    ctx.beginPath();
+    ctx.arc(0, -0.04, 0.19, 0, Math.PI);
+    ctx.lineTo(-0.19, -0.1);
+    ctx.lineTo(0.19, -0.1);
+    ctx.closePath();
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = '#2b323c';
+    ctx.lineWidth = 0.025;
+    ctx.stroke();
+    ctx.fillStyle = '#2b323c';
+    for (const [x, y] of [[-0.11, 0.0], [0, 0.08], [0.11, 0.0]]) {
+      ctx.beginPath();
+      ctx.arc(x, y, 0.022, 0, TAU);
+      ctx.fill();
+    }
+  } else if (type === 'bubble') {
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.18, 0, TAU);
+    ctx.fillStyle = 'rgba(170,230,255,0.25)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(220,250,255,0.9)';
+    ctx.lineWidth = 0.02;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(-0.06, 0.06, 0.05, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0.07, -0.08, 0.025, 0, TAU);
+    ctx.fill();
+  } else if (type === 'magnet') {
+    ctx.lineCap = 'butt';
+    ctx.lineWidth = 0.09;
+    ctx.strokeStyle = '#d6262e';
+    ctx.beginPath();
+    ctx.arc(0, 0.02, 0.11, Math.PI, TAU);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-0.11, 0.02);
+    ctx.lineTo(-0.11, 0.12);
+    ctx.moveTo(0.11, 0.02);
+    ctx.lineTo(0.11, 0.12);
+    ctx.stroke();
+    ctx.strokeStyle = '#e8edf3';
+    ctx.beginPath();
+    ctx.moveTo(-0.11, 0.12);
+    ctx.lineTo(-0.11, 0.18);
+    ctx.moveTo(0.11, 0.12);
+    ctx.lineTo(0.11, 0.18);
+    ctx.stroke();
+  }
+}
+
+export function drawEgg(ctx, egg, t, k) {
+  const b = egg.body;
+  const p = b.getPosition();
+  const a = b.getAngle();
+  const px = 1 / k;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  if (egg.bubbleFix) {
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.4, 0, TAU);
+    ctx.fillStyle = 'rgba(160,225,255,0.18)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(225,250,255,0.9)';
+    ctx.lineWidth = Math.max(px * 1.5, 0.018);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(-0.15, 0.17, 0.07, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fill();
+  }
+  ctx.rotate(a);
+  // shell
+  eggPath(ctx);
+  let g;
+  if (egg.steel > 0) {
+    g = ctx.createLinearGradient(-0.2, 0.25, 0.2, -0.25);
+    g.addColorStop(0, '#f4f7fb');
+    g.addColorStop(0.4, '#a3afbd');
+    g.addColorStop(1, '#4a5563');
+  } else if (egg.golden) {
+    g = ctx.createLinearGradient(-0.2, 0.25, 0.2, -0.25);
+    g.addColorStop(0, '#fff3b8');
+    g.addColorStop(0.5, '#ffc93a');
+    g.addColorStop(1, '#b57a0c');
+  } else {
+    g = ctx.createRadialGradient(-0.07, 0.1, 0.02, 0, 0, 0.36);
+    g.addColorStop(0, '#fffdf6');
+    g.addColorStop(0.55, egg.fire > 0 ? '#ffd6a0' : '#f7ecd6');
+    g.addColorStop(1, egg.fire > 0 ? '#e0803a' : '#d9c3a0');
+  }
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = egg.steel > 0 ? '#2d3540' : 'rgba(90,64,40,0.85)';
+  ctx.lineWidth = Math.max(1.5 * px, 0.016);
+  ctx.stroke();
+  if (egg.steel > 0) {
+    ctx.fillStyle = '#2d3540';
+    for (const [x, y] of [[-0.13, 0.05], [0.13, 0.05], [0, 0.2], [-0.1, -0.15], [0.1, -0.15]]) {
+      ctx.beginPath();
+      ctx.arc(x, y, 0.018, 0, TAU);
+      ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(45,53,64,0.6)';
+    ctx.beginPath();
+    ctx.moveTo(-0.2, 0.0);
+    ctx.lineTo(0.2, 0.0);
+    ctx.stroke();
+  }
+  // cracks
+  if (egg.cracks > 0) {
+    const lines = crackLines(egg.seed);
+    ctx.strokeStyle = '#4a3420';
+    ctx.lineWidth = Math.max(1.2 * px, 0.012);
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < Math.min(egg.cracks, 3); i++) {
+      const L = lines[i];
+      ctx.beginPath();
+      L.pts.forEach((q, j) => (j ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+      ctx.moveTo(L.branch[0].x, L.branch[0].y);
+      ctx.lineTo(L.branch[1].x, L.branch[1].y);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // face: stays upright so it reads; eyes follow velocity
+  const v = b.getLinearVelocity();
+  const sp = Math.hypot(v.x, v.y);
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  const look = sp > 0.3 ? { x: (v.x / sp) * 0.02, y: (v.y / sp) * 0.02 } : { x: 0, y: 0 };
+  const scared = sp > 3.2 || egg.fear > 0;
+  const blink = Math.sin(t * 1.3 + egg.seed) > 0.985;
+  const eyeY = 0.04;
+  ctx.fillStyle = '#2a1d14';
+  for (const sx of [-0.075, 0.075]) {
+    ctx.beginPath();
+    if (blink) ctx.ellipse(sx, eyeY, 0.035, 0.008, 0, 0, TAU);
+    else ctx.ellipse(sx + look.x, eyeY + look.y, scared ? 0.034 : 0.028, scared ? 0.044 : 0.036, 0, 0, TAU);
+    ctx.fill();
+    if (!blink) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(sx + look.x - 0.01, eyeY + look.y + 0.014, 0.01, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#2a1d14';
+    }
+  }
+  // mouth
+  ctx.strokeStyle = '#2a1d14';
+  ctx.lineWidth = 0.014;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (scared) { ctx.ellipse(0, -0.05, 0.022, 0.03, 0, 0, TAU); ctx.fill(); }
+  else { ctx.arc(0, -0.02, 0.035, Math.PI * 1.2, Math.PI * 1.8); ctx.stroke(); }
+  // cheeks
+  ctx.fillStyle = 'rgba(255,120,120,0.35)';
+  ctx.beginPath();
+  ctx.arc(-0.12, -0.03, 0.025, 0, TAU);
+  ctx.arc(0.12, -0.03, 0.025, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+export function drawEggMult(ctx, egg, k, font) {
+  // multiplier painted on the egg belly, screen-space-sized text inside the shell
+  if (egg.mult <= 1) return;
+  const p = egg.body.getPosition();
+  ctx.save();
+  ctx.translate(p.x, p.y - 0.15);
+  ctx.scale(1 / k, -1 / k);
+  const s = Math.max(10, Math.min(16, k * 0.16));
+  ctx.font = `${s}px ${font}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#6b3a00';
+  ctx.strokeText('x' + egg.mult, 0, 0);
+  ctx.fillStyle = '#ffd23f';
+  ctx.fillText('x' + egg.mult, 0, 0);
+  ctx.restore();
+}
+
+export function drawNest(ctx, sim, theme, t, savedCount) {
+  const p = sim.nest.getPosition();
+  const w = sim.nestW / 2;
+  const straw = theme?.palette?.nestStraw || '#c9a24a';
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  // saved eggs nestled inside
+  const n = Math.min(4, savedCount);
+  for (let i = 0; i < n; i++) {
+    ctx.save();
+    ctx.translate(-0.33 + i * 0.22, 0.32 + (i % 2) * 0.04);
+    ctx.rotate((i - 1.5) * 0.25);
+    ctx.scale(0.75, 0.75);
+    eggPath(ctx);
+    ctx.fillStyle = '#f7ecd6';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(90,64,40,0.8)';
+    ctx.lineWidth = 0.02;
+    ctx.stroke();
+    ctx.restore();
+  }
+  // bowl
+  ctx.beginPath();
+  ctx.moveTo(-w - 0.12, 0.5);
+  ctx.quadraticCurveTo(-w - 0.05, -0.05, 0, -0.04);
+  ctx.quadraticCurveTo(w + 0.05, -0.05, w + 0.12, 0.5);
+  ctx.quadraticCurveTo(0, 0.3, -w - 0.12, 0.5);
+  ctx.fillStyle = straw;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(70,45,15,0.9)';
+  ctx.lineWidth = 0.02;
+  ctx.stroke();
+  // woven straw strokes
+  const r = rng(11);
+  ctx.lineWidth = 0.018;
+  for (let i = 0; i < 26; i++) {
+    const x0 = -w - 0.05 + r() * (2 * w + 0.1);
+    const y0 = 0.05 + r() * 0.38;
+    ctx.strokeStyle = i % 3 ? 'rgba(255,230,160,0.7)' : 'rgba(110,75,25,0.6)';
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(x0 + 0.15, y0 + 0.06 * (r() - 0.5), x0 + 0.3 + r() * 0.2, y0 + (r() - 0.5) * 0.1);
+    ctx.stroke();
+  }
+  // rim
+  ctx.beginPath();
+  ctx.ellipse(0, 0.47, w + 0.1, 0.08, 0, 0, TAU);
+  ctx.strokeStyle = straw;
+  ctx.lineWidth = 0.09;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(70,45,15,0.6)';
+  ctx.lineWidth = 0.015;
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function drawPortal(ctx, x, y, t, out) {
+  const c1 = out ? '#ff9a3c' : '#7c5cff';
+  const c2 = out ? '#ffd27a' : '#45d3ff';
+  ctx.save();
+  ctx.translate(x, y);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 0.42);
+  g.addColorStop(0, '#05030a');
+  g.addColorStop(0.55, '#140c2a');
+  g.addColorStop(1, 'rgba(20,12,42,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, 0.42, 0, TAU);
+  ctx.fill();
+  // spiral arms
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 4; i++) {
+    const base = (out ? -1 : 1) * t * 2.6 + (i * TAU) / 4;
+    ctx.strokeStyle = i % 2 ? c1 : c2;
+    ctx.lineWidth = 0.035;
+    ctx.beginPath();
+    for (let s = 0; s <= 14; s++) {
+      const f = s / 14;
+      const rr = 0.36 * (1 - f) + 0.04;
+      const an = base + f * 3.2;
+      const px = rr * Math.cos(an), py = rr * Math.sin(an);
+      if (s) ctx.lineTo(px, py);
+      else ctx.moveTo(px, py);
+    }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = c1;
+  ctx.lineWidth = 0.04;
+  ctx.beginPath();
+  ctx.arc(0, 0, 0.36, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function drawBomb(ctx, bomb, t) {
+  const b = bomb.body, p = b.getPosition();
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(b.getAngle());
+  const g = ctx.createRadialGradient(-0.06, 0.07, 0.01, 0, 0, 0.21);
+  g.addColorStop(0, '#6b7280');
+  g.addColorStop(1, '#111318');
+  ctx.beginPath();
+  ctx.arc(0, 0, 0.2, 0, TAU);
+  ctx.fillStyle = g;
+  ctx.fill();
+  if (bomb.lit && Math.sin(t * (12 + (2.5 - bomb.fuse) * 10)) > 0) {
+    ctx.fillStyle = 'rgba(255,60,40,0.55)';
+    ctx.fill();
+  }
+  ctx.fillStyle = '#3a3f48';
+  ctx.fillRect(-0.06, 0.16, 0.12, 0.07);
+  ctx.strokeStyle = '#c9a26a';
+  ctx.lineWidth = 0.025;
+  const fl = bomb.lit ? 0.04 + 0.12 * Math.max(0, bomb.fuse / 2.5) : 0.16;
+  ctx.beginPath();
+  ctx.moveTo(0, 0.23);
+  ctx.quadraticCurveTo(0.05, 0.23 + fl * 0.6, 0.08, 0.23 + fl);
+  ctx.stroke();
+  ctx.restore();
+  return { x: p.x + 0.08 * Math.cos(b.getAngle()), y: p.y + 0.23 + fl };
+}
+
+export function drawRock(ctx, rock, theme) {
+  const b = rock.body, p = b.getPosition();
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(b.getAngle());
+  ctx.beginPath();
+  rock.pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+  ctx.closePath();
+  ctx.fillStyle = '#7b7f86';
+  ctx.fill();
+  ctx.strokeStyle = '#3a3d42';
+  ctx.lineWidth = 0.02;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath();
+  ctx.arc(-rock.s * 0.3, rock.s * 0.3, rock.s * 0.25, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+export function drawDebris(ctx, d, theme) {
+  const b = d.body, p = b.getPosition();
+  const t = Math.min(1, d.life / 0.6);
+  ctx.save();
+  ctx.globalAlpha = t;
+  ctx.translate(p.x, p.y);
+  ctx.rotate(b.getAngle());
+  ctx.beginPath();
+  d.verts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+  ctx.closePath();
+  let fill = '#f3e8d2', stroke = 'rgba(90,64,40,0.8)';
+  if (d.kind === 'shell') { fill = d.golden ? '#ffd34d' : '#f3e8d2'; }
+  else if (d.kind === 'char') { fill = '#2a1a10'; stroke = '#ff6a1a'; }
+  else if (d.kind === 'thorn') { fill = theme?.palette?.thorn || '#3a2a2a'; stroke = '#000'; }
+  else { const c = MAT_COLORS[d.mat] || theme?.palette?.ring || DEFAULT_RING; fill = c.base; stroke = c.dark; }
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 0.014;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// The fox's fuse: a rope circling the vault that burns down.
+export function drawFuse(ctx, R, frac, t, fx) {
+  const start = Math.PI / 2;
+  const end = start + TAU * frac;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+  ctx.lineWidth = 0.09;
+  ctx.beginPath();
+  ctx.arc(0, 0, R, start, start + TAU);
+  ctx.stroke();
+  if (frac > 0) {
+    ctx.strokeStyle = frac < 0.2 ? '#ff5a3c' : '#e9d3a1';
+    ctx.lineWidth = 0.06;
+    ctx.beginPath();
+    ctx.arc(0, 0, R, start, end);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,80,30,0.7)';
+    ctx.lineWidth = 0.015;
+    ctx.setLineDash([0.06, 0.06]);
+    ctx.beginPath();
+    ctx.arc(0, 0, R, start, end);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const x = R * Math.cos(end), y = R * Math.sin(end);
+    if (fx && Math.random() < 0.7) {
+      fx.add({ x, y, vx: (Math.random() - 0.5) * 2.5, vy: Math.random() * 2.5, g: 5, life: 0.3 + Math.random() * 0.2, size: 0.02, color: '#ffd34d', type: 'spark' });
+    }
+    ctx.fillStyle = '#ffef9a';
+    ctx.beginPath();
+    ctx.arc(x, y, 0.05 + 0.015 * Math.sin(t * 30), 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+export { eggPath };
+
+// Drop guide on the outermost ring: a chevron under each low gap, green when an egg falling
+// out of it would land in the nest, faint white when it would miss.
+export function drawDropGuide(ctx, ring, nestX, nestW, t) {
+  const ang = ring.body.getAngle();
+  for (const g of ring.gaps) {
+    const th = ang + g.a;
+    const s = Math.sin(th), c = Math.cos(th);
+    if (s > -0.25) continue;
+    const x = ring.r * c;
+    const over = Math.abs(x - nestX) < nestW / 2 - 0.12;
+    const rr = ring.r + 0.3;
+    const px = rr * c, py = rr * s;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(th - Math.PI / 2);
+    const pulse = over ? 0.8 + 0.2 * Math.sin(t * 6) : 0.55;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = over ? '#6dff6a' : '#ff8a7a';
+    ctx.strokeStyle = 'rgba(20,40,10,0.8)';
+    ctx.lineWidth = 0.035;
+    for (const off of [0, 0.17]) {
+      ctx.beginPath();
+      ctx.moveTo(-0.18, off);
+      ctx.lineTo(0, off + 0.15);
+      ctx.lineTo(0.18, off);
+      ctx.lineTo(0, off + 0.07);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
