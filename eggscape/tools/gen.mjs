@@ -24,6 +24,8 @@ const THORN_STEP = 11;
 const wrapD = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 const dist = (a, b) => Math.abs(wrapD(a - b));
 const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
+// level fields copied from the spec as they are (not laid out)
+const LEVEL_KEYS = ['gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus'];
 
 // ---------- layout ----------
 function radii(spec) {
@@ -33,8 +35,9 @@ function radii(spec) {
   return out;
 }
 
-function channelPoint(spec, rs, ch, a) {
-  const r = ch === 0 ? 0.45 : ch >= rs.length ? rs[rs.length - 1] + 0.55 : (rs[ch - 1] + rs[ch]) / 2;
+// floor = true: just above the channel's floor ring, where eggs travel (portals, F12)
+function channelPoint(spec, rs, ch, a, floor = false) {
+  const r = floor && ch < rs.length ? rs[ch] - 0.08 - 0.32 : ch === 0 ? 0.45 : ch >= rs.length ? rs[rs.length - 1] + 0.55 : (rs[ch - 1] + rs[ch]) / 2;
   const t = (a * Math.PI) / 180;
   return [+(r * Math.cos(t)).toFixed(2), +(r * Math.sin(t)).toFixed(2)];
 }
@@ -52,6 +55,11 @@ function layRing(spec, i, r, R, prev) {
   if (rs.motor) ring.motor = rs.motor;
   if (rs.motorFlip) ring.motorFlip = rs.motorFlip;
   if (rs.retract) ring.retract = { phase: +(R() * rs.retract.period).toFixed(2), ...rs.retract };
+  if (rs.gear) {
+    // geared to the next ring out: turning either turns the other the opposite way
+    if (rs.motor || spec.rings[i + 1]?.motor || i + 1 >= spec.rings.length) throw new Error(`L${spec.id}: ring ${i} gear needs a non-motor ring outside it`);
+    ring.gear = i + 1;
+  }
 
   // gaps: never at the bottom at start, spread apart, not stacked on the ring inside
   const gaps = [];
@@ -76,6 +84,8 @@ function layRing(spec, i, r, R, prev) {
   // biggest multiplier goes on the narrowest gap
   xs.sort((p, q) => q - p).forEach((x, k) => { if (gaps[k]) gaps[k].x = x; });
   gaps.forEach((g) => { if (g.len === GAP_LEN) delete g.len; if (g.x === 1) delete g.x; });
+  // gap shutters: every gap on the ring gets a door on the same rhythm, out of step with each other
+  if (rs.shut) gaps.forEach((g) => { g.shut = { period: rs.shut.period, open: rs.shut.open, phase: +(R() * rs.shut.period).toFixed(2) }; });
   ring.gaps = gaps;
   const gapHalf = (g) => halfDeg(g.len || GAP_LEN, r);
 
@@ -101,7 +111,8 @@ function layRing(spec, i, r, R, prev) {
         const lo = g0.a + gapHalf(g0) + w + 12;
         const hi = (g1.a <= g0.a ? g1.a + 360 : g1.a) - gapHalf(g1) - w - 12;
         if (hi < lo) return null;
-        a = Math.round(wrapD(lo + R() * (hi - lo)));
+        // a thorn pocket hugs one edge of the gap: only one way round reaches it safely
+        a = Math.round(wrapD(rs.pocket && k === 0 ? (R() < 0.5 ? lo : hi) : lo + R() * (hi - lo)));
       } else a = Math.round(R() * 360 - 180);
       if (floor && dist(a, BOTTOM) < (i === 0 ? 60 : 35) + w) continue;
       if (gaps.some((g) => dist(g.a, a) < gapHalf(g) + w + 12)) continue;
@@ -170,9 +181,24 @@ function layRing(spec, i, r, R, prev) {
       break;
     }
   }
-  if (thorns.length) ring.thorns = thorns.map((t) => ({ a: t.a, n: t.n, ...(t.side ? { side: t.side, h: t.h } : {}) }));
+  // honey pads (F24) are placed like sponge pads, on free floor
+  const honey = [];
+  for (let k = 0; k < (rs.honey || 0); k++) {
+    for (let t = 0; t < 200; t++) {
+      const len = +(0.8 + R() * 0.5).toFixed(2);
+      const w = halfDeg(len, r);
+      const a = Math.round(R() * 360 - 180);
+      if (blocked(a, w) || honey.some((p) => dist(p.a, a) < halfDeg(p.len, r) + w + 8)) continue;
+      honey.push({ a, len });
+      break;
+    }
+  }
+  // blunt grey spikes (crack only) replace the last `blunt` clusters (F22)
+  thorns.slice(thorns.length - Math.min(thorns.length, rs.blunt || 0)).forEach((t) => { t.kind = 'blunt'; });
+  if (thorns.length) ring.thorns = thorns.map((t) => ({ a: t.a, n: t.n, ...(t.side ? { side: t.side, h: t.h } : {}), ...(t.kind ? { kind: t.kind } : {}) }));
   if (items.length) ring.items = items;
   if (pads.length) ring.pads = pads;
+  if (honey.length) ring.honey = honey;
   return ring;
 }
 
@@ -187,9 +213,13 @@ export function layout(spec, seed) {
     rings.push(ring);
   }
   const L = { id: spec.id, theme: spec.theme, name: spec.name, eggs: spec.eggs, target: spec.target, time: 150, spacing: spec.spacing, material: spec.material };
-  for (const k of ['gravity', 'water', 'lava', 'wind', 'nest']) if (spec[k] !== undefined) L[k] = spec[k];
+  for (const k of LEVEL_KEYS) if (spec[k] !== undefined) L[k] = spec[k];
   L.tip = spec.tip;
-  if (spec.portals) L.portals = spec.portals.map((p) => ({ a: channelPoint(spec, rs, ...p.from), b: channelPoint(spec, rs, ...p.to) }));
+  if (spec.portals) L.portals = spec.portals.map((p) => ({ a: channelPoint(spec, rs, ...p.from, true), b: channelPoint(spec, rs, ...p.to, true), ...(p.emit ? { emit: p.emit, every: p.every || 8 } : {}) }));
+  // orbs float (F3): ring `items` and level `orbs` both become level orbs {type, ch, a}
+  const orbs = (spec.orbs || []).map((o) => ({ type: o.type, ch: o.ch, a: o.a ?? Math.round(R() * 360 - 180) }));
+  rings.forEach((ring, i) => { for (const it of ring.items || []) orbs.push({ type: it.type, ch: i, a: it.a }); delete ring.items; });
+  if (orbs.length) L.orbs = orbs;
   if (spec.bombs) L.bombs = spec.bombs.map((b) => { const [x, y] = channelPoint(spec, rs, b.ch, b.a); return { x, y }; });
   if (spec.rocks) L.rocks = spec.rocks.map((k) => { const [x, y] = channelPoint(spec, rs, k.ch, k.a); return { x, y, ...(k.s ? { s: k.s } : {}) }; });
   L.rings = rings;
@@ -234,16 +264,19 @@ function pick(id, found) {
   return sorted[Math.round(q * (sorted.length - 1))];
 }
 
-function fuse(c) {
-  return Math.max(45, Math.min(110, Math.round((c.plannerT * 3 + 25) / 5) * 5));
+// the fox's fuse: generous on L1-L2, tight from L3 (F30). Easy/Hard scale it at run time.
+function fuse(c, id) {
+  const t = id <= 2 ? c.plannerT * 3 + 25 : c.plannerT * 2.2 + 15;
+  return Math.max(id <= 2 ? 45 : 30, Math.min(110, Math.round(t / 5) * 5));
 }
 
 function writeLevels(chosen) {
   const head = `// GENERATED by tools/gen.mjs from src/data/specs.js. Do not hand-edit: change the spec and regenerate.
 // Every level here was cleared by the lookahead planner with no broken eggs.
 // Angles in degrees, ring-local at start; -90 is straight down.
-// gaps: {a, len (m), x (score multiplier)}; thorns: {a, n, side 'in'|'out', h}; pads: sponge {a, len (m)}
-// items: {type, a} rest on the ring's inner face and turn with it. time = the fox's fuse in seconds.
+// gaps: {a, len (m), x (score multiplier), shut {period, open, phase}}; thorns: {a, n, side 'in'|'out', h, kind 'blunt'}
+// pads: sponge {a, len (m)}; honey: {a, len}; gear: index of the ring it turns. orbs: {type, ch, a} float in
+// channel ch. time = the fox's fuse in seconds (Medium; Easy x1.6, Hard x0.8).
 
 export const LEVELS = [\n`;
   const body = chosen.map((L) => {
@@ -282,10 +315,10 @@ async function main() {
     const c = pick(spec.id, found);
     if (!c) { report.push(`L${spec.id}: NO VALID LAYOUT`); continue; }
     // names, tips, nest and other non-layout fields always come from the current spec
-    for (const k of ['theme', 'name', 'eggs', 'target', 'material', 'tip', 'nest', 'gravity', 'water', 'lava', 'wind']) {
+    for (const k of ['theme', 'name', 'eggs', 'target', 'material', 'tip', ...LEVEL_KEYS]) {
       if (spec[k] !== undefined) c.level[k] = spec[k]; else delete c.level[k];
     }
-    c.level.time = fuse(c);
+    c.level.time = fuse(c, spec.id);
     delete c.level.seed;
     chosen.push(c.level);
     report.push(`L${spec.id}: kept ${found.length}, seed ${c.seed}, stars ${c.stars}, planner ${c.plannerT}s/${c.moves} moves, rough ${c.roughState} (broke ${c.roughBroken}), fuse ${c.level.time}s, hardness ${hardness(c).toFixed(1)}`);

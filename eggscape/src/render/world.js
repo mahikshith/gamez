@@ -1,5 +1,11 @@
 // Draws the playfield in world space: ctx is pre-transformed (meters, y up).
 import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
+import { drawChick } from './characters.js';
+import { drawEggPower } from './powers.js';
+import { drawSkinPreview } from '../ui/store.js';
+
+let skin = 'classic';
+export function setSkin(id) { skin = id || 'classic'; }
 
 const EGG_PATH = (() => {
   const pts = [];
@@ -320,9 +326,13 @@ export function drawRing(ctx, ring, theme, k, t, opts = {}) {
     }
   }
   drawPads(ctx, ring, theme, px, t, opts.eggs || [], opts.simT || 0);
+  drawHoney(ctx, ring, px, t, opts.stuck);
+  drawShutters(ctx, ring, col, px);
+  if (ring.gear) drawGearTeeth(ctx, ring, col, ring.gear.i > ring.i ? ro : ri, ring.gear.i > ring.i ? 1 : -1);
   // thorns
   drawThorns(ctx, ring, theme, px);
   ctx.restore();
+  if (ring.stun > 0) drawStun(ctx, ring, t, px);
 
   // grab highlight (screen-constant width, not a glow)
   if (opts.held || opts.hover) {
@@ -342,6 +352,142 @@ export function drawRing(ctx, ring, theme, k, t, opts = {}) {
     ctx.setLineDash([]);
     ctx.restore();
   }
+}
+
+// Gap shutters: two sliding doors close the gap from its edges (F15c).
+function drawShutters(ctx, ring, col, px) {
+  const ri = ring.r - RING_TH / 2 + 0.015, ro = ring.r + RING_TH / 2 - 0.015;
+  for (const g of ring.gaps) {
+    if (!g.shut) continue;
+    const half = g.len / (2 * ring.r), shut = half * (1 - g.o);
+    // door frames at both edges
+    ctx.strokeStyle = 'rgba(30,24,20,0.7)';
+    ctx.lineWidth = Math.max(3 * px, 0.03);
+    ctx.beginPath();
+    for (const b of [g.a - half, g.a + half]) {
+      ctx.moveTo((ri - 0.03) * Math.cos(b), (ri - 0.03) * Math.sin(b));
+      ctx.lineTo((ro + 0.03) * Math.cos(b), (ro + 0.03) * Math.sin(b));
+    }
+    ctx.stroke();
+    if (shut < 0.004) continue;
+    for (const e of [-1, 1]) {
+      const a0 = e < 0 ? g.a - half : g.a + half - shut, a1 = e < 0 ? g.a - half + shut : g.a + half;
+      annulus(ctx, ri, ro, a0, a1);
+      ctx.fillStyle = '#7f8792';
+      ctx.fill();
+      ctx.strokeStyle = '#2c3138';
+      ctx.lineWidth = Math.max(1.5 * px, 0.014);
+      ctx.stroke();
+      // hazard stripe on the leading edge
+      const lead = e < 0 ? a1 : a0;
+      ctx.strokeStyle = '#ffcc33';
+      ctx.lineWidth = Math.max(3 * px, 0.03);
+      ctx.beginPath();
+      ctx.moveTo(ri * Math.cos(lead - e * 0.02), ri * Math.sin(lead - e * 0.02));
+      ctx.lineTo(ro * Math.cos(lead - e * 0.02), ro * Math.sin(lead - e * 0.02));
+      ctx.stroke();
+    }
+  }
+}
+
+// Gear teeth on the face of a ring that turns its neighbour (F15d).
+function drawGearTeeth(ctx, ring, col, edge, dir) {
+  const n = Math.round((TAU * edge) / 0.16);
+  ctx.fillStyle = col.dark;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU, w = 0.04 / edge;
+    if (!liveAt(ring, a)) continue;
+    ctx.beginPath();
+    ctx.moveTo(edge * Math.cos(a - w), edge * Math.sin(a - w));
+    ctx.lineTo((edge + dir * 0.06) * Math.cos(a - w * 0.55), (edge + dir * 0.06) * Math.sin(a - w * 0.55));
+    ctx.lineTo((edge + dir * 0.06) * Math.cos(a + w * 0.55), (edge + dir * 0.06) * Math.sin(a + w * 0.55));
+    ctx.lineTo(edge * Math.cos(a + w), edge * Math.sin(a + w));
+    ctx.fill();
+  }
+}
+function liveAt(ring, a) {
+  for (const s of ring.segs) if (s.alive && ((a >= s.a0 && a < s.a1) || (a + TAU >= s.a0 && a + TAU < s.a1))) return true;
+  return false;
+}
+
+// The idler cog between two geared rings, at the top of the channel between them.
+export function drawGearCog(ctx, inner, outer, t) {
+  const rc = (outer.r - inner.r - RING_TH - 0.12) / 2;
+  if (rc < 0.08) return;
+  const R = (inner.r + outer.r) / 2, a = Math.PI / 2 + 0.35;
+  ctx.save();
+  ctx.translate(R * Math.cos(a), R * Math.sin(a));
+  ctx.rotate((-inner.body.getAngle() * inner.r) / rc);
+  const n = 10;
+  ctx.beginPath();
+  for (let i = 0; i < n * 2; i++) {
+    const rr = i % 2 ? rc * 0.78 : rc;
+    const b = (i / (n * 2)) * TAU;
+    ctx.lineTo(rr * Math.cos(b - 0.12), rr * Math.sin(b - 0.12));
+    ctx.lineTo(rr * Math.cos(b + 0.12), rr * Math.sin(b + 0.12));
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#9aa3ad';
+  ctx.fill();
+  ctx.strokeStyle = '#2c3138';
+  ctx.lineWidth = 0.02;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, rc * 0.25, 0, TAU);
+  ctx.fillStyle = '#2c3138';
+  ctx.fill();
+  ctx.restore();
+}
+
+// A stunned ring crackles with electric arcs.
+function drawStun(ctx, ring, t, px) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(170,225,255,0.95)';
+  ctx.lineWidth = Math.max(2 * px, 0.02);
+  const k = Math.floor(t * 20);
+  const R = rng(k * 31 + ring.i);
+  for (let j = 0; j < 6; j++) {
+    const a = R() * TAU;
+    ctx.beginPath();
+    for (let q = 0; q < 5; q++) {
+      const rr = ring.r + (R() - 0.5) * RING_TH * 1.6, b = a + q * 0.05;
+      if (q) ctx.lineTo(rr * Math.cos(b), rr * Math.sin(b)); else ctx.moveTo(rr * Math.cos(b), rr * Math.sin(b));
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Honey pads (F24): glossy amber on the inner face with drips. A pad holding an egg blinks before it
+// lets go; a pad that just let go is dull for a moment.
+function drawHoney(ctx, ring, px, t, stuck = []) {
+  if (!ring.honey.length) return;
+  const ri = ring.r - RING_TH / 2;
+  ring.honey.forEach((h, k) => {
+    const half = h.len / (2 * ring.r);
+    const hold = stuck.find((e) => e.hold && e.hold.ri === ring.i && e.hold.pad === k);
+    let a = h.dry > 0 && !hold ? 0.5 : 0.95;
+    if (hold && hold.honey < 0.8) a = Math.sin(t * 28) > 0 ? 0.95 : 0.35;
+    ctx.globalAlpha = a;
+    annulus(ctx, ri - 0.07, ri + 0.01, h.a - half, h.a + half);
+    ctx.fillStyle = '#e8920c';
+    ctx.fill();
+    annulus(ctx, ri - 0.07, ri - 0.045, h.a - half * 0.9, h.a + half * 0.9);
+    ctx.fillStyle = 'rgba(255,226,140,0.85)';
+    ctx.fill();
+    // drips
+    ctx.fillStyle = '#d97a06';
+    const n = Math.max(2, Math.round(h.len / 0.22));
+    for (let i = 0; i < n; i++) {
+      const b = h.a - half + ((i + 0.5) / n) * 2 * half;
+      const len = 0.04 + 0.03 * (0.5 + 0.5 * Math.sin(t * 1.7 + i * 2.3));
+      const x = (ri - 0.07) * Math.cos(b), y = (ri - 0.07) * Math.sin(b);
+      ctx.beginPath();
+      ctx.ellipse(x - Math.cos(b) * len * 0.5, y - Math.sin(b) * len * 0.5, 0.018, len * 0.6, b + Math.PI / 2, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  });
 }
 
 // Sponge cushions on the inner face: soft, dented where eggs rest, jiggle on impact.
@@ -458,6 +604,28 @@ function drawThorns(ctx, ring, theme, px) {
     const P = (rad, an) => [rad * Math.cos(an), rad * Math.sin(an)];
     const [x0, y0] = P(th.base, a - half), [x1, y1] = P(th.base, a + half), [x2, y2] = P(tip, a);
     const [mx, my] = P(th.base + (tip - th.base) * 0.45, a);
+    if (th.kind === 'blunt') {
+      // blunt grey spike: a stubby cone with a rounded tip (cracks, never breaks)
+      const [t0x, t0y] = P(tip, a - half * 0.35), [t1x, t1y] = P(tip, a + half * 0.35);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(t0x, t0y);
+      ctx.quadraticCurveTo(x2 + (x2 - mx) * 0.25, y2 + (y2 - my) * 0.25, t1x, t1y);
+      ctx.lineTo(x1, y1);
+      ctx.closePath();
+      ctx.fillStyle = '#8d939b';
+      ctx.fill();
+      ctx.lineWidth = Math.max(2 * px, 0.022);
+      ctx.strokeStyle = '#2f3338';
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(235,240,245,0.7)';
+      ctx.lineWidth = Math.max(px, 0.01);
+      ctx.beginPath();
+      ctx.moveTo(x0 * 0.6 + t0x * 0.4, y0 * 0.6 + t0y * 0.4);
+      ctx.lineTo(x0 * 0.15 + t0x * 0.85, y0 * 0.15 + t0y * 0.85);
+      ctx.stroke();
+      continue;
+    }
     // body with a curved, hooked silhouette
     ctx.beginPath();
     ctx.moveTo(x0, y0);
@@ -489,154 +657,32 @@ function drawThorns(ctx, ring, theme, px) {
   }
 }
 
-// Items sit on the ring and stay upright.
-export function drawItems(ctx, ring, t, fx) {
-  const a0 = ring.body.getAngle();
-  for (const it of ring.items) {
-    if (!it.alive) continue;
-    const a = a0 + it.a;
-    const x = it.rr * Math.cos(a), y = it.rr * Math.sin(a);
-    const bob = Math.sin(t * 3 + it.a * 5) * 0.02;
-    ctx.save();
-    ctx.translate(x, y + bob);
-    drawItemIcon(ctx, it.type, t, fx, x, y);
-    ctx.restore();
-  }
-}
-
-export function drawItemIcon(ctx, type, t, fx, wx, wy) {
-  if (type === 'fire') {
-    // a living flame: layered tongues + emitted particles
-    if (fx && Math.random() < 0.5) fx.flameAt(wx, wy - 0.08, 0.9);
-    const f = (s, c, ph) => {
-      const w = 0.12 * s, h = 0.3 * s * (1 + 0.08 * Math.sin(t * 12 + ph));
-      ctx.beginPath();
-      ctx.moveTo(0, -0.12);
-      ctx.bezierCurveTo(w * 1.4, -0.1, w, h * 0.4, Math.sin(t * 8 + ph) * 0.03, h);
-      ctx.bezierCurveTo(-w, h * 0.4, -w * 1.4, -0.1, 0, -0.12);
-      ctx.fillStyle = c;
-      ctx.fill();
-    };
-    f(1.15, '#e3331b', 0);
-    f(0.85, '#ff8a1c', 1.3);
-    f(0.55, '#ffd84a', 2.1);
-    f(0.3, '#fff6c4', 3);
-  } else if (type === 'twin') {
-    ctx.save();
-    ctx.scale(0.62, 0.62);
-    eggPath(ctx);
-    const g = ctx.createLinearGradient(-0.2, -0.28, 0.2, 0.28);
-    g.addColorStop(0, '#b7790f');
-    g.addColorStop(0.5, '#ffd34d');
-    g.addColorStop(1, '#fff2b0');
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.strokeStyle = '#7a4f06';
-    ctx.lineWidth = 0.03;
-    ctx.stroke();
-    ctx.fillStyle = '#7a4f06';
-    ctx.font = 'bold 0.22px sans-serif';
-    ctx.restore();
-    // plus sign
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 0.04;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(-0.06, 0);
-    ctx.lineTo(0.06, 0);
-    ctx.moveTo(0, -0.06);
-    ctx.lineTo(0, 0.06);
-    ctx.stroke();
-    if (fx && Math.random() < 0.06) fx.add({ x: wx + (Math.random() - 0.5) * 0.3, y: wy + (Math.random() - 0.5) * 0.3, vy: 0.3, life: 0.6, size: 0.05, color: '#fff3b0', type: 'star', vr: 3 });
-  } else if (type === 'steel') {
-    // iron shell half: dome with rivets
-    const g = ctx.createLinearGradient(-0.18, 0.2, 0.18, -0.1);
-    g.addColorStop(0, '#f1f5fa');
-    g.addColorStop(0.45, '#9aa6b4');
-    g.addColorStop(1, '#4a5563');
-    ctx.beginPath();
-    ctx.arc(0, -0.04, 0.19, 0, Math.PI);
-    ctx.lineTo(-0.19, -0.1);
-    ctx.lineTo(0.19, -0.1);
-    ctx.closePath();
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.strokeStyle = '#2b323c';
-    ctx.lineWidth = 0.025;
-    ctx.stroke();
-    ctx.fillStyle = '#2b323c';
-    for (const [x, y] of [[-0.11, 0.0], [0, 0.08], [0.11, 0.0]]) {
-      ctx.beginPath();
-      ctx.arc(x, y, 0.022, 0, TAU);
-      ctx.fill();
-    }
-  } else if (type === 'bubble') {
-    ctx.beginPath();
-    ctx.arc(0, 0, 0.18, 0, TAU);
-    ctx.fillStyle = 'rgba(170,230,255,0.25)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(220,250,255,0.9)';
-    ctx.lineWidth = 0.02;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(-0.06, 0.06, 0.05, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(0.07, -0.08, 0.025, 0, TAU);
-    ctx.fill();
-  } else if (type === 'magnet') {
-    ctx.lineCap = 'butt';
-    ctx.lineWidth = 0.09;
-    ctx.strokeStyle = '#d6262e';
-    ctx.beginPath();
-    ctx.arc(0, 0.02, 0.11, Math.PI, TAU);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-0.11, 0.02);
-    ctx.lineTo(-0.11, 0.12);
-    ctx.moveTo(0.11, 0.02);
-    ctx.lineTo(0.11, 0.12);
-    ctx.stroke();
-    ctx.strokeStyle = '#e8edf3';
-    ctx.beginPath();
-    ctx.moveTo(-0.11, 0.12);
-    ctx.lineTo(-0.11, 0.18);
-    ctx.moveTo(0.11, 0.12);
-    ctx.lineTo(0.11, 0.18);
-    ctx.stroke();
-  }
-}
-
 export function drawEgg(ctx, egg, t, k) {
   const b = egg.body;
   const p = b.getPosition();
   const a = b.getAngle();
   const px = 1 / k;
+  if (egg.chick) {
+    // hatched (gold flame): the chick flaps hard while it falls
+    const v = b.getLinearVelocity();
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(px, -px); // helpers draw in pixels, y down
+    drawChick(ctx, 0, 0, 0.5 * k, t, v.y < -0.3 ? 1 : 0.3);
+    ctx.restore();
+    return;
+  }
   ctx.save();
   ctx.translate(p.x, p.y);
-  if (egg.bubbleFix) {
-    ctx.beginPath();
-    ctx.arc(0, 0, 0.4, 0, TAU);
-    ctx.fillStyle = 'rgba(160,225,255,0.18)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(225,250,255,0.9)';
-    ctx.lineWidth = Math.max(px * 1.5, 0.018);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(-0.15, 0.17, 0.07, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fill();
-  }
   ctx.rotate(a);
   // shell
   eggPath(ctx);
   let g;
-  if (egg.steel > 0) {
+  if (egg.stone > 0) {
     g = ctx.createLinearGradient(-0.2, 0.25, 0.2, -0.25);
-    g.addColorStop(0, '#f4f7fb');
-    g.addColorStop(0.4, '#a3afbd');
-    g.addColorStop(1, '#4a5563');
+    g.addColorStop(0, '#dcd8cf');
+    g.addColorStop(0.45, '#8d8a84');
+    g.addColorStop(1, '#45423e');
   } else if (egg.golden) {
     g = ctx.createLinearGradient(-0.2, 0.25, 0.2, -0.25);
     g.addColorStop(0, '#fff3b8');
@@ -650,20 +696,36 @@ export function drawEgg(ctx, egg, t, k) {
   }
   ctx.fillStyle = g;
   ctx.fill();
-  ctx.strokeStyle = egg.steel > 0 ? '#2d3540' : 'rgba(90,64,40,0.85)';
+  if (skin !== 'classic' && !(egg.stone > 0) && !egg.golden && !egg.fire) {
+    ctx.save();
+    ctx.scale(px, -px);
+    drawSkinPreview(ctx, skin, 0, 0, EGG_H * k, t);
+    ctx.restore();
+    eggPath(ctx);
+  }
+  ctx.strokeStyle = egg.stone > 0 ? '#2b2926' : 'rgba(90,64,40,0.85)';
   ctx.lineWidth = Math.max(1.5 * px, 0.016);
   ctx.stroke();
-  if (egg.steel > 0) {
-    ctx.fillStyle = '#2d3540';
-    for (const [x, y] of [[-0.13, 0.05], [0.13, 0.05], [0, 0.2], [-0.1, -0.15], [0.1, -0.15]]) {
+  if (egg.prize) {
+    // gold speckles: the prize egg of a 'save the speckled egg' bonus
+    const R = rng(egg.seed);
+    ctx.fillStyle = '#d9a21c';
+    for (let i = 0; i < 14; i++) {
+      const q = eggPoint(R() * TAU), f = 0.2 + 0.7 * R();
       ctx.beginPath();
-      ctx.arc(x, y, 0.018, 0, TAU);
+      ctx.arc(q.x * f, q.y * f, 0.016, 0, TAU);
       ctx.fill();
     }
-    ctx.strokeStyle = 'rgba(45,53,64,0.6)';
-    ctx.beginPath();
-    ctx.moveTo(-0.2, 0.0);
-    ctx.lineTo(0.2, 0.0);
+  }
+  if (egg.honey > 0) {
+    eggPath(ctx, 1.08);
+    ctx.fillStyle = 'rgba(232,146,12,0.35)';
+    ctx.fill();
+  }
+  if (egg.glow > 0) {
+    eggPath(ctx, 1.1);
+    ctx.strokeStyle = `rgba(110,255,120,${Math.min(1, egg.glow)})`;
+    ctx.lineWidth = 0.035;
     ctx.stroke();
   }
   // cracks
@@ -683,6 +745,30 @@ export function drawEgg(ctx, egg, t, k) {
   }
   ctx.restore();
 
+  // power overlay (powers.js, local y-down): flames stay upright, shells turn with the egg
+  const pw = egg.fire > 0 ? egg.fireKind : egg.stone > 0 ? 'stone' : egg.bubbleFix ? 'bubble' : egg.water > 0 ? 'water' : egg.zap ? 'thunder' : egg.golden ? 'golden' : null;
+  if (pw) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (egg.fire <= 0) ctx.rotate(a);
+    ctx.scale(px, -px);
+    drawEggPower(ctx, pw, t, EGG_H * k);
+    ctx.restore();
+  }
+  if (egg.zap) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.strokeStyle = 'rgba(190,230,255,0.95)';
+    ctx.lineWidth = Math.max(1.5 * px, 0.015);
+    const R = rng(Math.floor(t * 18) + egg.seed);
+    for (let j = 0; j < 3; j++) {
+      const b0 = R() * TAU;
+      ctx.beginPath();
+      for (let q = 0; q < 4; q++) { const rr = 0.3 + R() * 0.08, bb = b0 + q * 0.2; q ? ctx.lineTo(rr * Math.cos(bb), rr * Math.sin(bb)) : ctx.moveTo(rr * Math.cos(bb), rr * Math.sin(bb)); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   // face: stays upright so it reads; eyes follow velocity
   const v = b.getLinearVelocity();
   const sp = Math.hypot(v.x, v.y);
@@ -977,4 +1063,24 @@ export function drawDropGuide(ctx, ring, nestX, nestW, t) {
     }
     ctx.restore();
   }
+}
+
+// Falling embers and the lightning warning flicker.
+export function drawEmber(ctx, m, t) {
+  ctx.beginPath();
+  ctx.arc(m.x, m.y, 0.09, 0, TAU);
+  ctx.fillStyle = 'rgba(255,120,30,0.35)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(m.x, m.y, 0.05 + 0.01 * Math.sin(t * 20 + m.x * 7), 0, TAU);
+  ctx.fillStyle = '#ffcf4a';
+  ctx.fill();
+}
+export function drawBoltWarn(ctx, x, y, t) {
+  if (Math.sin(t * 30) < 0) return;
+  ctx.strokeStyle = 'rgba(220,240,255,0.9)';
+  ctx.lineWidth = 0.03;
+  ctx.beginPath();
+  ctx.arc(x, y, 0.3, 0, TAU);
+  ctx.stroke();
 }

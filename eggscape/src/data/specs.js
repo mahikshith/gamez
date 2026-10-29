@@ -5,6 +5,20 @@
 // ring fields: mat, motor (deg/s), motorFlip (s), retract {period,on,phase}, gaps (count), gapX (multipliers
 // to hand out), thorns (cluster count), size ([min,max] thorns per cluster), out (outward thorn count),
 // items ([types]), noGap (true = solid ring, must be blasted/burnt open), pads (sponge count; default by level)
+//   v2 ring fields: shut {period, open} (every gap gets a sliding door, open for that fraction of the period),
+//   gear (true = geared to the next ring out: turning one turns the other the opposite way), honey (honey pad
+//   count), blunt (how many thorn clusters are blunt grey spikes that crack instead of break), pocket (true =
+//   the floor thorn cluster hugs one edge of the gap). items still work and become floating orbs in the
+//   channel inside that ring.
+// v2 level fields: orbs [{type, ch, a?}] floating orbs (types: fire_red fire_black fire_green fire_gold stone
+//   bubble water thunder thorn magnet twin; 'fire'/'steel' map to fire_red/stone), portals [{from:[ch,a],
+//   to:[ch,a], emit?:[types], every?: s}] (placed on channel floors; with emit they spit an orb out every
+//   `every` s), weather ('thunder' | 'quake' | 'embers' | 'rain' | 'current' have physics; any other
+//   WEATHER_KINDS id is visual only), weatherOpts {strength} (current), snake {delay, speed, a, len},
+//   nest {w, amp, period, x, drop, pattern: 'sine' | 'slide' | 'stopgo' | 'speedup'}, bonus objective
+//   {kind:'turns', n} | {kind:'prize'} (save the speckled egg) | {kind:'orbs'} (collect every orb) |
+//   {kind:'time', s}, world (1-3, for the level map), intro {title, line} (one-screen card when a world's
+//   new mechanic first appears). Up to 7 rings.
 // Rule: the outermost ring is never a motor ring: it would drop eggs wherever its gap happens to be, so
 // whether they hit the nest would be luck.
 export const SPECS = [
