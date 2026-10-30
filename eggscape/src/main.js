@@ -1,8 +1,9 @@
 // Eggscape: game shell. Screens, input, camera, events -> VFX/SFX/score, HUD.
 import { Sim, DT, LEGACY_ORB } from './sim/sim.js';
-import { hintSearch } from './sim/search.js';
+import { hintSearch, actSteps } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
 import { LEVELS } from './data/levels.js';
+import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop } from './themes.js';
 import { audio } from './audio.js';
 import { portal } from './sdk/portal.js';
@@ -22,7 +23,7 @@ const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 // ---------------------------------------------------------------- save
 const SAVE_VER = 2; // v2 levels: progress resets; settings, wallet and discoveries carry over
 // mode: difficulty (F32); stars/best are kept per mode (Medium uses the v1 keys); calm = reduced motion
-const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), adClaim: 0 });
+const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), adClaim: 0, daily: { day: '', best: 0, paid: '' } });
 let save = defaultSave();
 const MODE_LIST = ['easy', 'medium', 'hard'];
 const sk = (id, mode = save.mode) => (mode === 'medium' ? String(id) : mode[0] + id);
@@ -39,6 +40,14 @@ const THEME_WEATHER = { farm: 'leaves', orchard: 'leaves', bramble: 'leaves', mu
 const WORLDS = ['The Farm', 'The Wilds', 'The Fox\u2019s Fortress'];
 const BONUS_TEXT = (b, fuse = 1) => ({ turns: `${b.n} turns or fewer`, prize: 'Save the speckled egg', orbs: 'Collect every orb', time: `Finish within ${Math.round(b.s * fuse)} s` })[b.kind] || '';
 const BONUS_COINS = 15;
+// Daily Vault (C7): one pre-validated layout per day, the same for everyone; level index -1
+const DAILY_COINS = 40;
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function dailyLevel() {
+  const d = new Date();
+  return DAILY[Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5) % DAILY.length];
+}
+const dailyBest = () => (save.daily.day === today() ? save.daily.best : 0);
 const powerInfo = (id) => POWER_INFO[id] || { name: id, line: '', color: '#fff' };
 function persist() {
   try { portal.save(JSON.stringify(save)); } catch (e) { /* never block */ }
@@ -121,7 +130,7 @@ function startLevel(i, opts = {}) {
   if (G.sim && !G.result && G.sim.t > 1 && save.streak) { save.streak = 0; persist(); }
   G.run = (G.run || 0) + 1;
   G.li = i;
-  G.level = LEVELS[i];
+  G.level = i < 0 ? dailyLevel() : LEVELS[i];
   G.theme = themeFor(G.level);
   G.boost = opts.boost || {};
   G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost });
@@ -385,6 +394,9 @@ async function press(id) {
       toast(G.level.tip, 3.4);
       break;
     }
+    case 'daily':
+      await breakThen(() => startLevel(-1));
+      break;
     case 'gotit':
       save.intro[G.level.id] = 1;
       persist();
@@ -454,6 +466,7 @@ async function press(id) {
       break;
     case 'next': {
       const n = Math.min(LEVELS.length - 1, G.li + 1);
+      if (G.li < 0) { setScreen('title'); break; }
       if (G.li === LEVELS.length - 1) { setScreen('levels'); break; }
       await breakThen(() => startLevel(n));
       break;
@@ -810,15 +823,19 @@ function computeResult() {
   const total = Math.round(base * streakMult);
   // coins (F7) and the bonus objective (C3): bonus coins are paid the first time it is met, per mode
   const bonus = !!L.bonus && sim.bonusMet();
-  const bonusCoins = bonus && !save.bonus[sk(L.id, sim.mode)] ? BONUS_COINS : 0;
-  const coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id }).total + bonusCoins;
+  const bonusCoins = bonus && !save.bonus[sk(L.id, sim.mode)] && G.li >= 0 ? BONUS_COINS : 0;
+  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id }).total + bonusCoins;
+  if (G.li < 0) coins = stars && save.daily.paid !== today() ? coins + DAILY_COINS : 0; // the Daily Vault pays once a day
   return { stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus };
 }
 
 function recordResult() {
   const r = G.result;
   const id = G.level.id;
-  if (r.stars > 0) {
+  if (G.li < 0) {
+    if (save.daily.day !== today()) save.daily = { ...save.daily, day: today(), best: 0 };
+    if (r.stars > 0) { save.daily.best = Math.max(save.daily.best, r.total); save.daily.paid = today(); }
+  } else if (r.stars > 0) {
     const key = sk(id, G.sim.mode); // the mode this run was played in, even if changed on the pause card
     save.stars[key] = Math.max(save.stars[key] || 0, r.stars);
     save.best[key] = Math.max(save.best[key] || 0, r.total);
@@ -1049,6 +1066,18 @@ function render() {
     }
   }
   for (const e of sim.aliveEggs()) W.drawEgg(ctx, e, t, k);
+  if (sim.snake && sim.snake.pts.length > 1) {
+    // a pale outline keeps the snake readable on dark backdrops
+    const P = sim.snake.pts;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(235,255,210,0.55)';
+    ctx.lineWidth = 0.3;
+    ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.beginPath();
+    P.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+    ctx.stroke();
+    ctx.restore();
+  }
   if (sim.snake && sim.snake.pts.length > 1) flipped(0, 0, (k) => drawSnake(ctx, sim.snake.pts.map((q) => ({ x: q.x * k, y: -q.y * k })), 0.1 * k, t, { mouthOpen: sim.snake.mouthOpen }));
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);
@@ -1200,7 +1229,7 @@ function drawHUD() {
   const needW = ui.measure(needTxt, 13 * u);
   const timeTxt = sim.timeLimit ? fmtTime(sim.timeLeft) : '';
   const timeW = timeTxt ? ui.measure(timeTxt, 22 * u) + 26 * u : 0;
-  const lvlTxt = `${G.level.id}. ${G.level.name}`;
+  const lvlTxt = G.li < 0 ? G.level.name : `${G.level.id}. ${G.level.name}`;
   let trayX, trayY;
   if (twoRows) {
     ui.text(lvlTxt, (leftEdge + rightEdge) / 2, row1, { size: 19 * u, align: 'center', maxW: rightEdge - leftEdge, color: '#fff', stroke: 'rgba(0,0,0,0.5)', tag: 'hud:level' });
@@ -1382,7 +1411,7 @@ function drawIntro() {
     ]);
     return;
   }
-  stackCard(`Level ${L.id}`, (s, iw) => {
+  stackCard(G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`, (s, iw) => {
     const tip = wrapText(L.tip, 15 * s, iw).slice(0, 3);
     const B = [
       lineBlock(L.name, 20 * s, { color: '#fff', tag: 'intro:name', gap: 0 }),
@@ -1391,6 +1420,7 @@ function drawIntro() {
         ui.record({ x: x + w / 2 - L.eggs * 15 * s, y, w: L.eggs * 30 * s, h: 28 * s }, 'intro:eggs');
       } },
       lineBlock(`Save ${L.target} of ${L.eggs} eggs before the fuse burns out`, 15 * s, { color: '#ffe066', tag: 'intro:goal' }),
+      ...(G.li < 0 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14 * s, { color: '#9fe8ff', tag: 'intro:daily', gap: 4 * s })] : []),
       ...tip.map((l, i) => lineBlock(l, 15 * s, { color: 'rgba(255,255,255,0.85)', tag: 'intro:tip' + i, gap: i ? 2 * s : 8 * s })),
       ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus, G.sim.MD.fuse), 14 * s, { color: '#9fe8ff', tag: 'intro:bonus', gap: 6 * s })] : []),
       { h: 58 * s, gap: 16 * s, draw: (x, y, w) => ui.button('go', 'PLAY', x, y, w, 58 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.play, size: 24 * s }) },
@@ -1398,7 +1428,7 @@ function drawIntro() {
       { h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
     ];
     if (!G.golden) B.push({ h: 48 * s, draw: (x, y, w) => ui.button('golden', 'Start with a golden shell', x, y, w, 48 * s, { color: '#d49a1c', dark: '#8a5f0a', ad: true, size: 15 * s }) });
-    B.push({ h: 40 * s, draw: (x, y, w) => ui.button('levels', 'Levels', x + w * 0.25, y, w * 0.5, 40 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 15 * s }) });
+    B.push({ h: 40 * s, draw: (x, y, w) => ui.button(G.li < 0 ? 'back' : 'levels', G.li < 0 ? 'Menu' : 'Levels', x + w * 0.25, y, w * 0.5, 40 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 15 * s }) });
     return B;
   });
 }
@@ -1463,7 +1493,7 @@ function drawWin() {
     if (r.rewound) B.push(lineBlock('Rewind used: 3 stars locked', 12 * s, { color: 'rgba(255,255,255,0.6)', tag: 'win:rw', gap: 0 }));
     // buttons appear after the stars land, but their space is always reserved
     const ready = r.t > 1.2;
-    const last = G.li === LEVELS.length - 1;
+    const last = G.li < 0 || G.li === LEVELS.length - 1;
     B.push({ h: 56 * s, gap: 14 * s, draw: (x, y, w) => {
       if (!ready) return;
       ui.button('next', last ? 'ALL LEVELS' : 'NEXT', x, y, w * 0.62, 56 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.next });
@@ -1513,9 +1543,10 @@ function drawTitle() {
   // Play, then Levels | Shop, then the difficulty row
   const by = Math.min(H_ - 186 * u, subY + 190 * u);
   ui.button('play', save.unlocked > 1 ? `PLAY  Level ${save.unlocked}` : 'PLAY', cx - bw / 2, by, bw, 64 * u, { color: '#46b83d', dark: '#2a7a24', icon: ICON.play, size: 24 * u });
-  const hw = (bw - 10 * u) / 2;
-  ui.button('levels', 'Levels', cx - bw / 2, by + 76 * u, hw, 50 * u, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 18 * u });
-  ui.button('shop', String(save.wallet.coins), cx - bw / 2 + hw + 10 * u, by + 76 * u, hw, 50 * u, { color: '#d49a1c', dark: '#8a5f0a', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.5, G.t), size: 18 * u });
+  const tw = (bw - 20 * u) / 3;
+  ui.button('levels', 'Levels', cx - bw / 2, by + 76 * u, tw, 50 * u, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 17 * u });
+  ui.button('daily', 'Daily', cx - bw / 2 + tw + 10 * u, by + 76 * u, tw, 50 * u, { color: save.daily.paid === today() ? '#6a5a4a' : '#9b59d0', dark: save.daily.paid === today() ? '#3a2e22' : '#5e2f87', icon: ICON.play, size: 17 * u });
+  ui.button('shop', String(save.wallet.coins), cx - bw / 2 + 2 * (tw + 10 * u), by + 76 * u, tw, 50 * u, { color: '#d49a1c', dark: '#8a5f0a', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.5, G.t), size: 17 * u });
   modeRow(cx - bw / 2, by + 136 * u, bw, 40 * u, u);
   // the fox takes whatever room is left: between subtitle and buttons, or beside the buttons; its eyes follow the pointer
   const fox = (x, y, s) => {
@@ -1680,6 +1711,8 @@ if (DEV) window.__egg = {
   press,
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
   frame(dt = 1 / 60) { update(dt); render(); },
+  actSteps, // film strips replay planner moves through this
+  handle: () => handleEvents(),
   overlaps: () => G.overlaps,
   setSave(s) { loadSave(s); },
   get save() { return save; },

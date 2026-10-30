@@ -47,8 +47,10 @@ const srv = http.createServer((q, r) => {
     for (let i = 0; i < n; i++) {
       const shoot = i === 0 || i === n - 1 || i === 12;
       await check(`L${i + 1}-intro`, (i) => { const E = __egg; E.start(i); for (let k = 0; k < 40; k++) E.frame(1 / 60); return E.overlaps(); }, i, shoot);
+      if (await p.evaluate((i) => !!__egg.LEVELS[i].intro, i)) await check(`L${i + 1}-intro-after`, () => { const E = __egg; E.press('gotit'); for (let k = 0; k < 10; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
       await check(`L${i + 1}-play`, (i) => { const E = __egg; E.press('go'); for (let k = 0; k < 90; k++) E.frame(1 / 60); return E.overlaps(); }, i, shoot);
     }
+    await check('daily-intro', () => { const E = __egg; E.start(-1); for (let k = 0; k < 40; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
     await check('pause', () => { const E = __egg; E.start(4); E.press('go'); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.press('pause'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
     for (const s of [3, 2, 1]) await check(`win${s}`, (s) => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('win', s); for (let k = 0; k < 400; k++) E.frame(1 / 60); return E.overlaps(); }, s, s === 3);
     await check('fail', () => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('fail'); for (let k = 0; k < 120; k++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
