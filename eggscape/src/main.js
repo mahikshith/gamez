@@ -223,6 +223,12 @@ function camTarget() {
     yMin = -R;
     yMax = R;
   }
+  // a snake in (or about to enter) the vault is always framed, like the furthest egg
+  const S = sim.snake, hd = S && S.inside && S.rad <= sim.outerR + 1.5 ? { x: S.rad * Math.cos(S.a), y: S.rad * Math.sin(S.a) } : null;
+  if (hd) {
+    if (showAll) { R = Math.max(R, Math.abs(hd.x) + 0.6); yMin = Math.min(yMin, hd.y - 0.6); yMax = Math.max(yMax, hd.y + 0.6); }
+    else { R = Math.max(R, Math.hypot(hd.x, hd.y) + 0.6); yMin = -R; yMax = R; }
+  }
   const P = G.play;
   const k = Math.min(P.w / (2 * R), P.h / (yMax - yMin), 190);
   // big vaults (up to 7 rings) would shrink eggs below readable size: frame the eggs instead
@@ -230,6 +236,7 @@ function camTarget() {
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     const add = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
     for (const e of sim.aliveEggs()) { const p = e.body.getPosition(); add(p.x - 2.2, p.y - 2.2); add(p.x + 2.2, p.y + 2.2); }
+    if (hd) { add(hd.x - 1, hd.y - 1); add(hd.x + 1, hd.y + 1); }
     if (maxCh >= n - 1) { const nx = sim.nest.getPosition().x; add(nx - sim.nestW / 2 - 0.6, sim.groundY - 0.25); add(nx + sim.nestW / 2 + 0.6, sim.groundY + 1); }
     const k2 = Math.min(P.w / (x1 - x0), P.h / (y1 - y0), 70);
     if (k2 > k) return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, k: k2 };
