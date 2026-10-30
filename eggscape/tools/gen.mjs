@@ -227,47 +227,99 @@ export function layout(spec, seed) {
   return L;
 }
 
+// ---------- Daily Vault (C7) ----------
+// A seeded template: 4-5 rings with a random mix of v2 mechanics, a moving nest and maybe weather.
+// node tools/gen.mjs --daily N validates N of them into src/data/daily.js; the game picks one by date.
+export function dailySpec(k) {
+  const R = rng(9001 + k * 7);
+  const pick = (a) => a[Math.floor(R() * a.length)];
+  const base = pick(SPECS.filter((s) => !s.lava && !s.water));
+  const n = 4 + (R() < 0.5 ? 1 : 0);
+  const rings = [];
+  for (let i = 0; i < n; i++) {
+    const ring = { gaps: i === 0 ? 1 : 1 + (R() < 0.6 ? 1 : 0), thorns: i === 0 ? (R() < 0.5 ? 1 : 0) : 1 + (R() < 0.5 ? 1 : 0), size: [1, 3] };
+    if (i === 1) ring.gapX = [2];
+    if (i === n - 1) ring.gapX = [3];
+    if (i > 0 && R() < 0.3) ring.shut = { period: 4 + Math.round(R() * 2), open: 0.5 };
+    if (i > 0 && R() < 0.3) ring.blunt = 1;
+    if (i > 0 && R() < 0.2) ring.honey = 1;
+    if (i > 0 && i < n - 1 && R() < 0.2 && !rings[i - 1].gear) ring.gear = true;
+    rings.push(ring);
+  }
+  const types = ['fire_red', 'fire_green', 'stone', 'bubble', 'water', 'twin', 'thunder', 'thorn'];
+  return {
+    id: 900 + k, theme: base.theme, name: 'Daily Vault', eggs: 3, target: 2, spacing: 1.05, material: base.material, minMoves: 3,
+    nest: { amp: +(1.0 + R() * 0.6).toFixed(1), period: 6 + Math.round(R() * 2), pattern: pick(['sine', 'slide', 'stopgo']) },
+    weather: pick([undefined, undefined, 'rain', 'quake', 'thunder', 'embers']),
+    orbs: [{ type: pick(types), ch: 1 }, { type: pick(types), ch: 2 }],
+    bonus: { kind: 'turns' }, tip: 'A new vault every day, the same for everyone.', rings,
+  };
+}
+
 // ---------- evaluation (worker) ----------
+// A layout is kept when, on Medium, the planner wins with 2+ stars in at least minMoves moves, the
+// "align every gap at once" exploit does not clear it (F15; L1-L2 exempt), and with the real fuse it is still
+// winnable on Hard (1+ star) and on Easy. Levels 1-5 must also survive the rough (replayed) pass.
+export async function evaluate(spec, L) {
+  const { solve, alignAll } = await import('./planner.mjs');
+  const t0 = Date.now();
+  const p = solve(L);
+  const stars = p.state === 'won' ? (p.broken === 0 ? (p.perfect ? 3 : 2) : 1) : 0;
+  const rec = { seed: L.seed, stars, plannerT: p.t, moves: p.moves, turns: p.turns, pSaved: p.saved, pBroken: p.broken };
+  const fail = (why) => ({ ok: false, why, rec: { ...rec, secs: Math.round((Date.now() - t0) / 1000) } });
+  if (stars < 2 || p.moves < (spec.minMoves || 2)) return fail('medium');
+  const ex = alignAll(L);
+  rec.exploit = ex;
+  if (ex >= 2 && spec.id > 2) return fail('exploit'); // L1-L2 are the gentle tutorials: lining up gaps is the lesson
+  if (spec.id <= 5) {
+    // a second, sloppier pass: each move is replayed for real, so small drifts play out the way they
+    // would for a human. Robust layouts survive it.
+    const q = solve(L, { replay: true });
+    Object.assign(rec, { roughState: q.state, roughBroken: q.broken });
+    if (q.state !== 'won') return fail('rough');
+  }
+  const T = { ...L, time: fuse(rec, spec.id) };
+  const h = solve(T, { mode: 'hard' }), e = solve(T, { mode: 'easy' });
+  Object.assign(rec, { hard: h.state === 'won' ? (h.broken === 0 ? 2 : 1) : 0, hardT: h.t, easy: e.state === 'won' ? 1 : 0, secs: Math.round((Date.now() - t0) / 1000) });
+  if (!rec.hard || !rec.easy) return fail(rec.hard ? 'easy' : 'hard');
+  // bonus targets come from the planner's own run: a few turns more, a third more time
+  if (L.bonus?.kind === 'turns' && !L.bonus.n) L.bonus = { kind: 'turns', n: p.turns + 2 };
+  if (L.bonus?.kind === 'time' && !L.bonus.s) L.bonus = { kind: 'time', s: Math.ceil((p.t * 1.35) / 5) * 5 };
+  return { ok: true, rec };
+}
+
 async function worker(id, tries, out) {
-  const { solve } = await import('./planner.mjs');
-  const spec = SPECS.find((s) => s.id === id);
+  const spec = id >= 900 ? dailySpec(id - 900) : SPECS.find((s) => s.id === id);
   const found = [];
   let seed = id * 7919;
   for (let n = 0; n < tries; n++) {
     let L = null;
     for (let g = 0; g < 500 && !L; g++) L = layout(spec, ++seed);
     if (!L) break;
-    const t0 = Date.now();
-    const p = solve(L);
-    const stars = p.state === 'won' ? (p.broken === 0 ? (p.perfect ? 3 : 2) : 1) : 0;
-    // a second, sloppier pass: same search, but each move is replayed for real, so small drifts
-    // in timing and position play out the way they would for a human. Robust layouts survive it.
-    const q = stars >= 2 ? solve(L, { replay: true }) : null;
-    const rec = { seed: L.seed, stars, plannerT: p.t, moves: p.moves, pSaved: p.saved, pBroken: p.broken, roughState: q?.state ?? '-', roughBroken: q?.broken ?? 0, roughSaved: q?.saved ?? 0, secs: Math.round((Date.now() - t0) / 1000) };
-    const ok = stars >= 2 && p.moves >= (spec.minMoves || 2) && (spec.id > 5 || q.state === 'won');
-    console.error(`L${id} #${n} seed=${L.seed} ${ok ? 'KEEP' : 'drop'} ${JSON.stringify(rec)}`);
-    if (ok) found.push({ ...rec, level: L });
-    if (found.length >= 4) break;
+    const r = await evaluate(spec, L);
+    console.error(`L${id} #${n} seed=${L.seed} ${r.ok ? 'KEEP' : 'drop:' + r.why} ${JSON.stringify(r.rec)}`);
+    if (r.ok) found.push({ ...r.rec, level: L });
+    if (found.length >= (id >= 900 ? 1 : 2)) break;
   }
   writeFileSync(out, JSON.stringify(found));
 }
 
 // difficulty of a kept layout, for picking along the curve
-const hardness = (c) => c.moves * 1.5 + c.plannerT / 8 + c.roughBroken * 2 + (c.roughState === 'won' ? 0 : 6) + (c.stars === 2 ? 1 : 0);
+const hardness = (c) => c.moves * 1.5 + c.plannerT / 8 + (c.roughBroken || 0) * 2 + (c.stars === 2 ? 1 : 0) + (c.hard === 1 ? 2 : 0);
 
+// Sawtooth (per world of 10): a breather at the 5th, the hardest layouts at the 9th and 10th, a climb between.
 function pick(id, found) {
   if (!found.length) return null;
-  // a layout where the rough pass ran out of moves has a stall in it: avoid those when we can
-  const pool = found.filter((c) => c.roughState !== 'play');
-  const sorted = [...(pool.length ? pool : found)].sort((a, b) => hardness(a) - hardness(b));
-  const q = id <= 3 ? 0 : id >= 15 ? 1 : (id - 3) / 12;
+  const sorted = [...found].sort((a, b) => hardness(a) - hardness(b));
+  const k = (id - 1) % 10;
+  const q = id <= 2 || k === 4 ? 0 : k >= 8 ? 1 : 0.25 + (0.5 * k) / 8;
   return sorted[Math.round(q * (sorted.length - 1))];
 }
 
 // the fox's fuse: generous on L1-L2, tight from L3 (F30). Easy/Hard scale it at run time.
 function fuse(c, id) {
   const t = id <= 2 ? c.plannerT * 3 + 25 : c.plannerT * 2.2 + 15;
-  return Math.max(id <= 2 ? 45 : 30, Math.min(110, Math.round(t / 5) * 5));
+  return Math.max(id <= 2 ? 45 : 30, Math.min(160, Math.round(t / 5) * 5));
 }
 
 function writeLevels(chosen) {
@@ -293,6 +345,7 @@ async function main() {
   const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
   if (args[0] === '--worker') return worker(Number(args[1]), Number(opt('--tries', 10)), opt('--out'));
   const assembleOnly = args.includes('--assemble'); // rebuild levels.js from tools/gen-out without searching
+  if (args.includes('--daily')) return daily(Number(opt('--daily', 60)), Number(opt('--tries', 6)), Number(opt('--jobs', 3)), assembleOnly);
   const ids = args[0] && !args[0].startsWith('--') ? args[0].split(',').map(Number) : SPECS.map((s) => s.id);
   const tries = Number(opt('--tries', 10));
   const jobs = Number(opt('--jobs', 3));
@@ -315,17 +368,38 @@ async function main() {
     const c = pick(spec.id, found);
     if (!c) { report.push(`L${spec.id}: NO VALID LAYOUT`); continue; }
     // names, tips, nest and other non-layout fields always come from the current spec
-    for (const k of ['theme', 'name', 'eggs', 'target', 'material', 'tip', ...LEVEL_KEYS]) {
+    for (const k of ['theme', 'name', 'eggs', 'target', 'material', 'tip', 'world', 'intro', ...LEVEL_KEYS]) {
+      if (k === 'bonus' && c.level.bonus && spec.bonus && c.level.bonus.kind === spec.bonus.kind) continue; // keeps the n / s found by the planner
       if (spec[k] !== undefined) c.level[k] = spec[k]; else delete c.level[k];
     }
-    c.level.time = fuse(c, spec.id);
-    delete c.level.seed;
+    c.level.time = fuse(c, spec.id); // seed stays: it seeds the sim's rng (weather, debris), so play matches validation
     chosen.push(c.level);
-    report.push(`L${spec.id}: kept ${found.length}, seed ${c.seed}, stars ${c.stars}, planner ${c.plannerT}s/${c.moves} moves, rough ${c.roughState} (broke ${c.roughBroken}), fuse ${c.level.time}s, hardness ${hardness(c).toFixed(1)}`);
+    report.push(`L${spec.id}: kept ${found.length}, seed ${c.seed}, stars ${c.stars}, planner ${c.plannerT}s/${c.moves} moves, exploit ${c.exploit}, hard ${c.hard} (${c.hardT}s), easy ${c.easy}, fuse ${c.level.time}s, hardness ${hardness(c).toFixed(1)}`);
   }
   console.log(report.join('\n'));
   if (chosen.length === SPECS.length) writeLevels(chosen);
   else console.log(`\nNot writing levels.js: ${SPECS.length - chosen.length} level(s) have no valid layout.`);
+}
+
+async function daily(n, tries, jobs, assembleOnly) {
+  mkdirSync(OUT_DIR, { recursive: true });
+  const queue = assembleOnly ? [] : Array.from({ length: n }, (_, k) => 900 + k);
+  const run = (id) => new Promise((res) => {
+    const p = fork(fileURLToPath(import.meta.url), ['--worker', String(id), '--tries', String(tries), '--out', join(OUT_DIR, `D${id - 900}.json`)], { stdio: 'inherit' });
+    p.on('exit', res);
+  });
+  await Promise.all(Array.from({ length: jobs }, async () => { while (queue.length) await run(queue.shift()); }));
+  const levels = [];
+  for (let k = 0; k < n; k++) {
+    const f = join(OUT_DIR, `D${k}.json`);
+    const c = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8'))[0] : null;
+    if (!c) continue;
+    c.level.time = fuse(c, 10);
+    levels.push(c.level);
+  }
+  const rows = levels.map((L) => '  ' + JSON.stringify(L).replace(/"(\w+)":/g, '$1: ')).join(',\n');
+  writeFileSync(join(ROOT, 'src', 'data', 'daily.js'), `// GENERATED by tools/gen.mjs --daily: validated Daily Vault layouts; the game picks one by date (C7).\nexport const DAILY = [\n${rows},\n];\n`);
+  console.log(`daily.js: ${levels.length} of ${n} layouts validated`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

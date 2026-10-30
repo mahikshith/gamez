@@ -2,7 +2,7 @@
 import { DT } from './sim.js';
 
 const DEG = Math.PI / 180;
-const DELTAS = [35, 75, 120, 180, 240].flatMap((d) => [d * DEG, -d * DEG]);
+const DELTAS = [35, 80, 140, 220].flatMap((d) => [d * DEG, -d * DEG]);
 
 // Execute one action on a sim: turn ring i by delta at full speed, then let things settle.
 export function act(sim, a, maxSettle = 2.5) {
@@ -45,6 +45,18 @@ export function value(sim) {
   for (const e of sim.aliveEggs()) {
     const c = sim.channelOf(e);
     v += c * 300 - e.cracks * 200 + e.mult * 15;
+    if (sim.snake && sim.snake.inside && sim.snake.pts.length) {
+      // keep away from the snake's head
+      const h = sim.snake.pts[0], p = e.body.getPosition(), d = Math.hypot(p.x - h.x, p.y - h.y);
+      if (d < 2.2) v -= 900 * (1 - d / 2.2);
+    }
+    if (c >= sim.rings.length) {
+      // falling out of the vault: will the (moving) nest be under it when it lands?
+      const p = e.body.getPosition(), u = e.body.getLinearVelocity(), g = sim.g;
+      const h = Math.max(0, p.y - sim.nestY), tf = (u.y + Math.sqrt(u.y * u.y + 2 * g * h)) / g;
+      const nx = sim.nestAmp ? sim.nestXAt(sim.t + tf) : sim.nest.getPosition().x;
+      if (Math.abs(p.x + u.x * tf - nx) > sim.nestW / 2 - 0.15) v -= 2400;
+    }
     // shaping: how far the floor ring's nearest gap is from the egg, so "bring a gap round" scores
     const ring = sim.rings[c];
     if (ring && ring.gaps.length) {
@@ -55,20 +67,23 @@ export function value(sim) {
       v -= d * 60;
     }
   }
-  if (sim.state === 'won') v += 20000 + sim.timeLeft * 20;
+  // a win that cost an egg is only a small prize: keep playing for the clean one while there is time
+  if (sim.state === 'won' && st.broken === 0) v += 20000 + sim.timeLeft * 20;
   v += sim.timeLeft * 2;
   return v;
 }
 
 export function actions(sim) {
-  const out = [{ ring: -1, wait: 0.4 }, { ring: -1, wait: 1.2 }];
+  // waits let the player time shutters, moving nests and the snake
+  const out = [{ ring: -1, wait: 0.4 }, { ring: -1, wait: 1.2 }, { ring: -1, wait: 2.5 }];
   const floors = new Set();
   for (const e of sim.aliveEggs()) {
     const c = sim.channelOf(e);
     if (c < sim.rings.length) floors.add(c);
     if (c + 1 < sim.rings.length) floors.add(c + 1);
-    if (c - 1 >= 0) floors.add(c - 1);
   }
+  // a geared partner turns with its ring: one of the two is enough
+  for (const i of floors) if (sim.rings[i].gear && floors.has(sim.rings[i].gear.i) && sim.rings[i].gear.i < i) floors.delete(i);
   for (const i of floors) if (sim.rings[i].grabbable) for (const d of DELTAS) out.push({ ring: i, delta: d });
   return out;
 }

@@ -292,7 +292,8 @@ export class Sim {
     const lo = orb.ch ? this.rings[orb.ch - 1].r + RING_TH / 2 + 0.22 : 0;
     const A = Math.min(1.0, 1.5 / Math.max(floor, 0.6)); // sway of about 1.5 m of arc
     const want = -Math.PI / 2 + A * Math.sin(this.t * 0.3 * orb.sway + orb.ph);
-    const sp = 0.4 * dt / Math.max(orb.rad, 0.3);
+    // far from the low band (spawned high up) it sinks quickly; inside it, it sways slowly
+    const sp = (Math.abs(wrap(want - orb.a)) > A + 0.25 ? 1.1 : 0.4) * dt / Math.max(orb.rad, 0.3);
     orb.a += clamp(wrap(want - orb.a), -sp, sp);
     orb.rad += clamp(Math.max(lo, floor - 0.04 + 0.05 * Math.sin(this.t * 2.1 + orb.ph)) - orb.rad, -0.3 * dt, 0.3 * dt);
     orb.x = orb.rad * Math.cos(orb.a);
