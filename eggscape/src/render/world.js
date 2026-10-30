@@ -1067,14 +1067,25 @@ export function drawDropGuide(ctx, ring, nestX, nestW, t) {
 
 // Falling embers and the lightning warning flicker.
 export function drawEmber(ctx, m, t) {
+  // a hot coal with a short glowing trail: it must read against any backdrop
+  ctx.strokeStyle = 'rgba(255,140,40,0.45)';
+  ctx.lineWidth = 0.09;
+  ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.arc(m.x, m.y, 0.09, 0, TAU);
-  ctx.fillStyle = 'rgba(255,120,30,0.35)';
+  ctx.moveTo(m.x, m.y);
+  ctx.lineTo(m.x - m.vx * 0.35, m.y - m.vy * 0.35);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(m.x, m.y, 0.14, 0, TAU);
+  ctx.fillStyle = 'rgba(255,110,20,0.35)';
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(m.x, m.y, 0.05 + 0.01 * Math.sin(t * 20 + m.x * 7), 0, TAU);
-  ctx.fillStyle = '#ffcf4a';
+  ctx.arc(m.x, m.y, 0.08 + 0.012 * Math.sin(t * 20 + m.x * 7), 0, TAU);
+  ctx.fillStyle = '#ffd24a';
   ctx.fill();
+  ctx.strokeStyle = '#7a1e00';
+  ctx.lineWidth = 0.018;
+  ctx.stroke();
 }
 export function drawBoltWarn(ctx, x, y, t) {
   if (Math.sin(t * 30) < 0) return;
