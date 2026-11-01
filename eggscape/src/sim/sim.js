@@ -79,6 +79,19 @@ export const PRED = {
   medium: { snake: 2, venom: 1, warn: 1, fox: 1 },
   hard: { snake: 2.6, venom: 0.8, warn: 0.8, fox: 0.85 },
 };
+// stun = clash daze x, back = back-off time x (a bite on a protected egg)
+Object.assign(PRED.easy, { stun: 1.4, back: 1.3 }); Object.assign(PRED.medium, { stun: 1, back: 1 }); Object.assign(PRED.hard, { stun: 0.75, back: 0.8 });
+// Snake kinds: only a level spec's `kind` turns a trait on; otherwise every snake is classic and the skin is cosmetic.
+export const SNAKE_KIND = {
+  classic: { skin: 'violet' },
+  fast: { skin: 'emerald', speed: 1.3, len: 0.8 },
+  constrictor: { skin: 'amber', speed: 0.8, back: 0.5 }, // armoured: half the back-off from a protected egg
+  spitter: { skin: 'crimson', venom: 0.5, speed: 0.6 }, // venom melts a barrier in half the time; slow, spits holes in walls
+};
+const SPIT = { every: 5, rear: 0.5, fly: 0.5 }; // spitter: s between spits, rear-up (anticipation), glob flight
+export const SNAKE_SKINS = ['violet', 'emerald', 'amber', 'crimson'];
+const CLASH = { r: 0.45, stun: 2.2, cd: 6, knock: 1.1, pts: 250, orbs: ['fire_red', 'rockskin', 'feather'] };
+const BACK_T = 5, TRAIL = 0.05, STRIKE_T = 0.3, STRIKE_R = 0.35; // s a snake backs off a protected egg; m between trail points
 const VENOM_T = 2.5; // s from the hiss to a melted barrier (Medium)
 const BURN_T = 1; // s for a flame egg to burn a barrier down
 const PECK_T = 0.6; // s a chick rests on a blunt cluster before it pecks it away
@@ -441,7 +454,9 @@ export class Sim {
     if (L.wind) {
       const { strength, period = 5 } = L.wind;
       const s = Math.sin((this.t * TAU) / period);
+      const w0 = this.wind;
       this.wind = strength * Math.sign(s) * Math.min(1, Math.abs(s) * 2.2);
+      if (Math.abs(this.wind) >= strength * 0.95 && Math.abs(w0) < strength * 0.95) for (const S of this.snakes) this.hitSnake(S, 'gust', { dir: Math.sign(this.wind), power: Math.abs(this.wind) }); // a gust peaks
     } else if (this.weather === 'current') this.wind = L.weatherOpts?.strength ?? 1.4;
 
     for (const egg of this.eggs) {
@@ -1023,7 +1038,7 @@ export class Sim {
   }
 
   // ---------- predators (v3): snakes, barriers, eagle, fox thrower, chick pecks, danger cue ----------
-  // level.snake {delay, speed, a, len, size} or an array of them; level.barriers [{ring, a}]; level.eagle
+  // level.snake {delay, speed, a, len, size, kind, skin} or an array of them (SNAKE_KIND); level.barriers [{ring, a}]; level.eagle
   // {delay, every}; level.fox {every, throws:[orb types], delay}. All state lives in plain objects that
   // predState() copies, so rewind and the planner stay exact.
   get snake() { return this.snakes.find((s) => !s.gone) || null; } // v2 callers: the first live snake
@@ -1036,14 +1051,24 @@ export class Sim {
     this.fox = null;
     this.danger = 0;
     const list = !L.snake ? [] : Array.isArray(L.snake) ? L.snake : [L.snake];
+    // skins: the spec's, the kind's, else by index (offset by level) so two snakes never share one
+    const used = new Set(list.map((S) => S.skin || (SNAKE_KIND[S.kind] || {}).skin).filter(Boolean));
+    let si = ((L.id || 6) - 6 + 400) % 4;
     list.forEach((S, i) => {
-      const size = S.size || 1;
+      const size = S.size || 1, K = SNAKE_KIND[S.kind] || {};
+      let skin = S.skin || K.skin;
+      if (!skin) { for (let j = 0; j < 4 && used.has(SNAKE_SKINS[si % 4]); j++) si++; skin = SNAKE_SKINS[si++ % 4]; used.add(skin); }
       this.snakes.push({
-        id: i, size, rad: this.outerR + 1.0, a: Math.PI / 2 + deg(S.a ?? [0, 125, -125][i % 3]), speed: (S.speed || 0.55) * P.snake,
-        wait: S.delay ?? 3 + i * 5, len: (S.len || 1.7) * 1.8 * size, pts: [], mouthOpen: 0, eaten: 0, inside: false,
+        id: i, size, rad: this.outerR + 1.0, a: Math.PI / 2 + deg(S.a ?? [0, 125, -125][i % 3]), speed: (S.speed || 0.55) * P.snake * (K.speed || 1),
+        wait: S.delay ?? 3 + i * 5, len: (S.len || 1.7) * 3.4 * size * (K.len || 1), pts: [], mouthOpen: 0, eaten: 0, inside: false,
         gone: 0, tgt: 0, mood: null, moodT: 0, blocked: 0, spit: null,
+        kind: SNAKE_KIND[S.kind] ? S.kind : 'classic', skin, venomK: K.venom || 1, backK: K.back || 1,
+        stun: 0, back: 0, knock: 0, flee: -1, strike: 0, lunge: 0, odo: 0, shove: 0, hurt: '',
+        carried: false, carryX: 0, carryY: 0, held: 0, // the eagle's talons (carryStep)
+        vsT: SPIT.every, vsK: -1, vsR: 0, vsA: 0, // spitter: next spit, phase time (-1 idle), target ring and its local angle // clash daze (s), backing off (s), knock-back left (m), fleeing a won level (s)
       });
     });
+    this.clashCD = 0; this.clashN = 0; this.predPts = 0;
     // a wooden wall on the floor of the channel just inside `ring`, turning with it (G14)
     for (const B of L.barriers || []) {
       const ring = this.rings[B.ring];
@@ -1066,10 +1091,20 @@ export class Sim {
   }
 
   predStep(dt) {
-    for (const S of this.snakes) if (!S.gone) this.snakeStep(S, dt);
+    const end = this.state !== 'play';
+    if (this.state === 'winning' || this.state === 'won') this.eagleFlee?.(); // the eagle's own code flies it off
+    for (const S of this.snakes) {
+      if (S.gone) continue;
+      if (S.carried) { this.carryStep(S); continue; } // in the eagle's talons
+      if (S.held) this.snakeDrop(S);
+      this.trailPin(S);
+      if (end) this.snakeEnd(S, dt); else this.snakeStep(S, dt);
+    }
+    if (!end) this.clashStep(dt);
     for (const b of this.barriers) if (b.alive && b.fire && (b.burn += dt / BURN_T) >= 1) this.removeBarrier(b, 'burn');
     if (this.eagle && this.state === 'play') this.eagleStep(dt);
     if (this.fox && this.state === 'play') this.foxStep(dt);
+    else if (this.fox) this.foxEnd(dt);
     this.peckStep(dt);
     this.dangerStep();
   }
@@ -1078,17 +1113,24 @@ export class Sim {
   armored(egg) {
     return egg.stone > 0 || egg.rockskin > 0 || egg.guard > 0;
   }
+  snakeProof(egg) { return this.armored(egg) || egg.fire > 0; } // a flaming egg is no snack either
 
   // Snake (F26, G10-G13): enters from above the vault and hunts (chicks first, armoured eggs last). It
   // moves along channels and crosses a ring only through an open gap lined up with its head, so turning
-  // rings holds it back. A barrier in its way stops it until venom melts it. Body = trail of its head.
+  // rings holds it back. A barrier in its way stops it until venom melts it. Body = trail of its head (trailPt).
+  // In range of its prey it coils (STRIKE_T), then bites; a protected egg (armour or fire) sends it backing off.
   snakeStep(S, dt) {
     const n = this.rings.length, br = 0.2 * S.size; // body radius (drawn thick x2)
     S.mouthOpen = Math.max(0, S.mouthOpen - dt * 1.5);
+    S.lunge = Math.max(0, S.lunge - dt * 2.5);
     if (S.moodT > 0 && (S.moodT -= dt) <= 0) {
       if (S.mood === 'chew') { S.mood = 'grin'; S.moodT = 1.2; }
       else S.mood = null;
     }
+    if (S.knock > 0) { const d = Math.min(S.knock, 3 * dt); S.knock -= d; this.snakeBack(S, d); } // clash: shoved back fast
+    if (S.shove) this.shoveStep(S, dt);
+    if (S.stun > 0) { S.stun -= dt; return; } // dazed
+    if (S.back > 0) { S.back -= dt; this.snakeBack(S, 0.5 * S.speed * dt); S.blocked = 0; return; } // backing off, head still forward
     if (S.spit) { this.spitStep(S, dt, br); return; }
     if (S.wait > 0) { S.wait -= dt; return; }
     if (!S.inside) { S.inside = true; this.emit('snakeIn', { id: S.id }); }
@@ -1101,11 +1143,13 @@ export class Sim {
       const p = e.body.getPosition();
       let d = Math.abs(c - hc) * 10 + Math.abs(wrap(Math.atan2(p.y, p.x) - S.a));
       if (e.chick) d -= 100; // bait (I2)
-      else if (this.armored(e)) d += 40;
+      else if (this.snakeProof(e)) d += 40;
       if (this.snakes.some((o) => o !== S && !o.gone && o.tgt === e.id)) d += 15; // spread out
       if (d < best) { best = d; egg = e; }
     }
     S.tgt = egg ? egg.id : 0;
+    if (!egg || this.channelOf(egg) !== hc) S.strike = 0;
+    if (S.kind === 'spitter' && this.venomStep(S, dt, hc, egg)) return;
     const mid = (c) => (c >= n ? this.outerR + 0.35 : c === 0 ? this.rings[0].r * 0.45 : (this.rings[c - 1].r + this.rings[c].r) / 2);
     const edge = RING_TH / 2 + br * 0.7;
     const lo = hc > 0 ? this.rings[hc - 1].r + edge : 0, hi = hc < n ? this.rings[hc].r - edge : 1e9;
@@ -1115,28 +1159,33 @@ export class Sim {
       if (ec === hc) {
         ga = Math.atan2(p.y, p.x);
         gr = clamp(Math.hypot(p.x, p.y), lo, hi);
-        const d = Math.hypot(p.x - hx, p.y - hy);
+        const d = Math.hypot(p.x - hx, p.y - hy), reach = 0.28 + br + (egg.chick ? CHICK_R - 0.24 : 0);
         S.mouthOpen = Math.max(S.mouthOpen, clamp(1.6 - d, 0, 1));
-        if (d < 0.28 + br + (egg.chick ? CHICK_R - 0.24 : 0)) {
-          if (this.armored(egg)) {
-            // too hard to bite: knocked back along its own body
-            S.wait = 1; S.mood = 'ouch'; S.moodT = 1;
-            const T = S.pts;
-            if (T.length > 6) { const q = T[5]; S.rad = Math.hypot(q.x, q.y); S.a = Math.atan2(q.y, q.x); T.splice(0, 5); }
-            this.emit('snakeRecoil', { x: p.x, y: p.y, id: S.id });
+        // strike: in range it holds still and coils (STRIKE_T), then lunges; an egg that rolls away is spared
+        if (S.strike > 0 || d < reach + STRIKE_R) {
+          if (d > reach + STRIKE_R + 0.15) S.strike = 0;
+          else if ((S.strike += dt) < STRIKE_T) return;
+        }
+        if (S.strike >= STRIKE_T) {
+          S.strike = 0;
+          if (this.snakeProof(egg)) {
+            // too hard to bite: a clear hit, then it backs off along its own body for a while, still facing the egg
+            S.back = BACK_T * this.PM.back * S.backK; S.mood = 'ouch'; S.moodT = 0.7; S.mouthOpen = 0;
+            this.snakeBack(S, 0.12);
+            this.emit('snakeRecoil', { x: (p.x + hx) / 2, y: (p.y + hy) / 2, id: S.id });
           } else {
             if (egg.chick) this.chickFlee(egg, 'snake'); // the bait flaps free: it costs an egg, never a star
             else this.breakEgg(egg, 'snake');
             S.eaten++; S.mouthOpen = 1; S.wait = 1.4; S.mood = 'chew'; S.moodT = 0.8;
             this.emit('snakeEat', { x: p.x, y: p.y, id: S.id, chick: !!egg.chick });
           }
+          S.lunge = 1; // presentation: the head darts forward and settles
           return;
         }
       } else {
         const ring = this.rings[ec < hc ? hc - 1 : hc], ra = ring.body.getAngle();
         let gap = null, gd = 1e9;
-        for (const g of ring.gaps) {
-          if (!this.snakeGap(g)) continue;
+        for (const g of [...ring.gaps.filter((x) => this.snakeGap(x)), ...this.venomHoles(ring)]) {
           const d = Math.abs(wrap(ra + g.a - S.a));
           if (d < gd) { gd = d; gap = g; }
         }
@@ -1152,16 +1201,185 @@ export class Sim {
     let da = clamp(wrap(ga - S.a), -sp / ar, sp / ar);
     const bar = this.barrierAt(S, hc, da, br);
     if (bar) { da = 0; if (!bar.venom) this.startSpit(S, bar); }
-    const r0 = S.rad;
+    const r0 = S.rad, a0 = S.a;
     S.rad += clamp(gr - S.rad, -sp, sp);
     S.a += da;
+    S.odo += Math.hypot(S.rad - r0, wrap(S.a - a0) * S.rad); // distance crawled: the body wave is pinned to it
     S.blocked = Math.abs(S.rad - r0) + Math.abs(da) * ar < sp * 0.2 ? 1 : 0;
     const x = S.rad * Math.cos(S.a), y = S.rad * Math.sin(S.a);
     const T = S.pts;
-    if (T.length < 2 || Math.hypot(T[1].x - x, T[1].y - y) > 0.05) T.unshift({ x, y });
-    else { T[0].x = x; T[0].y = y; }
-    if (T.length > Math.ceil(S.len / 0.05) + 1) T.length = Math.ceil(S.len / 0.05) + 1;
+    if (T.length < 2 || Math.hypot(T[1].x - x, T[1].y - y) > TRAIL) T.unshift(this.trailPt(S, {}, S.a, S.rad));
+    else this.trailPt(S, T[0], S.a, S.rad);
+    if (T.length > Math.ceil(S.len / TRAIL) + 1) T.length = Math.ceil(S.len / TRAIL) + 1;
   }
+
+  // Trail in channel space: {a, r} (+x, y). A point recorded inside a ring's wall band (a gap it slid through)
+  // is pinned to that ring (g = ring + 1, la = angle on the ring), so a turning ring drags it along in its gap.
+  trailPt(S, q, a, r) {
+    q.a = a; q.r = r; q.x = r * Math.cos(a); q.y = r * Math.sin(a); q.g = 0;
+    const th = RING_TH / 2 + 0.12 * S.size;
+    for (const ring of this.rings) if (Math.abs(r - ring.r) < th) { q.g = ring.i + 1; q.la = wrap(a - ring.body.getAngle()); }
+    return q;
+  }
+  trailPin(S) {
+    for (const q of S.pts) {
+      if (!q.g) continue;
+      q.a = wrap(this.rings[q.g - 1].body.getAngle() + q.la);
+      q.x = q.r * Math.cos(q.a); q.y = q.r * Math.sin(q.a);
+    }
+  }
+  // Slide the head back along its own trail by d (m); the tail grows on along its channel, so the body keeps
+  // its length and the head keeps facing forward.
+  snakeBack(S, d) {
+    const T = S.pts;
+    while (d > 1e-6 && T.length > 3) {
+      const h = T[0], q = T[1], l = Math.hypot(q.x - h.x, q.y - h.y), s = Math.min(d, l);
+      d -= s; S.odo -= s;
+      if (l - s > 1e-4) { const f = s / l; this.trailPt(S, h, h.a + wrap(q.a - h.a) * f, h.r + (q.r - h.r) * f); continue; }
+      T.shift(); // a whole point backed over: the tail grows one on, along its channel (easing to its centre line)
+      const z = T[T.length - 1], y = T[T.length - 2], da = wrap(z.a - y.a), n = this.rings.length, c = this.chAt(z.r + (z.r - y.r) * 4);
+      const mid = c >= n ? this.outerR + 0.35 : c === 0 ? this.rings[0].r * 0.45 : (this.rings[c - 1].r + this.rings[c].r) / 2;
+      const dr = clamp(mid - z.r, -TRAIL * 0.7, TRAIL * 0.7), r = z.r + dr;
+      T.push(this.trailPt(S, {}, z.a + Math.sign(da || 1) * Math.sqrt(TRAIL * TRAIL - dr * dr) / Math.max(r, 0.3), r));
+    }
+    S.rad = T[0].r; S.a = T[0].a;
+  }
+
+  // Clash (Breaker's rivals): heads meeting face to face in a channel, or one head running into the other's
+  // body, starts a fight. Both are shoved back along their trails, dazed, and it sheds a helpful orb.
+  clashStep(dt) {
+    if (this.clashCD > 0) { this.clashCD -= dt; return; }
+    const L = this.snakes.filter((S) => !S.gone && S.inside && S.pts.length > 5 && !(S.stun > 0) && !(S.knock > 0));
+    const dir = (S) => { const h = S.pts[0], q = S.pts[3], l = Math.hypot(h.x - q.x, h.y - q.y) || 1; return [(h.x - q.x) / l, (h.y - q.y) / l]; };
+    for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
+      const A = L[i], B = L[j], ha = A.pts[0], hb = B.pts[0], c = this.chAt(A.rad);
+      let hit = null;
+      if (c === this.chAt(B.rad) && Math.hypot(ha.x - hb.x, ha.y - hb.y) < CLASH.r * (A.size + B.size) / 2) {
+        const [ax, ay] = dir(A), [bx, by] = dir(B);
+        if (ax * bx + ay * by < -0.3) hit = { x: (ha.x + hb.x) / 2, y: (ha.y + hb.y) / 2 };
+      }
+      for (const [P, Q] of [[A, B], [B, A]]) {
+        if (hit) break;
+        const h = P.pts[0], w = 0.13 * (P.size + Q.size);
+        for (let k = 4; k < Q.pts.length; k += 2) {
+          const q = Q.pts[k];
+          if (Math.abs(q.x - h.x) < w && Math.abs(q.y - h.y) < w && Math.hypot(q.x - h.x, q.y - h.y) < w) { hit = { x: (h.x + q.x) / 2, y: (h.y + q.y) / 2 }; break; }
+        }
+      }
+      if (!hit) continue;
+      for (const S of [A, B]) {
+        if (S.spit) { const b = this.barriers[S.spit.b]; if (b) b.venom = 0; S.spit = null; }
+        S.knock = CLASH.knock * S.size; S.stun = CLASH.stun * this.PM.stun; S.back = 0; S.hurt = 'clash'; S.strike = 0; S.vsK = -1;
+        S.mood = 'ouch'; S.moodT = 0.5; S.mouthOpen = 1;
+      }
+      const n = this.rings.length, r = Math.hypot(hit.x, hit.y), ch = clamp(this.chAt(r), 0, n - 1), type = CLASH.orbs[this.clashN++ % CLASH.orbs.length];
+      this.addOrb(type, ch, Math.atan2(hit.y, hit.x), 'clash', Math.min(r, this.orbFloor(ch)));
+      this.predPts += CLASH.pts;
+      this.clashCD = CLASH.cd;
+      this.emit('snakeClash', { x: hit.x, y: hit.y, power: type, pts: CLASH.pts, a: A.id, b: B.id });
+      return;
+    }
+  }
+
+  // The level is decided: on a win each snake starts (0.35 s), then flees back out along its trail and has faded
+  // before the vault bursts (0.9 s, 'won'); on a fail it stops where it is and grins.
+  snakeEnd(S, dt) {
+    S.mouthOpen = Math.max(0, S.mouthOpen - dt * 1.5);
+    if (this.state === 'failing' || this.state === 'failed') { S.mood = 'grin'; S.moodT = 9; return; }
+    if (!S.inside) { S.gone = 1; return; }
+    if (S.flee < 0) { S.flee = 0; S.mood = 'shock'; S.moodT = 0.35; S.spit = null; S.stun = 0; }
+    S.flee += dt;
+    if (S.moodT > 0) S.moodT -= dt;
+    if (S.flee > 0.35) this.snakeBack(S, 8 * dt);
+    if (S.flee >= 0.9 || this.state === 'won') S.gone = 1;
+  }
+
+  // Spitter (kind 'spitter'): every SPIT.every s, when its prey is behind a wall, it stops, rears up (SPIT.rear) and
+  // spits a glob in an arc at that wall just ahead of it (SPIT.fly); the glob burns a molten hole (HOLE_T) that
+  // snakes and eggs can pass. True while it is busy spitting.
+  venomStep(S, dt, hc, egg) {
+    const n = this.rings.length;
+    if (S.vsK < 0) {
+      if ((S.vsT -= dt) > 0 || !egg || S.pts.length < 4) return false;
+      const ec = this.channelOf(egg), ri = ec < hc ? hc - 1 : hc;
+      if (ec === hc || ri >= n || ri < 0) { S.vsT = 1; return false; }
+      const ring = this.rings[ri], p = egg.body.getPosition(), a = S.a + Math.sign(wrap(Math.atan2(p.y, p.x) - S.a) || 1) * 0.45 / ring.r;
+      if (!this.solidAt(ring, ring.r * Math.cos(a), ring.r * Math.sin(a))) { S.vsT = 1; return false; } // already open there
+      S.vsK = 0; S.vsR = ri; S.vsA = wrap(a - ring.body.getAngle()); S.mood = null;
+      this.emit('snakeRear', { id: S.id });
+    }
+    const k0 = S.vsK, q = this.venomPt(S), h = S.pts[0];
+    S.vsK += dt;
+    if (k0 < SPIT.rear && S.vsK >= SPIT.rear) { S.mouthOpen = 1; this.emit('venomSpit', { x: h.x, y: h.y, tx: q.x, ty: q.y, id: S.id }); }
+    if (S.vsK >= SPIT.rear + SPIT.fly) {
+      const ring = this.rings[S.vsR], half = HOLE_LEN / (2 * ring.r);
+      for (const sg of ring.segs) if (sg.alive && Math.abs(wrap((sg.a0 + sg.a1) / 2 - S.vsA)) < half) { sg.melt = HOLE_T; sg.vh = 1; }
+      this.emit('venomHole', { x: q.x, y: q.y, ring: S.vsR, id: S.id });
+      S.vsK = -1; S.vsT = SPIT.every; S.mood = 'grin'; S.moodT = 0.6;
+    }
+    return true;
+  }
+  venomPt(S) { const ring = this.rings[S.vsR], a = ring.body.getAngle() + S.vsA; return { x: ring.r * Math.cos(a), y: ring.r * Math.sin(a) }; }
+  spitPhase(S) { return S.vsK < 0 ? null : { rear: Math.min(1, S.vsK / SPIT.rear), fly: S.vsK < SPIT.rear ? -1 : (S.vsK - SPIT.rear) / SPIT.fly }; }
+  // holes a spitter's venom burnt in a ring: gaps for snakes as well as eggs ({a, len} in ring space, like gaps)
+  venomHoles(ring) {
+    const out = [];
+    let run = null;
+    for (const sg of ring.segs) {
+      if (sg.melt > 0 && sg.vh) { if (run && Math.abs(run.a1 - sg.a0) < 1e-4) run.a1 = sg.a1; else out.push((run = { a0: sg.a0, a1: sg.a1 })); } else run = null;
+    }
+    return out.map((h) => ({ a: (h.a0 + h.a1) / 2, len: (h.a1 - h.a0) * ring.r }));
+  }
+
+  // Hazards hit snakes too. kind: 'gust' (shoved along its channel; a strong one costs it ~1 s), 'rock' | 'lava'
+  // (burnt: ouch, stunned 1.5 s, then it backs off), 'ice' (stunned 1 s), 'bolt' (dizzy 2 s), 'quake' (loses its
+  // grip ~0.5 s). o: {x, y, dir ({x, y} or a sign along x), power}.
+  hitSnake(S, kind, o = {}) {
+    if (!S || S.gone || !S.inside || S.flee >= 0 || this.state !== 'play') return;
+    const p = o.power ?? 1, h = S.pts[0] || { x: S.rad * Math.cos(S.a), y: S.rad * Math.sin(S.a) };
+    if (S.spit && kind !== 'gust') { const b = this.barriers[S.spit.b]; if (b) b.venom = 0; S.spit = null; }
+    if (kind !== 'gust') { S.strike = 0; S.vsK = -1; S.vsT = Math.max(S.vsT, 2); }
+    if (kind === 'gust') {
+      const dx = typeof o.dir === 'number' ? o.dir : (o.dir && o.dir.x) || 0, dy = (o.dir && o.dir.y) || 0;
+      S.shove += clamp(-Math.sin(S.a) * dx + Math.cos(S.a) * dy, -1, 1) * 0.35 * p; // m along the channel (ccw +)
+      if (p > 1.2) { S.wait = Math.max(S.wait, 1); S.mood = 'shock'; S.moodT = 0.6; }
+    } else if (kind === 'rock' || kind === 'lava') {
+      S.stun = Math.max(S.stun, 1.5); S.back = Math.max(S.back, 2.5 * this.PM.back); S.hurt = 'burn'; S.mood = 'ouch'; S.moodT = 0.6;
+    } else if (kind === 'ice') { S.stun = Math.max(S.stun, 1); S.hurt = 'ice'; }
+    else if (kind === 'bolt') { S.stun = Math.max(S.stun, 2); S.hurt = 'bolt'; S.mood = 'shock'; S.moodT = 0.3; }
+    else if (kind === 'quake') { S.wait = Math.max(S.wait, 0.5); S.mood = 'shock'; S.moodT = 0.5; }
+    this.emit('snakeHit', { kind, x: o.x ?? h.x, y: o.y ?? h.y, id: S.id });
+  }
+  // a gust's shove: forward slides the head on along the channel, backward slides it back along its own body
+  shoveStep(S, dt) {
+    const d = clamp(S.shove, -1.5 * dt, 1.5 * dt), T = S.pts;
+    S.shove = Math.abs(S.shove - d) < 1e-4 ? 0 : S.shove - d;
+    const fwd = T.length > 3 ? Math.sign(wrap(T[0].a - T[3].a)) || 1 : 1;
+    if (Math.sign(d) !== fwd) { this.snakeBack(S, Math.abs(d)); return; }
+    S.a += d / Math.max(S.rad, 0.3); S.odo += Math.abs(d);
+    if (T.length) this.trailPt(S, T[0], S.a, S.rad);
+  }
+  // Carried (for the eagle): while S.carried, the eagle sets S.carryX / S.carryY each step and the snake dangles from
+  // there, head up; when it lets go the snake lands in the channel under that point, dazed, body laid along it.
+  carryStep(S) {
+    S.held = 1; S.strike = 0; S.spit = null; S.vsK = -1; S.mood = 'shock'; S.moodT = 0.2; S.inside = true;
+    const x = S.carryX ?? S.pts[0]?.x ?? 0, y = S.carryY ?? S.pts[0]?.y ?? 0, n = Math.ceil(S.len / TRAIL) + 1;
+    S.pts.length = Math.min(S.pts.length, n);
+    while (S.pts.length < n) S.pts.push({});
+    S.pts.forEach((q, i) => { const sw = Math.sin(this.t * 3 - i * 0.12) * Math.min(1, i / 20) * 0.25; this.trailPt(S, q, Math.atan2(y - i * TRAIL, x + sw), Math.hypot(x + sw, y - i * TRAIL)); q.g = 0; });
+    S.rad = S.pts[0].r; S.a = S.pts[0].a;
+  }
+  snakeDrop(S) {
+    S.held = 0;
+    const n = this.rings.length, c = this.chAt(S.rad);
+    S.rad = c >= n ? this.outerR + 0.35 : c === 0 ? this.rings[0].r * 0.45 : (this.rings[c - 1].r + this.rings[c].r) / 2;
+    const m = Math.ceil(S.len / TRAIL) + 1;
+    S.pts = [];
+    for (let i = 0; i < m; i++) S.pts.push(this.trailPt(S, {}, S.a - (i * TRAIL) / Math.max(S.rad, 0.3), S.rad));
+    S.stun = Math.max(S.stun, 1.5); S.hurt = 'drop'; S.mood = 'ouch'; S.moodT = 0.4;
+    this.emit('snakeDrop', { x: S.pts[0].x, y: S.pts[0].y, id: S.id });
+  }
+  snakesNear(x, y, R) { return this.snakes.filter((S) => !S.gone && S.inside && S.pts.length && Math.hypot(S.pts[0].x - x, S.pts[0].y - y) < R); }
 
   // a gap the snake can slither through: not a shut door, a live thorn curtain or a grate
   snakeGap(g) {
@@ -1194,10 +1412,10 @@ export class Sim {
     this.emit('snakeHiss', { x: h.x, y: h.y, id: S.id });
   }
 
-  spitK(S) { return S.spit ? S.spit.t / (VENOM_T * this.PM.venom) : 0; } // 0..1 through hiss, spit, melt
+  spitK(S) { return S.spit ? S.spit.t / (VENOM_T * this.PM.venom * (S.venomK || 1)) : 0; } // 0..1 through hiss, spit, melt
 
   spitStep(S, dt, br) {
-    const b = this.barriers[S.spit.b], dur = VENOM_T * this.PM.venom;
+    const b = this.barriers[S.spit.b], dur = VENOM_T * this.PM.venom * (S.venomK || 1);
     if (!b || !b.alive) { S.spit = null; return; }
     const k0 = S.spit.t / dur;
     S.spit.t += dt;
@@ -1388,6 +1606,13 @@ export class Sim {
     }
   }
 
+  // The level is decided: the fox ducks out of sight on a win, laughs on a fail
+  foxEnd(dt) {
+    const F = this.fox, won = this.state === 'winning' || this.state === 'won';
+    F.duck = Math.min(1, (F.duck || 0) + (won ? dt * 2 : 0));
+    F.mood = won ? 'shocked' : 'laugh'; F.moodT = 9; F.t = 9;
+  }
+
   // Fox thrower (G36): strolls along the top of the vault and drops an orb into the outer channel.
   foxStep(dt) {
     const F = this.fox, n = this.rings.length;
@@ -1430,6 +1655,8 @@ export class Sim {
       eagle: this.eagle ? { ...this.eagle } : null,
       fox: this.fox ? { ...this.fox, throws: [...this.fox.throws] } : null,
       danger: this.danger,
+      clash: [this.clashCD, this.clashN, this.predPts],
+      vh: this.rings.map((r) => r.segs.map((g) => (g.vh ? 1 : 0))),
     };
   }
 
@@ -1444,6 +1671,8 @@ export class Sim {
     if (P.eagle) this.eagle = { ...P.eagle };
     if (P.fox) this.fox = { ...P.fox, throws: [...P.fox.throws] };
     this.danger = P.danger || 0;
+    [this.clashCD, this.clashN, this.predPts] = P.clash || [0, 0, 0];
+    (P.vh || []).forEach((r, i) => r.forEach((v, k) => { this.rings[i].segs[k].vh = v; }));
   }
 
   // ---------- weather (F6) ----------
@@ -1476,6 +1705,7 @@ export class Sim {
         X.quake = 1;
         X.qk = 0;
         this.emit('quake', { dur: 1 });
+        for (const S of this.snakes) this.hitSnake(S, 'quake');
       }
     } else if (W === 'embers') {
       // embers drift down from above; rings shield the eggs, gaps let embers through
@@ -1511,6 +1741,7 @@ export class Sim {
     const ring = this.rings[B.ri], p = this.boltPoint(B);
     ring.stun = Math.max(ring.stun, 1.5);
     this.emit('lightning', { x: p.x, y: p.y, ring: B.ri });
+    for (const S of this.snakesNear(p.x, p.y, 1)) this.hitSnake(S, 'bolt', { x: p.x, y: p.y });
     for (const e of this.aliveEggs()) {
       const q = e.body.getPosition();
       if (Math.hypot(q.x - p.x, q.y - p.y) < 0.6) this.crack(e, 0, 'lightning');
@@ -1858,7 +2089,7 @@ export class Sim {
       for (const sg of ring.segs) {
         if (!(sg.melt > 0)) continue;
         // a melted hole re-forms after HOLE_T, but never into an egg
-        if ((sg.melt -= dt) <= 0) { sg.melt = this.eggOnSeg(ring, sg) ? 0.05 : 0; if (!sg.melt) this.emit('meltHeal', { ring: ring.i }); }
+        if ((sg.melt -= dt) <= 0) { sg.melt = this.eggOnSeg(ring, sg) ? 0.05 : 0; if (!sg.melt) { sg.vh = 0; this.emit('meltHeal', { ring: ring.i }); } }
       }
       for (const g of ring.gaps) {
         const C = g.curtain;
@@ -1912,15 +2143,17 @@ export class Sim {
         if (f >= 1) {
           k.ph = 'sit'; k.t = 0;
           this.emit('lavaLand', { x: q.x, y: q.y, ring: k.ri });
+          for (const S of this.snakesNear(q.x, q.y, 0.8)) this.hitSnake(S, 'lava', { x: q.x, y: q.y });
           if (this.rockHits(k, q, 0.75)) { this.lavaRocks.splice(i, 1); continue; }
         }
         continue;
       }
       k.x = q.x; k.y = q.y;
+      for (const S of this.snakesNear(q.x, q.y, 0.5)) if (!(S.stun > 0)) this.hitSnake(S, 'lava', { x: q.x, y: q.y });
       if (this.rockHits(k, q, 0.4)) { this.lavaRocks.splice(i, 1); continue; }
       if (k.t >= ROCK_SIT) {
         const ring = this.rings[k.ri], half = HOLE_LEN / (2 * ring.r);
-        for (const sg of ring.segs) if (sg.alive && Math.abs(wrap((sg.a0 + sg.a1) / 2 - k.la)) < half) sg.melt = HOLE_T;
+        for (const sg of ring.segs) if (sg.alive && Math.abs(wrap((sg.a0 + sg.a1) / 2 - k.la)) < half) { sg.melt = HOLE_T; sg.vh = 0; }
         this.emit('lavaMelt', { x: q.x, y: q.y, ring: k.ri });
         this.lavaRocks.splice(i, 1);
       }
@@ -1965,6 +2198,7 @@ export class Sim {
         const p = e.body.getPosition();
         if (Math.hypot(p.x - c.x, p.y - tip) < 0.3) { gone = true; this.emit('icicleHit', { egg: e, x: c.x, y: tip }); this.crack(e, 0, 'icicle'); }
       }
+      for (const S of gone ? [] : this.snakesNear(c.x, tip, 0.35)) { gone = true; this.hitSnake(S, 'ice', { x: c.x, y: tip }); this.emit('icicleShatter', { x: c.x, y: tip }); break; }
       for (const ring of this.rings) if (!gone && Math.abs(d - ring.r) < RING_TH / 2 + 0.05 && this.solidAt(ring, c.x, tip)) { gone = true; this.emit('icicleShatter', { x: c.x, y: tip }); }
       if (gone) this.icicles.splice(i, 1);
     }
@@ -2010,7 +2244,7 @@ export class Sim {
   stats() {
     const saved = this.savedLog.length;
     const broken = this.eggs.filter((e) => !e.alive && !e.saved && !e.fled).length;
-    const score = this.savedLog.reduce((a, s) => a + s.pts, 0);
+    const score = this.savedLog.reduce((a, s) => a + s.pts, 0) + (this.predPts || 0); // + snake clashes
     return { saved, broken, alive: this.aliveEggs().length, target: this.level.target || 1, total: this.eggs.length, score, perfect: this.savedLog.every((s) => s.cracks === 0) && broken === 0 };
   }
 }

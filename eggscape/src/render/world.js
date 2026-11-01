@@ -1,6 +1,6 @@
 // Draws the playfield in world space: ctx is pre-transformed (meters, y up).
 import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
-import { drawChick, drawSnake } from './characters.js';
+import { drawChick, drawSnake, drawFox, snakeHeadAnim } from './characters.js';
 import { isSpriteCalm, drawFoxActor } from './sprites.js';
 import { drawEagle, drawBarrier, drawVenom } from './v3art.js';
 import { drawEggPower } from './powers.js';
@@ -1146,26 +1146,159 @@ export function drawBarriers(ctx, sim, t, k) {
   }
 }
 
-// head expression from snake state: hunt / chew0 / chew1 / hiss / ouch / grin
-export function snakeExpr(S, t) {
+// The face a snake wants from its state (snakeHeadAnim holds and crossfades it). Green-eyed faces for calm crawling,
+// the orange hunting eyes only once it is close to its prey; a blocked snake must stay blocked a while to hiss.
+function snakeWant(S, A, sim, t) {
+  if (S.flee >= 0 || S.carried) return 'shock';
+  if (S.mood === 'ouch' || S.mood === 'shock') return S.mood;
+  if (S.stun > 0) return S.hurt === 'burn' ? 'ouch' : S.hurt === 'ice' ? 'shock' : 'dizzy';
+  const sp = sim.spitPhase && sim.spitPhase(S);
+  if (sp) return sp.fly < 0 ? 'snarl' : 'strike';
   if (S.mood === 'chew') return Math.floor(t * 8) % 2 ? 'chew1' : 'chew0';
-  if (S.mood === 'ouch' || S.mood === 'grin') return S.mood;
-  return S.spit || S.blocked ? 'hiss' : 'hunt';
+  if (S.mood === 'grin') return 'grin';
+  if (S.lunge > 0.45) return 'strike';
+  if (S.strike > 0) return 'snarl';
+  if (S.spit) { const sk = sim.spitK(S); return sk < 0.25 ? 'snarl' : sk < 0.4 ? 'strike' : 'hiss'; }
+  if (S.back > 0) return 'hunt';
+  if (A.blk > 0.75) A.hissing = true; else if (A.blk < 0.3) A.hissing = false;
+  if (A.hissing) return 'hiss';
+  if (S.mouthOpen > 0.45) A.near = true; else if (S.mouthOpen < 0.2) A.near = false;
+  return A.near ? 'hunt' : 'idle';
+}
+
+// Per-snake render state: head animation, smoothed flags. Reset when the sim changes (restart, rewind).
+export const snAnim = {}; // (dev hook reads it for blink strips)
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerpA = (a, b, f) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * f;
+
+// The drawn body lives in channel space (G-snake2): each trail point sits on its channel's centre line (a little of
+// the real path kept), so the body never crosses a ring wall; points that slid through a gap keep their real
+// radius (pinned to the ring, they ride along when it turns), blended in over ~0.35 m. A lateral wave pinned to the
+// distance crawled (S.odo) runs down the body: it freezes when the snake stops and runs back when it backs off.
+function snakePath(sim, S, A, t) {
+  if (S.carried) return S.pts.map((q) => ({ x: q.x, y: q.y })); // dangling from the eagle: no channel
+  const R = sim.rings, n = R.length, T = S.pts, sz = Math.pow(S.size || 1, 0.6); // big snakes grow less than their size
+  const Wm = 0.22 * sz, inner = (R.length > 1 ? R[1].r - R[0].r : 1) - RING_TH;
+  const Am = clamp(inner / 2 - Wm - 0.04, 0.02, 0.13 * sz); // wave amplitude: what the pipe leaves room for
+  const m = Wm + Am + 0.02;
+  const band = (c) => {
+    let lo = c > 0 ? R[c - 1].r + RING_TH / 2 + m : 0.3, hi = c < n ? R[c].r - RING_TH / 2 - m : 1e9;
+    if (lo > hi) lo = hi = (lo + hi) / 2;
+    return [lo, hi];
+  };
+  // 1. trail -> polar points with path coordinate (odo - distance back along the trail), gaps filled in polar
+  const Q = [];
+  let P = S.odo || 0;
+  for (let i = 0; i < T.length; i++) {
+    const q = T[i];
+    if (i) {
+      const p = T[i - 1], d = Math.hypot(q.x - p.x, q.y - p.y), k = Math.min(40, Math.floor(d / 0.06));
+      for (let j = 1; j <= k; j++) { // a ring dragged pinned points away: bridge along the channel, not across it
+        const f = j / (k + 1);
+        Q.push({ a: lerpA(p.a, q.a, f), r: p.r + (q.r - p.r) * f, pin: p.g && q.g ? 1 : 0, P: P - d * f });
+      }
+      P -= d;
+    }
+    Q.push({ a: q.a, r: q.r, pin: q.g && !sim.solidAt(R[q.g - 1], q.x, q.y) ? 1 : 0, P }); // (a shut door or the gap's edge: back to the channel)
+  }
+  // 2. pin weights eased along the body
+  const N = Q.length, w = new Float32Array(N);
+  for (let i = 0; i < N; i++) w[i] = Q[i].pin;
+  for (let i = 1; i < N; i++) w[i] = Math.max(w[i], w[i - 1] - (Q[i - 1].P - Q[i].P) / 0.35);
+  for (let i = N - 2; i >= 0; i--) w[i] = Math.max(w[i], w[i + 1] - (Q[i].P - Q[i + 1].P) / 0.35);
+  // 3. channel-space positions, cut at the body length
+  const out = [];
+  let s = 0, px = 0, py = 0;
+  for (let i = 0; i < N; i++) {
+    const q = Q[i], c = sim.chAt(q.r), [lo, hi] = band(c);
+    const mid = c < n ? (lo + hi) / 2 : Math.max(lo, q.r);
+    const rc = clamp(mid + (q.r - mid) * 0.4, lo, hi), rd = rc + (q.r - rc) * w[i];
+    const x = rd * Math.cos(q.a), y = rd * Math.sin(q.a);
+    if (i) { s += Math.hypot(x - px, y - py); if (s > S.len) break; }
+    out.push({ x, y, P: q.P, s, w: w[i] });
+    px = x; py = y;
+  }
+  // 4. lateral wave along the normal; strike coil and lunge; a dazed body goes slack
+  const M = out.length, lam = 1.35 * Math.sqrt(sz), L = out.length ? out[M - 1].s : 0;
+  const sp = sim.spitPhase && sim.spitPhase(S), rear = sp ? (sp.fly < 0 ? sp.rear : Math.max(0, 1 - sp.fly * 3)) : 0;
+  const coil = Math.max(S.strike > 0 ? Math.min(1, S.strike / 0.3) : 0, rear), lunge = S.lunge > 0 ? Math.sin(Math.PI * Math.min(1, (1 - S.lunge) / 0.4)) * (1 - S.lunge) ** 0.5 : 0;
+  A.slack += ((S.stun > 0 ? 1 : 0) - A.slack) * Math.min(1, A.dt * 4);
+  const jolt = S.hurt === 'bolt' ? clamp((S.stun - 1.5) / 0.5, 0, 1) : 0; // lightning: the body jerks for a moment
+  const res = [];
+  for (let i = 0; i < M; i++) {
+    const o = out[i], a = out[Math.max(0, i - 1)], b = out[Math.min(M - 1, i + 1)];
+    let tx = a.x - b.x, ty = a.y - b.y;
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl; ty /= tl;
+    const env = Math.min(1, o.s / (0.9 * sz)) * (1 - o.w), tail = 1 - 0.3 * Math.max(0, (o.s - L * 0.7) / (L * 0.3 || 1));
+    let off = Am * env * tail * Math.sin((o.P / lam) * TAU) * (1 - 0.6 * A.slack);
+    off += Am * 0.8 * A.slack * env * Math.sin(t * 1.7 + o.s * 2.2); // slack sway while dizzy
+    if (jolt) off += Am * 1.4 * jolt * Math.sin(o.s * 17 + t * 95) * (1 - o.w);
+    off += Am * 1.3 * coil * Math.sin(Math.min(1, o.s / (1.3 * sz)) * Math.PI * 2) * (1 - o.w) * (o.s < 1.3 * sz ? 1 : 0); // S-coil
+    let x = o.x - ty * off, y = o.y + tx * off;
+    const pull = (0.28 * coil - 0.38 * lunge) * sz * Math.max(0, 1 - o.s / (1.4 * sz)); // head draws back, then darts
+    x -= tx * pull; y -= ty * pull;
+    res.push({ x, y });
+  }
+  return res;
 }
 
 export function drawSnakes(ctx, sim, t, k) {
+  const heads = [];
   for (const S of sim.snakes || []) {
     if (S.gone || S.pts.length < 2) continue;
-    const r = 0.1 * (S.size || 1), P = S.pts; // no pale halo: the player wants it gone (G9)
-    const sk = sim.spitK(S);
-    pxSpace(ctx, 0, 0, k, () => drawSnake(ctx, P.map((q) => ({ x: q.x * k, y: -q.y * k })), r * k, t, { id: S.id, mouthOpen: S.mouthOpen, expr: snakeExpr(S, t), thick: 2, venom: sk > 0 && sk < 0.25 ? sk / 0.25 : 0 }));
+    let A = snAnim[S.id];
+    if (!A || A.sim !== sim || t < A.t - 0.5) A = snAnim[S.id] = { sim, t, slack: 0, blk: 0 };
+    A.dt = Math.min(0.1, Math.max(0, t - A.t));
+    A.t = t;
+    A.blk += (S.blocked - A.blk) * Math.min(1, A.dt * 2.5);
+    const path = snakePath(sim, S, A, t);
+    if (path.length < 2) continue;
+    // where it looks: toward its prey when close, a slow look-around while it waits
+    const h = S.pts[0], egg = S.tgt && sim.eggs.find((e) => e.id === S.tgt && e.alive && e.body);
+    let look = 0;
+    const bx = path[0].x - path[Math.min(path.length - 1, 6)].x, by = path[0].y - path[Math.min(path.length - 1, 6)].y;
+    const sp = sim.spitPhase && sim.spitPhase(S);
+    if (sp) { // squares up to the wall it spits at
+      const q = sim.venomPt(S);
+      look = clamp(lerpA(0, Math.atan2(q.y - h.y, q.x - h.x) - Math.atan2(by, bx), 1), -1.1, 1.1);
+    } else if (egg && !(S.stun > 0) && S.flee < 0) {
+      const p = egg.body.getPosition(), d = Math.hypot(p.x - h.x, p.y - h.y);
+      const lim = S.strike > 0 || S.lunge > 0 ? 1.1 : 0.5; // it squares up to its prey to strike
+      look = clamp(lerpA(0, Math.atan2(p.y - h.y, p.x - h.x) - Math.atan2(by, bx), 1), -lim, lim) * clamp(1.4 - d / 3, 0.2, 1);
+    }
+    if (S.wait > 0 && S.inside || S.blocked) look += 0.35 * Math.sin(t * 0.8 + S.id * 2.1) ** 3;
+    A.look = -look; // y-down px space
+    snakeHeadAnim(A, snakeWant(S, A, sim, t), A.dt, t);
+    const sk = sim.spitK(S), idle = S.wait > 0 || S.blocked || S.spit || S.stun > 0 ? 1 : 0;
+    const alpha = S.flee > 0.4 ? clamp(1 - (S.flee - 0.4) / 0.45, 0, 1) : 1; // gone before the vault bursts
+    const px = path.map((q) => ({ x: q.x * k, y: -q.y * k }));
+    const o = { id: S.id, mouthOpen: S.mouthOpen, thick: 1.16, head: 5.4, wave: 0, skin: S.skin, kind: S.kind, anim: A,
+      breath: 1 + 0.045 * idle * Math.sin(t * 2.3 + S.id), crown: sim.level.boss === 'snake' && S.size > 1.2,
+      venom: sk > 0 && sk < 0.25 ? sk / 0.25 : sp && sp.fly < 0 ? sp.rear : 0,
+      flash: S.hurt === 'bolt' && S.stun > 1.5 ? (Math.sin(t * 60) > 0 ? 0.75 : 0.25) * clamp((S.stun - 1.5) / 0.5, 0, 1) : 0 };
+    const draw = (part) => { ctx.save(); ctx.globalAlpha = alpha; pxSpace(ctx, 0, 0, k, () => drawSnake(ctx, px, 0.1 * Math.pow(S.size || 1, 0.6) * k, t, { ...o, part })); ctx.restore(); };
+    draw('body');
+    heads.push(draw);
     // the venom blob in flight
     if (sk >= 0.25 && sk < 0.36) {
-      const b = sim.barriers[S.spit.b], q = sim.barrierPoint(b, 0.4), h = P[0], u = (sk - 0.25) / 0.11;
+      const b = sim.barriers[S.spit.b], q = sim.barrierPoint(b, 0.4), u = (sk - 0.25) / 0.11;
       const x = h.x + (q.x - h.x) * u, y = h.y + (q.y - h.y) * u + Math.sin(u * Math.PI) * 0.25;
       pxSpace(ctx, x, y, k, () => drawVenom(ctx, 0, 0, 0.1 * k, t, 1));
     }
+    // a spitter's glob arcing at the wall, with a dripping trail
+    if (sp && sp.fly >= 0 && sp.fly < 1) {
+      const q = sim.venomPt(S), bl = Math.hypot(bx, by) || 1, fx = bx / bl, fy = by / bl;
+      heads.push(() => { // over the heads (so after this snake's head, which leaves its mouth in A): from the mouth, bowing out the way it faces
+        const hx = A.mouthX !== undefined ? A.mouthX / k : path[0].x + fx * 0.4, hy = A.mouthY !== undefined ? -A.mouthY / k : path[0].y + fy * 0.4;
+        for (let j = 4; j >= 0; j--) {
+          const u = Math.max(0, sp.fly - j * 0.07), b = Math.sin(u * Math.PI) * 0.5;
+          pxSpace(ctx, hx + (q.x - hx) * u + fx * b, hy + (q.y - hy) * u + fy * b, k, () => drawVenom(ctx, 0, 0, 0.12 * k * (1 - j * 0.14), t, j ? 0.55 - j * 0.1 : 1));
+        }
+      });
+    }
   }
+  for (const f of heads) f('head');
 }
 
 // Eagle (G48): layer 'back' = the shadow under what it has locked on (drawn before eggs); 'front' = the
@@ -1229,7 +1362,10 @@ export function drawFoxThrower(ctx, sim, t, k) {
     const age = F.mood === 'laugh' ? 1.4 - F.moodT : 9, rel = Math.exp(-age * 5);
     if (age < 1.4) { rot += 0.26 * rel + Math.sin(t * 14) * 0.03 * (1 - rel); sy *= 1 + 0.12 * rel; sx *= 1 - 0.06 * rel; dy += 0.1 * sz * rel; }
   }
+  if (F.duck >= 1) return;
+  if (F.duck > 0) { const u = F.duck * F.duck; dy += u * sz * 1.4; rot += Math.sin(t * 30) * 0.05 * (1 - u); } // ducks below the rim on a win
   pxSpace(ctx, F.x, y, k, () => {
+    if (F.duck > 0) { ctx.beginPath(); ctx.rect(-sz * 2, -sz * 3, sz * 4, sz * 3 + 0.4 * k); ctx.clip(); } // the vault rim hides him
     ctx.translate(0, dy);
     ctx.rotate(rot);
     ctx.scale(sx, sy);
@@ -1281,10 +1417,10 @@ export function drawV3Ring(ctx, ring, k, t) {
   let run = null;
   const holes = [];
   for (const sg of ring.segs) {
-    if (sg.melt > 0) { if (run && Math.abs(run.a1 - sg.a0) < 1e-4) { run.a1 = sg.a1; run.m = Math.max(run.m, sg.melt); } else holes.push((run = { a0: sg.a0, a1: sg.a1, m: sg.melt })); }
+    if (sg.melt > 0) { if (run && Math.abs(run.a1 - sg.a0) < 1e-4) { run.a1 = sg.a1; run.m = Math.max(run.m, sg.melt); run.v = run.v || sg.vh; } else holes.push((run = { a0: sg.a0, a1: sg.a1, m: sg.melt, v: sg.vh })); }
     else run = null;
   }
-  for (const h of holes) onRing(ctx, k, r, A + (h.a0 + h.a1) / 2, () => drawMeltHole(ctx, 0, 0, (h.a1 - h.a0) * r * k, RING_TH * k, t, Math.min(1, h.m / 5)));
+  for (const h of holes) onRing(ctx, k, r, A + (h.a0 + h.a1) / 2, () => drawMeltHole(ctx, 0, 0, (h.a1 - h.a0) * r * k, RING_TH * k, t, Math.min(1, h.m / 5), !!h.v));
   // one-way chevrons on the solid parts, every ~1.3 m
   if (ring.oneway) {
     const n = Math.max(3, Math.round((TAU * r) / 1.3));

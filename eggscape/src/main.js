@@ -921,6 +921,9 @@ function handleEvents() {
       case 'snakeRecoil':
         popup(ev.x, ev.y + 0.5, 'Too hard to bite!', { size: 18 });
         audio.play('steel_clang', { vol: 0.6 });
+        fx.sparkle(ev.x, ev.y, 7, '#fff1b8');
+        fx.chips(ev.x, ev.y, '#d8cbb0', 5, 1.6);
+        fx.shake = Math.max(fx.shake, 0.2);
         break;
       case 'twin':
         fx.sparkle(ev.x, ev.y, 12, '#ffe58a');
@@ -1020,6 +1023,38 @@ function predEvent(ev, fx) {
       audio.play('squish', { intensity: 0.8, pitch: 0.7 });
       if (!ev.chick) fx.chips(ev.x, ev.y, '#f3e8d2', 6, 1.6);
       break;
+    case 'snakeClash':
+      // two snakes butt heads: both reel back dizzy and it sheds an orb
+      audio.play('rock_hit', { vol: 0.9 });
+      audio.play('squish', { intensity: 0.7, pitch: 0.6 });
+      fx.sparkle(ev.x, ev.y, 14, '#ffe27a');
+      fx.wave(ev.x, ev.y, 0.9, '#fff1b8', 0.4, 0.07);
+      fx.shake = Math.max(fx.shake, 0.5);
+      fx.punch = 1;
+      popup(ev.x, ev.y + 0.7, 'CLASH!', { color: '#c9ff9e', size: 30, sub: '+' + ev.pts, life: 1.3 });
+      hen('happy', 1);
+      once('clash', 'The snakes fought each other! Grab the orb they dropped.');
+      break;
+    case 'snakeDrop':
+      audio.play('egg_bump', { intensity: 0.6, pitch: 0.6 });
+      fx.dust(ev.x, ev.y, 6);
+      break;
+    case 'venomHole':
+      // a spitter's glob burns through a ring: splash and sizzle
+      audio.play('lava_sizzle', { vol: 0.8, pitch: 1.3 });
+      fx.chips(ev.x, ev.y, '#8be04e', 10, 2.2);
+      fx.smoke(ev.x, ev.y, 4, 'rgba(120,200,80,0.5)');
+      once('venomHole', 'The red snake spits holes through the rings. Eggs can use them too!');
+      break;
+    case 'snakeHit': {
+      // hazards hurt snakes too
+      const H = { bolt: ['Zapped!', '#fff27a', 'glass_crack'], lava: ['Hot hot!', '#ff9a3a', 'lava_sizzle'], rock: ['Bonk!', '#ffd6a0', 'rock_hit'], ice: ['Frozen!', '#bfe9ff', 'glass_crack'] }[ev.kind];
+      if (!H) break;
+      audio.play(H[2], { vol: 0.6, pitch: 1.4 });
+      fx.sparkle(ev.x, ev.y, 8, H[1]);
+      popup(ev.x, ev.y + 0.5, H[0], { color: H[1], size: 18, life: 0.9 });
+      break;
+    }
     case 'chickFlee':
       // the bait got away: feathers, a cheep, no yolk and no lost star
       audio.play('egg_save', { pitch: 1.6, vol: 0.6 });
@@ -2090,6 +2125,8 @@ if (DEV) window.__egg = {
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
   frame(dt = 1 / 60) { update(dt); render(); },
   actSteps, // film strips replay planner moves through this
+  snakeArt: drawSnake, // palette strips
+  snAnim: W.snAnim,
   handle: () => handleEvents(),
   overlaps: () => G.overlaps,
   setSave(s) { loadSave(s); },

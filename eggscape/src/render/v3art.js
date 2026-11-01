@@ -527,7 +527,7 @@ export function drawLavaRock(ctx, cx, cy, r, t = 0, heat = 1) {
 /* --------------------------------------------------------------- MELT HOLE */
 
 // Molten patch on a ring where a lava rock melted it (a temporary hole). len = arc length in px, th = ring thickness px.
-export function drawMeltHole(ctx, cx, cy, len, th, t = 0, life = 1) {
+export function drawMeltHole(ctx, cx, cy, len, th, t = 0, life = 1, venom = false) { // venom: a spitter's green burn
   if (!(len > 0 && th > 0)) return;
   safe(ctx, () => {
     life = clamp(life == null ? 1 : life, 0, 1);
@@ -548,16 +548,22 @@ export function drawMeltHole(ctx, cx, cy, len, th, t = 0, life = 1) {
     ctx.fillStyle = `rgba(20,10,8,${0.75 * (0.4 + 0.6 * life)})`;
     ctx.fill();
     outline(1.06);
-    ctx.fillStyle = `rgba(80,20,8,${0.9 * (0.5 + 0.5 * life)})`;
+    ctx.fillStyle = venom ? `rgba(20,60,10,${0.9 * (0.5 + 0.5 * life)})` : `rgba(80,20,8,${0.9 * (0.5 + 0.5 * life)})`;
     ctx.fill();
     ctx.save();
     outline(1);
     ctx.clip();
     const g = ctx.createLinearGradient(0, -ht, 0, ht);
     const glow = life;
-    g.addColorStop(0, `rgba(255,${Math.round(90 + 80 * glow)},20,${0.5 + 0.5 * glow})`);
-    g.addColorStop(0.5, `rgba(255,${Math.round(180 + 60 * glow)},${Math.round(60 * glow)},${0.35 + 0.65 * glow})`);
-    g.addColorStop(1, `rgba(220,${Math.round(60 + 40 * glow)},10,${0.5 + 0.5 * glow})`);
+    if (venom) {
+      g.addColorStop(0, `rgba(${Math.round(60 + 60 * glow)},200,40,${0.5 + 0.5 * glow})`);
+      g.addColorStop(0.5, `rgba(${Math.round(150 + 60 * glow)},250,${Math.round(70 * glow)},${0.35 + 0.65 * glow})`);
+      g.addColorStop(1, `rgba(40,${Math.round(130 + 40 * glow)},20,${0.5 + 0.5 * glow})`);
+    } else {
+      g.addColorStop(0, `rgba(255,${Math.round(90 + 80 * glow)},20,${0.5 + 0.5 * glow})`);
+      g.addColorStop(0.5, `rgba(255,${Math.round(180 + 60 * glow)},${Math.round(60 * glow)},${0.35 + 0.65 * glow})`);
+      g.addColorStop(1, `rgba(220,${Math.round(60 + 40 * glow)},10,${0.5 + 0.5 * glow})`);
+    }
     ctx.fillStyle = g;
     ctx.fillRect(-hl * 1.3, -ht * 1.4, len * 1.3, ht * 3);
     // crust forming as it cools
@@ -566,7 +572,7 @@ export function drawMeltHole(ctx, cx, cy, len, th, t = 0, life = 1) {
       for (let i = 0; i < 5; i++) { const x = -hl + len * (i + 0.5) / 5; ctx.beginPath(); ctx.ellipse(x, (hash(i + 8) - 0.5) * th * 0.4, len / 11, ht * 0.5, hash(i) * 2, 0, TAU); ctx.fill(); }
     }
     // flowing bright streaks
-    ctx.strokeStyle = `rgba(255,240,150,${0.7 * glow})`;
+    ctx.strokeStyle = venom ? `rgba(230,255,160,${0.7 * glow})` : `rgba(255,240,150,${0.7 * glow})`;
     ctx.lineWidth = Math.max(1, th * 0.12);
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -583,7 +589,7 @@ export function drawMeltHole(ctx, cx, cy, len, th, t = 0, life = 1) {
       ctx.globalAlpha = Math.sin(k * Math.PI) * life;
       ctx.beginPath();
       ctx.arc(x, ht * 0.2 - k * ht * 1.8, Math.max(0.8, th * 0.1) * (0.5 + k), 0, TAU);
-      ctx.fillStyle = k > 0.8 ? '#fff2a0' : '#ffb03a';
+      ctx.fillStyle = venom ? (k > 0.8 ? '#efffa0' : '#8be04e') : k > 0.8 ? '#fff2a0' : '#ffb03a';
       ctx.fill();
     }
     ctx.globalAlpha = 1;
