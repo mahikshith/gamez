@@ -2,11 +2,29 @@
 // Runs inside the real dev build (dist/dev/index.html): starts a Volcano level through window.__egg, renders a
 // real game frame, copies it, draws the salamander on top at true in-game scale in a ring channel, and
 // returns cropped film strips. Driven by tools/salamander-qa/shoot.cjs.
-import { drawSalamander, salamanderAnim } from '../../src/render/salamander.js';
+import { drawCrawler, crawlerAnim, SPECIES, drawCrawlerThorn } from '../../src/render/crawlers.js';
+import { drawOrb } from '../../src/render/powers.js';
 
 const TAU = Math.PI * 2;
 const E = () => window.__egg;
-const SVL = 1.8; // snout to hips, metres (an egg is 0.56 m tall)
+let SPEC = 'salamander', SVL = 1.8; // species and its snout-to-hips length in metres (an egg is 0.56 m tall)
+const drawSalamander = (ctx, x, y, s, t, o) => drawCrawler(ctx, x, y, s, t, { debug: true, ...o }, SPEC);
+const salamanderAnim = crawlerAnim;
+const LEVEL = { salamander: 20, gecko: 10, thornback: 15, chameleon: 25 }; // level index each species lives in
+// walking radius (m): the salamander and most crawlers use channel 1-2; the frost gecko walks on top of ring 2
+const ringsR = () => E().sim.rings.map((r) => r.r);
+const RW = () => { const r = ringsR(); return SPEC === 'gecko' ? r[2] : (r[1] + r[2]) / 2; };
+const TH0 = { salamander: 2.2, gecko: 2.2, thornback: 2.2, chameleon: 2.2 };
+// the gecko walks on the ring itself: find a start angle where ring i has no gap from the tail (back m behind)
+// to fwd m ahead, nearest to the preferred angle (px space, y down)
+function solidStart(i, back, fwd, pref = 2.2) {
+  const r = E().sim.rings[i], R = r.r, ang = r.body.getAngle();
+  const gaps = r.gaps.map((g) => ({ th: -(g.a + ang), h: g.len / (2 * R) + 0.06 }));
+  const ok = (th) => { for (let a = th - back / R; a <= th + fwd / R; a += 0.01) for (const g of gaps) { const d = Math.atan2(Math.sin(a - g.th), Math.cos(a - g.th)); if (Math.abs(d) < g.h) return false; } return true; };
+  for (let k = 0; k < 320; k++) { const th = pref + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.02; if (ok(th)) return th; }
+  return pref;
+}
+const th0For = () => (SPEC === 'gecko' ? solidStart(2, 1.25 * 1.78 * SVL, 2.2, 2.75) : TH0[SPEC]);
 
 let shot = null, sctx = null;
 function view() {
@@ -14,7 +32,7 @@ function view() {
   const dpr = cv.width / cv.clientWidth;
   return { k: G.rk, dpr, ox: P.x + P.w / 2 - G.cam.x * G.rk, oy: P.y + P.h / 2 + G.cam.y * G.rk, cv };
 }
-function setup(li = 20) {
+function setup(li = LEVEL[SPEC]) {
   const g = E();
   g.start(li);
   for (let i = 0; i < 30; i++) g.frame(1 / 60);
@@ -146,9 +164,9 @@ const speed = 0.55; // m/s walking
 S.walk = () => {
   setup();
   let { V } = frame();
-  const k = V.k, R = 2.55 * k, s = SVL * k, th0 = 2.2;
+  const k = V.k, R = RW() * k, s = SVL * k, th0 = th0For();
   const tr = channelTrail(R, th0);
-  const stride = 0.4 * s;
+  const stride = SPECIES[SPEC].stride / 100 * s;
   const frames = [], feetLog = [];
   let crop = null;
   for (let i = 0; i < N; i++) {
@@ -207,7 +225,7 @@ S.turn = () => {
 function still(pose, n, fn, label, extraPts, sopt = {}) {
   setup();
   let { V } = frame();
-  const k = V.k, R = 2.55 * k, s = SVL * k, th0 = 2.2;
+  const k = V.k, R = RW() * k, s = SVL * k, th0 = sopt.th0 || th0For();
   const tr = channelTrail(R, th0);
   const g = 0.4 * s * 0.25;
   const frames = [];
@@ -220,9 +238,9 @@ function still(pose, n, fn, label, extraPts, sopt = {}) {
     if (o.after) o.after(f.ctx);
     if (!crop) {
       const pts = [];
-      if (sopt.head) { const c = trail(0.12 * k); pts.push({ x: c.x - 0.45 * k, y: c.y - 0.45 * k }, { x: c.x + 0.45 * k, y: c.y + 0.45 * k }); }
+      if (sopt.head) { const c = trail(SPECIES[SPEC].neck / 100 * s), h = 0.5 * s + 0.12 * k; pts.push({ x: c.x - h, y: c.y - h }, { x: c.x + h, y: c.y + h }); }
       else for (let d = -0.6 * k; d < s * 2; d += 5) pts.push(trail(d));
-      crop = cropFor(f.V, pts.concat(extraPts ? extraPts(trail, k) : []), (sopt.head ? 0.42 : 0.6) * k);
+      crop = cropFor(f.V, pts.concat(extraPts ? extraPts(trail, k) : []), (sopt.head ? 0.02 : 0.6) * k);
     }
     frames.push({ img: grab(), label: label(i, o) });
   }
@@ -304,7 +322,8 @@ S.head = () => still('idle', 8, (i) => {
   return poses[i];
 }, (i) => ['look fwd', 'look side', 'blink', 'hiss', 'fire', 'dazed', 'cool', 'inhale'][i], null, { head: true, scale: 2, cols: 4 });
 
-window.__salqa = { S, frame, setup };
+const X = {}; // per-species scenarios (gecko, thornback, chameleon), filled in at the end
+window.__salqa = { S, frame, setup, run(sp, n) { SPEC = sp; SVL = SPECIES[sp].svl; return (sp === 'salamander' ? S : X[sp])[n](); } };
 
 // cost per draw (ms), walking with fire, on the copied game frame
 S.perf = () => {
@@ -322,17 +341,28 @@ S.perf = () => {
 S.headbig = () => still('idle', 4, (i) => [{ t: 2, look: { x: 1, y: 0 } }, { t: 3, pose: 'hiss', p: 0.5 }, { t: 3.4, pose: 'breath', p: 0.3, aim: 0 }, { t: 3.4, pose: 'walk' }][i], (i) => ['idle', 'hiss', 'rear', 'walk'][i], null, { head: true, scale: 4, cols: 4 });
 
 // art-iteration view: large, on a plain dark ground, several poses (not part of the sheet)
+const STUDIO = {
+  salamander: [{ pose: 'idle', t: 2 }, { pose: 'hiss', p: 0.5, t: 3 }, { pose: 'breath', p: 0.3, t: 3.4 }, { pose: 'dazed', t: 3 }, { pose: 'idle', t: 2, heading: Math.PI / 2 }],
+  gecko: [{ pose: 'idle', t: 2 }, { pose: 'frost', t: 3 }, { pose: 'melt', p: 0.3, t: 3 }, { pose: 'melt', p: 0.6, t: 3 }, { pose: 'idle', t: 1.5, heading: Math.PI / 2 }],
+  thornback: [{ pose: 'idle', t: 2 }, { pose: 'lay', p: 0.5, t: 3 }, { pose: 'flipped', p: 0.1, t: 3 }, { pose: 'flipped', p: 0.5, t: 3 }, { pose: 'idle', t: 2, heading: Math.PI / 2 }],
+  chameleon: [{ pose: 'idle', t: 2 }, { pose: 'snatch', p: 0.25, t: 3, target: 1 }, { pose: 'sick', t: 3 }, { pose: 'walk', t: 3, camo: 0.85, camoColor: [70, 80, 110] }, { pose: 'idle', t: 2, heading: Math.PI / 2 }],
+};
 S.studio = () => {
   const c = document.createElement('canvas');
-  c.width = 1800; c.height = 700;
+  const list = STUDIO[SPEC], cw = 400;
+  c.width = cw * list.length; c.height = 760;
   const x = c.getContext('2d');
   x.fillStyle = '#231c1e';
   x.fillRect(0, 0, c.width, c.height);
-  const poses = [{ pose: 'idle', t: 2 }, { pose: 'hiss', p: 0.5, t: 3 }, { pose: 'breath', p: 0.3, t: 3.4 }, { pose: 'dazed', t: 3 }];
-  poses.forEach((o, i) => {
+  x.fillStyle = 'rgb(70,80,110)';
+  x.fillRect(cw * 3, 0, cw, c.height);
+  list.forEach((o, i) => {
     x.save();
-    x.beginPath(); x.rect(i * 450, 0, 450, 700); x.clip();
-    drawSalamander(x, i * 450 + 225, 90, 480, o.t, { heading: -Math.PI / 2, gait: 30, glow: 0.8, ...o });
+    x.beginPath(); x.rect(i * cw, 0, cw, c.height); x.clip();
+    const down = o.heading > 0, X = i * cw + cw / 2, Y = down ? 670 : 90;
+    const oo = { heading: -Math.PI / 2, gait: 30, glow: 0.8, ...o };
+    if (o.target) oo.target = { x: X + 150, y: Y - 60 };
+    drawCrawler(x, X, Y, 420, o.t, { debug: true, ...oo }, SPEC);
     x.restore();
   });
   return { png: c.toDataURL('image/png') };
@@ -373,4 +403,339 @@ S.blend = () => {
     }
   }
   return { png: strip(frames, crop, { cols: 6 }), info: { maxPlantedSlidePx: maxSlide, maxFootStepPerFramePx: maxJump, swingStepPx: 0.4 * s * 2 / 60 * 3 } };
+};
+
+
+// ---------------------------------------------------------------- the other crawlers
+// seq: n frames; fn(i, ctx, env) draws any underlay and returns draw opts (+ g = gait/arc position, t, after);
+// env = { k, R, s, tr, th0 }. crop(env) returns the px points the strip must show.
+function seq(n, fn, label, crop, sopt = {}) {
+  setup();
+  const V = frame().V, k = V.k;
+  const env = { k, R: (sopt.R || RW()) * k, s: SVL * k, th0: sopt.th0 || th0For() };
+  env.tr = channelTrail(env.R, env.th0);
+  env.stride = SPECIES[SPEC].stride / 100 * env.s;
+  const frames = [];
+  let box = null;
+  for (let i = 0; i < n; i++) {
+    const f = frame();
+    const o = fn(i, f.ctx, env);
+    const g = o.g !== undefined ? o.g : env.stride * 0.25;
+    const trail = env.tr(g), hd = trail(0);
+    if (!o.skip) drawSalamander(f.ctx, hd.x, hd.y, env.s, o.t, { trail, gait: g, glow: 0.8, ...o });
+    if (o.after) o.after(f.ctx, trail);
+    if (!box) box = cropFor(f.V, crop(env), (sopt.pad || 0.5) * k);
+    frames.push({ img: grab(), label: label(i, o) });
+  }
+  return { png: strip(frames, box, { cols: sopt.cols || 5, scale: sopt.scale || 1 }), info: { k, R: env.R / k, sPx: env.s } };
+}
+const bodyPts = (env, g, back = 2.1, fwd = 0.4) => { const out = [], tr = env.tr(g); for (let d = -fwd * env.k; d < env.s * back; d += 5) out.push(tr(d)); return out; };
+// average colour of the game frame under a set of px points (what a chameleon would match)
+function colourUnder(V, pts) {
+  const c = [0, 0, 0];
+  let n = 0;
+  for (const p of pts) {
+    const d = sctx.getImageData(Math.round((p.x + V.ox) * V.dpr), Math.round((p.y + V.oy) * V.dpr), 1, 1).data;
+    c[0] += d[0]; c[1] += d[1]; c[2] += d[2]; n++;
+  }
+  return c.map((v) => v / Math.max(1, n));
+}
+function stoneEgg(ctx, x, y, k, rot, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  const rx = 0.28 * k, ry = 0.21 * k;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, TAU);
+  ctx.fillStyle = '#8f8a84';
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, 0.03 * k);
+  ctx.strokeStyle = '#2b2622';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(-rx * 0.3, -ry * 0.35, rx * 0.4, ry * 0.25, -0.3, 0, TAU);
+  ctx.fillStyle = 'rgba(230,224,214,0.7)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(rx * 0.2, -ry * 0.6); ctx.lineTo(rx * 0.35, -ry * 0.1); ctx.lineTo(rx * 0.15, ry * 0.3);
+  ctx.strokeStyle = '#4d443d';
+  ctx.lineWidth = Math.max(0.8, 0.015 * k);
+  ctx.stroke();
+  ctx.restore();
+  void t;
+}
+function speedLines(ctx, x, y, a, k, n = 3) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = Math.max(1, 0.03 * k);
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const o = (i - (n - 1) / 2) * 0.11 * k, bx = x - Math.cos(a) * 0.32 * k - Math.sin(a) * o, by = y - Math.sin(a) * 0.32 * k + Math.cos(a) * o;
+    ctx.moveTo(bx, by); ctx.lineTo(bx - Math.cos(a) * 0.3 * k, by - Math.sin(a) * 0.3 * k);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+function impact(ctx, x, y, k, sz = 1) {
+  ctx.save();
+  ctx.beginPath();
+  for (let j = 0; j < 16; j++) { const r = (j % 2 ? 0.1 : 0.24) * k * sz, a = (j * Math.PI) / 8; const X = x + Math.cos(a) * r, Y = y + Math.sin(a) * r; if (j) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); }
+  ctx.closePath();
+  ctx.fillStyle = '#fff3a0';
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, 0.025 * k);
+  ctx.strokeStyle = '#6a3a08';
+  ctx.stroke();
+  ctx.restore();
+}
+function flameBurst(ctx, x, y, k, f, t) { // a fire puff (fire egg / fire orb) hitting the gecko
+  if (f <= 0) return;
+  ctx.save();
+  for (const [col, sc] of [['#5a1206', 1.15], ['#ff7a1e', 0.92], ['#ffe27a', 0.5]]) {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    for (let i = 0; i < 9; i++) {
+      const a = i * 0.7 + t * 3, d = 0.18 * k * f * (0.6 + 0.4 * Math.sin(i * 2.3)), r = 0.13 * k * f * sc * (1 + 0.2 * Math.sin(t * 20 + i));
+      const X = x + Math.cos(a) * d, Y = y + Math.sin(a) * d - 0.08 * k * f;
+      ctx.moveTo(X + r, Y); ctx.arc(X, Y, r, 0, TAU);
+    }
+    ctx.fill();
+  }
+  ctx.restore();
+}
+// frozen ring section (frost gecko trail): an icy band on top of the ring with glints
+function iceArc(ctx, R, th0, th1, k, t, a = 1) {
+  if (Math.abs(th1 - th0) < 1e-3) return;
+  const lo = Math.min(th0, th1), hi = Math.max(th0, th1);
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = `rgba(150,215,255,${0.55 * a})`;
+  ctx.lineWidth = 0.34 * k;
+  ctx.beginPath(); ctx.arc(0, 0, R, lo, hi); ctx.stroke();
+  ctx.strokeStyle = `rgba(225,246,255,${0.95 * a})`;
+  ctx.lineWidth = 0.2 * k;
+  ctx.beginPath(); ctx.arc(0, 0, R, lo, hi); ctx.stroke();
+  ctx.strokeStyle = `rgba(255,255,255,${a})`;
+  ctx.lineWidth = 0.04 * k;
+  ctx.beginPath(); ctx.arc(0, 0, R - 0.05 * k, lo, hi); ctx.stroke();
+  ctx.beginPath(); // glints
+  for (let th = lo + 0.05; th < hi; th += 0.13) {
+    const tw = Math.sin(t * 4 + th * 37);
+    if (tw < 0.3) continue;
+    const X = Math.cos(th) * R, Y = Math.sin(th) * R, r = 0.07 * k * tw;
+    ctx.moveTo(X - r, Y); ctx.lineTo(X + r, Y); ctx.moveTo(X, Y - r); ctx.lineTo(X, Y + r);
+  }
+  ctx.lineWidth = Math.max(1, 0.02 * k);
+  ctx.stroke();
+  ctx.restore();
+}
+
+const headCrop = (env, g) => { const c = env.tr(g)(SPECIES[SPEC].neck / 100 * env.s), h = 0.5 * env.s + 0.12 * env.k; return [{ x: c.x - h, y: c.y - h }, { x: c.x + h, y: c.y + h }]; };
+const thAt = (env, g, d = 0) => { const q = env.tr(g)(d); return Math.atan2(q.y, q.x); };
+
+function commonScenarios(sp, poses) {
+  return {
+    studio: S.studio,
+    walk: () => { const r = S.walk(); return r; },
+    idle: () => seq(10, (i) => {
+      const t = poses.idleT + i * 0.14;
+      return { t, pose: 'idle', look: { x: Math.cos(t * 0.9), y: Math.sin(t * 1.3) } };
+    }, (i) => `idle ${i + 1}/10`, (env) => bodyPts(env, env.stride * 0.25, 2.0, 0.3)),
+    head: () => seq(8, (i, ctx, env) => ({ ...poses.head[i], g: env.stride * 0.25 }), (i) => poses.headLabels[i], (env) => headCrop(env, env.stride * 0.25), { scale: 2, cols: 4, pad: 0.02 }),
+    level: () => {
+      setup();
+      const f = frame(), k = f.V.k, s = SVL * k, R = RW() * k;
+      const g = 0.9 * k, tr = channelTrail(R, (SPEC === 'gecko' ? solidStart(2, 1.25 * 1.78 * SVL + 2.2, 0.5, poses.levelTh) : poses.levelTh) - g / R, 1);
+      const trail = tr(g), hd = trail(0);
+      if (poses.levelUnder) poses.levelUnder(f.ctx, k, R, tr, g);
+      drawSalamander(f.ctx, hd.x, hd.y, s, 3, { trail, gait: g, pose: 'walk', glow: 0.8, look: { x: 1, y: 0.4 }, ...(poses.levelOpts ? poses.levelOpts(f, trail) : {}) });
+      const c = grab();
+      return { png: c.toDataURL('image/png'), info: { k, eggPx: 0.56 * k, sPx: s, rings: ringsR() } };
+    },
+    perf: () => {
+      setup();
+      const f = frame(), k = f.V.k, s = SVL * k, tr = channelTrail(RW() * k, 2.2);
+      const run = (pose, extra) => {
+        const t0 = performance.now();
+        for (let i = 0; i < 600; i++) { const g = i * 0.6, trail = tr(g), hd = trail(0); drawSalamander(f.ctx, hd.x, hd.y, s, i / 60, { trail, gait: g, pose, ...extra }); }
+        return (performance.now() - t0) / 600;
+      };
+      const info = {};
+      for (const [name, pose, extra] of poses.perf) info[name] = +run(pose, extra || {}).toFixed(2);
+      return { png: shot.toDataURL('image/png'), info };
+    },
+  };
+}
+
+/* ---- frost gecko: walks on top of the ring; its trail freezes the ring (eggs slide); fire melts it for a while */
+X.gecko = commonScenarios('gecko', {
+  idleT: 3.0,
+  head: [{ t: 2, pose: 'idle', look: { x: 1, y: 0 } }, { t: 2.2, pose: 'idle', look: { x: 0, y: 1 } }, { t: 2, pose: 'idle', blink: 1 },
+    { t: 3.55, pose: 'idle' }, { t: 3, pose: 'frost' }, { t: 3, pose: 'melt', p: 0.3 }, { t: 3, pose: 'melt', p: 0.55 }, { t: 3, pose: 'dazed' }],
+  headLabels: ['look fwd', 'look side', 'blink', 'eye lick', 'frost', 'melting', 'melted', 'dazed'],
+  levelTh: Math.PI / 2 - 0.5,
+  levelUnder: (ctx, k, R, tr, g) => iceArc(ctx, R, Math.atan2(tr(g)(SVL * k * 1.2).y, tr(g)(SVL * k * 1.2).x), Math.atan2(tr(g)(SVL * k * 1.2 + 2.2 * k).y, tr(g)(SVL * k * 1.2 + 2.2 * k).x), k, 3),
+  perf: [['walkMs', 'walk'], ['meltMs', 'melt', { p: 0.4 }], ['frostMs', 'frost']],
+});
+X.gecko.trait = () => seq(10, (i, ctx, env) => {
+  // the gecko walks 1.6 m along the ring; behind it the ring ices over; an egg below hits the ice and shoots off
+  const g = env.stride * 0.3 + i * (1.6 * env.k / 9), t = 2 + i * 0.25;
+  const th1 = thAt(env, g, env.s * 1.1), th0 = thAt(env, -1.1 * env.k, env.s * 1.1);
+  iceArc(ctx, env.R, th0, th1, env.k, t);
+  // egg in the channel below the ring, sliding fast once the ice under it is laid
+  const Re = env.R - 0.3 * env.k, thE = thAt(env, -0.8 * env.k, env.s * 1.1) + (i > 4 ? (i - 4) * 0.075 : 0);
+  const ex = Re * Math.cos(thE), ey = Re * Math.sin(thE), a = thE + Math.PI / 2;
+  return { t, g, pose: 'frost', after: (c) => {
+    if (i > 4) speedLines(c, ex, ey, a, env.k);
+    stoneEggLike(c, ex, ey, env.k, a);
+  } };
+}, (i) => (i < 5 ? `freezing the ring ${i + 1}/10` : `egg slides ${i + 1}/10`), (env) => {
+  const pts = bodyPts(env, env.stride * 0.3 + 1.6 * env.k, 2.0, 0.3).concat(bodyPts(env, env.stride * 0.3, 2.0, 0.3));
+  const Re = env.R - 0.3 * env.k, th = thAt(env, -0.8 * env.k, env.s * 1.1);
+  pts.push({ x: Re * Math.cos(th), y: Re * Math.sin(th) });
+  return pts;
+}, { cols: 5, pad: 0.55 });
+function stoneEggLike(ctx, x, y, k, rot) { // a plain white game egg (for scale and the slide)
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 0.28 * k, 0.21 * k, 0, 0, TAU);
+  ctx.fillStyle = '#fff8ec';
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, 0.03 * k);
+  ctx.strokeStyle = '#3a2a1a';
+  ctx.stroke();
+  ctx.restore();
+}
+X.gecko.weak = () => seq(12, (i, ctx, env) => {
+  // a fire puff lands on it: it melts into a puddle (eyes bobbing), then pulls itself back together
+  const p = i < 2 ? 0 : (i - 2) / 9, t = 3 + i * 0.3;
+  const g = env.stride * 0.25, hd = env.tr(g)(env.s * 0.4);
+  return { t, g, pose: 'melt', p, after: (c) => { if (i >= 1 && i <= 3) flameBurst(c, hd.x, hd.y, env.k, i === 1 ? 0.7 : i === 2 ? 1 : 0.5, t); } };
+}, (i) => (i < 1 ? 'calm' : i < 2 ? 'fire hits' : `melt p=${((i - 2) / 9).toFixed(2)}`), (env) => bodyPts(env, env.stride * 0.25, 1.9, 0.35), { cols: 6 });
+
+/* ---- thorn-back: drops thorns behind it; a stone egg / dash chick knocks it on its back and its thorns crumble */
+X.thornback = commonScenarios('thornback', {
+  idleT: 2.2,
+  head: [{ t: 2, pose: 'idle', look: { x: 1, y: 0 } }, { t: 2.2, pose: 'idle', look: { x: 0, y: 1 } }, { t: 2, pose: 'idle', blink: 1 },
+    { t: 3, pose: 'lay', p: 0.3 }, { t: 3, pose: 'lay', p: 0.6 }, { t: 3, pose: 'flipped', p: 0.1 }, { t: 3, pose: 'flipped', p: 0.5 }, { t: 3.3, pose: 'flipped', p: 0.6 }],
+  headLabels: ['look fwd', 'look side', 'blink', 'hunch', 'thorn pops', 'rolling', 'on its back', 'flailing'],
+  levelTh: Math.PI / 2 - 0.4,
+  perf: [['walkMs', 'walk'], ['layMs', 'lay', { p: 0.5 }], ['flippedMs', 'flipped', { p: 0.5 }]],
+});
+let dropped = []; // thorns on the floor (px space), from the lay strip
+X.thornback.trait = () => {
+  dropped = [];
+  return seq(10, (i, ctx, env) => {
+    const st = env.stride, t = 2 + i * 0.2;
+    // walk 2 frames, stop and lay (5 frames), walk on (3 frames); two older thorns lie further back
+    const g = i < 2 ? st * (0.1 + i * 0.4) : i < 7 ? st * 0.5 : st * (0.5 + (i - 6) * 0.45);
+    if (i === 0) { const tr = env.tr(0); for (const d of [0.3, 0.95]) { const q = tr(env.s * 1.55 + d * env.k); dropped.push({ x: q.x, y: q.y, rot: d * 4 }); } }
+    for (const d of dropped) drawCrawlerThorn(ctx, d.x, d.y, 0.12 * env.k, d.rot);
+    const out = {};
+    const o = i >= 2 && i < 7 ? { pose: 'lay', p: (i - 2) / 4 } : { pose: 'walk' };
+    return { t, g, ...o, out, after: () => { if (i === 6 && out.thorn) dropped.push({ x: out.thorn.x, y: out.thorn.y, rot: 0.4 }); else if (i === 6) { const q = env.tr(g)(env.s * 1.4); dropped.push({ x: q.x, y: q.y, rot: 0.4 }); } } };
+  }, (i) => (i < 2 ? `walk ${i + 1}` : i < 7 ? `lay p=${((i - 2) / 4).toFixed(2)}` : `walk on ${i - 6}`), (env) => bodyPts(env, env.stride * 2, 1.6, 0.3).concat([env.tr(0)(env.s * 1.55 + 1.1 * env.k)]), { cols: 5 });
+};
+X.thornback.weak = () => seq(12, (i, ctx, env) => {
+  // a stone egg rolls down the channel into its face: thud, it flips on its back, flails, rights itself;
+  // the thorns it dropped crumble away
+  const t = 3 + i * 0.22, g = env.stride * 0.25, tr = env.tr(g);
+  const crumble = i < 3 ? 0 : Math.min(1, (i - 3) / 5);
+  for (const d of [0.3, 0.9]) { const q = tr(env.s * 1.55 + d * env.k); drawCrawlerThorn(ctx, q.x, q.y, 0.12 * env.k, d * 4, crumble); }
+  const eggD = i < 2 ? 1.0 - i * 0.35 : 0.42 + Math.min(0.25, (i - 2) * 0.05); // ahead of the snout, then bounces back
+  const e = tr(-eggD * env.k), e2 = tr(-eggD * env.k - 2), rot = Math.atan2(e.y - e2.y, e.x - e2.x);
+  const p = i < 2 ? 0 : (i - 2) / 9;
+  return { t, g, pose: i < 2 ? 'idle' : 'flipped', p, after: (c) => {
+    stoneEgg(c, e.x, e.y, env.k, i * 0.9, t);
+    if (i < 2) speedLines(c, e.x, e.y, rot + Math.PI, env.k);
+    if (i === 2) { const h = tr(-0.15 * env.k); impact(c, (e.x + h.x) / 2, (e.y + h.y) / 2, env.k); }
+  } };
+}, (i) => (i < 2 ? `stone egg ${i + 1}` : `flipped p=${((i - 2) / 9).toFixed(2)}`),
+(env) => bodyPts(env, env.stride * 0.25, 1.55, 1.3).concat([env.tr(env.stride * 0.25)(env.s * 1.55 + 1.05 * env.k)]), { cols: 6 });
+
+/* ---- chameleon: matches the ring until it moves; tongue steals an orb from ~2 m; a fox-curse orb makes it
+   flash bright, run off and drop everything it stole */
+let camoC = null;
+const camoFor = (env, g) => { const V = view(); return colourUnder(V, bodyPts(env, g, 1.5, 0).filter((_, j) => j % 4 === 0)); };
+X.chameleon = commonScenarios('chameleon', {
+  idleT: 2.2,
+  head: [{ t: 2, pose: 'idle', look: { x: 1, y: 0 } }, { t: 2.2, pose: 'idle' }, { t: 2.4, pose: 'idle' },
+    { t: 3, pose: 'snatch', p: 0.15 }, { t: 3, pose: 'snatch', p: 0.85 }, { t: 3, pose: 'sick' }, { t: 3.2, pose: 'sick' }, { t: 3, pose: 'dazed' }],
+  headLabels: ['look fwd', 'eyes roam', 'eyes roam', 'tongue out', 'gulp', 'cursed', 'cursed', 'dazed'],
+  levelTh: Math.PI / 2 - 0.4,
+  levelOpts: () => ({}),
+  perf: [['walkMs', 'walk'], ['snatchMs', 'snatch', { p: 0.2 }], ['sickMs', 'sick'], ['camoMs', 'idle', { camo: 0.9, camoColor: [80, 90, 120] }]],
+});
+X.chameleon.walk = () => seq(10, (i, ctx, env) => {
+  // sitting still it is nearly invisible; as soon as it walks the colour drains out of the disguise
+  if (!camoC) camoC = camoFor(env, env.stride * 0.25);
+  const mv = Math.max(0, i - 3), g = env.stride * (0.25 + mv * 0.18), t = 2 + i * 0.2;
+  const camo = i < 4 ? 0.92 : Math.max(0.15, 0.92 - mv * 0.18);
+  return { t, g, pose: i < 4 ? 'idle' : 'walk', camo, camoColor: camoC };
+}, (i) => (i < 4 ? `hiding ${i + 1}` : `walks, camo fades ${i - 3}`), (env) => bodyPts(env, env.stride * 1.3, 1.9, 0.3).concat(bodyPts(env, 0, 1.9, 0)), { cols: 5 });
+X.chameleon.trait = () => seq(10, (i, ctx, env) => {
+  // an orb 2 m ahead in the channel: the tongue shoots out, sticks, reels it in, gulp
+  if (!camoC) camoC = camoFor(env, env.stride * 0.25);
+  const g = env.stride * 0.25, t = 3 + i * 0.12, p = i / 9;
+  const orb = env.tr(g + 2 * env.k)(0), out = {};
+  return { t, g, pose: 'snatch', p, target: orb, camo: 0.5 * (1 - Math.min(1, i / 2)), camoColor: camoC, out, after: (c) => {
+    const tk = out.tongue;
+    const held = p > 0.22 && tk; // stuck to the tongue from the moment it lands
+    if (!held && p < 0.3) drawOrb(c, 'water', orb.x, orb.y, 0.2 * env.k, t, true);
+    else if (held && p < 0.7) drawOrb(c, 'water', tk.x, tk.y, 0.2 * env.k * (0.7 + 0.3 * tk.k), t, true);
+  } };
+}, (i) => `snatch p=${(i / 9).toFixed(2)}`, (env) => bodyPts(env, env.stride * 0.25, 1.3, 0).concat([env.tr(env.stride * 0.25 + 2.2 * env.k)(0)]), { cols: 5 });
+X.chameleon.weak = () => seq(12, (i, ctx, env) => {
+  // it grabs a fox-curse orb by mistake: flashes every colour, bolts, and drops the orbs it had stolen
+  const t = 3 + i * 0.15;
+  if (i < 4) {
+    const g = env.stride * 0.25, orb = env.tr(g + 1.6 * env.k)(0), out = {}, p = [0.12, 0.3, 0.55, 0.85][i];
+    return { t, g, pose: 'snatch', p, target: orb, out, after: (c) => {
+      if (p < 0.25) drawOrb(c, 'foxcurse', orb.x, orb.y, 0.2 * env.k, t, true);
+      else if (out.tongue && p < 0.7) drawOrb(c, 'foxcurse', out.tongue.x, out.tongue.y, 0.18 * env.k, t, true);
+    } };
+  }
+  const step = 0.36 * env.k, g0 = env.stride * 0.25, g = g0 + (i - 3) * step;
+  // each stolen orb pops out at its hips the moment it is dropped and stays there
+  const drops = [{ id: 'water', at: g0 + step, from: 4 }, { id: 'feather', at: g0 + 3 * step, from: 6 }];
+  return { t, g, pose: 'sick', after: () => {
+    for (const d of drops) if (i >= d.from) {
+      const q = env.tr(d.at)(env.s * 0.8), pop = Math.min(1, (i - d.from + 1) / 2);
+      drawOrb(ctx, d.id, q.x, q.y - 0.15 * env.k * Math.sin(Math.PI * Math.min(1, (i - d.from) / 2)), 0.2 * env.k * (0.5 + 0.5 * pop), t, true);
+    }
+  } };
+}, (i) => (i < 4 ? `grabs fox curse ${i + 1}` : `cursed, drops loot ${i - 3}`), (env) => bodyPts(env, env.stride * 0.25 + 8 * 0.36 * env.k, 0.8, 0.2).concat(bodyPts(env, env.stride * 0.25 + 1.6 * env.k, 2.2, 0)), { cols: 6 });
+
+// the family at true relative size (snout-to-hips from SPECIES[].svl) next to an egg, 3x in-game zoom
+S.lineup = () => {
+  setup(20);
+  const k = view().k * 3, c = document.createElement('canvas');
+  const list = ['salamander', 'gecko', 'thornback', 'chameleon'], cw = 330;
+  c.width = cw * list.length + 160; c.height = 560;
+  const x = c.getContext('2d');
+  x.fillStyle = '#231c1e';
+  x.fillRect(0, 0, c.width, c.height);
+  list.forEach((sp, i) => {
+    x.save();
+    x.beginPath(); x.rect(i * cw, 0, cw, c.height); x.clip();
+    drawCrawler(x, i * cw + cw / 2, 60, SPECIES[sp].svl * k, 2, { heading: -Math.PI / 2, gait: 20, pose: 'idle', glow: 0.8, look: { x: 1, y: 0 }, debug: true, id: 50 + i }, sp);
+    x.fillStyle = '#ddd';
+    x.font = '22px sans-serif';
+    x.fillText(`${sp} ${SPECIES[sp].svl} m`, i * cw + 12, c.height - 14);
+    x.restore();
+  });
+  const ex = cw * list.length + 80, ey = 140;
+  x.beginPath();
+  x.ellipse(ex, ey, 0.21 * k, 0.28 * k, 0, 0, TAU);
+  x.fillStyle = '#fff8ec';
+  x.fill();
+  x.lineWidth = 3;
+  x.strokeStyle = '#3a2a1a';
+  x.stroke();
+  x.fillStyle = '#ddd';
+  x.font = '22px sans-serif';
+  x.fillText('egg 0.56 m', ex - 60, ey + 0.28 * k + 30);
+  return { png: c.toDataURL('image/png') };
 };
