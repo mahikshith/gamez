@@ -22,7 +22,11 @@
 // v3 ring fields: oneway (1 | -1: the ring only turns that way), curtain (the first n gaps get a thorn curtain only
 //   fire burns), grate (n quail-only grated openings on free floor), barriers (n wooden walls on this channel floor:
 //   they block eggs and snakes; fire burns them, venom melts them).
-// v3 level fields: snake {delay, speed, a, len, size} or an array of them, eagle {delay, every}, fox {every,
+// v3 level fields: snake {delay, speed, a, len, size, kind, skin} or an array of them (kind: 'classic' | 'fast' (emerald,
+//   speed x1.3, body x0.8) | 'constrictor' (amber, armoured: half the back-off from a protected egg, speed x0.8) |
+//   'spitter' (crimson, venom melts a barrier in half the time); a trait is on only when the spec sets `kind`.
+//   skin: 'violet' | 'emerald' | 'amber' | 'crimson', cosmetic; default the kind's, else by index so two snakes in a
+//   level never share one), eagle {delay, every}, fox {every,
 //   throws: [orb types], delay}, lava {every, delay} (lava rocks; lava: true is only a lava floor), icicles
 //   {every, delay}, eggKinds ['ostrich' | 'quail' | 'duck' | null, ...] (per starting egg), portal pull (m),
 //   world 1..7 (environment), boss (bossId for the intro portrait: fox snake blizzard golem salamander eagle foxking).

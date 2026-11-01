@@ -1245,11 +1245,20 @@ export function drawChick(ctx, cx, cy, s, t = 0, flap = 0, peck = 0) {
 }
 
 /* ---------------------------------------------------------------- SNAKE */
-// Modelled on the Breaker serpent: a lit, tapered purple body with a peach belly and rose diamonds, under a rendered
-// head sprite (13 expressions, faces left or right). A vector head stands in while the sheet loads.
+// Modelled on the Breaker serpent and the Eggscape snake sheet: a tapered, cel-shaded body with a warm dark-brown
+// outline, a peach belly and a back pattern per skin, under a rendered head sprite (13 expressions, faces left or
+// right; tinted per skin). A vector head stands in while the sheet loads.
 
 const SN_CELL = 176;
 const SN_EXPR = { idle: 0, blink: 1, taste: 2, hunt: 3, chew0: 4, chew1: 5, hiss: 6, ouch: 7, dizzy: 8, shock: 9, snarl: 10, strike: 11, grin: 12 };
+// Skins (cosmetic; sim/SNAKE_KIND gives traits). hue/sat/lum recolour the head sprite's scales. Cel shading: base, one
+// shadow, one highlight; pattern colours sit between the body and the belly so each skin reads at a glance.
+export const SNAKE_SKIN = {
+  violet: { hue: 282, sat: 1.1, lum: 0.95, line: '#3e1723', body: '#9446bd', shade: '#6c2b8f', light: '#b67ad6', belly: '#fbc288', plate: '#d98a5e', mark: '#e64fb2', mark2: '#ff9ad6', pat: 'diamond' },
+  emerald: { hue: 145, sat: 0.95, lum: 0.9, line: '#2b2412', body: '#3fae6d', shade: '#2a8050', light: '#6fcc92', belly: '#f7dc9c', plate: '#c9a560', mark: '#d4ec6a', mark2: '#f2fbb0', pat: 'zigzag' },
+  amber: { hue: 36, sat: 1.5, lum: 1.05, line: '#45200f', body: '#e0a14a', shade: '#b8741f', light: '#f2c77a', belly: '#fde4b4', plate: '#d59a58', mark: '#8a4318', mark2: '#a95a26', pat: 'band' },
+  crimson: { hue: 358, sat: 1.2, lum: 0.95, line: '#3d1412', body: '#c9454b', shade: '#9a2a33', light: '#e2787a', belly: '#fcc79c', plate: '#d88a62', mark: '#ffcf63', mark2: '#fff0a8', pat: 'chevron' },
+};
 let snImg = null, snOk = false;
 function snakeSheet() {
   if (snImg === null) {
@@ -1265,9 +1274,44 @@ function snakeSheet() {
   }
   return snOk ? snImg : null;
 }
+snakeSheet(); // start loading now, so the first snake is not drawn with the stand-in head
+// The head sheet recoloured once per skin: only the violet scales move to the skin's hue (eyes, frills and the
+// mouth keep theirs), on an offscreen canvas made once. Where pixels cannot be read, the untinted sheet.
+const snTint = {};
+function snakeSheetFor(skin) {
+  const img = snakeSheet(), P = SNAKE_SKIN[skin];
+  if (!img || !P || P.hue === undefined) return img;
+  if (snTint[skin] !== undefined) return snTint[skin] || img;
+  snTint[skin] = null;
+  try {
+    const c = document.createElement('canvas');
+    const w = (c.width = img.naturalWidth || img.width), h = (c.height = img.naturalHeight || img.height);
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    const D = g.getImageData(0, 0, w, h), d = D.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (!d[i + 3]) continue;
+      const r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255, mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), l = (mx + mn) / 2, dd = mx - mn;
+      if (dd < 0.08) continue;
+      const sat = dd / (1 - Math.abs(2 * l - 1));
+      let hue = mx === r ? ((gg - b) / dd) % 6 : mx === gg ? (b - r) / dd + 2 : (r - gg) / dd + 4;
+      hue = (hue * 60 + 360) % 360;
+      if (hue < 220 || hue > 300) continue; // not scales
+      const H = (P.hue + (hue - 256) * 0.6 + 360) % 360, S = Math.min(1, sat * P.sat), L = Math.min(0.95, l * P.lum);
+      const C = (1 - Math.abs(2 * L - 1)) * S, X = C * (1 - Math.abs(((H / 60) % 2) - 1)), m = L - C / 2, k = Math.floor(H / 60);
+      const [R, G, B] = [[C, X, 0], [X, C, 0], [0, C, X], [0, X, C], [X, 0, C], [C, 0, X]][k % 6];
+      d[i] = (R + m) * 255; d[i + 1] = (G + m) * 255; d[i + 2] = (B + m) * 255;
+    }
+    g.putImageData(D, 0, 0);
+    snTint[skin] = c;
+    return c;
+  } catch (e) {
+    return img;
+  }
+}
 
 // Reused sample buffers so a slithering snake does not allocate every frame.
-const SN_MAX = 360;
+const SN_MAX = 900;
 const snX = new Float32Array(SN_MAX), snY = new Float32Array(SN_MAX);
 const snNX = new Float32Array(SN_MAX), snNY = new Float32Array(SN_MAX);
 const snTX = new Float32Array(SN_MAX), snTY = new Float32Array(SN_MAX);
@@ -1277,7 +1321,7 @@ const tmpX = new Float32Array(SN_MAX), tmpY = new Float32Array(SN_MAX);
 const snFace = {}; // last facing per snake id (hysteresis so a vertical stretch never flips the head)
 
 // Resample pts at even spacing, then smooth so polyline corners turn into curves.
-function snakeSample(pts, step) {
+function snakeSample(pts, step, passes = 14) {
   let n = 0;
   snX[0] = pts[0].x;
   snY[0] = pts[0].y;
@@ -1303,7 +1347,7 @@ function snakeSample(pts, step) {
     snY[n] = last.y;
     n++;
   }
-  for (let pass = 0; pass < 14; pass++) {
+  for (let pass = 0; pass < passes; pass++) {
     for (let i = 1; i < n - 1; i++) {
       tmpX[i] = (snX[i - 1] + 2 * snX[i] + snX[i + 1]) / 4;
       tmpY[i] = (snY[i - 1] + 2 * snY[i] + snY[i + 1]) / 4;
@@ -1316,17 +1360,48 @@ function snakeSample(pts, step) {
   return n;
 }
 
-// Snake along pts (head first, y-down). r = body radius of the old thin snake: the body is now ~2r wide (x thick).
+const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const SN_URGENT = new Set(['ouch', 'shock', 'dizzy', 'strike', 'chew0', 'chew1', 'grin']);
+const SN_CALM = new Set(['idle', 'hunt']);
+
+// Head animation state per snake (A, kept by the caller): the wanted face holds at least 0.22 s and crossfades in
+// 0.12 s (reactions cut in at once); blinks every 2-5 s and tongue flicks every 1.5-3 s from calm faces; the head
+// turns toward `look` with a slight lag and flips sides with hysteresis, crossfading the two sprite rows.
+export function snakeHeadAnim(A, want, dt, t) {
+  if (!A.cur) {
+    A.cur = { ex: want, left: undefined };
+    A.prev = null; A.u = 1; A.hold = 9; A.blinkT = 0; A.tasteT = 0;
+    A.blinkAt = t + 0.8 + Math.random() * 2.5; A.tasteAt = t + 0.5 + Math.random() * 2;
+  }
+  A.hold += dt;
+  A.u = Math.min(1, A.u + dt / 0.12);
+  if (SN_CALM.has(want)) { // a blink waits for the tongue to be in, and the other way round
+    if (t >= A.blinkAt && !(A.tasteT > 0) && SN_CALM.has(A.cur.ex)) { A.blinkT = 0.16; A.blinkAt = t + 2 + Math.random() * 3; }
+    if (want === 'idle' && t >= A.tasteAt && !(A.blinkT > 0)) { A.tasteT = 0.42; A.tasteAt = t + 1.5 + Math.random() * 1.5; }
+  } else A.blinkT = 0;
+  if (A.tasteT > 0) { A.tasteT -= dt; if (want === 'idle') want = 'taste'; }
+  A.blinkT = Math.max(0, A.blinkT - dt);
+  const chew = want.startsWith('chew') && A.cur.ex.startsWith('chew');
+  if (want !== A.cur.ex && (A.hold > 0.22 || SN_URGENT.has(want))) {
+    A.prev = { ...A.cur }; A.cur.ex = want; A.hold = 0; A.u = chew ? 1 : 0;
+  }
+}
+
+// Snake along pts (head first, y-down). r = body radius of the old thin snake: the body is ~2r wide (x thick).
 // opts: mouthOpen 0..1, expr (idle blink taste hunt chew0 chew1 hiss ouch dizzy shock snarl strike grin),
-// thick (body thickness multiplier, default 1), venom 0..1 (green drip at the mouth), id (keeps facing stable per snake).
+// thick (body thickness multiplier, default 1), venom 0..1 (green drip at the mouth), id (keeps facing stable per
+// snake), skin (SNAKE_SKIN key), wave (0 = the caller already shaped the body), head (head size / body half width,
+// default 3.9), breath (width swell), crown, anim (head state from snakeHeadAnim, with look / dt), part ('body' |
+// 'head': draw only that, so heads can go over every body).
 export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
   if (!pts || pts.length < 2 || !(r > 0)) return;
   ctx.save();
   try {
     opts = opts || {};
+    const P = SNAKE_SKIN[opts.skin] || SNAKE_SKIN.violet, A = opts.anim || null;
     const Wh = r * 1.9 * clamp(opts.thick || 1, 0.4, 3); // body half width at the neck
-    const step = Math.max(Wh * 0.26, 0.5);
-    let n = snakeSample(pts, step);
+    const step = Math.max(Wh * 0.22, 0.5);
+    let n = snakeSample(pts, step, opts.wave === 0 ? 6 : 14);
     if (n < 3) {
       n = 3;
       const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y;
@@ -1340,30 +1415,37 @@ export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
     snA[0] = 0;
     for (let i = 1; i < n; i++) snA[i] = snA[i - 1] + Math.hypot(snX[i] - snX[i - 1], snY[i] - snY[i - 1]);
     const len = Math.max(snA[n - 1], step);
-    for (let i = 0; i < n; i++) {
-      const a = Math.min(n - 1, i + 1), b = Math.max(0, i - 1);
-      let tx = snX[b] - snX[a], ty = snY[b] - snY[a];
-      const l = Math.hypot(tx, ty) || 1;
-      snTX[i] = tx / l;
-      snTY[i] = ty / l;
-      snNX[i] = -snTY[i];
-      snNY[i] = snTX[i];
+    const tangents = () => {
+      for (let i = 0; i < n; i++) {
+        const a = Math.min(n - 1, i + 1), b = Math.max(0, i - 1);
+        const tx = snX[b] - snX[a], ty = snY[b] - snY[a];
+        const l = Math.hypot(tx, ty) || 1;
+        snTX[i] = tx / l;
+        snTY[i] = ty / l;
+        snNX[i] = -snTY[i];
+        snNY[i] = snTX[i];
+      }
+    };
+    tangents();
+    if (opts.wave !== 0) {
+      // travelling wiggle (not at the head, which is a sprite)
+      const wl = 0.22 * 7 / Wh;
+      for (let i = 1; i < n; i++) {
+        const f = snA[i] / len;
+        const w = Math.sin(t * 6 - snA[i] * wl) * Wh * 0.36 * Math.min(1, f * 2.5);
+        tmpX[i] = snX[i] + snNX[i] * w;
+        tmpY[i] = snY[i] + snNY[i] * w;
+      }
+      for (let i = 1; i < n; i++) { snX[i] = tmpX[i]; snY[i] = tmpY[i]; }
+      tangents();
     }
-    // travelling wiggle (not at the head, which is a sprite)
-    const wl = 0.22 * 7 / Wh;
-    for (let i = 1; i < n; i++) {
-      const f = snA[i] / len;
-      const w = Math.sin(t * 6 - snA[i] * wl) * Wh * 0.36 * Math.min(1, f * 2.5); // a clear S-wave running down the body
-      tmpX[i] = snX[i] + snNX[i] * w;
-      tmpY[i] = snY[i] + snNY[i] * w;
-    }
-    for (let i = 1; i < n; i++) { snX[i] = tmpX[i]; snY[i] = tmpY[i]; }
-    // width profile, belly side (the lower flank, fading out where the body stands vertical)
-    const wmin = Math.max(0.6, Wh * 0.06);
+    // width profile (a neck just behind the head, full girth, a long taper), belly side = the lower flank
+    const wmin = Math.max(0.6, Wh * 0.06), br = opts.breath || 1;
     for (let i = 0; i < n; i++) {
-      const f = snA[i] / len;
-      const prof = f < 0.12 ? 0.86 + (f / 0.12) * 0.14 : Math.pow((1 - f) / 0.88, 0.7);
-      snW[i] = Wh * prof + wmin;
+      const s = snA[i], f = s / len;
+      const neck = s < Wh * 2.2 ? 0.8 + 0.2 * (s / (Wh * 2.2)) : 1;
+      const prof = f < 0.35 ? neck : Math.pow((1 - f) / 0.65, 0.8);
+      snW[i] = (Wh * Math.min(neck, prof) + wmin) * (f < 0.8 ? br : 1);
       snSG[i] = snNY[i] >= 0 ? 1 : -1;
       const q = clamp(Math.abs(snNY[i]) / 0.55, 0, 1);
       snBW[i] = q * q * (3 - 2 * q);
@@ -1380,23 +1462,25 @@ export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
       for (let i = n - 1; i >= 0; i--) ctx.lineTo(snX[i] - snNX[i] * snW[i], snY[i] - snNY[i] * snW[i]);
       ctx.closePath();
     };
-    const lw = Math.max(1.2, Wh * 0.13);
+    const lw = Math.max(1.4, Wh * 0.17);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-
+    if (opts.part !== 'head') {
     // contact shadow
     ctx.save();
-    ctx.translate(Wh * 0.36, Wh * 0.58);
+    ctx.translate(Wh * 0.3, Wh * 0.5);
     outline();
-    ctx.fillStyle = 'rgba(0,0,0,0.33)';
+    ctx.fillStyle = 'rgba(40,16,8,0.3)';
     ctx.fill();
     ctx.restore();
 
     ctx.save();
     outline();
-    ctx.fillStyle = '#7a3ccc';
+    ctx.fillStyle = P.body;
     ctx.fill();
     ctx.clip();
+    // the back pattern, anchored to arc length so it rides along with the body through the wave
+    snakePattern(ctx, P, n, len, Wh);
     // peach belly along the lower flank
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
@@ -1406,43 +1490,23 @@ export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
     }
     for (let i = n - 1; i >= 0; i--) ctx.lineTo(snX[i] + snNX[i] * snW[i] * 1.1 * snSG[i], snY[i] + snNY[i] * snW[i] * 1.1 * snSG[i]);
     ctx.closePath();
-    ctx.fillStyle = '#ffc49a';
+    ctx.fillStyle = P.belly;
     ctx.fill();
     // belly plates
-    ctx.strokeStyle = 'rgba(150,70,60,0.4)';
-    ctx.lineWidth = Math.max(0.8, Wh * 0.1);
+    ctx.strokeStyle = P.plate;
+    ctx.lineWidth = Math.max(0.8, Wh * 0.09);
     ctx.beginPath();
-    const plate = Math.max(Wh * 0.45, 2.2);
+    const plate = Math.max(Wh * 0.5, 2.2);
     for (let i = 0, next = 0; i < n; i++) {
       if (snA[i] < next) continue;
       next += plate;
       const k0 = 1.05 - 0.61 * snBW[i], o = snSG[i];
+      if (snBW[i] < 0.15) continue;
       ctx.moveTo(snX[i] + snNX[i] * snW[i] * k0 * o, snY[i] + snNY[i] * snW[i] * k0 * o);
       ctx.lineTo(snX[i] + snNX[i] * snW[i] * 1.1 * o, snY[i] + snNY[i] * snW[i] * 1.1 * o);
     }
     ctx.stroke();
-    // rose diamonds down the back
-    ctx.fillStyle = '#ff6fae';
-    ctx.strokeStyle = '#1e0a40';
-    ctx.lineWidth = Math.max(0.8, Wh * 0.1);
-    const dstep = Wh * 1.3;
-    for (let i = 0, next = Wh * 2.3; i < n; i++) {
-      if (snA[i] < next) continue;
-      next += dstep;
-      if (snA[i] > len * 0.9) break;
-      const w = snW[i], o = snSG[i];
-      const cx = snX[i] - snNX[i] * w * 0.3 * o * snBW[i], cy = snY[i] - snNY[i] * w * 0.3 * o * snBW[i];
-      const L = w * 0.95, Wd = w * 0.42;
-      ctx.beginPath();
-      ctx.moveTo(cx + snTX[i] * L, cy + snTY[i] * L);
-      ctx.lineTo(cx - snNX[i] * Wd, cy - snNY[i] * Wd);
-      ctx.lineTo(cx - snTX[i] * L, cy - snTY[i] * L);
-      ctx.lineTo(cx + snNX[i] * Wd, cy + snNY[i] * Wd);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    }
-    // light: shadow lower right, soft key light upper left, glossy streak
+    // cel light: one shadow band lower right, one highlight band upper left (fixed light, hard edges)
     const lit = (ox, oy, wk, col) => {
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
@@ -1454,52 +1518,215 @@ export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
       ctx.fillStyle = col;
       ctx.fill();
     };
-    lit(0.5, 0.65, 0.75, 'rgba(18,4,40,0.26)');
-    lit(-0.3, -0.4, 0.3, 'rgba(225,190,255,0.3)');
-    lit(-0.38, -0.5, 0.09, 'rgba(255,255,255,0.55)');
+    ctx.globalAlpha = 0.55;
+    lit(0.62, 0.8, 0.72, P.shade);
+    ctx.globalAlpha = 0.6;
+    lit(-0.34, -0.46, 0.26, P.light);
+    ctx.globalAlpha = 1;
+    if (opts.flash > 0) { outline(); ctx.fillStyle = `rgba(255,250,175,${clamp(opts.flash, 0, 1)})`; ctx.fill(); } // a lightning jolt
     ctx.restore();
     outline();
-    ctx.strokeStyle = '#1e0a40';
+    ctx.strokeStyle = P.line;
     ctx.lineWidth = lw;
     ctx.stroke();
+    }
+    if (opts.part === 'body') return; // (finally restores) heads go on top of every body in a second pass
 
     // ---- head
     const hx = snX[0], hy = snY[0];
     const j = Math.min(n - 1, Math.max(2, Math.round(Wh * 1.6 / step)));
     const dx = hx - snX[j], dy = hy - snY[j], dl = Math.hypot(dx, dy) || 1;
-    const id = opts.id | 0;
-    let left = snFace[id] === undefined ? dx < 0 : snFace[id];
-    if (Math.abs(dx) > dl * 0.3) left = dx < 0;
-    snFace[id] = left;
-    const base = left ? Math.PI : 0, a = Math.atan2(dy, dx);
-    const rot = clamp(Math.atan2(Math.sin(a - base), Math.cos(a - base)), -0.95, 0.95);
-    const mo = clamp(opts.mouthOpen || 0, 0, 1), venom = clamp(opts.venom || 0, 0, 1);
-    let ex = SN_EXPR[opts.expr] === undefined ? null : opts.expr;
-    if (!ex) {
-      if (venom > 0.05) ex = 'snarl';
-      else if (mo > 0.6) ex = 'strike';
-      else if (mo > 0.15) ex = 'hiss';
-      else if (mod(t, 3.4) < 0.13) ex = 'blink';
-      else if (mod(t * 0.9, 2.4) < 0.5) ex = 'taste';
-      else ex = 'idle';
+    const id = opts.id | 0, mo = clamp(opts.mouthOpen || 0, 0, 1), venom = clamp(opts.venom || 0, 0, 1);
+    const size = Wh * 2 * (opts.head || 3.9);
+    let ex, left, rot;
+    if (A) {
+      // the head follows the body tangent with a slight lag, plus where it is looking
+      const dt = clamp(A.dt || 0, 0, 0.1), want = Math.atan2(dy, dx) + (A.look || 0);
+      A.ang = A.ang === undefined ? want : A.ang + wrapA(want - A.ang) * (1 - Math.exp(-dt * (A.lag || 9)));
+      const c = Math.cos(A.ang);
+      if (A.cur.left === undefined) A.cur.left = c < 0;
+      if (A.cur.left ? c > 0.3 : c < -0.3) A.flipT = (A.flipT || 0) + dt; else A.flipT = 0;
+      if (A.flipT > 0.12) { A.prev = { ...A.cur }; A.cur.left = !A.cur.left; A.u = 0; A.hold = 0; A.flipT = 0; }
+      ex = A.cur.ex; left = A.cur.left;
+      rot = (L) => clamp(wrapA(A.ang - (L ? Math.PI : 0)), -1.3, 1.3);
+    } else {
+      let L = snFace[id] === undefined ? dx < 0 : snFace[id];
+      if (Math.abs(dx) > dl * 0.3) L = dx < 0;
+      snFace[id] = left = L;
+      const a = Math.atan2(dy, dx);
+      rot = (L) => clamp(wrapA(a - (L ? Math.PI : 0)), -0.95, 0.95);
+      ex = SN_EXPR[opts.expr] === undefined ? null : opts.expr;
+      if (!ex) {
+        if (venom > 0.05) ex = 'snarl';
+        else if (mo > 0.6) ex = 'strike';
+        else if (mo > 0.15) ex = 'hiss';
+        else if (mod(t, 3.4) < 0.13) ex = 'blink';
+        else if (mod(t * 0.9, 2.4) < 0.5) ex = 'taste';
+        else ex = 'idle';
+      }
     }
-    const size = Wh * 2 * 3.9;
-    const shake = ex === 'ouch' ? Math.sin(t * 60) * 0.06 : ex === 'dizzy' ? Math.sin(t * 9) * 0.1 : Math.sin(t * 2.6) * 0.04;
-    const bob = (Math.sin(t * 3.2) * 0.8 + (ex === 'hiss' || ex === 'strike' ? -1.5 : 0)) * (Wh / 7);
-    ctx.translate(hx, hy + bob);
-    // head life: it sways with the body wave, bites squash and stretch it, a hiss rears it up
-    const wob = Math.sin(t * 6), chewing = ex === 'chew0' || ex === 'chew1';
-    ctx.rotate(rot + shake + wob * 0.07 + (ex === 'hiss' || ex === 'snarl' ? Math.sin(t * 31) * 0.035 : 0));
-    const pulse = chewing ? Math.sin(t * 25) : ex === 'hiss' || ex === 'snarl' ? Math.sin(t * 14) * 0.5 : wob * 0.35;
-    ctx.scale(1 + (chewing ? 0.06 : 0.03) * pulse + (ex === 'hiss' || ex === 'snarl' ? 0.05 : 0), 1 - (chewing ? 0.09 : 0.035) * pulse + (ex === 'hiss' || ex === 'snarl' ? 0.05 : 0));
-    const img = snakeSheet();
-    if (img) ctx.drawImage(img, SN_EXPR[ex] * SN_CELL, (left ? 1 : 0) * SN_CELL, SN_CELL, SN_CELL, -size / 2, -size / 2, size, size);
-    else snakeHeadVec(ctx, size, left ? -1 : 1, ex);
+    const dizzy = ex === 'dizzy';
+    const zap = opts.flash > 0 ? (Math.random() - 0.5) * 0.25 : 0;
+    const shake = zap + (ex === 'ouch' ? Math.sin(t * 46) * 0.07 * (A ? clamp(1 - A.hold / 0.6, 0.2, 1) : 1) : dizzy ? Math.sin(t * 5) * 0.16 : Math.sin(t * 2.6) * 0.03);
+    const bob = (Math.sin(t * 3.2) * 0.6 + (ex === 'hiss' || ex === 'snarl' ? -1.2 : 0)) * (Wh / 7);
+    const wx = dizzy ? Math.cos(t * 5) * size * 0.025 : 0, wy = dizzy ? Math.sin(t * 5) * size * 0.018 : 0;
+    ctx.translate(hx + wx, hy + bob + wy);
+    // head life: a slow breath, bites squash and stretch it, a hiss rears it up
+    const chewing = ex === 'chew0' || ex === 'chew1', rear = ex === 'hiss' || ex === 'snarl';
+    const pulse = chewing ? Math.sin(t * 25) : rear ? Math.sin(t * 14) * 0.5 : Math.sin(t * 2.2) * 0.5;
+    const sx = 1 + (chewing ? 0.06 : 0.025) * pulse + (rear ? 0.04 : 0), sy = 1 - (chewing ? 0.09 : 0.025) * pulse + (rear ? 0.04 : 0);
+    const img = snakeSheetFor(opts.skin);
+    const sprite = (e, L, alpha) => {
+      if (alpha <= 0.01) return;
+      ctx.save();
+      ctx.globalAlpha *= alpha;
+      ctx.rotate(rot(L) + shake);
+      ctx.scale(sx, sy);
+      if (img) ctx.drawImage(img, SN_EXPR[e] * SN_CELL, (L ? 1 : 0) * SN_CELL, SN_CELL, SN_CELL, -size / 2, -size / 2, size, size);
+      else snakeHeadVec(ctx, size, L ? -1 : 1, e, P);
+      ctx.restore();
+    };
+    if (A) {
+      const u = A.u * A.u * (3 - 2 * A.u);
+      if (A.prev && u < 1) sprite(A.prev.ex, A.prev.left, 1);
+      sprite(ex, left, A.prev ? u : 1);
+      // a blink eases shut and open over the current face
+      if (A.blinkT > 0 && SN_CALM.has(ex)) sprite('blink', left, Math.min(1, A.blinkT / 0.05, (0.16 - A.blinkT) / 0.05));
+    } else sprite(ex, left, 1);
+    ctx.save();
+    ctx.rotate(rot(left) + shake);
+    if (opts.crown) snakeCrown(ctx, size, left ? -1 : 1, t);
     if (venom > 0.05) snakeVenom(ctx, size, left ? -1 : 1, venom, t);
+    ctx.restore();
+    if (dizzy) snakeStars(ctx, size, t);
   } catch (e) {
     // art must never break the frame
   }
   ctx.restore();
+}
+
+// Back patterns, all spaced along the body's arc length (snA): diamonds, a wavy zigzag stripe, crossbands, chevrons.
+function snakePattern(ctx, P, n, len, Wh) {
+  const at = (i, k) => [snX[i] - snNX[i] * snW[i] * k * snSG[i] * snBW[i], snY[i] - snNY[i] * snW[i] * k * snSG[i] * snBW[i]];
+  const start = Wh * 2.6, end = len * 0.9;
+  ctx.fillStyle = P.mark;
+  if (P.pat === 'zigzag') {
+    ctx.strokeStyle = P.mark;
+    ctx.lineWidth = Math.max(1.2, Wh * 0.42);
+    ctx.beginPath();
+    let first = true;
+    for (let i = 0; i < n; i++) {
+      if (snA[i] < start * 0.7 || snA[i] > end) continue;
+      const z = Math.sin(snA[i] / (Wh * 0.9) * Math.PI) * 0.42, c = at(i, 0.25);
+      const x = c[0] + snNX[i] * snW[i] * z, y = c[1] + snNY[i] * snW[i] * z;
+      if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = P.mark2;
+    ctx.lineWidth = Math.max(0.6, Wh * 0.12);
+    ctx.stroke();
+    return;
+  }
+  const gap = P.pat === 'band' ? Wh * 1.7 : P.pat === 'chevron' ? Wh * 1.35 : Wh * 1.5;
+  for (let i = 0, next = start; i < n; i++) {
+    if (snA[i] < next) continue;
+    next += gap;
+    if (snA[i] > end) break;
+    const w = snW[i], tx = snTX[i], ty = snTY[i], nx = snNX[i], ny = snNY[i];
+    if (P.pat === 'band') {
+      const L = w * 0.32;
+      ctx.beginPath();
+      ctx.moveTo(snX[i] + tx * L + nx * w * 1.2, snY[i] + ty * L + ny * w * 1.2);
+      ctx.lineTo(snX[i] + tx * L * 1.6 - nx * w * 1.2, snY[i] + ty * L * 1.6 - ny * w * 1.2);
+      ctx.lineTo(snX[i] - tx * L * 0.4 - nx * w * 1.2, snY[i] - ty * L * 0.4 - ny * w * 1.2);
+      ctx.lineTo(snX[i] - tx * L + nx * w * 1.2, snY[i] - ty * L + ny * w * 1.2);
+      ctx.closePath();
+      ctx.fillStyle = P.mark;
+      ctx.fill();
+      continue;
+    }
+    const [cx, cy] = at(i, 0.3);
+    if (P.pat === 'chevron') {
+      const L = w * 0.55, Wd = w * 0.62, th = w * 0.36;
+      ctx.beginPath();
+      ctx.moveTo(cx + tx * L, cy + ty * L);
+      ctx.lineTo(cx - tx * 0.1 * L + nx * Wd, cy - ty * 0.1 * L + ny * Wd);
+      ctx.lineTo(cx - tx * (0.1 * L + th) + nx * Wd, cy - ty * (0.1 * L + th) + ny * Wd);
+      ctx.lineTo(cx + tx * (L - th), cy + ty * (L - th));
+      ctx.lineTo(cx - tx * (0.1 * L + th) - nx * Wd, cy - ty * (0.1 * L + th) - ny * Wd);
+      ctx.lineTo(cx - tx * 0.1 * L - nx * Wd, cy - ty * 0.1 * L - ny * Wd);
+      ctx.closePath();
+      ctx.fillStyle = P.mark;
+      ctx.fill();
+      continue;
+    }
+    // diamond with a lighter heart
+    for (const [k, col] of [[1, P.mark], [0.45, P.mark2]]) {
+      const L = w * 0.9 * k, Wd = w * 0.5 * k;
+      ctx.beginPath();
+      ctx.moveTo(cx + tx * L, cy + ty * L);
+      ctx.lineTo(cx - nx * Wd, cy - ny * Wd);
+      ctx.lineTo(cx - tx * L, cy - ty * L);
+      ctx.lineTo(cx + nx * Wd, cy + ny * Wd);
+      ctx.closePath();
+      ctx.fillStyle = col;
+      ctx.fill();
+    }
+  }
+}
+
+// A little gold crown on the boss snake's head (head space, d = facing).
+function snakeCrown(ctx, size, d, t) {
+  const u = size / 100;
+  ctx.save();
+  ctx.translate(-d * 4 * u, -15 * u);
+  ctx.rotate(-d * 0.12);
+  ctx.beginPath();
+  ctx.moveTo(-9 * u, 3 * u);
+  ctx.lineTo(-10 * u, -6 * u);
+  ctx.lineTo(-5 * u, -1.5 * u);
+  ctx.lineTo(0, -9 * u);
+  ctx.lineTo(5 * u, -1.5 * u);
+  ctx.lineTo(10 * u, -6 * u);
+  ctx.lineTo(9 * u, 3 * u);
+  ctx.closePath();
+  ctx.fillStyle = '#ffcf3a';
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, u * 1.4);
+  ctx.strokeStyle = '#6b3a0c';
+  ctx.stroke();
+  ctx.fillStyle = '#ff5a6e';
+  ctx.beginPath();
+  ctx.arc(0, -1 * u, 1.6 * u, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = `rgba(255,255,255,${0.5 + 0.4 * Math.sin(t * 3)})`;
+  ctx.beginPath();
+  ctx.arc(-5 * u, -0.5 * u, 0.9 * u, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Dizzy: three stars orbiting above the head (screen space, unrotated).
+function snakeStars(ctx, size, t) {
+  for (let i = 0; i < 3; i++) {
+    const a = t * 4.5 + i * (TAU / 3), x = Math.cos(a) * size * 0.2, y = -size * 0.17 + Math.sin(a) * size * 0.06;
+    const r = size * (0.035 + 0.012 * Math.sin(a)) * (Math.sin(a) > 0 ? 1.1 : 0.85);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(t * 3 + i);
+    ctx.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const b = -Math.PI / 2 + (k * Math.PI) / 5, rr = k % 2 ? r * 0.45 : r;
+      ctx.lineTo(Math.cos(b) * rr, Math.sin(b) * rr);
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#ffd84a';
+    ctx.fill();
+    ctx.lineWidth = Math.max(0.8, r * 0.18);
+    ctx.strokeStyle = '#7a4a0a';
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 // Green venom welling at the mouth: a swelling blob, a drip stretching down, and a spray when it spits.
@@ -1537,8 +1764,8 @@ function snakeVenom(ctx, size, d, v, t) {
   ctx.restore();
 }
 
-// Stand-in head while the sprite sheet loads: same purple, same pose.
-function snakeHeadVec(ctx, size, d, ex) {
+// Stand-in head while the sprite sheet loads: the skin's colours, same pose.
+function snakeHeadVec(ctx, size, d, ex, P = SNAKE_SKIN.violet) {
   const u = size / 100;
   ctx.scale(d, 1);
   ctx.beginPath();
@@ -1548,16 +1775,16 @@ function snakeHeadVec(ctx, size, d, ex) {
   ctx.bezierCurveTo(30 * u, 20 * u, 0 * u, 20 * u, -34 * u, 2 * u);
   ctx.closePath();
   const g = ctx.createLinearGradient(0, -20 * u, 0, 20 * u);
-  g.addColorStop(0, '#9a62e8');
-  g.addColorStop(1, '#5a24a8');
+  g.addColorStop(0, P.light);
+  g.addColorStop(1, P.shade);
   ctx.fillStyle = g;
   ctx.fill();
   ctx.lineWidth = Math.max(1.1, u * 1.6);
-  ctx.strokeStyle = '#1e0a40';
+  ctx.strokeStyle = P.line;
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(-4 * u, -4 * u, 8 * u, 0, TAU);
-  ctx.fillStyle = ex === 'blink' ? '#7a3ccc' : '#e6f5a0';
+  ctx.fillStyle = ex === 'blink' || ex === 'ouch' ? P.body : '#e6f5a0';
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = '#1e0a40';
