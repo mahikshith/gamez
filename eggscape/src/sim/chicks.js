@@ -7,8 +7,8 @@
 // hatch orb or the gold flame. The gold flame alone still hatches the classic pecker chick at once.
 //
 // One tap = one power (sim.tapChick(id)). Every chick still never cracks, counts as a saved egg and is bait.
-//   glow  : FLASH (GLOW_R): burns thorns in range, stuns snakes, dazes the eagle. Blows nearby eggs outward.
-//   dash  : shoots along its channel the way it faces for DASH_T: knocks snakes dizzy, takes orbs it passes,
+//   glow  : FLASH (GLOW_R): burns thorns in range, stuns snakes and the salamander, dazes the eagle. Blows nearby eggs outward.
+//   dash  : shoots along its channel the way it faces for DASH_T: knocks snakes (and the salamander) dizzy, takes orbs it passes,
 //           pecks grey spikes away. It can shoot right over a gap.
 //   swoop : flies up through the ring above (clearing a thorn curtain and thorns it passes), then glides
 //           and plucks the thorns on the ring it lands on. Going up costs progress.
@@ -168,6 +168,7 @@ export const chickMethods = {
       if (S.gone || !S.inside || !S.pts.length) continue;
       if (S.pts.some((q, i) => i % 3 === 0 && Math.hypot(q.x - p.x, q.y - p.y) < R + 0.2)) this.stunSnake(S, 'flash', p);
     }
+    for (const C of this.salsNear?.(p.x, p.y, R + 0.2) || []) { this.hitSalamander?.(C, 'flash', { x: p.x, y: p.y }); this.chickGain += 2; } // v3.2: stuns the salamander
     const E = this.eagle;
     if (E && E.phase !== 'away' && E.phase !== 'up' && (Math.hypot(E.x - p.x, E.y - p.y) < R + 1.6 || E.tid === egg.id)) {
       if (this.hitEagle) this.hitEagle('flash', { x: p.x, y: p.y });
@@ -212,6 +213,11 @@ export const chickMethods = {
         const T = S.pts; // knocked back along its own body
         if (T.length > 8) { const q = T[6]; S.rad = Math.hypot(q.x, q.y); S.a = Math.atan2(q.y, q.x); T.splice(0, 6); }
       }
+    }
+    for (const C of this.salsNear?.(p.x, p.y, CHICK_R + 0.3) || []) { // v3.2: bonks the salamander
+      if (C.ph === 'daze') continue;
+      this.hitSalamander?.(C, 'dash', { x: p.x, y: p.y });
+      this.chickGain += 2;
     }
     for (const o of this.orbs) {
       if (!o.alive || o.taken || Math.hypot(o.x - p.x, o.y - p.y) > CHICK_R + 0.3) continue;

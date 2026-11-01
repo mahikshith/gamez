@@ -81,8 +81,8 @@ export function ringPoint(sim, ri, la, rad) {
 export function v31Step(sim, dt) {
   const X = sim.bx;
   if (!X) return;
-  // hook for the salamander creature (added by a later creature pass); its lava attacks below work without it
-  if (sim.level.boss === 'salamander') sim.salamanderStep?.(dt);
+  // the lava salamander creature (sim/salamander.js): walks, breathes fire, and in the boss fight it is the boss
+  if (sim.level.boss === 'salamander' || sim.level.salamander) sim.salamanderStep?.(dt);
   for (const R of X.rl) if (R.frost > 0 && (R.frost -= dt) <= 0) { R.frost = 0; sim.emit('thaw', { ring: X.rl.indexOf(R) }); }
   sim.rings.forEach((ring, i) => {
     const R = X.rl[i];
@@ -104,7 +104,7 @@ export function v31Step(sim, dt) {
 }
 
 // ---------- the weather and the bosses hit the animals too
-// kind: 'gust' 'rock' 'lava' 'ice' 'bolt' 'quake'. Snakes get sim.hitSnake (the snakes' own reaction, when it
+// kind: 'gust' 'rock' 'lava' 'ice' 'bolt' 'quake'. Salamanders get sim.hitSalamander, snakes sim.hitSnake (the snakes' own reaction, when it
 // exists), the eagle sim.hitEagle (its own, when it exists); the fox flinches on a quake or lightning and misses
 // his next throw.
 // o: {x, y, r (reach; Infinity = everywhere), dir, power}. Returns how many animals it reached.
@@ -116,6 +116,12 @@ export function animalsHit(sim, kind, o = {}) {
     if (r < Infinity && !S.pts.some((q) => Math.hypot(q.x - x, q.y - y) < r)) continue;
     n++;
     sim.hitSnake?.(S, kind, { x, y, dir: o.dir || 0, power: o.power ?? 1 });
+  }
+  // the lava salamander's own reaction (sim/salamander.js), when it exists
+  if (sim.hitSalamander) for (const C of sim.sals || []) {
+    if (!sim.salLive(C) || (r < Infinity && !C.pts.some((q, i) => i % 3 === 0 && Math.hypot(q.x - x, q.y - y) < r + 0.2))) continue;
+    n++;
+    sim.hitSalamander(C, kind, { x, y, dir: o.dir || 0, power: o.power ?? 1 });
   }
   // the eagle's own reaction (gust blows it off course, lightning stuns it, a rock or icicle scares it off), when it exists
   const E = sim.eagle;
@@ -304,6 +310,7 @@ function bossStep(sim, B, dt) {
   if (Math.abs(gx - B.x) > 0.02) B.face = gx > B.x ? 1 : -1;
   B.x += (gx - B.x) * s;
   B.y += (gy - B.y) * Math.min(1, dt * (A && A.name === 'stomp' && A.ph === 'act' ? 30 : 4));
+  if (B.kind === 'salamander') sim.salBossPose?.(B); // the creature is the boss: its lava rocks come from its mouth
   // quake after a stomp
   if (B.quake > 0) {
     B.quake -= dt;

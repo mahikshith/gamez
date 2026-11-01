@@ -22,6 +22,7 @@ import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar,
 import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel } from './render/chicks.js'; // v3.2 chick kinds
 import { CHICK_DEMOS } from './data/chick-demos.js';
+import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 // playtest build (build.mjs --test): every level, booster and skin unlocked, plenty of coins
@@ -266,6 +267,7 @@ function frameOf(all, maxCh) {
   // the fox's head over the top. An eagle level keeps fixed headroom for it (no zoom pumping as it flies)
   const hds = [];
   for (const S of sim.snakes || []) if (!S.gone && S.inside && S.rad <= sim.outerR + 1.5) hds.push({ x: S.rad * Math.cos(S.a), y: S.rad * Math.sin(S.a) });
+  for (const C of sim.sals || []) if (C.ph !== 'wait' && C.ph !== 'gone' && C.pts.length) hds.push(C.pts[0]); // v3.2 salamander
   const A = sim.eagle;
   if (A && all) {
     // fixed headroom over the vault for it, and the whole bird (wings and all) is always in the frame
@@ -845,7 +847,10 @@ function handleEvents() {
         try { if (navigator.vibrate) navigator.vibrate(30); } catch (_) {}
         if (ev.why === 'spike') audio.play('rock_hit', { vol: 0.6 });
         // v3: crack stage pop (G34), so every crack is explained
-        popup(ev.x, ev.y + 0.55, `Crack ${ev.n || ev.egg.cracks}/3`, { sub: ev.why === 'fall' && v3Fall ? (v3Fall === 'eagle' ? 'dropped by the eagle' : `fell ${v3Fall} rings`) : '', color: (ev.n || 1) >= 2 ? '#ff7a6a' : '#ffc24a', size: 18, life: 1.1 });
+        // a scorch crack: the popup steps aside from the salamander's head, which breathes right there
+        let px = ev.x;
+        if (ev.why === 'scorch' && sim.sals) { const h = sim.sals.map((C) => C.pts[0]).filter(Boolean).sort((a, b) => Math.hypot(a.x - ev.x, a.y - ev.y) - Math.hypot(b.x - ev.x, b.y - ev.y))[0]; if (h) px += h.x > ev.x ? -0.7 : 0.7; }
+        popup(px, ev.y + 0.55, `Crack ${ev.n || ev.egg.cracks}/3`, { sub: ev.why === 'fall' && v3Fall ? (v3Fall === 'eagle' ? 'dropped by the eagle' : `fell ${v3Fall} rings`) : ev.why === 'scorch' ? 'red-hot wall' : '', color: (ev.n || 1) >= 2 ? '#ff7a6a' : '#ffc24a', size: 18, life: 1.1 });
         break;
       case 'break': {
         audio.play(ev.why === 'lava' ? 'lava_sizzle' : 'egg_break');
@@ -1047,6 +1052,7 @@ function handleEvents() {
         predEvent(ev, fx); // predators (v3)
         bossEvent(ev, fx); // bosses (v3.1)
         chickEvent(ev, fx, { popup, audio, toast }); // v3.2 chick kinds
+        salEvent(ev, fx); // v3.2 lava salamander
         break;
       case 'won':
         onWin();
@@ -1057,6 +1063,74 @@ function handleEvents() {
     }
   }
   sim.events.length = 0;
+}
+
+// ---------------------------------------------------------------- v3.2 lava salamander: events -> SFX/VFX
+const SAL_HIT = { lava: ['Recharged!', '#ffb347', 'lava_sizzle'], bolt: ['Zapped!', '#fff27a', 'glass_crack'], flash: ['Dazzled!', '#fff6c2', 'glass_crack'], dash: ['Bonk!', '#ffd6a0', 'rock_hit'], ice: ['Brr!', '#bfe9ff', 'glass_crack'], quake: ['Steady!', '#ffd6a0', 'rock_hit'] };
+function salEvent(ev, fx) {
+  const once = (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } };
+  switch (ev.type) {
+    case 'salIn':
+      audio.play('lava_sizzle', { vol: 0.8, pitch: 0.8 });
+      fx.chips(ev.x, ev.y, '#ff9a3a', 10, 2.4);
+      fx.sparkle(ev.x, ev.y, 8, '#ffb347');
+      if (!ev.boss) once('salIn', 'The lava salamander! It rides the ring under it: turn that ring to steer it.');
+      break;
+    case 'salWarn':
+      audio.play('fire_ignite', { vol: 0.55, pitch: 0.55 });
+      fx.sparkle(ev.x, ev.y, 6, '#ffb347');
+      break;
+    case 'salFire':
+      audio.play('fire_burn', { vol: 0.9 });
+      fx.chips(ev.x, ev.y, '#ff9a3a', 12, 2.6);
+      fx.sparkle(ev.x, ev.y, 8, '#ffd27a');
+      fx.shake = Math.max(fx.shake, 0.2);
+      if (ev.burnt) popup(ev.x, ev.y + 0.5, 'Thorns burnt!', { color: '#ffb347', size: 18, life: 0.9 });
+      once('salFire', 'Red-hot wall! An egg that touches it cracks, but thorns on it burn away.');
+      break;
+    case 'salScorch':
+      audio.play('lava_sizzle', { vol: 0.7, pitch: 1.2 });
+      fx.smoke(ev.x, ev.y, 2, 'rgba(255,170,110,0.35)'); // the crack popup names the cause (red-hot wall)
+      break;
+    case 'salSteam':
+      audio.play('lava_sizzle', { vol: 0.6, pitch: 1.5 });
+      fx.smoke(ev.x, ev.y + 0.15, 3, 'rgba(230,240,255,0.45)');
+      popup(ev.x, ev.y + 0.6, 'Hiss! Cooled', { color: '#8fd0ff', size: 16, life: 0.9 });
+      break;
+    case 'salShrug':
+      popup(ev.x, ev.y + 0.5, 'No crack', { color: '#e6e6e6', size: 15, life: 0.8 });
+      break;
+    case 'salCool':
+      audio.play('lava_sizzle');
+      audio.play('splash', { vol: 0.5 });
+      fx.smoke(ev.hx, ev.hy + 0.25, 3, 'rgba(230,240,255,0.4)'); // light: the grey creature must stay readable
+      popup(ev.hx, ev.hy + 0.85, 'Cooled!', { color: '#8fd0ff', size: 20 });
+      once('salCool', 'Water cools the salamander to stone: harmless for a few seconds.');
+      break;
+    case 'salHit': {
+      const H = SAL_HIT[ev.kind];
+      if (!H) break;
+      audio.play(H[2], { vol: 0.6, pitch: 1.3 });
+      fx.sparkle(ev.x, ev.y, 8, H[1]);
+      popup(ev.x, ev.y + 0.55, H[0], { color: H[1], size: 18, life: 0.9 });
+      if (ev.kind === 'lava') once('salLava', 'Lava only recharges the salamander: its next breath comes sooner.');
+      break;
+    }
+    case 'salRival':
+      audio.play('lava_sizzle', { vol: 0.7, pitch: 1.7 });
+      fx.sparkle(ev.x, ev.y, 10, '#ffe27a');
+      popup(ev.x, ev.y + 0.7, 'Face-off!', { color: '#ffe27a', size: 24, life: 1.2 });
+      once('salRival', 'Snake vs salamander! While they square off, neither one bothers your eggs.');
+      break;
+    case 'salPuff':
+      audio.play('fire_ignite', { vol: 0.7 });
+      fx.burst(ev.x, ev.y, 6, (i, a, b) => ({ x: ev.x, y: ev.y, vx: (ev.tx - ev.x) * (0.8 + a) + (b - 0.5), vy: (ev.ty - ev.y) * (0.8 + a) + (b - 0.5), drag: 3, life: 0.35, size: 0.05, color: '#ffb347' }));
+      break;
+    case 'salDive':
+      audio.play('lava_sizzle', { vol: 0.8 });
+      audio.play('splash', { vol: 0.4, pitch: 0.6 });
+      break;
+  }
 }
 
 // ---------------------------------------------------------------- predators (v3)
@@ -1113,7 +1187,7 @@ function predEvent(ev, fx) {
       break;
     case 'venomSpit':
       audio.play('squish', { intensity: 0.5, pitch: 1.4 });
-      fx.burst(ev.x, ev.y, 6, (i, a, b) => ({ x: ev.x, y: ev.y, vx: (ev.tx - ev.x) * (1.5 + a) + (b - 0.5), vy: (ev.ty - ev.y) * (1.5 + a) + (b - 0.5), drag: 2, life: 0.4, size: 0.04, color: '#8be04e' }));
+      fx.burst(ev.x, ev.y, ev.rival ? 10 : 6, (i, a, b) => ({ x: ev.x, y: ev.y, vx: (ev.tx - ev.x) * (1.5 + a) + (b - 0.5), vy: (ev.ty - ev.y) * (1.5 + a) + (b - 0.5), drag: 2, life: ev.rival ? 0.5 : 0.4, size: ev.rival ? 0.07 : 0.04, color: '#8be04e' })); // at a salamander: bigger, so the duel reads
       break;
     case 'barrierMelt':
       audio.play('lava_sizzle', { vol: 0.8 });
@@ -1589,6 +1663,7 @@ function render() {
   }
   setBossView({ top: G.cam.y + (G.play.h / 2) / G.cam.k, k: G.cam.k, u: ui.u }); // bosses (v3.1): the cloud comes into view
   drawBossRings(ctx, sim, k, t); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
+  drawSalHeat(ctx, sim, k, t); // v3.2: red-hot ring sections and the salamander's target mark
   drawBossActor(ctx, sim, k, t);
   for (const ring of sim.rings) if (ring.gear && ring.gear.i > ring.i) W.drawGearCog(ctx, ring, ring.gear, t);
   if (sim.wx.bolt) { const b = sim.boltPoint(sim.wx.bolt); W.drawBoltWarn(ctx, b.x, b.y, t); }
@@ -1606,6 +1681,7 @@ function render() {
   drawMagnetField(ctx, sim, t); // v3.1: a magnetic field look instead of a tether line
   drawBossUnder(ctx, sim, k, t);
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
+  drawSalamanders(ctx, sim, t, k); // v3.2: the lava salamander walks the floor, under the eggs
   for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
   drawChickFX(ctx, sim, t, k);
   W.drawSnakes(ctx, sim, t, k); // predators (v3)
@@ -1983,6 +2059,7 @@ function drawIntro() {
     // a world's new mechanic gets one screen of its own the first time (C6); a boss also shows its face (I6)
     stackCard(L.intro.title, (s, iw) => [
       ...(L.boss ? [{ h: 190 * s, gap: 0, draw: (x, y, w) => bossPortrait(ctx, L.boss, x, y, w, 190 * s, G.t) }] : []),
+      ...(!L.boss && L.salamander ? [{ h: 96 * s, gap: 0, draw: (x, y, w) => salIntroArt(x, y, w, 96 * s) }] : []), // v3.2: meet the salamander
       ...wrapText(L.intro.line, 17 * s, iw).slice(0, 4).map((l, i) => lineBlock(l, 17 * s, { color: '#fff', tag: 'wintro:' + i, gap: i ? 2 * s : 4 * s })),
       { h: 56 * s, gap: 18 * s, draw: (x, y, w) => ui.button('gotit', 'GOT IT', x, y, w, 56 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.play, size: 22 * s }) },
     ]);
@@ -2008,6 +2085,18 @@ function drawIntro() {
     B.push({ h: 40 * s, draw: (x, y, w) => ui.button(G.li < 0 ? 'back' : 'levels', G.li < 0 ? 'Menu' : 'Levels', x + w * 0.25, y, w * 0.5, 40 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 15 * s }) });
     return B;
   });
+}
+
+// v3.2: the lava salamander on its intro card, idling (code-drawn, the in-game art)
+function salIntroArt(x, y, w, h) {
+  const S = Math.min(w * 0.4, h * 1.25), t = G.t;
+  ctx.save();
+  const g = ctx.createRadialGradient(x + w / 2, y + h / 2, 0, x + w / 2, y + h / 2, w * 0.5);
+  g.addColorStop(0, 'rgba(255,110,30,0.28)'); g.addColorStop(1, 'rgba(255,110,30,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  drawSalamander(ctx, x + w / 2 + 0.95 * S, y + h * 0.52, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 49 });
+  ctx.restore();
 }
 
 // BOSS PORTRAIT (I6): the boss's face on its intro card. Stub: the sprite agent wires
@@ -2323,6 +2412,7 @@ if (DEV) window.__egg = {
   actSteps, // film strips replay planner moves through this
   snakeArt: drawSnake, // palette strips
   snAnim: W.snAnim,
+  salAnim, // v3.2: the salamander's last drawn feet (QA strips)
   handle: () => handleEvents(),
   overlaps: () => G.overlaps,
   setSave(s) { loadSave(s); },

@@ -1153,6 +1153,7 @@ function snakeWant(S, A, sim, t) {
   if (S.flee >= 0 || S.carried) return 'shock';
   if (S.mood === 'ouch' || S.mood === 'shock') return S.mood;
   if (S.stun > 0) return S.hurt === 'burn' ? 'ouch' : S.hurt === 'ice' ? 'shock' : 'dizzy';
+  if (S.rival > 0) { const el = (S.rivalD || 3.3) - S.rival; return el < 1.3 ? 'hiss' : el < 1.6 ? 'strike' : 'snarl'; } // v3.2: face-off with the salamander
   const sp = sim.spitPhase && sim.spitPhase(S);
   if (sp) return sp.fly < 0 ? 'snarl' : 'strike';
   if (S.mood === 'chew') return Math.floor(t * 8) % 2 ? 'chew1' : 'chew0';
@@ -1260,7 +1261,11 @@ export function drawSnakes(ctx, sim, t, k) {
     let look = 0;
     const bx = path[0].x - path[Math.min(path.length - 1, 6)].x, by = path[0].y - path[Math.min(path.length - 1, 6)].y;
     const sp = sim.spitPhase && sim.spitPhase(S);
-    if (sp) { // squares up to the wall it spits at
+    const rv = S.rival > 0 && sim.sals && sim.sals.find((c) => c.id === S.rivalId && c.pts.length);
+    if (rv) { // v3.2: squares up to the salamander in a face-off
+      const q = rv.pts[0];
+      look = clamp(lerpA(0, Math.atan2(q.y - h.y, q.x - h.x) - Math.atan2(by, bx), 1), -1.1, 1.1);
+    } else if (sp) { // squares up to the wall it spits at
       const q = sim.venomPt(S);
       look = clamp(lerpA(0, Math.atan2(q.y - h.y, q.x - h.x) - Math.atan2(by, bx), 1), -1.1, 1.1);
     } else if (egg && !(S.stun > 0) && S.flee < 0) {

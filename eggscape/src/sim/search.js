@@ -52,6 +52,8 @@ export function value(sim) {
       const h = S.pts[0], p = e.body.getPosition(), d = Math.hypot(p.x - h.x, p.y - h.y);
       if (d < 2.2) v -= 900 * (1 - d / 2.2);
     }
+    // v3.2: an egg on (or about to be on) a red-hot salamander section
+    if (sim.salThreat) v -= 450 * sim.salThreat(e);
     // predators (v3): an egg the eagle can reach while it is locked on
     const E = sim.eagle;
     if (E && E.reach && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tid === e.id) v -= 700;

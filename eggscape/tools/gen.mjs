@@ -28,7 +28,7 @@ const wrapD = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 const dist = (a, b) => Math.abs(wrapD(a - b));
 const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
 // level fields copied from the spec as they are (not laid out)
-const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'fox', 'eagle', 'icicles', 'eggKinds', 'gusts'];
+const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'fox', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander'];
 
 // ---------- layout ----------
 function radii(spec) {
@@ -356,7 +356,7 @@ export async function ostrichDrops(L0) {
     if (!gaps.length) return 1;
     return gaps.some((g) => {
       for (let o = 0; o < 8; o++) {
-        const L = { ...L0, eggs: 1, eggKinds: ['ostrich'], orbs: [], portals: [], snake: undefined, eagle: undefined, fox: undefined, lava: undefined, icicles: undefined, barriers: [], bossFight: undefined,
+        const L = { ...L0, eggs: 1, eggKinds: ['ostrich'], orbs: [], portals: [], snake: undefined, salamander: undefined, eagle: undefined, fox: undefined, lava: undefined, icicles: undefined, barriers: [], bossFight: undefined,
           rings: L0.rings.map((r) => ({ ...r, thorns: [], pads: [], honey: [], gaps: (r.gaps || []).map((q) => ({ ...q, curtain: undefined, shut: undefined })) })) };
         const sim = new Sim(L, { mode: 'medium' });
         const e = sim.aliveEggs()[0], ring = sim.rings[i], want = -Math.PI / 2 - (g.a * Math.PI) / 180;
@@ -453,6 +453,7 @@ async function main() {
     const old = OLD.find((L) => L.id === spec.id);
     if (!found.length && old && !args.includes('--strict')) {
       for (const k of ['theme', 'name', 'eggs', 'target', 'material', 'tip', 'world', 'intro', ...LEVEL_KEYS]) if (k !== 'bonus' && spec[k] !== undefined) old[k] = spec[k];
+      for (const k of LEVEL_KEYS) if (k !== 'bonus' && spec[k] === undefined) delete old[k]; // a hazard the spec dropped goes too
       chosen.push(old);
       report.push(`L${spec.id}: kept its layout`);
       continue;

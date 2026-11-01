@@ -36,6 +36,11 @@
 //   }]} drives the boss actor, its telegraphed attacks and the phase bar (see src/sim/boss.js);
 //   icicles {every, delay, big} now grow over an egg and drop (every `big`-th is a chunk that freezes a ring and
 //   stands as a melting ice wall). v3.1 orb: frost (freezes the ring under the egg for 3 s).
+// v3.2 level field: salamander {delay, every, a, ch, dir} or an array of them: the lava salamander walks channel ch
+//   (1 .. rings-1) from angle a (deg; 90 = top), climbs through gaps toward the leading egg and every `every` s
+//   (Medium) breathes fire at a ring wall just ahead of it: that section is red-hot for 4 s (eggs touching it crack,
+//   thorns on it burn). The ring under it carries it; water cools it. In a salamander boss fight it is the boss
+//   (1.3x, breathing on the phase rhythm; see src/sim/salamander.js).
 // 35 levels = 7 environments x 5: L1 of an environment teaches its trait, L2-L4 twist it, L5 is the boss
 // (with an intro card); the level after a boss is a breather. Nests only move where there is a reason
 // (the lake current, the fox chasing the hen in his fortress).
@@ -191,23 +196,25 @@ export const SPECS = [
 
   // ---------------- 5 Volcano: lava rocks melt holes and blast eggs; water shell, black flame, honey, spikes
   { id: 21, world: 5, theme: 'volcano', name: 'Volcano', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 4,
-    nest: { w: 2.8 }, bonus: { kind: 'orbs' }, lava: { every: 7, delay: 5 },
+    nest: { w: 2.8 }, bonus: { kind: 'orbs' }, salamander: { delay: 3, every: 6, a: 160, ch: 2 },
     orbs: [{ type: 'water', ch: 1 }, { type: 'fire_red', ch: 3 }],
-    intro: { title: 'Volcano', line: 'Lava rocks crash onto the rings, glow, then melt a hole that heals 5 s later. The water shell cools them.' },
-    tip: 'A lava hole is a free gap for a few seconds: drop through it.',
+    intro: { title: 'The lava salamander', line: 'Its fire makes the wall in front of it red-hot. Turn the ring it stands on to aim the fire at thorns, not eggs.' },
+    tip: 'The salamander rides the ring under it. Steer its fire onto thorns; water cools it down.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 22, world: 5, theme: 'volcano', name: 'Melt-Through', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 4,
-    nest: { w: 2.8 }, bonus: { kind: 'time' }, lava: { every: 6, delay: 4 },
+    nest: { w: 2.8 }, bonus: { kind: 'time' }, lava: { every: 6, delay: 4 }, salamander: { delay: 6, every: 7, a: 30, ch: 3 },
     orbs: [{ type: 'fire_black', ch: 2 }, { type: 'water', ch: 3 }, { type: 'hourglass', ch: 4 }],
+    intro: { title: 'Lava rocks', line: 'Lava rocks crash onto the rings, glow, then melt a hole that heals 5 s later. The water shell cools them. Lava only feeds the salamander.' },
     tip: 'This ring has no gap. Wait for a lava hole, or burn one with the black flame.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { noGap: true, thorns: 1, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 23, world: 5, theme: 'volcano', name: 'Honey Vents', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 5,
-    nest: { w: 3.0 }, bonus: { kind: 'turns' }, lava: { every: 6, delay: 4 },
+    nest: { w: 3.0 }, bonus: { kind: 'turns' }, lava: { every: 6, delay: 4 }, salamander: { delay: 5, every: 7, a: -40, ch: 3 },
+    snake: { delay: 9, a: 40, speed: 0.35 },
     orbs: [{ type: 'water', ch: 2 }, { type: 'stone', ch: 4 }],
-    tip: 'Honey holds an egg for two seconds. Park one there while the rocks fall.',
+    tip: 'Honey holds an egg while the rocks fall. Lure the snake to the salamander: they face off and leave your eggs alone.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 24, world: 5, theme: 'volcano', name: 'Spike Forge', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 5,
-    nest: { w: 3.0 }, bonus: { kind: 'time' }, lava: { every: 6, delay: 5 },
+    nest: { w: 3.0 }, bonus: { kind: 'time' }, lava: { every: 6, delay: 5 }, salamander: { delay: 4, every: 6.5, a: 120, ch: 2 },
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'water', ch: 3 }, { type: 'fire_green', ch: 5 }],
     tip: 'Forge spikes pump in and out. Count the beat and pass while they are down.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 3, size: [2, 3], retract: { period: 3, on: 0.5 } }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 3, size: [2, 3], retract: { period: 2.6, on: 0.55 } }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
@@ -218,8 +225,9 @@ export const SPECS = [
       { at: { saved: 1, t: 30 }, attacks: ['rock2'], every: 4.5 },
       { at: { saved: 2, t: 60 }, attacks: ['rock2'], every: 4, heat: true },
     ] },
+    salamander: { delay: 3, ch: 3, a: 90 }, // the boss itself: 1.3x, breathes fire between its lava throws
     orbs: [{ type: 'water', ch: 1 }, { type: 'feather', ch: 3 }, { type: 'water', ch: 4 }],
-    intro: { title: 'Boss: The Lava Salamander', line: 'The salamander spits lava rocks at your eggs (a ring marks the spot); at the end the heat cracks any egg that waits.' },
+    intro: { title: 'Boss: The Lava Salamander', line: 'It walks the rings, spits lava rocks at your eggs and breathes fire on the walls. At the end the heat cracks any egg that waits.' },
     tip: 'Rocks melt holes everywhere. Use them, and take the feather for the last run.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { noGap: true, thorns: 2, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
 

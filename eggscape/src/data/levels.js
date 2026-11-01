@@ -204,7 +204,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 21, theme: "volcano", name: "Volcano", eggs: 3, target: 2, time: 75, spacing: 1, material: "obsidian", lava: {every: 7, delay: 5}, nest: {w: 2.8}, bonus: {kind: "orbs"}, tip: "A lava hole is a free gap for a few seconds: drop through it.", orbs: [{type: "water", ch: 1, a: 157},{type: "fire_red", ch: 3, a: -81}], seed: 166300, world: 5, intro: {title: "Volcano", line: "Lava rocks crash onto the rings, glow, then melt a hole that heals 5 s later. The water shell cools them."},
+    id: 21, theme: "volcano", name: "Volcano", eggs: 3, target: 2, time: 75, spacing: 1, material: "obsidian", nest: {w: 2.8}, bonus: {kind: "orbs"}, tip: "The salamander rides the ring under it. Steer its fire onto thorns; water cools it down.", orbs: [{type: "water", ch: 1, a: 157},{type: "fire_red", ch: 3, a: -81}], seed: 166300, world: 5, intro: {title: "The lava salamander", line: "Its fire makes the wall in front of it red-hot. Turn the ring it stands on to aim the fire at thorns, not eggs."}, salamander: {delay: 3, every: 6, a: 160, ch: 2},
     rings: [
       {gaps: [{a: -166}], thorns: [{a: 147, n: 2}]},
       {gaps: [{a: 99, x: 2}], thorns: [{a: 141, n: 2},{a: -73, n: 2, side: "out", h: 0.26}], pads: [{a: -50, len: 1.9}]},
@@ -214,7 +214,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 22, theme: "volcano", name: "Melt-Through", eggs: 3, target: 2, time: 70, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 2.8}, bonus: {kind: "time", s: 35}, tip: "This ring has no gap. Wait for a lava hole, or burn one with the black flame.", orbs: [{type: "fire_black", ch: 2, a: -106},{type: "water", ch: 3, a: -97},{type: "hourglass", ch: 4, a: 32}], seed: 174219, world: 5,
+    id: 22, theme: "volcano", name: "Melt-Through", eggs: 3, target: 2, time: 70, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 2.8}, bonus: {kind: "time", s: 35}, tip: "This ring has no gap. Wait for a lava hole, or burn one with the black flame.", orbs: [{type: "fire_black", ch: 2, a: -106},{type: "water", ch: 3, a: -97},{type: "hourglass", ch: 4, a: 32}], seed: 174219, world: 5, intro: {title: "Lava rocks", line: "Lava rocks crash onto the rings, glow, then melt a hole that heals 5 s later. The water shell cools them. Lava only feeds the salamander."}, salamander: {delay: 6, every: 7, a: 30, ch: 3},
     rings: [
       {gaps: [{a: 53}], thorns: [{a: 2, n: 1}]},
       {gaps: [{a: 128, x: 2}], thorns: [{a: 4, n: 2},{a: -68, n: 2, side: "out", h: 0.26}], pads: [{a: -177, len: 1.35}]},
@@ -224,7 +224,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 23, theme: "volcano", name: "Honey Vents", eggs: 3, target: 2, time: 120, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 3}, bonus: {kind: "turns", n: 14}, tip: "Honey holds an egg for two seconds. Park one there while the rocks fall.", orbs: [{type: "water", ch: 2, a: 87},{type: "stone", ch: 4, a: -170}], seed: 182138, world: 5,
+    id: 23, theme: "volcano", name: "Honey Vents", eggs: 3, target: 2, time: 120, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 3}, bonus: {kind: "turns", n: 14}, tip: "Honey holds an egg while the rocks fall. Lure the snake to the salamander: they face off and leave your eggs alone.", orbs: [{type: "water", ch: 2, a: 87},{type: "stone", ch: 4, a: -170}], seed: 182138, world: 5, snake: {delay: 9, a: 40, speed: 0.35}, salamander: {delay: 5, every: 7, a: -40, ch: 3},
     rings: [
       {gaps: [{a: 86}], thorns: [{a: -3, n: 2}]},
       {gaps: [{a: -153, x: 2}], thorns: [{a: 113, n: 3},{a: 79, n: 2, side: "out", h: 0.26}], pads: [{a: 9, len: 1.53}], honey: [{a: -121, len: 1.18}]},
@@ -235,7 +235,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 24, theme: "volcano", name: "Spike Forge", eggs: 3, target: 2, time: 120, spacing: 1, material: "obsidian", lava: {every: 6, delay: 5}, nest: {w: 3}, bonus: {kind: "time", s: 65}, tip: "Forge spikes pump in and out. Count the beat and pass while they are down.", orbs: [{type: "hourglass", ch: 1, a: -55},{type: "water", ch: 3, a: -147},{type: "fire_green", ch: 5, a: -89}], seed: 190057, world: 5,
+    id: 24, theme: "volcano", name: "Spike Forge", eggs: 3, target: 2, time: 120, spacing: 1, material: "obsidian", lava: {every: 6, delay: 5}, nest: {w: 3}, bonus: {kind: "time", s: 65}, tip: "Forge spikes pump in and out. Count the beat and pass while they are down.", orbs: [{type: "hourglass", ch: 1, a: -55},{type: "water", ch: 3, a: -147},{type: "fire_green", ch: 5, a: -89}], seed: 190057, world: 5, salamander: {delay: 4, every: 6.5, a: 120, ch: 2},
     rings: [
       {gaps: [{a: 28}], thorns: [{a: 162, n: 1}]},
       {retract: {phase: 0.02, period: 3, on: 0.5}, gaps: [{a: -46, x: 2}], thorns: [{a: 53, n: 2},{a: 139, n: 3},{a: 87, n: 2}], pads: [{a: -163, len: 1.59}]},
@@ -246,7 +246,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 25, theme: "volcano", name: "The Eruption", eggs: 3, target: 2, time: 90, spacing: 1, material: "obsidian", boss: "salamander", bossFight: {kind: "salamander", delay: 3, phases: [{attacks: ["rock"], every: 4.5},{at: {saved: 1, t: 30}, attacks: ["rock2"], every: 4.5},{at: {saved: 2, t: 60}, attacks: ["rock2"], every: 4, heat: true}]}, nest: {w: 3}, bonus: {kind: "prize"}, tip: "Rocks melt holes everywhere. Use them, and take the feather for the last run.", orbs: [{type: "water", ch: 1, a: 33},{type: "feather", ch: 3, a: 51},{type: "water", ch: 4, a: -164}], seed: 197980, world: 5, intro: {title: "Boss: The Lava Salamander", line: "The salamander spits lava rocks at your eggs (a ring marks the spot); at the end the heat cracks any egg that waits."},
+    id: 25, theme: "volcano", name: "The Eruption", eggs: 3, target: 2, time: 90, spacing: 1, material: "obsidian", boss: "salamander", bossFight: {kind: "salamander", delay: 3, phases: [{attacks: ["rock"], every: 4.5},{at: {saved: 1, t: 30}, attacks: ["rock2"], every: 4.5},{at: {saved: 2, t: 60}, attacks: ["rock2"], every: 4, heat: true}]}, nest: {w: 3}, bonus: {kind: "prize"}, tip: "Rocks melt holes everywhere. Use them, and take the feather for the last run.", orbs: [{type: "water", ch: 1, a: 33},{type: "feather", ch: 3, a: 51},{type: "water", ch: 4, a: -164}], seed: 197980, world: 5, intro: {title: "Boss: The Lava Salamander", line: "It walks the rings, spits lava rocks at your eggs and breathes fire on the walls. At the end the heat cracks any egg that waits."}, salamander: {delay: 3, ch: 3, a: 90},
     rings: [
       {gaps: [{a: 30}], thorns: [{a: 178, n: 2}]},
       {gaps: [{a: -19, x: 2}], thorns: [{a: 126, n: 3},{a: -140, n: 2, side: "out", h: 0.26}], pads: [{a: 176, len: 1.42}], honey: [{a: 59, len: 0.92}]},

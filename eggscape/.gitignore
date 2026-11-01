@@ -6,3 +6,6 @@ tools/shots/
 node_modules
 qa/eagle/
 qa/chicks/
+qa/salamander/
+qa/crawlers/
+qa/salwire/
