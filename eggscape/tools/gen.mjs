@@ -107,8 +107,10 @@ function layRing(spec, i, r, R, prev) {
   const sortedG = [...gaps].sort((p, q) => p.a - q.a);
   const after = (open.length ? open : gaps.slice(0, 1)).map((g) => sortedG.indexOf(g)).sort((p, q) => p - q);
   const nFloor = free ? Infinity : after.length - Math.min(after.length, rs.barriers || 0); // barriers take arcs too
+  // a one-way ring can't turn back, so a floor cluster could trap an egg on the far side of its pocket's
+  // gap: its thorns all point out (a ceiling for the channel beyond)
   for (let k = 0; k < nT; k++) {
-    const floor = free || k < nFloor;
+    const floor = !rs.oneway && (free || k < nFloor);
     let ok = false;
     for (let t = 0; t < 300 && !ok; t++) {
       const n = floor ? smin + Math.floor(R() * (smax - smin + 1)) : Math.min(2, smin);

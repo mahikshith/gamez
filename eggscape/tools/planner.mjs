@@ -25,7 +25,9 @@ export function solve(level, opts = {}) {
     scored.sort((x, y) => y.v - x.v);
     // no single move makes progress: look two moves ahead from the best few (always with depth2)
     if (opts.depth2 || scored[0].v <= v0 + 5) {
-      for (const s of scored.slice(0, opts.depth2 ? 4 : 5)) {
+      // the best few ring moves (waits are cheap and crowd the top when nothing helps at once) plus the best wait
+      const moves = scored.filter((s) => s.a.ring >= 0).slice(0, opts.depth2 ? 4 : 5);
+      for (const s of [...moves, scored.find((s) => s.a.ring < 0)].filter(Boolean)) {
         if (!s.S2) continue;
         let best = -Infinity;
         const c0 = Sim.fromState(level, s.S2);
