@@ -12,6 +12,7 @@ import * as W from './render/world.js';
 import { UI, FONT, ICON, drawStar, drawEggIcon } from './ui/ui.js';
 import { drawFox, drawHen, drawSnake } from './render/characters.js';
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
+import { drawSprite, drawBossCard } from './render/sprites.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import { drawStore, drawCoin, drawBoosterPicker, drawChest } from './ui/store.js';
@@ -1770,7 +1771,7 @@ function drawIntro() {
 
 // BOSS PORTRAIT (I6): the boss's face on its intro card. Stub: the sprite agent wires
 // sprites.drawBossCard(ctx, bossId, x, y, w, h, t) in here (bossIds: fox snake blizzard golem salamander eagle foxking).
-function bossPortrait(ctx, bossId, x, y, w, h, t) { /* draws nothing yet */ }
+function bossPortrait(ctx, bossId, x, y, w, h, t) { drawBossCard(ctx, bossId, x, y, w, h, t); }
 
 function drawPause() {
   dim(0.55);
@@ -1811,8 +1812,8 @@ function drawWin() {
         // the fox can't believe it; the hen is delighted (F16/F17)
         const side = (w - 192 * s) / 2 - 6 * s, cs = Math.min(58 * s, side);
         if (cs >= 36 * s) {
-          drawFox(ctx, x + cs / 2, y + 36 * s, cs, 'cry', G.t);
-          drawHen(ctx, x + w - cs / 2, y + 62 * s - 0.5 * cs, cs, 'dance', G.t);
+          if (!drawSprite(ctx, 'fox_cry', x + cs / 2, y + 36 * s, cs * 1.1)) drawFox(ctx, x + cs / 2, y + 36 * s, cs, 'cry', G.t);
+          if (!drawSprite(ctx, 'hen_dance', x + w - cs / 2, y + 62 * s - 0.5 * cs - Math.abs(Math.sin(G.t * 5)) * 3 * s, cs)) drawHen(ctx, x + w - cs / 2, y + 62 * s - 0.5 * cs, cs, 'dance', G.t);
           ui.record({ x, y: y + 36 * s - 0.6 * cs, w: cs, h: 1.2 * cs }, 'win:fox');
           ui.record({ x: x + w - cs, y: y + 62 * s - cs, w: cs, h: cs }, 'win:hen');
         }
@@ -1855,8 +1856,9 @@ function drawFail() {
     const B = [
       { h: 100 * s, gap: 0, draw: (x, y, w) => {
         // the fox grins and laughs; the hen is sad (F16/F17)
-        drawFox(ctx, x + w / 2 - 50 * s, y + 52 * s, 80 * s, G.screenT % 2.4 < 1.2 ? 'evil' : 'laugh', G.t);
-        drawHen(ctx, x + w / 2 + 56 * s, y + 98 * s - 0.5 * 64 * s, 64 * s, 'sad', G.t);
+        const evil = G.screenT % 2.4 < 1.2;
+        if (!drawSprite(ctx, evil ? 'fox_evil' : 'fox_laugh', x + w / 2 - 50 * s, y + 52 * s, 96 * s)) drawFox(ctx, x + w / 2 - 50 * s, y + 52 * s, 80 * s, evil ? 'evil' : 'laugh', G.t);
+        if (!drawSprite(ctx, 'hen_cry', x + w / 2 + 56 * s, y + 98 * s - 0.5 * 64 * s, 64 * s)) drawHen(ctx, x + w / 2 + 56 * s, y + 98 * s - 0.5 * 64 * s, 64 * s, 'sad', G.t);
         ui.record({ x: x + w / 2 - 90 * s, y: y + 4 * s, w: 80 * s, h: 96 * s }, 'fail:fox');
         ui.record({ x: x + w / 2 + 24 * s, y: y + 34 * s, w: 64 * s, h: 64 * s }, 'fail:hen');
       } },

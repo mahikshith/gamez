@@ -1,5 +1,7 @@
-// Power-up art: floating orbs, egg overlays, and popup-card icons. Pure Canvas 2D, no assets.
+// Power-up art: floating orbs, egg overlays, and popup-card icons. Canvas 2D; known orbs use the raster sprites (sprites.js) when loaded, code-drawn otherwise.
 // All drawing is local y-DOWN; flames rise toward -y. The caller handles any world flip.
+
+import { drawSprite } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const mod = (a, b) => ((a % b) + b) % b;
@@ -1000,6 +1002,11 @@ export function drawOrb(ctx, id, cx, cy, r, t = 0, known = true) {
     ctx.beginPath();
     ctx.arc(0, 0, r * 1.75 * pulse, 0, TAU);
     ctx.fill();
+    // sprite art for known orbs (glow/bob/pulse above stay); falls back to the code-drawn glass below
+    if (known && drawSprite(ctx, 'orb_' + id, 0, 0, r * 2 * (1 + 0.015 * Math.sin(t * 3)))) {
+      ctx.restore();
+      return;
+    }
     ctx.scale(r / 100, r / 100);
     // glass body
     const body = ctx.createRadialGradient(-30, -36, 6, 0, 0, 100);
