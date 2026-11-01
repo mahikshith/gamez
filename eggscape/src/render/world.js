@@ -1,7 +1,7 @@
 // Draws the playfield in world space: ctx is pre-transformed (meters, y up).
 import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
-import { drawChick, drawSnake, drawFox } from './characters.js';
-import { isSpriteCalm } from './sprites.js';
+import { drawChick, drawSnake } from './characters.js';
+import { isSpriteCalm, drawFoxActor } from './sprites.js';
 import { drawEagle, drawBarrier, drawVenom } from './v3art.js';
 import { drawEggPower } from './powers.js';
 import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawGrate, drawOneWayMark } from './v3art.js';
@@ -1233,7 +1233,7 @@ export function drawFoxThrower(ctx, sim, t, k) {
     ctx.translate(0, dy);
     ctx.rotate(rot);
     ctx.scale(sx, sy);
-    drawFox(ctx, 0, 0, sz, F.mood, t, { x: Math.cos(t * 0.35) * 0.4, y: 0.6 });
+    drawFoxActor(ctx, F.mood || 'smug', 0, 0, sz * 1.2, t, { key: 'thrower', lean: Math.cos(t * 0.35) * 0.4 });
   });
 }
 

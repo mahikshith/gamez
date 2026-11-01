@@ -4,6 +4,7 @@
 // them plus a handful of animated elements. World camera is y-up (planck), meters.
 
 import { drawFox } from './render/characters.js';
+import { drawSprite } from './render/sprites.js';
 
 // ---------------------------------------------------------------- math / rng / color
 const TAU = Math.PI * 2;
@@ -1153,7 +1154,7 @@ ART.vault = {
     S.lights = [];
     for (const y of [H * 0.12, H * 0.32, H * 0.62]) for (const [a, b] of [[0, W * 0.2], [W * 0.8, W]]) { glow(c, (a + b) / 2, y, (b - a) * 0.6, '#ff8a2a', 0.12); rect(c, a, y - 0.4 * u, b - a, 0.8 * u, '#ff9a3a'); rect(c, a, y - 0.15 * u, b - a, 0.3 * u, '#ffe0b0'); for (let k = 0; k < 2; k++) S.lights.push([lerp(a, b, R.r(0.15, 0.85)), y + 3 * u, R() * TAU, R.r(0.6, 1.6), R() < 0.5 ? '#3ef0e0' : '#ff9a3a']); }
     // fox banners
-    for (const x of S.port ? [W * 0.13, W * 0.87] : [W * 0.12, W * 0.88]) banner(c, x, S.port ? H * 0.03 : H * 0.06, (S.port ? 11 : 12) * u, (S.port ? 20 : 30) * u, u);
+    for (const x of S.port ? [W * 0.13, W * 0.87] : [W * 0.12, W * 0.88]) banner(c, S, x, S.port ? H * 0.03 : H * 0.06, (S.port ? 11 : 12) * u, (S.port ? 20 : 30) * u, u);
   },
   near(c, S) {
     const { W, H, u, R, gy } = S;
@@ -1164,16 +1165,19 @@ ART.vault = {
   front(ctx, t, S) {
     S.tf(ctx, 0.4); const u = S.u;
     for (const [x, y, p, f, col] of S.lights) { const on = Math.sin(t * f * 2 + p) > 0.2 ? 1 : 0.25; ctx.globalAlpha = on; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 0.55 * u, 0, TAU); ctx.fill(); }
-    ctx.globalAlpha = 1; ctx.restore();
+    ctx.globalAlpha = 1;
+    // the fox's reference portrait (the same art as the title, the cards and the thrower) on each banner
+    for (const [x, y, fs] of S.banners || []) if (!drawSprite(ctx, 'fox_evil', x, y, fs * 1.2)) drawFox(ctx, x, y, fs, 'smug', 0.3);
+    ctx.restore();
   },
 };
-function banner(c, x, y, w, h, u) {
+function banner(c, S, x, y, w, h, u) {
   line(c, x - w * 0.6, y, x + w * 0.6, y, '#c8963e', 0.8 * u);
   poly(c, [x - w / 2, y, x + w / 2, y, x + w / 2, y + h, x, y + h - w * 0.35, x - w / 2, y + h], '#e86a1a');
   poly(c, [x - w / 2, y, x - w * 0.3, y, x - w * 0.3, y + h - w * 0.24, x - w / 2, y + h], '#ff8a34');
   rect(c, x - w / 2, y + 1 * u, w, 0.6 * u, '#ffd27a'); rect(c, x - w / 2, y + h * 0.82 - 1 * u, w, 0.4 * u, 'rgba(255,210,122,0.6)');
-  // the real fox head (same drawing as the fox villain), smug and drawn once into the banner
-  drawFox(c, x, y + h * 0.43, Math.min(w * 0.8, h * 0.62), 'smug', 0.3);
+  // the fox on the cloth is drawn in front() (the cached layer sits under the dark vignette), so remember where
+  (S.banners || (S.banners = [])).push([x, y + h * 0.43, Math.min(w * 0.8, h * 0.62)]);
 }
 
 // ---------------------------------------------------------------- theme table
@@ -1359,7 +1363,7 @@ export function createBackdrop(theme, seed = 1) {
       S.cx = S.W / 2; S.cy = S.H / 2; S.cam = { x: 0, y: 0, zoom: 1 };
       // horizon & ground line in layer coords: the game's floor sits ~88% down the screen
       S.hz = M + h * lerp(0.68, 0.6, clamp((w / h - 0.6) / 1.2, 0, 1)); S.gy = M + h * 0.88; S.by = (k) => lerp(S.hz, S.gy, k);
-      S.R = rng(S.seed); if (art.prep) art.prep(S);
+      S.R = rng(S.seed); S.banners = []; if (art.prep) art.prep(S);
       const paint = (fns, final, opaque) => {
         const cv = mkCanvas(S.W * dpr, S.H * dpr), c = cv.getContext('2d', { alpha: !opaque });
         c.setTransform(dpr, 0, 0, dpr, 0, 0);

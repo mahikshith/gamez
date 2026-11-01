@@ -33,6 +33,8 @@ import u_boss_eagle from '../../assets/sprites/boss_eagle.webp';
 import u_boss_foxking from '../../assets/sprites/boss_foxking.webp';
 import u_win_hen from '../../assets/sprites/win_hen.webp';
 
+import { drawFox, drawHen } from './characters.js';
+
 const SRC = {
   orb_fire_red: u_orb_fire_red, orb_fire_black: u_orb_fire_black, orb_fire_green: u_orb_fire_green, orb_fire_gold: u_orb_fire_gold, orb_stone: u_orb_stone, orb_bubble: u_orb_bubble, orb_water: u_orb_water, orb_thunder: u_orb_thunder, orb_thorn: u_orb_thorn, orb_magnet: u_orb_magnet, orb_twin: u_orb_twin, orb_golden: u_orb_golden, orb_hourglass: u_orb_hourglass, orb_feather: u_orb_feather, orb_rockskin: u_orb_rockskin, orb_foxcurse: u_orb_foxcurse, hen_dance: u_hen_dance, hen_worried: u_hen_worried, hen_cry: u_hen_cry, hen_proud: u_hen_proud, fox_evil: u_fox_evil, fox_laugh: u_fox_laugh, fox_cry: u_fox_cry, fox_shock: u_fox_shock, boss_fox: u_boss_fox, boss_snake: u_boss_snake, boss_blizzard: u_boss_blizzard, boss_golem: u_boss_golem, boss_salamander: u_boss_salamander, boss_eagle: u_boss_eagle, boss_foxking: u_boss_foxking, win_hen: u_win_hen,
 };
@@ -192,3 +194,49 @@ export function drawBossCard(ctx, bossId, x, y, w, h, t = 0, age = null) {
     return false;
   }
 }
+
+// ---- the fox and the hen, one look everywhere -------------------------------------------------------------------------
+// Every place that shows the fox or the hen (title, level cards, in-level hen, the vault thrower, fortress banners) calls
+// these, so it is the same reference art in the same moods. They map a game mood to a sprite and a motion, give every
+// mood change a short squash pop, and fall back to the code-drawn character while the image is still loading.
+// h is the sprite height; cx, cy its centre. o: {key (separates two actors on one screen), enter (seconds since it
+// appeared: entrance pop), phase, amp, lean (-1..1: tilt toward something, e.g. the pointer)}.
+const FOX_LOOK = {
+  idle: ['fox_evil', 'breathe'], smug: ['fox_evil', 'breathe'], evil: ['fox_evil', 'shake'],
+  laugh: ['fox_laugh', 'laugh'], cry: ['fox_cry', 'cry'], angry: ['fox_cry', 'shake'], shocked: ['fox_shock', 'shake'],
+};
+const HEN_LOOK = {
+  idle: ['hen_proud', 'breathe'], happy: ['hen_dance', 'hop'], dance: ['hen_dance', 'dance'],
+  worried: ['hen_worried', 'shake', 0.5], gasp: ['hen_worried', 'shake', 1], cry: ['hen_cry', 'cry'], sad: ['hen_cry', 'cry'],
+};
+const MOODS = {}; // actor key -> {mood, at}: when its mood last changed, on the caller's clock
+
+function actor(ctx, kind, look, fallback, mood, cx, cy, h, t, o) {
+  const [id, mode, amp] = look[mood] || look.idle;
+  const key = kind + (o.key || '');
+  let m = MOODS[key];
+  if (!m) m = MOODS[key] = { mood, at: -9 };
+  if (m.mood !== mood || t < m.at) { m.mood = mood; m.at = t; }
+  // a fresh appearance pops in from nothing; a mood change squashes from almost full size
+  const enter = o.enter != null && o.enter < 0.6;
+  const age = enter ? o.enter : t - m.at;
+  const opts = { age, amp: (o.amp == null ? 1 : o.amp) * (amp == null ? 1 : amp), phase: o.phase || 0, popFrom: enter ? 0 : 0.86 };
+  const lean = isSpriteCalm() ? 0 : Math.max(-1, Math.min(1, o.lean || 0));
+  ctx.save();
+  if (lean) { ctx.translate(cx, cy + h / 2); ctx.rotate(lean * 0.1); ctx.translate(-cx, -cy - h / 2); } // tilt from the feet
+  const ok = drawSpriteAlive(ctx, id, cx, cy, h, t, mode, opts);
+  ctx.restore();
+  if (!ok) fallback(ctx, cx, cy, h, mood, t);
+  return ok;
+}
+
+export function drawFoxActor(ctx, mood, cx, cy, h, t = 0, o = {}) {
+  return actor(ctx, 'fox', FOX_LOOK, (c, x, y, hh, m, tt) => drawFox(c, x, y, hh / 1.2, FOX_LOOK[m] ? m : 'idle', tt), mood, cx, cy, h, t, o);
+}
+
+export function drawHenActor(ctx, mood, cx, cy, h, t = 0, o = {}) {
+  return actor(ctx, 'hen', HEN_LOOK, (c, x, y, hh, m, tt) => drawHen(c, x, y, hh, HEN_LOOK[m] ? m : 'idle', tt), mood, cx, cy, h, t, o);
+}
+
+// start loading the characters now so the first screen that needs them (and the cached fortress banners) can use them
+for (const id of ['fox_evil', 'fox_laugh', 'fox_cry', 'fox_shock', 'hen_dance', 'hen_worried', 'hen_cry', 'hen_proud']) get(id);
