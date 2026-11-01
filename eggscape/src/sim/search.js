@@ -12,6 +12,7 @@ export function act(sim, a, maxSettle = 2.5) {
 // The same as a generator that yields every `every` sim steps (the in-game hint spreads it over frames).
 export function* actSteps(sim, a, maxSettle = 2.5, every = Infinity) {
   let n = 0;
+  if (a.tap) sim.tapChick(a.tap); // v3.2: use a chick's power (a.tap = egg id), then let it play out
   const ring = a.ring >= 0 ? sim.rings[a.ring] : null;
   const goal = ring ? ring.body.getAngle() + a.delta : 0;
   let t = 0;
@@ -71,6 +72,7 @@ export function value(sim) {
       v -= d * 60;
     }
   }
+  v += (sim.chickGain || 0) * 150; // v3.2: thorns, curtains, ice and snakes a chick power cleared
   // a win that cost an egg is only a small prize: keep playing for the clean one while there is time
   if (sim.state === 'won' && st.broken === 0) v += 20000 + sim.timeLeft * 20;
   v += sim.timeLeft * 2;
@@ -89,6 +91,8 @@ export function actions(sim) {
   // a geared partner turns with its ring: one of the two is enough
   for (const i of floors) if (sim.rings[i].gear && floors.has(sim.rings[i].gear.i) && sim.rings[i].gear.i < i) floors.delete(i);
   for (const i of floors) if (sim.rings[i].grabbable) for (const d of DELTAS) if (!sim.canTurn || sim.canTurn(sim.rings[i], d)) out.push({ ring: i, delta: d });
+  // v3.2: tap chick i (one power per chick)
+  if (sim.canTap) for (const e of sim.aliveEggs()) if (sim.canTap(e)) out.push({ ring: -1, tap: e.id, wait: 0.3 });
   return out;
 }
 

@@ -11,6 +11,9 @@ const hash = (n) => {
   return s - Math.floor(s);
 };
 
+// v3.2: orbs whose art lives elsewhere register a drawer here: id -> (ctx, cx, cy, r, t, known)
+export const ORB_ART = {};
+
 export const POWER_INFO = {
   fire_red: { name: 'Red flame', line: 'Burns away thorns it touches. Rings stay safe.', color: '#ff5a1f' },
   fire_black: { name: 'Black flame', line: 'Eats through the ring floor. Down you go!', color: '#8e3bd6' },
@@ -1013,6 +1016,7 @@ function drawMystery(ctx, rgb, t) {
 // Floating power-up orb at (cx, cy), radius r. known = false shows the mystery swirl.
 export function drawOrb(ctx, id, cx, cy, r, t = 0, known = true) {
   if (!(r > 0)) return;
+  if (ORB_ART[id]) { ORB_ART[id](ctx, cx, cy, r, t, known); return; } // v3.2: hatch orbs (render/chicks.js)
   ctx.save();
   try {
     const rgb = RGB[id] || '200,200,200';

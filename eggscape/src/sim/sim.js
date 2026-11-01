@@ -2,6 +2,7 @@
 import { World, Vec2, Polygon, Circle, Box, RopeJoint } from 'planck';
 import { EGG_H, EGG_W, RING_TH, TAU, eggHull, solidArcs, wrap, clamp, rng } from './geom.js';
 import { v31Init, v31Step, v31State, v31Load, v31Contact, frostOrb, animalsHit } from './boss.js'; // bosses (v3.1)
+import { chickMethods, CHICK_KEYS } from './chicks.js'; // v3.2 chick kinds
 
 export const DT = 1 / 120;
 
@@ -224,6 +225,7 @@ export class Sim {
     v31Init(this); // bosses (v3.1): boss fight, falling ice, temporary walls and ring locks
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
+    this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
   }
 
   makeRing(i, r, spec, mat) {
@@ -530,6 +532,7 @@ export class Sim {
       this.emit('orbSpawn', { power: type, x: o.x, y: o.y });
     });
     this.predStep(dt);
+    this.chickStep(dt); // v3.2 chick kinds
     if (this.weather && this.state === 'play') this.weatherStep(dt);
     if (this.state === 'play') this.v3Step(dt);
 
@@ -692,7 +695,7 @@ export class Sim {
 
   preSolve(c, old) {
     const [fa, fb, ua, ub] = this.parts(c);
-    if (this.v3Pass(ua, ub)) { c.setEnabled(false); return; } // v3: melted ring, grate, narrow gap
+    if (this.v3Pass(ua, ub) || this.chickPass(ua, ub)) { c.setEnabled(false); return; } // v3: melted ring, grate, narrow gap
     if (!fa.isSensor() && !fb.isSensor()) this.impactCheck(c, old, ua, ub);
     let egg = null, other = null, ofix = null;
     if (ua.kind === 'egg') { egg = ua.egg; other = ub; ofix = fb; }
@@ -701,7 +704,7 @@ export class Sim {
       if ((ua.kind === 'shut' ? ua : ub).gap.o > 0.5) { c.setEnabled(false); return; }
     }
     if (other && other.kind === 'thorn' && other.thorn.ext < 0.5) { c.setEnabled(false); return; }
-    if (this.v3Contact(c, egg, other)) return;
+    if (this.v3Contact(c, egg, other) || this.chickContact(c, egg, other)) return;
     if (!egg || !egg.alive || egg.saved) return;
     if (other.kind === 'barrier') { this.barrierTouch(c, egg, other.barrier); return; } // predators (v3)
     if (other.kind === 'thorn') {
@@ -736,7 +739,7 @@ export class Sim {
       const seg = other.seg;
       egg.freefall = 0;
       // black fire burns through whatever ring floor the egg rests on; red fire never burns rings
-      if (egg.fireKind === 'fire_black' && egg.fire > 0 && seg.alive) {
+      if (egg.fireKind === 'fire_black' && egg.fire > 0 && seg.alive && !seg.hardIce) {
         seg.burn += DT;
         if (seg.burn > 0.45 && !seg.dying) { seg.dying = true; this.defer(() => this.breakSeg(seg, 'burn')); }
       }
@@ -871,7 +874,7 @@ export class Sim {
     this.emit('pickup', { egg, power: t, x: p.x, y: p.y });
     if (t === 'fire_red' || t === 'fire_black') { egg.fire = POWER[t].time; egg.fireKind = t; if (egg.bubbleFix) this.popBubble(egg); }
     else if (t === 'fire_green') { egg.glow = 1.5; if (egg.cracks > 0) { const n = egg.cracks; egg.cracks = 0; this.emit('mend', { egg, x: p.x, y: p.y, n }); } } // v3: heals every crack
-    else if (t === 'fire_gold') this.hatch(egg);
+    else if (t === 'fire_gold' || t.startsWith('hatch_')) this.hatchOrb(egg, t); // v3.2: hatch orbs tint the egg
     else if (t === 'stone') this.setStone(egg, true);
     else if (t === 'bubble') this.setBubble(egg);
     else if (t === 'water') egg.water = POWER.water.time;
@@ -910,6 +913,7 @@ export class Sim {
     egg.body.setFixedRotation(true);
     egg.body.setTransform(egg.body.getPosition(), 0);
     this.chickBody(egg); // predators (v3): bigger chick
+    this.chickHatched(egg, quiet); // v3.2: its kind
     if (!quiet) { const p = egg.body.getPosition(); this.emit('hatch', { egg, x: p.x, y: p.y }); }
   }
 
@@ -1023,7 +1027,7 @@ export class Sim {
     for (const ring of this.rings) {
       const a = ring.body.getAngle();
       for (const s of ring.segs) {
-        if (!s.alive) continue;
+        if (!s.alive || s.hardIce) continue; // v3.2: only the pick chick breaks hard ice
         const am = a + (s.a0 + s.a1) / 2;
         if (Math.hypot(ring.r * Math.cos(am) - p.x, ring.r * Math.sin(am) - p.y) < R) this.breakSeg(s, 'blast');
       }
@@ -1125,7 +1129,7 @@ export class Sim {
 
   // stone, rock skin and the guardian feather: snakes recoil, the eagle bounces off
   armored(egg) {
-    return egg.stone > 0 || egg.rockskin > 0 || egg.guard > 0;
+    return egg.stone > 0 || egg.rockskin > 0 || egg.guard > 0 || egg.bulk > 0; // v3.2: a puffed bulk chick too
   }
   snakeProof(egg) { return this.armored(egg) || egg.fire > 0; } // a flaming egg is no snack either
 
@@ -2181,6 +2185,7 @@ export class Sim {
     const EGG_KEYS = ['id', 'alive', 'saved', 'cracks', 'fire', 'fireKind', 'stone', 'bubble', 'golden', 'crackCD', 'safeT', 'portalCD', 'ch', 'mult', 'freefall', 'comet', 'cometUsed', 'seed', 'magnet', 'water', 'zap', 'glow', 'chick', 'meteor', 'honey', 'honeyCD', 'prize'];
     EGG_KEYS.push('peckK', 'peckT', 'peckHit'); // predators (v3)
     EGG_KEYS.push('kind', 'guard', 'rockskin', 'curse', 'drop', 'lavaCD', 'fled'); // v3
+    EGG_KEYS.push(...CHICK_KEYS); // v3.2 chick kinds
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2206,6 +2211,7 @@ export class Sim {
       nest: bodyS(this.nest),
       v3: this.v3State(),
       v31: v31State(this), // bosses (v3.1)
+      chick: this.chickState(), // v3.2
     };
   }
 
@@ -2256,6 +2262,7 @@ export class Sim {
     sim.embers = (S.embers || []).map((m) => ({ ...m }));
     sim.v3Restore(S.v3);
     v31Load(sim, S.v31); // bosses (v3.1)
+    sim.chickRestore(S.chick); // v3.2
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2605,5 +2612,7 @@ export class Sim {
     return { saved, broken, alive: this.aliveEggs().length, target: this.level.target || 1, total: this.eggs.length, score, perfect: this.savedLog.every((s) => s.cracks === 0) && broken === 0 };
   }
 }
+
+Object.assign(Sim.prototype, chickMethods); // v3.2 chick kinds (sim/chicks.js)
 
 export { EGG_H, EGG_W, RING_TH };
