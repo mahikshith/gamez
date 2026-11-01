@@ -1,6 +1,7 @@
 // Draws the playfield in world space: ctx is pre-transformed (meters, y up).
 import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
-import { drawChick } from './characters.js';
+import { drawChick, drawSnake, drawFox } from './characters.js';
+import { drawEagle, drawBarrier, drawVenom } from './v3art.js';
 import { drawEggPower } from './powers.js';
 import { drawSkinPreview } from '../ui/store.js';
 
@@ -668,7 +669,7 @@ export function drawEgg(ctx, egg, t, k) {
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.scale(px, -px); // helpers draw in pixels, y down
-    drawChick(ctx, 0, 0, 0.5 * k, t, v.y < -0.3 ? 1 : 0.3);
+    drawChick(ctx, 0, 0, 0.5 * k, t, v.y < -0.3 ? 1 : 0.3, egg.peckK ? Math.min(1, (egg.peckT || 0) / 0.6) : 0); // v3: 1.5x inside drawChick; peck 0..1
     ctx.restore();
     return;
   }
@@ -1095,3 +1096,90 @@ export function drawBoltWarn(ctx, x, y, t) {
   ctx.arc(x, y, 0.3, 0, TAU);
   ctx.stroke();
 }
+
+// ---------- predators (v3): barriers, snakes, eagle, fox thrower ----------
+// All take the world-space ctx (meters, y up) and k = px per meter; art helpers draw in px, y down.
+const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { /* art never breaks the frame */ } ctx.restore(); };
+
+// Wooden walls on channel floors, turning with their ring (G14). Venom splashes while one melts.
+export function drawBarriers(ctx, sim, t, k) {
+  for (const b of sim.barriers || []) {
+    if (!b.alive) continue;
+    const q = sim.barrierPoint(b, 0), a = q.a;
+    ctx.save();
+    ctx.translate(q.x, q.y);
+    ctx.rotate(a + Math.PI / 2); // art up (-y) points at the vault centre
+    ctx.scale(1 / k, -1 / k);
+    drawBarrier(ctx, 0, 0, b.w * k * 1.25, b.h * k, t, b.melt, b.fire ? b.burn : 0);
+    if (b.melt > 0) drawVenom(ctx, 0, -b.h * k * 0.55, 0.11 * k * (1 - 0.4 * b.melt), t, 1 - 0.5 * b.melt);
+    ctx.restore();
+  }
+}
+
+// head expression from snake state: hunt / chew0 / chew1 / hiss / ouch / grin
+export function snakeExpr(S, t) {
+  if (S.mood === 'chew') return Math.floor(t * 8) % 2 ? 'chew1' : 'chew0';
+  if (S.mood === 'ouch' || S.mood === 'grin') return S.mood;
+  return S.spit || S.blocked ? 'hiss' : 'hunt';
+}
+
+export function drawSnakes(ctx, sim, t, k) {
+  for (const S of sim.snakes || []) {
+    if (S.gone || S.pts.length < 2) continue;
+    const r = 0.1 * (S.size || 1), P = S.pts; // no pale halo: the player wants it gone (G9)
+    const sk = sim.spitK(S);
+    pxSpace(ctx, 0, 0, k, () => drawSnake(ctx, P.map((q) => ({ x: q.x * k, y: -q.y * k })), r * k, t, { id: S.id, mouthOpen: S.mouthOpen, expr: snakeExpr(S, t), thick: 2, venom: sk > 0 && sk < 0.25 ? sk / 0.25 : 0 }));
+    // the venom blob in flight
+    if (sk >= 0.25 && sk < 0.36) {
+      const b = sim.barriers[S.spit.b], q = sim.barrierPoint(b, 0.4), h = P[0], u = (sk - 0.25) / 0.11;
+      const x = h.x + (q.x - h.x) * u, y = h.y + (q.y - h.y) * u + Math.sin(u * Math.PI) * 0.25;
+      pxSpace(ctx, x, y, k, () => drawVenom(ctx, 0, 0, 0.1 * k, t, 1));
+    }
+  }
+}
+
+// Eagle (G48): layer 'back' = the shadow under what it has locked on (drawn before eggs); 'front' = the
+// target ring (red: it can reach in, grey dashes: the outer ring shields it) and the bird itself.
+export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
+  const E = sim.eagle;
+  if (!E || E.phase === 'away') return;
+  if (E.phase === 'warn' || E.phase === 'dive') {
+    const tg = sim.eagleTarget(E);
+    if (tg) {
+      const u = E.phase === 'dive' ? 1 : clamp01(1 - E.t / E.dur);
+      ctx.save();
+      ctx.translate(tg.x, tg.y);
+      if (layer === 'back') {
+        ctx.fillStyle = `rgba(20,10,0,${0.18 + 0.25 * u})`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 0.3 + 0.35 * u, 0.16 + 0.18 * u, Math.atan2(tg.y, tg.x) + Math.PI / 2, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+      const pulse = 0.5 + 0.5 * Math.sin(t * 14);
+      ctx.strokeStyle = E.reach ? `rgba(255,60,40,${0.6 + 0.4 * pulse})` : 'rgba(220,220,220,0.6)';
+      ctx.lineWidth = 0.05;
+      if (!E.reach) ctx.setLineDash([0.08, 0.07]);
+      ctx.beginPath();
+      ctx.arc(0, 0, 0.42 - 0.1 * u, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  }
+  if (layer === 'back') return;
+  const dive = E.phase === 'dive' ? 1 : 0;
+  const carrying = E.carry === 'snake' ? 'snake' : E.carry ? 'egg' : null;
+  pxSpace(ctx, E.x, E.y, k, () => drawEagle(ctx, 0, 0, 1.7 * k, t, { flap: dive ? 0 : 0.5 + 0.5 * Math.sin(t * (E.phase === 'up' ? 11 : 6)), dive, carrying, face: E.face }));
+}
+
+// Fox thrower (G36): his head peeks over the top of the vault.
+export function drawFoxThrower(ctx, sim, t, k) {
+  const F = sim.fox;
+  if (!F) return;
+  const y = sim.outerR + 0.45;
+  pxSpace(ctx, F.x, y, k, () => drawFox(ctx, 0, 0, 0.95 * k, F.mood, t, { x: Math.cos(t * 0.35) * 0.4, y: 0.6 }));
+}
+
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
