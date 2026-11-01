@@ -152,3 +152,29 @@ reviewed critically, and shown to mykee. Only then is it wired into gameplay.
 | M8 | Sea creatures and frogs | Reef world (theme exists): octopus (tentacles on the snake's chain body: grabs an egg and holds it until inked/zapped), fish schools (current that pushes eggs), frog (hops across rings through gaps, tongue snatches orbs or chicks; it's the only creature that crosses rings). Animation-first |
 | M9 | Snake vs salamander style | Snake head is a soft raster sprite, salamander is crisp cel-shaded code art: redraw the snake head in code in the same style, keeping the face mykee likes; compare side by side on the review page |
 | M10 | Shapes beyond circles | Prototype square, hex and spiral vaults on the same physics, plus a "tilt the whole vault" mechanic; one prototype level each on the review page before any level set |
+
+## v3.4 powers and rivalries (mykee, 2026-11-01 20:12)
+
+Eggs are weak while they fall, so powers must make them strong and push creatures back. Every power has an upside AND a
+downside. Each new power is animated and shown on the review page before it enters a level.
+
+| Power | Upside | Downside |
+|-------|--------|----------|
+| Frost Nova | Whole vault freezes 6 s: every creature locked in ice, thorns turn brittle (an egg landing shatters them) | Rings are frozen for the first 2 s, then icy: eggs slide fast and can overshoot gaps |
+| Shock Ring | Electrifies one ring for 6 s: any creature touching it is zapped and runs off for ~8 s | Eggs touching that ring get bounced away (no crack, but you lose position) |
+| Thunderclap | Every creature on the board is stunned 5 s (bigger ones 3 s) | Gates and portals black out while it lasts |
+| Laser Beak | Tap to fire a beam from the centre: cuts thorns, barriers and thorn curtains along its line, scares creatures off it | It also burns every sponge pad it crosses (hard landings after) |
+| Spin Storm | The whole rig spins as one for 3 s and flings creatures out to the rim | Eggs tumble too and can hit thorns |
+| Pepper Puff | Creatures sneeze and flee for 8 s | A smoke cloud hides part of the board for 3 s |
+| Shrink Ray | Eggs shrink to quail size 8 s: slip through grates, creatures lose track of them | Small eggs crack easier |
+| Iron Shell | Eggs turn steel: can't crack or be eaten, smash thorns | Heavy: they need wide gaps and fall fast past sponge |
+| Decoy Egg | A fake egg every creature chases for 8 s | It can plug a gap |
+
+**Power combos (Candy Crush style hook):** two powers active at once make a combo, e.g. Frost + Shock = frozen creatures
+are knocked out of the vault; Laser + Spin = the beam sweeps a full circle; Shrink + Iron = tiny cannonballs. Combos are
+shown once, then players discover the rest (combo album page).
+
+**Creature rivalries:** when two creatures go for the same egg they fight instead: snake vs salamander (venom vs fire),
+snake vs snake (clash, done), eagle vs snake (grab, being rebuilt), frog vs chameleon (tongue duel). The fight is a
+4–6 s window the player uses to move eggs past; the winner chases harder after. Each fight has its own animation,
+reviewed first. A food chain makes it readable: eagle > snake > frog; salamander scares frogs; chicks distract everyone.
