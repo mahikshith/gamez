@@ -128,3 +128,7 @@ but never placed across the level curve, and nothing checked coverage. Fix the p
 | K7 | More hooking ideas + real research | Research doc eggscape-v32-chicks-hooks.md; Claude brings its own ranked ideas |
 | K8 | Eagle | Rebuilt with real anatomy and a purpose (in progress, v3.1) |
 | K9 | Magnet | Magnetic field effect, no tether line (in progress, v3.1) |
+
+**Standing rule (mykee, 2026-11-01 19:26): animation first.** Every new character, creature or animated thing gets a
+dedicated animation pass before it enters any level: frame strips of every move at real in-game scale next to the rings,
+reviewed critically, and shown to mykee. Only then is it wired into gameplay.
