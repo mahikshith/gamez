@@ -1,5 +1,5 @@
 // Eggscape: game shell. Screens, input, camera, events -> VFX/SFX/score, HUD.
-import { Sim, DT, LEGACY_ORB } from './sim/sim.js';
+import { Sim, DT, LEGACY_ORB, EAGLE_LEN } from './sim/sim.js';
 import { hintSearch, actSteps } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
 import { LEVELS } from './data/levels.js';
@@ -261,11 +261,20 @@ function frameOf(all, maxCh) {
     yMax = R - 0.3;
   }
   // predators (v3): every snake in (or about to enter) the vault is framed, like the furthest egg; so is
-  // the eagle while it attacks, and the fox's head over the top
+  // the fox's head over the top. An eagle level keeps fixed headroom for it (no zoom pumping as it flies)
   const hds = [];
   for (const S of sim.snakes || []) if (!S.gone && S.inside && S.rad <= sim.outerR + 1.5) hds.push({ x: S.rad * Math.cos(S.a), y: S.rad * Math.sin(S.a) });
-  const EA = sim.eagle;
-  if (EA && (EA.phase === 'warn' || EA.phase === 'dive')) hds.push({ x: EA.x, y: EA.y });
+  const A = sim.eagle;
+  if (A && all) {
+    // fixed headroom over the vault for it, and the whole bird (wings and all) is always in the frame
+    // once it is hunting; only its first sweep in and its exit come from off screen
+    yMax = Math.max(yMax, sim.outerR + 1.4 * EAGLE_LEN);
+    if (A.phase !== 'away' && A.phase !== 'enter' && A.phase !== 'flee') {
+      R = Math.max(R, Math.abs(A.x) + 0.85 * EAGLE_LEN); // a raised wing reaches about one body length out
+      yMax = Math.max(yMax, A.y + 0.8 * EAGLE_LEN);
+      yMin = Math.min(yMin, A.y - 0.6 * EAGLE_LEN);
+    }
+  }
   if (sim.fox) hds.push({ x: sim.fox.x, y: sim.outerR + 0.6 });
   const BQ = bossPose(sim, false); // bosses (v3.1): keep the boss over the vault in frame
   // the big Blizzard cloud only when framing the whole vault (portrait screens have the height to spare); a zoomed-in
@@ -287,7 +296,8 @@ function camTarget() {
   let maxCh = 0;
   for (const e of eggs) maxCh = Math.max(maxCh, sim.channelOf(e));
   const live = G.screen === 'play' && sim.state === 'play';
-  const A = frameOf(!live || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || n <= 2, maxCh);
+  const sky = sim.eagle && sim.eagle.phase !== 'away'; // the eagle hunts round the outside: show all of it
+  const A = frameOf(!live || sky || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || n <= 2, maxCh);
   const z = G.zm;
   if (z == null || !live) return A;
   const F = frameOf(true, maxCh);
@@ -702,7 +712,7 @@ function v3Event(ev, fx) {
       popup(ev.x, ev.y + 0.45, '!', { color: '#ffb347', size: 24, life: 0.6 });
       break;
     case 'fallLand':
-      v3Fall = ev.rings;
+      v3Fall = ev.egg && ev.egg.eagleDropped ? 'eagle' : ev.rings;
       fx.wave(ev.x, ev.y, 0.8 + 0.2 * ev.dmg, '#ffb27a', 0.4, 0.1);
       fx.shake = Math.max(fx.shake, 0.25 + 0.12 * ev.dmg);
       audio.play('rock_hit', { vol: 0.6 + 0.2 * ev.dmg });
@@ -823,7 +833,7 @@ function handleEvents() {
         try { if (navigator.vibrate) navigator.vibrate(30); } catch (_) {}
         if (ev.why === 'spike') audio.play('rock_hit', { vol: 0.6 });
         // v3: crack stage pop (G34), so every crack is explained
-        popup(ev.x, ev.y + 0.55, `Crack ${ev.n || ev.egg.cracks}/3`, { sub: ev.why === 'fall' && v3Fall ? `fell ${v3Fall} rings` : '', color: (ev.n || 1) >= 2 ? '#ff7a6a' : '#ffc24a', size: 18, life: 1.1 });
+        popup(ev.x, ev.y + 0.55, `Crack ${ev.n || ev.egg.cracks}/3`, { sub: ev.why === 'fall' && v3Fall ? (v3Fall === 'eagle' ? 'dropped by the eagle' : `fell ${v3Fall} rings`) : '', color: (ev.n || 1) >= 2 ? '#ff7a6a' : '#ffc24a', size: 18, life: 1.1 });
         break;
       case 'break': {
         audio.play(ev.why === 'lava' ? 'lava_sizzle' : 'egg_break');
@@ -1109,13 +1119,13 @@ function predEvent(ev, fx) {
       break;
     case 'eagleIn':
       audio.play('wind_gust', { vol: 0.8 });
-      once('eagle', 'An eagle! It reaches in through gaps in the outer ring.');
+      once('eagle', 'An eagle! It dives at eggs in the outer channel. Keep solid ring under them.');
       break;
     case 'eagleWarn':
-      // the screech: a high, bent glass crack over a gust
+      // the screech: a high, bent glass crack over a gust; its shadow is already sweeping in
       audio.play('glass_crack', { pitch: 1.8, vol: 0.7 });
       audio.play('wind_gust', { vol: 0.5, pitch: 1.4 });
-      popup(ev.x, ev.y + 0.6, '!', { color: '#ff5a3a', size: 34, life: 0.9 });
+      if (ev.kind !== 'snake' && ev.kind !== 'orb') hen('worried', 1.4);
       break;
     case 'eagleDive':
       audio.play('wind_gust', { pitch: 1.6 });
@@ -1124,17 +1134,57 @@ function predEvent(ev, fx) {
       audio.play(ev.kind === 'snake' ? 'thorn_snap' : 'egg_crack', { pitch: 1.3 });
       fx.sparkle(ev.x, ev.y, 10, ev.kind === 'snake' ? '#b6ff8a' : '#fff6c2');
       fx.shake = Math.max(fx.shake, 0.35);
+      fx.punch = 1;
       if (ev.kind === 'snake') { popup(ev.x, ev.y + 0.5, 'Snake snatched!', { color: '#b6ff8a', size: 22 }); hen('happy', 1.2); }
+      else if (ev.kind === 'egg') { popup(ev.x, ev.y + 0.6, 'Grabbed!', { color: '#ff7a5a', size: 22 }); hen('worried', 2); once('eagleGrab', 'It drops what it catches back in from up high. That costs a crack.'); }
+      break;
+    case 'eagleDrop':
+      audio.play('wind_gust', { vol: 0.5, pitch: 0.8 });
+      popup(ev.x, ev.y + 0.5, 'Dropped!', { color: '#ffd27a', size: 18, life: 0.9 });
+      break;
+    case 'eagleDropSnake':
+      audio.play('squish', { intensity: 0.6, pitch: 0.8 });
+      fx.dust(ev.x, ev.y, 5);
+      break;
+    case 'eagleSteal':
+      audio.play('portal_exit', { vol: 0.6, pitch: 1.4 });
+      fx.sparkle(ev.x, ev.y, 10, powerInfo(ev.power).color);
+      popup(ev.x, ev.y + 0.5, 'Orb stolen!', { color: '#ff9a5a', size: 18 });
+      break;
+    case 'eagleEat':
+      fx.sparkle(ev.x, ev.y, 8, powerInfo(ev.power).color);
       break;
     case 'eagleBounce':
       audio.play('steel_clang', { vol: 0.8 });
       fx.wave(ev.x, ev.y, 0.7, '#e6e6e6', 0.35, 0.06);
+      fx.shake = Math.max(fx.shake, 0.3);
+      fx.punch = 1;
       popup(ev.x, ev.y + 0.5, 'Too tough!', { size: 18 });
       break;
-    case 'eagleBlocked':
+    case 'eagleSlam':
+      // talons on solid ring: CLANG, a dent of dust, and a dazed eagle
+      audio.play('steel_clang', { vol: 0.9, pitch: 0.8 });
       audio.play('rock_hit', { vol: 0.7 });
-      fx.dust(ev.x, ev.y, 5);
-      popup(ev.x, ev.y + 0.4, 'Blocked!', { color: '#cfe8ff', size: 18 });
+      fx.dust(ev.x, ev.y, 7);
+      fx.wave(ev.x, ev.y, 0.8, '#fff1c8', 0.3, 0.05);
+      fx.shake = Math.max(fx.shake, 0.4);
+      fx.punch = 1;
+      popup(ev.x, ev.y + 0.4, ev.exposed ? 'Dodged!' : 'Clang!', { color: '#cfe8ff', size: 20 });
+      if (ev.exposed) hen('happy', 1.2);
+      break;
+    case 'eagleFeather':
+      audio.play('egg_save', { pitch: 1.4, vol: 0.5 });
+      fx.sparkle(ev.x2, ev.y2, 10, '#fff6c2');
+      once('eagleFeather', 'A dodged dive shakes a feather loose. Grab it!');
+      break;
+    case 'eagleDazed':
+      if (ev.by !== 'slam' && ev.by !== 'bounce') { audio.play('rock_hit', { vol: 0.6, pitch: 1.3 }); fx.sparkle(ev.x, ev.y, 8, '#ffe66a'); }
+      break;
+    case 'eagleMiss':
+      if (ev.why === 'gust') audio.play('wind_gust', { vol: 0.6 });
+      break;
+    case 'eagleScreech':
+      audio.play('glass_crack', { pitch: 1.6, vol: 0.6 });
       break;
     case 'foxThrow':
       audio.play('portal_exit', { vol: 0.6, pitch: 0.8 });

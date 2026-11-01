@@ -232,7 +232,7 @@ export const SPECS = [
     tip: 'A flicker means a strike is coming. Keep eggs away from that spot.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'cloud', gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'cloud', gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 27, world: 6, theme: 'storm', name: 'Eagle Crag', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5,
-    nest: { w: 3.0 }, bonus: { kind: 'prize' }, eagle: { delay: 8, every: 10 },
+    nest: { w: 3.0 }, bonus: { kind: 'prize' }, eagle: { delay: 8, every: 11 },
     gusts: { delay: 10, every: 14, strength: 1.8, dur: 1.6 }, // v3.1: storm gusts shove eggs (and snakes) along the channels
     orbs: [{ type: 'feather', ch: 3 }, { type: 'fire_green', ch: 4 }],
     intro: { title: 'The eagle', line: 'The eagle reaches in only through gaps in the outer ring. When it screeches, turn that gap away.' },

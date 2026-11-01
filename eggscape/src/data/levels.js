@@ -267,7 +267,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 27, theme: "storm", name: "Eagle Crag", eggs: 3, target: 2, time: 115, spacing: 1, material: "metal", nest: {w: 3}, bonus: {kind: "prize"}, eagle: {delay: 8, every: 10}, tip: "Wait deeper in the vault, then cross the outer channel right after a dive.", orbs: [{type: "feather", ch: 3, a: 132},{type: "fire_green", ch: 4, a: -18}], seed: 213816, world: 6, intro: {title: "The eagle", line: "The eagle reaches in only through gaps in the outer ring. When it screeches, turn that gap away."}, gusts: {delay: 10, every: 14, strength: 1.8, dur: 1.6},
+    id: 27, theme: "storm", name: "Eagle Crag", eggs: 3, target: 2, time: 115, spacing: 1, material: "metal", nest: {w: 3}, bonus: {kind: "prize"}, eagle: {delay: 8, every: 11}, tip: "Wait deeper in the vault, then cross the outer channel right after a dive.", orbs: [{type: "feather", ch: 3, a: 132},{type: "fire_green", ch: 4, a: -18}], seed: 213816, world: 6, intro: {title: "The eagle", line: "The eagle reaches in only through gaps in the outer ring. When it screeches, turn that gap away."}, gusts: {delay: 10, every: 14, strength: 1.8, dur: 1.6},
     rings: [
       {gaps: [{a: -177}], thorns: [{a: -4, n: 1}]},
       {mat: "cloud", gaps: [{a: 116, x: 2}], thorns: [{a: 60, n: 2},{a: 171, n: 2, side: "out", h: 0.26}], pads: [{a: -2, len: 1.81}]},
