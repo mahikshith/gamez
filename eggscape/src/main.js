@@ -660,6 +660,10 @@ async function press(id) {
       if (id && id.startsWith('lv:')) {
         const i = +id.slice(3);
         if (playable(i)) await breakThen(() => startLevel(i));
+      } else if (id && id.startsWith('demo:') && (DEV || TEST)) {
+        // test build: the chick lab (v3.2), one practice vault per chick kind
+        const d = CHICK_DEMOS.find((x) => x.kind === id.slice(5));
+        if (d) { G.demo = d; await breakThen(() => startLevel(-2)); }
       } else if (id && id.startsWith('mode:')) {
         save.mode = id.slice(5);
         persist();
@@ -2179,7 +2183,14 @@ function drawLevels() {
   const rows = Math.ceil(list.length / cols);
   const gap = 10 * u;
   const cw = Math.min((W_ - pad * 2 - gap * (cols - 1)) / cols, 130 * u);
-  const chh = Math.min((H_ - top - pad - gap * (rows - 1)) / rows, cw * 1.05);
+  const labH = TEST ? 44 * u : 0; // test build: a chick lab row under the grid
+  const chh = Math.min((H_ - top - pad - labH - (labH ? 22 * u : 0) - gap * (rows - 1)) / rows, cw * 1.05);
+  if (labH) {
+    const kinds = CHICK_DEMOS.map((d) => d.kind), lg = 8 * u, lw = Math.min(110 * u, (W_ - 2 * pad - lg * (kinds.length - 1)) / kinds.length);
+    const lx0 = W_ / 2 - (kinds.length * lw + (kinds.length - 1) * lg) / 2, ly = H_ - pad - labH;
+    ui.text('Chick lab', W_ / 2, ly - 12 * u, { size: 14 * u, align: 'center', color: '#ffe8b0', stroke: 'rgba(0,0,0,0.5)', tag: 'levels:lab' });
+    kinds.forEach((k, j) => ui.button('demo:' + k, k[0].toUpperCase() + k.slice(1), lx0 + j * (lw + lg), ly, lw, labH, { color: '#8a5cc8', dark: '#5a3690', size: Math.min(15 * u, lw * 0.2) }));
+  }
   const gridW = cols * cw + (cols - 1) * gap;
   const x0 = W_ / 2 - gridW / 2;
   list.forEach((L, k) => {
