@@ -18,7 +18,7 @@ import * as E from './economy.js';
 import { drawStore, drawCoin, drawBoosterPicker, drawChest } from './ui/store.js';
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
-import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar, drawMagnetField, bossPose } from './render/boss.js'; // bosses (v3.1)
+import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar, drawMagnetField, bossPose, setBossView } from './render/boss.js'; // bosses (v3.1)
 import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -217,7 +217,17 @@ function toast(text, life = 2.6, icon = null) {
 
 function popup(wx, wy, text, o = {}) {
   const s = toScreen(wx, wy);
-  G.popups.push({ x: s.x, y: s.y, text, sub: o.sub || '', color: o.color || '#fff', life: o.life || 1.3, max: o.life || 1.3, size: (o.size || 26) * ui.u, placed: false });
+  // v3.1: the same label again within 0.5 s (several eggs cracking at once) merges into one: "Crack ×3"
+  const key = text.replace(/\s*(\d+\/\d+|×\d+)$/, '');
+  const twin = !o.sub && G.popups.find((p) => p.key === key && !p.sub && p.max - p.life < 0.5);
+  if (twin) {
+    twin.n++;
+    twin.text = key + ' ×' + twin.n;
+    twin.x += (s.x - twin.x) / twin.n;
+    twin.life = twin.max;
+    return;
+  }
+  G.popups.push({ x: s.x, y: s.y, text, key, n: 1, sub: o.sub || '', color: o.color || '#fff', life: o.life || 1.3, max: o.life || 1.3, size: (o.size || 26) * ui.u, placed: false });
 }
 
 // ---------------------------------------------------------------- camera
@@ -257,8 +267,10 @@ function frameOf(all, maxCh) {
   const EA = sim.eagle;
   if (EA && (EA.phase === 'warn' || EA.phase === 'dive')) hds.push({ x: EA.x, y: EA.y });
   if (sim.fox) hds.push({ x: sim.fox.x, y: sim.outerR + 0.6 });
-  const BQ = bossPose(sim); // bosses (v3.1): keep the boss over the vault in frame
-  if (BQ) hds.push({ x: BQ.x, y: BQ.y + BQ.h * 0.45 });
+  const BQ = bossPose(sim, false); // bosses (v3.1): keep the boss over the vault in frame
+  // the big Blizzard cloud only when framing the whole vault (portrait screens have the height to spare); a zoomed-in
+  // view stays on the eggs
+  if (BQ && (all || BQ.h < 2)) hds.push({ x: BQ.x, y: BQ.y + BQ.h * 0.5 });
   for (const hd of hds) {
     if (all) { R = Math.max(R, Math.abs(hd.x) + 0.6); yMin = Math.min(yMin, hd.y - 0.6); yMax = Math.max(yMax, hd.y + 0.6); }
     else { R = Math.max(R, Math.hypot(hd.x, hd.y) + 0.6); yMin = -R; yMax = R; }
@@ -1119,11 +1131,21 @@ const BOSS_WARN_SFX = {
 function bossEvent(ev, fx) {
   const sim = G.sim, B = sim.bx && sim.bx.boss;
   const actor = B && !['snake', 'eagle'].includes(B.kind);
+  // popups over the boss sit above the drawn actor (its sim point is lower than its head)
+  const BQ = bossPose(sim), top = BQ ? { x: BQ.x, y: BQ.y + BQ.h * 0.5 } : { x: ev.x, y: (ev.y || 0) + 1 };
   switch (ev.type) {
+    case 'gustWarn':
+      audio.play('wind_gust', { vol: 0.35, pitch: 0.6 });
+      if (!G.predToast.gust) { G.predToast.gust = 1; toast('A gust is coming! It shoves eggs along the channels.', 2.6); }
+      break;
+    case 'gust':
+      audio.play('wind_gust', { vol: 1, pitch: 0.9 });
+      fx.shake = Math.max(fx.shake, 0.15);
+      break;
     case 'bossWarn': {
       const s = BOSS_WARN_SFX[ev.attack];
       if (s) audio.play(s[0], s[1]);
-      if (actor) popup(ev.x, ev.y + 1.1, (ATTACK_NAME[ev.attack] || '') + '!', { color: '#ffcf6a', size: 20, life: 1.0 });
+      if (actor) popup(top.x, top.y + 0.3, (ATTACK_NAME[ev.attack] || '') + '!', { color: '#ffcf6a', size: 20, life: 1.0 });
       break;
     }
     case 'bossAct':
@@ -1140,7 +1162,7 @@ function bossEvent(ev, fx) {
     }
     case 'bossHit':
       audio.play('steel_clang', { vol: 0.7, pitch: 1.3 });
-      if (actor) { fx.sparkle(ev.x, ev.y, 12, '#fff2a8'); popup(ev.x, ev.y + 1.0, 'Ouch!', { color: '#fff2a8', size: 22, life: 0.9 }); }
+      if (actor) { fx.sparkle(top.x, top.y - (BQ ? BQ.h * 0.4 : 0), 12, '#fff2a8'); popup(top.x, top.y + 0.3, 'Ouch!', { color: '#fff2a8', size: 22, life: 0.9 }); }
       break;
     case 'freeze': {
       audio.play('glass_crack', { vol: 0.8, pitch: 0.8 });
@@ -1188,7 +1210,7 @@ function bossEvent(ev, fx) {
       break;
     case 'foxFlinch':
       audio.play('egg_bump', { pitch: 0.6 });
-      popup(ev.x, ev.y + 0.8, 'Whoa!', { color: '#ffcf6a', size: 18, life: 0.8 });
+      popup(top.x, top.y + 0.3, 'Whoa!', { color: '#ffcf6a', size: 18, life: 0.8 });
       break;
   }
 }
@@ -1466,6 +1488,7 @@ function render() {
     W.drawV3Ring(ctx, ring, k, t);
     ctx.restore();
   }
+  setBossView({ top: G.cam.y + (G.play.h / 2) / G.cam.k, k: G.cam.k, u: ui.u }); // bosses (v3.1): the cloud comes into view
   drawBossRings(ctx, sim, k, t); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
   drawBossActor(ctx, sim, k, t);
   for (const ring of sim.rings) if (ring.gear && ring.gear.i > ring.i) W.drawGearCog(ctx, ring, ring.gear, t);
@@ -1708,18 +1731,21 @@ function drawPopups() {
   for (const p of G.popups) {
     const a = Math.min(1, p.life / 0.4);
     const size = p.size * (p.life > p.max - 0.15 ? 1 + (p.life - (p.max - 0.15)) * 3 : 1);
-    let y = Math.max(p.y, G.hudBottom + 20 * ui.u + size / 2);
-    const w = ui.measure(p.text, size);
     const subS = 14 * ui.u;
     const h = size + (p.sub ? subS + 2 : 0);
-    let x = clamp(p.x, w / 2 + 8, W_ - w / 2 - 8);
-    // avoid other popups and the toast
-    for (let tries = 0; tries < 8; tries++) {
-      const hitR = placed.find((q) => Math.abs(q.x - x) < (q.w + w) / 2 + 4 && Math.abs(q.y - y) < (q.h + h) / 2 + 2);
-      if (!hitR) break;
-      y = hitR.y - (hitR.h + h) / 2 - 4;
+    const minY = Math.max(G.hudBottom, G.toast ? G.toastBottom || 0 : 0) + 8 * ui.u + h / 2;
+    let y = Math.max(p.y, minY);
+    const w = ui.measure(p.text, size);
+    const x = clamp(p.x, w / 2 + 8, W_ - w / 2 - 8);
+    // v3.1: never overlap an older popup: step above it, or below the whole stack when there is no room above.
+    // The new spot sticks (p.y), so labels don't jump back and forth from frame to frame.
+    const hit = (yy) => placed.find((q) => Math.abs(q.x - x) < (q.w + w) / 2 + 6 && Math.abs(q.y - yy) < (q.h + h) / 2 + 4);
+    let down = false;
+    for (let tries = 0, q; tries < 16 && (q = hit(y)); tries++) {
+      if (!down) { y = q.y - (q.h + h) / 2 - 5; if (y < minY) { down = true; y = minY; } }
+      else y = q.y + (q.h + h) / 2 + 5;
     }
-    p.y = Math.max(p.y, y);
+    p.y = y;
     placed.push({ x, y, w, h });
     ui.text(p.text, x, y, { size, align: 'center', color: p.color, stroke: 'rgba(0,0,0,0.6)', alpha: a, tag: 'popup:' + p.text + placed.length, group: 'popup' + placed.length });
     if (p.sub) ui.text(p.sub, x, y + size / 2 + subS / 2 + 2, { size: subS, align: 'center', color: '#fff', stroke: 'rgba(0,0,0,0.6)', alpha: a, maxW: W_ - 16, tag: 'popupsub' + placed.length, group: 'popup' + placed.length });

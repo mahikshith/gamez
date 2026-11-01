@@ -47,7 +47,7 @@ export function v31Init(sim) {
   const M = M_(sim);
   sim.bx.boss = {
     kind: F.kind, phase: 0, saved: 0, t: (F.delay ?? 4) * M.every, k: 0, tk: 0, atk: null, flinch: 0, quake: 0, qk: 0,
-    x: 0, y: sim.outerR + 1.0, face: 1, throws: [], fog: null, heat: {}, phaseAt: 0, phaseSaved: 0, lastDir: 1,
+    x: 0, y: sim.outerR + 1.0, face: 1, throws: [], fog: null, heat: {}, dizzy: 0, phaseAt: 0, phaseSaved: 0, lastDir: 1,
   };
   bossPhaseOn(sim, sim.bx.boss, true);
 }
@@ -270,6 +270,7 @@ function bossPhaseOn(sim, B, first) {
   B.phaseSaved = sim.savedLog.length;
   B.k = 0;
   if (P.summon) for (const S of sim.snakes) if (!S.gone && S.wait > 1.5) { S.wait = 1.5; sim.emit('bossSummon', { x: B.x, y: B.y }); }
+  if (!first) B.dizzy = 1.8; // the old phase ends: the boss reels (drawn dizzy), then comes back angrier
   if (!first) sim.emit('bossPhase', { kind: B.kind, phase: B.phase, n: bossPhases(sim).length, attacks: P.attacks || [], x: B.x, y: B.y });
 }
 
@@ -284,6 +285,7 @@ function bossStep(sim, B, dt) {
     sim.emit('bossHit', { kind: B.kind, x: B.x, y: B.y, n: saved });
   }
   if (B.flinch > 0) B.flinch -= dt;
+  if (B.dizzy > 0) B.dizzy -= dt;
   const nx = P[B.phase + 1];
   if (nx && nx.at && (saved >= (nx.at.saved ?? 99) || sim.t >= (nx.at.t ?? 1e9) * M.every)) {
     B.phase++;
@@ -292,9 +294,9 @@ function bossStep(sim, B, dt) {
   }
   const ph = P[B.phase] || {};
   // where the boss hovers: drifting over the top, leaning toward what it attacks
-  let gx = Math.sin(sim.t * 0.45) * R * 0.45, gy = R + 1.0;
+  let gx = Math.sin(sim.t * 0.45) * R * (B.kind === 'blizzard' ? 0.25 : 0.45), gy = R + 1.0;
   const A = B.atk;
-  if (A && A.name === 'gale') gx = -A.dir * R * 0.55;
+  if (A && A.name === 'gale') gx = A.dir * R * 0.3; // upwind: the swirl runs leftward over the top when dir is +1
   else if (A && A.aim) gx = clamp(A.aim, -R * 0.6, R * 0.6);
   if (B.kind === 'golem' || B.kind === 'salamander' || B.kind === 'fox' || B.kind === 'foxking') gy = R + 0.75;
   if (A && A.name === 'stomp' && A.ph === 'warn') gy += 0.7 * Math.sin(Math.PI * clamp(1 - A.t / A.dur, 0, 1) * 0.5); // rises before the slam
@@ -515,14 +517,18 @@ function actAttack(sim, B, A, M) {
 function galeForce(sim, A, M, dt) {
   const el = A.dur - A.t;
   const ramp = clamp(Math.min(el / 0.3, A.t / 0.4), 0, 1);
-  const acc = (A.gale ?? sim.level.bossFight.gale ?? 5) * M.power * ramp * A.dir;
+  const acc = (A.gale ?? (sim.level.bossFight && sim.level.bossFight.gale) ?? 5) * M.power * ramp * A.dir;
   if (!acc) return;
+  // the wind swirls along the channels: dir +1 = counter-clockwise (rightward along the bottom of the vault)
+  const push = (body, k) => {
+    const p = body.getPosition(), d = Math.hypot(p.x, p.y) || 1, m = body.getMass();
+    body.applyForceToCenter(Vec2((-p.y / d) * acc * k * m, (p.x / d) * acc * k * m), true);
+  };
   for (const e of sim.aliveEggs()) {
     if (e.honey > 0) continue;
-    const k = e.stone > 0 ? 0.3 : e.chick ? 1.3 : e.bubbleFix ? 1.6 : 1;
-    e.body.applyForceToCenter(Vec2(acc * k * e.body.getMass(), 0), true);
+    push(e.body, e.stone > 0 ? 0.3 : e.chick ? 1.3 : e.bubbleFix ? 1.6 : 1);
   }
-  for (const r of sim.rocks) if (r.alive) r.body.applyForceToCenter(Vec2(acc * 0.5 * r.body.getMass(), 0), true);
+  for (const r of sim.rocks) if (r.alive) push(r.body, 0.5);
   void dt;
 }
 // level gusts: streaks first (the telegraph), then a shove along the channels; snakes are blown too

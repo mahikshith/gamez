@@ -257,7 +257,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 26, theme: "storm", name: "Storm Peaks", eggs: 3, target: 2, time: 125, spacing: 1, material: "metal", nest: {w: 2.8}, weather: "thunder", bonus: {kind: "turns", n: 13}, tip: "A flicker means a strike is coming. Keep eggs away from that spot.", orbs: [{type: "thunder", ch: 2, a: 11},{type: "bubble", ch: 3, a: 75}], seed: 205895, world: 6, intro: {title: "Storm Peaks", line: "Lightning flickers on a ring, then strikes and locks it. A locked ring holds still: use it."},
+    id: 26, theme: "storm", name: "Storm Peaks", eggs: 3, target: 2, time: 125, spacing: 1, material: "metal", nest: {w: 2.8}, weather: "thunder", bonus: {kind: "turns", n: 13}, tip: "A flicker means a strike is coming. Keep eggs away from that spot.", orbs: [{type: "thunder", ch: 2, a: 11},{type: "bubble", ch: 3, a: 75}], seed: 205895, world: 6, intro: {title: "Storm Peaks", line: "Lightning flickers on a ring, then strikes and locks it. A locked ring holds still: use it."}, gusts: {delay: 7, every: 11, strength: 3, dur: 2},
     rings: [
       {gaps: [{a: 176}], thorns: [{a: 39, n: 1}]},
       {mat: "cloud", gaps: [{a: 113, x: 2}], thorns: [{a: -14, n: 3},{a: 48, n: 2, side: "out", h: 0.26}], pads: [{a: -179, len: 1.63}]},
@@ -267,7 +267,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 27, theme: "storm", name: "Eagle Crag", eggs: 3, target: 2, time: 115, spacing: 1, material: "metal", nest: {w: 3}, bonus: {kind: "prize"}, eagle: {delay: 8, every: 10}, tip: "Wait deeper in the vault, then cross the outer channel right after a dive.", orbs: [{type: "feather", ch: 3, a: 132},{type: "fire_green", ch: 4, a: -18}], seed: 213816, world: 6, intro: {title: "The eagle", line: "The eagle reaches in only through gaps in the outer ring. When it screeches, turn that gap away."},
+    id: 27, theme: "storm", name: "Eagle Crag", eggs: 3, target: 2, time: 115, spacing: 1, material: "metal", nest: {w: 3}, bonus: {kind: "prize"}, eagle: {delay: 8, every: 10}, tip: "Wait deeper in the vault, then cross the outer channel right after a dive.", orbs: [{type: "feather", ch: 3, a: 132},{type: "fire_green", ch: 4, a: -18}], seed: 213816, world: 6, intro: {title: "The eagle", line: "The eagle reaches in only through gaps in the outer ring. When it screeches, turn that gap away."}, gusts: {delay: 10, every: 14, strength: 1.8, dur: 1.6},
     rings: [
       {gaps: [{a: -177}], thorns: [{a: -4, n: 1}]},
       {mat: "cloud", gaps: [{a: 116, x: 2}], thorns: [{a: 60, n: 2},{a: 171, n: 2, side: "out", h: 0.26}], pads: [{a: -2, len: 1.81}]},
@@ -278,7 +278,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 28, theme: "storm", name: "Snake Snatcher", eggs: 3, target: 2, time: 90, spacing: 1, material: "metal", nest: {w: 3}, snake: {delay: 6, speed: 0.4}, bonus: {kind: "time", s: 50}, eagle: {delay: 10, every: 10}, tip: "The eagle loves snakes. Keep the snake in the outer channel and let it feed.", barriers: [{ring: 2, a: 28}], orbs: [{type: "fire_gold", ch: 1, a: -4},{type: "rockskin", ch: 3, a: -61}], seed: 221735, world: 6,
+    id: 28, theme: "storm", name: "Snake Snatcher", eggs: 3, target: 2, time: 90, spacing: 1, material: "metal", nest: {w: 3}, snake: {delay: 6, speed: 0.4}, bonus: {kind: "time", s: 50}, eagle: {delay: 10, every: 10}, tip: "The eagle loves snakes. Keep the snake in the outer channel and let it feed.", barriers: [{ring: 2, a: 28}], orbs: [{type: "fire_gold", ch: 1, a: -4},{type: "rockskin", ch: 3, a: -61}], seed: 221735, world: 6, gusts: {delay: 9, every: 10, strength: 3, dur: 2},
     rings: [
       {gaps: [{a: 104}], thorns: [{a: -159, n: 1}]},
       {gaps: [{a: -17, x: 2}], thorns: [{a: 72, n: 3},{a: -62, n: 2, side: "out", h: 0.26, kind: "blunt"}], pads: [{a: 26, len: 1.69}]},
@@ -289,7 +289,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 29, theme: "storm", name: "Thunder Gears", eggs: 3, target: 2, time: 100, spacing: 1, material: "metal", nest: {w: 3}, weather: "thunder", bonus: {kind: "turns", n: 12}, eagle: {delay: 12, every: 11}, tip: "Gear teeth link two rings: turn one and its neighbour turns the other way.", orbs: [{type: "fire_black", ch: 2, a: -116},{type: "feather", ch: 4, a: -62}], seed: 229653, world: 6,
+    id: 29, theme: "storm", name: "Thunder Gears", eggs: 3, target: 2, time: 100, spacing: 1, material: "metal", nest: {w: 3}, weather: "thunder", bonus: {kind: "turns", n: 12}, eagle: {delay: 12, every: 11}, tip: "Gear teeth link two rings: turn one and its neighbour turns the other way.", orbs: [{type: "fire_black", ch: 2, a: -116},{type: "feather", ch: 4, a: -62}], seed: 229653, world: 6, gusts: {delay: 9, every: 10, strength: 3, dur: 2},
     rings: [
       {gaps: [{a: 54}], thorns: [{a: 155, n: 1}]},
       {gear: 2, gaps: [{a: 100, x: 2}], thorns: [{a: 10, n: 2},{a: -103, n: 2, side: "out", h: 0.26}], pads: [{a: -44, len: 1.73}]},
