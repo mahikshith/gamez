@@ -172,24 +172,35 @@ export function drawSpriteAlive(ctx, id, cx, cy, h, t = 0, mode = 'breathe', o =
 // Boss portrait fitted into the rect (x, y, w, h), bottom-anchored, with a gentle breathe and bob. bossId: 'fox', 'snake',
 // 'blizzard', 'golem', 'salamander', 'eagle', 'foxking' (or the full 'boss_*' id). Returns false if not loaded.
 export function drawBossCard(ctx, bossId, x, y, w, h, t = 0, age = null) {
+  // The boss portrait is a WHOLE card (full reference cell, rounded corners), shown complete in a frame: never a cut-out.
   try {
     const id = String(bossId).startsWith('boss_') ? bossId : 'boss_' + bossId;
     const im = get(id);
     if (!im || !(w > 0) || !(h > 0)) return false;
-    const k = Math.min(w / im.naturalWidth, h / im.naturalHeight);
-    const dh = im.naturalHeight * k * 0.96, dw = im.naturalWidth * k * 0.96;
-    // each boss moves in character: the fox sneers (tremble), snake and eagle sway, golem and salamander are heavy breathers
-    const mode = bossId === 'fox' || bossId === 'foxking' || bossId === 'boss_fox' || bossId === 'boss_foxking' ? 'shake' : 'breathe';
-    const sway = /snake|eagle/.test(String(bossId)) ? 1.8 : /golem|salamander/.test(String(bossId)) ? 0.8 : 1;
-    // soft shadow breathing with the sprite
+    const pad = Math.max(2, h * 0.025);
+    const k = Math.min((w - pad * 2) / im.naturalWidth, (h - pad * 2) / im.naturalHeight);
+    let dw = im.naturalWidth * k, dh = im.naturalHeight * k;
+    // entrance: the card flips up and settles; afterwards it only floats a little
+    const e = age == null ? 1 : Math.min(1, Math.max(0, age / 0.45));
+    const pop = e < 1 ? 0.6 + 0.4 * (1 - Math.pow(1 - e, 3)) + Math.sin(e * Math.PI) * 0.08 : 1;
+    const bob = Math.sin(t * 2.1) * h * 0.012;
+    dw *= pop; dh *= pop;
+    const cx = x + w / 2, cy = y + h / 2 + bob;
+    const r = dw * 0.07;
+    const rr = (px, py, pw, ph, rad) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(px, py, pw, ph, rad) : ctx.rect(px, py, pw, ph); };
     ctx.save();
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.ellipse(x + w / 2, y + h - h * 0.015, dw * 0.32, h * 0.04, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha *= Math.min(1, e * 2);
+    // drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    rr(cx - dw / 2 + pad * 0.6, cy - dh / 2 + pad * 1.2, dw, dh, r); ctx.fill();
+    // frame
+    ctx.fillStyle = '#5a3a1c';
+    rr(cx - dw / 2 - pad, cy - dh / 2 - pad, dw + pad * 2, dh + pad * 2, r + pad); ctx.fill();
+    ctx.fillStyle = '#f2c25a';
+    rr(cx - dw / 2 - pad * 0.45, cy - dh / 2 - pad * 0.45, dw + pad * 0.9, dh + pad * 0.9, r + pad * 0.45); ctx.fill();
+    ctx.drawImage(im, cx - dw / 2, cy - dh / 2, dw, dh);
     ctx.restore();
-    return drawSpriteAlive(ctx, id, x + w / 2, y + h - h * 0.02 - dh / 2, dh, t, mode, { amp: sway, age });
+    return true;
   } catch (e) {
     return false;
   }

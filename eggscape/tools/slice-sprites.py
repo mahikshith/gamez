@@ -25,8 +25,13 @@ ORBS = 'fire_red fire_black fire_green fire_gold stone bubble water thunder thor
 JOBS = [(S05, 'orb', [(i % 4, i // 4, 'orb_' + n) for i, n in enumerate(ORBS)], 128)]
 JOBS += [(S03, 'face', [(0, 0, 'hen_dance'), (1, 0, 'hen_worried'), (2, 0, 'hen_cry'), (3, 0, 'hen_proud'),
                         (0, 2, 'fox_evil'), (1, 2, 'fox_laugh'), (2, 2, 'fox_cry'), (3, 2, 'fox_shock')], 256)]
-JOBS += [(S09, 'boss', [(i % 4, i // 4, n) for i, n in enumerate(
-    'boss_fox boss_snake boss_blizzard boss_golem boss_salamander boss_eagle boss_foxking win_hen'.split())], 384)]
+# boss portraits ship as WHOLE cards (the art runs off the cell edges, so a cut-out looks chopped): the full cell,
+# rounded corners, nothing removed. win_hen stays a cut-out (it sits fully inside its cell).
+JOBS += [(S09, 'card', [(i % 4, i // 4, n) for i, n in enumerate(
+    'boss_fox boss_snake boss_blizzard boss_golem boss_salamander boss_eagle boss_foxking'.split())], 384)]
+JOBS += [(S09, 'boss', [(3, 1, 'win_hen')], 384)]
+CARD_INSET = 10  # px off each cell edge: drops the grey divider lines
+CARD_R = 0.07    # corner radius as a share of the card width
 
 
 def flood(ok, seeds):
@@ -78,7 +83,24 @@ def finish(rgb, alpha, size, kind):
     return im
 
 
+def card(sheet, img, cx, cy, size):
+    x0, x1 = sheet['xs'][cx] + CARD_INSET, sheet['xs'][cx + 1] - CARD_INSET
+    y0, y1 = sheet['ys'][cy] + CARD_INSET, sheet['ys'][cy + 1] - CARD_INSET
+    im = img.crop((x0, y0, x1, y1)).convert('RGB')
+    w, h = im.size
+    k = size / h
+    im = im.resize((round(w * k), size), Image.LANCZOS)
+    w, h = im.size
+    S = 4  # supersampled rounded-corner mask
+    m = Image.new('L', (w * S, h * S), 0)
+    from PIL import ImageDraw
+    ImageDraw.Draw(m).rounded_rectangle((0, 0, w * S - 1, h * S - 1), radius=round(w * CARD_R * S), fill=255)
+    im.putalpha(m.resize((w, h), Image.LANCZOS))
+    return im
+
+
 def cut(sheet, img, bg, cx, cy, kind, size, sid):
+    if kind == 'card': return card(sheet, img, cx, cy, size)
     x0, x1 = sheet['xs'][cx] + INSET, sheet['xs'][cx + 1] - INSET
     y0, y1 = sheet['ys'][cy] + INSET, sheet['ys'][cy + 1] - INSET
     a = np.asarray(img.crop((x0, y0, x1, y1)).convert('RGB'))
