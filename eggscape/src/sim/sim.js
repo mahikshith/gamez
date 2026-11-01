@@ -1040,7 +1040,7 @@ export class Sim {
       const size = S.size || 1;
       this.snakes.push({
         id: i, size, rad: this.outerR + 1.0, a: Math.PI / 2 + deg(S.a ?? [0, 125, -125][i % 3]), speed: (S.speed || 0.55) * P.snake,
-        wait: S.delay ?? 3 + i * 5, len: (S.len || 1.7) * size, pts: [], mouthOpen: 0, eaten: 0, inside: false,
+        wait: S.delay ?? 3 + i * 5, len: (S.len || 1.7) * 1.8 * size, pts: [], mouthOpen: 0, eaten: 0, inside: false,
         gone: 0, tgt: 0, mood: null, moodT: 0, blocked: 0, spit: null,
       });
     });

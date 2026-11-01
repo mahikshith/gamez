@@ -74,8 +74,8 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     const o = Math.max(1.6, 70 / s * 1.3);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    const ph = Math.sin(t * 9);
-    ctx.translate(0, -ph * flap * 2.2 * (1 - dive));
+    const ph = Math.sin(opts.phase != null ? opts.phase : t * 9); // wing phase: the caller accumulates it so the beat rate can change without a jerk
+    ctx.translate((opts.tremble ? Math.sin(t * 53) * 0.9 : 0), -ph * flap * 5 * (1 - dive)); // the body rises on the downstroke
     ctx.rotate(dive * 0.85 + (1 - dive) * (carry ? -0.05 : -0.12 * ph * flap * 0.3));
     // wing pose: 0 = up, + = swinging down and forward, negative = back along the body (folded)
     // base swings -1 (high, swept back) .. +0.7 (down and forward); the far wing rides above it, the near wing below it

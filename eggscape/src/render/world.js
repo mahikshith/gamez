@@ -1,6 +1,7 @@
 // Draws the playfield in world space: ctx is pre-transformed (meters, y up).
 import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
 import { drawChick, drawSnake, drawFox } from './characters.js';
+import { isSpriteCalm } from './sprites.js';
 import { drawEagle, drawBarrier, drawVenom } from './v3art.js';
 import { drawEggPower } from './powers.js';
 import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawGrate, drawOneWayMark } from './v3art.js';
@@ -1169,6 +1170,7 @@ export function drawSnakes(ctx, sim, t, k) {
 
 // Eagle (G48): layer 'back' = the shadow under what it has locked on (drawn before eggs); 'front' = the
 // target ring (red: it can reach in, grey dashes: the outer ring shields it) and the bird itself.
+let wingPh = 0, wingT = 0, diveK = 0; // eagle wing phase accumulated across frames
 export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
   const E = sim.eagle;
   if (!E || E.phase === 'away') return;
@@ -1200,15 +1202,39 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
   if (layer === 'back') return;
   const dive = E.phase === 'dive' ? 1 : 0;
   const carrying = E.carry === 'snake' ? 'snake' : E.carry ? 'egg' : null;
-  pxSpace(ctx, E.x, E.y, k, () => drawEagle(ctx, 0, 0, 1.7 * k, t, { flap: dive ? 0 : 0.5 + 0.5 * Math.sin(t * (E.phase === 'up' ? 11 : 6)), dive, carrying, face: E.face }));
+  // wing beat: lazy flaps and glides while circling, frantic when it has locked on, heavy strokes when climbing out with a catch
+  const calm = isSpriteCalm();
+  const rate = E.phase === 'warn' ? 17 : E.phase === 'up' ? (carrying ? 9 : 12) : 7.5;
+  const dtw = Math.min(0.1, Math.max(0, t - wingT));
+  wingT = t;
+  wingPh += dtw * rate;
+  const glide = E.phase === 'circle' ? 0.35 + 0.65 * Math.min(1, Math.max(0, 0.5 + Math.sin(t * 0.9) * 1.2)) : 1;
+  diveK += ((dive ? 1 : 0) - diveK) * (1 - Math.exp(-dtw * 14)); // wings fold in and spread out over ~0.15 s instead of snapping
+  const flap = dive ? 0 : calm ? 0.25 : (E.phase === 'warn' ? 1 : carrying ? 0.8 : 0.85) * glide;
+  pxSpace(ctx, E.x, E.y, k, () => drawEagle(ctx, 0, 0, 1.7 * k, t, { flap, phase: wingPh, tremble: E.phase === 'warn' && !calm, dive: diveK, carrying, face: E.face }));
 }
 
 // Fox thrower (G36): his head peeks over the top of the vault.
 export function drawFoxThrower(ctx, sim, t, k) {
   const F = sim.fox;
   if (!F) return;
-  const y = sim.outerR + 0.45;
-  pxSpace(ctx, F.x, y, k, () => drawFox(ctx, 0, 0, 0.95 * k, F.mood, t, { x: Math.cos(t * 0.35) * 0.4, y: 0.6 }));
+  const y = sim.outerR + 0.45, sz = 0.95 * k;
+  let rot = 0, sx = 1, sy = 1, dy = 0;
+  if (!isSpriteCalm()) {
+    // idle: a slow sway and a bob; before a throw he rears back and squashes (wind-up); right after it he lurches forward
+    rot += Math.sin(t * 1.4) * 0.04;
+    dy += Math.sin(t * 2.1) * 0.012 * sz;
+    const wind = F.t > 0 && F.t < 0.9 ? 1 - F.t / 0.9 : 0;
+    if (wind) { rot -= 0.24 * wind + Math.sin(t * 45) * 0.012 * wind; sx *= 1 + 0.06 * wind; sy *= 1 - 0.09 * wind; dy -= 0.08 * sz * wind; }
+    const age = F.mood === 'laugh' ? 1.4 - F.moodT : 9, rel = Math.exp(-age * 5);
+    if (age < 1.4) { rot += 0.26 * rel + Math.sin(t * 14) * 0.03 * (1 - rel); sy *= 1 + 0.12 * rel; sx *= 1 - 0.06 * rel; dy += 0.1 * sz * rel; }
+  }
+  pxSpace(ctx, F.x, y, k, () => {
+    ctx.translate(0, dy);
+    ctx.rotate(rot);
+    ctx.scale(sx, sy);
+    drawFox(ctx, 0, 0, sz, F.mood, t, { x: Math.cos(t * 0.35) * 0.4, y: 0.6 });
+  });
 }
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);

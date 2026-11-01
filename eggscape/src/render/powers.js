@@ -1,5 +1,7 @@
-// Power-up art: floating orbs, egg overlays, and popup-card icons. Pure Canvas 2D, no assets.
+// Power-up art: floating orbs, egg overlays, and popup-card icons. Canvas 2D; known orbs use the raster sprites (sprites.js) when loaded, code-drawn otherwise.
 // All drawing is local y-DOWN; flames rise toward -y. The caller handles any world flip.
+
+import { drawSprite, spriteReady, isSpriteCalm } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const mod = (a, b) => ((a % b) + b) % b;
@@ -1000,6 +1002,51 @@ export function drawOrb(ctx, id, cx, cy, r, t = 0, known = true) {
     ctx.beginPath();
     ctx.arc(0, 0, r * 1.75 * pulse, 0, TAU);
     ctx.fill();
+    // sprite art for known orbs (glow/bob/pulse above stay); falls back to the code-drawn glass below
+    if (known && spriteReady('orb_' + id)) {
+      const calm = isSpriteCalm(), seed = id ? id.length : 0;
+      if (!calm) {
+        // slow-turning light rays behind the orb, breathing with the pulse
+        ctx.save();
+        ctx.rotate(t * 0.45 + seed);
+        ctx.globalCompositeOperation = 'lighter';
+        for (let k = 0; k < 6; k++) {
+          ctx.save();
+          ctx.rotate((k / 6) * TAU);
+          const len = r * (1.75 + 0.2 * Math.sin(t * 2.4 + k * 1.7));
+          const ray = ctx.createLinearGradient(r * 0.5, 0, len, 0);
+          ray.addColorStop(0, `rgba(${rgb},0.4)`);
+          ray.addColorStop(1, `rgba(${rgb},0)`);
+          ctx.fillStyle = ray;
+          ctx.beginPath();
+          ctx.moveTo(0, -r * 0.2);
+          ctx.lineTo(len, -r * 0.05);
+          ctx.lineTo(len, r * 0.05);
+          ctx.lineTo(0, r * 0.2);
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+      ctx.save();
+      if (!calm) {
+        ctx.rotate(Math.sin(t * 1.7 + seed) * 0.07); // a lazy wobble
+        const sq = 1 + 0.045 * Math.sin(t * 3 + seed);
+        ctx.scale(sq, 2 - sq); // pulse as a squash and stretch, volume kept
+      }
+      drawSprite(ctx, 'orb_' + id, 0, 0, r * 2);
+      ctx.restore();
+      if (!calm) {
+        // a glint circling the rim
+        const a = -t * 1.3 + seed;
+        ctx.globalAlpha = 0.55 + 0.45 * Math.sin(t * 5 + seed);
+        ctx.fillStyle = '#ffffff';
+        sparkle(ctx, Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.9, r * 0.13);
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+      return;
+    }
     ctx.scale(r / 100, r / 100);
     // glass body
     const body = ctx.createRadialGradient(-30, -36, 6, 0, 0, 100);
