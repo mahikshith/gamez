@@ -1,5 +1,5 @@
 // Eggscape: game shell. Screens, input, camera, events -> VFX/SFX/score, HUD.
-import { Sim, DT, LEGACY_ORB } from './sim/sim.js';
+import { Sim, DT, LEGACY_ORB, EAGLE_LEN } from './sim/sim.js';
 import { hintSearch, actSteps } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
 import { LEVELS } from './data/levels.js';
@@ -249,7 +249,17 @@ function frameOf(all, maxCh) {
   // the fox's head over the top. An eagle level keeps fixed headroom for it (no zoom pumping as it flies)
   const hds = [];
   for (const S of sim.snakes || []) if (!S.gone && S.inside && S.rad <= sim.outerR + 1.5) hds.push({ x: S.rad * Math.cos(S.a), y: S.rad * Math.sin(S.a) });
-  if (sim.eagle && all) yMax = Math.max(yMax, sim.outerR + 1.7);
+  const A = sim.eagle;
+  if (A && all) {
+    // fixed headroom over the vault for it, and the whole bird (wings and all) is always in the frame
+    // once it is hunting; only its first sweep in and its exit come from off screen
+    yMax = Math.max(yMax, sim.outerR + 1.4 * EAGLE_LEN);
+    if (A.phase !== 'away' && A.phase !== 'enter' && A.phase !== 'flee') {
+      R = Math.max(R, Math.abs(A.x) + 0.85 * EAGLE_LEN); // a raised wing reaches about one body length out
+      yMax = Math.max(yMax, A.y + 0.8 * EAGLE_LEN);
+      yMin = Math.min(yMin, A.y - 0.6 * EAGLE_LEN);
+    }
+  }
   if (sim.fox) hds.push({ x: sim.fox.x, y: sim.outerR + 0.6 });
   for (const hd of hds) {
     if (all) { R = Math.max(R, Math.abs(hd.x) + 0.6); yMin = Math.min(yMin, hd.y - 0.6); yMax = Math.max(yMax, hd.y + 0.6); }
@@ -1067,6 +1077,7 @@ function predEvent(ev, fx) {
       audio.play(ev.kind === 'snake' ? 'thorn_snap' : 'egg_crack', { pitch: 1.3 });
       fx.sparkle(ev.x, ev.y, 10, ev.kind === 'snake' ? '#b6ff8a' : '#fff6c2');
       fx.shake = Math.max(fx.shake, 0.35);
+      fx.punch = 1;
       if (ev.kind === 'snake') { popup(ev.x, ev.y + 0.5, 'Snake snatched!', { color: '#b6ff8a', size: 22 }); hen('happy', 1.2); }
       else if (ev.kind === 'egg') { popup(ev.x, ev.y + 0.6, 'Grabbed!', { color: '#ff7a5a', size: 22 }); hen('worried', 2); once('eagleGrab', 'It drops what it catches back in from up high. That costs a crack.'); }
       break;
@@ -1090,6 +1101,7 @@ function predEvent(ev, fx) {
       audio.play('steel_clang', { vol: 0.8 });
       fx.wave(ev.x, ev.y, 0.7, '#e6e6e6', 0.35, 0.06);
       fx.shake = Math.max(fx.shake, 0.3);
+      fx.punch = 1;
       popup(ev.x, ev.y + 0.5, 'Too tough!', { size: 18 });
       break;
     case 'eagleSlam':
@@ -1099,6 +1111,7 @@ function predEvent(ev, fx) {
       fx.dust(ev.x, ev.y, 7);
       fx.wave(ev.x, ev.y, 0.8, '#fff1c8', 0.3, 0.05);
       fx.shake = Math.max(fx.shake, 0.4);
+      fx.punch = 1;
       popup(ev.x, ev.y + 0.4, ev.exposed ? 'Dodged!' : 'Clang!', { color: '#cfe8ff', size: 20 });
       if (ev.exposed) hen('happy', 1.2);
       break;

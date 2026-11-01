@@ -85,9 +85,11 @@ const PECK_T = 0.6; // s a chick rests on a blunt cluster before it pecks it awa
 // eagle (G48): lock = shadow lock-on (x PRED.warn), dive = longest swoop, daze after a slam, carry = longest
 // wait for a high opening, perch = idle time before it lands on the vault. Per mode: daze x, drop = crack-ladder
 // rings a dropped catch counts as (1 crack every mode), dive speed x
-const EAGLE_T = { lap: 3.2, lock: 1.6, dive: 1.6, strike: 0.28, daze: 3, carry: 3.5, perch: 5 };
+const EAGLE_T = { lap: 3.2, lock: 1.6, dive: 1.4, strike: 0.28, daze: 3, carry: 3.5, perch: 5 };
 const EAGLE_MODE = { easy: { daze: 1.25, drop: 3, speed: 0.85 }, medium: { daze: 1, drop: 2, speed: 1 }, hard: { daze: 0.8, drop: 2, speed: 1.12 } };
 const EAGLE_REACH = 0.7; // m: talons reach an egg this far (centre) from an opening in the outer ring
+export const EAGLE_LEN = 3.0; // m, beak to tail: the art's size, and so where its talons are (EL below)
+const EL = { foot: 0.34 * EAGLE_LEN, hover: 0.47 * EAGLE_LEN, perch: 0.33 * EAGLE_LEN, high: 0.55 * EAGLE_LEN, half: 0.5 * EAGLE_LEN };
 const CHICK_R = 0.3; // chick collision radius (~1.5x an egg, G33)
 
 const deg = (d) => (d * Math.PI) / 180;
@@ -1068,7 +1070,7 @@ export class Sim {
       this.eagle = {
         every: L.eagle.every ?? 10, phase: 'away', t: L.eagle.delay ?? 6, next: 0, x: sd * (R + 9), y: R + 4, vx: -sd * 6, vy: -1, face: -sd, bank: 0,
         tk: null, tid: 0, tph: 0, tx: 0, ty: 0, dtx: 0, dty: 0, mx: 0, my: 0, cx: 0, cy: 0, side: 1, lk: 0, dur: 1, reach: 0, exp: 0, res: null,
-        carry: null, cid: 0, ctype: null, ct: 0, ox: 0, oy: 0, yx: 0, yy: 0, dzx: 0, dzy: 0, dropId: 0, dropT: 0, dropArm: 0, idle: 0, n: 0, end: null, scr: 0,
+        carry: null, cid: 0, ctype: null, ct: 0, ox: 0, oy: 0, yx: 0, yy: 0, dzx: 0, dzy: 0, dropId: 0, dropT: 0, dropArm: 0, idle: 0, n: 0, end: null, scr: 0, last: null, sx: 0, sy: 0,
       };
     }
     if (L.fox) this.fox = { every: (L.fox.every || 8) * P.fox, throws: [...(L.fox.throws || ['thorn'])], t: L.fox.delay ?? 3, k: 0, x: 0, mood: 'smug', moodT: 0 };
@@ -1301,7 +1303,7 @@ export class Sim {
     E.t -= dt;
     if (E.next > 0) E.next -= dt;
     this.eagleDropTrack(dt);
-    const orbit = (h = 1.0) => [Math.sin(this.t * 0.42) * R * 0.72, R + h + 0.3 * Math.sin(this.t * 0.84)];
+    const orbit = (h = EL.high) => [Math.sin(this.t * 0.42) * R * 0.72, R + h + 0.3 * Math.sin(this.t * 0.84)];
     switch (E.phase) {
       case 'away':
         if (E.t > 0) return;
@@ -1317,9 +1319,11 @@ export class Sim {
       case 'circle':
       case 'perch': {
         if (E.phase === 'circle') { const [ox, oy] = orbit(); this.eagleFly(ox, oy, 4.5, 6, dt); }
-        else this.eagleFly(0, R + 0.62, 4, 7, dt, 3);
+        else this.eagleFly(0, R + EL.perch, 4, 7, dt, 3);
         if (E.next > 0) return;
         const tg = this.eagleTarget(null);
+        // nothing new to choose: after a snake it lets the next one be for a beat (it is not a snake catcher)
+        if (tg && tg.kind === 'snake' && E.last === 'snake') { E.last = null; E.next = E.every * 0.5; return; }
         if (tg) { this.eagleLock(tg); return; }
         if (E.phase === 'circle' && (E.idle += dt) > EAGLE_T.perch) E.phase = 'perch';
         return;
@@ -1332,22 +1336,34 @@ export class Sim {
         if (E.reach && tg.kind !== 'snake') E.exp = 1;
         E.lk = clamp(1 - E.t / E.dur, 0, 1);
         // hover off to one side of the target, high enough to dive round the vault at it
-        const th = Math.atan2(tg.y, tg.x) + E.side * 0.65, hr = R + 0.9;
-        const hx = hr * Math.cos(th), hy = Math.max(hr * Math.sin(th), this.groundY + 1.5);
+        const th = Math.atan2(tg.y, tg.x) + E.side * 0.65, hr = R + EL.hover;
+        const hx = hr * Math.cos(th), hy = Math.max(hr * Math.sin(th), this.groundY + 0.75 * EAGLE_LEN);
         this.eagleFly(hx, hy, 8, 16, dt, 2.2);
         if (Math.abs(tg.x - E.x) > 0.3) E.face = tg.x > E.x ? 1 : -1;
         if (E.t > 0) return;
         this.eaglePose(tg.x, tg.y);
         E.phase = 'dive';
-        E.t = EAGLE_T.dive;
+        E.t = E.dur = EAGLE_T.dive / this.EM.speed;
+        E.sx = E.x; E.sy = E.y;
+        E.last = tg.kind;
         this.emit('eagleDive', { x: E.x, y: E.y, tx: E.mx, ty: E.my });
         return;
       }
       case 'dive': {
         const tg = this.eagleTarget(E);
         E.reach = tg && tg.exposed ? 1 : 0;
-        const d = this.eagleFly(E.cx, E.cy, 13 * this.EM.speed, 44 * this.EM.speed, dt, 7);
-        if (d < 0.14 || E.t <= 0) this.eagleStrike(tg);
+        if (tg && tg.kind === 'snake') this.eaglePose(tg.x, tg.y); // a snake is followed down; an egg is dived at where it was
+        // the stoop: a scripted curve (out and over, never through the vault) on an ease-in, so it gathers
+        // itself, folds and drops faster and faster onto the strike point
+        const u = clamp(1 - E.t / E.dur, 0, 1), s = u * u * (1.6 - 0.6 * u), b = 1 - s;
+        const a0 = Math.atan2(E.sy, E.sx), a2 = Math.atan2(E.cy, E.cx), am = a0 + wrap(a2 - a0) / 2;
+        const rm = Math.max(Math.hypot(E.sx, E.sy), Math.hypot(E.cx, E.cy), R) + 1.2, px = rm * Math.cos(am), py = rm * Math.sin(am);
+        const x = b * b * E.sx + 2 * b * s * px + s * s * E.cx, y = b * b * E.sy + 2 * b * s * py + s * s * E.cy;
+        E.vx = (x - E.x) / dt; E.vy = (y - E.y) / dt;
+        E.x = x; E.y = y;
+        if (u > 0.5 && Math.abs(E.mx - E.x) > 0.15) E.face = E.mx > E.x ? 1 : -1; // squares up to the catch
+        else if (Math.abs(E.vx) > 0.7) E.face = E.vx > 0 ? 1 : -1;
+        if (E.t <= 0) this.eagleStrike(tg);
         return;
       }
       case 'strike': {
@@ -1385,9 +1401,9 @@ export class Sim {
   // Steer toward (gx, gy) with limited acceleration (smooth arcs for the art). It may cut across the rim of
   // the vault (it flies in front of it) but a line through the middle is replaced by a swing round it on the
   // goal's side, so it never hides the inner rings. Returns the distance left.
-  eagleFly(gx, gy, sp, acc, dt, arrive = 2.5) {
+  eagleFly(gx, gy, sp, acc, dt, arrive = 2.5, free = false) {
     const E = this.eagle, Rv = this.outerR - 1.0;
-    if (E.phase !== 'flee' && E.phase !== 'enter') gx = clamp(gx, -this.outerR, this.outerR); // on screen
+    if (!free && E.phase !== 'flee' && E.phase !== 'enter') gx = clamp(gx, -this.outerR + 0.45 * EAGLE_LEN, this.outerR - 0.45 * EAGLE_LEN); // on screen, wings and all
     const dx = gx - E.x, dy = gy - E.y, d = Math.hypot(dx, dy), pr = Math.hypot(E.x, E.y);
     let ux = d > 1e-6 ? dx / d : 0, uy = d > 1e-6 ? dy / d : 0;
     if (d > 0.7 && pr > 1) {
@@ -1408,6 +1424,12 @@ export class Sim {
     E.x += E.vx * dt; E.y += E.vy * dt;
     const r = Math.hypot(E.x, E.y), rmin = this.outerR - 1.2;
     if (r < rmin && r > 1e-6) { E.x *= rmin / r; E.y *= rmin / r; }
+    const xm = this.outerR - 0.45 * EAGLE_LEN; // keep the whole bird on screen once it is in
+    if (!free && E.phase !== 'flee' && E.phase !== 'enter' && Math.abs(E.x) > xm) {
+      const sd = Math.sign(E.x);
+      E.x = sd * Math.max(xm, Math.abs(E.x) - 4 * dt);
+      if (E.vx * sd > 0) E.vx = 0;
+    }
     // the art banks into turns and faces where it flies
     if (E.phase !== 'warn' && Math.abs(E.vx) > 0.7) E.face = E.vx > 0 ? 1 : -1;
     const turn = s0 > 0.5 ? wrap(Math.atan2(E.vy, E.vx) - h0) / dt : 0;
@@ -1437,10 +1459,14 @@ export class Sim {
     const out = d > R + 0.1;
     E.mx = out ? tx : R * nx;
     E.my = out ? ty : R * ny;
-    E.cx = E.mx + nx * 0.72;
-    E.cy = E.my + ny * 0.72;
-    const low = this.groundY + 0.55;
-    if (E.cy < low) { E.cx += (E.cx >= 0 ? 1 : -1) * Math.min(0.3, low - E.cy); E.cy = low; }
+    E.cx = E.mx + nx * EL.foot;
+    E.cy = E.my + ny * EL.foot;
+    // low on the vault the body would sit on the nest: it strikes from beside, talons reaching across
+    const low = -R + 0.25 * EAGLE_LEN;
+    if (E.cy < low) {
+      const sd = Math.abs(E.mx) > 0.3 ? Math.sign(E.mx) : E.x >= 0 ? 1 : -1, dy = Math.min(low - E.my, EL.foot);
+      E.cx = E.mx + sd * Math.sqrt(Math.max(0, EL.foot * EL.foot - dy * dy)); E.cy = E.my + dy;
+    }
     E.dtx = tx; E.dty = ty;
   }
 
@@ -1466,10 +1492,21 @@ export class Sim {
     if (!S) return;
     S.carried = true; S.carryX = x; S.carryY = y;
     S.wait = 99; S.spit = null; S.mood = 'ouch'; S.moodT = 1;
-    // it dangles from the talons, head up, swinging
-    const n = Math.ceil(S.len / 0.05) + 1, sw = Math.sin(this.t * 3.1) * 0.5 - E.vx * 0.08;
-    S.pts.length = 0;
-    for (let i = 0; i < n; i++) { const u = i / n; S.pts.push({ x: x + sw * u * u * 1.6 + Math.sin(this.t * 7 - i * 0.18) * 0.05 * u, y: y - 0.04 - i * 0.046 }); }
+    // gripped a third of the way down: both ends hang from the talons and swing; the head dangles out in
+    // front and wriggles, curling up now and then to snap at the bird; the tail hangs and twitches
+    const n = Math.ceil(S.len / 0.05) + 1, g = Math.round(n * 0.3), f = E.face, sw = Math.sin(this.t * 3.1) * 0.3 - clamp(E.vx * 0.05, -0.5, 0.5);
+    const lift = Math.max(0, Math.sin(this.t * 1.7)) ** 2;
+    S.pts.length = n;
+    S.pts[g] = { x, y: y - 0.03 };
+    for (let j = 1; j <= g; j++) {
+      const q = S.pts[g - j + 1], w = Math.min(1, j / g), end = clamp((j - g + 6) / 6, 0, 1);
+      const a = -Math.PI / 2 + sw + f * (0.5 + 0.9 * Math.exp(-j / 5) + Math.sin(this.t * 6.5 - j * 0.45) * 0.5 * w + 2.2 * lift * end * end);
+      S.pts[g - j] = { x: q.x + 0.05 * Math.cos(a), y: q.y + 0.05 * Math.sin(a) };
+    }
+    for (let j = 1; g + j < n; j++) {
+      const q = S.pts[g + j - 1], a = -Math.PI / 2 + sw - f * (0.4 + 0.9 * Math.exp(-j / 5) - Math.sin(this.t * 5 - j * 0.3) * 0.22 * Math.min(1, j / 12));
+      S.pts[g + j] = { x: q.x + 0.05 * Math.cos(a), y: q.y + 0.05 * Math.sin(a) };
+    }
     S.rad = Math.hypot(x, y); S.a = Math.atan2(y, x);
   }
 
@@ -1525,7 +1562,7 @@ export class Sim {
     const E = this.eagle, R = this.outerR, ring = this.rings[this.rings.length - 1];
     E.ct += dt;
     const k = clamp(E.ct / 0.35, 0, 1), sk = k * k * (3 - 2 * k);
-    const hx = E.ox + (E.face * 0.12 - E.ox) * sk, hy = E.oy + (-0.92 - E.oy) * sk; // talons swing under the body
+    const hang = -EL.foot - (E.carry === 'egg' ? 0.22 : 0), hx = E.ox + (E.face * 0.04 * EAGLE_LEN - E.ox) * sk, hy = E.oy + (hang - E.oy) * sk; // talons swing under the body
     const out = () => { // away from the vault first: sideways and up from under it
       const d = Math.hypot(E.x, E.y) || 1, sd = E.x >= 0 ? 1 : -1, low = E.y < -R * 0.5;
       return [E.x + (E.x / d) * 1.4 + (low ? sd * 1.6 : 0), Math.max(E.y + (E.y / d) * 1.4 + 0.8, this.groundY + 1.6)];
@@ -1537,7 +1574,7 @@ export class Sim {
       return;
     }
     if (E.carry === 'snake') {
-      const gx = clamp(E.x, -1.2, 1.2), gy = R + 1.5;
+      const gx = clamp(E.x, -1.2, 1.2), gy = R + EL.foot + 0.6;
       const d = this.eagleFly(E.ct < 0.5 ? out()[0] : gx, E.ct < 0.5 ? out()[1] : gy, 5.5, 9, dt);
       this.eagleCarrySnake(E.x + hx, E.y + hy);
       if (E.ct > 0.8 && d < 0.4) { this.eagleRelease(); E.phase = 'up'; E.t = 1.4; }
@@ -1545,11 +1582,12 @@ export class Sim {
     }
     const egg = this.eagleEgg();
     if (!egg) { E.carry = null; E.phase = 'up'; E.t = 1.4; return; }
-    let best = null, bs = -2;
+    let best = null, bs = -2, sc = -9;
+    const late = E.ct > EAGLE_T.carry, ea = Math.atan2(E.y, E.x);
     for (const g of ring.gaps) {
       if (!this.snakeGap(g) || g.len < 0.6) continue;
-      const a = ring.body.getAngle() + g.a, s = Math.sin(a);
-      if (s > bs) { bs = s; best = a; }
+      const a = ring.body.getAngle() + g.a, s = Math.sin(a), v = s - (late ? 0.4 * Math.abs(wrap(a - ea)) : 0); // late: the nearest high one, not chasing round
+      if (v > sc) { sc = v; bs = s; best = a; }
     }
     let d = 9, mode = 0;
     if (E.ct < 0.6) { const [gx, gy] = out(); this.eagleFly(gx, gy, 5, 10, dt); }
@@ -1561,12 +1599,12 @@ export class Sim {
       // the player keeps the openings low: the talons put it in through the highest one
       mode = 2;
       this.eaglePose(R * Math.cos(best), R * Math.sin(best));
-      d = this.eagleFly(E.cx, E.cy, 5, 10, dt, 4);
+      d = this.eagleFly(E.cx, E.cy, 5, 10, dt, 4, true); // the camera follows it out to a side opening
     } else {
       const ox = Math.sin(this.t * 0.6) * 1.6;
-      this.eagleFly(ox, R + 2.2, 4.5, 7, dt);
+      this.eagleFly(ox, R + 1.3 + EL.foot, 4.5, 7, dt);
     }
-    const still = Math.abs(ring.omega || 0) < 0.3; // never let go over an opening that is swinging away
+    const still = Math.abs(ring.omega || 0) < 0.3 || E.ct > EAGLE_T.carry + 4; // never let go over an opening that is swinging away (unless it never stops)
     if (mode === 2 && d < 1) {
       // the talons reach in through the opening and set it down inside
       const r = ring.r - RING_TH / 2 - 0.32, u = clamp((1 - d) / 0.75, 0, 1);
@@ -1631,8 +1669,8 @@ export class Sim {
     // it reels away from the vault (out to the side when it hit the underside) and hangs there wobbling
     // it reels away and flops about in the open: beside the nest when it hit the underside, else outward
     const a = Math.atan2(E.y, E.x), sd = E.x >= 0 ? 1 : -1;
-    if (Math.sin(a) < -0.45) { E.dzx = sd * Math.min(R * 0.75, 4.8); E.dzy = this.groundY + 1.0; }
-    else { E.dzx = clamp((R + 1.0) * Math.cos(a), -R, R); E.dzy = (R + 1.0) * Math.sin(a) + 0.5; }
+    if (Math.sin(a) < -0.45) { E.dzx = sd * Math.min(R * 0.7, 4.8); E.dzy = this.groundY + 0.8 * EAGLE_LEN; }
+    else { E.dzx = clamp((R + 1.0) * Math.cos(a), -R + 0.45 * EAGLE_LEN, R - 0.45 * EAGLE_LEN); E.dzy = (R + 1.0) * Math.sin(a) + 0.5; }
     const dx = E.dzx - E.x, dy = E.dzy - E.y, l = Math.hypot(dx, dy) || 1;
     E.vx = (dx / l) * 4.5; E.vy = (dy / l) * 4.5 + 1.2;
     this.emit('eagleDazed', { x: E.x, y: E.y, by: by || E.res });
@@ -1676,15 +1714,17 @@ export class Sim {
     }
     E.t += dt;
     if (E.phase === 'flee') this.eagleFly(E.face * (R + 14), R + 10, 11, 14, dt);
-    else if (this.eagleFly(0, R + 0.62, 6, 10, dt, 3) < 0.25 && !E.scr) { E.scr = 1; this.emit('eagleScreech', { x: E.x, y: E.y }); }
+    else if (this.eagleFly(0, R + EL.perch, 6, 10, dt, 3) < 0.25 && !E.scr) { E.scr = 1; this.emit('eagleScreech', { x: E.x, y: E.y }); }
   }
 
   // Targets, best first: an exposed snake, chick, egg or orb in the outer channel; else an egg in the outer
-  // channels it can still dive at (the ring shields it: a slam). With E, the locked target's current state.
+  // channels it can still dive at (the ring shields it: a slam). A snake or orb right after the same kind of
+  // catch scores lower, so it switches between them. With E, the locked target's current state.
   eagleTarget(E) {
     const n = this.rings.length, R = this.outerR;
     let best = null, bs = -1e9;
     const take = (s, o) => { if (s > bs) { bs = s; best = o; } };
+    const again = (k) => (!E && this.eagle.last === k ? 200 : 0); // it took one of those last time: an egg looks better now
     for (const e of this.aliveEggs()) {
       if (E && (E.tk === 'snake' || E.tk === 'orb' || E.tid !== e.id)) continue;
       if (e.id === this.eagle.cid || !e.body.isActive()) continue;
@@ -1698,14 +1738,14 @@ export class Sim {
       if (S.gone || S.carried || !S.inside || S.pts.length < 2) continue;
       const h = S.pts[0], d = Math.hypot(h.x, h.y), ex = d > R || (this.chAt(d) === n - 1 && this.eagleReach(h.x, h.y));
       if (!E && !ex) continue;
-      take(380, { kind: 'snake', id: S.id + 1, x: h.x, y: h.y, snake: S, exposed: ex });
+      take(380 - again('snake'), { kind: 'snake', id: S.id + 1, x: h.x, y: h.y, snake: S, exposed: ex });
     }
     for (const o of this.orbs) {
       if (E && (E.tk !== 'orb' || o.ph !== E.tph)) continue;
       if (!o.alive || o.src === 'eagle' || o.ch !== n - 1) continue;
       const ex = this.eagleReach(o.x, o.y);
       if (!E && !ex) continue;
-      take(260, { kind: 'orb', id: 0, x: o.x, y: o.y, orb: o, exposed: ex });
+      take(260 - again('orb'), { kind: 'orb', id: 0, x: o.x, y: o.y, orb: o, exposed: ex });
     }
     return best;
   }

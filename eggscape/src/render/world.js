@@ -4,6 +4,7 @@ import { drawChick, drawSnake } from './characters.js';
 import { isSpriteCalm, drawFoxActor } from './sprites.js';
 import { drawEagle, drawEagleShadow, drawBarrier, drawVenom } from './v3art.js';
 import { drawEggPower, drawOrb } from './powers.js';
+import { EAGLE_LEN } from '../sim/sim.js';
 import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawGrate, drawOneWayMark } from './v3art.js';
 import { drawSkinPreview } from '../ui/store.js';
 
@@ -1171,7 +1172,6 @@ export function drawSnakes(ctx, sim, t, k) {
 // Eagle (G48). layer 'back' = its shadow on the vault (drawn under the eggs): faint and soft while it soars,
 // sweeping onto the target and turning dark and sharp as it locks on; 'front' = the bird. Pose weights,
 // wing beat, the turn-round and blinks are smoothed here per frame; the sim only says what it is doing.
-export const EAGLE_LEN = 1.9; // m, beak to tail (~3.4 eggs); wings ~2.3 m each, a beat spans ~45% of a six-ring vault's radius
 const EA = { t: -1, ph: 0, w: {}, face: 1, turnT: 0, pitch: 0, roll: 0, blink: 2.5, feathers: [], phase: null, res: null, stars: 0, toes: 1, flapT: 0 };
 const EASE = (u) => u * u * (3 - 2 * u), clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -1195,7 +1195,7 @@ function eagleShadowAt(ctx, sim, E, t, k) {
   if (alpha <= 0) return;
   ctx.save();
   ctx.globalAlpha = alpha;
-  pxSpace(ctx, x, y, k, () => drawEagleShadow(ctx, 0, 0, EAGLE_LEN * 1.75 * k * (1.15 - 0.15 * lock), -Math.PI / 2 + 0.15 * Math.sin(t * 0.9) * (1 - lock), lock, t));
+  pxSpace(ctx, x, y, k, () => drawEagleShadow(ctx, 0, 0, EAGLE_LEN * 1.45 * k * (1.15 - 0.15 * lock), -Math.PI / 2 + 0.15 * Math.sin(t * 0.9) * (1 - lock), lock, t));
   ctx.restore();
 }
 
@@ -1241,8 +1241,9 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
   }
   if (ph === 'warn') { W = { hover: 1 }; rate = 13; }
   else if (ph === 'dive') {
-    const d = Math.hypot(E.cx - E.x, E.cy - E.y), s = clamp01(1.4 - d / 1.0);
-    W = { dive: 1 - s, strike: s }; rate = 6;
+    // gathers itself (wings half up), tucks into the stoop, throws the talons forward at the very end
+    const u = clamp01(1 - E.t / (E.dur || 1)), s = clamp01((u - 0.8) / 0.2), h = clamp01(1 - u / 0.25);
+    W = { hover: h, dive: (1 - s) * (1 - h), strike: s }; rate = 6;
   } else if (ph === 'strike') { W = { strike: 1 }; rate = 6; }
   else if (ph === 'carry') { W = { carry: 1 }; rate = 10.5; }
   else if (ph === 'dazed') { W = { dazed: 1 }; rate = 0; }
@@ -1264,11 +1265,11 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
   // facing, with a quick turn-round (squash through the middle) instead of a snap
   let want = E.face;
   if ((ph === 'strike' || ph === 'carry' && E.ct < 0.3) && Math.abs(E.mx - E.x) > 0.15) want = E.mx > E.x ? 1 : -1;
-  if (want !== EA.face && EA.turnT <= 0) EA.turnT = 0.26;
+  if (want !== EA.face && EA.turnT <= 0) EA.turnT = 0.3;
   let turn = 0;
   if (EA.turnT > 0) {
     EA.turnT -= dt;
-    const u = 1 - EA.turnT / 0.26;
+    const u = 1 - EA.turnT / 0.3;
     turn = 1 - Math.abs(1 - 2 * u);
     if (u >= 0.5) EA.face = want;
     if (EA.turnT <= 0) EA.face = want;
@@ -1290,8 +1291,8 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
       if (egg) { const p = egg.body.getPosition(); grab = rel(p.x, p.y + 0.22); }
     } else if (E.carry === 'snake') {
       const S = (sim.snakes || []).find((s) => s.id === E.cid - 1);
-      if (S && S.pts[0]) grab = rel(S.pts[0].x, S.pts[0].y + 0.05);
-    } else if (E.carry === 'orb') grab = rel(E.x + E.face * 0.12, E.y - 0.75);
+      if (S && S.carryX != null) grab = rel(S.carryX, S.carryY);
+    } else if (E.carry === 'orb') grab = rel(E.x + E.face * 0.12, E.y - 0.3 * EAGLE_LEN);
     toes = 0.1;
   } else if ((ph === 'perch' || ph === 'gloat') && EA.w.perch > 0.5) {
     grab = rel(E.x + EA.face * 0.05, R + 0.02);
@@ -1299,6 +1300,8 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
   }
   EA.pitch += (pitch - EA.pitch) * (1 - Math.exp(-dt * (ph === 'dive' || ph === 'strike' ? 14 : 5)));
   EA.roll += (clamp(E.bank, -1, 1) - EA.roll) * (1 - Math.exp(-dt * 4));
+  // turning round, it rolls through a bank (wings swing over) rather than flattening to a sliver
+  const roll = clamp(EA.roll + turn * (EA.roll >= 0 ? 1 : -1), -1, 1);
   EA.stars += ((ph === 'dazed' ? 1 : 0) - EA.stars) * (1 - Math.exp(-dt * 6));
   // blink every few seconds, never while locked on
   EA.blink -= dt;
@@ -1306,9 +1309,9 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
   const eye = EA.blink < 0 && ph !== 'warn' && ph !== 'dive' ? 0.08 : 1;
   const gloat = ph === 'gloat' && E.scr ? 0.55 + 0.45 * Math.sin(t * 9) : 0;
   eagleFeathers(ctx, dt, k);
-  if (ph === 'carry' && E.carry === 'orb') pxSpace(ctx, E.x + E.face * 0.12, E.y - 0.92, k, () => drawOrb(ctx, E.ctype, 0, 0, 0.2 * k, t, true));
+  if (ph === 'carry' && E.carry === 'orb') pxSpace(ctx, E.x + E.face * 0.12, E.y - 0.3 * EAGLE_LEN - 0.12, k, () => drawOrb(ctx, E.ctype, 0, 0, 0.2 * k, t, true));
   pxSpace(ctx, E.x, E.y, k, () => {
-    drawEagle(ctx, 0, 0, EAGLE_LEN * k, t, { w: EA.w, phase: EA.ph, face: EA.face, turn, pitch: EA.pitch, roll: EA.roll, grab, toes, eye, stars: EA.stars, beak: gloat || null });
+    drawEagle(ctx, 0, 0, EAGLE_LEN * k, t, { w: EA.w, phase: EA.ph, face: EA.face, turn, pitch: EA.pitch, roll, grab, toes, eye, stars: EA.stars, beak: gloat || null });
   });
 }
 
