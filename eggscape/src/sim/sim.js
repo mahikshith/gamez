@@ -3,6 +3,7 @@ import { World, Vec2, Polygon, Circle, Box, RopeJoint } from 'planck';
 import { EGG_H, EGG_W, RING_TH, TAU, eggHull, solidArcs, wrap, clamp, rng } from './geom.js';
 import { v31Init, v31Step, v31State, v31Load, v31Contact, frostOrb, animalsHit } from './boss.js'; // bosses (v3.1)
 import { chickMethods, CHICK_KEYS } from './chicks.js'; // v3.2 chick kinds
+import { salMethods } from './salamander.js'; // v3.2 lava salamander
 
 export const DT = 1 / 120;
 
@@ -83,6 +84,8 @@ export const PRED = {
 };
 // stun = clash daze x, back = back-off time x (a bite on a protected egg)
 Object.assign(PRED.easy, { stun: 1.4, back: 1.3 }); Object.assign(PRED.medium, { stun: 1, back: 1 }); Object.assign(PRED.hard, { stun: 0.75, back: 0.8 });
+// sal = gap between the salamander's breaths x (its telegraph uses warn)
+PRED.easy.sal = 1.35; PRED.medium.sal = 1; PRED.hard.sal = 0.8;
 // Snake kinds: only a level spec's `kind` turns a trait on; otherwise every snake is classic and the skin is cosmetic.
 export const SNAKE_KIND = {
   classic: { skin: 'violet' },
@@ -223,6 +226,7 @@ export class Sim {
     this.orbsStart = this.orbs.length;
     this.buildPredators(L);
     v31Init(this); // bosses (v3.1): boss fight, falling ice, temporary walls and ring locks
+    this.salInit(L); // v3.2: lava salamander (sim/salamander.js)
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
@@ -1076,7 +1080,7 @@ export class Sim {
         wait: S.delay ?? 3 + i * 5, len: (S.len || 1.7) * 3.4 * size * (K.len || 1), pts: [], mouthOpen: 0, eaten: 0, inside: false,
         gone: 0, tgt: 0, mood: null, moodT: 0, blocked: 0, spit: null,
         kind: SNAKE_KIND[S.kind] ? S.kind : 'classic', skin, venomK: K.venom || 1, backK: K.back || 1,
-        stun: 0, back: 0, knock: 0, flee: -1, strike: 0, lunge: 0, odo: 0, shove: 0, hurt: '',
+        stun: 0, back: 0, knock: 0, flee: -1, strike: 0, lunge: 0, odo: 0, shove: 0, hurt: '', rival: 0, rivalD: 0, rivalId: -1,
         carried: false, carryX: 0, carryY: 0, held: 0, // the eagle's talons (carryStep)
         vsT: SPIT.every, vsK: -1, vsR: 0, vsA: 0, // spitter: next spit, phase time (-1 idle), target ring and its local angle // clash daze (s), backing off (s), knock-back left (m), fleeing a won level (s)
       });
@@ -1119,6 +1123,7 @@ export class Sim {
       if (end) this.snakeEnd(S, dt); else this.snakeStep(S, dt);
     }
     if (!end) this.clashStep(dt);
+    else this.salEndStep(dt); // v3.2: the salamander dives (win) or grins (loss); in play boss.js v31Step drives it
     for (const b of this.barriers) if (b.alive && b.fire && (b.burn += dt / BURN_T) >= 1) this.removeBarrier(b, 'burn');
     if (this.eagle) this.eagleStep(dt); // after the level ends it flees (win) or gloats (loss)
     if (this.fox && this.state === 'play') this.foxStep(dt);
@@ -1148,6 +1153,7 @@ export class Sim {
     if (S.knock > 0) { const d = Math.min(S.knock, 3 * dt); S.knock -= d; this.snakeBack(S, d); } // clash: shoved back fast
     if (S.shove) this.shoveStep(S, dt);
     if (S.stun > 0) { S.stun -= dt; return; } // dazed
+    if (S.rival > 0) { S.rival -= dt; S.strike = 0; S.blocked = 0; S.mouthOpen = Math.max(S.mouthOpen, 0.55 + 0.45 * Math.sin(this.t * 9)); return; } // face-off with the salamander
     if (S.back > 0) { S.back -= dt; this.snakeBack(S, 0.5 * S.speed * dt); S.blocked = 0; return; } // backing off, head still forward
     if (S.spit) { this.spitStep(S, dt, br); return; }
     if (S.wait > 0) { S.wait -= dt; return; }
@@ -2025,6 +2031,7 @@ export class Sim {
     }
     const E = this.eagle;
     if (E && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tk !== 'orb') lv = Math.max(lv, E.reach ? 0.9 : 0.5);
+    if (this.sals && this.sals.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.7 * this.salThreat(e)); // v3.2: a breath aimed at an egg
     lv = Math.round(lv * 10) / 10;
     if (lv !== this.danger) { this.danger = lv; this.emit('danger', { level: lv }); }
   }
@@ -2186,6 +2193,7 @@ export class Sim {
     EGG_KEYS.push('peckK', 'peckT', 'peckHit'); // predators (v3)
     EGG_KEYS.push('kind', 'guard', 'rockskin', 'curse', 'drop', 'lavaCD', 'fled'); // v3
     EGG_KEYS.push(...CHICK_KEYS); // v3.2 chick kinds
+    EGG_KEYS.push('hotK'); // v3.2: the salamander breath that last scorched it
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2212,6 +2220,7 @@ export class Sim {
       v3: this.v3State(),
       v31: v31State(this), // bosses (v3.1)
       chick: this.chickState(), // v3.2
+      sal: this.salState(), // v3.2 lava salamander
     };
   }
 
@@ -2263,6 +2272,7 @@ export class Sim {
     sim.v3Restore(S.v3);
     v31Load(sim, S.v31); // bosses (v3.1)
     sim.chickRestore(S.chick); // v3.2
+    sim.salLoad(S.sal); // v3.2 lava salamander
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2614,5 +2624,6 @@ export class Sim {
 }
 
 Object.assign(Sim.prototype, chickMethods); // v3.2 chick kinds (sim/chicks.js)
+Object.assign(Sim.prototype, salMethods); // v3.2 lava salamander (sim/salamander.js)
 
 export { EGG_H, EGG_W, RING_TH };
