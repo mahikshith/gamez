@@ -87,6 +87,9 @@ const G = {
   fx: new FX(),
   cam: { x: 0, y: 0, k: 60 },
   camSnap: true,
+  zm: null, // player zoom (null = auto)
+  tp: new Map(), // touch pointers in play: pointerId -> { x, y }
+  pinch: null,
   acc: 0,
   hitstop: 0,
   held: new Map(), // pointerId -> { ring, x, y }
@@ -157,6 +160,9 @@ function startLevel(i, opts = {}) {
   G.held.clear();
   G.keySel = firstGrabbable(0, 1);
   G.camSnap = true;
+  G.zm = null;
+  G.pinch = null;
+  G.tp.clear();
   G.acc = 0;
   G.lastTick = -1;
   stopFuse();
@@ -204,46 +210,70 @@ function computeLayout() {
   const twoRows = W_ < 760;
   G.hudBottom = Math.round((twoRows ? 104 : 64) * u);
   const top = G.hudBottom + 8 * u;
-  G.play = { x: 0, y: top, w: W_, h: H_ - top - 6 * u };
+  // zoom buttons get their own strip (right column in landscape, bottom row in portrait) so they never sit on rings
+  const bs = Math.max(40, 48 * u), pad = 8 * u, side = W_ > H_;
+  G.zb = { bs, pad, side };
+  const sw = side ? bs + 2 * pad : 0, sh = side ? 0 : bs + pad + 2 * u;
+  G.play = { x: 0, y: top, w: W_ - sw, h: H_ - top - 6 * u - sh };
+}
+
+// Frame the vault. all: whole vault plus ground and nest. Else the ring the eggs are in plus two more outward.
+function frameOf(all, maxCh) {
+  const sim = G.sim, n = sim.rings.length;
+  let R, yMin, yMax;
+  if (all) {
+    R = sim.outerR + 0.45;
+    yMin = sim.groundY - 0.25;
+    yMax = R;
+  } else {
+    const ring = sim.rings[Math.min(n - 1, Math.max(3, maxCh + 2))];
+    R = ring.r + RING_TH + 0.5;
+    yMin = -R + 0.3; // height-limited screens crop a little margin, never a ring
+    yMax = R - 0.3;
+  }
+  // a snake in (or about to enter) the vault is always framed, like the furthest egg
+  const S = sim.snake, hd = S && S.inside && S.rad <= sim.outerR + 1.5 ? { x: S.rad * Math.cos(S.a), y: S.rad * Math.sin(S.a) } : null;
+  if (hd) {
+    if (all) { R = Math.max(R, Math.abs(hd.x) + 0.6); yMin = Math.min(yMin, hd.y - 0.6); yMax = Math.max(yMax, hd.y + 0.6); }
+    else { R = Math.max(R, Math.hypot(hd.x, hd.y) + 0.6); yMin = -R; yMax = R; }
+  }
+  const P = G.play;
+  const k = Math.min(P.w / (2 * R), P.h / (yMax - yMin), 190);
+  return { x: 0, y: (yMin + yMax) / 2, k, R, yMin, yMax };
 }
 
 function camTarget() {
   const sim = G.sim;
   if (!sim) return { x: 0, y: 0, k: 60 };
-  const n = sim.rings.length;
+  const n = sim.rings.length, eggs = sim.aliveEggs();
   let maxCh = 0;
-  for (const e of sim.aliveEggs()) maxCh = Math.max(maxCh, sim.channelOf(e));
-  const showAll = G.screen !== 'play' || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || sim.state !== 'play' || n <= 2;
-  let R, yMin, yMax;
-  if (showAll) {
-    R = sim.outerR + 0.45;
-    yMin = sim.groundY - 0.25;
-    yMax = R;
-  } else {
-    const ring = sim.rings[Math.min(n - 1, Math.max(1, maxCh + 1))];
-    R = ring.r + RING_TH + 0.5;
-    yMin = -R;
-    yMax = R;
+  for (const e of eggs) maxCh = Math.max(maxCh, sim.channelOf(e));
+  const live = G.screen === 'play' && sim.state === 'play';
+  const A = frameOf(!live || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || n <= 2, maxCh);
+  const z = G.zm;
+  if (z == null || !live) return A;
+  const F = frameOf(true, maxCh);
+  if (z < 0) { // out: slide to the whole vault (k in log steps)
+    const t = -z;
+    return { x: lerp(A.x, F.x, t), y: lerp(A.y, F.y, t), k: A.k * Math.pow(Math.min(1, F.k / A.k), t) };
   }
-  // a snake in (or about to enter) the vault is always framed, like the furthest egg
-  const S = sim.snake, hd = S && S.inside && S.rad <= sim.outerR + 1.5 ? { x: S.rad * Math.cos(S.a), y: S.rad * Math.sin(S.a) } : null;
-  if (hd) {
-    if (showAll) { R = Math.max(R, Math.abs(hd.x) + 0.6); yMin = Math.min(yMin, hd.y - 0.6); yMax = Math.max(yMax, hd.y + 0.6); }
-    else { R = Math.max(R, Math.hypot(hd.x, hd.y) + 0.6); yMin = -R; yMax = R; }
+  // in: up to 2x the auto level, following the eggs' centre inside the vault frame
+  const k = A.k * Math.pow(2, z), P = G.play;
+  let cx = A.x, cy = A.y;
+  if (eggs.length) {
+    cx = cy = 0;
+    for (const e of eggs) { const p = e.body.getPosition(); cx += p.x; cy += p.y; }
+    cx = lerp(A.x, cx / eggs.length, Math.min(1, z * 2));
+    cy = lerp(A.y, cy / eggs.length, Math.min(1, z * 2));
   }
-  const P = G.play;
-  const k = Math.min(P.w / (2 * R), P.h / (yMax - yMin), 190);
-  // big vaults (up to 7 rings) would shrink eggs below readable size: frame the eggs instead
-  if (G.screen === 'play' && k < 40 && sim.aliveEggs().length) {
-    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
-    const add = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
-    for (const e of sim.aliveEggs()) { const p = e.body.getPosition(); add(p.x - 2.2, p.y - 2.2); add(p.x + 2.2, p.y + 2.2); }
-    if (hd) { add(hd.x - 1, hd.y - 1); add(hd.x + 1, hd.y + 1); }
-    if (maxCh >= n - 1) { const nx = sim.nest.getPosition().x; add(nx - sim.nestW / 2 - 0.6, sim.groundY - 0.25); add(nx + sim.nestW / 2 + 0.6, sim.groundY + 1); }
-    const k2 = Math.min(P.w / (x1 - x0), P.h / (y1 - y0), 70);
-    if (k2 > k) return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, k: k2 };
-  }
-  return { x: 0, y: (yMin + yMax) / 2, k };
+  const hw = P.w / (2 * k), hh = P.h / (2 * k), mx = Math.max(0, F.R - hw);
+  return { x: clamp(cx, -mx, mx), y: F.yMax - F.yMin > 2 * hh ? clamp(cy, F.yMin + hh, F.yMax - hh) : (F.yMin + F.yMax) / 2, k };
+}
+
+// player zoom z: -1 whole vault, 0 auto (null), +1 twice auto
+function setZoom(z) {
+  z = clamp(z, -1, 1);
+  G.zm = Math.abs(z) < 0.05 ? null : z;
 }
 
 function updateCamera(dt) {
@@ -280,6 +310,16 @@ function pointerDown(e) {
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
   if (G.screen === 'title') return press('play');
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
+  if (e.pointerType === 'touch') {
+    // a second finger means pinch-zoom: let go of any ring and turn nothing until the fingers lift
+    G.tp.set(e.pointerId, { x, y });
+    if (G.tp.size > 1) {
+      for (const h of G.held.values()) h.ring.held = false;
+      G.held.clear();
+      if (!G.pinch) { const [a, b] = [...G.tp.values()]; G.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, z: G.zm || 0 }; }
+      return;
+    }
+  }
   const w = toWorld(x, y);
   const r = Math.hypot(w.x, w.y);
   if (r > G.sim.outerR + 1.2 && w.y < -G.sim.outerR) return; // touching the ground area
@@ -302,6 +342,15 @@ function pointerDown(e) {
 function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
+  const tp = G.tp.get(e.pointerId);
+  if (tp) {
+    tp.x = x; tp.y = y;
+    if (G.pinch) {
+      const [a, b] = [...G.tp.values()];
+      setZoom(G.pinch.z + Math.log2(Math.hypot(a.x - b.x, a.y - b.y) / G.pinch.d));
+      return;
+    }
+  }
   const h = G.held.get(e.pointerId);
   if (h) {
     const c = toScreen(0, 0);
@@ -320,6 +369,8 @@ function pointerMove(e) {
 }
 
 function pointerUp(e) {
+  G.tp.delete(e.pointerId);
+  if (G.tp.size < 2) G.pinch = null;
   const h = G.held.get(e.pointerId);
   if (h) {
     h.ring.held = false;
@@ -332,6 +383,12 @@ function pointerUp(e) {
     ui.pressedId = null;
     if (id === was) press(id);
   }
+}
+
+function wheel(e) {
+  if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
+  e.preventDefault();
+  setZoom((G.zm || 0) - clamp(e.deltaY, -120, 120) * 0.003);
 }
 
 function keyDown(e) {
@@ -374,6 +431,9 @@ function keyboardTurn(dt) {
 async function press(id) {
   audio.play(id === 'pause' || id === 'levels' ? 'ui_back' : 'ui_tap');
   switch (id) {
+    case 'zoom:in': setZoom((G.zm || 0) + 0.34); break;
+    case 'zoom:out': setZoom((G.zm || 0) - 0.34); break;
+    case 'zoom:auto': G.zm = null; break;
     case 'play': {
       const i = Math.min(LEVELS.length - 1, save.unlocked - 1);
       await breakThen(() => startLevel(i));
@@ -1278,6 +1338,25 @@ function drawHUD() {
     const pulse = low ? 1 + 0.08 * Math.sin(G.t * 12) : 1;
     ui.text(timeTxt, tx + 24 * u, trayY + 1 * u, { size: 22 * u * pulse, color: low ? '#ff7a5a' : '#fff', stroke: 'rgba(0,0,0,0.5)', tag: 'hud:time', group: 'hud:time' });
   }
+  if (G.screen === 'play' && sim.state === 'play') drawZoomBtns();
+}
+
+// zoom -, +, and auto (only while the player has overridden auto zoom), in the strip computeLayout keeps clear of the vault
+function drawZoomBtns() {
+  const { bs, pad, side } = G.zb, P = G.play, u = ui.u, gap = 8 * u;
+  const ic = (plus) => (c, x, y, s) => {
+    c.fillStyle = '#fff';
+    c.fillRect(x - s * 0.3, y - s * 0.05, s * 0.6, s * 0.1);
+    if (plus) c.fillRect(x - s * 0.05, y - s * 0.3, s * 0.1, s * 0.6);
+  };
+  const o = { color: '#5a8dee', dark: '#2f5bb0' };
+  const items = [['zoom:in', ic(true), ''], ['zoom:out', ic(false), '']];
+  if (G.zm != null) items.push(['zoom:auto', null, 'auto']);
+  items.forEach(([id, icon, label], i) => {
+    const x = side ? W_ - pad - bs : W_ - pad - bs * (i + 1) - gap * i;
+    const y = side ? P.y + (P.h - (bs * 3 + gap * 2)) / 2 + (bs + gap) * i : H_ - 6 * u - bs;
+    ui.button(id, label, x, y, bs, bs, { ...o, icon, size: 13 * u });
+  });
 }
 
 function drawPopups() {
@@ -1672,6 +1751,7 @@ async function boot() {
   resize();
   window.addEventListener('resize', resize);
   canvas.addEventListener('pointerdown', pointerDown, { passive: false });
+  canvas.addEventListener('wheel', wheel, { passive: false });
   window.addEventListener('pointermove', pointerMove);
   window.addEventListener('pointerup', pointerUp);
   window.addEventListener('pointercancel', pointerUp);
