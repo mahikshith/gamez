@@ -25,7 +25,7 @@ const wrapD = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 const dist = (a, b) => Math.abs(wrapD(a - b));
 const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
 // level fields copied from the spec as they are (not laid out)
-const LEVEL_KEYS = ['gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus'];
+const LEVEL_KEYS = ['boss', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'eagle', 'fox', 'icicles', 'eggKinds'];
 
 // ---------- layout ----------
 function radii(spec) {
@@ -54,6 +54,7 @@ function layRing(spec, i, r, R, prev) {
   if (rs.mat) ring.mat = rs.mat;
   if (rs.motor) ring.motor = rs.motor;
   if (rs.motorFlip) ring.motorFlip = rs.motorFlip;
+  if (rs.oneway) ring.oneway = Math.sign(rs.oneway); // v3 ratchet ring (G22)
   if (rs.retract) ring.retract = { phase: +(R() * rs.retract.period).toFixed(2), ...rs.retract };
   if (rs.gear) {
     // geared to the next ring out: turning either turns the other the opposite way
@@ -84,6 +85,8 @@ function layRing(spec, i, r, R, prev) {
   // biggest multiplier goes on the narrowest gap
   xs.sort((p, q) => q - p).forEach((x, k) => { if (gaps[k]) gaps[k].x = x; });
   gaps.forEach((g) => { if (g.len === GAP_LEN) delete g.len; if (g.x === 1) delete g.x; });
+  // v3 thorn curtains: the first `curtain` gaps (the multiplier gaps first) only open to fire
+  gaps.slice(0, rs.curtain || 0).forEach((g) => { g.curtain = 1; });
   // gap shutters: every gap on the ring gets a door on the same rhythm, out of step with each other
   if (rs.shut) gaps.forEach((g) => { g.shut = { period: rs.shut.period, open: rs.shut.open, phase: +(R() * rs.shut.period).toFixed(2) }; });
   ring.gaps = gaps;
@@ -97,17 +100,22 @@ function layRing(spec, i, r, R, prev) {
   const [smin, smax] = rs.size || [1, 2];
   const nT = rs.thorns ?? 0;
   const span = (n) => ((n - 1) * THORN_STEP) / 2 + 7;
+  // v3: curtained gaps are no way out of a pocket, so pockets are counted on open gaps only (a floor
+  // cluster sits in the arc just after an open gap); a ring with no open gap is one pocket (fire opens it)
+  const open = gaps.filter((g) => !g.curtain);
   const free = rs.retract || rs.motor || !gaps.length;
   const sortedG = [...gaps].sort((p, q) => p.a - q.a);
+  const after = (open.length ? open : gaps.slice(0, 1)).map((g) => sortedG.indexOf(g)).sort((p, q) => p - q);
+  const nFloor = free ? Infinity : after.length - Math.min(after.length, rs.barriers || 0); // barriers take arcs too
   for (let k = 0; k < nT; k++) {
-    const floor = free || k < sortedG.length;
+    const floor = free || k < nFloor;
     let ok = false;
     for (let t = 0; t < 300 && !ok; t++) {
       const n = floor ? smin + Math.floor(R() * (smax - smin + 1)) : Math.min(2, smin);
       const w = span(n);
       let a;
       if (floor && !free) {
-        const g0 = sortedG[k], g1 = sortedG[(k + 1) % sortedG.length];
+        const j = after[k], g0 = sortedG[j], g1 = sortedG[(j + 1) % sortedG.length];
         const lo = g0.a + gapHalf(g0) + w + 12;
         const hi = (g1.a <= g0.a ? g1.a + 360 : g1.a) - gapHalf(g1) - w - 12;
         if (hi < lo) return null;
@@ -137,10 +145,11 @@ function layRing(spec, i, r, R, prev) {
   }
 
   // the puzzle: from the start bottom, at least one way round reaches a gap without sweeping thorns
-  if (!rs.motor && gaps.length && i > 0) {
+  if (!rs.motor && open.length && i > 0) {
     const inner = thorns.filter((t) => t.side !== 'out');
     const safe = (dir) => {
-      const gapAt = Math.min(...gaps.map((g) => (((dir * (g.a - BOTTOM)) % 360) + 360) % 360 - gapHalf(g)));
+      if (rs.oneway && dir === Math.sign(rs.oneway)) return false; // dir 1 = the ring turns clockwise
+      const gapAt = Math.min(...open.map((g) => (((dir * (g.a - BOTTOM)) % 360) + 360) % 360 - gapHalf(g)));
       const thornAt = Math.min(Infinity, ...inner.map((t) => (((dir * (t.a - BOTTOM)) % 360) + 360) % 360 - span(t.n)));
       return gapAt < thornAt;
     };
@@ -165,10 +174,43 @@ function layRing(spec, i, r, R, prev) {
     if (!ok) return null;
   }
 
+  // v3 wooden barriers (G14): walls on this channel floor, one per free arc after an open gap (they close
+  // a pocket like a floor thorn cluster); away from the eggs' start and the gaps
+  const bars = [];
+  const floorTh = thorns.filter((t) => t.side !== 'out');
+  for (let k = 0; k < (rs.barriers || 0); k++) {
+    const j = after[(free ? 0 : Math.min(floorTh.length, after.length - 1)) + k] ?? after[after.length - 1];
+    const g0 = sortedG[j] || { a: 0, x: 1 }, g1 = sortedG.length ? sortedG[(j + 1) % sortedG.length] : { a: 360 };
+    let ok = false;
+    for (let t = 0; t < 200 && !ok; t++) {
+      const lo = g0.a + (gaps.length ? gapHalf(g0) : 0) + 14, hi = (g1.a <= g0.a ? g1.a + 360 : g1.a) - (gaps.length ? gapHalf(g1) : 0) - 14;
+      if (hi < lo) return null;
+      const a = Math.round(wrapD(lo + R() * (hi - lo)));
+      if (dist(a, BOTTOM) < (i === 0 ? 60 : 30)) continue;
+      if (floorTh.some((o) => dist(o.a, a) < span(o.n) + 14) || bars.some((b) => dist(b, a) < 30)) continue;
+      bars.push(a);
+      ok = true;
+    }
+    if (!ok) return null;
+  }
+  // v3 grates (I4): extra quail-only openings on free floor
+  for (let k = 0; k < (rs.grate || 0); k++) {
+    let ok = false;
+    for (let t = 0; t < 200 && !ok; t++) {
+      const a = Math.round(R() * 360 - 180), w = halfDeg(0.7, r);
+      if (dist(a, BOTTOM) < 40 || gaps.some((g) => dist(g.a, a) < gapHalf(g) + w + 14)) continue;
+      if (thorns.some((o) => o.side !== 'out' && dist(o.a, a) < span(o.n) + w + 10) || bars.some((b) => dist(b, a) < w + 12)) continue;
+      gaps.push({ a, grate: 1 });
+      ok = true;
+    }
+    if (!ok) return null;
+  }
+  if (bars.length) ring.bars = bars;
+
   // sponge pads sit between thorns and gaps; early levels pad the first landing
   const pads = [];
   const nP = rs.pads ?? defaultPads(spec, i);
-  const blocked = (a, w) => gaps.some((g) => dist(g.a, a) < gapHalf(g) + w + 4) ||
+  const blocked = (a, w) => gaps.some((g) => dist(g.a, a) < gapHalf(g) + w + 4) || bars.some((b) => dist(b, a) < w + 6) ||
     thorns.some((o) => o.side !== 'out' && dist(o.a, a) < span(o.n) + w + 2) ||
     pads.some((p) => dist(p.a, a) < halfDeg(p.len, r) + w + 8);
   for (let k = 0; k < nP; k++) {
@@ -215,7 +257,11 @@ export function layout(spec, seed) {
   const L = { id: spec.id, theme: spec.theme, name: spec.name, eggs: spec.eggs, target: spec.target, time: 150, spacing: spec.spacing, material: spec.material };
   for (const k of LEVEL_KEYS) if (spec[k] !== undefined) L[k] = spec[k];
   L.tip = spec.tip;
-  if (spec.portals) L.portals = spec.portals.map((p) => ({ a: channelPoint(spec, rs, ...p.from, true), b: channelPoint(spec, rs, ...p.to, true), ...(p.emit ? { emit: p.emit, every: p.every || 8 } : {}) }));
+  if (spec.portals) L.portals = spec.portals.map((p) => ({ a: channelPoint(spec, rs, ...p.from, true), b: channelPoint(spec, rs, ...p.to, true), ...(p.emit ? { emit: p.emit, every: p.every || 8 } : {}), ...(p.pull !== undefined ? { pull: p.pull } : {}) }));
+  // v3 barriers live on the level: [{ring, a}] in the ring's frame
+  const bars = [];
+  rings.forEach((ring, i) => { for (const a of ring.bars || []) bars.push({ ring: i, a }); delete ring.bars; });
+  if (bars.length) L.barriers = bars;
   // orbs float (F3): ring `items` and level `orbs` both become level orbs {type, ch, a}
   const orbs = (spec.orbs || []).map((o) => ({ type: o.type, ch: o.ch, a: o.a ?? Math.round(R() * 360 - 180) }));
   rings.forEach((ring, i) => { for (const it of ring.items || []) orbs.push({ type: it.type, ch: i, a: it.a }); delete ring.items; });
@@ -280,8 +326,9 @@ export async function evaluate(spec, L) {
   }
   const T = { ...L, time: fuse(rec, spec.id) };
   const h = solve(T, { mode: 'hard' }), e = solve(T, { mode: 'easy' });
-  Object.assign(rec, { hard: h.state === 'won' ? (h.broken === 0 ? 2 : 1) : 0, hardT: h.t, easy: e.state === 'won' ? 1 : 0, secs: Math.round((Date.now() - t0) / 1000) });
-  if (!rec.hard || !rec.easy) return fail(rec.hard ? 'easy' : 'hard');
+  Object.assign(rec, { hard: h.state === 'won' ? (h.broken === 0 ? 2 : 1) : 0, hardT: h.t, easy: e.state === 'won' ? (e.broken === 0 ? 2 : 1) : 0, secs: Math.round((Date.now() - t0) / 1000) });
+  // Easy must be clearable for 2 stars (no broken egg): the star gates (I5) count on it
+  if (!rec.hard || rec.easy < 2) return fail(rec.hard ? 'easy' : 'hard');
   // bonus targets come from the planner's own run: a few turns more, a third more time
   if (L.bonus?.kind === 'turns' && !L.bonus.n) L.bonus = { kind: 'turns', n: p.turns + 2 };
   if (L.bonus?.kind === 'time' && !L.bonus.s) L.bonus = { kind: 'time', s: Math.ceil((p.t * 1.35) / 5) * 5 };
@@ -299,7 +346,7 @@ async function worker(id, tries, out) {
     const r = await evaluate(spec, L);
     console.error(`L${id} #${n} seed=${L.seed} ${r.ok ? 'KEEP' : 'drop:' + r.why} ${JSON.stringify(r.rec)}`);
     if (r.ok) found.push({ ...r.rec, level: L });
-    if (found.length >= (id >= 900 ? 1 : 2)) break;
+    if (found.length >= (process.env.KEEP ? +process.env.KEEP : 1)) break;
   }
   writeFileSync(out, JSON.stringify(found));
 }
@@ -307,12 +354,12 @@ async function worker(id, tries, out) {
 // difficulty of a kept layout, for picking along the curve
 const hardness = (c) => c.moves * 1.5 + c.plannerT / 8 + (c.roughBroken || 0) * 2 + (c.stars === 2 ? 1 : 0) + (c.hard === 1 ? 2 : 0);
 
-// Sawtooth (per world of 10): a breather at the 5th, the hardest layouts at the 9th and 10th, a climb between.
+// Sawtooth (per environment of 5): the first level after a boss is a breather, the boss the hardest, a climb between.
 function pick(id, found) {
   if (!found.length) return null;
   const sorted = [...found].sort((a, b) => hardness(a) - hardness(b));
-  const k = (id - 1) % 10;
-  const q = id <= 2 || k === 4 ? 0 : k >= 8 ? 1 : 0.25 + (0.5 * k) / 8;
+  const k = (id - 1) % 5;
+  const q = id <= 2 || k === 0 ? 0 : k === 4 ? 1 : 0.25 + 0.25 * (k - 1);
   return sorted[Math.round(q * (sorted.length - 1))];
 }
 

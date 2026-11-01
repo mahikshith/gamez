@@ -23,13 +23,21 @@ const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 const TEST = typeof __TEST__ !== 'undefined' && __TEST__;
 
 // ---------------------------------------------------------------- save
-const SAVE_VER = 2; // v2 levels: progress resets; settings, wallet and discoveries carry over
+const SAVE_VER = 3; // v3: 35 new levels, progress resets; settings, wallet and discoveries carry over
 // mode: difficulty (F32); stars/best are kept per mode (Medium uses the v1 keys); calm = reduced motion
 const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), adClaim: 0, daily: { day: '', best: 0, paid: '' } });
 let save = defaultSave();
 const MODE_LIST = ['easy', 'medium', 'hard'];
 const sk = (id, mode = save.mode) => (mode === 'medium' ? String(id) : mode[0] + id);
 const starsOf = (id) => save.stars[sk(id)] || 0;
+// star gates (I5): environment k (0-based) opens at GATE * k stars, counting each level's best over all modes
+const GATE = 7, PER_ENV = 5;
+const bestStarsOf = (id) => Math.max(0, ...MODE_LIST.map((m) => save.stars[sk(id, m)] || 0));
+const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0);
+const envOf = (i) => Math.floor(i / PER_ENV);
+const envNeed = (k) => (TEST ? 0 : GATE * k);
+const envOpen = (k) => bestTotal() >= envNeed(k);
+const playable = (i) => i >= 0 && i < save.unlocked && envOpen(envOf(i));
 function loadSave(s) {
   save = { ...defaultSave(), ...s };
   save.wallet = E.sanitizeWallet(save.wallet);
@@ -38,10 +46,11 @@ function loadSave(s) {
 }
 // visual-only weather per theme; levels with a physics `weather` field use that instead
 const THEME_WEATHER = { farm: 'leaves', orchard: 'leaves', bramble: 'leaves', mushroom: 'fireflies', frozen: 'snow', blizzard: 'snow', dunes: 'sandstorm', haunted: 'ghosts', dragon: 'ash' };
-// three worlds of ten (C6)
-const WORLDS = ['The Farm', 'The Wilds', 'The Fox\u2019s Fortress'];
+// seven environments of five (v3)
+const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volcano', 'Storm Peaks', 'The Fox\u2019s Fortress'];
 const BONUS_TEXT = (b, fuse = 1) => ({ turns: `${b.n} turns or fewer`, prize: 'Save the speckled egg', orbs: 'Collect every orb', time: `Finish within ${Math.round(b.s * fuse)} s` })[b.kind] || '';
 const BONUS_COINS = 15;
+const AD_BOOST = ['golden', 'time', 'stone', 'sponge']; // the intro card's free booster, by level
 // Daily Vault (C7): one pre-validated layout per day, the same for everyone; level index -1
 const DAILY_COINS = 40;
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -140,6 +149,7 @@ function startLevel(i, opts = {}) {
   G.boost = opts.boost || {};
   G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost });
   G.golden = !!opts.golden;
+  G.adBoost = opts.adBoost || null;
   G.freeRewind = !!G.boost.rewind;
   G.backdrop = createBackdrop(G.theme, G.level.id * 97);
   G.backdrop.resize(W_, H_, DPR);
@@ -446,26 +456,28 @@ async function press(id) {
     case 'zoom:auto': G.zm = null; break;
     case 'play': {
       const i = Math.min(LEVELS.length - 1, save.unlocked - 1);
+      if (!playable(i)) { G.world = envOf(i); setScreen('levels'); break; } // a star gate: show it on the map
       await breakThen(() => startLevel(i));
       break;
     }
     case 'levels':
       portal.gameplayStop();
-      G.world = clamp(Math.floor((save.unlocked - 1) / 10), 0, Math.ceil(LEVELS.length / 10) - 1);
+      G.world = clamp(envOf(save.unlocked - 1), 0, Math.ceil(LEVELS.length / PER_ENV) - 1);
       setScreen('levels');
       break;
     case 'go': {
       // owned boosters picked on the intro card are spent now and the level restarts with them
-      const boost = {};
+      const boost = { ...G.boost }; // keeps a booster the intro ad already gave
+      let picked = 0;
       for (const b of G.boostSel) {
         if (b === 'golden' && G.golden) continue; // the golden-shell ad already gave one
         const w = E.useBooster(save.wallet, b);
-        if (w) { save.wallet = w; boost[b] = true; }
+        if (w) { save.wallet = w; boost[b] = true; picked++; }
       }
       G.boostSel.clear();
-      if (Object.keys(boost).length) {
+      if (picked) {
         persist();
-        startLevel(G.li, { direct: true, golden: G.golden || boost.golden, boost });
+        startLevel(G.li, { direct: true, golden: G.golden || boost.golden, boost, adBoost: G.adBoost });
         break;
       }
       setScreen('play');
@@ -515,16 +527,19 @@ async function press(id) {
       break;
     }
     case 'chest': {
-      const total = LEVELS.reduce((a, L) => a + starsOf(L.id), 0);
+      const total = bestTotal();
       const w = E.openChest(save.wallet, E.chestFor(total, save.wallet.chests));
       if (w) { save.wallet = w; persist(); audio.play('level_win'); toast('Chest opened! Coins and a booster.', 2.4); }
       break;
     }
-    case 'golden': {
-      const ok = await rewarded('golden');
+    case 'adboost': {
+      // pre-level card (G24): a completed rewarded ad gives one free booster for this run, a different one per level
+      const b = AD_BOOST[Math.abs(G.level.id) % AD_BOOST.length];
+      const ok = await rewarded('booster');
       if (ok) {
-        startLevel(G.li, { golden: true });
-        toast('Golden shell: your first egg survives one thorn.', 3);
+        if (b === 'golden') startLevel(G.li, { golden: true, adBoost: b });
+        else startLevel(G.li, { boost: { [b]: true }, adBoost: b });
+        toast(`Free booster: ${E.BOOSTERS[b].name}. ${E.BOOSTERS[b].line}`, 3.4);
       }
       break;
     }
@@ -547,6 +562,7 @@ async function press(id) {
       const n = Math.min(LEVELS.length - 1, G.li + 1);
       if (G.li < 0) { setScreen('title'); break; }
       if (G.li === LEVELS.length - 1) { setScreen('levels'); break; }
+      if (!playable(n)) { G.world = envOf(n); setScreen('levels'); break; } // the next environment waits behind its star gate
       await breakThen(() => startLevel(n));
       break;
     }
@@ -603,12 +619,12 @@ async function press(id) {
     default:
       if (id && id.startsWith('lv:')) {
         const i = +id.slice(3);
-        if (i < save.unlocked) await breakThen(() => startLevel(i));
+        if (playable(i)) await breakThen(() => startLevel(i));
       } else if (id && id.startsWith('mode:')) {
         save.mode = id.slice(5);
         persist();
       } else if (id && id.startsWith('world:')) {
-        G.world = clamp(G.world + +id.slice(6), 0, Math.ceil(LEVELS.length / 10) - 1);
+        G.world = clamp(G.world + +id.slice(6), 0, Math.ceil(LEVELS.length / PER_ENV) - 1);
       } else if (id && id.startsWith('boost:')) {
         const b = id.slice(6);
         if (G.boostSel.has(b)) G.boostSel.delete(b); else G.boostSel.add(b);
@@ -1716,8 +1732,9 @@ function drawIntro() {
   dim(0.35);
   const L = G.level;
   if (L.intro && !save.intro[L.id]) {
-    // a world's new mechanic gets one screen of its own the first time (C6)
+    // a world's new mechanic gets one screen of its own the first time (C6); a boss also shows its face (I6)
     stackCard(L.intro.title, (s, iw) => [
+      ...(L.boss ? [{ h: 110 * s, gap: 0, draw: (x, y, w) => bossPortrait(ctx, L.boss, x, y, w, 110 * s, G.t) }] : []),
       ...wrapText(L.intro.line, 17 * s, iw).slice(0, 4).map((l, i) => lineBlock(l, 17 * s, { color: '#fff', tag: 'wintro:' + i, gap: i ? 2 * s : 4 * s })),
       { h: 56 * s, gap: 18 * s, draw: (x, y, w) => ui.button('gotit', 'GOT IT', x, y, w, 56 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.play, size: 22 * s }) },
     ]);
@@ -1739,11 +1756,15 @@ function drawIntro() {
       // start boosters bought in the store (F7/F21): tap to pick, each shows its one-liner
       { h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
     ];
-    if (!G.golden) B.push({ h: 48 * s, draw: (x, y, w) => ui.button('golden', 'Start with a golden shell', x, y, w, 48 * s, { color: '#d49a1c', dark: '#8a5f0a', ad: true, size: 15 * s }) });
+    if (!G.adBoost && !G.golden) B.push({ h: 48 * s, draw: (x, y, w) => ui.button('adboost', 'Watch an ad: free booster', x, y, w, 48 * s, { color: '#d49a1c', dark: '#8a5f0a', ad: true, size: 15 * s }) });
     B.push({ h: 40 * s, draw: (x, y, w) => ui.button(G.li < 0 ? 'back' : 'levels', G.li < 0 ? 'Menu' : 'Levels', x + w * 0.25, y, w * 0.5, 40 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 15 * s }) });
     return B;
   });
 }
+
+// BOSS PORTRAIT (I6): the boss's face on its intro card. Stub: the sprite agent wires
+// sprites.drawBossCard(ctx, bossId, x, y, w, h, t) in here (bossIds: fox snake blizzard golem salamander eagle foxking).
+function bossPortrait(ctx, bossId, x, y, w, h, t) { /* draws nothing yet */ }
 
 function drawPause() {
   dim(0.55);
@@ -1784,8 +1805,8 @@ function drawWin() {
         // the fox can't believe it; the hen is delighted (F16/F17)
         const side = (w - 192 * s) / 2 - 6 * s, cs = Math.min(58 * s, side);
         if (cs >= 36 * s) {
-          drawFox(ctx, x + cs / 2, y + 36 * s, cs, 'shocked', G.t);
-          drawHen(ctx, x + w - cs / 2, y + 62 * s - 0.5 * cs, cs, 'happy', G.t);
+          drawFox(ctx, x + cs / 2, y + 36 * s, cs, 'cry', G.t);
+          drawHen(ctx, x + w - cs / 2, y + 62 * s - 0.5 * cs, cs, 'dance', G.t);
           ui.record({ x, y: y + 36 * s - 0.6 * cs, w: cs, h: 1.2 * cs }, 'win:fox');
           ui.record({ x: x + w - cs, y: y + 62 * s - cs, w: cs, h: cs }, 'win:hen');
         }
@@ -1883,7 +1904,7 @@ function drawLevels() {
   const pad = 14 * u;
   const titleY = 34 * u;
   ui.button('back', '', pad, pad, 46 * u, 46 * u, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.rewind });
-  const totalStars = LEVELS.reduce((a, L) => a + starsOf(L.id), 0);
+  const totalStars = bestTotal();
   const starTxt = `${totalStars} / ${LEVELS.length * 3}`;
   const stw = ui.measure(starTxt, 18 * u);
   drawStar(ctx, W_ - pad - stw - 16 * u, titleY + 4 * u, 11 * u, true);
@@ -1892,16 +1913,25 @@ function drawLevels() {
   const titleL = pad + 56 * u, titleR = W_ - pad - stw - 36 * u;
   ui.text(WORLDS[G.world] || 'Levels', (titleL + titleR) / 2, titleY + 4 * u, { size: 24 * u, align: 'center', maxW: titleR - titleL, color: '#ffe8b0', stroke: 'rgba(0,0,0,0.5)', tag: 'levels:title' });
   // world arrows, shop and the next star chest (C5/C6)
-  const rowY = 70 * u, rh = 42 * u, nW = Math.ceil(LEVELS.length / 10);
+  const rowY = 70 * u, rh = 42 * u, nW = Math.ceil(LEVELS.length / PER_ENV);
   if (G.world > 0) ui.button('world:-1', '', pad, rowY, 46 * u, rh, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.rewind });
   if (G.world < nW - 1) ui.button('world:1', '', W_ - pad - 46 * u, rowY, 46 * u, rh, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.next });
   const midW = Math.min(W_ - 2 * pad - 2 * 56 * u, 320 * u), mx = W_ / 2 - midW / 2, half = (midW - 10 * u) / 2;
   ui.button('shop', String(save.wallet.coins), mx, rowY, half, rh, { color: '#d49a1c', dark: '#8a5f0a', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.5, G.t), size: 16 * u });
   const chest = E.chestFor(totalStars, save.wallet.chests);
   if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { color: chest.ready ? '#46b83d' : '#6a5a4a', dark: chest.ready ? '#2a7a24' : '#3a2e22', disabled: !chest.ready, icon: (c, x, y, s) => drawChest(c, x, y, s, G.t, chest.ready ? 'ready' : 'locked'), size: 15 * u });
-  const top = rowY + rh + 12 * u;
-  const first = G.world * 10, list = LEVELS.slice(first, first + 10);
-  const cols = W_ > H_ ? 5 : 4;
+  let top = rowY + rh + 12 * u;
+  // star gate (I5): a locked environment says how many stars it needs
+  const locked = !envOpen(G.world);
+  if (locked) {
+    const need = envNeed(G.world), ly = top + 14 * u, txt = `Collect ${need} stars to open: you have ${totalStars}`;
+    const tw = ui.measure(txt, 17 * u), lx = W_ / 2 - (tw + 30 * u) / 2;
+    drawPadlock(lx + 9 * u, ly, 9 * u, '#ffe066');
+    ui.text(txt, lx + 30 * u, ly, { size: 17 * u, color: '#ffe066', stroke: 'rgba(0,0,0,0.5)', tag: 'levels:gate', maxW: W_ - 2 * pad - 30 * u });
+    top += 34 * u;
+  }
+  const first = G.world * PER_ENV, list = LEVELS.slice(first, first + PER_ENV);
+  const cols = W_ > H_ ? 5 : 3;
   const rows = Math.ceil(list.length / cols);
   const gap = 10 * u;
   const cw = Math.min((W_ - pad * 2 - gap * (cols - 1)) / cols, 130 * u);
@@ -1913,7 +1943,7 @@ function drawLevels() {
     const c = k % cols, r = Math.floor(k / cols);
     const x = x0 + c * (cw + gap), y = top + r * (chh + gap);
     const th = THEMES.find((t) => t.id === L.theme) || THEMES[0];
-    const open = i < save.unlocked;
+    const open = playable(i);
     const col = open ? th.palette.accent || '#c98a3a' : '#4a4038';
     ui.button('lv:' + i, '', x, y, cw, chh, { color: col, dark: shade(col), disabled: !open });
     const num = String(L.id);
@@ -1922,18 +1952,19 @@ function drawLevels() {
       const s = starsOf(L.id);
       const sr = Math.min(8 * u, cw / 12);
       for (let k = 0; k < 3; k++) drawStar(ctx, x + cw / 2 + (k - 1) * sr * 2.6, y + chh * 0.72, sr, k < s);
-    } else {
-      // padlock
-      const lx = x + cw / 2, ly = y + chh * 0.72, ls = Math.min(10 * u, cw / 10);
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.fillRect(lx - ls, ly - ls * 0.3, ls * 2, ls * 1.4);
-      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-      ctx.lineWidth = ls * 0.35;
-      ctx.beginPath();
-      ctx.arc(lx, ly - ls * 0.3, ls * 0.7, Math.PI, 0);
-      ctx.stroke();
-    }
+    } else drawPadlock(x + cw / 2, y + chh * 0.72, Math.min(10 * u, cw / 10), 'rgba(255,255,255,0.55)');
+    if (L.boss) ui.text('BOSS', x + cw / 2, y + chh * 0.12, { size: Math.min(11 * u, chh * 0.13), align: 'center', color: open ? '#ffe066' : 'rgba(255,224,102,0.5)', group: 'btn:lv:' + i, tag: 'lvboss' + i });
   });
+}
+
+function drawPadlock(lx, ly, ls, col) {
+  ctx.fillStyle = col;
+  ctx.fillRect(lx - ls, ly - ls * 0.3, ls * 2, ls * 1.4);
+  ctx.strokeStyle = col;
+  ctx.lineWidth = ls * 0.35;
+  ctx.beginPath();
+  ctx.arc(lx, ly - ls * 0.3, ls * 0.7, Math.PI, 0);
+  ctx.stroke();
 }
 
 function shade(hex) {
@@ -2002,7 +2033,7 @@ async function boot() {
     if (raw) {
       const s = JSON.parse(raw);
       if (s && s.v === SAVE_VER) loadSave(s);
-      else if (s && s.v === 1) loadSave({ sfx: s.sfx, music: s.music, mode: s.mode, calm: s.calm, wallet: s.wallet, seen: s.seen });
+      else if (s && (s.v === 1 || s.v === 2)) loadSave({ sfx: s.sfx, music: s.music, mode: s.mode, calm: s.calm, wallet: s.wallet, seen: s.seen });
     }
   } catch (_) { save = defaultSave(); }
   if (TEST) {
