@@ -22,6 +22,11 @@ export const POWER_INFO = {
   magnet: { name: 'Magnet', line: 'Ties this egg to its nearest friend for a while.', color: '#ff4f7b' },
   twin: { name: 'Twin egg', line: 'A second egg pops out, with one crack.', color: '#ffe38a' },
   golden: { name: 'Golden shell', line: 'Survives one thorn hit.', color: '#ffcf3a' },
+  // v3
+  hourglass: { name: 'Hourglass', line: 'Time slows for 6 s and the fuse stops.', color: '#e8c36a' },
+  feather: { name: 'Guardian feather', line: 'Every egg is safe for 6 s. Nothing can crack or eat them.', color: '#7fe0ff' },
+  rockskin: { name: 'Rock skin', line: 'Every egg turns to stone for 6 s. Snakes can\u2019t bite stone.', color: '#8f8a84' },
+  foxcurse: { name: 'Fox curse', line: 'The fox\u2019s trick! Eggs go foxy and the fuse runs double for 6 s.', color: '#ff7a1a' },
 };
 
 // Glass tint per orb: [highlight side, mid, deep rim]. Darker glass makes the emblem pop.

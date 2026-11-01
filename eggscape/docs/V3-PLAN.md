@@ -29,8 +29,8 @@ Stars open the next environment (Angry Birds style) at a low bar (about half the
 
 | # | Point | v3 answer | Status |
 |---|-------|-----------|--------|
-| G1 | Camera far too zoomed in (L9, L10, most levels); can't tell which ring you are in | Camera always frames every ring by default. Never zooms past the whole vault on its own | v3 |
-| G2 | Manual zoom button | Zoom button in the HUD: whole vault ⇄ follow the eggs. Pinch/wheel too | v3 |
+| G1 | Camera zooms in far too much (L9, L10, most levels); can't tell which ring you are in | (Corrected by mykee 12:30: auto zoom stays, it just goes too far.) Auto zoom keeps following the eggs but much gentler: always shows the ring the eggs are in plus at least one ring around it, never crops a big vault down to the eggs | v3 |
+| G2 | Let the player zoom out (and back in) whenever they want | Zoom buttons in the HUD (− / +) plus pinch and mouse wheel; the player's choice overrides auto zoom until they tap "auto" again | v3 |
 | G3 | Loves gate doors; use them in early levels | Doors from L2 | v3 |
 | G4 | L1–L2 far too easy | L1 already 3 rings with thorns; L2 has doors | v3 |
 | G5 | More rings even in early levels | 3 rings from L1, 4 by L3, 5–7 later | v3 |
