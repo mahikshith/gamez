@@ -678,7 +678,7 @@ export function drawEgg(ctx, egg, t, k) {
   if (egg.kind && !(egg.stone > 0) && !egg.golden) {
     ctx.save();
     ctx.scale(px / sc, -px / sc);
-    drawEggKind(ctx, egg.kind, 0, 0, (EGG_W / 2) * sc * k, (EGG_H / 2) * sc * k, 0, t, 0);
+    drawEggKind(ctx, egg.kind, 0, 0, (EGG_W / 2) * sc * k, (EGG_H / 2) * sc * k, 0, t, egg.cracks); // shell + its own cracks
     ctx.restore();
     eggPath(ctx);
   } else if (skin !== 'classic' && !(egg.stone > 0) && !egg.golden && !egg.fire) {
@@ -715,7 +715,7 @@ export function drawEgg(ctx, egg, t, k) {
   }
   // v3 cracks (G34): a bold cartoon zig-zag across the top of the shell. 1 = half way across,
   // 2 = all the way plus a crack down the side, a missing chip and a tremble.
-  if (egg.cracks > 0) {
+  if (egg.cracks > 0 && !(egg.kind && !(egg.stone > 0) && !egg.golden)) {
     const n = Math.min(egg.cracks, 3), m = egg.seed & 1 ? 1 : -1, y = 0.12;
     const zig = [];
     const x1 = n >= 2 ? 0.2 : 0.05;
@@ -824,7 +824,8 @@ export function drawEgg(ctx, egg, t, k) {
   ctx.lineWidth = 0.014;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  if (scared) { ctx.ellipse(0, -0.05, 0.022, 0.03, 0, 0, TAU); ctx.fill(); }
+  if (egg.curse > 0) { /* the fox-curse overlay draws its own grin */ }
+  else if (scared) { ctx.ellipse(0, -0.05, 0.022, 0.03, 0, 0, TAU); ctx.fill(); }
   else { ctx.arc(0, -0.02, 0.035, Math.PI * 1.2, Math.PI * 1.8); ctx.stroke(); }
   // cheeks
   ctx.fillStyle = 'rgba(255,120,120,0.35)';
