@@ -3,6 +3,8 @@
 // Static scenery is prerendered into up to 3 parallax layers in resize(); draw() only blits
 // them plus a handful of animated elements. World camera is y-up (planck), meters.
 
+import { drawFox } from './render/characters.js';
+
 // ---------------------------------------------------------------- math / rng / color
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -910,7 +912,10 @@ ART.storm = {
     S.flash = I;
   },
   far(c, S) {
-    const { W, H, u, R, hz } = S;
+    const { W, H, u, R, hz } = S, kp = S.port ? 0.8 : 1;
+    // jagged dark peaks with wind-blown snow, rising out of the cloud sea
+    mountains(c, W, hz + 3 * u, 7, 14 * u * kp, 30 * u * kp, '#3c4566', '#222842', ['#dfe6f6', '#9aa6c8'], R, 0.75);
+    mountains(c, W, hz + 4 * u, 6, 8 * u * kp, 17 * u * kp, '#4a5478', '#2c3250', ['#c8d2ea', '#8894b8'], R, 0.8);
     for (let k = 0; k < 3; k++) {
       const base = hz + (k * 6 - 6) * u, col = mix('#8a93b4', '#5d6688', k * 0.4), lit = mix('#b8c0da', '#7d86a8', k * 0.4);
       for (let x = -10 * u; x < W + 10 * u; x += R.r(7, 13) * u) { const r = R.r(7, 13) * u; circle(c, x, base + r * 0.4, r, col); circle(c, x - r * 0.15, base + r * 0.25, r * 0.8, lit); }
@@ -1011,25 +1016,25 @@ function tomb(c, x, y, s, col, lit, R) {
 
 // 18 ----------------------------------------------- Volcano
 ART.volcano = {
-  veil: ['#1a0604', 0.32],
+  veil: ['#100c0e', 0.55], // cool charcoal behind the vault so red thorns stand out
   prep(S) {
     const { u, dpr, R } = S; S.vg = sprite(dpr, 50 * u, 50 * u, (c, w) => glow(c, w / 2, w / 2, w / 2, '#ff6a1a', 0.7));
     S.bombs = Array.from({ length: 9 }, () => ({ vx: R.r(-1, 1) * 9 * u, vy: R.r(20, 32) * u, p: R(), s: R.r(0.5, 1) * u }));
   },
   sky(c, S) {
     const { W, H, u, R, hz } = S;
-    rect(c, 0, 0, W, H, vg(c, 0, hz, [[0, '#120404'], [0.5, '#3a0c08'], [1, '#8a2a10']]));
-    for (let i = 0; i < 16; i++) { const x = R() * W, y = R.r(0, 0.35) * H, r = R.r(8, 18) * u; circle(c, x, y, r, 'rgba(30,8,6,0.45)'); circle(c, x, y + r * 0.5, r * 0.6, 'rgba(120,30,10,0.18)'); }
+    rect(c, 0, 0, W, H, vg(c, 0, hz, [[0, '#0c0a0c'], [0.55, '#241a1a'], [1, '#5a3a2c']]));
+    for (let i = 0; i < 16; i++) { const x = R() * W, y = R.r(0, 0.35) * H, r = R.r(8, 18) * u; circle(c, x, y, r, 'rgba(26,20,22,0.5)'); circle(c, x, y + r * 0.5, r * 0.6, 'rgba(110,60,40,0.14)'); }
   },
   far(c, S) {
     const { W, H, u, R, hz } = S;
-    mountains(c, W, hz + 2 * u, 6, 6 * u, 14 * u, '#2a0c0a', '#1c0807', null, R);
+    mountains(c, W, hz + 2 * u, 6, 6 * u, 14 * u, '#241618', '#171011', null, R);
     const vx = W * (S.port ? 0.74 : 0.8), top = S.port ? H * 0.22 : H * 0.2, bw = (hz - top) * 1.3, cw = 7 * u;
     S.crater = [vx, top];
     for (let i = 0; i < 9; i++) { const r = (5 + i * 2.2) * u; circle(c, vx + Math.sin(i * 1.3) * 3 * u + i * 1.5 * u, top - i * 4.5 * u - 4 * u, r, rgba(mix('#4a1a12', '#2a0e0c', i / 9), 0.85)); circle(c, vx + i * 1.5 * u - r * 0.2, top - i * 4.5 * u - 4 * u + r * 0.5, r * 0.6, 'rgba(255,90,30,' + (0.25 - i * 0.025) + ')'); }
-    glow(c, vx, top, 40 * u, '#ff5a1a', 0.55);
-    poly(c, [vx - bw, hz + 3 * u, vx - cw, top, vx + cw, top, vx + bw, hz + 3 * u], '#2c0f0c');
-    poly(c, [vx + cw, top, vx + bw, hz + 3 * u, vx + bw * 0.2, hz + 3 * u, vx + cw * 0.3, top + 6 * u], '#1c0807');
+    glow(c, vx, top, 40 * u, '#ff5a1a', 0.4);
+    poly(c, [vx - bw, hz + 3 * u, vx - cw, top, vx + cw, top, vx + bw, hz + 3 * u], '#261a1c');
+    poly(c, [vx + cw, top, vx + bw, hz + 3 * u, vx + bw * 0.2, hz + 3 * u, vx + cw * 0.3, top + 6 * u], '#171011');
     ell(c, vx, top, cw, 1.5 * u, '#ffb040');
     c.strokeStyle = '#ff7a1a'; c.lineCap = 'round';
     for (let k = 0; k < 3; k++) { let x = vx + (k - 1) * cw * 0.6, y = top + 1 * u; c.lineWidth = (1.4 - k * 0.3) * u; c.beginPath(); c.moveTo(x, y); while (y < hz) { y += 3 * u; x += ((k - 1) * 1.2 + R.r(-0.8, 0.8)) * u; c.lineTo(x, y); } c.stroke(); }
@@ -1044,7 +1049,7 @@ ART.volcano = {
   },
   near(c, S) {
     const { W, H, u, R, gy } = S;
-    const f = waveFn(R, S.by(0.2), 2 * u, 50 * u); fillFn(c, W, H, f, vg(c, S.by(0.1), H, [[0, '#2a0d0a'], [1, '#150605']]));
+    const f = waveFn(R, S.by(0.2), 2 * u, 50 * u); fillFn(c, W, H, f, vg(c, S.by(0.1), H, [[0, '#241618'], [1, '#110a0c']]));
     for (let k = 0; k < 2; k++) {
       const y0 = lerp(S.by(0.4), gy, k * 0.55 + 0.1), p = R() * TAU, fy = (x) => y0 + Math.sin(x / (18 * u) + p) * 3 * u;
       c.lineCap = 'round';
@@ -1054,34 +1059,67 @@ ART.volcano = {
   },
 };
 
-// 19 ----------------------------------------------- Dragon's Lair
+// 19 ----------------------------------------------- Dragon's Lair (lava falls and glowing cracks, no dragon)
 ART.dragon = {
-  veil: ['#140a06', 0.34],
+  veil: ['#100c0e', 0.5],
   prep(S) {
-    const { W, u, dpr } = S, dw = Math.min(W * 1.05, (S.port ? 100 : 135) * u), dh = dw * 0.5;
-    S.drag = sprite(dpr, dw, dh, (c, w, h) => dragonShape(c, w, h));
-    S.smoke = sprite(dpr, 12 * u, 12 * u, (c, w) => glow(c, w / 2, w / 2, w / 2, '#8a7a6a', 0.5));
+    const { W, H, u, dpr, R } = S;
+    S.lg = sprite(dpr, 40 * u, 40 * u, (c, w) => glow(c, w / 2, w / 2, w / 2, '#ff7a1a', 0.7));
+    S.smoke = sprite(dpr, 12 * u, 12 * u, (c, w) => glow(c, w / 2, w / 2, w / 2, '#8a7a6a', 0.45));
+    // lava falls: x (fraction), width, and where they land
+    S.falls = (S.port ? [[0.07, 5.6], [0.94, 4.6], [0.27, 2.6]] : [[0.1, 6.2], [0.9, 5.6], [0.3, 3.2], [0.71, 2.8]]).map(([fx, fw], i) => ({ x: W * fx, w: fw * u, y1: S.by(0.28) + i * 0.5 * u, p: R(), v: R.r(0.7, 1.2) }));
+    // glowing cracks in the cave wall: jagged polylines
+    S.cracks = Array.from({ length: S.port ? 7 : 11 }, () => { let x = R() * W, y = R.r(0.05, 0.55) * H; const pts = [[x, y]], n = R.i(4, 8); for (let k = 0; k < n; k++) { x += R.r(-4, 4) * u; y += R.r(1.5, 5) * u; pts.push([x, y]); } return pts; });
   },
   sky(c, S) {
     const { W, H, u, R } = S;
-    rect(c, 0, 0, W, H, vg(c, 0, H, [[0, '#0e0806'], [0.6, '#2a180e'], [1, '#4a2a12']]));
-    for (let i = 0; i < 26; i++) { const x = R() * W, y = R() * H * 0.7, r = R.r(6, 16) * u; ell(c, x, y, r, r * 0.6, 'rgba(60,36,20,0.35)'); ell(c, x - r * 0.2, y - r * 0.2, r * 0.6, r * 0.3, 'rgba(90,56,30,0.2)'); }
-    glow(c, W / 2, S.gy, W * 0.6, '#ffaa3a', 0.28);
-    for (let x = -2 * u; x < W + 4 * u; x += R.r(4, 9) * u) { const e = 0.4 + Math.abs(x / W - 0.5) * 1.5; stal(c, x, -1, R.r(2, 4) * u * e, R.r(6, 16) * u * e, '#1a0f08', '#2c1a0e'); }
+    rect(c, 0, 0, W, H, vg(c, 0, H, [[0, '#0b090b'], [0.6, '#1d1514'], [1, '#33231b']]));
+    for (let i = 0; i < 26; i++) { const x = R() * W, y = R() * H * 0.7, r = R.r(6, 16) * u; ell(c, x, y, r, r * 0.6, 'rgba(48,36,34,0.4)'); ell(c, x - r * 0.2, y - r * 0.2, r * 0.6, r * 0.3, 'rgba(78,60,54,0.22)'); }
+    for (let x = -2 * u; x < W + 4 * u; x += R.r(4, 9) * u) { const e = 0.4 + Math.abs(x / W - 0.5) * 1.5; stal(c, x, -1, R.r(2, 4) * u * e, R.r(6, 16) * u * e, '#120c0c', '#241917'); }
+    // glowing cracks (dark seam, orange fill, hot core)
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    for (const pts of S.cracks) for (const [w, col] of [[3.2 * u * 0.4, 'rgba(255,90,20,0.18)'], [1.1 * u * 0.4, '#ff6a1a'], [0.4 * u * 0.4, '#ffd27a']]) { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.strokeStyle = col; c.lineWidth = w; c.stroke(); }
   },
   far(c, S) {
-    const { W, H, u, R, hz } = S;
-    coinPile(c, W * 0.15, S.by(0.2), W * 0.25, 9 * u, R, u, 0.55);
-    coinPile(c, W * 0.85, S.by(0.2), W * 0.25, 10 * u, R, u, 0.55);
-    coinPile(c, W * 0.5, S.by(0.3), W * 0.55, 12 * u, R, u, 0.62);
-    S.dragAt = [W * 0.5, S.by(0.3) - 7 * u];
+    const { W, H, u, R } = S;
+    coinPile(c, W * 0.15, S.by(0.2), W * 0.25, 9 * u, R, u, 0.6);
+    coinPile(c, W * 0.85, S.by(0.2), W * 0.25, 10 * u, R, u, 0.6);
+    coinPile(c, W * 0.5, S.by(0.3), W * 0.55, 12 * u, R, u, 0.66);
+    // lava falls: dark rock lip, a channel of molten rock, a hot pool where it lands
+    for (const f of S.falls) {
+      const { x, w, y1 } = f;
+      glow(c, x, y1 * 0.5, Math.max(w * 5, 18 * u), '#ff6a1a', 0.26);
+      poly(c, [x - w * 2.2, -1, x + w * 2.2, -1, x + w * 1.1, 3 * u, x - w * 1.1, 3 * u], '#120c0c');
+      c.fillStyle = vg(c, 0, y1, [[0, '#ffb040'], [0.5, '#e8541a'], [1, '#b02a10']]);
+      c.beginPath(); c.moveTo(x - w * 0.55, 1); c.lineTo(x + w * 0.55, 1); c.lineTo(x + w * 0.65, y1); c.lineTo(x - w * 0.65, y1); c.closePath(); c.fill();
+      rect(c, x - w * 0.55, 0, w * 0.18, y1, 'rgba(255,230,150,0.35)');
+      c.strokeStyle = '#1a0c0a'; c.lineWidth = Math.max(1, 0.25 * u);
+      c.beginPath(); c.moveTo(x - w * 0.55, 1); c.lineTo(x - w * 0.65, y1); c.moveTo(x + w * 0.55, 1); c.lineTo(x + w * 0.65, y1); c.stroke();
+      ell(c, x, y1 + 0.4 * u, w * 2.3, w * 0.6, '#ff8a2a'); ell(c, x, y1 + 0.2 * u, w * 1.6, w * 0.35, '#ffd27a');
+    }
   },
   mid(ctx, t, S) {
-    S.tf(ctx, 0.5); const d = S.drag, [x, y] = S.dragAt, b = 1 + 0.015 * Math.sin(t * 0.9);
-    ctx.drawImage(d.cv, x - d.w / 2, y - d.h * b, d.w, d.h * b);
-    const nx = x - d.w * 0.4, ny = y - d.h * 0.2;
-    for (let i = 0; i < 3; i++) { const ph = fract(t * 0.18 + i / 3), s = 0.4 + ph * 1.2; ctx.globalAlpha = Math.sin(ph * Math.PI) * 0.35; blit(ctx, S.smoke, nx - ph * 6 * S.u, ny - ph * 14 * S.u, s); }
-    ctx.globalAlpha = 1; ctx.restore();
+    S.tf(ctx, 0.4);
+    const u = S.u;
+    for (const f of S.falls) {
+      const { x, w, y1 } = f;
+      // bright ripples running down the fall
+      for (let i = 0; i < 6; i++) {
+        const ph = fract(t * 0.5 * f.v + f.p + i / 6), y = ph * y1, L = 5 * u;
+        const g = ctx.createLinearGradient(0, y - L, 0, y + L); g.addColorStop(0, 'rgba(255,240,170,0)'); g.addColorStop(0.5, 'rgba(255,240,170,0.7)'); g.addColorStop(1, 'rgba(255,240,170,0)');
+        ctx.fillStyle = g; ctx.fillRect(x - w * 0.35 + Math.sin(i * 2.3) * w * 0.12, y - L, w * 0.55, 2 * L);
+      }
+      // splash pool glow and droplets
+      ctx.globalAlpha = 0.5 + 0.25 * Math.sin(t * 3 + f.p * 6); blit(ctx, S.lg, x, y1, w / (3 * u) + 0.3); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ffb040';
+      for (let i = 0; i < 4; i++) { const ph = fract(t * 0.9 + f.p + i / 4), dx = (i - 1.5) * w * 0.5 * ph * 1.4; ctx.globalAlpha = 1 - ph; ctx.beginPath(); ctx.arc(x + dx, y1 - Math.sin(ph * Math.PI) * w * 1.1, Math.max(0.5, 0.35 * u * (1 - ph * 0.5)), 0, TAU); ctx.fill(); }
+      ctx.globalAlpha = 0.25; blit(ctx, S.smoke, x + Math.sin(t * 0.7 + f.p * 4) * 2 * u, y1 - fract(t * 0.2 + f.p) * 14 * u, 0.6 + fract(t * 0.2 + f.p)); ctx.globalAlpha = 1;
+    }
+    // cracks breathe
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = `rgba(255,170,70,${0.18 + 0.16 * Math.sin(t * 1.7)})`; ctx.lineWidth = 0.9 * u * 0.4;
+    for (const pts of S.cracks) { ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); }
+    ctx.restore();
   },
   near(c, S) {
     const { W, H, u, R, gy } = S;
@@ -1093,31 +1131,6 @@ ART.dragon = {
     for (let i = 0; i < 7; i++) { const x = R() * W, y = lerp(gy - 4 * u, gy + 1 * u, R()), col = R.pick(['#e0304a', '#30c0e0', '#40d070', '#b050ff']); poly(c, [x, y - 1.2 * u, x + 1 * u, y, x, y + 1 * u, x - 1 * u, y], col); poly(c, [x, y - 1.2 * u, x - 1 * u, y, x, y], 'rgba(255,255,255,0.5)'); }
   },
 };
-function dragonShape(c, w, h) {
-  const col = '#140b07', rim = 'rgba(255,160,70,0.7)', X = (k) => k * w, Y = (k) => k * h;
-  c.lineJoin = 'round';
-  // tail curling right
-  c.beginPath(); c.moveTo(X(0.62), Y(0.92)); c.bezierCurveTo(X(0.85), Y(0.98), X(0.98), Y(0.85), X(0.95), Y(0.65)); c.bezierCurveTo(X(0.93), Y(0.55), X(0.88), Y(0.6), X(0.9), Y(0.7)); c.bezierCurveTo(X(0.9), Y(0.82), X(0.8), Y(0.86), X(0.62), Y(0.84)); c.closePath(); c.fillStyle = col; c.fill();
-  // body mound
-  c.beginPath(); c.moveTo(X(0.18), Y(0.95)); c.bezierCurveTo(X(0.2), Y(0.45), X(0.45), Y(0.28), X(0.62), Y(0.4)); c.bezierCurveTo(X(0.78), Y(0.5), X(0.82), Y(0.8), X(0.8), Y(0.95)); c.closePath(); c.fill();
-  // spikes along back
-  for (let i = 0; i < 9; i++) { const t = i / 8, bx = lerp(X(0.24), X(0.78), t), by = Y(0.62 - Math.sin(t * Math.PI) * 0.3) - Y(0.02); poly(c, [bx - w * 0.015, by + h * 0.02, bx, by - h * 0.06, bx + w * 0.015, by + h * 0.02], col); }
-  // folded wing
-  c.beginPath(); c.moveTo(X(0.36), Y(0.5)); c.lineTo(X(0.52), Y(0.12)); c.lineTo(X(0.58), Y(0.2)); c.quadraticCurveTo(X(0.62), Y(0.4), X(0.7), Y(0.55)); c.quadraticCurveTo(X(0.6), Y(0.5), X(0.56), Y(0.58)); c.quadraticCurveTo(X(0.5), Y(0.5), X(0.44), Y(0.6)); c.closePath(); c.fillStyle = '#2a1810'; c.fill();
-  c.strokeStyle = '#140c08'; c.lineWidth = w * 0.006; c.beginPath(); c.moveTo(X(0.52), Y(0.12)); c.lineTo(X(0.56), Y(0.58)); c.moveTo(X(0.52), Y(0.12)); c.lineTo(X(0.44), Y(0.6)); c.stroke();
-  // neck + head resting on the left
-  c.beginPath(); c.moveTo(X(0.3), Y(0.62)); c.bezierCurveTo(X(0.2), Y(0.62), X(0.14), Y(0.74), X(0.08), Y(0.78)); c.lineTo(X(0.0), Y(0.82)); c.lineTo(X(0.01), Y(0.9)); c.lineTo(X(0.12), Y(0.9)); c.bezierCurveTo(X(0.2), Y(0.9), X(0.24), Y(0.84), X(0.32), Y(0.82)); c.closePath(); c.fillStyle = col; c.fill();
-  poly(c, [X(0.1), Y(0.78), X(0.15), Y(0.66), X(0.13), Y(0.79)], col); poly(c, [X(0.07), Y(0.79), X(0.1), Y(0.69), X(0.1), Y(0.8)], col);
-  line(c, X(0.04), Y(0.84), X(0.09), Y(0.83), '#e08a30', h * 0.012);
-  // front claw
-  ell(c, X(0.3), Y(0.93), w * 0.05, h * 0.04, col);
-  // warm rim light from the gold below
-  c.strokeStyle = rim; c.lineWidth = Math.max(1.5, w * 0.006); c.lineCap = 'round';
-  c.beginPath(); c.moveTo(X(0.2), Y(0.6)); c.bezierCurveTo(X(0.24), Y(0.45), X(0.45), Y(0.28), X(0.62), Y(0.4)); c.bezierCurveTo(X(0.72), Y(0.46), X(0.78), Y(0.6), X(0.8), Y(0.75)); c.stroke();
-  c.beginPath(); c.moveTo(X(0.3), Y(0.62)); c.bezierCurveTo(X(0.2), Y(0.62), X(0.14), Y(0.74), X(0.08), Y(0.78)); c.lineTo(X(0.0), Y(0.82)); c.stroke();
-  c.beginPath(); c.moveTo(X(0.95), Y(0.65)); c.bezierCurveTo(X(0.98), Y(0.85), X(0.85), Y(0.98), X(0.7), Y(0.92)); c.stroke();
-  glow(c, X(0.1), Y(0.8), w * 0.03, '#ffb040', 0.6); line(c, X(0.085), Y(0.8), X(0.115), Y(0.795), '#ffd27a', Math.max(1, h * 0.01));
-}
 
 // 20 ----------------------------------------------- The Fox's Vault
 ART.vault = {
@@ -1159,12 +1172,8 @@ function banner(c, x, y, w, h, u) {
   poly(c, [x - w / 2, y, x + w / 2, y, x + w / 2, y + h, x, y + h - w * 0.35, x - w / 2, y + h], '#e86a1a');
   poly(c, [x - w / 2, y, x - w * 0.3, y, x - w * 0.3, y + h - w * 0.24, x - w / 2, y + h], '#ff8a34');
   rect(c, x - w / 2, y + 1 * u, w, 0.6 * u, '#ffd27a'); rect(c, x - w / 2, y + h * 0.82 - 1 * u, w, 0.4 * u, 'rgba(255,210,122,0.6)');
-  // fox head emblem
-  const fy = y + h * 0.42, s = w * 0.36;
-  poly(c, [x - s, fy - s * 0.55, x - s * 0.75, fy - s * 1.25, x - s * 0.3, fy - s * 0.7, x + s * 0.3, fy - s * 0.7, x + s * 0.75, fy - s * 1.25, x + s, fy - s * 0.55, x + s * 0.6, fy + s * 0.25, x, fy + s * 0.95, x - s * 0.6, fy + s * 0.25], '#12303a');
-  poly(c, [x - s * 0.6, fy + s * 0.05, x, fy + s * 0.25, x + s * 0.6, fy + s * 0.05, x, fy + s * 0.95], '#f4ecdc');
-  poly(c, [x - s * 0.7, fy - s * 0.6, x - s * 0.68, fy - s * 1.0, x - s * 0.42, fy - s * 0.68], '#f4ecdc'); poly(c, [x + s * 0.7, fy - s * 0.6, x + s * 0.68, fy - s * 1.0, x + s * 0.42, fy - s * 0.68], '#f4ecdc');
-  circle(c, x - s * 0.33, fy - s * 0.2, s * 0.09, '#3ef0e0'); circle(c, x + s * 0.33, fy - s * 0.2, s * 0.09, '#3ef0e0'); circle(c, x, fy + s * 0.85, s * 0.1, '#12303a');
+  // the real fox head (same drawing as the fox villain), smug and drawn once into the banner
+  drawFox(c, x, y + h * 0.43, Math.min(w * 0.8, h * 0.62), 'smug', 0.3);
 }
 
 // ---------------------------------------------------------------- theme table
@@ -1202,11 +1211,11 @@ export const THEMES = [
   { id: 'jungle', name: 'Jungle Ruins', palette: P('#c9e3a0', '#1d4a30', '#f2ffe8', 'rgba(8,34,18,0.6)', '#ffd23f', RING.vine, '#2a3a1a', '#cfa957', '#3a2a18', '#3f8a38'), material: 'vine', ground: 'grass', ambient: 'leaves', music: { root: 'A', scale: 'dorian', bpm: 116, mood: 'adventurous drums' } },
   { id: 'reef', name: 'Coral Reef', palette: P('#3fd0e0', '#0a3f6e', '#ffffff', 'rgba(4,36,66,0.58)', '#ff7a5a', RING.coral, '#3a1a3a', '#d9c07a', '#a88e5e', '#e0cc9a'), material: 'coral', ground: 'sand', ambient: 'bubbles', music: { root: 'F', scale: 'lydian', bpm: 88, mood: 'floating calm' } },
   { id: 'cove', name: 'Pirate Cove', palette: P('#070f2a', '#3a5a92', '#fff6dc', 'rgba(6,12,34,0.62)', '#ffd27a', RING.darkwood, '#1a1424', '#c9a35e', '#4a4a6a', '#8a8aa8'), material: 'wood', ground: 'sand', ambient: 'fog', music: { root: 'D', scale: 'minor', bpm: 104, mood: 'sea shanty at night' } },
-  { id: 'storm', name: 'Thunder Sky', palette: P('#14172a', '#4c5578', '#ffffff', 'rgba(12,14,28,0.6)', '#ffe14d', RING.cloud, '#2a2e44', '#cfae6a', '#8a93b4', '#e6eaf4'), material: 'cloud', ground: 'cloud', ambient: 'rain', music: { root: 'B', scale: 'minor', bpm: 132, mood: 'tense and electric' } },
+  { id: 'storm', name: 'Storm Peaks', palette: P('#14172a', '#4c5578', '#ffffff', 'rgba(12,14,28,0.6)', '#ffe14d', RING.cloud, '#2a2e44', '#cfae6a', '#8a93b4', '#e6eaf4'), material: 'cloud', ground: 'cloud', ambient: 'rain', music: { root: 'B', scale: 'minor', bpm: 132, mood: 'tense and electric' } },
   { id: 'clock', name: 'Clocktower', palette: P('#231d44', '#f6b064', '#fff2dc', 'rgba(26,16,36,0.6)', '#ffc46a', RING.brass, '#2a1c10', '#d9b25a', '#3a2e3a', '#6a5a66'), material: 'metal', ground: 'stone', ambient: 'dust', music: { root: 'G', scale: 'minor', bpm: 120, mood: 'ticking clockwork' } },
   { id: 'haunted', name: 'Haunted Graveyard', palette: P('#120a26', '#6a4a8a', '#f4ecff', 'rgba(16,8,30,0.62)', '#b8ff6a', RING.bone, '#1a1028', '#b8a070', '#2a1c3a', '#4a3a5a'), material: 'bone', ground: 'dirt', ambient: 'fog', music: { root: 'C', scale: 'phrygian', bpm: 90, mood: 'spooky waltz' } },
-  { id: 'volcano', name: 'Volcano', palette: P('#120404', '#8a2a10', '#fff0e0', 'rgba(24,4,2,0.62)', '#ff7a1a', RING.obsidian, '#ff5a1a', '#c9984e', '#5a0e0c', '#ff7a1a'), material: 'obsidian', ground: 'lava', ambient: 'embers', music: { root: 'F', scale: 'phrygian', bpm: 138, mood: 'urgent heat' } },
-  { id: 'dragon', name: "Dragon's Lair", palette: P('#0e0806', '#4a2a12', '#fff2d6', 'rgba(20,10,4,0.62)', '#ffd75a', RING.gold, '#1e120c', '#c9984e', '#6a4416', '#ffd75a'), material: 'gold', ground: 'gold', ambient: 'embers', music: { root: 'D', scale: 'minor', bpm: 100, mood: 'epic tiptoe' } },
+  { id: 'volcano', name: 'Volcano', palette: P('#0c0a0c', '#5a3a2c', '#fff0e0', 'rgba(24,4,2,0.62)', '#ff7a1a', RING.obsidian, '#ff5a1a', '#c9984e', '#5a0e0c', '#ff7a1a'), material: 'obsidian', ground: 'lava', ambient: 'embers', music: { root: 'F', scale: 'phrygian', bpm: 138, mood: 'urgent heat' } },
+  { id: 'dragon', name: "Dragon's Lair", palette: P('#0b090b', '#33231b', '#fff2d6', 'rgba(20,10,4,0.62)', '#ffd75a', RING.gold, '#1e120c', '#c9984e', '#6a4416', '#ffd75a'), material: 'gold', ground: 'gold', ambient: 'embers', music: { root: 'D', scale: 'minor', bpm: 100, mood: 'epic tiptoe' } },
   { id: 'vault', name: "The Fox's Vault", palette: P('#0a1a22', '#12303a', '#f2fdff', 'rgba(4,14,18,0.62)', '#ff9a3a', RING.tech, '#ff8a2a', '#d9b25a', '#1f3a42', '#4f8a94'), material: 'metal', ground: 'stone', ambient: 'sparkles', music: { root: 'A', scale: 'minor', bpm: 128, mood: 'heist finale' } },
 ];
 

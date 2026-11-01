@@ -55,7 +55,7 @@ async function bundle(portal, { minify, sourcemap }) {
     sourcemap: sourcemap ? 'inline' : false,
     legalComments: 'none',
     charset: 'utf8',
-    loader: { '.woff2': 'dataurl' },
+    loader: { '.woff2': 'dataurl', '.webp': 'dataurl' },
     define: {
       __PORTAL__: JSON.stringify(portal),
       __GD_ID__: JSON.stringify(gdId),

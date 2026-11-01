@@ -2,6 +2,8 @@
 // Every function draws in a local y-DOWN space centred on (cx, cy); the caller flips if needed.
 // Shapes are authored in a 100-unit box and scaled by s / 100.
 
+import SNAKE_SHEET from '../../assets/ref/breaker-snake-head.webp';
+
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const mod = (a, b) => ((a % b) + b) % b;
@@ -56,6 +58,7 @@ const FOX_MOODS = {
   evil: { lidIn: 0.62, lidOut: 0.22, lidBot: 0.22, eye: 1.06, pupil: 0.9, brow: [6, -13, 31, -28, 1], evil: true },
   laugh: { closed: true, brow: [9, -27, 29, -27, -5] },
   shocked: { lidIn: 0, lidOut: 0, lidBot: 0, eye: 1.2, pupil: 0.5, brow: [9, -33, 29, -32, -5] },
+  cry: { squeeze: true, ears: 0.85, brow: [8, -34, 29, -25, -3] },
   angry: { lidIn: 0.55, lidOut: 0.18, lidBot: 0.14, eye: 1, pupil: 0.72, brow: [7, -13, 31, -25, 0] },
 };
 
@@ -68,13 +71,13 @@ function foxHeadHalf(ctx, sx) {
   ctx.bezierCurveTo(sx * 33, 40, sx * 16, 48, 0, 49); // jaw to chin
 }
 
-function foxEar(ctx, sx, t, o) {
+function foxEar(ctx, sx, t, o, drop = 0) {
   // twitch: a quick flick every few seconds, per ear
   const ph = mod(t * 0.31 + (sx > 0 ? 0.5 : 0), 1);
   const tw = ph < 0.07 ? Math.sin((ph / 0.07) * TAU) * 0.16 : 0;
   ctx.save();
-  ctx.translate(sx * 30, -26);
-  ctx.rotate(sx * (tw + Math.sin(t * 1.6 + sx) * 0.02));
+  ctx.translate(sx * 30, -26 + drop * 5);
+  ctx.rotate(sx * (tw * (1 - drop) + Math.sin(t * 1.6 + sx) * 0.02 + drop * (0.78 + Math.sin(t * 10) * 0.03)));
   ctx.translate(-sx * 30, 26);
   const ear = () => {
     ctx.beginPath();
@@ -135,6 +138,20 @@ function foxEye(ctx, sx, m, t, look, o) {
     ctx.quadraticCurveTo(0, -12, rx, 3);
     ctx.lineWidth = o * 1.5;
     ctx.lineCap = 'round';
+    ctx.strokeStyle = FOX.dark;
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  if (m.squeeze) {
+    // sobbing: eyes squeezed shut > <
+    ctx.beginPath();
+    ctx.moveTo(sx * 9, -6);
+    ctx.lineTo(-sx * 5, 0);
+    ctx.lineTo(sx * 9, 6);
+    ctx.lineWidth = o * 1.7;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.strokeStyle = FOX.dark;
     ctx.stroke();
     ctx.restore();
@@ -289,6 +306,31 @@ function foxMouth(ctx, mood, t, o) {
     }
     return;
   }
+  if (mood === 'cry') {
+    // wailing mouth, corners turned down
+    const op = 0.85 + 0.15 * Math.sin(t * 14);
+    const m = () => {
+      ctx.beginPath();
+      ctx.moveTo(-16, 33);
+      ctx.quadraticCurveTo(0, 20, 16, 33);
+      ctx.quadraticCurveTo(14, 33 + 15 * op, 0, 33 + 15 * op);
+      ctx.quadraticCurveTo(-14, 33 + 15 * op, -16, 33);
+      ctx.closePath();
+    };
+    m();
+    ctx.fillStyle = FOX.mouth;
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.beginPath();
+    ctx.ellipse(0, 50, 10, 8, 0, 0, TAU);
+    ctx.fillStyle = FOX.tongue;
+    ctx.fill();
+    ctx.restore();
+    m();
+    ctx.stroke();
+    return;
+  }
   if (mood === 'laugh') {
     const open = 0.85 + 0.15 * Math.sin(t * 18);
     const m = () => {
@@ -397,13 +439,14 @@ export function drawFox(ctx, cx, cy, s, mood = 'idle', t = 0, look = { x: 0, y: 
     else if (mood === 'evil') { by = Math.sin(t * 7) * 1.4; rot = Math.sin(t * 1.3) * 0.04; }
     else if (mood === 'angry') bx = Math.sin(t * 38) * 0.8;
     else if (mood === 'shocked') { by = -1 + Math.sin(t * 30) * 0.4; }
+    else if (mood === 'cry') { by = Math.abs(Math.sin(t * 10)) * 2.5 + 1; rot = Math.sin(t * 10) * 0.025; }
     else { by = Math.sin(t * 2.2) * 0.9; rot = Math.sin(t * 0.9) * 0.02; }
     ctx.translate(bx, by);
     ctx.rotate(rot);
     ctx.lineJoin = 'round';
 
-    foxEar(ctx, -1, t, o);
-    foxEar(ctx, 1, t, o);
+    foxEar(ctx, -1, t, o, m.ears || 0);
+    foxEar(ctx, 1, t, o, m.ears || 0);
 
     // forehead tuft peeking over the crown
     ctx.beginPath();
@@ -457,7 +500,7 @@ export function drawFox(ctx, cx, cy, s, mood = 'idle', t = 0, look = { x: 0, y: 
     symStroke(ctx, foxHeadHalf);
 
     // blush
-    if (mood === 'idle' || mood === 'laugh' || mood === 'smug') {
+    if (mood === 'idle' || mood === 'laugh' || mood === 'smug' || mood === 'cry') {
       ctx.fillStyle = mood === 'laugh' ? 'rgba(255,110,120,0.45)' : 'rgba(255,120,120,0.28)';
       ctx.beginPath();
       ctx.ellipse(-32, 15, 7, 4.5, 0, 0, TAU);
@@ -479,6 +522,25 @@ export function drawFox(ctx, cx, cy, s, mood = 'idle', t = 0, look = { x: 0, y: 
         ctx.beginPath();
         ctx.arc(sx * (31 + k * 6), -2 + k * 8, 3.2 * (1 - k * 0.5), 0, TAU);
         ctx.fill();
+      }
+    }
+    // streaming tears
+    if (mood === 'cry') {
+      ctx.lineCap = 'round';
+      for (const sx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(sx * 21, 1);
+        ctx.quadraticCurveTo(sx * (30 + Math.sin(t * 8) * 1.5), 14, sx * 31, 36);
+        ctx.strokeStyle = 'rgba(70,160,230,0.9)';
+        ctx.lineWidth = 6.5;
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(190,235,255,0.95)';
+        ctx.lineWidth = 3.2;
+        ctx.stroke();
+        for (let i = 0; i < 2; i++) {
+          const k = mod(t * 1.7 + i * 0.5 + (sx > 0 ? 0.25 : 0), 1);
+          drawDrop(ctx, sx * (31 + k * 6), 38 + k * 26, 3.2, o * 0.8, 1 - k * 0.7);
+        }
       }
     }
     // anger vein on the forehead
@@ -596,12 +658,18 @@ export function drawHen(ctx, cx, cy, s, mood = 'idle', t = 0) {
     const o = outlineW(s, 2.8);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    let lift = 0, sqx = 1, sqy = 1, faceY = 0, puff = 1;
+    let lift = 0, sqx = 1, sqy = 1, faceY = 0, puff = 1, sway = 0;
     if (mood === 'happy') {
       const h = Math.abs(Math.sin(t * 6));
       lift = h * 9;
       sqy = 1 + h * 0.04 - (1 - h) * 0.03;
       sqx = 2 - sqy;
+    } else if (mood === 'dance') {
+      const h = Math.abs(Math.sin(t * 7));
+      lift = h * 13;
+      sqy = 1 + h * 0.05 - (1 - h) * 0.04;
+      sqx = 2 - sqy;
+      sway = Math.sin(t * 3.5) * 0.14;
     } else if (mood === 'gasp') {
       puff = 1.08 + Math.sin(t * 20) * 0.01;
     } else if (mood === 'sad') {
@@ -621,13 +689,14 @@ export function drawHen(ctx, cx, cy, s, mood = 'idle', t = 0) {
     ctx.save();
     // squash around the feet so the hen stays planted
     ctx.translate(0, 44 - lift);
+    ctx.rotate(sway);
     ctx.scale(sqx * puff, sqy * puff);
     ctx.translate(0, -44);
 
     // tail fan behind the body
     ctx.save();
     ctx.translate(26, -8);
-    ctx.rotate(0.25 + Math.sin(t * 3) * 0.05 + (mood === 'sad' ? 0.6 : 0) + (mood === 'happy' ? -0.2 : 0));
+    ctx.rotate(0.25 + Math.sin(t * 3) * 0.05 + (mood === 'sad' ? 0.6 : 0) + (mood === 'happy' ? -0.2 : 0) + (mood === 'dance' ? Math.sin(t * 7) * 0.3 : 0));
     for (let i = 0; i < 3; i++) {
       ctx.save();
       ctx.rotate(-0.55 + i * 0.45);
@@ -728,8 +797,36 @@ export function drawHen(ctx, cx, cy, s, mood = 'idle', t = 0) {
     else if (mood === 'gasp') { ang = -0.85 + Math.sin(t * 22) * 0.12; wx = 30; wy = -2; }
     else if (mood === 'cry') { ang = 0.12 + Math.sin(t * 9) * 0.05; wx = 25; wy = 2; }
     else if (mood === 'sad') { ang = 0.18; wx = 25; wy = 4; }
-    henWing(ctx, -1, wx, wy, ang, sc, o);
-    henWing(ctx, 1, wx, wy, ang, sc, o);
+    let angL = ang, angR = ang;
+    if (mood === 'dance') { // wings up, flapping in turns
+      const sw = Math.sin(t * 7) * 0.7;
+      angL = -2.15 + sw;
+      angR = -2.15 - sw;
+      wy = -6;
+    }
+    henWing(ctx, -1, wx, wy, angL, sc, o);
+    henWing(ctx, 1, wx, wy, angR, sc, o);
+    if (mood === 'dance') {
+      // music notes drifting up
+      ctx.fillStyle = '#ff7a9a';
+      ctx.strokeStyle = HEN.line;
+      ctx.lineWidth = o * 0.8;
+      for (let i = 0; i < 3; i++) {
+        const k = mod(t * 0.6 + i / 3, 1);
+        const nx = (i - 1) * 40 + Math.sin(t * 2 + i) * 4, ny = -44 - k * 30;
+        ctx.globalAlpha = Math.sin(k * Math.PI);
+        ctx.beginPath();
+        ctx.ellipse(nx, ny, 4.5, 3.4, -0.4, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(nx + 3.8, ny - 1);
+        ctx.lineTo(nx + 3.8, ny - 14);
+        ctx.quadraticCurveTo(nx + 10, ny - 11, nx + 8, ny - 6);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
 
     // loose feathers when gasping
     if (mood === 'gasp') {
@@ -783,6 +880,7 @@ function drawDrop(ctx, x, y, r, o, alpha = 1) {
 }
 
 function henFace(ctx, mood, t, o) {
+  if (mood === 'dance') mood = 'happy';
   const ey = -16;
   // blush
   ctx.fillStyle = mood === 'cry' || mood === 'happy' ? 'rgba(255,110,120,0.5)' : 'rgba(255,130,130,0.35)';
@@ -949,18 +1047,22 @@ function henFace(ctx, mood, t, o) {
 
 const CHICK_BUMPS = 16;
 
-// Fluffy hatched chick with a shell cap. s ≈ height (same as an egg). flap 0..1.
-export function drawChick(ctx, cx, cy, s, t = 0, flap = 0) {
+// Fluffy hatched chick with a shell cap, drawn 1.5x the egg size s (it must read next to the fox). flap 0..1 flutters;
+// peck 0..1 bows it down to peck the floor (it pecks thorns away), with crumbs flying.
+export function drawChick(ctx, cx, cy, s, t = 0, flap = 0, peck = 0) {
   if (!(s > 0)) return;
   ctx.save();
   try {
-    ctx.translate(cx, cy);
+    ctx.translate(cx, cy - s * 0.04);
+    s *= 1.5;
     ctx.scale(s / 100, s / 100);
     const o = outlineW(s, 2.8);
     flap = clamp(flap || 0, 0, 1);
+    peck = clamp(peck || 0, 0, 1);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    const bob = Math.sin(t * (3 + flap * 9)) * (1 + flap * 1.5);
+    const bob = peck ? 0 : Math.sin(t * (3 + flap * 9)) * (1 + flap * 1.5);
+    const dip = peck ? Math.pow(0.5 + 0.5 * Math.sin(t * 13), 3) * peck : 0;
     ctx.translate(0, bob);
 
     // legs (dangle when fluttering)
@@ -980,6 +1082,13 @@ export function drawChick(ctx, cx, cy, s, t = 0, flap = 0) {
       ctx.stroke();
     }
 
+    // pecking: the body bows over the planted feet
+    if (dip > 0) {
+      ctx.translate(0, 40);
+      ctx.rotate(Math.sin(t * 13 + 1) * 0.04 + dip * 0.1);
+      ctx.scale(1 + dip * 0.07, 1 - dip * 0.15);
+      ctx.translate(0, -40 + dip * 6);
+    }
     // fluffy body: scalloped circle
     const fluff = () => {
       ctx.beginPath();
@@ -1038,11 +1147,11 @@ export function drawChick(ctx, cx, cy, s, t = 0, flap = 0) {
     for (const sx of [-1, 1]) {
       ctx.fillStyle = '#2a1d14';
       ctx.beginPath();
-      ctx.ellipse(sx * 11.5, fy, 5, 6.4, 0, 0, TAU);
+      ctx.ellipse(sx * 11.5, fy, 5.8, 7.2 * (dip > 0.5 ? 0.6 : 1), 0, 0, TAU);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
-      glint(ctx, sx * 11.5 - 1.6, fy - 2.2, 1.9);
-      glint(ctx, sx * 11.5 + 1.6, fy + 2.4, 0.8);
+      glint(ctx, sx * 11.5 - 1.9, fy - 2.6, 2.3);
+      glint(ctx, sx * 11.5 + 1.8, fy + 2.8, 1);
     }
     // worried brows (inner ends raised)
     ctx.strokeStyle = '#a8661a';
@@ -1056,7 +1165,7 @@ export function drawChick(ctx, cx, cy, s, t = 0, flap = 0) {
     // little open beak
     ctx.lineWidth = o * 0.8;
     ctx.strokeStyle = '#8a4a0a';
-    const bo = 2.5 + flap * 2 + Math.sin(t * 7) * 0.6;
+    const bo = 2.5 + flap * 2 + (peck ? dip * 4 : Math.sin(t * 7) * 0.6);
     ctx.beginPath();
     ctx.moveTo(-4.5, fy + 9);
     ctx.lineTo(4.5, fy + 9);
@@ -1107,6 +1216,18 @@ export function drawChick(ctx, cx, cy, s, t = 0, flap = 0) {
     ctx.fill();
     ctx.restore();
 
+    if (peck > 0) {
+      // crumbs of thorn fly off the floor at each peck
+      const u = mod(t * 13 / TAU - 0.25, 1);
+      ctx.globalAlpha = peck * (1 - u);
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = i % 2 ? '#b3263a' : '#6b4a2a';
+        ctx.beginPath();
+        ctx.arc((i - 1.5) * 9 + Math.sin(i * 3) * 3, 46 - Math.sin(u * Math.PI) * (10 + i * 3), 2.2, 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
     // flutter puffs when falling hard
     if (flap > 0.4) {
       ctx.fillStyle = `rgba(255,255,255,${(flap - 0.4) * 0.9})`;
@@ -1124,13 +1245,36 @@ export function drawChick(ctx, cx, cy, s, t = 0, flap = 0) {
 }
 
 /* ---------------------------------------------------------------- SNAKE */
+// Modelled on the Breaker serpent: a lit, tapered purple body with a peach belly and rose diamonds, under a rendered
+// head sprite (13 expressions, faces left or right). A vector head stands in while the sheet loads.
+
+const SN_CELL = 176;
+const SN_EXPR = { idle: 0, blink: 1, taste: 2, hunt: 3, chew0: 4, chew1: 5, hiss: 6, ouch: 7, dizzy: 8, shock: 9, snarl: 10, strike: 11, grin: 12 };
+let snImg = null, snOk = false;
+function snakeSheet() {
+  if (snImg === null) {
+    snImg = false;
+    try {
+      if (typeof Image !== 'undefined') {
+        const im = new Image();
+        im.onload = () => { snOk = true; };
+        im.src = SNAKE_SHEET;
+        snImg = im;
+      }
+    } catch (e) { /* stays on the vector head */ }
+  }
+  return snOk ? snImg : null;
+}
 
 // Reused sample buffers so a slithering snake does not allocate every frame.
 const SN_MAX = 360;
 const snX = new Float32Array(SN_MAX), snY = new Float32Array(SN_MAX);
 const snNX = new Float32Array(SN_MAX), snNY = new Float32Array(SN_MAX);
-const snW = new Float32Array(SN_MAX), snU = new Float32Array(SN_MAX);
+const snTX = new Float32Array(SN_MAX), snTY = new Float32Array(SN_MAX);
+const snW = new Float32Array(SN_MAX), snA = new Float32Array(SN_MAX);
+const snSG = new Float32Array(SN_MAX), snBW = new Float32Array(SN_MAX);
 const tmpX = new Float32Array(SN_MAX), tmpY = new Float32Array(SN_MAX);
+const snFace = {}; // last facing per snake id (hysteresis so a vertical stretch never flips the head)
 
 // Resample pts at even spacing, then smooth so polyline corners turn into curves.
 function snakeSample(pts, step) {
@@ -1159,8 +1303,7 @@ function snakeSample(pts, step) {
     snY[n] = last.y;
     n++;
   }
-  // smoothing passes (~1.5 r wide), ends pinned
-  for (let pass = 0; pass < 20; pass++) {
+  for (let pass = 0; pass < 14; pass++) {
     for (let i = 1; i < n - 1; i++) {
       tmpX[i] = (snX[i - 1] + 2 * snX[i] + snX[i + 1]) / 4;
       tmpY[i] = (snY[i - 1] + 2 * snY[i] + snY[i + 1]) / 4;
@@ -1173,16 +1316,18 @@ function snakeSample(pts, step) {
   return n;
 }
 
-// Snake along pts (head first). r = body radius at the neck. opts.mouthOpen 0..1.
+// Snake along pts (head first, y-down). r = body radius of the old thin snake: the body is now ~2r wide (x thick).
+// opts: mouthOpen 0..1, expr (idle blink taste hunt chew0 chew1 hiss ouch dizzy shock snarl strike grin),
+// thick (body thickness multiplier, default 1), venom 0..1 (green drip at the mouth), id (keeps facing stable per snake).
 export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
   if (!pts || pts.length < 2 || !(r > 0)) return;
   ctx.save();
   try {
     opts = opts || {};
-    const step = r * 0.45;
+    const Wh = r * 1.9 * clamp(opts.thick || 1, 0.4, 3); // body half width at the neck
+    const step = Math.max(Wh * 0.26, 0.5);
     let n = snakeSample(pts, step);
     if (n < 3) {
-      // too short: still show a head
       n = 3;
       const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y;
       const l = Math.hypot(dx, dy) || 1;
@@ -1191,225 +1336,228 @@ export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
         snY[i] = pts[0].y + (dy / l) * step * i;
       }
     }
-    // normals, taper, and a gentle travelling wiggle
-    const total = (n - 1) * step;
+    // tangents (toward the head), arc length
+    snA[0] = 0;
+    for (let i = 1; i < n; i++) snA[i] = snA[i - 1] + Math.hypot(snX[i] - snX[i - 1], snY[i] - snY[i - 1]);
+    const len = Math.max(snA[n - 1], step);
     for (let i = 0; i < n; i++) {
-      const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1);
+      const a = Math.min(n - 1, i + 1), b = Math.max(0, i - 1);
       let tx = snX[b] - snX[a], ty = snY[b] - snY[a];
       const l = Math.hypot(tx, ty) || 1;
-      tx /= l;
-      ty /= l;
-      snNX[i] = -ty;
-      snNY[i] = tx;
-      const u = (i * step) / Math.max(total, step);
-      snU[i] = u;
-      snW[i] = r * (1 + 0.14 * Math.sin(Math.PI * Math.min(1, u * 1.6))) * (1 - 0.9 * Math.pow(u, 1.5));
+      snTX[i] = tx / l;
+      snTY[i] = ty / l;
+      snNX[i] = -snTY[i];
+      snNY[i] = snTX[i];
     }
+    // travelling wiggle (not at the head, which is a sprite)
+    const wl = 0.22 * 7 / Wh;
     for (let i = 1; i < n; i++) {
-      const w = Math.sin(i * 0.35 - t * 6) * r * 0.16 * Math.min(1, snU[i] * 5);
+      const f = snA[i] / len;
+      const w = Math.sin(t * 4.5 - snA[i] * wl) * Wh * 0.17 * Math.min(1, f * 4);
       tmpX[i] = snX[i] + snNX[i] * w;
       tmpY[i] = snY[i] + snNY[i] * w;
     }
-    for (let i = 1; i < n; i++) {
-      snX[i] = tmpX[i];
-      snY[i] = tmpY[i];
+    for (let i = 1; i < n; i++) { snX[i] = tmpX[i]; snY[i] = tmpY[i]; }
+    // width profile, belly side (the lower flank, fading out where the body stands vertical)
+    const wmin = Math.max(0.6, Wh * 0.06);
+    for (let i = 0; i < n; i++) {
+      const f = snA[i] / len;
+      const prof = f < 0.12 ? 0.86 + (f / 0.12) * 0.14 : Math.pow((1 - f) / 0.88, 0.7);
+      snW[i] = Wh * prof + wmin;
+      snSG[i] = snNY[i] >= 0 ? 1 : -1;
+      const q = clamp(Math.abs(snNY[i]) / 0.55, 0, 1);
+      snBW[i] = q * q * (3 - 2 * q);
     }
-    const lw = Math.max(r * 0.14, 1);
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-
-    const bodyPath = () => {
-      ctx.beginPath();
+    const E = (k, o) => { // outline edge at k * w along the normal on one side (o = 1 or -1), fresh sub-path
       for (let i = 0; i < n; i++) {
-        const x = snX[i] + snNX[i] * snW[i], y = snY[i] + snNY[i] * snW[i];
-        if (i) ctx.lineTo(x, y);
-        else ctx.moveTo(x, y);
+        const x = snX[i] + snNX[i] * snW[i] * k * o, y = snY[i] + snNY[i] * snW[i] * k * o;
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
       }
-      // rounded tail tip
-      const e = n - 1;
-      const tx = -snNY[e], ty = snNX[e];
-      ctx.quadraticCurveTo(snX[e] - tx * snW[e] * 3, snY[e] - ty * snW[e] * 3, snX[e] - snNX[e] * snW[e], snY[e] - snNY[e] * snW[e]);
+    };
+    const outline = () => {
+      ctx.beginPath();
+      E(1, 1);
       for (let i = n - 1; i >= 0; i--) ctx.lineTo(snX[i] - snNX[i] * snW[i], snY[i] - snNY[i] * snW[i]);
       ctx.closePath();
     };
-    bodyPath();
-    ctx.fillStyle = '#5fb043';
-    ctx.fill();
+    const lw = Math.max(1.2, Wh * 0.13);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    // contact shadow
     ctx.save();
-    ctx.clip();
-    // belly hint: pale band along one flank
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const x = snX[i] + snNX[i] * snW[i] * 0.45, y = snY[i] + snNY[i] * snW[i] * 0.45;
-      if (i) ctx.lineTo(x, y);
-      else ctx.moveTo(x, y);
-    }
-    for (let i = n - 1; i >= 0; i--) ctx.lineTo(snX[i] + snNX[i] * snW[i] * 1.2, snY[i] + snNY[i] * snW[i] * 1.2);
-    ctx.closePath();
-    ctx.fillStyle = '#d6ec8a';
-    ctx.fill();
-    // shine along the other flank
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const x = snX[i] - snNX[i] * snW[i] * 0.55, y = snY[i] - snNY[i] * snW[i] * 0.55;
-      if (i) ctx.lineTo(x, y);
-      else ctx.moveTo(x, y);
-    }
-    ctx.lineWidth = r * 0.22;
-    ctx.strokeStyle = 'rgba(200,255,170,0.45)';
-    ctx.stroke();
-    // diamond pattern along the spine
-    ctx.fillStyle = '#2f6e2a';
-    const every = Math.max(2, Math.round((r * 1.3) / step));
-    ctx.beginPath();
-    for (let i = every; i < n - 2; i += every) {
-      const w = snW[i] * 0.62;
-      const tx = -snNY[i], ty = snNX[i];
-      const ox = -snNX[i] * snW[i] * 0.08, oy = -snNY[i] * snW[i] * 0.08;
-      const x = snX[i] + ox, y = snY[i] + oy;
-      ctx.moveTo(x + tx * w * 1.1, y + ty * w * 1.1);
-      ctx.lineTo(x + snNX[i] * w, y + snNY[i] * w);
-      ctx.lineTo(x - tx * w * 1.1, y - ty * w * 1.1);
-      ctx.lineTo(x - snNX[i] * w, y - snNY[i] * w);
-      ctx.closePath();
-    }
-    ctx.fill();
-    ctx.fillStyle = '#a8dc6a';
-    ctx.beginPath();
-    for (let i = every; i < n - 2; i += every) {
-      const w = snW[i] * 0.2;
-      const x = snX[i] - snNX[i] * snW[i] * 0.08, y = snY[i] - snNY[i] * snW[i] * 0.08;
-      ctx.moveTo(x + w, y);
-      ctx.arc(x, y, w, 0, TAU);
-    }
+    ctx.translate(Wh * 0.36, Wh * 0.58);
+    outline();
+    ctx.fillStyle = 'rgba(0,0,0,0.33)';
     ctx.fill();
     ctx.restore();
-    bodyPath();
+
+    ctx.save();
+    outline();
+    ctx.fillStyle = '#7a3ccc';
+    ctx.fill();
+    ctx.clip();
+    // peach belly along the lower flank
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const k = 1.05 - 0.63 * snBW[i], o = snSG[i];
+      const x = snX[i] + snNX[i] * snW[i] * k * o, y = snY[i] + snNY[i] * snW[i] * k * o;
+      if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    }
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo(snX[i] + snNX[i] * snW[i] * 1.1 * snSG[i], snY[i] + snNY[i] * snW[i] * 1.1 * snSG[i]);
+    ctx.closePath();
+    ctx.fillStyle = '#ffc49a';
+    ctx.fill();
+    // belly plates
+    ctx.strokeStyle = 'rgba(150,70,60,0.4)';
+    ctx.lineWidth = Math.max(0.8, Wh * 0.1);
+    ctx.beginPath();
+    const plate = Math.max(Wh * 0.45, 2.2);
+    for (let i = 0, next = 0; i < n; i++) {
+      if (snA[i] < next) continue;
+      next += plate;
+      const k0 = 1.05 - 0.61 * snBW[i], o = snSG[i];
+      ctx.moveTo(snX[i] + snNX[i] * snW[i] * k0 * o, snY[i] + snNY[i] * snW[i] * k0 * o);
+      ctx.lineTo(snX[i] + snNX[i] * snW[i] * 1.1 * o, snY[i] + snNY[i] * snW[i] * 1.1 * o);
+    }
+    ctx.stroke();
+    // rose diamonds down the back
+    ctx.fillStyle = '#ff6fae';
+    ctx.strokeStyle = '#1e0a40';
+    ctx.lineWidth = Math.max(0.8, Wh * 0.1);
+    const dstep = Wh * 1.3;
+    for (let i = 0, next = Wh * 2.3; i < n; i++) {
+      if (snA[i] < next) continue;
+      next += dstep;
+      if (snA[i] > len * 0.9) break;
+      const w = snW[i], o = snSG[i];
+      const cx = snX[i] - snNX[i] * w * 0.3 * o * snBW[i], cy = snY[i] - snNY[i] * w * 0.3 * o * snBW[i];
+      const L = w * 0.95, Wd = w * 0.42;
+      ctx.beginPath();
+      ctx.moveTo(cx + snTX[i] * L, cy + snTY[i] * L);
+      ctx.lineTo(cx - snNX[i] * Wd, cy - snNY[i] * Wd);
+      ctx.lineTo(cx - snTX[i] * L, cy - snTY[i] * L);
+      ctx.lineTo(cx + snNX[i] * Wd, cy + snNY[i] * Wd);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    // light: shadow lower right, soft key light upper left, glossy streak
+    const lit = (ox, oy, wk, col) => {
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const x = snX[i] + ox * snW[i] + snNX[i] * snW[i] * wk, y = snY[i] + oy * snW[i] + snNY[i] * snW[i] * wk;
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      for (let i = n - 1; i >= 0; i--) ctx.lineTo(snX[i] + ox * snW[i] - snNX[i] * snW[i] * wk, snY[i] + oy * snW[i] - snNY[i] * snW[i] * wk);
+      ctx.closePath();
+      ctx.fillStyle = col;
+      ctx.fill();
+    };
+    lit(0.5, 0.65, 0.75, 'rgba(18,4,40,0.26)');
+    lit(-0.3, -0.4, 0.3, 'rgba(225,190,255,0.3)');
+    lit(-0.38, -0.5, 0.09, 'rgba(255,255,255,0.55)');
+    ctx.restore();
+    outline();
+    ctx.strokeStyle = '#1e0a40';
     ctx.lineWidth = lw;
-    ctx.strokeStyle = '#1f4a1c';
     ctx.stroke();
 
-    // head frame: +x points forward
+    // ---- head
     const hx = snX[0], hy = snY[0];
-    const fa = Math.atan2(snY[0] - snY[1], snX[0] - snX[1]);
-    ctx.translate(hx, hy);
-    ctx.rotate(fa);
-    snakeHead(ctx, r, t, clamp(opts.mouthOpen || 0, 0, 1), lw);
+    const j = Math.min(n - 1, Math.max(2, Math.round(Wh * 1.6 / step)));
+    const dx = hx - snX[j], dy = hy - snY[j], dl = Math.hypot(dx, dy) || 1;
+    const id = opts.id | 0;
+    let left = snFace[id] === undefined ? dx < 0 : snFace[id];
+    if (Math.abs(dx) > dl * 0.3) left = dx < 0;
+    snFace[id] = left;
+    const base = left ? Math.PI : 0, a = Math.atan2(dy, dx);
+    const rot = clamp(Math.atan2(Math.sin(a - base), Math.cos(a - base)), -0.95, 0.95);
+    const mo = clamp(opts.mouthOpen || 0, 0, 1), venom = clamp(opts.venom || 0, 0, 1);
+    let ex = SN_EXPR[opts.expr] === undefined ? null : opts.expr;
+    if (!ex) {
+      if (venom > 0.05) ex = 'snarl';
+      else if (mo > 0.6) ex = 'strike';
+      else if (mo > 0.15) ex = 'hiss';
+      else if (mod(t, 3.4) < 0.13) ex = 'blink';
+      else if (mod(t * 0.9, 2.4) < 0.5) ex = 'taste';
+      else ex = 'idle';
+    }
+    const size = Wh * 2 * 3.9;
+    const shake = ex === 'ouch' ? Math.sin(t * 60) * 0.06 : ex === 'dizzy' ? Math.sin(t * 9) * 0.1 : Math.sin(t * 2.6) * 0.04;
+    const bob = (Math.sin(t * 3.2) * 0.8 + (ex === 'hiss' || ex === 'strike' ? -1.5 : 0)) * (Wh / 7);
+    ctx.translate(hx, hy + bob);
+    ctx.rotate(rot + shake);
+    const img = snakeSheet();
+    if (img) ctx.drawImage(img, SN_EXPR[ex] * SN_CELL, (left ? 1 : 0) * SN_CELL, SN_CELL, SN_CELL, -size / 2, -size / 2, size, size);
+    else snakeHeadVec(ctx, size, left ? -1 : 1, ex);
+    if (venom > 0.05) snakeVenom(ctx, size, left ? -1 : 1, venom, t);
   } catch (e) {
     // art must never break the frame
   }
   ctx.restore();
 }
 
-function snakeHead(ctx, r, t, mouth, lw) {
-  // tongue flicks out in short bursts
-  const ph = mod(t * 1.3, 1);
-  if (ph < 0.38 && mouth < 0.3) {
-    const k = Math.sin((ph / 0.38) * Math.PI);
-    const L = r * 1.7 * k;
-    const wig = Math.sin(t * 40) * r * 0.12 * k;
-    const x0 = r * 1.5;
+// Green venom welling at the mouth: a swelling blob, a drip stretching down, and a spray when it spits.
+function snakeVenom(ctx, size, d, v, t) {
+  const mx = d * size * 0.2, my = size * 0.1, u = size / 20;
+  ctx.save();
+  ctx.lineJoin = 'round';
+  const blob = (x, y, rx, ry) => {
     ctx.beginPath();
-    ctx.moveTo(x0, 0);
-    ctx.lineTo(x0 + L * 0.7, wig);
-    ctx.lineTo(x0 + L, wig - r * 0.28 * k);
-    ctx.moveTo(x0 + L * 0.7, wig);
-    ctx.lineTo(x0 + L, wig + r * 0.28 * k);
-    ctx.lineWidth = Math.max(r * 0.12, 0.8);
-    ctx.strokeStyle = '#e8263c';
+    ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+    ctx.fillStyle = '#7bea38';
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, u * 0.28);
+    ctx.strokeStyle = '#1c6a14';
     ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.beginPath();
+    ctx.arc(x - rx * 0.3, y - ry * 0.3, Math.max(0.5, rx * 0.22), 0, TAU);
+    ctx.fill();
+  };
+  const L = u * (1 + 3.5 * v);
+  ctx.beginPath(); // strand from the lip
+  ctx.moveTo(mx - u * 0.6, my);
+  ctx.quadraticCurveTo(mx - u * 0.3, my + L * 0.6, mx, my + L);
+  ctx.quadraticCurveTo(mx + u * 0.3, my + L * 0.6, mx + u * 0.6, my);
+  ctx.closePath();
+  ctx.fillStyle = '#7bea38';
+  ctx.fill();
+  blob(mx, my + L, u * (0.8 + 0.5 * v), u * (0.95 + 0.5 * v));
+  for (let i = 0; i < 3; i++) { // flying droplets
+    const k = mod(t * 2.2 + i / 3, 1);
+    ctx.globalAlpha = (1 - k) * v;
+    blob(mx + d * (k * u * 7 + i * u), my + k * u * 5 + Math.sin(i * 2) * u, u * 0.55 * (1 - k * 0.4), u * 0.55 * (1 - k * 0.4));
   }
-  const jaw = mouth * 0.7;
-  // mouth interior shows between the jaws when gulping
-  if (mouth > 0.02) {
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.1, 0);
-    ctx.lineTo(r * 1.6 * Math.cos(jaw), -r * 1.6 * Math.sin(jaw) - r * 0.25);
-    ctx.lineTo(r * 1.6 * Math.cos(jaw), r * 1.6 * Math.sin(jaw) + r * 0.25);
-    ctx.closePath();
-    const mg = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.6);
-    mg.addColorStop(0, '#3a0710');
-    mg.addColorStop(0.5, '#a3203d');
-    mg.addColorStop(1, '#e0587a');
-    ctx.fillStyle = mg;
-    ctx.fill();
-  }
-  // each jaw is half the head, hinged near the back
-  for (const side of [-1, 1]) {
-    ctx.save();
-    ctx.translate(-r * 0.1, 0);
-    ctx.rotate(side * jaw);
-    ctx.translate(r * 0.1, 0);
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.9, 0);
-    ctx.bezierCurveTo(-r * 0.9, side * r * 1.0, r * 0.2, side * r * 1.38, r * 0.85, side * r * 1.1);
-    ctx.bezierCurveTo(r * 1.45, side * r * 0.85, r * 1.75, side * r * 0.35, r * 1.75, 0);
-    ctx.closePath();
-    const g = ctx.createLinearGradient(0, -side * r * 0.2, 0, side * r * 1.3);
-    g.addColorStop(0, '#6cc04d');
-    g.addColorStop(1, side > 0 ? '#9fd65e' : '#4a9a36');
-    ctx.fillStyle = g;
-    ctx.fill();
-    // head markings
-    ctx.beginPath();
-    ctx.ellipse(-r * 0.15, side * r * 0.35, r * 0.4, r * 0.18, 0, 0, TAU);
-    ctx.fillStyle = '#2f6e2a';
-    ctx.fill();
-    ctx.lineWidth = lw;
-    ctx.strokeStyle = '#1f4a1c';
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.9, 0);
-    ctx.bezierCurveTo(-r * 0.9, side * r * 1.0, r * 0.2, side * r * 1.38, r * 0.85, side * r * 1.1);
-    ctx.bezierCurveTo(r * 1.45, side * r * 0.85, r * 1.75, side * r * 0.35, r * 1.75, 0);
-    if (mouth > 0.02) ctx.lineTo(-r * 0.1, 0);
-    ctx.stroke();
-    // fangs when gulping
-    if (mouth > 0.1) {
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.moveTo(r * 1.15, 0);
-      ctx.lineTo(r * 1.32, -side * r * 0.42 * mouth);
-      ctx.lineTo(r * 1.45, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.lineWidth = lw * 0.6;
-      ctx.stroke();
-    }
-    // nostril
-    ctx.fillStyle = '#1f4a1c';
-    ctx.beginPath();
-    ctx.arc(r * 1.45, side * r * 0.26, r * 0.07, 0, TAU);
-    ctx.fill();
-    // eye: yellow with slit pupil
-    const ex = r * 0.72, ey = side * r * 0.62;
-    ctx.beginPath();
-    ctx.arc(ex, ey, r * 0.36, 0, TAU);
-    ctx.fillStyle = '#ffe14a';
-    ctx.fill();
-    ctx.lineWidth = lw * 0.8;
-    ctx.stroke();
-    ctx.fillStyle = '#14200f';
-    ctx.beginPath();
-    ctx.ellipse(ex + r * 0.05, ey, r * 0.08, r * 0.27, 0, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    glint(ctx, ex - r * 0.1, ey - r * 0.12, r * 0.08);
-    // brow ridge gives a sly look
-    ctx.beginPath();
-    ctx.moveTo(ex - r * 0.4, ey - side * r * 0.42);
-    ctx.lineTo(ex + r * 0.35, ey - side * r * 0.2);
-    ctx.lineWidth = lw * 1.1;
-    ctx.strokeStyle = '#1f4a1c';
-    ctx.stroke();
-    ctx.restore();
-  }
-  // midline seam (closed mouth)
-  if (mouth <= 0.02) {
-    ctx.beginPath();
-    ctx.moveTo(r * 1.15, 0);
-    ctx.lineTo(r * 1.75, 0);
-    ctx.lineWidth = lw * 0.7;
-    ctx.strokeStyle = '#1f4a1c';
-    ctx.stroke();
-  }
+  ctx.restore();
+}
+
+// Stand-in head while the sprite sheet loads: same purple, same pose.
+function snakeHeadVec(ctx, size, d, ex) {
+  const u = size / 100;
+  ctx.scale(d, 1);
+  ctx.beginPath();
+  ctx.moveTo(-34 * u, 2 * u);
+  ctx.bezierCurveTo(-34 * u, -14 * u, -10 * u, -22 * u, 12 * u, -14 * u);
+  ctx.bezierCurveTo(30 * u, -8 * u, 44 * u, 2 * u, 44 * u, 8 * u);
+  ctx.bezierCurveTo(30 * u, 20 * u, 0 * u, 20 * u, -34 * u, 2 * u);
+  ctx.closePath();
+  const g = ctx.createLinearGradient(0, -20 * u, 0, 20 * u);
+  g.addColorStop(0, '#9a62e8');
+  g.addColorStop(1, '#5a24a8');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.1, u * 1.6);
+  ctx.strokeStyle = '#1e0a40';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(-4 * u, -4 * u, 8 * u, 0, TAU);
+  ctx.fillStyle = ex === 'blink' ? '#7a3ccc' : '#e6f5a0';
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#1e0a40';
+  ctx.beginPath();
+  ctx.ellipse(-3 * u, -4 * u, 1.6 * u, 5 * u, 0, 0, TAU);
+  ctx.fill();
 }
