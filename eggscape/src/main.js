@@ -1959,7 +1959,7 @@ function drawLevels() {
       const sr = Math.min(8 * u, cw / 12);
       for (let k = 0; k < 3; k++) drawStar(ctx, x + cw / 2 + (k - 1) * sr * 2.6, y + chh * 0.72, sr, k < s);
     } else drawPadlock(x + cw / 2, y + chh * 0.72, Math.min(10 * u, cw / 10), 'rgba(255,255,255,0.55)');
-    if (L.boss) ui.text('BOSS', x + cw / 2, y + chh * 0.12, { size: Math.min(11 * u, chh * 0.13), align: 'center', color: open ? '#ffe066' : 'rgba(255,224,102,0.5)', group: 'btn:lv:' + i, tag: 'lvboss' + i });
+    if (L.boss) ui.text('BOSS', x + cw / 2, y + chh * 0.12, { size: Math.min(12 * u, chh * 0.13), align: 'center', color: open ? '#fff' : 'rgba(255,255,255,0.5)', stroke: 'rgba(90,20,10,0.75)', group: 'btn:lv:' + i, tag: 'lvboss' + i });
   });
 }
 
