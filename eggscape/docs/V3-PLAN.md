@@ -132,3 +132,14 @@ but never placed across the level curve, and nothing checked coverage. Fix the p
 **Standing rule (mykee, 2026-11-01 19:26): animation first.** Every new character, creature or animated thing gets a
 dedicated animation pass before it enters any level: frame strips of every move at real in-game scale next to the rings,
 reviewed critically, and shown to mykee. Only then is it wired into gameplay.
+
+## v3.3 backlog (mykee, 2026-11-01 19:56)
+
+| # | Item | Plan |
+|---|------|------|
+| M1 | Salamander approved | Fix brows/grin/lava pit, wire into L21–25 with the aimable fire-breath trait |
+| M2 | Crawler family on the salamander rig, each with its own advantage + disadvantage | Frost gecko (freezes the ring it walks: fast slides, overshoot risk; fire melts it off), thorn-back lizard (lays thorns; stone egg flips it), chameleon (near-invisible, tongue steals orbs; fox curse orb makes it spit them out). Strips on the review page first |
+| M3 | Thorns not animated | Living thorns: sway, timed retract/extend, crumble when burned, thorn vines that grow across a gap (urgency) |
+| M4 | Game slows after the snake (L11+) | A chaser in every world, 5–7 rings, earlier mechanics mixed in; keep "lock in and go" pressure |
+| M5 | 35 levels too few | 50 levels = 10 worlds × 5; 3 new worlds built around the new crawlers and chick kinds |
+| M6 | Full app later | Parked by mykee; HTML first |
