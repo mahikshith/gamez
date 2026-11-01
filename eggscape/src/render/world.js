@@ -2,6 +2,7 @@
 import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
 import { drawChick } from './characters.js';
 import { drawEggPower } from './powers.js';
+import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawGrate, drawOneWayMark } from './v3art.js';
 import { drawSkinPreview } from '../ui/store.js';
 
 let skin = 'classic';
@@ -23,31 +24,6 @@ function eggPath(ctx, s = 1) {
   ctx.closePath();
 }
 
-// Crack polylines per egg, deterministic.
-const crackCache = new Map();
-function crackLines(seed) {
-  if (crackCache.has(seed)) return crackCache.get(seed);
-  const r = rng(seed);
-  const lines = [];
-  for (let k = 0; k < 3; k++) {
-    const t0 = (k / 3) * TAU + r() * 1.2;
-    const st = eggPoint(t0);
-    const pts = [{ x: st.x * 0.98, y: st.y * 0.98 }];
-    let x = st.x, y = st.y;
-    const dx = -st.x, dy = -st.y;
-    const n = 5 + ((r() * 3) | 0);
-    for (let i = 0; i < n; i++) {
-      x += dx * 0.13 + (r() - 0.5) * 0.08;
-      y += dy * 0.13 + (r() - 0.5) * 0.08;
-      pts.push({ x, y });
-    }
-    const branch = pts[2 + ((r() * 2) | 0)];
-    lines.push({ pts, branch: [branch, { x: branch.x + (r() - 0.5) * 0.14, y: branch.y + (r() - 0.5) * 0.14 }] });
-  }
-  crackCache.set(seed, lines);
-  return lines;
-}
-
 function annulus(ctx, ri, ro, a0, a1) {
   ctx.beginPath();
   ctx.arc(0, 0, ro, a0, a1);
@@ -60,7 +36,7 @@ function liveArcs(ring) {
   const arcs = [];
   let cur = null;
   for (const s of ring.segs) {
-    if (!s.alive) { cur = null; continue; }
+    if (!s.alive || s.melt > 0) { cur = null; continue; } // v3: a lava-melted hole draws as a gap
     if (cur && Math.abs(cur[1] - s.a0) < 1e-4) cur[1] = s.a1;
     else { cur = [s.a0, s.a1]; arcs.push(cur); }
   }
@@ -674,7 +650,10 @@ export function drawEgg(ctx, egg, t, k) {
   }
   ctx.save();
   ctx.translate(p.x, p.y);
-  ctx.rotate(a);
+  // v3: special eggs are bigger/smaller; a badly cracked egg trembles
+  const sc = KIND_S[egg.kind] || 1;
+  ctx.rotate(a + (egg.cracks >= 2 ? Math.sin(t * 17 + egg.seed) * 0.05 : 0));
+  if (sc !== 1) ctx.scale(sc, sc);
   // shell
   eggPath(ctx);
   let g;
@@ -696,7 +675,13 @@ export function drawEgg(ctx, egg, t, k) {
   }
   ctx.fillStyle = g;
   ctx.fill();
-  if (skin !== 'classic' && !(egg.stone > 0) && !egg.golden && !egg.fire) {
+  if (egg.kind && !(egg.stone > 0) && !egg.golden) {
+    ctx.save();
+    ctx.scale(px / sc, -px / sc);
+    drawEggKind(ctx, egg.kind, 0, 0, (EGG_W / 2) * sc * k, (EGG_H / 2) * sc * k, 0, t, 0);
+    ctx.restore();
+    eggPath(ctx);
+  } else if (skin !== 'classic' && !(egg.stone > 0) && !egg.golden && !egg.fire) {
     ctx.save();
     ctx.scale(px, -px);
     drawSkinPreview(ctx, skin, 0, 0, EGG_H * k, t);
@@ -728,31 +713,72 @@ export function drawEgg(ctx, egg, t, k) {
     ctx.lineWidth = 0.035;
     ctx.stroke();
   }
-  // cracks
+  // v3 cracks (G34): a bold cartoon zig-zag across the top of the shell. 1 = half way across,
+  // 2 = all the way plus a crack down the side, a missing chip and a tremble.
   if (egg.cracks > 0) {
-    const lines = crackLines(egg.seed);
-    ctx.strokeStyle = '#4a3420';
-    ctx.lineWidth = Math.max(1.2 * px, 0.012);
+    const n = Math.min(egg.cracks, 3), m = egg.seed & 1 ? 1 : -1, y = 0.12;
+    const zig = [];
+    const x1 = n >= 2 ? 0.2 : 0.05;
+    for (let i = 0, N = n >= 2 ? 8 : 5; i <= N; i++) { const x = -0.2 + ((x1 + 0.2) * i) / N; zig.push([m * x, y + (i % 2 ? 0.04 : -0.02) + (i === N ? 0.01 : 0)]); }
+    const side = [[m * 0.11, y + 0.02], [m * 0.15, y - 0.06], [m * 0.12, y - 0.1], [m * 0.17, y - 0.19]];
     ctx.lineJoin = 'round';
-    for (let i = 0; i < Math.min(egg.cracks, 3); i++) {
-      const L = lines[i];
+    ctx.lineCap = 'round';
+    ctx.save();
+    eggPath(ctx);
+    ctx.clip();
+    if (n >= 2) {
+      ctx.fillStyle = 'rgba(80,50,25,0.14)';
+      ctx.fillRect(-0.3, -0.35, 0.6, 0.7);
       ctx.beginPath();
-      L.pts.forEach((q, j) => (j ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
-      ctx.moveTo(L.branch[0].x, L.branch[0].y);
-      ctx.lineTo(L.branch[1].x, L.branch[1].y);
+      ctx.moveTo(m * -0.06, y + 0.035);
+      ctx.lineTo(m * 0.0, y + 0.1);
+      ctx.lineTo(m * 0.05, y + 0.03);
+      ctx.lineTo(m * 0.0, y - 0.005);
+      ctx.closePath();
+      ctx.fillStyle = '#4a2e15';
+      ctx.fill();
+    }
+    for (const pass of [0, 1]) {
+      ctx.strokeStyle = pass ? '#3a2210' : 'rgba(255,250,235,0.95)';
+      ctx.lineWidth = pass ? Math.max(2.4 * px, 0.024) : Math.max(4.6 * px, 0.046);
+      ctx.beginPath();
+      zig.forEach(([x, yy], j) => (j ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)));
+      if (n >= 2) side.forEach(([x, yy], j) => (j ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)));
       ctx.stroke();
     }
+    ctx.restore();
+  }
+  // v3: fox curse tints the shell orange; the guardian feather wraps it in a cool shimmer
+  if (egg.curse > 0) {
+    eggPath(ctx);
+    ctx.fillStyle = `rgba(255,120,30,${0.22 + 0.08 * Math.sin(t * 9)})`;
+    ctx.fill();
+  }
+  if (egg.guard > 0) {
+    eggPath(ctx, 1.16);
+    ctx.strokeStyle = `rgba(140,230,255,${egg.guard < 1.5 ? 0.4 + 0.4 * Math.sin(t * 20) : 0.85})`;
+    ctx.lineWidth = Math.max(2.5 * px, 0.03);
+    ctx.stroke();
   }
   ctx.restore();
 
   // power overlay (powers.js, local y-down): flames stay upright, shells turn with the egg
-  const pw = egg.fire > 0 ? egg.fireKind : egg.stone > 0 ? 'stone' : egg.bubbleFix ? 'bubble' : egg.water > 0 ? 'water' : egg.zap ? 'thunder' : egg.golden ? 'golden' : null;
+  const pw = egg.fire > 0 ? egg.fireKind : egg.rockskin > 0 && egg.stone > 0 ? 'rockskin' : egg.stone > 0 ? 'stone' : egg.bubbleFix ? 'bubble' : egg.water > 0 ? 'water' : egg.zap ? 'thunder' : egg.golden ? 'golden' : null;
   if (pw) {
     ctx.save();
     ctx.translate(p.x, p.y);
     if (egg.fire <= 0) ctx.rotate(a);
     ctx.scale(px, -px);
-    drawEggPower(ctx, pw, t, EGG_H * k);
+    drawEggPower(ctx, pw, t, EGG_H * k * sc);
+    ctx.restore();
+  }
+  // v3 global-power overlays (art in powers.js)
+  for (const id of [egg.guard > 0 && 'feather', egg.curse > 0 && 'foxcurse']) {
+    if (!id) continue;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(px, -px);
+    drawEggPower(ctx, id, t, EGG_H * k * sc);
     ctx.restore();
   }
   if (egg.zap) {
@@ -774,6 +800,7 @@ export function drawEgg(ctx, egg, t, k) {
   const sp = Math.hypot(v.x, v.y);
   ctx.save();
   ctx.translate(p.x, p.y);
+  if (sc !== 1) ctx.scale(sc, sc);
   const look = sp > 0.3 ? { x: (v.x / sp) * 0.02, y: (v.y / sp) * 0.02 } : { x: 0, y: 0 };
   const scared = sp > 3.2 || egg.fear > 0;
   const blink = Math.sin(t * 1.3 + egg.seed) > 0.985;
@@ -1036,6 +1063,7 @@ export { eggPath };
 export function drawDropGuide(ctx, ring, nestX, nestW, t) {
   const ang = ring.body.getAngle();
   for (const g of ring.gaps) {
+    if ((g.curtain && g.curtain.alive) || g.grate) continue; // v3: not a way down for most eggs
     const th = ang + g.a;
     const s = Math.sin(th), c = Math.cos(th);
     if (s > -0.25) continue;
@@ -1094,4 +1122,165 @@ export function drawBoltWarn(ctx, x, y, t) {
   ctx.beginPath();
   ctx.arc(x, y, 0.3, 0, TAU);
   ctx.stroke();
+}
+
+// ---------- v3 physics: drawing ----------
+const KIND_S = { ostrich: 1.3, quail: 0.75, duck: 1 };
+
+// Run draw() in the art helpers' local y-down pixel space, at ring angle `ang` (radians, world) and radius
+// rad: local +x runs along the ring counter-clockwise, local +y points out of the ring.
+function onRing(ctx, k, rad, ang, draw) {
+  ctx.save();
+  ctx.translate(rad * Math.cos(ang), rad * Math.sin(ang));
+  ctx.rotate(ang + Math.PI / 2);
+  ctx.scale(1 / k, -1 / k);
+  draw();
+  ctx.restore();
+}
+
+// Ring extras: thorn curtains, grates, molten holes, one-way chevrons. ctx in world space (not rotated).
+export function drawV3Ring(ctx, ring, k, t) {
+  const A = ring.body.getAngle(), r = ring.r;
+  for (const g of ring.gaps) {
+    if (g.grate) onRing(ctx, k, r, A + g.a, () => drawGrate(ctx, 0, 0, g.len * k, RING_TH * k, t));
+    const C = g.curtain;
+    if (C && (C.alive || C.burn < 1)) {
+      onRing(ctx, k, r - RING_TH / 2 - 0.05, A + g.a, () => drawThornCurtain(ctx, 0, 0, g.len * k, (RING_TH + 0.22) * k, t, C.alive ? C.burn : 1));
+      if (C.burning && C.alive) {
+        // flames eat it from the bottom up
+        const q = { x: r * Math.cos(A + g.a), y: r * Math.sin(A + g.a) };
+        ctx.save();
+        ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 30);
+        const gr = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, g.len * 0.7);
+        gr.addColorStop(0, 'rgba(255,220,90,0.9)');
+        gr.addColorStop(1, 'rgba(255,90,20,0)');
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, g.len * 0.7, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+  // molten holes: runs of melted segments
+  let run = null;
+  const holes = [];
+  for (const sg of ring.segs) {
+    if (sg.melt > 0) { if (run && Math.abs(run.a1 - sg.a0) < 1e-4) { run.a1 = sg.a1; run.m = Math.max(run.m, sg.melt); } else holes.push((run = { a0: sg.a0, a1: sg.a1, m: sg.melt })); }
+    else run = null;
+  }
+  for (const h of holes) onRing(ctx, k, r, A + (h.a0 + h.a1) / 2, () => drawMeltHole(ctx, 0, 0, (h.a1 - h.a0) * r * k, RING_TH * k, t, Math.min(1, h.m / 5)));
+  // one-way chevrons on the solid parts, every ~1.3 m
+  if (ring.oneway) {
+    const n = Math.max(3, Math.round((TAU * r) / 1.3));
+    for (let i = 0; i < n; i++) {
+      const la = (i / n) * TAU + 0.2;
+      if (!liveAtV3(ring, la)) continue;
+      onRing(ctx, k, r, A + la, () => drawOneWayMark(ctx, 0, 0, RING_TH * k * 1.25, ring.oneway, t));
+    }
+  }
+}
+function liveAtV3(ring, a) {
+  a = ((a % TAU) + TAU) % TAU;
+  for (const s of ring.segs) if (s.alive && !(s.melt > 0) && ((a >= s.a0 && a < s.a1) || (a + TAU >= s.a0 && a + TAU < s.a1))) return true;
+  return false;
+}
+
+// Lava rocks: a target mark on the ring while one flies in (fair warning), the rock growing as it
+// comes out of the backdrop, then sitting on the ring glowing.
+export function drawLavaRocks(ctx, sim, k, t) {
+  for (const R of sim.lavaRocks) {
+    const ring = sim.rings[R.ri], q = sim.rockAt(R);
+    if (R.ph === 'fly') {
+      const f = Math.min(1, R.t / 1.1);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, 0.42 - 0.15 * f, 0, TAU);
+      ctx.fillStyle = `rgba(255,90,20,${0.12 + 0.18 * f})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255,214,90,${0.6 + 0.4 * Math.sin(t * 16)})`;
+      ctx.lineWidth = Math.max(3 / k, 0.035);
+      ctx.setLineDash([0.08, 0.06]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      // smoke trail back toward where it came from
+      ctx.strokeStyle = 'rgba(60,40,35,0.35)';
+      ctx.lineWidth = 0.12 * (0.4 + 0.6 * f);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(R.x, R.y);
+      ctx.lineTo(R.x + (R.x0 - R.x) * 0.15, R.y + (R.y0 - R.y) * 0.15 + 0.2);
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(R.x, R.y);
+      ctx.scale(1 / k, -1 / k);
+      drawLavaRock(ctx, 0, 0, 0.2 * k * (0.4 + 0.6 * f), t, 1);
+      ctx.restore();
+    } else {
+      // sitting: the ring under it glows as it melts
+      const heat = 1 - Math.min(1, R.t / 1.2) * 0.3;
+      ctx.save();
+      const gr = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, 0.6);
+      gr.addColorStop(0, `rgba(255,150,40,${0.55 * heat})`);
+      gr.addColorStop(1, 'rgba(255,80,20,0)');
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, 0.6, 0, TAU);
+      ctx.fill();
+      ctx.translate(q.x, q.y);
+      ctx.scale(1 / k, -1 / k);
+      drawLavaRock(ctx, 0, 0, 0.2 * k * (1 - 0.25 * Math.max(0, R.t - 0.8) / 0.4), t, heat);
+      ctx.restore();
+    }
+    void ring;
+  }
+}
+
+export function drawIcicles(ctx, sim, k, t) {
+  for (const c of sim.icicles) {
+    ctx.save();
+    ctx.translate(c.x + (c.warn > 0 ? Math.sin(t * 50) * 0.015 : 0), c.y);
+    if (c.warn > 0) {
+      // shimmer before it drops
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 25);
+      ctx.strokeStyle = 'rgba(200,240,255,0.9)';
+      ctx.lineWidth = Math.max(2 / k, 0.02);
+      ctx.beginPath();
+      ctx.arc(0, 0, 0.3, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.scale(1 / k, -1 / k);
+    drawIcicle(ctx, 0, 0, 0.42 * k, t);
+    ctx.restore();
+  }
+}
+
+// Portal suction field (G18): faint spiral streaks turning in toward the mouth.
+export function drawPortalPull(ctx, pt, t) {
+  const R = pt.pull;
+  if (!R) return;
+  ctx.save();
+  ctx.translate(pt.ax, pt.ay);
+  const g = ctx.createRadialGradient(0, 0, 0.3, 0, 0, R);
+  g.addColorStop(0, 'rgba(110,80,255,0.32)');
+  g.addColorStop(1, 'rgba(110,80,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, TAU);
+  ctx.fill();
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const ph = ((t * 0.7 + i / 6) % 1); // each streak spirals inward and fades in
+    ctx.strokeStyle = `rgba(200,185,255,${0.85 * Math.sin(Math.PI * ph)})`;
+    ctx.lineWidth = 0.035;
+    ctx.beginPath();
+    for (let s = 0; s <= 8; s++) {
+      const f = s / 8, rr = R * (1 - ph) * (1 - f * 0.35) + 0.3 * ph, an = (i * TAU) / 6 + t * 1.6 + f * 0.9 + ph * 2.2;
+      if (s) ctx.lineTo(rr * Math.cos(an), rr * Math.sin(an));
+      else ctx.moveTo(rr * Math.cos(an), rr * Math.sin(an));
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
 }
