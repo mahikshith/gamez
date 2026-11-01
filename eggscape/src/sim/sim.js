@@ -1135,7 +1135,7 @@ export class Sim {
         const ring = this.rings[ec < hc ? hc - 1 : hc], ra = ring.body.getAngle();
         let gap = null, gd = 1e9;
         for (const g of ring.gaps) {
-          if (g.shut && g.o < 0.5) continue;
+          if (!this.snakeGap(g)) continue;
           const d = Math.abs(wrap(ra + g.a - S.a));
           if (d < gd) { gd = d; gap = g; }
         }
@@ -1160,6 +1160,11 @@ export class Sim {
     if (T.length < 2 || Math.hypot(T[1].x - x, T[1].y - y) > 0.05) T.unshift({ x, y });
     else { T[0].x = x; T[0].y = y; }
     if (T.length > Math.ceil(S.len / 0.05) + 1) T.length = Math.ceil(S.len / 0.05) + 1;
+  }
+
+  // a gap the snake can slither through: not a shut door, a live thorn curtain or a grate
+  snakeGap(g) {
+    return !(g.shut && g.o < 0.5) && !(g.curtain && g.curtain.alive) && !g.grate;
   }
 
   // A live barrier in the snake's channel that its head would run into (moving by da). A barrier that
@@ -1505,7 +1510,7 @@ export class Sim {
     let la = Math.atan2(y, x) - ring.body.getAngle();
     la = ((la % TAU) + TAU) % TAU;
     for (const g of ring.segs) if (g.alive && !(g.melt > 0) && ((la >= g.a0 && la < g.a1) || (la + TAU >= g.a0 && la + TAU < g.a1))) return true;
-    for (const g of ring.gaps) if (g.shut && g.o < 0.5 && Math.abs(wrap(la - g.a)) < g.len / (2 * ring.r)) return true;
+    for (const g of ring.gaps) if (!this.snakeGap(g) && Math.abs(wrap(la - g.a)) < g.len / (2 * ring.r)) return true; // doors, curtains, grates
     return false;
   }
 
