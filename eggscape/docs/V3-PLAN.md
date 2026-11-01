@@ -104,3 +104,9 @@ Stars open the next environment (Angry Birds style) at a low bar (about half the
    types, grates, thorn curtains, lava rocks.
 6. Levels (Opus, after 4–5): 7 environments × 5 levels, generator + planner, validated on every mode.
 7. Review + QA (Sonnet): bugs, overlap check, screenshots of every new thing.
+
+## Follow-up (mykee, 2026-11-01 12:35)
+
+- Offered reference images (M365 image generator). Prompts sent for: snake sheet, eagle, chick/hen/fox moods, 7 world key art, item sheet. Use as direction only; game art stays drawn in code.
+- **More physics fun / crazy ideas** (for the level designer, pick the ones that fit an environment): trampolines, fans that blow eggs sideways, see-saws, balloons that lift an egg, a catapult that flings an egg up a ring, conveyor ring sections, chain reactions (one falling egg knocks others loose).
+- **Harder must never mean "quit"**: sawtooth curve (each boss is followed by a breather level), every hard spot has a visible way out (planner-verified), Easy stays gentle, hints and boosters on hand, the fail card shows how close you got.
