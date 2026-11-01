@@ -23,6 +23,7 @@ const HEAD = {
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : def; };
 const dev = args.includes('--dev');
+const test = args.includes('--test'); // playtest build: everything unlocked, separate save
 const targetArg = opt('--target', 'all');
 const entry = resolve(ROOT, opt('--entry', 'src/main.js'));
 const gdId = process.env.GD_GAME_ID || 'REPLACE_WITH_GD_GAME_ID';
@@ -59,6 +60,7 @@ async function bundle(portal, { minify, sourcemap }) {
       __PORTAL__: JSON.stringify(portal),
       __GD_ID__: JSON.stringify(gdId),
       __DEV__: JSON.stringify(!minify),
+      __TEST__: JSON.stringify(test),
     },
     logLevel: 'warning',
   });
@@ -106,9 +108,10 @@ async function buildOne(label, portal, { minify, sourcemap, zip }) {
 }
 
 const rows = [];
-const list = targetArg === 'all' ? TARGETS : [targetArg];
+const list = test ? [] : targetArg === 'all' ? TARGETS : [targetArg];
 mkdirSync(join(ROOT, 'dist'), { recursive: true });
 for (const t of list) rows.push(await buildOne(t, t, { minify: !dev, sourcemap: false, zip: true }));
+if (test) rows.push(await buildOne('test', 'web', { minify: true, sourcemap: false, zip: false }));
 if (dev) rows.push(await buildOne('dev', 'web', { minify: false, sourcemap: true, zip: false }));
 
 console.log('\ntarget              index.html        gzip          zip');

@@ -3,14 +3,15 @@
 // a missing/blocked SDK (ad blocker), environment 'disabled', or an exception must
 // never block or crash the game. Ads fail open (game continues), rewarded fails closed (false).
 
-/* global __PORTAL__, __GD_ID__, __DEV__, ytgame */
+/* global __PORTAL__, __GD_ID__, __DEV__, __TEST__, ytgame */
 const NAME = typeof __PORTAL__ !== 'undefined' ? __PORTAL__ : 'web';
 const GD_ID = typeof __GD_ID__ !== 'undefined' ? __GD_ID__ : 'REPLACE_WITH_GD_GAME_ID';
 const DEV = typeof __DEV__ !== 'undefined' ? !!__DEV__ : false;
 
 const INIT_TIMEOUT = 4000;
 const AD_TIMEOUT = 120000; // absolute safety net: an ad can never hold the game hostage
-const SAVE_KEY = 'eggscape_save';
+// the test build keeps its own save so it never touches real progress
+const SAVE_KEY = typeof __TEST__ !== 'undefined' && __TEST__ ? 'eggscape_test_save' : 'eggscape_save';
 const SAVE_DEBOUNCE = 500;
 
 const SDK_URL = {

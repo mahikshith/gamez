@@ -19,6 +19,8 @@ import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
+// playtest build (build.mjs --test): every level, booster and skin unlocked, plenty of coins
+const TEST = typeof __TEST__ !== 'undefined' && __TEST__;
 
 // ---------------------------------------------------------------- save
 const SAVE_VER = 2; // v2 levels: progress resets; settings, wallet and discoveries carry over
@@ -1545,7 +1547,7 @@ function drawTitle() {
   const ty = Math.max(16 * u + logoS / 2, Math.min(H_ * 0.2, 70 * u));
   ui.text('EGGSCAPE', cx, ty, { size: logoS, align: 'center', color: '#fff3d6', stroke: '#5a2e0e', strokeW: logoS * 0.2, tag: 'title:logo', maxW: W_ - 24 * u });
   const subY = ty + logoS * 0.5 + 16 * u;
-  ui.text('Get the eggs out of the fox’s vault', cx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(0,0,0,0.6)', tag: 'title:sub', maxW: W_ - 32 * u });
+  ui.text(TEST ? 'Test build: everything unlocked' : 'Get the eggs out of the fox’s vault', cx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(0,0,0,0.6)', tag: 'title:sub', maxW: W_ - 32 * u });
   const bw = Math.min(300 * u, W_ - 48 * u);
   // Play, then Levels | Shop, then the difficulty row
   const by = Math.min(H_ - 186 * u, subY + 190 * u);
@@ -1699,6 +1701,13 @@ async function boot() {
       else if (s && s.v === 1) loadSave({ sfx: s.sfx, music: s.music, mode: s.mode, calm: s.calm, wallet: s.wallet, seen: s.seen });
     }
   } catch (_) { save = defaultSave(); }
+  if (TEST) {
+    const owned = {};
+    for (const id of E.BOOSTER_ORDER) owned[id] = E.MAX_OWNED;
+    save.unlocked = LEVELS.length;
+    save.wallet = E.sanitizeWallet({ ...save.wallet, coins: Math.max(save.wallet.coins, 99999), owned, skins: E.SKIN_ORDER });
+    persist();
+  }
   applyAudioSettings();
   // title runs over the live first level
   startLevel(Math.min(LEVELS.length - 1, save.unlocked - 1));
