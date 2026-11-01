@@ -143,3 +143,12 @@ reviewed critically, and shown to mykee. Only then is it wired into gameplay.
 | M4 | Game slows after the snake (L11+) | A chaser in every world, 5–7 rings, earlier mechanics mixed in; keep "lock in and go" pressure |
 | M5 | 35 levels too few | 50 levels = 10 worlds × 5; 3 new worlds built around the new crawlers and chick kinds |
 | M6 | Full app later | Parked by mykee; HTML first |
+
+## v3.3 additions (mykee, 2026-11-01 19:59)
+
+| # | Item | Plan |
+|---|------|------|
+| M7 | Hen floats beside the nest | Done first pass: contact shadow, straw at her feet, idle pecks. Next: a fully animated code-drawn hen (walks, pecks, flaps, cheers), via the review page |
+| M8 | Sea creatures and frogs | Reef world (theme exists): octopus (tentacles on the snake's chain body: grabs an egg and holds it until inked/zapped), fish schools (current that pushes eggs), frog (hops across rings through gaps, tongue snatches orbs or chicks; it's the only creature that crosses rings). Animation-first |
+| M9 | Snake vs salamander style | Snake head is a soft raster sprite, salamander is crisp cel-shaded code art: redraw the snake head in code in the same style, keeping the face mykee likes; compare side by side on the review page |
+| M10 | Shapes beyond circles | Prototype square, hex and spiral vaults on the same physics, plus a "tilt the whole vault" mechanic; one prototype level each on the review page before any level set |
