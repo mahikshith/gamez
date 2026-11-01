@@ -1353,7 +1353,7 @@ export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
     const wl = 0.22 * 7 / Wh;
     for (let i = 1; i < n; i++) {
       const f = snA[i] / len;
-      const w = Math.sin(t * 4.5 - snA[i] * wl) * Wh * 0.17 * Math.min(1, f * 4);
+      const w = Math.sin(t * 6 - snA[i] * wl) * Wh * 0.36 * Math.min(1, f * 2.5); // a clear S-wave running down the body
       tmpX[i] = snX[i] + snNX[i] * w;
       tmpY[i] = snY[i] + snNY[i] * w;
     }
@@ -1487,7 +1487,11 @@ export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
     const shake = ex === 'ouch' ? Math.sin(t * 60) * 0.06 : ex === 'dizzy' ? Math.sin(t * 9) * 0.1 : Math.sin(t * 2.6) * 0.04;
     const bob = (Math.sin(t * 3.2) * 0.8 + (ex === 'hiss' || ex === 'strike' ? -1.5 : 0)) * (Wh / 7);
     ctx.translate(hx, hy + bob);
-    ctx.rotate(rot + shake);
+    // head life: it sways with the body wave, bites squash and stretch it, a hiss rears it up
+    const wob = Math.sin(t * 6), chewing = ex === 'chew0' || ex === 'chew1';
+    ctx.rotate(rot + shake + wob * 0.07 + (ex === 'hiss' || ex === 'snarl' ? Math.sin(t * 31) * 0.035 : 0));
+    const pulse = chewing ? Math.sin(t * 25) : ex === 'hiss' || ex === 'snarl' ? Math.sin(t * 14) * 0.5 : wob * 0.35;
+    ctx.scale(1 + (chewing ? 0.06 : 0.03) * pulse + (ex === 'hiss' || ex === 'snarl' ? 0.05 : 0), 1 - (chewing ? 0.09 : 0.035) * pulse + (ex === 'hiss' || ex === 'snarl' ? 0.05 : 0));
     const img = snakeSheet();
     if (img) ctx.drawImage(img, SN_EXPR[ex] * SN_CELL, (left ? 1 : 0) * SN_CELL, SN_CELL, SN_CELL, -size / 2, -size / 2, size, size);
     else snakeHeadVec(ctx, size, left ? -1 : 1, ex);
