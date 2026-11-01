@@ -110,3 +110,21 @@ Stars open the next environment (Angry Birds style) at a low bar (about half the
 - Offered reference images (M365 image generator). Prompts sent for: snake sheet, eagle, chick/hen/fox moods, 7 world key art, item sheet. Use as direction only; game art stays drawn in code.
 - **More physics fun / crazy ideas** (for the level designer, pick the ones that fit an environment): trampolines, fans that blow eggs sideways, see-saws, balloons that lift an egg, a catapult that flings an egg up a ring, conveyor ring sections, chain reactions (one falling egg knocks others loose).
 - **Harder must never mean "quit"**: sawtooth curve (each boss is followed by a breather level), every hard spot has a visible way out (planner-verified), Easy stays gentle, hints and boosters on hand, the fail card shows how close you got.
+
+## v3.2 backlog (mykee, 2026-11-01 18:56) — nothing here may be skipped
+
+Audit before planning (levels.js feature scan): gears appear in **one** level (L29); the chick only via the gold flame;
+the salamander is only a cropped portrait on the L25 intro card, never in play. Root cause: mechanics were built
+but never placed across the level curve, and nothing checked coverage. Fix the process, not just the levels.
+
+| # | Item | Plan |
+|---|------|------|
+| K1 | Gears missing from early levels | Teach a single gear pair at L2–L3, two pairs by L6–L8, gear chained to a one-way ring later; gears recur in every environment |
+| K2 | Coverage check | tools/coverage.mjs prints a mechanic × level matrix; rule: every mechanic is taught alone in one level, then reused in ≥3 later levels; build fails the check if not |
+| K3 | Boss intro cards are cut-off M365 crops | Show the full card image in a frame, or nothing. No M365 crop is ever used as an in-level actor |
+| K4 | Salamander missing in Volcano | Real code-drawn salamander creature (L21–25, boss L25), with its own trait unlike the snake; frame strip approved before it ships |
+| K5 | Chick kinds with powers (Angry Birds) | Egg look tells which chick it hatches; one tap = one power. Candidates: glow bomb (flash stuns predators), dash (very fast, knocks snakes), flier (lifts off, clears a thorn curtain), big (puffs up, blocks a channel), ice breaker (shatters an ice ring section) |
+| K6 | Birds that break rings | Ice rings / ice walls that only the ice-breaker chick (or ice orb) can shatter |
+| K7 | More hooking ideas + real research | Research doc eggscape-v32-chicks-hooks.md; Claude brings its own ranked ideas |
+| K8 | Eagle | Rebuilt with real anatomy and a purpose (in progress, v3.1) |
+| K9 | Magnet | Magnetic field effect, no tether line (in progress, v3.1) |
