@@ -1017,7 +1017,13 @@ function predEvent(ev, fx) {
   switch (ev.type) {
     case 'snakeEat':
       audio.play('squish', { intensity: 0.8, pitch: 0.7 });
-      fx.chips(ev.x, ev.y, '#f3e8d2', 6, 1.6);
+      if (!ev.chick) fx.chips(ev.x, ev.y, '#f3e8d2', 6, 1.6);
+      break;
+    case 'chickFlee':
+      // the bait got away: feathers, a cheep, no yolk and no lost star
+      audio.play('egg_save', { pitch: 1.6, vol: 0.6 });
+      fx.chips(ev.x, ev.y, '#ffe066', 10, 2.4);
+      popup(ev.x, ev.y + 0.5, 'The chick flew off!', { color: '#ffe066', size: 18, life: 1.3 });
       break;
     case 'snakeHiss':
       audio.play('lava_sizzle', { vol: 0.5, pitch: 1.6 });
@@ -1531,7 +1537,7 @@ function drawHUD() {
   const icon = 24 * u * Math.min(1, 4.5 / slots);
   const traySpace = icon * 0.95;
   const states = [];
-  for (const e of sim.eggs) states.push(e.saved ? 'saved' : e.alive ? 'alive' : 'broken');
+  for (const e of sim.eggs) if (!e.fled) states.push(e.saved ? 'saved' : e.alive ? 'alive' : 'broken'); // a fled chick leaves the tray
   while (states.length < slots) states.push('empty');
   const trayW = slots * traySpace;
   const needTxt = `need ${st.target}`;

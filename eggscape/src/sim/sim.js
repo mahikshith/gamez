@@ -1125,7 +1125,8 @@ export class Sim {
             if (T.length > 6) { const q = T[5]; S.rad = Math.hypot(q.x, q.y); S.a = Math.atan2(q.y, q.x); T.splice(0, 5); }
             this.emit('snakeRecoil', { x: p.x, y: p.y, id: S.id });
           } else {
-            this.breakEgg(egg, 'snake');
+            if (egg.chick) this.chickFlee(egg, 'snake'); // the bait flaps free: it costs an egg, never a star
+            else this.breakEgg(egg, 'snake');
             S.eaten++; S.mouthOpen = 1; S.wait = 1.4; S.mood = 'chew'; S.moodT = 0.8;
             this.emit('snakeEat', { x: p.x, y: p.y, id: S.id, chick: !!egg.chick });
           }
@@ -1229,6 +1230,16 @@ export class Sim {
     }
     for (const S of this.snakes) if (S.spit && this.barriers[S.spit.b] === b) { S.spit = null; S.mood = null; }
     this.emit(how === 'melt' ? 'barrierMelt' : 'barrierBurn', { x: q.x, y: q.y });
+  }
+
+  // A chick a predator catches escapes in a flurry (I2: bait): it is out of play, but not a broken egg.
+  chickFlee(egg, by) {
+    egg.alive = false;
+    egg.fled = 1;
+    if (egg.joint) this.unMagnet(egg);
+    this.kill.push(egg.body);
+    const p = egg.body.getPosition();
+    this.emit('chickFlee', { egg, by, x: p.x, y: p.y });
   }
 
   // chick (G33): resting on a blunt spike cluster for PECK_T pecks the whole cluster away. Rule: pecking
@@ -1362,6 +1373,7 @@ export class Sim {
     if (tg.egg) {
       const egg = tg.egg;
       if (this.armored(egg)) { this.emit('eagleBounce', { egg, x: tg.x, y: tg.y }); return; }
+      if (egg.chick) { E.carry = 'chick'; this.chickFlee(egg, 'eagle'); this.emit('eagleGrab', { kind: 'chick', x: tg.x, y: tg.y }); return; }
       // carried off whole: no shards, the egg is simply lost
       egg.alive = false;
       if (egg.joint) this.unMagnet(egg);
@@ -1556,7 +1568,7 @@ export class Sim {
     const bodyS = (b) => { const p = b.getPosition(), v = b.getLinearVelocity(); return [p.x, p.y, b.getAngle(), v.x, v.y, b.getAngularVelocity()]; };
     const EGG_KEYS = ['id', 'alive', 'saved', 'cracks', 'fire', 'fireKind', 'stone', 'bubble', 'golden', 'crackCD', 'safeT', 'portalCD', 'ch', 'mult', 'freefall', 'comet', 'cometUsed', 'seed', 'magnet', 'water', 'zap', 'glow', 'chick', 'meteor', 'honey', 'honeyCD', 'prize'];
     EGG_KEYS.push('peckK', 'peckT', 'peckHit'); // predators (v3)
-    EGG_KEYS.push('kind', 'guard', 'rockskin', 'curse', 'drop', 'lavaCD'); // v3
+    EGG_KEYS.push('kind', 'guard', 'rockskin', 'curse', 'drop', 'lavaCD', 'fled'); // v3
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -1612,7 +1624,7 @@ export class Sim {
         if (bubble > 0) { sim.setBubble(egg); egg.bubble = bubble; }
         if (chick) sim.hatch(egg, true);
       } else {
-        sim.eggs.push({ id: es.id, alive: es.alive, saved: es.saved, cracks: es.cracks, body: null, mult: es.mult, prize: es.prize, chick: es.chick, kind: es.kind });
+        sim.eggs.push({ id: es.id, alive: es.alive, saved: es.saved, cracks: es.cracks, body: null, mult: es.mult, prize: es.prize, chick: es.chick, kind: es.kind, fled: es.fled });
       }
     }
     for (const r of S.ropes || []) {
@@ -1997,7 +2009,7 @@ export class Sim {
   }
   stats() {
     const saved = this.savedLog.length;
-    const broken = this.eggs.filter((e) => !e.alive && !e.saved).length;
+    const broken = this.eggs.filter((e) => !e.alive && !e.saved && !e.fled).length;
     const score = this.savedLog.reduce((a, s) => a + s.pts, 0);
     return { saved, broken, alive: this.aliveEggs().length, target: this.level.target || 1, total: this.eggs.length, score, perfect: this.savedLog.every((s) => s.cracks === 0) && broken === 0 };
   }

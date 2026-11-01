@@ -102,7 +102,8 @@ function layRing(spec, i, r, R, prev) {
   const span = (n) => ((n - 1) * THORN_STEP) / 2 + 7;
   // v3: curtained gaps are no way out of a pocket, so pockets are counted on open gaps only (a floor
   // cluster sits in the arc just after an open gap); a ring with no open gap is one pocket (fire opens it)
-  const open = gaps.filter((g) => !g.curtain);
+  const big = (spec.eggKinds || []).includes('ostrich');
+  const open = gaps.filter((g) => !g.curtain && !(big && g.len < 0.74)); // an ostrich can't use a narrow gap
   const free = rs.retract || rs.motor || !gaps.length;
   const sortedG = [...gaps].sort((p, q) => p.a - q.a);
   const after = (open.length ? open : gaps.slice(0, 1)).map((g) => sortedG.indexOf(g)).sort((p, q) => p - q);
