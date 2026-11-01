@@ -18,6 +18,8 @@ import * as E from './economy.js';
 import { drawStore, drawCoin, drawBoosterPicker, drawChest } from './ui/store.js';
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
+import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel } from './render/chicks.js'; // v3.2 chick kinds
+import { CHICK_DEMOS } from './data/chick-demos.js';
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 // playtest build (build.mjs --test): every level, booster and skin unlocked, plenty of coins
@@ -145,7 +147,7 @@ function startLevel(i, opts = {}) {
   if (G.sim && !G.result && G.sim.t > 1 && save.streak) { save.streak = 0; persist(); }
   G.run = (G.run || 0) + 1;
   G.li = i;
-  G.level = i < 0 ? dailyLevel() : LEVELS[i];
+  G.level = i === -2 && G.demo ? G.demo : i < 0 ? dailyLevel() : LEVELS[i]; // -2: a dev chick demo (v3.2)
   G.theme = themeFor(G.level);
   G.boost = opts.boost || {};
   G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost });
@@ -341,6 +343,8 @@ function pointerDown(e) {
   }
   const w = toWorld(x, y);
   const r = Math.hypot(w.x, w.y);
+  const ch = G.sim.chickAt(w.x, w.y, 34 * ui.u / G.cam.k); // v3.2: a tap on a ready chick (released without dragging) uses its power
+  G.chickTap = ch ? { id: ch.id, pid: e.pointerId, x, y, t: G.t } : null;
   if (r > G.sim.outerR + 1.2 && w.y < -G.sim.outerR) return; // touching the ground area
   const ring = G.sim.ringAt(r);
   if (!ring.grabbable) {
@@ -389,6 +393,9 @@ function pointerMove(e) {
 }
 
 function pointerUp(e) {
+  const ct = G.chickTap; // v3.2: tap = power
+  if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) G.sim.tapChick(ct.id);
+  G.chickTap = null;
   G.tp.delete(e.pointerId);
   if (G.tp.size < 2) G.pinch = null;
   const h = G.held.get(e.pointerId);
@@ -425,6 +432,7 @@ function keyDown(e) {
     if (k === 'ArrowUp' || k === 'w' || k === 'W') G.keySel = firstGrabbable(Math.min(G.sim.rings.length - 1, G.keySel + 1), 1);
     if (k === 'ArrowDown' || k === 's' || k === 'S') G.keySel = firstGrabbable(Math.max(0, G.keySel - 1), -1);
     if (/^[1-7]$/.test(k)) G.keySel = Math.min(G.sim.rings.length - 1, +k - 1);
+    if ((k === ' ' || k === 'c' || k === 'C') && !e.repeat) { const c = G.sim.aliveEggs().find((x) => G.sim.canTap(x)); if (c) G.sim.tapChick(c.id); } // v3.2: space taps a ready chick
   } else if ((k === 'Enter' || k === ' ') && !e.repeat) {
     if (G.screen === 'win' && !(G.result && G.result.t > 1.2)) return;
     const primary = { title: 'play', intro: G.level.intro && !save.intro[G.level.id] ? 'gotit' : 'go', win: 'next', fail: 'retry', pause: 'resume' }[G.screen];
@@ -877,7 +885,7 @@ function handleEvents() {
         break;
       case 'hatch':
         fx.sparkle(ev.x, ev.y, 16, '#ffe14d');
-        popup(ev.x, ev.y + 0.5, 'Chick!', { color: '#ffe14d', size: 24 });
+        popup(ev.x, ev.y + 0.5, chickLabel(ev.egg), { color: '#ffe14d', size: 24 });
         hen('happy', 1.2);
         break;
       case 'zap':
@@ -999,6 +1007,7 @@ function handleEvents() {
       default:
         v3Event(ev, fx);
         predEvent(ev, fx); // predators (v3)
+        chickEvent(ev, fx, { popup, audio, toast }); // v3.2 chick kinds
         break;
       case 'won':
         onWin();
@@ -1361,6 +1370,7 @@ function render() {
     if (ring.denied > 0) ctx.rotate(Math.sin(t * 60) * 0.01 * ring.denied);
     W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck });
     W.drawV3Ring(ctx, ring, k, t);
+    drawHardIce(ctx, ring, k, t); // v3.2
     ctx.restore();
   }
   for (const ring of sim.rings) if (ring.gear && ring.gear.i > ring.i) W.drawGearCog(ctx, ring, ring.gear, t);
@@ -1391,7 +1401,8 @@ function render() {
     }
   }
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
-  for (const e of sim.aliveEggs()) W.drawEgg(ctx, e, t, k);
+  for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
+  drawChickFX(ctx, sim, t, k);
   W.drawSnakes(ctx, sim, t, k); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
   W.drawEagleAt(ctx, sim, t, k);
@@ -2056,6 +2067,7 @@ async function boot() {
   // title runs over the live first level
   startLevel(Math.min(LEVELS.length - 1, save.unlocked - 1));
   setScreen('title');
+  if (DEV) { const d = new URLSearchParams(location.search).get('demo'); if (d) window.__egg.startDemo(d); } // v3.2: ?demo=glow
   const ld = document.getElementById('loading');
   if (ld) ld.remove();
   portal.loadingDone();
@@ -2068,6 +2080,8 @@ if (DEV) window.__egg = {
   G, LEVELS,
   get sim() { return G.sim; },
   start: (i, o) => startLevel(i, o),
+  CHICK_DEMOS,
+  startDemo(kind, o = {}) { G.demo = CHICK_DEMOS.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos
   press,
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
   frame(dt = 1 / 60) { update(dt); render(); },
