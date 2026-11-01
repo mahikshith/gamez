@@ -1,6 +1,7 @@
 // Eggscape simulation: planck.js (Box2D) world, rules, events. No DOM here so it runs in node for tests.
 import { World, Vec2, Polygon, Circle, Box, RopeJoint } from 'planck';
 import { EGG_H, EGG_W, RING_TH, TAU, eggHull, solidArcs, wrap, clamp, rng } from './geom.js';
+import { v31Init, v31Step, v31State, v31Load, v31Contact, frostOrb, animalsHit } from './boss.js'; // bosses (v3.1)
 
 export const DT = 1 / 120;
 
@@ -51,7 +52,7 @@ export const POWER = {
   magnet: { time: 8, len: 0.8 },
 };
 export const ORB_TYPES = ['fire_red', 'fire_black', 'fire_green', 'fire_gold', 'stone', 'bubble', 'water', 'thunder', 'thorn', 'magnet', 'twin',
-  'hourglass', 'feather', 'rockskin', 'foxcurse'];
+  'hourglass', 'feather', 'rockskin', 'foxcurse', 'frost'];
 export const LEGACY_ORB = { fire: 'fire_red', steel: 'stone' }; // v1 item ids (levels and saves)
 const ORB_R = 0.2;
 
@@ -60,7 +61,7 @@ const ORB_R = 0.2;
 export const V3_POWER = { hourglass: 6, feather: 6, rockskin: 6, foxcurse: 6 };
 // Special eggs (I3): hull scale, mass factor. Ostrich can't pass gaps shorter than OSTRICH_GAP (m).
 export const EGG_KIND = { ostrich: { s: 1.3, m: 2 }, quail: { s: 0.75, m: 0.45 }, duck: { s: 1, m: 1 } };
-const OSTRICH_GAP = 0.74;
+export const OSTRICH_GAP = 0.9; // a 0.78 m gap jams a 1.3x egg about one drop in four: below this it is barred outright
 const PULL_R = 1.2; // portal suction radius (G18)
 const HOLE_LEN = 0.95, HOLE_T = 5, ROCK_FLY = 1.1, ROCK_SIT = 1.2; // lava rocks (G31)
 const CURTAIN_BURN = 1; // s for fire to clear a thorn curtain
@@ -201,6 +202,7 @@ export class Sim {
     for (const ring of this.rings) for (const it of ring.spec.items || []) this.addOrb(it.type, ring.i, deg(it.a) + ring.body.getAngle(), 'start');
     this.orbsStart = this.orbs.length;
     this.buildPredators(L);
+    v31Init(this); // bosses (v3.1): boss fight, falling ice, temporary walls and ring locks
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
   }
@@ -379,9 +381,9 @@ export class Sim {
     for (const ring of this.rings) {
       const a = ring.body.getAngle();
       let w;
-      if (ring.stun > 0) {
-        // a zapped ring locks up
-        ring.stun -= dt;
+      if (ring.stun > 0 || ring.lock > 0) {
+        // a zapped ring locks up (bosses v3.1: so does a frozen or punched one)
+        if (ring.stun > 0) ring.stun -= dt;
         w = 0;
         ring.target = a;
       } else if (ring.motor) {
@@ -403,7 +405,7 @@ export class Sim {
       if (!o || o.i < ring.i) continue;
       const drive = Math.abs(ring.target - ring.body.getAngle()) >= Math.abs(o.target - o.body.getAngle()) ? ring : o;
       const other = drive === ring ? o : ring;
-      const lim = ring.stun > 0 || o.stun > 0 ? 0 : Math.min(this.maxOmega(ring), this.maxOmega(o));
+      const lim = ring.stun > 0 || o.stun > 0 || ring.lock > 0 || o.lock > 0 ? 0 : Math.min(this.maxOmega(ring), this.maxOmega(o));
       drive.omega = clamp(drive.omega, -lim, lim);
       other.omega = -drive.omega;
       other.target = other.body.getAngle() + other.omega * dt;
@@ -865,6 +867,7 @@ export class Sim {
       } else this.emit('twinFull', { egg });
     } else if (t === 'magnet') this.setMagnet(egg);
     else if (V3_POWER[t]) this.v3Power(t, egg);
+    else if (t === 'frost') frostOrb(this, egg); // v3.1: the ring under the egg freezes
   }
 
   setStone(egg, on) {
@@ -1476,6 +1479,7 @@ export class Sim {
         X.quake = 1;
         X.qk = 0;
         this.emit('quake', { dur: 1 });
+        animalsHit(this, 'quake', {}); // v3.1
       }
     } else if (W === 'embers') {
       // embers drift down from above; rings shield the eggs, gaps let embers through
@@ -1511,6 +1515,7 @@ export class Sim {
     const ring = this.rings[B.ri], p = this.boltPoint(B);
     ring.stun = Math.max(ring.stun, 1.5);
     this.emit('lightning', { x: p.x, y: p.y, ring: B.ri });
+    animalsHit(this, 'bolt', { x: p.x, y: p.y, r: 0.8 }); // v3.1: snakes, the eagle and the fox react
     for (const e of this.aliveEggs()) {
       const q = e.body.getPosition();
       if (Math.hypot(q.x - p.x, q.y - p.y) < 0.6) this.crack(e, 0, 'lightning');
@@ -1593,6 +1598,7 @@ export class Sim {
       embers: this.embers.map((m) => ({ ...m })),
       nest: bodyS(this.nest),
       v3: this.v3State(),
+      v31: v31State(this), // bosses (v3.1)
     };
   }
 
@@ -1642,6 +1648,7 @@ export class Sim {
     if (S.wx) sim.wx = { ...S.wx, bolt: S.wx.bolt ? { ...S.wx.bolt } : null };
     sim.embers = (S.embers || []).map((m) => ({ ...m }));
     sim.v3Restore(S.v3);
+    v31Load(sim, S.v31); // bosses (v3.1)
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -1686,7 +1693,7 @@ export class Sim {
     for (const g of ring.gaps) {
       if (g.curtain) g.curtain.fixes = across(g, 'curtain');
       else if (g.grate) across(g, 'grate');
-      else if (big && g.len < OSTRICH_GAP) across(g, 'narrow');
+      else if (big && g.len < OSTRICH_GAP) { g.narrow = true; across(g, 'narrow'); } // drawn as a bar (only the ostrich is held)
     }
   }
 
@@ -1705,6 +1712,7 @@ export class Sim {
   // Egg contacts with v3 rules. Returns true when it has dealt with the contact.
   v3Contact(c, egg, other) {
     if (!egg || !egg.alive || egg.saved || !other) return false;
+    if (v31Contact(this, c, egg, other)) return true; // bosses (v3.1): ice patches, temporary walls
     if (other.kind === 'curtain') { this.curtainTouch(c, egg, other); return true; }
     const heavy = egg.stone > 0 || (egg.kind === 'ostrich' && egg.drop >= 2);
     if (other.kind === 'thorn' && other.thorn.alive && egg.fire <= 0) {
@@ -1764,6 +1772,7 @@ export class Sim {
 
   // Can ring turn by delta? One-way rings (and a gear partner's one-way) say which way.
   canTurn(ring, delta) {
+    if (ring.lock > 0) return false; // bosses (v3.1): frozen or punched
     if (ring.oneway && Math.sign(delta) !== ring.oneway) return false;
     if (ring.gear && ring.gear.oneway && -Math.sign(delta) !== ring.gear.oneway) return false;
     return true;
@@ -1870,7 +1879,7 @@ export class Sim {
       }
     }
     this.lavaStep(dt);
-    this.iceStep(dt);
+    v31Step(this, dt); // bosses (v3.1): boss attacks, falling ice (replaces the old top-down icicles), walls, ring locks
   }
 
   eggOnSeg(ring, sg) {
@@ -1912,6 +1921,7 @@ export class Sim {
         if (f >= 1) {
           k.ph = 'sit'; k.t = 0;
           this.emit('lavaLand', { x: q.x, y: q.y, ring: k.ri });
+          animalsHit(this, 'rock', { x: q.x, y: q.y, r: 0.75 }); // v3.1: animals feel it too
           if (this.rockHits(k, q, 0.75)) { this.lavaRocks.splice(i, 1); continue; }
         }
         continue;
@@ -1941,33 +1951,6 @@ export class Sim {
       this.crack(e, 0, 'lavarock');
     }
     return false;
-  }
-
-  // Icicles: a shimmer at the top for a moment, then they drop; they crack an egg they hit and
-  // shatter on a ring (they fall through gaps).
-  iceStep(dt) {
-    const IC = this.level.icicles;
-    if (IC && (this.v3T.ice -= dt) <= 0) {
-      this.v3T.ice = IC.every || 6;
-      const x = (this.rand() * 2 - 1) * this.outerR * 0.75;
-      this.icicles.push({ x, y: this.outerR + 0.7, vy: 0, warn: 0.9 });
-      this.emit('iceWarn', { x, y: this.outerR + 0.7 });
-    }
-    for (let i = this.icicles.length - 1; i >= 0; i--) {
-      const c = this.icicles[i];
-      if (c.warn > 0) { c.warn -= dt; continue; }
-      c.vy = Math.max(-9, c.vy - this.g * dt);
-      c.y += c.vy * dt;
-      let gone = c.y < this.groundY;
-      const tip = c.y - 0.18, d = Math.hypot(c.x, tip);
-      for (const e of this.aliveEggs()) {
-        if (gone) break;
-        const p = e.body.getPosition();
-        if (Math.hypot(p.x - c.x, p.y - tip) < 0.3) { gone = true; this.emit('icicleHit', { egg: e, x: c.x, y: tip }); this.crack(e, 0, 'icicle'); }
-      }
-      for (const ring of this.rings) if (!gone && Math.abs(d - ring.r) < RING_TH / 2 + 0.05 && this.solidAt(ring, c.x, tip)) { gone = true; this.emit('icicleShatter', { x: c.x, y: tip }); }
-      if (gone) this.icicles.splice(i, 1);
-    }
   }
 
   v3State() {

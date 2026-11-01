@@ -18,6 +18,8 @@ import * as E from './economy.js';
 import { drawStore, drawCoin, drawBoosterPicker, drawChest } from './ui/store.js';
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
+import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar, drawMagnetField, bossPose } from './render/boss.js'; // bosses (v3.1)
+import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 // playtest build (build.mjs --test): every level, booster and skin unlocked, plenty of coins
@@ -223,6 +225,9 @@ function computeLayout() {
   const u = ui.u;
   const twoRows = W_ < 760;
   G.hudBottom = Math.round((twoRows ? 104 : 64) * u);
+  // bosses (v3.1): the phase bar gets its own strip under the HUD plate
+  G.bossBar = G.level && G.level.bossFight ? Math.round(30 * u) : 0;
+  G.hudBottom += G.bossBar;
   const top = G.hudBottom + 8 * u;
   // zoom buttons get their own strip (right column in landscape, bottom row in portrait) so they never sit on rings
   const bs = Math.max(40, 48 * u), pad = 8 * u, side = W_ > H_;
@@ -252,6 +257,8 @@ function frameOf(all, maxCh) {
   const EA = sim.eagle;
   if (EA && (EA.phase === 'warn' || EA.phase === 'dive')) hds.push({ x: EA.x, y: EA.y });
   if (sim.fox) hds.push({ x: sim.fox.x, y: sim.outerR + 0.6 });
+  const BQ = bossPose(sim); // bosses (v3.1): keep the boss over the vault in frame
+  if (BQ) hds.push({ x: BQ.x, y: BQ.y + BQ.h * 0.45 });
   for (const hd of hds) {
     if (all) { R = Math.max(R, Math.abs(hd.x) + 0.6); yMin = Math.min(yMin, hd.y - 0.6); yMax = Math.max(yMax, hd.y + 0.6); }
     else { R = Math.max(R, Math.hypot(hd.x, hd.y) + 0.6); yMin = -R; yMax = R; }
@@ -343,6 +350,7 @@ function pointerDown(e) {
   const r = Math.hypot(w.x, w.y);
   if (r > G.sim.outerR + 1.2 && w.y < -G.sim.outerR) return; // touching the ground area
   const ring = G.sim.ringAt(r);
+  if (ring.lock > 0) { lockedRing(ring); return; } // bosses (v3.1): frozen or punched
   if (!ring.grabbable) {
     audio.play('motor_tick', { vol: 0.8 });
     ring.denied = 0.35;
@@ -439,6 +447,7 @@ function keyboardTurn(dt) {
   if (G.screen !== 'play' || !G.sim) return;
   const ring = G.sim.rings[G.keySel];
   if (!ring || !ring.grabbable) return;
+  if (ring.lock > 0) { ring.keyHeld = false; if (G.keys['arrowleft'] || G.keys['arrowright'] || G.keys['a'] || G.keys['d']) lockedRing(ring); return; }
   const dir = (G.keys['arrowleft'] || G.keys['a'] ? 1 : 0) - (G.keys['arrowright'] || G.keys['d'] ? 1 : 0);
   if (dir) {
     if (ring.oneway && dir !== ring.oneway) { onewayDrag(ring, -1); return; }
@@ -813,7 +822,7 @@ function handleEvents() {
         fx.shake = Math.max(fx.shake, 0.55);
         G.hitstop = 0.07;
         hen('cry', 2.2);
-        const why = { thorn: 'Thorn!', fox: 'The fox took it', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', eagle: 'The eagle took it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!', fall: 'Fell too far!', curtain: 'Thorn curtain!', lavarock: 'Lava rock!', icicle: 'Icicle!' }[ev.why] || '';
+        const why = { thorn: 'Thorn!', fox: 'The fox took it', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', eagle: 'The eagle took it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!', fall: 'Fell too far!', curtain: 'Thorn curtain!', lavarock: 'Lava rock!', icicle: 'Icicle!', heat: 'Too hot!' }[ev.why] || '';
         if (why && ev.why !== 'fox') popup(ev.x, ev.y + 0.5, why, { color: '#ff8a7a', size: 20, life: 1.2 });
         break;
       }
@@ -999,6 +1008,7 @@ function handleEvents() {
       default:
         v3Event(ev, fx);
         predEvent(ev, fx); // predators (v3)
+        bossEvent(ev, fx); // bosses (v3.1)
         break;
       case 'won':
         onWin();
@@ -1082,12 +1092,103 @@ function predEvent(ev, fx) {
     case 'foxThrow':
       audio.play('portal_exit', { vol: 0.6, pitch: 0.8 });
       fx.sparkle(ev.x2, ev.y2, 8, powerInfo(ev.power).color);
-      once('fox', 'The fox drops orbs into the outer channel. Not all of them help!');
+      once('fox', G.sim.bx && G.sim.bx.boss ? 'The fox throws orbs at the marked spots. Not all of them help!' : 'The fox drops orbs into the outer channel. Not all of them help!'); // bosses (v3.1)
       break;
     case 'chickPeck':
       audio.play('thorn_snap', { pitch: 1.3 });
       fx.chips(ev.x, ev.y - 0.2, '#aab2bd', 6, 2);
       popup(ev.x, ev.y + 0.6, 'Peck peck!', { color: '#ffe14d', size: 20 });
+      break;
+  }
+}
+
+// ---------------------------------------------------------------- bosses (v3.1)
+// a frozen or punched ring refuses the player's hand
+function lockedRing(ring) {
+  if (ring.denied > 0.1) return;
+  ring.denied = 0.35;
+  audio.play('glass_crack', { vol: 0.5, pitch: 1.8 });
+  if (!G.predToast.lock) { G.predToast.lock = 1; toast('Frozen solid! That ring thaws in a moment.', 2.4); }
+}
+const BOSS_WARN_SFX = {
+  gale: ['wind_gust', { vol: 0.6, pitch: 0.7 }], freeze: ['glass_crack', { vol: 0.7, pitch: 0.6 }], icicles: ['glass_crack', { vol: 0.6, pitch: 1.5 }],
+  stomp: ['rock_hit', { vol: 0.8, pitch: 0.5 }], punch: ['steel_clang', { vol: 0.7, pitch: 0.6 }], rock: ['fire_ignite', { vol: 0.7, pitch: 0.55 }],
+  rock2: ['fire_ignite', { vol: 0.8, pitch: 0.5 }], throw: ['portal_exit', { vol: 0.5, pitch: 0.7 }], throw2: ['portal_exit', { vol: 0.6, pitch: 0.6 }],
+  fog: ['bubble_on', { vol: 0.6, pitch: 0.45 }], bolt: ['thunder', { vol: 0.35, pitch: 1.7 }], bolt2: ['thunder', { vol: 0.4, pitch: 1.6 }],
+};
+function bossEvent(ev, fx) {
+  const sim = G.sim, B = sim.bx && sim.bx.boss;
+  const actor = B && !['snake', 'eagle'].includes(B.kind);
+  switch (ev.type) {
+    case 'bossWarn': {
+      const s = BOSS_WARN_SFX[ev.attack];
+      if (s) audio.play(s[0], s[1]);
+      if (actor) popup(ev.x, ev.y + 1.1, (ATTACK_NAME[ev.attack] || '') + '!', { color: '#ffcf6a', size: 20, life: 1.0 });
+      break;
+    }
+    case 'bossAct':
+      if (ev.attack === 'gale') { audio.play('wind_gust', { vol: 1.1, pitch: 0.85 }); fx.shake = Math.max(fx.shake, 0.2); }
+      if (ev.attack === 'bolt' || ev.attack === 'bolt2') fx.shake = Math.max(fx.shake, 0.3);
+      break;
+    case 'bossPhase': {
+      const names = (ev.attacks || []).map((a) => ATTACK_NAME[a]).filter((x, i, a) => x && a.indexOf(x) === i);
+      toast(`${BOSS_TITLE[ev.kind] || 'The boss'}: phase ${ev.phase + 1} of ${ev.n}!${names.length ? ' ' + names.join(', ') + '.' : ''}`, 2.6);
+      audio.play('unlock', { pitch: 0.6, vol: 0.8 });
+      if (!save.calm) { fx.flash = 0.35; fx.flashColor = '#ff8a3d'; }
+      fx.shake = Math.max(fx.shake, 0.35);
+      break;
+    }
+    case 'bossHit':
+      audio.play('steel_clang', { vol: 0.7, pitch: 1.3 });
+      if (actor) { fx.sparkle(ev.x, ev.y, 12, '#fff2a8'); popup(ev.x, ev.y + 1.0, 'Ouch!', { color: '#fff2a8', size: 22, life: 0.9 }); }
+      break;
+    case 'freeze': {
+      audio.play('glass_crack', { vol: 0.8, pitch: 0.8 });
+      audio.play('glass_break', { vol: 0.35, pitch: 1.4 });
+      const r = sim.rings[ev.ring];
+      popup(ev.why === 'breath' ? 0 : ev.x, ev.why === 'breath' ? r.r + 0.35 : ev.y + 0.5, 'Frozen!', { color: '#bfeaff', size: 20, life: 1.1 });
+      break;
+    }
+    case 'thaw':
+      audio.play('glass_break', { vol: 0.3, pitch: 1.6 });
+      break;
+    case 'iceDrop':
+      audio.play('glass_crack', { vol: 0.4, pitch: 2 });
+      break;
+    case 'wallUp':
+      audio.play(ev.kind === 'ice' ? 'glass_crack' : 'glass_break', { vol: 0.6, pitch: ev.kind === 'ice' ? 1.2 : 0.7 });
+      fx.chips(ev.x, ev.y, ev.kind === 'ice' ? '#dff6ff' : '#a99bff', 8, 2);
+      break;
+    case 'wallGone':
+      audio.play('glass_break', { vol: 0.6 });
+      fx.chips(ev.x, ev.y, ev.kind === 'ice' ? '#dff6ff' : '#a99bff', 10, 2.5);
+      if (ev.how === 'fire' || ev.how === 'water') popup(ev.x, ev.y + 0.4, 'Melted!', { color: '#bfeaff', size: 18, life: 0.9 });
+      if (ev.how === 'smash') popup(ev.x, ev.y + 0.4, 'Smash!', { color: '#e6e6e6', size: 18, life: 0.9 });
+      break;
+    case 'bossStomp':
+      audio.play('rock_hit', { vol: 1, pitch: 0.45 });
+      audio.play('bomb_explode', { vol: 0.35, pitch: 0.5 });
+      fx.shake = Math.max(fx.shake, 0.75);
+      fx.dust(ev.x, ev.y, 10);
+      break;
+    case 'bossPunch':
+      audio.play('steel_clang', { vol: 1, pitch: 0.5 });
+      fx.shake = Math.max(fx.shake, 0.5);
+      break;
+    case 'bossFog':
+      audio.play('bubble_on', { vol: 0.7, pitch: 0.35 });
+      break;
+    case 'bossSummon':
+      audio.play('lava_sizzle', { vol: 0.6, pitch: 1.6 });
+      toast('A snake slithers in!', 2.2);
+      break;
+    case 'heatWarn':
+      audio.play('lava_sizzle', { vol: 0.5 });
+      popup(ev.x, ev.y + 0.5, 'Hot!', { color: '#ff9a3d', size: 18, life: 0.9 });
+      break;
+    case 'foxFlinch':
+      audio.play('egg_bump', { pitch: 0.6 });
+      popup(ev.x, ev.y + 0.8, 'Whoa!', { color: '#ffcf6a', size: 18, life: 0.8 });
       break;
   }
 }
@@ -1237,6 +1338,8 @@ function update(dt) {
     }
     const v = e.body.getLinearVelocity();
     if (e.fire > 0 && e.fireKind === 'fire_red') { G.fx.flameAt(p.x, p.y + 0.05, 1.1, v.x, v.y); G.fx.flameAt(p.x, p.y - 0.1, 0.9, v.x, v.y); }
+    // v3.1 magnet: the pulled partner wobbles and throws small red/blue sparks
+    if (e.magnet > 0 && e.joint && Math.random() < 0.3) { const q = Math.random() * 6.283; G.fx.add({ x: p.x + Math.cos(q) * 0.3, y: p.y + Math.sin(q) * 0.3, vx: Math.cos(q) * 0.8, vy: Math.sin(q) * 0.8, life: 0.25, size: 0.02, color: Math.random() < 0.5 ? '#ff4f5e' : '#4f8dff', type: 'spark' }); }
     if (e.comet) G.fx.add({ x: p.x + (Math.random() - 0.5) * 0.3, y: p.y + (Math.random() - 0.5) * 0.3, vx: v.x, vy: v.y + 0.6, life: 0.25, size: 0.08, grow: -0.2, color: '#9fe8ff', hot: '#ffffff', type: 'flame' });
   }
   for (const b of sim.bombs) {
@@ -1263,7 +1366,7 @@ function update(dt) {
   for (const r of sim.rings) if ((r.held || r.keyHeld || r.motor) && G.screen === 'play') turn = Math.max(turn, Math.abs(r.omega) / (sim.maxOmega(r) || 1) * (r.motor ? 0.35 : 1));
   audio.setRingTurn(G.screen === 'play' ? clamp(turn, 0, 1) : 0);
   audio.setFireLoop(G.screen === 'play' && sim.aliveEggs().some((e) => e.fire > 0));
-  audio.setWind(G.screen === 'play' && G.level.wind ? Math.abs(sim.wind) / (G.level.wind.strength || 1) : 0);
+  audio.setWind(G.screen === 'play' ? Math.max(G.level.wind ? Math.abs(sim.wind) / (G.level.wind.strength || 1) : 0, Math.abs(galeNow(sim))) : 0);
   if (G.screen !== 'play') stopFuse();
   if (G.screen === 'play' && sim.timeLimit && sim.timeLeft <= 10 && sim.state === 'play') {
     const s = Math.ceil(sim.timeLeft);
@@ -1363,6 +1466,8 @@ function render() {
     W.drawV3Ring(ctx, ring, k, t);
     ctx.restore();
   }
+  drawBossRings(ctx, sim, k, t); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
+  drawBossActor(ctx, sim, k, t);
   for (const ring of sim.rings) if (ring.gear && ring.gear.i > ring.i) W.drawGearCog(ctx, ring, ring.gear, t);
   if (sim.wx.bolt) { const b = sim.boltPoint(sim.wx.bolt); W.drawBoltWarn(ctx, b.x, b.y, t); }
   W.drawBarriers(ctx, sim, t, k); // predators (v3)
@@ -1376,24 +1481,13 @@ function render() {
   for (const d of sim.debris) W.drawDebris(ctx, d, G.theme);
   W.drawLavaRocks(ctx, sim, k, t); // v3
   W.drawIcicles(ctx, sim, k, t);
-  // magnet ropes
-  for (const e of sim.aliveEggs()) {
-    if (e.joint && e.joint.a === e) {
-      const a = e.joint.a.body.getPosition(), b = e.joint.b.body.getPosition();
-      ctx.strokeStyle = '#d6262e';
-      ctx.lineWidth = 0.035;
-      ctx.setLineDash([0.08, 0.05]);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-  }
+  drawMagnetField(ctx, sim, t); // v3.1: a magnetic field look instead of a tether line
+  drawBossUnder(ctx, sim, k, t);
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
   for (const e of sim.aliveEggs()) W.drawEgg(ctx, e, t, k);
   W.drawSnakes(ctx, sim, t, k); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
+  drawBossOver(ctx, sim, k, t); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
   W.drawEagleAt(ctx, sim, t, k);
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);
   fx.draw(ctx, 'front');
@@ -1587,6 +1681,7 @@ function drawHUD() {
     const pulse = low ? 1 + 0.08 * Math.sin(G.t * 12) : 1;
     ui.text(timeTxt, tx + 24 * u, trayY + 1 * u, { size: 22 * u * pulse, color: low ? '#ff7a5a' : '#fff', stroke: 'rgba(0,0,0,0.5)', tag: 'hud:time', group: 'hud:time' });
   }
+  if (G.bossBar && sim.bx && sim.bx.boss) drawBossBar(ctx, ui, sim, pad, G.hudBottom - G.bossBar + 2 * u, W_ - 2 * pad, G.bossBar - 8 * u, G.t);
   if (G.screen === 'play' && sim.state === 'play') drawZoomBtns();
 }
 

@@ -1258,6 +1258,7 @@ export function drawV3Ring(ctx, ring, k, t) {
   const A = ring.body.getAngle(), r = ring.r;
   for (const g of ring.gaps) {
     if (g.grate) onRing(ctx, k, r, A + g.a, () => drawGrate(ctx, 0, 0, g.len * k, RING_TH * k, t));
+    if (g.narrow) onRing(ctx, k, r, A + g.a, () => drawNarrowBar(ctx, g.len * k, RING_TH * k));
     const C = g.curtain;
     if (C && (C.alive || C.burn < 1)) {
       onRing(ctx, k, r - RING_TH / 2 - 0.05, A + g.a, () => drawThornCurtain(ctx, 0, 0, g.len * k, (RING_TH + 0.22) * k, t, C.alive ? C.burn : 1));
@@ -1294,6 +1295,19 @@ export function drawV3Ring(ctx, ring, k, t) {
       onRing(ctx, k, r, A + la, () => drawOneWayMark(ctx, 0, 0, RING_TH * k * 1.25, ring.oneway, t));
     }
   }
+}
+// ostrich levels: a gap too narrow for the big egg gets an iron bar across its middle (small eggs slip past it)
+function drawNarrowBar(ctx, len, th) {
+  const h = Math.max(3, th * 0.32);
+  ctx.fillStyle = '#3b3f47';
+  ctx.strokeStyle = '#15171b';
+  ctx.lineWidth = Math.max(1, th * 0.08);
+  ctx.beginPath();
+  ctx.rect(-len / 2 - 2, -h / 2, len + 4, h);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#c9ced6';
+  for (const x of [-len * 0.3, 0, len * 0.3]) { ctx.beginPath(); ctx.arc(x, 0, h * 0.28, 0, TAU); ctx.fill(); }
 }
 function liveAtV3(ring, a) {
   a = ((a % TAU) + TAU) % TAU;

@@ -27,6 +27,11 @@
 //   {every, delay}, eggKinds ['ostrich' | 'quail' | 'duck' | null, ...] (per starting egg), portal pull (m),
 //   world 1..7 (environment), boss (bossId for the intro portrait: fox snake blizzard golem salamander eagle foxking).
 //   v3 orb types: hourglass feather rockskin foxcurse.
+// v3.1 level fields: gusts {every, delay, strength, dur} (telegraphed wind that shoves eggs and snakes along the
+//   channels), bossFight {kind, delay, gale, throws, phases: [{at: {saved, t}, attacks, every, heat, summon
+//   }]} drives the boss actor, its telegraphed attacks and the phase bar (see src/sim/boss.js);
+//   icicles {every, delay, big} now grow over an egg and drop (every `big`-th is a chunk that freezes a ring and
+//   stands as a melting ice wall). v3.1 orb: frost (freezes the ring under the egg for 3 s).
 // 35 levels = 7 environments x 5: L1 of an environment teaches its trait, L2-L4 twist it, L5 is the boss
 // (with an intro card); the level after a boss is a breather. Nests only move where there is a reason
 // (the lake current, the fox chasing the hen in his fortress).
@@ -62,8 +67,12 @@ export const SPECS = [
   { id: 5, world: 1, theme: 'farm', name: 'Fox Raid', boss: 'fox', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5,
     nest: { w: 2.8 }, bonus: { kind: 'prize' },
     orbs: [{ type: 'fire_green', ch: 2 }, { type: 'fire_red', ch: 3 }], portals: [{ from: [3, 90], to: [3, 90], emit: ['fire_red'], every: 7, pull: 0 }],
-    fox: { every: 6, throws: ['thorn', 'foxcurse'], delay: 4 },
-    intro: { title: 'Boss: Fox Raid', line: 'The fox sits on the vault and throws thorn balls and curse orbs. Burn a way down between his throws.' },
+    bossFight: { kind: 'fox', delay: 4, throws: ['thorn', 'foxcurse'], phases: [
+      { attacks: ['throw'], every: 5.5 },
+      { at: { saved: 1, t: 30 }, attacks: ['throw2'], every: 6 },
+      { at: { saved: 2, t: 60 }, attacks: ['throw2'], every: 4.5 },
+    ] },
+    intro: { title: 'Boss: Fox Raid', line: 'The fox aims thorn balls and curse orbs at your eggs (a red mark shows where), then throws two at once.' },
     tip: 'Curse orbs make the fuse run double. The green flame mends cracks.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], shut: { period: 4, open: 0.5 } }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 1, curtain: 1, thorns: 1, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }] },
 
@@ -95,6 +104,7 @@ export const SPECS = [
     nest: { w: 3.0 }, bonus: { kind: 'prize' },
     snake: [{ delay: 7, speed: 0.28, size: 1.5, len: 1.6, a: 0 }, { delay: 15, speed: 0.45, size: 0.8, a: 140 }],
     orbs: [{ type: 'rockskin', ch: 1 }, { type: 'fire_gold', ch: 2 }, { type: 'rockskin', ch: 3 }],
+    bossFight: { kind: 'snake', phases: [{}, { at: { saved: 1, t: 35 } }, { at: { saved: 2, t: 70 } }] },
     intro: { title: 'Boss: Serpent Hollow', line: 'A big slow snake and a small fast one hunt together. Lure them with a chick, then run in rock skin.' },
     tip: 'Walls hold the snakes back while the venom works. Count to three, then go.',
     rings: [{ mat: 'wood', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'wood', gaps: 2, thorns: 1, size: [2, 3], barriers: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { mat: 'wood', gaps: 2, thorns: 2, size: [1, 2] }] },
@@ -107,9 +117,10 @@ export const SPECS = [
     tip: 'Arrow rings only turn one way: sometimes the long way round is the safe one.',
     rings: [{ gaps: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [1, 2], oneway: -1 }] },
   { id: 12, world: 3, theme: 'blizzard', name: 'Icicle Hollow', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5,
-    nest: { w: 2.8 }, bonus: { kind: 'time' }, icicles: { every: 5, delay: 4 },
-    orbs: [{ type: 'stone', ch: 1 }, { type: 'fire_green', ch: 3 }],
-    tip: 'Icicles shimmer, then fall. A solid ring above an egg is a roof.',
+    nest: { w: 2.8 }, bonus: { kind: 'time' }, icicles: { every: 5, delay: 4, big: 3 },
+    orbs: [{ type: 'stone', ch: 1 }, { type: 'fire_green', ch: 3 }, { type: 'frost', ch: 2 }],
+    intro: { title: 'Falling ice', line: 'An icicle grows over an egg and shakes before it drops: turn the ring above to swing it away. Big chunks freeze a ring.' },
+    tip: 'Ice leaves a slippery patch. The frost orb freezes the ring under your egg.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
   { id: 13, world: 3, theme: 'frozen', name: 'Duck Pond', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5, eggKinds: ['duck'],
     weather: 'current', weatherOpts: { strength: 0.8 },
@@ -118,17 +129,21 @@ export const SPECS = [
     tip: 'The duck egg floats and rides the current. Let it drift to the gap.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], oneway: 1 }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 14, world: 3, theme: 'frozen', name: 'Drifting Nest', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5,
-    weather: 'current', weatherOpts: { strength: 0.7 }, icicles: { every: 6, delay: 6 },
+    weather: 'current', weatherOpts: { strength: 0.7 }, icicles: { every: 6, delay: 6, big: 3 },
     nest: { w: 2.7, amp: 1.3, period: 8, pattern: 'slide' }, bonus: { kind: 'turns' },
-    orbs: [{ type: 'hourglass', ch: 2 }, { type: 'thunder', ch: 4 }],
+    orbs: [{ type: 'hourglass', ch: 2 }, { type: 'thunder', ch: 4 }, { type: 'frost', ch: 3 }],
     tip: 'The current drags the nest along. Drop when it slides under your gap.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 15, world: 3, theme: 'blizzard', name: 'The Blizzard', boss: 'blizzard', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5,
-    wind: { strength: 2.2, period: 5 }, icicles: { every: 4, delay: 3 },
-    nest: { w: 2.7, amp: 1.1, period: 9, pattern: 'stopgo' }, bonus: { kind: 'time' },
+    bossFight: { kind: 'blizzard', delay: 4, gale: 5, phases: [
+      { attacks: ['gale'], every: 5 },
+      { at: { saved: 1, t: 30 }, attacks: ['gale', 'freeze'], every: 4.5 },
+      { at: { saved: 2, t: 60 }, attacks: ['icicles', 'gale', 'freeze', 'icicles'], every: 3.8 },
+    ] },
+    nest: { w: 2.9 }, bonus: { kind: 'time' },
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'stone', ch: 3 }, { type: 'fire_green', ch: 4 }],
-    intro: { title: 'Boss: The Blizzard', line: 'Gusts, icicles and arrow rings all at once. Move between gusts; the hourglass buys you time.' },
-    tip: 'Gusts blow left, then right. Drop as one dies down.',
+    intro: { title: 'Boss: The Blizzard', line: 'The Blizzard blows gales that shove eggs along the rings, freezes a ring solid, then drops icicles on your eggs.' },
+    tip: 'Turn a wall into the wind before the gale hits. Stone is too heavy to blow away.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'ice', gaps: 2, thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
 
   // ---------------- 4 Crystal Caves: portals that suck and spit orbs, grates, quail and ostrich eggs, glass
@@ -158,12 +173,17 @@ export const SPECS = [
     tip: 'Glass floors crack under landings, then break. A bubble lands soft.',
     rings: [{ mat: 'stone', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'stone', gaps: 2, thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { mat: 'stone', gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 20, world: 4, theme: 'crystal', name: 'Golem Maze', boss: 'golem', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5,
-    nest: { w: 3.0 }, bonus: { kind: 'prize' }, snake: { delay: 10, speed: 0.4 },
-    orbs: [{ type: 'feather', ch: 1 }, { type: 'magnet', ch: 3 }],
+    nest: { w: 3.0 }, bonus: { kind: 'prize' },
+    bossFight: { kind: 'golem', delay: 4, phases: [
+      { attacks: ['stomp'], every: 6 },
+      { at: { saved: 1, t: 30 }, attacks: ['stomp'], every: 5 },
+      { at: { saved: 2, t: 60 }, attacks: ['stomp', 'punch'], every: 4.5 },
+    ] },
+    orbs: [{ type: 'feather', ch: 1 }, { type: 'stone', ch: 2 }],
     portals: [{ from: [1, -20], to: [3, 160], emit: ['feather', 'thorn'], every: 10 }, { from: [2, -150], to: [4, -40], emit: ['fire_green'], every: 9 }, { from: [3, 30], to: [4, -140], emit: ['rockskin'], every: 12 }],
-    intro: { title: 'Boss: The Crystal Golem', line: 'The golem’s maze of portals, with a snake inside. The guardian feather keeps every egg safe for 6 s.' },
-    tip: 'Take the feather when the snake is close, then dash through the portals.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'glass', gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    intro: { title: 'Boss: The Crystal Golem', line: 'The golem stomps: the vault quakes, crystal walls block your way and glass cracks; later he punches a ring round.' },
+    tip: 'Walls shatter after a while, or under a stone egg. Watch which ring the golem points at.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'glass', gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'glass', gaps: 2, thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
 
   // ---------------- 5 Volcano: lava rocks melt holes and blast eggs; water shell, black flame, honey, spikes
   { id: 21, world: 5, theme: 'volcano', name: 'Volcano', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 4,
@@ -188,9 +208,14 @@ export const SPECS = [
     tip: 'Forge spikes pump in and out. Count the beat and pass while they are down.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 3, size: [2, 3], retract: { period: 3, on: 0.5 } }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 3, size: [2, 3], retract: { period: 2.6, on: 0.55 } }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 25, world: 5, theme: 'volcano', name: 'The Eruption', boss: 'salamander', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 5,
-    nest: { w: 3.0 }, bonus: { kind: 'prize' }, lava: { every: 3.5, delay: 3 },
+    nest: { w: 3.0 }, bonus: { kind: 'prize' },
+    bossFight: { kind: 'salamander', delay: 3, phases: [
+      { attacks: ['rock'], every: 4.5 },
+      { at: { saved: 1, t: 30 }, attacks: ['rock2'], every: 4.5 },
+      { at: { saved: 2, t: 60 }, attacks: ['rock2'], every: 4, heat: true },
+    ] },
     orbs: [{ type: 'water', ch: 1 }, { type: 'feather', ch: 3 }, { type: 'water', ch: 4 }],
-    intro: { title: 'Boss: The Lava Salamander', line: 'The salamander wakes the volcano: a rock every few seconds. Water cools the rocks, the feather shields every egg.' },
+    intro: { title: 'Boss: The Lava Salamander', line: 'The salamander spits lava rocks at your eggs (a ring marks the spot); at the end the heat cracks any egg that waits.' },
     tip: 'Rocks melt holes everywhere. Use them, and take the feather for the last run.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { noGap: true, thorns: 2, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
 
@@ -218,10 +243,16 @@ export const SPECS = [
     tip: 'Gear teeth link two rings: turn one and its neighbour turns the other way.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], gear: true }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], gear: true }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 30, world: 6, theme: 'storm', name: 'Eagle and Serpent', boss: 'eagle', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5, weather: 'thunder',
-    nest: { w: 3.0 }, bonus: { kind: 'prize' }, eagle: { delay: 9, every: 10 }, snake: { delay: 9, speed: 0.38 },
+    nest: { w: 3.0 }, bonus: { kind: 'prize' }, eagle: { delay: 12, every: 10 },
+    snake: [{ delay: 6, speed: 0.38, a: 0 }, { delay: 999, speed: 0.42, a: 140 }],
+    bossFight: { kind: 'eagle', delay: 6, phases: [
+      { attacks: [] },
+      { at: { saved: 1, t: 35 }, attacks: ['bolt'], every: 6 },
+      { at: { saved: 2, t: 65 }, attacks: ['bolt', 'bolt2'], every: 4.5, summon: true },
+    ] },
     orbs: [{ type: 'feather', ch: 1 }, { type: 'thunder', ch: 2 }, { type: 'feather', ch: 4 }],
-    intro: { title: 'Boss: The Storm Eagle', line: 'The eagle grabs snakes first, then eggs. Let it take the snake, then dash for the nest under the feather.' },
-    tip: 'Thunder locks a ring: a locked ring also stops a snake.',
+    intro: { title: 'Boss: The Storm Eagle', line: 'The eagle dives while a snake hunts inside; then the storm aims lightning at the ring under your egg and a second snake comes.' },
+    tip: 'When the ring under an egg crackles, turn it away. A locked ring also stops a snake.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'cloud', gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
 
   // ---------------- 7 The Fox's Fortress: the fox throws curses and drags the nest; every trait remixed
@@ -249,10 +280,15 @@ export const SPECS = [
     tip: 'The portal drops eggs past the eagle’s reach. Arrow rings decide the way round.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 35, world: 7, theme: 'vault', name: 'The Fox King', boss: 'foxking', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 6,
-    nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'prize' }, fox: { every: 8, throws: ['foxcurse', 'thorn'], delay: 6 },
-    snake: { delay: 12, speed: 0.38 },
+    nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'prize' },
+    snake: { delay: 999, speed: 0.38 },
+    bossFight: { kind: 'foxking', delay: 4, throws: ['foxcurse', 'thorn'], phases: [
+      { attacks: ['throw'], every: 5.5 },
+      { at: { saved: 1, t: 30 }, attacks: ['throw2', 'fog'], every: 5 },
+      { at: { saved: 2, t: 60 }, attacks: ['throw2', 'fog'], every: 4.5, summon: true },
+    ] },
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'fire_red', ch: 3 }, { type: 'feather', ch: 4 }], portals: [{ from: [3, 90], to: [3, 90], emit: ['fire_red'], every: 7, pull: 0 }],
-    intro: { title: 'Boss: The Fox King', line: 'The fox himself: curses that double the fuse, a snake, curtains and arrow rings. Every trick you learned, once more.' },
-    tip: 'The hourglass stops even a cursed fuse. Save the feather for the outer rings.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], shut: { period: 4, open: 0.5 } }, { gaps: 2, thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 1, curtain: 1, thorns: 1, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], blunt: 1 }] },
+    intro: { title: 'Boss: The Fox King', line: 'The Fox King throws curses and thorn balls at your eggs, hides a ring in fog, and at the end calls in his snake.' },
+    tip: 'The hourglass stops even a cursed fuse. Fog lifts in a few seconds: remember where the gaps were.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 1, curtain: 1, thorns: 1, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], blunt: 1 }] },
 ];
