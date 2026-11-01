@@ -1273,7 +1273,7 @@ export function drawSnakes(ctx, sim, t, k) {
     const sk = sim.spitK(S), idle = S.wait > 0 || S.blocked || S.spit || S.stun > 0 ? 1 : 0;
     const alpha = S.flee > 0.4 ? clamp(1 - (S.flee - 0.4) / 0.45, 0, 1) : 1; // gone before the vault bursts
     const px = path.map((q) => ({ x: q.x * k, y: -q.y * k }));
-    const o = { id: S.id, mouthOpen: S.mouthOpen, thick: 1.16, head: 5.4, wave: 0, skin: S.skin, anim: A,
+    const o = { id: S.id, mouthOpen: S.mouthOpen, thick: 1.16, head: 5.4, wave: 0, skin: S.skin, kind: S.kind, anim: A,
       breath: 1 + 0.045 * idle * Math.sin(t * 2.3 + S.id), crown: sim.level.boss === 'snake' && S.size > 1.2,
       venom: sk > 0 && sk < 0.25 ? sk / 0.25 : sp && sp.fly < 0 ? sp.rear : 0,
       flash: S.hurt === 'bolt' && S.stun > 1.5 ? (Math.sin(t * 60) > 0 ? 0.75 : 0.25) * clamp((S.stun - 1.5) / 0.5, 0, 1) : 0 };
@@ -1288,8 +1288,9 @@ export function drawSnakes(ctx, sim, t, k) {
     }
     // a spitter's glob arcing at the wall, with a dripping trail
     if (sp && sp.fly >= 0 && sp.fly < 1) {
-      const q = sim.venomPt(S), bl = Math.hypot(bx, by) || 1, fx = bx / bl, fy = by / bl, hx = path[0].x + fx * 0.4, hy = path[0].y + fy * 0.4;
-      heads.push(() => { // over the heads: from the mouth, bowing out the way it faces
+      const q = sim.venomPt(S), bl = Math.hypot(bx, by) || 1, fx = bx / bl, fy = by / bl;
+      heads.push(() => { // over the heads (so after this snake's head, which leaves its mouth in A): from the mouth, bowing out the way it faces
+        const hx = A.mouthX !== undefined ? A.mouthX / k : path[0].x + fx * 0.4, hy = A.mouthY !== undefined ? -A.mouthY / k : path[0].y + fy * 0.4;
         for (let j = 4; j >= 0; j--) {
           const u = Math.max(0, sp.fly - j * 0.07), b = Math.sin(u * Math.PI) * 0.5;
           pxSpace(ctx, hx + (q.x - hx) * u + fx * b, hy + (q.y - hy) * u + fy * b, k, () => drawVenom(ctx, 0, 0, 0.12 * k * (1 - j * 0.14), t, j ? 0.55 - j * 0.1 : 1));
