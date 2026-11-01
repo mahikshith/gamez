@@ -1455,9 +1455,27 @@ function drawHenAt(sim, k, t) {
   const n = sim.nest.getPosition();
   ctx.save();
   ctx.translate(n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2, sim.groundY);
-  if (G.hen.mood === 'worried') ctx.rotate(0.15); // leans in toward the nest
   ctx.scale(1 / k, -1 / k);
-  drawHenActor(ctx, G.hen.mood, 0, -0.5 * s * k, s * k, t, { key: 'level' });
+  // she stands ON the ground: a soft contact shadow and a little straw she has scratched out of the nest
+  const hs = s * k;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.26)';
+  ctx.beginPath(); ctx.ellipse(0, 0, hs * 0.36, hs * 0.075, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = G.theme?.palette?.nestStraw || '#c9a24a'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, hs * 0.022);
+  for (const [a, b, c] of [[-0.42, -0.02, -0.22], [-0.3, 0.01, -0.05], [0.18, -0.01, 0.4], [0.3, 0.02, 0.5]]) {
+    ctx.beginPath(); ctx.moveTo(a * hs, b * hs); ctx.lineTo(c * hs, b * hs - hs * 0.03); ctx.stroke();
+  }
+  ctx.restore();
+  // idle life while nothing is happening: she pecks at the straw now and then, and leans in when worried
+  let lean = G.hen.mood === 'worried' ? -0.15 : 0, dip = 0;
+  if (G.hen.mood === 'idle' || G.hen.mood === 'happy' || !G.hen.mood) {
+    const cyc = t % 5.2;
+    if (cyc > 4.2) { const q = (cyc - 4.2) / 1.0; const peck = Math.max(0, Math.sin(q * Math.PI * 2)); lean = 0.32 * peck; dip = 0.04 * peck; }
+  }
+  ctx.translate(-hs * 0.12, 0);
+  ctx.rotate(lean);
+  ctx.translate(hs * 0.12, hs * dip);
+  drawHenActor(ctx, G.hen.mood, 0, -0.49 * hs, hs, t, { key: 'level' });
   ctx.restore();
 }
 
