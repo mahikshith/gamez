@@ -10,9 +10,9 @@ import { portal } from './sdk/portal.js';
 import { FX } from './render/fx.js';
 import * as W from './render/world.js';
 import { UI, FONT, ICON, drawStar, drawEggIcon } from './ui/ui.js';
-import { drawFox, drawHen, drawSnake } from './render/characters.js';
+import { drawSnake } from './render/characters.js';
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
-import { drawSprite, drawSpriteAlive, drawBossCard, setSpriteCalm } from './render/sprites.js';
+import { drawSprite, drawBossCard, drawFoxActor, drawHenActor, setSpriteCalm } from './render/sprites.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import { drawStore, drawCoin, drawBoosterPicker, drawChest } from './ui/store.js';
@@ -1450,14 +1450,14 @@ function flipped(x, y, draw) {
 // The hen sits beside the nest (F16) and reacts: happy on a save, gasp on a crack, cry on a break.
 function drawHenAt(sim, k, t) {
   if (k < 20) return; // too small to read
-  // on a phone the vault leaves k ~ 35 px/m: draw her at least ~46 px tall so she is visible, and step her out from the nest
-  const s = Math.max(0.95, Math.min(46, k * 1.45) / k);
+  // on a phone the vault leaves k ~ 35 px/m: draw her at least ~50 px tall so she is visible, and step her out from the nest
+  const s = Math.max(0.95, Math.min(52, k * 1.5) / k);
   const n = sim.nest.getPosition();
   ctx.save();
   ctx.translate(n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2, sim.groundY);
   if (G.hen.mood === 'worried') ctx.rotate(0.15); // leans in toward the nest
   ctx.scale(1 / k, -1 / k);
-  drawHen(ctx, 0, -0.5 * s * k, s * k, G.hen.mood, t);
+  drawHenActor(ctx, G.hen.mood, 0, -0.5 * s * k, s * k, t, { key: 'level' });
   ctx.restore();
 }
 
@@ -1814,8 +1814,8 @@ function drawWin() {
         // the fox can't believe it; the hen is delighted (F16/F17)
         const side = (w - 192 * s) / 2 - 6 * s, cs = Math.min(58 * s, side);
         if (cs >= 36 * s) {
-          if (!drawSpriteAlive(ctx, 'fox_cry', x + cs / 2, y + 36 * s, cs * 1.1, G.t, 'cry', { age: G.screenT - 0.1 })) drawFox(ctx, x + cs / 2, y + 36 * s, cs, 'cry', G.t);
-          if (!drawSpriteAlive(ctx, 'hen_dance', x + w - cs / 2, y + 62 * s - 0.5 * cs, cs, G.t, 'dance', { age: G.screenT - 0.25, phase: 1.3 })) drawHen(ctx, x + w - cs / 2, y + 62 * s - 0.5 * cs, cs, 'dance', G.t);
+          drawFoxActor(ctx, 'cry', x + cs / 2, y + 36 * s, cs * 1.1, G.t, { key: 'win', enter: G.screenT - 0.1 });
+          drawHenActor(ctx, 'dance', x + w - cs / 2, y + 62 * s - 0.5 * cs, cs, G.t, { key: 'win', enter: G.screenT - 0.25, phase: 1.3 });
           ui.record({ x, y: y + 36 * s - 0.6 * cs, w: cs, h: 1.2 * cs }, 'win:fox');
           ui.record({ x: x + w - cs, y: y + 62 * s - cs, w: cs, h: cs }, 'win:hen');
         }
@@ -1859,8 +1859,8 @@ function drawFail() {
       { h: 100 * s, gap: 0, draw: (x, y, w) => {
         // the fox grins and laughs; the hen is sad (F16/F17)
         const evil = G.screenT % 2.4 < 1.2;
-        if (!drawSpriteAlive(ctx, evil ? 'fox_evil' : 'fox_laugh', x + w / 2 - 50 * s, y + 52 * s, 96 * s, G.t, evil ? 'shake' : 'laugh', { age: G.screenT % 1.2, popFrom: G.screenT < 1.2 ? 0 : 0.86 })) drawFox(ctx, x + w / 2 - 50 * s, y + 52 * s, 80 * s, evil ? 'evil' : 'laugh', G.t);
-        if (!drawSpriteAlive(ctx, 'hen_cry', x + w / 2 + 56 * s, y + 98 * s - 0.5 * 64 * s, 64 * s, G.t, 'cry', { age: G.screenT - 0.2, phase: 0.7 })) drawHen(ctx, x + w / 2 + 56 * s, y + 98 * s - 0.5 * 64 * s, 64 * s, 'sad', G.t);
+        drawFoxActor(ctx, evil ? 'evil' : 'laugh', x + w / 2 - 50 * s, y + 52 * s, 96 * s, G.t, { key: 'fail', enter: G.screenT });
+        drawHenActor(ctx, 'cry', x + w / 2 + 56 * s, y + 98 * s - 0.5 * 64 * s, 64 * s, G.t, { key: 'fail', enter: G.screenT - 0.2, phase: 0.7 });
         ui.record({ x: x + w / 2 - 90 * s, y: y + 4 * s, w: 80 * s, h: 96 * s }, 'fail:fox');
         ui.record({ x: x + w / 2 + 24 * s, y: y + 34 * s, w: 64 * s, h: 64 * s }, 'fail:hen');
       } },
@@ -1891,10 +1891,9 @@ function drawTitle() {
   ui.button('daily', 'Daily', cx - bw / 2 + tw + 10 * u, by + 76 * u, tw, 50 * u, { color: save.daily.paid === today() ? '#6a5a4a' : '#9b59d0', dark: save.daily.paid === today() ? '#3a2e22' : '#5e2f87', icon: ICON.play, size: 17 * u });
   ui.button('shop', String(save.wallet.coins), cx - bw / 2 + 2 * (tw + 10 * u), by + 76 * u, tw, 50 * u, { color: '#d49a1c', dark: '#8a5f0a', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.5, G.t), size: 17 * u });
   modeRow(cx - bw / 2, by + 136 * u, bw, 40 * u, u);
-  // the fox takes whatever room is left: between subtitle and buttons, or beside the buttons; its eyes follow the pointer
+  // the fox takes whatever room is left: between subtitle and buttons, or beside the buttons; it leans toward the pointer
   const fox = (x, y, s) => {
-    const dx = G.pointer.x - x, dy = G.pointer.y - y, d = Math.hypot(dx, dy) || 1;
-    drawFox(ctx, x, y, s, 'idle', G.t, { x: (dx / d) * Math.min(1, d / 200), y: (dy / d) * Math.min(1, d / 200) });
+    drawFoxActor(ctx, 'idle', x, y, s * 1.2, G.t, { key: 'title', enter: G.screenT, lean: (G.pointer.x - x) / 200 });
     ui.record({ x: x - s / 2, y: y - 0.6 * s, w: s, h: 1.2 * s }, 'title:fox');
   };
   const room = by - (subY + 12 * u) - 10 * u;
