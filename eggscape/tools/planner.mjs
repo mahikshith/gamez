@@ -60,7 +60,11 @@ export function alignAll(level, opts = {}) {
     if (r.motor || !r.gaps.length) continue;
     const a = r.body.getAngle();
     let best = Infinity;
-    for (const g of r.gaps) { const d = Math.atan2(Math.sin(-Math.PI / 2 - a - g.a), Math.cos(-Math.PI / 2 - a - g.a)); if (Math.abs(d) < Math.abs(best)) best = d; }
+    for (const g of r.gaps) {
+      let d = Math.atan2(Math.sin(-Math.PI / 2 - a - g.a), Math.cos(-Math.PI / 2 - a - g.a));
+      if (r.oneway && Math.sign(d) !== r.oneway) d += r.oneway * 2 * Math.PI; // one-way: the long way round
+      if (Math.abs(d) < Math.abs(best)) best = d;
+    }
     r.goal = a + best;
   }
   for (let i = 0; i < 12 / DT && (sim.state === 'play' || sim.state === 'winning' || sim.state === 'failing'); i++) {

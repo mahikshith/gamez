@@ -63,7 +63,7 @@ export function value(sim) {
       const p = e.body.getPosition();
       const local = Math.atan2(p.y, p.x) - ring.body.getAngle();
       let d = Math.PI;
-      for (const g of ring.gaps) d = Math.min(d, Math.abs(Math.atan2(Math.sin(local - g.a), Math.cos(local - g.a))));
+      for (const g of ring.gaps) if (!sim.gapOpenFor || sim.gapOpenFor(g, e)) d = Math.min(d, Math.abs(Math.atan2(Math.sin(local - g.a), Math.cos(local - g.a))));
       v -= d * 60;
     }
   }
@@ -84,7 +84,7 @@ export function actions(sim) {
   }
   // a geared partner turns with its ring: one of the two is enough
   for (const i of floors) if (sim.rings[i].gear && floors.has(sim.rings[i].gear.i) && sim.rings[i].gear.i < i) floors.delete(i);
-  for (const i of floors) if (sim.rings[i].grabbable) for (const d of DELTAS) out.push({ ring: i, delta: d });
+  for (const i of floors) if (sim.rings[i].grabbable) for (const d of DELTAS) if (!sim.canTurn || sim.canTurn(sim.rings[i], d)) out.push({ ring: i, delta: d });
   return out;
 }
 
