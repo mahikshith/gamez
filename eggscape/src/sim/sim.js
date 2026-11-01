@@ -50,9 +50,21 @@ export const POWER = {
   water: { time: 8 }, // landing impacts count half
   magnet: { time: 8, len: 0.8 },
 };
-export const ORB_TYPES = ['fire_red', 'fire_black', 'fire_green', 'fire_gold', 'stone', 'bubble', 'water', 'thunder', 'thorn', 'magnet', 'twin'];
+export const ORB_TYPES = ['fire_red', 'fire_black', 'fire_green', 'fire_gold', 'stone', 'bubble', 'water', 'thunder', 'thorn', 'magnet', 'twin',
+  'hourglass', 'feather', 'rockskin', 'foxcurse'];
 export const LEGACY_ORB = { fire: 'fire_red', steel: 'stone' }; // v1 item ids (levels and saves)
 const ORB_R = 0.2;
+
+// ---------- v3 physics: constants
+// Global powers (G29, G30, G39, G40): the egg that takes the orb sets it off for every egg.
+export const V3_POWER = { hourglass: 6, feather: 6, rockskin: 6, foxcurse: 6 };
+// Special eggs (I3): hull scale, mass factor. Ostrich can't pass gaps shorter than OSTRICH_GAP (m).
+export const EGG_KIND = { ostrich: { s: 1.3, m: 2 }, quail: { s: 0.75, m: 0.45 }, duck: { s: 1, m: 1 } };
+const OSTRICH_GAP = 0.74;
+const PULL_R = 1.2; // portal suction radius (G18)
+const HOLE_LEN = 0.95, HOLE_T = 5, ROCK_FLY = 1.1, ROCK_SIT = 1.2; // lava rocks (G31)
+const CURTAIN_BURN = 1; // s for fire to clear a thorn curtain
+const GUARD_PASS = new Set(['fox', 'ground', 'lost', 'lava']); // what still ends a guarded egg
 
 // Difficulty is the player's choice (F32). Same levels, tuned per mode.
 export const MODES = {
@@ -123,6 +135,11 @@ export class Sim {
     this.timeLeft = this.timeLimit;
     this.combo = 0;
     this.lastSaveT = -9;
+    // v3 physics: global power timers, lava rocks, icicles
+    this.slowT = 0; this.curseT = 0; this.jitT = 0; this.guardT = 0; this.skinT = 0;
+    this.lavaRocks = []; this.icicles = [];
+    const LV = typeof level.lava === 'object' && level.lava, IC = level.icicles;
+    this.v3T = { lava: LV ? LV.delay ?? 5 : -1, ice: IC ? IC.delay ?? 4 : -1 };
     this.build();
     this.world.on('pre-solve', (c, old) => this.preSolve(c, old));
     this.world.on('post-solve', (c, imp) => this.postSolve(c, imp));
@@ -169,14 +186,15 @@ export class Sim {
     const n0 = L.eggs || 1;
     const spots = [[-0.24, -0.62], [0.24, -0.62], [0, -0.1], [-0.3, 0.3], [0.3, 0.3]];
     for (let i = 0; i < n0; i++) {
-      const egg = this.addEgg(spots[i][0] * (this.rings[0].r / 1.05), spots[i][1] * (this.rings[0].r / 1.05), 0, i === 0 && this.golden ? { golden: 1 } : {});
+      const egg = this.addEgg(spots[i][0] * (this.rings[0].r / 1.05), spots[i][1] * (this.rings[0].r / 1.05), 0, { ...(i === 0 && this.golden ? { golden: 1 } : {}), kind: (L.eggKinds || [])[i] });
       if (i === n0 - 1 && L.bonus && L.bonus.kind === 'prize') egg.prize = 1;
       if (i === 0 && this.opts.stone) this.setStone(egg, true);
     }
 
     // portals sit on channel floors; with `emit` they spit out an orb every `every` seconds
     for (const p of L.portals || []) {
-      this.portals.push({ ax: p.a[0], ay: p.a[1], bx: p.b[0], by: p.b[1], r: 0.3, emit: p.emit || null, every: p.every || 8, timer: (p.every || 8) * 0.4, k: 0 });
+      // v3: pull = suction radius (G18); later portals emit out of step with the first
+      this.portals.push({ ax: p.a[0], ay: p.a[1], bx: p.b[0], by: p.b[1], r: 0.3, emit: p.emit || null, every: p.every || 8, timer: (p.every || 8) * (0.4 + 0.3 * this.portals.length), k: 0, pull: p.pull ?? PULL_R });
     }
     // floating orbs: level orbs, plus v1 ring items (they used to be pinned to the ring)
     for (const o of L.orbs || []) this.addOrb(o.type, o.ch, deg(o.a ?? 90), 'start');
@@ -196,7 +214,7 @@ export class Sim {
       motor: spec.motor ? deg(spec.motor) : 0,
       motorFlip: spec.motorFlip || 0,
       grabbable: !spec.motor,
-      gaps: (spec.gaps || []).map((g) => ({ a: deg(g.a), len: g.len || 0.78, x: g.x || 1, shut: g.shut || null, o: 1 })),
+      gaps: this.v3Gaps(spec, r),
       segs: [], thorns: [],
       honey: (spec.honey || []).map((h) => ({ a: deg(h.a), len: h.len, dry: 0 })),
       retract: spec.retract || null,
@@ -241,6 +259,7 @@ export class Sim {
         this.addThorn(ring, a, th.side || 'in', th.h || 0.24, th.kind);
       }
     }
+    this.v3Ring(ring);
     return ring;
   }
 
@@ -258,8 +277,9 @@ export class Sim {
 
   addEgg(x, y, cracks = 0, extra = {}) {
     const body = this.world.createDynamicBody({ position: Vec2(x, y), bullet: true, angularDamping: 0.35, linearDamping: this.level.water ? 1.1 : 0.02 });
-    const hull = eggHull(12).map((p) => Vec2(p.x, p.y));
-    const fix = body.createFixture({ shape: new Polygon(hull), density: 1, friction: 0.5, restitution: 0.12, ...filt('EGG'), userData: { kind: 'egg' } });
+    const K = EGG_KIND[extra.kind]; // v3 special eggs: size and weight
+    const hull = eggHull(12, K ? K.s : 1).map((p) => Vec2(p.x, p.y));
+    const fix = body.createFixture({ shape: new Polygon(hull), density: K ? K.m / (K.s * K.s) : 1, friction: 0.5, restitution: 0.12, ...filt('EGG'), userData: { kind: 'egg' } });
     const egg = {
       id: this.nextEggId++, body, fix, cracks, alive: true, saved: false,
       fire: 0, fireKind: null, stone: 0, bubble: 0, bubbleFix: null, magnet: 0, joint: null, golden: extra.golden || 0,
@@ -267,6 +287,7 @@ export class Sim {
       crackCD: 0, nestT: 0, inNest: 0, safeT: this.t < 0.5 ? 1.5 : 0, portalCD: 0, born: this.t,
       seed: (this.rand() * 1e9) | 0, impact: 0, lastV: 0, fear: 0,
       ch: 0, mult: 1, freefall: 0, comet: 0, cometUsed: false,
+      kind: K ? extra.kind : null, guard: 0, rockskin: 0, curse: 0, drop: 0, soft: false, lavaCD: 0, // v3
     };
     fix.getUserData().egg = egg;
     body.setUserData(egg);
@@ -351,7 +372,7 @@ export class Sim {
 
   // ---------- step ----------
   step() {
-    const dt = DT;
+    const dt = this.slowT > 0 ? DT / 2 : DT; // v3 hourglass: the world runs at half speed
     this.t += dt;
     const L = this.level;
 
@@ -388,6 +409,7 @@ export class Sim {
       other.target = other.body.getAngle() + other.omega * dt;
       other.follower = true;
     }
+    this.v3Rings();
     for (const ring of this.rings) {
       ring.body.setAngularVelocity(ring.omega);
       const moving = !ring.motor && !ring.follower && Math.abs(ring.omega) > 0.25;
@@ -432,6 +454,7 @@ export class Sim {
       if (egg.water > 0) egg.water -= dt;
       if (egg.glow > 0) egg.glow -= dt;
       if (egg.honeyCD > 0) egg.honeyCD -= dt;
+      this.v3Egg(egg, dt);
       if (egg.fire > 0 && (egg.fire -= dt) <= 0) { egg.fire = 0; egg.fireKind = null; this.emit('fireOut', { egg }); }
       if (egg.stone > 0 && (egg.stone -= dt) <= 0) this.setStone(egg, false);
       if (egg.bubble > 0) {
@@ -485,6 +508,7 @@ export class Sim {
     });
     this.predStep(dt);
     if (this.weather && this.state === 'play') this.weatherStep(dt);
+    if (this.state === 'play') this.v3Step(dt);
 
     this.world.step(dt, 8, 3);
     this.afterStep(dt);
@@ -519,18 +543,14 @@ export class Sim {
       const v = egg.impact * (egg.water > 0 ? 0.5 : 1); // water shell: landings count half
       if (v > 0.6) this.emit('bump', { egg, v });
       const soft = egg.inNest > 0 ? NEST_SOFT : 1;
-      if (egg.meteor && v > 1.2) {
-        // meteor rule (F15a): a fall through 3+ rings cracks on landing, even in the nest
-        egg.meteor = 0;
-        egg.comet = 0;
-        const p = egg.body.getPosition();
-        this.emit('meteorLand', { egg, x: p.x, y: p.y });
-        if (v >= SHATTER_V * soft && egg.stone <= 0) this.breakEgg(egg, 'impact');
-        else this.crack(egg, v, 'meteor');
-      } else if (egg.stone > 0 || egg.safeT > 0 || egg.chick || egg.honey > 0) { /* immune */ }
-      else if (egg.comet && v >= this.crackV * soft) { egg.comet = 0; egg.safeT = 0.15; this.emit('cometLand', { egg, x: egg.body.getPosition().x, y: egg.body.getPosition().y }); }
+      // v3 crack ladder (G34) replaces the meteor/comet rule: a fall through 2+ rings is judged on
+      // landing by the number of rings, and that landing never also counts as a hard hit
+      if (egg.drop >= 2 && egg.impact > 1.2) this.landFall(egg);
+      else if (egg.stone > 0 || egg.safeT > 0 || egg.chick || egg.honey > 0 || egg.guard > 0) { /* immune */ }
       else if (v >= SHATTER_V * soft) this.breakEgg(egg, 'impact');
       else if (v >= this.crackV * soft && egg.crackCD <= 0) this.crack(egg, v);
+      if (egg.freefall === 0) egg.drop = 0; // touched a ring floor: the fall is over
+      egg.soft = false;
       if (!egg.alive) continue;
       const p = egg.body.getPosition();
       const ch = this.channelOf(egg);
@@ -573,7 +593,7 @@ export class Sim {
 
     // the fox's fuse
     if (this.state === 'play' && this.timeLimit) {
-      this.timeLeft -= dt;
+      this.timeLeft -= dt * this.fuseRate();
       if (this.timeLeft <= 0) {
         this.timeLeft = 0;
         this.emit('timeout', { won: this.savedLog.length >= (this.level.target || 1) });
@@ -626,6 +646,7 @@ export class Sim {
         const mo = other.getMass(), me = body.getMass();
         v = closing * (2 * mo / (mo + me)) * 0.85;
       }
+      if (uo.kind === 'seg' && (uo.seg.pad || uo.seg.honey)) egg.soft = true; // v3: sponge landings are always safe
       if (uo.kind === 'seg' && uo.seg.pad) {
         const sg = uo.seg;
         sg.hitT = this.t;
@@ -648,6 +669,7 @@ export class Sim {
 
   preSolve(c, old) {
     const [fa, fb, ua, ub] = this.parts(c);
+    if (this.v3Pass(ua, ub)) { c.setEnabled(false); return; } // v3: melted ring, grate, narrow gap
     if (!fa.isSensor() && !fb.isSensor()) this.impactCheck(c, old, ua, ub);
     let egg = null, other = null, ofix = null;
     if (ua.kind === 'egg') { egg = ua.egg; other = ub; ofix = fb; }
@@ -656,6 +678,7 @@ export class Sim {
       if ((ua.kind === 'shut' ? ua : ub).gap.o > 0.5) { c.setEnabled(false); return; }
     }
     if (other && other.kind === 'thorn' && other.thorn.ext < 0.5) { c.setEnabled(false); return; }
+    if (this.v3Contact(c, egg, other)) return;
     if (!egg || !egg.alive || egg.saved) return;
     if (other.kind === 'barrier') { this.barrierTouch(c, egg, other.barrier); return; } // predators (v3)
     if (other.kind === 'thorn') {
@@ -746,6 +769,7 @@ export class Sim {
     if (ub.kind === 'egg' && ua.kind === 'thorn') ub.egg.spk.delete(ua.thorn.key);
     if (ua.kind === 'egg' && ub.kind === 'nestIn') ua.egg.inNest = Math.max(0, ua.egg.inNest - 1);
     if (ub.kind === 'egg' && ua.kind === 'nestIn') ub.egg.inNest = Math.max(0, ub.egg.inNest - 1);
+    this.v3EndContact(ua, ub);
   }
 
   // ---------- rules ----------
@@ -765,30 +789,23 @@ export class Sim {
       this.emit('gate', { egg, x: p.x, y: p.y, gx: gate.x, mult: egg.mult });
     }
     egg.freefall++;
-    if (egg.freefall >= 2 && !egg.comet && !egg.cometUsed) {
-      egg.comet = 1;
-      egg.cometUsed = true;
-      this.emit('comet', { egg, x: p.x, y: p.y });
-    }
-    if (egg.freefall >= 3 && this.MD.meteor && !egg.meteor && !egg.chick) {
-      egg.meteor = 1;
-      egg.comet = 0;
-      egg.cometUsed = 'meteor'; // no Comet double score either
-      this.emit('meteor', { egg, x: p.x, y: p.y });
-    }
+    egg.drop = egg.freefall; // v3 crack ladder: rings passed in this fall
+    if (this.fallDamage(egg, egg.drop) > 0 && this.fallDamage(egg, egg.drop - 1) === 0 && !this.landSafe(egg)) this.emit('fallWarn', { egg, x: p.x, y: p.y, rings: egg.drop });
   }
 
-  crack(egg, v, why = 'impact') {
-    if (!egg.alive || egg.saved || egg.chick || egg.stone > 0) return; // a chick never cracks; stone takes it
-    egg.cracks++;
+  // n = cracks to add (the crack ladder can add two at once). 3 cracks = broken.
+  crack(egg, v, why = 'impact', n = 1) {
+    if (!egg.alive || egg.saved || egg.chick || egg.stone > 0 || egg.guard > 0) return; // a chick never cracks; stone and the feather take it
+    egg.cracks += n;
     egg.crackCD = CRACK_COOLDOWN;
     const p = egg.body.getPosition();
     if (egg.cracks >= 3) this.breakEgg(egg, why === 'impact' || why === 'meteor' ? 'impact' : why);
-    else this.emit('crack', { egg, v, why, x: p.x, y: p.y });
+    else this.emit('crack', { egg, v, why, x: p.x, y: p.y, n: egg.cracks, add: n });
   }
 
   breakEgg(egg, why) {
     if (!egg.alive || egg.saved) return;
+    if (egg.guard > 0 && !GUARD_PASS.has(why)) return; // v3 guardian feather
     egg.alive = false;
     const b = egg.body;
     const p = b.getPosition(), vel = b.getLinearVelocity(), a = b.getAngle();
@@ -830,7 +847,7 @@ export class Sim {
     const t = orb.type;
     this.emit('pickup', { egg, power: t, x: p.x, y: p.y });
     if (t === 'fire_red' || t === 'fire_black') { egg.fire = POWER[t].time; egg.fireKind = t; if (egg.bubbleFix) this.popBubble(egg); }
-    else if (t === 'fire_green') { egg.glow = 1.5; if (egg.cracks > 0) { egg.cracks--; this.emit('mend', { egg, x: p.x, y: p.y }); } }
+    else if (t === 'fire_green') { egg.glow = 1.5; if (egg.cracks > 0) { const n = egg.cracks; egg.cracks = 0; this.emit('mend', { egg, x: p.x, y: p.y, n }); } } // v3: heals every crack
     else if (t === 'fire_gold') this.hatch(egg);
     else if (t === 'stone') this.setStone(egg, true);
     else if (t === 'bubble') this.setBubble(egg);
@@ -847,11 +864,13 @@ export class Sim {
         this.emit('twin', { egg: twin, x: nx, y: ny });
       } else this.emit('twinFull', { egg });
     } else if (t === 'magnet') this.setMagnet(egg);
+    else if (V3_POWER[t]) this.v3Power(t, egg);
   }
 
   setStone(egg, on) {
     egg.stone = on ? POWER.stone.time : 0;
-    egg.fix.setDensity(on ? POWER.stone.mass : 1);
+    const K = EGG_KIND[egg.kind];
+    egg.fix.setDensity((on ? POWER.stone.mass : 1) * (K ? K.m / (K.s * K.s) : 1));
     egg.body.resetMassData();
     this.emit(on ? 'stoneOn' : 'stoneOff', { egg });
   }
@@ -1457,7 +1476,7 @@ export class Sim {
         for (const e of this.aliveEggs()) {
           if (gone) break;
           const p = e.body.getPosition();
-          if (Math.hypot(p.x - m.x, p.y - m.y) < 0.32) { gone = true; this.emit('emberHit', { x: m.x, y: m.y, egg: e }); this.crack(e, 0, 'ember'); }
+          if (Math.hypot(p.x - m.x, p.y - m.y) < 0.32) { gone = true; if (e.water > 0) this.emit('emberFizz', { x: m.x, y: m.y }); else { this.emit('emberHit', { x: m.x, y: m.y, egg: e }); this.crack(e, 0, 'ember'); } }
         }
         if (gone) this.embers.splice(i, 1);
       }
@@ -1485,7 +1504,7 @@ export class Sim {
   solidAt(ring, x, y) {
     let la = Math.atan2(y, x) - ring.body.getAngle();
     la = ((la % TAU) + TAU) % TAU;
-    for (const g of ring.segs) if (g.alive && ((la >= g.a0 && la < g.a1) || (la + TAU >= g.a0 && la + TAU < g.a1))) return true;
+    for (const g of ring.segs) if (g.alive && !(g.melt > 0) && ((la >= g.a0 && la < g.a1) || (la + TAU >= g.a0 && la + TAU < g.a1))) return true;
     for (const g of ring.gaps) if (g.shut && g.o < 0.5 && Math.abs(wrap(la - g.a)) < g.len / (2 * ring.r)) return true;
     return false;
   }
@@ -1532,6 +1551,7 @@ export class Sim {
     const bodyS = (b) => { const p = b.getPosition(), v = b.getLinearVelocity(); return [p.x, p.y, b.getAngle(), v.x, v.y, b.getAngularVelocity()]; };
     const EGG_KEYS = ['id', 'alive', 'saved', 'cracks', 'fire', 'fireKind', 'stone', 'bubble', 'golden', 'crackCD', 'safeT', 'portalCD', 'ch', 'mult', 'freefall', 'comet', 'cometUsed', 'seed', 'magnet', 'water', 'zap', 'glow', 'chick', 'meteor', 'honey', 'honeyCD', 'prize'];
     EGG_KEYS.push('peckK', 'peckT', 'peckHit'); // predators (v3)
+    EGG_KEYS.push('kind', 'guard', 'rockskin', 'curse', 'drop', 'lavaCD'); // v3
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -1555,6 +1575,7 @@ export class Sim {
       wx: { ...this.wx, bolt: this.wx.bolt ? { ...this.wx.bolt } : null },
       embers: this.embers.map((m) => ({ ...m })),
       nest: bodyS(this.nest),
+      v3: this.v3State(),
     };
   }
 
@@ -1578,7 +1599,7 @@ export class Sim {
     sim.eggs = [];
     for (const es of S.eggs) {
       if (es.b) {
-        const egg = sim.addEgg(es.b[0], es.b[1], es.cracks, { golden: es.golden });
+        const egg = sim.addEgg(es.b[0], es.b[1], es.cracks, { golden: es.golden, kind: es.kind });
         setB(egg.body, es.b);
         const { b, gates, spk, stone, bubble, magnet, chick, hold, alive, saved, ...rest } = es;
         Object.assign(egg, rest, { gates: new Set(gates || []), spk: new Set(spk || []), hold: hold ? { ...hold } : null });
@@ -1586,7 +1607,7 @@ export class Sim {
         if (bubble > 0) { sim.setBubble(egg); egg.bubble = bubble; }
         if (chick) sim.hatch(egg, true);
       } else {
-        sim.eggs.push({ id: es.id, alive: es.alive, saved: es.saved, cracks: es.cracks, body: null, mult: es.mult, prize: es.prize, chick: es.chick });
+        sim.eggs.push({ id: es.id, alive: es.alive, saved: es.saved, cracks: es.cracks, body: null, mult: es.mult, prize: es.prize, chick: es.chick, kind: es.kind });
       }
     }
     for (const r of S.ropes || []) {
@@ -1603,6 +1624,7 @@ export class Sim {
     sim.predLoad(S.pred); // predators (v3)
     if (S.wx) sim.wx = { ...S.wx, bolt: S.wx.bolt ? { ...S.wx.bolt } : null };
     sim.embers = (S.embers || []).map((m) => ({ ...m }));
+    sim.v3Restore(S.v3);
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -1610,6 +1632,349 @@ export class Sim {
     sim.rs = S.rs; // re-creating eggs and orbs above drew from the rng
     sim.snaps = [];
     return sim;
+  }
+
+  // ---------- v3 physics ----------
+  // Gaps of a ring: level gaps (flags curtain, grate) plus the spec shorthands: curtain: n (the first n
+  // open gaps get a thorn curtain), grate: n (n grated openings in the middle of the widest solid arcs).
+  v3Gaps(spec, r) {
+    const cur = () => ({ alive: true, burn: 0, burning: false, fixes: [] });
+    const gaps = (spec.gaps || []).map((g) => ({ a: deg(g.a), len: g.len || (g.grate ? 0.7 : 0.78), x: g.x || 1, shut: g.shut || null, o: 1, curtain: g.curtain ? cur() : null, grate: !!g.grate }));
+    for (let k = 0, n = spec.curtain || 0; k < gaps.length && n > 0; k++) if (!gaps[k].grate && !gaps[k].curtain) { gaps[k].curtain = cur(); n--; }
+    for (let k = 0; k < (spec.grate || 0); k++) {
+      let best = null;
+      for (const arc of solidArcs(r, gaps)) if (!best || arc[1] - arc[0] > best[1] - best[0]) best = arc;
+      if (!best || (best[1] - best[0]) * r < 1.6) break;
+      gaps.push({ a: wrap((best[0] + best[1]) / 2), len: 0.7, x: 1, shut: null, o: 1, curtain: null, grate: true });
+    }
+    return gaps;
+  }
+
+  // One-way rings (G22), and fixtures across special gaps: thorn curtains (G20/I7), grates (I4), and
+  // bars across gaps too narrow for an ostrich egg (only made when the level has one).
+  v3Ring(ring) {
+    ring.oneway = Math.sign(ring.spec.oneway || 0);
+    const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2, big = (this.level.eggKinds || []).includes('ostrich');
+    const across = (g, kind) => {
+      const half = g.len / (2 * r), n = Math.max(2, Math.ceil(g.len / 0.2)), out = [];
+      for (let k = 0; k < n; k++) {
+        const b0 = g.a - half + (2 * half * k) / n, b1 = g.a - half + (2 * half * (k + 1)) / n;
+        out.push(ring.body.createFixture({
+          shape: new Polygon([Vec2(ri * Math.cos(b0), ri * Math.sin(b0)), Vec2(ro * Math.cos(b0), ro * Math.sin(b0)), Vec2(ro * Math.cos(b1), ro * Math.sin(b1)), Vec2(ri * Math.cos(b1), ri * Math.sin(b1))]),
+          friction: 0.4, restitution: 0.1, ...filt('RING'), userData: { kind, gap: g, ring },
+        }));
+      }
+      return out;
+    };
+    for (const g of ring.gaps) {
+      if (g.curtain) g.curtain.fixes = across(g, 'curtain');
+      else if (g.grate) across(g, 'grate');
+      else if (big && g.len < OSTRICH_GAP) across(g, 'narrow');
+    }
+  }
+
+  // Contacts switched off before any impact is measured: melted ring, grate (quail and debris pass),
+  // narrow-gap bar (only an ostrich is held), a burnt curtain or debris through a curtain.
+  v3Pass(ua, ub) {
+    for (const [u, o] of [[ua, ub], [ub, ua]]) {
+      if (u.kind === 'seg' && u.seg.melt > 0) return true;
+      if (u.kind === 'grate') return !o.kind || (o.kind === 'egg' && o.egg.kind === 'quail');
+      if (u.kind === 'narrow') return !(o.kind === 'egg' && o.egg.kind === 'ostrich');
+      if (u.kind === 'curtain') return !u.gap.curtain.alive || !o.kind;
+    }
+    return false;
+  }
+
+  // Egg contacts with v3 rules. Returns true when it has dealt with the contact.
+  v3Contact(c, egg, other) {
+    if (!egg || !egg.alive || egg.saved || !other) return false;
+    if (other.kind === 'curtain') { this.curtainTouch(c, egg, other); return true; }
+    const heavy = egg.stone > 0 || (egg.kind === 'ostrich' && egg.drop >= 2);
+    if (other.kind === 'thorn' && other.thorn.alive && egg.fire <= 0) {
+      // stone, and an ostrich falling 2+ rings, flatten the whole cluster (G16, I3)
+      if (heavy) { c.setEnabled(false); const th = other.thorn; this.defer(() => this.smashCluster(th, egg)); return true; }
+      if (egg.guard > 0) return true; // guardian feather: thorns can't hurt, the egg bumps off
+    }
+    if (other.kind === 'seg' && heavy) {
+      const sg = other.seg;
+      if (sg.alive && sg.ring.M.hp && sg.hp < sg.ring.M.hp && !sg.dying) { sg.dying = true; this.defer(() => this.breakSeg(sg, 'shatter')); }
+    }
+    return false;
+  }
+
+  smashCluster(th, egg) {
+    const ring = th.ring;
+    let n = 0;
+    for (const o of ring.thorns) if (o.alive && o.side === th.side && Math.abs(wrap(o.a - th.a)) * ring.r < 0.45) { this.removeThorn(o, 'snap'); n++; }
+    if (n) { const p = egg.body.getPosition(); this.emit('smash', { egg, n, x: p.x, y: p.y }); }
+  }
+
+  // Thorn curtain: only fire (red or black flame) burns it away; it hurts everything else like a thorn.
+  curtainTouch(c, egg, u) {
+    const g = u.gap, C = g.curtain, ring = u.ring;
+    if (!C.alive) { c.setEnabled(false); return; }
+    const at = () => ring.body.getWorldPoint(Vec2(ring.r * Math.cos(g.a), ring.r * Math.sin(g.a)));
+    if (egg.fire > 0 && (egg.fireKind === 'fire_red' || egg.fireKind === 'fire_black')) {
+      if (!C.burning) { C.burning = true; this.defer(() => { const p = at(); this.emit('curtainBurn', { x: p.x, y: p.y, ring: ring.i }); }); }
+      return; // the egg sits on it while it burns
+    }
+    if (C.burning || egg.stone > 0 || egg.guard > 0) return; // stone and the feather just bump off
+    if (egg.bubbleFix) { if (!egg.popping) { egg.popping = true; egg.safeT = 0.4; this.defer(() => { egg.popping = false; this.popBubble(egg, true); }); } return; }
+    if (egg.golden) { egg.golden = 0; egg.safeT = 0.6; this.emit('goldenSave', { egg }); return; }
+    if (egg.safeT > 0) return;
+    const key = 'c' + ring.i + ':' + ring.gaps.indexOf(g);
+    if (this.MD.softThorns && !egg.chick) {
+      // Easy: a crack (never the breaking one) and a shove off, once per touch
+      if (!egg.spk.has(key)) {
+        egg.spk.add(key);
+        this.defer(() => {
+          if (!egg.alive || egg.saved) return;
+          if (egg.cracks < 2) this.crack(egg, 0, 'curtain');
+          const b = egg.body, p = b.getPosition(), q = at(), dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 1.6;
+          b.applyLinearImpulse(Vec2((dx / d) * m, (dy / d) * m), p, true);
+        });
+      }
+      return;
+    }
+    egg.safeT = 1;
+    c.setEnabled(false);
+    this.defer(() => { egg.safeT = 0; this.breakEgg(egg, 'curtain'); });
+  }
+
+  v3EndContact(ua, ub) {
+    for (const [u, o] of [[ua, ub], [ub, ua]]) if (u.kind === 'egg' && o.kind === 'curtain') u.egg.spk.delete('c' + o.ring.i + ':' + o.ring.gaps.indexOf(o.gap));
+  }
+
+  // Can ring turn by delta? One-way rings (and a gear partner's one-way) say which way.
+  canTurn(ring, delta) {
+    if (ring.oneway && Math.sign(delta) !== ring.oneway) return false;
+    if (ring.gear && ring.gear.oneway && -Math.sign(delta) !== ring.gear.oneway) return false;
+    return true;
+  }
+  // Is gap g a way down for this egg?
+  gapOpenFor(g, egg) {
+    if (g.curtain && g.curtain.alive) return false;
+    if (g.grate) return !!egg && egg.kind === 'quail';
+    if (egg && egg.kind === 'ostrich' && g.len < OSTRICH_GAP) return false;
+    return true;
+  }
+
+  // after the gear pass: a one-way ring (and its gear partner) never turns the wrong way; under the
+  // hourglass the player's rings keep their real-time speed while the world runs at half speed
+  v3Rings() {
+    for (const ring of this.rings) {
+      if (!ring.oneway || ring.motor || ring.omega * ring.oneway >= 0) continue;
+      for (const r of ring.gear ? [ring, ring.gear] : [ring]) { r.omega = 0; r.target = r.body.getAngle(); }
+    }
+    if (this.slowT > 0) for (const ring of this.rings) if (!ring.motor) ring.omega *= 2;
+  }
+
+  fuseRate() {
+    return this.slowT > 0 ? 0 : this.curseT > 0 ? 2 : 1; // hourglass stops the fuse, the fox curse doubles it
+  }
+
+  // crack ladder (G34): cracks for a fall through n rings at once. 1 ring is always safe; 2 = 1 crack,
+  // 3 = 2, 4+ = broken. Easy is one ring gentler, a quail one ring harsher, water halves it.
+  fallDamage(egg, n) {
+    if (n < 2) return 0;
+    let d = n - 1 - (this.mode === 'easy' ? 1 : 0) + (egg.kind === 'quail' ? 1 : 0);
+    if (egg.water > 0) d = Math.floor(d / 2);
+    return Math.max(0, d);
+  }
+  landSafe(egg) {
+    return egg.soft ? 'sponge' : egg.chick ? 'chick' : egg.bubbleFix ? 'bubble' : egg.stone > 0 ? 'stone' : egg.guard > 0 ? 'feather' : egg.honey > 0 ? 'honey' : null;
+  }
+  landFall(egg) {
+    const n = egg.drop, p = egg.body.getPosition();
+    egg.drop = 0;
+    const why = this.landSafe(egg), d = why ? 0 : this.fallDamage(egg, n);
+    if (!d) { this.emit('softLand', { egg, rings: n, why: why || (egg.water > 0 ? 'water' : 'ok'), x: p.x, y: p.y }); return; }
+    this.emit('fallLand', { egg, rings: n, dmg: d, x: p.x, y: p.y });
+    if (egg.cracks + d >= 3) { egg.cracks = 3; this.breakEgg(egg, 'fall'); } else this.crack(egg, 0, 'fall', d);
+  }
+
+  // Global powers (G29 hourglass, G39 feather, G40 rock skin, G30 fox curse).
+  v3Power(t, egg) {
+    const T = V3_POWER[t], eggs = this.aliveEggs();
+    if (t === 'hourglass') this.slowT = T;
+    else if (t === 'foxcurse') { this.curseT = T; for (const e of eggs) e.curse = T; }
+    else if (t === 'feather') { this.guardT = T; for (const e of eggs) e.guard = T; }
+    else if (t === 'rockskin') {
+      this.skinT = T;
+      for (const e of eggs) if (!e.chick) { e.rockskin = T; if (e.stone > 0) e.stone = Math.max(e.stone, T); else { this.setStone(e, true); e.stone = T; } }
+    }
+    this.emit('powerOn', { power: t, dur: T, egg });
+  }
+
+  // per egg, every step (inside the egg loop)
+  v3Egg(egg, dt) {
+    const b = egg.body;
+    if (egg.guard > 0) egg.guard -= DT; // power timers run in real time, also under the hourglass
+    if (egg.curse > 0) egg.curse -= DT;
+    if (egg.rockskin > 0) egg.rockskin -= DT;
+    if (egg.lavaCD > 0) egg.lavaCD -= DT;
+    // portal suction (G18): a pull toward the mouth from every side, growing near the centre
+    const p = b.getPosition(), m = b.getMass();
+    for (const pt of this.portals) {
+      if (!pt.pull || egg.portalCD > 0 || egg.honey > 0) continue;
+      const dx = pt.ax - p.x, dy = pt.ay - p.y, d = Math.hypot(dx, dy);
+      if (d > pt.pull || d < 1e-3 || this.chAt(Math.hypot(p.x, p.y)) !== this.chAt(Math.hypot(pt.ax, pt.ay))) continue;
+      const k = 1 - d / pt.pull, f = m * (3 + 16 * k * k);
+      b.applyForceToCenter(Vec2(((dx + dy * 0.25) / d) * f, ((dy - dx * 0.25) / d) * f), true);
+    }
+    // duck egg: floats and rides a water current
+    if (egg.kind === 'duck' && this.weather === 'current') b.applyForceToCenter(Vec2(this.wind * m * 0.8, m * this.g * 0.8), true);
+  }
+
+  // world things, every step in play
+  v3Step(dt) {
+    const off = (k, power) => { if (this[k] > 0 && (this[k] -= DT) <= 0) { this[k] = 0; this.emit('powerOff', { power }); } };
+    off('slowT', 'hourglass');
+    off('guardT', 'feather');
+    off('skinT', 'rockskin');
+    off('curseT', 'foxcurse');
+    if (this.curseT > 0 && (this.jitT -= DT) <= 0) {
+      this.jitT = 0.18; // cursed eggs twitch
+      for (const e of this.aliveEggs()) if (e.curse > 0 && e.honey <= 0) { const m = e.body.getMass(); e.body.applyLinearImpulse(Vec2((this.rand() - 0.5) * 0.8 * m, this.rand() * 0.4 * m), e.body.getPosition(), true); }
+    }
+    for (const ring of this.rings) {
+      for (const sg of ring.segs) {
+        if (!(sg.melt > 0)) continue;
+        // a melted hole re-forms after HOLE_T, but never into an egg
+        if ((sg.melt -= dt) <= 0) { sg.melt = this.eggOnSeg(ring, sg) ? 0.05 : 0; if (!sg.melt) this.emit('meltHeal', { ring: ring.i }); }
+      }
+      for (const g of ring.gaps) {
+        const C = g.curtain;
+        if (!C || !C.alive || !C.burning || (C.burn += DT / CURTAIN_BURN) < 1) continue;
+        C.alive = false;
+        for (const f of C.fixes) this.killFix.push([ring.body, f]);
+        const q = ring.body.getWorldPoint(Vec2(ring.r * Math.cos(g.a), ring.r * Math.sin(g.a)));
+        this.emit('curtainGone', { x: q.x, y: q.y, ring: ring.i });
+      }
+    }
+    this.lavaStep(dt);
+    this.iceStep(dt);
+  }
+
+  eggOnSeg(ring, sg) {
+    for (const e of this.aliveEggs()) {
+      const p = e.body.getPosition(), d = Math.hypot(p.x, p.y);
+      if (Math.abs(d - ring.r) > RING_TH / 2 + 0.3) continue;
+      const la = ((Math.atan2(p.y, p.x) - ring.body.getAngle()) % TAU + TAU) % TAU, pad = 0.3 / ring.r;
+      for (const x of [la, la + TAU, la - TAU]) if (x > sg.a0 - pad && x < sg.a1 + pad) return true;
+    }
+    return false;
+  }
+
+  // Lava rocks (G31): telegraphed, they arc in from the backdrop onto a ring (ROCK_FLY), sit there
+  // glowing (ROCK_SIT: touching one blasts the egg away and cracks it), then melt a hole through the
+  // ring that stays open for HOLE_T. A water egg cools a rock away.
+  rockAt(k) {
+    const ring = this.rings[k.ri];
+    return ring.body.getWorldPoint(Vec2(ring.r * Math.cos(k.la), ring.r * Math.sin(k.la)));
+  }
+  lavaStep(dt) {
+    const LV = this.level.lava;
+    if (LV && typeof LV === 'object' && (this.v3T.lava -= dt) <= 0) {
+      this.v3T.lava = LV.every || 7;
+      const ri = Math.floor(this.rand() * this.rings.length), ring = this.rings[ri];
+      const wa = -Math.PI / 2 + (this.rand() - 0.5) * Math.PI * 1.3;
+      const k = { ri, la: wa - ring.body.getAngle(), ph: 'fly', t: 0, x0: (this.rand() - 0.5) * this.outerR, y0: this.outerR + 3, x: 0, y: 0 };
+      const q = this.rockAt(k);
+      k.x = k.x0; k.y = k.y0;
+      this.lavaRocks.push(k);
+      this.emit('lavaWarn', { x: q.x, y: q.y, ring: ri });
+    }
+    for (let i = this.lavaRocks.length - 1; i >= 0; i--) {
+      const k = this.lavaRocks[i], q = this.rockAt(k);
+      k.t += dt;
+      if (k.ph === 'fly') {
+        const f = Math.min(1, k.t / ROCK_FLY);
+        k.x = k.x0 + (q.x - k.x0) * f;
+        k.y = k.y0 + (q.y - k.y0) * f + 1.6 * Math.sin(Math.PI * f);
+        if (f >= 1) {
+          k.ph = 'sit'; k.t = 0;
+          this.emit('lavaLand', { x: q.x, y: q.y, ring: k.ri });
+          if (this.rockHits(k, q, 0.75)) { this.lavaRocks.splice(i, 1); continue; }
+        }
+        continue;
+      }
+      k.x = q.x; k.y = q.y;
+      if (this.rockHits(k, q, 0.4)) { this.lavaRocks.splice(i, 1); continue; }
+      if (k.t >= ROCK_SIT) {
+        const ring = this.rings[k.ri], half = HOLE_LEN / (2 * ring.r);
+        for (const sg of ring.segs) if (sg.alive && Math.abs(wrap((sg.a0 + sg.a1) / 2 - k.la)) < half) sg.melt = HOLE_T;
+        this.emit('lavaMelt', { x: q.x, y: q.y, ring: k.ri });
+        this.lavaRocks.splice(i, 1);
+      }
+    }
+  }
+  // eggs within R of a landed rock: a water egg cools it (returns true: rock gone), others are blasted
+  rockHits(k, q, R) {
+    for (const e of this.aliveEggs()) {
+      const p = e.body.getPosition(), dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy);
+      if (d > R) continue;
+      if (e.water > 0) { this.emit('lavaCool', { egg: e, x: q.x, y: q.y }); return true; }
+      if (e.lavaCD > 0) continue;
+      e.lavaCD = 0.8;
+      if (e.honey > 0) { e.honey = 0; e.hold = null; e.honeyCD = 1; }
+      const m = e.body.getMass() * 4.5, u = d || 1;
+      e.body.applyLinearImpulse(Vec2((dx / u) * m, (dy / u) * m + m * 0.3), p, true);
+      this.emit('lavaBlast', { egg: e, x: p.x, y: p.y });
+      this.crack(e, 0, 'lavarock');
+    }
+    return false;
+  }
+
+  // Icicles: a shimmer at the top for a moment, then they drop; they crack an egg they hit and
+  // shatter on a ring (they fall through gaps).
+  iceStep(dt) {
+    const IC = this.level.icicles;
+    if (IC && (this.v3T.ice -= dt) <= 0) {
+      this.v3T.ice = IC.every || 6;
+      const x = (this.rand() * 2 - 1) * this.outerR * 0.75;
+      this.icicles.push({ x, y: this.outerR + 0.7, vy: 0, warn: 0.9 });
+      this.emit('iceWarn', { x, y: this.outerR + 0.7 });
+    }
+    for (let i = this.icicles.length - 1; i >= 0; i--) {
+      const c = this.icicles[i];
+      if (c.warn > 0) { c.warn -= dt; continue; }
+      c.vy = Math.max(-9, c.vy - this.g * dt);
+      c.y += c.vy * dt;
+      let gone = c.y < this.groundY;
+      const tip = c.y - 0.18, d = Math.hypot(c.x, tip);
+      for (const e of this.aliveEggs()) {
+        if (gone) break;
+        const p = e.body.getPosition();
+        if (Math.hypot(p.x - c.x, p.y - tip) < 0.3) { gone = true; this.emit('icicleHit', { egg: e, x: c.x, y: tip }); this.crack(e, 0, 'icicle'); }
+      }
+      for (const ring of this.rings) if (!gone && Math.abs(d - ring.r) < RING_TH / 2 + 0.05 && this.solidAt(ring, c.x, tip)) { gone = true; this.emit('icicleShatter', { x: c.x, y: tip }); }
+      if (gone) this.icicles.splice(i, 1);
+    }
+  }
+
+  v3State() {
+    return {
+      slowT: this.slowT, curseT: this.curseT, jitT: this.jitT, guardT: this.guardT || 0, skinT: this.skinT || 0, v3T: { ...this.v3T },
+      lavaRocks: this.lavaRocks.map((k) => ({ ...k })), icicles: this.icicles.map((c) => ({ ...c })),
+      rings: this.rings.map((r) => ({ melt: r.segs.map((g) => g.melt || 0), cur: r.gaps.map((g) => (g.curtain ? [g.curtain.alive, g.curtain.burn, g.curtain.burning] : null)) })),
+    };
+  }
+  v3Restore(V) {
+    if (!V) return;
+    Object.assign(this, { slowT: V.slowT, curseT: V.curseT, jitT: V.jitT, guardT: V.guardT, skinT: V.skinT, v3T: { ...V.v3T } });
+    this.lavaRocks = V.lavaRocks.map((k) => ({ ...k }));
+    this.icicles = V.icicles.map((c) => ({ ...c }));
+    V.rings.forEach((rs, i) => {
+      const ring = this.rings[i];
+      rs.melt.forEach((m, k) => { ring.segs[k].melt = m; });
+      rs.cur.forEach((cs, k) => {
+        const C = ring.gaps[k].curtain;
+        if (!C || !cs) return;
+        C.burn = cs[1]; C.burning = cs[2];
+        if (!cs[0] && C.alive) { C.alive = false; for (const f of C.fixes) ring.body.destroyFixture(f); }
+      });
+    });
   }
 
   // ---------- queries ----------

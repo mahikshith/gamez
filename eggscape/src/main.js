@@ -151,6 +151,7 @@ function startLevel(i, opts = {}) {
   G.snakeToast = false;
   G.predToast = {}; // predators (v3): first-time toasts
   G.danger = 0;
+  G.onewayTip = false; // v3
   G.hen = { mood: 'idle', t: 0 };
   G.fx = new FX();
   G.popups = [];
@@ -367,6 +368,7 @@ function pointerMove(e) {
     // screen y is down, world angle is counter-clockwise
     const dTheta = -(px * dy - py * dx) / (rr * rr);
     h.ring.target += dTheta;
+    onewayDrag(h, dTheta);
     h.x = x;
     h.y = y;
   } else if (e.pointerType === 'mouse' && G.screen === 'play' && G.sim) {
@@ -428,6 +430,7 @@ function keyboardTurn(dt) {
   if (!ring || !ring.grabbable) return;
   const dir = (G.keys['arrowleft'] || G.keys['a'] ? 1 : 0) - (G.keys['arrowright'] || G.keys['d'] ? 1 : 0);
   if (dir) {
+    if (ring.oneway && dir !== ring.oneway) { onewayDrag(ring, -1); return; }
     if (!ring.held) ring.target = ring.body.getAngle();
     ring.target += dir * G.sim.maxOmega(ring) * dt * 1.1;
     ring.keyHeld = true;
@@ -652,6 +655,114 @@ function applyAudioSettings() {
   audio.setMusic(save.music && allowed);
 }
 
+// ---------------------------------------------------------------- v3 physics: events, input, tint
+let v3Fall = 0; // rings of the fall that the next crack event explains
+const V3_SOFT = { sponge: 'Soft landing', water: 'Splash! Soft landing', stone: 'Stone: no crack', feather: 'Guarded!', bubble: 'Soft landing' };
+function v3Event(ev, fx) {
+  switch (ev.type) {
+    case 'fallWarn':
+      popup(ev.x, ev.y + 0.45, '!', { color: '#ffb347', size: 24, life: 0.6 });
+      break;
+    case 'fallLand':
+      v3Fall = ev.rings;
+      fx.wave(ev.x, ev.y, 0.8 + 0.2 * ev.dmg, '#ffb27a', 0.4, 0.1);
+      fx.shake = Math.max(fx.shake, 0.25 + 0.12 * ev.dmg);
+      audio.play('rock_hit', { vol: 0.6 + 0.2 * ev.dmg });
+      break;
+    case 'softLand':
+      if (!V3_SOFT[ev.why]) break;
+      popup(ev.x, ev.y + 0.5, V3_SOFT[ev.why], { color: '#9dff9d', size: 16, life: 0.9 });
+      if (ev.why === 'water') { audio.play('splash', { vol: 0.6 }); fx.dust(ev.x, ev.y - 0.2, 6, 'rgba(140,200,255,0.8)'); }
+      break;
+    case 'smash':
+      audio.play('rock_hit');
+      fx.chips(ev.x, ev.y, '#aab2bd', 8, 2.5);
+      popup(ev.x, ev.y + 0.5, 'Smash!', { color: '#e6e6e6', size: 20, life: 0.9 });
+      break;
+    case 'curtainBurn':
+      audio.play('fire_ignite');
+      fx.smoke(ev.x, ev.y, 4);
+      break;
+    case 'curtainGone':
+      audio.play('fire_burn');
+      fx.smoke(ev.x, ev.y, 7);
+      fx.chips(ev.x, ev.y, '#ff8a3a', 10, 2.5);
+      popup(ev.x, ev.y + 0.5, 'Burnt away!', { color: '#ffb347', size: 20 });
+      break;
+    case 'powerOn': {
+      const col = powerInfo(ev.power).color;
+      for (const e of G.sim.aliveEggs()) { const p = e.body.getPosition(); fx.sparkle(p.x, p.y, 8, col); }
+      if (!save.calm) { fx.flash = 0.3; fx.flashColor = col; }
+      if (ev.power === 'foxcurse') hen('gasp', 1.4);
+      break;
+    }
+    case 'powerOff':
+      audio.play('release', { vol: 0.6 });
+      break;
+    case 'lavaWarn':
+      audio.play('fire_ignite', { pitch: 0.6, vol: 0.5 });
+      break;
+    case 'lavaLand':
+      audio.play('rock_hit');
+      audio.play('lava_sizzle', { vol: 0.7 });
+      fx.chips(ev.x, ev.y, '#ff9a3a', 10, 3);
+      fx.smoke(ev.x, ev.y, 4);
+      fx.shake = Math.max(fx.shake, 0.35);
+      break;
+    case 'lavaMelt':
+      audio.play('lava_sizzle');
+      fx.smoke(ev.x, ev.y, 6);
+      popup(ev.x, ev.y + 0.5, 'Melted!', { color: '#ffb347', size: 18, life: 0.9 });
+      break;
+    case 'lavaBlast':
+      audio.play('bomb_explode', { vol: 0.4 });
+      fx.chips(ev.x, ev.y, '#ffb347', 8, 3);
+      break;
+    case 'lavaCool':
+      audio.play('lava_sizzle');
+      audio.play('splash', { vol: 0.5 });
+      fx.smoke(ev.x, ev.y, 8, 'rgba(230,240,255,0.7)');
+      popup(ev.x, ev.y + 0.5, 'Cooled!', { color: '#8fd0ff', size: 20 });
+      break;
+    case 'iceWarn':
+      audio.play('glass_crack', { vol: 0.3, pitch: 1.6 });
+      break;
+    case 'icicleHit':
+      audio.play('glass_break', { vol: 0.7 });
+      fx.chips(ev.x, ev.y, '#d9f3ff', 10, 2.5);
+      break;
+    case 'icicleShatter':
+      audio.play('glass_crack', { vol: 0.5 });
+      fx.chips(ev.x, ev.y, '#d9f3ff', 7, 2);
+      break;
+  }
+}
+
+// one-way rings (G22): dragging the wrong way does nothing; past a small amount, shake and tick
+function onewayDrag(h, dTheta) {
+  const ring = h.ring || h;
+  if (!ring.oneway || dTheta * ring.oneway >= 0) { h.wrong = 0; return; }
+  h.wrong = (h.wrong || 0) + Math.abs(dTheta);
+  if (h.wrong < 0.12 && h.ring) return;
+  h.wrong = 0;
+  if (ring.denied > 0.1) return;
+  ring.denied = 0.35;
+  audio.play('motor_tick', { vol: 0.8 });
+  if (!G.onewayTip) { G.onewayTip = true; toast('This ring only turns one way: follow the arrows.', 2.6); }
+}
+
+// hourglass (cool) and fox curse (hot) tint the edges of the screen while they last
+function drawV3Tint(sim) {
+  const col = sim.slowT > 0 ? '120,180,255' : sim.curseT > 0 ? '255,120,30' : null;
+  if (!col) return;
+  const left = sim.slowT > 0 ? sim.slowT : sim.curseT, a = 0.42 * Math.min(1, left / 0.6);
+  const g = ctx.createRadialGradient(W_ / 2, H_ / 2, Math.min(W_, H_) * 0.35, W_ / 2, H_ / 2, Math.max(W_, H_) * 0.75);
+  g.addColorStop(0, `rgba(${col},0)`);
+  g.addColorStop(1, `rgba(${col},${a})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W_, H_);
+}
+
 // ---------------------------------------------------------------- events
 let lastBump = 0;
 function handleEvents() {
@@ -673,6 +784,8 @@ function handleEvents() {
         hen('gasp', 1.2);
         try { if (navigator.vibrate) navigator.vibrate(30); } catch (_) {}
         if (ev.why === 'spike') audio.play('rock_hit', { vol: 0.6 });
+        // v3: crack stage pop (G34), so every crack is explained
+        popup(ev.x, ev.y + 0.55, `Crack ${ev.n || ev.egg.cracks}/3`, { sub: ev.why === 'fall' && v3Fall ? `fell ${v3Fall} rings` : '', color: (ev.n || 1) >= 2 ? '#ff7a6a' : '#ffc24a', size: 18, life: 1.1 });
         break;
       case 'break': {
         audio.play(ev.why === 'lava' ? 'lava_sizzle' : 'egg_break');
@@ -683,7 +796,7 @@ function handleEvents() {
         fx.shake = Math.max(fx.shake, 0.55);
         G.hitstop = 0.07;
         hen('cry', 2.2);
-        const why = { thorn: 'Thorn!', fox: 'The fox took it', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', eagle: 'The eagle took it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!' }[ev.why] || '';
+        const why = { thorn: 'Thorn!', fox: 'The fox took it', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', eagle: 'The eagle took it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!', fall: 'Fell too far!', curtain: 'Thorn curtain!', lavarock: 'Lava rock!', icicle: 'Icicle!' }[ev.why] || '';
         if (why && ev.why !== 'fox') popup(ev.x, ev.y + 0.5, why, { color: '#ff8a7a', size: 20, life: 1.2 });
         break;
       }
@@ -719,7 +832,7 @@ function handleEvents() {
         break;
       case 'pickup': {
         // discovery (F19/C11): the first touch reveals the orb and is remembered
-        const snd = { fire_red: 'fire_ignite', fire_black: 'fire_ignite', fire_green: 'unlock', fire_gold: 'twin_hatch', stone: 'steel_on', bubble: 'bubble_on', water: 'splash', thunder: 'thunder', thorn: 'thorn_hit', twin: 'twin_hatch', magnet: 'unlock' }[ev.power];
+        const snd = { fire_red: 'fire_ignite', fire_black: 'fire_ignite', fire_green: 'unlock', fire_gold: 'twin_hatch', stone: 'steel_on', bubble: 'bubble_on', water: 'splash', thunder: 'thunder', thorn: 'thorn_hit', twin: 'twin_hatch', magnet: 'unlock', hourglass: 'rewind', feather: 'unlock', rockskin: 'steel_on', foxcurse: 'thorn_hit' }[ev.power];
         audio.play(snd || 'unlock');
         fx.sparkle(ev.x, ev.y, 12, powerInfo(ev.power).color);
         const first = !save.seen[ev.power];
@@ -743,7 +856,7 @@ function handleEvents() {
         break;
       case 'mend':
         fx.sparkle(ev.x, ev.y, 14, '#8dff8a');
-        popup(ev.x, ev.y + 0.5, 'Mended!', { color: '#8dff8a', size: 22 });
+        popup(ev.x, ev.y + 0.5, ev.n > 1 ? 'All mended!' : 'Mended!', { color: '#8dff8a', size: 22 });
         break;
       case 'hatch':
         fx.sparkle(ev.x, ev.y, 16, '#ffe14d');
@@ -791,9 +904,6 @@ function handleEvents() {
       case 'snakeRecoil':
         popup(ev.x, ev.y + 0.5, 'Too hard to bite!', { size: 18 });
         audio.play('steel_clang', { vol: 0.6 });
-        break;
-      default:
-        predEvent(ev, fx); // predators (v3)
         break;
       case 'twin':
         fx.sparkle(ev.x, ev.y, 12, '#ffe58a');
@@ -868,6 +978,10 @@ function handleEvents() {
         fx.flash = 0.6;
         fx.flashColor = '#fff7da';
         fx.shake = 0.8;
+        break;
+      default:
+        v3Event(ev, fx);
+        predEvent(ev, fx); // predators (v3)
         break;
       case 'won':
         onWin();
@@ -1108,7 +1222,8 @@ function update(dt) {
   for (const pt of sim.portals) {
     if (Math.random() < 0.5) {
       const a = Math.random() * 6.283;
-      G.fx.add({ x: pt.ax + Math.cos(a) * 0.5, y: pt.ay + Math.sin(a) * 0.5, vx: -Math.cos(a) * 1.0, vy: -Math.sin(a) * 1.0, life: 0.45, size: 0.025, color: '#b9a8ff', layer: 'back' });
+      const R = pt.pull || 0.5; // v3: the suction field reaches further
+      G.fx.add({ x: pt.ax + Math.cos(a) * R, y: pt.ay + Math.sin(a) * R, vx: -Math.cos(a) * R * 1.8, vy: -Math.sin(a) * R * 1.8, life: 0.45, size: 0.025, color: '#b9a8ff', layer: 'back' });
       G.fx.add({ x: pt.bx, y: pt.by, vx: Math.cos(a) * 1.0, vy: Math.sin(a) * 1.0, life: 0.45, size: 0.025, color: '#ffcf8a', layer: 'back' });
     }
   }
@@ -1209,6 +1324,7 @@ function render() {
   G.rk = k;
   ctx.setTransform(DPR * k, 0, 0, -DPR * k, DPR * (cx + ox - G.cam.x * k), DPR * (cy + oy + G.cam.y * k));
   fx.draw(ctx, 'back');
+  for (const pt of sim.portals) W.drawPortalPull(ctx, pt, t); // v3
   for (const pt of sim.portals) { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); }
   if (sim.timeLimit && sim.state === 'play') W.drawFuse(ctx, sim.outerR + 0.32, sim.timeLeft / sim.timeLimit, t, G.screen === 'play' ? fx : null);
   W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length);
@@ -1220,6 +1336,7 @@ function render() {
     ctx.save();
     if (ring.denied > 0) ctx.rotate(Math.sin(t * 60) * 0.01 * ring.denied);
     W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck });
+    W.drawV3Ring(ctx, ring, k, t);
     ctx.restore();
   }
   for (const ring of sim.rings) if (ring.gear && ring.gear.i > ring.i) W.drawGearCog(ctx, ring, ring.gear, t);
@@ -1233,6 +1350,8 @@ function render() {
   for (const r of sim.rocks) if (r.alive) W.drawRock(ctx, r, G.theme);
   for (const b of sim.bombs) if (b.alive) b.spark = W.drawBomb(ctx, b, t);
   for (const d of sim.debris) W.drawDebris(ctx, d, G.theme);
+  W.drawLavaRocks(ctx, sim, k, t); // v3
+  W.drawIcicles(ctx, sim, k, t);
   // magnet ropes
   for (const e of sim.aliveEggs()) {
     if (e.joint && e.joint.a === e) {
@@ -1262,6 +1381,7 @@ function render() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   G.backdrop.drawAmbient(ctx, t, G.cam);
   drawDanger(); // predators (v3)
+  drawV3Tint(sim);
   if (fx.flash > 0 && !save.calm) {
     ctx.globalAlpha = fx.flash * 0.6;
     ctx.fillStyle = fx.flashColor;
