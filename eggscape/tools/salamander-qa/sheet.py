@@ -3,7 +3,7 @@
 import sys, os
 from PIL import Image, ImageDraw
 d, out = sys.argv[1], sys.argv[2]
-names = ['1-walk', '2-turn-gap', '3-idle', '4-breath', '5-hiss-cool', '6-dazed', '7-flee', '9-head-2x']
+names = ['1-walk', '2-turn-gap', '3-idle', '4-breath', '5-hiss-cool', '6-dazed', '7-flee', '10-blend', '9-head-2x']
 W = 2000
 strips = []
 for n in names:

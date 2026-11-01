@@ -7,8 +7,8 @@ const ROOT = path.resolve(__dirname, '../..');
 let chromium;
 try { ({ chromium } = require('playwright')); } catch (e) { ({ chromium } = require('/opt/node-tools/node_modules/playwright')); }
 const OUT = path.join(ROOT, 'qa/salamander');
-const ALL = ['walk', 'turn', 'idle', 'breath', 'hiss', 'dazed', 'flee', 'level', 'head'];
-const NAMES = { perf: 'perf-scratch', walk: '1-walk', turn: '2-turn-gap', idle: '3-idle', breath: '4-breath', hiss: '5-hiss-cool', dazed: '6-dazed', flee: '7-flee', level: '8-level', head: '9-head-2x' };
+const ALL = ['walk', 'turn', 'idle', 'breath', 'hiss', 'dazed', 'flee', 'level', 'head', 'blend'];
+const NAMES = { perf: 'perf-scratch', headbig: 'x-headbig', studio: 'x-studio', walk: '1-walk', turn: '2-turn-gap', idle: '3-idle', breath: '4-breath', hiss: '5-hiss-cool', dazed: '6-dazed', flee: '7-flee', level: '8-level', head: '9-head-2x', blend: '10-blend' };
 
 (async () => {
   const { build } = await import('esbuild');

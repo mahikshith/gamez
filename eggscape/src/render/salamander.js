@@ -20,7 +20,9 @@
 //   opts.dive     px past a lava hole (pose 'flee'): the hole sits this far behind the snout, the body sinks in
 //   opts.fireLen  fire jet length in units of s/100 (default 60); opts.rear / opts.mouth override the pose (0..1)
 //   opts.out      optional object; receives feet [{x, y, lift}] and the fire tip {x, y} (QA and gameplay hooks)
-// In game: s = 1.5 m * k (k = px per metre) so the body is ~2.7 eggs long and the feet reach the channel walls.
+//   opts.blend    eased pose channels from salamanderAnim() (smooth pose changes, walk stops with all feet down)
+// In game: s = 1.8 m * k (k = px per metre): the body is ~3 eggs long, the head wider than an egg, and the
+// feet grip the two ring walls of a 1 m channel.
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -32,10 +34,11 @@ const lerp = (a, b, k) => a + (b - a) * k;
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 const C = {
   line: hex('#2a1209'), lineCool: hex('#25211f'),
-  rock: hex('#5a3022'), rockHi: hex('#8e5a40'), rockLo: hex('#2c150f'),
+  rock: hex('#6c3925'), rockHi: hex('#ad6a40'), rockLo: hex('#3a170c'),
   coolRock: hex('#6b6560'), coolHi: hex('#a29a92'), coolLo: hex('#3f3b38'),
   magLo: hex('#8c2208'), magMid: hex('#ff6512'), magHot: hex('#ffc43c'), coolMag: hex('#4a4542'),
-  jaw: hex('#ffb04a'), coolJaw: hex('#8d8780'),
+  jaw: hex('#ffc768'), coolJaw: hex('#8d8780'), belly: hex('#ffd98a'), coolBelly: hex('#a39d95'),
+  brow: hex('#ffe066'), browLo: hex('#ff8a1e'),
   eye: hex('#ffd52e'), eyeLo: hex('#e58a12'), coolEye: hex('#e6dcb0'),
 };
 const mixA = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
@@ -124,33 +127,79 @@ function spInto(u, o) {
 const spAt = (u) => spInto(u, { x: 0, y: 0, nx: 0, ny: 0, w: 0 });
 
 /* ---------------------------------------------------------------- pose parameters */
-function poseParams(pose, p, t, opts) {
-  const P = { walk: 0, rear: 0, mouth: 0, fire: 0, swell: 0, dazed: 0, angry: 0, shake: 0, flee: 0, splay: 0, tongue: 0, steam: 0, lift: 0 };
+// Every pose resolves to the same continuous channels, so poses can be eased into one another (salamanderAnim).
+const CHANNELS = ['walk', 'rear', 'crouch', 'mouth', 'fire', 'swell', 'dazed', 'angry', 'shake', 'flee', 'splay', 'tongue', 'steam', 'frill'];
+function poseParams(pose, p) {
+  const P = { walk: 0, rear: 0, crouch: 0, mouth: 0, fire: 0, swell: 0, dazed: 0, angry: 0, shake: 0, flee: 0, splay: 0, tongue: 0, steam: 0, frill: 0.22 };
   switch (pose) {
     case 'walk': P.walk = 1; break;
-    case 'flee': P.walk = 1; P.flee = 1; break;
+    case 'flee': P.walk = 1; P.flee = 1; P.frill = 0; break;
     case 'idle': break;
     case 'hiss': {
       const k = sstep(p / 0.15) * (1 - sstep((p - 0.85) / 0.15));
-      P.rear = 0.4 * k; P.mouth = k; P.angry = k; P.shake = k; P.tongue = k; break;
+      P.crouch = 0.5 * Math.sin(Math.PI * clamp(p / 0.2, 0, 1));
+      P.rear = 0.42 * k; P.mouth = k; P.angry = k; P.shake = k; P.tongue = k; P.frill = 0.22 + 0.78 * k; break;
     }
     case 'breath': {
-      // 0-.25 rear up, .25-.42 inhale (swell, glow), .42-.86 fire, .86-1 settle
-      const up = sstep(p / 0.22) * (1 - sstep((p - 0.86) / 0.14));
+      // 0-.1 coil (crouch), .08-.25 pitch up, .25-.42 inhale (swell, glow), .42-.86 fire, .86-1 settle
+      P.crouch = Math.sin(Math.PI * clamp(p / 0.16, 0, 1));
+      const up = sstep((p - 0.06) / 0.2) * (1 - sstep((p - 0.86) / 0.14));
       P.rear = up;
       P.swell = sstep((p - 0.2) / 0.2) * (1 - sstep((p - 0.44) / 0.06));
       P.mouth = up * (0.25 + 0.75 * sstep((p - 0.36) / 0.08));
       P.fire = sstep((p - 0.42) / 0.05) * (1 - sstep((p - 0.82) / 0.07));
       P.angry = up;
-      P.lift = up;
+      P.frill = 0.22 + 0.6 * up;
       break;
     }
-    case 'dazed': P.dazed = 1; P.splay = 1; P.tongue = 0.6; break;
-    case 'cool': P.steam = 1; break;
+    case 'dazed': P.dazed = 1; P.splay = 1; P.tongue = 0.6; P.frill = 0; break;
+    case 'cool': P.steam = 1; P.frill = 0; break;
   }
-  if (opts.rear !== undefined) P.rear = opts.rear;
-  if (opts.mouth !== undefined) P.mouth = opts.mouth;
   return P;
+}
+
+// Optional pose blender for the game: eases every channel, lets a walk run on to a phase where all four feet are
+// planted before it stops (no foot pops), and reports how far the body moved this frame.
+//   const A = salamanderAnim(); each frame: const adv = A.update(dt, { pose, p, speed }); pathPos += adv;
+//   drawSalamander(ctx, x, y, s, t, { ...A.opts(), trail, ... })
+export function salamanderAnim() {
+  const st = { gait: 0, v: 0, stopAt: null, pose: 'idle', p: 0, B: poseParams('idle', 0) };
+  const rates = { walk: 7, rear: 9, crouch: 14, mouth: 14, fire: 18, swell: 10, dazed: 5, angry: 9, shake: 12, flee: 6, splay: 5, tongue: 12, steam: 3, frill: 8 };
+  return {
+    st,
+    update(dt, want) {
+      dt = clamp(dt || 0, 0, 0.1);
+      const pose = want.pose || 'idle', moving = pose === 'walk' || pose === 'flee';
+      const tgt = poseParams(pose, clamp(want.p || 0, 0, 1));
+      st.pose = pose; st.p = want.p || 0;
+      let adv = 0;
+      const sp = Math.max(0, want.speed || 0); // px / s along the path
+      if (moving) {
+        st.stopAt = null;
+        st.v += (sp - st.v) * (1 - Math.exp(-dt * 6));
+        adv = st.v * dt;
+      } else if (st.v > 1e-3 || st.stopAt !== null) {
+        // run on to the next "all feet down" phase (frac 0.05 or 0.55 of the stride), slowing as it arrives
+        const L = want.stride || 1; // stride in px (pass 0.4 * s)
+        if (st.stopAt === null) {
+          const q = st.gait / L, base = Math.floor(q);
+          const c = [base + 0.05, base + 0.55, base + 1.05].find((x) => x > q + 0.02);
+          st.stopAt = c * L;
+        }
+        const r = st.stopAt - st.gait;
+        const v = Math.min(Math.max(st.v, 4), Math.max(r * 5, 2));
+        adv = Math.min(r, v * dt);
+        st.v = r - adv > 0.01 ? v : 0;
+        if (!(r - adv > 0.01)) st.stopAt = null;
+      }
+      st.gait += adv;
+      const k = (c) => 1 - Math.exp(-dt * rates[c]);
+      for (const c of CHANNELS) st.B[c] += (tgt[c] - st.B[c]) * k(c);
+      if (st.stopAt !== null) st.B.walk = Math.max(st.B.walk, 0.02); // feet keep stepping until all four are down
+      return adv;
+    },
+    opts() { return { gait: st.gait, pose: st.pose, p: st.p, blend: st.B }; },
+  };
 }
 
 /* ---------------------------------------------------------------- main */
@@ -170,7 +219,10 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   const U = s / 100;
   const pose = opts.pose || 'walk';
   const p = clamp(opts.p || 0, 0, 1);
-  const P = poseParams(pose, p, t, opts);
+  const P = poseParams(pose, p);
+  if (opts.blend) for (const c of CHANNELS) if (opts.blend[c] !== undefined) P[c] = opts.blend[c];
+  if (opts.rear !== undefined) P.rear = opts.rear;
+  if (opts.mouth !== undefined) P.mouth = opts.mouth;
   const cool = clamp(opts.cool !== undefined ? opts.cool : pose === 'cool' ? 1 : 0, 0, 1);
   if (cool > 0.3) P.steam = Math.max(P.steam, cool);
   const glow = clamp(opts.glow !== undefined ? opts.glow : 0.75, 0, 1) * (1 - cool) + P.swell * 0.5 * (1 - cool);
@@ -230,16 +282,18 @@ function drawSal(ctx, x0, y0, s, t, opts) {
     if (u > U_SH - 6 && u < U_HIP + 6) w *= breathe;
     sw[i] = w * U;
   }
-  // rear up: the front half lifts toward the camera (shorter, wider)
+  // pitch up: the front half first coils (foreshortened), then swings up toward the camera, passing through
+  // the most foreshortened point mid-way and coming out longer and wider (perspective)
   const hipI = Math.round(U_HIP / DU);
+  const fore = 0.22 * P.crouch + 0.26 * Math.sin(Math.PI * clamp(P.rear, 0, 1)) * (1 - P.crouch * 0.5);
   for (let i = 0; i < NS; i++) {
     let X = bx[i], Y = by[i];
-    if (P.rear > 0 && i < hipI) {
+    if ((P.rear > 0 || P.crouch > 0) && i < hipI) {
       const f = (U_HIP - i * DU) / U_HIP;
-      const c = 1 - 0.2 * P.rear * f;
+      const c = 1 - f * fore + 0.07 * P.rear * f;
       X = bx[hipI] + (X - bx[hipI]) * c;
       Y = by[hipI] + (Y - by[hipI]) * c;
-      sw[i] *= 1 + 0.32 * P.rear * f;
+      sw[i] *= 1 + 0.3 * P.rear * f + 0.06 * P.crouch * f;
     }
     sx[i] = X; sy[i] = Y;
   }
@@ -281,17 +335,20 @@ function drawSal(ctx, x0, y0, s, t, opts) {
 
   // ---- ground shadow (unreared body, offset down-right like the snake)
   const so = 3.2 * U;
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  if (P.rear > 0) for (let i = 0; i < hipI; i++) { // the lifted front throws its shadow further down-right
+    const f = (U_HIP - i * DU) / U_HIP, k = P.rear * f * f;
+    bx[i] += 7 * U * k; by[i] += 9 * U * k;
+  }
+  ctx.fillStyle = `rgba(0,0,0,${0.3 - 0.08 * P.rear})`;
   ctx.beginPath();
   outlineFrom(ctx, bx, by, so, so * 1.25, 1);
   ctx.fill();
   ctx.beginPath();
-  const q0 = path(U_HEAD * U);
-  ctx.ellipse(bx[0] * 0.5 + q0.x * 0.5 + so, by[0] * 0.5 + q0.y * 0.5 + so * 1.25, 15 * U, 14 * U, 0, 0, TAU);
+  ctx.ellipse(bx[1] + so + 2 * U, by[1] + so * 1.25, 16 * U * (1 + 0.15 * P.rear), 15 * U * (1 + 0.15 * P.rear), 0, 0, TAU);
   ctx.fill();
 
   // ---- legs (under the body: shoulders and hips are hidden by the body outline)
-  const limbC = mixA(mixA(C.magMid, C.rock, 0.5), C.coolRock, cool);
+  const limbC = mixA(mixA(C.magMid, C.rock, 0.38), C.coolRock, cool);
   // reared up, the front legs come off the ground toward the camera and are drawn over the chest
   const upFront = P.rear > 0.35;
   drawLegs(ctx, upFront ? feet.filter((f) => !f.L.front) : feet, U, lw, lineC, limbC, rockHi, magAt(glow), cool);
@@ -311,14 +368,14 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   const grad = ctx.createLinearGradient(hx, hy, tx2, ty2);
   for (let k = 0; k <= 5; k++) {
     const f = k / 5;
-    const gl = clamp(glow * (0.78 + 0.3 * Math.sin(t * 2.4 - f * 7)) - f * 0.25 * glow, 0, 1);
+    const gl = clamp(glow * (0.86 + 0.26 * Math.sin(t * 2.4 - f * 7)) - f * 0.18 * glow + 0.08, 0, 1);
     grad.addColorStop(f, rgb(magAt(gl)));
   }
   if (glow > 0.05 && !cool) {
     ctx.beginPath();
     bodyPath(0, 0);
-    ctx.strokeStyle = `rgba(255,110,30,${0.2 * glow})`;
-    ctx.lineWidth = lw + 5 * U;
+    ctx.strokeStyle = `rgba(255,120,30,${0.3 * glow})`;
+    ctx.lineWidth = lw + 6 * U;
     ctx.stroke();
   }
   ctx.beginPath();
@@ -342,11 +399,19 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   ctx.fillStyle = rgb(rockC);
   ctx.fill();
   ctx.restore();
+  // hot rim just inside the outline: the silhouette glows against dark rings
+  ctx.beginPath();
+  bodyPath(0, 0);
+  ctx.strokeStyle = rgb(magAt(clamp(glow + 0.3, 0, 1)), 0.95);
+  ctx.lineWidth = 3.6 * U;
+  ctx.stroke();
+  // reared up, the pale throat and chest turn toward the camera
+  if (P.rear > 0.02) drawBelly(ctx, U, P.rear, cool, lw);
   // cel shadow: lower-right crescent of the whole body
   ctx.beginPath();
   ctx.rect(-1e4, -1e4, 2e4, 2e4);
   bodyPath(-3.4 * U, -4.2 * U);
-  ctx.fillStyle = rgb(rockLo, 0.5);
+  ctx.fillStyle = rgb(rockLo, 0.38);
   ctx.fill('evenodd');
   // a soft hot highlight down the spine
   ctx.beginPath();
@@ -371,9 +436,9 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   const hb = spAt(U_HEAD + 12);
   const hcx = hc.x, hcy = hc.y;
   let ha = Math.atan2(hcy - hb.y, hcx - hb.x) + (opts.aim || 0);
-  if (P.dazed) ha += Math.sin(t * 3.1) * 0.28;
+  ha += Math.sin(t * 3.1) * 0.28 * P.dazed;
   if (P.shake) ha += Math.sin(t * 31) * 0.05 * P.shake;
-  const hs = (1.14 + 0.3 * P.rear) * U; // reared head is closer to the camera
+  const hs = (1.28 + 0.3 * P.rear) * U; // reared head is closer to the camera
   ctx.save();
   ctx.translate(hcx, hcy);
   ctx.rotate(ha);
@@ -384,7 +449,7 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   // ---- fire jet
   if (P.fire > 0.01) {
     const ca = Math.cos(ha), sa = Math.sin(ha);
-    const mx = hcx + ca * (15 + 6 * P.mouth) * hs, my = hcy + sa * (15 + 6 * P.mouth) * hs;
+    const mx = hcx + ca * (16 + 6 * P.mouth) * hs, my = hcy + sa * (17 + 6 * P.mouth) * hs;
     const tip = drawFire(ctx, mx, my, ha, P.fire, U, t, opts.fireLen || 60);
     if (opts.out) opts.out.fire = { x: tip.x + x0, y: tip.y + y0 };
   }
@@ -396,19 +461,19 @@ function drawSal(ctx, x0, y0, s, t, opts) {
 
   // ---- steam (cooling) and dizzy stars
   if (P.steam > 0.01) drawSteam(ctx, U, t, P.steam * (opts.steam !== undefined ? opts.steam : 1));
-  if (P.dazed) drawStars(ctx, hcx, hcy, U, t);
+  if (P.dazed > 0.3) drawStars(ctx, hcx, hcy, U, t);
 }
 
 // Foot position for one leg: planted feet sit at a fixed spot on the walked path (no sliding); a swinging
 // foot travels to the next plant and lifts toward the camera.
 function footFor(L, gait, P, path, U, t) {
   const rf = DUTY * STRIDE / 2 + (L.front ? 4 : -6);
-  const lat = (L.front ? 25 : 27) + P.splay * 6;
+  const lat = (L.front ? 22.5 : 24) + P.splay * 5;
   const q = gait / STRIDE + L.off;
   const n = Math.floor(q), psi = q - n;
   const plantS = (m) => (m - L.off) * STRIDE - L.g + rf;
   let S, lift = 0;
-  if (psi < DUTY || !P.walk) S = psi < DUTY ? plantS(n) : plantS(n + 1);
+  if (psi < DUTY || P.walk < 0.01) S = psi < DUTY ? plantS(n) : plantS(n + 1);
   else {
     const w = (psi - DUTY) / (1 - DUTY);
     S = lerp(plantS(n), plantS(n + 1), sstep(w));
@@ -421,6 +486,7 @@ function footFor(L, gait, P, path, U, t) {
   let fx = pt.x + nx * L.side * ll * U, fy = pt.y + ny * L.side * ll * U;
   let fa = pt.a + L.side * (L.front ? 0.55 : 1.2);
   // rearing: front feet come off the ground and paddle at the chest
+  const swing = lift;
   if (L.front && P.rear > 0) {
     const g = spAt(L.g + 12); // beside the chest, clear of the (now bigger) head
     const tx = g.x + g.nx * L.side * 21 * U, ty = g.y + g.ny * L.side * 21 * U;
@@ -435,7 +501,7 @@ function footFor(L, gait, P, path, U, t) {
   // body heading at the girdle (toward the head)
   const g2 = spAt(L.g - 4);
   const ba = Math.atan2(g2.y - g.y, g2.x - g.x);
-  return { L, hip, fx, fy, fa, lift, ba };
+  return { L, hip, fx, fy, fa, lift, swing, ba };
 }
 
 function ik(hx, hy, fx, fy, l1, l2, prefer) {
@@ -464,7 +530,7 @@ function drawLegs(ctx, feet, U, lw, lineC, limbC, hiC, magC, cool) {
   const sc = (F) => 1 + 0.18 * F.lift;
   const toes = (F, fx, fy, grow) => {
     const n = F.L.front ? 4 : 5, spread = F.L.front ? 1.5 : 1.7;
-    const curl = 1 - 0.45 * F.lift;
+    const curl = 1 - 0.45 * F.swing;
     for (let i = 0; i < n; i++) {
       const a = F.fa + (i / (n - 1) - 0.5) * spread;
       const len = (F.L.front ? 5.2 : 5.8) * U * curl * (1 + (i === n - 2 ? 0.25 : 0)) * sc(F) + grow;
@@ -513,7 +579,7 @@ function drawLegs(ctx, feet, U, lw, lineC, limbC, hiC, magC, cool) {
     ctx.fillStyle = rgb(magC, 1 - cool);
     ctx.beginPath();
     for (const j of J) {
-      const F = j.F, n = F.L.front ? 4 : 5, spread = F.L.front ? 1.5 : 1.7, curl = 1 - 0.45 * F.lift;
+      const F = j.F, n = F.L.front ? 4 : 5, spread = F.L.front ? 1.5 : 1.7, curl = 1 - 0.45 * F.swing;
       for (let i = 0; i < n; i++) {
         const a = F.fa + (i / (n - 1) - 0.5) * spread;
         const len = (F.L.front ? 5.2 : 5.8) * U * curl * (1 + (i === n - 2 ? 0.25 : 0)) * sc(F);
@@ -524,6 +590,33 @@ function drawLegs(ctx, feet, U, lw, lineC, limbC, hiC, magC, cool) {
     }
     ctx.fill();
   }
+}
+
+// Pale throat and chest, shown while the front of the body is pitched up toward the camera.
+const BQ = { x: 0, y: 0, nx: 0, ny: 0, w: 0 };
+function drawBelly(ctx, U, k, cool, lw) {
+  const pt = (u, v) => { const q = spInto(u, BQ); return [q.x + q.nx * q.w * v, q.y + q.ny * q.w * v]; };
+  const u0 = 16, u1 = 50;
+  ctx.beginPath();
+  for (let i = 0; i <= 8; i++) { const u = lerp(u0, u1, i / 8), v = 0.82 * Math.sin(Math.PI * (0.15 + 0.85 * i / 8)) + 0.1; const [X, Y] = pt(u, v); if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); }
+  for (let i = 8; i >= 0; i--) { const u = lerp(u0, u1, i / 8), v = 0.82 * Math.sin(Math.PI * (0.15 + 0.85 * i / 8)) + 0.1; const [X, Y] = pt(u, -v); ctx.lineTo(X, Y); }
+  ctx.closePath();
+  ctx.fillStyle = rgb(mixA(C.belly, C.coolBelly, cool), clamp(k * 1.3, 0, 1));
+  ctx.fill();
+  ctx.strokeStyle = rgb(mixA(C.line, C.lineCool, cool), clamp(k * 1.3, 0, 1) * 0.9);
+  ctx.lineWidth = lw * 0.8;
+  ctx.stroke();
+  // belly scale lines
+  ctx.beginPath();
+  for (let u = 22; u < 48; u += 5.5) {
+    const v = 0.6;
+    const [ax, ay] = pt(u, -v), [mx, my] = pt(u + 1.6, 0), [bx2, by2] = pt(u, v);
+    ctx.moveTo(ax, ay);
+    ctx.quadraticCurveTo(mx, my, bx2, by2);
+  }
+  ctx.strokeStyle = `rgba(190,90,30,${0.6 * clamp(k * 1.3, 0, 1)})`;
+  ctx.lineWidth = 1.1 * U;
+  ctx.stroke();
 }
 
 // Angular rock plate in spine space: a jittered hexagon, the outer corners chamfered.
@@ -560,33 +653,95 @@ function outlineFrom(ctx, X, Y, ox, oy, i0) {
 }
 
 /* ---------------------------------------------------------------- head (local: +x = snout, units = U) */
-// The face reads like a front-on cartoon face seen from above: forehead toward the body, mouth at the snout.
+// The head is a wide, flat, rounded wedge that carries on from the neck. Local space: +x = snout, units = U.
+// Front edge of the head as bezier segments [c1x, c1y, c2x, c2y, x, y] from the right jaw corner round the snout.
+function frontSegs(tip) {
+  return [
+    [-1, 15.8],
+    [4.5, 15.8, 9.5, 13.6, tip - 4.2, 10.2],
+    [tip - 1, 7.3, tip, 3.8, tip, 0],
+    [tip, -3.8, tip - 1, -7.3, tip - 4.2, -10.2],
+    [9.5, -13.6, 4.5, -15.8, -1, -15.8],
+  ];
+}
+// emit segs through an affine map (x, y) -> (ox + (x - ox) * k, y * k); reverse = walk them backwards
+function emitSegs(ctx, segs, ox, k, reverse, move) {
+  const T = (x, y) => [ox + (x - ox) * k, y * k];
+  if (!reverse) {
+    const [x0, y0] = T(segs[0][0], segs[0][1]);
+    if (move) ctx.moveTo(x0, y0); else ctx.lineTo(x0, y0);
+    for (let i = 1; i < segs.length; i++) {
+      const g = segs[i], a = T(g[0], g[1]), b = T(g[2], g[3]), c = T(g[4], g[5]);
+      ctx.bezierCurveTo(a[0], a[1], b[0], b[1], c[0], c[1]);
+    }
+  } else {
+    const L = segs[segs.length - 1], [x0, y0] = T(L[4], L[5]);
+    if (move) ctx.moveTo(x0, y0); else ctx.lineTo(x0, y0);
+    for (let i = segs.length - 1; i >= 1; i--) {
+      const g = segs[i], p = i > 1 ? segs[i - 1] : null;
+      const end = p ? T(p[4], p[5]) : T(segs[0][0], segs[0][1]);
+      const a = T(g[2], g[3]), b = T(g[0], g[1]);
+      ctx.bezierCurveTo(a[0], a[1], b[0], b[1], end[0], end[1]);
+    }
+  }
+}
+function headOutline(ctx, tip, open) {
+  ctx.beginPath();
+  ctx.moveTo(-15.5, 9.2);
+  ctx.bezierCurveTo(-10.5, 12.5, -6.5, 15.8, -1, 15.8);
+  emitSegs(ctx, frontSegs(tip), 0, 1, false, false);
+  ctx.bezierCurveTo(-6.5, -15.8, -10.5, -12.5, -15.5, -9.2);
+  if (!open) { ctx.quadraticCurveTo(-17.5, 0, -15.5, 9.2); ctx.closePath(); }
+}
+
+// Neck frill: hot webbed spikes behind the cheeks; folded small while walking, flared on a hiss.
+function drawFrill(ctx, P, glow, cool, lw, K) {
+  const f = clamp(P.frill, 0, 1);
+  if (f < 0.02) return;
+  const line = rgb(K.lineC);
+  for (const sd of [-1, 1]) {
+    const bases = [[-14.5, 6.5], [-12.5, 10.5], [-9.5, 13.5]];
+    const angs = [2.75, 2.35, 1.95];
+    const lens = [6 + 9 * f, 7 + 12 * f, 5 + 9 * f];
+    const tips = bases.map((b, i) => [b[0] + Math.cos(angs[i]) * lens[i] * (0.4 + 0.6 * f), sd * (b[1] + Math.sin(angs[i]) * lens[i] * (0.4 + 0.6 * f))]);
+    // membrane
+    ctx.beginPath();
+    ctx.moveTo(-15.5, sd * 4);
+    for (let i = 0; i < 3; i++) {
+      ctx.lineTo(tips[i][0], tips[i][1]);
+      if (i < 2) { const mx = (tips[i][0] + tips[i + 1][0]) / 2, my = (tips[i][1] + tips[i + 1][1]) / 2; ctx.quadraticCurveTo((mx + bases[i][0]) / 2, (my + sd * bases[i][1]) / 2 + sd * 1.2, tips[i + 1][0] * 0.98 + mx * 0.02, tips[i + 1][1]); }
+    }
+    ctx.lineTo(-6, sd * 13);
+    ctx.closePath();
+    ctx.fillStyle = rgb(K.magAt(clamp(0.45 + 0.45 * f * glow + 0.1, 0, 1)));
+    ctx.fill();
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = line;
+    ctx.stroke();
+    // rays
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) { ctx.moveTo(bases[i][0], sd * bases[i][1]); ctx.lineTo(tips[i][0], tips[i][1]); }
+    ctx.lineWidth = lw * 0.9;
+    ctx.strokeStyle = rgb(K.rockC);
+    ctx.stroke();
+  }
+}
+
 function drawHead(ctx, t, opts, P, glow, cool, lw, K) {
   const m = clamp(P.mouth, 0, 1);
-  const tipX = 15 - 4 * m; // the upper lip pulls back as the jaw drops toward the camera
-  // broad shovel head: widest across the cheeks, round blunt snout
-  const headShape = () => {
-    ctx.beginPath();
-    ctx.moveTo(tipX, 0);
-    ctx.bezierCurveTo(tipX, 8, 12, 15.5, 4, 17);
-    ctx.bezierCurveTo(-4, 18.2, -12, 15, -14.5, 9);
-    ctx.quadraticCurveTo(-16, 4, -15.5, 0);
-    ctx.quadraticCurveTo(-16, -4, -14.5, -9);
-    ctx.bezierCurveTo(-12, -15, -4, -18.2, 4, -17);
-    ctx.bezierCurveTo(12, -15.5, tipX, -8, tipX, 0);
-    ctx.closePath();
-  };
+  const tip = 16.8 - 4 * m; // the upper lip pulls back as the jaw drops toward the camera
   const line = rgb(K.lineC);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
+  drawFrill(ctx, P, glow, cool, lw, K);
 
-  // lower jaw + open mouth, under the upper head
+  // lower jaw + open mouth (under the upper head): wide and deep on a hiss
   if (m > 0.02) {
-    const jx = 8 + 13 * m; // jaw tip
+    const jx = tip + 2 + 12 * m, jw = 15.5 + 1.5 * P.angry;
     ctx.beginPath();
-    ctx.moveTo(-2, -16);
-    ctx.bezierCurveTo(6, -17, jx, -12 * (0.6 + 0.4 * m), jx, 0);
-    ctx.bezierCurveTo(jx, 12 * (0.6 + 0.4 * m), 6, 17, -2, 16);
+    ctx.moveTo(-2, -jw);
+    ctx.bezierCurveTo(7, -jw - 1, jx, -13 * (0.55 + 0.45 * m), jx, 0);
+    ctx.bezierCurveTo(jx, 13 * (0.55 + 0.45 * m), 7, jw + 1, -2, jw);
     ctx.closePath();
     ctx.fillStyle = rgb(mixA(C.jaw, C.coolJaw, cool));
     ctx.fill();
@@ -594,52 +749,53 @@ function drawHead(ctx, t, opts, P, glow, cool, lw, K) {
     ctx.strokeStyle = line;
     ctx.stroke();
     ctx.beginPath(); // mouth cavity
-    ctx.moveTo(1, -13);
-    ctx.bezierCurveTo(7, -13.5, jx - 3, -9 * m, jx - 3, 0);
-    ctx.bezierCurveTo(jx - 3, 9 * m, 7, 13.5, 1, 13);
+    ctx.moveTo(1, -jw + 2.5);
+    ctx.bezierCurveTo(8, -jw + 2, jx - 3.2, -10 * m, jx - 3.2, 0);
+    ctx.bezierCurveTo(jx - 3.2, 10 * m, 8, jw - 2, 1, jw - 2.5);
     ctx.closePath();
     ctx.fillStyle = P.fire > 0.05 ? '#ffd860' : '#6e0d0a';
     ctx.fill();
     ctx.fillStyle = '#fff4dc'; // lower fangs
+    ctx.strokeStyle = line;
+    ctx.lineWidth = lw * 0.5;
     ctx.beginPath();
     for (const sd of [-1, 1]) {
-      const bx = jx - 5 - 1.5 * m, by = sd * 7 * m;
-      ctx.moveTo(bx + 1.2, by - 1.8 * sd);
-      ctx.lineTo(bx - 3, by - 0.4 * sd);
-      ctx.lineTo(bx + 1.6, by + 1.8 * sd);
+      const bx = jx - 4.6, by = sd * 8 * m;
+      ctx.moveTo(bx + 1.5, by - 2 * sd);
+      ctx.lineTo(bx - 3.6, by - 0.2 * sd);
+      ctx.lineTo(bx + 1.8, by + 2 * sd);
+      ctx.closePath();
     }
     ctx.fill();
-    if (P.fire < 0.3) drawTongue(ctx, 4, 0, jx - 4 + 3 * P.tongue + Math.sin(t * 18) * 1.5 * P.tongue, t, lw);
+    ctx.stroke();
+    if (P.fire < 0.3) drawTongue(ctx, 5, 0, jx - 5 + 3 * P.tongue + Math.sin(t * 18) * 1.5 * P.tongue, t, lw);
   } else if (P.tongue > 0 || mod(t, 2.7) < 0.32) {
     const fl = P.tongue > 0 ? 0.7 : Math.sin((mod(t, 2.7) / 0.32) * Math.PI);
-    drawTongue(ctx, tipX - 2, 0, tipX + 10 * fl, t, lw);
+    drawTongue(ctx, tip - 2, 0, tip + 10 * fl, t, lw);
   }
 
-  // upper head: hot face, dark crusted skull cap and brow plates
-  headShape();
-  ctx.fillStyle = rgb(K.magAt(clamp(glow * 0.72 + 0.24, 0, 1)));
+  // upper head: hot face under rock plates
+  headOutline(ctx, tip, false);
+  ctx.fillStyle = rgb(K.magAt(clamp(glow * 0.75 + 0.2, 0, 1)));
   ctx.fill();
   ctx.save();
   ctx.clip();
+  // pale upper lip round the snout (between the outline and the mouth line)
+  const segs = frontSegs(tip);
+  ctx.beginPath();
+  emitSegs(ctx, segs, 2, 1, false, true);
+  emitSegs(ctx, segs, 2, 0.8, true, false);
+  ctx.closePath();
+  ctx.fillStyle = rgb(mixA(C.jaw, C.coolJaw, cool));
+  ctx.fill();
+  // rock plates carry on from the neck: two columns either side of a glowing seam, smaller on the snout
   const plate = (ox, oy) => {
     ctx.beginPath();
-    // skull cap between and behind the eyes
-    ctx.moveTo(-17 + ox, -5.5 + oy);
-    ctx.lineTo(-8 + ox, -4.8 + oy);
-    ctx.lineTo(-3.5 + ox, -2 + oy);
-    ctx.lineTo(-2.5 + ox, 0 + oy);
-    ctx.lineTo(-3.5 + ox, 2 + oy);
-    ctx.lineTo(-8 + ox, 4.8 + oy);
-    ctx.lineTo(-17 + ox, 5.5 + oy);
-    ctx.closePath();
-    // brow ridges over the eyes
     for (const sd of [-1, 1]) {
-      ctx.moveTo(-15 + ox, sd * 7.5 + oy);
-      ctx.lineTo(-8.5 + ox, sd * 6.6 + oy);
-      ctx.lineTo(-6.5 + ox, sd * 12 + oy);
-      ctx.lineTo(-9 + ox, sd * 19 + oy);
-      ctx.lineTo(-16 + ox, sd * 13 + oy);
-      ctx.closePath();
+      const poly = (pts) => { pts.forEach(([x, y], i) => (i ? ctx.lineTo(x + ox, sd * y + oy) : ctx.moveTo(x + ox, sd * y + oy))); ctx.closePath(); };
+      poly([[-19, 1.3], [-9, 1.3], [-8.4, 4.8], [-10.2, 8], [-17, 8.8]]);
+      poly([[-7.6, 1.3], [0.6, 1.3], [1.4, 4], [-0.2, 6.2], [-6.4, 6.4]]);
+      poly([[2.2, 1.3], [7.8 - 2 * m, 1.3], [8.4 - 2.5 * m, 3.8], [6.6 - 2 * m, 5.6], [3.2, 4.8]]);
     }
   };
   plate(0, 0);
@@ -648,71 +804,68 @@ function drawHead(ctx, t, opts, P, glow, cool, lw, K) {
   plate(0.6, 0.8);
   ctx.fillStyle = rgb(K.rockC);
   ctx.fill();
-  ctx.beginPath(); // glossy hot spot on the snout
-  ctx.ellipse(6, -4, 5.5, 3.2, -0.5, 0, TAU);
-  ctx.fillStyle = `rgba(255,236,170,${0.45 * (1 - cool)})`;
-  ctx.fill();
-  ctx.beginPath(); // cel shadow on the lower-right of the head
+  ctx.beginPath(); // cel shadow, lower-right of the head
   ctx.rect(-40, -40, 80, 80);
-  ctx.ellipse(-3, -3.5, 20.5, 20.5, 0, 0, TAU);
+  ctx.ellipse(-3, -3.5, 21, 21, 0, 0, TAU);
   ctx.fillStyle = rgb(K.rockLo, 0.3);
   ctx.fill('evenodd');
   ctx.restore();
-  headShape();
+  // hot rim inside the outline, then the outline (open at the neck so the head flows out of the body)
+  headOutline(ctx, tip, true);
+  ctx.save();
+  headOutline(ctx, tip, false);
+  ctx.clip();
+  headOutline(ctx, tip, true);
+  ctx.strokeStyle = rgb(K.magAt(clamp(glow + 0.3, 0, 1)), 0.9);
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.restore();
+  headOutline(ctx, tip, true);
   ctx.lineWidth = lw;
   ctx.strokeStyle = line;
+  ctx.stroke();
+
+  // mouth line wrapping round the snout; closed it is a wide grin hooked up at the corners
+  const mw = Math.max(lw * 1.45, 3.1);
+  ctx.strokeStyle = line;
+  ctx.lineWidth = mw;
+  ctx.beginPath();
+  emitSegs(ctx, segs, 2, 0.8, false, true);
+  if (m <= 0.02) {
+    ctx.moveTo(-0.4, 12.64);
+    ctx.quadraticCurveTo(-2.4, 12.8, -3.2, 10.6);
+    ctx.moveTo(-0.4, -12.64);
+    ctx.quadraticCurveTo(-2.2, -12.4, -2.6, -10.8);
+  }
+  ctx.stroke();
+  // fangs over the lip: a pair at the front, one long cheeky one at the side
+  ctx.fillStyle = '#fff4dc';
+  ctx.lineWidth = lw * 0.5;
+  ctx.beginPath();
+  const fang = (x, y, dx, dy, w) => {
+    const l = Math.hypot(dx, dy), nx = -dy / l * w, ny = dx / l * w;
+    ctx.moveTo(x + nx, y + ny);
+    ctx.lineTo(x + dx, y + dy);
+    ctx.lineTo(x - nx, y - ny);
+    ctx.closePath();
+  };
+  const fl = 1 + 1.4 * m;
+  fang(12.4 - 3 * m, 4.6, 2.6 * fl, 1.2, 1.2);
+  fang(12.4 - 3 * m, -4.6, 2.6 * fl, -1.2, 1.2);
+  fang(8.6 - 2 * m, 9.6, 2.2, 3.4 * fl, 1.5);
+  ctx.fill();
   ctx.stroke();
 
   // nostrils
   ctx.fillStyle = line;
   ctx.beginPath();
-  ctx.ellipse(tipX - 2.4, -3.6, 1, 1.3, 0, 0, TAU);
-  ctx.ellipse(tipX - 2.4, 3.6, 1, 1.3, 0, 0, TAU);
+  ctx.ellipse(tip - 6.5, -3.6, 1.2, 1.5, 0, 0, TAU);
+  ctx.ellipse(tip - 6.5, 3.6, 1.2, 1.5, 0, 0, TAU);
   ctx.fill();
-
-  if (m <= 0.02) {
-    // closed: a wide cheeky grin across the snout, one corner hooked up higher, one fang out
-    ctx.beginPath();
-    ctx.moveTo(2.6, -11.6);
-    ctx.bezierCurveTo(7, -8.6, 9.6, -4, 9.6, 0.4);
-    ctx.bezierCurveTo(9.4, 4.6, 7, 9, 1.8, 11.6);
-    ctx.lineWidth = lw * 1.05;
-    ctx.strokeStyle = line;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(2.6, -11.6);
-    ctx.quadraticCurveTo(0.6, -12.4, 0.2, -10.2);
-    ctx.moveTo(1.8, 11.6);
-    ctx.quadraticCurveTo(-1, 13.2, -2.2, 10.6);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(8.7, 4.8);
-    ctx.lineTo(11.4, 6.6);
-    ctx.lineTo(7.8, 7.4);
-    ctx.closePath();
-    ctx.fillStyle = '#fff4dc';
-    ctx.fill();
-    ctx.lineWidth = lw * 0.55;
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = '#fff4dc';
-    ctx.strokeStyle = line;
-    ctx.lineWidth = lw * 0.55;
-    ctx.beginPath();
-    for (const sd of [-1, 1]) {
-      const bx = tipX - 3.5, by = sd * 6;
-      ctx.moveTo(bx - 1.6, by - 1.6 * sd);
-      ctx.lineTo(bx + 4 + 1.5 * m, by + 0.3 * sd);
-      ctx.lineTo(bx - 1.2, by + 2 * sd);
-      ctx.closePath();
-    }
-    ctx.fill();
-    ctx.stroke();
-  }
 
   const blink = opts.blink !== undefined ? clamp(opts.blink, 0, 1) : P.dazed ? 0 : blinkAt(t, 0.4);
   const look = opts.look || { x: 0, y: 0 };
-  for (const sd of [-1, 1]) drawEye(ctx, -2, sd * 12, sd, t, blink, look, P, cool, lw, K);
+  for (const sd of [-1, 1]) drawEye(ctx, -3, sd * 14.6, sd, t, blink, look, P, cool, lw, K);
 }
 
 function drawTongue(ctx, x0, y0, x1, t, lw) {
@@ -733,12 +886,13 @@ function drawTongue(ctx, x0, y0, x1, t, lw) {
   ctx.stroke();
 }
 
-// Eye in head space; the face's "up" is toward the body (-x), so lids close from -x toward the snout.
+// Eye bulging out of the head's side edge. The face's "up" is toward the body (-x): the upper lid closes from -x,
+// the lower lid from the snout side (it narrows the eye on a hiss).
 function drawEye(ctx, ex, ey, sd, t, blink, look, P, cool, lw, K) {
-  const R = 7;
+  const R = 6.2;
   const line = rgb(K.lineC);
-  ctx.beginPath(); // thin rock socket, bulging past the head outline
-  ctx.arc(ex, ey, R + 0.9, 0, TAU);
+  ctx.beginPath(); // rock socket dome
+  ctx.arc(ex, ey, R + 1.2, 0, TAU);
   ctx.fillStyle = rgb(K.rockC);
   ctx.fill();
   ctx.lineWidth = lw;
@@ -750,15 +904,15 @@ function drawEye(ctx, ex, ey, sd, t, blink, look, P, cool, lw, K) {
   ctx.clip();
   ctx.fillStyle = rgb(mixA(C.eye, C.coolEye, cool));
   ctx.fillRect(ex - R, ey - R, 2 * R, 2 * R);
-  ctx.beginPath(); // lower shade toward the snout
-  ctx.arc(ex - 2.4, ey - sd * 0.5, R, 0, TAU);
+  ctx.beginPath(); // shade toward the snout
+  ctx.arc(ex - 2.2, ey - sd * 0.5, R, 0, TAU);
   ctx.rect(ex - R * 2, ey - R * 2, R * 4, R * 4);
-  ctx.fillStyle = rgb(mixA(C.eyeLo, C.coolEye, cool * 0.7), 0.75);
+  ctx.fillStyle = rgb(mixA(C.eyeLo, C.coolEye, cool * 0.7), 0.7);
   ctx.fill('evenodd');
-  if (P.dazed) {
+  if (P.dazed > 0.5) {
     ctx.beginPath();
     const rot = t * 7 * sd;
-    for (let i = 0; i <= 34; i++) {
+    for (let i = 0; i <= 32; i++) {
       const a = rot + i * 0.52, r = 0.2 + i * 0.165;
       const X = ex + Math.cos(a) * r, Y = ey + Math.sin(a) * r;
       if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y);
@@ -768,35 +922,46 @@ function drawEye(ctx, ex, ey, sd, t, blink, look, P, cool, lw, K) {
     ctx.stroke();
   } else {
     const lx = clamp(look.x || 0, -1, 1), ly = clamp(look.y || 0, -1, 1);
-    const px = ex + lx * 2.2 + 0.8, py = ey + ly * 2.2;
-    const pr = P.angry ? 2.6 : 3.2;
+    const px = ex + lx * 2 + 0.8, py = ey + ly * 2 - sd * 0.4;
+    const pr = 3 - 0.5 * P.angry;
     ctx.beginPath();
-    ctx.ellipse(px, py, pr * (P.angry ? 1.15 : 0.95), pr * (P.angry ? 0.75 : 1.05), 0, 0, TAU);
+    ctx.ellipse(px, py, pr * (1 + 0.15 * P.angry), pr * (1.05 - 0.3 * P.angry), 0, 0, TAU);
     ctx.fillStyle = '#1e0a04';
     ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(px - 1.5, py - 1.3 * sd, 1.3, 0, TAU);
-    ctx.arc(px + 1.1, py + 1.1 * sd, 0.55, 0, TAU);
+    ctx.arc(px - 1.4, py - 1.2 * sd, 1.25, 0, TAU);
+    ctx.arc(px + 1.1, py + 1.1 * sd, 0.5, 0, TAU);
     ctx.fill();
   }
-  // upper lid from the forehead side; the inner corner sits lower (mischief, or anger on a hiss)
-  const base = P.dazed ? 0.4 : 0.22 + 0.24 * P.angry;
+  // Top-down faces read with "up" = forward, so the upper lid closes from the snout side and slants so the
+  // inner corners sit lower: the brows make a \ / toward the body (mischief; anger on a hiss).
+  const base = P.dazed > 0.5 ? 0.36 : 0.2 + 0.14 * P.angry;
   const lid = Math.max(blink, base);
-  const back = ex - R - 3, edge = lerp(ex - R - 0.5, ex + R + 0.5, lid);
-  const slant = (P.angry ? 3.4 : 2) * (1 - blink);
-  const yIn = ey - sd * (R + 2), yOut = ey + sd * (R + 2);
+  const slant = (1.9 + 1.5 * P.angry) * (1 - blink);
+  const Fr = ex + R + 3, Bk = ex - R - 3, yI = ey - sd * (R + 3), yO = ey + sd * (R + 3);
+  const xE = ex + R - 2 * R * lid;
   ctx.beginPath();
-  ctx.moveTo(back, yIn);
-  ctx.lineTo(edge + slant, yIn);
-  ctx.lineTo(edge - slant, yOut);
-  ctx.lineTo(back, yOut);
+  ctx.moveTo(Fr, yI);
+  ctx.lineTo(xE - slant, yI);
+  ctx.lineTo(xE + slant, yO);
+  ctx.lineTo(Fr, yO);
   ctx.closePath();
+  const low = 0.2 * P.angry; // lower lid squint from the back
+  const xL = ex - R + 2 * R * low;
+  if (low > 0.01) {
+    ctx.moveTo(Bk, yI);
+    ctx.lineTo(xL + 0.6, yI);
+    ctx.lineTo(xL - 0.6, yO);
+    ctx.lineTo(Bk, yO);
+    ctx.closePath();
+  }
   ctx.fillStyle = rgb(K.rockC);
   ctx.fill();
   ctx.beginPath();
-  ctx.moveTo(edge + slant, yIn);
-  ctx.lineTo(edge - slant, yOut);
+  ctx.moveTo(xE - slant, yI);
+  ctx.lineTo(xE + slant, yO);
+  if (low > 0.01) { ctx.moveTo(xL + 0.6, yI); ctx.lineTo(xL - 0.6, yO); }
   ctx.strokeStyle = line;
   ctx.lineWidth = lw * 1.1;
   ctx.stroke();
@@ -806,6 +971,32 @@ function drawEye(ctx, ex, ey, sd, t, blink, look, P, cool, lw, K) {
   ctx.strokeStyle = line;
   ctx.lineWidth = lw * 0.9;
   ctx.stroke();
+  // hot brow ridge just in front of the hood (it stays put through a blink)
+  const xb = ex + R - 2 * R * base + 1.6, sb = 1.9 + 2.2 * P.angry;
+  // tapered slab: thick at the inner end, thin at the outer end
+  const ax = xb - sb * 1.15, ay = ey - sd * (R + 0.8), cx = xb + 1.2, cy = ey + sd * 0.4, bx = xb + sb * 0.9, by = ey + sd * (R + 0.4);
+  const slab = (grow) => {
+    const L = [], Rr = [];
+    for (let i = 0; i <= 8; i++) {
+      const u = i / 8, v = 1 - u;
+      const X = v * v * ax + 2 * u * v * cx + u * u * bx, Y = v * v * ay + 2 * u * v * cy + u * u * by;
+      const dx = 2 * v * (cx - ax) + 2 * u * (bx - cx), dy = 2 * v * (cy - ay) + 2 * u * (by - cy), l = Math.hypot(dx, dy) || 1;
+      const w = lerp(2.7, 1.0, u) + grow;
+      L.push([X - (dy / l) * w, Y + (dx / l) * w]);
+      Rr.push([X + (dy / l) * w, Y - (dx / l) * w]);
+    }
+    ctx.beginPath();
+    L.forEach(([X, Y], i) => (i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y)));
+    for (let i = Rr.length - 1; i >= 0; i--) ctx.lineTo(Rr[i][0], Rr[i][1]);
+    ctx.closePath();
+  };
+  if (cool < 0.9) { slab(1.8); ctx.fillStyle = `rgba(255,160,40,${0.32 * (1 - cool)})`; ctx.fill(); }
+  slab(0);
+  ctx.lineWidth = lw * 0.85;
+  ctx.strokeStyle = line;
+  ctx.stroke();
+  ctx.fillStyle = rgb(mixA(mixA(C.browLo, C.brow, 0.6), C.coolHi, cool));
+  ctx.fill();
 }
 
 /* ---------------------------------------------------------------- effects */

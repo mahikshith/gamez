@@ -2,11 +2,11 @@
 // Runs inside the real dev build (dist/dev/index.html): starts a Volcano level through window.__egg, renders a
 // real game frame, copies it, draws the salamander on top at true in-game scale in a ring channel, and
 // returns cropped film strips. Driven by tools/salamander-qa/shoot.cjs.
-import { drawSalamander } from '../../src/render/salamander.js';
+import { drawSalamander, salamanderAnim } from '../../src/render/salamander.js';
 
 const TAU = Math.PI * 2;
 const E = () => window.__egg;
-const SVL = 1.5; // snout to hips, metres (an egg is 0.56 m tall)
+const SVL = 1.8; // snout to hips, metres (an egg is 0.56 m tall)
 
 let shot = null, sctx = null;
 function view() {
@@ -220,7 +220,7 @@ function still(pose, n, fn, label, extraPts, sopt = {}) {
     if (o.after) o.after(f.ctx);
     if (!crop) {
       const pts = [];
-      if (sopt.head) { const c = trail(0.12 * k); pts.push({ x: c.x - 0.25 * k, y: c.y - 0.25 * k }, { x: c.x + 0.25 * k, y: c.y + 0.25 * k }); }
+      if (sopt.head) { const c = trail(0.12 * k); pts.push({ x: c.x - 0.45 * k, y: c.y - 0.45 * k }, { x: c.x + 0.45 * k, y: c.y + 0.45 * k }); }
       else for (let d = -0.6 * k; d < s * 2; d += 5) pts.push(trail(d));
       crop = cropFor(f.V, pts.concat(extraPts ? extraPts(trail, k) : []), (sopt.head ? 0.42 : 0.6) * k);
     }
@@ -242,7 +242,7 @@ S.breath = () => { hitTh = null; return still('breath', 12, (i, ctx, k, R, s) =>
   const heat = p < 0.86 ? Math.min(1, Math.max(0, (p - 0.47) / 0.2)) : 1;
   const out = {};
   return { t, p, aim: -0.62, fireLen: 44, out, after: (c) => { if (out.fire) hitTh = Math.atan2(out.fire.y, out.fire.x); if (hitTh !== null) hotArc(c, 3.05 * k, hitTh, 0.2, heat, k, t); } };
-}, (i) => `breath p=${(i / 11).toFixed(2)}`, (trail, k) => [trail(-1.0 * k)]); };
+}, (i) => `breath p=${(i / 11).toFixed(2)}`, (trail, k) => [trail(-1.5 * k), { x: trail(-0.6 * k).x - 0.5 * k, y: trail(-0.6 * k).y + 0.4 * k }]); };
 
 S.hiss = () => still('hiss', N, (i) => {
   const p = i / (N - 1), t = 3 + p * 2.4;
@@ -316,4 +316,61 @@ S.perf = () => {
     return (performance.now() - t0) / 600;
   };
   return { png: shot.toDataURL('image/png'), info: { walkMs: run('walk', {}), breathMs: run('breath', { p: 0.6 }), fleeMs: run('flee', { dive: 20 }) } };
+};
+
+// big single-frame head check for art iteration (not part of the sheet)
+S.headbig = () => still('idle', 4, (i) => [{ t: 2, look: { x: 1, y: 0 } }, { t: 3, pose: 'hiss', p: 0.5 }, { t: 3.4, pose: 'breath', p: 0.3, aim: 0 }, { t: 3.4, pose: 'walk' }][i], (i) => ['idle', 'hiss', 'rear', 'walk'][i], null, { head: true, scale: 4, cols: 4 });
+
+// art-iteration view: large, on a plain dark ground, several poses (not part of the sheet)
+S.studio = () => {
+  const c = document.createElement('canvas');
+  c.width = 1800; c.height = 700;
+  const x = c.getContext('2d');
+  x.fillStyle = '#231c1e';
+  x.fillRect(0, 0, c.width, c.height);
+  const poses = [{ pose: 'idle', t: 2 }, { pose: 'hiss', p: 0.5, t: 3 }, { pose: 'breath', p: 0.3, t: 3.4 }, { pose: 'dazed', t: 3 }];
+  poses.forEach((o, i) => {
+    x.save();
+    x.beginPath(); x.rect(i * 450, 0, 450, 700); x.clip();
+    drawSalamander(x, i * 450 + 225, 90, 480, o.t, { heading: -Math.PI / 2, gait: 30, glow: 0.8, ...o });
+    x.restore();
+  });
+  return { png: c.toDataURL('image/png') };
+};
+
+// pose blending through salamanderAnim at 60 fps: walk -> stop -> idle -> hiss -> breath -> walk.
+// Reports foot slide while planted and the biggest single-frame foot jump (a pop would show up here).
+S.blend = () => {
+  setup();
+  const f0 = frame(), k = f0.V.k, s = SVL * k, R = 2.55 * k;
+  const tr = channelTrail(R, 1.9);
+  const A = salamanderAnim();
+  const plan = [[0, 'walk'], [1.3, 'idle'], [2.3, 'hiss'], [3.5, 'breath'], [5.9, 'walk']];
+  const dur = { hiss: 1.2, breath: 2.4 };
+  const shots = [1.0, 1.35, 1.55, 1.9, 2.45, 2.9, 3.6, 3.85, 4.5, 5.6, 6.1, 6.6];
+  let pos = 0, prev = null, maxSlide = 0, maxJump = 0, crop = null, si = 0;
+  const frames = [];
+  for (let i = 0; i <= Math.round(6.7 * 60); i++) {
+    const t = i / 60;
+    let cur = plan[0];
+    for (const q of plan) if (t >= q[0]) cur = q;
+    const p = dur[cur[1]] ? Math.min(1, (t - cur[0]) / dur[cur[1]]) : 0;
+    pos += A.update(1 / 60, { pose: cur[1], p, speed: 0.55 * k, stride: 0.4 * s });
+    const take = si < shots.length && t >= shots[si] - 1e-6;
+    const f = take ? frame() : { ctx: document.createElement('canvas').getContext('2d') };
+    const trail = tr(pos), hd = trail(0), out = {};
+    drawSalamander(f.ctx, hd.x, hd.y, s, 3 + t, { ...A.opts(), trail, glow: 0.8, aim: cur[1] === 'breath' ? -0.6 : 0, fireLen: 44, out });
+    if (prev) for (let j = 0; j < 4; j++) {
+      const a = prev[j], b = out.feet[j], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (a.lift === 0 && b.lift === 0) maxSlide = Math.max(maxSlide, d);
+      maxJump = Math.max(maxJump, d);
+    }
+    prev = out.feet;
+    if (take) {
+      if (!crop) { const pts = []; for (let d = -1.0 * k; d < s * 2.2; d += 5) pts.push(tr(pos + 0.9 * k)(d)); crop = cropFor(f.V, pts, 0.6 * k); }
+      frames.push({ img: grab(), label: `${t.toFixed(2)}s ${cur[1]}` });
+      si++;
+    }
+  }
+  return { png: strip(frames, crop, { cols: 6 }), info: { maxPlantedSlidePx: maxSlide, maxFootStepPerFramePx: maxJump, swingStepPx: 0.4 * s * 2 / 60 * 3 } };
 };
