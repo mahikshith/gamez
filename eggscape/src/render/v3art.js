@@ -9,269 +9,539 @@ const safe = (ctx, f) => { ctx.save(); try { f(); } catch (e) { /* never break t
 const lw = (px, base) => Math.max(px, base); // line width that never thins out below px
 
 /* ------------------------------------------------------------------ EAGLE */
+// A rigged bald eagle in side view, facing right, y down. Units: 100 = body length (beak tip to tail tip).
+// The body, head and legs are flat profile art; each wing is one jointed limb (shoulder, elbow, wrist) laid
+// out in its own plane, and that plane is turned in 3D (stroke elevation, bank) and projected with a camera
+// a little above the bird, so a beating wing foreshortens, the far wing tucks behind the body and turns
+// thin in a bank, and the tail fan tilts. Poses (glide, flap, hover, dive, strike, carry, dazed, perch) are
+// parameter sets blended by weight, so every transition is smooth.
 
-const EG = { dark: '#4a2f17', mid: '#6b4524', lite: '#9a6b3a', white: '#fbf6ea', whiteLo: '#d9cdb4', beak: '#ffc02e', beakLo: '#e08a10', line: '#25140a', talon: '#ffb21e' };
+const EG = {
+  line: '#3b2211', // thick warm dark-brown outline, never black
+  body: '#8a5a2b', bodyHi: '#ad773d', bodyLo: '#674120', bodyDk: '#4f3118',
+  cov: '#93602e', covHi: '#a7713a', covLo: '#734a23',
+  fl: '#5e3b1c', flHi: '#7e5328', flTip: '#3e2612',
+  far: '#6e4622', farHi: '#865a2f', farFl: '#53341a', farTip: '#3a2410',
+  white: '#fbf7ee', whiteLo: '#ddd3c2', whiteDk: '#bfb29c',
+  beak: '#f2b632', beakLo: '#c98a16', beakHi: '#ffd977', mouth: '#7a2a1a',
+  leg: '#f2b632', legLo: '#c98a16', talon: '#2e1b0d',
+  iris: '#f5c542', pupil: '#1b1009',
+};
+const D2R = Math.PI / 180;
+const CAM_EL = 34 * D2R, CAM_YAW = -18 * D2R; // the camera looks from a little above and in front
+const CEL = Math.cos(CAM_EL), SEL = Math.sin(CAM_EL), CYW = Math.cos(CAM_YAW), SYW = Math.sin(CAM_YAW);
+const proj = (x, y, z) => [x * CYW + z * SYW, y * CEL + (-x * SYW + z * CYW) * SEL];
 
-// One wing in a space where the wing points up (-y), root at (0,0), length 1.
-function eagleWing(ctx, col, tint, o) {
-  const feather = (x, y, ang, L, W) => {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(ang);
-    ctx.beginPath();
-    ctx.moveTo(-W / 2, 0);
-    ctx.lineTo(-W / 2, -L * 0.8);
-    ctx.quadraticCurveTo(-W / 2, -L, 0, -L);
-    ctx.quadraticCurveTo(W / 2, -L, W / 2, -L * 0.8);
-    ctx.lineTo(W / 2, 0);
-    ctx.closePath();
-    ctx.fillStyle = col;
-    ctx.fill();
-    ctx.lineWidth = o;
-    ctx.strokeStyle = EG.line;
-    ctx.stroke();
-    ctx.beginPath(); // pale shaft tip
-    ctx.moveTo(-W * 0.3, -L * 0.62);
-    ctx.lineTo(0, -L * 0.96);
-    ctx.lineTo(W * 0.3, -L * 0.62);
-    ctx.fillStyle = tint;
-    ctx.fill();
-    ctx.restore();
+// pose parameters (angles in degrees). e = wing elevation (+ up), a1 = humerus sweep (+ back), d2/d3 = elbow
+// and wrist bend, spread = primaries fanned, fx/fy = foot target, toes = 0 clenched .. 1 spread wide.
+const POSE_KEYS = ['fold', 'tw', 'eN', 'eF', 'a1', 'd2', 'd3', 'spread', 'alula', 'bob', 'pitch', 'head', 'neck', 'fan', 'lift', 'fx', 'fy', 'toes', 'squint', 'beak', 'wide'];
+const TUCK = { fx: -17, fy: 13, toes: 0 };
+function flapP(ph, amp, mid, fold) {
+  const s = Math.sin(ph), c = Math.cos(ph), up = Math.max(0, -s), dn = Math.max(0, s);
+  return {
+    eN: mid + amp * c, eF: mid + amp * c + 4,
+    a1: 12 - 24 * dn + 14 * up * fold, d2: -26 - 26 * up * fold, d3: 26 + 4 * dn + 52 * up * fold,
+    spread: 0.5 + 0.5 * dn - 0.45 * up * fold, alula: 0.3 * dn, tw: 38 * up, bob: -3.2 * Math.sin(ph - 0.5) * amp / 55,
   };
-  // long primaries fanning out, shorter secondaries along the trailing edge
-  for (let i = 0; i < 5; i++) feather(-0.1 + i * 0.045, -0.46, -0.34 + i * 0.17 - 0.05 * i, 0.58 - i * 0.045, 0.14);
-  for (let i = 0; i < 4; i++) feather(0.11 - i * 0.075, -0.06, -0.22 - i * 0.09, 0.62 - i * 0.04, 0.15);
-  // arm: the covert mass with a leading edge
-  ctx.beginPath();
-  ctx.moveTo(0.16, 0.05);
-  ctx.bezierCurveTo(0.19, -0.3, 0.1, -0.62, -0.1, -0.74);
-  ctx.quadraticCurveTo(-0.22, -0.6, -0.26, -0.4);
-  ctx.quadraticCurveTo(-0.3, -0.1, -0.2, 0.08);
-  ctx.closePath();
-  ctx.fillStyle = col;
-  ctx.fill();
-  ctx.lineWidth = o;
+}
+const POSES = {
+  glide: (o, t) => ({ eN: 2 + 3 * Math.sin(t * 1.3), eF: 8 + 3 * Math.sin(t * 1.3), a1: 10, d2: -24, d3: 24 + 3 * Math.sin(t * 1.7), spread: 0.85, alula: 0, bob: 0, pitch: 0, head: 0, neck: 0, fan: 0.55, lift: 2, ...TUCK, squint: 0.25, beak: 0, wide: 0 }),
+  flap: (o) => ({ ...flapP(o.phase, 50, 35, 1), pitch: 0, head: 0, neck: 0, fan: 0.5, lift: 0, ...TUCK, squint: 0.25, beak: 0, wide: 0 }),
+  hover: (o, t) => ({ ...flapP(o.phase, 52, 38, 1), pitch: -26, head: 26, neck: 2, fan: 1, lift: -12, fx: 12, fy: 27, toes: 0.55 + 0.45 * Math.sin(t * 2.6), squint: 0.85, beak: 0.15, wide: 0 }),
+  dive: () => ({ eN: 20, eF: 30, a1: 68, d2: -22, d3: 14, fold: 1, spread: 0, alula: 0, bob: 0, pitch: 0, head: -6, neck: 5, fan: 0.08, lift: 0, ...TUCK, squint: 0.9, beak: 0, wide: 0 }),
+  strike: () => ({ eN: 72, eF: 78, a1: 24, d2: -26, d3: 30, spread: 1, alula: 1, bob: 0, pitch: 0, head: 14, neck: 3, fan: 1, lift: -20, fx: 22, fy: 22, toes: 1, squint: 1, beak: 0.45, wide: 0 }),
+  carry: (o) => ({ ...flapP(o.phase, 55, 32, 0.8), pitch: -10, head: 8, neck: 1, fan: 0.85, lift: -6, fx: 4, fy: 31, toes: 0.08, squint: 0.4, beak: 0, wide: 0 }),
+  dazed: (o, t) => ({ eN: -28 + 16 * Math.sin(t * 7.1), eF: 6 + 22 * Math.sin(t * 6.3 + 1), a1: 24, d2: -48, d3: 58, spread: 0.35, alula: 0, bob: 2 * Math.sin(t * 5), pitch: 14 * Math.sin(t * 3.1), head: 22 + 14 * Math.sin(t * 2.3), neck: -1, fan: 0.3, lift: 16, fx: 1, fy: 27, toes: 0.65, squint: 0, beak: 0.35, wide: 1 }),
+  perch: () => ({ eN: 20, eF: 24, a1: 82, d2: -14, d3: 8, fold: 1, spread: 0, alula: 0, bob: 0, pitch: -46, head: 42, neck: 1, fan: 0.12, lift: 28, fx: 4, fy: 33, toes: 0.2, squint: 0.35, beak: 0, wide: 0 }),
+};
+
+function blendPose(w, o, t) {
+  const out = {};
+  for (const k of POSE_KEYS) out[k] = 0;
+  let sum = 0;
+  for (const name in w) {
+    const wt = w[name];
+    if (!(wt > 0.001) || !POSES[name]) continue;
+    const p = POSES[name](o, t);
+    for (const k of POSE_KEYS) out[k] += (p[k] || 0) * wt;
+    sum += wt;
+  }
+  if (sum <= 0) return blendPose({ glide: 1 }, o, t);
+  for (const k of POSE_KEYS) out[k] /= sum;
+  return out;
+}
+
+// feather outline along direction ang from (x, y) in plane units; M maps plane -> body space
+function featherTo(path, M, x, y, ang, L, W, tipR = 0.32) {
+  const c = Math.cos(ang), s = Math.sin(ang);
+  const P = (u, v) => M(x + u * c - v * s, y + u * s + v * c);
+  const m = (q) => path.moveTo(q[0], q[1]), qd = (a, b) => path.quadraticCurveTo(a[0], a[1], b[0], b[1]);
+  m(P(0, -W * 0.42));
+  qd(P(L * 0.55, -W * 0.5), P(L * (1 - tipR * 0.5), -W * 0.3));
+  qd(P(L * 1.02, 0), P(L * (1 - tipR * 0.6), W * 0.4));
+  qd(P(L * 0.5, W * 0.62), P(0, W * 0.45));
+  path.closePath();
+}
+
+// One wing. S = shoulder in body space, U/V = projected span/chord axes (the wing plane's 3D turn, already
+// projected). Draws a thick silhouette for the whole limb first, then each part painter-style (fill + thin
+// edge, back to front) so feathers overlap cleanly and the limb reads as one shape.
+function eagleWing(ctx, P, S, U, V, far, ow, t) {
+  const M = (a, b) => [S[0] + a * U[0] + b * V[0], S[1] + a * U[1] + b * V[1]];
+  const r = (d) => d * D2R;
+  const a1 = r(P.a1), a2 = a1 + r(P.d2), a3 = a2 + r(P.d3);
+  const L1 = 24, L2 = 30, L3 = 17;
+  const Ex = L1 * Math.cos(a1), Ey = L1 * Math.sin(a1);
+  const Wx = Ex + L2 * Math.cos(a2), Wy = Ey + L2 * Math.sin(a2);
+  const Hx = Wx + L3 * Math.cos(a3), Hy = Wy + L3 * Math.sin(a3);
+  const fold = Math.max(clamp((-a2 - 0.2) / 1.7, 0, 1), clamp(P.fold || 0, 0, 1)), sp = clamp(P.spread, 0, 1);
+  const col = far
+    ? { cov: EG.far, covHi: EG.farHi, sec: EG.farFl, secHi: EG.far, fl: EG.farFl, tip: EG.farTip, edge: 'rgba(24,12,4,0.6)' }
+    : { cov: EG.cov, covHi: EG.covHi, sec: EG.fl, secHi: EG.flHi, fl: EG.fl, tip: EG.flTip, edge: 'rgba(48,26,10,0.7)' };
+  const mv = (path, a, b) => { const q = M(a, b); path.moveTo(q[0], q[1]); };
+  const ln = (path, a, b) => { const q = M(a, b); path.lineTo(q[0], q[1]); };
+  const qc = (path, a, b, c, d) => { const q1 = M(a, b), q2 = M(c, d); path.quadraticCurveTo(q1[0], q1[1], q2[0], q2[1]); };
+  // a row of feather tips: bases along a bone, tips scalloped (one shape, not nine outlines)
+  const row = (bx0, by0, bx1, by1, n, dirAt, lenAt, bulge) => {
+    const path = new Path2D(), tips = [];
+    for (let j = 0; j <= n; j++) { const f = j / n, bx = bx0 + (bx1 - bx0) * f, by = by0 + (by1 - by0) * f, d = dirAt(f), L = lenAt(f); tips.push([bx + Math.cos(d) * L, by + Math.sin(d) * L]); }
+    mv(path, bx0, by0);
+    ln(path, tips[0][0], tips[0][1]);
+    for (let j = 1; j <= n; j++) {
+      const [x0, y0] = tips[j - 1], [x1, y1] = tips[j], mx = (x0 + x1) / 2, my = (y0 + y1) / 2, dx = x1 - x0, dy = y1 - y0;
+      const s = bulge * (j % 2 ? 1 : 0.8);
+      qc(path, mx + dy * s, my - dx * s, x1, y1);
+    }
+    ln(path, bx1, by1);
+    path.closePath();
+    return { path, tips };
+  };
+  const secDir = (f) => (a2 + Math.PI / 2 - 0.42 + f * 0.5) * (1 - fold) + (Math.PI / 2 + 0.12) * fold;
+  const sec = row(Wx, Wy, Ex, Ey, 8, secDir, (f) => 29 + 9 * Math.sin(Math.min(1, f * 1.4) * Math.PI * 0.5) - f * 2 - fold * 8, 0.3);
+  const tert = row(Ex, Ey, Ex * 0.25, Ey * 0.25 + 1, 3, (f) => Math.PI / 2 + 0.18 + f * 0.25, (f) => 33 - f * 12 - fold * 6, 0.3);
+  // primaries: ten fingers fanned from the hand; spread opens the slots (downstroke), folded they stack
+  const PL = [45, 51, 53, 51, 48, 44, 40, 37, 34, 32];
+  const prim = [];
+  for (let i = 9; i >= 0; i--) { // innermost first, the long outer fingers end on top
+    const f = i / 9, bx = Hx + (Wx - Hx) * f * 0.9, by = Hy + (Wy - Hy) * f * 0.9;
+    const ang = a3 - 0.06 * sp + Math.pow(f, 0.75) * (0.14 + 1.05 * sp) + (1 - f) * 0.04 * Math.sin(t * 2.3 + i) * (1 - fold);
+    const p = new Path2D(), q = new Path2D(), L = PL[i] * (1 - 0.1 * fold), w = i < 6 ? 5.2 + i * 0.35 : 7.6;
+    featherTo(p, M, bx, by, ang, L, w * 1.15, 0.45);
+    featherTo(q, M, bx, by, ang, L * 0.6, w, 0.1);
+    prim.push([p, q]);
+  }
+  // coverts: the smooth leading edge (shoulder, elbow, wrist, hand) and two scalloped bands over the bases
+  const nrm = (ax, ay) => { const l = Math.hypot(ax, ay) || 1; return [-ay / l, ax / l]; };
+  const n1 = nrm(Ex, Ey), n2 = nrm(Wx - Ex, Wy - Ey), n3 = nrm(Hx - Wx, Hy - Wy);
+  const avg = (p, q) => { const x = p[0] + q[0], y = p[1] + q[1], l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
+  const nE = avg(n1, n2), nW = avg(n2, n3);
+  const band = (wS, wE, wW, wH, sc) => {
+    const path = new Path2D();
+    mv(path, -n1[0] * 5, -n1[1] * 5 - 1);
+    qc(path, Ex - nE[0] * 6.5, Ey - nE[1] * 6.5, Wx - nW[0] * 4.5, Wy - nW[1] * 4.5);
+    qc(path, Wx + (Hx - Wx) * 0.5 - n3[0] * 3.5, Wy + (Hy - Wy) * 0.5 - n3[1] * 3.5, Hx - n3[0] * 1.2, Hy - n3[1] * 1.2);
+    const pts = [[Hx + n3[0] * wH, Hy + n3[1] * wH]];
+    for (let i = 1; i <= 3; i++) { const f = i / 3; pts.push([Hx + (Wx - Hx) * f + (n3[0] * (1 - f) + nW[0] * f) * (wH + (wW - wH) * f), Hy + (Wy - Hy) * f + (n3[1] * (1 - f) + nW[1] * f) * (wH + (wW - wH) * f)]); }
+    for (let i = 1; i <= 5; i++) { const f = i / 5; pts.push([Wx + (Ex - Wx) * f + (nW[0] * (1 - f) + nE[0] * f) * (wW + (wE - wW) * f), Wy + (Ey - Wy) * f + (nW[1] * (1 - f) + nE[1] * f) * (wW + (wE - wW) * f)]); }
+    for (let i = 1; i <= 3; i++) { const f = i / 3; pts.push([Ex * (1 - f) + (nE[0] * (1 - f) + n1[0] * f) * (wE + (wS - wE) * f), Ey * (1 - f) + (nE[1] * (1 - f) + n1[1] * f) * (wE + (wS - wE) * f)]); }
+    ln(path, pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], mx = (x0 + x1) / 2, my = (y0 + y1) / 2, dx = x1 - x0, dy = y1 - y0;
+      qc(path, mx - dy * sc, my + dx * sc, x1, y1);
+    }
+    path.closePath();
+    return path;
+  };
+  const gc = band(17, 18, 15, 12, 0.32), lc = band(6, 6, 5, 3.5, 0.25);
+  const alu = new Path2D();
+  featherTo(alu, M, Wx, Wy, a3 - 0.4 - 0.55 * P.alula, 10 + 4 * P.alula, 5, 0.4);
+  // pass 1: silhouette of the whole limb
   ctx.strokeStyle = EG.line;
+  ctx.lineWidth = ow * 2;
+  for (const [p] of prim) ctx.stroke(p);
+  ctx.stroke(sec.path); ctx.stroke(tert.path); ctx.stroke(gc); ctx.stroke(alu);
+  // pass 2: painter's order, each part filled then edged thinly so only visible edges stay
+  const part = (p, fill, w = 0.55) => { ctx.fillStyle = fill; ctx.fill(p); ctx.lineWidth = ow * w; ctx.strokeStyle = col.edge; ctx.stroke(p); };
+  for (const [p, q] of prim) { ctx.fillStyle = col.tip; ctx.fill(p); ctx.fillStyle = col.fl; ctx.fill(q); ctx.lineWidth = ow * 0.55; ctx.strokeStyle = col.edge; ctx.stroke(p); }
+  part(sec.path, col.sec);
+  // darker trailing tips on the secondaries (a band of shade, clipped to the row)
+  ctx.save(); ctx.clip(sec.path);
+  ctx.strokeStyle = col.secHi; ctx.lineWidth = 14; ctx.beginPath();
+  for (let j = 0; j <= 8; j++) { const f = j / 8, q = M(Wx + (Ex - Wx) * f, Wy + (Ey - Wy) * f); j ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }
   ctx.stroke();
+  ctx.strokeStyle = col.tip; ctx.lineWidth = 6; ctx.beginPath();
+  sec.tips.forEach(([x, y], j) => { const q = M(x, y); j ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); });
+  ctx.stroke(); ctx.restore();
+  ctx.lineWidth = ow * 0.55; ctx.strokeStyle = col.edge; ctx.stroke(sec.path);
+  part(tert.path, col.cov);
+  part(gc, col.cov);
+  part(lc, col.covHi, 0.4);
+  // the leading edge catches the light
+  ctx.save(); ctx.clip(lc);
+  ctx.strokeStyle = far ? col.covHi : '#c48f52'; ctx.lineWidth = 2.6; ctx.beginPath();
+  { const q0 = M(-n1[0] * 5, -n1[1] * 5 - 1), q1 = M(Ex - nE[0] * 6.5, Ey - nE[1] * 6.5), q2 = M(Wx - nW[0] * 4.5, Wy - nW[1] * 4.5); ctx.moveTo(q0[0], q0[1]); ctx.quadraticCurveTo(q1[0], q1[1], q2[0], q2[1]); }
+  ctx.stroke(); ctx.restore();
+  part(alu, col.cov);
+}
+
+// A wing folded against the body (perched, or tucked in a stoop): drawn as one layered leaf along the back,
+// coverts in front, secondaries, then the long dark primaries crossing over the tail.
+function foldedWing(ctx, sx, sy, len, far, ow, ang) {
+  const c = Math.cos(ang), s = Math.sin(ang), Q = (u, v) => [sx + u * c - v * s, sy + u * s + v * c];
+  const leaf = (u0, u1, v0, v1, bulge) => {
+    const p = new Path2D();
+    let q = Q(u0, v0); p.moveTo(q[0], q[1]);
+    let a = Q((u0 + u1) / 2, v0 - bulge), b = Q(u1, (v0 + v1) / 2); p.quadraticCurveTo(a[0], a[1], b[0], b[1]);
+    a = Q((u0 + u1) / 2, v1 + bulge); b = Q(u0, v1); p.quadraticCurveTo(a[0], a[1], b[0], b[1]);
+    q = Q(u0 + 4, (v0 + v1) / 2); p.quadraticCurveTo(q[0], q[1], ...Q(u0, v0));
+    p.closePath();
+    return p;
+  };
+  const prim = [0, 1, 2, 3].map((i) => leaf(-len * 0.35, -len * (1.0 - i * 0.05), -1 + i * 2.2, 5 + i * 2.2, 2));
+  const sec = leaf(-len * 0.15, -len * 0.7, -3, 11, 3);
+  const cov = leaf(8, -len * 0.48, -6, 9, 4);
+  const all = [...prim, sec, cov];
+  ctx.strokeStyle = EG.line; ctx.lineWidth = ow * 2;
+  for (const p of all) ctx.stroke(p);
+  const edge = far ? 'rgba(24,12,4,0.6)' : 'rgba(48,26,10,0.7)';
+  prim.forEach((p) => { ctx.fillStyle = far ? EG.farTip : EG.flTip; ctx.fill(p); ctx.lineWidth = ow * 0.55; ctx.strokeStyle = edge; ctx.stroke(p); });
+  ctx.fillStyle = far ? EG.farFl : EG.fl; ctx.fill(sec); ctx.lineWidth = ow * 0.55; ctx.strokeStyle = edge; ctx.stroke(sec);
+  ctx.fillStyle = far ? EG.far : EG.cov; ctx.fill(cov); ctx.stroke(cov);
+  // scalloped covert rows
   ctx.beginPath();
-  ctx.moveTo(0.12, -0.05);
-  ctx.bezierCurveTo(0.13, -0.3, 0.06, -0.52, -0.07, -0.62);
-  ctx.lineWidth = o * 2.4;
-  ctx.strokeStyle = 'rgba(255,230,180,0.28)';
+  for (let r = 0; r < 2; r++) for (let i = 0; i < 4; i++) {
+    const u = 4 - i * len * 0.1 - r * 6, v = 2 + r * 4, a = Q(u, v), b = Q(u - len * 0.05, v + 3), d = Q(u - len * 0.1, v);
+    ctx.moveTo(a[0], a[1]); ctx.quadraticCurveTo(b[0], b[1], d[0], d[1]);
+  }
   ctx.stroke();
 }
 
-// Eagle seen from the side. s = wingspan. opts: { flap 0..1 (beat strength, wings animate from t), dive 0..1 (wings folded),
-// carrying: 'egg'|'snake'|null, face: 1|-1 }
+// 3D wing frame: shoulder (x, y, z) in body units, elevation e (deg, + up). Span axis turns about the body axis.
+function wingFrame(sx, sy, sz, e, side, roll, tw = 0) {
+  const ee = (e + side * roll) * D2R, tt = tw * D2R;
+  const S = proj(sx, sy, sz);
+  const U = proj(0, -Math.sin(ee), side * Math.cos(ee));
+  // chord axis, twisted about the span (the hand turns its leading edge up on the upstroke)
+  const V = proj(-Math.cos(tt), 0.06 - side * Math.cos(ee) * Math.sin(tt) * side, -side * Math.sin(ee) * Math.sin(tt) * side);
+  return { S, U, V };
+}
+
+// leg: hip (hx, hy) to foot target, two-bone IK, feathered thigh, yellow tarsus, four toes with talons
+function eagleLeg(ctx, hx, hy, fx, fy, toes, ow, dark) {
+  const l1 = 15, l2 = 15;
+  let dx = fx - hx, dy = fy - hy, d = Math.hypot(dx, dy);
+  const maxd = (l1 + l2) * 0.98;
+  if (d > maxd) { dx *= maxd / d; dy *= maxd / d; d = maxd; }
+  if (d < 4) { dy = 4; d = 4; dx = 0; }
+  const base = Math.atan2(dy, dx), k = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
+  const a = base + k; // the joint bends backward (bird ankle)
+  const kx = hx + l1 * Math.cos(a), ky = hy + l1 * Math.sin(a);
+  const Fx = hx + dx, Fy = hy + dy, ta = Math.atan2(Fy - ky, Fx - kx);
+  const leg = dark ? EG.legLo : EG.leg;
+  ctx.lineCap = 'round';
+  // tarsus
+  ctx.strokeStyle = EG.line; ctx.lineWidth = 5.4 + ow * 2;
+  ctx.beginPath(); ctx.moveTo(kx, ky); ctx.lineTo(Fx, Fy); ctx.stroke();
+  // toes: three forward, the hallux back; each two segments that curl as the foot clenches
+  const curl = 1 - clamp(toes, 0, 1);
+  const toe = (ang, len, cl) => {
+    const x1 = Fx + Math.cos(ang) * len * 0.55, y1 = Fy + Math.sin(ang) * len * 0.55;
+    const a2 = ang + cl, x2 = x1 + Math.cos(a2) * len * 0.45, y2 = y1 + Math.sin(a2) * len * 0.45;
+    const a3 = a2 + 0.9 + cl * 0.5, x3 = x2 + Math.cos(a3) * 4.6, y3 = y2 + Math.sin(a3) * 4.6;
+    return [x1, y1, x2, y2, x3, y3];
+  };
+  const fwd = ta - Math.PI / 2 * (0.75 + 0.25 * (1 - curl)); // toes reach forward of the tarsus
+  const T = [toe(fwd - 0.55 * toes - 0.1, 10, 1.2 * curl), toe(fwd, 11, 1.25 * curl), toe(fwd + 0.5 * toes + 0.15, 9.5, 1.2 * curl), toe(ta + Math.PI * 0.62 - 0.3 * toes, 8, -1.1 * curl)];
+  for (const [x1, y1, x2, y2] of T) { ctx.lineWidth = 3.4 + ow * 2; ctx.beginPath(); ctx.moveTo(Fx, Fy); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+  // talons (dark hooks)
+  ctx.strokeStyle = EG.talon;
+  ctx.lineWidth = 2.6;
+  for (let i = 0; i < 4; i++) {
+    const [, , x2, y2, x3, y3] = T[i], hk = i === 3 ? -1 : 1;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.quadraticCurveTo(x2 + (x3 - x2) * 0.4 - (y3 - y2) * 0.35 * hk, y2 + (y3 - y2) * 0.4 + (x3 - x2) * 0.35 * hk, x3, y3);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = leg;
+  ctx.lineWidth = 5.4;
+  ctx.beginPath(); ctx.moveTo(kx, ky); ctx.lineTo(Fx, Fy); ctx.stroke();
+  ctx.lineWidth = 3.4;
+  for (const [x1, y1, x2, y2] of T) { ctx.beginPath(); ctx.moveTo(Fx, Fy); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+  // scale ridges on the tarsus
+  ctx.strokeStyle = 'rgba(150,95,10,0.6)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  for (let i = 1; i < 4; i++) { const f = i / 4, x = kx + (Fx - kx) * f, y = ky + (Fy - ky) * f, nx = -Math.sin(ta) * 2.4, ny = Math.cos(ta) * 2.4; ctx.moveTo(x - nx, y - ny); ctx.lineTo(x + nx * 0.6, y + ny * 0.6); }
+  ctx.stroke();
+  // feathered thigh ("trousers"): a soft fluffy mass over the joint with a shaggy hem
+  const mx = (hx + kx) / 2 + Math.cos(a) * 2, my = (hy + ky) / 2 + Math.sin(a) * 2, c = Math.cos(a), s = Math.sin(a);
+  const tp = new Path2D(), R1 = l1 * 0.62, R2 = 7.2;
+  const TP = (u, v) => [mx + u * c - v * s, my + u * s + v * c];
+  let q = TP(-R1, 0); tp.moveTo(q[0], q[1]);
+  for (let i = 1; i <= 16; i++) {
+    const th = Math.PI + (i / 16) * TAU, hem = Math.cos(th) > 0.2 ? 1 + 0.18 * (i % 2) : 1; // jagged toward the ankle
+    q = TP(Math.cos(th) * R1 * hem, Math.sin(th) * R2 * (Math.cos(th) > 0 ? 1.05 : 0.9));
+    tp.lineTo(q[0], q[1]);
+  }
+  tp.closePath();
+  ctx.lineWidth = ow * 2; ctx.strokeStyle = EG.line; ctx.stroke(tp);
+  ctx.fillStyle = dark ? EG.bodyDk : EG.body; ctx.fill(tp);
+  ctx.save(); ctx.clip(tp); ctx.fillStyle = dark ? EG.bodyDk : EG.bodyLo;
+  q = TP(R1 * 0.3, R2 * 0.6); ctx.beginPath(); ctx.ellipse(q[0], q[1], R1, R2 * 0.7, a, 0, TAU); ctx.fill(); ctx.restore();
+  return { x: Fx, y: Fy };
+}
+
+// Eagle. s = body length in px (wingspan is about 2.3 s). opts: face 1|-1, turn (0..1 squash while it turns
+// round), pitch (rad, + nose down), roll (-1..1 bank), w {glide, flap, hover, dive, strike, carry, dazed, perch}
+// pose weights, phase (wing beat, rad), grab {x, y} foot target in px from the centre (y down, screen space),
+// toes (0..1, overrides the pose), eye (0..1 blink), stars (0..1 dazed stars), t time.
 export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
   if (!(s > 0)) return;
   safe(ctx, () => {
     opts = opts || {};
-    const flap = clamp(opts.flap == null ? 0.6 : opts.flap, 0, 1), dive = clamp(opts.dive || 0, 0, 1), face = opts.face === -1 ? -1 : 1;
-    const carry = opts.carrying === 'egg' || opts.carrying === 'snake' ? opts.carrying : null;
+    const face = opts.face === -1 ? -1 : 1, k = s / 100;
+    const P = blendPose(opts.w || { glide: 1 }, { phase: opts.phase || 0 }, t);
+    if (opts.toes != null) P.toes = clamp(opts.toes, 0, 1);
+    if (opts.beak != null) P.beak = Math.max(P.beak, opts.beak);
+    const pitch = (opts.pitch || 0) + P.pitch * D2R, bank = clamp(opts.roll || 0, -1, 1), roll = bank * 30;
+    P.eF -= Math.abs(bank) * 34; P.eN -= Math.abs(bank) * 14;
+    const ow = clamp(s * 0.021, 1.15, 3.4) / k; // outline in body units: about 1.2..3.4 px whatever the size
     ctx.translate(cx, cy);
-    ctx.scale(face * s / 100, s / 100); // 100 units = wingspan
-    const o = Math.max(1.6, 70 / s * 1.3);
+    ctx.scale(face * k * (1 - 0.82 * clamp(opts.turn || 0, 0, 1)), k);
+    ctx.rotate(pitch);
+    ctx.translate(0, P.bob);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    const ph = Math.sin(opts.phase != null ? opts.phase : t * 9); // wing phase: the caller accumulates it so the beat rate can change without a jerk
-    ctx.translate((opts.tremble ? Math.sin(t * 53) * 0.9 : 0), -ph * flap * 5 * (1 - dive)); // the body rises on the downstroke
-    ctx.rotate(dive * 0.85 + (1 - dive) * (carry ? -0.05 : -0.12 * ph * flap * 0.3));
-    // wing pose: 0 = up, + = swinging down and forward, negative = back along the body (folded)
-    // base swings -1 (high, swept back) .. +0.7 (down and forward); the far wing rides above it, the near wing below it
-    const base = -0.2 + 0.85 * ph * flap + (1 - flap) * 0.15;
-    const wingAng = (k) => (1 - dive) * (base + k * 0.55) + dive * (-1.45 + k * 0.1);
-    const wingLen = 62 * (1 - dive * 0.35);
-
-    // tail fan
-    ctx.save();
-    ctx.translate(-22, 3);
-    ctx.rotate(-Math.PI / 2 + 0.05 - dive * 0.15);
-    for (let i = 0; i < 5; i++) {
-      ctx.save();
-      ctx.rotate((i - 2) * 0.17 * (1 + dive * 0.3));
-      ctx.beginPath();
-      ctx.moveTo(-3.2, 0);
-      ctx.lineTo(-3.8, -24);
-      ctx.quadraticCurveTo(0, -27, 3.8, -24);
-      ctx.lineTo(3.2, 0);
-      ctx.closePath();
-      ctx.fillStyle = i % 2 ? EG.white : EG.whiteLo;
-      ctx.fill();
-      ctx.lineWidth = o;
-      ctx.strokeStyle = EG.line;
-      ctx.stroke();
-      ctx.restore();
+    // foot target: from screen px (relative to centre) into body units
+    let fx = P.fx, fy = P.fy;
+    if (opts.grab) {
+      const gx = opts.grab.x * face / k, gy = opts.grab.y / k, c = Math.cos(-pitch), sn = Math.sin(-pitch);
+      fx = gx * c - gy * sn; fy = gx * sn + gy * c - P.bob;
     }
+
+    // far wing (behind everything), shoulder a little higher and further back
+    const folded = (P.fold || 0) > 0.55; // tucked wings are drawn as folded leaves along the back
+    const fW = wingFrame(4, -10, -6, P.eF, -1, 0, P.tw);
+    if (folded) foldedWing(ctx, 6, -13, 62, true, ow, -0.06 + (P.eF - 20) * 0.004);
+    else eagleWing(ctx, P, fW.S, fW.U, fW.V, true, ow, t);
+
+    // tail: seven white feathers fanned in the tail plane; a bank tilts the fan toward or away from us
+    const tailA = (180 + P.lift) * D2R, rr = roll * D2R;
+    const tails = [];
+    for (let i = 0; i < 7; i++) {
+      const f = (i - 3) / 3, fa = f * (0.08 + 0.42 * P.fan);
+      const dx = Math.cos(tailA) * Math.cos(fa), dy = Math.sin(tailA) * Math.cos(fa) + Math.sin(fa) * Math.sin(rr) * 0.9, dz = Math.sin(fa) * Math.cos(rr);
+      const [x2, y2] = proj(dx, dy, dz), l = Math.hypot(x2, y2) || 1;
+      tails.push([x2 / l, y2 / l, 29 + 3 * (1 - Math.abs(f)) * P.fan, i]);
+    }
+    tails.sort((a, b) => Math.abs(b[3] - 3) - Math.abs(a[3] - 3)); // outer feathers first, middle on top
+    const tp = tails.map(([ux, uy, L]) => { const p = new Path2D(); featherTo(p, (a, b) => [a, b], -22, -1, Math.atan2(uy, ux), L, 9.5, 0.6); return p; });
+    ctx.strokeStyle = EG.line; ctx.lineWidth = ow * 2;
+    for (const p of tp) ctx.stroke(p);
+    tp.forEach((p) => { ctx.fillStyle = EG.whiteLo; ctx.fill(p); ctx.lineWidth = ow * 0.45; ctx.strokeStyle = 'rgba(110,92,70,0.5)'; ctx.stroke(p); });
+    tp.forEach((p, i) => { if (i < tp.length - 1) return; ctx.fillStyle = EG.white; ctx.fill(p); });
+
+    // far leg (behind the body)
+    const tuck = clamp((fy - 16) / 14, 0, 1); // 0 tucked up under the tail .. 1 reaching out
+    if (tuck > 0.15) eagleLeg(ctx, 1, 7, fx + 3, fy - 1.5, P.toes, ow, true);
+
+    // torso
+    const body = new Path2D();
+    body.moveTo(22, -15);
+    body.bezierCurveTo(10, -16, -6, -14.5, -17, -8.5);
+    body.bezierCurveTo(-23, -5, -27, -3, -28, 0);
+    body.bezierCurveTo(-27, 4, -22, 8, -15, 11);
+    body.bezierCurveTo(-6, 15, 6, 16, 14, 12.5);
+    body.bezierCurveTo(22, 9, 27, 2, 27, -5);
+    body.bezierCurveTo(27, -10, 25, -14, 22, -15);
+    body.closePath();
+    // head (white) + beak, turned about the neck
+    const hr = P.head * D2R, nx = 23 + P.neck, ny = -9;
+    const head = new Path2D();
+    const H = (x, y) => { const c = Math.cos(hr), sn = Math.sin(hr), X = x - 23, Y = y + 9; return [nx + X * c - Y * sn, ny + X * sn + Y * c]; };
+    const hm = (x, y) => { const q = H(x, y); head.moveTo(q[0], q[1]); };
+    const hb = (a, b, c, d, e, f) => { const q1 = H(a, b), q2 = H(c, d), q3 = H(e, f); head.bezierCurveTo(q1[0], q1[1], q2[0], q2[1], q3[0], q3[1]); };
+    const hl = (a, b) => { const q = H(a, b); head.lineTo(q[0], q[1]); };
+    hm(15, -14);
+    hb(17, -23, 27, -27, 35, -25.5);
+    hb(40, -24.5, 44, -21, 44.5, -16.5);
+    hb(45, -12, 43, -8, 40, -6.5);
+    hb(36, -4.5, 31, -3, 28, -1);
+    // ragged collar where the white neck meets the brown body
+    hl(26, 2); hl(24, -1.5); hl(21.5, 2.5); hl(19.5, -2.5); hl(17, 1); hl(16, -4); hl(13.5, -2.5); hl(14, -8);
+    head.closePath();
+    ctx.strokeStyle = EG.line; ctx.lineWidth = ow * 2;
+    ctx.stroke(body);
+    ctx.stroke(head);
+    // body fill + cel shading (lit back, shadowed belly) and breast scallops
+    ctx.fillStyle = EG.body; ctx.fill(body);
+    ctx.save();
+    ctx.clip(body);
+    ctx.fillStyle = EG.bodyLo;
+    ctx.beginPath(); ctx.ellipse(-2, 17, 30, 10, -0.08, 0, TAU); ctx.fill();
+    ctx.fillStyle = EG.bodyHi;
+    ctx.beginPath(); ctx.ellipse(2, -17.5, 26, 6.5, -0.05, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(60,34,14,0.55)'; ctx.lineWidth = ow * 0.6;
+    ctx.beginPath();
+    for (const [x, y] of [[19, 3], [13, 7], [7, 10], [0, 11], [15, -2], [9, 3], [2, 6], [-6, 7], [-12, 5], [-5, 1]]) { ctx.moveTo(x - 3, y - 1); ctx.quadraticCurveTo(x, y + 2.6, x + 3, y - 1); }
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = EG.white; ctx.fill(head);
+    ctx.save();
+    ctx.clip(head);
+    ctx.fillStyle = EG.whiteLo;
+    const q0 = H(30, 4);
+    ctx.beginPath(); ctx.ellipse(q0[0], q0[1], 17, 10, hr - 0.25, 0, TAU); ctx.fill();
     ctx.restore();
 
-    // far wing (darker, behind the body)
-    ctx.save();
-    ctx.translate(2, -7);
-    ctx.rotate(wingAng(-1));
-    ctx.scale(wingLen, wingLen);
-    eagleWing(ctx, EG.dark, EG.mid, o / wingLen);
-    ctx.restore();
-
-    // legs: tucked, or reaching down to hold the catch
-    const tal = (x, y, ext) => {
-      ctx.strokeStyle = EG.talon;
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + 1, y + ext);
-      for (const d of [-3.4, 0, 3.4]) {
-        ctx.moveTo(x + 1, y + ext);
-        ctx.quadraticCurveTo(x + 1 + d * 1.2, y + ext + 3, x + 1 + d * 1.5, y + ext + 6);
-      }
-      ctx.stroke();
-    };
-    const ext = carry ? 11 : 4 + dive * 7;
-    ctx.save();
-    ctx.lineWidth = 2.4 + o * 1.2;
-    ctx.strokeStyle = EG.line;
-    for (const lx of [1, 9]) { ctx.beginPath(); ctx.moveTo(lx, 14); ctx.lineTo(lx + 1, 14 + ext); ctx.stroke(); }
-    ctx.restore();
-    tal(1, 14, ext);
-    tal(9, 14, ext);
-    if (carry === 'egg') {
-      // egg in the talons
+    // near leg (in front of the body); tucked legs vanish into the belly feathers
+    if (tuck > 0.15) eagleLeg(ctx, -3, 8, fx, fy, P.toes, ow, false);
+    // with the legs tucked the belly feathers cover the thighs
+    if (tuck < 0.6) {
       ctx.save();
-      ctx.translate(6, 14 + ext + 7);
-      ctx.rotate(Math.sin(t * 5) * 0.12);
-      ctx.beginPath();
-      for (let i = 0; i <= 28; i++) { const a = (i / 28) * TAU; const x = 6.5 * Math.cos(a) * (1 + 0.13 * Math.sin(a)), y = 8.5 * Math.sin(a); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-      ctx.closePath();
-      ctx.fillStyle = '#fbf0d8';
-      ctx.fill();
-      ctx.lineWidth = o;
-      ctx.strokeStyle = '#6b4a2a';
-      ctx.stroke();
-      ctx.fillStyle = '#2a1d14';
-      ctx.beginPath();
-      ctx.arc(-2.2, 0, 1, 0, TAU);
-      ctx.arc(2.2, 0, 1, 0, TAU);
-      ctx.fill();
-      ctx.restore();
-    } else if (carry === 'snake') {
-      ctx.save();
-      ctx.translate(5, 14 + ext + 2);
-      ctx.lineCap = 'round';
-      const sn = (w, col) => {
-        ctx.beginPath();
-        for (let i = 0; i <= 12; i++) { const u = i / 12; const x = Math.sin(u * 7 - t * 8) * 4.5 * u + 1, y = u * 26; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-        ctx.lineWidth = w;
-        ctx.strokeStyle = col;
-        ctx.stroke();
-      };
-      sn(6.5 + o * 1.4, '#1e0a40');
-      sn(6.5, '#7a3ccc');
-      sn(2.2, '#ffc49a');
-      const hx = Math.sin(7 - t * 8) * 4.5 + 1;
-      ctx.beginPath();
-      ctx.ellipse(hx, 28.5, 5, 4, 0.1, 0, TAU);
-      ctx.fillStyle = '#7a3ccc';
-      ctx.fill();
-      ctx.lineWidth = o;
-      ctx.strokeStyle = '#1e0a40';
-      ctx.stroke();
-      ctx.fillStyle = '#e6f5a0';
-      ctx.beginPath();
-      ctx.arc(hx - 1.6, 27.5, 1.4, 0, TAU);
-      ctx.arc(hx + 1.8, 27.5, 1.4, 0, TAU);
-      ctx.fill();
+      ctx.globalAlpha = 1 - tuck / 0.6;
+      const bl = new Path2D();
+      bl.moveTo(-18, 6); bl.bezierCurveTo(-12, 13, 2, 16, 10, 12); bl.bezierCurveTo(4, 10, -6, 9, -18, 6); bl.closePath();
+      ctx.fillStyle = EG.bodyLo; ctx.fill(bl);
       ctx.restore();
     }
 
-    // body
-    ctx.beginPath();
-    ctx.moveTo(26, -8);
-    ctx.bezierCurveTo(30, 2, 24, 14, 8, 17);
-    ctx.bezierCurveTo(-8, 19, -22, 12, -26, 2);
-    ctx.bezierCurveTo(-26, -6, -12, -13, 4, -13);
-    ctx.bezierCurveTo(14, -14, 22, -13, 26, -8);
-    ctx.closePath();
-    const bg = ctx.createLinearGradient(0, -14, 0, 18);
-    bg.addColorStop(0, EG.lite);
-    bg.addColorStop(0.5, EG.mid);
-    bg.addColorStop(1, EG.dark);
-    ctx.fillStyle = bg;
-    ctx.fill();
-    ctx.lineWidth = o * 1.2;
-    ctx.strokeStyle = EG.line;
-    ctx.stroke();
-    // scalloped breast feathers
-    ctx.strokeStyle = 'rgba(37,20,10,0.5)';
-    ctx.lineWidth = o * 0.7;
-    ctx.beginPath();
-    for (const [x, y] of [[14, 0], [20, -5], [8, 7], [-2, 9], [-10, 5], [15, 9], [-1, 0], [-14, 0]]) { ctx.moveTo(x - 3.5, y); ctx.quadraticCurveTo(x, y + 4.2, x + 3.5, y); }
-    ctx.stroke();
-    // white head with a fierce brow
+    // beak: hooked upper mandible, lower mandible drops open
+    const bo = clamp(P.beak, 0, 1) * 0.55;
+    const lower = new Path2D(), upper = new Path2D(), mouth = new Path2D();
+    const L = (x, y) => { const c = Math.cos(bo), sn = Math.sin(bo), X = x - 41, Y = y + 13; return H(41 + X * c - Y * sn, -13 + X * sn + Y * c); };
+    const pth = (path, f, pts) => { let q = f(pts[0][0], pts[0][1]); path.moveTo(q[0], q[1]); for (let i = 1; i < pts.length; i += 2) { const a = f(pts[i][0], pts[i][1]), b = f(pts[i + 1][0], pts[i + 1][1]); path.quadraticCurveTo(a[0], a[1], b[0], b[1]); } path.closePath(); };
+    for (const [f, x, y] of [[H, 41, -13], [H, 50, -12.2], [L, 50, -11], [L, 41.5, -9.5]]) { const q = f(x, y); mouth.lineTo(q[0], q[1]); }
+    mouth.closePath();
+    pth(lower, L, [[41, -12.5], [46, -11.8], [50, -11], [47, -8], [43, -8.6], [41.5, -9.5], [41, -12.5]]);
+    pth(upper, H, [[40, -21.5], [48, -22], [53.5, -17], [56, -12], [54, -8.5], [53, -11.5], [50, -12.2], [45, -12.8], [40.5, -12.5]]);
+    ctx.strokeStyle = EG.line; ctx.lineWidth = ow * 2;
+    if (bo > 0.05) { ctx.fillStyle = EG.mouth; ctx.fill(mouth); }
+    ctx.stroke(lower); ctx.fillStyle = EG.beakLo; ctx.fill(lower);
+    ctx.stroke(upper); ctx.fillStyle = EG.beak; ctx.fill(upper);
+    ctx.save(); ctx.clip(upper);
+    const qh = H(46, -21); ctx.fillStyle = EG.beakHi; ctx.beginPath(); ctx.ellipse(qh[0], qh[1], 6, 2.4, hr + 0.15, 0, TAU); ctx.fill();
+    const ql = H(50, -12); ctx.fillStyle = EG.beakLo; ctx.beginPath(); ctx.ellipse(ql[0], ql[1], 8, 2.6, hr + 0.3, 0, TAU); ctx.fill();
+    ctx.restore();
+    // cere line + nostril
+    ctx.lineWidth = ow * 0.7; ctx.strokeStyle = EG.beakLo;
+    let a0 = H(43.2, -21.4), a1 = H(42.6, -13.2);
+    ctx.beginPath(); ctx.moveTo(a0[0], a0[1]); ctx.lineTo(a1[0], a1[1]); ctx.stroke();
+    a0 = H(45.8, -17.6); ctx.fillStyle = EG.line; ctx.beginPath(); ctx.arc(a0[0], a0[1], 0.9, 0, TAU); ctx.fill();
+
+    // eye under a heavy brow: squints to a slit when it locks on, goes wide and empty when dazed
+    const ec = H(35.5, -17.5), blink = clamp(opts.eye == null ? 1 : opts.eye, 0, 1);
+    const wide = clamp(P.wide, 0, 1), sq = clamp(P.squint, 0, 1) * (1 - wide);
+    const er = 3.5 + wide * 0.9, open = blink * (1 - 0.55 * sq);
     ctx.save();
-    ctx.translate(25, -14);
-    ctx.beginPath();
-    ctx.moveTo(-9, 3);
-    ctx.bezierCurveTo(-11, -10, 0, -14, 8, -10);
-    ctx.bezierCurveTo(12, -8, 12, -2, 11, 2);
-    ctx.bezierCurveTo(6, 8, -4, 9, -9, 3);
-    ctx.closePath();
-    const hg = ctx.createRadialGradient(-3, -6, 1, 0, -2, 14);
-    hg.addColorStop(0, '#ffffff');
-    hg.addColorStop(1, EG.whiteLo);
-    ctx.fillStyle = hg;
-    ctx.fill();
-    ctx.lineWidth = o * 1.1;
-    ctx.strokeStyle = EG.line;
-    ctx.stroke();
-    // hooked beak
-    ctx.beginPath();
-    ctx.moveTo(8, -9);
-    ctx.bezierCurveTo(17, -9, 23, -4, 22, 5);
-    ctx.bezierCurveTo(20, 2, 16, 2, 14, 4);
-    ctx.bezierCurveTo(10, 3, 9, 0, 9, -2);
-    ctx.closePath();
-    const kg = ctx.createLinearGradient(0, -9, 0, 5);
-    kg.addColorStop(0, EG.beak);
-    kg.addColorStop(1, EG.beakLo);
-    ctx.fillStyle = kg;
-    ctx.fill();
-    ctx.lineWidth = o;
-    ctx.strokeStyle = EG.line;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(9.5, 1);
-    ctx.lineTo(15, 1.6);
-    ctx.stroke();
-    // eye
-    ctx.beginPath();
-    ctx.ellipse(3, -4, 3.3, 3.6, 0, 0, TAU);
-    ctx.fillStyle = '#ffe14a';
-    ctx.fill();
-    ctx.lineWidth = o * 0.8;
-    ctx.stroke();
-    ctx.fillStyle = '#16100a';
-    ctx.beginPath();
-    ctx.arc(3.8, -4, 1.8, 0, TAU);
-    ctx.fill();
+    ctx.translate(ec[0], ec[1]);
+    ctx.rotate(hr);
+    const eye = new Path2D();
+    eye.ellipse(0, 0, er * 1.1, er, 0, 0, TAU);
+    ctx.save();
+    ctx.clip(eye);
+    ctx.fillStyle = EG.iris; ctx.fill(eye);
+    ctx.fillStyle = EG.pupil;
+    ctx.beginPath(); ctx.arc(0.9 + sq * 0.5, 0.2, er * (wide ? 0.32 : 0.56), 0, TAU); ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(3.2, -5, 0.8, 0, TAU);
-    ctx.fill();
-    ctx.beginPath(); // brow ridge
-    ctx.moveTo(-3, -9.5);
-    ctx.lineTo(8.4, -5.4);
-    ctx.lineWidth = o * 1.9;
-    ctx.strokeStyle = EG.line;
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(-0.4, -1.3, er * 0.24, 0, TAU); ctx.fill();
+    // lids close from the top (blink, squint)
+    ctx.fillStyle = EG.white;
+    ctx.fillRect(-er * 1.4, -er * 1.2, er * 2.8, er * 2.2 * (1 - open) + 0.01);
+    ctx.restore();
+    ctx.lineWidth = ow * 0.9; ctx.strokeStyle = EG.line; ctx.stroke(eye);
+    if (open < 0.98) { const ly = -er + 2 * er * (1 - open); ctx.beginPath(); ctx.moveTo(-er * 1.1, ly); ctx.lineTo(er * 1.1, ly + 0.3); ctx.stroke(); }
+    if (wide > 0.5) { // dazed: a swirl in the eye
+      ctx.lineWidth = ow * 0.6; ctx.strokeStyle = EG.pupil; ctx.beginPath();
+      for (let i = 0; i < 14; i++) { const a = i * 0.7 + t * 9, rr2 = 0.4 + i * 0.17; i ? ctx.lineTo(Math.cos(a) * rr2, Math.sin(a) * rr2) : ctx.moveTo(Math.cos(a) * rr2, Math.sin(a) * rr2); }
+      ctx.stroke();
+    }
+    // brow ridge: a white shelf with a dark underside, lower and steeper as it squints
+    const bt = -er - 0.8 + sq * 1.6 - wide * 1.8;
+    const brow = new Path2D();
+    brow.moveTo(-er * 1.9, bt - 2.2 - wide);
+    brow.quadraticCurveTo(0, bt - 3.8 - wide, er * 1.9, bt + 0.6 + sq * 1.6);
+    brow.lineTo(er * 1.5, bt + 2.0 + sq * 1.8);
+    brow.quadraticCurveTo(0, bt - 0.8, -er * 1.6, bt - 0.2);
+    brow.closePath();
+    ctx.fillStyle = EG.white; ctx.fill(brow);
+    ctx.lineWidth = ow * 1.15; ctx.strokeStyle = EG.line;
+    ctx.beginPath(); ctx.moveTo(-er * 1.55, bt - 0.2); ctx.quadraticCurveTo(0, bt - 0.8, er * 1.5, bt + 2.0 + sq * 1.8); ctx.stroke();
     ctx.restore();
 
-    // near wing (in front)
-    ctx.save();
-    ctx.translate(5, -8);
-    ctx.rotate(wingAng(1));
-    ctx.scale(wingLen, wingLen);
-    eagleWing(ctx, EG.mid, EG.lite, o / wingLen);
-    ctx.restore();
+    // near wing: in front of the body; its root disappears under the scapular feathers
+    const nW = wingFrame(5, -8, 6, P.eN, 1, 0, P.tw);
+    if (folded) foldedWing(ctx, 9, -6, 66, false, ow, 0.05 + (P.eN - 20) * 0.003);
+    else eagleWing(ctx, P, nW.S, nW.U, nW.V, false, ow, t);
+    // scapulars: a patch of body feathers laid over the wing root, so wing and body are one surface
+    const sx = nW.S[0], sy = nW.S[1];
+    const sc = new Path2D();
+    sc.moveTo(sx + 11, sy - 6.5);
+    sc.bezierCurveTo(sx + 4, sy - 9, sx - 10, sy - 8, sx - 17, sy - 3);
+    sc.quadraticCurveTo(sx - 13, sy + 1.5, sx - 9, sy + 1);
+    sc.quadraticCurveTo(sx - 6, sy + 5, sx - 1.5, sy + 3);
+    sc.quadraticCurveTo(sx + 2, sy + 6.5, sx + 6, sy + 3.5);
+    sc.quadraticCurveTo(sx + 11, sy + 4, sx + 12, sy - 1);
+    sc.closePath();
+    ctx.fillStyle = EG.body; ctx.fill(sc);
+    ctx.save(); ctx.clip(sc); ctx.fillStyle = EG.bodyHi; ctx.beginPath(); ctx.ellipse(sx - 2, sy - 8, 16, 5, 0, 0, TAU); ctx.fill(); ctx.restore();
+    ctx.lineWidth = ow * 0.6; ctx.strokeStyle = 'rgba(60,34,14,0.6)';
+    ctx.beginPath();
+    ctx.moveTo(sx - 17, sy - 3); ctx.quadraticCurveTo(sx - 13, sy + 1.5, sx - 9, sy + 1); ctx.quadraticCurveTo(sx - 6, sy + 5, sx - 1.5, sy + 3); ctx.quadraticCurveTo(sx + 2, sy + 6.5, sx + 6, sy + 3.5); ctx.quadraticCurveTo(sx + 11, sy + 4, sx + 12, sy - 1);
+    ctx.stroke();
+
+    // dazed: stars circling the head
+    const st = clamp(opts.stars || 0, 0, 1);
+    if (st > 0.02) {
+      const hc = H(32, -30);
+      for (let i = 0; i < 3; i++) {
+        const a = t * 4 + (i * TAU) / 3, x = hc[0] + Math.cos(a) * 13, y = hc[1] + Math.sin(a) * 4.5, r = (3.4 + Math.sin(a) * 0.8) * st;
+        ctx.beginPath();
+        for (let j = 0; j < 10; j++) { const b = (j * Math.PI) / 5 - Math.PI / 2, rr2 = j % 2 ? r * 0.45 : r; j ? ctx.lineTo(x + Math.cos(b) * rr2, y + Math.sin(b) * rr2) : ctx.moveTo(x + Math.cos(b) * rr2, y + Math.sin(b) * rr2); }
+        ctx.closePath();
+        ctx.fillStyle = '#ffd94a'; ctx.fill();
+        ctx.lineWidth = ow * 0.8; ctx.strokeStyle = EG.line; ctx.stroke();
+      }
+    }
+  });
+}
+
+// The eagle's shadow on the vault, seen from straight above: wings spread across `ang`. lock 0..1 = soft and
+// faint (high up) .. sharp and dark (locked on). span in px.
+export function drawEagleShadow(ctx, cx, cy, span, ang, lock = 1, t = 0) {
+  if (!(span > 0)) return;
+  safe(ctx, () => {
+    lock = clamp(lock, 0, 1);
+    ctx.translate(cx, cy);
+    ctx.rotate(ang);
+    const shape = (sc) => {
+      const w = span / 2 * sc, flap = 0.06 * Math.sin(t * 6);
+      ctx.beginPath();
+      ctx.moveTo(w * 0.2, -w * 0.06); // head
+      ctx.quadraticCurveTo(w * 0.3, 0, w * 0.2, w * 0.06);
+      ctx.lineTo(w * 0.07, w * 0.08);
+      // near wing out to fingered tips
+      ctx.bezierCurveTo(w * 0.12, w * 0.4, w * 0.12, w * (0.75 + flap), w * 0.02, w * 1.0);
+      for (let i = 0; i < 4; i++) { const y = w * (1.0 - i * 0.07), x = -w * (0.02 + i * 0.07); ctx.lineTo(x, y + w * 0.05); ctx.lineTo(x - w * 0.03, y - w * 0.02); }
+      ctx.bezierCurveTo(-w * 0.2, w * 0.55, -w * 0.18, w * 0.3, -w * 0.14, w * 0.1);
+      // tail fan
+      ctx.lineTo(-w * 0.42, w * 0.13);
+      ctx.quadraticCurveTo(-w * 0.47, 0, -w * 0.42, -w * 0.13);
+      ctx.lineTo(-w * 0.14, -w * 0.1);
+      // far wing
+      ctx.bezierCurveTo(-w * 0.18, -w * 0.3, -w * 0.2, -w * 0.55, -w * 0.23, -w * 0.76);
+      for (let i = 3; i >= 0; i--) { const y = -w * (1.0 - i * 0.07), x = -w * (0.02 + i * 0.07); ctx.lineTo(x - w * 0.03, y + w * 0.02); ctx.lineTo(x, y - w * 0.05); }
+      ctx.bezierCurveTo(w * 0.12, -w * (0.75 + flap), w * 0.12, -w * 0.4, w * 0.07, -w * 0.08);
+      ctx.closePath();
+    };
+    // a soft shadow is three stacked, slightly larger copies; locking on pulls them together
+    const blur = 1 - lock, a = 0.1 + 0.32 * lock;
+    for (let i = 2; i >= 0; i--) {
+      shape(1 + blur * 0.35 + i * (0.05 + 0.12 * blur));
+      ctx.fillStyle = `rgba(16,8,2,${(a * (i ? 0.38 : 0.7)).toFixed(3)})`;
+      ctx.fill();
+    }
   });
 }
 
