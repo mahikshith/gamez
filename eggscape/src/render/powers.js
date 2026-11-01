@@ -43,6 +43,10 @@ const GLASS = {
   magnet: ['#bfe9f0', '#1f5a66', '#06181d'],
   twin: ['#fff3c4', '#b88a2a', '#3d2a06'],
   golden: ['#fff0b0', '#b07a0c', '#3a2402'],
+  hourglass: ['#fff1c0', '#8f5f12', '#2e1c04'],
+  feather: ['#e2f9ff', '#1c6f94', '#062636'],
+  rockskin: ['#cfc7bd', '#4d443d', '#15110e'],
+  foxcurse: ['#ffb070', '#9c3406', '#2e0a00'],
 };
 const GLASS_DEFAULT = ['#e0e0e0', '#666666', '#222222'];
 
@@ -592,6 +596,327 @@ function embers(ctx, t, col, n, spread, scale) {
   ctx.globalAlpha = 1;
 }
 
+// Hourglass: sand runs from the top bulb to the bottom while a gold ring turns slowly behind it.
+function emblemHourglass(ctx, t) {
+  const k = mod(t * 0.35, 1); // top empties, bottom fills, then it flips
+  const flip = k > 0.92 ? Math.sin(((k - 0.92) / 0.08) * Math.PI * 0.5) : 0;
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.rotate(flip * Math.PI);
+  const fill = k > 0.92 ? 1 : k / 0.92;
+  const bulb = (dir) => {
+    ctx.beginPath();
+    ctx.moveTo(-30, dir * -50);
+    ctx.bezierCurveTo(-34, dir * -18, -8, dir * -10, -5, 0);
+    ctx.lineTo(5, 0);
+    ctx.bezierCurveTo(8, dir * -10, 34, dir * -18, 30, dir * -50);
+    ctx.closePath();
+  };
+  // glass
+  for (const dir of [1, -1]) {
+    bulb(dir);
+    ctx.fillStyle = 'rgba(255,248,225,0.55)';
+    ctx.fill();
+  }
+  // sand: top (shrinking) and bottom (growing)
+  const sandTop = 1 - fill, sandBot = fill;
+  ctx.save();
+  bulb(1);
+  ctx.clip();
+  ctx.fillStyle = '#f0b43a';
+  ctx.fillRect(-40, -50 + 44 * (1 - sandTop) , 80, 44 * sandTop + 6);
+  ctx.restore();
+  ctx.save();
+  bulb(-1);
+  ctx.clip();
+  ctx.fillStyle = '#f0b43a';
+  ctx.beginPath();
+  ctx.moveTo(-34, 50);
+  ctx.lineTo(34, 50);
+  ctx.lineTo(0, 50 - 40 * sandBot - 3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  if (k < 0.92) {
+    ctx.strokeStyle = '#f0b43a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, -2);
+    ctx.lineTo(0, 50 - 40 * sandBot);
+    ctx.stroke();
+  }
+  for (const dir of [1, -1]) {
+    bulb(dir);
+    ctx.strokeStyle = '#4a2c06';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+  }
+  // glass shine
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(-23, -44);
+  ctx.quadraticCurveTo(-26, -24, -12, -14);
+  ctx.moveTo(-23, 44);
+  ctx.quadraticCurveTo(-26, 26, -16, 20);
+  ctx.stroke();
+  // caps
+  for (const y of [-56, 56]) {
+    const g = ctx.createLinearGradient(0, y - 7, 0, y + 7);
+    g.addColorStop(0, '#ffe08a');
+    g.addColorStop(1, '#a8701a');
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(-40, y - 7, 80, 14, 5) : ctx.rect(-40, y - 7, 80, 14);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#4a2c06';
+    ctx.stroke();
+  }
+  ctx.restore();
+  // twinkles
+  ctx.fillStyle = '#fff8d0';
+  for (let i = 0; i < 3; i++) {
+    const a = t * 0.8 + (i / 3) * TAU, r = 66;
+    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 4 + i * 2);
+    sparkle(ctx, Math.cos(a) * r, Math.sin(a) * r, 8);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Guardian feather: one big shimmering feather over a faint shield ring.
+function emblemFeather(ctx, t) {
+  ctx.save();
+  ctx.scale(1.16, 1.16);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  // shield ring
+  ctx.beginPath();
+  ctx.arc(0, 0, 66, 0, TAU);
+  ctx.strokeStyle = 'rgba(190,245,255,0.55)';
+  ctx.lineWidth = 7;
+  ctx.setLineDash([16, 10]);
+  ctx.lineDashOffset = -t * 18;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.translate(0, Math.sin(t * 2.2) * 2);
+  ctx.rotate(0.62 + Math.sin(t * 1.4) * 0.05);
+  // vane
+  const vane = () => {
+    ctx.beginPath();
+    ctx.moveTo(0, 62);
+    ctx.bezierCurveTo(-34, 36, -40, -22, -6, -66);
+    ctx.bezierCurveTo(8, -52, 30, -50, 36, -20);
+    ctx.bezierCurveTo(40, 18, 22, 46, 0, 62);
+    ctx.closePath();
+  };
+  vane();
+  const g = ctx.createLinearGradient(-30, -50, 30, 50);
+  g.addColorStop(0, '#ffffff');
+  g.addColorStop(0.5, '#a8ecff');
+  g.addColorStop(1, '#3fb6ea');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  // barbs
+  ctx.strokeStyle = 'rgba(20,100,150,0.4)';
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  for (let i = 0; i < 9; i++) {
+    const y = -50 + i * 12.5;
+    ctx.moveTo(0, y + 8);
+    ctx.lineTo(-34, y - 6);
+    ctx.moveTo(0, y + 8);
+    ctx.lineTo(36, y - 8);
+  }
+  ctx.stroke();
+  // notch cut and shimmer sweep
+  const sx = (mod(t * 0.6, 1.6) - 0.3) * 120 - 60;
+  const sh = ctx.createLinearGradient(sx - 14, 0, sx + 14, 0);
+  sh.addColorStop(0, 'rgba(255,255,255,0)');
+  sh.addColorStop(0.5, 'rgba(255,255,255,0.85)');
+  sh.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sh;
+  ctx.fillRect(-60, -80, 120, 160);
+  ctx.restore();
+  vane();
+  ctx.strokeStyle = '#0f4a6e';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  // quill
+  ctx.beginPath();
+  ctx.moveTo(0, 78);
+  ctx.quadraticCurveTo(2, 20, -2, -62);
+  ctx.strokeStyle = '#0f4a6e';
+  ctx.lineWidth = 9;
+  ctx.stroke();
+  ctx.strokeStyle = '#eafcff';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 3; i++) {
+    const a = -t * 1.1 + (i / 3) * TAU;
+    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 4 + i * 2);
+    sparkle(ctx, Math.cos(a) * 66, Math.sin(a) * 66, 9);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Rock skin: an egg wrapped in chiselled stone plates (the egg shape tells it from the plain stone orb).
+function emblemRockskin(ctx, t) {
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.translate(0, Math.sin(t * 2) * 2);
+  eggPath(ctx, 128);
+  const g = ctx.createLinearGradient(-40, -50, 40, 50);
+  g.addColorStop(0, '#dcd5cb');
+  g.addColorStop(0.5, '#9a9086');
+  g.addColorStop(1, '#4e4640');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  // plates
+  const plates = [[[-60, -20], [-10, -30], [6, 6], [-34, 22]], [[-10, -30], [40, -14], [30, 20], [6, 6]], [[-34, 22], [6, 6], [30, 20], [0, 70]], [[-10, -64], [-10, -30], [-60, -20], [-40, -52]]];
+  plates.forEach((pl, i) => {
+    ctx.beginPath();
+    pl.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+    ctx.fillStyle = ['rgba(255,255,255,0.2)', 'rgba(0,0,0,0.14)', 'rgba(0,0,0,0.26)', 'rgba(255,255,255,0.1)'][i];
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(30,24,20,0.7)';
+    ctx.lineWidth = 3.4;
+    ctx.stroke();
+  });
+  speckle(ctx, 1, 0.8);
+  ctx.restore();
+  eggPath(ctx, 128);
+  ctx.strokeStyle = '#26211d';
+  ctx.lineWidth = 6.5;
+  ctx.stroke();
+  // little pebbles circling
+  ctx.fillStyle = '#9a9086';
+  ctx.strokeStyle = '#26211d';
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 3; i++) {
+    const a = t * 1.3 + (i / 3) * TAU;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * 70, Math.sin(a) * 18 + 50, 6.5 - (Math.sin(a) < 0 ? 1.5 : 0), 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Fox curse: a sly fox face, purple curse sparkles around it.
+function emblemFoxcurse(ctx, t) {
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  const bob = Math.sin(t * 3) * 2;
+  ctx.translate(0, bob + 4);
+  // swirling curse wisps
+  ctx.strokeStyle = 'rgba(190,90,255,0.65)';
+  ctx.lineWidth = 6;
+  for (let i = 0; i < 2; i++) {
+    ctx.beginPath();
+    const a0 = t * 1.5 + i * Math.PI;
+    ctx.arc(0, 0, 68, a0, a0 + 1.1);
+    ctx.stroke();
+  }
+  // ears
+  for (const sx of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(sx * 14, -26);
+    ctx.lineTo(sx * 42, -62);
+    ctx.lineTo(sx * 52, -12);
+    ctx.closePath();
+    ctx.fillStyle = '#ff8a2a';
+    ctx.fill();
+    ctx.strokeStyle = '#3a1608';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(sx * 24, -28);
+    ctx.lineTo(sx * 40, -50);
+    ctx.lineTo(sx * 44, -22);
+    ctx.closePath();
+    ctx.fillStyle = '#5a1f3a';
+    ctx.fill();
+  }
+  // head
+  ctx.beginPath();
+  ctx.moveTo(-50, -14);
+  ctx.quadraticCurveTo(-50, -34, 0, -34);
+  ctx.quadraticCurveTo(50, -34, 50, -14);
+  ctx.quadraticCurveTo(52, 20, 26, 40);
+  ctx.quadraticCurveTo(0, 62, -26, 40);
+  ctx.quadraticCurveTo(-52, 20, -50, -14);
+  ctx.closePath();
+  ctx.fillStyle = '#ff8a2a';
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = '#3a1608';
+  ctx.stroke();
+  // cream muzzle
+  ctx.beginPath();
+  ctx.moveTo(-44, 6);
+  ctx.quadraticCurveTo(-20, 14, 0, 2);
+  ctx.quadraticCurveTo(20, 14, 44, 6);
+  ctx.quadraticCurveTo(40, 30, 24, 40);
+  ctx.quadraticCurveTo(0, 60, -24, 40);
+  ctx.quadraticCurveTo(-40, 30, -44, 6);
+  ctx.closePath();
+  ctx.fillStyle = '#fff1dc';
+  ctx.fill();
+  // sly eyes: slanted, glowing yellow
+  for (const sx of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(sx * 10, -8);
+    ctx.quadraticCurveTo(sx * 24, -22, sx * 40, -8);
+    ctx.quadraticCurveTo(sx * 26, -2, sx * 10, -8);
+    ctx.closePath();
+    ctx.fillStyle = '#ffe14a';
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.fillStyle = '#3a1608';
+    ctx.beginPath();
+    ctx.ellipse(sx * 28, -10, 3, 4.6, 0, 0, TAU);
+    ctx.fill();
+  }
+  // nose and grin
+  ctx.fillStyle = '#3a1608';
+  ctx.beginPath();
+  ctx.ellipse(0, 16, 7, 5, 0, 0, TAU);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-24, 28);
+  ctx.quadraticCurveTo(0, 50, 28, 24);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#3a1608';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(8, 38);
+  ctx.lineTo(13, 46);
+  ctx.lineTo(18, 34);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#d9a0ff';
+  for (let i = 0; i < 3; i++) {
+    const a = -t * 1.2 + (i / 3) * TAU + 1;
+    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 4 + i * 2);
+    sparkle(ctx, Math.cos(a) * 72, Math.sin(a) * 72 - 4, 9);
+  }
+  ctx.globalAlpha = 1;
+}
+
 function drawEmblem(ctx, id, t) {
   if (id && id.startsWith('fire_') && FLAME[id]) emblemFire(ctx, id, t);
   else if (id === 'stone') emblemStone(ctx);
@@ -602,6 +927,10 @@ function drawEmblem(ctx, id, t) {
   else if (id === 'magnet') emblemMagnet(ctx, t);
   else if (id === 'twin') emblemTwin(ctx, t);
   else if (id === 'golden') emblemGolden(ctx, t);
+  else if (id === 'hourglass') emblemHourglass(ctx, t);
+  else if (id === 'feather') emblemFeather(ctx, t);
+  else if (id === 'rockskin') emblemRockskin(ctx, t);
+  else if (id === 'foxcurse') emblemFoxcurse(ctx, t);
 }
 
 // Mystery core: swirling cloudy arms and drifting motes, no emblem.
@@ -795,11 +1124,13 @@ export function drawEggPower(ctx, id, t, h) {
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     if (id === 'fire_red' || id === 'fire_black') overlayFire(ctx, id, t);
-    else if (id === 'stone') overlayStone(ctx, t, h);
+    else if (id === 'stone' || id === 'rockskin') overlayStone(ctx, t, h);
     else if (id === 'bubble') overlayBubble(ctx, t);
     else if (id === 'water') overlayWater(ctx, t);
     else if (id === 'thunder') overlayThunder(ctx, t);
     else if (id === 'golden') overlayGolden(ctx, t);
+    else if (id === 'feather') overlayFeather(ctx, t);
+    else if (id === 'foxcurse') overlayFoxcurse(ctx, t);
   } catch (e) {
     // art must never break the frame
   }
@@ -839,60 +1170,97 @@ function overlayFire(ctx, id, t) {
 }
 
 function overlayStone(ctx, t, hpx) {
+  // heavy contact shadow so the egg feels like it weighs a ton
+  ctx.save();
+  ctx.scale(1, 0.34);
+  const sg = ctx.createRadialGradient(0, 150, 4, 0, 150, 60);
+  sg.addColorStop(0, 'rgba(0,0,0,0.38)');
+  sg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sg;
+  ctx.fillRect(-70, 80, 140, 140);
+  ctx.restore();
+  ctx.save();
+  ctx.scale(1.07, 1.07);
   eggPath(ctx, 100);
-  const g = ctx.createRadialGradient(-12, -18, 6, 0, 0, 62);
-  g.addColorStop(0, '#d4cdc4');
-  g.addColorStop(0.55, '#9c938a');
-  g.addColorStop(1, '#5e5650');
+  const g = ctx.createRadialGradient(-14, -22, 4, 0, 0, 66);
+  g.addColorStop(0, '#e6e0d6');
+  g.addColorStop(0.5, '#948b82');
+  g.addColorStop(1, '#4a423c');
   ctx.fillStyle = g;
   ctx.fill();
   ctx.save();
   ctx.clip();
-  // broad facets
-  ctx.fillStyle = 'rgba(255,255,255,0.14)';
-  ctx.beginPath();
-  ctx.moveTo(-40, -20);
-  ctx.lineTo(-6, -56);
-  ctx.lineTo(10, -22);
-  ctx.lineTo(-14, 2);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,0.12)';
-  ctx.beginPath();
-  ctx.moveTo(10, -22);
-  ctx.lineTo(50, -6);
-  ctx.lineTo(50, 60);
-  ctx.lineTo(16, 24);
-  ctx.closePath();
-  ctx.fill();
+  // bold plates: lit, mid and shadowed slabs
+  const slabs = [[[-46, -18], [-8, -52], [12, -20], [-20, 2], 'rgba(255,255,255,0.3)'], [[12, -20], [52, -4], [52, 30], [18, 14], 'rgba(0,0,0,0.2)'], [[-20, 2], [12, -20], [18, 14], [-6, 36], 'rgba(255,255,255,0.08)'], [[-46, -18], [-20, 2], [-34, 30], [-52, 14], 'rgba(0,0,0,0.12)'], [[-6, 36], [18, 14], [52, 30], [28, 64], [-10, 60], 'rgba(0,0,0,0.34)']];
+  for (const sl of slabs) {
+    ctx.beginPath();
+    for (let i = 0; i < sl.length - 1; i++) ctx.lineTo(sl[i][0], sl[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = sl[sl.length - 1];
+    ctx.fill();
+  }
   speckle(ctx, 0.9, 1);
-  // chiselled bevel: light top-left, dark bottom-right
-  eggPath(ctx, 86);
+  // deep cracks: dark groove with a lit lip
+  const crack = () => {
+    ctx.beginPath();
+    ctx.moveTo(-46, -18);
+    ctx.lineTo(-20, 2);
+    ctx.lineTo(12, -20);
+    ctx.lineTo(18, 14);
+    ctx.lineTo(-6, 36);
+    ctx.lineTo(-20, 2);
+    ctx.moveTo(12, -20);
+    ctx.lineTo(-8, -52);
+    ctx.moveTo(18, 14);
+    ctx.lineTo(52, 30);
+    ctx.moveTo(-6, 36);
+    ctx.lineTo(-10, 60);
+  };
+  crack();
+  ctx.translate(1.2, 1.4);
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 2;
+  crack();
+  ctx.stroke();
+  ctx.translate(-1.2, -1.4);
+  crack();
+  ctx.strokeStyle = 'rgba(25,20,17,0.85)';
+  ctx.lineWidth = 3.2;
+  ctx.stroke();
+  // chiselled bevel
+  eggPath(ctx, 84);
   const bv = ctx.createLinearGradient(-30, -40, 30, 40);
-  bv.addColorStop(0, 'rgba(255,255,255,0.55)');
+  bv.addColorStop(0, 'rgba(255,255,255,0.7)');
   bv.addColorStop(0.5, 'rgba(255,255,255,0)');
   bv.addColorStop(0.55, 'rgba(0,0,0,0)');
-  bv.addColorStop(1, 'rgba(0,0,0,0.4)');
+  bv.addColorStop(1, 'rgba(0,0,0,0.55)');
   ctx.strokeStyle = bv;
-  ctx.lineWidth = 7;
-  ctx.stroke();
-  // chisel marks
-  ctx.strokeStyle = 'rgba(45,38,33,0.45)';
-  ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  ctx.moveTo(-14, 2);
-  ctx.lineTo(10, -22);
-  ctx.lineTo(16, 24);
-  ctx.moveTo(-14, 2);
-  ctx.lineTo(-30, 28);
-  ctx.moveTo(10, -22);
-  ctx.lineTo(-6, -56);
+  ctx.lineWidth = 9;
   ctx.stroke();
   ctx.restore();
   eggPath(ctx, 100);
-  ctx.strokeStyle = '#2e2924';
-  ctx.lineWidth = Math.max(3, 150 / hpx);
+  ctx.strokeStyle = '#1f1b18';
+  ctx.lineWidth = Math.max(4, 190 / hpx);
   ctx.stroke();
+  ctx.restore();
+  // a few pebbles bounce off the shell
+  ctx.fillStyle = '#8c8379';
+  ctx.strokeStyle = '#1f1b18';
+  ctx.lineWidth = 2.2;
+  for (let i = 0; i < 3; i++) {
+    const k = mod(t * 0.9 + i / 3, 1), a = Math.PI * (0.15 + 0.7 * hash(i + 4));
+    const x = Math.cos(a) * (46 + k * 14) * (i % 2 ? -1 : 1), y = 40 - k * 30 + k * k * 70;
+    ctx.globalAlpha = 1 - k * k;
+    ctx.beginPath();
+    ctx.moveTo(x - 4, y + 3);
+    ctx.lineTo(x - 2, y - 4);
+    ctx.lineTo(x + 4, y - 2);
+    ctx.lineTo(x + 3, y + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 }
 
 function overlayBubble(ctx, t) {
@@ -933,61 +1301,252 @@ function overlayBubble(ctx, t) {
 }
 
 function overlayWater(ctx, t) {
+  // ripples spreading from the shell
+  for (let i = 0; i < 2; i++) {
+    const k = mod(t * 0.7 + i * 0.5, 1);
+    ctx.save();
+    ctx.globalAlpha = (1 - k) * 0.7;
+    ctx.scale(1 + 0.3 * k, 1 + 0.26 * k);
+    eggPath(ctx, 104);
+    ctx.strokeStyle = '#6fc4ff';
+    ctx.lineWidth = 3.5 * (1 - k * 0.5);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.scale(1.05, 1.05);
   eggPath(ctx, 100);
-  const g = ctx.createRadialGradient(-10, -14, 8, 0, 0, 60);
-  g.addColorStop(0, 'rgba(140,210,255,0.12)');
-  g.addColorStop(1, 'rgba(40,130,240,0.42)');
+  const g = ctx.createLinearGradient(0, -50, 0, 52);
+  g.addColorStop(0, 'rgba(120,200,255,0.35)');
+  g.addColorStop(0.5, 'rgba(40,140,255,0.62)');
+  g.addColorStop(1, 'rgba(10,70,200,0.82)');
   ctx.fillStyle = g;
   ctx.fill();
-  ctx.strokeStyle = 'rgba(30,110,220,0.7)';
-  ctx.lineWidth = 3;
-  ctx.stroke();
   ctx.save();
   ctx.clip();
-  // glossy sheen
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = 6;
-  ctx.beginPath();
-  ctx.moveTo(-24, 18);
-  ctx.quadraticCurveTo(-30, -16, -10, -40);
-  ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.beginPath();
-  ctx.arc(-4, -44, 3, 0, TAU);
-  ctx.fill();
-  ctx.restore();
-  // drips sliding down the shell, then falling off the bottom
+  // lapping water surface and caustic ribbons
   for (let i = 0; i < 3; i++) {
-    const k = mod(t * 0.45 + i / 3, 1);
-    const x0 = [-18, 8, 24][i];
-    let x, y, a = 1;
-    if (k < 0.75) {
-      const u = k / 0.75;
-      y = -30 + u * 74;
-      const [ex] = eggPoint(Math.asin(Math.max(-1, Math.min(1, y / 50))), 100);
-      x = Math.sign(x0) * Math.min(Math.abs(x0), Math.abs(ex) * 0.8);
-    } else {
-      const u = (k - 0.75) / 0.25;
-      x = x0 * 0.4;
-      y = 46 + u * u * 30;
-      a = 1 - u;
+    const y0 = -18 + i * 26;
+    ctx.beginPath();
+    for (let x = -50; x <= 50; x += 5) {
+      const y = y0 + Math.sin(x * 0.11 + t * 3 + i * 1.7) * 3.4;
+      if (x === -50) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
     }
-    ctx.globalAlpha = a;
+    ctx.strokeStyle = i ? 'rgba(170,225,255,0.55)' : 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = i ? 2.4 : 3.4;
+    ctx.stroke();
+  }
+  // glossy sheen
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(-26, 22);
+  ctx.quadraticCurveTo(-34, -14, -12, -42);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.beginPath();
+  ctx.arc(-4, -46, 3.4, 0, TAU);
+  ctx.fill();
+  // rising bubbles
+  for (let i = 0; i < 4; i++) {
+    const k = mod(t * 0.5 + i / 4, 1);
+    ctx.globalAlpha = Math.sin(k * Math.PI);
+    ctx.strokeStyle = 'rgba(230,246,255,0.95)';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc((hash(i + 12) - 0.5) * 50 + Math.sin(t * 2 + i) * 4, 44 - k * 88, 2.6 + hash(i) * 2.6, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+  eggPath(ctx, 100);
+  ctx.strokeStyle = '#0d4aa8';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(190,230,255,0.7)';
+  ctx.lineWidth = 1.6;
+  eggPath(ctx, 94);
+  ctx.stroke();
+  ctx.restore();
+  // drops shaken off the shell
+  for (let i = 0; i < 4; i++) {
+    const k = mod(t * 0.55 + i / 4, 1);
+    const side = i % 2 ? 1 : -1, x = side * (44 + k * 12), y = -6 + k * 62;
+    ctx.globalAlpha = 1 - k * k;
     ctx.beginPath();
     ctx.moveTo(x, y - 9);
-    ctx.quadraticCurveTo(x + 4.5, y - 2, x + 4, y);
-    ctx.arc(x, y, 4, 0, Math.PI);
-    ctx.quadraticCurveTo(x - 4.5, y - 2, x, y - 9);
+    ctx.quadraticCurveTo(x + 5, y - 2, x + 4.4, y);
+    ctx.arc(x, y, 4.4, 0, Math.PI);
+    ctx.quadraticCurveTo(x - 5, y - 2, x, y - 9);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(120,200,255,0.95)';
+    ctx.fillStyle = '#5fb8ff';
     ctx.fill();
-    ctx.strokeStyle = '#1f6fc0';
-    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = '#0d4aa8';
+    ctx.lineWidth = 1.8;
     ctx.stroke();
-    ctx.fillStyle = '#ffffff';
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Guardian feather: a bright shield of light around the egg, feathers circling, a shimmer sweeping across the shell.
+function overlayFeather(ctx, t) {
+  const pulse = 0.85 + 0.15 * Math.sin(t * 4);
+  const g = ctx.createRadialGradient(0, 0, 30, 0, 0, 92 * pulse);
+  g.addColorStop(0, 'rgba(160,240,255,0)');
+  g.addColorStop(0.7, 'rgba(160,240,255,0.32)');
+  g.addColorStop(1, 'rgba(160,240,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(-100, -100, 200, 200);
+  // shield rim: dashed ring turning around the egg
+  ctx.save();
+  ctx.scale(1.18, 1.12);
+  eggPath(ctx, 100);
+  ctx.fillStyle = 'rgba(190,245,255,0.14)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(235,252,255,0.95)';
+  ctx.lineWidth = 3.4;
+  ctx.setLineDash([22, 12]);
+  ctx.lineDashOffset = -t * 40;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle = 'rgba(70,190,240,0.7)';
+  ctx.lineWidth = 1.6;
+  ctx.scale(1.03, 1.03);
+  eggPath(ctx, 100);
+  ctx.stroke();
+  ctx.restore();
+  // shimmer sweeping over the shell
+  ctx.save();
+  eggPath(ctx, 100);
+  ctx.clip();
+  ctx.rotate(0.5);
+  const sx = (mod(t * 0.7, 1.5) - 0.25) * 140 - 70;
+  const sh = ctx.createLinearGradient(sx - 16, 0, sx + 16, 0);
+  sh.addColorStop(0, 'rgba(255,255,255,0)');
+  sh.addColorStop(0.5, 'rgba(255,255,255,0.7)');
+  sh.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sh;
+  ctx.fillRect(-120, -120, 240, 240);
+  ctx.restore();
+  // three little feathers orbiting
+  for (let i = 0; i < 3; i++) {
+    const a = t * 1.6 + (i / 3) * TAU, x = Math.cos(a) * 62, y = Math.sin(a) * 58 - 4;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(a + Math.PI / 2 + 0.6);
+    ctx.globalAlpha = 0.65 + 0.35 * Math.sin(a - 0.4);
     ctx.beginPath();
-    ctx.arc(x - 1.4, y - 1, 1.2, 0, TAU);
+    ctx.moveTo(0, 10);
+    ctx.quadraticCurveTo(-8, 0, 0, -12);
+    ctx.quadraticCurveTo(8, 0, 0, 10);
+    ctx.fillStyle = '#e8fbff';
     ctx.fill();
+    ctx.strokeStyle = '#1f86b8';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, 14);
+    ctx.lineTo(0, -8);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 4; i++) {
+    const k = Math.sin(t * 3 + i * 1.7);
+    if (k <= 0) continue;
+    const [ex, ey] = eggPoint(hash(i + 31) * TAU, 100);
+    sparkle(ctx, ex * 1.2, ey * 1.2, 6 * k);
+  }
+}
+
+// Fox curse: orange fox ears, whisker cheeks and a sly grin on the shell, purple curse haze.
+function overlayFoxcurse(ctx, t) {
+  const g = ctx.createRadialGradient(0, 0, 20, 0, 0, 88);
+  g.addColorStop(0, 'rgba(180,70,255,0)');
+  g.addColorStop(0.75, 'rgba(180,70,255,0.28)');
+  g.addColorStop(1, 'rgba(180,70,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(-100, -100, 200, 200);
+  // orange fur tint
+  eggPath(ctx, 100);
+  const tg = ctx.createLinearGradient(0, -50, 0, 50);
+  tg.addColorStop(0, 'rgba(255,130,30,0.7)');
+  tg.addColorStop(1, 'rgba(230,90,10,0.45)');
+  ctx.fillStyle = tg;
+  ctx.fill();
+  // cream muzzle patch
+  ctx.save();
+  eggPath(ctx, 100);
+  ctx.clip();
+  ctx.beginPath();
+  ctx.ellipse(0, 40, 36, 24, 0, 0, TAU);
+  ctx.fillStyle = 'rgba(255,241,220,0.85)';
+  ctx.fill();
+  ctx.restore();
+  eggPath(ctx, 100);
+  ctx.strokeStyle = '#4a1c08';
+  ctx.lineWidth = 3.4;
+  ctx.stroke();
+  // ears (flick now and then)
+  const fl = mod(t * 0.4, 1) < 0.08 ? Math.sin(mod(t * 0.4, 1) / 0.08 * TAU) * 0.15 : 0;
+  for (const sx of [-1, 1]) {
+    ctx.save();
+    ctx.translate(sx * 24, -38);
+    ctx.rotate(sx * (0.22 + fl));
+    ctx.beginPath();
+    ctx.moveTo(-sx * 13, 6);
+    ctx.lineTo(sx * 2, -34);
+    ctx.lineTo(sx * 17, 4);
+    ctx.closePath();
+    ctx.fillStyle = '#ff8a2a';
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#4a1c08';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-sx * 6, 2);
+    ctx.lineTo(sx * 2, -22);
+    ctx.lineTo(sx * 9, 2);
+    ctx.closePath();
+    ctx.fillStyle = '#6b2c4a';
+    ctx.fill();
+    ctx.fillStyle = '#3a1608'; // dark tip
+    ctx.beginPath();
+    ctx.moveTo(sx * 2 - 4, -26);
+    ctx.lineTo(sx * 2, -34);
+    ctx.lineTo(sx * 2 + 4, -26);
+    ctx.fill();
+    ctx.restore();
+  }
+  // whisker marks on the cheeks
+  ctx.strokeStyle = '#4a1c08';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  for (const sx of [-1, 1]) for (let i = 0; i < 2; i++) { ctx.moveTo(sx * 30, 22 + i * 7); ctx.lineTo(sx * 46, 17 + i * 11); }
+  ctx.stroke();
+  // sly grin, wide with one fang
+  ctx.beginPath();
+  ctx.moveTo(-22, 18);
+  ctx.quadraticCurveTo(0, 40, 24, 14);
+  ctx.lineWidth = 3.6;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(6, 30);
+  ctx.lineTo(10, 38);
+  ctx.lineTo(15, 25);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // wisps
+  ctx.fillStyle = '#d9a0ff';
+  for (let i = 0; i < 3; i++) {
+    const k = mod(t * 0.7 + i / 3, 1);
+    ctx.globalAlpha = Math.sin(k * Math.PI) * 0.9;
+    sparkle(ctx, (i - 1) * 40 + Math.sin(t * 2 + i) * 6, -50 - k * 40, 7);
   }
   ctx.globalAlpha = 1;
 }
