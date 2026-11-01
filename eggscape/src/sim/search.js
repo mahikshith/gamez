@@ -45,11 +45,15 @@ export function value(sim) {
   for (const e of sim.aliveEggs()) {
     const c = sim.channelOf(e);
     v += c * 300 - e.cracks * 200 + e.mult * 15;
-    if (sim.snake && sim.snake.inside && sim.snake.pts.length) {
-      // keep away from the snake's head
-      const h = sim.snake.pts[0], p = e.body.getPosition(), d = Math.hypot(p.x - h.x, p.y - h.y);
+    for (const S of sim.snakes || []) {
+      if (S.gone || !S.inside || !S.pts.length) continue;
+      // keep away from every snake's head
+      const h = S.pts[0], p = e.body.getPosition(), d = Math.hypot(p.x - h.x, p.y - h.y);
       if (d < 2.2) v -= 900 * (1 - d / 2.2);
     }
+    // predators (v3): an egg the eagle can reach while it is locked on
+    const E = sim.eagle;
+    if (E && E.reach && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tid === e.id) v -= 700;
     if (c >= sim.rings.length) {
       // falling out of the vault: will the (moving) nest be under it when it lands?
       const p = e.body.getPosition(), u = e.body.getLinearVelocity(), g = sim.g;

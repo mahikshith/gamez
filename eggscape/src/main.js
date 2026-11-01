@@ -146,6 +146,8 @@ function startLevel(i, opts = {}) {
   G.slow = G.card = G.hint = G.hintShow = null;
   G.lastEgg = false;
   G.snakeToast = false;
+  G.predToast = {}; // predators (v3): first-time toasts
+  G.danger = 0;
   G.hen = { mood: 'idle', t: 0 };
   G.fx = new FX();
   G.popups = [];
@@ -225,9 +227,14 @@ function camTarget() {
     yMin = -R;
     yMax = R;
   }
-  // a snake in (or about to enter) the vault is always framed, like the furthest egg
-  const S = sim.snake, hd = S && S.inside && S.rad <= sim.outerR + 1.5 ? { x: S.rad * Math.cos(S.a), y: S.rad * Math.sin(S.a) } : null;
-  if (hd) {
+  // predators (v3): every snake in (or about to enter) the vault is framed, like the furthest egg; so is
+  // the eagle while it attacks, and the fox's head over the top
+  const hds = [];
+  for (const S of sim.snakes || []) if (!S.gone && S.inside && S.rad <= sim.outerR + 1.5) hds.push({ x: S.rad * Math.cos(S.a), y: S.rad * Math.sin(S.a) });
+  const EA = sim.eagle;
+  if (EA && (EA.phase === 'warn' || EA.phase === 'dive')) hds.push({ x: EA.x, y: EA.y });
+  if (sim.fox && showAll) hds.push({ x: sim.fox.x, y: sim.outerR + 0.6 });
+  for (const hd of hds) {
     if (showAll) { R = Math.max(R, Math.abs(hd.x) + 0.6); yMin = Math.min(yMin, hd.y - 0.6); yMax = Math.max(yMax, hd.y + 0.6); }
     else { R = Math.max(R, Math.hypot(hd.x, hd.y) + 0.6); yMin = -R; yMax = R; }
   }
@@ -238,7 +245,7 @@ function camTarget() {
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     const add = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
     for (const e of sim.aliveEggs()) { const p = e.body.getPosition(); add(p.x - 2.2, p.y - 2.2); add(p.x + 2.2, p.y + 2.2); }
-    if (hd) { add(hd.x - 1, hd.y - 1); add(hd.x + 1, hd.y + 1); }
+    for (const hd of hds) { add(hd.x - 1, hd.y - 1); add(hd.x + 1, hd.y + 1); }
     if (maxCh >= n - 1) { const nx = sim.nest.getPosition().x; add(nx - sim.nestW / 2 - 0.6, sim.groundY - 0.25); add(nx + sim.nestW / 2 + 0.6, sim.groundY + 1); }
     const k2 = Math.min(P.w / (x1 - x0), P.h / (y1 - y0), 70);
     if (k2 > k) return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, k: k2 };
@@ -610,12 +617,13 @@ function handleEvents() {
       case 'break': {
         audio.play(ev.why === 'lava' ? 'lava_sizzle' : 'egg_break');
         if (ev.why === 'thorn') audio.play('thorn_hit');
-        if (ev.why === 'lava') { fx.smoke(ev.x, ev.y, 8, 'rgba(70,60,60,0.6)'); fx.chips(ev.x, ev.y, '#ffb347', 10, 3); }
+        if (ev.why === 'eagle') { /* carried off whole: no yolk */ }
+        else if (ev.why === 'lava') { fx.smoke(ev.x, ev.y, 8, 'rgba(70,60,60,0.6)'); fx.chips(ev.x, ev.y, '#ffb347', 10, 3); }
         else fx.yolk(ev.x, ev.y, sim.groundY + 0.02);
         fx.shake = Math.max(fx.shake, 0.55);
         G.hitstop = 0.07;
         hen('cry', 2.2);
-        const why = { thorn: 'Thorn!', fox: 'The fox took it', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!' }[ev.why] || '';
+        const why = { thorn: 'Thorn!', fox: 'The fox took it', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', eagle: 'The eagle took it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!' }[ev.why] || '';
         if (why && ev.why !== 'fox') popup(ev.x, ev.y + 0.5, why, { color: '#ff8a7a', size: 20, life: 1.2 });
         break;
       }
@@ -722,6 +730,10 @@ function handleEvents() {
         break;
       case 'snakeRecoil':
         popup(ev.x, ev.y + 0.5, 'Too hard to bite!', { size: 18 });
+        audio.play('steel_clang', { vol: 0.6 });
+        break;
+      default:
+        predEvent(ev, fx); // predators (v3)
         break;
       case 'twin':
         fx.sparkle(ev.x, ev.y, 12, '#ffe58a');
@@ -806,6 +818,104 @@ function handleEvents() {
     }
   }
   sim.events.length = 0;
+}
+
+// ---------------------------------------------------------------- predators (v3)
+// events -> SFX/VFX for snakes, barriers, the eagle, the fox thrower and the chick (reuses existing sounds)
+function predEvent(ev, fx) {
+  const once = (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, 3); } };
+  switch (ev.type) {
+    case 'snakeEat':
+      audio.play('squish', { intensity: 0.8, pitch: 0.7 });
+      fx.chips(ev.x, ev.y, '#f3e8d2', 6, 1.6);
+      break;
+    case 'snakeHiss':
+      audio.play('lava_sizzle', { vol: 0.5, pitch: 1.6 });
+      popup(ev.x, ev.y + 0.5, 'Hsss!', { color: '#a8f06a', size: 18, life: 0.9 });
+      once('barrier', 'The snake is stuck behind the wall. Its venom melts it soon!');
+      break;
+    case 'venomSpit':
+      audio.play('squish', { intensity: 0.5, pitch: 1.4 });
+      fx.burst(ev.x, ev.y, 6, (i, a, b) => ({ x: ev.x, y: ev.y, vx: (ev.tx - ev.x) * (1.5 + a) + (b - 0.5), vy: (ev.ty - ev.y) * (1.5 + a) + (b - 0.5), drag: 2, life: 0.4, size: 0.04, color: '#8be04e' }));
+      break;
+    case 'barrierMelt':
+      audio.play('lava_sizzle', { vol: 0.8 });
+      fx.smoke(ev.x, ev.y, 5, 'rgba(120,200,80,0.5)');
+      fx.chips(ev.x, ev.y, '#8be04e', 8, 2);
+      break;
+    case 'barrierIgnite':
+      audio.play('fire_ignite');
+      fx.sparkle(ev.x, ev.y, 8, '#ff9a3a');
+      break;
+    case 'barrierBurn':
+      audio.play('fire_burn');
+      audio.play('wood_break', { vol: 0.7 });
+      fx.smoke(ev.x, ev.y, 6);
+      fx.chips(ev.x, ev.y, '#ff7a1a', 10, 2.5);
+      break;
+    case 'eagleIn':
+      audio.play('wind_gust', { vol: 0.8 });
+      once('eagle', 'An eagle! It reaches in through gaps in the outer ring.');
+      break;
+    case 'eagleWarn':
+      // the screech: a high, bent glass crack over a gust
+      audio.play('glass_crack', { pitch: 1.8, vol: 0.7 });
+      audio.play('wind_gust', { vol: 0.5, pitch: 1.4 });
+      popup(ev.x, ev.y + 0.6, '!', { color: '#ff5a3a', size: 34, life: 0.9 });
+      break;
+    case 'eagleDive':
+      audio.play('wind_gust', { pitch: 1.6 });
+      break;
+    case 'eagleGrab':
+      audio.play(ev.kind === 'snake' ? 'thorn_snap' : 'egg_crack', { pitch: 1.3 });
+      fx.sparkle(ev.x, ev.y, 10, ev.kind === 'snake' ? '#b6ff8a' : '#fff6c2');
+      fx.shake = Math.max(fx.shake, 0.35);
+      if (ev.kind === 'snake') { popup(ev.x, ev.y + 0.5, 'Snake snatched!', { color: '#b6ff8a', size: 22 }); hen('happy', 1.2); }
+      break;
+    case 'eagleBounce':
+      audio.play('steel_clang', { vol: 0.8 });
+      fx.wave(ev.x, ev.y, 0.7, '#e6e6e6', 0.35, 0.06);
+      popup(ev.x, ev.y + 0.5, 'Too tough!', { size: 18 });
+      break;
+    case 'eagleBlocked':
+      audio.play('rock_hit', { vol: 0.7 });
+      fx.dust(ev.x, ev.y, 5);
+      popup(ev.x, ev.y + 0.4, 'Blocked!', { color: '#cfe8ff', size: 18 });
+      break;
+    case 'foxThrow':
+      audio.play('portal_exit', { vol: 0.6, pitch: 0.8 });
+      fx.sparkle(ev.x2, ev.y2, 8, powerInfo(ev.power).color);
+      once('fox', 'The fox drops orbs into the outer channel. Not all of them help!');
+      break;
+    case 'chickPeck':
+      audio.play('thorn_snap', { pitch: 1.3 });
+      fx.chips(ev.x, ev.y - 0.2, '#aab2bd', 6, 2);
+      popup(ev.x, ev.y + 0.6, 'Peck peck!', { color: '#ffe14d', size: 20 });
+      break;
+  }
+}
+
+// danger cue (I8): a heartbeat (two low egg bumps) that speeds up as a snake closes in, plus a faint red edge
+function heartbeat(dt) {
+  const lv = G.screen === 'play' && G.sim && G.sim.state === 'play' ? G.sim.danger || 0 : 0;
+  G.danger = lerp(G.danger || 0, lv, 1 - Math.exp(-dt * 4));
+  if (lv <= 0) { G.beat = 0; return; }
+  if ((G.beat = (G.beat || 0) - dt) > 0) return;
+  G.beat = lerp(1.1, 0.42, lv);
+  audio.play('egg_bump', { intensity: 0.3 + 0.4 * lv, pitch: 0.42, vol: 0.5 + 0.4 * lv });
+  setTimeout(() => audio.play('egg_bump', { intensity: 0.2 + 0.3 * lv, pitch: 0.38, vol: 0.35 + 0.3 * lv }), 160);
+  G.beatT = G.t;
+}
+
+function drawDanger() {
+  if (save.calm || !(G.danger > 0.05)) return;
+  const p = Math.exp(-(G.t - (G.beatT || -9)) * 5);
+  const a = G.danger * (0.12 + 0.18 * p);
+  const g = ctx.createRadialGradient(W_ / 2, H_ / 2, Math.min(W_, H_) * 0.35, W_ / 2, H_ / 2, Math.max(W_, H_) * 0.75);
+  g.addColorStop(0, 'rgba(200,0,0,0)');
+  g.addColorStop(1, `rgba(200,0,0,${a})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W_, H_);
 }
 
 function hen(mood, t) {
@@ -895,6 +1005,7 @@ function update(dt) {
   if (G.card && (G.card.t += dt) > G.card.dur) G.card = null;
   if (G.hen.t > 0 && (G.hen.t -= dt) <= 0) G.hen.mood = 'idle';
   if (G.hintShow && (G.hintShow.t -= dt) <= 0) G.hintShow = null;
+  heartbeat(dt); // predators (v3)
   if (G.hint) hintWork();
   if (G.hitstop > 0) G.hitstop -= dt;
   else if (running && !G.adBusy) {
@@ -1053,6 +1164,8 @@ function render() {
   }
   for (const ring of sim.rings) if (ring.gear && ring.gear.i > ring.i) W.drawGearCog(ctx, ring, ring.gear, t);
   if (sim.wx.bolt) { const b = sim.boltPoint(sim.wx.bolt); W.drawBoltWarn(ctx, b.x, b.y, t); }
+  W.drawBarriers(ctx, sim, t, k); // predators (v3)
+  W.drawFoxThrower(ctx, sim, t, k);
   // floating orbs: mystery until discovered (F19)
   for (const o of sim.orbs) if (o.alive) flipped(o.x, o.y, (k) => drawOrb(ctx, o.type, 0, 0, 0.2 * k, t, !!save.seen[o.type]));
   drawHenAt(sim, k, t);
@@ -1074,21 +1187,11 @@ function render() {
       ctx.setLineDash([]);
     }
   }
+  W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
   for (const e of sim.aliveEggs()) W.drawEgg(ctx, e, t, k);
-  if (sim.snake && sim.snake.pts.length > 1) {
-    // a pale outline keeps the snake readable on dark backdrops
-    const P = sim.snake.pts;
-    ctx.save();
-    ctx.strokeStyle = 'rgba(235,255,210,0.55)';
-    ctx.lineWidth = 0.3;
-    ctx.lineCap = ctx.lineJoin = 'round';
-    ctx.beginPath();
-    P.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
-    ctx.stroke();
-    ctx.restore();
-  }
-  if (sim.snake && sim.snake.pts.length > 1) flipped(0, 0, (k) => drawSnake(ctx, sim.snake.pts.map((q) => ({ x: q.x * k, y: -q.y * k })), 0.1 * k, t, { mouthOpen: sim.snake.mouthOpen }));
+  W.drawSnakes(ctx, sim, t, k); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
+  W.drawEagleAt(ctx, sim, t, k);
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);
   fx.draw(ctx, 'front');
   for (const e of sim.aliveEggs()) W.drawEggMult(ctx, e, k, FONT);
@@ -1098,6 +1201,7 @@ function render() {
   G.weather.drawFront(ctx);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   G.backdrop.drawAmbient(ctx, t, G.cam);
+  drawDanger(); // predators (v3)
   if (fx.flash > 0 && !save.calm) {
     ctx.globalAlpha = fx.flash * 0.6;
     ctx.fillStyle = fx.flashColor;
