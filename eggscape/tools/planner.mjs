@@ -51,7 +51,10 @@ export function solve(level, opts = {}) {
     else sim = pick.c;
   }
   const st = sim.stats();
-  return { id: level.id, state: sim.state, t: +sim.t.toFixed(1), left: +sim.timeLeft.toFixed(1), moves: plan.length, turns: sim.turns, plan, ...st };
+  // special eggs (ostrich, quail, duck) must make it, not just the target count
+  const sp = sim.eggs.filter((e) => e.kind);
+  const special = { saved: sp.filter((e) => e.saved).length, total: sp.length };
+  return { id: level.id, special, state: sim.state, t: +sim.t.toFixed(1), left: +sim.timeLeft.toFixed(1), moves: plan.length, turns: sim.turns, plan, ...st };
 }
 
 // The exploit check (F15): turn every ring so a gap sits at the bottom, all at once, and wait.

@@ -20,12 +20,15 @@ const OUT_DIR = join(ROOT, 'tools', 'gen-out');
 const BOTTOM = -90;
 const GAP_LEN = 0.78;
 const THORN_STEP = 11;
+// ostrich levels: gaps under OSTRICH_GAP (sim.js, 0.9 m) are barred for the big egg, and every ring gets one
+// clearly wide gap it always drops through (checked by ostrichDrops below)
+const OSTRICH_GAP = 0.9, WIDE_GAP = 1.1;
 
 const wrapD = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 const dist = (a, b) => Math.abs(wrapD(a - b));
 const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
 // level fields copied from the spec as they are (not laid out)
-const LEVEL_KEYS = ['boss', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'eagle', 'fox', 'icicles', 'eggKinds'];
+const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'fox', 'eagle', 'icicles', 'eggKinds', 'gusts'];
 
 // ---------- layout ----------
 function radii(spec) {
@@ -76,7 +79,8 @@ function layRing(spec, i, r, R, prev) {
       if (dist(a, BOTTOM) < (i === 0 ? 55 : 42)) continue;
       if (gaps.some((o) => dist(o.a, a) < 75)) continue;
       if (prev && prev.gaps.some((o) => dist(o.a, a) < 30)) continue;
-      const len = xs.length && Math.max(...xs) >= 3 && g === 0 ? 0.7 : GAP_LEN;
+      let len = xs.length && Math.max(...xs) >= 3 && g === 0 ? 0.7 : GAP_LEN;
+      if ((spec.eggKinds || []).includes('ostrich') && g === nG - 1) len = WIDE_GAP; // the last gap is the ostrich's way down
       gaps.push({ a, x: 1, len });
       ok = true;
     }
@@ -103,7 +107,7 @@ function layRing(spec, i, r, R, prev) {
   // v3: curtained gaps are no way out of a pocket, so pockets are counted on open gaps only (a floor
   // cluster sits in the arc just after an open gap); a ring with no open gap is one pocket (fire opens it)
   const big = (spec.eggKinds || []).includes('ostrich');
-  const open = gaps.filter((g) => !g.curtain && !(big && g.len < 0.74)); // an ostrich can't use a narrow gap
+  const open = gaps.filter((g) => !g.curtain && !(big && (g.len || GAP_LEN) < OSTRICH_GAP)); // an ostrich can't use a narrow gap
   const free = rs.retract || rs.motor || !gaps.length;
   const sortedG = [...gaps].sort((p, q) => p.a - q.a);
   const after = (open.length ? open : gaps.slice(0, 1)).map((g) => sortedG.indexOf(g)).sort((p, q) => p - q);
@@ -317,6 +321,9 @@ export async function evaluate(spec, L) {
   const rec = { seed: L.seed, stars, plannerT: p.t, moves: p.moves, turns: p.turns, pSaved: p.saved, pBroken: p.broken };
   const fail = (why) => ({ ok: false, why, rec: { ...rec, secs: Math.round((Date.now() - t0) / 1000) } });
   if (stars < 2 || p.moves < (spec.minMoves || 2)) return fail('medium');
+  // every special egg must be saved in the validated run, and an ostrich must have a gap it always fits
+  if (p.special.saved < p.special.total) return fail('special');
+  if ((L.eggKinds || []).includes('ostrich')) { const od = await ostrichDrops(L); rec.drops = od.join(''); if (od.includes(0)) return fail('ostrich'); }
   const ex = alignAll(L);
   rec.exploit = ex;
   if (ex >= 2 && spec.id > 2) return fail('exploit'); // L1-L2 are the gentle tutorials: lining up gaps is the lesson
@@ -332,10 +339,36 @@ export async function evaluate(spec, L) {
   Object.assign(rec, { hard: h.state === 'won' ? (h.broken === 0 ? 2 : 1) : 0, hardT: h.t, easy: e.state === 'won' ? (e.broken === 0 ? 2 : 1) : 0, secs: Math.round((Date.now() - t0) / 1000) });
   // Easy must be clearable for 2 stars (no broken egg): the star gates (I5) count on it
   if (!rec.hard || rec.easy < 2) return fail(rec.hard ? 'easy' : 'hard');
+  if (e.special.saved < e.special.total) return fail('easy-special');
   // bonus targets come from the planner's own run: a few turns more, a third more time
   if (L.bonus?.kind === 'turns' && !L.bonus.n) L.bonus = { kind: 'turns', n: p.turns + 2 };
   if (L.bonus?.kind === 'time' && !L.bonus.s) L.bonus = { kind: 'time', s: Math.ceil((p.t * 1.35) / 5) * 5 };
   return { ok: true, rec };
+}
+
+// Ostrich drop check: on every ring with gaps, at least one gap (a thorn curtain counts as burnt) lets the big egg
+// through when it is released just above it, in each of 8 orientations. Returns 1/0 per ring (rings with no gap: 1).
+export async function ostrichDrops(L0) {
+  const { Sim } = await import('../src/sim/sim.js');
+  const { Vec2 } = await import('planck');
+  return L0.rings.map((rg, i) => {
+    const gaps = (rg.gaps || []).filter((g) => !g.grate);
+    if (!gaps.length) return 1;
+    return gaps.some((g) => {
+      for (let o = 0; o < 8; o++) {
+        const L = { ...L0, eggs: 1, eggKinds: ['ostrich'], orbs: [], portals: [], snake: undefined, eagle: undefined, fox: undefined, lava: undefined, icicles: undefined, barriers: [], bossFight: undefined,
+          rings: L0.rings.map((r) => ({ ...r, thorns: [], pads: [], honey: [], gaps: (r.gaps || []).map((q) => ({ ...q, curtain: undefined, shut: undefined })) })) };
+        const sim = new Sim(L, { mode: 'medium' });
+        const e = sim.aliveEggs()[0], ring = sim.rings[i], want = -Math.PI / 2 - (g.a * Math.PI) / 180;
+        ring.body.setTransform(Vec2(0, 0), want);
+        e.body.setTransform(Vec2(0, -(ring.r - 0.42)), (o / 8) * Math.PI * 2);
+        let ok = false;
+        for (let s = 0; s < 360 && !ok; s++) { for (const r of sim.rings) r.target = r.body.getAngle(); sim.step(); ok = sim.channelOf(e) > i; }
+        if (!ok) return false;
+      }
+      return true;
+    }) ? 1 : 0;
+  });
 }
 
 async function worker(id, tries, out) {
@@ -412,9 +445,18 @@ async function main() {
   // assemble: every spec, using fresh results where we have them
   const chosen = [];
   const report = [];
+  // levels with no fresh results keep their current layout (so a few levels can be regenerated alone)
+  const { LEVELS: OLD } = await import('../src/data/levels.js').catch(() => ({ LEVELS: [] }));
   for (const spec of SPECS) {
     const f = join(OUT_DIR, `L${spec.id}.json`);
     const found = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : [];
+    const old = OLD.find((L) => L.id === spec.id);
+    if (!found.length && old && !args.includes('--strict')) {
+      for (const k of ['theme', 'name', 'eggs', 'target', 'material', 'tip', 'world', 'intro', ...LEVEL_KEYS]) if (k !== 'bonus' && spec[k] !== undefined) old[k] = spec[k];
+      chosen.push(old);
+      report.push(`L${spec.id}: kept its layout`);
+      continue;
+    }
     const c = pick(spec.id, found);
     if (!c) { report.push(`L${spec.id}: NO VALID LAYOUT`); continue; }
     // names, tips, nest and other non-layout fields always come from the current spec

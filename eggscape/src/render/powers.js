@@ -29,6 +29,8 @@ export const POWER_INFO = {
   feather: { name: 'Guardian feather', line: 'Every egg is safe for 6 s. Nothing can crack or eat them.', color: '#7fe0ff' },
   rockskin: { name: 'Rock skin', line: 'Every egg turns to stone for 6 s. Snakes can\u2019t bite stone.', color: '#8f8a84' },
   foxcurse: { name: 'Fox curse', line: 'The fox\u2019s trick! Eggs go foxy and the fuse runs double for 6 s.', color: '#ff7a1a' },
+  // v3.1
+  frost: { name: 'Frost', line: 'Brr! The ring under this egg freezes solid for 3 s.', color: '#9fe3ff' },
 };
 
 // Glass tint per orb: [highlight side, mid, deep rim]. Darker glass makes the emblem pop.
@@ -49,6 +51,7 @@ const GLASS = {
   feather: ['#e2f9ff', '#1c6f94', '#062636'],
   rockskin: ['#cfc7bd', '#4d443d', '#15110e'],
   foxcurse: ['#ffb070', '#9c3406', '#2e0a00'],
+  frost: ['#f2fcff', '#2f7fb0', '#08243a'],
 };
 const GLASS_DEFAULT = ['#e0e0e0', '#666666', '#222222'];
 
@@ -933,6 +936,29 @@ function drawEmblem(ctx, id, t) {
   else if (id === 'feather') emblemFeather(ctx, t);
   else if (id === 'rockskin') emblemRockskin(ctx, t);
   else if (id === 'foxcurse') emblemFoxcurse(ctx, t);
+  else if (id === 'frost') emblemFrost(ctx, t);
+}
+
+// v3.1 frost orb: a six-armed snowflake that turns slowly
+function emblemFrost(ctx, t) {
+  ctx.save();
+  ctx.rotate(t * 0.4);
+  ctx.lineCap = 'round';
+  for (const [w, c] of [[16, '#1d5f8a'], [9, '#ffffff']]) {
+    ctx.strokeStyle = c;
+    ctx.lineWidth = w;
+    for (let k = 0; k < 6; k++) {
+      ctx.save();
+      ctx.rotate((k / 6) * TAU);
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(0, -62);
+      ctx.moveTo(0, -30); ctx.lineTo(-17, -46); ctx.moveTo(0, -30); ctx.lineTo(17, -46);
+      ctx.moveTo(0, -48); ctx.lineTo(-11, -59); ctx.moveTo(0, -48); ctx.lineTo(11, -59);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
 }
 
 // Mystery core: swirling cloudy arms and drifting motes, no emblem.

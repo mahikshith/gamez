@@ -1321,7 +1321,7 @@ function drawAmbientList(ctx, t, A, S) {
       case 'fireflies': x = wrap(p.x * W2 + Math.sin(t * 0.33 * p.v + p.p) * 50, W2) - pad; y = p.y * h * 0.75 + h * 0.2 + Math.sin(t * 0.47 * p.v + p.p * 3) * 30; a = Math.max(0, Math.sin(t * 1.2 * p.v + p.p)) ** 2; s = 1; break;
       case 'sparkles': x = p.x * w; y = p.y * h; const ph = fract(t * 0.25 * p.v + p.p / TAU); a = Math.max(0, Math.sin(ph * Math.PI)) ** 3; s = 0.5 + a * 0.8 * p.s; break;
       case 'snow': y = wrap(p.y * H2 + t * 32 * p.v * p.s, H2) - pad; x = wrap(p.x * W2 + Math.sin(t * 0.8 * p.v + p.p) * 16 + t * 8, W2) - pad; a = 0.85; s = p.s * 0.85; break;
-      case 'blizzard': x = wrap(p.x * W2 + t * 420 * p.v, W2) - pad; y = wrap(p.y * H2 + t * 90 * p.v + Math.sin(t * 2 + p.p) * 10, H2) - pad; a = 0.75; break;
+      case 'blizzard': x = wrap(p.x * W2 + t * 45 * p.v + Math.sin(t * 0.9 * p.v + p.p) * 18, W2) - pad; y = wrap(p.y * H2 + t * 60 * p.v * p.s, H2) - pad; a = 0.8; break; // v3.1: gentle snowfall, so it never reads as a wind that pushes eggs (the Blizzard's gale has its own streaks)
       case 'sand': x = wrap(p.x * W2 + t * 160 * p.v, W2) - pad; y = p.y * h * 0.6 + h * 0.38 + Math.sin(t * 1.7 + p.p) * 12; sp = A.sp[p.k % 2]; a = 0.65; break;
       case 'embers': { const ph = fract(t * 0.09 * p.v + p.y); y = h + pad - ph * H2; x = wrap(p.x * W2 + Math.sin(t * 1.1 + p.p) * 18 + ph * 40, W2) - pad; a = Math.sin(ph * Math.PI) * (0.6 + 0.4 * Math.sin(t * 9 + p.p)); s = p.s * 0.8; break; }
       case 'bubbles': { const ph = fract(t * 0.06 * p.v + p.y); y = h + pad - ph * H2; x = wrap(p.x * W2 + Math.sin(t * 1.4 * p.v + p.p) * 10, W2) - pad; a = 0.85; s = p.s * 0.65; break; }
@@ -1330,7 +1330,6 @@ function drawAmbientList(ctx, t, A, S) {
     }
     ctx.globalAlpha = clamp(a * fade(x, y), 0, 1);
     if (rot) { ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.drawImage(sp.cv, -sp.w * s / 2, -sp.h * s / 2, sp.w * s, sp.h * s); ctx.restore(); }
-    else if (A.type === 'blizzard') { ctx.drawImage(sp.cv, x - 9 * s, y - 1.1, 18 * s, 2.2); }
     else ctx.drawImage(sp.cv, x - sp.w * s / 2, y - sp.h * s / 2, sp.w * s, sp.h * s);
     if (A.type === 'fireflies' || A.type === 'embers') { const d = A.sp[1]; ctx.drawImage(d.cv, x - d.w / 2, y - d.h / 2, d.w, d.h); }
   }
