@@ -8,6 +8,8 @@ import { EAGLE_LEN } from '../sim/sim.js';
 import { P2 } from '../sim/powers2.js'; // v3.4: shrink ray size
 import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawThornVine, drawGrate, drawOneWayMark } from './v3art.js';
 import { drawSkinPreview } from '../ui/store.js';
+import { ringPt, ringSpd, ringNormal } from '../sim/shapes.js'; // v3.3 M10 vault shapes
+import { drawShapedRing } from './shapes.js';
 
 let skin = 'classic';
 export function setSkin(id) { skin = id || 'classic'; }
@@ -90,6 +92,7 @@ export function ringColors(ring, theme) {
 export function drawRing(ctx, ring, theme, k, t, opts = {}) {
   const st = MAT_STYLE[ring.mat] || MAT_STYLE.wood;
   const col = ringColors(ring, theme);
+  if (ring.prof) return drawShapedRing(ctx, ring, theme, k, t, opts, { col, st, thorns: () => drawThorns(ctx, ring, theme, 1 / k, t, opts) }); // v3.3 M10
   const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2;
   const px = 1 / k;
   ctx.save();
@@ -650,7 +653,7 @@ export function thornBite(sim, x, y, t) {
     const A = ring.body.getAngle();
     for (const th of ring.thorns) {
       if (!th.alive) continue;
-      const r = th.tip, a = A + th.a, d = Math.hypot(r * Math.cos(a) - x, r * Math.sin(a) - y);
+      const [lx, ly] = ringPt(ring, th.a, th.tip), d = Math.hypot(lx * Math.cos(A) - ly * Math.sin(A) - x, lx * Math.sin(A) + ly * Math.cos(A) - y);
       if (d < bd) { bd = d; best = th; }
     }
   }
@@ -667,7 +670,7 @@ function drawCrumbles(ctx, ring, t, px) {
     if (c.ring !== ring) continue;
     const age = t - c.t0;
     if (age > 1.4 || age < 0) { crumbles.splice(i, 1); continue; }
-    const half = 0.13 / ring.r, P = (rad, an) => [rad * Math.cos(an), rad * Math.sin(an)];
+    const half = 0.13 / ringSpd(ring, c.a), P = (rad, an) => ringPt(ring, an, rad);
     if (age < 0.45) {
       // charring husk: orange glow fading to black, embers along the edge
       const u = age / 0.45, [x0, y0] = P(c.base, c.a - half), [x1, y1] = P(c.base, c.a + half), [x2, y2] = P(c.base + (c.tip - c.base) * (1 - 0.15 * u), c.a);
@@ -756,7 +759,7 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
     // an egg close by: the thorn bristles (reaches a little further) and quivers
     let near = 0;
     if (eggs.length) {
-      const wa = A + th.a, tx = th.tip * Math.cos(wa), ty = th.tip * Math.sin(wa);
+      const [lx, ly] = ringPt(ring, th.a, th.tip), tx = lx * Math.cos(A) - ly * Math.sin(A), ty = lx * Math.sin(A) + ly * Math.cos(A);
       for (const p of eggs) near = Math.max(near, clamp01(1 - (Math.hypot(p.x - tx, p.y - ty) - 0.35) / 0.9));
     }
     const bt = TH_BITE.get(th.key), bite = bt != null ? clamp01(1 - (t - bt) / 0.4) : 0;
@@ -764,10 +767,10 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
     const k0 = th.key * 0.73;
     const sway = (soft ? 0.07 : 0.04) * Math.sin(t * 1.6 + k0) + near * 0.07 * Math.sin(t * 31 + k0) + shiver * 0.1 * Math.sin(t * 45 + k0) + bite * 0.12 * Math.sin(t * 60);
     const e = Math.min(1.25, 0.25 + 0.75 * th.ext + 0.1 * near + 0.3 * bite * Math.sin(Math.PI * Math.min(1, (t - (bt || 0)) / 0.2)) + 0.3 * shiver);
-    const half = 0.13 / ring.r;
+    const half = 0.13 / ringSpd(ring, th.a);
     const tip = th.base + (th.tip - th.base) * e;
-    const a = th.a;
-    const P = (rad, an) => [rad * Math.cos(an), rad * Math.sin(an)];
+    const a = th.a, na = ringNormal(ring, a); // v3.3 M10: a shaped ring's thorn stands on the surface normal
+    const P = (rad, an) => ringPt(ring, an, rad);
     const [x0, y0] = P(th.base, a - half), [x1, y1] = P(th.base, a + half);
     let [x2, y2] = P(tip, a);
     if (shiver > 0) {
@@ -782,7 +785,7 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
     }
     // sway bends the tip sideways (tangentially), the base stays planted
     const L = Math.abs(tip - th.base);
-    x2 += -Math.sin(a) * L * sway; y2 += Math.cos(a) * L * sway;
+    x2 += -Math.sin(na) * L * sway; y2 += Math.cos(na) * L * sway;
     const [mx, my] = P(th.base + (tip - th.base) * 0.45, a);
     if (th.kind === 'blunt') {
       // blunt grey spike: a stubby cone with a rounded tip (cracks, never breaks)
@@ -1290,10 +1293,9 @@ export function drawDropGuide(ctx, ring, nestX, nestW, t) {
     const th = ang + g.a;
     const s = Math.sin(th), c = Math.cos(th);
     if (s > -0.25) continue;
-    const x = ring.r * c;
+    const [gx, gy] = ringPt(ring, g.a, ring.r), x = gx * Math.cos(ang) - gy * Math.sin(ang);
     const over = Math.abs(x - nestX) < nestW / 2 - 0.12;
-    const rr = ring.r + 0.3;
-    const px = rr * c, py = rr * s;
+    const [lx, ly] = ringPt(ring, g.a, ring.r + 0.3), px = lx * Math.cos(ang) - ly * Math.sin(ang), py = lx * Math.sin(ang) + ly * Math.cos(ang);
     ctx.save();
     ctx.translate(px, py);
     ctx.rotate(th - Math.PI / 2);

@@ -20,7 +20,7 @@ const srv = http.createServer((q, r) => {
     r.writeHead(200, { 'content-type': f.endsWith('.js') ? 'text/javascript' : 'text/html' });
     r.end(d);
   });
-}).listen(8768);
+}).listen(+process.env.QA_PORT || 8768); // QA_PORT: parallel runs each take their own port
 
 (async () => {
   const b = await chromium.launch();
@@ -30,7 +30,7 @@ const srv = http.createServer((q, r) => {
     const p = await b.newPage({ viewport: { width: w, height: h } });
     const errors = [];
     p.on('pageerror', (e) => errors.push(String(e)));
-    await p.goto('http://localhost:8768/');
+    await p.goto(`http://localhost:${+process.env.QA_PORT || 8768}/`);
     await p.waitForTimeout(800);
     const n = await p.evaluate(() => __egg.LEVELS.length);
     const check = async (label, fn, arg, shoot) => {
