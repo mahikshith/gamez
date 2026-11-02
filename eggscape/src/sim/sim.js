@@ -4,6 +4,7 @@ import { EGG_H, EGG_W, RING_TH, TAU, eggHull, solidArcs, wrap, clamp, rng } from
 import { v31Init, v31Step, v31State, v31Load, v31Contact, frostOrb, animalsHit } from './boss.js'; // bosses (v3.1)
 import { chickMethods, CHICK_KEYS } from './chicks.js'; // v3.2 chick kinds
 import { salMethods } from './salamander.js'; // v3.2 lava salamander
+import { seaMethods } from './sea.js'; // v3.3 octopus and fish schools
 
 export const DT = 1 / 120;
 
@@ -240,6 +241,7 @@ export class Sim {
     this.buildPredators(L);
     v31Init(this); // bosses (v3.1): boss fight, falling ice, temporary walls and ring locks
     this.salInit(L); // v3.2: lava salamander (sim/salamander.js)
+    this.seaInit(L); // v3.3: octopus and fish schools (sim/sea.js)
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
@@ -1141,6 +1143,7 @@ export class Sim {
     }
     if (!end) this.clashStep(dt);
     else this.salEndStep(dt); // v3.2: the salamander dives (win) or grins (loss); in play boss.js v31Step drives it
+    this.seaStep(dt, end); // v3.3: octopus and fish schools
     for (const b of this.barriers) if (b.alive && b.fire && (b.burn += dt / BURN_T) >= 1) this.removeBarrier(b, 'burn');
     if (this.eagle) this.eagleStep(dt); // after the level ends it flees (win) or gloats (loss)
     if (this.fox && this.state === 'play') this.foxStep(dt);
@@ -1153,7 +1156,7 @@ export class Sim {
   armored(egg) {
     return egg.stone > 0 || egg.rockskin > 0 || egg.guard > 0 || egg.bulk > 0; // v3.2: a puffed bulk chick too
   }
-  snakeProof(egg) { return this.armored(egg) || egg.fire > 0; } // a flaming egg is no snack either
+  snakeProof(egg) { return this.armored(egg) || egg.fire > 0 || egg.octo > 0; } // a flaming egg is no snack either, nor one an octopus holds
 
   // Snake (F26, G10-G13): enters from above the vault and hunts (chicks first, armoured eggs last). It
   // moves along channels and crosses a ring only through an open gap lined up with its head, so turning
@@ -2211,6 +2214,7 @@ export class Sim {
     EGG_KEYS.push('kind', 'guard', 'rockskin', 'curse', 'drop', 'lavaCD', 'fled'); // v3
     EGG_KEYS.push(...CHICK_KEYS); // v3.2 chick kinds
     EGG_KEYS.push('hotK'); // v3.2: the salamander breath that last scorched it
+    EGG_KEYS.push('octo'); // v3.3: held by octopus (id + 1)
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2238,6 +2242,7 @@ export class Sim {
       v31: v31State(this), // bosses (v3.1)
       chick: this.chickState(), // v3.2
       sal: this.salState(), // v3.2 lava salamander
+      sea: this.seaState(), // v3.3 octopus and fish
     };
   }
 
@@ -2290,6 +2295,7 @@ export class Sim {
     v31Load(sim, S.v31); // bosses (v3.1)
     sim.chickRestore(S.chick); // v3.2
     sim.salLoad(S.sal); // v3.2 lava salamander
+    sim.seaLoad(S.sea); // v3.3 octopus and fish
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2676,5 +2682,6 @@ export class Sim {
 
 Object.assign(Sim.prototype, chickMethods); // v3.2 chick kinds (sim/chicks.js)
 Object.assign(Sim.prototype, salMethods); // v3.2 lava salamander (sim/salamander.js)
+Object.assign(Sim.prototype, seaMethods); // v3.3 octopus and fish schools (sim/sea.js)
 
 export { EGG_H, EGG_W, RING_TH };
