@@ -192,7 +192,7 @@ says so. A ring geared to a one-way ring is one-way too (gen.mjs keeps its floor
 | L3, L4, L5, L7, L8 | One pair each, moving to different rings (L4 drives the curtain ring) |
 | L10 | Chain of three (rings 0-1-2) in the snake boss |
 | L12 | Pair with a one-way ring |
-| L17, L32, L33 | Chains of three |
+| L17, L32, L33 | Chains of three (L32 on rings 0-1-2: a chain through its one-way ring found no layout) |
 | L24, L29 | Pair / two pairs |
 
 Chick kinds in the campaign (K5). Each is taught alone with an intro card in a level that had none (the generator
@@ -201,9 +201,9 @@ requires the strong player to actually use the tap there), then comes back at le
 | Kind | Taught | Reused |
 |---|---|---|
 | Glow | L9 (two snakes) | L13, L28, L35 |
-| Pick | L14 (solid hard-ice ring; a swirl makes a new orb every 9 s) | L15, L31, L34 (hard-ice rings) |
+| Pick | L14 (hard-ice ring with one far gap; a swirl makes a new orb every 9 s) | L31, L34 (solid hard-ice rings). L15 (Blizzard) found no layout with ice and keeps its old one: needs a third reuse later |
 | Bulk | L18 (Ostrich Run, glass) | L20, L29, L33 |
-| Swoop | L19 (adds a curtain) | L24, L32, L35 |
+| Swoop | L19 (adds a curtain; the tap is optional there, the planner never needed it) | L24, L32, L35 |
 | Dash | L23 (snake and salamander) | L28, L30, L33 |
 
 Coverage (K2): `node tools/coverage.mjs [--matrix]` lists where each mechanic is taught and reused, and fails when one
