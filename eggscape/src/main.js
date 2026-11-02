@@ -1664,7 +1664,7 @@ function render() {
     ctx.save();
     if (ring.denied > 0) ctx.rotate(Math.sin(t * 60) * 0.01 * ring.denied);
     W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck });
-    W.drawV3Ring(ctx, ring, k, t);
+    W.drawV3Ring(ctx, ring, k, t, G.theme);
     drawHardIce(ctx, ring, k, t); // v3.2
     ctx.restore();
   }

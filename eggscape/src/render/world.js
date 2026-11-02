@@ -716,8 +716,32 @@ function drawCrumbles(ctx, ring, t, px) {
   }
 }
 
+// Thorn colours per world, picked by contrast (mykee: red thorns vanish on red or dark backdrops). Light worlds keep
+// the classic red thorn; dark, red or pink worlds get pale bone thorns with a red tip, so the danger colour stays
+// but the shape pops. Blunt spikes go dark steel on grey rings so they never melt into stone or metal.
+const TH_RED = { fill: '#d23a3a', edge: '#3a0d0d', hl: 'rgba(255,220,200,0.8)', tip: null, tint: 0.35 };
+const TH_BONE = { fill: '#f6ecd6', edge: '#1c0809', hl: 'rgba(255,255,255,0.95)', tip: '#ff2e4a', tint: 0 };
+const TH_LOOK = new Map();
+const hexRgb = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return [0.5, 0.5, 0.5]; const n = parseInt(m[1], 16); return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
+const luma = (h) => { const [r, g, b] = hexRgb(h).map((v) => (v <= 0.04 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const reddish = (h) => { const [r, g, b] = hexRgb(h); return r > 0.45 && r > g * 1.45 && r > b * 1.25; }; // red or pink
+const sunset = (h) => { const [r, g, b] = hexRgb(h); return r > 0.7 && r > g * 1.15 && b < 0.5; }; // an orange sky
+export function thornLook(theme, mat) {
+  const key = (theme?.id || '') + '|' + (mat || '');
+  let L = TH_LOOK.get(key);
+  if (L) return L;
+  const P = theme?.palette || {}, ring = RING_MAT_BASE[mat] || P.ring?.base || '#8f8a83';
+  const bg = (luma(P.skyTop) + luma(P.skyBottom)) / 2;
+  const bone = bg < 0.12 || luma(ring) < 0.05 || reddish(P.skyTop) || reddish(P.skyBottom) || sunset(P.skyTop) || sunset(P.skyBottom) || reddish(ring) || reddish(P.ground);
+  const [r, g, b] = hexRgb(ring), grey = Math.max(r, g, b) - Math.min(r, g, b) < 0.12;
+  L = { ...(bone ? TH_BONE : TH_RED), blunt: grey ? ['#4a515b', '#14171b', 'rgba(220,230,240,0.85)'] : ['#8d939b', '#2f3338', 'rgba(235,240,245,0.7)'] };
+  TH_LOOK.set(key, L);
+  return L;
+}
+const RING_MAT_BASE = { wood: '#b9854e', stone: '#8f8a83', ice: '#8fcbea', glass: '#5ec9c4', metal: '#8f99a5', cloud: '#aab3c6', obsidian: '#3b3443', vine: '#4f8a3a', mushroom: '#c2508f', coral: '#ec6f61', bone: '#cfc4ab', gold: '#d6a12c', brass: '#b8873a' };
+
 function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
-  const c = theme?.palette?.thorn || '#3a2a2a';
+  const c = theme?.palette?.thorn || '#3a2a2a', look = thornLook(theme, ring.mat);
   const A = ring.body.getAngle(), eggs = opts.eggs || [];
   const soft = ring.mat === 'vine' || ring.mat === 'wood' || !ring.mat;
   // a retracting ring: how long until its thorns spring back out (they shiver for the last 0.5 s)
@@ -768,12 +792,12 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
       ctx.quadraticCurveTo(x2 + (x2 - mx) * 0.25, y2 + (y2 - my) * 0.25, t1x, t1y);
       ctx.lineTo(x1, y1);
       ctx.closePath();
-      ctx.fillStyle = '#8d939b';
+      ctx.fillStyle = look.blunt[0];
       ctx.fill();
       ctx.lineWidth = Math.max(2 * px, 0.022);
-      ctx.strokeStyle = '#2f3338';
+      ctx.strokeStyle = look.blunt[1];
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(235,240,245,0.7)';
+      ctx.strokeStyle = look.blunt[2];
       ctx.lineWidth = Math.max(px, 0.01);
       ctx.beginPath();
       ctx.moveTo(x0 * 0.6 + t0x * 0.4, y0 * 0.6 + t0y * 0.4);
@@ -787,23 +811,40 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
     ctx.quadraticCurveTo(mx + (y1 - y0) * 0.12, my - (x1 - x0) * 0.12, x2, y2);
     ctx.quadraticCurveTo(mx - (y1 - y0) * 0.05, my + (x1 - x0) * 0.05, x1, y1);
     ctx.closePath();
-    ctx.fillStyle = '#d23a3a';
+    ctx.fillStyle = look.fill;
     ctx.fill();
-    ctx.lineWidth = Math.max(2 * px, 0.022);
-    ctx.strokeStyle = '#3a0d0d';
-    ctx.stroke();
-    // inner shade with theme tint
+    if (look.tip) {
+      // bone thorns keep a red tip: the danger colour, on a shape that pops
+      ctx.beginPath();
+      ctx.moveTo(x0 + (x2 - x0) * 0.55, y0 + (y2 - y0) * 0.55);
+      ctx.lineTo(x2, y2);
+      ctx.lineTo(x1 + (x2 - x1) * 0.55, y1 + (y2 - y1) * 0.55);
+      ctx.closePath();
+      ctx.fillStyle = look.tip;
+      ctx.fill();
+    }
     ctx.beginPath();
     ctx.moveTo(x0, y0);
-    ctx.lineTo(x2, y2);
-    ctx.lineTo((x0 + x1) / 2, (y0 + y1) / 2);
+    ctx.quadraticCurveTo(mx + (y1 - y0) * 0.12, my - (x1 - x0) * 0.12, x2, y2);
+    ctx.quadraticCurveTo(mx - (y1 - y0) * 0.05, my + (x1 - x0) * 0.05, x1, y1);
     ctx.closePath();
-    ctx.fillStyle = c;
-    ctx.globalAlpha = 0.35;
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.lineWidth = Math.max(2 * px, 0.022);
+    ctx.strokeStyle = look.edge;
+    ctx.stroke();
+    // inner shade with theme tint
+    if (look.tint) {
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x2, y2);
+      ctx.lineTo((x0 + x1) / 2, (y0 + y1) / 2);
+      ctx.closePath();
+      ctx.fillStyle = c;
+      ctx.globalAlpha = look.tint;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     // highlight
-    ctx.strokeStyle = 'rgba(255,220,200,0.8)';
+    ctx.strokeStyle = look.hl;
     ctx.lineWidth = Math.max(px, 0.01);
     ctx.beginPath();
     ctx.moveTo(x0 * 0.7 + x2 * 0.3, y0 * 0.7 + y2 * 0.3);
@@ -1673,14 +1714,14 @@ function onRing(ctx, k, rad, ang, draw) {
 }
 
 // Ring extras: thorn curtains, grates, molten holes, one-way chevrons. ctx in world space (not rotated).
-export function drawV3Ring(ctx, ring, k, t) {
+export function drawV3Ring(ctx, ring, k, t, theme) {
   const A = ring.body.getAngle(), r = ring.r;
   for (const g of ring.gaps) {
     if (g.grate) onRing(ctx, k, r, A + g.a, () => drawGrate(ctx, 0, 0, g.len * k, RING_TH * k, t));
     if (g.narrow) onRing(ctx, k, r, A + g.a, () => drawNarrowBar(ctx, g.len * k, RING_TH * k));
     const C = g.curtain;
     if (C && C.vine) { // v3.3 thorn vine: creeping across, or sealed (fire burns it back)
-      onRing(ctx, k, r, A + g.a, () => drawThornVine(ctx, g.len * k, RING_TH * k, C.u, t, C.alive, C.alive ? C.burn : 0));
+      onRing(ctx, k, r, A + g.a, () => drawThornVine(ctx, g.len * k, RING_TH * k, C.u, t, C.alive, C.alive ? C.burn : 0, thornLook(theme, ring.mat)));
       continue;
     }
     if (C && (C.alive || C.burn < 1)) {
