@@ -5,6 +5,7 @@ import { v31Init, v31Step, v31State, v31Load, v31Contact, frostOrb, animalsHit }
 import { chickMethods, CHICK_KEYS } from './chicks.js'; // v3.2 chick kinds
 import { salMethods } from './salamander.js'; // v3.2 lava salamander
 import { frogMethods } from './frog.js'; // v3.3 frog
+import { allyMethods } from './allies.js'; // v3.4 farm allies (rooster, goose)
 
 export const DT = 1 / 120;
 
@@ -242,6 +243,7 @@ export class Sim {
     v31Init(this); // bosses (v3.1): boss fight, falling ice, temporary walls and ring locks
     this.salInit(L); // v3.2: lava salamander (sim/salamander.js)
     this.frogInit(L); // v3.3: frog (sim/frog.js)
+    this.allyInit(L); // v3.4: farm allies (sim/allies.js)
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
@@ -555,6 +557,7 @@ export class Sim {
       this.emit('orbSpawn', { power: type, x: o.x, y: o.y });
     });
     this.predStep(dt);
+    this.allyStep(dt); // v3.4: after the animals move, so a knocked-out one stays knocked out
     this.chickStep(dt); // v3.2 chick kinds
     this.frogStep(dt); // v3.3 frog
     if (this.weather && this.state === 'play') this.weatherStep(dt);
@@ -2243,6 +2246,7 @@ export class Sim {
       chick: this.chickState(), // v3.2
       sal: this.salState(), // v3.2 lava salamander
       frog: this.frogState(), // v3.3 frog
+      ally: this.allyState(), // v3.4 farm allies
     };
   }
 
@@ -2296,6 +2300,7 @@ export class Sim {
     sim.chickRestore(S.chick); // v3.2
     sim.salLoad(S.sal); // v3.2 lava salamander
     sim.frogLoad(S.frog); // v3.3 frog
+    sim.allyLoad(S.ally); // v3.4 farm allies
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2683,5 +2688,6 @@ export class Sim {
 Object.assign(Sim.prototype, chickMethods); // v3.2 chick kinds (sim/chicks.js)
 Object.assign(Sim.prototype, salMethods); // v3.2 lava salamander (sim/salamander.js)
 Object.assign(Sim.prototype, frogMethods); // v3.3 frog (sim/frog.js)
+Object.assign(Sim.prototype, allyMethods); // v3.4 farm allies (sim/allies.js)
 
 export { EGG_H, EGG_W, RING_TH };

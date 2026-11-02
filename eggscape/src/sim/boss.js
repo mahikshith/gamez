@@ -134,6 +134,19 @@ export function animalsHit(sim, kind, o = {}) {
   return n;
 }
 
+// The rooster's crow: the boss reels for T s and skips its next attack (the one it is winding up is cancelled, otherwise the
+// next one in its list is skipped). An attack already going off finishes.
+export function bossStun(sim, T) {
+  const B = sim.bx && sim.bx.boss;
+  if (!B) return false;
+  const ph = bossPhases(sim)[B.phase] || {}, every = (ph.every || 6) * M_(sim).every;
+  if (B.atk && B.atk.ph === 'warn' && B.atk.name !== 'icicles') { B.atk = null; B.t = T; }
+  else { B.k++; if (!B.atk) B.t = Math.max(T, B.t + every); }
+  B.dizzy = Math.max(B.dizzy, T);
+  sim.emit('bossStun', { kind: B.kind, x: B.x, y: B.y, t: T });
+  return true;
+}
+
 // ---------- falling ice
 // Spot straight above p where a ring is solid (an icicle can hang there), within 3.4 m.
 function ceilingAbove(sim, p) {
