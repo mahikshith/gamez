@@ -22,7 +22,9 @@ import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar,
 import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
 import { CHICK_DEMOS } from './data/chick-demos.js';
+import { FROG_DEMO } from './data/frog-demo.js'; // v3.3 frog studio level (dev)
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
+import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render/frog.js'; // v3.3 frog
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 // playtest build (build.mjs --test): every level, booster and skin unlocked, plenty of coins
@@ -1064,6 +1066,7 @@ function handleEvents() {
         bossEvent(ev, fx); // bosses (v3.1)
         chickEvent(ev, fx, { popup, audio, toast }); // v3.2 chick kinds
         salEvent(ev, fx); // v3.2 lava salamander
+        frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, 3.2); } } }); // v3.3 frog
         break;
       case 'won':
         onWin();
@@ -1707,6 +1710,8 @@ function render() {
   drawBossUnder(ctx, sim, k, t);
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
   drawSalamanders(ctx, sim, t, k); // v3.2: the lava salamander walks the floor, under the eggs
+  drawFrogTele(ctx, sim, k, t); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
+  drawFrogs(ctx, sim, t, k);
   for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
   drawChickFX(ctx, sim, t, k);
   W.drawSnakes(ctx, sim, t, k); // predators (v3)
@@ -2438,6 +2443,7 @@ if (DEV) window.__egg = {
   get sim() { return G.sim; },
   start: (i, o) => startLevel(i, o),
   CHICK_DEMOS,
+  startFrog(o = {}) { G.demo = FROG_DEMO; startLevel(-2, o); }, // v3.3 frog studio level
   startDemo(kind, o = {}) { G.demo = CHICK_DEMOS.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos
   press,
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
@@ -2446,6 +2452,8 @@ if (DEV) window.__egg = {
   snakeArt: drawSnake, // palette strips
   snAnim: W.snAnim,
   salAnim, // v3.2: the salamander's last drawn feet (QA strips)
+  frogAnim, // v3.3: the frog's eased looks (QA strips)
+  frogArt: drawFrog, // v3.3: pose gallery (QA strips)
   handle: () => handleEvents(),
   overlaps: () => G.overlaps,
   setSave(s) { loadSave(s); },
