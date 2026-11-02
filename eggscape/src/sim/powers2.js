@@ -71,7 +71,9 @@ export const p2Methods = {
       beams: [], fx: {}, pads: [], n: 0,
     };
     this.p2d = null; // the decoy's body ({decoy, id, alive, chick, body}); its plain state is p2.decoy
-    // narrow gaps get a bar only an iron egg feels (switched in p2Pass); drawn while iron is on
+    // narrow gaps get a bar only an iron egg feels (switched in p2Pass); drawn while iron is on.
+    // Only in levels that can hand out Iron Shell: extra ring fixtures change the physics of every other level.
+    if (!JSON.stringify(this.level || {}).includes('"iron"')) return;
     for (const ring of this.rings) {
       const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2;
       for (const g of ring.gaps) {
