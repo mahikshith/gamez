@@ -192,6 +192,7 @@ export const p2Methods = {
     if (this.p2Eagle()) this.p2EagleHit(kind, T);
     if (this.fox) this.p2Fox(kind, T);
     this.p2Boss(kind, T);
+    this.seaP2?.(kind, T); // v3.5: the octopus (sim/sea.js): frozen, or stunned
   },
   p2Snakes() { return this.snakes.filter((S) => !S.gone && S.inside && S.pts.length > 1 && !S.carried && !(S.flee >= 0)); },
   p2Sals() { return (this.sals || []).filter((C) => this.salLive(C) && C.ph !== 'in' && C.ph !== 'dive' && C.ph !== 'grin'); },
