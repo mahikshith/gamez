@@ -5,7 +5,7 @@
 // and the review strips share one code path. drawAllies() paints the live ally from sim.ally (render only; the state is
 // in sim/allies.js and allyPlace() there says where it is).
 import { ALLY, allyPlace, flingAt } from '../sim/allies.js';
-import { drawHen } from './characters.js';
+import { drawHenAnim } from './hen.js';
 import { drawFoxActor } from './sprites.js';
 
 const TAU = Math.PI * 2;
@@ -477,5 +477,6 @@ export function drawAllies(ctx, sim, t, k) {
   try { drawAllyAct(ctx, act, sim.outerR, sim.groundY, k, true); } catch (e) { /* art never breaks the frame */ }
 }
 
-// QA: what the strips draw (hen for scale too)
+// QA: what the strips draw (the game's hen for scale too, facing right like them, held still)
+const drawHen = (ctx, cx, cy, s, mood = 'idle', t = 0) => drawHenAnim(ctx, mood, cx, cy, s, t, { key: 'ally-qa', face: 1, calm: true });
 export const ALLY_ART = { drawRooster, drawGoose, roosterPose, goosePose, drawAllyAct, drawHen, ALLY, allyPlace, SIZE };
