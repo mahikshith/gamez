@@ -192,6 +192,12 @@ export const p2Methods = {
     if (this.p2Eagle()) this.p2EagleHit(kind, T);
     if (this.fox) this.p2Fox(kind, T);
     this.p2Boss(kind, T);
+    for (const S of this.schools || []) this.p2Fish(S, kind, T);
+  },
+  // fish schools: frozen by ice, stunned by lightning; they just carry on for the rest
+  p2Fish(S, kind, T) {
+    const at = this.fishXY(S);
+    if (kind === 'ice' ? this.fishFreeze(S, T) : kind === 'bolt' ? this.fishStun(S, Math.min(T, P2.thunderclap.stun), true) : false) this.emit('p2Hit', { kind: kind === 'ice' ? 'ice' : 'zap', x: at.x, y: at.y });
   },
   p2Snakes() { return this.snakes.filter((S) => !S.gone && S.inside && S.pts.length > 1 && !S.carried && !(S.flee >= 0)); },
   p2Sals() { return (this.sals || []).filter((C) => this.salLive(C) && C.ph !== 'in' && C.ph !== 'dive' && C.ph !== 'grin'); },
@@ -229,8 +235,8 @@ export const p2Methods = {
 
   p2Sal(C, kind, T) {
     const f = C.boss ? BOSS_RESIST : 1, h = C.pts[0], key = 'c' + C.id;
-    if (kind === 'ice') { this.salDaze(C, T * f * FIRE_RESIST); this.p2Mark(key, 'ice', T * f * FIRE_RESIST, h.x, h.y); }
-    else if (kind === 'bolt') { this.salDaze(C, P2.thunderclap.big * f); this.p2Mark(key, 'zap', 1.2, h.x, h.y); }
+    if (kind === 'ice') { this.salDaze(C, T * f * FIRE_RESIST, 'frost'); this.p2Mark(key, 'ice', T * f * FIRE_RESIST, h.x, h.y); }
+    else if (kind === 'bolt') { this.salDaze(C, P2.thunderclap.big * f, 'bolt'); this.p2Mark(key, 'zap', 1.2, h.x, h.y); }
     else if (kind === 'pepper' || kind === 'scare' || kind === 'zap') { this.p2SalFlee(C, T * f); this.p2Mark(key, kind === 'scare' ? 'scare' : kind === 'zap' ? 'zap' : 'pep', Math.min(T * f, 3), h.x, h.y); }
     else if (kind === 'spin') {
       // it grips both walls: flung to the outermost channel, dizzy
@@ -239,7 +245,7 @@ export const p2Methods = {
       this.salDaze(C, 1.5 * (C.boss ? 0.6 : 1));
       this.p2Mark(key, 'spin', 1, h.x, h.y);
     } else if (kind === 'out') {
-      if (C.boss) { this.salDaze(C, 2.5); this.p2Mark(key, 'ice', 2.5, h.x, h.y); return; }
+      if (C.boss) { this.salDaze(C, 2.5, 'frost'); this.p2Mark(key, 'ice', 2.5, h.x, h.y); return; }
       this.salRelease(C);
       this.emit('p2Fling', { who: 'sal', x: h.x, y: h.y, x2: h.x * 1.6, y2: h.y * 1.6 + 1 });
       C.ph = 'wait'; C.t = T; C.climb = null; // it walks back in where it first came in
@@ -257,7 +263,7 @@ export const p2Methods = {
     const E = this.eagle, f = BIG;
     if (kind === 'ice' || kind === 'bolt' || kind === 'out') {
       const t = kind === 'out' ? T : kind === 'bolt' ? P2.thunderclap.big : T * f;
-      if (E.phase === 'dazed') E.t = Math.max(E.t, t); else { this.eagleDaze(kind === 'bolt' ? 'bolt' : 'frost'); E.t = t; }
+      if (E.phase === 'dazed') { E.t = Math.max(E.t, t); if (kind === 'ice') E.dk = 'frost'; } else { this.eagleDaze(kind === 'bolt' ? 'bolt' : 'frost'); E.t = t; }
       this.p2Mark('e', kind === 'bolt' ? 'zap' : 'ice', t, E.x, E.y);
     } else if (kind === 'pepper' || kind === 'scare' || kind === 'zap' || kind === 'spin') {
       if (E.carry || E.phase === 'carry') { this.eagleDaze('pepper'); E.t = 1.2; }
@@ -595,6 +601,7 @@ export const p2Methods = {
     // the salamander walks mid-channel gripping both walls, so it touches a ring from a little further out
     const nearSal = (q) => Math.abs(Math.hypot(q.x, q.y) - R) < touch + 0.2;
     for (const C of this.p2Sals()) if (!P.fx['c' + C.id] && C.pts.some((q, i) => i % 3 === 0 && nearSal(q))) this.p2Sal(C, 'zap', T);
+    for (const S of this.schools || []) if (!(S.sn > 0 || S.fz > 0) && S.f.some((f) => Math.abs(f.r - R) < touch + 0.25)) this.p2Fish(S, 'bolt', 2.5);
     if (P.shockR !== this.rings.length - 1) return; // the eagle, the fox and the bosses only meet the outer ring
     const E = this.p2Eagle();
     if (E && !P.fx.e && Math.abs(Math.hypot(E.x, E.y) - R) < 0.9) { this.eagleDaze('shock'); E.t = 2.5; this.p2Mark('e', 'zap', 1.5, E.x, E.y); }

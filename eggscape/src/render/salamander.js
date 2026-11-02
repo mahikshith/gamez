@@ -8,6 +8,7 @@
 // ctx is in world space (meters, y up) for both.
 import { drawCrawler, crawlerAnim } from './crawlers.js';
 import { drawVenom } from './v3art.js';
+import { statusClock } from './status.js';
 import { RING_TH, TAU } from '../sim/geom.js';
 import { SAL } from '../sim/salamander.js';
 
@@ -135,8 +136,11 @@ export function drawSalamanders(ctx, sim, t, k) {
     const dt = clamp(t - R.t, 0, 0.1);
     R.t = t;
     const W = poseOf(C);
+    // daze: frozen (a frost nova, a frost boss) holds the pose it was caught in, mid-stride; anything else is a stun (lightning also zaps first)
+    const st = statusClock(sim, 'c' + C.id, C.ph === 'daze' ? (C.dk === 'frost' ? { k: 'ice', left: C.t } : { k: 'stun', zap: C.dk === 'bolt', left: C.t }) : null, t);
+    const frozen = st && st.k === 'ice';
     if (fresh) for (let i = 0; i < 12; i++) R.A.update(0.1, { pose: W.pose, p: W.p, speed: 0 }); // no blend-in on the first frame
-    else R.A.update(dt, { pose: W.pose, p: W.p, speed: 0 });
+    else if (!frozen) R.A.update(dt, { pose: W.pose, p: W.p, speed: 0 });
     const B = R.A.st.B;
     const coolT = C.cool > 0.8 ? 1 : C.cool / 0.8;
     R.cool += (coolT - R.cool) * Math.min(1, dt * 4);
@@ -180,7 +184,7 @@ export function drawSalamanders(ctx, sim, t, k) {
     }
     ctx.save();
     ctx.globalAlpha = alpha;
-    pxSpace(ctx, 0, 0, k, () => drawCrawler(ctx, P[0].x, P[0].y, s, t, o, 'salamander'));
+    pxSpace(ctx, 0, 0, k, () => drawCrawler(ctx, P[0].x, P[0].y, s, frozen ? st.hold : t, { ...o, status: st }, 'salamander'));
     ctx.restore();
     // a face-off: the snake's venom in flight at it
     if (C.ph === 'rival') {

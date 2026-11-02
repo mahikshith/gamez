@@ -966,7 +966,7 @@ function handleEvents() {
         const sp = toScreen(ev.x, ev.y);
         G.weather.trigger('lightning', { sx: sp.x, sy: sp.y });
         fx.flash = 0.5;
-        fx.flashColor = '#e8f4ff';
+        fx.flashColor = '#a9bdff';
         fx.shake = Math.max(fx.shake, 0.4);
         fx.chips(ev.x, ev.y, '#dff3ff', 10, 3);
         break;

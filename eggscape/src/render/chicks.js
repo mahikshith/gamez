@@ -1113,7 +1113,7 @@ export function drawChickFX(ctx, sim, t, k) {
       const u = clamp(1 - e.powT / 0.7, 0, 1), R = GLOW_R * (0.25 + 0.75 * Math.sqrt(u)), a = 1 - u;
       const x = e.powX ?? p.x, y = e.powY ?? p.y;
       const g = ctx.createRadialGradient(x, y, 0, x, y, R);
-      g.addColorStop(0, `rgba(255,255,235,${0.85 * a})`);
+      g.addColorStop(0, `rgba(255,236,120,${0.85 * a})`);
       g.addColorStop(0.6, `rgba(255,236,120,${0.45 * a})`);
       g.addColorStop(1, 'rgba(255,220,90,0)');
       ctx.fillStyle = g;
@@ -1122,7 +1122,12 @@ export function drawChickFX(ctx, sim, t, k) {
       ctx.fill();
       // the shock ring and rays
       ctx.lineWidth = Math.max(3 * px, 0.05 * a);
-      ctx.strokeStyle = `rgba(255,255,255,${a})`;
+      ctx.strokeStyle = `rgba(70,40,0,${0.8 * a})`; ctx.lineWidth = Math.max(5 * px, 0.08 * a);
+      ctx.beginPath();
+      ctx.arc(x, y, R, 0, TAU);
+      ctx.stroke();
+      ctx.lineWidth = Math.max(3 * px, 0.05 * a);
+      ctx.strokeStyle = `rgba(255,210,50,${a})`;
       ctx.beginPath();
       ctx.arc(x, y, R, 0, TAU);
       ctx.stroke();
@@ -1220,7 +1225,7 @@ export function chickEvent(ev, fx, api) {
       audio.play('thunder', { pitch: 1.6, vol: 0.8 });
       audio.play('fire_ignite', { pitch: 1.4 });
       fx.flash = Math.max(fx.flash || 0, 0.55);
-      fx.flashColor = '#fff6c8';
+      fx.flashColor = '#ffd84a';
       fx.sparkle(ev.x, ev.y, 24, '#fff2a0');
       fx.shake = Math.max(fx.shake, 0.3);
       popup(ev.x, ev.y + 0.75, 'FLASH!', { sub: ev.n ? `${ev.n} thorns burnt` : '', color: '#fff27a', size: 28, life: 1.1 });

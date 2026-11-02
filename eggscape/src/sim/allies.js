@@ -225,6 +225,7 @@ export const allyMethods = {
       n++;
     }
     for (const C of this.sals || []) if (this.salLive(C) && C.ph !== 'dive' && C.ph !== 'grin') { this.salDaze(C, C.boss ? TB : T); n++; }
+    for (const S of this.schools || []) if (this.fishStun(S, T, false)) n++;
     const E = this.allyEagle();
     if (E) { this.hitEagle('crow', {}); if (E.phase === 'dazed') E.t = bk === 'eagle' ? TB : T; n++; }
     const F = this.allyFox();

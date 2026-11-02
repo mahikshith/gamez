@@ -25,8 +25,12 @@
 //   opts.dive     px past a lava hole (salamander 'flee'): the hole sits this far behind the snout
 //   opts.fireLen  fire jet length in units of s/100
 //   opts.id       keeps per-creature face orientation stable (the face flips to stay upright on screen)
+//   opts.status   creature state from status.js statusClock(): { k: 'ice' | 'thaw' | 'stun', ... }. Frozen: the caller holds t and
+//                 the gait; the art tints icy and wraps itself in an ice shell. Stunned: use pose 'dazed' (spiral eyes, stars).
 //   opts.out      optional object; receives feet [{x, y, lift}], fire tip, tongue tip, thorn {x, y, k}
 // In game: s = SPECIES[name].svl * k (k = px per metre).
+
+import { statusDraw, dizzyStars } from './status.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -328,8 +332,20 @@ export function drawCrawler(ctx, x, y, s, t = 0, opts = {}, species = 'salamande
   opts = opts || {};
   ctx.save();
   try {
-    useSpecies(sp);
-    drawBody(ctx, x, y, s, t, opts);
+    const st = opts.status, U = s / 100;
+    if (st && (st.k === 'ice' || st.k === 'thaw' || (st.k === 'stun' && st.zap >= 0))) {
+      // an icy / zapped crawler: its own art goes through the shared state look (status.js). Box = the walked path, padded
+      const pts = [];
+      if (typeof opts.trail === 'function') for (let d = 0; d <= sp.len * U; d += 6 * U) pts.push(opts.trail(d));
+      pts.push({ x, y }, { x: x - Math.cos(opts.heading || 0) * sp.len * U, y: y - Math.sin(opts.heading || 0) * sp.len * U }); // the body trails behind the snout
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+      const pad = 34 * U, o2 = st.k === 'stun' ? opts : { ...opts, blink: 0.5, noShadow: 1 };
+      statusDraw(ctx, { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + pad }, (c) => { useSpecies(sp); drawBody(c, x, y, s, t, o2); }, st, { off: Math.max(3, 4 * U), crys: Math.max(1, U * 1.1) });
+    } else {
+      useSpecies(sp);
+      drawBody(ctx, x, y, s, t, opts);
+    }
   } catch (e) {
     if (opts.debug) throw e; // art must never break the frame (QA tools pass debug to see errors)
   }
@@ -490,7 +506,7 @@ function drawBody(ctx, x0, y0, s, t, opts) {
     const f = (U_HIP - i * DU) / U_HIP, k = P.rear * f * f;
     bx[i] += 7 * U * k; by[i] += 9 * U * k;
   }
-  if (P.melt < 0.5) {
+  if (P.melt < 0.5 && !opts.noShadow) {
     ctx.fillStyle = `rgba(0,0,0,${(0.3 - 0.08 * P.rear) * (1 - camo * 0.6)})`;
     ctx.beginPath();
     outlineFrom(ctx, P.melt > 0 || P.roll > 0 ? sx : bx, P.melt > 0 || P.roll > 0 ? sy : by, so, so * 1.25, 1);
@@ -586,7 +602,7 @@ function drawBody(ctx, x0, y0, s, t, opts) {
   const hb = spAt(U_HEAD + 12);
   const hcx = hc.x, hcy = hc.y;
   let ha = Math.atan2(hcy - hb.y, hcx - hb.x) + (opts.aim || 0);
-  ha += Math.sin(t * 3.1) * 0.28 * P.dazed;
+  ha += (Math.sin(t * 1.7) * 0.2 + 0.1 * Math.sin(t * 0.9 + 1)) * P.dazed; // slack: the head lolls slowly
   if (P.shake) ha += Math.sin(t * 31) * 0.05 * P.shake;
   if (P.sick) ha += Math.sin(t * 13) * 0.12 * P.sick;
   const hs = (SP.head.scale + 0.3 * P.rear) * U * (1 - 0.2 * P.melt);
@@ -596,6 +612,7 @@ function drawBody(ctx, x0, y0, s, t, opts) {
   if (upness > 0.3) fu = 1; else if (upness < -0.3) fu = -1;
   faceUp[id] = fu;
   ctx.globalAlpha = 1;
+  if (P.dazed > 0.3) dizzyStars(ctx, hcx, hcy - 10 * U, 30 * U, 10 * U, t, { layer: 'back', size: 9.5 * U, fade: clamp((P.dazed - 0.3) / 0.4, 0, 1) });
   if (P.melt > 0.75) { // only the eyes float on the puddle
     ctx.save();
     ctx.translate(hcx, hcy + 6 * U * P.melt);
@@ -638,7 +655,7 @@ function drawBody(ctx, x0, y0, s, t, opts) {
   // ---- steam (cooling, melting), frost breath, dizzy stars
   if (P.steam > 0.01) drawSteam(ctx, U, t, P.steam * (opts.steam !== undefined ? opts.steam : 1));
   if (P.frost > 0.01 || SP === SPECIES.gecko) drawFrostBreath(ctx, hcx + ca * 16 * hs, hcy + sa * 16 * hs, ha, U, t, 0.4 + 0.6 * P.frost);
-  if (P.dazed > 0.3) drawStars(ctx, hcx, hcy, U, t);
+  if (P.dazed > 0.3) dizzyStars(ctx, hcx, hcy - 10 * U, 30 * U, 10 * U, t, { layer: 'front', size: 9.5 * U, fade: clamp((P.dazed - 0.3) / 0.4, 0, 1) });
 }
 
 // Foot position for one leg: planted feet sit at a fixed spot on the walked path (no sliding); a swinging
@@ -1628,29 +1645,6 @@ function drawPuddle(ctx, c, U, k, t, K) {
   }
   ctx.fill();
   ctx.stroke();
-  ctx.restore();
-}
-
-function drawStars(ctx, hx, hy, U, t) {
-  ctx.save();
-  ctx.lineJoin = 'round';
-  for (let i = 0; i < 3; i++) {
-    const a = t * 3.2 + (i * TAU) / 3;
-    const X = hx + Math.cos(a) * 22 * U, Y = hy + Math.sin(a) * 12 * U - 6 * U;
-    const r = (5.4 + 1.2 * Math.sin(a)) * U;
-    ctx.beginPath();
-    for (let j = 0; j < 10; j++) {
-      const rr = j % 2 ? r * 0.45 : r, b = -Math.PI / 2 + (j * Math.PI) / 5 + t * 2;
-      const px = X + Math.cos(b) * rr, py = Y + Math.sin(b) * rr;
-      if (j) ctx.lineTo(px, py); else ctx.moveTo(px, py);
-    }
-    ctx.closePath();
-    ctx.fillStyle = '#ffe14a';
-    ctx.fill();
-    ctx.lineWidth = Math.max(1, 0.9 * U);
-    ctx.strokeStyle = '#5a3008';
-    ctx.stroke();
-  }
   ctx.restore();
 }
 

@@ -9,6 +9,7 @@ import { isSpriteCalm, drawFoxActor } from './sprites.js';
 import { drawFox } from './characters.js';
 import { drawIcicle } from './v3art.js';
 import { drawOrb } from './powers.js';
+import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
 
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { /* art never breaks the frame */ } ctx.restore(); };
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -455,22 +456,27 @@ function cloudFace(B, warnU, acting) {
   return 'idle';
 }
 function drawCloudBoss(ctx, sim, B, Q, k, t, warnU, acting, calm) {
-  const s = Q.h * k, face = cloudFace(B, warnU, acting), dir = Q.dir;
+  // frozen (frost nova, frost boss power) holds its pose in an ice shell; stunned reels slack, spiral eyes, stars (a bolt zaps first)
+  const fxb = sim.p2 && sim.p2.fx && sim.p2.fx.b, iced = B.dizzy > 0 && ((fxb && fxb.k === 'ice') || statusKind('b') === 'ice');
+  const st = statusClock(sim, 'b', iced ? { k: 'ice', left: B.dizzy } : B.dizzy > 0 ? { k: 'stun', zap: !!(fxb && fxb.k === 'zap'), left: B.dizzy } : null, t);
+  const frozen = st && st.k === 'ice';
+  if (frozen) { t = st.hold; calm = true; }
+  const s = Q.h * k, face = frozen ? 'idle' : cloudFace(B, warnU, acting), dir = Q.dir;
   let swell = 1, sy = 1, rot = 0, jx = 0;
   if (face === 'inhale') { swell = 1 + 0.16 * warnU; sy = 1 + 0.04 * warnU; }
   if (face === 'blow') { swell = 1.04; sy = 0.93; }
   if (face === 'fury' && !calm) jx = Math.sin(t * 47) * 0.012 * s * (0.5 + warnU);
   if (face === 'inhale' && !calm) jx = Math.sin(t * 50) * 0.008 * s * warnU;
-  if (face === 'dizzy' && !calm) rot = Math.sin(t * 5) * 0.12;
+  if (face === 'dizzy' && !calm) { rot = Math.sin(t * 2.2) * 0.07; sy *= 0.94 + 0.02 * Math.sin(t * 1.6); } // slack: sags and sways slowly
   if (face === 'hurt' && !calm) { rot = -0.08 * dir; jx = -0.03 * s * dir; }
   const flash = face === 'hurt' && !calm && Math.floor(t * 18) % 2 === 0;
   const tint = face === 'fury' ? 1 : 0;
-  pxSpace(ctx, Q.x, Q.y, k, () => {
+  pxSpace(ctx, Q.x, Q.y, k, () => statusDraw(ctx, { x0: -0.78 * s, y0: -0.62 * s, x1: 0.78 * s, y1: 0.5 * s }, (ctx) => {
     ctx.translate(jx, 0);
     ctx.rotate(rot);
     ctx.scale(swell, swell * sy);
     // falling snow under it
-    if (!calm) {
+    if (!calm && !frozen) {
       ctx.fillStyle = 'rgba(240,250,255,0.85)';
       for (let i = 0; i < 14; i++) {
         const f = (t * 0.5 + hash(i)) % 1, x = (hash(i + 3) - 0.5) * s * 0.9 + Math.sin(t * 2 + i) * s * 0.03;
@@ -481,6 +487,7 @@ function drawCloudBoss(ctx, sim, B, Q, k, t, warnU, acting, calm) {
       }
       ctx.globalAlpha = 1;
     }
+    if (face === 'dizzy' && !calm) dizzyStars(ctx, 0, -s * 0.34, s * 0.27, s * 0.075, t, { layer: 'back', size: s * 0.05 });
     // body: a dark storm underside, then lit puffs (darker and bluer when furious)
     for (const pass of [0, 1]) {
       for (let i = 0; i < PUFFS.length; i++) {
@@ -526,7 +533,7 @@ function drawCloudBoss(ctx, sim, B, Q, k, t, warnU, acting, calm) {
       } else {
         const open = face === 'open' || face === 'breathe' ? 1.2 : 1;
         ctx.beginPath();
-        ctx.ellipse(x, ey, er * 1.25, blink ? er * 0.15 : er * open, 0, 0, TAU);
+        ctx.ellipse(x, ey, er * 1.25, frozen ? er * 0.5 : blink ? er * 0.15 : er * open, 0, 0, TAU);
         ctx.fill();
         if (!blink) {
           ctx.fillStyle = face === 'fury' ? `rgba(160,240,255,${glow})` : `rgba(120,230,255,${glow})`;
@@ -599,14 +606,9 @@ function drawCloudBoss(ctx, sim, B, Q, k, t, warnU, acting, calm) {
       }
     }
     ctx.restore();
-    // dizzy stars
-    if (face === 'dizzy' && !calm) {
-      for (let i = 0; i < 3; i++) {
-        const a = t * 4 + (i * TAU) / 3, x = Math.cos(a) * s * 0.26, y = -s * 0.3 + Math.sin(a) * s * 0.06;
-        drawStar(ctx, x, y, s * 0.05, '#ffe66a');
-      }
-    }
-  });
+    // dizzy stars: three circle the top of the cloud on a tilted ellipse (the far ones behind it, see above)
+    if (face === 'dizzy' && !calm) dizzyStars(ctx, 0, -s * 0.34, s * 0.27, s * 0.075, t, { layer: 'front', size: s * 0.05 });
+  }, st, { off: Math.max(3, s * 0.03), rim: 1.8, crys: Math.max(1.2, s / 110) }));
 }
 function drawStar(ctx, x, y, r, col) {
   ctx.beginPath();
@@ -682,6 +684,7 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
     ctx.moveTo(r * 0.15, -r * 0.75); ctx.lineTo(-r * 0.35, r * 0.1); ctx.lineTo(-r * 0.02, r * 0.1); ctx.lineTo(-r * 0.15, r * 0.75); ctx.lineTo(r * 0.38, -r * 0.12); ctx.lineTo(r * 0.04, -r * 0.12);
     ctx.closePath();
     ctx.fill();
+    ctx.lineJoin = 'round'; ctx.strokeStyle = '#3a2a00'; ctx.lineWidth = r * 0.12; ctx.stroke();
   }
   ctx.restore();
 }
