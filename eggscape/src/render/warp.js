@@ -131,10 +131,13 @@ export function drawWarp(ctx, sim, k, t) {
     const n = sim.nest.getPosition(), s = Math.max(0.95, Math.min(52, k * 1.5) / k);
     const hx = n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2, hy = sim.groundY + s * 0.62;
     const a = t * 2.1, ox = hx + Math.cos(a) * s * 0.62, oy = hy + Math.sin(a) * s * 0.2 + Math.sin(a * 0.5) * 0.04;
-    const R = Math.max(0.15, 8 / k), u = W.arm / W.max, blink = W.arm < 2.5 && Math.sin(t * 16) < -0.3;
+    const R = Math.max(0.24, 13 / k), u = W.arm / W.max, blink = W.arm < 2.5 && Math.sin(t * 16) < -0.3;
     if (!blink) {
       ctx.save();
       ctx.translate(ox, oy);
+      const hl = ctx.createRadialGradient(0, 0, R * 0.5, 0, 0, R * 3.2); // a pulsing halo so it is noticed
+      hl.addColorStop(0, `rgba(160,130,255,${0.55 + 0.25 * Math.sin(t * 5)})`); hl.addColorStop(1, 'rgba(160,130,255,0)');
+      ctx.fillStyle = hl; ctx.beginPath(); ctx.arc(0, 0, R * 3.2, 0, TAU); ctx.fill();
       paintVortex(ctx, R, t, 'in', px, 1);
       ctx.restore();
     }
@@ -143,7 +146,7 @@ export function drawWarp(ctx, sim, k, t) {
     ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(27,20,16,0.7)'; ctx.lineWidth = Math.max(4 * px, 0.06);
     ctx.beginPath(); ctx.ellipse(0, 0, s * 0.62, s * 0.2, 0, 0, TAU); ctx.stroke();
-    ctx.strokeStyle = '#c8b6ff'; ctx.lineWidth = Math.max(2 * px, 0.03);
+    ctx.strokeStyle = '#e4dcff'; ctx.lineWidth = Math.max(3 * px, 0.045);
     ctx.beginPath(); ctx.ellipse(0, 0, s * 0.62, s * 0.2, 0, -Math.PI / 2, -Math.PI / 2 + TAU * u); ctx.stroke();
     for (let i = 0; i < W.ch; i++) {
       ctx.beginPath(); ctx.arc((i - (W.ch - 1) / 2) * 0.2, -s * 0.34, Math.max(0.05, 3 * px), 0, TAU);
@@ -182,8 +185,17 @@ export function warpXfBegin(ctx, sim, kind) {
 export function warpXfEnd(ctx, tok) { if (tok) ctx.restore(); }
 
 // ---------- events. api: popup, audio, once
+// At most one warp label per 1.5 s: a swallow and the egg it pulls in share one line, never two on top of each other
+// (and never over the gate: they sit a gate radius plus a bit above it).
+let lastPop = -9;
+function label(api, ev, x, y, r, text, o, below) {
+  const sim = api.sim, t = sim ? sim.t : 0;
+  if (t - lastPop < 1.5 && t >= lastPop) return;
+  lastPop = t;
+  api.popup(x, below ? y - r - 1.3 : y + r + 0.55, text, o); // below it when the creature (the eagle) hangs above the gate
+}
 export function warpEvent(ev, fx, api) {
-  const { popup, audio, once } = api;
+  const { audio, once } = api;
   switch (ev.type) {
     case 'powerOn':
       if (ev.power !== 'warp') return false;
@@ -194,7 +206,7 @@ export function warpEvent(ev, fx, api) {
       audio.play('portal_enter', { vol: 0.8 });
       fx.wave(ev.x, ev.y, 0.9, '#b9a5ff', 0.4, 0.1);
       fx.sparkle(ev.x, ev.y, 10, '#8de8ff');
-      popup(ev.x, ev.y + 0.9, ev.kind === 'boss' ? 'Resists!' : 'Warp!', { color: '#c8b6ff', size: 22, life: 1 });
+      label(api, ev, ev.x, ev.y, ev.r || 0.5, ev.kind === 'boss' ? 'Resists!' : 'Warp!', { color: '#c8b6ff', size: 22, life: 1.1 }, ev.kind === 'e');
       return true;
     case 'warpResist':
       audio.play('steel_clang', { vol: 0.6, pitch: 0.8 });
@@ -212,7 +224,7 @@ export function warpEvent(ev, fx, api) {
     case 'warpEgg':
       audio.play('portal_enter', { vol: 0.7, pitch: 1.3 }); setTimeout(() => audio.play('portal_exit', { vol: 0.6 }), 90);
       fx.burst(ev.x, ev.y, 10, (i, a, b) => ({ x: ev.x + (ev.x2 - ev.x) * a, y: ev.y + (ev.y2 - ev.y) * a, vx: (b - 0.5) * 1.2, vy: (b - 0.5) * 1.2, drag: 3, life: 0.45, size: 0.05, color: '#d8ccff' }));
-      popup(ev.x2, ev.y2 + 0.6, 'Pulled through!', { color: '#ffb27a', size: 18, life: 1.1 });
+      label(api, ev, ev.x2, ev.y2, 0.36, 'Pulled through!', { color: '#ffb27a', size: 18, life: 1.1 });
       once('warpEgg', 'Careful: the open gate pulls in eggs too, and drops them further in.');
       return true;
     case 'warpBait':
