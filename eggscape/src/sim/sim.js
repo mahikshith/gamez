@@ -4,6 +4,7 @@ import { EGG_H, EGG_W, RING_TH, TAU, eggHull, solidArcs, wrap, clamp, rng } from
 import { v31Init, v31Step, v31State, v31Load, v31Contact, frostOrb, animalsHit } from './boss.js'; // bosses (v3.1)
 import { chickMethods, CHICK_KEYS } from './chicks.js'; // v3.2 chick kinds
 import { salMethods } from './salamander.js'; // v3.2 lava salamander
+import { frogMethods } from './frog.js'; // v3.3 frog
 
 export const DT = 1 / 120;
 
@@ -31,10 +32,10 @@ export const MATERIALS = {
   gold: { fr: 0.6, re: 0.1 },
 };
 
-const CAT = { RING: 1, EGG: 2, DEBRIS: 4, NEST: 8, GROUND: 16, ITEM: 32, BOMB: 64, ROCK: 128 };
+const CAT = { RING: 1, EGG: 2, DEBRIS: 4, NEST: 8, GROUND: 16, ITEM: 32, BOMB: 64, ROCK: 128, FROG: 256 };
 const MASK = {
   RING: CAT.EGG | CAT.DEBRIS | CAT.BOMB | CAT.ROCK,
-  EGG: CAT.RING | CAT.EGG | CAT.NEST | CAT.GROUND | CAT.ITEM | CAT.BOMB | CAT.ROCK,
+  EGG: CAT.RING | CAT.EGG | CAT.NEST | CAT.GROUND | CAT.ITEM | CAT.BOMB | CAT.ROCK | CAT.FROG,
   DEBRIS: CAT.RING | CAT.GROUND | CAT.NEST,
   NEST: CAT.EGG | CAT.DEBRIS | CAT.BOMB | CAT.ROCK,
   GROUND: CAT.EGG | CAT.DEBRIS | CAT.BOMB | CAT.ROCK,
@@ -240,6 +241,7 @@ export class Sim {
     this.buildPredators(L);
     v31Init(this); // bosses (v3.1): boss fight, falling ice, temporary walls and ring locks
     this.salInit(L); // v3.2: lava salamander (sim/salamander.js)
+    this.frogInit(L); // v3.3: frog (sim/frog.js)
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
@@ -554,6 +556,7 @@ export class Sim {
     });
     this.predStep(dt);
     this.chickStep(dt); // v3.2 chick kinds
+    this.frogStep(dt); // v3.3 frog
     if (this.weather && this.state === 'play') this.weatherStep(dt);
     if (this.state === 'play') this.v3Step(dt);
 
@@ -688,6 +691,7 @@ export class Sim {
       if (u.kind !== 'egg') return;
       const egg = u.egg;
       let v = closing;
+      if (uo.kind === 'frog') { this.frogBump(egg, v, uo.idx, pt); return; } // v3.3: a frog's back is a soft landing
       if (uo.kind === 'egg') {
         // momentum share: lighter egg takes more of the hit
         const mo = other.getMass(), me = body.getMass();
@@ -716,7 +720,7 @@ export class Sim {
 
   preSolve(c, old) {
     const [fa, fb, ua, ub] = this.parts(c);
-    if (this.v3Pass(ua, ub) || this.chickPass(ua, ub)) { c.setEnabled(false); return; } // v3: melted ring, grate, narrow gap
+    if (this.v3Pass(ua, ub) || this.chickPass(ua, ub) || this.frogPass(ua, ub)) { c.setEnabled(false); return; } // v3: melted ring, grate, narrow gap
     if (!fa.isSensor() && !fb.isSensor()) this.impactCheck(c, old, ua, ub);
     let egg = null, other = null, ofix = null;
     if (ua.kind === 'egg') { egg = ua.egg; other = ub; ofix = fb; }
@@ -2238,6 +2242,7 @@ export class Sim {
       v31: v31State(this), // bosses (v3.1)
       chick: this.chickState(), // v3.2
       sal: this.salState(), // v3.2 lava salamander
+      frog: this.frogState(), // v3.3 frog
     };
   }
 
@@ -2290,6 +2295,7 @@ export class Sim {
     v31Load(sim, S.v31); // bosses (v3.1)
     sim.chickRestore(S.chick); // v3.2
     sim.salLoad(S.sal); // v3.2 lava salamander
+    sim.frogLoad(S.frog); // v3.3 frog
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2676,5 +2682,6 @@ export class Sim {
 
 Object.assign(Sim.prototype, chickMethods); // v3.2 chick kinds (sim/chicks.js)
 Object.assign(Sim.prototype, salMethods); // v3.2 lava salamander (sim/salamander.js)
+Object.assign(Sim.prototype, frogMethods); // v3.3 frog (sim/frog.js)
 
 export { EGG_H, EGG_W, RING_TH };
