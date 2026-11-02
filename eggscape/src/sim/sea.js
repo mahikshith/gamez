@@ -11,7 +11,7 @@
 //   while the fuse runs). Water (a water orb or a water egg), a zap (a thunder egg, a zapped wall, lightning) or a
 //   glow chick flash (dash chick, rocks, ice too) makes it let go: it flinches, jets off in an ink cloud, rests, and
 //   swims back to its home channel before it hunts again. Easy: it lets go by itself after 6 s, Medium 10 s,
-//   Hard holds until freed. It never takes a chick, a burning egg or a stone egg.
+//   Hard 14 s. It never takes a chick, a burning egg or a stone egg.
 // Villain (v3.5): it HUNTS. Awake, it chases an egg in any channel within OCT.mode.range (Hard: the whole vault),
 //   climbing through gaps. A red flush and arms rising (warn) telegraph the grab; from 1.1-3.2 m away it may instead
 //   SQUIRT INK (telegraph 'squirt', then a cloud blacks out the ring sector round the egg for mode.ink s, and it
@@ -40,7 +40,7 @@ export const OCT = {
     medium: { range: 2, speed: 1, ink: 2, inkR: 0.95, inkCd: 9, cd: 9, wake: [1, 3.4], stun: 2.2 },
     hard: { range: 9, speed: 1.2, ink: 2.6, inkR: 1.1, inkCd: 7, cd: 6, wake: [2, 5], stun: 1.6 },
   },
-  hold: { easy: 6, medium: 10, hard: 0 }, // s it holds an egg before letting go by itself (0 = until freed)
+  hold: { easy: 6, medium: 10, hard: 14 }, // s it holds an egg before letting go by itself (0 = until freed; Hard used to never, and the planner could not win)
   wet: 0.8, // m: a water orb or water egg this close frees it
   lift: 0.62, eggOff: 0.3, // m: its centre above the wall it grips; the held egg sits this far below its centre (clutched at its chest)
 };

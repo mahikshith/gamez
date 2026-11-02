@@ -28,7 +28,7 @@ const wrapD = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 const dist = (a, b) => Math.abs(wrapD(a - b));
 const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
 // level fields copied from the spec as they are (not laid out)
-const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'fox', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander'];
+const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'fox', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander', 'octopus'];
 
 // ---------- layout ----------
 function radii(spec) {

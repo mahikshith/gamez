@@ -1,11 +1,11 @@
 // Studio copy of L13 "Duck Pond" with the octopus placed in it (v3.5). The exact field this adds to the level:
-//   octopus: { ch: 2, a: -60, delay: 7, den: true }
-// (a puddle on the floor of ring 2, in the pond's second channel; it wakes when an egg comes near, hunts across rings).
+//   octopus: { ch: 3, a: -60, delay: 10, den: true }
+// (a puddle on the floor of ring 3, in the pond's third channel; it wakes when an egg comes near, hunts across rings).
 // Run the planner on it for every mode: node tools/octo-l13.mjs [easy|medium|hard]...
 import { LEVELS } from '../src/data/levels.js';
 import { solve } from './planner.mjs';
 import { OCT } from '../src/sim/sea.js';
-export const OCTO_L13 = { ch: 2, a: -60, delay: 7, den: true };
+export const OCTO_L13 = { ch: 3, a: -60, delay: 10, den: true };
 export function studioL13(octopus = OCTO_L13) {
   const L = LEVELS.find((l) => l.id === 13);
   return { ...JSON.parse(JSON.stringify(L)), id: 990, name: 'Studio: Duck Pond + octopus', octopus: { ...octopus } };
