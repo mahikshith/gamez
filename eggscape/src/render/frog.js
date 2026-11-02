@@ -22,7 +22,7 @@ import { drawKindChick } from './chicks.js';
 import { drawChick } from './characters.js';
 import { RING_MAT_BASE } from './world.js';
 
-export const FROG_ART = 1.12; // 100 art units = FROG.w * FROG_ART metres (the body that collides is a bit narrower)
+export const FROG_ART = 0.96; // 100 art units = FROG.w * FROG_ART metres (about 1.09 m)
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const sstep = (v) => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
 const lerp = (a, b, k) => a + (b - a) * k;
@@ -59,18 +59,22 @@ export function frogSkin(theme, mat) {
 
 // ---- joints (art units, y down, ground at y = 0, nose at +x): hip, knee, ankle, toe base. The pose blends rest / crouch / air.
 const HIND = {
-  rest: [[-27, -19], [-5, -12], [-31, -5], [-4, -2]],
-  crouch: [[-28, -15], [-4, -10], [-33, -4], [-8, -2]],
-  air: [[-26, -17], [-44, -14], [-60, -8], [-72, -4]],
+  rest: [[-20, -20], [6, -11], [-12, -4], [10, -1.5]],
+  crouch: [[-21, -15], [5, -8], [-14, -3], [8, -1.5]],
+  air: [[-20, -17], [-38, -14], [-54, -9], [-66, -4]],
 };
 const FORE = {
-  rest: [[20, -17], [24, -9], [26, -2], [33, 0]],
-  crouch: [[20, -12], [28, -7], [28, -2], [35, 0]],
-  air: [[20, -17], [32, -19], [43, -17], [51, -13]],
+  rest: [[5, -22], [7, -12], [9, -2], [17, 0]],
+  crouch: [[6, -15], [14, -9], [14, -2], [22, 0]],
+  air: [[6, -22], [18, -24], [30, -22], [38, -18]],
 };
 const blendJ = (P, wc, wa) => P.rest.map((r, i) => [r[0] + (P.crouch[i][0] - r[0]) * wc + (P.air[i][0] - r[0]) * wa, r[1] + (P.crouch[i][1] - r[1]) * wc + (P.air[i][1] - r[1]) * wa]);
-const MOUTH = [42, -14]; // where the tongue starts inside the mouth
-export const FROG_MOUTH = { x: 56, y: -15 }; // where it leaves the lips (art units)
+// the body is drawn in its own frame and tilted up about PV (a sitting frog): TILT0 at rest. These are the tongue's root inside the
+// mouth and its exit at the lips, in the body's frame.
+const PV = [-22, -6], TILT0 = 0.55, MOUTH_B = [30, -13], EXIT_B = [44, -14];
+const rotAt = (tilt, [x, y]) => { const c = Math.cos(tilt), s = Math.sin(tilt), dx = x - PV[0], dy = y - PV[1]; return { x: PV[0] + dx * c + dy * s, y: PV[1] - dx * s + dy * c }; };
+export const FROG_MOUTH = rotAt(TILT0, EXIT_B); // where the tongue leaves the lips (art units, resting pose)
+export const FROG_ROOT = rotAt(TILT0, MOUTH_B);
 
 function blinkAt(t, seed = 0) {
   const p = mod(t + seed * 1.7, 3.3 + seed * 0.6);
@@ -187,7 +191,7 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
       for (let i = 0; i < 3; i++) {
         const th = t * 3.4 + (i / 3) * TAU, d = Math.sin(th);
         if ((d < 0) !== back) continue;
-        const sx2 = 30 + Math.cos(th) * 36, sy2 = -68 - Math.cos(th) * 6 + d * 9, r = 10 + 2 * d;
+        const sx2 = 4 + Math.cos(th) * 34, sy2 = -70 - Math.cos(th) * 6 + d * 9, r = 10 + 2 * d;
         ctx.globalAlpha = stun;
         star(ctx, sx2, sy2, r, t * 2 + i, o, '#ffe14a');
         ctx.globalAlpha = 1;
@@ -234,106 +238,110 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
       ctx.restore();
       ctx.beginPath(); ctx.arc(ex, ey, R, 0, TAU); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
     };
-    eyeAt(44, -43, 9, true);
-
+    // ---- body and head, tilted up on the straight arms like a sitting frog (drawn in the body's own frame) ----
+    const tilt = (0.55 - 0.27 * crouch - 0.2 * plug - 0.28 * stun) * (1 - st) + 0.08 * st;
+    const rot = (x, y) => { const c = Math.cos(tilt), s = Math.sin(tilt), dx = x - PV[0], dy = y - PV[1]; return [PV[0] + dx * c + dy * s, PV[1] - dx * s + dy * c]; };
+    ctx.save();
+    ctx.translate(PV[0], PV[1]); ctx.rotate(-tilt); ctx.translate(-PV[0], -PV[1]);
+    eyeAt(32, -37, 8.8, true);
     const body = () => {
       ctx.beginPath();
-      ctx.moveTo(-45, -3);
-      ctx.bezierCurveTo(-55, -10, -51, -22, -38, -26);
-      ctx.bezierCurveTo(-24, -30, -8, -36, 8, -40);
-      ctx.bezierCurveTo(22, -43, 40, -42, 50, -34);
-      ctx.bezierCurveTo(57, -28, 58, -18, 52, -12);
-      ctx.bezierCurveTo(44, -6, 34, -3, 22, -2);
-      ctx.bezierCurveTo(4, 0, -32, 1, -45, -3);
+      ctx.moveTo(-30, -4);
+      ctx.bezierCurveTo(-39, -10, -37, -26, -24, -31);
+      ctx.bezierCurveTo(-12, -36, 4, -37, 18, -35);
+      ctx.bezierCurveTo(30, -34, 40, -30, 43, -22);
+      ctx.bezierCurveTo(45, -16, 42, -11, 36, -9);
+      ctx.bezierCurveTo(28, -5, 18, -2, 6, -1);
+      ctx.bezierCurveTo(-8, 1, -24, 0, -30, -4);
       ctx.closePath();
     };
     body();
     ctx.fillStyle = C.shade; ctx.fill();
     ctx.save();
     ctx.clip();
-    ctx.fillStyle = C.base; ctx.beginPath(); ctx.ellipse(8, -36, 64, 24, -0.3, 0, TAU); ctx.fill(); // lit back, the shadow stays underneath
-    ctx.fillStyle = C.hi; ctx.beginPath(); ctx.ellipse(-6, -33, 24, 3, -0.3, 0, TAU); ctx.fill(); // highlight along the spine
+    ctx.fillStyle = C.base; ctx.beginPath(); ctx.ellipse(4, -34, 50, 21, -0.1, 0, TAU); ctx.fill(); // lit back, the shadow stays underneath
+    ctx.fillStyle = C.hi; ctx.beginPath(); ctx.ellipse(-8, -32, 18, 2.8, -0.12, 0, TAU); ctx.fill(); // highlight along the spine
     ctx.fillStyle = C.spot; // mottled spots
-    for (const [px, py, pr] of [[-10, -29, 4.2], [0, -35, 3.4], [-40, -14, 3.2], [14, -37, 2.6], [-18, -22, 2.8]]) { ctx.beginPath(); ctx.ellipse(px, py, pr * 1.2, pr, 0.4, 0, TAU); ctx.fill(); }
+    for (const [px, py, pr] of [[-14, -27, 4], [-2, -32, 3.2], [-28, -16, 3], [10, -33, 2.6], [-18, -20, 2.6]]) { ctx.beginPath(); ctx.ellipse(px, py, pr * 1.2, pr, 0.4, 0, TAU); ctx.fill(); }
     // pale belly and throat: one hard-edged scoop along the bottom
-    ctx.beginPath(); ctx.moveTo(62, -13); ctx.bezierCurveTo(44, -11, 24, -13, 4, -11); ctx.bezierCurveTo(-18, -9, -34, -10, -52, -5); ctx.lineTo(-50, 8); ctx.lineTo(60, 8); ctx.closePath();
+    ctx.beginPath(); ctx.moveTo(50, -12); ctx.bezierCurveTo(32, -10, 12, -12, -6, -10); ctx.bezierCurveTo(-20, -8, -32, -8, -42, -4); ctx.lineTo(-42, 8); ctx.lineTo(50, 8); ctx.closePath();
     ctx.fillStyle = C.belly; ctx.fill();
-    ctx.beginPath(); ctx.moveTo(-50, 1); ctx.bezierCurveTo(-20, -2, 20, -4, 60, -5); ctx.lineTo(60, 8); ctx.lineTo(-50, 8); ctx.closePath();
+    ctx.beginPath(); ctx.moveTo(-42, 1); ctx.bezierCurveTo(-16, -2, 18, -4, 50, -5); ctx.lineTo(50, 8); ctx.lineTo(-42, 8); ctx.closePath();
     ctx.fillStyle = C.bellyLo; ctx.fill();
     ctx.restore();
     body(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
     // cheek blush and ear drum
-    ctx.beginPath(); ctx.ellipse(22, -20, 5.6, 3.4, 0.1, 0, TAU); ctx.fillStyle = C.blush; ctx.fill();
-    ctx.beginPath(); ctx.arc(7, -27, 5.6, 0, TAU); ctx.fillStyle = C.shade; ctx.fill(); ctx.lineWidth = o * 0.8; ctx.strokeStyle = LINE; ctx.stroke();
-    ctx.beginPath(); ctx.arc(6.6, -27.4, 2.8, 0, TAU); ctx.fillStyle = C.base; ctx.fill();
-
-    // hind leg, folded at the side: a big plump thigh over the flank, the shin laid back, a long foot with toe pads
-    const [hh, hk, ha, ht] = H;
-    plump(ctx, ha, ht, 5.2, 4.4, o, C.base, C.shade, null); // the foot, lying along the ground
-    toes(ctx, ht[0], ht[1], 4, 11, 4.4, 3.6, o, 0.34);
-    plump(ctx, hk, ha, 7.5, 6, o, C.shade, C.deep, null); // the shin, folded back
-    plump(ctx, hh, hk, 15.5, 9, o, C.base, C.shade, C.hi); // the thigh: a round haunch with the knee out front
-    ctx.save(); // two bright flank stripes across the thigh
-    ctx.strokeStyle = C.flank; ctx.lineWidth = 3; ctx.lineCap = 'round';
-    for (const d of [-3.4, 3.4]) { const nx = hk[1] - hh[1], ny = hh[0] - hk[0], l = Math.hypot(nx, ny) || 1; ctx.beginPath(); ctx.moveTo(lerp(hh[0], hk[0], 0.28) + (nx / l) * d, lerp(hh[1], hk[1], 0.28) + (ny / l) * d + 1); ctx.lineTo(lerp(hh[0], hk[0], 0.72) + (nx / l) * d, lerp(hh[1], hk[1], 0.72) + (ny / l) * d + 1); ctx.stroke(); }
-    ctx.restore();
+    ctx.beginPath(); ctx.ellipse(17, -18.5, 5, 3.2, 0.1, 0, TAU); ctx.fillStyle = C.blush; ctx.fill();
+    ctx.beginPath(); ctx.arc(1, -25, 5.2, 0, TAU); ctx.fillStyle = C.shade; ctx.fill(); ctx.lineWidth = o * 0.8; ctx.strokeStyle = LINE; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0.6, -25.4, 2.6, 0, TAU); ctx.fillStyle = C.base; ctx.fill();
 
     // throat sac (under the chin): pulses when idle, swells before a hop, a lump travels down it when swallowing
     const idlePulse = 0.08 + 0.06 * (0.5 + 0.5 * Math.sin(t * 2.6 + (op.id || 0))), pf = Math.max(puff, idlePulse);
-    const sacX = 39, sacY = -6 + 2 * pf, sr = 6 + 13 * pf;
+    const sacX = 28, sacY = -5 + 2 * pf, sr = 5 + 11 * pf;
     ctx.beginPath(); ctx.ellipse(sacX, sacY, sr * 1.05, sr * (0.8 + 0.12 * pf), 0.15, 0, TAU);
     ctx.fillStyle = C.belly; ctx.fill(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
     ctx.save(); ctx.clip(); ctx.fillStyle = C.bellyLo; ctx.beginPath(); ctx.ellipse(sacX + sr * 0.15, sacY + sr * 0.5, sr * 1.1, sr * 0.5, 0.15, 0, TAU); ctx.fill(); ctx.restore();
     if (pf > 0.45) { ctx.strokeStyle = C.bellyLo; ctx.lineWidth = 1.4; for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(sacX - sr * 0.6, sacY + i * sr * 0.28); ctx.quadraticCurveTo(sacX, sacY + i * sr * 0.28 + 3, sacX + sr * 0.6, sacY + i * sr * 0.28); ctx.stroke(); } }
     if (gulp >= 0 && gulp < 1) { // the swallowed lump rolls down the throat: a bulge that stretches the skin
-      const u = sstep(gulp / 0.75), lx = lerp(46, 32, u), ly = lerp(-12, -3, u), lr = lerp(9.5, 6.5, u);
+      const u = sstep(gulp / 0.75), lx = lerp(36, 22, u), ly = lerp(-12, -4, u), lr = lerp(8.5, 6, u);
       ctx.beginPath(); ctx.ellipse(lx, ly, lr * 1.08, lr, 0.2, 0, TAU); ctx.fillStyle = C.belly; ctx.fill(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
       ctx.beginPath(); ctx.ellipse(lx - lr * 0.25, ly - lr * 0.3, lr * 0.45, lr * 0.28, 0.2, 0, TAU); ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.8; ctx.fill(); ctx.globalAlpha = 1;
     }
 
-    // front leg: short upper arm, straight forearm, a hand of toe pads
-    const [fs, fe, fw, ft] = F;
-    plump(ctx, fs, fe, 7.2, 5.6, o, C.base, C.shade, C.hi);
-    plump(ctx, fe, fw, 5.6, 4.8, o, C.base, C.shade, null);
-    toes(ctx, ft[0] - 1, ft[1] - 1, 3, 7, 3.6, 3, o, 0.42);
-
     // mouth: a wide smile; open, the lower jaw drops and a dark red cavity shows
     const mO = Math.max(mouth, tip ? 0.95 : 0, lick >= 0 ? 0.3 : 0);
-    const lipTop = () => { ctx.moveTo(57.5, -20); ctx.quadraticCurveTo(40, -14, 19, -15.5); };
+    const lipTop = () => { ctx.moveTo(43.5, -18.5); ctx.quadraticCurveTo(28, -13.5, 8, -15); };
     if (mO > 0.04) {
       const jaw = 6.5 * mO;
-      ctx.beginPath(); lipTop(); ctx.lineTo(17, -12); ctx.quadraticCurveTo(36, -10 + jaw * 0.7, 53, -10.5 + jaw); ctx.closePath();
+      ctx.beginPath(); lipTop(); ctx.lineTo(7, -11); ctx.quadraticCurveTo(26, -9.5 + jaw * 0.7, 40, -9.5 + jaw); ctx.closePath();
       ctx.fillStyle = C.mouth; ctx.fill();
-      // the lowered chin covers the old jaw line
-      ctx.beginPath(); ctx.moveTo(17, -12); ctx.quadraticCurveTo(36, -10 + jaw * 0.7, 53, -10.5 + jaw); ctx.bezierCurveTo(54, -5 + jaw, 46, -1 + jaw * 0.6, 36, -1.5); ctx.lineTo(18, -2); ctx.closePath();
+      ctx.beginPath(); ctx.moveTo(7, -11); ctx.quadraticCurveTo(26, -9.5 + jaw * 0.7, 40, -9.5 + jaw); ctx.bezierCurveTo(41, -5 + jaw, 36, -1 + jaw * 0.6, 28, -1.5); ctx.lineTo(8, -2); ctx.closePath();
       ctx.fillStyle = C.belly; ctx.fill(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
       ctx.beginPath(); lipTop(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
     } else {
-      ctx.beginPath(); lipTop(); ctx.quadraticCurveTo(14, -16.5, 11.5, -22); ctx.lineWidth = o * 0.9; ctx.strokeStyle = LINE; ctx.stroke();
+      ctx.beginPath(); lipTop(); ctx.quadraticCurveTo(3, -15.5, 0, -21); ctx.lineWidth = o * 0.9; ctx.strokeStyle = LINE; ctx.stroke();
     }
-    // tongue: from the floor of the mouth, bowed a little, a sticky bulb at the tip
+    ctx.fillStyle = LINE; ctx.beginPath(); ctx.ellipse(40, -24, 1.8, 1.3, 0.3, 0, TAU); ctx.fill(); // nostril
+    eyeAt(16, -40, 11.5, false); // the near eye, the big one
+    ctx.restore();
+
+    // tongue: from the floor of the mouth, bowed a little, a sticky bulb at the tip (drawn upright, it reaches for the prey)
+    const mx = rot(...MOUTH_B), me = rot(...EXIT_B);
     let tp = tip;
-    if (!tp && stun > 0.3) tp = { x: 56, y: 3, loll: 1 };
+    if (!tp && stun > 0.3) tp = { x: me[0] + 7, y: Math.min(-3, me[1] + 30), loll: 1 };
     else if (!tp && lick >= 0) { // the lip-lick telegraph: the tip sweeps up over the lip and back, twice
       const a = Math.sin(lick * TAU * 2) * 0.5 + 0.35, e = 10 + 6 * Math.sin(lick * Math.PI);
-      tp = { x: FROG_MOUTH.x + Math.cos(a) * e * 0.9, y: FROG_MOUTH.y - 4 - Math.sin(a) * e, lickOnly: true };
+      tp = { x: me[0] + Math.cos(a) * e * 0.9, y: me[1] - 4 - Math.sin(a) * e, lickOnly: true };
     }
     if (tp) {
       const lickOnly = tp.lickOnly, loll = tp.loll;
       const bend = loll ? -0.22 + 0.05 * slack : lickOnly ? 0.18 : op.tout === 0 ? -0.1 + 0.05 * Math.sin(t * 40) : 0.13;
       const pr = op.prey && tip ? (c2, ux, uy) => op.prey(c2, ux, uy) : null;
-      tongue(ctx, MOUTH, tp, o, bend, loll ? 12 : lickOnly ? 12 : 16, loll ? 9 : lickOnly ? 8 : 9, loll ? 6.4 : lickOnly ? 6.4 : pr ? 11 : 9.6, pr);
+      tongue(ctx, mx, tp, o, bend, loll ? 12 : lickOnly ? 12 : 16, loll ? 9 : lickOnly ? 8 : 9, loll ? 6.4 : lickOnly ? 6.4 : pr ? 11 : 9.6, pr);
     }
-    // nostril
-    ctx.fillStyle = LINE; ctx.beginPath(); ctx.ellipse(53, -26, 1.8, 1.3, 0.3, 0, TAU); ctx.fill();
-    // near eye (the big one)
-    eyeAt(25, -46, 12, false);
+
+    // hind leg, folded compactly at the side: a rounded triangle of thigh with the knee out front, the foot pointing forward
+    const [hh, hk, ha, ht] = H;
+    plump(ctx, ha, ht, 5, 4.2, o, C.base, C.shade, null); // the foot, lying along the ground
+    toes(ctx, ht[0], ht[1], 4, 10, 4.2, 3.5, o, 0.34);
+    plump(ctx, hk, ha, 7, 5.5, o, C.shade, C.deep, null); // the shin, folded back under the thigh
+    plump(ctx, hh, hk, 15, 8.5, o, C.base, C.shade, C.hi); // the thigh: a plump haunch
+    ctx.save(); // two bright flank stripes across the thigh
+    ctx.strokeStyle = C.flank; ctx.lineWidth = 2.8; ctx.lineCap = 'round';
+    for (const d of [-3.2, 3.2]) { const nx = hk[1] - hh[1], ny = hh[0] - hk[0], l = Math.hypot(nx, ny) || 1; ctx.beginPath(); ctx.moveTo(lerp(hh[0], hk[0], 0.28) + (nx / l) * d, lerp(hh[1], hk[1], 0.28) + (ny / l) * d + 1); ctx.lineTo(lerp(hh[0], hk[0], 0.7) + (nx / l) * d, lerp(hh[1], hk[1], 0.7) + (ny / l) * d + 1); ctx.stroke(); }
+    ctx.restore();
+
+    // front leg: straight arm propping the chest up, a hand of toe pads
+    const [fs, fe, fw, ft] = F;
+    plump(ctx, fs, fe, 7, 5.8, o, C.base, C.shade, C.hi);
+    plump(ctx, fe, fw, 5.8, 5, o, C.base, C.shade, null);
+    toes(ctx, ft[0] - 1, ft[1] - 1, 3, 7, 3.6, 3.1, o, 0.42);
     stars(false);
     // sweat drops when scared
     if (scared > 0.05) {
       ctx.fillStyle = C.sweat; ctx.strokeStyle = LINE; ctx.lineWidth = o * 0.6;
       for (let i = 0; i < 2; i++) {
-        const ph = mod(t * 2.2 + i * 0.5, 1), dx = -20 - 12 * i - ph * 14, dy = -66 - 8 * i - Math.sin(ph * Math.PI) * 10 + ph * 10;
+        const ph = mod(t * 2.2 + i * 0.5, 1), dx = -34 - 12 * i - ph * 14, dy = -64 - 8 * i - Math.sin(ph * Math.PI) * 10 + ph * 10;
         ctx.globalAlpha = scared * (1 - ph);
         ctx.beginPath(); ctx.moveTo(dx, dy - 5); ctx.quadraticCurveTo(dx + 4.2, dy + 1, dx, dy + 3.4); ctx.quadraticCurveTo(dx - 4.2, dy + 1, dx, dy - 5); ctx.fill(); ctx.stroke();
       }
@@ -370,9 +378,9 @@ function crystal(ctx, x, y, a, len, o) {
   ctx.fillStyle = '#eaf9ff'; ctx.fill(); ctx.lineWidth = o * 0.45; ctx.strokeStyle = RIM; ctx.lineJoin = 'round'; ctx.stroke();
   ctx.restore();
 }
-const CRACKS = [[[-36, -27], [-26, -22], [-28, -14], [-16, -9], [-18, -3]], [[18, -29], [24, -22], [17, -16], [23, -9]], [[-6, -34], [0, -26], [-5, -21], [5, -17]], [[44, -28], [40, -22], [46, -17]]];
-const FACETS = [[[-31, -30], [-12, -34], [-15, -30], [-33, -26]], [[11, -30], [20, -31], [16, -25]], [[-38, -22], [-31, -27], [-28, -20]], [[30, -44], [34, -48], [35, -42]]];
-const CRYST = [[-9, -35, -1.5, 9], [-46, -16, -2.6, 8], [48, -29, -0.8, 8], [57, -16, -0.1, 7], [-24, 1, 1.6, 6]];
+const CRACKS = [[[-28, -12], [-19, -22], [-23, -31], [-12, -38]], [[-6, -60], [0, -52], [-8, -46], [2, -40]], [[12, -42], [20, -35], [13, -28]], [[-30, -40], [-24, -34], [-30, -28]]];
+const FACETS = [[[-28, -26], [-16, -35], [-14, -29], [-26, -20]], [[-12, -63], [-4, -68], [-3, -61]], [[14, -33], [21, -40], [22, -31]], [[22, -52], [27, -57], [28, -49]]];
+const CRYST = [[-8, -73, -1.7, 9], [-35, -34, -2.7, 8], [34, -50, -0.7, 8], [38, -20, -0.2, 7], [-36, -8, 2.7, 7], [4, 1, 1.6, 6]];
 
 function drawFrogShell(ctx, x, y, s, t, op) {
   const U = s / 100, m = ctx.getTransform(), ds = Math.hypot(m.a, m.b) || 1, sc = U * ds, face = op.face === -1 ? -1 : 1;
@@ -388,7 +396,7 @@ function drawFrogShell(ctx, x, y, s, t, op) {
   // ground shadow under the shell
   ctx.fillStyle = 'rgba(10,30,40,0.26)'; ctx.beginPath(); ctx.ellipse(-2 * U * face, 1.5 * U, 52 * U, 5 * U, 0, 0, TAU); ctx.fill();
   if (fz > 0) {
-    const r = Math.max(2, 3.4 * sc) * sstep(fz * 1.4), rim = Math.max(1.4, 1.7 * sc);
+    const r = Math.max(1.6, 2.4 * sc) * sstep(fz * 1.4), rim = Math.max(2, 2.8 * sc);
     blit(grow(A, r + rim, RIM, 1));
     blit(grow(A, r, '#d7f1ff', 2));
     blit(A);
@@ -413,7 +421,7 @@ function drawFrogShell(ctx, x, y, s, t, op) {
     ctx.restore();
   } else blit(A);
   if (zp > 0) { // the zap: a white flash over the silhouette and crisp jagged arcs along the body
-    ctx.globalAlpha = 0.85 * zp * zp; blit(grow(A, 0.01, '#fffbe0', 2)); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.5 * zp * (0.6 + 0.4 * Math.sin(t * 90)); blit(grow(A, 0.01, '#ffd21a', 2)); ctx.globalAlpha = 1; // a short yellow tint pulse, the frog keeps its colours
     ctx.save();
     ctx.scale(U * face, U);
     const sd = Math.floor(t * 26) + (op.id || 0) * 17;
@@ -424,7 +432,8 @@ function drawFrogShell(ctx, x, y, s, t, op) {
       for (let k = 0; k < 6; k++) { px += 6 + hash(sd * 1.7 + i * 9 + k) * 6; py += (hash(sd * 3.1 + i * 7 + k * 2) - 0.5) * 20; py = clamp(py, -36, 2); pts.push([px, py]); }
       const path = () => { ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); };
       ctx.globalAlpha = Math.min(1, zp * 1.6);
-      path(); ctx.lineWidth = o * 1.5; ctx.strokeStyle = '#e8a800'; ctx.stroke();
+      path(); ctx.lineWidth = o * 2.3; ctx.strokeStyle = '#2a1a00'; ctx.stroke();
+      path(); ctx.lineWidth = o * 1.3; ctx.strokeStyle = '#e8a800'; ctx.stroke();
       path(); ctx.lineWidth = o * 0.7; ctx.strokeStyle = '#fff7b0'; ctx.stroke();
       path(); ctx.lineWidth = o * 0.28; ctx.strokeStyle = '#ffffff'; ctx.stroke();
     }
@@ -567,7 +576,7 @@ export function drawFrogs(ctx, sim, t, k, theme) {
     R.look.y = ease(R.look.y, tgt ? clamp(lk.y / ll, -1, 1) : lk.y, 8);
     ch.look = R.look;
     // ---- tongue: from the mouth toward where the prey was, out and back
-    const mouth = { x: 46, y: -12 }; // the tongue's rest point, inside the mouth
+    const mouth = FROG_ROOT; // the tongue's rest point, inside the mouth
     if (F.ph === 'tongue') {
       const T = toLocal(F.got ? F.px : F.lx, F.got ? F.py : F.ly, um), e = ch.tongueE;
       const far = clamp(Math.hypot(T.x - mouth.x, T.y - mouth.y), 1, 1e9), cap = Math.min(1, (FROG_MODE.hard.tongue * 1.1 * um) / far);

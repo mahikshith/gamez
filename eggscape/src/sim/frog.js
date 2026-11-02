@@ -21,7 +21,7 @@ import { Vec2, Polygon } from 'planck';
 import { RING_TH, wrap, clamp } from './geom.js';
 
 export const FROG = {
-  w: 1.13, // m, body width (a gap is 0.78 wide: a frog in it covers it with room to spare). v3.5: 1.35x the old 0.84
+  w: 1.13, // m, body width (a gap is 0.78 wide: a frog in it covers it with room to spare). v3.5: art is 1.09 m per 100 units
   every: 6, hopWarn: 0.7, land: 0.3, // s between hops (Medium), crouch + puff telegraph, landing squash
   reach: 2.4, scareReach: 3.6, // m of arc to the gap it hops through
   tongue: 1.5, lickWarn: 0.5, tongueT: 0.4, gulpT: 0.65, lickCD: 4, // m, s
@@ -39,10 +39,10 @@ export const FROG_MODE = {
 const CAT_FROG = 256, MASK_FROG = 2; // collides with eggs only (CAT.EGG = 2, and sim.js adds this category to the egg mask)
 // polygons in the frog's frame (x along the surface, y out of it, feet at y = 0): a dome when sitting on a floor,
 // a flat table across the opening when sitting in a gap (its top is 0.03 m above the ring's inner face)
-// v3.5: 1.35x wider, but only a little taller (0.36 m): the channel is 0.84 m clear, an egg needs 0.42 to roll past on top
+// v3.5: a taller sitting frog (0.4 m collider, art about 0.7 m with the eyes): the channel is 0.84 m clear, an egg needs 0.42 to roll past on top
 const SHAPE = {
-  dome: [[-0.57, 0], [-0.58, 0.09], [-0.45, 0.26], [-0.16, 0.36], [0.16, 0.36], [0.45, 0.26], [0.58, 0.09], [0.57, 0]],
-  table: [[-0.57, 0], [-0.57, 0.13], [-0.5, 0.2], [0.5, 0.2], [0.57, 0.13], [0.57, 0]],
+  dome: [[-0.5, 0], [-0.51, 0.1], [-0.4, 0.3], [-0.14, 0.4], [0.14, 0.4], [0.4, 0.3], [0.51, 0.1], [0.5, 0]],
+  table: [[-0.5, 0], [-0.5, 0.13], [-0.44, 0.2], [0.44, 0.2], [0.5, 0.13], [0.5, 0]],
 };
 const sstep = (v) => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
 
@@ -95,7 +95,7 @@ export const frogMethods = {
   },
   frogMouth(F) { // in front of the head, 0.22 m up the normal
     const tx = F.ny * F.face, ty = -F.nx * F.face;
-    return { x: F.x + F.nx * 0.27 + tx * 0.5, y: F.y + F.ny * 0.27 + ty * 0.5 };
+    return { x: F.x + F.nx * 0.5 + tx * 0.4, y: F.y + F.ny * 0.5 + ty * 0.4 };
   },
   frogChs(F) { return F.gi >= 0 ? [F.fi, F.fi + 1] : [F.side < 0 ? F.fi : F.fi + 1]; }, // a ring's inner face is channel fi, its outer face channel fi+1
 
