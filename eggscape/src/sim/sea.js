@@ -108,7 +108,7 @@ export const seaMethods = {
         if (!ok || d > OCT.grab + 0.25) { this.octSet(C, 'seek'); break; }
         this.octSwim(C, Math.atan2(p.y, p.x), 0.25, dt);
         if ((C.t -= dt) > 0) break;
-        if (C.ph === 'warn') { this.octSet(C, 'grab', OCT.grab_t); break; }
+        if (C.ph === 'warn') { if (this.warpStrike('oct', C)) break; this.octSet(C, 'grab', OCT.grab_t); break; } // v3.4: a warp gate takes the grab
         if (d < OCT.grab) this.octTake(C, e); else this.octSet(C, 'seek');
         break;
       }

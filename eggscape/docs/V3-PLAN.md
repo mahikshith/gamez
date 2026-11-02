@@ -169,8 +169,9 @@ downside. Each new power is animated and shown on the review page before it ente
 | Shrink Ray | Eggs shrink to quail size 8 s: slip through grates, creatures lose track of them | Small eggs crack easier |
 | Iron Shell | Eggs turn steel: can't crack or be eaten, smash thorns | Heavy: they need wide gaps and fall fast past sponge |
 | Decoy Egg | A fake egg every creature chases for 8 s | It can plug a gap |
+| Warp Gate | Armed 12 s (Easy 14 s, 2 charges): the next creature that strikes (snake lunge, eagle dive, salamander breath, frog tongue, octopus grab) is swallowed by a portal and spat out on the far side, dazed 3 s, strike cancelled. Bosses resist: attack cancelled, pushed back | The entry gate stays open 1.5 s and pulls in eggs, which pop out one channel further in (Easy: same channel); it fires on the first strike, so it can't be saved |
 
-**Power combos (Candy Crush style hook):** two powers active at once make a combo, e.g. Frost + Shock = frozen creatures
+**Power combos (Candy Crush style hook):** two powers active at once make a combo, e.g. Decoy + Warp = Bait and switch (the decoy goes through the gate too, every creature chases it to the far side); Frost + Shock = frozen creatures
 are knocked out of the vault; Laser + Spin = the beam sweeps a full circle; Shrink + Iron = tiny cannonballs. Combos are
 shown once, then players discover the rest (combo album page).
 

@@ -184,6 +184,7 @@ export const frogMethods = {
       case 'lick': {
         if (F.t < F.dur) { const pr = this.frogFind(F, M); if (!pr) { this.emit('frogMiss', { x: F.lx, y: F.ly, id: F.id, early: 1 }); this.frogSet(F, 'sit'); } break; }
         const pr = this.frogFind(F, M);
+        if (pr && this.warpStrike('frog', F)) break; // v3.4: a warp gate swallows the frog as the tongue shoots
         F.hit = pr ? 1 : 0; F.got = 0;
         if (pr) { F.lx = pr.x; F.ly = pr.y; }
         this.frogSet(F, 'tongue', FROG.tongueT);

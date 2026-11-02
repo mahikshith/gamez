@@ -25,6 +25,7 @@ import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar,
 import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
 import { drawP2Back, drawP2Front, p2Event } from './render/powers2.js'; // v3.4 powers and combos
+import { warpXfBegin, warpXfEnd } from './render/warp.js'; // v3.4 warp gate: a creature drawn going through it
 import { POWER_DEMOS } from './data/power-demos.js'; // v3.4 studio vaults
 import { CHICK_DEMOS } from './data/chick-demos.js';
 import { FROG_DEMO } from './data/frog-demo.js'; // v3.3 frog studio level (dev)
@@ -1745,15 +1746,15 @@ function render() {
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
   drawSalamanders(ctx, sim, t, k); // v3.2: the lava salamander walks the floor, under the eggs
   drawFrogTele(ctx, sim, k, t); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
-  drawFrogs(ctx, sim, t, k, G.theme);
-  drawSeaUnder(ctx, sim, t, k); // v3.3: fish, ink, the octopus (the arms behind a held egg)
+  { const wx = warpXfBegin(ctx, sim, 'f'); drawFrogs(ctx, sim, t, k, G.theme); warpXfEnd(ctx, wx); }
+  { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaUnder(ctx, sim, t, k); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
   for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
   drawChickFX(ctx, sim, t, k);
-  drawSeaOver(ctx, sim, t, k); // v3.3: the arms wrapped over a held egg
+  { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); } // v3.3: the arms wrapped over a held egg
   W.drawSnakes(ctx, sim, t, k); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
   drawBossOver(ctx, sim, k, t); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
-  W.drawEagleAt(ctx, sim, t, k);
+  { const wx = warpXfBegin(ctx, sim, 'e'); W.drawEagleAt(ctx, sim, t, k); warpXfEnd(ctx, wx); }
   drawAllies(ctx, sim, t, k); // v3.4: rooster and goose, in front of the vault
   drawP2Front(ctx, sim, k, t); // v3.4: decoy, frozen/zapped creatures, beams, spin, pepper cloud
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);

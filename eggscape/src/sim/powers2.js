@@ -17,6 +17,8 @@
 //   iron        : eggs turn steel IRON.t s: can't crack or be eaten, smash thorns | heavy: narrow gaps bar them,
 //                 they sink through sponge pads and fall fast
 //   decoy       : a fake egg every creature chases for DECOY.t s | it is big: it can plug a gap
+//   warp        : the next creature strike is swallowed by a portal and the creature spat out far away (sim/warp.js) |
+//                 the gate pulls in eggs rolling into it; it fires on the first strike
 // Creatures: snakes, the salamander, the eagle, the fox thrower and the bosses. Bosses resist (BOSS_RESIST of the
 // time); the salamander is a fire creature (frost holds it half as long); a snake boss resists like a boss.
 //
@@ -27,7 +29,7 @@ import { removeWall, ringPoint } from './boss.js';
 
 const DT = 1 / 120; // sim.js DT: power timers run in real time, also under the hourglass
 const TRAIL = 0.05; // sim.js snake trail spacing
-export const P2_TYPES = ['frostnova', 'shock', 'thunderclap', 'laser', 'spin', 'pepper', 'shrink', 'iron', 'decoy'];
+export const P2_TYPES = ['frostnova', 'shock', 'thunderclap', 'laser', 'spin', 'pepper', 'shrink', 'iron', 'decoy', 'warp'];
 export const P2_KEYS = ['shrink', 'iron', 'zapCD']; // egg fields (seconds left; iron is a flag that lives as long as the stone shell)
 
 export const P2 = {
@@ -40,6 +42,7 @@ export const P2 = {
   shrink: { t: 8, s: 0.75, crack: 1.25 },
   iron: { t: 7, gap: 0.76, sink: 0.45 },
   decoy: { t: 8, s: 1.5 },
+  warp: { t: 12 }, // sim/warp.js has the rest
 };
 // up: creature stun / flee time x; down: downside strength x (bounce, ring lock, cloud size and time, ...)
 const P2_MODE = { easy: { up: 1.15, down: 0.7 }, medium: { up: 1, down: 1 }, hard: { up: 0.9, down: 1.15 } };
@@ -54,6 +57,7 @@ export const COMBOS = [
   { id: 'cannon', a: 'shrink', b: 'iron', name: 'Cannonballs', line: 'Tiny iron eggs smash thorns, barriers, walls and glass, and slip through grates.' },
   { id: 'twister', a: 'pepper', b: 'spin', name: 'Pepper twister', line: 'The spin blows the smoke away and sneezes every creature out to the rim.' },
   { id: 'magnet', a: 'shock', b: 'iron', name: 'Electromagnet', line: 'Iron eggs stick to the live ring instead of bouncing, even upside down.' },
+  { id: 'bait', a: 'decoy', b: 'warp', name: 'Bait and switch', line: 'The warp gate sends the decoy through too: every creature chases it to the far side.' },
   { id: 'stink', a: 'decoy', b: 'pepper', name: 'Pepper decoy', line: 'The decoy is stuffed with pepper: whatever bites it, and all around it, flee far longer.' },
 ];
 
@@ -68,7 +72,7 @@ export const p2Methods = {
     this.p2 = {
       nova: 0, shock: 0, shockR: -1, dark: 0, clap: 0, laser: 0, shots: 0, aim: -Math.PI / 2, sweep: -1, sweepA: 0, sweepDir: 1,
       spin: 0, spinMax: 0, spinDir: 1, pep: 0, cloud: null, shrink: 0, iron: 0, decoy: null, foxOut: 0,
-      beams: [], fx: {}, pads: [], n: 0,
+      beams: [], fx: {}, pads: [], n: 0, warp: null,
     };
     this.p2d = null; // the decoy's body ({decoy, id, alive, chick, body}); its plain state is p2.decoy
     // narrow gaps get a bar only an iron egg feels (switched in p2Pass); drawn while iron is on
@@ -102,6 +106,7 @@ export const p2Methods = {
       case 'shrink': return P.shrink > 0;
       case 'iron': return P.iron > 0;
       case 'decoy': return !!P.decoy;
+      case 'warp': return this.warpOn();
     }
     return false;
   },
@@ -162,7 +167,7 @@ export const p2Methods = {
     } else if (t === 'decoy') {
       dur = P2.decoy.t;
       this.p2Decoy(egg);
-    }
+    } else if (t === 'warp') dur = this.warpArm(egg);
     this.emit('powerOn', { power: t, dur, egg, ring: P.shockR });
     this.p2Combo(t, p);
     return true;
@@ -193,9 +198,9 @@ export const p2Methods = {
     if (this.fox) this.p2Fox(kind, T);
     this.p2Boss(kind, T);
   },
-  p2Snakes() { return this.snakes.filter((S) => !S.gone && S.inside && S.pts.length > 1 && !S.carried && !(S.flee >= 0)); },
-  p2Sals() { return (this.sals || []).filter((C) => this.salLive(C) && C.ph !== 'in' && C.ph !== 'dive' && C.ph !== 'grin'); },
-  p2Eagle() { const E = this.eagle; return E && !E.end && E.phase !== 'away' && E.phase !== 'enter' ? E : null; },
+  p2Snakes() { return this.snakes.filter((S) => !S.gone && S.inside && S.pts.length > 1 && !S.carried && !S.warp && !(S.flee >= 0)); },
+  p2Sals() { return (this.sals || []).filter((C) => this.salLive(C) && C.ph !== 'in' && C.ph !== 'dive' && C.ph !== 'grin' && C.ph !== 'warp'); },
+  p2Eagle() { const E = this.eagle; return E && !E.end && !E.warp && E.phase !== 'away' && E.phase !== 'enter' ? E : null; },
   p2Mark(key, k, t, x, y) { this.p2.fx[key] = { k, t, max: t }; if (x != null) this.emit('p2Hit', { kind: k, x, y }); },
 
   p2Snake(S, kind, T) {
@@ -529,6 +534,7 @@ export const p2Methods = {
     for (const B of P.beams) B.t += DT;
     while (P.beams.length && P.beams[0].t > 0.5) P.beams.shift();
     for (const k in P.fx) if ((P.fx[k].t -= DT) <= 0) delete P.fx[k];
+    if (P.warp) this.warpStep(dt); // sim/warp.js: the gate, the swallowed creature, the pulled eggs
     // the sweep beam (laser + spin): a full circle in P2.laser.sweep s
     if (P.sweep >= 0) {
       const u0 = P.sweep / P2.laser.sweep;
