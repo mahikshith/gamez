@@ -31,7 +31,10 @@ const mixHex = (a, b, k) => { const A = hex(a), B = hex(b); return rgb([A[0] + (
 export const FOXRIG = { torso: 0.72, height: 0.62, mouthX: 0.62, mouthY: 0.4, len: 1.45 };
 const ICE = '#bfe6ff', RIM = '#2f6f9e', HS = 1.38; // HS: the head is drawn big (cartoon proportions, the face must read on a phone)
 const PAL = { ...FOX, sock: '#3a1608', nose: '#1d0b04', white: '#ffffff', eyeW: '#fffaf0' };
-const ICED = (() => { const o = {}; for (const k in PAL) o[k] = mixHex(PAL[k], ICE, 0.55); return o; })();
+// iced colours: the fox's own colours, the orange drained (straight mixing of orange and ice blue reads beige) and
+// then taken ~60% toward the ice
+const desat = (c, k) => { const A = hex(c), L = 0.299 * A[0] + 0.587 * A[1] + 0.114 * A[2]; return '#' + A.map((v) => Math.round(v + (L - v) * k).toString(16).padStart(2, '0')).join(''); };
+const ICED = (() => { const o = {}; for (const k in PAL) o[k] = mixHex(desat(PAL[k], 0.75), '#a8d8f8', 0.6); return o; })();
 
 // ------------------------------------------------------------------ poses
 // by: torso centre height above the floor; dx: torso shift; pitch (+ nose up); st: stretch along the body; sq: squash;
@@ -260,7 +263,7 @@ export function drawDenFox(ctx, x, y, s, t, pose, o = {}) {
     if (frozen) { for (const g of groups) g('rim'); for (const g of groups) g('ice'); }
     const stars = o.stars > 0 ? starPts(t, o.stars) : null;
     const headTop = H(-4, -24);
-    const sk = Math.max(1, 2.6 / (5.2 * u)); // stars never smaller than ~5 px across
+    const sk = Math.max(1, 3.6 / (5.2 * u)); // stars never smaller than ~7 px across
     if (stars) drawStars(ctx, stars, headTop, ow, false, sk);
     groups.forEach((g, gi) => {
       g('outline'); g('fill');
@@ -273,6 +276,17 @@ export function drawDenFox(ctx, x, y, s, t, pose, o = {}) {
       }
       if ((only !== 'head' && gi === 5) || (only === 'head' && gi === 2)) { fillPath(earN.inner, 'fill', C.earIn); earTip(earN); }
     });
+    if (o.crown) crown();
+    // the Fox King: the same fox with a small gold crown set between the ears
+    function crown() {
+      const P = [[-13, -19], [-15, -35], [-8, -27], [-3, -38], [2, -27], [9, -34], [7, -19]].map(([a, b]) => H(a, b));
+      ctx.beginPath(); P.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y))); ctx.closePath();
+      ctx.lineJoin = 'round'; ctx.strokeStyle = C.line; ctx.lineWidth = 2 * ow; ctx.stroke();
+      ctx.fillStyle = frozen ? mixHex('#ffcf3a', ICE, 0.55) : '#ffcf3a'; ctx.fill();
+      const g = H(-3, -23);
+      ctx.fillStyle = frozen ? '#9fc6e6' : '#e0312b'; ctx.beginPath(); ctx.arc(g.x, g.y, 2.6, 0, TAU); ctx.fill();
+      ctx.lineWidth = ow * 0.6; ctx.stroke();
+    }
     function earTip(E) { ctx.save(); E.path(ctx); ctx.clip(); fillPath(E.tip, 'fill', C.dark); ctx.restore(); }
     function tailTip() {
       ctx.save(); tailPath.path(ctx); ctx.clip();
@@ -543,7 +557,7 @@ export function drawFoxDenFox(ctx, sim, t, k) {
   else { pose = foxBlend('den', foxPose(L.st, t, L.u, F.odo), t, F.ph === 'leap' || F.ph === 'trapped' ? 22 : 9); DM.pose = { ...pose }; }
   if (DM.frozenWas > 0 && !frozen) { DM.thawT = t; } // thaw: shards pop off
   DM.frozenWas = F.frozen;
-  const s = FOXRIG.torso * k, o = { ...L.o, face: F.face, frozen: frozen ? F.frozen : 0 };
+  const B = sim.bx && sim.bx.boss, s = FOXRIG.torso * k, o = { ...L.o, face: F.face, frozen: frozen ? F.frozen : 0, crown: !!B && B.kind === 'foxking' };
   if (frozen) { o.eye = o.eye === 'spiral' ? 'normal' : o.eye; o.stars = 0; o.sweat = 0; }
   const alpha = F.ph === 'flee' ? F.alpha : 1, pop = F.ph === 'in' ? 0.4 + 0.6 * easeBack(clamp(1 - F.t / F.dur, 0, 1)) : 1;
   denFrame(sim, F, k, () => {
@@ -595,7 +609,7 @@ export function drawFoxDenOver(ctx, sim, t, k) {
     let pitch = 0;
     if (F.ph === 'leap') { const q0 = sim.denFlyAt(Math.max(0, F.lu - 0.02)), q1 = sim.denFlyAt(Math.min(1, F.lu + 0.02)); const fw = (q1.a - q0.a) * F.r * F.face, up = q0.r - q1.r; pitch = clamp(Math.atan2(up, Math.abs(fw) + 1e-4), -1.15, 1.15) * (fw < 0 ? -1 : 1) * 0.85; }
     ctx.translate(0, -0.3 * k); ctx.rotate(-pitch * F.face); ctx.translate(0, 0.3 * k);
-    drawDenFox(ctx, 0, 0, FOXRIG.torso * k, t, DM.pose, { ...L.o, face: F.face, only: 'head', frozen: F.frozen > 0 ? F.frozen : 0, stars: 0, sweat: 0 });
+    drawDenFox(ctx, 0, 0, FOXRIG.torso * k, t, DM.pose, { ...L.o, face: F.face, only: 'head', frozen: F.frozen > 0 ? F.frozen : 0, stars: 0, sweat: 0, crown: !!(sim.bx && sim.bx.boss && sim.bx.boss.kind === 'foxking') });
   });
 }
 

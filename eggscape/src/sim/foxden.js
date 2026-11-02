@@ -49,7 +49,7 @@ export const denMethods = {
       denA: ((D.a ?? 90) * Math.PI) / 180, hp, hpMax: hp, eid: 0, tgt: 0, gi: -1, kind: '', hold: 0, next: 2, sneakT: 0,
       // a leap / hop / fall: from (a0, r0) to (a1, r1), apex radius ap, u 0..1 over dur
       a0: 0, r0: 0, a1: 0, r1: 0, ap: 0, lu: 0, ldur: 1, lg: -1, blocked: 0,
-      frozen: 0, zap: 0, hitCD: 0, saved: 0, stash: [], trapN: 0, alpha: 1, tossT: 0, tossD: 1,
+      frozen: 0, zap: 0, hitCD: 0, saved: 0, stash: [], trapN: 0, esc: 0, alpha: 1, tossT: 0, tossD: 1,
     };
     const R = this.denFloor(n - 1), q = this.denDenPt();
     this.den.a = q.a; this.den.r = R;
@@ -76,6 +76,11 @@ export const denMethods = {
     if (this.state !== 'play') { this.denEnd(dt); return; }
     if (F.ph === 'wait') { if ((F.t -= dt) <= 0) { this.denSet('in', DEN.in); this.emit('denIn', { ...this.denBody() }); } this.denCarry(); return; }
     if (F.ph === 'gone') return;
+    // the target is saved and only stashed eggs are left: the fox keeps them and the level ends (no waiting out the clock)
+    if (F.stash.length && this.savedLog.length >= (this.level.target || 1) && this.aliveEggs().every((e) => e.foxd === 2)) {
+      for (const id of F.stash.splice(0)) { const e = this.eggs.find((q) => q.id === id); if (e && e.alive) this.breakEgg(e, 'fox'); }
+      return;
+    }
     if (F.hitCD > 0) F.hitCD -= dt;
     if (F.zap > 0) F.zap = Math.max(0, F.zap - dt);
     this.denCarry();
@@ -100,10 +105,10 @@ export const denMethods = {
       case 'inner': this.denInner(dt); break;
       case 'trapped':
         this.denTrapHits();
-        if (F.ph === 'trapped' && (F.t -= dt) <= 0) { F.sneakT = 0; this.denSet('inner'); }
+        if (F.ph === 'trapped' && (F.t -= dt) <= 0) { F.sneakT = 0; F.esc = 1; this.denSet('inner'); } // time up: it squeezes along to a gap
         break;
       case 'hurt': if ((F.t -= dt) <= 0) this.denSet(F.hp <= 0 ? 'defeated' : 'stunned', F.hp <= 0 ? 1.6 : DEN.stunned); break;
-      case 'stunned': case 'bonk': if ((F.t -= dt) <= 0) { F.next = Math.max(F.next, 1.2); this.denSet(F.ch < n - 1 ? 'inner' : 'prowl'); F.sneakT = 0; } break;
+      case 'stunned': case 'bonk': if ((F.t -= dt) <= 0) { F.next = Math.max(F.next, 1.2); this.denSet(F.ch < n - 1 ? 'inner' : 'prowl'); F.sneakT = 0; F.esc = 1; } break;
       case 'stash': if ((F.t -= dt) <= 0) { this.denStash(); this.denSet('laugh', DEN.laugh); } break;
       case 'laugh': case 'drop': if ((F.t -= dt) <= 0) { F.next = Math.max(F.next, this.denM(DEN.next)); this.denSet('prowl'); } break;
       case 'defeated': if ((F.t -= dt) <= 0) { this.denSet('flee', 1.2); this.emit('denFlee', { ...this.denBody() }); } break;
@@ -312,19 +317,21 @@ export const denMethods = {
     F.r = this.denFloor(ri); F.ch = ri;
     let best = null;
     for (const g of this.denGaps(ri)) { const d = Math.abs(wrap(g.a - F.a)) * F.r; if (!best || d < best.d) best = { ...g, d }; }
-    if (!best || best.d > DEN.trapR + 0.4 || (F.sneakT += dt) > DEN.sneakMax) { this.denTrap(); return; }
+    // trapped: no gap in reach (or one that keeps turning away). Once a trap is over it escapes: it walks to the nearest
+    // gap however far (the channel stays blocked meanwhile), so one trap never holds it for good
+    if (!best || (!F.esc && (best.d > DEN.trapR + 0.4 || (F.sneakT += dt) > DEN.sneakMax))) { this.denTrap(); return; }
     if (best.d < best.len / 2 - 0.12) { // over the gap: drop out into the den run
-      F.kind = 'hop'; F.gi = best.gi;
+      F.kind = 'hop'; F.gi = best.gi; F.esc = 0;
       this.denFly(best.a, this.denFloor(n - 1), F.r - 0.15, DEN.hop, -1);
       F.kind = 'hop';
       return;
     }
-    this.denToward(best.a, this.denM(DEN.sneak), dt);
+    this.denToward(best.a, this.denM(DEN.sneak) * (F.esc ? 1.3 : 1), dt);
   },
   denTrap() {
     const F = this.den;
     const e = this.denLetGo('trap');
-    F.trapN++;
+    F.trapN++; F.esc = 0;
     this.denSet('trapped', this.denM(DEN.trap));
     const b = this.denBody();
     this.emit('denTrapped', { ...b, egg: e ? e.id : 0 });
@@ -396,11 +403,21 @@ export const denMethods = {
     if (!F.eid) { this.denSet('prowl'); return; }
     F.hold += dt;
     const lim = this.denM(DEN.hold);
-    if (lim && F.hold >= lim) { this.denLetGo('tired'); this.denSet('drop', DEN.drop); return; }
+    if (lim && F.hold >= lim && this.denSafeDrop()) { this.denLetGo('tired'); this.denSet('drop', DEN.drop); return; } // Easy: lets go (never onto thorns)
     const d = this.denDenPt(), stand = d.a - (F.face * DEN.mouthX) / F.r;
     const da = wrap(d.a - F.a);
     if (Math.abs(da) * F.r < DEN.mouthX + 0.05 && Math.sign(da) === F.face) { this.denSet('stash', DEN.stash); return; }
     this.denToward(Math.abs(da) * F.r < 1 ? stand : d.a, DEN.carry * (this.mode === 'hard' ? 1.12 : 1), dt);
+  },
+  // a let-go spot that is not right on a thorn of the den run (where it rolls from there is the player's job)
+  denSafeDrop() {
+    const F = this.den, ring = this.rings[this.rings.length - 1], m = this.denMouth(), a = Math.atan2(m.y, m.x), R = F.r;
+    for (const th of ring.thorns) {
+      if (!th.alive || th.side === 'out') continue;
+      const d = wrap(ring.body.getAngle() + th.a - a);
+      if (Math.abs(d) * R < 0.8) return false;
+    }
+    return true;
   },
   denStash() {
     const F = this.den, e = F.eid ? this.eggs.find((q) => q.id === F.eid) : null;
@@ -465,6 +482,7 @@ export const denMethods = {
   },
 
   // ---------- planner / danger: 1 = in its jaws or den, 0.8 = it is about to pounce on this egg, less = near it
+  denScore() { const F = this.den; return F ? 500 * (F.hpMax - F.hp) + (F.ph === 'trapped' ? 250 : 0) : 0; },
   denThreat(e) {
     const F = this.den;
     if (!F || !this.denLive() || F.ph === 'defeated' || F.ph === 'flee') return 0;

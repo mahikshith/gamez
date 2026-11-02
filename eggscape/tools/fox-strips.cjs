@@ -39,6 +39,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const ev = (fn, ...a) => p.evaluate(fn, ...a);
   await ev(() => {
     const E = __egg;
+    E.G.paused = true; // the page's own loop must not run between the hand-stepped frames and the screenshots
     window.Q = {
       get s() { return E.G.sim; },
       get F() { return E.G.sim.den; },
@@ -51,7 +52,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
       // the fox on the den-run floor at world angle deg, ready to hunt
       fox(deg, ph = 'prowl') { const F = E.G.sim.den, s = E.G.sim; F.a = (deg * Math.PI) / 180; F.r = s.denFloor(s.rings.length - 1); F.ch = s.rings.length - 1; F.carA = s.rings[s.rings.length - 1].body.getAngle(); s.denSet(ph); F.next = 0; },
       body() { return E.G.sim.denBody(); },
-      start(kind, mode) { E.setSave({ mode, calm: false, seen: {}, intro: {} }); E.startDemo(kind, { direct: true }); Q.run(0.2); },
+      start(kind, mode) { E.setSave({ mode, calm: false, seen: {}, intro: {} }); E.startDemo(kind, { direct: true }); E.G.paused = true; Q.run(0.2); },
     };
   });
   const tmp = path.join(out, '_tmp');
@@ -72,8 +73,8 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     { st: 'idle', t: 0.5, egg: 1, cap: 'idle (egg for scale)' }, { st: 'idle', t: 1.7, cap: 'idle sniff' }, { st: 'prowl', odo: 0, cap: 'prowl 1' }, { st: 'prowl', odo: 0.12, cap: 'prowl 2' }, { st: 'prowl', odo: 0.24, cap: 'prowl 3' }, { st: 'stalk', odo: 0.1, cap: 'stalk' },
     { st: 'crouch', u: 0.2, o: { eye: 'lock' }, cap: 'crouch: wiggle' }, { st: 'crouch', u: 0.85, o: { eye: 'lock' }, cap: 'crouch: eyes lock' }, { st: 'leap', u: 0.15, o: { eye: 'lock' }, cap: 'leap: push off' }, { st: 'leap', u: 0.5, o: { eye: 'lock' }, cap: 'leap: stretched' }, { st: 'leap', u: 0.9, cap: 'leap: land' }, { st: 'grab', u: 0.5, egg: 2, cap: 'grab' },
     { st: 'carry', odo: 0.1, egg: 2, cap: 'carry (egg in jaws)' }, { st: 'toss', u: 0.5, cap: 'toss: wind up' }, { st: 'toss', u: 0.95, cap: 'toss: throw' }, { st: 'trapped', t: 1.1, o: { eye: 'wide', sweat: 1 }, cap: 'trapped: scrabble' }, { st: 'hurt', u: 0.5, o: { eye: 'squeeze' }, cap: 'hurt' }, { st: 'laugh', o: { eye: 'happy' }, cap: 'laugh (stashed)' },
-    { st: 'bonk', u: 0.2, o: { eye: 'squeeze', stars: 2 }, cap: 'bonk (blocked)' }, { st: 'defeated', odo: 0.1, o: { eye: 'squeeze', tears: 1 }, cap: 'defeated, runs off' },
-    { st: 'idle', t: 1.1, cap: 'NORMAL' }, { st: 'idle', t: 1.1, o: { frozen: 3 }, cap: 'FROZEN' }, { st: 'idle', t: 1.1, o: { frozen: 0.5 }, cap: 'FROZEN: last second, cracks' }, { st: 'stunned', t: 1.1, o: { zap: 1, eye: 'spiral' }, cap: 'ZAP: 0.3 s arcs' }, { st: 'stunned', t: 1.1, o: { eye: 'spiral', stars: 3 }, cap: 'STUNNED' },
+    { st: 'bonk', u: 0.2, o: { eye: 'squeeze', stars: 2 }, cap: 'bonk (blocked)' }, { st: 'defeated', odo: 0.1, o: { eye: 'squeeze', tears: 1 }, cap: 'defeated, runs off' }, { st: 'stalk', odo: 0.1, o: { crown: true }, cap: 'Fox King: same fox + crown' },
+    { st: 'idle', t: 1.1, cap: 'NORMAL' }, { st: 'idle', t: 1.1, o: { frozen: 3 }, cap: 'FROZEN' }, { st: 'idle', t: 1.1, o: { frozen: 0.5 }, cap: 'CRACKING (last 1 s)' }, { st: 'stunned', t: 1.1, o: { zap: 1, eye: 'spiral' }, cap: 'ZAP: 0.3 s arcs' }, { st: 'stunned', t: 1.1, o: { eye: 'spiral', stars: 3 }, cap: 'STUNNED' },
   ];
   const gallery = (k, cols) => ev(([k, POSES, cols]) => {
     const A = __egg.foxArt, DPR = 2, cw = Math.round(Math.max(2.3 * k, 120)), chh = Math.round(1.3 * k) + 30, rows = Math.ceil(POSES.length / cols);
@@ -94,7 +95,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     });
     return c.toDataURL('image/png');
   }, [k, POSES, cols]);
-  const realK = await ev(() => { Q.start('foxden', 'medium'); return __egg.G.cam.k; });
+  const realK = await ev(() => { Q.start('foxden', 'medium'); Q.run(5); return __egg.G.cam.k; });
   const rigReal = await gallery(realK, 6);
   const rigClose = await gallery(110, 5);
 
@@ -197,13 +198,13 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     const one = (mood, o, sz = 150, bg = '#3b2a4a') => {
       const c = document.createElement('canvas'); c.width = c.height = sz * 2;
       const ctx = c.getContext('2d'); ctx.scale(2, 2); ctx.fillStyle = bg; ctx.fillRect(0, 0, sz, sz);
-      A.drawFoxFace(ctx, sz / 2, sz * 0.47, sz * 0.36, mood, 0.8, o);
+      A.drawFoxFace(ctx, sz / 2, sz * 0.52, sz * 0.6, mood, 0.8, o);
       return c.toDataURL('image/png');
     };
     for (const m of ['idle', 'smug', 'evil', 'angry', 'laugh', 'shocked', 'cry']) out[m] = one(m, {});
     out.king = one('evil', { crown: true });
     // the same face small (the in-level emblem size and the thrower size)
-    const small = (sz) => { const c = document.createElement('canvas'); c.width = c.height = sz * 2; const ctx = c.getContext('2d'); ctx.scale(2, 2); ctx.fillStyle = '#3b2a4a'; ctx.fillRect(0, 0, sz, sz); A.drawFoxFace(ctx, sz / 2, sz * 0.47, sz * 0.36, 'smug', 0.8, {}); return c.toDataURL('image/png'); };
+    const small = (sz) => { const c = document.createElement('canvas'); c.width = c.height = sz * 2; const ctx = c.getContext('2d'); ctx.scale(2, 2); ctx.fillStyle = '#3b2a4a'; ctx.fillRect(0, 0, sz, sz); A.drawFoxFace(ctx, sz / 2, sz * 0.52, sz * 0.6, 'smug', 0.8, {}); return c.toDataURL('image/png'); };
     out.s24 = small(24); out.s40 = small(40);
     const card = (id) => { const w = 300, h = 190, c = document.createElement('canvas'); c.width = w * 2; c.height = h * 2; const ctx = c.getContext('2d'); ctx.scale(2, 2); A.drawBossCard(ctx, id, 0, 0, w, h, 1.2, 3); return c.toDataURL('image/png'); };
     out.card = card('boss_fox'); out.cardKing = card('boss_foxking');
@@ -213,18 +214,18 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   // ---------- the new face in the game: intro cards, a normal level's thrower, title, win, fail
   const IN = [];
   const scrFull = async (cap, fn, arg) => { await ev(fn, arg); IN.push({ cap, img: await full(), full: 1 }); };
-  await scrFull('L5 intro: boss card', () => { const E = __egg; E.setSave({ mode: 'medium', calm: false, seen: {}, intro: {} }); E.start(4); for (let k = 0; k < 50; k++) E.frame(1 / 60); });
-  await scrFull('L35 intro: Fox King card', () => { const E = __egg; E.setSave({ mode: 'medium', calm: false, seen: {}, intro: {} }); E.start(34); for (let k = 0; k < 50; k++) E.frame(1 / 60); });
-  await ev(() => { const E = __egg; E.setSave({ mode: 'medium', calm: false, seen: {}, intro: { 4: 1 } }); E.start(3, { direct: true }); Q.run(2); Q.quiet(); });
+  await scrFull('L5 intro: boss card', () => { const E = __egg; E.setSave({ mode: 'medium', calm: false, seen: {}, intro: {} }); E.start(4); E.G.paused = true; for (let k = 0; k < 50; k++) E.frame(1 / 60); });
+  await scrFull('L35 intro: Fox King card', () => { const E = __egg; E.setSave({ mode: 'medium', calm: false, seen: {}, intro: {} }); E.start(34); E.G.paused = true; for (let k = 0; k < 50; k++) E.frame(1 / 60); });
+  await ev(() => { const E = __egg; E.setSave({ mode: 'medium', calm: false, seen: {}, intro: { 4: 1 } }); E.start(3, { direct: true }); E.G.paused = true; Q.run(2); Q.quiet(); });
   const thrower = await ev(() => { const F = Q.s.fox; return F ? { x: F.x, y: Q.s.outerR + 0.6 } : null; });
   IN.push({ cap: 'L4: the fox thrower', img: await full(), full: 1 });
   if (thrower) IN.push({ cap: 'L4 thrower, real scale', img: await crop(thrower, 170) });
   await ev(() => { Q.until(() => Q.s.fox && Q.s.fox.t < 0.45, 16); Q.quiet(); });
   const thrower2 = await ev(() => { const F = Q.s.fox; return F ? { x: F.x, y: Q.s.outerR + 0.6 } : null; });
   if (thrower2) IN.push({ cap: 'L4 thrower winding up', img: await crop(thrower2, 170) });
-  await scrFull('title', () => { const E = __egg; E.G.screen = 'title'; E.G.screenT = 5; for (let i = 0; i < 20; i++) E.frame(1 / 60); });
-  await scrFull('win (fox cries)', () => { const E = __egg; E.start(4, { direct: true }); E.frame(1 / 60); E.showResult('win', 3); for (let k = 0; k < 300; k++) E.frame(1 / 60); });
-  await scrFull('fail (fox laughs)', () => { const E = __egg; E.start(4, { direct: true }); E.frame(1 / 60); E.showResult('fail'); for (let k = 0; k < 120; k++) E.frame(1 / 60); });
+  await scrFull('title', () => { const E = __egg; E.G.screen = 'title'; E.G.screenT = 5; E.G.paused = true; for (let i = 0; i < 20; i++) E.frame(1 / 60); });
+  await scrFull('win (fox cries)', () => { const E = __egg; E.start(4, { direct: true }); E.G.paused = true; E.frame(1 / 60); E.showResult('win', 3); for (let k = 0; k < 300; k++) E.frame(1 / 60); });
+  await scrFull('fail (fox laughs)', () => { const E = __egg; E.start(4, { direct: true }); E.G.paused = true; E.frame(1 / 60); E.showResult('fail'); for (let k = 0; k < 120; k++) E.frame(1 / 60); });
 
   // ---------- full phone screens of the den levels
   const LV = [];

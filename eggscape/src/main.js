@@ -232,6 +232,13 @@ function toast(text, life = 2.6, icon = null) {
   G.toasts.push({ text, life, icon });
 }
 
+// v3.5 den fox: its labels come fast (Snatched, TRAPPED, OUCH): a new one replaces the last instead of stacking
+function denPopup(wx, wy, text, o = {}) {
+  G.popups = G.popups.filter((p) => !p.den);
+  const n = G.popups.length;
+  popup(wx, wy, text, o);
+  if (G.popups.length > n) G.popups[G.popups.length - 1].den = 1;
+}
 function popup(wx, wy, text, o = {}) {
   const s = toScreen(wx, wy);
   // v3.1: the same label again within 0.5 s (several eggs cracking at once) merges into one: "Crack ×3"
@@ -1089,7 +1096,7 @@ function handleEvents() {
         frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, 3.2); } } }); // v3.3 frog
         seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.3
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
-        denEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.5 den fox
+        denEvent(ev, fx, { popup: denPopup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.5 den fox
         break;
       case 'won':
         onWin();

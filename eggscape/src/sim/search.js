@@ -43,6 +43,7 @@ export function value(sim) {
   const st = sim.stats();
   if (sim.state === 'failed') return -1e6 + st.saved * 1000;
   let v = st.saved * 1500 - st.broken * 2500 + st.score * 0.2;
+  if (sim.den) v += sim.denScore(); // v3.5: a trapped or beaten den fox is worth something
   for (const e of sim.aliveEggs()) {
     const c = sim.channelOf(e);
     v += c * 300 - e.cracks * 200 + e.mult * 15;
