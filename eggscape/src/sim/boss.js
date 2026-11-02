@@ -147,8 +147,10 @@ function ceilingAbove(sim, p) {
 }
 // eggs an icicle can target: inside the vault, most advanced first
 function targets(sim) {
-  const n = sim.rings.length;
-  return sim.aliveEggs().filter((e) => sim.channelOf(e) < n).sort((a, b) => sim.channelOf(b) - sim.channelOf(a) || a.id - b.id);
+  const n = sim.rings.length, D = sim.p2Lure && sim.p2Lure(); // v3.4: a decoy draws the attack first
+  // v3.4: a shrunk egg is hard to spot, so it is aimed at last (bosses resist: they still find it when it is all there is)
+  const T = sim.aliveEggs().filter((e) => sim.channelOf(e) < n).sort((a, b) => (a.shrink > 0) - (b.shrink > 0) || sim.channelOf(b) - sim.channelOf(a) || a.id - b.id);
+  return D && sim.channelOf(D) < n ? [D, ...T] : T;
 }
 function hangIcicle(sim, egg, big, hang) {
   const c = ceilingAbove(sim, egg.body.getPosition());
@@ -245,7 +247,7 @@ function addWall(sim, kind, ri, la, life) {
   sim.emit('wallUp', { kind, x: q.x, y: q.y });
   return W;
 }
-function removeWall(sim, W, how) {
+export function removeWall(sim, W, how) {
   if (!W.alive) return;
   W.alive = false;
   sim.killFix.push([sim.rings[W.ri].body, W.fix]);

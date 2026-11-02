@@ -21,6 +21,8 @@ import { botTick } from './dev/bot.js';
 import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar, drawMagnetField, bossPose, setBossView } from './render/boss.js'; // bosses (v3.1)
 import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
+import { drawP2Back, drawP2Front, p2Event } from './render/powers2.js'; // v3.4 powers and combos
+import { POWER_DEMOS } from './data/power-demos.js'; // v3.4 studio vaults
 import { CHICK_DEMOS } from './data/chick-demos.js';
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
 
@@ -380,6 +382,7 @@ function pointerDown(e) {
   const r = Math.hypot(w.x, w.y);
   const ch = G.sim.chickAt(w.x, w.y, 34 * ui.u / G.cam.k); // v3.2: a tap on a ready chick (released without dragging) uses its power
   G.chickTap = ch ? { id: ch.id, pid: e.pointerId, x, y, t: G.t } : null;
+  G.laserTap = !ch && G.sim.laserReady() ? { pid: e.pointerId, x, y, t: G.t } : null; // v3.4: a tap fires the laser beak
   if (r > G.sim.outerR + 1.2 && w.y < -G.sim.outerR) return; // touching the ground area
   const ring = G.sim.ringAt(r);
   if (ring.lock > 0) { lockedRing(ring); return; } // bosses (v3.1): frozen or punched
@@ -432,6 +435,9 @@ function pointerUp(e) {
   const ct = G.chickTap; // v3.2: tap = power
   if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) G.sim.tapChick(ct.id);
   G.chickTap = null;
+  const lt = G.laserTap;
+  if (lt && lt.pid === e.pointerId && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 14 * ui.u && G.t - lt.t < 0.45 && G.sim) { const w = toWorld(lt.x, lt.y); G.sim.fireLaser(Math.atan2(w.y, w.x)); }
+  G.laserTap = null;
   G.tp.delete(e.pointerId);
   if (G.tp.size < 2) G.pinch = null;
   const h = G.held.get(e.pointerId);
@@ -468,7 +474,7 @@ function keyDown(e) {
     if (k === 'ArrowUp' || k === 'w' || k === 'W') G.keySel = firstGrabbable(Math.min(G.sim.rings.length - 1, G.keySel + 1), 1);
     if (k === 'ArrowDown' || k === 's' || k === 'S') G.keySel = firstGrabbable(Math.max(0, G.keySel - 1), -1);
     if (/^[1-7]$/.test(k)) G.keySel = Math.min(G.sim.rings.length - 1, +k - 1);
-    if ((k === ' ' || k === 'c' || k === 'C') && !e.repeat) { const c = G.sim.aliveEggs().find((x) => G.sim.canTap(x)); if (c) G.sim.tapChick(c.id); } // v3.2: space taps a ready chick
+    if ((k === ' ' || k === 'c' || k === 'C') && !e.repeat) { const c = G.sim.aliveEggs().find((x) => G.sim.canTap(x)); if (c) G.sim.tapChick(c.id); else if (G.sim.laserReady()) { const L = G.sim.aliveEggs().sort((a, b) => G.sim.channelOf(b) - G.sim.channelOf(a))[0], p = L ? L.body.getPosition() : { x: 0, y: -1 }; G.sim.fireLaser(Math.atan2(p.y, p.x)); } } // v3.2: space taps a ready chick (v3.4: else fires the laser along the leading egg)
   } else if ((k === 'Enter' || k === ' ') && !e.repeat) {
     if (G.screen === 'win' && !(G.result && G.result.t > 1.2)) return;
     const primary = { title: 'play', intro: G.level.intro && !save.intro[G.level.id] ? 'gotit' : 'go', win: 'next', fail: 'retry', pause: 'resume' }[G.screen];
@@ -737,7 +743,7 @@ function v3Event(ev, fx) {
       break;
     case 'softLand':
       if (!V3_SOFT[ev.why]) break;
-      popup(ev.x, ev.y + 0.5, V3_SOFT[ev.why], { color: '#9dff9d', size: 16, life: 0.9 });
+      popup(ev.x, ev.y + 0.5, ev.why === 'stone' && ev.egg && ev.egg.iron ? 'Iron: no crack' : V3_SOFT[ev.why], { color: '#9dff9d', size: 16, life: 0.9 });
       if (ev.why === 'water') { audio.play('splash', { vol: 0.6 }); fx.dust(ev.x, ev.y - 0.2, 6, 'rgba(140,200,255,0.8)'); }
       break;
     case 'smash':
@@ -902,7 +908,7 @@ function handleEvents() {
         break;
       case 'pickup': {
         // discovery (F19/C11): the first touch reveals the orb and is remembered
-        const snd = { fire_red: 'fire_ignite', fire_black: 'fire_ignite', fire_green: 'unlock', fire_gold: 'twin_hatch', stone: 'steel_on', bubble: 'bubble_on', water: 'splash', thunder: 'thunder', thorn: 'thorn_hit', twin: 'twin_hatch', magnet: 'unlock', hourglass: 'rewind', feather: 'unlock', rockskin: 'steel_on', foxcurse: 'thorn_hit' }[ev.power];
+        const snd = { fire_red: 'fire_ignite', fire_black: 'fire_ignite', fire_green: 'unlock', fire_gold: 'twin_hatch', stone: 'steel_on', bubble: 'bubble_on', water: 'splash', thunder: 'thunder', thorn: 'thorn_hit', twin: 'twin_hatch', magnet: 'unlock', hourglass: 'rewind', feather: 'unlock', rockskin: 'steel_on', foxcurse: 'thorn_hit', frostnova: 'glass_crack', shock: 'thunder', thunderclap: 'thunder', laser: 'fire_ignite', spin: 'wind_gust', pepper: 'squish', shrink: 'bubble_pop', iron: 'steel_on', decoy: 'twin_hatch' }[ev.power];
         audio.play(snd || 'unlock');
         fx.sparkle(ev.x, ev.y, 12, powerInfo(ev.power).color);
         const first = !save.seen[ev.power];
@@ -1064,6 +1070,7 @@ function handleEvents() {
         bossEvent(ev, fx); // bosses (v3.1)
         chickEvent(ev, fx, { popup, audio, toast }); // v3.2 chick kinds
         salEvent(ev, fx); // v3.2 lava salamander
+        p2Event(ev, fx, P2_API); // v3.4 powers and combos
         break;
       case 'won':
         onWin();
@@ -1075,6 +1082,20 @@ function handleEvents() {
   }
   sim.events.length = 0;
 }
+
+// ---------------------------------------------------------------- v3.4 powers: event helpers (render/powers2.js)
+const P2_API = {
+  popup, audio, toast,
+  get sim() { return G.sim; },
+  once(key, text, d = 3.2) { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } },
+  // a combo takes over the power card ("COMBO! <name>"); the first time it lingers (the album remembers it)
+  combo(ev) {
+    const id = 'combo_' + ev.id, first = !save.seen[id];
+    if (first) { save.seen[id] = 1; persist(); }
+    G.card = { id, t: 0, dur: first ? 2.2 : 1.3 };
+    G.slow = { left: first ? 1.4 : 0.7, scale: 0.25 };
+  },
+};
 
 // ---------------------------------------------------------------- v3.2 lava salamander: events -> SFX/VFX
 const SAL_HIT = { lava: ['Recharged!', '#ffb347', 'lava_sizzle'], bolt: ['Zapped!', '#fff27a', 'glass_crack'], flash: ['Dazzled!', '#fff6c2', 'glass_crack'], dash: ['Bonk!', '#ffd6a0', 'rock_hit'], ice: ['Brr!', '#bfe9ff', 'glass_crack'], quake: ['Steady!', '#ffd6a0', 'rock_hit'] };
@@ -1675,6 +1696,7 @@ function render() {
   setBossView({ top: G.cam.y + (G.play.h / 2) / G.cam.k, k: G.cam.k, u: ui.u }); // bosses (v3.1): the cloud comes into view
   drawBossRings(ctx, sim, k, t); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
   drawSalHeat(ctx, sim, k, t); // v3.2: red-hot ring sections and the salamander's target mark
+  drawP2Back(ctx, sim, k, t); // v3.4: live ring, scorched sponge, iron bars, brittle thorns, blackout, laser beak
   drawBossActor(ctx, sim, k, t);
   for (const ring of sim.rings) if (ring.gearOut) W.drawGearCog(ctx, ring, ring.gearOut, t);
   // gear trains: while the player turns one ring, the rings it drives show which way they go; the first time
@@ -1713,6 +1735,7 @@ function render() {
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
   drawBossOver(ctx, sim, k, t); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
   W.drawEagleAt(ctx, sim, t, k);
+  drawP2Front(ctx, sim, k, t); // v3.4: decoy, frozen/zapped creatures, beams, spin, pepper cloud
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);
   fx.draw(ctx, 'front');
   for (const e of sim.aliveEggs()) W.drawEggMult(ctx, e, k, FONT);
@@ -2438,7 +2461,8 @@ if (DEV) window.__egg = {
   get sim() { return G.sim; },
   start: (i, o) => startLevel(i, o),
   CHICK_DEMOS,
-  startDemo(kind, o = {}) { G.demo = CHICK_DEMOS.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos
+  startDemo(kind, o = {}) { G.demo = CHICK_DEMOS.find((d) => d.kind === kind || d.id === kind) || POWER_DEMOS.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.4 power demos
+  POWER_DEMOS,
   press,
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
   frame(dt = 1 / 60) { update(dt); render(); },

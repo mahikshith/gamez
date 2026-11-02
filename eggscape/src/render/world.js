@@ -5,6 +5,7 @@ import { isSpriteCalm, drawFoxActor } from './sprites.js';
 import { drawEagle, drawEagleShadow, drawBarrier, drawVenom } from './v3art.js';
 import { drawEggPower, drawOrb } from './powers.js';
 import { EAGLE_LEN } from '../sim/sim.js';
+import { P2 } from '../sim/powers2.js'; // v3.4: shrink ray size
 import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawThornVine, drawGrate, drawOneWayMark } from './v3art.js';
 import { drawSkinPreview } from '../ui/store.js';
 
@@ -872,7 +873,7 @@ export function drawEgg(ctx, egg, t, k) {
   ctx.save();
   ctx.translate(p.x, p.y);
   // v3: special eggs are bigger/smaller; a badly cracked egg trembles
-  const sc = KIND_S[egg.kind] || 1;
+  const sc = egg.shrink > 0 ? SHRINK_S : KIND_S[egg.kind] || 1; // v3.4: a shrunk egg is quail size
   ctx.rotate(a + (egg.cracks >= 2 ? Math.sin(t * 17 + egg.seed) * 0.05 : 0));
   if (sc !== 1) ctx.scale(sc, sc);
   // shell
@@ -984,7 +985,7 @@ export function drawEgg(ctx, egg, t, k) {
   ctx.restore();
 
   // power overlay (powers.js, local y-down): flames stay upright, shells turn with the egg
-  const pw = egg.fire > 0 ? egg.fireKind : egg.rockskin > 0 && egg.stone > 0 ? 'rockskin' : egg.stone > 0 ? 'stone' : egg.bubbleFix ? 'bubble' : egg.water > 0 ? 'water' : egg.zap ? 'thunder' : egg.golden ? 'golden' : null;
+  const pw = egg.fire > 0 ? egg.fireKind : egg.iron && egg.stone > 0 ? 'iron' : egg.rockskin > 0 && egg.stone > 0 ? 'rockskin' : egg.stone > 0 ? 'stone' : egg.bubbleFix ? 'bubble' : egg.water > 0 ? 'water' : egg.zap ? 'thunder' : egg.golden ? 'golden' : null;
   if (pw) {
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -994,7 +995,7 @@ export function drawEgg(ctx, egg, t, k) {
     ctx.restore();
   }
   // v3 global-power overlays (art in powers.js)
-  for (const id of [egg.guard > 0 && 'feather', egg.curse > 0 && 'foxcurse']) {
+  for (const id of [egg.guard > 0 && 'feather', egg.curse > 0 && 'foxcurse', egg.shrink > 0 && 'shrink']) { // v3.4 shrink ray
     if (!id) continue;
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -1701,6 +1702,7 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 // ---------- v3 physics: drawing ----------
 const KIND_S = { ostrich: 1.3, quail: 0.75, duck: 1 };
+const SHRINK_S = P2.shrink.s;
 
 // Run draw() in the art helpers' local y-down pixel space, at ring angle `ang` (radians, world) and radius
 // rad: local +x runs along the ring counter-clockwise, local +y points out of the ring.

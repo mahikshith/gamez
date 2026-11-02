@@ -13,6 +13,9 @@ const hash = (n) => {
 
 // v3.2: orbs whose art lives elsewhere register a drawer here: id -> (ctx, cx, cy, r, t, known)
 export const ORB_ART = {};
+// v3.4: emblems inside the glass orb (ctx in the orb's 200-unit space) and egg overlays (egg-local, h = 100) drawn elsewhere
+export const EMBLEM_ART = {};
+export const EGG_ART = {};
 
 export const POWER_INFO = {
   fire_red: { name: 'Red flame', line: 'Burns away thorns it touches. Rings stay safe.', color: '#ff5a1f' },
@@ -37,7 +40,7 @@ export const POWER_INFO = {
 };
 
 // Glass tint per orb: [highlight side, mid, deep rim]. Darker glass makes the emblem pop.
-const GLASS = {
+export const GLASS = {
   fire_red: ['#ff9a5c', '#a8280f', '#3d0904'],
   fire_black: ['#9a5ad8', '#3a1658', '#0f0518'],
   fire_green: ['#8af0a0', '#14713a', '#04220f'],
@@ -64,6 +67,8 @@ for (const k in POWER_INFO) {
   const h = POWER_INFO[k].color;
   RGB[k] = `${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)}`;
 }
+// colours of powers added after load (v3.4)
+const rgbOf = (id) => RGB[id] || (POWER_INFO[id] && /^#[0-9a-f]{6}$/i.test(POWER_INFO[id].color) ? (RGB[id] = `${parseInt(POWER_INFO[id].color.slice(1, 3), 16)},${parseInt(POWER_INFO[id].color.slice(3, 5), 16)},${parseInt(POWER_INFO[id].color.slice(5, 7), 16)}`) : null);
 
 // Flame palettes: [outer, mid, inner, core].
 const FLAME = {
@@ -940,6 +945,7 @@ function drawEmblem(ctx, id, t) {
   else if (id === 'rockskin') emblemRockskin(ctx, t);
   else if (id === 'foxcurse') emblemFoxcurse(ctx, t);
   else if (id === 'frost') emblemFrost(ctx, t);
+  else if (EMBLEM_ART[id]) EMBLEM_ART[id](ctx, t);
 }
 
 // v3.1 frost orb: a six-armed snowflake that turns slowly
@@ -1019,7 +1025,7 @@ export function drawOrb(ctx, id, cx, cy, r, t = 0, known = true) {
   if (ORB_ART[id]) { ORB_ART[id](ctx, cx, cy, r, t, known); return; } // v3.2: hatch orbs (render/chicks.js)
   ctx.save();
   try {
-    const rgb = RGB[id] || '200,200,200';
+    const rgb = rgbOf(id) || '200,200,200';
     const gl = GLASS[id] || GLASS_DEFAULT;
     const pulse = 1 + 0.06 * Math.sin(t * 3 + (id ? id.length : 0));
     ctx.translate(cx, cy + Math.sin(t * 2.2) * r * 0.04);
@@ -1208,6 +1214,7 @@ export function drawEggPower(ctx, id, t, h) {
     else if (id === 'golden') overlayGolden(ctx, t);
     else if (id === 'feather') overlayFeather(ctx, t);
     else if (id === 'foxcurse') overlayFoxcurse(ctx, t);
+    else if (EGG_ART[id]) EGG_ART[id](ctx, t);
   } catch (e) {
     // art must never break the frame
   }
