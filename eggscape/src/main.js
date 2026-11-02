@@ -301,10 +301,14 @@ function camTarget() {
   for (const e of eggs) maxCh = Math.max(maxCh, sim.channelOf(e));
   const live = G.screen === 'play' && sim.state === 'play';
   const sky = sim.eagle && sim.eagle.phase !== 'away'; // the eagle hunts round the outside: show all of it
-  const A = frameOf(!live || sky || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || n <= 2, maxCh);
+  const whole = !live || sky || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || n <= 2;
+  const F = frameOf(true, maxCh);
+  let A = whole ? F : frameOf(false, maxCh);
+  // a snake, the fox or a boss outside the eggs' rings widens the close-up frame into a square; never let that zoom
+  // out further than the whole vault (it cropped big vaults AND shrank the eggs): show the whole vault instead
+  if (A.k < F.k) A = F;
   const z = G.zm;
   if (z == null || !live) return A;
-  const F = frameOf(true, maxCh);
   if (z < 0) { // out: slide to the whole vault (k in log steps)
     const t = -z;
     return { x: lerp(A.x, F.x, t), y: lerp(A.y, F.y, t), k: A.k * Math.pow(Math.min(1, F.k / A.k), t) };
