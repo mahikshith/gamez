@@ -12,6 +12,8 @@ import * as W from './render/world.js';
 import { UI, FONT, ICON, drawStar, drawEggIcon } from './ui/ui.js';
 import { drawSnake } from './render/characters.js';
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
+import { drawAllies, ALLY_ART } from './render/allies.js'; // v3.4 farm allies
+import { ALLY_DEMOS } from './data/ally-demos.js';
 import { drawSprite, drawBossCard, drawFoxActor, drawHenActor, setSpriteCalm } from './render/sprites.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
@@ -1713,6 +1715,7 @@ function render() {
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
   drawBossOver(ctx, sim, k, t); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
   W.drawEagleAt(ctx, sim, t, k);
+  drawAllies(ctx, sim, t, k); // v3.4: rooster and goose, in front of the vault
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);
   fx.draw(ctx, 'front');
   for (const e of sim.aliveEggs()) W.drawEggMult(ctx, e, k, FONT);
@@ -2444,6 +2447,9 @@ if (DEV) window.__egg = {
   frame(dt = 1 / 60) { update(dt); render(); },
   actSteps, // film strips replay planner moves through this
   snakeArt: drawSnake, // palette strips
+  allyArt: ALLY_ART, // v3.4: ally strips
+  callAlly: (kind, o) => G.sim.callAlly(kind, o),
+  startAllyDemo(kind = 'rooster', o = {}) { G.demo = ALLY_DEMOS.find((d) => d.kind === kind) || ALLY_DEMOS[0]; startLevel(-2, o); },
   snAnim: W.snAnim,
   salAnim, // v3.2: the salamander's last drawn feet (QA strips)
   handle: () => handleEvents(),
