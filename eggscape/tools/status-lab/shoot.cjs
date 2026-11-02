@@ -20,7 +20,8 @@ try { ({ chromium } = require('playwright')); } catch (e) { ({ chromium } = requ
   p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errs.push(m.text()); });
   await p.setContent('<html><body style="margin:0;background:#222"><canvas id="c"></canvas></body></html>');
   await p.addScriptTag({ content: res.outputFiles[0].text });
-  const png = await p.evaluate((s) => window.lab.sheet(s), sheet);
+  if (process.env.DBG) await p.evaluate((d) => Object.assign(window, JSON.parse(d)), process.env.DBG);
+  const png = await p.evaluate((s) => { if (location.hash) {} return window.lab.sheet(s); }, sheet);
   fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
   fs.writeFileSync(out, Buffer.from(png.split(',')[1], 'base64'));
   if (errs.length) console.log('ERRORS:\n' + errs.join('\n'));

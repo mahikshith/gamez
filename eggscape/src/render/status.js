@@ -18,7 +18,7 @@ const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return
 const ease = (u) => 1 - (1 - clamp(u, 0, 1)) ** 3;
 
 export const ICE = {
-  tint: 'rgba(191,230,255,0.55)', shell: 'rgba(214,240,255,1)', shellA: 0.6, rim: '#2f6f9e', pale: '#e9f8ff', glint: '#ffffff',
+  tint: 'rgba(191,230,255,0.55)', shell: 'rgba(214,240,255,1)', shellA: 0.3, rim: '#2f6f9e', pale: '#e9f8ff', glint: '#ffffff',
   thaw: 0.9, // s the thaw (shards and shake) lasts after the shell is gone
 };
 export const ZAP_T = 0.3; // s of arcs before the dizzy starts
@@ -211,7 +211,7 @@ function jag(ctx, x0, y0, x1, y1, n, amp, seed) {
 export function statusDraw(ctx, box, draw, st, o = {}) {
   const k = st && st.k, zapping = k === 'stun' && st.zap >= 0;
   if (!st || (k === 'stun' && !zapping)) { draw(ctx); return false; }
-  const off = o.off ?? 3.2, rim = o.rim ?? 1.7, cs = o.crys ?? 1;
+  const off = o.off ?? 1.2, rim = o.rim ?? 1.6, cs = o.crys ?? 1;
   const M0 = ctx.getTransform(), s0 = Math.sqrt(Math.abs(M0.a * M0.d - M0.b * M0.c)) || 1;
   const S = snap(ctx, box, Math.ceil((off + rim + 7 * cs) * s0 + 3));
   if (!S) { draw(ctx); return false; }
@@ -223,20 +223,20 @@ export function statusDraw(ctx, box, draw, st, o = {}) {
   a.globalCompositeOperation = 'source-atop';
   if (k === 'ice' || thaw) {
     const warm = thaw ? 1 - clamp(age / 0.45, 0, 1) : 1;
-    a.fillStyle = `rgba(191,230,255,${0.55 * warm})`; a.fillRect(0, 0, S.W, S.H);
+    a.fillStyle = `rgba(191,230,255,${0.5 * warm})`; a.fillRect(0, 0, S.W, S.H);
     // a multiply pass (masked to the creature) keeps its dark outline readable through the ice
     C1 = pool(C1, S.W, S.H);
     const t1 = ctx2(C1);
     t1.setTransform(1, 0, 0, 1, 0, 0); t1.globalCompositeOperation = 'source-over'; t1.clearRect(0, 0, C1.width, C1.height);
     t1.drawImage(CA, 0, 0, S.W, S.H, 0, 0, S.W, S.H);
-    t1.globalCompositeOperation = 'multiply'; t1.fillStyle = `rgba(185,212,244,${0.42 * warm})`; t1.fillRect(0, 0, S.W, S.H);
+    t1.globalCompositeOperation = 'multiply'; t1.fillStyle = `rgba(185,212,244,${0.3 * warm})`; t1.fillRect(0, 0, S.W, S.H);
     t1.globalCompositeOperation = 'destination-in'; t1.drawImage(CA, 0, 0, S.W, S.H, 0, 0, S.W, S.H);
     t1.globalCompositeOperation = 'source-over';
     a.globalCompositeOperation = 'source-over'; a.drawImage(C1, 0, 0, S.W, S.H, 0, 0, S.W, S.H);
     a.globalCompositeOperation = 'source-atop';
     if (!thaw) {
       const g = a.createLinearGradient(0, 0, S.W, S.H);
-      g.addColorStop(0, 'rgba(255,255,255,0.0)'); g.addColorStop(0.35, 'rgba(255,255,255,0.28)'); g.addColorStop(0.5, 'rgba(255,255,255,0.05)'); g.addColorStop(1, 'rgba(160,210,245,0.18)');
+      g.addColorStop(0, 'rgba(255,255,255,0.0)'); g.addColorStop(0.35, 'rgba(255,255,255,0.14)'); g.addColorStop(0.5, 'rgba(255,255,255,0.05)'); g.addColorStop(1, 'rgba(160,210,245,0.18)');
       a.fillStyle = g; a.fillRect(0, 0, S.W, S.H);
     }
   } else if (zapping) {

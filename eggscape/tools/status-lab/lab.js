@@ -48,6 +48,23 @@ window.lab = {
         drawEagle(ctx, 0, 0, s, 1.3, { w: c.w, phase: c.phase || 0, pitch: c.pitch || 0, roll: c.roll || 0, turn: c.turn || 0, grab: c.grab, toes: c.toes, stars: c.stars || 0, face: 1 });
       });
     }
+    if (name === 'eagle-flap') {
+      // the whole flap cycle (8 phases) plus strike and hover, tall cells so a raised wing is never cropped
+      const cells = [];
+      for (let i = 0; i < 8; i++) cells.push({ name: 'flap ' + i, w: { flap: 1 }, phase: i * 0.8 });
+      cells.push({ name: 'strike', w: { strike: 1 }, pitch: -0.2, grab: { x: 40, y: 50 } }, { name: 'hover', w: { hover: 1 }, phase: 1 }, { name: 'carry', w: { carry: 1 }, phase: 1.2, grab: { x: 5, y: 40 }, toes: 0.1 }, { name: 'flap 9', w: { flap: 1 }, phase: 5.6 });
+      return grid(cells, 330, 400, 4, BG.dark, (ctx, c) => {
+        ctx.translate(0, 70);
+        drawEagle(ctx, 0, 0, 200, 1.3, { w: c.w, phase: c.phase || 0, pitch: c.pitch || 0, roll: 0, turn: 0, grab: c.grab, toes: c.toes, stars: 0, face: 1 });
+      });
+    }
+    if (name === 'eagle-big') { // the two worst raised-wing frames at 4x
+      const cells = [{ name: 'flap 3', w: { flap: 1 }, phase: 2.4 }, { name: 'strike', w: { strike: 1 }, pitch: -0.2, grab: { x: 40, y: 50 } }, { name: 'flap 7', w: { flap: 1 }, phase: 5.6 }, { name: 'flap 2', w: { flap: 1 }, phase: 1.6 }];
+      return grid(cells, 700, 800, 2, BG.dark, (ctx, c) => {
+        ctx.translate(0, 150);
+        drawEagle(ctx, 0, 0, 400, 1.3, { w: c.w, phase: c.phase || 0, pitch: c.pitch || 0, roll: 0, turn: 0, grab: c.grab, face: 1 });
+      });
+    }
     if (name === 'eagle-states') {
       // normal, frozen (forming, solid, cracking), thaw, stunned (zap, dizzy) at game scale (s = 100) and a close-up row
       const mk = (st, extra) => ({ st, ...extra });

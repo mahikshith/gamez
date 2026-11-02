@@ -697,7 +697,7 @@ export function p2Event(ev, fx, api) {
           break;
         case 'thunderclap':
           audio.play('thunder', { vol: 1 });
-          fx.flash = 0.7; fx.flashColor = '#ffe066'; fx.shake = Math.max(fx.shake, 0.6);
+          fx.flash = 0.7; fx.flashColor = 'clap'; fx.shake = Math.max(fx.shake, 0.6);
           once('thunderclap', 'Thunderclap! Creatures are stunned, but doors and portals lose power.');
           break;
         case 'laser':

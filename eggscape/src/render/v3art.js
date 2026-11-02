@@ -96,6 +96,9 @@ function featherTo(path, M, x, y, ang, L, W, tipR = 0.32) {
 // projected). Draws a thick silhouette for the whole limb first, then each part painter-style (fill + thin
 // edge, back to front) so feathers overlap cleanly and the limb reads as one shape.
 function eagleWing(ctx, P, S, U, V, N, far, ow, t) {
+  // a wing twisted edge-on projects its chord to nothing and the whole trailing edge piles onto the arm (a plank): keep a
+  // minimum chord, trailing backwards, so the feathers always fan out past the arm
+  { const vl = Math.hypot(V[0], V[1]), mn = 0.62; if (vl < mn) { const d = vl > 0.04 ? [V[0] / vl, V[1] / vl] : [-1, 0.08]; V = [d[0] * mn, d[1] * mn]; } }
   // A flat wing seen edge-on (mid-beat, the plane through the eye) collapses to a plank. Real wings are cupped
   // and the hand twists against the arm, so as the plane turns edge-on the trailing edge and the outer hand
   // bend out of it along the normal N: the feathers stay fanned and the wing keeps a readable width.
@@ -110,7 +113,7 @@ function eagleWing(ctx, P, S, U, V, N, far, ow, t) {
   const Hx = Wx + L3 * Math.cos(a3), Hy = Wy + L3 * Math.sin(a3);
   const fold = Math.max(clamp((-a2 - 0.2) / 1.7, 0, 1), clamp(P.fold || 0, 0, 1)), sp = clamp(P.spread, 0, 1);
   const col = far
-    ? { cov: EG.far, covHi: EG.farHi, covLt: EG.farHi, covLo: EG.farFl, sec: EG.farFl, secHi: EG.far, fl: EG.farFl, tip: EG.farTip, edge: 'rgba(24,12,4,0.6)' }
+    ? { cov: EG.far, covHi: '#7e5329', covLt: '#9a6a38', covLo: EG.farFl, sec: EG.farFl, secHi: EG.far, fl: EG.farFl, tip: EG.farTip, edge: 'rgba(24,12,4,0.6)' }
     : { cov: EG.cov, covHi: EG.covHi, covLt: EG.covLt, sec: EG.fl, secHi: EG.flHi, fl: EG.fl, tip: EG.flTip, edge: 'rgba(48,26,10,0.7)' };
   const mv = (path, a, b) => { const q = M(a, b); path.moveTo(q[0], q[1]); };
   const ln = (path, a, b) => { const q = M(a, b); path.lineTo(q[0], q[1]); };
@@ -155,17 +158,21 @@ function eagleWing(ctx, P, S, U, V, N, far, ow, t) {
   const n1 = nrm(Ex, Ey), n2 = nrm(Wx - Ex, Wy - Ey), n3 = nrm(Hx - Wx, Hy - Wy);
   const avg = (p, q) => { const x = p[0] + q[0], y = p[1] + q[1], l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
   const nE = avg(n1, n2), nW = avg(n2, n3);
+  // the leading edge: one smooth bowed curve shoulder -> wrist -> hand (the second control mirrors the first, so no corner at the wrist)
+  const LE1 = 17, LE2 = 8;
+  const LEc = [Ex - nE[0] * LE1, Ey - nE[1] * LE1], LEw = [Wx - nW[0] * LE2, Wy - nW[1] * LE2];
+  const LEc2 = [LEw[0] + (LEw[0] - LEc[0]) * 0.55, LEw[1] + (LEw[1] - LEc[1]) * 0.55];
   const band = (wS, wE, wW, wH, sc) => {
     const path = new Path2D();
     mv(path, -n1[0] * 5, -n1[1] * 5 - 1);
-    qc(path, Ex - nE[0] * 6.5, Ey - nE[1] * 6.5, Wx - nW[0] * 4.5, Wy - nW[1] * 4.5);
-    qc(path, Wx + (Hx - Wx) * 0.5 - n3[0] * 3.5, Wy + (Hy - Wy) * 0.5 - n3[1] * 3.5, Hx - n3[0] * 1.2, Hy - n3[1] * 1.2);
+    qc(path, LEc[0], LEc[1], LEw[0], LEw[1]);
+    qc(path, LEc2[0], LEc2[1], Hx - n3[0] * 0.6, Hy - n3[1] * 0.6);
     const hl3 = Math.hypot(Hx - Wx, Hy - Wy) || 1, tx = (Hx - Wx) / hl3, ty = (Hy - Wy) / hl3;
     qc(path, Hx + tx * (wH * 1.25 + 2.5), Hy + ty * (wH * 1.25 + 2.5), Hx + n3[0] * wH, Hy + n3[1] * wH); // a rounded hand tip, not a flat cut
     const pts = [[Hx + n3[0] * wH, Hy + n3[1] * wH]];
-    for (let i = 1; i <= 3; i++) { const f = i / 3; pts.push([Hx + (Wx - Hx) * f + (n3[0] * (1 - f) + nW[0] * f) * (wH + (wW - wH) * f), Hy + (Wy - Hy) * f + (n3[1] * (1 - f) + nW[1] * f) * (wH + (wW - wH) * f)]); }
-    for (let i = 1; i <= 5; i++) { const f = i / 5; pts.push([Wx + (Ex - Wx) * f + (nW[0] * (1 - f) + nE[0] * f) * (wW + (wE - wW) * f), Wy + (Ey - Wy) * f + (nW[1] * (1 - f) + nE[1] * f) * (wW + (wE - wW) * f)]); }
-    for (let i = 1; i <= 3; i++) { const f = i / 3; pts.push([Ex * (1 - f) + (nE[0] * (1 - f) + n1[0] * f) * (wE + (wS - wE) * f), Ey * (1 - f) + (nE[1] * (1 - f) + n1[1] * f) * (wE + (wS - wE) * f)]); }
+    for (let i = 1; i <= 4; i++) { const f = i / 4; pts.push([Hx + (Wx - Hx) * f + (n3[0] * (1 - f) + nW[0] * f) * (wH + (wW - wH) * f), Hy + (Wy - Hy) * f + (n3[1] * (1 - f) + nW[1] * f) * (wH + (wW - wH) * f)]); }
+    for (let i = 1; i <= 9; i++) { const f = i / 9; pts.push([Wx + (Ex - Wx) * f + (nW[0] * (1 - f) + nE[0] * f) * (wW + (wE - wW) * f), Wy + (Ey - Wy) * f + (nW[1] * (1 - f) + nE[1] * f) * (wW + (wE - wW) * f)]); }
+    for (let i = 1; i <= 5; i++) { const f = i / 5; pts.push([Ex * (1 - f) + (nE[0] * (1 - f) + n1[0] * f) * (wE + (wS - wE) * f), Ey * (1 - f) + (nE[1] * (1 - f) + n1[1] * f) * (wE + (wS - wE) * f)]); }
     for (let i = 1; i < pts.length; i++) {
       const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], mx = (x0 + x1) / 2, my = (y0 + y1) / 2, dx = x1 - x0, dy = y1 - y0;
       qc(path, mx - dy * sc, my + dx * sc, x1, y1);
@@ -173,9 +180,9 @@ function eagleWing(ctx, P, S, U, V, N, far, ow, t) {
     path.closePath();
     return path;
   };
-  const gc = band(17, 18, 15, 12, 0.32), mc = band(11.5, 12.5, 10, 7.5, 0.3), lc = band(6, 6, 5, 3.5, 0.25);
+  const gc = band(13, 14, 11, 5, 0.55), mc = band(9, 9.5, 7, 3.2, 0.5), lc = band(5, 5, 3.8, 1.4, 0.42);
   const alu = new Path2D();
-  featherTo(alu, M, Wx, Wy, a3 - 0.4 - 0.55 * P.alula, 16 + 4 * P.alula, 4.2, 0.25);
+  featherTo(alu, M, Wx, Wy, a3 - 0.4 - 0.55 * P.alula, 12 + 4 * P.alula, 5.4, 0.55);
   // pass 1: silhouette of the whole limb
   ctx.strokeStyle = EG.line;
   ctx.lineWidth = ow * 2;
@@ -207,7 +214,7 @@ function eagleWing(ctx, P, S, U, V, N, far, ow, t) {
   // the leading edge catches the light
   ctx.save(); ctx.clip(lc);
   ctx.strokeStyle = far ? col.covHi : '#c48f52'; ctx.lineWidth = 2.6; ctx.beginPath();
-  { const q0 = M(-n1[0] * 5, -n1[1] * 5 - 1), q1 = M(Ex - nE[0] * 6.5, Ey - nE[1] * 6.5), q2 = M(Wx - nW[0] * 4.5, Wy - nW[1] * 4.5); ctx.moveTo(q0[0], q0[1]); ctx.quadraticCurveTo(q1[0], q1[1], q2[0], q2[1]); }
+  { const q0 = M(-n1[0] * 5, -n1[1] * 5 - 1), q1 = M(LEc[0], LEc[1]), q2 = M(LEw[0], LEw[1]); ctx.moveTo(q0[0], q0[1]); ctx.quadraticCurveTo(q1[0], q1[1], q2[0], q2[1]); }
   ctx.stroke(); ctx.restore();
   part(alu, col.cov);
 }

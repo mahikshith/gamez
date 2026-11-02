@@ -450,7 +450,7 @@ function drawSchool(ctx, sim, S, t, k) {
       const F = R.f[j], x = f.r * Math.cos(f.a), y = f.r * Math.sin(f.a);
       if (frozen) { // nothing moves: the same heading, the same tail
         const fs = { ...st, seed: st.seed + j * 13 };
-        statusDraw(ctx, { x0: x * k - L, y0: -y * k - L, x1: x * k + L, y1: -y * k + L }, (c) => drawFish(c, x * k, -y * k, L, F.h ?? 0, st.hold, { flip: Math.abs(F.flip), beat: F.beat + j, alarm: 0 }), fs, { off: Math.max(1.6, L * 0.12), rim: Math.max(1, L * 0.07), crys: Math.max(0.6, L / 26), quick: true });
+        statusDraw(ctx, { x0: x * k - L, y0: -y * k - L, x1: x * k + L, y1: -y * k + L }, (c) => drawFish(c, x * k, -y * k, L, F.h ?? 0, st.hold, { flip: Math.abs(F.flip), beat: F.beat + j, alarm: 0 }), fs, { off: Math.max(0.8, L * 0.045), rim: Math.max(1, L * 0.07), crys: Math.max(0.6, L / 26), quick: true });
         return;
       }
       // heading from its velocity (va along the channel, vr out)

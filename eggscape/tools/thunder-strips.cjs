@@ -22,7 +22,7 @@ const LV = {
 // each scene: setup (runs in page), then shots [label, seconds to run before the shot, crop {x,y,w,h} in css px]
 const FULL = { x: 0, y: 150, w: 390, h: 420 };
 const SCENES = [
-  { id: 'clap', lv: 'clap', title: 'Thunderclap: bolts + flash + stunned creatures', setup: `Q.run(1.2); S.p2Take(S.aliveEggs()[0], 'thunderclap');`, shots: [['0.05 s', 0.05, FULL], ['0.2 s', 0.15, FULL], ['0.5 s', 0.3, FULL], ['1.2 s', 0.7, FULL]] },
+  { id: 'clap', lv: 'clap', title: 'Thunderclap: bolts + flash + stunned creatures', setup: `Q.run(1.2); S.p2Take(S.aliveEggs()[0], 'thunderclap');`, shots: [['1 frame', 0.017, FULL], ['0.07 s', 0.06, FULL], ['0.2 s', 0.12, FULL], ['0.5 s', 0.3, FULL], ['1.2 s', 0.7, FULL]] },
   { id: 'shock', lv: 'clap', title: 'Shock ring: arcs on the live ring', setup: `Q.run(1.2); S.p2Take(S.aliveEggs()[0], 'shock');`, shots: [['0.1 s', 0.1, FULL], ['0.5 s', 0.4, FULL], ['1.0 s', 0.5, FULL]] },
   { id: 'ring', lv: 'clap', title: 'Stunned ring (drawStun)', setup: `Q.run(0.5); S.rings[1].stun = 2; S.rings[2].stun = 2;`, shots: [['a', 0.02, FULL], ['b', 0.1, FULL], ['c', 0.2, FULL]] },
   { id: 'weather', lv: 'weather', title: 'Weather lightning: warning, strike, screen flash', setup: `Q.run(0.3); S.wx.next = 0;`, shots: [['warn', 0.4, FULL], ['warn+', 0.5, FULL], ['strike', 0.35, FULL], ['strike+', 0.1, FULL], ['strike++', 0.15, FULL]] },

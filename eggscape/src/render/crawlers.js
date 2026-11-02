@@ -341,7 +341,7 @@ export function drawCrawler(ctx, x, y, s, t = 0, opts = {}, species = 'salamande
       let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
       for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
       const pad = 34 * U, o2 = st.k === 'stun' ? opts : { ...opts, blink: 0.5, noShadow: 1 };
-      statusDraw(ctx, { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + pad }, (c) => { useSpecies(sp); drawBody(c, x, y, s, t, o2); }, st, { off: Math.max(3, 4 * U), crys: Math.max(1, U * 1.1) });
+      statusDraw(ctx, { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + pad }, (c) => { useSpecies(sp); drawBody(c, x, y, s, t, o2); }, st, { off: Math.max(1.1, 1.4 * U), crys: Math.max(1, U * 1.1) });
     } else {
       useSpecies(sp);
       drawBody(ctx, x, y, s, t, opts);

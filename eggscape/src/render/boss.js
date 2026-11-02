@@ -608,7 +608,7 @@ function drawCloudBoss(ctx, sim, B, Q, k, t, warnU, acting, calm) {
     ctx.restore();
     // dizzy stars: three circle the top of the cloud on a tilted ellipse (the far ones behind it, see above)
     if (face === 'dizzy' && !calm) dizzyStars(ctx, 0, -s * 0.34, s * 0.27, s * 0.075, t, { layer: 'front', size: s * 0.05 });
-  }, st, { off: Math.max(3, s * 0.03), rim: 1.8, crys: Math.max(1.2, s / 110) }));
+  }, st, { off: Math.max(1.2, s * 0.011), rim: 1.8, crys: Math.max(1.2, s / 110) }));
 }
 function drawStar(ctx, x, y, r, col) {
   ctx.beginPath();
