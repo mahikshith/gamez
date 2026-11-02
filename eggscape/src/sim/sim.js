@@ -4,6 +4,7 @@ import { EGG_H, EGG_W, RING_TH, TAU, eggHull, solidArcs, wrap, clamp, rng } from
 import { v31Init, v31Step, v31State, v31Load, v31Contact, frostOrb, animalsHit } from './boss.js'; // bosses (v3.1)
 import { chickMethods, CHICK_KEYS } from './chicks.js'; // v3.2 chick kinds
 import { salMethods } from './salamander.js'; // v3.2 lava salamander
+import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
 
@@ -184,10 +185,11 @@ export class Sim {
     const mat0 = L.material || 'wood';
     let r = L.r0 || 1.05;
     L.rings.forEach((spec, i) => {
-      if (i > 0) r += spec.gapTo ?? L.spacing ?? 1.0;
+      if (i > 0) r = shapeRadius(L, spec, r + (spec.gapTo ?? L.spacing ?? 1.0), this.rings[i - 1]); // v3.3 M10: shapes clear each other
       this.rings.push(this.makeRing(i, r, spec, spec.mat || mat0));
     });
-    this.outerR = r + RING_TH / 2;
+    this.outerR = Math.max(...this.rings.map(ringReach));
+    this.rock = rockOf(L, this.mode); // v3.3 M10: the rocking vault
     // gears: spec.gear links a ring to the next ring out. Links that touch form one gear train (a chain of 2+
     // rings); turning any ring of a train turns its neighbours the other way, and theirs the same way again.
     for (const ring of this.rings) if (ring.spec.gear != null && this.rings[ring.spec.gear]) { ring.gearOut = this.rings[ring.spec.gear]; ring.gearOut.gearIn = ring; }
@@ -259,21 +261,22 @@ export class Sim {
       honey: (spec.honey || []).map((h) => ({ a: deg(h.a), len: h.len, dry: 0 })),
       retract: spec.retract || null,
       held: false, omega: 0, stun: 0, gear: null, gearIn: null, gearOut: null, // gear: the ring's gear train (array) or null
+      prof: profileOf(spec, this.level), // v3.3 M10: null = circle, else square / hex / spiral (sim/shapes.js)
     };
     const fr = this.level.weather === 'rain' ? 0.55 : 1; // rain: slippery rings
     const ri = r - RING_TH / 2, ro = r + RING_TH / 2;
-    for (const [a0, a1] of solidArcs(r, ring.gaps)) {
-      const n = Math.max(1, Math.ceil(((a1 - a0) * r) / 0.2));
+    for (const [a0, a1] of ring.prof ? shapeArcs(ring, solidArcs) : solidArcs(r, ring.gaps)) {
+      const n = segCount(ring, a0, a1);
       for (let k = 0; k < n; k++) {
         const b0 = a0 + ((a1 - a0) * k) / n, b1 = a0 + ((a1 - a0) * (k + 1)) / n;
         const seg = { a0: b0, a1: b1, alive: true, hp: M.hp || 0, burn: 0, hitCD: 0, ring, pad: false, press: 0, hitT: -9, hitV: 0 };
         const mid = (b0 + b1) / 2;
         const pads = this.opts.sponge && i === Math.min(1, this.level.rings.length - 1) ? [...(spec.pads || []), { a: -90 - (spec.angle || 0), len: 1.3 }] : spec.pads || [];
-        for (const pd of pads) if (Math.abs(wrap(mid - deg(pd.a))) < pd.len / (2 * r)) seg.pad = true;
+        for (const pd of pads) if (Math.abs(wrap(mid - deg(pd.a))) < pd.len / (2 * ringSpd(ring, deg(pd.a)))) seg.pad = true;
         for (const h of ring.honey) if (Math.abs(wrap(mid - h.a)) < h.len / (2 * r)) { seg.honey = h; seg.pad = false; }
         const soft = seg.pad || seg.honey;
         seg.fix = body.createFixture({
-          shape: new Polygon([Vec2(ri * Math.cos(b0), ri * Math.sin(b0)), Vec2(ro * Math.cos(b0), ro * Math.sin(b0)), Vec2(ro * Math.cos(b1), ro * Math.sin(b1)), Vec2(ri * Math.cos(b1), ri * Math.sin(b1))]),
+          shape: new Polygon(segQuad(ring, b0, b1).map(([x, y]) => Vec2(x, y))),
           friction: soft ? 0.95 : M.fr * fr, restitution: soft ? 0.02 : M.re, ...filt('RING'), userData: { kind: 'seg', seg },
         });
         ring.segs.push(seg);
@@ -305,10 +308,10 @@ export class Sim {
 
   // kind: 'hook' (sharp red, breaks the egg) or 'blunt' (grey spike, cracks only) (F22)
   addThorn(ring, a, side, h, kind = 'hook') {
-    const r = ring.r, half = 0.13 / r;
+    const r = ring.r, half = 0.13 / ringSpd(ring, a);
     const base = side === 'in' ? r - RING_TH / 2 + 0.03 : r + RING_TH / 2 - 0.03;
     const tip = side === 'in' ? base - h : base + h;
-    const p = (rad, ang) => Vec2(rad * Math.cos(ang), rad * Math.sin(ang));
+    const p = (rad, ang) => Vec2(...ringPt(ring, ang, rad)); // v3.3 M10: stands square on a shaped ring
     const thorn = { a, side, h, base, tip, alive: true, ring, ext: 1, kind, key: ring.i * 1000 + ring.thorns.length };
     const verts = side === 'in' ? [p(base, a - half), p(base, a + half), p(tip, a)] : [p(base, a + half), p(base, a - half), p(tip, a)];
     thorn.fix = ring.body.createFixture({ shape: new Polygon(verts), friction: 0.3, ...filt('RING'), userData: { kind: 'thorn', thorn } });
@@ -401,9 +404,10 @@ export class Sim {
   }
 
   // ---------- control ----------
-  ringAt(radius) {
-    // Touching a channel controls the ring that is its floor (the ring just outside it).
-    for (const ring of this.rings) if (radius <= ring.r + RING_TH) return ring;
+  ringAt(radius, wa) {
+    // Touching a channel controls the ring that is its floor (the ring just outside it). wa: the touch's world angle
+    // (shaped rings are not round: v3.3 M10)
+    for (const ring of this.rings) if (radius <= (wa == null ? ring.r : ringRhoW(ring, wa)) + RING_TH) return ring;
     return this.rings[this.rings.length - 1];
   }
   maxOmega(ring) {
@@ -454,6 +458,7 @@ export class Sim {
       }
     }
     this.v3Rings();
+    rockStep(this, dt); // v3.3 M10: the rocking vault leans every ring
     for (const ring of this.rings) {
       ring.body.setAngularVelocity(ring.omega);
       const moving = !ring.motor && !ring.follower && Math.abs(ring.omega) > 0.25;
@@ -2659,7 +2664,7 @@ export class Sim {
   }
   channelOf(egg) {
     const p = egg.body.getPosition();
-    return this.chAt(Math.hypot(p.x, p.y));
+    return chAtPt(this.rings, p.x, p.y); // v3.3 M10: shape-aware (a circle ring compares its radius, as chAt does)
   }
   chAt(d) {
     let c = 0;

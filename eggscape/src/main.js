@@ -23,6 +23,8 @@ import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
 import { CHICK_DEMOS } from './data/chick-demos.js';
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
+import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
+import { drawRockHud } from './render/shapes.js';
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 // playtest build (build.mjs --test): every level, booster and skin unlocked, plenty of coins
@@ -259,7 +261,7 @@ function frameOf(all, maxCh) {
     yMax = R;
   } else {
     const ring = sim.rings[Math.min(n - 1, Math.max(3, maxCh + 2))];
-    R = ring.r + RING_TH + 0.5;
+    R = ringReach(ring) + RING_TH / 2 + 0.5;
     yMin = -R + 0.3; // height-limited screens crop a little margin, never a ring
     yMax = R - 0.3;
   }
@@ -381,7 +383,7 @@ function pointerDown(e) {
   const ch = G.sim.chickAt(w.x, w.y, 34 * ui.u / G.cam.k); // v3.2: a tap on a ready chick (released without dragging) uses its power
   G.chickTap = ch ? { id: ch.id, pid: e.pointerId, x, y, t: G.t } : null;
   if (r > G.sim.outerR + 1.2 && w.y < -G.sim.outerR) return; // touching the ground area
-  const ring = G.sim.ringAt(r);
+  const ring = G.sim.ringAt(r, Math.atan2(w.y, w.x));
   if (ring.lock > 0) { lockedRing(ring); return; } // bosses (v3.1): frozen or punched
   if (!ring.grabbable) {
     audio.play('motor_tick', { vol: 0.8 });
@@ -424,7 +426,7 @@ function pointerMove(e) {
     h.y = y;
   } else if (e.pointerType === 'mouse' && G.screen === 'play' && G.sim) {
     const w = toWorld(x, y);
-    G.hover = G.sim.ringAt(Math.hypot(w.x, w.y));
+    G.hover = G.sim.ringAt(Math.hypot(w.x, w.y), Math.atan2(w.y, w.x));
   }
 }
 
@@ -767,6 +769,9 @@ function v3Event(ev, fx) {
       break;
     case 'lavaWarn':
       audio.play('fire_ignite', { pitch: 0.6, vol: 0.5 });
+      break;
+    case 'rockWarn': // v3.3 M10: the vault is about to lean
+      audio.play('motor_tick', { pitch: 0.55, vol: 0.9 });
       break;
     case 'lavaLand':
       audio.play('rock_hit');
@@ -1537,7 +1542,7 @@ function update(dt) {
       const a0 = ring.body.getAngle();
       for (const th of ring.thorns) {
         if (!th.alive || th.ext < 0.5) continue;
-        const tx = th.tip * Math.cos(a0 + th.a), ty = th.tip * Math.sin(a0 + th.a);
+        const [lx, ly] = ringPt(ring, th.a, th.tip), tx = lx * Math.cos(a0) - ly * Math.sin(a0), ty = lx * Math.sin(a0) + ly * Math.cos(a0); // v3.3 M10: shape-aware
         if (Math.hypot(tx - p.x, ty - p.y) < 0.55) e.fear = 0.4;
       }
     }
@@ -1568,7 +1573,7 @@ function update(dt) {
 
   // audio loops
   let turn = 0;
-  for (const r of sim.rings) if ((r.held || r.keyHeld || r.motor) && G.screen === 'play') turn = Math.max(turn, Math.abs(r.omega) / (sim.maxOmega(r) || 1) * (r.motor ? 0.35 : 1));
+  for (const r of sim.rings) if ((r.held || r.keyHeld || r.motor || sim.rock) && G.screen === 'play') // the rocking vault creaks as it leans turn = Math.max(turn, Math.abs(r.omega) / (sim.maxOmega(r) || 1) * (r.motor ? 0.35 : 1));
   audio.setRingTurn(G.screen === 'play' ? clamp(turn, 0, 1) : 0);
   audio.setFireLoop(G.screen === 'play' && sim.aliveEggs().some((e) => e.fire > 0));
   audio.setWind(G.screen === 'play' ? Math.max(G.level.wind ? Math.abs(sim.wind) / (G.level.wind.strength || 1) : 0, Math.abs(galeNow(sim))) : 0);
@@ -1672,6 +1677,7 @@ function render() {
     drawHardIce(ctx, ring, k, t); // v3.2
     ctx.restore();
   }
+  drawRockHud(ctx, sim, k, t); // v3.3 M10: the rocking vault's level and warning arrows
   setBossView({ top: G.cam.y + (G.play.h / 2) / G.cam.k, k: G.cam.k, u: ui.u }); // bosses (v3.1): the cloud comes into view
   drawBossRings(ctx, sim, k, t); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
   drawSalHeat(ctx, sim, k, t); // v3.2: red-hot ring sections and the salamander's target mark
@@ -1799,7 +1805,7 @@ function drawHenAt(sim, k, t) {
 
 // Ghost arrow for a hint (C4): along the ring, the way to turn it.
 function drawHintArrow(ring, h, t) {
-  const R = ring.r + RING_TH / 2 + 0.22, a0 = -Math.PI / 2 - (h.dir * h.amt) / 2, a1 = -Math.PI / 2 + (h.dir * h.amt) / 2;
+  const R = ringReach(ring) + 0.22, a0 = -Math.PI / 2 - (h.dir * h.amt) / 2, a1 = -Math.PI / 2 + (h.dir * h.amt) / 2;
   ctx.save();
   ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 5);
   ctx.strokeStyle = '#ffffff';
