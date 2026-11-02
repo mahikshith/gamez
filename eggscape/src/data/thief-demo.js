@@ -10,8 +10,8 @@ const rings = [
 ];
 const base = { theme: 'farm', eggs: 3, target: 2, time: 120, spacing: 1, material: 'wood', nest: { w: 2.8 }, seed: 4242, world: 1, rings };
 export const THIEF_DEMOS = [
-  { ...base, id: 911, kind: 'weasel', name: 'Weasel', weasel: { a: 60, delay: 1.5 } },
-  { ...base, id: 912, kind: 'rats', name: 'Rats', theme: 'vault', material: 'metal', world: 7, rats: { a: 50, n: 2, delay: 1.5 } },
+  { ...base, id: 911, kind: 'weasel', name: 'Weasel', tip: 'Turn the ring while it crouches and it bonks off. Turn the gap away while it is inside to trap it.', weasel: { a: 60, delay: 1.5 } },
+  { ...base, id: 912, kind: 'rats', name: 'Rats', tip: 'Turn a gap under a rolling egg and it drops through. Water or a glow flash sends them home.', theme: 'vault', material: 'metal', world: 7, rats: { a: 50, n: 2, delay: 1.5 } },
   {
     ...base, id: 913, kind: 'weaselboss', name: 'Weasel Raid (studio)', boss: 'weasel',
     bossFight: { kind: 'weasel', delay: 2, den: { a: 40, hp: 3 }, throws: ['thorn', 'curse'], phases: [{ attacks: [], every: 6 }, { at: { saved: 1, t: 40 }, attacks: ['throw'], every: 7 }, { at: { saved: 2, t: 75 }, attacks: ['throw2'], every: 6 }] },

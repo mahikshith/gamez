@@ -69,6 +69,18 @@ function loadSave(s) {
 const THEME_WEATHER = { farm: 'leaves', orchard: 'leaves', bramble: 'leaves', mushroom: 'fireflies', frozen: 'snow', blizzard: 'snow', dunes: 'sandstorm', haunted: 'ghosts', dragon: 'ash' };
 // seven environments of five (v3)
 const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volcano', 'Storm Peaks', 'The Thieves\u2019 Vault'];
+// test build lab pages (v3.6): every studio vault, reachable without the dev console
+const LAB = [
+  { name: 'Chicks', items: CHICK_DEMOS.map((d) => [d.kind, d.kind[0].toUpperCase() + d.kind.slice(1)]) },
+  { name: 'Creatures', items: [['frog', 'Frog'], ['octopus', 'Octo'], ['octoden', 'Puddle'], ['fish', 'Fish'], ['reef', 'Reef']] },
+  { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King']] },
+  { name: 'Allies', items: [['rooster', 'Rooster'], ['goose', 'Goose']] },
+  { name: 'Powers', items: [['frostnova', 'Frost'], ['shock', 'Shock'], ['thunderclap', 'Clap'], ['laser', 'Laser'], ['spin', 'Spin']] },
+  { name: 'More powers', items: [['pepper', 'Pepper'], ['shrink', 'Shrink'], ['iron', 'Iron'], ['decoy', 'Decoy']] },
+  { name: 'Warp Gate', items: [['warp', 'Snake'], ['warp_eagle', 'Eagle'], ['warp_sal', 'Lizard'], ['warp_frog', 'Frog'], ['warp_octo', 'Octo']] },
+  { name: 'Combos', items: [['combo_shatter', 'Smash'], ['combo_sweep', 'Sweep'], ['combo_cannon', 'Cannon'], ['combo_twister', 'Twist']] },
+  { name: 'More combos', items: [['combo_magnet', 'Magnet'], ['combo_stink', 'Stink'], ['combo_bait', 'Bait'], ['warp_boss', 'Boss']] },
+];
 const BONUS_TEXT = (b, fuse = 1) => ({ turns: `${b.n} turns or fewer`, prize: 'Save the speckled egg', orbs: 'Collect every orb', time: `Finish within ${Math.round(b.s * fuse)} s` })[b.kind] || '';
 const BONUS_COINS = 15;
 const AD_BOOST = ['golden', 'time', 'stone', 'sponge']; // the intro card's free booster, by level
@@ -693,8 +705,10 @@ async function press(id) {
         if (playable(i)) await breakThen(() => startLevel(i));
       } else if (id && id.startsWith('demo:') && (DEV || TEST)) {
         // test build: the chick lab (v3.2), one practice vault per chick kind
-        const d = CHICK_DEMOS.find((x) => x.kind === id.slice(5));
+        const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS].find((x) => x.kind === k);
         if (d) { G.demo = d; await breakThen(() => startLevel(-2)); }
+      } else if (id && id.startsWith('lab:')) {
+        G.labPage = (G.labPage || 0) + +id.slice(4);
       } else if (id && id.startsWith('mode:')) {
         save.mode = id.slice(5);
         persist();
@@ -1493,14 +1507,16 @@ function computeResult() {
   const bonus = !!L.bonus && sim.bonusMet();
   const bonusCoins = bonus && !save.bonus[sk(L.id, sim.mode)] && G.li >= 0 ? BONUS_COINS : 0;
   let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id }).total + bonusCoins;
-  if (G.li < 0) coins = stars && save.daily.paid !== today() ? coins + DAILY_COINS : 0; // the Daily Vault pays once a day
+  if (G.li < 0) coins = G.li === -1 && stars && save.daily.paid !== today() ? coins + DAILY_COINS : 0; // the Daily Vault pays once a day; a lab vault pays nothing
   return { stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus };
 }
 
 function recordResult() {
   const r = G.result;
   const id = G.level.id;
-  if (G.li < 0) {
+  if (G.li === -2) {
+    // a lab vault (test build) touches no save
+  } else if (G.li < 0) {
     if (save.daily.day !== today()) save.daily = { ...save.daily, day: today(), best: 0 };
     if (r.stars > 0) { save.daily.best = Math.max(save.daily.best, r.total); save.daily.paid = today(); }
   } else if (r.stars > 0) {
@@ -2170,8 +2186,8 @@ function drawIntro() {
     ]);
     return;
   }
-  stackCard(G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`, (s, iw) => {
-    const tip = wrapText(L.tip, 15 * s, iw).slice(0, 3);
+  stackCard(G.li === -2 ? 'Lab' : G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`, (s, iw) => {
+    const tip = L.tip ? wrapText(L.tip, 15 * s, iw).slice(0, 3) : [];
     const B = [
       lineBlock(L.name, 20 * s, { color: '#fff', tag: 'intro:name', gap: 0 }),
       { h: 28 * s, draw: (x, y, w) => {
@@ -2179,7 +2195,7 @@ function drawIntro() {
         ui.record({ x: x + w / 2 - L.eggs * 15 * s, y, w: L.eggs * 30 * s, h: 28 * s }, 'intro:eggs');
       } },
       lineBlock(`Save ${L.target} of ${L.eggs} eggs before the fuse burns out`, 15 * s, { color: '#ffe066', tag: 'intro:goal' }),
-      ...(G.li < 0 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14 * s, { color: '#9fe8ff', tag: 'intro:daily', gap: 4 * s })] : []),
+      ...(G.li === -1 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14 * s, { color: '#9fe8ff', tag: 'intro:daily', gap: 4 * s })] : []),
       ...tip.map((l, i) => lineBlock(l, 15 * s, { color: 'rgba(255,255,255,0.85)', tag: 'intro:tip' + i, gap: i ? 2 * s : 8 * s })),
       ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus, G.sim.MD.fuse), 14 * s, { color: '#9fe8ff', tag: 'intro:bonus', gap: 6 * s })] : []),
       { h: 58 * s, gap: 16 * s, draw: (x, y, w) => ui.button('go', 'PLAY', x, y, w, 58 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.play, size: 24 * s }) },
@@ -2187,7 +2203,7 @@ function drawIntro() {
       { h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
     ];
     if (!G.adBoost && !G.golden) B.push({ h: 48 * s, draw: (x, y, w) => ui.button('adboost', 'Watch an ad: free booster', x, y, w, 48 * s, { color: '#d49a1c', dark: '#8a5f0a', ad: true, size: 15 * s }) });
-    B.push({ h: 40 * s, draw: (x, y, w) => ui.button(G.li < 0 ? 'back' : 'levels', G.li < 0 ? 'Menu' : 'Levels', x + w * 0.25, y, w * 0.5, 40 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 15 * s }) });
+    B.push({ h: 40 * s, draw: (x, y, w) => ui.button(G.li === -1 ? 'back' : 'levels', G.li === -1 ? 'Menu' : 'Levels', x + w * 0.25, y, w * 0.5, 40 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 15 * s }) });
     return B;
   });
 }
@@ -2382,10 +2398,14 @@ function drawLevels() {
   const labH = TEST ? 44 * u : 0; // test build: a chick lab row under the grid
   const chh = Math.min((H_ - top - pad - labH - (labH ? 22 * u : 0) - gap * (rows - 1)) / rows, cw * 1.05);
   if (labH) {
-    const kinds = CHICK_DEMOS.map((d) => d.kind), lg = 8 * u, lw = Math.min(110 * u, (W_ - 2 * pad - lg * (kinds.length - 1)) / kinds.length);
+    // test build: a paged lab under the grid, one practice vault per chick kind, creature, power and combo
+    const pg = LAB[((G.labPage || 0) % LAB.length + LAB.length) % LAB.length], kinds = pg.items, lg = 8 * u, aw = 34 * u;
+    const lw = Math.min(110 * u, (W_ - 2 * pad - 2 * (aw + lg) - lg * (kinds.length - 1)) / kinds.length);
     const lx0 = W_ / 2 - (kinds.length * lw + (kinds.length - 1) * lg) / 2, ly = H_ - pad - labH;
-    ui.text('Chick lab', W_ / 2, ly - 12 * u, { size: 14 * u, align: 'center', color: '#ffe8b0', stroke: 'rgba(0,0,0,0.5)', tag: 'levels:lab' });
-    kinds.forEach((k, j) => ui.button('demo:' + k, k[0].toUpperCase() + k.slice(1), lx0 + j * (lw + lg), ly, lw, labH, { color: '#8a5cc8', dark: '#5a3690', size: Math.min(15 * u, lw * 0.2) }));
+    ui.text('Lab: ' + pg.name, W_ / 2, ly - 12 * u, { size: 14 * u, align: 'center', color: '#ffe8b0', stroke: 'rgba(0,0,0,0.5)', tag: 'levels:lab' });
+    ui.button('lab:-1', '<', pad, ly, aw, labH, { color: '#5a3690', dark: '#3a2060', size: 20 * u });
+    ui.button('lab:1', '>', W_ - pad - aw, ly, aw, labH, { color: '#5a3690', dark: '#3a2060', size: 20 * u });
+    kinds.forEach(([k, label], j) => ui.button('demo:' + k, label, lx0 + j * (lw + lg), ly, lw, labH, { color: '#8a5cc8', dark: '#5a3690', size: Math.min(15 * u, lw * 0.2) }));
   }
   const gridW = cols * cw + (cols - 1) * gap;
   const x0 = W_ / 2 - gridW / 2;
