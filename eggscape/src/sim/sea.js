@@ -54,7 +54,7 @@ export const seaMethods = {
     });
     list(L.fish).forEach((P, i) => {
       const ch = clamp(P.ch ?? 1, 1, n - 1), m = clamp(P.n ?? 8, 3, 12), a = deg(P.a ?? 90), mid = this.seaMid(ch);
-      const S = { id: i, ch, speed: P.speed || FISH.speed, dir: P.dir === -1 ? -1 : 1, a, ph: 'swim', t: 0, seen: 0, every: P.turn ?? FISH.turn, turnT: 0, push: 1, sx: 0, sy: 0, f: [] };
+      const S = { id: i, ch, speed: P.speed || FISH.speed, dir: P.dir === -1 ? -1 : 1, a, ph: 'swim', t: 0, seen: 0, every: P.turn ?? FISH.turn, turnT: 0, push: 1, sx: 0, sy: 0, fz: 0, sn: 0, zp: 0, f: [] };
       S.turnT = S.every ? S.every * (0.6 + 0.4 * this.rand()) : 0;
       const half = Math.min(0.32, (this.rings[ch].r - this.rings[ch - 1].r - RING_TH) / 2 - 0.1);
       for (let j = 0; j < m; j++) {
@@ -317,7 +317,7 @@ export const seaMethods = {
       if (r < Infinity && Math.hypot(h.x - x, h.y - y) > r + 0.3) continue;
       if (K && this.octHit(C, K)) n++;
     }
-    if (kind !== 'gust') for (const S of this.schools || []) if (S.f.some((f) => r === Infinity || Math.hypot(f.r * Math.cos(f.a) - x, f.r * Math.sin(f.a) - y) < r + 0.3)) { if (this.fishScatter(S, x, y)) n++; }
+    if (kind !== 'gust') for (const S of this.schools || []) if (S.f.some((f) => r === Infinity || Math.hypot(f.r * Math.cos(f.a) - x, f.r * Math.sin(f.a) - y) < r + 0.3)) { if (kind === 'bolt' ? this.fishStun(S, 2.5, true) : this.fishScatter(S, x, y)) n++; }
     return n;
   },
 
@@ -326,6 +326,18 @@ export const seaMethods = {
     const n = this.rings.length, c = S.ch, mid = this.seaMid(c), M = FISH.mode[this.mode] || FISH.mode.medium;
     const lo = this.rings[c - 1].r + RING_TH / 2 + 0.1, hi = this.rings[c].r - RING_TH / 2 - 0.1;
     S.t += dt;
+    // frozen (fz s left): stopped mid-swim; stunned (sn s left): adrift, belly up. Either way no current for the eggs.
+    if (S.fz > 0 || S.sn > 0) {
+      if (S.fz > 0) S.fz = Math.max(0, S.fz - dt); else S.sn = Math.max(0, S.sn - dt);
+      S.push = 0;
+      for (const f of S.f) {
+        if (S.fz > 0) { f.va = 0; f.vr = 0; continue; }
+        const k = Math.exp(-dt * 2.5);
+        f.va *= k; f.vr = f.vr * k + Math.sin(this.t * 1.7 + f.w) * 0.05 * dt;
+        f.a = wrap(f.a + (f.va * dt) / Math.max(f.r, 0.5)); f.r = clamp(f.r + f.vr * dt, lo, hi);
+      }
+      return;
+    }
     if (!S.seen && !end) { S.seen = 1; this.emit('fishIn', { id: S.id, ...this.fishXY(S) }); }
     if (S.ph === 'swim' && S.every && (S.turnT -= dt) <= 0) {
       S.dir = -S.dir; S.ph = 'turn'; S.t = 0; S.turnT = S.every * (0.75 + 0.5 * this.rand());
@@ -390,6 +402,9 @@ export const seaMethods = {
       b.applyForceToCenter({ x: (tx * acc - (p.x / d) * up) * m, y: (ty * acc - (p.y / d) * up) * m }, true); // along, and a little off the floor
     }
   },
+  // power hits (sim/powers2.js, the rooster, lightning): a school frozen for T s, or stunned (zap: lightning first)
+  fishFreeze(S, T) { if (S.fz >= T) return false; S.fz = T; S.sn = 0; S.zp = 0; return true; },
+  fishStun(S, T, zap) { if (S.fz > 0 || S.sn >= T) return false; S.sn = T; S.zp = zap ? 1 : 0; return true; },
   fishXY(S) { const r = this.seaMid(S.ch); return { x: r * Math.cos(S.a), y: r * Math.sin(S.a) }; },
   fishNear(S, x, y, r) { return S.f.some((f) => Math.hypot(f.r * Math.cos(f.a) - x, f.r * Math.sin(f.a) - y) < r); },
   fishLunges(S) {

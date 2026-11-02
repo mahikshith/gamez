@@ -4,6 +4,7 @@
 import { EGG_H, EGG_W, RING_TH, TAU, rng } from '../sim/geom.js';
 import { P2, COMBOS } from '../sim/powers2.js';
 import { POWER_INFO, GLASS, EMBLEM_ART, EGG_ART, ORB_ART, drawOrb } from './powers.js';
+import { boltStroke } from './status.js';
 
 // ---------- names, lines (pickup card) and glass tints
 const INFO = {
@@ -164,9 +165,12 @@ EMBLEM_ART.thunderclap = (ctx, t) => {
   ctx.save();
   ctx.lineJoin = 'round';
   // the clap: sound rings either side
-  ctx.strokeStyle = `rgba(255,255,255,${0.5 + 0.4 * Math.sin(t * 6)})`;
-  ctx.lineWidth = 6;
-  for (const s of [-1, 1]) for (const r of [22, 36]) { const c = s > 0 ? 0 : Math.PI; ctx.beginPath(); ctx.arc(s * 46, -20, r, c - 0.9, c + 0.9); ctx.stroke(); }
+  for (const s of [-1, 1]) for (const r of [22, 36]) {
+    const c = s > 0 ? 0 : Math.PI;
+    ctx.beginPath(); ctx.arc(s * 46, -20, r, c - 0.9, c + 0.9);
+    ctx.strokeStyle = '#3a2a00'; ctx.lineWidth = 9; ctx.stroke(); // the sound rings: golden with a dark edge, never white
+    ctx.strokeStyle = `rgba(255,214,48,${0.7 + 0.3 * Math.sin(t * 6)})`; ctx.lineWidth = 5; ctx.stroke();
+  }
   // cloud
   ctx.beginPath();
   ctx.arc(-26, -22, 24, Math.PI * 0.5, Math.PI * 1.55); ctx.arc(4, -40, 30, Math.PI * 1.1, Math.PI * 1.95); ctx.arc(32, -18, 22, Math.PI * 1.4, Math.PI * 0.5); ctx.closePath();
@@ -392,7 +396,7 @@ export function drawP2Back(ctx, sim, k, t) {
       g.addColorStop(0, 'rgba(8,8,14,0.95)'); g.addColorStop(0.7, 'rgba(20,20,30,0.85)'); g.addColorStop(1, 'rgba(20,20,30,0)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 0.5, 0, TAU); ctx.fill();
       ctx.strokeStyle = '#5b6170'; ctx.lineWidth = lw(2); ctx.beginPath(); ctx.arc(x, y, 0.3, 0, TAU); ctx.stroke();
-      if (Math.sin(t * 23 + x * 7) > 0.85) { ctx.strokeStyle = '#bfe9ff'; ctx.lineWidth = lw(1.5); zig(ctx, x - 0.2, y + 0.1, x + 0.18, y - 0.08, 4, 0.06, rng(Math.floor(t * 30))); ctx.stroke(); }
+      if (Math.sin(t * 23 + x * 7) > 0.85) { zig(ctx, x - 0.2, y + 0.1, x + 0.18, y - 0.08, 4, 0.06, rng(Math.floor(t * 30))); boltStroke(ctx, lw(1), 1); }
     }
     for (const ring of sim.rings) {
       const A = ring.body.getAngle();
@@ -433,8 +437,7 @@ export function drawP2Back(ctx, sim, k, t) {
       if (!solidLa(ring, la) || !solidLa(ring, la + len / ring.r)) continue;
       ctx.beginPath();
       for (let q = 0; q <= 6; q++) { const b = A + la + (q / 6) * (len / ring.r), rr = ring.r + (R() - 0.5) * 0.2; q ? ctx.lineTo(rr * Math.cos(b), rr * Math.sin(b)) : ctx.moveTo(rr * Math.cos(b), rr * Math.sin(b)); }
-      ctx.strokeStyle = 'rgba(40,120,220,0.9)'; ctx.lineWidth = Math.max(0.06, 3 / k); ctx.stroke();
-      ctx.strokeStyle = '#f4fdff'; ctx.lineWidth = Math.max(0.025, 1.4 / k); ctx.stroke();
+      boltStroke(ctx, Math.max(0.03, 1.5 / k), 1);
     }
     ctx.restore();
   }
@@ -505,8 +508,7 @@ function sparks(ctx, x, y, R, k, t, seed) {
   for (let i = 0; i < 3; i++) {
     const a = r() * TAU, b = a + 0.6 + r() * 0.8;
     zig(ctx, x + R * Math.cos(a), y + R * Math.sin(a), x + R * 1.1 * Math.cos(b), y + R * 1.1 * Math.sin(b), 4, R * 0.25, r);
-    ctx.strokeStyle = 'rgba(60,150,255,0.85)'; ctx.lineWidth = Math.max(0.05, 3 / k); ctx.stroke();
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(0.02, 1.2 / k); ctx.stroke();
+    boltStroke(ctx, Math.max(0.03, 1.4 / k), 1);
   }
   ctx.restore();
 }
@@ -591,17 +593,18 @@ export function drawP2Front(ctx, sim, k, t) {
     } else if (key[0] === 'c') {
       const C = (sim.sals || []).find((c) => c.id === +key.slice(1));
       if (!C || !sim.salLive(C)) continue;
-      if (F.k === 'ice') crustAlong(ctx, C.pts.slice(0, Math.ceil(C.pts.length * 0.62)), 0.55 * C.size, k, Math.min(1, F.t / 0.3, (F.max - F.t) / 0.15 + 0.3));
+      // frozen / zapped / dizzy salamanders are drawn by the creature itself (render/salamander.js + status.js)
       const h = C.pts[0], q = C.pts[Math.min(4, C.pts.length - 1)];
-      if (F.k !== 'ice') creatureFx(ctx, F, k, t, { x: h.x, y: h.y, r: 0.5 * C.size, dir: Math.atan2(h.y - q.y, h.x - q.x) }, 20 + C.id);
+      if (F.k === 'pep' || F.k === 'scare') creatureFx(ctx, F, k, t, { x: h.x, y: h.y, r: 0.5 * C.size, dir: Math.atan2(h.y - q.y, h.x - q.x) }, 20 + C.id);
     } else if (key === 'e' && sim.eagle) {
-      const E = sim.eagle;
-      creatureFx(ctx, F, k, t, { x: E.x, y: E.y, r: 0.9, dir: E.face > 0 ? 0 : Math.PI, block: [1.2, 0.75] }, 40);
+      const E = sim.eagle; // frozen / stunned: the eagle's own art (world.js drawEagleAt + status.js)
+      if (F.k === 'pep' || F.k === 'scare') creatureFx(ctx, F, k, t, { x: E.x, y: E.y, r: 0.9, dir: E.face > 0 ? 0 : Math.PI, block: [1.2, 0.75] }, 40);
     } else if (key === 'f' && sim.fox && !(sim.fox.duck >= 1)) {
       const y = sim.outerR + 0.45 + 0.55;
       creatureFx(ctx, F, k, t, { x: sim.fox.x, y, r: 0.5, dir: Math.PI / 2, block: [0.55, 0.62] }, 50);
     } else if (key === 'b' && sim.bx && sim.bx.boss) {
       const B = sim.bx.boss;
+      if (B.kind === 'blizzard' && (F.k === 'ice' || F.k === 'zap' || F.k === 'spin')) continue; // the cloud draws its own states (render/boss.js)
       creatureFx(ctx, F, k, t, { x: B.x, y: B.y, r: 0.9, dir: -Math.PI / 2, block: [1.1, 0.9] }, 60);
     }
   }
@@ -649,9 +652,8 @@ export function drawP2Front(ctx, sim, k, t) {
     ctx.globalAlpha = f;
     ctx.lineJoin = 'round';
     zig(ctx, (R() - 0.5) * 2, top, 0, 0.2, 9, 0.35, R);
-    ctx.strokeStyle = 'rgba(255,245,170,0.55)'; ctx.lineWidth = 0.42; ctx.stroke();
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.12; ctx.stroke();
-    for (let j = 0; j < 3; j++) { const y = top * (0.3 + 0.2 * j); zig(ctx, (R() - 0.5) * 0.6, y, (R() - 0.5) * 3, y - 1.2, 4, 0.2, R); ctx.strokeStyle = '#fffbe0'; ctx.lineWidth = 0.05; ctx.stroke(); }
+    boltStroke(ctx, 0.1, 1);
+    for (let j = 0; j < 3; j++) { const y = top * (0.3 + 0.2 * j); zig(ctx, (R() - 0.5) * 0.6, y, (R() - 0.5) * 3, y - 1.2, 4, 0.2, R); boltStroke(ctx, Math.max(0.025, 1.2 / k), 1); }
     ctx.restore();
   }
   // pepper cloud: thick enough to hide what is behind it
@@ -695,7 +697,7 @@ export function p2Event(ev, fx, api) {
           break;
         case 'thunderclap':
           audio.play('thunder', { vol: 1 });
-          fx.flash = 0.7; fx.flashColor = '#fffbe0'; fx.shake = Math.max(fx.shake, 0.6);
+          fx.flash = 0.7; fx.flashColor = 'clap'; fx.shake = Math.max(fx.shake, 0.6);
           once('thunderclap', 'Thunderclap! Creatures are stunned, but doors and portals lose power.');
           break;
         case 'laser':

@@ -1142,7 +1142,7 @@ export class Sim {
       this.eagle = {
         every: L.eagle.every ?? 10, phase: 'away', t: L.eagle.delay ?? 6, next: 0, x: sd * (R + 9), y: R + 4, vx: -sd * 6, vy: -1, face: -sd, bank: 0,
         tk: null, tid: 0, tph: 0, tx: 0, ty: 0, dtx: 0, dty: 0, mx: 0, my: 0, cx: 0, cy: 0, side: 1, lk: 0, dur: 1, reach: 0, exp: 0, res: null,
-        carry: null, cid: 0, ctype: null, ct: 0, ox: 0, oy: 0, yx: 0, yy: 0, dzx: 0, dzy: 0, dropId: 0, dropT: 0, dropArm: 0, idle: 0, n: 0, end: null, scr: 0, last: null, sx: 0, sy: 0,
+        carry: null, cid: 0, ctype: null, ct: 0, ox: 0, oy: 0, yx: 0, yy: 0, dzx: 0, dzy: 0, dk: '', dropId: 0, dropT: 0, dropArm: 0, idle: 0, n: 0, end: null, scr: 0, last: null, sx: 0, sy: 0,
       };
     }
     if (L.fox) this.fox = { every: (L.fox.every || 8) * P.fox, throws: [...(L.fox.throws || ['thorn'])], t: L.fox.delay ?? 3, k: 0, x: 0, mood: 'smug', moodT: 0 };
@@ -1655,7 +1655,8 @@ export class Sim {
       case 'dazed': {
         // knocked out of the sky for a moment: drifts away from the vault, wobbling
         const n = Math.hypot(E.dzx, E.dzy) || 1;
-        this.eagleFly(E.dzx + (E.dzx / n) * 0.2 * Math.sin(this.t * 3), E.dzy + 0.25 * Math.sin(this.t * 4.2), 3.5, 7, dt, 1.5);
+        if (E.dk === 'frost') { E.vx *= Math.exp(-dt * 5); E.vy *= Math.exp(-dt * 5); E.x += E.vx * dt; E.y += E.vy * dt; } // frozen: coasts to a stop and hangs there
+        else this.eagleFly(E.dzx + (E.dzx / n) * 0.2 * Math.sin(this.t * 3), E.dzy + 0.25 * Math.sin(this.t * 4.2), 3.5, 7, dt, 1.5);
         if (E.t <= 0) { E.phase = 'up'; E.t = 1.6; this.emit('eagleWake', { x: E.x, y: E.y }); }
         return;
       }
@@ -1936,6 +1937,7 @@ export class Sim {
     const E = this.eagle, R = this.outerR;
     if (E.carry) this.eagleRelease();
     E.phase = 'dazed';
+    E.dk = by || E.res || ''; // why (frost, bolt, shock, flash, crow ...): the art shows a frozen eagle differently from a stunned one
     E.t = EAGLE_T.daze * this.EM.daze;
     // it reels away from the vault (out to the side when it hit the underside) and hangs there wobbling
     // it reels away and flops about in the open: beside the nest when it hit the underside, else outward

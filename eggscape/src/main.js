@@ -966,7 +966,7 @@ function handleEvents() {
         const sp = toScreen(ev.x, ev.y);
         G.weather.trigger('lightning', { sx: sp.x, sy: sp.y });
         fx.flash = 0.5;
-        fx.flashColor = '#e8f4ff';
+        fx.flashColor = '#a9bdff';
         fx.shake = Math.max(fx.shake, 0.4);
         fx.chips(ev.x, ev.y, '#dff3ff', 10, 3);
         break;
@@ -1767,7 +1767,18 @@ function render() {
   G.backdrop.drawAmbient(ctx, t, G.cam);
   drawDanger(); // predators (v3)
   drawV3Tint(sim);
-  if (fx.flash > 0 && !save.calm) {
+  if (fx.flash > 0 && !save.calm && fx.flashColor === 'clap') {
+    // thunderclap: one frame of deep blue darkness, then a quick pale-yellow light around where the bolt landed (radial, never the whole screen)
+    const p = fx.flash / 0.7;
+    if (p > 0.86) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#0a1446'; ctx.fillRect(0, 0, W_, H_); }
+    else {
+      const c = toScreen(0, G.sim ? G.sim.outerR * 0.45 : 0), R = Math.min(W_, H_) * 0.55;
+      const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, R);
+      g.addColorStop(0, `rgba(255,244,190,${0.4 * p})`); g.addColorStop(0.55, `rgba(255,230,120,${0.12 * p})`); g.addColorStop(1, 'rgba(255,214,70,0)');
+      ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(c.x - R, c.y - R, R * 2, R * 2);
+    }
+    ctx.globalAlpha = 1;
+  } else if (fx.flash > 0 && !save.calm) {
     ctx.globalAlpha = fx.flash * 0.6;
     ctx.fillStyle = fx.flashColor;
     ctx.fillRect(0, 0, W_, H_);

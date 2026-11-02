@@ -11,6 +11,7 @@
 // Everything is pooled (typed arrays), deterministic from `seed`, uses no shadowBlur / filter,
 // and caches sprites + gradients at resize(). The caller must have set ctx.setTransform(dpr,0,0,dpr,0,0).
 
+import { BOLT } from './status.js';
 export const WEATHER_KINDS = ['none', 'thunder', 'quake', 'embers', 'rain', 'snow', 'sandstorm', 'fog', 'ghosts', 'current', 'leaves', 'ash', 'fireflies'];
 
 const TAU = Math.PI * 2;
@@ -255,7 +256,7 @@ export function createWeather(kind, seed = 1, opts = {}) {
     if (api.flash > 0.01 && !api.calm) {
       const a = 0.58 * Math.pow(api.flash, 1.4);
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = a; ctx.fillStyle = '#e4ecff'; ctx.fillRect(0, 0, S.w, S.h);
+      ctx.globalAlpha = a * 0.8; ctx.fillStyle = '#a9bdff'; ctx.fillRect(0, 0, S.w, S.h); // a blue-violet flash, not white
     }
     if (haze > 0.01) {
       ctx.globalAlpha = Math.min(0.5, haze * 0.34);
@@ -369,24 +370,29 @@ export function createWeather(kind, seed = 1, opts = {}) {
       const e = Math.max(k, glowAfter);
       if (e < 0.01) continue;
       const u = S.u;
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = '#7fa6ff';
-      ctx.globalAlpha = 0.10 * e; ctx.lineWidth = 16 * u;
-      ctx.beginPath(); strokePts(ctx, b.main); for (const br of b.branches) strokePts(ctx, br); ctx.stroke();
-      ctx.strokeStyle = '#aecbff';
-      ctx.globalAlpha = 0.24 * e; ctx.lineWidth = 7 * u;
-      ctx.beginPath(); strokePts(ctx, b.main); for (const br of b.branches) strokePts(ctx, br); ctx.stroke();
-      // strike glow
-      if (k > 0.05) {
-        const r = 110 * u * (0.5 + k * 0.5);
-        ctx.globalAlpha = k * 0.8; ctx.drawImage(sp.glow[3], b.sx - r, b.sy - r, r * 2, r * 2);
-      }
+      // a wide, saturated electric-blue glow (plain alpha: additive white-out is what made the old bolt fringe white)
       ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = '#f4f8ff';
-      ctx.globalAlpha = Math.min(1, e * 1.25); ctx.lineWidth = 2.4 * u;
-      ctx.beginPath(); strokePts(ctx, b.main); ctx.stroke();
-      ctx.lineWidth = 1.2 * u; ctx.globalAlpha = Math.min(1, e * 1.1) * 0.9;
-      ctx.beginPath(); for (const br of b.branches) strokePts(ctx, br); ctx.stroke();
+      ctx.strokeStyle = BOLT.blue;
+      ctx.globalAlpha = 0.16 * e; ctx.lineWidth = 15 * u;
+      ctx.beginPath(); strokePts(ctx, b.main); for (const br of b.branches) strokePts(ctx, br); ctx.stroke();
+      ctx.strokeStyle = BOLT.gold;
+      ctx.globalAlpha = 0.2 * e; ctx.lineWidth = 7 * u;
+      ctx.beginPath(); strokePts(ctx, b.main); for (const br of b.branches) strokePts(ctx, br); ctx.stroke();
+      // strike glow: a yellow burst where it lands
+      if (k > 0.05) {
+        const r = 90 * u * (0.5 + k * 0.5);
+        const g = ctx.createRadialGradient(b.sx, b.sy, 0, b.sx, b.sy, r);
+        g.addColorStop(0, 'rgba(255,214,60,0.55)'); g.addColorStop(0.5, 'rgba(70,120,255,0.25)'); g.addColorStop(1, 'rgba(70,120,255,0)');
+        ctx.globalAlpha = k; ctx.fillStyle = g; ctx.fillRect(b.sx - r, b.sy - r, r * 2, r * 2);
+      }
+      // crisp bolt: dark edge, blue, gold, yellow-white core
+      const al = Math.min(1, e * 1.25);
+      for (const [col, wd] of [[BOLT.line, 4.6], [BOLT.blue, 3.4], [BOLT.gold, 2.1], [BOLT.core, 1.1]]) {
+        ctx.strokeStyle = col; ctx.globalAlpha = al; ctx.lineWidth = wd * u;
+        ctx.beginPath(); strokePts(ctx, b.main); ctx.stroke();
+        ctx.lineWidth = wd * 0.55 * u; ctx.globalAlpha = al * 0.9;
+        ctx.beginPath(); for (const br of b.branches) strokePts(ctx, br); ctx.stroke();
+      }
     }
     ctx.globalCompositeOperation = 'source-over';
   }

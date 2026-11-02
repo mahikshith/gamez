@@ -407,6 +407,7 @@ export const salMethods = {
     C.next = Math.max(C.next, T + 1);
     if (kind === 'dash') C.shove -= C.dir * 0.35; // bonked back along the channel
     this.salHalt(C, 'daze', T);
+    C.dk = kind; // why it is dazed (bolt, flash, dash, ice ...): the art zaps for a bolt
     this.emit('salHit', { kind, x: o.x ?? h.x, y: o.y ?? h.y, id: C.id });
   },
   // which salamanders a hazard reaches (any part of the body within r of x, y)
@@ -424,10 +425,12 @@ export const salMethods = {
     if (B.phase !== C.bph) { C.bph = B.phase; this.salDaze(C, 1.6); } // a new phase: it reels with the boss
     if (B.saved !== C.bsaved) { C.bsaved = B.saved; if (C.ph === 'warn') { C.next = 1.6; this.salSet(C, 'walk'); this.emit('salFlinch', { x: C.pts[0].x, y: C.pts[0].y }); } }
   },
-  salDaze(C, T) {
+  // why: 'frost' (frozen), 'bolt' (zapped), '' (a plain stun: the rooster, a phase change, a spin) - only the art cares
+  salDaze(C, T, why = '') {
     if (!this.salLive(C) || C.ph === 'in') return;
     this.salRelease(C); C.climb = null; C.next = Math.max(C.next, T + 1);
     this.salHalt(C, 'daze', T);
+    C.dk = why;
   },
 
   // ---------- snake face-off

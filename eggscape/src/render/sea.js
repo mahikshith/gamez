@@ -11,6 +11,7 @@
 // drawSeaOver() (after the eggs: the arms that wrap a held egg, and the mantle over it). ctx in world space (m, y up).
 import { RING_TH, TAU } from '../sim/geom.js';
 import { FISH } from '../sim/sea.js';
+import { statusClock, statusDraw, dizzyStars } from './status.js';
 
 export const OCT_S = 0.44; // m: mantle size (the art's s)
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -282,7 +283,7 @@ export function drawFish(ctx, x, y, L, ang, t, o = {}) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(ang);
-  const up = Math.cos(ang) < 0 ? -1 : 1; // keep the back up on screen
+  const up = (Math.cos(ang) < 0 ? -1 : 1) * (o.belly ? -1 : 1); // keep the back up on screen (stunned: belly up)
   ctx.scale(Math.max(0.12, Math.abs(flip)), up);
   const tail = Math.sin(beat) * 0.38;
   const line = rgb(FP.line);
@@ -308,7 +309,13 @@ export function drawFish(ctx, x, y, L, ang, t, o = {}) {
   // eye (wide when alarmed)
   const er = 0.075 * L * (1 + 0.35 * (o.alarm || 0));
   ctx.fillStyle = rgb(FP.eye); ctx.beginPath(); ctx.arc(0.24 * L, -0.04 * L, er, 0, TAU); ctx.fill();
-  ctx.fillStyle = line; ctx.beginPath(); ctx.arc(0.25 * L + er * 0.2, -0.04 * L, er * 0.55, 0, TAU); ctx.fill();
+  if (o.dizzy) { // stunned: an X eye and a little open mouth
+    ctx.strokeStyle = line; ctx.lineWidth = Math.max(1, L * 0.05); ctx.lineCap = 'round'; ctx.beginPath();
+    const ex = 0.24 * L, ey = -0.04 * L, d = er * 0.85;
+    ctx.moveTo(ex - d, ey - d); ctx.lineTo(ex + d, ey + d); ctx.moveTo(ex + d, ey - d); ctx.lineTo(ex - d, ey + d);
+    ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0.4 * L, 0.04 * L, L * 0.03, L * 0.045, 0, 0, TAU); ctx.fillStyle = line; ctx.fill();
+  } else { ctx.fillStyle = line; ctx.beginPath(); ctx.arc(0.25 * L + er * 0.2, -0.04 * L, er * 0.55, 0, TAU); ctx.fill(); }
   ctx.restore();
 }
 
@@ -435,9 +442,17 @@ function drawSchool(ctx, sim, S, t, k) {
     }
     ctx.restore();
   }
+  // frozen: stopped mid-swim in a thin ice glaze (held pose); stunned: adrift belly up, wobbling, stars; zapped: arcs first
+  const st = statusClock(sim, 'y' + S.id, S.fz > 0 ? { k: 'ice', left: S.fz } : S.sn > 0 ? { k: 'stun', zap: S.zp > 0, left: S.sn } : null, t);
+  const frozen = st && st.k === 'ice', stunned = st && st.k === 'stun';
   pxSpace(ctx, 0, 0, k, () => {
     S.f.forEach((f, j) => {
       const F = R.f[j], x = f.r * Math.cos(f.a), y = f.r * Math.sin(f.a);
+      if (frozen) { // nothing moves: the same heading, the same tail
+        const fs = { ...st, seed: st.seed + j * 13 };
+        statusDraw(ctx, { x0: x * k - L, y0: -y * k - L, x1: x * k + L, y1: -y * k + L }, (c) => drawFish(c, x * k, -y * k, L, F.h ?? 0, st.hold, { flip: Math.abs(F.flip), beat: F.beat + j, alarm: 0 }), fs, { off: Math.max(0.8, L * 0.045), rim: Math.max(1, L * 0.07), crys: Math.max(0.6, L / 26), quick: true });
+        return;
+      }
       // heading from its velocity (va along the channel, vr out)
       const ux = Math.cos(f.a), uy = Math.sin(f.a), vx = -uy * f.va + ux * f.vr, vy = ux * f.va + uy * f.vr, sp = Math.hypot(vx, vy);
       const want = sp > 0.08 ? Math.atan2(-vy, vx) : F.h ?? Math.atan2(-ux * f.d, -uy * f.d);
@@ -448,6 +463,12 @@ function drawSchool(ctx, sim, S, t, k) {
       else F.h += d * Math.min(1, dt * 8);
       F.beat += dt * (6 + 5 * clamp(sp, 0, 3));
       F.alarm += ((S.ph === 'scatter' ? 1 : 0) - F.alarm) * Math.min(1, dt * 6);
+      if (stunned) {
+        const wob = Math.sin(t * 1.9 + j * 2.1) * 0.32, bob = Math.sin(t * 1.3 + j * 1.7) * L * 0.1, fs = { ...st, seed: st.seed + j * 13 };
+        statusDraw(ctx, { x0: x * k - L, y0: -y * k - L * 1.6, x1: x * k + L, y1: -y * k + L }, (c) => drawFish(c, x * k, -y * k + bob, L, F.h + wob, t, { flip: Math.abs(F.flip), beat: t * 1.4 + j, alarm: 0, belly: 1, dizzy: 1 }), fs, { quick: true, crys: 0.6 });
+        dizzyStars(ctx, x * k, -y * k + bob - L * 0.38, L * 0.34, L * 0.1, t + j * 0.7, { size: Math.max(1.7, L * 0.1), tilt: -0.15 });
+        return;
+      }
       drawFish(ctx, x * k, -y * k, L, F.h, t, { flip: Math.abs(F.flip), beat: F.beat + j, alarm: F.alarm });
     });
   });

@@ -908,7 +908,7 @@ ART.storm = {
     const I = dt < 0.07 ? 1 : dt < 0.13 ? 0.25 : dt < 0.2 ? 0.85 : Math.max(0, 1 - (dt - 0.2) / 0.25) * 0.5;
     S.tf(ctx, 0.2); const b = S.bolts[k % 4], x0 = S.W * ((h >>> 10) % 2 ? lerp(0.08, 0.3, ((h >>> 12) % 100) / 100) : lerp(0.7, 0.92, ((h >>> 12) % 100) / 100)), y0 = S.H * 0.08;
     ctx.globalAlpha = I; ctx.lineJoin = 'round';
-    for (const [w, col] of [[5 * S.u * 0.25 + 4, 'rgba(160,190,255,0.35)'], [2, '#f4f8ff']]) { ctx.beginPath(); ctx.moveTo(x0, y0); for (const [x, y] of b) ctx.lineTo(x0 + x, y0 + y); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke(); }
+    for (const [w, col] of [[8, '#1b1350'], [6, '#2f6bff'], [3.4, '#ffc61a'], [1.6, '#fff3a6']]) { ctx.beginPath(); ctx.moveTo(x0, y0); for (const [x, y] of b) ctx.lineTo(x0 + x, y0 + y); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke(); }
     ctx.globalAlpha = 1; ctx.restore();
     S.flash = I;
   },
@@ -929,7 +929,7 @@ ART.storm = {
     for (const [x0, sd] of [[0, 1], [W, -1]]) for (let i = 0; i < 6; i++) { const r = R.r(8, 14) * u, x = x0 + sd * R.r(0, 22) * u, y = gy - R.r(-4, 14) * u; circle(c, x, y, r, '#9aa3c2'); circle(c, x - r * 0.15, y - r * 0.2, r * 0.82, '#c3cae0'); }
     for (const [x0, sd] of [[0, 1], [W, -1]]) for (let i = 0; i < 5; i++) { const r = R.r(8, 13) * u; circle(c, x0 + sd * R.r(0, 25) * u, R.r(-6, 4) * u, r, '#171a2c'); }
   },
-  front(ctx, t, S) { if (S.flash > 0.01) { ctx.fillStyle = `rgba(220,230,255,${0.14 * S.flash})`; ctx.fillRect(0, 0, S.w, S.h); S.flash = 0; } },
+  front(ctx, t, S) { if (S.flash > 0.01) { ctx.fillStyle = `rgba(150,175,255,${0.16 * S.flash})`; ctx.fillRect(0, 0, S.w, S.h); S.flash = 0; } },
 };
 
 // 16 ----------------------------------------------- Clocktower

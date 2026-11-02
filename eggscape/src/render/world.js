@@ -3,6 +3,7 @@ import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
 import { drawChick, drawFox } from './characters.js';
 import { isSpriteCalm, drawFoxActor } from './sprites.js';
 import { drawEagle, drawEagleShadow, drawBarrier, drawVenom } from './v3art.js';
+import { statusClock, statusDraw, boltStroke } from './status.js';
 import { drawEggPower, drawOrb } from './powers.js';
 import { EAGLE_LEN } from '../sim/sim.js';
 import { P2 } from '../sim/powers2.js'; // v3.4: shrink ray size
@@ -491,9 +492,7 @@ export function drawGearArrow(ctx, ring, dir, strength, t) {
 // A stunned ring crackles with electric arcs.
 function drawStun(ctx, ring, t, px) {
   ctx.save();
-  ctx.strokeStyle = 'rgba(170,225,255,0.95)';
-  ctx.lineWidth = Math.max(2 * px, 0.02);
-  const k = Math.floor(t * 20);
+  const k = Math.floor(t * 20), bw = Math.max(1.4 * px, 0.016);
   const R = rng(k * 31 + ring.i);
   for (let j = 0; j < 6; j++) {
     const a = R() * TAU;
@@ -502,7 +501,7 @@ function drawStun(ctx, ring, t, px) {
       const rr = ring.r + (R() - 0.5) * RING_TH * 1.6, b = a + q * 0.05;
       if (q) ctx.lineTo(rr * Math.cos(b), rr * Math.sin(b)); else ctx.moveTo(rr * Math.cos(b), rr * Math.sin(b));
     }
-    ctx.stroke();
+    boltStroke(ctx, bw, 1);
   }
   ctx.restore();
 }
@@ -1009,14 +1008,12 @@ export function drawEgg(ctx, egg, t, k) {
   if (egg.zap) {
     ctx.save();
     ctx.translate(p.x, p.y);
-    ctx.strokeStyle = 'rgba(190,230,255,0.95)';
-    ctx.lineWidth = Math.max(1.5 * px, 0.015);
     const R = rng(Math.floor(t * 18) + egg.seed);
     for (let j = 0; j < 3; j++) {
       const b0 = R() * TAU;
       ctx.beginPath();
       for (let q = 0; q < 4; q++) { const rr = 0.3 + R() * 0.08, bb = b0 + q * 0.2; q ? ctx.lineTo(rr * Math.cos(bb), rr * Math.sin(bb)) : ctx.moveTo(rr * Math.cos(bb), rr * Math.sin(bb)); }
-      ctx.stroke();
+      boltStroke(ctx, Math.max(1.1 * px, 0.011), 1);
     }
     ctx.restore();
   }
@@ -1342,11 +1339,9 @@ export function drawEmber(ctx, m, t) {
 }
 export function drawBoltWarn(ctx, x, y, t) {
   if (Math.sin(t * 30) < 0) return;
-  ctx.strokeStyle = 'rgba(220,240,255,0.9)';
-  ctx.lineWidth = 0.03;
   ctx.beginPath();
   ctx.arc(x, y, 0.3, 0, TAU);
-  ctx.stroke();
+  boltStroke(ctx, 0.016, 1);
 }
 
 // ---------- predators (v3): barriers, snakes, eagle, fox thrower ----------
@@ -1462,9 +1457,12 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
     const f = EA.flapT > 0 ? 1 : 0;
     W = { glide: 1 - f, flap: f }; rate = ph === 'flee' ? 13 : 9;
   }
-  const kw = 1 - Math.exp(-dt * 8);
+  // frozen: a held pose (no wing beat, no blend, no blink); stunned: the sim's dazed phase, by lightning or a shock it zaps first
+  const st = statusClock(sim, 'e', ph === 'dazed' ? (E.dk === 'frost' ? { k: 'ice', left: E.t } : { k: 'stun', zap: E.dk === 'bolt' || E.dk === 'shock' || E.dk === 'zap', left: E.t }) : null, t);
+  const frozen = st && st.k === 'ice';
+  const kw = frozen ? 0 : 1 - Math.exp(-dt * 8);
   for (const key of ['glide', 'flap', 'hover', 'dive', 'strike', 'carry', 'dazed', 'perch']) EA.w[key] = (EA.w[key] || 0) + ((W[key] || 0) - (EA.w[key] || 0)) * kw;
-  EA.ph += dt * rate * (calm ? 0.6 : 1);
+  if (!frozen) EA.ph += dt * rate * (calm ? 0.6 : 1);
   // facing, with a quick turn-round (squash through the middle) instead of a snap
   let want = E.face;
   if ((ph === 'strike' || ph === 'carry' && E.ct < 0.3) && Math.abs(E.mx - E.x) > 0.15) want = E.mx > E.x ? 1 : -1;
@@ -1501,20 +1499,23 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
     grab = rel(E.x + EA.face * 0.05, R + 0.02);
     toes = 0.25;
   }
-  EA.pitch += (pitch - EA.pitch) * (1 - Math.exp(-dt * (ph === 'dive' || ph === 'strike' ? 14 : 5)));
-  EA.roll += (clamp(E.bank, -1, 1) - EA.roll) * (1 - Math.exp(-dt * 4));
+  if (!frozen) {
+    EA.pitch += (pitch - EA.pitch) * (1 - Math.exp(-dt * (ph === 'dive' || ph === 'strike' ? 14 : 5)));
+    EA.roll += (clamp(E.bank, -1, 1) - EA.roll) * (1 - Math.exp(-dt * 4));
+  }
   // turning round, it rolls through a bank (wings swing over) rather than flattening to a sliver
   const roll = clamp(EA.roll + turn * (EA.roll >= 0 ? 1 : -1), -1, 1);
   EA.stars += ((ph === 'dazed' ? 1 : 0) - EA.stars) * (1 - Math.exp(-dt * 6));
   // blink every few seconds, never while locked on
   EA.blink -= dt;
   if (EA.blink < -0.13) EA.blink = 2.2 + ((t * 7.3) % 1.8);
-  const eye = EA.blink < 0 && ph !== 'warn' && ph !== 'dive' ? 0.08 : 1;
+  const eye = frozen ? 0.5 : EA.blink < 0 && ph !== 'warn' && ph !== 'dive' ? 0.08 : 1;
   const gloat = ph === 'gloat' && E.scr ? 0.55 + 0.45 * Math.sin(t * 9) : 0;
   eagleFeathers(ctx, dt, k);
   if (ph === 'carry' && E.carry === 'orb') pxSpace(ctx, E.x + E.face * 0.12, E.y - 0.3 * EAGLE_LEN - 0.12, k, () => drawOrb(ctx, E.ctype, 0, 0, 0.2 * k, t, true));
+  const sz = EAGLE_LEN * k, tt = frozen ? st.hold : t, box = { x0: -1.3 * sz, y0: -1.2 * sz, x1: 1.3 * sz, y1: 1.2 * sz };
   pxSpace(ctx, E.x, E.y, k, () => {
-    drawEagle(ctx, 0, 0, EAGLE_LEN * k, t, { w: EA.w, phase: EA.ph, face: EA.face, turn, pitch: EA.pitch, roll, grab, toes, eye, stars: EA.stars, beak: gloat || null });
+    statusDraw(ctx, box, (c) => drawEagle(c, 0, 0, sz, tt, { w: EA.w, phase: EA.ph, face: EA.face, turn, pitch: EA.pitch, roll, grab, toes, eye, stars: EA.stars, beak: gloat || null }), st, { off: Math.max(1, sz * 0.015), crys: Math.max(1, sz / 80) });
   });
 }
 

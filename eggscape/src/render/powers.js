@@ -3,6 +3,7 @@
 
 import { drawSprite, spriteReady, isSpriteCalm } from './sprites.js';
 
+import { boltStroke } from './status.js';
 const TAU = Math.PI * 2;
 const mod = (a, b) => ((a % b) + b) % b;
 // Stable pseudo-random in 0..1 (no Math.random so frames are repeatable).
@@ -341,7 +342,7 @@ function emblemThunder(ctx, t) {
   ctx.beginPath();
   BOLT.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
   ctx.closePath();
-  ctx.strokeStyle = 'rgba(160,200,255,0.45)';
+  ctx.strokeStyle = 'rgba(47,107,255,0.7)';
   ctx.lineWidth = 18;
   ctx.stroke();
   const g = ctx.createLinearGradient(0, -60, 0, 60);
@@ -356,7 +357,7 @@ function emblemThunder(ctx, t) {
   ctx.restore();
   // crackle sparks
   const f = Math.floor(t * 10);
-  ctx.strokeStyle = '#d9f1ff';
+  ctx.strokeStyle = '#ffc61a';
   ctx.lineWidth = 3.5;
   ctx.lineCap = 'round';
   ctx.beginPath();
@@ -1642,9 +1643,7 @@ function overlayThunder(ctx, t) {
   ctx.fillStyle = g;
   ctx.fillRect(-100, -100, 200, 200);
   const f = Math.floor(t * 14);
-  for (let pass = 0; pass < 2; pass++) {
-    ctx.strokeStyle = pass ? '#f2fbff' : 'rgba(90,160,255,0.55)';
-    ctx.lineWidth = pass ? 2.4 : 8;
+  {
     ctx.beginPath();
     for (let k = 0; k < 4; k++) {
       const a0 = hash(f * 4 + k) * TAU;
@@ -1659,10 +1658,10 @@ function overlayThunder(ctx, t) {
         else ctx.moveTo(x, y);
       }
     }
-    ctx.stroke();
+    boltStroke(ctx, 2, 1);
   }
   // sparks
-  ctx.fillStyle = '#e6f6ff';
+  ctx.fillStyle = '#ffd84a';
   for (let i = 0; i < 4; i++) {
     const a = hash(f * 7 + i) * TAU;
     const [ex, ey] = eggPoint(a, 100);
