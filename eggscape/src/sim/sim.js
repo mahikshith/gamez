@@ -2254,7 +2254,7 @@ export class Sim {
     S.rings.forEach((rs, i) => {
       const r = sim.rings[i];
       r.body.setTransform(Vec2(0, 0), rs.a);
-      r.target = rs.target;
+      r.target = r.body.getAngle() + (rs.target - rs.a); // planck wraps the angle past +-180 deg: keep the target relative
       r.stun = rs.stun || 0;
       r.moving = rs.moving;
       rs.segs.forEach(([alive, hp, burn], k) => { const g = r.segs[k]; g.hp = hp; g.burn = burn; if (!alive && g.alive) { g.alive = false; r.body.destroyFixture(g.fix); } });
