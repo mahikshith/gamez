@@ -12,6 +12,7 @@ const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const dir = path.resolve(args[0] || 'dist/dev');
 const out = path.resolve(args[1] || 'qa/frog');
 const PORT = +(args[2] || 8779);
+const ONLY = process.env.ONLY || '';
 const VW = 390, VH = 844, DPR = 2, CROP = 130;
 fs.mkdirSync(out, { recursive: true });
 
@@ -56,7 +57,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     await p2.close();
     for (const r of rows) for (const x of r.frames) fs.unlinkSync(x.f);
   };
-  for (const [themeId, themeMat, fileName] of THEME_SETS) {
+  for (const [themeId, themeMat, fileName] of ONLY ? [] : THEME_SETS) {
   const rows = [];
   for (const [name, L0] of Object.entries(STUDIO)) {
     if (name === 'level') continue;
@@ -195,7 +196,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   await sheet(fileName, rows);
   }
   // the same frog on four themes, side by side (idle, then mid-hop)
-  {
+  if (!ONLY) {
     const rows = [];
     const frames = [];
     for (const [themeId, themeMat] of [['bramble', 'vine'], ['reef', 'coral'], ['cove', 'darkwood'], ['frozen', 'ice'], ['volcano', 'obsidian'], ['farm', 'wood']]) {
@@ -219,7 +220,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   }
 
   // full-level view at phone scale
-  await ev(([L]) => {
+  if (!ONLY) { await ev(([L]) => {
     const E = __egg;
     E.setSave({ mode: 'medium', calm: false, seen: {} });
     E.G.demo = { id: 990, name: 'Studio', ...L };
@@ -232,31 +233,36 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   // a hop, caught mid-air, in the full view
   await ev(() => { const s = __egg.G.sim; s.frogs[1].next = 0; for (let i = 0; i < 60 * 4 && s.frogs[1].ph !== 'hop'; i++) __egg.frame(1 / 60); for (let i = 0; i < 12; i++) __egg.frame(1 / 60); });
   await p.screenshot({ path: path.join(out, 'frog-level-hop.png') });
+  }
 
   // big pose gallery (the same art, 3x)
-  const gp = await b.newPage({ viewport: { width: 1320, height: 900 }, deviceScaleFactor: 1 });
+  const gp = await b.newPage({ viewport: { width: 1320, height: 1300 }, deviceScaleFactor: 1 });
   gp.on('pageerror', (e) => errors.push(String(e)));
   await gp.goto(`http://localhost:${PORT}/`);
   await gp.waitForTimeout(900);
   await gp.evaluate(() => {
-    const c = document.createElement('canvas'); c.width = 1320; c.height = 900;
+    const c = document.createElement('canvas'); c.width = 1320; c.height = 1300;
     c.style = 'position:fixed;left:0;top:0;z-index:99';
     document.body.appendChild(c);
     const ctx = c.getContext('2d');
-    ctx.fillStyle = '#3d5f34'; ctx.fillRect(0, 0, 1320, 900);
+    ctx.fillStyle = '#3d5f34'; ctx.fillRect(0, 0, 1320, 1300);
+    const tg = { x: 128, y: -22 };
+    const prey = (c, ux, uy) => { c.save(); c.translate(tg.x + ux * 7, tg.y + uy * 7); c.beginPath(); c.arc(0, 0, 14, 0, 6.3); c.fillStyle = '#7ad0ff'; c.fill(); c.lineWidth = 3; c.strokeStyle = '#0b2012'; c.stroke(); c.restore(); };
     const P = [
       ['idle', {}], ['blink', { blink: 1 }], ['throat pulse', { puff: 0.35 }], ['crouch: telegraph', { crouch: 1, puff: 1 }],
       ['launch', { stretch: 0.5, crouch: 0.3 }], ['air', { stretch: 1 }], ['squash', { squash: 0.8 }], ['lick: lips', { lick: 0.22, mouth: 0.2 }],
-      ['tongue out', { mouth: 1, tongue: { x: 118, y: -26 } }], ['gulp', { gulp: 0.25, puff: 1, squash: 0.4 }], ['scared', { scared: 1, crouch: 0.7 }], ['in a gap', { plug: 1 }],
-      ['gold: idle', { skin: 'gold' }], ['gold: crouch', { skin: 'gold', crouch: 1, puff: 1 }], ['gold: gulp', { skin: 'gold', gulp: 0.25, puff: 1, squash: 0.4 }], ['gold: scared', { skin: 'gold', scared: 1, crouch: 0.7 }],
+      ['tongue out', { mouth: 1, tout: 1, tongue: tg }], ['tongue + catch', { mouth: 1, tout: 0, tongue: { x: 100, y: -20 }, prey: (c, ux, uy) => { c.save(); c.translate(100 + ux * 7, -20 + uy * 7); c.beginPath(); c.arc(0, 0, 12, 0, 6.3); c.fillStyle = '#7ad0ff'; c.fill(); c.lineWidth = 3; c.strokeStyle = '#0b2012'; c.stroke(); c.restore(); } }], ['gulp', { gulp: 0.25, puff: 1, squash: 0.4 }], ['scared', { scared: 1, crouch: 0.7 }],
+      ['in a gap', { plug: 1 }], ['frozen', { frozen: 1 }], ['frozen: cracking', { frozen: 1, crack: 0.8 }], ['stunned', { stun: 1 }],
+      ['zap flash', { zap: 1, stun: 0 }], ['gold: idle', { skin: 'gold' }], ['gold: tongue', { skin: 'gold', mouth: 1, tongue: tg }], ['gold: frozen', { skin: 'gold', frozen: 1 }],
+      ['gold: stunned', { skin: 'gold', stun: 1 }], ['gold: crouch', { skin: 'gold', crouch: 1, puff: 1 }], ['gold: gulp', { skin: 'gold', gulp: 0.25, puff: 1, squash: 0.4 }], ['gold: scared', { skin: 'gold', scared: 1, crouch: 0.7 }], ['gold: air', { skin: 'gold', stretch: 1 }],
     ];
     ctx.font = '15px sans-serif';
     P.forEach(([n, o], i) => {
-      const x = 130 + (i % 4) * 320, y = 185 + Math.floor(i / 4) * 215;
-      ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(x - 118, y - 120, 300, 160);
+      const x = 130 + (i % 4) * 320, y = 185 + Math.floor(i / 4) * 200;
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(x - 118, y - 130, 300, 170);
       ctx.fillStyle = '#fff'; ctx.fillText(n, x - 108, y - 98);
       ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(x - 118, y, 300, 2);
-      __egg.frogArt(ctx, x + 20, y, 250, 1.3 + i * 0.4, { id: i, ...o });
+      __egg.frogArt(ctx, x + 20, y, 250, 1.3 + i * 0.4, { id: i, ...o, prey: o.prey && ((c2, ux, uy) => o.prey(c2, ux, uy)) });
     });
   });
   await gp.screenshot({ path: path.join(out, 'frog-poses.png') });
