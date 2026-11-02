@@ -1887,7 +1887,7 @@ export class Sim {
         S.rad = R; S.a = a0; S.wait = 2; S.mood = 'ouch'; S.moodT = 1.5;
         const n = Math.ceil(S.len / 0.05) + 1;
         S.pts.length = 0;
-        for (let i = 0; i < n; i++) { const a = a0 - dir * (i * 0.05) / R; S.pts.push({ x: R * Math.cos(a), y: R * Math.sin(a) }); }
+        for (let i = 0; i < n; i++) S.pts.push(this.trailPt(S, {}, a0 - dir * (i * 0.05) / R, R)); // full trail points (a, r, pin), like a crawled trail
         this.emit('eagleDropSnake', { x: S.pts[0].x, y: S.pts[0].y, id: S.id });
       }
     }

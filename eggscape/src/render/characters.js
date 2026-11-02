@@ -1572,7 +1572,9 @@ export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
     if (A) {
       // the head follows the body tangent with a slight lag, plus where it is looking
       const dt = clamp(A.dt || 0, 0, 0.1), want = Math.atan2(dy, dx) + (A.look || 0);
-      A.ang = A.ang === undefined ? want : A.ang + wrapA(want - A.ang) * (1 - Math.exp(-dt * (A.lag || 9)));
+      // a bad value must never stick (a NaN angle drops the head's scale and draws it at sheet size)
+      if (Number.isFinite(want)) A.ang = !Number.isFinite(A.ang) ? want : A.ang + wrapA(want - A.ang) * (1 - Math.exp(-dt * (A.lag || 9)));
+      else if (!Number.isFinite(A.ang)) A.ang = 0;
       const c = Math.cos(A.ang);
       if (A.cur.left === undefined) A.cur.left = c < 0;
       if (A.cur.left ? c > 0.3 : c < -0.3) A.flipT = (A.flipT || 0) + dt; else A.flipT = 0;
