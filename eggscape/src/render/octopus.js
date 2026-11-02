@@ -24,14 +24,14 @@ const rgb = (c, al = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${al})`;
 const hash = (n) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
 
 // ---------------------------------------------------------------- colours by contrast
-// water / light worlds: deep maroon pops on blue and on snow. dark worlds (and brown ones): a brighter plum with a pale rim
-// light. red / orange worlds: indigo violet with a rim light (maroon would melt into them).
+// water / light worlds: deep maroon pops on blue and on snow. dark worlds (and brown ones): a brighter plum-pink body. red /
+// orange worlds: indigo violet (maroon would melt into them). No rim lights or glows: the dark outline and the body colour only.
 const mk = (body, hi, lo, arm, armLo, under, brow, rim, rimA) => ({ body: hex(body), hi: hex(hi), lo: hex(lo), arm: hex(arm), armLo: hex(armLo), under: hex(under), brow: hex(brow), rim: hex(rim), rimA });
 const PALS = {
-  water: mk('#9c2468', '#d45ea0', '#5f1442', '#8c1f5c', '#52113a', '#f6b0c9', '#2e0a20', '#ffd8e8', 0.4),
+  water: mk('#9c2468', '#d45ea0', '#5f1442', '#8c1f5c', '#52113a', '#f6b0c9', '#2e0a20', '#ffd8e8', 0),
   light: mk('#821a58', '#b84a8c', '#4c0d34', '#721450', '#440a2e', '#f2a0bf', '#240718', '#ffd8e8', 0.0),
-  dark: mk('#a8407e', '#e07ab4', '#6a2354', '#9a3472', '#661f4e', '#ffc4da', '#3a0f2c', '#ffe6f2', 0.8),
-  warm: mk('#5c3fba', '#9078ee', '#33257f', '#523aa8', '#2e2272', '#d2c6ff', '#1f1550', '#f3eeff', 0.8),
+  dark: mk('#c0509a', '#f08cc8', '#7e2a64', '#b04488', '#762356', '#ffd0e4', '#3a0f2c', '#ffe6f2', 0),
+  warm: mk('#6a4cd0', '#a08cf4', '#3a2a90', '#5e44bc', '#33267e', '#d8ceff', '#1f1550', '#f3eeff', 0),
 };
 const C = { line: hex('#1c0614'), eye: hex('#ffd23a'), eyeHi: hex('#fff2a0'), eyeWarn: hex('#ff4a24'), pupil: hex('#16060c'), mouth: hex('#2a0714'), fang: hex('#fff3d6'),
   warn: hex('#ff2e4a'), warnHi: hex('#ff9aa8'), warnLo: hex('#a8102c'), spot: hex('#b8396f'), spotWarn: hex('#ffe14d'),
@@ -231,7 +231,6 @@ export function drawOctopus(ctx, x, y, s, t, o = {}) {
   const widths = (i) => { const back = i % 2 && geom[i] < 0; return [s * ARM_W0 * (back ? 0.82 : geom[i] >= 0 ? 0.46 : 1), s * ARM_W1]; };
   const drawArmI = (i) => {
     const back = i % 2 && geom[i] < 0, [w0, w1] = widths(i), P = armPts[i];
-    if (pal.rimA > 0.05) strokeArm(ctx, P, w0 + lw * 0.6, w1 + lw * 0.6, rgb(pal.rim, pal.rimA), rgb(pal.rim, pal.rimA), lw * 1.1); // rim light for dark worlds
     strokeArm(ctx, P, w0, w1, rgb(back ? armLo : arm), rgb(line), lw * 0.8);
     if (s > 8) armUnder(ctx, P, w0, armSide[i], under, mix(line, under, 0.15), s > 12);
   };
@@ -248,14 +247,6 @@ export function drawOctopus(ctx, x, y, s, t, o = {}) {
   if (front && wrapIx.length) for (const i of wrapIx) drawArmI(i);
   if (part === 'front' && wrapIx.length) drawOctoFace(ctx, s, sx, sy, t, tt, o, look, lw, A, pal, brow, pk, frz, stn);
   if (backP) {
-    if (pk > 0.02) { // the flush glows round the mantle
-      ctx.save();
-      ctx.globalAlpha *= 0.55 * pk * (0.6 + 0.4 * Math.sin(t * 20));
-      ctx.fillStyle = rgb(C.warn);
-      ctx.beginPath(); ctx.ellipse(0, -0.22 * s * sy, 0.72 * s * sx, 0.78 * s * sy, 0, 0, TAU); ctx.fill();
-      ctx.restore();
-    }
-    if (pal.rimA > 0.05) { mantlePath(ctx, s * 1.03, sx, sy); ctx.strokeStyle = rgb(pal.rim, pal.rimA); ctx.lineWidth = lw * 2.2; ctx.lineJoin = 'round'; ctx.stroke(); }
     mantlePath(ctx, s, sx, sy);
     ctx.fillStyle = rgb(body); ctx.fill();
     ctx.save();
@@ -295,7 +286,7 @@ function drawOctoFace(ctx, s, sx, sy, t, tt, o, look, lw, A, pal, brow, pk, frz,
   for (const sd of [-1, 1]) {
     const cx = sd * ex;
     // glow halo
-    if (!frz && !slack) { const g = ctx.createRadialGradient(cx, ey, 0, cx, ey, rx * 2.4); g.addColorStop(0, rgb(glow, 0.42)); g.addColorStop(1, rgb(glow, 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, ey, rx * 2.4, 0, TAU); ctx.fill(); }
+    if (!frz && !slack) { const g = ctx.createRadialGradient(cx, ey, 0, cx, ey, rx * 1.5); g.addColorStop(0, rgb(glow, 0.42)); g.addColorStop(1, rgb(glow, 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, ey, rx * 1.5, 0, TAU); ctx.fill(); }
     ctx.save();
     ctx.beginPath(); ctx.ellipse(cx, ey, rx, ry, 0, 0, TAU); ctx.clip();
     ctx.fillStyle = rgb(frz ? mix(glow, C.ice, 0.5) : glow); ctx.fillRect(cx - rx, ey - ry, 2 * rx, 2 * ry);
