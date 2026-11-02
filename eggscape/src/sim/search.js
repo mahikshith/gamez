@@ -54,6 +54,7 @@ export function value(sim) {
     }
     // v3.2: an egg on (or about to be on) a red-hot salamander section
     if (sim.salThreat) v -= 450 * sim.salThreat(e);
+    if (sim.den) v -= 1600 * sim.denThreat(e); // v3.5: in the den fox's jaws or den, or about to be
     // predators (v3): an egg the eagle can reach while it is locked on
     const E = sim.eagle;
     if (E && E.reach && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tid === e.id) v -= 700;

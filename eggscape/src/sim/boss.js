@@ -46,7 +46,7 @@ export function v31Init(sim) {
   if (!F) return;
   const M = M_(sim);
   sim.bx.boss = {
-    kind: F.kind, phase: 0, saved: 0, t: (F.delay ?? 4) * M.every, k: 0, tk: 0, atk: null, flinch: 0, quake: 0, qk: 0,
+    kind: F.kind, den: F.den ? 1 : 0, phase: 0, saved: 0, t: (F.delay ?? 4) * M.every, k: 0, tk: 0, atk: null, flinch: 0, quake: 0, qk: 0,
     x: 0, y: sim.outerR + 1.0, face: 1, throws: [], fog: null, heat: {}, dizzy: 0, phaseAt: 0, phaseSaved: 0, lastDir: 1,
   };
   bossPhaseOn(sim, sim.bx.boss, true);
@@ -100,6 +100,7 @@ export function v31Step(sim, dt) {
   wallsStep(sim, dt);
   iceStep(sim, dt);
   if (X.gust && sim.state === 'play') gustStep(sim, X.gust, dt);
+  if (sim.den && sim.state === 'play') sim.denStep(dt); // v3.5: the den fox (sim/foxden.js)
   if (X.boss && sim.state === 'play') bossStep(sim, X.boss, dt);
 }
 
@@ -127,6 +128,7 @@ export function animalsHit(sim, kind, o = {}) {
   const E = sim.eagle;
   if (E && sim.hitEagle && (r === Infinity || Math.hypot((E.x ?? 0) - x, (E.y ?? 0) - y) < (kind === 'bolt' ? 3 : r + 0.6))) { n++; sim.hitEagle(kind, { x, y, dir: o.dir || 0, power: o.power ?? 1 }); }
   if (sim.seaHit) n += sim.seaHit(kind, o); // v3.3: the octopus lets go, fish scatter (sim/sea.js)
+  if (sim.den) n += sim.denHazard(kind, o); // v3.5: the den fox: a hit when trapped, else a daze
   if (kind === 'quake' || kind === 'bolt') {
     const F = sim.fox, B = sim.bx && sim.bx.boss;
     if (F) { F.t += F.every * 0.5; F.mood = 'shocked'; F.moodT = 1.2; sim.emit('foxFlinch', { x: F.x, y: sim.outerR + 0.45 }); }
@@ -163,7 +165,7 @@ function ceilingAbove(sim, p) {
 function targets(sim) {
   const n = sim.rings.length, D = sim.p2Lure && sim.p2Lure(); // v3.4: a decoy draws the attack first
   // v3.4: a shrunk egg is hard to spot, so it is aimed at last (bosses resist: they still find it when it is all there is)
-  const T = sim.aliveEggs().filter((e) => sim.channelOf(e) < n).sort((a, b) => (a.shrink > 0) - (b.shrink > 0) || sim.channelOf(b) - sim.channelOf(a) || a.id - b.id);
+  const T = sim.aliveEggs().filter((e) => sim.channelOf(e) < n && !e.foxd).sort((a, b) => (a.shrink > 0) - (b.shrink > 0) || sim.channelOf(b) - sim.channelOf(a) || a.id - b.id);
   return D && sim.channelOf(D) < n ? [D, ...T] : T;
 }
 function hangIcicle(sim, egg, big, hang) {
@@ -327,6 +329,7 @@ function bossStep(sim, B, dt) {
   B.x += (gx - B.x) * s;
   B.y += (gy - B.y) * Math.min(1, dt * (A && A.name === 'stomp' && A.ph === 'act' ? 30 : 4));
   if (B.kind === 'salamander') sim.salBossPose?.(B); // the creature is the boss: its lava rocks come from its mouth
+  else if (B.den) sim.denBossPose(B); // v3.5: the den fox throws from its mouth
   // quake after a stomp
   if (B.quake > 0) {
     B.quake -= dt;
@@ -342,12 +345,13 @@ function bossStep(sim, B, dt) {
   if (!A) {
     if ((B.t -= dt) > 0 || !ph.attacks || !ph.attacks.length) return;
     const name = ph.attacks[B.k++ % ph.attacks.length];
-    const a = startAttack(sim, B, name, M);
+    const a = B.den && !sim.denCanThrow() ? null : startAttack(sim, B, name, M); // v3.5: a busy or trapped den fox can't attack
     if (!a) { B.t = 1; return; }
     a.name = name;
     a.ph = 'warn';
     a.dur = a.t = (WARN[name] || 1) * M.warn;
     B.atk = a;
+    if (B.den) sim.denToss(a.dur + 0.35);
     sim.emit('bossWarn', { kind: B.kind, attack: name, x: B.x, y: B.y, ring: a.ring, dir: a.dir });
     return;
   }

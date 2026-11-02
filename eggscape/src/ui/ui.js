@@ -1,5 +1,6 @@
 // Screen-space UI: every text and widget goes through here so we can measure,
 // fit, hit-test, and assert that nothing overlaps.
+import { drawFoxFace } from '../render/foxface.js';
 
 export const FONT = '"Fredoka", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif';
 
@@ -395,83 +396,7 @@ export function drawEggIcon(ctx, cx, cy, s, state, cracks = 0) {
   ctx.restore();
 }
 
-// Fox mascot head (used on title and fail screens). Screen space.
+// Fox mascot head. Screen space. v3.5: the one fox face (render/foxface.js), so the fox looks the same everywhere.
 export function drawFox(ctx, cx, cy, s, mood = 'smug', t = 0) {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.scale(s / 100, s / 100);
-  const or = '#ef7a24', dk = '#9b3f0e', wh = '#fff4e6';
-  // ears
-  for (const sx of [-1, 1]) {
-    ctx.beginPath();
-    ctx.moveTo(sx * 18, -30);
-    ctx.lineTo(sx * 42, -68 + Math.sin(t * 2 + sx) * 2);
-    ctx.lineTo(sx * 48, -18);
-    ctx.closePath();
-    ctx.fillStyle = or;
-    ctx.fill();
-    ctx.strokeStyle = dk;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(sx * 26, -30);
-    ctx.lineTo(sx * 40, -56);
-    ctx.lineTo(sx * 42, -26);
-    ctx.closePath();
-    ctx.fillStyle = '#3a1a0a';
-    ctx.fill();
-  }
-  // head
-  ctx.beginPath();
-  ctx.moveTo(-50, -18);
-  ctx.quadraticCurveTo(-56, 12, -30, 26);
-  ctx.lineTo(0, 46);
-  ctx.lineTo(30, 26);
-  ctx.quadraticCurveTo(56, 12, 50, -18);
-  ctx.quadraticCurveTo(0, -48, -50, -18);
-  ctx.closePath();
-  ctx.fillStyle = or;
-  ctx.fill();
-  ctx.strokeStyle = dk;
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  // cheeks
-  ctx.beginPath();
-  ctx.moveTo(-48, 0);
-  ctx.quadraticCurveTo(-30, 8, -12, 22);
-  ctx.lineTo(0, 46);
-  ctx.lineTo(12, 22);
-  ctx.quadraticCurveTo(30, 8, 48, 0);
-  ctx.quadraticCurveTo(40, 28, 0, 46);
-  ctx.quadraticCurveTo(-40, 28, -48, 0);
-  ctx.fillStyle = wh;
-  ctx.fill();
-  // eyes
-  ctx.fillStyle = '#2a140a';
-  for (const sx of [-1, 1]) {
-    ctx.beginPath();
-    if (mood === 'smug') {
-      ctx.moveTo(sx * 30, -6);
-      ctx.quadraticCurveTo(sx * 20, -14, sx * 10, -6);
-      ctx.quadraticCurveTo(sx * 20, -2, sx * 30, -6);
-    } else {
-      ctx.ellipse(sx * 20, -6, 6, 8, 0, 0, Math.PI * 2);
-    }
-    ctx.fill();
-  }
-  // nose
-  ctx.beginPath();
-  ctx.ellipse(0, 36, 7, 5, 0, 0, Math.PI * 2);
-  ctx.fillStyle = '#2a140a';
-  ctx.fill();
-  // grin
-  if (mood === 'smug') {
-    ctx.strokeStyle = '#2a140a';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(-12, 28);
-    ctx.quadraticCurveTo(0, 34, 14, 24);
-    ctx.stroke();
-  }
-  ctx.restore();
+  drawFoxFace(ctx, cx, cy + s * 0.08, s * 0.92, mood, t, {});
 }
