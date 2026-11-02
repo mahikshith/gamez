@@ -1,6 +1,6 @@
 // Dev-only studio levels for the sea creatures (v3.3 M8, Coral Reef). Not campaign levels. Start one in the --dev
 // build with ?demo=octopus (or __egg.startDemo('fish')). tools/sea-strips.cjs films them.
-// Spec fields: octopus {ch, a, delay} and fish {ch, n, speed, a, dir, turn} (one, or an array), see sim/sea.js.
+// Spec fields: octopus {ch, a, delay, den} and fish {ch, n, speed, a, dir, turn} (one, or an array), see sim/sea.js.
 const base = { theme: 'reef', material: 'coral', spacing: 1.05, nest: { w: 2.6 }, eggs: 3, target: 2, time: 100 };
 
 export const SEA_DEMOS = [
@@ -10,6 +10,19 @@ export const SEA_DEMOS = [
     orbs: [{ type: 'water', ch: 1, a: 150 }, { type: 'thunder', ch: 1, a: 30 }],
     tip: 'The octopus grabs an egg and carries it off. Hit it with water or a zap and it lets go.',
     intro: { title: 'Octopus', line: 'It holds an egg safe from thorns and snakes, but it walks off with it. Water, a zap or a glow flash makes it let go.' },
+    rings: [
+      { gaps: [{ a: -90 }] },
+      { gaps: [{ a: 100 }] },
+      { gaps: [{ a: 170 }], thorns: [{ a: -110, n: 3 }] },
+      { gaps: [{ a: -30 }] },
+    ],
+  },
+  {
+    // the villain out of the water: a den (puddle) on the floor of ring 2 in a frozen-lake level, hunting across channels
+    ...base, id: 914, kind: 'octoden', name: 'Octopus: The Puddle', seed: 9144, theme: 'frozen', material: 'wood', eggs: 3, target: 2, time: 140,
+    octopus: { ch: 2, a: -60, delay: 2, den: true },
+    orbs: [{ type: 'water', ch: 1, a: 150 }, { type: 'thunder', ch: 3, a: 30 }],
+    tip: 'Something lurks in the puddle. It hunts eggs across the rings, hides them in ink and carries them off.',
     rings: [
       { gaps: [{ a: -90 }] },
       { gaps: [{ a: 100 }] },

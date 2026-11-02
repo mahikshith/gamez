@@ -1746,7 +1746,7 @@ function render() {
   drawSalamanders(ctx, sim, t, k); // v3.2: the lava salamander walks the floor, under the eggs
   drawFrogTele(ctx, sim, k, t); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
   drawFrogs(ctx, sim, t, k, G.theme);
-  drawSeaUnder(ctx, sim, t, k); // v3.3: fish, ink, the octopus (the arms behind a held egg)
+  drawSeaUnder(ctx, sim, t, k, G.theme); // v3.3: fish, ink, the octopus (the arms behind a held egg)
   for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
   drawChickFX(ctx, sim, t, k);
   drawSeaOver(ctx, sim, t, k); // v3.3: the arms wrapped over a held egg

@@ -195,6 +195,7 @@ export const p2Methods = {
     if (this.fox) this.p2Fox(kind, T);
     this.p2Boss(kind, T);
     this.frogHit(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v3.5: the frog is a creature too (frozen / stunned)
+    this.seaP2?.(kind, T); // v3.5: the octopus (sim/sea.js): frozen, or stunned
     for (const S of this.schools || []) this.p2Fish(S, kind, T);
   },
   // fish schools: frozen by ice, stunned by lightning; they just carry on for the rest

@@ -11,7 +11,17 @@
 //   while the fuse runs). Water (a water orb or a water egg), a zap (a thunder egg, a zapped wall, lightning) or a
 //   glow chick flash (dash chick, rocks, ice too) makes it let go: it flinches, jets off in an ink cloud, rests, and
 //   swims back to its home channel before it hunts again. Easy: it lets go by itself after 6 s, Medium 10 s,
-//   Hard holds until freed. It never takes a chick, a burning egg or a stone egg.
+//   Hard 14 s. It never takes a chick, a burning egg or a stone egg.
+// Villain (v3.5): it HUNTS. Awake, it chases an egg in any channel within OCT.mode.range (Hard: the whole vault),
+//   climbing through gaps. A red flush and arms rising (warn) telegraph the grab; from 1.1-3.2 m away it may instead
+//   SQUIRT INK (telegraph 'squirt', then a cloud blacks out the ring sector round the egg for mode.ink s, and it
+//   swims 1.4x faster inside it). After letting an egg go it will not take THAT egg again for mode.cd s (C.ban).
+//   Easy: shorter, smaller ink and a longer cooldown, slower swimming, hunts the next channel only.
+//   level.octopus {den: true}: it lives in a den (a puddle on the floor of channel `ch`, drawn on that ring and carried by
+//   it). Idle it lurks sunk in the den (phase 'lurk'), wakes when an egg comes within mode.wake, hunts, and goes
+//   back to the den to rest. Without a den it just floats in the channel (the reef).
+//   FROZEN (C.fz s) and STUNNED (C.stn s, C.zp = the 0.3 s zap flash before it): seaFreeze / seaStun, called by
+//   p2All (frost nova, thunderclap, shock) and by allies. A zap or glow flash (octHit) now ends in a stun, not a jet.
 // level.fish {ch, n, speed, a, dir, turn} (or an array): n fish (6-10) swim round channel ch in a loose school at
 //   speed m/s (dir +1 = counter-clockwise), turning round every `turn` s (0 = never). Eggs they swim through are
 //   pushed along like a current. An egg dropping onto them, or a creature lunging near them, scatters them: no
@@ -19,12 +29,20 @@
 import { RING_TH, TAU, wrap, clamp } from './geom.js';
 
 export const OCT = {
-  reach: 0.55, grab: 0.75, // m (egg centre to the octopus): starts its grab / still gets the egg
+  reach: 0.75, grab: 1.0, // m (egg centre to the octopus): starts its grab / still gets the egg
   seek: 0.55, drift: 0.16, carry: 0.3, home: 0.5, // m/s
-  warn: 0.9, grab_t: 0.4, let: 0.5, jet: 0.9, jetV: 3.2, rest: 3.5, in: 0.7, // s (jetV m/s)
-  hold: { easy: 6, medium: 10, hard: 0 }, // s it holds an egg before letting go by itself (0 = until freed)
-  wet: 0.6, // m: a water orb or water egg this close frees it
-  lift: 0.52, eggOff: 0.3, // m: its centre above the wall it grips; the held egg sits this far below its centre (under its eyes)
+  hunt: 0.8, squirt: 0.8, rise: 0.6, // m/s toward prey in another channel; s: ink telegraph, rising from the den
+  warn: 1.0, grab_t: 0.4, let: 0.5, jet: 0.9, jetV: 3.2, rest: 3.5, in: 0.7, // s (jetV m/s)
+  // per difficulty: range = channels away it hunts, speed x, ink = cloud s (inkR m radius, inkCd s between squirts),
+  // cd = s it will not retake the egg it let go, wake = [channels, m] a lurking one wakes within, stun = s dazed after a zap
+  mode: {
+    easy: { range: 1, speed: 0.8, ink: 1.2, inkR: 0.75, inkCd: 12, cd: 14, wake: [0, 2.2], stun: 2.8 },
+    medium: { range: 2, speed: 1, ink: 2, inkR: 0.95, inkCd: 9, cd: 9, wake: [1, 3.4], stun: 2.2 },
+    hard: { range: 9, speed: 1.2, ink: 2.6, inkR: 1.1, inkCd: 7, cd: 6, wake: [2, 5], stun: 1.6 },
+  },
+  hold: { easy: 6, medium: 10, hard: 14 }, // s it holds an egg before letting go by itself (0 = until freed; Hard used to never, and the planner could not win)
+  wet: 0.8, // m: a water orb or water egg this close frees it
+  lift: 0.62, eggOff: 0.3, // m: its centre above the wall it grips; the held egg sits this far below its centre (clutched at its chest)
 };
 export const FISH = {
   len: 0.34, r: 0.44, // m: fish length, push reach around a fish
@@ -34,7 +52,7 @@ export const FISH = {
   mode: { easy: { push: 0.8, scatter: 1.2 }, medium: { push: 1, scatter: 1 }, hard: { push: 1.1, scatter: 0.85 } },
 };
 const deg = (d) => (d * Math.PI) / 180;
-const LIVE = new Set(['drift', 'seek', 'warn', 'grab', 'carry', 'home']); // phases that react to hits
+const LIVE = new Set(['drift', 'seek', 'warn', 'grab', 'squirt', 'carry', 'home', 'lurk', 'rise']); // phases that react to hits
 
 export const seaMethods = {
   // ---------- build
@@ -50,6 +68,9 @@ export const seaMethods = {
         id: i, home: ch, ch, a: deg(P.a ?? -90), rad: this.octR(ch), ph: 'wait', t: P.delay ?? 2, dur: 1,
         car: ch, carA: this.rings[ch].body.getAngle(), eid: 0, tgt: 0, hold: 0, hit: '', jd: 1, vx: 0, vy: 0,
         cross: -1, inkX: 0, inkY: 0, inkT: 9, rest: 0,
+        den: P.den ? 1 : 0, dnA: wrap(deg(P.a ?? -90) - this.rings[ch].body.getAngle()), // ring-local angle of its den on ring `ch`
+        ban: 0, banT: 0, inkCd: 3, sqT: 9, sqX: 0, sqY: 0, sqR: 0, sqD: 0, // retake cooldown, the squirt's ink cloud (age, centre, radius, length)
+        fz: 0, fzMax: 0, stn: 0, stnMax: 0, zp: 0,
       });
     });
     list(L.fish).forEach((P, i) => {
@@ -78,28 +99,74 @@ export const seaMethods = {
   },
 
   // ======================================================================== octopus
+  octM() { return OCT.mode[this.mode] || OCT.mode.medium; },
+  // swim speed factor: the mode's, and 1.4x inside its own ink cloud
+  octSpd(C) { const M = this.octM(); return M.speed * (C.sqT < M.ink ? 1.4 : 1); },
+
   octOne(C, dt, end) {
+    const M = this.octM();
     if (C.inkT < 9) C.inkT += dt;
-    if (C.ph === 'wait') { if (!end && (C.t -= dt) <= 0) { C.ph = 'in'; C.t = C.dur = OCT.in; this.emit('octIn', { ...this.octXY(C), id: C.id }); } return; }
+    if (C.sqT < 9) C.sqT += dt;
+    if (C.banT > 0 && (C.banT -= dt) <= 0) C.ban = 0;
+    if (C.inkCd > 0) C.inkCd -= dt;
+    if (C.ph === 'wait') { if (!end && (C.t -= dt) <= 0) { C.ph = 'in'; C.t = C.dur = OCT.in; this.emit('octIn', { ...this.octXY(C), id: C.id, den: C.den }); } return; }
     const x0 = C.rad * Math.cos(C.a), y0 = C.rad * Math.sin(C.a);
     this.octCarry(C);
     const egg = this.octEgg(C);
     if (C.eid && !egg) { C.eid = 0; if (C.ph === 'carry') this.octSet(C, 'rest', OCT.rest); } // the egg it held is gone (the fuse)
     if (end && C.eid) this.octLetGo(C, 'end');
-    if (!end && LIVE.has(C.ph)) this.octFreed(C);
-    const n = this.rings.length;
+    // frozen: nothing moves but the ring under it; stunned: slack, then it comes to
+    const frozen = C.fz > 0, dazed = !frozen && (C.stn > 0 || C.zp > 0);
+    if (frozen) { C.fz -= dt; if (C.fz <= 0) { C.fz = 0; this.emit('octThaw', { ...this.octXY(C), id: C.id }); } }
+    else if (C.zp > 0) C.zp -= dt;
+    else if (C.stn > 0 && (C.stn -= dt) <= 0) { C.stn = 0; this.octSet(C, 'rest', OCT.rest * 0.5); }
+    if (!frozen && !dazed) {
+      if (!end && LIVE.has(C.ph)) this.octFreed(C);
+      this.octPhase(C, dt, end, M);
+    }
+    C.ch = clamp(this.chAt(C.rad), 1, this.rings.length - 1);
+    if (dt > 0) { const x1 = C.rad * Math.cos(C.a), y1 = C.rad * Math.sin(C.a); C.vx = (x1 - x0) / dt; C.vy = (y1 - y0) / dt; }
+    const h = this.octEgg(C);
+    if (h) this.octHoldEgg(C, h, dt);
+  },
+
+  octPhase(C, dt, end, M) {
     switch (C.ph) {
-      case 'in': if ((C.t -= dt) <= 0) this.octSet(C, 'drift'); break;
+      case 'in': if ((C.t -= dt) <= 0) this.octSet(C, C.den ? 'lurk' : 'drift'); break;
+      case 'lurk': { // sunk in its den: only the eyes show. It wakes when an egg comes near
+        C.a = wrap(C.a);
+        const e = end ? null : this.octPrey(C, M.wake[0], M.wake[1]);
+        if (e) { C.tgt = e.id; this.octSet(C, 'rise', OCT.rise); C.tgt = e.id; this.emit('octRise', { ...this.octXY(C), id: C.id, egg: e.id }); }
+        break;
+      }
+      case 'rise': if ((C.t -= dt) <= 0) this.octSet(C, 'seek'); break;
       case 'drift': case 'seek': {
-        const e = end ? null : this.octTarget(C);
+        if (C.cross >= 0) { this.octClimb(C, C.ch, OCT.hunt * this.octSpd(C), dt); break; } // finish the gap it is in
+        const e = end ? null : this.octPrey(C, M.range);
         C.tgt = e ? e.id : 0;
         if (C.ph === 'drift' && e) C.ph = 'seek';
         if (C.ph === 'seek' && !e) C.ph = 'drift';
         if (e) {
-          const p = e.body.getPosition();
-          this.octSwim(C, Math.atan2(p.y, p.x), OCT.seek, dt);
-          if (Math.hypot(p.x - C.rad * Math.cos(C.a), p.y - C.rad * Math.sin(C.a)) < OCT.reach) { this.octSet(C, 'warn', OCT.warn * this.PM.warn); this.emit('octWarn', { ...this.octXY(C), id: C.id, egg: e.id }); }
-        } else this.octSwim(C, C.a + 0.8 * Math.sin(this.t * 0.23 + C.id * 2.1), OCT.drift, dt); // idle: a slow wander
+          const p = e.body.getPosition(), ec = this.channelOf(e), c = this.chAt(C.rad), v = this.octSpd(C);
+          if (ec !== c) { this.octClimb(C, ec, OCT.hunt * v, dt); break; } // across channels, through the gaps
+          this.octSwim(C, Math.atan2(p.y, p.x), OCT.seek * v, dt);
+          const d = Math.hypot(p.x - C.rad * Math.cos(C.a), p.y - C.rad * Math.sin(C.a));
+          if (d < OCT.reach) { this.octSet(C, 'warn', OCT.warn * this.PM.warn); this.emit('octWarn', { ...this.octXY(C), id: C.id, egg: e.id }); }
+          else if (M.ink && C.inkCd <= 0 && C.sqT >= M.ink && d > 1.1 && d < 3.2) { this.octSet(C, 'squirt', OCT.squirt * this.PM.warn); C.tgt = e.id; this.emit('octSquirt', { ...this.octXY(C), id: C.id, egg: e.id }); }
+        } else if (C.den) this.octSet(C, 'home');
+        else this.octSwim(C, C.a + 0.8 * Math.sin(this.t * 0.23 + C.id * 2.1), OCT.drift, dt); // idle: a slow wander
+        break;
+      }
+      case 'squirt': { // eyes locked, arms up, mantle swelling: then the cloud
+        const e = this.eggs.find((q) => q.id === C.tgt);
+        if (!(e && this.octFit(e, C) && this.channelOf(e) === this.chAt(C.rad))) { this.octSet(C, 'seek'); break; }
+        const p = e.body.getPosition();
+        C.sqX = p.x; C.sqY = p.y;
+        this.octSwim(C, Math.atan2(p.y, p.x), 0.2, dt);
+        if ((C.t -= dt) > 0) break;
+        C.sqT = 0; C.sqR = M.inkR; C.sqD = M.ink; C.inkCd = M.inkCd;
+        this.emit('octInk', { x: C.sqX, y: C.sqY, id: C.id, r: C.sqR, from: this.octXY(C) });
+        this.octSet(C, 'seek', 0);
         break;
       }
       case 'warn': case 'grab': {
@@ -119,7 +186,12 @@ export const seaMethods = {
         this.octClimb(C, Math.max(1, this.chAt(C.rad) - 1), OCT.carry, dt); // inward, a channel at a time
         break;
       }
-      case 'let': if ((C.t -= dt) <= 0) { this.octSet(C, 'jet', OCT.jet); C.inkX = C.rad * Math.cos(C.a); C.inkY = C.rad * Math.sin(C.a); C.inkT = 0; this.emit('octJet', { x: C.inkX, y: C.inkY, id: C.id, kind: C.hit }); } break;
+      case 'let':
+        if ((C.t -= dt) <= 0) {
+          if (C.hit === 'zap' || C.hit === 'flash') { this.octStun(C, M.stun, 0); break; } // dazed in place, not a getaway
+          this.octSet(C, 'jet', OCT.jet); C.inkX = C.rad * Math.cos(C.a); C.inkY = C.rad * Math.sin(C.a); C.inkT = 0; this.emit('octJet', { x: C.inkX, y: C.inkY, id: C.id, kind: C.hit });
+        }
+        break;
       case 'jet': {
         const k = clamp(C.t / C.dur, 0, 1), v = OCT.jetV * k * k;
         this.octSwim(C, C.a + C.jd * 2, v, dt, true);
@@ -128,33 +200,45 @@ export const seaMethods = {
       }
       case 'rest':
         this.octSwim(C, C.a + 0.6 * Math.sin(this.t * 0.31 + C.id), OCT.drift * 0.6, dt);
-        if (!end && (C.t -= dt) <= 0) this.octSet(C, this.chAt(C.rad) === C.home && C.cross < 0 ? 'drift' : 'home');
+        if (!end && (C.t -= dt) <= 0) this.octSet(C, !C.den && this.chAt(C.rad) === C.home && C.cross < 0 ? 'drift' : 'home');
         break;
-      case 'home':
-        if (this.chAt(C.rad) === C.home && C.cross < 0) { this.octSet(C, 'drift'); break; }
-        this.octClimb(C, C.home, OCT.home, dt);
+      case 'home': {
+        const e = end ? null : this.octPrey(C, M.range); // a new egg turns it round (never the one it just let go)
+        if (e) { C.tgt = e.id; C.ph = 'seek'; break; }
+        if (C.cross < 0 && this.chAt(C.rad) === C.home) {
+          if (!C.den) { this.octSet(C, 'drift'); break; }
+          const goal = this.rings[C.home].body.getAngle() + C.dnA; // back to the den, then sink into it
+          this.octSwim(C, goal, OCT.home * M.speed, dt);
+          if (Math.abs(wrap(goal - C.a)) * C.rad < 0.1) this.octSet(C, 'lurk');
+          break;
+        }
+        this.octClimb(C, C.home, OCT.home * M.speed, dt);
         break;
+      }
     }
-    C.ch = clamp(this.chAt(C.rad), 1, n - 1);
-    if (dt > 0) { const x1 = C.rad * Math.cos(C.a), y1 = C.rad * Math.sin(C.a); C.vx = (x1 - x0) / dt; C.vy = (y1 - y0) / dt; }
-    const h = this.octEgg(C);
-    if (h) this.octHoldEgg(C, h, dt);
   },
 
   octSet(C, ph, t = 0) { C.ph = ph; C.t = C.dur = t; if (ph !== 'warn' && ph !== 'grab') C.tgt = ph === 'seek' ? C.tgt : 0; },
 
-  // an egg it may take: in the vault, in its channel, free (not a chick, burning, stone, or held by anything)
-  octCan(e, C) {
-    if (!e.alive || e.saved || !e.body || !e.body.isActive() || e.octo || e.chick || e.fire > 0 || e.stone > 0) return false;
+  // an egg it may take: in the vault, free (not a chick, burning, stone, or held by anything), not the one it just let go
+  octFit(e, C) {
+    if (!e.alive || e.saved || !e.body || !e.body.isActive() || e.octo || e.chick || e.fire > 0 || e.stone > 0 || (C.ban === e.id && C.banT > 0)) return false;
     const c = this.channelOf(e);
-    return c >= 1 && c < this.rings.length && c === this.chAt(C.rad);
+    return c >= 1 && c < this.rings.length;
   },
-  octTarget(C) {
-    if (C.cross >= 0) return null;
+  octCan(e, C) { return this.octFit(e, C) && this.channelOf(e) === this.chAt(C.rad); }, // ...and in its own channel: it can grab it
+  // the egg it hunts: the nearest in its channel, else in a channel up to `range` away (m: farther along the ring than this is out of sight)
+  octPrey(C, range = 1, far = 1e9) {
+    if (C.cross >= 0 && C.ph !== 'lurk') return null;
+    const c = this.chAt(C.rad);
     let best = null, bd = 1e9;
     for (const e of this.aliveEggs()) {
-      if (!this.octCan(e, C) || this.octos.some((o) => o !== C && o.tgt === e.id)) continue;
-      const p = e.body.getPosition(), d = Math.abs(wrap(Math.atan2(p.y, p.x) - C.a));
+      if (!this.octFit(e, C) || this.octos.some((o) => o !== C && o.tgt === e.id)) continue;
+      const ec = this.channelOf(e), dc = Math.abs(ec - c);
+      if (dc > range) continue;
+      const p = e.body.getPosition(), da = Math.abs(wrap(Math.atan2(p.y, p.x) - C.a));
+      if (da * C.rad > far) continue;
+      const d = dc * 3 + da;
       if (d < bd) { bd = d; best = e; }
     }
     return best;
@@ -260,6 +344,7 @@ export const seaMethods = {
   octLetGo(C, kind) {
     const e = this.octRelease(C), h = this.octXY(C);
     C.hit = kind; C.tgt = 0;
+    if (e && kind !== 'end') { C.ban = e.id; C.banT = this.octM().cd; } // it will not come straight back for this egg
     // jet off along the channel, away from the egg (or from what hit it)
     const q = e ? e.body.getPosition() : null;
     C.jd = q ? (wrap(C.a - Math.atan2(q.y, q.x)) >= 0 ? 1 : -1) : this.rand() < 0.5 ? -1 : 1;
@@ -294,15 +379,41 @@ export const seaMethods = {
     if (walls.some((r) => r && r.stun > 0)) return this.octHit(C, 'zap');
   },
   octHit(C, kind) {
-    if (!LIVE.has(C.ph)) return false;
+    if (!LIVE.has(C.ph) || C.fz > 0 || C.stn > 0 || C.zp > 0) return false; // ice shields it; a dazed one is already out
     if (C.eid) this.octLetGo(C, kind);
     else { // not holding: it still flinches and jets off
+      if (C.tgt) { C.ban = C.tgt; C.banT = this.octM().cd * 0.5; }
       C.hit = kind; C.tgt = 0; C.jd = this.rand() < 0.5 ? -1 : 1;
       C.cross = -1;
       this.octSet(C, 'let', OCT.let);
       this.emit('octLetGo', { ...this.octXY(C), id: C.id, kind, egg: 0 });
     }
     return true;
+  },
+
+  // ---------- frozen and stunned (powers2.js p2All: frost nova, thunderclap, shock; allies: crow, clash). T seconds.
+  // Frozen: nothing moves (a held egg stays held, safe); stunned: it lets go of the egg and hangs slack. arcs: the 0.3 s zap flash first.
+  octFreeze(C, T) {
+    if (C.ph === 'wait' || C.ph === 'in') return;
+    C.fz = C.fzMax = Math.max(C.fz, T);
+    C.stn = C.zp = 0;
+    if (C.ph === 'warn' || C.ph === 'grab' || C.ph === 'squirt') this.octSet(C, 'seek');
+  },
+  octStun(C, T, arcs = 0.3) {
+    if (C.ph === 'wait' || C.ph === 'in' || C.fz > 0) return;
+    const held = !!C.eid, e = this.octRelease(C);
+    if (e) { C.ban = e.id; C.banT = this.octM().cd; }
+    C.cross = -1; C.tgt = 0;
+    C.stn = C.stnMax = Math.max(C.stn, T); C.zp = arcs;
+    this.octSet(C, 'rest', OCT.rest * 0.5);
+    if (held) this.emit('octLetGo', { ...this.octXY(C), id: C.id, kind: 'zap', egg: e ? e.id : 0 });
+  },
+  seaFreeze(T) { for (const C of this.octos || []) this.octFreeze(C, T); },
+  seaStun(T, arcs = 0.3) { for (const C of this.octos || []) this.octStun(C, T, arcs); },
+  seaP2(kind, T) { // p2All's creature kinds
+    if (kind === 'ice') this.seaFreeze(T);
+    else if (kind === 'bolt') this.seaStun(Math.max(T * 0.6, 2));
+    else if (kind === 'zap') this.seaStun(this.octM().stun);
   },
 
   // ---------- hazards from elsewhere: animalsHit (boss.js: gust rock lava ice bolt quake) and the chick powers
