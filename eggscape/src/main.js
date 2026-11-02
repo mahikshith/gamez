@@ -853,6 +853,7 @@ function handleEvents() {
         popup(px, ev.y + 0.55, `Crack ${ev.n || ev.egg.cracks}/3`, { sub: ev.why === 'fall' && v3Fall ? (v3Fall === 'eagle' ? 'dropped by the eagle' : `fell ${v3Fall} rings`) : ev.why === 'scorch' ? 'red-hot wall' : '', color: (ev.n || 1) >= 2 ? '#ff7a6a' : '#ffc24a', size: 18, life: 1.1 });
         break;
       case 'break': {
+        if (ev.why === 'thorn') W.thornBite(G.sim, ev.x, ev.y, G.t); // v3.3: the thorn stabs
         audio.play(ev.why === 'lava' ? 'lava_sizzle' : 'egg_break');
         if (ev.why === 'thorn') audio.play('thorn_hit');
         if (ev.why === 'eagle') { /* carried off whole: no yolk */ }
@@ -986,9 +987,15 @@ function handleEvents() {
         fx.sparkle(ev.x2, ev.y2, 10, '#ffc27a');
         break;
       case 'thornBurn':
+        W.thornCrumble(ev.thorn, G.t); // v3.3: it chars, then crumbles
         audio.play('fire_burn');
-        fx.smoke(ev.x, ev.y, 4);
+        fx.smoke(ev.x, ev.y + 0.25, 2); // light, and above it, so the crumble stays readable
         fx.chips(ev.x, ev.y, '#ff8a3a', 6, 2);
+        break;
+      case 'vineClose': // v3.3: a thorn vine has sealed its gap
+        audio.play('thorn_snap', { pitch: 0.8 });
+        fx.chips(ev.x, ev.y, '#c23a55', 6, 1.5);
+        if (!G.predToast.vineClose) { G.predToast.vineClose = 1; toast('Thorn vines seal a gap when they reach across. Fire burns them back.', 3.2); }
         break;
       case 'thornSnap':
         audio.play('thorn_snap');

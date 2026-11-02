@@ -1326,3 +1326,127 @@ export function drawOneWayMark(ctx, cx, cy, size, dir = 1, t = 0) {
     ctx.globalAlpha = 1;
   });
 }
+
+/* --------------------------------------------------------- THORN VINE (v3.3 M3) */
+
+// A bramble creeping across a gap from its left edge: u = how far across (0..1), sealed = it has closed the gap
+// (thicker, thorns bristling, a knot anchors it on the far side), burn 0..1 chars it from the tip back.
+// Local px space: x along the ring, y across it (thick = ring thickness in px). The growing tip pulses so the
+// player reads "it is coming"; the last 25 % of the way it turns redder (warning).
+export function drawThornVine(ctx, len, thick, u, t = 0, sealed = false, burn = 0) {
+  if (!(len > 0) || (!sealed && !(u > 0.01))) return;
+  safe(ctx, () => {
+    burn = clamp(burn || 0, 0, 1);
+    u = sealed ? 1 : clamp(u, 0, 1);
+    const o = lw(1, thick * 0.05), x0 = -len / 2 - thick * 0.25, reach = (len + thick * 0.5) * u * (1 - burn * 0.85);
+    const warn = sealed ? 0 : clamp((u - 0.7) / 0.3, 0, 1);
+    const stemW = thick * (sealed ? 0.62 : 0.42 + 0.12 * u);
+    const N = Math.max(3, Math.round(reach / (thick * 0.42)));
+    const P = [];
+    for (let i = 0; i <= N; i++) {
+      const x = x0 + (reach * i) / N, f = i / N;
+      // a lazy wave that travels toward the tip; sealed, it tightens and only breathes
+      const amp = thick * (sealed ? 0.06 : 0.16) * Math.sin(Math.PI * Math.min(1, f * 1.2));
+      P.push([x, amp * Math.sin(x * 0.11 - t * (sealed ? 1.5 : 3.2)) + (sealed ? 0 : thick * 0.05 * Math.sin(t * 2 + i))]);
+    }
+    // a dark wine-red bramble: reads as danger on every ring colour (green vine rings included)
+    const green = burn > 0 ? `rgb(${Math.round(110 - 60 * burn)},${Math.round(36 - 20 * burn)},${Math.round(52 - 30 * burn)})` : '#7a2440';
+    const stemDark = '#22060f';
+    // warning glow: pulses red as it is about to seal; sealed, it glows steadily
+    const glow = sealed ? 0.35 : warn * (0.35 + 0.3 * Math.sin(t * 14));
+    if (glow > 0.02 && burn === 0) {
+      ctx.beginPath();
+      P.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.lineWidth = stemW * 2.6;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(255,60,80,${glow})`;
+      ctx.stroke();
+    }
+    // root knot on the near edge
+    ctx.beginPath();
+    ctx.ellipse(x0, 0, thick * 0.32, thick * 0.4, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#5a3a1c';
+    ctx.fill();
+    ctx.lineWidth = o * 1.2;
+    ctx.strokeStyle = stemDark;
+    ctx.stroke();
+    // stem: dark outline, then green, then a light vein
+    for (const [w, col] of [[stemW + o * 2.4, stemDark], [stemW, green], [stemW * 0.22, 'rgba(255,170,190,0.45)']]) {
+      ctx.beginPath();
+      P.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.lineWidth = w;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = col;
+      ctx.stroke();
+    }
+    // thorns on both sides, bigger and redder as it seals; leaves now and then
+    const red = '#ff3b55';
+    for (let i = 1; i < N; i++) {
+      const [x, y] = P[i], d = i % 2 ? 1 : -1, s = thick * (sealed ? 0.5 : 0.32 + 0.12 * warn) * (0.8 + 0.4 * hash(i));
+      if (hash(i * 3.1) < 0.18 && !sealed) {
+        // leaf
+        ctx.save();
+        ctx.translate(x, y + d * stemW * 0.4);
+        ctx.rotate(d * (0.6 + 0.2 * Math.sin(t * 2 + i)));
+        ctx.beginPath();
+        ctx.ellipse(s * 0.7, 0, s * 0.75, s * 0.32, 0, 0, Math.PI * 2);
+        ctx.fillStyle = burn > 0 ? '#4a3a20' : '#5fae3a';
+        ctx.fill();
+        ctx.lineWidth = o * 0.8;
+        ctx.strokeStyle = stemDark;
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
+      ctx.beginPath();
+      ctx.moveTo(x - s * 0.35, y + d * stemW * 0.35);
+      ctx.lineTo(x + s * 0.25, y + d * (stemW * 0.35 + s));
+      ctx.lineTo(x + s * 0.35, y + d * stemW * 0.35);
+      ctx.closePath();
+      ctx.fillStyle = burn > 0 ? '#5a2030' : red;
+      ctx.fill();
+      ctx.lineWidth = o * 0.8;
+      ctx.strokeStyle = '#2a0a12';
+      ctx.stroke();
+    }
+    const [tx, ty] = P[N];
+    if (sealed && burn < 0.05) {
+      // anchored: a knot grips the far edge
+      ctx.beginPath();
+      ctx.ellipse(tx, ty, thick * 0.3, thick * 0.38, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#5a3a1c';
+      ctx.fill();
+      ctx.lineWidth = o * 1.2;
+      ctx.strokeStyle = stemDark;
+      ctx.stroke();
+    } else if (!sealed && burn === 0) {
+      // the growing tip: a curled bud that pulses, red when it is about to close
+      const pr = thick * (0.16 + 0.05 * Math.sin(t * (6 + 8 * warn))) * (1 + 0.4 * warn);
+      ctx.beginPath();
+      ctx.arc(tx, ty, pr, 0, Math.PI * 2);
+      ctx.fillStyle = warn > 0 ? `rgb(${Math.round(120 + 120 * warn)},${Math.round(170 - 120 * warn)},60)` : '#8ed85a';
+      ctx.fill();
+      ctx.lineWidth = o;
+      ctx.strokeStyle = stemDark;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(tx + pr * 0.4, ty - pr * 0.3, pr * 0.55, Math.PI * 0.2, Math.PI * 1.6);
+      ctx.stroke();
+    }
+    // fire eating it from the tip back
+    if (burn > 0 && burn < 1) {
+      const fx = P[Math.max(0, Math.round(N * (1 - burn * 0.2)))][0];
+      for (const [sc, col] of [[1, '#ff5a1a'], [0.65, '#ffb42a'], [0.3, '#fff2a0']]) {
+        const fh = thick * (0.9 + 0.3 * Math.sin(t * 13)) * sc;
+        ctx.beginPath();
+        ctx.moveTo(fx - thick * 0.3 * sc, thick * 0.2);
+        ctx.quadraticCurveTo(fx - thick * 0.3 * sc, -fh * 0.5, fx + Math.sin(t * 9) * 2, -fh);
+        ctx.quadraticCurveTo(fx + thick * 0.3 * sc, -fh * 0.5, fx + thick * 0.3 * sc, thick * 0.2);
+        ctx.closePath();
+        ctx.fillStyle = col;
+        ctx.fill();
+      }
+    }
+  });
+}

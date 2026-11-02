@@ -5,7 +5,7 @@ import { isSpriteCalm, drawFoxActor } from './sprites.js';
 import { drawEagle, drawEagleShadow, drawBarrier, drawVenom } from './v3art.js';
 import { drawEggPower, drawOrb } from './powers.js';
 import { EAGLE_LEN } from '../sim/sim.js';
-import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawGrate, drawOneWayMark } from './v3art.js';
+import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawThornVine, drawGrate, drawOneWayMark } from './v3art.js';
 import { drawSkinPreview } from '../ui/store.js';
 
 let skin = 'classic';
@@ -310,7 +310,7 @@ export function drawRing(ctx, ring, theme, k, t, opts = {}) {
   if (ring.gearOut) drawGearTeeth(ctx, ring, col, ro, 1);
   if (ring.gearIn) drawGearTeeth(ctx, ring, col, ri, -1);
   // thorns
-  drawThorns(ctx, ring, theme, px);
+  drawThorns(ctx, ring, theme, px, t, opts);
   ctx.restore();
   if (ring.stun > 0) drawStun(ctx, ring, t, px);
 
@@ -638,16 +638,126 @@ function wrapA(a) {
   return a - Math.PI;
 }
 
-function drawThorns(ctx, ring, theme, px) {
+// Living thorns (v3.3 M3), render only (the sim's thorn is unchanged): every thorn sways a little on its own beat,
+// bristles and quivers when an egg comes close, stabs out when it breaks one, shivers just before a retracting
+// thorn springs back out, and a burnt thorn chars, then crumbles into falling shards.
+const TH_BITE = new Map(); // thorn key -> render time of its last bite
+const crumbles = []; // burnt thorns: { ring, a, base, tip, out, t0 }
+export function thornBite(sim, x, y, t) {
+  let best = null, bd = 0.9;
+  for (const ring of sim.rings) {
+    const A = ring.body.getAngle();
+    for (const th of ring.thorns) {
+      if (!th.alive) continue;
+      const r = th.tip, a = A + th.a, d = Math.hypot(r * Math.cos(a) - x, r * Math.sin(a) - y);
+      if (d < bd) { bd = d; best = th; }
+    }
+  }
+  if (best) TH_BITE.set(best.key, t);
+}
+export function thornCrumble(th, t) {
+  if (th && th.ring) crumbles.push({ ring: th.ring, a: th.a, base: th.base, tip: th.tip, out: th.tip > th.base, t0: t });
+  if (crumbles.length > 40) crumbles.shift();
+}
+function drawCrumbles(ctx, ring, t, px) {
+  const A = ring.body.getAngle(), dx = -Math.sin(A), dy = -Math.cos(A); // world down, in ring space
+  for (let i = crumbles.length - 1; i >= 0; i--) {
+    const c = crumbles[i];
+    if (c.ring !== ring) continue;
+    const age = t - c.t0;
+    if (age > 1.4 || age < 0) { crumbles.splice(i, 1); continue; }
+    const half = 0.13 / ring.r, P = (rad, an) => [rad * Math.cos(an), rad * Math.sin(an)];
+    if (age < 0.45) {
+      // charring husk: orange glow fading to black, embers along the edge
+      const u = age / 0.45, [x0, y0] = P(c.base, c.a - half), [x1, y1] = P(c.base, c.a + half), [x2, y2] = P(c.base + (c.tip - c.base) * (1 - 0.15 * u), c.a);
+      const [gx, gy] = P(c.base + (c.tip - c.base) * 0.5, c.a), gl = ctx.createRadialGradient(gx, gy, 0, gx, gy, 0.3);
+      gl.addColorStop(0, `rgba(255,150,50,${(0.8 * (1 - u)).toFixed(3)})`);
+      gl.addColorStop(1, 'rgba(255,80,20,0)');
+      ctx.fillStyle = gl;
+      ctx.beginPath();
+      ctx.arc(gx, gy, 0.3, 0, TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x0, y0); ctx.lineTo(x2, y2); ctx.lineTo(x1, y1); ctx.closePath();
+      ctx.fillStyle = `rgb(${Math.round(210 - 170 * u)},${Math.round(90 - 70 * u)},${Math.round(40 - 25 * u)})`;
+      ctx.fill();
+      ctx.lineWidth = Math.max(2 * px, 0.02);
+      ctx.strokeStyle = '#1a0a06';
+      ctx.stroke();
+      for (let k = 0; k < 3; k++) {
+        const f = 0.25 + 0.25 * k, ex = x0 + (x2 - x0) * f, ey = y0 + (y2 - y0) * f;
+        ctx.beginPath();
+        ctx.arc(ex, ey, 0.018 * (1 - u) + 0.006, 0, TAU);
+        ctx.fillStyle = Math.sin(t * 30 + k) > 0 ? '#ffd27a' : '#ff6a1a';
+        ctx.fill();
+      }
+      continue;
+    }
+    // shards: three dark pieces tumble down and fade
+    const u = (age - 0.45) / 0.95;
+    for (let k = 0; k < 3; k++) {
+      const f = 0.2 + 0.3 * k, rr = c.base + (c.tip - c.base) * f, [sx, sy] = P(rr, c.a + (k - 1) * half * 0.6);
+      // each shard pops up and out to the side (clear of the egg that burnt it), then falls
+      const s = age - 0.45, g = 9 * s * s - 1.6 * s, side = (k - 1 || 0.6) * 1.1 * s;
+      const x = sx + dx * g - dy * side, y = sy + dy * g + dx * side, sz = 0.075 * (1 - 0.3 * k / 2);
+      ctx.save();
+      ctx.globalAlpha = 1 - u;
+      ctx.translate(x, y);
+      ctx.rotate((age - 0.45) * (k - 1 || 1) * 9);
+      ctx.beginPath();
+      ctx.moveTo(-sz, -sz * 0.6); ctx.lineTo(sz, 0); ctx.lineTo(-sz * 0.4, sz * 0.7); ctx.closePath();
+      ctx.fillStyle = '#2a1712';
+      ctx.fill();
+      ctx.lineWidth = Math.max(1.5 * px, 0.014);
+      ctx.strokeStyle = u < 0.5 ? '#ff7a2a' : '#5a2a18';
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
   const c = theme?.palette?.thorn || '#3a2a2a';
+  const A = ring.body.getAngle(), eggs = opts.eggs || [];
+  const soft = ring.mat === 'vine' || ring.mat === 'wood' || !ring.mat;
+  // a retracting ring: how long until its thorns spring back out (they shiver for the last 0.5 s)
+  let comeback = 9;
+  if (ring.retract && opts.simT != null) {
+    const { period, on, phase = 0 } = ring.retract, ph = ((((opts.simT + phase) % period) + period) % period) / period;
+    if (ph >= on) comeback = (1 - ph) * period;
+  }
   for (const th of ring.thorns) {
     if (!th.alive) continue;
-    const e = 0.25 + 0.75 * th.ext;
+    // an egg close by: the thorn bristles (reaches a little further) and quivers
+    let near = 0;
+    if (eggs.length) {
+      const wa = A + th.a, tx = th.tip * Math.cos(wa), ty = th.tip * Math.sin(wa);
+      for (const p of eggs) near = Math.max(near, clamp01(1 - (Math.hypot(p.x - tx, p.y - ty) - 0.35) / 0.9));
+    }
+    const bt = TH_BITE.get(th.key), bite = bt != null ? clamp01(1 - (t - bt) / 0.4) : 0;
+    const shiver = ring.retract && th.ext < 0.5 && comeback < 0.5 ? 1 - comeback / 0.5 : 0;
+    const k0 = th.key * 0.73;
+    const sway = (soft ? 0.07 : 0.04) * Math.sin(t * 1.6 + k0) + near * 0.07 * Math.sin(t * 31 + k0) + shiver * 0.1 * Math.sin(t * 45 + k0) + bite * 0.12 * Math.sin(t * 60);
+    const e = Math.min(1.25, 0.25 + 0.75 * th.ext + 0.1 * near + 0.3 * bite * Math.sin(Math.PI * Math.min(1, (t - (bt || 0)) / 0.2)) + 0.3 * shiver);
     const half = 0.13 / ring.r;
     const tip = th.base + (th.tip - th.base) * e;
     const a = th.a;
     const P = (rad, an) => [rad * Math.cos(an), rad * Math.sin(an)];
-    const [x0, y0] = P(th.base, a - half), [x1, y1] = P(th.base, a + half), [x2, y2] = P(tip, a);
+    const [x0, y0] = P(th.base, a - half), [x1, y1] = P(th.base, a + half);
+    let [x2, y2] = P(tip, a);
+    if (shiver > 0) {
+      // about to spring out: the stub's tip glows hot so the player sees the warning, not just a twitch
+      const gl = ctx.createRadialGradient(x2, y2, 0, x2, y2, 0.16);
+      gl.addColorStop(0, `rgba(255,120,60,${(0.75 * shiver * (0.65 + 0.35 * Math.sin(t * 24 + k0))).toFixed(3)})`);
+      gl.addColorStop(1, 'rgba(255,60,30,0)');
+      ctx.fillStyle = gl;
+      ctx.beginPath();
+      ctx.arc(x2, y2, 0.16, 0, TAU);
+      ctx.fill();
+    }
+    // sway bends the tip sideways (tangentially), the base stays planted
+    const L = Math.abs(tip - th.base);
+    x2 += -Math.sin(a) * L * sway; y2 += Math.cos(a) * L * sway;
     const [mx, my] = P(th.base + (tip - th.base) * 0.45, a);
     if (th.kind === 'blunt') {
       // blunt grey spike: a stubby cone with a rounded tip (cracks, never breaks)
@@ -700,6 +810,7 @@ function drawThorns(ctx, ring, theme, px) {
     ctx.lineTo(x0 * 0.25 + x2 * 0.75, y0 * 0.25 + y2 * 0.75);
     ctx.stroke();
   }
+  if (crumbles.length) drawCrumbles(ctx, ring, t, px);
 }
 
 export function drawEgg(ctx, egg, t, k) {
@@ -1568,6 +1679,10 @@ export function drawV3Ring(ctx, ring, k, t) {
     if (g.grate) onRing(ctx, k, r, A + g.a, () => drawGrate(ctx, 0, 0, g.len * k, RING_TH * k, t));
     if (g.narrow) onRing(ctx, k, r, A + g.a, () => drawNarrowBar(ctx, g.len * k, RING_TH * k));
     const C = g.curtain;
+    if (C && C.vine) { // v3.3 thorn vine: creeping across, or sealed (fire burns it back)
+      onRing(ctx, k, r, A + g.a, () => drawThornVine(ctx, g.len * k, RING_TH * k, C.u, t, C.alive, C.alive ? C.burn : 0));
+      continue;
+    }
     if (C && (C.alive || C.burn < 1)) {
       onRing(ctx, k, r - RING_TH / 2 - 0.05, A + g.a, () => drawThornCurtain(ctx, 0, 0, g.len * k, (RING_TH + 0.22) * k, t, C.alive ? C.burn : 1));
       if (C.burning && C.alive) {

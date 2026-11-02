@@ -67,6 +67,9 @@ export const OSTRICH_GAP = 0.9; // a 0.78 m gap jams a 1.3x egg about one drop i
 const PULL_R = 1.2; // portal suction radius (G18)
 const HOLE_LEN = 0.95, HOLE_T = 5, ROCK_FLY = 1.1, ROCK_SIT = 1.2; // lava rocks (G31)
 const CURTAIN_BURN = 1; // s for fire to clear a thorn curtain
+// v3.3 thorn vines (M3): a vine creeps across its gap (grow s, slower on Easy), then seals it like a thorn curtain
+// until fire burns it back; it rests `wait` s and grows again. It never seals onto an egg sitting in the gap.
+const VINE = { grow: 6, wait: 2.5 }, VINE_MODE = { easy: 1.5, medium: 1, hard: 0.8 };
 const GUARD_PASS = new Set(['fox', 'ground', 'lost', 'lava']); // what still ends a guarded egg
 
 // Difficulty is the player's choice (F32). Same levels, tuned per mode.
@@ -2303,6 +2306,17 @@ export class Sim {
     const cur = () => ({ alive: true, burn: 0, burning: false, fixes: [] });
     const gaps = (spec.gaps || []).map((g) => ({ a: deg(g.a), len: g.len || (g.grate ? 0.7 : 0.78), x: g.x || 1, shut: g.shut || null, o: 1, curtain: g.curtain ? cur() : null, grate: !!g.grate }));
     for (let k = 0, n = spec.curtain || 0; k < gaps.length && n > 0; k++) if (!gaps[k].grate && !gaps[k].curtain) { gaps[k].curtain = cur(); n--; }
+    // v3.3 vines: spec.vine = n (or {n, grow, wait}): the first n plain gaps get a thorn vine that starts bare
+    // (a level gap can also carry vine: 1 itself, which is what the generator writes)
+    const V = spec.vineOpts || (typeof spec.vine === 'object' ? spec.vine : { n: spec.vine || 0 });
+    const m = VINE_MODE[this.mode] || 1;
+    const vine = () => ({ ...cur(), alive: false, vine: { grow: (V.grow || VINE.grow) * m, wait: (V.wait || VINE.wait) * m }, u: 0, w: (V.delay ?? 1.5) * m });
+    (spec.gaps || []).forEach((g, k) => { if (g.vine && !gaps[k].curtain && !gaps[k].grate) gaps[k].curtain = vine(); });
+    for (let k = 0, n = V.n || 0; k < gaps.length && n > 0; k++) {
+      if (gaps[k].grate || gaps[k].curtain) continue;
+      gaps[k].curtain = vine();
+      n--;
+    }
     for (let k = 0; k < (spec.grate || 0); k++) {
       let best = null;
       for (const arc of solidArcs(r, gaps)) if (!best || arc[1] - arc[0] > best[1] - best[0]) best = arc;
@@ -2511,13 +2525,35 @@ export class Sim {
         const C = g.curtain;
         if (!C || !C.alive || !C.burning || (C.burn += DT / CURTAIN_BURN) < 1) continue;
         C.alive = false;
-        for (const f of C.fixes) this.killFix.push([ring.body, f]);
+        if (C.vine) { C.u = 0; C.w = C.vine.wait; C.burning = false; C.burn = 0; } // burnt back to the root: it regrows
+        else for (const f of C.fixes) this.killFix.push([ring.body, f]);
         const q = ring.body.getWorldPoint(Vec2(ring.r * Math.cos(g.a), ring.r * Math.sin(g.a)));
-        this.emit('curtainGone', { x: q.x, y: q.y, ring: ring.i });
+        this.emit('curtainGone', { x: q.x, y: q.y, ring: ring.i, vine: !!C.vine });
+      }
+      for (const g of ring.gaps) {
+        const C = g.curtain;
+        if (!C || !C.vine || C.alive) continue;
+        if (C.w > 0) { C.w -= dt; continue; }
+        if (C.u < 1) { C.u = Math.min(1, C.u + dt / C.vine.grow); continue; }
+        if (this.eggInGap(ring, g)) continue; // it waits for the egg to get out of the way
+        C.alive = true; C.burn = 0; C.burning = false;
+        const q = ring.body.getWorldPoint(Vec2(ring.r * Math.cos(g.a), ring.r * Math.sin(g.a)));
+        this.emit('vineClose', { x: q.x, y: q.y, ring: ring.i });
       }
     }
     this.lavaStep(dt);
     v31Step(this, dt); // bosses (v3.1): boss attacks, falling ice (replaces the old top-down icicles), walls, ring locks
+  }
+
+  // is an egg in (or right at) this gap's opening?
+  eggInGap(ring, g) {
+    const A = ring.body.getAngle() + g.a, half = g.len / 2 + 0.3;
+    for (const e of this.aliveEggs()) {
+      const p = e.body.getPosition(), d = Math.hypot(p.x, p.y);
+      if (Math.abs(d - ring.r) > RING_TH / 2 + 0.38) continue;
+      if (Math.abs(wrap(Math.atan2(p.y, p.x) - A)) * ring.r < half) return true;
+    }
+    return false;
   }
 
   eggOnSeg(ring, sg) {
@@ -2596,7 +2632,7 @@ export class Sim {
     return {
       slowT: this.slowT, curseT: this.curseT, jitT: this.jitT, guardT: this.guardT || 0, skinT: this.skinT || 0, v3T: { ...this.v3T },
       lavaRocks: this.lavaRocks.map((k) => ({ ...k })), icicles: this.icicles.map((c) => ({ ...c })),
-      rings: this.rings.map((r) => ({ melt: r.segs.map((g) => g.melt || 0), cur: r.gaps.map((g) => (g.curtain ? [g.curtain.alive, g.curtain.burn, g.curtain.burning] : null)) })),
+      rings: this.rings.map((r) => ({ melt: r.segs.map((g) => g.melt || 0), cur: r.gaps.map((g) => (g.curtain ? [g.curtain.alive, g.curtain.burn, g.curtain.burning, g.curtain.u, g.curtain.w] : null)) })),
     };
   }
   v3Restore(V) {
@@ -2611,6 +2647,7 @@ export class Sim {
         const C = ring.gaps[k].curtain;
         if (!C || !cs) return;
         C.burn = cs[1]; C.burning = cs[2];
+        if (C.vine) { C.alive = cs[0]; C.u = cs[3]; C.w = cs[4]; return; } // vines keep their fixtures (alive switches them)
         if (!cs[0] && C.alive) { C.alive = false; for (const f of C.fixes) ring.body.destroyFixture(f); }
       });
     });

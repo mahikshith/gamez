@@ -68,7 +68,8 @@ function layRing(spec, i, r, R, prev) {
   if (rs.motor) ring.motor = rs.motor;
   if (rs.motorFlip) ring.motorFlip = rs.motorFlip;
   if (rs.oneway) ring.oneway = Math.sign(rs.oneway); // v3 ratchet ring (G22)
-  if (rs.ice) ring.ice = rs.ice; // v3.2 hard ice: only the pick chick drills it open
+  if (rs.ice) ring.ice = rs.ice;
+  if (typeof rs.vine === 'object') ring.vineOpts = { grow: rs.vine.grow, wait: rs.vine.wait, delay: rs.vine.delay }; // per-gap vine flags are set below // v3.2 hard ice: only the pick chick drills it open
   if (rs.retract) ring.retract = { phase: +(R() * rs.retract.period).toFixed(2), ...rs.retract };
   if (rs.gear) {
     // geared to the next ring out: turning either turns the other the opposite way
@@ -102,6 +103,8 @@ function layRing(spec, i, r, R, prev) {
   gaps.forEach((g) => { if (g.len === GAP_LEN) delete g.len; if (g.x === 1) delete g.x; });
   // v3 thorn curtains: the first `curtain` gaps (the multiplier gaps first) only open to fire
   gaps.slice(0, rs.curtain || 0).forEach((g) => { g.curtain = 1; });
+  // v3.3 thorn vines: the next `vine` gaps start open but seal over time (fire burns them back), so they count as closed below
+  gaps.slice(rs.curtain || 0, (rs.curtain || 0) + (typeof rs.vine === 'object' ? rs.vine.n : rs.vine || 0)).forEach((g) => { g.vine = 1; });
   // gap shutters: every gap on the ring gets a door on the same rhythm, out of step with each other
   if (rs.shut) gaps.forEach((g) => { g.shut = { period: rs.shut.period, open: rs.shut.open, phase: +(R() * rs.shut.period).toFixed(2) }; });
   ring.gaps = gaps;
@@ -118,7 +121,7 @@ function layRing(spec, i, r, R, prev) {
   // v3: curtained gaps are no way out of a pocket, so pockets are counted on open gaps only (a floor
   // cluster sits in the arc just after an open gap); a ring with no open gap is one pocket (fire opens it)
   const big = (spec.eggKinds || []).includes('ostrich');
-  const open = gaps.filter((g) => !g.curtain && !(big && (g.len || GAP_LEN) < OSTRICH_GAP)); // an ostrich can't use a narrow gap
+  const open = gaps.filter((g) => !g.curtain && !g.vine && !(big && (g.len || GAP_LEN) < OSTRICH_GAP)); // an ostrich can't use a narrow gap
   const free = rs.retract || rs.motor || !gaps.length;
   const sortedG = [...gaps].sort((p, q) => p.a - q.a);
   const after = (open.length ? open : gaps.slice(0, 1)).map((g) => sortedG.indexOf(g)).sort((p, q) => p - q);
