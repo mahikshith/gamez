@@ -12,7 +12,8 @@ import * as W from './render/world.js';
 import { UI, FONT, ICON, drawStar, drawEggIcon } from './ui/ui.js';
 import { drawSnake } from './render/characters.js';
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
-import { drawSprite, drawBossCard, drawFoxActor, drawHenActor, setSpriteCalm } from './render/sprites.js';
+import { drawSprite, drawBossCard, drawFoxActor, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
+import { drawHenAnim, henIdleEvents, resetHen } from './render/hen.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import { drawStore, drawCoin, drawBoosterPicker, drawChest } from './ui/store.js';
@@ -1422,7 +1423,7 @@ function drawDanger() {
 }
 
 function hen(mood, t) {
-  G.hen = { mood, t };
+  G.hen = { mood, t, n: (G.hen.n || 0) + 1 };
 }
 
 function stopFuse() {
@@ -1771,19 +1772,31 @@ function drawHenAt(sim, k, t) {
   // on a phone the vault leaves k ~ 35 px/m: draw her at least ~50 px tall so she is visible, and step her out from the nest
   const s = Math.max(0.95, Math.min(52, k * 1.5) / k);
   const n = sim.nest.getPosition();
+  const hx = n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2;
   ctx.save();
-  ctx.translate(n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2, sim.groundY);
+  ctx.translate(hx, sim.groundY);
   ctx.scale(1 / k, -1 / k);
   // she stands ON the ground: a soft contact shadow and a little straw she has scratched out of the nest
   const hs = s * k;
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.26)';
-  ctx.beginPath(); ctx.ellipse(0, 0, hs * 0.36, hs * 0.075, 0, 0, Math.PI * 2); ctx.fill();
+  if (!ANIMATED_HEN) { ctx.fillStyle = 'rgba(0,0,0,0.26)'; ctx.beginPath(); ctx.ellipse(0, 0, hs * 0.36, hs * 0.075, 0, 0, Math.PI * 2); ctx.fill(); }
   ctx.strokeStyle = G.theme?.palette?.nestStraw || '#c9a24a'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, hs * 0.022);
   for (const [a, b, c] of [[-0.42, -0.02, -0.22], [-0.3, 0.01, -0.05], [0.18, -0.01, 0.4], [0.3, 0.02, 0.5]]) {
     ctx.beginPath(); ctx.moveTo(a * hs, b * hs); ctx.lineTo(c * hs, b * hs - hs * 0.03); ctx.stroke();
   }
   ctx.restore();
+  if (ANIMATED_HEN) {
+    // M7: she shuffles toward the egg that is about to land (never off her patch) and reacts to every event herself
+    let look = 0;
+    for (const e of sim.eggs) {
+      if (!e.alive || e.saved) continue;
+      const p = e.body.getPosition(), l = -clamp(1.5 - (p.y - sim.groundY) / 5, 0, 1) * (Math.abs(p.x - n.x) < 2.4 ? 1 : 0.3); // toward the nest as an egg nears the exit
+      if (l < look) look = l;
+    }
+    drawHenActor(ctx, G.hen.mood, 0, -0.49 * hs, hs, t, { key: 'level', n: G.hen.n, look: G.screen === 'play' ? look : 0, danger: G.danger, shadow: 0.26 });
+    ctx.restore();
+    return;
+  }
   // idle life while nothing is happening: she pecks at the straw now and then, and leans in when worried
   let lean = G.hen.mood === 'worried' ? -0.15 : 0, dip = 0;
   if (G.hen.mood === 'idle' || G.hen.mood === 'happy' || !G.hen.mood) {
@@ -2444,6 +2457,7 @@ if (DEV) window.__egg = {
   frame(dt = 1 / 60) { update(dt); render(); },
   actSteps, // film strips replay planner moves through this
   snakeArt: drawSnake, // palette strips
+  hen: { anim: drawHenAnim, legacy: drawHenLegacy, events: henIdleEvents, reset: resetHen }, // M7 strips
   snAnim: W.snAnim,
   salAnim, // v3.2: the salamander's last drawn feet (QA strips)
   handle: () => handleEvents(),
