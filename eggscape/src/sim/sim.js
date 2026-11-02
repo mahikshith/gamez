@@ -7,6 +7,7 @@ import { salMethods } from './salamander.js'; // v3.2 lava salamander
 import { frogMethods } from './frog.js'; // v3.3 frog
 import { allyMethods } from './allies.js'; // v3.4 farm allies (rooster, goose)
 import { seaMethods } from './sea.js'; // v3.3 octopus and fish schools
+import { p2Methods, P2_TYPES, P2_KEYS } from './powers2.js'; // v3.4 powers and combos
 
 export const DT = 1 / 120;
 
@@ -57,7 +58,7 @@ export const POWER = {
   magnet: { time: 8, len: 0.8 },
 };
 export const ORB_TYPES = ['fire_red', 'fire_black', 'fire_green', 'fire_gold', 'stone', 'bubble', 'water', 'thunder', 'thorn', 'magnet', 'twin',
-  'hourglass', 'feather', 'rockskin', 'foxcurse', 'frost'];
+  'hourglass', 'feather', 'rockskin', 'foxcurse', 'frost', ...P2_TYPES];
 export const LEGACY_ORB = { fire: 'fire_red', steel: 'stone' }; // v1 item ids (levels and saves)
 const ORB_R = 0.2;
 
@@ -249,6 +250,7 @@ export class Sim {
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
+    this.p2Init(); // v3.4 powers
   }
 
   makeRing(i, r, spec, mat) {
@@ -460,6 +462,7 @@ export class Sim {
       }
     }
     this.v3Rings();
+    this.p2Rings(); // v3.4 spin storm
     for (const ring of this.rings) {
       ring.body.setAngularVelocity(ring.omega);
       const moving = !ring.motor && !ring.follower && Math.abs(ring.omega) > 0.25;
@@ -472,7 +475,7 @@ export class Sim {
         for (const th of ring.thorns) th.ext += clamp(want - th.ext, -dt * 5, dt * 5);
       }
       for (const g of ring.gaps) {
-        if (!g.shut) continue;
+        if (!g.shut || this.p2.dark > 0) continue; // v3.4 thunderclap: doors black out where they are
         const { period, open, phase = 0 } = g.shut;
         const want = ((((this.t + phase) % period) + period) % period) / period < open ? 1 : 0;
         g.o += clamp(want - g.o, -dt * 2.5, dt * 2.5);
@@ -564,6 +567,7 @@ export class Sim {
     this.frogStep(dt); // v3.3 frog
     if (this.weather && this.state === 'play') this.weatherStep(dt);
     if (this.state === 'play') this.v3Step(dt);
+    this.p2Step(dt); // v3.4 powers
 
     this.world.step(dt, 8, 3);
     this.afterStep(dt);
@@ -595,7 +599,7 @@ export class Sim {
     // impacts collected in post-solve
     for (const egg of this.eggs) {
       if (!egg.alive || egg.saved) continue;
-      const v = egg.impact * (egg.water > 0 ? 0.5 : 1); // water shell: landings count half
+      const v = egg.impact * (egg.water > 0 ? 0.5 : 1) * (egg.shrink > 0 ? 1.25 : 1); // water shell: landings count half; v3.4 a shrunk egg cracks easier
       if (v > 0.6) this.emit('bump', { egg, v });
       const soft = egg.inNest > 0 ? NEST_SOFT : 1;
       // v3 crack ladder (G34) replaces the meteor/comet rule: a fall through 2+ rings is judged on
@@ -839,7 +843,7 @@ export class Sim {
     const half = gate ? gate.len / (2 * ring.r) + 0.25 : 0;
     const key = ring.i * 8 + ring.gaps.indexOf(gate);
     if (!egg.gates) egg.gates = new Set();
-    if (gate && best < half && gate.x > 1 && !egg.gates.has(key)) {
+    if (gate && best < half && gate.x > 1 && !egg.gates.has(key) && !(this.p2.dark > 0)) { // v3.4: a blackout gate pays nothing
       egg.gates.add(key); // a gate pays once per egg, however often it bobs back through
       egg.mult = Math.min(MULT_CAP, egg.mult * gate.x);
       this.emit('gate', { egg, x: p.x, y: p.y, gx: gate.x, mult: egg.mult });
@@ -922,6 +926,7 @@ export class Sim {
     } else if (t === 'magnet') this.setMagnet(egg);
     else if (V3_POWER[t]) this.v3Power(t, egg);
     else if (t === 'frost') frostOrb(this, egg); // v3.1: the ring under the egg freezes
+    else this.p2Take(egg, t); // v3.4 powers (sim/powers2.js)
   }
 
   setStone(egg, on) {
@@ -1188,12 +1193,13 @@ export class Sim {
     const hc = this.chAt(S.rad);
     const hx = S.rad * Math.cos(S.a), hy = S.rad * Math.sin(S.a);
     let egg = null, best = 1e9;
-    for (const e of this.aliveEggs()) {
+    for (const e of this.p2Prey()) { // v3.4: the decoy first; shrunk eggs are lost from view
       const c = this.channelOf(e);
       if (c >= n) continue; // falling to the nest: out of reach
       const p = e.body.getPosition();
       let d = Math.abs(c - hc) * 10 + Math.abs(wrap(Math.atan2(p.y, p.x) - S.a));
-      if (e.chick) d -= 100; // bait (I2)
+      if (e.decoy) d -= 200;
+      else if (e.chick) d -= 100; // bait (I2)
       else if (this.snakeProof(e)) d += 40;
       if (this.snakes.some((o) => o !== S && !o.gone && o.tgt === e.id)) d += 15; // spread out
       if (d < best) { best = d; egg = e; }
@@ -1219,7 +1225,8 @@ export class Sim {
         }
         if (S.strike >= STRIKE_T) {
           S.strike = 0;
-          if (this.snakeProof(egg)) {
+          if (egg.decoy) this.decoyBite(S); // v3.4: wood!
+          else if (this.snakeProof(egg)) {
             // too hard to bite: a clear hit, then it backs off along its own body for a while, still facing the egg
             S.back = BACK_T * this.PM.back * S.backK; S.mood = 'ouch'; S.moodT = 0.7; S.mouthOpen = 0;
             this.snakeBack(S, 0.12);
@@ -1774,6 +1781,7 @@ export class Sim {
     E.t = EAGLE_T.strike;
     E.res = 'slam';
     const near = (x, y, r) => Math.hypot(x - E.dtx, y - E.dty) < r;
+    if (tg && tg.decoy && tg.exposed) { E.res = 'bounce'; this.decoyHit('eagle'); return; } // v3.4: fooled
     if (tg && tg.egg) {
       const egg = tg.egg, p = egg.body.getPosition();
       if (tg.exposed && near(p.x, p.y, 0.8) && this.channelOf(egg) >= n - 1) {
@@ -1983,9 +1991,11 @@ export class Sim {
     let best = null, bs = -1e9;
     const take = (s, o) => { if (s > bs) { bs = s; best = o; } };
     const again = (k) => (!E && this.eagle.last === k ? 200 : 0); // it took one of those last time: an egg looks better now
+    const lure = this.p2EagleLure(E); // v3.4: a decoy is all it sees
+    if (lure || (E && E.tk === 'decoy')) return lure;
     for (const e of this.aliveEggs()) {
       if (E && (E.tk === 'snake' || E.tk === 'orb' || E.tid !== e.id)) continue;
-      if (e.id === this.eagle.cid || !e.body.isActive()) continue;
+      if (e.id === this.eagle.cid || !e.body.isActive() || e.shrink > 0) continue; // v3.4: a shrunk egg is lost from view
       const c = this.channelOf(e), p = e.body.getPosition(), ex = c >= n - 1 && this.eagleReach(p.x, p.y);
       if (!E && (c >= n || c < n - 3 || (e.chick && c < n - 1))) continue;
       const s = (e.chick ? 320 : c === n - 1 ? 200 : 80 + c) + (ex ? 100 : 0) - (this.armored(e) ? 150 : 0);
@@ -2222,6 +2232,7 @@ export class Sim {
     EGG_KEYS.push(...CHICK_KEYS); // v3.2 chick kinds
     EGG_KEYS.push('hotK'); // v3.2: the salamander breath that last scorched it
     EGG_KEYS.push('octo'); // v3.3: held by octopus (id + 1)
+    EGG_KEYS.push(...P2_KEYS); // v3.4 powers
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2252,6 +2263,7 @@ export class Sim {
       frog: this.frogState(), // v3.3 frog
       ally: this.allyState(), // v3.4 farm allies
       sea: this.seaState(), // v3.3 octopus and fish
+      p2: this.p2State(), // v3.4 powers
     };
   }
 
@@ -2307,6 +2319,7 @@ export class Sim {
     sim.frogLoad(S.frog); // v3.3 frog
     sim.allyLoad(S.ally); // v3.4 farm allies
     sim.seaLoad(S.sea); // v3.3 octopus and fish
+    sim.p2Load(S.p2); // v3.4 powers
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2369,6 +2382,7 @@ export class Sim {
   // Contacts switched off before any impact is measured: melted ring, grate (quail and debris pass),
   // narrow-gap bar (only an ostrich is held), a burnt curtain or debris through a curtain.
   v3Pass(ua, ub) {
+    if (this.p2Pass(ua, ub)) return true; // v3.4: shrunk eggs through grates, iron through sponge, iron bars
     for (const [u, o] of [[ua, ub], [ub, ua]]) {
       if (u.kind === 'seg' && u.seg.melt > 0) return true;
       if (u.kind === 'grate') return !o.kind || (o.kind === 'egg' && o.egg.kind === 'quail');
@@ -2381,6 +2395,7 @@ export class Sim {
   // Egg contacts with v3 rules. Returns true when it has dealt with the contact.
   v3Contact(c, egg, other) {
     if (!egg || !egg.alive || egg.saved || !other) return false;
+    if (this.p2Contact(c, egg, other)) return true; // v3.4: brittle thorns, cannonballs, the live ring
     if (v31Contact(this, c, egg, other)) return true; // bosses (v3.1): ice patches, temporary walls
     if (other.kind === 'curtain') { this.curtainTouch(c, egg, other); return true; }
     const heavy = egg.stone > 0 || (egg.kind === 'ostrich' && egg.drop >= 2);
@@ -2472,7 +2487,7 @@ export class Sim {
   // 3 = 2, 4+ = broken. Easy is one ring gentler, a quail one ring harsher, water halves it.
   fallDamage(egg, n) {
     if (n < 2) return 0;
-    let d = n - 1 - (this.mode === 'easy' ? 1 : 0) + (egg.kind === 'quail' ? 1 : 0);
+    let d = n - 1 - (this.mode === 'easy' ? 1 : 0) + (egg.kind === 'quail' || egg.shrink > 0 ? 1 : 0); // v3.4: shrunk = quail
     if (egg.water > 0) d = Math.floor(d / 2);
     return Math.max(0, d);
   }
@@ -2696,5 +2711,6 @@ Object.assign(Sim.prototype, salMethods); // v3.2 lava salamander (sim/salamande
 Object.assign(Sim.prototype, frogMethods); // v3.3 frog (sim/frog.js)
 Object.assign(Sim.prototype, allyMethods); // v3.4 farm allies (sim/allies.js)
 Object.assign(Sim.prototype, seaMethods); // v3.3 octopus and fish schools (sim/sea.js)
+Object.assign(Sim.prototype, p2Methods); // v3.4 powers and combos (sim/powers2.js)
 
 export { EGG_H, EGG_W, RING_TH };
