@@ -14,6 +14,7 @@ import { FROG, FROG_MODE } from '../sim/frog.js';
 import { drawOrb } from './powers.js';
 import { drawKindChick } from './chicks.js';
 import { drawChick } from './characters.js';
+import { RING_MAT_BASE } from './world.js';
 
 export const FROG_ART = 1.12; // the art is a little larger than the body that collides
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -21,12 +22,28 @@ const sstep = (v) => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
 const lerp = (a, b, k) => a + (b - a) * k;
 const mod = (a, b) => ((a % b) + b) % b;
 
-const LINE = '#12301a';
-const C = {
-  base: '#5cc046', shade: '#3b9040', deep: '#2b6c33', hi: '#aaec74', belly: '#f1f6b6', bellyLo: '#cddd86',
-  spot: '#2f7d37', thigh: '#f7a63a', thighLo: '#d9741f', eye: '#ffd83c', eyeLo: '#e7a418', pupil: '#101c0e',
-  mouth: '#6e1a2a', tongue: '#f0607f', tongueLo: '#c93a5e', pad: '#e6f59a', sweat: '#a8e4ff',
+// Two skins, picked by contrast like thornLook(): a green tree frog on brown, dark, blue, red worlds; a golden-orange frog with
+// dark spots where the rings or the backdrop are green (bramble, jungle, vines), so it never melts into them.
+const LINE0 = '#0b2012';
+let LINE = LINE0; // the skin's outline (set per draw)
+const COMMON = { pupil: '#101c0e', mouth: '#6e1a2a', tongue: '#f0607f', tongueLo: '#c93a5e', sweat: '#a8e4ff', rim: 'rgba(245,255,215,0.85)' };
+const SKINS = {
+  tree: { ...COMMON, base: '#5cc046', shade: '#3b9040', deep: '#2b6c33', hi: '#aaec74', belly: '#f1f6b6', bellyLo: '#cddd86', spot: '#2f7d37', thigh: '#f7a63a', eye: '#ffd83c', eyeLo: '#e7a418', pad: '#e6f59a' },
+  gold: { ...COMMON, line: '#2a0f06', base: '#ffa928', shade: '#e0701a', deep: '#a8420e', hi: '#ffe08a', belly: '#fff6d6', bellyLo: '#f2d9a0', spot: '#5a2208', thigh: '#7a2a10', eye: '#fff0a0', eyeLo: '#e9b54a', pad: '#fff0b8', rim: 'rgba(255,250,225,0.92)' },
 };
+let C = SKINS.tree;
+const hexRgb = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return [0.5, 0.5, 0.5]; const n = parseInt(m[1], 16); return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
+const greenish = (h) => { const [r, g, b] = hexRgb(h); return g > r * 1.04 && g > b * 1.04 && g > 0.18; };
+const LOOK = new Map();
+export function frogSkin(theme, mat) {
+  const key = (theme?.id || '') + '|' + (mat || '');
+  let L = LOOK.get(key);
+  if (L) return L;
+  const P = theme?.palette || {}, ring = RING_MAT_BASE[mat] || P.ring?.base || '#8f8a83';
+  L = greenish(ring) || (greenish(P.skyTop) && greenish(P.skyBottom)) ? 'gold' : 'tree';
+  LOOK.set(key, L);
+  return L;
+}
 
 // ---- joints (art units, y down, ground at y = 0, nose at +x): hip, knee, ankle, toe tip. The pose blends rest / crouch / air.
 const HIND = {
@@ -74,7 +91,9 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
   const plug = clamp(op.plug || 0, 0, 1), puff = clamp(op.puff || 0, 0, 1), scared = clamp(op.scared || 0, 0, 1);
   const mouth = clamp(op.mouth || 0, 0, 1), gulp = op.gulp == null ? -1 : op.gulp, lick = op.lick == null ? -1 : op.lick;
   const look = op.look || { x: 0.3, y: 0 }, tip = op.tongue || null;
-  const U = s / 100, o = clamp(1.75 / U, 2.6, 6.5);
+  const U = s / 100, o = clamp(1.9 / U, 2.8, 7);
+  C = SKINS[op.skin] || SKINS.tree;
+  LINE = C.line || LINE0;
   ctx.save();
   try {
     ctx.translate(x, y);
@@ -144,7 +163,7 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
     for (const [px, py, pr] of [[-22, -27, 4.2], [-8, -31, 3.4], [-31, -17, 3.2], [6, -30, 2.6], [-15, -21, 2.6]]) { ctx.beginPath(); ctx.ellipse(px, py, pr * 1.2, pr, 0.4, 0, TAU); ctx.fill(); }
     ctx.fillStyle = C.belly; ctx.beginPath(); ctx.ellipse(12, 0, 44, 11, 0, 0, TAU); ctx.fill(); // pale belly
     ctx.restore();
-    body(); ctx.lineWidth = o + 3.2; ctx.strokeStyle = 'rgba(235,255,190,0.5)'; ctx.stroke(); // a pale rim keeps it readable on green walls
+    body(); ctx.lineWidth = o + 5; ctx.strokeStyle = C.rim; ctx.stroke(); // a pale rim round the dark outline keeps it readable on any wall
     body(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
 
     // hind leg: thigh mass over the flank, a slimmer shin, a long foot
@@ -160,14 +179,14 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
 
     // throat sac (under the chin): pulses when idle, swells before a hop, a lump travels down it when swallowing
     const idlePulse = 0.1 + 0.07 * (0.5 + 0.5 * Math.sin(t * 2.6 + (op.id || 0))), pf = Math.max(puff, idlePulse);
-    const sacX = 35, sacY = -9 + 2 * pf, sr = 7 + 11 * pf;
+    const sacX = 35, sacY = -9 + 2 * pf, sr = 7 + 14 * pf;
     ctx.beginPath(); ctx.ellipse(sacX, sacY, sr * 1.05, sr * (0.8 + 0.12 * pf), 0.15, 0, TAU);
     ctx.fillStyle = C.belly; ctx.fill(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
     ctx.fillStyle = C.bellyLo; ctx.beginPath(); ctx.ellipse(sacX + sr * 0.15, sacY + sr * 0.32, sr * 0.8, sr * 0.34, 0.15, 0, TAU); ctx.fill();
     if (pf > 0.45) { ctx.strokeStyle = C.bellyLo; ctx.lineWidth = 1.4; for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(sacX - sr * 0.6, sacY + i * sr * 0.28); ctx.quadraticCurveTo(sacX, sacY + i * sr * 0.28 + 3, sacX + sr * 0.6, sacY + i * sr * 0.28); ctx.stroke(); } }
     if (gulp >= 0 && gulp < 1) { // the swallowed lump
       const u = sstep(gulp / 0.7), lx = lerp(44, 30, u), ly = lerp(-17, -5, u);
-      blob(ctx, lx, ly, 5.5 * (1 - 0.3 * u), 5, 0, o * 0.8, C.base, C.hi);
+      blob(ctx, lx, ly, 8 * (1 - 0.25 * u), 7, 0, o * 0.9, C.hi, '#ffffff');
     }
 
     // front leg: shoulder, elbow, wrist, toes
@@ -261,7 +280,7 @@ function lickMark(ctx, F, t) {
   ctx.restore();
 }
 
-export function drawFrogs(ctx, sim, t, k) {
+export function drawFrogs(ctx, sim, t, k, theme) {
   const list = sim.frogs || [];
   if (!list.length) return;
   for (const F of list) {
@@ -277,7 +296,7 @@ export function drawFrogs(ctx, sim, t, k) {
     const tx = F.ny * F.face, ty = -F.nx * F.face, nx = F.nx, ny = F.ny;
     const toLocal = (wx, wy, um) => ({ x: ((wx - F.x) * tx + (wy - F.y) * ty) * um, y: -((wx - F.x) * nx + (wy - F.y) * ny) * um });
     const sPx = FROG.w * FROG_ART * k, um = 100 / (FROG.w * FROG_ART);
-    const ch = { face: F.face, id: F.id, um, scared: F.sc ? 1 : 0 };
+    const ch = { face: F.face, id: F.id, um, scared: F.sc ? 1 : 0, skin: frogSkin(theme, sim.rings[F.fi].mat) };
     // ---- pose from the phase
     let air = 0;
     const p = F.dur > 0 ? clamp(F.t / F.dur, 0, 1) : 0;
@@ -311,7 +330,7 @@ export function drawFrogs(ctx, sim, t, k) {
         ch.tongueE = e;
         break;
       }
-      case 'gulp': ch.gulp = clamp(F.t / F.dur, 0, 1); ch.puff = 0.3 + 0.35 * Math.sin(ch.gulp * Math.PI); break;
+      case 'gulp': ch.gulp = clamp(F.t / F.dur, 0, 1); ch.puff = 0.55 + 0.45 * Math.sin(Math.min(1, ch.gulp / 0.6) * Math.PI); ch.squash = 0.42 * Math.sin(Math.PI * clamp(ch.gulp / 0.5, 0, 1)); break; // a quick body squash for ~0.3 s
     }
     if (F.bump > 0 && F.ph === 'sit') ch.squash = 0.3 * F.bump;
     ch.plug = R.plug;

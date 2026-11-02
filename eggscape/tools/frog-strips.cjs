@@ -25,6 +25,7 @@ const STUDIO = {
   lick: { ...base, rings: [{ gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }], orbs: [{ type: 'fire_red', ch: 2, a: -75 }], frog: { ch: 2, a: -100, delay: 99 } },
   chick: { ...base, eggs: 2, rings: [{ gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }], frog: { ch: 2, a: -100, delay: 99 } },
   scared: { ...base, eggs: 2, rings: [{ gaps: [{ a: 90 }] }, { gaps: [{ a: -80 }] }, { gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }], frog: { ch: 2, a: -100, delay: 99 } },
+  drop: { ...base, rings: [{ gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }], frog: { ch: 2, a: -90, delay: 99 } },
   plug: { ...base, rings: [{ gaps: [{ a: -90 }] }, { gaps: [{ a: -90 }] }, { gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }], frog: { ch: 1, a: -90, delay: 99 } },
   level: { ...base, eggs: 2, rings: [{ gaps: [{ a: 90 }] }, { gaps: [{ a: -90 }, { a: 90 }] }, { gaps: [{ a: -60 }, { a: 140 }] }, { gaps: [{ a: -120 }, { a: 40 }] }, { gaps: [{ a: -80 }] }],
     orbs: [{ type: 'water', ch: 3, a: -60 }, { type: 'stone', ch: 2, a: -120 }], frog: [{ ch: 1, a: -90, delay: 99 }, { ch: 3, a: -100, delay: 99, face: -1 }, { ch: 2, a: -50, delay: 99 }] },
@@ -44,9 +45,22 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   await p.goto(`http://localhost:${PORT}/`);
   await p.waitForTimeout(900);
   const ev = (fn, ...a) => p.evaluate(fn, ...a);
+  const THEME_SETS = [['bramble', 'vine', 'frog-strips.png'], ['reef', 'coral', 'frog-strips-reef.png']];
+  const sheet = async (fileName, rows) => {
+    const W2 = Math.round(CROP * 2);
+    const img = (f) => `data:image/png;base64,${fs.readFileSync(f).toString('base64')}`;
+    const html = `<html><body style="margin:0;background:#1d1712;color:#f5e6c8;font:14px sans-serif;padding:8px">${rows.map((r) => `<div style="margin-bottom:10px"><div style="font-weight:bold;margin:2px 0 4px">${esc(r.name)}</div><div style="display:flex;gap:6px">${r.frames.map((x) => `<div><img style="width:${W2}px;display:block;border-radius:6px" src="${img(x.f)}"><div style="padding:2px">${esc(x.label)}</div></div>`).join('')}</div></div>`).join('')}</body></html>`;
+    const p2 = await b.newPage({ viewport: { width: Math.round((W2 + 6) * 7 + 20), height: 400 } });
+    await p2.setContent(html);
+    await p2.screenshot({ path: path.join(out, fileName), fullPage: true });
+    await p2.close();
+    for (const r of rows) for (const x of r.frames) fs.unlinkSync(x.f);
+  };
+  for (const [themeId, themeMat, fileName] of THEME_SETS) {
   const rows = [];
-  for (const [name, L] of Object.entries(STUDIO)) {
+  for (const [name, L0] of Object.entries(STUDIO)) {
     if (name === 'level') continue;
+    const L = { ...L0, theme: themeId, material: themeMat };
     await ev(([L]) => {
       const E = __egg;
       E.setSave({ mode: 'medium', calm: false, seen: {} });
@@ -62,6 +76,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
         park() { for (const e of E.G.sim.eggs) if (e.body) { e.body.setTransform({ x: 0, y: 0.1 }, 0); e.body.setLinearVelocity({ x: 0, y: 0 }); e.body.setType('static'); } },
         // hold an egg (or chick) at a world point
         hold(i, x, y) { const e = E.G.sim.eggs[i]; e.body.setType('static'); e.body.setTransform({ x, y }, 0); },
+        turn(i, s) { const R = E.G.sim.rings[i]; for (let k = 0; k < Math.round(s * 60); k++) { R.target = R.body.getAngle() + 0.35; E.frame(1 / 60); } },
         until(f, max = 6) { for (let i = 0; i < max * 60 && !f(); i++) E.frame(1 / 60); },
       };
       if (E.G.sim.level.eggs > 0 && !window.keepEggs) Q.park();
@@ -143,6 +158,17 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
       await ev(() => Q.until(() => Q.F().ph === 'land'));
       await shoot('lands');
       await step(0.4); await shoot('settled');
+    } else if (name === 'drop') {
+      // a turning ring carries the frog past the horizon: its wall becomes a ceiling, so it lets go and somersaults down
+      const w = await foot();
+      await shoot('on the floor', w);
+      for (let i = 0; i < 3; i++) { await ev(() => Q.turn(2, 0.45)); await shoot('carried round', await foot()); }
+      await ev(() => { for (let i = 0; i < 240 && Q.F().ph !== 'hop'; i++) Q.turn(2, 1 / 60); });
+      await shoot('lets go', await foot());
+      for (let i = 0; i < 4; i++) { await step(0.11); await shoot('falls', await foot()); }
+      await ev(() => Q.until(() => Q.F().ph === 'land'));
+      await shoot('lands', await foot());
+      await step(0.4); await shoot('settled', await foot());
     } else if (name === 'plug') {
       // the frog sits in the gap of ring 1; an egg from the centre chamber drops onto it
       await ev(() => { const s = __egg.G.sim; const e = s.eggs[0]; e.body.setType('dynamic'); e.body.setTransform({ x: 0.05, y: -0.55 }, 0); e.body.setLinearVelocity({ x: 0, y: 0 }); window.keepEggs = 1; });
@@ -166,6 +192,31 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     }
     rows.push({ name, frames });
   }
+  await sheet(fileName, rows);
+  }
+  // the same frog on four themes, side by side (idle, then mid-hop)
+  {
+    const rows = [];
+    const frames = [];
+    for (const [themeId, themeMat] of [['bramble', 'vine'], ['reef', 'coral'], ['cove', 'darkwood'], ['frozen', 'ice'], ['volcano', 'obsidian'], ['farm', 'wood']]) {
+      await ev(([L]) => {
+        const E = __egg;
+        E.setSave({ mode: 'medium', calm: false, seen: {} });
+        E.G.demo = { id: 990, name: 'Studio', ...L };
+        E.start(-2, { direct: true });
+        E.G.toast = null; E.G.toasts.length = 0;
+        for (const e of E.G.sim.eggs) { e.body.setTransform({ x: 0, y: 0.1 }, 0); e.body.setType('static'); }
+        for (let i = 0; i < 40; i++) E.frame(1 / 60);
+      }, [{ ...STUDIO.idle, theme: themeId, material: themeMat }]);
+      const a = await ev(() => { const F = __egg.G.sim.frogs[0]; return __egg.G.sim && (() => { const G = __egg.G, P = G.play; return { x: P.x + P.w / 2 + (F.x - G.cam.x) * G.cam.k, y: P.y + P.h / 2 - (F.y - G.cam.y) * G.cam.k }; })(); });
+      const cx = Math.round(Math.min(Math.max(a.x, CROP / 2), VW - CROP / 2)), cy = Math.round(Math.min(Math.max(a.y - 6, CROP / 2), VH - CROP / 2));
+      const f = path.join(out, `themes-${frames.length}.png`);
+      await p.screenshot({ path: f, clip: { x: cx - CROP / 2, y: cy - CROP / 2, width: CROP, height: CROP } });
+      frames.push({ f, label: themeId });
+    }
+    rows.push({ name: 'themes: one frog, six worlds', frames });
+    await sheet('frog-themes.png', rows);
+  }
 
   // full-level view at phone scale
   await ev(([L]) => {
@@ -183,20 +234,21 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   await p.screenshot({ path: path.join(out, 'frog-level-hop.png') });
 
   // big pose gallery (the same art, 3x)
-  const gp = await b.newPage({ viewport: { width: 1320, height: 700 }, deviceScaleFactor: 1 });
+  const gp = await b.newPage({ viewport: { width: 1320, height: 900 }, deviceScaleFactor: 1 });
   gp.on('pageerror', (e) => errors.push(String(e)));
   await gp.goto(`http://localhost:${PORT}/`);
   await gp.waitForTimeout(900);
   await gp.evaluate(() => {
-    const c = document.createElement('canvas'); c.width = 1320; c.height = 700;
+    const c = document.createElement('canvas'); c.width = 1320; c.height = 900;
     c.style = 'position:fixed;left:0;top:0;z-index:99';
     document.body.appendChild(c);
     const ctx = c.getContext('2d');
-    ctx.fillStyle = '#3d5f34'; ctx.fillRect(0, 0, 1320, 700);
+    ctx.fillStyle = '#3d5f34'; ctx.fillRect(0, 0, 1320, 900);
     const P = [
       ['idle', {}], ['blink', { blink: 1 }], ['throat pulse', { puff: 0.35 }], ['crouch: telegraph', { crouch: 1, puff: 1 }],
       ['launch', { stretch: 0.5, crouch: 0.3 }], ['air', { stretch: 1 }], ['squash', { squash: 0.8 }], ['lick: lips', { lick: 0.22, mouth: 0.2 }],
-      ['tongue out', { mouth: 1, tongue: { x: 118, y: -26 } }], ['gulp', { gulp: 0.4, puff: 0.5 }], ['scared', { scared: 1, crouch: 0.7 }], ['in a gap', { plug: 1 }],
+      ['tongue out', { mouth: 1, tongue: { x: 118, y: -26 } }], ['gulp', { gulp: 0.25, puff: 1, squash: 0.4 }], ['scared', { scared: 1, crouch: 0.7 }], ['in a gap', { plug: 1 }],
+      ['gold: idle', { skin: 'gold' }], ['gold: crouch', { skin: 'gold', crouch: 1, puff: 1 }], ['gold: gulp', { skin: 'gold', gulp: 0.25, puff: 1, squash: 0.4 }], ['gold: scared', { skin: 'gold', scared: 1, crouch: 0.7 }],
     ];
     ctx.font = '15px sans-serif';
     P.forEach(([n, o], i) => {
@@ -210,17 +262,8 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   await gp.screenshot({ path: path.join(out, 'frog-poses.png') });
   await gp.close();
 
-  // one sheet: a labelled row per scenario
-  const W2 = Math.round(CROP * 2);
-  const img = (f) => `data:image/png;base64,${fs.readFileSync(f).toString('base64')}`;
-  const html = `<html><body style="margin:0;background:#1d1712;color:#f5e6c8;font:14px sans-serif;padding:8px">${rows.map((r) => `<div style="margin-bottom:10px"><div style="font-weight:bold;margin:2px 0 4px">${esc(r.name)}</div><div style="display:flex;gap:6px">${r.frames.map((x) => `<div><img style="width:${W2}px;display:block;border-radius:6px" src="${img(x.f)}"><div style="padding:2px">${esc(x.label)}</div></div>`).join('')}</div></div>`).join('')}</body></html>`;
-  const p2 = await b.newPage({ viewport: { width: Math.round((W2 + 6) * 7 + 20), height: 400 } });
-  await p2.setContent(html);
-  await p2.screenshot({ path: path.join(out, 'frog-strips.png'), fullPage: true });
-  await p2.close();
-  for (const r of rows) for (const x of r.frames) fs.unlinkSync(x.f);
   for (const e of errors) console.log('PAGE ERROR: ' + e);
-  console.log('-> ' + path.join(out, 'frog-strips.png') + ', frog-poses.png, frog-level.png, frog-level-hop.png');
+  console.log('-> ' + out + ': frog-strips.png, frog-strips-reef.png, frog-themes.png, frog-poses.png, frog-level.png, frog-level-hop.png');
   await b.close();
   srv.close();
 })();

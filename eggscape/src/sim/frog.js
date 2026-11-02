@@ -14,6 +14,9 @@
 // Plus: a frog sitting in a gap plugs it. It is a solid body that eggs bounce off softly (no crack, the fall counts as
 // landed), so it works as a temporary floor until it hops away. A red/black flame on an egg, or a dash chick, within
 // SCARE_R scares it into one big escape hop away from the threat. Easy: hops and licks less often, shorter tongue.
+// It always stands upright against gravity: side -1 = on the inner face of its ring (a floor in the lower half), +1 = on the
+// outer face (a floor in the upper half). When a turning ring carries it past the horizon so its surface becomes a ceiling,
+// it lets go and drops (a somersault) to the opposite wall of the channel instead of hanging.
 import { Vec2, Polygon } from 'planck';
 import { RING_TH, wrap, clamp } from './geom.js';
 
@@ -24,6 +27,7 @@ export const FROG = {
   tongue: 1.5, lickWarn: 0.5, tongueT: 0.4, gulpT: 0.65, lickCD: 4, // m, s
   scareR: 1.7, scareCD: 4, scareHop: 1.5, // m, s, height factor of the escape hop
   grab: 0.35, // fraction of the tongue phase at which it reaches its prey
+  hang: 0.12, // sin(angle) past which a frog's surface is a ceiling and it drops
   low: -0.3, // a gap must sit below this sin(angle) (the lower part of the vault) to be hopped through
 };
 // per mode: every = hop gap x, lick = lick gap x, tongue = tongue length (m), warn = telegraph x
@@ -53,7 +57,7 @@ export const frogMethods = {
       const F = {
         id: i, ph: 'sit', t: 0, dur: 0, fi, la: wrap(((P.a ?? -90) * Math.PI) / 180 - ring.body.getAngle()), rf: ring.r - RING_TH / 2, gi: -1, shp: 'dome',
         face: P.face === -1 ? -1 : 1, next: P.delay ?? 3, every: P.every || FROG.every, lickCD: 1.5, scareCD: 0, sc: 0, solid: 1,
-        x: 0, y: 0, nx: 0, ny: 1, vx: 0, vy: 0, air: 0, u: 0, bump: 0, bumpCD: 0,
+        side: -1, ts: -1, ss: -1, x: 0, y: 0, nx: 0, ny: 1, vx: 0, vy: 0, air: 0, u: 0, bump: 0, bumpCD: 0,
         hk: '', hr: 0, hg: 0, sri: 0, sla: 0, sr: 0, ti: 0, tla: 0, tr: 0, tpl: -1, hd: 0.6, hh: 1,
         lk: '', lx: 0, ly: 0, lid: 0, lty: '', hit: 0, got: 0, pk: '', pty: '', px: 0, py: 0,
       };
@@ -70,9 +74,9 @@ export const frogMethods = {
   frogSeat(F) {
     const ring = this.rings[F.fi];
     F.gi = -1;
-    F.rf = ring.r - RING_TH / 2;
+    F.rf = ring.r + F.side * RING_TH / 2;
     ring.gaps.forEach((g, k) => {
-      if (F.gi < 0 && this.frogGapOk(g) && Math.abs(wrap(F.la - g.a)) * ring.r < g.len / 2 + 0.1) { F.gi = k; F.la = g.a; F.rf = ring.r + RING_TH / 2; }
+      if (F.gi < 0 && this.frogGapOk(g) && Math.abs(wrap(F.la - g.a)) * ring.r < g.len / 2 + 0.1) { F.gi = k; F.la = g.a; F.rf = ring.r - F.side * RING_TH / 2; }
     });
     F.shp = F.gi >= 0 ? 'table' : 'dome';
   },
@@ -85,13 +89,13 @@ export const frogMethods = {
     const a = this.rings[F.fi].body.getAngle() + F.la;
     F.wa = a;
     F.x = F.rf * Math.cos(a); F.y = F.rf * Math.sin(a);
-    F.nx = -Math.cos(a); F.ny = -Math.sin(a);
+    F.nx = F.side * Math.cos(a); F.ny = F.side * Math.sin(a);
   },
   frogMouth(F) { // in front of the head, 0.22 m up the normal
     const tx = F.ny * F.face, ty = -F.nx * F.face;
     return { x: F.x + F.nx * 0.22 + tx * 0.36, y: F.y + F.ny * 0.22 + ty * 0.36 };
   },
-  frogChs(F) { return F.gi >= 0 ? [F.fi, F.fi + 1] : [F.fi]; },
+  frogChs(F) { return F.gi >= 0 ? [F.fi, F.fi + 1] : [F.side < 0 ? F.fi : F.fi + 1]; }, // a ring's inner face is channel fi, its outer face channel fi+1
 
   // the body follows the planned pose by velocity (so eggs get a proper push); a shape swap rebuilds the fixture
   frogShape(i) {
@@ -161,6 +165,7 @@ export const frogMethods = {
     if (F.ph === 'hop') { this.frogFly(F); return; }
     this.frogPlace(F);
     if (!play) return;
+    if (F.side < 0 ? Math.sin(F.wa) > FROG.hang : Math.sin(F.wa) < -FROG.hang) { this.frogDrop(F); return; } // its wall turned into a ceiling
     const idle = F.ph === 'sit' || F.ph === 'land' || F.ph === 'crouch' || F.ph === 'lick';
     if (idle && F.scareCD <= 0) {
       const th = this.frogThreat(F);
@@ -279,6 +284,7 @@ export const frogMethods = {
   // candidate hops: through a gap of the floor ring (down, into the next channel out) or of the ring above (up);
   // `step` hops along the floor toward a gap when none is in reach. scared: away from the threat, and further.
   frogPick(F, scared, th) {
+    if (F.side > 0) return null; // hops start from a floor in the lower half
     const n = this.rings.length, wf = F.wa, reach = scared ? FROG.scareReach : FROG.reach;
     const away = (w) => (th ? Math.abs(wrap(w - Math.atan2(th.y, th.x))) : 0);
     const C = [];
@@ -311,12 +317,12 @@ export const frogMethods = {
     const wl = wg + (side * off) / T.r;
     return this.frogLandSpot(F, T, ti, wl);
   },
-  frogLandSpot(F, T, ti, wl) {
-    if (Math.sin(wl) > -0.1) return null;
-    let la = wrap(wl - T.body.getAngle()), tpl = -1, tr = T.r - RING_TH / 2;
+  frogLandSpot(F, T, ti, wl, ts = -1) {
+    if (ts < 0 ? Math.sin(wl) > -0.1 : Math.sin(wl) < 0.05) return null;
+    let la = wrap(wl - T.body.getAngle()), tpl = -1, tr = T.r + ts * RING_TH / 2;
     T.gaps.forEach((g, k) => { if (tpl < 0 && Math.abs(wrap(la - g.a)) * T.r < g.len / 2 + 0.1) tpl = k; });
-    if (tpl >= 0) { if (!this.frogGapOk(T.gaps[tpl])) return null; la = T.gaps[tpl].a; tr = T.r + RING_TH / 2; }
-    for (const th of T.thorns) if (th.alive && th.side === 'in' && Math.abs(wrap(la - th.a)) * T.r < 0.35) return null;
+    if (tpl >= 0) { if (!this.frogGapOk(T.gaps[tpl])) return null; la = T.gaps[tpl].a; tr = T.r - ts * RING_TH / 2; }
+    for (const th of T.thorns) if (th.alive && th.side === (ts < 0 ? 'in' : 'out') && Math.abs(wrap(la - th.a)) * T.r < 0.35) return null;
     for (const O of this.frogs) {
       if (O === F) continue;
       const wo = this.rings[O.ph === 'hop' ? O.ti : O.fi].body.getAngle() + (O.ph === 'hop' ? O.tla : O.la), oi = O.ph === 'hop' ? O.ti : O.fi;
@@ -345,13 +351,13 @@ export const frogMethods = {
     return land ? { hk: 'step', hr: F.fi, hg: 0, ti: F.fi, ...land } : null;
   },
   frogPlan(F, p, scared) {
-    Object.assign(F, { hk: p.hk, hr: p.hr, hg: p.hg, ti: p.ti, tla: p.tla, tr: p.tr, tpl: p.tpl, hh: scared ? FROG.scareHop : 1 });
+    Object.assign(F, { hk: p.hk, hr: p.hr, hg: p.hg, ti: p.ti, tla: p.tla, tr: p.tr, tpl: p.tpl, ts: p.ts ?? -1, hh: scared ? FROG.scareHop : 1 });
     F.sri = F.fi; F.sla = F.la; F.sr = F.rf;
     const w0 = F.wa, w1 = this.rings[p.ti].body.getAngle() + p.tla;
     const arc = Math.abs(wrap(w1 - w0)) * this.rings[p.ti].r + (p.hk === 'step' ? 0 : 1.0);
     F.hd = clamp(0.46 + 0.1 * arc, 0.5, 0.9) * (scared ? 0.9 : 1);
     const dir = wrap(w1 - w0); // the way round: + is counter-clockwise, the frog's "forward" (face)
-    if (Math.abs(dir) > 0.02) F.face = dir > 0 ? 1 : -1;
+    if (Math.abs(dir) > 0.02) F.face = (dir > 0 ? 1 : -1) * -F.side; // forward along the surface: the tangent runs counter-clockwise on an inner face
   },
   frogLaunch(F) {
     // the gap may have turned away during the crouch: then it only wobbles and stays
@@ -364,9 +370,24 @@ export const frogMethods = {
     if (!ok) { F.sc = 0; F.next = 1.5; this.frogSet(F, 'sit'); this.emit('frogMiss', { x: F.x, y: F.y, id: F.id, early: 1, hop: 1 }); return; }
     this.frogPlan(F, { hk: F.hk, hr: F.hr, hg: F.hg, ti: F.ti, tla: F.tla, tr: F.tr, tpl: F.tpl }, F.hh > 1); // re-time: rings turned during the crouch
     this.frogSet(F, 'hop', F.hd);
-    F.solid = 0; F.air = 1; F.u = 0; F.gi = -1;
+    F.solid = 0; F.air = 1; F.u = 0; F.gi = -1; F.ss = F.side;
     const w1 = this.rings[F.ti].body.getAngle() + F.tla;
     this.emit('frogHop', { x: F.x, y: F.y, x2: this.rings[F.ti].r * Math.cos(w1), y2: this.rings[F.ti].r * Math.sin(w1), id: F.id, scared: F.hh > 1 ? 1 : 0 });
+  },
+  // its wall is a ceiling: let go and fall (somersaulting) to the other wall of the channel, same angle
+  frogDrop(F) {
+    const n = this.rings.length, inner = F.side < 0;
+    let ti, ts, wl = F.wa;
+    if (inner) { if (F.fi >= 1) { ti = F.fi - 1; ts = 1; } else { ti = 0; ts = -1; wl = -F.wa; } } else { ti = F.fi + 1; ts = -1; if (ti > n - 1) return; }
+    const T = this.rings[ti];
+    let land = null;
+    for (const d of [0, 0.35, -0.35, 0.7, -0.7]) { land = this.frogLandSpot(F, T, ti, wl + d / T.r, ts); if (land) break; }
+    if (!land) land = { tla: wrap(wl - T.body.getAngle()), tr: T.r + ts * RING_TH / 2, tpl: -1 };
+    Object.assign(F, { hk: 'drop', hr: ti, hg: 0, ti, ts, tla: land.tla, tr: land.tr, tpl: land.tpl, hh: 1, hd: 0.55, sri: F.fi, sla: F.la, sr: F.rf, sc: 0 });
+    F.ss = F.side;
+    this.frogSet(F, 'hop', F.hd);
+    F.solid = 0; F.air = 1; F.u = 0; F.gi = -1;
+    this.emit('frogHop', { x: F.x, y: F.y, x2: land.tr * Math.cos(wl), y2: land.tr * Math.sin(wl), id: F.id, scared: 0, drop: 1 });
   },
   // the arc: a Hermite curve through knots in (angle, radius) about the vault's centre, so the frog threads the
   // gap's middle and the lift and the drop follow the rings round
@@ -374,7 +395,10 @@ export const frogMethods = {
     const R = this.rings, S = R[F.sri], T = R[F.ti];
     const wS = S.body.getAngle() + F.sla, rS = F.sr, rT = F.tr;
     const H = 0.5 * F.hh, K = [{ t: 0, w: wS, r: rS }];
-    if (F.hk === 'step') {
+    if (F.hk === 'drop') {
+      const wT = wS + wrap(T.body.getAngle() + F.tla - wS);
+      K.push({ t: 0.55, w: wS + (wT - wS) * 0.45, r: rS + (rT - rS) * 0.22 }, { t: 1, w: wT, r: rT }); // gravity: slow, then faster
+    } else if (F.hk === 'step') {
       const wT = wS + wrap(T.body.getAngle() + F.tla - wS);
       K.push({ t: 0.5, w: (wS + wT) / 2, r: Math.min(rS, rT) - H }, { t: 1, w: wT, r: rT });
     } else {
@@ -398,11 +422,16 @@ export const frogMethods = {
     F.wa = c.w;
     F.x = c.r * Math.cos(c.w); F.y = c.r * Math.sin(c.w);
     // the body points along its flight: the normal is "up" for the art, tilted toward the velocity by the renderer
-    F.nx = -Math.cos(c.w); F.ny = -Math.sin(c.w);
+    // upright: the normal is the start wall's, then (a drop) turns over by the end wall's: a somersault
+    const a1 = F.ts * 1 > 0 ? c.w : c.w + Math.PI, a0 = F.ss > 0 ? c.w : c.w + Math.PI;
+    let na = a0;
+    if (F.hk === 'drop') { let d = wrap(a1 - a0); if (Math.abs(d) > 3) d = (F.face > 0 ? -1 : 1) * Math.PI * (F.ss > 0 ? -1 : 1); na = a0 + d * sstep((u - 0.1) / 0.8); }
+    F.nx = Math.cos(na); F.ny = Math.sin(na);
     if (F.t >= F.hd) this.frogLand(F);
   },
   frogLand(F) {
-    F.fi = F.ti; F.la = F.tla; F.rf = F.tr; F.gi = F.tpl; F.shp = F.gi >= 0 ? 'table' : 'dome';
+    if (F.ts !== F.side) F.face = -F.face; // the tangent flips with the surface: keep it looking the same way on screen
+    F.fi = F.ti; F.la = F.tla; F.rf = F.tr; F.gi = F.tpl; F.side = F.ts; F.shp = F.gi >= 0 ? 'table' : 'dome';
     F.air = 0; F.u = 0; F.hk = '';
     this.frogPlace(F);
     F.solid = this.frogEggNear(F) ? 0 : 1;

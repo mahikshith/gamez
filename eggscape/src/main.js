@@ -1711,7 +1711,7 @@ function render() {
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
   drawSalamanders(ctx, sim, t, k); // v3.2: the lava salamander walks the floor, under the eggs
   drawFrogTele(ctx, sim, k, t); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
-  drawFrogs(ctx, sim, t, k);
+  drawFrogs(ctx, sim, t, k, G.theme);
   for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
   drawChickFX(ctx, sim, t, k);
   W.drawSnakes(ctx, sim, t, k); // predators (v3)
