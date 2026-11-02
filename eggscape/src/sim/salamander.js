@@ -121,7 +121,7 @@ export const salMethods = {
   },
 
   salOne(C, dt, play) {
-    if (C.ph === 'gone') return;
+    if (C.ph === 'gone' || C.ph === 'warp') return; // v3.4: 'warp' = inside a warp gate (sim/warp.js moves it)
     if (C.ph === 'wait') { if (play && (C.t -= dt) <= 0) this.salEnter(C); return; }
     this.salCarry(C);
     for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
@@ -150,7 +150,7 @@ export const salMethods = {
         break;
       }
       case 'warn':
-        if ((C.t -= dt) <= 0) { this.salSet(C, 'fire', SAL.fire); C.lit = 0; }
+        if ((C.t -= dt) <= 0) { if (this.warpStrike('sal', C)) break; this.salSet(C, 'fire', SAL.fire); C.lit = 0; } // v3.4: a warp gate takes the breath
         break;
       case 'fire': // the wall heats when the jet reaches it, a beat after the mouth opens
         if (!C.lit && C.dur - C.t >= SAL.lit) { C.lit = 1; this.salFire(C); }

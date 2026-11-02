@@ -2,7 +2,7 @@
 // and the obstacles that show the power's upside and its downside. Not campaign levels (levels are placed later).
 // Start one in the --dev build with ?demo=frostnova (or __egg.startDemo('combo_shatter')).
 // Spec fields to place a power in a level: an orb { type: 'frostnova' | 'shock' | 'thunderclap' | 'laser' | 'spin' |
-// 'pepper' | 'shrink' | 'iron' | 'decoy', ch, a } in level.orbs (or a portal's emit list, or the fox's throws).
+// 'pepper' | 'shrink' | 'iron' | 'decoy' | 'warp', ch, a } in level.orbs (or a portal's emit list, or the fox's throws).
 const base = { eggs: 3, target: 2, time: 90, spacing: 1.05, material: 'wood', nest: { w: 2.6 } };
 const orb = (type, ch = 1, a = -90) => ({ type, ch, a });
 
@@ -62,6 +62,43 @@ export const POWER_DEMOS = [
     snake: { delay: 1, speed: 0.5, a: 20 }, eagle: { delay: 3, every: 6 }, orbs: [orb('decoy')],
     rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 150 }] }, { gaps: [{ a: 20 }] }, { gaps: [{ a: -70 }] }],
   },
+  // Warp Gate (sim/warp.js): ?demo=warp (snake), warp_eagle, warp_sal, warp_frog, warp_octo, warp_boss, combo_bait
+  {
+    ...base, id: 971, kind: 'warp', theme: 'orchard', material: 'wood', name: 'Warp gate', seed: 9711,
+    tip: 'The warp gate swallows the next creature that strikes and spits it out far away. It pulls in your eggs too.',
+    snake: { delay: 1, speed: 0.5, a: 20 }, orbs: [orb('warp')],
+    rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 150 }] }, { gaps: [{ a: 20 }], thorns: [{ a: -120, n: 2 }] }, { gaps: [{ a: -70 }] }],
+  },
+  {
+    ...base, id: 972, kind: 'warp_eagle', theme: 'farm', name: 'Warp gate: eagle', seed: 9722,
+    tip: 'The eagle starts its dive: the gate opens in its path and sends it to the other side of the sky.',
+    eagle: { delay: 1, every: 3 }, orbs: [orb('warp')],
+    rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 150 }] }, { gaps: [{ a: 20 }] }, { gaps: [{ a: -70 }] }],
+  },
+  {
+    ...base, id: 973, kind: 'warp_sal', theme: 'volcano', material: 'obsidian', name: 'Warp gate: salamander', seed: 9733,
+    tip: 'The salamander is about to breathe: the gate takes it away instead.',
+    salamander: { delay: 1, ch: 2, a: -40, every: 3 }, orbs: [orb('warp')],
+    rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 150 }] }, { gaps: [{ a: 20 }] }, { gaps: [{ a: -70 }] }],
+  },
+  {
+    ...base, id: 974, kind: 'warp_frog', theme: 'bramble', material: 'vine', name: 'Warp gate: frog', seed: 9744,
+    tip: 'The frog licks, the gate takes it before the tongue shoots.',
+    frog: { ch: 2, a: -100, delay: 2, every: 6 }, orbs: [orb('warp'), orb('water', 2, -70)],
+    rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 150 }] }, { gaps: [{ a: 20 }] }, { gaps: [{ a: -70 }] }],
+  },
+  {
+    ...base, id: 975, kind: 'warp_octo', theme: 'reef', material: 'coral', name: 'Warp gate: octopus', seed: 9755,
+    tip: 'The octopus reaches for an egg: the gate takes it to the other side of the vault.',
+    octopus: { ch: 2, a: -60, delay: 1 }, orbs: [orb('warp')],
+    rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 150 }] }, { gaps: [{ a: 20 }] }, { gaps: [{ a: -70 }] }],
+  },
+  {
+    ...base, id: 976, kind: 'warp_boss', theme: 'crystal', material: 'stone', name: 'Warp gate: boss', seed: 9766, boss: 'golem',
+    bossFight: { kind: 'golem', delay: 2, phases: [{ attacks: ['stomp'], every: 4 }] },
+    tip: 'A boss resists: its attack is cancelled and it is pushed back, but it is not sent away.', orbs: [orb('warp')],
+    rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 150 }] }, { gaps: [{ a: 20 }] }, { gaps: [{ a: -70 }] }],
+  },
   // combos: the two orbs sit side by side, so one egg takes both
   {
     ...base, id: 961, kind: 'combo_shatter', theme: 'blizzard', material: 'wood', name: 'Combo: Shatter', seed: 9611,
@@ -97,6 +134,12 @@ export const POWER_DEMOS = [
     ...base, id: 966, kind: 'combo_stink', theme: 'jungle', name: 'Combo: Pepper decoy', seed: 9666,
     tip: 'Decoy plus pepper: whatever bites the decoy, and all around it, flee for far longer.',
     snake: [{ delay: 1, speed: 0.5, a: 20 }, { delay: 2, speed: 0.5, a: 160 }], orbs: [orb('decoy', 1, -100), orb('pepper', 1, -80)],
+    rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 150 }] }, { gaps: [{ a: 20 }] }, { gaps: [{ a: -70 }] }],
+  },
+  {
+    ...base, id: 967, kind: 'combo_bait', theme: 'jungle', name: 'Combo: Bait and switch', seed: 9677,
+    tip: 'Decoy plus warp gate: the creature is sent through and the decoy goes with it. Everyone chases it to the far side.',
+    snake: [{ delay: 1, speed: 0.5, a: 20 }, { delay: 2, speed: 0.5, a: 160 }], orbs: [orb('decoy', 1, -100), orb('warp', 1, -80)],
     rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 150 }] }, { gaps: [{ a: 20 }] }, { gaps: [{ a: -70 }] }],
   },
 ];

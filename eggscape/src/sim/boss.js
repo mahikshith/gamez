@@ -353,6 +353,7 @@ function bossStep(sim, B, dt) {
   }
   if (A.ph === 'warn') {
     if ((A.t -= dt) > 0) return;
+    if (sim.warpStrike('boss', B)) return; // v3.4: a warp gate cancels the attack and pushes the boss back
     A.ph = 'act';
     A.t = A.name === 'gale' ? GALE_T : 0.35;
     A.dur = A.t;

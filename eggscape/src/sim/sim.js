@@ -8,6 +8,7 @@ import { frogMethods } from './frog.js'; // v3.3 frog
 import { allyMethods } from './allies.js'; // v3.4 farm allies (rooster, goose)
 import { seaMethods } from './sea.js'; // v3.3 octopus and fish schools
 import { p2Methods, P2_TYPES, P2_KEYS } from './powers2.js'; // v3.4 powers and combos
+import { warpMethods } from './warp.js'; // v3.4 warp gate
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
@@ -1230,6 +1231,7 @@ export class Sim {
         }
         if (S.strike >= STRIKE_T) {
           S.strike = 0;
+          if (this.warpStrike('snake', S)) return; // v3.4: a warp gate swallows it as it lunges
           if (egg.decoy) this.decoyBite(S); // v3.4: wood!
           else if (this.snakeProof(egg)) {
             // too hard to bite: a clear hit, then it backs off along its own body for a while, still facing the egg
@@ -1570,6 +1572,7 @@ export class Sim {
   eagleStep(dt) {
     const E = this.eagle, R = this.outerR;
     if (this.state !== 'play') { this.eagleEnd(dt); return; }
+    if (E.warp) return; // v3.4: inside a warp gate (sim/warp.js moves it)
     E.t -= dt;
     if (E.next > 0) E.next -= dt;
     this.eagleDropTrack(dt);
@@ -1611,6 +1614,7 @@ export class Sim {
         this.eagleFly(hx, hy, 8, 16, dt, 2.2);
         if (Math.abs(tg.x - E.x) > 0.3) E.face = tg.x > E.x ? 1 : -1;
         if (E.t > 0) return;
+        if (this.warpStrike('eagle', E, tg)) return; // v3.4: the dive is swallowed by a warp gate
         this.eaglePose(tg.x, tg.y);
         E.phase = 'dive';
         E.t = E.dur = EAGLE_T.dive / this.EM.speed;
@@ -2719,5 +2723,6 @@ Object.assign(Sim.prototype, frogMethods); // v3.3 frog (sim/frog.js)
 Object.assign(Sim.prototype, allyMethods); // v3.4 farm allies (sim/allies.js)
 Object.assign(Sim.prototype, seaMethods); // v3.3 octopus and fish schools (sim/sea.js)
 Object.assign(Sim.prototype, p2Methods); // v3.4 powers and combos (sim/powers2.js)
+Object.assign(Sim.prototype, warpMethods); // v3.4 warp gate (sim/warp.js)
 
 export { EGG_H, EGG_W, RING_TH };

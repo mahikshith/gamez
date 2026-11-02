@@ -11,7 +11,7 @@ const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const dir = path.resolve(args[0] || 'dist/dev');
 const out = path.resolve(args[1] || 'qa/powers');
 const only = args[2] ? args[2].split(',') : null;
-const PORT = 8942;
+const PORT = +process.env.PORT || 8942;
 const VW = 390, VH = 844, DPR = 2;
 const CLOSE = 170; // a close crop: an egg is ~18 px in it, as on the phone
 fs.mkdirSync(out, { recursive: true });
@@ -102,6 +102,84 @@ const S = {
     ['downside: plugs a gap', 'Q.decoyToGap(1, 0); Q.run(0.6)', { ring: 1, gap: 0 }],
     ['popped', 'Q.until("!Q.decoy()", 9); Q.run(0.1)', 'vault'],
   ],
+  // Warp Gate (sim/warp.js): the pickup, armed, a creature swallowed and spat out, the egg pulled through
+  warp: [
+    ['wait', 'Q.run(0.3)'],
+    ['pickup', 'Q.take("warp"); Q.run(0.15)', 'card'],
+    ['armed: a swirl circles the hen', 'Q.run(0.7)', 'hen'],
+    ['the snake coils', 'Q.stageSnake(); Q.until("Q.snake().strike > 0.1", 3)', 'snake'],
+    ['the gate opens in its path', 'Q.until("Q.hold()", 2); Q.run(0.1)', 'gate'],
+    ['sucked in', 'Q.run(0.2)', 'gate'],
+    ['nearly gone', 'Q.run(0.2)', 'gate'],
+    ['exit gate opens', 'Q.run(0.2)', 'exit'],
+    ['spat out', 'Q.run(0.3)', 'exit'],
+    ['dazed, far side', 'Q.run(0.7)', 'exit'],
+    ['whole vault', 'Q.run(0.2)', 'vault'],
+    ['gate closing', 'Q.run(1.2)', 'gate'],
+  ],
+  warp_egg: [
+    ['wait', 'Q.run(0.3)'],
+    ['pickup', 'Q.take("warp"); Q.run(0.1)', 'card'],
+    ['the strike', 'Q.stageSnake(); Q.until("Q.hold()", 4); Q.run(0.1)', 'gate'],
+    ['downside: an egg rolls in', 'Q.eggToGate(); Q.run(0.2)', 'gate'],
+    ['pulled through', 'Q.run(0.1)', 'egg'],
+    ['out the other side', 'Q.run(0.3)', 'egg'],
+    ['whole vault', 'Q.run(0.2)', 'vault'],
+  ],
+  warp_eagle: [
+    ['wait for the eagle', 'Q.until("Q.eagleIn()", 6); Q.run(0.2)'],
+    ['pickup', 'Q.take("warp"); Q.run(0.1)', 'card'],
+    ['it locks on', 'Q.stageEagle(); Q.until("Q.eagle().phase == \'warn\'", 6); Q.run(0.6)', 'eagle'],
+    ['the dive starts: gate', 'Q.until("Q.hold()", 4); Q.run(0.1)', 'gate'],
+    ['spiralling in', 'Q.run(0.2)', 'gate'],
+    ['gone', 'Q.run(0.2)', 'gate'],
+    ['comes out far side', 'Q.run(0.3)', 'exit'],
+    ['dazed', 'Q.run(0.8)', 'eagle'],
+    ['whole vault', 'Q.run(0.1)', 'vault'],
+  ],
+  warp_sal: [
+    ['wait', 'Q.run(0.3)'],
+    ['pickup', 'Q.take("warp"); Q.run(0.1)', 'card'],
+    ['it winds up to breathe', 'Q.until("Q.sal().ph == \'warn\'", 8); Q.run(0.1)', 'sal'],
+    ['the gate opens', 'Q.until("Q.hold()", 3); Q.run(0.1)', 'gate'],
+    ['slithering in', 'Q.run(0.2)', 'gate'],
+    ['nearly gone', 'Q.run(0.2)', 'gate'],
+    ['spat out', 'Q.run(0.45)', 'exit'],
+    ['dazed', 'Q.run(0.8)', 'exit'],
+  ],
+  warp_frog: [
+    ['wait', 'Q.run(0.3)'],
+    ['pickup', 'Q.take("warp"); Q.run(0.1)', 'card'],
+    ['it licks', 'Q.until("Q.frog().ph == \'lick\'", 10)', 'frog'],
+    ['the gate opens', 'Q.until("Q.hold()", 3); Q.run(0.1)', 'gate'],
+    ['sucked in', 'Q.run(0.3)', 'gate'],
+    ['out the other side', 'Q.run(0.55)', 'exit'],
+    ['whole vault', 'Q.run(0.4)', 'vault'],
+  ],
+  warp_octo: [
+    ['wait', 'Q.run(0.3)'],
+    ['pickup', 'Q.take("warp"); Q.run(0.1)', 'card'],
+    ['it reaches', 'Q.stageOcto(); Q.until("Q.hold()", 8); Q.run(0.1)', 'gate'],
+    ['sucked in', 'Q.run(0.3)', 'gate'],
+    ['out the other side', 'Q.run(0.45)', 'exit'],
+    ['whole vault', 'Q.run(0.6)', 'vault'],
+  ],
+  warp_boss: [
+    ['wait', 'Q.run(0.3)'],
+    ['pickup', 'Q.take("warp"); Q.run(0.1)', 'card'],
+    ['the boss winds up', 'Q.until("sim().bx.boss.atk", 8); Q.run(0.1)', 'boss'],
+    ['cancelled: pushed back', 'Q.until("Q.hold() || Q.gates() > 0", 8); Q.run(0.15)', 'boss'],
+    ['it reels, not sent away', 'Q.run(0.6)', 'boss'],
+  ],
+  combo_bait: [
+    ['wait', 'Q.run(0.3)'],
+    ['decoy', 'Q.take("decoy"); Q.run(0.4)', 'vault'],
+    ['+ warp: COMBO!', 'Q.take("warp"); Q.run(0.15)', 'card'],
+    ['the snake lunges at the decoy', 'Q.stageSnake(true); Q.until("Q.hold()", 4); Q.run(0.1)', 'gate'],
+    ['gate open', 'Q.run(0.3)', 'vault'],
+    ['decoy moved to the exit', 'Q.run(0.4)', 'vault'],
+    ['everyone chases it there', 'Q.run(1.2)', 'vault'],
+  ],
   combo_shatter: [
     ['wait for the snakes', 'Q.run(2.8)'],
     ['frost nova', 'Q.take("frostnova"); Q.run(0.5)', 'vault'],
@@ -162,7 +240,7 @@ const srv = http.createServer((q, r) => {
 function install(kind) {
   const E = __egg, D2R = Math.PI / 180;
   E.setSave({ mode: 'medium', calm: false, seen: {} });
-  E.startDemo(kind, { direct: true });
+  E.startDemo(kind === 'warp_egg' ? 'warp' : kind, { direct: true }); // warp_egg: the same studio vault, filming the downside
   E.G.paused = true;
   E.G.toast = null; E.G.toasts.length = 0;
   const sim = () => E.G.sim;
@@ -187,6 +265,27 @@ function install(kind) {
       follow = s.eggs.find((e) => e.alive && !e.saved && e.body) || null;
       return follow;
     },
+    // Warp Gate staging
+    snake() { return sim().snakes.find((x) => !x.gone) || sim().snakes[0]; },
+    hold() { const W = sim().p2.warp; return !!W && W.holds.length > 0; },
+    gates() { const W = sim().p2.warp; return W ? W.gates.length : 0; },
+    sal() { return sim().sals[0]; },
+    frog() { return sim().frogs[0]; },
+    eagle() { return sim().eagle; },
+    // the snake comes into channel 2 just behind the followed egg, which rests on that ring (or at the decoy)
+    stageSnake(decoy) {
+      const s = sim(), S = Q.snake(), e = Q.egg(), ri = 2, R = s.rings[ri];
+      const a = -Math.PI / 2 - 0.25, mid = (s.rings[ri - 1].r + R.r) / 2;
+      R.body.setTransform(R.body.getPosition(), 0); R.target = 0; R.body.setAngularVelocity(0);
+      Q.eggAt(Q.ringPt(ri, a, -0.3), 0);
+      if (decoy && Q.decoy()) { const p = Q.ringPt(ri, a + 0.05, -0.35); Q.decoy().body.setTransform({ x: p.x, y: p.y }, 0); Q.decoy().body.setLinearVelocity({ x: 0, y: 0 }); }
+      S.inside = true; S.wait = 0; S.delay = 0; S.rad = mid; S.a = a - 0.3; S.stun = 0; S.back = 0;
+      S.pts = []; for (let i = 0; i < Math.ceil(S.len / 0.05) + 1; i++) S.pts.push(s.trailPt(S, {}, S.a - (i * 0.05) / mid, mid));
+      for (const o of s.snakes) if (o !== S) { o.gone = true; }
+    },
+    eggToGate() { const W = sim().p2.warp, g = W.gates.find((q) => q.k === 'in'), e = Q.egg(); if (!g || !e) return; e.body.setTransform({ x: g.x + 0.7, y: g.y + 0.05 }, 0); e.body.setLinearVelocity({ x: -1.4, y: 0 }); },
+    stageEagle() { const e = Q.egg(), s = sim(); const R = s.rings[3]; Q.eggAt(Q.ringPt(3, -Math.PI / 2 + 0.2, -0.3), 0); },
+    stageOcto() { const s = sim(), C = s.octos[0], e = Q.egg(); const ri = 2, R = s.rings[ri], a = -Math.PI / 2; Q.eggAt(Q.ringPt(ri, a, -0.3), 0); C.ph = 'seek'; C.rad = s.octR(2); C.a = a - 0.2; },
     fx(pre) { return Object.keys(sim().p2.fx).some((k) => k[0] === pre); },
     eagleIn() { const A = sim().eagle; return A && !A.end && A.phase !== 'away' && A.phase !== 'enter' && Math.hypot(A.x, A.y) < 6; },
     decoy() { return sim().p2d && sim().p2d.alive ? sim().p2d : null; },
@@ -230,6 +329,10 @@ function install(kind) {
       else if (what === 'sal') { const C = (s.sals || []).find((x) => x.pts && x.pts.length); if (C) w = { x: C.pts[0].x, y: C.pts[0].y }; }
       else if (what === 'eagle') { const A = s.eagle; if (A) w = { x: A.x, y: A.y }; }
       else if (what === 'decoy') { const d = Q.decoy(); if (d) { const q = d.body.getPosition(); w = { x: q.x, y: q.y }; } }
+      else if (what === 'hen') { const n = s.nest.getPosition(), sc = Math.max(0.95, Math.min(52, __egg.G.cam.k * 1.5) / __egg.G.cam.k); w = { x: n.x + s.nestW / 2 + 0.6, y: s.groundY + sc * 0.6 }; }
+      else if (what === 'gate' || what === 'exit') { const W = s.p2.warp; if (W) { const gs = W.gates.filter((q) => q.k === (what === 'gate' ? 'in' : 'out') && !q.egg); const g = gs[gs.length - 1]; if (g) w = { x: g.x, y: g.y }; } }
+      else if (what === 'boss') { const B = s.bx && s.bx.boss; if (B) w = { x: B.x, y: B.y - 0.4 }; }
+      else if (what === 'frog') { const F = s.frogs[0]; if (F) w = { x: F.x, y: F.y }; }
       else if (what === 'portal') { const P = s.portals[0]; if (P) w = { x: P.ax ?? P.a.x ?? P.a[0], y: P.ay ?? P.a.y ?? P.a[1] }; }
       else if (what && what.ring != null) {
         const R = s.rings[what.ring];

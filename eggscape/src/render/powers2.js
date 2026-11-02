@@ -5,6 +5,7 @@ import { EGG_H, EGG_W, RING_TH, TAU, rng } from '../sim/geom.js';
 import { P2, COMBOS } from '../sim/powers2.js';
 import { POWER_INFO, GLASS, EMBLEM_ART, EGG_ART, ORB_ART, drawOrb } from './powers.js';
 import { boltStroke } from './status.js';
+import { drawWarp, warpEvent } from './warp.js'; // the Warp Gate (sim/warp.js)
 
 // ---------- names, lines (pickup card) and glass tints
 const INFO = {
@@ -676,6 +677,7 @@ export function drawP2Front(ctx, sim, k, t) {
     }
     ctx.restore();
   }
+  drawWarp(ctx, sim, k, t); // the Warp Gate's portals and the armed swirl
 }
 
 // ---------- events: sound (existing names), sparks and pops. api: popup, audio, toast, once(key, text), combo(ev)
@@ -683,6 +685,7 @@ const zapPop = {}; // egg id -> sim time of its last 'Bzzt!'
 const HIT = { ice: ['Frozen!', '#bfeaff'], zap: ['Zap!', '#9fdcff'], pep: ['Achoo!', '#ffb27a'], scare: ['Eek!', '#ffe0a0'], spin: ['Whoosh!', '#b8fff0'] };
 export function p2Event(ev, fx, api) {
   const { popup, audio, once } = api;
+  if (warpEvent(ev, fx, api)) return; // the Warp Gate (render/warp.js)
   switch (ev.type) {
     case 'powerOn':
       switch (ev.power) {
