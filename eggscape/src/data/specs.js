@@ -26,11 +26,11 @@
 //   speed x1.3, body x0.8) | 'constrictor' (amber, armoured: half the back-off from a protected egg, speed x0.8) |
 //   'spitter' (crimson, venom melts a barrier in half the time); a trait is on only when the spec sets `kind`.
 //   skin: 'violet' | 'emerald' | 'amber' | 'crimson', cosmetic; default the kind's, else by index so two snakes in a
-//   level never share one), eagle {delay, every}, fox {every,
-//   throws: [orb types], delay}, lava {every, delay} (lava rocks; lava: true is only a lava floor), icicles
+//   level never share one), eagle {delay, every}, weasel {a, delay, ch}
+//   (a hunting egg thief, sim/thieves.js), rats {a, n, delay, ch} (a pair that rolls eggs to their hole), lava {every, delay} (lava rocks; lava: true is only a lava floor), icicles
 //   {every, delay}, eggKinds ['ostrich' | 'quail' | 'duck' | null, ...] (per starting egg), portal pull (m),
-//   world 1..7 (environment), boss (bossId for the intro portrait: fox snake blizzard golem salamander eagle foxking).
-//   v3 orb types: hourglass feather rockskin foxcurse.
+//   world 1..7 (environment), boss (bossId for the intro portrait: weasel snake blizzard golem salamander eagle ratking).
+//   v3 orb types: hourglass feather rockskin curse (bosses and portals hand out curse orbs).
 // v3.1 level fields: gusts {every, delay, strength, dur} (telegraphed wind that shoves eggs and snakes along the
 //   channels), bossFight {kind, delay, gale, throws, phases: [{at: {saved, t}, attacks, every, heat, summon
 //   }]} drives the boss actor, its telegraphed attacks and the phase bar (see src/sim/boss.js);
@@ -43,11 +43,11 @@
 //   (1.3x, breathing on the phase rhythm; see src/sim/salamander.js).
 // 35 levels = 7 environments x 5: L1 of an environment teaches its trait, L2-L4 twist it, L5 is the boss
 // (with an intro card); the level after a boss is a breather. Nests only move where there is a reason
-// (the lake current, the fox chasing the hen in his fortress).
+// (the lake current, the hen keeping her nest away from the thieves in their vault).
 // Rule: the outermost ring is never a motor ring: it would drop eggs wherever its gap happens to be, so
 // whether they hit the nest would be luck.
 export const SPECS = [
-  // ---------------- 1 The Farm: thorns, red flame, gate doors, curtains, portals; the fox drops bad orbs
+  // ---------------- 1 The Farm: thorns, red flame, gate doors, curtains, portals; a weasel hunts eggs
   { id: 1, world: 1, theme: 'farm', name: 'Sunny Farm', eggs: 3, target: 2, spacing: 1.05, material: 'wood', minMoves: 3,
     nest: { w: 2.6 }, bonus: { kind: 'orbs' },
     orbs: [{ type: 'fire_red', ch: 1 }],
@@ -69,19 +69,19 @@ export const SPECS = [
   { id: 4, world: 1, theme: 'pumpkin', name: 'Pumpkin Patch', eggs: 3, target: 2, spacing: 1.05, material: 'wood', minMoves: 4,
     nest: { w: 2.6 }, bonus: { kind: 'orbs' },
     portals: [{ from: [1, -150], to: [3, -30], emit: ['fire_green', 'fire_red'], every: 8 }],
-    fox: { every: 13, throws: ['thorn'], delay: 9 },
+    weasel: { a: -60, delay: 9 },
     intro: { title: 'Portals', line: 'Swirling portals suck in eggs from every side and spit them out lower down. Now and then they spit out an orb.' },
-    tip: 'The portal skips two thorny rings. The fox drops thorn balls: dodge them.',
+    tip: 'The portal skips two thorny rings. The weasel crouches under a gap before it pounces: turn that ring and it bonks its head.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], gear: true }, { gaps: 2, curtain: 1, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2], shut: { period: 4, open: 0.5 } }] },
-  { id: 5, world: 1, theme: 'farm', name: 'Fox Raid', boss: 'fox', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5,
+  { id: 5, world: 1, theme: 'farm', name: 'Weasel Raid', boss: 'weasel', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5,
     nest: { w: 2.8 }, bonus: { kind: 'prize' },
     orbs: [{ type: 'fire_green', ch: 2 }, { type: 'fire_red', ch: 3 }], portals: [{ from: [3, 90], to: [3, 90], emit: ['fire_red'], every: 7, pull: 0 }],
-    bossFight: { kind: 'fox', delay: 4, throws: ['thorn', 'foxcurse'], phases: [
-      { attacks: ['throw'], every: 5.5 },
-      { at: { saved: 1, t: 30 }, attacks: ['throw2'], every: 6 },
-      { at: { saved: 2, t: 60 }, attacks: ['throw2'], every: 4.5 },
+    bossFight: { kind: 'weasel', delay: 3, den: { a: 30, hp: 3 }, throws: ['thorn', 'curse'], phases: [
+      { attacks: [], every: 6 },
+      { at: { saved: 1, t: 40 }, attacks: ['throw'], every: 7 },
+      { at: { saved: 2, t: 75 }, attacks: ['throw2'], every: 6 },
     ] },
-    intro: { title: 'Boss: Fox Raid', line: 'The fox aims thorn balls and curse orbs at your eggs (a red mark shows where), then throws two at once.' },
+    intro: { title: 'Boss: Weasel Raid', line: 'A weasel prowls the outer ring and pounces through gaps to steal eggs. Turn the gap away to trap it, then hit it.' },
     tip: 'Curse orbs make the fuse run double. The green flame mends cracks.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], shut: { period: 4, open: 0.5 } }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1, gear: true }, { gaps: 1, curtain: 1, thorns: 1, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }] },
 
@@ -133,7 +133,8 @@ export const SPECS = [
     tip: 'Ice leaves a slippery patch. The frost orb freezes the ring under your egg.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: -1, gear: true }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
   { id: 13, world: 3, theme: 'frozen', name: 'Duck Pond', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5, eggKinds: ['duck'],
-    weather: 'current', weatherOpts: { strength: 0.8 }, snake: { delay: 9, speed: 0.33 },
+    weather: 'current', weatherOpts: { strength: 0.8 }, snake: { delay: 14, speed: 0.33 },
+    octopus: { ch: 3, a: -60, delay: 10, den: true },
     nest: { w: 2.8 }, bonus: { kind: 'prize' },
     orbs: [{ type: 'water', ch: 2 }, { type: 'thunder', ch: 3 }, { type: 'hatch_glow', ch: 3 }],
     tip: 'The duck egg floats and rides the current. Let it drift to the gap.',
@@ -181,10 +182,10 @@ export const SPECS = [
     intro: { title: 'Bulk chick', chick: 'bulk', line: 'The green orb hatches a bulk chick. Tap it once: big and heavy for 5 s, it squashes thorns and smashes cracked glass. Too big for gaps!' }, useTap: true,
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'glass', gaps: 2, gapX: [3, 2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 19, world: 4, theme: 'crystal', name: 'Glass Floor', eggs: 3, target: 2, spacing: 1.0, material: 'glass', minMoves: 5, eggKinds: [null, 'quail'],
-    nest: { w: 3.0 }, bonus: { kind: 'time' }, fox: { every: 11, throws: ['foxcurse', 'thorn'], delay: 9 },
+    nest: { w: 3.0 }, bonus: { kind: 'time' }, rats: { a: 100, n: 2, delay: 9 },
     orbs: [{ type: 'bubble', ch: 1 }, { type: 'magnet', ch: 3 }, { type: 'hatch_swoop', ch: 3 }],
-    portals: [{ from: [2, -30], to: [5, -150], emit: ['fire_green', 'water'], every: 9 }, { from: [4, 150], to: [5, -40], emit: ['bubble'], every: 11 }],
-    tip: 'Glass floors crack under landings, then break. A bubble lands soft.',
+    portals: [{ from: [2, -30], to: [5, -150], emit: ['fire_green', 'water', 'curse'], every: 9 }, { from: [4, 150], to: [5, -40], emit: ['bubble'], every: 11 }],
+    tip: 'Rats roll eggs to their hole: turn a gap under a rolling egg. Water and light send them running.',
     intro: { title: 'Swoop chick', chick: 'swoop', line: 'The blue orb hatches a swoop chick. Tap it once: it flies up through the ring above and tears down a thorn curtain on the way.' },
     rings: [{ mat: 'stone', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'stone', gaps: 2, thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], curtain: 1 }, { mat: 'stone', gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 20, world: 4, theme: 'crystal', name: 'Golem Maze', boss: 'golem', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5, eggKinds: [null, null, 'ostrich'],
@@ -278,18 +279,18 @@ export const SPECS = [
     tip: 'When the ring under an egg crackles, turn it away. A locked ring also stops a snake.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'cloud', gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
 
-  // ---------------- 7 The Fox's Fortress: the fox throws curses and drags the nest; every trait remixed
-  { id: 31, world: 7, theme: 'vault', name: "The Fox's Gate", eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 4, eggKinds: ['duck'],
+  // ---------------- 7 The Thieves' Vault: a weasel and rats raid, the hen moves her nest; every trait remixed
+  { id: 31, world: 7, theme: 'vault', name: "The Thieves' Gate", eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 4, eggKinds: ['duck'],
     weather: 'current', weatherOpts: { strength: 0.6 },
-    nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'turns' }, fox: { every: 9, throws: ['foxcurse', 'thorn'], delay: 6 },
+    nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'turns' }, weasel: { a: 30, delay: 7 }, rats: { a: -40, n: 2, ch: 3, delay: 12 },
     orbs: [{ type: 'twin', ch: 1 }, { type: 'hourglass', ch: 3 }, { type: 'hatch_pick', ch: 2 }, { type: 'frost', ch: 4 }],
-    intro: { title: "The Fox's Fortress", line: 'The fox walks his walls, throws curse orbs, and chases the hen and her nest. Everything you learned, all at once.' },
-    tip: 'The nest moves now: the fox is chasing the hen. Drop when she stops.',
-    portals: [{ from: [2, 90], to: [2, 90], emit: ['hatch_pick'], every: 9, pull: 0 }],
+    intro: { title: "The Thieves' Vault", line: 'A weasel and a pack of rats raid this vault, and the hen moves her nest to stay out of their reach. Everything you learned, all at once.' },
+    tip: 'The nest moves now: the hen keeps it away from the thieves. Drop when she stops.',
+    portals: [{ from: [2, 90], to: [2, 90], emit: ['hatch_pick', 'curse'], every: 9, pull: 0 }],
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], shut: { period: 4, open: 0.5 } }, { mat: 'ice', noGap: true, ice: true }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 32, world: 7, theme: 'clock', name: 'Clockwork Keep', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5, eggKinds: ['quail', 'ostrich'],
-    nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'prize' }, fox: { every: 10, throws: ['foxcurse'], delay: 8 },
-    orbs: [{ type: 'fire_red', ch: 2 }, { type: 'fire_green', ch: 4 }, { type: 'hatch_swoop', ch: 2 }], portals: [{ from: [2, 90], to: [2, 90], emit: ['fire_red'], every: 7, pull: 0 }],
+    nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'prize' }, rats: { a: 160, n: 2, delay: 8 },
+    orbs: [{ type: 'fire_red', ch: 2 }, { type: 'fire_green', ch: 4 }, { type: 'hatch_swoop', ch: 2 }], portals: [{ from: [2, 90], to: [2, 90], emit: ['fire_red', 'curse'], every: 7, pull: 0 }],
     tip: 'Quail through the grate for the flame; the ostrich waits for the curtain to burn.',
     rings: [{ gaps: 1, thorns: 1, gear: true }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], grate: 1, gear: true }, { gaps: 1, curtain: 1, thorns: 1, size: [2, 3], grate: 1 }, { gaps: 2, thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1, retract: { period: 3.2, on: 0.5 } }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 33, world: 7, theme: 'vault', name: 'Snake Pit', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5, eggKinds: ['ostrich'],
@@ -304,16 +305,16 @@ export const SPECS = [
     portals: [{ from: [2, -30], to: [4, -150], emit: ['bubble', 'magnet'], every: 9 }, { from: [4, 90], to: [4, 90], emit: ['hatch_pick'], every: 9, pull: 0 }],
     tip: 'The portal drops eggs past the eagle’s reach, onto the ice. Drill it with the purple chick.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], oneway: 1 }, { mat: 'ice', noGap: true, ice: true }, { gaps: 2, thorns: 2, size: [1, 2] }] },
-  { id: 35, world: 7, theme: 'vault', name: 'The Fox King', boss: 'foxking', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 6,
+  { id: 35, world: 7, theme: 'vault', name: 'The Rat King', boss: 'ratking', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 6,
     nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'prize' },
-    snake: { delay: 999, speed: 0.38 },
-    bossFight: { kind: 'foxking', delay: 4, throws: ['foxcurse', 'thorn'], phases: [
-      { attacks: ['throw'], every: 5.5 },
-      { at: { saved: 1, t: 30 }, attacks: ['throw2', 'fog'], every: 5 },
-      { at: { saved: 2, t: 60 }, attacks: ['throw2', 'fog'], every: 4.5, summon: true },
+    rats: { n: 2, delay: 999 },
+    bossFight: { kind: 'ratking', delay: 3, den: { a: -60, hp: 4 }, throws: ['curse', 'thorn'], phases: [
+      { attacks: [], every: 6 },
+      { at: { saved: 1, t: 35 }, attacks: ['throw', 'fog'], every: 6, summon: true },
+      { at: { saved: 2, t: 70 }, attacks: ['throw2', 'fog'], every: 5 },
     ] },
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'fire_red', ch: 3 }, { type: 'feather', ch: 4 }, { type: 'hatch_swoop', ch: 3 }, { type: 'hatch_glow', ch: 1 }], portals: [{ from: [3, 90], to: [3, 90], emit: ['fire_red'], every: 7, pull: 0 }],
-    intro: { title: 'Boss: The Fox King', line: 'The Fox King throws curses and thorn balls at your eggs, hides a ring in fog, and at the end calls in his snake.' },
+    intro: { title: 'Boss: The Rat King', line: 'The Rat King hunts his vault and pounces through gaps. Trap him behind a turned ring and hit him; later his rats roll eggs to his den.' },
     tip: 'The hourglass stops even a cursed fuse. Fog lifts in a few seconds: remember where the gaps were.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 1, curtain: 1, thorns: 1, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], blunt: 1 }] },
 ];

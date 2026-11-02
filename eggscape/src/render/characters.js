@@ -1,8 +1,7 @@
-// Character art: fox head, mama hen, hatched chick (the snake is in snake.js). Pure Canvas 2D, no assets.
+// Character art: mama hen, hatched chick (the snake is in snake.js). Pure Canvas 2D, no assets.
 // Every function draws in a local y-DOWN space centred on (cx, cy); the caller flips if needed.
 // Shapes are authored in a 100-unit box and scaled by s / 100.
 
-import { drawFoxFace } from './foxface.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -41,16 +40,6 @@ function glint(ctx, x, y, r) {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, TAU);
   ctx.fill();
-}
-
-/* ------------------------------------------------------------------ FOX */
-// One fox everywhere (v3.5): the face lives in foxface.js (cards, the actor, banners, the boss emblem, the full-body
-// den fox all use it). FOX is the palette, kept here for the callers that import it from this file.
-export { FOX } from './foxface.js';
-
-// Fox HEAD. s ≈ head width; fits ~s × 1.4s around (cx, cy) with the ears.
-export function drawFox(ctx, cx, cy, s, mood = 'idle', t = 0, look = { x: 0, y: 0 }) {
-  drawFoxFace(ctx, cx, cy + s * 0.08, s * 0.92, mood, t, { look });
 }
 
 /* ------------------------------------------------------------------ HEN */
@@ -523,7 +512,7 @@ function henFace(ctx, mood, t, o) {
 
 const CHICK_BUMPS = 16;
 
-// Fluffy hatched chick with a shell cap, drawn 1.5x the egg size s (it must read next to the fox). flap 0..1 flutters;
+// Fluffy hatched chick with a shell cap, drawn 1.5x the egg size s (it must read next to the creatures). flap 0..1 flutters;
 // peck 0..1 bows it down to peck the floor (it pecks thorns away), with crumbs flying.
 export function drawChick(ctx, cx, cy, s, t = 0, flap = 0, peck = 0) {
   if (!(s > 0)) return;

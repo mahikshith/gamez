@@ -35,7 +35,7 @@ export const POWER_INFO = {
   hourglass: { name: 'Hourglass', line: 'Time slows for 6 s and the fuse stops.', color: '#e8c36a' },
   feather: { name: 'Guardian feather', line: 'Every egg is safe for 6 s. Nothing can crack or eat them.', color: '#7fe0ff' },
   rockskin: { name: 'Rock skin', line: 'Every egg turns to stone for 6 s. Snakes can\u2019t bite stone.', color: '#8f8a84' },
-  foxcurse: { name: 'Fox curse', line: 'The fox\u2019s trick! Eggs go foxy and the fuse runs double for 6 s.', color: '#ff7a1a' },
+  curse: { name: 'Curse orb', line: 'A thief\u2019s trick! Eggs grin wickedly and the fuse runs double for 6 s.', color: '#c066f2' },
   // v3.1
   frost: { name: 'Frost', line: 'Brr! The ring under this egg freezes solid for 3 s.', color: '#9fe3ff' },
 };
@@ -57,7 +57,7 @@ export const GLASS = {
   hourglass: ['#fff1c0', '#8f5f12', '#2e1c04'],
   feather: ['#e2f9ff', '#1c6f94', '#062636'],
   rockskin: ['#cfc7bd', '#4d443d', '#15110e'],
-  foxcurse: ['#ffb070', '#9c3406', '#2e0a00'],
+  curse: ['#d9a6ff', '#5a1a8a', '#1a0630'],
   frost: ['#f2fcff', '#2f7fb0', '#08243a'],
 };
 const GLASS_DEFAULT = ['#e0e0e0', '#666666', '#222222'];
@@ -826,109 +826,54 @@ function emblemRockskin(ctx, t) {
   ctx.restore();
 }
 
-// Fox curse: a sly fox face, purple curse sparkles around it.
-function emblemFoxcurse(ctx, t) {
+// Curse orb: a wicked little spirit flame (slanted glowing eyes, a jagged grin) with curse wisps curling round it.
+function emblemCurse(ctx, t) {
   ctx.save();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  const bob = Math.sin(t * 3) * 2;
-  ctx.translate(0, bob + 4);
-  // swirling curse wisps
-  ctx.strokeStyle = 'rgba(190,90,255,0.65)';
-  ctx.lineWidth = 6;
+  const bob = Math.sin(t * 3) * 2, fl = Math.sin(t * 9) * 3;
+  ctx.translate(0, bob + 6);
+  // swirling curse wisps (dark-edged so they read on any orb glass)
   for (let i = 0; i < 2; i++) {
-    ctx.beginPath();
     const a0 = t * 1.5 + i * Math.PI;
-    ctx.arc(0, 0, 68, a0, a0 + 1.1);
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, 64, a0, a0 + 1.1);
+    ctx.strokeStyle = '#2a0840'; ctx.lineWidth = 10; ctx.stroke();
+    ctx.strokeStyle = '#c47aff'; ctx.lineWidth = 5; ctx.stroke();
   }
-  // ears
-  for (const sx of [-1, 1]) {
+  // the spirit flame: a teardrop with three licking tips
+  const body = () => {
     ctx.beginPath();
-    ctx.moveTo(sx * 14, -26);
-    ctx.lineTo(sx * 42, -62);
-    ctx.lineTo(sx * 52, -12);
+    ctx.moveTo(0, 46);
+    ctx.bezierCurveTo(-46, 44, -52, 4, -30, -18);
+    ctx.quadraticCurveTo(-34, -40, -18, -56 - fl);
+    ctx.quadraticCurveTo(-10, -36, -2, -38);
+    ctx.quadraticCurveTo(2, -62, 12, -70 + fl);
+    ctx.quadraticCurveTo(16, -44, 26, -40);
+    ctx.quadraticCurveTo(34, -50, 36, -58 - fl);
+    ctx.quadraticCurveTo(54, -20, 46, 10);
+    ctx.bezierCurveTo(42, 36, 22, 46, 0, 46);
     ctx.closePath();
-    ctx.fillStyle = '#ff8a2a';
-    ctx.fill();
-    ctx.strokeStyle = '#3a1608';
-    ctx.lineWidth = 6;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(sx * 24, -28);
-    ctx.lineTo(sx * 40, -50);
-    ctx.lineTo(sx * 44, -22);
-    ctx.closePath();
-    ctx.fillStyle = '#5a1f3a';
-    ctx.fill();
-  }
-  // head
-  ctx.beginPath();
-  ctx.moveTo(-50, -14);
-  ctx.quadraticCurveTo(-50, -34, 0, -34);
-  ctx.quadraticCurveTo(50, -34, 50, -14);
-  ctx.quadraticCurveTo(52, 20, 26, 40);
-  ctx.quadraticCurveTo(0, 62, -26, 40);
-  ctx.quadraticCurveTo(-52, 20, -50, -14);
-  ctx.closePath();
-  ctx.fillStyle = '#ff8a2a';
-  ctx.fill();
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = '#3a1608';
-  ctx.stroke();
-  // cream muzzle
-  ctx.beginPath();
-  ctx.moveTo(-44, 6);
-  ctx.quadraticCurveTo(-20, 14, 0, 2);
-  ctx.quadraticCurveTo(20, 14, 44, 6);
-  ctx.quadraticCurveTo(40, 30, 24, 40);
-  ctx.quadraticCurveTo(0, 60, -24, 40);
-  ctx.quadraticCurveTo(-40, 30, -44, 6);
-  ctx.closePath();
-  ctx.fillStyle = '#fff1dc';
-  ctx.fill();
-  // sly eyes: slanted, glowing yellow
-  for (const sx of [-1, 1]) {
-    ctx.beginPath();
-    ctx.moveTo(sx * 10, -8);
-    ctx.quadraticCurveTo(sx * 24, -22, sx * 40, -8);
-    ctx.quadraticCurveTo(sx * 26, -2, sx * 10, -8);
-    ctx.closePath();
-    ctx.fillStyle = '#ffe14a';
-    ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.stroke();
-    ctx.fillStyle = '#3a1608';
-    ctx.beginPath();
-    ctx.ellipse(sx * 28, -10, 3, 4.6, 0, 0, TAU);
-    ctx.fill();
-  }
-  // nose and grin
-  ctx.fillStyle = '#3a1608';
-  ctx.beginPath();
-  ctx.ellipse(0, 16, 7, 5, 0, 0, TAU);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(-24, 28);
-  ctx.quadraticCurveTo(0, 50, 28, 24);
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = '#3a1608';
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(8, 38);
-  ctx.lineTo(13, 46);
-  ctx.lineTo(18, 34);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
-  ctx.stroke();
+  };
+  body(); ctx.fillStyle = '#7a2ab8'; ctx.fill();
+  ctx.save(); body(); ctx.clip();
+  ctx.fillStyle = '#56188a'; ctx.beginPath(); ctx.ellipse(-26, 26, 50, 36, -0.3, 0, TAU); ctx.fill(); // 2-tone shade
+  ctx.fillStyle = '#b268ee'; ctx.beginPath(); ctx.ellipse(18, -20, 18, 26, 0.4, 0, TAU); ctx.fill(); // lit side
   ctx.restore();
-  ctx.fillStyle = '#d9a0ff';
-  for (let i = 0; i < 3; i++) {
-    const a = -t * 1.2 + (i / 3) * TAU + 1;
-    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 4 + i * 2);
-    sparkle(ctx, Math.cos(a) * 72, Math.sin(a) * 72 - 4, 9);
+  body(); ctx.strokeStyle = '#1e0634'; ctx.lineWidth = 7; ctx.stroke();
+  // slanted glowing eyes
+  for (const sx of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(sx * 6, -6); ctx.lineTo(sx * 30, -16); ctx.quadraticCurveTo(sx * 26, 2, sx * 8, 2); ctx.closePath();
+    ctx.fillStyle = '#ffe14a'; ctx.fill(); ctx.strokeStyle = '#1e0634'; ctx.lineWidth = 4; ctx.stroke();
+    ctx.fillStyle = '#1e0634'; ctx.beginPath(); ctx.ellipse(sx * 17, -4, 3, 5, 0, 0, TAU); ctx.fill();
   }
-  ctx.globalAlpha = 1;
+  // jagged grin
+  ctx.beginPath();
+  ctx.moveTo(-26, 16); ctx.quadraticCurveTo(0, 40, 26, 16); ctx.quadraticCurveTo(0, 26, -26, 16); ctx.closePath();
+  ctx.fillStyle = '#1e0634'; ctx.fill();
+  ctx.fillStyle = '#fff6e0';
+  for (const x of [-14, 0, 14]) { ctx.beginPath(); ctx.moveTo(x - 5, 20 + Math.abs(x) * -0.2); ctx.lineTo(x + 5, 20 + Math.abs(x) * -0.2); ctx.lineTo(x, 28 - Math.abs(x) * 0.2); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
 }
 
 function drawEmblem(ctx, id, t) {
@@ -944,7 +889,7 @@ function drawEmblem(ctx, id, t) {
   else if (id === 'hourglass') emblemHourglass(ctx, t);
   else if (id === 'feather') emblemFeather(ctx, t);
   else if (id === 'rockskin') emblemRockskin(ctx, t);
-  else if (id === 'foxcurse') emblemFoxcurse(ctx, t);
+  else if (id === 'curse') emblemCurse(ctx, t);
   else if (id === 'frost') emblemFrost(ctx, t);
   else if (EMBLEM_ART[id]) EMBLEM_ART[id](ctx, t);
 }
@@ -1214,7 +1159,7 @@ export function drawEggPower(ctx, id, t, h) {
     else if (id === 'thunder') overlayThunder(ctx, t);
     else if (id === 'golden') overlayGolden(ctx, t);
     else if (id === 'feather') overlayFeather(ctx, t);
-    else if (id === 'foxcurse') overlayFoxcurse(ctx, t);
+    else if (id === 'curse') overlayCurse(ctx, t);
     else if (EGG_ART[id]) EGG_ART[id](ctx, t);
   } catch (e) {
     // art must never break the frame
@@ -1546,94 +1491,38 @@ function overlayFeather(ctx, t) {
   }
 }
 
-// Fox curse: orange fox ears, whisker cheeks and a sly grin on the shell, purple curse haze.
-function overlayFoxcurse(ctx, t) {
-  const g = ctx.createRadialGradient(0, 0, 20, 0, 0, 88);
-  g.addColorStop(0, 'rgba(180,70,255,0)');
-  g.addColorStop(0.75, 'rgba(180,70,255,0.28)');
-  g.addColorStop(1, 'rgba(180,70,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(-100, -100, 200, 200);
-  // orange fur tint
-  eggPath(ctx, 100);
-  const tg = ctx.createLinearGradient(0, -50, 0, 50);
-  tg.addColorStop(0, 'rgba(255,130,30,0.7)');
-  tg.addColorStop(1, 'rgba(230,90,10,0.45)');
-  ctx.fillStyle = tg;
-  ctx.fill();
-  // cream muzzle patch
+// Curse: the shell goes violet, wicked slanted brows and a jagged grin appear on it, curse wisps curl up off it.
+function overlayCurse(ctx, t) {
   ctx.save();
   eggPath(ctx, 100);
-  ctx.clip();
-  ctx.beginPath();
-  ctx.ellipse(0, 40, 36, 24, 0, 0, TAU);
-  ctx.fillStyle = 'rgba(255,241,220,0.85)';
+  const tg = ctx.createLinearGradient(0, -50, 0, 50);
+  tg.addColorStop(0, 'rgba(150,70,220,0.55)');
+  tg.addColorStop(1, 'rgba(90,24,150,0.6)');
+  ctx.fillStyle = tg;
   ctx.fill();
-  ctx.restore();
   eggPath(ctx, 100);
-  ctx.strokeStyle = '#4a1c08';
+  ctx.strokeStyle = '#2a0840';
   ctx.lineWidth = 3.4;
   ctx.stroke();
-  // ears (flick now and then)
-  const fl = mod(t * 0.4, 1) < 0.08 ? Math.sin(mod(t * 0.4, 1) / 0.08 * TAU) * 0.15 : 0;
-  for (const sx of [-1, 1]) {
-    ctx.save();
-    ctx.translate(sx * 24, -38);
-    ctx.rotate(sx * (0.22 + fl));
-    ctx.beginPath();
-    ctx.moveTo(-sx * 13, 6);
-    ctx.lineTo(sx * 2, -34);
-    ctx.lineTo(sx * 17, 4);
-    ctx.closePath();
-    ctx.fillStyle = '#ff8a2a';
-    ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#4a1c08';
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-sx * 6, 2);
-    ctx.lineTo(sx * 2, -22);
-    ctx.lineTo(sx * 9, 2);
-    ctx.closePath();
-    ctx.fillStyle = '#6b2c4a';
-    ctx.fill();
-    ctx.fillStyle = '#3a1608'; // dark tip
-    ctx.beginPath();
-    ctx.moveTo(sx * 2 - 4, -26);
-    ctx.lineTo(sx * 2, -34);
-    ctx.lineTo(sx * 2 + 4, -26);
-    ctx.fill();
-    ctx.restore();
-  }
-  // whisker marks on the cheeks
-  ctx.strokeStyle = '#4a1c08';
-  ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  for (const sx of [-1, 1]) for (let i = 0; i < 2; i++) { ctx.moveTo(sx * 30, 22 + i * 7); ctx.lineTo(sx * 46, 17 + i * 11); }
-  ctx.stroke();
-  // sly grin, wide with one fang
-  ctx.beginPath();
-  ctx.moveTo(-22, 18);
-  ctx.quadraticCurveTo(0, 40, 24, 14);
-  ctx.lineWidth = 3.6;
   ctx.lineCap = 'round';
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(6, 30);
-  ctx.lineTo(10, 38);
-  ctx.lineTo(15, 25);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // wisps
-  ctx.fillStyle = '#d9a0ff';
+  ctx.lineJoin = 'round';
+  // wicked slanted brows over the egg's own eyes
+  ctx.strokeStyle = '#1e0634';
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx * 4, -13); ctx.lineTo(sx * 25, -22); ctx.lineWidth = 5; ctx.stroke(); }
+  // jagged grin
+  ctx.beginPath(); ctx.moveTo(-24, 14); ctx.quadraticCurveTo(0, 38, 24, 14); ctx.quadraticCurveTo(0, 24, -24, 14); ctx.closePath();
+  ctx.fillStyle = '#1e0634'; ctx.fill();
+  ctx.fillStyle = '#fff6e0';
+  for (const x of [-12, 0, 12]) { ctx.beginPath(); ctx.moveTo(x - 4, 19); ctx.lineTo(x + 4, 19); ctx.lineTo(x, 26); ctx.closePath(); ctx.fill(); }
+  // wisps curling up off the shell
   for (let i = 0; i < 3; i++) {
-    const k = mod(t * 0.7 + i / 3, 1);
-    ctx.globalAlpha = Math.sin(k * Math.PI) * 0.9;
-    sparkle(ctx, (i - 1) * 40 + Math.sin(t * 2 + i) * 6, -50 - k * 40, 7);
+    const k = mod(t * 0.7 + i / 3, 1), x = (i - 1) * 30 + Math.sin(t * 2 + i) * 6, y = -48 - k * 36;
+    ctx.globalAlpha = Math.sin(k * Math.PI) * 0.95;
+    ctx.beginPath(); ctx.moveTo(x, y + 10); ctx.quadraticCurveTo(x + 8, y, x, y - 8); ctx.quadraticCurveTo(x - 6, y - 14, x + 2, y - 20);
+    ctx.strokeStyle = '#2a0840'; ctx.lineWidth = 7; ctx.stroke();
+    ctx.strokeStyle = '#c47aff'; ctx.lineWidth = 3.4; ctx.stroke();
   }
-  ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 function overlayThunder(ctx, t) {

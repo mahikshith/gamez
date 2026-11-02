@@ -1,6 +1,5 @@
 // Screen-space UI: every text and widget goes through here so we can measure,
 // fit, hit-test, and assert that nothing overlaps.
-import { drawFoxFace } from '../render/foxface.js';
 
 export const FONT = '"Fredoka", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif';
 
@@ -396,7 +395,3 @@ export function drawEggIcon(ctx, cx, cy, s, state, cracks = 0) {
   ctx.restore();
 }
 
-// Fox mascot head. Screen space. v3.5: the one fox face (render/foxface.js), so the fox looks the same everywhere.
-export function drawFox(ctx, cx, cy, s, mood = 'smug', t = 0) {
-  drawFoxFace(ctx, cx, cy + s * 0.08, s * 0.92, mood, t, {});
-}

@@ -600,9 +600,6 @@ export function drawP2Front(ctx, sim, k, t) {
     } else if (key === 'e' && sim.eagle) {
       const E = sim.eagle; // frozen / stunned: the eagle's own art (world.js drawEagleAt + status.js)
       if (F.k === 'pep' || F.k === 'scare') creatureFx(ctx, F, k, t, { x: E.x, y: E.y, r: 0.9, dir: E.face > 0 ? 0 : Math.PI, block: [1.2, 0.75] }, 40);
-    } else if (key === 'f' && sim.fox && !(sim.fox.duck >= 1)) {
-      const y = sim.outerR + 0.45 + 0.55;
-      creatureFx(ctx, F, k, t, { x: sim.fox.x, y, r: 0.5, dir: Math.PI / 2, block: [0.55, 0.62] }, 50);
     } else if (key === 'b' && sim.bx && sim.bx.boss) {
       const B = sim.bx.boss;
       if (B.kind === 'blizzard' && (F.k === 'ice' || F.k === 'zap' || F.k === 'spin')) continue; // the cloud draws its own states (render/boss.js)

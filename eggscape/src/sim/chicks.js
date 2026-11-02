@@ -7,7 +7,7 @@
 // hatch orb or the gold flame. The gold flame alone still hatches the classic pecker chick at once.
 //
 // One tap = one power (sim.tapChick(id)). Every chick still never cracks, counts as a saved egg and is bait.
-//   glow  : FLASH (GLOW_R): burns thorns in range, stuns snakes and the salamander, dazes the eagle. Blows nearby eggs outward.
+//   glow  : FLASH (GLOW_R): burns thorns in range, stuns snakes and the salamander, dazes the eagle, scares rats home. Blows nearby eggs outward.
 //   dash  : shoots along its channel the way it faces for DASH_T: knocks snakes (and the salamander) dizzy, takes orbs it passes,
 //           pecks grey spikes away. It can shoot right over a gap.
 //   swoop : flies up through the ring above (clearing a thorn curtain and thorns it passes), then glides
@@ -170,6 +170,7 @@ export const chickMethods = {
     }
     for (const C of this.salsNear?.(p.x, p.y, R + 0.2) || []) { this.hitSalamander?.(C, 'flash', { x: p.x, y: p.y }); this.chickGain += 2; } // v3.2: stuns the salamander
     this.chickGain += 2 * (this.seaHit?.('flash', { x: p.x, y: p.y, r: R }) || 0); // v3.3: the octopus lets go, fish scatter
+    this.chickGain += 2 * (this.thiefHit?.('flash', { x: p.x, y: p.y, r: R }) || 0); // v3.6: rats run from the light, the weasel is dazed
     const E = this.eagle;
     if (E && E.phase !== 'away' && E.phase !== 'up' && (Math.hypot(E.x - p.x, E.y - p.y) < R + 1.6 || E.tid === egg.id)) {
       if (this.hitEagle) this.hitEagle('flash', { x: p.x, y: p.y });

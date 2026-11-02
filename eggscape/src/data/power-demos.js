@@ -2,7 +2,7 @@
 // and the obstacles that show the power's upside and its downside. Not campaign levels (levels are placed later).
 // Start one in the --dev build with ?demo=frostnova (or __egg.startDemo('combo_shatter')).
 // Spec fields to place a power in a level: an orb { type: 'frostnova' | 'shock' | 'thunderclap' | 'laser' | 'spin' |
-// 'pepper' | 'shrink' | 'iron' | 'decoy' | 'warp', ch, a } in level.orbs (or a portal's emit list, or the fox's throws).
+// 'pepper' | 'shrink' | 'iron' | 'decoy' | 'warp', ch, a } in level.orbs (or a portal's emit list, or a boss's throws).
 const base = { eggs: 3, target: 2, time: 90, spacing: 1.05, material: 'wood', nest: { w: 2.6 } };
 const orb = (type, ch = 1, a = -90) => ({ type, ch, a });
 

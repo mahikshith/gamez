@@ -33,7 +33,8 @@ const MECHANICS = [
   ['moving nest', (L) => !!(L.nest && (L.nest.amp || L.nest.pattern))],
   ['snake', (L) => list(L.snake).length > 0],
   ['two snakes', (L) => list(L.snake).length > 1],
-  ['fox thrower', (L) => !!L.fox],
+  ['weasel (pounce thief)', (L) => !!L.weasel || ['weasel', 'ratking'].includes(L.bossFight?.den && L.bossFight.kind)],
+  ['rats (egg rollers)', (L) => !!L.rats],
   ['eagle', (L) => !!L.eagle],
   ['salamander', (L) => list(L.salamander).length > 0],
   ['icicles', (L) => !!L.icicles || L.bossFight?.kind === 'blizzard'],
@@ -64,7 +65,7 @@ const MECHANICS = [
   ['bulk chick', hasOrb('hatch_bulk')],
   ['pick chick', hasOrb('hatch_pick')],
   ['hard ice', anyRing((r) => r.ice)],
-  ['fox curse', (L) => orbs(L).includes('foxcurse') || [L.fox?.throws, L.bossFight?.throws].flat().includes('foxcurse')],
+  ['curse orb', (L) => orbs(L).includes('curse') || (L.bossFight?.throws || []).includes('curse')],
 ];
 
 const REUSE = 3;

@@ -43,7 +43,7 @@ export function value(sim) {
   const st = sim.stats();
   if (sim.state === 'failed') return -1e6 + st.saved * 1000;
   let v = st.saved * 1500 - st.broken * 2500 + st.score * 0.2;
-  if (sim.den) v += sim.denScore(); // v3.5: a trapped or beaten den fox is worth something
+  if (sim.thieves && sim.thieves.length) v += sim.thiefScore(); // v3.6: a trapped or beaten thief boss is worth something
   for (const e of sim.aliveEggs()) {
     const c = sim.channelOf(e);
     v += c * 300 - e.cracks * 200 + e.mult * 15;
@@ -55,7 +55,7 @@ export function value(sim) {
     }
     // v3.2: an egg on (or about to be on) a red-hot salamander section
     if (sim.salThreat) v -= 450 * sim.salThreat(e);
-    if (sim.den) v -= 1600 * sim.denThreat(e); // v3.5: in the den fox's jaws or den, or about to be
+    if (sim.thieves.length) v -= 1600 * sim.thiefThreat(e); // v3.6: held or stashed by a thief, or about to be
     // predators (v3): an egg the eagle can reach while it is locked on
     const E = sim.eagle;
     if (E && E.reach && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tid === e.id) v -= 700;

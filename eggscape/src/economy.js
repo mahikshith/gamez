@@ -28,7 +28,7 @@ export const BOOSTERS = {
   time: {
     id: 'time',
     name: 'Slow fuse',
-    line: 'Adds 15 seconds to the fox’s fuse.',
+    line: 'Adds 15 seconds to the fuse.',
     price: 50,
     sku: 'booster_time',
   },

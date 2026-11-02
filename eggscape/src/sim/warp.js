@@ -12,7 +12,7 @@
 // Mixed into Sim like powers2.js. All state is plain data in this.p2.warp (p2State / p2Load copy it), plus a few flat
 // fields on the swallowed creature (snake.warp, eagle.warp, phase 'warp' for the salamander, frog and octopus), so
 // rewind and the planner stay exact. Hooks: warpStrike() at each creature's strike start (sim.js, salamander.js,
-// frog.js, sea.js, boss.js); warpStep() from p2Step.
+// frog.js, sea.js, boss.js, thieves.js); warpStep() from p2Step.
 import { RING_TH, wrap, clamp } from './geom.js';
 import { chAtPt } from './shapes.js';
 
@@ -74,6 +74,7 @@ export const warpMethods = {
     else if (kind === 'frog') ok = this.warpFrog(W, X, info);
     else if (kind === 'oct') ok = this.warpOcto(W, X, info);
     else if (kind === 'boss') ok = this.warpBoss(W, X);
+    else if (kind === 'thief') ok = this.warpThief(W, X); // v3.6 (sim/thieves.js): swallowed as it springs, spat out across its run
     if (!ok) return false;
     W.n++;
     if (--W.ch <= 0) { W.arm = 0; this.emit('powerOff', { power: 'warp' }); }

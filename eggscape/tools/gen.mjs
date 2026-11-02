@@ -28,7 +28,7 @@ const wrapD = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 const dist = (a, b) => Math.abs(wrapD(a - b));
 const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
 // level fields copied from the spec as they are (not laid out)
-const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'fox', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander', 'octopus'];
+const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'weasel', 'rats', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander', 'octopus'];
 
 // ---------- layout ----------
 function radii(spec) {
@@ -371,7 +371,7 @@ export async function ostrichDrops(L0) {
     if (!gaps.length) return 1;
     return gaps.some((g) => {
       for (let o = 0; o < 8; o++) {
-        const L = { ...L0, eggs: 1, eggKinds: ['ostrich'], orbs: [], portals: [], snake: undefined, salamander: undefined, eagle: undefined, fox: undefined, lava: undefined, icicles: undefined, barriers: [], bossFight: undefined,
+        const L = { ...L0, eggs: 1, eggKinds: ['ostrich'], orbs: [], portals: [], snake: undefined, salamander: undefined, eagle: undefined, weasel: undefined, rats: undefined, lava: undefined, icicles: undefined, barriers: [], bossFight: undefined,
           rings: L0.rings.map((r) => ({ ...r, thorns: [], pads: [], honey: [], gaps: (r.gaps || []).map((q) => ({ ...q, curtain: undefined, shut: undefined })) })) };
         const sim = new Sim(L, { mode: 'medium' });
         const e = sim.aliveEggs()[0], ring = sim.rings[i], want = -Math.PI / 2 - (g.a * Math.PI) / 180;
@@ -414,7 +414,7 @@ function pick(id, found) {
   return sorted[Math.round(q * (sorted.length - 1))];
 }
 
-// the fox's fuse: generous on L1-L2, tight from L3 (F30). Easy/Hard scale it at run time.
+// the fuse: generous on L1-L2, tight from L3 (F30). Easy/Hard scale it at run time.
 function fuse(c, id) {
   const t = id <= 2 ? c.plannerT * 3 + 25 : c.plannerT * 2.2 + 15;
   return Math.max(id <= 2 ? 45 : 30, Math.min(160, Math.round(t / 5) * 5));
@@ -426,7 +426,7 @@ function writeLevels(chosen) {
 // Angles in degrees, ring-local at start; -90 is straight down.
 // gaps: {a, len (m), x (score multiplier), shut {period, open, phase}}; thorns: {a, n, side 'in'|'out', h, kind 'blunt'}
 // pads: sponge {a, len (m)}; honey: {a, len}; gear: index of the ring it turns. orbs: {type, ch, a} float in
-// channel ch. time = the fox's fuse in seconds (Medium; Easy x1.6, Hard x0.8).
+// channel ch. time = the fuse in seconds (Medium; Easy x1.6, Hard x0.8).
 
 export const LEVELS = [\n`;
   const body = chosen.map((L) => {

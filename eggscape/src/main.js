@@ -12,7 +12,7 @@ import * as W from './render/world.js';
 import { UI, FONT, ICON, drawStar, drawEggIcon } from './ui/ui.js';
 import { drawSnake } from './render/characters.js';
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
-import { drawSprite, drawBossCard, drawFoxActor, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
+import { drawSprite, drawBossCard, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
 import { drawHenAnim, henIdleEvents, resetHen } from './render/hen.js';
 import { drawAllies, ALLY_ART } from './render/allies.js'; // v3.4 farm allies
 import { ALLY_DEMOS } from './data/ally-demos.js';
@@ -31,9 +31,9 @@ import { CHICK_DEMOS } from './data/chick-demos.js';
 import { FROG_DEMO } from './data/frog-demo.js'; // v3.3 frog studio level (dev)
 import { SEA_DEMOS } from './data/sea-demos.js'; // v3.3 studio levels (dev)
 import { drawSeaUnder, drawSeaOver, seaEvent, seaAnim } from './render/sea.js'; // v3.3 octopus and fish
-import { drawFoxDen, drawFoxDenFox, drawFoxDenOver, denEvent, drawDenFox, foxPose, FOXRIG } from './render/foxden.js'; // v3.5 den fox
-import { drawFoxFace } from './render/foxface.js'; // v3.5 the one fox face
-import { FOX_DEMOS } from './data/fox-demo.js'; // v3.5 den fox studio levels (dev)
+import { drawThiefDens, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
+import { RIG as THIEF_RIG } from './sim/thieves.js';
+import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
 import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render/frog.js'; // v3.3 frog
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
@@ -68,7 +68,7 @@ function loadSave(s) {
 // visual-only weather per theme; levels with a physics `weather` field use that instead
 const THEME_WEATHER = { farm: 'leaves', orchard: 'leaves', bramble: 'leaves', mushroom: 'fireflies', frozen: 'snow', blizzard: 'snow', dunes: 'sandstorm', haunted: 'ghosts', dragon: 'ash' };
 // seven environments of five (v3)
-const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volcano', 'Storm Peaks', 'The Fox\u2019s Fortress'];
+const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volcano', 'Storm Peaks', 'The Thieves\u2019 Vault'];
 const BONUS_TEXT = (b, fuse = 1) => ({ turns: `${b.n} turns or fewer`, prize: 'Save the speckled egg', orbs: 'Collect every orb', time: `Finish within ${Math.round(b.s * fuse)} s` })[b.kind] || '';
 const BONUS_COINS = 15;
 const AD_BOOST = ['golden', 'time', 'stone', 'sponge']; // the intro card's free booster, by level
@@ -233,7 +233,7 @@ function toast(text, life = 2.6, icon = null) {
   G.toasts.push({ text, life, icon });
 }
 
-// v3.5 den fox: its labels come fast (Snatched, TRAPPED, OUCH): a new one replaces the last instead of stacking
+// v3.6 thieves: their labels come fast (Snatched, TRAPPED, OUCH): a new one replaces the last instead of stacking
 function denPopup(wx, wy, text, o = {}) {
   G.popups = G.popups.filter((p) => !p.den);
   const n = G.popups.length;
@@ -285,8 +285,7 @@ function frameOf(all, maxCh) {
     yMin = -R + 0.3; // height-limited screens crop a little margin, never a ring
     yMax = R - 0.3;
   }
-  // predators (v3): every snake in (or about to enter) the vault is framed, like the furthest egg; so is
-  // the fox's head over the top. An eagle level keeps fixed headroom for it (no zoom pumping as it flies)
+  // predators (v3): every snake in (or about to enter) the vault is framed, like the furthest egg; so is every thief. An eagle level keeps fixed headroom for it (no zoom pumping as it flies)
   const hds = [];
   for (const S of sim.snakes || []) if (!S.gone && S.inside && S.rad <= sim.outerR + 1.5) hds.push({ x: S.rad * Math.cos(S.a), y: S.rad * Math.sin(S.a) });
   for (const C of sim.sals || []) if (C.ph !== 'wait' && C.ph !== 'gone' && C.pts.length) hds.push(C.pts[0]); // v3.2 salamander
@@ -301,8 +300,7 @@ function frameOf(all, maxCh) {
       yMin = Math.min(yMin, A.y - 0.6 * EAGLE_LEN);
     }
   }
-  if (sim.fox) hds.push({ x: sim.fox.x, y: sim.outerR + 0.6 });
-  if (sim.den && sim.den.ph !== 'gone' && sim.den.ph !== 'wait') { const b = sim.denBody(); if (b) hds.push(b); } // v3.5 den fox
+  for (const T of sim.thieves || []) if (T.ph !== 'gone' && T.ph !== 'wait' && T.ph !== 'hide') hds.push(sim.thBody(T)); // v3.6 thieves
   const BQ = bossPose(sim, false); // bosses (v3.1): keep the boss over the vault in frame
   // the big Blizzard cloud only when framing the whole vault (portrait screens have the height to spare); a zoomed-in
   // view stays on the eggs
@@ -327,7 +325,7 @@ function camTarget() {
   const whole = !live || sky || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || n <= 2;
   const F = frameOf(true, maxCh);
   let A = whole ? F : frameOf(false, maxCh);
-  // a snake, the fox or a boss outside the eggs' rings widens the close-up frame into a square; never let that zoom
+  // a snake or a boss outside the eggs' rings widens the close-up frame into a square; never let that zoom
   // out further than the whole vault (it cropped big vaults AND shrank the eggs): show the whole vault instead
   if (A.k < F.k) A = F;
   const z = G.zm;
@@ -786,7 +784,7 @@ function v3Event(ev, fx) {
       const col = powerInfo(ev.power).color;
       for (const e of G.sim.aliveEggs()) { const p = e.body.getPosition(); fx.sparkle(p.x, p.y, 8, col); }
       if (!save.calm) { fx.flash = 0.3; fx.flashColor = col; }
-      if (ev.power === 'foxcurse') hen('gasp', 1.4);
+      if (ev.power === 'curse') hen('gasp', 1.4);
       break;
     }
     case 'powerOff':
@@ -847,7 +845,7 @@ function onewayDrag(h, dTheta) {
   if (!G.onewayTip) { G.onewayTip = true; toast('This ring only turns one way: follow the arrows.', 2.6); }
 }
 
-// hourglass (cool) and fox curse (hot) tint the edges of the screen while they last
+// hourglass (cool) and the curse (hot) tint the edges of the screen while they last
 function drawV3Tint(sim) {
   const col = sim.slowT > 0 ? '120,180,255' : sim.curseT > 0 ? '255,120,30' : null;
   if (!col) return;
@@ -896,8 +894,8 @@ function handleEvents() {
         fx.shake = Math.max(fx.shake, 0.55);
         G.hitstop = 0.07;
         hen('cry', 2.2);
-        const why = { thorn: 'Thorn!', fox: 'The fox took it', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', eagle: 'The eagle took it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!', fall: 'Fell too far!', curtain: 'Thorn curtain!', lavarock: 'Lava rock!', icicle: 'Icicle!', heat: 'Too hot!' }[ev.why] || '';
-        if (why && ev.why !== 'fox') popup(ev.x, ev.y + 0.5, why, { color: '#ff8a7a', size: 20, life: 1.2 });
+        const why = { thorn: 'Thorn!', thief: 'Stolen!', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', eagle: 'The eagle took it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!', fall: 'Fell too far!', curtain: 'Thorn curtain!', lavarock: 'Lava rock!', icicle: 'Icicle!', heat: 'Too hot!' }[ev.why] || '';
+        if (why && ev.why !== 'fuse') popup(ev.x, ev.y + 0.5, why, { color: '#ff8a7a', size: 20, life: 1.2 });
         break;
       }
       case 'save': {
@@ -932,7 +930,7 @@ function handleEvents() {
         break;
       case 'pickup': {
         // discovery (F19/C11): the first touch reveals the orb and is remembered
-        const snd = { fire_red: 'fire_ignite', fire_black: 'fire_ignite', fire_green: 'unlock', fire_gold: 'twin_hatch', stone: 'steel_on', bubble: 'bubble_on', water: 'splash', thunder: 'thunder', thorn: 'thorn_hit', twin: 'twin_hatch', magnet: 'unlock', hourglass: 'rewind', feather: 'unlock', rockskin: 'steel_on', foxcurse: 'thorn_hit', frostnova: 'glass_crack', shock: 'thunder', thunderclap: 'thunder', laser: 'fire_ignite', spin: 'wind_gust', pepper: 'squish', shrink: 'bubble_pop', iron: 'steel_on', decoy: 'twin_hatch' }[ev.power];
+        const snd = { fire_red: 'fire_ignite', fire_black: 'fire_ignite', fire_green: 'unlock', fire_gold: 'twin_hatch', stone: 'steel_on', bubble: 'bubble_on', water: 'splash', thunder: 'thunder', thorn: 'thorn_hit', twin: 'twin_hatch', magnet: 'unlock', hourglass: 'rewind', feather: 'unlock', rockskin: 'steel_on', curse: 'thorn_hit', frostnova: 'glass_crack', shock: 'thunder', thunderclap: 'thunder', laser: 'fire_ignite', spin: 'wind_gust', pepper: 'squish', shrink: 'bubble_pop', iron: 'steel_on', decoy: 'twin_hatch' }[ev.power];
         audio.play(snd || 'unlock');
         fx.sparkle(ev.x, ev.y, 12, powerInfo(ev.power).color);
         const first = !save.seen[ev.power];
@@ -1079,7 +1077,7 @@ function handleEvents() {
       case 'timeout':
         if (ev.won) break;
         audio.play('level_fail');
-        toast("Time's up! The fox is back.", 2.2);
+        toast("Time's up!", 2.2);
         break;
       case 'vaultBurst':
         audio.play('bomb_explode', { vol: 0.8 });
@@ -1097,7 +1095,7 @@ function handleEvents() {
         frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, 3.2); } } }); // v3.3 frog
         seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.3
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
-        denEvent(ev, fx, { popup: denPopup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.5 den fox
+        thiefEvent(ev, fx, { popup: denPopup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.6 the weasel and the rats
         break;
       case 'won':
         onWin();
@@ -1193,7 +1191,7 @@ function salEvent(ev, fx) {
 }
 
 // ---------------------------------------------------------------- predators (v3)
-// events -> SFX/VFX for snakes, barriers, the eagle, the fox thrower and the chick (reuses existing sounds)
+// events -> SFX/VFX for snakes, barriers, the eagle and the chick (reuses existing sounds)
 function predEvent(ev, fx) {
   const once = (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, 3); } };
   switch (ev.type) {
@@ -1332,10 +1330,10 @@ function predEvent(ev, fx) {
     case 'eagleScreech':
       audio.play('glass_crack', { pitch: 1.6, vol: 0.6 });
       break;
-    case 'foxThrow':
+    case 'bossThrow':
       audio.play('portal_exit', { vol: 0.6, pitch: 0.8 });
       fx.sparkle(ev.x2, ev.y2, 8, powerInfo(ev.power).color);
-      once('fox', G.sim.bx && G.sim.bx.boss ? 'The fox throws orbs at the marked spots. Not all of them help!' : 'The fox drops orbs into the outer channel. Not all of them help!'); // bosses (v3.1)
+      once('bossThrow', 'It throws orbs at the marked spots. Not all of them help!'); // bosses (v3.1)
       break;
     case 'chickPeck':
       audio.play('thorn_snap', { pitch: 1.3 });
@@ -1433,13 +1431,13 @@ function bossEvent(ev, fx) {
       break;
     case 'bossSummon':
       audio.play('lava_sizzle', { vol: 0.6, pitch: 1.6 });
-      toast('A snake slithers in!', 2.2);
+      toast(ev.who === 'rats' ? 'His rats scurry in!' : 'A snake slithers in!', 2.2);
       break;
     case 'heatWarn':
       audio.play('lava_sizzle', { vol: 0.5 });
       popup(ev.x, ev.y + 0.5, 'Hot!', { color: '#ff9a3d', size: 18, life: 0.9 });
       break;
-    case 'foxFlinch':
+    case 'bossFlinch':
       audio.play('egg_bump', { pitch: 0.6 });
       popup(top.x, top.y + 0.3, 'Whoa!', { color: '#ffcf6a', size: 18, life: 0.8 });
       break;
@@ -1726,7 +1724,7 @@ function render() {
   drawSalHeat(ctx, sim, k, t); // v3.2: red-hot ring sections and the salamander's target mark
   drawP2Back(ctx, sim, k, t); // v3.4: live ring, scorched sponge, iron bars, brittle thorns, blackout, laser beak
   drawBossActor(ctx, sim, k, t);
-  drawFoxDen(ctx, sim, t, k); // v3.5: the fox's den on the outer ring
+  drawThiefDens(ctx, sim, t, k); // v3.6: the weasel's den and the rats' hole in the floor ring
   for (const ring of sim.rings) if (ring.gearOut) W.drawGearCog(ctx, ring, ring.gearOut, t);
   // gear trains: while the player turns one ring, the rings it drives show which way they go; the first time
   // ever, a label says so
@@ -1744,7 +1742,6 @@ function render() {
   }
   if (sim.wx.bolt) { const b = sim.boltPoint(sim.wx.bolt); W.drawBoltWarn(ctx, b.x, b.y, t); }
   W.drawBarriers(ctx, sim, t, k); // predators (v3)
-  W.drawFoxThrower(ctx, sim, t, k);
   // floating orbs: mystery until discovered (F19)
   for (const o of sim.orbs) if (o.alive) flipped(o.x, o.y, (k) => drawOrb(ctx, o.type, 0, 0, 0.2 * k, t, !!save.seen[o.type]));
   drawHenAt(sim, k, t);
@@ -1761,11 +1758,11 @@ function render() {
   drawFrogTele(ctx, sim, k, t); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
   { const wx = warpXfBegin(ctx, sim, 'f'); drawFrogs(ctx, sim, t, k, G.theme); warpXfEnd(ctx, wx); }
   { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaUnder(ctx, sim, t, k, G.theme); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
-  drawFoxDenFox(ctx, sim, t, k); // v3.5: the den fox on the ring floor
+  drawThieves(ctx, sim, t, k); // v3.6: the weasel and the rats on the ring floor
   for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
   drawChickFX(ctx, sim, t, k);
   { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); } // v3.3: the arms wrapped over a held egg
-  drawFoxDenOver(ctx, sim, t, k); // v3.5: the fox's jaws over a held egg, the trap ring
+  drawThievesOver(ctx, sim, t, k); // v3.6: the weasel's jaws over a held egg, the trap ring
   W.drawSnakes(ctx, sim, t, k); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
   drawBossOver(ctx, sim, k, t); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
@@ -2215,7 +2212,7 @@ function chickIntroArt(kind, x, y, w, h) {
 }
 
 // BOSS PORTRAIT (I6): the boss's face on its intro card. Stub: the sprite agent wires
-// sprites.drawBossCard(ctx, bossId, x, y, w, h, t) in here (bossIds: fox snake blizzard golem salamander eagle foxking).
+// sprites.drawBossCard(ctx, bossId, x, y, w, h, t) in here (bossIds: weasel snake blizzard golem salamander eagle ratking).
 function bossPortrait(ctx, bossId, x, y, w, h, t) { drawBossCard(ctx, bossId, x, y, w, h, t, G.screenT - 0.15); }
 
 function drawPause() {
@@ -2254,12 +2251,10 @@ function drawWin() {
     rows.push(['Coins', '+' + (r.coins || 0)]);
     const B = [
       { h: 62 * s, gap: 0, draw: (x, y, w) => {
-        // the fox can't believe it; the hen is delighted (F16/F17)
+        // the hen is delighted (F16/F17)
         const side = (w - 192 * s) / 2 - 6 * s, cs = Math.min(58 * s, side);
         if (cs >= 36 * s) {
-          drawFoxActor(ctx, 'cry', x + cs / 2, y + 36 * s, cs * 1.1, G.t, { key: 'win', enter: G.screenT - 0.1 });
           drawHenActor(ctx, 'dance', x + w - cs / 2, y + 62 * s - 0.5 * cs, cs, G.t, { key: 'win', enter: G.screenT - 0.25, phase: 1.3 });
-          ui.record({ x, y: y + 36 * s - 0.6 * cs, w: cs, h: 1.2 * cs }, 'win:fox');
           ui.record({ x: x + w - cs, y: y + 62 * s - cs, w: cs, h: cs }, 'win:hen');
         }
         for (let k = 0; k < 3; k++) {
@@ -2297,15 +2292,12 @@ function drawFail() {
   dim(0.5);
   const st = G.sim.stats();
   const timeout = G.sim.timeLeft <= 0;
-  stackCard(timeout ? 'The fox is back!' : 'Too many eggs broke', (s) => {
+  stackCard(timeout ? 'Out of time!' : 'Too many eggs broke', (s) => {
     const B = [
       { h: 100 * s, gap: 0, draw: (x, y, w) => {
-        // the fox grins and laughs; the hen is sad (F16/F17)
-        const evil = G.screenT % 2.4 < 1.2;
-        drawFoxActor(ctx, evil ? 'evil' : 'laugh', x + w / 2 - 50 * s, y + 52 * s, 96 * s, G.t, { key: 'fail', enter: G.screenT });
-        drawHenActor(ctx, 'cry', x + w / 2 + 56 * s, y + 98 * s - 0.5 * 64 * s, 64 * s, G.t, { key: 'fail', enter: G.screenT - 0.2, phase: 0.7 });
-        ui.record({ x: x + w / 2 - 90 * s, y: y + 4 * s, w: 80 * s, h: 96 * s }, 'fail:fox');
-        ui.record({ x: x + w / 2 + 24 * s, y: y + 34 * s, w: 64 * s, h: 64 * s }, 'fail:hen');
+        // the hen is sad (F16/F17)
+        drawHenActor(ctx, 'cry', x + w / 2, y + 98 * s - 0.5 * 86 * s, 86 * s, G.t, { key: 'fail', enter: G.screenT - 0.1, phase: 0.7 });
+        ui.record({ x: x + w / 2 - 43 * s, y: y + 12 * s, w: 86 * s, h: 86 * s }, 'fail:hen');
       } },
       lineBlock(`Saved ${st.saved}, needed ${st.target}`, 17 * s, { color: '#fff', tag: 'fail:stat' }),
     ];
@@ -2324,7 +2316,7 @@ function drawTitle() {
   const ty = Math.max(16 * u + logoS / 2, Math.min(H_ * 0.2, 70 * u));
   ui.text('EGGSCAPE', cx, ty, { size: logoS, align: 'center', color: '#fff3d6', stroke: '#5a2e0e', strokeW: logoS * 0.2, tag: 'title:logo', maxW: W_ - 24 * u });
   const subY = ty + logoS * 0.5 + 16 * u;
-  ui.text(TEST ? 'Test build: everything unlocked' : 'Get the eggs out of the fox’s vault', cx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(0,0,0,0.6)', tag: 'title:sub', maxW: W_ - 32 * u });
+  ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', cx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(0,0,0,0.6)', tag: 'title:sub', maxW: W_ - 32 * u });
   const bw = Math.min(300 * u, W_ - 48 * u);
   // Play, then Levels | Shop, then the difficulty row
   const by = Math.min(H_ - 186 * u, subY + 190 * u);
@@ -2334,19 +2326,19 @@ function drawTitle() {
   ui.button('daily', 'Daily', cx - bw / 2 + tw + 10 * u, by + 76 * u, tw, 50 * u, { color: save.daily.paid === today() ? '#6a5a4a' : '#9b59d0', dark: save.daily.paid === today() ? '#3a2e22' : '#5e2f87', icon: ICON.play, size: 17 * u });
   ui.button('shop', String(save.wallet.coins), cx - bw / 2 + 2 * (tw + 10 * u), by + 76 * u, tw, 50 * u, { color: '#d49a1c', dark: '#8a5f0a', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.5, G.t), size: 17 * u });
   modeRow(cx - bw / 2, by + 136 * u, bw, 40 * u, u);
-  // the fox takes whatever room is left: between subtitle and buttons, or beside the buttons; it leans toward the pointer
-  const fox = (x, y, s) => {
-    drawFoxActor(ctx, 'idle', x, y, s * 1.2, G.t, { key: 'title', enter: G.screenT, lean: (G.pointer.x - x) / 200 });
-    ui.record({ x: x - s / 2, y: y - 0.6 * s, w: s, h: 1.2 * s }, 'title:fox');
+  // the hen takes whatever room is left: between subtitle and buttons, or beside the buttons; she leans toward the pointer
+  const hen = (x, y, s) => {
+    drawHenActor(ctx, 'idle', x, y, s, G.t, { key: 'title', enter: G.screenT, lean: (G.pointer.x - x) / 200 });
+    ui.record({ x: x - s / 2, y: y - 0.5 * s, w: s, h: s }, 'title:hen');
   };
   const room = by - (subY + 12 * u) - 10 * u;
   if (room >= 60 * u) {
-    const fs = Math.min(90 * u, room / 1.25);
-    fox(cx, subY + 12 * u + room / 2, fs);
+    const fs = Math.min(100 * u, room / 1.1);
+    hen(cx, subY + 12 * u + room / 2, fs);
   } else {
     const side = (W_ - bw) / 2 - 20 * u;
     const fs = Math.min(90 * u, side * 0.8, 126 * u / 1.2);
-    if (fs >= 40 * u) fox(cx - bw / 2 - 12 * u - fs / 2, by + 63 * u, fs);
+    if (fs >= 40 * u) hen(cx - bw / 2 - 12 * u - fs / 2, by + 63 * u, fs);
   }
 }
 
@@ -2521,10 +2513,10 @@ if (DEV) window.__egg = {
   start: (i, o) => startLevel(i, o),
   CHICK_DEMOS,
   startFrog(o = {}) { G.demo = FROG_DEMO; startLevel(-2, o); }, // v3.3 frog studio level
-  startDemo(kind, o = {}) { const D = [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...FOX_DEMOS]; G.demo = D.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.3 sea, v3.4 powers
+  startDemo(kind, o = {}) { const D = [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS]; G.demo = D.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.3 sea, v3.4 powers
   POWER_DEMOS,
-  FOX_DEMOS,
-  foxArt: { drawDenFox, foxPose, FOXRIG, drawFoxFace, drawBossCard, drawFoxActor }, // v3.5 fox strips
+  THIEF_DEMOS,
+  thiefArt: { drawThief, thiefPose, thiefBlend, RIG: THIEF_RIG, drawThiefCard, drawThiefEmblem, drawBossCard }, // v3.6 thief strips
   press,
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
   frame(dt = 1 / 60) { update(dt); render(); },

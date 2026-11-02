@@ -1,12 +1,12 @@
 // ---------- bosses (v3.1): drawing ----------
-// The boss actor (code-drawn: the fox / fox king, the Blizzard's storm cloud; others show only their effects), every telegraph (frost
+// The boss actor (code-drawn: the Blizzard's storm cloud; the thief bosses live in the vault, others show only their effects), every telegraph (frost
 // creeping over a ring, icicles shaking with a shadow under them, target marks for rocks and throws, the punch
 // arrow, fog gathering), the gale streaks, temporary walls and ice patches, and the phase bar under the HUD.
 // ctx is in world space (meters, y up) unless a function says otherwise.
 import { RING_TH, TAU } from '../sim/geom.js';
 import { ringPoint, galeNow, heatOf, bossPhases, bossProgress, BOSS_TITLE, ATTACK_NAME } from '../sim/boss.js';
-import { isSpriteCalm, drawFoxActor } from './sprites.js';
-import { drawFox } from './characters.js';
+import { isSpriteCalm } from './sprites.js';
+import { drawThiefEmblem } from './thieves.js';
 import { drawIcicle } from './v3art.js';
 import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
@@ -340,16 +340,16 @@ export function drawBossOver(ctx, sim, k, t) {
 }
 
 // ---------- the boss itself. Code-drawn only (no portrait sprites inside a level):
-// fox / fox king: the game's fox actor peeking over the vault (like the old fox thrower), the king wears a code crown.
 // blizzard: a living snow cloud. golem and salamander have no body yet (a creature pass adds them): only their effects.
-const ACTOR = { fox: 1, foxking: 1, blizzard: 1 };
+// The weasel and the Rat King live inside the vault (render/thieves.js).
+const ACTOR = { blizzard: 1 };
 // the view this frame (main sets it): world y of the top of the play area, pixels per meter, ui scale
 let VIEW = null;
 export function setBossView(v) { VIEW = v; }
 // view = false: where the boss is in the world (for framing); default: where it is drawn this frame
 export function bossPose(sim, view = VIEW) {
   const B = sim.bx && sim.bx.boss;
-  if (!B || !ACTOR[B.kind] || B.den) return null; // v3.5: the den fox is drawn inside the vault (render/foxden.js)
+  if (!B || !ACTOR[B.kind] || B.den) return null; // v3.6: a thief boss is drawn inside the vault (render/thieves.js)
   const R = sim.outerR;
   if (B.kind === 'blizzard') {
     // big: about a third of the vault wide (at most ~150 px tall on screen), its belly just above the outer ring.
@@ -359,8 +359,7 @@ export function bossPose(sim, view = VIEW) {
     if (view) y = Math.min(y, view.top - h * 0.5);
     return { x: B.x, y, h, dir: A && A.name === 'gale' ? -A.dir : B.face || 1 };
   }
-  const h = B.kind === 'foxking' ? 1.6 : 1.35;
-  return { x: B.x, y: R + 0.45 + (h - 1.15) * 0.4 + (B.y - (R + 0.75)), h };
+  return null;
 }
 export function drawBossActor(ctx, sim, k, t) {
   const B = sim.bx && sim.bx.boss, Q = bossPose(sim);
@@ -368,7 +367,6 @@ export function drawBossActor(ctx, sim, k, t) {
   const A = B.atk, calm = isSpriteCalm();
   const warnU = A && A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 0, acting = A && A.ph === 'act';
   if (B.kind === 'blizzard') drawCloudBoss(ctx, sim, B, Q, k, t, warnU, acting, calm);
-  else drawFoxBoss(ctx, B, Q, k, t, warnU, acting, calm);
   // the freeze breath: a cone of frost from the spirit to the ring it is freezing
   if (A && A.name === 'freeze' && !calm) {
     const ring = sim.rings[A.ring], u = A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 1;
@@ -383,59 +381,6 @@ export function drawBossActor(ctx, sim, k, t) {
     }
     ctx.restore();
   }
-}
-
-// fox / fox king over the vault: sways, rears back before a throw, laughs after, shocked when it flinches
-function drawFoxBoss(ctx, B, Q, k, t, warnU, acting, calm) {
-  const sz = Q.h * k;
-  let rot = 0, sx = 1, sy = 1, dy = 0, mood = 'smug';
-  if (warnU) { mood = 'evil'; rot = -0.24 * warnU; sx = 1 + 0.06 * warnU; sy = 1 - 0.09 * warnU; dy = -0.08 * sz * warnU; }
-  else if (acting) mood = 'laugh';
-  if (B.flinch > 0) { mood = 'shocked'; rot += Math.sin(t * 40) * 0.1 * B.flinch; }
-  if (!calm) { rot += Math.sin(t * 1.4) * 0.04; dy += Math.sin(t * 2.1) * 0.012 * sz; } else rot = 0;
-  pxSpace(ctx, Q.x, Q.y, k, () => {
-    ctx.translate(0, dy);
-    ctx.rotate(rot);
-    ctx.scale(sx * (B.face < 0 ? -1 : 1), sy);
-    drawFoxActor(ctx, mood, 0, 0, sz, t, { key: 'boss', crown: B.kind === 'foxking' });
-  });
-}
-function drawCrown(ctx, x, y, w, t) {
-  const h = w * 0.55;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(-0.12);
-  ctx.beginPath();
-  ctx.moveTo(-w / 2, 0);
-  ctx.lineTo(-w / 2, -h * 0.75);
-  ctx.lineTo(-w / 4, -h * 0.35);
-  ctx.lineTo(0, -h);
-  ctx.lineTo(w / 4, -h * 0.35);
-  ctx.lineTo(w / 2, -h * 0.75);
-  ctx.lineTo(w / 2, 0);
-  ctx.closePath();
-  const g = ctx.createLinearGradient(0, -h, 0, 0);
-  g.addColorStop(0, '#fff2a0');
-  g.addColorStop(1, '#e0a020');
-  ctx.fillStyle = g;
-  ctx.strokeStyle = '#7a4a10';
-  ctx.lineWidth = Math.max(1, w * 0.05);
-  ctx.lineJoin = 'round';
-  ctx.fill();
-  ctx.stroke();
-  const tw = 0.5 + 0.5 * Math.sin(t * 3);
-  for (const [gx, col] of [[-w / 4, '#e8344a'], [0, '#3ad1ff'], [w / 4, '#e8344a']]) {
-    ctx.fillStyle = col;
-    ctx.beginPath();
-    ctx.arc(gx, -h * 0.2, w * 0.07, 0, TAU);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 0.6 * tw;
-  ctx.fillStyle = '#fff';
-  ctx.beginPath();
-  ctx.arc(0, -h, w * 0.06, 0, TAU);
-  ctx.fill();
-  ctx.restore();
 }
 
 // the Blizzard: a living storm cloud, as big as a third of the vault. Puffs churn, ice eyes glare. Faces per attack:
@@ -621,7 +566,7 @@ function drawStar(ctx, x, y, r, col) {
 }
 
 // the bar's portrait chip: a small code-drawn emblem per boss (screen space, y down)
-const EMBLEM_BG = { fox: '#c8601e', foxking: '#8a3fb0', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78' };
+const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78' };
 function drawBossEmblem(ctx, kind, cx, cy, d, t) {
   const r = d / 2;
   ctx.save();
@@ -636,9 +581,8 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
   ctx.translate(cx, cy);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  if (kind === 'fox' || kind === 'foxking') {
-    drawFox(ctx, 0, r * 0.18, r * 1.25, 'smug', t);
-    if (kind === 'foxking') { ctx.restore(); ctx.save(); drawCrown(ctx, cx, cy - r * 0.5, r * 0.75, t); }
+  if (kind === 'weasel' || kind === 'ratking') {
+    drawThiefEmblem(ctx, kind, r, t);
   } else if (kind === 'blizzard') {
     ctx.strokeStyle = '#eaf8ff';
     ctx.lineWidth = r * 0.14;
@@ -705,7 +649,7 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   ui.text(title, nameX, y + h / 2, { size: 13 * u, maxW: nameW, color: '#ffe3b0', stroke: 'rgba(0,0,0,0.6)', tag: 'hud:bossName' });
   // phase segments
   const bx = nameX + nameW + 8 * u, bw = x + w - 6 * u - bx, by = y + h * 0.22, bh = h * 0.56, gap = 4 * u;
-  const F = B.den && sim.den;
+  const F = B.den && sim.thiefBoss && sim.thiefBoss();
   if (F) { drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v3.5: hit pips
   const sw = (bw - gap * (n - 1)) / n, prog = bossProgress(sim);
   const warn = B.atk && B.atk.ph === 'warn';
@@ -727,7 +671,7 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   ctx.restore();
 }
 
-// v3.5 den fox: one pip per hit it can take (lit = hits left), and what it is doing now
+// v3.6 thief boss: one pip per hit it can take (lit = hits left), and what it is doing now
 function drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t) {
   const u = ui.u, n = Math.max(1, F.hpMax), sw = (bw - gap * (n - 1)) / n;
   const warn = B.atk && B.atk.ph === 'warn', ph = F.ph;
@@ -744,8 +688,8 @@ function drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t) {
     }
   }
   const label = F.hp <= 0 || ph === 'defeated' || ph === 'flee' || ph === 'gone' ? 'DEFEATED!'
-    : ph === 'trapped' ? 'TRAPPED! HIT HIM' : ph === 'crouch' ? 'POUNCE!' : F.eid ? 'STOLE AN EGG!'
-      : warn ? (ATTACK_NAME[B.atk.name] || '').toUpperCase() + '!' : 'TRAP HIM!';
+    : ph === 'trapped' ? 'TRAPPED! HIT IT' : ph === 'crouch' ? 'POUNCE!' : F.eid ? 'STOLE AN EGG!'
+      : warn ? (ATTACK_NAME[B.atk.name] || '').toUpperCase() + '!' : 'TRAP IT!';
   ui.text(label, bx + bw / 2, y + h / 2, { size: 12 * u, align: 'center', maxW: bw - 8 * u, color: '#fff', stroke: 'rgba(0,0,0,0.75)', tag: 'hud:bossPhase' });
 }
 

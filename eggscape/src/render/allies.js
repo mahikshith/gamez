@@ -6,7 +6,6 @@
 // in sim/allies.js and allyPlace() there says where it is).
 import { ALLY, allyPlace, flingAt } from '../sim/allies.js';
 import { drawHenAnim } from './hen.js';
-import { drawFoxActor } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -460,17 +459,11 @@ export function drawAllyAct(ctx, act, R, groundY, k, victim) {
       const a = clamp(1 - tau / 0.6, 0, 1);
       if (a > 0) { ctx.globalAlpha = a; star(ctx, act.ox, act.oy, 0.5 + 0.35 * (1 - a), 9, tt * 2, '#fff2a0', k); star(ctx, act.ox, act.oy, 0.25 + 0.15 * (1 - a), 7, -tt, '#ffd23f', k); }
       ctx.restore();
-      if (victim && act.vk === 'fox') {
-        const p = flingAt(act, tau);
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(tau * 9);
-        ctx.scale(1 / k, -1 / k); drawFoxActor(ctx, 'shocked', 0, 0, 0.95 * 1.2 * k, tt, { key: 'flung' });
-        ctx.restore();
-      }
     }
   }
 }
 
-// In the game: draw the ally of sim.ally (called after the vault, so it stands in front). `victim` draws the flung fox.
+// In the game: draw the ally of sim.ally (called after the vault, so it stands in front). `victim`: the snake or eagle it flung draws itself.
 export function drawAllies(ctx, sim, t, k) {
   const act = sim.ally && sim.ally.act;
   if (!act) return;

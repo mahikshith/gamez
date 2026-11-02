@@ -19,8 +19,8 @@ fs.mkdirSync(out, { recursive: true });
 
 const base = { eggs: 3, target: 2, time: 0, spacing: 1.05, material: 'wood', nest: { w: 2.6 }, seed: 77, tip: '', theme: 'farm' };
 const rings = [{ gaps: [{ a: 90 }] }, { gaps: [{ a: 90 }] }, { gaps: [{ a: 60 }] }, { gaps: [{ a: 0 }] }];
-const BOSS = { kind: 'fox', delay: 4, throws: ['thorn'], phases: [{ attacks: ['throw'], every: 5 }] };
-// the studio level: a snake already inside and a fox boss (the goose's pick is the snake; the rooster stuns both)
+const BOSS = { kind: 'weasel', delay: 4, den: { a: 40, hp: 3 }, throws: ['thorn'], phases: [{ attacks: ['throw'], every: 5 }] };
+// the studio level: a snake already inside and a weasel boss (the goose's pick is the snake; the rooster stuns both)
 const STUDIO = { ...base, rings, snake: { delay: 0.2, speed: 0.5, a: 20 }, bossFight: BOSS };
 
 const srv = http.createServer((q, r) => {
@@ -165,7 +165,7 @@ const ROWS = {
   await pg.screenshot({ path: path.join(out, 'allies-scale.png'), fullPage: true });
   const lw = 215;
   await pg.setViewportSize({ width: lw * 9 + 80, height: 400 });
-  await pg.setContent(`<html><style>${css}</style><body>${levels.map((L) => `<div class="r"><h3>${L.kind} in a studio level (snake + fox boss)</h3><div class="f">${L.shots.map((s) => `<div><img style="width:${lw}px" src="data:image/png;base64,${fs.readFileSync(s.f).toString('base64')}">${s.label} snake stun ${s.info.sn} boss dizzy ${s.info.boss}</div>`).join('')}</div></div>`).join('')}</body></html>`);
+  await pg.setContent(`<html><style>${css}</style><body>${levels.map((L) => `<div class="r"><h3>${L.kind} in a studio level (snake + weasel boss)</h3><div class="f">${L.shots.map((s) => `<div><img style="width:${lw}px" src="data:image/png;base64,${fs.readFileSync(s.f).toString('base64')}">${s.label} snake stun ${s.info.sn} boss dizzy ${s.info.boss}</div>`).join('')}</div></div>`).join('')}</body></html>`);
   await pg.screenshot({ path: path.join(out, 'allies-levels.png'), fullPage: true });
   for (const L of levels) for (const s of L.shots) fs.unlinkSync(s.f);
   console.log('-> ' + out);

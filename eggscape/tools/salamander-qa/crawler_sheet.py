@@ -7,7 +7,7 @@ W = 2000
 TITLES = {
     'gecko': 'FROST GECKO (Frozen Lake, L11) - walks on the ring, its trail freezes the ring (eggs slide); fire melts it for a while',
     'thornback': 'THORN-BACK LIZARD (Crystal Caves, L16) - drops thorns behind it; a stone egg or dash chick flips it, its thorns crumble',
-    'chameleon': 'CHAMELEON (Storm Peaks, L26) - hides in the ring colour, tongue steals an orb from 2 m; a fox-curse orb makes it flash, flee and drop its loot',
+    'chameleon': 'CHAMELEON (Storm Peaks, L26) - hides in the ring colour, tongue steals an orb from 2 m; a curse orb makes it flash, flee and drop its loot',
 }
 def load(p, w=None, h=None, s=None):
     im = Image.open(p).convert('RGB')

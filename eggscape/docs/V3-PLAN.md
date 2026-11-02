@@ -138,7 +138,7 @@ reviewed critically, and shown to mykee. Only then is it wired into gameplay.
 | # | Item | Plan |
 |---|------|------|
 | M1 | Salamander approved | Fix brows/grin/lava pit, wire into L21–25 with the aimable fire-breath trait |
-| M2 | Crawler family on the salamander rig, each with its own advantage + disadvantage | Frost gecko (freezes the ring it walks: fast slides, overshoot risk; fire melts it off), thorn-back lizard (lays thorns; stone egg flips it), chameleon (near-invisible, tongue steals orbs; fox curse orb makes it spit them out). Strips on the review page first |
+| M2 | Crawler family on the salamander rig, each with its own advantage + disadvantage | Frost gecko (freezes the ring it walks: fast slides, overshoot risk; fire melts it off), thorn-back lizard (lays thorns; stone egg flips it), chameleon (near-invisible, tongue steals orbs; curse orb makes it spit them out). Strips on the review page first |
 | M3 | Thorns not animated | Living thorns: sway, timed retract/extend, crumble when burned, thorn vines that grow across a gap (urgency) |
 | M4 | Game slows after the snake (L11+) | A chaser in every world, 5–7 rings, earlier mechanics mixed in; keep "lock in and go" pressure |
 | M5 | 35 levels too few | 50 levels = 10 worlds × 5; 3 new worlds built around the new crawlers and chick kinds |
@@ -241,3 +241,10 @@ Pacing after the snake (17 levels regenerated, planner-validated on Easy/Medium/
 
 Coverage: every mechanic is reused 3+ times except the duck egg (2x: L17, L31). L14 could not be regenerated with a
 duck egg (the duck on the current made it fail Medium), so L14 keeps its layout. Long fuses now: L27, L32, L33 160 s.
+
+## v3.6 (2026-11-02): the fox is gone
+The owner dropped the fox everywhere ("It's not about fox versus hen any more"). Rows above that mention the fox are
+history. Now: a WEASEL (L4, L5 boss "Weasel Raid", L31) pounces through lined-up gaps and carries eggs to its den; RATS
+(L19, L31, L32, L35) come in pairs and roll eggs toward their hole; THE RAT KING (L35 boss) hunts like the weasel and
+his rats bring eggs to his den. World 7 is "The Thieves' Vault". The curse orb stays (bosses throw it, portals emit
+it). Code: src/sim/thieves.js, src/render/thieves.js, studio levels src/data/thief-demo.js, strips tools/thief-strips.cjs.

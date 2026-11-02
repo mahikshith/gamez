@@ -9,5 +9,5 @@ export const DEMO_SPECS = [
   { label: 'Thunder Sky', spec: { root: 'D', scale: 'minor', bpm: 120, mood: 'storm' } },
   { label: 'Haunted Graveyard', spec: { root: 'A', scale: 'minor', bpm: 76, mood: 'night spooky' } },
   { label: 'Volcano', spec: { root: 'C', scale: 'minor', bpm: 132, mood: 'volcano dragon' } },
-  { label: "The Fox's Vault", spec: { root: 'G', scale: 'dorian', bpm: 104, mood: 'finale vault' } },
+  { label: "The Thieves' Vault", spec: { root: 'G', scale: 'dorian', bpm: 104, mood: 'finale vault' } },
 ];

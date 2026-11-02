@@ -655,7 +655,7 @@ X.thornback.weak = () => seq(12, (i, ctx, env) => {
 }, (i) => (i < 2 ? `stone egg ${i + 1}` : `flipped p=${((i - 2) / 9).toFixed(2)}`),
 (env) => bodyPts(env, env.stride * 0.25, 1.55, 1.3).concat([env.tr(env.stride * 0.25)(env.s * 1.55 + 1.05 * env.k)]), { cols: 6 });
 
-/* ---- chameleon: matches the ring until it moves; tongue steals an orb from ~2 m; a fox-curse orb makes it
+/* ---- chameleon: matches the ring until it moves; tongue steals an orb from ~2 m; a curse orb makes it
    flash bright, run off and drop everything it stole */
 let camoC = null;
 const camoFor = (env, g) => { const V = view(); return colourUnder(V, bodyPts(env, g, 1.5, 0).filter((_, j) => j % 4 === 0)); };
@@ -688,13 +688,13 @@ X.chameleon.trait = () => seq(10, (i, ctx, env) => {
   } };
 }, (i) => `snatch p=${(i / 9).toFixed(2)}`, (env) => bodyPts(env, env.stride * 0.25, 1.3, 0).concat([env.tr(env.stride * 0.25 + 2.2 * env.k)(0)]), { cols: 5 });
 X.chameleon.weak = () => seq(12, (i, ctx, env) => {
-  // it grabs a fox-curse orb by mistake: flashes every colour, bolts, and drops the orbs it had stolen
+  // it grabs a curse orb by mistake: flashes every colour, bolts, and drops the orbs it had stolen
   const t = 3 + i * 0.15;
   if (i < 4) {
     const g = env.stride * 0.25, orb = env.tr(g + 1.6 * env.k)(0), out = {}, p = [0.12, 0.3, 0.55, 0.85][i];
     return { t, g, pose: 'snatch', p, target: orb, out, after: (c) => {
-      if (p < 0.25) drawOrb(c, 'foxcurse', orb.x, orb.y, 0.2 * env.k, t, true);
-      else if (out.tongue && p < 0.7) drawOrb(c, 'foxcurse', out.tongue.x, out.tongue.y, 0.18 * env.k, t, true);
+      if (p < 0.25) drawOrb(c, 'curse', orb.x, orb.y, 0.2 * env.k, t, true);
+      else if (out.tongue && p < 0.7) drawOrb(c, 'curse', out.tongue.x, out.tongue.y, 0.18 * env.k, t, true);
     } };
   }
   const step = 0.36 * env.k, g0 = env.stride * 0.25, g = g0 + (i - 3) * step;
@@ -706,7 +706,7 @@ X.chameleon.weak = () => seq(12, (i, ctx, env) => {
       drawOrb(ctx, d.id, q.x, q.y - 0.15 * env.k * Math.sin(Math.PI * Math.min(1, (i - d.from) / 2)), 0.2 * env.k * (0.5 + 0.5 * pop), t, true);
     }
   } };
-}, (i) => (i < 4 ? `grabs fox curse ${i + 1}` : `cursed, drops loot ${i - 3}`), (env) => bodyPts(env, env.stride * 0.25 + 8 * 0.36 * env.k, 0.8, 0.2).concat(bodyPts(env, env.stride * 0.25 + 1.6 * env.k, 2.2, 0)), { cols: 6 });
+}, (i) => (i < 4 ? `grabs a curse orb ${i + 1}` : `cursed, drops loot ${i - 3}`), (env) => bodyPts(env, env.stride * 0.25 + 8 * 0.36 * env.k, 0.8, 0.2).concat(bodyPts(env, env.stride * 0.25 + 1.6 * env.k, 2.2, 0)), { cols: 6 });
 
 // the family at true relative size (snout-to-hips from SPECIES[].svl) next to an egg, 3x in-game zoom
 S.lineup = () => {

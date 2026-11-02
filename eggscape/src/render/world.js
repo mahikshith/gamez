@@ -1,7 +1,7 @@
 // Draws the playfield in world space: ctx is pre-transformed (meters, y up).
 import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
-import { drawChick, drawFox } from './characters.js';
-import { isSpriteCalm, drawFoxActor } from './sprites.js';
+import { drawChick } from './characters.js';
+import { isSpriteCalm } from './sprites.js';
 import { drawEagle, drawEagleShadow, drawBarrier, drawVenom } from './v3art.js';
 import { statusClock, statusDraw, boltStroke } from './status.js';
 import { drawEggPower, drawOrb } from './powers.js';
@@ -972,10 +972,10 @@ export function drawEgg(ctx, egg, t, k) {
     }
     ctx.restore();
   }
-  // v3: fox curse tints the shell orange; the guardian feather wraps it in a cool shimmer
+  // v3: the curse tints the shell violet; the guardian feather wraps it in a cool shimmer
   if (egg.curse > 0) {
     eggPath(ctx);
-    ctx.fillStyle = `rgba(255,120,30,${0.22 + 0.08 * Math.sin(t * 9)})`;
+    ctx.fillStyle = `rgba(150,60,210,${0.22 + 0.08 * Math.sin(t * 9)})`;
     ctx.fill();
   }
   if (egg.guard > 0) {
@@ -997,7 +997,7 @@ export function drawEgg(ctx, egg, t, k) {
     ctx.restore();
   }
   // v3 global-power overlays (art in powers.js)
-  for (const id of [egg.guard > 0 && 'feather', egg.curse > 0 && 'foxcurse', egg.shrink > 0 && 'shrink']) { // v3.4 shrink ray
+  for (const id of [egg.guard > 0 && 'feather', egg.curse > 0 && 'curse', egg.shrink > 0 && 'shrink']) { // v3.4 shrink ray
     if (!id) continue;
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -1046,7 +1046,7 @@ export function drawEgg(ctx, egg, t, k) {
   ctx.lineWidth = 0.014;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  if (egg.curse > 0) { /* the fox-curse overlay draws its own grin */ }
+  if (egg.curse > 0) { /* the curse overlay draws its own grin */ }
   else if (scared) { ctx.ellipse(0, -0.05, 0.022, 0.03, 0, 0, TAU); ctx.fill(); }
   else { ctx.arc(0, -0.02, 0.035, Math.PI * 1.2, Math.PI * 1.8); ctx.stroke(); }
   // cheeks
@@ -1243,7 +1243,7 @@ export function drawDebris(ctx, d, theme) {
   ctx.restore();
 }
 
-// The fox's fuse: a rope circling the vault that burns down.
+// The fuse: a rope circling the vault that burns down.
 export function drawFuse(ctx, R, frac, t, fx) {
   const start = Math.PI / 2;
   const end = start + TAU * frac;
@@ -1344,7 +1344,7 @@ export function drawBoltWarn(ctx, x, y, t) {
   boltStroke(ctx, 0.016, 1);
 }
 
-// ---------- predators (v3): barriers, snakes, eagle, fox thrower ----------
+// ---------- predators (v3): barriers, snakes, eagle ----------
 // All take the world-space ctx (meters, y up) and k = px per meter; art helpers draw in px, y down.
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { /* art never breaks the frame */ } ctx.restore(); };
 
@@ -1516,32 +1516,6 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
   const sz = EAGLE_LEN * k, tt = frozen ? st.hold : t, box = { x0: -1.3 * sz, y0: -1.2 * sz, x1: 1.3 * sz, y1: 1.2 * sz };
   pxSpace(ctx, E.x, E.y, k, () => {
     statusDraw(ctx, box, (c) => drawEagle(c, 0, 0, sz, tt, { w: EA.w, phase: EA.ph, face: EA.face, turn, pitch: EA.pitch, roll, grab, toes, eye, stars: EA.stars, beak: gloat || null }), st, { off: Math.max(1, sz * 0.015), crys: Math.max(1, sz / 80) });
-  });
-}
-
-// Fox thrower (G36): his head peeks over the top of the vault.
-export function drawFoxThrower(ctx, sim, t, k) {
-  const F = sim.fox;
-  if (!F) return;
-  const y = sim.outerR + 0.45, sz = 0.95 * k;
-  let rot = 0, sx = 1, sy = 1, dy = 0;
-  if (!isSpriteCalm()) {
-    // idle: a slow sway and a bob; before a throw he rears back and squashes (wind-up); right after it he lurches forward
-    rot += Math.sin(t * 1.4) * 0.04;
-    dy += Math.sin(t * 2.1) * 0.012 * sz;
-    const wind = F.t > 0 && F.t < 0.9 ? 1 - F.t / 0.9 : 0;
-    if (wind) { rot -= 0.24 * wind + Math.sin(t * 45) * 0.012 * wind; sx *= 1 + 0.06 * wind; sy *= 1 - 0.09 * wind; dy -= 0.08 * sz * wind; }
-    const age = F.mood === 'laugh' ? 1.4 - F.moodT : 9, rel = Math.exp(-age * 5);
-    if (age < 1.4) { rot += 0.26 * rel + Math.sin(t * 14) * 0.03 * (1 - rel); sy *= 1 + 0.12 * rel; sx *= 1 - 0.06 * rel; dy += 0.1 * sz * rel; }
-  }
-  if (F.duck >= 1) return;
-  if (F.duck > 0) { const u = F.duck * F.duck; dy += u * sz * 1.4; rot += Math.sin(t * 30) * 0.05 * (1 - u); } // ducks below the rim on a win
-  pxSpace(ctx, F.x, y, k, () => {
-    if (F.duck > 0) { ctx.beginPath(); ctx.rect(-sz * 2, -sz * 3, sz * 4, sz * 3 + 0.4 * k); ctx.clip(); } // the vault rim hides him
-    ctx.translate(0, dy);
-    ctx.rotate(rot);
-    ctx.scale(sx, sy);
-    drawFoxActor(ctx, F.mood || 'smug', 0, 0, sz * 1.2, t, { key: 'thrower', lean: Math.cos(t * 0.35) * 0.4 });
   });
 }
 

@@ -9,7 +9,7 @@ import { allyMethods } from './allies.js'; // v3.4 farm allies (rooster, goose)
 import { seaMethods } from './sea.js'; // v3.3 octopus and fish schools
 import { p2Methods, P2_TYPES, P2_KEYS } from './powers2.js'; // v3.4 powers and combos
 import { warpMethods } from './warp.js'; // v3.4 warp gate
-import { denMethods } from './foxden.js'; // v3.5 the den fox (boss inside the vault)
+import { thiefMethods } from './thieves.js'; // v3.6 the egg thieves: weasel, rats, their bosses
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
@@ -61,13 +61,13 @@ export const POWER = {
   magnet: { time: 8, len: 0.8 },
 };
 export const ORB_TYPES = ['fire_red', 'fire_black', 'fire_green', 'fire_gold', 'stone', 'bubble', 'water', 'thunder', 'thorn', 'magnet', 'twin',
-  'hourglass', 'feather', 'rockskin', 'foxcurse', 'frost', ...P2_TYPES];
-export const LEGACY_ORB = { fire: 'fire_red', steel: 'stone' }; // v1 item ids (levels and saves)
+  'hourglass', 'feather', 'rockskin', 'curse', 'frost', ...P2_TYPES];
+export const LEGACY_ORB = { fire: 'fire_red', steel: 'stone', foxcurse: 'curse' }; // old item ids (levels and saves); v3.6 renamed the curse orb
 const ORB_R = 0.2;
 
 // ---------- v3 physics: constants
 // Global powers (G29, G30, G39, G40): the egg that takes the orb sets it off for every egg.
-export const V3_POWER = { hourglass: 6, feather: 6, rockskin: 6, foxcurse: 6 };
+export const V3_POWER = { hourglass: 6, feather: 6, rockskin: 6, curse: 6 };
 // Special eggs (I3): hull scale, mass factor. Ostrich can't pass gaps shorter than OSTRICH_GAP (m).
 export const EGG_KIND = { ostrich: { s: 1.3, m: 2 }, quail: { s: 0.75, m: 0.45 }, duck: { s: 1, m: 1 } };
 export const OSTRICH_GAP = 0.9; // a 0.78 m gap jams a 1.3x egg about one drop in four: below this it is barred outright
@@ -77,7 +77,7 @@ const CURTAIN_BURN = 1; // s for fire to clear a thorn curtain
 // v3.3 thorn vines (M3): a vine creeps across its gap (grow s, slower on Easy), then seals it like a thorn curtain
 // until fire burns it back; it rests `wait` s and grows again. It never seals onto an egg sitting in the gap.
 const VINE = { grow: 6, wait: 2.5 }, VINE_MODE = { easy: 1.5, medium: 1, hard: 0.8 };
-const GUARD_PASS = new Set(['fox', 'ground', 'lost', 'lava']); // what still ends a guarded egg
+const GUARD_PASS = new Set(['fuse', 'thief', 'ground', 'lost', 'lava']); // what still ends a guarded egg
 
 // Difficulty is the player's choice (F32). Same levels, tuned per mode.
 export const MODES = {
@@ -86,11 +86,11 @@ export const MODES = {
   hard: { fuse: 0.8, nest: 1.3, nestW: 0, crack: 0.85, meteor: true, softThorns: false },
 };
 
-// ---------- predators (v3): mode scaling (G10). snake = speed x, venom/warn = telegraph time x, fox = throw gap x
+// ---------- predators (v3): mode scaling (G10). snake = speed x, venom/warn = telegraph time x
 export const PRED = {
-  easy: { snake: 1.4, venom: 1.3, warn: 1.35, fox: 1.3 },
-  medium: { snake: 2, venom: 1, warn: 1, fox: 1 },
-  hard: { snake: 2.6, venom: 0.8, warn: 0.8, fox: 0.85 },
+  easy: { snake: 1.4, venom: 1.3, warn: 1.35 },
+  medium: { snake: 2, venom: 1, warn: 1 },
+  hard: { snake: 2.6, venom: 0.8, warn: 0.8 },
 };
 // stun = clash daze x, back = back-off time x (a bite on a protected egg)
 Object.assign(PRED.easy, { stun: 1.4, back: 1.3 }); Object.assign(PRED.medium, { stun: 1, back: 1 }); Object.assign(PRED.hard, { stun: 0.75, back: 0.8 });
@@ -251,7 +251,7 @@ export class Sim {
     this.frogInit(L); // v3.3: frog (sim/frog.js)
     this.allyInit(L); // v3.4: farm allies (sim/allies.js)
     this.seaInit(L); // v3.3: octopus and fish schools (sim/sea.js)
-    this.denInit(L); // v3.5: the den fox (sim/foxden.js)
+    this.thiefInit(L); // v3.6: the egg thieves (sim/thieves.js)
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
@@ -658,13 +658,13 @@ export class Sim {
       if (this.snaps.length > 26) this.snaps.shift();
     }
 
-    // the fox's fuse
+    // the fuse
     if (this.state === 'play' && this.timeLimit) {
       this.timeLeft -= dt * this.fuseRate();
       if (this.timeLeft <= 0) {
         this.timeLeft = 0;
         this.emit('timeout', { won: this.savedLog.length >= (this.level.target || 1) });
-        for (const e of this.aliveEggs()) this.breakEgg(e, 'fox');
+        for (const e of this.aliveEggs()) this.breakEgg(e, 'fuse');
       }
     }
     // win / fail
@@ -1093,9 +1093,9 @@ export class Sim {
     for (const b of this.bombs) if (b.alive && !b.lit && Math.hypot(b.body.getPosition().x - p.x, b.body.getPosition().y - p.y) < R) { b.lit = true; b.fuse = 0.25; const q = b.body.getPosition(); this.emit('bombLit', { x: q.x, y: q.y, chain: true }); }
   }
 
-  // ---------- predators (v3): snakes, barriers, eagle, fox thrower, chick pecks, danger cue ----------
+  // ---------- predators (v3): snakes, barriers, eagle, chick pecks, danger cue ----------
   // level.snake {delay, speed, a, len, size, kind, skin} or an array of them (SNAKE_KIND); level.barriers [{ring, a}]; level.eagle
-  // {delay, every}; level.fox {every, throws:[orb types], delay}. All state lives in plain objects that
+  // {delay, every}. All state lives in plain objects that
   // predState() copies, so rewind and the planner stay exact.
   get snake() { return this.snakes.find((s) => !s.gone) || null; } // v2 callers: the first live snake
 
@@ -1104,7 +1104,6 @@ export class Sim {
     this.snakes = [];
     this.barriers = [];
     this.eagle = null;
-    this.fox = null;
     this.danger = 0;
     const list = !L.snake ? [] : Array.isArray(L.snake) ? L.snake : [L.snake];
     // skins: the spec's, the kind's, else by index (offset by level) so two snakes never share one
@@ -1148,7 +1147,6 @@ export class Sim {
         carry: null, cid: 0, ctype: null, ct: 0, ox: 0, oy: 0, yx: 0, yy: 0, dzx: 0, dzy: 0, dk: '', dropId: 0, dropT: 0, dropArm: 0, idle: 0, n: 0, end: null, scr: 0, last: null, sx: 0, sy: 0,
       };
     }
-    if (L.fox) this.fox = { every: (L.fox.every || 8) * P.fox, throws: [...(L.fox.throws || ['thorn'])], t: L.fox.delay ?? 3, k: 0, x: 0, mood: 'smug', moodT: 0 };
   }
 
   predStep(dt) {
@@ -1164,11 +1162,9 @@ export class Sim {
     if (!end) this.clashStep(dt);
     else this.salEndStep(dt); // v3.2: the salamander dives (win) or grins (loss); in play boss.js v31Step drives it
     this.seaStep(dt, end); // v3.3: octopus and fish schools
-    if (end && this.den) this.denEnd(dt); // v3.5: in play boss.js v31Step drives it
+    this.thiefStep(dt); // v3.6: the weasel and the rats (sim/thieves.js)
     for (const b of this.barriers) if (b.alive && b.fire && (b.burn += dt / BURN_T) >= 1) this.removeBarrier(b, 'burn');
     if (this.eagle) this.eagleStep(dt); // after the level ends it flees (win) or gloats (loss)
-    if (this.fox && this.state === 'play') this.foxStep(dt);
-    else if (this.fox) this.foxEnd(dt);
     this.peckStep(dt);
     this.dangerStep();
   }
@@ -2044,28 +2040,6 @@ export class Sim {
     return false;
   }
 
-  // The level is decided: the fox ducks out of sight on a win, laughs on a fail
-  foxEnd(dt) {
-    const F = this.fox, won = this.state === 'winning' || this.state === 'won';
-    F.duck = Math.min(1, (F.duck || 0) + (won ? dt * 2 : 0));
-    F.mood = won ? 'shocked' : 'laugh'; F.moodT = 9; F.t = 9;
-  }
-
-  // Fox thrower (G36): strolls along the top of the vault and drops an orb into the outer channel.
-  foxStep(dt) {
-    const F = this.fox, n = this.rings.length;
-    F.x = Math.sin(this.t * 0.35) * this.outerR * 0.45;
-    if (F.moodT > 0 && (F.moodT -= dt) <= 0) F.mood = 'smug';
-    if ((F.t -= dt) > 0) return;
-    F.t = F.every;
-    if (this.orbs.filter((o) => o.alive && o.src === 'fox').length >= 3) return;
-    const type = F.throws[F.k++ % F.throws.length];
-    const fy = this.outerR + 0.35, o = this.addOrb(type, n - 1, Math.atan2(fy, F.x), 'fox');
-    F.mood = 'laugh';
-    F.moodT = 1.4;
-    this.emit('foxThrow', { power: o.type, x: F.x, y: fy, x2: o.x, y2: o.y });
-  }
-
   // danger cue (I8): 0..1 while a snake head is within one ring of an egg (or the eagle eyes one)
   dangerStep() {
     const n = this.rings.length;
@@ -2083,7 +2057,7 @@ export class Sim {
     const E = this.eagle;
     if (E && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tk !== 'orb') lv = Math.max(lv, E.reach ? 0.9 : 0.5);
     if (this.sals && this.sals.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.7 * this.salThreat(e)); // v3.2: a breath aimed at an egg
-    if (this.den) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.denThreat(e)); // v3.5: the den fox
+    if (this.thieves.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.thiefThreat(e)); // v3.6: the thieves
     lv = Math.round(lv * 10) / 10;
     if (lv !== this.danger) { this.danger = lv; this.emit('danger', { level: lv }); }
   }
@@ -2093,7 +2067,6 @@ export class Sim {
       snakes: this.snakes.map((S) => ({ ...S, pts: S.pts.map((q) => ({ ...q })), spit: S.spit ? { ...S.spit } : null })),
       barriers: this.barriers.map((b) => [b.alive, b.melt, b.burn, b.fire, b.venom]),
       eagle: this.eagle ? { ...this.eagle } : null,
-      fox: this.fox ? { ...this.fox, throws: [...this.fox.throws] } : null,
       danger: this.danger,
       clash: [this.clashCD, this.clashN, this.predPts],
       vh: this.rings.map((r) => r.segs.map((g) => (g.vh ? 1 : 0))),
@@ -2113,7 +2086,6 @@ export class Sim {
       const e = this.eagle.carry === 'egg' && this.eagleEgg();
       if (e) e.body.setActive(false); // a catch in the talons is out of the physics world
     }
-    if (P.fox) this.fox = { ...P.fox, throws: [...P.fox.throws] };
     this.danger = P.danger || 0;
     [this.clashCD, this.clashN, this.predPts] = P.clash || [0, 0, 0];
     (P.vh || []).forEach((r, i) => r.forEach((v, k) => { this.rings[i].segs[k].vh = v; }));
@@ -2185,7 +2157,7 @@ export class Sim {
     const ring = this.rings[B.ri], p = this.boltPoint(B);
     ring.stun = Math.max(ring.stun, 1.5);
     this.emit('lightning', { x: p.x, y: p.y, ring: B.ri });
-    animalsHit(this, 'bolt', { x: p.x, y: p.y, r: 0.8 }); // v3.1: snakes, the eagle and the fox react
+    animalsHit(this, 'bolt', { x: p.x, y: p.y, r: 0.8 }); // v3.1: snakes, the eagle and the thieves react
     for (const e of this.aliveEggs()) {
       const q = e.body.getPosition();
       if (Math.hypot(q.x - p.x, q.y - p.y) < 0.6) this.crack(e, 0, 'lightning');
@@ -2248,7 +2220,7 @@ export class Sim {
     EGG_KEYS.push('hotK'); // v3.2: the salamander breath that last scorched it
     EGG_KEYS.push('octo'); // v3.3: held by octopus (id + 1)
     EGG_KEYS.push(...P2_KEYS); // v3.4 powers
-    EGG_KEYS.push('foxd'); // v3.5: in the den fox's jaws (1) or den (2)
+    EGG_KEYS.push('thf'); // v3.6: held by a thief (1) or in its den (2)
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2280,7 +2252,7 @@ export class Sim {
       ally: this.allyState(), // v3.4 farm allies
       sea: this.seaState(), // v3.3 octopus and fish
       p2: this.p2State(), // v3.4 powers
-      den: this.denState(), // v3.5 the den fox
+      thieves: this.thiefState(), // v3.6 the weasel and the rats
     };
   }
 
@@ -2337,7 +2309,7 @@ export class Sim {
     sim.allyLoad(S.ally); // v3.4 farm allies
     sim.seaLoad(S.sea); // v3.3 octopus and fish
     sim.p2Load(S.p2); // v3.4 powers
-    sim.denLoad(S.den); // v3.5 the den fox
+    sim.thiefLoad(S.thieves); // v3.6 the weasel and the rats
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2498,7 +2470,7 @@ export class Sim {
   }
 
   fuseRate() {
-    return this.slowT > 0 ? 0 : this.curseT > 0 ? 2 : 1; // hourglass stops the fuse, the fox curse doubles it
+    return this.slowT > 0 ? 0 : this.curseT > 0 ? 2 : 1; // hourglass stops the fuse, the curse doubles it
   }
 
   // crack ladder (G34): cracks for a fall through n rings at once. 1 ring is always safe; 2 = 1 crack,
@@ -2521,11 +2493,11 @@ export class Sim {
     if (egg.cracks + d >= 3) { egg.cracks = 3; this.breakEgg(egg, 'fall'); } else this.crack(egg, 0, 'fall', d);
   }
 
-  // Global powers (G29 hourglass, G39 feather, G40 rock skin, G30 fox curse).
+  // Global powers (G29 hourglass, G39 feather, G40 rock skin, G30 curse orb).
   v3Power(t, egg) {
     const T = V3_POWER[t], eggs = this.aliveEggs();
     if (t === 'hourglass') this.slowT = T;
-    else if (t === 'foxcurse') { this.curseT = T; for (const e of eggs) e.curse = T; }
+    else if (t === 'curse') { this.curseT = T; for (const e of eggs) e.curse = T; }
     else if (t === 'feather') { this.guardT = T; for (const e of eggs) e.guard = T; }
     else if (t === 'rockskin') {
       this.skinT = T;
@@ -2560,7 +2532,7 @@ export class Sim {
     off('slowT', 'hourglass');
     off('guardT', 'feather');
     off('skinT', 'rockskin');
-    off('curseT', 'foxcurse');
+    off('curseT', 'curse');
     if (this.curseT > 0 && (this.jitT -= DT) <= 0) {
       this.jitT = 0.18; // cursed eggs twitch
       for (const e of this.aliveEggs()) if (e.curse > 0 && e.honey <= 0) { const m = e.body.getMass(); e.body.applyLinearImpulse(Vec2((this.rand() - 0.5) * 0.8 * m, this.rand() * 0.4 * m), e.body.getPosition(), true); }
@@ -2731,6 +2703,6 @@ Object.assign(Sim.prototype, allyMethods); // v3.4 farm allies (sim/allies.js)
 Object.assign(Sim.prototype, seaMethods); // v3.3 octopus and fish schools (sim/sea.js)
 Object.assign(Sim.prototype, p2Methods); // v3.4 powers and combos (sim/powers2.js)
 Object.assign(Sim.prototype, warpMethods); // v3.4 warp gate (sim/warp.js)
-Object.assign(Sim.prototype, denMethods); // v3.5 the den fox (sim/foxden.js)
+Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves.js)
 
 export { EGG_H, EGG_W, RING_TH };

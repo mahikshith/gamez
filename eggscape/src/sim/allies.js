@@ -10,8 +10,9 @@
 // boss 2 s (Medium; Easy lasts longer, Hard shorter), and the boss skips its next attack. The shockwave also nudges every
 // egg a little along its channel, away from where it stands.
 // Goose: waddles in on the ground, hisses, then charges once round the outer rim of the vault honking. It knocks ONE of
-// the fox, the eagle or a snake out of the vault (auto-picked, the most dangerous; opts.target = 'snake'|'eagle'|'fox',
-// opts.id = a snake id). The snake, the eagle or the fox comes back later. Its charge also bumps every egg sitting in the
+// the eagle or a snake out of the vault, or honks a thief in the outermost channel into dropping its egg and running home
+// (auto-picked, the most dangerous; opts.target = 'snake'|'eagle'|'thief', opts.id = a snake or thief id). The snake and
+// the eagle come back later; the thief comes out of its den again. Its charge also bumps every egg sitting in the
 // outermost channel (the one it runs past; an egg resting where it does not run feels the thump as it hops on or off):
 // forward along the channel, and up off the floor.
 import { Vec2 } from 'planck';
@@ -25,7 +26,7 @@ export const ALLY = {
   kinds: ['rooster', 'goose'],
   // [phase, seconds]: the animation timeline (the sim effect happens inside it, see `blast` and the goose hit)
   rooster: { size: 1.15, seq: [['in', 1.5], ['land', 0.4], ['puff', 0.55], ['crow', 1.1], ['strut', 1.2], ['out', 1.4]], blast: 0.22, strut: 0.9, stun: 3, boss: 2, nudge: 1.7 },
-  goose: { size: 1.1, seq: [['in', 1.9], ['hiss', 0.8], ['charge', 2.5], ['off', 1.8]], arc: 220, lift: -0.22, hitStop: 0.5, fling: 1.0, away: { snake: 12, eagle: 10, fox: 9 }, bump: 0.9, pop: 0.5 },
+  goose: { size: 1.1, seq: [['in', 1.9], ['hiss', 0.8], ['charge', 2.5], ['off', 1.8]], arc: 220, lift: -0.22, hitStop: 0.5, fling: 1.0, away: { snake: 12, eagle: 10, thief: 9 }, bump: 0.9, pop: 0.5 },
   edge: 3.05, // m from the middle where the goose waits on the ground and lands
 };
 // Easy: stuns last longer and the downside is lighter; Hard the other way round (Medium is the numbers above)
@@ -139,16 +140,16 @@ export const allyMethods = {
   allyBoss() { return this.bx && this.bx.boss; },
   allySnakes() { return this.snakes.filter((S) => !S.gone && S.inside && S.flee < 0 && S.pts.length > 1); },
   allyEagle() { const E = this.eagle; return E && !E.end && E.phase !== 'away' && E.phase !== 'enter' ? E : null; },
-  allyFox() { const F = this.fox; return F && !(F.out > 0) && this.state === 'play' ? F : null; },
+  allyThieves() { return this.state === 'play' ? (this.thieves || []).filter((T) => this.thLive(T)) : []; },
   allyHasTarget() {
-    return !!(this.allyBoss() || this.allySnakes().length || (this.sals || []).some((C) => this.salLive(C)) || this.allyEagle() || this.allyFox());
+    return !!(this.allyBoss() || this.allySnakes().length || (this.sals || []).some((C) => this.salLive(C)) || this.allyEagle() || this.allyThieves().length);
   },
 
   roosterPlan() {
     if (!this.allyHasTarget()) return null;
-    const F = this.fox, fx = F ? F.x : 0, B = this.allyBoss();
-    // lands on the side of the vault the fox (or the boss) is not standing on
-    const bx = B ? B.x : fx, lx = Math.abs(1.8 - bx) >= Math.abs(-1.8 - bx) ? 1.8 : -1.8;
+    const B = this.allyBoss();
+    // lands on the side of the vault the boss is not standing on
+    const bx = B ? B.x : 0, lx = Math.abs(1.8 - bx) >= Math.abs(-1.8 - bx) ? 1.8 : -1.8;
     return { kind: 'rooster', ph: 'in', t: 0, sd: lx > 0 ? 1 : -1, lx, fx: 0 };
   },
 
@@ -163,8 +164,10 @@ export const allyMethods = {
     }
     const E = this.allyEagle();
     if (E && want('eagle') && E.phase !== 'dazed') out.push([E.phase === 'warn' || E.phase === 'dive' || E.phase === 'strike' || E.phase === 'carry' ? 3.5 : 1.5, 'eagle', E]);
-    const F = this.allyFox();
-    if (F && want('fox')) out.push([1.2, 'fox', F]);
+    if (want('thief')) for (const T of this.allyThieves()) { // only the outermost channel is in its reach
+      if (T.ch !== this.rings.length - 1 || (o.id != null && o.target === 'thief' && T.id !== o.id)) continue;
+      out.push([(T.eid ? 3 : T.ph === 'crouch' || T.ph === 'brace' ? 2.5 : 1.2) + (T.boss ? 0.5 : 0), 'thief', T]);
+    }
     out.sort((a, b) => b[0] - a[0]);
     return out[0] || null;
   },
@@ -174,28 +177,24 @@ export const allyMethods = {
     const [, vk, V] = pick, R = this.outerR, p = this.allyVictimPos(vk, V);
     return {
       kind: 'goose', ph: 'in', t: 0, sd: p.x > 0 ? -1 : 1, u: 0, d: 0, hs: 0, hit: 0, hitD: 0,
-      vk, vid: vk === 'snake' ? V.id : 0, sa: Math.atan2(p.y, p.x), ox: 0, oy: 0, vx: 0, vy: 0, tau: -1,
+      vk, vid: vk === 'snake' || vk === 'thief' ? V.id : 0, sa: Math.atan2(p.y, p.x), ox: 0, oy: 0, vx: 0, vy: 0, tau: -1,
     };
   },
   allyVictimPos(vk, V) {
     if (vk === 'snake') { const h = V.pts[0] || { x: V.rad * Math.cos(V.a), y: V.rad * Math.sin(V.a) }; return { x: h.x, y: h.y }; }
     if (vk === 'eagle') return { x: V.x, y: V.y };
-    return { x: V.x, y: this.outerR + 0.45 };
+    return this.thBody(V);
   },
   allyVictim(act) {
     if (act.vk === 'snake') return this.snakes.find((S) => S.id === act.vid) || null;
-    return act.vk === 'eagle' ? this.eagle : this.fox;
+    if (act.vk === 'thief') return (this.thieves || []).find((T) => T.id === act.vid) || null;
+    return act.vk === 'eagle' ? this.eagle : null;
   },
 
   // ---------- every step (sim.js step(), after predStep)
   allyStep(dt) {
     const A = this.ally;
     if (!A) return;
-    const F = this.fox;
-    if (F && F.out > 0) { // a fox knocked off the vault: hidden (ducked) until it comes back, then it pops up again
-      F.out -= dt; F.t = Math.max(F.t, 1.5); F.duck = 1;
-      if (F.out <= 0) { F.out = 0; F.duck = 0.99; F.mood = 'shocked'; F.moodT = 0.8; }
-    } else if (F && F.duck > 0 && F.duck < 1 && this.state === 'play') F.duck = Math.max(0, F.duck - dt * 2.2);
     const act = A.act;
     if (!act) return;
     act.t += dt;
@@ -228,8 +227,7 @@ export const allyMethods = {
     for (const S of this.schools || []) if (this.fishStun(S, T, false)) n++;
     const E = this.allyEagle();
     if (E) { this.hitEagle('crow', {}); if (E.phase === 'dazed') E.t = bk === 'eagle' ? TB : T; n++; }
-    const F = this.allyFox();
-    if (F) { F.t += T; F.mood = 'shocked'; F.moodT = T; n++; }
+    for (const V of this.allyThieves()) { this.thDaze(V, V.boss ? TB : T, 'crow'); n++; } // v3.6: the weasel and the rats
     n += this.frogHit('crow', T); // v3.5: the frog is stunned too
     if (B) { bossStun(this, TB); n++; }
     // the downside: the shockwave nudges every egg along its channel, away from where it stands
@@ -289,7 +287,7 @@ export const allyMethods = {
     act.vx = (p.x / l) * 7 + (Math.abs(p.x / l) < 0.2 ? -act.sd * 2.5 : 0); act.vy = (p.y / l) * 7 + 4;
     if (act.vk === 'snake') { V.carried = true; V.held = 1; V.carryX = p.x; V.carryY = p.y; V.stun = 0; }
     else if (act.vk === 'eagle') { this.eagleDaze('goose'); }
-    else { V.duck = 1; V.out = (G.away.fox) * this.AM.away + G.fling; V.t = Math.max(V.t, V.out); V.mood = 'shocked'; V.moodT = 3; } // the fox: hidden while it flies and for a while after
+    else { this.thiefKnock(V); act.tau = -1; } // a thief inside the vault is not thrown: it lets go and bolts for its den
     this.emit('allyKnock', { x: at.x, y: at.y, kind: act.vk });
   },
   // fling the victim along its arc; when it is far enough it leaves and comes back after the away time

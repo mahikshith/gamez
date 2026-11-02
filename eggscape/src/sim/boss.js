@@ -3,15 +3,15 @@
 // sim.bx (copied by v31State / restored by v31Load), so rewind, the planner and the in-game hint stay exact.
 //
 // level.bossFight = { kind, hp?, delay?, gale?, throws?, phases: [{ at?: {saved, t}, attacks: [names], every, ... }] }
-//   kind: fox snake blizzard golem salamander storm foxking. A phase starts when `saved` eggs are in the nest or
+//   kind: weasel snake blizzard golem salamander storm ratking. A phase starts when `saved` eggs are in the nest or
 //   `t` seconds have passed (Medium; scaled by the mode), whichever comes first. Attacks run in the listed order,
 //   one every `every` seconds, each with a telegraph (WARN) first. Saving an egg staggers the boss: the attack it
 //   is winding up is cancelled.
 //   attacks: gale (blizzard wind), freeze (one ring can't turn), icicles (volley over the eggs), stomp (golem:
 //   quake, crystal walls, glass cracks), punch (golem: spins a ring 90 deg), rock / rock2 (salamander: aimed lava
-//   rocks), throw / throw2 (fox: aimed orbs), fog (fox king: hides a ring), bolt / bolt2 (storm: lightning aimed at
+//   rocks), throw / throw2 (weasel, Rat King: aimed orbs), fog (Rat King: hides a ring), bolt / bolt2 (storm: lightning aimed at
 //   the ring section under an egg). Phase flags: heat (salamander: eggs that wait too long in one channel crack),
-//   summon (the level's waiting snakes come in).
+//   summon (the level's waiting snakes and rats come in).
 // level.gusts = { every, delay, strength, dur }: telegraphed wind (streaks first) that shoves eggs and snakes.
 // level.icicles = { every, delay, big } (Frozen Lake): an icicle grows on the ring right above an egg, shakes,
 //   then drops. It cracks an egg it hits; on a ring floor it leaves a frictionless ice patch. Every `big`-th drop
@@ -30,7 +30,7 @@ const WARN = { gale: 1.1, freeze: 1.0, icicles: 1.0, stomp: 1.0, punch: 1.1, roc
 const GALE_T = 2.6, FREEZE_T = 4, FROST_ORB_T = 3, CHUNK_FREEZE_T = 3, FOG_T = 3.5, WALL_T = 8, ICE_WALL_T = 6, PATCH_T = 6;
 const ICE_HANG = 1.1; // s an icicle shakes before it drops (level icicles; a volley uses WARN.icicles)
 const THROW_FLY = 0.6, PUNCH_W = 2.4, HEAT_T = 9;
-export const BOSS_TITLE = { fox: 'The Fox', snake: 'Serpent Hollow', blizzard: 'The Blizzard', golem: 'Crystal Golem', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', foxking: 'The Fox King' };
+export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'The Blizzard', golem: 'Crystal Golem', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King' };
 export const ATTACK_NAME = { gale: 'Gale', freeze: 'Freeze breath', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning' };
 const RING_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING
 
@@ -100,14 +100,13 @@ export function v31Step(sim, dt) {
   wallsStep(sim, dt);
   iceStep(sim, dt);
   if (X.gust && sim.state === 'play') gustStep(sim, X.gust, dt);
-  if (sim.den && sim.state === 'play') sim.denStep(dt); // v3.5: the den fox (sim/foxden.js)
   if (X.boss && sim.state === 'play') bossStep(sim, X.boss, dt);
 }
 
 // ---------- the weather and the bosses hit the animals too
 // kind: 'gust' 'rock' 'lava' 'ice' 'bolt' 'quake'. Salamanders get sim.hitSalamander, snakes sim.hitSnake (the snakes' own reaction, when it
-// exists), the eagle sim.hitEagle (its own, when it exists); the fox flinches on a quake or lightning and misses
-// his next throw.
+// exists), the eagle sim.hitEagle (its own, when it exists), the thieves sim.thiefHit (a hit when trapped, else a
+// daze); a thief boss winding up a throw on a quake or lightning loses it.
 // o: {x, y, r (reach; Infinity = everywhere), dir, power}. Returns how many animals it reached.
 export function animalsHit(sim, kind, o = {}) {
   const x = o.x ?? 0, y = o.y ?? 0, r = o.r ?? Infinity;
@@ -128,11 +127,10 @@ export function animalsHit(sim, kind, o = {}) {
   const E = sim.eagle;
   if (E && sim.hitEagle && (r === Infinity || Math.hypot((E.x ?? 0) - x, (E.y ?? 0) - y) < (kind === 'bolt' ? 3 : r + 0.6))) { n++; sim.hitEagle(kind, { x, y, dir: o.dir || 0, power: o.power ?? 1 }); }
   if (sim.seaHit) n += sim.seaHit(kind, o); // v3.3: the octopus lets go, fish scatter (sim/sea.js)
-  if (sim.den) n += sim.denHazard(kind, o); // v3.5: the den fox: a hit when trapped, else a daze
+  if (sim.thieves && sim.thieves.length) n += sim.thiefHit(kind, o); // v3.6: the weasel and the rats
   if (kind === 'quake' || kind === 'bolt') {
-    const F = sim.fox, B = sim.bx && sim.bx.boss;
-    if (F) { F.t += F.every * 0.5; F.mood = 'shocked'; F.moodT = 1.2; sim.emit('foxFlinch', { x: F.x, y: sim.outerR + 0.45 }); }
-    if (B && (B.kind === 'fox' || B.kind === 'foxking') && B.atk && B.atk.ph === 'warn') { B.atk = null; B.t = 1.5; B.flinch = 0.8; sim.emit('foxFlinch', { x: B.x, y: B.y }); }
+    const B = sim.bx && sim.bx.boss;
+    if (B && B.den && B.atk && B.atk.ph === 'warn') { B.atk = null; B.t = 1.5; B.flinch = 0.8; sim.emit('bossFlinch', { x: B.x, y: B.y }); }
   }
   return n;
 }
@@ -165,7 +163,7 @@ function ceilingAbove(sim, p) {
 function targets(sim) {
   const n = sim.rings.length, D = sim.p2Lure && sim.p2Lure(); // v3.4: a decoy draws the attack first
   // v3.4: a shrunk egg is hard to spot, so it is aimed at last (bosses resist: they still find it when it is all there is)
-  const T = sim.aliveEggs().filter((e) => sim.channelOf(e) < n && !e.foxd).sort((a, b) => (a.shrink > 0) - (b.shrink > 0) || sim.channelOf(b) - sim.channelOf(a) || a.id - b.id);
+  const T = sim.aliveEggs().filter((e) => sim.channelOf(e) < n && !e.thf).sort((a, b) => (a.shrink > 0) - (b.shrink > 0) || sim.channelOf(b) - sim.channelOf(a) || a.id - b.id);
   return D && sim.channelOf(D) < n ? [D, ...T] : T;
 }
 function hangIcicle(sim, egg, big, hang) {
@@ -294,6 +292,7 @@ function bossPhaseOn(sim, B, first) {
   B.phaseSaved = sim.savedLog.length;
   B.k = 0;
   if (P.summon) for (const S of sim.snakes) if (!S.gone && S.wait > 1.5) { S.wait = 1.5; sim.emit('bossSummon', { x: B.x, y: B.y }); }
+  if (P.summon) for (const T of sim.thieves || []) if (T.ph === 'wait' && T.t > 1.5) { T.t = 1.5 + 1.2 * T.slot; sim.emit('bossSummon', { x: B.x, y: B.y, who: 'rats' }); } // v3.6: the Rat King's rats
   if (!first) B.dizzy = 1.8; // the old phase ends: the boss reels (drawn dizzy), then comes back angrier
   if (!first) sim.emit('bossPhase', { kind: B.kind, phase: B.phase, n: bossPhases(sim).length, attacks: P.attacks || [], x: B.x, y: B.y });
 }
@@ -322,14 +321,14 @@ function bossStep(sim, B, dt) {
   const A = B.atk;
   if (A && A.name === 'gale') gx = A.dir * R * 0.3; // upwind: the swirl runs leftward over the top when dir is +1
   else if (A && A.aim) gx = clamp(A.aim, -R * 0.6, R * 0.6);
-  if (B.kind === 'golem' || B.kind === 'salamander' || B.kind === 'fox' || B.kind === 'foxking') gy = R + 0.75;
+  if (B.kind === 'golem' || B.kind === 'salamander' || B.den) gy = R + 0.75;
   if (A && A.name === 'stomp' && A.ph === 'warn') gy += 0.7 * Math.sin(Math.PI * clamp(1 - A.t / A.dur, 0, 1) * 0.5); // rises before the slam
   const s = Math.min(1, dt * 3);
   if (Math.abs(gx - B.x) > 0.02) B.face = gx > B.x ? 1 : -1;
   B.x += (gx - B.x) * s;
   B.y += (gy - B.y) * Math.min(1, dt * (A && A.name === 'stomp' && A.ph === 'act' ? 30 : 4));
   if (B.kind === 'salamander') sim.salBossPose?.(B); // the creature is the boss: its lava rocks come from its mouth
-  else if (B.den) sim.denBossPose(B); // v3.5: the den fox throws from its mouth
+  else if (B.den) sim.thiefBossPose(B); // v3.6: the thief boss throws from its mouth
   // quake after a stomp
   if (B.quake > 0) {
     B.quake -= dt;
@@ -345,13 +344,13 @@ function bossStep(sim, B, dt) {
   if (!A) {
     if ((B.t -= dt) > 0 || !ph.attacks || !ph.attacks.length) return;
     const name = ph.attacks[B.k++ % ph.attacks.length];
-    const a = B.den && !sim.denCanThrow() ? null : startAttack(sim, B, name, M); // v3.5: a busy or trapped den fox can't attack
+    const a = B.den && !sim.thiefCanThrow() ? null : startAttack(sim, B, name, M); // v3.6: a busy or trapped thief boss can't attack
     if (!a) { B.t = 1; return; }
     a.name = name;
     a.ph = 'warn';
     a.dur = a.t = (WARN[name] || 1) * M.warn;
     B.atk = a;
-    if (B.den) sim.denToss(a.dur + 0.35);
+    if (B.den) sim.thiefToss(a.dur + 0.35);
     sim.emit('bossWarn', { kind: B.kind, attack: name, x: B.x, y: B.y, ring: a.ring, dir: a.dir });
     return;
   }
@@ -420,7 +419,7 @@ function startAttack(sim, B, name, M) {
     }
     case 'throw': case 'throw2': {
       const spots = [], two = name === 'throw2';
-      const throws = F.throws || ['thorn', 'foxcurse'];
+      const throws = F.throws || ['thorn', 'curse'];
       for (const e of T.slice(0, two ? 2 : 1)) { const p = e.body.getPosition(); spots.push({ x: p.x, y: p.y, ch: sim.channelOf(e), type: throws[B.tk++ % throws.length] }); }
       if (two && spots.length === 1) {
         // one egg left: the second throw lands ahead of it, on its way to the nearest gap
@@ -585,16 +584,16 @@ export function galeNow(sim) {
   return A.dir * clamp(Math.min((A.dur - A.t) / 0.3, A.t / 0.4), 0, 1);
 }
 
-// thrown orbs fly from the fox to their marked spot, then float there as orbs
+// thrown orbs fly from the boss to their marked spot, then float there as orbs
 function thrownStep(sim, B, dt) {
   for (let i = B.throws.length - 1; i >= 0; i--) {
     const T = B.throws[i];
     if ((T.t += dt) < THROW_FLY) continue;
     B.throws.splice(i, 1);
-    const mine = sim.orbs.filter((o) => o.alive && o.src === 'fox');
+    const mine = sim.orbs.filter((o) => o.alive && o.src === 'boss');
     if (mine.length >= 4) { mine[0].alive = false; sim.kill.push(mine[0].body); }
-    const o = sim.addOrb(T.type, Math.min(T.ch, sim.rings.length - 1), Math.atan2(T.y, T.x), 'fox', Math.hypot(T.x, T.y));
-    sim.emit('foxThrow', { power: o.type, x: T.x0, y: T.y0, x2: o.x, y2: o.y });
+    const o = sim.addOrb(T.type, Math.min(T.ch, sim.rings.length - 1), Math.atan2(T.y, T.x), 'boss', Math.hypot(T.x, T.y));
+    sim.emit('bossThrow', { power: o.type, x: T.x0, y: T.y0, x2: o.x, y2: o.y });
   }
 }
 

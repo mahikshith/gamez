@@ -199,7 +199,7 @@ const MOOD_WORDS = [
   ['underwater', ['underwater', 'coral', 'reef', 'ocean', 'sea', 'water', 'aqua']],
   ['storm', ['storm', 'thunder', 'sky', 'tense', 'rain']],
   ['volcano', ['volcano', 'dragon', 'lava', 'fire', 'driving', 'lair']],
-  ['heist', ['heist', 'vault', 'finale', 'fox', 'clock', 'groove']],
+  ['heist', ['heist', 'vault', 'finale', 'thief', 'clock', 'groove']],
   ['adventure', ['adventure', 'wood', 'forest', 'bramble', 'jungle', 'ruin', 'pine', 'mushroom', 'glade', 'pirate', 'cove']],
 ];
 export const MOODS = Object.keys(PRESETS);

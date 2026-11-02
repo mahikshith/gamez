@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Slice the approved reference-sheet cells into game sprites (cream bg -> alpha, trim, resize, WebP).
 Usage: python3 tools/slice-sprites.py [sheet dir]   (default: $EGG_SHEETS or ./refs/Eggscape-reference-sheets)
-Needs S03-hen-chick-fox.png, S05-orbs.png, S09-bosses.png (1254x1254). Writes assets/sprites/<id>.webp."""
+Needs the S03 (hen sheet), S05-orbs.png, S09-bosses.png (1254x1254). Writes assets/sprites/<id>.webp."""
 import os, sys
 from collections import deque
 import numpy as np
@@ -18,17 +18,18 @@ POCKETS = {'boss_snake'}  # enclosed background pockets to clear too (gap inside
 Q = 80
 
 # cell boundaries measured from the sheets (grids are not perfectly even)
-S03 = dict(file='S03-hen-chick-fox.png', xs=[3, 314, 627, 940, 1251], ys=[3, 418, 804, 1251])
+S03 = dict(file=next(iter(sorted(__import__('glob').glob('S03-*.png'))), 'S03.png'), xs=[3, 314, 627, 940, 1251], ys=[3, 418, 804, 1251])
 S05 = dict(file='S05-orbs.png', xs=[3, 318, 622, 928, 1251], ys=[3, 308, 598, 890, 1251])
 S09 = dict(file='S09-bosses.png', xs=[3, 315, 627, 939, 1251], ys=[3, 626, 1251])
-ORBS = 'fire_red fire_black fire_green fire_gold stone bubble water thunder thorn magnet twin golden hourglass feather rockskin foxcurse'.split()
+# the last orb cell (the old curse orb) is not sliced: the curse orb is code-drawn (render/powers.js)
+ORBS = 'fire_red fire_black fire_green fire_gold stone bubble water thunder thorn magnet twin golden hourglass feather rockskin'.split()
 JOBS = [(S05, 'orb', [(i % 4, i // 4, 'orb_' + n) for i, n in enumerate(ORBS)], 128)]
-JOBS += [(S03, 'face', [(0, 0, 'hen_dance'), (1, 0, 'hen_worried'), (2, 0, 'hen_cry'), (3, 0, 'hen_proud'),
-                        (0, 2, 'fox_evil'), (1, 2, 'fox_laugh'), (2, 2, 'fox_cry'), (3, 2, 'fox_shock')], 256)]
+JOBS += [(S03, 'face', [(0, 0, 'hen_dance'), (1, 0, 'hen_worried'), (2, 0, 'hen_cry'), (3, 0, 'hen_proud')], 256)]
 # boss portraits ship as WHOLE cards (the art runs off the cell edges, so a cut-out looks chopped): the full cell,
 # rounded corners, nothing removed. win_hen stays a cut-out (it sits fully inside its cell).
+# cells 0 and 6 (the old thief portraits) are skipped: the weasel and Rat King cards are code-drawn (render/thieves.js)
 JOBS += [(S09, 'card', [(i % 4, i // 4, n) for i, n in enumerate(
-    'boss_fox boss_snake boss_blizzard boss_golem boss_salamander boss_eagle boss_foxking'.split())], 384)]
+    '- boss_snake boss_blizzard boss_golem boss_salamander boss_eagle -'.split()) if n != '-'], 384)]
 JOBS += [(S09, 'boss', [(3, 1, 'win_hen')], 384)]
 CARD_INSET = 10  # px off each cell edge: drops the grey divider lines
 CARD_R = 0.07    # corner radius as a share of the card width

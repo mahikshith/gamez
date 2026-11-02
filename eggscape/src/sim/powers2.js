@@ -19,7 +19,7 @@
 //   decoy       : a fake egg every creature chases for DECOY.t s | it is big: it can plug a gap
 //   warp        : the next creature strike is swallowed by a portal and the creature spat out far away (sim/warp.js) |
 //                 the gate pulls in eggs rolling into it; it fires on the first strike
-// Creatures: snakes, the salamander, the eagle, the fox thrower and the bosses. Bosses resist (BOSS_RESIST of the
+// Creatures: snakes, the salamander, the eagle, the thieves (weasel, rats) and the bosses. Bosses resist (BOSS_RESIST of the
 // time); the salamander is a fire creature (frost holds it half as long); a snake boss resists like a boss.
 //
 // Combos (COMBOS): when a power starts while its partner is active, the combo fires (event 'p2Combo').
@@ -71,7 +71,7 @@ export const p2Methods = {
     this.p2M = P2_MODE[this.mode] || P2_MODE.medium;
     this.p2 = {
       nova: 0, shock: 0, shockR: -1, dark: 0, clap: 0, laser: 0, shots: 0, aim: -Math.PI / 2, sweep: -1, sweepA: 0, sweepDir: 1,
-      spin: 0, spinMax: 0, spinDir: 1, pep: 0, cloud: null, shrink: 0, iron: 0, decoy: null, foxOut: 0,
+      spin: 0, spinMax: 0, spinDir: 1, pep: 0, cloud: null, shrink: 0, iron: 0, decoy: null,
       beams: [], fx: {}, pads: [], n: 0, warp: null,
     };
     this.p2d = null; // the decoy's body ({decoy, id, alive, chick, body}); its plain state is p2.decoy
@@ -197,8 +197,7 @@ export const p2Methods = {
     for (const S of this.p2Snakes()) this.p2Snake(S, kind, T);
     for (const C of this.p2Sals()) this.p2Sal(C, kind, T);
     if (this.p2Eagle()) this.p2EagleHit(kind, T);
-    if (this.fox) this.p2Fox(kind, T);
-    if (this.den) this.denP2(kind, T); // v3.5: the den fox shows its own frozen / stunned states
+    this.thiefP2(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v3.6: the weasel and the rats show their own frozen / stunned states
     this.p2Boss(kind, T);
     this.frogHit(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v3.5: the frog is a creature too (frozen / stunned)
     this.seaP2?.(kind, T); // v3.5: the octopus (sim/sea.js): frozen, or stunned
@@ -285,14 +284,6 @@ export const p2Methods = {
       E.next = Math.max(E.next, kind === 'spin' ? 3 : T * f);
       this.p2Mark('e', kind === 'pepper' ? 'pep' : kind === 'zap' ? 'zap' : 'scare', Math.min(T, 3), E.x, E.y);
     }
-  },
-
-  p2Fox(kind, T) {
-    const F = this.fox, y = this.outerR + 0.45, t = kind === 'spin' ? 3 : kind === 'scare' ? 4 : kind === 'bolt' ? P2.thunderclap.stun : T;
-    F.t = Math.max(F.t, 0) + t; // his next throw waits
-    F.mood = 'shocked'; F.moodT = Math.min(t, 2.5);
-    if (kind === 'out') this.p2.foxOut = T;
-    this.p2Mark('f', kind === 'out' ? 'ice' : kind === 'bolt' || kind === 'zap' ? 'zap' : kind === 'pepper' ? 'pep' : kind, Math.min(t, kind === 'ice' ? t : 3), F.x, y);
   },
 
   // the bosses over the vault (the snake and salamander bosses are the creatures above): a short stun, the attack it
@@ -418,7 +409,7 @@ export const p2Methods = {
     for (const C of this.p2Sals()) if (C.pts.some((q, i) => i % 3 === 0 && test(q.x, q.y, 0.3)) && C.ph !== 'retreat') this.p2Sal(C, 'scare', T);
     const E = this.p2Eagle();
     if (E && test(E.x, E.y, 0.9) && E.phase !== 'dazed' && E.phase !== 'up') this.p2EagleHit('scare', T);
-    if (this.fox && test(this.fox.x, this.outerR + 0.45, 0.5) && this.p2.fx.f?.k !== 'scare') this.p2Fox('scare', T);
+    for (const V of this.thieves || []) { if (!this.thLive(V)) continue; const b = this.thBody(V); if (test(b.x, b.y, 0.3) && V.ph !== 'home') this.thiefP2Only(V, 'scare', T); }
     const B = this.bx && this.bx.boss;
     if (B && test(B.x, B.y, 0.9) && this.p2.fx.b?.k !== 'scare') this.p2Boss('scare', T);
     return n;
@@ -593,7 +584,6 @@ export const p2Methods = {
     }
     // the live ring zaps creatures touching it
     if (P.shock > 0 && play && P.shockR >= 0) this.p2ShockCreatures();
-    if (P.foxOut > 0 && this.fox) { P.foxOut = Math.max(0, P.foxOut - DT); this.fox.duck = P.foxOut > 0.6 ? Math.min(1, (this.fox.duck || 0) + DT * 4) : Math.max(0, (this.fox.duck || 0) - DT * 2); }
     // the decoy: time, the ground, the nest
     if (P.decoy) {
       const D = this.p2d;
@@ -618,10 +608,10 @@ export const p2Methods = {
       this.p2Mark('g' + F.id, 'zap', Math.min(2.5, T) + 1.8);
     }
     for (const S of this.schools || []) if (!(S.sn > 0 || S.fz > 0) && S.f.some((f) => Math.abs(f.r - R) < touch + 0.25)) this.p2Fish(S, 'bolt', 2.5);
-    if (P.shockR !== this.rings.length - 1) return; // the eagle, the fox and the bosses only meet the outer ring
+    this.thiefShock(P.shockR, T); // v3.6: a thief standing on the live ring
+    if (P.shockR !== this.rings.length - 1) return; // the eagle and the bosses only meet the outer ring
     const E = this.p2Eagle();
     if (E && !P.fx.e && Math.abs(Math.hypot(E.x, E.y) - R) < 0.9) { this.eagleDaze('shock'); E.t = 2.5; this.p2Mark('e', 'zap', 1.5, E.x, E.y); }
-    if (this.fox && !P.fx.f) this.p2Fox('zap', T);
     const B = this.bx && this.bx.boss;
     if (B && !P.fx.b && Math.hypot(B.x, B.y) < R + 1.3) this.p2Boss('zap', 3);
   },

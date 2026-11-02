@@ -3,7 +3,6 @@
 // Static scenery is prerendered into up to 3 parallax layers in resize(); draw() only blits
 // them plus a handful of animated elements. World camera is y-up (planck), meters.
 
-import { drawFox } from './render/characters.js';
 
 // ---------------------------------------------------------------- math / rng / color
 const TAU = Math.PI * 2;
@@ -1132,7 +1131,7 @@ ART.dragon = {
   },
 };
 
-// 20 ----------------------------------------------- The Fox's Vault
+// 20 ----------------------------------------------- The Thieves' Vault
 ART.vault = {
   veil: ['#06141a', 0.34],
   spark: '#ffb04d',
@@ -1152,7 +1151,7 @@ ART.vault = {
     // orange light strips on the sides
     S.lights = [];
     for (const y of [H * 0.12, H * 0.32, H * 0.62]) for (const [a, b] of [[0, W * 0.2], [W * 0.8, W]]) { glow(c, (a + b) / 2, y, (b - a) * 0.6, '#ff8a2a', 0.12); rect(c, a, y - 0.4 * u, b - a, 0.8 * u, '#ff9a3a'); rect(c, a, y - 0.15 * u, b - a, 0.3 * u, '#ffe0b0'); for (let k = 0; k < 2; k++) S.lights.push([lerp(a, b, R.r(0.15, 0.85)), y + 3 * u, R() * TAU, R.r(0.6, 1.6), R() < 0.5 ? '#3ef0e0' : '#ff9a3a']); }
-    // fox banners
+    // banners
     for (const x of S.port ? [W * 0.13, W * 0.87] : [W * 0.12, W * 0.88]) banner(c, S, x, S.port ? H * 0.03 : H * 0.06, (S.port ? 11 : 12) * u, (S.port ? 20 : 30) * u, u);
   },
   near(c, S) {
@@ -1165,17 +1164,32 @@ ART.vault = {
     S.tf(ctx, 0.4); const u = S.u;
     for (const [x, y, p, f, col] of S.lights) { const on = Math.sin(t * f * 2 + p) > 0.2 ? 1 : 0.25; ctx.globalAlpha = on; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 0.55 * u, 0, TAU); ctx.fill(); }
     ctx.globalAlpha = 1;
-    // the fox's reference portrait (the same art as the title, the cards and the thrower) on each banner
-    for (const [x, y, fs] of S.banners || []) drawFox(ctx, x, y, fs, 'smug', 0.3);
+    // a golden egg with a keyhole on each banner: the vault's crest
+    for (const [x, y, fs] of S.banners || []) crestEgg(ctx, x, y, fs);
     ctx.restore();
   },
 };
+function crestEgg(ctx, x, y, s) {
+  const h = s * 0.9, w = h * 0.74;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  for (let i = 0; i <= 24; i++) { const a = (i / 24) * TAU, sn = Math.sin(a); ctx.lineTo((w / 2) * Math.cos(a) * (1 + 0.13 * sn), (h / 2) * sn); }
+  ctx.closePath();
+  ctx.fillStyle = '#ffd75a'; ctx.fill();
+  ctx.lineWidth = Math.max(1, s * 0.07); ctx.strokeStyle = '#5a2e0e'; ctx.stroke();
+  ctx.fillStyle = '#d9a12c'; ctx.beginPath(); ctx.ellipse(w * 0.14, h * 0.12, w * 0.26, h * 0.26, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#3a1a08';
+  ctx.beginPath(); ctx.arc(0, -h * 0.06, w * 0.14, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-w * 0.07, -h * 0.02); ctx.lineTo(w * 0.07, -h * 0.02); ctx.lineTo(w * 0.1, h * 0.24); ctx.lineTo(-w * 0.1, h * 0.24); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
 function banner(c, S, x, y, w, h, u) {
   line(c, x - w * 0.6, y, x + w * 0.6, y, '#c8963e', 0.8 * u);
   poly(c, [x - w / 2, y, x + w / 2, y, x + w / 2, y + h, x, y + h - w * 0.35, x - w / 2, y + h], '#e86a1a');
   poly(c, [x - w / 2, y, x - w * 0.3, y, x - w * 0.3, y + h - w * 0.24, x - w / 2, y + h], '#ff8a34');
   rect(c, x - w / 2, y + 1 * u, w, 0.6 * u, '#ffd27a'); rect(c, x - w / 2, y + h * 0.82 - 1 * u, w, 0.4 * u, 'rgba(255,210,122,0.6)');
-  // the fox on the cloth is drawn in front() (the cached layer sits under the dark vignette), so remember where
+  // the crest on the cloth is drawn in front() (the cached layer sits under the dark vignette), so remember where
   (S.banners || (S.banners = [])).push([x, y + h * 0.43, Math.min(w * 0.8, h * 0.62)]);
 }
 
@@ -1219,7 +1233,7 @@ export const THEMES = [
   { id: 'haunted', name: 'Haunted Graveyard', palette: P('#120a26', '#6a4a8a', '#f4ecff', 'rgba(16,8,30,0.62)', '#b8ff6a', RING.bone, '#1a1028', '#b8a070', '#2a1c3a', '#4a3a5a'), material: 'bone', ground: 'dirt', ambient: 'fog', music: { root: 'C', scale: 'phrygian', bpm: 90, mood: 'spooky waltz' } },
   { id: 'volcano', name: 'Volcano', palette: P('#0c0a0c', '#5a3a2c', '#fff0e0', 'rgba(24,4,2,0.62)', '#ff7a1a', RING.obsidian, '#ff5a1a', '#c9984e', '#5a0e0c', '#ff7a1a'), material: 'obsidian', ground: 'lava', ambient: 'embers', music: { root: 'F', scale: 'phrygian', bpm: 138, mood: 'urgent heat' } },
   { id: 'dragon', name: "Dragon's Lair", palette: P('#0b090b', '#33231b', '#fff2d6', 'rgba(20,10,4,0.62)', '#ffd75a', RING.gold, '#1e120c', '#c9984e', '#6a4416', '#ffd75a'), material: 'gold', ground: 'gold', ambient: 'embers', music: { root: 'D', scale: 'minor', bpm: 100, mood: 'epic tiptoe' } },
-  { id: 'vault', name: "The Fox's Vault", palette: P('#0a1a22', '#12303a', '#f2fdff', 'rgba(4,14,18,0.62)', '#ff9a3a', RING.tech, '#ff8a2a', '#d9b25a', '#1f3a42', '#4f8a94'), material: 'metal', ground: 'stone', ambient: 'sparkles', music: { root: 'A', scale: 'minor', bpm: 128, mood: 'heist finale' } },
+  { id: 'vault', name: "The Thieves' Vault", palette: P('#0a1a22', '#12303a', '#f2fdff', 'rgba(4,14,18,0.62)', '#ff9a3a', RING.tech, '#ff8a2a', '#d9b25a', '#1f3a42', '#4f8a94'), material: 'metal', ground: 'stone', ambient: 'sparkles', music: { root: 'A', scale: 'minor', bpm: 128, mood: 'heist finale' } },
 ];
 
 // ---------------------------------------------------------------- ground kits
