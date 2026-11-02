@@ -209,3 +209,34 @@ requires the strong player to actually use the tap there), then comes back at le
 Coverage (K2): `node tools/coverage.mjs [--matrix]` lists where each mechanic is taught and reused, and fails when one
 comes back fewer than 3 times. First run (before this pass) failed 15 mechanics, among them retracting thorns, honey,
 duck egg, current, icicles, magnet and the frost orb. Those feed the pacing pass (M4) and the 50-level extension (M5).
+
+## v3.3 pacing pass (M4) and living thorns (M3), 2026-11-02
+
+Living thorns (render only): sway, bristle near an egg, stab on a hit, a hot glow before retracting thorns spring out,
+char and crumble when burnt. Thorn colour is picked per world by contrast (`thornLook` in src/render/world.js): red
+on light worlds, pale bone with a red tip on dark, red or sunset worlds, dark-steel blunt spikes on grey rings. QA:
+`tools/thorn-strips.cjs` (animation strips) and `tools/thorn-contrast.cjs` (all 14 worlds).
+Thorn vine (sim + art, not in any level yet, waiting for mykee's call): spec `vine: n` on a ring or `vine: 1` on a gap.
+
+Pacing after the snake (17 levels regenerated, planner-validated on Easy/Medium/Hard):
+
+| Level | Added | Why |
+|---|---|---|
+| L11 | 5th ring | 5-7 rings per level; stays the breather after the snake boss |
+| L12, L13 | snake | a chaser in the frozen world |
+| L15 | frost orb | frost orb reuse |
+| L16 | crystal drips (icicles) | keep the breather moving; icicle reuse |
+| L17 | underground current + duck egg | current and duck reuse |
+| L18 | snake | a chaser in the crystal world |
+| L19 | fox thrower | fox reuse, pressure from the walls |
+| L20 | ostrich egg | ostrich reuse |
+| L24 | honey | honey reuse |
+| L26 | magnet, black flame | orb reuse |
+| L27 | lightning, hard-ice ring + pick chick | lightning, pick, hard-ice reuse |
+| L29, L32, L33 | retracting thorns | taught in L24, never reused before |
+| L31 | moat current, duck egg, frost orb | reuse |
+| L33 | ostrich egg, honey, black flame | reuse |
+| L34 | quail egg + grate | quail and grate reuse |
+
+Coverage: every mechanic is reused 3+ times except the duck egg (2x: L17, L31). L14 could not be regenerated with a
+duck egg (the duck on the current made it fail Medium), so L14 keeps its layout. Long fuses now: L27, L32, L33 160 s.
