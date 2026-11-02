@@ -585,7 +585,7 @@ export function drawP2Front(ctx, sim, k, t) {
     if (key[0] === 's') {
       const S = sim.snakes.find((s) => s.id === +key.slice(1));
       if (!S || S.gone || !S.pts.length) continue;
-      if (F.k === 'ice') crustAlong(ctx, S.pts, 0.5 * S.size, k, Math.min(1, F.t / 0.3, (F.max - F.t) / 0.15 + 0.3));
+      if (F.k === 'ice' || F.k === 'zap' || F.k === 'spin') continue; // frozen, zapped and dizzy are drawn into the snake (render/snake.js)
       const h = S.pts[0], q = S.pts[Math.min(3, S.pts.length - 1)];
       creatureFx(ctx, F, k, t, { x: h.x, y: h.y, r: 0.45 * S.size, dir: Math.atan2(h.y - q.y, h.x - q.x), block: F.k === 'ice' ? [0.36 * S.size, 0.3 * S.size] : null }, S.id + 1);
     } else if (key[0] === 'c') {

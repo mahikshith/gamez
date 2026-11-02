@@ -1187,8 +1187,7 @@ export function drawChickFX(ctx, sim, t, k) {
       }
     }
   }
-  // dizzy stars over stunned snakes and a dazed eagle
-  for (const S of sim.snakes || []) if (S.daze > 0 && !S.gone && S.pts.length) { const h = S.pts[0]; starsAround(ctx, h.x, h.y + 0.25, 0.22, t, 3, '#ffe14d'); }
+  // dizzy stars over a dazed eagle (a dazed snake draws its own, render/snake.js)
   const E = sim.eagle;
   if (E && E.daze > 0) starsAround(ctx, E.x, E.y + 0.45, 0.32, t, 4, '#ffe14d');
 }
