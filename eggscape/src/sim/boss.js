@@ -126,6 +126,7 @@ export function animalsHit(sim, kind, o = {}) {
   // the eagle's own reaction (gust blows it off course, lightning stuns it, a rock or icicle scares it off), when it exists
   const E = sim.eagle;
   if (E && sim.hitEagle && (r === Infinity || Math.hypot((E.x ?? 0) - x, (E.y ?? 0) - y) < (kind === 'bolt' ? 3 : r + 0.6))) { n++; sim.hitEagle(kind, { x, y, dir: o.dir || 0, power: o.power ?? 1 }); }
+  if (sim.seaHit) n += sim.seaHit(kind, o); // v3.3: the octopus lets go, fish scatter (sim/sea.js)
   if (kind === 'quake' || kind === 'bolt') {
     const F = sim.fox, B = sim.bx && sim.bx.boss;
     if (F) { F.t += F.every * 0.5; F.mood = 'shocked'; F.moodT = 1.2; sim.emit('foxFlinch', { x: F.x, y: sim.outerR + 0.45 }); }

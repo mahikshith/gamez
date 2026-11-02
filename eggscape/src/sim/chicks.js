@@ -169,6 +169,7 @@ export const chickMethods = {
       if (S.pts.some((q, i) => i % 3 === 0 && Math.hypot(q.x - p.x, q.y - p.y) < R + 0.2)) this.stunSnake(S, 'flash', p);
     }
     for (const C of this.salsNear?.(p.x, p.y, R + 0.2) || []) { this.hitSalamander?.(C, 'flash', { x: p.x, y: p.y }); this.chickGain += 2; } // v3.2: stuns the salamander
+    this.chickGain += 2 * (this.seaHit?.('flash', { x: p.x, y: p.y, r: R }) || 0); // v3.3: the octopus lets go, fish scatter
     const E = this.eagle;
     if (E && E.phase !== 'away' && E.phase !== 'up' && (Math.hypot(E.x - p.x, E.y - p.y) < R + 1.6 || E.tid === egg.id)) {
       if (this.hitEagle) this.hitEagle('flash', { x: p.x, y: p.y });
@@ -214,6 +215,7 @@ export const chickMethods = {
         if (T.length > 8) { const q = T[6]; S.rad = Math.hypot(q.x, q.y); S.a = Math.atan2(q.y, q.x); T.splice(0, 6); }
       }
     }
+    this.chickGain += 2 * (this.seaHit?.('dash', { x: p.x, y: p.y, r: CHICK_R }) || 0); // v3.3: bonks the octopus loose
     for (const C of this.salsNear?.(p.x, p.y, CHICK_R + 0.3) || []) { // v3.2: bonks the salamander
       if (C.ph === 'daze') continue;
       this.hitSalamander?.(C, 'dash', { x: p.x, y: p.y });
