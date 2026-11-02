@@ -31,6 +31,9 @@ import { CHICK_DEMOS } from './data/chick-demos.js';
 import { FROG_DEMO } from './data/frog-demo.js'; // v3.3 frog studio level (dev)
 import { SEA_DEMOS } from './data/sea-demos.js'; // v3.3 studio levels (dev)
 import { drawSeaUnder, drawSeaOver, seaEvent, seaAnim } from './render/sea.js'; // v3.3 octopus and fish
+import { drawFoxDen, drawFoxDenFox, drawFoxDenOver, denEvent, drawDenFox, foxPose, FOXRIG } from './render/foxden.js'; // v3.5 den fox
+import { drawFoxFace } from './render/foxface.js'; // v3.5 the one fox face
+import { FOX_DEMOS } from './data/fox-demo.js'; // v3.5 den fox studio levels (dev)
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
 import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render/frog.js'; // v3.3 frog
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
@@ -230,6 +233,13 @@ function toast(text, life = 2.6, icon = null) {
   G.toasts.push({ text, life, icon });
 }
 
+// v3.5 den fox: its labels come fast (Snatched, TRAPPED, OUCH): a new one replaces the last instead of stacking
+function denPopup(wx, wy, text, o = {}) {
+  G.popups = G.popups.filter((p) => !p.den);
+  const n = G.popups.length;
+  popup(wx, wy, text, o);
+  if (G.popups.length > n) G.popups[G.popups.length - 1].den = 1;
+}
 function popup(wx, wy, text, o = {}) {
   const s = toScreen(wx, wy);
   // v3.1: the same label again within 0.5 s (several eggs cracking at once) merges into one: "Crack ×3"
@@ -292,6 +302,7 @@ function frameOf(all, maxCh) {
     }
   }
   if (sim.fox) hds.push({ x: sim.fox.x, y: sim.outerR + 0.6 });
+  if (sim.den && sim.den.ph !== 'gone' && sim.den.ph !== 'wait') { const b = sim.denBody(); if (b) hds.push(b); } // v3.5 den fox
   const BQ = bossPose(sim, false); // bosses (v3.1): keep the boss over the vault in frame
   // the big Blizzard cloud only when framing the whole vault (portrait screens have the height to spare); a zoomed-in
   // view stays on the eggs
@@ -1086,6 +1097,7 @@ function handleEvents() {
         frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, 3.2); } } }); // v3.3 frog
         seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.3
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
+        denEvent(ev, fx, { popup: denPopup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.5 den fox
         break;
       case 'won':
         onWin();
@@ -1714,6 +1726,7 @@ function render() {
   drawSalHeat(ctx, sim, k, t); // v3.2: red-hot ring sections and the salamander's target mark
   drawP2Back(ctx, sim, k, t); // v3.4: live ring, scorched sponge, iron bars, brittle thorns, blackout, laser beak
   drawBossActor(ctx, sim, k, t);
+  drawFoxDen(ctx, sim, t, k); // v3.5: the fox's den on the outer ring
   for (const ring of sim.rings) if (ring.gearOut) W.drawGearCog(ctx, ring, ring.gearOut, t);
   // gear trains: while the player turns one ring, the rings it drives show which way they go; the first time
   // ever, a label says so
@@ -1748,9 +1761,11 @@ function render() {
   drawFrogTele(ctx, sim, k, t); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
   { const wx = warpXfBegin(ctx, sim, 'f'); drawFrogs(ctx, sim, t, k, G.theme); warpXfEnd(ctx, wx); }
   { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaUnder(ctx, sim, t, k, G.theme); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
+  drawFoxDenFox(ctx, sim, t, k); // v3.5: the den fox on the ring floor
   for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
   drawChickFX(ctx, sim, t, k);
   { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); } // v3.3: the arms wrapped over a held egg
+  drawFoxDenOver(ctx, sim, t, k); // v3.5: the fox's jaws over a held egg, the trap ring
   W.drawSnakes(ctx, sim, t, k); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
   drawBossOver(ctx, sim, k, t); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
@@ -2506,8 +2521,10 @@ if (DEV) window.__egg = {
   start: (i, o) => startLevel(i, o),
   CHICK_DEMOS,
   startFrog(o = {}) { G.demo = FROG_DEMO; startLevel(-2, o); }, // v3.3 frog studio level
-  startDemo(kind, o = {}) { const D = [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS]; G.demo = D.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.3 sea, v3.4 powers
+  startDemo(kind, o = {}) { const D = [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...FOX_DEMOS]; G.demo = D.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.3 sea, v3.4 powers
   POWER_DEMOS,
+  FOX_DEMOS,
+  foxArt: { drawDenFox, foxPose, FOXRIG, drawFoxFace, drawBossCard, drawFoxActor }, // v3.5 fox strips
   press,
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
   frame(dt = 1 / 60) { update(dt); render(); },

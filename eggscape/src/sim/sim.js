@@ -9,6 +9,7 @@ import { allyMethods } from './allies.js'; // v3.4 farm allies (rooster, goose)
 import { seaMethods } from './sea.js'; // v3.3 octopus and fish schools
 import { p2Methods, P2_TYPES, P2_KEYS } from './powers2.js'; // v3.4 powers and combos
 import { warpMethods } from './warp.js'; // v3.4 warp gate
+import { denMethods } from './foxden.js'; // v3.5 the den fox (boss inside the vault)
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
@@ -250,6 +251,7 @@ export class Sim {
     this.frogInit(L); // v3.3: frog (sim/frog.js)
     this.allyInit(L); // v3.4: farm allies (sim/allies.js)
     this.seaInit(L); // v3.3: octopus and fish schools (sim/sea.js)
+    this.denInit(L); // v3.5: the den fox (sim/foxden.js)
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
@@ -1162,6 +1164,7 @@ export class Sim {
     if (!end) this.clashStep(dt);
     else this.salEndStep(dt); // v3.2: the salamander dives (win) or grins (loss); in play boss.js v31Step drives it
     this.seaStep(dt, end); // v3.3: octopus and fish schools
+    if (end && this.den) this.denEnd(dt); // v3.5: in play boss.js v31Step drives it
     for (const b of this.barriers) if (b.alive && b.fire && (b.burn += dt / BURN_T) >= 1) this.removeBarrier(b, 'burn');
     if (this.eagle) this.eagleStep(dt); // after the level ends it flees (win) or gloats (loss)
     if (this.fox && this.state === 'play') this.foxStep(dt);
@@ -2080,6 +2083,7 @@ export class Sim {
     const E = this.eagle;
     if (E && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tk !== 'orb') lv = Math.max(lv, E.reach ? 0.9 : 0.5);
     if (this.sals && this.sals.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.7 * this.salThreat(e)); // v3.2: a breath aimed at an egg
+    if (this.den) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.denThreat(e)); // v3.5: the den fox
     lv = Math.round(lv * 10) / 10;
     if (lv !== this.danger) { this.danger = lv; this.emit('danger', { level: lv }); }
   }
@@ -2244,6 +2248,7 @@ export class Sim {
     EGG_KEYS.push('hotK'); // v3.2: the salamander breath that last scorched it
     EGG_KEYS.push('octo'); // v3.3: held by octopus (id + 1)
     EGG_KEYS.push(...P2_KEYS); // v3.4 powers
+    EGG_KEYS.push('foxd'); // v3.5: in the den fox's jaws (1) or den (2)
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2275,6 +2280,7 @@ export class Sim {
       ally: this.allyState(), // v3.4 farm allies
       sea: this.seaState(), // v3.3 octopus and fish
       p2: this.p2State(), // v3.4 powers
+      den: this.denState(), // v3.5 the den fox
     };
   }
 
@@ -2331,6 +2337,7 @@ export class Sim {
     sim.allyLoad(S.ally); // v3.4 farm allies
     sim.seaLoad(S.sea); // v3.3 octopus and fish
     sim.p2Load(S.p2); // v3.4 powers
+    sim.denLoad(S.den); // v3.5 the den fox
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2724,5 +2731,6 @@ Object.assign(Sim.prototype, allyMethods); // v3.4 farm allies (sim/allies.js)
 Object.assign(Sim.prototype, seaMethods); // v3.3 octopus and fish schools (sim/sea.js)
 Object.assign(Sim.prototype, p2Methods); // v3.4 powers and combos (sim/powers2.js)
 Object.assign(Sim.prototype, warpMethods); // v3.4 warp gate (sim/warp.js)
+Object.assign(Sim.prototype, denMethods); // v3.5 the den fox (sim/foxden.js)
 
 export { EGG_H, EGG_W, RING_TH };

@@ -20,27 +20,22 @@ import u_hen_dance from '../../assets/sprites/hen_dance.webp';
 import u_hen_worried from '../../assets/sprites/hen_worried.webp';
 import u_hen_cry from '../../assets/sprites/hen_cry.webp';
 import u_hen_proud from '../../assets/sprites/hen_proud.webp';
-import u_fox_evil from '../../assets/sprites/fox_evil.webp';
-import u_fox_laugh from '../../assets/sprites/fox_laugh.webp';
-import u_fox_cry from '../../assets/sprites/fox_cry.webp';
-import u_fox_shock from '../../assets/sprites/fox_shock.webp';
-import u_boss_fox from '../../assets/sprites/boss_fox.webp';
 import u_boss_snake from '../../assets/sprites/boss_snake.webp';
 import u_boss_blizzard from '../../assets/sprites/boss_blizzard.webp';
 import u_boss_golem from '../../assets/sprites/boss_golem.webp';
 import u_boss_salamander from '../../assets/sprites/boss_salamander.webp';
 import u_boss_eagle from '../../assets/sprites/boss_eagle.webp';
-import u_boss_foxking from '../../assets/sprites/boss_foxking.webp';
 import u_win_hen from '../../assets/sprites/win_hen.webp';
 
-import { drawFox, drawHen } from './characters.js';
+import { drawHen } from './characters.js';
+import { drawFoxFace } from './foxface.js';
 import { drawHenAnim } from './hen.js';
 
 // M7: the animated, code-drawn hen everywhere. false = the old path (reference sprites with squash-and-stretch life).
 export const ANIMATED_HEN = true;
 
 const SRC = {
-  orb_fire_red: u_orb_fire_red, orb_fire_black: u_orb_fire_black, orb_fire_green: u_orb_fire_green, orb_fire_gold: u_orb_fire_gold, orb_stone: u_orb_stone, orb_bubble: u_orb_bubble, orb_water: u_orb_water, orb_thunder: u_orb_thunder, orb_thorn: u_orb_thorn, orb_magnet: u_orb_magnet, orb_twin: u_orb_twin, orb_golden: u_orb_golden, orb_hourglass: u_orb_hourglass, orb_feather: u_orb_feather, orb_rockskin: u_orb_rockskin, orb_foxcurse: u_orb_foxcurse, hen_dance: u_hen_dance, hen_worried: u_hen_worried, hen_cry: u_hen_cry, hen_proud: u_hen_proud, fox_evil: u_fox_evil, fox_laugh: u_fox_laugh, fox_cry: u_fox_cry, fox_shock: u_fox_shock, boss_fox: u_boss_fox, boss_snake: u_boss_snake, boss_blizzard: u_boss_blizzard, boss_golem: u_boss_golem, boss_salamander: u_boss_salamander, boss_eagle: u_boss_eagle, boss_foxking: u_boss_foxking, win_hen: u_win_hen,
+  orb_fire_red: u_orb_fire_red, orb_fire_black: u_orb_fire_black, orb_fire_green: u_orb_fire_green, orb_fire_gold: u_orb_fire_gold, orb_stone: u_orb_stone, orb_bubble: u_orb_bubble, orb_water: u_orb_water, orb_thunder: u_orb_thunder, orb_thorn: u_orb_thorn, orb_magnet: u_orb_magnet, orb_twin: u_orb_twin, orb_golden: u_orb_golden, orb_hourglass: u_orb_hourglass, orb_feather: u_orb_feather, orb_rockskin: u_orb_rockskin, orb_foxcurse: u_orb_foxcurse, hen_dance: u_hen_dance, hen_worried: u_hen_worried, hen_cry: u_hen_cry, hen_proud: u_hen_proud, boss_snake: u_boss_snake, boss_blizzard: u_boss_blizzard, boss_golem: u_boss_golem, boss_salamander: u_boss_salamander, boss_eagle: u_boss_eagle, win_hen: u_win_hen,
 };
 
 const IMG = {}; // id -> HTMLImageElement, created on first use
@@ -179,6 +174,7 @@ export function drawBossCard(ctx, bossId, x, y, w, h, t = 0, age = null) {
   // The boss portrait is a WHOLE card (full reference cell, rounded corners), shown complete in a frame: never a cut-out.
   try {
     const id = String(bossId).startsWith('boss_') ? bossId : 'boss_' + bossId;
+    if (id === 'boss_fox' || id === 'boss_foxking') return drawFoxCard(ctx, id === 'boss_foxking', x, y, w, h, t, age);
     const im = get(id);
     if (!im || !(w > 0) || !(h > 0)) return false;
     const pad = Math.max(2, h * 0.025);
@@ -216,10 +212,8 @@ export function drawBossCard(ctx, bossId, x, y, w, h, t = 0, age = null) {
 // mood change a short squash pop, and fall back to the code-drawn character while the image is still loading.
 // h is the sprite height; cx, cy its centre. o: {key (separates two actors on one screen), enter (seconds since it
 // appeared: entrance pop), phase, amp, lean (-1..1: tilt toward something, e.g. the pointer)}.
-const FOX_LOOK = {
-  idle: ['fox_evil', 'breathe'], smug: ['fox_evil', 'breathe'], evil: ['fox_evil', 'shake'],
-  laugh: ['fox_laugh', 'laugh'], cry: ['fox_cry', 'cry'], angry: ['fox_cry', 'shake'], shocked: ['fox_shock', 'shake'],
-};
+// the fox is code-drawn (foxface.js, one design everywhere): mood -> face mood and a motion
+const FOX_LOOK = { idle: 'breathe', smug: 'breathe', evil: 'shake', laugh: 'laugh', cry: 'cry', angry: 'shake', shocked: 'shake' };
 const HEN_LOOK = {
   idle: ['hen_proud', 'breathe'], happy: ['hen_dance', 'hop'], dance: ['hen_dance', 'dance'],
   worried: ['hen_worried', 'shake', 0.5], gasp: ['hen_worried', 'shake', 1], cry: ['hen_cry', 'cry'], sad: ['hen_cry', 'cry'],
@@ -246,7 +240,72 @@ function actor(ctx, kind, look, fallback, mood, cx, cy, h, t, o) {
 }
 
 export function drawFoxActor(ctx, mood, cx, cy, h, t = 0, o = {}) {
-  return actor(ctx, 'fox', FOX_LOOK, (c, x, y, hh, m, tt) => drawFox(c, x, y, hh / 1.2, FOX_LOOK[m] ? m : 'idle', tt), mood, cx, cy, h, t, o);
+  try {
+    if (!(h > 0)) return false;
+    const key = 'fox' + (o.key || '');
+    let m = MOODS[key];
+    if (!m) m = MOODS[key] = { mood, at: -9 };
+    if (m.mood !== mood || t < m.at) { m.mood = mood; m.at = t; }
+    const enter = o.enter != null && o.enter < 0.6, age = enter ? o.enter : t - m.at;
+    const x = CALM ? { sx: 1, sy: 1, dx: 0, dy: 0, rot: 0 } : aliveXf(FOX_LOOK[mood] || 'breathe', t, o.phase || 0, o.amp == null ? 1 : o.amp);
+    let a = 1;
+    if (age < 0.6 && !CALM) { // a fresh appearance pops in from nothing; a mood change squashes from almost full size
+      const f = enter ? 0 : 0.86, u = Math.max(0, Math.min(1, age / 0.5)), p = Math.max(0.001, f + (1 - f) * easeOutBack(u));
+      x.sx *= p; x.sy *= p; x.rot += (1 - u) * -0.25 * (1 - f);
+      a = f > 0 ? 1 : Math.max(0, Math.min(1, age * 8));
+    }
+    const lean = CALM ? 0 : Math.max(-1, Math.min(1, o.lean || 0));
+    ctx.save();
+    ctx.globalAlpha *= a;
+    ctx.translate(cx + x.dx * h, cy + h / 2 + x.dy * h); // pivot at the bottom of the bust
+    ctx.rotate(x.rot + lean * 0.1);
+    ctx.scale(x.sx, x.sy);
+    // the bust spans ear tip (-82) to chest (70) in face units: s = h / 1.52
+    drawFoxFace(ctx, 0, -h / 2 - 0.04 * h, h / 1.52, FOX_LOOK[mood] ? mood : 'idle', t, { bust: true, calm: CALM, crown: !!o.crown, look: { x: lean * 0.6, y: 0 } });
+    ctx.restore();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// The fox and the Fox King's boss card: the same frame as the painted cards, a dusk sky, the fox's bust in front (the
+// king crowned, on purple), a thorn ball in his paw's reach. Code-drawn so it is the same fox as in the level.
+function drawFoxCard(ctx, king, x, y, w, h, t, age) {
+  const H0 = Math.min(h, w * 2.06), W0 = H0 / 2.06, pad = Math.max(2, H0 * 0.025);
+  const e = age == null ? 1 : Math.min(1, Math.max(0, age / 0.45));
+  const pop = e < 1 ? 0.6 + 0.4 * (1 - Math.pow(1 - e, 3)) + Math.sin(e * Math.PI) * 0.08 : 1;
+  const dw = (W0 - pad * 2) * pop, dh = (H0 - pad * 2) * pop, cx = x + w / 2, cy = y + h / 2 + Math.sin(t * 2.1) * h * 0.012, r = dw * 0.07;
+  const rr = (px, py, pw, ph, rad) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(px, py, pw, ph, rad) : ctx.rect(px, py, pw, ph); };
+  ctx.save();
+  ctx.globalAlpha *= Math.min(1, e * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.28)'; rr(cx - dw / 2 + pad * 0.6, cy - dh / 2 + pad * 1.2, dw, dh, r); ctx.fill();
+  ctx.fillStyle = '#5a3a1c'; rr(cx - dw / 2 - pad, cy - dh / 2 - pad, dw + pad * 2, dh + pad * 2, r + pad); ctx.fill();
+  ctx.fillStyle = '#f2c25a'; rr(cx - dw / 2 - pad * 0.45, cy - dh / 2 - pad * 0.45, dw + pad * 0.9, dh + pad * 0.9, r + pad * 0.45); ctx.fill();
+  rr(cx - dw / 2, cy - dh / 2, dw, dh, r);
+  ctx.save(); ctx.clip();
+  const g = ctx.createLinearGradient(0, cy - dh / 2, 0, cy + dh / 2);
+  if (king) { g.addColorStop(0, '#2a1240'); g.addColorStop(0.6, '#6a2f8a'); g.addColorStop(1, '#c86a3a'); } else { g.addColorStop(0, '#2b2a55'); g.addColorStop(0.55, '#a8483a'); g.addColorStop(1, '#f2a24a'); }
+  ctx.fillStyle = g; ctx.fillRect(cx - dw / 2, cy - dh / 2, dw, dh);
+  // a moon and a few stars behind him
+  ctx.fillStyle = 'rgba(255,240,200,0.9)'; ctx.beginPath(); ctx.arc(cx + dw * 0.22, cy - dh * 0.33, dw * 0.13, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = king ? '#2a1240' : '#2b2a55'; ctx.beginPath(); ctx.arc(cx + dw * 0.27, cy - dh * 0.35, dw * 0.11, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  for (let i = 0; i < 6; i++) { const sx = cx - dw * 0.4 + ((i * 37) % 80) / 100 * dw, sy = cy - dh * 0.45 + ((i * 53) % 30) / 100 * dh; ctx.fillRect(sx, sy, Math.max(1, dw * 0.012), Math.max(1, dw * 0.012)); }
+  // the vault's rim at his feet
+  ctx.fillStyle = king ? '#3c2a52' : '#6b3f1e';
+  ctx.beginPath(); ctx.ellipse(cx, cy + dh * 0.52, dw * 0.85, dh * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+  drawFoxFace(ctx, cx - dw * 0.04, cy + dh * 0.02, dw * 0.86, king ? 'evil' : 'smug', t, { bust: true, crown: king });
+  // the thorn ball (the fox) or a curse orb (the king) in front, lower corner
+  const bx = cx + dw * 0.3, by = cy + dh * 0.36, br = dw * 0.13;
+  ctx.fillStyle = king ? '#7d3ab0' : '#3f8a2a'; ctx.strokeStyle = '#1e2a10'; ctx.lineWidth = Math.max(1, br * 0.12);
+  ctx.beginPath();
+  for (let i = 0; i < 20; i++) { const an = (i * Math.PI) / 10 + t * 0.5, rad = i % 2 ? br : br * (king ? 1.05 : 1.4); ctx.lineTo(bx + Math.cos(an) * rad, by + Math.sin(an) * rad); }
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  if (king) { ctx.fillStyle = '#ffd02a'; ctx.beginPath(); ctx.arc(bx, by, br * 0.35, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+  ctx.restore();
+  return true;
 }
 
 export function drawHenActor(ctx, mood, cx, cy, h, t = 0, o = {}) {
@@ -258,5 +317,5 @@ export function drawHenLegacy(ctx, mood, cx, cy, h, t = 0, o = {}) {
   return actor(ctx, 'hen', HEN_LOOK, (c, x, y, hh, m, tt) => drawHen(c, x, y, hh, HEN_LOOK[m] ? m : 'idle', tt), mood, cx, cy, h, t, o);
 }
 
-// start loading the characters now so the first screen that needs them (and the cached fortress banners) can use them
-for (const id of ['fox_evil', 'fox_laugh', 'fox_cry', 'fox_shock', 'hen_dance', 'hen_worried', 'hen_cry', 'hen_proud']) get(id);
+// start loading the hen sprites now so the first screen that needs them can use them
+for (const id of ['hen_dance', 'hen_worried', 'hen_cry', 'hen_proud']) get(id);

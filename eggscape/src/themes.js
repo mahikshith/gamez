@@ -4,7 +4,6 @@
 // them plus a handful of animated elements. World camera is y-up (planck), meters.
 
 import { drawFox } from './render/characters.js';
-import { drawSprite } from './render/sprites.js';
 
 // ---------------------------------------------------------------- math / rng / color
 const TAU = Math.PI * 2;
@@ -1167,7 +1166,7 @@ ART.vault = {
     for (const [x, y, p, f, col] of S.lights) { const on = Math.sin(t * f * 2 + p) > 0.2 ? 1 : 0.25; ctx.globalAlpha = on; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 0.55 * u, 0, TAU); ctx.fill(); }
     ctx.globalAlpha = 1;
     // the fox's reference portrait (the same art as the title, the cards and the thrower) on each banner
-    for (const [x, y, fs] of S.banners || []) if (!drawSprite(ctx, 'fox_evil', x, y, fs * 1.2)) drawFox(ctx, x, y, fs, 'smug', 0.3);
+    for (const [x, y, fs] of S.banners || []) drawFox(ctx, x, y, fs, 'smug', 0.3);
     ctx.restore();
   },
 };

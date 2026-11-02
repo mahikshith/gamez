@@ -349,7 +349,7 @@ export function setBossView(v) { VIEW = v; }
 // view = false: where the boss is in the world (for framing); default: where it is drawn this frame
 export function bossPose(sim, view = VIEW) {
   const B = sim.bx && sim.bx.boss;
-  if (!B || !ACTOR[B.kind]) return null;
+  if (!B || !ACTOR[B.kind] || B.den) return null; // v3.5: the den fox is drawn inside the vault (render/foxden.js)
   const R = sim.outerR;
   if (B.kind === 'blizzard') {
     // big: about a third of the vault wide (at most ~150 px tall on screen), its belly just above the outer ring.
@@ -397,8 +397,7 @@ function drawFoxBoss(ctx, B, Q, k, t, warnU, acting, calm) {
     ctx.translate(0, dy);
     ctx.rotate(rot);
     ctx.scale(sx * (B.face < 0 ? -1 : 1), sy);
-    drawFoxActor(ctx, mood, 0, 0, sz, t, { key: 'boss' });
-    if (B.kind === 'foxking') drawCrown(ctx, 0, -sz * 0.42, sz * 0.36, t);
+    drawFoxActor(ctx, mood, 0, 0, sz, t, { key: 'boss', crown: B.kind === 'foxking' });
   });
 }
 function drawCrown(ctx, x, y, w, t) {
@@ -706,6 +705,8 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   ui.text(title, nameX, y + h / 2, { size: 13 * u, maxW: nameW, color: '#ffe3b0', stroke: 'rgba(0,0,0,0.6)', tag: 'hud:bossName' });
   // phase segments
   const bx = nameX + nameW + 8 * u, bw = x + w - 6 * u - bx, by = y + h * 0.22, bh = h * 0.56, gap = 4 * u;
+  const F = B.den && sim.den;
+  if (F) { drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v3.5: hit pips
   const sw = (bw - gap * (n - 1)) / n, prog = bossProgress(sim);
   const warn = B.atk && B.atk.ph === 'warn';
   for (let i = 0; i < n; i++) {
@@ -724,6 +725,28 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   const label = warn ? (ATTACK_NAME[B.atk.name] || '').toUpperCase() + '!' : `PHASE ${B.phase + 1}/${n}`;
   ui.text(label, bx + bw / 2, y + h / 2, { size: 12 * u, align: 'center', maxW: bw - 8 * u, color: '#fff', stroke: 'rgba(0,0,0,0.75)', tag: 'hud:bossPhase' });
   ctx.restore();
+}
+
+// v3.5 den fox: one pip per hit it can take (lit = hits left), and what it is doing now
+function drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t) {
+  const u = ui.u, n = Math.max(1, F.hpMax), sw = (bw - gap * (n - 1)) / n;
+  const warn = B.atk && B.atk.ph === 'warn', ph = F.ph;
+  const hot = ph === 'trapped' || ph === 'hurt';
+  for (let i = 0; i < n; i++) {
+    const sx = bx + i * (sw + gap);
+    ui.roundRect(sx, by, sw, bh, bh / 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fill();
+    if (i < F.hp) {
+      ui.roundRect(sx, by, sw, bh, bh / 2);
+      ctx.fillStyle = hot ? (Math.floor(t * 6) % 2 ? '#ffd63c' : '#ffb03c') : ph === 'crouch' ? '#ff6a3d' : '#ff9a3d';
+      ctx.fill();
+    }
+  }
+  const label = F.hp <= 0 || ph === 'defeated' || ph === 'flee' || ph === 'gone' ? 'DEFEATED!'
+    : ph === 'trapped' ? 'TRAPPED! HIT HIM' : ph === 'crouch' ? 'POUNCE!' : F.eid ? 'STOLE AN EGG!'
+      : warn ? (ATTACK_NAME[B.atk.name] || '').toUpperCase() + '!' : 'TRAP HIM!';
+  ui.text(label, bx + bw / 2, y + h / 2, { size: 12 * u, align: 'center', maxW: bw - 8 * u, color: '#fff', stroke: 'rgba(0,0,0,0.75)', tag: 'hud:bossPhase' });
 }
 
 // ---------- magnet (v3.1): no tether line. Each egg of a magnet pair wears a pulsing horseshoe field: thin arcs

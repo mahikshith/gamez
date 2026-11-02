@@ -198,6 +198,7 @@ export const p2Methods = {
     for (const C of this.p2Sals()) this.p2Sal(C, kind, T);
     if (this.p2Eagle()) this.p2EagleHit(kind, T);
     if (this.fox) this.p2Fox(kind, T);
+    if (this.den) this.denP2(kind, T); // v3.5: the den fox shows its own frozen / stunned states
     this.p2Boss(kind, T);
     this.frogHit(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v3.5: the frog is a creature too (frozen / stunned)
     this.seaP2?.(kind, T); // v3.5: the octopus (sim/sea.js): frozen, or stunned
@@ -298,7 +299,7 @@ export const p2Methods = {
   // was winding up is lost, the next one waits
   p2Boss(kind, T) {
     const B = this.bx && this.bx.boss;
-    if (!B || B.kind === 'snake' || B.kind === 'salamander') return;
+    if (!B || B.kind === 'snake' || B.kind === 'salamander' || B.den) return;
     const t = (kind === 'bolt' ? P2.thunderclap.big : T) * BOSS_RESIST;
     if (B.atk && B.atk.ph === 'warn') B.atk = null;
     if (!B.atk) B.t = Math.max(B.t, t + 0.8);
