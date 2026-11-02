@@ -7,7 +7,7 @@
 //                    plus the reference-sprite hen (drawHenLegacy) for the record
 //   hen-family.png   the real game on six worlds (farm, barn, frozen, blizzard, crystal, volcano): the hen in place
 //                    beside the nest with the rooster and the goose drawn on the same ground, phone scale and 3x
-//   hen-live.png     the real game: an egg falls into the nest (she walks under it, then cheers), an egg breaks (cry)
+//   hen-live.png     the real game: an egg dropped by the nest, then one that misses it; frames labelled with the hen's mood
 //   hen-screens.png  full phone screens: title, a level, the win card, the fail card (old above new with --old)
 // Usage: node tools/hen-strips.cjs [dist/dev] [outDir=qa/hen] [--port 8901] [--old <older dist/dev>]
 const { chromium } = require('playwright');
@@ -218,7 +218,7 @@ function harness() {
     return res;
   });
 
-  // ---- live: the real game. An egg dropped near the nest lands (she walks under it, cheers), another breaks (cry).
+  // ---- live: the real game. An egg dropped by the nest, then one that misses it (cheer, then cry); each frame is labelled with the game's hen mood.
   const live = [];
   await p.evaluate(([L]) => { Q.boot(L); Q.run(0.6); }, [STUDIO('farm')]);
   const CROP = 190;
@@ -233,7 +233,7 @@ function harness() {
   await p.evaluate(([nx, gy]) => { Q.put(0, nx - 0.3, gy + 1.7); }, [nest.x, nest.y]);
   for (const lab of ['egg dropped', '+0.1 s', '+0.2 s']) { await p.evaluate(() => Q.run(0.1)); await shoot(lab); }
   for (let i = 0; i < 8; i++) { await p.evaluate(() => Q.run(0.1)); if (await p.evaluate(() => __egg.G.sim.savedLog.length)) break; }
-  for (const lab of ['egg saved', '+0.13 s', '+0.26 s', '+0.39 s']) { await shoot(lab); await p.evaluate(() => Q.run(0.13)); }
+  for (const lab of ['later', '+0.13 s', '+0.26 s', '+0.39 s']) { await shoot(lab); await p.evaluate(() => Q.run(0.13)); }
   await p.evaluate(() => Q.run(1.5));
   await p.evaluate(([nx, gy]) => { Q.put(1, nx + 7, gy + 0.6); }, [nest.x, nest.y]);
   for (const lab of ['second egg dropped', '+0.28 s', '+0.56 s', '+0.84 s', '+1.12 s', '+1.4 s']) { await p.evaluate(() => Q.run(0.28)); await shoot(lab); }
