@@ -649,6 +649,9 @@ function henFeet(ctx, lift, o) {
   }
 }
 
+// shared with the animated rig (hen.js): one hen look, one set of shapes
+export { HEN, henBodyHalf, henWing, drawDrop, symFill, symStroke, outlineW, glint };
+
 // Mama hen, full body. s ≈ body height; feet rest at cy + 0.5·s.
 export function drawHen(ctx, cx, cy, s, mood = 'idle', t = 0) {
   if (!(s > 0)) return;

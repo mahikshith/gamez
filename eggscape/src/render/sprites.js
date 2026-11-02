@@ -34,6 +34,10 @@ import u_boss_foxking from '../../assets/sprites/boss_foxking.webp';
 import u_win_hen from '../../assets/sprites/win_hen.webp';
 
 import { drawFox, drawHen } from './characters.js';
+import { drawHenAnim } from './hen.js';
+
+// M7: the animated, code-drawn hen everywhere. false = the old path (reference sprites with squash-and-stretch life).
+export const ANIMATED_HEN = true;
 
 const SRC = {
   orb_fire_red: u_orb_fire_red, orb_fire_black: u_orb_fire_black, orb_fire_green: u_orb_fire_green, orb_fire_gold: u_orb_fire_gold, orb_stone: u_orb_stone, orb_bubble: u_orb_bubble, orb_water: u_orb_water, orb_thunder: u_orb_thunder, orb_thorn: u_orb_thorn, orb_magnet: u_orb_magnet, orb_twin: u_orb_twin, orb_golden: u_orb_golden, orb_hourglass: u_orb_hourglass, orb_feather: u_orb_feather, orb_rockskin: u_orb_rockskin, orb_foxcurse: u_orb_foxcurse, hen_dance: u_hen_dance, hen_worried: u_hen_worried, hen_cry: u_hen_cry, hen_proud: u_hen_proud, fox_evil: u_fox_evil, fox_laugh: u_fox_laugh, fox_cry: u_fox_cry, fox_shock: u_fox_shock, boss_fox: u_boss_fox, boss_snake: u_boss_snake, boss_blizzard: u_boss_blizzard, boss_golem: u_boss_golem, boss_salamander: u_boss_salamander, boss_eagle: u_boss_eagle, boss_foxking: u_boss_foxking, win_hen: u_win_hen,
@@ -246,6 +250,11 @@ export function drawFoxActor(ctx, mood, cx, cy, h, t = 0, o = {}) {
 }
 
 export function drawHenActor(ctx, mood, cx, cy, h, t = 0, o = {}) {
+  return ANIMATED_HEN ? drawHenAnim(ctx, mood, cx, cy, h, t, { ...o, calm: isSpriteCalm() }) : drawHenLegacy(ctx, mood, cx, cy, h, t, o);
+}
+
+// the old hen: reference sprites with squash-and-stretch life (kept one flag away, and for the side-by-side strips)
+export function drawHenLegacy(ctx, mood, cx, cy, h, t = 0, o = {}) {
   return actor(ctx, 'hen', HEN_LOOK, (c, x, y, hh, m, tt) => drawHen(c, x, y, hh, HEN_LOOK[m] ? m : 'idle', tt), mood, cx, cy, h, t, o);
 }
 
