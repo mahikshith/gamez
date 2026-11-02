@@ -42,9 +42,11 @@ const EAGLE_POSES = [
 window.lab = {
   sheet(name) {
     if (name === 'eagle' || name === 'eagle-close') {
-      const s = name === 'eagle' ? 100 : 300, cw = name === 'eagle' ? 260 : 700, ch = name === 'eagle' ? 150 : 400;
+      const s = name === 'eagle' ? 100 : 240, cw = name === 'eagle' ? 260 : 700, ch = name === 'eagle' ? 150 : 440;
       const cells = EAGLE_POSES.map((p, i) => ({ ...p, bg: i % 2 ? BG.white : BG.dark }));
+      const dy = name === 'eagle' ? 0 : 70;
       return grid(name === 'eagle' ? cells : cells.filter((c) => ['glide', 'flap mid', 'dive', 'strike', 'dazed', 'perch'].includes(c.name)), cw, ch, name === 'eagle' ? 4 : 2, BG.dark, (ctx, c) => {
+        ctx.translate(0, dy);
         drawEagle(ctx, 0, 0, s, 1.3, { w: c.w, phase: c.phase || 0, pitch: c.pitch || 0, roll: c.roll || 0, turn: c.turn || 0, grab: c.grab, toes: c.toes, stars: c.stars || 0, face: 1 });
       });
     }

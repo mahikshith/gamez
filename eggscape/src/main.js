@@ -1772,9 +1772,9 @@ function render() {
     const p = fx.flash / 0.7;
     if (p > 0.86) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#0a1446'; ctx.fillRect(0, 0, W_, H_); }
     else {
-      const c = toScreen(0, G.sim ? G.sim.outerR * 0.45 : 0), R = Math.min(W_, H_) * 0.62;
+      const c = toScreen(0, G.sim ? G.sim.outerR * 0.45 : 0), R = Math.min(W_, H_) * 0.55;
       const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, R);
-      g.addColorStop(0, `rgba(255,232,120,${0.34 * p})`); g.addColorStop(0.55, `rgba(255,214,70,${0.12 * p})`); g.addColorStop(1, 'rgba(255,214,70,0)');
+      g.addColorStop(0, `rgba(255,244,190,${0.4 * p})`); g.addColorStop(0.55, `rgba(255,230,120,${0.12 * p})`); g.addColorStop(1, 'rgba(255,214,70,0)');
       ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(c.x - R, c.y - R, R * 2, R * 2);
     }
     ctx.globalAlpha = 1;
