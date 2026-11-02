@@ -91,7 +91,7 @@ export function actions(sim) {
     if (c + 1 < sim.rings.length) floors.add(c + 1);
   }
   // a geared partner turns with its ring: one of the two is enough
-  for (const i of floors) if (sim.rings[i].gear && floors.has(sim.rings[i].gear.i) && sim.rings[i].gear.i < i) floors.delete(i);
+  for (const i of [...floors]) { const T = sim.rings[i].gear; if (T && T.some((r) => r.i < i && floors.has(r.i))) floors.delete(i); }
   for (const i of floors) if (sim.rings[i].grabbable) for (const d of DELTAS) if (!sim.canTurn || sim.canTurn(sim.rings[i], d)) out.push({ ring: i, delta: d });
   // v3.2: tap chick i (one power per chick)
   if (sim.canTap) for (const e of sim.aliveEggs()) if (sim.canTap(e)) out.push({ ring: -1, tap: e.id, wait: 0.3 });

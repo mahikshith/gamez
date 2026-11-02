@@ -307,7 +307,8 @@ export function drawRing(ctx, ring, theme, k, t, opts = {}) {
   drawPads(ctx, ring, theme, px, t, opts.eggs || [], opts.simT || 0);
   drawHoney(ctx, ring, px, t, opts.stuck);
   drawShutters(ctx, ring, col, px);
-  if (ring.gear) drawGearTeeth(ctx, ring, col, ring.gear.i > ring.i ? ro : ri, ring.gear.i > ring.i ? 1 : -1);
+  if (ring.gearOut) drawGearTeeth(ctx, ring, col, ro, 1);
+  if (ring.gearIn) drawGearTeeth(ctx, ring, col, ri, -1);
   // thorns
   drawThorns(ctx, ring, theme, px);
   ctx.restore();
@@ -370,18 +371,31 @@ function drawShutters(ctx, ring, col, px) {
 }
 
 // Gear teeth on the face of a ring that turns its neighbour (F15d).
+// Gear teeth (F15d): brass, so every ring of a gear train reads as one machine at a glance, with a thin brass
+// band along the meshed edge.
+const BRASS = '#c98f2e', BRASS_DK = '#6b4410', BRASS_LT = '#ffe08a';
 function drawGearTeeth(ctx, ring, col, edge, dir) {
   const n = Math.round((TAU * edge) / 0.16);
-  ctx.fillStyle = col.dark;
+  const h = 0.085;
+  ctx.lineWidth = 0.012;
+  ctx.strokeStyle = BRASS_DK;
+  for (const s of ring.segs) {
+    if (!s.alive) continue;
+    annulus(ctx, dir > 0 ? edge - 0.03 : edge, dir > 0 ? edge : edge + 0.03, s.a0, s.a1);
+    ctx.fillStyle = BRASS;
+    ctx.fill();
+  }
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU, w = 0.04 / edge;
+    const a = (i / n) * TAU, w = 0.045 / edge;
     if (!liveAt(ring, a)) continue;
     ctx.beginPath();
     ctx.moveTo(edge * Math.cos(a - w), edge * Math.sin(a - w));
-    ctx.lineTo((edge + dir * 0.06) * Math.cos(a - w * 0.55), (edge + dir * 0.06) * Math.sin(a - w * 0.55));
-    ctx.lineTo((edge + dir * 0.06) * Math.cos(a + w * 0.55), (edge + dir * 0.06) * Math.sin(a + w * 0.55));
+    ctx.lineTo((edge + dir * h) * Math.cos(a - w * 0.55), (edge + dir * h) * Math.sin(a - w * 0.55));
+    ctx.lineTo((edge + dir * h) * Math.cos(a + w * 0.55), (edge + dir * h) * Math.sin(a + w * 0.55));
     ctx.lineTo(edge * Math.cos(a + w), edge * Math.sin(a + w));
+    ctx.fillStyle = BRASS;
     ctx.fill();
+    ctx.stroke();
   }
 }
 function liveAt(ring, a) {
@@ -389,32 +403,84 @@ function liveAt(ring, a) {
   return false;
 }
 
-// The idler cog between two geared rings, at the top of the channel between them.
+// The idler cog between two geared rings, at the top of the channel between them: brass, meshing with
+// both rings' teeth, spinning as they turn.
 export function drawGearCog(ctx, inner, outer, t) {
-  const rc = (outer.r - inner.r - RING_TH - 0.12) / 2;
+  const rc = (outer.r - inner.r - RING_TH - 0.04) / 2;
   if (rc < 0.08) return;
   const R = (inner.r + outer.r) / 2, a = Math.PI / 2 + 0.35;
   ctx.save();
   ctx.translate(R * Math.cos(a), R * Math.sin(a));
-  ctx.rotate((-inner.body.getAngle() * inner.r) / rc);
-  const n = 10;
+  // drop shadow
+  ctx.beginPath();
+  ctx.arc(0.025, -0.03, rc * 0.95, 0, TAU);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fill();
+  ctx.rotate((-inner.body.getAngle() * (inner.r + RING_TH / 2)) / rc);
+  const n = 12;
   ctx.beginPath();
   for (let i = 0; i < n * 2; i++) {
-    const rr = i % 2 ? rc * 0.78 : rc;
+    const rr = i % 2 ? rc * 0.8 : rc;
     const b = (i / (n * 2)) * TAU;
-    ctx.lineTo(rr * Math.cos(b - 0.12), rr * Math.sin(b - 0.12));
-    ctx.lineTo(rr * Math.cos(b + 0.12), rr * Math.sin(b + 0.12));
+    ctx.lineTo(rr * Math.cos(b - 0.1), rr * Math.sin(b - 0.1));
+    ctx.lineTo(rr * Math.cos(b + 0.1), rr * Math.sin(b + 0.1));
   }
   ctx.closePath();
-  ctx.fillStyle = '#9aa3ad';
+  ctx.fillStyle = BRASS;
   ctx.fill();
-  ctx.strokeStyle = '#2c3138';
+  ctx.strokeStyle = BRASS_DK;
   ctx.lineWidth = 0.02;
   ctx.stroke();
+  // spokes and hub
   ctx.beginPath();
-  ctx.arc(0, 0, rc * 0.25, 0, TAU);
-  ctx.fillStyle = '#2c3138';
+  ctx.arc(0, 0, rc * 0.62, 0, TAU);
+  ctx.strokeStyle = BRASS_DK;
+  ctx.lineWidth = 0.018;
+  ctx.stroke();
+  for (let i = 0; i < 4; i++) {
+    const b = (i / 4) * TAU;
+    ctx.beginPath();
+    ctx.moveTo(rc * 0.2 * Math.cos(b), rc * 0.2 * Math.sin(b));
+    ctx.lineTo(rc * 0.62 * Math.cos(b), rc * 0.62 * Math.sin(b));
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, rc * 0.22, 0, TAU);
+  ctx.fillStyle = BRASS_DK;
   ctx.fill();
+  ctx.beginPath();
+  ctx.arc(-rc * 0.3, rc * 0.3, rc * 0.18, 0, TAU);
+  ctx.fillStyle = 'rgba(255,240,190,0.35)';
+  ctx.fill();
+  ctx.restore();
+}
+
+// While the player turns a geared ring, every other ring of its train shows a brass arrow the way it is
+// being turned, so the link is never a surprise. strength 0..1 fades it in and out.
+export function drawGearArrow(ctx, ring, dir, strength, t) {
+  if (strength <= 0.02) return;
+  // just right of the top of the ring: always on screen, away from the idler cogs (left of the top)
+  const r = ring.r, span = Math.min(0.9, 2.2 / r), a0 = Math.PI / 2 - 0.3 - span / 2 + ((t * dir * 0.5) % 0.25);
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, strength);
+  ctx.lineCap = 'round';
+  for (const [lw, c] of [[0.2, BRASS_DK], [0.12, BRASS_LT]]) {
+    ctx.strokeStyle = c;
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, a0 - span / 2, a0 + span / 2);
+    ctx.stroke();
+    // head at the leading end (dir > 0: counter-clockwise in world space)
+    const ah = a0 + (dir * span) / 2, tx = -Math.sin(ah) * dir, ty = Math.cos(ah) * dir;
+    const hx = r * Math.cos(ah), hy = r * Math.sin(ah), nx = Math.cos(ah), ny = Math.sin(ah), L = 0.3 + lw * 0.8;
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.moveTo(hx + tx * L * 0.9, hy + ty * L * 0.9);
+    ctx.lineTo(hx + nx * L * 0.55, hy + ny * L * 0.55);
+    ctx.lineTo(hx - nx * L * 0.55, hy - ny * L * 0.55);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.restore();
 }
 

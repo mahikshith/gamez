@@ -51,6 +51,16 @@ function defaultPads(spec, i) {
   return spec.id <= 8 ? 2 : spec.id <= 15 ? 2 : 1;
 }
 
+// a ring geared (through any chain of gears) to a one-way ring can only turn one way itself
+function trainOneway(spec, i) {
+  const R = spec.rings;
+  let a = i, b = i;
+  while (a > 0 && R[a - 1].gear) a--;
+  while (b < R.length - 1 && R[b].gear) b++;
+  for (let j = a; j <= b; j++) if (R[j].oneway) return true;
+  return false;
+}
+
 function layRing(spec, i, r, R, prev) {
   const rs = spec.rings[i];
   const ring = {};
@@ -58,6 +68,7 @@ function layRing(spec, i, r, R, prev) {
   if (rs.motor) ring.motor = rs.motor;
   if (rs.motorFlip) ring.motorFlip = rs.motorFlip;
   if (rs.oneway) ring.oneway = Math.sign(rs.oneway); // v3 ratchet ring (G22)
+  if (rs.ice) ring.ice = rs.ice; // v3.2 hard ice: only the pick chick drills it open
   if (rs.retract) ring.retract = { phase: +(R() * rs.retract.period).toFixed(2), ...rs.retract };
   if (rs.gear) {
     // geared to the next ring out: turning either turns the other the opposite way
@@ -112,10 +123,10 @@ function layRing(spec, i, r, R, prev) {
   const sortedG = [...gaps].sort((p, q) => p.a - q.a);
   const after = (open.length ? open : gaps.slice(0, 1)).map((g) => sortedG.indexOf(g)).sort((p, q) => p - q);
   const nFloor = free ? Infinity : after.length - Math.min(after.length, rs.barriers || 0); // barriers take arcs too
-  // a one-way ring can't turn back, so a floor cluster could trap an egg on the far side of its pocket's
+  // a one-way ring (or one geared to it) can't turn back, so a floor cluster could trap an egg on the far side of its pocket's
   // gap: its thorns all point out (a ceiling for the channel beyond)
   for (let k = 0; k < nT; k++) {
-    const floor = !rs.oneway && (free || k < nFloor);
+    const floor = !trainOneway(spec, i) && (free || k < nFloor);
     let ok = false;
     for (let t = 0; t < 300 && !ok; t++) {
       const n = floor ? smin + Math.floor(R() * (smax - smin + 1)) : Math.min(2, smin);
@@ -323,6 +334,7 @@ export async function evaluate(spec, L) {
   if (stars < 2 || p.moves < (spec.minMoves || 2)) return fail('medium');
   // every special egg must be saved in the validated run, and an ostrich must have a gap it always fits
   if (p.special.saved < p.special.total) return fail('special');
+  if (spec.useTap && !p.taps) return fail('tap'); // a chick's intro level: the strong player must find its power worth using
   if ((L.eggKinds || []).includes('ostrich')) { const od = await ostrichDrops(L); rec.drops = od.join(''); if (od.includes(0)) return fail('ostrich'); }
   const ex = alignAll(L);
   rec.exploit = ex;

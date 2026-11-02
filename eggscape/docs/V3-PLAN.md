@@ -178,3 +178,34 @@ shown once, then players discover the rest (combo album page).
 snake vs snake (clash, done), eagle vs snake (grab, being rebuilt), frog vs chameleon (tongue duel). The fight is a
 4–6 s window the player uses to move eggs past; the winner chases harder after. Each fight has its own animation,
 reviewed first. A food chain makes it readable: eagle > snake > frog; salamander scares frogs; chicks distract everyone.
+
+## v3.2 placement pass (K1, K2, K5)
+
+Gears (K1). The sim now takes gear trains, not just pairs: spec `gear: true` on rings i and i+1 links i, i+1 and i+2,
+and each ring turns against its neighbours. Brass teeth and a brass idler cog mark every geared edge; while the player
+turns one ring, every ring it drives shows a brass arrow the way it is going, and the first time ever a "Geared!" label
+says so. A ring geared to a one-way ring is one-way too (gen.mjs keeps its floor thorns off).
+
+| Level | Gears |
+|---|---|
+| L2 | First pair (rings 1-2), safe; the tip explains it |
+| L3, L4, L5, L7, L8 | One pair each, moving to different rings (L4 drives the curtain ring) |
+| L10 | Chain of three (rings 0-1-2) in the snake boss |
+| L12 | Pair with a one-way ring |
+| L17, L32, L33 | Chains of three |
+| L24, L29 | Pair / two pairs |
+
+Chick kinds in the campaign (K5). Each is taught alone with an intro card in a level that had none (the generator
+requires the strong player to actually use the tap there), then comes back at least three times.
+
+| Kind | Taught | Reused |
+|---|---|---|
+| Glow | L9 (two snakes) | L13, L28, L35 |
+| Pick | L14 (solid hard-ice ring; a swirl makes a new orb every 9 s) | L15, L31, L34 (hard-ice rings) |
+| Bulk | L18 (Ostrich Run, glass) | L20, L29, L33 |
+| Swoop | L19 (adds a curtain) | L24, L32, L35 |
+| Dash | L23 (snake and salamander) | L28, L30, L33 |
+
+Coverage (K2): `node tools/coverage.mjs [--matrix]` lists where each mechanic is taught and reused, and fails when one
+comes back fewer than 3 times. First run (before this pass) failed 15 mechanics, among them retracting thorns, honey,
+duck egg, current, icicles, magnet and the frost orb. Those feed the pacing pass (M4) and the 50-level extension (M5).

@@ -20,7 +20,7 @@ import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
 import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar, drawMagnetField, bossPose, setBossView } from './render/boss.js'; // bosses (v3.1)
 import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
-import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel } from './render/chicks.js'; // v3.2 chick kinds
+import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
 import { CHICK_DEMOS } from './data/chick-demos.js';
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
 
@@ -1665,7 +1665,21 @@ function render() {
   drawBossRings(ctx, sim, k, t); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
   drawSalHeat(ctx, sim, k, t); // v3.2: red-hot ring sections and the salamander's target mark
   drawBossActor(ctx, sim, k, t);
-  for (const ring of sim.rings) if (ring.gear && ring.gear.i > ring.i) W.drawGearCog(ctx, ring, ring.gear, t);
+  for (const ring of sim.rings) if (ring.gearOut) W.drawGearCog(ctx, ring, ring.gearOut, t);
+  // gear trains: while the player turns one ring, the rings it drives show which way they go; the first time
+  // ever, a label says so
+  for (const ring of sim.rings) {
+    if (!ring.gear) continue;
+    const driven = ring.follower && ring.gear.some((r) => r.held || r.keyHeld) && Math.abs(ring.omega) > 0.2;
+    ring.gearArr = Math.max(0, Math.min(1, (ring.gearArr || 0) + (driven ? 0.12 : -0.06)));
+    if (driven) ring.gearDir = Math.sign(ring.omega);
+    W.drawGearArrow(ctx, ring, ring.gearDir || 1, ring.gearArr * 0.85, t);
+    if (driven && !save.seen.gears && G.screen === 'play') {
+      save.seen.gears = 1;
+      persist();
+      popup(0, sim.outerR + 0.6, 'Geared!', { sub: 'linked rings turn the other way', color: '#ffd36b', size: 20, life: 2.4 });
+    }
+  }
   if (sim.wx.bolt) { const b = sim.boltPoint(sim.wx.bolt); W.drawBoltWarn(ctx, b.x, b.y, t); }
   W.drawBarriers(ctx, sim, t, k); // predators (v3)
   W.drawFoxThrower(ctx, sim, t, k);
@@ -1929,7 +1943,7 @@ function drawPopups() {
     const h = size + (p.sub ? subS + 2 : 0);
     const minY = Math.max(G.hudBottom, G.toast ? G.toastBottom || 0 : 0) + 8 * ui.u + h / 2;
     let y = Math.max(p.y, minY);
-    const w = ui.measure(p.text, size);
+    const w = Math.min(W_ - 16, Math.max(ui.measure(p.text, size), p.sub ? ui.measure(p.sub, subS) : 0)); // the sub line can be the wider one
     const x = clamp(p.x, w / 2 + 8, W_ - w / 2 - 8);
     // v3.1: never overlap an older popup: step above it, or below the whole stack when there is no room above.
     // The new spot sticks (p.y), so labels don't jump back and forth from frame to frame.
@@ -2059,7 +2073,8 @@ function drawIntro() {
     // a world's new mechanic gets one screen of its own the first time (C6); a boss also shows its face (I6)
     stackCard(L.intro.title, (s, iw) => [
       ...(L.boss ? [{ h: 190 * s, gap: 0, draw: (x, y, w) => bossPortrait(ctx, L.boss, x, y, w, 190 * s, G.t) }] : []),
-      ...(!L.boss && L.salamander ? [{ h: 96 * s, gap: 0, draw: (x, y, w) => salIntroArt(x, y, w, 96 * s) }] : []), // v3.2: meet the salamander
+      ...(L.intro.chick ? [{ h: 104 * s, gap: 0, draw: (x, y, w) => chickIntroArt(L.intro.chick, x, y, w, 104 * s) }] // v3.2: meet the chick kind
+        : !L.boss && L.salamander ? [{ h: 96 * s, gap: 0, draw: (x, y, w) => salIntroArt(x, y, w, 96 * s) }] : []), // v3.2: meet the salamander
       ...wrapText(L.intro.line, 17 * s, iw).slice(0, 4).map((l, i) => lineBlock(l, 17 * s, { color: '#fff', tag: 'wintro:' + i, gap: i ? 2 * s : 4 * s })),
       { h: 56 * s, gap: 18 * s, draw: (x, y, w) => ui.button('gotit', 'GOT IT', x, y, w, 56 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.play, size: 22 * s }) },
     ]);
@@ -2097,6 +2112,13 @@ function salIntroArt(x, y, w, h) {
   ctx.fillRect(x, y, w, h);
   drawSalamander(ctx, x + w / 2 + 0.95 * S, y + h * 0.52, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 49 });
   ctx.restore();
+}
+
+// v3.2: a chick kind on its intro card: the ready chick with its halo, bouncing (the in-game art)
+function chickIntroArt(kind, x, y, w, h) {
+  const r = h * 0.3;
+  drawReady(ctx, kind, x + w / 2, y + h * 0.55, r * 1.25, G.t);
+  drawKindChick(ctx, kind, x + w / 2, y + h * 0.55, r * 1.6, G.t, { ready: true });
 }
 
 // BOSS PORTRAIT (I6): the boss's face on its intro card. Stub: the sprite agent wires

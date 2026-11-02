@@ -185,7 +185,17 @@ export class Sim {
       this.rings.push(this.makeRing(i, r, spec, spec.mat || mat0));
     });
     this.outerR = r + RING_TH / 2;
-    for (const ring of this.rings) if (ring.spec.gear != null && this.rings[ring.spec.gear]) { ring.gear = this.rings[ring.spec.gear]; ring.gear.gear = ring; }
+    // gears: spec.gear links a ring to the next ring out. Links that touch form one gear train (a chain of 2+
+    // rings); turning any ring of a train turns its neighbours the other way, and theirs the same way again.
+    for (const ring of this.rings) if (ring.spec.gear != null && this.rings[ring.spec.gear]) { ring.gearOut = this.rings[ring.spec.gear]; ring.gearOut.gearIn = ring; }
+    for (const ring of this.rings) {
+      if (ring.gear || !(ring.gearIn || ring.gearOut)) continue;
+      let a = ring;
+      while (a.gearIn) a = a.gearIn;
+      const train = [];
+      for (let b = a; b; b = b.gearOut) train.push(b);
+      for (const b of train) b.gear = train;
+    }
 
     // nest + ground
     const n = L.nest || {};
@@ -245,7 +255,7 @@ export class Sim {
       segs: [], thorns: [],
       honey: (spec.honey || []).map((h) => ({ a: deg(h.a), len: h.len, dry: 0 })),
       retract: spec.retract || null,
-      held: false, omega: 0, stun: 0, gear: null,
+      held: false, omega: 0, stun: 0, gear: null, gearIn: null, gearOut: null, // gear: the ring's gear train (array) or null
     };
     const fr = this.level.weather === 'rain' ? 0.55 : 1; // rain: slippery rings
     const ri = r - RING_TH / 2, ro = r + RING_TH / 2;
@@ -423,18 +433,22 @@ export class Sim {
       ring.omega = w;
       ring.follower = false;
     }
-    // geared pairs (F15d): the ring being driven turns its partner the other way, at the slower
-    // ring's speed; a locked ring locks its partner
+    // gear trains (F15d): the ring being driven turns the rest, alternating direction ring by ring, at the
+    // slowest ring's speed; a locked ring locks its whole train
     for (const ring of this.rings) {
-      const o = ring.gear;
-      if (!o || o.i < ring.i) continue;
-      const drive = Math.abs(ring.target - ring.body.getAngle()) >= Math.abs(o.target - o.body.getAngle()) ? ring : o;
-      const other = drive === ring ? o : ring;
-      const lim = ring.stun > 0 || o.stun > 0 || ring.lock > 0 || o.lock > 0 ? 0 : Math.min(this.maxOmega(ring), this.maxOmega(o));
+      const T = ring.gear;
+      if (!T || T[0] !== ring) continue;
+      const err = (r) => Math.abs(r.target - r.body.getAngle());
+      let drive = T[0];
+      for (const r of T) if (err(r) > err(drive)) drive = r;
+      const lim = T.some((r) => r.stun > 0 || r.lock > 0) ? 0 : Math.min(...T.map((r) => this.maxOmega(r)));
       drive.omega = clamp(drive.omega, -lim, lim);
-      other.omega = -drive.omega;
-      other.target = other.body.getAngle() + other.omega * dt;
-      other.follower = true;
+      for (const r of T) {
+        if (r === drive) continue;
+        r.omega = (Math.abs(r.i - drive.i) % 2 ? -1 : 1) * drive.omega;
+        r.target = r.body.getAngle() + r.omega * dt;
+        r.follower = true;
+      }
     }
     this.v3Rings();
     for (const ring of this.rings) {
@@ -2398,7 +2412,7 @@ export class Sim {
   canTurn(ring, delta) {
     if (ring.lock > 0) return false; // bosses (v3.1): frozen or punched
     if (ring.oneway && Math.sign(delta) !== ring.oneway) return false;
-    if (ring.gear && ring.gear.oneway && -Math.sign(delta) !== ring.gear.oneway) return false;
+    if (ring.gear) for (const r of ring.gear) if (r !== ring && r.oneway && (Math.abs(r.i - ring.i) % 2 ? -1 : 1) * Math.sign(delta) !== r.oneway) return false;
     return true;
   }
   // Is gap g a way down for this egg?
@@ -2414,7 +2428,7 @@ export class Sim {
   v3Rings() {
     for (const ring of this.rings) {
       if (!ring.oneway || ring.motor || ring.omega * ring.oneway >= 0) continue;
-      for (const r of ring.gear ? [ring, ring.gear] : [ring]) { r.omega = 0; r.target = r.body.getAngle(); }
+      for (const r of ring.gear || [ring]) { r.omega = 0; r.target = r.body.getAngle(); }
     }
     if (this.slowT > 0) for (const ring of this.rings) if (!ring.motor) ring.omega *= 2;
   }
