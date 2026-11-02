@@ -194,6 +194,7 @@ export const p2Methods = {
     if (this.p2Eagle()) this.p2EagleHit(kind, T);
     if (this.fox) this.p2Fox(kind, T);
     this.p2Boss(kind, T);
+    this.frogHit(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v3.5: the frog is a creature too (frozen / stunned)
   },
   p2Snakes() { return this.snakes.filter((S) => !S.gone && S.inside && S.pts.length > 1 && !S.carried && !(S.flee >= 0)); },
   p2Sals() { return (this.sals || []).filter((C) => this.salLive(C) && C.ph !== 'in' && C.ph !== 'dive' && C.ph !== 'grin'); },
@@ -597,6 +598,11 @@ export const p2Methods = {
     // the salamander walks mid-channel gripping both walls, so it touches a ring from a little further out
     const nearSal = (q) => Math.abs(Math.hypot(q.x, q.y) - R) < touch + 0.2;
     for (const C of this.p2Sals()) if (!P.fx['c' + C.id] && C.pts.some((q, i) => i % 3 === 0 && nearSal(q))) this.p2Sal(C, 'zap', T);
+    for (const F of this.frogs || []) { // the frog stands on a ring (or sits in its gap): a live ring zaps it once, then it gets a breather
+      if (F.fi !== P.shockR || F.ph === 'hop' || P.fx['g' + F.id] || F.frz > 0) continue;
+      this.frogHit('zap', Math.min(2.5, T), F);
+      this.p2Mark('g' + F.id, 'zap', Math.min(2.5, T) + 1.8);
+    }
     if (P.shockR !== this.rings.length - 1) return; // the eagle, the fox and the bosses only meet the outer ring
     const E = this.p2Eagle();
     if (E && !P.fx.e && Math.abs(Math.hypot(E.x, E.y) - R) < 0.9) { this.eagleDaze('shock'); E.t = 2.5; this.p2Mark('e', 'zap', 1.5, E.x, E.y); }

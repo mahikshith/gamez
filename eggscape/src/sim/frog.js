@@ -21,7 +21,7 @@ import { Vec2, Polygon } from 'planck';
 import { RING_TH, wrap, clamp } from './geom.js';
 
 export const FROG = {
-  w: 0.84, // m, body width (a gap is 0.78 wide: a frog in it fills it)
+  w: 1.13, // m, body width (a gap is 0.78 wide: a frog in it covers it with room to spare). v3.5: art is 1.09 m per 100 units
   every: 6, hopWarn: 0.7, land: 0.3, // s between hops (Medium), crouch + puff telegraph, landing squash
   reach: 2.4, scareReach: 3.6, // m of arc to the gap it hops through
   tongue: 1.5, lickWarn: 0.5, tongueT: 0.4, gulpT: 0.65, lickCD: 4, // m, s
@@ -39,9 +39,10 @@ export const FROG_MODE = {
 const CAT_FROG = 256, MASK_FROG = 2; // collides with eggs only (CAT.EGG = 2, and sim.js adds this category to the egg mask)
 // polygons in the frog's frame (x along the surface, y out of it, feet at y = 0): a dome when sitting on a floor,
 // a flat table across the opening when sitting in a gap (its top is 0.03 m above the ring's inner face)
+// v3.5: a taller sitting frog (0.4 m collider, art about 0.7 m with the eyes): the channel is 0.84 m clear, an egg needs 0.42 to roll past on top
 const SHAPE = {
-  dome: [[-0.42, 0], [-0.43, 0.08], [-0.33, 0.24], [-0.12, 0.33], [0.12, 0.33], [0.33, 0.24], [0.43, 0.08], [0.42, 0]],
-  table: [[-0.42, 0], [-0.42, 0.12], [-0.37, 0.19], [0.37, 0.19], [0.42, 0.12], [0.42, 0]],
+  dome: [[-0.5, 0], [-0.51, 0.1], [-0.4, 0.3], [-0.14, 0.4], [0.14, 0.4], [0.4, 0.3], [0.51, 0.1], [0.5, 0]],
+  table: [[-0.5, 0], [-0.5, 0.13], [-0.44, 0.2], [0.44, 0.2], [0.5, 0.13], [0.5, 0]],
 };
 const sstep = (v) => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
 
@@ -60,6 +61,7 @@ export const frogMethods = {
         side: -1, ts: -1, ss: -1, x: 0, y: 0, nx: 0, ny: 1, vx: 0, vy: 0, air: 0, u: 0, bump: 0, bumpCD: 0,
         hk: '', hr: 0, hg: 0, sri: 0, sla: 0, sr: 0, ti: 0, tla: 0, tr: 0, tpl: -1, hd: 0.6, hh: 1,
         lk: '', lx: 0, ly: 0, lid: 0, lty: '', hit: 0, got: 0, pk: '', pty: '', px: 0, py: 0,
+        frz: 0, frzMax: 0, stn: 0, stnMax: 0, zapT: 0, // frozen / stunned / zap flash: seconds left (frog: powers, rooster)
       };
       this.frogs.push(F);
       this.frogSeat(F);
@@ -93,7 +95,7 @@ export const frogMethods = {
   },
   frogMouth(F) { // in front of the head, 0.22 m up the normal
     const tx = F.ny * F.face, ty = -F.nx * F.face;
-    return { x: F.x + F.nx * 0.22 + tx * 0.36, y: F.y + F.ny * 0.22 + ty * 0.36 };
+    return { x: F.x + F.nx * 0.5 + tx * 0.4, y: F.y + F.ny * 0.5 + ty * 0.4 };
   },
   frogChs(F) { return F.gi >= 0 ? [F.fi, F.fi + 1] : [F.side < 0 ? F.fi : F.fi + 1]; }, // a ring's inner face is channel fi, its outer face channel fi+1
 
@@ -144,6 +146,8 @@ export const frogMethods = {
     this.frogs.forEach((F, i) => {
       for (const k of ['lickCD', 'scareCD', 'bumpCD']) if (F[k] > 0) F[k] = Math.max(0, F[k] - dt);
       F.bump = Math.max(0, F.bump - dt * 3);
+      if (F.zapT > 0) F.zapT = Math.max(0, F.zapT - dt); else if (F.stn > 0) F.stn = Math.max(0, F.stn - dt); // a zap's flash first, then the dizzy
+      if (F.frz > 0) F.frz = Math.max(0, F.frz - dt);
       const x0 = F.x, y0 = F.y;
       F.t += dt;
       this.frogOne(F, dt, play);
@@ -156,7 +160,7 @@ export const frogMethods = {
   frogSet(F, ph, dur = 0) { F.ph = ph; F.t = 0; F.dur = dur; },
   frogEggNear(F) {
     const cx = F.x + F.nx * 0.2, cy = F.y + F.ny * 0.2;
-    for (const e of this.aliveEggs()) { const p = e.body.getPosition(); if (Math.hypot(p.x - cx, p.y - cy) < 0.55) return true; }
+    for (const e of this.aliveEggs()) { const p = e.body.getPosition(); if (Math.hypot(p.x - cx, p.y - cy) < 0.7) return true; }
     return false;
   },
 
@@ -166,6 +170,11 @@ export const frogMethods = {
     this.frogPlace(F);
     if (!play) return;
     if (F.side < 0 ? Math.sin(F.wa) > FROG.hang : Math.sin(F.wa) < -FROG.hang) { this.frogDrop(F); return; } // its wall turned into a ceiling
+    if (F.frz > 0 || F.stn > 0) { // frozen or stunned: it does nothing (still a solid body, still a floor in a gap)
+      if (F.ph !== 'sit' && F.ph !== 'land') { F.sc = 0; F.hk = ''; this.frogSet(F, 'sit'); }
+      F.lickCD = Math.max(F.lickCD, 0.8); F.scareCD = Math.max(F.scareCD, 0.5);
+      return;
+    }
     const idle = F.ph === 'sit' || F.ph === 'land' || F.ph === 'crouch' || F.ph === 'lick';
     if (idle && F.scareCD <= 0) {
       const th = this.frogThreat(F);
@@ -313,7 +322,7 @@ export const frogMethods = {
   },
   // where it lands for a hop through gap g (world angle wg), on `side`; null when that spot is bad
   frogLandAt(F, hk, ri, ti, g, wg, side) {
-    const T = this.rings[ti], off = hk === 'up' ? g.len / 2 + 0.38 + 0.5 * this.rand() : 0.35 + 0.8 * this.rand();
+    const T = this.rings[ti], off = hk === 'up' ? g.len / 2 + 0.5 + 0.5 * this.rand() : 0.4 + 0.8 * this.rand();
     const wl = wg + (side * off) / T.r;
     return this.frogLandSpot(F, T, ti, wl);
   },
@@ -322,11 +331,11 @@ export const frogMethods = {
     let la = wrap(wl - T.body.getAngle()), tpl = -1, tr = T.r + ts * RING_TH / 2;
     T.gaps.forEach((g, k) => { if (tpl < 0 && Math.abs(wrap(la - g.a)) * T.r < g.len / 2 + 0.1) tpl = k; });
     if (tpl >= 0) { if (!this.frogGapOk(T.gaps[tpl])) return null; la = T.gaps[tpl].a; tr = T.r - ts * RING_TH / 2; }
-    for (const th of T.thorns) if (th.alive && th.side === (ts < 0 ? 'in' : 'out') && Math.abs(wrap(la - th.a)) * T.r < 0.35) return null;
+    for (const th of T.thorns) if (th.alive && th.side === (ts < 0 ? 'in' : 'out') && Math.abs(wrap(la - th.a)) * T.r < 0.5) return null;
     for (const O of this.frogs) {
       if (O === F) continue;
       const wo = this.rings[O.ph === 'hop' ? O.ti : O.fi].body.getAngle() + (O.ph === 'hop' ? O.tla : O.la), oi = O.ph === 'hop' ? O.ti : O.fi;
-      if (oi === ti && Math.abs(wrap(wo - wl)) * T.r < 0.95) return null;
+      if (oi === ti && Math.abs(wrap(wo - wl)) * T.r < 1.25) return null;
     }
     return { tla: la, tr, tpl };
   },
@@ -438,6 +447,21 @@ export const frogMethods = {
     F.next = F.every * (0.85 + 0.3 * this.rand()) * (FROG_MODE[this.mode] || FROG_MODE.medium).every;
     this.frogSet(F, 'land', FROG.land);
     this.emit('frogLand', { x: F.x, y: F.y, id: F.id, plug: F.gi >= 0 ? 1 : 0, scared: F.sc });
+  },
+
+  // ---------- creature states from the powers and the rooster. kind: ice (frozen T s), out (as ice), bolt (stunned T s),
+  // crow (stunned T s), zap (0.3 s of arcs, then stunned T s). Others (pepper, scare, spin) do not touch a frog.
+  // It never undoes what it is doing mid-air: the hop finishes, then it holds (the timers run meanwhile).
+  frogHit(kind, T, one) {
+    const ice = kind === 'ice' || kind === 'out', stun = kind === 'bolt' || kind === 'crow' || kind === 'zap';
+    if (!ice && !stun) return 0;
+    for (const F of one ? [one] : this.frogs || []) {
+      if (ice) { F.frz = F.frzMax = Math.max(F.frz, T); F.stn = 0; F.zapT = 0; } // ice beats a dizzy
+      else if (!(F.frz > 0)) { F.stn = F.stnMax = Math.max(F.stn, T); if (kind === 'zap') F.zapT = 0.3; }
+      F.next = Math.max(F.next, 1); F.sc = 0;
+      this.emit('frogState', { x: F.x, y: F.y, id: F.id, kind: ice ? 'ice' : 'stun' });
+    }
+    return one ? 1 : (this.frogs || []).length;
   },
 
   // ---------- state
