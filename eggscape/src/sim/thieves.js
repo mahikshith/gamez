@@ -36,7 +36,7 @@ import { RING_TH, EGG_W, wrap, clamp } from './geom.js';
 export const RIG = {
   weasel: { s: 0.9, mouthX: 0.82, mouthY: 0.31, bodyX: 0.0, bodyY: 0.22, reach: 0.42, gapMin: 0.58 },
   rat: { s: 0.74, mouthX: 0.64, mouthY: 0.07, bodyX: -0.045, bodyY: 0.16, reach: 0.3, gapMin: 0.5 },
-  ratking: { s: 1.05, mouthX: 0.9, mouthY: 0.32, bodyX: -0.05, bodyY: 0.22, reach: 0.5, gapMin: 0.64 },
+  ratking: { s: 1.35, mouthX: 1.157, mouthY: 0.411, bodyX: -0.064, bodyY: 0.283, reach: 0.6, gapMin: 0.64 }, // 1.3x the first cut: mykee found him too small on a phone
 };
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 export const HUNT = {

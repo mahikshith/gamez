@@ -31,8 +31,8 @@ const RIM = '#2f6f9e', SHELL = 'rgb(214,240,255)';
 // line: the outline; fur/furLo/furHi: 2-tone body + back highlight; belly: the underside; skin: rat ears, nose, paws, tail
 const PALS = {
   weasel: { line: '#2a1206', fur: '#a5582a', furLo: '#7c3d1a', furHi: '#c4733a', belly: '#f7e6c2', bellyLo: '#e2c99a', paw: '#7c3d1a', dark: '#3d1a08', nose: '#1d0b04', eyeW: '#fffaf0', iris: '#3a1a08', pupil: '#120602', mouth: '#4a1010', tongue: '#e0606a', earIn: '#d98a7a', tooth: '#ffffff' },
-  rat: { line: '#1c1622', fur: '#8c8496', furLo: '#696172', furHi: '#a9a1b4', belly: '#d9d2de', bellyLo: '#bdb4c4', paw: '#ef9ea8', dark: '#4a4252', nose: '#e4707e', eyeW: '#fff6f6', iris: '#2a0c12', pupil: '#0c0306', mouth: '#4a1018', tongue: '#e0606a', earIn: '#f2a6b0', tooth: '#f6dc7a', tail: '#e7a0a8', tailLo: '#c97c88' },
-  ratking: { line: '#1a1010', fur: '#8f7064', furLo: '#6c5148', furHi: '#ab8b7e', belly: '#cdbfb6', bellyLo: '#b0a096', paw: '#e2909a', dark: '#3a2a26', nose: '#d8606e', eyeW: '#fff2d8', iris: '#7a1010', pupil: '#120304', mouth: '#4a1018', tongue: '#e0606a', earIn: '#e8969e', tooth: '#f6dc7a', tail: '#d8909a', tailLo: '#b46c78', cape: '#a03cb4', capeLo: '#742485', gold: '#ffcf3a', goldLo: '#c8901a' },
+  rat: { line: '#24120a', fur: '#b8875a', furLo: '#8c6038', furHi: '#d6a878', belly: '#f2e0c4', bellyLo: '#d9bf9c', paw: '#ef9ea8', dark: '#4a2c18', nose: '#e4707e', eyeW: '#fff6f6', iris: '#2a0c12', pupil: '#0c0306', mouth: '#4a1018', tongue: '#e0606a', earIn: '#f2a6b0', tooth: '#f6dc7a', tail: '#e7a0a8', tailLo: '#c97c88' }, // warm brown rat: mid-tone fur + dark line reads on dark vaults and on snow
+  ratking: { line: '#1a0c08', fur: '#d8ccbe', furLo: '#ab9c8c', furHi: '#f0e8de', belly: '#f6eee2', bellyLo: '#ddd0c0', paw: '#e2909a', dark: '#4a3a30', nose: '#d8606e', eyeW: '#fff2d8', iris: '#a01818', pupil: '#120304', mouth: '#4a1018', tongue: '#e0606a', earIn: '#e8969e', tooth: '#f6dc7a', tail: '#d8909a', tailLo: '#b46c78', cape: '#c8282c', capeLo: '#7e1418', gold: '#ffcf3a', goldLo: '#c8901a' }, // old grey-white king, red cape: stands out on the dark vault
 };
 const ICED = {};
 for (const k in PALS) { ICED[k] = {}; for (const c in PALS[k]) ICED[k][c] = mixHex(desat(PALS[k][c], 0.75), '#a8d8f8', 0.6); }
@@ -533,7 +533,7 @@ export function drawThiefDens(ctx, sim, t, k) {
     const ring = sim.rings[T.run], a = ring.body.getAngle() + T.denA, rf = ring.r - 0.08;
     pxAt(ctx, rf * Math.cos(a), rf * Math.sin(a), k, () => {
       ctx.rotate(Math.atan2(-Math.cos(a), -Math.sin(a)));
-      const rat = T.kind === 'rat', w = (rat ? 0.34 : T.kind === 'ratking' ? 0.6 : 0.5) * k, h = (rat ? 0.3 : 0.44) * k, lw = Math.max(1.2, 0.04 * k);
+      const rat = T.kind === 'rat', w = (rat ? 0.34 : T.kind === 'ratking' ? 0.75 : 0.5) * k, h = (rat ? 0.3 : T.kind === 'ratking' ? 0.56 : 0.44) * k, lw = Math.max(1.2, 0.04 * k);
       ctx.beginPath();
       if (rat) { // a gnawed round hole: toothy rim
         for (let i = 0; i <= 16; i++) { const an = Math.PI + (i / 16) * Math.PI, rr = (i % 2 ? 0.88 : 1); ctx.lineTo(Math.cos(an) * w * rr, Math.sin(an) * h * 1.15 * rr + 2); }
