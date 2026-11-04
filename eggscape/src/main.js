@@ -9,7 +9,7 @@ import { audio } from './audio.js';
 import { portal } from './sdk/portal.js';
 import { FX } from './render/fx.js';
 import * as W from './render/world.js';
-import { UI, FONT, ICON, drawStar, drawEggIcon } from './ui/ui.js';
+import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge } from './ui/ui.js';
 import { drawSnake } from './render/characters.js';
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
 import { drawSprite, drawBossCard, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
@@ -145,6 +145,9 @@ const G = {
   screenT: 0,
   adBusy: false,
   usedRewind: false,
+  fails: {}, // level id -> 1 once it was failed this session (unlocks the ally button, v3.5)
+  allyOpen: false, // the Rooster / Goose choice is showing
+  allyAd: false, // a rewarded ad was watched for the ally this attempt
   doubled: false,
   golden: false,
   firstInput: false,
@@ -173,6 +176,8 @@ function themeFor(level) {
 }
 
 function startLevel(i, opts = {}) {
+  if (G.sim && G.sim.state === 'failed' && G.level) G.fails[G.level.id] = 1; // allies (v3.5): help is offered after a fail
+  G.allyOpen = G.allyAd = false;
   // leaving a level that was not won (quit, or gave up after a fail) ends the star streak
   if (G.sim && !G.result && G.sim.t > 1 && save.streak) { save.streak = 0; persist(); }
   G.run = (G.run || 0) + 1;
@@ -537,6 +542,25 @@ async function press(id) {
     case 'zoom:in': setZoom((G.zm || 0) + 0.34); break;
     case 'zoom:out': setZoom((G.zm || 0) - 0.34); break;
     case 'zoom:auto': G.zm = null; break;
+    case 'ally': {
+      // allies (v3.5): free on Easy and after a fail; otherwise a rewarded ad (never costs progress, the button stays on a miss)
+      if (G.screen !== 'play' || !allyShown()) break;
+      if (!allyFree() && !G.allyAd) {
+        const ok = await rewarded('ally');
+        if (ok) G.allyAd = true;
+        if (G.screen === 'play') portal.gameplayStart();
+        if (!ok) break;
+      }
+      G.allyOpen = !G.allyOpen;
+      break;
+    }
+    case 'ally:rooster':
+    case 'ally:goose':
+      if (G.screen === 'play' && allyShown() && G.allyOpen) {
+        if (G.sim.callAlly(id.slice(5))) G.allyOpen = false;
+        else toast(id === 'ally:goose' ? 'The goose sees nothing to chase right now.' : 'The rooster cannot help right now.', 2.2);
+      }
+      break;
     case 'play': {
       const i = Math.min(LEVELS.length - 1, save.unlocked - 1);
       if (!playable(i)) { G.world = envOf(i); setScreen('levels'); break; } // a star gate: show it on the map
@@ -1938,6 +1962,39 @@ function dim(a = 0.55) {
   ctx.fillRect(0, 0, W_, H_);
 }
 
+// ---- allies (v3.5): one call per attempt, Rooster or Goose
+const allyKinds = () => (G.sim && G.sim.ally ? G.sim.ally.avail : []);
+function allyShown() {
+  const A = G.sim && G.sim.ally;
+  return !!(A && G.sim.state === 'play' && A.avail.length && !A.act && !A.used.rooster && !A.used.goose);
+}
+const allyFree = () => G.sim.mode === 'easy' || !!G.fails[G.level.id];
+const allyIcon = (c, x, y, s) => { // a little rooster head: red comb, orange beak, white face
+  c.save(); c.lineWidth = 1.5; c.strokeStyle = 'rgba(0,0,0,0.55)';
+  c.fillStyle = '#e23a2e';
+  for (const dx of [-0.2, 0, 0.2]) { c.beginPath(); c.arc(x + dx * s, y - 0.3 * s, 0.17 * s, 0, 7); c.fill(); c.stroke(); }
+  c.fillStyle = '#fff6e0'; c.beginPath(); c.arc(x, y + 0.02 * s, 0.34 * s, 0, 7); c.fill(); c.stroke();
+  c.fillStyle = '#f0a020'; c.beginPath(); c.moveTo(x + 0.28 * s, y - 0.06 * s); c.lineTo(x + 0.55 * s, y + 0.04 * s); c.lineTo(x + 0.28 * s, y + 0.14 * s); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = '#e23a2e'; c.beginPath(); c.arc(x + 0.2 * s, y + 0.2 * s, 0.1 * s, 0, 7); c.fill();
+  c.fillStyle = '#222'; c.beginPath(); c.arc(x + 0.1 * s, y - 0.06 * s, 0.05 * s, 0, 7); c.fill();
+  c.restore();
+};
+// the ally button sits in the zoom strip (bottom left in portrait, bottom of the right column in landscape); the choice opens beside or above it
+function drawAllyBtn() {
+  if (!allyShown()) { G.allyOpen = false; return; }
+  const { bs, pad, side } = G.zb, u = ui.u, gap = 8 * u;
+  const x = side ? W_ - pad - bs : pad, y = H_ - 6 * u - bs;
+  const free = allyFree() || G.allyAd;
+  ui.button('ally', '', x, y, bs, bs, { color: '#d49a1c', dark: '#8a5f0a', icon: allyIcon });
+  if (!free) drawAdBadge(ctx, x + bs - 22 * u, y + bs - 15 * u, 24 * u, 17 * u);
+  if (!G.allyOpen) return;
+  const kinds = allyKinds(), cw = 112 * u, ch = 44 * u;
+  kinds.forEach((k, i) => {
+    const bx = side ? x - gap - cw : x, by = y - (ch + gap) * (side ? kinds.length - 1 - i : kinds.length - i) + (side ? bs - ch : 0);
+    ui.button('ally:' + k, k === 'rooster' ? 'Rooster' : 'Goose', bx, by, cw, ch, { color: k === 'rooster' ? '#d8452f' : '#5a8dee', dark: k === 'rooster' ? '#8e2616' : '#2f5bb0', size: 17 * u });
+  });
+}
+
 function fmtTime(s) {
   s = Math.max(0, Math.ceil(s));
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
@@ -2019,7 +2076,7 @@ function drawHUD() {
     ui.text(timeTxt, tx + 24 * u, trayY + 1 * u, { size: 22 * u * pulse, color: low ? '#ff7a5a' : '#fff', stroke: 'rgba(0,0,0,0.5)', tag: 'hud:time', group: 'hud:time' });
   }
   if (G.bossBar && sim.bx && sim.bx.boss) drawBossBar(ctx, ui, sim, pad, G.hudBottom - G.bossBar + 2 * u, W_ - 2 * pad, G.bossBar - 8 * u, G.t);
-  if (G.screen === 'play' && sim.state === 'play') drawZoomBtns();
+  if (G.screen === 'play' && sim.state === 'play') { drawZoomBtns(); drawAllyBtn(); }
 }
 
 // zoom -, +, and auto (only while the player has overridden auto zoom), in the strip computeLayout keeps clear of the vault
@@ -2316,6 +2373,7 @@ function drawFail() {
         ui.record({ x: x + w / 2 - 43 * s, y: y + 12 * s, w: 86 * s, h: 86 * s }, 'fail:hen');
       } },
       lineBlock(`Saved ${st.saved}, needed ${st.target}`, 17 * s, { color: '#fff', tag: 'fail:stat' }),
+      ...(G.sim.ally && G.sim.ally.avail.length ? [lineBlock('Next try a farm friend can help', 14 * s, { color: '#ffe066', tag: 'fail:ally', gap: 6 * s })] : []),
     ];
     if (!G.usedRewind && G.sim.canRewind()) B.push({ h: 54 * s, gap: 14 * s, draw: (x, y, w) => ui.button('rewind', G.freeRewind ? 'Free rewind 5 s' : 'Rewind 5 s, keep streak', x, y, w, 54 * s, { color: '#d49a1c', dark: '#8a5f0a', ad: !G.freeRewind, size: 16 * s }) });
     B.push({ h: 56 * s, gap: 12 * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, 56 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.retry }) });
