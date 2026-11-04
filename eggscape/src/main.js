@@ -545,6 +545,7 @@ async function press(id) {
     case 'ally': {
       // allies (v3.5): free on Easy and after a fail; otherwise a rewarded ad (never costs progress, the button stays on a miss)
       if (G.screen !== 'play' || !allyShown()) break;
+      if (!allyKinds().some((k) => G.sim.allyCan(k))) { toast('Nothing for a farm friend to help with yet.', 2.2); break; }
       if (!allyFree() && !G.allyAd) {
         const ok = await rewarded('ally');
         if (ok) G.allyAd = true;
@@ -556,7 +557,7 @@ async function press(id) {
     }
     case 'ally:rooster':
     case 'ally:goose':
-      if (G.screen === 'play' && allyShown() && G.allyOpen) {
+      if (G.screen === 'play' && allyShown() && G.allyOpen && G.sim.allyCan(id.slice(5))) {
         if (G.sim.callAlly(id.slice(5))) G.allyOpen = false;
         else toast(id === 'ally:goose' ? 'The goose sees nothing to chase right now.' : 'The rooster cannot help right now.', 2.2);
       }
@@ -1968,6 +1969,14 @@ function allyShown() {
   const A = G.sim && G.sim.ally;
   return !!(A && G.sim.state === 'play' && A.avail.length && !A.act && !A.used.rooster && !A.used.goose);
 }
+const gooseIcon = (c, x, y, s) => { // a white goose head, orange beak
+  c.save(); c.lineWidth = 1.5; c.strokeStyle = 'rgba(0,0,0,0.55)';
+  c.fillStyle = '#fff6e0'; c.beginPath(); c.arc(x - 0.05 * s, y + 0.05 * s, 0.3 * s, 0, 7); c.fill(); c.stroke();
+  c.beginPath(); c.moveTo(x - 0.2 * s, y + 0.1 * s); c.lineTo(x - 0.1 * s, y + 0.5 * s); c.lineTo(x + 0.1 * s, y + 0.5 * s); c.lineTo(x + 0.15 * s, y + 0.1 * s); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = '#f0a020'; c.beginPath(); c.moveTo(x + 0.2 * s, y - 0.03 * s); c.lineTo(x + 0.55 * s, y + 0.1 * s); c.lineTo(x + 0.2 * s, y + 0.2 * s); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = '#222'; c.beginPath(); c.arc(x + 0.06 * s, y, 0.05 * s, 0, 7); c.fill();
+  c.restore();
+};
 const allyFree = () => G.sim.mode === 'easy' || !!G.fails[G.level.id];
 const allyIcon = (c, x, y, s) => { // a little rooster head: red comb, orange beak, white face
   c.save(); c.lineWidth = 1.5; c.strokeStyle = 'rgba(0,0,0,0.55)';
@@ -1984,14 +1993,15 @@ function drawAllyBtn() {
   if (!allyShown()) { G.allyOpen = false; return; }
   const { bs, pad, side } = G.zb, u = ui.u, gap = 8 * u;
   const x = side ? W_ - pad - bs : pad, y = H_ - 6 * u - bs;
-  const free = allyFree() || G.allyAd;
-  ui.button('ally', '', x, y, bs, bs, { color: '#d49a1c', dark: '#8a5f0a', icon: allyIcon });
-  if (!free) drawAdBadge(ctx, x + bs - 22 * u, y + bs - 15 * u, 24 * u, 17 * u);
+  const free = allyFree() || G.allyAd, kinds = allyKinds(), can = kinds.some((k) => G.sim.allyCan(k));
+  if (!can) G.allyOpen = false;
+  ui.button('ally', '', x, y, bs, bs, { color: '#d49a1c', dark: '#8a5f0a', icon: allyIcon, disabled: !can });
+  if (!free && can) drawAdBadge(ctx, x + bs - 22 * u, y + bs - 15 * u, 24 * u, 17 * u);
   if (!G.allyOpen) return;
-  const kinds = allyKinds(), cw = 112 * u, ch = 44 * u;
+  const cw = 118 * u, ch = 44 * u;
   kinds.forEach((k, i) => {
     const bx = side ? x - gap - cw : x, by = y - (ch + gap) * (side ? kinds.length - 1 - i : kinds.length - i) + (side ? bs - ch : 0);
-    ui.button('ally:' + k, k === 'rooster' ? 'Rooster' : 'Goose', bx, by, cw, ch, { color: k === 'rooster' ? '#d8452f' : '#5a8dee', dark: k === 'rooster' ? '#8e2616' : '#2f5bb0', size: 17 * u });
+    ui.button('ally:' + k, k === 'rooster' ? 'Rooster' : 'Goose', bx, by, cw, ch, { color: k === 'rooster' ? '#d8452f' : '#5a8dee', dark: k === 'rooster' ? '#8e2616' : '#2f5bb0', size: 17 * u, icon: k === 'rooster' ? allyIcon : gooseIcon, disabled: !G.sim.allyCan(k) });
   });
 }
 

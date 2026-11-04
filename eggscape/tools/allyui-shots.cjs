@@ -27,7 +27,7 @@ const srv = http.createServer((q, r) => {
     await start('easy'); await fr(60); await shot('6-easy'); await p.evaluate(() => __egg.press('ally')); await fr(5);
     await p.evaluate(() => __egg.press('ally:goose')); await fr(150); await shot('7-goose');
     // a real call on the studio level (snake + boss): rooster, then goose
-    for (const k of ['rooster', 'goose']) { await p.evaluate((k) => { const E = __egg; E.setSave({ mode: 'easy' }); E.startAllyDemo(k); E.press('go'); E.press('gotit'); }, k); await fr(120); await shot(`8-${k}-pick`); await p.evaluate(() => __egg.press('ally')); await fr(3); await p.evaluate((k) => __egg.press('ally:' + k), k); await fr(k === 'rooster' ? 130 : 170); await shot(`9-${k}-call`); }
+    for (const k of ['rooster', 'goose']) { await p.evaluate((k) => { const E = __egg; E.setSave({ mode: 'easy' }); E.startAllyDemo(k); E.press('go'); E.press('gotit'); }, k); await fr(120); await shot(`8-${k}-pick`); await p.evaluate(() => __egg.press('ally')); await fr(3); await shot(`8b-${k}-choice`); await fr(3); await p.evaluate((k) => __egg.press('ally:' + k), k); await fr(k === 'rooster' ? 130 : 170); await shot(`9-${k}-call`); }
     // ad path: rewarded stub resolves true in the dev build?
     await start('hard'); await fr(30);
     const r = await p.evaluate(async () => { await __egg.press('ally'); return { open: __egg.G.allyOpen, ad: __egg.G.allyAd }; });
