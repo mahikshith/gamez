@@ -1,0 +1,1 @@
+{"permissions":{"allow":["Bash(git add:*)","Bash(git commit:*)","Bash(git -c user.name=mykee -c user.email=mahikshith97@gmail.com commit:*)","Bash(git worktree:*)","Bash(git merge:*)","Bash(git push:*)","Bash(node:*)","Bash(python3:*)"]}}
