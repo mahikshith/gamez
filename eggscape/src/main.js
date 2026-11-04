@@ -14,6 +14,7 @@ import { drawSnake } from './render/characters.js';
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
 import { drawSprite, drawBossCard, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
 import { drawHenAnim, henIdleEvents, resetHen } from './render/hen.js';
+import { drawCelebration, pickRoutine, routine, routineCues, routinePower, ROUTINES } from './render/cheer.js';
 import { drawAllies, ALLY_ART } from './render/allies.js'; // v3.4 farm allies
 import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
@@ -403,6 +404,7 @@ function pointerDown(e) {
   const id = ui.hit(x, y);
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
   if (G.screen === 'title') return press('play');
+  if (G.screen === 'win' || G.screen === 'fail') return skipCheer(); // a tap off the buttons skips the hen's routine to its end
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   if (e.pointerType === 'touch') {
     // a second finger means pinch-zoom: let go of any ring and turn nothing until the fingers lift
@@ -512,7 +514,7 @@ function keyDown(e) {
     if (/^[1-7]$/.test(k)) G.keySel = Math.min(G.sim.rings.length - 1, +k - 1);
     if ((k === ' ' || k === 'c' || k === 'C') && !e.repeat) { const c = G.sim.aliveEggs().find((x) => G.sim.canTap(x)); if (c) G.sim.tapChick(c.id); else if (G.sim.laserReady()) { const L = G.sim.aliveEggs().sort((a, b) => G.sim.channelOf(b) - G.sim.channelOf(a))[0], p = L ? L.body.getPosition() : { x: 0, y: -1 }; G.sim.fireLaser(Math.atan2(p.y, p.x)); } } // v3.2: space taps a ready chick (v3.4: else fires the laser along the leading egg)
   } else if ((k === 'Enter' || k === ' ') && !e.repeat) {
-    if (G.screen === 'win' && !(G.result && G.result.t > 1.2)) return;
+    if (G.screen === 'win' && !(G.result && winIn(G.result) >= 1)) return skipCheer();
     const primary = { title: 'play', intro: G.level.intro && !save.intro[G.level.id] ? 'gotit' : 'go', win: 'next', fail: 'retry', pause: 'resume' }[G.screen];
     if (primary) press(primary);
   }
@@ -1510,6 +1512,15 @@ function hen(mood, t) {
   G.hen = { mood, t, n: (G.hen.n || 0) + 1 };
 }
 
+// skip the hen's win / fail routine to its final pose (a tap off the buttons, Enter, or reduced motion)
+function skipCheer() {
+  const r = G.result;
+  if (G.screen === 'win' && r) {
+    const end = Math.max(routine(r.cheer).len, WIN_SHOW + WIN_IN); // straight to the card, the routine at its final pose
+    if (r.t < end) { r.t = end; r.shownTotal = r.total; if (r.stars) audio.play('star', { intensity: (r.stars - 1) / 2 }); }
+  } else if (G.screen === 'fail') G.screenT = Math.max(G.screenT, routine('encourage').len);
+}
+
 function stopFuse() {
   if (G.fuseHandle && G.fuseHandle.stop) G.fuseHandle.stop();
   G.fuseHandle = null;
@@ -1560,6 +1571,10 @@ function onWin() {
   stopFuse();
   G.sim.burstVault();
   G.result = computeResult();
+  // the hen's routine (render/cheer.js): by result, a boss, or the first win in a world; never the last one again
+  const L = G.level, firstWorld = G.li >= 0 && L.world != null && !LEVELS.some((l) => l.world === L.world && bestStarsOf(l.id) > 0);
+  G.result.cheer = pickRoutine({ stars: G.result.stars, streak: G.result.streak, boss: !!L.boss && G.li >= 0, firstWorld, last: save.lastCheer });
+  save.lastCheer = G.result.cheer;
   save.wallet = E.addCoins(save.wallet, G.result.coins);
   if (G.result.bonus) save.bonus[sk(G.level.id, G.sim.mode)] = 1;
   recordResult();
@@ -1619,6 +1634,7 @@ function update(dt) {
   // per-egg fear + flames
   for (const e of sim.aliveEggs()) {
     const p = e.body.getPosition();
+    const feared = e.fear > 0;
     e.fear = Math.max(0, e.fear - dt);
     for (const ring of sim.rings) {
       const a0 = ring.body.getAngle();
@@ -1628,6 +1644,8 @@ function update(dt) {
         if (Math.hypot(tx - p.x, ty - p.y) < 0.55) e.fear = 0.4;
       }
     }
+    // a close shave: the egg got clear of a thorn unhurt, and the hen breathes out ('phew', a few variants)
+    if (feared && e.fear === 0 && G.screen === 'play' && G.hen.mood === 'idle' && G.t - (G.phewT || -9) > 3) { G.phewT = G.t; hen('phew', 1); }
     const v = e.body.getLinearVelocity();
     if (e.fire > 0 && e.fireKind === 'fire_red') { G.fx.flameAt(p.x, p.y + 0.05, 1.1, v.x, v.y); G.fx.flameAt(p.x, p.y - 0.1, 0.9, v.x, v.y); }
     // v3.1 magnet: the pulled partner wobbles and throws small red/blue sparks
@@ -1672,17 +1690,18 @@ function update(dt) {
   if (G.toast) { G.toast.life -= dt; if (G.toast.life <= 0) G.toast = null; }
   if (!G.toast && G.toasts.length) G.toast = { ...G.toasts.shift(), t0: G.t };
   if (G.result && G.screen === 'win') {
-    const r = G.result;
+    if (save.calm) skipCheer(); // reduced motion: straight to the card and her final pose
+    const r = G.result, R0 = routine(r.cheer), t0 = r.t;
     r.t += dt;
-    const k = clamp((r.t - 0.9) / 1.0, 0, 1);
+    // the score counts up from the first star to the end of the routine; each star lands on one of her beats
+    const s0 = R0.stars[0], k = clamp((r.t - s0) / Math.max(0.6, R0.len - 0.3 - s0), 0, 1);
     const shown = Math.round(r.total * k);
-    if (shown !== r.shownTotal && k < 1 && Math.floor(r.t * 20) !== Math.floor((r.t - dt) * 20)) audio.play('score_tick', { vol: 0.4 });
+    if (shown !== r.shownTotal && k < 1 && Math.floor(r.t * 20) !== Math.floor((r.t - dt) * 20)) audio.play('score_tick', { vol: 0.3 });
     r.shownTotal = shown;
-    for (let s = 0; s < 3; s++) {
-      const at = 0.25 + s * 0.3;
-      if (r.t >= at && r.t - dt < at && s < r.stars) audio.play('star', { intensity: s / 2 });
-    }
+    for (let s = 0; s < r.stars; s++) if (r.t >= R0.stars[s] && t0 < R0.stars[s]) audio.play('star', { intensity: s / 2 });
+    for (const [, name, o] of routineCues(r.cheer, t0, r.t)) audio.play(name, o);
   }
+  if (G.screen === 'fail' && !save.calm) for (const [, name, o] of routineCues('encourage', G.screenT - dt, G.screenT)) audio.play(name, o);
 }
 
 // The in-game hint (C4): a depth-1 search from a frozen copy of the world, ~10 ms per frame (the
@@ -2197,12 +2216,12 @@ function drawKeyHint() {
 // scale s (pixels per design unit). The stack is measured first; if it is taller than the room
 // below the HUD, everything is rebuilt at a smaller scale, so blocks can never overlap.
 // build(s, w) returns [{ h, gap?, draw(x, y, w) }]; w is the card's inner width.
-function stackCard(title, build) {
+function stackCard(title, build, o = {}) {
   const u = ui.u;
   const top = G.hudBottom + 10 * u;
   const avail = H_ - top - 10 * u;
   const measure = (s) => {
-    const w = Math.min(W_ - 32 * u, 420 * s);
+    const w = Math.min(o.maxW || W_ - 32 * u, 420 * s);
     const blocks = build(s, w - 48 * s);
     const h = 58 * s + blocks.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0) + 20 * s;
     return { s, w, blocks, h };
@@ -2211,16 +2230,26 @@ function stackCard(title, build) {
   if (m.h > avail) m = measure(u * Math.max(0.55, avail / m.h));
   const { s, w, blocks } = m;
   const h = Math.min(m.h, avail);
-  const x = W_ / 2 - w / 2;
+  const x = (o.cx || W_ / 2) - w / 2;
   const y = Math.max(top, (H_ + G.hudBottom) / 2 - h / 2);
+  // o.hidden: lay out only (each block's at(x, y, w) learns where it will sit); o.dx / o.dy: slide the card (win card entrance)
+  if (o.hidden) {
+    let cy = y + 58 * s;
+    for (const b of blocks) { cy += b.gap ?? 10 * s; if (b.at) b.at(x + 24 * s, cy, w - 48 * s); cy += b.h; }
+    return { x, y, w, h, s };
+  }
+  ctx.save();
+  if (o.dx || o.dy) ctx.translate(o.dx || 0, o.dy || 0);
   ui.panel(x, y, w, h, { fill: 'rgba(32,22,14,0.92)', r: 22 * s, border: 'rgba(255,224,170,0.35)' });
-  ui.text(title, W_ / 2, y + 32 * s, { size: 30 * s, align: 'center', maxW: w - 32 * s, color: '#ffe8b0', stroke: 'rgba(0,0,0,0.5)', tag: 'card:title' });
+  ui.text(title, x + w / 2, y + 32 * s, { size: 30 * s, align: 'center', maxW: w - 32 * s, color: '#ffe8b0', stroke: 'rgba(0,0,0,0.5)', tag: 'card:title' });
   let cy = y + 58 * s;
   for (const b of blocks) {
     cy += b.gap ?? 10 * s;
+    if (b.at) b.at(x + 24 * s, cy, w - 48 * s);
     b.draw(x + 24 * s, cy, w - 48 * s);
     cy += b.h;
   }
+  ctx.restore();
   return { x, y, w, h, s };
 }
 
@@ -2324,72 +2353,171 @@ function drawPause() {
   });
 }
 
+// The win screen in two beats (Duolingo-style).
+// 1) The show (0 .. WIN_SHOW s): the board dims and the hen takes ~40% of the screen in the middle, doing her routine
+//    (render/cheer.js) with confetti; the stars land big above her (beside her in landscape), the title under her feet.
+// 2) The card (WIN_SHOW .. + WIN_IN): she shrinks and flies up into her stage on the card while the card slides in (up from
+//    below; in landscape in from the right while she settles on the left). The same routine carries on at card size.
+// The buttons come with the card (~2 s), in space that is always reserved; a tap anywhere skips straight to the card.
+const WIN_SHOW = 1.6, WIN_IN = 0.38;
+const winIn = (r) => (save.calm ? 1 : clamp((r.t - WIN_SHOW) / WIN_IN, 0, 1));
+const ss01 = (x) => { const k = clamp(x, 0, 1); return k * k * (3 - 2 * k); };
+
+// landscape with room: a stage left of the card (the win and fail cards)
+function cardSide() {
+  const u = ui.u, cw = Math.min(W_ - 32 * u, 420 * u);
+  if (!(W_ > H_ * 1.15 && W_ - cw - 48 * u >= 200 * u)) return null;
+  const sw = Math.min(W_ - cw - 48 * u, Math.max(cw, 300 * u)), left = (W_ - (sw + 16 * u + cw)) / 2;
+  return { x: left, w: sw, cardO: { cx: left + sw + 16 * u + cw / 2, maxW: cw } };
+}
+// her side stage: she stands on the card's bottom line, as tall as the room allows
+function sideStage(sd, card) {
+  const u = ui.u, top = G.hudBottom + 6 * u, box = { x: sd.x, y: top, w: sd.w, h: card.y + card.h - 10 * u - top };
+  return { box, henH: Math.min(box.w * 0.48, box.h * 0.6) };
+}
+// the show's layout: the hen big in the middle, room above her for her biggest jump, the stars, the title below
+function bigStage(side) {
+  const u = ui.u, top = G.hudBottom + 6 * u, avail = H_ - top, band = Math.max(40 * u, avail * 0.1);
+  if (side) { // landscape: she stands left of centre, the stars beside her at chest height
+    const hh = Math.min(H_ * 0.45, (avail - band) / 1.45, W_ * 0.3), y = top + (avail - band - hh * 1.45) / 2;
+    const box = { x: 0, y, w: W_ * 0.8, h: hh * 1.45 }, R = Math.min(W_ * 0.05, hh * 0.2);
+    const sx = W_ * 0.4 + hh * 0.62 + R * 2.9;
+    return { box, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: sx + (k - 1) * R * 2.6, y: y + hh * 0.75 - (k === 1 ? R * 0.35 : 0) })), titleY: y + hh * 1.45 + band * 0.5, titleX: W_ * 0.4, full: { x: 0, y: top, w: W_, h: avail } };
+  }
+  const R = Math.min(W_ * 0.085, avail * 0.065), hh = Math.min(H_ * 0.43, W_ * 0.74, (avail - 2.8 * R - band) / 1.5); // wings spread she is ~1.2x as wide as tall
+  const y0 = top + (avail - (2.8 * R + 1.5 * hh + band)) / 2, by = y0 + 2.8 * R;
+  return { box: { x: 0, y: by, w: W_, h: 1.5 * hh }, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: W_ / 2 + (k - 1) * R * 2.7, y: y0 + 1.5 * R - (k === 1 ? R * 0.35 : 0) })), titleY: by + 1.5 * hh + band * 0.45, titleX: W_ / 2, full: { x: 0, y: top, w: W_, h: avail } };
+}
+
 function drawWin() {
-  dim(0.45);
-  const r = G.result;
-  stackCard(r.stars === 3 ? 'Perfect clutch!' : 'Vault cracked!', (s) => {
+  const r = G.result, R0 = routine(r.cheer), u = ui.u, k = winIn(r), e = k * k * (3 - 2 * k), inCard = k >= 1;
+  dim(0.45 + 0.12 * (1 - e)); // the show dims the board a little deeper
+  const sd = cardSide(), side = !!sd, cardO = sd ? sd.cardO : {};
+  const pw = routinePower(r.stars), calm = save.calm, seed = G.level.id || 0;
+  // the stage takes the room the rest of the card leaves (a tall phone: the full 184 units; a squat screen: less)
+  const room = (H_ - G.hudBottom - 20 * u) / u - 480, stH = clamp(room, 110, 184);
+  // a squat screen with no room beside the card either (600x600): she shares the star row, left of the stars
+  const compact = !side && room < 110, rowH = compact ? 100 : 58;
+  const title = G.level.boss && G.li >= 0 ? 'Boss beaten!' : r.stars === 3 ? 'Perfect clutch!' : r.stars === 2 ? 'Great job!' : 'Vault cracked!';
+  const BIG = bigStage(side);
+  // confetti fired during the show keeps the show's geometry (full screen), so it does not jump when she flies to the card
+  const fxBig = { cx: BIG.box.x + BIG.box.w / 2, gy: BIG.box.y + BIG.box.h - BIG.henH * 0.05, S: BIG.henH / 100, clip: BIG.full, until: WIN_SHOW + WIN_IN };
+  const T = {}; // where her stage and the stars sit on the card: the targets of her flight
+  const build = (s) => {
     const rows = [['Eggs saved', `${r.saved} / ${r.eggs}`], ['Egg points', String(r.eggScore)], ['Time bonus', '+' + r.timeBonus]];
     if (r.streakMult > 1) rows.push(['Star streak', 'x' + r.streakMult]);
     if (r.hasBonus) rows.push(['Bonus', r.bonus ? 'Done!' : 'Missed']);
     rows.push(['Coins', '+' + (r.coins || 0)]);
-    const B = [
-      { h: 62 * s, gap: 0, draw: (x, y, w) => {
-        // the hen is delighted (F16/F17)
-        const side = (w - 192 * s) / 2 - 6 * s, cs = Math.min(58 * s, side);
-        if (cs >= 36 * s) {
-          drawHenActor(ctx, 'dance', x + w - cs / 2, y + 62 * s - 0.5 * cs, cs, G.t, { key: 'win', enter: G.screenT - 0.25, phase: 1.3 });
-          ui.record({ x: x + w - cs, y: y + 62 * s - cs, w: cs, h: cs }, 'win:hen');
+    const B = [];
+    if (!side && !compact) B.push({ h: stH * s, gap: 0,
+      at: (x, y, w) => { T.box = { x, y, w, h: stH * s }; T.henH = 0.685 * stH * s; T.clip = { x: 0, y: G.hudBottom, w: W_, h: y + stH * s - G.hudBottom }; },
+      draw: () => { if (inCard) drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, clip: T.clip, fxBig }); ui.record(T.box, 'win:hen'); } });
+    B.push({ h: rowH * s, gap: side ? 0 : 2 * s,
+      at: (x, y, w) => {
+        let mx = x + w / 2, my = y;
+        if (compact) { T.box = { x, y, w: w * 0.36, h: rowH * s }; T.henH = 68 * s; T.clip = { x: 0, y: G.hudBottom, w: W_, h: y + rowH * s - G.hudBottom }; mx = x + w * 0.36 + (w * 0.64) / 2; my = y + (rowH - 58) * s * 0.6; }
+        T.stars = [0, 1, 2].map((q) => ({ x: mx + (q - 1) * 64 * s, y: my + 30 * s - (q === 1 ? 6 * s : 0) })); T.R = 26 * s; T.row = { x: mx - 96 * s, y: my, w: 192 * s, h: 58 * s };
+      },
+      draw: () => {
+        if (inCard) {
+          if (compact) drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, clip: T.clip, fxBig });
+          T.stars.forEach((p, q) => drawWinStar(r, R0, q, p.x, p.y, T.R, calm));
         }
-        for (let k = 0; k < 3; k++) {
-          const pop = clamp((r.t - (0.25 + k * 0.3)) * 5, 0, 1);
-          const sc = k < r.stars ? (pop < 1 ? pop * 1.25 : 1) : 1;
-          drawStar(ctx, x + w / 2 + (k - 1) * 64 * s, y + 34 * s - (k === 1 ? 8 * s : 0), 26 * s, k < r.stars && pop > 0, k < r.stars ? Math.max(0.01, sc) : 1);
-        }
-        ui.record({ x: x + w / 2 - 96 * s, y, w: 192 * s, h: 62 * s }, 'win:stars');
-      } },
-      ...rows.map(([a, b], i) => ({ h: 20 * s, gap: i ? 4 * s : 10 * s, draw: (x, y, w) => {
-        ui.text(a, x + 6 * s, y + 10 * s, { size: 16 * s, color: 'rgba(255,255,255,0.8)', tag: 'win:' + a, maxW: w / 2 - 6 * s });
-        ui.text(b, x + w - 6 * s, y + 10 * s, { size: 16 * s, align: 'right', color: '#fff', tag: 'win:v' + a, maxW: w / 2 - 16 * s });
-      } })),
-      lineBlock(String(r.shownTotal), 38 * s, { color: '#ffe066', stroke: 'rgba(0,0,0,0.5)', tag: 'win:total', gap: 8 * s }),
-    ];
+        if (compact) ui.record(T.box, 'win:hen');
+        ui.record(T.row, 'win:stars');
+      } });
+    B.push(...rows.map(([a, b], i) => ({ h: 20 * s, gap: i ? 4 * s : 10 * s, draw: (x, y, w) => {
+      ui.text(a, x + 6 * s, y + 10 * s, { size: 16 * s, color: 'rgba(255,255,255,0.8)', tag: 'win:' + a, maxW: w / 2 - 6 * s });
+      ui.text(b, x + w - 6 * s, y + 10 * s, { size: 16 * s, align: 'right', color: '#fff', tag: 'win:v' + a, maxW: w / 2 - 16 * s });
+    } })));
+    B.push(lineBlock(String(r.shownTotal), 38 * s, { color: '#ffe066', stroke: 'rgba(0,0,0,0.5)', tag: 'win:total', gap: 8 * s }));
     if (r.rewound) B.push(lineBlock('Rewind used: 3 stars locked', 12 * s, { color: 'rgba(255,255,255,0.6)', tag: 'win:rw', gap: 0 }));
-    // buttons appear after the stars land, but their space is always reserved
-    const ready = r.t > 1.2;
+    // the buttons come with the card; their space is always reserved
     const last = G.li < 0 || G.li === LEVELS.length - 1;
     B.push({ h: 56 * s, gap: 14 * s, draw: (x, y, w) => {
-      if (!ready) return;
+      if (!inCard) return;
       ui.button('next', last ? 'ALL LEVELS' : 'NEXT', x, y, w * 0.62, 56 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.next });
       ui.button('restart', '', x + w * 0.62 + 10 * s, y, w * 0.38 - 10 * s, 56 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.retry });
     } });
     B.push({ h: 48 * s, draw: (x, y, w) => {
-      if (!ready) return;
+      if (!inCard) return;
       if (!G.doubled) ui.button('double', 'Double score and coins', x, y, w, 48 * s, { color: '#d49a1c', dark: '#8a5f0a', ad: true, size: 16 * s });
       else ui.text('Score and coins doubled!', x + w / 2, y + 24 * s, { size: 18 * s, align: 'center', color: '#ffe066', tag: 'win:doubled' });
     } });
     return B;
-  });
+  };
+  const card = stackCard(title, build, { ...cardO, hidden: true }); // lay out first: her flight needs the targets
+  if (side) { const ss = sideStage(sd, card); T.box = ss.box; T.henH = ss.henH; T.clip = ss.box; }
+  // the card slides in: up from below (portrait), in from the right (landscape)
+  const dx = side ? (1 - e) * (W_ - card.x + 20 * u) : 0, dy = side ? 0 : (1 - e) * (H_ - card.y + 20 * u);
+  // the show's big title under her feet: it fades as the card (which has its own) comes, and the card passes over it
+  const ta = save.calm ? 0 : 1 - ss01((r.t - WIN_SHOW + 0.15) / 0.3);
+  if (ta > 0.01) ui.text(title, BIG.titleX, BIG.titleY, { size: Math.min(36 * u, W_ * 0.09), align: 'center', maxW: W_ - 32 * u, color: '#ffe8b0', stroke: 'rgba(0,0,0,0.55)', alpha: ta, noRecord: true });
+  if (k > 0) stackCard(title, build, { ...cardO, dx, dy });
+  if (side && inCard) {
+    drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, fxBig });
+    ui.record({ x: T.box.x + T.box.w / 2 - T.henH * 0.6, y: T.box.y + T.box.h - T.henH * 1.5, w: T.henH * 1.2, h: T.henH * 1.5 }, 'win:hen');
+  }
+  if (inCard) return;
+  // the show, and her flight into the card: everything eases from the big layout to its card spot (which slides with the card)
+  const tdx = side ? 0 : dx, tdy = side ? 0 : dy; // in landscape her stage does not slide, only the card
+  const L = (a, b2) => a + (b2 - a) * e;
+  const box = { x: L(BIG.box.x, T.box.x + tdx), y: L(BIG.box.y, T.box.y + tdy) - Math.sin(e * Math.PI) * H_ * 0.05, w: L(BIG.box.w, T.box.w), h: L(BIG.box.h, T.box.h) };
+  drawCelebration(ctx, r.cheer, r.t, box, { pw, calm, henH: L(BIG.henH, T.henH), seed, clip: BIG.full, fxBig });
+  BIG.stars.forEach((p, q) => drawWinStar(r, R0, q, L(p.x, T.stars[q].x + dx), L(p.y, T.stars[q].y + dy), L(BIG.R, T.R), calm));
 }
 
+// one result star: it drops in big and spinning on its beat, overshoots and settles, with a ring of sparks
+function drawWinStar(r, R0, q, sx, sy, rad, calm) {
+  const v = r.t - R0.stars[q];
+  if (q >= r.stars || v < 0) { drawStar(ctx, sx, sy, rad, false, 1); return; }
+  const a = clamp(v / 0.32, 0, 1), sc = 1 + 0.7 * (1 - a) * (1 - a) - 0.25 * Math.sin(a * Math.PI) * (1 - a);
+  ctx.save(); ctx.translate(sx, sy - rad * 0.7 * (1 - a) * (1 - a)); ctx.rotate(-1.2 * (1 - a) * (1 - a));
+  drawStar(ctx, 0, 0, rad, true, Math.max(0.01, sc)); ctx.restore();
+  if (v < 0.5 && !calm) starSparks(sx, sy, rad, v / 0.5, q);
+}
+
+// a ring of small diamonds bursting from a star as it lands (palette colours, no glow)
+function starSparks(cx, cy, r, a, k) {
+  ctx.save();
+  ctx.globalAlpha = 1 - a;
+  const col = ['#ffd23f', '#ff7a9a', '#46b83d', '#5a8dee', '#e57d12', '#ffd23f'];
+  for (let i = 0; i < 6; i++) {
+    const q = (i / 6) * Math.PI * 2 + k, d = r * (0.9 + 0.9 * Math.sqrt(a)), sz = r * 0.16 * (1 - a * 0.6);
+    ctx.save(); ctx.translate(cx + Math.cos(q) * d, cy + Math.sin(q) * d); ctx.rotate(q);
+    ctx.fillStyle = col[i]; ctx.beginPath(); ctx.moveTo(0, -sz); ctx.lineTo(sz * 0.6, 0); ctx.lineTo(0, sz); ctx.lineTo(-sz * 0.6, 0); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// The fail card: the hen on the same stage as the win card (render/cheer.js 'encourage'): sad for a moment, then she
+// shakes it off and cheers you on, so kids are not put off. Landscape: she stands left of the card.
 function drawFail() {
   dim(0.5);
-  const st = G.sim.stats();
+  const st = G.sim.stats(), u = ui.u;
   const timeout = G.sim.timeLeft <= 0;
-  stackCard(timeout ? 'Out of time!' : 'Too many eggs broke', (s) => {
-    const B = [
-      { h: 100 * s, gap: 0, draw: (x, y, w) => {
-        // the hen is sad (F16/F17)
-        drawHenActor(ctx, 'cry', x + w / 2, y + 98 * s - 0.5 * 86 * s, 86 * s, G.t, { key: 'fail', enter: G.screenT - 0.1, phase: 0.7 });
-        ui.record({ x: x + w / 2 - 43 * s, y: y + 12 * s, w: 86 * s, h: 86 * s }, 'fail:hen');
-      } },
-      lineBlock(`Saved ${st.saved}, needed ${st.target}`, 17 * s, { color: '#fff', tag: 'fail:stat' }),
-      ...(G.sim.ally && G.sim.ally.avail.length ? [lineBlock('Next try a farm friend can help', 14 * s, { color: '#ffe066', tag: 'fail:ally', gap: 6 * s })] : []),
-    ];
+  const sd = cardSide(), room = (H_ - G.hudBottom - 20 * u) / u - 330, stH = clamp(room, 110, 184);
+  const card = stackCard(timeout ? 'Out of time!' : 'Too many eggs broke', (s) => {
+    const B = [];
+    if (!sd) B.push({ h: stH * s, gap: 0, draw: (x, y, w) => {
+      const box = { x, y, w, h: stH * s };
+      drawCelebration(ctx, 'encourage', G.screenT, box, { henH: 0.685 * stH * s, calm: save.calm, pw: 0.5 });
+      ui.record(box, 'fail:hen');
+    } });
+    B.push(lineBlock(['So close! You can do it.', 'Nearly there! One more go?', 'Every try makes you better!'][(G.level.id || 0) % 3], 18 * s, { color: '#ffe066', tag: 'fail:cheer', gap: sd ? 0 : 6 * s }));
+    B.push(lineBlock(`Saved ${st.saved}, needed ${st.target}`, 16 * s, { color: 'rgba(255,255,255,0.85)', tag: 'fail:stat', gap: 6 * s }));
+    if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('Next try a farm friend can help', 14 * s, { color: '#ffe066', tag: 'fail:ally', gap: 6 * s }));
     if (!G.usedRewind && G.sim.canRewind()) B.push({ h: 54 * s, gap: 14 * s, draw: (x, y, w) => ui.button('rewind', G.freeRewind ? 'Free rewind 5 s' : 'Rewind 5 s, keep streak', x, y, w, 54 * s, { color: '#d49a1c', dark: '#8a5f0a', ad: !G.freeRewind, size: 16 * s }) });
     B.push({ h: 56 * s, gap: 12 * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, 56 * s, { color: '#46b83d', dark: '#2a7a24', icon: ICON.retry }) });
     B.push({ h: 46 * s, draw: (x, y, w) => ui.button('levels', 'Levels', x, y, w, 46 * s, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 17 * s }) });
     return B;
-  });
+  }, sd ? sd.cardO : {});
+  if (sd) {
+    const { box, henH } = sideStage(sd, card);
+    drawCelebration(ctx, 'encourage', G.screenT, box, { henH, calm: save.calm, pw: 0.5 });
+    ui.record({ x: box.x + box.w / 2 - henH * 0.6, y: box.y + box.h - henH * 1.5, w: henH * 1.2, h: henH * 1.5 }, 'fail:hen');
+  }
 }
 
 function drawTitle() {
@@ -2611,6 +2739,7 @@ if (DEV) window.__egg = {
   actSteps, // film strips replay planner moves through this
   snakeArt: drawSnake, // palette strips
   hen: { anim: drawHenAnim, legacy: drawHenLegacy, events: henIdleEvents, reset: resetHen }, // M7 strips
+  cheer: { draw: drawCelebration, routine, ROUTINES, pick: pickRoutine, power: routinePower }, // the hen's win routines (strips)
   allyArt: ALLY_ART, // v3.4: ally strips
   callAlly: (kind, o) => G.sim.callAlly(kind, o),
   startAllyDemo(kind = 'rooster', o = {}) { G.demo = ALLY_DEMOS.find((d) => d.kind === kind) || ALLY_DEMOS[0]; startLevel(-2, o); },
@@ -2621,11 +2750,12 @@ if (DEV) window.__egg = {
   seaAnim, // v3.3: the octopus's and fishes' render state (QA strips)
   handle: () => handleEvents(),
   overlaps: () => G.overlaps,
+  uiRect: (tag) => ui.rects.find((r) => r.tag === tag) || null, // QA strips: where a recorded block was drawn
   setSave(s) { loadSave(s); },
   get save() { return save; },
   // QA only: jump straight to an end screen with a plausible result
-  showResult(kind, stars = 3) {
-    if (kind === 'win') G.result = { stars, saved: 3, eggs: 3, eggScore: 4200, timeBonus: 380, streak: stars === 3 ? 3 : 0, streakMult: stars === 3 ? 1.5 : 1, total: 6870, shownTotal: 6870, t: 9, target: 2, perfect: stars === 3, rewound: false, coins: 34, bonus: true, hasBonus: stars === 3 };
+  showResult(kind, stars = 3, cheer = null, t = 9) {
+    if (kind === 'win') G.result = { stars, saved: 3, eggs: 3, eggScore: 4200, timeBonus: 380, streak: stars === 3 ? 3 : 0, streakMult: stars === 3 ? 1.5 : 1, total: 6870, shownTotal: 6870, t, target: 2, perfect: stars === 3, rewound: false, coins: 34, bonus: true, hasBonus: stars === 3, cheer: cheer || pickRoutine({ stars }) };
     else G.sim.state = 'failed';
     setScreen(kind);
   },

@@ -32,16 +32,18 @@ export const SFX_NAMES = [
   'bubble_on', 'bubble_pop', 'twin_hatch', 'portal_enter', 'portal_exit',
   'bomb_fuse', 'bomb_explode', 'glass_crack', 'glass_break', 'rock_hit', 'wood_break',
   'splash', 'lava_sizzle', 'thunder', 'wind_gust', 'motor_tick', 'rewind', 'score_tick', 'countdown', 'squish',
+  'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up', // the hen's win/fail routines (render/cheer.js)
 ];
 
 export const MATERIALS = ['wood', 'stone', 'ice', 'mushroom', 'glass', 'metal', 'coral', 'vine', 'cloud', 'obsidian', 'bone', 'gold'];
 
 // Sounds that are interface/feedback, not world events: they bypass the underwater filter.
-const UI_SOUNDS = new Set(['ui_tap', 'ui_back', 'ui_open', 'combo', 'star', 'level_win', 'level_fail', 'unlock', 'score_tick', 'countdown', 'egg_save', 'rewind']);
+const UI_SOUNDS = new Set(['ui_tap', 'ui_back', 'ui_open', 'combo', 'star', 'level_win', 'level_fail', 'unlock', 'score_tick', 'countdown', 'egg_save', 'rewind',
+  'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up']);
 // Random pitch spread per sound (fraction). Musical stings stay in tune.
 const PITCH_VAR = {
   ui_tap: 0.015, ui_back: 0.01, ui_open: 0.01, score_tick: 0.004, countdown: 0,
-  egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, rewind: 0.02,
+  egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, rewind: 0.02, tada: 0, cheer_up: 0, cluck: 0.06,
 };
 const DEFAULT_PITCH_VAR = 0.045;
 // Per-sound loudness trim (linear), from the render.mjs level analysis.
@@ -49,6 +51,7 @@ const SFX_GAIN = {
   ui_back: 1.4, ui_open: 1.4, egg_crack: 1.6, egg_break: 1.3, egg_save: 1.25, combo: 1.6, star: 1.25,
   thorn_hit: 1.6, bubble_on: 1.6, portal_enter: 1.5, portal_exit: 1.8, twin_hatch: 1.4,
   wind_gust: 2.4, rewind: 2.1, bomb_fuse: 0.7, fire_burn: 1.3,
+  hen_hop: 2.4, hen_land: 1.8, flap: 2.6, confetti: 2, cluck: 1.4,
 };
 
 // Surface materials: f/r/d = modal knock (base Hz, partial ratios, decay s), n/nf/nq = contact noise,
@@ -665,6 +668,55 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       ep(0.4, 415.3 * p, 0.6, 0.15);      // Ab4
       for (const f of [261.63, 311.13, 392]) tone(v, { type: 'triangle', t: 0.62, f: f * p, a: 0.08, hold: 0.25, d: 0.7, g: 0.08, lp: 900 });
       tone(v, { t: 0.62, f: 130.8 * p, a: 0.05, hold: 0.2, d: 0.7, g: 0.16 });
+      send(v, 0.25);
+    },
+    // ---- the hen's routines: short hits timed to her moves (intensity scales the bigger routines)
+    hen_hop(v, o) {
+      const p = o.p, i = o.i;
+      tone(v, { f: 210 * p, f2: 560 * p * (1 + 0.3 * i), gl: 0.12, a: 0.004, d: 0.13, g: 0.2 });
+      tone(v, { type: 'triangle', f: 420 * p, f2: 1100 * p, gl: 0.1, a: 0.004, d: 0.08, g: 0.05 });
+      nz(v, { color: 'pink', a: 0.02, d: 0.14, g: 0.07 + 0.05 * i, type: 'bandpass', f: 700, f2: 2600, sw: 0.14, q: 1.2 });
+    },
+    hen_land(v, o) {
+      const p = o.p, i = o.i;
+      tone(v, { f: 150 * p, f2: 68 * p, gl: 0.09, a: 0.002, d: 0.11 + 0.06 * i, g: 0.3 + 0.15 * i });
+      nz(v, { color: 'pink', a: 0.002, d: 0.09, g: 0.16, type: 'lowpass', f: 1300 });
+      nz(v, { t: 0.02, color: 'pink', a: 0.01, d: 0.18, g: 0.05 + 0.04 * i, type: 'bandpass', f: 2400, f2: 1200, q: 1 }); // feathers settling
+    },
+    flap(v, o) {
+      const n = 2 + Math.round(o.i * 2);
+      for (let k = 0; k < n; k++) nz(v, { t: k * 0.075, color: 'pink', a: 0.008, d: 0.05, g: 0.13, type: 'bandpass', f: rr(900, 1500), q: 0.9 });
+    },
+    cluck(v, o) { // "bok", and at high intensity a "ba-GAWK"
+      const p = o.p, bok = (t, f, d, g) => {
+        tone(v, { type: 'square', t, f, fp: [[0, f], [d * 0.4, f * 1.25], [d, f * 0.7]], a: 0.004, d, g, lp: 1900, lq: 4 });
+        nz(v, { t, a: 0.002, d: 0.025, g: g * 0.6, type: 'bandpass', f: 1500, q: 2 });
+      };
+      bok(0, 560 * p, 0.08, 0.12);
+      if (o.i > 0.5) bok(0.1, 700 * p, 0.17, 0.08);
+    },
+    confetti(v, o) {
+      const i = o.i;
+      nz(v, { a: 0.0006, d: 0.025, g: 0.32, type: 'highpass', f: 1800 });
+      tone(v, { f: 900, f2: 180, gl: 0.04, a: 0.001, d: 0.06, g: 0.2 });
+      pings(v, { t: 0.04, dur: 0.5 + 0.3 * i, n: 6 + Math.round(8 * i), fmin: 2800, fmax: 7200, g: 0.035, dmin: 0.02, dmax: 0.07 });
+      nz(v, { t: 0.03, a: 0.05, d: 0.5, g: 0.03, type: 'highpass', f: 6500 });
+      send(v, 0.25);
+    },
+    tada(v, o) { // the routine's final pose: a bright major chord, wider the bigger the routine
+      const p = o.pitch, i = o.i, C6 = 1046.5 * p;
+      const ks = i > 0.6 ? [0.5, 1, 1.26, 1.5, 2] : i > 0.25 ? [1, 1.26, 1.5] : [1, 1.5];
+      ks.forEach((k, j) => bell(v, { t: j * 0.025, f: C6 * k, d: 0.9, g: 0.11 }));
+      for (const k of [0.5, 0.63, 0.75]) tone(v, { type: 'triangle', f: C6 * k, a: 0.01, hold: 0.12, d: 0.4, g: 0.05, lp: 3000 });
+      if (i > 0.6) pings(v, { t: 0.1, dur: 0.5, n: 8, fmin: 3200, fmax: 7500, g: 0.03, dmin: 0.04, dmax: 0.1 });
+      send(v, 0.32);
+    },
+    cheer_up(v, o) { // the fail card: she perks up, two friendly rising notes
+      const p = o.pitch;
+      for (const [t, f] of [[0, 783.99], [0.13, 1046.5]]) {
+        tone(v, { type: 'triangle', t, f: f * p, a: 0.006, d: 0.28, g: 0.12, lp: 3200 });
+        bell(v, { t, f: f * p * 2, d: 0.4, g: 0.04 });
+      }
       send(v, 0.25);
     },
     unlock(v, o) {
