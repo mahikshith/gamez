@@ -145,6 +145,11 @@ export const allyMethods = {
     return !!(this.allyBoss() || this.allySnakes().length || (this.sals || []).some((C) => this.salLive(C)) || this.allyEagle() || this.allyThieves().length);
   },
 
+  // can this ally act on something right now (pure: builds the plan and drops it)
+  allyCan(kind) {
+    return this.allyAvailable(kind) && this.state === 'play' && !!(kind === 'rooster' ? this.roosterPlan() : kind === 'goose' ? this.goosePick({}) : null);
+  },
+
   roosterPlan() {
     if (!this.allyHasTarget()) return null;
     const B = this.allyBoss();
