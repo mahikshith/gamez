@@ -104,14 +104,31 @@ func _show_title() -> void:
 	# logo: white heavy letters with a ginger drop (no outline), gently bobbing
 	var logo_sh = UI.label(title_ui, "Eggscape", 96, UI.BRAND_D, 900)
 	var logo = UI.label(title_ui, "Eggscape", 96, Color.WHITE, 900)
+	# a thick ginger outline on both layers keeps the white letters readable over clouds and sun
 	for l in [logo_sh, logo]:
+		l.add_theme_color_override("font_outline_color", UI.BRAND_D)
+		l.add_theme_constant_override("outline_size", 18)
 		l.size = Vector2(sz.x, 130)
 		l.pivot_offset = l.size / 2
 	logo.position = Vector2(0, top + sz.y * 0.1)
 	logo_sh.position = logo.position + Vector2(0, 7)
-	var tag = UI.label(title_ui, "Roll every egg home", 26, Color(1, 1, 1, 0.95), 800)
-	tag.size = Vector2(sz.x, 40)
-	tag.position = Vector2(0, logo.position.y + 128)
+	# tagline on a white pill so it reads over clouds and sky alike
+	var tag_text = "Roll every egg home"
+	var tw_px = UI.font(900).get_string_size(tag_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 26).x
+	var pill = Panel.new()
+	var psb = StyleBoxFlat.new()
+	psb.bg_color = Color.WHITE
+	psb.set_corner_radius_all(24)
+	psb.border_color = Color("D9EEF8")
+	psb.border_width_bottom = 4
+	psb.anti_aliasing = true
+	pill.add_theme_stylebox_override("panel", psb)
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pill.size = Vector2(tw_px + 56, 48)
+	pill.position = Vector2(sz.x / 2 - pill.size.x / 2, logo.position.y + 152)
+	title_ui.add_child(pill)
+	var tag = UI.label(pill, tag_text, 26, UI.BRAND_D, 900)
+	tag.size = Vector2(pill.size.x, 44)
 	var bob = create_tween().set_loops()
 	for l in [logo, logo_sh]:
 		pass
@@ -124,9 +141,8 @@ func _show_title() -> void:
 	h.H = minf(sz.y * 0.3, sz.x * 0.62)
 	h.position = Vector2(sz.x / 2, sz.y * 0.74)
 	title_ui.add_child(h)
-	h.set_mood("happy")
-	get_tree().create_timer(1.2).timeout.connect(func():
-		if is_instance_valid(h): h.set_mood("idle"))
+	# says hi: wings up, eyes wide, beak open, then settles into her idle life
+	h.set_mood("wow")
 	var b = UI.button(title_ui, "PLAY", UI.GREEN, 36)
 	b.size = Vector2(minf(520.0, sz.x - 64.0), 84)
 	b.position = Vector2(sz.x / 2 - b.size.x / 2, sz.y - UI.safe_bottom() - 84 - 92)
@@ -222,6 +238,10 @@ func _start_level(i: int) -> void:
 			vault.n_saved = vault.n_eggs
 			vault.done = true
 			_on_finished(true))
+	if ua.has("--autofail"):
+		get_tree().create_timer(0.5).timeout.connect(func():
+			vault.done = true
+			_on_finished(false))
 	if ua.has("--bot"):
 		var bot = preload("res://scripts/bot.gd").new()
 		add_child(bot)
@@ -246,8 +266,9 @@ func _banner(title: String, line: String) -> void:
 	sb.border_width_bottom = 5
 	sb.anti_aliasing = true
 	card.add_theme_stylebox_override("panel", sb)
-	card.size = Vector2(minf(640.0, sz.x - 32.0), 150)
-	card.position = Vector2(sz.x / 2 - card.size.x / 2, sz.y - UI.safe_bottom() - card.size.y - 20)
+	card.size = Vector2(minf(640.0, sz.x - 32.0), 146)
+	# sits in the sky between the top bar and the vault (_fit keeps that room free), never over the rings or the hen
+	card.position = Vector2(sz.x / 2 - card.size.x / 2, UI.safe_top() + 104.0)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(card)
 	var t = UI.label(card, title, 30, UI.BRAND, 900, HORIZONTAL_ALIGNMENT_LEFT)
@@ -256,14 +277,19 @@ func _banner(title: String, line: String) -> void:
 	var l = UI.label(card, line, 22, UI.INK, 800, HORIZONTAL_ALIGNMENT_LEFT)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	l.position = Vector2(26, 58)
-	l.size = Vector2(card.size.x - 52, 84)
+	l.position = Vector2(26, 56)
+	l.custom_minimum_size = Vector2(card.size.x - 52, 0)
+	l.update_minimum_size()
+	l.size = Vector2(card.size.x - 52, 80)
 	var y0 = card.position.y
-	card.position.y = sz.y + 20
+	card.position.y = y0 - 40
+	card.modulate.a = 0.0
 	var tw = create_tween()
 	tw.tween_property(card, "position:y", y0, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(0.35)
+	tw.parallel().tween_property(card, "modulate:a", 1.0, 0.25).set_delay(0.35)
 	tw.tween_interval(4.5)
-	tw.tween_property(card, "position:y", sz.y + 20, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tw.tween_property(card, "position:y", y0 - 40, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(card, "modulate:a", 0.0, 0.3)
 	tw.tween_callback(box.queue_free)
 
 func _fit() -> void:
@@ -278,6 +304,11 @@ func _fit() -> void:
 	var half_w = maxf(R, hen_r)
 	var h = R + gy
 	var z = minf(sz.x / (half_w * 2.0), (sz.y - top - bottom) / h)
+	# keep a strip of sky under the top bar for the tip card when the screen allows it without shrinking the vault much
+	var z_res = minf(sz.x / (half_w * 2.0), (sz.y - top - 160.0 - bottom) / h)
+	if z_res >= z * 0.9:
+		z = z_res
+		top += 160.0
 	cam.zoom = Vector2(z, z)
 	# centre the content box under the HUD
 	var content_mid = (gy - R) / 2.0

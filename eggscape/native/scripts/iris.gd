@@ -28,16 +28,10 @@ func _draw() -> void:
 	var sz = get_viewport_rect().size
 	var c = sz / 2
 	var R = sz.length() * 0.55 * (1.0 - k)
-	# fill everything outside the circle with a thick ring polygon
-	var outer = PackedVector2Array([Vector2(-10, -10), Vector2(sz.x + 10, -10), Vector2(sz.x + 10, sz.y + 10), Vector2(-10, sz.y + 10), Vector2(-10, -10)])
 	var col = Color("2b170a")
 	if R <= 1.0:
 		draw_rect(Rect2(Vector2(-10, -10), sz + Vector2(20, 20)), col)
 		return
-	var n = 48
-	var ring = PackedVector2Array()
-	for i in n + 1:
-		ring.append(c + Vector2.from_angle(TAU * i / n) * R)
-	# draw as quads between circle and screen corners: thick arc stroke is simpler and exact enough
-	draw_arc(c, R + sz.length() * 0.5, 0, TAU, 64, col, sz.length(), false)
-	draw_arc(c, R + 4.0, 0, TAU, 64, Color("ffcf5a"), 8.0, true)
+	# everything outside the circle: one very thick ring (no polygon triangulation, so it can never fail)
+	var T = sz.length()
+	draw_arc(c, R + T / 2.0, 0.0, TAU, 96, col, T, true)

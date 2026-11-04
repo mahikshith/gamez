@@ -153,7 +153,7 @@ func _process(dt: float) -> void:
 			if _step >= _routine.size():
 				_new_routine()
 				_routine[0] = ["clap", "wiggle", "tada"][randi() % 3]
-	if mood == "sad" and randf() < dt * 2.2:
+	if mood == "sad" and randf() < dt * 3.5:
 		_tears.append({"side": randi() % 2, "y": 0.0, "v": 40.0, "life": 0.9})
 	for d in _tears:
 		d.v += 500.0 * dt
@@ -275,6 +275,12 @@ func _celebrate(p: Dictionary) -> void:
 	match m:
 		"jump":
 			_jump(p, u, 110.0)
+			# wide-eyed, beak-open "woo!" in the air, happy squint on the ground
+			if u > 0.2 and u < 0.78:
+				p.eyes = "open"
+				p.eye = 1.1
+				p.pupil = 1.15
+				p.mouth = 1.0
 		"spin":
 			# a hop with a full turn: flip through the side view
 			_jump(p, u, 70.0)

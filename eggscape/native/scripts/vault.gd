@@ -442,12 +442,15 @@ func _draw() -> void:
 	# vault back-plate: a deep translucent disc (radial gradient, darker at the rim) so cream eggs and wood rings
 	# both read clearly against it, plus a thin light rim
 	var R = (outer_r + 0.22) * G.PPM
+	# triangle fan sent as a raw triangle list (a polygon through the centre would fail to triangulate)
 	var fan = PackedVector2Array([Vector2.ZERO])
-	var cols = PackedColorArray([Color(0.11, 0.33, 0.45, 0.30)])
-	for k in 65:
+	var cols = PackedColorArray([Color(0.16, 0.46, 0.62, 0.22)])
+	var idx = PackedInt32Array()
+	for k in 64:
 		fan.append(Vector2.from_angle(TAU * k / 64.0) * R)
-		cols.append(Color(0.08, 0.24, 0.36, 0.48))
-	draw_polygon(fan, cols)
+		cols.append(Color(0.10, 0.33, 0.50, 0.36))
+		idx.append_array([0, 1 + k, 1 + (k + 1) % 64])
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), idx, fan, cols)
 	draw_arc(Vector2.ZERO, R, 0, TAU, 96, Color(1, 1, 1, 0.35), 4.0, true)
 	# yolk splats on the ground
 	for s in splats:

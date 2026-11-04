@@ -45,7 +45,7 @@ func _layout() -> void:
 	Z.button = Rect2(x0 + 24, bottom - btn_h - (64.0 if not won else 0.0), W - 48, btn_h)
 	Z.button2 = Rect2(x0 + 24, bottom - 52.0, W - 48, 52.0)
 	Z.cards = Rect2(x0 + 24, Z.button.position.y - gap * 2 - 118.0, W - 48, 118.0)
-	Z.stars = Rect2(x0, Z.cards.position.y - gap - 96.0, W, 96.0) if won else Rect2(x0, Z.cards.position.y, W, 0.0)
+	Z.stars = Rect2(x0, Z.cards.position.y - gap - 120.0, W, 120.0) if won else Rect2(x0, Z.cards.position.y, W, 0.0)
 	Z.sub = Rect2(x0 + 24, Z.stars.position.y - gap - 34.0, W - 48, 34.0)
 	Z.title = Rect2(x0 + 24, Z.sub.position.y - 66.0, W - 48, 64.0)
 	Z.stage = Rect2(x0, top, W, Z.title.position.y - top - gap)
@@ -56,7 +56,7 @@ func open(is_win: bool, stars: int, stats: Array, title: String, sub: String) ->
 	_layout()
 	var st: Rect2 = Z.stage
 	_hen = Hen.new()
-	_hen.H = clampf(st.size.y * 0.6, 150.0, 340.0)
+	_hen.H = clampf(st.size.y * 0.72, 150.0, 430.0)
 	_hen.position = Vector2(st.get_center().x, st.end.y - 14.0)
 	_hen.scale = Vector2.ZERO
 	add_child(_hen)
@@ -93,7 +93,7 @@ func open(is_win: bool, stars: int, stats: Array, title: String, sub: String) ->
 		if won: next_pressed.emit()
 		else: retry_pressed.emit())
 	if not won:
-		_btn2 = UI.flat_button(self, "BACK TO THE FARM", UI.MUTED, 22)
+		_btn2 = UI.flat_button(self, "BACK TO THE FARM", Color("1899D6"), 22)
 		_place(_btn2, Z.button2)
 		_btn2.modulate.a = 0.0
 		_btn2.pressed.connect(func():
@@ -166,7 +166,7 @@ func _sparkle(at: Vector2) -> void:
 
 func _star_pos(i: int) -> Vector2:
 	var r: Rect2 = Z.stars
-	return Vector2(r.get_center().x + (i - 1) * 108.0, r.get_center().y + (0.0 if i == 1 else 8.0))
+	return Vector2(r.get_center().x + (i - 1) * 140.0, r.get_center().y + (0.0 if i == 1 else 10.0))
 
 func _play_win() -> void:
 	var sz = get_viewport_rect().size
@@ -262,7 +262,7 @@ func _draw() -> void:
 		return
 	for i in 3:
 		var p = _star_pos(i)
-		var big = 46.0 if i == 1 else 40.0
+		var big = 60.0 if i == 1 else 50.0
 		G.shape(self, G.star(p, big, big * 0.5), Color(0.9, 0.88, 0.85), Color(0, 0, 0, 0), 0.0)
 		if i < n_stars and star_k[i] > 0.0:
 			var k: float = star_k[i]

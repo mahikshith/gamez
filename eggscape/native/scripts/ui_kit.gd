@@ -14,7 +14,7 @@ const BLUE := Color("1EA7F0")
 const RED := Color("FF5148")
 const PURPLE := Color("B07CF2")
 const INK := Color("3B2A20")
-const MUTED := Color("9A8B80")
+const MUTED := Color("8C7B6F")
 const PAPER := Color("FFFBF4")
 const LINE := Color("EDE4D8")
 
