@@ -1,5 +1,5 @@
-# Farm world backdrop, drawn in screen space behind the vault: sky gradient, sun with soft rays, drifting clouds,
-# three hill layers that sway slightly with the vault's turn (parallax), a red barn and a fence.
+# Farm world backdrop in screen space: soft sky gradient, a sun with a halo, rounded drifting clouds, three flat
+# hill layers with a slight parallax sway as the vault turns, one simple barn. Flat colours, no outlines.
 extends Node2D
 
 var t = 0.0
@@ -7,66 +7,63 @@ var sway = 0.0
 var clouds = []
 
 func _ready() -> void:
-	for i in 5:
-		clouds.append({"x": randf() * 900.0 - 90.0, "y": randf_range(90, 420), "s": randf_range(0.7, 1.4), "v": randf_range(6, 14)})
+	for i in 4:
+		clouds.append({"x": randf() * 800.0 - 60.0, "y": randf_range(0.08, 0.32), "s": randf_range(0.8, 1.3), "v": randf_range(5, 11)})
 
 func _process(dt: float) -> void:
 	t += dt
 	var W = get_viewport_rect().size.x
 	for c in clouds:
 		c.x += c.v * dt
-		if c.x > W + 120.0:
-			c.x = -160.0
+		if c.x > W + 140.0:
+			c.x = -180.0
 	queue_redraw()
 
 func _hill(W: float, y0: float, amp: float, freq: float, ph: float, col: Color, H: float) -> void:
 	var pts = PackedVector2Array()
-	var n = 48
+	var n = 40
 	for i in n + 1:
 		var x = -40.0 + (W + 80.0) * i / n
-		pts.append(Vector2(x, y0 - amp * (0.6 + 0.4 * sin(x * freq + ph))))
+		pts.append(Vector2(x, y0 - amp * (0.55 + 0.45 * sin(x * freq + ph))))
 	pts.append(Vector2(W + 40.0, H + 10.0))
 	pts.append(Vector2(-40.0, H + 10.0))
 	draw_colored_polygon(pts, col)
+
+func _cloud(p: Vector2, s: float) -> void:
+	var col = Color(1, 1, 1, 0.95)
+	var w = 150.0 * s
+	var h = 34.0 * s
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = col
+	sb.set_corner_radius_all(int(h / 2))
+	sb.anti_aliasing = true
+	draw_style_box(sb, Rect2(p - Vector2(w / 2, 0), Vector2(w, h)))
+	draw_circle(p + Vector2(-w * 0.18, 2), h * 0.95, col)
+	draw_circle(p + Vector2(w * 0.12, -2), h * 1.25, col)
 
 func _draw() -> void:
 	var sz = get_viewport_rect().size
 	var W = sz.x
 	var H = sz.y
-	draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(W, 0), Vector2(W, H * 0.62), Vector2(0, H * 0.62)]),
-		PackedColorArray([Color("5ec2f2"), Color("5ec2f2"), Color("cdeffa"), Color("cdeffa")]))
-	draw_rect(Rect2(0, H * 0.62, W, H), Color("cdeffa"))
-	# sun with slowly turning rays
-	var sc = Vector2(W * 0.8, H * 0.13)
-	for i in 12:
-		var a = t * 0.08 + TAU * i / 12.0
-		draw_colored_polygon(PackedVector2Array([sc, sc + Vector2.from_angle(a - 0.09) * 210.0, sc + Vector2.from_angle(a + 0.09) * 210.0]), Color(1, 0.97, 0.75, 0.16))
-	draw_circle(sc, 70.0, Color(1, 0.96, 0.7, 0.35))
-	draw_circle(sc, 52.0, Color("fff3a6"))
-	draw_circle(sc, 44.0, Color("ffe066"))
+	draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(W, 0), Vector2(W, H * 0.7), Vector2(0, H * 0.7)]),
+		PackedColorArray([Color("7CCFFB"), Color("7CCFFB"), Color("DDF4FF"), Color("DDF4FF")]))
+	draw_rect(Rect2(0, H * 0.7, W, H * 0.3 + 2), Color("DDF4FF"))
+	var sc = Vector2(W * 0.82, H * 0.1)
+	draw_circle(sc, 92.0, Color(1, 1, 1, 0.18))
+	draw_circle(sc, 66.0, Color(1, 0.98, 0.8, 0.35))
+	draw_circle(sc, 46.0, Color("FFE36B"))
 	for c in clouds:
-		var p = Vector2(c.x, c.y)
-		var s: float = c.s
-		for b in [[-38, 6, 26], [-10, -10, 34], [24, -2, 30], [48, 8, 22], [6, 12, 30]]:
-			draw_circle(p + Vector2(b[0], b[1]) * s, b[2] * s, Color(1, 1, 1, 0.92))
-		draw_rect(Rect2(p + Vector2(-50, 10) * s, Vector2(110, 22) * s), Color(1, 1, 1, 0.92))
-	var o = sway * 18.0
-	_hill(W, H * 0.6, 60.0, 0.008, 0.5 + o * 0.002, Color("9fd38a"), H)
-	# barn on the far hill
-	var bx = W * 0.16 + o * 0.4
-	var by = H * 0.555
-	draw_colored_polygon(PackedVector2Array([Vector2(bx - 44, by), Vector2(bx - 44, by - 52), Vector2(bx, by - 84), Vector2(bx + 44, by - 52), Vector2(bx + 44, by)]), Color("c8433a"))
-	draw_colored_polygon(PackedVector2Array([Vector2(bx - 52, by - 50), Vector2(bx, by - 92), Vector2(bx + 52, by - 50), Vector2(bx + 44, by - 46), Vector2(bx, by - 82), Vector2(bx - 44, by - 46)]), Color("f4efe6"))
-	draw_rect(Rect2(bx - 15, by - 34, 30, 34), Color("8e2a23"))
-	draw_line(Vector2(bx - 15, by - 34), Vector2(bx + 15, by), Color("f4efe6"), 3.0, true)
-	draw_line(Vector2(bx + 15, by - 34), Vector2(bx - 15, by), Color("f4efe6"), 3.0, true)
-	_hill(W, H * 0.66, 50.0, 0.011, 2.0 + o * 0.004, Color("7cc26a"), H)
-	_hill(W, H * 0.74, 34.0, 0.015, 4.0 + o * 0.007, Color("63ad55"), H)
-	# fence
-	var fy = H * 0.73
-	for i in int(W / 46.0) + 2:
-		var x = fmod(i * 46.0 + o * 0.9, W + 46.0) - 10.0
-		draw_rect(Rect2(x, fy - 34, 9, 40), Color("e9d3a8"))
-		draw_rect(Rect2(x, fy - 34, 9, 40), Color("9c7a4a"), false, 2.0)
-	draw_rect(Rect2(-10, fy - 26, W + 20, 6), Color("e9d3a8"))
-	draw_rect(Rect2(-10, fy - 12, W + 20, 6), Color("e9d3a8"))
+		_cloud(Vector2(c.x, c.y * H), c.s)
+	var o = sway * 14.0
+	_hill(W, H * 0.62, 56.0, 0.007, 0.6 + o * 0.002, Color("C3EBA0"), H)
+	var bx = W * 0.15 + o * 0.3
+	var by = H * 0.585
+	draw_colored_polygon(PackedVector2Array([Vector2(bx - 34, by), Vector2(bx - 34, by - 40), Vector2(bx, by - 64), Vector2(bx + 34, by - 40), Vector2(bx + 34, by)]), Color("F07B6E"))
+	draw_colored_polygon(PackedVector2Array([Vector2(bx - 40, by - 38), Vector2(bx, by - 70), Vector2(bx + 40, by - 38), Vector2(bx + 34, by - 36), Vector2(bx, by - 62), Vector2(bx - 34, by - 36)]), Color("FFF6EC"))
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = Color("C95A4E")
+	sb.corner_radius_top_left = 12
+	sb.corner_radius_top_right = 12
+	draw_style_box(sb, Rect2(bx - 11, by - 26, 22, 26))
+	_hill(W, H * 0.68, 46.0, 0.01, 2.1 + o * 0.004, Color("A3DC78"), H)
+	_hill(W, H * 0.76, 30.0, 0.014, 4.0 + o * 0.006, Color("86CC5B"), H)

@@ -39,6 +39,7 @@ var _nest_area: Area2D
 var _nest_pile = 0
 var _fx: Node2D
 var splats = []
+var play_t = 0.0
 
 func setup(lv: Dictionary) -> void:
 	level = lv
@@ -266,6 +267,7 @@ func _physics_process(dt: float) -> void:
 				th.burn -= dt
 	if done:
 		return
+	play_t += dt
 	var inside = _nest_area.get_overlapping_bodies()
 	for e in eggs:
 		if not e.alive or e.saved:
@@ -437,11 +439,16 @@ func _puff(p: Vector2, c: Color, n: int) -> void:
 	_burst(p, n, [c, c.lightened(0.3)], Vector2(30, 90), -120.0, Vector2(5, 10), 0.8)
 
 func _draw() -> void:
-	# soft vault back-plate: depth behind the rings
-	var R = (outer_r + 0.25) * G.PPM
-	for i in 6:
-		draw_circle(Vector2.ZERO, R - i * 6.0, Color(0.12, 0.06, 0.02, 0.07))
-	draw_circle(Vector2.ZERO, (outer_r - 0.05) * G.PPM, Color(0.2, 0.11, 0.05, 0.28))
+	# vault back-plate: a deep translucent disc (radial gradient, darker at the rim) so cream eggs and wood rings
+	# both read clearly against it, plus a thin light rim
+	var R = (outer_r + 0.22) * G.PPM
+	var fan = PackedVector2Array([Vector2.ZERO])
+	var cols = PackedColorArray([Color(0.11, 0.33, 0.45, 0.30)])
+	for k in 65:
+		fan.append(Vector2.from_angle(TAU * k / 64.0) * R)
+		cols.append(Color(0.08, 0.24, 0.36, 0.48))
+	draw_polygon(fan, cols)
+	draw_arc(Vector2.ZERO, R, 0, TAU, 96, Color(1, 1, 1, 0.35), 4.0, true)
 	# yolk splats on the ground
 	for s in splats:
 		var c = Vector2(s.x, ground_y * G.PPM - 2.0)

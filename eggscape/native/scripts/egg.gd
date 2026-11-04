@@ -121,18 +121,22 @@ func crack() -> void:
 func _draw() -> void:
 	var s = G.PPM
 	# body (the hull rotates with the body; the face below counter-rotates to stay upright-ish)
-	var base = Color("fffaf0") if fire <= 0.0 else Color("ffe1b8")
+	var base = Color("FFF8EC") if fire <= 0.0 else Color("FFE2BC")
+	# soft contact shadow so the egg sits on the vault, not on top of the screen
+	var sh_pts = PackedVector2Array()
+	for p in _hull:
+		sh_pts.append(p * 1.04 + Vector2(0, 3).rotated(-rotation))
+	draw_colored_polygon(sh_pts, Color(0.05, 0.1, 0.15, 0.22))
 	draw_colored_polygon(_hull, base)
 	# shade crescent on the lower right: hull minus itself shifted up-left
 	var off = PackedVector2Array()
 	for p in _hull:
 		off.append(p * 0.97 + Vector2(-5, -6))
 	for poly in Geometry2D.clip_polygons(_hull, off):
-		draw_colored_polygon(poly, Color("f0dcb6"))
+		draw_colored_polygon(poly, Color("F2D6AA"))
 	draw_colored_polygon(G.ellipse(Vector2(-7, -12), 4.5, 7.5, 14, -0.3), Color(1, 1, 1, 0.9))
 	for c in crack_lines:
-		draw_polyline(c, Color("6b4a2a"), 2.0, true)
-	draw_polyline(G.closed(_hull), Color("6b4a2a"), 3.0, true)
+		draw_polyline(c, Color("8A5A2E"), 2.2, true)
 	# face: counter-rotate so the eyes stay level
 	draw_set_transform(Vector2.ZERO, -rotation * 0.8, Vector2.ONE)
 	var look = linear_velocity.normalized() * 1.5 if linear_velocity.length() > 30.0 else Vector2.ZERO
@@ -141,18 +145,18 @@ func _draw() -> void:
 		var e = Vector2(side * 6.0, 2.0)
 		if fear > 0.5:
 			draw_circle(e, er + 1.2, Color.WHITE)
-			draw_circle(e + look, er * 0.6, Color("2a1d14"))
+			draw_circle(e + look, er * 0.6, Color("3A2618"))
 		else:
 			var blink = fmod(t, 3.7) < 0.12
 			if blink:
-				draw_line(e + Vector2(-2.5, 0), e + Vector2(2.5, 0), Color("2a1d14"), 2.0, true)
+				draw_line(e + Vector2(-2.5, 0), e + Vector2(2.5, 0), Color("3A2618"), 2.0, true)
 			else:
-				draw_circle(e + look, er, Color("2a1d14"))
+				draw_circle(e + look, er, Color("3A2618"))
 				draw_circle(e + look + Vector2(-0.8, -1.0), 0.9, Color.WHITE)
 	if fear > 0.5:
-		draw_circle(Vector2(0, 10), 2.6, Color("2a1d14"))
+		draw_circle(Vector2(0, 10), 2.6, Color("3A2618"))
 	else:
-		draw_arc(Vector2(0, 7), 3.0, 0.3, PI - 0.3, 8, Color("2a1d14"), 1.6, true)
+		draw_arc(Vector2(0, 7), 3.0, 0.3, PI - 0.3, 8, Color("3A2618"), 1.6, true)
 	draw_circle(Vector2(-10, 8), 2.5, Color(1, 0.5, 0.5, 0.45))
 	draw_circle(Vector2(10, 8), 2.5, Color(1, 0.5, 0.5, 0.45))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

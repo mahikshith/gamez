@@ -4,12 +4,13 @@ extends Node2D
 
 const G = preload("res://scripts/g.gd")
 const Vault = preload("res://scripts/vault.gd")
-const Hen = preload("res://scripts/hen.gd")
+const Hen = preload("res://scripts/mascot.gd")
 const GroundArt = preload("res://scripts/ground_art.gd")
 const Hud = preload("res://scripts/hud.gd")
 const Celebrate = preload("res://scripts/celebrate.gd")
 const Backdrop = preload("res://scripts/backdrop.gd")
 const Iris = preload("res://scripts/iris.gd")
+const UI = preload("res://scripts/ui_kit.gd")
 const Hint = preload("res://scripts/hint.gd")
 const SAVE_PATH := "user://save.json"
 const PLAYABLE := 1 # levels the prototype supports so far (rings, gaps, thorns, pads, flame orbs)
@@ -67,7 +68,7 @@ func _ready() -> void:
 
 # Review sheet: the hen in every mood, big (run with -- --henlab).
 func _hen_lab() -> void:
-	var moods = ["idle", "worried", "cheer", "cry", "dance", "celebrate"]
+	var moods = ["idle", "happy", "worried", "sad", "wow", "celebrate"]
 	for i in moods.size():
 		var h = Hen.new()
 		h.H = 220.0
@@ -99,49 +100,44 @@ func _show_title() -> void:
 	title_ui.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(title_ui)
 	var sz = get_viewport_rect().size
-	var logo = Label.new()
-	logo.text = "Eggscape"
-	logo.add_theme_font_override("font", font)
-	logo.add_theme_font_size_override("font_size", 104)
-	logo.add_theme_color_override("font_color", Color("fff3d0"))
-	logo.add_theme_color_override("font_outline_color", Color("6b3a14"))
-	logo.add_theme_constant_override("outline_size", 26)
-	logo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	logo.size = Vector2(sz.x, 140)
-	logo.position = Vector2(0, sz.y * 0.13)
-	logo.pivot_offset = logo.size / 2
-	title_ui.add_child(logo)
+	var top = UI.safe_top()
+	# logo: white heavy letters with a ginger drop (no outline), gently bobbing
+	var logo_sh = UI.label(title_ui, "Eggscape", 96, UI.BRAND_D, 900)
+	var logo = UI.label(title_ui, "Eggscape", 96, Color.WHITE, 900)
+	for l in [logo_sh, logo]:
+		l.size = Vector2(sz.x, 130)
+		l.pivot_offset = l.size / 2
+	logo.position = Vector2(0, top + sz.y * 0.1)
+	logo_sh.position = logo.position + Vector2(0, 7)
+	var tag = UI.label(title_ui, "Roll every egg home", 26, Color(1, 1, 1, 0.95), 800)
+	tag.size = Vector2(sz.x, 40)
+	tag.position = Vector2(0, logo.position.y + 128)
 	var bob = create_tween().set_loops()
-	bob.tween_property(logo, "rotation", 0.03, 1.2).set_trans(Tween.TRANS_SINE)
-	bob.tween_property(logo, "rotation", -0.03, 1.2).set_trans(Tween.TRANS_SINE)
+	for l in [logo, logo_sh]:
+		pass
+	bob.tween_property(logo, "rotation", 0.025, 1.3).set_trans(Tween.TRANS_SINE)
+	bob.parallel().tween_property(logo_sh, "rotation", 0.025, 1.3).set_trans(Tween.TRANS_SINE)
+	bob.tween_property(logo, "rotation", -0.025, 1.3).set_trans(Tween.TRANS_SINE)
+	bob.parallel().tween_property(logo_sh, "rotation", -0.025, 1.3).set_trans(Tween.TRANS_SINE)
+	# the hen stands on the near hill
 	var h = Hen.new()
-	h.H = 300.0
-	h.position = Vector2(sz.x / 2 - 10, sz.y * 0.71)
+	h.H = minf(sz.y * 0.3, sz.x * 0.62)
+	h.position = Vector2(sz.x / 2, sz.y * 0.74)
 	title_ui.add_child(h)
-	var eg = Node2D.new()
-	title_ui.add_child(eg)
-	var b = Button.new()
-	b.text = "PLAY  ·  LEVEL %d" % mini(int(save.level), PLAYABLE)
-	b.add_theme_font_override("font", font)
-	b.add_theme_font_size_override("font_size", 40)
-	for st in ["normal", "hover", "pressed", "focus"]:
-		var sb = StyleBoxFlat.new()
-		sb.bg_color = Color("58cc02") if st != "pressed" else Color("4fb800")
-		sb.set_corner_radius_all(24)
-		sb.border_color = Color("46a302")
-		sb.border_width_bottom = 2 if st == "pressed" else 10
-		sb.content_margin_top = 12 if st == "pressed" else 4
-		if st == "focus":
-			sb.draw_center = false
-			sb.border_width_bottom = 0
-		b.add_theme_stylebox_override(st, sb)
-	b.size = Vector2(minf(540.0, sz.x - 64.0), 104)
-	b.position = Vector2(sz.x / 2 - b.size.x / 2, sz.y * 0.78)
+	h.set_mood("happy")
+	get_tree().create_timer(1.2).timeout.connect(func():
+		if is_instance_valid(h): h.set_mood("idle"))
+	var b = UI.button(title_ui, "PLAY", UI.GREEN, 36)
+	b.size = Vector2(minf(520.0, sz.x - 64.0), 84)
+	b.position = Vector2(sz.x / 2 - b.size.x / 2, sz.y - UI.safe_bottom() - 84 - 92)
 	b.pivot_offset = b.size / 2
-	title_ui.add_child(b)
+	var lv: Dictionary = levels[mini(int(save.level), PLAYABLE) - 1]
+	var sub = UI.label(title_ui, "Level %d  ·  %s" % [int(lv.id), str(lv.name)], 24, Color.WHITE, 900)
+	sub.size = Vector2(sz.x, 36)
+	sub.position = Vector2(0, b.position.y + b.size.y + 22)
 	var br = create_tween().set_loops()
-	br.tween_property(b, "scale", Vector2(1.04, 1.04), 0.6).set_trans(Tween.TRANS_SINE)
-	br.tween_property(b, "scale", Vector2.ONE, 0.6).set_trans(Tween.TRANS_SINE)
+	br.tween_property(b, "scale", Vector2(1.03, 1.03), 0.7).set_trans(Tween.TRANS_SINE)
+	br.tween_property(b, "scale", Vector2.ONE, 0.7).set_trans(Tween.TRANS_SINE)
 	b.pressed.connect(func():
 		Sfx.play("grab")
 		Sfx.buzz(15, 0.4)
@@ -150,7 +146,6 @@ func _show_title() -> void:
 			title_ui.queue_free()
 			title_ui = null
 			_start_level(mini(int(save.level), PLAYABLE) - 1)))
-	h.set_mood("cheer")
 
 # ---------------------------------------------------------------- level
 func _go(swap: Callable) -> void:
@@ -193,7 +188,7 @@ func _start_level(i: int) -> void:
 	vault.move_child(back, 0)
 	world.add_child(vault)
 	hen = Hen.new()
-	hen.H = 120.0
+	hen.H = 150.0
 	hen.face = -1
 	hen.z_index = 4
 	var hx: float = (vault.nest_x + vault.nest_w / 2 + 0.75) * G.PPM
@@ -206,7 +201,6 @@ func _start_level(i: int) -> void:
 		_hen_mood("worried", 0.8))
 	vault.finished.connect(_on_finished)
 	hud = Hud.new()
-	hud.font = font
 	hud.title = "%d  %s" % [int(lv.id), str(lv.name)]
 	hud.n_eggs = vault.n_eggs
 	hud.target = vault.target
@@ -237,51 +231,47 @@ func _start_level(i: int) -> void:
 	_banner(str(lv.get("intro", {}).get("title", lv.name)), str(lv.get("intro", {}).get("line", lv.get("tip", ""))))
 
 func _banner(title: String, line: String) -> void:
+	# tip card: white rounded card at the bottom, rises in, leaves after a few seconds or on the first ring grab
 	var sz = get_viewport_rect().size
 	var box = Control.new()
 	box.set_anchors_preset(Control.PRESET_FULL_RECT)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(box)
 	banner = box
-	var panel = Panel.new()
+	var card = Panel.new()
 	var sb = StyleBoxFlat.new()
-	sb.bg_color = Color(0.16, 0.09, 0.04, 0.82)
-	sb.set_corner_radius_all(26)
-	panel.add_theme_stylebox_override("panel", sb)
-	panel.size = Vector2(minf(620.0, sz.x - 40.0), 170)
-	panel.position = Vector2(sz.x / 2 - panel.size.x / 2, sz.y - 230)
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(panel)
-	var t = Label.new()
-	t.text = title
-	t.add_theme_font_override("font", font)
-	t.add_theme_font_size_override("font_size", 40)
-	t.add_theme_color_override("font_color", Color("ffd34a"))
-	t.position = Vector2(24, 14)
-	t.size = Vector2(panel.size.x - 48, 50)
-	panel.add_child(t)
-	var l = Label.new()
-	l.text = line
+	sb.bg_color = Color.WHITE
+	sb.set_corner_radius_all(24)
+	sb.border_color = Color("E6DED3")
+	sb.border_width_bottom = 5
+	sb.anti_aliasing = true
+	card.add_theme_stylebox_override("panel", sb)
+	card.size = Vector2(minf(640.0, sz.x - 32.0), 150)
+	card.position = Vector2(sz.x / 2 - card.size.x / 2, sz.y - UI.safe_bottom() - card.size.y - 20)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(card)
+	var t = UI.label(card, title, 30, UI.BRAND, 900, HORIZONTAL_ALIGNMENT_LEFT)
+	t.position = Vector2(26, 14)
+	t.size = Vector2(card.size.x - 52, 40)
+	var l = UI.label(card, line, 22, UI.INK, 800, HORIZONTAL_ALIGNMENT_LEFT)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.add_theme_font_override("font", font)
-	l.add_theme_font_size_override("font_size", 26)
-	l.add_theme_color_override("font_color", Color("fff3dc"))
-	l.position = Vector2(24, 64)
-	l.size = Vector2(panel.size.x - 48, 96)
-	panel.add_child(l)
-	panel.position.y += 260
+	l.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	l.position = Vector2(26, 58)
+	l.size = Vector2(card.size.x - 52, 84)
+	var y0 = card.position.y
+	card.position.y = sz.y + 20
 	var tw = create_tween()
-	tw.tween_property(panel, "position:y", panel.position.y - 260, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(0.3)
-	tw.tween_interval(3.6)
-	tw.tween_property(panel, "position:y", panel.position.y + 40, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tw.tween_property(card, "position:y", y0, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(0.35)
+	tw.tween_interval(4.5)
+	tw.tween_property(card, "position:y", sz.y + 20, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 	tw.tween_callback(box.queue_free)
 
 func _fit() -> void:
 	if vault == null or not is_instance_valid(vault):
 		return
 	var sz = get_viewport_rect().size
-	var top = 120.0
-	var bottom = 40.0
+	var top = UI.safe_top() + 110.0
+	var bottom = UI.safe_bottom() + 30.0
 	var R: float = (vault.outer_r + 0.3) * G.PPM
 	var gy: float = (vault.ground_y + 0.55) * G.PPM
 	var hen_r: float = (vault.nest_x + vault.nest_w / 2 + 1.3) * G.PPM
@@ -310,8 +300,9 @@ func _on_saved(_e) -> void:
 
 func _on_broke(_e, why: String) -> void:
 	hud.broken += 1
+	hud.shake = 1.0
 	shake = 14.0
-	_hen_mood("cry", 1.4)
+	_hen_mood("sad", 1.4)
 
 func _on_finished(won: bool) -> void:
 	var stars: int = vault.stars()
@@ -323,23 +314,25 @@ func _on_finished(won: bool) -> void:
 		save.best[key] = maxi(int(save.best.get(key, 0)), stars)
 		save.level = maxi(int(save.level), mini(idx + 2, PLAYABLE))
 		_write_save()
-		_hen_mood("dance", 99.0)
+		_hen_mood("celebrate", 99.0)
 	else:
 		save.streak = 0
 		_write_save()
-		_hen_mood("cry", 99.0)
+		_hen_mood("sad", 99.0)
 	await get_tree().create_timer(0.9).timeout
 	if is_instance_valid(banner):
 		banner.queue_free()
 	var c = Celebrate.new()
-	c.font = font
 	over.add_child(c)
-	var titles = ["", "Phew, made it!", "Great job!", "Perfect!"]
-	var subs = ["", "%d of %d eggs home" % [vault.n_saved, vault.n_eggs], "Every egg home", "Every egg, not a crack"]
+	var secs = int(vault.play_t)
+	var tstr = "%d:%02d" % [secs / 60, secs % 60]
 	if won:
-		c.open(true, stars, 10 + stars * 10, int(save.streak), titles[stars], subs[stars])
+		var titles = ["", "Phew, made it!", "Great job!", "Perfect!"]
+		var subs = ["", "%d of %d eggs made it home" % [vault.n_saved, vault.n_eggs], "Every egg home", "Every egg home, not one crack"]
+		c.open(true, stars, [["EGGS", vault.n_saved, "%d/" + str(vault.n_eggs), UI.BRAND, "egg"],
+			["COINS", 10 + stars * 10, "+%d", UI.GOLD_D, "coin"], ["TIME", 0, tstr, UI.BLUE, "clock"]], titles[stars], subs[stars])
 	else:
-		c.open(false, 0, 0, 0, "Out of eggs!", "Save %d eggs to open the vault" % vault.target)
+		c.open(false, 0, [["EGGS SAVED", vault.n_saved, "%d/" + str(vault.target), UI.BRAND, "crack"]], "So close!", "Save %d eggs to open the vault" % vault.target)
 	c.next_pressed.connect(func(): _go(func():
 		_clear_level()
 		if idx + 1 < PLAYABLE:
@@ -347,6 +340,9 @@ func _on_finished(won: bool) -> void:
 		else:
 			_show_title()))
 	c.retry_pressed.connect(func(): _go(func(): _start_level(idx)))
+	c.home_pressed.connect(func(): _go(func():
+		_clear_level()
+		_show_title()))
 
 func _punch(k: float) -> void:
 	var z = cam.zoom

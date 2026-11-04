@@ -1,4 +1,5 @@
-# World-space ground strip and the straw nest. Two instances: back (behind eggs) and front (the nest's front rim).
+# World-space ground and the straw nest, flat style. Two instances: back (ground + nest bowl behind the eggs) and
+# front (the nest's woven front rim over the eggs' lower half).
 extends Node2D
 
 const G = preload("res://scripts/g.gd")
@@ -11,28 +12,31 @@ func _draw() -> void:
 	var w: float = vault.nest_w / 2 * G.PPM
 	var ny = gy - 2.0
 	if not front:
-		draw_rect(Rect2(-4000, gy, 8000, 2000), Color("6fb44f"))
-		draw_rect(Rect2(-4000, gy + 26, 8000, 2000), Color("5a9a40"))
-		draw_line(Vector2(-4000, gy), Vector2(4000, gy), Color("3f7a2c"), 4.0)
-		for i in 160:
-			var x = -2000.0 + i * 25.0 + sin(i * 3.1) * 8.0
-			draw_line(Vector2(x, gy + 2), Vector2(x - 4, gy - 10 - (i % 3) * 3), Color("4e8f36"), 3.0, true)
-		# nest back: dark straw bowl interior
-		draw_colored_polygon(G.ellipse(Vector2(nx, ny - 22), w + 6, 22, 32), Color("8a5a24"))
-		draw_colored_polygon(G.ellipse(Vector2(nx, ny - 20), w - 6, 14, 32), Color("5e3a14"))
+		draw_rect(Rect2(-4000, gy, 8000, 3000), Color("6DBE45"))
+		draw_rect(Rect2(-4000, gy - 6, 8000, 12), Color("86CC5B"))
+		for i in 90:
+			var x = -1800.0 + i * 40.0 + sin(i * 3.1) * 10.0
+			var c = Vector2(x, gy - 2)
+			draw_colored_polygon(PackedVector2Array([c + Vector2(-5, 0), c + Vector2(0, -12 - (i % 3) * 4), c + Vector2(5, 0)]), Color("5AAE38"))
+		# nest bowl interior
+		draw_colored_polygon(G.ellipse(Vector2(nx, ny - 22), w + 8, 24, 40), Color("A8692C"))
+		draw_colored_polygon(G.ellipse(Vector2(nx, ny - 20), w - 6, 14, 40), Color("7C4A1C"))
 	else:
-		# nest front rim: woven straw over the eggs' lower half
 		var rim = PackedVector2Array()
-		for i in 25:
-			var a = lerpf(0.0, PI, i / 24.0)
-			rim.append(Vector2(nx + cos(a) * (w + 10), ny - 18 + sin(a) * 24))
-		for i in range(24, -1, -1):
-			var a = lerpf(0.0, PI, i / 24.0)
+		for i in 33:
+			var a = lerpf(0.0, PI, i / 32.0)
+			rim.append(Vector2(nx + cos(a) * (w + 12), ny - 18 + sin(a) * 26))
+		for i in range(32, -1, -1):
+			var a = lerpf(0.0, PI, i / 32.0)
 			rim.append(Vector2(nx + cos(a) * (w - 2), ny - 22 + sin(a) * 8))
-		G.shape(self, rim, Color("d9a24c"), Color("7a4a16"), 3.0)
-		for i in 14:
-			var x = nx - w + (2 * w) * (i + 0.5) / 14.0
-			draw_line(Vector2(x - 8, ny - 14 + sin(i) * 3), Vector2(x + 10, ny - 2 + cos(i) * 3), Color("b07a2e"), 2.5, true)
-		for i in 9:
-			var x = nx - w + (2 * w) * (i + 0.5) / 9.0
-			draw_line(Vector2(x, ny - 22), Vector2(x + 14 * sin(i * 2.3), ny - 34), Color("e8c06a"), 2.5, true)
+		draw_colored_polygon(rim, Color("E0A24E"))
+		# woven bands
+		for k in 3:
+			var band = PackedVector2Array()
+			for i in 25:
+				var a = lerpf(0.15, PI - 0.15, i / 24.0)
+				band.append(Vector2(nx + cos(a) * (w + 6 - k * 2), ny - 16 + k * 7 + sin(a) * (20 - k * 5)))
+			draw_polyline(band, Color("C7863A"), 4.0, true)
+		for i in 11:
+			var x = nx - w + (2 * w) * (i + 0.5) / 11.0
+			draw_line(Vector2(x, ny - 20), Vector2(x + 12 * sin(i * 2.3), ny - 32), Color("F5C772"), 3.5, true)
