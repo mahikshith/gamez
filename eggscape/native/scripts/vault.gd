@@ -3,6 +3,9 @@
 # y up, -90 = straight down; here screen y points down, so every angle flips sign.
 # Rules follow the web game: approach speed >= CRACK_V cracks, >= SHATTER_V breaks, pads and the nest soften,
 # three cracks break the egg, hook thorns and the ground break it, a flaming egg burns thorns away.
+# World 1 mechanics (ported from sim.js): gear trains, timed gap doors, thorn curtains, x-gates, the crack ladder
+# (a fall through 2+ rings cracks on landing), portals (teleport, suction, orb spawners), swaying power orbs
+# (red flame, green flame mends, twin egg, curse), and the fuse (level time limit).
 extends Node2D
 
 const G = preload("res://scripts/g.gd")
@@ -12,6 +15,9 @@ const SHATTER_V := 8.5
 const PAD_SOFT := 0.5
 const NEST_SOFT := 2.3
 const EGG_EGG := 2.0
+const CURTAIN_BURN := 1.0
+const PULL_R := 1.2
+const MAX_EGGS := 4
 const MATERIALS := {"wood": [0.75, 0.08], "stone": [0.85, 0.04], "ice": [0.02, 0.05], "metal": [0.55, 0.12], "coral": [0.9, 0.08], "glass": [0.45, 0.12]}
 
 signal saved_egg(egg)
@@ -19,6 +25,8 @@ signal broke_egg(egg, why)
 signal cracked_egg(egg)
 signal finished(won: bool)
 signal grabbed
+signal eggs_changed
+signal gate_passed(egg, x)
 
 var level: Dictionary
 var rings = []
@@ -40,6 +48,15 @@ var _nest_pile = 0
 var _fx: Node2D
 var splats = []
 var play_t = 0.0
+var time_limit = 0.0
+var time_left = 0.0
+var curse_t = 0.0
+var _jit_t = 0.0
+var turns = 0
+var orbs = []
+var portals = []
+var trains = []
+var _portal_art: Node2D
 
 func setup(lv: Dictionary) -> void:
 	level = lv
@@ -59,10 +76,45 @@ func setup(lv: Dictionary) -> void:
 	nest_w = float(nest.get("w", 1.9))
 	nest_x = float(nest.get("x", 0.0))
 	ground_y = (outer_r + float(nest.get("drop", 0.6)) + 0.35)
+	# gears: spec.gear links a ring to the ring with that index (the next one out); linked chains form one train
+	for ring in rings:
+		var gi = rings[ring.i].spec.get("gear", null)
+		if gi != null and int(gi) < rings.size() and int(gi) != ring.i:
+			ring.gear_out = rings[int(gi)]
+			rings[int(gi)].gear_in = ring
+	for ring in rings:
+		if ring.train != null or (ring.gear_in == null and ring.gear_out == null):
+			continue
+		var a = ring
+		while a.gear_in != null:
+			a = a.gear_in
+		var train = []
+		var b = a
+		while b != null:
+			train.append(b)
+			b = b.gear_out
+		for q in train:
+			q.train = train
+		trains.append(train)
+	rings[-1].outer = true
+	for ring in rings:
+		ring.art.queue_redraw()
 	_make_ground()
 	_make_nest()
+	time_limit = float(lv.get("time", 0))
+	time_left = time_limit
+	_portal_art = Node2D.new()
+	_portal_art.z_index = 1
+	_portal_art.draw.connect(_draw_portals)
+	add_child(_portal_art)
+	var pi = 0
+	for pd in lv.get("portals", []):
+		var every = float(pd.get("every", 8))
+		portals.append({"a": Vector2(float(pd.a[0]), -float(pd.a[1])), "b": Vector2(float(pd.b[0]), -float(pd.b[1])), "r": 0.3,
+			"emit": pd.get("emit", []), "every": every, "timer": every * (0.4 + 0.3 * pi), "k": 0, "pull": float(pd.get("pull", PULL_R)), "src": "p%d" % pi})
+		pi += 1
 	for o in lv.get("orbs", []):
-		_make_orb(o)
+		_add_orb(str(o.get("type", "fire_red")), int(o.get("ch", 1)), -deg_to_rad(float(o.get("a", 90.0))), "start")
 	var spots = [[-0.24, -0.62], [0.24, -0.62], [0.0, -0.1], [-0.3, 0.3], [0.3, 0.3]]
 	var k = float(rings[0].r) / 1.05
 	for i in mini(n_eggs, spots.size()):
@@ -83,10 +135,20 @@ func _make_ring(i: int, r: float, spec: Dictionary, mat: String) -> Dictionary:
 	body.rotation = -deg_to_rad(float(spec.get("angle", 0.0)))
 	add_child(body)
 	var ring = {"i": i, "r": r, "body": body, "angle": body.rotation, "target": body.rotation, "omega": 0.0,
-		"wmax": minf(2.2, 2.7 / r) * (0.7 if mat == "stone" else 1.0), "mat": mat, "gaps": [], "pads": [], "thorns": [], "arcs": []}
+		"wmax": minf(2.2, 2.7 / r) * (0.7 if mat == "stone" else 1.0), "mat": mat, "gaps": [], "pads": [], "thorns": [], "arcs": [],
+		"spec": spec, "gear_in": null, "gear_out": null, "train": null, "follower": false, "moving": false}
 	for g in spec.get("gaps", []):
 		var ln = float(g.get("len", 0.78))
-		ring.gaps.append({"a": -deg_to_rad(float(g.a)), "half": ln / (2.0 * r), "x": int(g.get("x", 1))})
+		var gd = {"a": -deg_to_rad(float(g.a)), "half": ln / (2.0 * r), "len": ln, "x": int(g.get("x", 1)), "shut": g.get("shut", null),
+			"o": 1.0, "closed": false, "doors": [], "curtain": null}
+		if g.get("curtain", 0):
+			gd.curtain = {"alive": true, "burning": false, "burn": 0.0, "cps": []}
+		ring.gaps.append(gd)
+	var ncur = int(spec.get("curtain", 0))
+	for gd in ring.gaps:
+		if ncur > 0 and gd.curtain == null:
+			gd.curtain = {"alive": true, "burning": false, "burn": 0.0, "cps": []}
+			ncur -= 1
 	for p in spec.get("pads", []):
 		ring.pads.append({"a": -deg_to_rad(float(p.a)), "half": float(p.len) / (2.0 * r)})
 	# solid arcs between gaps
@@ -121,6 +183,14 @@ func _make_ring(i: int, r: float, spec: Dictionary, mat: String) -> Dictionary:
 					pad = true
 			cp.set_meta("kind", "pad" if pad else "seg")
 			body.add_child(cp)
+	# fixtures across special gaps: sliding doors (on only while shut) and thorn curtains (until burnt)
+	for g in ring.gaps:
+		if g.shut != null:
+			g.doors = _across(ring, g, "shut")
+			for cp in g.doors:
+				cp.disabled = true
+		if g.curtain != null:
+			g.curtain.cps = _across(ring, g, "curtain")
 	for th in spec.get("thorns", []):
 		var cnt = int(th.get("n", 1))
 		for k in cnt:
@@ -131,6 +201,23 @@ func _make_ring(i: int, r: float, spec: Dictionary, mat: String) -> Dictionary:
 	body.add_child(art)
 	ring.art = art
 	return ring
+
+func _across(ring: Dictionary, g: Dictionary, kind: String) -> Array:
+	var r: float = ring.r
+	var ri = (r - G.RING_TH / 2) * G.PPM
+	var ro = (r + G.RING_TH / 2) * G.PPM
+	var n = maxi(2, int(ceil(g.len / 0.2)))
+	var out = []
+	for k in n:
+		var b0: float = g.a - g.half + 2.0 * g.half * k / n
+		var b1: float = g.a - g.half + 2.0 * g.half * (k + 1) / n
+		var cp = CollisionPolygon2D.new()
+		cp.polygon = PackedVector2Array([Vector2.from_angle(b0) * ri, Vector2.from_angle(b0) * ro, Vector2.from_angle(b1) * ro, Vector2.from_angle(b1) * ri])
+		cp.set_meta("kind", kind)
+		cp.set_meta("gap", g)
+		ring.body.add_child(cp)
+		out.append(cp)
+	return out
 
 func _add_thorn(ring: Dictionary, a: float, side: String, h: float, kind: String) -> void:
 	var r: float = ring.r
@@ -192,26 +279,54 @@ func _make_nest() -> void:
 	_nest_area.add_child(cs)
 	add_child(_nest_area)
 
-func _make_orb(o: Dictionary) -> void:
-	var ch = int(o.get("ch", 1))
-	var rad = 0.0
-	if ch > 0 and ch < rings.size():
-		rad = (rings[ch - 1].r + rings[ch].r) / 2.0
-	elif ch >= rings.size():
-		rad = rings[-1].r + 0.5
-	var a = -deg_to_rad(float(o.get("a", 0.0)))
+# A floating orb in channel ch (inside ring ch): it sways through the low part of the channel, where eggs roll,
+# and sinks there from wherever it starts (sim.js addOrb / moveOrb). Angles are screen radians.
+func _add_orb(kind: String, ch: int, a: float, src: String, rad := -1.0):
+	ch = clampi(ch, 0, rings.size() - 1)
 	var orb = preload("res://scripts/orb.gd").new()
-	orb.kind = str(o.get("type", "fire_red"))
-	orb.position = Vector2.from_angle(a) * rad * G.PPM
+	orb.kind = kind
+	orb.ch = ch
+	orb.a = a
+	orb.rad = rad if rad > 0.0 else _orb_floor(ch) - 0.25
+	orb.ph = randf() * TAU
+	orb.sway = randf_range(0.7, 1.3)
+	orb.src = src
 	orb.taken.connect(_on_orb)
 	add_child(orb)
+	orbs.append(orb)
+	_move_orb(orb, 0.0)
+	return orb
 
-func _add_egg(p: Vector2) -> void:
+func _orb_floor(ch: int) -> float:
+	return float(rings[ch].r) - G.RING_TH / 2 - 0.3
+
+func _move_orb(orb, dt: float) -> void:
+	var floor_r = _orb_floor(orb.ch)
+	var lo = float(rings[orb.ch - 1].r) + G.RING_TH / 2 + 0.22 if orb.ch > 0 else 0.0
+	var A = minf(1.0, 1.5 / maxf(floor_r, 0.6))
+	var want = PI / 2 + A * sin(play_t * 0.3 * orb.sway + orb.ph)
+	var sp = (1.1 if absf(G.wrapa(want - orb.a)) > A + 0.25 else 0.4) * dt / maxf(orb.rad, 0.3)
+	orb.a += clampf(G.wrapa(want - orb.a), -sp, sp)
+	orb.rad += clampf(maxf(lo, floor_r - 0.04 + 0.05 * sin(play_t * 2.1 + orb.ph)) - orb.rad, -0.3 * dt, 0.3 * dt)
+	orb.position = Vector2.from_angle(orb.a) * orb.rad * G.PPM
+
+func _ch_at(d: float) -> int:
+	var c = 0
+	for ring in rings:
+		if d > ring.r:
+			c += 1
+	return c
+
+func _add_egg(p: Vector2, cracks := 0):
 	var e = Egg.new()
 	e.position = p
 	e.hit.connect(_on_hit)
+	e.ch = _ch_at(p.length() / G.PPM)
 	add_child(e)
 	eggs.append(e)
+	for k in cracks:
+		e.crack()
+	return e
 
 # ---------------------------------------------------------------- input: drag a ring like a dial
 func pointer(ev: InputEvent, world_pos: Vector2) -> void:
@@ -254,10 +369,54 @@ func _physics_process(dt: float) -> void:
 	for ring in rings:
 		var lim: float = ring.wmax
 		ring.target = ring.angle + clampf(ring.target - ring.angle, -0.7, 0.7)
-		var w = clampf((ring.target - ring.angle) * 14.0, -lim, lim)
+		ring.omega = clampf((ring.target - ring.angle) * 14.0, -lim, lim)
+		ring.follower = false
+	# gear trains: the ring being driven turns the rest, alternating direction ring by ring, at the slowest ring's speed
+	for T in trains:
+		var drive = T[0]
+		for q in T:
+			if absf(q.target - q.angle) > absf(drive.target - drive.angle):
+				drive = q
+		var lim = 99.0
+		for q in T:
+			lim = minf(lim, q.wmax)
+		drive.omega = clampf(drive.omega, -lim, lim)
+		for q in T:
+			if q == drive:
+				continue
+			q.omega = (-1.0 if absi(q.i - drive.i) % 2 == 1 else 1.0) * drive.omega
+			q.target = q.angle + q.omega * dt
+			q.follower = true
+	for ring in rings:
 		var before: float = ring.angle
-		ring.angle += w * dt
+		ring.angle += ring.omega * dt
 		ring.body.rotation = ring.angle
+		var moving = not ring.follower and absf(ring.omega) > 0.25
+		if moving and not ring.moving:
+			turns += 1
+		ring.moving = moving
+		for g in ring.gaps:
+			if g.shut != null:
+				var per = float(g.shut.get("period", 4.0))
+				var ph = fposmod(play_t + float(g.shut.get("phase", 0.0)), per) / per
+				var want = 1.0 if ph < float(g.shut.get("open", 0.5)) else 0.0
+				g.o = move_toward(g.o, want, dt * 2.5)
+				var closed = g.o <= 0.5
+				if closed != g.closed:
+					g.closed = closed
+					for cp in g.doors:
+						cp.set_deferred("disabled", not closed)
+					if closed:
+						Sfx.play("click", -16.0, 0.5)
+			var C = g.curtain
+			if C != null and C.alive and C.burning:
+				C.burn += dt / CURTAIN_BURN
+				if C.burn >= 1.0:
+					C.alive = false
+					for cp in C.cps:
+						cp.set_deferred("disabled", true)
+					Sfx.play("burn", -4.0)
+					_puff(ring.body.to_global(Vector2.from_angle(g.a) * ring.r * G.PPM), Color(0.3, 0.25, 0.2), 16)
 		# a tick every ~10 degrees turned, like a dial
 		if int(floor(before / 0.17)) != int(floor(ring.angle / 0.17)):
 			Sfx.play("click", -14.0, randf_range(0.9, 1.1))
@@ -268,10 +427,41 @@ func _physics_process(dt: float) -> void:
 	if done:
 		return
 	play_t += dt
+	# the fuse (the curse orb makes it run double)
+	if curse_t > 0.0:
+		curse_t -= dt
+		_jit_t -= dt
+		if _jit_t <= 0.0:
+			_jit_t = 0.18
+			for e in eggs:
+				if e.alive and not e.saved:
+					e.apply_central_impulse(Vector2(randf_range(-0.4, 0.4), -randf() * 0.4) * G.PPM)
+	if time_limit > 0.0:
+		time_left -= dt * (2.0 if curse_t > 0.0 else 1.0)
+		if time_left <= 0.0:
+			time_left = 0.0
+			for e in eggs.duplicate():
+				if e.alive and not e.saved:
+					_break(e, "fuse")
+			if done:
+				return
+	for o in orbs.duplicate():
+		if is_instance_valid(o) and not o.used:
+			_move_orb(o, dt)
+		else:
+			orbs.erase(o)
+	_portal_step(dt)
 	var inside = _nest_area.get_overlapping_bodies()
 	for e in eggs:
 		if not e.alive or e.saved:
 			continue
+		# channel tracking for the crack ladder and x-gates
+		var ch = _ch_at(e.position.length() / G.PPM)
+		if ch > e.ch:
+			_pass_ring(e, rings[ch - 1])
+		elif ch < e.ch:
+			e.freefall = 0
+		e.ch = ch
 		if e in inside and e.linear_velocity.length() < 1.5 * G.PPM:
 			e.nest_t += dt
 			if e.nest_t > 0.3:
@@ -281,9 +471,154 @@ func _physics_process(dt: float) -> void:
 		if e.global_position.y - global_position.y > (ground_y + 2.0) * G.PPM or absf(e.position.x) > 30.0 * G.PPM:
 			_break(e, "lost")
 
+func _process(_dt: float) -> void:
+	if not portals.is_empty():
+		_portal_art.queue_redraw()
+
+func _pass_ring(e, ring: Dictionary) -> void:
+	var local = G.wrapa(e.position.angle() - ring.angle)
+	var best = 9e9
+	var gate = null
+	for g in ring.gaps:
+		var d = absf(G.wrapa(local - g.a))
+		if d < best:
+			best = d
+			gate = g
+	if gate != null and gate.x > 1 and best < gate.half + 0.25:
+		var key = "%d:%d" % [ring.i, ring.gaps.find(gate)]
+		if not e.gates.has(key):
+			e.gates[key] = true
+			e.mult = mini(30, e.mult * int(gate.x))
+			gate_passed.emit(e, int(gate.x))
+			Sfx.play("coin", -2.0, 1.0 + 0.1 * gate.x)
+			_popup("x%d" % e.mult, e.global_position + Vector2(0, -40), Color("FFC21A"))
+	e.freefall += 1
+	e.drop = e.freefall
+
+# crack ladder: a fall through n rings at once cracks on landing (1 ring is always safe, 2 = 1 crack, 3 = 2, 4+ = broken)
+func _land_fall(e) -> void:
+	var d = e.drop - 1
+	e.drop = 0
+	e.freefall = 0
+	if d <= 0:
+		return
+	if e.cracks + d >= 3:
+		_break(e, "fall")
+	else:
+		for k in d:
+			_crack(e)
+
+func _portal_step(dt: float) -> void:
+	for pt in portals:
+		# suction toward the mouth, with a swirl, inside the same channel
+		if pt.pull > 0.0:
+			var ca = _ch_at(pt.a.length())
+			for e in eggs:
+				if not e.alive or e.saved or e.portal_cd > 0.0:
+					continue
+				var p = e.position / G.PPM
+				var dv = pt.a - p
+				var d = dv.length()
+				if d > pt.pull or d < 0.001 or _ch_at(p.length()) != ca:
+					continue
+				var k = 1.0 - d / pt.pull
+				var f = 3.0 + 16.0 * k * k
+				e.apply_central_force(Vector2(dv.x - dv.y * 0.25, dv.y + dv.x * 0.25) / d * f * G.PPM)
+		if pt.a.distance_to(pt.b) > 0.05:
+			for e in eggs:
+				if e.alive and not e.saved and e.portal_cd <= 0.0 and (e.position / G.PPM).distance_to(pt.a) < pt.r:
+					e.portal_cd = 0.9
+					var from = e.global_position
+					PhysicsServer2D.body_set_state(e.get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, Transform2D(e.rotation, pt.b * G.PPM + global_position))
+					e.position = pt.b * G.PPM
+					Sfx.play("whoosh", -2.0, 1.3)
+					_puff(from, Color(0.69, 0.49, 0.95), 10)
+					_puff(e.global_position, Color(0.69, 0.49, 0.95), 10)
+		# orb spawner
+		if pt.emit.size() > 0:
+			pt.timer -= dt
+			if pt.timer <= 0.0:
+				pt.timer = pt.every
+				var mine = 0
+				for o in orbs:
+					if is_instance_valid(o) and not o.used and o.src == pt.src:
+						mine += 1
+				var ch = _ch_at(pt.b.length())
+				if mine < 2 and ch < rings.size():
+					var kind = str(pt.emit[pt.k % pt.emit.size()])
+					pt.k += 1
+					var o = _add_orb(kind, ch, pt.b.angle(), pt.src, pt.b.length())
+					o.scale = Vector2.ZERO
+					create_tween().tween_property(o, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+					Sfx.play("whoosh", -6.0, 1.6)
+
+func _draw_portals() -> void:
+	var ci = _portal_art
+	for pt in portals:
+		var ends = [pt.a] if pt.a.distance_to(pt.b) <= 0.05 else [pt.a, pt.b]
+		for i in ends.size():
+			var c: Vector2 = ends[i] * G.PPM
+			var R = 26.0 if i == 0 else 20.0
+			var spin = play_t * (3.0 if i == 0 else -3.0)
+			ci.draw_circle(c, R + 8.0, Color(0.69, 0.49, 0.95, 0.18))
+			ci.draw_circle(c, R, Color("7B4FD6"))
+			for k in 3:
+				var pts = PackedVector2Array()
+				for j in 14:
+					var u = j / 13.0
+					pts.append(c + Vector2.from_angle(spin + k * TAU / 3.0 + u * 2.4) * R * (0.95 - 0.8 * u))
+				ci.draw_polyline(pts, Color("D9C2FF"), 3.0, true)
+			ci.draw_circle(c, R * 0.22, Color("F3EAFF"))
+
+func _popup(text: String, at: Vector2, col: Color) -> void:
+	var l = Label.new()
+	l.text = text
+	l.add_theme_font_override("font", preload("res://scripts/ui_kit.gd").font(900))
+	l.add_theme_font_size_override("font_size", 34)
+	l.add_theme_color_override("font_color", col)
+	l.add_theme_color_override("font_outline_color", Color("3B2A20"))
+	l.add_theme_constant_override("outline_size", 8)
+	l.z_index = 20
+	l.size = Vector2(160, 50)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.pivot_offset = l.size / 2
+	_fx.add_child(l)
+	l.global_position = at - l.size / 2
+	l.scale = Vector2(0.4, 0.4)
+	var tw = l.create_tween()
+	tw.tween_property(l, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(l, "position:y", l.position.y - 50, 0.9)
+	tw.tween_property(l, "modulate:a", 0.0, 0.25)
+	tw.tween_callback(l.queue_free)
+
 func _on_hit(e, kind: String, v: float, node: Node) -> void:
 	if not e.alive or e.saved or done:
 		return
+	if kind == "curtain":
+		var C = node.get_meta("gap").curtain
+		if C == null or not C.alive:
+			return
+		if e.fire > 0.0 and e.fire_kind == "fire_red":
+			if not C.burning:
+				C.burning = true
+				Sfx.play("burn", -2.0)
+			return
+		if C.burning or e.safe_t > 0.0:
+			return
+		_break(e, "curtain")
+		return
+	# the crack ladder judges a landing after a fall through 2+ rings (and that landing is not also a hard hit)
+	if e.drop >= 2 and v > 1.2 and kind != "thorn":
+		if kind == "pad":
+			e.drop = 0
+			e.freefall = 0
+			return
+		if kind != "ground":
+			_land_fall(e)
+			return
+	if kind in ["seg", "pad", "shut"]:
+		e.freefall = 0
+		e.drop = 0
 	match kind:
 		"ground":
 			_break(e, "ground")
@@ -310,6 +645,8 @@ func _on_hit(e, kind: String, v: float, node: Node) -> void:
 		vv /= NEST_SOFT
 	elif kind == "egg":
 		vv /= EGG_EGG
+	if kind == "shut":
+		vv = v
 	if vv >= SHATTER_V:
 		_break(e, "shatter")
 	elif vv >= CRACK_V and e.crack_cd <= 0.0:
@@ -333,9 +670,46 @@ func _burn_thorn(th: Dictionary) -> void:
 	_puff(th.cp.global_position + Vector2.from_angle(th.a + th.cp.get_parent().rotation) * (th.base + th.tip) / 2.0 * G.PPM, Color(0.3, 0.25, 0.2), 14)
 
 func _on_orb(orb, e) -> void:
-	if orb.kind.begins_with("fire"):
-		e.fire = 6.0
-	Sfx.play("save", -4.0, 0.7)
+	if not e.alive or e.saved:
+		return
+	orbs.erase(orb)
+	match orb.kind:
+		"fire_red":
+			e.fire = 6.0
+			e.fire_kind = "fire_red"
+			Sfx.play("burn", -6.0, 1.4)
+		"fire_green":
+			# heals every crack
+			e.glow = 1.5
+			if e.cracks > 0:
+				e.mend()
+				_popup("Mended!", e.global_position + Vector2(0, -40), Color("6BE06B"))
+			Sfx.play("save", -2.0, 1.3)
+		"twin":
+			var alive = 0
+			for q in eggs:
+				if q.alive and not q.saved:
+					alive += 1
+			if alive < MAX_EGGS:
+				var p = e.position
+				var tw = _add_egg(p - p.normalized() * 0.32 * G.PPM + Vector2(0, -0.1 * G.PPM), 1)
+				tw.linear_velocity = e.linear_velocity
+				tw.safe_t = 0.6
+				n_eggs += 1
+				eggs_changed.emit()
+				_popup("+1 egg", e.global_position + Vector2(0, -40), Color.WHITE)
+				Sfx.play("save", -2.0, 1.5)
+			else:
+				_popup("Full!", e.global_position + Vector2(0, -40), Color.WHITE)
+		"curse":
+			curse_t = 6.0
+			for q in eggs:
+				if q.alive and not q.saved:
+					q.curse = 6.0
+			_popup("Fuse x2!", e.global_position + Vector2(0, -40), Color("C59BFF"))
+			Sfx.play("fail", -6.0, 1.4)
+		"thorn":
+			_crack(e)
 	Sfx.buzz(20, 0.4)
 
 func _save(e) -> void:
@@ -357,6 +731,8 @@ func _save(e) -> void:
 	_check_end()
 
 func _break(e, why: String) -> void:
+	if OS.get_cmdline_user_args().has("--bot"):
+		print("break %s t=%.1f pos=%s drop=%d" % [why, play_t, str(e.position / G.PPM), e.drop])
 	if not e.alive:
 		return
 	e.alive = false

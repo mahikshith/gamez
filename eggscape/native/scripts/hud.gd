@@ -15,6 +15,9 @@ var broken = 0
 var shown = 0.0
 var pop = 0.0
 var shake = 0.0
+var time_limit = 0.0
+var time_left = 0.0
+var cursed = false
 
 func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -78,3 +81,14 @@ func _draw() -> void:
 	UI.icon(self, "egg", pc, 34.0 * (1.0 + pop * 0.3), UI.BRAND)
 	var f = UI.font(900)
 	draw_string(f, Vector2(ex + 40, y + 44), "%d/%d" % [saved, n_eggs], HORIZONTAL_ALIGNMENT_LEFT, -1, 30, UI.INK)
+	# the fuse: a clock pill under the bar, red and pulsing in the last 15 s, purple while a curse doubles it
+	if time_limit > 0.0:
+		var secs = int(ceil(time_left))
+		var low = time_left <= 15.0
+		var tc = UI.RED if low else (UI.PURPLE if cursed else UI.INK)
+		var pk = 1.0 + (0.08 * absf(sin(Time.get_ticks_msec() / 160.0)) if low else 0.0)
+		var tw = 128.0 * pk
+		var tr = Rect2(W / 2 - tw / 2, y + 62, tw, 44 * pk)
+		UI.rounded(self, tr, Color(1, 1, 1, 0.92), 22)
+		UI.icon(self, "clock", tr.position + Vector2(28, tr.size.y / 2), 26.0, tc)
+		draw_string(f, Vector2(tr.position.x + 46, tr.position.y + tr.size.y / 2 + 10), "%d:%02d" % [secs / 60, secs % 60], HORIZONTAL_ALIGNMENT_LEFT, -1, int(28 * pk), tc)

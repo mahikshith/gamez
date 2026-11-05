@@ -9,6 +9,15 @@ var cracks = 0
 var crack_lines = []
 var crack_cd = 0.0
 var fire = 0.0
+var fire_kind = ""
+var glow = 0.0
+var curse = 0.0
+var ch = 0
+var freefall = 0
+var drop = 0
+var mult = 1
+var gates = {}
+var portal_cd = 0.0
 var alive = true
 var saved = false
 var nest_t = 0.0
@@ -97,6 +106,9 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 func _physics_process(dt: float) -> void:
 	crack_cd = maxf(0.0, crack_cd - dt)
 	safe_t = maxf(0.0, safe_t - dt)
+	portal_cd = maxf(0.0, portal_cd - dt)
+	glow = maxf(0.0, glow - dt)
+	curse = maxf(0.0, curse - dt)
 	if fire > 0.0:
 		fire = maxf(0.0, fire - dt)
 	_flame.emitting = fire > 0.0 and alive
@@ -106,6 +118,10 @@ func _process(dt: float) -> void:
 	var sp = linear_velocity.length() / G.PPM
 	fear = move_toward(fear, 1.0 if (sp > 3.2 and linear_velocity.y > 0.0) else 0.0, dt * 4.0)
 	queue_redraw()
+
+func mend() -> void:
+	cracks = 0
+	crack_lines.clear()
 
 func crack() -> void:
 	cracks += 1
@@ -127,6 +143,10 @@ func _draw() -> void:
 	for p in _hull:
 		sh_pts.append(p * 1.04 + Vector2(0, 3).rotated(-rotation))
 	draw_colored_polygon(sh_pts, Color(0.05, 0.1, 0.15, 0.22))
+	if glow > 0.0:
+		draw_circle(Vector2.ZERO, 40.0, Color(0.42, 0.88, 0.42, 0.35 * minf(1.0, glow)))
+	if curse > 0.0:
+		draw_circle(Vector2.ZERO, 38.0, Color(0.6, 0.35, 0.95, 0.22 + 0.1 * sin(t * 12.0)))
 	draw_colored_polygon(_hull, base)
 	# shade crescent on the lower right: hull minus itself shifted up-left
 	var off = PackedVector2Array()

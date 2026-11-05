@@ -12,8 +12,9 @@ const Backdrop = preload("res://scripts/backdrop.gd")
 const Iris = preload("res://scripts/iris.gd")
 const UI = preload("res://scripts/ui_kit.gd")
 const Hint = preload("res://scripts/hint.gd")
+const MapScreen = preload("res://scripts/map.gd")
 const SAVE_PATH := "user://save.json"
-const PLAYABLE := 1 # levels the prototype supports so far (rings, gaps, thorns, pads, flame orbs)
+const PLAYABLE := 3 # levels the app supports so far (World 1 mechanics up to portals; the weasel comes next)
 
 var font: Font
 var levels: Array = []
@@ -33,6 +34,7 @@ var shake = 0.0
 var hen_hold = 0.0
 var title_ui: Control
 var banner: Control
+var map_ui: Control
 var _busy = false
 
 func _ready() -> void:
@@ -61,6 +63,12 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_fit)
 	if OS.get_cmdline_user_args().has("--henlab"):
 		_hen_lab()
+	elif OS.get_cmdline_user_args().has("--map"):
+		var ua = OS.get_cmdline_user_args()
+		if ua.has("--save-level"):
+			save.level = int(ua[ua.find("--save-level") + 1])
+			save.best = {"1": 3, "2": 2}
+		_show_map(int(ua[ua.find("--from") + 1]) if ua.has("--from") else -1)
 	elif OS.get_cmdline_user_args().has("--level"):
 		_start_level(clampi(int(OS.get_cmdline_user_args()[OS.get_cmdline_user_args().find("--level") + 1]), 1, PLAYABLE) - 1)
 	else:
@@ -88,6 +96,11 @@ func _load_save() -> void:
 		var d = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
 		if d is Dictionary:
 			save.merge(d, true)
+	# 0.2 wrote star keys as "1.0"; keep them as plain level numbers
+	var fixed = {}
+	for k in save.best:
+		fixed[str(int(float(k)))] = save.best[k]
+	save.best = fixed
 
 func _write_save() -> void:
 	var f = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -161,7 +174,24 @@ func _show_title() -> void:
 		_go(func():
 			title_ui.queue_free()
 			title_ui = null
-			_start_level(mini(int(save.level), PLAYABLE) - 1)))
+			_show_map(-1)))
+
+# ---------------------------------------------------------------- map
+func _show_map(from_level: int) -> void:
+	_clear_level()
+	if is_instance_valid(map_ui):
+		map_ui.queue_free()
+	map_ui = MapScreen.new()
+	map_ui.levels = levels
+	map_ui.save = save
+	map_ui.playable = PLAYABLE
+	map_ui.from_level = from_level
+	ui.add_child(map_ui)
+	map_ui.open()
+	map_ui.play.connect(func(i): _go(func():
+		map_ui.queue_free()
+		map_ui = null
+		_start_level(i)))
 
 # ---------------------------------------------------------------- level
 func _go(swap: Callable) -> void:
@@ -220,6 +250,8 @@ func _start_level(i: int) -> void:
 	hud.title = "%d  %s" % [int(lv.id), str(lv.name)]
 	hud.n_eggs = vault.n_eggs
 	hud.target = vault.target
+	hud.time_limit = vault.time_limit
+	vault.eggs_changed.connect(func(): hud.n_eggs = vault.n_eggs)
 	hud.restart.connect(func(): _go(func(): _start_level(idx)))
 	ui.add_child(hud)
 	if i == 0:
@@ -268,7 +300,7 @@ func _banner(title: String, line: String) -> void:
 	card.add_theme_stylebox_override("panel", sb)
 	card.size = Vector2(minf(640.0, sz.x - 32.0), 146)
 	# sits in the sky between the top bar and the vault (_fit keeps that room free), never over the rings or the hen
-	card.position = Vector2(sz.x / 2 - card.size.x / 2, UI.safe_top() + 104.0)
+	card.position = Vector2(sz.x / 2 - card.size.x / 2, UI.safe_top() + 136.0)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(card)
 	var t = UI.label(card, title, 30, UI.BRAND, 900, HORIZONTAL_ALIGNMENT_LEFT)
@@ -296,7 +328,7 @@ func _fit() -> void:
 	if vault == null or not is_instance_valid(vault):
 		return
 	var sz = get_viewport_rect().size
-	var top = UI.safe_top() + 110.0
+	var top = UI.safe_top() + 140.0
 	var bottom = UI.safe_bottom() + 30.0
 	var R: float = (vault.outer_r + 0.3) * G.PPM
 	var gy: float = (vault.ground_y + 0.55) * G.PPM
@@ -341,7 +373,7 @@ func _on_finished(won: bool) -> void:
 		save.streak = int(save.streak) + 1
 		var gain = 10 + stars * 10
 		save.coins = int(save.coins) + gain
-		var key = str(levels[idx].id)
+		var key = str(int(levels[idx].id))
 		save.best[key] = maxi(int(save.best.get(key, 0)), stars)
 		save.level = maxi(int(save.level), mini(idx + 2, PLAYABLE))
 		_write_save()
@@ -364,16 +396,10 @@ func _on_finished(won: bool) -> void:
 			["COINS", 10 + stars * 10, "+%d", UI.GOLD_D, "coin"], ["TIME", 0, tstr, UI.BLUE, "clock"]], titles[stars], subs[stars])
 	else:
 		c.open(false, 0, [["EGGS SAVED", vault.n_saved, "%d/" + str(vault.target), UI.BRAND, "crack"]], "So close!", "Save %d eggs to open the vault" % vault.target)
-	c.next_pressed.connect(func(): _go(func():
-		_clear_level()
-		if idx + 1 < PLAYABLE:
-			_start_level(idx + 1)
-		else:
-			_show_title()))
+	var was = idx
+	c.next_pressed.connect(func(): _go(func(): _show_map(was)))
 	c.retry_pressed.connect(func(): _go(func(): _start_level(idx)))
-	c.home_pressed.connect(func(): _go(func():
-		_clear_level()
-		_show_title()))
+	c.home_pressed.connect(func(): _go(func(): _show_map(-1)))
 
 func _punch(k: float) -> void:
 	var z = cam.zoom
@@ -383,6 +409,9 @@ func _punch(k: float) -> void:
 
 # ---------------------------------------------------------------- per frame
 func _process(dt: float) -> void:
+	if vault and is_instance_valid(vault) and hud:
+		hud.time_left = vault.time_left
+		hud.cursed = vault.curse_t > 0.0
 	if vault and is_instance_valid(vault) and hen:
 		backdrop.sway = vault.rings[0].angle if vault.rings.size() > 0 else 0.0
 		hen_hold -= dt
