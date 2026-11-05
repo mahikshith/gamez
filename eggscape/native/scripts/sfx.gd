@@ -24,6 +24,12 @@ func _ready() -> void:
 	for i in 3:
 		_s["star%d" % i] = _bell(659.25 * pow(1.26, i), 0.7)
 	_s.burn = _tone(0.3, [0.0], 12.0, 0.0, 0.45)
+	# the hen's routine cues
+	_s.hop = _tone(0.16, [260.0, 720.0], 16.0, 0.5, 0.04)
+	_s.land = _tone(0.12, [150.0, 85.0], 34.0, 0.55, 0.3)
+	_s.cluck = _tone(0.1, [980.0, 520.0], 36.0, 0.42, 0.18)
+	_s.tada = _chime([783.99, 1046.5, 1318.5], 0.07, 0.6)
+	_s.pop = _tone(0.09, [1300.0, 380.0], 45.0, 0.3, 0.5)
 
 func play(name: String, db := 0.0, pitch := 1.0) -> void:
 	if not _s.has(name):

@@ -4,10 +4,12 @@ extends Node2D
 
 const G = preload("res://scripts/g.gd")
 const Vault = preload("res://scripts/vault.gd")
-const Hen = preload("res://scripts/mascot.gd")
+const Hen = preload("res://scripts/mama.gd")
 const GroundArt = preload("res://scripts/ground_art.gd")
 const Hud = preload("res://scripts/hud.gd")
 const Celebrate = preload("res://scripts/celebrate.gd")
+const Cheer = preload("res://scripts/cheer.gd")
+const TitleArt = preload("res://scripts/title_art.gd")
 const Backdrop = preload("res://scripts/backdrop.gd")
 const Iris = preload("res://scripts/iris.gd")
 const UI = preload("res://scripts/ui_kit.gd")
@@ -61,6 +63,12 @@ func _ready() -> void:
 	add_child(cam)
 	cam.make_current()
 	get_viewport().size_changed.connect(_fit)
+	# Android sets the real screen size (immersive mode, cutouts) after the first frame: rebuild the title if it changed
+	get_viewport().size_changed.connect(func():
+		if is_instance_valid(title_ui):
+			title_ui.queue_free()
+			title_ui = null
+			_show_title.call_deferred())
 	if OS.get_cmdline_user_args().has("--henlab"):
 		_hen_lab()
 	elif OS.get_cmdline_user_args().has("--map"):
@@ -74,20 +82,45 @@ func _ready() -> void:
 	else:
 		_show_title()
 
-# Review sheet: the hen in every mood, big (run with -- --henlab).
+# Review sheet: the hen in every mood and routine, big (run with -- --henlab [page]).
 func _hen_lab() -> void:
-	var moods = ["idle", "happy", "worried", "sad", "wow", "celebrate"]
-	for i in moods.size():
+	var ua = OS.get_cmdline_user_args()
+	var page = int(ua[ua.find("--henlab") + 1]) if ua.find("--henlab") + 1 < ua.size() else 0
+	var sets = [
+		[["front", "idle"], ["level", "idle"], ["front", "happy"], ["level", "happy"], ["level", "worried"], ["front", "cry"], ["front", "dance"], ["level", "gasp"], ["front", "phew"]],
+		[["r", "cheer"], ["r", "pump"], ["r", "dance"], ["r", "juggle"], ["r", "backflip"], ["r", "chicks"], ["r", "strut"], ["r", "encourage"], ["level", "cry"]],
+		[["v0", "front"], ["v1", "front"], ["v2", "front"], ["v0", "level"], ["v1", "level"], ["v2", "level"]],
+	]
+	var items = sets[clampi(page, 0, sets.size() - 1)]
+	var sz = get_viewport_rect().size
+	for i in items.size():
 		var h = Hen.new()
-		h.H = 220.0
-		h.position = Vector2(200 + (i % 2) * 330, 330 + (i / 2) * 400) - get_viewport_rect().size / 2
-		add_child(h)
-		h.set_mood(moods[i])
+		h.H = 190.0
+		h.position = Vector2(sz.x * (0.18 + (i % 3) * 0.32), 300 + (i / 3) * 400) - sz / 2
+		h.stage_top = -280.0
+		if items[i][0] == "r":
+			add_child(h)
+			h.play(items[i][1], 1.0)
+		elif items[i][0].begins_with("v"):
+			h.role = items[i][1]
+			h.force_variant = int(items[i][0].substr(1))
+			add_child(h)
+			var again = func(): h.set_mood("happy")
+			var tm = Timer.new()
+			tm.wait_time = 1.6
+			tm.autostart = true
+			tm.timeout.connect(again)
+			add_child(tm)
+			again.call()
+		else:
+			h.role = items[i][0]
+			add_child(h)
+			h.set_mood(items[i][1])
 		var l = Label.new()
-		l.text = moods[i]
+		l.text = items[i][0] + " " + items[i][1]
 		l.add_theme_font_override("font", font)
-		l.add_theme_font_size_override("font_size", 30)
-		l.position = h.position + Vector2(-60, 20)
+		l.add_theme_font_size_override("font_size", 24)
+		l.position = h.position + Vector2(-90, 14)
 		add_child(l)
 
 # ---------------------------------------------------------------- save
@@ -149,16 +182,29 @@ func _show_title() -> void:
 	bob.parallel().tween_property(logo_sh, "rotation", 0.025, 1.3).set_trans(Tween.TRANS_SINE)
 	bob.tween_property(logo, "rotation", -0.025, 1.3).set_trans(Tween.TRANS_SINE)
 	bob.parallel().tween_property(logo_sh, "rotation", -0.025, 1.3).set_trans(Tween.TRANS_SINE)
-	# the hen stands on the near hill
+	var b_y = sz.y - UI.safe_bottom() - 84 - 92
+	# a toy vault turning in the middle, the hen on the hill to the left of her nest (she faces you; tap her)
+	var art = TitleArt.new()
+	var mid_top = pill.position.y + pill.size.y + 30.0
+	var hen_h = minf(sz.y * 0.2, sz.x * 0.4)
+	var feet = b_y - 26.0
+	art.vault_r = minf(sz.x * 0.22, (feet - hen_h - mid_top - 40.0) * 0.42)
+	art.vault_c = Vector2(sz.x / 2, mid_top + art.vault_r * 1.1)
+	art.nest_c = Vector2(sz.x * 0.7, feet - 6.0)
+	art.nest_w = minf(sz.x * 0.3, 210.0)
+	title_ui.add_child(art)
 	var h = Hen.new()
-	h.H = minf(sz.y * 0.3, sz.x * 0.62)
-	h.position = Vector2(sz.x / 2, sz.y * 0.74)
+	h.role = "front"
+	h.pokeable = true
+	h.face = 1.0
+	h.H = hen_h
+	h.position = Vector2(sz.x * 0.3, feet)
 	title_ui.add_child(h)
 	# says hi: wings up, eyes wide, beak open, then settles into her idle life
 	h.set_mood("wow")
 	var b = UI.button(title_ui, "PLAY", UI.GREEN, 36)
 	b.size = Vector2(minf(520.0, sz.x - 64.0), 84)
-	b.position = Vector2(sz.x / 2 - b.size.x / 2, sz.y - UI.safe_bottom() - 84 - 92)
+	b.position = Vector2(sz.x / 2 - b.size.x / 2, b_y)
 	b.pivot_offset = b.size / 2
 	var lv: Dictionary = levels[mini(int(save.level), PLAYABLE) - 1]
 	var sub = UI.label(title_ui, "Level %d  ·  %s" % [int(lv.id), str(lv.name)], 24, Color.WHITE, 900)
@@ -263,6 +309,7 @@ func _start_level(i: int) -> void:
 		vault.grabbed.connect(func():
 			if is_instance_valid(hint):
 				hint.dismiss())
+	_cam_reset()
 	_fit()
 	var ua = OS.get_cmdline_user_args()
 	if ua.has("--autowin"):
@@ -363,12 +410,13 @@ func _fit() -> void:
 	if z_res >= z * 0.9:
 		z = z_res
 		top += 190.0
-	cam.zoom = Vector2(z, z)
+	cam_zoom = z
 	# centre the content box under the HUD
 	var content_mid = (gy - R) / 2.0
 	# on tall phones push the vault down toward the thumbs and leave the spare room to the sky
 	var spare = maxf(0.0, (sz.y - top - bottom) - h * z)
-	cam.position = Vector2(0, content_mid - (top - bottom) / 2.0 / z - spare * 0.35 / z)
+	cam_pos = Vector2(0, content_mid - (top - bottom) / 2.0 / z - spare * 0.35 / z)
+	_cam_apply(0.0)
 
 # ---------------------------------------------------------------- reactions
 func _hen_mood(m: String, hold: float) -> void:
@@ -394,16 +442,26 @@ func _on_saved(_e) -> void:
 	hud.pop = 1.0
 	_hen_mood("cheer", 1.1)
 	_punch(0.035)
+	cam_focus = Vector2(vault.nest_x * G.PPM, vault.ground_y * G.PPM)
+	cam_focus_t = 0.5
 
 func _on_broke(_e, why: String) -> void:
 	hud.broken += 1
 	hud.shake = 1.0
 	shake = 14.0
+	_punch(-0.03)
+	_cam_kick(0.02 if randf() < 0.5 else -0.02)
 	_hen_mood("sad", 1.4)
 
 func _on_finished(won: bool) -> void:
 	var stars: int = vault.stars()
+	cam_out_kind = "win" if won else "fail"
+	cam_out = 0.0
+	var key0 = str(int(levels[idx].id))
+	var first_world = int(save.best.get(key0, 0)) == 0 and (idx == 0 or int(levels[idx].world) != int(levels[idx - 1].world))
+	var routine = Cheer.pick(stars, int(save.streak), levels[idx].has("boss"), first_world, str(save.get("routine", "")))
 	if won:
+		save.routine = routine
 		save.streak = int(save.streak) + 1
 		var gain = 10 + stars * 10
 		save.coins = int(save.coins) + gain
@@ -427,7 +485,7 @@ func _on_finished(won: bool) -> void:
 		var titles = ["", "Phew, made it!", "Great job!", "Perfect!"]
 		var subs = ["", "%d of %d eggs made it home" % [vault.n_saved, vault.n_eggs], "Every egg home", "Every egg home, not one crack"]
 		c.open(true, stars, [["EGGS", vault.n_saved, "%d/" + str(vault.n_eggs), UI.BRAND, "egg"],
-			["COINS", 10 + stars * 10, "+%d", UI.GOLD_D, "coin"], ["TIME", 0, tstr, UI.BLUE, "clock"]], titles[stars], subs[stars])
+			["COINS", 10 + stars * 10, "+%d", UI.GOLD_D, "coin"], ["TIME", 0, tstr, UI.BLUE, "clock"]], titles[stars], subs[stars], routine)
 	else:
 		c.open(false, 0, [["EGGS SAVED", vault.n_saved, "%d/" + str(vault.target), UI.BRAND, "crack"]], "So close!", "Save %d eggs to open the vault" % vault.target)
 	var was = idx
@@ -436,10 +494,92 @@ func _on_finished(won: bool) -> void:
 	c.home_pressed.connect(func(): _go(func(): _show_map(-1)))
 
 func _punch(k: float) -> void:
-	var z = cam.zoom
-	var tw = create_tween()
-	tw.tween_property(cam, "zoom", z * (1.0 + k), 0.08).set_trans(Tween.TRANS_SINE)
-	tw.tween_property(cam, "zoom", z, 0.25).set_trans(Tween.TRANS_SINE)
+	cam_pv += k * 22.0
+
+# ---------------------------------------------------------------- camera
+# The level camera is a base framing (_fit) plus a few layered moves, all springs or eases so nothing snaps:
+#   intro    the level opens close on the eggs in the middle and pulls back to the whole vault (1.1 s)
+#   lean     it drifts a little toward an egg that is falling fast, and leans in a touch while it falls
+#   punch    a quick zoom spring: in on a save, out on a break (plus the shake and a small tilt kick)
+#   outro    on a win it pushes in on the nest; on a fail it eases out and tilts
+var cam_zoom := 1.0
+var cam_pos := Vector2.ZERO
+var cam_intro := 1.0
+var cam_lean := Vector2.ZERO
+var cam_lean_z := 0.0
+var cam_p := 0.0
+var cam_pv := 0.0
+var cam_tilt := 0.0
+var cam_tv := 0.0
+var cam_out := 0.0
+var cam_out_kind := ""
+var cam_focus := Vector2.ZERO
+var cam_focus_t := 0.0
+
+func _cam_reset() -> void:
+	cam_intro = 0.0
+	cam_lean = Vector2.ZERO
+	cam_lean_z = 0.0
+	cam_p = 0.0
+	cam_pv = 0.0
+	cam_tilt = 0.0
+	cam_tv = 0.0
+	cam_out = 0.0
+	cam_out_kind = ""
+	cam_focus_t = 0.0
+	cam.rotation = 0.0
+	cam.ignore_rotation = false
+
+func _cam_kick(rad: float) -> void:
+	cam_tv += rad * 30.0
+
+func _cam_apply(dt: float) -> void:
+	if vault == null or not is_instance_valid(vault):
+		cam.rotation = 0.0
+		return
+	cam_intro = minf(1.0, cam_intro + dt / 1.1)
+	var ki = 1.0 - pow(1.0 - cam_intro, 3.0)
+	# lean toward the fastest falling egg
+	var want = Vector2.ZERO
+	var want_z = 0.0
+	var best = 3.0 * G.PPM
+	for e in vault.eggs:
+		if is_instance_valid(e) and e.alive and not e.saved and e.linear_velocity.y > best:
+			best = e.linear_velocity.y
+			want = (e.position - cam_pos) * 0.07
+			want_z = 0.025
+	if cam_focus_t > 0.0:
+		cam_focus_t -= dt
+		want = (cam_focus - cam_pos) * 0.1
+		want_z = 0.03
+	var a = 1.0 - exp(-dt * 3.0)
+	cam_lean = cam_lean.lerp(want, a)
+	cam_lean_z = lerpf(cam_lean_z, want_z, a)
+	# springs: zoom punch and tilt
+	if dt > 0.0:
+		cam_pv += (-170.0 * cam_p - 15.0 * cam_pv) * dt
+		cam_p += cam_pv * dt
+		cam_tv += (-120.0 * cam_tilt - 9.0 * cam_tv) * dt
+		cam_tilt += cam_tv * dt
+	# outro
+	var zo = 0.0
+	var po = Vector2.ZERO
+	if cam_out_kind != "":
+		cam_out = minf(1.0, cam_out + dt / 0.9)
+		var ko = cam_out * cam_out * (3.0 - 2.0 * cam_out)
+		if cam_out_kind == "win":
+			var nest = Vector2((vault.nest_x) * G.PPM, vault.ground_y * G.PPM)
+			zo = 0.14 * ko
+			po = (nest - cam_pos) * 0.3 * ko
+		else:
+			zo = -0.06 * ko
+			cam_tilt = lerpf(cam_tilt, 0.025, a)
+	var start_pos = Vector2(0, 0)
+	var pos = start_pos.lerp(cam_pos, ki) + cam_lean + po
+	var z = cam_zoom * lerpf(1.32, 1.0, ki) * (1.0 + cam_lean_z + cam_p + zo)
+	cam.zoom = Vector2(z, z)
+	cam.position = pos
+	cam.rotation = cam_tilt + (1.0 - ki) * 0.05
 
 # ---------------------------------------------------------------- per frame
 func _process(dt: float) -> void:
@@ -453,6 +593,7 @@ func _process(dt: float) -> void:
 			hen.set_mood("worried" if vault.falling_fast() else "idle")
 	shake = move_toward(shake, 0.0, dt * 40.0)
 	cam.offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * shake
+	_cam_apply(dt)
 
 func _unhandled_input(ev: InputEvent) -> void:
 	if vault == null or not is_instance_valid(vault) or _busy:

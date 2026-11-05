@@ -33,7 +33,9 @@ static func safe_top() -> float:
 	var win = DisplayServer.window_get_size()
 	if win.y <= 0:
 		return 0.0
-	return maxf(0.0, safe.position.y) * vp.get_visible_rect().size.y / win.y
+	# the safe area is in screen coordinates; the game window can start below a cutout, so measure from the window
+	var y0 = safe.position.y - DisplayServer.window_get_position().y
+	return clampf(y0, 0.0, win.y * 0.15) * vp.get_visible_rect().size.y / win.y
 
 static func safe_bottom() -> float:
 	if not OS.has_feature("mobile"):
@@ -43,7 +45,8 @@ static func safe_bottom() -> float:
 	var win = DisplayServer.window_get_size()
 	if win.y <= 0 or safe.size.y <= 0:
 		return 0.0
-	return maxf(0.0, win.y - safe.end.y) * vp.get_visible_rect().size.y / win.y
+	var y1 = safe.end.y - DisplayServer.window_get_position().y
+	return clampf(win.y - y1, 0.0, win.y * 0.15) * vp.get_visible_rect().size.y / win.y
 
 static func label(parent: Node, text: String, size: int, col: Color, weight := 900, align := HORIZONTAL_ALIGNMENT_CENTER) -> Label:
 	var l = Label.new()

@@ -1,8 +1,8 @@
-# Renders the app icons from the in-game mascot (a face-forward close-up, Duolingo-icon style) (run: tools/make-icons.sh). Writes icon.png (512, full square),
+# Renders the app icons from the game's hen, facing the player (run: tools/make-icons.sh). Writes icon.png (512, full square),
 # icon_fg.png (432, adaptive foreground, art inside the 66% safe zone, transparent) and icon_bg.png (432).
 extends Node2D
 
-const Hen = preload("res://scripts/mascot.gd")
+const Hen = preload("res://scripts/mama.gd")
 const G = preload("res://scripts/g.gd")
 var mode := "icon"
 var frames := 0
@@ -14,12 +14,14 @@ func _ready() -> void:
 	get_viewport().transparent_bg = mode == "fg"
 	var s = get_viewport_rect().size
 	if mode != "bg":
-		var zone = s.x * (0.6 if mode == "fg" else 0.9)
+		var zone = s.x * (0.6 if mode == "fg" else 0.82)
 		var h = Hen.new()
 		h.H = zone * 1.05
 		h.position = Vector2(s.x * 0.5, s.y * 0.5 + zone * 0.62)
-		h.set_mood("idle")
+		h.role = "front"
+		h.shadow = 0.0
 		add_child(h)
+		h.set_mood("idle")
 
 func _draw() -> void:
 	if mode == "fg":

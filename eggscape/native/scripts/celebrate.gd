@@ -8,7 +8,8 @@
 extends Control
 
 const G = preload("res://scripts/g.gd")
-const Hen = preload("res://scripts/mascot.gd")
+const Hen = preload("res://scripts/mama.gd")
+const Cheer = preload("res://scripts/cheer.gd")
 const UI = preload("res://scripts/ui_kit.gd")
 signal next_pressed
 signal retry_pressed
@@ -28,6 +29,11 @@ var _cards = []
 var _btn: Button
 var _btn2: Button
 var _done = false
+var _u = 0.0
+var _stars_at = [0.9, 1.15, 1.4]
+var _fx = []
+var _fx_done = {}
+var _star_done = [false, false, false]
 var Z = {} # layout zones (Rect2), see _layout()
 
 func _init() -> void:
@@ -50,17 +56,26 @@ func _layout() -> void:
 	Z.title = Rect2(x0 + 24, Z.sub.position.y - 66.0, W - 48, 64.0)
 	Z.stage = Rect2(x0, top, W, Z.title.position.y - top - gap)
 
-func open(is_win: bool, stars: int, stats: Array, title: String, sub: String) -> void:
+func open(is_win: bool, stars: int, stats: Array, title: String, sub: String, routine := "cheer") -> void:
 	won = is_win
 	n_stars = stars
 	_layout()
 	var st: Rect2 = Z.stage
 	_hen = Hen.new()
-	_hen.H = clampf(st.size.y * 0.72, 150.0, 430.0)
-	_hen.position = Vector2(st.get_center().x, st.end.y - 14.0)
-	_hen.scale = Vector2.ZERO
+	_hen.H = clampf(minf(st.size.y * 0.6, st.size.x * 0.5), 140.0, 400.0)
+	_hen.position = Vector2(st.get_center().x, st.end.y - _hen.H * 0.05)
+	_hen.stage_top = st.position.y - _hen.position.y
+	_hen.shadow = 0.18
 	add_child(_hen)
-	_hen.set_mood("celebrate" if won else "sad")
+	_hen.cue.connect(_on_cue)
+	if won:
+		_hen.play(routine, Cheer.power(stars))
+	else:
+		_hen.play("encourage", 0.5)
+	var info = _hen.routine_info()
+	if won:
+		_stars_at = info.stars
+	_fx = info.fx
 	_title = UI.label(self, title, 50, UI.BRAND if won else UI.RED, 900)
 	_place(_title, Z.title)
 	_title.pivot_offset = _title.size / 2
@@ -103,6 +118,28 @@ func open(is_win: bool, stars: int, stats: Array, title: String, sub: String) ->
 		_play_win()
 	else:
 		_play_fail()
+	get_viewport().size_changed.connect(_relayout)
+
+# the screen size can change after the page opens (Android immersive mode, rotation lock, cutouts): re-place everything
+func _relayout() -> void:
+	_layout()
+	var st: Rect2 = Z.stage
+	_hen.H = clampf(minf(st.size.y * 0.6, st.size.x * 0.5), 140.0, 400.0)
+	_hen.position = Vector2(st.get_center().x, st.end.y - _hen.H * 0.05)
+	_hen.stage_top = st.position.y - _hen.position.y
+	_place(_title, Z.title)
+	_title.pivot_offset = _title.size / 2
+	_place(_sub, Z.sub)
+	var n = _cards.size()
+	var cw = (Z.cards.size.x - 14.0 * (n - 1)) / n
+	var x = Z.cards.position.x
+	for i in n:
+		_cards[i].position = Vector2(x + i * (cw + 14.0), Z.cards.position.y)
+		_cards[i].size = Vector2(cw, Z.cards.size.y)
+	_place(_btn, Z.button)
+	_btn.pivot_offset = _btn.size / 2
+	if _btn2:
+		_place(_btn2, Z.button2)
 
 func _place(c: Control, r: Rect2) -> void:
 	c.position = r.position
@@ -169,25 +206,16 @@ func _star_pos(i: int) -> Vector2:
 	return Vector2(r.get_center().x + (i - 1) * 140.0, r.get_center().y + (0.0 if i == 1 else 10.0))
 
 func _play_win() -> void:
-	var sz = get_viewport_rect().size
+	# the stars land on the hen's beats (see _process); the title pops first, cards and button follow the last star
 	_tw = create_tween()
 	_tw.tween_property(self, "bg_a", 1.0, 0.18)
 	_tw.tween_callback(func():
 		Sfx.play("fanfare")
-		Sfx.buzz(45, 0.8)
-		_confetti(Vector2(-10, Z.stage.end.y), Vector2(0.8, -1.2))
-		_confetti(Vector2(sz.x + 10, Z.stage.end.y), Vector2(-0.8, -1.2)))
-	_tw.tween_property(_hen, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		Sfx.buzz(45, 0.8))
 	_tw.parallel().tween_property(self, "glow", 1.0, 0.5)
 	_tw.parallel().tween_property(_title, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(0.15)
 	_tw.parallel().tween_property(_sub, "modulate:a", 1.0, 0.25).set_delay(0.3)
-	for i in 3:
-		_tw.tween_method(func(v): star_k[i] = v, 0.0, 1.0, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		if i < n_stars:
-			_tw.parallel().tween_callback(func():
-				Sfx.play("star%d" % i)
-				Sfx.buzz(20 + i * 10, 0.5 + i * 0.15)
-				_sparkle(_star_pos(i))).set_delay(0.1)
+	_tw.tween_interval(maxf(0.0, float(_stars_at[2]) + 0.1 - 0.18))
 	for i in _cards.size():
 		var c = _cards[i]
 		var y0 = c.position.y
@@ -197,9 +225,31 @@ func _play_win() -> void:
 	_tw.tween_callback(func():
 		for c in _cards:
 			c.count_up())
-	_tw.tween_interval(0.55)
+	_tw.tween_interval(0.45)
 	_tw.tween_property(_btn, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_tw.tween_callback(_finish)
+
+func _land_star(i: int) -> void:
+	if _star_done[i]:
+		return
+	_star_done[i] = true
+	if i >= n_stars:
+		star_k[i] = 1.0
+		return
+	var tw = create_tween()
+	tw.tween_method(func(v): star_k[i] = v, 0.0, 1.0, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	Sfx.play("star%d" % i)
+	Sfx.buzz(20 + i * 10, 0.5 + i * 0.15)
+	_sparkle(_star_pos(i))
+
+func _on_cue(name: String) -> void:
+	match name:
+		"flap":
+			Sfx.play("whoosh", -8.0, 1.7)
+		"confetti":
+			Sfx.play("pop", -2.0)
+		_:
+			Sfx.play(name, -3.0, randf_range(0.96, 1.06))
 
 func _play_fail() -> void:
 	_tw = create_tween()
@@ -207,8 +257,7 @@ func _play_fail() -> void:
 	_tw.tween_callback(func():
 		Sfx.play("fail")
 		Sfx.buzz(70, 0.6))
-	_tw.tween_property(_hen, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	_tw.parallel().tween_property(_title, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(0.1)
+	_tw.tween_property(_title, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(0.1)
 	_tw.parallel().tween_property(_sub, "modulate:a", 1.0, 0.3).set_delay(0.2)
 	for c in _cards:
 		_tw.parallel().tween_property(c, "modulate:a", 1.0, 0.3).set_delay(0.3)
@@ -221,10 +270,13 @@ func _play_fail() -> void:
 
 func _finish() -> void:
 	_done = true
+	if _hen:
+		_hen.skip_routine()
+	for i in 3:
+		_star_done[i] = true
 	star_k = [1.0, 1.0, 1.0]
 	bg_a = 1.0
 	glow = 1.0
-	_hen.scale = Vector2.ONE
 	_title.scale = Vector2.ONE
 	_sub.modulate.a = 1.0
 	for c in _cards:
@@ -245,6 +297,23 @@ func _gui_input(ev: InputEvent) -> void:
 
 func _process(dt: float) -> void:
 	spin += dt * 0.25
+	_u += dt
+	if won and not _done:
+		for i in 3:
+			if _u >= float(_stars_at[i]):
+				_land_star(i)
+	var sz = get_viewport_rect().size
+	for i in _fx.size():
+		var f = _fx[i]
+		if _fx_done.has(i) or _u < float(f[0]) or _done and _u > float(f[0]) + 0.3:
+			continue
+		_fx_done[i] = true
+		var n = int(f[1] * 2.2)
+		if f[2] == "sides":
+			_confetti(Vector2(-10, Z.stage.end.y), Vector2(0.8, -1.2), n)
+			_confetti(Vector2(sz.x + 10, Z.stage.end.y), Vector2(-0.8, -1.2), n)
+		elif f[2] == "top":
+			_confetti(Vector2(sz.x / 2, Z.stage.position.y - 20), Vector2(0, 1), n)
 	queue_redraw()
 
 func _draw() -> void:
