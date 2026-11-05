@@ -365,4 +365,53 @@ export const LEVELS = [
       {gaps: [{a: -141},{a: 111}], thorns: [{a: 46, n: 2},{a: 180, n: 1, kind: "blunt"}], pads: [{a: 158, len: 1.5}]},
     ],
   },
+  {
+    id: 36, theme: "reef", name: "Under the Waves", eggs: 3, target: 2, time: 80, spacing: 1.05, material: "coral", water: true, nest: {w: 2.8}, bonus: {kind: "time", s: 40}, hermit: {ch: 1, a: 70, delay: 1.5}, tip: "A tucked egg is safe from thorns. Turn a gap to the crab and the egg floats out through it.", orbs: [{type: "bubble", ch: 2, a: 166}], seed: 285085, world: 8, intro: {title: "Coral Reef", line: "Underwater, eggs float UP! Line the gaps up toward the top to reach the hen's boat. A hermit crab tucks eggs in its shell: bump an egg into it, or turn a gap to it."},
+    rings: [
+      {gaps: [{a: 175}]},
+      {gaps: [{a: -116, x: 2}], thorns: [{a: 13, n: 2}], pads: [{a: 148, len: 1.53}]},
+      {gaps: [{a: 141, x: 2},{a: -43}], thorns: [{a: 36, n: 2}], pads: [{a: -90, len: 1.39}]},
+      {gaps: [{a: 28, x: 3, len: 0.7},{a: -169}], thorns: [{a: -128, n: 2}], pads: [{a: 155, len: 1.21}]},
+    ],
+  },
+  {
+    id: 37, theme: "reef", name: "Puffer Lagoon", eggs: 3, target: 2, time: 155, spacing: 1.05, material: "coral", water: true, nest: {w: 2.7}, bonus: {kind: "turns", n: 16}, eggKinds: ["duck"], hermit: {ch: 4, a: 150, delay: 9}, puffer: {ch: 3, a: 40, delay: 3}, tip: "The warp gate swirl sends the next creature that grabs at an egg far away.", orbs: [{type: "warp", ch: 2, a: 51},{type: "twin", ch: 1, a: 177}], seed: 293007, world: 8, intro: {title: "Pufferfish", line: "A pufferfish swells up over a gap and plugs it for a few seconds. A slow egg bounces off it, but its spines prick a fast one. A thorn or a zap pops it."},
+    rings: [
+      {gaps: [{a: -141}], thorns: [{a: -52, n: 2}]},
+      {gaps: [{a: 14, x: 2, shut: {period: 4.5, open: 0.45, phase: 4.16}}], thorns: [{a: -111, n: 1},{a: 175, n: 1, side: "out", h: 0.26}], pads: [{a: 79, len: 1.46}]},
+      {gaps: [{a: -101},{a: 169}], thorns: [{a: -3, n: 3},{a: -18, n: 1, side: "out", h: 0.3}], pads: [{a: -161, len: 1.27}]},
+      {oneway: 1, gaps: [{a: -44, x: 3, len: 0.7},{a: -136}], thorns: [{a: -72, n: 1, side: "out", h: 0.26},{a: -18, n: 1, side: "out", h: 0.26}], pads: [{a: -179, len: 1.61}]},
+      {gaps: [{a: 176},{a: -79}], thorns: [{a: 33, n: 1}], pads: [{a: -61, len: 1.27}]},
+    ],
+  },
+  {
+    id: 38, theme: "reef", name: "Jelly Drift", eggs: 3, target: 2, time: 140, spacing: 1.05, material: "coral", water: true, nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.4}, bonus: {kind: "prize"}, jelly: {ch: 2, a: 30, delay: 2}, tip: "The shock ring makes the ring under the egg live: jellyfish and crabs that touch it are stunned.", orbs: [{type: "shock", ch: 1, a: -23},{type: "water", ch: 3, a: -13}], seed: 300924, world: 8, intro: {title: "Jellyfish", line: "A jellyfish drifts through the reef. Its sting cracks an egg, but its glow lights up murky water. Water washes it away; a live ring stuns it."},
+    rings: [
+      {gear: 1, gaps: [{a: -123}], thorns: [{a: -49, n: 1}]},
+      {gear: 2, gaps: [{a: -51, x: 2}], thorns: [{a: 166, n: 1}], pads: [{a: 60, len: 1.53}]},
+      {gaps: [{a: 22, x: 2},{a: -95}], thorns: [{a: -27, n: 2}], pads: [{a: 153, len: 1.58}]},
+      {gaps: [{a: -176, x: 3, len: 0.7},{a: -11}], thorns: [{a: -96, n: 2},{a: -114, n: 1, side: "out", h: 0.3}], pads: [{a: -43, len: 1.35}]},
+      {gaps: [{a: -51},{a: 145}], thorns: [{a: 21, n: 1}], pads: [{a: -173, len: 1.09}]},
+    ],
+  },
+  {
+    id: 39, theme: "reef", name: "Kelp Castle", eggs: 3, target: 2, time: 125, spacing: 1.05, material: "coral", water: true, nest: {w: 2.7}, bonus: {kind: "turns", n: 15}, eggKinds: [null,"quail"], hermit: {ch: 3, a: 160, delay: 4}, puffer: {ch: 4, a: 30, delay: 7}, jelly: {ch: 1, a: -30, delay: 3}, tip: "Freeze them all, then float your eggs past while they cannot move.", orbs: [{type: "frostnova", ch: 2, a: 162},{type: "warp", ch: 4, a: 62}], seed: 308844, world: 8, intro: {title: "Frost nova", line: "The frost orb freezes every creature for a few seconds. A frozen crab or jellyfish cannot grab or sting."},
+    rings: [
+      {gaps: [{a: 17}], thorns: [{a: -124, n: 1}]},
+      {gaps: [{a: -71, x: 2, shut: {period: 4, open: 0.55, phase: 3.5}}], thorns: [{a: -164, n: 2},{a: -167, n: 1, side: "out", h: 0.26}], pads: [{a: 97, len: 1.66}]},
+      {gaps: [{a: -18},{a: -164},{a: -56, grate: 1}], thorns: [{a: -125, n: 3},{a: 37, n: 3}], pads: [{a: 133, len: 1.27}]},
+      {gaps: [{a: -109, x: 3, len: 0.7},{a: 32}], thorns: [{a: -5, n: 3},{a: -78, n: 1, side: "out", h: 0.3}], pads: [{a: 120, len: 1.5}]},
+      {gaps: [{a: -26},{a: 167}], thorns: [{a: 46, n: 1},{a: -118, n: 1}], pads: [{a: -163, len: 1.05}]},
+    ],
+  },
+  {
+    id: 40, theme: "reef", name: "King Crab", eggs: 4, target: 2, time: 160, spacing: 1.05, material: "coral", boss: "kingcrab", bossFight: {kind: "kingcrab", delay: 2, phases: [{attacks: ["snap"], every: 4.5},{at: {saved: 1, t: 35}, attacks: ["snap","silt","snap"], every: 4},{at: {saved: 2, t: 70}, attacks: ["snap2","silt","snap"], every: 3.5}]}, water: true, nest: {w: 2.8}, bonus: {kind: "prize"}, jelly: {ch: 2, a: 150, delay: 4}, tip: "Each hit makes it give back one stolen egg. The warp gate sends a claw away.", orbs: [{type: "warp", ch: 4, a: 124},{type: "shock", ch: 3, a: 60},{type: "frostnova", ch: 1, a: 143}], seed: 316761, world: 8, intro: {title: "Boss: King Crab", line: "The King Crab reaches its claws in through lined-up gaps to snatch eggs. Turn the ring while a claw is inside: it gets stuck. Then hit the stuck claw with an egg or a zap."},
+    rings: [
+      {gaps: [{a: -101}], thorns: [{a: 3, n: 2}]},
+      {gaps: [{a: -142, x: 2}], thorns: [{a: 15, n: 2}], pads: [{a: -67, len: 1.12}]},
+      {gaps: [{a: -101},{a: 178}], thorns: [{a: -27, n: 1},{a: -155, n: 1}], pads: [{a: 20, len: 1.37}]},
+      {gaps: [{a: -19, x: 2},{a: -143}], thorns: [{a: -45, n: 1},{a: 166, n: 1}], pads: [{a: -70, len: 1.51}]},
+      {gaps: [{a: 133}], thorns: [{a: -89, n: 2},{a: -144, n: 1, side: "out", h: 0.26}], pads: [{a: 42, len: 1.12}]},
+    ],
+  },
 ];

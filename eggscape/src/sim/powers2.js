@@ -202,6 +202,7 @@ export const p2Methods = {
     this.frogHit(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v3.5: the frog is a creature too (frozen / stunned)
     this.seaP2?.(kind, T); // v3.5: the octopus (sim/sea.js): frozen, or stunned
     for (const S of this.schools || []) this.p2Fish(S, kind, T);
+    this.reefP2?.(kind, T); // world 8: hermit crabs, puffers, jellyfish, the King Crab
   },
   // fish schools: frozen by ice, stunned by lightning; they just carry on for the rest
   p2Fish(S, kind, T) {
@@ -290,7 +291,7 @@ export const p2Methods = {
   // was winding up is lost, the next one waits
   p2Boss(kind, T) {
     const B = this.bx && this.bx.boss;
-    if (!B || B.kind === 'snake' || B.kind === 'salamander' || B.den) return;
+    if (!B || B.kind === 'snake' || B.kind === 'salamander' || B.den || B.kind === 'kingcrab') return; // the King Crab: sim/kingcrab.js kcP2
     const t = (kind === 'bolt' ? P2.thunderclap.big : T) * BOSS_RESIST;
     if (B.atk && B.atk.ph === 'warn') B.atk = null;
     if (!B.atk) B.t = Math.max(B.t, t + 0.8);
@@ -609,6 +610,7 @@ export const p2Methods = {
     }
     for (const S of this.schools || []) if (!(S.sn > 0 || S.fz > 0) && S.f.some((f) => Math.abs(f.r - R) < touch + 0.25)) this.p2Fish(S, 'bolt', 2.5);
     this.thiefShock(P.shockR, T); // v3.6: a thief standing on the live ring
+    this.reefShock?.(P.shockR, T); // world 8
     if (P.shockR !== this.rings.length - 1) return; // the eagle and the bosses only meet the outer ring
     const E = this.p2Eagle();
     if (E && !P.fx.e && Math.abs(Math.hypot(E.x, E.y) - R) < 0.9) { this.eagleDaze('shock'); E.t = 2.5; this.p2Mark('e', 'zap', 1.5, E.x, E.y); }

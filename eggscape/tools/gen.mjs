@@ -17,7 +17,7 @@ import { rng } from '../src/sim/geom.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
 const OUT_DIR = join(ROOT, 'tools', 'gen-out');
-const BOTTOM = -90;
+let BOTTOM = -90; // where eggs start and settle: straight down (underwater levels: straight up, set per spec in layout())
 const GAP_LEN = 0.78;
 const THORN_STEP = 11;
 // ostrich levels: gaps under OSTRICH_GAP (sim.js, 0.9 m) are barred for the big egg, and every ring gets one
@@ -29,6 +29,7 @@ const dist = (a, b) => Math.abs(wrapD(a - b));
 const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
 // level fields copied from the spec as they are (not laid out)
 const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'weasel', 'rats', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander', 'octopus'];
+LEVEL_KEYS.push('hermit', 'puffer', 'jelly'); // world 8 Coral Reef
 
 // ---------- layout ----------
 function radii(spec) {
@@ -169,7 +170,7 @@ function layRing(spec, i, r, R, prev) {
   if (!rs.motor && open.length && i > 0) {
     const inner = thorns.filter((t) => t.side !== 'out');
     const safe = (dir) => {
-      if (rs.oneway && dir === Math.sign(rs.oneway)) return false; // dir 1 = the ring turns clockwise
+      if (rs.oneway && dir === Math.sign(rs.oneway) * (spec.water ? -1 : 1)) return false; // dir 1 = the ring turns clockwise (mirrored underwater)
       const gapAt = Math.min(...open.map((g) => (((dir * (g.a - BOTTOM)) % 360) + 360) % 360 - gapHalf(g)));
       const thornAt = Math.min(Infinity, ...inner.map((t) => (((dir * (t.a - BOTTOM)) % 360) + 360) % 360 - span(t.n)));
       return gapAt < thornAt;
@@ -266,6 +267,7 @@ function layRing(spec, i, r, R, prev) {
 }
 
 export function layout(spec, seed) {
+  BOTTOM = spec.water ? 90 : -90;
   const R = rng(seed);
   const rs = radii(spec);
   const rings = [];

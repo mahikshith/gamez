@@ -429,6 +429,7 @@ export const seaMethods = {
       if (K && this.octHit(C, K)) n++;
     }
     if (kind !== 'gust') for (const S of this.schools || []) if (S.f.some((f) => r === Infinity || Math.hypot(f.r * Math.cos(f.a) - x, f.r * Math.sin(f.a) - y) < r + 0.3)) { if (kind === 'bolt' ? this.fishStun(S, 2.5, true) : this.fishScatter(S, x, y)) n++; }
+    if (this.reefHit) n += this.reefHit(kind, o); // world 8: hermit crabs, puffers, jellyfish, King Crab claws
     return n;
   },
 

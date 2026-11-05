@@ -44,6 +44,8 @@ export function value(sim) {
   if (sim.state === 'failed') return -1e6 + st.saved * 1000;
   let v = st.saved * 1500 - st.broken * 2500 + st.score * 0.2;
   if (sim.thieves && sim.thieves.length) v += sim.thiefScore(); // v3.6: a trapped or beaten thief boss is worth something
+  if (sim.kc) v += sim.reefScore(); // world 8: a stuck or beaten King Crab claw
+  const reef = sim.hermits.length || sim.puffs.length || sim.jellies.length || sim.kc;
   for (const e of sim.aliveEggs()) {
     const c = sim.channelOf(e);
     v += c * 300 - e.cracks * 200 + e.mult * 15;
@@ -56,15 +58,17 @@ export function value(sim) {
     // v3.2: an egg on (or about to be on) a red-hot salamander section
     if (sim.salThreat) v -= 450 * sim.salThreat(e);
     if (sim.thieves.length) v -= 1600 * sim.thiefThreat(e); // v3.6: held or stashed by a thief, or about to be
+    if (reef) v -= 1600 * sim.reefThreat(e); // world 8: in a claw or the King Crab's pile, a crab's shell, a jelly's reach
     // predators (v3): an egg the eagle can reach while it is locked on
     const E = sim.eagle;
     if (E && E.reach && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tid === e.id) v -= 700;
     if (c >= sim.rings.length) {
       // falling out of the vault: will the (moving) nest be under it when it lands?
-      const p = e.body.getPosition(), u = e.body.getLinearVelocity(), g = sim.g;
-      const h = Math.max(0, p.y - sim.nestY), tf = (u.y + Math.sqrt(u.y * u.y + 2 * g * h)) / g;
+      // underwater (gy -1) it rises to the basket instead, and the drag soon eats its sideways speed
+      const p = e.body.getPosition(), u = e.body.getLinearVelocity(), g = sim.g, s = sim.gy || 1, uy = u.y * s;
+      const h = Math.max(0, (p.y - sim.nestY) * s), tf = (uy + Math.sqrt(uy * uy + 2 * g * h)) / g;
       const nx = sim.nestAmp ? sim.nestXAt(sim.t + tf) : sim.nest.getPosition().x;
-      if (Math.abs(p.x + u.x * tf - nx) > sim.nestW / 2 - 0.15) v -= 2400;
+      if (Math.abs(p.x + u.x * (sim.water ? Math.min(tf, 0.6) : tf) - nx) > sim.nestW / 2 - 0.15) v -= 2400;
     }
     // shaping: how far the floor ring's nearest gap is from the egg, so "bring a gap round" scores
     const ring = sim.rings[c];

@@ -9,7 +9,9 @@ import { allyMethods } from './allies.js'; // v3.4 farm allies (rooster, goose)
 import { seaMethods } from './sea.js'; // v3.3 octopus and fish schools
 import { p2Methods, P2_TYPES, P2_KEYS } from './powers2.js'; // v3.4 powers and combos
 import { warpMethods } from './warp.js'; // v3.4 warp gate
-import { thiefMethods } from './thieves.js'; // v3.6 the egg thieves: weasel, rats, their bosses
+import { thiefMethods } from './thieves.js';
+import { reefMethods } from './reef.js'; // world 8: hermit crab, pufferfish, jellyfish
+import { kcMethods } from './kingcrab.js'; // world 8 boss: the King Crab // v3.6 the egg thieves: weasel, rats, their bosses
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
@@ -77,7 +79,9 @@ const CURTAIN_BURN = 1; // s for fire to clear a thorn curtain
 // v3.3 thorn vines (M3): a vine creeps across its gap (grow s, slower on Easy), then seals it like a thorn curtain
 // until fire burns it back; it rests `wait` s and grows again. It never seals onto an egg sitting in the gap.
 const VINE = { grow: 6, wait: 2.5 }, VINE_MODE = { easy: 1.5, medium: 1, hard: 0.8 };
-const GUARD_PASS = new Set(['fuse', 'thief', 'ground', 'lost', 'lava']); // what still ends a guarded egg
+const GUARD_PASS = new Set(['fuse', 'thief', 'ground', 'lost', 'lava', 'surface']);
+// underwater (level.water): buoyancy x gravity (it points up), drag (1/s), spin drag, and the bob: sway / bob m/s^2 at bobW rad/s
+export const WATER = { buoy: 0.36, drag: 1.6, spin: 1.6, sway: 0.35, bob: 0.25, bobW: 2.1, fr: 0.12 }; // what still ends a guarded egg
 
 // Difficulty is the player's choice (F32). Same levels, tuned per mode.
 export const MODES = {
@@ -134,8 +138,12 @@ export class Sim {
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-    this.g = level.gravity ?? 10;
-    this.world = new World({ gravity: Vec2(0, -this.g) });
+    // world 8 (Coral Reef): level.water = underwater. Buoyancy instead of gravity (weaker, pointing up), heavy drag, the
+    // goal (the hen's basket under her boat) at the surface on top. this.gy = +1 normal, -1 underwater: y-sign of "down"
+    this.water = !!level.water;
+    this.gy = this.water ? -1 : 1;
+    this.g = (level.gravity ?? 10) * (this.water ? WATER.buoy : 1);
+    this.world = new World({ gravity: Vec2(0, -this.g * this.gy) });
     this.rings = [];
     this.eggs = [];
     this.debris = [];
@@ -212,19 +220,19 @@ export class Sim {
     const n = L.nest || {};
     this.nestW = (n.w || 1.9) + this.MD.nestW;
     this.nestPattern = n.pattern || 'sine';
-    this.groundY = -(this.outerR + (n.drop ?? 0.6) + 0.35);
-    this.nestY = this.groundY + 0.02;
+    this.groundY = -(this.outerR + (n.drop ?? 0.6) + 0.35) * this.gy; // underwater: the surface, over the vault
+    this.nestY = this.groundY + 0.02 * this.gy;
     this.nestAmp = n.amp || 0;
     this.nestPeriod = n.period || 6;
     this.nestX0 = n.x || 0;
     this.nest = this.world.createBody({ type: 'kinematic', position: Vec2(this.nestX0, this.nestY) });
-    const w = this.nestW / 2;
+    const w = this.nestW / 2, V = (x, y) => Vec2(x, y * this.gy); // underwater the basket hangs upside down under the boat
     const nestFix = { friction: 0.9, restitution: 0.0, ...filt('NEST'), userData: { kind: 'nest' } };
-    this.nest.createFixture({ shape: new Polygon([Vec2(-w, 0.12), Vec2(-w + 0.18, 0), Vec2(w - 0.18, 0), Vec2(w, 0.12), Vec2(w - 0.2, 0.16), Vec2(-w + 0.2, 0.16)]), ...nestFix });
-    this.nest.createFixture({ shape: new Polygon([Vec2(-w - 0.08, 0.5), Vec2(-w, 0.08), Vec2(-w + 0.14, 0.12), Vec2(-w + 0.04, 0.5)]), ...nestFix });
-    this.nest.createFixture({ shape: new Polygon([Vec2(w + 0.08, 0.5), Vec2(w - 0.04, 0.5), Vec2(w - 0.14, 0.12), Vec2(w, 0.08)]), ...nestFix });
-    this.nest.createFixture({ shape: new Box(w - 0.12, 0.25, Vec2(0, 0.38), 0), isSensor: true, ...filt('NEST'), userData: { kind: 'nestIn' } });
-    this.ground = this.world.createBody({ type: 'static', position: Vec2(0, this.groundY - 0.5) });
+    this.nest.createFixture({ shape: new Polygon([V(-w, 0.12), V(-w + 0.18, 0), V(w - 0.18, 0), V(w, 0.12), V(w - 0.2, 0.16), V(-w + 0.2, 0.16)]), ...nestFix });
+    this.nest.createFixture({ shape: new Polygon([V(-w - 0.08, 0.5), V(-w, 0.08), V(-w + 0.14, 0.12), V(-w + 0.04, 0.5)]), ...nestFix });
+    this.nest.createFixture({ shape: new Polygon([V(w + 0.08, 0.5), V(w - 0.04, 0.5), V(w - 0.14, 0.12), V(w, 0.08)]), ...nestFix });
+    this.nest.createFixture({ shape: new Box(w - 0.12, 0.25, V(0, 0.38), 0), isSensor: true, ...filt('NEST'), userData: { kind: 'nestIn' } });
+    this.ground = this.world.createBody({ type: 'static', position: Vec2(0, this.groundY - 0.5 * this.gy) });
     this.ground.createFixture({ shape: new Box(60, 0.5), friction: 0.8, ...filt('GROUND'), userData: { kind: 'ground' } });
 
     // eggs in the center chamber
@@ -252,6 +260,7 @@ export class Sim {
     this.allyInit(L); // v3.4: farm allies (sim/allies.js)
     this.seaInit(L); // v3.3: octopus and fish schools (sim/sea.js)
     this.thiefInit(L); // v3.6: the egg thieves (sim/thieves.js)
+    this.reefInit(L); if (L.bossFight && L.bossFight.kind === 'kingcrab') this.kcInit(L); // world 8 (sim/reef.js, sim/kingcrab.js)
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
@@ -330,15 +339,16 @@ export class Sim {
   }
 
   addEgg(x, y, cracks = 0, extra = {}) {
-    const body = this.world.createDynamicBody({ position: Vec2(x, y), bullet: true, angularDamping: 0.35, linearDamping: this.level.water ? 1.1 : 0.02 });
+    const body = this.world.createDynamicBody({ position: Vec2(x, y), bullet: true, angularDamping: 0.35, linearDamping: this.water ? WATER.drag : 0.02 });
+    if (this.water) body.setAngularDamping(WATER.spin);
     const K = EGG_KIND[extra.kind]; // v3 special eggs: size and weight
     const hull = eggHull(12, K ? K.s : 1).map((p) => Vec2(p.x, p.y));
-    const fix = body.createFixture({ shape: new Polygon(hull), density: K ? K.m / (K.s * K.s) : 1, friction: 0.5, restitution: 0.12, ...filt('EGG'), userData: { kind: 'egg' } });
+    const fix = body.createFixture({ shape: new Polygon(hull), density: K ? K.m / (K.s * K.s) : 1, friction: this.water ? WATER.fr : 0.5, restitution: 0.12, ...filt('EGG'), userData: { kind: 'egg' } });
     const egg = {
       id: this.nextEggId++, body, fix, cracks, alive: true, saved: false,
       fire: 0, fireKind: null, stone: 0, bubble: 0, bubbleFix: null, magnet: 0, joint: null, golden: extra.golden || 0,
       water: 0, zap: 0, glow: 0, chick: 0, meteor: 0, honey: 0, hold: null, honeyCD: 0, prize: 0, spk: new Set(), // spk: blunt spikes touching now
-      crackCD: 0, nestT: 0, inNest: 0, safeT: this.t < 0.5 ? 1.5 : 0, portalCD: 0, born: this.t,
+      crackCD: 0, nestT: 0, inNest: 0, hc: 0, safeT: this.t < 0.5 ? 1.5 : 0, portalCD: 0, born: this.t,
       seed: (this.rand() * 1e9) | 0, impact: 0, lastV: 0, fear: 0,
       ch: 0, mult: 1, freefall: 0, comet: 0, cometUsed: false,
       kind: K ? extra.kind : null, guard: 0, rockskin: 0, curse: 0, drop: 0, soft: false, lavaCD: 0, // v3
@@ -528,6 +538,10 @@ export class Sim {
       if (egg.chick) b.applyForceToCenter(Vec2(0, b.getMass() * this.g * 0.6), true);
       if (egg.magnet > 0 && (egg.magnet -= dt) <= 0) this.unMagnet(egg);
       if (this.wind) b.applyForceToCenter(Vec2(this.wind * b.getMass() * (egg.bubble > 0 ? 2.2 : 1), 0), true);
+      if (this.water && b.isActive()) { // a little bob and sway as it drifts up
+        const ph = this.t * WATER.bobW + egg.id * 1.7;
+        b.applyForceToCenter(Vec2(Math.sin(ph) * WATER.sway * b.getMass(), Math.cos(ph * 1.3) * WATER.bob * b.getMass()), true);
+      }
       // honey pad (F24): the egg rides with the pad until the honey lets go
       if (egg.honey > 0 && egg.hold) {
         const H = egg.hold, rb = this.rings[H.ri].body;
@@ -630,7 +644,7 @@ export class Sim {
         egg.nestT += dt;
         if (egg.nestT > 0.3) this.saveEgg(egg);
       } else egg.nestT = 0;
-      if (p.y < this.groundY - 3 || Math.abs(p.x) > 40) this.breakEgg(egg, 'lost');
+      if ((p.y - this.groundY) * this.gy < -3 || Math.abs(p.x) > 40) this.breakEgg(egg, 'lost');
     }
 
     // bombs
@@ -709,6 +723,7 @@ export class Sim {
       const egg = u.egg;
       let v = closing;
       if (uo.kind === 'frog') { this.frogBump(egg, v, uo.idx, pt); return; } // v3.3: a frog's back is a soft landing
+      if (uo.kind === 'puffer') { this.pufferBump(egg, v, uo.pf, pt); return; } // world 8: bouncy, or its spines
       if (uo.kind === 'egg') {
         // momentum share: lighter egg takes more of the hit
         const mo = other.getMass(), me = body.getMass();
@@ -820,7 +835,7 @@ export class Sim {
       if (orb.alive && egg.alive && !orb.taken) { orb.taken = true; this.defer(() => this.takeOrb(egg, orb)); }
     } else if ((p = pair('egg', 'ground'))) {
       const egg = p[0].egg;
-      if (egg.alive && !egg.saved) this.defer(() => this.breakEgg(egg, this.level.lava ? 'lava' : 'ground'));
+      if (egg.alive && !egg.saved) this.defer(() => this.breakEgg(egg, this.level.lava ? 'lava' : this.water ? 'surface' : 'ground')); // underwater: it bobs up past the boat and floats away
     } else if ((p = pair('egg', 'nestIn'))) {
       p[0].egg.inNest++;
     } else if ((p = pair('egg', 'egg'))) {
@@ -961,7 +976,7 @@ export class Sim {
   }
 
   damping(egg) {
-    return egg.chick ? 2.2 : this.level.water ? 1.1 : 0.02;
+    return egg.chick ? 2.2 : this.water ? WATER.drag : 0.02;
   }
 
   setBubble(egg) {
@@ -1163,6 +1178,7 @@ export class Sim {
     else this.salEndStep(dt); // v3.2: the salamander dives (win) or grins (loss); in play boss.js v31Step drives it
     this.seaStep(dt, end); // v3.3: octopus and fish schools
     this.thiefStep(dt); // v3.6: the weasel and the rats (sim/thieves.js)
+    this.reefStep(dt, end); // world 8: hermit crabs, puffers, jellyfish, the King Crab
     for (const b of this.barriers) if (b.alive && b.fire && (b.burn += dt / BURN_T) >= 1) this.removeBarrier(b, 'burn');
     if (this.eagle) this.eagleStep(dt); // after the level ends it flees (win) or gloats (loss)
     this.peckStep(dt);
@@ -1173,7 +1189,7 @@ export class Sim {
   armored(egg) {
     return egg.stone > 0 || egg.rockskin > 0 || egg.guard > 0 || egg.bulk > 0; // v3.2: a puffed bulk chick too
   }
-  snakeProof(egg) { return this.armored(egg) || egg.fire > 0 || egg.octo > 0; } // a flaming egg is no snack either, nor one an octopus holds
+  snakeProof(egg) { return this.armored(egg) || egg.fire > 0 || egg.octo > 0 || egg.hc > 0; } // a flaming egg is no snack either, nor one an octopus holds
 
   // Snake (F26, G10-G13): enters from above the vault and hunts (chicks first, armoured eggs last). It
   // moves along channels and crosses a ring only through an open gap lined up with its head, so turning
@@ -2221,6 +2237,7 @@ export class Sim {
     EGG_KEYS.push('octo'); // v3.3: held by octopus (id + 1)
     EGG_KEYS.push(...P2_KEYS); // v3.4 powers
     EGG_KEYS.push('thf'); // v3.6: held by a thief (1) or in its den (2)
+    EGG_KEYS.push('hc'); // world 8: in a hermit crab's shell (1), a King Crab claw (2) or its pile (3)
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2253,6 +2270,7 @@ export class Sim {
       sea: this.seaState(), // v3.3 octopus and fish
       p2: this.p2State(), // v3.4 powers
       thieves: this.thiefState(), // v3.6 the weasel and the rats
+      reef: this.reefState(), // world 8
     };
   }
 
@@ -2310,6 +2328,7 @@ export class Sim {
     sim.seaLoad(S.sea); // v3.3 octopus and fish
     sim.p2Load(S.p2); // v3.4 powers
     sim.thiefLoad(S.thieves); // v3.6 the weasel and the rats
+    sim.reefLoad(S.reef); // world 8
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2476,7 +2495,7 @@ export class Sim {
   // crack ladder (G34): cracks for a fall through n rings at once. 1 ring is always safe; 2 = 1 crack,
   // 3 = 2, 4+ = broken. Easy is one ring gentler, a quail one ring harsher, water halves it.
   fallDamage(egg, n) {
-    if (n < 2) return 0;
+    if (n < 2 || this.water) return 0; // underwater nothing falls hard: cracks come from spikes, claws, stings
     let d = n - 1 - (this.mode === 'easy' ? 1 : 0) + (egg.kind === 'quail' || egg.shrink > 0 ? 1 : 0); // v3.4: shrunk = quail
     if (egg.water > 0) d = Math.floor(d / 2);
     return Math.max(0, d);
@@ -2704,5 +2723,6 @@ Object.assign(Sim.prototype, seaMethods); // v3.3 octopus and fish schools (sim/
 Object.assign(Sim.prototype, p2Methods); // v3.4 powers and combos (sim/powers2.js)
 Object.assign(Sim.prototype, warpMethods); // v3.4 warp gate (sim/warp.js)
 Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves.js)
+Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
 
 export { EGG_H, EGG_W, RING_TH };

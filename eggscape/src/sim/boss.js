@@ -26,12 +26,12 @@ export const BOSS_MODE = {
   medium: { every: 1, warn: 1, power: 1, hold: 1, heat: 1, n: 3 },
   hard: { every: 0.85, warn: 0.85, power: 1.12, hold: 1.1, heat: 0.85, n: 3 },
 };
-const WARN = { gale: 1.1, freeze: 1.0, icicles: 1.0, stomp: 1.0, punch: 1.1, rock: 0.45, rock2: 0.45, throw: 0.9, throw2: 0.9, fog: 1.0, bolt: 1.0, bolt2: 1.0, gust: 1.0 };
+const WARN = { snap: 1.1, snap2: 1.2, silt: 0.8, gale: 1.1, freeze: 1.0, icicles: 1.0, stomp: 1.0, punch: 1.1, rock: 0.45, rock2: 0.45, throw: 0.9, throw2: 0.9, fog: 1.0, bolt: 1.0, bolt2: 1.0, gust: 1.0 };
 const GALE_T = 2.6, FREEZE_T = 4, FROST_ORB_T = 3, CHUNK_FREEZE_T = 3, FOG_T = 3.5, WALL_T = 8, ICE_WALL_T = 6, PATCH_T = 6;
 const ICE_HANG = 1.1; // s an icicle shakes before it drops (level icicles; a volley uses WARN.icicles)
 const THROW_FLY = 0.6, PUNCH_W = 2.4, HEAT_T = 9;
-export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'The Blizzard', golem: 'Crystal Golem', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King' };
-export const ATTACK_NAME = { gale: 'Gale', freeze: 'Freeze breath', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning' };
+export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'The Blizzard', golem: 'Crystal Golem', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab' };
+export const ATTACK_NAME = { gale: 'Gale', freeze: 'Freeze breath', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning', snap: 'Claw snap', snap2: 'Twin claws', silt: 'Silt cloud' };
 const RING_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING
 
 const M_ = (sim) => BOSS_MODE[sim.mode] || BOSS_MODE.medium;
@@ -356,7 +356,7 @@ function bossStep(sim, B, dt) {
   }
   if (A.ph === 'warn') {
     if ((A.t -= dt) > 0) return;
-    if (sim.warpStrike('boss', B)) return; // v3.4: a warp gate cancels the attack and pushes the boss back
+    if (B.kind !== 'kingcrab' && sim.warpStrike('boss', B)) return; // v3.4: a warp gate cancels the attack and pushes the boss back (the King Crab's claws meet it themselves)
     A.ph = 'act';
     A.t = A.name === 'gale' ? GALE_T : 0.35;
     A.dur = A.t;
@@ -371,6 +371,7 @@ function bossStep(sim, B, dt) {
 
 // pick targets and set up the telegraph; null = nothing worth attacking now
 function startAttack(sim, B, name, M) {
+  if (B.kind === 'kingcrab') return sim.kcStart(B, name, M); // world 8 (sim/kingcrab.js): its claws
   const T = targets(sim), n = sim.rings.length, F = sim.level.bossFight;
   const floorOf = (e) => sim.rings[Math.min(n - 1, sim.channelOf(e))];
   switch (name) {
@@ -479,6 +480,7 @@ function wallSpot(sim, e) {
 }
 
 function actAttack(sim, B, A, M) {
+  if (B.kind === 'kingcrab') { sim.kcAct(B, A, M); return; }
   switch (A.name) {
     case 'freeze': {
       const R = sim.bx.rl[A.ring];

@@ -84,7 +84,8 @@ export function alignAll(level, opts = {}) {
     const a = r.body.getAngle();
     let best = Infinity;
     for (const g of r.gaps) {
-      let d = Math.atan2(Math.sin(-Math.PI / 2 - a - g.a), Math.cos(-Math.PI / 2 - a - g.a));
+      const down = sim.water ? Math.PI / 2 : -Math.PI / 2; // underwater the way out is up
+      let d = Math.atan2(Math.sin(down - a - g.a), Math.cos(down - a - g.a));
       if (r.oneway && Math.sign(d) !== r.oneway) d += r.oneway * 2 * Math.PI; // one-way: the long way round
       if (Math.abs(d) < Math.abs(best)) best = d;
     }

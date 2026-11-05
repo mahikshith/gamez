@@ -28,6 +28,7 @@ import u_win_hen from '../../assets/sprites/win_hen.webp';
 
 import { drawHen } from './characters.js';
 import { drawThiefCard } from './thieves.js';
+import { drawKingCard } from './kingcrab.js';
 import { drawHenAnim } from './hen.js';
 
 // M7: the animated, code-drawn hen everywhere. false = the old path (reference sprites with squash-and-stretch life).
@@ -174,6 +175,7 @@ export function drawBossCard(ctx, bossId, x, y, w, h, t = 0, age = null) {
   try {
     const id = String(bossId).startsWith('boss_') ? bossId : 'boss_' + bossId;
     if (id === 'boss_weasel' || id === 'boss_ratking') return drawThiefCard(ctx, id.slice(5), x, y, w, h, t, age); // code-drawn: the same thief as in the level
+    if (id === 'boss_kingcrab') return drawKingCard(ctx, x, y, w, h, t, age); // world 8: code-drawn, the same crab as in the level
     const im = get(id);
     if (!im || !(w > 0) || !(h > 0)) return false;
     const pad = Math.max(2, h * 0.025);

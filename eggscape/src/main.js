@@ -31,7 +31,9 @@ import { POWER_DEMOS } from './data/power-demos.js'; // v3.4 studio vaults
 import { CHICK_DEMOS } from './data/chick-demos.js';
 import { FROG_DEMO } from './data/frog-demo.js'; // v3.3 frog studio level (dev)
 import { SEA_DEMOS } from './data/sea-demos.js'; // v3.3 studio levels (dev)
+import { REEF_DEMOS } from './data/reef-demos.js'; // world 8 studio levels (dev)
 import { drawSeaUnder, drawSeaOver, seaEvent, seaAnim } from './render/sea.js'; // v3.3 octopus and fish
+import { drawReefUnder, drawReefOver, reefEvent, drawSurface, drawBoat, boatSeat, drawRiseGuide } from './render/reef.js'; // world 8 Coral Reef (underwater)
 import { drawThiefDens, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
 import { RIG as THIEF_RIG } from './sim/thieves.js';
 import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
@@ -76,6 +78,7 @@ const LAB = [
   { name: 'Creatures', items: [['frog', 'Frog'], ['octopus', 'Octo'], ['octoden', 'Puddle'], ['fish', 'Fish'], ['reef', 'Reef']] },
   { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King']] },
   { name: 'Allies', items: [['rooster', 'Rooster'], ['goose', 'Goose']] },
+  { name: 'Coral Reef', items: [['hermit', 'Hermit'], ['puffer', 'Puffer'], ['jelly', 'Jelly'], ['kingcrab', 'King']] },
   { name: 'Powers', items: [['frostnova', 'Frost'], ['shock', 'Shock'], ['thunderclap', 'Clap'], ['laser', 'Laser'], ['spin', 'Spin']] },
   { name: 'More powers', items: [['pepper', 'Pepper'], ['shrink', 'Shrink'], ['iron', 'Iron'], ['decoy', 'Decoy']] },
   { name: 'Warp Gate', items: [['warp', 'Snake'], ['warp_eagle', 'Eagle'], ['warp_sal', 'Lizard'], ['warp_frog', 'Frog'], ['warp_octo', 'Octo']] },
@@ -297,6 +300,7 @@ function frameOf(all, maxCh) {
     R = sim.outerR + 0.45;
     yMin = sim.groundY - 0.25;
     yMax = R;
+    if (sim.water) { yMin = -R; yMax = sim.groundY + 1.5; } // underwater: the boat and the hen on the surface at the top
   } else {
     const ring = sim.rings[Math.min(n - 1, Math.max(3, maxCh + 2))];
     R = ringReach(ring) + RING_TH / 2 + 0.5;
@@ -319,6 +323,7 @@ function frameOf(all, maxCh) {
     }
   }
   for (const T of sim.thieves || []) if (T.ph !== 'gone' && T.ph !== 'wait' && T.ph !== 'hide') hds.push(sim.thBody(T)); // v3.6 thieves
+  if (sim.kc && all) { R = Math.max(R, sim.outerR + 0.72); yMin = Math.min(yMin, sim.kc.by - 0.95); yMax = Math.max(yMax, sim.kc.by + 0.95); } // world 8: the King Crab's arms hug the vault
   const BQ = bossPose(sim, false); // bosses (v3.1): keep the boss over the vault in frame
   // the big Blizzard cloud only when framing the whole vault (portrait screens have the height to spare); a zoomed-in
   // view stays on the eggs
@@ -732,7 +737,7 @@ async function press(id) {
         if (playable(i)) await breakThen(() => startLevel(i));
       } else if (id && id.startsWith('demo:') && (DEV || TEST)) {
         // test build: the chick lab (v3.2), one practice vault per chick kind
-        const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS].find((x) => x.kind === k);
+        const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS, ...REEF_DEMOS].find((x) => x.kind === k);
         if (d) { G.demo = d; await breakThen(() => startLevel(-2)); }
       } else if (id && id.startsWith('lab:')) {
         G.labPage = (G.labPage || 0) + +id.slice(4);
@@ -1137,6 +1142,7 @@ function handleEvents() {
         seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.3
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
         thiefEvent(ev, fx, { popup: denPopup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.6 the weasel and the rats
+        reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // world 8 reef
         break;
       case 'won':
         onWin();
@@ -1750,7 +1756,7 @@ function render() {
   G.weather.drawBack(ctx);
   // ground band
   const gy = toScreen(0, sim.groundY).y;
-  if (gy < H_) G.backdrop.drawGround(ctx, 0, gy, W_, H_ - gy, t);
+  if (gy < H_ && !sim.water) G.backdrop.drawGround(ctx, 0, gy, W_, H_ - gy, t); // underwater: no ground (the surface is drawn in the world)
 
   // world
   const P = G.play;
@@ -1765,7 +1771,7 @@ function render() {
   for (const pt of sim.portals) W.drawPortalPull(ctx, pt, t); // v3
   for (const pt of sim.portals) { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); }
   if (sim.timeLimit && sim.state === 'play') W.drawFuse(ctx, sim.outerR + 0.32, sim.timeLeft / sim.timeLimit, t, G.screen === 'play' ? fx : null);
-  W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length);
+  if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length); // world 8: the basket under the boat
   const eggPts = sim.aliveEggs().map((e) => e.body.getPosition());
   const stuck = sim.aliveEggs().filter((e) => e.honey > 0);
   for (const ring of sim.rings) {
@@ -1805,7 +1811,7 @@ function render() {
   // floating orbs: mystery until discovered (F19)
   for (const o of sim.orbs) if (o.alive) flipped(o.x, o.y, (k) => drawOrb(ctx, o.type, 0, 0, 0.2 * k, t, !!save.seen[o.type]));
   drawHenAt(sim, k, t);
-  if (G.screen === 'play' || G.screen === 'intro') W.drawDropGuide(ctx, sim.rings[sim.rings.length - 1], sim.nest.getPosition().x, sim.nestW, t);
+  if (G.screen === 'play' || G.screen === 'intro') { if (sim.water) drawRiseGuide(ctx, sim, t); else W.drawDropGuide(ctx, sim.rings[sim.rings.length - 1], sim.nest.getPosition().x, sim.nestW, t); }
   for (const r of sim.rocks) if (r.alive) W.drawRock(ctx, r, G.theme);
   for (const b of sim.bombs) if (b.alive) b.spark = W.drawBomb(ctx, b, t);
   for (const d of sim.debris) W.drawDebris(ctx, d, G.theme);
@@ -1818,10 +1824,13 @@ function render() {
   drawFrogTele(ctx, sim, k, t); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
   { const wx = warpXfBegin(ctx, sim, 'f'); drawFrogs(ctx, sim, t, k, G.theme); warpXfEnd(ctx, wx); }
   { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaUnder(ctx, sim, t, k, G.theme); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
+  drawReefUnder(ctx, sim, t, k, G.theme); // world 8: bubbles, hermit crabs, puffers, jellyfish, the King Crab
   drawThieves(ctx, sim, t, k); // v3.6: the weasel and the rats on the ring floor
   for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
   drawChickFX(ctx, sim, t, k);
   { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); } // v3.3: the arms wrapped over a held egg
+  drawReefOver(ctx, sim, t, k); // world 8: claws over a held egg, the silt cloud
+  if (sim.water) drawBoat(ctx, sim, t, k); // world 8: the boat on the surface, over the hen's legs
   drawThievesOver(ctx, sim, t, k); // v3.6: the weasel's jaws over a held egg, the trap ring
   W.drawSnakes(ctx, sim, t, k); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
@@ -1898,16 +1907,17 @@ function drawHenAt(sim, k, t) {
   // on a phone the vault leaves k ~ 35 px/m: draw her at least ~50 px tall so she is visible, and step her out from the nest
   const s = Math.max(0.95, Math.min(52, k * 1.5) / k);
   const n = sim.nest.getPosition();
-  const hx = n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2;
+  const seat = sim.water ? boatSeat(sim, t) : null; // world 8: she rides in the boat
+  const hx = seat ? seat.x : n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2;
   ctx.save();
-  ctx.translate(hx, sim.groundY);
+  ctx.translate(hx, seat ? seat.y : sim.groundY);
   ctx.scale(1 / k, -1 / k);
   // she stands ON the ground: a soft contact shadow and a little straw she has scratched out of the nest
   const hs = s * k;
   ctx.save();
   if (!ANIMATED_HEN) { ctx.fillStyle = 'rgba(0,0,0,0.26)'; ctx.beginPath(); ctx.ellipse(0, 0, hs * 0.36, hs * 0.075, 0, 0, Math.PI * 2); ctx.fill(); }
   ctx.strokeStyle = G.theme?.palette?.nestStraw || '#c9a24a'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, hs * 0.022);
-  for (const [a, b, c] of [[-0.42, -0.02, -0.22], [-0.3, 0.01, -0.05], [0.18, -0.01, 0.4], [0.3, 0.02, 0.5]]) {
+  if (!seat) for (const [a, b, c] of [[-0.42, -0.02, -0.22], [-0.3, 0.01, -0.05], [0.18, -0.01, 0.4], [0.3, 0.02, 0.5]]) {
     ctx.beginPath(); ctx.moveTo(a * hs, b * hs); ctx.lineTo(c * hs, b * hs - hs * 0.03); ctx.stroke();
   }
   ctx.restore();
@@ -1916,7 +1926,7 @@ function drawHenAt(sim, k, t) {
     let look = 0;
     for (const e of sim.eggs) {
       if (!e.alive || e.saved) continue;
-      const p = e.body.getPosition(), l = -clamp(1.5 - (p.y - sim.groundY) / 5, 0, 1) * (Math.abs(p.x - n.x) < 2.4 ? 1 : 0.3); // toward the nest as an egg nears the exit
+      const p = e.body.getPosition(), l = -clamp(1.5 - ((p.y - sim.groundY) * (sim.gy || 1)) / 5, 0, 1) * (Math.abs(p.x - n.x) < 2.4 ? 1 : 0.3); // toward the nest as an egg nears the exit
       if (l < look) look = l;
     }
     drawHenActor(ctx, G.hen.mood, 0, -0.49 * hs, hs, t, { key: 'level', n: G.hen.n, look: G.screen === 'play' ? look : 0, danger: G.danger, shadow: 0.26 });
@@ -1938,7 +1948,8 @@ function drawHenAt(sim, k, t) {
 
 // Ghost arrow for a hint (C4): along the ring, the way to turn it.
 function drawHintArrow(ring, h, t) {
-  const R = ringReach(ring) + 0.22, a0 = -Math.PI / 2 - (h.dir * h.amt) / 2, a1 = -Math.PI / 2 + (h.dir * h.amt) / 2;
+  const base = G.sim && G.sim.water ? Math.PI / 2 : -Math.PI / 2; // world 8: underwater the exit is at the top
+  const R = ringReach(ring) + 0.22, a0 = base - (h.dir * h.amt) / 2, a1 = base + (h.dir * h.amt) / 2;
   ctx.save();
   ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 5);
   ctx.strokeStyle = '#ffffff';
@@ -2729,7 +2740,7 @@ if (DEV) window.__egg = {
   start: (i, o) => startLevel(i, o),
   CHICK_DEMOS,
   startFrog(o = {}) { G.demo = FROG_DEMO; startLevel(-2, o); }, // v3.3 frog studio level
-  startDemo(kind, o = {}) { const D = [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS]; G.demo = D.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.3 sea, v3.4 powers
+  startDemo(kind, o = {}) { const D = [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...REEF_DEMOS]; G.demo = D.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.3 sea, v3.4 powers
   POWER_DEMOS,
   THIEF_DEMOS,
   thiefArt: { drawThief, thiefPose, thiefBlend, RIG: THIEF_RIG, drawThiefCard, drawThiefEmblem, drawBossCard }, // v3.6 thief strips

@@ -7,6 +7,7 @@ import { RING_TH, TAU } from '../sim/geom.js';
 import { ringPoint, galeNow, heatOf, bossPhases, bossProgress, BOSS_TITLE, ATTACK_NAME } from '../sim/boss.js';
 import { isSpriteCalm } from './sprites.js';
 import { drawThiefEmblem } from './thieves.js';
+import { drawKingEmblem, drawKingBar } from './kingcrab.js'; // world 8 boss
 import { drawIcicle } from './v3art.js';
 import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
@@ -566,7 +567,7 @@ function drawStar(ctx, x, y, r, col) {
 }
 
 // the bar's portrait chip: a small code-drawn emblem per boss (screen space, y down)
-const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78' };
+const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78', kingcrab: '#1f6a96' };
 function drawBossEmblem(ctx, kind, cx, cy, d, t) {
   const r = d / 2;
   ctx.save();
@@ -583,6 +584,8 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
   ctx.lineJoin = 'round';
   if (kind === 'weasel' || kind === 'ratking') {
     drawThiefEmblem(ctx, kind, r, t);
+  } else if (kind === 'kingcrab') {
+    drawKingEmblem(ctx, r, t);
   } else if (kind === 'blizzard') {
     ctx.strokeStyle = '#eaf8ff';
     ctx.lineWidth = r * 0.14;
@@ -651,6 +654,7 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   const bx = nameX + nameW + 8 * u, bw = x + w - 6 * u - bx, by = y + h * 0.22, bh = h * 0.56, gap = 4 * u;
   const F = B.den && sim.thiefBoss && sim.thiefBoss();
   if (F) { drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v3.5: hit pips
+  if (B.kind === 'kingcrab' && sim.kc) { drawKingBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // world 8: shell pips
   const sw = (bw - gap * (n - 1)) / n, prog = bossProgress(sim);
   const warn = B.atk && B.atk.ph === 'warn';
   for (let i = 0; i < n; i++) {
