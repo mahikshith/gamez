@@ -14,7 +14,7 @@ const UI = preload("res://scripts/ui_kit.gd")
 const Hint = preload("res://scripts/hint.gd")
 const MapScreen = preload("res://scripts/map.gd")
 const SAVE_PATH := "user://save.json"
-const PLAYABLE := 3 # levels the app supports so far (World 1 mechanics up to portals; the weasel comes next)
+const PLAYABLE := 5 # levels the app supports so far: all of World 1
 
 var font: Font
 var levels: Array = []
@@ -252,6 +252,7 @@ func _start_level(i: int) -> void:
 	hud.target = vault.target
 	hud.time_limit = vault.time_limit
 	vault.eggs_changed.connect(func(): hud.n_eggs = vault.n_eggs)
+	vault.thief_event.connect(_on_thief)
 	hud.restart.connect(func(): _go(func(): _start_level(idx)))
 	ui.add_child(hud)
 	if i == 0:
@@ -270,6 +271,23 @@ func _start_level(i: int) -> void:
 			vault.n_saved = vault.n_eggs
 			vault.done = true
 			_on_finished(true))
+	if ua.has("--test-curtain") or ua.has("--test-curtain-cold"):
+		# dev check: a burning egg dropped onto the first thorn curtain burns it away, a plain one breaks
+		get_tree().create_timer(0.3).timeout.connect(func():
+			for ring in vault.rings:
+				for g in ring.gaps:
+					if g.curtain != null:
+						ring.angle = PI / 2 - g.a
+						ring.target = ring.angle
+						var wa = PI / 2
+						var e = vault.eggs[0]
+						if not ua.has("--test-curtain-cold"):
+							e.fire = 6.0
+							e.fire_kind = "fire_red"
+						e.position = Vector2.from_angle(wa) * (ring.r - 0.35) * G.PPM
+						e.linear_velocity = Vector2.ZERO
+						get_tree().create_timer(2.5).timeout.connect(func(): print("CURTAIN alive=", g.curtain.alive, " egg alive=", e.alive, " ch=", e.ch))
+						return)
 	if ua.has("--autofail"):
 		get_tree().create_timer(0.5).timeout.connect(func():
 			vault.done = true
@@ -313,6 +331,10 @@ func _banner(title: String, line: String) -> void:
 	l.custom_minimum_size = Vector2(card.size.x - 52, 0)
 	l.update_minimum_size()
 	l.size = Vector2(card.size.x - 52, 80)
+	# grow the card to fit the tip (2 or 3 lines)
+	var lines = maxi(1, l.get_line_count())
+	l.size.y = lines * 30.0
+	card.size.y = 64.0 + lines * 30.0 + 14.0
 	var y0 = card.position.y
 	card.position.y = y0 - 40
 	card.modulate.a = 0.0
@@ -337,10 +359,10 @@ func _fit() -> void:
 	var h = R + gy
 	var z = minf(sz.x / (half_w * 2.0), (sz.y - top - bottom) / h)
 	# keep a strip of sky under the top bar for the tip card when the screen allows it without shrinking the vault much
-	var z_res = minf(sz.x / (half_w * 2.0), (sz.y - top - 160.0 - bottom) / h)
+	var z_res = minf(sz.x / (half_w * 2.0), (sz.y - top - 190.0 - bottom) / h)
 	if z_res >= z * 0.9:
 		z = z_res
-		top += 160.0
+		top += 190.0
 	cam.zoom = Vector2(z, z)
 	# centre the content box under the HUD
 	var content_mid = (gy - R) / 2.0
@@ -354,6 +376,18 @@ func _hen_mood(m: String, hold: float) -> void:
 		return
 	hen.set_mood(m)
 	hen_hold = hold
+
+func _on_thief(kind: String) -> void:
+	if kind in ["grab", "stash", "phase"]:
+		_hen_mood("worried", 1.4)
+		shake = maxf(shake, 4.0)
+	elif kind == "in":
+		_hen_mood("wow", 1.0)
+	elif kind in ["bonk", "hit", "trapped"]:
+		_hen_mood("cheer", 1.1)
+	elif kind == "beaten":
+		_hen_mood("cheer", 2.0)
+		_punch(0.05)
 
 func _on_saved(_e) -> void:
 	hud.saved += 1

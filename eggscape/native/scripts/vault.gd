@@ -27,6 +27,7 @@ signal finished(won: bool)
 signal grabbed
 signal eggs_changed
 signal gate_passed(egg, x)
+signal thief_event(kind: String)
 
 var level: Dictionary
 var rings = []
@@ -57,6 +58,7 @@ var orbs = []
 var portals = []
 var trains = []
 var _portal_art: Node2D
+var thieves = []
 
 func setup(lv: Dictionary) -> void:
 	level = lv
@@ -115,6 +117,19 @@ func setup(lv: Dictionary) -> void:
 		pi += 1
 	for o in lv.get("orbs", []):
 		_add_orb(str(o.get("type", "fire_red")), int(o.get("ch", 1)), -deg_to_rad(float(o.get("a", 90.0))), "start")
+	# the egg thieves: the weasel (level 4) and the weasel boss (level 5)
+	var F: Dictionary = lv.get("bossFight", {})
+	if F.get("kind", "") == "weasel" and F.has("den"):
+		var w = preload("res://scripts/weasel.gd").new()
+		w.setup(self, {"a": F.den.get("a", 90), "hp": F.den.get("hp", 3), "delay": F.get("delay", 3)}, true)
+		w.setup_boss_fight(F)
+		add_child(w)
+		thieves.append(w)
+	if lv.has("weasel"):
+		var w2 = preload("res://scripts/weasel.gd").new()
+		w2.setup(self, lv.weasel, false)
+		add_child(w2)
+		thieves.append(w2)
 	var spots = [[-0.24, -0.62], [0.24, -0.62], [0.0, -0.1], [-0.3, 0.3], [0.3, 0.3]]
 	var k = float(rings[0].r) / 1.05
 	for i in mini(n_eggs, spots.size()):
@@ -445,15 +460,20 @@ func _physics_process(dt: float) -> void:
 					_break(e, "fuse")
 			if done:
 				return
+	for w in thieves:
+		w.step(dt)
+	if done:
+		return
 	for o in orbs.duplicate():
 		if is_instance_valid(o) and not o.used:
-			_move_orb(o, dt)
+			if not o.flying:
+				_move_orb(o, dt)
 		else:
 			orbs.erase(o)
 	_portal_step(dt)
 	var inside = _nest_area.get_overlapping_bodies()
 	for e in eggs:
-		if not e.alive or e.saved:
+		if not e.alive or e.saved or e.thf != 0:
 			continue
 		# channel tracking for the crack ladder and x-gates
 		var ch = _ch_at(e.position.length() / G.PPM)
@@ -470,6 +490,56 @@ func _physics_process(dt: float) -> void:
 			e.nest_t = 0.0
 		if e.global_position.y - global_position.y > (ground_y + 2.0) * G.PPM or absf(e.position.x) > 30.0 * G.PPM:
 			_break(e, "lost")
+
+# ---------------------------------------------------------------- thief callbacks (weasel.gd)
+func thief_in(_w) -> void:
+	thief_event.emit("in")
+
+func thief_grab(e) -> void:
+	_popup("Grabbed!", e.global_position + Vector2(0, -50), Color("FF5148"))
+	thief_event.emit("grab")
+
+func thief_bonk(w) -> void:
+	_popup("Bonk!", w.global_position + Vector2(0, -60), Color.WHITE)
+	_burst(w.global_position, 10, [Color("FFE36B"), Color.WHITE], Vector2(80, 200), 300.0, Vector2(3, 6), 0.5)
+	thief_event.emit("bonk")
+
+func thief_trapped(w) -> void:
+	_popup("Trapped! Drop an egg on it", w.global_position + Vector2(0, -70), Color("FFC21A"))
+	thief_event.emit("trapped")
+
+func thief_hit(w, _why: String) -> void:
+	_popup("Bonk!" if not w.boss else ("Ouch! %d left" % w.hp if w.hp > 0 else "Beaten!"), w.global_position + Vector2(0, -70), Color.WHITE)
+	_burst(w.global_position, 16, [Color("FFE36B"), Color.WHITE], Vector2(100, 260), 300.0, Vector2(4, 8), 0.6)
+	thief_event.emit("hit" if not (w.boss and w.hp <= 0) else "beaten")
+
+func thief_stash(w) -> void:
+	_popup("Stolen!", w.global_position + Vector2(0, -60), Color("FF5148"))
+	thief_event.emit("stash")
+
+func boss_phase(w, _phase: int) -> void:
+	_popup("It's angry!", w.global_position + Vector2(0, -90), Color("FF5148"))
+	thief_event.emit("phase")
+
+func boss_throw(w, spot: Dictionary) -> void:
+	# the orb flies from its mouth to the egg it aimed at, then floats there
+	var mine = orbs.filter(func(o): return is_instance_valid(o) and not o.used and o.src == "boss")
+	if mine.size() >= 4:
+		mine[0].used = true
+		mine[0].queue_free()
+	var o = _add_orb(spot.type, mini(spot.ch, rings.size() - 1), spot.p.angle(), "boss", spot.p.length())
+	var dest = o.position
+	o.position = w.mouth() * G.PPM
+	o.monitoring = false
+	o.flying = true
+	var tw = create_tween()
+	tw.tween_method(func(u):
+		o.position = (w.mouth() * G.PPM).lerp(dest, u) + Vector2(0, -sin(u * PI) * 120.0), 0.0, 1.0, 0.6)
+	tw.tween_callback(func():
+		if is_instance_valid(o):
+			o.monitoring = true
+			o.flying = false)
+	Sfx.play("whoosh", -2.0, 1.4)
 
 func _process(_dt: float) -> void:
 	if not portals.is_empty():
@@ -630,9 +700,14 @@ func _on_hit(e, kind: String, v: float, node: Node) -> void:
 			if e.fire > 0.0:
 				_burn_thorn(th)
 				return
+			if e.safe_t > 0.0:
+				return
 			if th.kind == "blunt":
-				if e.crack_cd <= 0.0:
+				# blunt spikes crack (never the breaking crack) and shove the egg off
+				if e.cracks < 2 and e.crack_cd <= 0.0:
 					_crack(e)
+				var tip = th.cp.get_parent().to_global(Vector2.from_angle(th.a) * th.tip * G.PPM)
+				e.apply_central_impulse((e.global_position - tip).normalized() * 1.6 * G.PPM)
 				return
 			_break(e, "thorn")
 			return

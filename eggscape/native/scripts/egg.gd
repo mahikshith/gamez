@@ -18,6 +18,7 @@ var drop = 0
 var mult = 1
 var gates = {}
 var portal_cd = 0.0
+var thf = 0 # 1 = in a weasel's jaws, 2 = stashed in its den
 var alive = true
 var saved = false
 var nest_t = 0.0

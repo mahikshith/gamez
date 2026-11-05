@@ -32,7 +32,7 @@ func _init() -> void:
 func open() -> void:
 	var sz = get_viewport_rect().size
 	current = clampi(int(save.get("level", 1)), 1, playable) - 1
-	var top = UI.safe_top() + 230.0
+	var top = UI.safe_top() + 350.0
 	var bottom = sz.y - UI.safe_bottom() - 210.0
 	var step = (bottom - top) / float(WORLD - 1)
 	nodes.clear()
@@ -44,7 +44,7 @@ func open() -> void:
 	var ctrl = [Vector2(sz.x / 2, sz.y + 40)]
 	for n in nodes:
 		ctrl.append(n.c)
-	ctrl.append(Vector2(sz.x / 2, top - 120))
+	ctrl.append(Vector2(sz.x / 2, top - 200))
 	_road = PackedVector2Array()
 	for k in ctrl.size() - 1:
 		var p0 = ctrl[maxi(0, k - 1)]

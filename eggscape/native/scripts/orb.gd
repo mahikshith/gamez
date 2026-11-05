@@ -15,6 +15,7 @@ var rad = 1.0
 var ph = 0.0
 var sway = 1.0
 var src = "start"
+var flying = false
 
 func _ready() -> void:
 	collision_layer = 0
