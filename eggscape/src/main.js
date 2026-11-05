@@ -10,6 +10,7 @@ import { portal } from './sdk/portal.js';
 import { FX } from './render/fx.js';
 import * as W from './render/world.js';
 import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge } from './ui/ui.js';
+import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
 import { drawSnake } from './render/characters.js';
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
 import { drawSprite, drawBossCard, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
@@ -408,7 +409,7 @@ function pointerDown(e) {
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
-  if (G.screen === 'title') return press('play');
+  if (G.screen === 'title') { if (titleTap(x, y)) audio.play('hen_hop', { vol: 0.6 }); return; } // tap an egg friend: it jumps and flips (only the buttons start a level)
   if (G.screen === 'win' || G.screen === 'fail') return skipCheer(); // a tap off the buttons skips the hen's routine to its end
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   if (e.pointerType === 'touch') {
@@ -1754,6 +1755,7 @@ function render() {
   const fx = G.fx;
   G.backdrop.draw(ctx, t, G.cam);
   G.weather.drawBack(ctx);
+  if (G.screen === 'title') { drawTitle(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene, no vault behind it
   // ground band
   const gy = toScreen(0, sim.groundY).y;
   if (gy < H_ && !sim.water) G.backdrop.drawGround(ctx, 0, gy, W_, H_ - gy, t); // underwater: no ground (the surface is drawn in the world)
@@ -2532,37 +2534,42 @@ function drawFail() {
 }
 
 function drawTitle() {
-  dim(0.25);
   const u = ui.u;
   const cx = W_ / 2;
+  const bw = Math.min(300 * u, W_ - 48 * u);
+  const wide = W_ > H_ * 1.15;
+  // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
+  const by = H_ - 190 * u;
+  const ground = by - 16 * u;
+  G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t);
   const logoS = Math.min(64 * u, W_ / 7.5, H_ / 6);
-  const ty = Math.max(16 * u + logoS / 2, Math.min(H_ * 0.2, 70 * u));
-  ui.text('EGGSCAPE', cx, ty, { size: logoS, align: 'center', color: '#fff3d6', stroke: '#5a2e0e', strokeW: logoS * 0.2, tag: 'title:logo', maxW: W_ - 24 * u });
+  const ty = Math.max(16 * u + logoS / 2, Math.min(H_ * 0.12, 70 * u));
+  const logo = drawLogo(ctx, 'EGGSCAPE', cx, ty, logoS, G.t, G.screenT, FONT);
+  ui.record(logo, 'title:logo');
   const subY = ty + logoS * 0.5 + 16 * u;
   ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', cx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(0,0,0,0.6)', tag: 'title:sub', maxW: W_ - 32 * u });
-  const bw = Math.min(300 * u, W_ - 48 * u);
-  // Play, then Levels | Shop, then the difficulty row
-  const by = Math.min(H_ - 186 * u, subY + 190 * u);
+  // the toy vault: centred between the subtitle and the meadow, or to the left of the buttons on a wide screen
+  const eggH = Math.min(46 * u, (ground - subY) * 0.22);
+  let vx = cx, vy, R;
+  if (wide) {
+    const side = (W_ - bw) / 2;
+    vx = side / 2;
+    R = Math.min(side * 0.4, ground * 0.4);
+    vy = ground * 0.52;
+  } else {
+    const top = subY + 22 * u, bot = ground - eggH * 2.4;
+    R = Math.min((bot - top) / 2, W_ * 0.4);
+    vy = (top + bot) / 2;
+  }
+  if (R < 40 * u) R = 0;
+  else ui.record({ x: vx - R, y: vy - R, w: 2 * R, h: 2 * R }, 'title:vault');
+  drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm);
   ui.button('play', save.unlocked > 1 ? `PLAY  Level ${save.unlocked}` : 'PLAY', cx - bw / 2, by, bw, 64 * u, { color: '#46b83d', dark: '#2a7a24', icon: ICON.play, size: 24 * u });
   const tw = (bw - 20 * u) / 3;
   ui.button('levels', 'Levels', cx - bw / 2, by + 76 * u, tw, 50 * u, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.grid, size: 17 * u });
   ui.button('daily', 'Daily', cx - bw / 2 + tw + 10 * u, by + 76 * u, tw, 50 * u, { color: save.daily.paid === today() ? '#6a5a4a' : '#9b59d0', dark: save.daily.paid === today() ? '#3a2e22' : '#5e2f87', icon: ICON.play, size: 17 * u });
   ui.button('shop', String(save.wallet.coins), cx - bw / 2 + 2 * (tw + 10 * u), by + 76 * u, tw, 50 * u, { color: '#d49a1c', dark: '#8a5f0a', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.5, G.t), size: 17 * u });
   modeRow(cx - bw / 2, by + 136 * u, bw, 40 * u, u);
-  // the hen takes whatever room is left: between subtitle and buttons, or beside the buttons; she leans toward the pointer
-  const hen = (x, y, s) => {
-    drawHenActor(ctx, 'idle', x, y, s, G.t, { key: 'title', enter: G.screenT, lean: (G.pointer.x - x) / 200 });
-    ui.record({ x: x - s / 2, y: y - 0.5 * s, w: s, h: s }, 'title:hen');
-  };
-  const room = by - (subY + 12 * u) - 10 * u;
-  if (room >= 60 * u) {
-    const fs = Math.min(100 * u, room / 1.1);
-    hen(cx, subY + 12 * u + room / 2, fs);
-  } else {
-    const side = (W_ - bw) / 2 - 20 * u;
-    const fs = Math.min(90 * u, side * 0.8, 126 * u / 1.2);
-    if (fs >= 40 * u) hen(cx - bw / 2 - 12 * u - fs / 2, by + 63 * u, fs);
-  }
 }
 
 function drawLevels() {
