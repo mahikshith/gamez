@@ -30,6 +30,7 @@ import { drawHen } from './characters.js';
 import { drawThiefCard } from './thieves.js';
 import { drawKingCard } from './kingcrab.js';
 import { drawOwlCard } from './owl.js'; // v4 the Clockwork Owl card
+import { drawGatorCard } from './bayou.js'; // v3.7 Grandpa Gator's card
 import { drawHenAnim } from './hen.js';
 
 // M7: the animated, code-drawn hen everywhere. false = the old path (reference sprites with squash-and-stretch life).
@@ -178,6 +179,7 @@ export function drawBossCard(ctx, bossId, x, y, w, h, t = 0, age = null) {
     if (id === 'boss_weasel' || id === 'boss_ratking') return drawThiefCard(ctx, id.slice(5), x, y, w, h, t, age); // code-drawn: the same thief as in the level
     if (id === 'boss_kingcrab') return drawKingCard(ctx, x, y, w, h, t, age); // world 8: code-drawn, the same crab as in the level
     if (id === 'boss_owl') return drawOwlCard(ctx, x, y, w, h, t, age); // v4: code-drawn, the same owl as in the level
+    if (id === 'boss_gator') return drawGatorCard(ctx, x, y, w, h, t, age); // v3.7 code-drawn Grandpa Gator
     const im = get(id);
     if (!im || !(w > 0) || !(h > 0)) return false;
     const pad = Math.max(2, h * 0.025);

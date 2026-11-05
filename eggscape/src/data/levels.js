@@ -415,6 +415,60 @@ export const LEVELS = [
     ],
   },
   {
+    id: 41, theme: "bayou", name: "Gator Crossing", eggs: 3, target: 2, time: 110, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 14}, gator: {ch: 4, a: -60, delay: 6}, tip: "Turn the gap away from his jaws and he bites nothing. Pepper makes him sneeze and swim off.", orbs: [{type: "pepper", ch: 2, a: -6},{type: "fire_red", ch: 3, a: 60}], seed: 324683, world: 9, intro: {title: "Gator Bayou", line: "An alligator lies in the outer channel like a log. Asleep, his back is a bridge. Awake, he snaps at eggs that drop near his jaws."},
+    rings: [
+      {gaps: [{a: -28}], thorns: [{a: 93, n: 1}]},
+      {gear: 2, gaps: [{a: 77}], thorns: [{a: 21, n: 2},{a: -3, n: 2, side: "out", h: 0.26}], pads: [{a: 163, len: 1.44}]},
+      {gaps: [{a: -134},{a: 20}], thorns: [{a: -29, n: 3},{a: 65, n: 2}], pads: [{a: -169, len: 1.82}]},
+      {gaps: [{a: -23, x: 2},{a: 167}], thorns: [{a: 104, n: 2},{a: -162, n: 2, kind: "blunt"}], pads: [{a: 48, len: 1.17}]},
+      {gaps: [{a: -150},{a: 70}], thorns: [{a: 40, n: 2},{a: 121, n: 1}], pads: [{a: 177, len: 1.53}]},
+    ],
+  },
+  {
+    id: 42, theme: "bayou", name: "Mosquito Marsh", eggs: 3, target: 2, time: 145, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "time", s: 80}, gator: {ch: 5, a: -120, delay: 9}, turtle: {ch: 3, a: -120, delay: 8}, mosquito: {ch: 2, a: -40, delay: 5}, tip: "Mosquitoes lift eggs back up. Fire scatters them and burns the vines.", orbs: [{type: "pepper", ch: 1, a: 94},{type: "fire_red", ch: 2, a: -60},{type: "decoy", ch: 3, a: 0},{type: "fire_red", ch: 4, a: 35}], seed: 332601, world: 9, intro: {title: "Mosquitoes and decoys", line: "A swarm grabs an egg and lifts it back up, even off thorns. Fire or pepper scatters it. The wooden decoy egg draws every bite first."},
+    rings: [
+      {gaps: [{a: -167}], thorns: [{a: 24, n: 2}]},
+      {gear: 2, gaps: [{a: -30}], thorns: [{a: 36, n: 3},{a: 171, n: 2, side: "out", h: 0.26}], pads: [{a: -124, len: 1.4}]},
+      {gaps: [{a: 133, vine: 1},{a: 47}], thorns: [{a: 91, n: 2},{a: -15, n: 2, side: "out", h: 0.26}], pads: [{a: 172, len: 1.32}]},
+      {retract: {phase: 0.42, period: 3, on: 0.55}, gaps: [{a: -20},{a: 171}], thorns: [{a: 23, n: 2},{a: 100, n: 3}], pads: [{a: -156, len: 1.52}]},
+      {gaps: [{a: 107, x: 2, vine: 1},{a: 12}], thorns: [{a: 55, n: 3},{a: -46, n: 2, side: "out", h: 0.26}], pads: [{a: 83, len: 1.4}]},
+      {gaps: [{a: 46},{a: 163}], thorns: [{a: 75, n: 2},{a: 6, n: 2}], pads: [{a: 99, len: 1.76}]},
+    ],
+  },
+  {
+    id: 43, theme: "bayou", name: "Snapper Slough", eggs: 3, target: 2, time: 120, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "prize"}, gator: {ch: 5, a: -50, delay: 9}, turtle: {ch: 3, a: -110, delay: 4}, mosquito: {ch: 1, a: 30, delay: 12}, tip: "A clamped egg is safe but stuck. Drop another egg on the shell to free it.", orbs: [{type: "laser", ch: 1, a: 35},{type: "rockskin", ch: 2, a: -49},{type: "decoy", ch: 3, a: 29},{type: "pepper", ch: 4, a: -133}], seed: 340519, world: 9, intro: {title: "Snapping turtle", line: "The turtle clamps an egg: safe from everything, but stuck. Drop an egg or a stone egg on its shell and it flips over. The laser beak cuts vines and thorns."},
+    rings: [
+      {gaps: [{a: -159}], thorns: [{a: 35, n: 1}]},
+      {oneway: 1, gaps: [{a: 104, x: 2}], thorns: [{a: -158, n: 2, side: "out", h: 0.26},{a: 63, n: 2, side: "out", h: 0.26}], pads: [{a: 52, len: 1.61}]},
+      {gaps: [{a: -169, vine: 1},{a: -20}], thorns: [{a: 96, n: 3},{a: 43, n: 2, side: "out", h: 0.26}], pads: [{a: -111, len: 1.05}]},
+      {gaps: [{a: 80},{a: 160}], thorns: [{a: 118, n: 2},{a: -7, n: 3}], pads: [{a: -123, len: 1.55}], honey: [{a: -173, len: 0.93}]},
+      {gaps: [{a: 115, vine: 1},{a: -170}], thorns: [{a: 58, n: 3},{a: -35, n: 2, side: "out", h: 0.26, kind: "blunt"}], pads: [{a: -126, len: 1.17}]},
+      {gaps: [{a: -27},{a: 80}], thorns: [{a: 22, n: 2},{a: 113, n: 2}], pads: [{a: 137, len: 1.35}]},
+    ],
+  },
+  {
+    id: 44, theme: "bayou", name: "Decoy Delta", eggs: 3, target: 2, time: 160, spacing: 1, material: "wood", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.5}, bonus: {kind: "turns", n: 15}, eggKinds: ["duck"], gator: {ch: 4, a: -70, delay: 7}, turtle: {ch: 3, a: -60, delay: 6}, mosquito: {ch: 2, a: 140, delay: 9}, tip: "The gator bites the decoy first. Send real eggs past while he chews wood.", orbs: [{type: "decoy", ch: 1, a: -124},{type: "fire_red", ch: 2, a: -93},{type: "laser", ch: 3, a: -105},{type: "pepper", ch: 4, a: -7}], seed: 348440, world: 9, intro: {title: "Swamp current", line: "The current pushes every egg along, and the duck egg floats on it. Throw the decoy to pull the gator, the turtle and the swarm off your real eggs."},
+    rings: [
+      {gaps: [{a: 2}], thorns: [{a: -168, n: 1}]},
+      {gaps: [{a: -173}], thorns: [{a: 97, n: 3},{a: 12, n: 2, side: "out", h: 0.26}], pads: [{a: 143, len: 1.37}]},
+      {gear: 3, gaps: [{a: 138, vine: 1},{a: -46}], thorns: [{a: 102, n: 2},{a: -154, n: 2, side: "out", h: 0.26}], pads: [{a: -173, len: 1.07}]},
+      {gaps: [{a: -164, x: 2},{a: 100}], thorns: [{a: 53, n: 3},{a: 149, n: 3}], pads: [{a: -119, len: 1.17}]},
+      {gaps: [{a: 67},{a: -18}], thorns: [{a: 18, n: 3},{a: 128, n: 3, kind: "blunt"}], pads: [{a: -67, len: 1.51}]},
+      {gaps: [{a: 22},{a: -165}], thorns: [{a: -9, n: 2}], pads: [{a: -57, len: 1.12}]},
+    ],
+  },
+  {
+    id: 45, theme: "bayou", name: "Grandpa Gator", eggs: 3, target: 2, time: 160, spacing: 1.15, material: "wood", boss: "gator", bossFight: {kind: "gator", hp: 3, a: -70, delay: 5, phases: [{attacks: ["sweep"], every: 6},{at: {saved: 1, t: 16}, attacks: ["roll","sweep"], every: 5},{at: {saved: 2, t: 32}, attacks: ["roll","sweep","roll"], every: 4.5, summon: true}]}, nest: {w: 2.8}, bonus: {kind: "prize"}, gator: [{ch: 3, a: -60, call: 1},{ch: 4, a: -120, call: 1, face: -1}], turtle: {ch: 4, a: -40, delay: 10}, mosquito: {ch: 2, a: 60, delay: 14}, tip: "When he lies dizzy, drop an egg on him. Later his grandkids swim in.", orbs: [{type: "pepper", ch: 1, a: 98},{type: "laser", ch: 2, a: -38},{type: "decoy", ch: 3, a: -143},{type: "fire_red", ch: 4, a: -55}], seed: 356359, world: 9, intro: {title: "Boss: Grandpa Gator", line: "His tail sweep shakes every ring and his death roll spins one. After each attack he lies dizzy: drop an egg on him or pepper him to knock out a tooth."},
+    rings: [
+      {gaps: [{a: -1}], thorns: [{a: 172, n: 2}]},
+      {gaps: [{a: -140, x: 2}], thorns: [{a: 140, n: 2},{a: -6, n: 2, side: "out", h: 0.26}], pads: [{a: -47, len: 1.08}]},
+      {gear: 3, gaps: [{a: 59, vine: 1},{a: -19}], thorns: [{a: 14, n: 2},{a: -78, n: 2, side: "out", h: 0.26}], pads: [{a: -173, len: 1.55}]},
+      {gaps: [{a: 166},{a: 18}], thorns: [{a: 65, n: 3},{a: -24, n: 3, kind: "blunt"}], pads: [{a: 142, len: 1.45}]},
+      {gaps: [{a: 50, x: 3, len: 0.7, vine: 1},{a: -160}], thorns: [{a: -21, n: 2},{a: 21, n: 2, side: "out", h: 0.26}], pads: [{a: 154, len: 1.27}]},
+      {gaps: [{a: 82},{a: -6}], thorns: [{a: 49, n: 2},{a: 165, n: 1}], pads: [{a: -167, len: 1.2}]},
+    ],
+  },
+  {
     id: 46, theme: "lab", name: "Square One", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 9}, shape: "square", spider: {ring: 2, delay: 4}, tip: "A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.", orbs: [{type: "iron", ch: 1, a: 50},{type: "fire_red", ch: 3, a: 140}], seed: 364277, world: 10, intro: {title: "Shape Lab", cw: "spider", line: "Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider webs a gap shut; the web catches eggs softly. Iron or fire tears it."},
     rings: [
       {gaps: [{a: 171}], thorns: [{a: 89, n: 2}]},

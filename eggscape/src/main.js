@@ -30,6 +30,7 @@ import { drawP2Back, drawP2Front, p2Event } from './render/powers2.js'; // v3.4 
 import { warpXfBegin, warpXfEnd } from './render/warp.js'; // v3.4 warp gate: a creature drawn going through it
 import { POWER_DEMOS } from './data/power-demos.js'; // v3.4 studio vaults
 import { CHICK_DEMOS } from './data/chick-demos.js';
+import { BAYOU_DEMOS } from './data/bayou-demos.js'; // v3.7 Gator Bayou studio vaults
 import { FROG_DEMO } from './data/frog-demo.js'; // v3.3 frog studio level (dev)
 import { SEA_DEMOS } from './data/sea-demos.js'; // v3.3 studio levels (dev)
 import { REEF_DEMOS } from './data/reef-demos.js'; // world 8 studio levels (dev)
@@ -43,6 +44,7 @@ import { drawClockwork, drawClockworkTele, cwEvent, drawCwIntro } from './render
 import { owlEvent } from './render/owl.js'; // v4 the Clockwork Owl
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
 import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render/frog.js'; // v3.3 frog
+import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem } from './render/bayou.js'; // v3.7 Gator Bayou
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
 
@@ -75,12 +77,13 @@ function loadSave(s) {
 // visual-only weather per theme; levels with a physics `weather` field use that instead
 const THEME_WEATHER = { farm: 'leaves', orchard: 'leaves', bramble: 'leaves', mushroom: 'fireflies', frozen: 'snow', blizzard: 'snow', dunes: 'sandstorm', haunted: 'ghosts', dragon: 'ash' };
 // seven environments of five (v3)
-const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volcano', 'Storm Peaks', 'The Thieves\u2019 Vault', 'Coral Reef', 'Frog Bayou', 'Shape Lab'];
+const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volcano', 'Storm Peaks', 'The Thieves\u2019 Vault', 'Coral Reef', 'Gator Bayou', 'Shape Lab'];
 // test build lab pages (v3.6): every studio vault, reachable without the dev console
 const LAB = [
   { name: 'Chicks', items: CHICK_DEMOS.map((d) => [d.kind, d.kind[0].toUpperCase() + d.kind.slice(1)]) },
   { name: 'Creatures', items: [['frog', 'Frog'], ['octopus', 'Octo'], ['octoden', 'Puddle'], ['fish', 'Fish'], ['reef', 'Reef']] },
   { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King']] },
+  { name: 'Bayou', items: [['gator', 'Gator'], ['turtle', 'Turtle'], ['mosquito', 'Bugs'], ['grandpa', 'Grandpa']] },
   { name: 'Allies', items: [['rooster', 'Rooster'], ['goose', 'Goose']] },
   { name: 'Coral Reef', items: [['hermit', 'Hermit'], ['puffer', 'Puffer'], ['jelly', 'Jelly'], ['kingcrab', 'King']] },
   { name: 'Powers', items: [['frostnova', 'Frost'], ['shock', 'Shock'], ['thunderclap', 'Clap'], ['laser', 'Laser'], ['spin', 'Spin']] },
@@ -742,7 +745,7 @@ async function press(id) {
         if (playable(i)) await breakThen(() => startLevel(i));
       } else if (id && id.startsWith('demo:') && (DEV || TEST)) {
         // test build: the chick lab (v3.2), one practice vault per chick kind
-        const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS, ...REEF_DEMOS, ...LAB_DEMOS].find((x) => x.kind === k);
+        const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS, ...REEF_DEMOS, ...BAYOU_DEMOS, ...LAB_DEMOS].find((x) => x.kind === k);
         if (d) { G.demo = d; await breakThen(() => startLevel(-2)); }
       } else if (id && id.startsWith('lab:')) {
         G.labPage = (G.labPage || 0) + +id.slice(4);
@@ -1146,6 +1149,7 @@ function handleEvents() {
         frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, 3.2); } } }); // v3.3 frog
         seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.3
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
+        bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.7 Gator Bayou
         thiefEvent(ev, fx, { popup: denPopup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.6 the weasel and the rats
         reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // world 8 reef
         { const U = { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }; cwEvent(ev, fx, U); owlEvent(ev, fx, U); } // v4 the clockwork cast, the owl
@@ -1484,7 +1488,7 @@ function bossEvent(ev, fx) {
       break;
     case 'bossSummon':
       audio.play('lava_sizzle', { vol: 0.6, pitch: 1.6 });
-      toast(ev.who === 'rats' ? 'His rats scurry in!' : 'A snake slithers in!', 2.2);
+      toast(ev.who === 'rats' ? 'His rats scurry in!' : ev.who === 'gators' ? 'Baby gators swim in!' : 'A snake slithers in!', 2.2);
       break;
     case 'heatWarn':
       audio.play('lava_sizzle', { vol: 0.5 });
@@ -1834,12 +1838,14 @@ function render() {
   drawReefUnder(ctx, sim, t, k, G.theme); // world 8: bubbles, hermit crabs, puffers, jellyfish, the King Crab
   drawThieves(ctx, sim, t, k); // v3.6: the weasel and the rats on the ring floor
   drawClockworkTele(ctx, sim, t, k); drawClockwork(ctx, sim, t, k); // v4: webs, spring jacks, wind-up beetles, spiders
+  drawBayou(ctx, sim, t, k); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
   for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
   drawChickFX(ctx, sim, t, k);
   { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); } // v3.3: the arms wrapped over a held egg
   drawReefOver(ctx, sim, t, k); // world 8: claws over a held egg, the silt cloud
   if (sim.water) drawBoat(ctx, sim, t, k); // world 8: the boat on the surface, over the hen's legs
   drawThievesOver(ctx, sim, t, k); // v3.6: the weasel's jaws over a held egg, the trap ring
+  drawBayouOver(ctx, sim, t, k); // v3.7: a turtle's beak round its egg, mosquito swarms
   W.drawSnakes(ctx, sim, t, k); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
   drawBossOver(ctx, sim, k, t); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
@@ -2155,7 +2161,8 @@ function drawPopups() {
     const minY = Math.max(G.hudBottom, G.toast ? G.toastBottom || 0 : 0) + 8 * ui.u + h / 2;
     let y = Math.max(p.y, minY);
     const w = Math.min(W_ - 16, Math.max(ui.measure(p.text, size), p.sub ? ui.measure(p.sub, subS) : 0)); // the sub line can be the wider one
-    const x = clamp(p.x, w / 2 + 8, W_ - w / 2 - 8);
+    const edge = 12 * ui.u + size * 0.15; // v3.7: the outline stroke and the pop-in grow past the measured width; keep it all on screen
+    const x = w + 2 * edge >= W_ ? W_ / 2 : clamp(p.x, w / 2 + edge, W_ - w / 2 - edge);
     // v3.1: never overlap an older popup: step above it, or below the whole stack when there is no room above.
     // The new spot sticks (p.y), so labels don't jump back and forth from frame to frame.
     const hit = (yy) => placed.find((q) => Math.abs(q.x - x) < (q.w + w) / 2 + 6 && Math.abs(q.y - yy) < (q.h + h) / 2 + 4);
@@ -2754,9 +2761,10 @@ if (DEV) window.__egg = {
   start: (i, o) => startLevel(i, o),
   CHICK_DEMOS,
   startFrog(o = {}) { G.demo = FROG_DEMO; startLevel(-2, o); }, // v3.3 frog studio level
-  startDemo(kind, o = {}) { const D = [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...REEF_DEMOS, ...LAB_DEMOS]; G.demo = D.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.3 sea, v3.4 powers
+  startDemo(kind, o = {}) { const D = [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...REEF_DEMOS, ...BAYOU_DEMOS, ...LAB_DEMOS]; G.demo = D.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.3 sea, v3.4 powers
   POWER_DEMOS,
   THIEF_DEMOS,
+  bayouArt: { drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem }, // v3.7 Gator Bayou strips
   thiefArt: { drawThief, thiefPose, thiefBlend, RIG: THIEF_RIG, drawThiefCard, drawThiefEmblem, drawBossCard }, // v3.6 thief strips
   press,
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },

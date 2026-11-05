@@ -26,12 +26,12 @@ export const BOSS_MODE = {
   medium: { every: 1, warn: 1, power: 1, hold: 1, heat: 1, n: 3 },
   hard: { every: 0.85, warn: 0.85, power: 1.12, hold: 1.1, heat: 0.85, n: 3 },
 };
-const WARN = { snap: 1.1, snap2: 1.2, silt: 0.8, gale: 1.1, freeze: 1.0, icicles: 1.0, stomp: 1.0, punch: 1.1, rock: 0.45, rock2: 0.45, throw: 0.9, throw2: 0.9, fog: 1.0, bolt: 1.0, bolt2: 1.0, gust: 1.0, swoop: 1.25, wind: 1.2, gears: 0.9, gears2: 0.9 }; // v4: the Clockwork Owl (sim/owl.js)
+const WARN = { snap: 1.1, snap2: 1.2, silt: 0.8, gale: 1.1, freeze: 1.0, icicles: 1.0, stomp: 1.0, punch: 1.1, rock: 0.45, rock2: 0.45, throw: 0.9, throw2: 0.9, fog: 1.0, bolt: 1.0, bolt2: 1.0, gust: 1.0, swoop: 1.25, wind: 1.2, gears: 0.9, gears2: 0.9, sweep: 1.1, roll: 1.2 }; // v4: the Clockwork Owl (sim/owl.js)
 const GALE_T = 2.6, FREEZE_T = 4, FROST_ORB_T = 3, CHUNK_FREEZE_T = 3, FOG_T = 3.5, WALL_T = 8, ICE_WALL_T = 6, PATCH_T = 6;
 const ICE_HANG = 1.1; // s an icicle shakes before it drops (level icicles; a volley uses WARN.icicles)
 const THROW_FLY = 0.6, PUNCH_W = 2.4, HEAT_T = 9;
-export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'The Blizzard', golem: 'Crystal Golem', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl' };
-export const ATTACK_NAME = { gale: 'Gale', freeze: 'Freeze breath', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning', snap: 'Claw snap', snap2: 'Twin claws', silt: 'Silt cloud', swoop: 'Swoop', wind: 'Wind-up', gears: 'Gear bomb', gears2: 'Gear bombs' };
+export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'The Blizzard', golem: 'Crystal Golem', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl', gator: 'Grandpa Gator' };
+export const ATTACK_NAME = { gale: 'Gale', freeze: 'Freeze breath', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning', snap: 'Claw snap', snap2: 'Twin claws', silt: 'Silt cloud', swoop: 'Swoop', wind: 'Wind-up', gears: 'Gear bomb', gears2: 'Gear bombs', sweep: 'Tail sweep', roll: 'Death roll' };
 const RING_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING
 
 const M_ = (sim) => BOSS_MODE[sim.mode] || BOSS_MODE.medium;
@@ -128,6 +128,7 @@ export function animalsHit(sim, kind, o = {}) {
   if (E && sim.hitEagle && (r === Infinity || Math.hypot((E.x ?? 0) - x, (E.y ?? 0) - y) < (kind === 'bolt' ? 3 : r + 0.6))) { n++; sim.hitEagle(kind, { x, y, dir: o.dir || 0, power: o.power ?? 1 }); }
   if (sim.seaHit) n += sim.seaHit(kind, o); // v3.3: the octopus lets go, fish scatter (sim/sea.js)
   if (sim.thieves && sim.thieves.length) n += sim.thiefHit(kind, o); // v3.6: the weasel and the rats
+  if (sim.bayouHit) n += sim.bayouHit(kind, o); // v3.7: a quake flips snapping turtles, lightning scatters mosquitoes
   if (kind === 'quake' || kind === 'bolt') {
     const B = sim.bx && sim.bx.boss;
     if (B && B.den && B.atk && B.atk.ph === 'warn') { B.atk = null; B.t = 1.5; B.flinch = 0.8; sim.emit('bossFlinch', { x: B.x, y: B.y }); }
@@ -292,6 +293,7 @@ function bossPhaseOn(sim, B, first) {
   B.phaseSaved = sim.savedLog.length;
   B.k = 0;
   if (P.summon) for (const S of sim.snakes) if (!S.gone && S.wait > 1.5) { S.wait = 1.5; sim.emit('bossSummon', { x: B.x, y: B.y }); }
+  if (P.summon) sim.bayouSummon?.(); // v3.7: Grandpa Gator's babies
   if (P.summon) for (const T of sim.thieves || []) if (T.ph === 'wait' && T.t > 1.5) { T.t = 1.5 + 1.2 * T.slot; sim.emit('bossSummon', { x: B.x, y: B.y, who: 'rats' }); } // v3.6: the Rat King's rats
   if (!first) B.dizzy = 1.8; // the old phase ends: the boss reels (drawn dizzy), then comes back angrier
   if (!first) sim.emit('bossPhase', { kind: B.kind, phase: B.phase, n: bossPhases(sim).length, attacks: P.attacks || [], x: B.x, y: B.y });
@@ -328,6 +330,7 @@ function bossStep(sim, B, dt) {
   B.x += (gx - B.x) * s;
   B.y += (gy - B.y) * Math.min(1, dt * (A && A.name === 'stomp' && A.ph === 'act' ? 30 : 4));
   if (B.kind === 'salamander') sim.salBossPose?.(B); // the creature is the boss: its lava rocks come from its mouth
+  else if (B.kind === 'gator') sim.gatorBossPose?.(B); // v3.7: Grandpa Gator lies in the outer channel
   else if (B.den) sim.thiefBossPose(B); // v3.6: the thief boss throws from its mouth
   // quake after a stomp
   if (B.quake > 0) {
@@ -345,7 +348,7 @@ function bossStep(sim, B, dt) {
   if (!A) {
     if ((B.t -= dt) > 0 || !ph.attacks || !ph.attacks.length) return;
     const name = ph.attacks[B.k++ % ph.attacks.length];
-    const a = B.den && !sim.thiefCanThrow() ? null : startAttack(sim, B, name, M); // v3.6: a busy or trapped thief boss can't attack
+    const a = (B.den && !sim.thiefCanThrow()) || (B.kind === 'gator' && !sim.gatorCanAttack()) ? null : startAttack(sim, B, name, M); // v3.6: a busy or trapped thief boss can't attack
     if (!a) { B.t = 1; return; }
     a.name = name;
     a.ph = 'warn';
@@ -437,6 +440,7 @@ function startAttack(sim, B, name, M) {
       if (!e) return null;
       return { ring: floorOf(e).i };
     }
+    case 'sweep': case 'roll': return sim.gatorAttack ? sim.gatorAttack(B, name, M) : null; // v3.7 Grandpa Gator (sim/bayou.js)
     case 'bolt': case 'bolt2': {
       // the section of ring right under the leading egg(s) crackles, then lightning strikes it
       const spots = [];
@@ -536,6 +540,7 @@ function actAttack(sim, B, A, M) {
     case 'bolt': case 'bolt2':
       for (const q of A.spots) { const keep = sim.wx.bolt; sim.strike(q); sim.wx.bolt = keep; }
       break;
+    case 'sweep': case 'roll': sim.gatorAct?.(B, A, M); break; // v3.7
     case 'fog':
       B.fog = { ri: A.ring, t: FOG_T * M.hold, dur: FOG_T * M.hold };
       sim.emit('bossFog', { ring: A.ring });

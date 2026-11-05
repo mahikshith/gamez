@@ -1286,6 +1286,70 @@ function banner(c, S, x, y, w, h, u) {
   (S.banners || (S.banners = [])).push([x, y + h * 0.43, Math.min(w * 0.8, h * 0.62)]);
 }
 
+// 21 ----------------------------------------------- Gator Bayou (dusk swamp: cypress, Spanish moss, lily pads, murky water)
+function cypress(c, x, base, h, w, col, moss, R, u) {
+  poly(c, [x - w * 0.9, base, x - w * 0.3, base - h * 0.22, x - w * 0.2, base - h * 0.85, x + w * 0.2, base - h * 0.85, x + w * 0.3, base - h * 0.22, x + w * 0.9, base], col);
+  for (let k = 0; k < 3; k++) { const kx = x + R.r(-2.4, 2.4) * w, kh = R.r(0.5, 1) * w; poly(c, [kx - kh * 0.3, base, kx, base - kh, kx + kh * 0.3, base], col); }
+  const top = base - h, cl = [];
+  for (let i = 0; i < 6; i++) cl.push([x + R.r(-1.6, 1.6) * w, top + R.r(-0.25, 0.35) * w, R.r(1.1, 1.9) * w, R.r(0.35, 0.6) * w]);
+  for (const [cx, cy, rx, ry] of cl) ell(c, cx, cy, rx, ry, col);
+  c.strokeStyle = moss; c.lineCap = 'round'; c.lineWidth = Math.max(0.6, 0.35 * u);
+  for (let i = 0; i < 5; i++) { const [cx, cy, rx] = R.pick(cl), sx = cx + R.r(-0.8, 0.8) * rx, L = R.r(0.2, 0.45) * h * 0.45, sw = R.r(-0.6, 0.6) * u; c.beginPath(); c.moveTo(sx, cy); c.quadraticCurveTo(sx + sw, cy + L * 0.6, sx + sw * 0.4, cy + L); c.stroke(); }
+}
+function lily(c, x, y, r, pad, padLo, flower) {
+  c.beginPath(); c.ellipse(x, y, r, r * 0.34, 0, 0.35, TAU - 0.05); c.lineTo(x, y); c.closePath(); c.fillStyle = pad; c.fill();
+  c.beginPath(); c.ellipse(x, y + r * 0.08, r * 0.8, r * 0.18, 0, 0, Math.PI); c.fillStyle = padLo; c.fill();
+  c.lineWidth = Math.max(0.6, r * 0.08); c.strokeStyle = '#12241a'; c.beginPath(); c.ellipse(x, y, r, r * 0.34, 0, 0.35, TAU - 0.05); c.lineTo(x, y); c.closePath(); c.stroke();
+  if (flower) { for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.5; ell(c, x - r * 0.3 + Math.cos(a) * r * 0.16, y - r * 0.22 + Math.sin(a) * r * 0.2, r * 0.12, r * 0.24, i % 2 ? '#d94a80' : '#ff8ab4', a + Math.PI / 2); } circle(c, x - r * 0.3, y - r * 0.24, r * 0.08, '#ffd23a'); }
+}
+ART.bayou = {
+  veil: ['#1c2230', 0.34],
+  leaves: ['#4f7a3a', '#6a8a4a', '#8a7a3a'],
+  prep(S) { const { W, H, u, R } = S; S.rip = Array.from({ length: S.port ? 9 : 14 }, () => ({ x: R(), y: R.r(0.02, 0.9), w: R.r(4, 10) * u, p: R() * TAU, v: R.r(0.5, 1.2) })); },
+  sky(c, S) {
+    const { W, H, u, R, hz } = S;
+    rect(c, 0, 0, W, H, vg(c, 0, hz, [[0, '#1e1638'], [0.45, '#4a2a5a'], [0.78, '#b0506a'], [1, '#f09a52']]));
+    stars(c, W, H, 26, R, hz * 0.35, '#f4e8ff');
+    glow(c, W * 0.62, hz - 2 * u, 34 * u, '#ffb060', 0.5);
+    c.beginPath(); c.arc(W * 0.62, hz, 9 * u, Math.PI, TAU); c.fillStyle = '#ffd08a'; c.fill();
+    for (let i = 0; i < 6; i++) { const y = R.r(0.35, 0.85) * hz, x = R() * W; ell(c, x, y, R.r(14, 30) * u, R.r(1, 2.2) * u, rgba('#2a1a3a', 0.45)); ell(c, x + 2 * u, y + 1 * u, R.r(10, 20) * u, 0.7 * u, rgba('#ff9a7a', 0.25)); }
+  },
+  far(c, S) {
+    const { W, H, u, R, hz } = S;
+    for (let x = -4 * u; x < W + 8 * u; x += R.r(6, 11) * u) cypress(c, x, hz + 1 * u, R.r(16, 26) * u, R.r(1.4, 2.2) * u, '#2c1e3e', '#4a3a58', R, u);
+    for (let x = -4 * u; x < W + 8 * u; x += R.r(9, 15) * u) cypress(c, x, hz + 3 * u, R.r(22, 34) * u, R.r(1.8, 2.8) * u, '#1e1a2c', '#3e4a46', R, u);
+    // the murky water: green-brown, lit by the sunset in a broken streak under the sun
+    rect(c, 0, hz + 2 * u, W, H, vg(c, hz, H, [[0, '#3f5a44'], [0.4, '#2a4232'], [1, '#18281e']]));
+    for (let i = 0; i < 12; i++) { const y = hz + 3 * u + Math.pow(R(), 2.2) * (S.gy - hz) * 0.6, w = R.r(3, 9) * u; rect(c, W * 0.62 + R.r(-1, 1) * 5 * u - w / 2, y, w, 0.45 * u, rgba('#ffb070', R.r(0.18, 0.4))); }
+    for (let i = 0; i < 10; i++) { const x = R() * W, y = lerp(hz + 4 * u, S.gy - 4 * u, R()); lily(c, x, y, R.r(1.6, 3) * u * (0.7 + (y - hz) / (S.gy - hz)), '#3d7a36', '#2a5a2a', R() < 0.3); }
+  },
+  mid(ctx, t, S) {
+    S.tf(ctx, 0.5);
+    const u = S.u, hz = S.hz;
+    ctx.strokeStyle = 'rgba(190,220,190,0.22)'; ctx.lineWidth = Math.max(1, 0.4 * u); ctx.lineCap = 'round';
+    for (const r of S.rip) { const y = lerp(hz + 3 * u, S.gy, r.y), x = wrap(r.x * S.W + Math.sin(t * 0.3 * r.v + r.p) * 6 * u, S.W), w = r.w * (0.8 + 0.2 * Math.sin(t * r.v + r.p)); ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.quadraticCurveTo(x, y - 0.6 * u, x + w / 2, y); ctx.stroke(); }
+    ctx.restore();
+  },
+  near(c, S) {
+    const { W, H, u, R, gy } = S;
+    // big cypress trunks framing the edges, with knees and hanging moss
+    for (const [x, w, sd] of [[W * 0.02, 7, 1], [W * 0.98, 6, -1]]) {
+      poly(c, [x - w * 2.2 * u, gy + 3 * u, x - w * 0.7 * u, gy - 18 * u, x - w * 0.5 * u, -2, x + w * 0.5 * u, -2, x + w * 0.7 * u, gy - 18 * u, x + w * 2.2 * u, gy + 3 * u], '#1a1410');
+      poly(c, [x - w * 2.2 * u * sd, gy + 3 * u, x - w * 0.7 * u * sd, gy - 18 * u, x - w * 0.5 * u * sd, -2, x - w * 0.2 * u * sd, -2, x - w * 0.3 * u * sd, gy - 18 * u, x - w * 1.2 * u * sd, gy + 3 * u], '#2a2018');
+      for (let k = 0; k < 3; k++) { const kx = x + sd * (w * 2.6 + k * 4) * u, kh = (5 - k) * u; poly(c, [kx - kh * 0.4, gy + 3 * u, kx, gy + 3 * u - kh, kx + kh * 0.4, gy + 3 * u], '#1a1410'); }
+    }
+    c.strokeStyle = '#46564a'; c.lineCap = 'round';
+    for (const [x0, sd] of [[0, 1], [W, -1]]) for (let i = 0; i < 9; i++) { const sx = x0 + sd * R.r(0, 16) * u, L = R.r(8, 26) * u; c.lineWidth = R.r(0.5, 1.1) * u; c.beginPath(); c.moveTo(sx, -1); for (let k = 1; k <= 8; k++) c.lineTo(sx + (k % 2 ? 0.8 : -0.8) * u, (L * k) / 8); c.stroke(); }
+    // reeds and cattails along the bank
+    for (let i = 0; i < (S.port ? 14 : 22); i++) {
+      const x = R() * W, h = R.r(6, 13) * u, b = gy + 2 * u, lean = R.r(-0.15, 0.15);
+      c.strokeStyle = R() < 0.5 ? '#3a5a2a' : '#4a6a32'; c.lineWidth = Math.max(0.8, 0.5 * u); c.beginPath(); c.moveTo(x, b); c.quadraticCurveTo(x + lean * h * 0.5, b - h * 0.6, x + lean * h, b - h); c.stroke();
+      if (R() < 0.45) ell(c, x + lean * h * 0.9, b - h * 0.88, 0.7 * u, 1.9 * u, '#5a3a1e', lean);
+    }
+    for (let i = 0; i < 6; i++) lily(c, R() * W, gy - R.r(-1, 3) * u, R.r(3, 4.5) * u, '#4a8a3a', '#2f6a2a', R() < 0.5);
+  },
+};
+
 // ---------------------------------------------------------------- theme table
 const P = (skyTop, skyBottom, text, plate, accent, ring, thorn, nestStraw, ground, groundTop) => ({ skyTop, skyBottom, text, plate, accent, ring, thorn, nestStraw, ground, groundTop });
 const RING = {
@@ -1328,6 +1392,7 @@ export const THEMES = [
   { id: 'dragon', name: "Dragon's Lair", palette: P('#0b090b', '#33231b', '#fff2d6', 'rgba(20,10,4,0.62)', '#ffd75a', RING.gold, '#1e120c', '#c9984e', '#6a4416', '#ffd75a'), material: 'gold', ground: 'gold', ambient: 'embers', music: { root: 'D', scale: 'minor', bpm: 100, mood: 'epic tiptoe' } },
   { id: 'vault', name: "The Thieves' Vault", palette: P('#0a1a22', '#12303a', '#f2fdff', 'rgba(4,14,18,0.62)', '#ff9a3a', RING.tech, '#ff8a2a', '#d9b25a', '#1f3a42', '#4f8a94'), material: 'metal', ground: 'stone', ambient: 'sparkles', music: { root: 'A', scale: 'minor', bpm: 128, mood: 'heist finale' } },
   { id: 'lab', name: 'Shape Lab', palette: P('#0d1a2e', '#22344a', '#fff4e0', 'rgba(8,14,28,0.62)', '#ffb84d', RING.brass, '#2a1c10', '#d9b25a', '#4a2e18', '#a8744a'), material: 'metal', ground: 'wood', ambient: 'dust', music: { root: 'D', scale: 'dorian', bpm: 124, mood: 'tinkering clockwork finale' } },
+  { id: 'bayou', name: 'Gator Bayou', palette: P('#1e1638', '#f09a52', '#fff4e6', 'rgba(20,14,30,0.6)', '#ffb04a', RING.darkwood, '#2a1a12', '#d9b25a', '#2e2a1a', '#56783a'), material: 'wood', ground: 'grass', ambient: 'fireflies', music: { root: 'E', scale: 'dorian', bpm: 96, mood: 'swampy blues at dusk' } },
 ];
 
 // ---------------------------------------------------------------- ground kits

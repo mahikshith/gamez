@@ -14,6 +14,7 @@ import { reefMethods } from './reef.js'; // world 8: hermit crab, pufferfish, je
 import { kcMethods } from './kingcrab.js'; // world 8 boss: the King Crab // v3.6 the egg thieves: weasel, rats, their bosses
 import { cwMethods } from './clockwork.js'; // v4 the clockwork cast: spider, wind-up beetle, spring jack
 import { owlMethods } from './owl.js'; // v4 the Clockwork Owl boss
+import { bayouMethods } from './bayou.js'; // v3.7 Gator Bayou: alligator, snapping turtle, mosquito swarm, Grandpa Gator
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
@@ -42,10 +43,10 @@ export const MATERIALS = {
   gold: { fr: 0.6, re: 0.1 },
 };
 
-const CAT = { RING: 1, EGG: 2, DEBRIS: 4, NEST: 8, GROUND: 16, ITEM: 32, BOMB: 64, ROCK: 128, FROG: 256 };
+const CAT = { RING: 1, EGG: 2, DEBRIS: 4, NEST: 8, GROUND: 16, ITEM: 32, BOMB: 64, ROCK: 128, FROG: 256, BAYOU: 512 };
 const MASK = {
   RING: CAT.EGG | CAT.DEBRIS | CAT.BOMB | CAT.ROCK,
-  EGG: CAT.RING | CAT.EGG | CAT.NEST | CAT.GROUND | CAT.ITEM | CAT.BOMB | CAT.ROCK | CAT.FROG,
+  EGG: CAT.RING | CAT.EGG | CAT.NEST | CAT.GROUND | CAT.ITEM | CAT.BOMB | CAT.ROCK | CAT.FROG | CAT.BAYOU,
   DEBRIS: CAT.RING | CAT.GROUND | CAT.NEST,
   NEST: CAT.EGG | CAT.DEBRIS | CAT.BOMB | CAT.ROCK,
   GROUND: CAT.EGG | CAT.DEBRIS | CAT.BOMB | CAT.ROCK,
@@ -264,6 +265,7 @@ export class Sim {
     this.thiefInit(L); // v3.6: the egg thieves (sim/thieves.js)
     this.reefInit(L); if (L.bossFight && L.bossFight.kind === 'kingcrab') this.kcInit(L); // world 8 (sim/reef.js, sim/kingcrab.js)
     this.cwInit(L); this.owlInit(L); // v4: the clockwork cast and the Clockwork Owl
+    this.bayouInit(L); // v3.7: Gator Bayou creatures (sim/bayou.js)
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
@@ -591,6 +593,7 @@ export class Sim {
     this.chickStep(dt); // v3.2 chick kinds
     this.frogStep(dt); // v3.3 frog
     this.cwStep(dt); // v4 the clockwork cast
+    this.bayouStep(dt); // v3.7 gators, turtles, mosquitoes
     if (this.weather && this.state === 'play') this.weatherStep(dt);
     if (this.state === 'play') this.v3Step(dt);
     this.p2Step(dt); // v3.4 powers
@@ -726,6 +729,7 @@ export class Sim {
       if (u.kind !== 'egg') return;
       const egg = u.egg;
       let v = closing;
+      if (uo.kind === 'bayou') { this.bayouBump(egg, v, uo, pt); return; } // v3.7: a gator's back or a turtle's shell
       if (uo.kind === 'frog') { this.frogBump(egg, v, uo.idx, pt); return; } // v3.3: a frog's back is a soft landing
       if (uo.kind === 'puffer') { this.pufferBump(egg, v, uo.pf, pt); return; } // world 8: bouncy, or its spines
       if (uo.kind === 'egg') {
@@ -756,7 +760,7 @@ export class Sim {
 
   preSolve(c, old) {
     const [fa, fb, ua, ub] = this.parts(c);
-    if (this.v3Pass(ua, ub) || this.chickPass(ua, ub) || this.frogPass(ua, ub) || this.cwPass(ua, ub)) { c.setEnabled(false); return; } // v3: melted ring, grate, narrow gap
+    if (this.v3Pass(ua, ub) || this.chickPass(ua, ub) || this.frogPass(ua, ub) || this.cwPass(ua, ub) || this.bayouPass(ua, ub)) { c.setEnabled(false); return; } // v3: melted ring, grate, narrow gap
     if (!fa.isSensor() && !fb.isSensor()) this.impactCheck(c, old, ua, ub);
     let egg = null, other = null, ofix = null;
     if (ua.kind === 'egg') { egg = ua.egg; other = ub; ofix = fb; }
@@ -882,7 +886,7 @@ export class Sim {
 
   // n = cracks to add (the crack ladder can add two at once). 3 cracks = broken.
   crack(egg, v, why = 'impact', n = 1) {
-    if (!egg.alive || egg.saved || egg.chick || egg.stone > 0 || egg.guard > 0) return; // a chick never cracks; stone and the feather take it
+    if (!egg.alive || egg.saved || egg.chick || egg.stone > 0 || egg.guard > 0 || egg.clamp > 0) return; // a chick never cracks; stone, the feather and a snapping turtle's beak (v3.7) take it
     egg.cracks += n;
     egg.crackCD = CRACK_COOLDOWN;
     const p = egg.body.getPosition();
@@ -893,6 +897,7 @@ export class Sim {
   breakEgg(egg, why) {
     if (!egg.alive || egg.saved) return;
     if (egg.guard > 0 && !GUARD_PASS.has(why)) return; // v3 guardian feather
+    if (egg.clamp > 0 && !GUARD_PASS.has(why)) return; // v3.7 held by a snapping turtle
     egg.alive = false;
     const b = egg.body;
     const p = b.getPosition(), vel = b.getLinearVelocity(), a = b.getAngle();
@@ -2078,6 +2083,7 @@ export class Sim {
     if (E && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tk !== 'orb') lv = Math.max(lv, E.reach ? 0.9 : 0.5);
     if (this.sals && this.sals.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.7 * this.salThreat(e)); // v3.2: a breath aimed at an egg
     if (this.thieves.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.thiefThreat(e)); // v3.6: the thieves
+    if (this.gators && (this.gators.length || this.mosqs.length)) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.9 * this.bayouThreat(e)); // v3.7
     lv = Math.round(lv * 10) / 10;
     if (lv !== this.danger) { this.danger = lv; this.emit('danger', { level: lv }); }
   }
@@ -2242,6 +2248,7 @@ export class Sim {
     EGG_KEYS.push(...P2_KEYS); // v3.4 powers
     EGG_KEYS.push('thf'); // v3.6: held by a thief (1) or in its den (2)
     EGG_KEYS.push('hc'); // world 8: in a hermit crab's shell (1), a King Crab claw (2) or its pile (3)
+    EGG_KEYS.push('clamp'); // v3.7: held by a snapping turtle (id + 1)
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2276,6 +2283,7 @@ export class Sim {
       thieves: this.thiefState(), // v3.6 the weasel and the rats
       reef: this.reefState(), // world 8
       cw: this.cwState(), owl: this.owlState(), // v4 the clockwork cast and the Clockwork Owl
+      bayou: this.bayouState(), // v3.7 Gator Bayou
     };
   }
 
@@ -2335,6 +2343,7 @@ export class Sim {
     sim.thiefLoad(S.thieves); // v3.6 the weasel and the rats
     sim.reefLoad(S.reef); // world 8
     sim.cwLoad(S.cw); sim.owlLoad(S.owl); // v4
+    sim.bayouLoad(S.bayou); // v3.7 Gator Bayou
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2728,6 +2737,7 @@ Object.assign(Sim.prototype, allyMethods); // v3.4 farm allies (sim/allies.js)
 Object.assign(Sim.prototype, seaMethods); // v3.3 octopus and fish schools (sim/sea.js)
 Object.assign(Sim.prototype, p2Methods); // v3.4 powers and combos (sim/powers2.js)
 Object.assign(Sim.prototype, warpMethods); // v3.4 warp gate (sim/warp.js)
+Object.assign(Sim.prototype, bayouMethods); // v3.7 Gator Bayou (sim/bayou.js)
 Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves.js)
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
 Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl

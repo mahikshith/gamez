@@ -205,6 +205,7 @@ export const p2Methods = {
     for (const S of this.schools || []) this.p2Fish(S, kind, T);
     this.reefP2?.(kind, T); // world 8: hermit crabs, puffers, jellyfish, the King Crab
     this.cwP2?.(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v4: the clockwork cast (sim/clockwork.js)
+    this.bayouP2?.(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v3.7: gators, turtles, mosquitoes
   },
   // fish schools: frozen by ice, stunned by lightning; they just carry on for the rest
   p2Fish(S, kind, T) {
@@ -293,7 +294,7 @@ export const p2Methods = {
   // was winding up is lost, the next one waits
   p2Boss(kind, T) {
     const B = this.bx && this.bx.boss;
-    if (!B || B.kind === 'snake' || B.kind === 'salamander' || B.den || B.kind === 'kingcrab') return; // the King Crab: sim/kingcrab.js kcP2
+    if (!B || B.kind === 'snake' || B.kind === 'salamander' || B.den || B.kind === 'kingcrab' || B.kind === 'gator') return; // the King Crab: sim/kingcrab.js kcP2 Grandpa Gator: sim/bayou.js
     const t = (kind === 'bolt' ? P2.thunderclap.big : T) * (B.kind === 'owl' && kind === 'bolt' ? 1 : BOSS_RESIST); // v4: lightning shorts the Clockwork Owl
     if (B.atk && B.atk.ph === 'warn') B.atk = null;
     if (!B.atk) B.t = Math.max(B.t, t + 0.8);
@@ -413,6 +414,7 @@ export const p2Methods = {
     const E = this.p2Eagle();
     if (E && test(E.x, E.y, 0.9) && E.phase !== 'dazed' && E.phase !== 'up') this.p2EagleHit('scare', T);
     for (const V of this.thieves || []) { if (!this.thLive(V)) continue; const b = this.thBody(V); if (test(b.x, b.y, 0.3) && V.ph !== 'home') this.thiefP2Only(V, 'scare', T); }
+    this.bayouLaser?.(test, T); // v3.7
     const B = this.bx && this.bx.boss;
     if (B && test(B.x, B.y, 0.9) && this.p2.fx.b?.k !== 'scare') this.p2Boss('scare', T);
     return n;

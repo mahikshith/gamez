@@ -9,6 +9,7 @@ import { isSpriteCalm } from './sprites.js';
 import { drawThiefEmblem } from './thieves.js';
 import { drawKingEmblem, drawKingBar } from './kingcrab.js'; // world 8 boss
 import { drawOwlBoss, drawOwlRings, drawOwlEmblem, drawOwlBar } from './owl.js'; // v4 the Clockwork Owl
+import { drawGatorEmblem } from './bayou.js'; // v3.7
 import { drawIcicle } from './v3art.js';
 import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
@@ -571,7 +572,7 @@ function drawStar(ctx, x, y, r, col) {
 }
 
 // the bar's portrait chip: a small code-drawn emblem per boss (screen space, y down)
-const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78', kingcrab: '#1f6a96', owl: '#1d3a5c' };
+const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78', kingcrab: '#1f6a96', owl: '#1d3a5c', gator: '#2f5a3a' };
 function drawBossEmblem(ctx, kind, cx, cy, d, t) {
   const r = d / 2;
   ctx.save();
@@ -592,6 +593,8 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
     drawKingEmblem(ctx, r, t);
   } else if (kind === 'owl') {
     drawOwlEmblem(ctx, r, t);
+  } else if (kind === 'gator') {
+    drawGatorEmblem(ctx, r, t);
   } else if (kind === 'blizzard') {
     ctx.strokeStyle = '#eaf8ff';
     ctx.lineWidth = r * 0.14;
@@ -658,7 +661,7 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   ui.text(title, nameX, y + h / 2, { size: 13 * u, maxW: nameW, color: '#ffe3b0', stroke: 'rgba(0,0,0,0.6)', tag: 'hud:bossName' });
   // phase segments
   const bx = nameX + nameW + 8 * u, bw = x + w - 6 * u - bx, by = y + h * 0.22, bh = h * 0.56, gap = 4 * u;
-  const F = B.den && sim.thiefBoss && sim.thiefBoss();
+  const F = (B.den && sim.thiefBoss && sim.thiefBoss()) || (B.kind === 'gator' && sim.gatorBossBar && sim.gatorBossBar()); // v3.7: Grandpa's teeth
   if (F) { drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v3.5: hit pips
   if (B.kind === 'kingcrab' && sim.kc) { drawKingBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // world 8: shell pips
   if (B.kind === 'owl' && sim.owl) { drawOwlBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v4: gear pips
@@ -698,9 +701,9 @@ function drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t) {
       ctx.fill();
     }
   }
-  const label = F.hp <= 0 || ph === 'defeated' || ph === 'flee' || ph === 'gone' ? 'DEFEATED!'
+  const label = F.label || (F.hp <= 0 || ph === 'defeated' || ph === 'flee' || ph === 'gone' ? 'DEFEATED!'
     : ph === 'trapped' ? 'TRAPPED! HIT IT' : ph === 'crouch' ? 'POUNCE!' : F.eid ? 'STOLE AN EGG!'
-      : warn ? (ATTACK_NAME[B.atk.name] || '').toUpperCase() + '!' : 'TRAP IT!';
+      : warn ? (ATTACK_NAME[B.atk.name] || '').toUpperCase() + '!' : 'TRAP IT!');
   ui.text(label, bx + bw / 2, y + h / 2, { size: 12 * u, align: 'center', maxW: bw - 8 * u, color: '#fff', stroke: 'rgba(0,0,0,0.75)', tag: 'hud:bossPhase' });
 }
 

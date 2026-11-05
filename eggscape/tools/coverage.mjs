@@ -66,6 +66,12 @@ const MECHANICS = [
   ['bulk chick', hasOrb('hatch_bulk')],
   ['pick chick', hasOrb('hatch_pick')],
   ['hard ice', anyRing((r) => r.ice)],
+  ['thorn vines', anyGap((g) => g.vine)], // v3.7 (Gator Bayou)
+  ['alligator', (L) => list(L.gator).some((g) => !g.call) || L.bossFight?.kind === 'gator'],
+  ['mosquito swarm', (L) => list(L.mosquito).length > 0],
+  ['pepper puff', hasOrb('pepper')],
+  ['snapping turtle', (L) => list(L.turtle).length > 0],
+  ['decoy egg', hasOrb('decoy')],
   ['curse orb', (L) => orbs(L).includes('curse') || (L.bossFight?.throws || []).includes('curse')],
   // v4 world 10, the Shape Lab. The vault shapes are the last world's trait (every level of it has one, and no world
   // comes after it to bring them back), so they are listed but exempt.

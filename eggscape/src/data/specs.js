@@ -357,6 +357,47 @@ export const SPECS = [
     tip: 'Each hit makes it give back one stolen egg. The warp gate sends a claw away.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2] }, { gaps: 2, thorns: 2, size: [1, 2] }, { gaps: 2, gapX: [2], thorns: 2, size: [1, 2] }, { gaps: 1, thorns: 2, size: [1, 2] }] },
 
+
+  // ---------------- 9 Gator Bayou (v3.7): an alligator, a mosquito swarm and a snapping turtle; Grandpa Gator at L45.
+  // Thorn vines are the clock. Powers taught here: Pepper Puff (L41), Decoy Egg (L42), Laser Beak (L43).
+  { id: 41, world: 9, theme: 'bayou', name: 'Gator Crossing', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 4,
+    nest: { w: 2.8 }, bonus: { kind: 'turns' }, gator: { ch: 4, a: -60, delay: 6 },
+    orbs: [{ type: 'pepper', ch: 2 }, { type: 'fire_red', ch: 3 }],
+    intro: { title: 'Gator Bayou', line: 'An alligator lies in the outer channel like a log. Asleep, his back is a bridge. Awake, he snaps at eggs that drop near his jaws.' },
+    tip: 'Turn the gap away from his jaws and he bites nothing. Pepper makes him sneeze and swim off.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, thorns: 2, size: [2, 3], gear: true }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [2], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+  { id: 42, world: 9, theme: 'bayou', name: 'Mosquito Marsh', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5,
+    nest: { w: 2.8 }, bonus: { kind: 'time' }, gator: { ch: 5, a: -120, delay: 9 }, mosquito: { ch: 2, a: -40, delay: 5 }, turtle: { ch: 3, a: -120, delay: 8 },
+    orbs: [{ type: 'pepper', ch: 1 }, { type: 'fire_red', ch: 2 }, { type: 'decoy', ch: 3 }, { type: 'fire_red', ch: 4 }],
+    intro: { title: 'Mosquitoes and decoys', line: 'A swarm grabs an egg and lifts it back up, even off thorns. Fire or pepper scatters it. The wooden decoy egg draws every bite first.' },
+    tip: 'Mosquitoes lift eggs back up. Fire scatters them and burns the vines.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, thorns: 2, size: [2, 3], gear: true }, { gaps: 2, vine: 1, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], retract: { period: 3, on: 0.55 } }, { gaps: 2, gapX: [2], vine: 1, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+  { id: 43, world: 9, theme: 'bayou', name: 'Snapper Slough', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5,
+    nest: { w: 2.8 }, bonus: { kind: 'prize' }, gator: { ch: 5, a: -50, delay: 9 }, turtle: { ch: 3, a: -110, delay: 4 }, mosquito: { ch: 1, a: 30, delay: 12 },
+    orbs: [{ type: 'laser', ch: 1 }, { type: 'rockskin', ch: 2 }, { type: 'decoy', ch: 3 }, { type: 'pepper', ch: 4 }],
+    intro: { title: 'Snapping turtle', line: 'The turtle clamps an egg: safe from everything, but stuck. Drop an egg or a stone egg on its shell and it flips over. The laser beak cuts vines and thorns.' },
+    tip: 'A clamped egg is safe but stuck. Drop another egg on the shell to free it.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, vine: 1, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, vine: 1, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+  { id: 44, world: 9, theme: 'bayou', name: 'Decoy Delta', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5, eggKinds: ['duck'],
+    weather: 'current', weatherOpts: { strength: 0.5 },
+    nest: { w: 2.8 }, bonus: { kind: 'turns' }, gator: { ch: 4, a: -70, delay: 7 }, turtle: { ch: 3, a: -60, delay: 6 }, mosquito: { ch: 2, a: 140, delay: 9 },
+    orbs: [{ type: 'decoy', ch: 1 }, { type: 'fire_red', ch: 2 }, { type: 'laser', ch: 3 }, { type: 'pepper', ch: 4 }],
+    intro: { title: 'Swamp current', line: 'The current pushes every egg along, and the duck egg floats on it. Throw the decoy to pull the gator, the turtle and the swarm off your real eggs.' },
+    tip: 'The gator bites the decoy first. Send real eggs past while he chews wood.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, thorns: 2, size: [2, 3] }, { gaps: 2, vine: 1, thorns: 2, size: [2, 3], gear: true }, { gaps: 2, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 1, size: [1, 2] }] },
+  { id: 45, world: 9, theme: 'bayou', name: 'Grandpa Gator', boss: 'gator', eggs: 3, target: 2, spacing: 1.15, material: 'wood', minMoves: 6,
+    nest: { w: 2.8 }, bonus: { kind: 'prize' },
+    gator: [{ ch: 3, a: -60, call: 1 }, { ch: 4, a: -120, call: 1, face: -1 }], mosquito: { ch: 2, a: 60, delay: 14 }, turtle: { ch: 4, a: -40, delay: 10 },
+    bossFight: { kind: 'gator', hp: 3, a: -70, delay: 5, phases: [
+      { attacks: ['sweep'], every: 6 },
+      { at: { saved: 1, t: 16 }, attacks: ['roll', 'sweep'], every: 5 },
+      { at: { saved: 2, t: 32 }, attacks: ['roll', 'sweep', 'roll'], every: 4.5, summon: true },
+    ] },
+    orbs: [{ type: 'pepper', ch: 1 }, { type: 'laser', ch: 2 }, { type: 'decoy', ch: 3 }, { type: 'fire_red', ch: 4 }],
+    intro: { title: 'Boss: Grandpa Gator', line: 'His tail sweep shakes every ring and his death roll spins one. After each attack he lies dizzy: drop an egg on him or pepper him to knock out a tooth.' },
+    tip: 'When he lies dizzy, drop an egg on him. Later his grandkids swim in.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, vine: 1, thorns: 2, size: [2, 3], gear: true }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, gapX: [3], vine: 1, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+
   // ---------------- 10 The Shape Lab: square, hex, spiral and rocking vaults; the clockwork spider, wind-up beetle and
   // spring jack (sim/clockwork.js); Iron Shell, Shrink Ray, Spin Storm and the Cannonballs combo; the Clockwork Owl (sim/owl.js)
   // v4 level fields: shape ('square' | 'hex': every ring; a ring's own shape wins, 'spiral' is a one-turn ramp ring whose
