@@ -6,6 +6,7 @@ import { P2, COMBOS } from '../sim/powers2.js';
 import { POWER_INFO, GLASS, EMBLEM_ART, EGG_ART, ORB_ART, drawOrb } from './powers.js';
 import { boltStroke } from './status.js';
 import { drawWarp, warpEvent } from './warp.js'; // the Warp Gate (sim/warp.js)
+import { ringPt, ringSpd } from '../sim/shapes.js'; // v4: iron bars on shaped vaults
 
 // ---------- names, lines (pickup card) and glass tints
 const INFO = {
@@ -377,13 +378,15 @@ export function drawP2Back(ctx, sim, k, t) {
       const A = ring.body.getAngle();
       for (const g of ring.gaps) {
         if (!g.ironBar) continue;
-        const half = g.len / (2 * ring.r), a0 = A + g.a - half, a1 = A + g.a + half;
+        const half = g.len / (2 * ringSpd(ring, g.a)), a0 = A + g.a - half, a1 = A + g.a + half; // v4: shape-aware
+        const at = (wa, rad) => { if (!ring.prof) return [rad * Math.cos(wa), rad * Math.sin(wa)]; const [x, y] = ringPt(ring, wa - A, rad); return [x * Math.cos(A) - y * Math.sin(A), x * Math.sin(A) + y * Math.cos(A)]; };
+        const bar = (rad) => { ctx.beginPath(); for (let i = 0; i <= 8; i++) { const [x, y] = at(a0 + ((a1 - a0) * i) / 8, rad); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); } };
         ctx.lineCap = 'butt';
         ctx.strokeStyle = '#1a2027'; ctx.lineWidth = Math.max(0.09, 4 / k);
-        ctx.beginPath(); ctx.arc(0, 0, ring.r, a0, a1); ctx.stroke();
+        bar(ring.r); ctx.stroke();
         ctx.strokeStyle = '#9aa6b2'; ctx.lineWidth = Math.max(0.05, 2.2 / k); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = lw(1); ctx.beginPath(); ctx.arc(0, 0, ring.r + 0.012, a0, a1); ctx.stroke();
-        for (const b of [a0 + 0.02, a1 - 0.02]) { ctx.beginPath(); ctx.arc(ring.r * Math.cos(b), ring.r * Math.sin(b), 0.045, 0, TAU); ctx.fillStyle = '#d6dde4'; ctx.fill(); ctx.strokeStyle = '#1a2027'; ctx.lineWidth = lw(1.2); ctx.stroke(); }
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = lw(1); bar(ring.r + 0.012); ctx.stroke();
+        for (const b of [a0 + 0.02, a1 - 0.02]) { const [x, y] = at(b, ring.r); ctx.beginPath(); ctx.arc(x, y, 0.045, 0, TAU); ctx.fillStyle = '#d6dde4'; ctx.fill(); ctx.strokeStyle = '#1a2027'; ctx.lineWidth = lw(1.2); ctx.stroke(); }
       }
     }
   }

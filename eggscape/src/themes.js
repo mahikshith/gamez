@@ -1169,6 +1169,99 @@ ART.vault = {
     ctx.restore();
   },
 };
+// 20 ----------------------------------------------- Shape Lab (v4): a clockwork inventor's workshop
+// Blueprint-blue walls (dark, so brass rings, cream eggs and the clockwork cast read on them), pinned blueprints, warm
+// pendant lamps, slow brass wall gears, shelves of jars, a wooden workbench with tools.
+function blueprint(c, x, y, w, h, u, R, kind) {
+  c.save(); c.translate(x, y); c.rotate(R.r(-0.04, 0.04));
+  rect(c, -w / 2 + 0.8 * u, -h / 2 + 0.8 * u, w, h, 'rgba(0,0,0,0.25)');
+  rect(c, -w / 2, -h / 2, w, h, '#24507e');
+  c.strokeStyle = 'rgba(170,215,255,0.16)'; c.lineWidth = 0.25 * u;
+  for (let gx = -w / 2 + 2 * u; gx < w / 2; gx += 2.4 * u) { c.beginPath(); c.moveTo(gx, -h / 2); c.lineTo(gx, h / 2); c.stroke(); }
+  for (let gy = -h / 2 + 2 * u; gy < h / 2; gy += 2.4 * u) { c.beginPath(); c.moveTo(-w / 2, gy); c.lineTo(w / 2, gy); c.stroke(); }
+  c.strokeStyle = 'rgba(205,232,255,0.6)'; c.lineWidth = 0.35 * u;
+  const m = Math.min(w, h);
+  if (kind === 0) { // a cog
+    c.beginPath(); for (let i = 0; i < 20; i++) { const a0 = i / 20 * TAU, rr = i % 2 ? m * 0.28 : m * 0.34; c.lineTo(Math.cos(a0) * rr, Math.sin(a0) * rr); } c.closePath(); c.stroke();
+    c.beginPath(); c.arc(0, 0, m * 0.1, 0, TAU); c.stroke();
+  } else if (kind === 1) { // an egg with dimension marks
+    c.beginPath(); for (let i = 0; i <= 30; i++) { const a = i / 30 * TAU, s2 = Math.sin(a); c.lineTo(m * 0.22 * Math.cos(a) * (1 + 0.13 * s2), m * 0.3 * s2); } c.closePath(); c.stroke();
+    c.beginPath(); c.moveTo(-m * 0.34, -m * 0.3); c.lineTo(-m * 0.34, m * 0.3); c.moveTo(-m * 0.38, -m * 0.3); c.lineTo(-m * 0.3, -m * 0.3); c.moveTo(-m * 0.38, m * 0.3); c.lineTo(-m * 0.3, m * 0.3); c.stroke();
+  } else { // a square vault plan
+    c.beginPath(); c.roundRect(-m * 0.32, -m * 0.32, m * 0.64, m * 0.64, m * 0.1); c.stroke();
+    c.beginPath(); c.roundRect(-m * 0.18, -m * 0.18, m * 0.36, m * 0.36, m * 0.06); c.stroke();
+    c.beginPath(); c.moveTo(0, -m * 0.4); c.lineTo(0, m * 0.4); c.moveTo(-m * 0.4, 0); c.lineTo(m * 0.4, 0); c.setLineDash([0.8 * u, 0.6 * u]); c.stroke(); c.setLineDash([]);
+  }
+  circle(c, -w / 2 + 1.2 * u, -h / 2 + 1.2 * u, 0.6 * u, '#c9963e'); circle(c, w / 2 - 1.2 * u, -h / 2 + 1.2 * u, 0.6 * u, '#c9963e');
+  c.restore();
+}
+function jar(c, x, y, w, h, col, u) {
+  rrect(c, x - w / 2, y - h, w, h, 1 * u, '#1a2a3a'); rrect(c, x - w / 2 + 0.6 * u, y - h * 0.62, w - 1.2 * u, h * 0.58, 0.8 * u, col);
+  rect(c, x - w / 2 - 0.3 * u, y - h - 0.8 * u, w + 0.6 * u, 1.2 * u, '#7a5420'); rect(c, x - w / 2 + 0.8 * u, y - h + 0.8 * u, 0.6 * u, h * 0.5, 'rgba(255,255,255,0.18)');
+}
+ART.lab = {
+  veil: ['#0a1424', 0.3],
+  dust: '#ffd59a',
+  prep(S) {
+    const { u, dpr } = S, b = ['#9a7434', '#5a4220', '#c9a052'];
+    S.gears = [[0.08, 0.2, 16, 14, 0.04], [0.92, 0.36, 13, 12, -0.055], [0.8, 0.14, 7, 9, 0.09], [0.2, 0.52, 9, 10, -0.07]].map(([x, y, r, n, w]) => ({ x, y, w, sp: gearSprite(dpr, r * u, n, ...b) }));
+  },
+  sky(c, S) {
+    const { W, H, u, R, gy } = S;
+    rect(c, 0, 0, W, H, vg(c, 0, H, [[0, '#0d1a2e'], [0.5, '#16304e'], [0.85, '#22344a'], [1, '#2a2420']]));
+    // wall panels with a faint blueprint grid
+    c.strokeStyle = 'rgba(120,170,220,0.08)'; c.lineWidth = 0.3 * u;
+    for (let x = 0; x < W; x += 6 * u) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, gy); c.stroke(); }
+    for (let y = 0; y < gy; y += 6 * u) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+    for (let x = 0; x < W; x += 30 * u) rect(c, x, 0, 0.8 * u, gy, 'rgba(0,0,0,0.18)');
+  },
+  back(ctx, t, S) { S.tf(ctx, 0.15); ctx.globalAlpha = 0.5; for (const g of S.gears) spin(ctx, g.sp, g.x * S.W, g.y * S.H, t * g.w); ctx.globalAlpha = 1; ctx.restore(); },
+  far(c, S) {
+    const { W, H, u, R, gy, port } = S;
+    // blueprints pinned along the walls, out at the sides of the vault
+    const bw = (port ? 15 : 17) * u, bh = (port ? 11 : 12) * u;
+    for (const [fx, fy, k] of [[0.1, 0.1, 0], [0.9, 0.09, 1], [0.08, 0.72, 2], [0.93, 0.66, 0]]) blueprint(c, fx * W, fy * H, bw, bh, u, R, k);
+    // copper pipes along the top with a valve wheel
+    for (const y of [3 * u, 6.5 * u]) { rect(c, 0, y, W, 1.6 * u, '#7a4424'); rect(c, 0, y + 0.3 * u, W, 0.4 * u, '#c47a48'); }
+    for (const x of [W * 0.3, W * 0.72]) { circle(c, x, 7.3 * u, 2.1 * u, '#5a2e16'); circle(c, x, 7.3 * u, 1.5 * u, '#b8873a'); circle(c, x, 7.3 * u, 0.6 * u, '#5a2e16'); }
+    // shelves of jars low on both sides
+    for (const [x0, x1] of [[0, W * 0.2], [W * 0.8, W]]) {
+      const sy = gy - 16 * u;
+      rect(c, x0, sy, x1 - x0, 1.4 * u, '#5a3a20'); rect(c, x0, sy, x1 - x0, 0.4 * u, '#8a5a34');
+      for (let x = x0 + 2 * u; x < x1 - 2 * u; x += R.r(3.4, 5) * u) jar(c, x, sy, R.r(2.2, 3) * u, R.r(3.4, 5) * u, R.pick(['#3fa88a', '#d9883a', '#8a5ac9']), u);
+    }
+    // warm pendant lamps: a cord, a brass shade, a glow
+    S.lamps = [];
+    for (const fx of port ? [0.22, 0.78] : [0.18, 0.5, 0.82]) {
+      const x = fx * W, y = (port ? 15 : 13) * u;
+      line(c, x, 0, x, y - 2 * u, '#140c08', 0.5 * u);
+      glow(c, x, y + 2 * u, 26 * u, '#ffb45a', 0.22);
+      poly(c, [x - 4 * u, y + 1 * u, x - 1.4 * u, y - 2.4 * u, x + 1.4 * u, y - 2.4 * u, x + 4 * u, y + 1 * u], '#b8873a');
+      poly(c, [x - 4 * u, y + 1 * u, x - 1.4 * u, y - 2.4 * u, x - 0.6 * u, y - 2.4 * u, x - 2.4 * u, y + 1 * u], '#e8c070');
+      ell(c, x, y + 1.3 * u, 2.2 * u, 0.9 * u, '#ffe8b0');
+      S.lamps.push([x, y + 2 * u]);
+    }
+  },
+  near(c, S) {
+    const { W, H, u, R, gy } = S;
+    // the workbench
+    rect(c, 0, gy - 2 * u, W, H, vg(c, gy - 2 * u, H, [[0, '#7a4e2a'], [0.25, '#5a3820'], [1, '#2a1a10']]));
+    rect(c, 0, gy - 2 * u, W, 0.8 * u, '#a8744a');
+    for (let x = R.r(0, 10) * u; x < W; x += R.r(14, 24) * u) rect(c, x, gy - 1.2 * u, 0.4 * u, H, 'rgba(30,16,8,0.5)');
+    // tools on the bench, kept to the sides: a vise, a wrench, loose cogs
+    const vx = W * 0.07;
+    rect(c, vx - 4 * u, gy - 7 * u, 8 * u, 5 * u, '#4a5462'); rect(c, vx - 4 * u, gy - 7 * u, 8 * u, 1 * u, '#7a8796'); rect(c, vx - 0.5 * u, gy - 10 * u, 1 * u, 3 * u, '#2a3038'); line(c, vx - 3 * u, gy - 10 * u, vx + 3 * u, gy - 10 * u, '#2a3038', 0.8 * u);
+    const wx = W * 0.9;
+    c.save(); c.translate(wx, gy - 3 * u); c.rotate(-0.3); rect(c, -6 * u, -0.7 * u, 10 * u, 1.4 * u, '#8a96a6'); circle(c, 5 * u, 0, 2.2 * u, '#8a96a6'); circle(c, 5.8 * u, -0.4 * u, 1.1 * u, '#5a3820'); c.restore();
+    for (const [x, r] of [[W * 0.2, 2.4], [W * 0.78, 2], [W * 0.83, 1.4]]) { const sp = gearSprite(S.dpr, r * u, 9, '#b8873a', '#6e4c1c', '#ecc673'); c.drawImage(sp.cv, x - sp.w / 2, gy - 2.6 * u - sp.h / 2, sp.w, sp.h); }
+  },
+  front(ctx, t, S) {
+    // the lamps breathe a little
+    S.tf(ctx, 0.4);
+    for (const [x, y] of S.lamps || []) { const a = 0.06 + 0.03 * Math.sin(t * 1.7 + x); const g = ctx.createRadialGradient(x, y, 0, x, y, 18 * S.u); g.addColorStop(0, `rgba(255,200,120,${a})`); g.addColorStop(1, 'rgba(255,200,120,0)'); ctx.fillStyle = g; ctx.fillRect(x - 18 * S.u, y - 18 * S.u, 36 * S.u, 36 * S.u); }
+    ctx.restore();
+  },
+};
 function crestEgg(ctx, x, y, s) {
   const h = s * 0.9, w = h * 0.74;
   ctx.save();
@@ -1234,6 +1327,7 @@ export const THEMES = [
   { id: 'volcano', name: 'Volcano', palette: P('#0c0a0c', '#5a3a2c', '#fff0e0', 'rgba(24,4,2,0.62)', '#ff7a1a', RING.obsidian, '#ff5a1a', '#c9984e', '#5a0e0c', '#ff7a1a'), material: 'obsidian', ground: 'lava', ambient: 'embers', music: { root: 'F', scale: 'phrygian', bpm: 138, mood: 'urgent heat' } },
   { id: 'dragon', name: "Dragon's Lair", palette: P('#0b090b', '#33231b', '#fff2d6', 'rgba(20,10,4,0.62)', '#ffd75a', RING.gold, '#1e120c', '#c9984e', '#6a4416', '#ffd75a'), material: 'gold', ground: 'gold', ambient: 'embers', music: { root: 'D', scale: 'minor', bpm: 100, mood: 'epic tiptoe' } },
   { id: 'vault', name: "The Thieves' Vault", palette: P('#0a1a22', '#12303a', '#f2fdff', 'rgba(4,14,18,0.62)', '#ff9a3a', RING.tech, '#ff8a2a', '#d9b25a', '#1f3a42', '#4f8a94'), material: 'metal', ground: 'stone', ambient: 'sparkles', music: { root: 'A', scale: 'minor', bpm: 128, mood: 'heist finale' } },
+  { id: 'lab', name: 'Shape Lab', palette: P('#0d1a2e', '#22344a', '#fff4e0', 'rgba(8,14,28,0.62)', '#ffb84d', RING.brass, '#2a1c10', '#d9b25a', '#4a2e18', '#a8744a'), material: 'metal', ground: 'wood', ambient: 'dust', music: { root: 'D', scale: 'dorian', bpm: 124, mood: 'tinkering clockwork finale' } },
 ];
 
 // ---------------------------------------------------------------- ground kits

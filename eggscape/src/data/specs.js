@@ -356,4 +356,46 @@ export const SPECS = [
     intro: { title: 'Boss: King Crab', line: 'The King Crab reaches its claws in through lined-up gaps to snatch eggs. Turn the ring while a claw is inside: it gets stuck. Then hit the stuck claw with an egg or a zap.' },
     tip: 'Each hit makes it give back one stolen egg. The warp gate sends a claw away.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2] }, { gaps: 2, thorns: 2, size: [1, 2] }, { gaps: 2, gapX: [2], thorns: 2, size: [1, 2] }, { gaps: 1, thorns: 2, size: [1, 2] }] },
+
+  // ---------------- 10 The Shape Lab: square, hex, spiral and rocking vaults; the clockwork spider, wind-up beetle and
+  // spring jack (sim/clockwork.js); Iron Shell, Shrink Ray, Spin Storm and the Cannonballs combo; the Clockwork Owl (sim/owl.js)
+  // v4 level fields: shape ('square' | 'hex': every ring; a ring's own shape wins, 'spiral' is a one-turn ramp ring whose
+  //   seam is its way through), rock ({} or {amp, hold, swing}: the whole vault leans and back), spider {ring, delay, every},
+  //   beetle {ch, a?, delay, dir}, jack [{ch, a?}] (gen.mjs puts a missing a on free floor of that ring; a jack just short of a gap),
+//   useCombo (the planner's run must fire a power combo).
+  { id: 46, world: 10, theme: 'lab', name: 'Square One', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 3, shape: 'square',
+    nest: { w: 2.7 }, bonus: { kind: 'turns' }, spider: { ring: 2, delay: 4 },
+    orbs: [{ type: 'iron', ch: 1 }, { type: 'fire_red', ch: 3 }],
+    intro: { title: 'Shape Lab', cw: 'spider', line: 'Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider webs a gap shut; the web catches eggs softly. Iron or fire tears it.' },
+    tip: 'A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 2, gapX: [2], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2] }] },
+  { id: 47, world: 10, theme: 'lab', name: 'Hex Works', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 3, shape: 'hex',
+    nest: { w: 2.7 }, bonus: { kind: 'time' }, beetle: { ch: 2, delay: 3 }, spider: { ring: 4, delay: 12 },
+    orbs: [{ type: 'shrink', ch: 1 }, { type: 'iron', ch: 3 }],
+    intro: { title: 'Wind-up beetle', cw: 'beetle', line: 'The beetle shoves eggs along until its key runs down. Stopped, it is a wall that keeps eggs off thorns. Turn its ring to wind it up again.' },
+    tip: 'Shrink ray: small eggs slip through grates, but they crack easier.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
+  { id: 48, world: 10, theme: 'lab', name: 'Spiral Spring', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 4,
+    nest: { w: 2.7 }, bonus: { kind: 'turns' }, jack: [{ ch: 1 }], beetle: { ch: 3, delay: 6 },
+    orbs: [{ type: 'shrink', ch: 1 }, { type: 'iron', ch: 2 }, { type: 'spin', ch: 3 }],
+    intro: { title: 'Spring jack', cw: 'jack', line: 'Roll an egg over the jack and it bounces back up: time it to jump a gap. An iron egg jams it. The spiral ring has no gap: roll down its step.' },
+    tip: 'Spin storm flings the beetle on its back, but your eggs tumble too.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 2, gapX: [2], thorns: 2, size: [1, 2] }, { shape: 'spiral', noGap: true, thorns: 1, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
+  { id: 49, world: 10, theme: 'lab', name: 'Rocking Lab', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 4, useCombo: true, shape: 'square', rock: {},
+    nest: { w: 3.1 }, bonus: { kind: 'time' }, spider: { ring: 2, delay: 8 }, beetle: { ch: 1, delay: 5 }, jack: [{ ch: 3 }],
+    orbs: [{ type: 'shrink', ch: 0, a: -100 }, { type: 'iron', ch: 0, a: -80 }, { type: 'spin', ch: 3, a: 90 }], // the combo fires at the start: a demo
+    intro: { title: 'Rocking vault', cw: 'rock', line: 'The whole vault leans and comes back. Parked eggs slide. Shrink ray plus iron shell make cannonballs: tiny iron eggs that smash thorns and slip through grates.' },
+    tip: 'Your eggs start as cannonballs: smash thorns while it lasts. Wait out the lean before you park an egg.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 2, gapX: [2], thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2] }] },
+  { id: 50, world: 10, theme: 'lab', name: 'The Clockwork Owl', boss: 'owl', eggs: 4, target: 3, spacing: 1.05, material: 'metal', minMoves: 6, shape: 'hex',
+    nest: { w: 2.8 }, bonus: { kind: 'prize' }, spider: { ring: 3, delay: 999 }, beetle: { ch: 1, delay: 999 }, jack: [{ ch: 2 }],
+    bossFight: { kind: 'owl', delay: 3, phases: [
+      { attacks: ['swoop', 'gears'], every: 5.5 },
+      { at: { saved: 1, t: 30 }, attacks: ['wind', 'swoop', 'gears'], every: 5 },
+      { at: { saved: 2, t: 55 }, attacks: ['swoop', 'gears2', 'wind'], every: 4.5, summon: true },
+    ] },
+    orbs: [{ type: 'shrink', ch: 1, a: 156 }, { type: 'iron', ch: 1, a: 144 }, { type: 'spin', ch: 2 }, { type: 'thunderclap', ch: 3 }, { type: 'iron', ch: 4 }],
+    intro: { title: 'Boss: The Clockwork Owl', line: 'The owl swoops at eggs in the outer channel, winds the rings round and drops gear bombs. Turn the gap away when it marks an egg. An iron egg jams its gears.' },
+    tip: 'Thunderclap stalls the owl. Carry a ticking gear bomb away from your eggs.',
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
 ];

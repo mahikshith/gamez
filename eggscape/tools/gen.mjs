@@ -30,6 +30,7 @@ const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
 // level fields copied from the spec as they are (not laid out)
 const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'weasel', 'rats', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander', 'octopus'];
 LEVEL_KEYS.push('hermit', 'puffer', 'jelly'); // world 8 Coral Reef
+LEVEL_KEYS.push('shape', 'rock', 'spider'); // v4 Shape Lab: vault shape, the rocking vault, the clockwork spider (beetle and jack are laid out below)
 
 // ---------- layout ----------
 function radii(spec) {
@@ -66,6 +67,8 @@ function layRing(spec, i, r, R, prev) {
   const rs = spec.rings[i];
   const ring = {};
   if (rs.mat) ring.mat = rs.mat;
+  if (rs.shape) ring.shape = rs.shape; // v4: a ring's own shape ('spiral', 'square', 'hex', 'circle')
+  if (rs.rise) ring.rise = rs.rise;
   if (rs.motor) ring.motor = rs.motor;
   if (rs.motorFlip) ring.motorFlip = rs.motorFlip;
   if (rs.oneway) ring.oneway = Math.sign(rs.oneway); // v3 ratchet ring (G22)
@@ -291,6 +294,32 @@ export function layout(spec, seed) {
   if (orbs.length) L.orbs = orbs;
   if (spec.bombs) L.bombs = spec.bombs.map((b) => { const [x, y] = channelPoint(spec, rs, b.ch, b.a); return { x, y }; });
   if (spec.rocks) L.rocks = spec.rocks.map((k) => { const [x, y] = channelPoint(spec, rs, k.ch, k.a); return { x, y, ...(k.s ? { s: k.s } : {}) }; });
+  // v4 clockwork: a beetle or a spring jack with no angle goes on free floor of its ring (clear of gaps, thorns and each other)
+  const taken = [];
+  // a jack sits just short of a gap (its upside: timed right it launches an egg across), a beetle anywhere on free floor
+  const freeA = (ri, near) => {
+    const ring = rings[ri], doors = (ring.gaps || []).filter((g) => !g.grate && !g.curtain);
+    for (let t = 0; t < 200; t++) {
+      const g = near && doors.length ? doors[Math.floor(R() * doors.length)] : null;
+      const a = g ? Math.round(wrapD(g.a + (R() < 0.5 ? -1 : 1) * (26 + R() * 8))) : Math.round(R() * 360 - 180);
+      if (dist(a, BOTTOM) < 30 && ri === 0) continue;
+      if ((ring.gaps || []).some((q) => dist(q.a, a) < (q === g ? 24 : 30)) || (ring.thorns || []).some((th) => dist(th.a, a) < 26)) continue;
+      if (taken.some((q) => q.ri === ri && dist(q.a, a) < 40)) continue;
+      return a;
+    }
+    return null;
+  };
+  for (const k of ['beetle', 'jack']) {
+    if (!spec[k]) continue;
+    const out = [];
+    for (const o of [spec[k]].flat()) {
+      const ch = Math.min(o.ch ?? 1, rings.length - 1), a = o.a ?? freeA(ch, k === 'jack');
+      if (a == null) return null;
+      taken.push({ ri: ch, a });
+      out.push({ ...o, a });
+    }
+    L[k] = Array.isArray(spec[k]) ? out : out[0];
+  }
   L.rings = rings;
   L.seed = seed;
   return L;
@@ -340,6 +369,7 @@ export async function evaluate(spec, L) {
   // every special egg must be saved in the validated run, and an ostrich must have a gap it always fits
   if (p.special.saved < p.special.total) return fail('special');
   if (spec.useTap && !p.taps) return fail('tap'); // a chick's intro level: the strong player must find its power worth using
+  if (spec.useCombo && !p.combos) return fail('combo'); // v4: a combo's intro level: the strong player's run must fire it
   if ((L.eggKinds || []).includes('ostrich')) { const od = await ostrichDrops(L); rec.drops = od.join(''); if (od.includes(0)) return fail('ostrich'); }
   const ex = alignAll(L);
   rec.exploit = ex;

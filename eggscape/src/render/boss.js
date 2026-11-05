@@ -8,6 +8,7 @@ import { ringPoint, galeNow, heatOf, bossPhases, bossProgress, BOSS_TITLE, ATTAC
 import { isSpriteCalm } from './sprites.js';
 import { drawThiefEmblem } from './thieves.js';
 import { drawKingEmblem, drawKingBar } from './kingcrab.js'; // world 8 boss
+import { drawOwlBoss, drawOwlRings, drawOwlEmblem, drawOwlBar } from './owl.js'; // v4 the Clockwork Owl
 import { drawIcicle } from './v3art.js';
 import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
@@ -22,6 +23,7 @@ export function drawBossRings(ctx, sim, k, t) {
   const X = sim.bx;
   if (!X) return;
   const B = X.boss, A = B && B.atk;
+  if (B && B.kind === 'owl') drawOwlRings(ctx, sim, k, t); // v4: swoop mark, wind-up arrows, gear bombs
   // ice patches: glossy, pale, with a moving shine
   for (const ring of sim.rings) {
     const a0 = ring.body.getAngle();
@@ -343,7 +345,7 @@ export function drawBossOver(ctx, sim, k, t) {
 // ---------- the boss itself. Code-drawn only (no portrait sprites inside a level):
 // blizzard: a living snow cloud. golem and salamander have no body yet (a creature pass adds them): only their effects.
 // The weasel and the Rat King live inside the vault (render/thieves.js).
-const ACTOR = { blizzard: 1 };
+const ACTOR = { blizzard: 1, owl: 1 };
 // the view this frame (main sets it): world y of the top of the play area, pixels per meter, ui scale
 let VIEW = null;
 export function setBossView(v) { VIEW = v; }
@@ -352,6 +354,7 @@ export function bossPose(sim, view = VIEW) {
   const B = sim.bx && sim.bx.boss;
   if (!B || !ACTOR[B.kind] || B.den) return null; // v3.6: a thief boss is drawn inside the vault (render/thieves.js)
   const R = sim.outerR;
+  if (B.kind === 'owl') return { x: B.x, y: B.y, h: 1.9, dir: B.face || 1 }; // v4 (render/owl.js)
   if (B.kind === 'blizzard') {
     // big: about a third of the vault wide (at most ~150 px tall on screen), its belly just above the outer ring.
     // When the camera is zoomed in on the eggs it comes down into view at the top of the play area.
@@ -368,6 +371,7 @@ export function drawBossActor(ctx, sim, k, t) {
   const A = B.atk, calm = isSpriteCalm();
   const warnU = A && A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 0, acting = A && A.ph === 'act';
   if (B.kind === 'blizzard') drawCloudBoss(ctx, sim, B, Q, k, t, warnU, acting, calm);
+  if (B.kind === 'owl') drawOwlBoss(ctx, sim, k, t);
   // the freeze breath: a cone of frost from the spirit to the ring it is freezing
   if (A && A.name === 'freeze' && !calm) {
     const ring = sim.rings[A.ring], u = A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 1;
@@ -567,7 +571,7 @@ function drawStar(ctx, x, y, r, col) {
 }
 
 // the bar's portrait chip: a small code-drawn emblem per boss (screen space, y down)
-const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78', kingcrab: '#1f6a96' };
+const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78', kingcrab: '#1f6a96', owl: '#1d3a5c' };
 function drawBossEmblem(ctx, kind, cx, cy, d, t) {
   const r = d / 2;
   ctx.save();
@@ -586,6 +590,8 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
     drawThiefEmblem(ctx, kind, r, t);
   } else if (kind === 'kingcrab') {
     drawKingEmblem(ctx, r, t);
+  } else if (kind === 'owl') {
+    drawOwlEmblem(ctx, r, t);
   } else if (kind === 'blizzard') {
     ctx.strokeStyle = '#eaf8ff';
     ctx.lineWidth = r * 0.14;
@@ -655,6 +661,7 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   const F = B.den && sim.thiefBoss && sim.thiefBoss();
   if (F) { drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v3.5: hit pips
   if (B.kind === 'kingcrab' && sim.kc) { drawKingBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // world 8: shell pips
+  if (B.kind === 'owl' && sim.owl) { drawOwlBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v4: gear pips
   const sw = (bw - gap * (n - 1)) / n, prog = bossProgress(sim);
   const warn = B.atk && B.atk.ph === 'warn';
   for (let i = 0; i < n; i++) {

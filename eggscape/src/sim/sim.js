@@ -12,6 +12,8 @@ import { warpMethods } from './warp.js'; // v3.4 warp gate
 import { thiefMethods } from './thieves.js';
 import { reefMethods } from './reef.js'; // world 8: hermit crab, pufferfish, jellyfish
 import { kcMethods } from './kingcrab.js'; // world 8 boss: the King Crab // v3.6 the egg thieves: weasel, rats, their bosses
+import { cwMethods } from './clockwork.js'; // v4 the clockwork cast: spider, wind-up beetle, spring jack
+import { owlMethods } from './owl.js'; // v4 the Clockwork Owl boss
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
@@ -261,6 +263,7 @@ export class Sim {
     this.seaInit(L); // v3.3: octopus and fish schools (sim/sea.js)
     this.thiefInit(L); // v3.6: the egg thieves (sim/thieves.js)
     this.reefInit(L); if (L.bossFight && L.bossFight.kind === 'kingcrab') this.kcInit(L); // world 8 (sim/reef.js, sim/kingcrab.js)
+    this.cwInit(L); this.owlInit(L); // v4: the clockwork cast and the Clockwork Owl
     for (const b of L.bombs || []) this.addBomb(b.x, b.y);
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
@@ -306,11 +309,11 @@ export class Sim {
     // switched off in preSolve while the door is open
     for (const g of ring.gaps) {
       if (!g.shut) continue;
-      const half = g.len / (2 * r), n = Math.max(2, Math.ceil(g.len / 0.2));
+      const half = g.len / (2 * ringSpd(ring, g.a)), n = Math.max(2, Math.ceil(g.len / 0.2)); // v4: shape-aware (a circle: r, as before)
       for (let k = 0; k < n; k++) {
         const b0 = g.a - half + (2 * half * k) / n, b1 = g.a - half + (2 * half * (k + 1)) / n;
         body.createFixture({
-          shape: new Polygon([Vec2(ri * Math.cos(b0), ri * Math.sin(b0)), Vec2(ro * Math.cos(b0), ro * Math.sin(b0)), Vec2(ro * Math.cos(b1), ro * Math.sin(b1)), Vec2(ri * Math.cos(b1), ri * Math.sin(b1))]),
+          shape: new Polygon(segQuad(ring, b0, b1).map(([x, y]) => Vec2(x, y))),
           friction: M.fr, restitution: M.re, ...filt('RING'), userData: { kind: 'shut', gap: g },
         });
       }
@@ -587,6 +590,7 @@ export class Sim {
     this.allyStep(dt); // v3.4: after the animals move, so a knocked-out one stays knocked out
     this.chickStep(dt); // v3.2 chick kinds
     this.frogStep(dt); // v3.3 frog
+    this.cwStep(dt); // v4 the clockwork cast
     if (this.weather && this.state === 'play') this.weatherStep(dt);
     if (this.state === 'play') this.v3Step(dt);
     this.p2Step(dt); // v3.4 powers
@@ -752,7 +756,7 @@ export class Sim {
 
   preSolve(c, old) {
     const [fa, fb, ua, ub] = this.parts(c);
-    if (this.v3Pass(ua, ub) || this.chickPass(ua, ub) || this.frogPass(ua, ub)) { c.setEnabled(false); return; } // v3: melted ring, grate, narrow gap
+    if (this.v3Pass(ua, ub) || this.chickPass(ua, ub) || this.frogPass(ua, ub) || this.cwPass(ua, ub)) { c.setEnabled(false); return; } // v3: melted ring, grate, narrow gap
     if (!fa.isSensor() && !fb.isSensor()) this.impactCheck(c, old, ua, ub);
     let egg = null, other = null, ofix = null;
     if (ua.kind === 'egg') { egg = ua.egg; other = ub; ofix = fb; }
@@ -2271,6 +2275,7 @@ export class Sim {
       p2: this.p2State(), // v3.4 powers
       thieves: this.thiefState(), // v3.6 the weasel and the rats
       reef: this.reefState(), // world 8
+      cw: this.cwState(), owl: this.owlState(), // v4 the clockwork cast and the Clockwork Owl
     };
   }
 
@@ -2329,6 +2334,7 @@ export class Sim {
     sim.p2Load(S.p2); // v3.4 powers
     sim.thiefLoad(S.thieves); // v3.6 the weasel and the rats
     sim.reefLoad(S.reef); // world 8
+    sim.cwLoad(S.cw); sim.owlLoad(S.owl); // v4
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2724,5 +2730,6 @@ Object.assign(Sim.prototype, p2Methods); // v3.4 powers and combos (sim/powers2.
 Object.assign(Sim.prototype, warpMethods); // v3.4 warp gate (sim/warp.js)
 Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves.js)
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
+Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl
 
 export { EGG_H, EGG_W, RING_TH };

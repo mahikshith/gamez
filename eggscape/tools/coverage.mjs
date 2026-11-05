@@ -11,6 +11,7 @@ const orbs = (L) => [...(L.orbs || []).map((o) => o.type), ...(L.portals || []).
 const hasOrb = (...t) => (L) => orbs(L).some((o) => t.includes(o));
 const list = (x) => (Array.isArray(x) ? x : x ? [x] : []);
 
+const REUSE = 3;
 // [name, test, exempt from the reuse rule]
 const MECHANICS = [
   ['gears', anyRing((r) => r.gear != null)],
@@ -66,12 +67,28 @@ const MECHANICS = [
   ['pick chick', hasOrb('hatch_pick')],
   ['hard ice', anyRing((r) => r.ice)],
   ['curse orb', (L) => orbs(L).includes('curse') || (L.bossFight?.throws || []).includes('curse')],
+  // v4 world 10, the Shape Lab. The vault shapes are the last world's trait (every level of it has one, and no world
+  // comes after it to bring them back), so they are listed but exempt.
+  ['square vault', (L) => L.shape === 'square' || rings(L).some((r) => r.shape === 'square'), true],
+  ['hex vault', (L) => L.shape === 'hex' || rings(L).some((r) => r.shape === 'hex'), true],
+  ['spiral ring', anyRing((r) => r.shape === 'spiral'), true],
+  ['rocking vault', (L) => !!L.rock, true],
+  ['clockwork spider', (L) => list(L.spider).length > 0],
+  ['wind-up beetle', (L) => list(L.beetle).length > 0],
+  ['spring jack', (L) => list(L.jack).length > 0],
+  ['iron shell', hasOrb('iron')],
+  ['shrink ray', hasOrb('shrink')],
+  ['spin storm', hasOrb('spin')],
+  ['thunderclap', hasOrb('thunderclap')],
+  // a combo counts where its two orbs float side by side (one channel, within 30 deg), so one egg picks up both
+  ['cannonballs (combo)', (L) => (L.orbs || []).some((o) => o.type === 'shrink' && (L.orbs || []).some((q) => q.type === 'iron' && q.ch === o.ch && Math.abs(((((q.a - o.a) % 360) + 540) % 360) - 180) <= 30))],
 ];
 
-const REUSE = 3;
-const rows = MECHANICS.map(([name, test]) => {
+const rows = MECHANICS.map(([name, test, exempt]) => {
   const ids = LEVELS.filter((L) => { try { return !!test(L); } catch { return false; } }).map((L) => L.id);
-  return { name, ids, first: ids[0], later: ids.length - 1 };
+  // a mechanic taught in the last few levels needs only as many reuses as there are levels left after it
+  const need = ids.length ? Math.min(REUSE, LEVELS.filter((L) => L.id > ids[0]).length) : 0;
+  return { name, ids, first: ids[0], later: ids.length - 1, exempt: !!exempt, need };
 });
 
 // a level that introduces more than two mechanics at once teaches none of them well
@@ -87,9 +104,10 @@ if (process.argv.includes('--matrix')) {
 
 let bad = 0;
 for (const r of rows) {
-  const ok = r.ids.length === 0 || r.later >= REUSE;
+  const ok = r.exempt || r.ids.length === 0 || r.later >= r.need;
   if (!ok) bad++;
-  console.log(`${ok ? '  ok ' : 'FAIL '} ${r.name.padEnd(20)} taught L${r.first ?? '-'}, reused ${r.later}x${r.ids.length ? ` (L${r.ids.join(' L')})` : ' (never used)'}`);
+  const note = !r.ids.length ? '' : r.exempt && r.later < REUSE ? ' [exempt: world trait]' : r.need < REUSE ? ` [only ${r.need} level(s) after it]` : '';
+  console.log(`${ok ? '  ok ' : 'FAIL '} ${r.name.padEnd(20)} taught L${r.first ?? '-'}, reused ${r.later}x${r.ids.length ? ` (L${r.ids.join(' L')})` : ' (never used)'}${note}`);
 }
 for (const [id, names] of [...firsts].sort((a, b) => a[0] - b[0])) if (id > 1 && names.length > 2) console.log(`WARN  L${id} introduces ${names.length} things at once: ${names.join(', ')}`);
 console.log(bad ? `\n${bad} mechanic(s) are reused fewer than ${REUSE} times after they are taught.` : `\nEvery mechanic is reused at least ${REUSE} times.`);

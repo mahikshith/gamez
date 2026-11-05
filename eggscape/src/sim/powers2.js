@@ -26,6 +26,7 @@
 import { Vec2, Polygon } from 'planck';
 import { RING_TH, TAU, eggHull, wrap, clamp } from './geom.js';
 import { removeWall, ringPoint } from './boss.js';
+import { ringSpd, segQuad } from './shapes.js';
 
 const DT = 1 / 120; // sim.js DT: power timers run in real time, also under the hourglass
 const TRAIL = 0.05; // sim.js snake trail spacing
@@ -83,11 +84,11 @@ export const p2Methods = {
       for (const g of ring.gaps) {
         if (g.grate || g.curtain || g.narrow || g.len >= P2.iron.gap) continue;
         g.ironBar = true;
-        const half = g.len / (2 * r), n = Math.max(2, Math.ceil(g.len / 0.2));
+        const half = g.len / (2 * ringSpd(ring, g.a)), n = Math.max(2, Math.ceil(g.len / 0.2)); // v4: shape-aware
         for (let k = 0; k < n; k++) {
           const b0 = g.a - half + (2 * half * k) / n, b1 = g.a - half + (2 * half * (k + 1)) / n;
           ring.body.createFixture({
-            shape: new Polygon([Vec2(ri * Math.cos(b0), ri * Math.sin(b0)), Vec2(ro * Math.cos(b0), ro * Math.sin(b0)), Vec2(ro * Math.cos(b1), ro * Math.sin(b1)), Vec2(ri * Math.cos(b1), ri * Math.sin(b1))]),
+            shape: new Polygon(segQuad(ring, b0, b1).map(([x, y]) => Vec2(x, y))),
             friction: 0.4, restitution: 0.1, ...RING_FILT, userData: { kind: 'ironbar', gap: g, ring },
           });
         }
@@ -203,6 +204,7 @@ export const p2Methods = {
     this.seaP2?.(kind, T); // v3.5: the octopus (sim/sea.js): frozen, or stunned
     for (const S of this.schools || []) this.p2Fish(S, kind, T);
     this.reefP2?.(kind, T); // world 8: hermit crabs, puffers, jellyfish, the King Crab
+    this.cwP2?.(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v4: the clockwork cast (sim/clockwork.js)
   },
   // fish schools: frozen by ice, stunned by lightning; they just carry on for the rest
   p2Fish(S, kind, T) {
@@ -292,7 +294,7 @@ export const p2Methods = {
   p2Boss(kind, T) {
     const B = this.bx && this.bx.boss;
     if (!B || B.kind === 'snake' || B.kind === 'salamander' || B.den || B.kind === 'kingcrab') return; // the King Crab: sim/kingcrab.js kcP2
-    const t = (kind === 'bolt' ? P2.thunderclap.big : T) * BOSS_RESIST;
+    const t = (kind === 'bolt' ? P2.thunderclap.big : T) * (B.kind === 'owl' && kind === 'bolt' ? 1 : BOSS_RESIST); // v4: lightning shorts the Clockwork Owl
     if (B.atk && B.atk.ph === 'warn') B.atk = null;
     if (!B.atk) B.t = Math.max(B.t, t + 0.8);
     B.flinch = Math.max(B.flinch, 0.9);

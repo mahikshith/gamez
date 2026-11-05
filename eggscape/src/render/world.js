@@ -9,7 +9,7 @@ import { EAGLE_LEN } from '../sim/sim.js';
 import { P2 } from '../sim/powers2.js'; // v3.4: shrink ray size
 import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawThornVine, drawGrate, drawOneWayMark } from './v3art.js';
 import { drawSkinPreview } from '../ui/store.js';
-import { ringPt, ringSpd, ringNormal } from '../sim/shapes.js'; // v3.3 M10 vault shapes
+import { ringPt, ringSpd, ringNormal, ringReach } from '../sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawShapedRing } from './shapes.js';
 
 let skin = 'classic';
@@ -1243,31 +1243,37 @@ export function drawDebris(ctx, d, theme) {
   ctx.restore();
 }
 
-// The fuse: a rope circling the vault that burns down.
-export function drawFuse(ctx, R, frac, t, fx) {
+// The fuse: a rope circling the vault that burns down. v4: on a shaped vault (ring = the outer ring) it hugs the shape.
+export function drawFuse(ctx, R, frac, t, fx, ring) {
   const start = Math.PI / 2;
   const end = start + TAU * frac;
+  const shaped = ring && ring.prof, A = shaped ? ring.body.getAngle() : 0, off = shaped ? ring.r + RING_TH / 2 + (R - ringReach(ring)) : 0;
+  const at = (wa) => { if (!shaped) return [R * Math.cos(wa), R * Math.sin(wa)]; const [x, y] = ringPt(ring, wa - A, off); return [x * Math.cos(A) - y * Math.sin(A), x * Math.sin(A) + y * Math.cos(A)]; };
+  const path = (a0, a1) => {
+    ctx.beginPath();
+    if (!shaped) { ctx.arc(0, 0, R, a0, a1); return; }
+    const n = Math.max(2, Math.ceil((a1 - a0) * 40));
+    for (let i = 0; i <= n; i++) { const [x, y] = at(a0 + ((a1 - a0) * i) / n); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+  };
   ctx.save();
   ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   ctx.strokeStyle = 'rgba(0,0,0,0.25)';
   ctx.lineWidth = 0.09;
-  ctx.beginPath();
-  ctx.arc(0, 0, R, start, start + TAU);
+  path(start, start + TAU);
   ctx.stroke();
   if (frac > 0) {
     ctx.strokeStyle = frac < 0.2 ? '#ff5a3c' : '#e9d3a1';
     ctx.lineWidth = 0.06;
-    ctx.beginPath();
-    ctx.arc(0, 0, R, start, end);
+    path(start, end);
     ctx.stroke();
     ctx.strokeStyle = 'rgba(120,80,30,0.7)';
     ctx.lineWidth = 0.015;
     ctx.setLineDash([0.06, 0.06]);
-    ctx.beginPath();
-    ctx.arc(0, 0, R, start, end);
+    path(start, end);
     ctx.stroke();
     ctx.setLineDash([]);
-    const x = R * Math.cos(end), y = R * Math.sin(end);
+    const [x, y] = at(end);
     if (fx && Math.random() < 0.7) {
       fx.add({ x, y, vx: (Math.random() - 0.5) * 2.5, vy: Math.random() * 2.5, g: 5, life: 0.3 + Math.random() * 0.2, size: 0.02, color: '#ffd34d', type: 'spark' });
     }

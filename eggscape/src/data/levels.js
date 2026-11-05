@@ -414,4 +414,52 @@ export const LEVELS = [
       {gaps: [{a: 133}], thorns: [{a: -89, n: 2},{a: -144, n: 1, side: "out", h: 0.26}], pads: [{a: 42, len: 1.12}]},
     ],
   },
+  {
+    id: 46, theme: "lab", name: "Square One", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 9}, shape: "square", spider: {ring: 2, delay: 4}, tip: "A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.", orbs: [{type: "iron", ch: 1, a: 50},{type: "fire_red", ch: 3, a: 140}], seed: 364277, world: 10, intro: {title: "Shape Lab", cw: "spider", line: "Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider webs a gap shut; the web catches eggs softly. Iron or fire tears it."},
+    rings: [
+      {gaps: [{a: 171}], thorns: [{a: 89, n: 2}]},
+      {gaps: [{a: 71, x: 2},{a: -143}], thorns: [{a: -21, n: 1},{a: 159, n: 2}], pads: [{a: -70, len: 1.38}]},
+      {gaps: [{a: -31},{a: 154}], thorns: [{a: 102, n: 3},{a: -172, n: 2}], pads: [{a: -61, len: 1.85}]},
+      {gaps: [{a: 58, x: 3, len: 0.7},{a: -148}], thorns: [{a: 5, n: 1}], pads: [{a: -126, len: 1.53}]},
+    ],
+  },
+  {
+    id: 47, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 30}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30}], beetle: {ch: 2, delay: 3, a: -167}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "The beetle shoves eggs along until its key runs down. Stopped, it is a wall that keeps eggs off thorns. Turn its ring to wind it up again."},
+    rings: [
+      {gaps: [{a: 124}], thorns: [{a: 45, n: 1}]},
+      {gaps: [{a: 164, x: 2},{a: 31, grate: 1}], thorns: [{a: -6, n: 2},{a: -113, n: 2, side: "out", h: 0.26}], pads: [{a: -135, len: 1.03}]},
+      {gaps: [{a: -41},{a: 88}], thorns: [{a: 12, n: 3},{a: 149, n: 2}], pads: [{a: -67, len: 1.48}]},
+      {gaps: [{a: 44, x: 3, len: 0.7},{a: 123}], thorns: [{a: 73, n: 1},{a: -175, n: 2}], pads: [{a: 143, len: 1.07}]},
+      {gaps: [{a: 176},{a: 13}], thorns: [{a: 111, n: 2}], pads: [{a: -89, len: 1.27}]},
+    ],
+  },
+  {
+    id: 48, theme: "lab", name: "Spiral Spring", eggs: 3, target: 2, time: 75, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 9}, tip: "Spin storm flings the beetle on its back, but your eggs tumble too.", orbs: [{type: "shrink", ch: 1, a: -87},{type: "iron", ch: 2, a: 10},{type: "spin", ch: 3, a: -11}], beetle: {ch: 3, delay: 6, a: -137}, jack: [{ch: 1, a: 164}], seed: 380114, world: 10, intro: {title: "Spring jack", cw: "jack", line: "Roll an egg over the jack and it bounces back up: time it to jump a gap. An iron egg jams it. The spiral ring has no gap: roll down its step."},
+    rings: [
+      {gaps: [{a: 89}], thorns: [{a: -170, n: 2}]},
+      {gaps: [{a: -168, x: 2},{a: -43}], thorns: [{a: -132, n: 1},{a: 61, n: 1}], pads: [{a: 126, len: 1.37}]},
+      {shape: "spiral", gaps: [], thorns: [{a: 4, n: 1}], pads: [{a: -91, len: 1.65}]},
+      {gaps: [{a: 18, x: 3, len: 0.7},{a: 145}], thorns: [{a: 74, n: 2},{a: -33, n: 2}], pads: [{a: -159, len: 1.43}]},
+      {gaps: [{a: 53},{a: -41}], thorns: [{a: -5, n: 2}], pads: [{a: -118, len: 1.26}]},
+    ],
+  },
+  {
+    id: 49, theme: "lab", name: "Rocking Lab", eggs: 3, target: 2, time: 80, spacing: 1.05, material: "metal", nest: {w: 3.1}, bonus: {kind: "time", s: 40}, shape: "square", rock: {}, spider: {ring: 2, delay: 8}, tip: "Your eggs start as cannonballs: smash thorns while it lasts. Wait out the lean before you park an egg.", orbs: [{type: "shrink", ch: 0, a: -100},{type: "iron", ch: 0, a: -80},{type: "spin", ch: 3, a: 90}], beetle: {ch: 1, delay: 5, a: -61}, jack: [{ch: 3, a: -170}], seed: 388034, world: 10, intro: {title: "Rocking vault", cw: "rock", line: "The whole vault leans and comes back. Parked eggs slide. Shrink ray plus iron shell make cannonballs: tiny iron eggs that smash thorns and slip through grates."},
+    rings: [
+      {gaps: [{a: 47}], thorns: [{a: 88, n: 1}]},
+      {gaps: [{a: 78, x: 2},{a: -31},{a: 138, grate: 1}], thorns: [{a: 11, n: 3},{a: -156, n: 2}], pads: [{a: -88, len: 1.86}]},
+      {gaps: [{a: -154},{a: 40}], thorns: [{a: -42, n: 2},{a: 134, n: 3}], pads: [{a: 81, len: 1.39}]},
+      {gaps: [{a: -9, x: 3, len: 0.7},{a: 156}], thorns: [{a: 105, n: 1}], pads: [{a: -75, len: 1.37}]},
+    ],
+  },
+  {
+    id: 50, theme: "lab", name: "The Clockwork Owl", eggs: 4, target: 3, time: 135, spacing: 1.05, material: "metal", boss: "owl", bossFight: {kind: "owl", delay: 3, phases: [{attacks: ["swoop","gears"], every: 5.5},{at: {saved: 1, t: 30}, attacks: ["wind","swoop","gears"], every: 5},{at: {saved: 2, t: 55}, attacks: ["swoop","gears2","wind"], every: 4.5, summon: true}]}, nest: {w: 2.8}, bonus: {kind: "prize"}, shape: "hex", spider: {ring: 3, delay: 999}, tip: "Thunderclap stalls the owl. Carry a ticking gear bomb away from your eggs.", orbs: [{type: "shrink", ch: 1, a: 156},{type: "iron", ch: 1, a: 144},{type: "spin", ch: 2, a: 153},{type: "thunderclap", ch: 3, a: -13},{type: "iron", ch: 4, a: -170}], beetle: {ch: 1, delay: 999, a: -98}, jack: [{ch: 2, a: -138}], seed: 395953, world: 10, intro: {title: "Boss: The Clockwork Owl", line: "The owl swoops at eggs in the outer channel, winds the rings round and drops gear bombs. Turn the gap away when it marks an egg. An iron egg jams its gears."},
+    rings: [
+      {gaps: [{a: 151}], thorns: [{a: 22, n: 2}]},
+      {gaps: [{a: -17, x: 2}], thorns: [{a: 157, n: 3},{a: 135, n: 2, side: "out", h: 0.26}], pads: [{a: -108, len: 1.19}]},
+      {gaps: [{a: -170},{a: 36}], thorns: [{a: -29, n: 3},{a: 78, n: 2}], pads: [{a: 147, len: 1.52}]},
+      {gaps: [{a: 4, x: 3, len: 0.7},{a: 109}], thorns: [{a: 34, n: 1},{a: 163, n: 2}], pads: [{a: -130, len: 1.07}]},
+      {gaps: [{a: -138},{a: 144}], thorns: [{a: 49, n: 1}], pads: [{a: -7, len: 1.67}]},
+    ],
+  },
 ];
