@@ -7,6 +7,7 @@ import { TAU } from '../sim/geom.js';
 import { KC } from '../sim/kingcrab.js';
 import { ATTACK_NAME } from '../sim/boss.js';
 import { dizzyStars, spiralEye, boltStroke } from './status.js';
+import { limb, blinkAt } from './castkit.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const sstep = (v) => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
@@ -37,10 +38,9 @@ export function drawCrabBody(ctx, s, t, o = {}) {
       const hx = sd * (0.42 + i * 0.13) * s, hy = (0.12 + i * 0.03) * s;
       const kx = sd * (0.82 + i * 0.17) * s, ky = (-0.05 + i * 0.05) * s - lift;
       const fx = sd * (1.0 + i * 0.16) * s, fy = (0.42 + stamp * 0.12) * s - lift * 0.4;
-      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy);
-      ctx.strokeStyle = C.line; ctx.lineWidth = lw * 3.6; ctx.stroke();
-      ctx.strokeStyle = i % 2 ? C.lo : C.shell; ctx.lineWidth = lw * 2; ctx.stroke();
-      ctx.beginPath(); ctx.arc(kx, ky, lw * 1.1, 0, TAU); ctx.fillStyle = C.line; ctx.fill(); // knee
+      const reach = Math.cos(q) * 0.04 * s * sd; // the foot reaches and plants as the leg cycles
+      limb(ctx, [[hx, hy], [kx + reach * 0.5, ky], [fx + reach, fy]], [lw * 1.7, lw * 1.35, lw * 0.35], i % 2 ? C.lo : C.shell, C.line, lw * 0.9);
+      ctx.beginPath(); ctx.arc(kx + reach * 0.5 - lw * 0.3, ky - lw * 0.4, lw * 0.55, 0, TAU); ctx.fillStyle = C.hi; ctx.fill(); // knee glint
     }
   }
   // the carapace: broad and armoured, a serrated front edge, crown spikes along the top
@@ -53,11 +53,14 @@ export function drawCrabBody(ctx, s, t, o = {}) {
     for (let i = 0; i <= 10; i++) { const q = i / 10, x = W - q * 2 * W; ctx.lineTo(x, (0.14 + (i % 2 ? 0.05 : 0)) * s + Math.sin(q * Math.PI) * 0.08 * s); }
     ctx.closePath();
   };
+  ctx.save(); ctx.translate(lw * 0.35, lw * 0.5); shape(); ctx.lineWidth = lw * 1.8; ctx.strokeStyle = C.line; ctx.stroke(); ctx.restore(); // weighted line
   shape();
   ctx.fillStyle = o.flash > 0 && Math.floor(t * 16) % 2 ? C.hi : C.shell; ctx.fill();
   ctx.save(); ctx.clip();
   ctx.fillStyle = C.lo; ctx.beginPath(); ctx.ellipse(0, H * 0.55, W * 1.2, H * 0.55, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = C.lo; ctx.beginPath(); ctx.ellipse(W * 1.05, top * 0.3, W * 0.22, H * 0.9, 0.25, 0, TAU); ctx.fill();
   ctx.fillStyle = C.hi; ctx.beginPath(); ctx.ellipse(-W * 0.35, top * 0.85, W * 0.32, H * 0.14, -0.15, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.ellipse(-W * 0.5, top * 0.92, W * 0.1, H * 0.045, -0.25, 0, TAU); ctx.fill();
   ctx.fillStyle = C.spot;
   for (const [x, y, r] of [[-0.55, -0.12, 0.07], [0.5, -0.16, 0.06], [-0.2, -0.3, 0.05], [0.25, -0.33, 0.045], [0.7, 0.0, 0.05], [-0.75, 0.01, 0.045]]) { ctx.beginPath(); ctx.arc(x * s, y * s, r * s, 0, TAU); ctx.fill(); }
   // armour plate lines
@@ -92,7 +95,10 @@ export function drawCrabBody(ctx, s, t, o = {}) {
     if (eye === 'spiral') spiralEye(ctx, tx, ty, er * 0.85, t, sx, C.line);
     else if (eye === 'x') { ctx.strokeStyle = C.line; ctx.lineWidth = lw * 1.3; ctx.beginPath(); ctx.moveTo(tx - er * 0.5, ty - er * 0.5); ctx.lineTo(tx + er * 0.5, ty + er * 0.5); ctx.moveTo(tx + er * 0.5, ty - er * 0.5); ctx.lineTo(tx - er * 0.5, ty + er * 0.5); ctx.stroke(); }
     else if (eye === 'squeeze') { ctx.strokeStyle = C.line; ctx.lineWidth = lw * 1.4; ctx.beginPath(); ctx.moveTo(tx + sx * er * 0.5, ty - er * 0.45); ctx.lineTo(tx - sx * er * 0.35, ty); ctx.lineTo(tx + sx * er * 0.5, ty + er * 0.45); ctx.stroke(); }
-    else { ctx.fillStyle = C.eye; ctx.beginPath(); ctx.arc(tx + lk.x * er * 0.45, ty + lk.y * er * 0.45, er * 0.5, 0, TAU); ctx.fill(); ctx.fillStyle = C.white; ctx.beginPath(); ctx.arc(tx + lk.x * er * 0.45 - er * 0.18, ty + lk.y * er * 0.45 - er * 0.18, er * 0.14, 0, TAU); ctx.fill(); }
+    else { ctx.fillStyle = C.eye; ctx.beginPath(); ctx.arc(tx + lk.x * er * 0.45, ty + lk.y * er * 0.45, er * 0.5, 0, TAU); ctx.fill(); ctx.fillStyle = C.white; ctx.beginPath(); ctx.arc(tx + lk.x * er * 0.45 - er * 0.18, ty + lk.y * er * 0.45 - er * 0.18, er * 0.16, 0, TAU); ctx.fill();
+      const bl = o.ice ? 0 : blinkAt(t, 6), lid = Math.max(eye === 'mad' ? 0.3 : 0.12, bl); // a heavy lid: it blinks, and narrows when it is mad
+      ctx.save(); ctx.beginPath(); ctx.arc(tx, ty, er, 0, TAU); ctx.clip(); ctx.translate(tx, ty); ctx.rotate(sx * (eye === 'mad' ? 0.45 : 0.15)); ctx.fillStyle = C.shell; ctx.fillRect(-er * 1.5, -er * 1.5, er * 3, er * (0.5 + lid * 2)); ctx.fillStyle = C.line; ctx.fillRect(-er * 1.5, -er + er * lid * 2 - lw * 0.5, er * 3, lw); ctx.restore();
+      ctx.beginPath(); ctx.arc(tx, ty, er, 0, TAU); ctx.lineWidth = lw; ctx.strokeStyle = C.line; ctx.stroke(); }
     if (eye === 'mad' || eye === 'normal') { // a heavy brow; steep when it is mad
       const st = eye === 'mad' ? 0.55 : 0.2;
       ctx.strokeStyle = C.line; ctx.lineWidth = lw * 1.6; ctx.beginPath(); ctx.moveTo(tx - sx * er * 1.1, ty - er * (1.2 + st)); ctx.lineTo(tx + sx * er * 0.9, ty - er * (1.2 - st)); ctx.stroke();

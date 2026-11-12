@@ -46,12 +46,13 @@ export function drawFish(ctx, x, y, L, ang, t, o = {}) {
   ctx.rotate(ang);
   const up = (Math.cos(ang) < 0 ? -1 : 1) * (o.belly ? -1 : 1); // keep the back up on screen (stunned: belly up)
   ctx.scale(Math.max(0.12, Math.abs(flip)), up);
-  const tail = Math.sin(beat) * 0.38;
+  const tail = Math.sin(beat) * 0.5;
+  ctx.rotate(Math.sin(beat - 1.1) * 0.07); // the body yaws against the tail
   const line = rgb(FP.line);
   // tail
   ctx.save();
   ctx.translate(-0.3 * L, 0); ctx.rotate(tail);
-  ctx.beginPath(); ctx.moveTo(0.04 * L, 0); ctx.lineTo(-0.26 * L, -0.2 * L); ctx.quadraticCurveTo(-0.16 * L, 0, -0.26 * L, 0.2 * L); ctx.closePath();
+  ctx.beginPath(); ctx.moveTo(0.04 * L, 0); ctx.quadraticCurveTo(-0.1 * L, -0.06 * L, -0.28 * L - tail * 0.05 * L, -0.23 * L); ctx.quadraticCurveTo(-0.17 * L, 0, -0.28 * L - tail * 0.05 * L, 0.23 * L); ctx.quadraticCurveTo(-0.1 * L, 0.06 * L, 0.04 * L, 0); ctx.closePath();
   ctx.fillStyle = rgb(FP.fin); ctx.fill(); ctx.strokeStyle = line; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.stroke();
   ctx.restore();
   // dorsal fin
@@ -68,15 +69,15 @@ export function drawFish(ctx, x, y, L, ang, t, o = {}) {
   ctx.beginPath(); ctx.ellipse(0.04 * L, 0, 0.36 * L, 0.21 * L, 0, 0, TAU);
   ctx.strokeStyle = line; ctx.lineWidth = lw; ctx.stroke();
   // eye (wide when alarmed)
-  const er = 0.075 * L * (1 + 0.35 * (o.alarm || 0));
-  ctx.fillStyle = rgb(FP.eye); ctx.beginPath(); ctx.arc(0.24 * L, -0.04 * L, er, 0, TAU); ctx.fill();
+  const er = 0.09 * L * (1 + 0.35 * (o.alarm || 0));
+  ctx.fillStyle = rgb(FP.eye); ctx.beginPath(); ctx.arc(0.24 * L, -0.04 * L, er, 0, TAU); ctx.fill(); ctx.lineWidth = lw * 0.6; ctx.strokeStyle = line; ctx.stroke();
   if (o.dizzy) { // stunned: an X eye and a little open mouth
     ctx.strokeStyle = line; ctx.lineWidth = Math.max(1, L * 0.05); ctx.lineCap = 'round'; ctx.beginPath();
     const ex = 0.24 * L, ey = -0.04 * L, d = er * 0.85;
     ctx.moveTo(ex - d, ey - d); ctx.lineTo(ex + d, ey + d); ctx.moveTo(ex + d, ey - d); ctx.lineTo(ex - d, ey + d);
     ctx.stroke();
     ctx.beginPath(); ctx.ellipse(0.4 * L, 0.04 * L, L * 0.03, L * 0.045, 0, 0, TAU); ctx.fillStyle = line; ctx.fill();
-  } else { ctx.fillStyle = line; ctx.beginPath(); ctx.arc(0.25 * L + er * 0.2, -0.04 * L, er * 0.55, 0, TAU); ctx.fill(); }
+  } else { ctx.fillStyle = line; ctx.beginPath(); ctx.arc(0.25 * L + er * 0.2, -0.04 * L, er * 0.58, 0, TAU); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0.25 * L, -0.04 * L - er * 0.25, er * 0.22, 0, TAU); ctx.fill(); }
   ctx.restore();
 }
 

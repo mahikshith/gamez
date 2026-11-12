@@ -6,6 +6,7 @@ import { RING_TH, TAU } from '../sim/geom.js';
 import { ringPt, ringSpd } from '../sim/shapes.js';
 import { SPIDER, BEETLE, JACK } from '../sim/clockwork.js';
 import { statusClock, statusDraw, dizzyStars, spiralEye } from './status.js';
+import { form, ik, limb, back } from './castkit.js';
 
 const INK = '#1a120a';
 const BRASS = { base: '#c8963e', light: '#f2cf7c', dark: '#7a5220' };
@@ -47,36 +48,43 @@ function key(c, x, y, s, ph, lw, up = -1, K = BRASS) {
 
 // ---------------------------------------------------------------- the clockwork spider
 // origin = the body's centre, local -y points up its thread. o: { legs (gait phase), spin (0..1 working the web), eye }
+// Eight tapered steel legs with teal knee joints and needle feet that paddle in a travelling wave (the abdomen bobs against
+// them); a banded gunmetal abdomen with a lit rim, a small head with fangs and two glowing lens eyes.
 export function drawSpiderArt(c, s, t, o = {}) {
-  const lw = LW(s), sp = o.spin || 0, slack = o.slack || 0;
+  const lw = LW(s), sp = o.spin || 0, slack = o.slack || 0, g = (o.legs || 0) * 9, bob = Math.sin(g * 2) * 0.006 * s * (1 - slack);
   c.lineJoin = 'round'; c.lineCap = 'round';
-  // legs: four a side, two joints each, steel with brass knees
+  // legs: four a side, two joints each
   for (const sd of [-1, 1]) for (let i = 0; i < 4; i++) {
-    const ph = (o.legs || 0) * 9 + i * 1.7 + (sd > 0 ? 0.8 : 0), sw = Math.sin(ph) * (0.035 + sp * 0.05), dr = slack * 0.08;
-    const hx = sd * 0.06 * s, hy = (-0.05 + i * 0.05) * s;
-    const kx = sd * (0.2 + i * 0.012) * s, ky = (-0.16 + i * 0.09 + sw + dr) * s;
-    const fx = sd * (0.27 - Math.abs(i - 1.5) * 0.02) * s, fy = (-0.02 + i * 0.1 + sw * 1.4 + dr * 2.5) * s;
-    c.strokeStyle = INK; c.lineWidth = lw * 3.1; c.beginPath(); c.moveTo(hx, hy); c.lineTo(kx, ky); c.lineTo(fx, fy); c.stroke();
-    c.strokeStyle = STEEL.light; c.lineWidth = lw * 1.4; c.stroke();
-    c.beginPath(); c.arc(kx, ky, lw * 1.5, 0, TAU); c.fillStyle = TEALK.base; c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke();
+    const ph = g + i * 1.7 + (sd > 0 ? 0.8 : 0), front = i >= 2 ? 1 : 0.5, sw = Math.sin(ph) * (0.04 + sp * 0.07 * front), rc = Math.cos(ph) * (0.018 + sp * 0.03 * front), dr = slack * 0.08;
+    const hx = sd * 0.07 * s, hy = (-0.05 + i * 0.05) * s + bob;
+    const kx = sd * (0.2 + i * 0.012 + rc) * s, ky = (-0.17 + i * 0.09 + sw * 0.7 + dr) * s;
+    const fx = sd * (0.275 - Math.abs(i - 1.5) * 0.02 + rc * 1.6 - slack * 0.03) * s, fy = (-0.02 + i * 0.1 + sw * 1.5 + dr * 2.5) * s;
+    limb(c, [[hx, hy], [kx, ky], [fx, fy]], [lw * 1.25, lw * 1.05, lw * 0.3], i % 2 ? STEEL.light : '#a9bcd6', INK, lw * 0.85);
+    c.beginPath(); c.arc(kx, ky, lw * 1.55, 0, TAU); c.fillStyle = TEALK.base; c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke();
+    c.beginPath(); c.arc(kx - lw * 0.4, ky - lw * 0.5, lw * 0.45, 0, TAU); c.fillStyle = TEALK.light; c.fill();
   }
-  // abdomen (up the thread) with brass bands and a wind-up key, the head below it
-  key(c, 0, -0.2 * s, s, (o.legs || 0) * 2, lw);
-  cel(c, (c) => E(c, 0, -0.06 * s, 0.13 * s, 0.15 * s), GUN, lw);
-  c.save(); ell(c, 0, -0.06 * s, 0.13 * s, 0.15 * s); c.clip();
-  c.strokeStyle = TEALK.base; c.lineWidth = 0.03 * s;
-  for (const y of [-0.12, -0.03]) { c.beginPath(); c.moveTo(-0.15 * s, y * s); c.quadraticCurveTo(0, (y + 0.035) * s, 0.15 * s, y * s); c.stroke(); }
+  // abdomen (up the thread) with teal bands and a wind-up key, the head below it
+  c.save(); c.translate(0, bob);
+  key(c, 0, -0.2 * s, s, (o.legs || 0) * 2 + sp * t * 9, lw);
+  const abd = () => { c.beginPath(); c.moveTo(0, -0.215 * s); c.bezierCurveTo(0.15 * s, -0.215 * s, 0.17 * s, 0.0, 0.07 * s, 0.085 * s); c.quadraticCurveTo(0, 0.11 * s, -0.07 * s, 0.085 * s); c.bezierCurveTo(-0.17 * s, 0.0, -0.15 * s, -0.215 * s, 0, -0.215 * s); c.closePath(); };
+  form(c, abd, { d: lw * 2.4, lo: GUN.dark, base: GUN.base, hi: GUN.light, hiK: 0.5, line: INK, lw, inner: () => {
+    c.strokeStyle = TEALK.base; c.lineWidth = 0.032 * s;
+    for (const y of [-0.13, -0.04]) { c.beginPath(); c.moveTo(-0.17 * s, y * s); c.quadraticCurveTo(0, (y + 0.04) * s, 0.17 * s, y * s); c.stroke(); }
+    c.strokeStyle = TEALK.light; c.lineWidth = 0.008 * s; for (const y of [-0.142, -0.052]) { c.beginPath(); c.moveTo(-0.15 * s, y * s); c.quadraticCurveTo(-0.06 * s, (y + 0.03) * s, 0, (y + 0.034) * s); c.stroke(); }
+    c.fillStyle = BRASS.light; for (const sd of [-1, 1]) { c.beginPath(); c.arc(sd * 0.075 * s, 0.03 * s, 0.011 * s, 0, TAU); c.fill(); }
+  } });
   c.restore();
-  ell(c, 0, -0.06 * s, 0.13 * s, 0.15 * s); c.lineWidth = lw; c.strokeStyle = INK; c.stroke();
-  cel(c, (c) => E(c, 0, 0.12 * s, 0.085 * s, 0.075 * s), GUN, lw);
-  // fangs and two lens eyes (glowing red while it works a web)
-  c.strokeStyle = INK; c.lineWidth = lw * 1.4;
-  for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(sd * 0.03 * s, 0.18 * s); c.quadraticCurveTo(sd * 0.045 * s, 0.22 * s, sd * 0.02 * s, 0.235 * s); c.stroke(); }
+  const head = () => { c.beginPath(); c.ellipse(0, 0.125 * s, 0.09 * s, 0.078 * s, 0, 0, TAU); };
+  // fangs first (under the head)
+  for (const sd of [-1, 1]) { const a = sp > 0 ? Math.sin(t * 20 + sd) * 0.012 * s : 0; c.beginPath(); c.moveTo(sd * 0.035 * s, 0.18 * s); c.quadraticCurveTo(sd * 0.055 * s + a, 0.225 * s, sd * 0.018 * s, 0.245 * s); c.strokeStyle = INK; c.lineWidth = lw * 2; c.stroke(); c.strokeStyle = '#e8eef6'; c.lineWidth = lw * 0.8; c.stroke(); }
+  form(c, head, { d: lw * 2, lo: GUN.dark, base: GUN.base, hi: GUN.light, hiK: 0.5, line: INK, lw, noWeight: true });
+  // two lens eyes (glowing hotter while it winds down or works a web)
   for (const sd of [-1, 1]) {
-    const ex = sd * 0.04 * s, ey = 0.13 * s, r = 0.034 * s;
+    const ex = sd * 0.042 * s, ey = 0.132 * s, r = 0.037 * s, hot = sp > 0 || o.eye === 'hot';
     c.beginPath(); c.arc(ex, ey, r, 0, TAU); c.fillStyle = INK; c.fill();
     if (o.eye === 'spiral') spiralEye(c, ex, ey, r * 0.9, t, sd, '#ffd0a0');
-    else { c.beginPath(); c.arc(ex, ey, r * 0.62, 0, TAU); c.fillStyle = sp > 0 || o.eye === 'hot' ? '#ff7a3a' : '#ff3b2a'; c.fill(); c.beginPath(); c.arc(ex - r * 0.25, ey - r * 0.3, r * 0.22, 0, TAU); c.fillStyle = '#fff4d8'; c.fill(); }
+    else { const pu = hot ? 0.7 + 0.08 * Math.sin(t * 14) : 0.6; c.beginPath(); c.arc(ex, ey, r * pu, 0, TAU); c.fillStyle = hot ? '#ff8a3a' : '#ff3b2a'; c.fill(); if (hot) { c.beginPath(); c.arc(ex, ey, r * 0.34, 0, TAU); c.fillStyle = '#ffe9a0'; c.fill(); } c.beginPath(); c.arc(ex - r * 0.28, ey - r * 0.32, r * 0.22, 0, TAU); c.fillStyle = '#fff4d8'; c.fill(); }
+    if (hot && o.eye !== 'spiral') { c.beginPath(); c.moveTo(ex - sd * r * 1.2, ey - r * 1.25); c.lineTo(ex + sd * r * 0.7, ey - r * 0.75); c.strokeStyle = INK; c.lineWidth = lw * 1.3; c.stroke(); }
   }
 }
 
@@ -107,41 +115,59 @@ function drawWeb(ctx, sim, W, k, t) {
 
 // ---------------------------------------------------------------- the wind-up beetle
 // origin = between its feet on the floor, local +x forward, -y up. o: { walk (gait distance m), key (turn), lamp, tip, slack }
+// A tin toy: a glossy red wing-case dome split by a seam, a pewter skirt with brass rivets, six jointed tin legs that plant
+// as it marches (the shell rocks, the feelers spring after it), a round head with a headlamp eye and a steel plough.
+const TIN = { base: '#e2452f', light: '#ff8f6a', dark: '#96201a' };
+const HEADC = { base: '#4a4450', light: '#847a8c', dark: '#221e28' };
 export function drawBeetleArt(c, s, t, o = {}) {
   const lw = LW(s);
   c.lineJoin = 'round'; c.lineCap = 'round';
   c.save();
-  if (o.tip) { c.translate(0, -0.15 * s); c.rotate(Math.PI); c.translate(0, 0.15 * s); }
-  const g = (o.walk || 0) * 22, sag = (o.slack || 0) * 0.02 * s;
-  // legs: three a side, stiff tin legs that step in turn (the far side darker)
-  for (const far of [1, 0]) for (let i = 0; i < 3; i++) {
-    const ph = g + i * 2.1 + far * Math.PI, lift = Math.max(0, Math.sin(ph)) * 0.035 * s, x0 = (-0.15 + i * 0.13) * s, sw = Math.cos(ph) * 0.035 * s;
-    c.strokeStyle = INK; c.lineWidth = lw * 2.8; c.beginPath(); c.moveTo(x0, -0.07 * s); c.lineTo(x0 + sw + (o.tip ? Math.sin(t * 20 + i) * 0.04 * s : 0), -lift); c.stroke();
-    c.strokeStyle = far ? '#3a2a24' : '#5c4a40'; c.lineWidth = lw * 1.3; c.stroke();
-  }
+  if (!o.tip) { c.fillStyle = 'rgba(0,0,0,0.26)'; c.beginPath(); c.ellipse(0.01 * s, 0.004 * s, 0.34 * s, 0.022 * s, 0, 0, TAU); c.fill(); }
+  if (o.tip) { c.translate(0, -0.16 * s); c.rotate(Math.PI + Math.sin(t * 6) * 0.07); c.translate(0, 0.16 * s); }
+  const g = (o.walk || 0) * 22, slack = o.slack || 0, sag = slack * 0.022 * s, walking = o.walk ? 1 : 0;
+  const rock = walking * Math.sin(g * 2) * 0.012, bob = walking * Math.abs(Math.sin(g)) * 0.008 * s;
+  // legs: three a side, two-jointed, feet planted through the stance (the far side darker)
+  const leg = (i, far) => {
+    const c0 = ((((g + i * 2.1 + far * Math.PI) / TAU) % 1) + 1) % 1, st = 0.62, stride = 0.088 * s * walking;
+    let fx, lift = 0;
+    if (o.tip) { fx = Math.sin(t * 17 + i * 2 + far) * 0.05 * s; lift = 0.06 * s + Math.cos(t * 17 + i * 2 + far) * 0.03 * s; }
+    else if (c0 < st) fx = stride * (0.5 - c0 / st); else { const q = (c0 - st) / (1 - st); fx = stride * (-0.5 + q * q * (3 - 2 * q)); lift = Math.sin(q * Math.PI) * 0.04 * s; }
+    const hip = [(-0.16 + i * 0.13) * s, -0.075 * s + sag], foot = [(-0.235 + i * 0.2 + (far ? -0.02 : 0.02)) * s + fx, -lift - 0.004 * s];
+    const K = ik(hip[0], hip[1], foot[0], foot[1], 0.06 * s, 0.075 * s, i === 0 ? 1 : -1);
+    limb(c, [hip, K, foot], [lw * 0.95, lw * 0.8, lw * 0.5], far ? '#3a2e32' : '#7a6a70', INK, lw * 0.75);
+    c.beginPath(); c.ellipse(foot[0] + 0.01 * s, foot[1], 0.018 * s, 0.009 * s, 0, 0, TAU); c.fillStyle = far ? '#3a2e32' : '#6a5a5e'; c.fill(); c.lineWidth = lw * 0.7; c.strokeStyle = INK; c.stroke();
+  };
+  for (let i = 0; i < 3; i++) leg(i, 1);
+  c.save(); c.translate(0, -bob + sag); c.rotate(rock - slack * 0.04);
+  // the key on its back (behind the shell)
+  key(c, -0.07 * s, -0.285 * s, s, o.key || 0, lw, -1, TEALK);
   // plough: a steel scoop low at the front
-  const plough = (c) => { c.moveTo(0.2 * s, -0.04 * s); c.lineTo(0.33 * s, -0.005 * s); c.quadraticCurveTo(0.37 * s, -0.08 * s, 0.31 * s, -0.15 * s); c.lineTo(0.22 * s, -0.12 * s); c.closePath(); };
-  cel(c, plough, STEEL, lw, false);
-  // shell: a red tin dome with a cream stripe and rivets, a dark skirt
-  const shell = (c) => { c.moveTo(-0.31 * s, -0.06 * s + sag); c.bezierCurveTo(-0.3 * s, -0.33 * s + sag, 0.18 * s, -0.36 * s + sag, 0.24 * s, -0.08 * s + sag); c.closePath(); };
-  c.fillStyle = '#2a1c18'; c.beginPath(); c.roundRect(-0.3 * s, -0.09 * s + sag, 0.55 * s, 0.05 * s, 0.02 * s); c.fill(); c.lineWidth = lw; c.strokeStyle = INK; c.stroke();
-  cel(c, shell, PEWTER, lw);
-  c.save(); c.beginPath(); shell(c); c.clip();
-  c.strokeStyle = '#ec4a34'; c.lineWidth = 0.07 * s; c.beginPath(); c.moveTo(-0.33 * s, -0.12 * s + sag); c.bezierCurveTo(-0.2 * s, -0.27 * s + sag, 0.1 * s, -0.29 * s + sag, 0.27 * s, -0.14 * s + sag); c.stroke();
-  c.fillStyle = BRASS.light; for (let i = 0; i < 4; i++) { c.beginPath(); c.arc((-0.2 + i * 0.12) * s, (-0.1 - (i === 1 || i === 2 ? 0.02 : 0)) * s + sag, 0.016 * s, 0, TAU); c.fill(); }
-  c.restore();
-  c.beginPath(); shell(c); c.lineWidth = lw; c.strokeStyle = INK; c.stroke();
-  // head with a headlamp eye, antennae
-  cel(c, (c) => E(c, 0.24 * s, -0.12 * s + sag, 0.075 * s, 0.065 * s), { base: '#3a3036', light: '#6a5a62', dark: '#1a1418' }, lw);
+  const plough = () => { c.beginPath(); c.moveTo(0.2 * s, -0.035 * s); c.lineTo(0.345 * s, -0.004 * s); c.quadraticCurveTo(0.385 * s, -0.085 * s, 0.32 * s, -0.165 * s); c.lineTo(0.22 * s, -0.12 * s); c.closePath(); };
+  form(c, plough, { d: lw * 1.6, lo: STEEL.dark, base: STEEL.base, hi: STEEL.light, hiK: 0.6, line: INK, lw, noWeight: true });
+  // head with a headlamp eye, sprung feelers
+  const wob = walking * Math.sin(g * 2 - 1) * 0.02 * s + (o.tip ? Math.sin(t * 9) * 0.02 * s : 0) - slack * 0.03 * s;
   c.strokeStyle = INK; c.lineWidth = lw * 1.2;
-  for (const d of [0, 0.03]) { c.beginPath(); c.moveTo(0.26 * s, -0.17 * s + sag); c.quadraticCurveTo((0.3 + d) * s, -0.27 * s, (0.36 + d) * s, -0.26 * s + d * s); c.stroke(); c.beginPath(); c.arc((0.36 + d) * s, -0.26 * s + d * s, 0.014 * s, 0, TAU); c.fillStyle = BRASS.base; c.fill(); c.stroke(); }
-  const ex = 0.27 * s, ey = -0.125 * s + sag, er = 0.03 * s;
+  for (const d of [0, 0.035]) { const tx = (0.375 + d) * s + wob, ty = (-0.275 + d * 0.9) * s - wob * 0.5 + slack * 0.07 * s; c.beginPath(); c.moveTo(0.265 * s, -0.175 * s); c.quadraticCurveTo((0.305 + d) * s, -0.285 * s, tx, ty); c.stroke(); c.beginPath(); c.arc(tx, ty, 0.017 * s, 0, TAU); c.fillStyle = BRASS.light; c.fill(); c.stroke(); }
+  const head = () => { c.beginPath(); c.ellipse(0.245 * s, -0.125 * s, 0.085 * s, 0.075 * s, 0, 0, TAU); };
+  form(c, head, { d: lw * 1.8, lo: HEADC.dark, base: HEADC.base, hi: HEADC.light, hiK: 0.5, line: INK, lw, noWeight: true });
+  const ex = 0.275 * s, ey = -0.135 * s, er = 0.038 * s;
   c.beginPath(); c.arc(ex, ey, er, 0, TAU); c.fillStyle = INK; c.fill();
   if (o.eye === 'spiral') spiralEye(c, ex, ey, er, t, 1, '#ffe0a0');
-  else if (o.eye === 'off') { c.beginPath(); c.moveTo(ex - er * 0.7, ey); c.lineTo(ex + er * 0.7, ey); c.strokeStyle = '#ffcf6a'; c.lineWidth = lw; c.stroke(); }
-  else { c.beginPath(); c.arc(ex, ey, er * 0.65, 0, TAU); c.fillStyle = o.lamp ? '#ffe36a' : '#d9a040'; c.fill(); c.beginPath(); c.arc(ex + er * 0.2, ey - er * 0.25, er * 0.22, 0, TAU); c.fillStyle = '#fffbe8'; c.fill(); }
-  // the key on its back
-  key(c, -0.06 * s, -0.29 * s + sag, s, o.key || 0, lw, -1, TEALK);
+  else if (o.eye === 'off') { c.beginPath(); c.arc(ex, ey, er * 0.66, 0, TAU); c.fillStyle = '#5a4a30'; c.fill(); c.beginPath(); c.moveTo(ex - er * 0.6, ey + er * 0.1); c.quadraticCurveTo(ex, ey + er * 0.5, ex + er * 0.6, ey + er * 0.1); c.strokeStyle = '#d9a040'; c.lineWidth = lw * 0.9; c.stroke(); }
+  else { c.beginPath(); c.arc(ex, ey, er * 0.7, 0, TAU); c.fillStyle = o.lamp ? '#ffe36a' : '#d9a040'; c.fill(); if (o.lamp) { c.beginPath(); c.arc(ex, ey, er * 0.36, 0, TAU); c.fillStyle = '#fffbe0'; c.fill(); } c.beginPath(); c.arc(ex - er * 0.25, ey - er * 0.3, er * 0.2, 0, TAU); c.fillStyle = '#ffffff'; c.fill(); }
+  // skirt, then the wing-case dome
+  const skirt = () => { c.beginPath(); c.roundRect(-0.315 * s, -0.105 * s, 0.56 * s, 0.062 * s, 0.022 * s); };
+  form(c, skirt, { d: lw * 1.4, lo: PEWTER.dark, base: PEWTER.base, hi: PEWTER.light, hiK: 0.6, line: INK, lw, noWeight: true });
+  c.fillStyle = BRASS.light; for (let i = 0; i < 5; i++) { c.beginPath(); c.arc((-0.26 + i * 0.115) * s, -0.074 * s, 0.013 * s, 0, TAU); c.fill(); c.lineWidth = lw * 0.5; c.strokeStyle = INK; c.stroke(); }
+  const shell = () => { c.beginPath(); c.moveTo(-0.325 * s, -0.095 * s); c.bezierCurveTo(-0.33 * s, -0.36 * s, 0.16 * s, -0.4 * s, 0.245 * s, -0.1 * s); c.closePath(); };
+  form(c, shell, { d: lw * 3, lo: TIN.dark, base: TIN.base, hi: TIN.light, hiK: 0.4, line: INK, lw: lw * 1.1, inner: () => {
+    c.strokeStyle = TIN.dark; c.lineWidth = lw * 1.1; c.beginPath(); c.moveTo(-0.05 * s, -0.33 * s); c.quadraticCurveTo(-0.02 * s, -0.2 * s, -0.06 * s, -0.09 * s); c.stroke(); // the seam between the wing cases
+    c.fillStyle = '#fff1d0'; for (const [px, py, pr] of [[-0.2, -0.2, 0.034], [-0.12, -0.28, 0.024], [0.07, -0.25, 0.034], [0.15, -0.16, 0.024]]) { c.beginPath(); c.arc(px * s, py * s, pr * s, 0, TAU); c.fill(); }
+    c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = lw * 1.3; c.beginPath(); c.moveTo(-0.26 * s, -0.2 * s); c.quadraticCurveTo(-0.22 * s, -0.3 * s, -0.12 * s, -0.335 * s); c.stroke(); // gloss
+  } });
+  c.restore();
+  for (let i = 0; i < 3; i++) leg(i, 0);
   c.restore();
 }
 
@@ -178,7 +204,10 @@ export function drawJackArt(c, s, t, o = {}) {
   }
   // the box: teal with a yellow star, brass corners; the lid hinges at its back (left) edge
   c.save(); c.translate(rx, ry);
-  cel(c, (c) => { c.roundRect(-W / 2, top, W, H + 0.04 * s, 0.025 * s); }, TEAL, lw);
+  form(c, () => { c.beginPath(); c.roundRect(-W / 2, top, W, H + 0.04 * s, 0.03 * s); }, { d: lw * 2.6, lo: TEAL.dark, base: TEAL.base, hi: TEAL.light, hiK: 0.45, line: INK, lw: lw * 1.1, inner: () => {
+    c.fillStyle = 'rgba(0,0,0,0.22)'; c.beginPath(); c.roundRect(-W / 2 + 0.05 * s, top + 0.035 * s, W - 0.1 * s, H - 0.03 * s, 0.02 * s); c.fill(); // an inset panel
+    c.strokeStyle = TEALK.base; c.lineWidth = lw * 0.9; c.beginPath(); c.roundRect(-W / 2 + 0.05 * s, top + 0.035 * s, W - 0.1 * s, H - 0.03 * s, 0.02 * s); c.stroke();
+  } });
   const st = (x, y, r) => { c.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r; c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } c.closePath(); };
   st(0, top + H * 0.52, H * 0.32); c.fillStyle = '#ffd23a'; c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke();
   c.fillStyle = BRASS.base; for (const sx of [-1, 1]) { c.beginPath(); c.roundRect(sx > 0 ? W / 2 - 0.05 * s : -W / 2, top, 0.05 * s, 0.05 * s, 0.01 * s); c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke(); }

@@ -7,6 +7,7 @@
 import { TAU } from '../sim/geom.js';
 import { OWL } from '../sim/owl.js';
 import { statusClock, statusDraw, statusKind, dizzyStars, spiralEye } from './status.js';
+import { clamp, form, spline, blinkAt } from './castkit.js';
 
 const INK = '#1c1108';
 const BRASS = { base: '#c99a40', light: '#f4d384', dark: '#7d5420' };
@@ -36,101 +37,114 @@ function cog(c, x, y, r, n, a, col, lw) {
 }
 
 // ---------------------------------------------------------------- the owl
-// s = its height in px; origin = its centre. o: { wing (-1 swept back .. 0 folded .. 1 raised), flap (phase), eye ('idle' |
+// s = its height in px; origin = its centre. o: { wing (-1 swept back .. 0 hovering .. 1 raised), flap (phase), eye ('idle' |
 // 'glare' | 'x' | 'spiral' | 'shut' | 'broken'), hatch (0..1), key (turn), keyFast, talon (0..1 open), gear (chest cog turn),
 // slump (0..1), sprung (a cog popped out of its head), glow (0..1 red eye glow), look (-1..1 pupils sideways) }
+// A horned brass head sunk into a teardrop body (one silhouette, not two balls), a fan of five feather blades per wing that
+// beats in a hover (the body bobs against the beat, the inner blades lag), rears up to threaten, folds into a stoop to dive and
+// hangs limp when it is jammed; shutter eyelids and a brow plate that scowls; trousered legs whose talons spread to strike.
+const FACE = { base: '#e8c47a', light: '#fbe6ad', dark: '#b08a42' };
+const F = (col) => ({ lo: col.dark, base: col.base, hi: col.light, line: INK });
 export function drawOwlArt(c, s, t, o = {}) {
-  const lw = Math.max(1.3, s * 0.013), u = s, sl = o.slump || 0;
+  const lw = Math.max(1.4, s * 0.014), u = s, sl = o.slump || 0, wk = clamp(o.wing || 0, -1, 1), tal = o.talon || 0, eyeM = o.eye || 'idle';
+  const limp = Math.max(clamp01(sl * 1.5), o.flap === 0 && wk <= 0 ? 0.85 : 0), ph = (o.flap || 0) * 2.2, beat = limp > 0.3 ? 0 : Math.sin(ph), free = 1 - Math.abs(wk);
   c.lineJoin = 'round'; c.lineCap = 'round';
   c.save();
-  c.translate(0, sl * 0.06 * u);
-  // key in its back (drawn first, it pokes up behind the head)
+  c.translate(0, sl * 0.06 * u - beat * 0.014 * u * free);
+  // tail fan (behind the body)
+  for (let i = -1; i <= 1; i++) { c.save(); c.translate(i * 0.05 * u, 0.33 * u); c.rotate(i * 0.3 + Math.cos(ph) * 0.05 * free); const path = () => { c.beginPath(); c.moveTo(-0.04 * u, 0); c.quadraticCurveTo(-0.06 * u, 0.1 * u, 0, 0.16 * u); c.quadraticCurveTo(0.06 * u, 0.1 * u, 0.04 * u, 0); c.closePath(); }; form(c, path, { ...F(i ? DARKB : COPPER), d: lw * 2, lw, noWeight: true }); c.restore(); }
+  // key in its back (it pokes up behind the head)
   {
-    const ph = o.key || 0, w = Math.abs(Math.cos(ph)) * 0.13 * u + 0.02 * u, kx = 0.02 * u, ky = -0.5 * u;
+    const kp = o.key || 0, w = Math.abs(Math.cos(kp)) * 0.13 * u + 0.02 * u, kx = 0.02 * u, ky = -0.52 * u;
     c.strokeStyle = INK; c.lineWidth = lw * 4; c.beginPath(); c.moveTo(kx, -0.3 * u); c.lineTo(kx, ky); c.stroke();
     c.strokeStyle = DARKB.base; c.lineWidth = lw * 2; c.stroke();
-    for (const sd of [-1, 1]) cel(c, (c) => E(c, kx + sd * w * 0.55, ky - 0.05 * u, w * 0.55, 0.06 * u), Math.cos(ph) * sd > 0 ? BRASS : DARKB, lw, false);
+    for (const sd of [-1, 1]) cel(c, (c) => E(c, kx + sd * w * 0.55, ky - 0.05 * u, w * 0.55, 0.06 * u), Math.cos(kp) * sd > 0 ? BRASS : DARKB, lw, false);
+    if (o.keyFast || Math.abs(kp - t * 30) < 1) { c.strokeStyle = 'rgba(255,240,200,0.7)'; c.lineWidth = lw; for (const sd of [-1, 1]) { c.beginPath(); c.arc(kx, ky - 0.05 * u, 0.17 * u, sd > 0 ? -0.5 : Math.PI - 0.5, sd > 0 ? 0.5 : Math.PI + 0.5); c.stroke(); } }
   }
-  // wings: three brass blades each, hinged at the shoulder
-  const wingK = o.wing || 0, flap = Math.sin(o.flap || 0) * 0.12;
+  // wings: a fan of five blades from each shoulder. th = how high the leading blade points (rad above level)
+  let th = (0.1 + 0.62 * beat) * free + (wk > 0 ? 1.05 + Math.sin(ph) * 0.06 : 1.32) * Math.abs(wk);
+  th = th + (-1.3 - th) * limp;
+  const spread = (1 - 0.6 * Math.max(0, -wk)) * (1 - 0.55 * limp), lag = -Math.cos(ph) * 0.16 * free * (1 - limp);
   for (const sd of [-1, 1]) {
-    c.save();
-    c.translate(sd * 0.25 * u, -0.06 * u);
-    const rot = sd * (0.18 + flap - wingK * 1.15 + (wingK < 0 ? wingK * 0.5 : 0));
-    c.rotate(rot);
-    for (let i = 2; i >= 0; i--) {
-      const len = (0.42 - i * 0.06) * u, wd = 0.075 * u, ang = sd * (0.12 + i * 0.22);
-      c.save(); c.rotate(ang);
-      cel(c, (c) => { c.moveTo(-wd * 0.5, 0); c.lineTo(sd * wd * 0.3, 0); c.quadraticCurveTo(sd * wd * 1.2, len * 0.6, sd * wd * 0.2, len); c.quadraticCurveTo(-sd * wd * 0.6, len * 0.55, -wd * 0.5, 0); c.closePath(); }, i === 1 ? COPPER : BRASS, lw);
+    c.save(); c.translate(sd * 0.22 * u, -0.02 * u); c.scale(sd, 1);
+    for (let i = 4; i >= 0; i--) {
+      const f = i / 4, len = (0.42 - 0.15 * f) * u, wd = (0.075 - 0.012 * f) * u;
+      c.save(); c.rotate(-th + f * spread * 1.15 + lag * (1 - f) + (sd < 0 ? 0.03 : 0));
+      const blade = () => { c.beginPath(); c.moveTo(0, -wd * 0.55); c.quadraticCurveTo(len * 0.62, -wd * 1.05, len, wd * 0.1); c.quadraticCurveTo(len * 0.6, wd * 0.95, 0, wd * 0.55); c.closePath(); };
+      form(c, blade, { ...F(i % 2 ? COPPER : BRASS), d: lw * 2, hiK: 0.55, lw, noWeight: true, inner: () => { c.strokeStyle = DARKB.dark; c.lineWidth = lw * 0.7; c.beginPath(); c.moveTo(len * 0.08, 0); c.lineTo(len * 0.86, wd * 0.05); c.stroke(); } });
       c.restore();
     }
+    const cap = () => { c.beginPath(); c.ellipse(0.03 * u, 0, 0.085 * u, 0.07 * u, -th * 0.5, 0, TAU); };
+    form(c, cap, { ...F(DARKB), d: lw * 2, lw, noWeight: true });
+    c.beginPath(); c.arc(0.03 * u, 0, 0.016 * u, 0, TAU); c.fillStyle = BRASS.light; c.fill(); c.lineWidth = lw * 0.7; c.strokeStyle = INK; c.stroke();
     c.restore();
   }
-  // legs and talons
-  const tal = o.talon || 0;
+  // legs and talons: tucked up in a hover, thrust down with the claws spread in the stoop
   for (const sd of [-1, 1]) {
-    const x0 = sd * 0.1 * u, y0 = 0.33 * u, y1 = (0.43 + tal * 0.06) * u;
-    c.strokeStyle = INK; c.lineWidth = lw * 3.4; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0, y1); c.stroke();
-    c.strokeStyle = '#8f9aa8'; c.lineWidth = lw * 1.6; c.stroke();
+    const x0 = sd * 0.105 * u, y0 = 0.34 * u, y1 = (0.42 + tal * 0.09 - limp * 0.0) * u, x1 = x0 + sd * tal * 0.01 * u;
+    c.strokeStyle = INK; c.lineWidth = lw * 3.8; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+    c.strokeStyle = '#9aa6b4'; c.lineWidth = lw * 1.8; c.stroke();
     for (let i = -1; i <= 1; i++) {
-      const a = Math.PI / 2 + i * (0.45 + tal * 0.4), L = 0.07 * u;
-      c.strokeStyle = INK; c.lineWidth = lw * 2.6; c.beginPath(); c.moveTo(x0, y1); c.quadraticCurveTo(x0 + Math.cos(a) * L, y1 + Math.sin(a) * L, x0 + Math.cos(a + 0.5 * i) * L * 1.3, y1 + Math.sin(a + 0.5 * i) * L * 1.1); c.stroke();
-      c.strokeStyle = '#3a4048'; c.lineWidth = lw * 1.2; c.stroke();
+      const a = Math.PI / 2 + i * (0.5 + tal * 0.45), L = (0.065 + tal * 0.03) * u, curl = (1 - tal) * 0.9 * (i || 0.4);
+      c.strokeStyle = INK; c.lineWidth = lw * 3; c.beginPath(); c.moveTo(x1, y1); c.quadraticCurveTo(x1 + Math.cos(a) * L, y1 + Math.sin(a) * L * 0.8, x1 + Math.cos(a + curl) * L * 1.25, y1 + Math.sin(a + curl) * L * 1.2); c.stroke();
+      c.strokeStyle = '#59626e'; c.lineWidth = lw * 1.4; c.stroke();
     }
   }
-  // body: a riveted brass egg; a chest window with a turning cog; a belly hatch
-  const body = (c) => E(c, 0, 0.07 * u, 0.29 * u, 0.3 * u);
-  cel(c, body, BRASS, lw);
-  c.save(); c.beginPath(); body(c); c.clip();
-  // feather plates: copper scallops in rows
-  c.strokeStyle = DARKB.dark; c.lineWidth = lw * 0.9;
-  for (let r = 0; r < 3; r++) for (let i = -3; i <= 3; i++) { const x = (i + (r % 2) * 0.5) * 0.09 * u, y = (0.22 + r * 0.075) * u; c.beginPath(); c.arc(x, y, 0.045 * u, 0.15 * Math.PI, 0.85 * Math.PI); c.stroke(); }
-  c.restore();
-  // chest window
-  const cy = 0.1 * u;
+  // body: a riveted brass teardrop, feather plates, a chest window with a turning cog, a belly hatch
+  const B = [[0, -0.16], [0.17, -0.12], [0.265, 0.02], [0.25, 0.2], [0.14, 0.345], [0, 0.385], [-0.14, 0.345], [-0.25, 0.2], [-0.265, 0.02], [-0.17, -0.12]].map(([x, y]) => [x * u, y * u]);
+  const body = () => { c.beginPath(); spline(c, B, true); };
+  form(c, body, { ...F(BRASS), d: lw * 3.2, hiK: 0.45, lw: lw * 1.15, inner: () => {
+    c.strokeStyle = DARKB.dark; c.lineWidth = lw * 0.9;
+    for (let r = 0; r < 3; r++) for (let i = -3; i <= 3; i++) { const x = (i + (r % 2) * 0.5) * 0.09 * u, y = (0.215 + r * 0.07) * u; c.beginPath(); c.arc(x, y, 0.045 * u, 0.15 * Math.PI, 0.85 * Math.PI); c.stroke(); }
+    for (const sd of [-1, 1]) { c.fillStyle = COPPER.base; c.beginPath(); c.ellipse(sd * 0.105 * u, 0.37 * u, 0.07 * u, 0.06 * u, 0, 0, TAU); c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke(); } // trousers
+  } });
+  const cy = 0.11 * u;
   c.beginPath(); c.arc(0, cy, 0.11 * u, 0, TAU); c.fillStyle = '#2a1c12'; c.fill();
   cog(c, 0, cy, 0.085 * u, 8, o.gear || 0, BRASS, lw);
-  c.beginPath(); c.arc(0, cy, 0.11 * u, 0, TAU); c.lineWidth = lw * 2.2; c.strokeStyle = INK; c.stroke(); c.lineWidth = lw; c.strokeStyle = COPPER.light; c.beginPath(); c.arc(0, cy, 0.11 * u, Math.PI * 1.1, Math.PI * 1.6); c.stroke();
-  for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU; c.beginPath(); c.arc(Math.cos(a) * 0.135 * u, cy + Math.sin(a) * 0.135 * u, 0.011 * u, 0, TAU); c.fillStyle = DARKB.dark; c.fill(); }
-  // belly hatch: two flaps that swing open
+  c.beginPath(); c.arc(0, cy, 0.11 * u, 0, TAU); c.lineWidth = lw * 2.4; c.strokeStyle = INK; c.stroke(); c.lineWidth = lw * 1.1; c.strokeStyle = COPPER.light; c.beginPath(); c.arc(0, cy, 0.11 * u, Math.PI * 1.05, Math.PI * 1.65); c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.28)'; c.beginPath(); c.ellipse(-0.04 * u, cy - 0.045 * u, 0.04 * u, 0.018 * u, -0.6, 0, TAU); c.fill(); // glass glint
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU; c.beginPath(); c.arc(Math.cos(a) * 0.137 * u, cy + Math.sin(a) * 0.137 * u, 0.011 * u, 0, TAU); c.fillStyle = DARKB.dark; c.fill(); }
   const hz = o.hatch || 0, hy = 0.3 * u;
-  if (hz > 0.02) { c.beginPath(); c.ellipse(0, hy, 0.1 * u, 0.03 * u, 0, 0, TAU); c.fillStyle = '#140c06'; c.fill(); if (hz > 0.5) cog(c, 0, hy + 0.01 * u, 0.04 * u, 6, t * 4, BRASS, lw * 0.8); }
-  for (const sd of [-1, 1]) {
-    c.save(); c.translate(sd * 0.1 * u, hy); c.rotate(sd * hz * 1.2);
-    cel(c, (c) => { c.roundRect(sd > 0 ? -0.1 * u : 0, -0.018 * u, 0.1 * u, 0.036 * u, 0.012 * u); }, COPPER, lw, false);
-    c.restore();
-  }
-  // head: a wide brass dome with ear tufts, a pale-brass face disc, lens eyes, a copper beak
-  const hyC = -0.24 * u + sl * 0.05 * u, tilt = sl * 0.25;
+  if (hz > 0.02) { c.beginPath(); c.ellipse(0, hy, 0.1 * u, 0.034 * u, 0, 0, TAU); c.fillStyle = '#140c06'; c.fill(); if (hz > 0.5) cog(c, 0, hy + 0.012 * u, 0.045 * u, 6, t * 4, BRASS, lw * 0.8); }
+  if (hz > 0.02) for (const sd of [-1, 1]) { c.save(); c.translate(sd * 0.1 * u, hy); c.rotate(sd * hz * 1.2); cel(c, (c) => { c.roundRect(sd > 0 ? -0.1 * u : 0, -0.018 * u, 0.1 * u, 0.036 * u, 0.012 * u); }, COPPER, lw, false); c.restore(); }
+  else { c.strokeStyle = DARKB.dark; c.lineWidth = lw; c.beginPath(); c.moveTo(-0.09 * u, hy + 0.012 * u); c.quadraticCurveTo(0, hy + 0.03 * u, 0.09 * u, hy + 0.012 * u); c.moveTo(0, hy + 0.005 * u); c.lineTo(0, hy + 0.04 * u); c.stroke(); }
+  // head: a horned brass dome sunk into the shoulders, a pale face disc, lens eyes with shutter lids, a copper beak
+  const hyC = -0.2 * u + sl * 0.05 * u, tilt = sl * 0.25 + (o.look || 0) * 0.05 + Math.cos(ph) * 0.012 * free;
   c.save(); c.translate(0, hyC); c.rotate(tilt);
-  for (const sd of [-1, 1]) cel(c, (c) => { c.moveTo(sd * 0.13 * u, -0.12 * u); c.lineTo(sd * 0.27 * u, -0.26 * u); c.lineTo(sd * 0.22 * u, -0.06 * u); c.closePath(); }, COPPER, lw);
-  cel(c, (c) => E(c, 0, 0, 0.27 * u, 0.21 * u), BRASS, lw);
-  const face = { base: '#e8c47a', light: '#fbe6ad', dark: '#b08a42' };
-  for (const sd of [-1, 1]) cel(c, (c) => E(c, sd * 0.11 * u, 0.01 * u, 0.12 * u, 0.13 * u), face, lw);
-  // rivets round the face
-  c.fillStyle = DARKB.dark;
-  for (let i = 0; i < 9; i++) { const a = Math.PI * (1.08 + (i / 8) * 0.84); c.beginPath(); c.arc(Math.cos(a) * 0.235 * u, Math.sin(a) * 0.18 * u, 0.011 * u, 0, TAU); c.fill(); }
-  // eyes: steel rims, dark teal glass, amber (or red) pupils
+  const H = [[-0.3, -0.3], [-0.15, -0.2], [0, -0.225], [0.15, -0.2], [0.3, -0.3], [0.29, -0.04], [0.245, 0.11], [0.11, 0.195], [0, 0.205], [-0.11, 0.195], [-0.245, 0.11], [-0.29, -0.04]].map(([x, y]) => [x * u, y * u]);
+  const head = () => { c.beginPath(); spline(c, H, true, 0.42); };
+  form(c, head, { ...F(BRASS), d: lw * 3, hiK: 0.45, lw: lw * 1.15, inner: () => {
+    for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(sd * 0.3 * u, -0.31 * u); c.lineTo(sd * 0.17 * u, -0.17 * u); c.lineTo(sd * 0.3 * u, -0.1 * u); c.closePath(); c.fillStyle = COPPER.base; c.fill(); }
+    c.fillStyle = DARKB.dark; for (let i = 0; i < 7; i++) { const a = Math.PI * (1.2 + (i / 6) * 0.6); c.beginPath(); c.arc(Math.cos(a) * 0.225 * u, Math.sin(a) * 0.185 * u, 0.011 * u, 0, TAU); c.fill(); }
+  } });
+  for (const sd of [-1, 1]) cel(c, (c) => E(c, sd * 0.115 * u, 0.015 * u, 0.125 * u, 0.13 * u), FACE, lw);
+  const blink = eyeM === 'idle' ? blinkAt(t, 11) : 0;
   for (const sd of [-1, 1]) {
-    const ex = sd * 0.11 * u, ey = 0.0, er = 0.085 * u;
+    const ex = sd * 0.115 * u, ey = 0.01 * u, er = 0.09 * u;
     c.beginPath(); c.arc(ex, ey, er, 0, TAU); c.fillStyle = '#56606c'; c.fill(); c.lineWidth = lw * 1.2; c.strokeStyle = INK; c.stroke();
     c.beginPath(); c.arc(ex, ey, er * 0.78, 0, TAU); c.fillStyle = '#163238'; c.fill();
-    const eye = o.eye || 'idle';
-    if (eye === 'spiral') spiralEye(c, ex, ey, er * 0.7, t, sd, '#ffc05a');
-    else if (eye === 'x' || (eye === 'broken' && sd < 0)) { c.strokeStyle = '#ffb030'; c.lineWidth = lw * 1.8; c.beginPath(); c.moveTo(ex - er * 0.4, ey - er * 0.4); c.lineTo(ex + er * 0.4, ey + er * 0.4); c.moveTo(ex + er * 0.4, ey - er * 0.4); c.lineTo(ex - er * 0.4, ey + er * 0.4); c.stroke(); }
-    else if (eye === 'broken') { c.strokeStyle = '#9fb8bc'; c.lineWidth = lw; c.beginPath(); c.moveTo(ex - er * 0.5, ey - er * 0.3); c.lineTo(ex + er * 0.1, ey + er * 0.1); c.lineTo(ex + er * 0.5, ey - er * 0.1); c.moveTo(ex + er * 0.1, ey + er * 0.1); c.lineTo(ex, ey + er * 0.6); c.stroke(); }
-    else if (eye === 'shut') { c.strokeStyle = '#ffb030'; c.lineWidth = lw * 1.8; c.beginPath(); c.moveTo(ex - er * 0.5, ey); c.quadraticCurveTo(ex, ey + er * 0.35, ex + er * 0.5, ey); c.stroke(); }
+    if (eyeM === 'spiral') spiralEye(c, ex, ey, er * 0.7, t, sd, '#ffc05a');
+    else if (eyeM === 'x' || (eyeM === 'broken' && sd < 0)) { c.strokeStyle = '#ffb030'; c.lineWidth = lw * 1.8; c.beginPath(); c.moveTo(ex - er * 0.4, ey - er * 0.4); c.lineTo(ex + er * 0.4, ey + er * 0.4); c.moveTo(ex + er * 0.4, ey - er * 0.4); c.lineTo(ex - er * 0.4, ey + er * 0.4); c.stroke(); }
+    else if (eyeM === 'broken') { c.strokeStyle = '#9fb8bc'; c.lineWidth = lw; c.beginPath(); c.moveTo(ex - er * 0.5, ey - er * 0.3); c.lineTo(ex + er * 0.1, ey + er * 0.1); c.lineTo(ex + er * 0.5, ey - er * 0.1); c.moveTo(ex + er * 0.1, ey + er * 0.1); c.lineTo(ex, ey + er * 0.6); c.stroke(); }
+    else if (eyeM === 'shut') { c.strokeStyle = '#ffb030'; c.lineWidth = lw * 1.8; c.beginPath(); c.moveTo(ex - er * 0.5, ey); c.quadraticCurveTo(ex, ey + er * 0.35, ex + er * 0.5, ey); c.stroke(); }
     else {
-      const red = eye === 'glare' ? 1 : o.glow || 0, pr = er * (eye === 'glare' ? 0.38 : 0.45), lx = (o.look || 0) * er * 0.25;
+      const glare = eyeM === 'glare', red = glare ? 1 : o.glow || 0, pr = er * (glare ? 0.36 : 0.46), lx = (o.look || 0) * er * 0.28;
+      if (red > 0.5) { c.beginPath(); c.arc(ex + lx, ey, pr * 1.55, 0, TAU); c.fillStyle = 'rgba(255,74,38,0.32)'; c.fill(); }
       c.beginPath(); c.arc(ex + lx, ey, pr, 0, TAU); c.fillStyle = red > 0.5 ? '#ff4a26' : '#ffb030'; c.fill();
       c.beginPath(); c.arc(ex + lx, ey, pr * 0.45, 0, TAU); c.fillStyle = red > 0.5 ? '#fff0a0' : '#ffe9a8'; c.fill();
-      if (eye === 'glare') { c.strokeStyle = INK; c.lineWidth = lw * 2.2; c.beginPath(); c.moveTo(ex - sd * er * 1.05, ey - er * 1.1); c.lineTo(ex + sd * er * 0.55, ey - er * 0.7); c.stroke(); }
+      // the shutter lid: half down at rest, a quick blink now and then, wide open in a glare
+      const lid = Math.max(glare ? 0 : 0.24, blink);
+      if (lid > 0.01) { c.save(); c.beginPath(); c.arc(ex, ey, er * 0.8, 0, TAU); c.clip(); c.fillStyle = BRASS.base; c.fillRect(ex - er, ey - er, er * 2, er * 2 * lid * 0.82); c.fillStyle = DARKB.dark; c.fillRect(ex - er, ey - er + er * 2 * lid * 0.82 - lw * 0.9, er * 2, lw * 0.9); c.restore(); }
     }
-    c.beginPath(); c.arc(ex - er * 0.35, ey - er * 0.4, er * 0.16, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.75)'; c.fill();
+    c.beginPath(); c.arc(ex - er * 0.35, ey - er * 0.4, er * 0.16, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.8)'; c.fill();
   }
-  cel(c, (c) => { c.moveTo(-0.045 * u, 0.07 * u); c.lineTo(0.045 * u, 0.07 * u); c.lineTo(0, 0.16 * u); c.closePath(); }, COPPER, lw);
+  // the brow plate: one copper V over both eyes that drops into a scowl
+  { const g = eyeM === 'glare' ? 1 : eyeM === 'x' || eyeM === 'broken' || eyeM === 'spiral' ? -0.6 : 0, yo = (-0.105 + g * 0.012) * u, yi = (-0.075 + g * 0.05) * u;
+    c.beginPath(); c.moveTo(-0.25 * u, yo - g * 0.03 * u); c.quadraticCurveTo(-0.12 * u, yo - 0.035 * u, 0, yi); c.quadraticCurveTo(0.12 * u, yo - 0.035 * u, 0.25 * u, yo - g * 0.03 * u);
+    c.lineWidth = lw * 4.2; c.strokeStyle = INK; c.stroke(); c.lineWidth = lw * 2.2; c.strokeStyle = COPPER.base; c.stroke(); }
+  cel(c, (c) => { c.moveTo(-0.05 * u, 0.065 * u); c.quadraticCurveTo(0, 0.045 * u, 0.05 * u, 0.065 * u); c.quadraticCurveTo(0.03 * u, 0.13 * u, 0, 0.17 * u); c.quadraticCurveTo(-0.03 * u, 0.13 * u, -0.05 * u, 0.065 * u); c.closePath(); }, COPPER, lw);
   // a cog sprung out of its head (jammed / broken down)
-  if (o.sprung) { const p = o.sprung; c.strokeStyle = INK; c.lineWidth = lw * 2.2; c.beginPath(); c.moveTo(0.06 * u, -0.18 * u); for (let i = 0; i < 5; i++) c.lineTo(0.06 * u + (i % 2 ? 0.03 : -0.03) * u, -0.18 * u - (i + 1) * 0.04 * u * p); c.stroke(); c.strokeStyle = '#c3ccd6'; c.lineWidth = lw; c.stroke(); cog(c, 0.06 * u, -0.2 * u - 0.22 * u * p, 0.05 * u, 6, 0.4, BRASS, lw * 0.8); }
+  if (o.sprung) { const p = o.sprung; c.strokeStyle = INK; c.lineWidth = lw * 2.2; c.beginPath(); c.moveTo(0.06 * u, -0.18 * u); for (let i = 0; i < 5; i++) c.lineTo(0.06 * u + (i % 2 ? 0.03 : -0.03) * u + Math.sin(t * 9 + i) * 0.006 * u, -0.18 * u - (i + 1) * 0.04 * u * p); c.stroke(); c.strokeStyle = '#c3ccd6'; c.lineWidth = lw; c.stroke(); cog(c, 0.06 * u + Math.sin(t * 9) * 0.012 * u, -0.2 * u - 0.22 * u * p, 0.05 * u, 6, 0.4 + Math.sin(t * 9) * 0.2, BRASS, lw * 0.8); }
   c.restore();
   c.restore();
 }

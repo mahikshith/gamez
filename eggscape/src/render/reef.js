@@ -6,11 +6,13 @@ import { RING_TH, TAU, EGG_H, EGG_W } from '../sim/geom.js';
 import { HERMIT, PUFF, JELLY } from '../sim/reef.js';
 import { statusClock, statusDraw, dizzyStars, spiralEye, boltStroke } from './status.js';
 import { drawKingCrab, drawKingOver, iceShards } from './kingcrab.js';
+import { form, ik, limb, eye, blinkAt, back, spline, burst } from './castkit.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const sstep = (v) => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
 const hash = (n) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { if (!pxSpace.w) { pxSpace.w = 1; console.warn('reef art', e); } } ctx.restore(); };
+const lerp2 = (a, b, k) => a + (b - a) * k;
 const fillStroke = (ctx, fill, line, lw) => { ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = line; ctx.stroke(); };
 
 // ---------------------------------------------------------------- palettes
@@ -18,11 +20,11 @@ export const HC = { line: '#1c0f06', shell: '#9a52d6', shellLo: '#64289c', shell
 const HCP = HC;
 // frozen looks: the King Crab's ice palette (render/kingcrab.js KCI) and its ice shards, no white glow
 export const HCI = { line: '#12324a', shell: '#8fd0ee', shellLo: '#4f97c4', shellHi: '#b8e2f4', band: '#3f80ac', mouth: '#1d4a6a', body: '#8fd0ee', bodyLo: '#4f97c4', bodyHi: '#b8e2f4', eye: '#0c2234', white: '#d8eef8', leg: '#6fb4dc' };
-export const PF = { line: '#2a1a06', body: '#f3c63f', lo: '#c4901f', belly: '#fbe7a1', spot: '#8a5418', fin: '#f09a2a', spine: '#5a3a10', spineF: '#d9a53a', eye: '#1a1006', white: '#fff8e6', mouth: '#c4562a' };
+export const PF = { line: '#2a1a06', hi: '#ffe27a', body: '#f3c63f', lo: '#c4901f', belly: '#fbe7a1', spot: '#8a5418', fin: '#f09a2a', spine: '#5a3a10', spineF: '#d9a53a', eye: '#1a1006', white: '#fff8e6', mouth: '#c4562a' };
 const PFP = PF;
 export const JF = { line: '#3d0f4f', bell: '#d57ad8', bellLo: '#9e3fae', bellHi: '#f2b6ee', core: '#ffd66a', arm: '#b04cc4', tent: '#8e3aa6', sting: '#fff17a' };
 const JFP = JF;
-export const PFI = { line: '#12324a', body: '#8fd0ee', lo: '#4f97c4', belly: '#b8e2f4', spot: '#3f80ac', fin: '#6fb4dc', spine: '#1d4a6a', spineF: '#7cc0e4', eye: '#0c2234', white: '#d8eef8', mouth: '#3f80ac' };
+export const PFI = { line: '#12324a', hi: '#c4ecfb', body: '#8fd0ee', lo: '#4f97c4', belly: '#b8e2f4', spot: '#3f80ac', fin: '#6fb4dc', spine: '#1d4a6a', spineF: '#7cc0e4', eye: '#0c2234', white: '#d8eef8', mouth: '#3f80ac' };
 export const JFI = { line: '#12324a', bell: '#8fd0ee', bellLo: '#4f97c4', bellHi: '#b8e2f4', core: '#d8eef8', arm: '#6fb4dc', tent: '#4f97c4', sting: '#fff17a' };
 export const HERMIT_ART = 1.55; // the hermit is drawn this much bigger than its old 1 px-per-m art (body clearly bigger than an egg)
 export const JELLY_ART = 1.3;
@@ -32,99 +34,111 @@ export const JELLY_ART = 1.3;
 // o: { face, walk (odometer m), pose 'walk'|'pinch'|'carry'|'flip'|'in', u (0..1 through the pose), egg (bool: an egg
 //      tucked in its shell, drawn by the game between the 'back' and 'front' parts), part 'back'|'front'|'all', stun,
 //      zap, alpha }
+// A fat whorled conch on six pointed legs that plant as it walks; out of its mouth a round orange crab with two big eyes on
+// stalks, feelers, a small claw and one great pincer. The grab is acted: it rears back, the pincer goes up and chatters, then
+// it lunges.
 export function drawHermit(ctx, x, y, s, t, o = {}) {
-  const face = o.face || 1, pose = o.pose || 'walk', u = o.u ?? 0, lw = Math.max(1.5, s * 0.04), part = o.part || 'all', HC = o.ice ? HCI : HCP;
-  const flip = pose === 'flip';
+  const face = o.face || 1, pose = o.pose || 'walk', u = o.u ?? 0, lw = Math.max(1.5, s * 0.036), part = o.part || 'all', HC = o.ice ? HCI : HCP;
+  const flip = pose === 'flip', pinch = pose === 'pinch', carry = pose === 'carry';
   ctx.save();
   ctx.translate(x, y);
   ctx.globalAlpha *= o.alpha ?? 1;
-  if (pose === 'in') { const k = sstep(u); ctx.translate(0, (1 - k) * 0.2 * s); ctx.scale(0.4 + 0.6 * k, 0.4 + 0.6 * k); }
+  if (pose === 'in') { const k = back(sstep(u)); ctx.translate(0, (1 - k) * 0.2 * s); ctx.scale(0.4 + 0.6 * k, 0.4 + 0.6 * k); }
   ctx.scale(face, 1);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (part !== 'front' && !flip) { ctx.fillStyle = 'rgba(0,0,0,0.24)'; ctx.beginPath(); ctx.ellipse(-0.02 * s, 0, 0.44 * s, 0.035 * s, 0, 0, TAU); ctx.fill(); }
   if (flip) { ctx.translate(0, -0.3 * s); ctx.rotate(Math.PI + Math.sin(t * 9) * 0.12); ctx.translate(0, 0.3 * s); } // on its back, in place
-  const ph = (o.walk || 0) / 0.07, bob = pose === 'walk' || pose === 'carry' ? Math.abs(Math.sin(ph)) * 0.015 * s : 0;
-  ctx.translate(0, -bob);
+  const ph = (o.walk || 0) / 0.028, bob = pose === 'walk' || carry ? Math.abs(Math.sin(ph)) * 0.012 * s : 0;
+  // the acted grab: rear back (anticipation), then lunge
+  const rear = pinch ? Math.sin(clamp(u / 0.8, 0, 1) * Math.PI) * 0.16 + Math.sin(t * 40) * 0.012 : 0, lunge = pinch ? sstep((u - 0.8) / 0.2) : 0;
+  ctx.translate(lunge * 0.07 * s - rear * 0.12 * s, -bob);
   const sh = { x: -0.12 * s, y: -0.27 * s, r: 0.3 * s }; // a low, long conch (it must fit a 1 m channel at 1.55x)
-  if (part !== 'front') {
-    // walking legs: three a side, tips on the floor, stepping in a ripple (flipped: they flail in the air)
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const legs = (near) => {
     for (let i = 0; i < 3; i++) {
-      for (const side of [-1, 1]) {
-        const q = ph + i * 2.1 + (side > 0 ? Math.PI : 0), lift = flip ? Math.sin(t * 14 + i * 2 + side) * 0.06 : Math.max(0, Math.sin(q)) * 0.06;
-        const hx = (0.05 + i * 0.07) * s, hy = -0.17 * s, kx = hx + (0.08 + 0.03 * i) * s * side * 0.5 + 0.04 * s, ky = -0.24 * s - lift * s;
-        const fx = hx + (0.1 + 0.05 * i) * s * (side > 0 ? 1 : 0.5) + Math.cos(q) * 0.03 * s, fy = -lift * s * 0.6;
-        ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy);
-        ctx.strokeStyle = HC.line; ctx.lineWidth = lw * 2.6; ctx.stroke();
-        ctx.strokeStyle = side > 0 ? HC.leg : HC.bodyLo; ctx.lineWidth = lw * 1.3; ctx.stroke();
-      }
+      const c = ((((ph + i * 2.1 + (near ? 0 : Math.PI)) / TAU) % 1) + 1) % 1, st = 0.62, stride = 0.07 * s;
+      let fx, lift = 0;
+      if (flip) { fx = Math.sin(t * 13 + i * 2 + (near ? 0 : 1.5)) * 0.03 * s; lift = 0.05 * s + Math.cos(t * 13 + i * 2) * 0.03 * s; }
+      else if (c < st) fx = stride * (0.5 - c / st); else { const q = (c - st) / (1 - st); fx = stride * (-0.5 + q * q * (3 - 2 * q)); lift = Math.sin(q * Math.PI) * 0.05 * s; }
+      const hip = [(0.03 + i * 0.06) * s, -0.16 * s], foot = [(0.02 + i * 0.105 + (near ? 0.03 : -0.02)) * s + fx, -lift];
+      const K = ik(hip[0], hip[1], foot[0], foot[1], 0.13 * s, 0.15 * s, -1);
+      limb(ctx, [hip, K, foot], [0.03 * s, 0.026 * s, 0.007 * s], near ? HC.leg : HC.bodyLo, HC.line, lw * 0.8);
     }
-    // the shell: a fat spiral conch, mouth toward the front
+  };
+  if (part !== 'front') {
+    legs(false);
+    // the shell: a fat whorled conch, mouth toward the front
     ctx.save();
-    ctx.translate(sh.x, sh.y); ctx.rotate(-0.18); ctx.scale(1, 0.78);
+    ctx.translate(sh.x, sh.y); ctx.rotate(-0.18 - rear * 0.5 + (carry ? Math.sin(ph) * 0.03 : 0)); ctx.scale(1, 0.8);
+    const r = sh.r;
     const conch = () => {
-    ctx.beginPath();
-    ctx.moveTo(sh.r * 0.95, sh.r * 0.35);
-    ctx.bezierCurveTo(sh.r * 1.05, -sh.r * 0.7, sh.r * 0.2, -sh.r * 1.15, -sh.r * 0.5, -sh.r * 0.85);
-    ctx.quadraticCurveTo(-sh.r * 1.35, -sh.r * 0.85, -sh.r * 1.5, -sh.r * 0.2); // the spire
-    ctx.quadraticCurveTo(-sh.r * 1.05, -sh.r * 0.15, -sh.r * 1.0, sh.r * 0.3);
-    ctx.bezierCurveTo(-sh.r * 0.9, sh.r * 1.0, sh.r * 0.6, sh.r * 1.05, sh.r * 0.95, sh.r * 0.35);
-    ctx.closePath();
+      ctx.beginPath();
+      ctx.moveTo(r * 0.98, r * 0.35);
+      ctx.bezierCurveTo(r * 1.1, -r * 0.75, r * 0.25, -r * 1.22, -r * 0.42, -r * 0.92);
+      ctx.quadraticCurveTo(-r * 0.62, -r * 1.02, -r * 0.82, -r * 0.8); // whorl steps down to the spire
+      ctx.quadraticCurveTo(-r * 1.02, -r * 0.84, -r * 1.16, -r * 0.6);
+      ctx.quadraticCurveTo(-r * 1.36, -r * 0.6, -r * 1.56, -r * 0.24);
+      ctx.quadraticCurveTo(-r * 1.2, -r * 0.1, -r * 1.02, r * 0.34);
+      ctx.bezierCurveTo(-r * 0.9, r * 1.04, r * 0.62, r * 1.08, r * 0.98, r * 0.35);
+      ctx.closePath();
     };
-    conch();
-    ctx.fillStyle = HC.shell; ctx.fill();
-    ctx.save(); ctx.clip();
-    ctx.fillStyle = HC.shellLo; ctx.beginPath(); ctx.ellipse(0, sh.r * 0.75, sh.r * 1.6, sh.r * 0.6, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = HC.shellHi; ctx.beginPath(); ctx.ellipse(sh.r * 0.05, -sh.r * 0.42, sh.r * 0.4, sh.r * 0.14, -0.2, 0, TAU); ctx.fill();
-    // spiral bands
-    ctx.strokeStyle = HC.band; ctx.lineWidth = lw * 1.1;
-    ctx.beginPath();
-    for (let i = 0; i <= 40; i++) { const a = i * 0.32, rr = sh.r * (0.95 - i * 0.021); const px = -sh.r * 0.35 + Math.cos(a) * rr * 0.9, py = Math.sin(a) * rr * 0.8; if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
-    ctx.stroke();
-    ctx.restore();
-    conch(); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = HC.line; ctx.stroke();
-    // the dark mouth of the shell
-    ctx.beginPath(); ctx.ellipse(sh.r * 0.72, sh.r * 0.25, sh.r * 0.3, sh.r * 0.55, 0.25, 0, TAU);
+    form(ctx, conch, { d: r * 0.2, lo: HC.shellLo, base: HC.shell, hi: HC.shellHi, hiK: 0.5, line: HC.line, lw: lw * 1.15, inner: () => {
+      ctx.strokeStyle = HC.band; ctx.lineWidth = lw * 1.1;
+      ctx.beginPath();
+      for (let i = 0; i <= 40; i++) { const a = i * 0.32, rr = r * (0.95 - i * 0.021); const px = -r * 0.3 + Math.cos(a) * rr * 0.9, py = Math.sin(a) * rr * 0.8; if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-r * 0.85, -r * 0.78); ctx.quadraticCurveTo(-r * 0.74, -r * 0.2, -r * 0.98, r * 0.3); ctx.moveTo(-r * 1.17, -r * 0.6); ctx.quadraticCurveTo(-r * 1.1, -r * 0.3, -r * 1.24, -r * 0.1); ctx.stroke();
+      ctx.fillStyle = HC.shellHi; for (const [px, py, pr] of [[0.2, -0.78, 0.07], [0.5, -0.55, 0.05], [-0.1, -0.88, 0.045]]) { ctx.beginPath(); ctx.arc(r * px, r * py, r * pr, 0, TAU); ctx.fill(); }
+    } });
+    // the dark mouth of the shell, with a lip
+    ctx.beginPath(); ctx.ellipse(r * 0.72, r * 0.25, r * 0.32, r * 0.56, 0.25, 0, TAU);
     fillStroke(ctx, HC.mouth, HC.line, lw);
+    ctx.beginPath(); ctx.ellipse(r * 0.72, r * 0.25, r * 0.32, r * 0.56, 0.25, -1.9, 0.2); ctx.lineWidth = lw * 0.9; ctx.strokeStyle = HC.shellHi; ctx.stroke();
     ctx.restore();
   }
   if (part !== 'back') {
-    // the crab's front: carapace out of the shell mouth, eye stalks, two claws (the right one big)
-    const cx = 0.16 * s, cy = -0.2 * s;
-    ctx.beginPath(); ctx.ellipse(cx, cy, 0.16 * s, 0.11 * s, -0.2, 0, TAU);
-    ctx.fillStyle = HC.body; ctx.fill();
-    ctx.save(); ctx.clip(); ctx.fillStyle = HC.bodyLo; ctx.beginPath(); ctx.ellipse(cx, cy + 0.07 * s, 0.16 * s, 0.06 * s, 0, 0, TAU); ctx.fill(); ctx.fillStyle = HC.bodyHi; ctx.beginPath(); ctx.ellipse(cx - 0.02 * s, cy - 0.05 * s, 0.06 * s, 0.022 * s, -0.2, 0, TAU); ctx.fill(); ctx.restore();
-    ctx.beginPath(); ctx.ellipse(cx, cy, 0.16 * s, 0.11 * s, -0.2, 0, TAU); ctx.lineWidth = lw; ctx.strokeStyle = HC.line; ctx.stroke();
-    // eye stalks, eyes on the egg / ahead
-    const lean = pose === 'pinch' ? -0.25 : 0;
-    for (const [ex, len] of [[0.13, 0.15], [0.22, 0.13]]) {
-      const bx = ex * s, by = cy - 0.05 * s, tx = bx + Math.sin(lean + Math.sin(t * 2 + ex * 20) * 0.08) * len * s, ty = by - len * s;
-      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(tx, ty); ctx.strokeStyle = HC.line; ctx.lineWidth = lw * 2.2; ctx.stroke(); ctx.strokeStyle = HC.body; ctx.lineWidth = lw; ctx.stroke();
-      ctx.beginPath(); ctx.arc(tx, ty, 0.04 * s, 0, TAU); fillStroke(ctx, HC.white, HC.line, lw * 0.8);
-      if (o.stun) spiralEye(ctx, tx, ty, 0.032 * s, t, ex > 0.15 ? 1 : -1, HC.line);
-      else { ctx.fillStyle = HC.eye; ctx.beginPath(); ctx.arc(tx + 0.012 * s, ty + 0.004 * s, 0.022 * s, 0, TAU); ctx.fill(); }
-      if (pose === 'pinch' && !o.stun) { ctx.strokeStyle = HC.line; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(tx - 0.05 * s, ty - 0.06 * s); ctx.lineTo(tx + 0.04 * s, ty - 0.035 * s); ctx.stroke(); } // a mean brow
+    legs(true);
+    const cx = 0.17 * s, cy = -0.2 * s, look = pinch ? 0.7 : 0.45;
+    // the small far claw, behind the body
+    const snapK = pinch ? 0.5 + 0.5 * Math.sin(t * 24) : carry ? 0.08 : 0.3 + 0.12 * Math.sin(t * 3);
+    const raise = pinch ? 0.55 + 0.45 * sstep(u * 2.5) - lunge * 0.7 : carry ? 0.12 : flip ? 0.5 + Math.sin(t * 8) * 0.2 : Math.sin(t * 1.7) * 0.05;
+    claw(ctx, HC, cx + 0.05 * s, cy + 0.0 * s, 0.085 * s, -0.75 - raise * 0.7, snapK, lw, true);
+    // eye stalks (behind the carapace rim), big eyes
+    for (const [ex, len, sd] of [[0.105, 0.125, -1], [0.215, 0.11, 1]]) {
+      const bx = ex * s, by = cy - 0.07 * s, sway = Math.sin(t * 2 + ex * 20) * 0.08 - rear * 1.2 + lunge * 0.3, tx = bx + Math.sin(sway) * len * s, ty = by - Math.cos(sway) * len * s;
+      limb(ctx, [[bx, by], [tx, ty]], [0.022 * s, 0.018 * s], HC.body, HC.line, lw * 0.75);
+      const er = 0.052 * s;
+      if (o.stun) { ctx.beginPath(); ctx.arc(tx, ty, er, 0, TAU); fillStroke(ctx, HC.white, HC.line, lw * 0.8); spiralEye(ctx, tx, ty, er * 0.8, t, sd, HC.line); }
+      else eye(ctx, tx, ty, { r: er, white: HC.white, iris: HC.eye, irisR: 0.5, pupilR: 0.2, look: { x: look, y: pinch ? 0.25 : 0.1 }, lid: Math.max(pinch ? 0.3 : 0.08, o.ice ? 0 : blinkAt(t, 2)), mad: pinch ? sd * -0.5 + 0.25 : 0, lidCol: HC.body, line: HC.line, lw: lw * 0.75 });
     }
-    // claws: raised and snapping in the telegraph, hugging the egg when it carries one
-    const snapK = pose === 'pinch' ? 0.5 + 0.5 * Math.sin(t * 22) : pose === 'carry' ? 0.1 : 0.35 + 0.15 * Math.sin(t * 3);
-    const raise = pose === 'pinch' ? 0.6 + 0.4 * sstep(u * 2) : pose === 'carry' ? 0.15 : flip ? 0.4 : 0;
-    claw(ctx, HC, 0.2 * s, -0.17 * s, 0.13 * s * 0.85, -0.5 - raise * 1.0, snapK, lw);
-    claw(ctx, HC, 0.25 * s, -0.12 * s, 0.13 * s * 1.15, -0.15 - raise * 0.8, snapK, lw);
+    // feelers
+    ctx.beginPath(); for (const [a, L] of [[-0.5, 0.13], [-0.2, 0.11]]) { const w = Math.sin(t * 3.1 + a * 9) * 0.15; ctx.moveTo(cx + 0.1 * s, cy - 0.04 * s); ctx.quadraticCurveTo(cx + 0.1 * s + Math.cos(a) * L * s * 0.6, cy - 0.04 * s + Math.sin(a) * L * s * 0.9, cx + 0.1 * s + Math.cos(a + w) * L * s, cy - 0.04 * s + Math.sin(a + w) * L * s); }
+    ctx.lineWidth = lw * 1.5; ctx.strokeStyle = HC.line; ctx.stroke(); ctx.lineWidth = lw * 0.6; ctx.strokeStyle = HC.leg; ctx.stroke();
+    // the carapace: a round head out of the shell mouth, a little mouth
+    const cara = () => { ctx.beginPath(); ctx.ellipse(cx, cy, 0.15 * s, 0.115 * s, -0.2, 0, TAU); };
+    form(ctx, cara, { d: 0.035 * s, lo: HC.bodyLo, base: HC.body, hi: HC.bodyHi, hiK: 0.55, line: HC.line, lw, noWeight: true });
+    ctx.beginPath();
+    if (pinch || flip) ctx.ellipse(cx + 0.085 * s, cy + 0.035 * s, 0.022 * s, 0.028 * s, 0, 0, TAU); else { ctx.moveTo(cx + 0.05 * s, cy + 0.03 * s); ctx.quadraticCurveTo(cx + 0.09 * s, cy + 0.06 * s, cx + 0.125 * s, cy + 0.02 * s); }
+    if (pinch || flip) { ctx.fillStyle = HC.mouth; ctx.fill(); } ctx.lineWidth = lw * 0.8; ctx.strokeStyle = HC.line; ctx.stroke();
+    // the great pincer, in front: up and chattering in the telegraph, hugging the egg when it carries one
+    claw(ctx, HC, cx + 0.03 * s, cy + 0.07 * s, 0.16 * s, -0.1 - raise * 1.05 + lunge * 0.25, snapK, lw, false);
   }
   ctx.restore();
 }
-function claw(ctx, HC, x, y, L, ang, open, lw) {
+// a claw: a two-part arm, a round hand, a fixed finger and a moving one. L = the hand's size; far = the small back claw
+function claw(ctx, HC, x, y, L, ang, open, lw, far) {
   ctx.save();
   ctx.translate(x, y); ctx.rotate(ang);
-  ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(L * 0.8, 0); ctx.strokeStyle = HC.line; ctx.lineWidth = lw * 2.8; ctx.stroke(); ctx.strokeStyle = HC.body; ctx.lineWidth = lw * 1.4; ctx.stroke();
-  ctx.translate(L * 0.85, 0);
-  const a = 0.15 + open * 0.55;
-  for (const [sgn, w] of [[-1, 1], [1, 0.8]]) {
-    ctx.save(); ctx.rotate(sgn * a * (sgn < 0 ? 1 : 0.6));
-    ctx.beginPath(); ctx.moveTo(-L * 0.12, 0); ctx.quadraticCurveTo(L * 0.3, sgn * L * 0.35 * w, L * 0.75, sgn * L * 0.04); ctx.quadraticCurveTo(L * 0.3, sgn * L * 0.06, -L * 0.12, sgn * L * 0.05);
-    ctx.closePath();
-    fillStroke(ctx, sgn < 0 ? HC.body : HC.bodyLo, HC.line, lw);
-    ctx.restore();
-  }
+  const col = far ? HC.bodyLo : HC.body;
+  limb(ctx, [[0, 0], [L * 0.45, L * 0.16], [L * 0.85, 0]], [L * 0.2, L * 0.17, L * 0.19], col, HC.line, lw * 0.85);
+  ctx.translate(L * 0.95, 0);
+  const a = 0.1 + open * 0.6;
+  // the moving finger (upper), then the hand with its fixed finger
+  ctx.save(); ctx.rotate(-a);
+  ctx.beginPath(); ctx.moveTo(-L * 0.05, -L * 0.1); ctx.quadraticCurveTo(L * 0.5, -L * 0.52, L * 1.0, -L * 0.06); ctx.quadraticCurveTo(L * 0.5, -L * 0.12, L * 0.1, L * 0.08); ctx.closePath();
+  fillStroke(ctx, far ? HC.bodyLo : HC.bodyHi, HC.line, lw * 0.9);
+  ctx.restore();
+  const hand = () => { ctx.beginPath(); ctx.moveTo(-L * 0.3, -L * 0.05); ctx.bezierCurveTo(-L * 0.3, -L * 0.5, L * 0.3, -L * 0.42, L * 0.3, -L * 0.02); ctx.quadraticCurveTo(L * 0.7, L * 0.0, L * 1.02, L * 0.12); ctx.quadraticCurveTo(L * 0.55, L * 0.52, 0, L * 0.42); ctx.quadraticCurveTo(-L * 0.3, L * 0.34, -L * 0.3, -L * 0.05); ctx.closePath(); };
+  form(ctx, hand, { d: L * 0.16, lo: HC.bodyLo, base: col, hi: far ? null : HC.bodyHi, hiK: 0.5, line: HC.line, lw: lw * 0.95, noWeight: true });
   ctx.restore();
 }
 
@@ -138,13 +152,14 @@ export function drawPuffer(ctx, x, y, s, t, o = {}) {
   ctx.rotate((o.ang || 0) * (1 - sw));
   ctx.scale(face, o.belly ? -1 : 1);
   ctx.globalAlpha *= o.alpha ?? 1;
-  const wob = Math.sin(t * 9) * 0.3;
+  const wob = Math.sin(t * 9) * 0.45, sway = Math.sin(t * 9 - 1.2) * 0.07 * (1 - sw);
+  ctx.rotate(sway);
   // tail and fins
   ctx.save(); ctx.translate(-rx * 0.95, 0); ctx.rotate(wob * (1 - sw * 0.5));
-  ctx.beginPath(); ctx.moveTo(0.02 * s, 0); ctx.lineTo(-0.14 * s, -0.09 * s); ctx.quadraticCurveTo(-0.1 * s, 0, -0.14 * s, 0.09 * s); ctx.closePath();
+  ctx.beginPath(); ctx.moveTo(0.03 * s, 0); ctx.quadraticCurveTo(-0.06 * s, -0.04 * s, -0.16 * s, -0.11 * s); ctx.quadraticCurveTo(-0.11 * s + wob * 0.03 * s, 0, -0.16 * s, 0.11 * s); ctx.quadraticCurveTo(-0.06 * s, 0.04 * s, 0.03 * s, 0); ctx.closePath();
   fillStroke(ctx, PF.fin, PF.line, lw); ctx.restore();
-  ctx.save(); ctx.translate(rx * 0.1, ry * 0.55); ctx.rotate(0.6 + Math.sin(t * 11) * 0.35);
-  ctx.beginPath(); ctx.ellipse(0.05 * s, 0, 0.06 * s, 0.03 * s, 0, 0, TAU); fillStroke(ctx, PF.fin, PF.line, lw * 0.9); ctx.restore();
+  // dorsal fin (behind the body)
+  ctx.beginPath(); ctx.moveTo(-rx * 0.45, -ry * 0.8); ctx.quadraticCurveTo(-rx * 0.35 - wob * 0.04 * s, -ry * 1.0 - 0.07 * s, -rx * 0.02, -ry * 0.95 - 0.03 * s); ctx.lineTo(rx * 0.1, -ry * 0.85); ctx.closePath(); fillStroke(ctx, PF.fin, PF.line, lw * 0.9);
   // spines: they stand up as it swells
   if (sw > 0.05) {
     const n = 18, L = 0.15 * s * sw;
@@ -153,25 +168,28 @@ export function drawPuffer(ctx, x, y, s, t, o = {}) {
       const nn = Math.hypot(nx, ny) || 1, tx = bx + (nx / nn) * L, ty = by + (ny / nn) * L, px = -ny / nn * 0.03 * s, py = nx / nn * 0.03 * s;
       ctx.beginPath(); ctx.moveTo(bx + px, by + py); ctx.lineTo(tx, ty); ctx.lineTo(bx - px, by - py); ctx.closePath();
       fillStroke(ctx, PF.spineF, PF.line, lw * 0.8);
+      ctx.beginPath(); ctx.moveTo(lerp2(bx + px, tx, 0.6), lerp2(by + py, ty, 0.6)); ctx.lineTo(tx, ty); ctx.lineTo(lerp2(bx - px, tx, 0.6), lerp2(by - py, ty, 0.6)); ctx.closePath(); ctx.fillStyle = PF.white; ctx.fill();
     }
   }
   // body
-  ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, TAU);
-  ctx.fillStyle = PF.body; ctx.fill();
-  ctx.save(); ctx.clip();
-  ctx.fillStyle = PF.belly; ctx.beginPath(); ctx.ellipse(rx * 0.1, ry * 0.75, rx * 0.95, ry * 0.55, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = PF.lo; ctx.beginPath(); ctx.ellipse(-rx * 0.35, ry * 0.2, rx * 0.5, ry * 0.9, 0, -Math.PI / 2, Math.PI / 2, true); ctx.fill();
-  ctx.fillStyle = PF.spot;
-  for (let i = 0; i < 7; i++) { const a = -2.6 + i * 0.42, d = 0.6; ctx.beginPath(); ctx.arc(Math.cos(a) * rx * d, Math.sin(a) * ry * d * 0.9, 0.022 * s * (1 + sw * 0.5), 0, TAU); ctx.fill(); }
-  ctx.restore();
-  ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, TAU); ctx.lineWidth = lw; ctx.strokeStyle = PF.line; ctx.stroke();
+  const bodyP = () => { ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, TAU); };
+  form(ctx, bodyP, { d: Math.min(rx, ry) * 0.3, lo: PF.lo, base: PF.body, hi: PF.hi || '#ffe27a', hiK: 0.5, line: PF.line, lw: lw * 1.1, inner: () => {
+    ctx.fillStyle = PF.belly; ctx.beginPath(); ctx.ellipse(rx * 0.12, ry * 0.8, rx * 0.9, ry * 0.55, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = PF.spot;
+    for (let i = 0; i < 7; i++) { const a = -2.75 + i * 0.36, d = 0.62 + (i % 2) * 0.14; ctx.beginPath(); ctx.arc(Math.cos(a) * rx * d, Math.sin(a) * ry * d * 0.9, 0.02 * s * (1 + sw * 0.6) * (i % 2 ? 0.75 : 1), 0, TAU); ctx.fill(); }
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.ellipse(-rx * 0.28, -ry * 0.6, rx * 0.2, ry * 0.085, -0.35, 0, TAU); ctx.fill(); // gloss
+  } });
+  // pectoral fin: a little fan that flutters on its side
+  ctx.save(); ctx.translate(-rx * 0.05, ry * 0.3); ctx.rotate(0.55 + Math.sin(t * 13) * 0.5);
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-0.02 * s, 0.07 * s, -0.11 * s, 0.07 * s); ctx.quadraticCurveTo(-0.1 * s, 0.01 * s, 0, 0); ctx.closePath(); fillStroke(ctx, PF.fin, PF.line, lw * 0.85); ctx.restore();
   // face: big eyes (cross when it is swollen), a puckered mouth
   const ex = rx * 0.5, ey = -ry * 0.3, er = (0.06 + 0.02 * sw) * s;
-  ctx.beginPath(); ctx.arc(ex, ey, er, 0, TAU); fillStroke(ctx, PF.white, PF.line, lw * 0.9);
-  if (o.stun) spiralEye(ctx, ex, ey, er * 0.8, t, 1, PF.line);
-  else { ctx.fillStyle = PF.eye; ctx.beginPath(); ctx.arc(ex + er * 0.25, ey + er * 0.1, er * 0.5, 0, TAU); ctx.fill(); }
+  const swelling = (o.sw ?? 0) > 0.05 && (o.sw ?? 0) < 0.95;
+  if (o.stun) { ctx.beginPath(); ctx.arc(ex, ey, er, 0, TAU); fillStroke(ctx, PF.white, PF.line, lw * 0.9); spiralEye(ctx, ex, ey, er * 0.8, t, 1, PF.line); }
+  else eye(ctx, ex, ey, { r: er * (swelling ? 1.15 : 1), white: PF.white, iris: PF.eye, irisR: 0.55, pupilR: 0.22, look: { x: 0.5, y: 0.15 }, lid: Math.max(sw > 0.5 ? 0.22 : 0, o.ice ? 0 : blinkAt(t, 4)), mad: sw > 0.5 ? 0.35 : 0, lidCol: PF.body, line: PF.line, lw: lw * 0.85 });
   if (sw > 0.5 && !o.stun) { ctx.strokeStyle = PF.line; ctx.lineWidth = lw * 1.2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(ex - er * 1.1, ey - er * 1.5); ctx.lineTo(ex + er * 0.9, ey - er * 1.0); ctx.stroke(); }
-  ctx.beginPath(); ctx.ellipse(rx * 0.97, ry * 0.12, 0.03 * s, (0.025 + 0.015 * sw) * s, 0, 0, TAU); fillStroke(ctx, PF.mouth, PF.line, lw * 0.8);
+  ctx.beginPath(); ctx.ellipse(rx * 0.97, ry * 0.14, (0.032 + (swelling ? 0.012 : 0)) * s, (0.026 + 0.016 * sw + (swelling ? 0.012 : 0)) * s, 0, 0, TAU); fillStroke(ctx, PF.mouth, PF.line, lw * 0.8);
+  ctx.beginPath(); ctx.arc(rx * 0.97, ry * 0.14, 0.012 * s, 0, TAU); ctx.fillStyle = '#5a1a10'; ctx.fill();
   ctx.restore();
 }
 
@@ -179,7 +197,7 @@ export function drawPuffer(ctx, x, y, s, t, o = {}) {
 // (x, y) the bell's centre, s px per metre, o: { pulse 0..1 (contraction), sting 0..1 (the tentacles crackle), glow, stun }
 export function drawJelly(ctx, x, y, s, t, o = {}) {
   const r = 0.32 * s, c = o.pulse ?? 0.5 + 0.5 * Math.sin(t * 3.4), lw = Math.max(1.2, s * 0.028), JF = o.ice ? JFI : JFP;
-  const bw = r * (1 + 0.12 * c), bh = r * (0.82 - 0.16 * c);
+  const bw = r * (1 + 0.17 * c), bh = r * (0.84 - 0.22 * c);
   ctx.save();
   ctx.translate(x, y + (o.stun ? Math.sin(t * 2) * 0.02 * s : 0));
   ctx.rotate(o.stun ? Math.sin(t * 1.3) * 0.25 : Math.sin(t * 0.9) * 0.06);
@@ -206,10 +224,13 @@ export function drawJelly(ctx, x, y, s, t, o = {}) {
   ctx.bezierCurveTo(-bw * 1.02, -bh * 1.25, bw * 1.02, -bh * 1.25, bw, bh * 0.2);
   for (let i = 0; i <= 8; i++) { const q = i / 8; ctx.lineTo(bw - q * 2 * bw, bh * 0.2 + (i % 2 ? 0.05 * s : 0)); } // scalloped rim
   ctx.closePath();
+  ctx.save(); ctx.translate(lw * 0.3, lw * 0.5); ctx.lineWidth = lw * 1.5; ctx.strokeStyle = JF.line; ctx.stroke(); ctx.restore();
   ctx.fillStyle = JF.bell; ctx.fill();
   ctx.save(); ctx.clip();
-  ctx.fillStyle = JF.bellLo; ctx.beginPath(); ctx.ellipse(0, bh * 0.35, bw * 1.1, bh * 0.45, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = JF.bellHi; ctx.beginPath(); ctx.ellipse(-bw * 0.35, -bh * 0.55, bw * 0.28, bh * 0.16, -0.4, 0, TAU); ctx.fill();
+  ctx.fillStyle = JF.bellLo; ctx.beginPath(); ctx.ellipse(bw * 0.1, bh * 0.42, bw * 1.15, bh * 0.42, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = JF.bellLo; ctx.beginPath(); ctx.ellipse(bw * 1.02, -bh * 0.1, bw * 0.3, bh * 0.9, 0.2, 0, TAU); ctx.fill();
+  ctx.fillStyle = JF.bellHi; ctx.beginPath(); ctx.ellipse(-bw * 0.2, -bh * 0.86, bw * 0.62, bh * 0.2, -0.12, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.ellipse(-bw * 0.45, -bh * 0.62, bw * 0.17, bh * 0.07, -0.5, 0, TAU); ctx.fill();
   // its glowing heart (four petals), dimmed when it is stunned
   ctx.fillStyle = o.stun && !o.ice ? '#b88a4a' : JF.core;
   for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + 0.4; ctx.beginPath(); ctx.ellipse(Math.cos(a) * bw * 0.22, -bh * 0.3 + Math.sin(a) * bh * 0.18, bw * 0.13, bh * 0.09, a, 0, TAU); ctx.fill(); }
@@ -218,7 +239,8 @@ export function drawJelly(ctx, x, y, s, t, o = {}) {
   // a little face
   const fy = -bh * 0.02;
   if (o.stun) { spiralEye(ctx, -bw * 0.3, fy, 0.04 * s, t, 1, JF.line); spiralEye(ctx, bw * 0.3, fy, 0.04 * s, t, -1, JF.line); }
-  else { ctx.fillStyle = JF.line; for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * bw * 0.3, fy, 0.028 * s, 0.038 * s, 0, 0, TAU); ctx.fill(); } }
+  else { const bl = o.ice ? 0 : blinkAt(t, 9); for (const sx of [-1, 1]) { ctx.fillStyle = JF.line; ctx.beginPath(); ctx.ellipse(sx * bw * 0.3, fy, 0.032 * s, 0.044 * s * (1 - bl * 0.85), 0, 0, TAU); ctx.fill(); if (bl < 0.5) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx * bw * 0.3 - 0.01 * s, fy - 0.014 * s, 0.011 * s, 0, TAU); ctx.fill(); } }
+    if (!(o.sting > 0)) { ctx.strokeStyle = JF.line; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(-bw * 0.1, fy + 0.045 * s); ctx.quadraticCurveTo(0, fy + 0.085 * s, bw * 0.1, fy + 0.045 * s); ctx.stroke(); } }
   if (o.sting > 0) { ctx.strokeStyle = JF.line; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(-bw * 0.15, fy + 0.07 * s); ctx.lineTo(0, fy + 0.04 * s); ctx.lineTo(bw * 0.15, fy + 0.07 * s); ctx.stroke(); }
   ctx.restore();
   // the sting: crisp little arcs on the tentacle tips
