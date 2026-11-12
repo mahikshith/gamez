@@ -661,6 +661,7 @@ export function drawEgg(ctx, egg, t, k) {
     const d = Math.hypot(p.x, p.y), up = d > 0.01 ? Math.max(0, p.y / d) : 0;
     let nx = d > 0.3 ? p.x / d : 0, ny = d > 0.3 ? p.y / d : -1;
     nx = nx * (1 - up); ny = ny * (1 - up) - up; // upper half of the vault: the support is below, not outward
+    if (egg.wsh) { nx = egg.wsh.x; ny = egg.wsh.y; } // WONDER hook: bonus vaults with their own gravity say where the egg's support is
     const nl = Math.hypot(nx, ny) || 1, na = Math.atan2(ny / nl, nx / nl), f = 1 - sp / 2.6;
     ctx.save();
     ctx.translate(p.x + (nx / nl) * 0.215 * sc, p.y + (ny / nl) * 0.215 * sc);

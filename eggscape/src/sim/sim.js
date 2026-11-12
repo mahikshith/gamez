@@ -55,6 +55,7 @@ const MASK = {
   ROCK: CAT.RING | CAT.EGG | CAT.NEST | CAT.GROUND | CAT.BOMB | CAT.ROCK,
 };
 const filt = (k) => ({ filterCategoryBits: CAT[k], filterMaskBits: MASK[k] });
+export { filt as wonderFilt }; // WONDER hook (sim/wonder.js): the bonus world builds its planet nest with the core collision filters
 
 // Orb powers (F5/F13/F18/F19/F24/F25). Orbs float in the channels; an egg takes one by touching it.
 export const POWER = {

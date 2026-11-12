@@ -47,6 +47,7 @@ import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render
 import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem } from './render/bayou.js'; // v3.7 Gator Bayou
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
+import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 // playtest build (build.mjs --test): every level, booster and skin unlocked, plenty of coins
@@ -127,6 +128,7 @@ function resize() {
   if (G.backdrop) G.backdrop.resize(W_, H_, DPR);
   if (G.weather) G.weather.resize(W_, H_, DPR);
   G.camSnap = true;
+  wonder.resize(); // WONDER
 }
 
 // ---------------------------------------------------------------- game state
@@ -186,6 +188,9 @@ const G = {
   hen: { mood: 'idle', t: 0 },
   pointer: { x: 0, y: 0 },
 };
+
+// WONDER: the bonus world's controller. It gets the canvas, the UI kit and a few shell services; it never touches the campaign save keys.
+const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, setScreen: (s) => setScreen(s), leave: () => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); setScreen('extras'); } });
 
 function themeFor(level) {
   return THEMES.find((t) => t.id === level.theme) || THEMES[(level.id - 1) % THEMES.length];
@@ -544,6 +549,7 @@ function pointerDown(e) {
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
+  if (G.screen === 'wonder') { wonder.pointerDown(e); try { canvas.setPointerCapture(e.pointerId); } catch (_) {} return; } // WONDER
   if (G.screen === 'title') { if (titleTap(x, y)) audio.play('hen_hop', { vol: 0.6 }); return; } // tap an egg friend: it jumps and flips (only the buttons start a level)
   if (G.screen === 'win' || G.screen === 'fail') return skipCheer(); // a tap off the buttons skips the hen's routine to its end
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
@@ -584,6 +590,7 @@ function pointerDown(e) {
 function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
+  if (G.screen === 'wonder') { wonder.pointerMove(e); return; } // WONDER
   const tp = G.tp.get(e.pointerId);
   if (tp) {
     tp.x = x; tp.y = y;
@@ -612,6 +619,7 @@ function pointerMove(e) {
 }
 
 function pointerUp(e) {
+  if (G.screen === 'wonder') wonder.pointerUp(e); // WONDER
   const ct = G.chickTap; // v3.2: tap = power
   if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) G.sim.tapChick(ct.id);
   G.chickTap = null;
@@ -715,6 +723,7 @@ async function press(id) {
     }
     case 'levels':
       portal.gameplayStop();
+      if (G.screen !== 'title' && G.demo && G.level === G.demo) { setScreen('extras'); break; } // a practice vault goes back to Extras, where it was opened
       G.world = clamp(envOf(save.unlocked - 1), 0, Math.ceil(LEVELS.length / PER_ENV) - 1);
       setScreen('levels');
       break;
@@ -869,6 +878,10 @@ async function press(id) {
     case 'back':
       setScreen(G.screen === 'store' ? G.storeFrom || 'title' : 'title');
       break;
+    case 'extras': // the Extras menu: Wonder Vaults (bonus) and, in the test build, the Practice vaults
+      portal.gameplayStop();
+      setScreen('extras');
+      break;
     default:
       if (id && id.startsWith('lv:')) {
         const i = +id.slice(3);
@@ -877,6 +890,8 @@ async function press(id) {
         // test build: the chick lab (v3.2), one practice vault per chick kind
         const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS, ...REEF_DEMOS, ...BAYOU_DEMOS, ...LAB_DEMOS].find((x) => x.kind === k);
         if (d) { G.demo = d; await breakThen(() => startLevel(-2)); }
+      } else if (id && id.startsWith('wv:')) { // WONDER: the bonus world's own buttons
+        wonder.press(id);
       } else if (id && id.startsWith('lab:')) {
         G.labPage = (G.labPage || 0) + +id.slice(4);
       } else if (id && id.startsWith('mode:')) {
@@ -1944,6 +1959,7 @@ function update(dt) {
   G.t += dt;
   G.screenT += dt;
   computeLayout();
+  if (G.screen === 'wonder') { wonder.update(dt); return; } // WONDER: its own loop; the campaign world stands still
   if (!G.sim) return;
   const sim = G.sim;
   // the world only runs in play (plus a few seconds of settling behind the end cards), never behind menus
@@ -2090,6 +2106,7 @@ function render() {
   setSpriteCalm(save.calm); // reduced motion holds the flat sprites still
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ui.begin();
+  if (G.screen === 'wonder') { wonder.render(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // WONDER
   if (!G.sim) {
     ctx.fillStyle = '#1b1410';
     ctx.fillRect(0, 0, W_, H_);
@@ -2230,7 +2247,7 @@ function render() {
 
 
   // UI
-  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store') drawHUD();
+  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras') drawHUD();
   if (G.screen === 'play') drawFlyers(); // prizes on their way to the HUD
   if (G.screen === 'play') {
     // the power card owns the top of the screen while it shows
@@ -2244,6 +2261,7 @@ function render() {
   if (G.screen === 'fail') drawFail();
   if (G.screen === 'title') drawTitle();
   if (G.screen === 'levels') drawLevels();
+  if (G.screen === 'extras') wonder.drawExtras({ lab: (DEV || TEST) ? LAB : null, page: G.labPage || 0 }); // Extras: Wonder Vaults + Practice (test build)
   if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab }); }
   if (G.adBusy) {
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -3104,7 +3122,7 @@ function drawTitle() {
   const bw = Math.min(310 * u, W_ - 44 * u);
   const wide = W_ > H_ * 1.15;
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
-  const by = H_ - 200 * u;
+  const by = H_ - 244 * u; // room for the Extras row under the difficulty row
   const ground = by - 16 * u;
   G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t);
   // the earth under the controls falls into shade, so the buttons carry the bottom of the screen
@@ -3144,6 +3162,7 @@ function drawTitle() {
   ui.button('daily', 'Daily', cx - bw / 2 + tw + 8 * u, ry, tw, rh, { kind: paid ? 'off' : 'orange', icon: paid ? ICON.check : ICON.day, size: 17 * u });
   ui.button('shop', String(save.wallet.coins), cx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 18 * u });
   modeRow(cx - bw / 2, ry + rh + 10 * u, bw, 44 * u, u, true);
+  ui.button('extras', 'Extras', cx - bw / 2, ry + rh + 10 * u + 44 * u + 8 * u, bw, 36 * u, { kind: 'hud', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 15 * u });
 }
 
 // a small gold crown (boss tiles)
@@ -3232,23 +3251,13 @@ function drawLevels() {
   const rows = Math.ceil(list.length / cols);
   const gap = 12 * u;
   const cw = Math.min((W_ - pad * 2 - gap * (cols - 1)) / cols, 136 * u);
-  const labH = TEST ? 44 * u : 0; // test build: a chick lab row under the grid
+  const labH = 0; // the practice (lab) vaults moved to the Extras screen (wonder.js drawExtras)
   // the next level to play, when it is on this page, also gets one big button under the grid (thumb height)
   const nextI = save.unlocked - 1, cta = nextI >= first && nextI < first + list.length && playable(nextI) && !starsOf(LEVELS[nextI].id);
   const ctaH = cta ? 62 * u : 0, ctaGap = cta ? 18 * u : 0;
   const roomH = H_ - top - pad - labH - (labH ? 22 * u : 0) - ctaH - ctaGap;
   const chh = Math.min((roomH - gap * (rows - 1)) / rows, cw * 1.0);
   top += Math.max(0, (roomH - rows * chh - gap * (rows - 1)) * 0.3); // spare room: the grid sits a little lower, nearer the thumb
-  if (labH) {
-    // test build: a paged lab under the grid, one practice vault per chick kind, creature, power and combo
-    const pg = LAB[((G.labPage || 0) % LAB.length + LAB.length) % LAB.length], kinds = pg.items, lg = 8 * u, aw = 34 * u;
-    const lw = Math.min(110 * u, (W_ - 2 * pad - 2 * (aw + lg) - lg * (kinds.length - 1)) / kinds.length);
-    const lx0 = W_ / 2 - (kinds.length * lw + (kinds.length - 1) * lg) / 2, ly = H_ - pad - labH;
-    ui.text('Lab: ' + pg.name, W_ / 2, ly - 12 * u, { size: 14 * u, align: 'center', color: '#ffe8b0', stroke: 'rgba(0,0,0,0.5)', tag: 'levels:lab' });
-    ui.button('lab:-1', '<', pad, ly, aw, labH, { kind: 'ad', size: 20 * u });
-    ui.button('lab:1', '>', W_ - pad - aw, ly, aw, labH, { kind: 'ad', size: 20 * u });
-    kinds.forEach(([k, label], j) => ui.button('demo:' + k, label, lx0 + j * (lw + lg), ly, lw, labH, { kind: 'ad', size: Math.min(15 * u, lw * 0.2) }));
-  }
   const gridW = cols * cw + (cols - 1) * gap;
   const x0 = W_ / 2 - gridW / 2;
   if (cta) {
@@ -3396,7 +3405,8 @@ if (DEV) window.__egg = {
   start: (i, o) => startLevel(i, o),
   CHICK_DEMOS,
   startFrog(o = {}) { G.demo = FROG_DEMO; startLevel(-2, o); }, // v3.3 frog studio level
-  startDemo(kind, o = {}) { const D = [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...REEF_DEMOS, ...BAYOU_DEMOS, ...LAB_DEMOS]; G.demo = D.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.3 sea, v3.4 powers
+  wonder, // WONDER: the bonus world's controller (state, toScreen) for strips and QA
+  startDemo(kind, o = {}) { if (wonder.has(kind)) return wonder.start(kind); const D = [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...REEF_DEMOS, ...BAYOU_DEMOS, ...LAB_DEMOS]; G.demo = D.find((d) => d.kind === kind || d.id === kind) || CHICK_DEMOS[0]; startLevel(-2, o); }, // v3.2 chick demos, v3.3 sea, v3.4 powers
   POWER_DEMOS,
   THIEF_DEMOS,
   bayouArt: { drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem }, // v3.7 Gator Bayou strips
