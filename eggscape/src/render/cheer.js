@@ -349,7 +349,9 @@ export function routineCues(name, u0, u1) {
 export function drawCelebration(ctx, name, u, box, o = {}) {
   const R0 = routine(name), pw = o.pw == null ? 1 : o.pw, calm = !!o.calm;
   if (calm) u = R0.len;
-  const hh = o.henH || Math.min(box.h * 0.66, box.w * 0.5);
+  // v4: she fills her stage (the caller's henH left her small inside the framed card): 1.16x, feet on the same floor line.
+  // o.grow overrides it (1 = the caller's exact size)
+  const hh = (o.henH || Math.min(box.h * 0.66, box.w * 0.5)) * (o.grow == null ? 1.16 : o.grow);
   const cx = box.x + box.w / 2, gy = box.y + box.h - hh * 0.05, cy = gy - 0.48 * hh, S = hh / 100;
   const P = poseAt(name, u, pw);
   if (!calm) { // overlapping action: lagged speeds of the body drive the comb, tail and wing tips

@@ -2267,10 +2267,18 @@ function flipped(x, y, draw) {
 function drawHenAt(sim, k, t) {
   if (k < 20) return; // too small to read
   // on a phone the vault leaves k ~ 35 px/m: draw her at least ~50 px tall so she is visible, and step her out from the nest
-  const s = Math.max(0.95, Math.min(52, k * 1.5) / k);
   const n = sim.nest.getPosition();
   const seat = sim.water ? boatSeat(sim, t) : null; // world 8: she rides in the boat
-  const hx = seat ? seat.x : n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2;
+  // v4: the mascot is as big as her patch allows (up to 66 px, was 52): she steps out from the nest until her comb and
+  // brow clear the outermost ring, and takes the largest size that keeps her within ~1 m of where she used to stand
+  let s = Math.max(0.95, Math.min(52, k * 1.5) / k), hx = seat ? seat.x : n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2;
+  if (seat) s = Math.max(s, Math.min(60, k * 1.7) / k);
+  else for (const px of [66, 63, 60, 57, 54]) {
+    const c = Math.max(0.95, Math.min(px, k * 1.9) / k), base = n.x + sim.nestW / 2 + 0.6 + (c - 0.95) / 2, R = sim.outerR + 0.1;
+    let x = base;
+    for (const [ox, oy] of [[0.32, 0.97], [0.46, 0.85]]) { const y = sim.groundY + oy * c * (sim.gy || 1), d = R * R - y * y; if (d > 0) x = Math.max(x, Math.sqrt(d) + ox * c - n.x * 0); }
+    if (x - base <= 1.1 && x + 0.45 * c <= sim.outerR + 0.5) { s = c; hx = x; break; }
+  }
   ctx.save();
   ctx.translate(hx, seat ? seat.y : sim.groundY);
   ctx.scale(1 / k, -1 / k);

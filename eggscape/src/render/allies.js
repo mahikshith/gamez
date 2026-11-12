@@ -29,6 +29,9 @@ function union(ctx, o, items) {
   ctx.strokeStyle = LINE;
   ctx.fillStyle = LINE;
   for (const it of items) { ctx.beginPath(); it.p(ctx); ctx.stroke(); ctx.fill(); }
+  ctx.translate(o * 0.25, o * 0.6); // line weight: heavier underneath, away from the light
+  for (const it of items) { ctx.beginPath(); it.p(ctx); ctx.stroke(); }
+  ctx.translate(-o * 0.25, -o * 0.6);
   for (const it of items) { ctx.beginPath(); it.p(ctx); ctx.fillStyle = it.f; ctx.fill(); }
 }
 function solid(ctx, o, p, fill, line = LINE, w = 1) {
@@ -45,6 +48,7 @@ function wing(ctx, o, x, y, ang, sp, cols, tip, scale = 1) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(ang);
+  ctx.scale(1, -1); // the feathered trailing edge faces back and down when the wing is raised
   const L = (36 + 34 * sp) * scale, W = (11 + 13 * sp) * scale, n = 3 + Math.round(sp * 2);
   const path = (c) => {
     c.moveTo(0, -W * 0.5);
@@ -60,9 +64,14 @@ function wing(ctx, o, x, y, ang, sp, cols, tip, scale = 1) {
   // feather tips and quills
   ctx.save();
   ctx.beginPath(); path(ctx); ctx.clip();
-  if (tip) { ctx.fillStyle = tip; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(L * 0.66, -W * 2); ctx.lineTo(L * 0.66, W * 2.4); ctx.lineTo(L * 2, W * 2.4); ctx.lineTo(L * 2, -W * 2); ctx.fill(); ctx.globalAlpha = 1; }
+  if (tip) { const tg = ctx.createLinearGradient(L * 0.56, 0, L * 0.8, 0); tg.addColorStop(0, tip + '00'); tg.addColorStop(1, tip); ctx.fillStyle = tg; ctx.fillRect(L * 0.3, -W * 2, L, W * 4.4); }
+  // form: the leading edge catches the light, the flight feathers under the coverts sit in soft shade
+  { const sg = ctx.createLinearGradient(0, -W, 0, W * 1.3); sg.addColorStop(0, 'rgba(255,255,255,0.3)'); sg.addColorStop(0.35, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(50,30,40,0)'); sg.addColorStop(1, 'rgba(50,30,40,0.24)'); ctx.fillStyle = sg; ctx.fillRect(-8, -W * 2, L + 16, W * 4.4); }
   ctx.strokeStyle = LINE; ctx.lineWidth = o * 0.55; ctx.globalAlpha = 0.7;
   ctx.beginPath();
+  ctx.moveTo(L * 0.62, -W * 0.1);
+  for (let i = 0; i < 4; i++) { const x0 = L * (0.62 - i * 0.155), x1 = L * (0.62 - (i + 1) * 0.155), yy = W * (-0.1 + i * 0.13); ctx.quadraticCurveTo((x0 + x1) / 2, yy + W * 0.42, x1, yy + W * 0.13); }
+  if (sp < 0.3) for (let i = 1; i <= 2; i++) { ctx.moveTo(L * (0.86 - i * 0.2), W * (0.55 + i * 0.12)); ctx.lineTo(L * (0.5 - i * 0.1), W * (0.16 + i * 0.1)); } // folded: two primaries
   for (let i = 1; i < n; i++) { const b = i / n; ctx.moveTo(L * (1 - b * 0.82) + 2 * scale, W * (0.1 + b * 1.0)); ctx.lineTo(L * (0.35 + 0.1 * i / n), W * (0.0 + 0.1 * i)); }
   ctx.stroke();
   ctx.restore();
@@ -76,7 +85,7 @@ function legs(ctx, o, top, ground, L, web) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for (const pass of [0, 1]) {
     ctx.strokeStyle = pass ? BEAK.hi : BEAK.line;
-    ctx.lineWidth = (web ? 4 : 3.4) + (pass ? 0 : o * 1.4);
+    ctx.lineWidth = (web ? 4.6 : 4.2) + (pass ? 0 : o * 1.4);
     ctx.beginPath();
     for (const l of L) { // {x: hip x, fx: foot x, fy: foot y, kx, ky: knee}
       ctx.moveTo(l.x, top);
@@ -103,14 +112,14 @@ function strideLegs(ph, hips, ground, reach = 9, lift = 7) {
 export function roosterPose(anim, k = 0, tt = 0) {
   const P = { dy: 0, lean: 0, chest: 1, hx: 0, hy: 0, hr: 0, beak: 0, eye: 'open', wa: 2.6, sp: 0, tail: 0, legs: 'stand', ph: 0, sqy: 1, far: 0 };
   const f = Math.sin(tt * 18);
-  if (anim === 'fly') { P.wa = lerp(-2.25, 1.75, (f + 1) / 2); P.sp = 1; P.far = 1; P.hx = 6; P.hy = 2; P.beak = 0.3; P.legs = 'tuck'; P.lean = 0.1; P.tail = -0.25 + f * 0.1; P.eye = 'wide'; }
+  if (anim === 'fly') { P.wa = lerp(-2.05, -4.25, (f + 1) / 2); P.sp = 1; P.far = 1; P.hx = 6; P.hy = 2; P.beak = 0.3; P.legs = 'tuck'; P.lean = 0.1; P.tail = -0.25 + f * 0.1; P.eye = 'wide'; }
   else if (anim === 'land') {
     const fold = sstep((k - 0.55) / 0.45);
-    P.wa = lerp(-1.95 + Math.sin(tt * 24) * 0.3, 2.6, fold); P.sp = 1 - fold; P.far = 1 - fold; P.legs = 'reach'; P.tail = 0.5 * (1 - fold); P.lean = -0.2 * (1 - fold); P.beak = 0.3 * (1 - fold); P.hx = 3; P.eye = 'wide';
+    P.wa = lerp(-1.95 + Math.sin(tt * 24) * 0.3, -3.68, fold); P.sp = 1 - fold; P.far = 1 - fold; P.legs = 'reach'; P.tail = 0.5 * (1 - fold); P.lean = -0.2 * (1 - fold); P.beak = 0.3 * (1 - fold); P.hx = 3; P.eye = 'wide';
   } else if (anim === 'crouch') { P.dy = 6 * k; P.sqy = 1 - 0.1 * k; P.wa = 1.7; P.sp = 0.3 * k; P.legs = 'bent'; P.lean = 0.12 * k; P.tail = -0.1; P.eye = 'glare'; }
   else if (anim === 'puff') {
     const a = sstep(k), pop = Math.sin(clamp(k * 1.6, 0, 1) * Math.PI) * 0.04;
-    P.chest = 1 + 0.42 * a + pop; P.hr = -0.28 * a; P.hy = -2 * a; P.wa = 2.6 - 0.6 * a; P.sp = 0.15 * a; P.lean = -0.14 * a; P.dy = -2 * a; P.tail = 0.3 * a; P.eye = 'closed'; P.legs = 'stand'; P.sqy = 1 + 0.02 * Math.sin(k * 30) * a;
+    P.chest = 1 + 0.42 * a + pop; P.hr = -0.28 * a; P.hy = -2 * a; P.wa = 2.6 - 0.45 * a; P.sp = 0.15 * a; P.lean = -0.14 * a; P.dy = -2 * a; P.tail = 0.3 * a; P.eye = 'closed'; P.legs = 'stand'; P.sqy = 1 + 0.02 * Math.sin(k * 30) * a;
   } else if (anim === 'crow') {
     const r = sstep(k * 5);
     P.chest = 1.3; P.hr = -0.9 * r; P.hx = 1 * r; P.hy = -6 * r; P.beak = (0.75 + 0.25 * Math.sin(tt * 28)) * r; P.eye = 'closed'; P.wa = -2.95 + Math.sin(tt * 34) * 0.07; P.sp = 0.55 * r; P.far = 1;
@@ -174,7 +183,7 @@ export function drawRooster(ctx, cx, cy, s, P) {
     union(ctx, o, [
       { p: (c) => { c.save(); c.translate(10, bodyY + 2); c.scale(P.chest, 1 + (P.chest - 1) * 0.5); c.translate(-10, -bodyY - 2); c.ellipse(-2, bodyY, 34, 26, -0.38, 0, TAU); c.restore(); }, f: bodyFill },
       { p: (c) => { c.moveTo(32, bodyY - 4); c.quadraticCurveTo(H.x + 17, H.y + 24, H.x + 10, H.y + 4); c.lineTo(H.x - 10, H.y + 4); c.quadraticCurveTo(H.x - 16, H.y + 26, -4, bodyY - 12); c.closePath(); }, f: grad(ctx, 0, H.y, 0, bodyY - 6, ['#ffd36b', '#f4ad4c', '#f3c261']) },
-      { p: (c) => c.arc(H.x, H.y, 12.5, 0, TAU), f: rgrad(ctx, H.x - 4, H.y - 5, 2, 16, ['#fff3d2', '#f4cf86', '#e5a24c']) },
+      { p: (c) => c.arc(H.x, H.y, 13.6, 0, TAU), f: rgrad(ctx, H.x - 4, H.y - 5, 2, 17, ['#fff3d2', '#f4cf86', '#e5a24c']) },
     ]);
     // cream chest patch with scalloped feathers
     ctx.save();
@@ -197,15 +206,24 @@ export function drawRooster(ctx, cx, cy, s, P) {
     wing(ctx, o, 2, bodyY - 12, P.wa, P.sp, COCK.wing, P.sp > 0.3 ? COCK.wingTip : null, 1.2);
     // head details, in the head's own frame
     ctx.save();
-    ctx.translate(H.x, H.y); ctx.rotate(P.hr);
+    ctx.translate(H.x, H.y); ctx.rotate(P.hr); ctx.scale(1.09, 1.09);
     // comb: five lobes
-    const lobes = [[-9, -10, 4.6], [-4, -15, 5.4], [2, -16, 5.8], [8, -13, 5.2], [12, -8, 4]];
-    const combPath = (c) => { for (const [x, y, r] of lobes) { c.moveTo(x + r, y); c.arc(x, y, r, 0, TAU); } c.moveTo(-9, -5); c.lineTo(12, -4); c.lineTo(12, -9); c.lineTo(-9, -10); };
-    ctx.lineWidth = o * 2; ctx.strokeStyle = RED.line; ctx.fillStyle = RED.line; ctx.beginPath(); combPath(ctx); ctx.stroke(); ctx.fill();
-    ctx.fillStyle = grad(ctx, 0, -22, 0, -4, [RED.hi, RED.lo]); ctx.beginPath(); combPath(ctx); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.45)'; glint(ctx, 1, -18, 1.6); glint(ctx, -4, -17, 1.2);
+    const combPath = (c) => { // five flame-like lobes, tallest in the middle, sweeping back
+      c.moveTo(-11, -6);
+      c.bezierCurveTo(-16, -10, -14, -16.5, -9, -14.5);
+      c.bezierCurveTo(-11, -20.5, -5, -23.5, -2.5, -18.5);
+      c.bezierCurveTo(-2.5, -25.5, 5.5, -27.5, 6.2, -20);
+      c.bezierCurveTo(9, -24, 14.5, -21.5, 12.2, -15.5);
+      c.bezierCurveTo(16, -15.5, 17.2, -10.5, 14, -8.6);
+      c.bezierCurveTo(14.6, -6.4, 13, -4.6, 11, -4.6);
+      c.closePath();
+    };
+    ctx.lineWidth = o * 2; ctx.strokeStyle = RED.line; ctx.beginPath(); combPath(ctx); ctx.stroke();
+    ctx.fillStyle = grad(ctx, -4, -27, 4, -5, ['#ff5a43', RED.hi, RED.lo]); ctx.beginPath(); combPath(ctx); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(-12.4, -12); ctx.quadraticCurveTo(-12, -14, -10, -14); ctx.moveTo(-8.4, -19); ctx.quadraticCurveTo(-7, -21, -5, -20.4); ctx.moveTo(0, -23); ctx.quadraticCurveTo(1.6, -25, 3.6, -24.2); ctx.moveTo(9, -20.6); ctx.quadraticCurveTo(10.4, -21.4, 11.6, -20); ctx.stroke();
     // earlobe, wattle
-    solid(ctx, o * 0.7, (c) => c.ellipse(-2, 6, 3.4, 4.2, 0.2, 0, TAU), '#fff6df');
+    ctx.fillStyle = 'rgba(255,250,236,0.85)'; ctx.beginPath(); ctx.ellipse(-3.5, 7, 2.6, 3.4, 0.3, 0, TAU); ctx.fill(); // earlobe: a soft pale patch (never a second eye)
     const open = P.beak;
     solid(ctx, o * 0.8, (c) => { c.moveTo(7, 7 + open * 5); c.quadraticCurveTo(14, 10 + open * 5, 9, 19 + open * 5); c.quadraticCurveTo(4, 17 + open * 5, 4, 8 + open * 4); c.closePath(); }, grad(ctx, 0, 6, 0, 20, [RED.hi, RED.lo]), RED.line);
     // beak: upper and lower, hinged at the face
@@ -226,8 +244,10 @@ export function drawRooster(ctx, cx, cy, s, P) {
     else if (P.eye === 'wide') { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(ex, ey, 5.2, 6, 0, 0, TAU); ctx.fill(); ctx.lineWidth = o * 0.8; ctx.stroke(); ctx.fillStyle = '#2a1d14'; ctx.beginPath(); ctx.arc(ex + 1, ey + 0.5, 2.8, 0, TAU); ctx.fill(); ctx.fillStyle = '#fff'; glint(ctx, ex + 0.2, ey - 0.9, 1); }
     else {
       const lid = P.eye === 'proud' ? 0.42 : 0;
-      ctx.beginPath(); ctx.ellipse(ex, ey + lid * 2, 3.6, 4.6 * (1 - lid), 0, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#fff'; glint(ctx, ex - 1.2, ey - 1.4 + lid * 2, 1.3);
+      ctx.beginPath(); ctx.ellipse(ex, ey + lid * 2, 4.2, 5.3 * (1 - lid), 0, 0, TAU); ctx.fill();
+      ctx.save(); ctx.clip(); ctx.fillStyle = 'rgba(215,130,50,0.8)'; ctx.beginPath(); ctx.ellipse(ex, ey + lid * 2 + 3.8 * (1 - lid), 4, 2.6, 0, 0, TAU); ctx.fill(); ctx.restore();
+      ctx.fillStyle = '#fff'; glint(ctx, ex - 1.3, ey - 1.8 + lid * 2.4, 1.6); glint(ctx, ex + 1.5, ey + 1.6 + lid, 0.7);
+      ctx.fillStyle = '#2a1d14';
       ctx.lineWidth = o * 1.1; ctx.beginPath();
       if (P.eye === 'glare') { ctx.moveTo(ex - 6, ey - 9); ctx.lineTo(ex + 6, ey - 4.5); }
       else if (P.eye === 'proud') { ctx.moveTo(ex - 6, ey - 3.2); ctx.lineTo(ex + 6, ey - 3.2); }
@@ -252,7 +272,7 @@ export function goosePose(anim, k = 0, tt = 0, walk = tt * 6) {
     P.beak = k > 0.8 && k < 0.9 ? 0.4 : 0;
   } else if (anim === 'hiss') {
     const r = sstep(k * 3.2), e = Math.sin(tt * 30) * 0.15;
-    P.hx = 34 * r; P.hy = 30 * r; P.kink = 0.25 * (1 - r) + 0.12; P.beak = (0.9 + e) * r; P.eye = 'glare'; P.wa = lerp(2.95, -2.7, r); P.sp = 0.85 * r; P.dy = 3 * r; P.lean = 0.12 * r; P.legs = 'bent'; P.sqy = 1 - 0.05 * r;
+    P.hx = 34 * r; P.hy = 30 * r; P.kink = 0.25 * (1 - r) + 0.12; P.beak = (0.9 + e) * r; P.eye = 'glare'; P.wa = lerp(-3.33, -2.7, r); P.sp = 0.85 * r; P.dy = 3 * r; P.lean = 0.12 * r; P.legs = 'bent'; P.sqy = 1 - 0.05 * r;
   } else if (anim === 'charge') {
     const f = Math.sin(tt * 17);
     P.hx = 40; P.hy = 36; P.kink = 0.05; P.beak = 0.55 + 0.4 * Math.max(0, Math.sin(tt * 22)); P.eye = 'glare'; P.wa = -2.9 + f * 0.5; P.sp = 1; P.lean = 0.2; P.legs = 'trail'; P.dy = -4;
@@ -301,6 +321,11 @@ export function drawGoose(ctx, cx, cy, s, P) {
       { p: (c) => neck(c, 12.5), f: grad(ctx, 0, H.y, 0, S.y, ['#ffffff', '#e4ebf1']) },
       { p: (c) => c.ellipse(H.x, H.y, 11.5, 10, 0, 0, TAU), f: rgrad(ctx, H.x - 3, H.y - 4, 2, 14, ['#ffffff', '#eef2f5', '#d3dde6']) },
     ]);
+    // form: a cool shade under the belly and down the back of the neck, a warm bounce at the very bottom
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(-2, bodyY, 38, 25, -0.12, 0, TAU); neck(ctx, 12.5); ctx.clip();
+    { const bg = ctx.createLinearGradient(-4, bodyY - 2, 2, bodyY + 26); bg.addColorStop(0, 'rgba(110,145,185,0)'); bg.addColorStop(1, 'rgba(110,145,185,0.5)'); ctx.fillStyle = bg; ctx.fillRect(-60, bodyY - 30, 130, 70); }
+    ctx.restore();
     // neck shading line + chest feather scallops
     ctx.save();
     ctx.strokeStyle = 'rgba(120,140,160,0.45)'; ctx.lineWidth = o * 0.6;
@@ -328,13 +353,15 @@ export function drawGoose(ctx, cx, cy, s, P) {
     ctx.fillStyle = '#2a1d14'; ctx.strokeStyle = '#2a1d14'; ctx.lineCap = 'round';
     const ex = 1.5, ey = -2.5;
     if (P.eye === 'glare') {
-      ctx.beginPath(); ctx.ellipse(ex, ey, 3.3, 3.6, 0, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#fff'; glint(ctx, ex - 1, ey - 1.1, 1.1);
+      ctx.beginPath(); ctx.ellipse(ex, ey, 3.9, 4.3, 0, 0, TAU); ctx.fill();
+      ctx.save(); ctx.clip(); ctx.fillStyle = 'rgba(90,150,210,0.85)'; ctx.beginPath(); ctx.ellipse(ex, ey + 3.2, 3.7, 2.2, 0, 0, TAU); ctx.fill(); ctx.restore();
+      ctx.fillStyle = '#fff'; glint(ctx, ex - 1.2, ey - 1.4, 1.35);
       ctx.strokeStyle = GOOSE.brow; ctx.lineWidth = o * 1.3; ctx.beginPath(); ctx.moveTo(ex - 6, ey - 7.5); ctx.lineTo(ex + 6, ey - 2.4); ctx.stroke();
     } else {
       const bl = Math.sin(P.ph * 0) ; void bl;
-      ctx.beginPath(); ctx.ellipse(ex, ey, 3.2, 3.9, 0, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#fff'; glint(ctx, ex - 1, ey - 1.3, 1.1);
+      ctx.beginPath(); ctx.ellipse(ex, ey, 3.9, 4.8, 0, 0, TAU); ctx.fill();
+      ctx.save(); ctx.clip(); ctx.fillStyle = 'rgba(90,150,210,0.85)'; ctx.beginPath(); ctx.ellipse(ex, ey + 3.5, 3.7, 2.4, 0, 0, TAU); ctx.fill(); ctx.restore();
+      ctx.fillStyle = '#fff'; glint(ctx, ex - 1.2, ey - 1.6, 1.45); glint(ctx, ex + 1.3, ey + 1.5, 0.65);
     }
     ctx.restore();
     // wing (near)

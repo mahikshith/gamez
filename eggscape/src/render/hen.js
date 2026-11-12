@@ -28,6 +28,7 @@ const outlineW = (s, base = 2.8) => Math.max(base, 110 / s); // the rooster's: 2
 export const WALK_RANGE = 22; // units either side of home: the hen never leaves her patch beside the nest
 const WALK_SPEED = 26; // units / s
 const CHEER_LEN = 1.3;
+const HS = 1.22; // v4: a bigger head and face (the star of the show has to act at 60 px tall)
 
 // one farm: the rooster's line, reds and beak (allies.js), the hen's own cream and tan
 const LINE = '#6b4a2a';
@@ -432,7 +433,7 @@ export function drawHenPose(ctx, P, cx, cy, h, o = {}) {
     const sy = 1 + P.sq, sx = 1 - 0.7 * P.sq;
     ctx.scale(sx * P.puff, sy * P.puff);
     ctx.translate(0, -44);
-    const H = { x: 21 + P.hx, y: -25 + P.hy };
+    const H = { x: 20 + P.hx, y: -27.5 + P.hy };
     const fw = clamp(P.fw || 0, 0, 1);
     wing(ctx, ol, 9 - 14 * fw, -6 - 5 * fw, P.wf - 0.12, P.sp, true); // far wing: behind the body, darker (hidden while folded)
     drawTail(ctx, P, ol);
@@ -440,7 +441,7 @@ export function drawHenPose(ctx, P, cx, cy, h, o = {}) {
     drawBody(ctx, H, ol);
     drawHead(ctx, H, P, f, tt, ol, o.hat);
     wing(ctx, ol, 1, -1, P.wa, P.sp, false); // near wing, over the body (and over her eye when she wipes it)
-    if (P.sweat > 0.02) { const k = fract(tt * 0.8); drawDrop(ctx, H.x - 15, H.y - 8 + k * 9, 3.6, ol * 0.7, (1 - k * 0.6) * clamp(P.sweat, 0, 1)); }
+    if (P.sweat > 0.02) { const k = fract(tt * 0.8); drawDrop(ctx, H.x - 19, H.y - 9 + k * 9, 3.6, ol * 0.7, (1 - k * 0.6) * clamp(P.sweat, 0, 1)); }
     ctx.restore();
     if (o.burst && o.burst.u >= 0) drawBurst(ctx, o.burst.u, o.burst.k, ol);
     if (o.loose > 0) drawLoose(ctx, tt, ol, o.loose);
@@ -490,9 +491,9 @@ function drawLegs(ctx, P, o) {
     };
     for (const pass of [0, 1]) {
       ctx.strokeStyle = pass ? l.c : LEG.line;
-      ctx.lineWidth = 4.4 + (pass ? 0 : o * 1.4);
+      ctx.lineWidth = 5 + (pass ? 0 : o * 1.4);
       ctx.beginPath(); ctx.moveTo(l.x, l.top); ctx.lineTo(l.fx, l.fy); ctx.stroke();
-      ctx.lineWidth = 2.8 + (pass ? 0 : o * 1.4);
+      ctx.lineWidth = 3.3 + (pass ? 0 : o * 1.4);
       ctx.beginPath(); toes(ctx); ctx.stroke();
     }
     // scales: short ticks across the shank
@@ -589,12 +590,12 @@ const bodyPath = (c) => {
 };
 const neckPath = (H) => (c) => {
   c.moveTo(0, -11);
-  c.quadraticCurveTo(H.x - 13, H.y + 10, H.x - 10, H.y + 4);
-  c.lineTo(H.x + 9, H.y + 6);
-  c.quadraticCurveTo(H.x + 12, H.y + 17, 31, -1);
+  c.quadraticCurveTo(H.x - 15, H.y + 12, H.x - 12, H.y + 4);
+  c.lineTo(H.x + 11, H.y + 7);
+  c.quadraticCurveTo(H.x + 14, H.y + 18, 31, -1);
   c.closePath();
 };
-const headPath = (H) => (c) => c.arc(H.x, H.y, 13, 0, TAU);
+const headPath = (H) => (c) => { c.moveTo(H.x + 13 * HS, H.y); c.ellipse(H.x, H.y + 0.6, 13 * HS, 12.4 * HS, 0, 0, TAU); };
 
 function drawBody(ctx, H, o) {
   const parts = [bodyPath, neckPath(H), headPath(H)];
@@ -603,6 +604,9 @@ function drawBody(ctx, H, o) {
   ctx.strokeStyle = LINE;
   ctx.fillStyle = LINE;
   for (const p of parts) { ctx.beginPath(); p(ctx); ctx.stroke(); ctx.fill(); }
+  ctx.translate(o * 0.25, o * 0.6); // line weight: heavier under her, away from the light
+  for (const p of parts) { ctx.beginPath(); p(ctx); ctx.stroke(); }
+  ctx.translate(-o * 0.25, -o * 0.6);
   const fill = rgrad(ctx, -12, -16, 4, 66, [HEN.hi, HEN.mid, HEN.lo]);
   // two tones: the tan crescent is everything the silhouette, nudged toward the light (back-top), no longer covers
   ctx.save();
@@ -635,22 +639,33 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
   ctx.save();
   ctx.translate(H.x, H.y);
   ctx.rotate(P.hr);
+  ctx.scale(HS, HS);
   // highlight: a soft lit patch on the back of the crown
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
   ctx.beginPath(); ctx.ellipse(-6, -6.5, 4.2, 2.6, -0.6, 0, TAU); ctx.fill();
   // comb: four lobes (smaller than the rooster's five), wobbling from its base
   ctx.save();
   ctx.translate(1, -10); ctx.rotate(P.comb); ctx.translate(-1, 10);
-  const lobes = [[-7, -12, 4], [-2, -15.5, 4.8], [4, -15, 4.5], [8.6, -11.2, 3.5]];
-  const combPath = (c) => { for (const [x, y, r] of lobes) { c.moveTo(x + r, y); c.arc(x, y, r, 0, TAU); } c.moveTo(-8, -8); c.lineTo(10, -8); c.lineTo(10, -12); c.lineTo(-8, -13); };
-  ctx.lineWidth = o * 2; ctx.strokeStyle = RED.line; ctx.fillStyle = RED.line; ctx.beginPath(); combPath(ctx); ctx.stroke(); ctx.fill();
-  ctx.fillStyle = grad(ctx, 0, -20, 0, -8, [RED.hi, RED.lo]); ctx.beginPath(); combPath(ctx); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.5)'; dot(ctx, -3, -17.5, 1.5); dot(ctx, -8, -13.5, 1.1);
+  const combPath = (c) => { // three soft lobes, tallest in the middle, leaning a little forward
+    c.moveTo(-9.5, -8.5);
+    c.bezierCurveTo(-14, -13, -10.5, -19.5, -5, -16.5);
+    c.bezierCurveTo(-5, -22.5, 3, -25, 4.6, -18.6);
+    c.bezierCurveTo(7.5, -22, 13.8, -19, 11.6, -13.4);
+    c.bezierCurveTo(14, -11.5, 12.5, -8, 10, -7.6);
+    c.closePath();
+  };
+  ctx.lineWidth = o * 2 / HS; ctx.strokeStyle = RED.line; ctx.beginPath(); combPath(ctx); ctx.stroke();
+  ctx.fillStyle = grad(ctx, -4, -24, 4, -8, ['#ff5a43', RED.hi, RED.lo]); ctx.beginPath(); combPath(ctx); ctx.fill();
+  ctx.save(); ctx.beginPath(); combPath(ctx); ctx.clip();
+  ctx.fillStyle = 'rgba(120,10,10,0.35)'; ctx.beginPath(); ctx.ellipse(3, -8, 14, 3.6, 0.05, 0, TAU); ctx.fill(); // where it meets the crown
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-9.2, -14.5); ctx.quadraticCurveTo(-8.6, -17, -6.4, -17.2); ctx.moveTo(-1.6, -21); ctx.quadraticCurveTo(0, -22.6, 2, -22); ctx.moveTo(8.2, -18.6); ctx.quadraticCurveTo(9.6, -19, 10.6, -17.8); ctx.stroke();
   ctx.restore();
   // blush on the near cheek
   if (f.blush > 0.01) { ctx.fillStyle = `rgba(255,120,120,${clamp(f.blush, 0, 1).toFixed(3)})`; ctx.beginPath(); ctx.ellipse(-3, 5.5, 4, 2.4, 0, 0, TAU); ctx.fill(); }
 
-  const NE = { x: 0.5, y: -1.5, k: 1 }, FE = { x: 10, y: -3, k: 0.64 }; // near and far eye; k = width (foreshortening)
+  const NE = { x: 0.2, y: -1.5, k: 1 }, FE = { x: 10, y: -2.8, k: 0.66 }; // near and far eye; k = width (foreshortening)
   const bl = f.blink || 0, a0 = ctx.globalAlpha;
   ctx.lineCap = 'round';
   ctx.strokeStyle = EYE;
@@ -662,20 +677,26 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
       ctx.globalAlpha = a0 * dotW;
       const px = E.x + f.pdx * 0.5 * E.k, py = E.y + f.pdy * 0.4;
       ctx.fillStyle = EYE;
-      ctx.beginPath(); ctx.ellipse(px, py, 3.6 * E.k, 4.6 * (1 - bl * 0.85) + 0.3, 0, 0, TAU); ctx.fill();
-      if (bl < 0.5) { ctx.fillStyle = '#fff'; dot(ctx, px - 1.2 * E.k, py - 1.5, 1.35 * (0.6 + 0.4 * E.k)); }
+      const ew = 4.2 * E.k, eh = 5.3 * (1 - bl * 0.85) + 0.3;
+      ctx.beginPath(); ctx.ellipse(px, py, ew, eh, 0, 0, TAU); ctx.fill();
+      if (bl < 0.5) {
+        ctx.save(); ctx.beginPath(); ctx.ellipse(px, py, ew, eh, 0, 0, TAU); ctx.clip();
+        ctx.fillStyle = 'rgba(190,120,60,0.75)'; ctx.beginPath(); ctx.ellipse(px, py + eh * 0.72, ew * 0.95, eh * 0.5, 0, 0, TAU); ctx.fill(); // a warm lower iris: depth, not a dead dot
+        ctx.restore();
+        ctx.fillStyle = '#fff'; dot(ctx, px - 1.3 * E.k, py - 1.9, 1.6 * (0.6 + 0.4 * E.k)); dot(ctx, px + 1.4 * E.k, py + 1.6, 0.7 * (0.6 + 0.4 * E.k));
+      }
     }
   }
   // wide eyes (scared): white with a rim and a darting pupil
   if (f.eWide > 0.01) {
     ctx.globalAlpha = a0 * f.eWide * (1 - f.eHappy) * (1 - f.eSqueeze);
     for (const E of [NE, FE]) {
-      ctx.beginPath(); ctx.ellipse(E.x, E.y - 0.5, 5 * E.k, 6 * (1 - bl * 0.8) + 0.2, 0, 0, TAU);
+      ctx.beginPath(); ctx.ellipse(E.x, E.y - 0.5, 5.4 * E.k, 6.5 * (1 - bl * 0.8) + 0.2, 0, 0, TAU);
       ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = o * 0.8; ctx.stroke();
       if (bl < 0.5) {
         const px = E.x + clamp(f.pdx, -2, 2) * E.k, py = E.y + clamp(f.pdy, -2, 2);
-        ctx.fillStyle = EYE; dot(ctx, px, py, 2.7 * (0.7 + 0.3 * E.k));
-        ctx.fillStyle = '#fff'; dot(ctx, px - 0.8 * E.k, py - 0.9, 0.95);
+        ctx.fillStyle = EYE; dot(ctx, px, py, 3 * (0.7 + 0.3 * E.k));
+        ctx.fillStyle = '#fff'; dot(ctx, px - 0.9 * E.k, py - 1, 1.1);
       }
     }
   }
@@ -697,16 +718,18 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
   // worried brows: inner ends (toward the beak) raised
   if (f.brow > 0.01) {
     ctx.globalAlpha = a0 * f.brow * (1 - f.eHappy);
-    ctx.lineWidth = o * 1.05;
+    ctx.strokeStyle = '#4a2f1c'; // soft brown brows (black bars read as a mask at play scale)
+    ctx.lineWidth = o * 0.8;
     ctx.beginPath();
-    ctx.moveTo(NE.x - 4.5, NE.y - 7 + f.browY); ctx.lineTo(NE.x + 3.5, NE.y - 10 + f.browY);
-    ctx.moveTo(FE.x - 1.5, FE.y - 9.5 + f.browY); ctx.lineTo(FE.x + 2.8, FE.y - 7.5 + f.browY);
+    ctx.moveTo(NE.x - 5, NE.y - 8.2 + f.browY); ctx.quadraticCurveTo(NE.x - 1, NE.y - 10.4 + f.browY, NE.x + 3.2, NE.y - 11.4 + f.browY);
+    ctx.moveTo(FE.x - 1.5, FE.y - 10.6 + f.browY); ctx.quadraticCurveTo(FE.x + 1, FE.y - 10 + f.browY, FE.x + 2.8, FE.y - 8.4 + f.browY);
     ctx.stroke();
   }
   // determined brows ("you can do it"): inner ends lowered
   if (f.grit > 0.01) {
     ctx.globalAlpha = a0 * clamp(f.grit, 0, 1);
-    ctx.lineWidth = o * 1.05;
+    ctx.strokeStyle = '#4a2f1c';
+    ctx.lineWidth = o * 0.9;
     ctx.beginPath();
     ctx.moveTo(NE.x - 4.5, NE.y - 10.5); ctx.lineTo(NE.x + 3.5, NE.y - 8);
     ctx.moveTo(FE.x - 1.5, FE.y - 8); ctx.lineTo(FE.x + 2.8, FE.y - 10);

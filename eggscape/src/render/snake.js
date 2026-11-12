@@ -525,6 +525,10 @@ function drawHead(ctx, P, F, t, lw, o) {
   ctx.closePath();
   ctx.fillStyle = P.light;
   ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; // v4: a crisp wet glint on the crown and the snout (gloss reads as a hard, clean form)
+  ctx.beginPath(); ctx.ellipse(-6.5, -17.1, 3.6, 1.05, -0.14, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(1.2, -17.6, 1.1, 0.8, -0.1, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(25.5, -7.6, 2.3, 0.9, 0.42, 0, TAU); ctx.fill();
   ctx.beginPath(); // scale hints behind the eye
   for (const [x, y] of [[-10, -7], [-6, -2], [-11, -1.5], [-2, -0.5]]) { ctx.moveTo(x - 2.4, y); ctx.quadraticCurveTo(x, y + 2.2, x + 2.4, y); }
   ctx.strokeStyle = P.shade;
@@ -533,9 +537,10 @@ function drawHead(ctx, P, F, t, lw, o) {
   ctx.restore();
   ctx.beginPath();
   upperPath(ctx, true);
-  ctx.lineWidth = lw;
+  ctx.lineWidth = lw * 1.15;
   ctx.strokeStyle = P.line;
   ctx.stroke();
+  ctx.save(); ctx.translate(lw * 0.15, lw * 0.4); ctx.beginPath(); upperPath(ctx, true); ctx.stroke(); ctx.restore(); // line weight: heavier under the jawline
   // nostril
   ctx.beginPath();
   ctx.ellipse(28.8, -4, 1.2, 0.85, -0.4, 0, TAU);

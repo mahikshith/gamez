@@ -30,9 +30,9 @@ const RIM = '#2f6f9e', SHELL = 'rgb(214,240,255)';
 // ------------------------------------------------------------------ species
 // line: the outline; fur/furLo/furHi: 2-tone body + back highlight; belly: the underside; skin: rat ears, nose, paws, tail
 const PALS = {
-  weasel: { line: '#2a1206', fur: '#a5582a', furLo: '#7c3d1a', furHi: '#c4733a', belly: '#f7e6c2', bellyLo: '#e2c99a', paw: '#7c3d1a', dark: '#3d1a08', nose: '#1d0b04', eyeW: '#fffaf0', iris: '#3a1a08', pupil: '#120602', mouth: '#4a1010', tongue: '#e0606a', earIn: '#d98a7a', tooth: '#ffffff' },
-  rat: { line: '#24120a', fur: '#b8875a', furLo: '#8c6038', furHi: '#d6a878', belly: '#f2e0c4', bellyLo: '#d9bf9c', paw: '#ef9ea8', dark: '#4a2c18', nose: '#e4707e', eyeW: '#fff6f6', iris: '#2a0c12', pupil: '#0c0306', mouth: '#4a1018', tongue: '#e0606a', earIn: '#f2a6b0', tooth: '#f6dc7a', tail: '#e7a0a8', tailLo: '#c97c88' }, // warm brown rat: mid-tone fur + dark line reads on dark vaults and on snow
-  ratking: { line: '#1a0c08', fur: '#d8ccbe', furLo: '#ab9c8c', furHi: '#f0e8de', belly: '#f6eee2', bellyLo: '#ddd0c0', paw: '#e2909a', dark: '#4a3a30', nose: '#d8606e', eyeW: '#fff2d8', iris: '#a01818', pupil: '#120304', mouth: '#4a1018', tongue: '#e0606a', earIn: '#e8969e', tooth: '#f6dc7a', tail: '#d8909a', tailLo: '#b46c78', cape: '#c8282c', capeLo: '#7e1418', gold: '#ffcf3a', goldLo: '#c8901a' }, // old grey-white king, red cape: stands out on the dark vault
+  weasel: { line: '#2a1206', fur: '#a5582a', furLo: '#7c3d1a', furHi: '#c4733a', belly: '#f7e6c2', bellyLo: '#e2c99a', paw: '#7c3d1a', dark: '#3d1a08', nose: '#1d0b04', eyeW: '#fffaf0', iris: '#7a3a08', irisHi: '#d98a1e', pupil: '#120602', mouth: '#4a1010', tongue: '#e0606a', earIn: '#d98a7a', tooth: '#ffffff' },
+  rat: { line: '#24120a', fur: '#b8875a', furLo: '#8c6038', furHi: '#d6a878', belly: '#f2e0c4', bellyLo: '#d9bf9c', paw: '#ef9ea8', dark: '#4a2c18', nose: '#e4707e', eyeW: '#fff6f6', iris: '#2a0c12', irisHi: '#6a2a2a', pupil: '#0c0306', mouth: '#4a1018', tongue: '#e0606a', earIn: '#f2a6b0', tooth: '#f6dc7a', tail: '#e7a0a8', tailLo: '#c97c88' }, // warm brown rat: mid-tone fur + dark line reads on dark vaults and on snow
+  ratking: { line: '#1a0c08', fur: '#d8ccbe', furLo: '#ab9c8c', furHi: '#f0e8de', belly: '#f6eee2', bellyLo: '#ddd0c0', paw: '#e2909a', dark: '#4a3a30', nose: '#d8606e', eyeW: '#fff2d8', iris: '#a01818', irisHi: '#f0503a', pupil: '#120304', mouth: '#4a1018', tongue: '#e0606a', earIn: '#e8969e', tooth: '#f6dc7a', tail: '#d8909a', tailLo: '#b46c78', cape: '#c8282c', capeLo: '#7e1418', gold: '#ffcf3a', goldLo: '#c8901a' }, // old grey-white king, red cape: stands out on the dark vault
 };
 const ICED = {};
 for (const k in PALS) { ICED[k] = {}; for (const c in PALS[k]) ICED[k][c] = mixHex(desat(PALS[k][c], 0.75), '#a8d8f8', 0.6); }
@@ -187,33 +187,33 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     const cx = p.dx, cy = -p.by, cp = Math.cos(p.pitch), sn = Math.sin(p.pitch), sy = 1 - p.sq, sx = p.st * (1 + p.sq * 0.6);
     const T = (lx, ly) => ({ x: cx + (lx * sx) * cp + (ly * sy) * sn, y: cy - (lx * sx) * sn + (ly * sy) * cp });
-    // ---- torso
+    // ---- torso (v4 sculpt): a deep chest, a tucked waist and a rounded haunch instead of an even tube
     const torsoPath = rat
-      ? blob([T(-40, 8), T(-44, -6), T(-36, -20), T(-20, -24), T(0, -20), T(18, -14), T(30, -9), T(33, 2), T(26, 10), T(6, 13), T(-16, 14), T(-32, 13)])
-      : blob([T(-50, 4), T(-52, -6), T(-42, -13), T(-14, -14), T(14, -12), T(36, -12), T(46, -6), T(44, 6), T(30, 10), T(6, 10), T(-24, 10), T(-42, 9)]);
+      ? blob([T(-40, 8), T(-45, -6), T(-38, -21), T(-21, -26), T(-2, -22), T(16, -16), T(29, -10), T(34, 1), T(28, 10), T(8, 13), T(-14, 15), T(-32, 14)])
+      : blob([T(-50, 6), T(-55, -6), T(-47, -18), T(-30, -21), T(-9, -14), T(13, -16), T(33, -18), T(47, -11), T(50, 2), T(42, 12), T(21, 11), T(-3, 6), T(-25, 11), T(-42, 12)]);
     // ---- head frame: neck point on the torso, then the skull centre
     const N = T(sp.neck[0], sp.neck[1]), hcx = N.x + sp.head[0] + p.hx, hcy = N.y + sp.head[1] + p.hy - p.pitch * 14, hr = p.hr - p.pitch * 0.6;
     const hc = Math.cos(hr) * HS, hs = Math.sin(hr) * HS;
     const H = (lx, ly) => ({ x: hcx + lx * hc - ly * hs, y: hcy + lx * hs + ly * hc });
     const jawA = p.jaw * 0.6, JP = { x: rat ? -2 : 0, y: 5 };
     const J = (lx, ly) => { const dx = lx - JP.x, dy = ly - JP.y, c = Math.cos(jawA), s2 = Math.sin(jawA); return H(JP.x + dx * c - dy * s2, JP.y + dx * s2 + dy * c); };
-    // skull + snout as one shape (weasel: a short blunt wedge; rat: a long pointed cone)
+    // skull + snout as one shape: a full round cranium and cheek, then the muzzle (weasel: a short blunt wedge; rat: a long cone)
     const skull = rat
-      ? blob([H(-14, -2), H(-12, -11), H(-2, -13), H(10, -10), H(22, -6), H(32, -1.5), H(33, 1.5), H(24, 5), H(10, 8), H(-4, 9), H(-12, 6)])
-      : blob([H(-14, 0), H(-12, -10), H(-2, -13), H(10, -11), H(20, -6), H(27, -2), H(27, 2), H(18, 5), H(6, 8), H(-6, 9), H(-13, 6)]);
-    const jaw = rat ? pathOf([J(-2, 5), J(22, 5), J(20, 8), J(6, 9.5), J(-2, 9)]) : pathOf([J(0, 4.5), J(22, 3.6), J(20, 7.5), J(8, 9.5), J(0, 9)]);
-    const neck = pathOf(rat ? [T(10, -14), T(34, 4), H(4, 8), H(-10, 0)] : [T(20, -12), T(46, 2), H(4, 8), H(-11, -2)]);
+      ? blob([H(-15, -1), H(-14, -12), H(-4, -16), H(8, -13), H(20, -7), H(32, -1.5), H(33, 1.5), H(24, 5), H(11, 8.5), H(-3, 10.5), H(-13, 8)])
+      : blob([H(-16, 0), H(-15, -12), H(-5, -17), H(7, -15), H(17, -8), H(24, -4), H(28, -2), H(28, 2), H(19, 5), H(7, 9), H(-5, 11), H(-14, 8)]);
+    const jaw = rat ? blob([J(-3, 5), J(8, 4.6), J(21, 4.6), J(23.5, 6), J(18, 8.6), J(6, 10), J(-3, 9.5)]) : blob([J(-2, 4.8), J(10, 4), J(21, 3.2), J(23.5, 5), J(17.5, 8.2), J(8, 10), J(-2, 9.6)]);
+    const neck = pathOf(rat ? [T(8, -16), T(34, 5), H(4, 9), H(-11, 0)] : [T(18, -15), T(48, 4), H(4, 9), H(-12, -2)]);
     // ears: the weasel's small and round, low on the head; the rat's big, round and pink inside
     const ear = (back) => {
-      const er = rat ? (king ? 9.5 : 9) : 5.5, ea = -p.ear * 0.9 + (back ? 0.2 : 0);
-      const b = rat ? H(-5 + (back ? -4 : 0), -10 + (back ? 1 : 0)) : H(-7 + (back ? -4 : 0), -9 + (back ? 1 : 0));
+      const er = rat ? (king ? 10 : 9.5) : 6.5, ea = -p.ear * 0.9 + (back ? 0.2 : 0);
+      const b = rat ? H(-6 + (back ? -4 : 0), -12 + (back ? 1 : 0)) : H(-8 + (back ? -4 : 0), -12 + (back ? 1 : 0));
       const c = Math.cos(ea + hr - 0.25) * HS, s2 = Math.sin(ea + hr - 0.25) * HS, R2 = (lx, ly) => ({ x: b.x + lx * c - ly * s2, y: b.y + lx * s2 + ly * c });
       const sq = rat ? 0.92 - 0.5 * clamp(p.ear, 0, 1) : 1;
       const pts = []; for (let i = 0; i < 14; i++) { const a = (i / 14) * TAU; pts.push(R2(Math.cos(a) * er * 0.82 * sq, -er * 0.95 + Math.sin(a) * er)); }
       const inner = []; for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU; inner.push(R2(Math.cos(a) * er * 0.5 * sq + er * 0.08, -er * 0.95 + Math.sin(a) * er * 0.62)); }
       return { path: blob(pts), inner: blob(inner) };
     };
-    // tail: the weasel's a furry taper with a dark tip; the rat's long, naked and pink
+    // tail: the weasel's a bushy taper with a dark tip; the rat's long, naked and pink
     const tailP = (() => {
       const base = rat ? T(-40, -4) : T(-49, -4), n = rat ? 16 : 10, len = sp.tailLen * (1 + p.puff * 0.06), ctr = [];
       let a = Math.PI + p.pitch - p.tail, px = base.x, py = base.y;
@@ -223,58 +223,79 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
         a += (-p.tc * (rat ? 0.07 : 0.14) + p.tw * Math.sin(f * 3 + (rat ? t * 2 : 0)) * (rat ? 0.09 : 0.12)) * (0.4 + f) + (rat ? Math.sin(f * 5 + 1) * 0.05 : 0);
         px += Math.cos(a) * (len / n); py -= Math.sin(a) * (len / n);
       }
-      const w = rat ? (f) => 4.2 * (1 - f) + 0.9 : (f) => (5 + 5 * Math.sin(Math.min(1, f * 1.4) * Math.PI * 0.6) - 4.5 * ss(0.75, 1, f)) * (1 + p.puff * 0.4);
+      const w = rat ? (f) => 4.6 * (1 - f) + 0.9 : (f) => (5 + 7 * Math.sin(Math.min(1, f * 1.3) * Math.PI * 0.62) - 5.5 * ss(0.78, 1, f)) * (1 + p.puff * 0.4);
       const L = [], Rr = [];
       ctr.forEach((q, i) => { const f = i / n, nx = Math.sin(q.a), ny = Math.cos(q.a), ww = w(f); L.push({ x: q.x + nx * ww, y: q.y + ny * ww }); Rr.push({ x: q.x - nx * ww, y: q.y - ny * ww }); });
       const tip = ctr[n];
       return { ctr, path: (c) => {
         c.beginPath(); c.moveTo(L[0].x, L[0].y);
         for (let i = 1; i <= n; i++) c.lineTo(L[i].x, L[i].y);
-        c.quadraticCurveTo(tip.x + Math.cos(tip.a) * (rat ? 1.5 : 6), tip.y - Math.sin(tip.a) * (rat ? 1.5 : 6), Rr[n].x, Rr[n].y);
+        c.quadraticCurveTo(tip.x + Math.cos(tip.a) * (rat ? 1.5 : 7), tip.y - Math.sin(tip.a) * (rat ? 1.5 : 7), Rr[n].x, Rr[n].y);
         for (let i = n - 1; i >= 0; i--) c.lineTo(Rr[i].x, Rr[i].y);
         c.closePath();
       } };
     })();
-    // legs
+    // legs: two tapered bones each (a full thigh into a slim shank) and a proper paw
     const [jfx, jfy, fa, fb] = sp.legF, [jhx, jhy, ha, hb] = sp.legH;
     const legs = [
-      { j: T(jfx, jfy), f: [p.f0x, p.f0y], a: fa, b: fb, w0: rat ? 8 : 9, w1: rat ? 5.5 : 6.5, far: false, front: true },
-      { j: T(jfx + 4, jfy - 2), f: [p.f1x, p.f1y], a: fa, b: fb, w0: rat ? 7 : 8, w1: rat ? 5 : 6, far: true, front: true },
-      { j: T(jhx, jhy), f: [p.f2x, p.f2y], a: ha, b: hb, w0: rat ? 11 : 10, w1: rat ? 6 : 6.5, far: false, front: false },
-      { j: T(jhx + 5, jhy - 2), f: [p.f3x, p.f3y], a: ha, b: hb, w0: rat ? 10 : 9, w1: rat ? 5.5 : 6, far: true, front: false },
+      { j: T(jfx, jfy), f: [p.f0x, p.f0y], a: fa, b: fb, r0: rat ? 5 : 6, r1: rat ? 3.4 : 4, r2: rat ? 2.6 : 3.1, far: false, front: true },
+      { j: T(jfx + 4, jfy - 2), f: [p.f1x, p.f1y], a: fa, b: fb, r0: rat ? 4.4 : 5.2, r1: rat ? 3 : 3.6, r2: rat ? 2.4 : 2.9, far: true, front: true },
+      { j: T(jhx, jhy), f: [p.f2x, p.f2y], a: ha, b: hb, r0: rat ? 8.5 : 8.5, r1: rat ? 4 : 4.3, r2: rat ? 2.7 : 3.2, far: false, front: false },
+      { j: T(jhx + 5, jhy - 2), f: [p.f3x, p.f3y], a: ha, b: hb, r0: rat ? 7.5 : 7.5, r1: rat ? 3.6 : 3.9, r2: rat ? 2.5 : 3, far: true, front: false },
     ].map((L) => { const r = ik(L.j.x, L.j.y, L.f[0], L.f[1], L.a, L.b); return { ...L, k: r.knee, fx: r.fx, fy: r.fy }; });
+    // a tapered capsule from a (radius ra) to b (radius rb), grown by g
+    const taper = (a, b, ra, rb, g) => (c) => {
+      const th = Math.atan2(b.y - a.y, b.x - a.x);
+      c.beginPath(); c.arc(a.x, a.y, ra + g, th + Math.PI / 2, th + Math.PI * 1.5); c.arc(b.x, b.y, rb + g, th - Math.PI / 2, th + Math.PI / 2); c.closePath();
+    };
 
     // ---- passes: 'outline' (dark), 'rim' / 'ice' (the frozen shell, drawn first), 'fill'
     const SH = 5, RW = 2; // ice shell thickness beyond the outline, its dark rim (units)
-    const fillPath = (path, pass, fill) => {
+    const fillPath = (path, pass, fill, heavy) => {
       path(ctx);
-      if (pass === 'outline') { ctx.strokeStyle = C.line; ctx.lineWidth = 2 * ow; ctx.stroke(); }
+      if (pass === 'outline') {
+        ctx.strokeStyle = C.line; ctx.lineWidth = 2 * ow; ctx.stroke();
+        if (heavy) { ctx.translate(0.35 * ow, 0.8 * ow); path(ctx); ctx.stroke(); ctx.translate(-0.35 * ow, -0.8 * ow); } // line weight: heavier on the underside, away from the light (the big masses only: it doubles the stroke cost)
+      }
       else if (pass === 'rim') { ctx.strokeStyle = RIM; ctx.lineWidth = 2 * (ow + SH); ctx.stroke(); ctx.fillStyle = RIM; ctx.fill(); }
       else if (pass === 'ice') { ctx.strokeStyle = SHELL; ctx.lineWidth = 2 * (ow + SH - RW); ctx.stroke(); ctx.fillStyle = SHELL; ctx.fill(); }
       else { ctx.fillStyle = fill; ctx.fill(); }
     };
+    // form: lit from the top-left. A soft light on the upper planes and a core shade on the underside, clipped to the shape
+    const bevel = (path, y0, y1, hi = 0.3, lo = 0.26) => {
+      ctx.save(); path(ctx); ctx.clip();
+      const g = ctx.createLinearGradient(-6, y0, 6, y1);
+      g.addColorStop(0, `rgba(255,226,170,${hi})`); g.addColorStop(0.34, 'rgba(255,226,170,0)');
+      g.addColorStop(0.58, frozen ? 'rgba(30,80,130,0)' : 'rgba(50,14,0,0)'); g.addColorStop(1, frozen ? `rgba(30,80,130,${lo})` : `rgba(50,14,0,${lo})`);
+      ctx.fillStyle = g; ctx.fillRect(-400, y0 - 40, 800, y1 - y0 + 80);
+      ctx.restore();
+    };
+    const ySpan = (pts, pad = 0) => { let a = 1e9, b = -1e9; for (const q of pts) { if (q.y < a) a = q.y; if (q.y > b) b = q.y; } return [a - pad, b + pad]; };
     const drawLimb = (L, pass) => {
-      const lw = (w) => (pass === 'outline' ? w + 2 * ow : pass === 'rim' ? w + 2 * ow + 2 * SH : pass === 'ice' ? w + 2 * ow + 2 * SH - 2 * RW : w);
-      const col = pass === 'outline' ? C.line : pass === 'rim' ? RIM : pass === 'ice' ? SHELL : null;
-      const seg = (a, b, w, c2) => { ctx.strokeStyle = col || c2; ctx.lineWidth = lw(w); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); };
+      const g = pass === 'rim' ? SH : pass === 'ice' ? SH - RW : 0;
       const Fp = { x: L.fx, y: L.fy }, furc = L.far ? C.furLo : C.fur;
-      seg(L.j, L.k, L.w0, furc);
-      seg(L.k, Fp, L.w1, rat ? (L.far ? C.furLo : C.fur) : furc);
-      // paw (the rat's pink; the hind foot long)
-      ctx.fillStyle = col || (rat ? C.paw : L.far ? C.dark : C.paw);
-      const pw = rat && !L.front ? 6.5 : 4.2, ph2 = rat ? 2.6 : 3.2, grow = col ? lw(0) / 2 : 0;
-      ctx.beginPath(); ctx.ellipse(Fp.x + (rat && !L.front ? 3 : 1.5), Fp.y - 1.5, pw + grow, ph2 + grow, 0, 0, TAU); ctx.fill();
+      const up = taper(L.j, L.k, L.r0, L.r1, g * 0.999), dn = taper(L.k, Fp, L.r1, L.r2, g * 0.999);
+      const hind = !L.front, pl = (rat ? (hind ? 7.5 : 4.6) : hind ? 6.4 : 5.4), ph2 = rat ? 2.7 : 3.3;
+      const paw = (c) => { c.beginPath(); c.ellipse(Fp.x + pl * 0.45, Fp.y - ph2 * 0.55, pl + g, ph2 + g, 0, 0, TAU); };
+      if (pass !== 'fill') { fillPath(up, pass); fillPath(dn, pass); fillPath(paw, pass); return; }
+      fillPath(up, pass, furc); fillPath(dn, pass, furc);
+      if (!L.far) { const [ya, yb] = ySpan([L.j, L.k, Fp], L.r1); const lp = (c) => { up(c); const th = Math.atan2(Fp.y - L.k.y, Fp.x - L.k.x); c.moveTo(L.k.x, L.k.y); c.arc(L.k.x, L.k.y, L.r1, 0, TAU); c.moveTo(Fp.x, Fp.y); c.arc(Fp.x, Fp.y, L.r2 + 1, 0, TAU); c.rect(Math.min(L.k.x, Fp.x) - L.r1, Math.min(L.k.y, Fp.y), Math.abs(Fp.x - L.k.x) + 2 * L.r1, Math.abs(Fp.y - L.k.y)); }; bevel(lp, ya, yb, L.far ? 0 : 0.22, L.far ? 0.3 : 0.3); }
+      fillPath(paw, pass, rat ? (L.far ? mixHex(C.paw, C.line, 0.25) : C.paw) : L.far ? C.dark : C.paw);
+      // toes
+      ctx.strokeStyle = C.line; ctx.lineWidth = ow * 0.4; ctx.beginPath();
+      for (const q of [0.5, 0.95]) { ctx.moveTo(Fp.x + pl * (0.45 + q * 0.75), Fp.y - ph2 * 1.25); ctx.lineTo(Fp.x + pl * (0.45 + q * 0.6), Fp.y - 0.2); }
+      ctx.stroke();
     };
     const earN = ear(false), earF = ear(true);
-    const headParts = (pass) => { fillPath(skull, pass, C.fur); };
+    const headParts = (pass) => { fillPath(skull, pass, C.fur, true); };
     const groups = only === 'head'
       ? [(pass) => fillPath(earF.path, pass, C.furLo), (pass) => headParts(pass), (pass) => fillPath(earN.path, pass, C.fur)]
       : [
         (pass) => { for (const L of legs) if (L.far) drawLimb(L, pass); },
         (pass) => fillPath(tailP.path, pass, rat ? C.tail : C.fur),
         (pass) => fillPath(earF.path, pass, C.furLo),
-        (pass) => { if (p.jaw > 0.05) fillPath(jaw, pass, C.fur); fillPath(torsoPath, pass, C.fur); fillPath(neck, pass, C.fur); if (pass === 'fill') { torsoShade(); if (o.cape) { cape(); headParts('outline'); } } headParts(pass); },
-        (pass) => { for (const L of legs) if (!L.far) drawLimb(L, pass); },
+        (pass) => { if (p.jaw > 0.05) fillPath(jaw, pass, C.fur); fillPath(torsoPath, pass, C.fur, true); fillPath(neck, pass, C.fur); if (pass === 'outline') for (const L of legs) if (!L.far) drawLimb(L, pass); if (pass === 'fill') { torsoShade(); if (o.cape) { cape(); headParts('outline'); } } headParts(pass); },
+        (pass) => { if (pass !== 'outline') for (const L of legs) if (!L.far) drawLimb(L, pass); }, // their outline went down with the torso's, so the thighs grow out of the body
         (pass) => fillPath(earN.path, pass, C.fur),
       ];
     if (frozen) { for (const g of groups) g('rim'); for (const g of groups) g('ice'); }
@@ -296,6 +317,8 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
       ctx.beginPath(); Pp.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y))); ctx.closePath();
       ctx.strokeStyle = C.line; ctx.lineWidth = 2 * ow; ctx.stroke();
       ctx.fillStyle = frozen ? mixHex('#ffcf3a', '#bfe6ff', 0.55) : '#ffcf3a'; ctx.fill();
+      { const [ya, yb] = ySpan(Pp); bevel(() => { ctx.beginPath(); Pp.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y))); ctx.closePath(); }, ya, yb, 0.75, 0.3); }
+      for (const [gx, gy] of [[-17, -27], [-5, -31], [7, -27]]) { const g = H(gx, gy); ctx.fillStyle = frozen ? '#e4f2fb' : '#fff6d8'; ctx.beginPath(); ctx.arc(g.x, g.y, 2.4, 0, TAU); ctx.fill(); ctx.lineWidth = ow * 0.6; ctx.strokeStyle = C.line; ctx.stroke(); }
       const lo = [H(-15, -12), H(6, -11), H(6.5, -15), H(-15.5, -16)];
       ctx.fillStyle = frozen ? mixHex('#c8901a', '#bfe6ff', 0.55) : '#c8901a'; ctx.beginPath(); lo.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y))); ctx.fill();
       for (const [gx, gy, col] of [[-5, -16, '#e0312b'], [-12, -15, '#3a8ae0'], [2, -15, '#3ab04a']]) { const g = H(gx, gy); ctx.fillStyle = frozen ? '#9fc6e6' : col; ctx.beginPath(); ctx.arc(g.x, g.y, 2.2, 0, TAU); ctx.fill(); ctx.lineWidth = ow * 0.5; ctx.strokeStyle = C.line; ctx.stroke(); }
@@ -304,8 +327,14 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
       const P2 = [T(28, -12), T(18, -18), T(-4, -22), T(-28, -22), T(-40, -10), T(-38, 6), T(-22, 4), T(-8, 0), T(10, -2), T(24, -2)];
       const pth = blob(P2);
       pth(ctx); ctx.strokeStyle = C.line; ctx.lineWidth = 2 * ow; ctx.stroke(); ctx.fillStyle = C.cape; ctx.fill();
+      { const [ya, yb] = ySpan(P2); bevel(pth, ya, yb, 0.3, 0.5); }
+      // ermine trim along the hem: a pale band with dark flecks
       ctx.save(); pth(ctx); ctx.clip();
-      ctx.fillStyle = C.capeLo; const a = T(-50, -2), b = T(40, 0); ctx.fillRect(Math.min(a.x, b.x) - 40, Math.min(a.y, b.y), 200, 60);
+      const hem = [T(-41, -8), T(-37, 5), T(-22, 3), T(-8, -1), T(10, -3), T(25, -3)];
+      ctx.lineJoin = 'round'; ctx.strokeStyle = frozen ? '#e4f2fb' : '#fff4e2'; ctx.lineWidth = 5.5;
+      ctx.beginPath(); hem.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y))); ctx.stroke();
+      ctx.fillStyle = C.line;
+      for (let i = 1; i < hem.length - 1; i++) { const q = hem[i], r = hem[i + 1]; for (const f of [0.15, 0.6]) { ctx.beginPath(); ctx.ellipse(q.x + (r.x - q.x) * f, q.y + (r.y - q.y) * f - 0.8, 0.9, 1.5, 0.3, 0, TAU); ctx.fill(); } }
       ctx.restore();
       // a gold clasp at the throat
       const q = T(26, -6); ctx.beginPath(); ctx.arc(q.x, q.y, 3.6, 0, TAU); ctx.fillStyle = frozen ? mixHex('#ffcf3a', '#bfe6ff', 0.55) : '#ffcf3a'; ctx.fill(); ctx.lineWidth = ow * 0.7; ctx.strokeStyle = C.line; ctx.stroke();
@@ -317,31 +346,26 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
         tailP.ctr.forEach((q, i) => { if (i < 1 || i % 2) return; const nx = Math.sin(q.a), ny = Math.cos(q.a); ctx.beginPath(); ctx.moveTo(q.x - nx * 6, q.y - ny * 6); ctx.lineTo(q.x + nx * 6, q.y + ny * 6); ctx.stroke(); });
       } else { // the dark tip
         const q = tailP.ctr[tailP.ctr.length - 1];
-        ctx.fillStyle = C.dark; ctx.beginPath(); ctx.arc(q.x, q.y, 15, 0, TAU); ctx.fill();
+        ctx.fillStyle = C.dark; ctx.beginPath(); ctx.arc(q.x, q.y, 16, 0, TAU); ctx.fill();
       }
       ctx.restore();
+      { const [ya, yb] = ySpan(tailP.ctr, rat ? 3 : 9); bevel(tailP.path, ya, yb, 0.28, 0.3); }
     }
     function torsoShade() {
       ctx.save(); torsoPath(ctx); ctx.clip();
       // the belly (cream on the weasel with a crisp line, pale grey on the rat) and a cel shade under it
       ctx.fillStyle = C.belly;
-      const a = T(-60, rat ? 5 : 2), m1 = T(-10, rat ? 3 : 0), b = T(60, rat ? -2 : -2);
+      const a = T(-60, rat ? 6 : 4), m1 = T(-10, rat ? 4 : 2.5), b = T(60, rat ? -3 : -6);
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(m1.x, m1.y, b.x, b.y); ctx.lineTo(b.x, b.y + 50); ctx.lineTo(a.x, a.y + 50); ctx.closePath(); ctx.fill();
       ctx.fillStyle = C.bellyLo;
       const a2 = T(-60, 10), b2 = T(60, 8);
       ctx.beginPath(); ctx.moveTo(a2.x, a2.y); ctx.lineTo(b2.x, b2.y); ctx.lineTo(b2.x, b2.y + 40); ctx.lineTo(a2.x, a2.y + 40); ctx.closePath(); ctx.fill();
-      // fur shade on the flank and a back highlight
-      ctx.fillStyle = C.furLo;
-      const s0 = T(-46, -2), s1 = T(-20, -6), s2 = T(10, -4);
-      ctx.beginPath(); ctx.moveTo(s0.x, s0.y); ctx.quadraticCurveTo(s1.x, s1.y, s2.x, s2.y); ctx.quadraticCurveTo(T(-14, 2).x, T(-14, 2).y, s0.x, s0.y); ctx.fill();
-      ctx.fillStyle = C.furHi;
-      const h0 = rat ? T(-34, -18) : T(-40, -11), h1 = rat ? T(-16, -24) : T(-10, -14), h2 = rat ? T(6, -16) : T(30, -11), h3 = rat ? T(-14, -17) : T(-6, -9);
-      ctx.beginPath(); ctx.moveTo(h0.x, h0.y); ctx.quadraticCurveTo(h1.x, h1.y - 2, h2.x, h2.y); ctx.quadraticCurveTo(h3.x, h3.y, h0.x, h0.y); ctx.fill();
       ctx.restore();
+      { const [ya, yb] = ySpan([T(-50, -20), T(46, -18), T(-46, 12), T(44, 12)]); bevel(torsoPath, ya, yb, 0.34, 0.3); const g = rat ? T(-22, -19) : T(-33, -15); if (!frozen) { ctx.fillStyle = 'rgba(255,240,205,0.5)'; ctx.beginPath(); ctx.ellipse(g.x, g.y, 9, 2.6, -p.pitch - 0.08, 0, TAU); ctx.fill(); } }
       // haunch line
       ctx.strokeStyle = C.line; ctx.lineWidth = ow * 0.6;
-      const k0 = rat ? T(-14, -14) : T(-24, -8), k1 = rat ? T(-12, 2) : T(-22, 4), k2 = rat ? T(-26, 10) : T(-34, 8);
-      ctx.beginPath(); ctx.moveTo(k0.x, k0.y); ctx.quadraticCurveTo(k1.x, k1.y, k2.x, k2.y); ctx.stroke();
+      const k0 = rat ? T(-14, -16) : T(-22, -12), k1 = rat ? T(-10, 0) : T(-17, -2), k2 = rat ? T(-22, 9) : T(-26, 6);
+      ctx.globalAlpha *= 0.55; ctx.beginPath(); ctx.moveTo(k0.x, k0.y); ctx.quadraticCurveTo(k1.x, k1.y, k2.x, k2.y); ctx.stroke(); ctx.globalAlpha /= 0.55;
       // the throat: cream (weasel) or pale (rat) under the head, into the chest
       ctx.save(); neck(ctx); ctx.clip();
       ctx.fillStyle = C.belly;
@@ -355,10 +379,8 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
       ctx.fillStyle = C.belly;
       const m = rat ? [H(-14, 4), H(4, 2.5), H(20, 1.5), H(34, 1), H(34, 12), H(-14, 12)] : [H(-14, 3), H(-2, 2.5), H(12, 1), H(22, 0.5), H(30, 0.5), H(30, 12), H(-14, 12)];
       ctx.beginPath(); m.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y))); ctx.closePath(); ctx.fill();
-      // cel shade at the back of the head
-      ctx.fillStyle = C.furLo; const b0 = H(-16, -14), b1 = H(-6, -2), b2 = H(-16, 8);
-      ctx.beginPath(); ctx.moveTo(b0.x, b0.y); ctx.quadraticCurveTo(b1.x, b1.y, b2.x, b2.y); ctx.lineTo(H(-20, 8).x, H(-20, 8).y); ctx.lineTo(H(-20, -14).x, H(-20, -14).y); ctx.closePath(); ctx.fill();
       ctx.restore();
+      { const [ya, yb] = ySpan([H(-10, -17), H(20, -8), H(-10, 11), H(20, 6)]); bevel(skull, ya, yb, 0.34, 0.26); const g = H(-4, -12.5); if (!frozen) { ctx.fillStyle = 'rgba(255,240,205,0.5)'; ctx.beginPath(); ctx.ellipse(g.x, g.y, 5.5 * HS, 1.7 * HS, hr - 0.2, 0, TAU); ctx.fill(); } }
       if (p.jaw > 0.05) { // open mouth: dark inside, teeth, the lower jaw
         const mp = rat ? [H(0, 4.5), H(26, 3.5), J(22, 5), J(-2, 6)] : [H(2, 4), H(24, 2.6), J(22, 3.6), J(0, 5.5)];
         ctx.fillStyle = C.mouth; ctx.beginPath(); mp.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y))); ctx.closePath(); ctx.fill();
@@ -389,7 +411,8 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
       // nose
       const nq = rat ? H(33, 0) : H(27, -0.5);
       ctx.fillStyle = frozen ? C.nose : PAL.nose; ctx.strokeStyle = C.line; ctx.lineWidth = ow * 0.45;
-      ctx.beginPath(); ctx.ellipse(nq.x, nq.y, (rat ? 3 : 3.2) * HS, (rat ? 2.6 : 2.5) * HS, hr, 0, TAU); ctx.fill(); if (rat) ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(nq.x, nq.y, (rat ? 3.2 : 3.5) * HS, (rat ? 2.7 : 2.8) * HS, hr, 0, TAU); ctx.fill(); if (rat) ctx.stroke();
+      if (!frozen) { const ng = H(rat ? 32.4 : 26.4, -1.4); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.ellipse(ng.x, ng.y, 1.1 * HS, 0.7 * HS, hr, 0, TAU); ctx.fill(); }
       // whiskers (dark: they must read on pale floors), twitching
       ctx.strokeStyle = C.line; ctx.lineWidth = Math.max(0.5, ow * 0.32);
       const w0 = rat ? H(26, 1.5) : H(21, 1.5), wl = rat ? 15 : 11;
@@ -400,9 +423,9 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
       drawEye();
     }
     function drawEye() {
-      const e = rat ? H(8, -4) : H(6, -4), em = o.eye || 'normal';
+      const e = rat ? H(7.5, -4.5) : H(5.5, -4.5), em = o.eye || 'normal';
       ctx.save();
-      ctx.translate(e.x, e.y); ctx.rotate(hr); ctx.scale(HS, HS);
+      ctx.translate(e.x, e.y); ctx.rotate(hr); ctx.scale(HS * 1.3, HS * 1.3);
       ctx.lineWidth = ow * 0.6; ctx.strokeStyle = C.line;
       const bro = em === 'angry' ? 1 : p.brow;
       if (em === 'spiral') spiralEye(ctx, 0, 0, 4.6, t, 1, C.line);
@@ -412,14 +435,16 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
         ctx.stroke();
       } else {
         const wide = em === 'wide', lock = em === 'lock';
-        const W = rat ? (wide ? 5.4 : 4.8) : wide ? 5.4 : 5, Hh = rat ? (wide ? 5.4 : 4.8) : wide ? 4.8 : 3.6;
+        const W = rat ? (wide ? 5.4 : 4.8) : wide ? 5.4 : 5, Hh = rat ? (wide ? 5.4 : 4.8) : wide ? 5 : 4.2;
         const shape = () => { ctx.beginPath(); if (rat) ctx.ellipse(0, 0, W, Hh, 0, 0, TAU); else { ctx.moveTo(-W, 0.6); ctx.quadraticCurveTo(-1, -Hh * 1.35, W, -0.6); ctx.quadraticCurveTo(1, Hh * 1.2, -W, 0.6); ctx.closePath(); } };
         shape(); ctx.fillStyle = C.eyeW; ctx.fill();
         ctx.save(); shape(); ctx.clip();
         const lx = clamp(p.look, -1, 1) * 1.6 + (lock ? 1.2 : 0);
-        ctx.fillStyle = C.iris; ctx.beginPath(); ctx.arc(lx, 0.2, rat ? (wide ? 3.2 : 3.6) : wide ? 2.8 : 3.1, 0, TAU); ctx.fill();
-        ctx.fillStyle = C.pupil; ctx.beginPath(); ctx.arc(lx, 0.2, lock ? 1.1 : wide ? 1.2 : 1.7, 0, TAU); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(lx + 1.1, -1.1, 1.05, 0, TAU); ctx.fill();
+        const ir = rat ? (wide ? 3.2 : 3.6) : wide ? 2.9 : 3.4;
+        ctx.fillStyle = C.iris; ctx.beginPath(); ctx.arc(lx, 0.2, ir, 0, TAU); ctx.fill();
+        if (C.irisHi) { ctx.fillStyle = C.irisHi; ctx.beginPath(); ctx.arc(lx, 0.2 + ir * 0.35, ir * 0.72, 0, TAU); ctx.fill(); } // a lit lower iris: depth
+        ctx.fillStyle = C.pupil; ctx.beginPath(); ctx.arc(lx, 0.2, lock ? 1.1 : wide ? 1.2 : 1.9, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(lx - 1.2, -1.3, 1.25, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(lx + 1.3, 1.2, 0.55, 0, TAU); ctx.fill();
         const lid = wide ? 0 : p.lid;
         if (lid > 0.02) { ctx.fillStyle = C.fur; ctx.beginPath(); ctx.moveTo(-W - 1, -Hh * 1.5); ctx.lineTo(W + 1, -Hh * 1.5); ctx.lineTo(W + 1, -Hh * 1.2 + lid * Hh * 2 - 1); ctx.lineTo(-W - 1, -Hh * 1.2 + lid * Hh * 2.2 + 0.8 * bro); ctx.closePath(); ctx.fill(); }
         ctx.restore();
