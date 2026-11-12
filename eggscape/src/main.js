@@ -2123,6 +2123,7 @@ function render() {
   if (roll) ctx.rotate(roll);
   ctx.scale(k, -k);
   ctx.translate(-camX, -camY);
+  W.drawVaultBack(ctx, sim, G.theme); // premium pass: plate behind the vault
   fx.draw(ctx, 'back');
   for (const pt of sim.portals) W.drawPortalPull(ctx, pt, t); // v3
   for (const pt of sim.portals) { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); }
