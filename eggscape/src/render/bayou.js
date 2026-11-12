@@ -44,7 +44,8 @@ export function drawGator(ctx, s, t = 0, o = {}) {
   if (!(s > 0)) return;
   const C = o.boss ? SKIN.boss : o.baby ? SKIN.baby : SKIN.gator, U = s / 100, lw = clamp(2.1 / U, 1.25, 3.4); // ~2 px ink at any size
   const R = o.bend && isFinite(o.bend) ? o.bend / U : Infinity, jawU = clamp(o.jaw || 0, 0, 1), chomp = clamp(o.chomp || 0, 0, 1);
-  const jaw = jawU * 0.74, tailIn = o.tail || 0, slam = tailIn < 0 ? clamp(-tailIn * 4, 0, 1) : 0;
+  const pres = o.boss ? 0 : 1; // regular gators and babies: a longer, chunkier head, a wider gape, a livelier tail (same collider)
+  const jaw = jawU * (pres ? 1.02 : 0.74), tailIn = o.tail || 0, slam = tailIn < 0 ? clamp(-tailIn * 4, 0, 1) : 0;
   const rollU = clamp(o.roll || 0, 0, 1), rolling = rollU > 0.001 && rollU < 0.999, phi = rollU * TAU * 2;
   const g = o.gait || 0, walk = clamp(o.walk || 0, 0, 1), id = o.id || 0;
   const HY = o.boss ? 1.0 : 1.2; // the art is drawn a little taller than the collider (reads at phone scale)
@@ -53,12 +54,13 @@ export function drawGator(ctx, s, t = 0, o = {}) {
   const tail = Math.max(0, tailIn), TP = [];
   { let x = TAIL0, y = 0; const ds = (50 + TAIL0) / TAILN;
     for (let i = 0; i <= TAILN; i++) {
-      const f = i / TAILN, a = tail * 1.75 * Math.pow(f, 1.25) + (1 - tail) * (0.05 + 0.05 * Math.sin(t * (asleep ? 0.8 : 1.5) - f * 3 + id) + walk * 0.1 * Math.sin(g * 2 - f * 4)) * f * (1 - slam);
+      const f = i / TAILN, a = tail * 1.75 * Math.pow(f, 1.25) + (1 - tail) * (0.05 + (pres && !asleep ? 0.1 : 0.05) * Math.sin(t * (asleep ? 0.8 : 1.5) - f * 3 + id) + walk * (pres ? 0.2 : 0.1) * Math.sin(g * 2 - f * 4)) * f * (1 - slam) + pres * (1.25 * jawU * (1 - chomp) - 0.3 * chomp) * Math.pow(f, 1.3);
       TP.push([x, y, a]); x -= Math.cos(a) * ds; y += Math.sin(a) * ds;
     } }
   const squashY = 1 - 0.07 * jawU * (1 - chomp) + 0.05 * chomp, bob = walk * Math.sin(g * 2) * 0.35;
   // the art point (x, y up) -> ctx (x, y down): tail chain, squash, then the floor's curve
   const M = (x, y) => {
+    if (pres && x > 10) { const h = ss(10, 22, x); y *= 1 + 0.2 * h; x += (x - 14) * 0.26 * h; }
     y *= HY;
     if (x < TAIL0) {
       const d = ((TAIL0 - x) / (50 + TAIL0)) * TAILN, i = Math.min(TAILN - 1, Math.floor(d)), f = d - i, A = TP[i], B = TP[i + 1], a = lerp(A[2], B[2], f), yc = 4.5 * HY, h = (y - yc) * (1 - 0.25 * slam);
@@ -80,7 +82,8 @@ export function drawGator(ctx, s, t = 0, o = {}) {
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     if (o.alpha != null) ctx.globalAlpha *= o.alpha;
     // anticipation and follow-through: it rocks back as the jaws open and lunges on the chomp
-    ctx.translate(-2.2 * jawU * (1 - chomp) + 3.2 * chomp, 0);
+    ctx.translate((pres ? -4.6 : -2.2) * jawU * (1 - chomp) + (pres ? 6 : 3.2) * chomp, 0);
+    if (pres) { ctx.translate(-36, 0); ctx.rotate(-0.1 * jawU * (1 - chomp) + 0.03 * chomp); ctx.translate(36, 0); } // rears up to strike, slams down on the snap
     // contact shadow along the floor
     pts([...range(-47, 49, () => 1.1, 6), ...range(49, -47, () => -1.5, 6)]); ctx.fillStyle = 'rgba(0,0,0,0.26)'; ctx.fill();
     if (rolling) { rollBody(); ctx.restore(); return; }
@@ -116,7 +119,7 @@ export function drawGator(ctx, s, t = 0, o = {}) {
       for (let i = 0, x = -30; x < 17; x += 5.2, i++) { const [X, Y] = M(x, mid(i % 2 ? 0.5 : 0.63)(x)); ctx.beginPath(); ctx.arc(X, Y, 1.5, 0.15, Math.PI - 0.15); ctx.stroke(); }
     } });
     // ---- the mouth: dark red inside, a pink tongue, the lower teeth
-    const lowerTeeth = () => { for (let x = 26.5; x < 49; x += 3.4) { const y = G_MOUTH(x); pts([[x - 1.1, y - 0.2], [x, y + 2.3], [x + 1.1, y - 0.2]]); ctx.fillStyle = C.teeth; ctx.fill(); ink(lw * 0.5); } };
+    const lowerTeeth = () => { for (let x = 26.5; x < 49; x += 3.4) { const y = G_MOUTH(x); pts([[x - 1.1, y - 0.2], [x, y + (pres ? 3 : 2.3)], [x + 1.1, y - 0.2]]); ctx.fillStyle = C.teeth; ctx.fill(); ink(lw * 0.5); } };
     if (jaw > 0.03) {
       const tip = jawRot(50, G_MOUTH(50) + 0.4);
       pts([HINGE, ...range(21, 50, (x) => G_MOUTH(x) + 0.2, 3).map(([x, y]) => jawRot(x, y)).slice(1), tip, ...range(50, 21, (x) => G_MOUTH(x) - 0.2, 3)]); ctx.fillStyle = C.mouth; ctx.fill();
@@ -135,13 +138,13 @@ export function drawGator(ctx, s, t = 0, o = {}) {
     } });
     // upper teeth: an overbite that always shows, so the snout reads as jaws even shut
     for (let x = 25; x < 49.5; x += 3.4) {
-      const y = G_MOUTH(x), gold = o.boss && Math.abs(x - 42) < 1, big = gold || Math.abs(x - 28.4) < 1 ? 1.5 : 1;
+      const y = G_MOUTH(x), gold = o.boss && Math.abs(x - 42) < 1, big = (gold || Math.abs(x - 28.4) < 1 ? 1.5 : 1) * (pres ? 1.25 : 1);
       pts([[x - 1.2 * big, y + 0.5], [x, y - 2.4 * big], [x + 1.2 * big, y + 0.5]].map(([a, b]) => jawRot(a, b))); ctx.fillStyle = gold ? C.gold : C.teeth; ctx.fill(); ink(lw * 0.5);
     }
     // nostril
     { const [nx, ny] = jawRot(47, G_TOP0(47) - 1.5), [X, Y] = M(nx, ny); ctx.beginPath(); ctx.ellipse(X, Y, 1.1, 0.75, -0.3, 0, TAU); ctx.fillStyle = C.line; ctx.fill(); }
     // ---- the eye in its raised socket
-    const big = o.baby ? 1.25 : 1, [ex0, ey0] = jawRot(27.3, G_TOP0(27.3) - 3.1), [EX, EY] = M(ex0, ey0), er = 3.3 * big;
+    const big = o.baby ? 1.25 : 1, [ex0, ey0] = jawRot(27.3, G_TOP0(27.3) - 3.1), [EX, EY] = M(ex0, ey0), er = 3.3 * big * (pres ? 1.28 : 1);
     ctx.save(); ctx.translate(EX, EY); ctx.rotate(-jaw * 0.8);
     if (eyeMode === 'spiral') { ctx.beginPath(); ctx.arc(0, 0, er, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 0, 0, er, t, 1, C.line); }
     else {
@@ -411,7 +414,7 @@ export function drawBayou(ctx, sim, t, k) {
     frame(ctx, G, rf + sink, k, () => {
       ctx.scale(A.f >= 0 ? 1 : -1, 1);
       if (Math.abs(A.f) < 0.999) ctx.scale(Math.max(0.15, Math.abs(A.f)), 1);
-      const S = len * (G.boss ? 1 : GATOR_DRAW), box = { x0: -S * 0.62, y0: -S * 0.52, x1: S * 0.64, y1: S * 0.08 }; // drawn bigger than the collider, about its feet
+      const S = len * (G.boss ? 1 : GATOR_DRAW), box = { x0: -S * 0.66, y0: -S * 0.7, x1: S * 0.76, y1: S * 0.1 }; // drawn bigger than the collider, about its feet
       statusDraw(ctx, box, (c) => drawGator(c, S, st ? st.hold : t, o), st, { off: Math.max(1.1, S * 0.012), crys: Math.max(1, S / 90) });
     });
   }

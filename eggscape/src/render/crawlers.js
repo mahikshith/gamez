@@ -198,7 +198,7 @@ const spAt = (u) => spInto(u, { x: 0, y: 0, nx: 0, ny: 0, w: 0 });
 /* ---------------------------------------------------------------- pose channels */
 // Every pose resolves to the same continuous channels, so poses can be eased into one another (crawlerAnim).
 const CHANNELS = ['walk', 'rear', 'crouch', 'mouth', 'fire', 'swell', 'dazed', 'angry', 'shake', 'flee', 'splay', 'tongue', 'steam', 'frill', 'melt', 'roll', 'flail', 'lay', 'lick', 'snatch', 'sick', 'frost'];
-function poseParams(pose, p) {
+export function poseParams(pose, p) {
   const P = {};
   for (const c of CHANNELS) P[c] = 0;
   P.frill = 0.22;
@@ -1691,7 +1691,7 @@ function drawPuddle(ctx, c, U, k, t, K) {
 
 // A deep molten pit in the channel floor. back: crusted rim, steep glowing walls and the lava pool far below;
 // front: a molten film over whatever has gone in, the near lip, and a splash while something dives.
-function drawPit(ctx, H, U, t, back, splash = 0) {
+export function drawPit(ctx, H, U, t, back, splash = 0) {
   ctx.save();
   ctx.translate(H.x, H.y);
   const r = H.r;
