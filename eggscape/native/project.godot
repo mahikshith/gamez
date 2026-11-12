@@ -1,0 +1,42 @@
+; Eggscape native app (Godot 4). See README.md.
+config_version=5
+
+[application]
+
+config/name="Eggscape"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.5", "GL Compatibility")
+config/icon="res://icon.png"
+boot_splash/bg_color=Color(0.105, 0.078, 0.063, 1)
+boot_splash/show_image=false
+
+[autoload]
+
+Sfx="*res://scripts/sfx.gd"
+
+[display]
+
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
+[physics]
+
+common/physics_ticks_per_second=120
+common/max_physics_steps_per_frame=12
+2d/default_gravity=1000.0
+2d/solver/solver_iterations=16
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+anti_aliasing/quality/msaa_2d=2
+environment/defaults/default_clear_color=Color(0.105, 0.078, 0.063, 1)
+textures/vram_compression/import_etc2_astc=true
