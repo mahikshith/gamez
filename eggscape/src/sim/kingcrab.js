@@ -78,6 +78,7 @@ export const kcMethods = {
     const K = this.kc;
     if (!K || K.done || K.fz > 0) return null;
     if (name === 'silt') {
+      if (K.siltCd > 0) return null; // owner: silt came far too often; at most one cloud every 24 s, the claws are the fight
       const e = this.aliveEggs().filter((q) => this.reefFit(q)).sort((a, b) => this.channelOf(b) - this.channelOf(a))[0];
       if (!e) return null;
       const p = e.body.getPosition();
@@ -102,6 +103,7 @@ export const kcMethods = {
       const M = 1;
       K.silt = { x: A.x, y: A.y, r: KC.siltR, t: KC.silt * M, dur: KC.silt * M };
       this.emit('kcSilt', { x: A.x, y: A.y });
+      K.siltCd = 24;
       return;
     }
     for (const id of A.claws || []) {
@@ -120,6 +122,7 @@ export const kcMethods = {
     K.bx = Math.sin(this.t * 0.35) * 0.35; K.by = up * (R + KC.bodyD + (K.done ? Math.min(2.5, (K.sink += dt) * 1.2) : 0));
     if (B) { B.x = K.bx; B.y = K.by; }
     if (K.silt && (K.silt.t -= dt) <= 0) K.silt = null;
+    if (K.siltCd > 0) K.siltCd -= dt;
     if (K.fz > 0) K.fz = Math.max(0, K.fz - dt);
     // the target is saved and only eggs in its pile are left: it keeps them and the level ends
     if (!end && this.state === 'play' && this.savedLog.length >= (this.level.target || 1) && this.aliveEggs().length && this.aliveEggs().every((e) => e.hc === 3)) {
