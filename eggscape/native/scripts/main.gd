@@ -15,24 +15,28 @@ const Iris = preload("res://scripts/iris.gd")
 const UI = preload("res://scripts/ui_kit.gd")
 const Hint = preload("res://scripts/hint.gd")
 const MapScreen = preload("res://scripts/map.gd")
+const CamRig = preload("res://scripts/cam_rig.gd")
+const FX = preload("res://scripts/fx.gd")
 const SAVE_PATH := "user://save.json"
 const PLAYABLE := 5 # levels the app supports so far: all of World 1
 
 var font: Font
 var levels: Array = []
-var save = {"level": 1, "streak": 0, "coins": 0, "best": {}}
+var save = {"level": 1, "streak": 0, "coins": 0, "best": {}, "reduce_motion": false, "sound": true, "haptics": true}
 var idx = 0
 var world: Node2D
 var vault
 var hen
-var cam: Camera2D
+var cam
+var ground_back
+var _stop := 0.0
+var _bot := false
 var hud
 var ui: CanvasLayer
 var over: CanvasLayer
 var iris
 var hint
 var backdrop
-var shake = 0.0
 var hen_hold = 0.0
 var title_ui: Control
 var banner: Control
@@ -59,9 +63,24 @@ func _ready() -> void:
 	add_child(il)
 	iris = Iris.new()
 	il.add_child(iris)
-	cam = Camera2D.new()
+	cam = CamRig.new()
 	add_child(cam)
 	cam.make_current()
+	_bot = OS.get_cmdline_user_args().has("--bot") and not OS.get_cmdline_user_args().has("--botfx")
+	if OS.get_cmdline_user_args().has("--reduce-motion"):
+		save.reduce_motion = true
+	_apply_settings()
+	# vignette over the world, under the UI
+	var vl = CanvasLayer.new()
+	vl.layer = 4
+	add_child(vl)
+	var vg = ColorRect.new()
+	vg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var vm = ShaderMaterial.new()
+	vm.shader = preload("res://shaders/vignette.gdshader")
+	vg.material = vm
+	vl.add_child(vg)
 	get_viewport().size_changed.connect(_fit)
 	# Android sets the real screen size (immersive mode, cutouts) after the first frame: rebuild the title if it changed
 	get_viewport().size_changed.connect(func():
@@ -135,6 +154,11 @@ func _load_save() -> void:
 		fixed[str(int(float(k)))] = save.best[k]
 	save.best = fixed
 
+func _apply_settings() -> void:
+	cam.reduce = bool(save.get("reduce_motion", false))
+	Sfx.haptics = bool(save.get("haptics", true))
+	AudioServer.set_bus_mute(0, not bool(save.get("sound", true)))
+
 func _write_save() -> void:
 	var f = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -148,41 +172,25 @@ func _show_title() -> void:
 	var sz = get_viewport_rect().size
 	var top = UI.safe_top()
 	# logo: white heavy letters with a ginger drop (no outline), gently bobbing
-	var logo_sh = UI.label(title_ui, "Eggscape", 96, UI.BRAND_D, 900)
-	var logo = UI.label(title_ui, "Eggscape", 96, Color.WHITE, 900)
-	# a thick ginger outline on both layers keeps the white letters readable over clouds and sun
-	for l in [logo_sh, logo]:
-		l.add_theme_color_override("font_outline_color", UI.BRAND_D)
-		l.add_theme_constant_override("outline_size", 18)
-		l.size = Vector2(sz.x, 130)
-		l.pivot_offset = l.size / 2
-	logo.position = Vector2(0, top + sz.y * 0.1)
-	logo_sh.position = logo.position + Vector2(0, 7)
-	# tagline on a white pill so it reads over clouds and sky alike
+	var logo = UI.title(title_ui, "Eggscape", 118, Color.WHITE, UI.BRAND_D, 22)
+	logo.size = Vector2(sz.x, 150)
+	logo.pivot_offset = logo.size / 2
+	logo.position = Vector2(0, top + sz.y * 0.085)
+	# tagline on a cream pill so it reads over clouds and sky alike
 	var tag_text = "Roll every egg home"
-	var tw_px = UI.font(900).get_string_size(tag_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 26).x
-	var pill = Panel.new()
-	var psb = StyleBoxFlat.new()
-	psb.bg_color = Color.WHITE
-	psb.set_corner_radius_all(24)
-	psb.border_color = Color("D9EEF8")
-	psb.border_width_bottom = 4
-	psb.anti_aliasing = true
-	pill.add_theme_stylebox_override("panel", psb)
+	var tw_px = UI.text_w(tag_text, 28)
+	var pill = Control.new()
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pill.size = Vector2(tw_px + 56, 48)
-	pill.position = Vector2(sz.x / 2 - pill.size.x / 2, logo.position.y + 152)
+	pill.size = Vector2(tw_px + 64, 54)
+	pill.position = Vector2(sz.x / 2 - pill.size.x / 2, logo.position.y + 166)
+	pill.draw.connect(func(): UI.pill(pill, Rect2(Vector2.ZERO, pill.size)))
 	title_ui.add_child(pill)
-	var tag = UI.label(pill, tag_text, 26, UI.BRAND_D, 900)
-	tag.size = Vector2(pill.size.x, 44)
+	var tag = UI.label(pill, tag_text, 28, UI.BRAND_D, 1000)
+	tag.size = Vector2(pill.size.x, 48)
 	var bob = create_tween().set_loops()
-	for l in [logo, logo_sh]:
-		pass
 	bob.tween_property(logo, "rotation", 0.025, 1.3).set_trans(Tween.TRANS_SINE)
-	bob.parallel().tween_property(logo_sh, "rotation", 0.025, 1.3).set_trans(Tween.TRANS_SINE)
 	bob.tween_property(logo, "rotation", -0.025, 1.3).set_trans(Tween.TRANS_SINE)
-	bob.parallel().tween_property(logo_sh, "rotation", -0.025, 1.3).set_trans(Tween.TRANS_SINE)
-	var b_y = sz.y - UI.safe_bottom() - 84 - 92
+	var b_y = sz.y - UI.safe_bottom() - 96 - 92
 	# a toy vault turning in the middle, the hen on the hill to the left of her nest (she faces you; tap her)
 	var art = TitleArt.new()
 	var mid_top = pill.position.y + pill.size.y + 30.0
@@ -203,11 +211,13 @@ func _show_title() -> void:
 	# says hi: wings up, eyes wide, beak open, then settles into her idle life
 	h.set_mood("wow")
 	var b = UI.button(title_ui, "PLAY", UI.GREEN, 36)
-	b.size = Vector2(minf(520.0, sz.x - 64.0), 84)
+	b.size = Vector2(minf(520.0, sz.x - 64.0), 100)
 	b.position = Vector2(sz.x / 2 - b.size.x / 2, b_y)
 	b.pivot_offset = b.size / 2
 	var lv: Dictionary = levels[mini(int(save.level), PLAYABLE) - 1]
 	var sub = UI.label(title_ui, "Level %d  ·  %s" % [int(lv.id), str(lv.name)], 24, Color.WHITE, 900)
+	sub.add_theme_color_override("font_outline_color", Color(0.1, 0.3, 0.05, 0.7))
+	sub.add_theme_constant_override("outline_size", 7)
 	sub.size = Vector2(sz.x, 36)
 	sub.position = Vector2(0, b.position.y + b.size.y + 22)
 	var br = create_tween().set_loops()
@@ -251,6 +261,8 @@ func _go(swap: Callable) -> void:
 	_busy = false
 
 func _clear_level() -> void:
+	Engine.time_scale = 1.0
+	_stop = 0.0
 	for c in over.get_children():
 		c.queue_free()
 	if world:
@@ -275,22 +287,28 @@ func _start_level(i: int) -> void:
 	front.vault = vault
 	front.front = true
 	front.z_index = 6
+	ground_back = back
 	vault.add_child(back)
 	vault.add_child(front)
 	vault.move_child(back, 0)
 	world.add_child(vault)
 	hen = Hen.new()
-	hen.H = 150.0
+	hen.H = 172.0
+	hen.shadow = 0.0
 	hen.face = -1
 	hen.z_index = 4
 	var hx: float = (vault.nest_x + vault.nest_w / 2 + 0.75) * G.PPM
 	hen.position = Vector2(hx, vault.ground_y * G.PPM)
+	back.hen_x = hx
 	vault.add_child(hen)
 	vault.saved_egg.connect(_on_saved)
 	vault.broke_egg.connect(_on_broke)
 	vault.cracked_egg.connect(func(_e):
-		shake = maxf(shake, 5.0)
+		cam.shake(0.42)
+		cam.punch(0.022)
+		_hitstop(0.07)
 		_hen_mood("worried", 0.8))
+	vault.bumped.connect(func(_e, k): cam.shake(k * 0.16))
 	vault.finished.connect(_on_finished)
 	hud = Hud.new()
 	hud.title = "%d  %s" % [int(lv.id), str(lv.name)]
@@ -309,8 +327,10 @@ func _start_level(i: int) -> void:
 		vault.grabbed.connect(func():
 			if is_instance_valid(hint):
 				hint.dismiss())
-	_cam_reset()
 	_fit()
+	cam.reset(vault)
+	cam.tick(0.0, vault)
+	_hen_mood("wow", 1.4)
 	var ua = OS.get_cmdline_user_args()
 	if ua.has("--autowin"):
 		# screenshot helper: skip play and show the win stage
@@ -355,20 +375,14 @@ func _banner(title: String, line: String) -> void:
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(box)
 	banner = box
-	var card = Panel.new()
-	var sb = StyleBoxFlat.new()
-	sb.bg_color = Color.WHITE
-	sb.set_corner_radius_all(24)
-	sb.border_color = Color("E6DED3")
-	sb.border_width_bottom = 5
-	sb.anti_aliasing = true
-	card.add_theme_stylebox_override("panel", sb)
+	var card = Control.new()
+	card.draw.connect(func(): UI.panel(card, Rect2(Vector2.ZERO, card.size), UI.WOOD, UI.CREAM, 26.0, 7.0))
 	card.size = Vector2(minf(640.0, sz.x - 32.0), 146)
 	# sits in the sky between the top bar and the vault (_fit keeps that room free), never over the rings or the hen
-	card.position = Vector2(sz.x / 2 - card.size.x / 2, UI.safe_top() + 136.0)
+	card.position = Vector2(sz.x / 2 - card.size.x / 2, UI.safe_top() + 128.0)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(card)
-	var t = UI.label(card, title, 30, UI.BRAND, 900, HORIZONTAL_ALIGNMENT_LEFT)
+	var t = UI.label(card, title, 32, UI.BRAND_D, 1000, HORIZONTAL_ALIGNMENT_LEFT)
 	t.position = Vector2(26, 14)
 	t.size = Vector2(card.size.x - 52, 40)
 	var l = UI.label(card, line, 22, UI.INK, 800, HORIZONTAL_ALIGNMENT_LEFT)
@@ -381,7 +395,8 @@ func _banner(title: String, line: String) -> void:
 	# grow the card to fit the tip (2 or 3 lines)
 	var lines = maxi(1, l.get_line_count())
 	l.size.y = lines * 30.0
-	card.size.y = 64.0 + lines * 30.0 + 14.0
+	card.size.y = 64.0 + lines * 30.0 + 24.0
+	card.queue_redraw()
 	var y0 = card.position.y
 	card.position.y = y0 - 40
 	card.modulate.a = 0.0
@@ -410,13 +425,13 @@ func _fit() -> void:
 	if z_res >= z * 0.9:
 		z = z_res
 		top += 190.0
-	cam_zoom = z
+	cam.base_zoom = z
 	# centre the content box under the HUD
 	var content_mid = (gy - R) / 2.0
 	# on tall phones push the vault down toward the thumbs and leave the spare room to the sky
 	var spare = maxf(0.0, (sz.y - top - bottom) - h * z)
-	cam_pos = Vector2(0, content_mid - (top - bottom) / 2.0 / z - spare * 0.35 / z)
-	_cam_apply(0.0)
+	cam.base_pos = Vector2(0, content_mid - (top - bottom) / 2.0 / z - spare * 0.35 / z)
+	cam.tick(0.0, vault)
 
 # ---------------------------------------------------------------- reactions
 func _hen_mood(m: String, hold: float) -> void:
@@ -428,35 +443,39 @@ func _hen_mood(m: String, hold: float) -> void:
 func _on_thief(kind: String) -> void:
 	if kind in ["grab", "stash", "phase"]:
 		_hen_mood("worried", 1.4)
-		shake = maxf(shake, 4.0)
+		cam.shake(0.3)
 	elif kind == "in":
 		_hen_mood("wow", 1.0)
 	elif kind in ["bonk", "hit", "trapped"]:
 		_hen_mood("cheer", 1.1)
 	elif kind == "beaten":
 		_hen_mood("cheer", 2.0)
-		_punch(0.05)
+		cam.punch(0.05)
 
 func _on_saved(_e) -> void:
 	hud.saved += 1
 	hud.pop = 1.0
 	_hen_mood("cheer", 1.1)
-	_punch(0.035)
-	cam_focus = Vector2(vault.nest_x * G.PPM, vault.ground_y * G.PPM)
-	cam_focus_t = 0.5
+	cam.punch(0.045)
+	_hitstop(0.05)
+	if ground_back and is_instance_valid(ground_back):
+		ground_back.glow = 1.0
+	if hen and not _bot:
+		FX.feathers(vault, hen.global_position + Vector2(0, -hen.H * 0.55), 4, Vector2(0.3, -1), 300.0)
 
 func _on_broke(_e, why: String) -> void:
 	hud.broken += 1
 	hud.shake = 1.0
-	shake = 14.0
-	_punch(-0.03)
-	_cam_kick(0.02 if randf() < 0.5 else -0.02)
+	cam.shake(0.8)
+	cam.punch(-0.04)
+	cam.kick(0.02 if randf() < 0.5 else -0.02)
+	_hitstop(0.1)
 	_hen_mood("sad", 1.4)
 
 func _on_finished(won: bool) -> void:
 	var stars: int = vault.stars()
-	cam_out_kind = "win" if won else "fail"
-	cam_out = 0.0
+	cam.out_kind = "win" if won else "fail"
+	cam.out = 0.0
 	var key0 = str(int(levels[idx].id))
 	var first_world = int(save.best.get(key0, 0)) == 0 and (idx == 0 or int(levels[idx].world) != int(levels[idx - 1].world))
 	var routine = Cheer.pick(stars, int(save.streak), levels[idx].has("boss"), first_world, str(save.get("routine", "")))
@@ -493,107 +512,44 @@ func _on_finished(won: bool) -> void:
 	c.retry_pressed.connect(func(): _go(func(): _start_level(idx)))
 	c.home_pressed.connect(func(): _go(func(): _show_map(-1)))
 
-func _punch(k: float) -> void:
-	cam_pv += k * 22.0
-
-# ---------------------------------------------------------------- camera
-# The level camera is a base framing (_fit) plus a few layered moves, all springs or eases so nothing snaps:
-#   intro    the level opens close on the eggs in the middle and pulls back to the whole vault (1.1 s)
-#   lean     it drifts a little toward an egg that is falling fast, and leans in a touch while it falls
-#   punch    a quick zoom spring: in on a save, out on a break (plus the shake and a small tilt kick)
-#   outro    on a win it pushes in on the nest; on a fail it eases out and tilts
-var cam_zoom := 1.0
-var cam_pos := Vector2.ZERO
-var cam_intro := 1.0
-var cam_lean := Vector2.ZERO
-var cam_lean_z := 0.0
-var cam_p := 0.0
-var cam_pv := 0.0
-var cam_tilt := 0.0
-var cam_tv := 0.0
-var cam_out := 0.0
-var cam_out_kind := ""
-var cam_focus := Vector2.ZERO
-var cam_focus_t := 0.0
-
-func _cam_reset() -> void:
-	cam_intro = 0.0
-	cam_lean = Vector2.ZERO
-	cam_lean_z = 0.0
-	cam_p = 0.0
-	cam_pv = 0.0
-	cam_tilt = 0.0
-	cam_tv = 0.0
-	cam_out = 0.0
-	cam_out_kind = ""
-	cam_focus_t = 0.0
-	cam.rotation = 0.0
-	cam.ignore_rotation = false
-
-func _cam_kick(rad: float) -> void:
-	cam_tv += rad * 30.0
-
-func _cam_apply(dt: float) -> void:
-	if vault == null or not is_instance_valid(vault):
-		cam.rotation = 0.0
+# hit-stop: the world all but freezes for a few hundredths of a second on a crack, a break or a save
+func _hitstop(sec: float) -> void:
+	if _bot or cam.reduce:
 		return
-	cam_intro = minf(1.0, cam_intro + dt / 1.1)
-	var ki = 1.0 - pow(1.0 - cam_intro, 3.0)
-	# lean toward the fastest falling egg
-	var want = Vector2.ZERO
-	var want_z = 0.0
-	var best = 3.0 * G.PPM
-	for e in vault.eggs:
-		if is_instance_valid(e) and e.alive and not e.saved and e.linear_velocity.y > best:
-			best = e.linear_velocity.y
-			want = (e.position - cam_pos) * 0.07
-			want_z = 0.025
-	if cam_focus_t > 0.0:
-		cam_focus_t -= dt
-		want = (cam_focus - cam_pos) * 0.1
-		want_z = 0.03
-	var a = 1.0 - exp(-dt * 3.0)
-	cam_lean = cam_lean.lerp(want, a)
-	cam_lean_z = lerpf(cam_lean_z, want_z, a)
-	# springs: zoom punch and tilt
-	if dt > 0.0:
-		cam_pv += (-170.0 * cam_p - 15.0 * cam_pv) * dt
-		cam_p += cam_pv * dt
-		cam_tv += (-120.0 * cam_tilt - 9.0 * cam_tv) * dt
-		cam_tilt += cam_tv * dt
-	# outro
-	var zo = 0.0
-	var po = Vector2.ZERO
-	if cam_out_kind != "":
-		cam_out = minf(1.0, cam_out + dt / 0.9)
-		var ko = cam_out * cam_out * (3.0 - 2.0 * cam_out)
-		if cam_out_kind == "win":
-			var nest = Vector2((vault.nest_x) * G.PPM, vault.ground_y * G.PPM)
-			zo = 0.14 * ko
-			po = (nest - cam_pos) * 0.3 * ko
-		else:
-			zo = -0.06 * ko
-			cam_tilt = lerpf(cam_tilt, 0.025, a)
-	var start_pos = Vector2(0, 0)
-	var pos = start_pos.lerp(cam_pos, ki) + cam_lean + po
-	var z = cam_zoom * lerpf(1.32, 1.0, ki) * (1.0 + cam_lean_z + cam_p + zo)
-	cam.zoom = Vector2(z, z)
-	cam.position = pos
-	cam.rotation = cam_tilt + (1.0 - ki) * 0.05
+	_stop = maxf(_stop, sec)
 
 # ---------------------------------------------------------------- per frame
 func _process(dt: float) -> void:
-	if vault and is_instance_valid(vault) and hud:
+	# real frame time (dt is scaled by the hit-stop / slow motion below)
+	var rdt = dt / maxf(Engine.time_scale, 0.01)
+	var playing = vault and is_instance_valid(vault)
+	if playing and hud:
 		hud.time_left = vault.time_left
 		hud.cursed = vault.curse_t > 0.0
-	if vault and is_instance_valid(vault) and hen:
+	if playing and hen:
 		backdrop.sway = vault.rings[0].angle if vault.rings.size() > 0 else 0.0
 		hen_hold -= dt
 		if hen_hold <= 0.0 and not vault.done:
 			hen.set_mood("worried" if vault.falling_fast() else "idle")
-	shake = move_toward(shake, 0.0, dt * 40.0)
-	cam.offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * shake
-	_cam_apply(dt)
+	if not _bot:
+		if _stop > 0.0:
+			_stop -= rdt
+			Engine.time_scale = 0.04
+		else:
+			# the last egg's drop to the nest plays a little slower
+			var slow = playing and not vault.done and not cam.reduce and cam._push > 0.4 and vault.n_eggs - vault.n_saved - vault.n_broken == 1
+			Engine.time_scale = move_toward(Engine.time_scale, 0.6 if slow else 1.0, rdt * 4.0)
+	cam.tick(rdt, vault if playing else null)
+	var sz = get_viewport_rect().size
+	if playing:
+		var z: float = cam.zoom.x
+		backdrop.pan = (cam.position - cam.base_pos) * z
+		backdrop.zoom = z / maxf(cam.base_zoom, 0.01)
+		backdrop.horizon = (vault.ground_y * G.PPM - cam.position.y) * z + sz.y / 2.0
+	else:
+		backdrop.pan = Vector2.ZERO
+		backdrop.zoom = 1.0
+		backdrop.horizon = -1.0
 
 func _unhandled_input(ev: InputEvent) -> void:
 	if vault == null or not is_instance_valid(vault) or _busy:

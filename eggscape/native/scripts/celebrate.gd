@@ -11,6 +11,7 @@ const G = preload("res://scripts/g.gd")
 const Hen = preload("res://scripts/mama.gd")
 const Cheer = preload("res://scripts/cheer.gd")
 const UI = preload("res://scripts/ui_kit.gd")
+const FX = preload("res://scripts/fx.gd")
 signal next_pressed
 signal retry_pressed
 signal home_pressed
@@ -46,14 +47,14 @@ func _layout() -> void:
 	var bottom = sz.y - UI.safe_bottom() - 24.0
 	var W = minf(sz.x, 640.0)
 	var x0 = (sz.x - W) / 2.0
-	var btn_h = 76.0
+	var btn_h = 92.0
 	var gap = 18.0
 	Z.button = Rect2(x0 + 24, bottom - btn_h - (64.0 if not won else 0.0), W - 48, btn_h)
 	Z.button2 = Rect2(x0 + 24, bottom - 52.0, W - 48, 52.0)
-	Z.cards = Rect2(x0 + 24, Z.button.position.y - gap * 2 - 118.0, W - 48, 118.0)
-	Z.stars = Rect2(x0, Z.cards.position.y - gap - 120.0, W, 120.0) if won else Rect2(x0, Z.cards.position.y, W, 0.0)
+	Z.cards = Rect2(x0 + 24, Z.button.position.y - gap * 2 - 124.0, W - 48, 124.0)
+	Z.stars = Rect2(x0, Z.cards.position.y - gap - 136.0, W, 136.0) if won else Rect2(x0, Z.cards.position.y, W, 0.0)
 	Z.sub = Rect2(x0 + 24, Z.stars.position.y - gap - 34.0, W - 48, 34.0)
-	Z.title = Rect2(x0 + 24, Z.sub.position.y - 66.0, W - 48, 64.0)
+	Z.title = Rect2(x0 + 24, Z.sub.position.y - 86.0, W - 48, 84.0)
 	Z.stage = Rect2(x0, top, W, Z.title.position.y - top - gap)
 
 func open(is_win: bool, stars: int, stats: Array, title: String, sub: String, routine := "cheer") -> void:
@@ -65,7 +66,7 @@ func open(is_win: bool, stars: int, stats: Array, title: String, sub: String, ro
 	_hen.H = clampf(minf(st.size.y * 0.6, st.size.x * 0.5), 140.0, 400.0)
 	_hen.position = Vector2(st.get_center().x, st.end.y - _hen.H * 0.05)
 	_hen.stage_top = st.position.y - _hen.position.y
-	_hen.shadow = 0.18
+	_hen.shadow = 0.0
 	add_child(_hen)
 	_hen.cue.connect(_on_cue)
 	if won:
@@ -76,11 +77,13 @@ func open(is_win: bool, stars: int, stats: Array, title: String, sub: String, ro
 	if won:
 		_stars_at = info.stars
 	_fx = info.fx
-	_title = UI.label(self, title, 50, UI.BRAND if won else UI.RED, 900)
+	_title = UI.title(self, title, 68, Color("FFD21F") if won else Color("FFE9DC"), Color("7A3A06") if won else Color("5A1F2E"), 14)
 	_place(_title, Z.title)
 	_title.pivot_offset = _title.size / 2
 	_title.scale = Vector2.ZERO
-	_sub = UI.label(self, sub, 22, UI.MUTED, 800)
+	_sub = UI.label(self, sub, 24, Color.WHITE, 900)
+	_sub.add_theme_color_override("font_outline_color", Color(0.05, 0.12, 0.25, 0.55))
+	_sub.add_theme_constant_override("outline_size", 6)
 	_place(_sub, Z.sub)
 	_sub.modulate.a = 0.0
 	var n = stats.size()
@@ -108,7 +111,7 @@ func open(is_win: bool, stars: int, stats: Array, title: String, sub: String, ro
 		if won: next_pressed.emit()
 		else: retry_pressed.emit())
 	if not won:
-		_btn2 = UI.flat_button(self, "BACK TO THE FARM", Color("1899D6"), 22)
+		_btn2 = UI.flat_button(self, "BACK TO THE FARM", Color("E8E2FF"), 24)
 		_place(_btn2, Z.button2)
 		_btn2.modulate.a = 0.0
 		_btn2.pressed.connect(func():
@@ -146,64 +149,15 @@ func _place(c: Control, r: Rect2) -> void:
 	c.size = r.size
 
 func _confetti(at: Vector2, dir: Vector2, n := 70) -> void:
-	var ps = CPUParticles2D.new()
-	ps.position = at
-	ps.one_shot = true
-	ps.explosiveness = 0.9
-	ps.amount = n
-	ps.lifetime = 2.6
-	ps.direction = dir
-	ps.spread = 30.0
-	ps.initial_velocity_min = 650.0
-	ps.initial_velocity_max = 1150.0
-	ps.gravity = Vector2(0, 1100)
-	ps.damping_min = 160.0
-	ps.damping_max = 300.0
-	ps.scale_amount_min = 8.0
-	ps.scale_amount_max = 14.0
-	ps.angle_min = 0.0
-	ps.angle_max = 360.0
-	ps.angular_velocity_min = -500.0
-	ps.angular_velocity_max = 500.0
-	var gr = Gradient.new()
-	gr.offsets = PackedFloat32Array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
-	gr.colors = PackedColorArray([UI.RED, UI.GOLD, UI.GREEN, UI.BLUE, UI.PURPLE, UI.BRAND])
-	gr.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_CONSTANT
-	ps.color_initial_ramp = gr
-	var fade = Gradient.new()
-	fade.offsets = PackedFloat32Array([0.0, 0.8, 1.0])
-	fade.colors = PackedColorArray([Color.WHITE, Color.WHITE, Color(1, 1, 1, 0)])
-	ps.color_ramp = fade
-	add_child(ps)
+	var ps = FX.confetti(self, at, dir, n)
 	move_child(ps, 0)
-	ps.emitting = true
-	ps.finished.connect(ps.queue_free)
 
 func _sparkle(at: Vector2) -> void:
-	var ps = CPUParticles2D.new()
-	ps.position = at
-	ps.one_shot = true
-	ps.explosiveness = 1.0
-	ps.amount = 14
-	ps.lifetime = 0.55
-	ps.spread = 180.0
-	ps.initial_velocity_min = 180.0
-	ps.initial_velocity_max = 320.0
-	ps.damping_min = 350.0
-	ps.damping_max = 450.0
-	ps.scale_amount_min = 5.0
-	ps.scale_amount_max = 9.0
-	var fade = Gradient.new()
-	fade.set_color(0, UI.GOLD.lightened(0.4))
-	fade.set_color(1, Color(1, 0.8, 0.2, 0))
-	ps.color_ramp = fade
-	add_child(ps)
-	ps.emitting = true
-	ps.finished.connect(ps.queue_free)
+	FX.sparks(self, at, 14, Color(1.0, 0.95, 0.6), 420.0, 34.0)
 
 func _star_pos(i: int) -> Vector2:
 	var r: Rect2 = Z.stars
-	return Vector2(r.get_center().x + (i - 1) * 140.0, r.get_center().y + (0.0 if i == 1 else 10.0))
+	return Vector2(r.get_center().x + (i - 1) * 150.0, r.get_center().y + (-6.0 if i == 1 else 12.0))
 
 func _play_win() -> void:
 	# the stars land on the hen's beats (see _process); the title pops first, cards and button follow the last star
@@ -318,25 +272,41 @@ func _process(dt: float) -> void:
 
 func _draw() -> void:
 	var sz = get_viewport_rect().size
-	draw_rect(Rect2(Vector2.ZERO, sz), Color(1, 0.985, 0.955, bg_a))
-	if glow > 0.0 and won:
-		var c = Vector2(Z.stage.get_center().x, Z.stage.end.y - _hen.H * 0.45)
-		var R = minf(Z.stage.size.y * 0.62, sz.x * 0.46) * glow
-		for i in 12:
-			var a = spin + TAU * i / 12.0
-			draw_colored_polygon(PackedVector2Array([c, c + Vector2.from_angle(a - 0.13) * R * 1.25, c + Vector2.from_angle(a + 0.13) * R * 1.25]), Color(1.0, 0.8, 0.35, 0.10))
-		draw_circle(c, R * 0.9, Color(1.0, 0.86, 0.5, 0.22))
-		draw_circle(c, R * 0.62, Color(1.0, 0.9, 0.62, 0.35))
+	# the page: a deep sky for a win (rays and light behind the hen), dusk for a fail; a grass stage under her feet
+	var top = Color("1B6FD0") if won else Color("3B3F78")
+	var bot = Color("7FD2F8") if won else Color("8E7FB8")
+	draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(sz.x, 0), Vector2(sz.x, sz.y), Vector2(0, sz.y)]),
+		PackedColorArray([Color(top, bg_a), Color(top, bg_a), Color(bot, bg_a), Color(bot, bg_a)]))
+	if bg_a <= 0.0:
+		return
+	var feet = Vector2(Z.stage.get_center().x, Z.stage.end.y - _hen.H * 0.05)
+	var c = feet + Vector2(0, -_hen.H * 0.5)
+	var R = maxf(sz.x, Z.stage.size.y) * (0.5 + 0.5 * glow)
+	if won:
+		for i in 14:
+			var a = spin + TAU * i / 14.0
+			draw_polygon(PackedVector2Array([c, c + Vector2.from_angle(a - 0.11) * R * 1.3, c + Vector2.from_angle(a + 0.11) * R * 1.3]),
+				PackedColorArray([Color(1, 1, 0.8, 0.34 * glow * bg_a), Color(1, 1, 0.8, 0.0), Color(1, 1, 0.8, 0.0)]))
+	var gs = _hen.H * (3.2 if won else 2.4)
+	draw_texture_rect(FX.GLOW, Rect2(c - Vector2(gs, gs) / 2.0, Vector2(gs, gs)), false, Color(1.0, 0.95, 0.7, (0.9 if won else 0.35) * bg_a))
+	# stage: a round grassy knoll with a soil lip and a soft shadow for the hen
+	var kw = minf(sz.x * 0.46, _hen.H * 1.5)
+	draw_colored_polygon(G.ellipse(feet + Vector2(0, 30), kw * 1.02, 40.0, 40), Color(0.05, 0.1, 0.3, 0.25 * bg_a))
+	draw_colored_polygon(G.ellipse(feet + Vector2(0, 22), kw, 36.0, 40), Color(Color("7A4A1E"), bg_a))
+	draw_colored_polygon(G.ellipse(feet + Vector2(0, 8), kw, 34.0, 40), Color(Color("3F9324"), bg_a))
+	draw_colored_polygon(G.ellipse(feet + Vector2(0, 4), kw - 4, 30.0, 40), Color(Color("7FD44A") if won else Color("6FAE5A"), bg_a))
+	draw_colored_polygon(G.ellipse(feet + Vector2(0, 6), _hen.H * 0.42, 12.0, 24), Color(0.05, 0.25, 0.05, 0.3 * bg_a))
+	# lower panel: a navy glass sheet behind the stars, cards and button
+	var pr = Rect2(Z.cards.position.x - 12, Z.title.position.y - 14, Z.cards.size.x + 24, Z.cards.end.y - Z.title.position.y + 30)
+	UI.rounded(self, pr.grow(3), Color(0.03, 0.08, 0.2, 0.5 * bg_a), 37)
+	UI.rounded(self, pr, Color(0.07, 0.16, 0.36, 0.55 * bg_a), 34)
 	if not won:
 		return
 	for i in 3:
 		var p = _star_pos(i)
-		var big = 60.0 if i == 1 else 50.0
-		G.shape(self, G.star(p, big, big * 0.5), Color(0.9, 0.88, 0.85), Color(0, 0, 0, 0), 0.0)
-		if i < n_stars and star_k[i] > 0.0:
-			var k: float = star_k[i]
-			var r = big * k
-			var rot = (1.0 - k) * -0.7
-			G.shape(self, G.star(p + Vector2(0, 4), r, r * 0.5, rot), UI.GOLD_D, Color(0, 0, 0, 0), 0.0)
-			G.shape(self, G.star(p, r, r * 0.5, rot), UI.GOLD, Color(0, 0, 0, 0), 0.0)
-			G.shape(self, G.star(p + Vector2(-r * 0.1, -r * 0.12), r * 0.42, r * 0.21, rot), Color(1, 0.93, 0.6), Color(0, 0, 0, 0), 0.0)
+		var big = 58.0 if i == 1 else 47.0
+		var on = i < n_stars
+		var k: float = star_k[i]
+		UI.star(self, p, big, false)
+		if on and k > 0.0:
+			UI.star(self, p, big, true, k, (1.0 - k) * -0.7)

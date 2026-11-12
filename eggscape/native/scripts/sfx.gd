@@ -30,6 +30,9 @@ func _ready() -> void:
 	_s.cluck = _tone(0.1, [980.0, 520.0], 36.0, 0.42, 0.18)
 	_s.tada = _chime([783.99, 1046.5, 1318.5], 0.07, 0.6)
 	_s.pop = _tone(0.09, [1300.0, 380.0], 45.0, 0.3, 0.5)
+	# an egg landing on wood: a short hollow knock (the vault pitches it by the impact speed)
+	_s.knock = _tone(0.11, [520.0, 210.0], 48.0, 0.6, 0.22)
+	_s.sparkle = _chime([2093.0, 2637.0, 3136.0], 0.045, 0.4)
 
 func play(name: String, db := 0.0, pitch := 1.0) -> void:
 	if not _s.has(name):

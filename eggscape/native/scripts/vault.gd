@@ -10,6 +10,8 @@ extends Node2D
 
 const G = preload("res://scripts/g.gd")
 const Egg = preload("res://scripts/egg.gd")
+const FX = preload("res://scripts/fx.gd")
+const UI = preload("res://scripts/ui_kit.gd")
 const CRACK_V := 5.6
 const SHATTER_V := 8.5
 const PAD_SOFT := 0.5
@@ -28,6 +30,7 @@ signal grabbed
 signal eggs_changed
 signal gate_passed(egg, x)
 signal thief_event(kind: String)
+signal bumped(egg, power: float)
 
 var level: Dictionary
 var rings = []
@@ -65,7 +68,7 @@ func setup(lv: Dictionary) -> void:
 	n_eggs = int(lv.get("eggs", 1))
 	target = int(lv.get("target", n_eggs))
 	_fx = Node2D.new()
-	_fx.z_index = 5
+	_fx.z_index = 7
 	var r = float(lv.get("r0", 1.05))
 	var spacing = float(lv.get("spacing", 1.0))
 	var specs: Array = lv.rings
@@ -99,6 +102,17 @@ func setup(lv: Dictionary) -> void:
 			q.train = train
 		trains.append(train)
 	rings[-1].outer = true
+	# the back plate: a shader disc behind everything in the vault
+	var plate = Node2D.new()
+	plate.z_index = -1
+	var pm = ShaderMaterial.new()
+	pm.shader = preload("res://shaders/plate.gdshader")
+	var PR = (outer_r + 0.24) * G.PPM
+	pm.set_shader_parameter("R", PR)
+	plate.material = pm
+	plate.draw.connect(func(): plate.draw_rect(Rect2(-PR - 50, -PR - 50, PR * 2 + 100, PR * 2 + 100), Color.WHITE))
+	add_child(plate)
+	move_child(plate, 0)
 	for ring in rings:
 		ring.art.queue_redraw()
 	_make_ground()
@@ -336,6 +350,7 @@ func _add_egg(p: Vector2, cracks := 0):
 	var e = Egg.new()
 	e.position = p
 	e.hit.connect(_on_hit)
+	e.bump.connect(_on_bump)
 	e.ch = _ch_at(p.length() / G.PPM)
 	add_child(e)
 	eggs.append(e)
@@ -431,7 +446,9 @@ func _physics_process(dt: float) -> void:
 					for cp in C.cps:
 						cp.set_deferred("disabled", true)
 					Sfx.play("burn", -4.0)
-					_puff(ring.body.to_global(Vector2.from_angle(g.a) * ring.r * G.PPM), Color(0.3, 0.25, 0.2), 16)
+					var bp = ring.body.to_global(Vector2.from_angle(g.a) * ring.r * G.PPM)
+					_puff(bp, Color(0.3, 0.25, 0.2), 12)
+					FX.sparks(_fx, bp, 14, Color(1.0, 0.7, 0.3), 300.0)
 		# a tick every ~10 degrees turned, like a dial
 		if int(floor(before / 0.17)) != int(floor(ring.angle / 0.17)):
 			Sfx.play("click", -14.0, randf_range(0.9, 1.1))
@@ -442,6 +459,7 @@ func _physics_process(dt: float) -> void:
 	if done:
 		return
 	play_t += dt
+	_bump_cd -= dt
 	# the fuse (the curse orb makes it run double)
 	if curse_t > 0.0:
 		curse_t -= dt
@@ -501,7 +519,7 @@ func thief_grab(e) -> void:
 
 func thief_bonk(w) -> void:
 	_popup("Bonk!", w.global_position + Vector2(0, -60), Color.WHITE)
-	_burst(w.global_position, 10, [Color("FFE36B"), Color.WHITE], Vector2(80, 200), 300.0, Vector2(3, 6), 0.5)
+	FX.sparks(_fx, w.global_position, 12)
 	thief_event.emit("bonk")
 
 func thief_trapped(w) -> void:
@@ -510,7 +528,7 @@ func thief_trapped(w) -> void:
 
 func thief_hit(w, _why: String) -> void:
 	_popup("Bonk!" if not w.boss else ("Ouch! %d left" % w.hp if w.hp > 0 else "Beaten!"), w.global_position + Vector2(0, -70), Color.WHITE)
-	_burst(w.global_position, 16, [Color("FFE36B"), Color.WHITE], Vector2(100, 260), 300.0, Vector2(4, 8), 0.6)
+	FX.sparks(_fx, w.global_position, 18, Color(1.0, 0.92, 0.6), 340.0)
 	thief_event.emit("hit" if not (w.boss and w.hp <= 0) else "beaten")
 
 func thief_stash(w) -> void:
@@ -641,25 +659,42 @@ func _draw_portals() -> void:
 			ci.draw_circle(c, R * 0.22, Color("F3EAFF"))
 
 func _popup(text: String, at: Vector2, col: Color) -> void:
-	var l = Label.new()
-	l.text = text
-	l.add_theme_font_override("font", preload("res://scripts/ui_kit.gd").font(900))
-	l.add_theme_font_size_override("font_size", 34)
-	l.add_theme_color_override("font_color", col)
-	l.add_theme_color_override("font_outline_color", Color("3B2A20"))
-	l.add_theme_constant_override("outline_size", 8)
+	var l = UI.title(_fx, text, 40, col, Color("3B2A20"), 10)
 	l.z_index = 20
-	l.size = Vector2(160, 50)
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.size = Vector2(320, 56)
 	l.pivot_offset = l.size / 2
-	_fx.add_child(l)
 	l.global_position = at - l.size / 2
-	l.scale = Vector2(0.4, 0.4)
+	l.scale = Vector2(0.3, 0.3)
+	l.rotation = randf_range(-0.12, 0.12)
 	var tw = l.create_tween()
-	tw.tween_property(l, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.parallel().tween_property(l, "position:y", l.position.y - 50, 0.9)
+	tw.tween_property(l, "scale", Vector2.ONE, 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(l, "position:y", l.position.y - 56, 0.95).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tw.tween_property(l, "modulate:a", 0.0, 0.25)
 	tw.tween_callback(l.queue_free)
+
+# every new contact of an egg, for feel only (no rules here): dust scaled by the landing speed, a knock pitched by
+# it, a haptic tick, and a nudge for the camera on the hard ones
+var _bump_cd = 0.0
+func _on_bump(e, kind: String, v: float, at: Vector2, normal: Vector2) -> void:
+	if not e.alive or e.saved or done or v < 1.1 or kind in ["thorn", "curtain", "ground"]:
+		return
+	var k = clampf((v - 1.1) / 5.0, 0.0, 1.0)
+	if kind == "pad":
+		FX.dust(_fx, at, normal, k * 0.8, Color("FFE08A"))
+		Sfx.play("pop", -16.0 + 10.0 * k, lerpf(0.7, 0.5, k))
+	elif kind == "nest":
+		FX.dust(_fx, at, normal, k, Color("F1D18A"))
+		Sfx.play("land", -12.0 + 8.0 * k, lerpf(1.5, 1.0, k))
+	elif kind == "egg":
+		Sfx.play("click", -16.0 + 8.0 * k, lerpf(1.5, 1.0, k))
+	else:
+		FX.dust(_fx, at, normal, k)
+		Sfx.play("knock", -15.0 + 13.0 * k, lerpf(1.35, 0.8, k) * randf_range(0.96, 1.04))
+	if _bump_cd <= 0.0:
+		_bump_cd = 0.05
+		Sfx.buzz(int(6 + 22 * k), 0.15 + 0.5 * k)
+	if k > 0.25:
+		bumped.emit(e, k)
 
 func _on_hit(e, kind: String, v: float, node: Node) -> void:
 	if not e.alive or e.saved or done:
@@ -726,14 +761,14 @@ func _on_hit(e, kind: String, v: float, node: Node) -> void:
 		_break(e, "shatter")
 	elif vv >= CRACK_V and e.crack_cd <= 0.0:
 		_crack(e)
-	elif v > 1.2:
-		Sfx.play("click", -18.0 + minf(v, 6.0), 0.6)
 
 func _crack(e) -> void:
 	e.crack()
 	any_cracks = true
 	Sfx.play("crack", -2.0, randf_range(0.9, 1.1))
 	Sfx.buzz(30, 0.6)
+	FX.shell(_fx, e.global_position, 5, 240.0)
+	FX.dust(_fx, e.global_position, Vector2.UP, 0.5, Color.WHITE)
 	cracked_egg.emit(e)
 	if e.cracks >= 3:
 		_break(e, "cracks")
@@ -742,6 +777,9 @@ func _burn_thorn(th: Dictionary) -> void:
 	th.alive = false
 	th.cp.set_deferred("disabled", true)
 	Sfx.play("burn", -4.0)
+	for ring in rings:
+		ring.art.queue_redraw()
+	FX.sparks(_fx, th.cp.global_position + Vector2.from_angle(th.a + th.cp.get_parent().rotation) * (th.base + th.tip) / 2.0 * G.PPM, 8, Color(1.0, 0.7, 0.3), 220.0)
 	_puff(th.cp.global_position + Vector2.from_angle(th.a + th.cp.get_parent().rotation) * (th.base + th.tip) / 2.0 * G.PPM, Color(0.3, 0.25, 0.2), 14)
 
 func _on_orb(orb, e) -> void:
@@ -795,12 +833,13 @@ func _save(e) -> void:
 	e.collision_mask = 0
 	var slot = _nest_pile
 	_nest_pile += 1
-	var dest = Vector2(nest_x * G.PPM + (slot - 1) * 34.0 * (0.9 if slot < 3 else 0.5), (ground_y - 0.2) * G.PPM - (12.0 if slot >= 3 else 0.0))
+	var dest = Vector2(nest_x * G.PPM + (slot - 1) * 34.0 * (0.9 if slot < 3 else 0.5), (ground_y - 0.3) * G.PPM - (12.0 if slot >= 3 else 0.0))
 	var tw = create_tween()
 	tw.tween_property(e, "position", dest, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(e, "rotation", 0.0, 0.35)
+	tw.tween_callback(e.cheer)
 	_sparkle(dest + global_position)
-	Sfx.play("save", 0.0)
+	Sfx.play("save", 0.0, 1.0 + 0.12 * slot)
 	Sfx.buzz(25, 0.5)
 	saved_egg.emit(e)
 	_check_end()
@@ -849,62 +888,24 @@ func falling_fast() -> bool:
 	return false
 
 # ---------------------------------------------------------------- effects
-func _burst(p: Vector2, n: int, cols: Array, vel: Vector2, grav: float, size: Vector2, life := 0.8) -> void:
-	var ps = CPUParticles2D.new()
-	ps.one_shot = true
-	ps.explosiveness = 0.95
-	ps.amount = n
-	ps.lifetime = life
-	ps.global_position = p
-	ps.direction = Vector2(0, -1)
-	ps.spread = 180.0
-	ps.initial_velocity_min = vel.x
-	ps.initial_velocity_max = vel.y
-	ps.gravity = Vector2(0, grav)
-	ps.scale_amount_min = size.x
-	ps.scale_amount_max = size.y
-	ps.angular_velocity_min = -400
-	ps.angular_velocity_max = 400
-	var gr = Gradient.new()
-	gr.set_color(0, cols[0])
-	gr.set_color(1, cols[cols.size() - 1])
-	ps.color_initial_ramp = gr
-	var fade = Gradient.new()
-	fade.set_color(0, Color.WHITE)
-	fade.set_color(1, Color(1, 1, 1, 0))
-	fade.add_point(0.7, Color.WHITE)
-	ps.color_ramp = fade
-	_fx.add_child(ps)
-	ps.global_position = p
-	ps.emitting = true
-	ps.finished.connect(ps.queue_free)
-
 func _shards(p: Vector2, ground: bool) -> void:
-	_burst(p, 18, [Color("fffaf0"), Color("efd3a8")], Vector2(120, 380), 1400.0, Vector2(5, 9), 0.9)
-	_burst(p, 14, [Color("ffd23a"), Color("ff9f1a")], Vector2(60, 240 if ground else 160), 1200.0, Vector2(4, 8), 0.7)
+	FX.shell(_fx, p, 14, 420.0)
+	FX.yolk(_fx, p, 12, 300.0 if ground else 200.0)
+	FX.dust(_fx, p, Vector2.UP, 0.9, Color.WHITE)
 
 func _sparkle(p: Vector2) -> void:
-	_burst(p, 22, [Color("fff59a"), Color("ffffff")], Vector2(100, 260), 200.0, Vector2(3, 7), 0.7)
+	FX.sparks(_fx, p, 16, Color(1.0, 0.95, 0.7), 300.0, 26.0)
+	FX.dust(_fx, p + Vector2(0, 10), Vector2.UP, 0.5, Color("F1D18A"))
 
 func _puff(p: Vector2, c: Color, n: int) -> void:
-	_burst(p, n, [c, c.lightened(0.3)], Vector2(30, 90), -120.0, Vector2(5, 10), 0.8)
+	FX.smoke(_fx, p, n, c)
 
 func _draw() -> void:
-	# vault back-plate: a deep translucent disc (radial gradient, darker at the rim) so cream eggs and wood rings
-	# both read clearly against it, plus a thin light rim
-	var R = (outer_r + 0.22) * G.PPM
-	# triangle fan sent as a raw triangle list (a polygon through the centre would fail to triangulate)
-	var fan = PackedVector2Array([Vector2.ZERO])
-	var cols = PackedColorArray([Color(0.16, 0.46, 0.62, 0.22)])
-	var idx = PackedInt32Array()
-	for k in 64:
-		fan.append(Vector2.from_angle(TAU * k / 64.0) * R)
-		cols.append(Color(0.10, 0.33, 0.50, 0.36))
-		idx.append_array([0, 1 + k, 1 + (k + 1) % 64])
-	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), idx, fan, cols)
-	draw_arc(Vector2.ZERO, R, 0, TAU, 96, Color(1, 1, 1, 0.35), 4.0, true)
-	# yolk splats on the ground
-	for s in splats:
-		var c = Vector2(s.x, ground_y * G.PPM - 2.0)
-		draw_colored_polygon(G.ellipse(c, 30.0 * s.s, 6.0 * s.s, 20), Color("ffc93a"))
-		draw_colored_polygon(G.ellipse(c + Vector2(4, -1), 12.0 * s.s, 4.0 * s.s, 16), Color("ff9f1a"))
+	# yolk splats on the ground: a glossy yolk on a spread of white
+	for sp in splats:
+		var c = Vector2(sp.x, ground_y * G.PPM - 1.0)
+		draw_colored_polygon(G.ellipse(c + Vector2(0, 2), 46.0 * sp.s, 9.0 * sp.s, 24), Color(0.25, 0.15, 0.05, 0.25))
+		draw_colored_polygon(G.ellipse(c, 44.0 * sp.s, 8.0 * sp.s, 24), Color("FFFDF4"))
+		draw_colored_polygon(G.ellipse(c + Vector2(3, -2), 17.0 * sp.s, 6.5 * sp.s, 18), Color("E08A00"))
+		draw_colored_polygon(G.ellipse(c + Vector2(3, -3), 15.0 * sp.s, 5.5 * sp.s, 18), Color("FFC21A"))
+		draw_colored_polygon(G.ellipse(c + Vector2(-2, -5), 5.0 * sp.s, 1.6 * sp.s, 10), Color(1, 1, 1, 0.8))

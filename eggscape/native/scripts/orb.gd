@@ -16,6 +16,7 @@ var ph = 0.0
 var sway = 1.0
 var src = "start"
 var flying = false
+var _light
 
 func _ready() -> void:
 	collision_layer = 0
@@ -27,6 +28,10 @@ func _ready() -> void:
 	add_child(cs)
 	body_entered.connect(_on_body)
 	z_index = 2
+	var halo: Color = {"fire_red": Color(1.0, 0.55, 0.15), "fire_green": Color(0.35, 0.85, 0.35), "twin": Color(1.0, 0.55, 0.7),
+		"curse": Color(0.6, 0.35, 0.95), "thorn": Color(0.85, 0.25, 0.2)}.get(kind, Color.WHITE)
+	_light = preload("res://scripts/fx.gd").light(self, Color(halo, 0.55), 150.0)
+	_light.show_behind_parent = true
 
 func _on_body(b: Node) -> void:
 	if used or not b.has_method("crack") or not b.alive or b.saved:
@@ -40,6 +45,8 @@ func _on_body(b: Node) -> void:
 
 func _process(dt: float) -> void:
 	t += dt
+	if _light:
+		_light.scale = Vector2.ONE * (150.0 + 14.0 * sin(t * 6.0)) / 128.0
 	queue_redraw()
 
 func _flame(r: float, outer: Color, mid: Color, core: Color, hot: Color) -> void:
@@ -58,8 +65,7 @@ func _draw() -> void:
 	var r = 0.2 * G.PPM * (1.0 + 0.05 * sin(t * 5.0))
 	var halo: Color = {"fire_red": Color(1.0, 0.55, 0.15), "fire_green": Color(0.35, 0.85, 0.35), "twin": Color(1.0, 0.55, 0.7),
 		"curse": Color(0.6, 0.35, 0.95), "thorn": Color(0.85, 0.25, 0.2)}.get(kind, Color.WHITE)
-	draw_circle(Vector2.ZERO, r * 1.7, Color(halo, 0.16))
-	draw_circle(Vector2.ZERO, r * 1.3, Color(halo, 0.22))
+	draw_circle(Vector2.ZERO, r * 1.16, Color(halo.darkened(0.6), 0.9))
 	match kind:
 		"fire_green":
 			_flame(r, Color("2FA84A"), Color("47C25E"), Color("B6F27A"), Color("F0FFD8"))

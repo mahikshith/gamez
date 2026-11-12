@@ -114,7 +114,7 @@ func _layout() -> void:
 	var bottom = sz.y - UI.safe_bottom()
 	Z.sz = sz
 	Z.header = Rect2(16, top, sz.x - 32, 78)
-	Z.button = Rect2(sz.x / 2 - minf(520.0, sz.x - 64.0) / 2, bottom - 84 - 36, minf(520.0, sz.x - 64.0), 84)
+	Z.button = Rect2(sz.x / 2 - minf(520.0, sz.x - 64.0) / 2, bottom - 100 - 30, minf(520.0, sz.x - 64.0), 100)
 	var hen_h = clampf(sz.y * 0.13, 120.0, 170.0)
 	Z.hen_h = hen_h
 	Z.hen = Vector2(sz.x * 0.5, Z.button.position.y - 14.0)
@@ -336,7 +336,9 @@ func _draw() -> void:
 			c.begin_path()
 			c.round_rect(rr.position.x, rr.position.y, rr.size.x, rr.size.y, 30.0 * (1.0 - k))
 			c.clip_path()
-		Art.draw(c, world, rr, t, false)
+		# the farm's level page shows the live parallax backdrop itself; other worlds paint their scene
+		if not (world == 0 and k >= 0.999):
+			Art.draw(c, world, rr, t, false)
 		c.restore()
 	if mode == "levels" and zoom >= 1.0:
 		_levels(c)
@@ -386,8 +388,14 @@ func _card(c, i: int, r: Rect2) -> void:
 	c.round_rect(r.position.x, r.position.y + 8, r.size.x, r.size.y, 30)
 	c.fill_path(Color(W.tile).darkened(0.3))
 	c.begin_path()
+	c.round_rect(r.position.x - 4, r.position.y - 4, r.size.x + 8, r.size.y + 16, 34)
+	c.fill_path(Color(W.tile).darkened(0.62))
+	c.begin_path()
+	c.round_rect(r.position.x, r.position.y + 8, r.size.x, r.size.y, 30)
+	c.fill_path(Color(W.tile).darkened(0.3))
+	c.begin_path()
 	c.round_rect(r.position.x, r.position.y, r.size.x, r.size.y, 30)
-	c.fill_path(Color.WHITE)
+	c.fill_path(Color("FFF6E4"))
 	var art = Rect2(r.position + Vector2(10, 10), Vector2(r.size.x - 20, r.size.y * 0.7))
 	c.save()
 	c.begin_path()
@@ -424,25 +432,10 @@ func _card(c, i: int, r: Rect2) -> void:
 	if not open:
 		_padlock(c, art.get_center() + Vector2(0, -4), 1.25, 0.0)
 
-func _padlock(c, p: Vector2, s: float, burst: float) -> void:
+func _padlock(c, p: Vector2, sc: float, burst: float) -> void:
 	if burst >= 1.0:
 		return
-	c.save()
-	c.translate(p.x, p.y)
-	c.scale(s * (1.0 + burst * 0.6), s * (1.0 + burst * 0.6))
-	c.alpha *= 1.0 - burst
-	c.begin_path()
-	c.ellipse(0, -12 - burst * 16.0, 15, 17, 0.0, PI, TAU)
-	c.stroke_path(Color("5E5650"), 8)
-	c.begin_path()
-	c.round_rect(-24, -14, 48, 38, 9)
-	c.fill_path(Color("FFC21A"))
-	c.begin_path()
-	c.round_rect(-24, 10, 48, 14, 7)
-	c.fill_path(Color("E59A00"))
-	c.dot(0, 2, 5, Color("7A5A10"))
-	c.fill_rect(-2.5, 2, 5, 11, Color("7A5A10"))
-	c.restore()
+	UI.padlock(self, c.T * p, c.sc() * sc * (1.0 + burst * 0.6), burst)
 
 func _levels(c) -> void:
 	var ids = _levels_of(world)
@@ -466,30 +459,21 @@ func _levels(c) -> void:
 		c.translate(r.get_center().x + sh, r.get_center().y)
 		c.scale(s, s)
 		var R = Rect2(-r.size / 2, r.size)
+		var T0: Transform2D = c.T
+		var kk = c.sc()
+		var SR = Rect2(T0 * R.position, R.size * kk)
 		if cur:
-			c.begin_path()
-			c.round_rect(R.position.x - 12, R.position.y - 12, R.size.x + 24, R.size.y + 34, 34)
-			c.fill_path(Color(1, 1, 1, 0.35 + 0.15 * sin(t * 4.0)))
-		c.begin_path()
-		c.round_rect(R.position.x, R.position.y + 10, R.size.x, R.size.y, 28)
-		c.fill_path(col.darkened(0.3))
-		c.begin_path()
-		c.round_rect(R.position.x, R.position.y, R.size.x, R.size.y, 28)
-		c.fill_path(col)
-		c.begin_path()
-		c.round_rect(R.position.x + 10, R.position.y + 8, R.size.x - 20, R.size.y * 0.36, 18)
-		c.fill_path(Color(1, 1, 1, 0.16))
+			UI.rounded(self, SR.grow(13 * kk), Color(1, 1, 1, 0.45 + 0.2 * sin(t * 4.0)), 40 * kk)
+		UI.slab(self, SR, col, 30 * kk, 10 * kk, 0.0, 4.0 * kk)
 		if locked or (unlock > 0.0 and unlock < 1.0):
-			_padlock(c, Vector2(0, -6), R.size.x / 110.0, maxf(0.0, (unlock - 0.5) * 2.0))
+			_padlock(c, Vector2(0, -10), R.size.x / 100.0, maxf(0.0, (unlock - 0.5) * 2.0))
 		if not locked:
-			var T = c.T
-			_text_at(T * Vector2(0, R.size.y * 0.1), str(int(levels[i].id)), R.size.x * 0.42 * c.sc(), Color.WHITE, col.darkened(0.35))
+			UI.text(self, T0 * Vector2(0, R.size.y * 0.06), str(int(levels[i].id)), int(R.size.x * 0.5 * kk), Color.WHITE, col.darkened(0.6), int(12 * kk))
 			var st = _stars(i)
 			var sp = _star_pop.get(i, 1.0)
 			for j in 3:
-				var p = Vector2((j - 1) * R.size.x * 0.25, R.size.y * 0.32 - (6.0 if j == 1 else 0.0))
-				var big = R.size.x * (0.13 if j == 1 else 0.115)
-				_star(c, p, big, j < st, sp)
+				var p = Vector2((j - 1) * R.size.x * 0.27, R.size.y * 0.27 - (5.0 if j == 1 else 0.0))
+				UI.star(self, T0 * p, R.size.x * (0.125 if j == 1 else 0.105) * kk, j < st, sp)
 		if boss:
 			c.save()
 			c.translate(R.size.x * 0.36, -R.size.y * 0.48)
@@ -528,26 +512,28 @@ func _star(c, p: Vector2, r: float, on: bool, k: float) -> void:
 func _header(c) -> void:
 	var h: Rect2 = Z.header
 	var coins = int(save.get("coins", 0))
-	var f = UI.font(900)
+	var f = UI.display()
 	var cw = f.get_string_size(str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
 	var pill = Rect2(h.end.x - cw - 84, h.position.y + 10, cw + 84, 58)
-	UI.rounded(self, pill, Color(1, 1, 1, 0.95), 29)
+	UI.pill(self, pill)
 	UI.icon(self, "coin", Vector2(pill.position.x + 32, pill.get_center().y), 36.0, UI.GOLD)
 	draw_string(f, Vector2(pill.position.x + 58, pill.get_center().y + 11), str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, UI.INK)
 	if mode == "levels" and zoom >= 1.0:
 		var b: Rect2 = Z.back
-		draw_circle(b.get_center() + Vector2(0, 5), b.size.x / 2, Color(0, 0, 0, 0.2))
-		draw_circle(b.get_center(), b.size.x / 2, Color.WHITE)
-		var a = b.get_center()
-		draw_polyline(PackedVector2Array([a + Vector2(8, -16), a + Vector2(-10, 0), a + Vector2(8, 16)]), UI.INK, 9.0, true)
-		draw_circle(a + Vector2(-10, 0), 4.5, UI.INK)
-		draw_circle(a + Vector2(8, -16), 4.5, UI.INK)
-		draw_circle(a + Vector2(8, 16), 4.5, UI.INK)
+		UI.slab(self, Rect2(b.position, b.size - Vector2(0, 2)), UI.BLUE, 37.0, 6.0)
+		var a = b.get_center() + Vector2(-2, -4)
+		var arrow = PackedVector2Array([a + Vector2(8, -15), a + Vector2(-9, 0), a + Vector2(8, 15)])
+		draw_polyline(arrow, Color("0B4F7A"), 15.0, true)
+		for q in arrow:
+			draw_circle(q, 7.5, Color("0B4F7A"))
+		draw_polyline(arrow, Color.WHITE, 8.0, true)
+		for q in arrow:
+			draw_circle(q, 4.0, Color.WHITE)
 		var W = Art.WORLDS[world]
 		var x0 = b.end.x + 14
 		var x1 = pill.position.x - 14
 		var wp = Rect2(x0, h.position.y + 6, x1 - x0, 66)
-		UI.rounded(self, wp, Color(1, 1, 1, 0.95), 24)
+		UI.pill(self, Rect2(wp.position + Vector2(0, 4), Vector2(wp.size.x, 58)))
 		var ids = _levels_of(world)
 		var got = 0
 		for j in ids:
@@ -569,7 +555,7 @@ func _header(c) -> void:
 			fs -= 2
 		var tw = f.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		var tp = Rect2(h.position.x, h.position.y + 6, tw + 48, 66)
-		UI.rounded(self, tp, Color(1, 1, 1, 0.95), 24)
+		UI.pill(self, Rect2(tp.position + Vector2(0, 4), Vector2(tp.size.x, 58)))
 		draw_string(f, Vector2(tp.position.x + 24, tp.get_center().y + fs * 0.36), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UI.INK)
 
 func _dots() -> void:
@@ -582,7 +568,7 @@ func _dots() -> void:
 		draw_circle(Vector2(x0 + i * gap, Z.dots_y), r, Color(1, 1, 1, 0.5 + 0.5 * maxf(0.0, 1.0 - d)))
 
 func _star_count(p: Vector2, got: int, of: int, size: float) -> void:
-	var f = UI.font(900)
+	var f = UI.display()
 	var s = "%d / %d" % [got, of]
 	var fs = int(size)
 	var w = f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
@@ -591,7 +577,7 @@ func _star_count(p: Vector2, got: int, of: int, size: float) -> void:
 	draw_string(f, Vector2(x0 + size * 1.4, p.y), s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UI.MUTED)
 
 func _text_at(p: Vector2, s: String, size: float, col: Color, shadow := Color(0, 0, 0, 0)) -> void:
-	var f = UI.font(900)
+	var f = UI.display()
 	var fs = maxi(8, int(size))
 	var w = f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	if shadow.a > 0.0:

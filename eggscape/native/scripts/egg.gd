@@ -4,6 +4,8 @@ extends RigidBody2D
 
 const G = preload("res://scripts/g.gd")
 signal hit(egg, kind: String, speed: float, node: Node)
+# cosmetic twin of `hit`: every new contact with where it happened, for dust, sound and the squash
+signal bump(egg, kind: String, speed: float, at: Vector2, normal: Vector2)
 
 var cracks = 0
 var crack_lines = []
@@ -29,6 +31,13 @@ var _keys = {}
 var _hull: PackedVector2Array
 var _flame: CPUParticles2D
 var t = randf() * 10.0
+var sq = 0.0 # squash spring along sq_dir (world): < 0 squashed, > 0 stretched
+var sq_v = 0.0
+var sq_dir = Vector2.UP
+var joy = 0.0
+var _stretch = 0.0
+var _blink = randf() * 3.0
+var _chips = []
 
 func _init() -> void:
 	mass = 1.0
@@ -101,6 +110,10 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		var rel = _pv - state.get_contact_collider_velocity_at_position(i)
 		var v = absf(rel.dot(n)) / G.PPM
 		hit.emit(self, kind, v, node)
+		if v > 0.7:
+			sq_dir = n
+			sq_v -= minf(v, 7.0) * 1.5
+		bump.emit(self, kind, v, state.get_contact_collider_position(i), n)
 	_keys = now
 	_pv = state.linear_velocity
 
@@ -117,12 +130,23 @@ func _physics_process(dt: float) -> void:
 func _process(dt: float) -> void:
 	t += dt
 	var sp = linear_velocity.length() / G.PPM
-	fear = move_toward(fear, 1.0 if (sp > 3.2 and linear_velocity.y > 0.0) else 0.0, dt * 4.0)
+	fear = move_toward(fear, 1.0 if (sp > 3.2 and linear_velocity.y > 0.0 and not saved) else 0.0, dt * 4.0)
+	joy = move_toward(joy, 1.0 if saved else 0.0, dt * 5.0)
+	# squash spring, and a stretch along the fall while it drops
+	sq_v += (-260.0 * sq - 17.0 * sq_v) * dt
+	sq = clampf(sq + sq_v * dt, -0.24, 0.2)
+	_stretch = lerpf(_stretch, clampf((sp - 2.0) / 5.0, 0.0, 1.0) * 0.13 if not saved else 0.0, 1.0 - exp(-dt * 10.0))
 	queue_redraw()
+
+# a little hop of joy (the nest calls it when the egg is home)
+func cheer() -> void:
+	sq_dir = Vector2.UP
+	sq_v = 3.2
 
 func mend() -> void:
 	cracks = 0
 	crack_lines.clear()
+	_chips.clear()
 
 func crack() -> void:
 	cracks += 1
@@ -134,50 +158,99 @@ func crack() -> void:
 		start += dir.rotated(randf_range(-0.9, 0.9)) * randf_range(5, 9)
 		pts.append(start)
 	crack_lines.append(pts)
+	# branch: a short spur off the middle so it reads as a fracture, not a scratch
+	var mid = pts[2]
+	crack_lines.append(PackedVector2Array([mid, mid + dir.rotated(1.3) * randf_range(5, 8), mid + dir.rotated(1.0) * randf_range(9, 13)]))
+	if cracks >= 2:
+		_chips.append(Vector2.from_angle(randf() * TAU))
 
 func _draw() -> void:
-	var s = G.PPM
-	# body (the hull rotates with the body; the face below counter-rotates to stay upright-ish)
-	var base = Color("FFF8EC") if fire <= 0.0 else Color("FFE2BC")
-	# soft contact shadow so the egg sits on the vault, not on top of the screen
-	var sh_pts = PackedVector2Array()
-	for p in _hull:
-		sh_pts.append(p * 1.04 + Vector2(0, 3).rotated(-rotation))
-	draw_colored_polygon(sh_pts, Color(0.05, 0.1, 0.15, 0.22))
+	# everything is drawn in a frame that squashes / stretches along a world direction while the hull turns with the body
+	var s = sq
+	var dirn: Vector2 = sq_dir
+	var vel = linear_velocity
+	if _stretch > absf(s) and vel.length() > 1.0:
+		s = _stretch
+		dirn = vel.normalized()
+	var ax = dirn.rotated(-rotation)
+	var k1 = 1.0 + s
+	var k2 = 1.0 / sqrt(maxf(0.5, k1))
+	var px = Vector2(-ax.y, ax.x)
+	var m = Transform2D(Vector2(ax.x * ax.x * k1 + px.x * px.x * k2, ax.y * ax.x * k1 + px.y * px.x * k2),
+		Vector2(ax.x * ax.y * k1 + px.x * px.y * k2, ax.y * ax.y * k1 + px.y * px.y * k2), ax * (minf(s, 0.0) * 24.0))
+	var up = Vector2.UP.rotated(-rotation)
+	var lt = Vector2(-0.55, -0.83).rotated(-rotation) # toward the light, in body space
+	# contact shadow (not squashed), then auras
+	draw_colored_polygon(G.ellipse(-up * 7.0 + lt * -5.0, 24.0, 27.0, 20), Color(0.02, 0.05, 0.1, 0.22))
 	if glow > 0.0:
 		draw_circle(Vector2.ZERO, 40.0, Color(0.42, 0.88, 0.42, 0.35 * minf(1.0, glow)))
 	if curse > 0.0:
 		draw_circle(Vector2.ZERO, 38.0, Color(0.6, 0.35, 0.95, 0.22 + 0.1 * sin(t * 12.0)))
-	draw_colored_polygon(_hull, base)
-	# shade crescent on the lower right: hull minus itself shifted up-left
-	var off = PackedVector2Array()
+	if fire > 0.0:
+		draw_circle(Vector2.ZERO, 36.0 + 2.0 * sin(t * 17.0), Color(1.0, 0.6, 0.15, 0.35))
+	draw_set_transform_matrix(m)
+	# outline
+	var ol = PackedVector2Array()
 	for p in _hull:
-		off.append(p * 0.97 + Vector2(-5, -6))
-	for poly in Geometry2D.clip_polygons(_hull, off):
-		draw_colored_polygon(poly, Color("F2D6AA"))
-	draw_colored_polygon(G.ellipse(Vector2(-7, -12), 4.5, 7.5, 14, -0.3), Color(1, 1, 1, 0.9))
+		ol.append(p + p.normalized() * 2.6)
+	draw_colored_polygon(ol, Color("6B4A2A") if fire <= 0.0 else Color("9A3A0A"))
+	# shell: a fan from the lit spot out to the rim, the rim darker away from the light
+	var lit = Color("FFFEF8") if fire <= 0.0 else Color("FFF1C9")
+	var mid = Color("FFF1DA") if fire <= 0.0 else Color("FFC98A")
+	var dark = Color("E2B981") if fire <= 0.0 else Color("F08A3C")
+	var c0 = lt * 8.0
+	var pts = PackedVector2Array([c0])
+	var cols = PackedColorArray([lit])
+	var idx = PackedInt32Array()
+	var n = _hull.size()
+	for i in n:
+		var p = _hull[i]
+		pts.append(p)
+		var away = clampf(0.5 - 0.5 * p.normalized().dot(lt), 0.0, 1.0)
+		cols.append(mid.lerp(dark, smoothstep(0.35, 1.0, away)))
+		idx.append_array([0, 1 + i, 1 + (i + 1) % n])
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), idx, pts, cols, PackedVector2Array(), PackedInt32Array(), PackedFloat32Array(), RID(), -1)
+	# specular + soft bounce on the shaded side
+	draw_colored_polygon(G.ellipse(lt * 14.0, 4.2, 7.0, 14, lt.angle() + PI / 2), Color(1, 1, 1, 0.95))
+	draw_circle(lt * 7.0 + Vector2(-lt.y, lt.x) * -7.0, 1.8, Color(1, 1, 1, 0.8))
 	for c in crack_lines:
-		draw_polyline(c, Color("8A5A2E"), 2.2, true)
-	# face: counter-rotate so the eyes stay level
-	draw_set_transform(Vector2.ZERO, -rotation * 0.8, Vector2.ONE)
-	var look = linear_velocity.normalized() * 1.5 if linear_velocity.length() > 30.0 else Vector2.ZERO
-	var er = lerpf(2.6, 4.0, fear)
+		draw_polyline(c, Color("5A371A"), 2.6, true)
+		var hl = PackedVector2Array()
+		for p in c:
+			hl.append(p + Vector2(1.2, 1.2))
+		draw_polyline(hl, Color(1, 1, 1, 0.55), 1.0, true)
+	for ch in _chips:
+		# a chipped notch on the rim: a dark wedge with a pale lip
+		var a = ch.angle()
+		var e0 = _hull[int(fposmod(a, TAU) / TAU * n) % n]
+		draw_colored_polygon(PackedVector2Array([e0 * 1.04, e0 * 0.7 + Vector2(-e0.y, e0.x).normalized() * 5.0, e0 * 0.74 - Vector2(-e0.y, e0.x).normalized() * 4.0]), Color("5A371A"))
+	# face: stays nearly upright in the world while the shell rolls
+	var fm = m * Transform2D(-rotation * 0.85, Vector2.ZERO)
+	draw_set_transform_matrix(fm)
+	var ink = Color("3A2618")
+	var look = vel.normalized() * 1.6 if vel.length() > 30.0 else Vector2.ZERO
+	_blink -= get_process_delta_time()
+	if _blink < -0.12:
+		_blink = randf_range(2.0, 4.5)
 	for side in [-1, 1]:
-		var e = Vector2(side * 6.0, 2.0)
-		if fear > 0.5:
-			draw_circle(e, er + 1.2, Color.WHITE)
-			draw_circle(e + look, er * 0.6, Color("3A2618"))
+		var e = Vector2(side * 7.0, 1.0)
+		if joy > 0.5:
+			draw_arc(e + Vector2(0, 1.5), 3.6, PI + 0.35, TAU - 0.35, 8, ink, 2.2, true)
+		elif fear > 0.5:
+			draw_circle(e, 5.4, ink)
+			draw_circle(e, 4.4, Color.WHITE)
+			draw_circle(e + look, 2.3, ink)
+		elif _blink < 0.0:
+			draw_line(e + Vector2(-3.0, 0), e + Vector2(3.0, 0), ink, 2.2, true)
 		else:
-			var blink = fmod(t, 3.7) < 0.12
-			if blink:
-				draw_line(e + Vector2(-2.5, 0), e + Vector2(2.5, 0), Color("3A2618"), 2.0, true)
-			else:
-				draw_circle(e + look, er, Color("3A2618"))
-				draw_circle(e + look + Vector2(-0.8, -1.0), 0.9, Color.WHITE)
-	if fear > 0.5:
-		draw_circle(Vector2(0, 10), 2.6, Color("3A2618"))
+			draw_circle(e + look, 3.4, ink)
+			draw_circle(e + look + Vector2(-1.0, -1.2), 1.25, Color.WHITE)
+	if joy > 0.5:
+		draw_colored_polygon(PackedVector2Array([Vector2(-4, 7), Vector2(4, 7), Vector2(2.4, 11.5), Vector2(-2.4, 11.5)]), ink)
+	elif fear > 0.5:
+		draw_colored_polygon(G.ellipse(Vector2(0, 11), 3.0, 3.8, 12), ink)
 	else:
-		draw_arc(Vector2(0, 7), 3.0, 0.3, PI - 0.3, 8, Color("3A2618"), 1.6, true)
-	draw_circle(Vector2(-10, 8), 2.5, Color(1, 0.5, 0.5, 0.45))
-	draw_circle(Vector2(10, 8), 2.5, Color(1, 0.5, 0.5, 0.45))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_arc(Vector2(0, 7), 3.4, 0.35, PI - 0.35, 8, ink, 1.9, true)
+	draw_circle(Vector2(-12.5, 8), 3.0, Color(1, 0.45, 0.45, 0.5))
+	draw_circle(Vector2(12.5, 8), 3.0, Color(1, 0.45, 0.45, 0.5))
+	draw_set_transform_matrix(Transform2D.IDENTITY)
