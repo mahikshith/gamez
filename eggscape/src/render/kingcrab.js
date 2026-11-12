@@ -3,7 +3,7 @@
 // style (dark outline, two-tone shading, no pale rims). ctx is in world space (m, y up). The body is drawn in a local
 // y-DOWN px space whose "up" (-y) points at the vault; the arms are stroked in world space round the outside.
 // Also: the boss card, the boss-bar emblem and the boss-bar pips (screen space, y down).
-import { TAU } from '../sim/geom.js';
+import { TAU, RING_TH } from '../sim/geom.js';
 import { KC } from '../sim/kingcrab.js';
 import { ATTACK_NAME } from '../sim/boss.js';
 import { dizzyStars, spiralEye, boltStroke } from './status.js';
@@ -30,14 +30,25 @@ export function drawCrabBody(ctx, s, t, o = {}) {
   const br = 1 + 0.015 * Math.sin(t * 2.2), stamp = o.stamp || 0;
   ctx.save();
   ctx.translate(0, -stamp * 0.12 * s);
+  // v5 poses. rear: it squats and swells to blow bubbles (wind-up), then stretches up as it blows. tuck: legs pulled in, the
+  // shell spins (its width oscillates) for the whirlpool. toss: it leans away and rocks, flicking barnacles.
+  const rear = o.rear || 0, blow = o.blow || 0, tuck = o.tuck || 0, toss = o.toss || 0;
+  if (rear || blow || tuck || toss) {
+    const anchor = 0.2 * s;
+    ctx.translate(0, anchor);
+    const sq = rear * (1 - blow);
+    ctx.scale((1 + 0.07 * sq - 0.03 * blow) * (1 - tuck * 0.4 * (0.5 - 0.5 * Math.cos(o.spin || 0))), 1 - 0.1 * sq + 0.07 * blow - 0.1 * tuck);
+    ctx.rotate(toss * 0.09 * Math.sin(t * 9));
+    ctx.translate(0, -anchor);
+  }
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   // walking legs: four a side, splayed down onto the sea floor (local +y)
   for (let i = 0; i < 4; i++) {
     for (const sd of [-1, 1]) {
       const q = (o.legs || 0) + i * 1.7 + (sd > 0 ? 1.3 : 0), lift = Math.max(0, Math.sin(q)) * 0.05 * s;
       const hx = sd * (0.42 + i * 0.13) * s, hy = (0.12 + i * 0.03) * s;
-      const kx = sd * (0.82 + i * 0.17) * s, ky = (-0.05 + i * 0.05) * s - lift;
-      const fx = sd * (1.0 + i * 0.16) * s, fy = (0.42 + stamp * 0.12) * s - lift * 0.4;
+      const tk = 1 - 0.4 * tuck, kx = sd * (0.82 + i * 0.17) * s * tk, ky = (-0.05 + i * 0.05) * s - lift;
+      const fx = sd * (1.0 + i * 0.16) * s * tk, fy = (0.42 * (1 - 0.35 * tuck) + stamp * 0.12) * s - lift * 0.4;
       const reach = Math.cos(q) * 0.04 * s * sd; // the foot reaches and plants as the leg cycles
       limb(ctx, [[hx, hy], [kx + reach * 0.5, ky], [fx + reach, fy]], [lw * 1.7, lw * 1.35, lw * 0.35], i % 2 ? C.lo : C.shell, C.line, lw * 0.9);
       ctx.beginPath(); ctx.arc(kx + reach * 0.5 - lw * 0.3, ky - lw * 0.4, lw * 0.55, 0, TAU); ctx.fillStyle = C.hi; ctx.fill(); // knee glint
@@ -187,6 +198,7 @@ function strokeArm(ctx, pts, w, col) {
   ctx.lineWidth = w; ctx.strokeStyle = col; ctx.stroke();
 }
 function clawOpen(C, t) {
+  if (C.openO !== undefined) return C.openO;
   switch (C.ph) {
     case 'aim': return 0.45 + 0.55 * sstep(C.warn * 1.4) + (C.warn > 0.6 ? Math.sin(t * 28) * 0.08 : 0);
     case 'reach': case 'sweep': return 0.95;
@@ -299,6 +311,145 @@ export function iceShards(ctx, k, cx, cy, r, seed) {
     ctx.restore();
   }
 }
+
+// ---------------------------------------------------------------- v5 moves: bubble plume, barnacles, whirlpool
+// an idle claw doing the barnacle toss: it lifts, opens wide and shakes (wind-up), then snaps shut and flicks
+function clawView(sim, K, C, A, R) {
+  if (C.ph !== 'idle' || !(R.toss > 0.02)) return C;
+  const flick = A && A.name === 'barnacles' && A.ph === 'act' ? clamp(1 - A.t / A.dur, 0, 1) : 0;
+  const tg = A && A.tg && A.tg[C.id % A.tg.length], ring = tg && sim.rings[tg.ring], g = ring && ring.gaps[tg.gi];
+  const ga = g ? ring.body.getAngle() + g.a : C.th, dth = clamp(wrapA(ga - C.th), -0.7, 0.7) * 0.5 * R.toss;
+  return { ...C, th: C.th + dth, d: C.d + 0.5 * R.toss * (1 - flick) - 0.25 * flick, openO: flick > 0 ? Math.max(0, 1 - flick * 3) : 0.55 + 0.45 * R.toss + Math.sin(sim.t * 30) * 0.06 * R.toss };
+}
+const WATER_HI = 'rgba(214,246,255,';
+// one bubble: a thin same-hue rim, a faint body, a top-left highlight, a wobbling outline
+function drawBubble(ctx, x, y, r, t, seed, a, k) {
+  const wob = 0.07 * Math.sin(t * 6 + seed * 3.1), rx = r * (1 + wob), ry = r * (1 - wob), lw = Math.max(0.014, 1.1 / k);
+  ctx.globalAlpha = a;
+  ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+  ctx.fillStyle = 'rgba(170,225,250,0.30)'; ctx.fill();
+  ctx.lineWidth = lw; ctx.strokeStyle = WATER_HI + '0.85)'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y, rx * 0.74, Math.PI * 0.62, Math.PI * 0.98); ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = lw * 1.6; ctx.stroke(); // highlight, upper left (world y up)
+  ctx.beginPath(); ctx.arc(x + rx * 0.4, y - ry * 0.42, Math.max(0.01, rx * 0.1), 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fill();
+  ctx.globalAlpha = 1;
+}
+function drawPlume(ctx, sim, K, x, dir, alpha, tele, t, k) {
+  const R = sim.outerR, w = KC.bub.w, y0 = K.by + 0.55, y1 = R + 0.2, H = y1 - y0, f = flipOf(sim);
+  ctx.save();
+  // the column: a soft vertical band, brighter at its core
+  const gr = ctx.createLinearGradient(x - w, 0, x + w, 0);
+  gr.addColorStop(0, 'rgba(160,225,255,0)'); gr.addColorStop(0.5, `rgba(160,225,255,${(tele ? 0.16 : 0.34) * alpha})`); gr.addColorStop(1, 'rgba(160,225,255,0)');
+  ctx.fillStyle = gr; ctx.fillRect(x - w, Math.min(y0, y1), 2 * w, Math.abs(H));
+  if (tele) { // edges of where it will blow, and arrows for the way it sweeps
+    ctx.setLineDash([0.12, 0.1]); ctx.lineWidth = Math.max(0.02, 1.4 / k); ctx.strokeStyle = `rgba(220,248,255,${0.7 * alpha})`;
+    for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x + sx * w, y0); ctx.lineTo(x + sx * w, y1); ctx.stroke(); }
+    ctx.setLineDash([]);
+    for (let i = 0; i < 3; i++) {
+      const yy = y0 + H * (0.25 + i * 0.25), ph = ((t * 1.6 + i * 0.33) % 1), ax = x + dir * (0.15 + ph * 0.5);
+      ctx.globalAlpha = alpha * (1 - ph) * 0.9; ctx.beginPath(); ctx.moveTo(ax - dir * 0.16, yy + 0.16); ctx.lineTo(ax + dir * 0.08, yy); ctx.lineTo(ax - dir * 0.16, yy - 0.16);
+      ctx.lineWidth = Math.max(0.03, 2.2 / k); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#eafaff'; ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  // the bubbles: big ones rising and wobbling, small ones between
+  const N = tele ? 10 : 34;
+  for (let i = 0; i < N; i++) {
+    const h1 = Math.sin(i * 91.7 + 3) * 43758.5453, q1 = h1 - Math.floor(h1), h2 = Math.sin(i * 17.3 + 7) * 12345.678, q2 = h2 - Math.floor(h2);
+    const big = i % 3 === 0, r = (big ? 0.24 : 0.12) + q2 * (big ? 0.12 : 0.06), sp = 0.16 + q1 * 0.14;
+    const u = (t * sp + q2 * 7) % 1, yy = y0 + u * H, xx = x + (q1 * 2 - 1) * w * 0.8 + Math.sin(t * 2.2 + i) * 0.14 + dir * (tele ? 0 : -0.25 * (1 - u));
+    drawBubble(ctx, xx, yy, r * (0.6 + 0.5 * u), t, i, alpha * (u < 0.08 ? u / 0.08 : 1) * (tele ? 0.55 : 1), k);
+  }
+  // a burst of small bubbles at the crab's mouth
+  const mx = K.bx, my = K.by + 0.5 * f;
+  for (let i = 0; i < 5; i++) { const u = (t * 1.3 + i * 0.2) % 1; drawBubble(ctx, mx + Math.sin(i * 2 + t * 3) * 0.1 + (x - mx) * u * 0.9, my + u * 0.7, 0.05 + 0.05 * (1 - u), t, i + 40, alpha * (1 - u * 0.5), k); }
+  ctx.restore();
+}
+function drawWhirl(ctx, sim, c, dir, alpha, kk, t, k, tele) {
+  const rs = sim.rings, rIn = c > 0 ? rs[c - 1].r + RING_TH / 2 : 0.12, rOut = rs[c].r - RING_TH / 2;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.globalAlpha = alpha;
+  ctx.beginPath(); ctx.arc(0, 0, rOut, 0, TAU); ctx.arc(0, 0, rIn, 0, TAU, true); ctx.fillStyle = kk < 0.85 ? 'rgba(120,230,200,0.13)' : 'rgba(120,205,245,0.26)'; ctx.fill('evenodd');
+  const lanes = 4, lw0 = Math.max(0.045, 5.5 / k);
+  for (let i = 0; i < lanes; i++) {
+    const r = rIn + ((i + 0.5) / lanes) * (rOut - rIn), spd = dir * (1.2 + 0.5 * (i % 2)) * kk * (tele ? 0.6 : 1), a0 = t * spd + i * 1.9, len = 1.25 - 0.18 * i;
+    for (const [col, wd, off] of [['rgba(10,50,80,0.45)', 1.6, -0.018], [kk < 0.85 ? '#b6ffe6' : '#d6f4ff', 1, 0]]) {
+      const SEG = 6;
+      for (let j = 0; j < SEG; j++) {
+        const u0 = j / SEG, u1 = (j + 1) / SEG, h = dir > 0 ? 1 : -1; // tapered: thin at the tail, full at the head
+        ctx.beginPath(); ctx.arc(0, off, r + off, a0 - h * len * (1 - u0), a0 - h * len * (1 - u1 - 0.002), dir < 0);
+        ctx.lineWidth = lw0 * wd * (0.25 + 0.75 * u1); ctx.strokeStyle = col; ctx.globalAlpha = alpha * (0.25 + 0.75 * u1); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = alpha;
+    const ha = a0, hx = r * Math.cos(ha), hy = r * Math.sin(ha), tg = ha + (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+    ctx.beginPath(); ctx.moveTo(hx + Math.cos(tg) * 0.1 + Math.cos(ha) * 0.07, hy + Math.sin(tg) * 0.1 + Math.sin(ha) * 0.07); ctx.lineTo(hx + Math.cos(tg) * 0.17, hy + Math.sin(tg) * 0.17); ctx.lineTo(hx + Math.cos(tg) * 0.1 - Math.cos(ha) * 0.07, hy + Math.sin(tg) * 0.1 - Math.sin(ha) * 0.07);
+    ctx.strokeStyle = '#eafaff'; ctx.lineWidth = lw0 * 0.8; ctx.lineJoin = 'round'; ctx.stroke();
+    for (let j = 0; j < 3; j++) { const ba = a0 + dir * (0.5 + j * 2.1 + i), br = r + Math.sin(t * 3 + j + i) * 0.15; drawBubble(ctx, br * Math.cos(ba), br * Math.sin(ba), 0.035 + 0.02 * j, t, i * 5 + j, alpha * 0.9, k); }
+  }
+  ctx.restore();
+}
+// a barnacle: ridged cone shell on the ring wall, apex toward the vault centre; it clamps (valves shut) when it lands
+export function drawBarnacle(ctx, x, y, ang, r, o, k) {
+  const lw = Math.max(0.016, 1.2 / k), sq = o.sq ?? 1, open = o.open ?? 0, cr = o.crack || 0;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang); // local: -y toward the vault centre (apex), +y toward the ring wall
+  ctx.scale(1 + (1 - sq) * 0.5, sq);
+  ctx.globalAlpha *= o.alpha ?? 1;
+  const L = '#2a2a24', B = r * 1.2, H = r * 1.75;
+  ctx.beginPath(); ctx.ellipse(0, B * 0.55, B * 1.0, B * 0.3, 0, 0, TAU); ctx.fillStyle = '#6f7468'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = L; ctx.stroke(); // the crusty base on the wall
+  const plates = 5;
+  for (let i = 0; i < plates; i++) {
+    const u0 = i / plates, u1 = (i + 1) / plates, x0 = (u0 * 2 - 1) * B * 0.82, x1 = (u1 * 2 - 1) * B * 0.82, ax0 = (u0 * 2 - 1) * B * 0.28, ax1 = (u1 * 2 - 1) * B * 0.28;
+    ctx.beginPath(); ctx.moveTo(x0, B * 0.5); ctx.quadraticCurveTo(x0 * 0.9, -H * 0.4, ax0, -H * 0.82); ctx.lineTo(ax1, -H * 0.82); ctx.quadraticCurveTo(x1 * 0.9, -H * 0.4, x1, B * 0.5); ctx.closePath();
+    ctx.fillStyle = i < 2 ? '#ece8d6' : i === 2 ? '#d2cdb8' : '#aaa68f'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = '#5a5a4c'; ctx.stroke();
+  }
+  ctx.beginPath(); ctx.ellipse(0, -H * 0.82, B * 0.3, B * 0.13 + open * B * 0.1, 0, 0, TAU); ctx.fillStyle = '#2a1e22'; ctx.fill(); ctx.strokeStyle = L; ctx.stroke(); // the mouth
+  if (open > 0.2) { ctx.strokeStyle = '#e88a9a'; ctx.lineWidth = lw * 1.3; for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(i * B * 0.1, -H * 0.82); ctx.lineTo(i * B * 0.16, -H * 0.82 - B * 0.28 * open); ctx.stroke(); } }
+  ctx.beginPath(); ctx.ellipse(-B * 0.42, -H * 0.15, B * 0.07, B * 0.3, 0.25, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fill(); // top-left light
+  if (cr > 0) { ctx.strokeStyle = '#3a3226'; ctx.lineWidth = lw * 1.2; ctx.beginPath(); ctx.moveTo(B * 0.1, -H * 0.8); ctx.lineTo(-B * 0.12, -H * 0.5); ctx.lineTo(B * 0.12, -H * 0.25); ctx.lineTo(-B * 0.05, B * 0.1); ctx.stroke(); }
+  ctx.restore();
+}
+function gapWorld(sim, tg) {
+  const ring = sim.rings[tg.ring], g = ring && ring.gaps[tg.gi];
+  if (!g) return null;
+  const a = ring.body.getAngle() + g.a, r = ring.r - RING_TH / 2 - KC.bar.r - 0.01;
+  return { x: r * Math.cos(a), y: r * Math.sin(a), a };
+}
+function drawKingFx(ctx, sim, K, A, R, t, k) {
+  // bubble plume: the warning column, then the sweeping plume
+  if (A && A.name === 'bubbles' && A.ph === 'warn') drawPlume(ctx, sim, K, A.x, A.dir, sstep(1 - A.t / A.dur), true, t, k);
+  if (K.bub) drawPlume(ctx, sim, K, K.bub.x, K.bub.dir, clamp(Math.min((K.bub.dur - K.bub.t) / 0.35, K.bub.t / 0.35), 0, 1), false, t, k);
+  // whirlpool
+  if (A && A.name === 'whirl' && A.ph === 'warn') drawWhirl(ctx, sim, A.ch, A.dir, sstep(1 - A.t / A.dur) * 0.75, 1, t, k, true);
+  if (K.whirl) drawWhirl(ctx, sim, K.whirl.ch, K.whirl.dir, clamp(Math.min((K.whirl.dur - K.whirl.t) / 0.4, K.whirl.t / 0.4), 0, 1), K.whirl.k ?? 1, t, k, false);
+  // barnacles: the target marks, the ones in flight, the ones clamped on
+  if (A && A.name === 'barnacles' && A.ph === 'warn' && A.tg) {
+    const w = sstep(1 - A.t / A.dur);
+    for (const T of A.tg) {
+      const p = gapWorld(sim, T); if (!p) continue;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.globalAlpha = (0.55 + 0.35 * Math.sin(t * 12)) * w;
+      ctx.setLineDash([0.1, 0.08]); ctx.lineWidth = Math.max(0.03, 2.2 / k); ctx.strokeStyle = '#2a1004'; ctx.beginPath(); ctx.arc(0, 0, KC.bar.r + 0.06, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = '#ffe0a0'; ctx.lineWidth = Math.max(0.02, 1.2 / k); ctx.beginPath(); ctx.arc(0, 0, KC.bar.r + 0.06, 0, TAU); ctx.stroke(); ctx.restore();
+    }
+  }
+  for (const b of K.bar) {
+    const ring = sim.rings[b.ring]; if (!ring) continue;
+    const dest = sim.kcBarPos(b), face = Math.atan2(dest.y, dest.x) + Math.PI / 2 + Math.PI; // apex toward the vault centre
+    if (!b.on) { // flight: from the claw, in an arc, spinning
+      const C = K.claws[b.id % 2], u = clamp(1 - b.fly / KC.bar.fly, 0, 1), sx = C.d * Math.cos(C.th), sy = C.d * Math.sin(C.th);
+      const px = sx + (dest.x - sx) * u, py = sy + (dest.y - sy) * u, arc = Math.sin(u * Math.PI) * 0.9;
+      drawBarnacle(ctx, px + Math.cos(face - Math.PI / 2 + Math.PI) * 0, py + arc * (sim.gy < 0 ? 1 : -1), face + u * 9, KC.bar.r * 0.8, { sq: 1 }, k);
+    } else {
+      const since = b.age - KC.bar.fly, sq = since < 0.35 ? 1 - 0.32 * Math.sin((since / 0.35) * Math.PI) * (1 - since / 0.35) * 1.5 : 1;
+      const left = b.life - since, alpha = left < 1.2 ? 0.55 + 0.45 * Math.abs(Math.sin(left * 9)) : 1;
+      drawBarnacle(ctx, dest.x, dest.y, face, KC.bar.r, { sq, open: since < 0.5 ? 0 : 0.5 + 0.5 * Math.sin(t * 2.5 + b.id), crack: b.bump, alpha }, k);
+      if (b.turn > 0.05) { // the scrape: a rim of grit that grows as its ring turns
+        const f = clamp(b.turn / KC.bar.scrape, 0, 1); ctx.save(); ctx.globalAlpha = 0.9; ctx.strokeStyle = '#ffd890'; ctx.lineWidth = Math.max(0.03, 2.4 / k);
+        ctx.beginPath(); ctx.arc(dest.x, dest.y, KC.bar.r + 0.1, face - Math.PI / 2 - f * Math.PI, face - Math.PI / 2 + f * Math.PI); ctx.stroke(); ctx.restore();
+      }
+    }
+  }
+}
 // before the eggs: the sea floor, the body, both arms and claws, the telegraph marks
 export function drawKingCrab(ctx, sim, t, k) {
   const K = sim.kc;
@@ -311,7 +462,20 @@ export function drawKingCrab(ctx, sim, t, k) {
   R.legs += Math.abs(K.bx - R.x) * 9; R.x = K.bx;
   const stuck = K.claws.some((C) => C.ph === 'stuck'), hurt = (B && B.flinch > 0) || K.claws.some((C) => C.ph === 'hurt');
   const silt = A && A.name === 'silt', stamp = silt && !ice ? (A.ph === 'warn' ? Math.abs(Math.sin(t * 9)) * sstep(1 - A.t / A.dur) : 0) : 0;
-  const eye = K.done ? 'x' : ice ? 'normal' : B && B.dizzy > 0 ? 'spiral' : hurt ? 'x' : stuck ? 'squeeze' : A && A.ph === 'warn' ? 'mad' : 'normal';
+  // v5 poses, eased so a pose is never a pop: rear (bubbles), tuck (whirl), toss (barnacles)
+  const dtt = clamp(t - (R.pt ?? t), 0, 0.1); R.pt = t;
+  const warnP = (nm) => (A && A.name === nm ? (A.ph === 'warn' ? sstep(1 - A.t / A.dur) : 1) : 0);
+  const tgt = {
+    rear: Math.max(warnP('bubbles'), K.bub ? clamp(K.bub.t / 0.6, 0, 1) : 0),
+    tuck: Math.max(warnP('whirl'), K.whirl ? clamp(K.whirl.t / 0.5, 0, 1) : 0),
+    toss: warnP('barnacles'),
+    blow: A && A.name === 'bubbles' && A.ph === 'act' || K.bub ? 1 : 0,
+  };
+  for (const q of ['rear', 'tuck', 'toss', 'blow']) R[q] = (R[q] || 0) + (tgt[q] - (R[q] || 0)) * Math.min(1, dtt * (q === 'blow' ? 14 : 7));
+  if (ice) for (const q of ['rear', 'tuck', 'toss', 'blow']) R[q] = 0;
+  R.spin = (R.spin || 0) + dtt * (3 + 13 * R.tuck) * (ice ? 0 : 1);
+  const posed = R.rear > 0.02 || R.tuck > 0.02 || R.toss > 0.02;
+  const eye = K.done ? 'x' : ice ? 'normal' : B && B.dizzy > 0 ? 'spiral' : hurt ? 'x' : stuck ? 'squeeze' : posed || (A && A.ph === 'warn') ? 'mad' : 'normal';
   const alpha = K.done ? clamp(1 - (K.sink - 1.2) / 1.0, 0, 1) : 1;
   if (alpha <= 0) return;
   const f = flipOf(sim);
@@ -321,12 +485,13 @@ export function drawKingCrab(ctx, sim, t, k) {
   pxSpace(ctx, K.bx, K.by, k, () => {
     if (f < 0) ctx.rotate(Math.PI);
     const bs = k * KC_BODY;
-    drawCrabBody(ctx, bs, th, { look: kcLook(sim, K), eye, flash: hurt && !ice ? 1 : 0, stamp, legs: R.legs, sweat: stuck && !ice, mouth: silt || hurt ? 1 : 0.3 + 0.2 * Math.sin(th * 2), ice });
+    drawCrabBody(ctx, bs, th, { look: kcLook(sim, K), eye, flash: hurt && !ice ? 1 : 0, stamp, legs: R.legs, sweat: stuck && !ice, mouth: silt || hurt ? 1 : R.rear > 0.05 ? 0.4 + 1.6 * R.rear : 0.3 + 0.2 * Math.sin(th * 2), ice, rear: R.rear, blow: R.blow * R.rear, tuck: R.tuck, toss: R.toss, spin: R.spin });
     if (ice) iceShards(ctx, bs, 0, -0.15 * bs, 0.9 * bs, 7);
     if (B && B.dizzy > 0 && !ice) dizzyStars(ctx, 0, -0.95 * bs, 0.45 * bs, 0.12 * bs, t, { n: 4, size: Math.max(5, bs * 0.13) });
   });
-  for (const C of K.claws) drawArm(ctx, sim, K, C, C.fz > 0 ? th : t, k, 'back', C.fz > 0 || K.fz > 0);
+  for (const C of K.claws) drawArm(ctx, sim, K, clawView(sim, K, C, A, R), C.fz > 0 ? th : t, k, 'back', C.fz > 0 || K.fz > 0);
   if (!K.done) for (const C of K.claws) if (C.ph === 'aim') drawAimMark(ctx, sim, C, t, k);
+  if (!K.done) drawKingFx(ctx, sim, K, A, R, t, k);
   ctx.restore();
   // a stuck claw: a bouncing arrow says "hit me"
   if (!K.done) for (const C of K.claws) {

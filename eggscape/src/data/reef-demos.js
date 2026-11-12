@@ -25,7 +25,7 @@ export const REEF_DEMOS = [
   },
   {
     ...base, id: 944, kind: 'kingcrab', name: 'King Crab', seed: 9444, boss: 'kingcrab', time: 160, hermit: { ch: 3, a: 160, delay: 8 }, jelly: { ch: 2, a: 0, delay: 3 },
-    bossFight: { kind: 'kingcrab', delay: 3, phases: [{ attacks: ['snap'], every: 5 }, { at: { saved: 1, t: 35 }, attacks: ['snap', 'silt'], every: 5 }, { at: { saved: 2, t: 70 }, attacks: ['snap2', 'silt'], every: 4.5 }] },
+    bossFight: { kind: 'kingcrab', delay: 3, phases: [{ attacks: ['snap', 'bubbles'], every: 5 }, { at: { saved: 1, t: 35 }, attacks: ['snap', 'barnacles', 'whirl'], every: 5 }, { at: { saved: 2, t: 70 }, attacks: ['snap2', 'bubbles', 'silt', 'whirl'], every: 4.5 }] },
     orbs: [{ type: 'warp', ch: 3, a: -90 }, { type: 'frostnova', ch: 1, a: 90 }],
     tip: 'Turn the ring while a claw is inside: it gets stuck. Then bump an egg into the claw.',
     rings: rings([{ a: 75 }, { a: -110 }]),

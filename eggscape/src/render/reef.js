@@ -528,6 +528,20 @@ export function reefEvent(ev, fx, U) {
     case 'kcGive': P(ev.x, ev.y + 0.4, 'Egg back!', { color: '#9cff8a', size: 17, life: 1 }); break;
     case 'kcDefeat': A.play('unlock', { vol: 0.9, pitch: 0.8 }); fx.shake = Math.max(fx.shake, 0.5); break;
     case 'kcSilt': A.play('rock_hit', { vol: 0.6, pitch: 0.5 }); fx.shake = Math.max(fx.shake, 0.2); break;
+    // King Crab moves (sim/kingcrab.js): first-time tips, sounds reuse existing sfx
+    case 'kcWarn':
+      if (ev.name === 'bubbles') { A.play('bubble_on', { vol: 0.6, pitch: 0.8 }); once('kcBub', 'Bubble barrage! The plume sweeps eggs along with it. Move your egg out of its way, or ride it.'); }
+      else if (ev.name === 'whirl') { A.play('wind_gust', { vol: 0.5, pitch: 0.6 }); once('kcWhirl', 'Whirlpool! It drags every egg in one channel round. Turn that ring against the current to slow it.'); }
+      else if (ev.name === 'barnacles') { A.play('steel_clang', { vol: 0.3, pitch: 1.7 }); once('kcBar', 'Barnacles! They clamp over gaps. Turn that ring a quarter turn, bump them twice, or use a blast.'); }
+      else if (ev.name === 'silt') once('kcSiltTip', 'Silt cloud! It hides part of the vault for a few seconds.');
+      break;
+    case 'kcBub': A.play('squish', { vol: 0.6, pitch: 0.5 }); fx.shake = Math.max(fx.shake, 0.12); break;
+    case 'kcBubEnd': A.play('bubble_pop', { vol: 0.5, pitch: 0.9 }); break;
+    case 'kcWhirl': A.play('wind_gust', { vol: 0.7, pitch: 0.45 }); fx.shake = Math.max(fx.shake, 0.12); break;
+    case 'kcBar': A.play('steel_clang', { vol: 0.5, pitch: 1.5 }); break;
+    case 'kcBarLand': A.play('rock_hit', { vol: 0.5, pitch: 1.3 }); break;
+    case 'kcBarBump': A.play('crack', { vol: 0.5, pitch: 1.4 }); P(ev.x, ev.y + 0.45, ev.n >= 2 ? 'Cracked!' : 'Bump!', { color: '#fff2a8', size: 16, life: 0.7 }); break;
+    case 'kcBarGone': A.play('bubble_pop', { vol: 0.6, pitch: 1.2 }); if (ev.why !== 'end' && ev.why !== 'peel') P(ev.x, ev.y + 0.45, ev.why === 'scrape' ? 'Scraped!' : 'Cleared!', { color: '#9cff8a', size: 16, life: 0.9 }); break;
   }
 }
 void RING_TH; void PUFF;

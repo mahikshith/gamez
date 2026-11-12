@@ -348,9 +348,9 @@ export const SPECS = [
   { id: 40, world: 8, theme: 'reef', name: 'King Crab', boss: 'kingcrab', eggs: 4, target: 2, spacing: 1.05, material: 'coral', minMoves: 5, water: true,
     nest: { w: 2.8 }, bonus: { kind: 'prize' }, jelly: { ch: 2, a: 150, delay: 4 },
     bossFight: { kind: 'kingcrab', delay: 2, phases: [
-      { attacks: ['snap'], every: 4.5 },
-      { at: { saved: 1, t: 35 }, attacks: ['snap', 'silt', 'snap'], every: 4 },
-      { at: { saved: 2, t: 70 }, attacks: ['snap2', 'silt', 'snap'], every: 3.5 },
+      { attacks: ['snap', 'bubbles'], every: 4.5 },
+      { at: { saved: 1, t: 35 }, attacks: ['snap', 'barnacles', 'snap', 'bubbles'], every: 4 },
+      { at: { saved: 2, t: 70 }, attacks: ['snap2', 'whirl', 'snap', 'barnacles', 'snap', 'bubbles', 'silt'], every: 3.3 },
     ] },
     orbs: [{ type: 'warp', ch: 4 }, { type: 'shock', ch: 3 }, { type: 'frostnova', ch: 1 }],
     intro: { title: 'Boss: King Crab', line: 'The King Crab reaches its claws in through lined-up gaps to snatch eggs. Turn the ring while a claw is inside: it gets stuck. Then hit the stuck claw with an egg or a zap.' },

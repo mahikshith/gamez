@@ -1,14 +1,21 @@
 // The KING CRAB (world 8 boss, L40). Mixed into Sim like sim/reef.js (which calls kcInit / kcStep / kcState / kcLoad).
 // All state is plain data in this.kc (and egg.hc: 2 = in a claw, 3 = in its pile), so rewind and the planner stay exact.
 //
-// level.bossFight = { kind: 'kingcrab', delay, hp?, phases: [{ at, attacks: ['snap' | 'snap2' | 'silt'], every, summon }] }
+// level.bossFight = { kind: 'kingcrab', delay, hp?, phases: [{ at, attacks: ['snap' | 'snap2' | 'silt' | 'bubbles' | 'barnacles' | 'whirl'], every, summon }] }
 //   boss.js runs the phases and the attack rhythm; this file runs the crab and its two claws.
 // The crab sits on top of the vault, its two great claws on long arms that reach round the outside.
 //   snap  : a claw rises outside the vault over a gap that lines up with an egg near it (the telegraph: claw raised and
 //           open, a target mark on the ring) and thrusts in through that gap. It snaps the egg and drags it out to its
 //           pile. If the gap has turned away when it thrusts, it bonks the solid ring and reels.
 //   snap2 : both claws at once, and they reach two rings deep where the gaps of both rings line up (Easy: one ring).
-//   silt  : it stamps and a silt cloud hides part of the vault for a few seconds (a jellyfish's glow lights it up).
+//   silt  : it stamps and a silt cloud hides part of the vault for a few seconds (a jellyfish's glow lights it up). RARE.
+//   bubbles   : it rears and blows a plume of big bubbles that sweeps across the vault from one side; eggs in it are carried
+//               along with it (and lifted). Counter: take the egg out of the plume's path (a gap up, a ring turned) or ride it.
+//   barnacles : it flicks 2-3 barnacles that clamp over the gaps nearest your eggs and plug them. Counter: turn that ring a
+//               quarter turn (it scrapes them off), bump an egg into one twice, or any blast power. They peel off on their own.
+//   whirl     : it tucks in and spins; a whirlpool drags every egg of one channel round toward its side. Counter: turn that
+//               channel's outer ring against the current (it slackens), or turn a gap to where the current carries the egg.
+//   (boss.js cycles each phase's `attacks` list; two vision/blocking effects are never chained: see kcBusy.)
 // HOW TO BEAT IT: while a claw is in the vault, turn the ring it came through: the gap closes on it and the claw is STUCK
 //   (it drops the egg). A stuck claw is the hit window: drop or roll an egg onto it, or zap it (thunder egg, the live ring,
 //   lightning), or a glow flash. A hit costs it one shell (hp), sends the claw back hurt, and it coughs up one egg from its
@@ -16,7 +23,10 @@
 //   vault shatters loose (a hit) when an egg knocks it. No shells left: it scuttles off and gives back every egg.
 // Upside: a claw that grabs and gets stuck lets go right where it is, often next to a gap; its bonk wastes its attack.
 // Downside: an egg it drags out is lost until you hit it.
+import { Vec2, Circle } from 'planck';
 import { RING_TH, TAU, wrap, clamp } from './geom.js';
+const KC_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING, as the puffer's plug
+const up0 = (sim) => sim.gy || 1;
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 export const KC = {
@@ -31,6 +41,10 @@ export const KC = {
   silt: 3.5, siltR: 1.45,
   hitV: 1.2, hitVW: 0.45, // m/s an egg must hit a stuck claw with (underwater, where eggs only drift: a gentle bump)
   bodyD: 1.3, // m: its body's centre below (on top: above) the outer ring
+  // the new moves. Forces are in multiples of this.g (the sim's buoyancy underwater), never absolute numbers.
+  bub: { w: 0.9, dur: m3(2.8, 3.4, 3.6), v: m3(0.8, 1.1, 1.35), grip: 6, lift: 0.35, ramp: 0.35 }, // plume half-width m, s, m/s it sweeps, 1/s it drags an egg to its speed, lift x g
+  whirl: { dur: m3(2.4, 3.2, 3.6), pull: m3(0.9, 1.3, 1.5), slack: 0.8, against: 0.6 }, // s, x g round the channel, how much an opposing ring cancels, rad/s of ring turn for full cancel
+  bar: { n: m3(2, 2, 3), r: 0.4, life: m3(5, 6.5, 8), fly: 0.5, scrape: 1.55, bumpV: 0.3, bumps: 2, bcd: 0.6, reach: 4.5, max: 3 }, // plug radius m, s before it peels, s of flight, rad of ring turn that scrapes it, egg speed that bumps it
 };
 const IN = new Set(['reach', 'sweep', 'snap', 'pull', 'stuck']); // phases with the claw in the vault
 
@@ -39,7 +53,8 @@ export const kcMethods = {
     const F = L.bossFight, hp = F.hp ?? KC.hp[this.mode] ?? 3, R = this.outerR;
     const up = this.gy || 1; // the crab sits on the side away from "down": on top, or underwater on the sea floor below
     const claw = (id) => ({ id, ph: 'idle', th: (up * Math.PI) / 2 + (id ? -0.8 : 0.8) * up, d: R + KC.out, eid: 0, tgt: 0, t: 0, dur: 1, gr: -1, gi: -1, nx: -1, lim: 0, ri: -1, pin: 0, free: 0, sw: 0, fz: 0, zp: 0, hitCD: 0, cd: 0, warn: 0 });
-    this.kc = { hp, hpMax: hp, done: 0, claws: [claw(0), claw(1)], pile: [], silt: null, bx: 0, by: up * (R + KC.bodyD), fz: 0, end: '', sink: 0 };
+    this.kcFix = [];
+    this.kc = { hp, hpMax: hp, done: 0, claws: [claw(0), claw(1)], pile: [], silt: null, bub: null, whirl: null, bar: [], bn: 0, nb: 0, bx: 0, by: up * (R + KC.bodyD), fz: 0, end: '', sink: 0 };
   },
   kcM(o) { return o[this.mode] ?? o.medium; },
   kcTip(C) { const a = C.th + (C.sw || 0); return { x: C.d * Math.cos(a), y: C.d * Math.sin(a) }; },
@@ -77,8 +92,11 @@ export const kcMethods = {
   kcStart(B, name) {
     const K = this.kc;
     if (!K || K.done || K.fz > 0) return null;
+    if (name === 'bubbles' || name === 'whirl' || name === 'barnacles' || name === 'silt') {
+      const a = this.kcStartFx(K, name);
+      if (a !== undefined) return a;
+    }
     if (name === 'silt') {
-      if (K.siltCd > 0) return null; // owner: silt came far too often; at most one cloud every 24 s, the claws are the fight
       const e = this.aliveEggs().filter((q) => this.reefFit(q)).sort((a, b) => this.channelOf(b) - this.channelOf(a))[0];
       if (!e) return null;
       const p = e.body.getPosition();
@@ -103,9 +121,9 @@ export const kcMethods = {
       const M = 1;
       K.silt = { x: A.x, y: A.y, r: KC.siltR, t: KC.silt * M, dur: KC.silt * M };
       this.emit('kcSilt', { x: A.x, y: A.y });
-      K.siltCd = 24;
       return;
     }
+    if (A.name === 'bubbles' || A.name === 'whirl' || A.name === 'barnacles') { this.kcActFx(K, A); return; }
     for (const id of A.claws || []) {
       const C = K.claws[id];
       if (C.ph !== 'aim') continue;
@@ -122,7 +140,7 @@ export const kcMethods = {
     K.bx = Math.sin(this.t * 0.35) * 0.35; K.by = up * (R + KC.bodyD + (K.done ? Math.min(2.5, (K.sink += dt) * 1.2) : 0));
     if (B) { B.x = K.bx; B.y = K.by; }
     if (K.silt && (K.silt.t -= dt) <= 0) K.silt = null;
-    if (K.siltCd > 0) K.siltCd -= dt;
+    this.kcFx(K, dt, end);
     if (K.fz > 0) K.fz = Math.max(0, K.fz - dt);
     // the target is saved and only eggs in its pile are left: it keeps them and the level ends
     if (!end && this.state === 'play' && this.savedLog.length >= (this.level.target || 1) && this.aliveEggs().length && this.aliveEggs().every((e) => e.hc === 3)) {
@@ -338,6 +356,152 @@ export const kcMethods = {
     this.emit('kcGive', { x, y, egg: e });
   },
 
+  // ---------- the new moves: bubble plume, barnacle plugs, whirlpool (plain data in K.bub / K.whirl / K.bar)
+  // never two vision/blocking effects at once: silt needs a clear sea, the plume and the whirl never overlap each other
+  kcBusy(K, name) {
+    if (name === 'silt') return !!(K.bub || K.whirl || K.bar.length);
+    if (K.silt) return true;
+    if (name === 'barnacles') return K.bar.length > 0;
+    return !!(K.bub || K.whirl);
+  },
+  // returns undefined to let kcStart go on (silt), null = not now, or the attack's telegraph data
+  kcStartFx(K, name) {
+    if (this.kcBusy(K, name)) return null;
+    if (name === 'silt') return undefined;
+    const n = this.rings.length, eggs = this.aliveEggs().filter((q) => this.reefFit(q) && this.channelOf(q) < n);
+    if (!eggs.length) return null;
+    eggs.sort((a, b) => this.channelOf(b) - this.channelOf(a) || a.id - b.id);
+    const e0 = eggs[0], p0 = e0.body.getPosition();
+    if (name === 'bubbles') {
+      const R = this.outerR, x0 = clamp(p0.x, -R * 0.55, R * 0.55);
+      const dir = Math.abs(x0) > 0.9 ? -Math.sign(x0) : (K.nb++ % 2 ? 1 : -1); // it sweeps across the vault, from the egg's side toward the middle
+      this.emit('kcWarn', { name });
+      return { x: x0, dir, aim: x0 };
+    }
+    if (name === 'whirl') {
+      const c = this.channelOf(e0), ea = Math.atan2(p0.y, p0.x), crab = up0(this) * Math.PI / 2;
+      const d = wrap(crab - ea);
+      this.emit('kcWarn', { name });
+      return { ch: c, dir: d >= 0 ? 1 : -1, aim: p0.x };
+    }
+    // barnacles: the gap nearest each egg (deepest eggs first), on that egg's floor ring
+    const tg = [], want = this.kcM(KC.bar.n), used = new Set(K.bar.map((b) => b.ring + ':' + b.gi));
+    for (const e of eggs) {
+      if (tg.length >= want) break;
+      const c = this.channelOf(e), ring = this.rings[c], p = e.body.getPosition(), ea = Math.atan2(p.y, p.x), ra = ring.body.getAngle();
+      let best = null, bd = KC.bar.reach;
+      ring.gaps.forEach((g, gi) => {
+        if (g.o < 0.5 || g.grate || (g.curtain && g.curtain.alive) || used.has(c + ':' + gi)) return;
+        const de = Math.abs(wrap(ea - (ra + g.a))) * ring.r;
+        if (de < bd) { bd = de; best = { ring: c, gi }; }
+      });
+      if (best) { used.add(best.ring + ':' + best.gi); tg.push(best); }
+    }
+    if (!tg.length) return null;
+    this.emit('kcWarn', { name });
+    return { tg, aim: p0.x };
+  },
+  kcActFx(K, A) {
+    if (A.name === 'bubbles') {
+      const dur = this.kcM(KC.bub.dur);
+      K.bub = { x0: A.x, x: A.x, dir: A.dir, t: dur, dur, v: this.kcM(KC.bub.v) };
+      this.emit('kcBub', { x: A.x, dir: A.dir });
+    } else if (A.name === 'whirl') {
+      const dur = this.kcM(KC.whirl.dur);
+      K.whirl = { ch: A.ch, dir: A.dir, t: dur, dur };
+      this.emit('kcWhirl', { ch: A.ch, dir: A.dir });
+    } else {
+      for (const T of A.tg) {
+        const ring = this.rings[T.ring], g = ring && ring.gaps[T.gi];
+        if (!g) continue;
+        K.bar.push({ id: K.bn++, ring: T.ring, gi: T.gi, la: g.a, age: 0, fly: KC.bar.fly, life: this.kcM(KC.bar.life), bump: 0, bcd: 0, turn: 0, last: 0, on: 0 });
+      }
+      this.emit('kcBar', { n: A.tg.length });
+    }
+  },
+  kcBarPos(b) { // world centre of a plug (it sits just under its ring's wall, filling the gap)
+    const ring = this.rings[b.ring], r = this.reefFloor(b.ring) - KC.bar.r - 0.01;
+    return ring.body.getWorldPoint({ x: r * Math.cos(b.la), y: r * Math.sin(b.la) });
+  },
+  kcBarOn(b) {
+    if (this.kcFix[b.id]) return;
+    const ring = this.rings[b.ring], r = this.reefFloor(b.ring) - KC.bar.r - 0.01;
+    this.kcFix[b.id] = ring.body.createFixture({ shape: new Circle(Vec2(r * Math.cos(b.la), r * Math.sin(b.la)), KC.bar.r), friction: 0.5, restitution: 0.1, ...KC_FILT, userData: { kind: 'barnacle', bar: b.id } });
+    b.on = 1; b.last = ring.body.getAngle();
+  },
+  kcBarOff(b, why) {
+    const f = this.kcFix[b.id];
+    if (f) { this.kcFix[b.id] = null; this.killFix.push([this.rings[b.ring].body, f]); }
+    const K = this.kc, i = K.bar.indexOf(b);
+    if (i >= 0) K.bar.splice(i, 1);
+    if (b.on) { const p = this.kcBarPos(b); this.emit('kcBarGone', { x: p.x, y: p.y, why }); }
+  },
+  kcBarClear(why, ring = -1, x = 0, y = 0, r = Infinity) {
+    const K = this.kc;
+    let n = 0;
+    for (const b of [...K.bar]) {
+      if (ring >= 0 && b.ring !== ring) continue;
+      if (r < Infinity && b.on) { const p = this.kcBarPos(b); if (Math.hypot(p.x - x, p.y - y) > r + 0.5) continue; }
+      this.kcBarOff(b, why); n++;
+    }
+    return n;
+  },
+  kcFx(K, dt, end) {
+    const n = this.rings.length, g = this.g;
+    if (K.done || end) { if (K.bub) K.bub = null; if (K.whirl) K.whirl = null; if (K.bar.length) this.kcBarClear('end'); return; }
+    const eggs = (c) => this.aliveEggs().filter((q) => this.reefFit(q) && q.body.isActive() && (c === undefined ? this.channelOf(q) < n : this.channelOf(q) === c));
+    // the plume: a column that sweeps sideways; an egg in it is dragged to its speed and lifted
+    const P = K.bub;
+    if (P) {
+      const age = P.dur - P.t;
+      P.t -= dt; P.x = P.x0 + P.dir * P.v * Math.min(P.dur, age + dt);
+      const env = clamp(Math.min(age / KC.bub.ramp, P.t / KC.bub.ramp), 0, 1);
+      for (const e of eggs()) {
+        const b = e.body, p = b.getPosition(), v = b.getLinearVelocity();
+        if (Math.abs(p.x - P.x) > KC.bub.w) continue;
+        b.applyForceToCenter({ x: (P.dir * P.v - v.x) * KC.bub.grip * b.getMass() * env, y: KC.bub.lift * g * b.getMass() * env }, true);
+      }
+      if (P.t <= 0) { K.bub = null; this.emit('kcBubEnd', { x: P.x }); }
+    }
+    // the whirlpool: one channel's eggs are pulled round it; the channel's outer ring turning against it slackens the flow
+    const W = K.whirl;
+    if (W) {
+      W.t -= dt;
+      const ring = this.rings[W.ch], om = ring ? ring.body.getAngularVelocity() : 0, k = 1 - KC.whirl.slack * clamp((-W.dir * om) / KC.whirl.against, 0, 1);
+      W.k = k;
+      const env = clamp(Math.min((W.dur - W.t) / 0.4, W.t / 0.4), 0, 1), a = this.kcM(KC.whirl.pull) * g * k * env;
+      for (const e of eggs(W.ch)) {
+        const b = e.body, p = b.getPosition(), d = Math.hypot(p.x, p.y) || 1, m = b.getMass() * a * W.dir;
+        b.applyForceToCenter({ x: (-p.y / d) * m, y: (p.x / d) * m }, true);
+      }
+      if (W.t <= 0) { K.whirl = null; this.emit('kcWhirlEnd', { ch: W.ch }); }
+    }
+    // barnacles: in flight, then clamped on; scraped by a turn of the ring, popped by two bumps, or they peel off
+    for (const b of [...K.bar]) {
+      const ring = this.rings[b.ring];
+      if (!ring) { this.kcBarOff(b, 'end'); continue; }
+      b.age += dt;
+      if (!b.on) {
+        if ((b.fly -= dt) <= 0) { this.kcBarOn(b); const p = this.kcBarPos(b); this.emit('kcBarLand', { x: p.x, y: p.y }); }
+        continue;
+      }
+      const ra = ring.body.getAngle();
+      b.turn += Math.abs(wrap(ra - b.last)); b.last = ra;
+      if (b.bcd > 0) b.bcd -= dt;
+      if (b.turn >= KC.bar.scrape) { this.kcBarOff(b, 'scrape'); continue; }
+      if (b.age >= b.life + KC.bar.fly) { this.kcBarOff(b, 'peel'); continue; }
+      if (b.bcd <= 0) {
+        const c = this.kcBarPos(b);
+        for (const e of this.aliveEggs()) {
+          if (!e.body.isActive()) continue;
+          const p = e.body.getPosition(), v = e.body.getLinearVelocity();
+          if (Math.hypot(p.x - c.x, p.y - c.y) < KC.bar.r + 0.36 && Math.hypot(v.x, v.y) > KC.bar.bumpV) { b.bump++; b.bcd = KC.bar.bcd; this.emit('kcBarBump', { x: c.x, y: c.y, n: b.bump }); break; }
+        }
+        if (b.bump >= KC.bar.bumps) this.kcBarOff(b, 'bump');
+      }
+    }
+  },
+
   // ---------- powers and hazards
   kcWarp(W, C) {
     const tip = this.kcTip(C);
@@ -350,6 +514,7 @@ export const kcMethods = {
     const K = this.kc;
     if (!K || K.done) return;
     const B = this.bx && this.bx.boss, f = 0.6; // a boss resists
+    if (kind !== 'spin' && kind !== 'out') this.kcBarClear(kind, -1, K.bx, K.by); // any blast power (bolt, flash, ice, lava...) knocks the barnacles off
     if (kind === 'ice') {
       K.fz = T * f;
       for (const C of K.claws) { C.fz = T * f; if (C.ph === 'aim') { this.kcSet(C, 'idle'); C.tgt = 0; } }
@@ -367,6 +532,7 @@ export const kcMethods = {
   kcShock(ri) {
     const K = this.kc, ring = this.rings[ri];
     if (!K || K.done) return;
+    this.kcBarClear('zap', ri); // the live ring shocks its barnacles off
     for (const C of K.claws) {
       if (C.hitCD > 0) continue;
       const through = ring.r > C.d - 0.1 && C.d < this.outerR + 0.05;
@@ -380,6 +546,7 @@ export const kcMethods = {
     if (!K || K.done) return 0;
     const x = o.x ?? 0, y = o.y ?? 0, r = o.r ?? Infinity;
     let n = 0;
+    if (['bolt', 'flash', 'dash', 'rock', 'ice', 'lava'].includes(kind)) this.kcBarClear(kind, -1, x, y, r);
     for (const C of K.claws) {
       if (!this.kcIn(C)) continue;
       if (r < Infinity && !this.kcArmPts(C).some((q) => Math.hypot(q.x - x, q.y - y) < r + 0.3)) continue;
@@ -398,7 +565,11 @@ export const kcMethods = {
     return v;
   },
   kcScore() { const K = this.kc; return K ? 600 * (K.hpMax - K.hp) + 200 * K.claws.filter((C) => C.ph === 'stuck').length : 0; },
-  kcState() { const K = this.kc; return K ? { ...K, claws: K.claws.map((C) => ({ ...C })), pile: [...K.pile], silt: K.silt ? { ...K.silt } : null } : null; },
-  kcLoad(S) { this.kc = { ...S, claws: S.claws.map((C) => ({ ...C })), pile: [...S.pile], silt: S.silt ? { ...S.silt } : null }; },
+  kcState() { const K = this.kc; return K ? { ...K, claws: K.claws.map((C) => ({ ...C })), pile: [...K.pile], silt: K.silt ? { ...K.silt } : null, bub: K.bub ? { ...K.bub } : null, whirl: K.whirl ? { ...K.whirl } : null, bar: K.bar.map((b) => ({ ...b })) } : null; },
+  kcLoad(S) {
+    this.kc = { ...S, claws: S.claws.map((C) => ({ ...C })), pile: [...S.pile], silt: S.silt ? { ...S.silt } : null, bub: S.bub ? { ...S.bub } : null, whirl: S.whirl ? { ...S.whirl } : null, bar: S.bar.map((b) => ({ ...b })) };
+    this.kcFix = [];
+    for (const b of this.kc.bar) if (b.on) this.kcBarOn(b);
+  },
 };
 void TAU;
