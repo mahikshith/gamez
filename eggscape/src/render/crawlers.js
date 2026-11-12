@@ -51,11 +51,13 @@ const pal = (o) => { const r = {}; for (const k in o) r[k] = hex(o[k]); return r
 // hind h), lat = how far out the feet plant from the path, toes per foot. head: wedge shape and eye layout.
 export const SPECIES = {
   salamander: {
-    svl: 1.8, len: 196, sh: 32, hip: 82, neck: 13, stride: 40, duty: 0.6, wave: 5.2, tailWave: 11,
-    hw: [[14, 8.5], [24, 9.5], [32, 11.5], [44, 13], [58, 13.6], [72, 12.8], [84, 11.2], [96, 8.2], [112, 6.4], [140, 4.4], [168, 2.6], [196, 0.7]],
-    legs: { l1f: 12, l2f: 12, l1h: 13.5, l2h: 13, latF: 22.5, latH: 24, up: 7.4, lo: 5.6, toe: 2.3, pad: 3.6, toesF: 4, toesH: 5, toeLen: 5.2, feet: 'claws' },
-    pattern: 'plates', rim: 0.95, halo: [255, 120, 30], glows: true,
-    head: { scale: 1.28, W: 15.8, B: 9.2, tip: 16.8, sn: 10.2, eyeX: -3, eyeY: 14.6, eyeR: 6.2, eyes: 'lid', brows: 'glow', mouth: 'smirk', plates: true, frill: true },
+    svl: 1.8, len: 196, sh: 32, hip: 82, neck: 13, stride: 40, duty: 0.6, wave: 5.2, tailWave: 15,
+    // a chunky, muscular newt: bull shoulders, a waist, heavy hips and a thick tail root
+    hw: [[14, 12], [24, 14.5], [32, 17.6], [44, 18.2], [58, 16.6], [72, 17.6], [84, 16.4], [96, 13], [112, 10], [140, 7], [168, 4.2], [196, 1.1]],
+    legs: { l1f: 12, l2f: 12, l1h: 13.5, l2h: 13, latF: 24.5, latH: 26, up: 10.2, lo: 8, toe: 2.9, pad: 4.8, toesF: 4, toesH: 5, toeLen: 5.2, feet: 'claws' },
+    pattern: 'plates', rim: 0.95, halo: [255, 120, 30], glows: true, ember: true,
+    // a broad wedge head, wider than the shoulders; the eyes sit on top of it under heavy brows, the grin runs ear to ear
+    head: { scale: 1.3, W: 19, B: 13, tip: 17.4, sn: 13.6, eyeX: -3.5, eyeY: 10.6, eyeR: 5.6, eyes: 'lid', brows: 'glow', mouth: 'grin', plates: true, frill: true },
     pal: pal({ line: '#2a1209', rock: '#6c3925', rockHi: '#ad6a40', rockLo: '#3a170c', magLo: '#8c2208', magMid: '#ff6512', magHot: '#ffc43c', jaw: '#ffc768', belly: '#ffd98a', eye: '#ffd52e', eyeLo: '#e58a12', brow: '#ffe98a', browLo: '#ff9a2a', claw: '#ffb43c', pupil: '#1e0a04' }),
   },
   gecko: {
@@ -594,6 +596,7 @@ function drawBody(ctx, x0, y0, s, t, opts) {
   ctx.stroke();
   if (SP.spikes && !belly) drawSpikes(ctx, U, lw, K, P, t, opts.out, x0, y0);
   if (SP.crest && !belly) drawCrest(ctx, U, lw, K, lineA);
+  if (SP.ember && !belly) drawEmberCrest(ctx, U, lw, K, lineA, t, glow, P);
   if (belly) drawLegs(ctx, feet, L4); // legs flail in the air above the upturned belly
   if (upFront) drawLegs(ctx, feet.filter((f) => f.L.front), L4);
 
@@ -938,6 +941,28 @@ function drawCrest(ctx, U, lw, K, lineA) {
   ctx.lineWidth = lw * 0.7;
   ctx.stroke();
 }
+// Salamander: a crest of ember fins down the spine. Each fin leans back along the body; a flicker runs down the row
+// from the neck to the tail (the tips trail the body's swing, so the crest follows through), taller when it is hot.
+const EQ = { x: 0, y: 0, nx: 0, ny: 0, w: 0 }, EQ2 = { x: 0, y: 0, nx: 0, ny: 0, w: 0 };
+function drawEmberCrest(ctx, U, lw, K, lineA, t, glow, P) {
+  const hot = clamp(glow, 0, 1), up = 1 + 0.5 * clamp(P.angry, 0, 1) + 0.5 * clamp(P.fire, 0, 1);
+  for (const pass of [0, 1]) {
+    ctx.beginPath();
+    for (let u = 27; u <= 128; u += 10.5) {
+      const f = (u - 26) / 102, fl = 0.75 + 0.25 * Math.sin(t * 9 - u * 0.21) + 0.12 * Math.sin(t * 23 + u), len = (17 - 9 * f) * fl * up * (0.55 + 0.45 * hot), hw = (4.4 - 1.8 * f) * (pass ? 0.55 : 1);
+      // a flame leaning off the spine to one side (so it reads from above) and back toward the tail
+      const k = pass ? 0.62 : 1, a = spInto(u - hw, EQ), ax = a.x, ay = a.y, b = spInto(u + hw, EQ), c = spInto(u + len * 0.75 * k, EQ2);
+      const sway = (Math.sin(t * 6.5 - u * 0.16) * (1.8 - 0.7 * f) - len * 0.62 * k) * U;
+      const tx = c.x + c.nx * sway, ty = c.y + c.ny * sway;
+      ctx.moveTo(ax, ay);
+      ctx.quadraticCurveTo(ax + c.nx * sway * 0.75, ay + c.ny * sway * 0.75, tx, ty);
+      ctx.quadraticCurveTo((b.x + tx) / 2 + (b.x - ax) * 0.25, (b.y + ty) / 2 + (b.y - ay) * 0.25, b.x, b.y);
+      ctx.closePath();
+    }
+    if (!pass) { ctx.fillStyle = rgb(K.magAt ? K.magAt(clamp(hot * 0.6 + 0.25, 0, 1)) : K.magMid); ctx.fill(); ctx.lineWidth = lw * 0.8; ctx.strokeStyle = rgb(K.line, lineA); ctx.lineJoin = 'round'; ctx.stroke(); }
+    else { ctx.fillStyle = rgb(K.magHot, 0.55 + 0.45 * hot); ctx.fill(); }
+  }
+}
 function drawFlankDots(ctx, U, K, camo) {
   ctx.beginPath();
   for (let u = 26; u < 104; u += 7) for (const v of [-0.62, 0.62]) {
@@ -1144,7 +1169,7 @@ function drawHead(ctx, t, opts, P, glow, cool, lw, K, fu, lineA) {
     ctx.closePath();
     ctx.fillStyle = P.fire > 0.05 ? '#ffd860' : '#6e0d0a';
     ctx.fill();
-    if (H.mouth === 'smirk') {
+    if (H.mouth === 'smirk' || H.mouth === 'grin') {
       ctx.fillStyle = '#fff4dc';
       ctx.strokeStyle = line;
       ctx.lineWidth = lw * 0.5;
@@ -1192,6 +1217,7 @@ function drawHead(ctx, t, opts, P, glow, cool, lw, K, fu, lineA) {
       for (const sd of [-1, 1]) {
         const poly = (pts) => { pts.forEach(([x, y], i) => (i ? ctx.lineTo(x + ox, sd * y + oy) : ctx.moveTo(x + ox, sd * y + oy))); ctx.closePath(); };
         poly([[-19, 1.3], [-9, 1.3], [-8.4, 4.8], [-10.2, 8], [-17, 8.8]]);
+        if (SP.ember) { poly([[-7.6, 1.2], [2.4, 1.2], [3.6, 2.8], [1.6, 4.2], [-6.8, 4.4]]); continue; } // one skull plate between the eyes: the snout stays clean for the grin
         poly([[-7.6, 1.3], [0.6, 1.3], [1.4, 4], [-0.2, 6.2], [-6.4, 6.4]]);
         poly([[2.2, 1.3], [7.8 - 2 * m, 1.3], [8.4 - 2.5 * m, 3.8], [6.6 - 2 * m, 5.6], [3.2, 4.8]]);
       }
@@ -1276,8 +1302,9 @@ function drawMouth(ctx, H, segs, m, lw, line, fu, t, tip) {
   ctx.lineWidth = mw;
   ctx.lineCap = 'round';
   // corner in front of the eye socket, then along the jaw round the snout tip
-  const ex = H.eyeX + H.eyeR + 2.2, cy = Math.min(H.W * 0.72, H.eyeY - 2.5);
-  const cx = Math.max(ex, 1.5), tx = 2 + (tip - 2) * 0.74;
+  const grin = H.mouth === 'grin';
+  const ex = H.eyeX + H.eyeR + 2.2, cy = grin ? H.W * 0.83 : Math.min(H.W * 0.72, H.eyeY - 2.5);
+  const cx = grin ? -4.5 : Math.max(ex, 1.5), tx = 2 + (tip - 2) * 0.74;
   const sn = H.sn * 0.74;
   ctx.beginPath();
   ctx.moveTo(cx, cy);
@@ -1304,6 +1331,20 @@ function drawMouth(ctx, H, segs, m, lw, line, fu, t, tip) {
     ctx.fillStyle = '#fff4dc';
     ctx.fill();
     ctx.lineWidth = Math.max(lw * 0.6, 1 / HS_PX);
+    ctx.stroke();
+  } else if (grin) {
+    // both corners hook up behind the eyes; a row of teeth shows along each side of the lip, the front pair longer
+    for (const sd of [-1, 1]) { ctx.moveTo(cx, sd * cy); ctx.quadraticCurveTo(cx - 3.4, sd * (cy + 0.4), cx - 3.6, sd * (cy - 4.4)); }
+    ctx.stroke();
+    ctx.beginPath();
+    for (const sd of [-1, 1]) for (let i = 0; i < 4; i++) {
+      const u = 0.2 + i * 0.17, v = 1 - u, c1x = cx + (tx - cx) * 0.45, c1y = cy * 0.98, c2x = tx - 1.2, c2y = sn * 0.9;
+      const X = v * v * v * cx + 3 * v * v * u * c1x + 3 * v * u * u * c2x + u * u * u * tx, Y = v * v * v * cy + 3 * v * v * u * c1y + 3 * v * u * u * c2y, h = i === 2 ? 4.8 : 3.3;
+      ctx.moveTo(X - 1.9, sd * Y); ctx.lineTo(X + 1.9, sd * (Y - 0.3)); ctx.lineTo(X + 0.3, sd * (Y - h)); ctx.closePath();
+    }
+    ctx.fillStyle = '#fff4dc';
+    ctx.fill();
+    ctx.lineWidth = Math.max(lw * 0.5, 0.8 / HS_PX);
     ctx.stroke();
   } else if (H.mouth === 'grump') {
     for (const sd of [-1, 1]) { ctx.moveTo(cx, sd * cy); ctx.quadraticCurveTo(cx - 1.6, sd * (cy + 0.6), cx - 2.6, sd * (cy + 2.8)); }

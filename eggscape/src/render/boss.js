@@ -1,5 +1,5 @@
 // ---------- bosses (v3.1): drawing ----------
-// The boss actor (code-drawn: the Blizzard's storm cloud; the thief bosses live in the vault, others show only their effects), every telegraph (frost
+// The boss actor (code-drawn: Old Frostbeard the mammoth, render/mammoth.js; the thief bosses live in the vault, others show only their effects), every telegraph (frost
 // creeping over a ring, icicles shaking with a shadow under them, target marks for rocks and throws, the punch
 // arrow, fog gathering), the gale streaks, temporary walls and ice patches, and the phase bar under the HUD.
 // ctx is in world space (meters, y up) unless a function says otherwise.
@@ -11,10 +11,12 @@ import { drawKingEmblem, drawKingBar } from './kingcrab.js'; // world 8 boss
 import { drawOwlBoss, drawOwlRings, drawOwlEmblem, drawOwlBar } from './owl.js'; // v4 the Clockwork Owl
 import { drawGatorEmblem } from './bayou.js'; // v3.7
 import { drawIcicle } from './v3art.js';
+import { drawMammoth, drawMammothEmblem, MAMMOTH_FOOT } from './mammoth.js'; // world 3 boss: Old Frostbeard
+import { drawGolem } from './golem.js'; // world 4 boss: the Crystal Golem
 import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
 
-const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { /* art never breaks the frame */ } ctx.restore(); };
+const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { if (globalThis.__eggDebug) console.error(e); /* art never breaks the frame */ } ctx.restore(); };
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const hash = (i) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 const band = (ctx, ri, ro, a0 = 0, a1 = TAU) => { ctx.beginPath(); ctx.arc(0, 0, ro, a0, a1); ctx.arc(0, 0, ri, a1, a0, true); ctx.closePath(); };
@@ -344,9 +346,9 @@ export function drawBossOver(ctx, sim, k, t) {
 }
 
 // ---------- the boss itself. Code-drawn only (no portrait sprites inside a level):
-// blizzard: a living snow cloud. golem and salamander have no body yet (a creature pass adds them): only their effects.
+// blizzard: Old Frostbeard, a woolly mammoth on an ice floe (render/mammoth.js). golem: render/golem.js.
 // The weasel and the Rat King live inside the vault (render/thieves.js).
-const ACTOR = { blizzard: 1, owl: 1 };
+const ACTOR = { blizzard: 1, golem: 1, owl: 1 };
 // the view this frame (main sets it): world y of the top of the play area, pixels per meter, ui scale
 let VIEW = null;
 export function setBossView(v) { VIEW = v; }
@@ -356,13 +358,18 @@ export function bossPose(sim, view = VIEW) {
   if (!B || !ACTOR[B.kind] || B.den) return null; // v3.6: a thief boss is drawn inside the vault (render/thieves.js)
   const R = sim.outerR;
   if (B.kind === 'owl') return { x: B.x, y: B.y, h: 1.9, dir: B.face || 1 }; // v4 (render/owl.js)
-  if (B.kind === 'blizzard') {
+  if (B.kind === 'blizzard' || B.kind === 'golem') {
     // big: about a third of the vault wide (at most ~150 px tall on screen), its belly just above the outer ring.
     // When the camera is zoomed in on the eggs it comes down into view at the top of the play area.
     const A = B.atk, cap = view ? (160 * (view.u || 1)) / view.k : 1e9, h = Math.min(Math.max(3.4, R * 0.95), cap);
+    // the golem never steers the camera (no framing pose): L20 keeps the camera it always had, and the golem is simply
+    // brought into view at the top of the play area below. (Opening on it zoomed the six big rings in far enough to
+    // blow the ring caches up and cost ~50 ms a frame.)
+    if (!view && B.kind === 'golem') return null;
     let y = R + 0.25 + h * 0.44 + (B.y - (R + 1.0));
     if (view) y = Math.min(y, view.top - h * 0.5);
-    return { x: B.x, y, h, dir: A && A.name === 'gale' ? -A.dir : B.face || 1 };
+    const x = B.kind === 'golem' ? Math.max(-R * 0.28, Math.min(R * 0.28, B.x)) : B.x; // the golem's sim point roams wider than a body this size can (it would leave a phone screen)
+    return { x, y, h, dir: A && A.name === 'gale' ? -A.dir : B.face || 1 };
   }
   return null;
 }
@@ -371,194 +378,45 @@ export function drawBossActor(ctx, sim, k, t) {
   if (!Q) return;
   const A = B.atk, calm = isSpriteCalm();
   const warnU = A && A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 0, acting = A && A.ph === 'act';
-  if (B.kind === 'blizzard') drawCloudBoss(ctx, sim, B, Q, k, t, warnU, acting, calm);
+  if (B.kind === 'blizzard') drawBigBoss(ctx, drawMammoth, sim, B, Q, k, t, warnU, acting, calm);
+  if (B.kind === 'golem') drawBigBoss(ctx, drawGolem, sim, B, Q, k, t, warnU, acting, calm);
   if (B.kind === 'owl') drawOwlBoss(ctx, sim, k, t);
-  // the freeze breath: a cone of frost from the spirit to the ring it is freezing
-  if (A && A.name === 'freeze' && !calm) {
-    const ring = sim.rings[A.ring], u = A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 1;
-    ctx.save();
-    for (let i = 0; i < 18; i++) {
-      const mx = Q.x + (Q.dir || 1) * CLOUD_MOUTH.x * Q.h, my = Q.y - CLOUD_MOUTH.y * Q.h, f = ((t * 1.6 + i / 18) % 1) * u, ex = mx * (1 - f), ey = my + (ring.r + RING_TH - my) * f;
-      ctx.globalAlpha = 0.7 * (1 - f * 0.5);
-      ctx.fillStyle = '#e8f8ff';
+  // the frost stomp: once the foot is down (45% into the warning) frost cracks race from it to the ring it freezes
+  if (A && A.name === 'freeze' && B.kind === 'blizzard' && !calm) {
+    const ring = sim.rings[A.ring], u = acting ? 1 : clamp01((warnU - 0.45) / 0.55), d = Q.dir || 1;
+    const fx = Q.x + d * MAMMOTH_FOOT.x * Q.h, fy = Q.y - MAMMOTH_FOOT.y * Q.h, fa = Math.atan2(fy, fx), rr = ring.r + RING_TH * 0.5;
+    const ex = Math.cos(fa) * rr, ey = Math.sin(fa) * rr, L = Math.hypot(ex - fx, ey - fy) || 1, nx = -(ey - fy) / L, ny = (ex - fx) / L, n = 8;
+    if (u > 0) {
+      ctx.save();
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      const P = [];
+      for (let i = 0; i <= n; i++) { const f = i / n, o = i && i < n ? (hash(i + A.ring * 7) - 0.5) * 0.34 : 0; P.push([fx + (ex - fx) * f + nx * o, fy + (ey - fy) * f + ny * o]); }
+      const m = u * n, fade = acting ? clamp01(A.t / A.dur) : 1;
       ctx.beginPath();
-      ctx.arc(ex + (hash(i) - 0.5) * 0.6 * f, ey, 0.08 + 0.14 * f, 0, TAU);
-      ctx.fill();
+      ctx.moveTo(P[0][0], P[0][1]);
+      for (let i = 1; i <= n; i++) {
+        const g = clamp01(m - (i - 1));
+        if (g <= 0) break;
+        const x = P[i - 1][0] + (P[i][0] - P[i - 1][0]) * g, y = P[i - 1][1] + (P[i][1] - P[i - 1][1]) * g;
+        ctx.lineTo(x, y);
+        if (g >= 1 && i % 2 === 0 && i < n) { const sgn = hash(i + 3) < 0.5 ? -1 : 1, bl = 0.22 + 0.2 * hash(i + 5); ctx.lineTo(x + nx * sgn * bl + (ex - fx) / L * 0.14, y + ny * sgn * bl + (ey - fy) / L * 0.14); ctx.moveTo(x, y); }
+      }
+      ctx.globalAlpha = 0.7 * fade; ctx.strokeStyle = '#4f9ed6'; ctx.lineWidth = 0.13; ctx.stroke();
+      ctx.globalAlpha = fade; ctx.strokeStyle = '#f2fbff'; ctx.lineWidth = 0.055; ctx.stroke();
+      ctx.restore();
     }
-    ctx.restore();
   }
 }
 
-// the Blizzard: a living storm cloud, as big as a third of the vault. Puffs churn, ice eyes glare. Faces per attack:
-// gale = inhales (swells, cheeks puffed, eyes squeezed) then blows (round mouth, breath swirls); freeze = mouth opens
-// with frost mist gathering, then breathes; icicle volley = furious (steep brows, gritted teeth, shaking);
-// an egg saved = flinch (eyes shut tight, white flash); a phase lost = dizzy (spiral eyes, wobble, circling stars).
-const PUFFS = [[-0.36, 0.06, 0.24], [-0.17, -0.1, 0.3], [0.08, -0.14, 0.32], [0.3, -0.02, 0.26], [0.42, 0.12, 0.18], [-0.48, 0.16, 0.16], [0.0, 0.12, 0.3]];
-export const CLOUD_MOUTH = { x: 0.05, y: 0.1 }; // x the cloud height, y down from its centre
-function cloudFace(B, warnU, acting) {
-  const A = B.atk;
-  if (B.dizzy > 0) return 'dizzy';
-  if (B.flinch > 0) return 'hurt';
-  if (!A) return 'idle';
-  if (A.name === 'gale') return acting ? 'blow' : 'inhale';
-  if (A.name === 'freeze') return acting || warnU > 0.45 ? 'breathe' : 'open';
-  if (A.name === 'icicles') return 'fury';
-  return 'idle';
-}
-function drawCloudBoss(ctx, sim, B, Q, k, t, warnU, acting, calm) {
-  // frozen (frost nova, frost boss power) holds its pose in an ice shell; stunned reels slack, spiral eyes, stars (a bolt zaps first)
+// Old Frostbeard (render/mammoth.js) and the Crystal Golem (render/golem.js), inside the shared status looks
+// (frozen = holds its pose in an ice shell; stunned = dizzy, a bolt zaps first).
+function drawBigBoss(ctx, draw, sim, B, Q, k, t, warnU, acting, calm) {
   const fxb = sim.p2 && sim.p2.fx && sim.p2.fx.b, iced = B.dizzy > 0 && ((fxb && fxb.k === 'ice') || statusKind('b') === 'ice');
   const st = statusClock(sim, 'b', iced ? { k: 'ice', left: B.dizzy } : B.dizzy > 0 ? { k: 'stun', zap: !!(fxb && fxb.k === 'zap'), left: B.dizzy } : null, t);
-  const frozen = st && st.k === 'ice';
+  const frozen = !!(st && st.k === 'ice');
   if (frozen) { t = st.hold; calm = true; }
-  const s = Q.h * k, face = frozen ? 'idle' : cloudFace(B, warnU, acting), dir = Q.dir;
-  let swell = 1, sy = 1, rot = 0, jx = 0;
-  if (face === 'inhale') { swell = 1 + 0.16 * warnU; sy = 1 + 0.04 * warnU; }
-  if (face === 'blow') { swell = 1.04; sy = 0.93; }
-  if (face === 'fury' && !calm) jx = Math.sin(t * 47) * 0.012 * s * (0.5 + warnU);
-  if (face === 'inhale' && !calm) jx = Math.sin(t * 50) * 0.008 * s * warnU;
-  if (face === 'dizzy' && !calm) { rot = Math.sin(t * 2.2) * 0.07; sy *= 0.94 + 0.02 * Math.sin(t * 1.6); } // slack: sags and sways slowly
-  if (face === 'hurt' && !calm) { rot = -0.08 * dir; jx = -0.03 * s * dir; }
-  const flash = face === 'hurt' && !calm && Math.floor(t * 18) % 2 === 0;
-  const tint = face === 'fury' ? 1 : 0;
-  pxSpace(ctx, Q.x, Q.y, k, () => statusDraw(ctx, { x0: -0.78 * s, y0: -0.62 * s, x1: 0.78 * s, y1: 0.5 * s }, (ctx) => {
-    ctx.translate(jx, 0);
-    ctx.rotate(rot);
-    ctx.scale(swell, swell * sy);
-    // falling snow under it
-    if (!calm && !frozen) {
-      ctx.fillStyle = 'rgba(240,250,255,0.85)';
-      for (let i = 0; i < 14; i++) {
-        const f = (t * 0.5 + hash(i)) % 1, x = (hash(i + 3) - 0.5) * s * 0.9 + Math.sin(t * 2 + i) * s * 0.03;
-        ctx.globalAlpha = 1 - f;
-        ctx.beginPath();
-        ctx.arc(x, s * 0.25 + f * s * 0.35, s * 0.012, 0, TAU);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-    if (face === 'dizzy' && !calm) dizzyStars(ctx, 0, -s * 0.34, s * 0.27, s * 0.075, t, { layer: 'back', size: s * 0.05 });
-    // body: a dark storm underside, then lit puffs (darker and bluer when furious)
-    for (const pass of [0, 1]) {
-      for (let i = 0; i < PUFFS.length; i++) {
-        const [px, py, pr] = PUFFS[i], bob = calm ? 0 : Math.sin(t * 1.3 + i * 1.7) * 0.02;
-        const x = px * s, y = (py + bob) * s + (pass ? 0 : s * 0.06), r = pr * s * (pass ? 1 : 1.05) * (1 + (calm ? 0 : Math.sin(t * 2 + i) * 0.025));
-        if (pass) {
-          const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.45, r * 0.1, x, y, r);
-          g.addColorStop(0, flash ? '#ffffff' : tint ? '#c9d6ea' : '#e6eef8');
-          g.addColorStop(1, flash ? '#e8f4ff' : tint ? '#5d7290' : '#7d93ad');
-          ctx.fillStyle = g;
-        } else ctx.fillStyle = tint ? '#253247' : '#34465e';
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, TAU);
-        ctx.fill();
-      }
-    }
-    // face (mirrored so the mouth is on the side it blows toward)
-    ctx.save();
-    ctx.scale(dir, 1);
-    const ink = '#0f2f4d', ey = -s * 0.05, ex = s * 0.12, er = s * 0.05, ox = s * 0.03;
-    const glow = face === 'fury' || face === 'breathe' ? 1 : face === 'idle' ? 0.65 + 0.2 * Math.sin(t * 2) : 0.85;
-    const blink = !calm && face === 'idle' && t % 4.3 < 0.12;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    for (const sgn of [-1, 1]) {
-      const x = sgn * ex + ox;
-      ctx.strokeStyle = ink;
-      ctx.fillStyle = ink;
-      if (face === 'dizzy') { // spiral eyes
-        ctx.lineWidth = s * 0.012;
-        ctx.beginPath();
-        for (let a = 0; a < 4 * Math.PI; a += 0.3) { const rr = er * 1.2 * (a / (4 * Math.PI)), aa = a + t * 8 * sgn; ctx.lineTo(x + Math.cos(aa) * rr, ey + Math.sin(aa) * rr); }
-        ctx.stroke();
-        continue;
-      }
-      if (face === 'hurt' || face === 'inhale') { // squeezed shut: > <
-        ctx.lineWidth = s * 0.02;
-        ctx.beginPath();
-        ctx.moveTo(x - er * sgn, ey - er * 0.8);
-        ctx.lineTo(x + er * 0.6 * sgn, ey);
-        ctx.lineTo(x - er * sgn, ey + er * 0.8);
-        ctx.stroke();
-      } else {
-        const open = face === 'open' || face === 'breathe' ? 1.2 : 1;
-        ctx.beginPath();
-        ctx.ellipse(x, ey, er * 1.25, frozen ? er * 0.5 : blink ? er * 0.15 : er * open, 0, 0, TAU);
-        ctx.fill();
-        if (!blink) {
-          ctx.fillStyle = face === 'fury' ? `rgba(160,240,255,${glow})` : `rgba(120,230,255,${glow})`;
-          ctx.beginPath();
-          ctx.arc(x + er * 0.35, ey + er * 0.1, er * (face === 'fury' ? 0.42 : 0.55), 0, TAU);
-          ctx.fill();
-          ctx.fillStyle = 'rgba(255,255,255,0.9)';
-          ctx.beginPath();
-          ctx.arc(x + er * 0.15, ey - er * 0.2, er * 0.16, 0, TAU);
-          ctx.fill();
-        }
-      }
-      // brows: an angry V, steeper when furious, raised when hurt
-      ctx.strokeStyle = ink;
-      ctx.lineWidth = s * 0.026;
-      const tilt = face === 'fury' ? 1 : face === 'inhale' || face === 'blow' ? 0.6 : face === 'hurt' ? -0.4 : 0.35;
-      ctx.beginPath();
-      ctx.moveTo(x - er * 1.3 * sgn, ey - er * 1.05 + tilt * er * 0.45);
-      ctx.lineTo(x + er * 1.4 * sgn, ey - er * 1.9 - tilt * er * 0.55);
-      ctx.stroke();
-    }
-    // cheeks puffed while inhaling (and a little while blowing)
-    const mx = CLOUD_MOUTH.x * s, my = CLOUD_MOUTH.y * s;
-    const puff = face === 'inhale' ? 0.6 + 0.6 * warnU : face === 'blow' ? 0.5 : 0;
-    if (puff) {
-      ctx.fillStyle = 'rgba(170,220,255,0.75)';
-      for (const sgn of [-1, 1]) { ctx.beginPath(); ctx.arc(mx + sgn * s * 0.16, my - s * 0.01, s * 0.055 * puff, 0, TAU); ctx.fill(); }
-    }
-    // mouth
-    ctx.fillStyle = ink;
-    ctx.strokeStyle = ink;
-    ctx.lineWidth = s * 0.02;
-    ctx.beginPath();
-    if (face === 'blow') ctx.ellipse(mx + s * 0.12, my, s * 0.04, s * 0.05, 0, 0, TAU);
-    else if (face === 'inhale') ctx.ellipse(mx, my, s * 0.05, s * 0.012, 0, 0, TAU);
-    else if (face === 'open' || face === 'breathe') ctx.ellipse(mx, my + s * 0.01, s * (face === 'breathe' ? 0.1 : 0.05 + 0.05 * warnU / 0.45), s * (face === 'breathe' ? 0.065 : 0.03 + 0.03 * warnU / 0.45), 0, 0, TAU);
-    else if (face === 'dizzy') { ctx.moveTo(mx - s * 0.07, my); for (let i = 1; i <= 6; i++) ctx.lineTo(mx - s * 0.07 + i * s * 0.0233, my + (i % 2 ? -1 : 1) * s * 0.012); }
-    else if (face === 'hurt') ctx.ellipse(mx, my + s * 0.01, s * 0.05, s * 0.035, 0, 0, TAU);
-    else if (face === 'fury') ctx.rect(mx - s * 0.08, my - s * 0.018, s * 0.16, s * 0.04);
-    else { ctx.moveTo(mx - s * 0.07, my + s * 0.015); ctx.quadraticCurveTo(mx, my - s * 0.03, mx + s * 0.07, my + s * 0.015); }
-    if (face === 'dizzy' || face === 'idle') ctx.stroke(); else ctx.fill();
-    if (face === 'fury') { // gritted teeth
-      ctx.fillStyle = '#eef8ff';
-      ctx.fillRect(mx - s * 0.07, my - s * 0.01, s * 0.14, s * 0.024);
-      ctx.strokeStyle = ink;
-      ctx.lineWidth = s * 0.006;
-      for (let i = 1; i < 6; i++) { ctx.beginPath(); ctx.moveTo(mx - s * 0.07 + i * s * 0.0233, my - s * 0.01); ctx.lineTo(mx - s * 0.07 + i * s * 0.0233, my + s * 0.014); ctx.stroke(); }
-    }
-    // breath: swirls out of the mouth while blowing; frost mist gathering at the open mouth
-    if (!calm && face === 'blow') {
-      ctx.strokeStyle = 'rgba(235,248,255,0.9)';
-      ctx.lineWidth = s * 0.014;
-      for (let i = 0; i < 4; i++) {
-        const f = (t * 1.8 + i / 4) % 1, x0 = mx + s * (0.16 + f * 0.45), yy = my + (i - 1.5) * s * 0.04;
-        ctx.globalAlpha = 1 - f;
-        ctx.beginPath();
-        ctx.moveTo(x0, yy);
-        ctx.quadraticCurveTo(x0 + s * 0.08, yy - s * 0.04, x0 + s * 0.16, yy);
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-    }
-    if (!calm && (face === 'open' || face === 'breathe')) {
-      for (let i = 0; i < 10; i++) {
-        const a = t * 3 + i * 0.63, rr = s * (0.06 + 0.05 * hash(i)) * (face === 'open' ? 1.6 - warnU : 1);
-        ctx.fillStyle = 'rgba(225,248,255,0.7)';
-        ctx.beginPath();
-        ctx.arc(mx + Math.cos(a) * rr, my + s * 0.02 + Math.sin(a) * rr * 0.6, s * 0.012, 0, TAU);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-    // dizzy stars: three circle the top of the cloud on a tilted ellipse (the far ones behind it, see above)
-    if (face === 'dizzy' && !calm) dizzyStars(ctx, 0, -s * 0.34, s * 0.27, s * 0.075, t, { layer: 'front', size: s * 0.05 });
-  }, st, { off: Math.max(1.2, s * 0.011), rim: 1.8, crys: Math.max(1.2, s / 110) }));
+  const s = Q.h * k;
+  pxSpace(ctx, Q.x, Q.y, k, () => statusDraw(ctx, { x0: -0.82 * s, y0: -0.8 * s, x1: 0.82 * s, y1: 0.58 * s }, (c) => draw(c, sim, B, Q, s, t, warnU, acting, calm, frozen), st, { off: Math.max(1.2, s * 0.011), rim: 1.8, crys: Math.max(1.2, s / 110) }));
 }
 function drawStar(ctx, x, y, r, col) {
   ctx.beginPath();
@@ -596,15 +454,7 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
   } else if (kind === 'gator') {
     drawGatorEmblem(ctx, r, t);
   } else if (kind === 'blizzard') {
-    ctx.strokeStyle = '#eaf8ff';
-    ctx.lineWidth = r * 0.14;
-    for (let i = 0; i < 3; i++) {
-      const a = (i * Math.PI) / 3;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * r * 0.62, Math.sin(a) * r * 0.62);
-      ctx.lineTo(-Math.cos(a) * r * 0.62, -Math.sin(a) * r * 0.62);
-      ctx.stroke();
-    }
+    drawMammothEmblem(ctx, r);
   } else if (kind === 'golem') {
     ctx.fillStyle = '#d9c8ff';
     ctx.strokeStyle = '#3a2a70';

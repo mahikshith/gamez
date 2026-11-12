@@ -382,6 +382,9 @@ function frame(ctx, C, rad, k, f) {
 }
 const want = (C) => (C.frz > 0 ? { k: 'ice', left: C.frz } : C.stn > 0 || C.zap > 0 ? { k: 'stun', zap: C.zap > 0, left: C.stn } : null);
 
+// regular gators and babies are drawn this much bigger than their sim body (the collider, jaw point and reach are unchanged);
+// Grandpa Gator already fills his channel.
+const GATOR_DRAW = 1.22;
 export function drawBayou(ctx, sim, t, k) {
   if (!sim.gators) return;
   const B = sim.bx && sim.bx.boss;
@@ -408,7 +411,7 @@ export function drawBayou(ctx, sim, t, k) {
     frame(ctx, G, rf + sink, k, () => {
       ctx.scale(A.f >= 0 ? 1 : -1, 1);
       if (Math.abs(A.f) < 0.999) ctx.scale(Math.max(0.15, Math.abs(A.f)), 1);
-      const S = len, box = { x0: -S * 0.62, y0: -S * 0.52, x1: S * 0.64, y1: S * 0.08 };
+      const S = len * (G.boss ? 1 : GATOR_DRAW), box = { x0: -S * 0.62, y0: -S * 0.52, x1: S * 0.64, y1: S * 0.08 }; // drawn bigger than the collider, about its feet
       statusDraw(ctx, box, (c) => drawGator(c, S, st ? st.hold : t, o), st, { off: Math.max(1.1, S * 0.012), crys: Math.max(1, S / 90) });
     });
   }

@@ -147,7 +147,7 @@ export const SPECS = [
     portals: [{ from: [1, 90], to: [1, 90], emit: ['hatch_pick'], every: 9, pull: 0 }],
     intro: { title: 'Pick chick', chick: 'pick', line: 'Hard ice is too tough for eggs. The purple orb hatches a pick chick: tap it on the ice and it drills a hole that freezes over 6 s later.' }, useTap: true,
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, ice: true }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
-  { id: 15, world: 3, theme: 'blizzard', name: 'The Blizzard', boss: 'blizzard', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5,
+  { id: 15, world: 3, theme: 'blizzard', name: 'Old Frostbeard', boss: 'blizzard', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5,
     bossFight: { kind: 'blizzard', delay: 4, gale: 5, phases: [
       { attacks: ['gale'], every: 5 },
       { at: { saved: 1, t: 30 }, attacks: ['gale', 'freeze'], every: 4.5 },
@@ -155,7 +155,7 @@ export const SPECS = [
     ] },
     nest: { w: 2.9 }, bonus: { kind: 'time' },
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'stone', ch: 3 }, { type: 'fire_green', ch: 4 }, { type: 'frost', ch: 2 }],
-    intro: { title: 'Boss: The Blizzard', line: 'The Blizzard blows gales that shove eggs along the rings, freezes a ring solid, then drops icicles on your eggs.' },
+    intro: { title: 'Boss: Old Frostbeard', line: 'Old Frostbeard trumpets gales that shove eggs along the rings, stomps a ring frozen solid, then shakes icicles down on your eggs.' },
     tip: 'Turn a wall into the wind before the gale hits. Stone is too heavy to blow away.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'ice', gaps: 2, thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
 

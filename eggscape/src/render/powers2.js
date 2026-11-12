@@ -605,7 +605,7 @@ export function drawP2Front(ctx, sim, k, t) {
       if (F.k === 'pep' || F.k === 'scare') creatureFx(ctx, F, k, t, { x: E.x, y: E.y, r: 0.9, dir: E.face > 0 ? 0 : Math.PI, block: [1.2, 0.75] }, 40);
     } else if (key === 'b' && sim.bx && sim.bx.boss) {
       const B = sim.bx.boss;
-      if (B.kind === 'blizzard' && (F.k === 'ice' || F.k === 'zap' || F.k === 'spin')) continue; // the cloud draws its own states (render/boss.js)
+      if ((B.kind === 'blizzard' || B.kind === 'golem') && (F.k === 'ice' || F.k === 'zap' || F.k === 'spin')) continue; // the mammoth and the golem draw their own states (render/boss.js)
       creatureFx(ctx, F, k, t, { x: B.x, y: B.y, r: 0.9, dir: -Math.PI / 2, block: [1.1, 0.9] }, 60);
     }
   }
