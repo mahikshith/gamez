@@ -338,7 +338,7 @@ function drawPlume(ctx, sim, K, x, dir, alpha, tele, t, k) {
   ctx.save();
   // the column: a soft vertical band, brighter at its core
   const gr = ctx.createLinearGradient(x - w, 0, x + w, 0);
-  gr.addColorStop(0, 'rgba(160,225,255,0)'); gr.addColorStop(0.5, `rgba(160,225,255,${(tele ? 0.16 : 0.34) * alpha})`); gr.addColorStop(1, 'rgba(160,225,255,0)');
+  gr.addColorStop(0, 'rgba(160,225,255,0)'); gr.addColorStop(0.5, `rgba(160,225,255,${(tele ? 0.26 : 0.52) * alpha})`); gr.addColorStop(1, 'rgba(160,225,255,0)');
   ctx.fillStyle = gr; ctx.fillRect(x - w, Math.min(y0, y1), 2 * w, Math.abs(H));
   if (tele) { // edges of where it will blow, and arrows for the way it sweeps
     ctx.setLineDash([0.12, 0.1]); ctx.lineWidth = Math.max(0.02, 1.4 / k); ctx.strokeStyle = `rgba(220,248,255,${0.7 * alpha})`;
@@ -369,11 +369,11 @@ function drawWhirl(ctx, sim, c, dir, alpha, kk, t, k, tele) {
   ctx.save();
   ctx.lineCap = 'round';
   ctx.globalAlpha = alpha;
-  ctx.beginPath(); ctx.arc(0, 0, rOut, 0, TAU); ctx.arc(0, 0, rIn, 0, TAU, true); ctx.fillStyle = kk < 0.85 ? 'rgba(120,230,200,0.13)' : 'rgba(120,205,245,0.26)'; ctx.fill('evenodd');
+  ctx.beginPath(); ctx.arc(0, 0, rOut, 0, TAU); ctx.arc(0, 0, rIn, 0, TAU, true); ctx.fillStyle = kk < 0.85 ? 'rgba(120,230,200,0.2)' : 'rgba(150,220,255,0.4)'; ctx.fill('evenodd');
   const lanes = 4, lw0 = Math.max(0.045, 5.5 / k);
   for (let i = 0; i < lanes; i++) {
     const r = rIn + ((i + 0.5) / lanes) * (rOut - rIn), spd = dir * (1.2 + 0.5 * (i % 2)) * kk * (tele ? 0.6 : 1), a0 = t * spd + i * 1.9, len = 1.25 - 0.18 * i;
-    for (const [col, wd, off] of [['rgba(10,50,80,0.45)', 1.6, -0.018], [kk < 0.85 ? '#b6ffe6' : '#d6f4ff', 1, 0]]) {
+    for (const [col, wd, off] of [['rgba(10,50,80,0.55)', 2.3, -0.018], [kk < 0.85 ? '#b6ffe6' : '#d6f4ff', 1.5, 0]]) {
       const SEG = 6;
       for (let j = 0; j < SEG; j++) {
         const u0 = j / SEG, u1 = (j + 1) / SEG, h = dir > 0 ? 1 : -1; // tapered: thin at the tail, full at the head
