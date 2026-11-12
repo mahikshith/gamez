@@ -1,0 +1,21 @@
+const { chromium } = require('playwright'); const path = require('path'); const fs = require('fs');
+const html = path.resolve(process.argv[2]); const out = process.argv[3];
+(async () => {
+  const b = await chromium.launch();
+  const mk = async (w, h, dpr) => { const p = await b.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: dpr }); await p.goto('file://' + html); await p.waitForTimeout(700); return p; };
+  let p = await mk(360, 640, 3);
+  const shot = (n) => p.screenshot({ path: path.join(out, 'raw', n + '.png') });
+  const play = async (L, frames) => { await p.evaluate(([i, f]) => { const E = __egg; E.start(i); for (let k = 0; k < 40; k++) E.frame(1 / 60); try { E.press('gotit'); } catch (e) {} E.press('go'); for (let k = 0; k < f; k++) E.frame(1 / 60); E.G.toast = null; E.G.card = null; E.frame(1 / 60); }, [L - 1, frames]); await shot('L' + L); };
+  for (const [L, f] of [[1, 240], [5, 420], [15, 300], [25, 420], [40, 420], [45, 420], [50, 420], [20, 300]]) await play(L, f);
+  await p.evaluate(() => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('win', 3); for (let k = 0; k < 600; k++) E.frame(1 / 60); }); await shot('win');
+  await p.evaluate(() => { const E = __egg; E.setSave({ unlocked: 50, stars: Object.fromEntries(Array.from({ length: 22 }, (_, i) => [i + 1, 3 - (i % 3 === 2 ? 1 : 0)])) }); E.G.screen = 'title'; E.press('levels'); for (let i = 0; i < 40; i++) E.frame(1 / 60); }); await shot('levels');
+  await p.evaluate(() => { const E = __egg; E.setSave({ unlocked: 50, wallet: { coins: 480, owned: { stone: 2, rewind: 1 } } }); E.G.screen = 'title'; E.press('shop'); for (let i = 0; i < 40; i++) E.frame(1 / 60); }); await shot('shop');
+  await p.evaluate(() => { const E = __egg; E.G.screen = 'title'; E.G.screenT = 5; for (let i = 0; i < 120; i++) E.frame(1 / 60); }); await shot('title');
+  await p.close();
+  p = await mk(390, 844, 4);
+  await p.evaluate(() => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('win', 3); for (let k = 0; k < 600; k++) E.frame(1 / 60); }); await shot('win-4x');
+  await p.close();
+  p = await mk(1280, 720, 1.5);
+  await play(1, 240); fs.renameSync(path.join(out, 'raw', 'L1.png'), path.join(out, 'raw', 'L1-wide.png'));
+  await p.close(); await b.close();
+})();
