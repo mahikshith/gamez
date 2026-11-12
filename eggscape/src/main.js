@@ -2761,7 +2761,7 @@ function drawIntro() {
   if (L.intro && !save.intro[L.id]) {
     // a world's new mechanic gets one screen of its own the first time (C6); a boss also shows its face (I6)
     stackCard(L.intro.title, (s, iw) => [
-      ...(L.boss ? [{ h: 190 * s, gap: 0, draw: (x, y, w) => { bossStage(x, y, w, 190 * s, s); bossPortrait(ctx, L.boss, x, y, w, 190 * s, G.t); } }] : []),
+      // (the framed villain portrait card was removed at the owner's request: bosses introduce themselves in the level)
       ...(L.intro.chick ? [{ h: 104 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 104 * s, s, () => chickIntroArt(L.intro.chick, x, y, w, 104 * s)) }] // v3.2: meet the chick kind
         : L.intro.cw ? [{ h: 100 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 100 * s, s, () => drawCwIntro(ctx, L.intro.cw, x, y, w, 100 * s, G.t)) }] // v4: meet the clockwork creature
         : !L.boss && L.salamander ? [{ h: 96 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 96 * s, s, () => salIntroArt(x, y, w, 96 * s)) }] : []), // v3.2: meet the salamander
