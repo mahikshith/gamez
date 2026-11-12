@@ -33,16 +33,17 @@ export const SFX_NAMES = [
   'bomb_fuse', 'bomb_explode', 'glass_crack', 'glass_break', 'rock_hit', 'wood_break',
   'splash', 'lava_sizzle', 'thunder', 'wind_gust', 'motor_tick', 'rewind', 'score_tick', 'countdown', 'squish',
   'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up', // the hen's win/fail routines (render/cheer.js)
+  'ring_tick', 'egg_land', 'near_miss', 'hud_pop', // game feel: ring detents, weighty landings, a close shave, a prize reaching the HUD
 ];
 
 export const MATERIALS = ['wood', 'stone', 'ice', 'mushroom', 'glass', 'metal', 'coral', 'vine', 'cloud', 'obsidian', 'bone', 'gold'];
 
 // Sounds that are interface/feedback, not world events: they bypass the underwater filter.
-const UI_SOUNDS = new Set(['ui_tap', 'ui_back', 'ui_open', 'combo', 'star', 'level_win', 'level_fail', 'unlock', 'score_tick', 'countdown', 'egg_save', 'rewind',
+const UI_SOUNDS = new Set(['hud_pop', 'ui_tap', 'ui_back', 'ui_open', 'combo', 'star', 'level_win', 'level_fail', 'unlock', 'score_tick', 'countdown', 'egg_save', 'rewind',
   'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up']);
 // Random pitch spread per sound (fraction). Musical stings stay in tune.
 const PITCH_VAR = {
-  ui_tap: 0.015, ui_back: 0.01, ui_open: 0.01, score_tick: 0.004, countdown: 0,
+  ui_tap: 0.015, ring_tick: 0.02, hud_pop: 0, ui_back: 0.01, ui_open: 0.01, score_tick: 0.004, countdown: 0,
   egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, rewind: 0.02, tada: 0, cheer_up: 0, cluck: 0.06,
 };
 const DEFAULT_PITCH_VAR = 0.045;
@@ -931,6 +932,35 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       nz(v, { color: 'pink', a: 0.008, d: 0.07 + 0.03 * i, g: lvl * 0.4, type: 'lowpass', f: 950 * p, f2: 320 * p, sw: 0.09, q: 0.9 });
       nz(v, { color: 'pink', t: 0.018, a: 0.028, d: 0.07, g: lvl * 0.14, type: 'bandpass', f: 1250 * p, f2: 650 * p, sw: 0.09, q: 1.4, type2: 'lowpass', f3: 2400 });
       tone(v, { t: 0.014, f: 320 * p, f2: 170 * p, gl: 0.05, a: 0.008, d: 0.05, g: lvl * 0.1 });
+    },
+    // a ring passes a detent: a dry ratchet click in the vault's own material (o.i = how fast it is turning)
+    ring_tick(v, o) {
+      const p = o.p, i = o.i, m = MAT[st.material];
+      nz(v, { color: 'pink', a: 0.0004, d: 0.006 + 0.006 * i, g: 0.1 + 0.12 * i, type: 'bandpass', f: 2600 * p, q: 2.2 });
+      modal(v, { f: m.f * 2.1 * p, r: [1, 2.3], d: Math.min(m.d, 0.05) * 0.5, g: 0.05 + 0.06 * i });
+      tone(v, { f: 150 * p, f2: 110 * p, gl: 0.02, a: 0.001, d: 0.022, g: 0.07 + 0.08 * i });
+    },
+    // an egg lands with weight: the harder the hit (o.i), the lower and longer the body thump under the shell knock
+    egg_land(v, o) {
+      const p = o.p, i = o.i, m = MAT[st.material], lvl = 0.16 + 0.5 * i, f0 = (150 - 55 * i) * p;
+      tone(v, { f: f0 * 1.5, f2: f0 * 0.55, gl: 0.07 + 0.05 * i, a: 0.002, d: 0.08 + 0.12 * i, g: lvl * 0.95 });
+      nz(v, { color: 'brown', a: 0.001, d: 0.03 + 0.06 * i, g: lvl * 0.55, type: 'lowpass', f: 420 + 260 * i });
+      modal(v, { f: rr(1500, 1700) * p * (1 - 0.15 * i), r: [1, 1.58, 2.37], amps: [1, 0.55, 0.3], d: 0.018 + 0.02 * i, g: lvl * 0.2 });
+      modal(v, { f: m.f * rr(0.92, 1.02) * (1 - 0.12 * i), r: m.r, d: m.d * (0.6 + 0.8 * i), g: lvl * 0.34 });
+      nz(v, { color: 'pink', a: 0.0006, d: 0.01 + 0.03 * i, g: lvl * m.n * 0.5, type: 'bandpass', f: m.nf * (0.55 + 0.4 * i), q: m.nq });
+    },
+    // a close shave past a thorn: a quick breath of air and one glassy ping
+    near_miss(v, o) {
+      const p = o.p;
+      nz(v, { color: 'white', a: 0.03, d: 0.11, g: 0.16, type: 'bandpass', f: 900 * p, f2: 3600 * p, sw: 0.12, q: 1.6 });
+      tone(v, { t: 0.07, f: 2350 * p, a: 0.001, d: 0.12, g: 0.07 });
+      tone(v, { t: 0.07, type: 'triangle', f: 3520 * p, a: 0.001, d: 0.06, g: 0.03 });
+    },
+    // a prize lands in the HUD: a soft rising pop
+    hud_pop(v, o) {
+      const p = o.p;
+      tone(v, { f: 620 * p, f2: 1240 * p, gl: 0.05, a: 0.002, d: 0.09, g: 0.2 });
+      tone(v, { type: 'triangle', f: 1860 * p, a: 0.001, d: 0.05, g: 0.05 });
     },
     score_tick(v, o) {
       const p = o.p;

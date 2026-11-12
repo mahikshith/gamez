@@ -139,7 +139,11 @@ const G = {
   theme: null,
   backdrop: null,
   fx: new FX(),
-  cam: { x: 0, y: 0, k: 60 },
+  cam: { x: 0, y: 0, k: 60, zoom: 1 },
+  cv: { vx: 0, vy: 0, vk: 0, kick: 0, kickV: 0, kx: 0, ky: 0, playT: 0, est: false, smooth: 0.4, F: null }, // camera director state
+  view: { x: 0, y: 0, k: 60, zoom: 1, dx: 0, dy: 0, shakeX: 0, shakeY: 0 }, // read-only camera info for the backdrop / weather layers
+  bcam: { x: 0, y: 0, zoom: 1 }, // the camera as the backdrop's parallax sees it
+  flyers: [], // prizes flying to the HUD (screen space)
   camSnap: true,
   zm: null, // player zoom (null = auto)
   tp: new Map(), // touch pointers in play: pointerId -> { x, y }
@@ -223,6 +227,8 @@ function startLevel(i, opts = {}) {
   G.held.clear();
   G.keySel = firstGrabbable(0, 1);
   G.camSnap = true;
+  G.cv.est = true; G.cv.playT = 0;
+  G.flyers = [];
   G.zm = null;
   G.pinch = null;
   G.tp.clear();
@@ -345,9 +351,9 @@ function frameOf(all, maxCh) {
   return { x: 0, y: (yMin + yMax) / 2, k, R, yMin, yMax };
 }
 
-function camTarget() {
-  const sim = G.sim;
-  if (!sim) return { x: 0, y: 0, k: 60 };
+// The base frame: the whole vault, or the eggs' rings; plus the player's own zoom. (The shot the camera rests on.)
+function camBase() {
+  const sim = G.sim, cv = G.cv;
   const n = sim.rings.length, eggs = sim.aliveEggs();
   let maxCh = 0;
   for (const e of eggs) maxCh = Math.max(maxCh, sim.channelOf(e));
@@ -359,6 +365,7 @@ function camTarget() {
   // a snake or a boss outside the eggs' rings widens the close-up frame into a square; never let that zoom
   // out further than the whole vault (it cropped big vaults AND shrank the eggs): show the whole vault instead
   if (A.k < F.k) A = F;
+  cv.F = F; cv.live = live; cv.whole = A === F; cv.sky = !!sky; cv.maxCh = maxCh;
   const z = G.zm;
   if (z == null || !live) return A;
   if (z < 0) { // out: slide to the whole vault (k in log steps)
@@ -378,19 +385,140 @@ function camTarget() {
   return { x: clamp(cx, -mx, mx), y: F.yMax - F.yMin > 2 * hh ? clamp(cy, F.yMin + hh, F.yMax - hh) : (F.yMin + F.yMax) / 2, k };
 }
 
+// Never lose what matters: zoom out and slide just enough that every point (plus a margin, in metres) is in the play area.
+function keepInView(T, pts, m) {
+  if (!pts.length) return T;
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+  x0 -= m; x1 += m; y0 -= m; y1 += m;
+  const P = G.play, k = Math.min(T.k, P.w / (x1 - x0), P.h / (y1 - y0)), hw = P.w / (2 * k), hh = P.h / (2 * k);
+  return { x: clamp(T.x, x1 - hw, x0 + hw), y: clamp(T.y, y1 - hh, y0 + hh), k };
+}
+
+// the egg furthest along (ties: the lowest), and the gap in the ring under it that it is heading for
+function leadEgg(sim) {
+  let lead = null, lc = -1, ly = 0;
+  const gy = sim.gy || 1;
+  for (const e of sim.aliveEggs()) {
+    const c = sim.channelOf(e), y = e.body.getPosition().y * gy;
+    if (c > lc || (c === lc && y < ly)) { lead = e; lc = c; ly = y; }
+  }
+  if (!lead) return null;
+  const p = lead.body.getPosition(), out = { egg: lead, ch: lc, x: p.x, y: p.y, gx: p.x, gy: p.y };
+  const ring = sim.rings[lc];
+  if (ring && ring.gaps.length) {
+    const ra = ring.body.getAngle(), ea = Math.atan2(p.y, p.x);
+    let best = 9, ga = 0;
+    for (const g of ring.gaps) { const d = Math.abs(Math.atan2(Math.sin(ra + g.a - ea), Math.cos(ra + g.a - ea))); if (d < best) { best = d; ga = g.a; } }
+    const [lx, ly2] = ringPt(ring, ga, ring.r), c = Math.cos(ra), s = Math.sin(ra);
+    out.gx = lx * c - ly2 * s; out.gy = lx * s + ly2 * c;
+  } else if (lc >= sim.rings.length) { const n = sim.nest.getPosition(); out.gx = n.x; out.gy = n.y; } // out of the vault: the nest
+  return out;
+}
+
+// The director: where the camera wants to be. Shots, in order: the win push-in on nest and hen, the level's
+// establishing shot (wide, or on the boss), the last egg's approach, then the base frame leaning toward the action.
+// A player zoom (buttons, wheel, pinch) overrides the leaning; reduced motion keeps the plain base frame.
+function camTarget() {
+  const sim = G.sim;
+  if (!sim) return { x: 0, y: 0, k: 60 };
+  const cv = G.cv, B = camBase(), F = cv.F, P = G.play, gy = sim.gy || 1;
+  cv.smooth = 0.4;
+  if (save.calm) return B;
+  const eggPts = sim.aliveEggs().map((e) => e.body.getPosition());
+  // win: push in on the nest and the hen; the nest sits low in the frame, the sky (or sea) above her
+  if (sim.state === 'won' || sim.state === 'winning' || G.screen === 'win') {
+    const n = sim.nest.getPosition(), k = clamp(Math.min(F.k * 1.55, P.w / (sim.nestW + 2.3)), F.k, 190);
+    cv.smooth = 0.55;
+    return { x: n.x + (sim.water ? 0 : 0.5), y: n.y + (P.h / k) * 0.2 * gy, k };
+  }
+  // establishing shot: behind the intro card the camera creeps in from wide; a boss level opens on the boss
+  const boss = bossPose(sim, false), opening = G.screen === 'intro' || (G.screen === 'play' && boss && cv.playT < 0.8);
+  if (G.screen === 'play' && cv.playT < 1.4) cv.smooth = lerp(0.8, cv.smooth, ss01(cv.playT / 1.4));
+  if (opening) {
+    if (boss) {
+      const top = boss.y + boss.h * 0.62, bot = Math.min(-0.4, ...eggPts.map((p) => p.y)) - 0.6, hw = Math.max(Math.abs(boss.x) + boss.h * 0.75, sim.outerR * 0.55);
+      const k = clamp(Math.min(P.w / (2 * hw), P.h / (top - bot), F.k * 1.7), F.k, 190);
+      return keepInView({ x: boss.x * 0.5, y: (top + bot) / 2, k }, eggPts, 0.45);
+    }
+    return { x: F.x, y: F.y, k: F.k * lerp(CAM_WIDE, 0.92, ss01(G.screenT / 3)) };
+  }
+  if (G.zm != null || !cv.live) return B;
+  const L = leadEgg(sim);
+  if (!L) return B;
+  // the last egg needed is on its way out: lean in on it and the nest (gently; never while something hunts overhead)
+  const need1 = (sim.level.target || 1) - sim.savedLog.length === 1, n = sim.rings.length;
+  if (need1 && L.ch >= n - 1 && !cv.sky && !boss && !sim.nestAmp) {
+    const nest = sim.nest.getPosition(), out = L.ch >= n;
+    const T = { x: lerp(L.x, nest.x, 0.5), y: lerp(L.y, nest.y, 0.5) + 0.3 * gy, k: Math.min(F.k * (out ? 1.32 : 1.12), 190) };
+    cv.smooth = 0.5;
+    return keepInView(T, [...eggPts, { x: nest.x - sim.nestW / 2, y: nest.y - 0.2 * gy }, { x: nest.x + sim.nestW / 2 + (sim.water ? 0 : 1.3), y: nest.y + 0.9 * gy }], 0.5);
+  }
+  // lean toward the action: the lead egg and the gap it is heading for. A whole-vault frame only moves in the
+  // room it has to spare (nothing of the vault is cropped); a close-up may slide a little further.
+  const fx_ = lerp(L.x, L.gx, 0.35), fy_ = lerp(L.y, L.gy, 0.35);
+  let dx = (fx_ - B.x) * 0.3, dy = (fy_ - B.y) * 0.3;
+  if (cv.whole) {
+    const sx = Math.max(0, P.w / (2 * B.k) - F.R) + 0.1, sy = Math.max(0, P.h / (2 * B.k) - (F.yMax - F.yMin) / 2) + 0.1;
+    dx = clamp(dx, -sx, sx); dy = clamp(dy, -Math.min(sy, 0.9), Math.min(sy, 0.9));
+  } else { const d = Math.hypot(dx, dy); if (d > 0.6) { dx *= 0.6 / d; dy *= 0.6 / d; } }
+  return keepInView({ x: B.x + dx, y: B.y + dy, k: B.k }, eggPts, 0.5);
+}
+const CAM_WIDE = 0.8; // the establishing shot starts this much wider than the whole vault
+
 // player zoom z: -1 whole vault, 0 auto (null), +1 twice auto
 function setZoom(z) {
   z = clamp(z, -1, 1);
   G.zm = Math.abs(z) < 0.05 ? null : z;
 }
 
+// critically damped follow (eases out of rest and into it; no lurch when the target jumps)
+function smoothDamp(cur, target, vel, smooth, dt) {
+  const om = 2 / smooth, x = om * dt, ex = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  const ch = cur - target, tmp = (vel + om * ch) * dt;
+  return [target + (ch + tmp) * ex, (vel - om * tmp) * ex];
+}
+
+// a quick zoom kick toward (x, y) in the world: overshoots a little and settles (the punch on big moments)
+function camPunch(amt, x, y) {
+  if (save.calm) return;
+  const cv = G.cv;
+  cv.kickV += amt * 44;
+  if (x != null) { cv.kx = x; cv.ky = y; } else { cv.kx = G.cam.x; cv.ky = G.cam.y; }
+}
+
 function updateCamera(dt) {
-  const T = camTarget();
-  if (G.camSnap) { G.cam = { ...T }; G.camSnap = false; return; }
-  const a = 1 - Math.exp(-dt * 2.6);
-  G.cam.x = lerp(G.cam.x, T.x, a);
-  G.cam.y = lerp(G.cam.y, T.y, a);
-  G.cam.k = lerp(G.cam.k, T.k, a);
+  const cv = G.cv, cam = G.cam;
+  if (G.screen === 'pause' && !G.camSnap) return; // the shot holds under the pause card
+  if (G.screen === 'play') cv.playT += dt;
+  let T = camTarget();
+  if (G.camSnap) {
+    G.camSnap = false;
+    // a new level opens wide (or on its boss) and eases in; a resize just snaps
+    if (cv.est && !save.calm && G.screen === 'play' && !bossPose(G.sim, false)) T = { x: cv.F.x, y: cv.F.y, k: cv.F.k * CAM_WIDE };
+    cv.est = false;
+    cam.x = T.x; cam.y = T.y; cam.k = T.k;
+    cv.vx = cv.vy = cv.vk = cv.kick = cv.kickV = 0;
+  } else {
+    const st = cv.smooth || 0.4;
+    [cam.x, cv.vx] = smoothDamp(cam.x, T.x, cv.vx, st, dt);
+    [cam.y, cv.vy] = smoothDamp(cam.y, T.y, cv.vy, st, dt);
+    const [lk, vk] = smoothDamp(Math.log(cam.k), Math.log(T.k), cv.vk, st * 1.15, dt);
+    cam.k = Math.exp(lk); cv.vk = vk;
+  }
+  // the punch spring (under-damped: one small overshoot)
+  const om = 24, h = Math.min(dt, 0.033);
+  cv.kickV += (-om * om * cv.kick - 2 * 0.5 * om * cv.kickV) * h;
+  cv.kick = clamp(cv.kick + cv.kickV * h, -0.08, 0.12);
+  if (Math.abs(cv.kick) < 1e-4 && Math.abs(cv.kickV) < 1e-3) cv.kick = cv.kickV = 0;
+  // what the backdrop and the weather may read: where the camera is against its resting frame (metres), and how
+  // far it is zoomed against the whole vault. The backdrop turns this into parallax between its layers.
+  const fk = cv.F ? cv.F.k : cam.k;
+  cam.zoom = (cam.k * (1 + cv.kick)) / fk;
+  G.view.x = cam.x; G.view.y = cam.y; G.view.k = cam.k; G.view.zoom = cam.zoom;
+  G.view.dx = (cam.x - (cv.F ? cv.F.x : 0)) * cam.k; G.view.dy = -(cam.y - (cv.F ? cv.F.y : 0)) * cam.k; // screen px the world has slid from rest
+  G.bcam.x = cam.x * 2.2; G.bcam.y = (cam.y - (cv.F ? cv.F.y : 0)) * 2.2; G.bcam.zoom = 1 + (cam.zoom - 1) * 1.6;
+  if (G.weather) G.weather.view = G.view;
 }
 
 function toScreen(x, y) {
@@ -446,6 +574,7 @@ function pointerDown(e) {
   G.held.set(e.pointerId, { ring, x, y });
   if (G.hintShow && G.hintShow.ring === ring.i) G.hintShow = null;
   ring.held = true;
+  ring.grabT = G.t; // game feel: the grab pulse (drawRingPulse)
   ring.target = ring.body.getAngle();
   G.keySel = ring.i;
   audio.play('grab', { vol: 0.6 });
@@ -546,6 +675,7 @@ function keyboardTurn(dt) {
     if (ring.oneway && dir !== ring.oneway) { onewayDrag(ring, -1); return; }
     if (!ring.held) ring.target = ring.body.getAngle();
     ring.target += dir * G.sim.maxOmega(ring) * dt * 1.1;
+    if (!ring.keyHeld) ring.grabT = G.t;
     ring.keyHeld = true;
   } else ring.keyHeld = false;
 }
@@ -811,7 +941,8 @@ function v3Event(ev, fx) {
     case 'fallLand':
       v3Fall = ev.egg && ev.egg.eagleDropped ? 'eagle' : ev.rings;
       fx.wave(ev.x, ev.y, 0.8 + 0.2 * ev.dmg, '#ffb27a', 0.4, 0.1);
-      fx.shake = Math.max(fx.shake, 0.25 + 0.12 * ev.dmg);
+      fx.land(ev.x, ev.y - 0.22 * (G.sim.gy || 1), 0, G.sim.gy || 1, 1);
+      fx.kick(0.3 + 0.12 * ev.dmg);
       audio.play('rock_hit', { vol: 0.6 + 0.2 * ev.dmg });
       break;
     case 'softLand':
@@ -911,6 +1042,163 @@ function drawV3Tint(sim) {
   ctx.fillRect(0, 0, W_, H_);
 }
 
+// ---------------------------------------------------------------- game feel (render side only: the sim is never touched)
+// Per-egg presentation state: a squash spring (kicked by landings, drawn in render), the last velocity (to find
+// the surface normal of a hit), and the closest shave with a thorn.
+const EGGFX = new WeakMap();
+function eggFx(e) {
+  let s = EGGFX.get(e);
+  if (!s) EGGFX.set(e, (s = { s: 0, sv: 0, nx: 0, ny: 1, pvx: 0, pvy: 0, bt: -9, nearD: 9, nearX: 0, nearY: 0, nmT: -9, hurtT: -9, fs: 0, fa: 0 }));
+  return s;
+}
+// what a landing kicks up, by the vault's material: [dust, grit, sparks on a hard hit]
+const LAND_MAT = {
+  wood: ['rgba(238,224,198,0.85)', '#d9b98a', 0], stone: ['rgba(214,210,204,0.85)', '#b9b3aa', 1], ice: ['rgba(232,246,255,0.85)', '#e4f6ff', 0], mushroom: ['rgba(240,226,236,0.8)', '#e7c9da', 0],
+  glass: ['rgba(226,246,250,0.8)', '#dffbff', 1], metal: ['rgba(214,220,228,0.75)', '#c9d3df', 1], coral: ['rgba(250,222,214,0.8)', '#f4b9a6', 0], vine: ['rgba(214,236,196,0.8)', '#a9d18a', 0],
+  cloud: ['rgba(255,255,255,0.85)', '#ffffff', 0], obsidian: ['rgba(120,110,126,0.8)', '#6a5f78', 1], bone: ['rgba(240,236,222,0.85)', '#e9e2cc', 0], gold: ['rgba(255,236,170,0.85)', '#ffd76a', 1],
+};
+// an egg hit something at closing speed v: squash it against the surface, kick up dust along it, thump
+function eggLand(egg, v, fx) {
+  const sim = G.sim, st = eggFx(egg), p = egg.body.getPosition(), vel = egg.body.getLinearVelocity();
+  if (v <= 1.6 || G.t - st.bt < 0.09) return;
+  st.bt = G.t;
+  // the surface normal: the way the hit turned the egg's velocity (else straight back along its path)
+  let nx = vel.x - st.pvx, ny = vel.y - st.pvy, d = Math.hypot(nx, ny);
+  if (d < 0.3) { nx = -st.pvx; ny = -st.pvy; d = Math.hypot(nx, ny); }
+  if (d < 0.05) { nx = 0; ny = sim.gy || 1; d = 1; }
+  st.nx = nx / d; st.ny = ny / d;
+  const pw = clamp((v - 1.2) / 5.5, 0, 1);
+  st.sv += (egg.stone > 0 || egg.iron ? 0.3 : 1) * (2.5 + 9 * pw);
+  if (v < 2.2) return;
+  const M = sim.water ? ['rgba(200,232,255,0.6)', '#dff3ff', 0] : LAND_MAT[G.level.material || 'wood'] || LAND_MAT.wood;
+  const cx = p.x - st.nx * 0.24, cy = p.y - st.ny * 0.24;
+  fx.land(cx, cy, st.nx, st.ny, pw, M[0], M[1]);
+  if (M[2] && pw > 0.5) for (let i = 0; i < 5; i++) { const sd = i & 1 ? 1 : -1, sp = 3 + Math.random() * 4; fx.add({ x: cx, y: cy, vx: -st.ny * sd * sp + st.nx * 2, vy: st.nx * sd * sp + st.ny * 2, g: 8, life: 0.2 + Math.random() * 0.2, size: 0.028, color: i % 2 ? '#ffd27a' : '#fff3c9', type: 'spark' }); }
+  if (v > 4.6) fx.kick(0.1 + 0.14 * pw); // a heavy landing is felt
+}
+// hit-stop: the world holds for a few frames on a big moment (particles and the camera keep moving)
+function hitStop(s) { if (!save.calm) G.hitstop = Math.max(G.hitstop, s); }
+// a prize flies from the world to its place in the HUD (tag = a recorded HUD block), n of them staggered
+function flyToHud(wx, wy, tag, n = 1) {
+  const s = toScreen(wx, wy);
+  for (let i = 0; i < n; i++) G.flyers.push({ x0: s.x, y0: s.y, tag, t: -i * 0.1, dur: 0.6 + i * 0.03, sd: i & 1 ? -1 : 1, i });
+}
+function updateFlyers(dt) {
+  for (const f of G.flyers) {
+    f.t += dt;
+    if (f.t >= f.dur && !f.done) { f.done = 1; G.hudPop = { tag: f.tag, t: G.t }; audio.play('hud_pop', { pitch: 1 + 0.12 * f.i, vol: 0.7 }); }
+  }
+  if (G.flyers.length) G.flyers = G.flyers.filter((f) => !f.done);
+}
+function drawFlyers() {
+  const u = ui.u, spot = (tag) => { const r = ui.rects.find((q) => q.tag === tag); return r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : { x: W_ - 40 * u, y: 30 * u }; };
+  for (const f of G.flyers) {
+    if (f.t < 0) continue;
+    const q = clamp(f.t / f.dur, 0, 1), T = spot(f.tag);
+    // anticipation: it backs off a touch, then accelerates in along an arc
+    const e = q * q * (2.6 * q - 1.6), dx = T.x - f.x0, dy = T.y - f.y0, L = Math.hypot(dx, dy) || 1, bow = Math.sin(Math.PI * clamp(e, 0, 1)) * Math.min(90 * u, L * 0.22) * f.sd;
+    const x = f.x0 + dx * e - (dy / L) * bow, y = f.y0 + dy * e + (dx / L) * bow;
+    const sc = (q < 0.18 ? 1.25 * Math.sin((q / 0.18) * Math.PI / 2) : lerp(1.25, 0.8, (q - 0.18) / 0.82));
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(save.calm ? 0 : q * 5 * f.sd);
+    drawStar(ctx, 0, 0, 11 * u * sc, true);
+    ctx.restore();
+  }
+  const hp = G.hudPop;
+  if (hp && G.t - hp.t < 0.3) {
+    const q = (G.t - hp.t) / 0.3, T = spot(hp.tag), e = 1 - (1 - q) * (1 - q);
+    ctx.globalAlpha = 1 - q;
+    ctx.strokeStyle = '#ffe066';
+    ctx.lineWidth = 3 * u * (1 - q) + 0.5;
+    ctx.beginPath(); ctx.arc(T.x, T.y, (8 + 20 * e) * u, 0, 6.283); ctx.stroke();
+    ctx.fillStyle = '#fff6c2';
+    for (let i = 0; i < 6; i++) { const a = i * 1.047 + 0.4, r = (10 + 22 * e) * u; ctx.beginPath(); ctx.arc(T.x + Math.cos(a) * r, T.y + Math.sin(a) * r, 2.2 * u * (1 - q), 0, 6.283); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  }
+}
+// a ring answers the hand: both edges ripple outward on a grab, and blink on every detent it turns through
+function drawRingPulse(ring) {
+  const g = G.t - (ring.grabT ?? -9), tk = G.t - (ring.tickT ?? -9);
+  if ((g > 0.4 && tk > 0.12) || save.calm) return;
+  const edge = (rad) => {
+    ctx.beginPath();
+    if (!ring.prof) ctx.arc(0, 0, Math.max(0.02, rad), 0, 6.283);
+    else { for (let i = 0; i <= 72; i++) { const [x, y] = ringPt(ring, (i / 72) * 6.283, rad); ctx.lineTo(x, y); } }
+    ctx.stroke();
+  };
+  ctx.save();
+  ctx.rotate(ring.body.getAngle());
+  ctx.strokeStyle = '#fff8dc';
+  if (g <= 0.4) {
+    const q = g / 0.4, e = 1 - (1 - q) * (1 - q) * (1 - q);
+    ctx.globalAlpha = (1 - q) * 0.8;
+    ctx.lineWidth = 0.05 * (1 - q) + 0.012;
+    edge(ring.r + RING_TH / 2 + 0.02 + 0.15 * e); edge(ring.r - RING_TH / 2 - 0.02 - 0.15 * e);
+  }
+  if (tk <= 0.12) {
+    ctx.globalAlpha = 0.4 * (1 - tk / 0.12);
+    ctx.lineWidth = 0.022;
+    edge(ring.r + RING_TH / 2 + 0.015); edge(ring.r - RING_TH / 2 - 0.015);
+  }
+  ctx.restore();
+}
+// rings click through detents while a hand turns them (pitch by ring, loudness by speed)
+const DETENT = Math.PI / 12;
+let lastRingTick = 0;
+function ringTicks(sim) {
+  for (const r of sim.rings) {
+    const a = Math.floor(r.body.getAngle() / DETENT);
+    if (r.tk === undefined) r.tk = a;
+    if (a === r.tk) continue;
+    r.tk = a;
+    if (!(r.held || r.keyHeld) || G.screen !== 'play' || G.t - lastRingTick < 0.035) continue;
+    lastRingTick = G.t;
+    r.tickT = G.t;
+    audio.play('ring_tick', { pitch: 0.8 + 0.07 * r.i, intensity: clamp(Math.abs(r.omega) / (sim.maxOmega(r) || 1), 0, 1), vol: 0.75 });
+  }
+}
+// Per frame, per egg: run the squash spring, remember the velocity, and call a near miss when an egg that came
+// within a whisker of a thorn tip (nd metres, at ntx/nty) gets clear of it unhurt.
+function eggFeel(sim, e, dt, nd, ntx, nty) {
+  const st = eggFx(e), v = e.body.getLinearVelocity(), om = 34, h = Math.min(dt, 0.033);
+  st.sv += (-om * om * st.s - 2 * 0.36 * om * st.sv) * h;
+  st.s = clamp(st.s + st.sv * h, -0.13, 0.24);
+  if (Math.abs(st.s) < 5e-4 && Math.abs(st.sv) < 0.01) st.s = st.sv = 0;
+  // a long fall stretches the egg a little along its path (anticipation for the landing squash)
+  const sp = Math.hypot(v.x, v.y), want = e.freefall > 0 && !e.chick ? clamp((sp - 4.5) / 9, 0, 1) * 0.085 : 0;
+  st.fs = lerp(st.fs, want, 1 - Math.exp(-dt * 10));
+  if (sp > 1) st.fa = Math.atan2(v.y, v.x);
+  st.pvx = v.x; st.pvy = v.y;
+  if (nd < 0.5) { if (nd < st.nearD) { st.nearD = nd; st.nearX = ntx; st.nearY = nty; } }
+  else if (st.nearD < 9 && nd > 0.62) {
+    if (st.nearD < 0.44 && sp > 0.9 && G.screen === 'play' && sim.state === 'play' && G.t - st.nmT > 2.5 && G.t - st.hurtT > 1 && !(e.fire > 0) && !(e.stone > 0) && !e.chick && !e.bubbleFix) {
+      st.nmT = G.t;
+      G.fx.whoosh(st.nearX, st.nearY, v.x, v.y);
+      audio.play('near_miss', { vol: 0.7 });
+      popup(st.nearX, st.nearY + 0.4, 'Close!', { color: '#bff3ff', size: 15, life: 0.7 });
+    }
+    st.nearD = 9;
+  }
+}
+// draw one egg through its squash: pressed against the surface it hit (and planted on it), bulging sideways
+function drawEggFelt(e, t, k) {
+  const st = EGGFX.get(e), sq = st ? st.s : 0, fs = st && Math.abs(sq) < 0.02 ? st.fs : 0;
+  if ((Math.abs(sq) < 0.004 && fs < 0.004) || save.calm) { if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); return; }
+  const p = e.body.getPosition();
+  ctx.save();
+  if (fs >= 0.004) { // falling: longer along the path, slimmer across
+    ctx.translate(p.x, p.y); ctx.rotate(st.fa); ctx.scale(1 + fs, 1 - fs * 0.6); ctx.rotate(-st.fa); ctx.translate(-p.x, -p.y);
+  } else {
+    const a = Math.atan2(st.ny, st.nx);
+    ctx.translate(p.x - st.nx * sq * 0.24, p.y - st.ny * sq * 0.24);
+    ctx.rotate(a); ctx.scale(1 - sq, 1 + sq * 0.75); ctx.rotate(-a);
+    ctx.translate(-p.x, -p.y);
+  }
+  if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k);
+  ctx.restore();
+}
+
 // ---------------------------------------------------------------- events
 let lastBump = 0;
 function handleEvents() {
@@ -921,14 +1209,23 @@ function handleEvents() {
       case 'bump':
         if (G.t - lastBump > 0.05 && ev.v > 1.2) {
           lastBump = G.t;
-          audio.play('egg_bump', { intensity: clamp(ev.v / 6, 0, 1) });
+          const i = clamp(ev.v / 6, 0, 1);
+          audio.play('egg_bump', { intensity: i, pitch: 1.12 - 0.3 * i }); // a harder hit rings lower: weight
+          if (ev.v > 2.6) audio.play('egg_land', { intensity: clamp((ev.v - 2.6) / 4.5, 0, 1), vol: 0.5 + 0.5 * i });
         }
-        if (ev.v > 3.8) { const p = ev.egg.body.getPosition(); fx.dust(p.x, p.y - 0.25, 5); }
+        eggLand(ev.egg, ev.v, fx);
         break;
       case 'crack':
         audio.play('egg_crack');
-        fx.chips(ev.x, ev.y, '#f3e8d2', 9, 2.4);
-        fx.shake = Math.max(fx.shake, 0.25);
+        { // shell chips fly off the point of contact, a hit star marks it, the world holds a beat
+          const st = eggFx(ev.egg), pw = clamp((ev.v || 4) / 8, 0.35, 1);
+          st.hurtT = G.t; st.sv += 4;
+          fx.shell(ev.x - st.nx * 0.2, ev.y - st.ny * 0.2, st.nx, st.ny, pw, 8, sim.water ? undefined : sim.groundY + 0.02);
+          fx.impact(ev.x - st.nx * 0.3, ev.y - st.ny * 0.3, 0.24 + 0.1 * pw, '#ffe9b0');
+          fx.kick(0.3 + 0.1 * pw);
+          hitStop(0.05);
+          camPunch(0.028, ev.x, ev.y);
+        }
         hen('gasp', 1.2);
         try { if (navigator.vibrate) navigator.vibrate(30); } catch (_) {}
         if (ev.why === 'spike') audio.play('rock_hit', { vol: 0.6 });
@@ -945,8 +1242,13 @@ function handleEvents() {
         if (ev.why === 'eagle') { /* carried off whole: no yolk */ }
         else if (ev.why === 'lava') { fx.smoke(ev.x, ev.y, 8, 'rgba(70,60,60,0.6)'); fx.chips(ev.x, ev.y, '#ffb347', 10, 3); }
         else fx.yolk(ev.x, ev.y, sim.groundY + 0.02);
-        fx.shake = Math.max(fx.shake, 0.55);
-        G.hitstop = 0.07;
+        if (ev.why !== 'eagle' && ev.why !== 'thief' && ev.why !== 'snake') {
+          fx.impact(ev.x, ev.y, 0.62, ev.why === 'thorn' || ev.why === 'curtain' || ev.why === 'thornball' ? '#ff6f5e' : '#ffd76a');
+          fx.shell(ev.x, ev.y, 0, 1, 0.9, 9, sim.water ? undefined : sim.groundY + 0.02);
+        }
+        fx.kick(0.6);
+        G.hitstop = save.calm ? 0.07 : 0.1;
+        camPunch(0.05, ev.x, ev.y);
         hen('cry', 2.2);
         const why = { thorn: 'Thorn!', thief: 'Stolen!', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', eagle: 'The eagle took it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!', fall: 'Fell too far!', curtain: 'Thorn curtain!', lavarock: 'Lava rock!', icicle: 'Icicle!', heat: 'Too hot!' }[ev.why] || '';
         if (why && ev.why !== 'fuse') popup(ev.x, ev.y + 0.5, why, { color: '#ff8a7a', size: 20, life: 1.2 });
@@ -955,8 +1257,10 @@ function handleEvents() {
       case 'save': {
         audio.play('egg_save', { pitch: 1 + (ev.combo - 1) * 0.12 });
         if (ev.combo > 1) audio.play('combo', { intensity: (ev.combo - 2) / 2 });
-        fx.sparkle(ev.x, ev.y, 14);
-        fx.punch = 1;
+        if (sim.water) { fx.sparkle(ev.x, ev.y, 14); fx.wave(ev.x, ev.y, 1.2, '#fff6c2', 0.5, 0.12); fx.wave(ev.x, ev.y, 1.9, '#ffffff', 0.65, 0.06, { delay: 0.08 }); }
+        else fx.nestBurst(ev.x, ev.y - 0.12, G.theme?.palette?.nestStraw || '#d9b45a', sim.groundY + 0.02);
+        camPunch(0.035, ev.x, ev.y);
+        flyToHud(ev.x, ev.y + 0.3, 'hud:score', Math.min(3, 1 + (ev.perfect ? 1 : 0) + (ev.combo > 1 ? 1 : 0)));
         const parts = [];
         if (ev.perfect) parts.push('PERFECT');
         if (ev.combo > 1) parts.push('COMBO x' + ev.combo);
@@ -986,7 +1290,10 @@ function handleEvents() {
         // discovery (F19/C11): the first touch reveals the orb and is remembered
         const snd = { fire_red: 'fire_ignite', fire_black: 'fire_ignite', fire_green: 'unlock', fire_gold: 'twin_hatch', stone: 'steel_on', bubble: 'bubble_on', water: 'splash', thunder: 'thunder', thorn: 'thorn_hit', twin: 'twin_hatch', magnet: 'unlock', hourglass: 'rewind', feather: 'unlock', rockskin: 'steel_on', curse: 'thorn_hit', frostnova: 'glass_crack', shock: 'thunder', thunderclap: 'thunder', laser: 'fire_ignite', spin: 'wind_gust', pepper: 'squish', shrink: 'bubble_pop', iron: 'steel_on', decoy: 'twin_hatch' }[ev.power];
         audio.play(snd || 'unlock');
-        fx.sparkle(ev.x, ev.y, 12, powerInfo(ev.power).color);
+        fx.orbBurst(ev.x, ev.y, powerInfo(ev.power).color); // a burst in the orb's own colour
+        eggFx(ev.egg).sv -= 5; // the egg swells with it for a beat
+        hitStop(0.045);
+        camPunch(0.04, ev.x, ev.y);
         const first = !save.seen[ev.power];
         if (first) { save.seen[ev.power] = 1; persist(); }
         G.card = { id: ev.power, t: 0, dur: first ? 1.6 : 0.9 };
@@ -1448,7 +1755,19 @@ function bossEvent(ev, fx) {
     }
     case 'bossHit':
       audio.play('steel_clang', { vol: 0.7, pitch: 1.3 });
-      if (actor) { fx.sparkle(top.x, top.y - (BQ ? BQ.h * 0.4 : 0), 12, '#fff2a8'); popup(top.x, top.y + 0.3, 'Ouch!', { color: '#fff2a8', size: 22, life: 0.9 }); }
+      audio.play('rock_hit', { vol: 0.7, pitch: 0.7 });
+      if (actor) {
+        // the hit lands ON the boss: a big star, a ring, sparks thrown wide; the world holds and the camera punches in
+        const bx = top.x, by = top.y - (BQ ? BQ.h * 0.4 : 0), sz = BQ ? clamp(BQ.h * 0.3, 0.6, 1.2) : 0.7;
+        fx.impact(bx, by, sz, '#ffe27a');
+        fx.wave(bx, by, sz * 3, '#ffffff', 0.5, 0.1, { delay: 0.05 });
+        for (let i = 0; i < 16; i++) { const an = (i / 16) * 6.283 + Math.random() * 0.3, sp = 4 + Math.random() * 5; fx.add({ x: bx, y: by, vx: Math.cos(an) * sp, vy: Math.sin(an) * sp, drag: 3.5, g: 3, life: 0.35 + Math.random() * 0.3, size: 0.05, len: 0.05, color: i % 2 ? '#fff2a8' : '#ffffff', type: 'spark' }); }
+        fx.sparkle(bx, by, 10, '#fff2a8');
+        popup(top.x, top.y + 0.3, 'Ouch!', { color: '#fff2a8', size: 22, life: 0.9 });
+        camPunch(0.055, bx, by);
+      } else camPunch(0.03);
+      fx.kick(0.45);
+      hitStop(0.09);
       break;
     case 'freeze': {
       audio.play('glass_crack', { vol: 0.8, pitch: 0.8 });
@@ -1596,6 +1915,14 @@ function onWin() {
   recordResult();
   portal.gameplayStop();
   portal.happy();
+  { // the payoff: three fountains of sparkles walk out from the nest while the camera pushes in on her
+    const n = G.sim.nest.getPosition(), gy = G.sim.gy || 1;
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 9; i++) {
+      const a = Math.random(), b = Math.random(), sd = j === 0 ? 0 : j === 1 ? -1 : 1;
+      G.fx.add({ x: n.x + sd * 1.1 + (a - 0.5) * 0.3, y: n.y + 0.2 * gy, vx: (a - 0.5) * 2.4 + sd * 0.6, vy: (3 + b * 3.2) * gy, g: 6.5 * gy, drag: 0.8, life: 0.9 + b * 0.5, size: 0.07 + a * 0.08, color: ['#fff6c2', '#ffd94a', '#ffffff'][i % 3], type: 'star', rot: a * 3, vr: 2 + b * 4, delay: 0.25 + j * 0.16 + i * 0.02 });
+    }
+    camPunch(0.03, n.x, n.y);
+  }
   const run = G.run;
   setTimeout(() => {
     if (G.run === run && G.sim && G.result && G.screen === 'play') { setScreen('win'); audio.play('level_win'); }
@@ -1606,6 +1933,8 @@ function onFail() {
   stopFuse();
   portal.gameplayStop();
   releaseAll();
+  G.fx.kick(0.3);
+  camPunch(-0.035); // the frame sags back
   const run = G.run;
   setTimeout(() => { if (G.run === run && G.sim && G.sim.state === 'failed' && G.screen === 'play') { setScreen('fail'); audio.play('level_fail'); } }, 350);
 }
@@ -1635,6 +1964,8 @@ function update(dt) {
     while (G.acc >= DT && n < 24) { if (DEV && G.autoplay) botTick(sim, G.botMem || (G.botMem = {})); sim.step(); G.acc -= DT; n++; }
     handleEvents();
   }
+  ringTicks(sim);
+  updateFlyers(dt);
   for (const r of sim.rings) if (r.denied > 0) r.denied -= dt;
   // safety net: if an end-card timer was missed, route a decided level to its card
   if (G.screen === 'play' && (sim.state === 'won' || sim.state === 'failed')) {
@@ -1651,15 +1982,19 @@ function update(dt) {
   for (const e of sim.aliveEggs()) {
     const p = e.body.getPosition();
     const feared = e.fear > 0;
+    let nd = 9, ntx = 0, nty = 0; // the nearest live thorn tip (for the near-miss call)
     e.fear = Math.max(0, e.fear - dt);
     for (const ring of sim.rings) {
       const a0 = ring.body.getAngle();
       for (const th of ring.thorns) {
         if (!th.alive || th.ext < 0.5) continue;
         const [lx, ly] = ringPt(ring, th.a, th.tip), tx = lx * Math.cos(a0) - ly * Math.sin(a0), ty = lx * Math.sin(a0) + ly * Math.cos(a0); // v3.3 M10: shape-aware
-        if (Math.hypot(tx - p.x, ty - p.y) < 0.55) e.fear = 0.4;
+        const td = Math.hypot(tx - p.x, ty - p.y);
+        if (td < 0.55) e.fear = 0.4;
+        if (td < nd) { nd = td; ntx = tx; nty = ty; }
       }
     }
+    eggFeel(sim, e, dt, nd, ntx, nty);
     // a close shave: the egg got clear of a thorn unhurt, and the hen breathes out ('phew', a few variants)
     if (feared && e.fear === 0 && G.screen === 'play' && G.hen.mood === 'idle' && G.t - (G.phewT || -9) > 3) { G.phewT = G.t; hen('phew', 1); }
     const v = e.body.getLinearVelocity();
@@ -1762,22 +2097,32 @@ function render() {
   }
   const sim = G.sim;
   const fx = G.fx;
-  G.backdrop.draw(ctx, t, G.cam);
+  G.backdrop.draw(ctx, t, G.bcam); // parallax: the layers slide and breathe against the camera
   G.weather.drawBack(ctx);
   if (G.screen === 'title') { drawTitle(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene, no vault behind it
-  // ground band
-  const gy = toScreen(0, sim.groundY).y;
-  if (gy < H_ && !sim.water) G.backdrop.drawGround(ctx, 0, gy, W_, H_ - gy, t); // underwater: no ground (the surface is drawn in the world)
-
   // world
-  const P = G.play;
+  const P = G.play, cv = G.cv;
   const cx = P.x + P.w / 2, cy = P.y + P.h / 2;
-  // reduced motion (C10) turns off shakes and flashes
-  const sh = save.calm ? 0 : fx.shake * fx.shake * 7;
-  const ox = save.calm ? 0 : (Math.random() - 0.5) * sh + G.weather.shakeX, oy = save.calm ? 0 : (Math.random() - 0.5) * sh + G.weather.shakeY;
-  const k = G.cam.k * (1 + 0.025 * fx.punch);
+  // Screen shake from trauma (fx.shake, 0..1): squared, so small hits barely move and big ones thump; smooth
+  // noise (summed sines), not per-frame random, with a whisper of roll. A few px at most. Reduced motion (C10)
+  // turns off shakes, punches and flashes.
+  const tr = save.calm ? 0 : fx.shake * fx.shake, amp = clamp(7 * ui.u, 5, 10) * tr;
+  const ox = save.calm ? 0 : amp * (Math.sin(t * 53.1) + 0.6 * Math.sin(t * 31.7 + 2.1)) / 1.6 + G.weather.shakeX;
+  const oy = save.calm ? 0 : amp * (Math.sin(t * 47.3 + 1.3) + 0.6 * Math.sin(t * 27.9 + 0.4)) / 1.6 + G.weather.shakeY;
+  const roll = 0.012 * tr * Math.sin(t * 41.3 + 0.7);
+  // the punch zooms about the point of impact, not the screen centre
+  const kick = save.calm ? 0 : cv.kick, k = G.cam.k * (1 + 0.025 * fx.punch + kick);
+  const camX = G.cam.x + (cv.kx - G.cam.x) * kick * 0.7, camY = G.cam.y + (cv.ky - G.cam.y) * kick * 0.7;
   G.rk = k;
-  ctx.setTransform(DPR * k, 0, 0, -DPR * k, DPR * (cx + ox - G.cam.x * k), DPR * (cy + oy + G.cam.y * k));
+  G.view.shakeX = ox; G.view.shakeY = oy;
+  // ground band (drawn under the same camera as the world, so it never slips against it)
+  const gy = cy + oy - (sim.groundY - camY) * k;
+  if (gy < H_ && !sim.water) G.backdrop.drawGround(ctx, 0, gy, W_, H_ - gy, t); // underwater: no ground (the surface is drawn in the world)
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.translate(cx + ox, cy + oy);
+  if (roll) ctx.rotate(roll);
+  ctx.scale(k, -k);
+  ctx.translate(-camX, -camY);
   fx.draw(ctx, 'back');
   for (const pt of sim.portals) W.drawPortalPull(ctx, pt, t); // v3
   for (const pt of sim.portals) { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); }
@@ -1793,6 +2138,7 @@ function render() {
     W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck });
     W.drawV3Ring(ctx, ring, k, t, G.theme);
     drawHardIce(ctx, ring, k, t); // v3.2
+    drawRingPulse(ring); // game feel: the grab ripple and detent blink
     ctx.restore();
   }
   drawRockHud(ctx, sim, k, t); // v3.3 M10: the rocking vault's level and warning arrows
@@ -1839,7 +2185,7 @@ function render() {
   drawThieves(ctx, sim, t, k); // v3.6: the weasel and the rats on the ring floor
   drawClockworkTele(ctx, sim, t, k); drawClockwork(ctx, sim, t, k); // v4: webs, spring jacks, wind-up beetles, spiders
   drawBayou(ctx, sim, t, k); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
-  for (const e of sim.aliveEggs()) if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); // v3.2: chick kinds, tinted eggs
+  for (const e of sim.aliveEggs()) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash
   drawChickFX(ctx, sim, t, k);
   { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); } // v3.3: the arms wrapped over a held egg
   drawReefOver(ctx, sim, t, k); // world 8: claws over a held egg, the silt cloud
@@ -1884,6 +2230,7 @@ function render() {
 
   // UI
   if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store') drawHUD();
+  if (G.screen === 'play') drawFlyers(); // prizes on their way to the HUD
   if (G.screen === 'play') {
     // the power card owns the top of the screen while it shows
     if (G.card) drawCard();
