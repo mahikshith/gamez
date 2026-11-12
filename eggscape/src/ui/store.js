@@ -3,7 +3,7 @@
 // the game's overlap checker can verify the layout. Input is routed by the game from button ids:
 //   store:  'back', 'tab:boosters', 'tab:skins', 'buy:<boosterId>', 'skin:<skinId>' (buy or equip), 'ad:coins'
 //   picker: 'boost:<boosterId>', 'shop'
-import { ICON } from './ui.js';
+import { ICON, C } from './ui.js';
 import { BOOSTERS, BOOSTER_ORDER, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin } from '../economy.js';
 
 // ---------------------------------------------------------------- icons
@@ -351,6 +351,8 @@ const coinIcon = (t) => (ctx, cx, cy, sz) => drawCoin(ctx, cx, cy, sz * 0.5, t);
 // Layout dimensions at scale s = 1 (every number below is multiplied by the chosen scale).
 const D = { pad: 14, tabY: 64, tabH: 34, top: 106, gap: 9, cardH: 88, adH: 54, adGap: 14, minW1: 330, minW2: 300 };
 
+const BAL = { v: null };
+
 function planLayout(W, H, u) {
   const sMax = Math.min(1.55, u * 1.18);
   const need1 = D.top + 5 * D.cardH + 4 * D.gap + D.adGap + D.adH + D.pad;
@@ -365,54 +367,55 @@ function planLayout(W, H, u) {
 function drawCard(ui, ctx, item, x, y, cw, ch, s, t, wide) {
   const flash = item.flash;
   const fl = flash < 0.9 ? 1 - flash / 0.9 : 0;
-  ui.panel(x, y, cw, ch, { fill: 'rgba(44,31,20,0.9)', r: 16 * s, border: fl ? `rgba(255,226,120,${0.35 + 0.65 * fl})` : 'rgba(255,224,170,0.28)', record: true, tag: 'panel:card:' + item.key });
-  if (fl) ui.panel(x - 2 * s, y - 2 * s, cw + 4 * s, ch + 4 * s, { fill: 'rgba(255,226,120,0)', r: 18 * s, border: `rgba(255,226,120,${0.6 * fl})` });
+  // a cream card in a thin wooden frame; a purchase rings it in gold for a moment
+  const lip = 4 * s, fh = ch - lip;
+  ui.frame(x, y, cw, fh, { s, r: 16 * s, fw: 4.5 * s, lip, glow: '#ffe27a', glowA: fl, record: true, tag: 'panel:card:' + item.key });
 
-  const p = 9 * s;
-  const it = ch - 2 * p;
+  const p = 10 * s;
+  const it = fh - 2 * p;
   const ix = x + p, iy = y + p;
-  ui.panel(ix, iy, it, it, { fill: 'rgba(255,230,180,0.13)', border: 'rgba(255,230,180,0.2)', r: 12 * s });
+  ui.well(ix, iy, it, it, { s, r: 12 * s, a: item.owned ? '#bfe6ff' : '#cfe9fb', b: '#eaf6ff', shade: 'rgba(20,70,130,0.28)', border: 'rgba(60,90,130,0.55)' });
   ui.record({ x: ix, y: iy, w: it, h: it }, 'store:icon:' + item.key);
   const bounce = flash < 0.6 ? 1 + 0.22 * Math.sin((flash / 0.6) * Math.PI) : 1;
   item.icon(ctx, ix + it / 2, iy + it / 2, it, t, bounce);
 
   // button (right) with an optional small line underneath
-  const bh = 40 * s;
+  const bh = 42 * s;
   const bSize = (item.btn.size || 19) * s;
   // ui.button pads with ui.u (not s), so make sure the label really fits
-  const need = ui.measure(item.btn.label, bSize) + 24 * ui.u + (item.btn.coin ? bSize * 1.05 + 8 * ui.u : 0);
+  const need = ui.measure(item.btn.label, bSize) + 24 * ui.u + (item.btn.coin || item.btn.icon ? bSize * 1.05 + 8 * ui.u : 0);
   const bw = Math.min(Math.max((wide ? 92 : 84) * s, need), cw * 0.4);
   const subSize = 12.5 * s;
   const stackH = bh + (item.sub ? 3 * s + subSize * 1.1 : 0);
-  const bx = x + cw - p - bw;
-  const by = y + (ch - stackH) / 2;
+  const bx = x + cw - p - 2 * s - bw;
+  const by = y + (fh - stackH) / 2;
   const B = item.btn;
   ui.button(B.id, B.label, bx, by, bw, bh, {
-    color: B.color, dark: B.dark, disabled: B.disabled, icon: B.coin ? coinIcon(t) : null, size: bSize,
+    kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? coinIcon(t) : B.icon || null, size: bSize,
   });
   if (item.sub) {
-    ui.text(item.sub.text, bx + bw / 2, by + bh + 3 * s + subSize * 0.55, { size: subSize, align: 'center', maxW: bw, color: fl ? '#fff2a0' : item.sub.color, tag: 'store:sub:' + item.key });
+    ui.text(item.sub.text, bx + bw / 2, by + bh + 3 * s + subSize * 0.55, { size: subSize, align: 'center', maxW: bw, color: item.sub.color, tag: 'store:sub:' + item.key });
   }
 
   // name + one-line explanation (wrapped), centered vertically in the middle column
   const tx = ix + it + 10 * s;
-  const tw = bx - 10 * s - tx;
-  const nameSize = 17 * s;
-  const maxDescH = ch - 2 * p - nameSize * 1.2;
+  const tw = bx - 8 * s - tx;
+  const nameSize = 17.5 * s;
+  const maxDescH = fh - 2 * p - nameSize * 1.2;
   const maxLines = Math.max(2, Math.min(3, Math.floor(maxDescH / (10.5 * s * 1.18))));
   const desc = fitWrap(ui, item.line, tw, maxLines, 13.5 * s, 10.5 * s);
   const lineH = desc.size * 1.18;
   const blockH = nameSize * 1.2 + desc.lines.length * lineH;
-  let cy = y + (ch - blockH) / 2;
-  ui.text(item.name, tx, cy + nameSize * 0.6, { size: nameSize, maxW: tw, color: '#ffe8b0', tag: 'store:name:' + item.key });
+  let cy = y + (fh - blockH) / 2;
+  ui.text(item.name, tx, cy + nameSize * 0.6, { size: nameSize, maxW: tw, color: C.ink, tag: 'store:name:' + item.key });
   cy += nameSize * 1.2;
   desc.lines.forEach((ln, i) => {
-    ui.text(ln, tx, cy + lineH * (i + 0.5), { size: desc.size, maxW: tw, color: 'rgba(255,255,255,0.82)', tag: `store:desc:${item.key}:${i}` });
+    ui.text(ln, tx, cy + lineH * (i + 0.5), { size: desc.size, maxW: tw, color: C.ink2, tag: `store:desc:${item.key}:${i}` });
   });
 }
 
-const GREEN = { color: '#46b83d', dark: '#2a7a24' };
-const GREY = { color: '#7c7064', dark: '#40382f' };
+const GREEN = { kind: 'primary' };
+const GREY = { kind: 'off' };
 
 function boosterItem(id, st) {
   const b = BOOSTERS[id];
@@ -420,11 +423,11 @@ function boosterItem(id, st) {
   const ok = canAfford(st.wallet, id);
   const maxed = owned >= MAX_OWNED;
   return {
-    key: id, name: b.name, line: b.line,
+    key: id, name: b.name, line: b.line, owned: owned > 0,
     flash: st.flash && st.flash.id === id ? st.flash.t : 99,
     icon: (ctx, cx, cy, it, t, bounce) => drawBoosterIcon(ctx, id, cx, cy, it * 0.78 * bounce, t),
     btn: { id: 'buy:' + id, label: maxed ? 'Max' : String(b.price), disabled: !ok, coin: !maxed, ...(ok ? GREEN : GREY) },
-    sub: { text: 'Owned ' + owned, color: owned > 0 ? '#b6f0a0' : 'rgba(255,255,255,0.55)' },
+    sub: { text: 'Owned ' + owned, color: owned > 0 ? C.good : 'rgba(138,98,56,0.75)' },
   };
 }
 
@@ -434,14 +437,14 @@ function skinItem(id, st) {
   const owns = ownsSkin(w, id);
   const equipped = equippedSkin(w) === id;
   let btn;
-  if (equipped) btn = { id: 'skin:' + id, label: 'Equipped', disabled: true, size: 15, color: '#46b83d', dark: '#2a7a24' };
-  else if (owns) btn = { id: 'skin:' + id, label: 'Equip', size: 19, color: '#4a8fe8', dark: '#2a5aa8' };
+  if (equipped) btn = { id: 'skin:' + id, label: 'Equipped', disabled: true, keepFace: true, size: 14, kind: 'tertiary', icon: ICON.check };
+  else if (owns) btn = { id: 'skin:' + id, label: 'Equip', size: 19, kind: 'secondary' };
   else {
     const ok = canAffordSkin(w, id);
     btn = { id: 'skin:' + id, label: String(k.price), coin: true, disabled: !ok, ...(ok ? GREEN : GREY) };
   }
   return {
-    key: 'skin:' + id, name: k.name, line: k.line,
+    key: 'skin:' + id, name: k.name, line: k.line, owned: owns,
     flash: st.flash && st.flash.id === 'skin:' + id ? st.flash.t : 99,
     icon: (ctx, cx, cy, it, t, bounce) => drawSkinPreview(ctx, id, cx, cy + it * 0.02, it * 0.8 * bounce, t),
     btn, sub: null,
@@ -454,37 +457,55 @@ export function drawStore(ui, ctx, W, H, state) {
   const { cols, s } = planLayout(W, H, ui.u);
   const pad = D.pad * s;
 
-  // dim whatever is behind
-  ctx.fillStyle = 'rgba(16,10,6,0.8)';
+  // the shop's own room: deep violet, a soft light from above, slow rays (still when reduced motion is on)
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#4a3190');
+  bg.addColorStop(0.55, '#2f1f66');
+  bg.addColorStop(1, '#1c1240');
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(W / 2, -H * 0.05);
+  ctx.rotate(ui.calm ? 0 : Math.sin(t * 0.15) * 0.06);
+  ctx.fillStyle = 'rgba(255,255,255,0.045)';
+  const RR = Math.hypot(W, H) * 1.1;
+  ctx.beginPath();
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI * (0.08 + (i / 8) * 0.84), d = 0.045;
+    ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a - d) * RR, Math.sin(a - d) * RR); ctx.lineTo(Math.cos(a + d) * RR, Math.sin(a + d) * RR); ctx.closePath();
+  }
+  ctx.fill();
+  ctx.restore();
 
-  // ---- header: back, title, balance
+  // ---- header: back, title ribbon, balance
   const bs = 46 * s;
-  ui.button('back', '', pad, pad, bs, bs, { color: '#5a8dee', dark: '#2f5bb0', icon: ICON.rewind });
+  ui.button('back', '', pad, pad, bs, bs, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * s });
   const headCy = pad + bs / 2 - 2 * s;
-  ui.text('Shop', W / 2, headCy, { size: 30 * s, align: 'center', color: '#ffe8b0', stroke: 'rgba(0,0,0,0.5)', tag: 'store:title' });
 
   const coinFl = flash && (flash.id === 'coins' || flash.id === 'ad') && flash.t < 0.9 ? 1 - flash.t / 0.9 : 0;
-  const balStr = String(wallet.coins);
+  // the balance rolls to its new value (a purchase counts down, an ad reward counts up)
+  if (BAL.v == null || ui.calm || Math.abs(wallet.coins - BAL.v) > 5000) BAL.v = wallet.coins;
+  else if (BAL.v !== wallet.coins) { const d = wallet.coins - BAL.v; BAL.v += Math.abs(d) < 1.5 ? d : d * 0.16; }
+  const balStr = String(Math.round(BAL.v));
   const balSize = 22 * s;
   const cr = 13 * s;
-  const tw = ui.measure(balStr, balSize);
+  const tw = ui.measure(String(wallet.coins).replace(/\d/g, '0'), balSize);
   const ph = 38 * s;
-  const pw = 10 * s + cr * 2 + 6 * s + tw + 12 * s;
+  const pw = 7 * s + cr * 2 + 6 * s + tw + 13 * s;
   const px = W - pad - pw, py = headCy - ph / 2;
-  ui.panel(px, py, pw, ph, { fill: 'rgba(0,0,0,0.4)', r: ph / 2, border: coinFl ? `rgba(255,226,120,${0.4 + 0.6 * coinFl})` : 'rgba(255,224,170,0.3)' });
-  drawCoin(ctx, px + 10 * s + cr, py + ph / 2, cr * (1 + 0.15 * coinFl), t);
-  ui.record({ x: px + 10 * s, y: py + ph / 2 - cr, w: cr * 2, h: cr * 2 }, 'store:coinicon', 'store:balance');
-  ui.text(balStr, px + 10 * s + cr * 2 + 6 * s, py + ph / 2, { size: balSize, color: coinFl ? '#fff2a0' : '#fff', stroke: 'rgba(0,0,0,0.4)', tag: 'store:balance', group: 'store:balance' });
+  ui.glass(px, py, pw, ph, { border: coinFl ? `rgba(255,226,120,${0.5 + 0.5 * coinFl})` : 'rgba(255,224,170,0.5)', a: 'rgba(40,24,80,0.9)', b: 'rgba(20,10,46,0.9)' });
+  drawCoin(ctx, px + 7 * s + cr, py + ph / 2, cr * (1 + 0.15 * coinFl), t);
+  ui.record({ x: px + 7 * s, y: py + ph / 2 - cr, w: cr * 2, h: cr * 2 }, 'store:coinicon', 'store:balance');
+  ui.num(balStr, px + 7 * s + cr * 2 + 6 * s, py + ph / 2, { size: balSize, tag: 'store:balance', group: 'store:balance' });
+  const rl = pad + bs + 22 * s, rr = px - 22 * s;
+  ui.ribbon('Shop', (rl + rr) / 2, headCy - 19 * s, Math.max(60 * s, Math.min(150 * s, rr - rl)), 38 * s, { s, color: '#f0a01c', size: 24 * s, tag: 'store:title' });
 
   // ---- tabs
-  const tabW = Math.min(150 * s, (W - 2 * pad - 8 * s) / 2), tabH = D.tabH * s;
+  const tabW = Math.min(150 * s, (W - 2 * pad - 8 * s) / 2), tabH = (D.tabH + 2) * s;
   const tabX = W / 2 - tabW - 4 * s, tabY = D.tabY * s;
   for (const [i, [id, label]] of [['boosters', 'Boosters'], ['skins', 'Skins']].entries()) {
     const on = tab === id;
-    ui.button('tab:' + id, label, tabX + i * (tabW + 8 * s), tabY, tabW, tabH, {
-      color: on ? '#e0a526' : '#6d5a48', dark: on ? '#9a6a08' : '#3e3125', size: 17 * s,
-    });
+    ui.button('tab:' + id, label, tabX + i * (tabW + 8 * s), tabY, tabW, tabH, { kind: on ? 'gold' : 'hud', size: 17 * s });
   }
 
   // ---- body
@@ -495,8 +516,9 @@ export function drawStore(ui, ctx, W, H, state) {
   const cooling = adCooldownLeft > 0;
   const adLabel = cooling ? `Free coins in ${fmtTime(adCooldownLeft)}` : adReady ? adLabelFull : 'Ad loading...';
   const adOff = cooling || !adReady;
+  // the rewarded ad is an offer, never a gate: violet like every other ad button, the reward in its label
   const adBtn = (x, y, w, h) => ui.button('ad:coins', adLabel, x, y, w, h, {
-    color: '#e0a526', dark: '#9a6a08', ad: !adOff, disabled: adOff, size: Math.min(19 * s, h * 0.38),
+    kind: 'ad', shimmer: true, ad: !adOff, disabled: adOff, size: Math.min(19 * s, h * 0.38),
   });
 
   if (cols === 1) {
@@ -517,9 +539,9 @@ export function drawStore(ui, ctx, W, H, state) {
     items.forEach((it, i) => drawCard(ui, ctx, it, x0 + (i % 2) * (cw + gap), y0 + Math.floor(i / 2) * (ch + gap), cw, ch, s, t, false));
     // 6th cell: the free-coins ad
     const ax = x0 + cw + gap, ay = y0 + 2 * (ch + gap);
-    ui.panel(ax, ay, cw, ch, { fill: 'rgba(44,31,20,0.9)', r: 16 * s, border: 'rgba(255,224,170,0.28)', record: true, tag: 'panel:card:ad' });
+    ui.frame(ax, ay, cw, ch - 4 * s, { s, r: 16 * s, fw: 4.5 * s, lip: 4 * s, record: true, tag: 'panel:card:ad' });
     const bh = D.adH * s;
-    adBtn(ax + 9 * s, ay + (ch - bh) / 2, cw - 18 * s, bh);
+    adBtn(ax + 12 * s, ay + (ch - 4 * s - bh) / 2, cw - 24 * s, bh);
   }
 }
 
@@ -814,9 +836,9 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
     const cs = Math.min(rowH, 46 * u);
     const cw = Math.min(w, Math.max(cs * 2.2, 100 * u));
     ui.button('shop', 'Shop', x + w / 2 - cw / 2, rowY + (rowH - cs) / 2, cw, cs, {
-      color: '#d49a1c', dark: '#8a5f0a', icon: coinIcon(t), size: Math.min(18 * u, cs * 0.42),
+      kind: 'gold', icon: coinIcon(t), size: Math.min(18 * u, cs * 0.42),
     });
-    ui.text('Spend coins on start boosters', x + w / 2, lineCy, { size: lineSize, align: 'center', maxW: w, color: 'rgba(255,255,255,0.8)', tag: 'picker:hint' });
+    ui.text('Spend coins on start boosters', x + w / 2, lineCy, { size: lineSize, align: 'center', maxW: w, color: C.ink2, tag: 'picker:hint' });
     return;
   }
 
@@ -829,10 +851,7 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
   owned.forEach((id, i) => {
     const cx = x0 + i * (c + gap);
     const on = selected.has(id);
-    ui.button('boost:' + id, '', cx, cy0, c, c, {
-      color: on ? '#46b83d' : '#7a6552',
-      dark: on ? '#2a7a24' : '#44362a',
-    });
+    ui.button('boost:' + id, '', cx, cy0, c, c, { kind: on ? 'primary' : 'tertiary' });
     // icon, nudged down-left so the badge has the corner
     const body = c - 5 * u * Math.min(1, c / 40);
     drawBoosterIcon(ctx, id, cx + c * 0.46, cy0 + body * 0.52, c * 0.6, t);
@@ -840,7 +859,7 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
       ctx.save();
       ctx.lineWidth = Math.max(2, c * 0.05);
       ctx.strokeStyle = '#fff6c0';
-      ui.panel(cx - 1, cy0 - 1, c + 2, c + 2, { fill: 'rgba(0,0,0,0)', r: 14 * u, border: '#fff6c0' });
+      ui.panel(cx - 2, cy0 - 2, c + 4, c + 2, { fill: 'rgba(0,0,0,0)', r: 16 * u, border: '#fff6c0', lw: Math.max(2, c * 0.05) });
       ctx.restore();
     }
     // count badge (top right, inside the chip)
@@ -848,10 +867,10 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
     const bcx = cx + c - br - c * 0.04, bcy = cy0 + br + c * 0.04;
     ctx.beginPath();
     ctx.arc(bcx, bcy, br, 0, Math.PI * 2);
-    ctx.fillStyle = '#2b1d12';
+    ctx.fillStyle = '#e8402e';
     ctx.fill();
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#ffe8b0';
+    ctx.strokeStyle = '#5a110a';
     ctx.stroke();
     ui.text(String(ownedCount(wallet, id)), bcx, bcy, { size: br * 1.25, align: 'center', maxW: br * 1.6, color: '#fff', noRecord: true });
     ui.record({ x: bcx - br, y: bcy - br, w: br * 2, h: br * 2, container: 'btn:boost:' + id }, 'picker:badge:' + id, 'picker:badge:' + id);
@@ -872,5 +891,5 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
 
   const tapped = lastTapped && BOOSTERS[lastTapped] && ownedCount(wallet, lastTapped) > 0 ? BOOSTERS[lastTapped] : null;
   const str = tapped ? tapped.line : 'Tap a booster to use it this level';
-  ui.text(str, x + w / 2, lineCy, { size: lineSize, align: 'center', maxW: w, color: tapped ? '#ffe8b0' : 'rgba(255,255,255,0.7)', tag: 'picker:line' });
+  ui.text(str, x + w / 2, lineCy, { size: lineSize, align: 'center', maxW: w, color: tapped ? C.ink : C.ink2, tag: 'picker:line' });
 }

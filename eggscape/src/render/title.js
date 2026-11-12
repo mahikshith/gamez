@@ -151,13 +151,20 @@ export function drawLogo(ctx, text, cx, cy, size, t, enter, font) {
     ctx.save();
     ctx.translate(lx, cy + drop + bob);
     ctx.rotate(rot);
-    ctx.lineWidth = size * 0.2;
+    // extruded letter: a deep drop edge, a dark outline, a thin gold rim, then a two-plane glossy face
+    ctx.lineWidth = size * 0.24;
+    ctx.strokeStyle = '#3a1a06';
+    ctx.strokeText(c, 0, size * 0.1);
     ctx.strokeStyle = '#5a2e0e';
     ctx.strokeText(c, 0, 0);
-    const g = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.4);
-    g.addColorStop(0, '#fff6d8');
-    g.addColorStop(0.55, '#ffe08a');
-    g.addColorStop(1, '#f5a623');
+    ctx.lineWidth = size * 0.1;
+    ctx.strokeStyle = '#c96a12';
+    ctx.strokeText(c, 0, size * 0.035);
+    const g = ctx.createLinearGradient(0, -size * 0.38, 0, size * 0.38);
+    g.addColorStop(0, '#fffbe6');
+    g.addColorStop(0.47, '#ffe27a');
+    g.addColorStop(0.5, '#ffc93a');
+    g.addColorStop(1, '#f58e14');
     ctx.fillStyle = g;
     ctx.fillText(c, 0, 0);
     ctx.restore();
@@ -186,17 +193,24 @@ function drawVault(ctx, cx, cy, R, t, c, ct) {
     const r = R * (0.42 + 0.29 * i), th = R * 0.1;
     const gap = (R * 0.36) / r; // the gap fits an egg
     const a0 = ringAngle(i, ct, c) + gap / 2, a1 = a0 + TAU - gap;
-    // ring body: dark outline, wood, lighter top line
+    // ring body with form: soft contact shadow, dark outline, wood, a darker lower plane, a light top-left edge
     ctx.lineCap = 'round';
+    const wood = ['#cf8a4e', '#b87440', '#a26536'][i], woodD = ['#9c5f2e', '#874f25', '#74431f'][i];
+    ctx.strokeStyle = 'rgba(30,20,60,0.16)';
+    ctx.lineWidth = th + 6;
+    ctx.beginPath(); ctx.arc(cx + th * 0.12, cy + th * 0.42, r, a0, a1); ctx.stroke();
     ctx.strokeStyle = LINE;
-    ctx.lineWidth = th + 4;
+    ctx.lineWidth = th + 5;
     ctx.beginPath(); ctx.arc(cx, cy, r, a0, a1); ctx.stroke();
-    ctx.strokeStyle = ['#c9824a', '#b06f3c', '#9a5f33'][i];
+    ctx.strokeStyle = woodD;
     ctx.lineWidth = th;
     ctx.beginPath(); ctx.arc(cx, cy, r, a0, a1); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,214,150,0.55)';
-    ctx.lineWidth = th * 0.22;
-    ctx.beginPath(); ctx.arc(cx, cy, r - th * 0.22, a0 + 0.05, a1 - 0.05); ctx.stroke();
+    ctx.strokeStyle = wood;
+    ctx.lineWidth = th * 0.66;
+    ctx.beginPath(); ctx.arc(cx - th * 0.05, cy - th * 0.1, r, a0 + 0.02, a1 - 0.02); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,226,170,0.7)';
+    ctx.lineWidth = th * 0.16;
+    ctx.beginPath(); ctx.arc(cx - th * 0.1, cy - th * 0.2, r, a0 + 0.06, a1 - 0.06); ctx.stroke();
     // a sponge pad and a couple of thorns ride on each ring
     const pad = a0 + (TAU - gap) * (0.3 + 0.2 * i);
     ctx.strokeStyle = LINE; ctx.lineWidth = th * 0.75 + 3;
