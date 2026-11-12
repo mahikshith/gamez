@@ -2117,7 +2117,7 @@ function render() {
   G.view.shakeX = ox; G.view.shakeY = oy;
   // ground band (drawn under the same camera as the world, so it never slips against it)
   const gy = cy + oy - (sim.groundY - camY) * k;
-  if (gy < H_ && !sim.water) G.backdrop.drawGround(ctx, 0, gy, W_, H_ - gy, t); // underwater: no ground (the surface is drawn in the world)
+  if (gy < H_ && !sim.water) G.backdrop.drawGround(ctx, 0, gy, W_, H_ - gy, t, { x: cx + ox + (sim.nest.getPosition().x - camX) * k, k, nw: sim.nestW }); // underwater: no ground (the surface is drawn in the world)
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.translate(cx + ox, cy + oy);
   if (roll) ctx.rotate(roll);
