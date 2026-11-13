@@ -77,7 +77,7 @@ export const SPECS = [
     nest: { w: 2.8 }, bonus: { kind: 'prize' },
     orbs: [{ type: 'fire_green', ch: 2 }, { type: 'fire_red', ch: 3 }], portals: [{ from: [3, 90], to: [3, 90], emit: ['fire_red'], every: 7, pull: 0 }],
     bossFight: { kind: 'weasel', delay: 3, den: { a: 30, hp: 3 }, throws: ['thorn', 'curse'], phases: [
-      { attacks: [], every: 6 },
+      { attacks: ['pop'], every: 7 }, // measured: with no attacks here the pop only came after 40 s, so most runs never saw it
       { at: { saved: 1, t: 40 }, attacks: ['throw', 'pop'], every: 7 },
       { at: { saved: 2, t: 75 }, attacks: ['throw2', 'pop', 'throw'], every: 6 },
     ] },

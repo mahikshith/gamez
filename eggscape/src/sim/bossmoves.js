@@ -19,7 +19,9 @@
 // Storm Eagle (L30)
 //   dive   : its shadow circles, then locks on the egg furthest from the nest in the outer two channels and shrinks
 //            onto it. The eagle dives and carries the egg back up one ring (never out, never broken). Counter: a solid
-//            ring wall directly over the egg when it lands: it bonks and is dizzy for DIVE_DIZZY s.
+//            ring wall directly over the egg when it lands: it bonks and is dizzy for DIVE_DIZZY s. Measured: a ring is solid over an
+//            egg ~88% of the time, so a wall that was already there blocked ~85% of dives and almost none landed. Now only a wall the
+//            player brings over the egg blocks it (A.open): the egg was seen exposed, or a ring was turned ~17 degrees during the warning; an egg left sitting under a ring is snatched.
 //   wgust  : streaks show the way, then three wing beats over WGUST_T s push every free egg along its channel.
 //            Counter: a wall end or a gap edge in the way, or ride it to a gap.
 // Weasel (L5, gentle: its one new move)
@@ -102,7 +104,7 @@ export function mvStart(sim, B, name, M) {
       if (!C.length) return null;
       const d = (q) => { const p = q.body.getPosition(); return Math.hypot(p.x - N.x, p.y - N.y); };
       const e = C.sort((a, b) => d(b) - d(a) || a.id - b.id)[0], p = e.body.getPosition();
-      return { eid: e.id, x: p.x, y: p.y, aim: p.x };
+      return { eid: e.id, x: p.x, y: p.y, aim: p.x, open: !roofedWide(sim, p), ra: sim.rings.map((r) => r.body.getAngle()) };
     }
     case 'pop': {
       if (mv.pop) return null;
@@ -166,7 +168,7 @@ export function mvAct(sim, B, A) {
       const e = sim.aliveEggs().find((q) => q.id === A.eid);
       if (!e) break;
       const p = e.body.getPosition(), c = sim.channelOf(e);
-      if (roofedWide(sim, p)) { B.dizzy = Math.max(B.dizzy, MV.diveDizzy); mv.bonk = { x: p.x, y: p.y + 0.5, t: sim.t }; sim.emit('mvDiveBonk', { x: p.x, y: p.y + 0.5 }); break; }
+      if (A.open && roofedWide(sim, p)) { B.dizzy = Math.max(B.dizzy, MV.diveDizzy); mv.bonk = { x: p.x, y: p.y + 0.5, t: sim.t }; sim.emit('mvDiveBonk', { x: p.x, y: p.y + 0.5 }); break; }
       if (c < 1 || c >= n0(sim)) break;
       const rad = c >= 2 ? (sim.rings[c - 2].r + sim.rings[c - 1].r) / 2 : sim.rings[0].r * 0.45, a = Math.atan2(p.y, p.x);
       mv.carry = { eid: e.id, x0: p.x, y0: p.y, x1: rad * Math.cos(a), y1: rad * Math.sin(a), t: 0, dur: MV.carryT };
@@ -216,7 +218,7 @@ export function mvStep(sim, B, dt) {
   }
   // the dive's lock-on follows its egg through the telegraph
   const A = B.atk;
-  if (A && A.name === 'dive' && A.ph === 'warn') { const e = sim.aliveEggs().find((q) => q.id === A.eid); if (e) { const p = e.body.getPosition(); A.x = p.x; A.y = p.y; } }
+  if (A && A.name === 'dive' && A.ph === 'warn') { const e = sim.aliveEggs().find((q) => q.id === A.eid); if (e) { const p = e.body.getPosition(); A.x = p.x; A.y = p.y; if (!roofedWide(sim, p) || (A.ra && sim.rings.some((r, i) => Math.abs(r.body.getAngle() - A.ra[i]) > 0.3))) A.open = true; } } // a ring turned during the warning also counts: an egg that sat under a wall all along is never an unavoidable snatch
   // carried up: the egg rides the talons along an arc to the channel inside (its velocity is held at zero)
   if (mv.carry) {
     const K = mv.carry, e = sim.aliveEggs().find((q) => q.id === K.eid);

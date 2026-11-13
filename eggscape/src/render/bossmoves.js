@@ -222,7 +222,7 @@ export function drawMovesOver(ctx, sim, k, t) {
   // says whether a wall covers it right now
   if (A && A.name === 'dive' && A.ph === 'warn' && A.x != null) {
     const u = clamp01(1 - A.t / A.dur), orbit = 2.4 * (1 - u) * (1 - u), ang = t * 2.6;
-    const x = A.x + Math.cos(ang) * orbit, y = A.y + Math.sin(ang) * orbit * 0.6, safe = roofedWide(sim, { x: A.x, y: A.y });
+    const x = A.x + Math.cos(ang) * orbit, y = A.y + Math.sin(ang) * orbit * 0.6, safe = !!A.open && roofedWide(sim, { x: A.x, y: A.y });
     ctx.save();
     ctx.globalAlpha = 0.55 + 0.45 * u;
     wingShadow(ctx, x, y, 3.4 - 1.6 * u, ang + Math.PI / 2, t);
@@ -326,7 +326,7 @@ export function movesEvent(ev, fx, U) {
       if (ev.attack === 'cage') { audio.play('glass_crack', { vol: 0.6, pitch: 0.7 }); once('mvCage', 'Crystal cage! Crystals will seal the marked egg in. Turn either ring of that channel to shear them off, or roll the egg out first.', 4.4); }
       else if (ev.attack === 'magma') { audio.play('lava_sizzle', { vol: 0.6, pitch: 0.7 }); once('mvMagma', 'Magma ring! The glowing ring turns red-hot. Get your eggs off it in time; its thorns burn away too.', 4.4); }
       else if (ev.attack === 'whip') { audio.play('wind_gust', { vol: 0.5, pitch: 0.6 }); once('mvWhip', 'Tail whip! He will knock the marked ring a quarter turn. Hold that ring as it lands and it barely moves.', 4.4); }
-      else if (ev.attack === 'dive') { audio.play('wind_gust', { vol: 0.5, pitch: 1.5 }); once('mvDive', 'Dive snatch! The eagle will carry the marked egg back up a ring. Turn a solid wall over it and the eagle bonks.', 4.4); }
+      else if (ev.attack === 'dive') { audio.play('wind_gust', { vol: 0.5, pitch: 1.5 }); once('mvDive', 'Dive snatch! The eagle will carry the marked egg back up a ring. Turn a ring during the warning so a solid wall covers it, and the eagle bonks.', 4.4); }
       else if (ev.attack === 'wgust') { audio.play('wind_gust', { vol: 0.6, pitch: 0.8 }); once('mvGust', 'Wing gust! Three wing beats will push every loose egg the way the arrows point. Put a wall end in the way, or ride it to a gap.', 4.4); }
       else if (ev.attack === 'pop') { audio.play('rock_hit', { vol: 0.4, pitch: 1.4 }); once('mvPop', 'Tunnel pop! The weasel will pop up where the dirt flies and block the channel. Roll an egg into him to bonk him!', 4.4); }
       else if (ev.attack === 'shards') { audio.play('glass_crack', { vol: 0.5, pitch: 1.6 }); once('mvShards', 'Shard rain! Shards fall through the marked wedge. Turn a solid wall over your egg, or roll it out of the wedge.', 4.4); }
