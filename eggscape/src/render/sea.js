@@ -214,7 +214,7 @@ export function drawSeaOver(ctx, sim, t, k) {
 
 function drawSchool(ctx, sim, S, t, k) {
   const R = fishState(sim, S, t), dt = R.dt, c = S.ch, r0 = sim.rings[c - 1].r + RING_TH / 2, r1 = sim.rings[c].r - RING_TH / 2;
-  const L = FISH.len * k;
+  const L = FISH.len * k * 1.4; // draw scale only (1.4x so a fish reads on a phone); the collider keeps FISH.len
   // the current they make: faint streaks through the school, flowing their way (gone while they scatter)
   const cur = S.push * (S.ph === 'scatter' ? 0 : 1);
   R.cur += (cur - R.cur) * Math.min(1, dt * 6);

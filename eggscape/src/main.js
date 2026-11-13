@@ -107,6 +107,8 @@ function dailyLevel() {
   const d = new Date();
   return DAILY[Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5) % DAILY.length];
 }
+// time to the next Daily Vault: it turns over at local midnight (the same clock today() uses), so it survives reloads
+const dailyNextText = () => { const d = new Date(), m = Math.max(1, Math.ceil((new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1) - d) / 6e4)), h = Math.floor(m / 60); return h ? `Next ${h}h ${String(m % 60).padStart(2, '0')}m` : `Next ${m}m`; };
 const dailyBest = () => (save.daily.day === today() ? save.daily.best : 0);
 const powerInfo = (id) => POWER_INFO[id] || { name: id, line: '', color: '#fff' };
 // Chick Strike: the chicks the player has reached (save.unlocked counts levels; the level being started counts too), and the one equipped
@@ -311,7 +313,7 @@ function popup(wx, wy, text, o = {}) {
 function computeLayout() {
   const u = ui.u;
   const twoRows = W_ < 760;
-  G.hudBottom = Math.round((twoRows ? 104 : 64) * u);
+  G.hudBottom = Math.round((twoRows ? 111 : 64) * u); // portrait: 7u more air under the two HUD rows
   // bosses (v3.1): the phase bar gets its own strip under the HUD plate
   G.bossBar = G.level && G.level.bossFight ? Math.round(30 * u) : 0;
   G.hudBottom += G.bossBar;
@@ -678,7 +680,7 @@ function keyDown(e) {
     if ((k === ' ' || k === 'c' || k === 'C') && !e.repeat) { const c = G.sim.aliveEggs().find((x) => G.sim.canTap(x)); if (c) G.sim.tapChick(c.id); else if (G.sim.laserReady()) { const L = G.sim.aliveEggs().sort((a, b) => G.sim.channelOf(b) - G.sim.channelOf(a))[0], p = L ? L.body.getPosition() : { x: 0, y: -1 }; G.sim.fireLaser(Math.atan2(p.y, p.x)); } } // v3.2: space taps a ready chick (v3.4: else fires the laser along the leading egg)
   } else if ((k === 'Enter' || k === ' ') && !e.repeat) {
     if (G.screen === 'win' && !(G.result && winIn(G.result) >= 1)) return skipCheer();
-    const primary = { title: 'play', intro: G.level.intro && !save.intro[G.level.id] ? 'gotit' : 'go', win: 'next', fail: 'retry', pause: 'resume' }[G.screen];
+    const primary = { title: 'play', intro: G.level.intro && !save.intro[G.level.id] && !worldOpener(G.level) ? 'gotit' : 'go', win: 'next', fail: 'retry', pause: 'resume' }[G.screen];
     if (primary) press(primary);
   }
 }
@@ -743,6 +745,7 @@ async function press(id) {
       setScreen('levels');
       break;
     case 'go': {
+      if (worldOpener(G.level)) { save.intro[G.level.id] = 1; persist(); }
       // owned boosters picked on the intro card are spent now and the level restarts with them
       const boost = { ...G.boost }; // keeps a booster the intro ad already gave
       let picked = 0;
@@ -1249,6 +1252,12 @@ function handleEvents() {
           if (ev.v > 2.6) audio.play('egg_land', { intensity: clamp((ev.v - 2.6) / 4.5, 0, 1), vol: 0.5 + 0.5 * i });
         }
         eggLand(ev.egg, ev.v, fx);
+        break;
+      case 'graze': // thorn grace: a slow brush shoves the egg off instead of breaking it
+        fx.chips(ev.x, ev.y, '#ffe9b0', 5, 1.4);
+        fx.dust(ev.x, ev.y, 3, 'rgba(236,226,204,0.7)');
+        audio.play('ring_tick', { vol: 0.55, pitch: 1.5 });
+        if (!save.seen.graze) { save.seen.graze = 1; persist(); toast('Close call! A slow brush against a thorn only shoves the egg.', 3.4); }
         break;
       case 'crack':
         audio.play('egg_crack');
@@ -2579,7 +2588,7 @@ function drawHUD() {
   let trayX, trayY, lvlMax, lvlCx = null;
   if (twoRows) {
     lvlMax = rightEdge - leftEdge; lvlCx = (leftEdge + rightEdge) / 2;
-    trayY = pad + bs + 9 * u + pillH / 2;
+    trayY = pad + bs + 12 * u + pillH / 2;
   } else {
     lvlMax = Math.max(60 * u, (W_ / 2 - groupW / 2) - leftEdge - 12 * u);
     trayY = row1;
@@ -2833,6 +2842,8 @@ function bossStage(x, y, w, h, s) {
     paint: () => sunburst(x + w / 2, y + h / 2, w * 0.7, 'rgba(255,120,90,0.13)') });
 }
 
+// first level of a world, first visit: its intro line rides on the level card (one card, no extra tap)
+function worldOpener(L) { return !!(L && L.intro && !L.boss && G.li >= 0 && (L.id - 1) % PER_ENV === 0 && !save.intro[L.id]); }
 function drawIntro() {
   dim(0.42);
   const L = G.level, C = ui.C;
@@ -2851,7 +2862,7 @@ function drawIntro() {
     ], { ribbon: '#e8962a' });
     return;
   }
-  if (L.intro && !save.intro[L.id]) {
+  if (L.intro && !save.intro[L.id] && !worldOpener(L)) {
     // a world's new mechanic gets one screen of its own the first time (C6); a boss also shows its face (I6)
     stackCard(L.intro.title, (s, iw) => [
       // (the framed villain portrait card was removed at the owner's request: bosses introduce themselves in the level)
@@ -2864,9 +2875,11 @@ function drawIntro() {
     return;
   }
   stackCard(G.li === -2 ? 'Lab' : G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`, (s, iw) => {
-    const tip = L.tip ? wrapText(L.tip, 15 * s, iw).slice(0, 3) : [];
+    const wo = worldOpener(L);
+    const tip = wo ? wrapText(L.intro.line, 15 * s, iw).slice(0, 3) : L.tip ? wrapText(L.tip, 15 * s, iw).slice(0, 3) : [];
     const B = [
       lineBlock(L.name, 23 * s, { tag: 'intro:name', gap: 2 * s }),
+      ...(wo ? [lineBlock(WORLDS[envOf(G.li)] || L.intro.title, 14.5 * s, { color: acc, tag: 'intro:world', gap: 4 * s })] : []),
       // the goal: the level's eggs in a tray, and how many must get home
       { h: 70 * s, gap: 6 * s, draw: (x, y, w) => {
         ui.well(x, y, w, 70 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
@@ -3217,27 +3230,29 @@ function drawTitle() {
   const bw = Math.min(310 * u, W_ - 44 * u);
   const wide = W_ > H_ * 1.15;
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
-  const by = H_ - 244 * u; // room for the Extras row under the difficulty row
-  const ground = by - 16 * u;
+  // landscape: two balanced columns, logo + vault on the left, the buttons on the right, the meadow low across both
+  const lx = wide ? W_ * 0.29 : cx, bx = wide ? W_ * 0.73 : cx;
+  const blockH = 232 * u; // Play + Levels row + difficulty + Extras
+  const ground = wide ? H_ - Math.max(96 * u, H_ * 0.2) : H_ - 244 * u - 16 * u;
+  const by = wide ? Math.max(14 * u, (ground - blockH) / 2 + 4 * u) : H_ - 244 * u; // room for the Extras row under the difficulty row
   G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t);
   // the earth under the controls falls into shade, so the buttons carry the bottom of the screen
   const sg = ctx.createLinearGradient(0, ground + 20 * u, 0, H_);
   sg.addColorStop(0, 'rgba(30,14,4,0)'); sg.addColorStop(1, 'rgba(30,14,4,0.5)');
   ctx.fillStyle = sg; ctx.fillRect(0, ground + 20 * u, W_, H_ - ground - 20 * u);
-  const logoS = Math.min(66 * u, W_ / 7.3, H_ / 6);
+  const logoS = Math.min(66 * u, (wide ? W_ * 0.5 : W_) / 7.3, H_ / 6);
   const ty = Math.max(16 * u + logoS / 2, Math.min(H_ * 0.12, 72 * u));
-  const logo = drawLogo(ctx, 'EGGSCAPE', cx, ty, logoS, G.t, G.screenT, FONT);
+  const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, G.screenT, FONT);
   ui.record(logo, 'title:logo');
   const subY = ty + logoS * 0.5 + 18 * u;
-  ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', cx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: W_ - 32 * u });
+  ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? W_ * 0.5 : W_) - 32 * u });
   // the toy vault: centred between the subtitle and the meadow, or to the left of the buttons on a wide screen
   const eggH = Math.min(46 * u, (ground - subY) * 0.22);
   let vx = cx, vy, R;
   if (wide) {
-    const side = (W_ - bw) / 2;
-    vx = side / 2;
-    R = Math.min(side * 0.4, ground * 0.4);
-    vy = ground * 0.52;
+    const top = subY + 18 * u, bot = ground - eggH * 2.2;
+    R = Math.min((bot - top) / 2, W_ * 0.2);
+    vx = lx; vy = (top + bot) / 2;
   } else {
     const top = subY + 22 * u, bot = ground - eggH * 2.4;
     R = Math.min((bot - top) / 2, W_ * 0.4);
@@ -3249,15 +3264,15 @@ function drawTitle() {
   // PLAY breathes
   const ph = 70 * u, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
   ctx.save();
-  ctx.translate(cx, by + ph / 2); ctx.scale(br, br); ctx.translate(-cx, -(by + ph / 2));
-  ui.button('play', save.unlocked > 1 ? `PLAY  Level ${save.unlocked}` : 'PLAY', cx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * u, round: 20 * u });
+  ctx.translate(bx, by + ph / 2); ctx.scale(br, br); ctx.translate(-bx, -(by + ph / 2));
+  ui.button('play', save.unlocked > 1 ? `PLAY  Level ${save.unlocked}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * u, round: 20 * u });
   ctx.restore();
   const tw = (bw - 16 * u) / 3, ry = by + ph + 10 * u, rh = 54 * u, paid = save.daily.paid === today();
-  ui.button('levels', 'Levels', cx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u });
-  ui.button('daily', 'Daily', cx - bw / 2 + tw + 8 * u, ry, tw, rh, { kind: paid ? 'off' : 'orange', icon: paid ? ICON.check : ICON.day, size: 17 * u });
-  ui.button('shop', String(save.wallet.coins), cx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 18 * u });
-  modeRow(cx - bw / 2, ry + rh + 10 * u, bw, 44 * u, u, true);
-  ui.button('extras', 'Extras', cx - bw / 2, ry + rh + 10 * u + 44 * u + 8 * u, bw, 36 * u, { kind: 'hud', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 15 * u });
+  ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u });
+  ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u });
+  ui.button('shop', String(save.wallet.coins), bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 18 * u });
+  modeRow(bx - bw / 2, ry + rh + 10 * u, bw, 44 * u, u, true);
+  ui.button('extras', 'Extras', bx - bw / 2, ry + rh + 10 * u + 44 * u + 8 * u, bw, 36 * u, { kind: 'hud', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 15 * u });
 }
 
 // a small gold crown (boss tiles)
