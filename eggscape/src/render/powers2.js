@@ -575,7 +575,7 @@ export function drawP2Front(ctx, sim, k, t) {
   }
   // the decoy
   const D = sim.p2d;
-  if (D && D.alive && P.decoy) {
+  if (D && D.alive && P.decoy && !P.decoy.stk) { // the decoy chick (Chick Strike) is drawn by render/strike.js
     const p = D.body.getPosition(), blink = P.decoy.t < 1.5 && Math.sin(t * 22) < -0.2;
     px(ctx, p.x, p.y, k, D.body.getAngle(), () => {
       ctx.save();

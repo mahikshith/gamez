@@ -381,13 +381,13 @@ export function drawBossActor(ctx, sim, k, t) {
   if (!Q) return;
   const A = B.atk, calm = isSpriteCalm();
   const warnU = A && A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 0, acting = A && A.ph === 'act';
-  if (B.kind === 'blizzard') drawBigBoss(ctx, drawMammoth, sim, B, Q, k, t, warnU, acting, calm);
+  // blizzard (L15): no figure. The owner wants villains inside the vault or none; the storm itself attacks.
   if (B.kind === 'golem') drawBigBoss(ctx, drawGolem, sim, B, Q, k, t, warnU, acting, calm);
   if (B.kind === 'owl') drawOwlBoss(ctx, sim, k, t);
   // the frost stomp: once the foot is down (45% into the warning) frost cracks race from it to the ring it freezes
   if (A && A.name === 'freeze' && B.kind === 'blizzard' && !calm) {
     const ring = sim.rings[A.ring], u = acting ? 1 : clamp01((warnU - 0.45) / 0.55), d = Q.dir || 1;
-    const fx = Q.x + d * MAMMOTH_FOOT.x * Q.h, fy = Q.y - MAMMOTH_FOOT.y * Q.h, fa = Math.atan2(fy, fx), rr = ring.r + RING_TH * 0.5;
+    const fa0 = Math.atan2(Q.y, Q.x), fx = Math.cos(fa0) * (sim.outerR + 0.15), fy = Math.sin(fa0) * (sim.outerR + 0.15), fa = fa0, rr = ring.r + RING_TH * 0.5;
     const ex = Math.cos(fa) * rr, ey = Math.sin(fa) * rr, L = Math.hypot(ex - fx, ey - fy) || 1, nx = -(ey - fy) / L, ny = (ex - fx) / L, n = 8;
     if (u > 0) {
       ctx.save();
@@ -457,7 +457,8 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
   } else if (kind === 'gator') {
     drawGatorEmblem(ctx, r, t);
   } else if (kind === 'blizzard') {
-    drawMammothEmblem(ctx, r);
+    ctx.strokeStyle = '#eaf6ff'; ctx.lineWidth = Math.max(1.5, r * 0.16); ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) { const q = (i * Math.PI) / 3; ctx.beginPath(); ctx.moveTo(-Math.cos(q) * r * 0.62, -Math.sin(q) * r * 0.62); ctx.lineTo(Math.cos(q) * r * 0.62, Math.sin(q) * r * 0.62); ctx.stroke(); }
   } else if (kind === 'golem') {
     ctx.fillStyle = '#d9c8ff';
     ctx.strokeStyle = '#3a2a70';

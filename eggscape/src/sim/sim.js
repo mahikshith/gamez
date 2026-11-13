@@ -15,6 +15,7 @@ import { kcMethods } from './kingcrab.js'; // world 8 boss: the King Crab // v3.
 import { cwMethods } from './clockwork.js'; // v4 the clockwork cast: spider, wind-up beetle, spring jack
 import { owlMethods } from './owl.js'; // v4 the Clockwork Owl boss
 import { bayouMethods } from './bayou.js'; // v3.7 Gator Bayou: alligator, snapping turtle, mosquito swarm, Grandpa Gator
+import { stkMethods } from './strike.js'; // Chick Strike powers
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
@@ -293,6 +294,7 @@ export class Sim {
     for (const k of L.rocks || []) this.addRock(k.x, k.y, k.s || 0.18);
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
     this.p2Init(); // v3.4 powers
+    this.stkInit(); // Chick Strike powers (sim/strike.js): data only until one is fired
   }
 
   makeRing(i, r, spec, mat) {
@@ -613,15 +615,17 @@ export class Sim {
       const o = this.addOrb(type, ch, Math.atan2(pt.by, pt.bx), src, Math.hypot(pt.bx, pt.by));
       this.emit('orbSpawn', { power: type, x: o.x, y: o.y });
     });
-    this.predStep(dt);
+    const cdt = this.stkDt(dt); // Chick Strike: creatures fooled by the decoy chick rush (dt itself otherwise)
+    this.predStep(cdt);
     this.allyStep(dt); // v3.4: after the animals move, so a knocked-out one stays knocked out
     this.chickStep(dt); // v3.2 chick kinds
-    this.frogStep(dt); // v3.3 frog
-    this.cwStep(dt); // v4 the clockwork cast
-    this.bayouStep(dt); // v3.7 gators, turtles, mosquitoes
+    this.frogStep(cdt); // v3.3 frog
+    this.cwStep(cdt); // v4 the clockwork cast
+    this.bayouStep(cdt); // v3.7 gators, turtles, mosquitoes
     if (this.weather && this.state === 'play') this.weatherStep(dt);
     if (this.state === 'play') this.v3Step(dt);
     this.p2Step(dt); // v3.4 powers
+    this.stkStep(dt); // Chick Strike powers
 
     if (GAP_NUDGE.acc > 0 && this.state === 'play') this.gapNudge();
     this.world.step(dt, 8, 3);
@@ -2391,6 +2395,7 @@ export class Sim {
       ally: this.allyState(), // v3.4 farm allies
       sea: this.seaState(), // v3.3 octopus and fish
       p2: this.p2State(), // v3.4 powers
+      stk: this.stkState(), // Chick Strike powers
       thieves: this.thiefState(), // v3.6 the weasel and the rats
       reef: this.reefState(), // world 8
       cw: this.cwState(), owl: this.owlState(), // v4 the clockwork cast and the Clockwork Owl
@@ -2451,6 +2456,7 @@ export class Sim {
     sim.allyLoad(S.ally); // v3.4 farm allies
     sim.seaLoad(S.sea); // v3.3 octopus and fish
     sim.p2Load(S.p2); // v3.4 powers
+    sim.stkLoad(S.stk); // Chick Strike powers
     sim.thiefLoad(S.thieves); // v3.6 the weasel and the rats
     sim.reefLoad(S.reef); // world 8
     sim.cwLoad(S.cw); sim.owlLoad(S.owl); // v4
@@ -2852,5 +2858,6 @@ Object.assign(Sim.prototype, bayouMethods); // v3.7 Gator Bayou (sim/bayou.js)
 Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves.js)
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
 Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl
+Object.assign(Sim.prototype, stkMethods); // Chick Strike powers (sim/strike.js)
 
 export { EGG_H, EGG_W, RING_TH };

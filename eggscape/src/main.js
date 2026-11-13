@@ -48,6 +48,8 @@ import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render
 import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem } from './render/bayou.js'; // v3.7 Gator Bayou
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
+import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, strikeSeat } from './render/strike.js'; // Chick Strike powers
+import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -107,6 +109,14 @@ function dailyLevel() {
 }
 const dailyBest = () => (save.daily.day === today() ? save.daily.best : 0);
 const powerInfo = (id) => POWER_INFO[id] || { name: id, line: '', color: '#fff' };
+// Chick Strike: the chicks the player has reached (save.unlocked counts levels; the level being started counts too), and the one equipped
+const strikeReach = () => Math.max(save.unlocked || 1, G.level && G.li >= 0 ? G.level.id : 0);
+const strikesOpen = () => STRIKES.filter((S) => strikeReach() >= S.unlock);
+function strikeFor(L, i) {
+  const open = strikesOpen();
+  if (!open.length || (i >= 0 && L.id < STRIKE_FROM)) return null;
+  return open.some((S) => S.id === save.strike) ? save.strike : open[open.length - 1].id;
+}
 function persist() {
   try { portal.save(JSON.stringify(save)); } catch (e) { /* never block */ }
 }
@@ -207,7 +217,8 @@ function startLevel(i, opts = {}) {
   G.level = i === -2 && G.demo ? G.demo : i < 0 ? dailyLevel() : LEVELS[i]; // -2: a dev chick demo (v3.2)
   G.theme = themeFor(G.level);
   G.boost = opts.boost || {};
-  G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost });
+  G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost, strike: strikeFor(G.level, i) });
+  G.stkPick = null; G.stkWob = -9; G.stkFullT = 0; G.henAt = null;
   G.golden = !!opts.golden;
   G.adBoost = opts.adBoost || null;
   G.freeRewind = !!G.boost.rewind;
@@ -566,6 +577,7 @@ function pointerDown(e) {
   }
   const w = toWorld(x, y);
   const r = Math.hypot(w.x, w.y);
+  if (G.sim.stkOn()) { const pk = G.sim.stkPickAt(w.x, w.y); if (pk) G.stkPick = { key: pk, t: G.t }; } // Chick Strike: a tapped creature is the next target (1.5 s)
   const ch = G.sim.chickAt(w.x, w.y, 34 * ui.u / G.cam.k); // v3.2: a tap on a ready chick (released without dragging) uses its power
   G.chickTap = ch ? { id: ch.id, pid: e.pointerId, x, y, t: G.t } : null;
   G.laserTap = !ch && G.sim.laserReady() ? { pid: e.pointerId, x, y, t: G.t } : null; // v3.4: a tap fires the laser beak
@@ -696,6 +708,8 @@ async function press(id) {
     case 'zoom:in': setZoom((G.zm || 0) + 0.34); break;
     case 'zoom:out': setZoom((G.zm || 0) - 0.34); break;
     case 'zoom:auto': G.zm = null; break;
+    case 'strike': fireStrike(); break; // Chick Strike
+    case 'stk:gotit': { const id = G.stkCard; save.strikeSeen = { ...(save.strikeSeen || {}) }; for (const S of strikesOpen()) save.strikeSeen[S.id] = 1; if (id) { save.strike = id; G.sim.stkEquip(strikeFor(G.level, G.li)); } G.stkCard = null; persist(); break; }
     case 'ally': {
       // allies (v3.5): free on Easy and after a fail; otherwise a rewarded ad (never costs progress, the button stays on a miss)
       if (G.screen !== 'play' || !allyShown()) break;
@@ -750,6 +764,11 @@ async function press(id) {
     }
     case 'daily':
       await breakThen(() => startLevel(-1));
+      break;
+    case 'stk:pick:freeze': case 'stk:pick:thunder': case 'stk:pick:bomb': case 'stk:pick:decoy': case 'stk:pick:tornado': case 'stk:pick:glue':
+      save.strike = id.slice(9); persist();
+      G.sim.stkEquip(strikeFor(G.level, G.li));
+      audio.play('cluck', { pitch: 2.2, vol: 0.5 });
       break;
     case 'gotit':
       save.intro[G.level.id] = 1;
@@ -1464,6 +1483,7 @@ function handleEvents() {
         fx.shake = 0.8;
         break;
       default:
+        if (strikeEvent(ev, fx, STRIKE_API)) { if (ev.type === 'stkReady') G.stkFullT = G.t; break; } // Chick Strike
         v3Event(ev, fx);
         predEvent(ev, fx); // predators (v3)
         bossEvent(ev, fx); // bosses (v3.1)
@@ -1486,6 +1506,40 @@ function handleEvents() {
     }
   }
   sim.events.length = 0;
+}
+
+// ---------------------------------------------------------------- Chick Strike: event helpers (render/strike.js) and the button
+const STRIKE_API = {
+  popup, audio,
+  get sim() { return G.sim; },
+  once(key, text, d = 3.2) { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } },
+  hitStop: (s) => hitStop(s),
+  punch: (a, x, y) => camPunch(a, x, y),
+  slow(left, scale) { if (!save.calm) G.slow = { left, scale }; },
+};
+function strikeFrom() { return G.henAt ? strikeSeat(G.henAt) : {}; }
+function fireStrike(force) {
+  const sim = G.sim;
+  if (!sim || !sim.stkOn() || G.screen !== 'play') return null;
+  if (!force && !sim.stkReady()) { G.stkWob = G.t; audio.play('motor_tick', { vol: 0.6, pitch: 1.4 }); return null; }
+  const pick = G.stkPick && G.t - G.stkPick.t < 1.5 ? G.stkPick.key : null;
+  const r = sim.stkFire({ ...strikeFrom(), pick, force });
+  if (!r.ok) { G.stkWob = G.t; if (r.why === 'none') toast('No villain to strike right now.', 2); }
+  else G.stkPick = null;
+  return r;
+}
+// the strike button: bottom left in portrait (the ally button moves one slot right), top of the right column in landscape
+function strikeShown() { return !!(G.sim && G.sim.stkOn() && G.sim.state === 'play' && G.screen === 'play'); }
+function strikeBtnRect() {
+  const { bs, pad, side } = G.zb, u = ui.u;
+  return side ? { x: W_ - pad - bs, y: G.play.y, w: bs, h: bs } : { x: pad, y: H_ - 6 * u - bs, w: bs, h: bs };
+}
+function drawStrikeBtn() {
+  if (!strikeShown()) return;
+  const r = strikeBtnRect(), K = G.sim.stk;
+  drawStrikeButton(ctx, r.x, r.y, r.w, { id: K.id, m: K.m, busy: !!K.fly, t: G.t, fullT: G.stkFullT, wobT: G.stkWob, pressed: ui.pressedId === 'strike', calm: save.calm });
+  ui.record(r, 'btn:strike', 'btn:strike');
+  ui.buttons.push({ id: 'strike', ...r });
 }
 
 // ---------------------------------------------------------------- v3.4 powers: event helpers (render/powers2.js)
@@ -2221,6 +2275,7 @@ function render() {
   { const wx = warpXfBegin(ctx, sim, 'e'); W.drawEagleAt(ctx, sim, t, k); warpXfEnd(ctx, wx); }
   drawAllies(ctx, sim, t, k); // v3.4: rooster and goose, in front of the vault
   drawP2Front(ctx, sim, k, t); // v3.4: decoy, frozen/zapped creatures, beams, spin, pepper cloud
+  drawStrikeWorld(ctx, sim, k, t, G.henAt); // Chick Strike: the chick on the hen's back, its flight, glue, twisters, chains
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);
   fx.draw(ctx, 'front');
   for (const e of sim.aliveEggs()) W.drawEggMult(ctx, e, k, FONT);
@@ -2302,6 +2357,7 @@ function drawHenAt(sim, k, t) {
     for (const [ox, oy] of [[0.32, 0.97], [0.46, 0.85]]) { const y = sim.groundY + oy * c * (sim.gy || 1), d = R * R - y * y; if (d > 0) x = Math.max(x, Math.sqrt(d) + ox * c - n.x * 0); }
     if (x - base <= 1.1 && x + 0.45 * c <= sim.outerR + 0.5) { s = c; hx = x; break; }
   }
+  G.henAt = { x: hx, y: seat ? seat.y : sim.groundY, s }; // Chick Strike: where the chick rides and launches from
   ctx.save();
   ctx.translate(hx, seat ? seat.y : sim.groundY);
   ctx.scale(1 / k, -1 / k);
@@ -2423,7 +2479,7 @@ const allyIcon = (c, x, y, s) => { // a little rooster head: red comb, orange be
 function drawAllyBtn() {
   if (!allyShown()) { G.allyOpen = false; return; }
   const { bs, pad, side } = G.zb, u = ui.u, gap = 8 * u;
-  const x = side ? W_ - pad - bs : pad, y = H_ - 6 * u - bs;
+  const x = side ? W_ - pad - bs : pad + (strikeShown() ? bs + gap : 0), y = H_ - 6 * u - bs; // Chick Strike takes the corner
   const free = allyFree() || G.allyAd, kinds = allyKinds(), can = kinds.some((k) => G.sim.allyCan(k));
   if (!can) G.allyOpen = false;
   if (can && !G.allyOpen && !save.calm) { // a slow ring says "help is here" without nagging
@@ -2583,7 +2639,7 @@ function drawHUD() {
     ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(255,206,140,0.75)'; ctx.stroke();
     drawBossBar(ctx, ui, sim, bx, by, bw, bh, G.t);
   }
-  if (G.screen === 'play' && sim.state === 'play') { drawZoomBtns(); drawAllyBtn(); }
+  if (G.screen === 'play' && sim.state === 'play') { drawZoomBtns(); drawAllyBtn(); drawStrikeBtn(); }
 }
 
 // zoom -, +, and auto (only while the player has overridden auto zoom), in the strip computeLayout keeps clear of the vault
@@ -2781,6 +2837,20 @@ function drawIntro() {
   dim(0.42);
   const L = G.level, C = ui.C;
   const acc = /^#[0-9a-f]{6}$/i.test(G.theme.palette.accent || '') ? G.theme.palette.accent : '#ee5a36';
+  // Chick Strike: a new strike chick gets a card of its own, once (the newest one reached; any older unseen ones with it)
+  const fresh = G.li >= 0 ? strikesOpen().filter((S) => S.unlock <= L.id && !(save.strikeSeen || {})[S.id]) : [];
+  if (fresh.length) {
+    const S = fresh[fresh.length - 1];
+    G.stkCard = S.id;
+    stackCard('New: ' + S.name, (s, iw) => [
+      { h: 112 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 112 * s, s, () => drawStrikeStage(ctx, S.id, x, y + 6 * s, w, 100 * s, G.t)) },
+      ...wrapText(S.up, 17 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 17 * s, { tag: 'stkup:' + i, gap: i ? 2 * s : 8 * s })),
+      ...wrapText('Downside: ' + S.down, 15 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 15 * s, { color: ui.C.warn, tag: 'stkdown:' + i, gap: i ? 2 * s : 6 * s })),
+      lineBlock('Fill the strike button, then tap it at the right moment.', 13.5 * s, { color: ui.C.ink2, tag: 'stkhow', gap: 8 * s }),
+      { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ui.button('stk:gotit', 'GOT IT', x, y, w, 58 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 23 * s }) },
+    ], { ribbon: '#e8962a' });
+    return;
+  }
   if (L.intro && !save.intro[L.id]) {
     // a world's new mechanic gets one screen of its own the first time (C6); a boss also shows its face (I6)
     stackCard(L.intro.title, (s, iw) => [
@@ -2808,6 +2878,7 @@ function drawIntro() {
       ...(G.li === -1 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14 * s, { color: C.info, tag: 'intro:daily', gap: 6 * s })] : []),
       ...tip.map((l, i) => lineBlock(l, 15 * s, { color: C.ink2, tag: 'intro:tip' + i, gap: i ? 2 * s : 8 * s })),
       ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus, G.sim.MD.fuse), 14 * s, { color: C.info, tag: 'intro:bonus', gap: 6 * s })] : []),
+      ...strikePicker(s, iw),
       { h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('go', 'PLAY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 25 * s }) },
       // start boosters bought in the store (F7/F21): tap to pick, each shows its one-liner
       { h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
@@ -2816,6 +2887,25 @@ function drawIntro() {
     B.push({ h: 42 * s, draw: (x, y, w) => ui.button(G.li === -1 ? 'back' : 'levels', G.li === -1 ? 'Menu' : 'Levels', x + w * 0.22, y, w * 0.56, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) });
     return B;
   }, { ribbon: acc });
+}
+
+// Chick Strike: the row of unlocked strike chicks on the intro card (tap one to take it), with the chosen one's downside
+function strikePicker(s, iw) {
+  const id = G.sim && G.sim.stk && G.sim.stk.id, open = strikesOpen();
+  if (!id || !G.sim.stk.on || !open.length) return [];
+  const S = STRIKE[id], r = Math.min(21 * s, (iw - 8 * s * (open.length - 1)) / open.length / 2);
+  return [
+    { h: 2 * r + 4 * s, gap: 10 * s, draw: (x, y, w) => {
+      const step = Math.min(2 * r + 12 * s, w / open.length), x0 = x + w / 2 - (step * (open.length - 1)) / 2;
+      open.forEach((O, i) => {
+        const cx = x0 + i * step, cy = y + r + 2 * s, rect = { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r };
+        drawStrikeToken(ctx, O.id, cx, cy, r * (O.id === id ? 1 : 0.86), G.t, O.id === id);
+        ui.record(rect, 'btn:stk:pick:' + O.id, 'btn:stk:pick:' + O.id);
+        ui.buttons.push({ id: 'stk:pick:' + O.id, ...rect });
+      });
+    } },
+    lineBlock(`${S.name}: ${S.down}`, 13 * s, { color: ui.C.ink2, tag: 'intro:strike', gap: 4 * s }),
+  ];
 }
 
 // v3.2: the lava salamander on its intro card, idling (code-drawn, the in-game art)
@@ -3417,6 +3507,8 @@ if (DEV) window.__egg = {
   bayouArt: { drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem }, // v3.7 Gator Bayou strips
   thiefArt: { drawThief, thiefPose, thiefBlend, RIG: THIEF_RIG, drawThiefCard, drawThiefEmblem, drawBossCard }, // v3.6 thief strips
   press,
+  strike(id) { if (!G.sim || !G.sim.stk) return null; if (id) G.sim.stkEquip(id); return fireStrike(true); }, // Chick Strike: fill the meter and fire
+  strikeArt: { drawStrikeButton, drawStrikeToken, drawStrikeStage },
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
   frame(dt = 1 / 60) { update(dt); render(); },
   actSteps, // film strips replay planner moves through this
