@@ -138,83 +138,99 @@ function eagleWing(ctx, P, S, U, V, N, far, ow, t) {
   const secF = [], leafAt = (bx, by, ang, L, W, tipR) => { const p = new Path2D(); featherTo(p, M, bx, by, ang, L, W, tipR); return { p, a: M(bx + Math.cos(ang) * L * 0.1, by + Math.sin(ang) * L * 0.1), b: M(bx + Math.cos(ang) * L * 0.82, by + Math.sin(ang) * L * 0.82), c: M(bx + Math.cos(ang) * L * 0.9, by + Math.sin(ang) * L * 0.9) }; };
   for (let j = 0; j <= 7; j++) {
     const f = j / 7, L = 29 + 9 * Math.sin(Math.min(1, f * 1.4) * Math.PI * 0.5) - f * 2 - fold * 8;
-    secF.push(leafAt(Wx + (Ex - Wx) * f, Wy + (Ey - Wy) * f, secDir(f), L, 10.5, 0.8));
+    secF.push(leafAt(Wx + (Ex - Wx) * f, Wy + (Ey - Wy) * f, secDir(f), L, 12, 0.95));
   }
   const tertF = [];
   for (let j = 0; j < 3; j++) { const f = j / 2; tertF.push(leafAt(Ex + (Ex * 0.25 - Ex) * f, Ey + (Ey * 0.25 + 1 - Ey) * f, Math.PI / 2 + 0.18 + f * 0.25, 33 - f * 12 - fold * 6, 11, 0.85)); }
-  // primaries: ten fingers fanned from the hand; spread opens the slots (downstroke), folded they stack
-  const PL = [45, 51, 53, 51, 48, 44, 40, 37, 34, 32];
+  // primaries: seven broad, separate fingers fanned from the hand; spread opens the slots between them (downstroke),
+  // folded they stack over each other
+  const PL = [47, 53, 54, 51, 47, 42, 37], NP = PL.length;
   const prim = [];
-  for (let i = 9; i >= 0; i--) { // innermost first, the long outer fingers end on top
-    const f = i / 9, bx = Hx + (Wx - Hx) * f * 0.9, by = Hy + (Wy - Hy) * f * 0.9;
+  for (let i = NP - 1; i >= 0; i--) { // innermost first, the long outer fingers end on top
+    const f = i / (NP - 1), bx = Hx + (Wx - Hx) * f * 0.9, by = Hy + (Wy - Hy) * f * 0.9;
     const ang = a3 - 0.06 * sp + Math.pow(f, 0.75) * (0.14 + 1.05 * sp) + (1 - f) * 0.04 * Math.sin(t * 2.3 + i) * (1 - fold);
-    const p = new Path2D(), q = new Path2D(), L = PL[i] * (1 - 0.1 * fold), w = i < 6 ? 5.2 + i * 0.35 : 7.6;
-    featherTo(p, M, bx, by, ang, L, w * 1.15, 0.7);
-    featherTo(q, M, bx, by, ang, L * 0.62, w, 0.45);
-    prim.push([p, q]);
+    const L = PL[i] * (1 - 0.1 * fold), w = 7.6 + f * 2.2;
+    const F = leafAt(bx, by, ang, L, w * 1.15, 0.85);
+    F.q = new Path2D(); featherTo(F.q, M, bx, by, ang, L * 0.6, w, 0.5);
+    prim.push(F);
   }
-  // coverts: the smooth leading edge (shoulder, elbow, wrist, hand) and two scalloped bands over the bases
+  // coverts: rows of separate rounded feathers along the arm (greater, median, lesser), each row shorter, lighter and
+  // laid over the one behind, under a smooth rounded leading edge
   const nrm = (ax, ay) => { const l = Math.hypot(ax, ay) || 1; return [-ay / l, ax / l]; };
   const n1 = nrm(Ex, Ey), n2 = nrm(Wx - Ex, Wy - Ey), n3 = nrm(Hx - Wx, Hy - Wy);
   const avg = (p, q) => { const x = p[0] + q[0], y = p[1] + q[1], l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
   const nE = avg(n1, n2), nW = avg(n2, n3);
+  const uE = L1 / (L1 + L2 + L3), uW = (L1 + L2) / (L1 + L2 + L3);
+  const boneAt = (u) => (u < uE ? [Ex * u / uE, Ey * u / uE] : u < uW ? [Ex + (Wx - Ex) * (u - uE) / (uW - uE), Ey + (Wy - Ey) * (u - uE) / (uW - uE)] : [Wx + (Hx - Wx) * (u - uW) / (1 - uW), Wy + (Hy - Wy) * (u - uW) / (1 - uW)]);
+  const key = (u, K) => { for (let i = 1; i < K.length; i++) if (u <= K[i][0] || i === K.length - 1) { const f = clamp((u - K[i - 1][0]) / (K[i][0] - K[i - 1][0]), 0, 1); return [f, K[i - 1][1], K[i][1]]; } };
+  const nAt = (u) => { const [f, p, q] = key(u, [[uE / 2, n1], [(uE + uW) / 2, n2], [(uW + 1) / 2, n3]]); return avg([p[0] * (1 - f), p[1] * (1 - f)], [q[0] * f, q[1] * f]); };
+  const aW = (secDir(0) + a3 + 0.14 + 0.99 * sp) / 2, aH = (a3 + 0.22 + 0.3 * sp) * (1 - fold) + (a3 + 0.14) * fold;
+  const dAt = (u) => { const [f, p, q] = key(u, [[0, Math.PI / 2 + 0.43], [uE, (Math.PI / 2 + 0.18 + secDir(1)) / 2], [uW, aW], [1, aH]]); return p + (q - p) * f; };
+  const covRow = (n, u0, u1, lead, len, wid) => {
+    const R = [];
+    for (let j = 0; j < n; j++) { // shoulder first, so each feather overlaps its inner neighbour (like the flight feathers)
+      const u = u0 + (u1 - u0) * j / (n - 1), h = clamp((u - uW) / (1 - uW), 0, 1), b = boneAt(u), nn = nAt(u), ld = lead * (1 - 0.75 * h) * (0.55 + 0.45 * Math.min(1, u / 0.3));
+      R.push(leafAt(b[0] - nn[0] * ld, b[1] - nn[1] * ld, dAt(u), (len + ld) * (1 - 0.42 * h) * (1 - 0.2 * fold), wid * (1 - 0.25 * h), 1));
+    }
+    return R;
+  };
+  const gcov = covRow(11, 0.1, 0.96, 0, 19, 11.5), mcov = covRow(10, 0.07, 0.93, 3.5, 10.5, 10), lcov = covRow(9, 0.05, 0.88, 6.5, 4.5, 8.6);
   // the leading edge: one smooth bowed curve shoulder -> wrist -> hand (the second control mirrors the first, so no corner at the wrist)
   const LE1 = 17, LE2 = 8;
   const LEc = [Ex - nE[0] * LE1, Ey - nE[1] * LE1], LEw = [Wx - nW[0] * LE2, Wy - nW[1] * LE2];
   const LEc2 = [LEw[0] + (LEw[0] - LEc[0]) * 0.55, LEw[1] + (LEw[1] - LEc[1]) * 0.55];
-  const band = (wS, wE, wW, wH, sc) => {
-    const path = new Path2D();
-    mv(path, -n1[0] * 5, -n1[1] * 5 - 1);
-    qc(path, LEc[0], LEc[1], LEw[0], LEw[1]);
-    qc(path, LEc2[0], LEc2[1], Hx - n3[0] * 0.6, Hy - n3[1] * 0.6);
+  const arm = new Path2D(); // the rounded arm itself, from the leading edge back to just short of the bone
+  {
+    mv(arm, -n1[0] * 5, -n1[1] * 5 - 1);
+    qc(arm, LEc[0], LEc[1], LEw[0], LEw[1]);
+    qc(arm, LEc2[0], LEc2[1], Hx - n3[0] * 0.6, Hy - n3[1] * 0.6);
     const hl3 = Math.hypot(Hx - Wx, Hy - Wy) || 1, tx = (Hx - Wx) / hl3, ty = (Hy - Wy) / hl3;
-    qc(path, Hx + tx * (wH * 1.25 + 2.5), Hy + ty * (wH * 1.25 + 2.5), Hx + n3[0] * wH, Hy + n3[1] * wH); // a rounded hand tip, not a flat cut
-    const pts = [[Hx + n3[0] * wH, Hy + n3[1] * wH]];
-    for (let i = 1; i <= 4; i++) { const f = i / 4; pts.push([Hx + (Wx - Hx) * f + (n3[0] * (1 - f) + nW[0] * f) * (wH + (wW - wH) * f), Hy + (Wy - Hy) * f + (n3[1] * (1 - f) + nW[1] * f) * (wH + (wW - wH) * f)]); }
-    for (let i = 1; i <= 9; i++) { const f = i / 9; pts.push([Wx + (Ex - Wx) * f + (nW[0] * (1 - f) + nE[0] * f) * (wW + (wE - wW) * f), Wy + (Ey - Wy) * f + (nW[1] * (1 - f) + nE[1] * f) * (wW + (wE - wW) * f)]); }
-    for (let i = 1; i <= 5; i++) { const f = i / 5; pts.push([Ex * (1 - f) + (nE[0] * (1 - f) + n1[0] * f) * (wE + (wS - wE) * f), Ey * (1 - f) + (nE[1] * (1 - f) + n1[1] * f) * (wE + (wS - wE) * f)]); }
-    for (let i = 1; i < pts.length; i++) {
-      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], mx = (x0 + x1) / 2, my = (y0 + y1) / 2, dx = x1 - x0, dy = y1 - y0;
-      qc(path, mx - dy * sc, my + dx * sc, x1, y1);
-    }
-    path.closePath();
-    return path;
-  };
-  const gc = band(13, 14, 11, 5, 0.55), mc = band(9, 9.5, 7, 3.2, 0.5), lc = band(5, 5, 3.8, 1.4, 0.42);
+    qc(arm, Hx + tx * 3, Hy + ty * 3, Hx + n3[0] * 1.2, Hy + n3[1] * 1.2); // a rounded hand tip
+    const pts = [];
+    for (let i = 0; i <= 10; i++) { const u = 1 - i / 10, b = boneAt(u), nn = nAt(u), k = 1.2 - 4.4 * Math.sin(Math.min(1, (1 - u) * 1.6) * Math.PI * 0.5) * (0.55 + 0.45 * Math.min(1, u / 0.25)); pts.push([b[0] + nn[0] * k, b[1] + nn[1] * k]); }
+    for (let i = 1; i < pts.length - 1; i++) qc(arm, pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2);
+    ln(arm, pts[pts.length - 1][0], pts[pts.length - 1][1]);
+    arm.closePath();
+  }
   const alu = new Path2D();
   featherTo(alu, M, Wx, Wy, a3 - 0.4 - 0.55 * P.alula, 12 + 4 * P.alula, 5.4, 0.55);
   // pass 1: silhouette of the whole limb
   ctx.strokeStyle = EG.line;
   ctx.lineWidth = ow * 2;
-  for (const [p] of prim) ctx.stroke(p);
+  ctx.lineJoin = 'round';
+  for (const { p } of prim) ctx.stroke(p);
   for (const { p } of secF) ctx.stroke(p);
   for (const { p } of tertF) ctx.stroke(p);
-  ctx.stroke(gc); ctx.stroke(alu);
+  for (const R of [gcov, mcov, lcov]) for (const { p } of R) ctx.stroke(p);
+  ctx.stroke(arm); ctx.stroke(alu);
   // pass 2: painter's order, each part filled then edged thinly so only visible edges stay
   const part = (p, fill, w = 0.55) => { ctx.fillStyle = fill; ctx.fill(p); ctx.lineWidth = ow * w; ctx.strokeStyle = col.edge; ctx.stroke(p); };
-  for (const [p, q] of prim) { ctx.fillStyle = col.tip; ctx.fill(p); ctx.fillStyle = col.fl; ctx.fill(q); ctx.lineWidth = ow * 0.55; ctx.strokeStyle = col.edge; ctx.stroke(p); }
-  // each feather: base colour, a darker rounded tip (clipped), a pale shaft
-  const quill = (F, fill, tip, hi) => {
+  // each feather: base colour, a darker rounded tip (clipped), a lit leading half, a pale shaft
+  const quill = (F, fill, tip, hi, tw = 9) => {
     for (const { p, a, b, c } of F) {
       ctx.fillStyle = fill; ctx.fill(p);
       ctx.save(); ctx.clip(p);
-      ctx.lineCap = 'round'; ctx.lineWidth = 9; ctx.strokeStyle = tip; ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.lineTo(c[0] + (c[0] - b[0]) * 2, c[1] + (c[1] - b[1]) * 2); ctx.stroke();
+      ctx.lineCap = 'round'; ctx.lineWidth = tw; ctx.strokeStyle = tip; ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.lineTo(c[0] + (c[0] - b[0]) * 2, c[1] + (c[1] - b[1]) * 2); ctx.stroke();
       ctx.restore();
       ctx.lineWidth = ow * 0.55; ctx.strokeStyle = col.edge; ctx.stroke(p);
-      ctx.lineWidth = ow * 0.4; ctx.strokeStyle = hi; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      if (hi) { ctx.lineWidth = ow * 0.4; ctx.strokeStyle = hi; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
     }
   };
+  for (const F of prim) { // long fingers: dark tip, a browner base, a pale shaft
+    ctx.fillStyle = col.tip; ctx.fill(F.p); ctx.fillStyle = col.fl; ctx.fill(F.q);
+    ctx.lineWidth = ow * 0.55; ctx.strokeStyle = col.edge; ctx.stroke(F.p);
+    ctx.lineWidth = ow * 0.4; ctx.strokeStyle = col.secHi; ctx.beginPath(); ctx.moveTo(F.a[0], F.a[1]); ctx.lineTo(F.b[0], F.b[1]); ctx.stroke();
+  }
   quill(secF, col.sec, col.tip, col.secHi);
   quill(tertF, col.cov, col.covLo || EG.covLo, col.covHi);
-  // three layered covert rows (greater, median, lesser), each scalloped over the one behind and lighter
-  part(gc, col.cov);
-  ctx.save(); ctx.clip(gc); ctx.strokeStyle = col.covLo || EG.covLo; ctx.lineWidth = 5; ctx.globalAlpha = 0.45; ctx.stroke(mc); ctx.restore();
-  part(mc, col.covHi, 0.5);
-  part(lc, col.covLt, 0.4);
+  quill(gcov, col.cov, col.covLo || EG.covLo, col.covHi, 7);
+  quill(mcov, col.covHi, col.cov, null, 6);
+  quill(lcov, col.covLt, col.covHi, null, 5);
+  part(arm, far ? col.covLt : '#bd8a50', 0.45);
   // the leading edge catches the light
-  ctx.save(); ctx.clip(lc);
-  ctx.strokeStyle = far ? col.covHi : '#c48f52'; ctx.lineWidth = 2.6; ctx.beginPath();
-  { const q0 = M(-n1[0] * 5, -n1[1] * 5 - 1), q1 = M(LEc[0], LEc[1]), q2 = M(LEw[0], LEw[1]); ctx.moveTo(q0[0], q0[1]); ctx.quadraticCurveTo(q1[0], q1[1], q2[0], q2[1]); }
+  ctx.save(); ctx.clip(arm);
+  ctx.strokeStyle = far ? col.covHi : '#c9965a'; ctx.lineWidth = 3; ctx.beginPath();
+  { const q0 = M(-n1[0] * 5, -n1[1] * 5 - 1), q1 = M(LEc[0], LEc[1]), q2 = M(LEw[0], LEw[1]), q3 = M(LEc2[0], LEc2[1]), q4 = M(Hx - n3[0] * 0.6, Hy - n3[1] * 0.6); ctx.moveTo(q0[0], q0[1]); ctx.quadraticCurveTo(q1[0], q1[1], q2[0], q2[1]); ctx.quadraticCurveTo(q3[0], q3[1], q4[0], q4[1]); }
   ctx.stroke(); ctx.restore();
   part(alu, col.cov);
 }

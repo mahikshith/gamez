@@ -81,6 +81,103 @@ function wing(ctx, o, x, y, ang, sp, cols, tip, scale = 1) {
   ctx.restore();
 }
 
+// The rooster's wing: the same pivot, angles and footprint as wing() above, but built from real feathers: six flight
+// feathers that stack when folded and splay into separate rounded tips as `sp` opens, under three scalloped covert rows.
+function featherWing(ctx, o, x, y, ang, sp, cols, tip, scale = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(ang);
+  ctx.scale(1, -1);
+  const L = (36 + 34 * sp) * scale, W = (11 + 13 * sp) * scale, n = 6, open = sstep((sp - 0.05) / 0.6);
+  const dark = cols[1], fw = W * (0.5 - 0.04 * open) + 1.5 * scale, hem = 0.8 - 0.42 * open, cv = 1 - 0.3 * open;
+  const F = [];
+  for (let i = n - 1; i >= 0; i--) { // inner secondaries first, the long outer primaries end on top
+    const b = i / (n - 1);
+    const tx = lerp(L * (1 - b * 0.5), L * (1 - b * 0.8), open), ty = lerp(W * (0.12 + b * 0.78), W * (0.1 + b * 1.12), open);
+    const bx = L * (0.5 - 0.44 * b), by = W * (-0.3 + 0.2 * b), a = Math.atan2(ty - by, tx - bx), len = Math.hypot(tx - bx, ty - by), c = Math.cos(a), sn = Math.sin(a);
+    const Q = (u, v) => [bx + u * c - v * sn, by + u * sn + v * c];
+    const path = (k) => { const m = Q(0, -fw * 0.3); k.moveTo(m[0], m[1]); k.bezierCurveTo(...Q(len * 0.4, -fw * 0.56), ...Q(len * 0.98, -fw * 0.6), ...Q(len, 0)); k.bezierCurveTo(...Q(len * 0.98, fw * 0.6), ...Q(len * 0.4, fw * 0.56), ...Q(0, fw * 0.3)); k.closePath(); };
+    F.push({ path, Q, len, b });
+  }
+  const covert = (k) => { // the covert mass: smooth leading edge, scalloped hem
+    k.moveTo(0, -W * 0.5);
+    k.bezierCurveTo(L * 0.3, -W * 1.25 * cv, L * 0.72, -W * 0.98 * cv, L * 0.9, -W * 0.12);
+    const m = 4;
+    for (let j = 1; j <= m; j++) { const u0 = (j - 1) / m, u1 = j / m, um = (u0 + u1) / 2; k.quadraticCurveTo(L * 0.9 * (1 - um) + 1.5 * scale, W * (-0.12 + hem * um) + W * 0.3, L * 0.9 * (1 - u1), W * (-0.12 + hem * u1)); }
+    k.quadraticCurveTo(-4 * scale, W * 0.2, 0, -W * 0.5);
+  };
+  // one silhouette: every outline first
+  ctx.lineJoin = 'round'; ctx.strokeStyle = LINE; ctx.lineWidth = o * 2;
+  for (const f of F) { ctx.beginPath(); f.path(ctx); ctx.stroke(); }
+  ctx.beginPath(); covert(ctx); ctx.stroke();
+  // flight feathers: dark vane, a coloured tip, lit leading half, pale shaft
+  for (const f of F) {
+    const a0 = f.Q(0, 0), a1 = f.Q(f.len, 0), g = ctx.createLinearGradient(a0[0], a0[1], a1[0], a1[1]);
+    g.addColorStop(0, cols[0]); g.addColorStop(0.45, dark);
+    if (tip) { g.addColorStop(0.62, dark); g.addColorStop(0.86, tip); g.addColorStop(1, tip); } else g.addColorStop(1, '#6e2209');
+    ctx.beginPath(); f.path(ctx); ctx.fillStyle = g; ctx.fill();
+    ctx.save(); ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = fw * 0.42; ctx.beginPath(); ctx.moveTo(...f.Q(f.len * 0.25, -fw * 0.42)); ctx.lineTo(...f.Q(f.len * 0.95, -fw * 0.42)); ctx.stroke();
+    ctx.strokeStyle = 'rgba(40,20,30,0.22)'; ctx.beginPath(); ctx.moveTo(...f.Q(f.len * 0.2, fw * 0.5)); ctx.lineTo(...f.Q(f.len, fw * 0.5)); ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = LINE; ctx.lineWidth = o * 0.6; ctx.globalAlpha = 0.8; ctx.beginPath(); f.path(ctx); ctx.stroke();
+    ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffe2b0'; ctx.lineWidth = o * 0.35; ctx.beginPath(); ctx.moveTo(...f.Q(f.len * 0.3, 0)); ctx.lineTo(...f.Q(f.len * 0.88, 0)); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  // coverts: three nested scalloped rows, lighter toward the leading edge
+  const rows = [[1, cols[0], cols[1], 0.75], [0.7, '#f08a48', cols[0], 0.6], [0.42, '#ffb070', '#f08a48', 0.5]];
+  for (const [k, hi, lo, lw] of rows) {
+    ctx.save();
+    ctx.translate(0, -W * 0.5); ctx.scale(k, k * (k < 1 ? 0.92 : 1)); ctx.translate(0, W * 0.5);
+    ctx.beginPath(); covert(ctx);
+    ctx.fillStyle = cols[0].length === 7 && k < 1 && cols !== COCK.wing ? (k < 0.5 ? cols[0] : cols[1]) : grad(ctx, 0, -W, 0, W * 0.8, [hi, lo]);
+    ctx.fill();
+    if (k < 1) { ctx.save(); ctx.clip(); ctx.strokeStyle = 'rgba(60,20,10,0.28)'; ctx.lineWidth = 3.4 / k; ctx.beginPath(); covert(ctx); ctx.stroke(); ctx.restore(); } // soft shade under each row's hem
+    ctx.strokeStyle = LINE; ctx.lineWidth = o * lw / k; ctx.globalAlpha = k < 1 ? 0.75 : 1; ctx.beginPath(); covert(ctx); ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+  // the leading edge catches the light
+  ctx.save(); ctx.beginPath(); covert(ctx); ctx.clip();
+  ctx.strokeStyle = 'rgba(255,255,255,0.38)'; ctx.lineWidth = 2.2 * scale; ctx.beginPath(); ctx.moveTo(2, -W * 0.5 + 2.6 * scale); ctx.bezierCurveTo(L * 0.3, -W * 1.25 * cv + 3 * scale, L * 0.66, -W * 0.98 * cv + 3 * scale, L * 0.84, -W * 0.2); ctx.stroke();
+  ctx.restore();
+  ctx.restore();
+}
+
+// a pointed plume (hackle, saddle): root at (x, y), pointing along ang; cols = [root, tip]
+function plume(ctx, o, x, y, ang, L, W, cols, lw = 0.6) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+  ctx.beginPath(); ctx.moveTo(0, -W * 0.32); ctx.quadraticCurveTo(L * 0.5, -W * 0.8, L, 0); ctx.quadraticCurveTo(L * 0.5, W * 0.8, 0, W * 0.32); ctx.closePath();
+  ctx.fillStyle = grad(ctx, 0, 0, L, 0, cols); ctx.fill();
+  ctx.lineWidth = o * lw; ctx.strokeStyle = LINE; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = o * 0.3; ctx.beginPath(); ctx.moveTo(L * 0.15, -W * 0.12); ctx.quadraticCurveTo(L * 0.5, -W * 0.3, L * 0.8, -W * 0.04); ctx.stroke();
+  ctx.restore();
+}
+
+// a sickle tail feather from the origin: rises along ang, arches over and droops behind (curl 0..1). A tapered ribbon,
+// glossy on the outside of the arch, shaded underneath.
+function sickle(ctx, o, ang, L, W, curl, cols) {
+  ctx.save(); ctx.rotate(ang);
+  const B = [[0, 0], [L * 0.5, L * 0.16], [L * 1.02, L * 0.04], [L * 0.8, -L * 0.6 * curl]];
+  const N = 16, up = [], dn = [], mid = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, m = 1 - t;
+    const px = m * m * m * B[0][0] + 3 * m * m * t * B[1][0] + 3 * m * t * t * B[2][0] + t * t * t * B[3][0], py = m * m * m * B[0][1] + 3 * m * m * t * B[1][1] + 3 * m * t * t * B[2][1] + t * t * t * B[3][1];
+    const dx = 3 * m * m * (B[1][0] - B[0][0]) + 6 * m * t * (B[2][0] - B[1][0]) + 3 * t * t * (B[3][0] - B[2][0]), dy = 3 * m * m * (B[1][1] - B[0][1]) + 6 * m * t * (B[2][1] - B[1][1]) + 3 * t * t * (B[3][1] - B[2][1]);
+    const l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l, w = W * 0.5 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.6)), 0.6);
+    up.push([px + nx * w, py + ny * w]); dn.push([px - nx * w, py - ny * w]); mid.push([px, py, nx, ny, w]);
+  }
+  const path = (c) => { c.moveTo(up[0][0], up[0][1]); for (let i = 1; i <= N; i++) c.lineTo(up[i][0], up[i][1]); for (let i = N - 1; i >= 0; i--) c.lineTo(dn[i][0], dn[i][1]); c.closePath(); };
+  solid(ctx, o, path, grad(ctx, 0, 0, L * 0.9, -L * 0.3 * curl, cols));
+  ctx.save(); ctx.beginPath(); path(ctx); ctx.clip();
+  ctx.strokeStyle = 'rgba(10,30,40,0.3)'; ctx.lineWidth = W * 0.5; ctx.beginPath(); for (let i = 1; i <= N; i++) ctx[i === 1 ? 'moveTo' : 'lineTo'](dn[i][0], dn[i][1]); ctx.stroke(); // underside in shade
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = Math.max(0.9, W * 0.16); ctx.beginPath(); // gloss along the outside of the arch
+  for (let i = 3; i <= N - 4; i++) { const q = mid[i]; ctx[i === 3 ? 'moveTo' : 'lineTo'](q[0] + q[2] * q[4] * 0.45, q[1] + q[3] * q[4] * 0.45); }
+  ctx.stroke();
+  ctx.restore();
+  ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.beginPath(); path(ctx); ctx.stroke();
+  ctx.restore();
+}
+
 // ---------- legs (orange, drawn like the hen's feet: a dark underlay, then the colour)
 function legs(ctx, o, top, ground, L, web) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -111,23 +208,29 @@ function strideLegs(ph, hips, ground, reach = 9, lift = 7) {
 
 // anim: 'fly' 'land' 'crouch' 'puff' 'crow' 'strut' 'idle'; k 0..1 through it; tt = clock (s)
 export function roosterPose(anim, k = 0, tt = 0) {
-  const P = { dy: 0, lean: 0, chest: 1, hx: 0, hy: 0, hr: 0, beak: 0, eye: 'open', wa: 2.6, sp: 0, tail: 0, legs: 'stand', ph: 0, sqy: 1, far: 0 };
+  const P = { dy: 0, lean: 0, chest: 1, hx: 0, hy: 0, hr: 0, beak: 0, eye: 'open', wa: 2.6, sp: 0, tail: 0, legs: 'stand', ph: 0, sqy: 1, far: 0,
+    // face (drawing only): upper / lower lid cover 0..1, brow tilt (+ = furrowed, the beak end lowered) and lift (- = raised),
+    // shut 0..1 (squeezed closed), wide 0..1 (a startled bigger eye), px = where the pupil looks. Idle = cocky half-lids.
+    lidU: 0.36, lidL: 0.1, browA: -0.1, browY: 0, shut: 0, wide: 0, px: 0.7 };
   const f = Math.sin(tt * 18);
-  if (anim === 'fly') { P.wa = lerp(-2.05, -4.25, (f + 1) / 2); P.sp = 1; P.far = 1; P.hx = 6; P.hy = 2; P.beak = 0.3; P.legs = 'tuck'; P.lean = 0.1; P.tail = -0.25 + f * 0.1; P.eye = 'wide'; }
+  if (anim === 'fly') { P.wa = lerp(-2.05, -4.25, (f + 1) / 2); P.sp = 1; P.far = 1; P.hx = 6; P.hy = 2; P.beak = 0.3; P.legs = 'tuck'; P.lean = 0.1; P.tail = -0.25 + f * 0.1; P.eye = 'wide'; P.lidU = 0.14; P.lidL = 0; P.wide = 0.45; P.browA = 0.42; P.browY = 0.8; P.px = 1.2; }
   else if (anim === 'land') {
     const fold = sstep((k - 0.55) / 0.45);
     P.wa = lerp(-1.95 + Math.sin(tt * 24) * 0.3, -3.68, fold); P.sp = 1 - fold; P.far = 1 - fold; P.legs = 'reach'; P.tail = 0.5 * (1 - fold); P.lean = -0.2 * (1 - fold); P.beak = 0.3 * (1 - fold); P.hx = 3; P.eye = 'wide';
-  } else if (anim === 'crouch') { P.dy = 6 * k; P.sqy = 1 - 0.1 * k; P.wa = 1.7; P.sp = 0.3 * k; P.legs = 'bent'; P.lean = 0.12 * k; P.tail = -0.1; P.eye = 'glare'; }
+    { const e = 1 - fold; P.wide = 0.9 * e; P.lidU = lerp(0.36, 0, e); P.lidL = lerp(0.1, 0, e); P.browA = lerp(-0.1, -0.32, e); P.browY = -1.8 * e; } // braking: a startled take that settles into his usual look
+  } else if (anim === 'crouch') { P.dy = 6 * k; P.sqy = 1 - 0.1 * k; P.wa = 1.7; P.sp = 0.3 * k; P.legs = 'bent'; P.lean = 0.12 * k; P.tail = -0.1; P.eye = 'glare'; P.lidU = 0.2 + 0.14 * k; P.lidL = 0.16 * k; P.browA = 0.15 + 0.4 * k; P.browY = 1.2 * k; P.px = 1.3; }
   else if (anim === 'puff') {
     const a = sstep(k), pop = Math.sin(clamp(k * 1.6, 0, 1) * Math.PI) * 0.04;
     P.chest = 1 + 0.42 * a + pop; P.hr = -0.28 * a; P.hy = -2 * a; P.wa = 2.6 - 0.45 * a; P.sp = 0.15 * a; P.lean = -0.14 * a; P.dy = -2 * a; P.tail = 0.3 * a; P.eye = 'closed'; P.legs = 'stand'; P.sqy = 1 + 0.02 * Math.sin(k * 30) * a;
+    P.shut = sstep(k * 4); P.browA = lerp(0.42, -0.12, a); P.browY = lerp(0.8, -1.6, a); // a fierce breath in, then the eyes squeeze shut
   } else if (anim === 'crow') {
     const r = sstep(k * 5);
     P.chest = 1.3; P.hr = -0.9 * r; P.hx = 1 * r; P.hy = -6 * r; P.beak = (0.75 + 0.25 * Math.sin(tt * 28)) * r; P.eye = 'closed'; P.wa = -2.95 + Math.sin(tt * 34) * 0.07; P.sp = 0.55 * r; P.far = 1;
     P.tail = 0.5; P.dy = -3 * r; P.lean = -0.16 * r; P.legs = 'stand'; P.sqy = 1 + 0.015 * Math.sin(tt * 34);
+    P.shut = Math.max(r, 0.9); P.browA = -0.3 * r; P.browY = -1.6 - 1.8 * r; // eyes squeezed shut, brows thrown up
   } else if (anim === 'strut') {
     const ph = tt * 8;
-    P.ph = ph; P.legs = 'walk'; P.chest = 1.14; P.hx = 3 + 3 * Math.sin(ph * 2 - 0.8); P.hy = -3; P.tail = 0.35; P.lean = -0.08; P.dy = -2 - Math.abs(Math.sin(ph)) * 1.6; P.eye = 'proud'; P.wa = 2.6;
+    P.ph = ph; P.legs = 'walk'; P.chest = 1.14; P.hx = 3 + 3 * Math.sin(ph * 2 - 0.8); P.hy = -3; P.tail = 0.35; P.lean = -0.08; P.dy = -2 - Math.abs(Math.sin(ph)) * 1.6; P.eye = 'proud'; P.wa = 2.6; P.lidU = 0.5; P.lidL = 0.2; P.browA = -0.2; P.browY = -1.4; P.px = 1.2;
   } else { P.chest = 1.05 + Math.sin(tt * 2.4) * 0.01; P.eye = 'open'; }
   return P;
 }
@@ -159,23 +262,26 @@ export function drawRooster(ctx, cx, cy, s, P) {
     legs(ctx, o, hip, 48, L, false);
     if (P.legs !== 'tuck') { // a spur on the back of each leg
       ctx.fillStyle = BEAK.lo; ctx.strokeStyle = LINE; ctx.lineWidth = o * 0.6;
-      for (const l of L.slice(0, 1)) { ctx.beginPath(); ctx.moveTo(l.fx - 1, l.fy - 9); ctx.lineTo(l.fx - 6, l.fy - 6); ctx.lineTo(l.fx, l.fy - 6); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+      for (const l of L) { // curved, pointing back and up, on both legs
+        const ax = l.kx != null ? l.kx : l.x, ay = l.kx != null ? l.ky : hip, dl = Math.hypot(l.fx - ax, l.fy - ay) || 1, ux = (l.fx - ax) / dl, uy = (l.fy - ay) / dl;
+        const sx = l.fx - ux * 7, sy = l.fy - uy * 7;
+        ctx.beginPath(); ctx.moveTo(sx - ux * 2.2, sy - uy * 2.2); ctx.quadraticCurveTo(sx - 5, sy - 0.5, sx - 8.5, sy - 4.5); ctx.quadraticCurveTo(sx - 4, sy + 2.5, sx + ux * 2, sy + uy * 2); ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
     }
     ctx.save();
     ctx.translate(2, 40 + dy); ctx.rotate(P.lean); ctx.scale(1, P.sqy); ctx.translate(-2, -40 - dy);
     // far wing (flight): behind the body, darker
-    if (P.far > 0.2) { ctx.save(); ctx.globalAlpha = 1; wing(ctx, o, 4, bodyY - 12, P.wa - 0.35, P.sp, [COCK.wing[1], '#6e2209'], null, 0.92); ctx.restore(); }
-    // tail: five sickle feathers fanned up and back
+    if (P.far > 0.2) { ctx.save(); ctx.globalAlpha = 1; featherWing(ctx, o, 4, bodyY - 12, P.wa - 0.35, P.sp, [COCK.wing[1], '#6e2209'], null, 0.92); ctx.restore(); }
+    // tail: a real sickle tail. Short orange coverts, then five long arched glossy sickles (back to front), all on his tail angle
     ctx.save();
-    ctx.translate(-26, bodyY - 6);
-    for (let i = 0; i < 5; i++) {
-      const j = [0, 4, 1, 3, 2][i], a = -2.5 + (j - 2) * 0.3 + P.tail, len = 50 - Math.abs(j - 2) * 6, w = 7.4 - Math.abs(j - 2) * 0.6;
-      ctx.save(); ctx.rotate(a);
-      const col = j === 2 ? COCK.tail[2] : j % 2 ? COCK.tail[0] : COCK.tail[1];
-      solid(ctx, o, (c) => { c.moveTo(0, 0); c.quadraticCurveTo(len * 0.45, -w * 1.7, len, -len * 0.18); c.quadraticCurveTo(len * 0.55, w * 1.5, 0, 0); }, grad(ctx, 0, -w, len, w, [col, j % 2 === 0 && j !== 2 ? '#b34414' : COCK.tailLo]));
-      ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = o * 0.5;
-      ctx.beginPath(); ctx.moveTo(len * 0.18, -w * 0.2); ctx.quadraticCurveTo(len * 0.5, -w * 0.85, len * 0.88, -len * 0.14); ctx.stroke();
-      ctx.restore();
+    ctx.translate(-25, bodyY - 5);
+    { const T = P.tail, cu = 1 - 0.25 * T; // a raised tail (crow, strut) stands prouder and curls a touch less
+      const teal = [COCK.tail[2], COCK.tail[0], COCK.tailLo], deep = [COCK.tail[0], COCK.tailLo, '#12474a'], rust = ['#f08a48', COCK.tail[1], '#963211'];
+      sickle(ctx, o, -2.92 + T, 36, 13, 0.8 * cu, rust);
+      sickle(ctx, o, -2.02 + T * 0.9, 56, 15, 1.0 * cu, deep);
+      sickle(ctx, o, -2.62 + T, 45, 14, 0.92 * cu, teal);
+      sickle(ctx, o, -2.3 + T * 0.95, 52, 15.5, 1.0 * cu, teal);
+      sickle(ctx, o, -3.12 + T, 28, 12, 0.6 * cu, rust);
     }
     ctx.restore();
     // body + neck + head as one silhouette
@@ -195,16 +301,22 @@ export function drawRooster(ctx, cx, cy, s, P) {
     for (const [x, y] of [[16, 8], [27, 11], [20, 20], [31, 22], [14, 29], [25, 31]]) { ctx.moveTo(x - 4, y + dy + bodyY - 10); ctx.quadraticCurveTo(x, y + 4 + dy + bodyY - 10, x + 4, y + dy + bodyY - 10); }
     ctx.stroke();
     ctx.restore();
-    // hackle: pointed golden feathers lying over the shoulder
-    ctx.save();
-    ctx.fillStyle = '#ffd36b'; ctx.strokeStyle = LINE; ctx.lineWidth = o * 0.6;
-    for (let i = 0; i < 4; i++) {
-      const u = i / 3, hx = lerp(H.x - 9, nb.x - 14, u), hy = lerp(H.y + 14, bodyY - 13, u);
-      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.quadraticCurveTo(hx + 7, hy + 4, hx + 2, hy + 15); ctx.quadraticCurveTo(hx - 5, hy + 7, hx, hy); ctx.fill(); ctx.stroke();
+    // saddle: pointed golden plumes draping from the back over the hips and the tail root (they ride the puffed chest)
+    { const bx = (x) => 10 + (x - 10) * P.chest, by = (y) => bodyY + 2 + (y - bodyY - 2) * (1 + (P.chest - 1) * 0.5);
+      const SD = [[-27, -9, 2.78, 16], [-21, -13.5, 2.6, 18], [-14, -17.5, 2.44, 19], [-7, -20, 2.34, 17]];
+      SD.forEach(([x, y, a, l], i) => plume(ctx, o, bx(x), by(bodyY + y), a - P.tail * 0.25, l, 8.2, ['#f6a94a', COCK.tail[1]], 0.5));
     }
-    ctx.restore();
+    // hackle: three tiers of pointed feathers cascading from the head down over the shoulders (a cape, lower tier first)
+    { const x0 = H.x - 4, y0 = H.y + 9, x1 = 5, y1 = bodyY - 9, dl = Math.hypot(x1 - x0, y1 - y0) || 1, dx = (x1 - x0) / dl, dy2 = (y1 - y0) / dl, base = Math.atan2(dy2, dx);
+      const tiers = [[1.0, 5, 19, 15, [COCK.hackle[0], COCK.hackle[1]]], [0.58, 4, 16, 11.5, ['#ffd36b', '#f09a36']], [0.22, 3, 12, 8, ['#ffe08a', COCK.hackle[0]]]];
+      for (const [u, n, len, half, cols] of tiers) for (let i = 0; i < n; i++) {
+        const t = n > 1 ? i / (n - 1) : 0.5, lat = lerp(-1, 0.72, t) * half; // lat: - = toward the back, + = toward the throat
+        const px = lerp(x0, x1, u) - dx * len * 0.55 + dy2 * lat, py = lerp(y0, y1, u) - dy2 * len * 0.55 - dx * lat;
+        plume(ctx, o, px, py, base + lerp(0.5, -0.42, t), len * (1 - 0.16 * Math.abs(t - 0.4)), 8.4, cols, 0.5);
+      }
+    }
     // near wing
-    wing(ctx, o, 2, bodyY - 12, P.wa, P.sp, COCK.wing, P.sp > 0.3 ? COCK.wingTip : null, 1.2);
+    featherWing(ctx, o, 2, bodyY - 12, P.wa, P.sp, COCK.wing, COCK.wingTip, 1.2);
     // head details, in the head's own frame
     ctx.save();
     ctx.translate(H.x, H.y); ctx.rotate(P.hr); ctx.scale(1.09, 1.09);
@@ -219,14 +331,21 @@ export function drawRooster(ctx, cx, cy, s, P) {
       c.bezierCurveTo(14.6, -6.4, 13, -4.6, 11, -4.6);
       c.closePath();
     };
-    ctx.lineWidth = o * 2; ctx.strokeStyle = RED.line; ctx.beginPath(); combPath(ctx); ctx.stroke();
+    ctx.save(); ctx.translate(0.5, -8); ctx.scale(0.96, 1.24); ctx.translate(0, 6); // a bigger, upright comb, sat on the crown (room for the brow)
+    ctx.lineWidth = o * 2 / 1.1; ctx.strokeStyle = RED.line; ctx.beginPath(); combPath(ctx); ctx.stroke();
     ctx.fillStyle = grad(ctx, -4, -27, 4, -5, ['#ff5a43', RED.hi, RED.lo]); ctx.beginPath(); combPath(ctx); ctx.fill();
+    ctx.save(); ctx.beginPath(); combPath(ctx); ctx.clip(); ctx.fillStyle = 'rgba(120,10,10,0.3)'; ctx.beginPath(); ctx.ellipse(2, -5.5, 15, 3.4, 0.05, 0, TAU); ctx.fill(); ctx.restore(); // where it meets the crown
     ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.moveTo(-12.4, -12); ctx.quadraticCurveTo(-12, -14, -10, -14); ctx.moveTo(-8.4, -19); ctx.quadraticCurveTo(-7, -21, -5, -20.4); ctx.moveTo(0, -23); ctx.quadraticCurveTo(1.6, -25, 3.6, -24.2); ctx.moveTo(9, -20.6); ctx.quadraticCurveTo(10.4, -21.4, 11.6, -20); ctx.stroke();
+    ctx.restore();
     // earlobe, wattle
     ctx.fillStyle = 'rgba(255,250,236,0.85)'; ctx.beginPath(); ctx.ellipse(-3.5, 7, 2.6, 3.4, 0.3, 0, TAU); ctx.fill(); // earlobe: a soft pale patch (never a second eye)
     const open = P.beak;
-    solid(ctx, o * 0.8, (c) => { c.moveTo(7, 7 + open * 5); c.quadraticCurveTo(14, 10 + open * 5, 9, 19 + open * 5); c.quadraticCurveTo(4, 17 + open * 5, 4, 8 + open * 4); c.closePath(); }, grad(ctx, 0, 6, 0, 20, [RED.hi, RED.lo]), RED.line);
+    { const wy = open * 5; // two long wattles: the far one darker behind, the near one a full teardrop
+      solid(ctx, o * 0.8, (c) => { c.moveTo(10, 6.5 + wy); c.quadraticCurveTo(17, 11 + wy, 13, 20 + wy); c.quadraticCurveTo(8.5, 19 + wy, 8, 8 + wy); c.closePath(); }, RED.lo, RED.line);
+      solid(ctx, o * 0.8, (c) => { c.moveTo(6.6, 6.5 + wy * 0.9); c.bezierCurveTo(13.5, 9 + wy, 13, 21.5 + wy, 8.2, 23.5 + wy); c.bezierCurveTo(3, 22 + wy, 3, 12 + wy, 3.6, 7.5 + wy * 0.8); c.closePath(); }, grad(ctx, 0, 6, 0, 24, [RED.hi, RED.lo]), RED.line);
+      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(6.2, 13 + wy, 1.2, 3, 0.15, 0, TAU); ctx.fill();
+    }
     // beak: upper and lower, hinged at the face
     ctx.save(); ctx.translate(10, 1);
     if (open > 0.15) { // mouth: dark inside, tongue
@@ -238,21 +357,39 @@ export function drawRooster(ctx, cx, cy, s, P) {
     }
     solid(ctx, o * 0.8, (c) => { c.moveTo(0, -4.5); c.quadraticCurveTo(9, -5.5, 17.5, 0); c.quadraticCurveTo(9, 3.2, 0, 3); c.closePath(); }, grad(ctx, 0, -5, 0, 4, [BEAK.hi, BEAK.lo]), BEAK.line);
     ctx.restore();
-    // eye
-    ctx.fillStyle = '#2a1d14'; ctx.strokeStyle = '#2a1d14'; ctx.lineCap = 'round';
-    const ex = 5, ey = -3;
-    if (P.eye === 'closed') { ctx.lineWidth = o * 1.3; ctx.beginPath(); ctx.moveTo(ex - 5, ey + 1); ctx.quadraticCurveTo(ex, ey - 5, ex + 5, ey + 1); ctx.stroke(); }
-    else if (P.eye === 'wide') { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(ex, ey, 5.2, 6, 0, 0, TAU); ctx.fill(); ctx.lineWidth = o * 0.8; ctx.stroke(); ctx.fillStyle = '#2a1d14'; ctx.beginPath(); ctx.arc(ex + 1, ey + 0.5, 2.8, 0, TAU); ctx.fill(); ctx.fillStyle = '#fff'; glint(ctx, ex + 0.2, ey - 0.9, 1); }
-    else {
-      const lid = P.eye === 'proud' ? 0.42 : 0;
-      ctx.beginPath(); ctx.ellipse(ex, ey + lid * 2, 4.2, 5.3 * (1 - lid), 0, 0, TAU); ctx.fill();
-      ctx.save(); ctx.clip(); ctx.fillStyle = 'rgba(215,130,50,0.8)'; ctx.beginPath(); ctx.ellipse(ex, ey + lid * 2 + 3.8 * (1 - lid), 4, 2.6, 0, 0, TAU); ctx.fill(); ctx.restore();
-      ctx.fillStyle = '#fff'; glint(ctx, ex - 1.3, ey - 1.8 + lid * 2.4, 1.6); glint(ctx, ex + 1.5, ey + 1.6 + lid, 0.7);
-      ctx.fillStyle = '#2a1d14';
-      ctx.lineWidth = o * 1.1; ctx.beginPath();
-      if (P.eye === 'glare') { ctx.moveTo(ex - 6, ey - 9); ctx.lineTo(ex + 6, ey - 4.5); }
-      else if (P.eye === 'proud') { ctx.moveTo(ex - 6, ey - 3.2); ctx.lineTo(ex + 6, ey - 3.2); }
-      ctx.stroke();
+    // eye: the hen's face recipe (big dark iris, near-black pupil, highlights, skin lids, thick brown brow), driven by the pose
+    {
+      const fv = (v, d) => (v == null ? d : v), EYE = '#2a1d14', ex = 4.3, ey = -0.9;
+      const shut = clamp(fv(P.shut, P.eye === 'closed' ? 1 : 0), 0, 1), wide = clamp(fv(P.wide, P.eye === 'wide' ? 1 : 0), 0, 1);
+      const browA = fv(P.browA, P.eye === 'glare' ? 0.4 : 0), browY = fv(P.browY, 0);
+      const lidU = Math.max(fv(P.lidU, 0.2), shut * 0.62), lidL = Math.max(fv(P.lidL, 0), shut * 0.42);
+      const rx = 5.3 + 0.6 * wide, ry = 6 + 0.9 * wide;
+      ctx.lineCap = 'round';
+      if (shut > 0.8) { // squeezed shut: one thick happy-effort arc with a little crease
+        ctx.strokeStyle = EYE; ctx.lineWidth = o * 1.35;
+        ctx.beginPath(); ctx.moveTo(ex - 4.8, ey + 1.6); ctx.quadraticCurveTo(ex, ey - 4.2, ex + 4.8, ey + 1.6); ctx.stroke();
+        ctx.lineWidth = o * 0.6; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(ex - 6.2, ey + 0.2); ctx.lineTo(ex - 7.8, ey - 1); ctx.moveTo(ex - 6.2, ey + 2.4); ctx.lineTo(ex - 8, ey + 3); ctx.stroke(); ctx.globalAlpha = 1;
+      } else {
+        const ball = () => { ctx.beginPath(); ctx.ellipse(ex, ey, rx, ry, 0, 0, TAU); };
+        ball(); ctx.fillStyle = '#fffdf6'; ctx.fill();
+        ctx.save(); ball(); ctx.clip();
+        const ix = ex + fv(P.px, 0.7) * (1 - 0.5 * wide), iy = ey + 0.4 + (lidU - lidL) * 1.6, ir = 4 - 0.6 * wide;
+        ctx.fillStyle = rgrad(ctx, ix, iy + 1.6, 0.5, ir * 1.25, ['#9a5f2a', '#5c3517', '#3d2210']); ctx.beginPath(); ctx.ellipse(ix, iy, ir, ir * 1.12, 0, 0, TAU); ctx.fill(); // big dark iris, warmer low
+        ctx.fillStyle = '#1a100a'; glint(ctx, ix + 0.2, iy, ir * 0.56); // near-black pupil
+        ctx.fillStyle = '#fff'; glint(ctx, ix - 1.4, iy - 1.9, 1.5); glint(ctx, ix + 1.5, iy + 1.8, 0.65);
+        // lids: skin over the top and bottom of the eye, the upper one tilting with the brow
+        ctx.fillStyle = '#eeb866'; ctx.strokeStyle = EYE; ctx.lineWidth = o * 0.75;
+        if (lidU > 0.02) { const ly = ey - ry + 2 * ry * lidU, sl = browA * 4.2; ctx.beginPath(); ctx.moveTo(ex - rx - 2, ey - ry - 3); ctx.lineTo(ex + rx + 2, ey - ry - 3); ctx.lineTo(ex + rx + 2, ly + sl); ctx.quadraticCurveTo(ex, ly - 1.2 * (1 - lidU), ex - rx - 2, ly - sl); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+        if (lidL > 0.02) { const ly = ey + ry - 2 * ry * lidL; ctx.fillStyle = '#f2c57a'; ctx.beginPath(); ctx.moveTo(ex - rx - 2, ey + ry + 3); ctx.lineTo(ex + rx + 2, ey + ry + 3); ctx.lineTo(ex + rx + 2, ly); ctx.quadraticCurveTo(ex, ly + 1.4, ex - rx - 2, ly); ctx.closePath(); ctx.fill(); ctx.lineWidth = o * 0.55; ctx.stroke(); }
+        ctx.restore();
+        ball(); ctx.strokeStyle = EYE; ctx.lineWidth = o * 0.6; ctx.stroke();
+      }
+      // brow: thick, outline brown; + tilt lowers the beak end (fierce), - lift raises it
+      ctx.save();
+      ctx.translate(ex + 0.6, ey - ry - 2.6 + browY + (shut > 0.8 ? 1.2 : 0)); ctx.rotate(browA);
+      ctx.strokeStyle = '#5a3a1e'; ctx.lineWidth = o * 1.6;
+      ctx.beginPath(); ctx.moveTo(-5.8, 0.6); ctx.quadraticCurveTo(-0.5, -1.9 + browA * 2.2, 5.6, 0.2); ctx.stroke();
+      ctx.restore();
     }
     ctx.restore();
     ctx.restore();
