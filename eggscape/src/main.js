@@ -135,6 +135,29 @@ const ctx = canvas.getContext('2d');
 const ui = new UI(ctx);
 let W_ = 0, H_ = 0, DPR = 1;
 
+// Safe area (the one source of truth, ui.safe / ui.A): the larger of the CSS env(safe-area-inset-*) probe, the Android
+// shell's real insets (window.__eggSafe, CSS px, injected by MainActivity on load and on every insets change) and a
+// small floor, so nothing interactive or textual sits under a camera cutout, a gesture bar or on the very edge.
+const SAFE_FLOOR = 8;
+let safeProbe = null;
+function safeInsets() {
+  let e = { t: 0, b: 0, l: 0, r: 0 };
+  try {
+    if (!safeProbe && document.body) {
+      safeProbe = document.createElement('div');
+      safeProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+      document.body.appendChild(safeProbe);
+    }
+    if (safeProbe) {
+      const cs = getComputedStyle(safeProbe);
+      e = { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+    }
+  } catch (_) { /* no probe: the floor and the shell's insets still hold */ }
+  const n = (typeof window !== 'undefined' && window.__eggSafe) || {};
+  const f = (k) => Math.round(Math.max(SAFE_FLOOR, e[k] || 0, +n[k] || 0));
+  return { t: f('t'), b: f('b'), l: f('l'), r: f('r') };
+}
+
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W_ = Math.max(320, window.innerWidth);
@@ -143,7 +166,7 @@ function resize() {
   canvas.height = Math.round(H_ * DPR);
   canvas.style.width = W_ + 'px';
   canvas.style.height = H_ + 'px';
-  ui.resize(W_, H_);
+  ui.resize(W_, H_, safeInsets());
   if (G.backdrop) G.backdrop.resize(W_, H_, DPR);
   if (G.weather) G.weather.resize(W_, H_, DPR);
   G.camSnap = true;
@@ -153,6 +176,7 @@ function resize() {
 // ---------------------------------------------------------------- game state
 const G = {
   pscroll: { y: 0, v: 0, max: 0, t: 0 }, pdrag: null, // Practice screen scroll
+  lpan: { x: 0, v: 0, t: 0 }, ldrag: null, // the level map's world pages: horizontal pan (px; + shows the previous world) and the live drag
   iscroll: { y: 0, v: 0, max: 0, t: 0 }, infoKinds: [], infoNew: false, infoFrom: 'play', infoCard: null, // the "i" panel (drawInfo)
   screen: 'loading',
   t: 0,
@@ -334,18 +358,20 @@ function popup(wx, wy, text, o = {}) {
 
 // ---------------------------------------------------------------- camera
 function computeLayout() {
-  const u = ui.u;
-  const twoRows = W_ < 760;
-  G.hudBottom = Math.round((twoRows ? 111 : 64) * u); // portrait: 7u more air under the two HUD rows
+  const u = ui.u, A = ui.A;
+  const twoRows = A.w < 760;
+  G.hudBottom = A.y + Math.round((twoRows ? 111 : 64) * u); // portrait: 7u more air under the two HUD rows (all inside the safe rect)
   // bosses (v3.1): the phase bar gets its own strip under the HUD plate
   G.bossBar = G.level && G.level.bossFight ? Math.round(30 * u) : 0;
   G.hudBottom += G.bossBar;
   const top = G.hudBottom + 8 * u;
   // zoom buttons get their own strip (right column in landscape, bottom row in portrait) so they never sit on rings
-  const bs = Math.max(40, 48 * u), pad = 8 * u, side = W_ > H_;
-  G.zb = { bs, pad, side };
+  // (the bottom buttons are ~15% bigger than they were (48u), and sit on the safe rect, off the gesture bar)
+  const bs = Math.max(46, 55 * u), pad = 8 * u, side = A.w > A.h;
+  G.zb = { bs, pad, side, bot: A.y1 - 6 * u - bs };
   const sw = side ? bs + 2 * pad : 0, sh = side ? 0 : bs + pad + 2 * u;
-  G.play = { x: 0, y: top, w: W_ - sw, h: H_ - top - 6 * u - sh };
+  // the vault frames inside the safe rect (the playfield itself still paints edge to edge)
+  G.play = { x: A.x, y: top, w: A.w - sw, h: A.y1 - top - 6 * u - sh };
 }
 
 // Frame the vault. all: whole vault plus ground and nest. Else the ring the eggs are in plus two more outward.
@@ -581,13 +607,23 @@ function onFirstInput() {
   if (!G.firstInput) { G.firstInput = true; applyAudioSettings(); }
 }
 
+// The level map's world pages. goWorld(dir) turns one page and carries the pan over, so the new page slides in from
+// where the finger left it (or from the side, for the arrows); drawLevels eases the pan back to 0.
+function goWorld(dir) {
+  const nW = Math.ceil(LEVELS.length / PER_ENV), w = clamp(G.world + dir, 0, nW - 1);
+  if (w !== G.world) { G.lpan.x += (w - G.world) * ui.w; G.world = w; audio.play('motor_tick', { vol: 0.5 }); }
+}
+// below the fixed header (back, title, coins, chest, dots), a drag swipes the pages
+function levelPageTop() { return ui.A.y + (14 + 74 + 46 + 13) * ui.u; }
+
 function pointerDown(e) {
   e.preventDefault();
   onFirstInput();
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
   const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : null;
-  if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0 }; // the Practice screen and the "i" panel scroll by drag; a tap on a button still presses
+  if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0 };
+  if (G.screen === 'levels' && y > levelPageTop()) G.ldrag = { pid: e.pointerId, x0: x, y0: y, p0: G.lpan.x, moved: false, last: x, lt: performance.now(), v: 0 }; // world pages swipe; a tap on a tile still presses // the Practice screen and the "i" panel scroll by drag; a tap on a button still presses
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
   if (G.screen === 'info') { const C = G.infoCard; if (C && (x < C.x || x > C.x + C.w || y < C.y - 10 * ui.u || y > C.y + C.h + 6 * ui.u)) { G.pdrag = null; press('info:close'); } return; } // a tap off the card closes it
   if (G.screen === 'play' && G.toast && G.toast.tip && G.toastRect) { const R = G.toastRect; if (x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h) { G.toast.life = Math.min(G.toast.life, 0.2); return; } } // a tap on a villain tip puts it away
@@ -644,6 +680,19 @@ function pointerMove(e) {
     }
     return;
   }
+  const ld = G.ldrag;
+  if (ld && ld.pid === e.pointerId && G.screen === 'levels') {
+    if (!ld.moved && Math.abs(x - ld.x0) > 10 * ui.u && Math.abs(x - ld.x0) > Math.abs(y - ld.y0)) { ld.moved = true; ui.pressedId = null; }
+    if (ld.moved) {
+      const now = performance.now(), dtm = Math.max(1, now - ld.lt);
+      ld.v = ld.v * 0.6 + ((x - ld.last) / dtm * 1000) * 0.4; ld.last = x; ld.lt = now;
+      let p = ld.p0 + x - ld.x0;
+      const nW = Math.ceil(LEVELS.length / PER_ENV);
+      if ((p > 0 && G.world === 0) || (p < 0 && G.world === nW - 1)) p *= 0.35; // rubber band past the first and the last world
+      G.lpan.x = p; G.lpan.v = 0;
+    }
+    return;
+  }
   if (G.screen === 'wonder') { wonder.pointerMove(e); return; } // WONDER
   const tp = G.tp.get(e.pointerId);
   if (tp) {
@@ -676,6 +725,16 @@ function pointerMove(e) {
 function pointerUp(e) {
   const pd = G.pdrag;
   if (pd && pd.pid === e.pointerId) { if (pd.moved) pd.sc.v = clamp(pd.v, -3000, 3000); G.pdrag = null; }
+  const ld = G.ldrag;
+  if (ld && ld.pid === e.pointerId) {
+    G.ldrag = null;
+    if (ld.moved && G.screen === 'levels') { // a flick or a drag past 30% of the page turns it; otherwise it springs back
+      const pw = ui.w, p = G.lpan.x, fast = Math.abs(ld.v) > 500 && performance.now() - ld.lt < 120;
+      const dir = (p < -0.3 * pw || (fast && ld.v < 0 && p < 0)) ? 1 : (p > 0.3 * pw || (fast && ld.v > 0 && p > 0)) ? -1 : 0;
+      if (dir) goWorld(dir);
+      return;
+    }
+  }
   if (G.screen === 'wonder') wonder.pointerUp(e); // WONDER
   const ct = G.chickTap; // v3.2: tap = power
   if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) G.sim.tapChick(ct.id);
@@ -984,7 +1043,7 @@ async function press(id) {
         save.mode = id.slice(5);
         persist();
       } else if (id && id.startsWith('world:')) {
-        G.world = clamp(G.world + +id.slice(6), 0, Math.ceil(LEVELS.length / PER_ENV) - 1);
+        goWorld(+id.slice(6)); // the arrows slide the pages like a swipe
       } else if (id && id.startsWith('boost:')) {
         const b = id.slice(6);
         if (G.boostSel.has(b)) G.boostSel.delete(b); else G.boostSel.add(b);
@@ -1621,7 +1680,7 @@ function fireStrike(force) {
 function strikeShown() { return !!(G.sim && G.sim.stkOn() && G.sim.state === 'play' && G.screen === 'play'); }
 function strikeBtnRect() {
   const { bs, pad, side } = G.zb, u = ui.u;
-  return side ? { x: W_ - pad - bs, y: G.play.y, w: bs, h: bs } : { x: pad, y: H_ - 6 * u - bs, w: bs, h: bs };
+  return side ? { x: ui.A.x1 - pad - bs, y: G.play.y, w: bs, h: bs } : { x: ui.A.x + pad, y: G.zb.bot, w: bs, h: bs };
 }
 function drawStrikeBtn() {
   if (!strikeShown()) return;
@@ -2491,7 +2550,7 @@ function render() {
   if (G.screen === 'levels') drawLevels();
   if (G.screen === 'practice') drawPractice();
   if (G.screen === 'extras') wonder.drawExtras(); // Extras: Wonder Vaults + the Practice button
-  if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab }); }
+  if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { area: ui.A, wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab }); }
   if (G.adBusy) {
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(0, 0, W_, H_);
@@ -2593,14 +2652,14 @@ function drawHintArrow(ring, h, t) {
 function drawCard() {
   const c = G.card, info = powerInfo(c.id), u = ui.u;
   const a = Math.min(1, c.t * 6, (c.dur - c.t) * 4);
-  const w = Math.min(W_ - 24 * u, 380 * u), x = W_ / 2 - w / 2, y = G.hudBottom + 10 * u;
+  const A = ui.A, w = Math.min(A.w - 24 * u, 380 * u), x = A.cx - w / 2, y = G.hudBottom + 10 * u;
   const lineS = 15 * u, icon = 64 * u;
   const lines = wrapText(info.line, lineS, w - icon - 28 * u).slice(0, 3);
   const h = Math.max(icon + 8 * u, 16 * u + 24 * u + lines.length * lineS * 1.25 + 10 * u);
   ctx.save();
   ctx.globalAlpha = a; ui.aBase = a;
   const k = ui.pop(c.t, 0.22);
-  if (k !== 1) { ctx.translate(W_ / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-W_ / 2, -(y + h / 2)); }
+  if (k !== 1) { ctx.translate(A.cx, y + h / 2); ctx.scale(k, k); ctx.translate(-A.cx, -(y + h / 2)); }
   ui.glass(x, y, w, h, { r: 16 * u, border: info.color, lw: 2.5 * u, a: 'rgba(58,36,20,0.95)', b: 'rgba(26,15,8,0.95)', record: true, tag: 'card', group: 'card' });
   drawPowerCard(ctx, c.id, x + 6 * u, y, icon * 2, h, G.t, ui);
   const tx = x + icon + 16 * u;
@@ -2648,7 +2707,7 @@ const allyIcon = (c, x, y, s) => { // a little rooster head: red comb, orange be
 function drawAllyBtn() {
   if (!allyShown()) { G.allyOpen = false; return; }
   const { bs, pad, side } = G.zb, u = ui.u, gap = 8 * u;
-  const x = side ? W_ - pad - bs : pad + (strikeShown() ? bs + gap : 0), y = H_ - 6 * u - bs; // Chick Strike takes the corner
+  const x = side ? ui.A.x1 - pad - bs : ui.A.x + pad + (strikeShown() ? bs + gap : 0), y = G.zb.bot; // Chick Strike takes the corner
   const free = allyFree() || G.allyAd, kinds = allyKinds(), can = kinds.some((k) => G.sim.allyCan(k));
   if (!can) G.allyOpen = false;
   if (can && !G.allyOpen && !save.calm) { // a slow ring says "help is here" without nagging
@@ -2694,19 +2753,19 @@ function drawHUD() {
   const u = ui.u;
   const sim = G.sim;
   const pal = G.theme.palette;
-  const twoRows = W_ < 760;
-  const pad = 12 * u;
+  const A = ui.A, twoRows = A.w < 760;
+  const pad = 12 * u, X0 = A.x + pad, Y0 = A.y + pad; // the HUD lives in the safe rect (the scrim still paints edge to edge)
   const bs = 46 * u;
   ui.calm = save.calm;
   // scrim: the world's plate tint, fading out under the HUD
   const plate = /^rgba\(/.test(pal.plate || '') ? pal.plate : 'rgba(20,14,10,0.55)';
   const al = (a) => plate.replace(/[\d.]+\)$/, a + ')');
-  const g = ctx.createLinearGradient(0, 0, 0, G.hudBottom + 12 * u);
+  const g = ctx.createLinearGradient(0, A.y * 0.5, 0, G.hudBottom + 12 * u);
   g.addColorStop(0, al(0.82)); g.addColorStop(0.7, al(0.5)); g.addColorStop(1, al(0));
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W_, G.hudBottom + 12 * u);
-  const row1 = pad + bs / 2;
-  ui.button('pause', '', pad, pad, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
+  const row1 = Y0 + bs / 2;
+  ui.button('pause', '', X0, Y0, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
   // score chip (right)
   const st = sim.stats();
   const scoreTxt = String(st.score);
@@ -2716,16 +2775,16 @@ function drawHUD() {
   HUDS.bump *= 0.88;
   const scoreW = Math.max(ui.measure(scoreTxt, scoreSize), ui.measure('000', scoreSize));
   const lblW = ui.measure('SCORE', lblS);
-  const chipH = 36 * u, chipW = 13 * u + lblW + 7 * u + scoreW + 14 * u, chipX = W_ - pad - chipW;
+  const chipH = 36 * u, chipW = 13 * u + lblW + 7 * u + scoreW + 14 * u, chipX = A.x1 - pad - chipW;
   ui.glass(chipX, row1 - chipH / 2, chipW, chipH);
   ui.text('SCORE', chipX + 13 * u, row1 + 1 * u, { size: lblS, color: 'rgba(255,232,196,0.85)', tag: 'hud:scoreLabel' });
   ctx.save();
-  if (HUDS.bump > 0.02 && !save.calm) { const k = 1 + 0.22 * HUDS.bump, px = W_ - pad - 14 * u; ctx.translate(px, row1); ctx.scale(k, k); ctx.translate(-px, -row1); }
-  ui.num(scoreTxt, W_ - pad - 14 * u, row1, { size: scoreSize, align: 'right', tag: 'hud:score' });
+  if (HUDS.bump > 0.02 && !save.calm) { const k = 1 + 0.22 * HUDS.bump, px = A.x1 - pad - 14 * u; ctx.translate(px, row1); ctx.scale(k, k); ctx.translate(-px, -row1); }
+  ui.num(scoreTxt, A.x1 - pad - 14 * u, row1, { size: scoreSize, align: 'right', tag: 'hud:score' });
   ctx.restore();
   // the "i" button (who is in this vault): beside pause in one row, under it when the HUD takes two rows
   const infoOn = !!(G.infoKinds && G.infoKinds.length && sim.state === 'play' && (G.screen === 'play' || G.screen === 'pause'));
-  let leftEdge = pad + bs + 8 * u;
+  let leftEdge = X0 + bs + 8 * u;
   const rightEdge = chipX - 8 * u;
   // tray + timer content
   const slots = Math.max(G.level.eggs, sim.eggs.length);
@@ -2746,19 +2805,19 @@ function drawHUD() {
   const timePillW = timeTxt ? 8 * u + 22 * u + 5 * u + timeW + 13 * u : 0;
   const groupW = trayPillW + (timeTxt ? 8 * u + timePillW : 0);
   // one-row HUD: the "i" sits beside pause when the level name keeps ~150u of room, else just under pause (left margin)
-  const infoBeside = infoOn && !twoRows && (W_ / 2 - groupW / 2) - (leftEdge + bs + 8 * u) - 12 * u >= 150 * u;
+  const infoBeside = infoOn && !twoRows && (A.cx - groupW / 2) - (leftEdge + bs + 8 * u) - 12 * u >= 150 * u;
   if (infoBeside) leftEdge += bs + 8 * u;
   // level badge + name
   const isLv = G.li >= 0, nameS = 17 * u, bd = 26 * u;
   let trayX, trayY, lvlMax, lvlCx = null;
   if (twoRows) {
     lvlMax = rightEdge - leftEdge; lvlCx = (leftEdge + rightEdge) / 2;
-    trayY = pad + bs + 12 * u + pillH / 2;
+    trayY = Y0 + bs + 12 * u + pillH / 2;
   } else {
-    lvlMax = Math.max(60 * u, (W_ / 2 - groupW / 2) - leftEdge - 12 * u);
+    lvlMax = Math.max(60 * u, (A.cx - groupW / 2) - leftEdge - 12 * u);
     trayY = row1;
   }
-  trayX = W_ / 2 - groupW / 2;
+  trayX = A.cx - groupW / 2;
   {
     const inner = lvlMax - (isLv ? 4 * u + bd + 6 * u : 13 * u) - 13 * u;
     const nw = Math.min(ui.measure(G.level.name, nameS), Math.max(20 * u, inner));
@@ -2803,13 +2862,13 @@ function drawHUD() {
   }
   G.infoLow = 0;
   if (infoOn) {
-    const ib = twoRows || !infoBeside ? 40 * u : bs, ix = infoBeside ? pad + bs + 8 * u : pad + (bs - ib) / 2, iy = infoBeside ? pad : twoRows ? pad + bs + 12 * u + pillH / 2 - ib / 2 : G.hudBottom + 6 * u; // one-row HUD without room: under the HUD (and under a boss bar)
+    const ib = twoRows || !infoBeside ? 40 * u : bs, ix = infoBeside ? X0 + bs + 8 * u : X0 + (bs - ib) / 2, iy = infoBeside ? Y0 : twoRows ? Y0 + bs + 12 * u + pillH / 2 - ib / 2 : G.hudBottom + 6 * u; // one-row HUD without room: under the HUD (and under a boss bar)
     drawInfoBtn(ix, iy, ib);
     if (!twoRows && !infoBeside) G.infoLow = iy + ib; // under pause, past the HUD: the toast starts below it
   }
   if (G.bossBar && sim.bx && sim.bx.boss) {
     // iron housing with a warm trim: the boss bar reads as its own piece of kit
-    const bx = pad, by = G.hudBottom - G.bossBar + 2 * u, bw = W_ - 2 * pad, bh = G.bossBar - 8 * u, m = 3 * u;
+    const bx = X0, by = G.hudBottom - G.bossBar + 2 * u, bw = A.w - 2 * pad, bh = G.bossBar - 8 * u, m = 3 * u;
     ui.roundRect(bx - m, by - m + 2.5 * u, bw + 2 * m, bh + 2 * m, bh);
     ctx.fillStyle = 'rgba(10,2,0,0.3)'; ctx.fill();
     ui.roundRect(bx - m, by - m, bw + 2 * m, bh + 2 * m, bh);
@@ -2843,7 +2902,7 @@ function drawInfoBtn(x, y, b) {
   }
   ui.button('info', '', x, y, b, b, { kind: fresh ? 'gold' : 'hud', icon: infoIcon, iconS: 1.25, round: 15 * u * (b / (46 * u)) });
   if (!fresh) return;
-  const ts = 10.5 * u, tw = ui.measure('New!', ts) + 9 * u, th = ts + 6 * u, tx = x + b - tw + 9 * u, ty = Math.max(1, y - th * 0.45);
+  const ts = 10.5 * u, tw = ui.measure('New!', ts) + 9 * u, th = ts + 6 * u, tx = x + b - tw + 9 * u, ty = Math.max(ui.A.y, y - th * 0.45);
   ui.roundRect(tx, ty, tw, th, th / 2); ctx.fillStyle = '#e8402e'; ctx.fill();
   ctx.lineWidth = 1.5 * u; ctx.strokeStyle = '#fff4dc'; ctx.stroke();
   ui.text('New!', tx + tw / 2, ty + th / 2, { size: ts, align: 'center', color: '#fff', tag: 'hud:infoNew', group: 'btn:info' });
@@ -2855,8 +2914,9 @@ function drawZoomBtns() {
   const items = [['zoom:in', ICON.zoom(true), ''], ['zoom:out', ICON.zoom(false), '']];
   if (G.zm != null) items.push(['zoom:auto', null, 'auto']);
   items.forEach(([id, icon, label], i) => {
-    const x = side ? W_ - pad - bs : W_ - pad - bs * (i + 1) - gap * i;
-    const y = side ? P.y + (P.h - (bs * 3 + gap * 2)) / 2 + (bs + gap) * i : H_ - 6 * u - bs;
+    const x = side ? ui.A.x1 - pad - bs : ui.A.x1 - pad - bs * (i + 1) - gap * i;
+    // landscape: centred in the right column, but never up on the Chick Strike button at its top
+    const y = side ? Math.max(P.y + (P.h - (bs * 3 + gap * 2)) / 2, strikeShown() ? P.y + bs + gap * 2 : 0) + (bs + gap) * i : G.zb.bot;
     ui.button(id, label, x, y, bs, bs, { kind: 'hud', icon, iconS: 1.3, size: label ? 13 * u : undefined, round: 15 * u });
   });
 }
@@ -2870,9 +2930,9 @@ function drawPopups() {
     const h = size + (p.sub ? subS + 2 : 0);
     const minY = Math.max(G.hudBottom, G.toast ? G.toastBottom || 0 : 0) + 8 * ui.u + h / 2;
     let y = Math.max(p.y, minY);
-    const w = Math.min(W_ - 16, Math.max(ui.measure(p.text, size), p.sub ? ui.measure(p.sub, subS) : 0)); // the sub line can be the wider one
+    const A = ui.A, w = Math.min(A.w - 16, Math.max(ui.measure(p.text, size), p.sub ? ui.measure(p.sub, subS) : 0)); // the sub line can be the wider one
     const edge = 12 * ui.u + size * 0.15; // v3.7: the outline stroke and the pop-in grow past the measured width; keep it all on screen
-    const x = w + 2 * edge >= W_ ? W_ / 2 : clamp(p.x, w / 2 + edge, W_ - w / 2 - edge);
+    const x = w + 2 * edge >= A.w ? A.cx : clamp(p.x, A.x + w / 2 + edge, A.x1 - w / 2 - edge);
     // v3.1: never overlap an older popup: step above it, or below the whole stack when there is no room above.
     // The new spot sticks (p.y), so labels don't jump back and forth from frame to frame.
     const hit = (yy) => placed.find((q) => Math.abs(q.x - x) < (q.w + w) / 2 + 6 && Math.abs(q.y - yy) < (q.h + h) / 2 + 4);
@@ -2884,7 +2944,7 @@ function drawPopups() {
     p.y = y;
     placed.push({ x, y, w, h });
     ui.text(p.text, x, y, { size, align: 'center', color: p.color, stroke: 'rgba(40,18,4,0.85)', strokeW: Math.max(3, size * 0.2), shadow: 'rgba(40,18,4,0.85)', alpha: a, tag: 'popup:' + p.text + placed.length, group: 'popup' + placed.length });
-    if (p.sub) ui.text(p.sub, x, y + size / 2 + subS / 2 + 2, { size: subS, align: 'center', color: '#fff', stroke: 'rgba(40,18,4,0.8)', alpha: a, maxW: W_ - 16, tag: 'popupsub' + placed.length, group: 'popup' + placed.length });
+    if (p.sub) ui.text(p.sub, x, y + size / 2 + subS / 2 + 2, { size: subS, align: 'center', color: '#fff', stroke: 'rgba(40,18,4,0.8)', alpha: a, maxW: A.w - 16, tag: 'popupsub' + placed.length, group: 'popup' + placed.length });
   }
 }
 
@@ -2895,19 +2955,19 @@ function drawToast() {
   const age = G.t - T.t0;
   const a = Math.min(1, age * 5, T.life * 3);
   const size = 16 * u;
-  const maxW = Math.min(W_ - 32 * u, 520 * u);
+  const A = ui.A, maxW = Math.min(A.w - 32 * u, 520 * u);
   const xw = T.tip ? 22 * u : 0; // a villain tip keeps a little close mark on its right: a tap puts it away
   const lines = wrapText(T.text, size, maxW - 32 * u - xw);
   const h = lines.length * size * 1.3 + 18 * u;
   const w = Math.min(maxW, Math.max(...lines.map((l) => ui.measure(l, size))) + 32 * u + xw);
-  const x = W_ / 2 - w / 2, y = Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
+  const x = A.cx - w / 2, y = Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
   G.toastRect = { x, y, w, h };
   ctx.save();
   ctx.globalAlpha = a; ui.aBase = a;
   const k = ui.pop(age, 0.22);
-  if (k !== 1) { ctx.translate(W_ / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-W_ / 2, -(y + h / 2)); }
+  if (k !== 1) { ctx.translate(A.cx, y + h / 2); ctx.scale(k, k); ctx.translate(-A.cx, -(y + h / 2)); }
   ui.glass(x, y, w, h, { r: Math.min(h / 2, 18 * u), a: 'rgba(58,36,20,0.94)', b: 'rgba(28,16,8,0.94)', border: 'rgba(255,224,160,0.6)', record: true, tag: 'toast', group: 'toast' });
-  lines.forEach((l, i) => ui.text(l, W_ / 2 - xw / 2, y + 9 * u + size * 1.3 * (i + 0.5), { size, align: 'center', color: '#fff8e8', group: 'toast', tag: 'toast:' + i }));
+  lines.forEach((l, i) => ui.text(l, A.cx - xw / 2, y + 9 * u + size * 1.3 * (i + 0.5), { size, align: 'center', color: '#fff8e8', group: 'toast', tag: 'toast:' + i }));
   if (T.tip) { // the close mark, and a hairline that runs down with the tip's time
     const cx = x + w - 13 * u - 4 * u, cy = y + h / 2, r = 4.5 * u;
     ctx.strokeStyle = 'rgba(255,232,190,0.75)'; ctx.lineWidth = 2 * u; ctx.lineCap = 'round';
@@ -2976,10 +3036,10 @@ const CARD_HEAD = 50;
 function stackCard(title, build, o = {}) {
   const u = ui.u;
   ui.calm = save.calm;
-  const top = G.hudBottom + 16 * u; // the ribbon stands 8 units proud of the card
-  const avail = H_ - top - 14 * u; // and the base lip 5 below
+  const A = ui.A, top = Math.max(G.hudBottom, A.y) + 16 * u; // the ribbon stands 8 units proud of the card
+  const avail = A.y1 - top - 14 * u; // and the base lip 5 below
   const measure = (s) => {
-    const w = Math.min(o.maxW || W_ - 32 * u, 420 * s);
+    const w = Math.min(o.maxW || A.w - 32 * u, 420 * s);
     const blocks = build(s, w - 48 * s);
     const h = CARD_HEAD * s + blocks.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0) + 22 * s;
     return { s, w, blocks, h };
@@ -2989,8 +3049,8 @@ function stackCard(title, build, o = {}) {
   for (let n = 0; n < 4 && m.h > avail + 0.5 && m.s > u * 0.45; n++) m = measure(Math.max(u * 0.45, m.s * Math.min(0.97, avail / m.h)));
   const { s, w, blocks } = m;
   const h = Math.min(m.h, avail);
-  const x = (o.cx || W_ / 2) - w / 2;
-  const y = Math.max(top, (H_ + G.hudBottom) / 2 - h / 2);
+  const x = (o.cx || A.cx) - w / 2;
+  const y = Math.max(top, (A.y1 + Math.max(G.hudBottom, A.y)) / 2 - h / 2);
   // o.hidden: lay out only (each block's at(x, y, w) learns where it will sit); o.dx / o.dy: slide the card (win card entrance)
   if (o.hidden) {
     let cy = y + CARD_HEAD * s;
@@ -3223,11 +3283,11 @@ function drawInfo() {
   const u = ui.u, s = u, C = ui.C;
   ui.calm = save.calm;
   const S = G.iscroll, dt = Math.min(0.05, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
-  const w = Math.min(W_ - 24 * u, 470 * u), x = W_ / 2 - w / 2, fw = 7 * s, pad = 14 * s, iw = w - 2 * fw - 2 * pad;
+  const A = ui.A, w = Math.min(A.w - 24 * u, 470 * u), x = A.cx - w / 2, fw = 7 * s, pad = 14 * s, iw = w - 2 * fw - 2 * pad;
   const rows = infoRows(s, iw), title = 'Who\u2019s in this vault';
   const footH = 50 * s, head = CARD_HEAD * s, listH = rows.length ? rows.reduce((a, r) => a + r.h, 0) + 4 * s : 64 * s;
-  const top = 12 * u + 8 * s, maxH = H_ - top - 12 * u - 5 * s;
-  const h = Math.min(maxH, head + listH + 12 * s + footH + 16 * s), y = Math.max(top, (H_ - h) / 2);
+  const top = A.y + 12 * u + 8 * s, maxH = A.y1 - top - 12 * u - 5 * s;
+  const h = Math.min(maxH, head + listH + 12 * s + footH + 16 * s), y = Math.max(top, A.cy - h / 2);
   G.infoCard = { x, y, w, h };
   ctx.save();
   const k = ui.pop(G.screenT, 0.32);
@@ -3294,28 +3354,28 @@ const ss01 = (x) => { const k = clamp(x, 0, 1); return k * k * (3 - 2 * k); };
 
 // landscape with room: a stage left of the card (the win and fail cards)
 function cardSide() {
-  const u = ui.u, cw = Math.min(W_ - 32 * u, 420 * u);
-  if (!(W_ > H_ * 1.15 && W_ - cw - 48 * u >= 200 * u)) return null;
-  const sw = Math.min(W_ - cw - 48 * u, Math.max(cw, 300 * u)), left = (W_ - (sw + 16 * u + cw)) / 2;
+  const u = ui.u, A = ui.A, cw = Math.min(A.w - 32 * u, 420 * u);
+  if (!(A.w > A.h * 1.15 && A.w - cw - 48 * u >= 200 * u)) return null;
+  const sw = Math.min(A.w - cw - 48 * u, Math.max(cw, 300 * u)), left = A.x + (A.w - (sw + 16 * u + cw)) / 2;
   return { x: left, w: sw, cardO: { cx: left + sw + 16 * u + cw / 2, maxW: cw } };
 }
 // her side stage: she stands on the card's bottom line, as tall as the room allows
 function sideStage(sd, card) {
-  const u = ui.u, top = G.hudBottom + 6 * u, box = { x: sd.x, y: top, w: sd.w, h: card.y + card.h - 10 * u - top };
+  const u = ui.u, top = Math.max(G.hudBottom, ui.A.y) + 6 * u, box = { x: sd.x, y: top, w: sd.w, h: card.y + card.h - 10 * u - top };
   return { box, henH: Math.min(box.w * 0.48, box.h * 0.6) };
 }
 // the show's layout: the hen big in the middle, room above her for her biggest jump, the stars, the title below
 function bigStage(side) {
-  const u = ui.u, top = G.hudBottom + 6 * u, avail = H_ - top, band = Math.max(40 * u, avail * 0.1);
+  const u = ui.u, A = ui.A, top = Math.max(G.hudBottom, A.y) + 6 * u, avail = A.y1 - top, band = Math.max(40 * u, avail * 0.1);
   if (side) { // landscape: she stands left of centre, the stars beside her at chest height
-    const hh = Math.min(H_ * 0.45, (avail - band) / 1.45, W_ * 0.3), y = top + (avail - band - hh * 1.45) / 2;
-    const box = { x: 0, y, w: W_ * 0.8, h: hh * 1.45 }, R = Math.min(W_ * 0.05, hh * 0.2);
-    const sx = W_ * 0.4 + hh * 0.62 + R * 2.9;
-    return { box, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: sx + (k - 1) * R * 2.6, y: y + hh * 0.75 - (k === 1 ? R * 0.35 : 0) })), titleY: y + hh * 1.45 + band * 0.5, titleX: W_ * 0.4, full: { x: 0, y: top, w: W_, h: avail } };
+    const hh = Math.min(A.h * 0.45, (avail - band) / 1.45, A.w * 0.3), y = top + (avail - band - hh * 1.45) / 2;
+    const box = { x: A.x, y, w: A.w * 0.8, h: hh * 1.45 }, R = Math.min(A.w * 0.05, hh * 0.2);
+    const sx = A.x + A.w * 0.4 + hh * 0.62 + R * 2.9;
+    return { box, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: sx + (k - 1) * R * 2.6, y: y + hh * 0.75 - (k === 1 ? R * 0.35 : 0) })), titleY: y + hh * 1.45 + band * 0.5, titleX: A.x + A.w * 0.4, full: { x: 0, y: top, w: ui.w, h: avail } };
   }
-  const R = Math.min(W_ * 0.085, avail * 0.065), hh = Math.min(H_ * 0.43, W_ * 0.74, (avail - 2.8 * R - band) / 1.5); // wings spread she is ~1.2x as wide as tall
+  const R = Math.min(A.w * 0.085, avail * 0.065), hh = Math.min(A.h * 0.43, A.w * 0.74, (avail - 2.8 * R - band) / 1.5); // wings spread she is ~1.2x as wide as tall
   const y0 = top + (avail - (2.8 * R + 1.5 * hh + band)) / 2, by = y0 + 2.8 * R;
-  return { box: { x: 0, y: by, w: W_, h: 1.5 * hh }, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: W_ / 2 + (k - 1) * R * 2.7, y: y0 + 1.5 * R - (k === 1 ? R * 0.35 : 0) })), titleY: by + 1.5 * hh + band * 0.45, titleX: W_ / 2, full: { x: 0, y: top, w: W_, h: avail } };
+  return { box: { x: A.x, y: by, w: A.w, h: 1.5 * hh }, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: A.cx + (k - 1) * R * 2.7, y: y0 + 1.5 * R - (k === 1 ? R * 0.35 : 0) })), titleY: by + 1.5 * hh + band * 0.45, titleX: A.cx, full: { x: 0, y: top, w: ui.w, h: avail } };
 }
 
 // slow rays behind a celebration (still when reduced motion is on); clip first if they must stay in a box
@@ -3352,7 +3412,7 @@ function drawWin() {
   const sd = cardSide(), side = !!sd, cardO = sd ? sd.cardO : {};
   const pw = routinePower(r.stars), calm = save.calm, seed = G.level.id || 0;
   // the stage takes the room the rest of the card leaves (a tall phone: the full 184 units; a squat screen: less)
-  const room = (H_ - G.hudBottom - 30 * u) / u - 476, stH = clamp(room, 110, 184);
+  const A = ui.A, room = (A.y1 - Math.max(G.hudBottom, A.y) - 30 * u) / u - 476, stH = clamp(room, 110, 184);
   // a squat screen with no room beside the card either (600x600): she shares the star row, left of the stars
   const compact = !side && room < 110, rowH = compact ? 100 : 58;
   const title = G.level.boss && G.li >= 0 ? 'Boss beaten!' : r.stars === 3 ? 'Perfect clutch!' : r.stars === 2 ? 'Great job!' : 'Vault cracked!';
@@ -3368,12 +3428,12 @@ function drawWin() {
     rows.push(['Coins', '+' + Math.round((r.coins || 0) * cnt)]);
     const B = [];
     if (!side && !compact) B.push({ h: stH * s, gap: 0,
-      at: (x, y, w) => { T.box = { x, y, w, h: stH * s }; T.henH = 0.685 * stH * s; T.clip = { x: 0, y: G.hudBottom, w: W_, h: y + stH * s - G.hudBottom }; },
+      at: (x, y, w) => { T.box = { x, y, w, h: stH * s }; T.henH = 0.685 * stH * s; T.clip = { x: 0, y: G.hudBottom, w: ui.w, h: y + stH * s - G.hudBottom }; },
       draw: () => { henStage(T.box, s, true); if (inCard) drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, clip: T.clip, fxBig }); ui.record(T.box, 'win:hen'); } });
     B.push({ h: rowH * s, gap: side ? 0 : 4 * s,
       at: (x, y, w) => {
         let mx = x + w / 2, my = y;
-        if (compact) { T.box = { x, y, w: w * 0.36, h: rowH * s }; T.henH = 68 * s; T.clip = { x: 0, y: G.hudBottom, w: W_, h: y + rowH * s - G.hudBottom }; mx = x + w * 0.36 + (w * 0.64) / 2; my = y + (rowH - 58) * s * 0.6; }
+        if (compact) { T.box = { x, y, w: w * 0.36, h: rowH * s }; T.henH = 68 * s; T.clip = { x: 0, y: G.hudBottom, w: ui.w, h: y + rowH * s - G.hudBottom }; mx = x + w * 0.36 + (w * 0.64) / 2; my = y + (rowH - 58) * s * 0.6; }
         T.stars = [0, 1, 2].map((q) => ({ x: mx + (q - 1) * 66 * s, y: my + 31 * s - (q === 1 ? 6 * s : 0) })); T.R = 25 * s; T.row = { x: mx - 96 * s, y: my, w: 192 * s, h: 58 * s };
       },
       draw: () => {
@@ -3418,11 +3478,11 @@ function drawWin() {
   const card = stackCard(title, build, { ...cardO, hidden: true }); // lay out first: her flight needs the targets
   if (side) { const ss = sideStage(sd, card); T.box = ss.box; T.henH = ss.henH; T.clip = ss.box; }
   // the card slides in: up from below (portrait), in from the right (landscape)
-  const dx = side ? (1 - e) * (W_ - card.x + 20 * u) : 0, dy = side ? 0 : (1 - e) * (H_ - card.y + 20 * u);
+  const dx = side ? (1 - e) * (ui.w - card.x + 20 * u) : 0, dy = side ? 0 : (1 - e) * (ui.h - card.y + 20 * u);
   // the show's big title under her feet: it fades as the card (which has its own) comes, and the card passes over it
   const ta = save.calm ? 0 : 1 - ss01((r.t - WIN_SHOW + 0.15) / 0.3);
   if (ta > 0.01) {
-    const ts = Math.min(34 * u, W_ * 0.085), tw = Math.min(W_ - 56 * u, ui.measure(title, ts) + 60 * u), pk = ui.pop(r.t, 0.35);
+    const ts = Math.min(34 * u, A.w * 0.085), tw = Math.min(A.w - 56 * u, ui.measure(title, ts) + 60 * u), pk = ui.pop(r.t, 0.35);
     ctx.save();
     ctx.globalAlpha = ta; ui.aBase = ta;
     ctx.translate(BIG.titleX, BIG.titleY); ctx.scale(pk, pk); ctx.translate(-BIG.titleX, -BIG.titleY);
@@ -3444,10 +3504,10 @@ function drawWin() {
   // the show, and her flight into the card: everything eases from the big layout to its card spot (which slides with the card)
   const tdx = side ? 0 : dx, tdy = side ? 0 : dy; // in landscape her stage does not slide, only the card
   const L = (a, b2) => a + (b2 - a) * e;
-  const box = { x: L(BIG.box.x, T.box.x + tdx), y: L(BIG.box.y, T.box.y + tdy) - Math.sin(e * Math.PI) * H_ * 0.05, w: L(BIG.box.w, T.box.w), h: L(BIG.box.h, T.box.h) };
+  const box = { x: L(BIG.box.x, T.box.x + tdx), y: L(BIG.box.y, T.box.y + tdy) - Math.sin(e * Math.PI) * ui.h * 0.05, w: L(BIG.box.w, T.box.w), h: L(BIG.box.h, T.box.h) };
   if (k <= 0 && !calm) { // the show: rays turn behind her
     ctx.save(); ctx.globalAlpha = Math.min(1, r.t * 3);
-    sunburst(BIG.box.x + BIG.box.w / 2, BIG.box.y + BIG.box.h - BIG.henH * 0.55, Math.max(W_, H_) * 0.75, 'rgba(255,236,170,0.1)', 14);
+    sunburst(BIG.box.x + BIG.box.w / 2, BIG.box.y + BIG.box.h - BIG.henH * 0.55, Math.max(ui.w, ui.h) * 0.75, 'rgba(255,236,170,0.1)', 14);
     ctx.restore();
   }
   drawCelebration(ctx, r.cheer, r.t, box, { pw, calm, henH: L(BIG.henH, T.henH), seed, clip: BIG.full, fxBig });
@@ -3498,7 +3558,7 @@ function drawFail() {
   dim(0.55);
   const st = G.sim.stats(), u = ui.u, C = ui.C;
   const timeout = G.sim.timeLeft <= 0;
-  const sd = cardSide(), room = (H_ - G.hudBottom - 30 * u) / u - 400, stH = clamp(room, 110, 184);
+  const sd = cardSide(), room = (ui.A.y1 - Math.max(G.hudBottom, ui.A.y) - 30 * u) / u - 400, stH = clamp(room, 110, 184);
   const card = stackCard(timeout ? 'Out of time!' : 'Too many eggs broke', (s) => {
     const B = [];
     if (!sd) B.push({ h: stH * s, gap: 0, draw: (x, y, w) => {
@@ -3538,36 +3598,36 @@ function drawFail() {
 function drawTitle() {
   const u = ui.u;
   ui.calm = save.calm;
-  const cx = W_ / 2;
-  const bw = Math.min(310 * u, W_ - 44 * u);
-  const wide = W_ > H_ * 1.15;
+  const A = ui.A, cx = A.cx; // the meadow paints edge to edge; the logo and the buttons sit in the safe rect
+  const bw = Math.min(310 * u, A.w - 44 * u);
+  const wide = A.w > A.h * 1.15;
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
   // landscape: two balanced columns, logo + vault on the left, the buttons on the right, the meadow low across both
-  const lx = wide ? W_ * 0.29 : cx, bx = wide ? W_ * 0.73 : cx;
+  const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? A.x + A.w * 0.73 : cx;
   const blockH = 232 * u; // Play + Levels row + difficulty + Extras
-  const ground = wide ? H_ - Math.max(96 * u, H_ * 0.2) : H_ - 244 * u - 16 * u;
-  const by = wide ? Math.max(14 * u, (ground - blockH) / 2 + 4 * u) : H_ - 244 * u; // room for the Extras row under the difficulty row
+  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - 244 * u - 16 * u;
+  const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - 244 * u; // room for the Extras row under the difficulty row
   G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t);
   // the earth under the controls falls into shade, so the buttons carry the bottom of the screen
   const sg = ctx.createLinearGradient(0, ground + 20 * u, 0, H_);
   sg.addColorStop(0, 'rgba(30,14,4,0)'); sg.addColorStop(1, 'rgba(30,14,4,0.5)');
   ctx.fillStyle = sg; ctx.fillRect(0, ground + 20 * u, W_, H_ - ground - 20 * u);
-  const logoS = Math.min(66 * u, (wide ? W_ * 0.5 : W_) / 7.3, H_ / 6);
-  const ty = Math.max(16 * u + logoS / 2, Math.min(H_ * 0.12, 72 * u));
+  const logoS = Math.min(66 * u, (wide ? A.w * 0.5 : A.w) / 7.3, A.h / 6);
+  const ty = A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
   const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, G.screenT, FONT);
   ui.record(logo, 'title:logo');
   const subY = ty + logoS * 0.5 + 18 * u;
-  ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? W_ * 0.5 : W_) - 32 * u });
+  ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? A.w * 0.5 : A.w) - 32 * u });
   // the toy vault: centred between the subtitle and the meadow, or to the left of the buttons on a wide screen
   const eggH = Math.min(46 * u, (ground - subY) * 0.22);
   let vx = cx, vy, R;
   if (wide) {
     const top = subY + 18 * u, bot = ground - eggH * 2.2;
-    R = Math.min((bot - top) / 2, W_ * 0.2);
+    R = Math.min((bot - top) / 2, A.w * 0.2);
     vx = lx; vy = (top + bot) / 2;
   } else {
     const top = subY + 22 * u, bot = ground - eggH * 2.4;
-    R = Math.min((bot - top) / 2, W_ * 0.4);
+    R = Math.min((bot - top) / 2, A.w * 0.4);
     vy = (top + bot) / 2;
   }
   if (R < 40 * u) R = 0;
@@ -3606,85 +3666,115 @@ function drawCrown(cx, cy, s) {
 // World map page. Each world wears its own colours (its sky as the page, its accent on the ribbon and tiles), shows
 // how far you are (stars in this world, the page dots), and makes the next level to play the loudest thing on screen.
 function drawLevels() {
-  const u = ui.u, C = ui.C;
+  const u = ui.u, A = ui.A;
   ui.calm = save.calm;
   const pad = 14 * u;
   const nW = Math.ceil(LEVELS.length / PER_ENV);
-  const first = G.world * PER_ENV, list = LEVELS.slice(first, first + PER_ENV);
   const themeOf = (L) => THEMES.find((t) => t.id === L.theme) || THEMES[0];
   const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d);
-  const wp = themeOf(list[0] || LEVELS[0]).palette, wacc = hex(wp.accent, '#ee5a36');
-  // the page: the world's sky, deepened, with a faint vault-ring motif
+  // the pan eases home (ease-out) once the finger is off; a drag holds it where the finger is
+  const LP = G.lpan, dt = Math.min(0.05, Math.max(0, G.t - (LP.t || G.t))); LP.t = G.t;
+  if (!(G.ldrag && G.ldrag.moved)) { LP.x *= save.calm ? 0 : Math.exp(-11 * dt); if (Math.abs(LP.x) < 0.5) LP.x = 0; }
+  const pw = W_, side = LP.x > 0 ? -1 : 1, nb = G.world + side, frac = Math.min(1, Math.abs(LP.x) / pw);
+  const showNb = LP.x !== 0 && nb >= 0 && nb < nW;
+  const wpOf = (w) => themeOf(LEVELS[w * PER_ENV] || LEVELS[0]).palette;
+  // the page: the world's sky, deepened (blended toward the neighbour's while it slides in), a faint vault-ring motif
+  const wp = wpOf(G.world), np = showNb ? wpOf(nb) : wp, wacc = hex(wp.accent, '#ee5a36');
+  const sky = (p, k) => ui.mix(hex(p[k], k === 'skyTop' ? '#3f9fe6' : '#dff3fb'), '#1a1030', k === 'skyTop' ? 0.42 : 0.58);
   const bg = ctx.createLinearGradient(0, 0, 0, H_);
-  bg.addColorStop(0, ui.mix(hex(wp.skyTop, '#3f9fe6'), '#1a1030', 0.42));
-  bg.addColorStop(1, ui.mix(hex(wp.skyBottom, '#dff3fb'), '#1a1030', 0.58));
+  bg.addColorStop(0, ui.mix(sky(wp, 'skyTop'), sky(np, 'skyTop'), frac));
+  bg.addColorStop(1, ui.mix(sky(wp, 'skyBottom'), sky(np, 'skyBottom'), frac));
   ctx.globalAlpha = 0.95; ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); ctx.globalAlpha = 1;
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.055)'; ctx.lineWidth = 16 * u; ctx.lineCap = 'round';
-  const mR = Math.min(W_, H_) * 0.5, mx0 = W_ * 0.86, my0 = H_ * 0.9;
+  const mR = Math.min(W_, H_) * 0.5, mx0 = W_ * 0.86 + LP.x * 0.15, my0 = H_ * 0.9;
   for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(mx0, my0, mR * (0.45 + 0.3 * i), 2.4 + i * 0.5 + (save.calm ? 0 : G.t * 0.03 * (i % 2 ? -1 : 1)), 5.6 + i * 0.4 + (save.calm ? 0 : G.t * 0.03 * (i % 2 ? -1 : 1))); ctx.stroke(); }
   ctx.restore();
-  // header: back, the world's ribbon, all stars
-  const hy = pad + 23 * u;
-  ui.button('back', '', pad, pad, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
+  // header (fixed, in the safe rect): back, the world's ribbon, all stars
+  const X0 = A.x + pad, X1 = A.x1 - pad, Y0 = A.y + pad, hy = Y0 + 23 * u;
+  ui.button('back', '', X0, Y0, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
   const totalStars = bestTotal();
   const starTxt = `${totalStars} / ${LEVELS.length * 3}`;
   const stw = ui.measure(starTxt, 17 * u);
-  const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = W_ - pad - chipW;
+  const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = X1 - chipW;
   ui.glass(chipX, hy - 18 * u, chipW, 36 * u);
   drawStar(ctx, chipX + 9 * u + 11 * u, hy, 9.5 * u, true);
   ui.record({ x: chipX + 9 * u, y: hy - 11 * u, w: 22 * u, h: 22 * u }, 'levels:staricon', 'levels:stars');
-  ui.text(starTxt, W_ - pad - 12 * u, hy + 0.5 * u, { size: 17 * u, align: 'right', color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'levels:stars', group: 'levels:stars' });
-  const titleL = pad + 46 * u + 22 * u, titleR = chipX - 22 * u, wname = WORLDS[G.world] || 'Levels';
+  ui.text(starTxt, X1 - 12 * u, hy + 0.5 * u, { size: 17 * u, align: 'right', color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'levels:stars', group: 'levels:stars' });
+  const titleL = X0 + 46 * u + 22 * u, titleR = chipX - 22 * u, wname = WORLDS[G.world] || 'Levels';
   const rbw = clamp(ui.measure(wname, 21 * u) + 36 * u, Math.min(120 * u, titleR - titleL), titleR - titleL);
   ui.ribbon(wname, (titleL + titleR) / 2, hy - 19 * u, rbw, 36 * u, { color: wacc, size: 21 * u, tag: 'levels:title' });
   // world arrows, shop and the next star chest (C5/C6)
-  const rowY = 74 * u, rh = 46 * u;
-  if (G.world > 0) ui.button('world:-1', '', pad, rowY, 46 * u, rh, { kind: 'secondary', icon: ICON.left, iconS: 1.3 });
-  if (G.world < nW - 1) ui.button('world:1', '', W_ - pad - 46 * u, rowY, 46 * u, rh, { kind: 'secondary', icon: ICON.right, iconS: 1.3 });
-  const midW = Math.min(W_ - 2 * pad - 2 * 56 * u, 320 * u), mx = W_ / 2 - midW / 2, half = (midW - 10 * u) / 2;
+  const rowY = A.y + 74 * u, rh = 46 * u;
+  if (G.world > 0) ui.button('world:-1', '', X0, rowY, 46 * u, rh, { kind: 'secondary', icon: ICON.left, iconS: 1.3 });
+  if (G.world < nW - 1) ui.button('world:1', '', X1 - 46 * u, rowY, 46 * u, rh, { kind: 'secondary', icon: ICON.right, iconS: 1.3 });
+  const midW = Math.min(A.w - 2 * pad - 2 * 56 * u, 320 * u), mx = A.cx - midW / 2, half = (midW - 10 * u) / 2;
   ui.button('shop', String(save.wallet.coins), mx, rowY, half, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 17 * u });
   const chest = E.chestFor(totalStars, save.wallet.chests);
   if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { kind: chest.ready ? 'primary' : 'off', shimmer: chest.ready, disabled: !chest.ready, dim: 1, iconS: 1.25, icon: (c, x, y, s) => drawChest(c, x, y, s, G.t, chest.ready ? 'ready' : 'locked'), size: 15 * u });
-  // where you are: one dot per world, and this world's stars
-  const dy = rowY + rh + 13 * u, ds = 12 * u, ws = list.reduce((a, L) => a + starsOf(L.id), 0), wsTxt = `${ws}/${list.length * 3}`;
-  const wsW = ui.measure(wsTxt, 13 * u), dotsW = nW * ds, allW = dotsW + 10 * u + 15 * u + wsW, dx0 = W_ / 2 - allW / 2;
+  // where you are: one dot per world (the lit dot follows the swipe), and this world's stars
+  const list0 = LEVELS.slice(G.world * PER_ENV, G.world * PER_ENV + PER_ENV);
+  const dy = rowY + rh + 13 * u, ds = 12 * u, ws = list0.reduce((a, L) => a + starsOf(L.id), 0), wsTxt = `${ws}/${list0.length * 3}`;
+  const wsW = ui.measure(wsTxt, 13 * u), dotsW = nW * ds, allW = dotsW + 10 * u + 15 * u + wsW, dx0 = A.cx - allW / 2;
   for (let i = 0; i < nW; i++) {
-    const on = i === G.world, open = envOpen(i) && i * PER_ENV < save.unlocked;
-    ctx.beginPath(); ctx.arc(dx0 + ds * (i + 0.5), dy, (on ? 4.6 : 3) * u, 0, 7);
-    ctx.fillStyle = on ? '#fff' : open ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.38)'; ctx.fill();
-    if (on) { ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(30,14,4,0.6)'; ctx.stroke(); }
+    const open = envOpen(i) && i * PER_ENV < save.unlocked;
+    const lit = i === G.world ? 1 - frac : showNb && i === nb ? frac : 0;
+    ctx.beginPath(); ctx.arc(dx0 + ds * (i + 0.5), dy, (3 + 1.6 * lit) * u, 0, 7);
+    ctx.fillStyle = lit > 0.5 ? '#fff' : open ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.38)'; ctx.fill();
+    if (lit > 0.5) { ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(30,14,4,0.6)'; ctx.stroke(); }
   }
   ui.record({ x: dx0, y: dy - 5 * u, w: dotsW, h: 10 * u }, 'levels:dots');
   drawStar(ctx, dx0 + dotsW + 10 * u + 6 * u, dy, 5.5 * u, true);
   ui.text(wsTxt, dx0 + dotsW + 10 * u + 15 * u, dy + 0.5 * u, { size: 13 * u, color: '#fff', stroke: 'rgba(30,14,4,0.65)', strokeW: 2.5 * u, tag: 'levels:wstars' });
-  let top = dy + 16 * u;
+  // the pages: this world at the pan, its neighbour sliding in beside it. A page that is not at rest keeps no tap
+  // targets and records nothing (the overlap check sees only a settled page).
+  const top = dy + 16 * u, bot = A.y1 - pad;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, top - 8 * u, W_, H_ - top + 8 * u); ctx.clip();
+  const page = (w, ox) => {
+    const n0 = ui.rects.length, b0 = ui.buttons.length;
+    ctx.save(); ctx.translate(ox, 0);
+    drawLevelPage(w, top, bot, pad);
+    ctx.restore();
+    if (ox !== 0) { ui.rects.length = n0; ui.buttons.length = b0; }
+  };
+  page(G.world, LP.x);
+  if (showNb) page(nb, LP.x + side * pw);
+  ctx.restore();
+}
+
+// one world's page of the map, centred in the room between the header and the bottom of the safe rect: the star gate
+// line (a locked world), the tile grid, and the big PLAY under it when the next level to play is on this page
+function drawLevelPage(world, top0, bot, pad) {
+  const u = ui.u, A = ui.A;
+  const first = world * PER_ENV, list = LEVELS.slice(first, first + PER_ENV);
+  const themeOf = (L) => THEMES.find((t) => t.id === L.theme) || THEMES[0];
+  const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d);
+  const totalStars = bestTotal();
+  const locked = !envOpen(world), gateH = locked ? 34 * u : 0, gateGap = locked ? 18 * u : 0;
+  const cols = A.w > A.h ? 5 : 3;
+  const rows = Math.ceil(list.length / cols);
+  const gap = 12 * u;
+  const cw = Math.min((A.w - pad * 2 - gap * (cols - 1)) / cols, 136 * u);
+  const nextI = save.unlocked - 1, cta = nextI >= first && nextI < first + list.length && playable(nextI) && !starsOf(LEVELS[nextI].id);
+  const ctaH = cta ? 62 * u : 0, ctaGap = cta ? 18 * u : 0;
+  const roomH = bot - top0 - gateH - gateGap - ctaH - ctaGap;
+  const chh = Math.min((roomH - gap * (rows - 1)) / rows, cw * 1.0);
+  const blockH = gateH + gateGap + rows * chh + gap * (rows - 1) + ctaGap + ctaH;
+  let top = top0 + Math.max(0, (bot - top0 - blockH) / 2); // balanced: the block sits in the middle of its room
   // star gate (I5): a locked environment says how many stars it needs
-  const locked = !envOpen(G.world);
   if (locked) {
-    const need = envNeed(G.world), ly = top + 17 * u, txt = `Collect ${need} stars to open: you have ${totalStars}`;
-    const ts = 16 * u, mw = W_ - 2 * pad - 52 * u, tw = Math.min(ui.measure(txt, ts), mw), gw = tw + 52 * u, lx = W_ / 2 - gw / 2;
+    const need = envNeed(world), ly = top + 17 * u, txt = `Collect ${need} stars to open: you have ${totalStars}`;
+    const ts = 16 * u, mw = A.w - 2 * pad - 52 * u, tw = Math.min(ui.measure(txt, ts), mw), gw = tw + 52 * u, lx = A.cx - gw / 2;
     ui.glass(lx, ly - 17 * u, gw, 34 * u, { border: 'rgba(255,224,120,0.7)' });
     drawPadlock(lx + 20 * u, ly - 1 * u, 7 * u, '#ffe066');
     ui.text(txt, lx + 36 * u, ly + 0.5 * u, { size: ts, color: '#ffe680', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'levels:gate', maxW: mw });
-    top += 42 * u;
+    top += gateH + gateGap;
   }
-  const cols = W_ > H_ ? 5 : 3;
-  const rows = Math.ceil(list.length / cols);
-  const gap = 12 * u;
-  const cw = Math.min((W_ - pad * 2 - gap * (cols - 1)) / cols, 136 * u);
-  const labH = 0; // the practice (lab) vaults moved to the Extras screen (wonder.js drawExtras)
-  // the next level to play, when it is on this page, also gets one big button under the grid (thumb height)
-  const nextI = save.unlocked - 1, cta = nextI >= first && nextI < first + list.length && playable(nextI) && !starsOf(LEVELS[nextI].id);
-  const ctaH = cta ? 62 * u : 0, ctaGap = cta ? 18 * u : 0;
-  const roomH = H_ - top - pad - labH - (labH ? 22 * u : 0) - ctaH - ctaGap;
-  const chh = Math.min((roomH - gap * (rows - 1)) / rows, cw * 1.0);
-  top += Math.max(0, (roomH - rows * chh - gap * (rows - 1)) * 0.3); // spare room: the grid sits a little lower, nearer the thumb
   const gridW = cols * cw + (cols - 1) * gap;
-  const x0 = W_ / 2 - gridW / 2;
+  const x0 = A.cx - gridW / 2;
   if (cta) {
     const bw = Math.min(gridW, 320 * u), cy = top + rows * chh + gap * (rows - 1) + ctaGap;
-    ui.button('lv:' + nextI, `PLAY  Level ${LEVELS[nextI].id}`, W_ / 2 - bw / 2, cy, bw, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * u, round: 18 * u });
+    ui.button('lv:' + nextI, `PLAY  Level ${LEVELS[nextI].id}`, A.cx - bw / 2, cy, bw, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * u, round: 18 * u });
   }
   const BOSS = { a: '#c93a54', b: '#7a1a40', lip: '#42091f', line: '#22040e', ink: '#fff', rim: 'rgba(255,214,96,0.95)' };
   list.forEach((L, k) => {
@@ -3730,33 +3820,33 @@ function drawLevels() {
 // PRACTICE: every studio vault as a tile, grouped under the LAB names; same tile kit and grid as the level map, scrolled vertically
 const PRACTICE_FACES = ['#d8862a', '#3a9a6a', '#4a82d0', '#b05aa8', '#c85a4a', '#2f9aa8', '#8a7ad8', '#9a8a2a'];
 function drawPractice() {
-  const u = ui.u, pad = 14 * u, S = G.pscroll;
+  const u = ui.u, A = ui.A, pad = 14 * u, S = G.pscroll, vb = A.y1; // the list scrolls down to the bottom of the safe rect
   ui.calm = save.calm;
   const dt = Math.min(0.05, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
   const bg = ctx.createLinearGradient(0, 0, 0, H_);
   bg.addColorStop(0, '#1c1440'); bg.addColorStop(1, '#3a2152');
   ctx.globalAlpha = 0.96; ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); ctx.globalAlpha = 1;
-  const cols = W_ > H_ ? 5 : 3, gap = 12 * u, cw = Math.min((W_ - pad * 2 - gap * (cols - 1)) / cols, 136 * u), chh = cw;
-  const gridW = cols * cw + (cols - 1) * gap, x0 = W_ / 2 - gridW / 2;
-  const vt = 70 * u, secH = 36 * u; // the list's top edge, a section header's height
+  const cols = A.w > A.h ? 5 : 3, gap = 12 * u, cw = Math.min((A.w - pad * 2 - gap * (cols - 1)) / cols, 136 * u), chh = cw;
+  const gridW = cols * cw + (cols - 1) * gap, x0 = A.cx - gridW / 2;
+  const vt = A.y + 70 * u, secH = 36 * u; // the list's top edge, a section header's height
   let total = 0;
   for (const g of LAB) total += secH + Math.ceil(g.items.length / cols) * (chh + gap) + 6 * u;
-  S.max = Math.max(0, total + pad - (H_ - vt));
+  S.max = Math.max(0, total + pad - (vb - vt));
   if (!G.pdrag || !G.pdrag.moved) { // momentum
     if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-4.2 * dt); } else S.v = 0;
   }
   const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
   // the list, clipped under the header
-  ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W_, H_ - vt); ctx.clip();
+  ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W_, vb - vt); ctx.clip();
   let y = vt - S.y + 4 * u, gi = 0;
   for (const g of LAB) {
     const face0 = ui.faceOf(PRACTICE_FACES[gi % PRACTICE_FACES.length]);
-    if (y + secH > vt && y < H_) ui.text(g.name, x0 + 2 * u, y + secH / 2 - 2 * u, { size: 17 * u, color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, tag: 'practice:h' + gi, maxW: gridW - 4 * u, noRecord: y < vt || y + secH > H_ });
+    if (y + secH > vt && y < vb) ui.text(g.name, x0 + 2 * u, y + secH / 2 - 2 * u, { size: 17 * u, color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, tag: 'practice:h' + gi, maxW: gridW - 4 * u, noRecord: y < vt || y + secH > vb });
     y += secH;
     g.items.forEach(([k, label], j) => {
       const c = j % cols, r = Math.floor(j / cols), x = x0 + c * (cw + gap), ty = y + r * (chh + gap);
-      if (ty + chh < vt || ty > H_) return;
-      const part = ty < vt || ty + chh > H_, n0 = ui.rects.length, nb = ui.buttons.length;
+      if (ty + chh < vt || ty > vb) return;
+      const part = ty < vt || ty + chh > vb, n0 = ui.rects.length, nb = ui.buttons.length;
       const b = ui.button('demo:' + k, '', x, ty, cw, chh, { face: face0, keepFace: true, round: 18 * u });
       const fy = ty + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mxT = x + cw / 2, grp = 'btn:demo:' + k;
       const rad = Math.min(24 * u, fh * 0.26);
@@ -3765,7 +3855,7 @@ function drawPractice() {
       ui.text(label, mxT, fy + fh * 0.76, { size: Math.min(15 * u, fh * 0.15), align: 'center', color: '#fff', stroke: face0.line, strokeW: 3 * u, group: grp, tag: 'pn' + k, maxW: cw - 12 * u });
       if (part) { // a tile cut by the list edge keeps a tap area only inside the list and records nothing for the overlap check
         ui.rects.length = n0;
-        const bt = ui.buttons[nb]; if (bt) { const t2 = Math.max(bt.y, vt), b2 = Math.min(bt.y + bt.h, H_); if (b2 - t2 < 8 * u) ui.buttons.length = nb; else { bt.y = t2; bt.h = b2 - t2; } }
+        const bt = ui.buttons[nb]; if (bt) { const t2 = Math.max(bt.y, vt), b2 = Math.min(bt.y + bt.h, vb); if (b2 - t2 < 8 * u) ui.buttons.length = nb; else { bt.y = t2; bt.h = b2 - t2; } }
       }
     });
     y += Math.ceil(g.items.length / cols) * (chh + gap) + 6 * u; gi++;
@@ -3774,13 +3864,13 @@ function drawPractice() {
   // header band over the list: back, title
   ctx.fillStyle = '#1c1440'; ctx.globalAlpha = 0.94; ctx.fillRect(0, 0, W_, vt - 4 * u); ctx.globalAlpha = 1;
   const g2 = ctx.createLinearGradient(0, vt - 4 * u, 0, vt + 10 * u); g2.addColorStop(0, 'rgba(10,4,24,0.55)'); g2.addColorStop(1, 'rgba(10,4,24,0)'); ctx.fillStyle = g2; ctx.fillRect(0, vt - 4 * u, W_, 14 * u);
-  const hy = pad + 23 * u;
-  ui.button('back', '', pad, pad, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
-  const tl = pad + 68 * u, trr = W_ - pad - 68 * u;
-  ui.ribbon('Practice', W_ / 2, hy - 19 * u, clamp(170 * u, 90 * u, Math.max(90 * u, trr - tl)), 36 * u, { color: '#8a5ad8', size: 21 * u, tag: 'practice:title' });
+  const hy = A.y + pad + 23 * u;
+  ui.button('back', '', A.x + pad, A.y + pad, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
+  const tl = A.x + pad + 68 * u, trr = A.x1 - pad - 68 * u;
+  ui.ribbon('Practice', A.cx, hy - 19 * u, clamp(170 * u, 90 * u, Math.max(90 * u, trr - tl)), 36 * u, { color: '#8a5ad8', size: 21 * u, tag: 'practice:title' });
   if (S.max > 0 && !save.calm) { // a thin scroll thumb
-    const th = Math.max(30 * u, (H_ - vt) * (H_ - vt) / (total + pad)), ty2 = vt + (S.y / S.max) * (H_ - vt - th - 4 * u);
-    ui.roundRect(W_ - 5 * u, ty2, 3 * u, th, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
+    const th = Math.max(30 * u, (vb - vt) * (vb - vt) / (total + pad)), ty2 = vt + (S.y / S.max) * (vb - vt - th - 4 * u);
+    ui.roundRect(A.x1 - 5 * u, ty2, 3 * u, th, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
   }
 }
 
@@ -3827,6 +3917,8 @@ function clearKeys() {
 async function boot() {
   resize();
   window.addEventListener('resize', resize);
+  window.addEventListener('eggsafe', resize); // the Android shell's insets arrived or changed
+  window.addEventListener('orientationchange', () => setTimeout(resize, 120));
   canvas.addEventListener('pointerdown', pointerDown, { passive: false });
   canvas.addEventListener('wheel', wheel, { passive: false });
   window.addEventListener('pointermove', pointerMove);

@@ -68,8 +68,8 @@ export function createWonder(env) {
     return B;
   }
   function playRect() {
-    const z = env.size(), u = ui.u, top = 62 * u, bot = (S.game.kind === 'plan' ? 86 : 10) * u;
-    return { x: 0, y: top, w: z.W, h: z.H - top - bot };
+    const A = ui.A, u = ui.u, top = A.y + 62 * u, bot = (S.game.kind === 'plan' ? 86 : 10) * u; // the vaults frame inside the safe rect
+    return { x: A.x, y: top, w: A.w, h: A.y1 - top - bot };
   }
   function camera(dt) {
     const B = stage(), P = playRect(), g = S.game;
@@ -411,21 +411,21 @@ export function createWonder(env) {
 
   const fmt = (s) => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   function drawHUD() {
-    const g = S.game, z = env.size(), u = ui.u, pad = 10 * u, st = g.stats(), L = S.level;
+    const g = S.game, A = ui.A, u = ui.u, pad = 10 * u, st = g.stats(), L = S.level, X0 = A.x + pad, Y0 = A.y + pad;
     ui.calm = env.save().calm;
-    ui.button('wv:quit', '', pad, pad, 44 * u, 44 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 14 * u });
+    ui.button('wv:quit', '', X0, Y0, 44 * u, 44 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 14 * u });
     // right: eggs home (per vault) and the clock (or the attempt count)
     const eggsTxt = st.per.map((p) => `${p.saved}/${p.target}`).join('  '), right = g.kind === 'plan' ? `Try ${st.attempts}` : fmt(g.timeLeft);
-    const ew = ui.measure(eggsTxt, 17 * u), rw = ui.measure(g.kind === 'plan' ? 'Try 88' : '0:00', 17 * u), cw = 30 * u + ew + 14 * u + rw + 14 * u, cx = z.W - pad - cw, cy = pad + 22 * u;
+    const ew = ui.measure(eggsTxt, 17 * u), rw = ui.measure(g.kind === 'plan' ? 'Try 88' : '0:00', 17 * u), cw = 30 * u + ew + 14 * u + rw + 14 * u, cx = A.x1 - pad - cw, cy = Y0 + 22 * u;
     ui.glass(cx, cy - 19 * u, cw, 38 * u);
     drawEggIcon(ctx, cx + 17 * u, cy, 11 * u, 'ok');
     ui.text(eggsTxt, cx + 30 * u, cy + 0.5 * u, { size: 17 * u, color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'wv:eggs' });
     ui.text(right, cx + cw - 14 * u, cy + 0.5 * u, { size: 17 * u, align: 'right', color: g.timeLimit && g.timeLeft < 10 ? '#ff8a6a' : '#ffe9a8', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'wv:clock' });
-    const tl = pad + 44 * u + 10 * u, trr = cx - 10 * u;
+    const tl = X0 + 44 * u + 10 * u, trr = cx - 10 * u;
     if (trr - tl > 70 * u) ui.text(L.name, (tl + trr) / 2, cy + 0.5 * u, { size: 19 * u, align: 'center', color: '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 4 * u, shadow: 'rgba(30,14,4,0.6)', tag: 'wv:name', maxW: trr - tl });
     // plan: HATCH / REWIND and the stopped clock
     if (g.kind === 'plan' && !S.card) {
-      const bw = Math.min(250 * u, z.W - 110 * u), bh = 60 * u, bx = z.W / 2 - bw / 2 + 22 * u, by = z.H - bh - 14 * u;
+      const bw = Math.min(250 * u, A.w - 110 * u), bh = 60 * u, bx = A.cx - bw / 2 + 22 * u, by = A.y1 - bh - 14 * u;
       drawStopClock(ctx, bx - 34 * u, by + bh * 0.45, 40 * u, g.phase === 'plan');
       ui.record({ x: bx - 56 * u, y: by + bh * 0.45 - 22 * u, w: 44 * u, h: 44 * u }, 'wv:clockicon');
       if (g.phase === 'plan') ui.button('wv:hatch', 'HATCH', bx, by, bw, bh, { kind: 'primary', shimmer: S.touched, icon: ICON.play, size: 26 * u, round: 18 * u });
@@ -433,11 +433,11 @@ export function createWonder(env) {
     }
     // the tip: one line at the start, gone on the first touch
     if (S.tipT > 0 && L.tip && !S.card) {
-      const a = clamp(S.tipT / 0.5, 0, 1) * clamp(S.t / 0.4, 0, 1), ts = 14 * u, mw = Math.min(z.W - 28 * u, 520 * u), lines = wrapText(L.tip, ts, mw - 28 * u);
-      const h = lines.length * ts * 1.3 + 16 * u, w = Math.max(...lines.map((l) => ui.measure(l, ts))) + 28 * u, x = z.W / 2 - w / 2, y = 66 * u;
+      const a = clamp(S.tipT / 0.5, 0, 1) * clamp(S.t / 0.4, 0, 1), ts = 14 * u, mw = Math.min(A.w - 28 * u, 520 * u), lines = wrapText(L.tip, ts, mw - 28 * u);
+      const h = lines.length * ts * 1.3 + 16 * u, w = Math.max(...lines.map((l) => ui.measure(l, ts))) + 28 * u, x = A.cx - w / 2, y = A.y + 66 * u;
       ctx.save(); ctx.globalAlpha = a; ui.aBase = a;
       ui.glass(x, y, w, h, { r: 14 * u });
-      lines.forEach((l, i) => ui.text(l, z.W / 2, y + 8 * u + ts * 0.65 + i * ts * 1.3, { size: ts, align: 'center', color: '#fff', tag: 'wv:tip' + i, group: 'wv:tip' }));
+      lines.forEach((l, i) => ui.text(l, A.cx, y + 8 * u + ts * 0.65 + i * ts * 1.3, { size: ts, align: 'center', color: '#fff', tag: 'wv:tip' + i, group: 'wv:tip' }));
       ui.aBase = 1; ctx.restore();
     }
   }
@@ -449,23 +449,23 @@ export function createWonder(env) {
   }
 
   function drawCard() {
-    const g = S.game, z = env.size(), u = ui.u, win = S.card === 'win', st = g.stats(), stars = g.stars(), L = S.level;
+    const g = S.game, z = env.size(), A = ui.A, u = ui.u, win = S.card === 'win', st = g.stats(), stars = g.stars(), L = S.level;
     const a = clamp(S.cardT / 0.25, 0, 1);
     ctx.fillStyle = `rgba(10,6,20,${0.5 * a})`; ctx.fillRect(0, 0, z.W, z.H);
-    const w = Math.min(330 * u, z.W - 28 * u), h = (win ? 268 : 220) * u, x = z.W / 2 - w / 2, y = z.H / 2 - h / 2 + (1 - a) * 20 * u;
+    const w = Math.min(330 * u, A.w - 28 * u), h = (win ? 268 : 220) * u, x = A.cx - w / 2, y = Math.max(A.y + 24 * u, A.cy - h / 2) + (1 - a) * 20 * u;
     ctx.save(); ctx.globalAlpha = a; ui.aBase = a;
     ui.frame(x, y, w, h, {});
-    ui.ribbon(win ? L.name : 'So close!', z.W / 2, y - 16 * u, Math.min(w - 20 * u, 270 * u), 40 * u, { color: win ? '#e8503a' : '#6c7aa0', size: 21 * u, tag: 'wv:cardtitle' });
+    ui.ribbon(win ? L.name : 'So close!', A.cx, y - 16 * u, Math.min(w - 20 * u, 270 * u), 40 * u, { color: win ? '#e8503a' : '#6c7aa0', size: 21 * u, tag: 'wv:cardtitle' });
     let cy = y + 62 * u;
     if (win) {
-      for (let i = 0; i < 3; i++) { const on = i < stars && S.cardT > 0.35 + i * 0.28, p = on ? clamp((S.cardT - 0.35 - i * 0.28) / 0.25, 0, 1) : 1; drawStar(ctx, z.W / 2 + (i - 1) * 62 * u, cy + (i === 1 ? -6 * u : 0), (i === 1 ? 29 : 24) * u * (on ? 0.7 + 0.3 * (1 + 0.6 * Math.sin(p * Math.PI)) * 1 : 1), on, p); }
-      ui.record({ x: z.W / 2 - 90 * u, y: cy - 36 * u, w: 180 * u, h: 66 * u }, 'wv:stars');
+      for (let i = 0; i < 3; i++) { const on = i < stars && S.cardT > 0.35 + i * 0.28, p = on ? clamp((S.cardT - 0.35 - i * 0.28) / 0.25, 0, 1) : 1; drawStar(ctx, A.cx + (i - 1) * 62 * u, cy + (i === 1 ? -6 * u : 0), (i === 1 ? 29 : 24) * u * (on ? 0.7 + 0.3 * (1 + 0.6 * Math.sin(p * Math.PI)) * 1 : 1), on, p); }
+      ui.record({ x: A.cx - 90 * u, y: cy - 36 * u, w: 180 * u, h: 66 * u }, 'wv:stars');
       cy += 56 * u;
     }
     const line = g.kind === 'plan' ? (win ? `Solved on try ${st.attempts}` : 'The eggs did not make it') : `${st.saved} of ${st.total} home`;
-    ui.text(line, z.W / 2, cy, { size: 19 * u, align: 'center', color: '#5a3416', tag: 'wv:cardline', maxW: w - 30 * u });
+    ui.text(line, A.cx, cy, { size: 19 * u, align: 'center', color: '#5a3416', tag: 'wv:cardline', maxW: w - 30 * u });
     const sub = win ? (stars === 3 ? 'Perfect!' : g.kind === 'plan' ? `3 stars: solve it in ${(L.wonder.par || [2])[0]} tries` : st.broken ? '2 stars: lose no egg' : '3 stars: not a single crack') : g.kind === 'twin' ? 'Save an egg from each vault' : `Bring ${st.target} home`;
-    ui.text(sub, z.W / 2, cy + 26 * u, { size: 14 * u, align: 'center', color: '#8a6238', tag: 'wv:cardsub', maxW: w - 30 * u });
+    ui.text(sub, A.cx, cy + 26 * u, { size: 14 * u, align: 'center', color: '#8a6238', tag: 'wv:cardsub', maxW: w - 30 * u });
     const by = y + h - 70 * u, bh = 52 * u, gap = 10 * u, bw = (w - 36 * u - gap) / 2, hasNext = win && WONDER_LEVELS.indexOf(L) < WONDER_LEVELS.length - 1;
     ui.button('wv:quit', 'Vaults', x + 18 * u, by, bw, bh, { kind: 'secondary', icon: ICON.grid, size: 17 * u });
     if (hasNext) ui.button('wv:next', 'Next', x + 18 * u + bw + gap, by, bw, bh, { kind: 'primary', icon: ICON.play, size: 19 * u, shimmer: true });
@@ -475,8 +475,10 @@ export function createWonder(env) {
 
   // ---------------------------------------------------------------- the Extras screen (menu): Wonder Vaults + Practice
   const TILE = { planet: '#5a6ad8', plan: '#3f9fd0', mama: '#d8862a', twin: '#3fa86a', hatch: '#e0a81c' };
+  // Bonus first (the Wonder Vaults, with their stars), then Practice as its own section at the bottom, under its own
+  // heading, on the same tile kit as the level map. The whole block is centred in the safe rect below the header.
   function drawExtras() {
-    const z = env.size(), u = ui.u, pad = 14 * u, t = env.time(), sv = env.save();
+    const z = env.size(), A = ui.A, u = ui.u, pad = 14 * u, t = env.time(), sv = env.save();
     ui.calm = sv.calm;
     const bg = ctx.createLinearGradient(0, 0, 0, z.H);
     bg.addColorStop(0, '#1c1440'); bg.addColorStop(1, '#3a2152');
@@ -484,42 +486,53 @@ export function createWonder(env) {
     ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 16 * u; ctx.lineCap = 'round';
     for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(z.W * 0.86, z.H * 0.9, Math.min(z.W, z.H) * (0.22 + 0.15 * i), 2.4 + i * 0.5 + (sv.calm ? 0 : t * 0.03 * (i % 2 ? -1 : 1)), 5.6 + i * 0.4 + (sv.calm ? 0 : t * 0.03 * (i % 2 ? -1 : 1))); ctx.stroke(); }
     ctx.restore();
-    const hy = pad + 23 * u;
-    ui.button('back', '', pad, pad, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
+    const X0 = A.x + pad, X1 = A.x1 - pad, Y0 = A.y + pad, hy = Y0 + 23 * u;
+    ui.button('back', '', X0, Y0, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
     const total = WONDER_LEVELS.reduce((a, L) => a + starsOf(L.key), 0), starTxt = `${total} / ${WONDER_LEVELS.length * 3}`, stw = ui.measure(starTxt, 17 * u);
-    const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = z.W - pad - chipW;
+    const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = X1 - chipW;
     ui.glass(chipX, hy - 18 * u, chipW, 36 * u);
     drawStar(ctx, chipX + 20 * u, hy, 9.5 * u, true);
-    ui.text(starTxt, z.W - pad - 12 * u, hy + 0.5 * u, { size: 17 * u, align: 'right', color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'extras:stars' });
-    const tl = pad + 68 * u, trr = chipX - 22 * u;
+    ui.text(starTxt, X1 - 12 * u, hy + 0.5 * u, { size: 17 * u, color: '#fff', align: 'right', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'extras:stars' });
+    const tl = X0 + 68 * u, trr = chipX - 22 * u;
     ui.ribbon('Extras', (tl + trr) / 2, hy - 19 * u, clamp(140 * u, 90 * u, trr - tl), 36 * u, { color: '#8a5ad8', size: 21 * u, tag: 'extras:title' });
-    const labBlock = 0; // Practice is a tile in the same grid as the vaults
-    // section: Wonder Vaults (BONUS)
-    let y = 74 * u;
     const head = (txt, yy, tag, chip) => {
-      const tw = ui.measure(txt, 17 * u), cw2 = chip ? ui.measure(chip, 11 * u) + 16 * u : 0, x0 = z.W / 2 - (tw + (chip ? 8 * u + cw2 : 0)) / 2;
+      const tw = ui.measure(txt, 17 * u), cw2 = chip ? ui.measure(chip, 11 * u) + 16 * u : 0, x0 = A.cx - (tw + (chip ? 8 * u + cw2 : 0)) / 2;
       ui.text(txt, x0, yy, { size: 17 * u, color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, tag });
       if (chip) { ui.roundRect(x0 + tw + 8 * u, yy - 9 * u, cw2, 18 * u, 9 * u); ctx.fillStyle = '#ffd24a'; ctx.fill(); ui.text(chip, x0 + tw + 8 * u + cw2 / 2, yy + 0.5 * u, { size: 11 * u, align: 'center', color: '#5a2a08', tag: tag + ':chip' }); }
     };
+    // sizes: the bonus grid, then one Practice tile (same size) under its own heading
+    const n = WONDER_LEVELS.length, wide = A.w > A.h, cols = wide ? n : A.w < 420 ? 2 : 3, rows = Math.ceil(n / cols), gap = 10 * u;
+    const headH = 28 * u, secGap = 22 * u, top0 = A.y + 74 * u, bot = A.y1 - pad;
+    const cw = Math.min((A.w - 2 * pad - gap * (cols - 1)) / cols, 150 * u);
+    const room = bot - top0 - 2 * headH - secGap, chh = Math.max(40 * u, Math.min((room - gap * rows) / (rows + 1), cw * 0.92, 150 * u));
+    const blockH = headH + rows * chh + (rows - 1) * gap + secGap + headH + chh;
+    let y = top0 + Math.max(0, (bot - top0 - blockH) / 2);
     head('Wonder Vaults', y + 9 * u, 'extras:wv', 'BONUS');
-    y += 28 * u;
-    const ITEMS = [...WONDER_LEVELS, { practice: true, key: '_practice', name: 'Practice', pitch: 'Try any villain or power' }], n = ITEMS.length, cols = z.W > z.H ? n : z.W < 420 ? 2 : 3, rows = Math.ceil(n / cols), gap = 10 * u;
-    const cw = Math.min((z.W - 2 * pad - gap * (cols - 1)) / cols, 150 * u), room = z.H - y - pad - labBlock, chh = Math.min((room - gap * (rows - 1)) / rows, cw * 0.92, 150 * u);
-    ITEMS.forEach((L, i) => {
-      const r = Math.floor(i / cols), inRow = r === rows - 1 ? n - cols * (rows - 1) : cols, c = i - r * cols;
-      const rowW = inRow * cw + (inRow - 1) * gap, x = z.W / 2 - rowW / 2 + c * (cw + gap), ty = y + r * (chh + gap), s = L.practice ? 0 : starsOf(L.key), face = ui.faceOf(L.practice ? '#3fae4a' : TILE[L.key] || '#8a5ad8');
-      const b = ui.button(L.practice ? 'practice' : 'wv:play:' + L.key, '', x, ty, cw, chh, { face, keepFace: true, round: 18 * u });
-      const fy = ty + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mx = x + cw / 2, grp = L.practice ? 'btn:practice' : 'btn:wv:play:' + L.key;
+    y += headH;
+    const tile = (L, i, x, ty, w) => {
+      const s = L.practice ? 0 : starsOf(L.key), face = ui.faceOf(L.practice ? '#3fae4a' : TILE[L.key] || '#8a5ad8');
+      const b = ui.button(L.practice ? 'practice' : 'wv:play:' + L.key, '', x, ty, w, chh, { face, keepFace: true, round: 18 * u });
+      const fy = ty + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mx = x + w / 2, grp = L.practice ? 'btn:practice' : 'btn:wv:play:' + L.key;
       const tall = fh > 96 * u;
       if (L.practice) ICON.grid(ctx, mx, fy + fh * (tall ? 0.24 : 0.27), Math.min(30 * u, fh * 0.3));
       else ui.text(String(i + 1), mx, fy + fh * (tall ? 0.24 : 0.27), { size: Math.min(30 * u, fh * 0.3), align: 'center', color: '#fff', stroke: face.line, strokeW: 4 * u, shadow: face.line, group: grp, tag: 'wvnum' + i });
-      ui.text(L.name, mx, fy + fh * (tall ? 0.5 : 0.56), { size: Math.min(15 * u, fh * 0.15), align: 'center', color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname' + i, maxW: cw - 12 * u });
-      if (tall) ui.text(L.pitch, mx, fy + fh * 0.66, { size: 10.5 * u, align: 'center', color: 'rgba(255,255,255,0.85)', group: grp, tag: 'wvpitch' + i, maxW: cw - 12 * u });
+      ui.text(L.name, mx, fy + fh * (tall ? 0.5 : 0.56), { size: Math.min(15 * u, fh * 0.15), align: 'center', color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname' + i, maxW: w - 12 * u });
+      if (tall) ui.text(L.pitch, mx, fy + fh * 0.66, { size: 10.5 * u, align: 'center', color: 'rgba(255,255,255,0.85)', group: grp, tag: 'wvpitch' + i, maxW: w - 12 * u });
       if (L.practice) return;
-      const sr = Math.min(8.5 * u, cw / 12, fh * 0.1), sy = fy + fh * 0.85;
+      const sr = Math.min(8.5 * u, w / 12, fh * 0.1), sy = fy + fh * 0.85;
       ui.roundRect(mx - sr * 4.3, sy - sr * 1.45, sr * 8.6, sr * 2.9, sr * 1.45); ctx.fillStyle = 'rgba(30,10,0,0.3)'; ctx.fill();
       for (let q = 0; q < 3; q++) drawStar(ctx, mx + (q - 1) * sr * 2.65, sy, sr, q < s);
+    };
+    WONDER_LEVELS.forEach((L, i) => {
+      const r = Math.floor(i / cols), inRow = r === rows - 1 ? n - cols * (rows - 1) : cols, c = i - r * cols;
+      const rowW = inRow * cw + (inRow - 1) * gap;
+      tile(L, i, A.cx - rowW / 2 + c * (cw + gap), y + r * (chh + gap), cw);
     });
+    y += rows * chh + (rows - 1) * gap + secGap;
+    // section: Practice (every villain and power in a sandbox vault)
+    head('Practice', y + 9 * u, 'extras:practice');
+    y += headH;
+    tile({ practice: true, key: '_practice', name: 'Practice', pitch: 'Try any villain or power' }, n, A.cx - cw / 2, y, cw);
   }
 
   return { start, has: (k) => !!wonderByKey(k), update, render, pointerDown, pointerMove, pointerUp, press, drawExtras, resize() { S.snap = true; if (S.backdrop) { const z = env.size(); S.backdrop.resize(z.W, z.H, z.DPR); } }, get state() { return S; }, LEVELS: WONDER_LEVELS, toScreen, starsOf };

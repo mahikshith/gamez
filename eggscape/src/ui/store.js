@@ -454,7 +454,9 @@ function skinItem(id, st) {
 export function drawStore(ui, ctx, W, H, state) {
   const { wallet, t = 0, adReady = false, adCooldownLeft = 0, flash = null, tab = 'boosters' } = state;
   const st = { wallet, t, flash };
-  const { cols, s } = planLayout(W, H, ui.u);
+  // the room paints edge to edge (W x H); everything in it lays out in the safe rect (state.area, else the whole screen)
+  const AR = state.area || { x: 0, y: 0, w: W, h: H }, OX = AR.x, OY = AR.y, AW = AR.w, AH = AR.h;
+  const { cols, s } = planLayout(AW, AH, ui.u);
   const pad = D.pad * s;
 
   // the shop's own room: deep violet, a soft light from above, slow rays (still when reduced motion is on)
@@ -479,8 +481,8 @@ export function drawStore(ui, ctx, W, H, state) {
 
   // ---- header: back, title ribbon, balance
   const bs = 46 * s;
-  ui.button('back', '', pad, pad, bs, bs, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * s });
-  const headCy = pad + bs / 2 - 2 * s;
+  ui.button('back', '', OX + pad, OY + pad, bs, bs, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * s });
+  const headCy = OY + pad + bs / 2 - 2 * s;
 
   const coinFl = flash && (flash.id === 'coins' || flash.id === 'ad') && flash.t < 0.9 ? 1 - flash.t / 0.9 : 0;
   // the balance rolls to its new value (a purchase counts down, an ad reward counts up)
@@ -492,17 +494,17 @@ export function drawStore(ui, ctx, W, H, state) {
   const tw = ui.measure(String(wallet.coins).replace(/\d/g, '0'), balSize);
   const ph = 38 * s;
   const pw = 7 * s + cr * 2 + 6 * s + tw + 13 * s;
-  const px = W - pad - pw, py = headCy - ph / 2;
+  const px = OX + AW - pad - pw, py = headCy - ph / 2;
   ui.glass(px, py, pw, ph, { border: coinFl ? `rgba(255,226,120,${0.5 + 0.5 * coinFl})` : 'rgba(255,224,170,0.5)', a: 'rgba(40,24,80,0.9)', b: 'rgba(20,10,46,0.9)' });
   drawCoin(ctx, px + 7 * s + cr, py + ph / 2, cr * (1 + 0.15 * coinFl), t);
   ui.record({ x: px + 7 * s, y: py + ph / 2 - cr, w: cr * 2, h: cr * 2 }, 'store:coinicon', 'store:balance');
   ui.num(balStr, px + 7 * s + cr * 2 + 6 * s, py + ph / 2, { size: balSize, tag: 'store:balance', group: 'store:balance' });
-  const rl = pad + bs + 22 * s, rr = px - 22 * s;
+  const rl = OX + pad + bs + 22 * s, rr = px - 22 * s;
   ui.ribbon('Shop', (rl + rr) / 2, headCy - 19 * s, Math.max(60 * s, Math.min(150 * s, rr - rl)), 38 * s, { s, color: '#f0a01c', size: 24 * s, tag: 'store:title' });
 
   // ---- tabs
-  const tabW = Math.min(150 * s, (W - 2 * pad - 8 * s) / 2), tabH = (D.tabH + 2) * s;
-  const tabX = W / 2 - tabW - 4 * s, tabY = D.tabY * s;
+  const tabW = Math.min(150 * s, (AW - 2 * pad - 8 * s) / 2), tabH = (D.tabH + 2) * s;
+  const tabX = OX + AW / 2 - tabW - 4 * s, tabY = OY + D.tabY * s;
   for (const [i, [id, label]] of [['boosters', 'Boosters'], ['skins', 'Skins']].entries()) {
     const on = tab === id;
     ui.button('tab:' + id, label, tabX + i * (tabW + 8 * s), tabY, tabW, tabH, { kind: on ? 'gold' : 'hud', size: 17 * s });
@@ -510,7 +512,7 @@ export function drawStore(ui, ctx, W, H, state) {
 
   // ---- body
   const ch = D.cardH * s, gap = D.gap * s;
-  const bodyTop = D.top * s;
+  const bodyTop = OY + D.top * s;
   const items = tab === 'skins' ? SKIN_ORDER.map((id) => skinItem(id, st)) : BOOSTER_ORDER.map((id) => boosterItem(id, st));
   const adLabelFull = `Watch ad: +${AD_REWARDS.freeCoins.coins} coins`;
   const cooling = adCooldownLeft > 0;
@@ -522,20 +524,20 @@ export function drawStore(ui, ctx, W, H, state) {
   });
 
   if (cols === 1) {
-    const cw = Math.min(W - 2 * pad, 520 * s);
+    const cw = Math.min(AW - 2 * pad, 520 * s);
     const adH = D.adH * s, adGap = D.adGap * s;
     const total = 5 * ch + 4 * gap + adGap + adH;
-    const avail = H - bodyTop - pad;
+    const avail = OY + AH - bodyTop - pad;
     const y0 = bodyTop + Math.max(0, (avail - total) / 2);
-    const x0 = W / 2 - cw / 2;
+    const x0 = OX + AW / 2 - cw / 2;
     items.forEach((it, i) => drawCard(ui, ctx, it, x0, y0 + i * (ch + gap), cw, ch, s, t, true));
     adBtn(x0, y0 + 5 * ch + 4 * gap + adGap, cw, adH);
   } else {
-    const cw = Math.min((W - 2 * pad - gap) / 2, 440 * s);
+    const cw = Math.min((AW - 2 * pad - gap) / 2, 440 * s);
     const total = 3 * ch + 2 * gap;
-    const avail = H - bodyTop - pad;
+    const avail = OY + AH - bodyTop - pad;
     const y0 = bodyTop + Math.max(0, (avail - total) / 2);
-    const x0 = W / 2 - cw - gap / 2;
+    const x0 = OX + AW / 2 - cw - gap / 2;
     items.forEach((it, i) => drawCard(ui, ctx, it, x0 + (i % 2) * (cw + gap), y0 + Math.floor(i / 2) * (ch + gap), cw, ch, s, t, false));
     // 6th cell: the free-coins ad
     const ax = x0 + cw + gap, ay = y0 + 2 * (ch + gap);

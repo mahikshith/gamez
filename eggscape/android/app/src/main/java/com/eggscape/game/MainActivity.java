@@ -8,7 +8,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.DisplayCutout;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -26,6 +28,8 @@ public class MainActivity extends Activity {
     private WebView web;
     private long lastBack = 0;
     private Vibrator vib;
+    private String lastSafe = "";
+    private WindowInsets lastInsets;
 
     /** JS bridge: window.EggApp.vibrate(ms) */
     public class Bridge {
@@ -74,11 +78,55 @@ public class MainActivity extends Activity {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 return loader.shouldInterceptRequest(r.getUrl());
             }
+            @Override public void onPageFinished(WebView v, String url) { lastSafe = ""; pushSafe(); }
         });
+        // the safe area: every insets change (rotation, cutout, gesture nav switched on) is handed to the page
+        web.setOnApplyWindowInsetsListener((v, ins) -> { lastInsets = ins; pushSafe(); return v.onApplyWindowInsets(ins); });
+        web.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> { if (r - l != or - ol || bt - t != ob - ot) v.post(this::pushSafe); });
         setContentView(web);
         hideBars();
         if (b == null) web.loadUrl("https://appassets.androidplatform.net/index.html");
         else web.restoreState(b);
+    }
+
+    /**
+     * The safe insets in CSS px. The bars are hidden (immersive) and the page draws into the cutout, so this uses the
+     * room the bars and the cutout WOULD take, plus the system gesture zones at the bottom and the sides (touches there
+     * are eaten by back / home gestures). API 30+: getInsetsIgnoringVisibility(systemBars | displayCutout) and
+     * getInsets(systemGestures). API 28-29: the cutout's safe insets plus a 24 dp bottom. Older: a status-bar-ish top.
+     */
+    private int[] safeInsetsPx() {
+        int t = 0, b = 0, l = 0, r = 0;
+        WindowInsets ins = lastInsets != null ? lastInsets : web.getRootWindowInsets();
+        float d = getResources().getDisplayMetrics().density;
+        if (ins != null && Build.VERSION.SDK_INT >= 30) {
+            android.graphics.Insets bars = ins.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            android.graphics.Insets gest = ins.getInsets(WindowInsets.Type.systemGestures());
+            t = bars.top; l = Math.max(bars.left, 0); r = Math.max(bars.right, 0);
+            b = Math.max(bars.bottom, gest.bottom);
+            // the side gesture zones (back swipe) only take swipes that start at the very edge, so a tap there still works:
+            // the sides are padded only where a bar or the cutout sits (landscape), never by the ~30 dp gesture strips
+        } else if (ins != null && Build.VERSION.SDK_INT >= 28) {
+            DisplayCutout c = ins.getDisplayCutout();
+            if (c != null) { t = c.getSafeInsetTop(); b = c.getSafeInsetBottom(); l = c.getSafeInsetLeft(); r = c.getSafeInsetRight(); }
+            b = Math.max(b, Math.round(24 * d));
+            if (t == 0) t = Math.round(24 * d);
+        } else {
+            int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            t = id > 0 ? getResources().getDimensionPixelSize(id) : Math.round(24 * d);
+            b = Math.round(16 * d);
+        }
+        // the WebView's CSS px are dp: divide by density
+        return new int[] { Math.round(t / d), Math.round(b / d), Math.round(l / d), Math.round(r / d) };
+    }
+
+    private void pushSafe() {
+        if (web == null) return;
+        int[] s = safeInsetsPx();
+        String js = "window.__eggSafe={t:" + s[0] + ",b:" + s[1] + ",l:" + s[2] + ",r:" + s[3] + "};";
+        if (js.equals(lastSafe)) return;
+        lastSafe = js;
+        web.evaluateJavascript("(function(){" + js + "try{window.dispatchEvent(new Event('eggsafe'))}catch(e){}})()", null);
     }
 
     private void hideBars() {
@@ -88,7 +136,9 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
     }
 
-    @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) hideBars(); }
+    @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) { hideBars(); web.post(this::pushSafe); } }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration c) { super.onConfigurationChanged(c); lastSafe = ""; lastInsets = null; web.post(this::pushSafe); }
 
     @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); web.saveState(o); }
 

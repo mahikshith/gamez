@@ -67,10 +67,15 @@ export class UI {
     this.faceOf = faceOf;
   }
 
-  resize(w, h) {
+  // safe: insets in CSS px {t, b, l, r} (camera cutout, status/gesture bars). Backdrops paint full-bleed; every widget
+  // lays out inside the safe rect this.A = { x, y, w, h, x1, y1, cx, cy }.
+  resize(w, h, safe) {
     this.w = w;
     this.h = h;
-    this.u = Math.max(0.78, Math.min(1.5, Math.min(w, h) / 420));
+    const s = (this.safe = safe || this.safe || { t: 0, b: 0, l: 0, r: 0 });
+    const A = (this.A = { x: s.l, y: s.t, w: Math.max(200, w - s.l - s.r), h: Math.max(200, h - s.t - s.b) });
+    A.x1 = A.x + A.w; A.y1 = A.y + A.h; A.cx = A.x + A.w / 2; A.cy = A.y + A.h / 2;
+    this.u = Math.max(0.78, Math.min(1.5, Math.min(A.w, A.h) / 420));
   }
 
   begin() {
@@ -478,8 +483,9 @@ export class UI {
         const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
         if (ox > 1 && oy > 1) out.push([a.tag, b.tag]);
       }
-    // offscreen check
-    for (const a of R) if (a.x < -1 || a.y < -1 || a.x + a.w > this.w + 1 || a.y + a.h > this.h + 1) out.push([a.tag, 'OFFSCREEN']);
+    // offscreen check: nothing recorded (text, buttons, chips) may leave the safe rect (under a camera cutout or a gesture bar)
+    const A = this.A || { x: 0, y: 0, x1: this.w, y1: this.h };
+    for (const a of R) if (a.x < A.x - 1 || a.y < A.y - 1 || a.x + a.w > A.x1 + 1 || a.y + a.h > A.y1 + 1) out.push([a.tag, 'OFFSCREEN']);
     return out;
   }
 
