@@ -6,6 +6,7 @@
 import { TAU, RING_TH } from '../sim/geom.js';
 import { KC } from '../sim/kingcrab.js';
 import { ATTACK_NAME } from '../sim/boss.js';
+import { bossPip } from './boss.js';
 import { dizzyStars, spiralEye, boltStroke } from './status.js';
 import { limb, blinkAt } from './castkit.js';
 
@@ -249,6 +250,7 @@ function drawArm(ctx, sim, K, C, t, k, part, ice = false) {
   pxSpace(ctx, tip.x, tip.y, k, () => {
     ctx.rotate(-A.dir);
     ctx.globalAlpha *= C.ph === 'warp' ? clamp(C.t / 1.1, 0, 1) : 1;
+    ctx.scale(1.3, 1.3); // draw-only: bigger at play scale, the collider is unchanged
     drawClawHead(ctx, k, t, ice ? 0.3 : clawOpen(C, t), part === 'front' ? 'front' : held ? 'back' : 'all', { flash: C.ph === 'hurt' ? 1 : 0, ice });
     if (ice && part !== 'front') iceShards(ctx, k, -0.2 * k, 0, 0.32 * k, C.id * 3 + 1);
     if (C.ph === 'bonk' && part !== 'front') dizzyStars(ctx, -0.2 * k, 0, 0.3 * k, 0.1 * k, t, { n: 3, size: Math.max(4, k * 0.1), tilt: 0 });
@@ -525,14 +527,8 @@ export function drawKingBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t) {
   const stuck = K.claws.some((C) => C.ph === 'stuck'), held = K.claws.some((C) => C.eid), warn = B.atk && B.atk.ph === 'warn';
   for (let i = 0; i < n; i++) {
     const sx = bx + i * (sw + gap);
-    ui.roundRect(sx, by, sw, bh, bh / 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fill();
-    if (i < K.hp) {
-      ui.roundRect(sx, by, sw, bh, bh / 2);
-      ctx.fillStyle = stuck ? (Math.floor(t * 6) % 2 ? '#ffd63c' : '#ffb03c') : warn ? '#ff6a3d' : '#ff9a3d';
-      ctx.fill();
-    }
+    bossPip(ctx, ui, sx, by, sw, bh, null);
+    if (i < K.hp) bossPip(ctx, ui, sx, by, sw, bh, stuck ? (Math.floor(t * 6) % 2 ? '#ffd63c' : '#ffb03c') : warn ? '#ff6a3d' : '#ff9a3d');
   }
   const label = K.hp <= 0 || K.done ? 'DEFEATED!' : stuck ? 'STUCK! HIT IT' : held ? 'GRABBED AN EGG!'
     : warn ? (ATTACK_NAME[B.atk.name] || '').toUpperCase() + '!' : 'PINCH A CLAW!';

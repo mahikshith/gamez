@@ -499,6 +499,27 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
 }
 
 // ---------- the phase bar (screen space, under the HUD plate). Returns nothing; records its text for the QA check.
+// a lit, glossy HUD pip (same language as ui.glass: dark body, rim, top light). fill = null draws the empty socket.
+export function bossPip(ctx, ui, x, y, w, h, fill) {
+  const r = h / 2, u = ui.u;
+  ctx.save();
+  ui.roundRect(x, y, w, h, r);
+  if (!fill) { // recessed socket: dark, a shadow along the top edge, a faint lower lip
+    const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(8,3,14,0.62)'); g.addColorStop(1, 'rgba(70,52,86,0.38)');
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = Math.max(1, u); ctx.strokeStyle = 'rgba(255,232,190,0.22)'; ctx.stroke();
+    ctx.restore(); return;
+  }
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.clip();
+  const sh = ctx.createLinearGradient(0, y, 0, y + h); // lit top plane, darker underside
+  sh.addColorStop(0, 'rgba(255,255,255,0.42)'); sh.addColorStop(0.45, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(60,15,0,0.38)');
+  ctx.fillStyle = sh; ctx.fillRect(x, y, w, h);
+  ui.roundRect(x + h * 0.28, y + h * 0.1, Math.max(0, w - h * 0.56), h * 0.26, h * 0.13); // gloss streak
+  ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill();
+  ctx.restore();
+  ctx.save(); ui.roundRect(x, y, w, h, r); ctx.lineWidth = Math.max(1, 1.2 * u); ctx.strokeStyle = 'rgba(40,12,0,0.55)'; ctx.stroke(); ctx.restore();
+}
+
 export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   const B = sim.bx && sim.bx.boss;
   if (!B) return;
@@ -523,15 +544,11 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   const warn = B.atk && B.atk.ph === 'warn';
   for (let i = 0; i < n; i++) {
     const sx = bx + i * (sw + gap);
-    ui.roundRect(sx, by, sw, bh, bh / 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fill();
+    bossPip(ctx, ui, sx, by, sw, bh, null);
     const f = i < B.phase ? 1 : i === B.phase ? (i === n - 1 ? 1 : prog) : 0;
     if (f > 0) {
-      ui.roundRect(sx, by, Math.max(bh, sw * f), bh, bh / 2);
       const hot = i === B.phase;
-      ctx.fillStyle = hot ? (warn && Math.floor(t * 8) % 2 ? '#ff6a3d' : '#ff9a3d') : 'rgba(255,154,61,0.45)';
-      ctx.fill();
+      bossPip(ctx, ui, sx, by, Math.max(bh, sw * f), bh, hot ? (warn && Math.floor(t * 8) % 2 ? '#ff6a3d' : '#ff9a3d') : '#b87a45');
     }
   }
   const label = warn ? (ATTACK_NAME[B.atk.name] || '').toUpperCase() + '!' : `PHASE ${B.phase + 1}/${n}`;
@@ -546,14 +563,8 @@ function drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t) {
   const hot = ph === 'trapped' || ph === 'hurt';
   for (let i = 0; i < n; i++) {
     const sx = bx + i * (sw + gap);
-    ui.roundRect(sx, by, sw, bh, bh / 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fill();
-    if (i < F.hp) {
-      ui.roundRect(sx, by, sw, bh, bh / 2);
-      ctx.fillStyle = hot ? (Math.floor(t * 6) % 2 ? '#ffd63c' : '#ffb03c') : ph === 'crouch' ? '#ff6a3d' : '#ff9a3d';
-      ctx.fill();
-    }
+    bossPip(ctx, ui, sx, by, sw, bh, null);
+    if (i < F.hp) bossPip(ctx, ui, sx, by, sw, bh, hot ? (Math.floor(t * 6) % 2 ? '#ffd63c' : '#ffb03c') : ph === 'crouch' ? '#ff6a3d' : '#ff9a3d');
   }
   const label = F.label || (F.hp <= 0 || ph === 'defeated' || ph === 'flee' || ph === 'gone' ? 'DEFEATED!'
     : ph === 'trapped' ? 'TRAPPED! HIT IT' : ph === 'crouch' ? 'POUNCE!' : F.eid ? 'STOLE AN EGG!'

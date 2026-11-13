@@ -618,7 +618,14 @@ function drawOne(ctx, sim, T, t, k, head) {
   if (head) pose = D.pose;
   else {
     if (frozen && D.pose) pose = D.pose; // held still in the ice
-    else { pose = thiefBlend('t' + T.id, thiefPose(T.kind, L.st, t, L.u, T.odo), t, T.ph === 'leap' || T.ph === 'trapped' ? 22 : 9); D.pose = { ...pose }; }
+    else {
+      // carried: its ring turns it round while its own walk is zero (odo still): hold the idle pose, not a frozen mid-stride
+      const moved = D.pa != null && Math.abs(Math.atan2(Math.sin(T.a - D.pa), Math.cos(T.a - D.pa))) > 1e-4, still = D.po != null && Math.abs(T.odo - D.po) < 1e-5;
+      if (moved && still) D.carT = t;
+      D.pa = T.a; D.po = T.odo;
+      if ((L.st === 'prowl' || L.st === 'stalk') && t - (D.carT ?? -9) < 0.12) L.st = 'idle';
+      pose = thiefBlend('t' + T.id, thiefPose(T.kind, L.st, t, L.u, T.odo), t, T.ph === 'leap' || T.ph === 'trapped' ? 22 : 9); D.pose = { ...pose };
+    }
     if (D.fz > 0 && !frozen) D.thawT = t;
     D.fz = T.frozen;
   }

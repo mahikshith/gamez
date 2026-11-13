@@ -189,7 +189,7 @@ export const SPECS = [
     intro: { title: 'Swoop chick', chick: 'swoop', line: 'The blue orb hatches a swoop chick. Tap it once: it flies up through the ring above and tears down a thorn curtain on the way.' },
     rings: [{ mat: 'stone', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'stone', gaps: 2, thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], curtain: 1 }, { mat: 'stone', gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 20, world: 4, theme: 'crystal', name: 'Golem Maze', boss: 'golem', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5, eggKinds: [null, null, 'ostrich'],
-    nest: { w: 3.0 }, bonus: { kind: 'prize' },
+    nest: { w: 3.0, drop: 1.1 }, bonus: { kind: 'prize' },
     bossFight: { kind: 'golem', delay: 4, phases: [
       { attacks: ['stomp', 'shards'], every: 6 },
       { at: { saved: 1, t: 30 }, attacks: ['cage', 'stomp', 'shards'], every: 5 },
@@ -306,7 +306,7 @@ export const SPECS = [
     tip: 'The portal drops eggs past the eagle’s reach, onto the ice. Drill it with the purple chick.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], oneway: 1 }, { mat: 'ice', noGap: true, ice: true }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 35, world: 7, theme: 'vault', name: 'The Rat King', boss: 'ratking', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 6,
-    nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'prize' },
+    nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo', drop: 1.1 }, bonus: { kind: 'prize' },
     rats: { n: 2, delay: 999 },
     bossFight: { kind: 'ratking', delay: 3, den: { a: -60, hp: 4 }, throws: ['curse', 'thorn'], phases: [
       { attacks: [], every: 6 },

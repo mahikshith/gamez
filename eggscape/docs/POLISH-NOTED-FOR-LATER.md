@@ -55,3 +55,8 @@
 - Hen body type to match the strike chicks.
 - Villain face-offs: any level with two or more villains needs a designed face-off (animation and physics).
 - Gecko, thorn-back, chameleon: only in levels with no villain figure (15, 20) or new levels, never added to existing villain levels.
+
+## Owner requests 2026-11-13 09:11 (do after current work)
+- Villain info: an "i" button (and the pause screen) lists every villain in the current level with a portrait and one or two lines on what it does and how to counter it. First-time villain tips vanish too fast: keep them longer or until tapped.
+- Clockwork Spider: it vanishes and reappears elsewhere to fill gaps, with no proper animation. It must visibly crawl to the gap it is going to plug.
+- Clockwork Beetle: the owner could not tell what it does. Make its purpose readable in play (and in the villain info).

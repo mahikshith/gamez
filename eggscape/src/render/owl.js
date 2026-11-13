@@ -7,6 +7,7 @@
 import { TAU } from '../sim/geom.js';
 import { OWL } from '../sim/owl.js';
 import { statusClock, statusDraw, statusKind, dizzyStars, spiralEye } from './status.js';
+import { bossPip } from './boss.js';
 import { clamp, form, spline, blinkAt } from './castkit.js';
 
 const INK = '#1c1108';
@@ -310,9 +311,8 @@ export function drawOwlBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t) {
   const warn = B.atk && B.atk.ph === 'warn';
   for (let i = 0; i < n; i++) {
     const sx = bx + i * (sw + gap);
-    ui.roundRect(sx, by, sw, bh, bh / 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fill();
-    if (i < O.hp) { ui.roundRect(sx, by, sw, bh, bh / 2); ctx.fillStyle = O.jam > 0 ? (Math.floor(t * 6) % 2 ? '#ffd63c' : '#ffb03c') : warn ? '#ff6a3d' : '#ff9a3d'; ctx.fill(); }
+    bossPip(ctx, ui, sx, by, sw, bh, null);
+    if (i < O.hp) bossPip(ctx, ui, sx, by, sw, bh, O.jam > 0 ? (Math.floor(t * 6) % 2 ? '#ffd63c' : '#ffb03c') : warn ? '#ff6a3d' : '#ff9a3d');
   }
   const NAME = { swoop: 'SWOOP!', wind: 'WIND-UP!', gears: 'GEAR BOMB!', gears2: 'GEAR BOMBS!' };
   const label = O.down ? 'BROKEN DOWN!' : O.jam > 0 ? 'JAMMED!' : warn ? NAME[B.atk.name] || 'LOOK OUT!' : 'JAM ITS GEARS!';
