@@ -602,7 +602,7 @@ export function strikeEvent(ev, fx, api) {
     case 'stkReady': audio.play('cluck', { pitch: 2.6, vol: 0.45 }); return true;
     case 'stkFire': api.slow(0.3, 0.4); audio.play('hen_hop', { pitch: 1.6, vol: 0.6 }); return true;
     case 'stkLaunch': {
-      audio.play('cluck', { intensity: 1, pitch: 1.75 }); audio.play('wind_gust', { vol: 0.35, pitch: 2.2 });
+      audio.play('strike_launch'); audio.play('cluck', { intensity: 1, pitch: 1.75, vol: 0.7 });
       fx.whoosh(ev.x, ev.y, ev.tx - ev.x, ev.ty - ev.y);
       fx.dust(ev.x, ev.y - 0.1, 6);
       return true;
@@ -611,6 +611,7 @@ export function strikeEvent(ev, fx, api) {
       const S = STRIKE[ev.id], col = S ? S.col : ['#fff', '#fff', '#fff'];
       if (ev.miss) { audio.play('bubble_pop', { pitch: 0.8 }); popup(ev.x, ev.y + 0.5, 'Missed!', { color: '#ffe0b0', size: 18 }); return true; }
       hitBegin(ev, POST.ang);
+      audio.play('strike_hit', { pitch: ev.boss ? 0.8 : 1 }); if (api.buzz) api.buzz('strike'); // the hero beat; the chick's own effect sound plays with it
       api.hitStop(ev.boss ? 0.12 : 0.08); api.punch(ev.boss ? 0.09 : 0.06, ev.x, ev.y); fx.kick(ev.boss ? 0.55 : 0.4);
       fx.impact(ev.x, ev.y, 0.6, col[2]);
       if (ev.id === 'freeze') { audio.play('glass_crack', { pitch: 0.75 }); audio.play('glass_break', { vol: 0.5, pitch: 1.3 }); fx.wave(ev.x, ev.y, 1.4, '#dff6ff', 0.5, 0.14); fx.chips(ev.x, ev.y, '#cfefff', 12, 3); fx.sparkle(ev.x, ev.y, 10, '#ffffff'); }

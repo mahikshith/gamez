@@ -8,8 +8,18 @@
  *
  * Signal flow
  *   voices -> [ui | world -> worldFilter(underwater)] -> sfx(toggle) ----\
- *   sfx sends -> sfxVerb ----------------------------------------------> master -> compressor -> soft clip (-1.2 dBFS) -> out
- *   music instances (crossfaded) -> duck -> musicBus(-18 dB, toggle) --/
+ *   ring ticks + ring creak -> tick bus (ducked under hero SFX) -> world  |
+ *   sfx sends -> sfxVerb (short, low) ---------------------------------> master -> phone master -> limiter -> soft clip -> out
+ *   music instances (crossfaded) -> duck -> musicBus(-12 dB, toggle) --/
+ *
+ * Phone master (tuned for small phone speakers, which play almost nothing below ~150 Hz):
+ *   high-pass 125 Hz (24 dB/oct) + a "presence" exciter that rebuilds bass notes as their upper harmonics
+ *   (an octave-up rectifier on the 60-250 Hz band, so a bass line still reads), a +3 dB lift at 3 kHz,
+ *   then a tight limiter (+4 dB drive into -6 dBFS, 1 ms attack) and the soft clip.
+ *
+ * Mix hierarchy: hero beats (egg saved / cracked / broken, star, combo, win, fail, unlock, power pickup,
+ * strike launch / hit, the rooster's crow, UI tap) are short, dry and loud, and briefly duck the ring ticks,
+ * the ring creak and the music. Ring ticks are rate-limited and quiet.
  *
  * createAudioEngine(ctx) builds an independent engine on any BaseAudioContext
  * (OfflineAudioContext included); tools/audio/render.mjs uses it to render WAVs.
@@ -18,11 +28,16 @@
 
 const MAX_VOICES = 24;
 const MERGE_WINDOW = 0.03;      // s: same-name plays inside this window merge
-const MUSIC_BUS_DB = -18;       // music fader relative to the SFX fader (both feed the limiter)
+const MUSIC_BUS_DB = -12;       // music fader relative to the SFX fader (both feed the limiter)
+const MUSIC_TRIM_DB = -7;       // loop trim: with the bass moved up where a phone plays it, -7 dB keeps the music ~8 dB under the hero SFX in the phone band (qa/sound/after.md)
+const RING_TICK_GAP = 0.075;    // s: at most ~13 ring ticks a second, however many rings turn
+const HERO_DUCK = 0.35;         // ring ticks / creak gain while a hero SFX sounds
+const HERO_HOLD = 0.35;         // s: how long a hero SFX holds that duck
 const XFADE = 1.0;              // s: music crossfade
 const LOOKAHEAD = 0.25;         // s: music scheduler horizon
 const TICK_MS = 50;
 const CEILING = 0.87;           // soft-clip ceiling, about -1.2 dBFS
+const POST_DB = 3.4;            // DynamicsCompressor auto make-up gain for the limiter settings below (cancelled)
 
 export const SFX_NAMES = [
   'ui_tap', 'ui_back', 'ui_open', 'grab', 'release',
@@ -34,22 +49,35 @@ export const SFX_NAMES = [
   'splash', 'lava_sizzle', 'thunder', 'wind_gust', 'motor_tick', 'rewind', 'score_tick', 'countdown', 'squish',
   'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up', // the hen's win/fail routines (render/cheer.js)
   'ring_tick', 'egg_land', 'near_miss', 'hud_pop', // game feel: ring detents, weighty landings, a close shave, a prize reaching the HUD
+  'power_pickup', 'strike_launch', 'strike_hit', 'crow', // hero beats: an orb taken, Chick Strike, the rooster ally
+  'wing_bat', 'decoy_peep', 'goose_honk', 'power_use', // the hen bats the strike chick off her wing, the decoy, the goose ally, a power waking up
+  // villain voices: each family gets a signature, so you can hear who is acting without looking
+  'snake_hiss', 'snake_strike', 'eagle_screech', 'eagle_dive', 'rat_squeak', 'weasel_chitter', 'tongue_lick', 'fire_breath',
+  'crab_snap', 'ink_squirt', 'gator_snap', 'gear_whir', 'mosquito', 'jelly_zap', 'puff_swell', 'creature_hurt', 'stun_stars',
+  'boss_roar', 'boss_slam',
 ];
+// Hero beats: short, dry, on top of everything; playing one ducks the ring ticks / creak and dips the music.
+const HERO = new Set(['egg_save', 'egg_crack', 'egg_break', 'star', 'combo', 'level_win', 'level_fail', 'unlock',
+  'power_pickup', 'strike_launch', 'strike_hit', 'crow', 'boss_slam']);
 
 export const MATERIALS = ['wood', 'stone', 'ice', 'mushroom', 'glass', 'metal', 'coral', 'vine', 'cloud', 'obsidian', 'bone', 'gold'];
 
 // Sounds that are interface/feedback, not world events: they bypass the underwater filter.
-const UI_SOUNDS = new Set(['hud_pop', 'ui_tap', 'ui_back', 'ui_open', 'combo', 'star', 'level_win', 'level_fail', 'unlock', 'score_tick', 'countdown', 'egg_save', 'rewind',
+const UI_SOUNDS = new Set(['power_pickup', 'hud_pop', 'ui_tap', 'ui_back', 'ui_open', 'combo', 'star', 'level_win', 'level_fail', 'unlock', 'score_tick', 'countdown', 'egg_save', 'rewind',
   'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up']);
 // Random pitch spread per sound (fraction). Musical stings stay in tune.
 const PITCH_VAR = {
   ui_tap: 0.015, ring_tick: 0.02, hud_pop: 0, ui_back: 0.01, ui_open: 0.01, score_tick: 0.004, countdown: 0,
   egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, rewind: 0.02, tada: 0, cheer_up: 0, cluck: 0.06,
+  power_pickup: 0, strike_launch: 0.02, strike_hit: 0.02, crow: 0.02, egg_crack: 0.03, egg_break: 0.02,
+  rat_squeak: 0.1, weasel_chitter: 0.07, snake_hiss: 0.05, eagle_screech: 0.05, goose_honk: 0.05, decoy_peep: 0.08, creature_hurt: 0.08,
 };
-const DEFAULT_PITCH_VAR = 0.045;
+const DEFAULT_PITCH_VAR = 0.03;
 // Per-sound loudness trim (linear), from the render.mjs level analysis.
+// The hero beats were redesigned for phone speakers and carry their own levels (1 here).
 const SFX_GAIN = {
-  ui_back: 1.4, ui_open: 1.4, egg_crack: 1.6, egg_break: 1.3, egg_save: 1.25, combo: 1.6, star: 1.25,
+  ui_back: 1.2, ui_open: 1.2, ring_tick: 0.5, score_tick: 0.8, strike_launch: 1.8,
+  eagle_screech: 0.5, creature_hurt: 0.55, boss_roar: 0.75, goose_honk: 0.8, weasel_chitter: 0.8, mosquito: 1.5, // voices sit under the hero beats
   thorn_hit: 1.6, bubble_on: 1.6, portal_enter: 1.5, portal_exit: 1.8, twin_hatch: 1.4,
   wind_gust: 2.4, rewind: 2.1, bomb_fuse: 0.7, fire_burn: 1.3,
   hen_hop: 2.4, hen_land: 1.8, flap: 2.6, confetti: 2, cluck: 1.4,
@@ -194,25 +222,49 @@ const PRESETS = {
   },
 };
 
+// First match wins, in this order (calm last: it is also the default). Every world's mood string in
+// themes.js lands on a preset of its own family, e.g. 'cheerful morning' -> happy, 'hot exotic' -> desert.
 const MOOD_WORDS = [
-  ['happy', ['happy', 'farm', 'barn', 'orchard', 'pumpkin', 'meadow', 'sunny', 'hay', 'bouncy']],
-  ['calm', ['calm', 'menu', 'title', 'map', 'gentle', 'relax']],
+  ['happy', ['happy', 'farm', 'barn', 'orchard', 'pumpkin', 'meadow', 'sunny', 'hay', 'bouncy', 'cheerful', 'morning', 'folk', 'cozy']],
+  ['cave', ['cave', 'crystal', 'frozen', 'ice', 'blizzard', 'snow', 'winter', 'airy', 'shimmer', 'wonder', 'crisp', 'dreamy']],
+  ['adventure', ['adventur', 'wood', 'forest', 'bramble', 'jungle', 'ruin', 'pine', 'mushroom', 'glade', 'pirate', 'cove', 'shanty']],
   ['spooky', ['spooky', 'night', 'haunt', 'grave', 'ghost', 'creepy']],
-  ['cave', ['cave', 'crystal', 'frozen', 'ice', 'blizzard', 'snow', 'winter', 'airy']],
-  ['desert', ['desert', 'dune', 'pyramid', 'tomb', 'sand', 'egypt']],
-  ['underwater', ['underwater', 'coral', 'reef', 'ocean', 'sea', 'water', 'aqua']],
+  ['desert', ['desert', 'dune', 'pyramid', 'tomb', 'sand', 'egypt', 'exotic', 'ancient', 'hot ']],
+  ['underwater', ['underwater', 'coral', 'reef', 'ocean', 'sea', 'water', 'aqua', 'floating']],
   ['storm', ['storm', 'thunder', 'sky', 'tense', 'rain']],
-  ['volcano', ['volcano', 'dragon', 'lava', 'fire', 'driving', 'lair']],
-  ['heist', ['heist', 'vault', 'finale', 'thief', 'clock', 'groove']],
-  ['adventure', ['adventure', 'wood', 'forest', 'bramble', 'jungle', 'ruin', 'pine', 'mushroom', 'glade', 'pirate', 'cove']],
+  ['volcano', ['volcano', 'dragon', 'lava', 'fire', 'driving', 'lair', 'urgent', 'heat', 'epic']],
+  ['heist', ['heist', 'vault', 'finale', 'thief', 'clock', 'groove', 'swamp', 'blues']],
+  ['calm', ['calm', 'menu', 'title', 'map', 'gentle', 'relax', 'lazy']],
 ];
 export const MOODS = Object.keys(PRESETS);
 
 function resolveMood(m) {
-  const s = String(m || '').toLowerCase();
-  if (has(PRESETS, s)) return s;
+  const s = String(m || '').toLowerCase() + ' ';
+  if (has(PRESETS, s.trim())) return s.trim();
   for (const [name, words] of MOOD_WORDS) for (const w of words) if (s.includes(w)) return name;
   return 'calm';
+}
+
+// Phone mix of a preset: the melody up front and dry, the accompaniment thinner, less reverb and echo.
+const MIX = { lead: 1.45, leadFx: 0.55, pad: 0.55, comp: 0.7, arp: 0.55, verb: 0.5, delayMix: 0.6, delayFb: 0.8, drums: 1.0 };
+const MIXED = {};
+function mixedPreset(name) {
+  if (MIXED[name]) return MIXED[name];
+  const P = PRESETS[name], Q = { ...P };
+  if (P.lead) Q.lead = { ...P.lead, lvl: P.lead.lvl * MIX.lead, fx: P.lead.fx * MIX.leadFx, in: ['A', 'B', 'C'] };
+  if (P.pad) Q.pad = { ...P.pad, lvl: P.pad.lvl * MIX.pad };
+  if (P.comp) Q.comp = { ...P.comp, lvl: P.comp.lvl * MIX.comp };
+  if (P.arp) Q.arp = { ...P.arp, lvl: P.arp.lvl * MIX.arp, in: P.arp.in.filter((x) => x !== 'A').length ? P.arp.in.filter((x) => x !== 'A') : P.arp.in };
+  if (P.drone) Q.drone = { ...P.drone, lvl: P.drone.lvl * MIX.pad };
+  if (P.drums) {
+    const D = { ...P.drums, lvl: P.drums.lvl * MIX.drums };
+    if (D.shaker) D.shaker = D.shaker.replace(/o/g, '.');   // ghost shakers out: simpler, less hiss
+    if (D.hat) D.hat = D.hat.replace(/o/g, '.') === '.'.repeat(16) ? D.hat : D.hat.replace(/o/g, '.');
+    Q.drums = D;
+  }
+  Q.verb = P.verb * MIX.verb;
+  Q.delay = { ...P.delay, mix: P.delay.mix * MIX.delayMix, fb: P.delay.fb * MIX.delayFb };
+  return (MIXED[name] = Q);
 }
 
 // ---------------------------------------------------------------- small utils
@@ -240,13 +292,14 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   let ctx = null, offline = false, ready = false, failed = false, unlockedOnce = false;
   let sfxOn = true, musicOn = true, paused = false;
   const useLimiter = options.limiter !== false;
+  const usePhone = options.phone !== false;
   const rand = mulberry32(options.seed != null ? options.seed : (Math.random() * 4294967296) >>> 0);
   const rr = (a, b) => a + (b - a) * rand();
   const N = {};               // shared graph nodes
   const BUF = {};             // generated buffers
   let voices = [];
   const lastPlay = new Map();
-  let tickTock = 0;
+  let tickTock = 0, lastRingTick = -1;
 
   const st = { material: 'wood', ring: 0, fire: false, wind: 0, underwater: false };
   const loops = { ring: null, fire: null, wind: null, uw: null };
@@ -383,33 +436,60 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     return c;
   }
 
+  // Octave-up rectifier for the presence exciter: |x| turns a bass note into its 2nd, 4th... harmonics at any level.
+  function rectCurve() {
+    const n = 2048, c = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; c[i] = Math.abs(x) * 0.85 + 0.15 * Math.tanh(3 * x); }
+    return c;
+  }
+
+  // Phone master: master -> HP 125 Hz x2 (+ exciter band) -> 3 kHz presence -> drive -> limiter -> soft clip.
+  function buildPhoneMaster(dest) {
+    const hp1 = mkFilter('highpass', 125, 0.71), hp2 = mkFilter('highpass', 125, 0.71);
+    const pres = ctx.createBiquadFilter(); pres.type = 'peaking'; pres.frequency.value = 3000; pres.Q.value = 0.9; pres.gain.value = 3;
+    const sum = mkGain(1);
+    N.master.connect(hp1); hp1.connect(hp2); hp2.connect(sum);
+    // exciter: the 60-250 Hz band, rectified, keeps only what a phone can play (> 250 Hz)
+    const xb1 = mkFilter('highpass', 60, 0.7), xb2 = mkFilter('lowpass', 250, 0.7);
+    const xs = ctx.createWaveShaper(); xs.curve = rectCurve(); xs.oversample = '2x';
+    const xin = mkGain(2.2), xh1 = mkFilter('highpass', 250, 0.7), xh2 = mkFilter('lowpass', 2200, 0.7), xo = mkGain(0.55);
+    N.master.connect(xb1); xb1.connect(xb2); xb2.connect(xin); xin.connect(xs); xs.connect(xh1); xh1.connect(xh2); xh2.connect(xo); xo.connect(sum);
+    sum.connect(pres);
+    N.phone = { hp1, hp2, pres, xo };
+    return pres;
+  }
+
   function buildGraph() {
     N.master = mkGain(1);
+    const pre = usePhone ? buildPhoneMaster() : N.master;
     if (useLimiter) {
       const c = ctx.createDynamicsCompressor();
-      // Safety limiter: transparent below about -7 dBFS. The spec'd DynamicsCompressor adds automatic
-      // make-up gain (+2.9 dB for these settings), which N.post cancels so quiet sounds pass at unity.
-      c.threshold.value = -6; c.knee.value = 3; c.ratio.value = 20; c.attack.value = 0.002; c.release.value = 0.15;
+      // Tight limiter for phone speakers: everything is driven +4 dB into a -6 dBFS threshold with a 1 ms attack.
+      // The spec'd DynamicsCompressor adds automatic make-up gain, which N.post cancels (measured, see qa/sound).
+      c.threshold.value = -6; c.knee.value = 2; c.ratio.value = 20; c.attack.value = 0.001; c.release.value = 0.09;
       N.comp = c;
-      N.post = mkGain(dbToGain(-2.9));
+      N.drive = mkGain(dbToGain(usePhone ? 4 : 0));
+      N.post = mkGain(dbToGain(-POST_DB));
       N.clip = ctx.createWaveShaper(); N.clip.curve = softClipCurve(); N.clip.oversample = 'none';
-      N.master.connect(c); c.connect(N.post); N.post.connect(N.clip); N.clip.connect(ctx.destination);
-    } else N.master.connect(ctx.destination);
+      pre.connect(N.drive); N.drive.connect(c); c.connect(N.post); N.post.connect(N.clip); N.clip.connect(ctx.destination);
+    } else pre.connect(ctx.destination);
 
     N.sfx = mkGain(sfxOn ? 1 : 0); N.sfx.connect(N.master);
     N.ui = mkGain(1); N.ui.connect(N.sfx);
     N.world = mkGain(1);
     N.wf = mkFilter('lowpass', ctx.sampleRate / 2, 0.5);
     N.world.connect(N.wf); N.wf.connect(N.sfx);
-    N.sv = ctx.createConvolver(); N.sv.buffer = makeIR(1.1, 3.2, 0.6, 5);
-    N.svOut = mkGain(0.55); N.sv.connect(N.svOut); N.svOut.connect(N.sfx);
+    N.tick = mkGain(1); N.tick.connect(N.world);       // ring ticks and the ring creak: ducked under hero SFX
+    // short, low reverb: a touch of room, never a wash on a small speaker
+    N.sv = ctx.createConvolver(); N.sv.buffer = makeIR(0.45, 3.4, 0.7, 5);
+    N.svOut = mkGain(0.3); N.sv.connect(N.svOut); N.svOut.connect(N.sfx);
 
     N.mIn = mkGain(1);
     N.duck = mkGain(1);
     N.mBus = mkGain(musicOn ? dbToGain(MUSIC_BUS_DB) : 0);
     N.mIn.connect(N.duck); N.duck.connect(N.mBus); N.mBus.connect(N.master);
-    N.mVerb = ctx.createConvolver(); N.mVerb.buffer = makeIR(2.8, 2.6, 0.75, 9);
-    N.mVerbOut = mkGain(0.7); N.mVerb.connect(N.mVerbOut); N.mVerbOut.connect(N.duck);
+    N.mVerb = ctx.createConvolver(); N.mVerb.buffer = makeIR(1.5, 2.8, 0.75, 9);
+    N.mVerbOut = mkGain(0.45); N.mVerb.connect(N.mVerbOut); N.mVerbOut.connect(N.duck);
     N.sat = satCurve();
   }
 
@@ -511,6 +591,30 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     modal(v, { t: p.t, f: p.f, r: [1, 2.0, 3.01, 4.17], amps: [1, 0.32, 0.14, 0.07], decs: [1, 0.6, 0.4, 0.25], d: p.d || 0.8, g: p.g, a: 0.002, to: p.to });
   }
 
+  // chime: the old app's clean bell tone (sine + soft octave, 3 ms attack, quick decay); d = time to -60 dB
+  function chime(v, p) {
+    tone(v, { t: p.t, f: p.f, a: 0.003, d: p.d || 0.5, g: p.g || 0.2, to: p.to });
+    tone(v, { t: p.t, f: p.f * 2, a: 0.003, d: (p.d || 0.5) * 0.6, g: (p.g || 0.2) * (p.o2 != null ? p.o2 : 0.3), to: p.to });
+    if (p.o3) tone(v, { t: p.t, f: p.f * 3.01, a: 0.002, d: (p.d || 0.5) * 0.35, g: (p.g || 0.2) * p.o3, to: p.to });
+  }
+  // knock: the old app's hollow knock (a gliding sine plus a little filtered noise), pitched by the caller
+  function knock(v, p) {
+    tone(v, { t: p.t, f: p.f, f2: p.f2 || p.f * 0.45, gl: p.d * 0.8, a: 0.0015, d: p.d, g: p.g });
+    nz(v, { t: p.t, color: 'pink', a: 0.0008, d: p.d * 0.45, g: p.g * (p.n != null ? p.n : 0.5), type: 'bandpass', f: p.nf || 1600, q: 1.1 });
+  }
+
+  // voice: a buzzy formant voice, a sawtooth through two band-pass "vowels" along a pitch path (geese, roars, squawks)
+  // p.pts: [[dt, Hz], ...]; p.fm: [f1, f2] formants; p.q; p.d: length; p.g: level; p.vib: [rate, depth]
+  function voice(v, p) {
+    const t0 = v.t + (p.t || 0), d = p.d, o1 = vosc(v, 'sawtooth', p.pts[0][1], t0, t0 + d + 0.03);
+    sweep(o1.frequency, t0, p.pts);
+    if (p.vib) { const l = vosc(v, 'sine', p.vib[0], t0, t0 + d + 0.03), lg = vg(v, p.pts[0][1] * p.vib[1]); l.connect(lg); lg.connect(o1.frequency); }
+    const b1 = vf(v, 'bandpass', p.fm[0], p.q || 3), b2 = vf(v, 'bandpass', p.fm[1], (p.q || 3) * 1.3), amp = vg(v, 0);
+    o1.connect(b1); o1.connect(b2); b1.connect(amp); b2.connect(amp); amp.connect(v.out);
+    amp.gain.setValueAtTime(0, t0); amp.gain.linearRampToValueAtTime(p.g, t0 + Math.min(0.02, d * 0.2));
+    amp.gain.setValueAtTime(p.g, t0 + d * 0.7); amp.gain.exponentialRampToValueAtTime(p.g * 0.005, t0 + d); amp.gain.setValueAtTime(0, t0 + d + 0.01);
+  }
+
   // pings: random short sine tinkles
   function pings(v, p) {
     for (let i = 0; i < p.n; i++) {
@@ -541,11 +645,11 @@ export function createAudioEngine(externalCtx = null, options = {}) {
 
   // ------------------------------------------------------------- SFX designs
   const SFX = {
-    ui_tap(v, o) {
+    ui_tap(v, o) { // short and dry: a bright tick on a tiny knock
       const p = o.p;
-      tone(v, { f: 1250 * p, f2: 820 * p, gl: 0.03, a: 0.001, d: 0.05, g: 0.3 });
-      tone(v, { type: 'triangle', f: 2500 * p, a: 0.0005, d: 0.018, g: 0.06 });
-      nz(v, { a: 0.0005, d: 0.01, g: 0.1, type: 'highpass', f: 4000 });
+      tone(v, { f: 1500 * p, f2: 1100 * p, gl: 0.02, a: 0.0008, d: 0.045, g: 0.34 });
+      tone(v, { type: 'triangle', f: 3000 * p, a: 0.0004, d: 0.014, g: 0.08 });
+      nz(v, { a: 0.0004, d: 0.006, g: 0.12, type: 'highpass', f: 4000 });
     },
     ui_back(v, o) {
       const p = o.p;
@@ -584,92 +688,75 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       nz(v, { color: 'pink', a: 0.0006, d: 0.008 + 0.025 * i, g: lvl * m.n * 0.55, type: 'bandpass', f: m.nf * (0.6 + 0.6 * i), q: m.nq });
       if (m.bend) tone(v, { f: m.f * 1.7 * p, f2: m.f * 0.9 * p, gl: 0.09, a: 0.003, d: 0.12, g: lvl * 0.35 });
     },
-    egg_crack(v, o) {
-      const p = o.p, n = 3 + Math.floor(rand() * 3);
-      let t = 0;
+    egg_crack(v, o) { // a hero beat: a sharp snap, the shell's crackle, and a hollow knock under it
+      const p = o.p, n = 3 + Math.floor(rand() * 2);
+      nz(v, { a: 0.0003, d: 0.012, g: 0.55, type: 'highpass', f: 2600 });
+      let t = 0.004;
       for (let k = 0; k < n; k++) {
-        nz(v, { t, a: 0.0003, d: rr(0.004, 0.012), g: rr(0.25, 0.42) * (k ? 0.75 : 1), type: 'bandpass', f: rr(2500, 6000) * p, q: 1.5 });
-        t += rr(0.004, 0.018);
+        nz(v, { t, a: 0.0003, d: rr(0.006, 0.014), g: rr(0.3, 0.45) * (k ? 0.7 : 1), type: 'bandpass', f: rr(2500, 5200) * p, q: 1.6 });
+        t += rr(0.008, 0.02);
       }
-      modal(v, { f: rr(2100, 2500) * p, r: [1, 1.47, 2.09], d: 0.045, g: 0.16 });
-      nz(v, { a: 0.0008, d: 0.05, g: 0.16, type: 'highpass', f: 1800 });
-      tone(v, { f: 320 * p, f2: 180 * p, gl: 0.03, d: 0.04, g: 0.12 });
+      knock(v, { f: 420 * p, f2: 230 * p, d: 0.12, g: 0.5, nf: 1800, n: 0.6 });
+      modal(v, { f: rr(2100, 2400) * p, r: [1, 1.47, 2.09], d: 0.05, g: 0.16 });
     },
-    egg_break(v, o) {
+    egg_break(v, o) { // a hero beat: crunch, then a short wet splat (body kept above what a phone drops)
       const p = o.p;
-      nz(v, { d: 0.012, g: 0.42, type: 'highpass', f: 2500 });
-      grains(v, { t: 0.002, dur: 0.13, n: 16, type: 'bandpass', fmin: 1800 * p, fmax: 6000 * p, q: 1.4, g: 0.42, decay: 0.008 });
-      modal(v, { f: 2000 * p, r: [1, 1.52, 2.3], d: 0.05, g: 0.13 });
-      // wet splat
-      nz(v, { t: 0.015, color: 'pink', a: 0.004, d: 0.24, g: 0.42, type: 'lowpass', f: 2400, f2: 260, sw: 0.18, q: 2.2 });
-      tone(v, { t: 0.012, f: 260 * p, f2: 70 * p, gl: 0.12, d: 0.16, g: 0.32 });
-      nz(v, { t: 0.09, color: 'pink', d: 0.12, g: 0.14, type: 'bandpass', f: 900, f2: 450, q: 3 });
-      pings(v, { t: 0.13, dur: 0.35, n: 5, fmin: 3000, fmax: 6500, g: 0.05, dmin: 0.02, dmax: 0.06 });
+      nz(v, { d: 0.014, g: 0.55, type: 'highpass', f: 2200 });
+      grains(v, { t: 0.002, dur: 0.08, n: 10, type: 'bandpass', fmin: 1800 * p, fmax: 5200 * p, q: 1.4, g: 0.42, decay: 0.008 });
+      knock(v, { f: 330 * p, f2: 150 * p, d: 0.16, g: 0.5, nf: 1200, n: 0.4 });
+      nz(v, { t: 0.012, color: 'pink', a: 0.004, d: 0.2, g: 0.5, type: 'lowpass', f: 2600, f2: 450, sw: 0.14, q: 2 });
+      nz(v, { t: 0.06, color: 'pink', d: 0.09, g: 0.16, type: 'bandpass', f: 1100, f2: 600, q: 3 });
     },
-    egg_save(v, o) {
-      const f = 1046.5 * o.pitch;
-      tone(v, { f: 140, f2: 75, gl: 0.1, a: 0.004, d: 0.16, g: 0.4 });
-      grains(v, { dur: 0.12, n: 10, type: 'bandpass', fmin: 2500, fmax: 5000, q: 0.8, g: 0.12, decay: 0.012 });
-      bell(v, { t: 0.05, f, d: 0.9, g: 0.2 });
-      bell(v, { t: 0.11, f: f * 1.5, d: 0.8, g: 0.15 });
-      tone(v, { t: 0.05, f: f * 4, d: 0.12, g: 0.025 });
-      send(v, 0.3);
+    egg_save(v, o) { // a hero beat: a soft nest thump and the old app's two-note chime, a fifth up on a combo pitch
+      const f = 880 * o.pitch;
+      knock(v, { f: 300, f2: 180, d: 0.07, g: 0.32, nf: 1400, n: 0.35 });
+      chime(v, { t: 0.0, f, d: 0.5, g: 0.3, o3: 0.12 });
+      chime(v, { t: 0.075, f: f * 1.498, d: 0.65, g: 0.3, o3: 0.12 });
+      tone(v, { t: 0.075, f: f * 3, a: 0.001, d: 0.12, g: 0.04 });
+      send(v, 0.1);
     },
-    combo(v, o) {
-      const i = o.i, steps = 3 + Math.round(i * 2), base = 1318.5 * Math.pow(2, Math.round(i * 4) / 12) * o.pitch;
+    combo(v, o) { // a hero beat: a quick rising chime run, longer and higher with the combo
+      const i = o.i, steps = 3 + Math.round(i * 2), base = 1046.5 * Math.pow(2, Math.round(i * 4) / 12) * o.pitch;
       const iv = [0, 4, 7, 12, 16];
       for (let k = 0; k < steps; k++) {
-        const f = base * Math.pow(2, iv[k] / 12) * 0.75;
-        const last = k === steps - 1;
-        bell(v, { t: k * 0.055, f, d: last ? 0.7 : 0.25, g: last ? 0.17 : 0.12 });
+        const f = base * Math.pow(2, iv[k] / 12), last = k === steps - 1;
+        chime(v, { t: k * 0.05, f, d: last ? 0.5 : 0.18, g: last ? 0.26 : 0.2 });
       }
-      nz(v, { a: 0.12, d: 0.35, g: 0.05 + 0.03 * i, type: 'highpass', f: 5000, f2: 9000, sw: 0.4 });
-      pings(v, { t: steps * 0.055, dur: 0.3, n: 3 + steps, fmin: 4000, fmax: 8000, g: 0.04, dmin: 0.03, dmax: 0.1 });
-      send(v, 0.3);
+      tone(v, { t: steps * 0.05, f: base * 4, a: 0.001, d: 0.1, g: 0.035 });
+      send(v, 0.1);
     },
-    star(v, o) {
+    star(v, o) { // a hero beat: the old app's bell (fundamental, octave, a hint of the 3rd partial), one per star, rising
       const idx = o.i < 0.25 ? 0 : o.i < 0.75 ? 1 : 2, f = [1046.5, 1318.5, 1568][idx] * o.pitch;
-      tone(v, { f: 300, f2: 620, gl: 0.08, a: 0.005, d: 0.1, g: 0.12 });
-      bell(v, { t: 0.02, f, d: 0.9, g: 0.17 });
-      bell(v, { t: 0.02, f: f * 1.5, d: 0.6, g: 0.07 });
-      bell(v, { t: 0.02, f: f * 2, d: 0.5, g: 0.05 });
-      pings(v, { t: 0.06, dur: 0.35, n: 3 + idx * 2, fmin: f * 2.5, fmax: f * 5, g: 0.04, dmin: 0.03, dmax: 0.09 });
-      nz(v, { a: 0.03, d: 0.3, g: 0.035 + idx * 0.01, type: 'highpass', f: 6000 });
-      send(v, 0.3);
+      tone(v, { type: 'triangle', f: f * 2, a: 0.0005, d: 0.012, g: 0.14 });          // the strike transient
+      tone(v, { f, a: 0.0025, d: 0.6, g: 0.32 });
+      tone(v, { f: f * 2, a: 0.0025, d: 0.4, g: 0.15 });
+      tone(v, { f: f * 3.01, a: 0.002, d: 0.22, g: 0.07 });
+      tone(v, { t: 0.06, f: f * 1.5, a: 0.003, d: 0.35, g: 0.1 });
+      if (idx === 2) tone(v, { t: 0.12, f: f * 2, a: 0.003, d: 0.4, g: 0.1 });
+      send(v, 0.1);
     },
-    level_win(v, o) {
+    level_win(v, o) { // a hero beat: the old app's fanfare (C E G C chime run) with a short brass body on the last chord
       const p = o.pitch, C5 = 523.25 * p;
       const brass = (t, f, hold, g) => {
-        for (const det of [-7, 7]) {
-          const r = tone(v, { type: 'sawtooth', t, f, det, a: 0.03, hold, d: 0.35, g, lp: f * 3, lq: 1.2 });
-          r.o.frequency.setValueAtTime(f * 0.985, v.t + t); r.o.frequency.exponentialRampToValueAtTime(f, v.t + t + 0.04);
-        }
+        for (const det of [-6, 6]) tone(v, { type: 'sawtooth', t, f, det, a: 0.02, hold, d: 0.28, g, lp: Math.min(f * 3, 5000), lq: 1 });
       };
-      const n = [[0, 0.75], [0.13, 1], [0.26, 1.26], [0.39, 1.5]];
-      for (const [t, k] of n) brass(t, C5 * k, 0.07, 0.07);
-      brass(0.6, C5 * 1.5, 0.95, 0.06);
-      brass(0.6, C5 * 1.26, 0.95, 0.05);
-      brass(0.6, C5, 0.95, 0.06);
-      brass(0.6, C5 * 0.5, 0.95, 0.05);
-      tone(v, { f: 110, f2: 55, gl: 0.15, d: 0.3, g: 0.35 });
-      tone(v, { t: 0.6, f: 120, f2: 50, gl: 0.2, d: 0.45, g: 0.45 });
-      nz(v, { t: 0.6, a: 0.005, d: 1.3, g: 0.07, type: 'highpass', f: 6000 });
-      [2, 2.52, 3, 4].forEach((k, j) => bell(v, { t: 0.62 + j * 0.07, f: C5 * k, d: 0.9, g: 0.07 }));
-      pings(v, { t: 0.9, dur: 0.8, n: 8, fmin: 3000, fmax: 7000, g: 0.035, dmin: 0.05, dmax: 0.15 });
-      send(v, 0.28);
+      [[0, 1], [0.1, 1.26], [0.2, 1.5]].forEach(([t, k]) => { chime(v, { t, f: C5 * k, d: 0.35, g: 0.24 }); brass(t, C5 * k, 0.04, 0.05); });
+      const T = 0.32;
+      for (const k of [1, 1.26, 1.5, 2]) chime(v, { t: T, f: C5 * k * 2, d: 0.9, g: 0.16, o3: 0.08 });
+      for (const k of [0.5, 1, 1.26, 1.5]) brass(T, C5 * k, 0.32, 0.045);
+      knock(v, { t: T, f: 260, f2: 150, d: 0.14, g: 0.4, nf: 1500, n: 0.3 });
+      tone(v, { t: T + 0.05, f: C5 * 4, a: 0.002, d: 0.25, g: 0.04 });
+      tone(v, { t: T + 0.12, f: C5 * 6, a: 0.002, d: 0.2, g: 0.03 });
+      send(v, 0.12);
     },
-    level_fail(v, o) {
+    level_fail(v, o) { // a hero beat: the old app's three falling chimes (G E C), soft, then a small low bonk
       const p = o.pitch;
-      const ep = (t, f, d, g) => {
-        tone(v, { t, f, a: 0.006, d, g, lp: 2200 });
-        tone(v, { t, f: f * 2, a: 0.004, d: d * 0.4, g: g * 0.25 });
-      };
-      ep(0, 622.25 * p, 0.45, 0.16);      // Eb5
-      ep(0.2, 523.25 * p, 0.45, 0.15);    // C5
-      ep(0.4, 415.3 * p, 0.6, 0.15);      // Ab4
-      for (const f of [261.63, 311.13, 392]) tone(v, { type: 'triangle', t: 0.62, f: f * p, a: 0.08, hold: 0.25, d: 0.7, g: 0.08, lp: 900 });
-      tone(v, { t: 0.62, f: 130.8 * p, a: 0.05, hold: 0.2, d: 0.7, g: 0.16 });
-      send(v, 0.25);
+      [[0, 392], [0.18, 329.6], [0.36, 261.6]].forEach(([t, f], j) => {
+        chime(v, { t, f: f * p, d: j === 2 ? 0.8 : 0.45, g: 0.26 });
+        tone(v, { type: 'triangle', t, f: f * p, a: 0.006, d: 0.3, g: 0.06, lp: 2000 });
+      });
+      knock(v, { t: 0.36, f: 220 * p, f2: 140 * p, d: 0.12, g: 0.3, nf: 900, n: 0.3 });
+      send(v, 0.1);
     },
     // ---- the hen's routines: short hits timed to her moves (intensity scales the bigger routines)
     hen_hop(v, o) {
@@ -720,14 +807,14 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       }
       send(v, 0.25);
     },
-    unlock(v, o) {
+    unlock(v, o) { // a hero beat: a short rising whoosh into a bright four-note chime
       const p = o.pitch, f = 1046.5 * p;
-      nz(v, { color: 'pink', a: 0.42, d: 0.08, g: 0.12, type: 'bandpass', f: 400, f2: 4500, sw: 0.48, q: 2, expA: true });
-      tone(v, { f: 400 * p, f2: 1600 * p, gl: 0.45, a: 0.4, d: 0.08, g: 0.05, expA: true });
-      tone(v, { t: 0.45, f: 160, f2: 80, gl: 0.12, d: 0.2, g: 0.3 });
-      [1, 1.26, 1.5, 1.89].forEach((k, j) => bell(v, { t: 0.45 + j * 0.035, f: f * k, d: 1.0, g: 0.09 }));
-      pings(v, { t: 0.5, dur: 0.6, n: 7, fmin: 3500, fmax: 8000, g: 0.04, dmin: 0.04, dmax: 0.12 });
-      send(v, 0.35);
+      nz(v, { color: 'pink', a: 0.16, d: 0.05, g: 0.18, type: 'bandpass', f: 600, f2: 4000, sw: 0.2, q: 1.8, expA: true });
+      tone(v, { f: 520 * p, f2: 1560 * p, gl: 0.18, a: 0.16, d: 0.04, g: 0.08, expA: true });
+      knock(v, { t: 0.2, f: 320, f2: 190, d: 0.08, g: 0.3, nf: 1600, n: 0.3 });
+      [1, 1.26, 1.5, 2].forEach((k, j) => chime(v, { t: 0.2 + j * 0.03, f: f * k, d: 0.6, g: 0.15 }));
+      tone(v, { t: 0.26, f: f * 3, a: 0.002, d: 0.2, g: 0.04 });
+      send(v, 0.12);
     },
     thorn_hit(v, o) {
       const p = o.p;
@@ -933,12 +1020,12 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       nz(v, { color: 'pink', t: 0.018, a: 0.028, d: 0.07, g: lvl * 0.14, type: 'bandpass', f: 1250 * p, f2: 650 * p, sw: 0.09, q: 1.4, type2: 'lowpass', f3: 2400 });
       tone(v, { t: 0.014, f: 320 * p, f2: 170 * p, gl: 0.05, a: 0.008, d: 0.05, g: lvl * 0.1 });
     },
-    // a ring passes a detent: a dry ratchet click in the vault's own material (o.i = how fast it is turning)
+    // a ring passes a detent: a short, dry ratchet click in the vault's own material (o.i = how fast it is turning)
     ring_tick(v, o) {
       const p = o.p, i = o.i, m = MAT[st.material];
-      nz(v, { color: 'pink', a: 0.0004, d: 0.006 + 0.006 * i, g: 0.1 + 0.12 * i, type: 'bandpass', f: 2600 * p, q: 2.2 });
-      modal(v, { f: m.f * 2.1 * p, r: [1, 2.3], d: Math.min(m.d, 0.05) * 0.5, g: 0.05 + 0.06 * i });
-      tone(v, { f: 150 * p, f2: 110 * p, gl: 0.02, a: 0.001, d: 0.022, g: 0.07 + 0.08 * i });
+      nz(v, { color: 'pink', a: 0.0004, d: 0.004 + 0.004 * i, g: 0.1 + 0.08 * i, type: 'bandpass', f: 2600 * p, q: 2.2 });
+      modal(v, { f: m.f * 2.1 * p, r: [1, 2.3], d: Math.min(m.d, 0.04) * 0.5, g: 0.04 + 0.04 * i });
+      tone(v, { f: 420 * p, f2: 300 * p, gl: 0.012, a: 0.001, d: 0.014, g: 0.05 + 0.04 * i });
     },
     // an egg lands with weight: the harder the hit (o.i), the lower and longer the body thump under the shell knock
     egg_land(v, o) {
@@ -980,6 +1067,177 @@ export function createAudioEngine(externalCtx = null, options = {}) {
         send(v, 0.2);
       }
     },
+    // ---- hero beats added for phone play
+    power_pickup(v, o) { // an orb taken: a quick upward zip into two bright chime notes (the power's own sound plays under it)
+      const p = o.pitch;
+      tone(v, { f: 700 * p, f2: 2100 * p, gl: 0.08, a: 0.004, d: 0.07, g: 0.16 });
+      chime(v, { t: 0.06, f: 1318.5 * p, d: 0.28, g: 0.22 });
+      chime(v, { t: 0.11, f: 1975.5 * p, d: 0.4, g: 0.2 });
+      send(v, 0.08);
+    },
+    strike_launch(v, o) { // Chick Strike leaves the wing: the old app's whoosh with a rising chirp on it
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.09, d: 0.16, g: 0.5, type: 'bandpass', f: 500 * p, f2: 3200 * p, sw: 0.22, q: 1.1 });
+      tone(v, { type: 'triangle', t: 0.03, f: 600 * p, f2: 1600 * p, gl: 0.14, a: 0.01, d: 0.12, g: 0.14 });
+      tone(v, { t: 0.12, f: 2200 * p, a: 0.002, d: 0.08, g: 0.06 });
+    },
+    strike_hit(v, o) { // Chick Strike lands: a punchy thump, a knock and a bright crack, then one bell
+      const p = o.p;
+      nz(v, { a: 0.0003, d: 0.016, g: 0.55, type: 'highpass', f: 3000 });
+      knock(v, { f: 520 * p, f2: 210 * p, d: 0.13, g: 0.55, nf: 1600, n: 0.45 });
+      tone(v, { f: 260 * p, f2: 160 * p, gl: 0.06, a: 0.001, d: 0.12, g: 0.4 });
+      chime(v, { t: 0.02, f: 1568 * p, d: 0.3, g: 0.12 });
+      send(v, 0.08);
+    },
+    crow(v, o) { // the rooster ally: cock-a-doodle-doo, a buzzy voice through two formants, last syllable long
+      const p = o.p, f0 = 560 * p;
+      const syl = (t, f1, f2, d, g) => {
+        const t0 = v.t + t, o1 = vosc(v, 'sawtooth', f1, t0, t0 + d + 0.05), o2 = vosc(v, 'square', f1 * 0.5, t0, t0 + d + 0.05);
+        o1.frequency.setValueAtTime(fc(f1), t0); o1.frequency.linearRampToValueAtTime(fc(f2), t0 + d * 0.6); o1.frequency.linearRampToValueAtTime(fc(f2 * 0.9), t0 + d);
+        o2.frequency.setValueAtTime(fc(f1 * 0.5), t0); o2.frequency.linearRampToValueAtTime(fc(f2 * 0.5), t0 + d * 0.6); o2.frequency.linearRampToValueAtTime(fc(f2 * 0.45), t0 + d);
+        const lf = vosc(v, 'sine', 24, t0, t0 + d + 0.05), lg = vg(v, f1 * 0.025); lf.connect(lg); lg.connect(o1.frequency);
+        const og = vg(v, 0.35); o2.connect(og);
+        const b1 = vf(v, 'bandpass', 1100, 3), b2 = vf(v, 'bandpass', 2500, 4), amp = vg(v, 0);
+        o1.connect(b1); o1.connect(b2); og.connect(b1);
+        b1.connect(amp); b2.connect(amp); amp.connect(v.out);
+        amp.gain.setValueAtTime(0, t0); amp.gain.linearRampToValueAtTime(g, t0 + 0.02);
+        amp.gain.setValueAtTime(g, t0 + d * 0.75); amp.gain.exponentialRampToValueAtTime(g * 0.01, t0 + d); amp.gain.setValueAtTime(0, t0 + d + 0.01);
+      };
+      syl(0, f0, f0 * 1.15, 0.1, 0.55);
+      syl(0.13, f0 * 1.1, f0 * 1.25, 0.09, 0.5);
+      syl(0.25, f0 * 1.2, f0 * 1.45, 0.12, 0.6);
+      syl(0.41, f0 * 1.4, f0 * 1.6, 0.42, 0.6);
+      // the crow's shockwave: a low whoomp that sweeps down (rebuilt as harmonics by the phone master)
+      nz(v, { t: 0.5, color: 'pink', a: 0.03, d: 0.4, g: 0.35, type: 'lowpass', f: 3200, f2: 350, sw: 0.35, q: 0.9 });
+      tone(v, { t: 0.5, f: 240, f2: 110, gl: 0.25, a: 0.01, d: 0.35, g: 0.3 });
+      send(v, 0.1);
+    },
+    wing_bat(v, o) { // the hen bats the strike chick off her wing: a feathery whap with a little thump
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.012, d: 0.09, g: 0.5, type: 'bandpass', f: 1300 * p, f2: 800 * p, q: 0.9 });
+      nz(v, { a: 0.003, d: 0.03, g: 0.2, type: 'highpass', f: 3500 });
+      tone(v, { f: 300 * p, f2: 170 * p, gl: 0.05, a: 0.002, d: 0.07, g: 0.3 });
+    },
+    decoy_peep(v, o) { // the decoy chick: three little peeps
+      const p = o.p;
+      for (let k = 0; k < 3; k++) { const f = rr(2900, 3400) * p, t = k * rr(0.09, 0.12); tone(v, { t, f, fp: [[0, f], [0.03, f * 1.18], [0.06, f * 0.95]], a: 0.004, d: 0.06, g: 0.16 }); }
+    },
+    goose_honk(v, o) { // the goose ally: two nasal honks
+      const p = o.p;
+      voice(v, { t: 0, pts: [[0, 360 * p], [0.08, 390 * p], [0.16, 320 * p]], fm: [1100, 2300], q: 4, d: 0.17, g: 0.75 });
+      voice(v, { t: 0.22, pts: [[0, 380 * p], [0.1, 410 * p], [0.2, 330 * p]], fm: [1150, 2400], q: 4, d: 0.21, g: 0.8 });
+    },
+    power_use(v, o) { // a power wakes up on the eggs: a rising shimmer
+      const p = o.p;
+      nz(v, { a: 0.12, d: 0.15, g: 0.12, type: 'bandpass', f: 1500 * p, f2: 6000 * p, sw: 0.25, q: 1.5, expA: true });
+      tone(v, { f: 880 * p, f2: 1760 * p, gl: 0.2, a: 0.02, d: 0.2, g: 0.12 });
+      chime(v, { t: 0.2, f: 1760 * p, d: 0.3, g: 0.12 });
+    },
+    snake_hiss(v, o) { // a long breathy hiss with a flutter
+      const p = o.p, r = nz(v, { a: 0.05, hold: 0.12, d: 0.3, g: 0.34, type: 'bandpass', f: 5200 * p, q: 1.3 });
+      const l = vosc(v, 'sine', 17, r.t0, r.tEnd), lg = vg(v, 0.12); l.connect(lg); lg.connect(r.amp.gain);
+      nz(v, { a: 0.04, d: 0.25, g: 0.08, type: 'highpass', f: 8000 });
+    },
+    snake_strike(v, o) { // the lunge: a sharp hiss burst and a snap of the jaws
+      const p = o.p;
+      nz(v, { a: 0.008, d: 0.12, g: 0.4, type: 'bandpass', f: 4500 * p, f2: 6500 * p, q: 1.2 });
+      knock(v, { t: 0.07, f: 700 * p, f2: 300 * p, d: 0.06, g: 0.4, nf: 2400, n: 0.6 });
+    },
+    eagle_screech(v, o) { // a raptor's scream: a rough falling cry high up
+      const p = o.p;
+      voice(v, { pts: [[0, 2400 * p], [0.06, 3000 * p], [0.3, 2100 * p], [0.42, 1700 * p]], fm: [2800, 4200], q: 3, d: 0.42, g: 0.5, vib: [32, 0.03] });
+      nz(v, { a: 0.02, d: 0.3, g: 0.08, type: 'bandpass', f: 3500, q: 2 });
+    },
+    eagle_dive(v, o) { // a falling whistle and rushing air
+      const p = o.p;
+      tone(v, { f: 3200 * p, f2: 900 * p, gl: 0.5, a: 0.06, d: 0.5, g: 0.1 });
+      nz(v, { color: 'pink', a: 0.25, d: 0.3, g: 0.35, type: 'bandpass', f: 600 * p, f2: 2400 * p, sw: 0.5, q: 1.2 });
+    },
+    rat_squeak(v, o) { // two quick squeaks
+      const p = o.p;
+      for (let k = 0; k < 2; k++) { const f = rr(3200, 4200) * p, t = k * 0.09; tone(v, { t, f, fp: [[0, f * 0.9], [0.025, f * 1.15], [0.06, f]], a: 0.003, d: 0.06, g: 0.14, vib: [45, 0.03] }); }
+    },
+    weasel_chitter(v, o) { // a fast chatter of clicks and chirps
+      const p = o.p, n = 5 + Math.floor(rand() * 3);
+      for (let k = 0; k < n; k++) {
+        const t = k * rr(0.03, 0.045), f = rr(1700, 2500) * p;
+        tone(v, { type: 'square', t, f, f2: f * 0.8, gl: 0.025, a: 0.002, d: 0.03, g: 0.08, lp: 3500 });
+        nz(v, { t, a: 0.0005, d: 0.01, g: 0.12, type: 'bandpass', f: 3500, q: 2 });
+      }
+    },
+    tongue_lick(v, o) { // a sticky tongue out and back: thwip, then a wet pop
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.01, d: 0.07, g: 0.4, type: 'bandpass', f: 700 * p, f2: 3200 * p, sw: 0.07, q: 1.5 });
+      tone(v, { f: 350 * p, f2: 1100 * p, gl: 0.06, a: 0.004, d: 0.06, g: 0.18 });
+      tone(v, { t: 0.1, f: 900 * p, f2: 300 * p, gl: 0.03, a: 0.002, d: 0.04, g: 0.25 });
+    },
+    fire_breath(v, o) { // a salamander / dragon breath: a roaring whoosh with crackle
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.04, hold: 0.1, d: 0.35, g: 0.5, type: 'bandpass', f: 500 * p, f2: 2200 * p, sw: 0.2, q: 0.8 });
+      nz(v, { a: 0.03, d: 0.3, g: 0.08, type: 'highpass', f: 4000 });
+      grains(v, { t: 0.05, dur: 0.4, n: 12, fmin: 1500, fmax: 4500, g: 0.16, decay: 0.006 });
+    },
+    crab_snap(v, o) { // claws: two hard clacks
+      const p = o.p;
+      for (const t of [0, rr(0.05, 0.08)]) {
+        nz(v, { t, a: 0.0003, d: 0.015, g: 0.5, type: 'bandpass', f: 3000 * p, q: 2 });
+        modal(v, { t, f: 1700 * p, r: [1, 2.3, 3.9], d: 0.04, g: 0.18 });
+      }
+    },
+    ink_squirt(v, o) { // an octopus jet / ink: a wet bloop and a squirt
+      const p = o.p;
+      tone(v, { f: 520 * p, f2: 160 * p, gl: 0.12, a: 0.004, d: 0.14, g: 0.4 });
+      nz(v, { color: 'pink', t: 0.03, a: 0.02, d: 0.18, g: 0.3, type: 'bandpass', f: 1800 * p, f2: 700 * p, q: 1.4 });
+      tone(v, { t: 0.1, f: 900 * p, f2: 1800 * p, gl: 0.04, a: 0.002, d: 0.04, g: 0.12 });
+    },
+    gator_snap(v, o) { // a heavy jaw chomp
+      const p = o.p;
+      nz(v, { a: 0.0005, d: 0.02, g: 0.45, type: 'bandpass', f: 2200 * p, q: 1.2 });
+      knock(v, { f: 420 * p, f2: 160 * p, d: 0.16, g: 0.6, nf: 900, n: 0.5 });
+      modal(v, { f: 850 * p, r: [1, 2.1, 3.3], d: 0.06, g: 0.15 });
+    },
+    gear_whir(v, o) { // clockwork winding: a ratchet speeding up over a motor whine
+      const p = o.p;
+      let t = 0;
+      for (let k = 0; k < 7; k++) { nz(v, { t, a: 0.0004, d: 0.008, g: 0.22, type: 'bandpass', f: 3200 * p, q: 2.5 }); modal(v, { t, f: 1900 * p, r: [1, 2.756], d: 0.02, g: 0.05 }); t += 0.07 - k * 0.007; }
+      tone(v, { type: 'triangle', f: 420 * p, f2: 900 * p, gl: t, a: 0.05, d: t, g: 0.05, lp: 2000 });
+    },
+    mosquito(v, o) { // a thin whine that swells and fades
+      const p = o.p;
+      tone(v, { type: 'sawtooth', f: 620 * p, a: 0.12, hold: 0.15, d: 0.25, g: 0.06, lp: 2400, lq: 4, vib: [11, 0.04] });
+    },
+    jelly_zap(v, o) { // a jellyfish sting: an electric buzz
+      const p = o.p;
+      tone(v, { type: 'sawtooth', f: 110 * p, a: 0.003, hold: 0.12, d: 0.1, g: 0.25, lp: 3000, lq: 2 });
+      tone(v, { type: 'square', f: 1600 * p, a: 0.002, hold: 0.08, d: 0.08, g: 0.04, vib: [60, 0.1] });
+      grains(v, { dur: 0.22, n: 10, fmin: 2500, fmax: 6000, g: 0.25, decay: 0.003 });
+    },
+    puff_swell(v, o) { // a puffer fish blowing up: a rising bubbly inflate
+      const p = o.p;
+      tone(v, { f: 220 * p, f2: 760 * p, gl: 0.3, a: 0.05, d: 0.32, g: 0.25, vib: [14, 0.05] });
+      nz(v, { color: 'pink', a: 0.1, d: 0.25, g: 0.12, type: 'bandpass', f: 600 * p, f2: 1800 * p, sw: 0.3, q: 2 });
+    },
+    creature_hurt(v, o) { // any villain hit: a squawky "oof" over a thump (pitch tells big from small)
+      const p = o.p;
+      knock(v, { f: 360 * p, f2: 200 * p, d: 0.08, g: 0.35, nf: 1500, n: 0.5 });
+      voice(v, { t: 0.02, pts: [[0, 700 * p], [0.05, 900 * p], [0.2, 420 * p]], fm: [900 * p, 2200 * p], q: 3, d: 0.2, g: 0.5 });
+    },
+    stun_stars(v, o) { // dazed: a wobbly boing and stars twinkling round its head
+      const p = o.p;
+      tone(v, { f: 380 * p, fp: [[0, 380 * p], [0.08, 700 * p], [0.3, 360 * p]], a: 0.004, d: 0.3, g: 0.22, vib: [9, 0.06] });
+      [2637, 3136, 3520, 3136].forEach((f, k) => tone(v, { t: 0.08 + k * 0.08, f: f * p, a: 0.002, d: 0.12, g: 0.06 }));
+    },
+    boss_roar(v, o) { // a boss's voice: a big growling roar (formants up where a phone can play them)
+      const p = o.p;
+      voice(v, { pts: [[0, 120 * p], [0.15, 165 * p], [0.55, 95 * p]], fm: [650, 1400], q: 2.5, d: 0.6, g: 0.9, vib: [7, 0.04] });
+      nz(v, { color: 'pink', a: 0.06, d: 0.5, g: 0.25, type: 'bandpass', f: 900, q: 1.2 });
+    },
+    boss_slam(v, o) { // a boss attack lands: a heavy thump and a rattle
+      const p = o.p;
+      knock(v, { f: 260 * p, f2: 110 * p, d: 0.25, g: 0.7, nf: 700, n: 0.6 });
+      nz(v, { a: 0.0005, d: 0.02, g: 0.4, type: 'bandpass', f: 2500, q: 1 });
+      grains(v, { t: 0.03, dur: 0.25, n: 9, fmin: 600, fmax: 2200, g: 0.15, decay: 0.012 });
+    },
   };
 
   // ------------------------------------------------------------- voice management
@@ -1019,6 +1277,8 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     };
     if (o.vol <= 0.001) return NOOP_HANDLE;
     const t = now();
+    // ring ticks: a hard rate limit across all rings, so constant turning stays a light ratchet
+    if (name === 'ring_tick') { if (t - lastRingTick < RING_TICK_GAP && t >= lastRingTick) return NOOP_HANDLE; lastRingTick = t; }
     // merge same-name hits inside the window
     const lp = lastPlay.get(name);
     if (lp && !lp.v.done && t - lp.time < MERGE_WINDOW) {
@@ -1036,7 +1296,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     }
     const pv = PITCH_VAR[name] != null ? PITCH_VAR[name] : DEFAULT_PITCH_VAR;
     o.p = o.pitch * (pv ? rr(1 - pv, 1 + pv) : 1);
-    const v = newVoice(name, o, UI_SOUNDS.has(name) ? N.ui : N.world);
+    const v = newVoice(name, o, name === 'ring_tick' ? N.tick : UI_SOUNDS.has(name) ? N.ui : N.world);
     try { SFX[name](v, o); } catch (e) { stopVoice(v, 0.01); return NOOP_HANDLE; }
     voices.push(v);
     if (!offline) setTimeout(() => cleanupVoice(v), (v.end - t + 0.15) * 1000);
@@ -1045,6 +1305,8 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     if (name === 'level_win') duckMusic(0.55, 2.2);
     else if (name === 'level_fail' || name === 'unlock') duckMusic(0.45, 1.4);
     else if (name === 'bomb_explode' || name === 'thunder') duckMusic(0.3, 1.0);
+    else if (HERO.has(name) && o.vol > 0.3) duckMusic(0.25, 0.3);
+    if (HERO.has(name) && o.vol > 0.3) heroDuck();
     return h;
   }
 
@@ -1066,8 +1328,8 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   // Ring creak: stick-slip sawtooth pulses through material resonances + grind noise.
   function buildRingLoop() {
     const m = MAT[st.material] || MAT.wood;
-    const L = { srcs: [], nodes: [], m, out: mkGain(m.lv || 1) };
-    L.nodes.push(L.out); L.out.connect(N.world);
+    const L = { srcs: [], nodes: [], m, out: mkGain((m.lv || 1) * 0.7) };   // creak a little under the old level
+    L.nodes.push(L.out); L.out.connect(N.tick);
     if (m.cl > 0) {
       const saw = ctx.createOscillator(); saw.type = 'sawtooth'; saw.frequency.value = m.cr[0]; saw.start(now());
       const jit = loopSrc('white', 0.0003), jg = mkGain((m.cr[1] - m.cr[0]) * 0.35 + 4);
@@ -1250,7 +1512,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
 
   function createInstance(spec, t0) {
     const pname = resolveMood(spec.mood);
-    const P = PRESETS[pname];
+    const P = mixedPreset(pname);
     const rootKey = String(spec.root || 'C').trim().toUpperCase();
     const pc = has(NOTE, rootKey) ? NOTE[rootKey] : 0;
     const scaleName = has(SCALES, spec.scale) ? spec.scale : P.scale;
@@ -1262,7 +1524,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     const tonic3 = pc >= 7 ? 36 + pc : 48 + pc;   // pad / harmony centre (G2..F#3)
     const I = {
       key: pname + '|' + pc + '|' + scaleName + '|' + bpm, P, pname, sd, rng, harm, pent,
-      bassBase: tonic3 - 12, padLo: tonic3 + 3, leadBase: tonic3 + 12 + (P.lead ? P.lead.oct : 12),
+      bassBase: tonic3, padLo: tonic3 + 3,   // bass an octave up from the old mix: G2..F#3 roots a phone can play leadBase: tonic3 + 12 + (P.lead ? P.lead.oct : 12),
       nt: t0, idx: 0, dead: false, stopAt: 0, secIdx: -2, sec: 'I', barInSec: 0, cycle: 0,
       chord: 0, nextChord: 0, motifA: null, motifB: null, variants: null, arpI: 0, leadInst: P.lead ? P.lead.inst : null,
       nodes: [],
@@ -1270,7 +1532,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     const keep = (n) => { I.nodes.push(n); return n; };
     I.xf = keep(mkGain(0)); I.xf.connect(N.mIn);
     I.vs = keep(mkGain(P.verb)); I.xf.connect(I.vs); I.vs.connect(N.mVerb);
-    I.bus = keep(mkGain(P.trim || 1));
+    I.bus = keep(mkGain((P.trim || 1) * dbToGain(MUSIC_TRIM_DB)));
     if (P.filter) {
       const lp = keep(mkFilter('lowpass', P.filter.f, P.filter.q));
       const lfo = keep(ctx.createOscillator()); lfo.frequency.value = P.filter.rate; lfo.start(t0);
@@ -1401,28 +1663,28 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     pluck(I, t, f, dur, vel) {
       const L = [], g = mkGain(0), lp = mkFilter('lowpass', f * 6, 1); L.push(g, lp);
       lp.frequency.setValueAtTime(f * 7, t); lp.frequency.setTargetAtTime(f * 2, t, 0.06);
-      const end = mEnv(g, t, 0.005, vel, 0.5, 0.35, dur, 0.08);
+      const end = mEnv(g, t, 0.005, vel * 0.8, 0.5, 0.35, dur, 0.08);
       const o = mOsc('triangle', f, t, end, L), o2 = mOsc('sawtooth', f, t, end, L), m = mkGain(0.25), h = mOsc('sine', f * 2, t, end, L), hg = mkGain(0.2);
       L.push(m, hg);
       o.connect(lp); o2.connect(m); m.connect(lp); h.connect(hg); hg.connect(lp); lp.connect(g); g.connect(I.bus); mNodes(o, L);
     },
     round(I, t, f, dur, vel) {
       const L = [], g = mkGain(0), lp = mkFilter('lowpass', f * 4, 0.7); L.push(g, lp);
-      const end = mEnv(g, t, 0.008, vel, 0.4, 0.6, dur, 0.09);
-      const o = mOsc('sine', f, t, end, L), o2 = mOsc('triangle', f, t, end, L), h = mOsc('sine', f * 2, t, end, L), hg = mkGain(0.22); L.push(hg);
+      const end = mEnv(g, t, 0.008, vel * 0.8, 0.4, 0.6, dur, 0.09);
+      const o = mOsc('sine', f, t, end, L), o2 = mOsc('triangle', f, t, end, L), h = mOsc('sine', f * 2, t, end, L), hg = mkGain(0.4); L.push(hg);
       o.connect(lp); o2.connect(lp); h.connect(hg); hg.connect(lp); lp.connect(g); g.connect(I.bus); mNodes(o, L);
     },
     saw(I, t, f, dur, vel) {
       const L = [], g = mkGain(0), lp = mkFilter('lowpass', f * 8, 3.5); L.push(g, lp);
       lp.frequency.setValueAtTime(f * 10, t); lp.frequency.setTargetAtTime(f * 2.5, t, 0.05);
-      const end = mEnv(g, t, 0.004, vel, 0.25, 0.55, dur, 0.06);
+      const end = mEnv(g, t, 0.004, vel * 0.8, 0.25, 0.55, dur, 0.06);
       const o = mOsc('sawtooth', f, t, end, L), o2 = mOsc('square', f * 0.5, t, end, L, -10), m = mkGain(0.4); L.push(m);
       o.connect(lp); o2.connect(m); m.connect(lp); lp.connect(g); g.connect(I.bus); mNodes(o, L);
     },
     sub(I, t, f, dur, vel) {
       const L = [], g = mkGain(0); L.push(g);
-      const end = mEnv(g, t, 0.06, vel, 0.5, 0.85, dur, 0.4);
-      const o = mOsc('sine', f, t, end, L), h = mOsc('triangle', f * 2, t, end, L), hg = mkGain(0.18); L.push(hg);
+      const end = mEnv(g, t, 0.06, vel * 0.8, 0.5, 0.85, dur, 0.4);
+      const o = mOsc('sine', f, t, end, L), h = mOsc('triangle', f * 2, t, end, L), hg = mkGain(0.35); L.push(hg);
       o.connect(g); h.connect(hg); hg.connect(g); g.connect(I.bus); mNodes(o, L);
     },
   };
@@ -1439,11 +1701,13 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     if (first) mNodes(first, L);
   }
   const DRUM = {
-    kick(I, t, v) {
+    kick(I, t, v) { // a phone kick: a shorter, higher thump with a beater click, so it reads on a small speaker
       const L = [], g = mkGain(0); L.push(g);
-      const end = mEnv(g, t, 0.002, 0.9 * v, 0.32, 0, 0, 0);
-      const o = mOsc('sine', 170, t, end, L); o.frequency.setValueAtTime(170, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.12);
-      o.connect(g); g.connect(I.drums); mNodes(o, L);
+      const end = mEnv(g, t, 0.002, 0.8 * v, 0.2, 0, 0, 0);
+      const o = mOsc('sine', 220, t, end, L); o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(80, t + 0.08);
+      const s = mNoise(t, t + 0.03, L), bp = mkFilter('bandpass', 2200, 1.2), ng = mkGain(0); L.push(bp, ng);
+      ng.gain.setValueAtTime(0.18 * v, t); ng.gain.setTargetAtTime(0, t + 0.001, 0.004);
+      o.connect(g); s.connect(bp); bp.connect(ng); ng.connect(g); g.connect(I.drums); mNodes(o, L);
     },
     clap(I, t, v) {
       const L = [], g = mkGain(0), bp = mkFilter('bandpass', 1300, 1.4); L.push(g, bp);
@@ -1544,7 +1808,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       }
       // drone (desert): root + fifth for 4 bars
       if (P.drone && bar % 4 === 0) {
-        const r = I.bassBase + 12;
+        const r = I.bassBase;
         pad(I, t, [r, r + 7], 4 * 16 * sd - 0.05, { lvl: P.drone.lvl, cut: 700, a: 1.2, r: 1.2 });
       }
     }
@@ -1674,14 +1938,74 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     curInst = I; instances.push(I);
     startScheduler();
   }
+  // ---- the intro sting and a clean ending, in the playing world's key on its own lead instrument
+  function stingNotes(I, t, kind) {
+    const P = I.P, sd = I.sd, Ld = P.lead, inst = INST[(Ld && Ld.inst) || 'pluck'] || INST.pluck;
+    const lvl = (Ld ? Ld.lvl : 0.25) * 1.1, fx = Ld ? Ld.fx : 0.1;
+    const note = (deg, base) => { let m = degMidi(I.harm, deg, base); if (I.pent) m = snapPent(m, I.bassBase); return mtof(m); };
+    const lead = (step, deg, len, vel) => inst(I, t + step * sd, note(deg, I.leadBase - 12), len * sd, lvl * vel, I.bus, fx);
+    const bass = (step, len, vel) => (BASS[P.bass && P.bass.inst] || BASS.round)(I, t + step * sd, note(0, I.bassBase), len * sd, (P.bass ? P.bass.lvl : 0.3) * vel);
+    if (kind === 'start') {        // a pickup: 5 - 1 - 3 - 5, the last one held over the root
+      lead(0, -3, 2, 0.8); lead(2, 0, 2, 0.85); lead(4, 2, 2, 0.9); lead(6, 4, 6, 1); lead(6, 7, 6, 0.45);
+      bass(6, 6, 1); DRUM.kick(I, t + 6 * sd, 1);
+      if (P.drums && (P.drums.clap || P.drums.rim)) (P.drums.clap ? DRUM.clap : DRUM.rim)(I, t + 6 * sd, 0.8);
+      return 8;
+    }
+    if (kind === 'win') {          // one tonic chord, struck together
+      for (const d of [0, 2, 4]) lead(0, d, 8, 0.75); lead(0, 7, 8, 0.6);
+      bass(0, 8, 1); DRUM.kick(I, t, 1);
+      return 8;
+    }
+    lead(0, 4, 2, 0.7); lead(2, 2, 2, 0.65); lead(4, 0, 8, 0.7); bass(4, 8, 0.8);   // fail: a gentle 5 - 3 - 1
+    return 12;
+  }
+  function stingInstance(spec, t) {
+    const I = createInstance(spec, t);
+    I.xf.gain.cancelScheduledValues(t); I.xf.gain.setValueAtTime(1, t);
+    return I;
+  }
+  // A level starts: the sting, then the loop from its first full section (its pad intro skipped).
+  function musicIntro() {
+    if (!ready || !musicOn || !unlockedOnce || !musicSpec) return;
+    const t = now() + 0.05, I = stingInstance(musicSpec, t);
+    const steps = stingNotes(I, t, 'start');
+    I.nt = t + steps * I.sd; I.idx = 32;
+    if (curInst) fadeOutInstance(curInst, 0.25);
+    curInst = I; instances.push(I);
+    startScheduler();
+  }
+  // A level ends: the loop stops on a cadence; the same music comes back on its own after a rest.
+  function musicEnd(kind) {
+    if (!ready || !curInst) return;
+    const spec = musicSpec, t = now() + 0.03;
+    const S = stingInstance(spec || {}, t);
+    stingNotes(S, t, kind === 'fail' ? 'fail' : 'win');
+    destroyInstance(S);                    // never scheduled; its nodes are released after the tail
+    fadeOutInstance(curInst, 0.15); curInst = null;
+    if (spec && musicOn) {
+      const I = createInstance(spec, t + (kind === 'fail' ? 3 : 5));
+      curInst = I; instances.push(I); startScheduler();
+    }
+  }
+
   function specKey(spec) {
     const p = resolveMood(spec.mood);
     return p + '|' + String(spec.root || '').toUpperCase() + '|' + (spec.scale || '') + '|' + (spec.bpm || '');
   }
 
+  // a hero beat pushes the ring ticks and creak down for a moment
+  function heroDuck() {
+    const t = now(), g = N.tick.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+    g.setTargetAtTime(HERO_DUCK, t, 0.01); g.setTargetAtTime(1, t + HERO_HOLD, 0.12);
+  }
+
+  let duckEnd = 0, duckAmt = 0;
   function duckMusic(amount, seconds) {
     if (!ready) return;
     const t = now(), a = clamp(+amount || 0, 0, 1), s = Math.max(0.05, +seconds || 0.5);
+    if (t < duckEnd && a < duckAmt) return;   // a small dip never cuts short a bigger duck
+    duckEnd = t + s; duckAmt = a;
     N.duck.gain.cancelScheduledValues(t);
     N.duck.gain.setValueAtTime(N.duck.gain.value, t);
     N.duck.gain.setTargetAtTime(1 - a, t, 0.04);
@@ -1764,7 +2088,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     unlock: safe(unlock), setSfx: safe(setSfx), setMusic: safe(setMusic), pauseAll: safe(pauseAll), resumeAll: safe(resumeAll),
     play: safe(play, NOOP_HANDLE), setRingTurn: safe(setRingTurn), setMaterial: safe(setMaterial),
     setFireLoop: safe(setFireLoop), setWind: safe(setWind), setUnderwater: safe(setUnderwater),
-    music: safe(music), stopMusic: safe(stopMusic), duck: safe(duck),
+    music: safe(music), stopMusic: safe(stopMusic), duck: safe(duck), musicIntro: safe(musicIntro), musicEnd: safe(musicEnd),
     // diagnostics (not part of the game contract)
     get ctx() { return ctx; },
     get ready() { return ready; },

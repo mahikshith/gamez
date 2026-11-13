@@ -298,6 +298,7 @@ function startLevel(i, opts = {}) {
   setScreen(opts.direct ? 'play' : 'intro');
   if (opts.direct) {
     portal.gameplayStart();
+    audio.musicIntro(); // the world's short intro sting, then its loop
     toast(G.level.tip, 3.2);
   }
 }
@@ -869,6 +870,7 @@ async function press(id) {
       }
       setScreen('play');
       portal.gameplayStart();
+      audio.musicIntro(); // the world's short intro sting, then its loop
       toast(G.level.tip, 3.4);
       break;
     }
@@ -1094,6 +1096,13 @@ async function rewarded(tag) {
   G.adBusy = false;
   if (!ok) toast('No ad available right now. Try again in a moment.', 2.4);
   return ok;
+}
+
+// Haptics on the hero beats (the app's EggApp bridge, navigator.vibrate on the web); off with reduced motion or sound off.
+const HAPTIC_MS = { save: 18, crack: 30, star: 22, win: 45, strike: 35, crow: 40, boss: 40, hit: 22 };
+function buzz(kind) {
+  if (save.calm || !save.sfx) return;
+  try { vibrate(HAPTIC_MS[kind] || 20); } catch (_) { /* haptics are optional */ }
 }
 
 function applyAudioSettings() {
@@ -1374,14 +1383,209 @@ function drawEggFelt(e, t, k) {
 
 // ---------------------------------------------------------------- events
 let lastBump = 0;
+// Signature sounds per event, layered on (or, for events that had none, instead of) the handlers' own sounds below:
+// every villain family has a voice, every power / chick / ally beat is heard. [sfx, opts, haptic] or (ev) => that.
+// Hero beats that land on the player (a boss attack, a snap at an egg) also buzz. A per-event 60 ms gate keeps
+// bursts of the same event from machine-gunning.
+const thiefVoice = (ev) => (ev.kind === 'rat' || ev.kind === 'ratking' ? 'rat_squeak' : 'weasel_chitter');
+const EVENT_SFX = {
+  // allies: the rooster's crow lives in handleEvents (with its haptic); the goose honks
+  allyCall: (ev) => (ev.kind === 'goose' ? ['goose_honk'] : ['cluck', { intensity: 1, pitch: 0.85 }]),
+  allyKnock: (ev) => (ev.kind === 'goose' || !ev.kind ? ['goose_honk', { pitch: 1.1 }, 'hit'] : ['wing_bat', {}, 'hit']),
+  allyBump: ['wing_bat', { vol: 0.6 }],
+  allyGone: ['flap', { intensity: 1 }],
+  // Chick Strike: the hen bats the chick off her wing; the side effects of each strike
+  stkFire: ['wing_bat'],
+  stkIcy: ['glass_crack', { vol: 0.4, pitch: 1.7 }],
+  stkJolt: ['jelly_zap', { vol: 0.45, pitch: 1.4 }],
+  stkShove: ['egg_bump', { vol: 0.35, intensity: 0.4 }],
+  stkBlast: ['wind_gust', { vol: 0.4, pitch: 1.8 }],
+  stkCalm: ['cluck', { vol: 0.35, pitch: 1.3 }],
+  decoyOn: ['decoy_peep'],
+  // powers
+  powerOn: ['power_use'],
+  magnetOn: ['power_use', { pitch: 0.8 }],
+  magnetMiss: ['release', { vol: 0.4 }],
+  honeyOff: ['bubble_pop', { vol: 0.4, pitch: 0.8 }],
+  bubbleOn: ['bubble_on', { vol: 0.7 }],
+  fireOut: ['lava_sizzle', { vol: 0.3, pitch: 1.6 }],
+  twin: ['twin_hatch'],
+  twinFull: ['motor_tick', { vol: 0.5, pitch: 1.3 }],
+  hatch: ['twin_hatch', { pitch: 1.2 }],
+  mend: ['unlock', { vol: 0.45, pitch: 1.5 }],
+  meltHeal: ['glass_crack', { vol: 0.3, pitch: 1.8 }],
+  p2Fling: ['wind_gust', { vol: 0.5, pitch: 1.6 }],
+  // the snake
+  snakeIn: ['snake_hiss', { vol: 0.6 }],
+  snakeRear: ['snake_hiss', { vol: 0.7, pitch: 1.1 }],
+  snakeHit: ['snake_strike', {}, 'hit'],
+  snakeEat: ['snake_strike', { vol: 0.6, pitch: 0.8 }],
+  snakeRecoil: ['creature_hurt', { pitch: 1.1 }],
+  snakeDaze: ['stun_stars'],
+  // the eagle
+  eagleIn: ['eagle_screech', { vol: 0.6 }],
+  eagleWarn: ['eagle_screech', { vol: 0.5, pitch: 1.1 }],
+  eagleDive: ['eagle_dive'],
+  eagleGrab: ['eagle_screech', { vol: 0.5, pitch: 1.2 }, 'hit'],
+  eagleSlam: ['creature_hurt', { pitch: 0.9 }],
+  eagleDazed: ['stun_stars', { pitch: 0.9 }],
+  eagleDaze: ['stun_stars', { pitch: 0.9 }],
+  eagleFlee: ['eagle_screech', { vol: 0.4, pitch: 0.9 }],
+  eagleWake: ['eagle_screech', { vol: 0.35, pitch: 1.2 }],
+  eagleEat: ['snake_strike', { vol: 0.5, pitch: 0.6 }],
+  // the weasel, the rats and the Rat King
+  thiefIn: (ev) => [thiefVoice(ev), { vol: 0.7 }],
+  thiefWarn: (ev) => [thiefVoice(ev), { vol: 0.6 }],
+  thiefGrab: (ev) => [thiefVoice(ev), { vol: 0.7, pitch: 1.1 }, 'hit'],
+  thiefHit: (ev) => ['creature_hurt', { pitch: ev.kind === 'rat' ? 1.5 : ev.boss ? 0.75 : 1.1 }],
+  thiefFlinch: (ev) => ['creature_hurt', { vol: 0.6, pitch: ev.kind === 'rat' ? 1.6 : 1.2 }],
+  thiefDaze: ['stun_stars', { pitch: 1.1 }],
+  thiefDefeat: ['creature_hurt', { pitch: 0.7 }],
+  thiefFlee: (ev) => [thiefVoice(ev), { vol: 0.5, pitch: 1.2 }],
+  thiefBack: (ev) => [thiefVoice(ev), { vol: 0.4 }],
+  thiefHide: ['release', { vol: 0.4 }],
+  thiefMiss: ['wind_gust', { vol: 0.3, pitch: 2 }],
+  thiefDrop: ['release', { vol: 0.5 }],
+  thiefThaw: ['glass_crack', { vol: 0.35, pitch: 1.5 }],
+  ratDizzy: ['stun_stars', { pitch: 1.3 }],
+  ratSquabble: ['rat_squeak'],
+  ratCuff: ['rat_squeak', { pitch: 1.1 }],
+  // salamander, gecko, chameleon, frog: fire and tongues
+  salFire: ['fire_breath', {}, 'hit'],
+  salPuff: ['fire_breath', { vol: 0.5, pitch: 1.3 }],
+  salHit: ['creature_hurt', { pitch: 0.95 }],
+  salFlinch: ['creature_hurt', { vol: 0.6, pitch: 1.05 }],
+  salShrug: ['release', { vol: 0.35 }],
+  salRivalEnd: ['release', { vol: 0.4 }],
+  geckoLick: ['tongue_lick'],
+  geckoMiss: ['tongue_lick', { vol: 0.5, pitch: 0.9 }],
+  geckoShrug: ['release', { vol: 0.35 }],
+  chamSnatch: ['tongue_lick', { pitch: 0.85 }, 'hit'],
+  chamMiss: ['tongue_lick', { vol: 0.5, pitch: 0.8 }],
+  chamCoughed: ['squish', { vol: 0.6, pitch: 1.2 }],
+  chamDrop: ['release', { vol: 0.5 }],
+  chamWell: ['cheer_up', { vol: 0.6 }],
+  frogTongue: ['tongue_lick', { pitch: 0.75 }],
+  frogLick: ['tongue_lick', { vol: 0.7, pitch: 0.7 }],
+  // hermit crab and the King Crab boss
+  hermitIn: ['crab_snap', { vol: 0.7 }],
+  hermitWarn: ['crab_snap', { vol: 0.5, pitch: 1.2 }],
+  hermitGrab: ['crab_snap', {}, 'hit'],
+  hermitDrop: ['release', { vol: 0.5 }],
+  hermitFlip: ['rock_hit', { vol: 0.6, pitch: 1.3 }],
+  kcWarn: ['boss_roar', { vol: 0.8, pitch: 1.2 }],
+  kcReach: ['crab_snap', { pitch: 0.7 }],
+  kcSnap: (ev) => (ev.miss ? ['crab_snap', { pitch: 0.6 }] : ['boss_slam', { pitch: 1.2 }, 'boss']),
+  kcHit: ['creature_hurt', { pitch: 0.6 }],
+  kcRecoil: ['creature_hurt', { vol: 0.7, pitch: 0.65 }],
+  kcBonk: ['rock_hit', { pitch: 0.8 }],
+  kcStuck: ['steel_clang', { vol: 0.6, pitch: 0.8 }],
+  kcPile: ['rock_hit', { vol: 0.6 }],
+  kcGive: ['unlock', { vol: 0.6, pitch: 1.2 }],
+  kcFree: ['unlock', { vol: 0.5, pitch: 1.3 }],
+  kcDrop: ['release', { vol: 0.5 }],
+  kcSilt: ['splash', { vol: 0.5, pitch: 0.7 }],
+  kcBub: ['bubble_on', { vol: 0.6 }],
+  kcBubEnd: ['bubble_pop'],
+  kcWhirl: ['wind_gust', { vol: 0.6, pitch: 0.8 }],
+  kcWhirlEnd: ['release', { vol: 0.4 }],
+  kcBar: ['steel_on', { vol: 0.6 }],
+  kcBarLand: ['boss_slam', {}, 'boss'],
+  kcBarBump: ['steel_clang', { vol: 0.6 }],
+  kcBarGone: ['glass_break', { vol: 0.5 }],
+  kcDefeat: ['boss_roar', { pitch: 0.75 }],
+  // octopus, jellyfish, puffer, fish, turtle
+  octInk: ['ink_squirt'],
+  octSquirt: ['ink_squirt', { pitch: 1.2 }],
+  octJet: ['ink_squirt', { vol: 0.7, pitch: 0.8 }],
+  octGrab: ['squish', { vol: 0.6, pitch: 0.7 }, 'hit'],
+  jellyIn: ['bubble_on', { vol: 0.5, pitch: 1.3 }],
+  jellySting: ['jelly_zap', {}, 'hit'],
+  jellyStun: ['stun_stars', { pitch: 1.2 }],
+  jellyFlush: ['splash', { vol: 0.5 }],
+  puffIn: ['bubble_on', { vol: 0.5, pitch: 0.9 }],
+  puffSwell: ['puff_swell'],
+  puffBig: ['puff_swell', { pitch: 1.3 }],
+  puffPop: ['bubble_pop', { pitch: 0.7 }],
+  puffSpine: ['thorn_snap', { vol: 0.7 }],
+  puffBounce: ['egg_bump', { vol: 0.5, intensity: 0.5 }],
+  puffDart: ['wind_gust', { vol: 0.4, pitch: 1.8 }],
+  puffShrink: ['release', { vol: 0.5, pitch: 1.4 }],
+  fishIn: ['splash', { vol: 0.3, pitch: 1.5 }],
+  turtleWarn: ['rock_hit', { vol: 0.4, pitch: 0.7 }],
+  turtleLet: ['release', { vol: 0.5 }],
+  turtleMiss: ['wind_gust', { vol: 0.3, pitch: 1.6 }],
+  turtleRight: ['rock_hit', { vol: 0.5, pitch: 0.9 }],
+  // gator, mosquitoes
+  gatorWarn: ['boss_roar', { vol: 0.45, pitch: 1.7 }],
+  gatorSnap: ['gator_snap', {}, 'hit'],
+  gatorHit: ['creature_hurt', { pitch: 0.7 }],
+  gatorDizzy: ['stun_stars', { pitch: 0.8 }],
+  gatorGone: ['splash', { vol: 0.5, pitch: 0.7 }],
+  mosqHunt: ['mosquito', { vol: 0.6 }],
+  mosqLatch: ['mosquito'],
+  mosqLift: ['mosquito', { vol: 0.6, pitch: 1.15 }],
+  mosqDrop: ['mosquito', { vol: 0.4, pitch: 0.9 }],
+  mosqBack: ['mosquito', { vol: 0.5 }],
+  // clockwork: beetles, spiders, the owl
+  beetleWind: ['gear_whir'],
+  spiderSpin: ['gear_whir', { vol: 0.5, pitch: 1.4 }],
+  owlWind: ['gear_whir', { pitch: 0.8 }],
+  owlSlam: ['boss_slam', {}, 'boss'],
+  owlJam: ['creature_hurt', { pitch: 0.6 }],
+  // bosses: a roar on every telegraphed attack, a slam (and a buzz) when one lands, a hurt cry when hit
+  bossWarn: ['boss_roar', { vol: 0.7 }],
+  bossPhase: ['boss_roar', { pitch: 0.85 }],
+  bossSummon: ['boss_roar', { vol: 0.6, pitch: 1.1 }],
+  bossStomp: ['boss_slam', {}, 'boss'],
+  bossPunch: ['boss_slam', { pitch: 1.15 }, 'boss'],
+  bossHit: ['creature_hurt', { pitch: 0.6 }],
+  bossFlinch: ['creature_hurt', { vol: 0.6, pitch: 0.65 }],
+  bossStun: ['stun_stars', { pitch: 0.8 }],
+  thornSwipe: ['boss_slam', { pitch: 1.1 }, 'boss'],
+  thornBlocked: ['steel_clang', { vol: 0.5, pitch: 1.3 }],
+  thornMiss: ['wind_gust', { vol: 0.3, pitch: 1.5 }],
+  thornMissHip: ['wind_gust', { vol: 0.3, pitch: 1.7 }],
+  mvWhip: (ev) => (ev.held ? null : ['boss_slam', { vol: 0.8 }, 'boss']),
+  mvDiveGrab: ['eagle_screech', { vol: 0.6, pitch: 0.9 }, 'hit'],
+  mvDiveDrop: ['release', { vol: 0.5 }],
+  mvPopEnd: ['release', { vol: 0.4, pitch: 0.8 }],
+  mvPopMiss: ['weasel_chitter', { vol: 0.5, pitch: 0.8 }],
+  mvShardShrug: ['glass_crack', { vol: 0.3, pitch: 1.8 }],
+  // hazards that had no sound
+  fallWarn: ['near_miss', { vol: 0.6 }],
+  lightningWarn: ['jelly_zap', { vol: 0.25, pitch: 1.8 }],
+  heatCrack: ['lava_sizzle', { vol: 0.5, pitch: 1.3 }],
+  scorch: ['lava_sizzle', { vol: 0.5, pitch: 1.2 }],
+  emberFizz: ['lava_sizzle', { vol: 0.3, pitch: 1.8 }],
+  gearFizz: ['lava_sizzle', { vol: 0.35, pitch: 1.5 }],
+  fogGone: ['wind_gust', { vol: 0.3, pitch: 1.4 }],
+  reefThaw: ['glass_crack', { vol: 0.35, pitch: 1.4 }],
+  swoopClear: ['wind_gust', { vol: 0.3, pitch: 1.6 }],
+  chickGlide: ['wind_gust', { vol: 0.3, pitch: 2 }],
+  chickDashEnd: ['release', { vol: 0.4, pitch: 1.4 }],
+};
+const evGate = {};
+function playEv(ev) {
+  const e = EVENT_SFX[ev.type];
+  if (!e) return;
+  const r = typeof e === 'function' ? e(ev) : e;
+  if (!r) return;
+  if (G.t - (evGate[ev.type] ?? -1) < 0.06 && G.t >= (evGate[ev.type] ?? -1)) return;
+  evGate[ev.type] = G.t;
+  audio.play(r[0], { ...(r[1] || {}), pan: clamp((ev.x || 0) / 6, -0.6, 0.6) });
+  if (r[2]) buzz(r[2]);
+}
 function handleEvents() {
   const sim = G.sim;
   const fx = G.fx;
   for (const ev of sim.events) {
+    playEv(ev);
     switch (ev.type) {
       case 'allyCrow': // the rooster crows: one short shake and a beat of hit-stop (calm: none); the wave itself is drawn in render/allies.js
         fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y);
-        try { if (!save.calm) vibrate(40); } catch (_) {}
+        audio.play('crow');
+        buzz('crow');
         break;
       case 'bump':
         if (G.t - lastBump > 0.05 && ev.v > 1.2) {
@@ -1410,7 +1614,7 @@ function handleEvents() {
           camPunch(0.028, ev.x, ev.y);
         }
         hen('gasp', 1.2);
-        try { vibrate(30); } catch (_) {}
+        buzz('crack');
         if (ev.why === 'spike') audio.play('rock_hit', { vol: 0.6 });
         // v3: crack stage pop (G34), so every crack is explained
         // a scorch crack: the popup steps aside from the salamander's head, which breathes right there
@@ -1440,6 +1644,7 @@ function handleEvents() {
       case 'save': {
         audio.play('egg_save', { pitch: 1 + (ev.combo - 1) * 0.12 });
         if (ev.combo > 1) audio.play('combo', { intensity: (ev.combo - 2) / 2 });
+        buzz('save');
         if (sim.water) { fx.sparkle(ev.x, ev.y, 14); fx.wave(ev.x, ev.y, 1.2, '#fff6c2', 0.5, 0.12); fx.wave(ev.x, ev.y, 1.9, '#ffffff', 0.65, 0.06, { delay: 0.08 }); }
         else fx.nestBurst(ev.x, ev.y - 0.12, G.theme?.palette?.nestStraw || '#d9b45a', sim.groundY + 0.02);
         camPunch(0.035, ev.x, ev.y);
@@ -1472,7 +1677,8 @@ function handleEvents() {
       case 'pickup': {
         // discovery (F19/C11): the first touch reveals the orb and is remembered
         const snd = { fire_red: 'fire_ignite', fire_black: 'fire_ignite', fire_green: 'unlock', fire_gold: 'twin_hatch', stone: 'steel_on', bubble: 'bubble_on', water: 'splash', thunder: 'thunder', thorn: 'thorn_hit', twin: 'twin_hatch', magnet: 'unlock', hourglass: 'rewind', feather: 'unlock', rockskin: 'steel_on', curse: 'thorn_hit', frostnova: 'glass_crack', shock: 'thunder', thunderclap: 'thunder', laser: 'fire_ignite', spin: 'wind_gust', pepper: 'squish', shrink: 'bubble_pop', iron: 'steel_on', decoy: 'twin_hatch' }[ev.power];
-        audio.play(snd || 'unlock');
+        audio.play('power_pickup'); // the hero beat; the power's own sound sits under it
+        if (snd) audio.play(snd, { vol: 0.7 });
         fx.orbBurst(ev.x, ev.y, powerInfo(ev.power).color); // a burst in the orb's own colour
         eggFx(ev.egg).sv -= 5; // the egg swells with it for a beat
         hitStop(0.045);
@@ -1663,6 +1869,7 @@ const STRIKE_API = {
   once(key, text, d = 3.2) { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } },
   hitStop: (s) => hitStop(s),
   punch: (a, x, y) => camPunch(a, x, y),
+  buzz: (k) => buzz(k),
   slow(left, scale) { if (!save.calm) G.slow = { left, scale }; },
 };
 function strikeFrom() { return G.henAt ? strikeSeat(G.henAt) : {}; }
@@ -1893,7 +2100,7 @@ function predEvent(ev, fx) {
       popup(ev.x, ev.y + 0.5, 'The chick flew off!', { color: '#ffe066', size: 18, life: 1.3 });
       break;
     case 'snakeHiss':
-      audio.play('lava_sizzle', { vol: 0.5, pitch: 1.6 });
+      audio.play('snake_hiss', { vol: 0.8 });
       popup(ev.x, ev.y + 0.5, 'Hsss!', { color: '#a8f06a', size: 18, life: 0.9 });
       once('barrier', 'The snake is stuck behind the wall. Its venom melts it soon!');
       break;
@@ -1983,7 +2190,7 @@ function predEvent(ev, fx) {
       if (ev.why === 'gust') audio.play('wind_gust', { vol: 0.6 });
       break;
     case 'eagleScreech':
-      audio.play('glass_crack', { pitch: 1.6, vol: 0.6 });
+      audio.play('eagle_screech', { vol: 0.8 });
       break;
     case 'bossThrow':
       audio.play('portal_exit', { vol: 0.6, pitch: 0.8 });
@@ -2145,7 +2352,7 @@ function skipCheer() {
   const r = G.result;
   if (G.screen === 'win' && r) {
     const end = Math.max(routine(r.cheer).len, WIN_SHOW + WIN_IN); // straight to the card, the routine at its final pose
-    if (r.t < end) { r.t = end; r.shownTotal = r.total; if (r.stars) audio.play('star', { intensity: (r.stars - 1) / 2 }); }
+    if (r.t < end) { r.t = end; r.shownTotal = r.total; if (r.stars) { audio.play('star', { intensity: (r.stars - 1) / 2 }); buzz('star'); } }
   } else if (G.screen === 'fail') G.screenT = Math.max(G.screenT, routine('encourage').len);
 }
 
@@ -2199,6 +2406,7 @@ function onWin() {
   stopFuse();
   G.sim.burstVault();
   G.result = computeResult();
+  audio.musicEnd('win'); // the loop stops on a cadence under the win fanfare; it comes back on its own
   // the hen's routine (render/cheer.js): by result, a boss, or the first win in a world; never the last one again
   const L = G.level, firstWorld = G.li >= 0 && L.world != null && !LEVELS.some((l) => l.world === L.world && bestStarsOf(l.id) > 0);
   G.result.cheer = pickRoutine({ stars: G.result.stars, streak: G.result.streak, boss: !!L.boss && G.li >= 0, firstWorld, last: save.lastCheer });
@@ -2221,6 +2429,7 @@ function onWin() {
 
 function onFail() {
   stopFuse();
+  audio.musicEnd('fail');
   portal.gameplayStop();
   releaseAll();
   G.fx.kick(0.3);
@@ -2236,7 +2445,7 @@ function update(dt) {
     const C = G.endCard;
     G.endCard = null;
     if (G.run === C.run && G.sim && G.screen === 'play') {
-      if (C.kind === 'win' && G.result) { setScreen('win'); audio.play('level_win'); }
+      if (C.kind === 'win' && G.result) { setScreen('win'); audio.play('level_win'); buzz('win'); }
       else if (C.kind === 'fail' && G.sim.state === 'failed') { setScreen('fail'); audio.play('level_fail'); }
     }
   }
@@ -2268,7 +2477,7 @@ function update(dt) {
   // safety net: if an end-card timer was missed, route a decided level to its card
   if (G.screen === 'play' && (sim.state === 'won' || sim.state === 'failed')) {
     if ((G.endWait = (G.endWait || 0) + dt) > 2.5) {
-      if (sim.state === 'won' && G.result) { setScreen('win'); audio.play('level_win'); }
+      if (sim.state === 'won' && G.result) { setScreen('win'); audio.play('level_win'); buzz('win'); }
       else if (sim.state === 'failed') { setScreen('fail'); audio.play('level_fail'); }
     }
   } else G.endWait = 0;
@@ -2347,7 +2556,7 @@ function update(dt) {
     const shown = Math.round(r.total * k);
     if (shown !== r.shownTotal && k < 1 && Math.floor(r.t * 20) !== Math.floor((r.t - dt) * 20)) audio.play('score_tick', { vol: 0.3 });
     r.shownTotal = shown;
-    for (let s = 0; s < r.stars; s++) if (r.t >= R0.stars[s] && t0 < R0.stars[s]) audio.play('star', { intensity: s / 2 });
+    for (let s = 0; s < r.stars; s++) if (r.t >= R0.stars[s] && t0 < R0.stars[s]) { audio.play('star', { intensity: s / 2 }); buzz('star'); }
     for (const [, name, o] of routineCues(r.cheer, t0, r.t)) audio.play(name, o);
   }
   if (G.screen === 'fail' && !save.calm) for (const [, name, o] of routineCues('encourage', G.screenT - dt, G.screenT)) audio.play(name, o);
