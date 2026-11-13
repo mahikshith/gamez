@@ -13,7 +13,7 @@
 // (rolling it), cross (sits up, furious), scared (bolts for the hole).
 // Frozen and stunned follow the shared creature-state look (agent-brief-2): its own colours tinted toward #bfe6ff inside
 // an ice shell that follows its silhouette with a dark-blue rim; stunned = slack pose, spiral eyes, tongue out, three stars.
-import { RIG } from '../sim/thieves.js';
+import { RIG, FIGHT } from '../sim/thieves.js';
 import { strikeActOf } from './strikehit.js'; // Chick Strike: the face it pulls when a chick hits it
 import { dizzyStars, spiralEye, boltStroke } from './status.js';
 
@@ -134,6 +134,16 @@ export function thiefPose(kind, state, t, u = 0, odo = 0) {
       return P({ ...g, f0x: F[0] + 10 + Math.sin(ph * TAU) * 2, f0y: -B * 0.55 - Math.max(0, Math.sin(ph * TAU)) * 2, f1x: F[1] + 8 + Math.sin(ph * TAU + 3) * 2, f1y: -B * 0.42 - Math.max(0, Math.sin(ph * TAU + 3)) * 2,
         by: B * 0.8 + 0.8 * bob, pitch: -0.12, hx: 4, hy: 3, hr: 0.2, ear: -0.2, look: 1, lid: 0.45, brow: 0.9, tail: 0.15, tc: 0.3, tw: Math.sin(ph * TAU) * 0.3, whisk: Math.sin(t * 14) });
     }
+    case 'skid': { // a rat skids to a stop nose to nose with another: braced forelegs, leaning back, fur up, a squeak
+      const k = 1 - ss(0, 0.65, u), q = Math.sin(clamp(u / 0.3, 0, 1) * Math.PI), l = ss(0.68, 1, u); // l: the lunge into the tussle
+      return P({ by: B * (0.78 + 0.14 * ss(0.4, 0.7, u)) - 3 * l, dx: -5 * k + 6 * l, sq: 0.2 * q, st: 1 - 0.06 * q + 0.18 * l, pitch: 0.05 + 0.16 * k - 0.2 * l, hx: 2 + 4 * l, hy: -2 + 2 * l, hr: -0.18 + 0.1 * l, jaw: 0.2 + 0.6 * ss(0.3, 0.55, u), ear: 0.55 + 0.4 * l, look: 1, lid: 0.1, brow: 1,
+        tail: 0.75 - 0.6 * l, tc: 1 - 0.8 * l, tw: Math.sin(t * 20) * 0.2, puff: 1, f0x: F[0] + 15 + 16 * l, f0y: -B * 0.45 * l, f1x: F[1] + 12 + 14 * l, f1y: -B * 0.35 * l, f2x: F[2] - 3 - 10 * l, f3x: F[3] + 3 - 10 * l, whisk: Math.sin(t * 30) });
+    }
+    case 'startle': // the Rat King looms: it rears back, eyes wide, fur up
+      return P({ by: B * 1.08, dx: -3, pitch: 0.22, hx: -2, hy: -4, hr: -0.3, jaw: 0.6, ear: -0.2, lid: 0, brow: -0.7, tail: 0.8, tc: 1, puff: 1, f0x: F[0] - 4, f0y: -B * 0.3, f1x: F[1] - 4, f1y: -B * 0.25, whisk: Math.sin(t * 30) });
+    case 'tumble': // thrown: splayed and stretched, limbs flailing
+      return P({ by: B, st: 1.14, hx: 2, hy: -2, hr: -0.4, jaw: 0.7, ear: 1, lid: 1, brow: -1, tail: 0.9, tc: -0.4, tw: Math.sin(t * 25) * 0.3, puff: 1,
+        f0x: F[0] + 16 + Math.sin(t * 31) * 4, f0y: -B * 0.7, f1x: F[1] + 10, f1y: -B * 0.9 + Math.sin(t * 27) * 3, f2x: F[2] - 14, f2y: -B * 0.6 + Math.sin(t * 29) * 3, f3x: F[3] - 10, f3y: -B * 0.8 });
     default: { // idle: stands and sniffs in short bursts, ears twitch, whiskers quiver, tail sways
       const sn = Math.max(0, Math.sin(t * 0.9)), bur = Math.sin(t * 22) * ss(0.4, 0.8, sn), tw = slotTwitch(t);
       return P({ by: B + Math.sin(t * 2.4) * 0.6, hx: 2 + 3 * sn, hy: 8 * sn - 1, hr: 0.45 * sn + 0.05 * bur, ear: -0.1 + tw * 0.4, look: 0.5 + 0.4 * sn, lid: 0.25, tail: 0.2 + 0.06 * Math.sin(t * 1.7), tc: 0.5, tw: Math.sin(t * 1.9) * 0.18, whisk: bur * 2 + Math.sin(t * 5) * 0.3 });
@@ -302,6 +312,14 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
     if (frozen) { for (const g of groups) g('rim'); for (const g of groups) g('ice'); }
     const headTop = H(-3, -20);
     if (o.stars > 0) dizzyStars(ctx, headTop.x, headTop.y - 6, 17, 5, t, { n: Math.round(o.stars), layer: 'back', size: Math.max(5, 3.4 / u) });
+    if (o.bristle > 0 && only !== 'head') { // fur up: tufts along the back, behind the body (its outline crosses their roots)
+      for (const [bx, by, a0] of [[-36, -19, -0.5], [-26, -25, -0.25], [-15, -27, 0], [-4, -25, 0.2], [8, -21, 0.4], [19, -17, 0.55]]) {
+        const b = T(bx, by), an = -Math.PI / 2 - p.pitch + a0 + Math.sin(t * 40 + bx) * 0.08, h = (7 + 2 * hash(bx)) * o.bristle, w = 3.4;
+        const tip = { x: b.x + Math.cos(an) * h, y: b.y + Math.sin(an) * h }, nx = -Math.sin(an) * w, ny = Math.cos(an) * w;
+        ctx.beginPath(); ctx.moveTo(b.x + nx, b.y + ny); ctx.lineTo(tip.x, tip.y); ctx.lineTo(b.x - nx, b.y - ny); ctx.closePath();
+        ctx.strokeStyle = C.line; ctx.lineWidth = ow * 1.4; ctx.stroke(); ctx.fillStyle = C.furLo; ctx.fill();
+      }
+    }
     groups.forEach((g, gi) => {
       g('outline'); g('fill');
       if (only === 'head' && gi === 1) headDetails();
@@ -534,6 +552,9 @@ function lookOf(T) {
     case 'trapped': st = 'trapped'; o.eye = 'wide'; o.sweat = 1; break;
     case 'hurt': st = 'hurt'; o.eye = 'squeeze'; break;
     case 'stunned': st = 'stunned'; o.eye = 'spiral'; o.stars = 3; break;
+    case 'sqSkid': st = 'skid'; o.eye = 'angry'; o.bristle = 1; break;
+    case 'sqThrow': case 'tumble': st = 'tumble'; o.eye = 'squeeze'; o.stars = 2; o.bristle = 0.6; break;
+    case 'cuffed': st = 'startle'; o.eye = 'wide'; o.bristle = 1; break;
     case 'bonk': st = 'bonk'; o.eye = 'squeeze'; o.stars = 2; break;
     case 'laugh': st = 'laugh'; o.eye = 'happy'; break;
     case 'cross': case 'drop': st = T.ai === 'roll' ? 'cross' : 'idle'; o.eye = 'angry'; break;
@@ -593,6 +614,7 @@ export function drawThieves(ctx, sim, t, k) {
     if (T.ph === 'wait' || T.ph === 'gone' || T.ph === 'hide') continue;
     if (T.ph === 'crouch') telegraph(ctx, sim, T, t, k);
     if (T.ph === 'brace') rollMark(ctx, sim, T, t, k);
+    if (T.ph === 'sqBall') { if (T.sqLead) drawBall(ctx, sim, T, t, k); continue; } // the two rats are one dust ball
     drawOne(ctx, sim, T, t, k, false);
   }
 }
@@ -624,7 +646,9 @@ function drawOne(ctx, sim, T, t, k, head) {
       if (moved && still) D.carT = t;
       D.pa = T.a; D.po = T.odo;
       if ((L.st === 'prowl' || L.st === 'stalk') && t - (D.carT ?? -9) < 0.12) L.st = 'idle';
-      pose = thiefBlend('t' + T.id, thiefPose(T.kind, L.st, t, L.u, T.odo), t, T.ph === 'leap' || T.ph === 'trapped' ? 22 : 9); D.pose = { ...pose };
+      pose = thiefBlend('t' + T.id, thiefPose(T.kind, L.st, t, L.u, T.odo), t, T.ph === 'leap' || T.ph === 'trapped' || T.ph === 'sqThrow' || T.ph === 'tumble' ? 22 : 9);
+      if (T.cuff > 0) pose = cuffPose(pose, T);
+      D.pose = { ...pose };
     }
     if (D.fz > 0 && !frozen) D.thawT = t;
     D.fz = T.frozen;
@@ -634,12 +658,16 @@ function drawOne(ctx, sim, T, t, k, head) {
   if (head) { o.only = 'head'; o.stars = 0; o.sweat = 0; o.zap = 0; }
   let alpha = T.ph === 'flee' ? T.alpha : 1, pop = T.ph === 'in' ? 0.35 + 0.65 * easeBack(clamp(1 - T.t / Math.max(0.01, T.dur), 0, 1)) : 1;
   if (T.ph === 'warp') { const w = T.warp / 1.1; pop = w < 0.5 ? 1 - ss(0, 0.5, w) * 0.95 : 0.05 + 0.95 * ss(0.5, 1, w); alpha *= w < 0.5 ? 1 - 0.6 * ss(0.3, 0.5, w) : 0.4 + 0.6 * ss(0.5, 0.8, w); }
+  const fl = !head ? flight(T) : null; // thrown out of a squabble or cuffed by the King: an arc, a back flip, a bounce
   frameAt(ctx, T, k, () => {
     ctx.globalAlpha *= alpha;
     const pitch = leapPitch(sim, T), shake = !head && t - D.thawT < 0.5 ? Math.sin(t * 60) * 0.12 * (1 - (t - D.thawT) / 0.5) : 0, spin = T.ph === 'warp' ? (T.warp / 1.1) * 9 : 0;
     const mid = -RIG[T.kind].bodyY * k;
-    ctx.translate(0, mid - hop * k); ctx.rotate(-pitch * T.face + shake + spin); ctx.scale(pop, pop); ctx.translate(0, -mid);
+    if (T.ph === 'sqSkid') skidDust(ctx, T, k, s);
+    if (fl) { ctx.translate(0, -fl.h * k); if (fl.sq) { ctx.scale(1 + 0.3 * fl.sq, 1 - 0.3 * fl.sq); } }
+    ctx.translate(0, mid - hop * k); ctx.rotate(-pitch * T.face + shake + spin - (fl ? fl.spin * T.face : 0)); ctx.scale(pop, pop); ctx.translate(0, -mid);
     drawThief(ctx, 0, 0, s, t, pose, o, T.kind);
+    if (T.cuff > 0 && !head) cuffSmear(ctx, T, s);
     if (!head && t - D.thawT < 0.6) thawShards(ctx, k, (t - D.thawT) / 0.6, mid);
   });
 }
@@ -660,6 +688,127 @@ function hopOver(sim, T) {
   return best;
 }
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+// ---- face-offs (sim/thieves.js thFight): the rat squabble and the Rat King's cuff
+// a thrown rat's lift (m), its back flip (rad, done by the first landing) and a landing squash 0..1
+function flight(T) {
+  if (T.ph !== 'sqThrow' && T.ph !== 'tumble') return null;
+  const u = clamp(1 - T.t / Math.max(0.01, T.dur), 0, 1), hi = T.ph === 'tumble' ? 0.4 : 0.36, cut = 0.72;
+  const h = u < cut ? hi * Math.sin((Math.PI * u) / cut) : hi * 0.22 * Math.sin((Math.PI * (u - cut)) / (1 - cut));
+  const spin = TAU * ss(0, cut, u), sq = u > cut ? Math.max(0, 1 - (u - cut) / 0.08) * 0.8 : 0;
+  return { h, spin, sq };
+}
+// skid marks: puffs kicked up at the braced forepaws, fading as it stops
+function skidDust(ctx, T, k, s) {
+  const u = clamp(1 - T.t / Math.max(0.01, T.dur), 0, 1), f = 1 - u, fp = ((SP.rat.feet[0] + 15) * s) / 100; // the braced forepaws
+  ctx.save();
+  for (let i = 0; i < 4; i++) {
+    const g = fract(u * 1.6 + i * 0.25), x = (T.face < 0 ? -1 : 1) * (fp + (0.04 + 0.12 * g) * k), r = (0.05 + 0.07 * g) * k * (0.6 + 0.4 * f);
+    ctx.globalAlpha = 0.75 * f * (1 - g);
+    ctx.fillStyle = '#e6d8bc'; ctx.strokeStyle = '#b39c78'; ctx.lineWidth = Math.max(0.8, 0.012 * k);
+    ctx.beginPath(); ctx.arc(x, -r * 0.8, r, 0, TAU); ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+}
+// the Rat King swats a rat on the move: wind-up, swipe (a forepaw, or a hind-leg kick at one behind him), recover
+function cuffPose(p, T) {
+  const e = FIGHT.cuffT - T.cuff, w = ss(0, FIGHT.wind, e), sw = ss(FIGHT.wind, FIGHT.wind + 0.1, e), amt = 1 - ss(0.45, FIGHT.cuffT, e), F = SP.rat.feet, B = SP.rat.by, q = { ...p };
+  if (T.cuffD >= 0) {
+    q.f0x = lerp(p.f0x, lerp(F[0] - 4, F[0] + 46, sw), amt * Math.max(w, sw)); q.f0y = lerp(p.f0y, lerp(-B * 1.45, -B * 0.55, sw), amt * Math.max(w, sw));
+    q.pitch = p.pitch + (0.12 * w - 0.16 * sw) * amt; q.hr = p.hr + (-0.25 * w + 0.3 * sw) * amt;
+  } else {
+    q.f2x = lerp(p.f2x, lerp(F[2] + 6, F[2] - 42, sw), amt * Math.max(w, sw)); q.f2y = lerp(p.f2y, lerp(-B * 0.3, -B * 0.5, sw), amt * Math.max(w, sw));
+    q.pitch = p.pitch + (-0.06 * w - 0.08 * sw) * amt; q.tail = p.tail + 0.5 * w * amt;
+  }
+  q.jaw = Math.max(p.jaw, 0.6 * sw * amt); q.brow = 1; q.ear = p.ear + 0.4 * w * amt;
+  return q;
+}
+// the swipe's motion arc: two thin strokes in the King's own fur shade, only while the paw moves
+function cuffSmear(ctx, T, s) {
+  const e = FIGHT.cuffT - T.cuff, a = ss(FIGHT.wind - 0.02, FIGHT.wind + 0.06, e) * (1 - ss(FIGHT.wind + 0.12, FIGHT.wind + 0.3, e));
+  if (a <= 0.01) return;
+  const U = s / 100, fl = T.face < 0 ? -1 : 1, front = T.cuffD >= 0;
+  ctx.save(); ctx.scale(fl, 1); ctx.lineCap = 'round';
+  const cx = (front ? 22 : -26) * U, cy = -22 * U, R = 34 * U, a0 = front ? -1.9 : -1.25 + Math.PI, a1 = front ? 0.35 : Math.PI + 1.0;
+  for (let i = 0; i < 3; i++) {
+    ctx.globalAlpha = a * (0.85 - i * 0.25);
+    ctx.strokeStyle = i ? '#cfc2b2' : '#8f8070'; ctx.lineWidth = Math.max(1, (3 - i) * U * 1.1);
+    ctx.beginPath(); ctx.arc(cx, cy, R * (1 + i * 0.16), Math.min(a0, a1), Math.max(a0, a1), !front); ctx.stroke();
+  }
+  ctx.restore();
+}
+// the tussle: one rolling dust cloud with rat bits poking out (heads, paws, tails) and stars, sitting on the floor
+const DUST = { base: '#d8c6a4', edge: '#a2875f', lit: 'rgba(255,248,230,0.6)', shade: 'rgba(110,80,50,0.38)', puff: '#efe3cb' };
+function drawBall(ctx, sim, A, t, k) {
+  const q = sim.sqBallPt(A), u = clamp(1 - A.t / Math.max(0.01, A.dur), 0, 1), dir = A.bv || 1;
+  const grow = u < 0.12 ? 0.55 + 0.45 * easeBack(u / 0.12) : 1, bulge = 1 + 0.14 * ss(0.88, 1, u);
+  const R = FIGHT.br * 1.2 * k * grow * bulge, rot = t * 7 * dir, floor = FIGHT.br * 1.2 * k * 0.92; // drawn a bit over the body, sitting on the same floor
+  pxAt(ctx, q.x, q.y, k, () => {
+    ctx.rotate(Math.atan2(-Math.cos(A.ba), -Math.sin(A.ba)));
+    ctx.translate(0, FIGHT.br * k - floor);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // contact shadow on the floor
+    ctx.fillStyle = 'rgba(20,10,4,0.3)'; ctx.beginPath(); ctx.ellipse(0, floor - 1, R * 1.05, Math.max(2, R * 0.2), 0, 0, TAU); ctx.fill();
+    const wob = 1 + 0.07 * Math.sin(t * 17), sx = wob, sy = 2 - wob;
+    ctx.save(); ctx.translate(0, floor * (1 - sy) * 0.5); ctx.scale(sx, sy);
+    const lw = Math.max(1, 0.018 * k), P = PALS.rat;
+    // rat bits behind the cloud: two tails lashing, two legs kicking
+    const part = (an, len, kind, i) => {
+      if (Math.sin(an) > 0.12) an = -an; // nothing pokes down through the floor
+      const c = Math.cos(an), sn = Math.sin(an), r0 = R * 0.6, r1 = R * (0.98 + len);
+      if (kind === 'tail') {
+        ctx.beginPath(); ctx.moveTo(c * r0, sn * r0);
+        const m = r0 + (r1 - r0) * 0.5, wg = Math.sin(t * 19 + i) * R * 0.35;
+        ctx.quadraticCurveTo(c * m - sn * wg, sn * m + c * wg, c * r1 * 1.15 - sn * wg * 0.4, sn * r1 * 1.15 + c * wg * 0.4);
+        ctx.strokeStyle = P.tailLo; ctx.lineWidth = Math.max(2.2, 0.05 * k); ctx.stroke();
+        ctx.strokeStyle = P.tail; ctx.lineWidth = Math.max(1.2, 0.03 * k); ctx.stroke();
+      } else {
+        const ex = c * r1, ey = sn * r1;
+        ctx.beginPath(); ctx.moveTo(c * r0, sn * r0); ctx.lineTo(ex, ey);
+        ctx.strokeStyle = P.furLo; ctx.lineWidth = Math.max(3, 0.075 * k); ctx.stroke();
+        ctx.strokeStyle = P.fur; ctx.lineWidth = Math.max(2, 0.05 * k); ctx.stroke();
+        ctx.fillStyle = P.paw; ctx.strokeStyle = '#c47680'; ctx.lineWidth = lw * 0.8;
+        ctx.beginPath(); ctx.ellipse(ex, ey, Math.max(2, 0.05 * k), Math.max(1.6, 0.036 * k), an, 0, TAU); ctx.fill(); ctx.stroke();
+      }
+    };
+    const kick = (i) => 0.25 + 0.2 * Math.max(0, Math.sin(t * 13 + i * 1.7));
+    part(rot * 0.5 + 2.4, 0.55, 'tail', 1); part(-rot * 0.4 - 0.6, 0.5, 'tail', 2);
+    part(rot + 0.9, kick(0), 'leg', 0); part(rot + 3.6, kick(1), 'leg', 1);
+    // a head pops out now and then (alternating rats), angry, mouth open
+    const popH = (i, an) => {
+      const ph = fract(t * 1.3 + i * 0.5), up = Math.sin(clamp(ph / 0.5, 0, 1) * Math.PI);
+      if (up <= 0.02) return;
+      const c = Math.cos(an), sn = Math.sin(an), rr = R * (0.6 + 0.45 * up), hx = c * rr, hy = sn * rr, face = c >= 0 ? 1 : -1;
+      const pose = { ...thiefPose('rat', 'prowl', t), hx: 0, hy: 0, hr: (face > 0 ? sn : -sn) * 0.6, jaw: 0.6 + 0.3 * Math.sin(t * 30), ear: 0.5, brow: 1 };
+      const S = RIG.rat.s * k * 0.95;
+      drawThief(ctx, hx - face * 0.42 * S, hy + 0.33 * S, S, t, pose, { only: 'head', face, eye: i ? 'spiral' : 'angry' }, 'rat');
+    };
+    popH(0, -Math.PI / 2 - 0.7 + 0.25 * Math.sin(t * 3)); popH(1, -Math.PI / 2 + 0.8 + 0.25 * Math.sin(t * 2.6));
+    // the cloud: lobes stroked first in a darker dust shade, then filled over, so only the silhouette keeps a thin edge
+    const lobes = [];
+    for (let i = 0; i < 9; i++) { const an = rot * 0.6 + (i * TAU) / 9 + 0.3 * Math.sin(t * 5 + i), d = R * 0.56, r = R * (0.42 + 0.1 * Math.sin(t * 9 + i * 2.1)); lobes.push([Math.cos(an) * d, Math.sin(an) * d, r]); }
+    lobes.push([0, 0, R * 0.66]);
+    const cloud = () => { ctx.beginPath(); for (const [x, y, r] of lobes) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU); } };
+    cloud(); ctx.strokeStyle = DUST.edge; ctx.lineWidth = lw * 2; ctx.stroke();
+    cloud(); ctx.fillStyle = DUST.base; ctx.fill();
+    ctx.save(); cloud(); ctx.clip();
+    const g = ctx.createLinearGradient(-R, -R, R * 0.7, R); g.addColorStop(0, DUST.lit); g.addColorStop(0.45, 'rgba(255,248,230,0)'); g.addColorStop(0.6, 'rgba(110,80,50,0)'); g.addColorStop(1, DUST.shade);
+    ctx.fillStyle = g; ctx.fillRect(-R * 2, -R * 2, R * 4, R * 4);
+    ctx.strokeStyle = DUST.edge; ctx.lineWidth = lw; ctx.globalAlpha = 0.7; // curls: the churn inside the cloud
+    for (let i = 0; i < 4; i++) { const an = -rot * 0.9 + i * 1.7, d = R * 0.38, x = Math.cos(an) * d, y = Math.sin(an) * d; ctx.beginPath(); ctx.arc(x, y, R * 0.2, an + 0.6, an + 2.6); ctx.stroke(); }
+    ctx.restore();
+    // bits in front: a paw swinging out and a tail tip
+    part(-rot * 1.3 + 0.2, 0.3 + 0.25 * Math.max(0, Math.sin(t * 15)), 'leg', 2);
+    ctx.restore();
+    // dust kicked up where it rolls, and the stars
+    for (let i = 0; i < 3; i++) {
+      const g2 = fract(t * 2.2 + i / 3), x = -dir * R * (0.7 + 0.6 * g2), r = R * (0.16 + 0.22 * g2);
+      ctx.globalAlpha = 0.7 * (1 - g2); ctx.fillStyle = DUST.puff; ctx.strokeStyle = DUST.edge; ctx.lineWidth = lw * 0.8;
+      ctx.beginPath(); ctx.arc(x, floor - r * 0.9 - g2 * R * 0.3, r, 0, TAU); ctx.fill(); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    dizzyStars(ctx, 0, -R * 1.05, R * 0.95, R * 0.28, t, { n: 3, size: Math.max(4, R * 0.24), speed: 6 });
+  });
+}
 function easeBack(x) { return 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2); }
 function thawShards(ctx, k, f, mid) {
   ctx.save();
@@ -801,6 +950,21 @@ export function thiefEvent(ev, fx, U) {
     case 'thiefDrop': if (ev.why === 'tired' || ev.why === 'turned') popup(ev.x, ev.y + 0.6, 'Dropped it!', { color: '#bff0a0', size: 16, life: 0.8 }); break;
     case 'thiefScared': audio.play('egg_bump', { vol: 0.5, pitch: 1.9 }); popup(ev.x, ev.y + 0.6, 'Eek!', { color: '#bff0ff', size: 18, life: 0.8 }); break;
     case 'thiefFreeze': audio.play('glass_crack', { vol: 0.5 }); break;
+    case 'ratSquabble':
+      if (ev.ph === 'start') { audio.play('squish', { vol: 0.5, pitch: 2.1 }); audio.play('egg_bump', { vol: 0.35, pitch: 1.8 }); fx.dust(ev.x, ev.y, 5); }
+      else if (ev.ph === 'ball') { audio.play('wind_gust', { vol: 0.35, pitch: 2.2 }); audio.play('squish', { vol: 0.45, pitch: 1.7 }); fx.dust(ev.x, ev.y, 8); }
+      else if (ev.ph === 'break') {
+        audio.play('rock_hit', { vol: 0.55, pitch: 1.5 }); audio.play('squish', { vol: 0.5, pitch: 2.3 });
+        fx.dust(ev.x, ev.y, 10); fx.sparkle(ev.x, ev.y, 6, '#ffd93b');
+        if (fx.kick) fx.kick(0.32); if (U.hitStop) U.hitStop(0.07);
+        popup(ev.x, ev.y + 0.7, 'Dizzy!', { color: '#bff0ff', size: 18, life: 0.9 });
+        once('ratSquabble', 'Rats squabble when they meet. Both are dizzy after: move your eggs now.', 4);
+      }
+      break;
+    case 'ratCuff':
+      if (ev.ph === 'wind') audio.play('squish', { vol: 0.4, pitch: 2.2 });
+      else { audio.play('thorn_snap', { vol: 0.45, pitch: 0.8 }); audio.play('squish', { vol: 0.45, pitch: 2.4 }); fx.dust(ev.x, ev.y, 6); fx.sparkle(ev.x, ev.y, 4, '#ffd93b'); if (fx.kick) fx.kick(0.18); if (U.hitStop) U.hitStop(0.04); }
+      break;
     default: break;
   }
 }

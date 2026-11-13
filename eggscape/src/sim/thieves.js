@@ -27,6 +27,7 @@
 //   and water (a water egg or water orb near it) scare it home for a while; it never touches a wet egg.
 //   Upside: a rolling egg can be steered into a gap. Downside: an egg it reaches the hole with is gone.
 //   Easy: slower, and it gives up a push after a while.
+import { Vec2, Circle } from 'planck';
 import { RING_TH, EGG_W, wrap, clamp } from './geom.js';
 
 // sizes in metres (render/thieves.js draws the rigs to these): s = rig length unit (100 units); mouthX/Y = where a held
@@ -63,6 +64,25 @@ export const ROLL = {
   far: 3.2, // m: eggs further than this along the floor it ignores
   wet: 0.75, // m: a water egg or water orb this close scares it
 };
+// v4.x villain face-offs (only in a level with two rats, or rats and the Rat King):
+// SQUABBLE: two rats in one channel meet (their drawn bodies, rump to nose, FIGHT.near apart): they skid to a stop nose to
+//   nose and lunge (skid s; a rat rolling an egg lets go of it and the egg rolls on), tussle as one rolling dust ball (ball s)
+//   that drifts along the floor the way the faster rat was going (a kinematic body: it shoves eggs gently and stops at a
+//   barrier or when an egg it pushes will not give: never a squeeze that could crack it),
+//   then fly apart (brk s, throw m each way) and sit dizzy (the plain stunned state) for dizzy s. Pair cooldown cd s.
+// CUFF: a rat runs into the Rat King: he cuffs it aside on the move (wind s wind-up, then the swipe; he runs at cuffSlow
+//   for cuffT s, so he loses 0.4 s), the rat tumbles cuffM m away and is dizzy cuffDizzy s. Pair cooldown cuffCd s once
+//   it is back on its feet.
+export const FIGHT = {
+  near: 0.2, skid: 0.5, ball: 1.2, brk: 0.3, dizzy: 2.5, cd: 8, nose: 0.03, lunge: 0.3, drift: 0.38, throw: 1.0, br: 0.38,
+  kingNear: 0.05, den: 1.2, wind: 0.25, cuffT: 0.8, cuffSlow: 0.5, tumble: 0.45, cuffM: 1.2, cuffDizzy: 2.0, cuffCd: 6,
+};
+const SQ_OK = new Set(['prowl', 'idle', 'brace', 'push', 'drop', 'cross', 'laugh']); // a rat in one of these can start a fight
+const SQ = new Set(['sqSkid', 'sqBall', 'sqThrow']);
+const KING_OK = new Set(['prowl', 'stalk', 'idle', 'carry']);
+const EXT = { rat: [0.33, 0.62], ratking: [0.62, 1.15], weasel: [0.5, 0.95] }; // m behind / ahead of its feet: rump, nose (the drawn rig)
+const WDT = 1 / 120; // sim.js DT (the world step; halved under the hourglass)
+const eo = (u) => 1 - (1 - u) * (1 - u);
 const HUNT_ON = new Set(['prowl', 'stalk', 'idle']);
 const ROLL_ON = new Set(['prowl', 'idle']);
 const AWAY = new Set(['wait', 'gone', 'hide']);
@@ -80,6 +100,7 @@ export const thiefMethods = {
         eid: 0, tgt: 0, gi: -1, k: '', hold: 0, next: 2, sneakT: 0, ch: 0,
         a0: 0, r0: 0, a1: 0, r1: 0, ap: 0, lu: 0, ldur: 1, lg: -1, blocked: 0, roll: 0,
         frozen: 0, zap: 0, hitCD: 0, saved: 0, stash: [], esc: 0, alpha: 1, slot: o.slot || 0, warp: 0, wx: 0, wy: 0,
+        sq: 0, sqLead: 0, sqV: 0, sqA0: 0, sqA1: 0, ba: 0, bv: 0, bjam: 0, cuff: 0, cuffD: 0, cd: [], // face-offs (thFight)
       };
       this.thieves.push(T);
       T.ch = T.run; T.r = this.thFloor(T.run);
@@ -96,6 +117,7 @@ export const thiefMethods = {
         if (hole) { T.home = hole.id; T.eat = 0; T.denA = hole.denA; }
       }
     }
+    this.thFightInit();
   },
   thiefBoss() { return (this.thieves || []).find((T) => T.boss) || null; },
 
@@ -129,7 +151,7 @@ export const thiefMethods = {
   thiefStep(dt) {
     const L = this.thieves;
     if (!L || !L.length) return;
-    if (this.state !== 'play') { for (const T of L) this.thEnd(T, dt); return; }
+    if (this.state !== 'play') { if (this.thBall) this.thParkAll(); for (const T of L) this.thEnd(T, dt); return; }
     // the target is saved and only stashed eggs are left: the thieves keep them and the level ends (no waiting out the clock)
     if (this.savedLog.length >= (this.level.target || 1) && this.aliveEggs().length && this.aliveEggs().every((e) => e.thf === 2)) {
       for (const T of L) for (const id of T.stash.splice(0)) { const e = this.eggs.find((q) => q.id === id); if (e && e.alive) this.breakEgg(e, 'thief'); }
@@ -156,8 +178,9 @@ export const thiefMethods = {
         continue;
       }
       if (T.next > 0) T.next -= dt;
-      if (T.ai === 'hunt') this.huntStep(T, dt); else this.rollStep(T, dt);
+      if (T.ai === 'hunt') this.huntStep(T, T.cuff > 0 ? dt * FIGHT.cuffSlow : dt); else this.rollStep(T, dt); // cuffing a rat costs the King a beat
     }
+    if (this.thBall) this.thFight(dt);
     const B = this.bx && this.bx.boss, K = this.thiefBoss();
     if (B && K && K.ph !== 'gone') this.thiefBossPose(B);
   },
@@ -709,11 +732,180 @@ export const thiefMethods = {
     return d < 2 ? (c === T.run ? (T.ai === 'roll' ? 0.3 : 0.5) : 0.25) * (1 - d / 2) : 0;
   },
 
+  // ================================================================== face-offs: rat squabbles, the Rat King's cuff
+  // only built when two thieves can meet (two rats, or rats and the King): every other level simulates as before
+  thFightInit() {
+    this.thBall = null;
+    const rats = this.thieves.filter((T) => T.kind === 'rat');
+    if (!(rats.length >= 2 || (rats.length && this.thieves.some((T) => T.kind === 'ratking')))) return;
+    this.thBall = {};
+    for (const T of rats) { // each rat can lead a squabble: its ball is a kinematic circle that touches eggs only, parked off the map
+      const b = this.world.createBody({ type: 'kinematic', position: Vec2(0, -60) });
+      b.createFixture({ shape: new Circle(FIGHT.br), friction: 0.5, restitution: 0.1, filterCategoryBits: 256, filterMaskBits: 2, userData: { kind: 'ratball', id: T.id } });
+      this.thBall[T.id] = b;
+    }
+  },
+  sqBallPt(T) { const rr = this.thFloor(T.run) - FIGHT.br; return { x: rr * Math.cos(T.ba), y: rr * Math.sin(T.ba), r: rr }; },
+  thPark(T) { const b = this.thBall && this.thBall[T.id]; if (!b) return; b.setTransform(Vec2(0, -60), 0); b.setLinearVelocity(Vec2(0, 0)); b.setAngularVelocity(0); },
+  thParkAll() { for (const T of this.thieves) if (this.thBall[T.id] && T.ph === 'sqBall') { this.thPark(T); T.ph = 'stunned'; T.t = T.dur = 1; T.sq = 0; } },
+  // signed speed along the floor (m/s, + = increasing angle) from what it is doing
+  thVel(T) {
+    if (T.ph === 'prowl') return T.face * ROLL.speed * (T.tgt ? 1 : 0.5);
+    if (T.ph === 'push') return T.face * this.thM(ROLL.push);
+    return 0;
+  },
+  // the gap (m) between two thieves' drawn bodies along the floor (0 when they overlap); side = where Q is (+1 ahead of P's face)
+  thGap(P, Q) {
+    const d = wrap(Q.a - P.a) * P.r, [pr, pn] = EXT[P.kind], [qr, qn] = EXT[Q.kind];
+    const p0 = P.face > 0 ? -pr : -pn, p1 = P.face > 0 ? pn : pr, q0 = d + (Q.face > 0 ? -qr : -qn), q1 = d + (Q.face > 0 ? qn : qr);
+    return { gap: Math.max(0, q0 - p1, p0 - q1), side: d * P.face >= 0 ? 1 : -1 };
+  },
+  // free to start a fight: not dizzy, frozen or busy, and out of its hole's mouth (a pair leaving one hole never brawls there)
+  thFree2(T) { return SQ_OK.has(T.ph) && !(T.frozen > 0) && T.ch === T.run && Math.abs(wrap(this.thDenPt(T).a - T.a)) * T.r > FIGHT.den; },
+  // let go of a rolled egg: it keeps rolling the way it went
+  thLetRoll(T) {
+    const v = T.ph === 'push' ? this.thM(ROLL.push) * T.face : 0, e = this.thLetGo(T, 'fight');
+    T.tgt = 0;
+    if (!e || !e.body) return;
+    const p = e.body.getPosition(), a = Math.atan2(p.y, p.x);
+    e.body.setLinearVelocity(Vec2(-Math.sin(a) * v, Math.cos(a) * v));
+    e.body.setAngularVelocity(-v / (EGG_W / 2));
+  },
+  thFight(dt) {
+    const L = this.thieves;
+    for (const T of L) {
+      if (T.cuff > 0) T.cuff = Math.max(0, T.cuff - dt);
+      for (let i = 0; i < T.cd.length; i++) if (T.cd[i] > 0) T.cd[i] = Math.max(0, T.cd[i] - dt);
+    }
+    // fights under way
+    for (const T of L) {
+      if (T.kind !== 'rat') continue;
+      if (SQ.has(T.ph)) {
+        const P = T.sq ? L[T.sq - 1] : null;
+        if (!P || !SQ.has(P.ph) || P.sq !== T.id + 1 || T.frozen > 0 || P.frozen > 0) { this.sqEnd(T); if (P && SQ.has(P.ph) && P.sq === T.id + 1) this.sqEnd(P); continue; }
+        if (T.sqLead) this.sqStep(T, P, dt);
+      } else if ((T.ph === 'cuffed' || T.ph === 'tumble') && !(T.frozen > 0)) this.cuffStep(T, dt);
+    }
+    // new ones: two rats meet
+    const rats = L.filter((T) => T.kind === 'rat');
+    for (let i = 0; i < rats.length; i++) for (let j = i + 1; j < rats.length; j++) {
+      const A = rats[i], B = rats[j];
+      if (A.run !== B.run || !this.thFree2(A) || !this.thFree2(B) || (A.cd[B.id] || 0) > 0) continue;
+      if (this.thGap(A, B).gap < FIGHT.near) this.sqStart(A, B);
+    }
+    // a rat runs into the Rat King
+    const K = L.find((T) => T.kind === 'ratking');
+    if (!K || !KING_OK.has(K.ph) || K.ch !== K.run || K.frozen > 0 || K.cuff > 0) return;
+    for (const T of rats) {
+      if (T.run !== K.run || !this.thFree2(T) || (T.cd[K.id] || 0) > 0) continue;
+      const g = this.thGap(K, T);
+      if (g.gap > FIGHT.kingNear) continue;
+      this.cuffStart(K, T, g.side);
+      return;
+    }
+  },
+  sqStart(A, B) {
+    const R = A.r, da = wrap(B.a - A.a), s = da >= 0 ? 1 : -1, mid = A.a + da / 2;
+    const vA = this.thVel(A), vB = this.thVel(B), v = Math.abs(vA) >= Math.abs(vB) ? vA : vB;
+    for (const [T, side] of [[A, -s], [B, s]]) {
+      this.thLetRoll(T);
+      T.sqV = side; T.face = -side; T.sqA0 = T.a; T.sqA1 = mid + (side * (EXT.rat[1] + FIGHT.nose)) / R; // nose to nose
+      this.thSet(T, 'sqSkid', FIGHT.skid);
+    }
+    A.sq = B.id + 1; B.sq = A.id + 1; A.sqLead = 1; B.sqLead = 0;
+    A.bv = Math.sign(v) || s; A.bjam = 0;
+    const r = R - 0.16;
+    this.emit('ratSquabble', { ph: 'start', x: r * Math.cos(mid), y: r * Math.sin(mid), a: A.id, b: B.id });
+  },
+  sqEnd(T) { // a fight cut short (a daze, a freeze, a scare): back to its own business, a little dazed
+    if (T.sqLead) this.thPark(T);
+    const was = SQ.has(T.ph);
+    T.sq = 0; T.sqLead = 0;
+    if (was) { if (T.frozen > 0) this.thSet(T, 'prowl'); else this.thSet(T, 'stunned', 1.2); }
+  },
+  sqStep(A, B, dt) {
+    const R = A.r, u = clamp(1 - (A.t - dt) / A.dur, 0, 1);
+    A.t -= dt; B.t = A.t;
+    if (A.ph === 'sqSkid') { // skid to a stop nose to nose (to 0.65 of it), then both lunge in
+      const k = eo(clamp(u / 0.65, 0, 1)), l = clamp((u - 0.72) / 0.28, 0, 1) ** 2;
+      for (const T of [A, B]) T.a = wrap(T.sqA0 + wrap(T.sqA1 - T.sqA0) * k - (T.sqV * FIGHT.lunge * (T.sqV === -A.bv ? 2 : 0) * l) / R); // the faster one bowls into the other
+      if (A.t > 0) return;
+      A.ba = wrap(A.a + wrap(B.a - A.a) / 2); A.bjam = 0;
+      const q = this.sqBallPt(A), b = this.thBall[A.id];
+      b.setTransform(Vec2(q.x, q.y), 0); b.setLinearVelocity(Vec2(0, 0)); b.setAngularVelocity(0);
+      for (const T of [A, B]) this.thSet(T, 'sqBall', FIGHT.ball);
+      this.emit('ratSquabble', { ph: 'ball', x: q.x, y: q.y, dir: A.bv });
+      return;
+    }
+    if (A.ph === 'sqBall') {
+      const q0 = this.sqBallPt(A);
+      let step = FIGHT.drift * dt;
+      if (A.bv) { // stopped by a barrier on this floor, or by an egg that will not budge (jammed against something)
+        const ring = this.rings[A.run];
+        for (const bar of this.barriers || []) {
+          if (!bar.alive || bar.ring !== A.run) continue;
+          const d = wrap(ring.body.getAngle() + bar.a - A.ba) * R * A.bv;
+          if (d > 0 && d < FIGHT.br + bar.w / 2 + 0.02 + step) { A.bv = 0; break; }
+        }
+        // an egg it shoves that does not give (pinned against something): the ball sinks into it. Stop before it squeezes.
+        let jam = false;
+        const a = Math.atan2(q0.y, q0.x), tx = -Math.sin(a) * A.bv, ty = Math.cos(a) * A.bv;
+        for (let ce = this.thBall[A.id].getContactList(); ce; ce = ce.next) {
+          const c = ce.contact;
+          if (!c.isTouching()) continue;
+          const o = ce.other, op = o.getPosition();
+          if ((op.x - q0.x) * tx + (op.y - q0.y) * ty <= 0) continue; // behind the ball
+          const wm = c.getWorldManifold(null), n = c.getManifold().pointCount;
+          for (let i = 0; i < n; i++) if (wm.separations[i] < -0.02) jam = true;
+        }
+        A.bjam = jam ? A.bjam + dt : Math.max(0, A.bjam - dt);
+        if (A.bjam > 0.08) A.bv = 0;
+      }
+      A.ba = wrap(A.ba + (A.bv * step) / R);
+      A.a = wrap(A.ba - 0.06 / R); B.a = wrap(A.ba + 0.06 / R);
+      const q = this.sqBallPt(A), b = this.thBall[A.id], p = b.getPosition(), w = this.slowT > 0 ? WDT / 2 : WDT;
+      b.setLinearVelocity(Vec2((q.x - p.x) / w, (q.y - p.y) / w));
+      if (A.t > 0) return;
+      this.thPark(A);
+      for (const T of [A, B]) { T.sqA0 = wrap(A.ba + (T.sqV * 0.06) / R); T.sqA1 = T.sqA0 + (T.sqV * FIGHT.throw) / R; T.a = T.sqA0; this.thSet(T, 'sqThrow', FIGHT.brk); }
+      this.emit('ratSquabble', { ph: 'break', x: q.x, y: q.y, a: A.id, b: B.id });
+      return;
+    }
+    for (const T of [A, B]) T.a = wrap(T.sqA0 + (T.sqA1 - T.sqA0) * eo(u));
+    if (A.t > 0) return;
+    for (const [T, P] of [[A, B], [B, A]]) { T.sq = 0; T.sqLead = 0; T.cd[P.id] = FIGHT.cd; this.thSet(T, 'stunned', FIGHT.dizzy); }
+    this.emit('ratDizzy', { ...this.thBody(A), x2: this.thBody(B).x, y2: this.thBody(B).y });
+  },
+  cuffStart(K, T, side) {
+    this.thLetRoll(T);
+    K.cuff = FIGHT.cuffT; K.cuffD = side;
+    const toK = wrap(K.a - T.a) >= 0 ? 1 : -1;
+    T.face = toK; T.sqV = -toK; T.sq = K.id + 1;
+    this.thSet(T, 'cuffed', FIGHT.wind);
+    this.emit('ratCuff', { ph: 'wind', ...this.thBody(T) });
+  },
+  cuffStep(T, dt) {
+    if ((T.t -= dt) > 0 && T.ph === 'cuffed') return;
+    if (T.ph === 'cuffed') {
+      T.sqA0 = T.a; T.sqA1 = T.a + (T.sqV * FIGHT.cuffM) / T.r;
+      this.thSet(T, 'tumble', FIGHT.tumble);
+      this.emit('ratCuff', { ph: 'swipe', ...this.thBody(T), dir: T.sqV });
+      return;
+    }
+    T.a = wrap(T.sqA0 + (T.sqA1 - T.sqA0) * eo(clamp(1 - T.t / T.dur, 0, 1)));
+    if (T.t > 0) return;
+    const K = this.thieves[T.sq - 1];
+    T.sq = 0;
+    if (K) { T.cd[K.id] = FIGHT.cuffDizzy + FIGHT.cuffCd; K.cd[T.id] = FIGHT.cuffDizzy + FIGHT.cuffCd; }
+    this.thSet(T, 'stunned', FIGHT.cuffDizzy);
+  },
+
   // ---------- state
-  thiefState() { return (this.thieves || []).map((T) => ({ ...T, stash: [...T.stash] })); },
+  thiefState() { return (this.thieves || []).map((T) => ({ ...T, stash: [...T.stash], cd: [...(T.cd || [])] })); },
   thiefLoad(S) {
     if (!S) return;
-    this.thieves = S.map((T) => ({ ...T, stash: [...T.stash] }));
+    this.thieves = S.map((T) => ({ ...T, stash: [...T.stash], cd: [...(T.cd || [])] }));
+    if (this.thBall) for (const T of this.thieves) if (this.thBall[T.id]) { const b = this.thBall[T.id]; if (T.sqLead && T.ph === 'sqBall') { const q = this.sqBallPt(T); b.setTransform(Vec2(q.x, q.y), 0); } else b.setTransform(Vec2(0, -60), 0); b.setLinearVelocity(Vec2(0, 0)); b.setAngularVelocity(0); }
     for (const e of this.eggs) if (e.thf && e.body) e.body.setActive(false); // held or stashed: out of the physics world
   },
 };
