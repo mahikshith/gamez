@@ -5,6 +5,7 @@ import { EGG_H, EGG_W, RING_TH, TAU, rng } from '../sim/geom.js';
 import { P2, COMBOS } from '../sim/powers2.js';
 import { POWER_INFO, GLASS, EMBLEM_ART, EGG_ART, ORB_ART, drawOrb } from './powers.js';
 import { boltStroke } from './status.js';
+import { strikeQuiet, strikeMuteAt } from './strikehit.js'; // Chick Strike: its reactions speak for themselves
 import { drawWarp, warpEvent } from './warp.js'; // the Warp Gate (sim/warp.js)
 import { ringPt, ringSpd } from '../sim/shapes.js'; // v4: iron bars on shaped vaults
 
@@ -550,7 +551,7 @@ function sweat(ctx, x, y, k, t) {
 // what a power is doing to one creature: k = ice | zap | pep | scare | spin
 function creatureFx(ctx, F, k, t, at, seed) {
   const a = Math.min(1, F.t / 0.3, (F.max - F.t) / 0.15 + 0.2);
-  if (F.k === 'zap') sparks(ctx, at.x, at.y, at.r * 0.8, k, t, seed);
+  if (F.k === 'zap') { if (!strikeMuteAt(at.x, at.y)) sparks(ctx, at.x, at.y, at.r * 0.8, k, t, seed); }
   else if (F.k === 'pep') sneeze(ctx, at.x, at.y, at.dir ?? Math.atan2(at.y, at.x), k, t, seed);
   else if (F.k === 'scare') sweat(ctx, at.x, at.y, k, t);
   else if (F.k === 'spin') dizzy(ctx, at.x, at.y, k, t);
@@ -740,7 +741,7 @@ export function p2Event(ev, fx, api) {
     case 'p2Hit': {
       const H = HIT[ev.kind];
       if (!H) break;
-      popup(ev.x, ev.y + 0.6, H[0], { color: H[1], size: 17, life: 0.9 });
+      if (!strikeQuiet()) popup(ev.x, ev.y + 0.6, H[0], { color: H[1], size: 17, life: 0.9 });
       if (ev.kind === 'ice') { audio.play('glass_crack', { vol: 0.5, pitch: 1.5 }); fx.chips(ev.x, ev.y, '#dff6ff', 6, 1.6); }
       else if (ev.kind === 'zap') { audio.play('glass_crack', { vol: 0.5, pitch: 2.2 }); fx.sparkle(ev.x, ev.y, 8, '#bfe9ff'); }
       else if (ev.kind === 'pep') { audio.play('bubble_pop', { vol: 0.6, pitch: 0.6 }); fx.smoke(ev.x, ev.y, 2, 'rgba(190,120,80,0.6)'); }

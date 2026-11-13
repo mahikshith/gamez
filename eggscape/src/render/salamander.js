@@ -12,6 +12,7 @@ import { statusClock, statusDraw, dizzyStars } from './status.js';
 import { spline, blinkAt } from './castkit.js';
 import { RING_TH, TAU } from '../sim/geom.js';
 import { SAL } from '../sim/salamander.js';
+import { strikeActOf } from './strikehit.js'; // Chick Strike: the pose it takes when a chick hits it
 
 export const salamanderAnim = crawlerAnim;
 export const SALAMANDER_LEN = 1.96; // snout to tail tip, in units of s (the sim's body length; the drawn tail is a touch shorter and fatter)
@@ -556,6 +557,9 @@ function pathOf(C, k) {
 
 // pose for the sim phase: { pose, p, ... }
 function poseOf(C) {
+  const sa = strikeActOf(C);
+  if (sa === 'dazed' || sa === 'ouch') return { pose: 'dazed' };
+  if (sa === 'angry' || sa === 'strain') return { pose: 'hiss', p: 0.6 };
   const u = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1;
   switch (C.ph) {
     case 'walk': case 'brake': case 'retreat': return { pose: 'walk' };

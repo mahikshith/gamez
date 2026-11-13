@@ -11,6 +11,7 @@
 // drawMosquito(ctx, x, y, sz, t, o) one insect; drawSwarm(ctx, x, y, R, t, o) a buzzing cloud (o.tight, o.spread, o.fed)
 import { TAU } from '../sim/geom.js';
 import { GATOR, TURTLE } from '../sim/bayou.js';
+import { strikeActOf } from './strikehit.js'; // Chick Strike: the face it pulls when a chick hits it
 import { statusClock, statusDraw, dizzyStars, spiralEye } from './status.js';
 
 import { clamp, lerp, ss, hash, form, ik, limb, eye, blinkAt, zed, burst, contact, back, spline } from './castkit.js';
@@ -402,6 +403,7 @@ export function drawBayou(ctx, sim, t, k) {
     if (G.ph === 'flee') eye = 'squint';
     if (G.ph === 'dizzy') { eye = 'spiral'; jaw = 0.3; }
     if (G.ph === 'hurt') { eye = 'squint'; jaw = 0.5; }
+    { const sa = strikeActOf(G); if (sa === 'dazed') { eye = 'spiral'; jaw = 0.3; } else if (sa === 'shock') jaw = 0.7; else if (sa === 'ouch' || sa === 'strain') { eye = 'squint'; jaw = 0.5; } else if (sa === 'angry') jaw = 0.25 + 0.2 * Math.abs(Math.sin(t * 9)); else if (sa === 'eager') jaw = 0.35; }
     if (G.ph === 'beaten') { eye = 'spiral'; alpha = 1 - ss(0.4, 1, G.t / G.dur); sink = ss(0.2, 1, G.t / G.dur) * 0.35 * G.s; }
     if (G.ph === 'in') alpha = ss(0, 1, G.t / G.dur);
     if (atk && atk.name === 'sweep') tail = atk.ph === 'warn' ? 0.95 * ss(0, 0.6, warnU) + Math.sin(t * 30) * 0.05 * warnU : -0.25;

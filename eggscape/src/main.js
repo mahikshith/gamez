@@ -48,6 +48,7 @@ import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render
 import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem } from './render/bayou.js'; // v3.7 Gator Bayou
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
+import { strikeLayer } from './render/strikehit.js'; // Chick Strike: the villains' hit reactions
 import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js'; // Chick Strike powers
 import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
@@ -2232,7 +2233,8 @@ function render() {
   drawBossRings(ctx, sim, k, t); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
   drawSalHeat(ctx, sim, k, t); // v3.2: red-hot ring sections and the salamander's target mark
   drawP2Back(ctx, sim, k, t); // v3.4: live ring, scorched sponge, iron bars, brittle thorns, blackout, laser beak
-  drawBossActor(ctx, sim, k, t);
+  const SL = (types, fn) => strikeLayer(ctx, sim, k, t, types, fn); // Chick Strike: a struck villain's layer is drawn through its reaction
+  SL(['bx'], (c) => drawBossActor(c, sim, k, t));
   drawThiefDens(ctx, sim, t, k); // v3.6: the weasel's den and the rats' hole in the floor ring
   for (const ring of sim.rings) if (ring.gearOut) W.drawGearCog(ctx, ring, ring.gearOut, t);
   // gear trains: while the player turns one ring, the rings it drives show which way they go; the first time
@@ -2263,25 +2265,25 @@ function render() {
   drawMagnetField(ctx, sim, t); // v3.1: a magnetic field look instead of a tether line
   drawBossUnder(ctx, sim, k, t);
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
-  drawSalamanders(ctx, sim, t, k); // v3.2: the lava salamander walks the floor, under the eggs
+  SL(['sal'], (c) => drawSalamanders(c, sim, t, k)); // v3.2: the lava salamander walks the floor, under the eggs
   drawFrogTele(ctx, sim, k, t); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
-  { const wx = warpXfBegin(ctx, sim, 'f'); drawFrogs(ctx, sim, t, k, G.theme); warpXfEnd(ctx, wx); }
-  { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaUnder(ctx, sim, t, k, G.theme); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
-  drawReefUnder(ctx, sim, t, k, G.theme); // world 8: bubbles, hermit crabs, puffers, jellyfish, the King Crab
-  drawThieves(ctx, sim, t, k); // v3.6: the weasel and the rats on the ring floor
-  drawClockworkTele(ctx, sim, t, k); drawClockwork(ctx, sim, t, k); // v4: webs, spring jacks, wind-up beetles, spiders
-  drawBayou(ctx, sim, t, k); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
+  { const wx = warpXfBegin(ctx, sim, 'f'); SL(['frog'], (c) => drawFrogs(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); }
+  { const wx = warpXfBegin(ctx, sim, 'o'); SL(['octo', 'fish'], (c) => drawSeaUnder(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
+  SL(['hermit', 'puff', 'jelly', 'kc'], (c) => drawReefUnder(c, sim, t, k, G.theme)); // world 8: bubbles, hermit crabs, puffers, jellyfish, the King Crab
+  SL(['thief'], (c) => drawThieves(c, sim, t, k)); // v3.6: the weasel and the rats on the ring floor
+  drawClockworkTele(ctx, sim, t, k); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
+  SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
   for (const e of sim.aliveEggs()) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash
   drawChickFX(ctx, sim, t, k);
   { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); } // v3.3: the arms wrapped over a held egg
   drawReefOver(ctx, sim, t, k); // world 8: claws over a held egg, the silt cloud
   if (sim.water) drawBoat(ctx, sim, t, k); // world 8: the boat on the surface, over the hen's legs
   drawThievesOver(ctx, sim, t, k); // v3.6: the weasel's jaws over a held egg, the trap ring
-  drawBayouOver(ctx, sim, t, k); // v3.7: a turtle's beak round its egg, mosquito swarms
-  W.drawSnakes(ctx, sim, t, k); // predators (v3)
+  SL(['mosq'], (c) => drawBayouOver(c, sim, t, k)); // v3.7: a turtle's beak round its egg, mosquito swarms
+  SL(['snake'], (c) => W.drawSnakes(c, sim, t, k)); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
   drawBossOver(ctx, sim, k, t); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
-  { const wx = warpXfBegin(ctx, sim, 'e'); W.drawEagleAt(ctx, sim, t, k); warpXfEnd(ctx, wx); }
+  { const wx = warpXfBegin(ctx, sim, 'e'); SL(['eagle'], (c) => W.drawEagleAt(c, sim, t, k)); warpXfEnd(ctx, wx); }
   drawAllies(ctx, sim, t, k); // v3.4: rooster and goose, in front of the vault
   drawP2Front(ctx, sim, k, t); // v3.4: decoy, frozen/zapped creatures, beams, spin, pepper cloud
   drawStrikeWorld(ctx, sim, k, t, G.henAt); // Chick Strike: the chick on the hen's back, its flight, glue, twisters, chains

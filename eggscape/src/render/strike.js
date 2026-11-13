@@ -10,6 +10,7 @@ import { clamp, lerp, ss, hash, blinkAt, form, contact } from './castkit.js';
 import { boltStroke } from './status.js';
 import { STRIKE, STRIKES, FLIGHT } from '../data/strikes.js';
 
+import { hitBegin, hitRage, drawHitFx } from './strikehit.js';
 const TAU = Math.PI * 2;
 export const strikeColor = (id) => (STRIKE[id] ? STRIKE[id].col[0] : '#fff');
 
@@ -475,7 +476,9 @@ export function drawStrikeWorld(ctx, sim, k, t, hen) {
   // glue patches (under everything else here)
   for (const P of K.glue) drawGoo(ctx, P, k, t);
   // tornado funnels, thunder chains
+  const done = drawHitFx(ctx, sim, k, t, S, (id, x, y, s, o) => drawStrikeChick(ctx, id, x, y, s, t, o)); // the villain's reaction props (strikehit.js)
   for (const E of K.fx) {
+    if (done.has(E.key)) { if (E.k === 'thunder') drawChain(ctx, E, k, t); continue; }
     if (E.k === 'tornado') drawTwister(ctx, E, k, t);
     else if (E.k === 'thunder') drawChain(ctx, E, k, t);
     else if (E.k === 'freeze') drawFrost(ctx, E, k, t);
@@ -570,6 +573,7 @@ export function strikeEvent(ev, fx, api) {
     case 'stkHit': {
       const S = STRIKE[ev.id], col = S ? S.col : ['#fff', '#fff', '#fff'];
       if (ev.miss) { audio.play('bubble_pop', { pitch: 0.8 }); popup(ev.x, ev.y + 0.5, 'Missed!', { color: '#ffe0b0', size: 18 }); return true; }
+      hitBegin(ev, POST.ang);
       api.hitStop(ev.boss ? 0.12 : 0.08); api.punch(ev.boss ? 0.09 : 0.06, ev.x, ev.y); fx.kick(ev.boss ? 0.55 : 0.4);
       fx.impact(ev.x, ev.y, 0.6, col[2]);
       if (ev.id === 'freeze') { audio.play('glass_crack', { pitch: 0.75 }); audio.play('glass_break', { vol: 0.5, pitch: 1.3 }); fx.wave(ev.x, ev.y, 1.4, '#dff6ff', 0.5, 0.14); fx.chips(ev.x, ev.y, '#cfefff', 12, 3); fx.sparkle(ev.x, ev.y, 10, '#ffffff'); }
@@ -579,14 +583,14 @@ export function strikeEvent(ev, fx, api) {
       else if (ev.id === 'tornado') { audio.play('wind_gust', { vol: 0.9, pitch: 1.1 }); fx.wave(ev.x, ev.y, 1.1, '#dcfff4', 0.5, 0.12); }
       else if (ev.id === 'glue') { audio.play('squish', { intensity: 1, pitch: 0.7 }); fx.burst(ev.x, ev.y, 12, (i, a, b) => ({ x: ev.x, y: ev.y, vx: (a - 0.5) * 5, vy: b * 4, g: 9, life: 0.6 + b * 0.4, size: 0.05 + a * 0.05, color: i % 2 ? '#c08af6' : '#8a52cc', type: 'drop', floor: ev.y - 0.3 })); }
       if (ev.cancel) popup(ev.x, ev.y + 0.8, ev.hurt ? 'Interrupted! Hit!' : 'Interrupted!', { color: '#ffd76a', size: 22 });
-      else if (ev.id !== 'freeze') popup(ev.x, ev.y + 0.7, { freeze: '', thunder: 'Thunderstruck!', bomb: 'Boom!', decoy: 'Peep?', tornado: 'Whirled away!', glue: 'Glued!' }[ev.id] || '', { color: col[2], size: 20 });
+      else popup(ev.x, ev.y + 1.45, { freeze: 'Frozen solid!', thunder: 'Thunderstruck!', bomb: 'Boom!', decoy: 'Peep?', tornado: 'Whirled away!', glue: 'Glued!' }[ev.id] || '', { color: col[2], size: 18 });
       return true;
     }
     case 'stkIcy': once('stkIcy', 'Frost Chick: the rings near it are icy for a while. Eggs slide!', 3); return true;
     case 'stkJolt': fx.sparkle(ev.x, ev.y, 5, '#fff27a'); once('stkJolt', 'Thunder Chick: eggs near the bolt got a jolt.', 2.6); return true;
     case 'stkShove': fx.dust(ev.x, ev.y, 3); return true;
     case 'stkBlast': if (ev.thorns) popup(ev.x, ev.y - 0.5, `${ev.thorns} thorn${ev.thorns > 1 ? 's' : ''} gone`, { color: '#ffc18a', size: 16 }); once('stkShove', 'Boom Chick: the shockwave shoves your eggs too.', 2.6); return true;
-    case 'stkRage': audio.play('thorn_hit', { pitch: 0.6, vol: 0.6 }); popup(ev.x, ev.y + 0.6, 'They noticed!', { color: '#ff7a5a', size: 20 }); once('stkRage', 'Decoy Chick: the fooled creatures are furious and rush for a while.', 3); return true;
+    case 'stkRage': hitRage(ev); audio.play('thorn_hit', { pitch: 0.6, vol: 0.6 }); popup(ev.x, ev.y + 0.6, 'They noticed!', { color: '#ff7a5a', size: 20 }); once('stkRage', 'Decoy Chick: the fooled creatures are furious and rush for a while.', 3); return true;
     case 'stkSpin': audio.play('wind_gust', { vol: 0.5, pitch: 1.5 }); once('stkSpin', 'Twister Chick: the nearest ring got spun round.', 2.6); return true;
     case 'stkStick': audio.play('squish', { pitch: 1.3, vol: 0.6 }); popup(ev.x, ev.y + 0.45, 'Stuck!', { color: '#d4a8ff', size: 15, life: 0.8 }); return true;
     case 'stkUnstick': audio.play('bubble_pop', { pitch: 1.2, vol: 0.5 }); return true;

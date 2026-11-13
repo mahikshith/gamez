@@ -24,6 +24,8 @@
 //                                    ice, flash, droop, stars, shake, venom, breath
 import { RING_TH, TAU } from '../sim/geom.js';
 import { drawVenom } from './v3art.js';
+import { strikeActOf, strikeMuteAt } from './strikehit.js'; // Chick Strike: the face it pulls when a chick hits it
+const STRIKE_FACE = { shock: 'shock', frozen: 'frozen', dazed: 'dizzy', angry: 'snarl', eager: 'hunt', strain: 'snarl', ouch: 'ouch' };
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -812,8 +814,7 @@ export function drawSnake(ctx, pts, r, t = 0, opts = {}) {
     if (frozen > 0) iceFront(ctx, n, head, shell, lw, frozen, clamp01(opts.crack || 0), t, opts.id | 0);
   } catch (e) {
     // art must never break the frame
-  }
-  ctx.restore();
+  } finally { ctx.restore(); } // (the early returns above used to skip this: one leaked save per snake per frame)
 }
 
 // Where the head goes and how it is posed: follows the body tangent with a slight lag plus where it looks; tilts at
@@ -1041,6 +1042,7 @@ const ENTER_T = 1.2, ENTER_C = 1.5; // s of the slither-in before a snake starts
 // prey; a blocked snake must stay blocked a while to hiss.
 function snakeWant(S, A, sim) {
   if (S.flee >= 0 || S.carried) return 'shock';
+  const sa = STRIKE_FACE[strikeActOf(S)]; if (sa) return sa;
   if (S.mood === 'ouch' || S.mood === 'shock') return S.mood;
   if (S.stun > 0) return S.hurt === 'burn' ? 'ouch' : S.hurt === 'ice' ? 'frozen' : 'dizzy';
   if (S.daze > 0) return 'dizzy';
@@ -1259,7 +1261,7 @@ export function drawSnakes(ctx, sim, t, k) {
     if (!iced) snakeHeadAnim(A, snakeWant(S, A, sim), A.dt, at);
     else A.dt = 0;
     // zapped: 0.3 s of arcs and flash when a bolt stun starts
-    if (S.hurt === 'bolt' && S.stun > (A.stun0 || 0) + 0.05) A.zap0 = t;
+    if (S.hurt === 'bolt' && S.stun > (A.stun0 || 0) + 0.05 && !strikeMuteAt(S.pts[0].x, S.pts[0].y)) A.zap0 = t;
     A.stun0 = S.stun;
     const zap = A.zap0 !== undefined ? clamp01(1 - (t - A.zap0) / 0.3) : 0;
     const sk = sim.spitK(S), idle = S.wait > 0 || S.blocked || S.spit || S.stun > 0 ? 1 : 0;

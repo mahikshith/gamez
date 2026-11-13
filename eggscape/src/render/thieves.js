@@ -14,6 +14,7 @@
 // Frozen and stunned follow the shared creature-state look (agent-brief-2): its own colours tinted toward #bfe6ff inside
 // an ice shell that follows its silhouette with a dark-blue rim; stunned = slack pose, spiral eyes, tongue out, three stars.
 import { RIG } from '../sim/thieves.js';
+import { strikeActOf } from './strikehit.js'; // Chick Strike: the face it pulls when a chick hits it
 import { dizzyStars, spiralEye, boltStroke } from './status.js';
 
 const TAU = Math.PI * 2;
@@ -540,6 +541,9 @@ function lookOf(T) {
     case 'flee': st = T.boss ? 'defeated' : 'scared'; o.eye = T.boss ? 'squeeze' : 'wide'; if (T.boss) o.tears = 1; break;
     default: st = 'idle';
   }
+  const sa = strikeActOf(T);
+  if (sa === 'shock' || sa === 'frozen') o.eye = 'wide'; else if (sa === 'dazed') o.eye = 'spiral'; else if (sa === 'angry') o.eye = 'angry'; else if (sa === 'eager') o.eye = 'lock';
+  else if (sa === 'strain') { o.eye = 'squeeze'; o.sweat = 1; } else if (sa === 'ouch') { st = 'hurt'; uu = 0.5; o.eye = 'squeeze'; }
   if (T.zap > 0) o.zap = clamp(T.zap / 0.3, 0, 1);
   return { st, u: uu, o };
 }
