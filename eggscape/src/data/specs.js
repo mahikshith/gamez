@@ -188,7 +188,7 @@ export const SPECS = [
     tip: 'Rats roll eggs to their hole: turn a gap under a rolling egg. Water and light send them running.',
     intro: { title: 'Swoop chick', chick: 'swoop', line: 'The blue orb hatches a swoop chick. Tap it once: it flies up through the ring above and tears down a thorn curtain on the way.' },
     rings: [{ mat: 'stone', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'stone', gaps: 2, thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], curtain: 1 }, { mat: 'stone', gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
-  { id: 20, world: 4, theme: 'crystal', name: 'Golem Maze', boss: 'golem', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5, eggKinds: [null, null, 'ostrich'],
+  { id: 20, world: 4, theme: 'crystal', name: 'Quartz Maze', boss: 'golem', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5, eggKinds: [null, null, 'ostrich'],
     nest: { w: 3.0, drop: 1.1 }, bonus: { kind: 'prize' },
     bossFight: { kind: 'golem', delay: 4, thorn: { delay: 3, dir: 1 }, spike: { delay: 18, dir: -1 }, phases: [
       { attacks: ['stomp', 'shards'], every: 6 },
