@@ -48,7 +48,7 @@ import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render
 import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem } from './render/bayou.js'; // v3.7 Gator Bayou
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
-import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, strikeSeat } from './render/strike.js'; // Chick Strike powers
+import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js'; // Chick Strike powers
 import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 
@@ -3508,7 +3508,7 @@ if (DEV) window.__egg = {
   thiefArt: { drawThief, thiefPose, thiefBlend, RIG: THIEF_RIG, drawThiefCard, drawThiefEmblem, drawBossCard }, // v3.6 thief strips
   press,
   strike(id) { if (!G.sim || !G.sim.stk) return null; if (id) G.sim.stkEquip(id); return fireStrike(true); }, // Chick Strike: fill the meter and fire
-  strikeArt: { drawStrikeButton, drawStrikeToken, drawStrikeStage },
+  strikeArt: { drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick },
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
   frame(dt = 1 / 60) { update(dt); render(); },
   actSteps, // film strips replay planner moves through this
