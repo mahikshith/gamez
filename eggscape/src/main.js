@@ -56,6 +56,7 @@ import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
 import { drawVillainPortrait, PORTRAIT_BG } from './render/villain-art.js';
+import { vibrate, installApp } from './app.js'; // Android WebView proof shell: bridge vibration, back button, FPS overlay (no-ops outside EGG_APP)
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 // playtest build (build.mjs --test): every level, booster and skin unlocked, plenty of coins
@@ -1319,7 +1320,7 @@ function handleEvents() {
     switch (ev.type) {
       case 'allyCrow': // the rooster crows: one short shake and a beat of hit-stop (calm: none); the wave itself is drawn in render/allies.js
         fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y);
-        try { if (!save.calm && navigator.vibrate) navigator.vibrate(40); } catch (_) {}
+        try { if (!save.calm) vibrate(40); } catch (_) {}
         break;
       case 'bump':
         if (G.t - lastBump > 0.05 && ev.v > 1.2) {
@@ -1348,7 +1349,7 @@ function handleEvents() {
           camPunch(0.028, ev.x, ev.y);
         }
         hen('gasp', 1.2);
-        try { if (navigator.vibrate) navigator.vibrate(30); } catch (_) {}
+        try { vibrate(30); } catch (_) {}
         if (ev.why === 'spike') audio.play('rock_hit', { vol: 0.6 });
         // v3: crack stage pop (G34), so every crack is explained
         // a scorch crack: the popup steps aside from the salamander's head, which breathes right there
@@ -3837,6 +3838,15 @@ async function boot() {
     audioHold('hidden', document.hidden);
   });
   window.addEventListener('blur', clearKeys);
+  installApp(() => { // Android back button (see app.js): consume it where the game has a natural "back"
+    switch (G.screen) {
+      case 'play': press('pause'); return true;
+      case 'pause': press('resume'); return true;
+      case 'info': press('info:close'); return true;
+      case 'practice': case 'extras': case 'store': case 'levels': press('back'); return true;
+      default: return false;
+    }
+  });
   portal.onPause(() => { G.paused = true; clearKeys(); audioHold('portal', true); });
   portal.onResume(() => { G.paused = false; last = performance.now(); audioHold('portal', false); });
   portal.onAudioChange(() => applyAudioSettings());
