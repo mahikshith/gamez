@@ -60,6 +60,11 @@ const srv = http.createServer((q, r) => {
     }
     await check('daily-intro', () => { const E = __egg; E.start(-1); for (let k = 0; k < 40; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
     await check('pause', () => { const E = __egg; E.start(4); E.press('go'); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.press('pause'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
+    // the "i" panel (who is in this vault): a boss level, a full list, the scrolled middle, a practice vault, and from the pause card
+    for (const i of [4, 29, 39, 49]) await check(`info-L${i + 1}`, (i) => { const E = __egg; E.start(i); E.press('go'); for (let k = 0; k < 30; k++) E.frame(1 / 60); E.press('info'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return E.overlaps(); }, i, i === 39);
+    await check('info-scrolled', () => { const E = __egg, S = E.G.iscroll; S.y = S.max / 2; S.v = 0; E.frame(1 / 60); const o = E.overlaps(); S.y = S.max; E.frame(1 / 60); const o2 = o.concat(E.overlaps()); E.press('info:close'); E.frame(1 / 60); return o2; }, 0, false);
+    await check('info-practice', () => { const E = __egg; E.startDemo('beetle'); E.press('go'); for (let k = 0; k < 30; k++) E.frame(1 / 60); E.press('info'); for (let k = 0; k < 30; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('info:close'); return o; }, 0, false);
+    await check('info-from-pause', () => { const E = __egg; E.start(46); E.press('go'); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.press('pause'); for (let k = 0; k < 30; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('info'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return o.concat(E.overlaps()); }, 0, false);
     for (const s of [3, 2, 1]) await check(`win${s}`, (s) => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('win', s); for (let k = 0; k < 400; k++) E.frame(1 / 60); return E.overlaps(); }, s, s === 3);
     await check('fail', () => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('fail'); for (let k = 0; k < 120; k++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
     for (const e of errors) problems.push(`${w}x${h} PAGE ERROR: ${e}`);

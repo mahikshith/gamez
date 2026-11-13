@@ -54,6 +54,8 @@ import { strikeLayer } from './render/strikehit.js'; // Chick Strike: the villai
 import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js'; // Chick Strike powers
 import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
+import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
+import { drawVillainPortrait, PORTRAIT_BG } from './render/villain-art.js';
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 // playtest build (build.mjs --test): every level, booster and skin unlocked, plenty of coins
@@ -150,6 +152,7 @@ function resize() {
 // ---------------------------------------------------------------- game state
 const G = {
   pscroll: { y: 0, v: 0, max: 0, t: 0 }, pdrag: null, // Practice screen scroll
+  iscroll: { y: 0, v: 0, max: 0, t: 0 }, infoKinds: [], infoNew: false, infoFrom: 'play', infoCard: null, // the "i" panel (drawInfo)
   screen: 'loading',
   t: 0,
   li: 0,
@@ -237,6 +240,10 @@ function startLevel(i, opts = {}) {
   G.lastEgg = false;
   G.snakeToast = false;
   G.predToast = {}; // predators (v3): first-time toasts
+  // the "i" panel: who is in this vault, and whether any of it is new to this player (the HUD button pulses, "New!")
+  G.infoKinds = villainKinds(G.level, G.sim);
+  G.infoNew = G.infoKinds.some((k) => !save.seen['v:' + k]);
+  G.iscroll = { y: 0, v: 0, max: 0, t: 0 };
   G.danger = 0;
   G.onewayTip = false; // v3
   G.hen = { mood: 'idle', t: 0 };
@@ -288,7 +295,18 @@ function firstGrabbable(from, dir) {
 // ---------------------------------------------------------------- toasts & popups
 function toast(text, life = 2.6, icon = null) {
   if (!text) return;
-  G.toasts.push({ text, life, icon });
+  // a short game message never waits behind a long villain tip: the tip steps aside (keeping the rest of its time) and
+  // the message goes ahead of any queued tips
+  if (G.toast && G.toast.tip) { G.toasts.unshift({ ...G.toast, life: Math.max(2.5, G.toast.life) }); G.toast = null; }
+  const T = { text, life, icon }, i = G.toasts.findIndex((q) => q.tip);
+  if (i < 0) G.toasts.push(T); else G.toasts.splice(i, 0, T);
+}
+// First-time villain / boss / hazard tips: they stay TIP_LIFE s of play (the clock stops while paused) or until tapped,
+// and queue one after another instead of stacking. The same lines live on in the "i" panel.
+const TIP_LIFE = 7;
+function tipToast(text) {
+  if (!text || (G.toast && G.toast.text === text) || G.toasts.some((q) => q.text === text)) return;
+  G.toasts.push({ text, life: TIP_LIFE, icon: null, tip: true });
 }
 
 // v3.6 thieves: their labels come fast (Snatched, TRAPPED, OUCH): a new one replaces the last instead of stacking
@@ -567,8 +585,11 @@ function pointerDown(e) {
   onFirstInput();
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
-  if (G.screen === 'practice') G.pdrag = { pid: e.pointerId, y0: y, s0: G.pscroll.y, moved: false, last: y, lt: performance.now(), v: 0 }; // the Practice screen scrolls by drag; a tap on a tile still presses
+  const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : null;
+  if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0 }; // the Practice screen and the "i" panel scroll by drag; a tap on a button still presses
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
+  if (G.screen === 'info') { const C = G.infoCard; if (C && (x < C.x || x > C.x + C.w || y < C.y - 10 * ui.u || y > C.y + C.h + 6 * ui.u)) { G.pdrag = null; press('info:close'); } return; } // a tap off the card closes it
+  if (G.screen === 'play' && G.toast && G.toast.tip && G.toastRect) { const R = G.toastRect; if (x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h) { G.toast.life = Math.min(G.toast.life, 0.2); return; } } // a tap on a villain tip puts it away
   if (G.screen === 'wonder') { wonder.pointerDown(e); try { canvas.setPointerCapture(e.pointerId); } catch (_) {} return; } // WONDER
   if (G.screen === 'title') { if (titleTap(x, y)) audio.play('hen_hop', { vol: 0.6 }); return; } // tap an egg friend: it jumps and flips (only the buttons start a level)
   if (G.screen === 'win' || G.screen === 'fail') return skipCheer(); // a tap off the buttons skips the hen's routine to its end
@@ -612,12 +633,12 @@ function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
   const pd = G.pdrag;
-  if (pd && pd.pid === e.pointerId && G.screen === 'practice') {
+  if (pd && pd.pid === e.pointerId && (G.screen === 'practice' || G.screen === 'info')) {
     if (!pd.moved && Math.abs(y - pd.y0) > 9 * ui.u) { pd.moved = true; ui.pressedId = null; }
     if (pd.moved) {
       const now = performance.now(), dtm = Math.max(1, now - pd.lt);
       pd.v = pd.v * 0.6 + ((pd.last - y) / dtm * 1000) * 0.4; pd.last = y; pd.lt = now;
-      G.pscroll.y = clamp(pd.s0 + pd.y0 - y, 0, G.pscroll.max); G.pscroll.v = 0;
+      pd.sc.y = clamp(pd.s0 + pd.y0 - y, 0, pd.sc.max); pd.sc.v = 0;
     }
     return;
   }
@@ -651,7 +672,7 @@ function pointerMove(e) {
 
 function pointerUp(e) {
   const pd = G.pdrag;
-  if (pd && pd.pid === e.pointerId) { if (pd.moved) G.pscroll.v = clamp(pd.v, -3000, 3000); G.pdrag = null; }
+  if (pd && pd.pid === e.pointerId) { if (pd.moved) pd.sc.v = clamp(pd.v, -3000, 3000); G.pdrag = null; }
   if (G.screen === 'wonder') wonder.pointerUp(e); // WONDER
   const ct = G.chickTap; // v3.2: tap = power
   if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) G.sim.tapChick(ct.id);
@@ -676,7 +697,8 @@ function pointerUp(e) {
 }
 
 function wheel(e) {
-  if (G.screen === 'practice') { e.preventDefault(); G.pscroll.y = clamp(G.pscroll.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -240, 240), 0, G.pscroll.max); G.pscroll.v = 0; return; }
+  const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : null;
+  if (SC) { e.preventDefault(); SC.y = clamp(SC.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -240, 240), 0, SC.max); SC.v = 0; return; }
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   e.preventDefault();
   setZoom((G.zm || 0) - clamp(e.deltaY, -120, 120) * 0.003);
@@ -687,6 +709,9 @@ function keyDown(e) {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
+  if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
+  if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
+  if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
   if ((k === 'Escape' || k === 'p' || k === 'P') && !e.repeat) {
     if (G.screen === 'play') press('pause');
     else if (G.screen === 'pause') press('resume');
@@ -857,6 +882,19 @@ async function press(id) {
       setScreen('play');
       portal.gameplayStart();
       break;
+    case 'info': // the "i" panel: what the villains here do. From play it pauses the game; closing resumes.
+      if (!G.sim || !G.infoKinds.length) break;
+      if (G.screen === 'play' && G.sim.state === 'play') { G.infoFrom = 'play'; portal.gameplayStop(); releaseAll(); }
+      else if (G.screen === 'pause') G.infoFrom = 'pause';
+      else break;
+      openInfo();
+      break;
+    case 'info:close':
+      if (G.screen !== 'info') break;
+      if (G.infoFrom === 'pause') setScreen('pause');
+      else if (G.infoFrom === 'wonder') setScreen('wonder');
+      else { setScreen('play'); portal.gameplayStart(); }
+      break;
     case 'restart':
     case 'retry':
       portal.gameplayStop();
@@ -957,6 +995,18 @@ async function press(id) {
         if (w) { save.wallet = w; persist(); W.setSkin(w.skin); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
       }
   }
+}
+
+// the "i" panel opens: refresh the list from the live sim (a boss may have called more in), count it all as seen
+function openInfo() {
+  G.infoKinds = villainKinds(G.level, G.sim);
+  let fresh = false;
+  for (const k of G.infoKinds) if (!save.seen['v:' + k]) { save.seen['v:' + k] = 1; fresh = true; }
+  if (fresh) persist();
+  G.infoNew = false;
+  G.iscroll = { y: 0, v: 0, max: 0, t: G.t };
+  G.pdrag = null;
+  setScreen('info');
 }
 
 function releaseAll() {
@@ -1424,7 +1474,7 @@ function handleEvents() {
         fx.smoke(ev.x, ev.y, 2, 'rgba(90,80,80,0.4)');
         break;
       case 'snakeIn':
-        if (!G.snakeToast) { G.snakeToast = true; toast('A snake! Turn the rings so no gap lines up for it.', 3); }
+        if (!G.snakeToast) { G.snakeToast = true; tipToast('A snake! Turn the rings so no gap lines up for it.'); }
         break;
       case 'snakeRecoil':
         popup(ev.x, ev.y + 0.5, 'Too hard to bite!', { size: 18 });
@@ -1454,7 +1504,7 @@ function handleEvents() {
       case 'vineClose': // v3.3: a thorn vine has sealed its gap
         audio.play('thorn_snap', { pitch: 0.8 });
         fx.chips(ev.x, ev.y, '#c23a55', 6, 1.5);
-        if (!G.predToast.vineClose) { G.predToast.vineClose = 1; toast('Thorn vines seal a gap when they reach across. Fire burns them back.', 3.2); }
+        if (!G.predToast.vineClose) { G.predToast.vineClose = 1; tipToast('Thorn vines seal a gap when they reach across. Fire burns them back.'); }
         break;
       case 'thornSnap':
         audio.play('thorn_snap');
@@ -1520,13 +1570,13 @@ function handleEvents() {
         bossEvent(ev, fx); // bosses (v3.1)
         chickEvent(ev, fx, { popup, audio, toast }); // v3.2 chick kinds
         salEvent(ev, fx); // v3.2 lava salamander
-        frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, 3.2); } } }); // v3.3 frog
-        seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.3
+        frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.3 frog
+        seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.3
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
-        bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.7 Gator Bayou
-        thiefEvent(ev, fx, { popup: denPopup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.6 the weasel and the rats
-        reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // world 8 reef
-        { const U = { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }; cwEvent(ev, fx, U); owlEvent(ev, fx, U); movesEvent(ev, fx, U); } // v4 the clockwork cast, the owl
+        bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.7 Gator Bayou
+        thiefEvent(ev, fx, { popup: denPopup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.6 the weasel and the rats
+        reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // world 8 reef
+        { const U = { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }; cwEvent(ev, fx, U); owlEvent(ev, fx, U); movesEvent(ev, fx, U); } // v4 the clockwork cast, the owl
         break;
       case 'won':
         onWin();
@@ -1590,7 +1640,7 @@ const P2_API = {
 // ---------------------------------------------------------------- v3.2 lava salamander: events -> SFX/VFX
 const SAL_HIT = { lava: ['Recharged!', '#ffb347', 'lava_sizzle'], bolt: ['Zapped!', '#fff27a', 'glass_crack'], flash: ['Dazzled!', '#fff6c2', 'glass_crack'], dash: ['Bonk!', '#ffd6a0', 'rock_hit'], ice: ['Brr!', '#bfe9ff', 'glass_crack'], quake: ['Steady!', '#ffd6a0', 'rock_hit'] };
 function salEvent(ev, fx) {
-  const once = (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } };
+  const once = (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } }; // first-time villain tips stay ~7 s (tipToast)
   switch (ev.type) {
     case 'salIn':
       audio.play('lava_sizzle', { vol: 0.8, pitch: 0.8 });
@@ -1658,7 +1708,7 @@ function salEvent(ev, fx) {
 // ---------------------------------------------------------------- predators (v3)
 // events -> SFX/VFX for snakes, barriers, the eagle and the chick (reuses existing sounds)
 function predEvent(ev, fx) {
-  const once = (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, 3); } };
+  const once = (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } }; // first-time villain tips stay ~7 s (tipToast)
   switch (ev.type) {
     case 'snakeEat':
       audio.play('squish', { intensity: 0.8, pitch: 0.7 });
@@ -1830,7 +1880,7 @@ function bossEvent(ev, fx) {
   switch (ev.type) {
     case 'gustWarn':
       audio.play('wind_gust', { vol: 0.35, pitch: 0.6 });
-      if (!G.predToast.gust) { G.predToast.gust = 1; toast('A gust is coming! It shoves eggs along the channels.', 2.6); }
+      if (!G.predToast.gust) { G.predToast.gust = 1; tipToast('A gust is coming! It shoves eggs along the channels.'); }
       break;
     case 'gust':
       audio.play('wind_gust', { vol: 1, pitch: 0.9 });
@@ -2144,7 +2194,7 @@ function update(dt) {
   for (const p of G.popups) { p.life -= dt; p.y -= 34 * ui.u * dt; }
   G.popups = G.popups.filter((p) => p.life > 0);
   // toasts
-  if (G.toast) { G.toast.life -= dt; if (G.toast.life <= 0) G.toast = null; }
+  if (G.toast && (!G.toast.tip || G.screen === 'play')) { G.toast.life -= dt; if (G.toast.life <= 0) G.toast = null; } // a villain tip's clock stops while the game is paused
   if (!G.toast && G.toasts.length) G.toast = { ...G.toasts.shift(), t0: G.t };
   if (G.result && G.screen === 'win') {
     if (save.calm) skipCheer(); // reduced motion: straight to the card and her final pose
@@ -2196,7 +2246,7 @@ function render() {
   setSpriteCalm(save.calm); // reduced motion holds the flat sprites still
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ui.begin();
-  if (G.screen === 'wonder') { wonder.render(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // WONDER
+  if (G.screen === 'wonder' || (G.screen === 'info' && G.infoFrom === 'wonder')) { wonder.render(); if (G.screen === 'info') drawInfo(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // WONDER (the "i" panel can sit over a Wonder Vault)
   if (!G.sim) {
     ctx.fillStyle = '#1b1410';
     ctx.fillRect(0, 0, W_, H_);
@@ -2339,7 +2389,7 @@ function render() {
 
 
   // UI
-  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice') drawHUD();
+  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info') drawHUD();
   if (G.screen === 'play') drawFlyers(); // prizes on their way to the HUD
   if (G.screen === 'play') {
     // the power card owns the top of the screen while it shows
@@ -2349,6 +2399,7 @@ function render() {
   }
   if (G.screen === 'intro') drawIntro();
   if (G.screen === 'pause') drawPause();
+  if (G.screen === 'info') drawInfo();
   if (G.screen === 'win') drawWin();
   if (G.screen === 'fail') drawFail();
   if (G.screen === 'title') drawTitle();
@@ -2587,7 +2638,9 @@ function drawHUD() {
   if (HUDS.bump > 0.02 && !save.calm) { const k = 1 + 0.22 * HUDS.bump, px = W_ - pad - 14 * u; ctx.translate(px, row1); ctx.scale(k, k); ctx.translate(-px, -row1); }
   ui.num(scoreTxt, W_ - pad - 14 * u, row1, { size: scoreSize, align: 'right', tag: 'hud:score' });
   ctx.restore();
-  const leftEdge = pad + bs + 8 * u;
+  // the "i" button (who is in this vault): beside pause in one row, under it when the HUD takes two rows
+  const infoOn = !!(G.infoKinds && G.infoKinds.length && sim.state === 'play' && (G.screen === 'play' || G.screen === 'pause'));
+  let leftEdge = pad + bs + 8 * u;
   const rightEdge = chipX - 8 * u;
   // tray + timer content
   const slots = Math.max(G.level.eggs, sim.eggs.length);
@@ -2607,6 +2660,9 @@ function drawHUD() {
   const timeW = timeTxt ? ui.measure(timeTxt.replace(/\d/g, '0'), timeS) : 0;
   const timePillW = timeTxt ? 8 * u + 22 * u + 5 * u + timeW + 13 * u : 0;
   const groupW = trayPillW + (timeTxt ? 8 * u + timePillW : 0);
+  // one-row HUD: the "i" sits beside pause when the level name keeps ~150u of room, else just under pause (left margin)
+  const infoBeside = infoOn && !twoRows && (W_ / 2 - groupW / 2) - (leftEdge + bs + 8 * u) - 12 * u >= 150 * u;
+  if (infoBeside) leftEdge += bs + 8 * u;
   // level badge + name
   const isLv = G.li >= 0, nameS = 17 * u, bd = 26 * u;
   let trayX, trayY, lvlMax, lvlCx = null;
@@ -2660,6 +2716,12 @@ function drawHUD() {
     ui.text(timeTxt, tx + 8 * u + 22 * u + 5 * u, trayY + 0.5 * u, { size: timeS, color: low ? '#fff2c0' : '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 3.2 * u, tag: 'hud:time', group: 'hud:time' });
     ctx.restore();
   }
+  G.infoLow = 0;
+  if (infoOn) {
+    const ib = twoRows || !infoBeside ? 40 * u : bs, ix = infoBeside ? pad + bs + 8 * u : pad + (bs - ib) / 2, iy = infoBeside ? pad : twoRows ? pad + bs + 12 * u + pillH / 2 - ib / 2 : G.hudBottom + 6 * u; // one-row HUD without room: under the HUD (and under a boss bar)
+    drawInfoBtn(ix, iy, ib);
+    if (!twoRows && !infoBeside) G.infoLow = iy + ib; // under pause, past the HUD: the toast starts below it
+  }
   if (G.bossBar && sim.bx && sim.bx.boss) {
     // iron housing with a warm trim: the boss bar reads as its own piece of kit
     const bx = pad, by = G.hudBottom - G.bossBar + 2 * u, bw = W_ - 2 * pad, bh = G.bossBar - 8 * u, m = 3 * u;
@@ -2673,6 +2735,33 @@ function drawHUD() {
     drawBossBar(ctx, ui, sim, bx, by, bw, bh, G.t);
   }
   if (G.screen === 'play' && sim.state === 'play') { drawZoomBtns(); drawAllyBtn(); drawStrikeBtn(); }
+}
+
+// the HUD's "i": a round info glyph; while the level holds a kind this player has never opened, it pulses and wears a "New!" tag
+const mkInfoIcon = (col, edge) => (c, x, y, s) => {
+  c.save();
+  c.fillStyle = edge;
+  c.beginPath(); c.arc(x, y - s * 0.24 + s * 0.06, s * 0.12, 0, 7); c.fill();
+  ui.roundRect(x - s * 0.1, y - s * 0.06 + s * 0.06, s * 0.2, s * 0.44, s * 0.08); c.fill();
+  c.fillStyle = col;
+  c.beginPath(); c.arc(x, y - s * 0.24, s * 0.12, 0, 7); c.fill();
+  ui.roundRect(x - s * 0.1, y - s * 0.06, s * 0.2, s * 0.44, s * 0.08); c.fill();
+  c.restore();
+};
+const infoIcon = mkInfoIcon('#fff8e6', 'rgba(18,9,3,0.55)'), infoIconInk = mkInfoIcon('#6b3f17', 'rgba(255,255,255,0.7)');
+function drawInfoBtn(x, y, b) {
+  const u = ui.u, fresh = G.infoNew;
+  if (fresh && !save.calm) { // a slow ring, like the ally button's: "there is something new to read"
+    const p = (G.t * 0.7) % 1;
+    ui.roundRect(x - 5 * u * p, y - 5 * u * p, b + 10 * u * p, b + 10 * u * p, 15 * u + 5 * u * p);
+    ctx.lineWidth = 2.5 * u; ctx.strokeStyle = `rgba(255,214,90,${0.8 * (1 - p)})`; ctx.stroke();
+  }
+  ui.button('info', '', x, y, b, b, { kind: fresh ? 'gold' : 'hud', icon: infoIcon, iconS: 1.25, round: 15 * u * (b / (46 * u)) });
+  if (!fresh) return;
+  const ts = 10.5 * u, tw = ui.measure('New!', ts) + 9 * u, th = ts + 6 * u, tx = x + b - tw + 9 * u, ty = Math.max(1, y - th * 0.45);
+  ui.roundRect(tx, ty, tw, th, th / 2); ctx.fillStyle = '#e8402e'; ctx.fill();
+  ctx.lineWidth = 1.5 * u; ctx.strokeStyle = '#fff4dc'; ctx.stroke();
+  ui.text('New!', tx + tw / 2, ty + th / 2, { size: ts, align: 'center', color: '#fff', tag: 'hud:infoNew', group: 'btn:info' });
 }
 
 // zoom -, +, and auto (only while the player has overridden auto zoom), in the strip computeLayout keeps clear of the vault
@@ -2722,16 +2811,25 @@ function drawToast() {
   const a = Math.min(1, age * 5, T.life * 3);
   const size = 16 * u;
   const maxW = Math.min(W_ - 32 * u, 520 * u);
-  const lines = wrapText(T.text, size, maxW - 32 * u);
+  const xw = T.tip ? 22 * u : 0; // a villain tip keeps a little close mark on its right: a tap puts it away
+  const lines = wrapText(T.text, size, maxW - 32 * u - xw);
   const h = lines.length * size * 1.3 + 18 * u;
-  const w = Math.min(maxW, Math.max(...lines.map((l) => ui.measure(l, size))) + 32 * u);
-  const x = W_ / 2 - w / 2, y = G.hudBottom + 10 * u;
+  const w = Math.min(maxW, Math.max(...lines.map((l) => ui.measure(l, size))) + 32 * u + xw);
+  const x = W_ / 2 - w / 2, y = Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
+  G.toastRect = { x, y, w, h };
   ctx.save();
   ctx.globalAlpha = a; ui.aBase = a;
   const k = ui.pop(age, 0.22);
   if (k !== 1) { ctx.translate(W_ / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-W_ / 2, -(y + h / 2)); }
   ui.glass(x, y, w, h, { r: Math.min(h / 2, 18 * u), a: 'rgba(58,36,20,0.94)', b: 'rgba(28,16,8,0.94)', border: 'rgba(255,224,160,0.6)', record: true, tag: 'toast', group: 'toast' });
-  lines.forEach((l, i) => ui.text(l, W_ / 2, y + 9 * u + size * 1.3 * (i + 0.5), { size, align: 'center', color: '#fff8e8', group: 'toast', tag: 'toast:' + i }));
+  lines.forEach((l, i) => ui.text(l, W_ / 2 - xw / 2, y + 9 * u + size * 1.3 * (i + 0.5), { size, align: 'center', color: '#fff8e8', group: 'toast', tag: 'toast:' + i }));
+  if (T.tip) { // the close mark, and a hairline that runs down with the tip's time
+    const cx = x + w - 13 * u - 4 * u, cy = y + h / 2, r = 4.5 * u;
+    ctx.strokeStyle = 'rgba(255,232,190,0.75)'; ctx.lineWidth = 2 * u; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r); ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r); ctx.stroke();
+    const k2 = clamp(T.life / TIP_LIFE, 0, 1), rr = Math.min(h / 2, 18 * u);
+    ctx.fillStyle = 'rgba(255,214,120,0.55)'; ctx.fillRect(x + rr, y + h - 3 * u, (w - 2 * rr) * k2, 1.5 * u);
+  }
   ui.aBase = 1;
   ctx.restore();
   // popups must stay below the toast
@@ -2981,7 +3079,11 @@ function drawPause() {
         ui.button('restart', 'Restart', x, y, hw, 48 * s, { kind: 'secondary', icon: ICON.retry, size: 17 * s });
         ui.button('levels', 'Levels', x + hw + 10 * s, y, hw, 48 * s, { kind: 'secondary', icon: ICON.grid, size: 17 * s });
       } },
-      { h: 42 * s, draw: (x, y, w) => ui.button('practice', 'Practice', x + w * 0.2, y, w * 0.6, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) },
+      G.infoKinds.length && G.sim.state === 'play' ? { h: 42 * s, draw: (x, y, w) => { // the "i" panel from the pause card
+        const hw = (w - 10 * s) / 2;
+        ui.button('practice', 'Practice', x, y, hw, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s });
+        ui.button('info', 'Villains', x + hw + 10 * s, y, hw, 42 * s, { kind: G.infoNew ? 'gold' : 'tertiary', icon: G.infoNew ? infoIcon : infoIconInk, iconS: 1.1, size: 15.5 * s });
+      } } : { h: 42 * s, draw: (x, y, w) => ui.button('practice', 'Practice', x + w * 0.2, y, w * 0.6, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) },
       { h: 42 * s, gap: 16 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) },
     ].filter(Boolean);
     if (G.sim.mode !== save.mode) B.push(lineBlock('The new mode starts when you restart', 13 * s, { color: ui.C.ink2, tag: 'pause:modenote', gap: 4 * s }));
@@ -2993,6 +3095,105 @@ function drawPause() {
     } });
     return B;
   }, { ribbon: '#3a80ea' });
+}
+
+// "Who's in this vault" (the "i" panel): the pause card's kit (cream card, wooden frame, ribbon), one row per villain,
+// boss or hazard of this level: a live portrait drawn by its own renderer, its name, what it does, how to beat it (a boss
+// also lists the attacks this level uses, each with its counter). The list scrolls (drag, wheel, arrows) between the
+// ribbon and a fixed footer button; rows cut by the list edge are clipped and record nothing for the overlap check.
+// The world stands still behind it (screen 'info'); closing goes back to play or to the pause card.
+function infoRows(s, iw) {
+  const C = ui.C, P = Math.round(64 * s), gap = 12 * s, tx = P + gap, tw = iw - tx;
+  const nameS = 17.5 * s, lineS = 14 * s, atkS = 13.2 * s, lh = 1.3;
+  return G.infoKinds.map((kind, ri) => {
+    const I = VILLAIN_INFO[kind] || { group: 'creature', name: kind, does: '', beat: '' };
+    const items = []; // { str, size, color, x, y, pre?, preColor? } laid out from the row's top-left
+    let y = 2 * s;
+    const add = (str, size, color, pre, preColor, indent = 0) => {
+      const full = pre ? pre + ' ' + str : str, lines = wrapText(full, size, tw - indent);
+      lines.forEach((l, i) => {
+        const p0 = i === 0 && pre && l.startsWith(pre) ? pre : null;
+        items.push({ str: p0 ? l.slice(pre.length + 1) : l, pre: p0, preColor, size, color, x: tx + (i ? indent : 0), y: y + size * lh / 2 });
+        y += size * lh;
+      });
+    };
+    const tag = I.group === 'boss' ? 'BOSS' : I.group === 'hazard' ? 'HAZARD' : '';
+    items.push({ str: I.name, size: nameS, color: I.group === 'boss' ? C.bad : C.ink, x: tx, y: y + nameS * 0.6, name: true, tag });
+    y += nameS * 1.25;
+    add(I.does, lineS, C.ink);
+    if (I.group === 'boss') {
+      const atks = bossAttacks(G.level).filter((a) => I.attacks && I.attacks[a]);
+      if (atks.length) y += 3 * s;
+      for (const a of atks) add(I.attacks[a], atkS, C.ink2, (ATTACK_NAME[a] || ATTACK_EXTRA[a] || a) + ':', C.warn, 10 * s);
+      if (atks.length) y += 3 * s;
+    }
+    add(I.beat, lineS, C.ink, 'Beat it:', C.good);
+    const h = Math.max(P, y) + 14 * s;
+    return { kind, I, items, h, P, ri };
+  });
+}
+function drawInfo() {
+  dim(0.62);
+  const u = ui.u, s = u, C = ui.C;
+  ui.calm = save.calm;
+  const S = G.iscroll, dt = Math.min(0.05, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
+  const w = Math.min(W_ - 24 * u, 470 * u), x = W_ / 2 - w / 2, fw = 7 * s, pad = 14 * s, iw = w - 2 * fw - 2 * pad;
+  const rows = infoRows(s, iw), title = 'Who\u2019s in this vault';
+  const footH = 50 * s, head = CARD_HEAD * s, listH = rows.length ? rows.reduce((a, r) => a + r.h, 0) + 4 * s : 64 * s;
+  const top = 12 * u + 8 * s, maxH = H_ - top - 12 * u - 5 * s;
+  const h = Math.min(maxH, head + listH + 12 * s + footH + 16 * s), y = Math.max(top, (H_ - h) / 2);
+  G.infoCard = { x, y, w, h };
+  ctx.save();
+  const k = ui.pop(G.screenT, 0.32);
+  if (k !== 1) { ctx.translate(x + w / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + h / 2)); }
+  ui.frame(x, y, w, h, { s, r: 24 * s });
+  const rw = clamp(ui.measure(title, 24 * s) + 56 * s, w * 0.6, w - 14 * s);
+  ui.ribbon(title, x + w / 2, y - 8 * s, rw, 40 * s, { s, color: '#7a3fb8', size: 24 * s, tag: 'info:title' });
+  // the list viewport, between the ribbon and the footer
+  const vx = x + fw + pad, vy = y + head - 4 * s, vw = iw, vh = Math.max(20 * s, y + h - fw - 12 * s - footH - 10 * s - vy);
+  S.max = Math.max(0, listH - vh);
+  if (!G.pdrag || !G.pdrag.moved) { if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-4.2 * dt); } else S.v = 0; }
+  const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
+  ctx.save(); ctx.beginPath(); ctx.rect(x + fw, vy, w - 2 * fw, vh); ctx.clip();
+  if (!rows.length) ui.text('Nothing hunts your eggs here: just you, the rings and gravity.', x + w / 2, vy + 30 * s, { size: 14.5 * s, align: 'center', maxW: iw, color: C.ink2, tag: 'info:empty' });
+  let ry = vy + 4 * s - S.y;
+  for (const R of rows) {
+    if (ry + R.h > vy - 2 && ry < vy + vh + 2) {
+      if (R.ri) { ctx.fillStyle = 'rgba(122,78,30,0.22)'; ctx.fillRect(vx, ry - 1 * s, vw, 1.5 * s); }
+      const py = ry + 6 * s, bg = PORTRAIT_BG[R.I.group] || PORTRAIT_BG.creature;
+      ui.well(vx, py, R.P, R.P, { s, r: 12 * s, a: bg[0], b: bg[1], border: 'rgba(40,24,10,0.7)', shade: 'rgba(0,0,10,0.45)',
+        paint: () => drawVillainPortrait(ctx, R.kind, vx + R.P / 2, py + R.P / 2, R.P, G.t) });
+      const grp = 'info:r' + R.ri;
+      for (const it of R.items) {
+        const yy = py + it.y, inside = yy - it.size * 0.6 >= vy && yy + it.size * 0.6 <= vy + vh;
+        let xx = vx + it.x;
+        if (it.pre) { const r0 = ui.text(it.pre, xx, yy, { size: it.size, color: it.preColor, tag: grp + ':' + it.pre, group: grp, noRecord: !inside }); xx += r0.w + ui.measure(' ', it.size); }
+        const r1 = ui.text(it.str, xx, yy, { size: it.size, color: it.color, maxW: vx + vw - xx, tag: grp + ':' + it.str.slice(0, 18), group: grp, noRecord: !inside });
+        if (it.tag) { // a small group tag after the name when it fits
+          const ts = 10.5 * s, tw2 = ui.measure(it.tag, ts) + 10 * s, tx2 = r1.x + r1.w + 8 * s;
+          if (tx2 + tw2 <= vx + vw) {
+            ui.roundRect(tx2, yy - ts * 0.75, tw2, ts * 1.5, ts * 0.75); ctx.fillStyle = it.tag === 'BOSS' ? '#c9342c' : '#6a6f7c'; ctx.fill();
+            ui.text(it.tag, tx2 + tw2 / 2, yy, { size: ts, align: 'center', color: '#fff', tag: grp + ':tag', group: grp, noRecord: !inside });
+          }
+        }
+      }
+    }
+    ry += R.h;
+  }
+  ctx.restore();
+  // soft edges where the list scrolls under the header and the footer
+  if (S.max > 0) {
+    const fade = (yy, up) => { // the card's cream at that height (ui.frame: #fffaea at the top to #f6e2ba at the bottom)
+      const f = clamp((yy - y) / h, 0, 1), c = [255 - 9 * f, 250 - 24 * f, 234 - 48 * f].map(Math.round).join(',');
+      const g = ctx.createLinearGradient(0, yy, 0, yy + (up ? -10 : 10) * s); g.addColorStop(0, `rgba(${c},0.95)`); g.addColorStop(1, `rgba(${c},0)`); ctx.fillStyle = g; ctx.fillRect(x + fw, up ? yy - 10 * s : yy, w - 2 * fw, 10 * s); };
+    if (S.y > 1) fade(vy, false);
+    if (S.y < S.max - 1) fade(vy + vh, true);
+    const th = Math.max(26 * s, vh * vh / listH), ty = vy + (S.y / S.max) * (vh - th);
+    ui.roundRect(x + w - fw - 6 * s, ty, 3.5 * s, th, 1.75 * s); ctx.fillStyle = 'rgba(122,78,30,0.45)'; ctx.fill();
+  }
+  const fy = y + h - fw - 12 * s - footH;
+  ui.button('info:close', G.infoFrom === 'pause' ? 'Back' : 'Back to the vault', x + fw + pad, fy, iw, footH, { kind: 'primary', icon: G.infoFrom === 'pause' ? ICON.left : ICON.play, size: 19 * s });
+  ctx.restore();
 }
 
 // The win screen in two beats (Duolingo-style).
@@ -3624,6 +3825,16 @@ if (DEV) window.__egg = {
   seaAnim, // v3.3: the octopus's and fishes' render state (QA strips)
   handle: () => handleEvents(),
   overlaps: () => G.overlaps,
+  // the "i" panel (tools/info-check.cjs, qa-overlap): the table, the kind finder, the portraits, and an opener for any screen
+  VILLAIN_INFO, villainKinds, bossAttacks, villainArt: drawVillainPortrait,
+  openInfo() {
+    if (G.screen === 'wonder') {
+      const W2 = wonder.state, kinds = new Set(villainKinds(W2.level));
+      for (const sm of (W2.game && W2.game.sims) || []) for (const k of villainKinds(W2.level, sm)) kinds.add(k);
+      G.infoKinds = [...kinds]; G.infoFrom = 'wonder'; G.iscroll = { y: 0, v: 0, max: 0, t: G.t }; setScreen('info');
+    } else { G.infoFrom = G.screen === 'pause' ? 'pause' : 'play'; openInfo(); }
+    return G.infoKinds.slice();
+  },
   uiRect: (tag) => ui.rects.find((r) => r.tag === tag) || null, // QA strips: where a recorded block was drawn
   setSave(s) { loadSave(s); },
   get save() { return save; },
