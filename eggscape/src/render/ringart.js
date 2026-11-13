@@ -104,7 +104,7 @@ const BRASS = '#d39a34', BRASS_DK = '#6b4410', BRASS_LT = '#ffe08a';
 const CAP = 0.05; // m: the collar on a cut end
 
 function paintFace(ctx, ring, arcs, col, st, px) {
-  const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2, mat = ring.mat || 'wood';
+  const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2, mat = st.mat || ring.mat || 'wood';
   const P = (rad, a) => ringPt(ring, a, rad);
   const dot = (rad, a, s) => { const q = P(rad, a); ctx.beginPath(); ctx.arc(q[0], q[1], s, 0, TAU); ctx.fill(); };
   const hair = Math.max(px, 0.009), R = rng(ring.i * 7919 + 13);
@@ -359,7 +359,9 @@ function faceCanvas(ring, arcs, col, st, scale) {
 }
 
 // ---------- the ring body (called with ctx in world space, not rotated) ----------
-export function drawRingBody(ctx, ring, col, st, k) {
+// up: the water world, where eggs float up and rest on the underside of a ring: the slab's wall shows above the face
+// (seen from below), so it never covers the surface an egg rests on.
+export function drawRingBody(ctx, ring, col, st, k, up) {
   const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2, px = 1 / k, A = ring.body.getAngle();
   const arcs = ringArcs(ring);
   const glassy = (st.alpha || 1) < 1;
@@ -379,7 +381,7 @@ export function drawRingBody(ctx, ring, col, st, k) {
   // the slab's side wall, straight down the screen
   const ol = Math.max(1.3 * px, 0.02), edge = darken(col.dark, 0.5), wall = mix(col.dark, '#120a10', 0.28);
   ctx.save();
-  ctx.translate(0, -WALL);
+  ctx.translate(0, up ? WALL : -WALL);
   ctx.rotate(A);
   ctx.strokeStyle = edge;
   ctx.lineWidth = RING_TH + ol * 2;
@@ -390,7 +392,7 @@ export function drawRingBody(ctx, ring, col, st, k) {
   for (const [a0, a1] of arcs) { ringLine(ctx, ring, r, a0, a1); ctx.stroke(); }
   ctx.restore();
   ctx.save();
-  ctx.translate(0, -WALL / 2);
+  ctx.translate(0, up ? WALL / 2 : -WALL / 2);
   ctx.rotate(A);
   ctx.globalAlpha = glassy ? 0.75 : 1;
   ctx.strokeStyle = wall;

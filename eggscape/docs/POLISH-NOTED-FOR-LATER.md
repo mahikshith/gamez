@@ -48,3 +48,10 @@
 - King Crab claw head small at play scale (1.3x draw would help).
 - Creatures carried by a turning ring play their walk cycle: needs a "carried" flag from the sim.
 - Hermit crab is drawn upside-down on channel ceilings underwater. Gator death roll can show both eyes mid-turn.
+
+## Parked by the owner (2026-11-13)
+- Bring Wonder Vault mechanics into the main levels, Twin Vaults (linked rings across two panes) first. Owner's favourite.
+- Redraw the in-ring chicks (glow chick and the other chick kinds) in the strike-chick style.
+- Hen body type to match the strike chicks.
+- Villain face-offs: any level with two or more villains needs a designed face-off (animation and physics).
+- Gecko, thorn-back, chameleon: only in levels with no villain figure (15, 20) or new levels, never added to existing villain levels.

@@ -11,6 +11,7 @@ import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, 
 import { drawSkinPreview } from '../ui/store.js';
 import { ringPt, ringSpd, ringNormal, ringReach } from '../sim/shapes.js'; // v3.3 M10 vault shapes
 import { LIGHT, WALL, mix, lighten, darken, rgbOf, drawRingBody, drawRingBurn, drawPads, ringLine, ringBand } from './ringart.js';
+import { drawHoney, drawShutters } from './boardart.js';
 
 let skin = 'classic';
 export function setSkin(id) { skin = id || 'classic'; }
@@ -59,7 +60,7 @@ const MAT_STYLE = {
   wood: { seam: 0.55, grain: true },
   stone: { seam: 0.42, blocks: true },
   ice: { alpha: 0.78, shine: true },
-  mushroom: { dots: true },
+  mushroom: { dots: true, mat: 'mushroom' },
   glass: { alpha: 0.55, shine: true },
   metal: { rivets: true, shine: true },
   coral: { bumps: true },
@@ -85,9 +86,15 @@ const MAT_COLORS = {
   bone: { base: '#e6dcc4', light: '#fffaf0', dark: '#8c826c' },
 };
 
+// What a ring is drawn as. The Mushroom Glade's vaults are plain wood to the sim (level data), but the world's own
+// material is mushroom cap: draw them as that. Physics still reads ring.mat.
+export function ringLook(ring, theme) {
+  return theme?.id === 'mushroom' && (ring.mat || 'wood') === 'wood' ? 'mushroom' : ring.mat;
+}
 export function ringColors(ring, theme) {
-  const own = theme?.material === ring.mat && theme?.palette?.ring;
-  return own || MAT_COLORS[ring.mat] || theme?.palette?.ring || DEFAULT_RING;
+  const mat = ringLook(ring, theme);
+  const own = theme?.material === mat && theme?.palette?.ring;
+  return own || MAT_COLORS[mat] || theme?.palette?.ring || DEFAULT_RING;
 }
 
 // A soft dark plate behind the vault: lifts the rings off busy backdrops (lava streams, crystals, rain) without hiding
@@ -116,12 +123,12 @@ export function drawVaultBack(ctx, sim, theme) {
 }
 
 export function drawRing(ctx, ring, theme, k, t, opts = {}) {
-  const st = MAT_STYLE[ring.mat] || MAT_STYLE.wood;
+  const look = ringLook(ring, theme), st = MAT_STYLE[look] || MAT_STYLE.wood;
   const col = ringColors(ring, theme);
   const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2;
   const px = 1 / k;
   // slab: drop shadow, side wall, cached top face, outline, bevel light (render/ringart.js)
-  const arcs = drawRingBody(ctx, ring, col, st, k);
+  const arcs = drawRingBody(ctx, ring, col, st, k, opts.water);
   ctx.save();
   ctx.rotate(ring.body.getAngle());
   // glass damage
@@ -149,7 +156,7 @@ export function drawRing(ctx, ring, theme, k, t, opts = {}) {
   drawPads(ctx, ring, theme, px, t, opts.eggs || [], opts.simT || 0);
   if (!ring.prof) {
     drawHoney(ctx, ring, px, t, opts.stuck);
-    drawShutters(ctx, ring, col, px);
+    drawShutters(ctx, ring, col, px, look);
   }
   drawThorns(ctx, ring, theme, px, t, opts);
   // grab highlight (screen-constant width, not a glow)
@@ -168,42 +175,6 @@ export function drawRing(ctx, ring, theme, k, t, opts = {}) {
   }
   ctx.restore();
   if (ring.stun > 0) drawStun(ctx, ring, t, px);
-}
-
-// Gap shutters: two sliding doors close the gap from its edges (F15c).
-function drawShutters(ctx, ring, col, px) {
-  const ri = ring.r - RING_TH / 2 + 0.015, ro = ring.r + RING_TH / 2 - 0.015;
-  for (const g of ring.gaps) {
-    if (!g.shut) continue;
-    const half = g.len / (2 * ring.r), shut = half * (1 - g.o);
-    // door frames at both edges
-    ctx.strokeStyle = 'rgba(30,24,20,0.7)';
-    ctx.lineWidth = Math.max(3 * px, 0.03);
-    ctx.beginPath();
-    for (const b of [g.a - half, g.a + half]) {
-      ctx.moveTo((ri - 0.03) * Math.cos(b), (ri - 0.03) * Math.sin(b));
-      ctx.lineTo((ro + 0.03) * Math.cos(b), (ro + 0.03) * Math.sin(b));
-    }
-    ctx.stroke();
-    if (shut < 0.004) continue;
-    for (const e of [-1, 1]) {
-      const a0 = e < 0 ? g.a - half : g.a + half - shut, a1 = e < 0 ? g.a - half + shut : g.a + half;
-      annulus(ctx, ri, ro, a0, a1);
-      ctx.fillStyle = '#7f8792';
-      ctx.fill();
-      ctx.strokeStyle = '#2c3138';
-      ctx.lineWidth = Math.max(1.5 * px, 0.014);
-      ctx.stroke();
-      // hazard stripe on the leading edge
-      const lead = e < 0 ? a1 : a0;
-      ctx.strokeStyle = '#ffcc33';
-      ctx.lineWidth = Math.max(3 * px, 0.03);
-      ctx.beginPath();
-      ctx.moveTo(ri * Math.cos(lead - e * 0.02), ri * Math.sin(lead - e * 0.02));
-      ctx.lineTo(ro * Math.cos(lead - e * 0.02), ro * Math.sin(lead - e * 0.02));
-      ctx.stroke();
-    }
-  }
 }
 
 const BRASS = '#d39a34', BRASS_DK = '#6b4410', BRASS_LT = '#ffe08a';
@@ -321,39 +292,6 @@ function drawStun(ctx, ring, t, px) {
   }
   ctx.restore();
 }
-
-// Honey pads (F24): glossy amber on the inner face with drips. A pad holding an egg blinks before it
-// lets go; a pad that just let go is dull for a moment.
-function drawHoney(ctx, ring, px, t, stuck = []) {
-  if (!ring.honey.length) return;
-  const ri = ring.r - RING_TH / 2;
-  ring.honey.forEach((h, k) => {
-    const half = h.len / (2 * ring.r);
-    const hold = stuck.find((e) => e.hold && e.hold.ri === ring.i && e.hold.pad === k);
-    let a = h.dry > 0 && !hold ? 0.5 : 0.95;
-    if (hold && hold.honey < 0.8) a = Math.sin(t * 28) > 0 ? 0.95 : 0.35;
-    ctx.globalAlpha = a;
-    annulus(ctx, ri - 0.07, ri + 0.01, h.a - half, h.a + half);
-    ctx.fillStyle = '#e8920c';
-    ctx.fill();
-    annulus(ctx, ri - 0.07, ri - 0.045, h.a - half * 0.9, h.a + half * 0.9);
-    ctx.fillStyle = 'rgba(255,226,140,0.85)';
-    ctx.fill();
-    // drips
-    ctx.fillStyle = '#d97a06';
-    const n = Math.max(2, Math.round(h.len / 0.22));
-    for (let i = 0; i < n; i++) {
-      const b = h.a - half + ((i + 0.5) / n) * 2 * half;
-      const len = 0.04 + 0.03 * (0.5 + 0.5 * Math.sin(t * 1.7 + i * 2.3));
-      const x = (ri - 0.07) * Math.cos(b), y = (ri - 0.07) * Math.sin(b);
-      ctx.beginPath();
-      ctx.ellipse(x - Math.cos(b) * len * 0.5, y - Math.sin(b) * len * 0.5, 0.018, len * 0.6, b + Math.PI / 2, 0, TAU);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-  });
-}
-
 
 function wrapA(a) {
   a = (a + Math.PI) % TAU;
@@ -917,22 +855,28 @@ export function drawEggMult(ctx, egg, k, font) {
 export function drawNest(ctx, sim, theme, t, savedCount) {
   const p = sim.nest.getPosition();
   const w = sim.nestW / 2;
-  const straw = theme?.palette?.nestStraw || '#c9a24a';
-  const dk = mix(straw, '#3a1e04', 0.62), line = mix(straw, '#2a1402', 0.82), lt = lighten(straw, 0.45);
+  // a richer, deeper straw than the palette's flat tone, so the nest holds its own against the ground at phone size
+  const straw = mix(theme?.palette?.nestStraw || '#c9a24a', '#d08a1c', 0.42);
+  const dk = mix(straw, '#3a1a02', 0.66), line = mix(straw, '#241002', 0.86), lt = lighten(straw, 0.42);
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   // contact shadow on the ground
-  ctx.fillStyle = 'rgba(10,6,14,0.22)';
-  ctx.beginPath(); ctx.ellipse(0.04, -0.03, w + 0.3, 0.09, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = 'rgba(10,6,14,0.28)';
-  ctx.beginPath(); ctx.ellipse(0.02, -0.02, w * 0.8, 0.055, 0, 0, TAU); ctx.fill();
-  // the hollow: back of the rim and the dark inside
+  ctx.fillStyle = 'rgba(10,6,14,0.24)';
+  ctx.beginPath(); ctx.ellipse(0.05, -0.03, w + 0.32, 0.1, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(10,6,14,0.34)';
+  ctx.beginPath(); ctx.ellipse(0.02, -0.02, w * 0.82, 0.06, 0, 0, TAU); ctx.fill();
+  // the hollow: the back of the rim (in shade) and the dark inside, darkest at the front lip
   ctx.beginPath(); ctx.ellipse(0, 0.47, w + 0.1, 0.13, 0, 0, TAU);
-  ctx.fillStyle = mix(straw, '#160a02', 0.86); ctx.fill();
-  ctx.strokeStyle = line; ctx.lineWidth = 0.17; ctx.stroke();
-  ctx.strokeStyle = mix(straw, dk, 0.5); ctx.lineWidth = 0.12; ctx.stroke();
+  ctx.strokeStyle = line; ctx.lineWidth = 0.19; ctx.stroke();
+  ctx.strokeStyle = mix(straw, dk, 0.62); ctx.lineWidth = 0.14; ctx.stroke();
+  ctx.strokeStyle = mix(straw, dk, 0.3, 0.8); ctx.lineWidth = 0.03;
+  ctx.beginPath(); ctx.ellipse(0, 0.5, w + 0.1, 0.13, 0, 0.12, Math.PI - 0.12); ctx.stroke(); // light catching the back rim's top
+  const hg = ctx.createLinearGradient(0, 0.6, 0, 0.34);
+  hg.addColorStop(0, mix(straw, '#1a0c02', 0.72)); hg.addColorStop(1, mix(straw, '#090402', 0.93));
+  ctx.beginPath(); ctx.ellipse(0, 0.47, w + 0.1, 0.13, 0, 0, TAU);
+  ctx.fillStyle = hg; ctx.fill();
   // saved eggs nestled inside
   const n = Math.min(4, savedCount);
   for (let i = 0; i < n; i++) {
@@ -963,42 +907,64 @@ export function drawNest(ctx, sim, theme, t, savedCount) {
   };
   bowl();
   ctx.strokeStyle = line; ctx.lineWidth = 0.05; ctx.stroke();
-  const g = ctx.createLinearGradient(0, 0.5, 0, -0.05);
-  g.addColorStop(0, lighten(straw, 0.22)); g.addColorStop(0.4, straw); g.addColorStop(1, mix(straw, '#2e1602', 0.72));
-  ctx.fillStyle = g;
+  ctx.fillStyle = dk;
   ctx.fill();
   ctx.save();
   ctx.clip();
-  // woven straw: two families of strands crossing, light over dark
-  const r = rng(11);
-  for (let i = 0; i < 34; i++) {
-    const x0 = -w - 0.2 + r() * (2 * w + 0.3), y0 = 0.0 + r() * 0.46, dir = i % 2 ? 1 : -1, L = 0.3 + r() * 0.3;
-    for (const [c, lw, off] of [[mix(straw, '#3a1e04', 0.7, 0.7), 0.04, -0.016], [i % 3 ? lighten(straw, 0.55, 0.9) : lighten(straw, 0.25, 0.8), 0.022, 0]]) {
+  // woven coils: four fat ropes of straw wound round the bowl, each one a herringbone of strands, the gaps between
+  // them in deep shade. Lower coils turn away from the light.
+  const W2 = w + 0.2, rows = 4, rh = 0.118;
+  const cy = (j, x) => 0.405 - j * rh - 0.075 + 0.085 * (x / W2) * (x / W2) + 0.02 * j * (x / W2) * (x / W2);
+  for (let j = 0; j < rows; j++) {
+    const body = mix(lighten(straw, 0.1), dk, j * 0.2), hi = mix(lt, straw, j * 0.22), lo = mix(dk, '#1c0c02', 0.35);
+    const run = (dy) => { ctx.beginPath(); for (let i = 0; i <= 24; i++) { const x = -W2 + (2 * W2 * i) / 24; if (i) ctx.lineTo(x, cy(j, x) + dy); else ctx.moveTo(x, cy(j, x) + dy); } };
+    run(0); ctx.strokeStyle = body; ctx.lineWidth = rh - 0.024; ctx.lineCap = 'butt'; ctx.stroke();
+    run(0.03); ctx.strokeStyle = mix(hi, body, 0.35, 0.8); ctx.lineWidth = 0.03; ctx.stroke(); // each coil is round: lit crown
+    run(-0.036); ctx.strokeStyle = mix(lo, body, 0.3, 0.7); ctx.lineWidth = 0.026; ctx.stroke(); // and a shaded belly
+    // strands: slanted one way on this coil, the other way on the next
+    const dir = j % 2 ? 1 : -1, st = 0.088, h2 = rh * 0.36;
+    ctx.lineCap = 'round';
+    for (const [c, lw, off] of [[mix(lo, body, 0.15, 0.8), 0.026, 0], [mix(hi, '#fff6d8', 0.25, 0.85), 0.016, 0.02]]) {
       ctx.strokeStyle = c; ctx.lineWidth = lw;
       ctx.beginPath();
-      ctx.moveTo(x0, y0 + off);
-      ctx.quadraticCurveTo(x0 + L * 0.5, y0 + off - 0.05, x0 + L, y0 + off + dir * 0.09 * r());
+      for (let x = -W2 + (j % 2) * st * 0.5; x < W2; x += st) { const y = cy(j, x + off); ctx.moveTo(x + off - dir * 0.03, y - h2); ctx.lineTo(x + off + dir * 0.03, y + h2); }
       ctx.stroke();
     }
   }
+  // form: shade under the rim's overhang, a dark underside, light on the left shoulder, shade on the right
+  const g = ctx.createLinearGradient(0, 0.5, 0, -0.05);
+  g.addColorStop(0, 'rgba(30,12,0,0.6)'); g.addColorStop(0.24, 'rgba(30,12,0,0.1)'); g.addColorStop(0.5, 'rgba(255,236,170,0.1)'); g.addColorStop(0.74, 'rgba(30,12,0,0.2)'); g.addColorStop(1, 'rgba(22,8,0,0.72)');
+  ctx.fillStyle = g;
+  ctx.fillRect(-w - 0.3, -0.1, 2 * w + 0.6, 0.7);
   const sd = ctx.createLinearGradient(-w, 0, w, 0);
-  sd.addColorStop(0, 'rgba(255,244,200,0.22)'); sd.addColorStop(0.4, 'rgba(255,244,200,0)'); sd.addColorStop(1, 'rgba(50,22,0,0.38)');
+  sd.addColorStop(0, 'rgba(255,240,180,0.26)'); sd.addColorStop(0.38, 'rgba(255,240,180,0)'); sd.addColorStop(0.62, 'rgba(40,16,0,0)'); sd.addColorStop(1, 'rgba(40,16,0,0.5)');
   ctx.fillStyle = sd;
   ctx.fillRect(-w - 0.3, -0.1, 2 * w + 0.6, 0.7);
   ctx.restore();
-  // front of the rim: a fat twisted rope of straw
-  ctx.beginPath(); ctx.ellipse(0, 0.47, w + 0.1, 0.13, 0, Math.PI, TAU);
-  ctx.strokeStyle = line; ctx.lineWidth = 0.2; ctx.stroke();
-  ctx.strokeStyle = lighten(straw, 0.16); ctx.lineWidth = 0.15; ctx.stroke();
-  ctx.strokeStyle = mix(straw, '#4a2806', 0.6, 0.85); ctx.lineWidth = 0.145;
-  ctx.setLineDash([0.025, 0.1]); ctx.lineCap = 'butt'; ctx.stroke(); ctx.setLineDash([]); ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.ellipse(0, 0.515, w + 0.09, 0.13, 0, Math.PI * 1.06, Math.PI * 1.6);
-  ctx.strokeStyle = lighten(lt, 0.4, 0.85); ctx.lineWidth = 0.03; ctx.stroke();
+  // front of the rim: a fat twisted rope of straw, lit along its top-left
+  const rim = (dy, a0 = Math.PI, a1 = TAU) => { ctx.beginPath(); ctx.ellipse(0, 0.47 + dy, w + 0.1, 0.13, 0, a0, a1); };
+  ctx.lineCap = 'round';
+  rim(0); ctx.strokeStyle = line; ctx.lineWidth = 0.215; ctx.stroke();
+  rim(0); ctx.strokeStyle = straw; ctx.lineWidth = 0.165; ctx.stroke();
+  ctx.lineCap = 'butt';
+  rim(-0.045, Math.PI * 1.03, Math.PI * 1.97); ctx.strokeStyle = mix(dk, straw, 0.25, 0.75); ctx.lineWidth = 0.06; ctx.stroke();
+  rim(0.035, Math.PI * 1.03, Math.PI * 1.97); ctx.strokeStyle = mix(lt, straw, 0.3, 0.85); ctx.lineWidth = 0.06; ctx.stroke();
+  // the twist: slanted turns of the rope
+  const tw = Math.round((w + 0.1) * 2 / 0.115);
+  for (const [c, lw, off] of [[mix(dk, '#1c0c02', 0.3, 0.85), 0.03, 0], [mix(lt, '#fff6d8', 0.3, 0.8), 0.016, 0.022]]) {
+    ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let i = 1; i < tw; i++) {
+      const a = Math.PI + (i / tw) * Math.PI, x = (w + 0.1) * Math.cos(a) + off, y = 0.47 + 0.13 * Math.sin(a);
+      ctx.moveTo(x - 0.035, y + 0.062); ctx.lineTo(x + 0.035, y - 0.062);
+    }
+    ctx.stroke();
+  }
+  rim(0.062, Math.PI * 1.05, Math.PI * 1.62); ctx.strokeStyle = 'rgba(255,250,224,0.9)'; ctx.lineWidth = 0.026; ctx.lineCap = 'round'; ctx.stroke();
   // a few stray straws
-  ctx.strokeStyle = line; ctx.lineWidth = 0.04;
-  const stray = [[-w - 0.12, 0.44, -0.16, 0.1], [w + 0.1, 0.42, 0.17, 0.08], [-w * 0.6, 0.02, -0.14, -0.03], [w * 0.7, 0.05, 0.13, -0.02]];
+  const stray = [[-w - 0.12, 0.44, -0.16, 0.1], [w + 0.1, 0.42, 0.17, 0.08], [-w * 0.6, 0.02, -0.14, -0.03], [w * 0.7, 0.05, 0.13, -0.02], [-w * 0.2, 0.56, -0.07, 0.1]];
   for (const pass of [0, 1]) {
-    ctx.strokeStyle = pass ? lighten(straw, 0.3) : line; ctx.lineWidth = pass ? 0.02 : 0.045;
+    ctx.strokeStyle = pass ? lighten(straw, 0.35) : line; ctx.lineWidth = pass ? 0.022 : 0.05;
     ctx.beginPath();
     for (const [x, y, ddx, ddy] of stray) { ctx.moveTo(x, y); ctx.lineTo(x + ddx, y + ddy); }
     ctx.stroke();

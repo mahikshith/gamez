@@ -2223,7 +2223,7 @@ function render() {
     const hover = !held && G.screen === 'play' && ((G.hover === ring && ring.grabbable) || (G.keys.__kb && G.keySel === ring.i));
     ctx.save();
     if (ring.denied > 0) ctx.rotate(Math.sin(t * 60) * 0.01 * ring.denied);
-    W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck });
+    W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck, water: sim.water });
     W.drawV3Ring(ctx, ring, k, t, G.theme);
     drawHardIce(ctx, ring, k, t); // v3.2
     drawRingPulse(ring); // game feel: the grab ripple and detent blink
