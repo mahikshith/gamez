@@ -16,7 +16,7 @@ import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
 import { drawSprite, drawBossCard, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
 import { drawHenAnim, henIdleEvents, resetHen } from './render/hen.js';
 import { drawCelebration, pickRoutine, routine, routineCues, routinePower, ROUTINES } from './render/cheer.js';
-import { drawAllies, ALLY_ART } from './render/allies.js'; // v3.4 farm allies
+import { drawAllies, ALLY_ART, allyFrame, crowRingXf, crowEggXf, crowFlinch } from './render/allies.js'; // v3.4 farm allies
 import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
@@ -1294,9 +1294,10 @@ function eggFeel(sim, e, dt, nd, ntx, nty) {
 // draw one egg through its squash: pressed against the surface it hit (and planted on it), bulging sideways
 function drawEggFelt(e, t, k) {
   const st = EGGFX.get(e), sq = st ? st.s : 0, fs = st && Math.abs(sq) < 0.02 ? st.fs : 0;
-  if ((Math.abs(sq) < 0.004 && fs < 0.004) || save.calm) { if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); return; }
+  if ((Math.abs(sq) < 0.004 && fs < 0.004) || save.calm) { const p0 = e.body.getPosition(); ctx.save(); crowEggXf(ctx, p0.x, p0.y, G.sim.gy || 1); if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); ctx.restore(); return; }
   const p = e.body.getPosition();
   ctx.save();
+  crowEggXf(ctx, p.x, p.y, G.sim.gy || 1); // the rooster's crow: a startled hop
   if (fs >= 0.004) { // falling: longer along the path, slimmer across
     ctx.translate(p.x, p.y); ctx.rotate(st.fa); ctx.scale(1 + fs, 1 - fs * 0.6); ctx.rotate(-st.fa); ctx.translate(-p.x, -p.y);
   } else {
@@ -1316,6 +1317,10 @@ function handleEvents() {
   const fx = G.fx;
   for (const ev of sim.events) {
     switch (ev.type) {
+      case 'allyCrow': // the rooster crows: one short shake and a beat of hit-stop (calm: none); the wave itself is drawn in render/allies.js
+        fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y);
+        try { if (!save.calm && navigator.vibrate) navigator.vibrate(40); } catch (_) {}
+        break;
       case 'bump':
         if (G.t - lastBump > 0.05 && ev.v > 1.2) {
           lastBump = G.t;
@@ -2308,6 +2313,7 @@ function render() {
   for (const pt of sim.portals) { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); }
   if (sim.timeLimit && sim.state === 'play') W.drawFuse(ctx, sim.outerR + 0.32, sim.timeLeft / sim.timeLimit, t, G.screen === 'play' ? fx : null, sim.rings[sim.rings.length - 1]); // v4: hugs a shaped vault
   if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length); // world 8: the basket under the boat
+  { const tl = toWorld(0, G.hudBottom + 8 * ui.u), tr = toWorld(W_, 0); allyFrame(sim, { x0: tl.x, x1: tr.x, top: tl.y }, save.calm, G.screen === 'play' ? fx : null); } // the rooster's perch and the crow wave (render only)
   const eggPts = sim.aliveEggs().map((e) => e.body.getPosition());
   const stuck = sim.aliveEggs().filter((e) => e.honey > 0);
   for (const ring of sim.rings) {
@@ -2315,6 +2321,7 @@ function render() {
     const hover = !held && G.screen === 'play' && ((G.hover === ring && ring.grabbable) || (G.keys.__kb && G.keySel === ring.i));
     ctx.save();
     if (ring.denied > 0) ctx.rotate(Math.sin(t * 60) * 0.01 * ring.denied);
+    crowRingXf(ctx, ring.r, k); // the rooster's crow shivers every ring as the wave passes
     W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck, water: sim.water });
     W.drawV3Ring(ctx, ring, k, t, G.theme);
     drawHardIce(ctx, ring, k, t); // v3.2
@@ -2326,7 +2333,7 @@ function render() {
   drawBossRings(ctx, sim, k, t); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
   drawSalHeat(ctx, sim, k, t); // v3.2: red-hot ring sections and the salamander's target mark
   drawP2Back(ctx, sim, k, t); // v3.4: live ring, scorched sponge, iron bars, brittle thorns, blackout, laser beak
-  const SL = (types, fn) => strikeLayer(ctx, sim, k, t, types, fn); // Chick Strike: a struck villain's layer is drawn through its reaction
+  const SL = (types, fn) => strikeLayer(ctx, sim, k, t, types, (c) => crowFlinch(c, sim, types, fn)); // the crow wave makes a creature flinch as it passes // Chick Strike: a struck villain's layer is drawn through its reaction
   SL(['bx'], (c) => drawBossActor(c, sim, k, t));
   drawThiefDens(ctx, sim, t, k); // v3.6: the weasel's den and the rats' hole in the floor ring
   for (const ring of sim.rings) if (ring.gearOut) W.drawGearCog(ctx, ring, ring.gearOut, t);
@@ -2377,9 +2384,9 @@ function render() {
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
   drawBossOver(ctx, sim, k, t); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
   { const wx = warpXfBegin(ctx, sim, 'e'); SL(['eagle'], (c) => W.drawEagleAt(c, sim, t, k)); warpXfEnd(ctx, wx); }
-  drawAllies(ctx, sim, t, k); // v3.4: rooster and goose, in front of the vault
   drawP2Front(ctx, sim, k, t); // v3.4: decoy, frozen/zapped creatures, beams, spin, pepper cloud
   drawStrikeWorld(ctx, sim, k, t, G.henAt); // Chick Strike: the chick on the hen's back, its flight, glue, twisters, chains
+  drawAllies(ctx, sim, t, k); // v3.4: rooster and goose, in front of the vault AND of every creature layer (never half behind a villain)
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);
   fx.draw(ctx, 'front');
   for (const e of sim.aliveEggs()) W.drawEggMult(ctx, e, k, FONT);

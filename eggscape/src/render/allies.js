@@ -4,8 +4,9 @@
 // when standing. drawRooster / drawGoose take a pose from roosterPose / goosePose (anim + k 0..1 + a clock), so the game
 // and the review strips share one code path. drawAllies() paints the live ally from sim.ally (render only; the state is
 // in sim/allies.js and allyPlace() there says where it is).
-import { ALLY, allyPlace, flingAt } from '../sim/allies.js';
+import { ALLY, allyPlace, allyElapsed, flingAt } from '../sim/allies.js';
 import { drawHenAnim } from './hen.js';
+import { geckoAnchor } from './gecko15.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -377,18 +378,25 @@ export function drawGoose(ctx, cx, cy, s, P) {
 /* =================================================================== EFFECTS (world space, metres, y up) */
 
 // rings of sound spreading from the beak
-function soundRings(ctx, x, y, tau, k) {
-  if (tau < 0 || tau > 1.0) return;
+// the crow's sound rings: 3 bold rings from the beak that sweep the whole vault in WAVE_T s (tau = s since the blast).
+// Dark brown underlay, warm gold body, cream core: readable on every backdrop. Calm: thinner and fainter.
+const WAVE_T = 0.45, BLAST = 0.22;
+function soundRings(ctx, x, y, tau, k, speed = 20, reach = 9, calm = false) {
+  if (tau < 0 || tau > WAVE_T + 0.3) return;
   ctx.save();
   ctx.lineCap = 'round';
   for (let i = 0; i < 3; i++) {
-    const a = tau - i * 0.13;
+    const a = tau - i * 0.07;
     if (a <= 0) continue;
-    const r = 0.5 + a * 7.2, al = clamp(1 - a / 0.85, 0, 1) * (1 - i * 0.18);
+    const r = 0.4 + a * speed, f = r / reach;
+    if (f > 1.25) continue;
+    const al = clamp(a / 0.04, 0, 1) * (1 - sstep((f - 0.7) / 0.55)) * (1 - i * 0.12) * (calm ? 0.6 : 1), w = (calm ? 0.7 : 1) * (15 - i * 2.5) * (1 - 0.35 * clamp(f, 0, 1));
     ctx.globalAlpha = al;
-    ctx.strokeStyle = LINE; ctx.lineWidth = (9 - i * 1.5) / k + 3 / k;
+    ctx.strokeStyle = LINE; ctx.lineWidth = (w + 5) / k;
     ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
-    ctx.strokeStyle = '#fffbea'; ctx.lineWidth = (9 - i * 1.5) / k;
+    ctx.strokeStyle = '#ffc44d'; ctx.lineWidth = w / k;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = '#fff6d8'; ctx.lineWidth = w * 0.42 / k;
     ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
   }
   ctx.restore();
@@ -414,8 +422,8 @@ function star(ctx, x, y, r, pts, rot, fill, k) {
 const SIZE = { rooster: 1.3, goose: 1.1 };
 
 // Draw the live ally. ctx is the world transform (metres, y up). act = sim.ally.act; k = px per metre; t = clock.
-export function drawAllyAct(ctx, act, R, groundY, k, victim) {
-  const P = allyPlace(act, R, groundY), tt = P.tt, s = SIZE[act.kind] * k;
+export function drawAllyAct(ctx, act, R, groundY, k, victim, P0) {
+  const P = P0 || allyPlace(act, R, groundY), tt = P.tt, s = SIZE[act.kind] * k;
   const { x, y, tilt, face } = P;
   // ground shadow while it walks
   if (!P.fly && (act.kind === 'goose' || act.ph === 'land')) {
@@ -452,7 +460,7 @@ export function drawAllyAct(ctx, act, R, groundY, k, victim) {
     const bx = x + lx * Math.cos(tilt) - ly * Math.sin(tilt), by = y + lx * Math.sin(tilt) + ly * Math.cos(tilt);
     if (act.ph === 'crow') {
       voiceMarks(ctx, bx, by, tilt + (face > 0 ? 0.6 : Math.PI - 0.6), 0, tt, k, 3);
-      if (act.t > 0.22 - 1e-6) soundRings(ctx, bx, by, act.t - 0.22, k);
+      if (act.t > BLAST - 1e-6) { const W = WAVE; soundRings(ctx, W ? W.ox : bx, W ? W.oy : by, act.t - BLAST, k, W ? W.speed : 20, W ? W.reach : 9, W ? W.calm : false); }
     }
     if (act.ph === 'land' || (act.ph === 'in' && act.t > 1.1)) { // a few feathers shaken loose on landing
       ctx.save();
@@ -490,11 +498,149 @@ export function drawAllyAct(ctx, act, R, groundY, k, victim) {
   }
 }
 
-// In the game: draw the ally of sim.ally (called after the vault, so it stands in front). `victim`: the snake or eagle it flung draws itself.
+// ---------------------------------------------------------------- perch: the rooster never lands on a villain
+// Render only: the sim still thinks he lands at +-1.8 (that only sets which way the egg nudge points). The art picks the
+// spot on the top arc (candidates round the rim) with the most room round every creature / boss anchor and under the HUD,
+// and sidesteps with a flap if something moves into him.
+let WAVE = null; // the live crow wave: {ox, oy, speed, reach, tau, calm}
+const PERCH = { sim: null, lx: 1.8, sd: 1, mv: null, wo: null, fired: new Set(), init: false };
+const rimYr = (R, x) => Math.sqrt(Math.max(0, R * R - x * x));
+const CANDS = [1.8, -1.8, 1.0, -1.0, 2.8, -2.8, 0.4, -0.4, 3.6, -3.6, 2.3, -2.3, 4.4, -4.4];
+
+// creature / boss anchors: {x, y, r} in world metres (what the rooster must keep clear of)
+function anchorsOf(sim) {
+  const A = [], add = (x, y, r) => { if (isFinite(x) && isFinite(y)) A.push({ x, y, r }); };
+  try {
+    const B = sim.bx && sim.bx.boss, gk = B && geckoAnchor(sim), R = sim.outerR;
+    if (gk) add(gk.x, gk.y, 2.1); else if (B) add(B.x, B.y, 1.5);
+    const F0 = sim.level.bossFight;
+    if (B && B.den && F0 && F0.den) { const a = (F0.den.a * Math.PI) / 180; add(R * Math.cos(a), R * Math.sin(a), 0.9); }
+    const E = sim.eagle; if (E && !E.end && E.phase !== 'away') add(E.x, E.y, 1.4);
+    for (const S of sim.snakes || []) {
+      if (S.gone) continue;
+      if (S.pts && S.pts.length > 1) for (let i = 0; i < S.pts.length; i += 5) add(S.pts[i].x, S.pts[i].y, 0.8);
+      else if (S.rad > R) add(S.rad * Math.cos(S.a), S.rad * Math.sin(S.a), 0.9);
+    }
+    for (const C of sim.sals || []) if (C.pts && C.pts.length > 1) for (let i = 0; i < C.pts.length; i += 5) add(C.pts[i].x, C.pts[i].y, 0.8);
+    for (const F of sim.frogs || []) add(F.x, F.y, 0.9);
+    for (const T of sim.thieves || []) if (sim.thLive(T)) { const b = sim.thBody(T); add(b.x, b.y, 0.9); }
+  } catch (e) { /* art never breaks the frame */ }
+  return A;
+}
+// room (metres) between his body and the nearest anchor, over the spot and the little walk of the strut
+function room(R, lx, sd, A) {
+  let m = 9;
+  for (const f of [0, 0.5, 1]) { const x = lx + sd * ALLY.rooster.strut * f, y = rimYr(R, x) + 0.65; for (const a of A) m = Math.min(m, Math.hypot(x - a.x, y - a.y) - a.r - 0.75); }
+  return m;
+}
+function okView(R, lx, view) {
+  if (!view) return true;
+  const x0 = lx - 1.0, x1 = lx + 1.0 + Math.sign(lx || 1) * ALLY.rooster.strut; // body + the walk
+  return Math.min(x0, x1) > view.x0 && Math.max(x0, x1) < view.x1 && rimYr(R, lx) + 1.9 < view.top;
+}
+function pickPerch(sim, view, A, avoid) {
+  const R = sim.outerR;
+  const cands = CANDS.filter((c) => Math.abs(c) <= 0.85 * R && (avoid == null || Math.abs(c - avoid) > 0.4));
+  let best = null, bs = -1e9;
+  for (const c of cands) {
+    const sd = c >= 0 ? 1 : -1, ok = okView(R, c, view), sc = room(R, c, sd, A) - (ok ? 0 : 6) - 0.04 * Math.abs(c);
+    if (sc > bs) { bs = sc; best = c; }
+  }
+  return best == null ? 1.8 : best;
+}
+
+// every frame, early in the world draw: settle the perch, sidestep if needed, set the crow wave and its dust.
+// view = {x0, x1, top}: the world box under the HUD. fx: the particle layer.
+export function allyFrame(sim, view, calm, fx) {
+  WAVE = null;
+  const act = sim.ally && sim.ally.act;
+  if (!act || act.kind !== 'rooster') { if (!act) PERCH.sim = null; return; }
+  const R = sim.outerR, el = allyElapsed(act);
+  if (PERCH.sim !== sim || !PERCH.init || (act.ph === 'in' && act.t < 0.05)) {
+    const A = anchorsOf(sim);
+    PERCH.sim = sim; PERCH.init = true; PERCH.mv = null; PERCH.wo = null; PERCH.fired = new Set();
+    const keep = room(R, act.lx, act.sd, A) >= 0.5 && okView(R, act.lx, view);
+    PERCH.lx = keep ? act.lx : pickPerch(sim, view, A, null); PERCH.sd = PERCH.lx >= 0 ? 1 : -1;
+  } else if (PERCH.mv && el - PERCH.mv.t0 >= PERCH.mv.d) PERCH.mv = null;
+  // something walked into him while he is perched: flap to the roomiest spot
+  if (!PERCH.mv && (act.ph === 'puff' || act.ph === 'crow' || (act.ph === 'land' && act.t > 0.3))) {
+    const A = anchorsOf(sim);
+    if (room(R, PERCH.lx, PERCH.sd, A) < -0.15) {
+      const to = pickPerch(sim, view, A, PERCH.lx);
+      PERCH.mv = { from: PERCH.lx, t0: el, d: 0.4 }; PERCH.lx = to; PERCH.sd = to >= 0 ? 1 : -1;
+    }
+  }
+  if (act.ph !== 'crow' || act.t < BLAST) return;
+  const P = ralloc(sim, act), bo = roosterHead(roosterPose(P.anim, P.k, P.tt)).beak, sm = SIZE.rooster, face = P.face;
+  const lx = face * (bo.x / 100) * sm, ly = -(-0.48 + bo.y / 100) * sm;
+  if (!PERCH.wo) PERCH.wo = { x: P.x + lx * Math.cos(P.tilt) - ly * Math.sin(P.tilt), y: P.y + lx * Math.sin(P.tilt) + ly * Math.cos(P.tilt) };
+  const ox = PERCH.wo.x, oy = PERCH.wo.y, reach = Math.hypot(ox, oy) + R + 2.5;
+  WAVE = { ox, oy, speed: reach / WAVE_T, reach, tau: act.t - BLAST, calm: !!calm };
+  if (fx && !calm) { // a few dust motes shaken off each ring as the wave front reaches it
+    const base = Math.atan2(oy, ox);
+    sim.rings.forEach((rg, i) => [0, 1, -1].forEach((o, j) => {
+      const key = i * 3 + j; if (PERCH.fired.has(key)) return;
+      const a = base + o * 1.15, px = rg.r * Math.cos(a), py = rg.r * Math.sin(a);
+      if (WAVE.tau - Math.hypot(px - ox, py - oy) / WAVE.speed < 0) return;
+      PERCH.fired.add(key); fx.dust(px, py, 2 + (j === 0 ? 1 : 0), 'rgba(238,226,200,0.85)');
+    }));
+  }
+}
+// the place the art draws him this frame: the perch (not the sim's), or the flap between two perches
+function ralloc(sim, act) {
+  const R = sim.outerR, ra = { ...act, lx: PERCH.lx, sd: PERCH.sd }, P = allyPlace(ra, R, sim.groundY), mv = PERCH.mv;
+  if (!mv || !(act.ph === 'land' || act.ph === 'puff' || act.ph === 'crow')) return P;
+  const u = clamp((allyElapsed(act) - mv.t0) / mv.d, 0, 1), e = sstep(u), x = lerp(mv.from, PERCH.lx, e), face = PERCH.lx >= mv.from ? 1 : -1;
+  const arc = Math.sin(Math.PI * u), y = rimYr(R, x) + 0.9 * arc, rt = -Math.asin(clamp(x / R, -1, 1)) * 0.8;
+  return { x, y: y + 0.05 * Math.sin(P.tt * 16), tilt: rt * (1 - arc * 0.5) + face * 0.3 * arc, face, anim: 'fly', k: u, fly: u > 0.08 && u < 0.92 ? 1 : 0, tt: P.tt };
+}
+// seconds since the wave front passed a point (negative: not there yet); null when there is no wave
+const waveAge = (x, y) => (WAVE ? WAVE.tau - Math.hypot(x - WAVE.ox, y - WAVE.oy) / WAVE.speed : null);
+// a ring shivers: a 2-3 px radial wobble for ~0.3 s once the front crosses it (call with ctx at the vault centre)
+export function crowRingXf(ctx, ringR, k) {
+  if (!WAVE || WAVE.calm) return;
+  const a = WAVE.tau - Math.max(Math.hypot(WAVE.ox, WAVE.oy), ringR) / WAVE.speed;
+  if (a < 0 || a > 0.4) return;
+  const s = 1 + ((2.7 / k) / Math.max(0.5, ringR)) * Math.sin(a * 58) * Math.exp(-a / 0.1);
+  ctx.scale(s, s);
+}
+// an egg's startled hop and squash (ctx in world metres; call inside save/restore). up = +1 or -1 (against gravity)
+export function crowEggXf(ctx, x, y, up = 1) {
+  const a = waveAge(x, y);
+  if (a == null || WAVE.calm || a < 0 || a > 0.32) return;
+  const hop = Math.sin(Math.PI * clamp(a / 0.22, 0, 1)) * 0.075 * up, q = Math.sin(a * 36) * Math.exp(-a / 0.12);
+  ctx.translate(x, y + hop); ctx.scale(1 - 0.12 * q, 1 + 0.16 * q); ctx.translate(-x, -y);
+}
+// a creature flinches as the front reaches it: types are the strike-layer names ('bx' 'sal' 'frog' 'thief' 'snake' 'eagle')
+export function crowFlinch(ctx, sim, types, fn) {
+  if (!WAVE || WAVE.calm) return fn(ctx);
+  let at = null;
+  try {
+    const pts = [], has = (t) => types.includes(t);
+    if (has('bx') && sim.bx && sim.bx.boss) { const g = geckoAnchor(sim), B = sim.bx.boss; pts.push(g || { x: B.x, y: B.y }); }
+    if (has('sal')) for (const C of sim.sals || []) if (C.pts && C.pts[0]) pts.push(C.pts[0]);
+    if (has('frog')) for (const F of sim.frogs || []) pts.push({ x: F.x, y: F.y });
+    if (has('thief')) for (const T of sim.thieves || []) if (sim.thLive(T)) pts.push(sim.thBody(T));
+    if (has('snake')) for (const S of sim.snakes || []) if (S.pts && S.pts[0] && !S.gone) pts.push(S.pts[0]);
+    if (has('eagle') && sim.eagle && !sim.eagle.end && sim.eagle.phase !== 'away') pts.push(sim.eagle);
+    if (pts.length) at = { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
+  } catch (e) { at = null; }
+  const a = at ? waveAge(at.x, at.y) : null;
+  if (a == null || a < 0 || a > 0.4) return fn(ctx);
+  const e = Math.sin(Math.PI * clamp(a / 0.28, 0, 1)) * Math.exp(-a / 0.35), d = Math.hypot(at.x - WAVE.ox, at.y - WAVE.oy) || 1;
+  ctx.save();
+  ctx.translate(at.x + ((at.x - WAVE.ox) / d) * 0.1 * e, at.y + ((at.y - WAVE.oy) / d) * 0.1 * e); ctx.scale(1 + 0.14 * e, 1 - 0.2 * e); ctx.translate(-at.x, -at.y);
+  try { fn(ctx); } finally { ctx.restore(); }
+}
+
+// In the game: draw the live ally, in front of everything (main calls it after the creature layers). `victim`: the snake or eagle it flung draws itself.
 export function drawAllies(ctx, sim, t, k) {
   const act = sim.ally && sim.ally.act;
   if (!act) return;
-  try { drawAllyAct(ctx, act, sim.outerR, sim.groundY, k, true); } catch (e) { /* art never breaks the frame */ }
+  try {
+    if (act.kind === 'rooster' && PERCH.sim === sim) drawAllyAct(ctx, { ...act, lx: PERCH.lx, sd: PERCH.sd }, sim.outerR, sim.groundY, k, true, ralloc(sim, act));
+    else drawAllyAct(ctx, act, sim.outerR, sim.groundY, k, true);
+  } catch (e) { /* art never breaks the frame */ }
 }
 
 // QA: what the strips draw (the game's hen for scale too, facing right like them, held still)
