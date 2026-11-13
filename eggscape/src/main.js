@@ -42,6 +42,7 @@ import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels 
 import { LAB_DEMOS } from './data/lab-demos.js'; // v4 Shape Lab studio levels: the clockwork cast and the owl
 import { drawClockwork, drawClockworkTele, cwEvent, drawCwIntro } from './render/clockwork.js'; // v4 clockwork spider, wind-up beetle, spring jack
 import { owlEvent } from './render/owl.js'; // v4 the Clockwork Owl
+import { movesEvent } from './render/bossmoves.js'; // the boss variety moves
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
 import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render/frog.js'; // v3.3 frog
 import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem } from './render/bayou.js'; // v3.7 Gator Bayou
@@ -1474,7 +1475,7 @@ function handleEvents() {
         bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.7 Gator Bayou
         thiefEvent(ev, fx, { popup: denPopup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // v3.6 the weasel and the rats
         reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }); // world 8 reef
-        { const U = { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }; cwEvent(ev, fx, U); owlEvent(ev, fx, U); } // v4 the clockwork cast, the owl
+        { const U = { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } } }; cwEvent(ev, fx, U); owlEvent(ev, fx, U); movesEvent(ev, fx, U); } // v4 the clockwork cast, the owl
         break;
       case 'won':
         onWin();

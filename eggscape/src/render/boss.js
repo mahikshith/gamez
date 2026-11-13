@@ -12,6 +12,7 @@ import { drawOwlBoss, drawOwlRings, drawOwlEmblem, drawOwlBar } from './owl.js';
 import { drawGatorEmblem } from './bayou.js'; // v3.7
 import { drawIcicle } from './v3art.js';
 import { drawMammoth, drawMammothEmblem, MAMMOTH_FOOT } from './mammoth.js'; // world 3 boss: Old Frostbeard
+import { drawMovesRings, drawMovesOver } from './bossmoves.js'; // the variety moves (sim/bossmoves.js)
 import { drawGolem } from './golem.js'; // world 4 boss: the Crystal Golem
 import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
@@ -83,7 +84,7 @@ export function drawBossRings(ctx, sim, k, t) {
   });
   // temporary walls: crystal shards (golem) or ice blocks
   for (const W of X.walls) {
-    if (!W.alive) continue;
+    if (!W.alive || W.kind === 'cage') continue; // cage crystals: render/bossmoves.js
     const ring = sim.rings[W.ri], base = ring.r - RING_TH / 2 + 0.01, top = base - W.h, a = ring.body.getAngle() + W.la;
     const fade = W.life < 1 ? 0.5 + 0.5 * Math.sin(t * 30) : 1;
     const P = (rad, da) => [rad * Math.cos(a + da / rad), rad * Math.sin(a + da / rad)];
@@ -115,6 +116,7 @@ export function drawBossRings(ctx, sim, k, t) {
     }
     ctx.restore();
   }
+  drawMovesRings(ctx, sim, k, t); // the variety moves: telegraphs and what they leave on the rings
   if (!A || A.ph !== 'warn') return;
   const u = clamp01(1 - A.t / A.dur), pulse = 0.5 + 0.5 * Math.sin(t * 18);
   if (A.name === 'punch') {
@@ -255,6 +257,7 @@ export function drawBossUnder(ctx, sim, k, t) {
 export function drawBossOver(ctx, sim, k, t) {
   const X = sim.bx;
   if (!X) return;
+  drawMovesOver(ctx, sim, k, t); // the variety moves: shard rain, dive shadow, gust streaks
   const B = X.boss, calm = isSpriteCalm();
   // icicles: drawn about twice the sim size (wide, a little long) so they read on a phone, with a travelling glint
   for (const I of X.ice) {

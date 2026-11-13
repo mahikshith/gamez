@@ -24,6 +24,7 @@ function stateOf(sim, B) {
   if (B.flinch > 0) return 'hurt';
   const A = B.atk;
   if (A && (A.name === 'stomp' || A.name === 'punch')) return A.name;
+  if (A && (A.name === 'cage' || A.name === 'shards')) return 'stomp'; // sim/bossmoves.js: he hammers the slab to raise them
   return 'idle';
 }
 function poly(ctx, P, fill, line, lw) {

@@ -19,6 +19,7 @@
 // orb 'frost': the ring under the egg that takes it freezes for 3 s.
 import { Vec2, Polygon } from 'planck';
 import { RING_TH, TAU, wrap, clamp } from './geom.js';
+import { mvStart, mvAct, mvStep, wgustBeat, popContact, popHide } from './bossmoves.js'; // the variety moves: cage shards magma whip dive wgust pop
 
 // mode scaling: every = attack gap x, warn = telegraph x, power = gale x, hold = freeze/fog/wall time x, heat = heat limit x
 export const BOSS_MODE = {
@@ -26,12 +27,14 @@ export const BOSS_MODE = {
   medium: { every: 1, warn: 1, power: 1, hold: 1, heat: 1, n: 3 },
   hard: { every: 0.85, warn: 0.85, power: 1.12, hold: 1.1, heat: 0.85, n: 3 },
 };
-const WARN = { snap: 1.1, snap2: 1.2, silt: 0.8, bubbles: 1.35, barnacles: 1.25, whirl: 1.4, /* King Crab moves */ gale: 1.1, freeze: 1.0, icicles: 1.0, stomp: 1.0, punch: 1.1, rock: 0.45, rock2: 0.45, throw: 0.9, throw2: 0.9, fog: 1.0, bolt: 1.0, bolt2: 1.0, gust: 1.0, swoop: 1.25, wind: 1.2, gears: 0.9, gears2: 0.9, sweep: 1.1, roll: 1.2 }; // v4: the Clockwork Owl (sim/owl.js)
+export const WARN = { snap: 1.1, snap2: 1.2, silt: 0.8, bubbles: 1.35, barnacles: 1.25, whirl: 1.4, /* King Crab moves */ gale: 1.1, freeze: 1.0, icicles: 1.0, stomp: 1.0, punch: 1.1, rock: 0.45, rock2: 0.45, throw: 0.9, throw2: 0.9, fog: 1.0, bolt: 1.0, bolt2: 1.0, gust: 1.0, swoop: 1.25, wind: 1.2, gears: 0.9, gears2: 0.9, sweep: 1.1, roll: 1.2, /* sim/bossmoves.js: x mode warn, Hard 0.85 keeps all >= 1.27 s */ cage: 1.5, shards: 1.6, magma: 1.8, whip: 1.5, dive: 1.8, wgust: 1.5, pop: 1.8 }; // v4: the Clockwork Owl (sim/owl.js)
+const MV_POP_T = 3; // sim/bossmoves.js MV.popT
+const MOVES = new Set(['cage', 'shards', 'magma', 'whip', 'dive', 'wgust', 'pop']);
 const GALE_T = 2.6, FREEZE_T = 4, FROST_ORB_T = 3, CHUNK_FREEZE_T = 3, FOG_T = 3.5, WALL_T = 8, ICE_WALL_T = 6, PATCH_T = 6;
 const ICE_HANG = 1.1; // s an icicle shakes before it drops (level icicles; a volley uses WARN.icicles)
 const THROW_FLY = 0.6, PUNCH_W = 2.4, HEAT_T = 9;
 export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'Old Frostbeard', golem: 'Crystal Golem', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl', gator: 'Grandpa Gator' };
-export const ATTACK_NAME = { gale: 'Gale', freeze: 'Frost stomp', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning', snap: 'Claw snap', snap2: 'Twin claws', silt: 'Silt cloud', bubbles: 'Bubble barrage', barnacles: 'Barnacle toss', whirl: 'Whirlpool spin', swoop: 'Swoop', wind: 'Wind-up', gears: 'Gear bomb', gears2: 'Gear bombs', sweep: 'Tail sweep', roll: 'Death roll' };
+export const ATTACK_NAME = { gale: 'Gale', freeze: 'Frost stomp', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning', snap: 'Claw snap', snap2: 'Twin claws', silt: 'Silt cloud', bubbles: 'Bubble barrage', barnacles: 'Barnacle toss', whirl: 'Whirlpool spin', swoop: 'Swoop', wind: 'Wind-up', gears: 'Gear bomb', gears2: 'Gear bombs', sweep: 'Tail sweep', roll: 'Death roll', cage: 'Crystal cage', shards: 'Shard rain', magma: 'Magma ring', whip: 'Tail whip', dive: 'Dive snatch', wgust: 'Wing gust', pop: 'Tunnel pop' };
 const RING_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING
 
 const M_ = (sim) => BOSS_MODE[sim.mode] || BOSS_MODE.medium;
@@ -161,6 +164,7 @@ function ceilingAbove(sim, p) {
   return null;
 }
 // eggs an icicle can target: inside the vault, most advanced first
+export function bossTargets(sim) { return targets(sim); }
 function targets(sim) {
   const n = sim.rings.length, D = sim.p2Lure && sim.p2Lure(); // v3.4: a decoy draws the attack first
   // v3.4: a shrunk egg is hard to spot, so it is aimed at last (bosses resist: they still find it when it is all there is)
@@ -246,7 +250,8 @@ export function frostOrb(sim, egg) {
 function wallFix(sim, W) {
   const ring = sim.rings[W.ri];
   const base = ring.r - RING_TH / 2 + 0.01, inner = W.ri ? sim.rings[W.ri - 1].r + RING_TH / 2 + 0.1 : 0;
-  const h = Math.min(W.kind === 'ice' ? 0.5 : 0.62, base - inner), w = W.kind === 'ice' ? 0.3 : 0.2, top = base - h;
+  // a cage crystal (sim/bossmoves.js) grows right across the channel, up to the inner ring
+  const h = W.kind === 'cage' ? base - (sim.rings[W.ri - 1].r + RING_TH / 2) - 0.02 : Math.min(W.kind === 'ice' ? 0.5 : 0.62, base - inner), w = W.kind === 'ice' ? 0.3 : W.kind === 'cage' ? 0.24 : 0.2, top = base - h;
   const p = (rad, ang) => Vec2(rad * Math.cos(ang), rad * Math.sin(ang));
   W.h = h; W.w = w;
   W.fix = ring.body.createFixture({
@@ -254,7 +259,7 @@ function wallFix(sim, W) {
     friction: W.kind === 'ice' ? 0.05 : 0.6, restitution: 0.1, ...RING_FILT, userData: { kind: 'wall', wall: W },
   });
 }
-function addWall(sim, kind, ri, la, life) {
+export function addWall(sim, kind, ri, la, life) {
   const W = { id: ++sim.bx.wallId, kind, ri, la, life: life * M_(sim).hold, max: life * M_(sim).hold, alive: true, fix: null, h: 0, w: 0 };
   wallFix(sim, W);
   sim.bx.walls.push(W);
@@ -280,9 +285,10 @@ export function v31Contact(sim, c, egg, other) {
   if (other.kind === 'seg' && other.seg.ice > 0) c.setFriction(0);
   if (other.kind !== 'wall') return false;
   const W = other.wall;
+  if (W.kind === 'pop') { popContact(sim, c, egg); return true; } // the weasel popped up from its tunnel (sim/bossmoves.js)
   if (!W.alive) { c.setEnabled(false); return true; }
   if (W.kind === 'ice' && (egg.fire > 0 || egg.water > 0)) { c.setEnabled(false); sim.defer(() => removeWall(sim, W, egg.fire > 0 ? 'fire' : 'water')); return true; }
-  if (W.kind === 'crystal' && egg.stone > 0) { c.setEnabled(false); sim.defer(() => removeWall(sim, W, 'smash')); return true; }
+  if ((W.kind === 'crystal' || W.kind === 'cage') && egg.stone > 0) { c.setEnabled(false); sim.defer(() => removeWall(sim, W, 'smash')); return true; }
   return false;
 }
 
@@ -343,6 +349,7 @@ function bossStep(sim, B, dt) {
   thrownStep(sim, B, dt);
   if (ph.heat) heatStep(sim, B, dt, M);
   if (B.fog && (B.fog.t -= dt) <= 0) { B.fog = null; sim.emit('fogGone', {}); }
+  mvStep(sim, B, dt); // the variety moves' after-effects (sim/bossmoves.js)
   if (B.kind === 'owl') sim.owlStep(B, dt); // v4: the Clockwork Owl's gears, bombs and jams (sim/owl.js)
   if (B.kind === 'snake') return; // its attacks are the snakes' own
   if (!A) {
@@ -354,7 +361,8 @@ function bossStep(sim, B, dt) {
     a.ph = 'warn';
     a.dur = a.t = (WARN[name] || 1) * M.warn;
     B.atk = a;
-    if (B.den) sim.thiefToss(a.dur + 0.35);
+    if (B.den && name === 'pop') popHide(sim, a.dur + MV_POP_T * M.hold + 0.2); // it dives into its tunnel (sim/bossmoves.js)
+    else if (B.den) sim.thiefToss(a.dur + 0.35);
     sim.emit('bossWarn', { kind: B.kind, attack: name, x: B.x, y: B.y, ring: a.ring, dir: a.dir });
     return;
   }
@@ -375,6 +383,7 @@ function bossStep(sim, B, dt) {
 
 // pick targets and set up the telegraph; null = nothing worth attacking now
 function startAttack(sim, B, name, M) {
+  if (MOVES.has(name)) return mvStart(sim, B, name, M); // sim/bossmoves.js
   if (B.kind === 'kingcrab') return sim.kcStart(B, name, M); // world 8 (sim/kingcrab.js): its claws
   const T = targets(sim), n = sim.rings.length, F = sim.level.bossFight;
   const floorOf = (e) => sim.rings[Math.min(n - 1, sim.channelOf(e))];
@@ -485,6 +494,7 @@ function wallSpot(sim, e) {
 }
 
 function actAttack(sim, B, A, M) {
+  if (MOVES.has(A.name)) { mvAct(sim, B, A, M); return; } // sim/bossmoves.js
   if (B.kind === 'kingcrab') { sim.kcAct(B, A, M); return; }
   switch (A.name) {
     case 'freeze': {
@@ -550,7 +560,7 @@ function actAttack(sim, B, A, M) {
 }
 
 // the gale: a strong sideways shove on everything loose; stone is too heavy for it, a chick or bubble flies
-function galeForce(sim, A, M, dt) {
+export function galeForce(sim, A, M, dt) {
   const el = A.dur - A.t;
   const ramp = clamp(Math.min(el / 0.3, A.t / 0.4), 0, 1);
   const acc = (A.gale ?? (sim.level.bossFight && sim.level.bossFight.gale) ?? 5) * M.power * ramp * A.dir;
@@ -588,6 +598,8 @@ export function galeNow(sim) {
   const G = sim.bx && sim.bx.gust;
   if (G && G.ph !== 'wait') return G.ph === 'warn' ? 0.25 * G.dir * clamp(1 - G.t / G.dur, 0, 1) : G.dir * clamp(Math.min((G.dur - G.t) / 0.3, G.t / 0.4), 0, 1);
   const B = sim.bx && sim.bx.boss, A = B && B.atk;
+  if (B && B.mv && B.mv.wgust) return B.mv.wgust.dir * Math.max(0.35, wgustBeat(B.mv.wgust)); // the storm eagle's wing gust (sim/bossmoves.js)
+  if (A && A.name === 'wgust' && A.ph === 'warn') return 0.3 * A.dir * clamp(1 - A.t / A.dur, 0, 1);
   if (!A || A.name !== 'gale') return 0;
   if (A.ph === 'warn') return 0.25 * A.dir * clamp(1 - A.t / A.dur, 0, 1);
   return A.dir * clamp(Math.min((A.dur - A.t) / 0.3, A.t / 0.4), 0, 1);
@@ -636,7 +648,7 @@ export function v31State(sim) {
     gust: X.gust ? { ...X.gust } : null, ice: X.ice.map((I) => ({ ...I })), walls: X.walls.filter((W) => W.alive).map(({ fix, ...W }) => ({ ...W })), wallId: X.wallId,
     rl: X.rl.map((R) => ({ ...R })), iceT: X.iceT, iceK: X.iceK,
     segIce: sim.rings.map((r) => r.segs.map((g) => g.ice || 0)),
-    boss: B ? { ...B, atk: B.atk ? JSON.parse(JSON.stringify(B.atk)) : null, throws: B.throws.map((T) => ({ ...T })), fog: B.fog ? { ...B.fog } : null, heat: JSON.parse(JSON.stringify(B.heat)) } : null,
+    boss: B ? { ...B, atk: B.atk ? JSON.parse(JSON.stringify(B.atk)) : null, throws: B.throws.map((T) => ({ ...T })), fog: B.fog ? { ...B.fog } : null, heat: JSON.parse(JSON.stringify(B.heat)), mv: B.mv ? JSON.parse(JSON.stringify(B.mv)) : null } : null,
   };
 }
 export function v31Load(sim, S) {
@@ -653,6 +665,6 @@ export function v31Load(sim, S) {
   sim.rings.forEach((ring, i) => { const R = X.rl[i]; ring.lock = R && (R.frost > 0 || R.spin > 0) ? 1 : 0; });
   if (S.boss) {
     const B = S.boss;
-    X.boss = { ...B, atk: B.atk ? JSON.parse(JSON.stringify(B.atk)) : null, throws: B.throws.map((T) => ({ ...T })), fog: B.fog ? { ...B.fog } : null, heat: JSON.parse(JSON.stringify(B.heat)) };
+    X.boss = { ...B, atk: B.atk ? JSON.parse(JSON.stringify(B.atk)) : null, throws: B.throws.map((T) => ({ ...T })), fog: B.fog ? { ...B.fog } : null, heat: JSON.parse(JSON.stringify(B.heat)), mv: B.mv ? JSON.parse(JSON.stringify(B.mv)) : null };
   }
 }

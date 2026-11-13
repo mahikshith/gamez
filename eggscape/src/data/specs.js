@@ -78,8 +78,8 @@ export const SPECS = [
     orbs: [{ type: 'fire_green', ch: 2 }, { type: 'fire_red', ch: 3 }], portals: [{ from: [3, 90], to: [3, 90], emit: ['fire_red'], every: 7, pull: 0 }],
     bossFight: { kind: 'weasel', delay: 3, den: { a: 30, hp: 3 }, throws: ['thorn', 'curse'], phases: [
       { attacks: [], every: 6 },
-      { at: { saved: 1, t: 40 }, attacks: ['throw'], every: 7 },
-      { at: { saved: 2, t: 75 }, attacks: ['throw2'], every: 6 },
+      { at: { saved: 1, t: 40 }, attacks: ['throw', 'pop'], every: 7 },
+      { at: { saved: 2, t: 75 }, attacks: ['throw2', 'pop', 'throw'], every: 6 },
     ] },
     intro: { title: 'Boss: Weasel Raid', line: 'A weasel prowls the outer ring and pounces through gaps to steal eggs. Turn the gap away to trap it, then hit it.' },
     tip: 'Curse orbs make the fuse run double. The green flame mends cracks.',
@@ -191,14 +191,14 @@ export const SPECS = [
   { id: 20, world: 4, theme: 'crystal', name: 'Golem Maze', boss: 'golem', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5, eggKinds: [null, null, 'ostrich'],
     nest: { w: 3.0 }, bonus: { kind: 'prize' },
     bossFight: { kind: 'golem', delay: 4, phases: [
-      { attacks: ['stomp'], every: 6 },
-      { at: { saved: 1, t: 30 }, attacks: ['stomp'], every: 5 },
-      { at: { saved: 2, t: 60 }, attacks: ['stomp', 'punch'], every: 4.5 },
+      { attacks: ['stomp', 'shards'], every: 6 },
+      { at: { saved: 1, t: 30 }, attacks: ['cage', 'stomp', 'shards'], every: 5 },
+      { at: { saved: 2, t: 60 }, attacks: ['stomp', 'cage', 'punch', 'shards'], every: 4.5 },
     ] },
     orbs: [{ type: 'feather', ch: 1 }, { type: 'stone', ch: 2 }, { type: 'hatch_bulk', ch: 2 }],
     portals: [{ from: [1, -20], to: [3, 160], emit: ['feather', 'thorn'], every: 10 }, { from: [2, -150], to: [4, -40], emit: ['fire_green'], every: 9 }, { from: [3, 30], to: [4, -140], emit: ['rockskin'], every: 12 }],
     intro: { title: 'Boss: The Crystal Golem', line: 'The golem stomps: the vault quakes, crystal walls block your way and glass cracks; later he punches a ring round.' },
-    tip: 'Walls shatter after a while, or under a stone egg. Watch which ring the golem points at.',
+    tip: 'Turn a ring to shear a crystal cage off. When shards rain, keep a solid wall over your egg.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'glass', gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'glass', gaps: 2, thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
 
   // ---------------- 5 Volcano: lava rocks melt holes and blast eggs; water shell, black flame, honey, spikes
@@ -230,8 +230,8 @@ export const SPECS = [
     nest: { w: 3.0 }, bonus: { kind: 'prize' },
     bossFight: { kind: 'salamander', delay: 3, phases: [
       { attacks: ['rock'], every: 4.5 },
-      { at: { saved: 1, t: 30 }, attacks: ['rock2'], every: 4.5 },
-      { at: { saved: 2, t: 60 }, attacks: ['rock2'], every: 4, heat: true },
+      { at: { saved: 1, t: 30 }, attacks: ['rock2', 'magma', 'rock'], every: 5.5 },
+      { at: { saved: 2, t: 60 }, attacks: ['rock2', 'magma', 'rock', 'whip'], every: 4.5, heat: true },
     ] },
     salamander: { delay: 3, ch: 3, a: 90 }, // the boss itself: 1.3x, breathes fire between its lava throws
     orbs: [{ type: 'water', ch: 1 }, { type: 'feather', ch: 3 }, { type: 'water', ch: 4 }],
@@ -270,9 +270,9 @@ export const SPECS = [
     nest: { w: 3.0 }, bonus: { kind: 'prize' }, eagle: { delay: 12, every: 10 },
     snake: [{ delay: 6, speed: 0.38, a: 0 }, { delay: 999, speed: 0.42, a: 140 }],
     bossFight: { kind: 'eagle', delay: 6, phases: [
-      { attacks: [] },
-      { at: { saved: 1, t: 35 }, attacks: ['bolt'], every: 6 },
-      { at: { saved: 2, t: 65 }, attacks: ['bolt', 'bolt2'], every: 4.5, summon: true },
+      { attacks: ['dive'], every: 8 },
+      { at: { saved: 1, t: 35 }, attacks: ['bolt', 'wgust', 'dive'], every: 6 },
+      { at: { saved: 2, t: 65 }, attacks: ['bolt', 'dive', 'bolt2', 'wgust'], every: 4.5, summon: true },
     ] },
     orbs: [{ type: 'feather', ch: 1 }, { type: 'thunder', ch: 2 }, { type: 'feather', ch: 4 }, { type: 'hatch_dash', ch: 2 }],
     intro: { title: 'Boss: The Storm Eagle', line: 'The eagle dives while a snake hunts inside; then the storm aims lightning at the ring under your egg and a second snake comes.' },
