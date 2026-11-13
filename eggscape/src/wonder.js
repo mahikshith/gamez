@@ -493,7 +493,7 @@ export function createWonder(env) {
     ui.text(starTxt, z.W - pad - 12 * u, hy + 0.5 * u, { size: 17 * u, align: 'right', color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'extras:stars' });
     const tl = pad + 68 * u, trr = chipX - 22 * u;
     ui.ribbon('Extras', (tl + trr) / 2, hy - 19 * u, clamp(140 * u, 90 * u, trr - tl), 36 * u, { color: '#8a5ad8', size: 21 * u, tag: 'extras:title' });
-    const labBlock = 60 * u; // the Practice button under the vaults
+    const labBlock = 0; // Practice is a tile in the same grid as the vaults
     // section: Wonder Vaults (BONUS)
     let y = 74 * u;
     const head = (txt, yy, tag, chip) => {
@@ -503,24 +503,23 @@ export function createWonder(env) {
     };
     head('Wonder Vaults', y + 9 * u, 'extras:wv', 'BONUS');
     y += 28 * u;
-    const n = WONDER_LEVELS.length, cols = z.W > z.H ? n : z.W < 420 ? 2 : 3, rows = Math.ceil(n / cols), gap = 10 * u;
+    const ITEMS = [...WONDER_LEVELS, { practice: true, key: '_practice', name: 'Practice', pitch: 'Try any villain or power' }], n = ITEMS.length, cols = z.W > z.H ? n : z.W < 420 ? 2 : 3, rows = Math.ceil(n / cols), gap = 10 * u;
     const cw = Math.min((z.W - 2 * pad - gap * (cols - 1)) / cols, 150 * u), room = z.H - y - pad - labBlock, chh = Math.min((room - gap * (rows - 1)) / rows, cw * 0.92, 150 * u);
-    WONDER_LEVELS.forEach((L, i) => {
+    ITEMS.forEach((L, i) => {
       const r = Math.floor(i / cols), inRow = r === rows - 1 ? n - cols * (rows - 1) : cols, c = i - r * cols;
-      const rowW = inRow * cw + (inRow - 1) * gap, x = z.W / 2 - rowW / 2 + c * (cw + gap), ty = y + r * (chh + gap), s = starsOf(L.key), face = ui.faceOf(TILE[L.key] || '#8a5ad8');
-      const b = ui.button('wv:play:' + L.key, '', x, ty, cw, chh, { face, keepFace: true, round: 18 * u });
-      const fy = ty + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mx = x + cw / 2, grp = 'btn:wv:play:' + L.key;
+      const rowW = inRow * cw + (inRow - 1) * gap, x = z.W / 2 - rowW / 2 + c * (cw + gap), ty = y + r * (chh + gap), s = L.practice ? 0 : starsOf(L.key), face = ui.faceOf(L.practice ? '#3fae4a' : TILE[L.key] || '#8a5ad8');
+      const b = ui.button(L.practice ? 'practice' : 'wv:play:' + L.key, '', x, ty, cw, chh, { face, keepFace: true, round: 18 * u });
+      const fy = ty + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mx = x + cw / 2, grp = L.practice ? 'btn:practice' : 'btn:wv:play:' + L.key;
       const tall = fh > 96 * u;
-      ui.text(String(i + 1), mx, fy + fh * (tall ? 0.24 : 0.27), { size: Math.min(30 * u, fh * 0.3), align: 'center', color: '#fff', stroke: face.line, strokeW: 4 * u, shadow: face.line, group: grp, tag: 'wvnum' + i });
+      if (L.practice) ICON.grid(ctx, mx, fy + fh * (tall ? 0.24 : 0.27), Math.min(30 * u, fh * 0.3));
+      else ui.text(String(i + 1), mx, fy + fh * (tall ? 0.24 : 0.27), { size: Math.min(30 * u, fh * 0.3), align: 'center', color: '#fff', stroke: face.line, strokeW: 4 * u, shadow: face.line, group: grp, tag: 'wvnum' + i });
       ui.text(L.name, mx, fy + fh * (tall ? 0.5 : 0.56), { size: Math.min(15 * u, fh * 0.15), align: 'center', color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname' + i, maxW: cw - 12 * u });
       if (tall) ui.text(L.pitch, mx, fy + fh * 0.66, { size: 10.5 * u, align: 'center', color: 'rgba(255,255,255,0.85)', group: grp, tag: 'wvpitch' + i, maxW: cw - 12 * u });
+      if (L.practice) return;
       const sr = Math.min(8.5 * u, cw / 12, fh * 0.1), sy = fy + fh * 0.85;
       ui.roundRect(mx - sr * 4.3, sy - sr * 1.45, sr * 8.6, sr * 2.9, sr * 1.45); ctx.fillStyle = 'rgba(30,10,0,0.3)'; ctx.fill();
       for (let q = 0; q < 3; q++) drawStar(ctx, mx + (q - 1) * sr * 2.65, sy, sr, q < s);
     });
-    // Practice: one clear button to the Practice screen
-    const pbw = Math.min(z.W - 2 * pad, 320 * u), pbh = 46 * u;
-    ui.button('practice', 'Practice', z.W / 2 - pbw / 2, z.H - pad - pbh, pbw, pbh, { kind: 'primary', icon: ICON.grid, size: 18 * u });
   }
 
   return { start, has: (k) => !!wonderByKey(k), update, render, pointerDown, pointerMove, pointerUp, press, drawExtras, resize() { S.snap = true; if (S.backdrop) { const z = env.size(); S.backdrop.resize(z.W, z.H, z.DPR); } }, get state() { return S; }, LEVELS: WONDER_LEVELS, toScreen, starsOf };
