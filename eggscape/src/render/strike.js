@@ -1,155 +1,17 @@
 // Chick Strike powers: the six strike chicks, their flight, hits and effects, the HUD button and the intro picker.
-// Rules: sim/strike.js. Data: data/strikes.js. One light top-left, cel bands (castkit form), thin same-hue lines, no outline
-// heavier than the art around it. Each chick has its own silhouette:
-//   freeze  Frost Chick   round, a crown of three ice spikes, frosty fringe   | cool squint
-//   thunder Thunder Chick pear, one tall zigzag crest                          | fierce brows
-//   bomb    Boom Chick    a ball, a curled fuse with a live spark on top        | scowl
-//   decoy   Decoy Chick   egg-shaped, wears a cracked shell cap low             | sly side-eye
-//   tornado Twister Chick teardrop leaning forward, a spiral swirl crest        | grin
-//   glue    Sticky Chick  a blob with drips, a goo drop on its head             | smug half-lids
-// Chick art is drawn in px space, y down, centred on the body; s = the chick's height in px.
-import { clamp, lerp, ss, hash, blinkAt, form, limb, eye, contact } from './castkit.js';
+// Rules: sim/strike.js. Data: data/strikes.js. One light top-left, cel bands (castkit form), thin same-hue lines.
+// One rig for all six (the Frost Chick is the model): a just-hatched chick still wearing the top of its eggshell as a helmet.
+// Each power dresses the shell and colours the chick, so they read apart by silhouette and colour:
+//   freeze  ice blue, iced shell, icicles, a shard crest        thunder  storm yellow, scorched shell, two prongs and a spark
+//   bomb    orange, a red firecracker casing, a lit fuse              decoy    cream, a nearly whole shell with eye-holes
+//   tornado teal, a swirl of head feathers, a spiral crack      glue     purple, green goo dripping off the shell
+// Chick art is drawn in px space, y down, centred on the body; s = the body height in px.
+import { clamp, lerp, ss, hash, blinkAt, form, contact } from './castkit.js';
 import { boltStroke } from './status.js';
 import { STRIKE, STRIKES, FLIGHT } from '../data/strikes.js';
 
 const TAU = Math.PI * 2;
-const BEAK = { base: '#ffab2e', lo: '#d9761a', hi: '#ffd27a', line: '#9a4a10' };
-const PAL = {
-  freeze: { base: '#9ad9fb', lo: '#5aa6d8', hi: '#e2f6ff', line: '#2f6f9f', brow: '#2c5f88', iris: '#1f5f9a', acc: '#ffffff', accLo: '#a9d8f2', accLine: '#4f8fbf' },
-  thunder: { base: '#ffd23a', lo: '#e3a114', hi: '#fff19a', line: '#9a6408', brow: '#7a4a04', iris: '#2a3fa8', acc: '#fff3a6', accLo: '#ffc61a', accLine: '#2f3fae' },
-  bomb: { base: '#ff6f3e', lo: '#cf3e1e', hi: '#ffb27c', line: '#8e2410', brow: '#6a1a08', iris: '#3a1a0a', acc: '#4a3a34', accLo: '#2a201c', accLine: '#1a1210' },
-  decoy: { base: '#f4dcb4', lo: '#d2ad78', hi: '#fff4e2', line: '#8a6236', brow: '#6a4420', iris: '#4a2a12', acc: '#fffaf0', accLo: '#e0cfb0', accLine: '#9a7a52' },
-  tornado: { base: '#79dcc0', lo: '#3fa88e', hi: '#d4fff1', line: '#1f6f5c', brow: '#1a5a4a', iris: '#14504a', acc: '#e8fffa', accLo: '#9fe8d4', accLine: '#2f8f7a' },
-  glue: { base: '#c08af6', lo: '#8a52cc', hi: '#ecd6ff', line: '#5a2a92', brow: '#4a1f7a', iris: '#3a145e', acc: '#8dff6a', accLo: '#4fcf3a', accLine: '#2f8a1f' },
-};
 export const strikeColor = (id) => (STRIKE[id] ? STRIKE[id].col[0] : '#fff');
-
-// ---------------------------------------------------------------- the chick
-// body silhouettes, unit space (body height 1, centred), traced with the castkit form bands
-function bodyPath(ctx, id, s, sq, t) {
-  const w = s * (1 + sq * 0.35), h = s * (1 - sq * 0.3);
-  ctx.beginPath();
-  if (id === 'bomb') { ctx.ellipse(0, 0, w * 0.43, h * 0.42, 0, 0, TAU); return; }
-  if (id === 'decoy') { // an egg: narrower on top
-    ctx.moveTo(0, -h * 0.5);
-    ctx.bezierCurveTo(w * 0.3, -h * 0.5, w * 0.4, -h * 0.08, w * 0.39, h * 0.12);
-    ctx.bezierCurveTo(w * 0.37, h * 0.4, w * 0.2, h * 0.46, 0, h * 0.46);
-    ctx.bezierCurveTo(-w * 0.2, h * 0.46, -w * 0.37, h * 0.4, -w * 0.39, h * 0.12);
-    ctx.bezierCurveTo(-w * 0.4, -h * 0.08, -w * 0.3, -h * 0.5, 0, -h * 0.5);
-    ctx.closePath(); return;
-  }
-  if (id === 'tornado') { // a teardrop leaning forward (to +x), its tail a swoosh behind
-    ctx.moveTo(w * 0.36, -h * 0.12);
-    ctx.bezierCurveTo(w * 0.38, h * 0.3, w * 0.1, h * 0.42, -w * 0.12, h * 0.4);
-    ctx.bezierCurveTo(-w * 0.34, h * 0.38, -w * 0.46, h * 0.2, -w * 0.58, h * 0.02);
-    ctx.quadraticCurveTo(-w * 0.4, h * 0.02, -w * 0.34, -h * 0.06);
-    ctx.bezierCurveTo(-w * 0.3, -h * 0.36, -w * 0.06, -h * 0.44, w * 0.08, -h * 0.42);
-    ctx.bezierCurveTo(w * 0.28, -h * 0.4, w * 0.36, -h * 0.3, w * 0.36, -h * 0.12);
-    ctx.closePath(); return;
-  }
-  if (id === 'glue') { // a blob, three drips
-    const d = Math.sin(t * 3) * 0.02;
-    ctx.moveTo(-w * 0.38, h * 0.12);
-    ctx.bezierCurveTo(-w * 0.44, -h * 0.3, -w * 0.18, -h * 0.44, 0, -h * 0.44);
-    ctx.bezierCurveTo(w * 0.2, -h * 0.44, w * 0.44, -h * 0.3, w * 0.4, h * 0.12);
-    ctx.quadraticCurveTo(w * 0.4, h * 0.3, w * 0.3, h * 0.33);
-    ctx.quadraticCurveTo(w * 0.27, h * (0.5 + d), w * 0.21, h * 0.34);
-    ctx.quadraticCurveTo(w * 0.06, h * 0.38, -w * 0.04, h * 0.37);
-    ctx.quadraticCurveTo(-w * 0.09, h * (0.56 - d), -w * 0.15, h * 0.36);
-    ctx.quadraticCurveTo(-w * 0.27, h * 0.34, -w * 0.3, h * 0.31);
-    ctx.quadraticCurveTo(-w * 0.34, h * (0.44 + d), -w * 0.37, h * 0.28);
-    ctx.closePath(); return;
-  }
-  if (id === 'thunder') { // a pear: fuller below
-    ctx.moveTo(0, -h * 0.44);
-    ctx.bezierCurveTo(w * 0.26, -h * 0.44, w * 0.32, -h * 0.2, w * 0.36, h * 0.02);
-    ctx.bezierCurveTo(w * 0.44, h * 0.3, w * 0.24, h * 0.44, 0, h * 0.44);
-    ctx.bezierCurveTo(-w * 0.24, h * 0.44, -w * 0.44, h * 0.3, -w * 0.36, h * 0.02);
-    ctx.bezierCurveTo(-w * 0.32, -h * 0.2, -w * 0.26, -h * 0.44, 0, -h * 0.44);
-    ctx.closePath(); return;
-  }
-  // freeze: round with a frosty fringe of points along the bottom
-  const n = 9;
-  ctx.moveTo(w * 0.4, 0);
-  ctx.bezierCurveTo(w * 0.4, -h * 0.24, w * 0.22, -h * 0.42, 0, -h * 0.42);
-  ctx.bezierCurveTo(-w * 0.22, -h * 0.42, -w * 0.4, -h * 0.24, -w * 0.4, 0);
-  for (let i = 0; i <= n; i++) {
-    const a = Math.PI - (i / n) * Math.PI, r = i % 2 ? 0.46 : 0.4;
-    ctx.lineTo(Math.cos(a) * w * r, Math.sin(a) * h * r * 1.02);
-  }
-  ctx.closePath();
-}
-
-// the crest (behind the body for some, on top for others)
-function crest(ctx, id, s, t, P, fire) {
-  const lw = Math.max(0.8, s * 0.022);
-  ctx.save();
-  ctx.lineJoin = 'round';
-  if (id === 'freeze') { // three ice spikes
-    for (const [x, h, a] of [[-0.13, 0.26, -0.35], [0.02, 0.36, -0.05], [0.16, 0.24, 0.3]]) {
-      const bx = x * s, by = -0.36 * s, tx = bx + Math.sin(a) * h * s, ty = by - Math.cos(a) * h * s, wv = 0.06 * s;
-      const p = () => { ctx.beginPath(); ctx.moveTo(bx - wv, by + 0.02 * s); ctx.lineTo(tx, ty); ctx.lineTo(bx + wv, by + 0.02 * s); ctx.closePath(); };
-      form(ctx, p, { d: s * 0.04, lo: P.accLo, base: '#dff4ff', hi: P.acc, line: P.accLine, lw });
-      ctx.beginPath(); ctx.moveTo(lerp(bx, tx, 0.2) - wv * 0.2, lerp(by, ty, 0.2)); ctx.lineTo(lerp(bx, tx, 0.75), lerp(by, ty, 0.75)); ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = lw; ctx.stroke();
-    }
-  } else if (id === 'thunder') { // one tall zigzag
-    const p = () => { ctx.beginPath(); const q = [[-0.04, -0.36], [0.1, -0.62], [0.0, -0.58], [0.16, -0.86], [0.12, -0.6], [0.22, -0.64], [0.08, -0.36]]; ctx.moveTo(q[0][0] * s, q[0][1] * s); for (const [x, y] of q.slice(1)) ctx.lineTo(x * s, y * s); ctx.closePath(); };
-    form(ctx, p, { d: s * 0.04, lo: P.accLo, base: '#ffe45a', hi: P.acc, line: P.accLine, lw });
-  } else if (id === 'bomb') { // a curled fuse and its spark
-    ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(0.02 * s, -0.38 * s); ctx.bezierCurveTo(0.04 * s, -0.56 * s, 0.24 * s, -0.56 * s, 0.2 * s, -0.68 * s);
-    ctx.strokeStyle = P.accLine; ctx.lineWidth = s * 0.075; ctx.stroke(); ctx.strokeStyle = '#8a6a52'; ctx.lineWidth = s * 0.045; ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(0.02 * s, -0.38 * s, 0.1 * s, 0.045 * s, 0, 0, TAU); ctx.fillStyle = P.acc; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = P.accLine; ctx.stroke();
-    if (fire !== false) { // the spark is fire: it may glow
-      const fx = 0.2 * s, fy = -0.7 * s, f = 0.8 + 0.3 * Math.sin(t * 40) * Math.sin(t * 17);
-      const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, 0.14 * s * f);
-      g.addColorStop(0, 'rgba(255,250,200,1)'); g.addColorStop(0.4, 'rgba(255,190,60,0.9)'); g.addColorStop(1, 'rgba(255,90,20,0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(fx, fy, 0.14 * s * f, 0, TAU); ctx.fill();
-      ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = lw; ctx.beginPath();
-      for (let i = 0; i < 4; i++) { const a = t * 9 + i * 1.6; ctx.moveTo(fx + Math.cos(a) * 0.05 * s, fy + Math.sin(a) * 0.05 * s); ctx.lineTo(fx + Math.cos(a) * 0.12 * s * f, fy + Math.sin(a) * 0.12 * s * f); }
-      ctx.stroke();
-    }
-  } else if (id === 'decoy') { // the shell cap it hides under, tipped low over one eye
-    ctx.save(); ctx.translate(-0.02 * s, -0.35 * s); ctx.rotate(-0.22);
-    const p = () => { ctx.beginPath(); ctx.moveTo(-0.27 * s, 0.05 * s); ctx.bezierCurveTo(-0.26 * s, -0.2 * s, 0.26 * s, -0.2 * s, 0.27 * s, 0.05 * s); const z = [[0.18, 0.0], [0.11, 0.08], [0.03, 0.0], [-0.06, 0.09], [-0.14, 0.01], [-0.21, 0.08]]; for (const [x, y] of z) ctx.lineTo(x * s, y * s); ctx.closePath(); };
-    form(ctx, p, { d: s * 0.035, lo: P.accLo, base: '#fbf3e4', hi: P.acc, line: P.accLine, lw, inner: (c) => { c.fillStyle = 'rgba(150,100,50,0.55)'; for (const [x, y, r] of [[-0.12, -0.06, 0.02], [0.06, -0.1, 0.016], [0.15, -0.02, 0.014]]) { c.beginPath(); c.arc(x * s, y * s, r * s, 0, TAU); c.fill(); } } });
-    ctx.restore();
-  } else if (id === 'tornado') { // a spiral swirl
-    ctx.lineCap = 'round';
-    const sw = (col, w) => { ctx.beginPath(); for (let i = 0; i <= 24; i++) { const u = i / 24, a = -Math.PI / 2 + u * TAU * 1.25 + Math.sin(t * 6) * 0.15, r = (0.03 + u * 0.13) * s; const x = 0.04 * s + Math.cos(a) * r, y = -0.5 * s + Math.sin(a) * r * 0.8 + (1 - u) * 0.0; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); } ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke(); };
-    sw(P.accLine, s * 0.075); sw(P.acc, s * 0.042);
-    ctx.beginPath(); ctx.moveTo(0.02 * s, -0.4 * s); ctx.quadraticCurveTo(0.0, -0.46 * s, 0.04 * s, -0.52 * s); ctx.strokeStyle = P.accLine; ctx.lineWidth = s * 0.06; ctx.stroke();
-  } else if (id === 'glue') { // a goo drop wobbling on its head
-    const wob = Math.sin(t * 5) * 0.04;
-    const p = () => { ctx.beginPath(); ctx.moveTo(0.02 * s, -0.66 * s); ctx.bezierCurveTo((0.14 + wob) * s, -0.5 * s, 0.14 * s, -0.38 * s, 0.02 * s, -0.37 * s); ctx.bezierCurveTo(-0.1 * s, -0.38 * s, (-0.1 + wob) * s, -0.5 * s, 0.02 * s, -0.66 * s); ctx.closePath(); };
-    form(ctx, p, { d: s * 0.035, lo: P.accLo, base: P.acc, hi: '#e4ffd8', line: P.accLine, lw });
-  }
-  ctx.restore();
-}
-
-// the face: eyes, brows (thin same-hue lines with attitude), beak. look: {x, y} -1..1, open 0..1 (squawk)
-function face(ctx, id, s, t, P, o) {
-  const lk = o.look || { x: 0.4, y: 0.1 }, open = o.open || 0, bl = o.blink ?? blinkAt(t, 13 + id.length * 7);
-  const er = s * 0.085, ey = (id === 'decoy' ? -0.06 : id === 'bomb' ? -0.08 : -0.12) * s, ex = s * 0.11;
-  const mood = { freeze: { lid: 0.42, mad: 0.25 }, thunder: { lid: 0.25, mad: 0.38 }, bomb: { lid: 0.35, mad: 0.45 }, decoy: { lid: 0.5, mad: -0.12 }, tornado: { lid: 0.18, mad: 0.18 }, glue: { lid: 0.55, mad: 0.1 } }[id];
-  const fx = id === 'tornado' ? 0.07 * s : 0.04 * s;
-  for (const sd of [-1, 1]) {
-    const x = fx + sd * ex, look = id === 'decoy' ? { x: 0.9, y: 0.2 } : lk;
-    if (bl > 0.6) eye(ctx, x, ey, { r: er, iris: P.iris, line: P.line, lw: Math.max(0.7, s * 0.016), shut: true, lidCol: P.base });
-    else eye(ctx, x, ey, { r: er, white: '#fffdf8', iris: P.iris, irisR: 0.66, pupil: 'round', pupilR: 0.36, look, lid: clamp(mood.lid + bl * 0.5, 0, 1), lidCol: P.base, mad: -sd * mood.mad, line: P.line, lw: Math.max(0.7, s * 0.016) });
-    // the brow: a thin tapered stroke angled in (mad) over each eye
-    const a = sd * mood.mad, bx = x, by = ey - er * 1.25;
-    ctx.save(); ctx.translate(bx, by); ctx.rotate(a);
-    ctx.beginPath(); ctx.moveTo(-er * 1.05, er * 0.12); ctx.quadraticCurveTo(0, -er * 0.28, er * 1.05, -er * 0.06); ctx.lineTo(er * 0.95, er * 0.16); ctx.quadraticCurveTo(0, -er * 0.02, -er * 1.05, er * 0.12);
-    ctx.fillStyle = P.brow; ctx.fill(); ctx.restore();
-  }
-  // beak: a short wedge, opens on a squawk
-  const bx = fx + s * 0.02, by = ey + er * 1.45, bw = s * 0.075, bh = s * 0.05;
-  ctx.save(); ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(0.7, s * 0.014); ctx.strokeStyle = BEAK.line;
-  ctx.beginPath(); ctx.moveTo(bx - bw, by); ctx.quadraticCurveTo(bx, by - bh * 0.9, bx + bw, by); ctx.lineTo(bx + bw * 0.1, by + bh * 0.5 - open * bh * 0.2); ctx.closePath(); ctx.fillStyle = BEAK.base; ctx.fill(); ctx.stroke();
-  if (open > 0.05) { ctx.beginPath(); ctx.moveTo(bx - bw * 0.8, by + bh * 0.25); ctx.lineTo(bx + bw * 0.1, by + bh * (0.5 + open * 1.6)); ctx.lineTo(bx + bw * 0.8, by + bh * 0.25); ctx.closePath(); ctx.fillStyle = BEAK.lo; ctx.fill(); ctx.stroke(); }
-  ctx.restore();
-}
 
 // ---------------------------------------------------------------- the Frost Chick (hero art: the style the other five follow)
 // A just-hatched chick with attitude, facing +x in three-quarter view, still wearing the top of its eggshell as a helmet (the
@@ -157,7 +19,7 @@ function face(ctx, id, s, t, P, o) {
 // tail, a short beak. Its shell is iced over: icicles off the rim, a shard crest. s = the BODY height (helmet and crest add ~0.6 s).
 // o: { mood ('idle' | 'crouch' | 'yell' | 'hit' | 'smug' | 'ready', or [from, to, k]), squash (about the feet), stretch (along
 //      the facing axis), trail (-1 crest whipped forward .. 1 streaming back), wing 0..1, look {x, y}, feet, fog (false = none) }
-const FR = {
+const FROSTP = {
   base: '#38aef0', lo: '#1873c4', hi: '#8fdcff', line: '#114a86', down: '#bfeaff', downLo: '#7fc4f0',
   ice: '#f4fcff', iceLo: '#74bff0', iceLine: '#2a78ba', frost: '#d6f1ff',
   shell: '#fff1d6', shellLo: '#d6bd90', shellLine: '#8a6a3c',
@@ -173,6 +35,7 @@ const MOODS = { // lid / low: upper / lower lid 0..1; brow: inward tilt (rad); c
   smug: { lid: 0.5, low: 0.4, brow: -0.12, cock: 0.9, pup: 1, open: 0, grit: 0, smirk: 1, shut: 0 },
   ready: { lid: 0.16, low: 0.12, brow: 0.4, cock: 0, pup: 0.82, open: 0.5, grit: 0, smirk: 0.3, shut: 0 },
 };
+let FR = FROSTP; // the palette of the chick being drawn
 function moodOf(o) {
   const m = o.mood || (o.open > 0.5 ? 'yell' : 'idle');
   if (!Array.isArray(m)) return MOODS[m] || MOODS.idle;
@@ -269,22 +132,27 @@ function frBeak(ctx, s, M, lw) { // a short chick beak; it gapes wide for the ye
 // the eggshell helmet every strike chick still wears; the Frost Chick's is iced over: a frost coat, icicles off the cracked
 // rim, the shard crest growing from the shell. It tips down over the eyes when the chick means business.
 function frHelmet(ctx, s, t, M, tr, sw, lw) {
-  ctx.save(); ctx.translate(0.0, (-0.3 + M.lid * 0.07 - M.cock * 0.03) * s); ctx.rotate(0.02 + M.brow * 0.34 * (1 - M.cock * 0.9) - M.cock * 0.12 - tr * 0.1);
-  for (const [x, y, len, a0, hw, k] of [[-0.21, -0.36, 0.3, 0.95, 0.08, 1.0], [0.19, -0.38, 0.22, 0.05, 0.07, 0.55], [-0.01, -0.46, 0.42, 0.45, 0.095, 0.8]]) {
+  const id = CID; ctx.save();
+  if (id === 'decoy') { ctx.translate(0, -0.03 * s); ctx.rotate(0.02 - tr * 0.06 + M.brow * 0.06); ctx.scale(1.04, 1.3); } // a nearly whole shell, down past the eyes
+  else { ctx.translate(0.0, (-0.3 + M.lid * 0.07 - M.cock * 0.03) * s); ctx.rotate(0.02 + M.brow * 0.34 * (1 - M.cock * 0.9) - M.cock * 0.12 - tr * 0.1); }
+  if (id !== 'freeze') helmCrest(ctx, id, s, t, tr, sw, lw);
+  else for (const [x, y, len, a0, hw, k] of [[-0.21, -0.36, 0.3, 0.95, 0.08, 1.0], [0.19, -0.38, 0.22, 0.05, 0.07, 0.55], [-0.01, -0.46, 0.42, 0.45, 0.095, 0.8]]) {
     const a = a0 + tr * 0.62 * k + sw * 0.035 * k, L = len * (1 + Math.abs(tr) * 0.12);
     shard(ctx, x * s, y * s, (x - Math.sin(a) * L) * s, (y - Math.cos(a) * L) * s, hw * s, lw);
   }
   const Z = [[0.38, 0.1], [0.29, -0.01], [0.19, 0.11], [0.09, 0.0], [-0.02, 0.11], [-0.13, 0.0], [-0.24, 0.1], [-0.35, -0.01]];
   const dome = () => { ctx.beginPath(); ctx.moveTo(-0.45 * s, 0.02 * s); ctx.bezierCurveTo(-0.47 * s, -0.28 * s, -0.25 * s, -0.5 * s, 0.01 * s, -0.5 * s); ctx.bezierCurveTo(0.27 * s, -0.5 * s, 0.49 * s, -0.28 * s, 0.47 * s, 0.02 * s); for (const [x, y] of Z) ctx.lineTo(x * s, y * s); ctx.closePath(); };
-  form(ctx, dome, { d: s * 0.07, lo: FR.shellLo, base: FR.shell, hi: '#ffffff', line: FR.shellLine, lw, noWeight: true, hiK: 0.5,
+  form(ctx, dome, { d: s * 0.07, lo: FR.shellLo, base: FR.shell, hi: FR.shellHi || '#ffffff', line: FR.shellLine, lw, noWeight: true, hiK: 0.5,
     inner: (c) => {
+      if (id !== 'freeze') { helmInner(c, id, s, t, lw); return; }
       const C = [[-0.5, -0.3], [-0.36, -0.22], [-0.29, -0.33], [-0.19, -0.25], [-0.1, -0.37], [0.02, -0.29], [0.11, -0.4], [0.22, -0.33], [0.3, -0.42], [0.5, -0.4], [0.5, -0.6], [-0.5, -0.6]];
       for (const [ox, oy, col] of [[0.015, 0.03, FR.iceLo], [0, 0, FR.frost]]) { c.beginPath(); C.forEach(([x, y], i) => (i ? c.lineTo((x + ox) * s, (y + oy) * s) : c.moveTo((x + ox) * s, (y + oy) * s))); c.closePath(); c.fillStyle = col; c.fill(); }
       c.fillStyle = 'rgba(255,255,255,0.9)'; c.beginPath(); c.ellipse(-0.22 * s, -0.37 * s, 0.08 * s, 0.03 * s, -0.6, 0, TAU); c.fill();
       c.fillStyle = FR.shellLo; for (const [x, y, r] of [[0.3, -0.1, 0.024], [0.08, -0.12, 0.017], [-0.3, -0.06, 0.02], [-0.12, -0.16, 0.014], [0.33, -0.24, 0.015]]) { c.beginPath(); c.arc(x * s, y * s, r * s, 0, TAU); c.fill(); }
       c.strokeStyle = FR.shellLine; c.lineWidth = lw; c.beginPath(); c.moveTo(0.19 * s, 0.11 * s); c.lineTo(0.21 * s, -0.02 * s); c.lineTo(0.16 * s, -0.08 * s); c.stroke(); // a crack up from the rim
     } });
-  for (const [x, y, len] of [[-0.4, 0.0, 0.17], [-0.3, 0.02, 0.1], [0.43, 0.02, 0.12]]) shard(ctx, x * s, y * s, (x + sw * 0.01 - tr * 0.05) * s, (y + len) * s, 0.04 * s, lw); // icicles off the rim
+  if (id !== 'freeze') helmRim(ctx, id, s, t, tr, sw, lw);
+  else for (const [x, y, len] of [[-0.4, 0.0, 0.17], [-0.3, 0.02, 0.1], [0.43, 0.02, 0.12]]) shard(ctx, x * s, y * s, (x + sw * 0.01 - tr * 0.05) * s, (y + len) * s, 0.04 * s, lw); // icicles off the rim
   ctx.restore();
 }
 function frostChick(ctx, s, t, o) {
@@ -321,17 +189,17 @@ function frostChick(ctx, s, t, o) {
       c.strokeStyle = FR.lo; c.lineWidth = Math.max(0.8, s * 0.02); c.beginPath(); // cheek fluff
       for (const [x, y] of [[-0.3, 0.02], [-0.22, 0.1], [-0.33, 0.16]]) { c.moveTo((x - 0.05) * s, (y - 0.03) * s); c.lineTo(x * s, (y + 0.03) * s); c.lineTo((x + 0.05) * s, (y - 0.03) * s); }
       c.stroke();
+      if (CID === 'decoy') { c.fillStyle = '#c9a468'; for (const [x, y, r] of [[-0.3, 0.3, 0.03], [0.36, 0.12, 0.022], [-0.1, 0.36, 0.02], [-0.38, 0.14, 0.018]]) { c.beginPath(); c.arc(x * s, y * s, r * s, 0, TAU); c.fill(); } } // painted like an egg
     } });
   // the near wing: tucked, flapping, swept back, or thrown forward as a fist when it grits its beak
   if (M.grit && wing < 0.5) frWing(ctx, s, -0.02, 0.2, -0.75, false, lw, true);
   else frWing(ctx, s, -0.2, 0.14, lerp(0.8, -0.5, wing) + (wing > 0.9 ? Math.sin(t * 30) * 0.06 : 0), false, lw);
   const e0 = { cx: 0.27 * s, cy: -0.07 * s, rx: 0.108 * s, ry: 0.15 * s, sd: -1 }, e1 = { cx: 0.03 * s, cy: -0.065 * s, rx: 0.15 * s, ry: 0.168 * s, sd: 1 };
-  frEye(ctx, s, e0, M, lk, bl, lw); frEye(ctx, s, e1, M, lk, bl, lw);
-  frBeak(ctx, s, M, lw);
-  frHelmet(ctx, s, t, M, tr, sw, lw);
+  if (CID === 'freeze') { frEye(ctx, s, e0, M, lk, bl, lw); frEye(ctx, s, e1, M, lk, bl, lw); frBeak(ctx, s, M, lw); frHelmet(ctx, s, t, M, tr, sw, lw); }
+  else castFace(ctx, s, t, M, lk, bl, lw, tr, sw, e0, e1, o);
   ctx.restore();
   // cold breath: a few pale puffs off the beak
-  const fog = o.fog === false ? -1 : typeof o.fog === 'number' ? o.fog : (o.mood === undefined || o.mood === 'idle' || o.mood === 'smug') ? ((t * 0.42) % 1) / 0.5 : -1;
+  const fog = CID !== 'freeze' || o.fog === false ? -1 : typeof o.fog === 'number' ? o.fog : (o.mood === undefined || o.mood === 'idle' || o.mood === 'smug') ? ((t * 0.42) % 1) / 0.5 : -1;
   if (fog >= 0 && fog < 1) {
     ctx.save(); ctx.fillStyle = '#eefaff';
     for (let i = 0; i < 3; i++) { const v = clamp(fog * 1.25 - i * 0.12, 0, 1); if (v <= 0) continue; ctx.globalAlpha = 0.6 * (1 - v) * (1 - i * 0.2); ctx.beginPath(); ctx.arc((0.6 + v * 0.42 + i * 0.05) * s, (0.14 - v * 0.16 - i * 0.07 * v) * s, (0.045 + v * 0.1) * s * (1 - i * 0.18), 0, TAU); ctx.fill(); }
@@ -339,50 +207,159 @@ function frostChick(ctx, s, t, o) {
   }
   // a glint on the tall shard now and then
   const g = (t * 0.6 + 0.3) % 1;
-  if (g < 0.22 && o.fog !== false) { const q = Math.sin((g / 0.22) * Math.PI), gx = -0.19 * s, gy = -1.0 * s, r = s * 0.11 * q; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(gx, gy - r); ctx.quadraticCurveTo(gx, gy, gx + r, gy); ctx.quadraticCurveTo(gx, gy, gx, gy + r); ctx.quadraticCurveTo(gx, gy, gx - r, gy); ctx.quadraticCurveTo(gx, gy, gx, gy - r); ctx.fill(); }
+  if (g < 0.22 && o.fog !== false && CID === 'freeze') { const q = Math.sin((g / 0.22) * Math.PI), gx = -0.19 * s, gy = -1.0 * s, r = s * 0.11 * q; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(gx, gy - r); ctx.quadraticCurveTo(gx, gy, gx + r, gy); ctx.quadraticCurveTo(gx, gy, gx, gy + r); ctx.quadraticCurveTo(gx, gy, gx - r, gy); ctx.quadraticCurveTo(gx, gy, gx, gy - r); ctx.fill(); }
 }
 
-// o: { squash (-1 stretch .. 1 squash), look, open (beak), wing (0 tucked .. 1 spread), feet (true: standing), fire (bomb spark) }
+// ---------------------------------------------------------------- the other five: the same rig, their own colours, shells and wakes
+const CAST_COMMON = { ice: '#f4fcff', iceLo: '#74bff0', iceLine: '#2a78ba', frost: '#d6f1ff', white: '#ffffff', eyeSh: '#d6d8e2', pupil: '#0a1626', shell: '#fff1d6', shellLo: '#d6bd90', shellHi: '#ffffff', shellLine: '#8a6a3c',
+  beak: '#ffb21e', beakHi: '#ffe27e', beakLo: '#e07a10', beakLine: '#9a4a0a', mouth: '#5a1022', tongue: '#ff7282', teeth: '#fffdf2' };
+const CAST = {
+  freeze: FROSTP,
+  thunder: { ...CAST_COMMON, base: '#ffcc1f', lo: '#e08a0a', hi: '#fff08a', line: '#8a5200', down: '#fff3b8', downLo: '#f2c14a', wing: '#f09a10', wingLo: '#b86a04', wingHi: '#ffc23a', brow: '#5a3200', lid: '#f4b012', iris: '#2a3fb0', irisHi: '#5a86ff', shell: '#f3e6c8', shellLo: '#b89e74', shellLine: '#6a4e2a' },
+  bomb: { ...CAST_COMMON, base: '#f08a24', lo: '#c25e12', hi: '#ffb45a', line: '#7a3408', down: '#ffe2a0', downLo: '#f2b866', wing: '#d9661a', wingLo: '#a8440c', wingHi: '#ffa64a', brow: '#6a2a06', lid: '#d9741c', iris: '#b02a0e', irisHi: '#ff8a2a', shell: '#c8302a', shellLo: '#8c1a16', shellHi: '#f0635a', shellLine: '#4c0c0a' },
+  decoy: { ...CAST_COMMON, base: '#f0d49e', lo: '#c79a58', hi: '#fff0cc', line: '#7a5426', down: '#fff6de', downLo: '#e6c88e', wing: '#d8a860', wingLo: '#a87a38', wingHi: '#f0cc8a', brow: '#4a2e10', lid: '#e2c084', iris: '#5a3410', irisHi: '#b87a2a', shell: '#fff6e2', shellLo: '#dcc7a0' },
+  tornado: { ...CAST_COMMON, base: '#35cdb0', lo: '#12907e', hi: '#9af2dc', line: '#0c5a4e', down: '#d2fff2', downLo: '#8ae0cc', wing: '#17a08c', wingLo: '#0c6e60', wingHi: '#58dcc4', brow: '#083f38', lid: '#22b49a', iris: '#0c6a5c', irisHi: '#3fe0c0' },
+  glue: { ...CAST_COMMON, base: '#a866ee', lo: '#6f34bc', hi: '#d6acff', line: '#3f1680', down: '#ecd6ff', downLo: '#c096f0', wing: '#7e3fd0', wingLo: '#52209a', wingHi: '#b07af0', brow: '#2c0c5e', lid: '#9450e0', iris: '#4a1a90', irisHi: '#b46aff', goo: '#8cf56a', gooLo: '#3fb83a', gooLine: '#1f7a22' },
+};
+let CID = 'freeze', FUSE = 1; // the chick being drawn; how much of the Boom Chick's fuse is left
+function spike(ctx, bx, by, tx, ty, hw, c1, c2, line, lw) { // a pointed feather / shell prong: lit half, shaded half, thin edge
+  const dx = tx - bx, dy = ty - by, l = Math.hypot(dx, dy) || 1, nx = (-dy / l) * hw, ny = (dx / l) * hw, k = nx * -0.5 + ny * -0.87 > 0 ? 1 : -1;
+  ctx.beginPath(); ctx.moveTo(bx + nx, by + ny); ctx.lineTo(tx, ty); ctx.lineTo(bx - nx, by - ny); ctx.closePath(); ctx.fillStyle = c2; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(bx + nx * k, by + ny * k); ctx.lineTo(tx, ty); ctx.lineTo(bx, by); ctx.closePath(); ctx.fillStyle = c1; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(bx + nx, by + ny); ctx.lineTo(tx, ty); ctx.lineTo(bx - nx, by - ny); ctx.lineJoin = 'round'; ctx.lineWidth = lw; ctx.strokeStyle = line; ctx.stroke();
+}
+const poly = (c, P, s, ox = 0, oy = 0) => { c.beginPath(); P.forEach(([x, y], i) => (i ? c.lineTo((x + ox) * s, (y + oy) * s) : c.moveTo((x + ox) * s, (y + oy) * s))); };
+const two = (c, w1, c1, w2, c2) => { c.lineCap = 'round'; c.lineJoin = 'round'; c.lineWidth = w1; c.strokeStyle = c1; c.stroke(); c.lineWidth = w2; c.strokeStyle = c2; c.stroke(); };
+const PRONG = [[-0.33, -0.3, -0.5, -0.6], [0.3, -0.32, 0.45, -0.6]];
+// behind the shell: what sticks up out of it
+function helmCrest(ctx, id, s, t, tr, sw, lw) {
+  if (id === 'thunder') { // feathers on end, two broken shell prongs
+    for (let i = 0; i < 5; i++) { const x = -0.3 + i * 0.14, a = 0.8 - i * 0.32 + tr * 0.5 + Math.sin(t * 31 + i * 2) * 0.04, L = 0.34 + (i % 2) * 0.12; spike(ctx, x * s, -0.4 * s, (x - Math.sin(a) * L) * s, (-0.4 - Math.cos(a) * L) * s, 0.05 * s, FR.hi, FR.base, FR.line, lw); }
+    for (const [bx, by, tx, ty] of PRONG) spike(ctx, bx * s, by * s, tx * s, ty * s, 0.075 * s, FR.shellHi, FR.shellLo, FR.shellLine, lw);
+  } else if (id === 'bomb') { // the fuse twig, burning down
+    const f = clamp(FUSE, 0.12, 1), tx = (0.03 + 0.2 * f) * s, ty = (-0.5 - 0.26 * f) * s, fl = 0.8 + 0.3 * Math.sin(t * 40) * Math.sin(t * 17);
+    ctx.beginPath(); ctx.moveTo(0.02 * s, -0.46 * s); ctx.quadraticCurveTo(0.03 * s, (-0.5 - 0.22 * f) * s, tx, ty); two(ctx, s * 0.085, '#1a1210', s * 0.05, '#a2805a');
+    ctx.fillStyle = 'rgba(255,110,30,0.4)'; ctx.beginPath(); ctx.arc(tx, ty, s * 0.15 * fl, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffd23a'; ctx.beginPath(); ctx.arc(tx, ty, s * 0.085 * fl, 0, TAU); ctx.fill(); ctx.fillStyle = '#fffbe0'; ctx.beginPath(); ctx.arc(tx, ty, s * 0.04, 0, TAU); ctx.fill();
+    ctx.beginPath(); for (let i = 0; i < 4; i++) { const a = t * 9 + i * 1.57; ctx.moveTo(tx + Math.cos(a) * 0.07 * s, ty + Math.sin(a) * 0.07 * s); ctx.lineTo(tx + Math.cos(a) * 0.17 * s * fl, ty + Math.sin(a) * 0.17 * s * fl); }
+    ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, s * 0.022); ctx.strokeStyle = '#ffe27a'; ctx.stroke();
+  } else if (id === 'tornado') { // head feathers swept into a swirl
+    const cx = (-0.06 - tr * 0.12) * s, cy = -0.66 * s;
+    ctx.beginPath(); ctx.moveTo(0.02 * s, -0.44 * s);
+    for (let i = 24; i >= 0; i--) { const u = i / 24, a = 1.2 + u * TAU * 1.15 + sw * 0.12, r = (0.035 + u * 0.19) * s; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.85); }
+    two(ctx, s * 0.12, FR.line, s * 0.085, FR.base);
+    ctx.beginPath(); for (let i = 20; i >= 4; i--) { const u = i / 24, a = 1.2 + u * TAU * 1.15 + sw * 0.12, r = (0.035 + u * 0.19) * s - s * 0.018; const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.85; if (i === 20) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    ctx.lineWidth = s * 0.025; ctx.strokeStyle = FR.hi; ctx.stroke();
+  } else if (id === 'glue') { // a blob of goo sat on top
+    const w = Math.sin(t * 5) * 0.02;
+    ctx.beginPath(); ctx.ellipse(0.02 * s, -0.5 * s, (0.2 + w) * s, (0.11 - w) * s, 0, 0, TAU); ctx.fillStyle = FR.goo; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.gooLine; ctx.stroke();
+    ctx.beginPath(); ctx.arc((0.05 + w) * s, -0.66 * s, 0.055 * s, 0, TAU); ctx.fill(); ctx.stroke();
+  }
+}
+// painted on the shell (clipped to it)
+function helmInner(c, id, s, t, lw) {
+  if (id === 'thunder') { // scorched, a zigzag crack that glows
+    c.fillStyle = 'rgba(52,36,22,0.6)'; poly(c, [[-0.5, -0.3], [-0.36, -0.22], [-0.29, -0.33], [-0.19, -0.25], [-0.1, -0.37], [0.02, -0.29], [0.11, -0.4], [0.22, -0.33], [0.3, -0.42], [0.5, -0.4], [0.5, -0.6], [-0.5, -0.6]], s); c.fill();
+    poly(c, [[-0.02, -0.52], [0.08, -0.36], [-0.03, -0.27], [0.11, -0.15], [0.03, -0.07], [0.13, 0.06]], s); two(c, s * (0.075 + 0.02 * Math.sin(t * 9)), '#ff9a1a', s * 0.03, '#fff6b0');
+  } else if (id === 'bomb') { // a blackened casing: one hard glint, a seam
+    c.fillStyle = 'rgba(255,255,255,0.32)'; c.beginPath(); c.ellipse(-0.23 * s, -0.3 * s, 0.11 * s, 0.045 * s, -0.75, 0, TAU); c.fill();
+    c.beginPath(); c.moveTo(-0.5 * s, -0.1 * s); c.quadraticCurveTo(0, -0.02 * s, 0.5 * s, -0.12 * s); c.lineWidth = s * 0.09; c.strokeStyle = '#ffcf3a'; c.stroke(); c.lineWidth = s * 0.03; c.strokeStyle = '#fff3b0'; c.stroke(); // a yellow band round the firecracker casing
+  } else if (id === 'decoy') { // painted like an egg: speckles, one hairline crack
+    c.fillStyle = '#c9a468'; for (const [x, y, r] of [[-0.3, -0.3, 0.035], [0.08, -0.38, 0.028], [0.32, -0.26, 0.03], [-0.12, -0.2, 0.02], [0.2, -0.16, 0.022], [-0.36, -0.1, 0.02], [0.38, -0.06, 0.018], [-0.02, -0.44, 0.016]]) { c.beginPath(); c.arc(x * s, y * s, r * s, 0, TAU); c.fill(); }
+    poly(c, [[-0.2, -0.5], [-0.16, -0.4], [-0.22, -0.34], [-0.17, -0.27]], s); c.lineWidth = lw; c.strokeStyle = FR.shellLine; c.stroke();
+  } else if (id === 'tornado') { // a spiral crack
+    c.beginPath(); for (let i = 0; i <= 26; i++) { const u = i / 26, a = u * TAU * 1.6 + 0.6, r = (0.02 + u * 0.2) * s, x = 0.06 * s + Math.cos(a) * r, y = -0.2 * s + Math.sin(a) * r * 0.8; if (i) c.lineTo(x, y); else c.moveTo(x, y); }
+    c.lineCap = 'round'; c.lineWidth = Math.max(1, s * 0.022); c.strokeStyle = FR.shellLine; c.stroke();
+    c.fillStyle = FR.shellLo; for (const [x, y, r] of [[-0.3, -0.12, 0.02], [0.33, -0.28, 0.018]]) { c.beginPath(); c.arc(x * s, y * s, r * s, 0, TAU); c.fill(); }
+  } else if (id === 'glue') { // goo running down from the top
+    for (const [oy, col] of [[0.025, FR.gooLo], [0, FR.goo]]) { c.fillStyle = col; c.fillRect(-0.6 * s, -0.7 * s, 1.2 * s, (0.44 + oy) * s); for (const [x, d] of [[-0.36, 0.1], [-0.2, 0.02], [-0.04, 0.14], [0.13, 0.04], [0.28, 0.11], [0.42, 0.0]]) { c.beginPath(); c.ellipse(x * s, (-0.27 + oy + d * 0.5) * s, 0.085 * s, (0.08 + d) * s, 0, 0, TAU); c.fill(); } }
+    c.fillStyle = 'rgba(255,255,255,0.7)'; c.beginPath(); c.ellipse(-0.22 * s, -0.37 * s, 0.08 * s, 0.03 * s, -0.6, 0, TAU); c.fill();
+  }
+}
+// in front of the shell: what hangs off it or jumps across it
+function helmRim(ctx, id, s, t, tr, sw, lw) {
+  if (id === 'thunder') { // static jumps between the two prongs
+    const q = Math.floor(t * 16);
+    if (q % 4 !== 3) { const R = rnd(q * 7 + 3), [, , ax, ay] = PRONG[0], [, , bx, by] = PRONG[1]; ctx.beginPath(); ctx.moveTo(ax * s, ay * s); for (let i = 1; i < 5; i++) ctx.lineTo(lerp(ax, bx, i / 5) * s, (lerp(ay, by, i / 5) + (R() - 0.5) * 0.2) * s); ctx.lineTo(bx * s, by * s); two(ctx, s * 0.06, '#ffc61a', s * 0.024, '#fffbe0'); }
+    ctx.fillStyle = '#fffbe0'; for (const [, , x, y] of PRONG) { ctx.beginPath(); ctx.arc(x * s, y * s, s * 0.035, 0, TAU); ctx.fill(); }
+  } else if (id === 'bomb') { // the fuse's collar
+    ctx.beginPath(); ctx.ellipse(0.02 * s, -0.48 * s, 0.1 * s, 0.045 * s, 0, 0, TAU); ctx.fillStyle = '#8d858b'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.shellLine; ctx.stroke();
+  } else if (id === 'glue') { // strands dripping off the rim
+    for (const [x, len, ph] of [[-0.4, 0.2, 0], [-0.27, 0.1, 2], [0.43, 0.26, 4]]) { const L = len * (1 + 0.25 * Math.sin(t * 2.4 + ph)), ex = (x - tr * 0.08 + sw * 0.01) * s, ey = (0.02 + L) * s; ctx.beginPath(); ctx.moveTo(x * s, 0); ctx.lineTo(ex, ey); two(ctx, s * 0.075, FR.gooLine, s * 0.05, FR.goo); ctx.beginPath(); ctx.arc(ex, ey, s * 0.045, 0, TAU); ctx.fillStyle = FR.goo; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.gooLine; ctx.stroke(); }
+  }
+}
+// the face of the other five: the decoy peeks through eye-holes in a nearly whole shell, the twister's eyes roll, one of the
+// sticky chick's is half glued shut
+function castFace(ctx, s, t, M, lk, bl, lw, tr, sw, e0, e1, o) {
+  const id = CID, calm = M === MOODS.idle; let l0 = lk, l1 = lk, M1 = M;
+  if (id === 'decoy') {
+    frHelmet(ctx, s, t, M, tr, sw, lw);
+    ctx.fillStyle = '#3b2812'; for (const E of [e0, e1]) { ctx.beginPath(); ctx.ellipse(E.cx, E.cy, E.rx * 1.22, E.ry * 1.16, 0, 0, TAU); ctx.fill(); }
+    if (calm) l0 = l1 = { x: Math.sin(t * 2.4) > 0 ? 0.95 : -0.95, y: 0.15 }; // shifty
+  }
+  if (id === 'tornado' && calm) { l0 = { x: Math.cos(t * 5), y: Math.sin(t * 5) }; l1 = { x: Math.cos(t * 5 + 2.4), y: Math.sin(t * 5 + 2.4) }; } // dizzy
+  if (id === 'glue' && !M.shut) M1 = { ...M, lid: Math.max(M.lid, 0.64), cock: 0 };
+  frEye(ctx, s, e0, M, l0, bl, lw); frEye(ctx, s, e1, M1, l1, bl, lw);
+  if (id === 'glue') { ctx.beginPath(); ctx.moveTo(e1.cx - e1.rx * 0.45, e1.cy - e1.ry * 1.05); ctx.quadraticCurveTo(e1.cx - e1.rx * 0.6, e1.cy, e1.cx - e1.rx * 0.25, e1.cy + e1.ry * 0.95); two(ctx, s * 0.07, FR.gooLine, s * 0.045, FR.goo); }
+  frBeak(ctx, s, M, lw);
+  if (id !== 'decoy') frHelmet(ctx, s, t, M, tr, sw, lw);
+}
+// the wake behind each of the five in flight (the Frost Chick's is iceWake)
+const WAKE = {
+  thunder: { chip: 'star', c1: '#fffbe0', c2: '#ffd23a' },
+  bomb: { rib: ['#ff7a1a', '#ffe08a', 0.3], puff: '#352d30', pa: 0.5, chip: 'ember', c1: '#ffe27a', c2: '#ff5a1a' },
+  decoy: { puff: '#fff6e2', pa: 0.55, chip: 'feather', c1: '#fff6e2', c2: '#dcc08a' },
+  tornado: { puff: '#dcfff4', pa: 0.25, chip: 'feather', c1: '#eafffa', c2: '#58dcc4' },
+  glue: { rib: ['#3fb83a', '#a8ff86', 0.62], chip: 'drop', c1: '#8cf56a', c2: '#3fb83a' },
+};
+function castWake(ctx, id, a, tgt, ue, k, S, t) {
+  const W = WAKE[id]; if (!W) return;
+  const fade = clamp((1.34 - ue) / 0.2, 0, 1), N = 14, u1 = Math.min(1, ue), len = W.rib ? W.rib[2] : 0.4, u0 = Math.max(0, ue - len);
+  const at = (u) => { const p = arcAt(a, tgt, u), q = arcAt(a, tgt, u + 0.01), dx = q.x - p.x, dy = q.y - p.y, l = Math.hypot(dx, dy) || 1; return [p.x, p.y, -dy / l, dx / l]; };
+  if (u1 - u0 > 0.01 && fade > 0) {
+    if (W.rib) for (const [kk, col, al] of [[1, W.rib[0], 0.75], [0.4, W.rib[1], 0.9]]) { // a tapered ribbon (flame / a rope of goo)
+      ctx.beginPath();
+      for (let j = 0; j <= N; j++) { const f = j / N, [x, y, nx, ny] = at(lerp(u0, u1, f)), w = (S * 0.3 * (id === 'glue' ? 0.35 + 0.65 * f * f : f) * kk) / k; if (j) ctx.lineTo(x + nx * w, y + ny * w); else ctx.moveTo(x + nx * w, y + ny * w); }
+      for (let j = N; j >= 0; j--) { const f = j / N, [x, y, nx, ny] = at(lerp(u0, u1, f)), w = (S * 0.3 * (id === 'glue' ? 0.35 + 0.65 * f * f : f) * kk) / k; ctx.lineTo(x - nx * w, y - ny * w); }
+      ctx.closePath(); ctx.globalAlpha = al * fade; ctx.fillStyle = col; ctx.fill();
+    }
+    if (id === 'thunder') { // a crackling bolt down the path
+      const R = rnd(Math.floor(t * 24) + 11); ctx.globalAlpha = fade; ctx.beginPath();
+      for (let j = 0; j <= 9; j++) { const f = j / 9, [x, y, nx, ny] = at(lerp(u0, u1, f)), o2 = j && j < 9 ? ((R() - 0.5) * S * 0.7) / k : 0; if (j) ctx.lineTo(x + nx * o2, y + ny * o2); else ctx.moveTo(x, y); }
+      boltStroke(ctx, Math.max(0.03, 2.4 / k), 1);
+    }
+    if (id === 'tornado') for (const [ph, col, lw] of [[0, '#2fb89e', 3.2], [Math.PI, '#eafffa', 2.2]]) { // two strands wound round the path
+      ctx.beginPath(); for (let j = 0; j <= 30; j++) { const f = j / 30, [x, y, nx, ny] = at(lerp(u0, u1, f)), w = (Math.sin(f * 16 - t * 22 + ph) * S * 0.42 * (0.25 + 0.75 * f)) / k; if (j) ctx.lineTo(x + nx * w, y + ny * w); else ctx.moveTo(x + nx * w, y + ny * w); }
+      ctx.globalAlpha = 0.85 * fade; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = lw / k; ctx.strokeStyle = col; ctx.stroke();
+    }
+  }
+  for (let i = 0; i < 9; i++) { // puffs and bits, each born as the chick passes its point on the arc
+    const ub = 0.06 + i * 0.105, age = (ue - ub) * FLIGHT.fly; if (age <= 0) continue;
+    const [x, y, nx, ny] = at(ub), sd = i % 2 ? 1 : -1, m = clamp(age / 0.5, 0, 1), c = clamp(age / 0.4, 0, 1);
+    if (W.puff && m < 1) { ctx.globalAlpha = W.pa * (1 - m); ctx.fillStyle = W.puff; ctx.beginPath(); ctx.arc(x + sd * 0.05, y + age * 0.3, (S * (0.16 + m * 0.34)) / k, 0, TAU); ctx.fill(); }
+    if (c >= 1) continue;
+    const g = W.chip === 'drop' ? 9 : W.chip === 'feather' ? 1.5 : 4, sp = W.chip === 'drop' ? 0.5 : 1.6, r = S * (0.09 + hash(i) * 0.06) * (1 - c * 0.4);
+    px(ctx, x + nx * sd * age * sp + ny * age * 0.5, y + ny * sd * age * sp - nx * age * 0.5 - age * age * g, k, () => {
+      ctx.globalAlpha = 1 - c * c; ctx.rotate(W.chip === 'drop' ? 0 : i * 1.3 + age * (W.chip === 'feather' ? 5 : 13) * sd);
+      ctx.beginPath();
+      if (W.chip === 'star') { ctx.moveTo(0, -r * 1.3); ctx.quadraticCurveTo(0, 0, r * 1.3, 0); ctx.quadraticCurveTo(0, 0, 0, r * 1.3); ctx.quadraticCurveTo(0, 0, -r * 1.3, 0); ctx.quadraticCurveTo(0, 0, 0, -r * 1.3); }
+      else if (W.chip === 'feather') ctx.ellipse(0, 0, r * 1.2, r * 0.45, 0, 0, TAU);
+      else ctx.arc(0, 0, r * 0.7, 0, TAU);
+      ctx.fillStyle = W.c2; ctx.fill();
+      ctx.beginPath(); if (W.chip === 'feather') ctx.ellipse(-r * 0.1, -r * 0.1, r * 0.9, r * 0.22, 0, 0, TAU); else ctx.arc(-r * 0.12, -r * 0.12, r * 0.36, 0, TAU); ctx.fillStyle = W.c1; ctx.fill();
+    });
+  }
+  ctx.globalAlpha = 1;
+}
+
+// o: see the rig (frostChick), plus rot, flip, shadow
 export function drawStrikeChick(ctx, id, x, y, s, t, o = {}) {
-  const P = PAL[id] || PAL.freeze, sq = clamp(o.squash || 0, -0.6, 0.8), lw = Math.max(0.8, s * 0.022);
   ctx.save();
   ctx.translate(x, y);
   if (o.rot) ctx.rotate(o.rot);
   if (o.flip) ctx.scale(-1, 1);
-  if (id === 'freeze') { frostChick(ctx, s, t, o); ctx.restore(); return; } // the hero rig
-  if (o.shadow) contact(ctx, 0, s * 0.45, s * 0.34, s * 0.06, 0.25);
-  // feet (standing) or tucked
-  if (o.feet !== false) {
-    ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = BEAK.line; ctx.lineWidth = s * 0.05;
-    for (const sd of [-1, 1]) { const fx = sd * s * 0.1, fy = s * (0.42 - sq * 0.12); ctx.beginPath(); ctx.moveTo(fx, fy - s * 0.06); ctx.lineTo(fx, fy); ctx.moveTo(fx - s * 0.05, fy + s * 0.01); ctx.lineTo(fx + s * 0.06, fy + s * 0.01); ctx.stroke(); }
-    ctx.strokeStyle = BEAK.base; ctx.lineWidth = s * 0.026;
-    for (const sd of [-1, 1]) { const fx = sd * s * 0.1, fy = s * (0.42 - sq * 0.12); ctx.beginPath(); ctx.moveTo(fx, fy - s * 0.06); ctx.lineTo(fx, fy); ctx.moveTo(fx - s * 0.05, fy + s * 0.01); ctx.lineTo(fx + s * 0.06, fy + s * 0.01); ctx.stroke(); }
-    ctx.restore();
-  }
-  ctx.save();
-  ctx.translate(0, s * sq * 0.12);
-  if (id === 'tornado' || id === 'decoy') crest(ctx, id, s * (1 - sq * 0.25), t, P, o.fire);
-  // the far wing
-  const wing = clamp(o.wing || 0, 0, 1);
-  const wingAt = (sd) => {
-    const wx = -sd * s * 0.3, wy = s * 0.04, a = sd * (0.3 + wing * 1.1);
-    ctx.save(); ctx.translate(wx, wy); ctx.rotate(-a);
-    const p = () => { ctx.beginPath(); ctx.ellipse(0, s * 0.08, s * 0.08, s * 0.16, 0, 0, TAU); };
-    form(ctx, p, { d: s * 0.03, lo: P.lo, base: P.base, hi: P.hi, line: P.line, lw: lw * 0.9 });
-    ctx.restore();
-  };
-  if (wing > 0.2) wingAt(1);
-  form(ctx, () => bodyPath(ctx, id, s, sq, t), { d: s * 0.07, lo: P.lo, base: P.base, hi: P.hi, line: P.line, lw, hiK: 0.6,
-    inner: (c) => { // a soft belly fluff, lighter
-      c.globalAlpha *= 0.55; c.fillStyle = P.hi; c.beginPath(); c.ellipse(s * 0.04, s * 0.17, s * 0.17, s * 0.12, 0, 0, TAU); c.fill(); c.globalAlpha /= 0.55;
-      if (id === 'decoy') { c.fillStyle = 'rgba(150,100,50,0.4)'; for (const [x2, y2, r] of [[-0.2, 0.1, 0.025], [0.22, 0.2, 0.02], [-0.08, 0.3, 0.018], [0.25, -0.05, 0.016]]) { c.beginPath(); c.arc(x2 * s, y2 * s, r * s, 0, TAU); c.fill(); } }
-      if (id === 'glue') { c.fillStyle = 'rgba(255,255,255,0.5)'; c.beginPath(); c.ellipse(-s * 0.2, -s * 0.22, s * 0.05, s * 0.09, -0.5, 0, TAU); c.fill(); }
-    } });
-  wingAt(-1);
-  if (id !== 'tornado' && id !== 'decoy') crest(ctx, id, s * (1 - sq * 0.25), t, P, o.fire);
-  face(ctx, id, s, t, P, o);
-  if (id === 'decoy') crest(ctx, 'decoy', s, t, P); // the cap sits over the brow
-  ctx.restore();
+  CID = CAST[id] ? id : 'freeze'; FR = CAST[CID];
+  frostChick(ctx, s, t, o);
   ctx.restore();
 }
 
@@ -405,7 +382,7 @@ function arcAt(a, b, u) {
   return { x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u) + h * 4 * u * (1 - u) };
 }
 
-// ---------------------------------------------------------------- the Frost Chick in the world (rider, hop, flight, the beat after)
+// ---------------------------------------------------------------- the chick in the world (rider, hop, flight, the beat after)
 const FROST_H = 0.44; // riding, the chick (feet to helmet top) stands this fraction of the hen's height: clearly her small chick
 const POST = { sim: null, was: false, t0: -99, a: null, tgt: null, ang: 0 };
 // the icy wake: a serrated ribbon of cold along the arc, chips of ice thrown off it, mist that hangs. ue may run past 1.
@@ -438,23 +415,26 @@ function iceWake(ctx, a, tgt, ue, k, S) {
   }
   ctx.globalAlpha = 1;
 }
-function frostWorld(ctx, sim, K, k, t, hen, S) {
+function frostWorld(ctx, sim, K, k, t, hen, S, id) {
+  const wake = (a, tg, ue) => (id === 'freeze' ? iceWake(ctx, a, tg, ue, k, S) : castWake(ctx, id, a, tg, ue, k, S, t));
+  FUSE = 1;
   const gy = hen.gy || 1, s0 = strikeSeat(hen), seat = { x: s0.x + 0.05 * hen.s, y: s0.y - 0.21 * hen.s * gy }, F = K.fly, R = clamp((hen.s * k * FROST_H) / 1.38, 15, S), B = R * 1.3; S = B * 0.85; // R: riding body height (px), B: in flight
   const up = (s) => (s * 0.47 / k) * gy; // body centre above the spot its feet stand on
   if (POST.sim !== sim) { POST.sim = sim; POST.was = false; POST.t0 = -99; }
   const at = (x, y, draw) => px(ctx, x, y, k, () => { if (globalThis.__stkDbg) { const m = ctx.getTransform(); globalThis.__stkDbg.x = m.e; globalThis.__stkDbg.y = m.f; } draw(); }); // (QA strips follow the chick)
-  const chick = (x, y, s, o) => at(x, y, () => drawStrikeChick(ctx, 'freeze', 0, 0, s, t, o));
+  const chick = (x, y, s, o) => at(x, y, () => drawStrikeChick(ctx, id, 0, 0, s, t, o));
   if (!F) {
-    if (POST.was) { POST.was = false; POST.t0 = t; }
+    if (POST.was) { POST.was = false; POST.t0 = id === 'decoy' ? -99 : t; } // the decoy stays out there, posing as an egg
+    if (id === 'decoy' && sim.p2d && sim.p2d.alive && sim.p2.decoy && sim.p2.decoy.stk) return;
     const tau = t - POST.t0;
     if (tau >= 0 && tau < 2.6 && POST.tgt) { // the beat after the hit: smack, recoil in a backflip to her back, land, gloat
       const tg = POST.tgt, dir = Math.cos(POST.ang) < 0 ? -1 : 1;
-      ctx.save(); iceWake(ctx, POST.a, tg, 1 + tau / FLIGHT.fly, k, S); ctx.restore();
+      ctx.save(); wake(POST.a, tg, 1 + tau / FLIGHT.fly); ctx.restore();
       if (tau < 0.1) { // flat against it
-        at(tg.x - Math.cos(POST.ang) * 0.12, tg.y - Math.sin(POST.ang) * 0.12, () => { ctx.rotate(-POST.ang); if (dir < 0) ctx.scale(1, -1); drawStrikeChick(ctx, 'freeze', 0, 0, B, t, { mood: 'hit', stretch: -0.32, feet: false, wing: 0.7, trail: -1, fog: false }); });
+        at(tg.x - Math.cos(POST.ang) * 0.12, tg.y - Math.sin(POST.ang) * 0.12, () => { ctx.rotate(-POST.ang); if (dir < 0) ctx.scale(1, -1); drawStrikeChick(ctx, id, 0, 0, B, t, { mood: 'hit', stretch: -0.32, feet: false, wing: 0.7, trail: -1, fog: false }); });
       } else if (tau < 0.78) {
         const v = (tau - 0.1) / 0.68, e = 1 - Math.pow(1 - v, 1.6), to = { x: seat.x, y: seat.y + up(R) }, p = { x: lerp(tg.x, to.x, e), y: lerp(tg.y, to.y, e) + (0.9 + 0.12 * Math.abs(tg.y - to.y)) * 4 * e * (1 - e) * gy };
-        at(p.x, p.y, () => { ctx.rotate(dir * TAU * ss(0, 0.9, v)); drawStrikeChick(ctx, 'freeze', 0, 0, lerp(B, R, e), t, { flip: v > 0.5 ? true : dir < 0, mood: ['hit', 'smug', ss(0.3, 0.8, v)], squash: 0.12, feet: false, wing: v > 0.75 ? 0.8 : 0.1, trail: -0.5 * (1 - v), fog: false }); });
+        at(p.x, p.y, () => { ctx.rotate(dir * TAU * ss(0, 0.9, v)); drawStrikeChick(ctx, id, 0, 0, lerp(B, R, e), t, { flip: v > 0.5 ? true : dir < 0, mood: ['hit', 'smug', ss(0.3, 0.8, v)], squash: 0.12, feet: false, wing: v > 0.75 ? 0.8 : 0.1, trail: -0.5 * (1 - v), fog: false }); });
       } else {
         const v = tau - 0.78, sq = 0.5 * Math.exp(-7 * v) * Math.cos(v * 15), out = ss(2.1, 2.6, tau);
         chick(seat.x, seat.y + up(R), R, { flip: true, mood: ['smug', 'idle', out], squash: sq, wing: 0, trail: -0.6 * Math.exp(-6 * v) * Math.cos(v * 13), look: { x: -0.5, y: 0.25 }, blink: 0, fog: v > 0.25 && v < 1.15 ? (v - 0.25) / 0.9 : false, rot: Math.sin(v * 3.2) * 0.07 * (1 - out) });
@@ -468,6 +448,7 @@ function frostWorld(ctx, sim, K, k, t, hen, S) {
     return;
   }
   const tgt = { x: F.tx, y: F.ty }, sp = nestSpot(hen), a = { x: sp.x, y: sp.y + up(B) };
+  FUSE = F.ph === 'hop' ? 1 - 0.55 * clamp(F.t / FLIGHT.hop, 0, 1) : 0.45 - 0.4 * clamp(F.t / FLIGHT.fly, 0, 1); // the Boom Chick's fuse burns down
   if (F.ph === 'hop') { // anticipation crouch on her back, hop down by the nest, land in a deep squash, coil
     const u = clamp(F.t / FLIGHT.hop, 0, 1), left = tgt.x < sp.x;
     if (u < 0.3) { const v = u / 0.3; chick(seat.x, seat.y + up(R), R, { flip: true, mood: ['idle', 'crouch', v * 2], squash: ss(0, 1, v) * 0.55, trail: -0.5 * v, wing: 0.15, look: { x: 1, y: 0.2 }, fog: false }); }
@@ -479,11 +460,11 @@ function frostWorld(ctx, sim, K, k, t, hen, S) {
   const u = clamp(F.t / FLIGHT.fly, 0, 1), ue = Math.pow(u, 1.15), p = arcAt(a, tgt, ue), q = arcAt(a, tgt, Math.min(1, ue + 0.02));
   const ang = Math.atan2(q.y - p.y, q.x - p.x), dir = Math.cos(ang) < 0 ? -1 : 1, spin = ss(0.16, 0.6, u), tuck = Math.sin(spin * Math.PI);
   POST.was = true; POST.a = a; POST.tgt = tgt; POST.ang = ang;
-  ctx.save(); iceWake(ctx, a, tgt, ue, k, S); ctx.restore();
+  ctx.save(); wake(a, tgt, ue); ctx.restore();
   at(p.x, p.y, () => {
     ctx.rotate(-ang); if (dir < 0) ctx.scale(1, -1);
     ctx.rotate(-TAU * spin);
-    drawStrikeChick(ctx, 'freeze', 0, 0, B * 1.05, t, { mood: tuck > 0.5 ? 'crouch' : 'yell', stretch: lerp(0.24, -0.06, tuck), feet: false, wing: 1 - tuck * 0.9, trail: lerp(1, 0.35, tuck), look: { x: 1, y: 0 }, fog: false });
+    drawStrikeChick(ctx, id, 0, 0, B * 1.05, t, { mood: tuck > 0.5 ? 'crouch' : 'yell', stretch: lerp(0.24, -0.06, tuck), feet: false, wing: 1 - tuck * 0.9, trail: lerp(1, 0.35, tuck), look: { x: 1, y: 0 }, fog: false });
   });
 }
 
@@ -509,42 +490,12 @@ export function drawStrikeWorld(ctx, sim, k, t, hen) {
   const D = sim.p2d;
   if (D && D.alive && sim.p2.decoy && sim.p2.decoy.stk) {
     const p = D.body.getPosition(), dc = sim.p2.decoy, blink = dc.t < 1.5 && Math.sin(t * 22) < -0.2;
-    px(ctx, p.x, p.y, k, () => { ctx.globalAlpha = blink ? 0.5 : 1; ctx.rotate(-D.body.getAngle() * 0.6); drawStrikeChick(ctx, 'decoy', 0, -S * 0.02, S * 1.25, t, { feet: false, squash: Math.sin(t * 3) * 0.05, look: { x: 1, y: 0 } }); });
+    px(ctx, p.x, p.y, k, () => { ctx.globalAlpha = blink ? 0.5 : 1; ctx.rotate(-D.body.getAngle() * 0.6); drawStrikeChick(ctx, 'decoy', 0, S * 0.1, S * 0.5, t, { feet: false, wing: 0, squash: Math.sin(t * 3) * 0.05 }); });
   }
   // rage: the fooled creatures fume
   if (K.rage > 0) for (const T of sim.stkTargets()) px(ctx, T.x, T.y + 0.45, k, () => rageMark(ctx, S * 0.5, t + T.x));
   if (!hen || !K.on) return;
-  if ((K.fly ? K.fly.id : K.id) === 'freeze') { frostWorld(ctx, sim, K, k, t, hen, S); return; }
-  const seat = strikeSeat(hen), gy = hen.gy || 1, F = K.fly;
-  if (!F) { // riding: bobs with her, looks around; full: it stands up tall and flaps
-    const full = K.m >= 1, b = Math.sin(t * (full ? 7 : 2.2)) * (full ? 0.06 : 0.025);
-    px(ctx, seat.x, seat.y + S * 0.36 / k * gy, k, () => drawStrikeChick(ctx, K.id, 0, 0, S * 0.8, t, { flip: true, squash: b, wing: full ? 0.5 + 0.5 * Math.sin(t * 14) : 0, look: { x: 0.6, y: -0.2 } }));
-    return;
-  }
-  const tgt = { x: F.tx, y: F.ty };
-  if (F.ph === 'hop') { // crouch on her back, hop down by the nest, squash on landing
-    const u = clamp(F.t / FLIGHT.hop, 0, 1), sp = nestSpot(hen);
-    let x, y, sq, rot = 0;
-    if (u < 0.3) { x = seat.x; y = seat.y; sq = ss(0, 0.3, u) * 0.5; }
-    else if (u < 0.72) { const v = (u - 0.3) / 0.42; x = lerp(seat.x, sp.x, v); y = lerp(seat.y, sp.y, v) + 0.5 * 4 * v * (1 - v) * gy; sq = -0.35 * Math.sin(v * Math.PI); rot = -0.4 * v; }
-    else { const v = (u - 0.72) / 0.28; x = sp.x; y = sp.y; sq = 0.6 * (1 - v) + 0.3 * v; }
-    px(ctx, x, y + S * 0.36 / k * gy, k, () => drawStrikeChick(ctx, K.id, 0, 0, S, t, { flip: tgt.x < x, squash: sq, rot, wing: u > 0.3 && u < 0.72 ? 1 : 0.2, look: { x: 1, y: -0.4 } }));
-    return;
-  }
-  // the flight: a streak behind, the chick stretched along its path, beak open (squawk)
-  const a = nestSpot(hen), u = clamp(F.t / FLIGHT.fly, 0, 1), ue = Math.pow(u, 1.15), p = arcAt(a, tgt, ue), q = arcAt(a, tgt, Math.min(1, ue + 0.02));
-  const ang = Math.atan2(q.y - p.y, q.x - p.x), col = STRIKE[K.id].col;
-  ctx.save(); ctx.lineCap = 'round';
-  for (let j = 10; j >= 1; j--) {
-    const u0 = Math.max(0, ue - j * 0.028), u1 = Math.max(0, ue - (j - 1) * 0.028), p0 = arcAt(a, tgt, u0), p1 = arcAt(a, tgt, u1), f = 1 - j / 11;
-    ctx.globalAlpha = 0.85 * f; ctx.strokeStyle = col[0]; ctx.lineWidth = (S * 0.5 * f) / k; ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
-    ctx.globalAlpha = 0.9 * f; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = (S * 0.16 * f) / k; ctx.stroke();
-  }
-  ctx.restore();
-  px(ctx, p.x, p.y, k, () => {
-    ctx.rotate(-ang);
-    drawStrikeChick(ctx, K.id, 0, 0, S * 1.05, t, { squash: -0.35, feet: false, wing: 1, open: 1, look: { x: 1, y: 0 }, rot: Math.PI / 2 * 0 });
-  });
+  frostWorld(ctx, sim, K, k, t, hen, S, K.fly ? K.fly.id : K.id);
 }
 
 function drawGoo(ctx, P, k, t) {
@@ -681,8 +632,7 @@ export function drawStrikeButton(ctx, x, y, d, st) {
   // the chick
   ctx.save(); ctx.beginPath(); ctx.arc(0, 0, ri, 0, TAU); ctx.clip();
   if (st.busy) ctx.globalAlpha = 0.35;
-  if (id === 'freeze') drawStrikeChick(ctx, id, -ri * 0.22, ri * 0.2 - (full && !st.calm ? Math.abs(Math.sin(t * 6.5)) * ri * 0.07 : 0), ri * 1.62, st.calm ? 0.4 : t, { feet: false, fog: false, mood: full ? 'ready' : 'idle', look: { x: 0.6, y: full ? -0.2 : 0.1 }, wing: 0, trail: full && !st.calm ? Math.sin(t * 6.5) * 0.2 : 0 }); // the face fills the well
-  else drawStrikeChick(ctx, id, 0, ri * 0.12, ri * 1.45, t, { feet: false, squash: full ? Math.sin(t * 8) * 0.05 : 0, look: { x: 0.5, y: 0.2 }, wing: full ? 0.4 : 0 });
+  drawStrikeChick(ctx, id, -ri * 0.22, ri * 0.2 - (full && !st.calm ? Math.abs(Math.sin(t * 6.5)) * ri * 0.07 : 0), ri * 1.62, st.calm ? 0.4 : t, { feet: false, fog: false, mood: full ? 'ready' : 'idle', look: { x: 0.6, y: full ? -0.2 : 0.1 }, wing: 0, trail: full && !st.calm ? Math.sin(t * 6.5) * 0.2 : 0 }); // the face fills the well
   ctx.restore();
   if (!full && !st.busy) { // dim it a touch while it charges
     ctx.fillStyle = `rgba(30,18,8,${0.32 * (1 - m)})`; ctx.beginPath(); ctx.arc(0, 0, ri, 0, TAU); ctx.fill();
@@ -700,15 +650,13 @@ export function drawStrikeToken(ctx, id, cx, cy, r, t, sel) {
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fill();
   ctx.lineWidth = sel ? r * 0.14 : r * 0.07; ctx.strokeStyle = sel ? '#e8962a' : 'rgba(110,74,42,0.6)'; ctx.stroke();
   ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r * 0.94, 0, TAU); ctx.clip();
-  if (id === 'freeze') drawStrikeChick(ctx, id, cx - r * 0.2, cy + r * 0.26, r * 1.45, sel ? t : 0.4, { feet: false, fog: false, mood: sel ? 'smug' : 'idle', squash: sel ? Math.sin(t * 6) * 0.03 : 0 });
-  else drawStrikeChick(ctx, id, cx, cy + r * 0.16, r * 1.5, sel ? t : 0.4, { feet: false, squash: sel ? Math.sin(t * 6) * 0.04 : 0, fire: true });
+  drawStrikeChick(ctx, id, cx - r * 0.2, cy + r * 0.26, r * 1.45, sel ? t : 0.4, { feet: false, fog: false, mood: sel ? 'smug' : 'idle', squash: sel ? Math.sin(t * 6) * 0.03 : 0 });
   ctx.restore();
   ctx.restore();
 }
 export function drawStrikeStage(ctx, id, x, y, w, h, t) {
   const s = h * 0.82, u = (t % 1.6) / 1.6, hop = Math.max(0, Math.sin(u * TAU)) * h * 0.08, sq = u > 0.5 ? 0.25 * Math.exp(-(u - 0.5) * 18) : -0.1 * Math.sin(u * TAU);
   contact(ctx, x + w / 2, y + h * 0.9, s * 0.3, s * 0.05, 0.3);
-  if (id === 'freeze') { const f = s * 0.6; drawStrikeChick(ctx, id, x + w / 2 - f * 0.05, y + h * 0.9 - f * 0.56 - hop, f, t, { squash: sq, wing: hop > 2 ? 0.9 : 0, mood: hop > 2 ? 'ready' : 'smug', trail: hop > 2 ? 0.5 : -sq, look: { x: 0.3, y: 0.2 } }); return; }
-  drawStrikeChick(ctx, id, x + w / 2, y + h * 0.48 - hop, s, t, { squash: sq, wing: hop > 2 ? 0.8 : 0.1, look: { x: 0.2, y: 0.3 }, fire: true });
+  const f = s * 0.6; drawStrikeChick(ctx, id, x + w / 2 - f * 0.05, y + h * 0.9 - f * 0.56 - hop, f, t, { squash: sq, wing: hop > 2 ? 0.9 : 0, mood: hop > 2 ? 'ready' : 'smug', trail: hop > 2 ? 0.5 : -sq, look: { x: 0.3, y: 0.2 } });
 }
 export { STRIKES };
