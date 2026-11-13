@@ -258,7 +258,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 26, theme: "storm", name: "Storm Peaks", eggs: 3, target: 2, time: 80, spacing: 1, material: "metal", nest: {w: 2.8}, weather: "thunder", bonus: {kind: "turns", n: 10}, gusts: {delay: 7, every: 11, strength: 3, dur: 2}, tip: "A flicker means a strike is coming. Keep eggs away from that spot.", orbs: [{type: "thunder", ch: 2, a: 11},{type: "bubble", ch: 3, a: -86},{type: "magnet", ch: 1, a: 96},{type: "fire_black", ch: 4, a: -115}], seed: 205897, world: 6, intro: {title: "Storm Peaks", line: "Lightning flickers on a ring, then strikes and locks it. A locked ring holds still: use it."},
+    id: 26, theme: "storm", name: "Storm Peaks", eggs: 3, target: 2, time: 80, spacing: 1, material: "metal", nest: {w: 2.8}, weather: "thunder", bonus: {kind: "turns", n: 10}, gusts: {delay: 7, every: 11, strength: 3, dur: 2}, chameleon: { delay: 2, dir: 1}, tip: "Let Sly eat the black flame: he gets sick and coughs up the last orb he stole.", orbs: [{type: "thunder", ch: 2, a: 11},{type: "bubble", ch: 3, a: -86},{type: "magnet", ch: 1, a: 96},{type: "fire_black", ch: 4, a: -115}], seed: 205897, world: 6, intro: {title: "Storm Peaks", line: "Lightning strikes and locks a ring. And Sly the chameleon creeps in to steal power orbs with his tongue: grab them first."},
     rings: [
       {gaps: [{a: 111}], thorns: [{a: 9, n: 1}]},
       {mat: "cloud", gaps: [{a: 12, x: 2}], thorns: [{a: 74, n: 3},{a: 85, n: 2, side: "out", h: 0.26}], pads: [{a: 120, len: 1.79}]},

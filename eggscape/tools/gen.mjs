@@ -28,7 +28,7 @@ const wrapD = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 const dist = (a, b) => Math.abs(wrapD(a - b));
 const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
 // level fields copied from the spec as they are (not laid out)
-const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'weasel', 'rats', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander', 'octopus'];
+const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'weasel', 'rats', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander', 'octopus', 'chameleon'];
 LEVEL_KEYS.push('hermit', 'puffer', 'jelly'); // world 8 Coral Reef
 LEVEL_KEYS.push('shape', 'rock', 'spider'); // v4 Shape Lab: vault shape, the rocking vault, the clockwork spider (beetle and jack are laid out below)
 LEVEL_KEYS.push('gator', 'turtle', 'mosquito'); // world 9 Gator Bayou

@@ -9,7 +9,7 @@ const IDS = opt('only').length ? opt('only') : ['freeze', 'thunder', 'bomb', 'de
 // one place to meet each creature kind (campaign level id, or a dev demo) and each boss (type*; L15's frost gecko and L20's Duke Quartz are sal bosses; L20's Spike is a plain sal)
 const CASES = [
   ['snake', 7], ['octo', 13], ['sal', 22], ['eagle', 27], ['thief', 31], ['hermit', 36], ['puff', 37], ['jelly', 38],
-  ['gator', 41], ['turtle', 42], ['mosq', 42], ['spider', 46], ['beetle', 48], ['jack', 48], ['frog', 'frog'], ['fish', 'fish'],
+  ['gator', 41], ['turtle', 42], ['mosq', 42], ['sal', 26], ['spider', 46], ['beetle', 48], ['jack', 48], ['frog', 'frog'], ['fish', 'fish'],
   ['thief*', 5], ['snake*', 10], ['sal*', 15], ['sal*', 20], ['sal', 20], ['sal*', 25], ['bx*', 30], ['thief*', 35], ['kc*', 40], ['gator*', 45], ['bx*', 50],
 ].filter(([t]) => !opt('types').length || opt('types').includes(t.replace('*', '')));
 

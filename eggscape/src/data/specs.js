@@ -243,9 +243,10 @@ export const SPECS = [
   { id: 26, world: 6, theme: 'storm', name: 'Storm Peaks', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 4, weather: 'thunder',
     nest: { w: 2.8 }, bonus: { kind: 'turns' },
     gusts: { delay: 7, every: 11, strength: 3, dur: 2 }, // v3.1: storm gusts shove eggs (and snakes) along the channels
+    chameleon: { delay: 2, dir: 1 }, // Sly, the orb thief (sim/chameleon.js): crawls in through an outer gap and eats orbs
     orbs: [{ type: 'thunder', ch: 2 }, { type: 'bubble', ch: 3 }, { type: 'magnet', ch: 1 }, { type: 'fire_black', ch: 4 }],
-    intro: { title: 'Storm Peaks', line: 'Lightning flickers on a ring, then strikes and locks it. A locked ring holds still: use it.' },
-    tip: 'A flicker means a strike is coming. Keep eggs away from that spot.',
+    intro: { title: 'Storm Peaks', line: 'Lightning strikes and locks a ring. And Sly the chameleon creeps in to steal power orbs with his tongue: grab them first.' },
+    tip: 'Let Sly eat the black flame: he gets sick and coughs up the last orb he stole.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'cloud', gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'cloud', gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 27, world: 6, theme: 'storm', name: 'Eagle Crag', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5, weather: 'thunder',
     nest: { w: 3.0 }, bonus: { kind: 'prize' }, eagle: { delay: 8, every: 11 },

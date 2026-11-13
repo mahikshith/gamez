@@ -87,6 +87,7 @@ const ART = {
   // the boss-bar emblems (render/boss.js drawBossEmblem; that function is not exported, so the two shapes are redrawn here)
   'boss:blizzard'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawGeckoEmblem(ctx, d * 0.34, t); ctx.restore(); }, // Baron von Brr, the frost gecko
   'boss:golem'(ctx, x, y, d, t) { const r = d * 0.34; chip(ctx, x, y, r, '#6a4fc8'); ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip(); ctx.translate(x, y); drawThornEmblem(ctx, r, t); ctx.restore(); }, // Duke Quartz
+  chameleon(ctx, x, y, d, t) { const S = d * 0.34; drawCrawler(ctx, x + 0.8 * S, y + d * 0.02, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', look: { x: 0.5, y: 0.4 }, id: 9260 }, 'chameleon'); }, // L26: Sly, the orb thief
   spike(ctx, x, y, d, t) { const S = d * 0.36; drawCrawler(ctx, x + 0.75 * S, y + d * 0.04, S, t, { heading: 0, curve: -0.14 / S, pose: 'idle', look: { x: 0.4, y: 0.5 }, id: 9120 }, 'thornback'); }, // Spike, the sandy thorn-back
   // ---- hazards: small icons
   icicles(ctx, x, y, d, t) {

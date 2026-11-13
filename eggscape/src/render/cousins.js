@@ -642,7 +642,7 @@ function chamHead(ctx, E) {
   nostrils(ctx, E, fx - 3.4, 2.3, 0.6);
   if (m <= 0.03) { lip(ctx, E, fx, 11.6, 1.8, 1.5); if (P.dazed > 0.4) lolling(ctx, E, fx); }
   // the eyes: one keeps watch ahead, the other goes sightseeing; they only agree when there is something to eat
-  const blink = opts.blink !== undefined ? opts.blink : blinkAt(t, id + 1), hunt = clamp(Math.max(P.snatch * 4, m * 2), 0, 1), spin = P.dazed > 0.5;
+  const blink = opts.blink !== undefined ? opts.blink : blinkAt(t, id + 1), hunt = clamp(Math.max(P.snatch * 4, m * 2, opts.hunt || 0), 0, 1), spin = P.dazed > 0.5;
   const q = t / 1.6 + id * 0.31, n = Math.floor(q), f = sstep((q - n) / 0.22);
   let aA = opts.look ? Math.atan2(opts.look.y, opts.look.x) : 0.3 * Math.sin(t * 0.6 + id), aB = lerp(hash(n * 7.3 + id - 7.3), hash(n * 7.3 + id), f) * TAU;
   if (Math.cos(aB - aA) > 0.3) aB += 2; // never the same way

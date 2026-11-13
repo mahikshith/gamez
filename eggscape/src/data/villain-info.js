@@ -163,6 +163,12 @@ export const VILLAIN_INFO = {
     beat: 'A stone egg flips him. Turn the ring under a thorn fast to shake it.',
     more: 'He duels the Duke on sight. Weaken one first to pick the winner.',
   },
+  chameleon: {
+    group: 'creature', name: 'Sly the chameleon',
+    does: 'Crawls in and steals power orbs with his tongue. Never eggs.',
+    beat: 'Grab orbs first. Feed him the black flame: he coughs one back up.',
+    more: 'Strikes, stuns and a Stone egg stop him. Sitting still, he fades.',
+  },
   hermit: {
     group: 'creature', name: 'Hermit crab',
     does: 'Tucks an egg in its shell and walks it away from the nearest gap.',
@@ -273,7 +279,7 @@ export const VILLAIN_INFO = {
 
 export const ATTACK_EXTRA = { heat: 'Rising heat' }; // phase flags shown as an attack (names not in sim/boss.js ATTACK_NAME)
 
-const CREATURE_KEYS = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
+const CREATURE_KEYS = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
 const listOf = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
 const HAZARD_ORBS = { curse: 'curse', thorn: 'thornorb' };
 

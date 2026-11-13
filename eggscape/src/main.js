@@ -1683,6 +1683,27 @@ function salEvent(ev, fx) {
       fx.kick(0.34); hitStop(0.08); camPunch(0.035, ev.x, ev.y); fx.shake = Math.max(fx.shake, 0.3);
       break;
     case 'thornThrown': audio.play('rock_hit', { vol: 0.8, pitch: 0.6 }); popup(ev.x, ev.y + 0.7, ev.lose === 'duke' ? 'Duke down!' : 'Spike down!', { color: '#fff2a8', size: 18, life: 1.2 }); break;
+    // L26: Sly the chameleon, the orb thief (sim/chameleon.js)
+    case 'chamIn': audio.play('squish', { vol: 0.4, pitch: 1.4 }); fx.chips(ev.x, ev.y, '#9fe07a', 6, 1.4); break;
+    case 'chamInside': once('chamIn', 'Sly steals power orbs with his tongue. Feed him the black flame to make him cough one up.'); break;
+    case 'chamSnatch':
+      audio.play('squish', { vol: 0.8, pitch: 1.7 });
+      fx.sparkle(ev.x, ev.y, 8, powerInfo(ev.power).color);
+      popup(ev.x, ev.y + 0.5, 'Snatched!', { color: '#b8ff7a', size: 17, life: 0.9 });
+      break;
+    case 'chamGulp': audio.play('egg_bump', { vol: 0.5, pitch: 0.6 }); break;
+    case 'chamMiss':
+      audio.play('squish', { vol: 0.45, pitch: 2 });
+      popup(ev.x, ev.y + 0.5, 'Too slow, Sly!', { color: '#fff2a8', size: 16, life: 0.9 });
+      break;
+    case 'chamSick':
+      audio.play('lava_sizzle', { vol: 0.5, pitch: 0.6 });
+      popup(ev.x, ev.y + 0.6, 'Bleurgh!', { color: '#d7ff7a', size: 19, life: 1.1 });
+      break;
+    case 'chamCough': audio.play('squish', { vol: 0.9, pitch: 0.7 }); popup(ev.x, ev.y + 0.6, 'HURK!', { color: '#ffe680', size: 18, life: 0.8 }); break;
+    case 'chamCoughed': fx.sparkle(ev.x, ev.y, 10, powerInfo(ev.power).color); popup(ev.x, ev.y + 0.45, 'Orb back!', { color: '#b8ff7a', size: 16, life: 0.9 }); break;
+    case 'chamDrop': fx.sparkle(ev.x, ev.y, 6, powerInfo(ev.power).color); break;
+    case 'chamBump': audio.play('rock_hit', { vol: 0.7, pitch: 1.1 }); popup(ev.x, ev.y + 0.55, 'Bump!', { color: '#ffe1a8', size: 16, life: 0.7 }); break;
     case 'geckoIn': // L15: Baron von Brr squeezes in through the outer ring (sim/salamander.js, species gecko)
       audio.play('glass_crack', { vol: 0.4, pitch: 1.8 });
       fx.chips(ev.x, ev.y, '#e6f6ff', 8, 1.8);

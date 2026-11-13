@@ -85,7 +85,7 @@ export function v31Step(sim, dt) {
   const X = sim.bx;
   if (!X) return;
   // the lava salamander creature (sim/salamander.js): walks, breathes fire, and in the boss fight it is the boss
-  if (sim.level.boss === 'salamander' || sim.level.salamander || (sim.level.bossFight && (sim.level.bossFight.gecko || sim.level.bossFight.thorn))) sim.salamanderStep?.(dt); // + L15's frost gecko (the same crawler)
+  if (sim.level.boss === 'salamander' || sim.level.salamander || sim.level.chameleon || (sim.level.bossFight && (sim.level.bossFight.gecko || sim.level.bossFight.thorn))) sim.salamanderStep?.(dt); // + L15's frost gecko (the same crawler)
   for (const R of X.rl) if (R.frost > 0 && (R.frost -= dt) <= 0) { R.frost = 0; sim.emit('thaw', { ring: X.rl.indexOf(R) }); }
   sim.rings.forEach((ring, i) => {
     const R = X.rl[i];

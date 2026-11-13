@@ -22,7 +22,7 @@ const BOARD = new Set(['id', 'key', 'kind', 'theme', 'name', 'eggs', 'target', '
 const RING_BOARD = new Set(['gaps', 'thorns', 'pads', 'mat', 'gear', 'oneway', 'ice', 'honey', 'shape', 'fixed', 'grate']);
 const GAP_BOARD = new Set(['a', 'len', 'x', 'shut', 'curtain', 'grate']);
 // villain / hazard keys -> table kind
-const CREATURE = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
+const CREATURE = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
 const HAZARD_KEY = { icicles: 'icicles', lava: 'lava', gusts: 'gusts', wind: 'gusts' };
 const WEATHER = { thunder: 'lightning', current: 'current', embers: 'embers', quake: 'quake', rain: 'rain' };
 const ORB = { curse: 'curse', thorn: 'thornorb' };
