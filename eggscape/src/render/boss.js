@@ -381,8 +381,8 @@ export function drawBossActor(ctx, sim, k, t) {
   if (!Q) return;
   const A = B.atk, calm = isSpriteCalm();
   const warnU = A && A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 0, acting = A && A.ph === 'act';
-  // blizzard (L15): no figure. The owner wants villains inside the vault or none; the storm itself attacks.
-  if (B.kind === 'golem') drawBigBoss(ctx, drawGolem, sim, B, Q, k, t, warnU, acting, calm);
+  // blizzard (L15): no figure. The owner found the mammoth too bulky for the game's look; the storm itself attacks.
+  // golem (L20): no figure either. The owner found the big mammoth and golem bodies too bulky for the game's look; attacks stay.
   if (B.kind === 'owl') drawOwlBoss(ctx, sim, k, t);
   // the frost stomp: once the foot is down (45% into the warning) frost cracks race from it to the ring it freezes
   if (A && A.name === 'freeze' && B.kind === 'blizzard' && !calm) {
