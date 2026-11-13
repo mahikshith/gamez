@@ -12,6 +12,7 @@ import { boltStroke } from './status.js';
 import { STRIKE, STRIKES, FLIGHT } from '../data/strikes.js';
 
 import { hitBegin, hitRage, drawHitFx } from './strikehit.js';
+import { henStrike, henAnchors, henWingOver } from './hen.js'; // the hen's wing launches the chick
 const TAU = Math.PI * 2;
 export const strikeColor = (id) => (STRIKE[id] ? STRIKE[id].col[0] : '#fff');
 
@@ -377,7 +378,6 @@ const rnd = (seed) => { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525
 
 // where the chick rides (world, y up): on the hen's back. hen = { x, y (her feet), s (her height, m), gy }
 export function strikeSeat(hen) { return { x: hen.x + 0.16 * hen.s, y: hen.y + (0.86 * hen.s) * (hen.gy || 1) }; }
-function nestSpot(hen) { return { x: hen.x - 0.42 * hen.s, y: hen.y + 0.14 * (hen.gy || 1) }; }
 // the arc of the flight at u (0..1)
 function arcAt(a, b, u) {
   const d = Math.hypot(b.x - a.x, b.y - a.y), h = 0.35 * d + 0.6;
@@ -387,6 +387,7 @@ function arcAt(a, b, u) {
 // ---------------------------------------------------------------- the chick in the world (rider, hop, flight, the beat after)
 const FROST_H = 0.44; // riding, the chick (feet to helmet top) stands this fraction of the hen's height: clearly her small chick
 const POST = { sim: null, was: false, t0: -99, a: null, tgt: null, ang: 0 };
+const RIDE = { sim: null, b: 1, t: 0, land: -99, hit: -99, rel: null }; // b: 0 on the ground behind the hen .. 1 on her back; rel: where her wing released it
 // the icy wake: a serrated ribbon of cold along the arc, chips of ice thrown off it, mist that hangs. ue may run past 1.
 function iceWake(ctx, a, tgt, ue, k, S) {
   const N = 14, u1 = Math.min(1, ue), u0 = Math.max(0, ue - 0.34);
@@ -425,43 +426,76 @@ function frostWorld(ctx, sim, K, k, t, hen, S, id) {
   if (POST.sim !== sim) { POST.sim = sim; POST.was = false; POST.t0 = -99; }
   const at = (x, y, draw) => px(ctx, x, y, k, () => { if (globalThis.__stkDbg) { const m = ctx.getTransform(); globalThis.__stkDbg.x = m.e; globalThis.__stkDbg.y = m.f; } draw(); }); // (QA strips follow the chick)
   const chick = (x, y, s, o) => at(x, y, () => drawStrikeChick(ctx, id, 0, 0, s, t, o));
+  // v5, the wing launch. Charging, the chick stands on the ground behind her (the side away from the nest); when the meter
+  // fills it hops onto her back; on fire she winds her near wing under it and bats it away; after the hit it backflips home
+  // to the ground. The hen (render/hen.js) is told what the chick does and answers with where her back and her wing are.
+  const m = ctx.getTransform(), det = m.a * m.d - m.b * m.c || 1;
+  const toW = (p) => ({ x: (m.d * (p[0] - m.e) - m.c * (p[1] - m.f)) / det, y: (-m.b * (p[0] - m.e) + m.a * (p[1] - m.f)) / det }); // canvas px -> world
+  const toC = (p) => [m.a * p.x + m.c * p.y + m.e, m.b * p.x + m.d * p.y + m.f];
+  const A = henAnchors(), sw = A ? toW(A.seat) : seat, back = { x: sw.x, y: sw.y + up(R) }; // sitting on her back (the seat rides her breathing, her dip, her squash)
+  const boat = !!sim.water, edge = toW([ctx.canvas.width, 0]).x; // in the boat there is no ground beside her: it rides her back
+  const gp = { x: Math.max(hen.x + 0.34 * hen.s, Math.min(hen.x + 0.7 * hen.s, edge - (R * 0.8) / k)), y: hen.y + up(R) };
+  if (RIDE.sim !== sim) { RIDE.sim = sim; RIDE.b = K.m >= 1 || boat || F ? 1 : 0; RIDE.t = t; RIDE.land = -99; RIDE.hit = -99; RIDE.rel = null; }
+  const dT = clamp(t - RIDE.t, 0, 0.05); RIDE.t = t;
   if (!F) {
-    if (POST.was) { POST.was = false; POST.t0 = id === 'decoy' ? -99 : t; } // the decoy stays out there, posing as an egg
-    if (id === 'decoy' && sim.p2d && sim.p2d.alive && sim.p2.decoy && sim.p2.decoy.stk) return;
-    const tau = t - POST.t0;
-    if (tau >= 0 && tau < 2.6 && POST.tgt) { // the beat after the hit: smack, recoil in a backflip to her back, land, gloat
+    if (POST.was) { POST.was = false; POST.t0 = id === 'decoy' ? -99 : t; RIDE.hit = t; RIDE.rel = null; RIDE.b = boat ? 1 : 0; } // the decoy stays out there, posing as an egg
+    const hit = t - RIDE.hit, look = toC(POST.tgt || back);
+    if (id === 'decoy' && sim.p2d && sim.p2d.alive && sim.p2.decoy && sim.p2.decoy.stk) { if (hit < 0.7) henStrike({ phase: 'after', u: hit, tx: look[0], ty: look[1] }); return; }
+    const tau = t - POST.t0, home = boat ? back : gp;
+    if (tau >= 0 && tau < 2.6 && POST.tgt) { // the beat after the hit: smack, recoil in a backflip to the ground beside her, land, gloat
       const tg = POST.tgt, dir = Math.cos(POST.ang) < 0 ? -1 : 1;
       ctx.save(); wake(POST.a, tg, 1 + tau / FLIGHT.fly); ctx.restore();
       if (tau < 0.1) { // flat against it
         at(tg.x - Math.cos(POST.ang) * 0.12, tg.y - Math.sin(POST.ang) * 0.12, () => { ctx.rotate(-POST.ang); if (dir < 0) ctx.scale(1, -1); drawStrikeChick(ctx, id, 0, 0, B, t, { mood: 'hit', stretch: -0.32, feet: false, wing: 0.7, trail: -1, fog: false }); });
+        if (hit < 0.7) henStrike({ phase: 'after', u: hit, tx: look[0], ty: look[1] });
       } else if (tau < 0.78) {
-        const v = (tau - 0.1) / 0.68, e = 1 - Math.pow(1 - v, 1.6), to = { x: seat.x, y: seat.y + up(R) }, p = { x: lerp(tg.x, to.x, e), y: lerp(tg.y, to.y, e) + (0.9 + 0.12 * Math.abs(tg.y - to.y)) * 4 * e * (1 - e) * gy };
+        const v = (tau - 0.1) / 0.68, e = 1 - Math.pow(1 - v, 1.6), to = home, p = { x: lerp(tg.x, to.x, e), y: lerp(tg.y, to.y, e) + (0.9 + 0.12 * Math.abs(tg.y - to.y)) * 4 * e * (1 - e) * gy };
         at(p.x, p.y, () => { ctx.rotate(dir * TAU * ss(0, 0.9, v)); drawStrikeChick(ctx, id, 0, 0, lerp(B, R, e), t, { flip: v > 0.5 ? true : dir < 0, mood: ['hit', 'smug', ss(0.3, 0.8, v)], squash: 0.12, feet: false, wing: v > 0.75 ? 0.8 : 0.1, trail: -0.5 * (1 - v), fog: false }); });
+        if (hit < 0.7) { const c = toC(p); henStrike({ phase: 'after', u: hit, tx: c[0], ty: c[1] }); }
       } else {
         const v = tau - 0.78, sq = 0.5 * Math.exp(-7 * v) * Math.cos(v * 15), out = ss(2.1, 2.6, tau);
-        chick(seat.x, seat.y + up(R), R, { flip: true, mood: ['smug', 'idle', out], squash: sq, wing: 0, trail: -0.6 * Math.exp(-6 * v) * Math.cos(v * 13), look: { x: -0.5, y: 0.25 }, blink: 0, fog: v > 0.25 && v < 1.15 ? (v - 0.25) / 0.9 : false, rot: Math.sin(v * 3.2) * 0.07 * (1 - out) });
+        if (boat) { RIDE.land = POST.t0 + 0.78; henStrike({ phase: 'land', u: v }); }
+        chick(home.x, home.y, R, { flip: true, shadow: !boat, mood: ['smug', 'idle', out], squash: sq, wing: 0, trail: -0.6 * Math.exp(-6 * v) * Math.cos(v * 13), look: { x: -0.5, y: 0.25 }, blink: 0, fog: v > 0.25 && v < 1.15 ? (v - 0.25) / 0.9 : false, rot: Math.sin(v * 3.2) * 0.07 * (1 - out) });
       }
       return;
     }
-    // riding: cocky and bored on her back (breathing, a slow look around); full: up on its toes, bouncing, raring to go
-    const full = K.m >= 1;
-    if (full) { const h = Math.abs(Math.sin(t * 6.5)), land = 1 - h; chick(seat.x, seat.y + up(R) + (h * R * 0.14 / k) * gy, R, { flip: true, mood: 'ready', squash: land > 0.8 ? (land - 0.8) * 1.6 : -0.1 * h, wing: 0.55 + 0.45 * Math.sin(t * 26), trail: 0.25 - h * 0.5, look: { x: 0.7, y: -0.3 }, fog: false }); }
-    else chick(seat.x, seat.y + up(R), R, { flip: true, mood: 'idle', squash: Math.sin(t * 2.3) * 0.035, rot: Math.sin(t * 0.9) * 0.035, look: { x: Math.sin(t * 0.7) > 0.55 ? -0.7 : 0.6, y: -0.1 } });
+    // b: 0 on the ground behind her, 1 on her back; it hops up when the meter fills (already full at level start = already up)
+    const full = K.m >= 1, want = full || boat ? 1 : 0, b0 = RIDE.b;
+    RIDE.b = clamp(b0 + (want ? 1 : -1) * (dT / 0.36), 0, 1);
+    if (RIDE.b >= 1 && b0 < 1) RIDE.land = t;
+    const b = RIDE.b, ld = t - RIDE.land;
+    if (hit < 0.7) henStrike({ phase: 'after', u: hit, tx: look[0], ty: look[1] });
+    else if (b >= 1 && ld < 0.7) henStrike({ phase: 'land', u: ld });
+    if (b <= 0) { // bored on the ground: breathing, a slow look around, now and then a hop of impatience
+      const hp = Math.max(0, Math.sin(t * 1.3) - 0.93) / 0.07, hh = Math.abs(Math.sin(t * 9)) * hp;
+      chick(gp.x, gp.y + (hh * R * 0.1 / k) * gy, R, { flip: true, shadow: true, mood: 'idle', squash: Math.sin(t * 2.3) * 0.035 - 0.08 * hh, rot: Math.sin(t * 0.9) * 0.035, wing: 0.3 * hp, look: { x: Math.sin(t * 0.7) > 0.55 ? -0.7 : 0.6, y: -0.1 } });
+    } else if (b < 1) { // the hop between the ground and her back: crouch, a tucked arc over her tail, wings out
+      if (b < 0.22) { const v = b / 0.22; chick(gp.x, gp.y, R, { flip: true, shadow: true, mood: ['idle', 'crouch', v * 2], squash: 0.5 * ss(0, 1, v), wing: 0.15, trail: -0.4 * v, look: { x: 0.6, y: -0.8 }, fog: false }); }
+      else { const v = (b - 0.22) / 0.78; chick(lerp(gp.x, back.x, v), lerp(gp.y, back.y, v) + 0.3 * hen.s * 4 * v * (1 - v) * gy, R, { flip: true, rot: (want ? -1 : 1) * 0.4 * Math.sin(v * Math.PI), mood: 'ready', squash: -0.3 * Math.sin(v * Math.PI), wing: 1, trail: 0.6, feet: false, look: { x: 0.6, y: want ? -0.4 : 0.6 }, fog: false }); }
+    } else if (ld < 0.3) { // it lands on her (she dips under it)
+      chick(back.x, back.y, R, { flip: true, mood: 'ready', squash: 0.5 * Math.exp(-9 * ld) * Math.cos(ld * 16), wing: 0.4, trail: -0.5 * Math.exp(-8 * ld), look: { x: 0.7, y: -0.3 }, fog: false });
+    } else if (full) { // up on its toes, bouncing, raring to go
+      const h = Math.abs(Math.sin(t * 6.5)), land = 1 - h; chick(back.x, back.y + (h * R * 0.14 / k) * gy, R, { flip: true, mood: 'ready', squash: land > 0.8 ? (land - 0.8) * 1.6 : -0.1 * h, wing: 0.55 + 0.45 * Math.sin(t * 26), trail: 0.25 - h * 0.5, look: { x: 0.7, y: -0.3 }, fog: false });
+    } else chick(back.x, back.y, R, { flip: true, mood: 'idle', squash: Math.sin(t * 2.3) * 0.035, rot: Math.sin(t * 0.9) * 0.035, look: { x: Math.sin(t * 0.7) > 0.55 ? -0.7 : 0.6, y: -0.1 } });
     return;
   }
-  const tgt = (F.key === 'bx' && geckoAnchor(sim)) || { x: F.tx, y: F.ty }, sp = nestSpot(hen), a = { x: sp.x, y: sp.y + up(B) };
+  const tgt = (F.key === 'bx' && geckoAnchor(sim)) || { x: F.tx, y: F.ty };
   FUSE = F.ph === 'hop' ? 1 - 0.55 * clamp(F.t / FLIGHT.hop, 0, 1) : 0.45 - 0.4 * clamp(F.t / FLIGHT.fly, 0, 1); // the Boom Chick's fuse burns down
-  if (F.ph === 'hop') { // anticipation crouch on her back, hop down by the nest, land in a deep squash, coil
-    const u = clamp(F.t / FLIGHT.hop, 0, 1), left = tgt.x < sp.x;
-    if (u < 0.3) { const v = u / 0.3; chick(seat.x, seat.y + up(R), R, { flip: true, mood: ['idle', 'crouch', v * 2], squash: ss(0, 1, v) * 0.55, trail: -0.5 * v, wing: 0.15, look: { x: 1, y: 0.2 }, fog: false }); }
-    else if (u < 0.72) { const v = (u - 0.3) / 0.42, s = lerp(R, B, v); chick(lerp(seat.x, sp.x, v), lerp(seat.y + up(R), a.y, v) + 0.55 * 4 * v * (1 - v) * gy, s, { flip: v < 0.5 ? true : left, rot: (left ? 1 : -1) * 0.35 * Math.sin(v * Math.PI), mood: 'ready', squash: -0.38 * Math.sin(v * Math.PI), wing: 1, trail: 0.7, feet: false, look: { x: 0.6, y: 0.6 }, fog: false }); }
-    else { const v = (u - 0.72) / 0.28; chick(sp.x, a.y, B, { flip: left, shadow: true, mood: 'crouch', squash: 0.7 * Math.sin(Math.min(1, v * 1.7) * Math.PI * 0.5) * (1 - 0.3 * ss(0.6, 1, v)), trail: lerp(-0.8, 0.3, v), wing: 0.2 + 0.5 * v, look: { x: 1, y: -0.6 }, fog: false }); }
+  if (F.ph === 'hop') { // on her back: it coils while her wing winds down and back, then the wing bats up under it (contact at the end)
+    const u = clamp(F.t / FLIGHT.hop, 0, 1), c = toC(tgt), ride = A && A.ride, pw = ride ? toW(A.palm) : null;
+    henStrike({ phase: 'wind', u, tx: c[0], ty: c[1] });
+    const p = pw ? { x: pw.x, y: pw.y + up(R) } : back, lf = tgt.x < p.x ? 1 : -1, go = ss(0.8, 1, u);
+    RIDE.b = 1; RIDE.rel = { x: p.x, y: p.y + (ride ? 0 : 0.1 * hen.s * gy) };
+    chick(p.x, p.y, lerp(R, B, 0.5 * go), { flip: true, mood: go > 0.5 ? 'yell' : ['ready', 'crouch', u * 3], squash: lerp(0.5 * ss(0, 0.5, u), -0.3, go), trail: lerp(-0.5, 0.7, go), wing: 0.15 + 0.85 * go, feet: go < 0.5, look: { x: lf * 0.9, y: -0.6 }, fog: false });
+    if (A && A.over) henWingOver(ctx); // behind her wing only while the wing is under it
     return;
   }
+  const a = RIDE.rel || { x: back.x, y: back.y + 0.1 * hen.s * gy }; // the arc starts where the wing let go of it: above her back
   // the flight: launch stretched, tuck into one fast spin, snap open into a screaming dive, the crest and tail streaming
   const u = clamp(F.t / FLIGHT.fly, 0, 1), ue = Math.pow(u, 1.15), p = arcAt(a, tgt, ue), q = arcAt(a, tgt, Math.min(1, ue + 0.02));
   const ang = Math.atan2(q.y - p.y, q.x - p.x), dir = Math.cos(ang) < 0 ? -1 : 1, spin = ss(0.16, 0.6, u), tuck = Math.sin(spin * Math.PI);
   POST.was = true; POST.a = a; POST.tgt = tgt; POST.ang = ang;
+  { const c = toC(p); henStrike({ phase: 'fly', u, tx: c[0], ty: c[1] }); }
   ctx.save(); wake(a, tgt, ue); ctx.restore();
   at(p.x, p.y, () => {
     ctx.rotate(-ang); if (dir < 0) ctx.scale(1, -1);

@@ -58,8 +58,11 @@ export function henIdleEvents(tt) {
   let blink = b.u < 0 ? 0 : Math.sin(b.u * Math.PI);
   if (hash(b.k * 7.7 + 2) > 0.62) { const b2 = slot(tt - 0.26, 3.3, 1, 0.17, 0.92); if (b2.u >= 0) blink = Math.max(blink, Math.sin(b2.u * Math.PI)); } // now and then a double blink
   // eye darts: the pupils snap to a spot, hold, and snap back (a quick ease, never a slide)
-  const d = slot(tt, 2.3, 6, 0.75, 0.7), de = d.u < 0 ? 0 : ss(0, 0.08, d.u) * (1 - ss(0.86, 1, d.u));
-  return { blink, peck: p.u, pdir: hash(p.k * 5.3) > 0.5 ? 1 : -1, ruffle: r.u, dx: de * (hash(d.k * 4.1) * 2 - 1) * 1.6, dy: de * (hash(d.k * 2.3 + 1) - 0.6) * 1.4 };
+  // a glance: the eyes lead (60 ms), the head follows ~90 ms later with a blink on the turn; the eyes come home first too
+  const d = slot(tt, 2.3, 6, 0.75, 0.7), de = d.u < 0 ? 0 : ss(0, 0.08, d.u) * (1 - ss(0.62, 0.7, d.u)), dh = d.u < 0 ? 0 : ss(0.12, 0.28, d.u) * (1 - ss(0.74, 0.9, d.u));
+  const gx = hash(d.k * 4.1) * 2 - 1, gy = hash(d.k * 2.3 + 1) - 0.6;
+  if (d.u >= 0 && Math.abs(gx) > 0.45) blink = Math.max(blink, Math.sin(clamp((d.u - 0.1) / 0.2, 0, 1) * Math.PI), Math.sin(clamp((d.u - 0.7) / 0.2, 0, 1) * Math.PI) * 0.9);
+  return { blink, peck: p.u, pdir: hash(p.k * 5.3) > 0.5 ? 1 : -1, ruffle: r.u, dx: de * gx * 1.6, dy: de * gy * 1.4, hx: dh * gx, hy: dh * gy };
 }
 
 /* ------------------------------------------------------------------ poses */
@@ -70,16 +73,26 @@ export function henIdleEvents(tt) {
 // fw: far-wing reveal 0..1 (a 3/4 turn of the shoulders: the far wing's root moves back and up, so a raised far wing shows
 // past her back and "both wings up" reads as two wings, not one)
 const KEYS = ['lift', 'sq', 'lean', 'sway', 'dx', 'hx', 'hy', 'hr', 'comb', 'wa', 'wf', 'sp', 'puff', 'tufts', 'tail', 'tsp',
-  'fL', 'fR', 'sL', 'sR', 'eWide', 'eHappy', 'eSqueeze', 'brow', 'browY', 'pdx', 'pdy', 'beak', 'tear', 'blush', 'sweat', 'spin', 'twirl', 'grit', 'wink', 'fw'];
+  'fL', 'fR', 'sL', 'sR', 'eWide', 'eHappy', 'eSqueeze', 'brow', 'browY', 'pdx', 'pdy', 'beak', 'tear', 'blush', 'sweat', 'spin', 'twirl', 'grit', 'wink', 'fw',
+  'lid', 'low', 'pup', 'bw', 'bwF', 'smile', 'cheek', 'teeth'];
+// The acting face (v5, after render/mama.js): lid / low = upper / lower eyelid 0..1; pup = pupil size (1 normal, 0.2 a pin);
+// bw / bwF = the near / far brow cocked up on its own; brow (worried, inner ends up), grit (furrowed) and browY tilt and move
+// both; smile 1 .. -1 = the beak corner; cheek = the cheek pushes the eye up; teeth = gritted. eHappy / eSqueeze close the
+// lids on the way (never a cross-fade) and snap to the laughing arc / the scrunched > < at the half.
+// The face keys blend with a sharpened weight (FACE), so an expression snaps in ~80 ms and holds while the body eases.
+const FACE = new Set(['eWide', 'eHappy', 'eSqueeze', 'brow', 'browY', 'beak', 'grit', 'wink', 'lid', 'low', 'pup', 'bw', 'bwF', 'smile', 'cheek', 'teeth']);
+const sharp = (w) => ss(0.4, 0.6, w);
 const REST = { lift: 0, sq: 0, lean: 0, sway: 0, dx: 0, hx: 0, hy: 0, hr: 0, comb: 0, wa: 0, wf: 0, sp: 0, puff: 1, tufts: 0, tail: 0, tsp: 0,
-  fL: 0, fR: 0, sL: 0, sR: 0, eWide: 0, eHappy: 0, eSqueeze: 0, brow: 0, browY: 0, pdx: 0, pdy: 0, beak: 0, tear: 0, blush: 0.3, sweat: 0, spin: 0, twirl: 0, grit: 0, wink: 0, fw: 0 };
+  fL: 0, fR: 0, sL: 0, sR: 0, eWide: 0, eHappy: 0, eSqueeze: 0, brow: 0, browY: 0, pdx: 0, pdy: 0, beak: 0, tear: 0, blush: 0.3, sweat: 0, spin: 0, twirl: 0, grit: 0, wink: 0, fw: 0,
+  lid: 0.14, low: 0, pup: 1, bw: 0, bwF: 0, smile: 0.3, cheek: 0, teeth: 0 };
 export const henPose = (o) => Object.assign({}, REST, o);
 const pose = henPose;
 
 export function idlePose(tt) {
   const br = Math.sin(tt * 2.4);
   return pose({ sq: br * 0.018, hx: Math.sin(tt * 1.1) * 0.9, hy: Math.sin(tt * 2.4 + 0.6) * 0.8, hr: Math.sin(tt * 0.9) * 0.03,
-    comb: Math.sin(tt * 2.4 - 0.5) * 0.04, wa: br * 0.03, tail: Math.sin(tt * 3) * 0.04 });
+    comb: Math.sin(tt * 2.4 - 0.5) * 0.04, wa: br * 0.03, tail: Math.sin(tt * 3) * 0.04,
+    lid: 0.36, low: 0.08, bw: 0.8, smile: 0.5, grit: 0.3 }); // confident: half-lidded, one brow up, a small smile
 }
 
 // full fright; the blend weight is how scared she is. Darts = the head snaps between look-spots a few times a second
@@ -89,14 +102,15 @@ function worryPose(tt) {
   const a = k % 6, b = (k + 1) % 6, dx = lerp(sx[a], sx[b], f), dy = lerp(sy[a], sy[b], f);
   return pose({ sq: 0.03, lift: Math.abs(Math.sin(tt * 15)) * 0.9, dx: Math.sin(tt * 43) * 0.7, hx: -2 + dx * 2.5, hy: -4 + dy * 1.5, hr: -0.08 + dx * 0.1, comb: -0.12 + Math.sin(tt * 20) * 0.05,
     wa: 1.05 + Math.sin(tt * 17) * 0.12, wf: 1.15 + Math.sin(tt * 17 + 1) * 0.12, sp: 0.55, puff: 1.06, tufts: 1, tail: 0.12, tsp: 0.6,
-    eWide: 1, brow: 1, pdx: dx * 1.4, pdy: dy * 1.0, beak: 2.6, sweat: 1, blush: 0.25 });
+    eWide: 1, brow: 1, browY: -1.3, pdx: dx * 1.6, pdy: dy * 1.2, beak: 1.5, sweat: 1, blush: 0.25,
+    lid: 0, low: 0.3, pup: 0.5, smile: -0.7, teeth: 1 }); // brows up and pinched, lower lids up, small pupils, teeth gritted
 }
 
 function cryPose(tt) {
   const heave = Math.max(0, Math.sin(tt * 8)), wipe = ss(0.55, 0.7, fract(tt / 2.4)) * (1 - ss(0.86, 1, fract(tt / 2.4)));
   return pose({ sq: -0.045 + heave * 0.03, dx: Math.sin(tt * 31) * 0.25, hx: 1, hy: 5 - heave * 1.4, hr: 0.16 + Math.sin(tt * 4) * 0.05, comb: 0.3,
     wa: lerp(-0.18, 2.68, wipe) + Math.sin(tt * 16) * 0.07 * wipe, wf: -0.1, sp: 0.15 * wipe, tail: -0.35, tsp: -0.3, eSqueeze: 1, brow: 1, browY: 1.5,
-    beak: 4.5 + Math.sin(tt * 9) * 1.4, tear: 1, blush: 0.45 });
+    beak: 4.6 + Math.sin(tt * 8) * 1.2, tear: 1, blush: 0.45, smile: -1, cheek: 0.8, lid: 0.5, low: 0.3 }); // a scrunched bawl
 }
 
 function dancePose(tt) {
@@ -104,12 +118,12 @@ function dancePose(tt) {
   const s = Math.sin(ph * Math.PI), sw = Math.sin(ph * TAU) * 0.45;
   return pose({ lift: air * 12, sq: 0.06 * air - 0.1 * land, sway: s * 0.1, dx: s * 3, hx: s * 2, hy: -2, hr: -0.1 - s * 0.1, comb: -s * 0.2,
     wa: 1.5 + sw, wf: 1.45 - sw, sp: 0.85, tail: Math.sin(tt * 7) * 0.2, tsp: 0.5, fL: Math.max(0, s) * 6, fR: Math.max(0, -s) * 6, sL: Math.max(0, s) * 5, sR: Math.max(0, -s) * 5,
-    eHappy: 1, beak: 4.5, blush: 0.5 });
+    eHappy: ss(0.72, 0.84, air), beak: 3 + 1.6 * air, blush: 0.5, lid: 0.2, low: 0.25, bw: 1, smile: 1, cheek: 0.9 }); // eyes close at the top of each hop, a cocky brow
 }
 
-function blendInto(out, p, w) {
-  if (w <= 0.0005) return;
-  for (const k of KEYS) out[k] += p[k] * w;
+function blendInto(out, p, w, wf = w) { // wf: the weight of the face keys
+  if (w <= 0.0005 && wf <= 0.0005) return;
+  for (const k of KEYS) out[k] += p[k] * (FACE.has(k) ? wf : w);
 }
 
 /* ------------------------------------------------------------------ in-level reactions */
@@ -117,9 +131,21 @@ function blendInto(out, p, w) {
 // row: an egg saved ('happy'), an egg cracked ('gasp'), a close shave past a thorn ('phew'). Each f(P, u) edits the
 // pose u seconds in and may return extras {burst, heart}. All start and end at rest (an envelope E), so nothing pops.
 const env = (u, a, b, c, d) => ss(a, b, u) * (1 - ss(c, d, u));
-function cheerCommon(P, E) {
-  P.eHappy = lerp(P.eHappy, 1, E); P.eWide = lerp(P.eWide, 0, E); P.brow = lerp(P.brow, 0, E); P.sweat = lerp(P.sweat, 0, E);
-  P.blush = lerp(P.blush, 0.55, E); P.lean *= 1 - E;
+// the joy face: bright open eyes and a grin; at the top of the hop (air 0..1) the eyes shut into laughing arcs
+function cheerCommon(P, E, air = 1) {
+  const F = sharp(E);
+  P.eHappy = lerp(P.eHappy, ss(0.45, 0.6, air), F); P.eWide = lerp(P.eWide, 0, F); P.eSqueeze = lerp(P.eSqueeze, 0, F); P.brow = lerp(P.brow, 0, F); P.browY = lerp(P.browY, -1, F);
+  P.lid = lerp(P.lid, 0.04, F); P.low = lerp(P.low, 0.22, F); P.pup = lerp(P.pup, 1.1, F); P.smile = lerp(P.smile, 1, F); P.cheek = lerp(P.cheek, 1, F);
+  P.bw = lerp(P.bw, 0.5, F); P.bwF = lerp(P.bwF, 0.5, F); P.teeth = lerp(P.teeth, 0, F);
+  P.sweat = lerp(P.sweat, 0, E); P.blush = lerp(P.blush, 0.55, E); P.lean *= 1 - E;
+}
+// a take: a 50 ms squint (anticipation), then the eyes pop (lids wide, pin pupils, brows up, beak gaping), hold, recover
+function gaspFace(P, su, t0 = 0) {
+  const u = su - t0; if (u < 0) return;
+  const sq = env(u, 0, 0.025, 0.045, 0.07), T = ss(0.045, 0.1, u) * (1 - ss(0.34, 0.43, u));
+  P.eWide = lerp(P.eWide, 1.3, T); P.pup = lerp(P.pup, 0.2, T); P.low = lerp(P.low, 0, T); P.lid = lerp(lerp(P.lid, 1, sq), -0.1, T);
+  P.beak = lerp(P.beak, 5.6, T); P.teeth = lerp(P.teeth, 0, T); P.browY = lerp(P.browY, -2.8, T); P.brow = lerp(P.brow, 0.45, T); P.smile = lerp(P.smile, -0.2, T);
+  P.eSqueeze *= 1 - T; P.eHappy *= 1 - T; P.pdx *= 1 - T; P.pdy *= 1 - T;
 }
 const REACT = {
   happy: [
@@ -134,7 +160,7 @@ const REACT = {
       P.lift += lift; P.sq += sq;
       const fl = Math.sin(cu * 34) * 0.5;
       P.wa = lerp(P.wa, 1.45 + fl, E); P.wf = lerp(P.wf, 1.35 + fl, E); P.sp = lerp(P.sp, 1, E);
-      cheerCommon(P, E);
+      cheerCommon(P, E, lift / 15);
       P.beak = lerp(P.beak, 4.5, E); P.hy += -2 * E; P.hr = lerp(P.hr, -0.15, E);
       P.tail = lerp(P.tail, 0.15 + Math.sin(cu * 26) * 0.18, E); P.tsp = lerp(P.tsp, 0.8, E); P.sway += Math.sin(cu * 9) * 0.05 * E;
       P.fL = lerp(P.fL, lift * 0.25, E); P.fR = lerp(P.fR, lift * 0.2, E); // toes tuck in the air
@@ -148,7 +174,7 @@ const REACT = {
       P.twirl += TAU * clamp((cu - 0.14) / 0.32, 0, 1); // linear, so the edge-on moments are brief
       const fl = env(cu, 0.62, 0.7, 0.85, 1.05);
       P.wa = lerp(P.wa, 1.6 - 0.1 * fl, E); P.wf = lerp(P.wf, 1.5 + 0.8 * fl, E); P.sp = lerp(P.sp, 1, E);
-      cheerCommon(P, E);
+      cheerCommon(P, E, air);
       P.beak = lerp(P.beak, 3.5 + 1.5 * fl, E); P.hr = lerp(P.hr, -0.12 - 0.12 * fl, E);
       P.tail = lerp(P.tail, 0.2, E); P.tsp = lerp(P.tsp, 0.9, E);
       P.fL = lerp(P.fL, 4 * air, E); P.fR = lerp(P.fR, 3 * air, E);
@@ -160,8 +186,8 @@ const REACT = {
       P.wa = lerp(P.wa, 0.3 + 1.35 * p, E); P.wf = lerp(P.wf, 0.4 + 1.85 * p, E); P.sp = lerp(P.sp, 0.5 + 0.5 * p, E);
       P.lift += 3 * p; P.sq += 0.06 * p - 0.05 * env(cu, 0.3, 0.36, 0.38, 0.46) - 0.05 * env(cu, 0.7, 0.76, 0.78, 0.9);
       P.hx += 3 * p * E; P.hy -= 2 * p * E; P.hr = lerp(P.hr, -0.2 * p, E);
-      cheerCommon(P, E);
-      P.beak = lerp(P.beak, 4.8 * p, E);
+      cheerCommon(P, E, p);
+      P.beak = lerp(P.beak, 1.2 + 3.6 * p, E);
       P.tail = lerp(P.tail, Math.sin(cu * 30) * 0.22, E); P.tsp = lerp(P.tsp, 0.6, E);
       P.fR += 3 * p2; // a little kick on the second pump
       return { burst: -1 };
@@ -174,6 +200,7 @@ const REACT = {
       P.sq += 0.08 * air - 0.08 * Math.exp(-Math.max(0, su - 0.2) / 0.07) * (su >= 0.2 ? 1 : 0);
       P.puff += 0.05 * Math.exp(-su / 0.18);
       P.tufts = Math.max(P.tufts, 1 - ss(0.2, 0.5, su));
+      gaspFace(P, su);
     } },
     { len: 0.85, f(P, su) { // cover: both wings fly up to her cheeks, she leans back, beak an O
       const E = env(su, 0, 0.07, 0.55, 0.85);
@@ -181,13 +208,15 @@ const REACT = {
       P.lean -= 0.14 * E; P.hy -= 2 * E; P.hx -= 2 * E; P.lift += 2.5 * Math.sin(clamp(su / 0.18, 0, 1) * Math.PI);
       P.eWide = Math.max(P.eWide, E); P.beak = lerp(P.beak, 3.6, E); P.puff += 0.03 * E;
       P.tufts = Math.max(P.tufts, 0.8 * E);
+      gaspFace(P, su);
     } },
     { len: 0.75, f(P, su) { // flinch: a quick duck, head pulled in, then a shake of the head
       const d = env(su, 0, 0.06, 0.2, 0.42), sh = env(su, 0.22, 0.3, 0.55, 0.72);
       P.sq -= 0.11 * d; P.lift -= 4 * d; P.hx -= 4 * d; P.hy += 4 * d; P.puff += 0.04 * d;
       P.wa = lerp(P.wa, 0.9, d); P.wf = lerp(P.wf, 0.9, d);
       P.hr += Math.sin((su - 0.22) * 42) * 0.2 * sh; P.comb += Math.sin((su - 0.22) * 42 - 0.8) * 0.22 * sh;
-      P.eSqueeze = Math.max(P.eSqueeze, d); P.tufts = Math.max(P.tufts, Math.max(d, sh) * 0.9);
+      P.eSqueeze = Math.max(P.eSqueeze, sharp(d)); P.tufts = Math.max(P.tufts, Math.max(d, sh) * 0.9);
+      gaspFace(P, su, 0.3); // she peeks out of the duck
     } },
   ],
   phew: [
@@ -195,23 +224,30 @@ const REACT = {
       const E = env(u, 0, 0.12, 0.72, 1), sw = env(u, 0.16, 0.24, 0.5, 0.6);
       P.wa = lerp(P.wa, 2.45 + Math.sin(u * 11) * 0.22 * sw, E); P.sp = lerp(P.sp, 0.2, E);
       P.sweat = Math.max(P.sweat, env(u, 0, 0.08, 0.4, 0.6));
-      P.eHappy = lerp(P.eHappy, 0.85, ss(0.35, 0.5, u) * E);
-      P.beak = lerp(P.beak, 2, env(u, 0.45, 0.55, 0.75, 0.9));
+      const rl = ss(0.34, 0.42, u) * (1 - ss(0.8, 0.88, u)), F = sharp(E); // relief: the lids drop shut, the brows let go, a breath out
+      P.eWide = lerp(P.eWide, 0, F); P.brow = lerp(P.brow, 0.7, F); P.browY = lerp(P.browY, -1.2 + 1.6 * rl, F); P.teeth = lerp(P.teeth, 0, F);
+      P.lid = lerp(P.lid, lerp(0.05, 1, rl), F); P.pup = lerp(P.pup, 1, F); P.smile = lerp(P.smile, lerp(-0.3, 0.7, rl), F);
+      P.beak = lerp(P.beak, 2, env(u, 0.45, 0.5, 0.75, 0.9));
       P.sq -= 0.04 * env(u, 0.5, 0.6, 0.8, 1); P.hy += 2 * E;
+      return { breath: (u - 0.47) / 0.4 };
     } },
     { len: 1.0, f(P, u) { // slump: breath in, a big relieved breath out, then shake it off
       const inh = env(u, 0, 0.12, 0.16, 0.26), out = env(u, 0.2, 0.32, 0.6, 0.78), sh = env(u, 0.66, 0.72, 0.88, 1);
       P.sq += 0.05 * inh - 0.07 * out; P.puff += 0.04 * inh; P.hy += -2 * inh + 4 * out; P.lean += 0.06 * out;
       P.wa = lerp(P.wa, -0.2, out); P.wf = lerp(P.wf, -0.1, out);
-      P.eHappy = lerp(P.eHappy, 0.9, out); P.beak = lerp(P.beak, 1.8, out);
+      const F = sharp(Math.max(inh, out)), o2 = sharp(out);
+      P.eWide = lerp(P.eWide, 0.7 * (1 - o2), F); P.browY = lerp(P.browY, lerp(-2, 0.6, o2), F); P.brow = lerp(P.brow, 0.6, F); P.teeth = lerp(P.teeth, 0, F);
+      P.lid = lerp(P.lid, o2, F); P.smile = lerp(P.smile, 0.6 * o2, F); P.beak = lerp(P.beak, lerp(0.6, 2.2, o2), F);
+      if (u > 0.22) { P.dx += Math.sin(u * 60) * 0.9 * sh; P.tufts = Math.max(P.tufts, 0.5 * sh); P.tail += Math.sin(u * 50) * 0.2 * sh; return { breath: (u - 0.24) / 0.42 }; }
       P.dx += Math.sin(u * 60) * 0.9 * sh; P.tufts = Math.max(P.tufts, 0.5 * sh); P.tail += Math.sin(u * 50) * 0.2 * sh;
     } },
     { len: 0.95, f(P, u) { // heart: a wing to her chest, a happy little hop and a heart
       const E = env(u, 0, 0.1, 0.65, 0.95), a = clamp((u - 0.3) / 0.28, 0, 1), air = u > 0.3 && u < 0.58 ? Math.sin(a * Math.PI) : 0;
       P.wa = lerp(P.wa, 0.8 + Math.sin(u * 16) * 0.1, E); P.wf = lerp(P.wf, 0.3, E);
       P.lift += 6 * air; P.sq += 0.05 * air - (u > 0.58 ? 0.1 * Math.exp(-(u - 0.58) / 0.07) : 0);
-      cheerCommon(P, E); P.blush = lerp(P.blush, 0.85, E); P.beak = lerp(P.beak, 2, E); P.hr = lerp(P.hr, 0.1, E);
-      return { heart: u };
+      cheerCommon(P, E, air); P.blush = lerp(P.blush, 0.85, E); P.beak = lerp(P.beak, 2, E); P.hr = lerp(P.hr, 0.1, E);
+      const F = sharp(E) * (1 - ss(0.25, 0.32, u)); P.lid = lerp(P.lid, 0.85, F); P.browY = lerp(P.browY, 0.4, F); // first the relieved lids and a breath, then the happy hop
+      return { heart: u, breath: (u - 0.04) / 0.34 };
     } },
   ],
 };
@@ -228,6 +264,57 @@ function applySecondary(P, c, t, w) {
   P.wa += w * clamp(P.wa, 0, 1); P.wf += w * clamp(P.wf, 0, 1); // only an open wing drags
 }
 export function henSecondary(P, vy, vx) { applySecondary(P, secTarget('c', vy, vx), secTarget('t', vy, vx), secTarget('w', vy, vx)); }
+
+/* ------------------------------------------------------------------ the Chick Strike: her wing launches the chick */
+// render/strike.js tells the world hen what the chick is doing (henStrike, once a frame): 'land' (u = s since it landed on
+// her back: she dips and squashes under it, glances back), 'wind' (u 0..1 over the hop phase: the near wing winds down and
+// back, eyes narrowing, then bats up under the chick; contact at u = 1), 'fly' (u 0..1: she holds the follow-through, smug,
+// eyes on the chick), 'after' (u = s since the hit: she settles to her mood). (tx, ty) = what to look at, in canvas pixels.
+// She answers with where things are (henAnchors, canvas pixels): the seat on her back, her wing's palm, her head.
+const STK = { phase: '', u: 0, tx: 0, ty: 0, n: 99 };
+const WORLD = { n: 99, seat: null, palm: null, head: null, ride: false, over: false, m: null, ol: 1, wa: 0, sp: 0 };
+export function henStrike(c) { STK.phase = c.phase || ''; STK.u = c.u || 0; STK.tx = c.tx || 0; STK.ty = c.ty || 0; STK.n = 0; }
+export function henAnchors() { return WORLD.n++ < 2 && WORLD.seat ? WORLD : null; }
+const WIND = 0.56; // the wind-up ends here (0.18 s of anticipation), the bat takes the rest of the hop phase
+function strikePose(ph, u) {
+  const br = { lid: 0.36, low: 0.08, bw: 0.8, smile: 0.5 };
+  if (ph === 'wind') {
+    const A = ss(0, 0.42, u), B = clamp((u - WIND) / (1 - WIND), 0, 1), b = B * B, pop = ss(0.55, 0.8, B);
+    return pose({ sq: lerp(-0.085 * A, 0.07, b), lift: 2.5 * b, lean: lerp(0.07 * A, -0.05, b), hx: lerp(2 * A, -1, b), hy: lerp(2.5 * A, -2.5, b), hr: lerp(0.1 * A, -0.1, b),
+      comb: 0.15 * A - 0.3 * b, wa: lerp(-0.85 * A, 1.15, b), wf: 0.2 * b, sp: 0.4 * A + 0.6 * ss(0, 0.5, B), tail: 0.2 * A - 0.3 * b, tsp: 0.4, fL: 0, fR: 0,
+      lid: lerp(0.56, 0.02, pop), low: lerp(0.46 * A, 0.1, pop), grit: lerp(A, 0.3, pop), browY: lerp(0.6 * A, -1.5, pop), pup: 0.85, smile: lerp(0.2, 1, pop), teeth: 1 - pop, beak: lerp(1.3 * A, 4.6, pop), cheek: 0.5 * pop, bw: 0.4 * pop });
+  }
+  const o = ph === 'fly' ? ss(0, 0.16, u) : 1, sw = ph === 'fly' ? Math.exp(-u * 9) * Math.sin(u * 30) : 0; // the follow-through overshoots and rings out
+  return pose({ sq: lerp(0.07, 0.02, o), lift: 2.5 * (1 - o), lean: -0.05, hx: -1, hy: -2.5, hr: -0.12, comb: -0.1, wa: lerp(1.15, 1.5, o) + 0.12 * sw, wf: 0.25, sp: lerp(1, 0.8, o), tail: 0.15, tsp: 0.5,
+    ...br, lid: lerp(0.02, 0.46, o), low: 0.34 * o, bw: 1, smile: 1, cheek: 0.7, beak: 4.6 * (1 - ss(0.3, 0.7, o)) });
+}
+function strikeLayer(P, world) {
+  const ph = STK.phase, u = STK.u;
+  if (ph === 'land') { // the chick lands on her back: a dip and a squash, a blink, then a look back up at it
+    const d = Math.exp(-u / 0.085) * Math.cos(u * 14), g = env(u, 0.12, 0.18, 0.55, 0.62);
+    P.sq -= 0.14 * d; P.lift -= 3.2 * d; P.tail += 0.3 * d; P.comb += 0.25 * d; P.hy += 2 * d; P.wa += 0.35 * Math.max(0, d); P.sp += 0.3 * Math.max(0, d);
+    P.lid = lerp(P.lid, 1, env(u, 0, 0.03, 0.07, 0.12)); P.pdx = lerp(P.pdx, -1.6, g); P.pdy = lerp(P.pdy, -1.3, g); P.bw = lerp(P.bw, 1, g); P.hr -= 0.12 * g; P.hx -= 1.5 * g;
+    return u < 0.6;
+  }
+  if (ph !== 'wind' && ph !== 'fly' && ph !== 'after') return false;
+  const w = ph === 'wind' ? ss(0, 0.16, u) : ph === 'after' ? 1 - ss(0.12, 0.42, u) : 1, wf = ph === 'after' ? 1 - ss(0.2, 0.3, u) : sharp(w);
+  if (w <= 0.001) return false;
+  const L = strikePose(ph, u);
+  for (const k of KEYS) P[k] = lerp(P[k], L[k], FACE.has(k) ? wf : w);
+  // her eyes: on the target while she winds up, then on the chick all the way
+  if (WORLD.head) { const dx = (STK.tx - WORLD.head[0]) * WORLD.sx, dy = STK.ty - WORLD.head[1], l = Math.hypot(dx, dy) || 1; P.pdx = lerp(P.pdx, (dx / l) * 1.6, wf); P.pdy = lerp(P.pdy, (dy / l) * 1.4, wf); }
+  world.wind = ph === 'wind' && u > WIND;
+  return wf > 0.5;
+}
+// the near wing again, over the chick (only while the wing is under it)
+export function henWingOver(ctx) {
+  if (!WORLD.m) return;
+  ctx.save();
+  ctx.setTransform(WORLD.m);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  wing(ctx, WORLD.ol, 1, -1, WORLD.wa, WORLD.sp, false);
+  ctx.restore();
+}
 
 /* ------------------------------------------------------------------ per-hen state */
 const HENS = {}; // key -> state
@@ -294,10 +381,13 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
 
   const P = {};
   for (const k of KEYS) P[k] = 0;
-  blendInto(P, idlePose(tt), wI);
-  blendInto(P, worryPose(tt), wW);
-  blendInto(P, cryPose(tt), wC);
-  blendInto(P, dancePose(tt), wD);
+  // the face snaps between the states while the body eases (calm: the weights are already 0 or 1)
+  let fW = sharp(st.w.worry), fC = sharp(st.w.cry), fD = sharp(st.w.dance);
+  const fsum = fW + fC + fD; if (fsum > 1) { fW /= fsum; fC /= fsum; fD /= fsum; }
+  blendInto(P, idlePose(tt), wI, Math.max(0, 1 - fW - fC - fD));
+  blendInto(P, worryPose(tt), wW, fW);
+  blendInto(P, cryPose(tt), wC, fC);
+  blendInto(P, dancePose(tt), wD, fD);
 
   // ---- walk: ease a position toward the look target, steps follow the speed; she turns to face the way she goes
   let walkAmt = 0;
@@ -361,18 +451,24 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
       P.tail += sh * 0.15 * wI;
       P.tsp += 0.4 * e * wI;
     }
-    if (o.look === undefined || Math.abs(o.look) < 0.05) { P.pdx += ev.dx * wI; P.pdy += ev.dy * wI; } // eye darts when nothing holds her look
+    if (o.look === undefined || Math.abs(o.look) < 0.05) { // a glance when nothing holds her look: eyes first, then the head
+      P.pdx += ev.dx * wI; P.pdy += ev.dy * wI;
+      P.hx += ev.hx * 2.4 * wI; P.hy += ev.hy * 1.2 * wI; P.hr += ev.hx * 0.07 * wI; P.bw -= Math.abs(ev.hx) * 0.5 * wI;
+    }
   }
-  const blink = !calm && wC < 0.5 ? ev.blink : 0;
+  let blink = !calm && wC < 0.5 ? ev.blink : 0;
 
   // ---- one-shot reactions
-  let burst = -1, heart = -1;
+  let burst = -1, heart = -1, breath = -1;
   const cu = calm ? 99 : st.c - st.cheerAt, R1 = REACT.happy[Math.max(0, st.cheerV)];
   if (cu >= 0 && cu < R1.len + 0.3) { const x = R1.f(P, cu) || {}; if (x.burst >= 0) burst = x.burst; }
   const su = calm ? 99 : st.c - st.startleAt, R2 = REACT.gasp[Math.max(0, st.startleV)];
   if (su >= 0 && su < R2.len) R2.f(P, su);
   const pu = calm ? 99 : st.c - st.phewAt, R3 = REACT.phew[Math.max(0, st.phewV)];
-  if (pu >= 0 && pu < R3.len) { const x = R3.f(P, pu) || {}; if (x.heart >= 0) heart = x.heart; }
+  if (pu >= 0 && pu < R3.len) { const x = R3.f(P, pu) || {}; if (x.heart >= 0) heart = x.heart; if (x.breath >= 0 && x.breath < 1) breath = x.breath; }
+  // ---- the Chick Strike (the world hen only): the chick lands on her back, she winds her wing under it and bats it away
+  let world = null;
+  if (key === 'level') { world = {}; if (STK.n++ < 3 && !calm) { const b = strikeLayer(P, world); if (b) blink = 0; } }
 
   // ---- overlapping action: damped springs on the comb, tail and wing tips, pushed by the body's speed
   if (!st.sec) st.sec = { pl: P.lift, px: st.x + P.dx, c: 0, cv: 0, t: 0, tv: 0, w: 0, wv: 0 };
@@ -393,7 +489,7 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
   const fs = st.face >= 0 ? 1 : -1;
   P.pdx += (o.look || 0) * 0.8 * fs;
   P.beak += beakPeck;
-  return drawHenPose(ctx, P, cx, cy, h, { face: st.face, x: st.x, blink, tt, shadow: o.shadow, enter: o.enter, calm,
+  return drawHenPose(ctx, P, cx, cy, h, { face: st.face, x: st.x, blink, tt, shadow: o.shadow, enter: o.enter, calm, breath, world,
     burst: burst >= 0 ? { u: burst, k: st.cheerK } : null, loose: st.w.worry > 0.3 && P.tufts > 0.3 ? st.w.worry : 0, notes: wD, heart });
 }
 
@@ -405,7 +501,11 @@ export function drawHenPose(ctx, P, cx, cy, h, o = {}) {
   if (!(h > 0)) return false;
   const tt = o.tt || 0, calm = !!o.calm, face = o.face == null ? -1 : o.face;
   const fs = face >= 0 ? 1 : -1;
-  const f = { eWide: P.eWide, eHappy: P.eHappy, eSqueeze: P.eSqueeze, brow: P.brow, browY: P.browY, pdx: P.pdx, pdy: P.pdy, beak: P.beak, tear: P.tear, blush: P.blush, blink: o.blink || 0, grit: P.grit, wink: P.wink };
+  const v = (k) => (P[k] == null || P[k] !== P[k] ? REST[k] : P[k]); // a routine that never heard of a key gets the rest face
+  const hap = clamp(v('eHappy'), 0, 1), sqz = clamp(v('eSqueeze'), 0, 1), wide = clamp(v('eWide'), 0, 1.4), worry = clamp(v('brow'), 0, 1), grit = clamp(v('grit'), 0, 1), tear = clamp(v('tear'), 0, 1);
+  const f = { hap, sqz, wide, wink: clamp(v('wink'), 0, 1), lid: v('lid'), low: v('low'), pup: clamp(v('pup'), 0.15, 1.3), tilt: grit * 0.6 - worry * 0.62, by: -v('browY') + Math.min(1, wide) * 1.3 + hap * 1.1,
+    bw: clamp(v('bw'), 0, 1), bwF: clamp(v('bwF'), 0, 1), smile: clamp(v('smile') + hap * 0.7 - Math.max(sqz, tear) * 1.3, -1, 1), cheek: clamp(Math.max(v('cheek'), hap * 0.9), 0, 1), teeth: v('teeth'),
+    pdx: v('pdx'), pdy: v('pdy'), beak: v('beak'), tear: v('tear'), blink: o.blink || 0 };
   ctx.save();
   try {
     ctx.translate(cx, cy);
@@ -441,6 +541,14 @@ export function drawHenPose(ctx, P, cx, cy, h, o = {}) {
     drawBody(ctx, H, ol);
     drawHead(ctx, H, P, f, tt, ol, o.hat);
     wing(ctx, ol, 1, -1, P.wa, P.sp, false); // near wing, over the body (and over her eye when she wipes it)
+    if (o.breath >= 0 && o.breath < 1) drawBreath(ctx, H.x + 25, H.y + 5, o.breath);
+    if (o.world && ctx.getTransform) { // Chick Strike: where her back, her wing's palm and her head are on the canvas
+      const m = ctx.getTransform(), T = (x, y) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f];
+      const a = Math.PI - 0.3 + P.wa, ca = Math.cos(a), sa = Math.sin(a), px = 1 + 24 * ca - 6 * sa, py = -1 + 24 * sa + 6 * ca;
+      WORLD.m = m; WORLD.ol = ol; WORLD.wa = P.wa; WORLD.sp = P.sp; WORLD.n = 0; WORLD.sx = m.a < 0 ? -1 : 1; WORLD.u = Math.hypot(m.a, m.b);
+      WORLD.seat = T(-21, -15.5); WORLD.palm = T(px, py - 1); WORLD.head = T(H.x + 5, H.y - 2);
+      WORLD.ride = !!o.world.wind && py - 1 < -15.5; WORLD.over = !!o.world.wind && P.wa > 0.1;
+    }
     if (P.sweat > 0.02) { const k = fract(tt * 0.8); drawDrop(ctx, H.x - 19, H.y - 9 + k * 9, 3.6, ol * 0.7, (1 - k * 0.6) * clamp(P.sweat, 0, 1)); }
     ctx.restore();
     if (o.burst && o.burst.u >= 0) drawBurst(ctx, o.burst.u, o.burst.k, ol);
@@ -662,78 +770,14 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
   ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-9.2, -14.5); ctx.quadraticCurveTo(-8.6, -17, -6.4, -17.2); ctx.moveTo(-1.6, -21); ctx.quadraticCurveTo(0, -22.6, 2, -22); ctx.moveTo(8.2, -18.6); ctx.quadraticCurveTo(9.6, -19, 10.6, -17.8); ctx.stroke();
   ctx.restore();
-  // blush on the near cheek
-  if (f.blush > 0.01) { ctx.fillStyle = `rgba(255,120,120,${clamp(f.blush, 0, 1).toFixed(3)})`; ctx.beginPath(); ctx.ellipse(-3, 5.5, 4, 2.4, 0, 0, TAU); ctx.fill(); }
-
-  const NE = { x: 0.2, y: -1.5, k: 1 }, FE = { x: 10, y: -2.8, k: 0.66 }; // near and far eye; k = width (foreshortening)
-  const bl = f.blink || 0, a0 = ctx.globalAlpha;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = EYE;
-  // dot eyes (calm): the rooster's eye, a dark oval with one glint
-  const wink = clamp(f.wink || 0, 0, 1), hap = (E) => (E === NE ? Math.max(f.eHappy, wink) : f.eHappy * (1 - wink)); // a wink shuts the near eye only
-  for (const E of [NE, FE]) {
-    const dotW = (1 - f.eWide) * (1 - hap(E)) * (1 - f.eSqueeze);
-    if (dotW > 0.01) {
-      ctx.globalAlpha = a0 * dotW;
-      const px = E.x + f.pdx * 0.5 * E.k, py = E.y + f.pdy * 0.4;
-      ctx.fillStyle = EYE;
-      const ew = 4.2 * E.k, eh = 5.3 * (1 - bl * 0.85) + 0.3;
-      ctx.beginPath(); ctx.ellipse(px, py, ew, eh, 0, 0, TAU); ctx.fill();
-      if (bl < 0.5) {
-        ctx.save(); ctx.beginPath(); ctx.ellipse(px, py, ew, eh, 0, 0, TAU); ctx.clip();
-        ctx.fillStyle = 'rgba(190,120,60,0.75)'; ctx.beginPath(); ctx.ellipse(px, py + eh * 0.72, ew * 0.95, eh * 0.5, 0, 0, TAU); ctx.fill(); // a warm lower iris: depth, not a dead dot
-        ctx.restore();
-        ctx.fillStyle = '#fff'; dot(ctx, px - 1.3 * E.k, py - 1.9, 1.6 * (0.6 + 0.4 * E.k)); dot(ctx, px + 1.4 * E.k, py + 1.6, 0.7 * (0.6 + 0.4 * E.k));
-      }
-    }
-  }
-  // wide eyes (scared): white with a rim and a darting pupil
-  if (f.eWide > 0.01) {
-    ctx.globalAlpha = a0 * f.eWide * (1 - f.eHappy) * (1 - f.eSqueeze);
-    for (const E of [NE, FE]) {
-      ctx.beginPath(); ctx.ellipse(E.x, E.y - 0.5, 5.4 * E.k, 6.5 * (1 - bl * 0.8) + 0.2, 0, 0, TAU);
-      ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = o * 0.8; ctx.stroke();
-      if (bl < 0.5) {
-        const px = E.x + clamp(f.pdx, -2, 2) * E.k, py = E.y + clamp(f.pdy, -2, 2);
-        ctx.fillStyle = EYE; dot(ctx, px, py, 3 * (0.7 + 0.3 * E.k));
-        ctx.fillStyle = '#fff'; dot(ctx, px - 0.9 * E.k, py - 1, 1.1);
-      }
-    }
-  }
-  // happy arcs
-  ctx.lineWidth = o * 1.3;
-  for (const E of [NE, FE]) {
-    if (hap(E) <= 0.01) continue;
-    ctx.globalAlpha = a0 * hap(E);
-    ctx.beginPath(); ctx.moveTo(E.x - 4.5 * E.k, E.y + 1.5); ctx.quadraticCurveTo(E.x, E.y - 5, E.x + 4.5 * E.k, E.y + 1.5); ctx.stroke();
-  }
-  // squeezed shut: > <
-  if (f.eSqueeze > 0.01) {
-    ctx.globalAlpha = a0 * f.eSqueeze * (1 - f.eHappy);
-    ctx.lineWidth = o * 1.2;
-    ctx.beginPath();
-    for (const E of [NE, FE]) { const d = E === NE ? 1 : -1, w = 4 * E.k; ctx.moveTo(E.x - d * w, E.y - 4); ctx.lineTo(E.x + d * w, E.y - 0.5); ctx.lineTo(E.x - d * w, E.y + 3); }
-    ctx.stroke();
-  }
-  // worried brows: inner ends (toward the beak) raised
-  if (f.brow > 0.01) {
-    ctx.globalAlpha = a0 * f.brow * (1 - f.eHappy);
-    ctx.strokeStyle = '#4a2f1c'; // soft brown brows (black bars read as a mask at play scale)
-    ctx.lineWidth = o * 0.8;
-    ctx.beginPath();
-    ctx.moveTo(NE.x - 5, NE.y - 8.2 + f.browY); ctx.quadraticCurveTo(NE.x - 1, NE.y - 10.4 + f.browY, NE.x + 3.2, NE.y - 11.4 + f.browY);
-    ctx.moveTo(FE.x - 1.5, FE.y - 10.6 + f.browY); ctx.quadraticCurveTo(FE.x + 1, FE.y - 10 + f.browY, FE.x + 2.8, FE.y - 8.4 + f.browY);
-    ctx.stroke();
-  }
-  // determined brows ("you can do it"): inner ends lowered
-  if (f.grit > 0.01) {
-    ctx.globalAlpha = a0 * clamp(f.grit, 0, 1);
-    ctx.strokeStyle = '#4a2f1c';
-    ctx.lineWidth = o * 0.9;
-    ctx.beginPath();
-    ctx.moveTo(NE.x - 4.5, NE.y - 10.5); ctx.lineTo(NE.x + 3.5, NE.y - 8);
-    ctx.moveTo(FE.x - 1.5, FE.y - 8); ctx.lineTo(FE.x + 2.8, FE.y - 10);
-    ctx.stroke();
+  // the acting face: two eyes with lids, a brow each (the far eye is foreshortened and sits just above the beak)
+  const a0 = ctx.globalAlpha;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const lids = [NE, FE].map((E) => drawEye(ctx, E, f, o));
+  drawBrow(ctx, NE, f, lids[0]); drawBrow(ctx, FE, f, lids[1]);
+  if (f.cheek > 0.3 && f.sqz < 0.5) { // the cheek crease of a real smile, under the near eye
+    ctx.strokeStyle = 'rgba(150,104,58,0.8)'; ctx.lineWidth = o * 0.5;
+    ctx.beginPath(); ctx.moveTo(NE.x - NE.rx * 0.8, NE.y + NE.ry * 1.18); ctx.quadraticCurveTo(NE.x - 0.3, NE.y + NE.ry * (1.2 + 0.26 * f.cheek), NE.x + NE.rx * 0.6, NE.y + NE.ry * 1.14); ctx.stroke();
   }
   ctx.globalAlpha = a0;
   // tears: a stream down the near cheek, drops flung off the far side
@@ -750,22 +794,113 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
     }
     ctx.restore();
   }
-  // wattle and beak: the rooster's two-part beak, shorter; open is in the old units (0 shut .. ~5.5 wide)
-  const open = clamp(f.beak / 5, 0, 1.2);
+  // wattle and beak: the rooster's two-part beak, shorter; open is in the old units (0 shut .. ~5.5 wide). The lower half
+  // swings on its hinge and the upper lifts a little (a real gape); teeth when she grits, a tongue, a corner that smiles or frowns
+  const open = clamp(f.beak / 5, 0, 1.2), sm = f.smile;
   solid(ctx, o * 0.8, (c) => { c.moveTo(8, 6 + open * 3); c.quadraticCurveTo(13.5, 8.5 + open * 3, 10.5, 14.5 + open * 3); c.quadraticCurveTo(6.5, 13 + open * 3, 6.5, 7 + open * 2.5); c.closePath(); }, grad(ctx, 0, 6, 0, 16, [RED.hi, RED.lo]), RED.line);
-  ctx.save(); ctx.translate(9, 1);
+  ctx.save(); ctx.translate(9, 1); ctx.rotate(-0.07 * sm * (1 - Math.min(1, open)));
+  const la = open * 0.62, ua = -open * 0.2;
   if (open > 0.08) {
-    ctx.save(); ctx.rotate(open * 0.62);
+    ctx.save(); ctx.rotate(la);
     solid(ctx, o * 0.8, (c) => { c.moveTo(0, 0); c.lineTo(10.5, 1); c.lineTo(9.5, 3.8); c.lineTo(0, 4.4); c.closePath(); }, grad(ctx, 0, 0, 10, 4, [BEAK.hi, BEAK.lo]), BEAK.line);
     ctx.restore();
-    const ca = Math.cos(open * 0.62), sa = Math.sin(open * 0.62);
-    ctx.fillStyle = '#5a1710'; ctx.beginPath(); ctx.moveTo(0.5, 0); ctx.lineTo(10.5, 0.3); ctx.lineTo(10 * ca - 0.8 * sa, 10 * sa + 0.8 * ca); ctx.lineTo(0.5, 4); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#ff7a8a'; ctx.beginPath(); ctx.ellipse(4.5, 2.6 + open * 1.8, 3.4, 1.2 + open * 0.7, open * 0.2, 0, TAU); ctx.fill();
+    const ca = Math.cos(la), sa = Math.sin(la), cu = Math.cos(ua), su = Math.sin(ua);
+    const mouth = (c) => { c.moveTo(0.3, 0.6); c.lineTo(10.6 * cu - 0.9 * su, 10.6 * su + 0.9 * cu); c.lineTo(10 * ca - 0.8 * sa, 10 * sa + 0.8 * ca); c.lineTo(0.3, 3.6 + open * 1.2); c.closePath(); };
+    ctx.fillStyle = '#5a1710'; ctx.beginPath(); mouth(ctx); ctx.fill();
+    ctx.save(); ctx.beginPath(); mouth(ctx); ctx.clip();
+    if (f.teeth > 0.5) { // gritted: a row of teeth fills the gap
+      ctx.fillStyle = '#fff6df'; ctx.fillRect(-2, -8, 16, 24);
+      ctx.strokeStyle = '#b79a6c'; ctx.lineWidth = o * 0.35; ctx.beginPath();
+      for (let i = 1; i < 5; i++) { ctx.moveTo(i * 2.1, -6); ctx.lineTo(i * 2.1 + 0.5, 12); }
+      ctx.stroke();
+    } else { ctx.fillStyle = '#ff7a8a'; ctx.beginPath(); ctx.ellipse(4.6 * ca - 2.4 * sa * 0.4, 2.2 + open * 2.4, 3.6, 1.3 + open * 1.1, la * 0.6, 0, TAU); ctx.fill(); }
+    ctx.restore();
   }
+  ctx.save(); ctx.translate(0, 1.5); ctx.rotate(ua); ctx.translate(0, -1.5);
   solid(ctx, o * 0.8, (c) => { c.moveTo(-0.5, -4); c.quadraticCurveTo(6.5, -4.8, 12, 0.8); c.quadraticCurveTo(6, 2.6, -0.5, 2.6); c.closePath(); }, grad(ctx, 0, -5, 0, 3, [BEAK.hi, BEAK.lo]), BEAK.line);
   ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.ellipse(3.5, -2.4, 2.4, 0.8, 0.1, 0, TAU); ctx.fill();
   ctx.restore();
+  if (Math.abs(sm) > 0.08) { // the corner of the beak runs back onto her cheek: up for a smile, down for a frown
+    const cy0 = 2.5 + (open > 0.08 ? 1.6 + open * 1.6 : 0), k = open > 0.08 ? 0.75 : 1;
+    ctx.strokeStyle = BEAK.line; ctx.lineWidth = o * 0.75; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0.2, cy0); ctx.quadraticCurveTo(-2.2, cy0 + 0.5, -3.1 * k, cy0 - 3.1 * sm * k); ctx.stroke();
+  }
+  ctx.restore();
   if (hat) hat(ctx, P, o); // in the head's frame: (0, -16) is the top of her crown under the comb
+  ctx.restore();
+}
+
+// near and far eye (k = foreshortening; sd = which way its inner end, the one by the bridge of the beak, lies)
+const NE = { x: 0, y: 1, rx: 5.2, ry: 5.6, k: 1, sd: 1 }, FE = { x: 10.2, y: -0.3, rx: 3.3, ry: 4.9, k: 0.66, sd: -1 };
+const LID = '#f0d9ae', BROW = LINE, PUPIL = '#0d0806'; // brows in her outline brown
+// One eye: a white with her dark iris (the old dot eye lives on inside it: warm lower iris, a white glint), an upper lid
+// whose edge carries the attitude (it tilts with the brow), a lower lid the cheek pushes up. Shut: the scrunched > <, the
+// laughing arc, or just the closed lid (a blink, relief). Returns how far the upper lid is down (the brow rides on it).
+function drawEye(ctx, E, F, o) {
+  const near = E.sd > 0, hap = near ? Math.max(F.hap, F.wink) : F.hap * (1 - F.wink), ck = near ? F.bw : F.bwF;
+  const sc = 1 + 0.1 * Math.min(1.3, F.wide), rx = E.rx * sc, ry = E.ry * sc, cx = E.x, cy = E.y - 0.4 * F.wide;
+  const shutK = Math.max(hap, F.sqz), closing = Math.max(ss(0, 0.5, shutK), F.blink);
+  const lid = lerp(clamp(F.lid - 0.3 * F.wide - ck * 0.13, -0.1, 1.05), 1.05, closing), low = lerp(clamp(F.low + F.cheek * 0.13, 0, 0.6), 0.42, ss(0, 0.5, shutK));
+  const shut = shutK > 0.5 ? (F.sqz >= hap ? 1 : 2) : lid >= 0.82 ? 3 : 0;
+  const el = () => { ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, TAU); };
+  ctx.save();
+  if (shut) {
+    ctx.strokeStyle = EYE;
+    if (shut === 3) { el(); ctx.fillStyle = LID; ctx.fill(); }
+    ctx.beginPath();
+    if (shut === 1) { const w = 4.2 * E.k; ctx.moveTo(cx - E.sd * w, cy - 3.6); ctx.lineTo(cx + E.sd * w, cy - 0.2); ctx.lineTo(cx - E.sd * w, cy + 3.2); ctx.lineWidth = o * 1.2; }
+    else if (shut === 2) { ctx.moveTo(cx - 4.7 * E.k, cy + 1.9); ctx.quadraticCurveTo(cx, cy - 5.4, cx + 4.7 * E.k, cy + 1.9); ctx.lineWidth = o * 1.3; }
+    else { ctx.moveTo(cx - rx * 0.86, cy + ry * 0.22); ctx.quadraticCurveTo(cx, cy + ry * 0.86, cx + rx * 0.86, cy + ry * 0.22); ctx.lineWidth = o * 0.95; }
+    ctx.stroke();
+    ctx.restore();
+    return shut === 3 ? 1 : 0.3;
+  }
+  const ang = clamp(F.tilt * (1 - ck * 0.6), -0.8, 0.8), yb = cy - ry * 1.06 + 2 * ry * lid, sl = E.sd * Math.tan(ang * 0.8), Y = (x) => yb + (x - cx) * sl;
+  el(); ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.beginPath(); ctx.ellipse(cx - rx * 0.14, cy - ry * 0.16, rx, ry, 0, 0, TAU); ctx.rect(cx - rx * 2, cy - ry * 2, rx * 4, ry * 4); ctx.fillStyle = 'rgba(190,160,130,0.45)'; ctx.fill('evenodd'); // the white is shaded on its lower front, like the rest of her
+  const ir = 4.35 * (0.2 + 0.8 * F.pup) * (near ? 1 : 0.86), lx = clamp(F.pdx / 1.6, -1, 1), ly = clamp(F.pdy / 1.4, -1, 1);
+  const px = cx + lx * Math.max(0.4, rx - ir * 0.8) * 0.9 + E.sd * rx * 0.05, py = Math.max(cy + ly * ry * 0.34 + ry * 0.04, Math.min(cy + ry * 0.42, Y(px) + ir * 0.5));
+  // a big dark iris (~80% of the white's height at rest, a pin in a take), a near-black pupil, one crisp highlight
+  const iw = ir * (near ? 0.9 : 0.76), ih = ir * 1.04;
+  ctx.fillStyle = EYE; ctx.beginPath(); ctx.ellipse(px, py, iw, ih, 0, 0, TAU); ctx.fill();
+  if (ir > 2) { ctx.save(); ctx.clip(); ctx.fillStyle = 'rgba(150,88,42,0.6)'; ctx.beginPath(); ctx.ellipse(px, py + ih * 0.95, iw * 0.9, ih * 0.4, 0, 0, TAU); ctx.fill(); ctx.restore(); } // a thin warm rim low in the iris
+  ctx.fillStyle = PUPIL; ctx.beginPath(); ctx.ellipse(px, py, iw * 0.6, ih * 0.62, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#fff'; dot(ctx, px - iw * 0.38, py - ih * 0.4, Math.max(0.9, ir * 0.3));
+  if (lid > 0.02) { // the upper lid and its edge
+    ctx.beginPath(); ctx.moveTo(cx - rx * 2, Y(cx - rx * 2)); ctx.lineTo(cx + rx * 2, Y(cx + rx * 2)); ctx.lineTo(cx + rx * 2, cy - ry * 2); ctx.lineTo(cx - rx * 2, cy - ry * 2); ctx.closePath();
+    ctx.fillStyle = LID; ctx.fill(); ctx.lineWidth = o * 0.6; ctx.strokeStyle = EYE; ctx.stroke();
+  }
+  if (low > 0.01) { // the lower lid: the cheek pushes up in an arc
+    const yl = cy + ry - 2 * ry * low;
+    ctx.beginPath(); ctx.moveTo(cx - rx * 1.4, cy + ry * 1.3); ctx.lineTo(cx - rx * 1.4, yl + ry * 0.3); ctx.quadraticCurveTo(cx, yl - ry * (0.34 + F.cheek * 0.25), cx + rx * 1.4, yl + ry * 0.3); ctx.lineTo(cx + rx * 1.4, cy + ry * 1.3); ctx.closePath();
+    ctx.fillStyle = LID; ctx.fill(); ctx.lineWidth = o * 0.45; ctx.strokeStyle = LINE; ctx.stroke();
+  }
+  ctx.restore();
+  el(); ctx.lineWidth = o * 0.7; ctx.strokeStyle = EYE; ctx.stroke();
+  ctx.restore();
+  return clamp(lid, 0, 1);
+}
+// a feather brow over each eye: thick at the bridge, tapering out; each side tilts and raises on its own
+function drawBrow(ctx, E, F, lid) {
+  const sd = E.sd, ck = sd > 0 ? F.bw : F.bwF, ang = clamp(F.tilt * (1 - ck * 0.6), -0.8, 0.8), tn = Math.tan(ang);
+  const y0 = E.y - E.ry * 1.2 + E.ry * Math.max(0, lid - 0.2) * 0.7 - Math.min(1.3, F.by * 0.55 + ck * 1.0); // her comb sits low: a raised brow lifts a little and arches, never onto the comb
+  const xi = E.x + sd * E.rx * 1.0, xo = E.x - sd * E.rx * 1.08, th = 2.7 * (sd > 0 ? 1 : 0.82), ar = E.ry * (0.12 + ck * 0.1);
+  let yi = y0 + tn * E.rx * 1.15, yo = y0 - tn * E.rx * 0.8 + E.ry * 0.12;
+  const top = Math.min(yi - th * 0.55, yo, (yi + yo) / 2 - ar - th * 0.6), push = Math.max(0, -6.6 - top); // the comb's lower edge: the brow stays on her face, a gap of feathers between
+  yi += push; yo += push;
+  ctx.beginPath(); ctx.moveTo(xo, yo); ctx.quadraticCurveTo(E.x, (yi + yo) / 2 - ar - th * 0.6, xi, yi - th * 0.55); ctx.lineTo(xi + sd * th * 0.15, yi + th * 0.5); ctx.quadraticCurveTo(E.x, (yi + yo) / 2 - ar + th * 0.5, xo, yo); ctx.closePath();
+  ctx.fillStyle = BROW; ctx.fill();
+}
+
+// a puff of breath off her beak (phew): three small clouds that drift forward, swell and fade
+function drawBreath(ctx, x, y, u) {
+  ctx.save();
+  for (let i = 0; i < 3; i++) {
+    const k = clamp(u * 1.25 - i * 0.12, 0, 1); if (k <= 0 || k >= 1) continue;
+    ctx.globalAlpha *= 1; ctx.fillStyle = `rgba(255,255,255,${(0.85 * (1 - k * k)).toFixed(3)})`; ctx.strokeStyle = `rgba(107,74,42,${(0.5 * (1 - k)).toFixed(3)})`; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.arc(x + k * (11 + i * 5), y + 1 - k * (2 + i * 2.2) + i * 1.2, 2 + k * (3.4 - i * 0.6), 0, TAU); ctx.fill(); ctx.stroke();
+  }
   ctx.restore();
 }
 

@@ -630,6 +630,7 @@ function pointerDown(e) {
   try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
 }
 
+const TOUCH_TURN_GAIN = 1.3;
 function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
@@ -660,7 +661,8 @@ function pointerMove(e) {
     const dx = x - h.x, dy = y - h.y;
     const rr = Math.max(Math.hypot(px, py), 90 * ui.u);
     // screen y is down, world angle is counter-clockwise
-    const dTheta = -(px * dy - py * dx) / (rr * rr);
+    // touch gain: a thumb sweeps a short arc, so a finger turns the ring a bit further than it travels (a mouse stays 1:1)
+    const dTheta = (-(px * dy - py * dx) / (rr * rr)) * (e.pointerType === 'mouse' ? 1 : TOUCH_TURN_GAIN);
     h.ring.target += dTheta;
     onewayDrag(h, dTheta);
     h.x = x;
