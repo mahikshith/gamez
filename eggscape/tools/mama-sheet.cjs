@@ -1,18 +1,34 @@
 // Mama design sheets (art review only): the new mother hen (src/render/mama.js) beside the Frost Chick (src/render/strike.js).
 // Usage: node tools/mama-sheet.cjs <outDir>
-// Writes mama-hero.jpg, mama-moods.jpg, mama-launch.jpg and mama-launch.gif (or mama-launch-strip.jpg when ffmpeg is missing).
+// Writes mama-hero.jpg (idle pose on green and on dark, with the chick at true size), mama-moods.jpg (the still moods,
+// large and at 60 px), mama-anims.jpg (6 key frames of every animation) and mama-preview.html (ONE self-contained page that
+// plays every animation live; tap a cell to enlarge it).
 const { chromium } = require('playwright');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
 const out = path.resolve(process.argv[2] || 'qa/mama');
 fs.mkdirSync(out, { recursive: true });
 
-const PAGE = () => {
-  const { drawMama, mamaLaunch, MAMA_CHICK, MAMA_LAUNCH_T, drawStrikeChick } = window.M;
+// shared by the sheets and the preview page: one animation frame, her feet at (x, gy)
+const SCENE = () => {
+  const { drawMama, MAMA_ANIMS, MAMA_CHICK, drawStrikeChick } = window.M;
+  window.mamaChick = (ctx, fx, fy, sc, t, o = {}) => { // the Frost Chick with its feet at (fx, fy)
+    ctx.save(); ctx.translate(fx, fy); ctx.rotate(o.rot || 0);
+    drawStrikeChick(ctx, 'freeze', 0, -0.57 * sc, sc, t, { fog: false, shadow: !!o.shadow, mood: o.mood, squash: o.squash, stretch: o.stretch, trail: o.trail, wing: o.wing, look: o.look });
+    ctx.restore();
+  };
+  window.mamaFrame = (ctx, name, u, x, gy, s) => {
+    const p = MAMA_ANIMS[name].pose(u), c = p.chick;
+    if (c && c.air && !c.held && c.x < 0) window.mamaChick(ctx, x + c.x * s, gy + c.y * s, s * MAMA_CHICK, u, { rot: c.rot, squash: c.squash, mood: c.mood, wing: 1, shadow: c.y > -0.02 }); // hopping in behind her
+    drawMama(ctx, x, gy, s, u, { ...p, shadow: true });
+    if (c && !(c.air && !c.held && c.x < 0)) window.mamaChick(ctx, x + c.x * s, gy + c.y * s, s * MAMA_CHICK, u, { rot: c.rot, squash: c.squash, stretch: c.stretch, mood: c.mood, trail: c.held ? 0 : 1, wing: c.held ? 0 : 1, shadow: !c.held && !c.air });
+  };
+};
+
+const SHEETS = () => {
+  const { drawMama, MAMA_ANIMS, MAMA_MOODS, MAMA_CHICK } = window.M;
   const cv = document.getElementById('c'), ctx = cv.getContext('2d');
   const size = (w, h) => { cv.width = w * 2; cv.height = h * 2; cv.style.width = w + 'px'; cv.style.height = h + 'px'; ctx.setTransform(2, 0, 0, 2, 0, 0); ctx.clearRect(0, 0, w, h); };
   const GREEN = ['#86c257', '#69a843', '#5a9638'], DARK = ['#232a3d', '#171c2b', '#10141f'];
@@ -22,112 +38,129 @@ const PAGE = () => {
     for (let i = 0; i < w / 46; i++) { const gx = x + 20 + i * 46 + ((i * 37) % 23), g = gy + 14 + ((i * 53) % 5) * (h * 0.02); ctx.beginPath(); ctx.moveTo(gx - 7, g); ctx.lineTo(gx - 3, g - 9); ctx.lineTo(gx, g - 2); ctx.lineTo(gx + 4, g - 11); ctx.lineTo(gx + 8, g); ctx.closePath(); ctx.fill(); }
     ctx.restore();
   };
-  const label = (txt, x, y, px = 15, col = '#fff') => { ctx.save(); ctx.font = `700 ${px}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.lineWidth = px * 0.28; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineJoin = 'round'; ctx.strokeText(txt, x, y); ctx.fillStyle = col; ctx.fillText(txt, x, y); ctx.restore(); };
-  // the Frost Chick with its feet at (fx, fy)
-  const chick = (fx, fy, sc, t, o = {}) => {
-    ctx.save(); ctx.translate(fx, fy); ctx.rotate(o.rot || 0);
-    drawStrikeChick(ctx, 'freeze', 0, -0.57 * sc, sc, t, { fog: false, shadow: !!o.shadow, mood: o.mood, squash: o.squash, stretch: o.stretch, trail: o.trail, wing: o.wing, look: o.look });
-    ctx.restore();
-  };
-  const MOODS = ['idle', 'proud', 'worried', 'gasp', 'angry', 'cry', 'cheer', 'smug'];
-  const launchFrame = (x, gy, s, u, t) => {
-    const p = mamaLaunch(u), c = p.chick;
-    drawMama(ctx, x, gy, s, t, { ...p, shadow: true });
-    chick(x + c.x * s, gy + c.y * s, s * MAMA_CHICK, t, { rot: c.rot, squash: c.squash, stretch: c.stretch, mood: c.mood, trail: c.held ? 0 : 1, wing: c.held ? 0 : 1 });
-  };
+  const label = (txt, x, y, px = 15, col = '#fff', al = 'center') => { ctx.save(); ctx.font = `700 ${px}px system-ui, sans-serif`; ctx.textAlign = al; ctx.lineWidth = px * 0.28; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineJoin = 'round'; ctx.strokeText(txt, x, y); ctx.fillStyle = col; ctx.fillText(txt, x, y); ctx.restore(); };
   window.sheets = {
     hero() {
       const W = 900, H = 900, s = 600, gy = 810; size(W * 2, H);
       [GREEN, DARK].forEach((pal, i) => {
         const x = i * W; backdrop(x, 0, W, H, gy, pal);
-        drawMama(ctx, x + 415, gy, s, 0.4, { shadow: true, blink: 0 });
-        chick(x + 800, gy, s * MAMA_CHICK, 0.4, { shadow: true, look: { x: -0.7, y: -0.6 } });
+        drawMama(ctx, x + 400, gy, s, 0.4, { shadow: true, blink: 0 });
+        window.mamaChick(ctx, x + 790, gy, s * MAMA_CHICK, 0.4, { shadow: true, look: { x: -0.7, y: -0.6 } });
       });
       return [W * 2, H];
     },
     moods() {
       const CW = 330, CH = 372, s = 250, W = CW * 4, H = CH * 2 + 150 * 2; size(W, H);
-      MOODS.forEach((m, i) => {
+      MAMA_MOODS.forEach((m, i) => {
         const x = (i % 4) * CW, y = Math.floor(i / 4) * CH; backdrop(x, y, CW, CH, y + CH - 38, GREEN);
         drawMama(ctx, x + 150, y + CH - 38, s, 0.4 + i * 0.37, { mood: m, shadow: true, blink: 0, lift: m === 'cheer' ? 0.07 : 0 });
         label(m, x + CW / 2, y + 26, 19);
       });
       [GREEN, DARK].forEach((pal, r) => {
         const y = CH * 2 + r * 150; backdrop(0, y, W, 150, y + 118, pal);
-        MOODS.forEach((m, i) => { const x = i * (W / 8) + W / 16; drawMama(ctx, x - 6, y + 118, 60, 0.4 + i * 0.37, { mood: m, shadow: true, blink: 0, lift: m === 'cheer' ? 0.07 : 0 }); label(m, x, y + 22, 12); });
+        MAMA_MOODS.forEach((m, i) => { const x = i * (W / 8) + W / 16; drawMama(ctx, x - 6, y + 118, 60, 0.4 + i * 0.37, { mood: m, shadow: true, blink: 0, lift: m === 'cheer' ? 0.07 : 0 }); label(m, x, y + 22, 12); });
         label('60 px', 28, y + 142, 11, '#ffe9a8');
       });
       return [W, H];
     },
-    launch() {
-      const U = [0.02, 0.08, 0.24, 0.38, 0.47, 0.56, 0.78], CW = 380, CH = 470, s = 196, W = CW * U.length; size(W, CH);
-      U.forEach((u, i) => {
-        const x = i * CW; ctx.save(); ctx.beginPath(); ctx.rect(x, 0, CW, CH); ctx.clip(); backdrop(x, 0, CW, CH, CH - 40, i % 2 ? GREEN : [GREEN[0], '#64a23f', GREEN[2]]);
-        launchFrame(x + 185, CH - 40, s, u, 0.4); ctx.restore();
-        label(Math.round(u * MAMA_LAUNCH_T * 1000) + ' ms', x + CW / 2, 26, 18);
+    anims(from = 0, to = 99) { // rows [from, to): 6 key frames each
+      const names = Object.keys(MAMA_ANIMS).slice(from, to), CW = 290, CH = 330, s = 150, W = CW * 6, H = CH * names.length; size(W, H);
+      names.forEach((n, r) => {
+        const A = MAMA_ANIMS[n];
+        A.keys.forEach((u, i) => {
+          const x = i * CW, y = r * CH; ctx.save(); ctx.beginPath(); ctx.rect(x, y, CW, CH); ctx.clip(); backdrop(x, y, CW, CH, y + CH - 34, (i + r) % 2 ? GREEN : [GREEN[0], '#64a23f', GREEN[2]]);
+          window.mamaFrame(ctx, n, u, x + (n === 'launch' ? 160 : 132), y + CH - 34, s); ctx.restore();
+          label((u * 1000 | 0) + ' ms', x + CW - 12, y + 22, 13, '#fff', 'right');
+        });
+        label(n + (A.loop ? '  (loop ' : '  (one-shot ') + A.len + ' s)', 10, r * CH + 24, 17, '#ffe9a8', 'left');
       });
-      return [W, CH];
-    },
-    strip() {
-      const N = 12, CW = 250, CH = 330, s = 146, W = CW * 6; size(W, CH * 2);
-      for (let i = 0; i < N; i++) {
-        const u = i / (N - 1) * 0.92, x = (i % 6) * CW, y = Math.floor(i / 6) * CH; ctx.save(); ctx.beginPath(); ctx.rect(x, y, CW, CH); ctx.clip(); backdrop(x, y, CW, CH, y + CH - 30, GREEN);
-        launchFrame(x + 98, y + CH - 30, s, u, 0.4); ctx.restore(); label(Math.round(u * MAMA_LAUNCH_T * 1000) + ' ms', x + CW / 2, y + 22, 14);
-      }
-      return [W, CH * 2];
-    },
-    // one frame of the film: f < 0 the chick hops up from the ground (sheet-only lead-in), then the launch, then a hold
-    film(f, slow) {
-      const W = 520, H = 470, s = 200, gx = 215, gy = H - 44, sc = s * MAMA_CHICK; size(W, H); backdrop(0, 0, W, H, gy, GREEN);
-      if (f < 0) {
-        const k = 1 + f, c0 = mamaLaunch(0).chick, x0 = gx + 0.8 * s, x1 = gx + c0.x * s, y1 = gy + c0.y * s, e = k * k * (3 - 2 * k);
-        drawMama(ctx, gx, gy, s, 0.4, { ...mamaLaunch(0), shadow: true, look: { x: lerp(0.6, -0.3, k), y: lerp(0.3, -0.7, k) } });
-        chick(lerp(x0, x1, e), lerp(gy, y1, e) - Math.sin(k * Math.PI) * 0.42 * s, sc, 0.4, { mood: k < 0.15 ? 'crouch' : 'ready', squash: k < 0.15 ? 0.3 : -0.15, wing: k > 0.15 ? 1 : 0, rot: -k * 0.2 * (1 - k) * 4, look: { x: -0.8, y: -0.3 } });
-      } else launchFrame(gx, gy, s, Math.min(1, f), 0.4);
-      label(slow ? 'slow' : 'real time', W - 54, 26, 14);
       return [W, H];
     },
   };
-  function lerp(a, b, k) { return a + (b - a) * k; }
 };
+
+// the live page: a responsive grid of canvases, one per animation
+const LIVE = () => {
+  const { MAMA_ANIMS } = window.M, grid = document.getElementById('grid'), cells = [];
+  let speed = 1, clock = 0, last = performance.now();
+  for (const name of Object.keys(MAMA_ANIMS)) {
+    const A = MAMA_ANIMS[name], el = document.createElement('div'); el.className = 'cell';
+    el.innerHTML = `<canvas></canvas><b>${name}</b><i>${A.loop ? 'loop' : 'one-shot'} ${A.len} s</i>`;
+    el.addEventListener('click', () => { const big = el.classList.contains('big'); cells.forEach((c) => c.el.classList.remove('big')); if (!big) { el.classList.add('big'); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } });
+    grid.appendChild(el); cells.push({ name, A, el, cv: el.firstChild });
+  }
+  const sp = document.getElementById('speed');
+  sp.addEventListener('click', () => { speed = speed === 1 ? 0.25 : 1; sp.textContent = speed === 1 ? 'Slow motion: off' : 'Slow motion: on (0.25x)'; });
+  function tick(now) {
+    clock += Math.min(0.1, (now - last) / 1000) * speed; last = now;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    for (const c of cells) {
+      const r = c.cv.getBoundingClientRect(); if (r.bottom < -50 || r.top > innerHeight + 50 || r.width < 2) continue;
+      const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr); if (c.cv.width !== w || c.cv.height !== h) { c.cv.width = w; c.cv.height = h; }
+      const ctx = c.cv.getContext('2d'), W = r.width, H = r.height, gy = H * 0.86, launch = c.name === 'launch';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#eef3f8'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#7fbf52'; ctx.fillRect(0, gy - H * 0.03, W, H); ctx.fillStyle = '#6cab45'; ctx.fillRect(0, gy + H * 0.05, W, H);
+      const s = Math.min(H * (launch ? 0.4 : 0.46), W * (launch ? 0.36 : 0.5)), total = c.A.loop ? c.A.len : c.A.len + 0.8, u = c.A.loop ? clock % c.A.len : Math.min(c.A.len, clock % total);
+      window.mamaFrame(ctx, c.name, u, W * (launch ? 0.5 : 0.47), gy, s);
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+};
+
+const HTML = (bundle) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mama animation preview</title>
+<style>
+  html, body { margin: 0; background: #f4f1ea; color: #2b2a26; font: 500 14px/1.35 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  header { padding: 14px 16px 10px; display: flex; gap: 10px 16px; align-items: center; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; } header span { color: #6b675d; }
+  button { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 999px; border: 1px solid #c9c3b4; background: #fff; color: inherit; cursor: pointer; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; padding: 0 12px 28px; }
+  .cell { position: relative; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.14); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .cell canvas { display: block; width: 100%; aspect-ratio: 1 / 1.08; }
+  .cell b { position: absolute; left: 10px; top: 8px; font-size: 14px; text-transform: capitalize; }
+  .cell i { position: absolute; right: 10px; top: 9px; font-style: normal; font-size: 11px; color: #6b675d; }
+  .cell.big { grid-column: 1 / -1; } .cell.big canvas { aspect-ratio: auto; height: min(80vh, 110vw); }
+</style></head>
+<body>
+<header><h1>Mama: animations</h1><span>Tap a cell to enlarge it. One-shots replay after a short hold.</span><button id="speed">Slow motion: off</button></header>
+<div id="grid"></div>
+<script>${bundle.replace(/<\/script/g, '<\\/script')}\nwindow.M = M;</script>
+<script>(${SCENE.toString()})();(${LIVE.toString()})();</script>
+</body></html>
+`;
 
 (async () => {
   const esbuild = require(path.join(root, 'node_modules/esbuild'));
+  const none = {}; for (const e of ['.webp', '.png', '.jpg', '.svg', '.mp3', '.ogg', '.wav', '.m4a']) none[e] = 'empty'; // the chick is drawn by code
   const built = await esbuild.build({
     stdin: { contents: `export * from './src/render/mama.js'; export { drawStrikeChick } from './src/render/strike.js';`, resolveDir: root, loader: 'js' },
-    bundle: true, format: 'iife', globalName: 'M', write: false, logLevel: 'error',
-    loader: { '.webp': 'dataurl', '.png': 'dataurl', '.jpg': 'dataurl', '.svg': 'dataurl', '.mp3': 'empty', '.ogg': 'empty', '.wav': 'empty', '.m4a': 'empty' },
+    bundle: true, format: 'iife', globalName: 'M', write: false, logLevel: 'error', minify: true, loader: none,
   });
+  const bundle = built.outputFiles[0].text;
+  fs.writeFileSync(path.join(out, 'mama-preview.html'), HTML(bundle));
   const b = await chromium.launch();
   const p = await b.newPage({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 2 });
   const errors = []; p.on('pageerror', (e) => errors.push(String(e)));
   await p.setContent('<body style="margin:0;background:#000"><canvas id="c" style="display:block"></canvas></body>');
-  await p.addScriptTag({ content: built.outputFiles[0].text + '\nwindow.M = M;' });
-  await p.addScriptTag({ content: `(${PAGE.toString()})();` });
-  const shot = async (file, fn, args = [], type = 'jpeg') => {
+  await p.addScriptTag({ content: bundle + '\nwindow.M = M;' });
+  await p.addScriptTag({ content: `(${SCENE.toString()})();(${SHEETS.toString()})();` });
+  const shot = async (file, fn, args = []) => {
     const [w, h] = await p.evaluate(([f, a]) => window.sheets[f](...a), [fn, args]);
     await p.setViewportSize({ width: Math.ceil(w), height: Math.ceil(h) });
-    await p.screenshot({ path: file, clip: { x: 0, y: 0, width: w, height: h }, ...(type === 'jpeg' ? { type, quality: 92 } : { type }) });
+    await p.screenshot({ path: file, clip: { x: 0, y: 0, width: w, height: h }, type: 'jpeg', quality: 90 });
   };
   await shot(path.join(out, 'mama-hero.jpg'), 'hero');
   await shot(path.join(out, 'mama-moods.jpg'), 'moods');
-  await shot(path.join(out, 'mama-launch.jpg'), 'launch');
-  // the film: the hop in, the launch in real time (30 ms frames), a hold, then the same again slowed down
-  let gif = false;
-  try {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mama-')); let n = 0;
-    const frame = async (f, slow, hold = 1) => { const file = path.join(tmp, 'src.png'); await shot(file, 'film', [f, slow], 'png'); for (let i = 0; i < hold; i++) fs.copyFileSync(file, path.join(tmp, `f${String(n++).padStart(4, '0')}.png`)); };
-    for (const [slow, step] of [[false, 1], [true, 0.34]]) {
-      await frame(-1, slow, 14);
-      for (let f = -1 + 0.11 * step; f < 0; f += 0.11 * step) await frame(f, slow);
-      const du = (0.03 / 0.62) * step; for (let u = 0; u < 1; u += du) await frame(u, slow);
-      await frame(1, slow, 20);
-    }
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '100/3', '-i', path.join(tmp, 'f%04d.png'), '-vf', 'scale=520:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4', '-loop', '0', path.join(out, 'mama-launch.gif')]);
-    fs.rmSync(tmp, { recursive: true, force: true }); gif = true;
-  } catch (e) { console.log('gif skipped: ' + String(e.message || e).split('\n')[0]); }
-  if (!gif) await shot(path.join(out, 'mama-launch-strip.jpg'), 'strip');
+  await shot(path.join(out, 'mama-anims.jpg'), 'anims');
+  if (process.argv[3]) for (let i = 0; i < 10; i += 2) await shot(path.join(process.argv[3], `rows-${i}.jpg`), 'anims', [i, i + 2]); // review crops
+  // the preview page must run clean on a phone-width viewport with no network
+  const q = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  q.on('pageerror', (e) => errors.push('preview: ' + String(e))); q.on('request', (r) => { if (!r.url().startsWith('file:')) errors.push('preview requested ' + r.url()); });
+  await q.goto('file://' + path.join(out, 'mama-preview.html')); await q.waitForTimeout(700);
+  if (process.argv[3]) { await q.screenshot({ path: path.join(process.argv[3], 'preview-390.jpg'), type: 'jpeg', quality: 85 }); await q.click('.cell:nth-child(10)'); await q.waitForTimeout(400); await q.screenshot({ path: path.join(process.argv[3], 'preview-big.jpg'), type: 'jpeg', quality: 85 }); }
   await b.close();
   if (errors.length) { console.log('PAGE ERRORS\n' + errors.join('\n')); process.exit(1); }
-  console.log('wrote ' + fs.readdirSync(out).filter((f) => f.startsWith('mama-')).join(', ') + ' -> ' + out);
+  console.log(`wrote mama-hero.jpg, mama-moods.jpg, mama-anims.jpg, mama-preview.html (${(fs.statSync(path.join(out, 'mama-preview.html')).size / 1024) | 0} KB) -> ${out}`);
 })().catch((e) => { console.error(e); process.exit(1); });
