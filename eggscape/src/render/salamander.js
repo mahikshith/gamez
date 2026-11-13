@@ -12,6 +12,7 @@ import { statusClock, statusDraw, dizzyStars } from './status.js';
 import { spline, blinkAt } from './castkit.js';
 import { RING_TH, TAU } from '../sim/geom.js';
 import { SAL } from '../sim/salamander.js';
+import { drawGecko15 } from './gecko15.js'; // L15: the frost gecko is a sim crawler too
 import { strikeActOf } from './strikehit.js'; // Chick Strike: the pose it takes when a chick hits it
 
 export const salamanderAnim = crawlerAnim;
@@ -595,6 +596,7 @@ function poseOf(C) {
 export function drawSalamanders(ctx, sim, t, k) {
   const after = [];
   for (const C of sim.sals || []) {
+    if (C.sp === 'gecko') { drawGecko15(ctx, sim, k, t, false); continue; } // Baron von Brr (render/gecko15.js)
     if (C.ph === 'wait' || C.ph === 'gone' || C.pts.length < 3) continue;
     let R = ANIM.get(C.id);
     const fresh = !R || R.sim !== sim || t < R.t - 0.5;

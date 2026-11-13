@@ -148,15 +148,15 @@ export const SPECS = [
     intro: { title: 'Pick chick', chick: 'pick', line: 'Hard ice is too tough for eggs. The purple orb hatches a pick chick: tap it on the ice and it drills a hole that freezes over 6 s later.' }, useTap: true,
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, ice: true }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 15, world: 3, theme: 'blizzard', name: 'The Blizzard', boss: 'blizzard', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5,
-    bossFight: { kind: 'blizzard', delay: 4, gale: 5, phases: [
+    bossFight: { kind: 'blizzard', delay: 4, gale: 5, gecko: { delay: 3, dir: 1 }, phases: [
       { attacks: ['gale'], every: 5 },
       { at: { saved: 1, t: 30 }, attacks: ['gale', 'freeze'], every: 4.5 },
       { at: { saved: 2, t: 60 }, attacks: ['icicles', 'gale', 'freeze', 'icicles'], every: 3.8 },
     ] },
     nest: { w: 2.9 }, bonus: { kind: 'time' },
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'stone', ch: 3 }, { type: 'fire_green', ch: 4 }, { type: 'frost', ch: 2 }],
-    intro: { title: 'Boss: Baron von Brr', line: 'A frost gecko with a title. He blows gales, licks one ring frozen solid, then flicks icicles at your eggs.' },
-    tip: 'Turn a wall into the Baron\'s breath before he blows. Stone is too heavy to shove.',
+    intro: { title: 'Boss: Baron von Brr', line: 'A frost gecko crawls in after your eggs. His lick freezes one solid.' },
+    tip: 'His icy feet make eggs slide. A licked egg is stuck, but uncrackable.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'ice', gaps: 2, thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
 
   // ---------------- 4 Crystal Caves: portals that suck and spit orbs, grates, quail and ostrich eggs, glass

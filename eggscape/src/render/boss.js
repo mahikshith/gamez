@@ -16,7 +16,7 @@ import { drawMovesRings, drawMovesOver } from './bossmoves.js'; // the variety m
 import { drawGolem } from './golem.js'; // world 4 boss: the Crystal Golem
 import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
-import { drawGecko15, geckoAnchor, geckoFrame, geckoFreeze, drawGeckoEmblem } from './gecko15.js'; // L15: Baron von Brr, the frost gecko
+import { geckoAnchor, geckoFreeze, drawGeckoEmblem, drawGeckoOver } from './gecko15.js'; // L15: Baron von Brr, the frost gecko (his body: render/salamander.js)
 
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { if (globalThis.__eggDebug) console.error(e); /* art never breaks the frame */ } ctx.restore(); };
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -259,6 +259,7 @@ export function drawBossOver(ctx, sim, k, t) {
   const X = sim.bx;
   if (!X) return;
   drawMovesOver(ctx, sim, k, t); // the variety moves: shard rain, dive shadow, gust streaks
+  drawGeckoOver(ctx, sim, k, t); // L15: eggs the frost gecko licked frozen
   const B = X.boss, calm = isSpriteCalm();
   // icicles: drawn about twice the sim size (wide, a little long) so they read on a phone, with a travelling glint
   for (const I of X.ice) {
@@ -307,11 +308,15 @@ export function drawBossOver(ctx, sim, k, t) {
   // gale / gust streaks: arcs that swirl along the channels (the way the wind shoves), dir +1 = counter-clockwise
   const g = galeNow(sim);
   if (Math.abs(g) > 0.02) {
-    const Ro = sim.outerR, n = calm ? 18 : 48, dir = Math.sign(g), a = Math.min(1, Math.abs(g) * 1.2);
+    const Ro = sim.outerR, dir = Math.sign(g), a = Math.min(1, Math.abs(g) * 1.2);
+    // L15: the frost gecko's gale runs along his own channel only (sim/boss.js galeForce A.ch)
+    const GA = sim.bx.boss && sim.bx.boss.atk, GC = sim.bx.boss && sim.bx.boss.kind === 'blizzard' && sim.geckoOf ? sim.geckoOf() : null;
+    const gch = GC && sim.salLive(GC) ? (GA && GA.ch != null ? GA.ch : sim.salCh(GC)) : 0;
+    const r0 = gch ? sim.rings[gch - 1].r + 0.12 : 0.7, rs = gch ? sim.rings[gch].r - 0.12 - r0 : Ro + 0.3, n = calm ? (gch ? 8 : 18) : gch ? 22 : 48;
     ctx.save();
     ctx.lineCap = 'round';
     for (let i = 0; i < n; i++) {
-      const r = 0.7 + hash(i + 7) * (Ro + 0.3), sp = 7 + 5 * hash(i), L = 1.2 + 1.6 * hash(i + 3);
+      const r = r0 + hash(i + 7) * rs, sp = 7 + 5 * hash(i), L = 1.2 + 1.6 * hash(i + 3);
       const head = hash(i + 11) * TAU + (t * sp * dir) / r, span = Math.min(1.2, L / r);
       const a0 = dir > 0 ? head - span : head, a1 = dir > 0 ? head : head + span;
       for (const [c, w, al] of [['rgba(30,70,120,1)', 0.13, 0.35], ['#ffffff', 0.06, 0.9]]) {
@@ -328,7 +333,7 @@ export function drawBossOver(ctx, sim, k, t) {
     const warn = (A && A.name === 'gale' && A.ph === 'warn') || (G2 && G2.ph === 'warn');
     if (warn) {
       const u = A && A.name === 'gale' && A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : clamp01(1 - G2.t / G2.dur);
-      const rr = Ro + 0.45, sz = 0.4;
+      const rr = gch ? r0 + rs / 2 : Ro + 0.45, sz = gch ? 0.2 : 0.4;
       ctx.lineJoin = 'round';
       for (let i = 0; i < 8; i++) {
         const an = (i * TAU) / 8 + dir * ((t * 0.6) % (TAU / 8)), cx = rr * Math.cos(an), cy = rr * Math.sin(an);
@@ -350,7 +355,7 @@ export function drawBossOver(ctx, sim, k, t) {
 }
 
 // ---------- the boss itself. Code-drawn only (no portrait sprites inside a level):
-// blizzard: Baron von Brr, the frost gecko on the outer ring (render/gecko15.js). golem: render/golem.js.
+// blizzard: Baron von Brr, the frost gecko in the vault (render/gecko15.js). golem: render/golem.js.
 // The weasel and the Rat King live inside the vault (render/thieves.js).
 const ACTOR = { blizzard: 1, golem: 1, owl: 1 };
 // the view this frame (main sets it): world y of the top of the play area, pixels per meter, ui scale
@@ -362,10 +367,10 @@ export function bossPose(sim, view = VIEW) {
   if (!B || !ACTOR[B.kind] || B.den) return null; // v3.6: a thief boss is drawn inside the vault (render/thieves.js)
   const R = sim.outerR;
   if (B.kind === 'owl') return { x: B.x, y: B.y, h: 1.9, dir: B.face || 1 }; // v4 (render/owl.js)
-  if (B.kind === 'blizzard') { // the gecko: a fixed frame for the camera, his own body for everything else
-    if (view === false) return geckoFrame(sim);
+  if (B.kind === 'blizzard') { // the gecko lives in the vault (a sim crawler): the camera frames him like any creature
+    if (view === false) return null;
     const g = geckoAnchor(sim);
-    return g ? { x: g.x, y: g.y, h: 1.6, dir: B.face || 1 } : geckoFrame(sim);
+    return g ? { x: g.x, y: g.y, h: 1.2, dir: B.face || 1 } : { x: 0, y: R + 0.6, h: 1.2, dir: B.face || 1 };
   }
   if (B.kind === 'golem') {
     // big: about a third of the vault wide (at most ~150 px tall on screen), its belly just above the outer ring.
@@ -387,14 +392,14 @@ export function drawBossActor(ctx, sim, k, t) {
   if (!Q) return;
   const A = B.atk, calm = isSpriteCalm();
   const warnU = A && A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 0, acting = A && A.ph === 'act';
-  // blizzard (L15): the frost gecko clings to the outer ring and does every attack himself (render/gecko15.js).
-  if (B.kind === 'blizzard') drawGecko15(ctx, sim, k, t, calm);
+  // blizzard (L15): the frost gecko walks the vault and does every attack himself (render/gecko15.js, drawn with the
+  // salamanders, under the eggs); here only the frost his deep freeze sends to the ring.
   // golem (L20): no figure either. The owner found the big mammoth and golem bodies too bulky for the game's look; attacks stay.
   if (B.kind === 'owl') drawOwlBoss(ctx, sim, k, t);
   // the frost stomp: once the foot is down (45% into the warning) frost cracks race from it to the ring it freezes
   if (A && A.name === 'freeze' && B.kind === 'blizzard' && !calm) {
     const ring = sim.rings[A.ring], gf = geckoFreeze(sim) || { x: Q.x, y: Q.y, u: 0 }, u = gf.u; // the frost runs from where his snout and pads touch
-    const fa = Math.atan2(gf.y, gf.x), fx = gf.x, fy = gf.y, rr = ring.r + RING_TH * 0.5;
+    const fa = Math.atan2(gf.y, gf.x), fx = gf.x, fy = gf.y, rr = ring.r + (ring.r < Math.hypot(fx, fy) ? 1 : -1) * RING_TH * 0.5; // to the face of the wall he slaps
     const ex = Math.cos(fa) * rr, ey = Math.sin(fa) * rr, L = Math.hypot(ex - fx, ey - fy) || 1, nx = -(ey - fy) / L, ny = (ex - fx) / L, n = 8;
     if (u > 0) {
       ctx.save();

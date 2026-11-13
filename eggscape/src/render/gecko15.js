@@ -1,15 +1,15 @@
 // Baron von Brr: the frost gecko (render/cousins.js) as the villain of level 15 (sim kind 'blizzard').
-// RENDER ONLY. He is the visible author of every attack the sim already runs (sim/boss.js: gale, freeze, icicles):
-// everything here is read from sim.bx.boss (attack name, warn / act phase, timers, dir, ring) and never written back.
-// He clings to the outside of the outermost ring, on the upper arc, and crawls (a real snout trail, so the body
-// follows through every turn) to where the next attack comes from; he never teleports.
+// RENDER ONLY. His body is the sim's crawler (sim/salamander.js, species 'gecko': sim.geckoOf()): he crawls in through
+// a gap of the outer ring, walks the channel floors and climbs through gaps toward the eggs, and the blizzard attacks
+// (sim/boss.js gale, freeze, icicles) come from him where he stands. Everything here is read from the sim (his trail,
+// phase, the boss attack) and never written back. Drawn from drawSalamanders (render/salamander.js), under the eggs.
 import { RING_TH, TAU } from '../sim/geom.js';
+import { GECKO } from '../sim/salamander.js';
 import { drawCrawler } from './crawlers.js';
-import { statusClock, statusKind } from './status.js';
+import { statusClock } from './status.js';
 import { hash } from './castkit.js';
 
-const SVL = 2.0, UM = SVL / 100, LEN = 178 * UM, HIP = 76 * UM; // meters: snout to hips, one body unit, whole length
-const TURN_R = 0.22, DEG = Math.PI / 180;
+const SVL = GECKO.svl, UM = SVL / 100, LEN = 178 * UM, HIP = 76 * UM; // meters: snout to hips, one body unit, whole length
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const sstep = (v) => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
 const lerp = (a, b, k) => a + (b - a) * k;
@@ -18,170 +18,141 @@ const CH = ['walk', 'rear', 'crouch', 'mouth', 'swell', 'dazed', 'angry', 'shake
 
 let S = null;
 export const isGecko15 = (sim) => !!(sim && sim.bx && sim.bx.boss && sim.bx.boss.kind === 'blizzard');
-const pathR = (sim) => sim.outerR + RING_TH / 2 + 0.3;
+const geckoC = (sim) => (sim && sim.geckoOf ? sim.geckoOf() : null);
+const shown = (C) => !!C && C.ph !== 'wait' && C.ph !== 'gone' && C.ph !== 'warp' && C.pts.length > 2;
 
 function fresh(sim, t) {
-  const R = pathR(sim), a0 = 78 * DEG;
-  S = { sim, t, R, hx: R * Math.cos(a0), hy: R * Math.sin(a0), hd: a0 - Math.PI / 2, tr: [], odo: 0, v: 0, B: {}, look: { x: 0.45, y: 0 }, aim: 0, hop: 0, flick: 0, touch: 0, crack: 0, frostAt: null, atk: null, goal: null, sl: null, hurtT: -9, wasFl: 0, wasDz: 0, k: 30, puffT: -9 };
+  S = { sim, t, hx: 0, hy: 0, hd: 0, tr: [], odo: 0, B: {}, look: { x: 0.45, y: 0 }, aim: 0, hop: 0, flick: 0, touch: 0, crack: 0, hurtT: -9, wasFl: 0, wasDz: 0, k: 30, prints: [], pOdo: null, pSide: 1, beatT: -1, lkT: -9, lk: null, wide: false };
   for (const c of CH) S.B[c] = 0;
-  for (let d = 0; d <= LEN + 0.6; d += 0.05) { const a = a0 + d / R; S.tr.push({ x: R * Math.cos(a), y: R * Math.sin(a) }); }
   return S;
 }
-// a point d meters behind the snout, along the trail he actually walked
+// his trail from the sim (snout first), in meters
+function pull(C) {
+  S.tr = C.pts;
+  const h = C.pts[0], q = C.pts[Math.min(C.pts.length - 1, 3)];
+  S.hx = h.x; S.hy = h.y;
+  if (Math.hypot(h.x - q.x, h.y - q.y) > 1e-4) S.hd = Math.atan2(h.y - q.y, h.x - q.x);
+  S.odo = C.odo;
+}
+// a point d meters behind the snout, along the trail he actually walked (past its end: straight on)
 function trailAt(d) {
   const T = S.tr;
-  let px = S.hx, py = S.hy, left = Math.max(0, d);
-  for (let i = 0; i < T.length; i++) {
+  let px = T[0].x, py = T[0].y, left = d;
+  if (left <= 0) return { x: px - Math.cos(S.hd) * left, y: py - Math.sin(S.hd) * left };
+  for (let i = 1; i < T.length; i++) {
     const q = T[i], l = Math.hypot(q.x - px, q.y - py);
     if (l >= left && l > 1e-6) { const f = left / l; return { x: px + (q.x - px) * f, y: py + (q.y - py) * f }; }
     left -= l; px = q.x; py = q.y;
   }
-  return { x: px, y: py };
+  const a = T[T.length - 2] || T[0], dx = px - a.x, dy = py - a.y, l = Math.hypot(dx, dy) || 1;
+  return { x: px + (dx / l) * left, y: py + (dy / l) * left };
 }
-// the same, with the body's own moves on top: the hurt hop (all of him jumps off the ring) and the tail flick
+// the same, with the body's own moves on top: the hurt hop (a jump off the floor) and the tail flick
 function bodyAt(d) {
   const q = trailAt(d), l = Math.hypot(q.x, q.y) || 1, nx = q.x / l, ny = q.y / l;
   let o = S.hop;
-  if (d > HIP && S.flick) { const f = (d - HIP) / (LEN - HIP); o += S.flick * Math.pow(f, 1.5) * 1.7; }
+  if (d > HIP && S.flick) { const f = (d - HIP) / (LEN - HIP); o += S.flick * Math.pow(f, 1.5) * 0.9; }
   return { x: q.x + nx * o, y: q.y + ny * o };
 }
 
-// where the next attack comes from: { th (angle on the ring), face (+1 counter-clockwise, -1 clockwise, 0 any), touch }
-function goalOf(sim, B, A) {
-  if (A && A !== S.atk) {
-    S.atk = A; S.crack = 0; S.touch = 0;
-    if (A.name === 'gale') S.goal = { th: (90 + A.dir * 36) * DEG, face: A.dir, touch: 0 };
-    else if (A.name === 'freeze') {
-      // beside the eggs that stand on the ring he is about to lick (the upper arc only: the nest is below)
-      let sx = 0, sy = 0, n = 0;
-      for (const e of sim.aliveEggs()) { if (Math.min(sim.rings.length - 1, sim.channelOf(e)) !== A.ring) continue; const p = e.body.getPosition(); sx += p.x; sy += p.y; n++; }
-      const cur = Math.atan2(S.hy, S.hx);
-      let th = n ? Math.atan2(sy, sx) : cur;
-      if (th < -90 * DEG) th += TAU;
-      S.goal = { th: clamp(th, 38 * DEG, 142 * DEG), face: 0, touch: 1 };
-    } else S.goal = { th: Math.atan2(S.hy, S.hx), face: 0, touch: 0, stay: 1 }; // icicles: the tail does it, right where he is
-  } else if (!A) {
-    S.atk = null;
-    if (B.t < 1.3) S.goal = { th: 90 * DEG, face: 0, touch: 0, hurry: 1 }; // the next attack is about due: back to the top, ready for either side
-    else { const n = Math.floor(sim.t / 5.5); S.goal = { th: (90 + (hash(n * 3.7 + 1) - 0.5) * 96) * DEG, face: 0, touch: 0 }; }
-  }
-  return S.goal;
-}
-
-function step(sim, B, dt, t) {
-  const A = B.atk, R = S.R, st = sim.state;
+function step(sim, C, B, dt, t) {
+  const A = B.atk, st = sim.state;
   const warn = A && A.ph === 'warn', act = A && A.ph === 'act', u = warn ? clamp(1 - A.t / A.dur, 0, 1) : act ? 1 : 0;
   const W = {}; for (const c of CH) W[c] = 0;
-  let speed = 0, look = { x: 0.45, y: 0 }, aim = 0, flick = 0;
-  const flinch = B.flinch > 0, dizzy = B.dizzy > 0;
+  let look = { x: 0.45, y: 0 }, aim = 0, flick = 0;
+  const flinch = B.flinch > 0, dizzy = B.dizzy > 0 || C.ph === 'daze';
   if (flinch && !S.wasFl) S.hurtT = t;
-  if (dizzy && !S.wasDz) S.hurtT = t;
-  S.wasFl = flinch; S.wasDz = dizzy;
-  const hu = (t - S.hurtT) / 0.55; // the hurt take: a hop off the ring, eyes wide, jaw dropped
-  const G = goalOf(sim, B, A);
-  const a = Math.atan2(S.hy, S.hx), rad = Math.hypot(S.hx, S.hy);
-  let d = G ? wrap(G.th - a) : 0;
-  if (st !== 'play') { // the level is over: lost = he gloats (won: he slips off, see slide())
+  if (B.dizzy > 0 && !S.wasDz) S.hurtT = t;
+  S.wasFl = flinch; S.wasDz = B.dizzy > 0;
+  const hu = (t - S.hurtT) / 0.55; // the hurt take: a hop, eyes wide, jaw dropped
+  const moving = C.ph === 'walk' || C.ph === 'brake' || C.ph === 'retreat' || C.ph === 'in';
+  const a = Math.atan2(S.hy, S.hx);
+  // head turn toward a world point (radians off his heading, clamped)
+  const aimAt = (x, y) => clamp(wrap(Math.atan2(y - S.hy, x - S.hx) - S.hd), -1.1, 1.1);
+  if (st !== 'play' && C.ph === 'grin') { // the level is lost: he gloats
     W.rear = 0.35; W.tongue = 1; W.mouth = 0.7; W.angry = 0.4;
   } else if (hu >= 0 && hu < 1) {
     W.shake = 1; W.mouth = 0.9; W.splay = 1; W.crouch = 0.4; look = { x: -0.2, y: 0 };
   } else if (dizzy) {
     W.dazed = 1; W.splay = 1; W.tongue = 0.6;
-  } else if (G) {
-    const arc = Math.abs(d) * R;
-    let want = 0; // which way to head: along the ring to the goal, then round to face the way the attack goes
-    if (!G.stay && arc > 0.1) want = Math.sign(d);
-    else if (G.face && Math.cos(S.hd - (a + G.face * Math.PI / 2)) < 0.8) want = G.face;
-    const touching = G.touch && arc <= 0.1 && A;
-    if (want) {
-      const left = warn ? Math.max(0.12, A.t - A.dur * 0.55) : 0.5;
-      speed = warn || G.hurry ? clamp(arc / left, 2.4, 15) : 1.5; // the telegraph: he scuttles
-      if (arc <= 0.1) speed = 1.6; else speed = Math.min(speed, arc * 7 + 0.5);
-      const la = Math.min(arc <= 0.1 ? 0.5 : arc, 0.55) / R, pa = a + want * la, px = R * Math.cos(pa), py = R * Math.sin(pa);
-      steer(Math.atan2(py - S.hy, px - S.hx), a, speed, dt);
-    } else if (touching) {
-      // deep freeze: he turns in and plants his snout and both front pads on the ring
-      const rt = sim.outerR + 0.02, side = Math.cos(S.hd - (a + Math.PI / 2)) >= 0 ? 1 : -1, pa = a + side * 0.16 / R;
-      const px = rt * Math.cos(pa), py = rt * Math.sin(pa), dist = Math.hypot(px - S.hx, py - S.hy);
-      if (rad > rt + 0.035 && dist > 0.03) { speed = clamp(dist * 9, 0.5, 2.2); steer(Math.atan2(py - S.hy, px - S.hx), a, speed, dt, 0.11); }
-      else S.touch = Math.min(1, S.touch + dt * 5);
-    }
-    if (A && A.name === 'gale') {
-      const ready = !want;
-      if (warn) { W.crouch = ready ? 0.5 * Math.sin(Math.PI * clamp(u / 0.5, 0, 1)) : 0; W.rear = ready ? 0.75 * sstep((u - 0.3) / 0.4) : 0; W.swell = ready ? sstep((u - 0.35) / 0.4) : 0; W.mouth = 0.15 * W.swell; W.angry = 0.7; }
+  } else if (C.ph === 'lick') {
+    // he reaches his head to the egg and licks it: the tongue goes out, then the ice runs over it
+    const e = sim.eggs.find((x) => x.id === C.lk), el = C.dur - C.t;
+    if (e && e.alive && !e.saved) { const p = e.body.getPosition(); aim = aimAt(p.x, p.y) * 0.8; S.lk = { x: p.x, y: p.y }; }
+    W.crouch = 0.45 + 0.3 * Math.sin(Math.PI * clamp(el / C.dur, 0, 1)); W.tongue = el > 0.12 ? 1 : 0; W.mouth = 0.6; W.frost = 1;
+    look = { x: 1, y: 0 };
+  } else if (A && (C.ph === 'atk' || C.ph === 'brake')) {
+    if (A.name === 'gale') {
+      if (warn) { W.crouch = 0.5 * Math.sin(Math.PI * clamp(u / 0.5, 0, 1)); W.rear = 0.75 * sstep((u - 0.3) / 0.4); W.swell = sstep((u - 0.35) / 0.4); W.mouth = 0.15 * W.swell; W.angry = 0.7; }
       else { W.rear = 0.7; W.mouth = 1; W.swell = 0.35 + 0.3 * Math.sin(t * 17); W.angry = 1; W.shake = 0.35; }
       look = { x: 1, y: 0 };
-    } else if (A && A.name === 'freeze') {
+    } else if (A.name === 'freeze') {
+      // he turns his head to the wall he freezes and slaps, slaps, licks it
+      const ring = sim.rings[A.ring], toward = ring ? (ring.r < Math.hypot(S.hx, S.hy) ? -1 : 1) : 1;
+      aim = aimAt(S.hx + Math.cos(a) * toward, S.hy + Math.sin(a) * toward);
+      S.touch = Math.min(1, S.touch + dt * 4);
       W.frost = S.touch; W.angry = 0.5;
-      if (S.touch > 0.3 || act) { const sl = Math.abs(Math.sin(t * 9.5)); W.crouch = 0.75 * sl; W.tongue = 1; W.mouth = 0.55; S.crack = Math.min(1, S.crack + dt / 0.45); } // slap, slap, lick
+      if (S.touch > 0.3 || act) { const sl = Math.abs(Math.sin(t * 9.5)); W.crouch = 0.75 * sl; W.tongue = 1; W.mouth = 0.55; S.crack = Math.min(1, S.crack + dt / 0.45); }
       look = { x: 1, y: 0 };
-    } else if (A && A.name === 'icicles') {
+    } else if (A.name === 'icicles') {
       // the icicle tail: it coils in, then whips up and out, and the icicles fly off it
       flick = warn ? (u < 0.28 ? -0.3 * sstep(u / 0.28) : u < 0.5 ? lerp(-0.3, 1, sstep((u - 0.28) / 0.14)) : 1 - 0.75 * sstep((u - 0.55) / 0.45) + 0.12 * Math.sin((u - 0.5) * 40) * (1 - u)) : 0.25 * clamp(A.t / A.dur, 0, 1);
       W.angry = 0.8; W.crouch = warn && u < 0.3 ? 0.6 : 0; W.mouth = warn && u > 0.3 ? 0.4 : 0;
-      aim = 0.5 * Math.sign(Math.cos(S.hd - (a + Math.PI / 2)) || 1) * (warn ? sstep(u / 0.3) : 0.4); // he looks back over his shoulder into the vault
+      aim = 0.5 * Math.sign(Math.cos(S.hd - (a + Math.PI / 2)) || 1) * (warn ? sstep(u / 0.3) : 0.4); // he looks back over his shoulder
       look = { x: 0.3, y: 0 };
     }
-  }
-  if (!(A && A.name === 'freeze')) S.touch = Math.max(0, S.touch - dt * 4);
-  W.walk = speed > 0.05 ? 1 : 0;
-  W.flee = speed > 4 ? 1 : 0;
-  S.v = speed;
+  } else if (C.bored > 0 && moving) { W.tongue = C.bored > GECKO.bored - 1.2 ? 0.7 : 0; look = { x: 0.6, y: 0.4 * Math.sin(t * 2) }; } // smug, wandering off
+  if (!(A && A.name === 'freeze' && C.ph === 'atk')) { S.touch = Math.max(0, S.touch - dt * 4); if (!A || A.name !== 'freeze') S.crack = 0; }
+  W.walk = moving ? 1 : 0;
   const rate = { walk: 9, rear: 9, crouch: 16, mouth: 14, swell: 9, dazed: 6, angry: 8, shake: 30, flee: 6, splay: 8, tongue: 12, frost: 5 };
   for (const c of CH) S.B[c] += (W[c] - S.B[c]) * (1 - Math.exp(-dt * rate[c]));
-  S.hop = hu >= 0 && hu < 1 ? 0.3 * Math.sin(Math.PI * Math.min(1, hu * 1.6)) * (hu < 0.625 ? 1 : 0) : 0;
+  S.hop = hu >= 0 && hu < 1 ? 0.12 * Math.sin(Math.PI * Math.min(1, hu * 1.6)) * (hu < 0.625 ? 1 : 0) : 0;
   S.flick += (flick - S.flick) * (1 - Math.exp(-dt * 26));
   S.aim += (aim - S.aim) * (1 - Math.exp(-dt * 8));
   S.look.x += (look.x - S.look.x) * Math.min(1, dt * 7); S.look.y += (look.y - S.look.y) * Math.min(1, dt * 7);
   S.wide = hu >= 0 && hu < 1;
 }
-// turn the snout toward a heading (no tighter than his own turning circle; a U-turn swings out, away from the ring) and walk
-function steer(want, a, speed, dt, tr = TURN_R) {
-  let e = wrap(want - S.hd);
-  if (Math.abs(e) > 1.9 && Math.cos(S.hd - a) < 0.25) { const o = wrap(a - S.hd); e = Math.abs(e) * (o >= 0 ? 1 : -1); }
-  const mx = (speed / tr) * dt;
-  S.hd += clamp(e, -mx, mx);
-  const ds = speed * dt;
-  S.hx += Math.cos(S.hd) * ds; S.hy += Math.sin(S.hd) * ds; S.odo += ds;
-  const T = S.tr, h = T[0];
-  if (!h || Math.hypot(h.x - S.hx, h.y - S.hy) > 0.04) { T.unshift({ x: S.hx, y: S.hy }); if (T.length > 90) T.length = 90; }
+// beaten (the level is won): he goes limp, then scrabbles off and is gone in a puff of snow
+function beaten(dt, t) {
+  if (S.beatT < 0) { S.beatT = t; S.hurtT = t; }
+  const el = t - S.beatT;
+  for (const c of CH) S.B[c] += ((c === 'dazed' || c === 'splay' ? (el < 1.1 ? 1 : 0) : c === 'walk' || c === 'flee' ? (el >= 1.1 ? 1 : 0) : c === 'mouth' ? 0.8 : c === 'shake' ? (el < 0.5 ? 1 : 0) : 0) - S.B[c]) * (1 - Math.exp(-dt * 9));
+  if (el >= 1.1) S.odo = (S.bodo = (S.bodo || S.odo) + 6 * dt);
+  S.hop = 0; S.flick += (0 - S.flick) * Math.min(1, dt * 8); S.wide = el < 0.5; S.touch = 0; S.crack = 0;
+  return el;
 }
 
-// beaten (the level is won): his pads let go, he scrabbles, slides round the ring on his belly, drops and skids away
-function slide(sim, dt, t) {
-  let L = S.sl;
-  if (!L) {
-    const c = bodyAt(HIP * 0.7), ph = Math.atan2(c.y, c.x), dirn = Math.abs(Math.cos(ph)) > 0.08 ? (Math.cos(ph) > 0 ? -1 : 1) : (Math.cos(S.hd) > 0 ? -1 : 1);
-    L = S.sl = { t0: t, c, ph, r: Math.hypot(c.x, c.y), da: 0, om: 0, dirn, mode: 'ring', ox: 0, oy: 0, vx: 0, vy: 0, rot: 0, vr: 0 };
-    S.hurtT = t;
+// icy feet: frosty prints where his feet came down (on the floor wall, riding its ring), gone after GECKO.icy s
+function footprints(sim, C, t) {
+  if (C.ph !== 'walk' && C.ph !== 'brake' && C.ph !== 'retreat') return;
+  if (S.pOdo == null || Math.abs(C.odo - S.pOdo) > 0.2) {
+    S.pOdo = C.odo; S.pSide = -S.pSide;
+    const n = sim.rings.length;
+    for (const d of [0.12 * SVL / 1.3, HIP * 0.95]) {
+      const q = trailAt(d), r = Math.hypot(q.x, q.y), qa = Math.atan2(q.y, q.x), c = sim.chAt(r);
+      if (c < 1 || c > n - 1) continue;
+      const ri = Math.sin(qa) > 0 ? c - 1 : c, ring = sim.rings[ri];
+      S.prints.push({ ri, la: qa - ring.body.getAngle(), side: S.pSide, t, out: ri === c - 1 ? 1 : -1, h: S.hd - qa });
+    }
+    if (S.prints.length > 60) S.prints.splice(0, S.prints.length - 60);
   }
-  const el = t - L.t0, gY = sim.groundY + 0.22;
-  if (L.mode === 'ring') {
-    if (el > 0.5) { const ph = L.ph + L.da; L.om += (-(16 / L.r) * Math.cos(ph) + L.dirn * 3.2) * dt; L.om *= 1 - 0.25 * dt; L.da += L.om * dt; }
-    S.odo += 9 * dt * Math.max(0, 1 - el / 1.6); // the scrabble: feet going, body not
-    const ph = L.ph + L.da;
-    if (Math.sin(ph) < -0.12 || el > 6) { L.mode = 'air'; const v = L.om * L.r; L.vx = -Math.sin(ph) * v + L.dirn * -1.2; L.vy = Math.cos(ph) * v; L.vr = L.om; }
-  } else {
-    const ph = L.ph + L.da, cy = L.r * Math.sin(ph) + L.oy;
-    if (L.mode === 'air') {
-      L.vy -= 14 * dt; L.ox += L.vx * dt; L.oy += L.vy * dt; L.rot += L.vr * dt;
-      if (cy <= gY) { L.mode = 'ground'; L.oy += gY - cy; L.vy = 0; L.vx = L.dirn * 7.5; L.land = t; } // he skids right across the yard, past the nest
-    } else { L.ox += L.vx * dt; L.vx *= 1 - 0.1 * dt; const h = wrap(S.hd + L.da + L.rot), tg = Math.abs(h) < Math.PI / 2 ? 0 : Math.PI * Math.sign(h); L.rot += wrap(tg - h) * Math.min(1, dt * 7); } // flat on his belly
+}
+function drawPrints(ctx, sim, t) {
+  const left = [];
+  for (const P of S.prints) {
+    const age = t - P.t;
+    if (age > GECKO.icy || age < 0) continue;
+    left.push(P);
+    const ring = sim.rings[P.ri], a = ring.body.getAngle() + P.la, r = ring.r + P.out * (RING_TH / 2 + 0.035) + P.side * 0.05 * P.out;
+    const x = r * Math.cos(a), y = r * Math.sin(a), al = Math.min(1, age * 6) * (1 - sstep((age - (GECKO.icy - 1.2)) / 1.2));
+    const h = a + P.h;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(h);
+    ctx.globalAlpha = 0.85 * al; ctx.fillStyle = '#f4fcff'; ctx.strokeStyle = 'rgba(70,140,200,0.8)'; ctx.lineWidth = 0.012;
+    ctx.beginPath(); ctx.ellipse(0, 0, 0.04, 0.03, 0, 0, TAU); ctx.fill(); ctx.stroke();
+    for (const s of [-1, 0, 1]) { const ta = s * 0.6; ctx.beginPath(); ctx.arc(Math.cos(ta) * 0.065, Math.sin(ta) * 0.055, 0.017, 0, TAU); ctx.fill(); ctx.stroke(); }
+    ctx.restore();
   }
-  for (const c of CH) S.B[c] += ((c === 'dazed' || c === 'splay' ? (el > 0.35 ? 1 : 0) : c === 'walk' ? (L.mode === 'ring' && el < 1.6 ? 1 : 0) : c === 'mouth' ? 0.8 : c === 'shake' ? (el < 0.5 ? 1 : 0) : 0) - S.B[c]) * (1 - Math.exp(-dt * 9));
-  S.hop = 0; S.flick += (0 - S.flick) * Math.min(1, dt * 8); S.wide = el < 0.5; S.touch = 0; S.crack = 0;
-}
-// the rigid move of the whole drawn gecko while he slides (world space)
-function slideXf(ctx) {
-  const L = S.sl; if (!L) return;
-  const ph = L.ph + L.da, cx = L.r * Math.cos(ph), cy = L.r * Math.sin(ph);
-  ctx.translate(L.ox + cx, L.oy + cy); ctx.rotate(L.rot); ctx.translate(-cx, -cy); ctx.rotate(L.da);
-}
-function slidePt(p) {
-  const L = S.sl; if (!L) return p;
-  const ph = L.ph + L.da, cx = L.r * Math.cos(ph), cy = L.r * Math.sin(ph);
-  let x = p.x * Math.cos(L.da) - p.y * Math.sin(L.da) - cx, y = p.x * Math.sin(L.da) + p.y * Math.cos(L.da) - cy;
-  return { x: x * Math.cos(L.rot) - y * Math.sin(L.rot) + cx + L.ox, y: x * Math.sin(L.rot) + y * Math.cos(L.rot) + cy + L.oy };
+  S.prints = left;
 }
 
 function ensure(sim, t) {
@@ -189,19 +160,23 @@ function ensure(sim, t) {
   if (!S || S.sim !== sim || t < S.t - 0.5) fresh(sim, t);
   return S;
 }
-// his body centre in the world, where he is drawn now (popups, hit sparks and Chick Strikes land here)
+// his body centre in the world, where he is drawn now (popups, hit sparks)
 export function geckoAnchor(sim) {
-  if (!isGecko15(sim) || !S || S.sim !== sim) return null;
-  return slidePt(bodyAt(HIP * 0.55));
+  const C = geckoC(sim);
+  if (!isGecko15(sim) || !shown(C)) return null;
+  if (!S || S.sim !== sim) fresh(sim, sim.t);
+  pull(C);
+  return bodyAt(HIP * 0.55);
 }
-// the camera's fixed room for him (no zoom pumping as he walks): the upper arc outside the outer ring
-export function geckoFrame(sim) { return { x: 0, y: sim.outerR - 0.5, h: 1.7, pad: 1.1 }; } // h < 2: main keeps him in frame even when the camera would close in on the eggs
-// the deep freeze: where his snout touches the ring, and how far the frost has run from it (0..1)
+// the deep freeze: where his snout touches, and how far the frost has run from it to the ring (0..1)
 export function geckoFreeze(sim) {
-  if (!isGecko15(sim) || !S || S.sim !== sim) return null;
-  return { x: S.hx, y: S.hy, u: S.crack };
+  const C = geckoC(sim);
+  if (!isGecko15(sim) || !S || S.sim !== sim || !shown(C)) return null;
+  pull(C);
+  const sn = bodyAt(0), ha = S.hd + S.aim;
+  return { x: sn.x + Math.cos(ha) * 0.12, y: sn.y + Math.sin(ha) * 0.12, u: S.crack };
 }
-// a strike event or effect aimed at the boss's sim point, moved onto him
+// a strike event or effect aimed at the boss's sim point, moved onto him (strikes now aim at his sim body: kept for 'bx')
 export function geckoStrikeEv(sim, ev) {
   if (!ev || !ev.type || ev.type.slice(0, 3) !== 'stk') return ev;
   const g = geckoAnchor(sim);
@@ -268,23 +243,26 @@ function drawFlick(ctx, sim, A, t) {
   ctx.restore();
 }
 
-// ctx: world space (meters, y up). k: pixels per meter. Called from drawBossActor every frame.
+// ctx: world space (meters, y up). k: pixels per meter. Called from drawSalamanders (render/salamander.js) every frame.
 export function drawGecko15(ctx, sim, k, t, calm) {
-  const B = sim.bx.boss;
+  const B = sim.bx.boss, C = geckoC(sim);
   ensure(sim, t);
   const dt = clamp(t - S.t, 0, 0.05);
   S.t = t; S.k = k;
-  const fxb = sim.p2 && sim.p2.fx && sim.p2.fx.b, iced = (B.stk > 0 || B.dizzy > 0) && ((fxb && fxb.k === 'ice') || statusKind('b') === 'ice');
-  const st = statusClock(sim, 'b', iced ? { k: 'ice', left: Math.max(B.stk || 0, B.dizzy) } : B.dizzy > 0 && fxb && fxb.k === 'zap' ? { k: 'stun', zap: true, left: B.dizzy } : null, t);
+  if (!shown(C)) return;
+  pull(C);
+  const st = statusClock(sim, 'c' + C.id, C.ph === 'daze' ? (C.dk === 'frost' ? { k: 'ice', left: C.t } : { k: 'stun', zap: C.dk === 'bolt', left: C.t }) : null, t);
   const frozen = !!(st && st.k === 'ice');
-  const won = sim.state === 'won' || sim.state === 'winning';
-  if (won) slide(sim, dt, t);
-  else if (!frozen) { S.sl = null; step(sim, B, dt, t); }
-  const A = B.atk;
-  if (S.sl && S.sl.mode === 'ground' && Math.abs(S.sl.r * Math.cos(S.sl.ph + S.sl.da) + S.sl.ox) > sim.outerR + 5 && (S.sl.r * Math.cos(S.sl.ph + S.sl.da) + S.sl.ox) * S.sl.dirn > 0) return; // gone
+  const won = C.ph === 'beat';
+  let alpha = C.ph === 'in' ? sstep(C.dur / 0.45) : 1;
+  if (won) { const el = beaten(dt, t); alpha = 1 - sstep((el - 1.6) / 0.5); if (alpha <= 0) return; }
+  else if (!frozen) step(sim, C, B, dt, t);
+  if (!frozen && !won) footprints(sim, C, t);
+  drawPrints(ctx, sim, t);
+  const A = B.atk, acting = A && C.ph === 'atk' && !won;
   ctx.save();
-  slideXf(ctx);
-  if (A && A.name === 'gale' && !won) drawBreath(ctx, A, t, calm);
+  ctx.globalAlpha = alpha;
+  if (acting && A.name === 'gale') drawBreath(ctx, A, t, calm);
   const s = SVL * k, sn = bodyAt(0), o = {
     pose: 'idle', blend: { ...S.B }, gait: S.odo * k, id: 15, heading: -S.hd, aim: -S.aim, look: S.wide ? { x: 0.1, y: 0 } : S.look, noShadow: frozen ? 1 : 0,
     trail: (d) => { const q = bodyAt(d / k); return { x: q.x * k, y: -q.y * k }; }, status: st,
@@ -293,15 +271,64 @@ export function drawGecko15(ctx, sim, k, t, calm) {
   ctx.scale(1 / k, -1 / k);
   drawCrawler(ctx, sn.x * k, -sn.y * k, s, frozen ? st.hold : t, o, 'gecko');
   ctx.scale(k, -k);
-  if (A && A.name === 'icicles' && !won) drawFlick(ctx, sim, A, t);
-  // landing on the snow: a puff where he hits the ground
-  const L = S.sl;
-  if (L && L.land && t - L.land < 0.5) {
-    const f = (t - L.land) / 0.5, c = bodyAt(HIP * 0.7);
-    ctx.fillStyle = `rgba(255,255,255,${0.7 * (1 - f)})`;
-    for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(c.x + (i - 2) * 0.3 * (1 + f), c.y - 0.1 + 0.25 * f * hash(i + 2), 0.12 + 0.2 * f, 0, TAU); ctx.fill(); }
+  if (acting && A.name === 'icicles') drawFlick(ctx, sim, A, t);
+  if (C.ph === 'lick' && S.lk) drawLickFx(ctx, C, t);
+  if (C.ph === 'in' && C.dur < 0.6) { // a puff of snow where he squeezes through the gap
+    const f = C.dur / 0.6, n = sim.rings.length, ring = sim.rings[n - 1], ga = ring.body.getAngle() + C.ent.la, r = ring.r + 0.1;
+    ctx.globalAlpha = 0.75 * (1 - f); ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 6; i++) { const aa = ga + (hash(i + 1) - 0.5) * 0.25, rr = r + (hash(i + 7) - 0.3) * 0.5 * f; ctx.beginPath(); ctx.arc(rr * Math.cos(aa), rr * Math.sin(aa), 0.06 + 0.14 * f, 0, TAU); ctx.fill(); }
+  }
+  if (won && t - S.beatT > 1.1) { // gone in a puff of snow
+    const f = clamp((t - S.beatT - 1.1) / 1.0, 0, 1), c = bodyAt(HIP * 0.6);
+    ctx.globalAlpha = 0.8 * (1 - f); ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 7; i++) { const aa = hash(i + 3) * TAU; ctx.beginPath(); ctx.arc(c.x + Math.cos(aa) * 0.5 * f, c.y + Math.sin(aa) * 0.5 * f, 0.1 + 0.18 * f, 0, TAU); ctx.fill(); }
   }
   ctx.restore();
+}
+// the lick: a frosty glint and a few ice flecks fly from his tongue onto the egg
+function drawLickFx(ctx, C, t) {
+  const el = C.dur - C.t, f = clamp((el - GECKO.lickAt + 0.12) / 0.4, 0, 1);
+  if (f <= 0 || f >= 1) return;
+  const sn = bodyAt(0), e = S.lk;
+  ctx.save();
+  ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#7cc4f0'; ctx.lineWidth = 0.02;
+  for (let i = 0; i < 6; i++) {
+    const g = clamp(f * 1.4 - hash(i + 2) * 0.4, 0, 1), x = lerp(sn.x, e.x, g) + (hash(i + 9) - 0.5) * 0.25 * g, y = lerp(sn.y, e.y, g) + Math.sin(Math.PI * g) * 0.12;
+    ctx.globalAlpha = 1 - g * 0.7;
+    ctx.beginPath(); ctx.moveTo(x, y + 0.05); ctx.lineTo(x + 0.03, y); ctx.lineTo(x, y - 0.05); ctx.lineTo(x - 0.03, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+}
+// an egg he licked: frozen solid in a block of ice (drawn over the eggs, render/boss.js drawBossOver)
+export function drawGeckoOver(ctx, sim, k, t) {
+  if (!isGecko15(sim)) return;
+  for (const e of sim.aliveEggs()) {
+    if (!(e.icy > 0)) continue;
+    const p = e.body.getPosition(), age = GECKO.freeze - e.icy, grow = sstep(age / 0.28), end = e.icy < 0.6 ? 1 - e.icy / 0.6 : 0;
+    const shake = end > 0 ? Math.sin(t * 60) * 0.012 * end : 0, R = 0.3 * (0.4 + 0.6 * grow), a0 = e.body.getAngle() * 0.3 + e.id;
+    ctx.save();
+    ctx.translate(p.x + shake, p.y);
+    // the block: a chunky faceted shell, light from the top left
+    ctx.beginPath();
+    for (let i = 0; i < 7; i++) { const a = a0 + (i / 7) * TAU, rr = R * (0.9 + 0.16 * hash(i + e.id * 3)); ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr * 1.08); }
+    ctx.closePath();
+    const g = ctx.createLinearGradient(-R, R, R, -R);
+    g.addColorStop(0, 'rgba(120,190,240,0.62)'); g.addColorStop(0.55, 'rgba(200,236,255,0.5)'); g.addColorStop(1, 'rgba(250,254,255,0.72)');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(40,110,180,0.9)'; ctx.lineWidth = Math.max(0.022, 2 / k); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = Math.max(0.018, 1.6 / k);
+    ctx.beginPath(); ctx.moveTo(-R * 0.55, R * 0.25); ctx.lineTo(-R * 0.3, R * 0.62); ctx.lineTo(R * 0.1, R * 0.7); ctx.stroke(); // the top-left glint
+    ctx.beginPath(); ctx.arc(-R * 0.35, R * 0.42, R * 0.08, 0, TAU); ctx.fillStyle = '#ffffff'; ctx.fill();
+    // a frosty rim of crystals as it ices up
+    if (grow < 1) { ctx.globalAlpha = 1 - grow; ctx.fillStyle = '#ffffff'; for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + t; ctx.beginPath(); ctx.arc(Math.cos(a) * R * 1.3, Math.sin(a) * R * 1.3, 0.035, 0, TAU); ctx.fill(); } ctx.globalAlpha = 1; }
+    // cracks race over it just before it thaws
+    if (end > 0) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = Math.max(0.015, 1.4 / k); ctx.beginPath();
+      for (let i = 0; i < 3; i++) { const a = hash(i + e.id) * TAU, l = R * end; ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * l * 0.5 + 0.03, Math.sin(a) * l * 0.5); ctx.lineTo(Math.cos(a + 0.4) * l, Math.sin(a + 0.4) * l); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
 
 // his face, for the boss bar chip (screen space, y down; drawn inside the chip's clip)

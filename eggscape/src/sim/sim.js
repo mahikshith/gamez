@@ -378,6 +378,7 @@ export class Sim {
       id: this.nextEggId++, body, fix, cracks, alive: true, saved: false,
       fire: 0, fireKind: null, stone: 0, bubble: 0, bubbleFix: null, magnet: 0, joint: null, golden: extra.golden || 0,
       water: 0, zap: 0, glow: 0, chick: 0, meteor: 0, honey: 0, hold: null, honeyCD: 0, prize: 0, spk: new Set(), // spk: blunt spikes touching now
+      icy: 0, // L15: frozen solid by the frost gecko's lick (s left; rides egg.hold's ring like honey)
       crackCD: 0, nestT: 0, inNest: 0, hc: 0, safeT: this.t < 0.5 ? 1.5 : 0, portalCD: 0, born: this.t,
       seed: (this.rand() * 1e9) | 0, impact: 0, lastV: 0, fear: 0,
       ch: 0, mult: 1, freefall: 0, comet: 0, cometUsed: false, bumpCD: 0, bumpV: 0, grazeCD: 0,
@@ -588,6 +589,15 @@ export class Sim {
           this.emit('honeyOff', { egg, x: wp.x, y: wp.y });
         }
       }
+      // L15: licked frozen by the frost gecko (sim/salamander.js geckoLick): stuck to its ring until it thaws
+      if (egg.icy > 0 && egg.hold) {
+        const H = egg.hold, rb = this.rings[H.ri].body;
+        const wp = rb.getWorldPoint(Vec2(H.x, H.y));
+        b.setTransform(wp, rb.getAngle() + H.a);
+        b.setLinearVelocity(rb.getLinearVelocityFromWorldPoint(wp));
+        b.setAngularVelocity(rb.getAngularVelocity());
+        if ((egg.icy -= dt) <= 0) { egg.icy = 0; egg.hold = null; this.emit('eggThaw', { egg, x: wp.x, y: wp.y }); }
+      }
       // portals
       if (egg.portalCD <= 0) {
         const p = b.getPosition();
@@ -696,7 +706,7 @@ export class Sim {
       // v3 crack ladder (G34) replaces the meteor/comet rule: a fall through 2+ rings is judged on
       // landing by the number of rings, and that landing never also counts as a hard hit
       if (egg.drop >= 2 && egg.impact > 1.2) this.landFall(egg);
-      else if (egg.stone > 0 || egg.safeT > 0 || egg.chick || egg.honey > 0 || egg.guard > 0) { /* immune */ }
+      else if (egg.stone > 0 || egg.safeT > 0 || egg.chick || egg.honey > 0 || egg.guard > 0 || egg.icy > 0) { /* immune */ }
       else if (v >= this.shatterV * soft) this.breakEgg(egg, 'impact');
       else if (v >= this.crackV * soft && egg.crackCD <= 0) this.crack(egg, v);
       if (egg.freefall === 0) egg.drop = 0; // touched a ring floor: the fall is over
@@ -854,6 +864,7 @@ export class Sim {
       if (egg.bubbleFix) { if (!egg.popping) { egg.popping = true; egg.safeT = 0.4; this.defer(() => { egg.popping = false; this.popBubble(egg, true); }); } c.setEnabled(false); return; }
       if (egg.golden) { egg.golden = 0; egg.safeT = 0.6; this.defer(() => this.removeThorn(th, 'snap')); this.emit('goldenSave', { egg }); c.setEnabled(false); return; }
       if (egg.safeT > 0) return;
+      if (egg.icy > 0) return; // L15: frozen solid, a thorn can't get in
       if (egg.chick && (th.kind === 'blunt' || this.MD.softThorns)) { egg.peckHit = th.key + 1; return; } // predators (v3): chick pecks
       // blunt spikes (and every thorn on Easy) only crack, and stay solid; a chick has no shell
       if ((th.kind === 'blunt' || this.MD.softThorns) && !egg.chick) {
@@ -995,7 +1006,7 @@ export class Sim {
 
   // n = cracks to add (the crack ladder can add two at once). 3 cracks = broken.
   crack(egg, v, why = 'impact', n = 1) {
-    if (!egg.alive || egg.saved || egg.chick || egg.stone > 0 || egg.guard > 0 || egg.clamp > 0) return; // a chick never cracks; stone, the feather and a snapping turtle's beak (v3.7) take it
+    if (!egg.alive || egg.saved || egg.chick || egg.stone > 0 || egg.guard > 0 || egg.clamp > 0 || egg.icy > 0) return; // a chick never cracks; stone, the feather, a snapping turtle's beak (v3.7) and the gecko's ice (L15) take it
     egg.cracks += n;
     egg.crackCD = CRACK_COOLDOWN;
     const p = egg.body.getPosition();
@@ -2364,6 +2375,7 @@ export class Sim {
     EGG_KEYS.push('hc'); // world 8: in a hermit crab's shell (1), a King Crab claw (2) or its pile (3)
     EGG_KEYS.push('clamp'); // v3.7: held by a snapping turtle (id + 1)
     EGG_KEYS.push('grazeCD'); // v4.1: thorn grace cooldown
+    EGG_KEYS.push('icy'); // L15: frozen by the frost gecko's lick
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,

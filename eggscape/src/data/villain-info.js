@@ -30,11 +30,11 @@ export const VILLAIN_INFO = {
   },
   'boss:blizzard': {
     group: 'boss', name: 'Baron von Brr',
-    does: 'A frost gecko on the outer ring: he blows gales, freezes a ring, flicks icicles.',
-    beat: 'Each egg you save cancels the attack it is winding up.',
+    does: 'A frost gecko in the vault: icy feet, and a lick that freezes eggs.',
+    beat: 'Strikes and stone stop him. Each saved egg cancels his wind-up.',
     attacks: {
-      gale: 'Turn a wall into the wind first. Stone is too heavy to blow.',
-      freeze: 'One ring locks solid for 4 s. Plan your drop on the others.',
+      gale: 'He blows along his own channel. Stone is too heavy to blow.',
+      freeze: 'He licks a wall of his channel: it locks for 4 s. Use the others.',
       icicles: 'Turn the ring above an egg to swing its icicle away.',
     },
   },
@@ -306,7 +306,7 @@ export function villainKinds(L, sim = null) {
     if (live(sim.octos)) set.add('octopus');
     if (live(sim.schools)) set.add('fish');
     if (live(sim.frogs)) set.add('frog');
-    if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1)) set.add('salamander');
+    if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp !== 'gecko')) set.add('salamander'); // L15's frost gecko is the boss
     if (live(sim.hermits)) set.add('hermit');
     if (live(sim.puffs)) set.add('puffer');
     if (live(sim.jellies)) set.add('jelly');

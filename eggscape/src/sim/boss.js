@@ -85,7 +85,7 @@ export function v31Step(sim, dt) {
   const X = sim.bx;
   if (!X) return;
   // the lava salamander creature (sim/salamander.js): walks, breathes fire, and in the boss fight it is the boss
-  if (sim.level.boss === 'salamander' || sim.level.salamander) sim.salamanderStep?.(dt);
+  if (sim.level.boss === 'salamander' || sim.level.salamander || (sim.level.bossFight && sim.level.bossFight.gecko)) sim.salamanderStep?.(dt); // + L15's frost gecko (the same crawler)
   for (const R of X.rl) if (R.frost > 0 && (R.frost -= dt) <= 0) { R.frost = 0; sim.emit('thaw', { ring: X.rl.indexOf(R) }); }
   sim.rings.forEach((ring, i) => {
     const R = X.rl[i];
@@ -337,6 +337,7 @@ function bossStep(sim, B, dt) {
   B.x += (gx - B.x) * s;
   B.y += (gy - B.y) * Math.min(1, dt * (A && A.name === 'stomp' && A.ph === 'act' ? 30 : 4));
   if (B.kind === 'salamander') sim.salBossPose?.(B); // the creature is the boss: its lava rocks come from its mouth
+  else if (B.kind === 'blizzard' && sim.level.bossFight.gecko) sim.geckoBossPose(B); // L15: the frost gecko in the vault is the boss
   else if (B.kind === 'gator') sim.gatorBossPose?.(B); // v3.7: Grandpa Gator lies in the outer channel
   else if (B.den) sim.thiefBossPose(B); // v3.6: the thief boss throws from its mouth
   // quake after a stomp
@@ -353,8 +354,10 @@ function bossStep(sim, B, dt) {
   mvStep(sim, B, dt); // the variety moves' after-effects (sim/bossmoves.js)
   if (B.kind === 'owl') sim.owlStep(B, dt); // v4: the Clockwork Owl's gears, bombs and jams (sim/owl.js)
   if (B.kind === 'snake') return; // its attacks are the snakes' own
+  const held = B.kind === 'blizzard' && sim.level.bossFight.gecko && sim.geckoHold(); // L15: an attack due while the gecko can't act waits for him
   if (!A) {
     if ((B.t -= dt) > 0 || !ph.attacks || !ph.attacks.length) return;
+    if (held) { B.t = 0; return; }
     const name = ph.attacks[B.k++ % ph.attacks.length];
     const a = (B.den && !sim.thiefCanThrow()) || (B.kind === 'gator' && !sim.gatorCanAttack()) ? null : startAttack(sim, B, name, M); // v3.6: a busy or trapped thief boss can't attack
     if (!a) { B.t = 1; return; }
@@ -368,11 +371,13 @@ function bossStep(sim, B, dt) {
     return;
   }
   if (A.ph === 'warn') {
+    if (held) return; // the telegraph pauses while he is dazed, frozen or licking
     if ((A.t -= dt) > 0) return;
     if (B.kind !== 'kingcrab' && sim.warpStrike('boss', B)) return; // v3.4: a warp gate cancels the attack and pushes the boss back (the King Crab's claws meet it themselves)
     A.ph = 'act';
     A.t = A.name === 'gale' ? GALE_T : 0.35;
     A.dur = A.t;
+    if (A.name === 'gale' && B.kind === 'blizzard' && sim.level.bossFight.gecko) { const C = sim.geckoOf(); if (C && sim.salLive(C)) A.ch = sim.salCh(C); } // his gale blows along his own channel
     actAttack(sim, B, A, M);
     if (A.name === 'gale') animalsHit(sim, 'gust', { dir: A.dir, power: (sim.level.bossFight.gale ?? 5) * M.power / 5, dur: GALE_T });
     sim.emit('bossAct', { kind: B.kind, attack: A.name, x: B.x, y: B.y, ring: A.ring, dir: A.dir });
@@ -390,12 +395,20 @@ function startAttack(sim, B, name, M) {
   const floorOf = (e) => sim.rings[Math.min(n - 1, sim.channelOf(e))];
   switch (name) {
     case 'gale': {
+      const C = B.kind === 'blizzard' && sim.level.bossFight.gecko ? sim.geckoOf() : null;
+      if (C && sim.salLive(C)) { B.lastDir = C.dir; return { dir: C.dir }; } // L15: the way the gecko faces
       // blows the way that pushes the most advanced egg toward its nearest thorns or gap, else alternates
       const dir = sim.rand() < 0.7 ? -B.lastDir : B.lastDir;
       B.lastDir = dir;
       return { dir };
     }
     case 'freeze': {
+      const C = B.kind === 'blizzard' && sim.level.bossFight.gecko ? sim.geckoOf() : null;
+      if (C && sim.salLive(C)) { // L15: a wall of the gecko's own channel, the one nearer the leading egg (else the other)
+        const c = sim.salCh(C), ec = T.length ? sim.channelOf(T[0]) : c, pick = ec < c ? [c - 1, c] : [c, c - 1];
+        const ri = pick.find((i) => i >= 0 && i < n && sim.rings[i].grabbable && !ringLocked(sim, sim.rings[i]));
+        return ri == null ? null : { ring: ri };
+      }
       // the ring under the most eggs (ties: the furthest egg's floor) that the player can still turn
       const cnt = new Map();
       for (const e of T) { const r = floorOf(e); if (r.grabbable && !ringLocked(sim, r)) cnt.set(r.i, (cnt.get(r.i) || 0) + 1 + sim.channelOf(e) * 0.01); }
@@ -572,10 +585,11 @@ export function galeForce(sim, A, M, dt) {
     body.applyForceToCenter(Vec2((-p.y / d) * acc * k * m, (p.x / d) * acc * k * m), true);
   };
   for (const e of sim.aliveEggs()) {
-    if (e.honey > 0) continue;
+    if (e.honey > 0 || e.icy > 0) continue;
+    if (A.ch != null && sim.channelOf(e) !== A.ch) continue; // L15: the gecko's gale runs along his own channel
     push(e.body, e.stone > 0 ? 0.3 * sim.gk : e.chick ? 1.3 : e.bubbleFix ? 1.6 : sim.gk); // gk: the gale keeps its strength against heavier eggs (chicks and bubbles kept their weight)
   }
-  for (const r of sim.rocks) if (r.alive) push(r.body, 0.5 * sim.gk);
+  for (const r of sim.rocks) if (r.alive && (A.ch == null || sim.chAt(Math.hypot(r.body.getPosition().x, r.body.getPosition().y)) === A.ch)) push(r.body, 0.5 * sim.gk);
   void dt;
 }
 // level gusts: streaks first (the telegraph), then a shove along the channels; snakes are blown too

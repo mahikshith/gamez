@@ -1648,6 +1648,28 @@ function salEvent(ev, fx) {
       fx.sparkle(ev.x, ev.y, 8, '#ffb347');
       if (!ev.boss) once('salIn', 'The lava salamander! It rides the ring under it: turn that ring to steer it.');
       break;
+    case 'geckoIn': // L15: Baron von Brr squeezes in through the outer ring (sim/salamander.js, species gecko)
+      audio.play('glass_crack', { vol: 0.4, pitch: 1.8 });
+      fx.chips(ev.x, ev.y, '#e6f6ff', 8, 1.8);
+      break;
+    case 'geckoInside':
+      once('geckoIn', 'Baron von Brr is in! His feet ice the floor and his lick freezes eggs.');
+      break;
+    case 'geckoLick':
+      audio.play('glass_crack', { vol: 0.75, pitch: 1.3 });
+      audio.play('glass_break', { vol: 0.25, pitch: 1.8 });
+      fx.sparkle(ev.x, ev.y, 10, '#dff6ff');
+      fx.chips(ev.x, ev.y, '#d9f3ff', 6, 1.6);
+      popup(ev.x, ev.y + 0.55, 'Licked frozen!', { color: '#bfeaff', size: 18, life: 1.0 });
+      once('geckoLick', 'A frozen egg is stuck, but nothing can crack it until it thaws.');
+      break;
+    case 'eggThaw':
+      audio.play('glass_break', { vol: 0.3, pitch: 1.7 });
+      fx.chips(ev.x, ev.y, '#e6f6ff', 7, 1.8);
+      break;
+    case 'geckoShrug':
+      popup(ev.x, ev.y + 0.5, 'Too hard to lick', { color: '#e6e6e6', size: 15, life: 0.8 });
+      break;
     case 'salWarn':
       audio.play('fire_ignite', { vol: 0.55, pitch: 0.55 });
       fx.sparkle(ev.x, ev.y, 6, '#ffb347');

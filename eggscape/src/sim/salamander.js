@@ -30,6 +30,12 @@ export const SAL = {
   rival: 3, rivalR: 1.0, rivalGap: 1.3, rivalCD: 9, rivalBack: 1.2, // snake face-off
   climbCD: 4, boss: 1.3,
 };
+// The frost gecko (species 'gecko': Baron von Brr, the level-15 boss; level.bossFight.gecko {delay, dir}). The same crawler,
+// smaller and a little slower, with no fire: he crawls in through a gap of the outer ring, hunts the leading egg, and the
+// level's blizzard attacks (sim/boss.js gale, freeze, icicles) come from him. Icy feet: the floor he walked on stays icy
+// (sg.ice, frictionless) for GECKO.icy s. Lick: an egg he reaches freezes onto its ring for GECKO.freeze s (egg.icy: gravity
+// can't move it, thorns and icicles can't crack it), then he loses interest for GECKO.bored s. He never breaks an egg.
+export const GECKO = { svl: 1.3, speed: SAL.speed * 0.85, lick: 0.75, lickAt: 0.4, reach: 0.5, freeze: 3.5, bored: 4, icy: 5 };
 const deg = (d) => (d * Math.PI) / 180;
 const mod = (a, b) => ((a % b) + b) % b;
 
@@ -42,11 +48,13 @@ export const salMethods = {
     const boss = !!(L.bossFight && L.bossFight.kind === 'salamander');
     let list = !L.salamander ? [] : Array.isArray(L.salamander) ? L.salamander : [L.salamander];
     if (boss && !list.length) list = [{ delay: L.bossFight.delay ?? 3, ch: 2, a: 90 }];
+    const GK = L.bossFight && L.bossFight.kind === 'blizzard' && L.bossFight.gecko; // the frost gecko: the blizzard boss's body
+    if (GK) list = [...list, { ...GK, ch: 99, gecko: 1 }];
     const n = this.rings.length;
     if (n < 2) return;
     list.forEach((P, i) => {
-      const isBoss = boss && i === 0, size = P.size || (isBoss ? SAL.boss : 1);
-      this.sals.push({
+      const isBoss = (boss && i === 0) || !!P.gecko, size = P.gecko ? GECKO.svl / SAL.svl : P.size || (isBoss ? SAL.boss : 1);
+      this.sals.push({ sp: P.gecko ? 'gecko' : 'sal', bored: 0, lk: -1, ent: null, ik: 0,
         id: i, size, boss: isBoss ? 1 : 0, ch: clamp(P.ch ?? 2, 1, n - 1), dir: P.dir === -1 ? -1 : 1, a0: deg(P.a ?? 90),
         every: P.every || SAL.every, ph: 'wait', t: P.delay ?? 3, dur: 1, pend: null, pendT: 0, mv: 1, stopAt: 0,
         a: 0, rad: 0, pts: [], odo: 0, car: -1, carA: 0, next: 0, tw: 1, cool: 0, wetCD: 0, back: 0, shove: 0,
@@ -107,6 +115,12 @@ export const salMethods = {
     const win = this.state === 'winning' || this.state === 'won';
     for (const C of this.sals) {
       if (C.ph === 'wait' || C.ph === 'gone') { C.ph = 'gone'; continue; }
+      if (C.sp === 'gecko') { // beaten: he lets go where he is (the art slides him off); a loss: he stops and grins
+        if (win) { if (C.ph !== 'beat') { this.salRelease(C); C.ph = 'beat'; C.pend = null; C.climb = null; } }
+        else if (C.ph !== 'grin' && C.pend !== 'grin') { this.salRelease(C); this.salHalt(C, 'grin', 9); }
+        this.salOne(C, dt, false);
+        continue;
+      }
       if (win && C.ph !== 'dive') { C.ph = 'dive'; C.t = 0; C.pend = null; C.hole = C.odo + 0.55 * C.size; C.climb = null; C.cool = 0; this.salRelease(C); const h = C.pts[0]; this.emit('salDive', { x: h.x, y: h.y, id: C.id }); }
       else if (!win && C.ph !== 'grin' && C.pend !== 'grin') { this.salRelease(C); C.cool = 0; this.salHalt(C, 'grin', 9); }
       this.salOne(C, dt, false);
@@ -124,7 +138,8 @@ export const salMethods = {
     if (C.ph === 'gone' || C.ph === 'warp') return; // v3.4: 'warp' = inside a warp gate (sim/warp.js moves it)
     if (C.ph === 'wait') { if (play && (C.t -= dt) <= 0) this.salEnter(C); return; }
     this.salCarry(C);
-    for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
+    for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD', 'bored']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
+    if (C.sp === 'gecko') { this.geckoOne(C, dt, play); return; }
     if (C.cool > 0) C.cool = Math.max(0, C.cool - dt);
     if (C.shove) this.salShove(C, dt);
     if (play) {
@@ -209,6 +224,7 @@ export const salMethods = {
   },
 
   salEnter(C) {
+    if (C.sp === 'gecko') { this.geckoEnter(C); return; }
     const n = this.rings.length, ch = clamp(C.ch, 1, n - 1), r = this.salMid(ch), m = Math.ceil(this.salBodyLen(C) / SAL.trail) + 2;
     C.rad = r; C.a = C.a0; C.pts = [];
     for (let i = 0; i < m; i++) C.pts.push(this.salPt({}, C.a - C.dir * (i * SAL.trail) / r, r));
@@ -250,7 +266,7 @@ export const salMethods = {
       else {
         gt = tang; gr = aligned || committed || Math.abs(tang) < K.len / 2 + 0.2 ? this.salMid(K.to) : this.salMid(from);
         if (aligned || committed) { const m0 = this.salMid(from), m1 = this.salMid(K.to); lo = Math.min(m0, m1) - 0.05; hi = Math.max(m0, m1) + 0.05; }
-        if (this.chAt(C.rad) === K.to && Math.abs(C.rad - this.salMid(K.to)) < 0.12) { C.climb = null; C.climbCD = SAL.climbCD; }
+        if (this.chAt(C.rad) === K.to && Math.abs(C.rad - this.salMid(K.to)) < 0.12) { C.climb = null; C.climbCD = SAL.climbCD; if (C.sp === 'gecko') C.dir = this.geckoDir(C); }
       }
     }
     const dr = gr - C.rad, L = Math.hypot(gt, dr) || 1, s = Math.min(d, L);
@@ -383,6 +399,7 @@ export const salMethods = {
   hitSalamander(C, kind, o = {}) {
     if (!C || !this.salLive(C) || C.ph === 'dive' || C.ph === 'grin' || C.ph === 'in' || this.state !== 'play') return;
     const p = o.power ?? 1, h = C.pts[0];
+    if (C.sp === 'gecko' && (kind === 'gust' || kind === 'ice' || kind === 'water' || kind === 'rock' || kind === 'lava')) return; // his own gale and icicles; no fire to cool or feed
     if (kind === 'gust') {
       const dx = typeof o.dir === 'number' ? o.dir : (o.dir && o.dir.x) || 0, dy = (o.dir && o.dir.y) || 0;
       C.shove += clamp(-Math.sin(C.a) * dx + Math.cos(C.a) * dy, -1, 1) * 0.35 * p;
@@ -478,6 +495,139 @@ export const salMethods = {
     C.rid = -1;
     if (!S || !(S.rival > 0)) return;
     S.rival = 0; S.back = Math.max(S.back, 3 * this.PM.back); S.mood = null;
+  },
+
+  // ---------- the frost gecko (C.sp === 'gecko')
+  geckoOf() { return (this.sals || []).find((C) => C.sp === 'gecko') || null; },
+  // he lays out outside the outer ring, head at the gap nearest the top, and crawls in through it
+  geckoEnter(C) {
+    const n = this.rings.length, ring = this.rings[n - 1], ra = ring.body.getAngle();
+    let gi = -1, bd = 1e9;
+    ring.gaps.forEach((g, i) => { const d = Math.abs(wrap(ra + g.a - Math.PI / 2)); if (this.snakeGap(g) && g.len >= 0.6 && d < bd) { bd = d; gi = i; } });
+    if (gi < 0) { C.t = 0.5; return; } // every way in is shut: he waits outside
+    const a = ra + ring.gaps[gi].a, r0 = ring.r + RING_TH / 2 + 0.2, m = Math.ceil(this.salBodyLen(C) / SAL.trail) + 2;
+    C.ent = { gi, la: ring.gaps[gi].a };
+    C.rad = r0; C.a = a; C.pts = [];
+    for (let i = 0; i < m; i++) C.pts.push(this.salPt({}, a, r0 + i * SAL.trail));
+    C.ph = 'in'; C.t = C.dur = 0; C.car = -1;
+    this.salCarry(C);
+    this.emit('geckoIn', { x: C.pts[0].x, y: C.pts[0].y, id: C.id });
+  },
+  geckoOne(C, dt, play) {
+    const B = this.bx && this.bx.boss;
+    if (play && C.ph !== 'in') this.geckoIce(C);
+    switch (C.ph) {
+      case 'in': { // down through the gap on its centre line (the ring carries him; a shut gap stops him)
+        const n = this.rings.length, ring = this.rings[n - 1], g = ring.gaps[C.ent.gi], goal = this.salMid(n - 1);
+        if (!play || (g && !this.snakeGap(g))) break;
+        const d = Math.min(GECKO.speed * dt, C.rad - goal);
+        C.a = wrap(ring.body.getAngle() + C.ent.la); C.rad -= d; C.odo += d; C.dur += dt;
+        this.geckoTrail(C);
+        if (C.rad - goal <= 1e-6) { C.dir = this.geckoDir(C); C.climbCD = 0.5; this.salSet(C, 'walk'); this.emit('geckoInside', { x: C.pts[0].x, y: C.pts[0].y, id: C.id }); }
+        break;
+      }
+      case 'walk': {
+        if (play && B && B.atk) { this.salHalt(C, 'atk', 0); break; } // an attack: he stops, all four feet down, and does it
+        if (play && C.bored <= 0 && !C.climb) {
+          const e = this.geckoPrey(C);
+          if (e) { C.lk = e.id; C.lkd = 0; this.salHalt(C, 'lick', GECKO.lick); break; }
+        }
+        this.salMove(C, GECKO.speed * dt);
+        break;
+      }
+      case 'brake': {
+        const r = (C.stopAt - C.odo) * C.mv, d = Math.min(Math.max(0, r), SAL.brakeV * dt);
+        if (C.mv > 0) this.salMove(C, d, true); else this.salBackWalk(C, d);
+        if (r - d <= 1e-6) { C.odo = C.stopAt; this.salSet(C, C.pend, C.pendT); }
+        break;
+      }
+      case 'atk': if (!play || !B || !B.atk) this.salSet(C, 'walk'); break;
+      case 'lick':
+        if (!C.lkd && C.dur - C.t >= GECKO.lickAt) { C.lkd = 1; this.geckoLick(C); }
+        if ((C.t -= dt) <= 0) { C.bored = GECKO.bored; C.climbCD = Math.max(C.climbCD, GECKO.bored * 0.5); this.salSet(C, 'walk'); }
+        break;
+      case 'daze': if ((C.t -= dt) <= 0) this.salSet(C, 'walk'); break;
+      case 'retreat': { // scared off (pepper, a shock): he backs away along his own trail
+        const d = Math.min(C.back, SAL.backV * dt);
+        this.salBackWalk(C, d);
+        if ((C.back -= d) <= 1e-6) { C.back = 0; this.salSet(C, 'walk'); }
+        break;
+      }
+      case 'grin': case 'beat': break;
+      default: this.salSet(C, 'walk');
+    }
+  },
+  geckoTrail(C) {
+    const T = C.pts, x = C.rad * Math.cos(C.a), y = C.rad * Math.sin(C.a);
+    if (T.length < 2 || Math.hypot(T[1].x - x, T[1].y - y) > SAL.trail) T.unshift(this.salPt({}, C.a, C.rad));
+    else this.salPt(T[0], C.a, C.rad);
+    const m = Math.ceil(this.salBodyLen(C) / SAL.trail) + 2;
+    if (T.length > m) T.length = m;
+  },
+  // which way round his channel: toward the nearest egg in it, else toward the leading egg
+  geckoDir(C) {
+    const hc = this.salCh(C), n = this.rings.length;
+    let best = null, bd = 1e9;
+    for (const e of this.aliveEggs()) {
+      const c = this.channelOf(e);
+      if (c >= n || e.icy > 0) continue;
+      const p = e.body.getPosition(), da = wrap(Math.atan2(p.y, p.x) - C.a), s = (c === hc ? 0 : 100) - c + Math.abs(da);
+      if (s < bd) { bd = s; best = da; }
+    }
+    return best == null ? C.dir : best >= 0 ? 1 : -1;
+  },
+  // an egg at his snout he can lick
+  geckoPrey(C) {
+    const h = C.pts[0];
+    for (const e of this.aliveEggs()) {
+      if (e.icy > 0 || e.hold || e.honey > 0 || e.thf || e.hc || e.octo) continue;
+      const p = e.body.getPosition();
+      if (Math.hypot(p.x - h.x, p.y - h.y) < GECKO.reach) return e;
+    }
+    return null;
+  },
+  geckoLick(C) {
+    const e = this.eggs.find((x) => x.id === C.lk && x.alive && !x.saved);
+    const h = C.pts[0];
+    if (!e) return;
+    const p = e.body.getPosition();
+    if (Math.hypot(p.x - h.x, p.y - h.y) > GECKO.reach + 0.4) { this.emit('geckoMiss', { x: h.x, y: h.y, id: C.id }); return; }
+    if (this.armored(e) || e.chick || e.fire > 0) { this.emit('geckoShrug', { x: p.x, y: p.y, egg: e, id: C.id }); return; } // stone, rock skin, the feather; a flaming egg
+    // frozen onto the nearer wall of its channel: it rides that ring, nothing else moves it
+    const n = this.rings.length, c = this.channelOf(e), d = Math.hypot(p.x, p.y);
+    let ring = null;
+    for (const ri of [c - 1, c]) if (ri >= 0 && ri < n && (!ring || Math.abs(this.rings[ri].r - d) < Math.abs(ring.r - d))) ring = this.rings[ri];
+    if (!ring) return;
+    const rb = ring.body, lp = rb.getLocalPoint(p);
+    e.hold = { ri: ring.i, x: lp.x, y: lp.y, a: e.body.getAngle() - rb.getAngle() };
+    e.icy = GECKO.freeze;
+    e.body.setLinearVelocity(rb.getLinearVelocityFromWorldPoint(p)); e.body.setAngularVelocity(rb.getAngularVelocity());
+    this.emit('geckoLick', { x: p.x, y: p.y, egg: e, id: C.id, hx: h.x, hy: h.y });
+  },
+  // icy feet: the floor under him (the wall eggs rest on: the inner one on the upper arc, the outer one below) ices over
+  geckoIce(C) {
+    if ((C.ik = (C.ik || 0) + 1) % 4) return;
+    const n = this.rings.length, m = Math.min(C.pts.length, Math.ceil((SAL.svl * C.size) / SAL.trail));
+    for (let i = 0; i < m; i += 4) {
+      const q = C.pts[i], c = this.chAt(q.r);
+      if (c < 1 || c > n - 1) continue;
+      const ring = this.rings[Math.sin(q.a) > 0 ? c - 1 : c], la = mod(q.a - ring.body.getAngle(), TAU);
+      for (const sg of ring.segs) if (sg.alive && ((la >= sg.a0 && la < sg.a1) || (la + TAU >= sg.a0 && la + TAU < sg.a1))) { sg.ice = Math.max(sg.ice || 0, GECKO.icy); break; }
+    }
+  },
+  // the boss clock waits while he can't act: not in yet, dazed, frozen, stunned, licking (sim/boss.js)
+  geckoHold() {
+    const C = this.geckoOf();
+    if (!C) return false;
+    if (!this.salLive(C)) return true;
+    return C.ph === 'in' || C.ph === 'daze' || C.ph === 'lick' || C.ph === 'retreat' || (C.ph === 'brake' && C.pend !== 'atk');
+  },
+  // the boss's point (popups, hits) is his head
+  geckoBossPose(B) {
+    const C = this.geckoOf();
+    if (!C || !this.salLive(C)) return;
+    const h = C.pts[0];
+    B.x = h.x; B.y = h.y; B.face = C.dir;
   },
 
   // ---------- planner / danger: how threatening the heat is for this egg (0..1)
