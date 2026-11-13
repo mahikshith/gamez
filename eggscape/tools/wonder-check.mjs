@@ -113,6 +113,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     ok = ok && won;
     console.log(`${L.key.padEnd(7)} ${(won ? 'WON' : g.state.toUpperCase()).padEnd(6)} stars=${g.stars()} saved=${st.saved}/${st.total} (need ${st.target}) broken=${st.broken} t=${g.t.toFixed(1)}s of ${L.time || '-'}${g.kind === 'plan' ? ' attempts=' + st.attempts : ''} g=${g.sim.g} (${Date.now() - t0} ms)`);
     if (V) console.log('   ' + g.log.join(' | '));
+    if (g.kind === 'plan') { const n = g.log.filter((x) => x.includes('portal')).length; console.log(`        chain: run ${g.runT.toFixed(1)}s, ${n} portal trips`); ok = ok && n >= 2 && g.runT >= 6; }
+    (L.fails || []).forEach((f, k) => { const h = play(L, f, { tail: 20 }), bad = h.state === 'won'; ok = ok && !bad; console.log(`        must-fail #${k + 1}: ${bad ? 'WON (BAD)' : h.state + (h.over ? ':' + h.over : '')} saved=${h.stats().saved}`); });
     let crashes = 0, probs = [], wins = 0;
     for (let k = 0; k < N; k++) {
       try { const r = soak(L, 1000 + k * 77); if (r.problem) probs.push(r.problem); if (r.state === 'won') wins++; } catch (e) { crashes++; probs.push(String(e && e.stack || e).split('\n').slice(0, 3).join(' / ')); }

@@ -233,7 +233,7 @@ export class WonderGame {
     this.build();
   }
   build() {
-    const Ls = this.kind === 'twin' ? this.level.wonder.vaults.map((v) => ({ ...v, wonder: { kind: 'twin' }, time: this.level.time, theme: this.level.theme, id: this.level.id })) : [this.level];
+    const Ls = this.kind === 'twin' ? this.level.wonder.vaults.map((v) => ({ ...v, wonder: { kind: 'twin' }, gravity: v.gravity ?? this.level.gravity, time: this.level.time, theme: this.level.theme, id: this.level.id })) : [this.level];
     this.sims = Ls.map((L) => new WonderSim(L, { mode: 'medium' }));
     this.state = 'play';
     this.phase = this.kind === 'plan' ? 'plan' : 'run';

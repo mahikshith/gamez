@@ -17,17 +17,25 @@ export const WONDER_LEVELS = [
     solve: [['drop', 0, 2, 1, 1], ['drop', 0, 1, 1, 1], ['drop', 0, 0, 1, -1], ['drop', 0, 2, 3, -1], ['drop', 0, 1, 3, -1], ['drop', 0, 0, 3, -1], ['drop', 0, 2, 2, -1], ['drop', 0, 1, 2, -1], ['drop', 0, 0, 2, -1]],
   },
   {
-    id: 902, key: 'plan', name: 'Plan and Hatch', theme: 'clock', material: 'metal', eggs: 3, target: 2, time: 0, r0: 1.3, spacing: 1.0, seed: 21, nest: { w: 2.6 },
-    pitch: 'Think first, then watch', tip: 'Time is frozen. Set every ring, then press HATCH and watch it play out.',
-    wonder: { kind: 'plan', par: [3, 7], eggs: [{ ch: 0, a: 196 }, { ch: 0, a: 224 }, { ch: 0, a: 252 }] },
-    portals: [{ a: [-2.35, -1.75], b: [2.9, -2.3] }],
+    // Plan and Hatch, retuned for g=15: a staggered chain, ~11 s of watching (6-12 s across the winning window). The honey pad on ring 0 holds the first egg
+    // while the others go; each egg drops left through rings 0 and 1, the portal by the bottom of channel 2 throws it to
+    // the top left of the outer channel, it slides down and out of ring 3 into the nest. Three settings must be right:
+    // ring 0 (gap low-left), ring 1 (gap low-left; geared to ring 2, so it also parks ring 2's thorns) and ring 3 (gap at
+    // the bottom). The lazy setup (every gap straight down) gears ring 2's thorns under the drop and breaks all three.
+    id: 902, key: 'plan', name: 'Plan and Hatch', theme: 'clock', material: 'metal', eggs: 3, target: 2, time: 0, r0: 1.3, spacing: 1.2, seed: 21, nest: { w: 2.4 },
+    pitch: 'Think first, then watch', tip: 'Time is frozen. Set every ring, then press HATCH. The middle rings are geared: only the portal gets past the thorns.',
+    wonder: { kind: 'plan', par: [3, 7], eggs: [{ ch: 0, a: 185 }, { ch: 0, a: 225 }, { ch: 1, a: 200 }] },
+    portals: [{ a: [-0.59, -3.32], b: [-2.15, 3.72] }],
     rings: [
-      { gaps: [{ a: -40, len: 0.9 }] },
-      { gear: 2, gaps: [{ a: 160, len: 1.05 }], thorns: [{ a: -60, n: 2 }] },
-      { gaps: [{ a: 30, len: 1.05 }], thorns: [{ a: -110, n: 2 }] },
-      { gaps: [{ a: 100, len: 0.95 }], thorns: [{ a: 125, n: 2 }] },
+      { gaps: [{ a: 0, len: 0.95 }], honey: [{ a: -45, len: 0.45 }] },
+      { gear: 2, gaps: [{ a: 30, len: 1.1 }] },
+      { gaps: [{ a: 0, len: 1.0 }], thorns: [{ a: 150, n: 2 }] },
+      { gaps: [{ a: 90, len: 1.9 }] },
     ],
-    solve: [['set', 0, 320], ['set', 1, 115], ['set', 3, 170], ['hatch']],
+    solve: [['set', 0, -130], ['set', 1, -135], ['set', 3, -180], ['hatch']],
+    // must NOT win (tools/wonder-check.mjs): doing nothing; the lazy all-gaps-down setup; ring 2's gap down instead
+    // (the gear swings ring 1 shut); ring 3 left alone (no way out)
+    fails: [[['hatch']], [['set', 0, -90], ['set', 1, -120], ['set', 3, -180], ['hatch']], [['set', 0, -90], ['set', 2, -90], ['set', 3, -180], ['hatch']], [['set', 0, -130], ['set', 1, -135], ['hatch']]],
   },
   {
     id: 903, key: 'mama', name: "Mama's Call", theme: 'mushroom', material: 'wood', eggs: 2, target: 1, time: 70, r0: 1.05, spacing: 1.0, seed: 5,
@@ -50,18 +58,19 @@ export const WONDER_LEVELS = [
       vaults: [
         { eggs: 2, target: 1, r0: 1.05, spacing: 1.0, material: 'wood', seed: 3, nest: { w: 2.4 }, rings: [
           { gaps: [{ a: 0 }], thorns: [{ a: 150, n: 2 }] },
-          { gaps: [{ a: 90 }], thorns: [{ a: -45, n: 2 }] },
+          { gaps: [{ a: -150 }], thorns: [{ a: -45, n: 2 }] },
           { gaps: [{ a: 0, len: 0.9 }], thorns: [{ a: -135, n: 2 }] },
         ] },
         { eggs: 2, target: 1, r0: 1.05, spacing: 1.0, material: 'wood', seed: 4, nest: { w: 2.4 }, rings: [
           { gaps: [{ a: 180 }], thorns: [{ a: 30, n: 2 }] },
-          { gaps: [{ a: 90 }], thorns: [{ a: -135, n: 2 }] },
+          { gaps: [{ a: -30 }], thorns: [{ a: -135, n: 2 }] },
           { gaps: [{ a: 0, len: 0.9 }], thorns: [{ a: 120, n: 2 }] },
         ] },
       ],
     },
     rings: [],
-    solve: [[0, 0, -90], [0, 1, 195], [0, 2, -90, 2.5], [0, 2, 180, 3]],
+    solve: [[0, 0, -90], [0, 1, 60, 1.5], [0, 2, -90, 2.5], [0, 2, 180, 3], [0, 2, 20, 3]],
+    fails: [[['wait', 20]], [[0, 0, -90], [0, 1, 60, 1.5], [0, 2, 90, 2.5], [0, 2, -180, 3], [0, 2, -20, 3]]], // idle; B's vault freed first
   },
   {
     id: 905, key: 'hatch', name: 'Hatchlings', theme: 'barn', material: 'wood', eggs: 4, target: 3, time: 75, r0: 1.05, spacing: 1.0, seed: 9, nest: { w: 2.6 },

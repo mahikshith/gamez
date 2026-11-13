@@ -48,10 +48,12 @@ export function createWonder(env) {
 
   // ---------------------------------------------------------------- layout and camera
   // where each vault sits on the stage (metres) and the box the camera must show
+  const SUN_R = 0.8, HEN_M = 1.0; // m: the sun's orbit beyond the outer ring; mama's height beyond her rail
   function stage() {
     const g = S.game, z = env.size(), boxes = g.sims.map((sim) => {
-      if (g.kind === 'planet') { const R = sim.outerR + 1.35; return { x0: -R, x1: R, y0: -R, y1: R }; }
-      if (g.kind === 'mama') { const R = sim.nestR + 1.7; return { x0: -R, x1: R, y0: -R, y1: R }; }
+      // planet / mama: the play disc (sun orbit / her rail and her) fills ~95% of the narrow side of the screen
+      if (g.kind === 'planet') { const R = sim.outerR + SUN_R + 0.3; return { x0: -R, x1: R, y0: -R, y1: R }; }
+      if (g.kind === 'mama') { const R = sim.nestR + HEN_M + 0.12; return { x0: -R, x1: R, y0: -R, y1: R }; }
       const R = sim.outerR + 0.5;
       return { x0: -R, x1: Math.max(R, sim.nestW / 2 + 2.0), y0: sim.groundY - 0.35, y1: R };
     });
@@ -284,7 +286,7 @@ export function createWonder(env) {
     if (g.kind === 'planet') { hs = 1.2 * k; ctx.translate(0, -0.52); ctx.scale(1 / k, -1 / k); }
     else if (g.kind === 'mama') {
       const p = henSpot(sim), run = sim.hen.run;
-      hs = Math.max(1.05 * k, Math.min(54, 1.5 * k));
+      hs = Math.min(HEN_M * k, Math.max(40, 1.5 * k)); // never taller than the margin outside her rail
       ctx.translate(p.x, p.y); ctx.rotate(p.a + Math.PI / 2); ctx.scale(1 / k, -1 / k);
       ctx.scale(h.face < 0 ? 1 : -1, 1);
       if (run > 0.2) { ctx.translate(0, -Math.abs(Math.sin(t * 17)) * hs * 0.1 * run); ctx.rotate(Math.sin(t * 17) * 0.12 * run); }
@@ -313,7 +315,7 @@ export function createWonder(env) {
     for (const pt of sim.portals) { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); }
     if (g.timeLimit && g.state === 'play') {
       const frac = g.timeLeft / g.timeLimit;
-      if (g.kind === 'planet') drawSun(ctx, sim.outerR + 1.0, frac, t, fx);
+      if (g.kind === 'planet') drawSun(ctx, sim.outerR + SUN_R, frac, t, fx);
       else W.drawFuse(ctx, sim.outerR + 0.32, frac, t, fx, sim.rings[sim.rings.length - 1]);
     }
     if (g.kind === 'planet') drawPlanet(ctx, sim, straw, t);
