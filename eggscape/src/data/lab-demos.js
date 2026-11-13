@@ -1,18 +1,18 @@
 // Dev-only studio vaults for the Shape Lab (v4): the clockwork cast (sim/clockwork.js) and the Clockwork Owl (sim/owl.js).
 // Not campaign levels. Start one in the --dev build with ?demo=spider (or __egg.startDemo('owl')).
-// Spec fields: spider { ring, delay, every } | beetle { ch, a, delay, dir } | jack [{ ch, a }] | bossFight { kind: 'owl', ... }.
+// Spec fields: spider { ring, delay, a } | beetle { ch, a, dir } | jack [{ ch, a }] | bossFight { kind: 'owl', ... }.
 const base = { eggs: 3, target: 2, time: 120, spacing: 1.05, material: 'metal', theme: 'lab', nest: { w: 2.6 } };
 export const LAB_DEMOS = [
   {
     ...base, id: 981, kind: 'spider', name: 'Clockwork spider', seed: 9811, shape: 'square',
-    tip: 'The spider winds down and webs a gap shut. The web catches eggs softly; fire, iron or the laser tears it.',
+    tip: 'The spider crawls to a gap and webs it shut. Slip an egg past while it spins; fire, iron or the laser tears a web.',
     spider: { ring: 1, delay: 2 }, orbs: [{ type: 'iron', ch: 1, a: 120 }],
     rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: -50 }, { a: 140 }], thorns: [{ a: 40, n: 2 }] }, { gaps: [{ a: 20 }] }, { gaps: [{ a: -70 }] }],
   },
   {
     ...base, id: 982, kind: 'beetle', name: 'Wind-up beetle', seed: 9822, shape: 'hex',
-    tip: 'The beetle shoves eggs along until its key runs down. Stopped, it is a wall. Turn its ring to wind it up again.',
-    beetle: { ch: 1, a: -150, delay: 1.5 },
+    tip: 'Turn the beetle\'s ring to wind him. He marches the way you turned it, pushes eggs and crushes thorns.',
+    beetle: { ch: 1, a: -150 },
     rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 30 }], thorns: [{ a: -40, n: 2 }] }, { gaps: [{ a: 150 }] }, { gaps: [{ a: -70 }] }],
   },
   {

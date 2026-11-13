@@ -3,19 +3,22 @@
 // is plain data in this.cw, copied by cwState() / restored by cwLoad(), so rewind and the planner stay exact. No randomness.
 // Bodies and fixtures are derived (built in cwInit, placed again in cwLoad). Everything is shape-aware (sim/shapes.js).
 //
-// level.spider = { ring, delay, every } (or an array): it webs the gaps of ring `ring` (default 1), hanging in the channel
-//   inside that ring on a thread from the ring below it (the hub for ring 0). Every `every` s (Medium) it picks the open gap
-//   nearest an egg on that floor, winds down to it on its thread (the telegraph) and spins a web across it.
+// level.spider = { ring, delay, every, a } (or an array): it lives ON ring `ring` (default 1), on its outer face, and only webs
+//   the gaps of that ring (it never changes rings). It never jumps: it CRAWLS along the ring (it rides the ring, so the gaps
+//   keep still under it) at SPIDER.crawl rad/s of ring, the short way round, to the open gap nearest an egg on that floor.
+//   Telegraph: it walks there with hot eyes, then spins the web strand by strand for SPIDER.spin s; the gap stays open for
+//   the first SPIDER.open s of that. If its target closes (a curtain, another web) it picks again from where it stands.
+//   It waits by its web until the web is gone, rests SPIDER.rest s, then picks the next gap.
 //   Upside: a web is a soft net. It catches an egg and holds it (no crack, whatever the fall), and the ring carries it round.
 //   Downside: a webbed gap is shut until the web is torn or gives way (WEB.life s). A flaming egg, an iron egg or a Laser
-//   Beak shot tears it at once. Spin Storm flings the spider off its thread; frost and thunder stop it.
-// level.beetle = { ch, a, delay, dir } (or an array): a tin beetle on the floor of channel ch (the inner face of ring ch),
-//   a = start angle (deg, ring-local). Wound up, it bulldozes along the floor (it rides the ring) and pushes eggs ahead of
-//   it; it turns round at a gap edge or a thorn cluster. When its key runs down it stops: turning its ring about
-//   BEETLE.rewind rad winds it up again (a click, then it sets off).
-//   Upside: a stopped beetle is a wall that keeps eggs from rolling into thorns, and a pushed egg drops through a gap.
-//   Downside: walking, it shoves eggs where you did not want them (into thorns, away from a gap). Spin Storm tips it on its
-//   back; frost and thunder stop it.
+//   Beak shot tears it at once. Spin Storm flings the spider off its ring; frost and thunder stop it where it stands.
+// level.beetle = { ch, a } (or an array): a wind-up tin beetle on the floor of channel ch (the inner face of ring ch),
+//   a = start angle (deg, ring-local). It rides its ring. It starts UNWOUND (asleep: a wall). Turning ITS ring winds it:
+//   every 30 degrees of turn adds BEETLE.per s of run (up to BEETLE.max s). It marches the way the ring was last turned
+//   (turned the other way by BEETLE.flip rad, it turns round), pushes eggs ahead of it and crushes floor thorns in its way.
+//   It never falls through: at a gap edge it treads on the spot until it runs down. Asleep again, it is a wall.
+//   Upside: it clears thorns, and a pushed egg drops through a gap. Downside: aimed badly it shoves an egg off a gap edge or
+//   into the next hazard, and asleep it blocks the floor. Spin Storm tips it on its back (unwound); frost and thunder stop it.
 // level.jack = [{ ch, a }]: a jack-in-the-box set into the floor of channel ch at ring-local angle a (deg). It rides its ring.
 //   An egg rolling over the lid makes it pop: the egg is bounced back up off the floor (toward the vault centre) and along
 //   the way it was rolling. Then it winds itself back (JACK.reload s).
@@ -28,19 +31,23 @@ import { ringPt, ringSpd, ringNormal, segQuad, rockAt } from './shapes.js';
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 export const SPIDER = {
-  every: m3(10, 7, 6), // s between webs
-  down: m3(2.2, 1.6, 1.25), // s winding down (the telegraph)
-  spin: 0.9, up: 1.2, // s spinning the web, s climbing back
+  every: m3(10, 7, 6), // (old cadence, kept for the level field) s
+  crawl: Math.PI / 3, // rad of ring per s: half a ring in about 3 s
+  spin: 1.0, open: 0.6, // s spinning the web; s of that the gap is still open
+  rest: m3(3, 1.2, 0.8), // s it rests after its web is gone, before it picks the next gap
+  stand: 0.3, // m from the gap edge to its body while it spins
   flung: 6, // s away after a spin storm
 };
 export const WEB = { life: m3(6, 9, 11), sag: 0.6 }; // s a web holds; s its last sag (it droops and lets go)
 export const BEETLE = {
   len: 1.25, h: 0.58, // m, body (render/clockwork.js draws it to this): about two eggs long, too tall to roll over
   speed: m3(0.38, 0.55, 0.66), // m/s along the floor
-  wind: m3(4.5, 6, 6.5), // s of walking on a full wind
-  rewind: m3(1.0, 1.2, 1.3), // rad of ring turning that winds it again
-  click: 0.7, tip: 3.5, // s of key whirr before it sets off, s on its back after a spin storm
+  per: 1.5, max: 6, // s of run per 30 degrees of ring turn, s at most
+  go: 0.6, // s of wind before a sleeping beetle sets off
+  flip: 0.14, // rad of turning the other way that turns it round
+  tip: 3.5, // s on its back after a spin storm
 };
+const WIND_RATE = BEETLE.per / (Math.PI / 6); // s of run per rad of ring turn
 export const JACK = {
   w: 0.86, // m, lid (render/clockwork.js draws it to this)
   reach: 0.5, // m from the lid an egg sets it off
@@ -66,7 +73,9 @@ export const cwMethods = {
     if (n < 1) return;
     listOf(L.spider).forEach((o, i) => {
       const ri = clamp(o.ring ?? 1, 0, n - 1);
-      this.cw.sp.push({ id: i, ri, ph: 'wait', t: o.delay ?? 4, dur: 1, gi: -1, k: 0, stun: 0, ice: 0, every: o.every || 0 });
+      // it starts on top of its ring (or at a, deg ring-local), facing the way round it will most likely go
+      const la = o.a != null ? wrap((o.a * Math.PI) / 180) : wrap(Math.PI / 2 - this.rings[ri].body.getAngle());
+      this.cw.sp.push({ id: i, ri, la, tla: la, dir: 1, ph: 'wait', t: o.delay ?? 4, dur: 1, gi: -1, k: 0, stun: 0, ice: 0, every: o.every || 0, done: 0 });
     });
     // a web can form on any plain gap of a spider's ring: its fixtures are built now and switched by cwPass
     const rings = new Set(this.cw.sp.map((S) => S.ri));
@@ -74,7 +83,7 @@ export const cwMethods = {
       const ring = this.rings[ri];
       ring.gaps.forEach((g, gi) => {
         if (g.grate) return;
-        this.cw.webs.push({ ri, gi, k: 0, life: 0, max: 0, sp: -1 });
+        this.cw.webs.push({ ri, gi, k: 0, life: 0, max: 0, sp: -1, sv: 1 });
         const wi = this.cw.webs.length - 1, half = g.len / (2 * ringSpd(ring, g.a)), m = Math.max(2, Math.ceil(g.len / 0.2));
         for (let q = 0; q < m; q++) {
           const b0 = g.a - half + (2 * half * q) / m, b1 = g.a - half + (2 * half * (q + 1)) / m;
@@ -84,7 +93,8 @@ export const cwMethods = {
     }
     listOf(L.beetle).forEach((o, i) => {
       const fi = clamp(o.ch ?? 1, 0, n - 1), ring = this.rings[fi];
-      const B = { id: i, fi, la: wrap(((o.a ?? -60) * Math.PI) / 180), dir: o.dir === -1 ? -1 : 1, ph: 'wait', t: o.delay ?? 3, wind: 0, acc: 0, stun: 0, ice: 0, la0: ring.body.getAngle() };
+      // it starts unwound (asleep): turning its ring winds it (ka: its key's turn, for the art; st: s in this phase)
+      const B = { id: i, fi, la: wrap(((o.a ?? -60) * Math.PI) / 180), dir: o.dir === -1 ? -1 : 1, ph: 'sleep', t: 0, wind: 0, acc: 0, stun: 0, ice: 0, la0: ring.body.getAngle(), ka: 0, tk: 0, st: 9, stall: 0 };
       this.cw.bt.push(B);
       const body = this.world.createBody({ type: 'kinematic', position: Vec2(0, 0) });
       const hl = BEETLE.len / 2, h = BEETLE.h;
@@ -106,17 +116,17 @@ export const cwMethods = {
     const up = ringNormal(ring, la) + A + Math.PI;
     return { x: lx * c - ly * s, y: lx * s + ly * c, up, ux: Math.cos(up), uy: Math.sin(up) };
   },
-  // where a spider is: its thread's anchor (on the ring below, or the hub) and its body (u: 0 up at the anchor .. 1 at the gap)
+  // a point on the OUTER face of ring ri at ring-local angle la, h m out from it; up = the face's outward normal
+  cwOut(ri, la, h = 0) {
+    const ring = this.rings[ri], A = ring.body.getAngle(), [lx, ly] = ringPt(ring, la, ring.r + RING_TH / 2 + h), c = Math.cos(A), s = Math.sin(A);
+    const up = ringNormal(ring, la) + A;
+    return { x: lx * c - ly * s, y: lx * s + ly * c, up, ux: Math.cos(up), uy: Math.sin(up) };
+  },
+  // where a spider is: on the outer face of its ring at S.la (fx, fy: its feet; x, y: its body), and its target gap (gx, gy)
   cwSpider(S) {
-    const ring = this.rings[S.ri], g = ring.gaps[S.gi] || ring.gaps[0];
-    if (!g) return null;
-    const A = ring.body.getAngle(), wa = A + g.a, end = this.cwFloor(S.ri, g.a, -0.0);
-    let ax = 0.18 * Math.cos(wa), ay = 0.18 * Math.sin(wa);
-    if (S.ri > 0) { const ib = this.rings[S.ri - 1], la = wa - ib.body.getAngle(), [lx, ly] = ringPt(ib, la, ib.r + RING_TH / 2), B = ib.body.getAngle(); ax = lx * Math.cos(B) - ly * Math.sin(B); ay = lx * Math.sin(B) + ly * Math.cos(B); }
-    const u = S.ph === 'down' ? clamp(1 - S.t / S.dur, 0, 1) : S.ph === 'spin' ? 1 : S.ph === 'up' ? clamp(S.t / S.dur, 0, 1) : 0;
-    const stop = 0.6; // the body hangs this far short of the gap
-    const ex = end.x + end.ux * stop, ey = end.y + end.uy * stop, e2 = u * u * (3 - 2 * u);
-    return { ax, ay, x: ax + (ex - ax) * e2, y: ay + (ey - ay) * e2, u, wa, gx: end.x, gy: end.y, gu: end.up };
+    const ring = this.rings[S.ri], g = ring.gaps[S.gi], f = this.cwOut(S.ri, S.la, 0), b = this.cwOut(S.ri, S.la, 0.2);
+    const end = g ? this.cwFloor(S.ri, g.a, 0) : f;
+    return { x: b.x, y: b.y, fx: f.x, fy: f.y, up: f.up, ax: f.x, ay: f.y, wa: ring.body.getAngle() + (g ? g.a : S.la), gx: end.x, gy: end.y, gu: end.up };
   },
   cwBeetlePose(B) {
     const q = this.cwFloor(B.fi, B.la, 0);
@@ -174,34 +184,55 @@ export const cwMethods = {
     S.t -= dt;
     const ring = this.rings[S.ri];
     switch (S.ph) {
-      case 'wait': case 'flung':
-        if (S.t > 0) return;
-        if (!live) return;
-        S.gi = this.cwPickGap(S);
-        if (S.gi < 0) { S.t = 1; S.ph = 'wait'; return; }
-        S.ph = 'down'; S.t = S.dur = SPIDER.down[M];
-        { const q = this.cwSpider(S); this.emit('spiderDown', { x: q.gx, y: q.gy, ring: S.ri }); }
+      case 'wait': case 'rest': case 'flung':
+        if (S.t > 0 || !live) return;
+        if (this.cwSpiderGo(S)) { const q = this.cwSpider(S); this.emit('spiderWalk', { x: q.gx, y: q.gy, ring: S.ri }); }
         return;
-      case 'down': {
-        const W = this.cwWeb(S.ri, S.gi), g = ring.gaps[S.gi];
-        if (!W || (g.curtain && g.curtain.alive)) { S.ph = 'up'; S.t = S.dur = SPIDER.up; return; }
-        if (S.t > 0) return;
-        S.ph = 'spin'; S.t = S.dur = SPIDER.spin; W.sp = S.id;
+      case 'walk': {
+        // its gap closed or got webbed: pick again from where it stands (no jump)
+        let W = this.cwWeb(S.ri, S.gi), g = ring.gaps[S.gi];
+        if (!W || W.k > 0 || !g || (g.curtain && g.curtain.alive)) {
+          if (!this.cwSpiderGo(S)) return;
+          W = this.cwWeb(S.ri, S.gi); g = ring.gaps[S.gi];
+        }
+        const rem = wrap(S.tla - S.la), step = (SPIDER.crawl * ring.r * dt) / ringSpd(ring, S.la);
+        if (Math.abs(rem) > step) { S.dir = rem > 0 ? 1 : -1; S.la = wrap(S.la + S.dir * step); return; }
+        S.la = S.tla; S.dir = wrap(g.a - S.la) > 0 ? 1 : -1; // it faces the gap
+        S.ph = 'spin'; S.t = S.dur = SPIDER.spin; S.done = 0; W.sp = S.id; W.sv = 0; W.k = 0.01; // (a tear sets k back to 0)
+        { const q = this.cwSpider(S); this.emit('spiderSpin', { x: q.gx, y: q.gy, ring: S.ri }); }
         return;
       }
       case 'spin': {
-        const W = this.cwWeb(S.ri, S.gi);
-        if (W) W.k = Math.max(W.k, clamp(1 - S.t / S.dur, 0, 0.999));
+        const W = this.cwWeb(S.ri, S.gi), g = ring.gaps[S.gi], u = clamp(1 - S.t / S.dur, 0, 1);
+        // torn while it works, or a curtain shut the gap: it gives up and rests
+        if (!W || !g || (g.curtain && g.curtain.alive) || !(W.k > 0)) { if (W && W.k < 1) W.k = 0; if (W) W.sv = 1; S.ph = 'rest'; S.t = SPIDER.rest[M]; return; }
+        W.sv = u;
+        if (!S.done) {
+          // the gap stays open for the first SPIDER.open s of the spin, then the web holds
+          if (u * S.dur >= SPIDER.open) { S.done = 1; W.k = 1; W.life = W.max = WEB.life[M]; W.held = 0; const q = this.cwSpider(S); this.emit('webUp', { x: q.gx, y: q.gy, ring: S.ri }); }
+          else W.k = clamp((u * S.dur) / SPIDER.open, 0.01, 0.999);
+        }
         if (S.t > 0) return;
-        if (W) { W.k = 1; W.life = W.max = WEB.life[M]; W.held = 0; const q = this.cwSpider(S); this.emit('webUp', { x: q.gx, y: q.gy, ring: S.ri }); }
-        S.ph = 'up'; S.t = S.dur = SPIDER.up;
+        W.sv = 1; S.ph = 'guard';
         return;
       }
-      case 'up':
-        if (S.t > 0) return;
-        S.ph = 'wait'; S.t = S.every || SPIDER.every[M];
+      case 'guard': {
+        // it waits by its web; when the web is gone it rests, then picks the next gap
+        const W = this.cwWeb(S.ri, S.gi);
+        if (!W || !(W.k > 0)) { S.ph = 'rest'; S.t = SPIDER.rest[M]; }
         return;
+      }
     }
+  },
+  // pick a gap and set off for its near edge, the short way round; false (and a short wait) when there is none
+  cwSpiderGo(S) {
+    const gi = this.cwPickGap(S);
+    if (gi < 0) { S.ph = 'wait'; S.t = 1; return false; }
+    const ring = this.rings[S.ri], g = ring.gaps[gi], sp = ringSpd(ring, g.a), off = g.len / (2 * sp) + SPIDER.stand / sp;
+    const d = wrap(g.a - S.la);
+    S.gi = gi; S.tla = wrap(g.a + (d >= 0 ? -off : off)); S.ph = 'walk'; S.done = 0;
+    S.dir = wrap(S.tla - S.la) >= 0 ? 1 : -1;
+    return true;
   },
   cwWeb(ri, gi) { return this.cw.webs.find((W) => W.ri === ri && W.gi === gi) || null; },
   // the open gap of its ring nearest an egg on that floor (ahead of the egg's way down), else the lowest one
@@ -221,28 +252,32 @@ export const cwMethods = {
 
   cwBeetleStep(B, i, dt, M, live) {
     const ring = this.rings[B.fi], A = ring.body.getAngle();
-    // the ring turned under it (the rocking vault's lean is not a turn): a stopped beetle winds up again
+    // the ring turned under it (the rocking vault's lean is not a turn): that winds its key
     let d = wrap(A - B.la0);
     B.la0 = A;
     if (this.rock) { const r1 = rockAt(this.rock, this.t), r0 = rockAt(this.rock, this.t - dt); d -= r1.a - r0.a; }
+    B.st += dt;
     if (B.ice > 0) B.ice -= dt;
     else if (B.stun > 0) B.stun -= dt;
+    else if (live && B.ph === 'tip') { if ((B.t -= dt) <= 0) { B.ph = 'sleep'; B.st = 0; B.acc = 0; B.wind = 0; } }
     else if (live) {
-      B.t -= dt;
-      switch (B.ph) {
-        case 'wait': if (B.t <= 0) { B.ph = 'click'; B.t = BEETLE.click; this.emit('beetleWind', { ...this.cwXY(B) }); } break;
-        case 'click': if (B.t <= 0) { B.ph = 'walk'; B.wind = BEETLE.wind[M]; } break;
-        case 'tip': if (B.t <= 0) { B.ph = 'stop'; B.acc = 0; } break;
-        case 'stop':
-          B.acc += Math.abs(d);
-          if (B.acc >= BEETLE.rewind[M]) { B.ph = 'click'; B.t = BEETLE.click; B.acc = 0; B.dir = d > 0 ? -1 : 1; this.emit('beetleWind', { ...this.cwXY(B) }); }
-          break;
-        case 'walk': {
-          if ((B.wind -= dt) <= 0) { B.ph = 'stop'; B.acc = 0; this.emit('beetleStop', { ...this.cwXY(B) }); break; }
-          const sp = ringSpd(ring, B.la), step = (BEETLE.speed[M] * dt) / sp;
-          if (this.cwBlocked(B, ring, B.la + B.dir * step)) { B.dir = -B.dir; this.emit('beetleTurn', { ...this.cwXY(B) }); break; }
-          B.la = wrap(B.la + B.dir * step);
-          break;
+      const ad = Math.abs(d);
+      if (ad > 1e-7) {
+        const s = d > 0 ? 1 : -1;
+        if (s === B.dir || B.wind <= 0) { B.dir = s; B.acc = 0; B.wind = Math.min(BEETLE.max, B.wind + ad * WIND_RATE); B.ka += ad * 3; }
+        else if ((B.acc += ad) >= BEETLE.flip) { B.dir = s; B.wind = Math.min(BEETLE.max, B.wind + B.acc * WIND_RATE); B.ka += B.acc * 3; B.acc = 0; B.stall = 0; if (B.ph === 'walk') this.emit('beetleTurn', { ...this.cwXY(B) }); }
+      }
+      if (B.ph === 'sleep' && B.wind >= BEETLE.go) { B.ph = 'walk'; B.st = 0; B.tk = 0; B.stall = 0; this.emit('beetleWind', { ...this.cwXY(B) }); }
+      if (B.ph === 'walk') {
+        B.wind -= dt; B.ka -= dt * (1.2 + (3 * B.wind) / BEETLE.max);
+        if (B.wind <= 0) { B.wind = 0; B.ph = 'sleep'; B.st = 0; B.stall = 0; B.acc = 0; this.emit('beetleStop', { ...this.cwXY(B) }); }
+        else {
+          // the key ticks: quick on a full spring, slower as it runs down
+          if ((B.tk -= dt) <= 0) { B.tk = 0.14 + 0.34 * (1 - B.wind / BEETLE.max); this.emit('beetleTick', { ...this.cwXY(B), f: B.wind / BEETLE.max }); }
+          const sp = ringSpd(ring, B.la), na = wrap(B.la + (B.dir * BEETLE.speed[M] * dt) / sp);
+          this.cwCrush(B, ring, na);
+          if (this.cwBlocked(B, ring, na)) { if (!B.stall) { B.stall = 1; this.emit('beetleBump', { ...this.cwXY(B) }); } }
+          else { B.stall = 0; B.la = na; }
         }
       }
     }
@@ -251,12 +286,20 @@ export const cwMethods = {
     b.setLinearVelocity(Vec2((q.x - p.x) / dt, (q.y - p.y) / dt));
     b.setAngularVelocity(wrap(q.a - b.getAngle()) / dt);
   },
-  // the nose would reach a gap edge or a floor thorn cluster (an egg needs room ahead of it: half an egg + a bit)
+  // the nose would reach a gap edge (an egg needs room ahead of it: half an egg + a bit): it never walks off
   cwBlocked(B, ring, la) {
     const sp = ringSpd(ring, la), nose = la + (B.dir * (BEETLE.len / 2 + 0.06)) / sp;
     for (const g of ring.gaps) { const half = g.len / (2 * ringSpd(ring, g.a)); if (Math.abs(wrap(nose - g.a)) < half + 0.02) return true; }
-    for (const th of ring.thorns) if (th.alive && th.side !== 'out' && Math.abs(wrap(nose - th.a)) * sp < 0.12) return true;
     return false;
+  },
+  // its plough crushes the floor thorns in its way
+  cwCrush(B, ring, la) {
+    const sp = ringSpd(ring, la), nose = la + (B.dir * (BEETLE.len / 2 + 0.06)) / sp;
+    for (const th of ring.thorns) {
+      if (!th.alive || th.side === 'out' || Math.abs(wrap(nose - th.a)) * sp > 0.15) continue;
+      this.removeThorn(th, 'snap');
+      const q = this.cwXY(B); this.emit('beetleCrush', { x: q.x, y: q.y });
+    }
   },
   cwXY(B) { const q = this.cwBeetlePose(B); return { x: q.x, y: q.y }; },
 
@@ -299,7 +342,7 @@ export const cwMethods = {
       else if (kind === 'bolt' || kind === 'zap') { S.stun = Math.max(S.stun, T); mark('cs' + S.id, 'zap', q.x, q.y, Math.min(1.2, T)); }
       else if ((kind === 'spin' || kind === 'out') && S.ph !== 'wait') {
         const W = this.cwWeb(S.ri, S.gi);
-        if (W && W.k < 1) W.k = 0;
+        if (W && W.k < 1 && S.ph === 'spin') { W.k = 0; W.sv = 1; }
         S.ph = 'flung'; S.t = SPIDER.flung; S.stun = 0;
         this.emit('spiderFlung', { x: q.x, y: q.y });
       }
@@ -309,7 +352,7 @@ export const cwMethods = {
       n++;
       if (kind === 'ice') { B.ice = Math.max(B.ice, T); mark('cb' + B.id, 'ice', q.x, q.y, T); }
       else if (kind === 'bolt' || kind === 'zap') { B.stun = Math.max(B.stun, T); mark('cb' + B.id, 'zap', q.x, q.y, Math.min(1.2, T)); }
-      else if (kind === 'spin' || kind === 'out') { B.ph = 'tip'; B.t = BEETLE.tip; B.wind = 0; this.emit('beetleTip', q); }
+      else if (kind === 'spin' || kind === 'out') { B.ph = 'tip'; B.t = BEETLE.tip; B.wind = 0; B.stall = 0; B.st = 0; this.emit('beetleTip', q); }
     }
     for (const J of this.cw.jk) {
       const q = this.cwFloor(J.fi, J.la, 0);
@@ -321,7 +364,6 @@ export const cwMethods = {
   // the Clockwork Owl's last phase brings the cast in
   cwWake() {
     for (const S of this.cw.sp) if (S.ph === 'wait' && S.t > 1.5) S.t = 1.5;
-    for (const B of this.cw.bt) if (B.ph === 'wait' && B.t > 1.5) B.t = 1.5;
   },
 
   // ---------- state (planner / rewind)

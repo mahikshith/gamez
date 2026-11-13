@@ -188,13 +188,13 @@ export const VILLAIN_INFO = {
   },
   spider: {
     group: 'creature', name: 'Clockwork spider',
-    does: 'Winds down to the gap nearest an egg and webs it shut for ~9 s.',
-    beat: 'Its web catches eggs with no crack. Fire, iron or laser tear it.',
+    does: 'Crawls along its ring to the gap nearest an egg and webs it shut.',
+    beat: 'Slip eggs past while it spins. Fire, iron or laser tear its webs.',
   },
   beetle: {
     group: 'creature', name: 'Wind-up beetle',
-    does: 'Shoves eggs along its floor for ~6 s, then runs down and stops.',
-    beat: 'Stopped, it is a wall. Turn its ring ~70° to wind it up again.',
+    does: 'Turn his ring to wind him: he marches that way, pushing eggs.',
+    beat: 'He crushes thorns in his path. Unwound, he is a wall.',
   },
   jack: {
     group: 'creature', name: 'Spring jack',

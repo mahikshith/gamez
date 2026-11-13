@@ -469,7 +469,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 46, theme: "lab", name: "Square One", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 9}, shape: "square", spider: {ring: 2, delay: 4}, tip: "A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.", orbs: [{type: "iron", ch: 1, a: 50},{type: "fire_red", ch: 3, a: 140}], seed: 364277, world: 10, intro: {title: "Shape Lab", cw: "spider", line: "Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider webs a gap shut; the web catches eggs softly. Iron or fire tears it."},
+    id: 46, theme: "lab", name: "Square One", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 9}, shape: "square", spider: {ring: 2, delay: 4}, tip: "A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.", orbs: [{type: "iron", ch: 1, a: 50},{type: "fire_red", ch: 3, a: 140}], seed: 364277, world: 10, intro: {title: "Shape Lab", cw: "spider", line: "Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider crawls to a gap and webs it shut; slip an egg past while it spins."},
     rings: [
       {gaps: [{a: 171}], thorns: [{a: 89, n: 2}]},
       {gaps: [{a: 71, x: 2},{a: -143}], thorns: [{a: -21, n: 1},{a: 159, n: 2}], pads: [{a: -70, len: 1.38}]},
@@ -478,7 +478,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 47, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 30}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30}], beetle: {ch: 2, delay: 3, a: -167}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "The beetle shoves eggs along until its key runs down. Stopped, it is a wall that keeps eggs off thorns. Turn its ring to wind it up again."},
+    id: 47, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 30}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30}], beetle: {ch: 2, delay: 3, a: -167}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "Turn the beetle's ring to wind him: he marches the way you turned it, shoves eggs ahead and crushes thorns. Unwound, he is a wall."},
     rings: [
       {gaps: [{a: 124}], thorns: [{a: 45, n: 1}]},
       {gaps: [{a: 164, x: 2},{a: 31, grate: 1}], thorns: [{a: -6, n: 2},{a: -113, n: 2, side: "out", h: 0.26}], pads: [{a: -135, len: 1.03}]},

@@ -6,7 +6,7 @@ import { RING_TH, TAU } from '../sim/geom.js';
 import { ringPt, ringSpd } from '../sim/shapes.js';
 import { SPIDER, BEETLE, JACK } from '../sim/clockwork.js';
 import { statusClock, statusDraw, dizzyStars, spiralEye } from './status.js';
-import { form, ik, limb, back } from './castkit.js';
+import { form, ik, limb, back, zed } from './castkit.js';
 
 const INK = '#1a120a';
 const BRASS = { base: '#c8963e', light: '#f2cf7c', dark: '#7a5220' };
@@ -17,7 +17,7 @@ const PEWTER = { base: '#617089', light: '#97a8c2', dark: '#2e3645' }; // lighte
 const TEALK = { base: '#22b8b0', light: '#7fe6dc', dark: '#0f6660' };
 const LW = (s) => Math.max(1.7, s * 0.024); // a heavy ink outline, so they read at phone scale
 // art scale (the rigs are drawn in metres at 1): the sim's BEETLE.len is 0.62 * BS, JACK.w 0.44 * JS
-const SS = 2.4, BS = BEETLE.len / 0.62, JS = JACK.w / 0.44;
+const BS = BEETLE.len / 0.62, JS = JACK.w / 0.44, SPS = 1.5; // SPS: the spider's art scale (its rig is drawn in metres at 1)
 const JACK_SINK = 0.12; // the jack's box is set into the ring (art units): only the lid stands proud of the floor
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { /* art never breaks the frame */ } ctx.restore(); };
@@ -47,45 +47,78 @@ function key(c, x, y, s, ph, lw, up = -1, K = BRASS) {
 }
 
 // ---------------------------------------------------------------- the clockwork spider
-// origin = the body's centre, local -y points up its thread. o: { legs (gait phase), spin (0..1 working the web), eye }
-// Eight tapered steel legs with teal knee joints and needle feet that paddle in a travelling wave (the abdomen bobs against
-// them); a banded gunmetal abdomen with a lit rim, a small head with fangs and two glowing lens eyes.
+// Side view, crawling. origin = the middle of its feet on the face it walks on, local +x forward, -y away from the face, s = px
+// per metre. o: { gait (m walked: drives the step cycle), spin (0..1 working a web with its front legs), eye ('hot' | 'spiral'),
+// curl (0..1 legs tucked: stunned / frozen), key (rad: the wind-up key and the gear on its back) }.
+// Eight steel legs in an alternating tetrapod gait (L1 R2 L3 R4 against R1 L2 R3 L4): one set plants while the other lifts and
+// swings, so it walks in a readable tick-tock; the body bobs twice a cycle, the abdomen lags a little behind it.
+const SP_STRIDE = 0.12, SP_CYCLE = 2 * SP_STRIDE; // m a foot slides through its stance; m walked per full step cycle
+const SP_HIP = [0.12, 0.08, 0.035, -0.01], SP_FOOT = [0.41, 0.22, -0.08, -0.35], SP_L = [[0.22, 0.25], [0.19, 0.2], [0.18, 0.19], [0.23, 0.26]];
+const SPB = { base: '#7d8ea8', light: '#c8d6ea', dark: '#323c4e' }; // polished steel: it must stand off the navy board
 export function drawSpiderArt(c, s, t, o = {}) {
-  const lw = LW(s), sp = o.spin || 0, slack = o.slack || 0, g = (o.legs || 0) * 9, bob = Math.sin(g * 2) * 0.006 * s * (1 - slack);
+  const lw = LW(s * 1.8), curl = clamp01(o.curl || 0), sp = o.spin || 0;
+  const cyc = (((o.gait || 0) / SP_CYCLE) % 1 + 1) % 1, walking = o.gait != null && !curl && !sp && o.moving ? 1 : 0;
+  const bob = walking ? -Math.abs(Math.sin(cyc * TAU)) * 0.03 * s : 0, sink = curl * 0.06 * s;
+  const lag = walking ? Math.sin(cyc * TAU * 2 - 0.9) * 0.05 : 0; // the abdomen swings after the step
   c.lineJoin = 'round'; c.lineCap = 'round';
-  // legs: four a side, two joints each
-  for (const sd of [-1, 1]) for (let i = 0; i < 4; i++) {
-    const ph = g + i * 1.7 + (sd > 0 ? 0.8 : 0), front = i >= 2 ? 1 : 0.5, sw = Math.sin(ph) * (0.04 + sp * 0.07 * front), rc = Math.cos(ph) * (0.018 + sp * 0.03 * front), dr = slack * 0.08;
-    const hx = sd * 0.07 * s, hy = (-0.05 + i * 0.05) * s + bob;
-    const kx = sd * (0.2 + i * 0.012 + rc) * s, ky = (-0.17 + i * 0.09 + sw * 0.7 + dr) * s;
-    const fx = sd * (0.275 - Math.abs(i - 1.5) * 0.02 + rc * 1.6 - slack * 0.03) * s, fy = (-0.02 + i * 0.1 + sw * 1.5 + dr * 2.5) * s;
-    limb(c, [[hx, hy], [kx, ky], [fx, fy]], [lw * 1.25, lw * 1.05, lw * 0.3], i % 2 ? STEEL.light : '#a9bcd6', INK, lw * 0.85);
-    c.beginPath(); c.arc(kx, ky, lw * 1.55, 0, TAU); c.fillStyle = TEALK.base; c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke();
-    c.beginPath(); c.arc(kx - lw * 0.4, ky - lw * 0.5, lw * 0.45, 0, TAU); c.fillStyle = TEALK.light; c.fill();
-  }
-  // abdomen (up the thread) with teal bands and a wind-up key, the head below it
-  c.save(); c.translate(0, bob);
-  key(c, 0, -0.2 * s, s, (o.legs || 0) * 2 + sp * t * 9, lw);
-  const abd = () => { c.beginPath(); c.moveTo(0, -0.215 * s); c.bezierCurveTo(0.15 * s, -0.215 * s, 0.17 * s, 0.0, 0.07 * s, 0.085 * s); c.quadraticCurveTo(0, 0.11 * s, -0.07 * s, 0.085 * s); c.bezierCurveTo(-0.17 * s, 0.0, -0.15 * s, -0.215 * s, 0, -0.215 * s); c.closePath(); };
-  form(c, abd, { d: lw * 2.4, lo: GUN.dark, base: GUN.base, hi: GUN.light, hiK: 0.5, line: INK, lw, inner: () => {
-    c.strokeStyle = TEALK.base; c.lineWidth = 0.032 * s;
-    for (const y of [-0.13, -0.04]) { c.beginPath(); c.moveTo(-0.17 * s, y * s); c.quadraticCurveTo(0, (y + 0.04) * s, 0.17 * s, y * s); c.stroke(); }
-    c.strokeStyle = TEALK.light; c.lineWidth = 0.008 * s; for (const y of [-0.142, -0.052]) { c.beginPath(); c.moveTo(-0.15 * s, y * s); c.quadraticCurveTo(-0.06 * s, (y + 0.03) * s, 0, (y + 0.034) * s); c.stroke(); }
-    c.fillStyle = BRASS.light; for (const sd of [-1, 1]) { c.beginPath(); c.arc(sd * 0.075 * s, 0.03 * s, 0.011 * s, 0, TAU); c.fill(); }
+  const hipY = -0.17 * s + bob + sink;
+  // one leg: i = 0 front .. 3 back; far = the other side (drawn behind, darker); set: which half of the tetrapod it is in
+  const leg = (i, far) => {
+    const set = (i + far) % 2, ph = (cyc + set * 0.5) % 1, hx = (SP_HIP[i] + (far ? -0.012 : 0)) * s;
+    let fx = (SP_FOOT[i] + (far ? 0.03 : 0)) * s, fy = 0, lift = 0;
+    if (walking) {
+      if (ph < 0.5) fx += SP_STRIDE * s * (0.5 - ph * 2); // stance: planted, the body passes over it
+      else { const q = (ph - 0.5) * 2, e = q * q * (3 - 2 * q); fx += SP_STRIDE * s * (-0.5 + e); lift = Math.sin(q * Math.PI) * 0.07 * s; }
+    }
+    if (sp && i === 0) { const w = Math.sin(t * 16 + far * 2.2); fx = (0.3 + 0.03 * w) * s; lift = (0.12 + 0.07 * w) * s; } // front legs pull silk
+    if (sp && i === 1) { fx += Math.sin(t * 16 + 1.4 + far) * 0.02 * s; }
+    if (curl) { const tx = hx + (i < 2 ? 0.07 : -0.05) * s, ty = -0.05 * s; fx += (tx - fx) * curl; lift += (-ty - lift) * curl; }
+    fy = -lift;
+    const hy = hipY + (far ? -0.008 * s : 0), [l1, l2] = SP_L[i];
+    let K = ik(hx, hy, fx, fy, l1 * s * (1 - curl * 0.35), l2 * s * (1 - curl * 0.35), 1);
+    const K2 = ik(hx, hy, fx, fy, l1 * s * (1 - curl * 0.35), l2 * s * (1 - curl * 0.35), -1);
+    if (K2[1] < K[1]) K = K2; // the knee is always the high joint
+    const col = far ? '#55657c' : '#c8d6ea';
+    limb(c, [[hx, hy], K, [fx, fy]], [lw * 0.62, lw * 0.5, lw * 0.2], col, INK, lw * 0.62);
+    c.beginPath(); c.arc(K[0], K[1], lw * (far ? 0.75 : 0.95), 0, TAU); c.fillStyle = far ? TEALK.dark : TEALK.base; c.fill(); c.lineWidth = lw * 0.55; c.strokeStyle = INK; c.stroke();
+  };
+  for (let i = 3; i >= 0; i--) leg(i, 1);
+  // abdomen: a banded gunmetal drum tipped up at the back, a brass gear on its flank and the wind-up key on top
+  c.save(); c.translate(-0.15 * s, -0.23 * s + bob + sink * 0.8); c.rotate(-0.28 + lag - curl * 0.15);
+  const abd = () => { c.beginPath(); c.ellipse(-0.05 * s, 0, 0.21 * s, 0.16 * s, 0, 0, TAU); };
+  form(c, abd, { d: lw * 2.4, lo: SPB.dark, base: SPB.base, hi: SPB.light, hiK: 0.5, line: INK, lw, inner: () => {
+    c.strokeStyle = TEALK.base; c.lineWidth = 0.03 * s;
+    for (const x of [-0.15, 0.03]) { c.beginPath(); c.moveTo(x * s, -0.17 * s); c.quadraticCurveTo((x + 0.04) * s, 0, x * s, 0.17 * s); c.stroke(); }
+    c.strokeStyle = TEALK.light; c.lineWidth = 0.008 * s; for (const x of [-0.16, 0.02]) { c.beginPath(); c.moveTo(x * s, -0.12 * s); c.quadraticCurveTo((x + 0.028) * s, -0.06 * s, (x + 0.03) * s, -0.01 * s); c.stroke(); }
   } });
+  // the gear: it turns as the spring drives the legs
+  const gr = 0.062 * s, ga = o.key || 0;
+  c.beginPath(); for (let k = 0; k < 16; k++) { const a = ga + (k * TAU) / 16, r = k % 2 ? gr : gr * 1.3; c.lineTo(-0.05 * s + Math.cos(a) * r, 0.01 * s + Math.sin(a) * r); } c.closePath();
+  c.fillStyle = BRASS.base; c.fill(); c.lineWidth = lw * 0.75; c.strokeStyle = INK; c.stroke();
+  c.beginPath(); c.arc(-0.05 * s, 0.01 * s, gr * 0.45, 0, TAU); c.fillStyle = BRASS.light; c.fill(); c.stroke();
+  c.beginPath(); c.moveTo(-0.05 * s, 0.01 * s); c.lineTo(-0.05 * s + Math.cos(ga) * gr * 0.9, 0.01 * s + Math.sin(ga) * gr * 0.9); c.lineWidth = lw * 0.6; c.stroke();
+  key(c, -0.05 * s, -0.15 * s, s * 1.8, (o.key || 0) * 1.6, lw);
   c.restore();
-  const head = () => { c.beginPath(); c.ellipse(0, 0.125 * s, 0.09 * s, 0.078 * s, 0, 0, TAU); };
-  // fangs first (under the head)
-  for (const sd of [-1, 1]) { const a = sp > 0 ? Math.sin(t * 20 + sd) * 0.012 * s : 0; c.beginPath(); c.moveTo(sd * 0.035 * s, 0.18 * s); c.quadraticCurveTo(sd * 0.055 * s + a, 0.225 * s, sd * 0.018 * s, 0.245 * s); c.strokeStyle = INK; c.lineWidth = lw * 2; c.stroke(); c.strokeStyle = '#e8eef6'; c.lineWidth = lw * 0.8; c.stroke(); }
-  form(c, head, { d: lw * 2, lo: GUN.dark, base: GUN.base, hi: GUN.light, hiK: 0.5, line: INK, lw, noWeight: true });
-  // two lens eyes (glowing hotter while it winds down or works a web)
-  for (const sd of [-1, 1]) {
-    const ex = sd * 0.042 * s, ey = 0.132 * s, r = 0.037 * s, hot = sp > 0 || o.eye === 'hot';
-    c.beginPath(); c.arc(ex, ey, r, 0, TAU); c.fillStyle = INK; c.fill();
-    if (o.eye === 'spiral') spiralEye(c, ex, ey, r * 0.9, t, sd, '#ffd0a0');
-    else { const pu = hot ? 0.7 + 0.08 * Math.sin(t * 14) : 0.6; c.beginPath(); c.arc(ex, ey, r * pu, 0, TAU); c.fillStyle = hot ? '#ff8a3a' : '#ff3b2a'; c.fill(); if (hot) { c.beginPath(); c.arc(ex, ey, r * 0.34, 0, TAU); c.fillStyle = '#ffe9a0'; c.fill(); } c.beginPath(); c.arc(ex - r * 0.28, ey - r * 0.32, r * 0.22, 0, TAU); c.fillStyle = '#fff4d8'; c.fill(); }
-    if (hot && o.eye !== 'spiral') { c.beginPath(); c.moveTo(ex - sd * r * 1.2, ey - r * 1.25); c.lineTo(ex + sd * r * 0.7, ey - r * 0.75); c.strokeStyle = INK; c.lineWidth = lw * 1.3; c.stroke(); }
+  // cephalothorax and head, fangs, lens eyes facing forward
+  c.save(); c.translate(0, bob + sink);
+  for (const sd of [0, 1]) { const a = sp ? Math.sin(t * 20 + sd * 2) * 0.012 * s : 0; c.beginPath(); c.moveTo((0.22 - sd * 0.015) * s, -0.14 * s); c.quadraticCurveTo((0.27 - sd * 0.015) * s + a, -0.09 * s, (0.235 - sd * 0.02) * s, -0.06 * s); c.strokeStyle = INK; c.lineWidth = lw * 2; c.stroke(); c.strokeStyle = '#e8eef6'; c.lineWidth = lw * 0.8; c.stroke(); }
+  const body = () => { c.beginPath(); c.ellipse(0.08 * s, -0.19 * s, 0.15 * s, 0.1 * s, -0.08, 0, TAU); };
+  form(c, body, { d: lw * 2, lo: SPB.dark, base: SPB.base, hi: SPB.light, hiK: 0.5, line: INK, lw });
+  c.fillStyle = BRASS.light; for (const x of [0.0, 0.08]) { c.beginPath(); c.arc(x * s, -0.25 * s, 0.013 * s, 0, TAU); c.fill(); }
+  const hot = o.eye === 'hot' || sp > 0;
+  for (const [ex, ey, r, far] of [[0.205, -0.22, 0.033, 1], [0.19, -0.18, 0.045, 0]]) {
+    const X = ex * s, Y = ey * s, R = r * s;
+    c.beginPath(); c.arc(X, Y, R, 0, TAU); c.fillStyle = INK; c.fill();
+    if (o.eye === 'spiral') { spiralEye(c, X, Y, R * 0.9, t, far ? -1 : 1, '#ffd0a0'); continue; }
+    if (hot) { c.save(); c.globalAlpha = 0.35 + 0.15 * Math.sin(t * 12); c.beginPath(); c.arc(X, Y, R * 1.9, 0, TAU); c.fillStyle = '#ff7a2a'; c.fill(); c.restore(); }
+    const pu = hot ? 0.74 + 0.07 * Math.sin(t * 14) : 0.6;
+    c.beginPath(); c.arc(X, Y, R * pu, 0, TAU); c.fillStyle = hot ? '#ff8a3a' : (curl ? '#7a2a20' : '#ff3b2a'); c.fill();
+    if (hot) { c.beginPath(); c.arc(X + R * 0.1, Y, R * 0.34, 0, TAU); c.fillStyle = '#ffe9a0'; c.fill(); }
+    c.beginPath(); c.arc(X - R * 0.28, Y - R * 0.32, R * 0.22, 0, TAU); c.fillStyle = '#fff4d8'; c.fill();
   }
+  if (hot && o.eye !== 'spiral') { c.beginPath(); c.moveTo(0.13 * s, -0.27 * s); c.lineTo(0.235 * s, -0.23 * s); c.strokeStyle = INK; c.lineWidth = lw * 1.3; c.stroke(); } // a mean brow
+  c.restore();
+  for (let i = 3; i >= 0; i--) leg(i, 0);
 }
 
 // a web across a gap: spokes from a hub to both gap edges and two cross threads; k = how much is spun, sag in m
@@ -100,13 +133,16 @@ function drawWeb(ctx, sim, W, k, t) {
   const hub = P(ring.r + sag, g.a);
   const anchors = [P(ri, g.a - half), P(ring.r, g.a - half), P(ro, g.a - half), P(ro, g.a + half), P(ring.r, g.a + half), P(ri, g.a + half), P(ri, g.a - half * 0.3), P(ri, g.a + half * 0.3)];
   const order = [0, 6, 7, 5, 4, 3, 2, 1];
-  const n = Math.ceil(clamp01(W.k) * anchors.length);
+  // strand by strand while it is spun (sv 0..1): the spokes by SPIDER.open (then it holds), the cross threads after
+  const vis = W.sv == null ? 1 : clamp01(W.sv), so = SPIDER.open / SPIDER.spin, spun = W.k >= 1 ? 1 : clamp01(W.k);
+  const n = Math.ceil(Math.min(clamp01(vis / so), spun < 1 ? spun : 1) * anchors.length), cross = clamp01((vis - so) / (1 - so));
   const strand = (fn, w) => { ctx.beginPath(); fn(); ctx.lineWidth = w * 2.4; ctx.strokeStyle = 'rgba(16,14,20,0.85)'; ctx.stroke(); ctx.lineWidth = w; ctx.strokeStyle = '#d9e2ea'; ctx.stroke(); };
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (ending) ctx.globalAlpha = 1 - ending * 0.5;
+  else if (W.k < 1) ctx.globalAlpha = 0.7; // not holding yet: the gap is still open
   strand(() => { for (let i = 0; i < n; i++) { ctx.moveTo(...hub); ctx.lineTo(...anchors[order[i]]); } }, Math.max(1.3 * px, 0.012));
-  if (W.k > 0.55) for (const f of [0.45, 0.8]) strand(() => order.forEach((j, i) => { const a = anchors[j], x = hub[0] + (a[0] - hub[0]) * f, y = hub[1] + (a[1] - hub[1]) * f; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }), Math.max(1.0 * px, 0.01));
+  if (W.k >= 1 && cross > 0) { const m = Math.max(2, Math.ceil(cross * order.length)); for (const f of [0.45, 0.8]) strand(() => order.slice(0, m).forEach((j, i) => { const a = anchors[j], x = hub[0] + (a[0] - hub[0]) * f, y = hub[1] + (a[1] - hub[1]) * f; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }), Math.max(1.0 * px, 0.01)); }
   // dew-drop rivets where the threads meet the brass
   ctx.fillStyle = '#cfd8e2';
   for (let i = 0; i < n; i++) { const a = anchors[order[i]]; ctx.beginPath(); ctx.arc(a[0], a[1], 1.4 * px, 0, TAU); ctx.fill(); }
@@ -114,7 +150,8 @@ function drawWeb(ctx, sim, W, k, t) {
 }
 
 // ---------------------------------------------------------------- the wind-up beetle
-// origin = between its feet on the floor, local +x forward, -y up. o: { walk (gait distance m), key (turn), lamp, tip, slack }
+// origin = between its feet on the floor, local +x forward, -y up. o: { walk (gait distance m), key (turn), lamp, tip, slack,
+//   gauge (0..1 of a full wind, null = none), yawn (0..1), zz (asleep: a Z drifts up) }
 // A tin toy: a glossy red wing-case dome split by a seam, a pewter skirt with brass rivets, six jointed tin legs that plant
 // as it marches (the shell rocks, the feelers spring after it), a round head with a headlamp eye and a steel plough.
 const TIN = { base: '#e2452f', light: '#ff8f6a', dark: '#96201a' };
@@ -140,8 +177,9 @@ export function drawBeetleArt(c, s, t, o = {}) {
   };
   for (let i = 0; i < 3; i++) leg(i, 1);
   c.save(); c.translate(0, -bob + sag); c.rotate(rock - slack * 0.04);
-  // the key on its back (behind the shell)
-  key(c, -0.07 * s, -0.285 * s, s, o.key || 0, lw, -1, TEALK);
+  // the big wind-up key on its back (behind the shell; drawn again over the gauge below)
+  const bigKey = () => key(c, -0.07 * s, -0.3 * s, s * 1.55, o.key || 0, lw * 1.1, -1, TEALK);
+  bigKey();
   // plough: a steel scoop low at the front
   const plough = () => { c.beginPath(); c.moveTo(0.2 * s, -0.035 * s); c.lineTo(0.345 * s, -0.004 * s); c.quadraticCurveTo(0.385 * s, -0.085 * s, 0.32 * s, -0.165 * s); c.lineTo(0.22 * s, -0.12 * s); c.closePath(); };
   form(c, plough, { d: lw * 1.6, lo: STEEL.dark, base: STEEL.base, hi: STEEL.light, hiK: 0.6, line: INK, lw, noWeight: true });
@@ -166,8 +204,25 @@ export function drawBeetleArt(c, s, t, o = {}) {
     c.fillStyle = '#fff1d0'; for (const [px, py, pr] of [[-0.2, -0.2, 0.034], [-0.12, -0.28, 0.024], [0.07, -0.25, 0.034], [0.15, -0.16, 0.024]]) { c.beginPath(); c.arc(px * s, py * s, pr * s, 0, TAU); c.fill(); }
     c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = lw * 1.3; c.beginPath(); c.moveTo(-0.26 * s, -0.2 * s); c.quadraticCurveTo(-0.22 * s, -0.3 * s, -0.12 * s, -0.335 * s); c.stroke(); // gloss
   } });
+  // a yawn as the spring gives out
+  if (o.yawn > 0) { const m = Math.sin(clamp01(o.yawn) * Math.PI); ell(c, 0.3 * s, -0.085 * s, 0.03 * s, 0.006 * s + m * 0.03 * s); c.fillStyle = '#3a0e0a'; c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke(); }
+  // the wind gauge: four segments (one per 30 degrees of ring turn, 1.5 s each) in an arc round the key's foot
+  if (o.gauge != null) {
+    const gx = -0.07 * s, gy = -0.36 * s, gr = 0.15 * s, f = clamp01(o.gauge), seg = (Math.PI * 1.2) / 4, a00 = Math.PI * 0.9, gap = 0.1;
+    const col = f > 0.5 ? '#6af0c8' : f > 0.2 ? '#ffd04a' : '#ff6a4a';
+    c.lineCap = 'butt';
+    for (let i = 0; i < 4; i++) {
+      const a0 = a00 + i * seg + gap / 2, a1 = a00 + (i + 1) * seg - gap / 2, fill = clamp01(f * 4 - i);
+      c.beginPath(); c.arc(gx, gy, gr, a0, a1); c.lineWidth = lw * 4.4; c.strokeStyle = INK; c.stroke();
+      c.lineWidth = lw * 2.6; c.strokeStyle = '#4a4458'; c.stroke();
+      if (fill > 0) { c.beginPath(); c.arc(gx, gy, gr, a0, a0 + (a1 - a0) * fill); c.strokeStyle = col; c.stroke(); }
+    }
+    c.lineCap = 'round';
+    bigKey();
+  }
   c.restore();
   for (let i = 0; i < 3; i++) leg(i, 0);
+  if (o.zz) { const u = (t * 0.45) % 1; zed(c, 0.2 * s, -0.36 * s, 0.035 * s, u, INK, '#e8f0ff'); }
   c.restore();
 }
 
@@ -246,40 +301,50 @@ export function drawClockwork(ctx, sim, t, k) {
     pxSpace(ctx, q.x, q.y, k, () => { ctx.rotate(-(up - Math.PI / 2)); const z = JS * k; ctx.translate(0, JACK_SINK * z); statusDraw(ctx, { x0: -0.35 * z, y0: -0.9 * z, x1: 0.35 * z, y1: 0.08 * z }, (c) => drawJackArt(c, z, st ? st.hold : t, o), st, { quick: true }); });
   }
   for (const B of C.bt) {
-    const q = sim.cwBeetlePose(B), st = statusClock(sim, 'cb' + B.id, want(B.ice, B.stun), t), M = sim.cwMode || 'medium';
-    const walking = B.ph === 'walk' && !(B.ice > 0) && !(B.stun > 0);
-    const walk = (B.la * sim.rings[B.fi].r) * B.dir;
-    const o = { walk: walking ? walk : 0, key: walking ? t * 3 * (B.wind / BEETLE.wind[M] + 0.3) : B.ph === 'click' ? t * 14 : 0.4, lamp: walking || B.ph === 'click', tip: B.ph === 'tip', eye: B.stun > 0 ? 'spiral' : B.ph === 'stop' ? 'off' : '', slack: B.ph === 'stop' ? 1 : 0 };
+    const q = sim.cwBeetlePose(B), st = statusClock(sim, 'cb' + B.id, want(B.ice, B.stun), t), held = B.ice > 0 || B.stun > 0;
+    const walking = B.ph === 'walk' && !held, ring = sim.rings[B.fi];
+    // marching: the gait follows the floor it covers; stalled at a gap edge it treads on the spot
+    const walk = walking ? (B.stall ? t * 0.5 : B.la * ring.r * B.dir) : 0, asleep = B.ph === 'sleep';
+    const sl = asleep ? clamp01(B.st / 0.8) : 0;
+    const o = { walk, key: B.ka || 0, lamp: walking, tip: B.ph === 'tip', gauge: B.ph === 'tip' ? null : B.wind / BEETLE.max,
+      eye: B.stun > 0 ? 'spiral' : asleep ? 'off' : '', slack: sl, yawn: asleep && B.st < 1.4 ? B.st / 1.4 : 0, zz: asleep && B.st > 1.4 && !held };
     pxSpace(ctx, q.x, q.y, k, () => {
       ctx.rotate(-q.a);
       if (B.dir < 0) ctx.scale(-1, 1);
-      if (B.ph === 'click' && !(B.ice > 0)) ctx.translate(Math.sin(t * 60) * 0.006 * k, 0);
+      if (walking && B.stall) ctx.translate(Math.sin(t * 40) * 0.008 * k, 0); // straining at the edge
       const z = BS * k;
-      statusDraw(ctx, { x0: -0.4 * z, y0: -0.45 * z, x1: 0.45 * z, y1: 0.05 * z }, (c) => drawBeetleArt(c, z, st ? st.hold : t, o), st, { quick: true });
+      statusDraw(ctx, { x0: -0.4 * z, y0: -0.5 * z, x1: 0.45 * z, y1: 0.05 * z }, (c) => drawBeetleArt(c, z, st ? st.hold : t, o), st, { quick: true });
       if (st && st.k === 'stun') dizzyStars(ctx, 0.05 * z, -0.42 * z, 0.16 * z, 0.05 * z, t, { size: Math.max(2.6, 0.045 * z) });
     });
   }
   for (const S of C.sp) {
-    if (S.ph === 'flung') continue;
     const q = sim.cwSpider(S);
     if (!q) continue;
-    const st = statusClock(sim, 'cs' + S.id, want(S.ice, S.stun), t), dx = q.x - q.ax, dy = q.y - q.ay, len = Math.hypot(dx, dy);
-    // the thread
-    if (len > 0.05) {
-      ctx.save(); ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(q.ax, q.ay); ctx.lineTo(q.x, q.y);
-      ctx.lineWidth = 2.4 / k; ctx.strokeStyle = 'rgba(16,14,20,0.8)'; ctx.stroke();
-      ctx.lineWidth = 1.1 / k; ctx.strokeStyle = '#d9e2ea'; ctx.stroke();
-      ctx.restore();
+    // flung off by a spin storm: gone, then it lowers itself back onto the same spot on a thread
+    let drop = 0;
+    if (S.ph === 'flung') { if (S.t > 0.7) continue; drop = S.t / 0.7; }
+    const st = statusClock(sim, 'cs' + S.id, want(S.ice, S.stun), t), held = S.ice > 0 || S.stun > 0;
+    const ring = sim.rings[S.ri], gait = S.la * ring.r * (S.dir > 0 ? 1 : -1), up = q.up, ux = Math.cos(up), uy = Math.sin(up);
+    const dx = q.fx + ux * drop * 1.6, dy = q.fy + uy * drop * 1.6;
+    if (drop > 0) { ctx.save(); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(q.fx + ux * 3, q.fy + uy * 3); ctx.lineTo(dx + ux * 0.3, dy + uy * 0.3); ctx.lineWidth = 2.4 / k; ctx.strokeStyle = 'rgba(16,14,20,0.8)'; ctx.stroke(); ctx.lineWidth = 1.1 / k; ctx.strokeStyle = '#d9e2ea'; ctx.stroke(); ctx.restore(); }
+    // working a web: a silk line from its front legs to the web's hub
+    if (S.ph === 'spin' && !held) {
+      const g = ring.gaps[S.gi];
+      if (g) {
+        const A = ring.body.getAngle(), [hx, hy] = ringPt(ring, g.a, ring.r), Hx = hx * Math.cos(A) - hy * Math.sin(A), Hy = hx * Math.sin(A) + hy * Math.cos(A);
+        const fa = up + (S.dir > 0 ? Math.PI / 2 : -Math.PI / 2), w = Math.sin(t * 16) * 0.03, mx = q.fx + Math.cos(fa) * 0.3 * SPS + ux * (0.12 + w) * SPS, my = q.fy + Math.sin(fa) * 0.3 * SPS + uy * (0.12 + w) * SPS;
+        ctx.save(); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(Hx, Hy); ctx.lineWidth = 2.2 / k; ctx.strokeStyle = 'rgba(16,14,20,0.7)'; ctx.stroke(); ctx.lineWidth = 1.0 / k; ctx.strokeStyle = '#eef3f8'; ctx.stroke(); ctx.restore();
+      }
     }
-    // it hangs head-down toward the gap (its local +y), legs paddling while it winds down
-    const ang = len > 0.05 ? Math.atan2(dy, dx) : q.gu + Math.PI;
-    const o = { legs: S.ph === 'down' || S.ph === 'up' ? t : t * 0.15, spin: S.ph === 'spin' ? 1 : 0, eye: S.stun > 0 ? 'spiral' : S.ph === 'down' ? 'hot' : '', slack: S.stun > 0 ? 1 : 0 };
-    pxSpace(ctx, q.x, q.y, k, () => {
-      ctx.rotate(-ang - Math.PI / 2 + (S.stun > 0 ? Math.sin(t * 2.2) * 0.25 : 0)); // head (local +y) toward the gap
-      const z = SS * k;
-      statusDraw(ctx, { x0: -0.36 * z, y0: -0.32 * z, x1: 0.36 * z, y1: 0.34 * z }, (c) => drawSpiderArt(c, z, st ? st.hold : t, o), st, { quick: true });
-      if (st && st.k === 'stun') dizzyStars(ctx, 0, -0.3 * z, 0.13 * z, 0.04 * z, t, { size: Math.max(2.6, 0.04 * z) });
+    const o = { gait, moving: S.ph === 'walk' && !held && !drop, spin: S.ph === 'spin' && !held ? 1 : 0, curl: held || drop ? 1 - (drop ? 0 : 0) : 0, key: gait * 9 + (S.ph === 'spin' && !held ? t * 6 : 0),
+      eye: S.stun > 0 ? 'spiral' : S.ph === 'walk' || S.ph === 'spin' ? 'hot' : '' };
+    if (drop) o.curl = 0.6;
+    pxSpace(ctx, dx, dy, k, () => {
+      ctx.rotate(-(up - Math.PI / 2));
+      if (S.dir > 0) ctx.scale(-1, 1); // on the outer face, +la runs to its left
+      const z = SPS * k;
+      statusDraw(ctx, { x0: -0.5 * z, y0: -0.48 * z, x1: 0.48 * z, y1: 0.04 * z }, (c) => drawSpiderArt(c, z, st ? st.hold : t, o), st, { quick: true });
+      if (st && st.k === 'stun') dizzyStars(ctx, 0, -0.42 * z, 0.16 * z, 0.05 * z, t, { size: Math.max(2.6, 0.06 * z) });
     });
   }
 }
@@ -289,15 +354,16 @@ export function drawClockworkTele(ctx, sim, t, k) {
   const C = sim.cw;
   if (!C) return;
   for (const S of C.sp) {
-    if (S.ph !== 'down') continue;
+    if (S.ph !== 'walk' && !(S.ph === 'spin' && !S.done)) continue;
     const q = sim.cwSpider(S);
     if (!q) continue;
-    const u = clamp01(1 - S.t / S.dur), a = 0.45 + 0.4 * Math.sin(t * 10);
+    // a dashed ring on the gap it is heading for; it tightens and goes solid as the web is spun
+    const u = S.ph === 'spin' ? clamp01((1 - S.t / S.dur) * SPIDER.spin / SPIDER.open) : 0, a = S.ph === 'spin' ? 0.8 : 0.45 + 0.35 * Math.sin(t * 8);
     ctx.save();
     ctx.globalAlpha = a;
-    ctx.setLineDash([5 / k, 4 / k]);
+    ctx.setLineDash([5 / k, 4 / k]); ctx.lineDashOffset = -t * 12 / k;
     ctx.lineWidth = 2.2 / k; ctx.strokeStyle = '#ff6a3a';
-    ctx.beginPath(); ctx.arc(q.gx, q.gy, 0.3 + 0.12 * (1 - u), 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(q.gx, q.gy, 0.42 - 0.12 * u, 0, TAU); ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
   }
@@ -309,17 +375,19 @@ export function drawCwIntro(c, kind, x, y, w, h, t) {
   c.save();
   const cx = x + w / 2, floor = (fy, half) => { c.fillStyle = BRASS.dark; c.fillRect(cx - half, fy, half * 2, Math.max(3, h * 0.05)); c.fillStyle = BRASS.base; c.fillRect(cx - half, fy, half * 2, Math.max(1.5, h * 0.022)); };
   if (kind === 'spider') {
-    const z = h * 1.2;
-    c.lineCap = 'round'; c.beginPath(); c.moveTo(cx, y); c.lineTo(cx, y + h * 0.4);
-    c.lineWidth = 2.4; c.strokeStyle = 'rgba(16,14,20,0.8)'; c.stroke(); c.lineWidth = 1.1; c.strokeStyle = '#d9e2ea'; c.stroke();
-    c.translate(cx, y + h * 0.58);
-    drawSpiderArt(c, z, t, { legs: t * 0.3 });
+    // it crawls to and fro along a brass beam, eyes hot, then stops and works its front legs (spinning)
+    const z = h * 1.25, u = t % 5, walk = u < 3.6, x0 = Math.sin((Math.min(u, 3.6) / 3.6) * Math.PI) * w * 0.12;
+    floor(y + h * 0.88, w * 0.42);
+    c.translate(cx + x0 - w * 0.06, y + h * 0.88);
+    const gait = (Math.min(u, 3.6) / 3.6) * 0.75 + Math.floor(t / 5) * 0.75;
+    if (walk && Math.cos((u / 3.6) * Math.PI) < 0) c.scale(-1, 1);
+    drawSpiderArt(c, z, t, { gait, moving: walk, spin: walk ? 0 : 1, eye: 'hot', key: gait * 9 });
   } else if (kind === 'beetle') {
     const z = h * 1.55;
     floor(y + h * 0.92, z * 0.7);
     c.translate(cx + Math.sin(t * 0.8) * h * 0.25, y + h * 0.92);
     if (Math.cos(t * 0.8) < 0) c.scale(-1, 1);
-    drawBeetleArt(c, z, t, { walk: t * 0.5, key: t * 3, lamp: true });
+    drawBeetleArt(c, z, t, { walk: t * 0.5, key: -t * 3, lamp: true, gauge: 1 - ((t * 0.8 / Math.PI) % 1) * 0.8 });
   } else if (kind === 'jack') {
     const z = h * 1.0, ph = t % 3.2;
     floor(y + h * 0.95, z * 0.6);
@@ -345,15 +413,19 @@ export function drawCwIntro(c, kind, x, y, w, h, t) {
 export function cwEvent(ev, fx, U) {
   const { popup, audio, once } = U;
   switch (ev.type) {
-    case 'spiderDown': audio.play('motor_tick', { vol: 0.5, pitch: 1.6 }); once('cwSpider', 'A clockwork spider! It winds down to a gap and webs it shut. The web catches eggs softly. Fire, iron or the laser tears it.', 4.6); break;
+    case 'spiderWalk': audio.play('motor_tick', { vol: 0.45, pitch: 1.8 }); once('cwSpider', 'Clockwork spider: it crawls to a gap and webs it shut. Slip an egg past while it spins. Fire, iron or laser tear webs.', 7); break;
+    case 'spiderSpin': audio.play('motor_tick', { vol: 0.4, pitch: 2.2 }); break;
     case 'webUp': audio.play('squish', { vol: 0.35, pitch: 1.8 }); popup(ev.x, ev.y + 0.5, 'Webbed!', { color: '#d9e2ea', size: 16, life: 0.9 }); break;
     case 'webCatch': audio.play('bubble_on', { vol: 0.4, pitch: 0.8 }); popup(ev.x, ev.y + 0.5, 'Caught!', { color: '#bff0a0', size: 16, life: 0.9 }); break;
     case 'webTear': audio.play('thorn_snap', { vol: 0.6, pitch: 1.5 }); fx.sparkle(ev.x, ev.y, 8, '#e6eef5'); popup(ev.x, ev.y + 0.5, 'Torn!', { color: '#ffd36b', size: 16, life: 0.9 }); break;
     case 'webGone': audio.play('release', { vol: 0.3 }); break;
     case 'spiderFlung': audio.play('wind_gust', { vol: 0.5, pitch: 1.6 }); popup(ev.x, ev.y + 0.5, 'Flung off!', { color: '#bff0a0', size: 16, life: 1 }); break;
-    case 'beetleWind': audio.play('motor_tick', { vol: 0.55, pitch: 1.2 }); once('cwBeetle', 'A wind-up beetle! It shoves eggs along the floor until its key runs down. Stopped, it is a wall. Turning its ring winds it up again.', 4.6); break;
-    case 'beetleStop': audio.play('steel_on', { vol: 0.35, pitch: 0.7 }); break;
+    case 'beetleWind': audio.play('unlock', { vol: 0.4, pitch: 1.5 }); once('cwBeetle', 'Wind-up beetle: turn his ring to wind him. He marches that way and crushes thorns.', 7); break;
+    case 'beetleTick': audio.play('motor_tick', { vol: 0.16 + 0.14 * ev.f, pitch: 1.5 + 0.7 * ev.f }); break;
+    case 'beetleStop': audio.play('steel_on', { vol: 0.35, pitch: 0.6 }); popup(ev.x, ev.y + 0.6, 'Wound down', { color: '#d9e2ea', size: 14, life: 0.9 }); break;
     case 'beetleTurn': audio.play('steel_clang', { vol: 0.3, pitch: 1.5 }); break;
+    case 'beetleBump': audio.play('steel_clang', { vol: 0.25, pitch: 1.8 }); break;
+    case 'beetleCrush': audio.play('thorn_snap', { vol: 0.6, pitch: 0.9 }); popup(ev.x, ev.y + 0.6, 'Crunch!', { color: '#ffd36b', size: 16, life: 0.8 }); break;
     case 'beetleTip': audio.play('steel_clang', { vol: 0.5 }); popup(ev.x, ev.y + 0.5, 'Tipped over!', { color: '#bff0a0', size: 16, life: 1 }); break;
     case 'jackPop': audio.play('egg_bump', { vol: 0.7, pitch: 1.6 }); audio.play('release', { vol: 0.4, pitch: 1.3 }); popup(ev.x, ev.y + 0.9, 'Boing!', { color: '#ffd23a', size: 18, life: 0.8 }); once('cwJack', 'A spring jack! It bounces an egg back up. Time it to launch an egg across a gap. An iron egg jams it shut.', 4.4); break;
     case 'jackJam': audio.play('steel_clang', { vol: 0.7, pitch: 0.8 }); popup(ev.x, ev.y + 0.6, 'Jammed!', { color: '#bff0a0', size: 16, life: 1 }); break;
