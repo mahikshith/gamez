@@ -33,7 +33,7 @@ const MOVES = new Set(['cage', 'shards', 'magma', 'whip', 'dive', 'wgust', 'pop'
 const GALE_T = 2.6, FREEZE_T = 4, FROST_ORB_T = 3, CHUNK_FREEZE_T = 3, FOG_T = 3.5, WALL_T = 8, ICE_WALL_T = 6, PATCH_T = 6;
 const ICE_HANG = 1.1; // s an icicle shakes before it drops (level icicles; a volley uses WARN.icicles)
 const THROW_FLY = 0.6, PUNCH_W = 2.4, HEAT_T = 9;
-export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'The Blizzard', golem: 'Crystal Golem', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl', gator: 'Grandpa Gator' };
+export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'Baron von Brr', golem: 'Crystal Golem', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl', gator: 'Grandpa Gator' };
 export const ATTACK_NAME = { gale: 'Gale', freeze: 'Deep freeze', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning', snap: 'Claw snap', snap2: 'Twin claws', silt: 'Silt cloud', bubbles: 'Bubble barrage', barnacles: 'Barnacle toss', whirl: 'Whirlpool spin', swoop: 'Swoop', wind: 'Wind-up', gears: 'Gear bomb', gears2: 'Gear bombs', sweep: 'Tail sweep', roll: 'Death roll', cage: 'Crystal cage', shards: 'Shard rain', magma: 'Magma ring', whip: 'Tail whip', dive: 'Dive snatch', wgust: 'Wing gust', pop: 'Tunnel pop' };
 const RING_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING
 

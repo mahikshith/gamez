@@ -155,8 +155,8 @@ export const SPECS = [
     ] },
     nest: { w: 2.9 }, bonus: { kind: 'time' },
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'stone', ch: 3 }, { type: 'fire_green', ch: 4 }, { type: 'frost', ch: 2 }],
-    intro: { title: 'Boss: The Blizzard', line: 'Gales shove eggs along the rings, a deep freeze locks one ring solid, then icicles drop on your eggs.' },
-    tip: 'Turn a wall into the wind before the gale hits. Stone is too heavy to blow away.',
+    intro: { title: 'Boss: Baron von Brr', line: 'A frost gecko with a title. He blows gales, licks one ring frozen solid, then flicks icicles at your eggs.' },
+    tip: 'Turn a wall into the Baron\'s breath before he blows. Stone is too heavy to shove.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'ice', gaps: 2, thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
 
   // ---------------- 4 Crystal Caves: portals that suck and spit orbs, grates, quail and ostrich eggs, glass

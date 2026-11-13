@@ -16,6 +16,7 @@ import { drawMovesRings, drawMovesOver } from './bossmoves.js'; // the variety m
 import { drawGolem } from './golem.js'; // world 4 boss: the Crystal Golem
 import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
+import { drawGecko15, geckoAnchor, geckoFrame, geckoFreeze, drawGeckoEmblem } from './gecko15.js'; // L15: Baron von Brr, the frost gecko
 
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { if (globalThis.__eggDebug) console.error(e); /* art never breaks the frame */ } ctx.restore(); };
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -349,7 +350,7 @@ export function drawBossOver(ctx, sim, k, t) {
 }
 
 // ---------- the boss itself. Code-drawn only (no portrait sprites inside a level):
-// blizzard: Old Frostbeard, a woolly mammoth on an ice floe (render/mammoth.js). golem: render/golem.js.
+// blizzard: Baron von Brr, the frost gecko on the outer ring (render/gecko15.js). golem: render/golem.js.
 // The weasel and the Rat King live inside the vault (render/thieves.js).
 const ACTOR = { blizzard: 1, golem: 1, owl: 1 };
 // the view this frame (main sets it): world y of the top of the play area, pixels per meter, ui scale
@@ -361,7 +362,12 @@ export function bossPose(sim, view = VIEW) {
   if (!B || !ACTOR[B.kind] || B.den) return null; // v3.6: a thief boss is drawn inside the vault (render/thieves.js)
   const R = sim.outerR;
   if (B.kind === 'owl') return { x: B.x, y: B.y, h: 1.9, dir: B.face || 1 }; // v4 (render/owl.js)
-  if (B.kind === 'blizzard' || B.kind === 'golem') {
+  if (B.kind === 'blizzard') { // the gecko: a fixed frame for the camera, his own body for everything else
+    if (view === false) return geckoFrame(sim);
+    const g = geckoAnchor(sim);
+    return g ? { x: g.x, y: g.y, h: 1.6, dir: B.face || 1 } : geckoFrame(sim);
+  }
+  if (B.kind === 'golem') {
     // big: about a third of the vault wide (at most ~150 px tall on screen), its belly just above the outer ring.
     // When the camera is zoomed in on the eggs it comes down into view at the top of the play area.
     const A = B.atk, cap = view ? (160 * (view.u || 1)) / view.k : 1e9, h = Math.min(Math.max(3.4, R * 0.95), cap);
@@ -381,13 +387,14 @@ export function drawBossActor(ctx, sim, k, t) {
   if (!Q) return;
   const A = B.atk, calm = isSpriteCalm();
   const warnU = A && A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 0, acting = A && A.ph === 'act';
-  // blizzard (L15): no figure. The owner found the mammoth too bulky for the game's look; the storm itself attacks.
+  // blizzard (L15): the frost gecko clings to the outer ring and does every attack himself (render/gecko15.js).
+  if (B.kind === 'blizzard') drawGecko15(ctx, sim, k, t, calm);
   // golem (L20): no figure either. The owner found the big mammoth and golem bodies too bulky for the game's look; attacks stay.
   if (B.kind === 'owl') drawOwlBoss(ctx, sim, k, t);
   // the frost stomp: once the foot is down (45% into the warning) frost cracks race from it to the ring it freezes
   if (A && A.name === 'freeze' && B.kind === 'blizzard' && !calm) {
-    const ring = sim.rings[A.ring], u = acting ? 1 : clamp01((warnU - 0.45) / 0.55), d = Q.dir || 1;
-    const fa0 = Math.atan2(Q.y, Q.x), fx = Math.cos(fa0) * (sim.outerR + 0.15), fy = Math.sin(fa0) * (sim.outerR + 0.15), fa = fa0, rr = ring.r + RING_TH * 0.5;
+    const ring = sim.rings[A.ring], gf = geckoFreeze(sim) || { x: Q.x, y: Q.y, u: 0 }, u = gf.u; // the frost runs from where his snout and pads touch
+    const fa = Math.atan2(gf.y, gf.x), fx = gf.x, fy = gf.y, rr = ring.r + RING_TH * 0.5;
     const ex = Math.cos(fa) * rr, ey = Math.sin(fa) * rr, L = Math.hypot(ex - fx, ey - fy) || 1, nx = -(ey - fy) / L, ny = (ex - fx) / L, n = 8;
     if (u > 0) {
       ctx.save();
@@ -457,8 +464,7 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
   } else if (kind === 'gator') {
     drawGatorEmblem(ctx, r, t);
   } else if (kind === 'blizzard') {
-    ctx.strokeStyle = '#eaf6ff'; ctx.lineWidth = Math.max(1.5, r * 0.16); ctx.lineCap = 'round';
-    for (let i = 0; i < 3; i++) { const q = (i * Math.PI) / 3; ctx.beginPath(); ctx.moveTo(-Math.cos(q) * r * 0.62, -Math.sin(q) * r * 0.62); ctx.lineTo(Math.cos(q) * r * 0.62, Math.sin(q) * r * 0.62); ctx.stroke(); }
+    drawGeckoEmblem(ctx, r, t);
   } else if (kind === 'golem') {
     ctx.fillStyle = '#d9c8ff';
     ctx.strokeStyle = '#3a2a70';

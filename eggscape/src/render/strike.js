@@ -6,6 +6,7 @@
 //   bomb    orange, a red firecracker casing, a lit fuse              decoy    cream, a nearly whole shell with eye-holes
 //   tornado teal, a swirl of head feathers, a spiral crack      glue     purple, green goo dripping off the shell
 // Chick art is drawn in px space, y down, centred on the body; s = the body height in px.
+import { geckoAnchor } from './gecko15.js';
 import { clamp, lerp, ss, hash, blinkAt, form, contact } from './castkit.js';
 import { boltStroke } from './status.js';
 import { STRIKE, STRIKES, FLIGHT } from '../data/strikes.js';
@@ -448,7 +449,7 @@ function frostWorld(ctx, sim, K, k, t, hen, S, id) {
     else chick(seat.x, seat.y + up(R), R, { flip: true, mood: 'idle', squash: Math.sin(t * 2.3) * 0.035, rot: Math.sin(t * 0.9) * 0.035, look: { x: Math.sin(t * 0.7) > 0.55 ? -0.7 : 0.6, y: -0.1 } });
     return;
   }
-  const tgt = { x: F.tx, y: F.ty }, sp = nestSpot(hen), a = { x: sp.x, y: sp.y + up(B) };
+  const tgt = (F.key === 'bx' && geckoAnchor(sim)) || { x: F.tx, y: F.ty }, sp = nestSpot(hen), a = { x: sp.x, y: sp.y + up(B) };
   FUSE = F.ph === 'hop' ? 1 - 0.55 * clamp(F.t / FLIGHT.hop, 0, 1) : 0.45 - 0.4 * clamp(F.t / FLIGHT.fly, 0, 1); // the Boom Chick's fuse burns down
   if (F.ph === 'hop') { // anticipation crouch on her back, hop down by the nest, land in a deep squash, coil
     const u = clamp(F.t / FLIGHT.hop, 0, 1), left = tgt.x < sp.x;
@@ -477,7 +478,9 @@ export function drawStrikeWorld(ctx, sim, k, t, hen) {
   for (const P of K.glue) drawGoo(ctx, P, k, t);
   // tornado funnels, thunder chains
   const done = drawHitFx(ctx, sim, k, t, S, (id, x, y, s, o) => drawStrikeChick(ctx, id, x, y, s, t, o)); // the villain's reaction props (strikehit.js)
-  for (const E of K.fx) {
+  const gk = geckoAnchor(sim);
+  for (let E of K.fx) {
+    if (gk && E.key === 'bx') E = { ...E, x: gk.x, y: gk.y }; // L15: the boss is the gecko on the ring
     if (done.has(E.key)) { if (E.k === 'thunder') drawChain(ctx, E, k, t); continue; }
     if (E.k === 'tornado') drawTwister(ctx, E, k, t);
     else if (E.k === 'thunder') drawChain(ctx, E, k, t);

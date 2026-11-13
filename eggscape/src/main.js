@@ -23,6 +23,7 @@ import * as E from './economy.js';
 import { drawStore, drawCoin, drawBoosterPicker, drawChest } from './ui/store.js';
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
+import { geckoStrikeEv, drawGeckoCard, geckoAnchor } from './render/gecko15.js'; // L15: the frost gecko boss
 import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar, drawMagnetField, bossPose, setBossView } from './render/boss.js'; // bosses (v3.1)
 import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
@@ -364,6 +365,7 @@ function frameOf(all, maxCh) {
   // the big Blizzard cloud only when framing the whole vault (portrait screens have the height to spare); a zoomed-in
   // view stays on the eggs
   if (BQ && (all || BQ.h < 2)) hds.push({ x: BQ.x, y: BQ.y + BQ.h * 0.5 });
+  if (BQ && BQ.pad) R = Math.max(R, sim.outerR + BQ.pad); // L15: room for the frost gecko on the outside of the outer ring
   for (const hd of hds) {
     if (all) { R = Math.max(R, Math.abs(hd.x) + 0.6); yMin = Math.min(yMin, hd.y - 0.6); yMax = Math.max(yMax, hd.y + 0.6); }
     else { R = Math.max(R, Math.hypot(hd.x, hd.y) + 0.6); yMin = -R; yMax = R; }
@@ -1512,7 +1514,7 @@ function handleEvents() {
         fx.shake = 0.8;
         break;
       default:
-        if (strikeEvent(ev, fx, STRIKE_API)) { if (ev.type === 'stkReady') G.stkFullT = G.t; break; } // Chick Strike
+        if (strikeEvent(geckoStrikeEv(G.sim, ev), fx, STRIKE_API)) { if (ev.type === 'stkReady') G.stkFullT = G.t; break; } // Chick Strike
         v3Event(ev, fx);
         predEvent(ev, fx); // predators (v3)
         bossEvent(ev, fx); // bosses (v3.1)
@@ -2964,7 +2966,7 @@ function chickIntroArt(kind, x, y, w, h) {
 
 // BOSS PORTRAIT (I6): the boss's face on its intro card. Stub: the sprite agent wires
 // sprites.drawBossCard(ctx, bossId, x, y, w, h, t) in here (bossIds: weasel snake blizzard golem salamander eagle ratking).
-function bossPortrait(ctx, bossId, x, y, w, h, t) { drawBossCard(ctx, bossId, x, y, w, h, t, G.screenT - 0.15); }
+function bossPortrait(ctx, bossId, x, y, w, h, t) { if (bossId === 'blizzard') return drawGeckoCard(ctx, x, y, w, h, t, G.screenT - 0.15); drawBossCard(ctx, bossId, x, y, w, h, t, G.screenT - 0.15); }
 
 function drawPause() {
   dim(0.6);
@@ -3615,6 +3617,7 @@ if (DEV) window.__egg = {
   startAllyDemo(kind = 'rooster', o = {}) { G.demo = ALLY_DEMOS.find((d) => d.kind === kind) || ALLY_DEMOS[0]; startLevel(-2, o); },
   snAnim: W.snAnim,
   salAnim, // v3.2: the salamander's last drawn feet (QA strips)
+  geckoAnchor: () => geckoAnchor(G.sim), // L15: where the frost gecko boss is drawn (QA strips)
   crawlerArt: { drawCrawler, SPECIES: CRAWLER_SPECIES, crawlerAnim, drawSalamander }, // cousins: gecko, thornback, chameleon (QA strips)
   frogAnim, // v3.3: the frog's eased looks (QA strips)
   frogArt: drawFrog, // v3.3: pose gallery (QA strips)

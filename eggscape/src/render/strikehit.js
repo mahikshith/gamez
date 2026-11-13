@@ -9,6 +9,7 @@
 //   drawHitFx(ctx, sim, k, t, S, chick)  the props over it: ice block, sparks, smoke, blast, funnel, stars, goo, steam.
 //   strikeAct(key)  the acting cue for a creature's own rig: shock, frozen, dazed, angry, eager, strain, ouch (or null).
 //   hitBegin(ev, ang) / hitRage(ev)  from the stkHit / stkRage events.
+import { geckoAnchor } from './gecko15.js';
 import { STRIKE, FLIGHT } from '../data/strikes.js';
 
 const TAU = Math.PI * 2;
@@ -46,7 +47,8 @@ function begin(sim, t) {
   FRM.st = sim.t;
   if (FRM.t === t) return;
   FRM.t = t; FRM.T.clear();
-  const L = sim.stkTargets();
+  const L = sim.stkTargets(), gk = geckoAnchor(sim);
+  if (gk) for (const T of L) if (T.key === 'bx') { T.x = gk.x; T.y = gk.y; } // L15: the boss is the gecko on the ring
   for (const T of L) FRM.T.set(T.key, T);
   const K = sim.stk;
   for (const o of NEW) {
