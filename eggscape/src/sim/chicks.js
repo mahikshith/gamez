@@ -207,7 +207,7 @@ export const chickMethods = {
     const b = egg.body, p = b.getPosition(), v = b.getLinearVelocity(), r = Math.hypot(p.x, p.y) || 1;
     const ux = p.x / r, uy = p.y / r, tx = -uy * egg.powA, ty = ux * egg.powA, vr = v.x * ux + v.y * uy;
     b.setLinearVelocity(Vec2(tx * DASH_V + ux * vr, ty * DASH_V + uy * vr));
-    b.applyForceToCenter(Vec2(0, -b.getMass() * this.g * 0.6), true); // no flutter while it shoots
+    b.applyForceToCenter(Vec2(0, -b.getMass() * (this.g - 0.4 * this.g0)), true); // no flutter while it shoots
     for (const S of this.snakes) {
       if (S.gone || !S.inside || S.daze > 0 || !S.pts.length) continue;
       if (S.pts.some((q, i) => i % 2 === 0 && Math.hypot(q.x - p.x, q.y - p.y) < CHICK_R + 0.28)) {
@@ -239,14 +239,14 @@ export const chickMethods = {
       const ring = this.rings[egg.powA];
       const goal = ring ? ring.r - RING_TH / 2 - 0.42 : r - 0.6;
       b.setLinearVelocity(Vec2(-ux * SWOOP_V, -uy * SWOOP_V));
-      b.applyForceToCenter(Vec2(0, m * this.g * 0.4), true);
+      b.applyForceToCenter(Vec2(0, m * this.g0 * 0.4), true);
       if (r <= Math.max(goal, 0.15) || egg.powT <= 0) {
         egg.powK = 2; egg.powT = SWOOP_GLIDE;
         b.setLinearVelocity(Vec2(-ux * 1.2, -uy * 1.2));
         this.emit('chickGlide', { egg, x: p.x, y: p.y });
       }
     } else if (egg.powK === 2) {
-      b.applyForceToCenter(Vec2(0, m * this.g * 0.25), true); // wings out: a slow glide
+      b.applyForceToCenter(Vec2(0, m * this.g0 * 0.25), true); // wings out: a slow glide
       const v = b.getLinearVelocity(), tx = -uy, ty = ux, want = 0.7 * (egg.face || 1) * (Math.sign(-uy) || 1); // drifts the way it faces
       const vt = v.x * tx + v.y * ty;
       b.setLinearVelocity(Vec2(v.x + tx * (want - vt) * 0.06, v.y + ty * (want - vt) * 0.06));
@@ -289,7 +289,7 @@ export const chickMethods = {
     const b = egg.body, p = b.getPosition();
     egg.bulk = Math.max(0, egg.powT);
     b.setTransform(p, Math.atan2(p.y, p.x) + Math.PI / 2); // lies along the channel
-    b.applyForceToCenter(Vec2(0, -b.getMass() * this.g * 0.6), true); // too heavy to flutter
+    b.applyForceToCenter(Vec2(0, -b.getMass() * (this.g - 0.4 * this.g0)), true); // too heavy to flutter
     if (egg.powT <= 0) {
       egg.powK = 0; egg.bulk = 0;
       this.bulkBody(egg, false);
@@ -313,7 +313,7 @@ export const chickMethods = {
     const b = egg.body, m = b.getMass();
     if (egg.powK === 1) {
       b.setLinearVelocity(Vec2(0, 0)); // planted while it drills
-      b.applyForceToCenter(Vec2(0, m * this.g * 0.4), true);
+      b.applyForceToCenter(Vec2(0, m * this.g0 * 0.4), true);
       if (egg.powT <= 0) { this.pickHit(egg); egg.powK = 2; egg.powT = 0.35; }
     } else if (egg.powT <= 0) egg.powK = 0;
   },

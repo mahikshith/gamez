@@ -20,9 +20,27 @@ import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, 
 export const DT = 1 / 120;
 
 // Impact thresholds: approach speed along the contact normal (m/s).
-export const CRACK_V = 5.6; // ~1.6 m of free fall: a one-ring drop is safe, a bigger fall onto bare ring cracks
+// Both are quoted at 10 m/s^2 and scale with sqrt(g / 10) (Sim.vs), so the fall HEIGHT that cracks stays the same at any gravity.
+export const GRAVITY = 15; // m/s^2, dry levels (underwater keeps 10 x WATER.buoy)
+export const CRACK_V = 6.0; // ~1.6 m of free fall: a one-ring drop is safe, a bigger fall onto bare ring cracks
 export const MULT_CAP = 30;
 export const SHATTER_V = 8.5;
+// ---------- physics feel (v4.1)
+export const EGG_SPIN_DAMP = 1.0; // egg angular damping (1/s)
+export const EGG_BOUNCE = { wood: 0.21, stone: 0.21 }; // egg restitution on a bare ring floor, by ring material; others keep the egg's own 0.12
+const PAD_BOUNCE = 0.02; // sponge and honey: dead
+// A ring that turns into an egg (a gap edge, a wall) is a shove, not a fall: only this share of the ring's own
+// surface speed counts toward the egg's impact speed (bump / crack). The egg's own speed always counts in full.
+export const RING_PUSH = 0.35;
+export const SPIN_HIT = 0.25; // same for the egg's own spin: the part of the closing speed that is only its shell turning
+export const BUMP_CD = 0.08; // s: one bump event per egg per this long, unless the new hit is 1.5x harder
+// Thorn grace (Medium / Hard): a slow touch on a thorn's flank is a near miss ('graze' event + a shove); the tip (the egg's
+// centre within acos(GRAZE.tip) of the thorn's axis, over the point), a
+// closing speed over GRAZE.v, or a second touch within GRAZE.cd still break. off: every touch breaks (the old rule).
+export const GRAZE = { off: false, v: 0.6, tip: 0.7, cd: 1.0, hold: 0.3, shove: 1.3 };
+// Gap nudge: a slow egg whose centre is over an open gap it can pass (two eggs arching in the hole) is eased
+// through: acc m/s^2 outward, centre m/s^2 toward the gap's middle. 0 = off.
+export const GAP_NUDGE = { acc: 4, centre: 3, slow: 0.6 };
 const EGG_EGG = 2.0; // egg vs egg: use closing speed (reduced mass = m/2)
 const NEST_SOFT = 2.3; // nest multiplies thresholds
 const PAD_SOFT = 0.5; // sponge pads halve the impact
@@ -89,8 +107,8 @@ export const WATER = { buoy: 0.36, drag: 1.6, spin: 1.6, sway: 0.35, bob: 0.25, 
 
 // Difficulty is the player's choice (F32). Same levels, tuned per mode.
 export const MODES = {
-  easy: { fuse: 1.6, nest: 0.6, nestW: 0.5, crack: 1, meteor: false, softThorns: true },
-  medium: { fuse: 1, nest: 1, nestW: 0, crack: 1, meteor: true, softThorns: false },
+  easy: { fuse: 1.6, nest: 0.6, nestW: 0.7, crack: 1, meteor: false, softThorns: true },
+  medium: { fuse: 1, nest: 1, nestW: 0.2, crack: 1, meteor: true, softThorns: false },
   hard: { fuse: 0.8, nest: 1.3, nestW: 0, crack: 0.85, meteor: true, softThorns: false },
 };
 
@@ -146,7 +164,10 @@ export class Sim {
     // goal (the hen's basket under her boat) at the surface on top. this.gy = +1 normal, -1 underwater: y-sign of "down"
     this.water = !!level.water;
     this.gy = this.water ? -1 : 1;
-    this.g = (level.gravity ?? 10) * (this.water ? WATER.buoy : 1);
+    this.g = this.water ? (level.gravity ?? 10) * WATER.buoy : level.gravity ?? GRAVITY;
+    this.vs = this.water ? 1 : Math.sqrt(this.g / 10); // impact-speed scale: the same fall heights at any gravity
+    this.g0 = this.water ? this.g : 10; // the gravity that fliers and floaters were tuned at: chicks and bubbles keep their old net fall / rise (m/s^2)
+    this.gk = this.water ? 1 : this.g / 10; // sideways pushes on eggs (wind, current, portal pull) keep their strength against the eggs' weight
     this.world = new World({ gravity: Vec2(0, -this.g * this.gy) });
     this.rings = [];
     this.eggs = [];
@@ -167,7 +188,8 @@ export class Sim {
     this.opts = opts;
     this.mode = MODES[opts.mode] ? opts.mode : 'medium';
     this.MD = MODES[this.mode];
-    this.crackV = CRACK_V * this.MD.crack;
+    this.crackV = CRACK_V * this.vs * this.MD.crack;
+    this.shatterV = SHATTER_V * this.vs;
     this.golden = opts.golden || false;
     // start boosters (store): opts.stone, opts.time (+15 s), opts.sponge (pad under the first drop)
     this.timeLimit = level.time ? Math.round(level.time * this.MD.fuse) + (opts.time ? 15 : 0) : 0;
@@ -345,7 +367,7 @@ export class Sim {
   }
 
   addEgg(x, y, cracks = 0, extra = {}) {
-    const body = this.world.createDynamicBody({ position: Vec2(x, y), bullet: true, angularDamping: 0.35, linearDamping: this.water ? WATER.drag : 0.02 });
+    const body = this.world.createDynamicBody({ position: Vec2(x, y), bullet: true, angularDamping: EGG_SPIN_DAMP, linearDamping: this.water ? WATER.drag : 0.02 });
     if (this.water) body.setAngularDamping(WATER.spin);
     const K = EGG_KIND[extra.kind]; // v3 special eggs: size and weight
     const hull = eggHull(12, K ? K.s : 1).map((p) => Vec2(p.x, p.y));
@@ -356,7 +378,7 @@ export class Sim {
       water: 0, zap: 0, glow: 0, chick: 0, meteor: 0, honey: 0, hold: null, honeyCD: 0, prize: 0, spk: new Set(), // spk: blunt spikes touching now
       crackCD: 0, nestT: 0, inNest: 0, hc: 0, safeT: this.t < 0.5 ? 1.5 : 0, portalCD: 0, born: this.t,
       seed: (this.rand() * 1e9) | 0, impact: 0, lastV: 0, fear: 0,
-      ch: 0, mult: 1, freefall: 0, comet: 0, cometUsed: false,
+      ch: 0, mult: 1, freefall: 0, comet: 0, cometUsed: false, bumpCD: 0, bumpV: 0, grazeCD: 0,
       kind: K ? extra.kind : null, guard: 0, rockskin: 0, curse: 0, drop: 0, soft: false, lavaCD: 0, // v3
     };
     fix.getUserData().egg = egg;
@@ -533,17 +555,19 @@ export class Sim {
       if (egg.water > 0) egg.water -= dt;
       if (egg.glow > 0) egg.glow -= dt;
       if (egg.honeyCD > 0) egg.honeyCD -= dt;
+      if (egg.bumpCD > 0) egg.bumpCD -= dt;
+      if (egg.grazeCD > 0) egg.grazeCD -= dt;
       this.v3Egg(egg, dt);
       if (egg.fire > 0 && (egg.fire -= dt) <= 0) { egg.fire = 0; egg.fireKind = null; this.emit('fireOut', { egg }); }
       if (egg.stone > 0 && (egg.stone -= dt) <= 0) this.setStone(egg, false);
       if (egg.bubble > 0) {
-        b.applyForceToCenter(Vec2(0, b.getMass() * this.g * 1.1), true);
+        b.applyForceToCenter(Vec2(0, b.getMass() * (this.g + 0.1 * this.g0)), true); // net 0.1 g0 up, whatever the eggs weigh
         if ((egg.bubble -= dt) <= 0) this.popBubble(egg);
       }
       // a chick flutters: most of its weight is carried by its wings
-      if (egg.chick) b.applyForceToCenter(Vec2(0, b.getMass() * this.g * 0.6), true);
+      if (egg.chick) b.applyForceToCenter(Vec2(0, b.getMass() * (this.g - 0.4 * this.g0)), true); // net fall 0.4 g0
       if (egg.magnet > 0 && (egg.magnet -= dt) <= 0) this.unMagnet(egg);
-      if (this.wind) b.applyForceToCenter(Vec2(this.wind * b.getMass() * (egg.bubble > 0 ? 2.2 : 1), 0), true);
+      if (this.wind) b.applyForceToCenter(Vec2(this.wind * this.pushK(egg) * b.getMass() * (egg.bubble > 0 ? 2.2 : 1), 0), true);
       if (this.water && b.isActive()) { // a little bob and sway as it drifts up
         const ph = this.t * WATER.bobW + egg.id * 1.7;
         b.applyForceToCenter(Vec2(Math.sin(ph) * WATER.sway * b.getMass(), Math.cos(ph * 1.3) * WATER.bob * b.getMass()), true);
@@ -599,8 +623,40 @@ export class Sim {
     if (this.state === 'play') this.v3Step(dt);
     this.p2Step(dt); // v3.4 powers
 
+    if (GAP_NUDGE.acc > 0 && this.state === 'play') this.gapNudge();
     this.world.step(dt, 8, 3);
     this.afterStep(dt);
+  }
+
+  // Sticky gaps: per open gap, the slow egg nearest its middle is eased outward through it (see GAP_NUDGE).
+  gapNudge() {
+    for (const e of this.eggs) {
+      if (!e.alive || e.saved || !e.body.isActive() || e.honey > 0 || e.octo || e.thf || e.hc || e.clamp || e.chick || e.bubbleFix) continue;
+      const b = e.body, v = b.getLinearVelocity();
+      if (v.x * v.x + v.y * v.y > GAP_NUDGE.slow * GAP_NUDGE.slow) continue;
+      const ring = this.rings[e.ch];
+      if (!ring || ring.prof) continue; // shaped rings: not needed so far
+      const p = b.getPosition(), d = Math.hypot(p.x, p.y);
+      if (ring.r - d > 0.5 || d < 1e-3) continue;
+      if (-p.y * this.gy < 0.3 * d) continue; // only where the way out points (mostly) with gravity
+      const la = Math.atan2(p.y, p.x) - ring.body.getAngle();
+      for (const g of ring.gaps) {
+        if (g.o <= 0.5 || !this.gapOpenFor(g, e)) continue;
+        const da = wrap(g.a - la);
+        if (Math.abs(da) * ring.r > g.len / 2 - 0.1) continue;
+        // another slow egg nearer the middle of this gap goes first
+        let first = true;
+        for (const o of this.eggs) {
+          if (o === e || !o.alive || o.saved || o.ch !== e.ch) continue;
+          const q = o.body.getPosition(), dq = Math.hypot(q.x, q.y);
+          if (ring.r - dq <= 0.5 && Math.abs(wrap(g.a - (Math.atan2(q.y, q.x) - ring.body.getAngle()))) < Math.abs(da)) { first = false; break; }
+        }
+        if (!first) break;
+        const m = b.getMass(), ux = p.x / d, uy = p.y / d, tx = -uy, ty = ux, k = GAP_NUDGE.centre * clamp((da * ring.r) / 0.15, -1, 1);
+        b.applyForceToCenter(Vec2((ux * GAP_NUDGE.acc + tx * k) * m * this.gk, (uy * GAP_NUDGE.acc + ty * k) * m * this.gk), true);
+        break;
+      }
+    }
   }
 
   nestXAt(t) {
@@ -630,13 +686,14 @@ export class Sim {
     for (const egg of this.eggs) {
       if (!egg.alive || egg.saved) continue;
       const v = egg.impact * (egg.water > 0 ? 0.5 : 1) * (egg.shrink > 0 ? 1.25 : 1); // water shell: landings count half; v3.4 a shrunk egg cracks easier
-      if (v > 0.6) this.emit('bump', { egg, v });
+      // one bump per egg per BUMP_CD (a resting egg used to report one every step), unless this hit is clearly harder
+      if (v > 0.6 && (egg.bumpCD <= 0 || v > egg.bumpV * 1.5)) { egg.bumpCD = BUMP_CD; egg.bumpV = v; this.emit('bump', { egg, v, on: egg.impactOn }); }
       const soft = egg.inNest > 0 ? NEST_SOFT : 1;
       // v3 crack ladder (G34) replaces the meteor/comet rule: a fall through 2+ rings is judged on
       // landing by the number of rings, and that landing never also counts as a hard hit
       if (egg.drop >= 2 && egg.impact > 1.2) this.landFall(egg);
       else if (egg.stone > 0 || egg.safeT > 0 || egg.chick || egg.honey > 0 || egg.guard > 0) { /* immune */ }
-      else if (v >= SHATTER_V * soft) this.breakEgg(egg, 'impact');
+      else if (v >= this.shatterV * soft) this.breakEgg(egg, 'impact');
       else if (v >= this.crackV * soft && egg.crackCD <= 0) this.crack(egg, v);
       if (egg.freefall === 0) egg.drop = 0; // touched a ring floor: the fall is over
       egg.soft = false;
@@ -730,6 +787,17 @@ export class Sim {
       if (u.kind !== 'egg') return;
       const egg = u.egg;
       let v = closing;
+      // a turning ring (kinematic) that drives into the egg: only RING_PUSH of the ring's own share counts
+      if (RING_PUSH < 1 && other.isKinematic() && other !== this.nest) {
+        const vo = other === A ? va : vb, s = other === A ? 1 : -1; // + = the surface moving into the egg
+        const push = Math.min(closing, Math.max(0, s * (vo.x * n.x + vo.y * n.y)));
+        v = closing - (1 - RING_PUSH) * push;
+      }
+      // the egg's own spin (a rolling egg slaps its end down): only SPIN_HIT of that share counts
+      if (SPIN_HIT < 1 && !egg.chick) {
+        const vp = body === A ? va : vb, vc = body.getLinearVelocity(), s = body === A ? 1 : -1; // + = the egg's surface turning into the other
+        v -= (1 - SPIN_HIT) * Math.min(v, Math.max(0, s * ((vp.x - vc.x) * n.x + (vp.y - vc.y) * n.y)));
+      }
       if (uo.kind === 'bayou') { this.bayouBump(egg, v, uo, pt); return; } // v3.7: a gator's back or a turtle's shell
       if (uo.kind === 'frog') { this.frogBump(egg, v, uo.idx, pt); return; } // v3.3: a frog's back is a soft landing
       if (uo.kind === 'puffer') { this.pufferBump(egg, v, uo.pf, pt); return; } // world 8: bouncy, or its spines
@@ -746,11 +814,11 @@ export class Sim {
         if (v > 1.4) this.emit('squish', { v, x: pt.x, y: pt.y });
         v *= PAD_SOFT;
       }
-      if (v > egg.impact) egg.impact = v;
-      if (uo.kind === 'seg' && uo.seg.ring.M.hp && v > 1.7 && uo.seg.hitCD <= 0) {
+      if (v > egg.impact) { egg.impact = v; egg.impactOn = uo.kind || ''; }
+      if (uo.kind === 'seg' && uo.seg.ring.M.hp && v > 1.7 * this.vs && uo.seg.hitCD <= 0) {
         const sg = uo.seg;
         sg.hitCD = 0.25;
-        sg.hp -= v > 4 ? 2 : 1;
+        sg.hp -= v > 4 * this.vs ? 2 : 1;
         if (sg.hp <= 0 && !sg.dying) { sg.dying = true; this.defer(() => this.breakSeg(sg, 'shatter')); }
         else if (sg.hp > 0) this.emit('glassCrack', { seg: sg });
       }
@@ -792,18 +860,22 @@ export class Sim {
             if (!egg.alive || egg.saved) return;
             if (egg.cracks < 2) this.crack(egg, 0, 'spike'); // blunt: cracks, never breaks
             const b = egg.body, p = b.getPosition(), t = th.ring.body.getWorldPoint(Vec2(th.tip * Math.cos(th.a), th.tip * Math.sin(th.a)));
-            const dx = p.x - t.x, dy = p.y - t.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 1.6;
+            const dx = p.x - t.x, dy = p.y - t.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 1.6 * this.vs;
             b.applyLinearImpulse(Vec2((dx / d) * m, (dy / d) * m), p, true);
           });
         }
         return;
       }
+      if (!GRAZE.off && !egg.chick && this.thornGraze(c, egg, th)) return; // a slow touch on the flank: near miss
       egg.safeT = 1; // one break only
       this.defer(() => { egg.safeT = 0; this.breakEgg(egg, 'thorn'); });
       c.setEnabled(false);
     } else if (other.kind === 'seg') {
       const seg = other.seg;
       egg.freefall = 0;
+      // bounce by surface: sponge and honey are dead, wood and stone give a little back
+      const eb = seg.pad || seg.honey ? PAD_BOUNCE : EGG_BOUNCE[seg.ring.mat];
+      if (eb !== undefined && (ua.kind === 'egg' ? fa : fb) === egg.fix) c.setRestitution(seg.pad || seg.honey ? eb : Math.max(eb, seg.ring.M.re)); // not the bubble's own skin
       // black fire burns through whatever ring floor the egg rests on; red fire never burns rings
       if (egg.fireKind === 'fire_black' && egg.fire > 0 && seg.alive && !seg.hardIce) {
         seg.burn += DT;
@@ -834,6 +906,38 @@ export class Sim {
   }
 
   postSolve() {}
+
+  // Thorn grace. True = this touch is a graze: the thorn stays solid, the egg is shoved off, 'graze' is emitted once.
+  // False = it breaks: the contact is at the tip, or closing faster than GRAZE.v, or a graze was given < GRAZE.cd ago.
+  thornGraze(c, egg, th) {
+    const same = egg.spk.has(th.key); // still the same slow touch: it may last GRAZE.hold s (pinned on it = broken)
+    if (same ? egg.grazeCD < GRAZE.cd - GRAZE.hold : egg.grazeCD > 0) return false;
+    const wm = c.getWorldManifold(null);
+    if (!wm || !wm.points || !wm.points.length) return false;
+    const rb = th.ring.body, eb = egg.body, pt = wm.points[0];
+    const tip = rb.getWorldPoint(Vec2(...ringPt(th.ring, th.a, th.tip)));
+    const base = rb.getWorldPoint(Vec2(...ringPt(th.ring, th.a, th.base)));
+    {
+      // on the tip = the egg's centre sits inside a cone over the point (manifold points snap to the thorn's corners, so they can't tell)
+      const p0 = eb.getPosition(), ax = tip.x - base.x, ay = tip.y - base.y, ex = p0.x - tip.x, ey = p0.y - tip.y;
+      if ((ax * ex + ay * ey) / ((Math.hypot(ax, ay) || 1) * (Math.hypot(ex, ey) || 1)) > GRAZE.tip) return false;
+    }
+    const ve = eb.getLinearVelocityFromWorldPoint(pt), vt = rb.getLinearVelocityFromWorldPoint(pt);
+    const p = eb.getPosition();
+    let nx = p.x - pt.x, ny = p.y - pt.y; const d = Math.hypot(nx, ny) || 1; nx /= d; ny /= d; // thorn -> egg
+    const closing = (vt.x - ve.x) * nx + (vt.y - ve.y) * ny;
+    if (closing > GRAZE.v * this.vs) return false;
+    if (same) return true;
+    egg.spk.add(th.key);
+    egg.grazeCD = GRAZE.cd;
+    this.defer(() => {
+      if (!egg.alive || egg.saved) return;
+      const m = eb.getMass() * GRAZE.shove * this.vs;
+      eb.applyLinearImpulse(Vec2(nx * m, ny * m), eb.getPosition(), true);
+      this.emit('graze', { egg, x: pt.x, y: pt.y, nx, ny, v: Math.max(0, closing), thorn: th });
+    });
+    return true;
+  }
 
   beginContact(c) {
     const [fa, fb, ua, ub] = this.parts(c);
@@ -983,6 +1087,11 @@ export class Sim {
     this.chickBody(egg); // predators (v3): bigger chick
     this.chickHatched(egg, quiet); // v3.2: its kind
     if (!quiet) { const p = egg.body.getPosition(); this.emit('hatch', { egg, x: p.x, y: p.y }); }
+  }
+
+  // sideways pushes scale with the eggs' weight (gk); a chick or a bubble kept its old net weight, so it keeps the old push
+  pushK(egg) {
+    return egg.chick || egg.bubble > 0 ? 1 : this.gk;
   }
 
   damping(egg) {
@@ -2250,6 +2359,7 @@ export class Sim {
     EGG_KEYS.push('thf'); // v3.6: held by a thief (1) or in its den (2)
     EGG_KEYS.push('hc'); // world 8: in a hermit crab's shell (1), a King Crab claw (2) or its pile (3)
     EGG_KEYS.push('clamp'); // v3.7: held by a snapping turtle (id + 1)
+    EGG_KEYS.push('grazeCD'); // v4.1: thorn grace cooldown
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2464,7 +2574,7 @@ export class Sim {
         this.defer(() => {
           if (!egg.alive || egg.saved) return;
           if (egg.cracks < 2) this.crack(egg, 0, 'curtain');
-          const b = egg.body, p = b.getPosition(), q = at(), dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 1.6;
+          const b = egg.body, p = b.getPosition(), q = at(), dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 1.6 * this.vs;
           b.applyLinearImpulse(Vec2((dx / d) * m, (dy / d) * m), p, true);
         });
       }
@@ -2554,11 +2664,11 @@ export class Sim {
       if (!pt.pull || egg.portalCD > 0 || egg.honey > 0) continue;
       const dx = pt.ax - p.x, dy = pt.ay - p.y, d = Math.hypot(dx, dy);
       if (d > pt.pull || d < 1e-3 || this.chAt(Math.hypot(p.x, p.y)) !== this.chAt(Math.hypot(pt.ax, pt.ay))) continue;
-      const k = 1 - d / pt.pull, f = m * (3 + 16 * k * k);
+      const k = 1 - d / pt.pull, f = m * (3 + 16 * k * k) * this.pushK(egg);
       b.applyForceToCenter(Vec2(((dx + dy * 0.25) / d) * f, ((dy - dx * 0.25) / d) * f), true);
     }
     // duck egg: floats and rides a water current
-    if (egg.kind === 'duck' && this.weather === 'current') b.applyForceToCenter(Vec2(this.wind * m * 0.8, m * this.g * 0.8), true);
+    if (egg.kind === 'duck' && this.weather === 'current') b.applyForceToCenter(Vec2(this.wind * this.gk * m * 0.8, m * this.g * 0.8), true);
   }
 
   // world things, every step in play

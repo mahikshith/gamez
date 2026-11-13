@@ -195,7 +195,7 @@ function iceStep(sim, dt) {
       if ((I.t -= dt) <= 0) { I.ph = 'fall'; sim.emit('iceDrop', { x: I.x, y: I.y, big: I.big }); }
       continue;
     }
-    I.vy = Math.max(-12, I.vy - sim.g * dt);
+    I.vy = Math.max(-12, I.vy - (sim.g / sim.gk) * dt); // falling ice keeps its old fall time (the dodge window) whatever the eggs weigh
     I.y += I.vy * dt;
     I.fell -= I.vy * dt;
     const len = I.big ? 0.5 : 0.42, tip = I.y - len, d = Math.hypot(I.x, tip);
@@ -562,9 +562,9 @@ function galeForce(sim, A, M, dt) {
   };
   for (const e of sim.aliveEggs()) {
     if (e.honey > 0) continue;
-    push(e.body, e.stone > 0 ? 0.3 : e.chick ? 1.3 : e.bubbleFix ? 1.6 : 1);
+    push(e.body, e.stone > 0 ? 0.3 * sim.gk : e.chick ? 1.3 : e.bubbleFix ? 1.6 : sim.gk); // gk: the gale keeps its strength against heavier eggs (chicks and bubbles kept their weight)
   }
-  for (const r of sim.rocks) if (r.alive) push(r.body, 0.5);
+  for (const r of sim.rocks) if (r.alive) push(r.body, 0.5 * sim.gk);
   void dt;
 }
 // level gusts: streaks first (the telegraph), then a shove along the channels; snakes are blown too

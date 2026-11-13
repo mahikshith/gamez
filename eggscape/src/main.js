@@ -1938,10 +1938,7 @@ function onWin() {
     }
     camPunch(0.03, n.x, n.y);
   }
-  const run = G.run;
-  setTimeout(() => {
-    if (G.run === run && G.sim && G.result && G.screen === 'play') { setScreen('win'); audio.play('level_win'); }
-  }, 1100);
+  G.endCard = { kind: 'win', t: 1.1, run: G.run }; // counted in update(): game time, so a paused or hidden tab holds it
 }
 
 function onFail() {
@@ -1950,14 +1947,21 @@ function onFail() {
   releaseAll();
   G.fx.kick(0.3);
   camPunch(-0.035); // the frame sags back
-  const run = G.run;
-  setTimeout(() => { if (G.run === run && G.sim && G.sim.state === 'failed' && G.screen === 'play') { setScreen('fail'); audio.play('level_fail'); } }, 350);
+  G.endCard = { kind: 'fail', t: 0.35, run: G.run }; // counted in update()
 }
 
 // ---------------------------------------------------------------- update
 function update(dt) {
   G.t += dt;
   G.screenT += dt;
+  if (G.endCard && (G.endCard.t -= dt) <= 0) { // the win / fail card, on game time
+    const C = G.endCard;
+    G.endCard = null;
+    if (G.run === C.run && G.sim && G.screen === 'play') {
+      if (C.kind === 'win' && G.result) { setScreen('win'); audio.play('level_win'); }
+      else if (C.kind === 'fail' && G.sim.state === 'failed') { setScreen('fail'); audio.play('level_fail'); }
+    }
+  }
   computeLayout();
   if (G.screen === 'wonder') { wonder.update(dt); return; } // WONDER: its own loop; the campaign world stands still
   if (!G.sim) return;

@@ -172,14 +172,14 @@ export const LEVELS = [
     ],
   },
   {
-    id: 18, theme: "crystal", name: "Ostrich Run", eggs: 3, target: 2, time: 145, spacing: 1.05, material: "stone", nest: {w: 3}, snake: {delay: 10, speed: 0.36}, bonus: {kind: "prize"}, eggKinds: ["ostrich"], tip: "The ostrich is too big for narrow gaps, but a two-ring fall lets it flatten thorns.", portals: [{a: [-2.58,0.94], b: [4.56,-1.66], emit: ["fire_green"], every: 10}], orbs: [{type: "fire_black", ch: 2, a: 125},{type: "bubble", ch: 4, a: 26},{type: "hatch_bulk", ch: 1, a: -98}], seed: 142566, world: 4, intro: {title: "Bulk chick", chick: "bulk", line: "The green orb hatches a bulk chick. Tap it once: big and heavy for 5 s, it squashes thorns and smashes cracked glass. Too big for gaps!"},
+    id: 18, theme: "crystal", name: "Ostrich Run", eggs: 3, target: 2, time: 90, spacing: 1.05, material: "stone", nest: {w: 3}, snake: {delay: 10, speed: 0.36}, bonus: {kind: "prize"}, eggKinds: ["ostrich"], tip: "The ostrich is too big for narrow gaps, but a two-ring fall lets it flatten thorns.", portals: [{a: [-2.58,0.94], b: [4.56,-1.66], emit: ["fire_green"], every: 10}], orbs: [{type: "fire_black", ch: 2, a: -170},{type: "bubble", ch: 4, a: 152},{type: "hatch_bulk", ch: 1, a: -90}], seed: 142545, world: 4, intro: {title: "Bulk chick", chick: "bulk", line: "The green orb hatches a bulk chick. Tap it once: big and heavy for 5 s, it squashes thorns and smashes cracked glass. Too big for gaps!"},
     rings: [
-      {gaps: [{a: 2, len: 1.1}], thorns: [{a: -157, n: 1}]},
-      {gaps: [{a: -132, x: 3, len: 0.7},{a: 77, len: 1.1}], thorns: [{a: 144, n: 3},{a: -81, n: 2, side: "out", h: 0.26}], pads: [{a: 6, len: 1.3}]},
-      {gaps: [{a: 1},{a: 118, len: 1.1}], thorns: [{a: 165, n: 3},{a: 76, n: 2, side: "out", h: 0.26}], pads: [{a: 30, len: 1.54}]},
-      {mat: "glass", gaps: [{a: 176, x: 3, len: 0.7},{a: -38, x: 2, len: 1.1}], thorns: [{a: 124, n: 2},{a: -4, n: 2, side: "out", h: 0.26}], pads: [{a: -135, len: 1.19}]},
-      {gaps: [{a: 99},{a: 1, len: 1.1}], thorns: [{a: 42, n: 2},{a: 163, n: 2, side: "out", h: 0.26, kind: "blunt"}], pads: [{a: -144, len: 1.27}]},
-      {gaps: [{a: 163},{a: 51, len: 1.1}], thorns: [{a: 103, n: 1},{a: -138, n: 1, side: "out", h: 0.26}], pads: [{a: -68, len: 1.46}]},
+      {gaps: [{a: 1, len: 1.1}], thorns: [{a: 131, n: 1}]},
+      {gaps: [{a: 124, x: 3, len: 0.7},{a: -44, len: 1.1}], thorns: [{a: 7, n: 3},{a: -134, n: 2, side: "out", h: 0.26}], pads: [{a: -144, len: 1.07}]},
+      {gaps: [{a: 91},{a: -146, len: 1.1}], thorns: [{a: 36, n: 3},{a: 4, n: 2, side: "out", h: 0.26}], pads: [{a: -19, len: 1.02}]},
+      {mat: "glass", gaps: [{a: 173, x: 3, len: 0.7},{a: 55, x: 2, len: 1.1}], thorns: [{a: 114, n: 3},{a: -129, n: 2, side: "out", h: 0.26}], pads: [{a: 4, len: 1.6}]},
+      {gaps: [{a: 104},{a: -133, len: 1.1}], thorns: [{a: 8, n: 2},{a: 36, n: 2, side: "out", h: 0.26, kind: "blunt"}], pads: [{a: 177, len: 1.15}]},
+      {gaps: [{a: -1},{a: -163, len: 1.1}], thorns: [{a: -36, n: 2},{a: 74, n: 1, side: "out", h: 0.26}], pads: [{a: 60, len: 1.08}]},
     ],
   },
   {
