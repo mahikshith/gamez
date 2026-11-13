@@ -60,7 +60,7 @@ export const stkMethods = {
     (this.turtles || []).forEach((T, i) => { if (T.ph !== 'gone') add('tu' + i, 'turtle', T, T); });
     (this.mosqs || []).forEach((Q, i) => { if (Q.ph !== 'scatter') add('mq' + i, 'mosq', Q, Q); });
     const B = this.bx && this.bx.boss;
-    if (B && !['snake', 'salamander', 'kingcrab', 'gator'].includes(B.kind) && !(B.kind === 'blizzard' && this.geckoOf && this.geckoOf()) && !B.den && !(B.kind === 'owl' && this.owl && this.owl.down)) add('bx', 'bx', B, B, true);
+    if (B && !['snake', 'salamander', 'kingcrab', 'gator'].includes(B.kind) && !(B.kind === 'blizzard' && this.geckoOf && this.geckoOf()) && !(B.kind === 'golem' && this.duke && this.duke()) && !B.den && !(B.kind === 'owl' && this.owl && this.owl.down)) add('bx', 'bx', B, B, true);
     return out;
   },
   // what the strike goes for: a recent tap (pick), else the boss, else the creature nearest an egg

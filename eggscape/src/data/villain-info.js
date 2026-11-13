@@ -39,12 +39,13 @@ export const VILLAIN_INFO = {
     },
   },
   'boss:golem': {
-    group: 'boss', name: 'Crystal Golem',
-    does: 'Stomps up crystal walls and cages, rains shards, punches rings.',
-    beat: 'Keep saving eggs: each one staggers him and cancels his attack.',
+    group: 'boss', name: 'Duke Quartz',
+    does: 'A crystal thorn-back: drops crystal spikes and hip-checks eggs.',
+    beat: 'Roll a stone egg into him: he flips over and loses his attack.',
+    more: 'He duels his cousin Spike on sight: the loser is down for 5 s.',
     attacks: {
       stomp: 'The vault shakes and walls rise. Go round, or smash with stone.',
-      punch: 'A ring spins a quarter turn and ignores you. Keep eggs clear.',
+      punch: 'His tail spins a wall of his channel a quarter turn. Keep clear.',
       cage: 'Turn either ring of that channel to shear the crystals off.',
       shards: 'Turn a solid wall over your egg, or roll it out of the wedge.',
     },
@@ -155,6 +156,12 @@ export const VILLAIN_INFO = {
     group: 'creature', name: 'Lava salamander',
     does: 'Breathes fire on the wall ahead: that red-hot patch cracks eggs.',
     beat: 'Turn the ring it rides to aim the fire at thorns. Water cools it.',
+  },
+  spike: {
+    group: 'creature', name: 'Spike the thorn-back',
+    does: 'Drops thorns behind him and hip-checks eggs along the channel.',
+    beat: 'A stone egg flips him. Turn the ring under a thorn fast to shake it.',
+    more: 'He duels the Duke on sight. Weaken one first to pick the winner.',
   },
   hermit: {
     group: 'creature', name: 'Hermit crab',
@@ -306,7 +313,8 @@ export function villainKinds(L, sim = null) {
     if (live(sim.octos)) set.add('octopus');
     if (live(sim.schools)) set.add('fish');
     if (live(sim.frogs)) set.add('frog');
-    if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp !== 'gecko')) set.add('salamander'); // L15's frost gecko is the boss
+    if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp === 'sal')) set.add('salamander'); // L15's frost gecko and L20's thorn-backs are not salamanders
+    if ((sim.sals || []).some((C) => C.role === 'spike')) set.add('spike');
     if (live(sim.hermits)) set.add('hermit');
     if (live(sim.puffs)) set.add('puffer');
     if (live(sim.jellies)) set.add('jelly');
@@ -315,6 +323,7 @@ export function villainKinds(L, sim = null) {
     if (live(sim.mosqs)) set.add('mosquito');
     if (sim.cw) { if (live(sim.cw.sp)) set.add('spider'); if (live(sim.cw.bt)) set.add('beetle'); if (live(sim.cw.jk)) set.add('jack'); }
   }
+  if (L.bossFight && L.bossFight.spike) set.add('spike'); // L20: the Duke's cousin
   // hazards
   if (L.icicles) set.add('icicles');
   if (L.lava) set.add('lava');

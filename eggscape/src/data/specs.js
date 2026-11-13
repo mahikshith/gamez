@@ -190,15 +190,15 @@ export const SPECS = [
     rings: [{ mat: 'stone', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'stone', gaps: 2, thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], curtain: 1 }, { mat: 'stone', gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 20, world: 4, theme: 'crystal', name: 'Golem Maze', boss: 'golem', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5, eggKinds: [null, null, 'ostrich'],
     nest: { w: 3.0, drop: 1.1 }, bonus: { kind: 'prize' },
-    bossFight: { kind: 'golem', delay: 4, phases: [
+    bossFight: { kind: 'golem', delay: 4, thorn: { delay: 3, dir: 1 }, spike: { delay: 18, dir: -1 }, phases: [
       { attacks: ['stomp', 'shards'], every: 6 },
       { at: { saved: 1, t: 30 }, attacks: ['cage', 'stomp', 'shards'], every: 5 },
       { at: { saved: 2, t: 60 }, attacks: ['stomp', 'cage', 'punch', 'shards'], every: 4.5 },
     ] },
     orbs: [{ type: 'feather', ch: 1 }, { type: 'stone', ch: 2 }, { type: 'hatch_bulk', ch: 2 }],
     portals: [{ from: [1, -20], to: [3, 160], emit: ['feather', 'thorn'], every: 10 }, { from: [2, -150], to: [4, -40], emit: ['fire_green'], every: 9 }, { from: [3, 30], to: [4, -140], emit: ['rockskin'], every: 12 }],
-    intro: { title: 'Boss: The Crystal Golem', line: 'The golem stomps: the vault quakes, crystal walls block your way and glass cracks; later he punches a ring round.' },
-    tip: 'Turn a ring to shear a crystal cage off. When shards rain, keep a solid wall over your egg.',
+    intro: { title: 'Boss: Duke Quartz', line: 'A crystal thorn-back crawls in. He stomps, drops crystal spikes and shoves eggs.' },
+    tip: 'A Stone egg flips the Duke. Turn a ring to shear a cage off; keep a wall over eggs in shard rain.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'glass', gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'glass', gaps: 2, thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
 
   // ---------------- 5 Volcano: lava rocks melt holes and blast eggs; water shell, black flame, honey, spikes

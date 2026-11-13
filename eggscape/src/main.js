@@ -1653,6 +1653,36 @@ function salEvent(ev, fx) {
       fx.sparkle(ev.x, ev.y, 8, '#ffb347');
       if (!ev.boss) once('salIn', 'The lava salamander! It rides the ring under it: turn that ring to steer it.');
       break;
+    // L20: Duke Quartz and Spike, the thorn-backs (sim/thornback.js)
+    case 'thornIn':
+      audio.play('rock_hit', { vol: 0.45, pitch: ev.role === 'duke' ? 0.8 : 1.2 });
+      fx.chips(ev.x, ev.y, ev.role === 'duke' ? '#d9c8ff' : '#e8d3a0', 8, 1.8);
+      break;
+    case 'thornInside':
+      if (ev.role === 'duke') once('thornIn', 'Duke Quartz is in! He drops crystal spikes and shoves eggs. Stone flips him.');
+      else once('spikeIn', 'His cousin Spike is in too! He drops thorns behind him.');
+      break;
+    case 'spikeUp': audio.play(ev.sk === 'crystal' ? 'glass_crack' : 'rock_hit', { vol: 0.5, pitch: ev.sk === 'crystal' ? 1.4 : 1.6 }); fx.chips(ev.x, ev.y, ev.sk === 'crystal' ? '#d9c8ff' : '#c9a160', 5, 1.4); break;
+    case 'thornHip':
+      audio.play('egg_bump', { vol: 0.7, pitch: 0.9 });
+      popup(ev.x, ev.y + 0.5, ev.blocked ? 'Blocked!' : 'Shove!', { color: ev.blocked ? '#cfe8ff' : '#ffe1a8', size: 16, life: 0.8 });
+      once('thornHip', 'A hip-check shoves an egg along the channel. It never cracks it by itself.');
+      break;
+    case 'thornFlip':
+      audio.play('rock_hit', { vol: 0.9, pitch: 0.7 }); fx.shake = Math.max(fx.shake, 0.25);
+      popup(ev.x, ev.y + 0.6, ev.role === 'duke' ? 'Flipped! No attack!' : 'Flipped!', { color: '#fff2a8', size: ev.role === 'duke' ? 15 : 18, life: 1.1 });
+      break;
+    case 'thornDuel':
+      audio.play('wind_gust', { vol: 0.5, pitch: 0.5 }); audio.play('rock_hit', { vol: 0.4, pitch: 0.5 });
+      popup(ev.x, ev.y + 0.8, 'Duel!', { color: '#ffcf6a', size: 20, life: 1 });
+      once('thornDuel', 'The cousins duel when they meet. The loser is down 5 s. Weaken one first to pick the winner.');
+      break;
+    case 'thornBeat': audio.play(ev.k === 3 ? 'wind_gust' : 'glass_crack', { vol: 0.5, pitch: ev.k === 1 ? 1.6 : ev.k === 2 ? 1.2 : 0.7 }); break;
+    case 'thornSwipe':
+      audio.play('steel_clang', { vol: 0.8, pitch: 0.6 });
+      fx.kick(0.34); hitStop(0.08); camPunch(0.035, ev.x, ev.y); fx.shake = Math.max(fx.shake, 0.3);
+      break;
+    case 'thornThrown': audio.play('rock_hit', { vol: 0.8, pitch: 0.6 }); popup(ev.x, ev.y + 0.7, ev.lose === 'duke' ? 'Duke down!' : 'Spike down!', { color: '#fff2a8', size: 18, life: 1.2 }); break;
     case 'geckoIn': // L15: Baron von Brr squeezes in through the outer ring (sim/salamander.js, species gecko)
       audio.play('glass_crack', { vol: 0.4, pitch: 1.8 });
       fx.chips(ev.x, ev.y, '#e6f6ff', 8, 1.8);
@@ -1966,8 +1996,10 @@ function bossEvent(ev, fx) {
       break;
     case 'wallGone':
       audio.play('glass_break', { vol: 0.6 });
-      fx.chips(ev.x, ev.y, ev.kind === 'ice' ? '#dff6ff' : '#a99bff', 10, 2.5);
-      if (ev.how === 'fire' || ev.how === 'water') popup(ev.x, ev.y + 0.4, 'Melted!', { color: '#bfeaff', size: 18, life: 0.9 });
+      fx.chips(ev.x, ev.y, ev.kind === 'ice' ? '#dff6ff' : ev.sk === 'thorn' ? '#c9a160' : '#a99bff', ev.kind === 'spike' && ev.how === 'melt' ? 5 : 10, 2.5);
+      if (ev.kind === 'spike' && ev.how === 'shake') popup(ev.x, ev.y + 0.4, 'Shaken off!', { color: '#e9e0ff', size: 16, life: 0.9 });
+      if (ev.kind === 'spike' && ev.how === 'fire') popup(ev.x, ev.y + 0.4, 'Burnt!', { color: '#ffb347', size: 16, life: 0.9 });
+      else if (ev.how === 'fire' || ev.how === 'water') popup(ev.x, ev.y + 0.4, 'Melted!', { color: '#bfeaff', size: 18, life: 0.9 });
       if (ev.how === 'smash') popup(ev.x, ev.y + 0.4, 'Smash!', { color: '#e6e6e6', size: 18, life: 0.9 });
       break;
     case 'bossStomp':
@@ -3157,6 +3189,7 @@ function infoRows(s, iw) {
       if (atks.length) y += 3 * s;
     }
     add(I.beat, lineS, C.ink, 'Beat it:', C.good);
+    if (I.more) add(I.more, lineS, C.ink2); // an extra line (L20: the cousins' duel)
     const h = Math.max(P, y) + 14 * s;
     return { kind, I, items, h, P, ri };
   });

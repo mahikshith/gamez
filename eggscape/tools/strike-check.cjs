@@ -6,11 +6,11 @@ const path = require('path');
 const html = path.resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) || 'dist/dev/index.html');
 const opt = (k) => ((process.argv.find((a) => a.startsWith(`--${k}=`)) || '').split('=')[1] || '').split(',').filter(Boolean);
 const IDS = opt('only').length ? opt('only') : ['freeze', 'thunder', 'bomb', 'decoy', 'tornado', 'glue'];
-// one place to meet each creature kind (campaign level id, or a dev demo) and each boss (type*; L15's frost gecko is a sal boss)
+// one place to meet each creature kind (campaign level id, or a dev demo) and each boss (type*; L15's frost gecko and L20's Duke Quartz are sal bosses; L20's Spike is a plain sal)
 const CASES = [
   ['snake', 7], ['octo', 13], ['sal', 22], ['eagle', 27], ['thief', 31], ['hermit', 36], ['puff', 37], ['jelly', 38],
   ['gator', 41], ['turtle', 42], ['mosq', 42], ['spider', 46], ['beetle', 48], ['jack', 48], ['frog', 'frog'], ['fish', 'fish'],
-  ['thief*', 5], ['snake*', 10], ['sal*', 15], ['bx*', 20], ['sal*', 25], ['bx*', 30], ['thief*', 35], ['kc*', 40], ['gator*', 45], ['bx*', 50],
+  ['thief*', 5], ['snake*', 10], ['sal*', 15], ['sal*', 20], ['sal', 20], ['sal*', 25], ['bx*', 30], ['thief*', 35], ['kc*', 40], ['gator*', 45], ['bx*', 50],
 ].filter(([t]) => !opt('types').length || opt('types').includes(t.replace('*', '')));
 
 (async () => {

@@ -33,7 +33,7 @@ const MOVES = new Set(['cage', 'shards', 'magma', 'whip', 'dive', 'wgust', 'pop'
 const GALE_T = 2.6, FREEZE_T = 4, FROST_ORB_T = 3, CHUNK_FREEZE_T = 3, FOG_T = 3.5, WALL_T = 8, ICE_WALL_T = 6, PATCH_T = 6;
 const ICE_HANG = 1.1; // s an icicle shakes before it drops (level icicles; a volley uses WARN.icicles)
 const THROW_FLY = 0.6, PUNCH_W = 2.4, HEAT_T = 9;
-export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'Baron von Brr', golem: 'Crystal Golem', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl', gator: 'Grandpa Gator' };
+export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'Baron von Brr', golem: 'Duke Quartz', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl', gator: 'Grandpa Gator' };
 export const ATTACK_NAME = { gale: 'Gale', freeze: 'Deep freeze', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning', snap: 'Claw snap', snap2: 'Twin claws', silt: 'Silt cloud', bubbles: 'Bubble barrage', barnacles: 'Barnacle toss', whirl: 'Whirlpool spin', swoop: 'Swoop', wind: 'Wind-up', gears: 'Gear bomb', gears2: 'Gear bombs', sweep: 'Tail sweep', roll: 'Death roll', cage: 'Crystal cage', shards: 'Shard rain', magma: 'Magma ring', whip: 'Tail whip', dive: 'Dive snatch', wgust: 'Wing gust', pop: 'Tunnel pop' };
 const RING_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING
 
@@ -85,7 +85,7 @@ export function v31Step(sim, dt) {
   const X = sim.bx;
   if (!X) return;
   // the lava salamander creature (sim/salamander.js): walks, breathes fire, and in the boss fight it is the boss
-  if (sim.level.boss === 'salamander' || sim.level.salamander || (sim.level.bossFight && sim.level.bossFight.gecko)) sim.salamanderStep?.(dt); // + L15's frost gecko (the same crawler)
+  if (sim.level.boss === 'salamander' || sim.level.salamander || (sim.level.bossFight && (sim.level.bossFight.gecko || sim.level.bossFight.thorn))) sim.salamanderStep?.(dt); // + L15's frost gecko (the same crawler)
   for (const R of X.rl) if (R.frost > 0 && (R.frost -= dt) <= 0) { R.frost = 0; sim.emit('thaw', { ring: X.rl.indexOf(R) }); }
   sim.rings.forEach((ring, i) => {
     const R = X.rl[i];
@@ -249,6 +249,7 @@ export function frostOrb(sim, egg) {
 // ---------- temporary walls on a channel floor (golem crystals, ice blocks)
 function wallFix(sim, W) {
   const ring = sim.rings[W.ri];
+  if (W.kind === 'spike') { spikeFix(sim, W, ring); return; }
   const base = ring.r - RING_TH / 2 + 0.01, inner = W.ri ? sim.rings[W.ri - 1].r + RING_TH / 2 + 0.1 : 0;
   // a cage crystal (sim/bossmoves.js) grows right across the channel, up to the inner ring
   const h = W.kind === 'cage' ? base - (sim.rings[W.ri - 1].r + RING_TH / 2) - 0.02 : Math.min(W.kind === 'ice' ? 0.5 : 0.62, base - inner), w = W.kind === 'ice' ? 0.3 : W.kind === 'cage' ? 0.24 : 0.2, top = base - h;
@@ -258,6 +259,57 @@ function wallFix(sim, W) {
     shape: new Polygon([p(base, W.la - w / 2 / base), p(base, W.la + w / 2 / base), p(top, W.la + w / 2 / top), p(top, W.la - w / 2 / top)]),
     friction: W.kind === 'ice' ? 0.05 : 0.6, restitution: 0.1, ...RING_FILT, userData: { kind: 'wall', wall: W },
   });
+}
+// L20 (sim/thornback.js): a spike shed by a thorn-back lizard, standing on a channel floor. sk 'crystal' (Duke Quartz) or
+// 'thorn' (Spike). out = 1: it stands on ring ri's outer face (the floor on the upper arc), else on its inner face.
+// The thorn rule applies (spikeContact); a stone egg smashes it; a fast turn of either wall of its channel shakes it off.
+export const SPIKE = { h: { crystal: 0.34, thorn: 0.27 }, w: 0.26, life: 8, smashW: 0.9, smashT: 0.25 };
+function spikeFix(sim, W, ring) {
+  const out = !!W.out, base = out ? ring.r + RING_TH / 2 - 0.01 : ring.r - RING_TH / 2 + 0.01;
+  const far = out ? sim.rings[W.ri + 1] : sim.rings[W.ri - 1], room = far ? Math.abs(base - (far.r + (out ? -1 : 1) * RING_TH / 2)) : 1;
+  const h = Math.min(SPIKE.h[W.sk] || 0.3, room * 0.45), tip = out ? base + h : base - h, w = SPIKE.w;
+  const p = (rad, ang) => Vec2(rad * Math.cos(ang), rad * Math.sin(ang));
+  W.h = h; W.w = w; W.base = base; W.tip = tip;
+  W.fix = ring.body.createFixture({ shape: new Polygon([p(base, W.la - w / 2 / base), p(base, W.la + w / 2 / base), p(tip, W.la)]), friction: 0.3, restitution: 0.1, ...RING_FILT, userData: { kind: 'wall', wall: W } });
+}
+export function addSpike(sim, sk, own, ri, la, out) {
+  const W = { id: ++sim.bx.wallId, kind: 'spike', sk, own, ri, la, out: out ? 1 : 0, life: SPIKE.life, max: SPIKE.life, alive: true, fix: null, h: 0, w: 0, sp: 0 };
+  wallFix(sim, W);
+  sim.bx.walls.push(W);
+  const q = spikePt(sim, W);
+  sim.emit('spikeUp', { sk, x: q.x, y: q.y, own });
+  return W;
+}
+export function spikePt(sim, W, f = 0.5) { return ringPoint(sim, W.ri, W.la, W.base + (W.tip - W.base) * f); }
+// an egg touching a spike: the thorn rule (a slow brush on the flank is a graze; a hit cracks once (crystal) or breaks (thorn))
+function spikeContact(sim, c, egg, W) {
+  if (!W.alive) { c.setEnabled(false); return; }
+  if (egg.stone > 0 || (egg.kind === 'ostrich' && egg.drop >= 2)) { c.setEnabled(false); sim.defer(() => removeWall(sim, W, 'smash')); return; }
+  if (egg.fire > 0 && W.sk === 'thorn') { c.setEnabled(false); sim.defer(() => removeWall(sim, W, 'fire')); return; }
+  if (egg.fire > 0 || egg.guard > 0 || egg.icy > 0 || egg.chick || egg.safeT > 0 || egg.bubbleFix || egg.golden) return;
+  const key = 700000 + W.id, th = { ring: sim.rings[W.ri], a: W.la, base: W.base, tip: W.tip, key };
+  if (sim.thornGraze(c, egg, th)) return;
+  if (egg.spk.has(key + 100000)) return; // one hurt per touch
+  egg.spk.add(key + 100000);
+  const soft = sim.MD.softThorns || W.sk === 'crystal';
+  if (!soft) { egg.safeT = 1; c.setEnabled(false); sim.defer(() => { egg.safeT = 0; sim.breakEgg(egg, 'thorn'); }); return; }
+  sim.defer(() => {
+    if (!egg.alive || egg.saved) return;
+    if (!(sim.MD.softThorns && egg.cracks >= 2)) sim.crack(egg, 0, 'spike');
+    const b = egg.body, p = b.getPosition(), t = spikePt(sim, W, 1), dx = p.x - t.x, dy = p.y - t.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 1.6 * sim.vs;
+    b.applyLinearImpulse(Vec2((dx / d) * m, (dy / d) * m), p, true);
+  });
+}
+function spikesStep(sim, dt) {
+  for (const W of sim.bx.walls) {
+    if (!W.alive || W.kind !== 'spike') continue;
+    const ring = sim.rings[W.ri], other = sim.rings[W.out ? W.ri + 1 : W.ri - 1], lim = SPIKE.smashW * sim.maxOmega(ring);
+    const fast = [ring, other].some((r) => r && r.grabbable && Math.abs(r.body.getAngularVelocity()) >= lim);
+    W.sp = fast ? W.sp + dt : 0;
+    if (W.sp >= SPIKE.smashT) { removeWall(sim, W, 'shake'); continue; }
+    const key = 700000 + W.id, q = spikePt(sim, W);
+    for (const e of sim.aliveEggs()) if (e.spk.has(key) || e.spk.has(key + 100000)) { const p = e.body.getPosition(); if (Math.hypot(p.x - q.x, p.y - q.y) > 0.6) { e.spk.delete(key); e.spk.delete(key + 100000); } }
+  }
 }
 export function addWall(sim, kind, ri, la, life) {
   const W = { id: ++sim.bx.wallId, kind, ri, la, life: life * M_(sim).hold, max: life * M_(sim).hold, alive: true, fix: null, h: 0, w: 0 };
@@ -271,12 +323,13 @@ export function removeWall(sim, W, how) {
   if (!W.alive) return;
   W.alive = false;
   sim.killFix.push([sim.rings[W.ri].body, W.fix]);
-  const q = ringPoint(sim, W.ri, W.la, sim.rings[W.ri].r - RING_TH / 2 - 0.25);
-  sim.emit('wallGone', { kind: W.kind, how, x: q.x, y: q.y });
+  const q = W.kind === 'spike' ? spikePt(sim, W) : ringPoint(sim, W.ri, W.la, sim.rings[W.ri].r - RING_TH / 2 - 0.25);
+  sim.emit('wallGone', { kind: W.kind, sk: W.sk, how, x: q.x, y: q.y });
 }
 function wallsStep(sim, dt) {
   const X = sim.bx;
   for (const W of X.walls) if (W.alive && (W.life -= dt) <= 0) removeWall(sim, W, 'melt');
+  if (X.walls.some((W) => W.alive && W.kind === 'spike')) spikesStep(sim, dt);
   if (X.walls.length > 12) X.walls = X.walls.filter((W) => W.alive);
 }
 
@@ -286,6 +339,7 @@ export function v31Contact(sim, c, egg, other) {
   if (other.kind !== 'wall') return false;
   const W = other.wall;
   if (W.kind === 'pop') { popContact(sim, c, egg); return true; } // the weasel popped up from its tunnel (sim/bossmoves.js)
+  if (W.kind === 'spike') { spikeContact(sim, c, egg, W); return true; } // L20: a thorn-back's shed spike
   if (!W.alive) { c.setEnabled(false); return true; }
   if (W.kind === 'ice' && (egg.fire > 0 || egg.water > 0)) { c.setEnabled(false); sim.defer(() => removeWall(sim, W, egg.fire > 0 ? 'fire' : 'water')); return true; }
   if ((W.kind === 'crystal' || W.kind === 'cage') && egg.stone > 0) { c.setEnabled(false); sim.defer(() => removeWall(sim, W, 'smash')); return true; }
@@ -338,6 +392,7 @@ function bossStep(sim, B, dt) {
   B.y += (gy - B.y) * Math.min(1, dt * (A && A.name === 'stomp' && A.ph === 'act' ? 30 : 4));
   if (B.kind === 'salamander') sim.salBossPose?.(B); // the creature is the boss: its lava rocks come from its mouth
   else if (B.kind === 'blizzard' && sim.level.bossFight.gecko) sim.geckoBossPose(B); // L15: the frost gecko in the vault is the boss
+  else if (B.kind === 'golem' && sim.level.bossFight.thorn) sim.thornBossPose(B); // L20: Duke Quartz in the vault is the boss
   else if (B.kind === 'gator') sim.gatorBossPose?.(B); // v3.7: Grandpa Gator lies in the outer channel
   else if (B.den) sim.thiefBossPose(B); // v3.6: the thief boss throws from its mouth
   // quake after a stomp
@@ -354,7 +409,7 @@ function bossStep(sim, B, dt) {
   mvStep(sim, B, dt); // the variety moves' after-effects (sim/bossmoves.js)
   if (B.kind === 'owl') sim.owlStep(B, dt); // v4: the Clockwork Owl's gears, bombs and jams (sim/owl.js)
   if (B.kind === 'snake') return; // its attacks are the snakes' own
-  const held = B.kind === 'blizzard' && sim.level.bossFight.gecko && sim.geckoHold(); // L15: an attack due while the gecko can't act waits for him
+  const held = (B.kind === 'blizzard' && sim.level.bossFight.gecko && sim.geckoHold()) || (B.kind === 'golem' && sim.level.bossFight.thorn && sim.thornHold()); // L20: the same for Duke Quartz // L15: an attack due while the gecko can't act waits for him
   if (!A) {
     if ((B.t -= dt) > 0 || !ph.attacks || !ph.attacks.length) return;
     if (held) { B.t = 0; return; }
@@ -431,6 +486,12 @@ function startAttack(sim, B, name, M) {
       const e = T[0];
       if (!e) return null;
       let ring = floorOf(e);
+      const D = B.kind === 'golem' && F.thorn && sim.duke ? sim.duke() : null;
+      if (D && sim.salLive(D)) { // L20: his tail swipes a wall of his own channel (the egg's floor when it is one of them, else the outer one)
+        const c = sim.salCh(D), ok = (r) => r && r.i > 0 && r.grabbable && !r.gear && !ringLocked(sim, r);
+        const pick = [ring.i === c || ring.i === c - 1 ? ring : null, sim.rings[c], sim.rings[c - 1]].find(ok);
+        if (pick) ring = pick;
+      }
       if (!ring.grabbable || ring.gear || ringLocked(sim, ring)) ring = sim.rings.find((r) => r.grabbable && !r.gear && !ringLocked(sim, r) && r.i > 0);
       if (!ring) return null;
       const dir = ring.oneway || (sim.rand() < 0.5 ? 1 : -1);
@@ -523,7 +584,7 @@ function actAttack(sim, B, A, M) {
     case 'stomp': {
       B.quake = 0.8;
       B.qk = 0;
-      sim.emit('bossStomp', { x: B.x, y: sim.outerR });
+      sim.emit('bossStomp', { x: B.x, y: sim.level.bossFight.thorn ? B.y : sim.outerR }); // L20: the shock starts where the Duke slams his feet
       animalsHit(sim, 'quake', { power: M.power });
       // glass under the eggs cracks a little more with every stomp
       for (const ring of sim.rings) {

@@ -13,10 +13,10 @@ import { drawGatorEmblem } from './bayou.js'; // v3.7
 import { drawIcicle } from './v3art.js';
 import { drawMammoth, drawMammothEmblem, MAMMOTH_FOOT } from './mammoth.js'; // world 3 boss: Old Frostbeard
 import { drawMovesRings, drawMovesOver } from './bossmoves.js'; // the variety moves (sim/bossmoves.js)
-import { drawGolem } from './golem.js'; // world 4 boss: the Crystal Golem
 import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
 import { geckoAnchor, geckoFreeze, drawGeckoEmblem, drawGeckoOver } from './gecko15.js'; // L15: Baron von Brr, the frost gecko (his body: render/salamander.js)
+import { thornAnchor, drawThornEmblem, drawSpikes, drawThornOver } from './crystal20.js'; // L20: Duke Quartz, the crystal thorn-back (his body: render/salamander.js)
 
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { if (globalThis.__eggDebug) console.error(e); /* art never breaks the frame */ } ctx.restore(); };
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -85,7 +85,7 @@ export function drawBossRings(ctx, sim, k, t) {
   });
   // temporary walls: crystal shards (golem) or ice blocks
   for (const W of X.walls) {
-    if (!W.alive || W.kind === 'cage') continue; // cage crystals: render/bossmoves.js
+    if (!W.alive || W.kind === 'cage' || W.kind === 'spike') continue; // cage crystals: render/bossmoves.js; shed spikes: render/crystal20.js
     const ring = sim.rings[W.ri], base = ring.r - RING_TH / 2 + 0.01, top = base - W.h, a = ring.body.getAngle() + W.la;
     const fade = W.life < 1 ? 0.5 + 0.5 * Math.sin(t * 30) : 1;
     const P = (rad, da) => [rad * Math.cos(a + da / rad), rad * Math.sin(a + da / rad)];
@@ -117,6 +117,7 @@ export function drawBossRings(ctx, sim, k, t) {
     }
     ctx.restore();
   }
+  drawSpikes(ctx, sim, k, t); // L20: the thorn-backs' shed crystals and thorns
   drawMovesRings(ctx, sim, k, t); // the variety moves: telegraphs and what they leave on the rings
   if (!A || A.ph !== 'warn') return;
   const u = clamp01(1 - A.t / A.dur), pulse = 0.5 + 0.5 * Math.sin(t * 18);
@@ -260,6 +261,7 @@ export function drawBossOver(ctx, sim, k, t) {
   if (!X) return;
   drawMovesOver(ctx, sim, k, t); // the variety moves: shard rain, dive shadow, gust streaks
   drawGeckoOver(ctx, sim, k, t); // L15: eggs the frost gecko licked frozen
+  drawThornOver(ctx, sim, k, t); // L20: the Duke's attacks leave his body; the cousins' duel
   const B = X.boss, calm = isSpriteCalm();
   // icicles: drawn about twice the sim size (wide, a little long) so they read on a phone, with a travelling glint
   for (const I of X.ice) {
@@ -355,7 +357,8 @@ export function drawBossOver(ctx, sim, k, t) {
 }
 
 // ---------- the boss itself. Code-drawn only (no portrait sprites inside a level):
-// blizzard: Baron von Brr, the frost gecko in the vault (render/gecko15.js). golem: render/golem.js.
+// blizzard: Baron von Brr, the frost gecko in the vault (render/gecko15.js). golem: Duke Quartz, the crystal thorn-back
+// in the vault (render/crystal20.js; the old golem figure was retired as too bulky).
 // The weasel and the Rat King live inside the vault (render/thieves.js).
 const ACTOR = { blizzard: 1, golem: 1, owl: 1 };
 // the view this frame (main sets it): world y of the top of the play area, pixels per meter, ui scale
@@ -371,6 +374,11 @@ export function bossPose(sim, view = VIEW) {
     if (view === false) return null;
     const g = geckoAnchor(sim);
     return g ? { x: g.x, y: g.y, h: 1.2, dir: B.face || 1 } : { x: 0, y: R + 0.6, h: 1.2, dir: B.face || 1 };
+  }
+  if (B.kind === 'golem' && sim.level.bossFight && sim.level.bossFight.thorn) { // L20: Duke Quartz is a sim crawler: framed like any creature
+    if (view === false) return null;
+    const g = thornAnchor(sim);
+    return g ? { x: g.x, y: g.y, h: 1.0, dir: B.face || 1 } : { x: 0, y: R + 0.6, h: 1.0, dir: B.face || 1 };
   }
   if (B.kind === 'golem') {
     // big: about a third of the vault wide (at most ~150 px tall on screen), its belly just above the outer ring.
@@ -394,7 +402,7 @@ export function drawBossActor(ctx, sim, k, t) {
   const warnU = A && A.ph === 'warn' ? clamp01(1 - A.t / A.dur) : 0, acting = A && A.ph === 'act';
   // blizzard (L15): the frost gecko walks the vault and does every attack himself (render/gecko15.js, drawn with the
   // salamanders, under the eggs); here only the frost his deep freeze sends to the ring.
-  // golem (L20): no figure either. The owner found the big mammoth and golem bodies too bulky for the game's look; attacks stay.
+  // golem (L20): Duke Quartz walks the vault (render/crystal20.js, drawn with the salamanders, under the eggs).
   if (B.kind === 'owl') drawOwlBoss(ctx, sim, k, t);
   // the frost stomp: once the foot is down (45% into the warning) frost cracks race from it to the ring it freezes
   if (A && A.name === 'freeze' && B.kind === 'blizzard' && !calm) {
@@ -423,7 +431,7 @@ export function drawBossActor(ctx, sim, k, t) {
   }
 }
 
-// Old Frostbeard (render/mammoth.js) and the Crystal Golem (render/golem.js), inside the shared status looks
+// Old Frostbeard (render/mammoth.js), inside the shared status looks
 // (frozen = holds its pose in an ice shell; stunned = dizzy, a bolt zaps first).
 function drawBigBoss(ctx, draw, sim, B, Q, k, t, warnU, acting, calm) {
   const fxb = sim.p2 && sim.p2.fx && sim.p2.fx.b, iced = B.dizzy > 0 && ((fxb && fxb.k === 'ice') || statusKind('b') === 'ice');
@@ -471,14 +479,7 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
   } else if (kind === 'blizzard') {
     drawGeckoEmblem(ctx, r, t);
   } else if (kind === 'golem') {
-    ctx.fillStyle = '#d9c8ff';
-    ctx.strokeStyle = '#3a2a70';
-    ctx.lineWidth = r * 0.08;
-    ctx.beginPath();
-    ctx.moveTo(0, -r * 0.7); ctx.lineTo(r * 0.4, -r * 0.1); ctx.lineTo(r * 0.25, r * 0.6); ctx.lineTo(-r * 0.25, r * 0.6); ctx.lineTo(-r * 0.4, -r * 0.1);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    drawThornEmblem(ctx, r, t); // Duke Quartz's face
   } else if (kind === 'salamander') {
     ctx.fillStyle = '#ffd04a';
     ctx.beginPath();

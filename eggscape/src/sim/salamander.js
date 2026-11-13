@@ -20,6 +20,7 @@
 // On a win it dives into a lava pit; on a loss it stops and grins.
 import { RING_TH, TAU, wrap, clamp } from './geom.js';
 import { BOSS_MODE, bossPhases } from './boss.js';
+import { thornMethods, THORN } from './thornback.js'; // L20: Duke Quartz and Spike, the thorn-back lizards
 
 export const SAL = {
   svl: 1.8, len: 1.96, // snout to hips (m) and snout to tail tip (units of svl): the art's sizes
@@ -50,11 +51,14 @@ export const salMethods = {
     if (boss && !list.length) list = [{ delay: L.bossFight.delay ?? 3, ch: 2, a: 90 }];
     const GK = L.bossFight && L.bossFight.kind === 'blizzard' && L.bossFight.gecko; // the frost gecko: the blizzard boss's body
     if (GK) list = [...list, { ...GK, ch: 99, gecko: 1 }];
+    const TK = L.bossFight && L.bossFight.kind === 'golem' && L.bossFight.thorn; // L20: Duke Quartz, the golem fight's body, and his cousin Spike
+    if (TK) list = [...list, { ...TK, ch: 99, thorn: 'duke' }];
+    if (TK && L.bossFight.spike) list = [...list, { ...L.bossFight.spike, ch: 99, thorn: 'spike' }];
     const n = this.rings.length;
     if (n < 2) return;
     list.forEach((P, i) => {
-      const isBoss = (boss && i === 0) || !!P.gecko, size = P.gecko ? GECKO.svl / SAL.svl : P.size || (isBoss ? SAL.boss : 1);
-      this.sals.push({ sp: P.gecko ? 'gecko' : 'sal', bored: 0, lk: -1, ent: null, ik: 0,
+      const isBoss = (boss && i === 0) || !!P.gecko || P.thorn === 'duke', size = P.gecko ? GECKO.svl / SAL.svl : P.thorn ? (THORN.svl / SAL.svl) * (P.thorn === 'spike' ? THORN.spikeK : 1) : P.size || (isBoss ? SAL.boss : 1);
+      this.sals.push({ sp: P.gecko ? 'gecko' : P.thorn ? 'thornback' : 'sal', bored: 0, lk: -1, ent: null, ik: 0, ...(P.thorn ? { role: P.thorn, dropT: 0, fcd: 0, flipCD: 0, weakT: null, duel: null, duels: 0, fk: '' } : {}),
         id: i, size, boss: isBoss ? 1 : 0, ch: clamp(P.ch ?? 2, 1, n - 1), dir: P.dir === -1 ? -1 : 1, a0: deg(P.a ?? 90),
         every: P.every || SAL.every, ph: 'wait', t: P.delay ?? 3, dur: 1, pend: null, pendT: 0, mv: 1, stopAt: 0,
         a: 0, rad: 0, pts: [], odo: 0, car: -1, carA: 0, next: 0, tw: 1, cool: 0, wetCD: 0, back: 0, shove: 0,
@@ -115,7 +119,7 @@ export const salMethods = {
     const win = this.state === 'winning' || this.state === 'won';
     for (const C of this.sals) {
       if (C.ph === 'wait' || C.ph === 'gone') { C.ph = 'gone'; continue; }
-      if (C.sp === 'gecko') { // beaten: he lets go where he is (the art slides him off); a loss: he stops and grins
+      if (C.sp === 'gecko' || C.sp === 'thornback') { // beaten: he lets go where he is (the art slides him off); a loss: he stops and grins
         if (win) { if (C.ph !== 'beat') { this.salRelease(C); C.ph = 'beat'; C.pend = null; C.climb = null; } }
         else if (C.ph !== 'grin' && C.pend !== 'grin') { this.salRelease(C); this.salHalt(C, 'grin', 9); }
         this.salOne(C, dt, false);
@@ -140,6 +144,7 @@ export const salMethods = {
     this.salCarry(C);
     for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD', 'bored']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
     if (C.sp === 'gecko') { this.geckoOne(C, dt, play); return; }
+    if (C.sp === 'thornback') { this.thornOne(C, dt, play); return; }
     if (C.cool > 0) C.cool = Math.max(0, C.cool - dt);
     if (C.shove) this.salShove(C, dt);
     if (play) {
@@ -225,6 +230,7 @@ export const salMethods = {
 
   salEnter(C) {
     if (C.sp === 'gecko') { this.geckoEnter(C); return; }
+    if (C.sp === 'thornback') { this.thornEnter(C); return; }
     const n = this.rings.length, ch = clamp(C.ch, 1, n - 1), r = this.salMid(ch), m = Math.ceil(this.salBodyLen(C) / SAL.trail) + 2;
     C.rad = r; C.a = C.a0; C.pts = [];
     for (let i = 0; i < m; i++) C.pts.push(this.salPt({}, C.a - C.dir * (i * SAL.trail) / r, r));
@@ -266,7 +272,7 @@ export const salMethods = {
       else {
         gt = tang; gr = aligned || committed || Math.abs(tang) < K.len / 2 + 0.2 ? this.salMid(K.to) : this.salMid(from);
         if (aligned || committed) { const m0 = this.salMid(from), m1 = this.salMid(K.to); lo = Math.min(m0, m1) - 0.05; hi = Math.max(m0, m1) + 0.05; }
-        if (this.chAt(C.rad) === K.to && Math.abs(C.rad - this.salMid(K.to)) < 0.12) { C.climb = null; C.climbCD = SAL.climbCD; if (C.sp === 'gecko') C.dir = this.geckoDir(C); }
+        if (this.chAt(C.rad) === K.to && Math.abs(C.rad - this.salMid(K.to)) < 0.12) { C.climb = null; C.climbCD = SAL.climbCD; if (C.sp !== 'sal') C.dir = this.geckoDir(C); }
       }
     }
     const dr = gr - C.rad, L = Math.hypot(gt, dr) || 1, s = Math.min(d, L);
@@ -399,6 +405,7 @@ export const salMethods = {
   hitSalamander(C, kind, o = {}) {
     if (!C || !this.salLive(C) || C.ph === 'dive' || C.ph === 'grin' || C.ph === 'in' || this.state !== 'play') return;
     const p = o.power ?? 1, h = C.pts[0];
+    if (C.sp === 'thornback' && (kind === 'gust' || kind === 'quake' || kind === 'water' || kind === 'rock' || kind === 'lava')) return; // L20: they grip the walls; no fire to cool
     if (C.sp === 'gecko' && (kind === 'gust' || kind === 'ice' || kind === 'water' || kind === 'rock' || kind === 'lava')) return; // his own gale and icicles; no fire to cool or feed
     if (kind === 'gust') {
       const dx = typeof o.dir === 'number' ? o.dir : (o.dir && o.dir.x) || 0, dy = (o.dir && o.dir.y) || 0;
@@ -665,3 +672,4 @@ export const salMethods = {
     for (const [ri, si, hot, hotK] of S.hot || []) { const sg = this.rings[ri].segs[si]; sg.hot = hot; sg.hotK = hotK; this.salHot.push({ ri, si }); }
   },
 };
+Object.assign(salMethods, thornMethods);

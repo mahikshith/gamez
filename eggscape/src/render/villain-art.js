@@ -3,10 +3,12 @@
 // No sim state is touched: every call here is a pure art function (poses come from t only).
 // Not drawn by their own renderer (no cheap standalone art, or the owner retired the figure):
 //   boss:blizzard  -> its boss-bar emblem (a snowflake chip): the storm has no body in the game
-//   boss:golem     -> its boss-bar emblem (a crystal chip): the owner retired the golem figure
+//   boss:golem     -> its boss-bar emblem: Duke Quartz's face (the crystal thorn-back)
 //   hazards        -> small code-drawn icons in the game's palette (icicle, lava rock, bolt, gust, current, spikes,
 //                     vine); the curse and thorn orbs use the game's own drawOrb.
 import { drawGeckoEmblem } from './gecko15.js';
+import { drawThornEmblem } from './crystal20.js';
+import { drawCrawler } from './crawlers.js';
 import { drawSnake } from './snake.js';
 import { drawThief, thiefPose, drawThiefEmblem } from './thieves.js';
 import { drawOctopus } from './octopus.js';
@@ -84,14 +86,8 @@ const ART = {
   'boss:owl'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y - d * 0.06); drawOwlEmblem(ctx, d * 0.3, t); ctx.restore(); },
   // the boss-bar emblems (render/boss.js drawBossEmblem; that function is not exported, so the two shapes are redrawn here)
   'boss:blizzard'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawGeckoEmblem(ctx, d * 0.34, t); ctx.restore(); }, // Baron von Brr, the frost gecko
-  'boss:golem'(ctx, x, y, d, t) {
-    const r = d * 0.34;
-    chip(ctx, x, y, r, '#6a4fc8');
-    ctx.save(); ctx.translate(x, y + Math.sin(t * 1.5) * r * 0.04);
-    ctx.fillStyle = '#d9c8ff'; ctx.strokeStyle = '#3a2a70'; ctx.lineWidth = r * 0.08; ctx.lineJoin = 'round';
-    ctx.beginPath(); ctx.moveTo(0, -r * 0.7); ctx.lineTo(r * 0.4, -r * 0.1); ctx.lineTo(r * 0.25, r * 0.6); ctx.lineTo(-r * 0.25, r * 0.6); ctx.lineTo(-r * 0.4, -r * 0.1); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.restore();
-  },
+  'boss:golem'(ctx, x, y, d, t) { const r = d * 0.34; chip(ctx, x, y, r, '#6a4fc8'); ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip(); ctx.translate(x, y); drawThornEmblem(ctx, r, t); ctx.restore(); }, // Duke Quartz
+  spike(ctx, x, y, d, t) { const S = d * 0.36; drawCrawler(ctx, x + 0.75 * S, y + d * 0.04, S, t, { heading: 0, curve: -0.14 / S, pose: 'idle', look: { x: 0.4, y: 0.5 }, id: 9120 }, 'thornback'); }, // Spike, the sandy thorn-back
   // ---- hazards: small icons
   icicles(ctx, x, y, d, t) {
     const sh = Math.sin(t * 9) * d * 0.012 * (Math.sin(t * 1.3) > 0.5 ? 1 : 0);

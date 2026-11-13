@@ -63,6 +63,12 @@ function defs() {
     pal: palOf({ line: '#5b3513', lo: '#8a5a26', base: '#c79a4e', hi: '#e3bf6e', top: '#f7e3a0', blot: '#6f3f1a', blotHi: '#a0652c', jaw: '#f4e4b0', leg: '#b98a42', legLo: '#7a4c1e', pad: '#fff3cc', lid: '#93612a', eye: '#fff4c8', eyeLo: '#e8c478', pupil: '#1e1004', mouth: '#4a1410', throat: '#7c2a1e', tongue: '#f2788a', tooth: '#fffbe6', spike: '#f8ecc4', spikeLo: '#c9a160', spikeTip: '#c2331c' }),
     pattern: thornPattern, head: thornHead, under: thornFlanks, over: thornRidge, after: thornSnort,
   };
+  // L20 Duke Quartz: the thorn-back in a crystal skin (opts.skin 'crystal'). Lilac body, deep violet shade, amethyst
+  // saddles; spines, flank thorns and the horn crown are faceted crystals with a cyan-white tip and a bright rim glint.
+  DEF.thornCrystal = {
+    ...DEF.thornback, cry: 1,
+    pal: palOf({ line: '#34165f', lo: '#6c48b8', base: '#ad8fee', hi: '#d6c4ff', top: '#f6f0ff', blot: '#4f2c9c', blotHi: '#8e6ce0', jaw: '#ece2ff', leg: '#9c80e2', legLo: '#5e3ea8', pad: '#f1eaff', lid: '#7d5cd0', eye: '#ffe680', eyeLo: '#e0a63a', pupil: '#1c0a30', mouth: '#2a0d40', throat: '#5c2a78', tongue: '#ff7fb0', tooth: '#ffffff', spike: '#dff7ff', spikeLo: '#7a52d8', spikeTip: '#f4feff', glint: '#ffffff', facet: '#a58cf6' }),
+  };
   // Chameleon: leaf green with teal bands, a helmet, a lollipop tail and two turret eyes that never agree. Smug about it.
   DEF.chameleon = {
     hw: [[0, 8], [14, 9], [34, 11.4], [50, 13], [64, 13], [76, 11], [86, 8], [100, 6.2], [130, 4.8], [170, 3.8], [200, 3], [210, 2.2]],
@@ -151,7 +157,7 @@ function bodyPath(ctx, k, ox, oy, X, Y, I0, WM) {
 }
 
 function drawBody(ctx, name, x0, y0, s, t, opts) {
-  const D = defs()[name], sp = SPECIES[name], U = s / 100, pose = opts.pose || 'walk';
+  const D = name === 'thornback' && opts.skin === 'crystal' ? defs().thornCrystal : defs()[name], sp = SPECIES[name], U = s / 100, pose = opts.pose || 'walk';
   const P = poseParams(pose, clamp(opts.p || 0, 0, 1));
   if (opts.blend) for (const c in P) if (opts.blend[c] !== undefined) P[c] = opts.blend[c];
   if (opts.rear !== undefined) P.rear = opts.rear;
@@ -467,12 +473,28 @@ function geckoHead(ctx, E) {
 /* ================================================================ THORN-BACK LIZARD */
 // one thorn: base (x, y), tip (tx, ty), half-width hw. Bone, one face lit, a red tip.
 function spike(ctx, E, x, y, tx, ty, hw, lw) {
+  if (E.D.cry) { crystalSpike(ctx, E.K, x, y, tx, ty, hw, lw); return; }
   const K = E.K, dx = tx - x, dy = ty - y, l = Math.hypot(dx, dy) || 1, nx = (-dy / l) * hw, ny = (dx / l) * hw, s1 = nx * LX + ny * LY > 0 ? 1 : -1;
   const tri = [[x + nx, y + ny], [tx, ty], [x - nx, y - ny]];
   ctx.beginPath(); poly(ctx, tri); ctx.fillStyle = rgb(K.spikeLo); ctx.fill();
   ctx.beginPath(); poly(ctx, [[x + nx * s1, y + ny * s1], [tx, ty], [x, y]]); ctx.fillStyle = rgb(K.spike); ctx.fill();
   ctx.beginPath(); poly(ctx, [[x + dx * 0.6 + nx * 0.4, y + dy * 0.6 + ny * 0.4], [tx, ty], [x + dx * 0.6 - nx * 0.4, y + dy * 0.6 - ny * 0.4]]); ctx.fillStyle = rgb(K.spikeTip); ctx.fill();
   ctx.beginPath(); poly(ctx, tri); ctx.strokeStyle = rgb(K.line); ctx.lineWidth = lw * 0.85; ctx.stroke();
+}
+// a faceted crystal: a dark violet body, a lilac facet, a pale lit facet toward the light, a cyan-white tip and a white
+// rim glint along the lit edge. Thin same-hue line. Exported for the shed crystals (render/crystal20.js).
+export function crystalSpike(ctx, K, x, y, tx, ty, hw, lw) {
+  const dx = tx - x, dy = ty - y, l = Math.hypot(dx, dy) || 1, nx = (-dy / l) * hw, ny = (dx / l) * hw, s1 = nx * LX + ny * LY > 0 ? 1 : -1;
+  const sh = [x + dx * 0.7, y + dy * 0.7]; // the shoulder where the facets meet the point
+  const L = [x + nx * s1, y + ny * s1], R = [x - nx * s1, y - ny * s1], SL = [sh[0] + nx * s1 * 0.75, sh[1] + ny * s1 * 0.75], SR = [sh[0] - nx * s1 * 0.75, sh[1] - ny * s1 * 0.75];
+  const out = [L, SL, [tx, ty], SR, R];
+  ctx.beginPath(); poly(ctx, out); ctx.fillStyle = rgb(K.spikeLo); ctx.fill();
+  ctx.beginPath(); poly(ctx, [[x, y], L, SL, [tx, ty]]); ctx.fillStyle = rgb(K.spike); ctx.fill(); // the lit facet
+  ctx.beginPath(); poly(ctx, [[x, y], [tx, ty], SR, R]); ctx.fillStyle = rgb(K.facet || K.spikeLo, 0.85); ctx.fill(); // the far facet
+  ctx.beginPath(); poly(ctx, [SL, [tx, ty], SR, [sh[0] + dx * 0.08, sh[1] + dy * 0.08]]); ctx.fillStyle = rgb(K.spikeTip); ctx.fill(); // the clear tip
+  ctx.beginPath(); poly(ctx, out); ctx.strokeStyle = rgb(K.line); ctx.lineWidth = lw * 0.8; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(L[0] + (SL[0] - L[0]) * 0.15, L[1] + (SL[1] - L[1]) * 0.15); ctx.lineTo(SL[0], SL[1]); ctx.lineTo(tx + (SL[0] - tx) * 0.1, ty + (SL[1] - ty) * 0.1);
+  ctx.strokeStyle = rgb(K.glint || WHITE, 0.95); ctx.lineWidth = lw * 0.75; ctx.stroke(); // the rim glint
 }
 function thornFlanks(ctx, E) { // side thorns: they break the outline, so the silhouette is a saw
   const { U, lw } = E;
@@ -493,7 +515,8 @@ function thornRidge(ctx, E) { // the ridge down the spine, biggest over the shou
   if (P.lay > 0.25 && P.lay < 0.98) {
     const k = clamp((P.lay - 0.3) / 0.6, 0, 1), a = spAt(LAY_U), b = spAt(Math.min(UMAX - 4, LAY_U + 70));
     const X = lerp(a.x, b.x + b.nx * 14 * U, k), Y = lerp(a.y, b.y + b.ny * 14 * U, k), r = 4.4 * U * (1 + 0.6 * Math.sin(Math.PI * k));
-    drawCrawlerThorn(ctx, X, Y - Math.sin(Math.PI * k) * 7 * U, r, t * 9, 0, null);
+    if (E.D.cry) { const yy = Y - Math.sin(Math.PI * k) * 7 * U, a = t * 9; crystalSpike(ctx, E.K, X - Math.sin(a) * r * 0.5, yy + Math.cos(a) * r * 0.5, X + Math.sin(a) * r * 1.3, yy - Math.cos(a) * r * 1.3, r * 0.6, E.lw); }
+    else drawCrawlerThorn(ctx, X, Y - Math.sin(Math.PI * k) * 7 * U, r, t * 9, 0, null);
     if (opts.out) opts.out.thorn = { x: X + x0, y: Y + y0, k };
   }
 }
