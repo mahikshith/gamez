@@ -1,0 +1,42 @@
+# Builds the Eggscape Android proof APK (web game inside a WebView shell, eggscape/android)
+# and publishes it as the "web-proof" pre-release so it has a direct download link.
+name: Android proof APK
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/project-thread-ah2hnr']
+    paths: ['eggscape/android/**', 'eggscape/src/**', 'eggscape/tools/build.mjs', '.github/workflows/android-proof.yml']
+permissions:
+  contents: write
+concurrency:
+  group: android-proof
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.14.3' }
+      - name: Build web game for the app
+        working-directory: eggscape
+        run: |
+          npm ci
+          sh android/sync-web.sh
+      - name: Build APK
+        working-directory: eggscape/android
+        run: |
+          gradle --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk eggscape-web-proof.apk
+          ls -l eggscape-web-proof.apk
+      - name: Publish pre-release
+        working-directory: eggscape/android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view web-proof >/dev/null 2>&1 || gh release create web-proof --prerelease --target "$GITHUB_SHA" --title "Eggscape web-shell proof APK" --notes "Test build: the web game inside an Android app. Not a store release."
+          gh release upload web-proof eggscape-web-proof.apk --clobber
