@@ -44,6 +44,8 @@ const srv = http.createServer((q, r) => {
     await check('store', () => { const E = __egg; E.setSave({ unlocked: 20, wallet: { coins: 120, owned: { stone: 2, rewind: 1 } } }); E.press('shop'); for (let i = 0; i < 30; i++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
     await check('store-skins', () => { const E = __egg; E.press('tab:skins'); for (let i = 0; i < 30; i++) E.frame(1 / 60); const o = E.overlaps(); E.press('back'); return o; }, 0, false);
     await check('extras', () => { const E = __egg; E.G.screen = 'title'; E.press('extras'); for (let i = 0; i < 30; i++) E.frame(1 / 60); return E.overlaps(); }, 0, true); // WONDER: the Extras screen
+    await check('practice', () => { const E = __egg; E.G.screen = 'title'; E.press('practice'); E.G.pscroll.y = 0; for (let i = 0; i < 30; i++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
+    await check('practice-scrolled', () => { const E = __egg; E.G.pscroll.y = 400; for (let i = 0; i < 5; i++) E.frame(1 / 60); const o = E.overlaps(); E.G.pscroll.y = 1e6; for (let i = 0; i < 5; i++) E.frame(1 / 60); return o.concat(E.overlaps()); }, 0, true);
     for (const k of ['planet', 'plan', 'mama', 'twin', 'hatch']) { // WONDER: each bonus vault in play, then its end cards
       await check(`wonder-${k}`, (k) => { const E = __egg; E.startDemo(k); for (let i = 0; i < 60; i++) E.frame(1 / 60); return E.overlaps(); }, k, k === 'plan' || k === 'twin');
       await check(`wonder-${k}-won`, () => { const E = __egg, g = E.wonder.state.game; g.end('won'); for (let i = 0; i < 200; i++) E.frame(1 / 60); return E.overlaps(); }, 0, k === 'twin');

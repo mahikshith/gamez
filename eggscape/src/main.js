@@ -148,6 +148,7 @@ function resize() {
 
 // ---------------------------------------------------------------- game state
 const G = {
+  pscroll: { y: 0, v: 0, max: 0, t: 0 }, pdrag: null, // Practice screen scroll
   screen: 'loading',
   t: 0,
   li: 0,
@@ -564,6 +565,7 @@ function pointerDown(e) {
   onFirstInput();
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
+  if (G.screen === 'practice') G.pdrag = { pid: e.pointerId, y0: y, s0: G.pscroll.y, moved: false, last: y, lt: performance.now(), v: 0 }; // the Practice screen scrolls by drag; a tap on a tile still presses
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
   if (G.screen === 'wonder') { wonder.pointerDown(e); try { canvas.setPointerCapture(e.pointerId); } catch (_) {} return; } // WONDER
   if (G.screen === 'title') { if (titleTap(x, y)) audio.play('hen_hop', { vol: 0.6 }); return; } // tap an egg friend: it jumps and flips (only the buttons start a level)
@@ -607,6 +609,16 @@ function pointerDown(e) {
 function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
+  const pd = G.pdrag;
+  if (pd && pd.pid === e.pointerId && G.screen === 'practice') {
+    if (!pd.moved && Math.abs(y - pd.y0) > 9 * ui.u) { pd.moved = true; ui.pressedId = null; }
+    if (pd.moved) {
+      const now = performance.now(), dtm = Math.max(1, now - pd.lt);
+      pd.v = pd.v * 0.6 + ((pd.last - y) / dtm * 1000) * 0.4; pd.last = y; pd.lt = now;
+      G.pscroll.y = clamp(pd.s0 + pd.y0 - y, 0, G.pscroll.max); G.pscroll.v = 0;
+    }
+    return;
+  }
   if (G.screen === 'wonder') { wonder.pointerMove(e); return; } // WONDER
   const tp = G.tp.get(e.pointerId);
   if (tp) {
@@ -636,6 +648,8 @@ function pointerMove(e) {
 }
 
 function pointerUp(e) {
+  const pd = G.pdrag;
+  if (pd && pd.pid === e.pointerId) { if (pd.moved) G.pscroll.v = clamp(pd.v, -3000, 3000); G.pdrag = null; }
   if (G.screen === 'wonder') wonder.pointerUp(e); // WONDER
   const ct = G.chickTap; // v3.2: tap = power
   if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) G.sim.tapChick(ct.id);
@@ -660,6 +674,7 @@ function pointerUp(e) {
 }
 
 function wheel(e) {
+  if (G.screen === 'practice') { e.preventDefault(); G.pscroll.y = clamp(G.pscroll.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -240, 240), 0, G.pscroll.max); G.pscroll.v = 0; return; }
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   e.preventDefault();
   setZoom((G.zm || 0) - clamp(e.deltaY, -120, 120) * 0.003);
@@ -673,6 +688,7 @@ function keyDown(e) {
   if ((k === 'Escape' || k === 'p' || k === 'P') && !e.repeat) {
     if (G.screen === 'play') press('pause');
     else if (G.screen === 'pause') press('resume');
+    else if (k === 'Escape' && (G.screen === 'practice' || G.screen === 'extras')) press('back');
     return;
   }
   if (G.screen === 'play' && G.sim) {
@@ -707,7 +723,7 @@ function keyboardTurn(dt) {
 
 // ---------------------------------------------------------------- buttons
 async function press(id) {
-  audio.play(id === 'pause' || id === 'levels' ? 'ui_back' : 'ui_tap');
+  audio.play(id === 'pause' || id === 'levels' || id === 'practice' ? 'ui_back' : 'ui_tap');
   switch (id) {
     case 'zoom:in': setZoom((G.zm || 0) + 0.34); break;
     case 'zoom:out': setZoom((G.zm || 0) - 0.34); break;
@@ -742,7 +758,7 @@ async function press(id) {
     }
     case 'levels':
       portal.gameplayStop();
-      if (G.screen !== 'title' && G.demo && G.level === G.demo) { setScreen('extras'); break; } // a practice vault goes back to Extras, where it was opened
+      if (G.screen !== 'title' && G.demo && G.level === G.demo) { setScreen('practice'); break; } // a practice vault goes back to the Practice screen, where it was opened
       G.world = clamp(envOf(save.unlocked - 1), 0, Math.ceil(LEVELS.length / PER_ENV) - 1);
       setScreen('levels');
       break;
@@ -847,7 +863,7 @@ async function press(id) {
       break;
     case 'next': {
       const n = Math.min(LEVELS.length - 1, G.li + 1);
-      if (G.li < 0) { setScreen('title'); break; }
+      if (G.li < 0) { setScreen(G.demo && G.level === G.demo ? 'practice' : 'title'); break; }
       if (G.li === LEVELS.length - 1) { setScreen('levels'); break; }
       if (!playable(n)) { G.world = envOf(n); setScreen('levels'); break; } // the next environment waits behind its star gate
       await breakThen(() => startLevel(n));
@@ -900,8 +916,12 @@ async function press(id) {
       applyAudioSettings();
       persist();
       break;
+    case 'practice': // the Practice screen: every studio vault as a tile (also reachable from the pause card)
+      portal.gameplayStop();
+      setScreen('practice');
+      break;
     case 'back':
-      setScreen(G.screen === 'store' ? G.storeFrom || 'title' : 'title');
+      setScreen(G.screen === 'store' ? G.storeFrom || 'title' : G.screen === 'practice' ? 'extras' : 'title');
       break;
     case 'extras': // the Extras menu: Wonder Vaults (bonus) and, in the test build, the Practice vaults
       portal.gameplayStop();
@@ -911,14 +931,12 @@ async function press(id) {
       if (id && id.startsWith('lv:')) {
         const i = +id.slice(3);
         if (playable(i)) await breakThen(() => startLevel(i));
-      } else if (id && id.startsWith('demo:') && (DEV || TEST)) {
+      } else if (id && id.startsWith('demo:')) {
         // test build: the chick lab (v3.2), one practice vault per chick kind
         const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS, ...REEF_DEMOS, ...BAYOU_DEMOS, ...LAB_DEMOS].find((x) => x.kind === k);
         if (d) { G.demo = d; await breakThen(() => startLevel(-2)); }
       } else if (id && id.startsWith('wv:')) { // WONDER: the bonus world's own buttons
         wonder.press(id);
-      } else if (id && id.startsWith('lab:')) {
-        G.labPage = (G.labPage || 0) + +id.slice(4);
       } else if (id && id.startsWith('mode:')) {
         save.mode = id.slice(5);
         persist();
@@ -2319,7 +2337,7 @@ function render() {
 
 
   // UI
-  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras') drawHUD();
+  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice') drawHUD();
   if (G.screen === 'play') drawFlyers(); // prizes on their way to the HUD
   if (G.screen === 'play') {
     // the power card owns the top of the screen while it shows
@@ -2333,7 +2351,8 @@ function render() {
   if (G.screen === 'fail') drawFail();
   if (G.screen === 'title') drawTitle();
   if (G.screen === 'levels') drawLevels();
-  if (G.screen === 'extras') wonder.drawExtras({ lab: (DEV || TEST) ? LAB : null, page: G.labPage || 0 }); // Extras: Wonder Vaults + Practice (test build)
+  if (G.screen === 'practice') drawPractice();
+  if (G.screen === 'extras') wonder.drawExtras(); // Extras: Wonder Vaults + the Practice button
   if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab }); }
   if (G.adBusy) {
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -2960,6 +2979,7 @@ function drawPause() {
         ui.button('restart', 'Restart', x, y, hw, 48 * s, { kind: 'secondary', icon: ICON.retry, size: 17 * s });
         ui.button('levels', 'Levels', x + hw + 10 * s, y, hw, 48 * s, { kind: 'secondary', icon: ICON.grid, size: 17 * s });
       } },
+      { h: 42 * s, draw: (x, y, w) => ui.button('practice', 'Practice', x + w * 0.2, y, w * 0.6, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) },
       { h: 42 * s, gap: 16 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) },
     ].filter(Boolean);
     if (G.sim.mode !== save.mode) B.push(lineBlock('The new mode starts when you restart', 13 * s, { color: ui.C.ink2, tag: 'pause:modenote', gap: 4 * s }));
@@ -3418,6 +3438,63 @@ function drawLevels() {
   });
 }
 
+// PRACTICE: every studio vault as a tile, grouped under the LAB names; same tile kit and grid as the level map, scrolled vertically
+const PRACTICE_FACES = ['#d8862a', '#3a9a6a', '#4a82d0', '#b05aa8', '#c85a4a', '#2f9aa8', '#8a7ad8', '#9a8a2a'];
+function drawPractice() {
+  const u = ui.u, pad = 14 * u, S = G.pscroll;
+  ui.calm = save.calm;
+  const dt = Math.min(0.05, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
+  const bg = ctx.createLinearGradient(0, 0, 0, H_);
+  bg.addColorStop(0, '#1c1440'); bg.addColorStop(1, '#3a2152');
+  ctx.globalAlpha = 0.96; ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); ctx.globalAlpha = 1;
+  const cols = W_ > H_ ? 5 : 3, gap = 12 * u, cw = Math.min((W_ - pad * 2 - gap * (cols - 1)) / cols, 136 * u), chh = cw;
+  const gridW = cols * cw + (cols - 1) * gap, x0 = W_ / 2 - gridW / 2;
+  const vt = 70 * u, secH = 36 * u; // the list's top edge, a section header's height
+  let total = 0;
+  for (const g of LAB) total += secH + Math.ceil(g.items.length / cols) * (chh + gap) + 6 * u;
+  S.max = Math.max(0, total + pad - (H_ - vt));
+  if (!G.pdrag || !G.pdrag.moved) { // momentum
+    if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-4.2 * dt); } else S.v = 0;
+  }
+  const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
+  // the list, clipped under the header
+  ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W_, H_ - vt); ctx.clip();
+  let y = vt - S.y + 4 * u, gi = 0;
+  for (const g of LAB) {
+    const face0 = ui.faceOf(PRACTICE_FACES[gi % PRACTICE_FACES.length]);
+    if (y + secH > vt && y < H_) ui.text(g.name, x0 + 2 * u, y + secH / 2 - 2 * u, { size: 17 * u, color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, tag: 'practice:h' + gi, maxW: gridW - 4 * u, noRecord: y < vt || y + secH > H_ });
+    y += secH;
+    g.items.forEach(([k, label], j) => {
+      const c = j % cols, r = Math.floor(j / cols), x = x0 + c * (cw + gap), ty = y + r * (chh + gap);
+      if (ty + chh < vt || ty > H_) return;
+      const part = ty < vt || ty + chh > H_, n0 = ui.rects.length, nb = ui.buttons.length;
+      const b = ui.button('demo:' + k, '', x, ty, cw, chh, { face: face0, keepFace: true, round: 18 * u });
+      const fy = ty + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mxT = x + cw / 2, grp = 'btn:demo:' + k;
+      const rad = Math.min(24 * u, fh * 0.26);
+      ctx.beginPath(); ctx.arc(mxT, fy + fh * 0.38, rad, 0, 7); ctx.fillStyle = 'rgba(30,10,0,0.28)'; ctx.fill();
+      ui.text(label[0].toUpperCase(), mxT, fy + fh * 0.38 + 1 * u, { size: rad * 1.25, align: 'center', color: '#fff', stroke: face0.line, strokeW: 3 * u, shadow: face0.line, group: grp, tag: 'pl' + k });
+      ui.text(label, mxT, fy + fh * 0.76, { size: Math.min(15 * u, fh * 0.15), align: 'center', color: '#fff', stroke: face0.line, strokeW: 3 * u, group: grp, tag: 'pn' + k, maxW: cw - 12 * u });
+      if (part) { // a tile cut by the list edge keeps a tap area only inside the list and records nothing for the overlap check
+        ui.rects.length = n0;
+        const bt = ui.buttons[nb]; if (bt) { const t2 = Math.max(bt.y, vt), b2 = Math.min(bt.y + bt.h, H_); if (b2 - t2 < 8 * u) ui.buttons.length = nb; else { bt.y = t2; bt.h = b2 - t2; } }
+      }
+    });
+    y += Math.ceil(g.items.length / cols) * (chh + gap) + 6 * u; gi++;
+  }
+  ctx.restore();
+  // header band over the list: back, title
+  ctx.fillStyle = '#1c1440'; ctx.globalAlpha = 0.94; ctx.fillRect(0, 0, W_, vt - 4 * u); ctx.globalAlpha = 1;
+  const g2 = ctx.createLinearGradient(0, vt - 4 * u, 0, vt + 10 * u); g2.addColorStop(0, 'rgba(10,4,24,0.55)'); g2.addColorStop(1, 'rgba(10,4,24,0)'); ctx.fillStyle = g2; ctx.fillRect(0, vt - 4 * u, W_, 14 * u);
+  const hy = pad + 23 * u;
+  ui.button('back', '', pad, pad, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
+  const tl = pad + 68 * u, trr = W_ - pad - 68 * u;
+  ui.ribbon('Practice', W_ / 2, hy - 19 * u, clamp(170 * u, 90 * u, Math.max(90 * u, trr - tl)), 36 * u, { color: '#8a5ad8', size: 21 * u, tag: 'practice:title' });
+  if (S.max > 0 && !save.calm) { // a thin scroll thumb
+    const th = Math.max(30 * u, (H_ - vt) * (H_ - vt) / (total + pad)), ty2 = vt + (S.y / S.max) * (H_ - vt - th - 4 * u);
+    ui.roundRect(W_ - 5 * u, ty2, 3 * u, th, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
+  }
+}
+
 function drawPadlock(lx, ly, ls, col) {
   // col null: the full-colour lock; a colour: a tinted one (the star-gate line)
   ui.lock(ctx, lx, ly, ls, col ? { a: col, b: col, steel: col } : {});
@@ -3513,7 +3590,7 @@ async function boot() {
 
 // test hook (used by the QA bot and screenshot tools); compiled out of release builds
 if (DEV) window.__egg = {
-  G, LEVELS,
+  G, LEVELS, LAB,
   get sim() { return G.sim; },
   start: (i, o) => startLevel(i, o),
   CHICK_DEMOS,

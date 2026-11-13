@@ -475,7 +475,7 @@ export function createWonder(env) {
 
   // ---------------------------------------------------------------- the Extras screen (menu): Wonder Vaults + Practice
   const TILE = { planet: '#5a6ad8', plan: '#3f9fd0', mama: '#d8862a', twin: '#3fa86a', hatch: '#e0a81c' };
-  function drawExtras(o = {}) {
+  function drawExtras() {
     const z = env.size(), u = ui.u, pad = 14 * u, t = env.time(), sv = env.save();
     ui.calm = sv.calm;
     const bg = ctx.createLinearGradient(0, 0, 0, z.H);
@@ -493,9 +493,7 @@ export function createWonder(env) {
     ui.text(starTxt, z.W - pad - 12 * u, hy + 0.5 * u, { size: 17 * u, align: 'right', color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'extras:stars' });
     const tl = pad + 68 * u, trr = chipX - 22 * u;
     ui.ribbon('Extras', (tl + trr) / 2, hy - 19 * u, clamp(140 * u, 90 * u, trr - tl), 36 * u, { color: '#8a5ad8', size: 21 * u, tag: 'extras:title' });
-    const lab = o.lab, labPg = lab ? lab[((o.page || 0) % lab.length + lab.length) % lab.length] : null;
-    const labRows = labPg && (z.W - 2 * pad - 84 * u) / labPg.items.length < 66 * u ? 2 : 1; // narrow phones: two rows, readable labels
-    const labH = lab ? 40 * u : 0, labBlock = lab ? labRows * labH + (labRows - 1) * 8 * u + 42 * u : 0;
+    const labBlock = 60 * u; // the Practice button under the vaults
     // section: Wonder Vaults (BONUS)
     let y = 74 * u;
     const head = (txt, yy, tag, chip) => {
@@ -520,18 +518,9 @@ export function createWonder(env) {
       ui.roundRect(mx - sr * 4.3, sy - sr * 1.45, sr * 8.6, sr * 2.9, sr * 1.45); ctx.fillStyle = 'rgba(30,10,0,0.3)'; ctx.fill();
       for (let q = 0; q < 3; q++) drawStar(ctx, mx + (q - 1) * sr * 2.65, sy, sr, q < s);
     });
-    // section: Practice (the lab vaults; only in builds that carry them)
-    if (lab) {
-      const pg = labPg, kinds = pg.items, lg = 8 * u, aw = 34 * u, per = Math.ceil(kinds.length / labRows), ly0 = z.H - pad - labRows * labH - (labRows - 1) * lg;
-      head('Practice: ' + pg.name, ly0 - 16 * u, 'extras:lab');
-      const lw = Math.min(110 * u, (z.W - 2 * pad - 2 * (aw + lg) - lg * (per - 1)) / per);
-      ui.button('lab:-1', '<', pad, ly0, aw, labRows * labH + (labRows - 1) * lg, { kind: 'ad', size: 20 * u });
-      ui.button('lab:1', '>', z.W - pad - aw, ly0, aw, labRows * labH + (labRows - 1) * lg, { kind: 'ad', size: 20 * u });
-      kinds.forEach(([k, label], j) => {
-        const r = Math.floor(j / per), inRow = r === labRows - 1 ? kinds.length - per * (labRows - 1) : per, c = j - r * per, lx0 = z.W / 2 - (inRow * lw + (inRow - 1) * lg) / 2;
-        ui.button('demo:' + k, label, lx0 + c * (lw + lg), ly0 + r * (labH + lg), lw, labH, { kind: 'ad', size: Math.min(15 * u, lw * 0.2) });
-      });
-    }
+    // Practice: one clear button to the Practice screen
+    const pbw = Math.min(z.W - 2 * pad, 320 * u), pbh = 46 * u;
+    ui.button('practice', 'Practice', z.W / 2 - pbw / 2, z.H - pad - pbh, pbw, pbh, { kind: 'primary', icon: ICON.grid, size: 18 * u });
   }
 
   return { start, has: (k) => !!wonderByKey(k), update, render, pointerDown, pointerMove, pointerUp, press, drawExtras, resize() { S.snap = true; if (S.backdrop) { const z = env.size(); S.backdrop.resize(z.W, z.H, z.DPR); } }, get state() { return S; }, LEVELS: WONDER_LEVELS, toScreen, starsOf };
