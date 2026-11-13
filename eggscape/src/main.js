@@ -44,6 +44,7 @@ import { drawClockwork, drawClockworkTele, cwEvent, drawCwIntro } from './render
 import { owlEvent } from './render/owl.js'; // v4 the Clockwork Owl
 import { movesEvent } from './render/bossmoves.js'; // the boss variety moves
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
+import { drawCrawler, SPECIES as CRAWLER_SPECIES, crawlerAnim } from './render/crawlers.js'; // the salamander's cousins (dev strips; not in a level yet)
 import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render/frog.js'; // v3.3 frog
 import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem } from './render/bayou.js'; // v3.7 Gator Bayou
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
@@ -3537,6 +3538,7 @@ if (DEV) window.__egg = {
   startAllyDemo(kind = 'rooster', o = {}) { G.demo = ALLY_DEMOS.find((d) => d.kind === kind) || ALLY_DEMOS[0]; startLevel(-2, o); },
   snAnim: W.snAnim,
   salAnim, // v3.2: the salamander's last drawn feet (QA strips)
+  crawlerArt: { drawCrawler, SPECIES: CRAWLER_SPECIES, crawlerAnim, drawSalamander }, // cousins: gecko, thornback, chameleon (QA strips)
   frogAnim, // v3.3: the frog's eased looks (QA strips)
   frogArt: drawFrog, // v3.3: pose gallery (QA strips)
   seaAnim, // v3.3: the octopus's and fishes' render state (QA strips)

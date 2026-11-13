@@ -31,6 +31,7 @@
 // In game: s = SPECIES[name].svl * k (k = px per metre).
 
 import { statusDraw, dizzyStars } from './status.js';
+import { drawCousin, COUSINS } from './cousins.js'; // v4 art for the gecko, thornback and chameleon (opts.legacy = the old rig)
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -332,6 +333,7 @@ export function drawCrawler(ctx, x, y, s, t = 0, opts = {}, species = 'salamande
   const sp = typeof species === 'string' ? SPECIES[species] : species;
   if (!sp) return;
   opts = opts || {};
+  if (!opts.legacy && typeof species === 'string' && COUSINS[species]) return drawCousin(ctx, x, y, s, t, opts, species);
   ctx.save();
   try {
     const st = opts.status, U = s / 100;
@@ -1646,7 +1648,7 @@ function drawFrostBreath(ctx, x, y, a, U, t, k) {
   ctx.restore();
 }
 // Gecko: the meltwater puddle, a soft blob with a bright rim and a few ice chips left floating in it.
-function drawPuddle(ctx, c, U, k, t, K) {
+export function drawPuddle(ctx, c, U, k, t, K) {
   ctx.save();
   ctx.translate(c.x, c.y);
   const r = (12 + 22 * k) * U, n = 12, P = [];

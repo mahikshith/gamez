@@ -38,15 +38,15 @@ const BLOTS = [[39, 0, 17, 0.6, 1], [64, 0.3, 18, 0.52, 1], [88, -0.22, 18, 0.56
 const BANDS = [[113, 9], [131, 7.5], [147, 6], [160, 4.5]]; // tail bands: [u, length]
 const FLAME = [[-0.5, 0], [-0.32, 0.78], [0.05, 1], [0.5, 0.95], [1.15, 0.7], [0.55, 0.3], [0.95, -0.1], [0.42, -0.3], [0.7, -0.85], [0.2, -1], [-0.25, -0.88]];
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-const mixA = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
-const rgb = (c, al = 1) => (al >= 1 ? `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})` : `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${al})`);
-const palOf = (o) => { const r = {}; for (const k in o) r[k] = hex(o[k]); return r; };
+export const mixA = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+export const rgb = (c, al = 1) => (al >= 1 ? `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})` : `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${al})`);
+export const palOf = (o) => { const r = {}; for (const k in o) r[k] = hex(o[k]); return r; };
 const HOT = palOf({ line: '#6e1c06', lo: '#c2330a', base: '#ff7414', hi: '#ffab2c', top: '#ffd45a', blot: '#3a1108', blotHi: '#6b2610', jaw: '#ffd872', leg: '#ee5f10', legLo: '#a52c08', pad: '#ffc04a', lid: '#e25a0e', eye: '#fff6d2', eyeLo: '#f0c26a', pupil: '#1a0803', mouth: '#4a0b12', throat: '#8a1c1a', tongue: '#ff7684', tooth: '#fff8e2' });
 const ASH = palOf({ line: '#262220', lo: '#45413e', base: '#77726c', hi: '#989189', top: '#bdb7ae', blot: '#2c2927', blotHi: '#4a4643', jaw: '#aaa49b', leg: '#67625d', legLo: '#403c39', pad: '#b5afa6', lid: '#5d5853', eye: '#f3efe2', eyeLo: '#c9c3b4', pupil: '#141210', mouth: '#2e2327', throat: '#57474a', tongue: '#b9979c', tooth: '#eeeae0' });
 const bx = new Float64Array(NS), by = new Float64Array(NS), sx = new Float64Array(NS), sy = new Float64Array(NS), snx = new Float64Array(NS), sny = new Float64Array(NS), sw = new Float64Array(NS);
 const PT = { x: 0, y: 0, a: 0 }, Q = { x: 0, y: 0, nx: 0, ny: 0, w: 0 };
 const faceUp = {};
-const LX = -0.5, LY = -0.87; // light: screen top-left
+export const LX = -0.5, LY = -0.87; // light: screen top-left
 function hwAt(u) {
   if (u <= HW[0][0]) return HW[0][1];
   for (let i = 1; i < HW.length; i++) if (u <= HW[i][0]) { const a = HW[i - 1], b = HW[i], k = (u - a[0]) / (b[0] - a[0]); return a[1] + (b[1] - a[1]) * (k * k * (3 - 2 * k)); }
@@ -111,10 +111,12 @@ function ik(hx, hy, fx, fy, l1, l2, px, py) {
   return k1x * px + k1y * py > k2x * px + k2y * py ? { kx: k1x, ky: k1y, fx, fy } : { kx: k2x, ky: k2y, fx, fy };
 }
 // chunky limbs: thigh, shin, a round palm and four toes with pads. Two passes (ink, then colour) so the ink stays thin.
-function drawLegs(ctx, feet, U, K, lw) {
+// G: limb geometry in U (the salamander's is the default; its cousins in cousins.js pass their own)
+export const LEG_G = { l1f: 14, l1h: 15.5, l2f: 14, l2h: 15, wf: 12.5, wh: 15, wl: 9.6, hf: 8, hh: 10, hl: 6, toes: 4, spread: 0.58, lenF: 8.6, lenH: 9.6, toeW: 3.3, tip: 2.9, pad: 1.9, palm: 5.6, knee: 3.3 };
+export function drawLegs(ctx, feet, U, K, lw, G = LEG_G) {
   const J = feet.map((f) => {
     const fr = f.L.front, ca = Math.cos(f.pa), sa = Math.sin(f.pa), kf = fr ? -0.7 : 0.8; // elbows point back, knees forward
-    const j = ik(f.hip.x, f.hip.y, f.fx, f.fy, (fr ? 14 : 15.5) * U, (fr ? 14 : 15) * U, f.ox + ca * kf, f.oy + sa * kf);
+    const j = ik(f.hip.x, f.hip.y, f.fx, f.fy, (fr ? G.l1f : G.l1h) * U, (fr ? G.l2f : G.l2h) * U, f.ox + ca * kf, f.oy + sa * kf);
     return { f, j, k: 1 + 0.16 * f.lift };
   });
   // lifted feet throw a small shadow where they will land
@@ -126,26 +128,26 @@ function drawLegs(ctx, feet, U, K, lw) {
     ctx.lineWidth = wL; ctx.beginPath(); ctx.moveTo(j.kx, j.ky); ctx.lineTo(j.fx, j.fy); ctx.stroke();
   };
   const foot = (o, grow, pads) => {
-    const { f, j, k } = o, n = 4, len = (f.L.front ? 8.6 : 9.6) * U * k;
+    const { f, j, k } = o, n = G.toes, len = (f.L.front ? G.lenF : G.lenH) * U * k;
     for (let i = 0; i < n; i++) {
-      const a = f.fa + (i - (n - 1) / 2) * 0.58, c = Math.cos(a), s2 = Math.sin(a);
-      if (!pads) { ctx.lineWidth = 3.3 * U * k + grow; ctx.beginPath(); ctx.moveTo(j.fx, j.fy); ctx.lineTo(j.fx + c * len, j.fy + s2 * len); ctx.stroke(); }
-      ctx.beginPath(); ctx.arc(j.fx + c * len, j.fy + s2 * len, (pads ? 1.9 : 2.9) * U * k + grow / 2, 0, TAU); ctx.fill();
+      const a = f.fa + (i - (n - 1) / 2) * G.spread, c = Math.cos(a), s2 = Math.sin(a);
+      if (!pads) { ctx.lineWidth = G.toeW * U * k + grow; ctx.beginPath(); ctx.moveTo(j.fx, j.fy); ctx.lineTo(j.fx + c * len, j.fy + s2 * len); ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(j.fx + c * len, j.fy + s2 * len, (pads ? G.pad : G.tip) * U * k + grow / 2, 0, TAU); ctx.fill();
     }
-    if (!pads) { ctx.beginPath(); ctx.arc(j.fx, j.fy, 5.6 * U * k + grow / 2, 0, TAU); ctx.fill(); }
+    if (!pads) { ctx.beginPath(); ctx.arc(j.fx, j.fy, G.palm * U * k + grow / 2, 0, TAU); ctx.fill(); }
   };
   ctx.lineCap = 'round';
   ctx.strokeStyle = ctx.fillStyle = rgb(K.line);
-  for (const o of J) { limb(o, (o.f.L.front ? 12.5 : 15) * U + 2 * lw, 9.6 * U + 2 * lw); foot(o, 2 * lw, false); }
+  for (const o of J) { limb(o, (o.f.L.front ? G.wf : G.wh) * U + 2 * lw, G.wl * U + 2 * lw); foot(o, 2 * lw, false); }
   for (const o of J) {
     const lit = mixA(K.leg, K.hi, 0.45 * o.f.lift);
-    ctx.strokeStyle = ctx.fillStyle = rgb(mixA(K.legLo, lit, 0.35)); limb(o, (o.f.L.front ? 12.5 : 15) * U, 9.6 * U);
+    ctx.strokeStyle = ctx.fillStyle = rgb(mixA(K.legLo, lit, 0.35)); limb(o, (o.f.L.front ? G.wf : G.wh) * U, G.wl * U);
     ctx.strokeStyle = ctx.fillStyle = rgb(lit);
     // the lit top plane of the limb: the same strokes, thinner, pushed toward the light
-    ctx.save(); ctx.translate(LX * 1.3 * U, LY * 1.3 * U); limb(o, (o.f.L.front ? 8 : 10) * U, 6 * U); ctx.restore();
+    ctx.save(); ctx.translate(LX * 1.3 * U, LY * 1.3 * U); limb(o, (o.f.L.front ? G.hf : G.hh) * U, G.hl * U); ctx.restore();
     foot(o, 0, false);
     ctx.fillStyle = rgb(K.blot); // a dark band over the elbow / knee
-    ctx.beginPath(); ctx.arc(o.j.kx, o.j.ky, 3.3 * U, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(o.j.kx, o.j.ky, G.knee * U, 0, TAU); ctx.fill();
     ctx.fillStyle = rgb(K.pad); foot(o, 0, true);
   }
 }
@@ -446,32 +448,40 @@ function drawHead(ctx, t, opts, P, K, cool, lw, fu, ha, glow) {
     let lid = 0.36 - 0.06 * P.walk + 0.08 * P.angry - 0.2 * sq + (hi ? -0.1 : 0.05) * (1 - P.angry) * (1 - sq);
     lid = lerp(lid, 0.02, shock); lid = lerp(lid, sd === fu ? 0.62 : 0.4, P.dazed); lid = Math.max(lid, blink);
     const th = lerp(lerp(0.22, 0.62, P.angry), -0.3, shock) * (1 - P.dazed);
-    ctx.beginPath(); ctx.arc(ex, ey, r + 0.95, 0, TAU); ctx.fillStyle = rgb(mixA(K.blot, K.line, 0.4)); ctx.fill();
-    ctx.save();
-    ctx.beginPath(); ctx.arc(ex, ey, r, 0, TAU); ctx.fillStyle = rgb(K.eye); ctx.fill(); ctx.clip();
-    ctx.beginPath(); ctx.arc(ex + lx * 2.2, ey + ly * 2.2, r, 0, TAU); ctx.rect(ex - 20, ey - 20, 40, 40); ctx.fillStyle = rgb(K.eyeLo); ctx.fill('evenodd'); // the ball's shaded side
-    if (P.dazed > 0.5) {
-      ctx.strokeStyle = rgb(K.pupil); ctx.lineWidth = 1.25; ctx.beginPath();
-      for (let i = 0; i <= 26; i++) { const a = i * 0.48 + t * 5 * sd, rr = r * 0.09 + (i / 26) * r * 0.66; ctx.lineTo(ex + 0.6 + Math.cos(a) * rr, ey + Math.sin(a) * rr); }
-      ctx.stroke();
-    } else {
-      const pr = r * lerp(0.6, 0.3, shock) * (1 - 0.12 * P.angry) * (1 + 0.1 * sq);
-      const px = ex + 0.8 + clamp(look.x, -1, 1) * (r - pr) * 0.75, py = ey - sd * 0.9 + clamp(look.y, -1, 1) * (r - pr) * 0.8; // a touch cross-eyed: funnier
-      ctx.beginPath(); ctx.arc(px, py, pr, 0, TAU); ctx.fillStyle = rgb(K.pupil); ctx.fill();
-      ctx.beginPath(); ctx.arc(px + lx * pr * 0.42, py + ly * pr * 0.42, pr * 0.3, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill();
-    }
-    // the lid: covers the back of the eye up to a slanted edge (the brow line)
-    const dx = Math.cos(th), dy = sd * Math.sin(th), h = -r + 2 * r * lid, cxl = ex + dx * h, cyl = ey + dy * h;
-    if (lid > 0.01) {
-      ctx.beginPath(); ctx.moveTo(cxl - dy * 30, cyl + dx * 30); ctx.lineTo(cxl + dy * 30, cyl - dx * 30); ctx.lineTo(cxl + dy * 30 - dx * 40, cyl - dx * 30 - dy * 40); ctx.lineTo(cxl - dy * 30 - dx * 40, cyl + dx * 30 - dy * 40); ctx.closePath();
-      ctx.fillStyle = rgb(K.lid); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(cxl - dy * 30 - dx * 1.6, cyl + dx * 30 - dy * 1.6); ctx.lineTo(cxl + dy * 30 - dx * 1.6, cyl - dx * 30 - dy * 1.6); ctx.strokeStyle = rgb(K.hi); ctx.lineWidth = 1.1; ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(cxl - dy * 30, cyl + dx * 30); ctx.lineTo(cxl + dy * 30, cyl - dx * 30); ctx.strokeStyle = rgb(mixA(K.blot, K.line, 0.3)); ctx.lineWidth = 1.7 + 0.8 * P.angry; ctx.stroke();
-      if (lid > 0.8) { ctx.beginPath(); ctx.moveTo(ex - 1, ey - r); ctx.quadraticCurveTo(ex + r * 1.1, ey, ex - 1, ey + r); ctx.lineWidth = 1.6; ctx.stroke(); } // shut: the lash line
-    }
-    ctx.restore();
-    ctx.beginPath(); ctx.arc(ex, ey, r, 0, TAU); ctx.strokeStyle = rgb(mixA(K.blot, K.line, 0.4)); ctx.lineWidth = lw * 0.9; ctx.stroke();
+    lidEye(ctx, ex, ey, r, sd, { K, lx, ly, lw, lid, th, t, look, spin: P.dazed > 0.5, pr: r * lerp(0.6, 0.3, shock) * (1 - 0.12 * P.angry) * (1 + 0.1 * sq), heavy: P.angry });
   }
+}
+// One heavy-lidded eye, in head space (+x = snout; sd = which side of the head). o: K palette, lx/ly light, lw, lid 0..1 (how far the
+// lid comes down from the back of the eye), th lid slant, pr pupil radius, look {x, y}, spin (dazed spiral), heavy 0..1 (brow weight),
+// slit (optional: the pupil is a slit at this angle). Shared with the salamander's cousins (cousins.js).
+export function lidEye(ctx, ex, ey, r, sd, o) {
+  const { K, lx, ly, lw, lid, th, t, look, pr } = o;
+  ctx.beginPath(); ctx.arc(ex, ey, r + 0.95, 0, TAU); ctx.fillStyle = rgb(mixA(K.blot, K.line, 0.4)); ctx.fill();
+  ctx.save();
+  ctx.beginPath(); ctx.arc(ex, ey, r, 0, TAU); ctx.fillStyle = rgb(K.eye); ctx.fill(); ctx.clip();
+  ctx.beginPath(); ctx.arc(ex + lx * 2.2, ey + ly * 2.2, r, 0, TAU); ctx.rect(ex - 20, ey - 20, 40, 40); ctx.fillStyle = rgb(K.eyeLo); ctx.fill('evenodd'); // the ball's shaded side
+  if (o.spin) {
+    ctx.strokeStyle = rgb(K.pupil); ctx.lineWidth = 1.25; ctx.beginPath();
+    for (let i = 0; i <= 26; i++) { const a = i * 0.48 + t * 5 * sd, rr = r * 0.09 + (i / 26) * r * 0.66; ctx.lineTo(ex + 0.6 + Math.cos(a) * rr, ey + Math.sin(a) * rr); }
+    ctx.stroke();
+  } else {
+    const px = ex + 0.8 + clamp(look.x, -1, 1) * (r - pr) * 0.75, py = ey - sd * 0.9 + clamp(look.y, -1, 1) * (r - pr) * 0.8; // a touch cross-eyed: funnier
+    ctx.beginPath();
+    if (o.slit !== undefined) ctx.ellipse(px, py, pr * 0.42, pr * 1.25, o.slit, 0, TAU); else ctx.arc(px, py, pr, 0, TAU);
+    ctx.fillStyle = rgb(K.pupil); ctx.fill();
+    ctx.beginPath(); ctx.arc(px + lx * pr * 0.42, py + ly * pr * 0.42, pr * 0.3, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill();
+  }
+  // the lid: covers the back of the eye up to a slanted edge (the brow line)
+  const dx = Math.cos(th), dy = sd * Math.sin(th), h = -r + 2 * r * lid, cxl = ex + dx * h, cyl = ey + dy * h;
+  if (lid > 0.01) {
+    ctx.beginPath(); ctx.moveTo(cxl - dy * 30, cyl + dx * 30); ctx.lineTo(cxl + dy * 30, cyl - dx * 30); ctx.lineTo(cxl + dy * 30 - dx * 40, cyl - dx * 30 - dy * 40); ctx.lineTo(cxl - dy * 30 - dx * 40, cyl + dx * 30 - dy * 40); ctx.closePath();
+    ctx.fillStyle = rgb(K.lid); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cxl - dy * 30 - dx * 1.6, cyl + dx * 30 - dy * 1.6); ctx.lineTo(cxl + dy * 30 - dx * 1.6, cyl - dx * 30 - dy * 1.6); ctx.strokeStyle = rgb(K.hi); ctx.lineWidth = 1.1; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cxl - dy * 30, cyl + dx * 30); ctx.lineTo(cxl + dy * 30, cyl - dx * 30); ctx.strokeStyle = rgb(mixA(K.blot, K.line, 0.3)); ctx.lineWidth = 1.7 + 0.8 * (o.heavy || 0); ctx.stroke();
+    if (lid > 0.8) { ctx.beginPath(); ctx.moveTo(ex - 1, ey - r); ctx.quadraticCurveTo(ex + r * 1.1, ey, ex - 1, ey + r); ctx.lineWidth = 1.6; ctx.stroke(); } // shut: the lash line
+  }
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(ex, ey, r, 0, TAU); ctx.strokeStyle = rgb(mixA(K.blot, K.line, 0.4)); ctx.lineWidth = lw * 0.9; ctx.stroke();
 }
 
 // ---------- red-hot sections and the breath's target mark
