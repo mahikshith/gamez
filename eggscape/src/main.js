@@ -1038,6 +1038,9 @@ async function press(id) {
       else { setScreen('play'); portal.gameplayStart(); }
       break;
     case 'restart':
+    case 'finish':
+      if (G.screen === 'play' && G.sim && G.sim.finish()) audio.play('unlock');
+      break;
     case 'retry':
       portal.gameplayStop();
       if (id === 'retry' && G.screen === 'fail') { save.streak = 0; persist(); }
@@ -2598,6 +2601,17 @@ function update(dt) {
   if (G.slow && (G.slow.left -= dt) <= 0) G.slow = null;
   if (G.card && (G.card.t += dt) > G.card.dur) G.card = null;
   if (G.hen.t > 0 && (G.hen.t -= dt) <= 0) G.hen.mood = 'idle';
+  // stall watch (2026-11-15 softlock report): nothing moved and nothing came home for a while. Enough eggs home: offer
+  // Finish. Not enough: after a long still spell offer Retry (an egg wedged, a creature sitting on it).
+  if (G.screen === 'play' && sim.state === 'play') {
+    const W = G.stall && G.stall.run === G.run ? G.stall : (G.stall = { run: G.run, t: 0, acc: 0, pos: null, saved: 0 });
+    if ((W.acc += dt) >= 0.5) {
+      W.acc = 0;
+      const pos = sim.aliveEggs().map((e) => { const p = e.body.getPosition(); return [p.x, p.y]; }), sv = sim.savedLog.length;
+      const moved = !W.pos || pos.length !== W.pos.length || sv !== W.saved || pos.some((p, i) => Math.hypot(p[0] - W.pos[i][0], p[1] - W.pos[i][1]) > 0.05);
+      W.pos = pos; W.saved = sv; W.t = moved ? 0 : W.t + 0.5;
+    }
+  }
   if (G.hintShow && (G.hintShow.t -= dt) <= 0) G.hintShow = null;
   heartbeat(dt); // predators (v3)
   if (G.hint) hintWork();
@@ -3147,6 +3161,18 @@ function drawHUD() {
   ui.num(scoreTxt, A.x1 - pad - 14 * u, row1, { size: scoreSize, align: 'right', tag: 'hud:score' });
   ctx.restore();
   // the "i" button (who is in this vault): beside pause in one row, under it when the HUD takes two rows
+  // stall watch: Finish (enough eggs home) or Retry (stuck), centred under the HUD
+  if (G.screen === 'play' && sim.state === 'play' && G.stall && G.stall.run === G.run) {
+    const enough = sim.savedLog.length >= (G.level.target || 1);
+    if ((enough && G.stall.t >= 5) || (!enough && G.stall.t >= 22)) {
+      const fw = Math.min(220 * u, A.w - 2 * pad), fh = 44 * u, fx = A.cx - fw / 2, fy = G.hudBottom + 10 * u;
+      const k = save.calm ? 1 : 1 + 0.03 * Math.sin(G.t * 4);
+      ctx.save(); ctx.translate(A.cx, fy + fh / 2); ctx.scale(k, k); ctx.translate(-A.cx, -(fy + fh / 2));
+      if (enough) ui.button('finish', 'Finish level', fx, fy, fw, fh, { kind: 'primary', shimmer: true, icon: ICON.check, size: 18 * u });
+      else ui.button('retry', 'Stuck? Retry', fx, fy, fw, fh, { kind: 'secondary', icon: ICON.retry, size: 17 * u });
+      ctx.restore();
+    }
+  }
   const infoOn = !!(G.infoKinds && G.infoKinds.length && sim.state === 'play' && (G.screen === 'play' || G.screen === 'pause'));
   let leftEdge = X0 + bs + 8 * u;
   const rightEdge = chipX - 8 * u;

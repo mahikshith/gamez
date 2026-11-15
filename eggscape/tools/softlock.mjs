@@ -51,6 +51,7 @@ for (const id of ids) {
       if (sim.t - lastMove > 25) why = 'no egg moved for 25 s';
       if (why) break;
     }
+    if (why && process.env.DIAG) for (const e of sim.aliveEggs()) { const p = e.body.getPosition(), v = e.body.getLinearVelocity(); console.log(`   egg ${e.id} p=(${p.x.toFixed(2)},${p.y.toFixed(2)}) r=${Math.hypot(p.x, p.y).toFixed(2)} ch=${sim.channelOf ? sim.channelOf(e) : '?'} v=${Math.hypot(v.x, v.y).toFixed(3)} awake=${e.body.isAwake()} flags=${['clamp', 'thf', 'octo', 'held', 'stone', 'iron', 'frozen', 'stuck', 'saved', 'inNest'].filter((k) => e[k]).join(',')}`); }
     if (why) { found++; console.log(`L${id} ${mode} seed${seed} t=${sim.t.toFixed(1)}: ${why} | creatures ${lists(sim).map(([k, c]) => k + ':' + (c.ph ?? c.phase)).join(' ')}`); }
   }
 }

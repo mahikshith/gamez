@@ -2839,6 +2839,13 @@ export class Sim {
   }
 
   // ---------- queries ----------
+  // the player calls it a day once enough eggs are home (a creature sits on the last egg, an egg is wedged): the level
+  // ends as a win with the eggs saved so far
+  finish() {
+    if (this.state !== 'play' || this.savedLog.length < (this.level.target || 1)) return false;
+    this.state = 'winning'; this.endTimer = 0.5;
+    return true;
+  }
   aliveEggs() {
     return this.eggs.filter((e) => e.alive && !e.saved);
   }
