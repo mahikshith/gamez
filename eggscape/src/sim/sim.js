@@ -678,9 +678,9 @@ export class Sim {
     const A = this.nestAmp, x0 = this.nestX0;
     const s = (u) => u * u * (3 - 2 * u);
     switch (this.nestPattern) {
-      case 'slide': { // constant speed, end to end
-        const f = (ph + 0.25) % 1;
-        return x0 + A * (f < 0.5 ? 4 * f - 1 : 3 - 4 * f);
+      case 'slide': { // near-constant speed, end to end; 2026-11-15: the ends are rounded (it used to reverse in one step)
+        const f = (ph + 0.25) % 1, e = 0.97;
+        return x0 + A * Math.asin(e * Math.sin(TAU * (f - 0.25))) / Math.asin(e);
       }
       case 'stopgo': { // glide to an end, wait there, glide back
         const f = (ph + 0.15) % 1;

@@ -88,15 +88,17 @@ export const stkMethods = {
     const K = this.stk;
     if (!K || !K.on || this.state !== 'play' || K.fly) return { ok: false, why: 'busy' };
     if (o.force) K.m = 1;
-    if (K.m < 1) return { ok: false, why: 'charge' };
+    const bag = !!o.bag && K.m < 1; // a Chick Charge from the bag (main.js spends it): fires now, the meter keeps its fill
+    if (K.m < 1 && !bag) return { ok: false, why: 'charge' };
     const T = this.stkChoose(o.pick);
     if (!T) return { ok: false, why: 'none' };
-    K.m = 0; K.full = 0; K.uses++; K.n++;
-    K.base = CHARGE.base * Math.pow(CHARGE.grow, K.uses);
+    if (!bag) { K.m = 0; K.full = 0; K.uses++; }
+    K.n++;
+    K.base = K.uses < (CHARGE.timed ?? 99) ? CHARGE.base * Math.pow(CHARGE.grow, K.uses) : 1e9; // past `timed` uses the clock adds nothing
     const x0 = o.x ?? this.nest.getPosition().x + this.nestW / 2 + 0.9, y0 = o.y ?? this.groundY + 0.9 * this.gy;
     K.fly = { id: K.id, ph: 'hop', t: 0, key: T.key, boss: T.boss ? 1 : 0, x0, y0, tx: T.x, ty: T.y };
     this.emit('stkFire', { id: K.id, x: x0, y: y0, tx: T.x, ty: T.y, boss: T.boss });
-    return { ok: true, key: T.key };
+    return { ok: true, key: T.key, bag };
   },
 
   // ---------- every step (sim.js, after the powers)

@@ -21,7 +21,9 @@ export const STRIKES = [
 export const STRIKE = Object.fromEntries(STRIKES.map((s) => [s.id, s]));
 export const STRIKE_IDS = STRIKES.map((s) => s.id);
 // charge: the base fill time, and how much longer it gets after each use; boosts per egg saved and per orb
-export const CHARGE = { base: 20, grow: 1.5, egg: 0.25, orb: 0.1, easy: 0.5 };
+// 2026-11-15 economy: the clock fills the meter only `timed` times per level (it used to refill every 20 s, so waiting made
+// hard levels easy); after that only saved eggs and orbs fill it, or a Chick Charge bought with coins (economy.js 'chick')
+export const CHARGE = { base: 35, grow: 1.5, timed: 1, egg: 0.3, orb: 0.1, easy: 0.5 };
 // the strike's flight (sim seconds): the hop off the hen's back, then the arc to the target
 export const FLIGHT = { hop: 0.32, fly: 0.55 };
 // no strike button before this level (the first five teach the basics)

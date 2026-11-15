@@ -76,8 +76,18 @@ const bestStarsOf = (id) => Math.max(0, ...MODE_LIST.map((m) => save.stars[sk(id
 const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0);
 const envOf = (i) => Math.floor(i / PER_ENV);
 const envNeed = (k) => (TEST ? 0 : GATE * k);
-const envOpen = (k) => bestTotal() >= envNeed(k);
-const playable = (i) => i >= 0 && i < save.unlocked && envOpen(envOf(i));
+// a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all
+const GATE_COINS = (k) => 80 + 40 * k;
+const allOpen = () => TEST || !!save.tester;
+const envOpen = (k) => allOpen() || bestTotal() >= envNeed(k) || !!(save.gates && save.gates[k]);
+const playable = (i) => i >= 0 && i < LEVELS.length && (allOpen() || (i < save.unlocked && envOpen(envOf(i))));
+// the level the Play button means: the first one not yet cleared (in the order of the map), else the frontier.
+// 2026-11-15: it was save.unlocked - 1, which an everything-unlocked build set to 50 ("PLAY Level 50" on every launch)
+function nextIdx() {
+  const lim = allOpen() ? LEVELS.length : Math.min(LEVELS.length, save.unlocked);
+  for (let i = 0; i < lim; i++) if (!bestStarsOf(LEVELS[i].id)) return i;
+  return Math.max(0, lim - 1);
+}
 function loadSave(s) {
   save = { ...defaultSave(), ...s };
   save.wallet = E.sanitizeWallet(save.wallet);
@@ -120,10 +130,13 @@ const powerInfo = (id) => POWER_INFO[id] || { name: id, line: '', color: '#fff' 
 // Chick Strike: the chicks the player has reached (save.unlocked counts levels; the level being started counts too), and the one equipped
 const strikeReach = () => Math.max(save.unlocked || 1, G.level && G.li >= 0 ? G.level.id : 0);
 const strikesOpen = () => STRIKES.filter((S) => strikeReach() >= S.unlock);
+// 2026-11-15: the power chick is chosen per level on the intro card. It no longer carries over silently from the last
+// level; a retry of the same level keeps the choice (G.stkSel is per level id).
 function strikeFor(L, i) {
   const open = strikesOpen();
   if (!open.length || (i >= 0 && L.id < STRIKE_FROM)) return null;
-  return open.some((S) => S.id === save.strike) ? save.strike : open[open.length - 1].id;
+  const sel = G.stkSel && G.stkSel.lid === (L && L.id) ? G.stkSel.id : null;
+  return sel && open.some((S) => S.id === sel) ? sel : null;
 }
 function persist() {
   try { portal.save(JSON.stringify(save)); } catch (e) { /* never block */ }
@@ -159,7 +172,7 @@ function safeInsets() {
 }
 
 function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  DPR = Math.min(window.devicePixelRatio || 1, 2, typeof Q !== 'undefined' ? Q.steps[Q.i] : 2);
   W_ = Math.max(320, window.innerWidth);
   H_ = Math.max(320, window.innerHeight);
   canvas.width = Math.round(W_ * DPR);
@@ -277,6 +290,7 @@ function startLevel(i, opts = {}) {
   G.toasts = [];
   G.toast = null;
   G.result = null;
+  G.burstAt = null;
   G.usedRewind = false;
   G.doubled = false;
   G.held.clear();
@@ -524,6 +538,27 @@ function camTarget() {
     cv.smooth = 0.5;
     return keepInView(T, [...eggPts, { x: nest.x - sim.nestW / 2, y: nest.y - 0.2 * gy }, { x: nest.x + sim.nestW / 2 + (sim.water ? 0 : 1.3), y: nest.y + 0.9 * gy }], 0.5);
   }
+  // 2026-11-15 action cam (mykee: "no in-game camera movement"): during play the camera follows the action on its own:
+  // it pushes in (up to ACTION_ZOOM) on the lead egg and the gap it is heading for, and pulls back out just enough to
+  // keep every egg and any villain close to an egg in the shot. While a finger holds a ring the shot holds still, so the
+  // ring never slides under the finger. Pinch and the zoom buttons still take over (G.zm), reduced motion keeps it still.
+  if (!cv.sky && !boss && !sim.kc && !sim.water) { // bosses, the King Crab and the sea keep their framed shots
+    if (sim.rings.some((r) => r.held || r.keyHeld) && cv.lastAct) return cv.lastAct;
+    const fx0 = lerp(L.x, L.gx, 0.4), fy0 = lerp(L.y, L.gy, 0.4);
+    const pts = [...eggPts];
+    if (sim.stkTargets) for (const v of sim.stkTargets()) if (eggPts.some((p) => Math.hypot(p.x - v.x, p.y - v.y) < 2.6)) pts.push({ x: v.x, y: v.y });
+    const k0 = Math.min(F.k * ACTION_ZOOM, 190);
+    let T = keepInView({ x: lerp(F.x, fx0, 0.6), y: lerp(F.y, fy0, 0.6), k: k0 }, pts, 0.85);
+    T.k = Math.max(T.k, F.k); // never wider than the whole vault
+    // never show empty space past the vault when it could show vault instead
+    const hw = P.w / (2 * T.k), hh = P.h / (2 * T.k);
+    const mx = Math.max(0, F.R + 0.4 - hw);
+    T.x = clamp(T.x, F.x - mx, F.x + mx);
+    if (F.yMax - F.yMin > 2 * hh) T.y = clamp(T.y, F.yMin + hh, F.yMax - hh); else T.y = (F.yMin + F.yMax) / 2;
+    cv.smooth = 0.9; // slow and soft: a camera operator, not a chase cam
+    cv.lastAct = T;
+    return T;
+  }
   // lean toward the action: the lead egg and the gap it is heading for. A whole-vault frame only moves in the
   // room it has to spare (nothing of the vault is cropped); a close-up may slide a little further.
   const fx_ = lerp(L.x, L.gx, 0.35), fy_ = lerp(L.y, L.gy, 0.35);
@@ -534,6 +569,7 @@ function camTarget() {
   } else { const d = Math.hypot(dx, dy); if (d > 0.6) { dx *= 0.6 / d; dy *= 0.6 / d; } }
   return keepInView({ x: B.x + dx, y: B.y + dy, k: B.k }, eggPts, 0.5);
 }
+const ACTION_ZOOM = 1.32; // the action cam pushes in this far past the whole-vault frame at most
 const CAM_WIDE = 0.8; // the establishing shot starts this much wider than the whole vault
 
 // player zoom z: -1 whole vault, 0 auto (null), +1 twice auto
@@ -629,7 +665,15 @@ function pointerDown(e) {
   if (G.screen === 'info') { const C = G.infoCard; if (C && (x < C.x || x > C.x + C.w || y < C.y - 10 * ui.u || y > C.y + C.h + 6 * ui.u)) { G.pdrag = null; press('info:close'); } return; } // a tap off the card closes it
   if (G.screen === 'play' && G.toast && G.toast.tip && G.toastRect) { const R = G.toastRect; if (x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h) { G.toast.life = Math.min(G.toast.life, 0.2); return; } } // a tap on a villain tip puts it away
   if (G.screen === 'wonder') { wonder.pointerDown(e); try { canvas.setPointerCapture(e.pointerId); } catch (_) {} return; } // WONDER
-  if (G.screen === 'title') { if (titleTap(x, y)) audio.play('hen_hop', { vol: 0.6 }); return; } // tap an egg friend: it jumps and flips (only the buttons start a level)
+  if (G.screen === 'title') {
+    // hidden tester switch: tap the logo 7 times within 3 s to open (or lock again) every level and world
+    const LR = ui.rects.find((r) => r.tag === 'title:logo');
+    if (LR && x >= LR.x && x <= LR.x + LR.w && y >= LR.y && y <= LR.y + LR.h) {
+      G.logoTaps = (G.logoTaps || []).filter((q) => G.t - q < 3); G.logoTaps.push(G.t);
+      if (G.logoTaps.length >= 7) { G.logoTaps = []; save.tester = !save.tester; persist(); toast(save.tester ? 'Tester mode: every level open' : 'Tester mode off', 2.4); }
+    }
+    if (titleTap(x, y)) audio.play('hen_hop', { vol: 0.6 }); return;
+  } // tap an egg friend: it jumps and flips (only the buttons start a level)
   if (G.screen === 'win' || G.screen === 'fail') return skipCheer(); // a tap off the buttons skips the hen's routine to its end
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   if (e.pointerType === 'touch') {
@@ -819,7 +863,7 @@ async function press(id) {
     case 'zoom:out': setZoom((G.zm || 0) - 0.34); break;
     case 'zoom:auto': G.zm = null; break;
     case 'strike': fireStrike(); break; // Chick Strike
-    case 'stk:gotit': { const id = G.stkCard; save.strikeSeen = { ...(save.strikeSeen || {}) }; for (const S of strikesOpen()) save.strikeSeen[S.id] = 1; if (id) { save.strike = id; G.sim.stkEquip(strikeFor(G.level, G.li)); } G.stkCard = null; persist(); break; }
+    case 'stk:gotit': { const id = G.stkCard; save.strikeSeen = { ...(save.strikeSeen || {}) }; for (const S of strikesOpen()) save.strikeSeen[S.id] = 1; if (id) { G.stkSel = { lid: G.level.id, id }; G.sim.stkEquip(strikeFor(G.level, G.li)); } G.stkCard = null; persist(); break; }
     case 'ally': {
       // allies (v3.5): free on Easy and after a fail; otherwise a rewarded ad (never costs progress, the button stays on a miss)
       if (G.screen !== 'play' || !allyShown()) break;
@@ -841,7 +885,7 @@ async function press(id) {
       }
       break;
     case 'play': {
-      const i = Math.min(LEVELS.length - 1, save.unlocked - 1);
+      const i = nextIdx();
       if (!playable(i)) { G.world = envOf(i); setScreen('levels'); break; } // a star gate: show it on the map
       await breakThen(() => startLevel(i));
       break;
@@ -849,7 +893,7 @@ async function press(id) {
     case 'levels':
       portal.gameplayStop();
       if (G.screen !== 'title' && G.demo && G.level === G.demo) { setScreen('practice'); break; } // a practice vault goes back to the Practice screen, where it was opened
-      G.world = clamp(envOf(save.unlocked - 1), 0, Math.ceil(LEVELS.length / PER_ENV) - 1);
+      G.world = clamp(envOf(nextIdx()), 0, Math.ceil(LEVELS.length / PER_ENV) - 1);
       setScreen('levels');
       break;
     case 'go': {
@@ -878,7 +922,7 @@ async function press(id) {
       await breakThen(() => startLevel(-1));
       break;
     case 'stk:pick:freeze': case 'stk:pick:thunder': case 'stk:pick:bomb': case 'stk:pick:decoy': case 'stk:pick:tornado': case 'stk:pick:glue':
-      save.strike = id.slice(9); persist();
+      { const pid = id.slice(9), cur = G.sim.stk && G.sim.stk.id; G.stkSel = { lid: G.level.id, id: cur === pid ? null : pid }; } // a second tap puts it back
       G.sim.stkEquip(strikeFor(G.level, G.li));
       audio.play('cluck', { pitch: 2.2, vol: 0.5 });
       break;
@@ -1100,6 +1144,16 @@ async function rewarded(tag) {
 
 // Haptics on the hero beats (the app's EggApp bridge, navigator.vibrate on the web); off with reduced motion or sound off.
 const HAPTIC_MS = { save: 18, crack: 30, star: 22, win: 45, strike: 35, crow: 40, boss: 40, hit: 22 };
+// the power chick is ready: the button starts its heartbeat, the phone thumps lub-dub, a "Power ready!" tag pops by it
+function powerReady() {
+  G.stkFullT = G.t; G.stkBeats = 0;
+  heartBuzz();
+  if (strikeShown()) { const r = strikeBtnRect(); G.popups.push({ x: r.x + r.w / 2, y: r.y - 16 * ui.u, text: 'Power ready!', key: 'pready', n: 1, sub: '', color: '#ffcf3a', life: 1.6, max: 1.6, size: 20 * ui.u, placed: false }); }
+}
+function heartBuzz() {
+  if (save.calm || !save.sfx) return;
+  try { vibrate(28); setTimeout(() => vibrate(42), 190); } catch (_) { /* optional */ }
+}
 function buzz(kind) {
   if (save.calm || !save.sfx) return;
   try { vibrate(HAPTIC_MS[kind] || 20); } catch (_) { /* haptics are optional */ }
@@ -1310,7 +1364,7 @@ function drawRingPulse(ring) {
   };
   ctx.save();
   ctx.rotate(ring.body.getAngle());
-  ctx.strokeStyle = '#fff8dc';
+  ctx.strokeStyle = '#ffc83a'; // gold, never white (white reads as thorns)
   if (g <= 0.4) {
     const q = g / 0.4, e = 1 - (1 - q) * (1 - q) * (1 - q);
     ctx.globalAlpha = (1 - q) * 0.8;
@@ -1830,6 +1884,7 @@ function handleEvents() {
         toast("Time's up!", 2.2);
         break;
       case 'vaultBurst':
+        G.burstAt = G.t; // 2026-11-15: every creature and portal is blown out with the rings (blastXf), none left hanging
         audio.play('bomb_explode', { vol: 0.8 });
         audio.play('wood_break');
         fx.flash = 0.6;
@@ -1837,7 +1892,7 @@ function handleEvents() {
         fx.shake = 0.8;
         break;
       default:
-        if (strikeEvent(geckoStrikeEv(G.sim, ev), fx, STRIKE_API)) { if (ev.type === 'stkReady') G.stkFullT = G.t; break; } // Chick Strike
+        if (strikeEvent(geckoStrikeEv(G.sim, ev), fx, STRIKE_API)) { if (ev.type === 'stkReady') powerReady(); break; } // Chick Strike
         v3Event(ev, fx);
         predEvent(ev, fx); // predators (v3)
         bossEvent(ev, fx); // bosses (v3.1)
@@ -1876,11 +1931,20 @@ function strikeFrom() { return G.henAt ? strikeSeat(G.henAt) : {}; }
 function fireStrike(force) {
   const sim = G.sim;
   if (!sim || !sim.stkOn() || G.screen !== 'play') return null;
-  if (!force && !sim.stkReady()) { G.stkWob = G.t; audio.play('motor_tick', { vol: 0.6, pitch: 1.4 }); return null; }
+  // meter not full: a Chick Charge from the bag sends the chick anyway (bought with coins / found in chests)
+  const bag = !force && !sim.stkReady() && !sim.stk.fly && sim.state === 'play' && (save.wallet.charges || 0) > 0;
+  if (!force && !bag && !sim.stkReady()) {
+    G.stkWob = G.t; audio.play('motor_tick', { vol: 0.6, pitch: 1.4 });
+    if (!sim.stk.fly && G.t - (G.stkNoBagT || -9) > 4) { G.stkNoBagT = G.t; toast('Not charged yet. Save eggs and grab orbs to fill it, or get Chick Charges in the shop.', 2.6); }
+    return null;
+  }
   const pick = G.stkPick && G.t - G.stkPick.t < 1.5 ? G.stkPick.key : null;
-  const r = sim.stkFire({ ...strikeFrom(), pick, force });
+  const r = sim.stkFire({ ...strikeFrom(), pick, force, bag });
   if (!r.ok) { G.stkWob = G.t; if (r.why === 'none') toast('No villain to strike right now.', 2); }
-  else G.stkPick = null;
+  else {
+    G.stkPick = null;
+    if (r.bag) { const w = E.useCharge(save.wallet); if (w) { save.wallet = w; persist(); } }
+  }
   return r;
 }
 // the strike button: bottom left in portrait (the ally button moves one slot right), top of the right column in landscape
@@ -1893,6 +1957,14 @@ function drawStrikeBtn() {
   if (!strikeShown()) return;
   const r = strikeBtnRect(), K = G.sim.stk;
   drawStrikeButton(ctx, r.x, r.y, r.w, { id: K.id, m: K.m, busy: !!K.fly, t: G.t, fullT: G.stkFullT, wobT: G.stkWob, pressed: ui.pressedId === 'strike', calm: save.calm });
+  const nb = save.wallet.charges || 0; // the Chick Charge bag: a small count badge on the button's corner
+  if (nb > 0 && K.m < 1 && !K.fly) {
+    const bx = r.x + r.w * 0.86, by = r.y + r.w * 0.14, br = 11 * ui.u;
+    ctx.save(); ctx.fillStyle = '#2a7a2e'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * ui.u;
+    ctx.beginPath(); ctx.arc(bx, by, br, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `700 ${12 * ui.u}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('+' + Math.min(nb, 99), bx, by + 0.5 * ui.u); ctx.restore();
+  }
   ui.record(r, 'btn:strike', 'btn:strike');
   ui.buttons.push({ id: 'strike', ...r });
 }
@@ -2533,6 +2605,7 @@ function update(dt) {
   let turn = 0;
   for (const r of sim.rings) if ((r.held || r.keyHeld || r.motor || sim.rock) && G.screen === 'play') // the rocking vault creaks as it leans turn = Math.max(turn, Math.abs(r.omega) / (sim.maxOmega(r) || 1) * (r.motor ? 0.35 : 1));
   audio.setRingTurn(G.screen === 'play' ? clamp(turn, 0, 1) : 0);
+  if (G.screen === 'play' && sim.stkReady && sim.stkReady() && G.stkFullT > 0 && (G.stkBeats || 0) < 3 && G.t - G.stkFullT > 5 * ((G.stkBeats || 0) + 1)) { G.stkBeats = (G.stkBeats || 0) + 1; heartBuzz(); } // still unused: a reminder thump
   audio.setFireLoop(G.screen === 'play' && sim.aliveEggs().some((e) => e.fire > 0));
   audio.setWind(G.screen === 'play' ? Math.max(G.level.wind ? Math.abs(sim.wind) / (G.level.wind.strength || 1) : 0, Math.abs(galeNow(sim))) : 0);
   if (G.screen !== 'play') stopFuse();
@@ -2633,8 +2706,7 @@ function render() {
   ctx.translate(-camX, -camY);
   W.drawVaultBack(ctx, sim, G.theme); // premium pass: plate behind the vault
   fx.draw(ctx, 'back');
-  for (const pt of sim.portals) W.drawPortalPull(ctx, pt, t); // v3
-  for (const pt of sim.portals) { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); }
+  blastXf(() => { for (const pt of sim.portals) W.drawPortalPull(ctx, pt, t); for (const pt of sim.portals) { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); } }, 0.4); // v3 portals
   if (sim.timeLimit && sim.state === 'play') W.drawFuse(ctx, sim.outerR + 0.32, sim.timeLeft / sim.timeLimit, t, G.screen === 'play' ? fx : null, sim.rings[sim.rings.length - 1]); // v4: hugs a shaped vault
   if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length); // world 8: the basket under the boat
   { const tl = toWorld(0, G.hudBottom + 8 * ui.u), tr = toWorld(W_, 0); allyFrame(sim, { x0: tl.x, x1: tr.x, top: tl.y }, save.calm, G.screen === 'play' ? fx : null); } // the rooster's perch and the crow wave (render only)
@@ -2652,15 +2724,16 @@ function render() {
     drawRingPulse(ring); // game feel: the grab ripple and detent blink
     ctx.restore();
   }
-  drawRockHud(ctx, sim, k, t); // v3.3 M10: the rocking vault's level and warning arrows
+  blastXf(() => drawRockHud(ctx, sim, k, t), 15.3); // v3.3 M10: the rocking vault's level and warning arrows
   setBossView({ top: G.cam.y + (G.play.h / 2) / G.cam.k, k: G.cam.k, u: ui.u }); // bosses (v3.1): the cloud comes into view
-  drawBossRings(ctx, sim, k, t); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
-  drawSalHeat(ctx, sim, k, t); // v3.2: red-hot ring sections and the salamander's target mark
-  drawP2Back(ctx, sim, k, t); // v3.4: live ring, scorched sponge, iron bars, brittle thorns, blackout, laser beak
-  const SL = (types, fn) => strikeLayer(ctx, sim, k, t, types, (c) => crowFlinch(c, sim, types, fn)); // the crow wave makes a creature flinch as it passes // Chick Strike: a struck villain's layer is drawn through its reaction
+  blastXf(() => drawBossRings(ctx, sim, k, t), 12.1); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
+  blastXf(() => drawSalHeat(ctx, sim, k, t), 13.2); // v3.2: red-hot ring sections and the salamander's target mark
+  blastXf(() => drawP2Back(ctx, sim, k, t), 14.1); // v3.4: live ring, scorched sponge, iron bars, brittle thorns, blackout, laser beak
+  const SL0 = (types, fn) => strikeLayer(ctx, sim, k, t, types, (c) => crowFlinch(c, sim, types, fn));
+  const SL = (types, fn) => blastXf(() => SL0(types, fn), types.length * 1.7 + types[0].length); // the crow wave makes a creature flinch as it passes // Chick Strike: a struck villain's layer is drawn through its reaction
   SL(['bx'], (c) => drawBossActor(c, sim, k, t));
-  drawThiefDens(ctx, sim, t, k); // v3.6: the weasel's den and the rats' hole in the floor ring
-  for (const ring of sim.rings) if (ring.gearOut) W.drawGearCog(ctx, ring, ring.gearOut, t);
+  blastXf(() => drawThiefDens(ctx, sim, t, k), 2.2); // v3.6: the weasel's den and the rats' hole in the floor ring
+  blastXf(() => { for (const ring of sim.rings) if (ring.gearOut) W.drawGearCog(ctx, ring, ring.gearOut, t); }, 17.1); // the idler cogs go with the rings
   // gear trains: while the player turns one ring, the rings it drives show which way they go; the first time
   // ever, a label says so
   for (const ring of sim.rings) {
@@ -2676,7 +2749,7 @@ function render() {
     }
   }
   if (sim.wx.bolt) { const b = sim.boltPoint(sim.wx.bolt); W.drawBoltWarn(ctx, b.x, b.y, t); }
-  W.drawBarriers(ctx, sim, t, k); // predators (v3)
+  blastXf(() => W.drawBarriers(ctx, sim, t, k), 3.1); // predators (v3)
   // floating orbs: mystery until discovered (F19)
   for (const o of sim.orbs) if (o.alive) flipped(o.x, o.y, (k) => drawOrb(ctx, o.type, 0, 0, 0.2 * k, t, !!save.seen[o.type]));
   drawHenAt(sim, k, t);
@@ -2684,31 +2757,30 @@ function render() {
   for (const r of sim.rocks) if (r.alive) W.drawRock(ctx, r, G.theme);
   for (const b of sim.bombs) if (b.alive) b.spark = W.drawBomb(ctx, b, t);
   for (const d of sim.debris) W.drawDebris(ctx, d, G.theme);
-  W.drawLavaRocks(ctx, sim, k, t); // v3
-  W.drawIcicles(ctx, sim, k, t);
+  blastXf(() => { W.drawLavaRocks(ctx, sim, k, t); W.drawIcicles(ctx, sim, k, t); }, 16.2); // v3
   drawMagnetField(ctx, sim, t); // v3.1: a magnetic field look instead of a tether line
-  drawBossUnder(ctx, sim, k, t);
+  blastXf(() => drawBossUnder(ctx, sim, k, t), 4.3);
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
   SL(['sal'], (c) => drawSalamanders(c, sim, t, k)); // v3.2: the lava salamander walks the floor, under the eggs
-  drawFrogTele(ctx, sim, k, t); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
+  blastXf(() => drawFrogTele(ctx, sim, k, t), 5.2); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
   { const wx = warpXfBegin(ctx, sim, 'f'); SL(['frog'], (c) => drawFrogs(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); }
   { const wx = warpXfBegin(ctx, sim, 'o'); SL(['octo', 'fish'], (c) => drawSeaUnder(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
   SL(['hermit', 'puff', 'jelly', 'kc'], (c) => drawReefUnder(c, sim, t, k, G.theme)); // world 8: bubbles, hermit crabs, puffers, jellyfish, the King Crab
   SL(['thief'], (c) => drawThieves(c, sim, t, k)); // v3.6: the weasel and the rats on the ring floor
-  drawClockworkTele(ctx, sim, t, k); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
+  blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
   SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
   for (const e of sim.aliveEggs()) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash
   drawChickFX(ctx, sim, t, k);
-  { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); } // v3.3: the arms wrapped over a held egg
-  drawReefOver(ctx, sim, t, k); // world 8: claws over a held egg, the silt cloud
+  blastXf(() => { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); }, 10.4); // v3.3: the arms wrapped over a held egg
+  blastXf(() => drawReefOver(ctx, sim, t, k), 8.2); // world 8: claws over a held egg, the silt cloud
   if (sim.water) drawBoat(ctx, sim, t, k); // world 8: the boat on the surface, over the hen's legs
-  drawThievesOver(ctx, sim, t, k); // v3.6: the weasel's jaws over a held egg, the trap ring
+  blastXf(() => drawThievesOver(ctx, sim, t, k), 9.1); // v3.6: the weasel's jaws over a held egg, the trap ring
   SL(['mosq'], (c) => drawBayouOver(c, sim, t, k)); // v3.7: a turtle's beak round its egg, mosquito swarms
   SL(['snake'], (c) => W.drawSnakes(c, sim, t, k)); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
-  drawBossOver(ctx, sim, k, t); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
+  blastXf(() => drawBossOver(ctx, sim, k, t), 7.3); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
   { const wx = warpXfBegin(ctx, sim, 'e'); SL(['eagle'], (c) => W.drawEagleAt(c, sim, t, k)); warpXfEnd(ctx, wx); }
-  drawP2Front(ctx, sim, k, t); // v3.4: decoy, frozen/zapped creatures, beams, spin, pepper cloud
+  blastXf(() => drawP2Front(ctx, sim, k, t), 11.3); // v3.4: decoy, frozen/zapped creatures, beams, spin, pepper cloud
   drawStrikeWorld(ctx, sim, k, t, G.henAt); // Chick Strike: the chick on the hen's back, its flight, glue, twisters, chains
   drawAllies(ctx, sim, t, k); // v3.4: rooster and goose, in front of the vault AND of every creature layer (never half behind a villain)
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);
@@ -2769,6 +2841,21 @@ function render() {
 
 // The art helpers draw in a local y-down space in pixels: run draw(k) there, centered at world
 // (x, y); k = pixels per meter, so a size of m meters is m * k.
+// level clear: the vault bursts, and whatever lived in it (creatures, portals, dens, bosses) is blown outward with the
+// ring pieces, tumbling and fading, instead of hanging in the air where the rings were. seed: a per-layer spin.
+const BLAST_T = 0.85;
+function blastXf(draw, seed = 0) {
+  const q = G.burstAt != null && G.sim && (G.sim.state === 'winning' || G.sim.state === 'won') ? (G.t - G.burstAt) / BLAST_T : 0;
+  if (q <= 0) return draw();
+  if (q >= 1) return;
+  const e = q * q;
+  ctx.save();
+  ctx.globalAlpha *= 1 - q;
+  ctx.translate(0, -1.6 * e); // falls a little as it flies (world y is up)
+  ctx.rotate((seed % 2 ? 1 : -1) * 0.5 * e);
+  ctx.scale(1 + 1.6 * e, 1 + 1.6 * e);
+  try { draw(); } finally { ctx.restore(); }
+}
 function flipped(x, y, draw) {
   const k = G.rk;
   ctx.save();
@@ -2815,7 +2902,10 @@ function drawHenAt(sim, k, t) {
       const p = e.body.getPosition(), l = -clamp(1.5 - ((p.y - sim.groundY) * (sim.gy || 1)) / 5, 0, 1) * (Math.abs(p.x - n.x) < 2.4 ? 1 : 0.3); // toward the nest as an egg nears the exit
       if (l < look) look = l;
     }
-    drawHenActor(ctx, G.hen.mood, 0, -0.49 * hs, hs, t, { key: 'level', n: G.hen.n, look: G.screen === 'play' ? look : 0, danger: G.danger, shadow: 0.26 });
+    // her patch moves with a sliding basket: hand her its speed so she walks with it (local units are hs/100 px)
+    const hp = G.henPrev, dtr = hp ? t - hp.t : 0, drift = hp && dtr > 0 && dtr < 0.2 && hp.run === G.run ? ((hx - hp.x) / dtr) * k * 100 / hs : 0;
+    G.henPrev = { x: hx, t, run: G.run };
+    drawHenActor(ctx, G.hen.mood, 0, -0.49 * hs, hs, t, { key: 'level', n: G.hen.n, look: G.screen === 'play' ? look : 0, danger: G.danger, shadow: 0.26, drift });
     ctx.restore();
     return;
   }
@@ -3381,19 +3471,20 @@ function drawIntro() {
 // Chick Strike: the row of unlocked strike chicks on the intro card (tap one to take it), with the chosen one's downside
 function strikePicker(s, iw) {
   const id = G.sim && G.sim.stk && G.sim.stk.id, open = strikesOpen();
-  if (!id || !G.sim.stk.on || !open.length) return [];
-  const S = STRIKE[id], r = Math.min(21 * s, (iw - 8 * s * (open.length - 1)) / open.length / 2);
+  if (!G.sim || !G.sim.stk || !G.sim.stk.any || !open.length || (G.li >= 0 && G.level.id < STRIKE_FROM)) return [];
+  const S = id ? STRIKE[id] : null, r = Math.min(21 * s, (iw - 8 * s * (open.length - 1)) / open.length / 2);
   return [
     { h: 2 * r + 4 * s, gap: 10 * s, draw: (x, y, w) => {
       const step = Math.min(2 * r + 12 * s, w / open.length), x0 = x + w / 2 - (step * (open.length - 1)) / 2;
       open.forEach((O, i) => {
         const cx = x0 + i * step, cy = y + r + 2 * s, rect = { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r };
+        if (!id && !save.calm) { ctx.save(); ctx.globalAlpha = 0.35 + 0.25 * Math.sin(G.t * 4 + i * 0.7); ctx.strokeStyle = '#ffc83a'; ctx.lineWidth = 2.5 * s; ctx.beginPath(); ctx.arc(cx, cy, r * 0.98, 0, 7); ctx.stroke(); ctx.restore(); } // nothing picked yet: the row invites a tap
         drawStrikeToken(ctx, O.id, cx, cy, r * (O.id === id ? 1 : 0.86), G.t, O.id === id);
         ui.record(rect, 'btn:stk:pick:' + O.id, 'btn:stk:pick:' + O.id);
         ui.buttons.push({ id: 'stk:pick:' + O.id, ...rect });
       });
     } },
-    lineBlock(`${S.name}: ${S.down}`, 13 * s, { color: ui.C.ink2, tag: 'intro:strike', gap: 4 * s }),
+    lineBlock(S ? `${S.name}: ${S.down}` : `Pick a power chick for this level${save.wallet.charges ? ` (${save.wallet.charges} charges in your bag)` : ''}`, 13 * s, { color: ui.C.ink2, tag: 'intro:strike', gap: 4 * s }),
   ];
 }
 
@@ -3577,12 +3668,13 @@ function sideStage(sd, card) {
 function bigStage(side) {
   const u = ui.u, A = ui.A, top = Math.max(G.hudBottom, A.y) + 6 * u, avail = A.y1 - top, band = Math.max(40 * u, avail * 0.1);
   if (side) { // landscape: she stands left of centre, the stars beside her at chest height
-    const hh = Math.min(A.h * 0.45, (avail - band) / 1.45, A.w * 0.3), y = top + (avail - band - hh * 1.45) / 2;
+    const hh = Math.min(A.h * 0.34, (avail - band) / 1.45, A.w * 0.22), y = top + (avail - band - hh * 1.45) / 2;
     const box = { x: A.x, y, w: A.w * 0.8, h: hh * 1.45 }, R = Math.min(A.w * 0.05, hh * 0.2);
     const sx = A.x + A.w * 0.4 + hh * 0.62 + R * 2.9;
     return { box, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: sx + (k - 1) * R * 2.6, y: y + hh * 0.75 - (k === 1 ? R * 0.35 : 0) })), titleY: y + hh * 1.45 + band * 0.5, titleX: A.x + A.w * 0.4, full: { x: 0, y: top, w: ui.w, h: avail } };
   }
-  const R = Math.min(A.w * 0.085, avail * 0.065), hh = Math.min(A.h * 0.43, A.w * 0.74, (avail - 2.8 * R - band) / 1.5); // wings spread she is ~1.2x as wide as tall
+  // 2026-11-15: she was a full-screen close-up ("hen just comes up to the screen"): now a stage-sized figure with room around her
+  const R = Math.min(A.w * 0.085, avail * 0.065), hh = Math.min(A.h * 0.3, A.w * 0.5, (avail - 2.8 * R - band) / 1.5); // wings spread she is ~1.2x as wide as tall
   const y0 = top + (avail - (2.8 * R + 1.5 * hh + band)) / 2, by = y0 + 2.8 * R;
   return { box: { x: A.x, y: by, w: A.w, h: 1.5 * hh }, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: A.cx + (k - 1) * R * 2.7, y: y0 + 1.5 * R - (k === 1 ? R * 0.35 : 0) })), titleY: by + 1.5 * hh + band * 0.45, titleX: A.cx, full: { x: 0, y: top, w: ui.w, h: avail } };
 }
@@ -3846,7 +3938,7 @@ function drawTitle() {
   const ph = 70 * u, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
   ctx.save();
   ctx.translate(bx, by + ph / 2); ctx.scale(br, br); ctx.translate(-bx, -(by + ph / 2));
-  ui.button('play', save.unlocked > 1 ? `PLAY  Level ${save.unlocked}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * u, round: 20 * u });
+  ui.button('play', nextIdx() > 0 ? `PLAY  Level ${LEVELS[nextIdx()].id}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * u, round: 20 * u });
   ctx.restore();
   const tw = (bw - 16 * u) / 3, ry = by + ph + 10 * u, rh = 54 * u, paid = save.daily.paid === today();
   ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u });
@@ -4097,13 +4189,42 @@ function shade(hex) {
 // ---------------------------------------------------------------- loop
 let last = 0;
 function frame(now) {
+  requestAnimationFrame(frame); // first: an error below can never stop the loop (a stopped loop is a frozen level)
   const dt = Math.min(0.05, (now - last) / 1000 || 0.016);
   last = now;
-  if (!G.paused) {
+  if (G.paused) return;
+  try {
     update(dt);
     render();
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    G.errs = G.errs || {};
+    if (!G.errs[msg]) { G.errs[msg] = 1; console.error('[eggscape] frame error', e); }
+    try { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.globalAlpha = 1; } catch (_) { /* reset */ }
   }
-  requestAnimationFrame(frame);
+  adaptQuality(dt);
+}
+// adaptive resolution (2026-11-15 performance pass): a phone that cannot hold ~45 fps drops the canvas resolution a
+// step (2x -> 1.6x -> 1.3x -> 1x device pixels); 10 s of headroom steps it back up. Only in play, never mid-swipe.
+const Q = { steps: [2, 1.6, 1.3, 1], i: 0, acc: 0, n: 0, good: 0 };
+function adaptQuality(dt) {
+  if (G.screen !== 'play' || document.hidden) { Q.acc = Q.n = 0; return; }
+  Q.acc += dt; Q.n++;
+  if (Q.acc < 2) return;
+  const avg = Q.acc / Q.n;
+  Q.acc = Q.n = 0;
+  const cap = Math.min(window.devicePixelRatio || 1, 2);
+  if (avg > 1 / 45 && Q.i < Q.steps.length - 1 && Q.steps[Q.i + 1] < cap + 0.01) { Q.i++; Q.good = 0; setDPR(); }
+  else if (avg < 1 / 58) { if ((Q.good += 2) >= 10 && Q.i > 0) { Q.i--; Q.good = 0; setDPR(); } }
+  else Q.good = 0;
+}
+function setDPR() {
+  const d = Math.min(window.devicePixelRatio || 1, Q.steps[Q.i]);
+  if (Math.abs(d - DPR) < 0.01) return;
+  DPR = d;
+  canvas.width = Math.round(W_ * DPR); canvas.height = Math.round(H_ * DPR);
+  if (G.backdrop) G.backdrop.resize(W_, H_, DPR);
+  if (G.weather) G.weather.resize(W_, H_, DPR);
 }
 
 // Audio is silenced while any reason holds (an ad or system pause, a hidden tab); it comes back
@@ -4168,6 +4289,13 @@ async function boot() {
       else if (s && (s.v === 1 || s.v === 2)) loadSave({ sfx: s.sfx, music: s.music, mode: s.mode, calm: s.calm, wallet: s.wallet, seen: s.seen });
     }
   } catch (_) { save = defaultSave(); }
+  // the app build used to be an everything-unlocked test build: its saves carry 50 fake levels and 99999 coins. The first
+  // real-progression launch starts the journey fresh (settings and the hen's skins carry over).
+  if (typeof __APP__ !== 'undefined' && __APP__ && !save.real) {
+    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm };
+    save = { ...defaultSave(), ...keep };
+  }
+  save.real = 1;
   if (TEST) {
     const owned = {};
     for (const id of E.BOOSTER_ORDER) owned[id] = E.MAX_OWNED;
@@ -4176,12 +4304,12 @@ async function boot() {
     persist();
   }
   applyAudioSettings();
-  // title runs over the live first level
-  startLevel(Math.min(LEVELS.length - 1, save.unlocked - 1));
+  // title runs over the live next level
+  startLevel(nextIdx());
   setScreen('title');
   if (DEV) { const d = new URLSearchParams(location.search).get('demo'); if (d) window.__egg.startDemo(d); } // v3.2: ?demo=glow
-  const ld = document.getElementById('loading');
-  if (ld) ld.remove();
+  const sp = document.getElementById('splash'); // the launch animation hands over to the home page with a cross-fade
+  if (sp) { const minShow = 650 - (performance.now() - (window.__t0 || 0)); setTimeout(() => { sp.classList.add('out'); setTimeout(() => sp.remove(), 500); }, Math.max(0, minShow)); }
   portal.loadingDone();
   last = performance.now();
   requestAnimationFrame(frame);

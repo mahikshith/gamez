@@ -160,16 +160,19 @@ export function drawRing(ctx, ring, theme, k, t, opts = {}) {
   }
   drawThorns(ctx, ring, theme, px, t, opts);
   // grab highlight (screen-constant width, not a glow)
+  // 2026-11-15: gold with a dark core line, never white: thorns are white (bone) or red, and a white rim read as thorns
   if (opts.held || opts.hover) {
-    ctx.strokeStyle = opts.held ? '#ffffff' : 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = (opts.held ? 3 : 2) * px;
     ctx.lineCap = 'butt';
     ctx.setLineDash(opts.held ? [] : [8 * px, 6 * px]);
-    for (const [a0, a1] of arcs) {
-      ringLine(ctx, ring, ro + 4 * px, a0, a1);
-      ctx.stroke();
-      ringLine(ctx, ring, ri - 4 * px, a0, a1);
-      ctx.stroke();
+    const pass = opts.held ? [[9 * px, 'rgba(255,190,40,0.22)'], [4.5 * px, 'rgba(60,30,0,0.55)'], [2.6 * px, '#ffc83a']] : [[3.5 * px, 'rgba(60,30,0,0.45)'], [2 * px, 'rgba(255,200,58,0.85)']];
+    for (const [lw, c] of pass) {
+      ctx.strokeStyle = c; ctx.lineWidth = lw;
+      for (const [a0, a1] of arcs) {
+        ringLine(ctx, ring, ro + 5 * px, a0, a1);
+        ctx.stroke();
+        ringLine(ctx, ring, ri - 5 * px, a0, a1);
+        ctx.stroke();
+      }
     }
     ctx.setLineDash([]);
   }
@@ -860,6 +863,8 @@ export function drawNest(ctx, sim, theme, t, savedCount) {
   const dk = mix(straw, '#3a1a02', 0.66), line = mix(straw, '#241002', 0.86), lt = lighten(straw, 0.42);
   ctx.save();
   ctx.translate(p.x, p.y);
+  // a moving basket leans a touch into its travel and settles when it stops (render only)
+  { const vx = sim.nest.getLinearVelocity().x, sk = clamp(-vx * 0.035, -0.06, 0.06); if (sk) ctx.transform(1, 0, sk, 1, 0, 0); }
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   // contact shadow on the ground

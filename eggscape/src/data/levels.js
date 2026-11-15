@@ -415,7 +415,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 41, theme: "bayou", name: "Gator Crossing", eggs: 3, target: 2, time: 110, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 14}, gator: {ch: 4, a: -60, delay: 6}, tip: "Turn the gap away from his jaws and he bites nothing. Pepper makes him sneeze and swim off.", orbs: [{type: "pepper", ch: 2, a: -6},{type: "fire_red", ch: 3, a: 60}], seed: 324683, world: 9, intro: {title: "Gator Bayou", line: "An alligator lies in the outer channel like a log. Asleep, his back is a bridge. Awake, he snaps at eggs that drop near his jaws."},
+    id: 41, theme: "bayou", name: "Gator Crossing", eggs: 3, target: 2, time: 110, spacing: 1.15, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 14}, gator: {ch: 4, a: -60, delay: 6}, tip: "Turn the gap away from his jaws and he bites nothing. Pepper makes him sneeze and swim off.", orbs: [{type: "pepper", ch: 2, a: -6},{type: "fire_red", ch: 3, a: 60}], seed: 324683, world: 9, intro: {title: "Gator Bayou", line: "An alligator lies in the outer channel like a log. Asleep, his back is a bridge. Awake, he snaps at eggs that drop near his jaws."},
     rings: [
       {gaps: [{a: -28}], thorns: [{a: 93, n: 1}]},
       {gear: 2, gaps: [{a: 77}], thorns: [{a: 21, n: 2},{a: -3, n: 2, side: "out", h: 0.26}], pads: [{a: 163, len: 1.44}]},
@@ -425,7 +425,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 42, theme: "bayou", name: "Mosquito Marsh", eggs: 3, target: 2, time: 145, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "time", s: 80}, gator: {ch: 5, a: -120, delay: 9}, turtle: {ch: 3, a: -120, delay: 8}, mosquito: {ch: 2, a: -40, delay: 5}, tip: "Mosquitoes lift eggs back up. Fire scatters them and burns the vines.", orbs: [{type: "pepper", ch: 1, a: 94},{type: "fire_red", ch: 2, a: -60},{type: "decoy", ch: 3, a: 0},{type: "fire_red", ch: 4, a: 35}], seed: 332601, world: 9, intro: {title: "Mosquitoes and decoys", line: "A swarm grabs an egg and lifts it back up, even off thorns. Fire or pepper scatters it. The wooden decoy egg draws every bite first."},
+    id: 42, theme: "bayou", name: "Mosquito Marsh", eggs: 3, target: 2, time: 145, spacing: 1.1, material: "wood", nest: {w: 2.8}, bonus: {kind: "time", s: 80}, gator: {ch: 5, a: -120, delay: 9}, turtle: {ch: 3, a: -120, delay: 8}, mosquito: {ch: 2, a: -40, delay: 5}, tip: "Mosquitoes lift eggs back up. Fire scatters them and burns the vines.", orbs: [{type: "pepper", ch: 1, a: 94},{type: "fire_red", ch: 2, a: -60},{type: "decoy", ch: 3, a: 0},{type: "fire_red", ch: 4, a: 35}], seed: 332601, world: 9, intro: {title: "Mosquitoes and decoys", line: "A swarm grabs an egg and lifts it back up, even off thorns. Fire or pepper scatters it. The wooden decoy egg draws every bite first."},
     rings: [
       {gaps: [{a: -167}], thorns: [{a: 24, n: 2}]},
       {gear: 2, gaps: [{a: -30}], thorns: [{a: 36, n: 3},{a: 171, n: 2, side: "out", h: 0.26}], pads: [{a: -124, len: 1.4}]},
@@ -436,7 +436,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 43, theme: "bayou", name: "Snapper Slough", eggs: 3, target: 2, time: 120, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "prize"}, gator: {ch: 5, a: -50, delay: 9}, turtle: {ch: 3, a: -110, delay: 4}, mosquito: {ch: 1, a: 30, delay: 12}, tip: "A clamped egg is safe but stuck. Drop another egg on the shell to free it.", orbs: [{type: "laser", ch: 1, a: 35},{type: "rockskin", ch: 2, a: -49},{type: "decoy", ch: 3, a: 29},{type: "pepper", ch: 4, a: -133}], seed: 340519, world: 9, intro: {title: "Snapping turtle", line: "The turtle clamps an egg: safe from everything, but stuck. Drop an egg or a stone egg on its shell and it flips over. The laser beak cuts vines and thorns."},
+    id: 43, theme: "bayou", name: "Snapper Slough", eggs: 3, target: 2, time: 120, spacing: 1.15, material: "wood", nest: {w: 2.8}, bonus: {kind: "prize"}, gator: {ch: 5, a: -50, delay: 9}, turtle: {ch: 3, a: -110, delay: 4}, mosquito: {ch: 1, a: 30, delay: 12}, tip: "A clamped egg is safe but stuck. Drop another egg on the shell to free it.", orbs: [{type: "laser", ch: 1, a: 35},{type: "rockskin", ch: 2, a: -49},{type: "decoy", ch: 3, a: 29},{type: "pepper", ch: 4, a: -133}], seed: 340519, world: 9, intro: {title: "Snapping turtle", line: "The turtle clamps an egg: safe from everything, but stuck. Drop an egg or a stone egg on its shell and it flips over. The laser beak cuts vines and thorns."},
     rings: [
       {gaps: [{a: -159}], thorns: [{a: 35, n: 1}]},
       {oneway: 1, gaps: [{a: 104, x: 2}], thorns: [{a: -158, n: 2, side: "out", h: 0.26},{a: 63, n: 2, side: "out", h: 0.26}], pads: [{a: 52, len: 1.61}]},
@@ -447,7 +447,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 44, theme: "bayou", name: "Decoy Delta", eggs: 3, target: 2, time: 160, spacing: 1, material: "wood", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.5}, bonus: {kind: "turns", n: 15}, eggKinds: ["duck"], gator: {ch: 4, a: -70, delay: 7}, turtle: {ch: 3, a: -60, delay: 6}, mosquito: {ch: 2, a: 140, delay: 9}, tip: "The gator bites the decoy first. Send real eggs past while he chews wood.", orbs: [{type: "decoy", ch: 1, a: -124},{type: "fire_red", ch: 2, a: -93},{type: "laser", ch: 3, a: -105},{type: "pepper", ch: 4, a: -7}], seed: 348440, world: 9, intro: {title: "Swamp current", line: "The current pushes every egg along, and the duck egg floats on it. Throw the decoy to pull the gator, the turtle and the swarm off your real eggs."},
+    id: 44, theme: "bayou", name: "Decoy Delta", eggs: 3, target: 2, time: 160, spacing: 1.15, material: "wood", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.5}, bonus: {kind: "turns", n: 15}, eggKinds: ["duck"], gator: {ch: 4, a: -70, delay: 7}, turtle: {ch: 3, a: -60, delay: 6}, mosquito: {ch: 2, a: 140, delay: 9}, tip: "The gator bites the decoy first. Send real eggs past while he chews wood.", orbs: [{type: "decoy", ch: 1, a: -124},{type: "fire_red", ch: 2, a: -93},{type: "laser", ch: 3, a: -105},{type: "pepper", ch: 4, a: -7}], seed: 348440, world: 9, intro: {title: "Swamp current", line: "The current pushes every egg along, and the duck egg floats on it. Throw the decoy to pull the gator, the turtle and the swarm off your real eggs."},
     rings: [
       {gaps: [{a: 2}], thorns: [{a: -168, n: 1}]},
       {gaps: [{a: -173}], thorns: [{a: 97, n: 3},{a: 12, n: 2, side: "out", h: 0.26}], pads: [{a: 143, len: 1.37}]},

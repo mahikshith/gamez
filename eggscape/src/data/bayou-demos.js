@@ -1,7 +1,7 @@
 // Dev / test-build studio vaults for the Gator Bayou cast (sim/bayou.js). Not campaign levels. ?demo=gator (or the Lab page).
 // Spec fields: gator {ch, a, delay, face, size, call}, turtle {ch, a, delay, face}, mosquito {ch, a, delay} (each also an array),
 // bossFight {kind: 'gator', hp, a, delay, phases: [{attacks: ['sweep' | 'roll'], every, summon}]} with boss: 'gator'.
-const base = { eggs: 3, target: 2, time: 120, spacing: 1.0, material: 'wood', theme: 'bayou', nest: { w: 2.6 } };
+const base = { eggs: 3, target: 2, time: 120, spacing: 1.15, material: 'wood', theme: 'bayou', nest: { w: 2.6 } };
 export const BAYOU_DEMOS = [
   {
     ...base, id: 981, kind: 'gator', name: 'Gator: Log Bridge', seed: 9811,

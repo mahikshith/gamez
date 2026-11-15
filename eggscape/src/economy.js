@@ -57,7 +57,7 @@ export const AD_REWARDS = {
 };
 
 export function defaultWallet() {
-  return { coins: 0, owned: {}, skins: ['classic'], skin: 'classic', chests: 0 };
+  return { coins: 0, owned: {}, skins: ['classic'], skin: 'classic', chests: 0, charges: 0, henSkins: ['classic'], henSkin: 'classic', noAds: false, daily: '' };
 }
 
 // Make any loaded/saved value safe to use (old saves, hand-edited saves).
@@ -69,6 +69,12 @@ export function sanitizeWallet(w) {
   const sk = Array.isArray(w.skins) ? w.skins.filter((id) => SKINS[id]) : [];
   out.skins = ['classic', ...sk.filter((id, i) => id !== 'classic' && sk.indexOf(id) === i)];
   out.skin = out.skins.includes(w.skin) ? w.skin : 'classic';
+  out.charges = Math.max(0, Math.min(MAX_CHARGES, Math.floor(Number(w.charges) || 0)));
+  const hs = Array.isArray(w.henSkins) ? w.henSkins.filter((id) => HEN_SKINS[id]) : [];
+  out.henSkins = ['classic', ...hs.filter((id, i) => id !== 'classic' && hs.indexOf(id) === i)];
+  out.henSkin = out.henSkins.includes(w.henSkin) ? w.henSkin : 'classic';
+  out.noAds = !!w.noAds;
+  out.daily = typeof w.daily === 'string' ? w.daily : '';
   const owned = w.owned && typeof w.owned === 'object' ? w.owned : {};
   for (const id of BOOSTER_ORDER) {
     const n = Math.min(MAX_OWNED, Math.max(0, Math.floor(Number(owned[id]) || 0)));
@@ -203,6 +209,68 @@ export function openChest(wallet, chest) {
     if (ownedCount(w, id) < MAX_OWNED) w.owned[id] = ownedCount(w, id) + 1;
     else w.coins += BOOSTERS[id].price;
   }
+  w.charges = Math.min(MAX_CHARGES, (w.charges || 0) + 1);
   w.chests = Math.max(w.chests, chest.index + 1);
+  return w;
+}
+
+// ---------------------------------------------------------------- Chick Charges (2026-11-15 power economy)
+// The strike meter no longer refills by waiting. A Chick Charge sends the equipped power chick at once, meter or not.
+// Bought in the shop, found in chests (star chests and the daily treasure chest). Never needed to finish a level.
+export const CHARGE_ITEM = { id: 'chick', name: 'Chick Charge', line: 'Send your power chick right now, meter or not.', price: 45, sku: 'chick_charge' };
+export const CHARGE_PACK = { id: 'chick3', name: 'Chick Charge x3', line: 'Three charges in one bag.', price: 120, n: 3, sku: 'chick_charge3' };
+export const MAX_CHARGES = 30;
+export function buyCharges(wallet, pack) {
+  const P = pack === 'chick3' ? CHARGE_PACK : CHARGE_ITEM, n = P.n || 1, w = sanitizeWallet(wallet);
+  if (w.coins < P.price || w.charges + n > MAX_CHARGES) return null;
+  w.coins -= P.price; w.charges += n;
+  return w;
+}
+export function useCharge(wallet) {
+  const w = sanitizeWallet(wallet);
+  if (w.charges < 1) return null;
+  w.charges -= 1;
+  return w;
+}
+
+// ---------------------------------------------------------------- daily treasure chest (home page)
+// Free once per local day. Reward is fixed by the date (no randomness to farm): coins, and a Chick Charge on most days.
+export function dailyChest(dayStr) {
+  let h = 0;
+  for (const c of String(dayStr)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const coins = [25, 30, 40, 30, 50, 35, 60][h % 7], charges = h % 3 === 0 ? 2 : 1;
+  return { coins, charges };
+}
+export function openDailyChest(wallet, dayStr) {
+  const w = sanitizeWallet(wallet);
+  if (w.daily === dayStr) return null;
+  const R = dailyChest(dayStr);
+  w.coins += R.coins; w.charges = Math.min(MAX_CHARGES, w.charges + R.charges); w.daily = dayStr;
+  return w;
+}
+
+// ---------------------------------------------------------------- hen and rooster skins (cosmetic, 2026-11-15)
+// Each skin dresses the hen on the nest (and the rooster ally, who wears the matching set). Looks only.
+export const HEN_SKINS = {
+  classic: { id: 'classic', name: 'Farm Classic', line: 'Cream feathers, red comb.', price: 0, sku: 'hen_classic' },
+  santa: { id: 'santa', name: 'Santa Hen', line: 'Red hat with a pompom and a fluffy white trim.', price: 250, sku: 'hen_santa' },
+  snowy: { id: 'snowy', name: 'Snowy Owl Look', line: 'Frosted white feathers and a knitted scarf.', price: 220, sku: 'hen_snowy' },
+  elf: { id: 'elf', name: 'Little Elf', line: 'Green elf cap with a jingle bell.', price: 220, sku: 'hen_elf' },
+  reindeer: { id: 'reindeer', name: 'Reindeer', line: 'Antlers and a shiny red nose.', price: 260, sku: 'hen_reindeer' },
+  cocoa: { id: 'cocoa', name: 'Cocoa Hen', line: 'Chocolate-brown feathers and a striped beanie.', price: 180, sku: 'hen_cocoa' },
+  royal: { id: 'royal', name: 'Royal Hen', line: 'Gold crown and a velvet cape.', price: 400, sku: 'hen_royal' },
+};
+export const HEN_SKIN_ORDER = ['classic', 'santa', 'snowy', 'elf', 'reindeer', 'cocoa', 'royal'];
+export function ownsHenSkin(w, id) { return id === 'classic' || !!(w && Array.isArray(w.henSkins) && w.henSkins.includes(id)); }
+export function buyHenSkin(wallet, id) {
+  const w = sanitizeWallet(wallet), k = HEN_SKINS[id];
+  if (!k || ownsHenSkin(w, id) || w.coins < k.price) return null;
+  w.coins -= k.price; w.henSkins = [...w.henSkins, id]; w.henSkin = id;
+  return w;
+}
+export function equipHenSkin(wallet, id) {
+  const w = sanitizeWallet(wallet);
+  if (!HEN_SKINS[id] || !ownsHenSkin(w, id)) return null;
+  w.henSkin = id;
   return w;
 }

@@ -1,5 +1,5 @@
 // Eggscape build: node tools/build.mjs [--target all|web|poki|crazygames|gamedistribution|youtube|app] [--dev] [--entry path]
-// --target app: Android WebView proof shell (portal 'web', all levels unlocked + own save like --test, __APP__ true). Never part of 'all'.
+// --target app: Android WebView shell (portal 'web', real progression, own save key, __APP__ true). Never part of 'all'.
 import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, existsSync, statSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
@@ -65,7 +65,7 @@ async function bundle(portal, { minify, sourcemap }) {
       __PORTAL__: JSON.stringify(portal),
       __GD_ID__: JSON.stringify(gdId),
       __DEV__: JSON.stringify(!minify),
-      __TEST__: JSON.stringify(test || isApp),
+      __TEST__: JSON.stringify(test),
       __APP__: JSON.stringify(isApp),
     },
     logLevel: 'warning',

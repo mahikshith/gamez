@@ -405,8 +405,14 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
     st.phase += Math.abs(st.sv) * dt * 0.42;
     walkAmt = clamp(Math.abs(st.sv) / WALK_SPEED * 1.6, 0, 1);
   } else st.sv = 0;
+  // 2026-11-15: her patch itself moves with a sliding basket (o.drift, units/s): she walks along with it, stepping and
+  // facing the way she goes, instead of gliding across the ground standing still
+  const drift = calm ? 0 : clamp(o.drift || 0, -60, 60);
+  st.dv = (st.dv || 0) + (drift - (st.dv || 0)) * (1 - Math.exp(-dt * 8));
+  const dW = clamp(Math.abs(st.dv) / WALK_SPEED * 1.4, 0, 1);
+  if (dW > 0.02) { st.phase += Math.abs(st.dv) * dt * 0.42 * (1 - walkAmt); walkAmt = Math.max(walkAmt, dW); }
   // facing: the way she walks, else home (toward the nest); a quick squash-turn, never a pop
-  st.faceT = Math.abs(st.sv) > 3 ? Math.sign(st.sv) : home;
+  st.faceT = Math.abs(st.sv) > 3 ? Math.sign(st.sv) : Math.abs(st.dv) > 4 ? Math.sign(st.dv) : home;
   st.face = calm ? st.faceT : st.face + (st.faceT - st.face) * (1 - Math.exp(-dt / 0.045));
   if (walkAmt > 0.001) {
     const sp = Math.sin(st.phase), cp = Math.cos(st.phase);

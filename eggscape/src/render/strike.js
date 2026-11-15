@@ -638,15 +638,31 @@ export function strikeEvent(ev, fx, api) {
 
 // ---------------------------------------------------------------- the HUD button
 // st: { id, m (0..1), busy, t, fullT (when it filled), wobT (last "not yet" tap), pressed, calm }
+// heartbeat: two quick thumps (lub at 0, dub at 0.22 s) every BEAT seconds; returns the extra scale
+const BEAT = 1.05;
+export function heartbeat(since) {
+  if (since < 0) return 0;
+  const p = since % BEAT, thump = (c, a) => a * Math.exp(-((p - c) * (p - c)) / 0.0035);
+  return thump(0.06, 0.16) + thump(0.28, 0.1);
+}
 export function drawStrikeButton(ctx, x, y, d, st) {
   const id = st.id, col = STRIKE[id].col, full = st.m >= 1 && !st.busy, t = st.t, r = d / 2;
   let sc = 1, rot = 0;
   if (!st.calm) {
-    if (full) { const p = ((t - (st.fullT || 0)) % 1.2 + 1.2) % 1.2; sc = 1 + 0.11 * Math.exp(-5 * p) * Math.sin(p * 17) * (p < 0.7 ? 1 : 0); }
+    if (full) sc = 1 + heartbeat(t - (st.fullT || 0)); // 2026-11-15: a lub-dub heartbeat while the power is ready
     const w = t - (st.wobT ?? -9); if (w < 0.55) rot = 0.22 * Math.exp(-7 * w) * Math.sin(w * 34);
     if (st.pressed) sc *= 0.92;
   }
   const cx = x + r, cy = y + r;
+  if (full && !st.calm) { // each beat sends a gold ring out from the button
+    const since = t - (st.fullT || 0);
+    for (const off of [0, 0.22]) {
+      const q = (((since - off) % BEAT) + BEAT) % BEAT / 0.7;
+      if (since < off || q >= 1) continue;
+      ctx.save(); ctx.globalAlpha = (1 - q) * (off ? 0.45 : 0.75); ctx.strokeStyle = '#ffcf3a'; ctx.lineWidth = r * 0.14 * (1 - q) + 1;
+      ctx.beginPath(); ctx.arc(cx, cy, r * (1 + 0.55 * q), 0, TAU); ctx.stroke(); ctx.restore();
+    }
+  }
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(sc, sc);
   // drop shadow and the rim
   ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(0, r * 0.1, r * 0.98, r * 0.98, 0, 0, TAU); ctx.fill();

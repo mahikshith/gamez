@@ -24,7 +24,7 @@ import android.widget.Toast;
 import androidx.webkit.WebViewAssetLoader;
 
 public class MainActivity extends Activity {
-    private static final int BG = Color.parseColor("#1b1410");
+    private static final int BG = Color.parseColor("#d9782e");
     private WebView web;
     private long lastBack = 0;
     private Vibrator vib;
