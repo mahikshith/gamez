@@ -72,8 +72,8 @@ export function sanitizeWallet(w) {
   out.charges = Math.max(0, Math.min(MAX_CHARGES, Math.floor(Number(w.charges) || 0)));
   const hs = Array.isArray(w.henSkins) ? w.henSkins.filter((id) => HEN_SKINS[id]) : [];
   out.henSkins = ['classic', ...hs.filter((id, i) => id !== 'classic' && hs.indexOf(id) === i)];
-  out.henSkin = out.henSkins.includes(w.henSkin) ? w.henSkin : 'classic';
   out.noAds = !!w.noAds;
+  out.henSkin = ownsHenSkin(out, w.henSkin) ? w.henSkin : 'classic';
   out.daily = typeof w.daily === 'string' ? w.daily : '';
   const owned = w.owned && typeof w.owned === 'object' ? w.owned : {};
   for (const id of BOOSTER_ORDER) {
@@ -258,13 +258,19 @@ export const HEN_SKINS = {
   elf: { id: 'elf', name: 'Little Elf', line: 'Green elf cap with a jingle bell.', price: 220, sku: 'hen_elf' },
   reindeer: { id: 'reindeer', name: 'Reindeer', line: 'Antlers and a shiny red nose.', price: 260, sku: 'hen_reindeer' },
   cocoa: { id: 'cocoa', name: 'Cocoa Hen', line: 'Chocolate-brown feathers and a striped beanie.', price: 180, sku: 'hen_cocoa' },
-  royal: { id: 'royal', name: 'Royal Hen', line: 'Gold crown and a velvet cape.', price: 400, sku: 'hen_royal' },
+  royal: { id: 'royal', name: 'Royal Hen', line: 'Gold crown and an ermine collar.', price: 400, sku: 'hen_royal' },
+  golden: { id: 'golden', name: 'Golden Hen', line: 'Shining gold feathers. Comes with Premium.', price: 0, premium: true, sku: 'hen_golden' },
 };
-export const HEN_SKIN_ORDER = ['classic', 'santa', 'snowy', 'elf', 'reindeer', 'cocoa', 'royal'];
-export function ownsHenSkin(w, id) { return id === 'classic' || !!(w && Array.isArray(w.henSkins) && w.henSkins.includes(id)); }
+export const HEN_SKIN_ORDER = ['classic', 'santa', 'snowy', 'elf', 'reindeer', 'cocoa', 'royal', 'golden'];
+export function ownsHenSkin(w, id) {
+  if (!HEN_SKINS[id]) return false;
+  if (id === 'classic') return true;
+  if (HEN_SKINS[id].premium) return !!(w && w.noAds);
+  return !!(w && Array.isArray(w.henSkins) && w.henSkins.includes(id));
+}
 export function buyHenSkin(wallet, id) {
   const w = sanitizeWallet(wallet), k = HEN_SKINS[id];
-  if (!k || ownsHenSkin(w, id) || w.coins < k.price) return null;
+  if (!k || k.premium || ownsHenSkin(w, id) || w.coins < k.price) return null;
   w.coins -= k.price; w.henSkins = [...w.henSkins, id]; w.henSkin = id;
   return w;
 }

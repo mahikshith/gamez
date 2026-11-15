@@ -939,9 +939,18 @@ async function press(id) {
       setScreen('store');
       break;
     case 'tab:boosters':
+    case 'tab:powers':
+    case 'tab:hens':
     case 'tab:skins':
       G.storeTab = id.slice(4);
       break;
+    case 'premium': {
+      if (ads.premium || !ads.canBuyPremium) break;
+      const ok = await ads.buyPremium();
+      if (ok) { save.wallet = { ...save.wallet, noAds: true, henSkin: 'golden' }; persist(); G.storeFlash = { id: 'premium', t0: G.t }; audio.play('unlock'); toast('Premium unlocked. Thank you!', 2.8); }
+      else toast('Purchase not completed.', 2.2);
+      break;
+    }
     case 'ad:coins': {
       if (E.adCooldownLeft(save.adClaim, Date.now()) > 0) break;
       const ok = await rewarded('coins');
@@ -1110,6 +1119,13 @@ async function press(id) {
       } else if (id && id.startsWith('buy:')) {
         const w = E.buy(save.wallet, id.slice(4));
         if (w) { save.wallet = w; persist(); G.storeFlash = { id: id.slice(4), t0: G.t }; audio.play('unlock'); }
+      } else if (id && id.startsWith('charge:')) {
+        const w = E.buyCharges(save.wallet, id.slice(7));
+        if (w) { save.wallet = w; persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
+      } else if (id && id.startsWith('hen:')) {
+        const k = id.slice(4);
+        const w = E.ownsHenSkin(save.wallet, k) ? E.equipHenSkin(save.wallet, k) : E.buyHenSkin(save.wallet, k);
+        if (w) { save.wallet = w; persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
       } else if (id && id.startsWith('skin:')) {
         const k = id.slice(5);
         const w = E.ownsSkin(save.wallet, k) ? E.equipSkin(save.wallet, k) : E.buySkin(save.wallet, k);
@@ -2857,7 +2873,7 @@ function render() {
   if (G.screen === 'levels') drawLevels();
   if (G.screen === 'practice') drawPractice();
   if (G.screen === 'extras') wonder.drawExtras(); // Extras: Wonder Vaults + the Practice button
-  if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { area: ui.A, wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab }); }
+  if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { area: ui.A, wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab, premium: { can: ads.canBuyPremium, owned: ads.premium, price: ads.premiumPrice } }); }
   if (G.adBusy) {
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(0, 0, W_, H_);

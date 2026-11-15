@@ -9,6 +9,7 @@ export const skinId = () => SKIN;
 // feather tints for the hen's body (hen.js swaps its HEN palette)
 export const HEN_TINT = {
   snowy: { hi: '#ffffff', mid: '#f3f8ff', lo: '#dbe8f6', shade: '#b7cbe2', scal: 'rgba(90,120,160,0.45)', wing: ['#ffffff', '#e6eef8'], wingLo: '#b4c6dc', far: ['#d9e4f1', '#b9cadd'], tail: ['#ffffff', '#dfe8f3'], tailLo: '#a9bdd4' },
+  golden: { hi: '#fff6c2', mid: '#ffd84a', lo: '#efab1a', shade: '#c47f0a', scal: 'rgba(140,80,0,0.5)', wing: ['#ffe680', '#f2b324'], wingLo: '#b97a08', far: ['#e9b42c', '#c9900e'], tail: ['#ffe27a', '#efab1a'], tailLo: '#a86a04' },
   cocoa: { hi: '#e2b98c', mid: '#c8915c', lo: '#a86c3a', shade: '#8a5428', scal: 'rgba(70,36,10,0.55)', wing: ['#d9a774', '#b97e48'], wingLo: '#8e5a2a', far: ['#a87346', '#8a5a32'], tail: ['#c58a52', '#a56c3a'], tailLo: '#7d4a20' },
 };
 

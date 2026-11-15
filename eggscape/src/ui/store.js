@@ -1,10 +1,15 @@
 // Shop screen, coin and booster icons, and the level-intro booster picker.
 // Drawing only: every text and widget goes through ui.text / ui.button / ui.panel / ui.record so
 // the game's overlap checker can verify the layout. Input is routed by the game from button ids:
-//   store:  'back', 'tab:boosters', 'tab:skins', 'buy:<boosterId>', 'skin:<skinId>' (buy or equip), 'ad:coins'
+//   store:  'back', 'tab:boosters|powers|hens|skins', 'buy:<boosterId>', 'skin:<skinId>' (buy or equip), 'ad:coins',
+//           'charge:chick' / 'charge:chick3', 'hen:<henSkinId>' (buy or equip), 'premium'
 //   picker: 'boost:<boosterId>', 'shop'
 import { ICON, C } from './ui.js';
-import { BOOSTERS, BOOSTER_ORDER, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin } from '../economy.js';
+import { BOOSTERS, BOOSTER_ORDER, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin,
+  CHARGE_ITEM, CHARGE_PACK, MAX_CHARGES, HEN_SKINS, HEN_SKIN_ORDER, ownsHenSkin } from '../economy.js';
+import { drawStrikeToken } from '../render/strike.js';
+import { drawHenPose, henPose, setHenSkin } from '../render/hen.js';
+import { skinId } from '../render/skins.js';
 
 // ---------------------------------------------------------------- icons
 
@@ -451,9 +456,60 @@ function skinItem(id, st) {
   };
 }
 
+function chargeItem(P, st) {
+  const w = st.wallet, n = P.n || 1;
+  const full = (w.charges || 0) + n > MAX_CHARGES, ok = !full && w.coins >= P.price;
+  return {
+    key: 'charge:' + P.id, name: P.name, line: P.line, owned: (w.charges || 0) > 0,
+    flash: st.flash && st.flash.id === 'charge:' + P.id ? st.flash.t : 99,
+    icon: (ctx, cx, cy, it, t, bounce) => {
+      if (n === 1) drawStrikeToken(ctx, 'freeze', cx, cy, it * 0.36 * bounce, t, true);
+      else for (const [dx, dy, id] of [[-0.2, 0.12, 'shock'], [0.2, 0.12, 'wind'], [0, -0.14, 'freeze']]) drawStrikeToken(ctx, id, cx + dx * it, cy + dy * it, it * 0.24 * bounce, t, true);
+    },
+    btn: { id: 'charge:' + P.id, label: full ? 'Full' : String(P.price), disabled: !ok, coin: !full, ...(ok ? GREEN : GREY) },
+    sub: { text: 'In bag ' + (w.charges || 0), color: (w.charges || 0) > 0 ? C.good : 'rgba(138,98,56,0.75)' },
+  };
+}
+
+// the hen in a skin, standing, for the shop card (the global skin is put back right after)
+function drawHenSkinPreview(ctx, id, cx, cy, h, t) {
+  const was = skinId();
+  setHenSkin(id);
+  try { drawHenPose(ctx, henPose({}), cx, cy, h, { face: 1, tt: t, shadow: false, calm: true }); } finally { setHenSkin(was); }
+}
+
+function henItem(id, st) {
+  const k = HEN_SKINS[id], w = st.wallet;
+  const owns = ownsHenSkin(w, id), equipped = (w.henSkin || 'classic') === id;
+  let btn;
+  if (equipped) btn = { id: 'hen:' + id, label: 'Equipped', disabled: true, keepFace: true, size: 14, kind: 'tertiary', icon: ICON.check };
+  else if (owns) btn = { id: 'hen:' + id, label: 'Equip', size: 19, kind: 'secondary' };
+  else if (k.premium) btn = { id: 'premium', label: 'Premium', size: 16, kind: 'gold' };
+  else { const ok = w.coins >= k.price; btn = { id: 'hen:' + id, label: String(k.price), coin: true, disabled: !ok, ...(ok ? GREEN : GREY) }; }
+  return {
+    key: 'hen:' + id, name: k.name, line: k.line, owned: owns,
+    flash: st.flash && st.flash.id === 'hen:' + id ? st.flash.t : 99,
+    icon: (ctx, cx, cy, it, t, bounce) => drawHenSkinPreview(ctx, id, cx, cy + it * 0.04, it * 0.84 * bounce, t),
+    btn, sub: null,
+  };
+}
+
+function premiumItem(st) {
+  const P = st.premium;
+  return {
+    key: 'premium', name: P.owned ? 'Premium: thank you!' : 'Premium', owned: P.owned,
+    line: 'No more ad breaks, every ad bonus free at once, and the Golden Hen.',
+    flash: st.flash && st.flash.id === 'premium' ? st.flash.t : 99,
+    icon: (ctx, cx, cy, it, t, bounce) => drawHenSkinPreview(ctx, 'golden', cx, cy + it * 0.04, it * 0.84 * bounce, t),
+    btn: P.owned ? { id: 'premium', label: 'Owned', disabled: true, keepFace: true, size: 14, kind: 'tertiary', icon: ICON.check } : { id: 'premium', label: P.price, size: 17, kind: 'gold' },
+    sub: P.owned ? null : { text: 'One time', color: C.ink2 },
+  };
+}
+
 export function drawStore(ui, ctx, W, H, state) {
   const { wallet, t = 0, adReady = false, adCooldownLeft = 0, flash = null, tab = 'boosters' } = state;
-  const st = { wallet, t, flash };
+  const premium = state.premium || { can: false, owned: false, price: '' };
+  const st = { wallet, t, flash, premium };
   // the room paints edge to edge (W x H); everything in it lays out in the safe rect (state.area, else the whole screen)
   const AR = state.area || { x: 0, y: 0, w: W, h: H }, OX = AR.x, OY = AR.y, AW = AR.w, AH = AR.h;
   const { cols, s } = planLayout(AW, AH, ui.u);
@@ -503,17 +559,23 @@ export function drawStore(ui, ctx, W, H, state) {
   ui.ribbon('Shop', (rl + rr) / 2, headCy - 19 * s, Math.max(60 * s, Math.min(150 * s, rr - rl)), 38 * s, { s, color: '#f0a01c', size: 24 * s, tag: 'store:title' });
 
   // ---- tabs
-  const tabW = Math.min(150 * s, (AW - 2 * pad - 8 * s) / 2), tabH = (D.tabH + 2) * s;
-  const tabX = OX + AW / 2 - tabW - 4 * s, tabY = OY + D.tabY * s;
-  for (const [i, [id, label]] of [['boosters', 'Boosters'], ['skins', 'Skins']].entries()) {
+  const TABS = [['boosters', 'Boosts'], ['powers', 'Powers'], ['hens', 'Hens'], ['skins', 'Eggs']];
+  const tg = 6 * s, tabW = Math.min(130 * s, (AW - 2 * pad - tg * (TABS.length - 1)) / TABS.length), tabH = (D.tabH + 2) * s;
+  const tabX = OX + AW / 2 - (tabW * TABS.length + tg * (TABS.length - 1)) / 2, tabY = OY + D.tabY * s;
+  for (const [i, [id, label]] of TABS.entries()) {
     const on = tab === id;
-    ui.button('tab:' + id, label, tabX + i * (tabW + 8 * s), tabY, tabW, tabH, { kind: on ? 'gold' : 'hud', size: 17 * s });
+    ui.button('tab:' + id, label, tabX + i * (tabW + tg), tabY, tabW, tabH, { kind: on ? 'gold' : 'hud', size: Math.min(17 * s, tabW / 5.2) });
   }
 
   // ---- body
-  const ch = D.cardH * s, gap = D.gap * s;
+  const gap = D.gap * s;
   const bodyTop = OY + D.top * s;
-  const items = tab === 'skins' ? SKIN_ORDER.map((id) => skinItem(id, st)) : BOOSTER_ORDER.map((id) => boosterItem(id, st));
+  const items = tab === 'skins' ? SKIN_ORDER.map((id) => skinItem(id, st))
+    : tab === 'powers' ? [chargeItem(CHARGE_ITEM, st), chargeItem(CHARGE_PACK, st), ...(premium.can || premium.owned ? [premiumItem(st)] : [])]
+    : tab === 'hens' ? HEN_SKIN_ORDER.filter((id) => !HEN_SKINS[id].premium || premium.can || premium.owned).map((id) => henItem(id, st))
+    : BOOSTER_ORDER.map((id) => boosterItem(id, st));
+  const n = items.length;
+  const avail = OY + AH - bodyTop - pad;
   const adLabelFull = `Watch ad: +${AD_REWARDS.freeCoins.coins} coins`;
   const cooling = adCooldownLeft > 0;
   const adLabel = cooling ? `Free coins in ${fmtTime(adCooldownLeft)}` : adReady ? adLabelFull : 'Ad loading...';
@@ -526,23 +588,25 @@ export function drawStore(ui, ctx, W, H, state) {
   if (cols === 1) {
     const cw = Math.min(AW - 2 * pad, 520 * s);
     const adH = D.adH * s, adGap = D.adGap * s;
-    const total = 5 * ch + 4 * gap + adGap + adH;
-    const avail = OY + AH - bodyTop - pad;
+    // more cards than the layout was planned for (hens: 7) get shorter, never smaller than 64% of a booster card
+    const ch = Math.max(D.cardH * s * 0.64, Math.min(D.cardH * s, (avail - adGap - adH - (n - 1) * gap) / n));
+    const total = n * ch + (n - 1) * gap + adGap + adH;
     const y0 = bodyTop + Math.max(0, (avail - total) / 2);
     const x0 = OX + AW / 2 - cw / 2;
     items.forEach((it, i) => drawCard(ui, ctx, it, x0, y0 + i * (ch + gap), cw, ch, s, t, true));
-    adBtn(x0, y0 + 5 * ch + 4 * gap + adGap, cw, adH);
+    adBtn(x0, y0 + n * ch + (n - 1) * gap + adGap, cw, adH);
   } else {
     const cw = Math.min((AW - 2 * pad - gap) / 2, 440 * s);
-    const total = 3 * ch + 2 * gap;
-    const avail = OY + AH - bodyTop - pad;
+    const rows = Math.ceil((n + 1) / 2);
+    const ch = Math.max(D.cardH * s * 0.64, Math.min(D.cardH * s, (avail - (rows - 1) * gap) / rows));
+    const total = rows * ch + (rows - 1) * gap;
     const y0 = bodyTop + Math.max(0, (avail - total) / 2);
     const x0 = OX + AW / 2 - cw - gap / 2;
     items.forEach((it, i) => drawCard(ui, ctx, it, x0 + (i % 2) * (cw + gap), y0 + Math.floor(i / 2) * (ch + gap), cw, ch, s, t, false));
-    // 6th cell: the free-coins ad
-    const ax = x0 + cw + gap, ay = y0 + 2 * (ch + gap);
+    // the last cell: the free-coins ad
+    const ax = x0 + (n % 2) * (cw + gap), ay = y0 + Math.floor(n / 2) * (ch + gap);
     ui.frame(ax, ay, cw, ch - 4 * s, { s, r: 16 * s, fw: 4.5 * s, lip: 4 * s, record: true, tag: 'panel:card:ad' });
-    const bh = D.adH * s;
+    const bh = Math.min(D.adH * s, ch - 20 * s);
     adBtn(ax + 12 * s, ay + (ch - 4 * s - bh) / 2, cw - 24 * s, bh);
   }
 }
