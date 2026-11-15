@@ -6,6 +6,7 @@
 // in sim/allies.js and allyPlace() there says where it is).
 import { ALLY, allyPlace, allyElapsed, flingAt } from '../sim/allies.js';
 import { drawHenAnim } from './hen.js';
+import { drawSkinHat, drawSkinNose, drawSkinNeck } from './skins.js';
 import { geckoAnchor } from './gecko15.js';
 
 const TAU = Math.PI * 2;
@@ -315,6 +316,7 @@ export function drawRooster(ctx, cx, cy, s, P) {
         plume(ctx, o, px, py, base + lerp(0.5, -0.42, t), len * (1 - 0.16 * Math.abs(t - 0.4)), 8.4, cols, 0.5);
       }
     }
+    drawSkinNeck(ctx, o, H.x - 3, H.y + 17, P.tt || 0); // 2026-11-15 skins: the scarf goes under the near wing
     // near wing
     featherWing(ctx, o, 2, bodyY - 12, P.wa, P.sp, COCK.wing, COCK.wingTip, 1.2);
     // head details, in the head's own frame
@@ -338,6 +340,8 @@ export function drawRooster(ctx, cx, cy, s, P) {
     ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.moveTo(-12.4, -12); ctx.quadraticCurveTo(-12, -14, -10, -14); ctx.moveTo(-8.4, -19); ctx.quadraticCurveTo(-7, -21, -5, -20.4); ctx.moveTo(0, -23); ctx.quadraticCurveTo(1.6, -25, 3.6, -24.2); ctx.moveTo(9, -20.6); ctx.quadraticCurveTo(10.4, -21.4, 11.6, -20); ctx.stroke();
     ctx.restore();
+    drawSkinHat(ctx, o, P.tt || 0); // 2026-11-15: the rooster wears the hen's skin set (hat over the comb)
+    drawSkinNose(ctx, o, 24.5, 1, P.tt || 0);
     // earlobe, wattle
     ctx.fillStyle = 'rgba(255,250,236,0.85)'; ctx.beginPath(); ctx.ellipse(-3.5, 7, 2.6, 3.4, 0.3, 0, TAU); ctx.fill(); // earlobe: a soft pale patch (never a second eye)
     const open = P.beak;

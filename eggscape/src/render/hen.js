@@ -15,6 +15,7 @@
 // Local space is y-down in a 100-unit box centred on (cx, cy); feet rest at cy + 0.48 h. She faces o.face (-1 = left,
 // toward the nest she stands beside; the default) and turns while she walks.
 import { drawDrop } from './characters.js';
+import { drawSkinHat, drawSkinNose, drawSkinNeck, HEN_TINT, setSkinId, skinId } from './skins.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -43,6 +44,10 @@ const HEN = {
   wing: ['#fffaf0', '#f1e1c3'], wingLo: '#d6b583',
   far: ['#e6d3b0', '#cfb084'], tail: ['#fbf1de', '#e9d4ad'], tailLo: '#cfab76',
 };
+const HEN_BASE = { ...HEN };
+// 2026-11-15 skins (economy.js HEN_SKINS): the hen's feathers take the skin's tint, the hats and scarves come from skins.js;
+// the rooster ally wears the same set
+export function setHenSkin(id) { setSkinId(id); Object.assign(HEN, HEN_BASE, HEN_TINT[id] || {}); }
 
 /* ------------------------------------------------------------------ idle schedule */
 // One slot per period; each slot holds at most one event at a hashed moment. Returns u 0..1 inside the event, or -1.
@@ -545,6 +550,7 @@ export function drawHenPose(ctx, P, cx, cy, h, o = {}) {
     drawTail(ctx, P, ol);
     if (P.tufts > 0.02) drawTufts(ctx, P.tufts, tt, ol);
     drawBody(ctx, H, ol);
+    if (o.skin !== false) drawSkinNeck(ctx, ol, H.x - 5, H.y + 15.5, tt);
     drawHead(ctx, H, P, f, tt, ol, o.hat);
     wing(ctx, ol, 1, -1, P.wa, P.sp, false); // near wing, over the body (and over her eye when she wipes it)
     if (o.breath >= 0 && o.breath < 1) drawBreath(ctx, H.x + 25, H.y + 5, o.breath);
@@ -833,6 +839,7 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
   }
   ctx.restore();
   if (hat) hat(ctx, P, o); // in the head's frame: (0, -16) is the top of her crown under the comb
+  else if (skinId() !== 'classic') { drawSkinHat(ctx, o, tt); drawSkinNose(ctx, o, 21, 1.8, tt); }
   ctx.restore();
 }
 

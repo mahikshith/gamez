@@ -14,12 +14,13 @@ import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
 import { drawSnake } from './render/characters.js';
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
 import { drawSprite, drawBossCard, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
-import { drawHenAnim, henIdleEvents, resetHen } from './render/hen.js';
+import { drawHenAnim, henIdleEvents, resetHen, setHenSkin } from './render/hen.js';
 import { drawCelebration, pickRoutine, routine, routineCues, routinePower, ROUTINES } from './render/cheer.js';
 import { drawAllies, ALLY_ART, allyFrame, crowRingXf, crowEggXf, crowFlinch } from './render/allies.js'; // v3.4 farm allies
 import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
+import ads, { SKIP_COINS } from './ads.js'; // 2026-11-15: rewarded/interstitial policy, Premium purchase
 import { drawStore, drawCoin, drawBoosterPicker, drawChest } from './ui/store.js';
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
@@ -93,6 +94,7 @@ function loadSave(s) {
   save.wallet = E.sanitizeWallet(save.wallet);
   if (!MODE_LIST.includes(save.mode)) save.mode = 'medium';
   for (const [o, n] of Object.entries(LEGACY_ORB)) if (save.seen[o]) save.seen[n] = 1; // v1 discoveries
+  ads.rebind(save);
 }
 // visual-only weather per theme; levels with a physics `weather` field use that instead
 const THEME_WEATHER = { farm: 'leaves', orchard: 'leaves', bramble: 'leaves', mushroom: 'fireflies', frozen: 'snow', blizzard: 'snow', dunes: 'sandstorm', haunted: 'ghosts', dragon: 'ash' };
@@ -1017,6 +1019,17 @@ async function press(id) {
       await breakThen(() => startLevel(n));
       break;
     }
+    case 'skip:ad': {
+      if (G.screen !== 'fail') break;
+      if (await rewarded('skip')) skipLevel();
+      break;
+    }
+    case 'skip:coins': {
+      if (G.screen !== 'fail' || save.wallet.coins < SKIP_COINS) break;
+      save.wallet = { ...save.wallet, coins: save.wallet.coins - SKIP_COINS };
+      skipLevel();
+      break;
+    }
     case 'rewind': {
       // a Free rewind booster pays for it; otherwise it is a rewarded ad
       const free = G.freeRewind;
@@ -1122,11 +1135,11 @@ function releaseAll() {
   G.held.clear();
 }
 
-async function breakThen(fn) {
+async function breakThen(fn, info = {}) {
   if (G.adBusy) return;
   G.adBusy = true;
   portal.gameplayStop();
-  try { await portal.commercialBreak(); } catch (_) {}
+  try { await ads.between({ levelId: G.level && G.li >= 0 ? G.level.id : 0, afterFail: G.screen === 'fail', ...info }); } catch (_) {}
   G.adBusy = false;
   fn();
 }
@@ -1136,10 +1149,21 @@ async function rewarded(tag) {
   G.adBusy = true;
   portal.gameplayStop();
   let ok = false;
-  try { ok = await portal.rewarded(tag); } catch (_) { ok = false; }
+  try { ok = await ads.rewarded(tag); } catch (_) { ok = false; }
   G.adBusy = false;
   if (!ok) toast('No ad available right now. Try again in a moment.', 2.4);
   return ok;
+}
+// stuck help: skip this level. It opens the next one; the skipped level keeps no stars and can be played any time.
+function skipLevel() {
+  const L = G.level;
+  save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, L.id + 1));
+  save.skipped = { ...(save.skipped || {}), [L.id]: 1 };
+  ads.won(L.id);
+  persist();
+  const n = Math.min(LEVELS.length - 1, G.li + 1);
+  if (!playable(n)) { G.world = envOf(n); setScreen('levels'); return; }
+  startLevel(n);
 }
 
 // Haptics on the hero beats (the app's EggApp bridge, navigator.vibrate on the web); off with reduced motion or sound off.
@@ -2475,6 +2499,7 @@ function recordResult() {
 }
 
 function onWin() {
+  if (G.li >= 0 && G.level) ads.won(G.level.id);
   stopFuse();
   G.sim.burstVault();
   G.result = computeResult();
@@ -2500,6 +2525,7 @@ function onWin() {
 }
 
 function onFail() {
+  if (G.li >= 0 && G.level) ads.fail(G.level.id);
   stopFuse();
   audio.musicEnd('fail');
   portal.gameplayStop();
@@ -3883,6 +3909,12 @@ function drawFail() {
     } });
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('Next try a farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: 6 * s }));
     B.push({ h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 25 * s }) });
+    // stuck (3 losses in a row on this level): skip ahead with an ad or coins
+    if (G.li >= 0 && ads.stuck(G.level.id) && G.li < LEVELS.length - 1) B.push({ h: 46 * s, gap: 10 * s, draw: (x, y, w) => {
+      const hw = (w - 8 * s) / 2, rich = save.wallet.coins >= SKIP_COINS;
+      ui.button('skip:ad', 'Skip level', x, y, hw, 46 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 15 * s } : { kind: 'ad', ad: true, size: 15 * s });
+      ui.button('skip:coins', 'Skip ' + SKIP_COINS, x + hw + 8 * s, y, hw, 46 * s, { kind: rich ? 'gold' : 'off', disabled: !rich, dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 15 * s });
+    } });
     if (!G.usedRewind && G.sim.canRewind()) B.push({ h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rewind', G.freeRewind ? 'Free rewind 5 s' : 'Rewind 5 s, keep streak', x, y, w, 50 * s, G.freeRewind ? { kind: 'secondary', icon: ICON.rewind, size: 16.5 * s } : { kind: 'ad', ad: true, size: 16.5 * s }) });
     B.push({ h: 44 * s, draw: (x, y, w) => ui.button('levels', 'Levels', x + w * 0.2, y, w * 0.6, 44 * s, { kind: 'tertiary', icon: ICON.grid, size: 16 * s }) });
     return B;
@@ -4194,6 +4226,7 @@ function frame(now) {
   last = now;
   if (G.paused) return;
   try {
+    if (G.henSkinCur !== save.wallet.henSkin) { G.henSkinCur = save.wallet.henSkin; setHenSkin(G.henSkinCur); } // hen + rooster skin
     update(dt);
     render();
   } catch (e) {
@@ -4294,6 +4327,7 @@ async function boot() {
   if (typeof __APP__ !== 'undefined' && __APP__ && !save.real) {
     const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm };
     save = { ...defaultSave(), ...keep };
+    ads.rebind(save);
   }
   save.real = 1;
   if (TEST) {
@@ -4303,6 +4337,7 @@ async function boot() {
     save.wallet = E.sanitizeWallet({ ...save.wallet, coins: Math.max(save.wallet.coins, 99999), owned, skins: E.SKIN_ORDER });
     persist();
   }
+  ads.attach(save, persist);
   applyAudioSettings();
   // title runs over the live next level
   startLevel(nextIdx());

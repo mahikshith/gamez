@@ -30,6 +30,7 @@ public class MainActivity extends Activity {
     private Vibrator vib;
     private String lastSafe = "";
     private WindowInsets lastInsets;
+    private Monetization money;
 
     /** JS bridge: window.EggApp.vibrate(ms) */
     public class Bridge {
@@ -40,6 +41,11 @@ public class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE));
             else vib.vibrate(ms);
         }
+        /** ads and the Premium purchase (src/ads.js): each answers later through window.__eggAd / __eggBuy */
+        @JavascriptInterface public void showRewarded(String tag, String id) { if (money != null) money.showRewarded(tag, id); }
+        @JavascriptInterface public void showInterstitial(String id) { if (money != null) money.showInterstitial(id); }
+        @JavascriptInterface public void buy(String sku, String id) { if (money != null) money.buy(sku, id); }
+        @JavascriptInterface public void restorePurchases() { if (money != null) money.restore(); }
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "ClickableViewAccessibility"})
@@ -84,6 +90,7 @@ public class MainActivity extends Activity {
         web.setOnApplyWindowInsetsListener((v, ins) -> { lastInsets = ins; pushSafe(); return v.onApplyWindowInsets(ins); });
         web.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> { if (r - l != or - ol || bt - t != ob - ot) v.post(this::pushSafe); });
         setContentView(web);
+        money = new Monetization(this, web);
         hideBars();
         if (b == null) web.loadUrl("https://appassets.androidplatform.net/index.html");
         else web.restoreState(b);
