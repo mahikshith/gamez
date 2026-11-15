@@ -66,7 +66,7 @@ const TEST = typeof __TEST__ !== 'undefined' && __TEST__;
 // ---------------------------------------------------------------- save
 const SAVE_VER = 3; // v3: 35 new levels, progress resets; settings, wallet and discoveries carry over
 // mode: difficulty (F32); stars/best are kept per mode (Medium uses the v1 keys); calm = reduced motion
-const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), gates: {}, adClaim: 0, daily: { day: '', best: 0, paid: '' } });
+const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), gates: {}, ringSpeed: 1, adClaim: 0, daily: { day: '', best: 0, paid: '' } });
 let save = defaultSave();
 const MODE_LIST = ['easy', 'medium', 'hard'];
 const sk = (id, mode = save.mode) => (mode === 'medium' ? String(id) : mode[0] + id);
@@ -79,6 +79,9 @@ const envOf = (i) => Math.floor(i / PER_ENV);
 const envNeed = (k) => (TEST ? 0 : GATE * k);
 // a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all
 const GATE_COINS = (k) => 80 + 40 * k;
+// Settings (2026-11-15): how fast the rings follow a finger, 0.6x .. 2x of the designed speed
+const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2];
+const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed : 1);
 const allOpen = () => TEST || !!save.tester;
 const envOpen = (k) => allOpen() || bestTotal() >= envNeed(k) || !!(save.gates && save.gates[k]);
 const playable = (i) => i >= 0 && i < LEVELS.length && (allOpen() || (i < save.unlocked && envOpen(envOf(i))));
@@ -267,6 +270,7 @@ function startLevel(i, opts = {}) {
   G.theme = themeFor(G.level);
   G.boost = opts.boost || {};
   G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost, strike: strikeFor(G.level, i) });
+  G.sim.ringSpeed = ringSpeed();
   G.stkPick = null; G.stkWob = -9; G.stkFullT = 0; G.henAt = null;
   G.golden = !!opts.golden;
   G.adBoost = opts.adBoost || null;
@@ -1100,6 +1104,22 @@ async function press(id) {
         audio.play('combo', { intensity: 1 });
         portal.happy();
       }
+      break;
+    }
+    case 'settings':
+      G.settingsOpen = true;
+      break;
+    case 'set:close':
+      G.settingsOpen = false;
+      break;
+    case 'set:restore':
+      ads.restore(); toast('Checking your purchases...', 2);
+      break;
+    case 'rs:-': case 'rs:+': case 'rs:0': case 'rs:1': case 'rs:2': case 'rs:3': case 'rs:4': case 'rs:5': case 'rs:6': {
+      const k = RING_SPEEDS.indexOf(ringSpeed()), n = id === 'rs:-' ? k - 1 : id === 'rs:+' ? k + 1 : +id.slice(3);
+      save.ringSpeed = RING_SPEEDS[clamp(n, 0, RING_SPEEDS.length - 1)];
+      if (G.sim) G.sim.ringSpeed = save.ringSpeed;
+      persist();
       break;
     }
     case 'sfx':
@@ -2759,7 +2779,7 @@ function render() {
   const fx = G.fx;
   G.backdrop.draw(ctx, t, G.bcam); // parallax: the layers slide and breathe against the camera
   G.weather.drawBack(ctx);
-  if (G.screen === 'title') { drawTitle(); drawToast(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene, no vault behind it
+  if (G.screen === 'title') { drawTitle(); drawToast(); if (G.settingsOpen) drawSettings(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene, no vault behind it
   // world
   const P = G.play, cv = G.cv;
   const cx = P.x + P.w / 2, cy = P.y + P.h / 2;
@@ -2911,6 +2931,8 @@ function render() {
   if (G.screen === 'practice') drawPractice();
   if (G.screen === 'extras') wonder.drawExtras(); // Extras: Wonder Vaults + the Practice button
   if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { area: ui.A, wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab, premium: { can: ads.canBuyPremium, owned: ads.premium, price: ads.premiumPrice } }); }
+  if (G.settingsOpen && (G.screen === 'pause' || G.screen === 'title')) drawSettings();
+  else G.settingsOpen = false;
   if (G.adBusy) {
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(0, 0, W_, H_);
@@ -3623,14 +3645,53 @@ function drawPause() {
       { h: 42 * s, gap: 16 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) },
     ].filter(Boolean);
     if (G.sim.mode !== save.mode) B.push(lineBlock('The new mode starts when you restart', 13 * s, { color: ui.C.ink2, tag: 'pause:modenote', gap: 4 * s }));
-    B.push({ h: 42 * s, draw: (x, y, w) => ui.button('calm', save.calm ? 'Reduced motion: on' : 'Reduced motion: off', x, y, w, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 15 * s }) });
-    if (portal.showMuteButton) B.push({ h: 46 * s, gap: 10 * s, draw: (x, y, w) => {
-      const hw = (w - 10 * s) / 2;
-      ui.button('sfx', 'Sound', x, y, hw, 46 * s, { kind: save.sfx ? 'tertiary' : 'off', icon: ICON.sound(save.sfx), size: 16 * s });
-      ui.button('music', 'Music', x + hw + 10 * s, y, hw, 46 * s, { kind: save.music ? 'tertiary' : 'off', icon: ICON.note(save.music), size: 16 * s });
-    } });
+    B.push({ h: 44 * s, draw: (x, y, w) => ui.button('settings', 'Settings', x + w * 0.2, y, w * 0.6, 44 * s, { kind: 'tertiary', icon: gearIcon, size: 16 * s }) });
     return B;
   }, { ribbon: '#3a80ea' });
+}
+
+// a gear (the Settings button)
+function gearIcon(c, x, y, sz, col = '#6b3f17') {
+  c.save(); c.translate(x, y); c.fillStyle = col; c.beginPath();
+  const R = sz * 0.42, r = sz * 0.3;
+  for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2, rr = i % 2 ? r : R; c.lineTo(Math.cos(a - 0.12) * rr, Math.sin(a - 0.12) * rr); c.lineTo(Math.cos(a + 0.12) * rr, Math.sin(a + 0.12) * rr); }
+  c.closePath(); c.fill(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(0, 0, sz * 0.13, 0, 7); c.fill(); c.restore();
+}
+
+// Settings (2026-11-15, mykee): sound, music, ring speed, difficulty, reduced motion, restore purchases. Opens over the
+// home or the pause card; only its own buttons take taps while it shows.
+function drawSettings() {
+  ui.buttons.length = 0; ui.rects.length = 0;
+  dim(0.55);
+  stackCard('Settings', (s) => {
+    const C = ui.C, B = [];
+    if (portal.showMuteButton) B.push({ h: 48 * s, draw: (x, y, w) => {
+      const hw = (w - 10 * s) / 2;
+      ui.button('sfx', save.sfx ? 'Sound: on' : 'Sound: off', x, y, hw, 48 * s, { kind: save.sfx ? 'tertiary' : 'off', icon: ICON.sound(save.sfx), size: 15.5 * s });
+      ui.button('music', save.music ? 'Music: on' : 'Music: off', x + hw + 10 * s, y, hw, 48 * s, { kind: save.music ? 'tertiary' : 'off', icon: ICON.note(save.music), size: 15.5 * s });
+    } });
+    const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
+    B.push(lineBlock(`Ring speed: ${sp === 1 ? 'Normal' : sp < 1 ? 'Slower' : 'Faster'} (${Math.round(sp * 100)}%)`, 17 * s, { color: C.ink, tag: 'set:rslabel', gap: 14 * s }));
+    B.push({ h: 46 * s, gap: 6 * s, draw: (x, y, w) => { // - [seven steps] +
+      const bw = 46 * s, n = RING_SPEEDS.length, tx = x + bw + 8 * s, tw = w - 2 * bw - 16 * s, cw = tw / n;
+      ui.button('rs:-', '', x, y, bw, 46 * s, { kind: k > 0 ? 'secondary' : 'off', disabled: k <= 0, icon: ICON.left, iconS: 1.2 });
+      ui.button('rs:+', '', x + w - bw, y, bw, 46 * s, { kind: k < n - 1 ? 'secondary' : 'off', disabled: k >= n - 1, icon: ICON.right, iconS: 1.2 });
+      ui.well(tx, y + 8 * s, tw, 30 * s, { s });
+      for (let i = 0; i < n; i++) {
+        const cx = tx + cw * (i + 0.5), on = i <= k, hgt = (10 + i * 2.2) * s;
+        ui.roundRect(cx - cw * 0.3, y + 23 * s - hgt / 2, cw * 0.6, hgt, 3 * s);
+        ctx.fillStyle = on ? (i === 2 ? '#3eb42d' : i < 2 ? '#3a80ea' : '#f3781c') : 'rgba(110,80,50,0.25)'; ctx.fill();
+        ui.buttons.push({ id: 'rs:' + i, x: tx + cw * i, y, w: cw, h: 46 * s });
+      }
+      ui.record({ x: tx, y: y + 8 * s, w: tw, h: 30 * s }, 'set:rsbar');
+    } });
+    B.push(lineBlock('How fast a ring follows your finger', 13 * s, { color: C.ink2, tag: 'set:rshint', gap: 2 * s }));
+    B.push({ h: 42 * s, gap: 14 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) });
+    B.push({ h: 42 * s, draw: (x, y, w) => ui.button('calm', save.calm ? 'Reduced motion: on' : 'Reduced motion: off', x, y, w, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 15 * s }) });
+    if (ads.canBuyPremium || ads.premium) B.push({ h: 40 * s, draw: (x, y, w) => ui.button('set:restore', 'Restore purchases', x + w * 0.15, y, w * 0.7, 40 * s, { kind: 'tertiary', size: 14.5 * s }) });
+    B.push({ h: 52 * s, gap: 14 * s, draw: (x, y, w) => ui.button('set:close', 'Done', x, y, w, 52 * s, { kind: 'primary', icon: ICON.check, size: 20 * s }) });
+    return B;
+  }, { ribbon: '#7a48e8' });
 }
 
 // "Who's in this vault" (the "i" panel): the pause card's kit (cream card, wooden frame, ribbon), one row per villain,
@@ -4048,6 +4109,7 @@ function drawTitle() {
     homeHit('home:chest', chx - cs * 0.6, chy - cs * 0.62 - tagS, cs * 1.2, cs * 1.1 + tagS);
   }
   drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm);
+  ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => gearIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u });
   // remove ads / buy the game (app, until bought): a small gold pill in the top corner
   if (ads.canBuyPremium) {
     const ps = 14 * u, pw2 = ui.measure('No ads', ps) + 44 * u, py2 = A.y + 10 * u;
@@ -4187,15 +4249,22 @@ function drawLevelPage(world, top0, bot, pad) {
   const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d);
   const totalStars = bestTotal();
   const locked = !envOpen(world);
-  const wide = A.w > A.h;
+  const wide = A.w > A.h * 0.85;
   const nx = nextIdx(), cta = !locked && nx >= first && nx < first + list.length && playable(nx);
   const ctaH = cta ? 62 * u : 0, ctaGap = cta ? 16 * u : 0;
   // the trail's box
   const bx0 = A.x + pad, bw = A.w - 2 * pad, by0 = top0 + 6 * u, bh = bot - top0 - ctaH - ctaGap - 6 * u;
-  const r0 = clamp(wide ? Math.min(bw * 0.05, bh * 0.2) : Math.min(bw, bh) * 0.1, 26 * u, 46 * u);
-  const sr = Math.min(9 * u, r0 * 0.26); // the stars under a stop
-  const ix = bx0 + r0 * 1.25, iw = bw - r0 * 2.5, iy = by0 + r0 * 1.1, ih = bh - r0 * 1.1 - r0 - sr * 3.2;
-  const pts = (wide ? MAP_PTS.wide : MAP_PTS.tall).slice(0, list.length).map(([fx, fy]) => [ix + fx * iw, iy + fy * ih]);
+  let r0 = clamp(wide ? Math.min(bw * 0.05, bh * 0.2) : Math.min(bw, bh) * 0.1, 18 * u, 46 * u), sr, pts;
+  for (let pass = 0; pass < 3; pass++) { // small or square rooms: shrink the stops until neighbours (and their stars) clear
+    sr = Math.min(9 * u, r0 * 0.26);
+    const ix = bx0 + r0 * 1.25, iw = bw - r0 * 2.5, iy = by0 + r0 * 1.1, ih = bh - r0 * 1.1 - r0 - sr * 3.2;
+    pts = (wide ? MAP_PTS.wide : MAP_PTS.tall).slice(0, list.length).map(([fx, fy]) => [ix + fx * iw, iy + fy * ih]);
+    let d = Infinity;
+    for (let a = 0; a < pts.length; a++) for (let b = a + 1; b < pts.length; b++) d = Math.min(d, Math.hypot(pts[a][0] - pts[b][0], pts[a][1] - pts[b][1]));
+    const need = r0 * 2 * 1.22 + sr * 2.6; // the boss stop is 1.22x; stars hang under each stop
+    if (d >= need) break;
+    r0 = Math.max(14 * u, r0 * (d / need) * 0.98);
+  }
   // the path: in from the bottom (or the left), out over the top (or the right) toward the next world
   const ends = wide ? [[bx0 - pad - 20 * u, pts[0][1]], ...pts, [A.x1 + 20 * u, pts[pts.length - 1][1]]] : [[pts[0][0] - r0, bot + 30 * u], ...pts, [pts[pts.length - 1][0], top0 - 20 * u]];
   const acc = hex(themeOf(list[0] || LEVELS[0]).palette.accent, '#c98a3a');
@@ -4430,7 +4499,7 @@ async function boot() {
   // the app build used to be an everything-unlocked test build: its saves carry 50 fake levels and 99999 coins. The first
   // real-progression launch starts the journey fresh (settings and the hen's skins carry over).
   if (typeof __APP__ !== 'undefined' && __APP__ && !save.real) {
-    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm };
+    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm, ringSpeed: save.ringSpeed };
     save = { ...defaultSave(), ...keep };
     ads.rebind(save);
   }

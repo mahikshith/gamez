@@ -463,7 +463,7 @@ export class Sim {
     return this.rings[this.rings.length - 1];
   }
   maxOmega(ring) {
-    return Math.min(2.2, 2.7 / ring.r) * (ring.M.slow || 1);
+    return Math.min(2.2, 2.7 / ring.r) * (ring.M.slow || 1) * (this.ringSpeed || 1); // ringSpeed: the player's setting
   }
 
   // ---------- step ----------
