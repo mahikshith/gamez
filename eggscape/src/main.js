@@ -66,7 +66,7 @@ const TEST = typeof __TEST__ !== 'undefined' && __TEST__;
 // ---------------------------------------------------------------- save
 const SAVE_VER = 3; // v3: 35 new levels, progress resets; settings, wallet and discoveries carry over
 // mode: difficulty (F32); stars/best are kept per mode (Medium uses the v1 keys); calm = reduced motion
-const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), adClaim: 0, daily: { day: '', best: 0, paid: '' } });
+const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), gates: {}, adClaim: 0, daily: { day: '', best: 0, paid: '' } });
 let save = defaultSave();
 const MODE_LIST = ['easy', 'medium', 'hard'];
 const sk = (id, mode = save.mode) => (mode === 'medium' ? String(id) : mode[0] + id);
@@ -938,6 +938,29 @@ async function press(id) {
       G.storeFlash = null;
       setScreen('store');
       break;
+    case 'home:hen':
+      G.henHomeHop = G.t + 1.2; G.henHomeN = (G.henHomeN || 0) + 1; audio.play('hen_hop', { vol: 0.6 });
+      G.storeFrom = G.screen; G.storeFlash = null; G.storeTab = 'hens'; setScreen('store');
+      break;
+    case 'home:chest': {
+      const w = E.openDailyChest(save.wallet, today());
+      if (!w) { toast('Come back tomorrow for another chest.', 2.2); break; }
+      const R = E.dailyChest(today());
+      save.wallet = w; persist(); audio.play('unlock');
+      toast(`Treasure! +${R.coins} coins, +${R.charges} Chick Charge${R.charges > 1 ? 's' : ''}`, 3);
+      break;
+    }
+    case 'home:premium':
+      G.storeFrom = G.screen; G.storeFlash = null; G.storeTab = 'powers'; setScreen('store');
+      break;
+    case 'gate:0': case 'gate:1': case 'gate:2': case 'gate:3': case 'gate:4': case 'gate:5': case 'gate:6': case 'gate:7': case 'gate:8': case 'gate:9': {
+      const k = +id.slice(5), price = GATE_COINS(k);
+      if (envOpen(k) || save.wallet.coins < price) break;
+      save.wallet = { ...save.wallet, coins: save.wallet.coins - price };
+      save.gates = { ...(save.gates || {}), [k]: 1 };
+      persist(); audio.play('unlock'); toast(`${WORLDS[k] || 'World'} is open!`, 2.4);
+      break;
+    }
     case 'tab:boosters':
     case 'tab:powers':
     case 'tab:hens':
@@ -2722,7 +2745,7 @@ function render() {
   const fx = G.fx;
   G.backdrop.draw(ctx, t, G.bcam); // parallax: the layers slide and breathe against the camera
   G.weather.drawBack(ctx);
-  if (G.screen === 'title') { drawTitle(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene, no vault behind it
+  if (G.screen === 'title') { drawTitle(); drawToast(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene, no vault behind it
   // world
   const P = G.play, cv = G.cv;
   const cx = P.x + P.w / 2, cy = P.y + P.h / 2;
@@ -3301,7 +3324,7 @@ function drawToast() {
   const lines = wrapText(T.text, size, maxW - 32 * u - xw);
   const h = lines.length * size * 1.3 + 18 * u;
   const w = Math.min(maxW, Math.max(...lines.map((l) => ui.measure(l, size))) + 32 * u + xw);
-  const x = A.cx - w / 2, y = Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
+  const x = A.cx - w / 2, y = G.screen === 'title' && G.titleToastY ? G.titleToastY : Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
   G.toastRect = { x, y, w, h };
   ctx.save();
   ctx.globalAlpha = a; ui.aBase = a;
@@ -3966,6 +3989,7 @@ function drawTitle() {
   const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, G.screenT, FONT);
   ui.record(logo, 'title:logo');
   const subY = ty + logoS * 0.5 + 18 * u;
+  G.titleToastY = subY + 16 * u;
   ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? A.w * 0.5 : A.w) - 32 * u });
   // the toy vault: centred between the subtitle and the meadow, or to the left of the buttons on a wide screen
   const eggH = Math.min(46 * u, (ground - subY) * 0.22);
@@ -3981,7 +4005,28 @@ function drawTitle() {
   }
   if (R < 40 * u) R = 0;
   else ui.record({ x: vx - R, y: vy - R, w: 2 * R, h: 2 * R }, 'title:vault');
+  // the hen stands on the meadow in her outfit (tap: her wardrobe), the daily treasure chest waits on the other side
+  const henH = Math.min(eggH * 2.3, 110 * u), hx = wide ? A.x + A.w * 0.075 : A.x + Math.max(henH * 0.48, A.w * 0.13);
+  const ft = ctx.createRadialGradient(hx, ground, 2, hx, ground, henH * 0.5); ft.addColorStop(0, 'rgba(40,20,4,0.28)'); ft.addColorStop(1, 'rgba(40,20,4,0)');
+  ctx.fillStyle = ft; ctx.beginPath(); ctx.ellipse(hx, ground, henH * 0.5, henH * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+  drawHenAnim(ctx, G.henHomeHop > G.t ? 'happy' : 'idle', hx, ground - henH * 0.5, henH, G.t, { key: 'home', face: 1, calm: save.calm, n: G.henHomeN || 0, shadow: 0 });
+  homeHit('home:hen', hx - henH * 0.45, ground - henH, henH * 0.9, henH);
+  const chestOpen = save.wallet.daily === today(), cs = Math.min(eggH * 1.35, 62 * u);
+  const chx = wide ? bx + bw / 2 + Math.min(70 * u, (A.x1 - bx - bw / 2) * 0.5) : A.x1 - Math.max(cs * 0.7, A.w * 0.12), chy = ground - cs * 0.42;
+  if (!(wide && chx + cs * 0.6 > A.x1)) {
+    drawChest(ctx, chx, chy, cs, G.t, chestOpen ? 'open' : 'ready');
+    const tagS = 13 * u, tagT = chestOpen ? 'Tomorrow' : 'FREE', tgw = ui.measure(tagT, tagS) + 14 * u;
+    ui.roundRect(chx - tgw / 2, chy - cs * 0.62 - tagS, tgw, tagS * 1.6, tagS * 0.8);
+    ctx.fillStyle = chestOpen ? 'rgba(40,24,10,0.7)' : '#e8402e'; ctx.fill();
+    ui.text(tagT, chx, chy - cs * 0.62 - tagS * 0.2, { size: tagS, align: 'center', color: '#fff', tag: 'title:chesttag' });
+    homeHit('home:chest', chx - cs * 0.6, chy - cs * 0.62 - tagS, cs * 1.2, cs * 1.1 + tagS);
+  }
   drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm);
+  // remove ads / buy the game (app, until bought): a small gold pill in the top corner
+  if (ads.canBuyPremium) {
+    const ps = 14 * u, pw2 = ui.measure('No ads', ps) + 44 * u, py2 = A.y + 10 * u;
+    ui.button('home:premium', 'No ads', A.x1 - pw2 - 10 * u, py2, pw2, 34 * u, { kind: 'gold', size: ps, icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) });
+  }
   // PLAY breathes
   const ph = 70 * u, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
   ctx.save();
@@ -3995,6 +4040,9 @@ function drawTitle() {
   modeRow(bx - bw / 2, ry + rh + 10 * u, bw, 44 * u, u, true);
   ui.button('extras', 'Extras', bx - bw / 2, ry + rh + 10 * u + 44 * u + 8 * u, bw, 36 * u, { kind: 'hud', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 15 * u });
 }
+
+// an invisible tap target on the home scene (the hen, the chest)
+function homeHit(id, x, y, w, h) { ui.buttons.push({ id, x, y, w, h }); }
 
 // a small gold crown (boss tiles)
 function drawCrown(cx, cy, s) {
@@ -4091,79 +4139,94 @@ function drawLevels() {
   ctx.restore();
 }
 
-// one world's page of the map, centred in the room between the header and the bottom of the safe rect: the star gate
-// line (a locked world), the tile grid, and the big PLAY under it when the next level to play is on this page
+// one world's page of the map (2026-11-15: an Angry Birds-style trail instead of a tile grid). A winding dirt path
+// climbs through the world's levels; each stop is a round button with its stars under it, the hen waits beside the
+// next level to play, and the boss sits at the top. A world still behind its star gate shows a gate card: collect the
+// stars, or open it with coins. The big PLAY sits under the trail when the next level to play is on this page.
+const MAP_PTS = {
+  tall: [[0.24, 0.88], [0.72, 0.7], [0.28, 0.5], [0.72, 0.3], [0.46, 0.1]],
+  wide: [[0.08, 0.72], [0.29, 0.3], [0.5, 0.7], [0.71, 0.3], [0.91, 0.56]],
+};
+function trail(pts) { // a smooth path through the points (Catmull-Rom as cubic Beziers)
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    ctx.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6, p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
+  }
+}
 function drawLevelPage(world, top0, bot, pad) {
   const u = ui.u, A = ui.A;
   const first = world * PER_ENV, list = LEVELS.slice(first, first + PER_ENV);
   const themeOf = (L) => THEMES.find((t) => t.id === L.theme) || THEMES[0];
   const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d);
   const totalStars = bestTotal();
-  const locked = !envOpen(world), gateH = locked ? 34 * u : 0, gateGap = locked ? 18 * u : 0;
-  const cols = A.w > A.h ? 5 : 3;
-  const rows = Math.ceil(list.length / cols);
-  const gap = 12 * u;
-  const cw = Math.min((A.w - pad * 2 - gap * (cols - 1)) / cols, 136 * u);
-  const nextI = save.unlocked - 1, cta = nextI >= first && nextI < first + list.length && playable(nextI) && !starsOf(LEVELS[nextI].id);
-  const ctaH = cta ? 62 * u : 0, ctaGap = cta ? 18 * u : 0;
-  const roomH = bot - top0 - gateH - gateGap - ctaH - ctaGap;
-  const chh = Math.min((roomH - gap * (rows - 1)) / rows, cw * 1.0);
-  const blockH = gateH + gateGap + rows * chh + gap * (rows - 1) + ctaGap + ctaH;
-  let top = top0 + Math.max(0, (bot - top0 - blockH) / 2); // balanced: the block sits in the middle of its room
-  // star gate (I5): a locked environment says how many stars it needs
-  if (locked) {
-    const need = envNeed(world), ly = top + 17 * u, txt = `Collect ${need} stars to open: you have ${totalStars}`;
-    const ts = 16 * u, mw = A.w - 2 * pad - 52 * u, tw = Math.min(ui.measure(txt, ts), mw), gw = tw + 52 * u, lx = A.cx - gw / 2;
-    ui.glass(lx, ly - 17 * u, gw, 34 * u, { border: 'rgba(255,224,120,0.7)' });
-    drawPadlock(lx + 20 * u, ly - 1 * u, 7 * u, '#ffe066');
-    ui.text(txt, lx + 36 * u, ly + 0.5 * u, { size: ts, color: '#ffe680', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'levels:gate', maxW: mw });
-    top += gateH + gateGap;
-  }
-  const gridW = cols * cw + (cols - 1) * gap;
-  const x0 = A.cx - gridW / 2;
-  if (cta) {
-    const bw = Math.min(gridW, 320 * u), cy = top + rows * chh + gap * (rows - 1) + ctaGap;
-    ui.button('lv:' + nextI, `PLAY  Level ${LEVELS[nextI].id}`, A.cx - bw / 2, cy, bw, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * u, round: 18 * u });
-  }
+  const locked = !envOpen(world);
+  const wide = A.w > A.h;
+  const nx = nextIdx(), cta = !locked && nx >= first && nx < first + list.length && playable(nx);
+  const ctaH = cta ? 62 * u : 0, ctaGap = cta ? 16 * u : 0;
+  // the trail's box
+  const bx0 = A.x + pad, bw = A.w - 2 * pad, by0 = top0 + 6 * u, bh = bot - top0 - ctaH - ctaGap - 6 * u;
+  const r0 = clamp(wide ? Math.min(bw * 0.05, bh * 0.2) : Math.min(bw, bh) * 0.1, 26 * u, 46 * u);
+  const sr = Math.min(9 * u, r0 * 0.26); // the stars under a stop
+  const ix = bx0 + r0 * 1.25, iw = bw - r0 * 2.5, iy = by0 + r0 * 1.1, ih = bh - r0 * 1.1 - r0 - sr * 3.2;
+  const pts = (wide ? MAP_PTS.wide : MAP_PTS.tall).slice(0, list.length).map(([fx, fy]) => [ix + fx * iw, iy + fy * ih]);
+  // the path: in from the bottom (or the left), out over the top (or the right) toward the next world
+  const ends = wide ? [[bx0 - pad - 20 * u, pts[0][1]], ...pts, [A.x1 + 20 * u, pts[pts.length - 1][1]]] : [[pts[0][0] - r0, bot + 30 * u], ...pts, [pts[pts.length - 1][0], top0 - 20 * u]];
+  const acc = hex(themeOf(list[0] || LEVELS[0]).palette.accent, '#c98a3a');
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  trail(ends); ctx.strokeStyle = 'rgba(40,20,6,0.55)'; ctx.lineWidth = r0 * 0.95; ctx.stroke();
+  trail(ends); ctx.strokeStyle = locked ? '#b9a98c' : '#ecd29a'; ctx.lineWidth = r0 * 0.72; ctx.stroke();
+  // the stretch already walked is a warmer gold
+  const doneN = list.filter((L) => bestStarsOf(L.id) > 0).length;
+  if (!locked && doneN > 0) { trail(ends.slice(0, doneN + 1 + (doneN === list.length ? 1 : 0))); ctx.strokeStyle = '#f6c454'; ctx.lineWidth = r0 * 0.72; ctx.stroke(); }
+  ctx.setLineDash([r0 * 0.18, r0 * 0.26]); trail(ends); ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = r0 * 0.09; ctx.stroke();
+  ctx.restore();
   const BOSS = { a: '#c93a54', b: '#7a1a40', lip: '#42091f', line: '#22040e', ink: '#fff', rim: 'rgba(255,214,96,0.95)' };
+  let henAt = null;
   list.forEach((L, k) => {
-    const i = first + k;
-    const c = k % cols, r = Math.floor(k / cols);
-    const open = playable(i), boss = !!L.boss;
-    // portrait: the boss closes the page on a double-wide tile
-    const wideT = boss && cols === 3 && c === 1 && k === list.length - 1;
-    const x = x0 + c * (cw + gap), y = top + r * (chh + gap), tw = wideT ? cw * 2 + gap : cw;
-    const acc = hex(themeOf(L).palette.accent, '#c98a3a');
-    const s = starsOf(L.id), cur = open && i === save.unlocked - 1 && !s;
+    const i = first + k, [x, y] = pts[k], boss = !!L.boss, r = boss ? r0 * 1.22 : r0;
+    const open = playable(i), st = starsOf(L.id), cur = open && i === nx && cta;
     const face = open ? (boss ? BOSS : ui.faceOf(ui.mix(acc, '#d8862a', 0.12))) : ui.faceOf(ui.mix(boss ? '#8a2a48' : acc, '#6c7080', boss ? 0.6 : 0.78));
-    if (cur && !save.calm) { // the next level to play: a ring breathes round its tile
-      const p = 0.5 + 0.5 * Math.sin(G.t * 4);
-      ui.roundRect(x - (3 + 3 * p) * u, y - (3 + 3 * p) * u, tw + (6 + 6 * p) * u, chh + (6 + 6 * p) * u, (20 + 3 * p) * u);
-      ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.3 * p})`; ctx.fill();
+    const grp = 'btn:lv:' + i;
+    if (cur && !save.calm) { const p = 0.5 + 0.5 * Math.sin(G.t * 4); ctx.beginPath(); ctx.arc(x, y + 2 * u, r + (5 + 5 * p) * u, 0, 7); ctx.fillStyle = `rgba(255,255,255,${0.3 + 0.3 * p})`; ctx.fill(); }
+    if (locked) { // behind the gate: a quiet stone, no tap target (the gate card sits over the trail)
+      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = face.b; ctx.fill(); ctx.lineWidth = 3 * u; ctx.strokeStyle = face.line; ctx.stroke();
+      return;
     }
-    const b = ui.button('lv:' + i, '', x, y, tw, chh, { face, disabled: !open, keepFace: true, round: 18 * u, shimmer: cur });
-    const fy = y + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mxT = x + tw / 2, grp = 'btn:lv:' + i;
-    const num = String(L.id);
+    const b = ui.button('lv:' + i, '', x - r, y - r, 2 * r, 2 * r, { face, disabled: !open, keepFace: true, round: r, shimmer: cur });
+    const fy = y - r + b.dy, fh = 2 * r - Math.min(6 * u, r * 0.26);
     if (open) {
-      if (boss && wideT) { drawCrown(x + tw * 0.2, fy + fh * 0.45, Math.min(13 * u, fh * 0.15)); drawCrown(x + tw * 0.8, fy + fh * 0.45, Math.min(13 * u, fh * 0.15)); }
-      ui.text(num, mxT, fy + fh * (boss ? 0.47 : 0.4), { size: Math.min(36 * u, fh * 0.4), align: 'center', color: '#fff', stroke: face.line, strokeW: Math.max(3, Math.min(36 * u, fh * 0.4) * 0.2), shadow: face.line, group: grp, tag: 'lvnum' + i });
-      const sr = Math.min(9.5 * u, cw / 11, fh * 0.11);
-      ui.roundRect(mxT - sr * 4.3, fy + fh * 0.78 - sr * 1.45, sr * 8.6, sr * 2.9, sr * 1.45);
-      ctx.fillStyle = 'rgba(30,10,0,0.3)'; ctx.fill();
-      for (let q = 0; q < 3; q++) drawStar(ctx, mxT + (q - 1) * sr * 2.65, fy + fh * 0.78, sr, q < s);
+      if (boss) drawCrown(x, fy - r * 0.02, Math.min(12 * u, r * 0.3));
+      const ns = Math.min(30 * u, r * 0.78);
+      ui.text(String(L.id), x, fy + fh * 0.5, { size: ns, align: 'center', color: '#fff', stroke: face.line, strokeW: Math.max(3, ns * 0.2), shadow: face.line, group: grp, tag: 'lvnum' + i });
     } else {
-      ui.text(num, mxT, fy + fh * 0.24, { size: Math.min(20 * u, fh * 0.22), align: 'center', color: 'rgba(255,255,255,0.78)', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'lvnum' + i });
-      drawPadlock(mxT, fy + fh * 0.6, Math.min(13 * u, fh * 0.14), null);
+      ui.text(String(L.id), x, fy + fh * 0.3, { size: Math.min(15 * u, r * 0.4), align: 'center', color: 'rgba(255,255,255,0.8)', stroke: face.line, strokeW: 2.5 * u, group: grp, tag: 'lvnum' + i });
+      drawPadlock(x, fy + fh * 0.64, Math.min(11 * u, r * 0.3), null);
     }
-    if (boss) {
-      const bs2 = Math.min(12 * u, fh * 0.13), bwid = ui.measure('BOSS', bs2) + 16 * u, byy = fy + fh * (open ? 0.15 : 0.06 + 0) ;
-      if (open) {
-        ui.roundRect(mxT - bwid / 2, byy - bs2 * 0.8, bwid, bs2 * 1.6, bs2 * 0.8);
-        ctx.fillStyle = '#ffd24a'; ctx.fill(); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = '#4a1a04'; ctx.stroke();
-        ui.text('BOSS', mxT, byy, { size: bs2, align: 'center', color: '#5a1a08', group: grp, tag: 'lvboss' + i });
-      } else ui.text('BOSS', mxT, fy + fh * 0.9, { size: bs2, align: 'center', color: 'rgba(255,255,255,0.7)', stroke: face.line, strokeW: 2.5 * u, group: grp, tag: 'lvboss' + i });
-    }
+    // the stars under the stop, on a little arc
+    if (open) for (let q = 0; q < 3; q++) drawStar(ctx, x + (q - 1) * sr * 2.4, y + r + sr * 1.15 - (q === 1 ? sr * 0.35 : 0), sr, q < st);
+    if (cur) henAt = { x, y, r };
   });
+  // the hen waits beside the next level, on the side with more room
+  if (henAt) {
+    const hh = henAt.r * 1.9, side = henAt.x < A.cx ? 1 : -1, hx = henAt.x + side * (henAt.r + hh * 0.42), hy = henAt.y + henAt.r * 0.15;
+    drawHenAnim(ctx, 'idle', hx, hy - hh * 0.32, hh, G.t, { key: 'map', face: -side, calm: save.calm, shadow: 0 });
+  }
+  if (locked) { // the gate card: stars, or coins
+    const need = envNeed(world), price = GATE_COINS(world), rich = save.wallet.coins >= price;
+    const cw = Math.min(bw, 340 * u), ch = 168 * u, cx0 = A.cx - cw / 2, cy0 = by0 + (bh - ch) / 2;
+    ui.frame(cx0, cy0, cw, ch, { s: u, r: 18 * u, fw: 5 * u, lip: 4 * u, record: true, tag: 'levels:gatecard' });
+    drawPadlock(A.cx, cy0 + 30 * u, 14 * u, null);
+    ui.text(`Collect ${need} stars to open`, A.cx, cy0 + 62 * u, { size: 18 * u, align: 'center', color: ui.C.ink, maxW: cw - 24 * u, tag: 'levels:gate' });
+    drawStar(ctx, A.cx - ui.measure(`You have ${totalStars}`, 15 * u) / 2 - 12 * u, cy0 + 86 * u, 7 * u, true);
+    ui.text(`You have ${totalStars}`, A.cx + 4 * u, cy0 + 86 * u, { size: 15 * u, align: 'center', color: '#8a6238', tag: 'levels:gatehave' });
+    ui.button('gate:' + world, `Open now  ${price}`, cx0 + 18 * u, cy0 + 106 * u, cw - 36 * u, 46 * u, { kind: rich ? 'gold' : 'off', disabled: !rich, dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 17 * u });
+  }
+  if (cta) {
+    const w = Math.min(bw, 320 * u), y = bot - ctaH;
+    ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, A.cx - w / 2, y, w, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * u, round: 18 * u });
+  }
 }
 
 // PRACTICE: every studio vault as a tile, grouped under the LAB names; same tile kit and grid as the level map, scrolled vertically
