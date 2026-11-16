@@ -32,7 +32,8 @@ import { drawP2Back, drawP2Front, p2Event } from './render/powers2.js'; // v3.4 
 import { warpXfBegin, warpXfEnd } from './render/warp.js'; // v3.4 warp gate: a creature drawn going through it
 import { POWER_DEMOS } from './data/power-demos.js'; // v3.4 studio vaults
 import { CHICK_DEMOS } from './data/chick-demos.js';
-import { P2_TYPES } from './sim/powers2.js'; // practice tiles: which ids are power orbs
+import { P2_TYPES } from './sim/powers2.js';
+import { skinUI } from './data/skin-ui.js'; // the hen skin re-themes the menus (mykee 2026-11-16) // practice tiles: which ids are power orbs
 import { BAYOU_DEMOS } from './data/bayou-demos.js'; // v3.7 Gator Bayou studio vaults
 import { FROG_DEMO } from './data/frog-demo.js'; // v3.3 frog studio level (dev)
 import { SEA_DEMOS } from './data/sea-demos.js'; // v3.3 studio levels (dev)
@@ -3710,7 +3711,7 @@ function drawPause() {
       { h: 92 * s, gap: 4 * s, draw: (x, y, w) => { // resume / restart / levels / shop / settings as squares with a label under each
         const items = [
           ['resume', 'Play', ICON.play, 'primary'], ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, 'secondary'],
-          ['shop', 'Shop', (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), 'gold'], ['settings', 'Settings', (c, X, Y, S) => gearIcon(c, X, Y, S, '#fff4dc', '#7c4fe0'), 'ad'],
+          ['shop', 'Shop', (c, X, Y, S) => shopIcon(c, X, Y, S), 'gold'], ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad'],
         ];
         const n = items.length, gap = 8 * s, sq = Math.min(66 * s, (w - gap * (n - 1)) / n), x0 = x + (w - (sq * n + gap * (n - 1))) / 2;
         items.forEach(([id, label, icon, kind], i) => {
@@ -3732,6 +3733,27 @@ function drawPause() {
   }, { ribbon: '#3a80ea' });
 }
 
+// the Settings and Shop icons follow the skin: a snowflake and a gift box in the winter outfits
+function settingsIcon(c, x, y, sz, col, hole) {
+  if (!(ui.skin && ui.skin.icons && ui.skin.icons.settings === 'snowflake')) return gearIcon(c, x, y, sz, col, hole);
+  c.save(); c.translate(x, y); c.rotate(save.calm ? 0 : G.t * 0.4); c.strokeStyle = col; c.lineCap = 'round'; c.lineWidth = sz * 0.1;
+  const R = sz * 0.44;
+  c.beginPath();
+  for (let i = 0; i < 6; i++) { const a = (i * Math.PI) / 3, ca = Math.cos(a), sa = Math.sin(a); c.moveTo(0, 0); c.lineTo(ca * R, sa * R);
+    for (const k of [0.55]) { const bx = ca * R * k, by = sa * R * k, b = R * 0.28; c.moveTo(bx, by); c.lineTo(bx + Math.cos(a + 0.8) * b, by + Math.sin(a + 0.8) * b); c.moveTo(bx, by); c.lineTo(bx + Math.cos(a - 0.8) * b, by + Math.sin(a - 0.8) * b); } }
+  c.stroke(); c.restore();
+}
+function shopIcon(c, x, y, S) {
+  if (!(ui.skin && ui.skin.icons && ui.skin.icons.shop === 'gift')) return drawCoin(c, x, y, S * 0.5, G.t);
+  const w = S * 0.8, h = S * 0.6, x0 = x - w / 2, y0 = y - h / 2 + S * 0.12, lw = Math.max(1.5, S * 0.06);
+  c.save(); c.lineJoin = 'round';
+  const box = (bx, by, bw, bh) => { c.beginPath(); c.roundRect ? c.roundRect(bx, by, bw, bh, S * 0.06) : c.rect(bx, by, bw, bh); };
+  box(x0, y0, w, h); c.fillStyle = '#e8402e'; c.fill(); c.lineWidth = lw; c.strokeStyle = '#5a110a'; c.stroke();
+  box(x0 - S * 0.05, y0 - S * 0.16, w + S * 0.1, S * 0.2); c.fillStyle = '#ff6a50'; c.fill(); c.stroke();
+  c.fillStyle = '#ffd24a'; c.fillRect(x - S * 0.07, y0 - S * 0.16, S * 0.14, h + S * 0.16); c.strokeRect(x - S * 0.07, y0 - S * 0.16, S * 0.14, h + S * 0.16);
+  for (const d of [-1, 1]) { c.beginPath(); c.ellipse(x + d * S * 0.13, y0 - S * 0.24, S * 0.14, S * 0.08, d * 0.5, 0, Math.PI * 2); c.fillStyle = '#ffd24a'; c.fill(); c.stroke(); }
+  c.restore();
+}
 // a gear (the Settings button)
 function gearIcon(c, x, y, sz, col = '#6b3f17', hole = null) {
   c.save(); c.translate(x, y); c.fillStyle = col; c.beginPath();
@@ -4211,7 +4233,7 @@ function drawTitle() {
     homeHit('home:chest', chx - cs * 0.6, chy - cs * 0.62 - tagS, cs * 1.2, cs * 1.1 + tagS);
   }
   drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm);
-  ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => gearIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u });
+  ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u });
   // remove ads / buy the game (app, until bought): a small gold pill in the top corner
   if (ads.canBuyPremium) {
     const ps = 14 * u, pw2 = ui.measure('No ads', ps) + 44 * u, py2 = A.y + 10 * u;
@@ -4532,7 +4554,7 @@ function frame(now) {
   last = now;
   if (G.paused) return;
   try {
-    if (G.henSkinCur !== save.wallet.henSkin) { G.henSkinCur = save.wallet.henSkin; setHenSkin(G.henSkinCur); } // hen + rooster skin
+    if (G.henSkinCur !== save.wallet.henSkin) { G.henSkinCur = save.wallet.henSkin; setHenSkin(G.henSkinCur); ui.skin = skinUI(G.henSkinCur); } // hen + rooster skin, and the menus' theme
     update(dt);
     render();
   } catch (e) {
