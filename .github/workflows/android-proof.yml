@@ -33,6 +33,14 @@ jobs:
           gradle --no-daemon assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk eggscape-web-proof.apk
           ls -l eggscape-web-proof.apk
+          echo "APK_NAME=eggscape-$(sed -n "s/.*versionName '\\(.*\\)'.*/\\1/p" app/build.gradle)-${GITHUB_REF_NAME##*/}-run${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+      # every run also keeps its own APK under the run's Artifacts (the release below always holds the newest one)
+      - name: Upload APK as a run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: eggscape/android/eggscape-web-proof.apk
+          retention-days: 30
       - name: Publish pre-release
         working-directory: eggscape/android
         env:
