@@ -33,11 +33,13 @@ export const SAL = {
   climbCD: 4, boss: 1.3,
 };
 // The frost gecko (species 'gecko': Baron von Brr, the level-15 boss; level.bossFight.gecko {delay, dir}). The same crawler,
-// smaller and a little slower, with no fire: he crawls in through a gap of the outer ring, hunts the leading egg, and the
+// a little slower, with no fire: he crawls in through a gap of the outer ring, hunts the leading egg, and the
 // level's blizzard attacks (sim/boss.js gale, freeze, icicles) come from him. Icy feet: the floor he walked on stays icy
 // (sg.ice, frictionless) for GECKO.icy s. Lick: an egg he reaches freezes onto its ring for GECKO.freeze s (egg.icy: gravity
 // can't move it, thorns and icicles can't crack it), then he loses interest for GECKO.bored s. He never breaks an egg.
-export const GECKO = { svl: 1.3, speed: SAL.speed * 0.85, lick: 0.75, lickAt: 0.4, reach: 0.5, freeze: 3.5, bored: 4, icy: 5 };
+// svl 1.9 m (was 1.3): drawn at the salamander's on-screen size so his face and crystals read; the trail, hit tests and
+// icy footprints all follow it, so the art and what the powers can hit agree.
+export const GECKO = { svl: 1.9, speed: SAL.speed * 0.85, lick: 0.75, lickAt: 0.4, reach: 0.5, freeze: 3.5, bored: 4, icy: 5 };
 const deg = (d) => (d * Math.PI) / 180;
 const mod = (a, b) => ((a % b) + b) % b;
 

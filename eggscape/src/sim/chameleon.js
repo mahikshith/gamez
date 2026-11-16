@@ -18,7 +18,7 @@
 import { RING_TH, wrap, clamp } from './geom.js';
 
 export const CHAM = {
-  svl: 1.4, speed: 0.55, // m snout to hips; m/s (70% of the salamander's 0.5 walk)
+  svl: 1.8, speed: 0.55, // m snout to hips (was 1.4: the salamander's size on screen); m/s (70% of the salamander's 0.5 walk)
   reach: 2.0, prefer: 3, lock: 0.6, shoot: 0.25, reel: 0.35, digest: 5, miss: 1, // s
   sick: 6, retch: 0.8, fly: 0.5, sickV: 0.5, // sick: s; the cough (s into the sickness); the orb's arc (s); walk speed x
   bumpD: 0.5, bump: 1, bumpV: 0.5, bumpR: 0.5, bumpCD: 2,

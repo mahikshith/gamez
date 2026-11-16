@@ -665,6 +665,35 @@ function camMoment(x, y, hold = 0.6) {
   if (save.calm || cv.mom || G.screen !== 'play' || !G.sim || G.sim.state !== 'play' || G.sim.rings.some((r) => r.held)) return;
   cv.mom = { x, y, t: 0, hold };
 }
+// 2026-11-16 (owner on L21: the crawlers need the salamander's close-ups): the crawlers' signature moves get the moment
+// camera too. The frost gecko's lick and his frost breath / deep freeze (L15), a thorn-back's spike drop, flip and duel
+// (L20), Sly's snatch and his sick cough (L26). At most one every CRAWL_GAP s so a busy fight never keeps the camera
+// hunting; camMoment itself skips calm mode, a held ring and a moment already running.
+const CRAWL_GAP = 5;
+function crawlerMoment(ev) {
+  const sim = G.sim, cv = G.cv;
+  if (!sim || save.calm || G.t - (cv.crawlT ?? -99) < CRAWL_GAP) return;
+  let x = ev.x, y = ev.y, hold = 0.6;
+  switch (ev.type) {
+    case 'geckoLick': x = (ev.x + ev.hx) / 2; y = (ev.y + ev.hy) / 2; hold = 0.75; break; // his tongue and the egg it freezes
+    case 'chamSnatch': x = (ev.x + ev.hx) / 2; y = (ev.y + ev.hy) / 2; hold = 0.6; break; // the tongue and the orb
+    case 'chamSick': hold = 0.75; break;
+    case 'thornFlip': hold = 0.65; break;
+    case 'thornDuel': hold = 1.1; break;
+    case 'spikeUp': { if (ev.own == null) return; const C = (sim.sals || []).find((c) => c.id === ev.own); if (!C || !C.pts.length) return; x = (ev.x + C.pts[0].x) / 2; y = (ev.y + C.pts[0].y) / 2; hold = 0.5; break; } // the spike and the lizard that shed it
+    case 'bossWarn': { // Baron von Brr winds up his frost breath or the deep freeze
+      if (ev.kind !== 'blizzard' || (ev.attack !== 'gale' && ev.attack !== 'freeze')) return;
+      const g = geckoAnchor(sim);
+      if (!g) return;
+      x = g.x; y = g.y; hold = 0.8; break;
+    }
+    default: return;
+  }
+  if (!(Number.isFinite(x) && Number.isFinite(y))) return;
+  const was = cv.mom;
+  camMoment(x, y, hold);
+  if (cv.mom && cv.mom !== was) { cv.crawlT = G.t; camPunch(0.02, x, y); }
+}
 const MOM_IN = 0.18, MOM_OUT = 0.3, MOM_ZOOM = 1.16;
 // the pulled-in version of the resting target T (weight 0..1 follows the moment's in, hold and out)
 function camMomentTarget(T, dt) {
@@ -1789,6 +1818,7 @@ function handleEvents() {
     // moment camera (these events also have their own cases below)
     if (ev.type === 'allyKnock') camMoment(ev.x, ev.y, 0.7); // the goose lands on its victim
     else if (ev.type === 'stkLaunch') camMoment(ev.tx, ev.ty, 0.65); // the power chick in flight: hold where it lands
+    else crawlerMoment(ev);
     switch (ev.type) {
       case 'allyCrow': // the rooster crows: one short shake and a beat of hit-stop (calm: none); the wave itself is drawn in render/allies.js
         fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y); camMoment(ev.x, ev.y);
