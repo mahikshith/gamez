@@ -389,20 +389,22 @@ function dashChick(ctx, t, o, st) {
   ctx.stroke();
 }
 
-function swoopWing(ctx, sx, ang, span, C, o) {
+// bend: the wing tip trails the stroke (follow-through): > 0 curls the outer wing up, < 0 down
+function swoopWing(ctx, sx, ang, span, C, o, bend = 0) {
   ctx.save();
   ctx.translate(sx * 22, 4);
   ctx.scale(sx, 1);
   ctx.rotate(-ang);
+  const Y = (f, y) => y - bend * 15 * f * f; // f: 0 at the shoulder .. 1 at the tip
   const wing = () => {
     ctx.beginPath();
     ctx.moveTo(0, -8);
-    ctx.bezierCurveTo(span * 0.35, -20, span * 0.8, -18, span, -10);
+    ctx.bezierCurveTo(span * 0.35, Y(0.35, -20), span * 0.8, Y(0.8, -18), span, Y(1, -10));
     // three feather tips along the trailing edge
-    ctx.quadraticCurveTo(span * 0.98, -2, span * 0.82, 0);
-    ctx.quadraticCurveTo(span * 0.82, 7, span * 0.62, 6);
-    ctx.quadraticCurveTo(span * 0.58, 13, span * 0.4, 10);
-    ctx.quadraticCurveTo(span * 0.2, 14, 0, 8);
+    ctx.quadraticCurveTo(span * 0.98, Y(0.98, -2), span * 0.82, Y(0.82, 0));
+    ctx.quadraticCurveTo(span * 0.82, Y(0.82, 7), span * 0.62, Y(0.62, 6));
+    ctx.quadraticCurveTo(span * 0.58, Y(0.58, 13), span * 0.4, Y(0.4, 10));
+    ctx.quadraticCurveTo(span * 0.2, Y(0.2, 14), 0, 8);
     ctx.closePath();
   };
   wing();
@@ -412,11 +414,11 @@ function swoopWing(ctx, sx, ang, span, C, o) {
   ctx.clip();
   ctx.fillStyle = C.base;
   ctx.beginPath();
-  ctx.ellipse(span * 0.4, -16, span * 0.7, 12, 0, 0, TAU);
+  ctx.ellipse(span * 0.4, Y(0.4, -16), span * 0.7, 12, 0, 0, TAU);
   ctx.fill();
   ctx.strokeStyle = 'rgba(30,70,140,0.4)';
   ctx.lineWidth = 1.6;
-  for (const f of [0.4, 0.62, 0.82]) { ctx.beginPath(); ctx.moveTo(span * f * 0.8, -6); ctx.quadraticCurveTo(span * f * 0.95, -1, span * f, 3); ctx.stroke(); }
+  for (const f of [0.4, 0.62, 0.82]) { ctx.beginPath(); ctx.moveTo(span * f * 0.8, Y(f * 0.8, -6)); ctx.quadraticCurveTo(span * f * 0.95, Y(f, -1), span * f, Y(f, 3)); ctx.stroke(); }
   ctx.restore();
   wing(); // (2026-11-16) outline the wing itself: the stroke used to draw the last feather line, sticking out past the wing
   ctx.lineWidth = o;
@@ -424,19 +426,64 @@ function swoopWing(ctx, sx, ang, span, C, o) {
   ctx.stroke();
   ctx.restore();
 }
+// grab pose: both legs reach forward-down with the toes spread (ext 0 tucked under .. 1 reaching)
+function talons(ctx, ext, o) {
+  const a = Math.PI / 2 - 1.0 * ext, len = 7 + 6 * ext, sp = 0.45 + 0.35 * ext;
+  for (const pass of [0, 1]) {
+    ctx.lineWidth = pass ? 3.2 : 3.2 + o * 1.3;
+    ctx.strokeStyle = pass ? '#ffa62b' : LINE;
+    ctx.beginPath();
+    for (const x of [-7, 6]) {
+      const y = 34, ex = x + Math.cos(a) * len, ey = y + Math.sin(a) * len;
+      ctx.moveTo(x, y);
+      ctx.lineTo(ex, ey);
+      for (const d of [-sp, 0, sp]) { ctx.moveTo(ex, ey); ctx.lineTo(ex + Math.cos(a + d) * 5, ey + Math.sin(a + d) * 5); }
+    }
+    ctx.stroke();
+  }
+}
+const SWOOP_RISE = 1.1, SWOOP_GLIDE = 1.6; // = SWOOP_RISE_MAX, SWOOP_GLIDE in sim/chicks.js (phase lengths)
+const smooth = (q) => q * q * (3 - 2 * q);
 function swoopChick(ctx, t, o, st) {
-  const C = KIND.swoop, rise = st.pow === 1, glide = st.pow === 2;
-  // wing pose: idle half folded with a small flutter, ready lifted, rising = big fast strokes, glide = spread
-  let ang, span = 40;
-  if (rise) ang = Math.sin(t * 30) * 0.9 + 0.2;
-  else if (glide) { ang = 0.25 + Math.sin(t * 3) * 0.06; span = 46; }
-  else ang = -0.75 + Math.sin(t * (8 + 26 * st.flap)) * (0.15 + 0.5 * st.flap) + (st.ready ? 0.45 + 0.12 * Math.sin(t * 5) : 0);
-  if (rise) ctx.translate(0, Math.sin(t * 30) * 2);
+  const C = KIND.swoop, rise = st.pow === 1, glide = st.pow === 2, land = st.land;
+  // wing pose: idle half folded with a small flutter, ready lifted. Rising: a crouch, then strong flaps (fast
+  // downstroke, slower recovery) with the tips trailing each stroke and the body bobbing on the beat. Gliding: the
+  // wings snap open and ride the air, then the feet reach forward to grab. Landing: a springy squash, wings fold.
+  let ang, span = 40, bend = 0, by = 0, sx = 1, sy = 1, lean = 0, grab = -1, mood = null, look = { x: 1, y: 0 };
+  if (rise) {
+    const e = SWOOP_RISE - clamp(st.powT, 0, SWOOP_RISE);
+    look = { x: 0, y: -2 };
+    if (e < 0.07) { const q = Math.sin((e / 0.07) * Math.PI / 2); ang = 1.1 * q; sy = 1 - 0.14 * q; sx = 1 + 0.1 * q; by = 4 * q; }
+    else {
+      const f = mod((e - 0.07) * 5.5, 1), D = 0.38;
+      if (f < D) { const q = f / D; ang = 1.1 - 1.75 * smooth(q); bend = 0.9 * Math.sin(q * Math.PI); by = -3 * Math.sin(q * Math.PI); }
+      else { const q = (f - D) / (1 - D); ang = -0.65 + 1.75 * smooth(q); bend = -0.5 * Math.sin(q * Math.PI); by = 1.5 * Math.sin(q * Math.PI); }
+      sy = 1.07; sx = 0.95;
+    }
+  } else if (glide) {
+    const g = SWOOP_GLIDE - clamp(st.powT, 0, SWOOP_GLIDE);
+    span = 46;
+    ang = 0.25 + Math.sin(t * 3) * 0.06 + 0.7 * Math.exp(-g * 9) * Math.cos(g * 17);
+    bend = 0.25 + 0.08 * Math.sin(t * 3 + 1) + 0.5 * Math.exp(-g * 8);
+    lean = 0.14 * clamp(g / 0.3, 0, 1);
+    grab = clamp((g - 0.3) / 0.25, 0, 1);
+    if (g < 0.35) mood = 'happy';
+    else look = { x: 1.5, y: 1.8 };
+  } else if (land !== undefined) {
+    const k = Math.exp(-land * 7) * Math.cos(land * 20);
+    sy = 1 - 0.16 * k; sx = 1 + 0.12 * k;
+    ang = -0.75 + 1.0 * Math.exp(-land * 6) * Math.cos(land * 13);
+    if (land < 0.3) mood = 'happy';
+  } else ang = -0.75 + Math.sin(t * (8 + 26 * st.flap)) * (0.15 + 0.5 * st.flap) + (st.ready ? 0.45 + 0.12 * Math.sin(t * 5) : 0);
+  ctx.translate(0, by + 44);
+  ctx.scale(sx, sy); // squash and stretch about the feet
+  ctx.translate(0, -44);
+  if (lean) { ctx.translate(0, 10); ctx.rotate(lean); ctx.translate(0, -10); }
   // tail feathers
   for (const [r, l] of [[-0.35, 16], [0, 19], [0.35, 16]]) {
     ctx.save();
     ctx.translate(-4, 34);
-    ctx.rotate(r + 2.7);
+    ctx.rotate(r + 2.7 - lean * 1.5);
     ctx.beginPath();
     ctx.moveTo(-4, 0); ctx.quadraticCurveTo(-5, l * 0.7, 0, l); ctx.quadraticCurveTo(5, l * 0.7, 4, 0);
     ctx.closePath();
@@ -447,8 +494,10 @@ function swoopChick(ctx, t, o, st) {
     ctx.stroke();
     ctx.restore();
   }
-  if (!rise && !glide) legs(ctx, [-8, 8], 36, 8, st.flap, t, o);
-  swoopWing(ctx, -1, ang, span, C, o);
+  if (grab >= 0) talons(ctx, grab, o);
+  else if (rise) legs(ctx, [-7, 7], 35, 7, 0, t, o); // dangling
+  else legs(ctx, [-8, 8], 36, 8, st.flap, t, o);
+  swoopWing(ctx, -1, ang, span, C, o, bend);
   // body
   fluffPath(ctx, 0, 10, 30, 30, 16, 1.07);
   cel(ctx, C, o, { x: -7, y: 2, r: 0.92 }, 36);
@@ -464,12 +513,16 @@ function swoopChick(ctx, t, o, st) {
   ctx.lineWidth = o;
   ctx.strokeStyle = LINE;
   ctx.stroke();
-  swoopWing(ctx, 1, ang, span, C, o);
-  // curl crest
+  swoopWing(ctx, 1, ang, span, C, o, bend);
+  // curl crest (blown back while it flies)
+  const cb = rise ? 0.35 : glide ? 0.2 : 0;
+  ctx.save();
+  ctx.translate(-2, -19);
+  ctx.rotate(-cb);
   ctx.beginPath();
-  ctx.moveTo(-2, -19);
-  ctx.bezierCurveTo(-4, -34, 12, -36, 10, -26);
-  ctx.bezierCurveTo(9, -22, 4, -24, 5, -27);
+  ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(-2, -15, 14, -17, 12, -7);
+  ctx.bezierCurveTo(11, -3, 6, -5, 7, -8);
   ctx.lineWidth = 5 + o;
   ctx.strokeStyle = LINE;
   ctx.lineCap = 'round';
@@ -477,10 +530,11 @@ function swoopChick(ctx, t, o, st) {
   ctx.lineWidth = 5;
   ctx.strokeStyle = C.shade;
   ctx.stroke();
+  ctx.restore();
   // face
   const fy = 6, bl = blinkAt(t, 3);
   cheeks(ctx, [[-18, fy + 10], [20, fy + 10]], 5, 0.4);
-  for (const sx of [-1, 1]) eye(ctx, sx * 10 + 3, fy, 6.6, 8.8, t, o, { shut: bl, mood: glide ? 'happy' : null, look: { x: rise ? 0 : 1, y: rise ? -2 : 0 } });
+  for (const s2 of [-1, 1]) eye(ctx, s2 * 10 + 3, fy, 6.6, 8.8, t, o, { shut: rise || glide ? 0 : bl, mood, look });
   // a small hooked beak between the eyes (2026-11-16: the old long wedge cut across the face)
   ctx.beginPath();
   ctx.moveTo(-2.5, fy + 9);
@@ -500,17 +554,42 @@ function swoopChick(ctx, t, o, st) {
   ctx.beginPath(); ctx.ellipse(1.5, fy + 10, 2.4, 1.2, -0.2, 0, TAU); ctx.fill();
 }
 
+// a loose feather (leaf shape) at (x, y), turned a
+function feather(ctx, x, y, a, sz, col, o) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  ctx.beginPath();
+  ctx.moveTo(-sz, 0);
+  ctx.quadraticCurveTo(0, -sz * 0.5, sz, 0);
+  ctx.quadraticCurveTo(0, sz * 0.5, -sz, 0);
+  ctx.closePath();
+  ctx.fillStyle = col;
+  ctx.fill();
+  ctx.lineWidth = Math.min(o * 0.45, sz * 0.3);
+  ctx.strokeStyle = LINE;
+  ctx.stroke();
+  ctx.restore();
+}
+// st.inhale 0..1: the breath in before the puff (cheeks full, eyes screwed shut); st.deflate (s since it went
+// flat): a springy boing back to size, a relieved face and a little "pfff" of air and feathers
 function bulkChick(ctx, t, o, st) {
-  const C = KIND.bulk;
+  const C = KIND.bulk, inh = st.inhale || 0, df = st.deflate;
+  if (df !== undefined) {
+    const k = Math.exp(-df * 7) * Math.cos(df * 19);
+    ctx.translate(0, 44);
+    ctx.scale(1 + 0.14 * k, 1 - 0.16 * k);
+    ctx.translate(0, -44);
+  }
   legs(ctx, [-14, 14], 37, 7, st.flap, t, o);
-  const wa = Math.sin(t * (9 + 30 * st.flap)) * (0.3 + 0.5 * st.flap) + (st.ready ? 0.3 : 0);
+  const wa = inh ? 0.6 * inh : Math.sin(t * (9 + 30 * st.flap)) * (0.3 + 0.5 * st.flap) + (st.ready ? 0.3 : 0);
   for (const sx of [-1, 1]) stubWing(ctx, sx * 37, 14, sx, wa, 0.85, C, o);
   // three hair tufts
   ctx.lineCap = 'round';
   for (const [x, r] of [[-5, -0.4], [0, 0], [5, 0.4]]) {
     ctx.save();
     ctx.translate(x, -18);
-    ctx.rotate(r + Math.sin(t * 4 + x) * 0.1);
+    ctx.rotate(r * (1 + inh) + Math.sin(t * 4 + x) * 0.1);
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.quadraticCurveTo(-3, -7, 1, -12);
@@ -536,15 +615,58 @@ function bulkChick(ctx, t, o, st) {
   ctx.lineWidth = o;
   ctx.strokeStyle = LINE;
   ctx.stroke();
-  const fy = 8, bl = blinkAt(t, 4);
-  cheeks(ctx, [[-25, fy + 11], [25, fy + 11]], 7.5, 0.5);
-  for (const sx of [-1, 1]) eye(ctx, sx * 13, fy, 7, 8.6, t, o, { shut: bl });
-  beakDown(ctx, 0, fy + 10, 4.5, 2 + Math.sin(t * 6) * 0.5, o);
+  const fy = 8, bl = blinkAt(t, 4), relief = df !== undefined && df < 0.4;
+  cheeks(ctx, [[-25, fy + 11], [25, fy + 11]], 7.5 + 4 * inh, 0.5 + 0.2 * inh);
+  for (const sx of [-1, 1]) eye(ctx, sx * 13, fy, 7, 8.6, t, o, { shut: bl, mood: inh > 0.3 ? 'squint' : relief ? 'happy' : null, side: sx });
+  if (inh) { // cheeks full: a pursed beak
+    ctx.beginPath();
+    ctx.ellipse(0, fy + 12, 4, 3, 0, 0, TAU);
+    ctx.fillStyle = '#ffb12e';
+    ctx.fill();
+    ctx.lineWidth = o * 0.8;
+    ctx.strokeStyle = LINE;
+    ctx.stroke();
+  } else beakDown(ctx, 0, fy + 10, 4.5, relief ? 5 : 2 + Math.sin(t * 6) * 0.5, o);
+  if (df !== undefined) {
+    const f = clamp(df / 0.6, 0, 1);
+    // pfff: the last air out of the beak, and a few feathers floating down
+    ctx.fillStyle = `rgba(240,255,225,${0.85 * (1 - f)})`;
+    ctx.strokeStyle = `rgba(110,58,18,${0.5 * (1 - f)})`;
+    ctx.lineWidth = o * 0.5;
+    for (let i = 0; i < 3; i++) {
+      const q = clamp(f * 1.6 - i * 0.15, 0, 1);
+      if (!q) continue;
+      ctx.beginPath();
+      ctx.arc(9 + q * (22 + i * 7), fy + 16 - q * (4 + i * 3), 3 + q * (4 + i), 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1 - f * f;
+    for (let i = 0; i < 4; i++) {
+      const sd = i % 2 ? 1 : -1, x = sd * (16 + 10 * i + 14 * f), y = -6 + 34 * f * f - 14 * f + Math.sin(f * 9 + i) * 3;
+      feather(ctx, x, y, sd * (0.5 + f * 2.5) + Math.sin(f * 8 + i) * 0.4, 8, i % 3 ? C.base : C.belly, o);
+    }
+    ctx.globalAlpha = 1;
+  }
 }
-// the puffed bulk chick: a big spiky fluff ball lying along the channel (rx, ry in 100-units), face upright
+// the puffed bulk chick: a big spiky fluff ball lying along the channel (rx, ry in 100-units), face upright.
+// Puff: a breath in (anticipation squash, 0.1 s), then it springs out past full size and settles (spring k 9, w 17),
+// throwing out a ring of feathers. Big: a jelly wobble. Last 0.6 s: it shudders, then sags as the air leaks out.
 function bulkPuffed(ctx, t, o, st, rx, ry, rot) {
-  const C = KIND.bulk, P = clamp(st.powT, 0, 5), grow = clamp((5 - P) / 0.25, 0, 1), end = P < 0.6 ? 0.5 + 0.5 * Math.sin(t * 40) : 1;
-  const sx = rx * (0.45 + 0.55 * grow) * (0.97 + 0.03 * end), sy = ry * (0.6 + 0.4 * grow);
+  const C = KIND.bulk, P = clamp(st.powT, 0, 5), e = 5 - P;
+  if (e < 0.1) {
+    const q = Math.sin((e / 0.1) * Math.PI / 2);
+    ctx.save();
+    ctx.translate(0, 44);
+    ctx.scale(1 + 0.12 * q, 1 - 0.15 * q);
+    ctx.translate(0, -44);
+    bulkChick(ctx, t, o, { ...st, inhale: q, ready: false });
+    ctx.restore();
+    return;
+  }
+  const tau = e - 0.1, t2 = Math.max(0, tau - 0.035), g = 1 - Math.exp(-tau * 9) * Math.cos(tau * 17), g2 = 1 - Math.exp(-t2 * 9) * Math.cos(t2 * 17);
+  const wob = Math.sin(t * 6.5) * 0.035 * clamp(tau / 0.5, 0, 1), end = P < 0.6 ? 0.5 + 0.5 * Math.sin(t * 40) : 1, sag = clamp(1 - P / 0.25, 0, 1);
+  const sx = rx * (0.42 + 0.58 * g) * (1 + wob) * (0.97 + 0.03 * end) * (1 - 0.25 * sag), sy = ry * (0.55 + 0.45 * g2) * (1 - wob) * (1 - 0.2 * sag);
   ctx.save();
   ctx.rotate(rot);
   // feet stick out under it
@@ -594,10 +716,20 @@ function bulkPuffed(ctx, t, o, st, rx, ry, rot) {
   // tiny wings flapping at the ends
   for (const s2 of [-1, 1]) stubWing(ctx, s2 * sx * 0.97, sy * 0.05, s2, Math.sin(t * 16) * 0.4, 0.8, C, o);
   ctx.restore();
-  // face upright: puffed cheeks, squeezed determined eyes
+  // the pop: a ring of feathers flung out, slowing, then drifting down
+  if (tau < 0.8) {
+    const f = tau / 0.8, d = 1 - Math.exp(-f * 5);
+    ctx.globalAlpha = 1 - f * f;
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * TAU + 0.3, r = 0.9 + 0.35 * d;
+      feather(ctx, Math.cos(a) * rx * r, Math.sin(a) * ry * r + f * f * 22, a + f * 4 * (i % 2 ? 1 : -1), 9, i % 3 ? C.base : C.belly, o);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // face upright: puffed cheeks, squeezed determined eyes; the air leaking out at the end puffs from the beak
   const fy = -sy * 0.12;
-  cheeks(ctx, [[-sx * 0.36, fy + 14], [sx * 0.36, fy + 14]], 11, 0.55);
-  for (const s2 of [-1, 1]) eye(ctx, s2 * 15, fy, 7.5, 7.5, t, o, { shut: 0.35 });
+  cheeks(ctx, [[-sx * 0.36, fy + 14], [sx * 0.36, fy + 14]], 11 * (1 - 0.3 * sag), 0.55);
+  for (const s2 of [-1, 1]) eye(ctx, s2 * 15, fy, 7.5, 7.5, t, o, { shut: 0.35 + 0.3 * sag });
   brows(ctx, [[-24, fy - 13, -8, fy - 9], [24, fy - 13, 8, fy - 9]], o);
   ctx.beginPath(); // puffed cheeks hold the breath: a tiny pursed beak
   ctx.ellipse(0, fy + 13, 5, 3.6, 0, 0, TAU);
@@ -606,14 +738,187 @@ function bulkPuffed(ctx, t, o, st, rx, ry, rot) {
   ctx.lineWidth = o * 0.8;
   ctx.strokeStyle = LINE;
   ctx.stroke();
+  if (P < 0.4) {
+    ctx.fillStyle = 'rgba(240,255,225,0.85)';
+    ctx.strokeStyle = 'rgba(110,58,18,0.5)';
+    ctx.lineWidth = o * 0.5;
+    for (let i = 0; i < 2; i++) {
+      const q = mod(t * 3 + i * 0.5, 1);
+      ctx.globalAlpha = 1 - q;
+      ctx.beginPath();
+      ctx.arc(6 + q * 14, fy + 12 - q * 12, 2 + q * 3, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
-function pickChick(ctx, t, o, st) {
-  const C = KIND.pick, drill = st.pow === 1, recoil = st.pow === 2;
+// Drill bit spin: p = groove pitches turned so far (the grooves scroll toward the tip as the bit turns), v = pitches/s.
+// Idle: a lazy turn. Ready: a little rev every 1.9 s. Drilling: spin-up (tau 0.07 s) to 24/s, just under the 30/s
+// where 60 fps would freeze the grooves; the recoil spins down.
+const SPIN = 24;
+function drillSpin(t, st) {
+  if (st.pow === 1) { const e = PICK_T - clamp(st.powT, 0, PICK_T), r = Math.exp(-e / 0.07); return { p: SPIN * (e - 0.07 * (1 - r)), v: SPIN * (1 - r) }; }
+  if (st.pow === 2) { const e = 0.35 - clamp(st.powT, 0, 0.35), r = Math.exp(-e / 0.12); return { p: SPIN * 0.12 * (1 - r), v: SPIN * r }; }
+  let p = t * 0.9, v = 0.9;
+  if (st.ready) {
+    const c = Math.floor(t / 1.9), q = t - c * 1.9, D = 0.42, A = 3.4;
+    p += c * A + (q < D ? A * (q / D - Math.sin((TAU * q) / D) / TAU) : A);
+    if (q < D) v += (A / D) * (1 - Math.cos((TAU * q) / D));
+  }
+  return { p, v };
+}
+// The drill bit: a steel cone along +x from its base (x 0, radius W) to the tip (x L). Round, not flat: tone bands
+// run its length and close in at the tip (lit top, dark underside), and the thread is a helix seen side-on: each
+// turn is a curve bowing toward the tip with a glint on its lit flank. As it spins the turns slide toward the tip, so
+// the glints wrap round and travel along the bit; fast, they smear into a blur with whirr marks either side.
+const BIT_TONES = [[-1, -0.62, '#c3ccd8'], [-0.62, -0.2, '#eef2f7'], [-0.2, 0.3, '#a4aebd'], [0.3, 0.68, '#7d8898'], [0.68, 1, '#5d6676']];
+function drillBit(ctx, L, W, spin, o) {
+  const cone = () => { ctx.beginPath(); ctx.moveTo(0, -W); ctx.lineTo(L, 0); ctx.lineTo(0, W); ctx.closePath(); };
+  cone();
   ctx.save();
-  if (drill) { ctx.translate(Math.sin(t * 70) * 1.2, 4); ctx.rotate(0.95); } // nose down into the ring
-  else if (recoil) { ctx.translate(0, -4 * Math.sin(clamp(st.powT / 0.35, 0, 1) * Math.PI)); ctx.rotate(0.25); }
-  if (!drill) legs(ctx, [-8, 8], 37, 8, st.flap, t, o);
+  ctx.clip();
+  for (const [a, b, c] of BIT_TONES) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(-1, a * W); ctx.lineTo(L, 0); ctx.lineTo(-1, b * W); ctx.closePath(); ctx.fill(); }
+  const P = 7.5, blur = clamp((spin.v - 9) / 12, 0, 1);
+  // one thread turn's visible front half, top (th -PI/2) to bottom (th PI/2), starting at axial x0
+  const turn = (x0, th0, th1) => {
+    for (let i = 0; i <= 6; i++) {
+      const th = th0 + ((th1 - th0) * i) / 6, xa = x0 + (P * (th + Math.PI / 2)) / TAU, r = W * clamp(1 - xa / L, 0, 1), x = xa + 0.45 * r * Math.cos(th), y = r * Math.sin(th);
+      if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    }
+  };
+  for (const [off, a] of blur ? [[0, 0.85 - 0.35 * blur], [P / 2, 0.4 * blur]] : [[0, 0.9]]) {
+    const ph = mod(spin.p, 1) * P + off;
+    ctx.beginPath();
+    for (let x = -P + ph; x < L; x += P) turn(x, -Math.PI / 2, Math.PI / 2);
+    ctx.strokeStyle = `rgba(52,58,72,${a})`;
+    ctx.lineWidth = 2.1;
+    ctx.stroke();
+    ctx.beginPath();
+    for (let x = -P + ph; x < L; x += P) turn(x - P * 0.42, -1.3, -0.35);
+    ctx.strokeStyle = `rgba(255,255,255,${a})`;
+    ctx.lineWidth = 1.7;
+    ctx.stroke();
+  }
+  if (blur) { ctx.fillStyle = `rgba(214,222,232,${0.3 * blur})`; ctx.fillRect(0, -W, L, 2 * W); }
+  ctx.restore();
+  cone();
+  ctx.lineWidth = o * 0.85;
+  ctx.strokeStyle = LINE;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff'; // tip glint
+  ctx.beginPath(); ctx.arc(L - 4, -0.9, 1.1, 0, TAU); ctx.fill();
+  if (spin.v > 6) { // whirr marks
+    const a = clamp((spin.v - 6) / 10, 0, 1), f = mod(spin.p * 0.37, 1) > 0.5 ? 1 : 0;
+    ctx.strokeStyle = `rgba(110,58,18,${0.65 * a})`;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    for (const sy of [-1, 1]) { const x = L * (0.3 + 0.12 * f); ctx.moveTo(x - 4, sy * (W + 4)); ctx.quadraticCurveTo(x, sy * (W + 6.5), x + 4, sy * (W + 4)); }
+    ctx.stroke();
+  }
+}
+// The pick's beak (2026-11-16, mykee: "it looks like a 2D drill added to its face"): its own beak turned into a drill.
+// A ruff of face feathers where it grows out of the head, the orange beak base (two mandibles, the mouth line between
+// them) narrowing into a brass ring, and the steel bit coming out of the ring. In the PB frame: +x along the bit.
+function drillBeak(ctx, C, spin, o) {
+  const W = PB.W, base = () => {
+    ctx.beginPath();
+    ctx.moveTo(-11, -10.5);
+    ctx.bezierCurveTo(-5, -11.5, 0, -W - 2, 3, -W - 1);
+    ctx.lineTo(3, W + 1);
+    ctx.bezierCurveTo(0, W + 2, -5, 11.5, -11, 10.5);
+    ctx.closePath();
+  };
+  base();
+  ctx.fillStyle = '#ee7f16';
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = '#ffb12e'; // upper mandible
+  ctx.fillRect(-12, -13, 16, 14);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.beginPath(); ctx.ellipse(-3.5, -6.5, 3.4, 1.5, -0.15, 0, TAU); ctx.fill();
+  ctx.restore();
+  base();
+  ctx.lineWidth = o * 0.8;
+  ctx.strokeStyle = LINE;
+  ctx.stroke();
+  ctx.lineWidth = o * 0.55; // the mouth line between the mandibles
+  ctx.beginPath(); ctx.moveTo(-7, 1.5); ctx.quadraticCurveTo(-2.5, 2.8, 2, 1.2); ctx.stroke();
+  // face feathers lying over the root: the beak grows out of the head
+  const fringe = (close) => {
+    ctx.beginPath();
+    ctx.moveTo(-9.5, -11.5);
+    for (let i = 0; i < 3; i++) { const y0 = -11.5 + i * 7.67; ctx.quadraticCurveTo(-3.6, y0 + 3.83, -9.5 + (i === 1 ? 0.8 : 0), y0 + 7.67); }
+    if (close) { ctx.lineTo(-15, 13); ctx.lineTo(-15, -13); ctx.closePath(); }
+  };
+  fringe(true);
+  ctx.fillStyle = C.base;
+  ctx.fill();
+  fringe(false);
+  ctx.lineWidth = o * 0.6;
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(4, 0);
+  drillBit(ctx, PB.L, W, spin, o);
+  ctx.restore();
+  // brass ring: a short cylinder, lit top, its front rim showing
+  const ring = () => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(1, -W - 2.5, 6, 2 * W + 5, 2.2) : ctx.rect(1, -W - 2.5, 6, 2 * W + 5); };
+  ring();
+  ctx.fillStyle = '#d08a18';
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = '#ffc94a';
+  ctx.fillRect(0, -W - 3, 8, W + 1.5);
+  ctx.fillStyle = '#fff1b8';
+  ctx.fillRect(0, -W - 1.6, 8, 1.8);
+  ctx.restore();
+  ring();
+  ctx.lineWidth = o * 0.8;
+  ctx.stroke();
+  ctx.lineWidth = o * 0.45;
+  ctx.beginPath(); ctx.moveTo(4, -W - 2); ctx.lineTo(4, W + 2); ctx.stroke();
+}
+// pick beak: rooted low on the face's front, the bit points forward-down out of it
+const PB = { x: 2, y: 21, a: 0.7, L: 32, W: 8.5 };
+const PB_TIP = { x: PB.x + (PB.L + 4) * Math.cos(PB.a), y: PB.y + (PB.L + 4) * Math.sin(PB.a) };
+const PB_TA = Math.atan2(PB_TIP.y, PB_TIP.x), PB_TD = Math.hypot(PB_TIP.x, PB_TIP.y);
+const backOut = (q) => 1 + 2.4 * Math.pow(q - 1, 3) + 1.4 * Math.pow(q - 1, 2); // ease out with a small overshoot
+
+function pickChick(ctx, t, o, st) {
+  const C = KIND.pick, drill = st.pow === 1, recoil = st.pow === 2, spin = drillSpin(t, st);
+  // aim: the whole chick tips so the bit's tip points at the drill spot (st.drillA, y-down screen angle; already
+  // mirrored by the face flip), then pushes in a little. Drilling: rear back (wind-up), dive in with an overshoot,
+  // then brace: shudder, squashed along the bit. Recoil: springs back upright with a hop while the bit spins down.
+  let tgt = st.drillA ?? Math.PI / 2;
+  if (st.face === -1) tgt = Math.PI - tgt;
+  const R = clamp(tgt - PB_TA, -0.9, 1.35);
+  let rot = 0, dx = 0, dy = 0, sq = 0, reach = 0, eff = 0;
+  if (drill) {
+    const e = PICK_T - clamp(st.powT, 0, PICK_T);
+    if (e < 0.09) rot = -0.28 * Math.sin((e / 0.09) * Math.PI / 2);
+    else if (e < 0.2) { const q = (e - 0.09) / 0.11; rot = -0.28 + (R + 0.28) * backOut(q); reach = q; }
+    else { rot = R + Math.sin(t * 83) * 0.03; reach = 1 + clamp((e - 0.2) / 0.3, 0, 1) * 0.5; }
+    eff = clamp((e - 0.05) / 0.1, 0, 1);
+    sq = eff * (0.07 + 0.03 * Math.sin(t * 67));
+    dx = eff * Math.sin(t * 91) * 1.4; dy = eff * Math.cos(t * 77) * 1.1;
+  } else if (recoil) {
+    const e = 0.35 - clamp(st.powT, 0, 0.35);
+    rot = R * Math.exp(-e * 11) * Math.cos(e * 15);
+    dy = -7 * Math.sin(clamp(e / 0.3, 0, 1) * Math.PI);
+  } else if (spin.v > 4) { dx = Math.sin(t * 90) * 0.7; sq = 0.03; } // ready rev: a little buzz
+  // drilling: the tip sinks into the floor (contact 0.3 m = 40 units, tip at 47..51), the chick stood up on the bit
+  if (reach) { const d = (PB_TD - 47 - 8 * (reach - 1)) * Math.min(reach, 1); dx -= Math.cos(tgt) * d; dy -= Math.sin(tgt) * d; }
+  ctx.save();
+  ctx.translate(dx, dy);
+  ctx.rotate(rot);
+  if (sq) { ctx.rotate(PB_TA); ctx.scale(1 - sq, 1 + sq * 0.7); ctx.rotate(-PB_TA); }
+  // legs: idle hop; drilling they brace apart and kick
+  if (drill && eff) legs(ctx, [-13, 3], 35, 9, 1, t * 2, o);
+  else legs(ctx, [-8, 8], 37, 8, st.flap, t, o);
   // body
   fluffPath(ctx, 0, 10, 31, 31, 16, 1.07);
   cel(ctx, C, o, { x: -7, y: 2, r: 0.93 }, 36);
@@ -629,7 +934,7 @@ function pickChick(ctx, t, o, st) {
   ctx.lineWidth = o;
   ctx.strokeStyle = LINE;
   ctx.stroke();
-  const wa = drill ? 0.9 + Math.sin(t * 30) * 0.2 : Math.sin(t * (9 + 30 * st.flap)) * (0.25 + 0.5 * st.flap) + (st.ready ? 0.3 : 0);
+  const wa = drill ? 1.15 + Math.sin(t * 47) * 0.12 : Math.sin(t * (9 + 30 * st.flap)) * (0.25 + 0.5 * st.flap) + (st.ready ? 0.3 : 0);
   stubWing(ctx, -30, 12, -1, wa, 1.05, C, o);
   // miner's helmet with a lamp
   const helm = () => { ctx.beginPath(); ctx.moveTo(-27, -10); ctx.bezierCurveTo(-27, -36, 27, -36, 27, -10); ctx.closePath(); };
@@ -663,57 +968,24 @@ function pickChick(ctx, t, o, st) {
   ctx.fill();
   ctx.stroke();
   if (st.ready || drill) {
-    const lg = ctx.createLinearGradient(18, -24, 54, -24);
-    lg.addColorStop(0, `rgba(255,250,200,${0.55 + 0.15 * Math.sin(t * 6)})`);
-    lg.addColorStop(1, 'rgba(255,250,200,0)');
-    ctx.fillStyle = lg;
+    ctx.fillStyle = `rgba(255,250,200,${0.4 + 0.12 * Math.sin(t * 6)})`; // flat beam (no per-frame gradient)
     ctx.beginPath();
-    ctx.moveTo(18, -28); ctx.lineTo(52, -38); ctx.lineTo(52, -10); ctx.lineTo(18, -20);
+    ctx.moveTo(19, -27); ctx.lineTo(50, -36); ctx.lineTo(50, -12); ctx.lineTo(19, -21);
     ctx.closePath();
     ctx.fill();
   }
-  // face
-  const fy = 6, bl = blinkAt(t, 5);
+  // face: drilling = squeezed eyes and hard brows (effort), looking at the bit
+  const fy = 6, bl = blinkAt(t, 5), lk = { x: 1.2, y: drill ? 1.5 : 0.5 };
   cheeks(ctx, [[-17, fy + 11]], 5, 0.45);
-  for (const sx of [-1, 1]) eye(ctx, sx * 10 + 2, fy, 6.6, 8.6, t, o, { shut: drill ? 0.4 : bl });
-  brows(ctx, [[-14, fy - 11, -3, fy - 9], [6, fy - 9, 17, fy - 12]], o);
-  // drill beak: a metal cone with spiral grooves that spin while it drills
-  // (2026-11-16, mykee: "the beak is detached") the cone now sits in a brass chuck that is set into the face, and its
-  // outline is traced again after the grooves (the old stroke drew the last groove line instead of the cone)
+  for (const sx of [-1, 1]) eye(ctx, sx * 10 + 1, fy - 2.5, 6.6, 8.6, t, o, { shut: drill || recoil ? 0 : bl, look: lk, mood: drill && eff ? 'squint' : null, side: sx });
+  brows(ctx, drill && eff ? [[-15, fy - 15, -4, fy - 10], [5, fy - 10, 17, fy - 15]] : [[-14, fy - 12, -3, fy - 10], [5, fy - 10, 16, fy - 13]], o);
+  // the drill beak, with a soft shade under it on the cheek
   ctx.save();
-  ctx.translate(9, fy + 11);
-  ctx.rotate(0.35);
-  const L = 30, W = 9;
-  const cone = () => { ctx.beginPath(); ctx.moveTo(4, -W); ctx.lineTo(4 + L, 0); ctx.lineTo(4, W); ctx.quadraticCurveTo(0, 0, 4, -W); ctx.closePath(); };
-  cone();
-  const dg = ctx.createLinearGradient(0, -W, 0, W);
-  dg.addColorStop(0, '#f4f6fa');
-  dg.addColorStop(0.45, '#aeb7c4');
-  dg.addColorStop(1, '#5e6878');
-  ctx.fillStyle = dg;
-  ctx.fill();
-  ctx.save();
-  ctx.clip();
-  ctx.strokeStyle = 'rgba(40,46,58,0.75)';
-  ctx.lineWidth = 2.2;
-  const ph = mod(t * (drill ? 60 : 4), 8);
-  for (let x = -4 + ph; x < L + 4; x += 8) { ctx.beginPath(); ctx.moveTo(x, -W); ctx.lineTo(x + 6, W); ctx.stroke(); }
-  ctx.restore();
-  cone();
-  ctx.lineWidth = o * 0.85;
-  ctx.strokeStyle = LINE;
-  ctx.stroke();
-  // the chuck: a rounded brass collar, its back half tucked into the cheek
-  ctx.beginPath();
-  ctx.roundRect ? ctx.roundRect(-4, -W - 1.5, 9, 2 * W + 3, 3.5) : ctx.rect(-4, -W - 1.5, 9, 2 * W + 3);
-  const cg = ctx.createLinearGradient(0, -W, 0, W);
-  cg.addColorStop(0, '#ffd77a'); cg.addColorStop(1, '#d08a18');
-  ctx.fillStyle = cg;
-  ctx.fill();
-  ctx.lineWidth = o * 0.85;
-  ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.fillRect(-1.5, -W + 0.5, 2, 2 * W - 3);
+  ctx.translate(PB.x, PB.y);
+  ctx.rotate(PB.a);
+  ctx.fillStyle = 'rgba(80,40,140,0.3)';
+  ctx.beginPath(); ctx.ellipse(-4, 9, 10, 3.5, 0, 0, TAU); ctx.fill();
+  drillBeak(ctx, C, spin, o);
   ctx.restore();
   ctx.restore();
 }
@@ -963,6 +1235,8 @@ function drawTintedEgg(ctx, egg, t, k) {
 
 // World entry for every egg: kind chicks and tinted eggs are drawn here (returns true); anything else
 // (plain eggs, the classic chick) is left to world.js drawEgg.
+const PHASE = new WeakMap(); // egg -> { k: powK seen last, from: the one before, at: when it changed (game time) }
+const DRILL_OUT = new WeakMap(); // egg -> 1 the pick drills the ring outside it (its floor), -1 the one inside
 export function drawChickEgg(ctx, egg, t, k) {
   if (!egg.chick) {
     if (!egg.tint || !KIND[egg.tint]) return false;
@@ -973,6 +1247,19 @@ export function drawChickEgg(ctx, egg, t, k) {
   if (!KIND[kind]) return false;
   const b = egg.body, p = b.getPosition(), v = b.getLinearVelocity();
   const st = { flap: v.y < -0.3 ? 1 : 0.3, ready: !egg.powU, pow: egg.powK || 0, powT: egg.powT || 0, face: egg.face || 1 };
+  // phase changes, for the short after-anims the sim has no phase for (swoop landing settle, bulk deflate pfff)
+  let ph = PHASE.get(egg);
+  if (!ph) PHASE.set(egg, (ph = { k: st.pow, from: 0, at: -9 }));
+  if (ph.k !== st.pow) { ph.from = ph.k; ph.k = st.pow; ph.at = t; }
+  const since = t - ph.at;
+  if (!st.pow && since >= 0 && since < 0.6) {
+    if (kind === 'swoop' && ph.from === 2) st.land = since;
+    if (kind === 'bulk' && ph.from === 1) st.deflate = since;
+  }
+  if (kind === 'pick' && st.pow) { // aim the bit at the ring it drills: out (the floor) unless the FX found the ring inside
+    const a = Math.atan2(p.y, p.x), out = DRILL_OUT.get(egg) || 1;
+    st.drillA = Math.atan2(-Math.sin(a) * out, Math.cos(a) * out);
+  }
   const T = t + egg.id * 0.37; // chicks out of step with each other
   ctx.save();
   ctx.translate(p.x, p.y);
@@ -1174,40 +1461,86 @@ export function drawChickFX(ctx, sim, t, k) {
         ctx.stroke();
       }
     } else if (kind === 'swoop') {
-      const v = e.body.getLinearVelocity(), sp = Math.hypot(v.x, v.y) || 1, ux = v.x / sp, uy = v.y / sp;
+      // a tapered speed streak along the path behind it, and wind lines peeling off both sides (softer in the glide)
+      const v = e.body.getLinearVelocity(), sp = Math.hypot(v.x, v.y) || 1, ux = v.x / sp, uy = v.y / sp, nx = -uy, ny = ux, rise = e.powK === 1;
+      const L = clamp(sp / 4.5, 0.3, 1) * (rise ? 1.0 : 0.5), w = rise ? 0.17 : 0.11, bx = p.x - ux * 0.26, by = p.y - uy * 0.26; // starts behind the chick (FX draw over it)
+      ctx.fillStyle = `rgba(205,236,255,${rise ? 0.38 : 0.22})`;
+      ctx.beginPath();
+      ctx.moveTo(bx + nx * w, by + ny * w);
+      ctx.quadraticCurveTo(bx - ux * L * 0.45 + nx * w * 0.7, by - uy * L * 0.45 + ny * w * 0.7, bx - ux * L, by - uy * L);
+      ctx.quadraticCurveTo(bx - ux * L * 0.45 - nx * w * 0.7, by - uy * L * 0.45 - ny * w * 0.7, bx - nx * w, by - ny * w);
+      ctx.closePath();
+      ctx.fill();
       ctx.lineCap = 'round';
-      const back = Math.atan2(-uy, -ux), al = e.powK === 1 ? 0.9 : 0.5;
-      for (let i = 0; i < 3; i++) {
-        const ph = mod(t * 3 + i / 3, 1), d = 0.32 + ph * 0.45, R = 0.22 + ph * 0.12;
-        ctx.strokeStyle = `rgba(225,245,255,${al * (1 - ph)})`;
-        ctx.lineWidth = Math.max(2.5 * px, 0.04 * (1 - ph * 0.6));
+      for (let i = 0; i < 4; i++) {
+        const ph = mod(t * (rise ? 4 : 2.2) + i * 0.27, 1), sd = i % 2 ? 1 : -1, off = sd * (0.2 + 0.09 * (i >> 1)), d = 0.22 + ph * 0.7 * L, l = 0.1 + 0.22 * (1 - ph) * L;
+        const x0 = p.x - ux * d + nx * off, y0 = p.y - uy * d + ny * off;
+        ctx.strokeStyle = `rgba(240,250,255,${(rise ? 0.9 : 0.6) * (1 - ph)})`;
+        ctx.lineWidth = Math.max(2.2 * px, 0.035 * (1 - ph * 0.5));
         ctx.beginPath();
-        ctx.arc(p.x + Math.cos(back) * d, p.y + Math.sin(back) * d, R, back + Math.PI - 0.9, back + Math.PI + 0.9);
+        ctx.moveTo(x0, y0);
+        ctx.quadraticCurveTo(x0 - ux * l * 0.5 + nx * sd * 0.04, y0 - uy * l * 0.5 + ny * sd * 0.04, x0 - ux * l, y0 - uy * l);
         ctx.stroke();
       }
-    } else if (kind === 'pick' && e.powK === 1) {
+    } else if (kind === 'pick' && (e.powK === 1 || e.powK === 2)) {
       const ring = sim.rings[e.powA];
       if (!ring) continue;
-      const a = Math.atan2(p.y, p.x), d = Math.hypot(p.x, p.y), rr = d < ring.r ? ring.r - RING_TH / 2 : ring.r + RING_TH / 2;
-      const x = rr * Math.cos(a), y = rr * Math.sin(a), u = clamp(1 - e.powT / PICK_T, 0, 1);
-      // a crack spreading on the ring from the drill point
-      ctx.strokeStyle = 'rgba(30,50,80,0.85)';
-      ctx.lineWidth = Math.max(1.6 * px, 0.016);
-      const tx = -Math.sin(a), ty = Math.cos(a);
-      for (const s of [-1, 1]) {
+      const a = Math.atan2(p.y, p.x), d = Math.hypot(p.x, p.y), out = d < ring.r ? 1 : -1, rr = ring.r - (out * RING_TH) / 2;
+      DRILL_OUT.set(e, out); // the art aims the bit at this side (next frame)
+      const x = rr * Math.cos(a), y = rr * Math.sin(a), nx = -Math.cos(a) * out, ny = -Math.sin(a) * out, tx = -ny, ty = nx; // n: back at the chick
+      const el = e.powK === 1 ? PICK_T - e.powT : PICK_T, u = clamp((el - 0.15) / 0.4, 0, 1), ue = 1 - (1 - u) * (1 - u);
+      const fade = e.powK === 2 ? clamp(e.powT / 0.35, 0, 1) : 1, on = e.powK === 2 ? fade * fade : clamp((el - 0.15) / 0.06, 0, 1), ice = !!ring.hardIce;
+      if (u > 0) {
+        // the hole the bit bores, growing, with a lit far rim; jagged cracks running out of it along and into the ring
+        const ang = Math.atan2(ty, tx), hx = x - nx * 0.02, hy = y - ny * 0.02;
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = ice ? 'rgba(24,46,78,0.85)' : 'rgba(40,24,12,0.8)';
         ctx.beginPath();
-        ctx.moveTo(x, y);
-        for (let i = 1; i <= 4; i++) { const l = 0.1 * i * u * 1.6, w = (i % 2 ? 0.03 : -0.02); ctx.lineTo(x + tx * l * s + Math.cos(a) * w, y + ty * l * s + Math.sin(a) * w); }
-        ctx.stroke();
-      }
-      // sparks / ice chips spraying
-      for (let i = 0; i < 7; i++) {
-        const ph = mod(t * 5 + i * 0.143, 1), ang = a + Math.PI + (i - 3) * 0.32 + (d < ring.r ? 0 : Math.PI);
-        const sx = x + Math.cos(ang) * ph * 0.45, sy = y + Math.sin(ang) * ph * 0.45 + ph * ph * 0.1;
-        ctx.fillStyle = ring.hardIce ? `rgba(220,245,255,${1 - ph})` : `rgba(255,220,120,${1 - ph})`;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 0.025 * (1 - ph * 0.5), 0, TAU);
+        ctx.ellipse(hx, hy, 0.04 + 0.08 * ue, 0.025 + 0.035 * ue, ang, 0, TAU);
         ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = Math.max(1.5 * px, 0.012);
+        ctx.beginPath();
+        ctx.ellipse(hx, hy, 0.04 + 0.08 * ue, 0.025 + 0.035 * ue, ang, Math.PI * 1.15, Math.PI * 1.85);
+        ctx.stroke();
+        ctx.strokeStyle = ice ? 'rgba(30,50,80,0.85)' : 'rgba(50,28,10,0.8)';
+        ctx.lineWidth = Math.max(1.6 * px, 0.016);
+        ctx.beginPath();
+        for (const [ca, cl] of [[1.45, 0.24], [-1.5, 0.22], [2.5, 0.15], [-2.4, 0.17], [3.1, 0.12]]) { // angle from n, length
+          const dx = nx * Math.cos(ca) + tx * Math.sin(ca), dy = ny * Math.cos(ca) + ty * Math.sin(ca), L = cl * ue;
+          ctx.moveTo(hx + dx * 0.05, hy + dy * 0.05);
+          for (let i = 1; i <= 3; i++) { const l = 0.05 + (L * i) / 3, w = (i % 2 ? 0.022 : -0.016) * ue; ctx.lineTo(hx + dx * l - dy * w, hy + dy * l + dx * w); }
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      if (on > 0) {
+        // dust puffing out to both sides of the bit, then chips flung off in little arcs
+        for (let i = 0; i < 4; i++) {
+          const ph = mod(t * 2.3 + i * 0.25, 1), sd = i % 2 ? 1 : -1;
+          ctx.fillStyle = ice ? `rgba(236,246,255,${0.55 * on * (1 - ph)})` : `rgba(226,206,176,${0.55 * on * (1 - ph)})`;
+          ctx.beginPath();
+          ctx.arc(x + nx * (0.05 + 0.12 * ph) + tx * sd * (0.07 + 0.22 * ph), y + ny * (0.05 + 0.12 * ph) + ty * sd * (0.07 + 0.22 * ph), 0.05 + 0.11 * ph, 0, TAU);
+          ctx.fill();
+        }
+        ctx.lineWidth = Math.max(1.2 * px, 0.01);
+        ctx.strokeStyle = ice ? 'rgba(40,80,120,0.8)' : 'rgba(80,46,16,0.8)';
+        for (let i = 0; i < 10; i++) {
+          const ph = mod(t * 3.4 + i * 0.1 + i * i * 0.013, 1), sd = i % 2 ? 1 : -1, sp = 0.3 + 0.95 * mod(i * 0.37, 1), v = 1.7 + 0.9 * mod(i * 0.61, 1), T = ph * 0.38;
+          const dx = nx * Math.cos(sp) + tx * sd * Math.sin(sp), dy = ny * Math.cos(sp) + ty * sd * Math.sin(sp);
+          const cx = x + dx * v * T, cy = y + dy * v * T - 5 * T * T, r = 0.03 + 0.025 * mod(i * 0.53, 1), ro = T * 22 + i;
+          ctx.globalAlpha = on * (1 - ph * ph);
+          ctx.fillStyle = ice ? (i % 3 ? '#e6f6ff' : '#ffffff') : (i % 3 ? '#e2b77a' : '#b98444');
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(ro) * r, cy + Math.sin(ro) * r);
+          ctx.lineTo(cx + Math.cos(ro + 2.3) * r * 0.8, cy + Math.sin(ro + 2.3) * r * 0.8);
+          ctx.lineTo(cx + Math.cos(ro + 4.1) * r * 0.9, cy + Math.sin(ro + 4.1) * r * 0.9);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        if (ice && e.powK === 1) { ctx.fillStyle = `rgba(255,255,255,${on})`; for (let i = 0; i < 2; i++) { const ph = mod(t * 6 + i * 0.5, 1); sparkle(ctx, x + tx * (i ? 0.09 : -0.08) + nx * 0.06, y + ty * (i ? 0.09 : -0.08) + ny * 0.06, 0.05 * Math.sin(ph * Math.PI)); } }
       }
     }
   }
@@ -1266,12 +1599,14 @@ export function chickEvent(ev, fx, api) {
       popup(ev.x, ev.y + 0.5, 'Swoosh!', { color: '#9fd8ff', size: 22, life: 1 });
       fx.chips(ev.x, ev.y, '#5a8a3a', 10, 3);
       break;
-    case 'chickPluck':
+    case 'chickPluck': // the swoop lands: a puff of air under it
+      fx.dust(ev.x, ev.y - 0.25, 5, 'rgba(225,242,255,0.8)');
       if (ev.n) { audio.play('thorn_snap', { pitch: 1.4 }); popup(ev.x, ev.y + 0.6, 'Pluck!', { color: '#9fd8ff', size: 20 }); }
       break;
     case 'chickDeflate':
       audio.play('bubble_pop', { pitch: 0.7 });
       fx.dust(ev.x, ev.y, 6, 'rgba(200,240,160,0.8)');
+      popup(ev.x, ev.y + 0.55, 'pfff...', { color: '#d4f5a8', size: 16, life: 0.8 });
       break;
     case 'iceShatter':
       audio.play('glass_break');
