@@ -515,7 +515,7 @@ export function createWonder(env) {
       const fy = ty + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mx = x + w / 2, grp = L.practice ? 'btn:practice' : 'btn:wv:play:' + L.key;
       const tall = fh > 96 * u;
       if (L.practice) ICON.grid(ctx, mx, fy + fh * (tall ? 0.24 : 0.27), Math.min(30 * u, fh * 0.3));
-      else ui.text(String(i + 1), mx, fy + fh * (tall ? 0.24 : 0.27), { size: Math.min(30 * u, fh * 0.3), align: 'center', color: '#fff', stroke: face.line, strokeW: 4 * u, shadow: face.line, group: grp, tag: 'wvnum' + i });
+      else if (!wonderIcon(ctx, L.key, mx, fy + fh * (tall ? 0.24 : 0.27), Math.min(34 * u, fh * 0.34), env.time(), face.line)) ui.text(String(i + 1), mx, fy + fh * (tall ? 0.24 : 0.27), { size: Math.min(30 * u, fh * 0.3), align: 'center', color: '#fff', stroke: face.line, strokeW: 4 * u, shadow: face.line, group: grp, tag: 'wvnum' + i });
       ui.text(L.name, mx, fy + fh * (tall ? 0.5 : 0.56), { size: Math.min(15 * u, fh * 0.15), align: 'center', color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname' + i, maxW: w - 12 * u });
       if (tall) ui.text(L.pitch, mx, fy + fh * 0.66, { size: 10.5 * u, align: 'center', color: 'rgba(255,255,255,0.85)', group: grp, tag: 'wvpitch' + i, maxW: w - 12 * u });
       if (L.practice) return;
@@ -536,4 +536,35 @@ export function createWonder(env) {
   }
 
   return { start, has: (k) => !!wonderByKey(k), update, render, pointerDown, pointerMove, pointerUp, press, drawExtras, resize() { S.snap = true; if (S.backdrop) { const z = env.size(); S.backdrop.resize(z.W, z.H, z.DPR); } }, get state() { return S; }, LEVELS: WONDER_LEVELS, toScreen, starsOf };
+}
+
+// a Wonder Vault tile's picture (mykee 2026-11-16: themed icons, not numbers). s is the icon's height; line is the tile's ink.
+function wonderIcon(c, key, x, y, s, t, line) {
+  const r = s / 2, lw = Math.max(1.5, s * 0.07);
+  const egg = (ex, ey, er, fill) => { c.beginPath(); c.ellipse(ex, ey + er * 0.1, er * 0.78, er, 0, 0, Math.PI * 2); c.fillStyle = fill; c.fill(); c.lineWidth = lw; c.strokeStyle = line; c.stroke(); };
+  c.save(); c.lineJoin = 'round'; c.lineCap = 'round';
+  if (key === 'planet') { // a little world with an egg moon in orbit
+    c.beginPath(); c.arc(x, y, r * 0.62, 0, Math.PI * 2); const g = c.createLinearGradient(x, y - r, x, y + r); g.addColorStop(0, '#9ff0ff'); g.addColorStop(1, '#3a8ad8'); c.fillStyle = g; c.fill(); c.lineWidth = lw; c.strokeStyle = line; c.stroke();
+    c.beginPath(); c.ellipse(x, y, r * 1.0, r * 0.32, -0.35, 0, Math.PI * 2); c.lineWidth = lw * 1.1; c.strokeStyle = '#ffe9a8'; c.stroke();
+    const a = t * 1.4; egg(x + Math.cos(a) * r * 0.95, y + Math.sin(a) * r * 0.32 - Math.cos(a) * r * 0.3, r * 0.24, '#fff6e0');
+  } else if (key === 'plan') { // a stopwatch
+    c.beginPath(); c.arc(x, y + r * 0.1, r * 0.78, 0, Math.PI * 2); c.fillStyle = '#fff6e0'; c.fill(); c.lineWidth = lw * 1.3; c.strokeStyle = line; c.stroke();
+    c.fillStyle = line; c.fillRect(x - r * 0.14, y - r * 0.9, r * 0.28, r * 0.2);
+    const a = t * 2 - Math.PI / 2; c.beginPath(); c.moveTo(x, y + r * 0.1); c.lineTo(x + Math.cos(a) * r * 0.55, y + r * 0.1 + Math.sin(a) * r * 0.55); c.lineWidth = lw * 1.2; c.strokeStyle = '#e8402e'; c.stroke();
+    c.beginPath(); c.arc(x, y + r * 0.1, lw, 0, Math.PI * 2); c.fillStyle = line; c.fill();
+  } else if (key === 'mama') { // a heart in a call bubble
+    c.beginPath(); c.ellipse(x, y - r * 0.05, r * 0.95, r * 0.72, 0, 0, Math.PI * 2); c.moveTo(x - r * 0.3, y + r * 0.55); c.lineTo(x - r * 0.55, y + r * 0.95); c.lineTo(x + r * 0.05, y + r * 0.62);
+    c.fillStyle = '#fff6e0'; c.fill(); c.lineWidth = lw; c.strokeStyle = line; c.stroke();
+    const k = 1 + 0.08 * Math.sin(t * 5), hr = r * 0.32 * k; c.beginPath(); c.moveTo(x, y + hr * 0.9); c.bezierCurveTo(x - hr * 2, y - hr * 0.4, x - hr * 0.7, y - hr * 1.6, x, y - hr * 0.5); c.bezierCurveTo(x + hr * 0.7, y - hr * 1.6, x + hr * 2, y - hr * 0.4, x, y + hr * 0.9); c.fillStyle = '#e8402e'; c.fill();
+  } else if (key === 'twin') { // two little vaults side by side
+    for (const d of [-1, 1]) { const cx = x + d * r * 0.48; for (const rr of [0.5, 0.28]) { c.beginPath(); c.arc(cx, y, r * rr, 0.5 + d * t * 0.8, 0.5 + d * t * 0.8 + 5.2); c.lineWidth = lw * 1.4; c.strokeStyle = '#fff6e0'; c.stroke(); } c.beginPath(); c.arc(cx, y, r * 0.1, 0, Math.PI * 2); c.fillStyle = '#ffd24a'; c.fill(); }
+  } else if (key === 'hatch') { // a cracked egg with a chick peeking
+    egg(x, y + r * 0.12, r * 0.85, '#fff6e0');
+    c.beginPath(); c.arc(x, y - r * 0.15, r * 0.4, 0, Math.PI * 2); c.fillStyle = '#ffd24a'; c.fill(); c.lineWidth = lw; c.strokeStyle = line; c.stroke();
+    c.fillStyle = line; for (const d of [-1, 1]) { c.beginPath(); c.arc(x + d * r * 0.14, y - r * 0.2, r * 0.06, 0, Math.PI * 2); c.fill(); }
+    c.beginPath(); c.moveTo(x - r * 0.08, y - r * 0.08); c.lineTo(x + r * 0.08, y - r * 0.08); c.lineTo(x, y + r * 0.04); c.closePath(); c.fillStyle = '#ff8a2a'; c.fill();
+    c.beginPath(); c.moveTo(x - r * 0.66, y + r * 0.05); for (let q = 0; q <= 6; q++) c.lineTo(x - r * 0.66 + q * r * 0.22, y + r * (q % 2 ? -0.08 : 0.12)); c.lineTo(x + r * 0.66, y + r * 0.9); c.lineTo(x - r * 0.66, y + r * 0.9); c.closePath();
+    c.fillStyle = '#fff6e0'; c.fill(); c.lineWidth = lw; c.strokeStyle = line; c.stroke();
+  } else { c.restore(); return false; }
+  c.restore(); return true;
 }

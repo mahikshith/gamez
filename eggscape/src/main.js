@@ -32,6 +32,7 @@ import { drawP2Back, drawP2Front, p2Event } from './render/powers2.js'; // v3.4 
 import { warpXfBegin, warpXfEnd } from './render/warp.js'; // v3.4 warp gate: a creature drawn going through it
 import { POWER_DEMOS } from './data/power-demos.js'; // v3.4 studio vaults
 import { CHICK_DEMOS } from './data/chick-demos.js';
+import { P2_TYPES } from './sim/powers2.js'; // practice tiles: which ids are power orbs
 import { BAYOU_DEMOS } from './data/bayou-demos.js'; // v3.7 Gator Bayou studio vaults
 import { FROG_DEMO } from './data/frog-demo.js'; // v3.3 frog studio level (dev)
 import { SEA_DEMOS } from './data/sea-demos.js'; // v3.3 studio levels (dev)
@@ -43,7 +44,7 @@ import { RIG as THIEF_RIG } from './sim/thieves.js';
 import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
 import { LAB_DEMOS } from './data/lab-demos.js'; // v4 Shape Lab studio levels: the clockwork cast and the owl
 import { drawClockwork, drawClockworkTele, cwEvent, drawCwIntro } from './render/clockwork.js'; // v4 clockwork spider, wind-up beetle, spring jack
-import { owlEvent } from './render/owl.js'; // v4 the Clockwork Owl
+import { owlEvent, drawOwlArt } from './render/owl.js'; // v4 the Clockwork Owl
 import { movesEvent } from './render/bossmoves.js'; // the boss variety moves
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
 import { drawCrawler, SPECIES as CRAWLER_SPECIES, crawlerAnim } from './render/crawlers.js'; // the salamander's cousins (dev strips; not in a level yet)
@@ -56,7 +57,7 @@ import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawSt
 import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
-import { drawVillainPortrait, PORTRAIT_BG } from './render/villain-art.js';
+import { drawVillainPortrait, PORTRAIT_BG, hasPortrait } from './render/villain-art.js';
 import { vibrate, installApp } from './app.js'; // Android WebView proof shell: bridge vibration, back button, FPS overlay (no-ops outside EGG_APP)
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -4391,6 +4392,30 @@ function drawLevelPage(world, top0, bot, pad) {
 
 // PRACTICE: every studio vault as a tile, grouped under the LAB names; same tile kit and grid as the level map, scrolled vertically
 const PRACTICE_FACES = ['#d8862a', '#3a9a6a', '#4a82d0', '#b05aa8', '#c85a4a', '#2f9aa8', '#8a7ad8', '#9a8a2a'];
+// a practice tile's picture (mykee 2026-11-16: themed icons, not a letter): the chick, the creature's portrait, the power
+// or combo orb, the warp gate with who goes through it, the ally itself. Returns false when nothing fits (the letter stays).
+const PRACTICE_PORTRAIT = { octoden: 'octopus', reef: 'fish', weaselboss: 'weasel', ratking: 'rats', grandpa: 'gator', kingcrab: 'hermit', warp: 'snake', warp_eagle: 'eagle', warp_sal: 'salamander', warp_frog: 'frog', warp_octo: 'octopus', warp_boss: 'weasel' };
+function practiceIcon(k, x, y, r, t) {
+  const c = ctx;
+  try {
+    if (CHICK_DEMOS.some((d) => d.kind === k)) { drawKindChick(c, k, x, y + r * 0.12, r * 1.45, t); return true; }
+    if (k === 'rooster' || k === 'goose') {
+      const A2 = ALLY_ART, P = k === 'rooster' ? A2.roosterPose('idle', 0, t) : A2.goosePose('idle', 0, t);
+      (k === 'rooster' ? A2.drawRooster : A2.drawGoose)(c, x, y + r * 0.85, r * 1.9, P); return true;
+    }
+    if (k === 'owl') { c.save(); c.translate(x, y + r * 0.1); drawOwlArt(c, r * 1.8, t); c.restore(); return true; }
+    if (k.startsWith('combo_')) { drawOrb(c, 'combo_' + k.slice(6), x, y, r * 1.05, t); return true; }
+    if (P2_TYPES.includes(k)) { drawOrb(c, k, x, y, r * 1.05, t); return true; }
+    const pk = PRACTICE_PORTRAIT[k] || k;
+    if (k.startsWith('warp')) { // the gate behind, the traveller in front
+      c.save(); c.translate(x, y); c.scale(r / 0.55, r / 0.55); W.drawPortal(c, 0, 0, t, false); c.restore();
+      if (hasPortrait(pk)) drawVillainPortrait(c, pk, x + r * 0.35, y + r * 0.3, r * 1.15, t);
+      return true;
+    }
+    if (hasPortrait(pk)) { drawVillainPortrait(c, pk, x, y, r * 2.5, t); if (pk !== k && /boss|king|grandpa/.test(k)) drawCrown(x, y - r * 0.95, r * 0.32); return true; }
+  } catch (e) { /* a missing drawer keeps the letter */ }
+  return false;
+}
 function drawPractice() {
   const u = ui.u, A = ui.A, pad = 14 * u, S = G.pscroll, vb = A.y1; // the list scrolls down to the bottom of the safe rect
   ui.calm = save.calm;
@@ -4423,7 +4448,10 @@ function drawPractice() {
       const fy = ty + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mxT = x + cw / 2, grp = 'btn:demo:' + k;
       const rad = Math.min(24 * u, fh * 0.26);
       ctx.beginPath(); ctx.arc(mxT, fy + fh * 0.38, rad, 0, 7); ctx.fillStyle = 'rgba(30,10,0,0.28)'; ctx.fill();
-      ui.text(label[0].toUpperCase(), mxT, fy + fh * 0.38 + 1 * u, { size: rad * 1.25, align: 'center', color: '#fff', stroke: face0.line, strokeW: 3 * u, shadow: face0.line, group: grp, tag: 'pl' + k });
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 3 * u, fy + 3 * u, cw - 6 * u, fh * 0.64); ctx.clip();
+      const pic = practiceIcon(k, mxT, fy + fh * 0.38, rad * 1.15, G.t);
+      ctx.restore();
+      if (!pic) ui.text(label[0].toUpperCase(), mxT, fy + fh * 0.38 + 1 * u, { size: rad * 1.25, align: 'center', color: '#fff', stroke: face0.line, strokeW: 3 * u, shadow: face0.line, group: grp, tag: 'pl' + k });
       ui.text(label, mxT, fy + fh * 0.76, { size: Math.min(15 * u, fh * 0.15), align: 'center', color: '#fff', stroke: face0.line, strokeW: 3 * u, group: grp, tag: 'pn' + k, maxW: cw - 12 * u });
       if (part) { // a tile cut by the list edge keeps a tap area only inside the list and records nothing for the overlap check
         ui.rects.length = n0;
