@@ -364,6 +364,7 @@ function startLevel(i, opts = {}) {
 function setScreen(s) {
   G.screen = s;
   G.screenT = 0;
+  if (s !== 'title') G.homeIntro = false; // the app-start entrance plays once; coming back to home only fades in
   ui.pressedId = null;
   if (s === 'title' || s === 'levels') warmNext();
   // 2026-11-16 mykee: "you don't have to put New on the i every single time": a kind is new in the first level it is
@@ -4343,9 +4344,25 @@ function drawFail() {
 
 // Home. One job: get the player playing. The logo, the toy vault (never the hen in the middle), and at thumb height
 // one big PLAY that breathes and shimmers; under it the three places to go and the difficulty as a quiet switch.
+// App-start entrance (2026-11-16, mykee: tap the icon -> home right away, the title animating in): each piece of the home
+// pops in on its own beat, ~0.9 s in all. Input is never blocked (hit rects are laid out at their final spot). Calm: instant.
+const introBack = (p) => { const c = 1.9; p = Math.min(1, Math.max(0, p)); return 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); };
 function drawTitle() {
   const u = ui.u;
   ui.calm = save.calm;
+  const intro = !!G.homeIntro && !save.calm && G.screenT < 1.2, T = G.screenT;
+  // a piece's progress 0..1 (starts at `d` s, takes `dur` s); 1 when there is no entrance
+  const ent = (d, dur = 0.32) => (intro ? Math.min(1, Math.max(0, (T - d) / dur)) : 1);
+  // draw fn() popped in around (px, py): scale with a little overshoot, fading up
+  const pop = (d, px, py, fn, dur) => {
+    const p = ent(d, dur);
+    if (p >= 1) { fn(); return; }
+    if (p <= 0) { ctx.save(); ctx.globalAlpha = 0; fn(); ctx.restore(); return; } // unseen yet, but its tap target is already there
+    const k = Math.max(0.02, introBack(p));
+    ctx.save(); ctx.globalAlpha = Math.min(1, p * 2.2); ctx.translate(px, py); ctx.scale(k, k); ctx.translate(-px, -py); fn(); ctx.restore();
+  };
+  const fade = !intro && !G.homeIntro && G.screenT < 0.2 && G.t > 1; // returning from a level or the map: a short fade, not the entrance
+  if (fade) ctx.globalAlpha = 0.25 + G.screenT / 0.2 * 0.75;
   const A = ui.A, cx = A.cx; // the meadow paints edge to edge; the logo and the buttons sit in the safe rect
   const bw = Math.min(310 * u, A.w - 44 * u);
   const wide = A.w > A.h * 1.15;
@@ -4362,11 +4379,12 @@ function drawTitle() {
   ctx.fillStyle = sg; ctx.fillRect(0, ground + 20 * u, W_, H_ - ground - 20 * u);
   const logoS = Math.min(66 * u, (wide ? A.w * 0.5 : A.w) / 7.3, A.h / 6);
   const ty = A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
-  const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, G.screenT, FONT);
+  const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, intro ? T * 1.7 : 9, FONT); // intro: the letters drop in a quicker cascade
   ui.record(logo, 'title:logo');
   const subY = ty + logoS * 0.5 + 18 * u;
   G.titleToastY = subY + 16 * u;
-  ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? A.w * 0.5 : A.w) - 32 * u });
+  { const p = ent(0.3, 0.32); ctx.save(); ctx.globalAlpha *= p; ctx.translate(0, (1 - p) * 14 * u); // the tagline slides up under the title
+    ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? A.w * 0.5 : A.w) - 32 * u }); ctx.restore(); }
   // the toy vault: centred between the subtitle and the meadow, or to the left of the buttons on a wide screen
   const eggH = Math.min(46 * u, (ground - subY) * 0.22);
   let vx = cx, vy, R;
@@ -4385,37 +4403,43 @@ function drawTitle() {
   const henH = Math.min(eggH * 2.3, 110 * u), hx = wide ? A.x + A.w * 0.075 : A.x + Math.max(henH * 0.48, A.w * 0.13);
   const ft = ctx.createRadialGradient(hx, ground, 2, hx, ground, henH * 0.5); ft.addColorStop(0, 'rgba(40,20,4,0.28)'); ft.addColorStop(1, 'rgba(40,20,4,0)');
   ctx.fillStyle = ft; ctx.beginPath(); ctx.ellipse(hx, ground, henH * 0.5, henH * 0.12, 0, 0, Math.PI * 2); ctx.fill();
-  drawHenAnim(ctx, G.henHomeHop > G.t ? 'happy' : 'idle', hx, ground - henH * 0.5, henH, G.t, { key: 'home', face: 1, calm: save.calm, n: G.henHomeN || 0, shadow: 0 });
+  pop(0.2, hx, ground, () => drawHenAnim(ctx, G.henHomeHop > G.t ? 'happy' : 'idle', hx, ground - henH * 0.5, henH, G.t, { key: 'home', face: 1, calm: save.calm, n: G.henHomeN || 0, shadow: 0 }), 0.4);
   homeHit('home:hen', hx - henH * 0.45, ground - henH, henH * 0.9, henH);
   const chestOpen = save.wallet.daily === today(), cs = Math.min(eggH * 1.35, 62 * u);
   const chx = wide ? bx + bw / 2 + Math.min(70 * u, (A.x1 - bx - bw / 2) * 0.5) : A.x1 - Math.max(cs * 0.7, A.w * 0.12), chy = ground - cs * 0.42;
   if (!(wide && chx + cs * 0.6 > A.x1)) {
-    drawChest(ctx, chx, chy, cs, G.t, chestOpen ? 'open' : 'ready');
-    const tagS = 13 * u, tagT = chestOpen ? 'Tomorrow' : 'FREE', tgw = ui.measure(tagT, tagS) + 14 * u;
-    ui.roundRect(chx - tgw / 2, chy - cs * 0.62 - tagS, tgw, tagS * 1.6, tagS * 0.8);
-    ctx.fillStyle = chestOpen ? 'rgba(40,24,10,0.7)' : '#e8402e'; ctx.fill();
-    ui.text(tagT, chx, chy - cs * 0.62 - tagS * 0.2, { size: tagS, align: 'center', color: '#fff', tag: 'title:chesttag' });
+    const tagS = 13 * u;
+    pop(0.4, chx, ground, () => {
+      drawChest(ctx, chx, chy, cs, G.t, chestOpen ? 'open' : 'ready');
+      const tagT = chestOpen ? 'Tomorrow' : 'FREE', tgw = ui.measure(tagT, tagS) + 14 * u;
+      ui.roundRect(chx - tgw / 2, chy - cs * 0.62 - tagS, tgw, tagS * 1.6, tagS * 0.8);
+      ctx.fillStyle = chestOpen ? 'rgba(40,24,10,0.7)' : '#e8402e'; ctx.fill();
+      ui.text(tagT, chx, chy - cs * 0.62 - tagS * 0.2, { size: tagS, align: 'center', color: '#fff', tag: 'title:chesttag' });
+    });
     homeHit('home:chest', chx - cs * 0.6, chy - cs * 0.62 - tagS, cs * 1.2, cs * 1.1 + tagS);
   }
-  drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm);
-  ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u });
+  pop(0.05, vx, vy, () => drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm), 0.5); // the toy vault and the meadow friends settle in
+  pop(0.2, A.x + 30 * u, A.y + 30 * u, () => ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }));
   // remove ads / buy the game (app, until bought): a small gold pill in the top corner
   if (ads.canBuyPremium) {
     const ps = 14 * u, pw2 = ui.measure('No ads', ps) + 44 * u, py2 = A.y + 10 * u;
-    ui.button('home:premium', 'No ads', A.x1 - pw2 - 10 * u, py2, pw2, 34 * u, { kind: 'gold', size: ps, icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) });
+    pop(0.3, A.x1 - pw2 / 2 - 10 * u, py2 + 17 * u, () => ui.button('home:premium', 'No ads', A.x1 - pw2 - 10 * u, py2, pw2, 34 * u, { kind: 'gold', size: ps, icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) }));
   }
   // PLAY breathes
   const ph = 70 * u, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
-  ctx.save();
-  ctx.translate(bx, by + ph / 2); ctx.scale(br, br); ctx.translate(-bx, -(by + ph / 2));
-  ui.button('play', nextIdx() > 0 ? `PLAY  Level ${LEVELS[nextIdx()].id}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * u, round: 20 * u });
-  ctx.restore();
+  pop(0.25, bx, by + ph / 2, () => {
+    ctx.save();
+    ctx.translate(bx, by + ph / 2); ctx.scale(br, br); ctx.translate(-bx, -(by + ph / 2));
+    ui.button('play', nextIdx() > 0 ? `PLAY  Level ${LEVELS[nextIdx()].id}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * u, round: 20 * u });
+    ctx.restore();
+  });
   const tw = (bw - 16 * u) / 3, ry = by + ph + 10 * u, rh = 54 * u, paid = save.daily.paid === today();
-  ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u });
-  ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u });
-  ui.button('shop', String(save.wallet.coins), bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 18 * u });
+  pop(0.33, bx - bw / 2 + tw / 2, ry + rh / 2, () => ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u }));
+  pop(0.4, bx - bw / 2 + tw * 1.5 + 8 * u, ry + rh / 2, () => ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u }));
+  pop(0.47, bx - bw / 2 + tw * 2.5 + 16 * u, ry + rh / 2, () => ui.button('shop', String(save.wallet.coins), bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 18 * u }));
   // (2026-11-16 research: no top casual game puts a difficulty switch on home; it lives in Settings)
-  ui.button('extras', 'Extras', bx - bw / 2 + bw * 0.12, ry + rh + 12 * u, bw * 0.76, 40 * u, { kind: 'ad', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 16 * u, round: 14 * u });
+  pop(0.54, bx, ry + rh + 32 * u, () => ui.button('extras', 'Extras', bx - bw / 2 + bw * 0.12, ry + rh + 12 * u, bw * 0.76, 40 * u, { kind: 'ad', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 16 * u, round: 14 * u }));
+  if (fade) ctx.globalAlpha = 1;
 }
 
 // an invisible tap target on the home scene (the hen, the chest)
@@ -4830,7 +4854,9 @@ async function boot() {
   startLevel(nextIdx());
   setScreen('title');
   if (DEV) { const d = new URLSearchParams(location.search).get('demo'); if (d) window.__egg.startDemo(d); } // v3.2: ?demo=glow
-  const sp = document.getElementById('splash'); // the launch animation hands over to the home page with a cross-fade
+  G.homeIntro = true; G.screenT = 0; // the home page plays its entrance from here (the setup above must not eat it)
+  const sp = document.getElementById('splash'); // the plain sky behind the canvas goes as soon as the first frames are painted
+  if (sp) requestAnimationFrame(() => requestAnimationFrame(() => sp.remove()));
   if (sp) { const minShow = 2300 - (performance.now() - (window.__t0 || 0)); /* the launch sting plays out (egg in the nest) before the home screen */ setTimeout(() => { sp.classList.add('out'); setTimeout(() => sp.remove(), 500); }, Math.max(0, minShow)); }
   portal.loadingDone();
   last = performance.now();
