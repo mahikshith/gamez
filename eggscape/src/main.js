@@ -4128,9 +4128,9 @@ function drawTitle() {
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
   // landscape: two balanced columns, logo + vault on the left, the buttons on the right, the meadow low across both
   const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? A.x + A.w * 0.73 : cx;
-  const blockH = 232 * u; // Play + Levels row + difficulty + Extras
-  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - 244 * u - 16 * u;
-  const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - 244 * u; // room for the Extras row under the difficulty row
+  const blockH = 238 * u; // Play + Levels row + difficulty + Extras
+  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - 258 * u - 16 * u;
+  const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - 258 * u; // room for the Extras row (and its lip, clear of the phone's bottom edge) under the difficulty row
   G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t);
   // the earth under the controls falls into shade, so the buttons carry the bottom of the screen
   const sg = ctx.createLinearGradient(0, ground + 20 * u, 0, H_);
@@ -4191,7 +4191,7 @@ function drawTitle() {
   ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u });
   ui.button('shop', String(save.wallet.coins), bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 18 * u });
   modeRow(bx - bw / 2, ry + rh + 10 * u, bw, 44 * u, u, true);
-  ui.button('extras', 'Extras', bx - bw / 2, ry + rh + 10 * u + 44 * u + 8 * u, bw, 36 * u, { kind: 'hud', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 15 * u });
+  ui.button('extras', 'Extras', bx - bw / 2 + bw * 0.12, ry + rh + 10 * u + 44 * u + 10 * u, bw * 0.76, 40 * u, { kind: 'ad', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 16 * u, round: 14 * u });
 }
 
 // an invisible tap target on the home scene (the hen, the chest)
