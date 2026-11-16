@@ -12,6 +12,7 @@ import * as W from './render/world.js';
 import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge } from './ui/ui.js';
 import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
 import { drawSnake } from './render/characters.js';
+import * as MS from './render/mapscene.js'; // the world map: land, road, scenery and cast
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
 import { drawSprite, drawBossCard, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
 import { drawHenAnim, henIdleEvents, resetHen, setHenSkin } from './render/hen.js';
@@ -194,7 +195,7 @@ function resize() {
 // ---------------------------------------------------------------- game state
 const G = {
   pscroll: { y: 0, v: 0, max: 0, t: 0 }, pdrag: null, // Practice screen scroll
-  lpan: { x: 0, v: 0, t: 0 }, ldrag: null, // the level map's world pages: horizontal pan (px; + shows the previous world) and the live drag
+  mscroll: { y: 0, v: 0, max: 0, t: 0, seenT: Infinity, focus: '', enter: 0 }, mapL: null, // the world map's scroll (px from the map's top) and layout
   iscroll: { y: 0, v: 0, max: 0, t: 0 }, infoKinds: [], infoNew: false, infoFrom: 'play', infoCard: null, // the "i" panel (drawInfo)
   screen: 'loading',
   t: 0,
@@ -650,14 +651,6 @@ function onFirstInput() {
   if (!G.firstInput) { G.firstInput = true; applyAudioSettings(); }
 }
 
-// The level map's world pages. goWorld(dir) turns one page and carries the pan over, so the new page slides in from
-// where the finger left it (or from the side, for the arrows); drawLevels eases the pan back to 0.
-function goWorld(dir) {
-  const nW = Math.ceil(LEVELS.length / PER_ENV), w = clamp(G.world + dir, 0, nW - 1);
-  if (w !== G.world) { G.lpan.x += (w - G.world) * ui.w; G.world = w; audio.play('motor_tick', { vol: 0.5 }); }
-}
-// below the fixed header (back, title, coins, chest, dots), a drag swipes the pages
-function levelPageTop() { return ui.A.y + (14 + 74 + 46 + 13) * ui.u; }
 
 function pointerDown(e) {
   e.preventDefault();
@@ -666,7 +659,7 @@ function pointerDown(e) {
   const id = ui.hit(x, y);
   const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : null;
   if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0 };
-  if (G.screen === 'levels' && y > levelPageTop()) G.ldrag = { pid: e.pointerId, x0: x, y0: y, p0: G.lpan.x, moved: false, last: x, lt: performance.now(), v: 0 }; // world pages swipe; a tap on a tile still presses // the Practice screen and the "i" panel scroll by drag; a tap on a button still presses
+  if (G.screen === 'levels' && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0 }; // the world map scrolls by drag; a tap on a stop still presses
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
   if (G.screen === 'info') { const C = G.infoCard; if (C && (x < C.x || x > C.x + C.w || y < C.y - 10 * ui.u || y > C.y + C.h + 6 * ui.u)) { G.pdrag = null; press('info:close'); } return; } // a tap off the card closes it
   if (G.screen === 'play' && G.toast && G.toast.tip && G.toastRect) { const R = G.toastRect; if (x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h) { G.toast.life = Math.min(G.toast.life, 0.2); return; } } // a tap on a villain tip puts it away
@@ -722,25 +715,12 @@ function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
   const pd = G.pdrag;
-  if (pd && pd.pid === e.pointerId && (G.screen === 'practice' || G.screen === 'info')) {
+  if (pd && pd.pid === e.pointerId && (G.screen === 'practice' || G.screen === 'info' || G.screen === 'levels')) {
     if (!pd.moved && Math.abs(y - pd.y0) > 9 * ui.u) { pd.moved = true; ui.pressedId = null; }
     if (pd.moved) {
       const now = performance.now(), dtm = Math.max(1, now - pd.lt);
       pd.v = pd.v * 0.6 + ((pd.last - y) / dtm * 1000) * 0.4; pd.last = y; pd.lt = now;
       pd.sc.y = clamp(pd.s0 + pd.y0 - y, 0, pd.sc.max); pd.sc.v = 0;
-    }
-    return;
-  }
-  const ld = G.ldrag;
-  if (ld && ld.pid === e.pointerId && G.screen === 'levels') {
-    if (!ld.moved && Math.abs(x - ld.x0) > 10 * ui.u && Math.abs(x - ld.x0) > Math.abs(y - ld.y0)) { ld.moved = true; ui.pressedId = null; }
-    if (ld.moved) {
-      const now = performance.now(), dtm = Math.max(1, now - ld.lt);
-      ld.v = ld.v * 0.6 + ((x - ld.last) / dtm * 1000) * 0.4; ld.last = x; ld.lt = now;
-      let p = ld.p0 + x - ld.x0;
-      const nW = Math.ceil(LEVELS.length / PER_ENV);
-      if ((p > 0 && G.world === 0) || (p < 0 && G.world === nW - 1)) p *= 0.35; // rubber band past the first and the last world
-      G.lpan.x = p; G.lpan.v = 0;
     }
     return;
   }
@@ -776,16 +756,6 @@ function pointerMove(e) {
 function pointerUp(e) {
   const pd = G.pdrag;
   if (pd && pd.pid === e.pointerId) { if (pd.moved) pd.sc.v = clamp(pd.v, -3000, 3000); G.pdrag = null; }
-  const ld = G.ldrag;
-  if (ld && ld.pid === e.pointerId) {
-    G.ldrag = null;
-    if (ld.moved && G.screen === 'levels') { // a flick or a drag past 30% of the page turns it; otherwise it springs back
-      const pw = ui.w, p = G.lpan.x, fast = Math.abs(ld.v) > 500 && performance.now() - ld.lt < 120;
-      const dir = (p < -0.3 * pw || (fast && ld.v < 0 && p < 0)) ? 1 : (p > 0.3 * pw || (fast && ld.v > 0 && p > 0)) ? -1 : 0;
-      if (dir) goWorld(dir);
-      return;
-    }
-  }
   if (G.screen === 'wonder') wonder.pointerUp(e); // WONDER
   const ct = G.chickTap; // v3.2: tap = power
   if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) G.sim.tapChick(ct.id);
@@ -1156,8 +1126,6 @@ async function press(id) {
       } else if (id && id.startsWith('mode:')) {
         save.mode = id.slice(5);
         persist();
-      } else if (id && id.startsWith('world:')) {
-        goWorld(+id.slice(6)); // the arrows slide the pages like a swipe
       } else if (id && id.startsWith('boost:')) {
         const b = id.slice(6);
         if (G.boostSel.has(b)) G.boostSel.delete(b); else G.boostSel.add(b);
@@ -2007,6 +1975,8 @@ function handleEvents() {
 const STRIKE_API = {
   popup, audio,
   get sim() { return G.sim; },
+  mapJump(w) { G.world = w; G.mscroll.focus = ''; }, // map shots: show world w
+  mapScroll(y) { G.mscroll.y = y; G.mscroll.v = 0; G.mscroll.focus = G.world + ':' + G.mscroll.enter; },
   once(key, text, d = 3.2) { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } },
   hitStop: (s) => hitStop(s),
   punch: (a, x, y) => camPunch(a, x, y),
@@ -2775,6 +2745,7 @@ function render() {
     ctx.fillRect(0, 0, W_, H_);
     return;
   }
+  if (G.screen === 'levels') { drawLevels(); drawToast(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the map covers the screen: no vault drawn under it
   const sim = G.sim;
   const fx = G.fx;
   G.backdrop.draw(ctx, t, G.bcam); // parallax: the layers slide and breathe against the camera
@@ -4148,179 +4119,165 @@ function drawCrown(cx, cy, s) {
   ctx.restore();
 }
 
-// World map page. Each world wears its own colours (its sky as the page, its accent on the ribbon and tiles), shows
-// how far you are (stars in this world, the page dots), and makes the next level to play the loudest thing on screen.
+// The world map (2026-11-16, mykee: "one continuous page you scroll up and down through every world, a wavy road, each
+// world in its own theme, the hens, rooster and villains living in the scenery"). World 1 at the bottom, World 10 at
+// the top. Art and layout: render/mapscene.js. Here: the scroll (drag + momentum, like Practice), the stops as buttons,
+// the hen at the next level, world signs, gate cards on worlds behind their star gate, and the fixed header and PLAY.
+const mapWide = () => ui.A.w > ui.A.h * 1.25; // landscape: one header row, PLAY in the corner
+function mapHeaderH() { return (mapWide() ? 14 + 46 + 8 + 20 : 14 + 46 + 12 + 44 + 10 + 26) * ui.u; } // back row, shop/chest row, progress line
+function levelPageTop() { return ui.A.y + mapHeaderH(); }
+function mapLayoutNow() {
+  const A = ui.A, k = `${W_}x${H_}x${A.x}x${A.y}x${A.w}x${A.h}x${ui.u}`;
+  if (!G.mapL || G.mapL.key !== k) { G.mapL = MS.mapLayout({ W: W_, A, u: ui.u, n: LEVELS.length }); G.mapL.key = k; }
+  return G.mapL;
+}
+// scroll so map y sits at view fraction f (0 top .. 1 bottom of the map view)
+function mapFocusY(y, f = 0.6) {
+  const L = mapLayoutNow(), S = G.mscroll, vt = levelPageTop(), vb = ui.A.y1;
+  S.max = Math.max(0, L.H - (vb - vt));
+  S.y = clamp(y - (vb - vt) * f, 0, S.max); S.v = 0;
+}
+function mapFocusWorld(w) {
+  const L = mapLayoutNow(), nx = nextIdx();
+  if (envOf(nx) === w && envOpen(w)) mapFocusY(L.stops[nx].y, 0.55);
+  else if (!envOpen(w)) mapFocusY(L.bandTop(w) + L.BH * 0.9, 0.62); // the gate card
+  else mapFocusY(L.stops[Math.min(LEVELS.length - 1, w * PER_ENV)].y, 0.62);
+}
 function drawLevels() {
-  const u = ui.u, A = ui.A;
+  const u = ui.u, A = ui.A, pad = 14 * u, S = G.mscroll;
   ui.calm = save.calm;
-  const pad = 14 * u;
-  const nW = Math.ceil(LEVELS.length / PER_ENV);
-  const themeOf = (L) => THEMES.find((t) => t.id === L.theme) || THEMES[0];
-  const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d);
-  // the pan eases home (ease-out) once the finger is off; a drag holds it where the finger is
-  const LP = G.lpan, dt = Math.min(0.05, Math.max(0, G.t - (LP.t || G.t))); LP.t = G.t;
-  if (!(G.ldrag && G.ldrag.moved)) { LP.x *= save.calm ? 0 : Math.exp(-11 * dt); if (Math.abs(LP.x) < 0.5) LP.x = 0; }
-  const pw = W_, side = LP.x > 0 ? -1 : 1, nb = G.world + side, frac = Math.min(1, Math.abs(LP.x) / pw);
-  const showNb = LP.x !== 0 && nb >= 0 && nb < nW;
-  const wpOf = (w) => themeOf(LEVELS[w * PER_ENV] || LEVELS[0]).palette;
-  // the page: the world's sky, deepened (blended toward the neighbour's while it slides in), a faint vault-ring motif
-  const wp = wpOf(G.world), np = showNb ? wpOf(nb) : wp, wacc = hex(wp.accent, '#ee5a36');
-  const sky = (p, k) => ui.mix(hex(p[k], k === 'skyTop' ? '#3f9fe6' : '#dff3fb'), '#1a1030', k === 'skyTop' ? 0.42 : 0.58);
-  const bg = ctx.createLinearGradient(0, 0, 0, H_);
-  bg.addColorStop(0, ui.mix(sky(wp, 'skyTop'), sky(np, 'skyTop'), frac));
-  bg.addColorStop(1, ui.mix(sky(wp, 'skyBottom'), sky(np, 'skyBottom'), frac));
-  ctx.globalAlpha = 0.95; ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); ctx.globalAlpha = 1;
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.055)'; ctx.lineWidth = 16 * u; ctx.lineCap = 'round';
-  const mR = Math.min(W_, H_) * 0.5, mx0 = W_ * 0.86 + LP.x * 0.15, my0 = H_ * 0.9;
-  for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(mx0, my0, mR * (0.45 + 0.3 * i), 2.4 + i * 0.5 + (save.calm ? 0 : G.t * 0.03 * (i % 2 ? -1 : 1)), 5.6 + i * 0.4 + (save.calm ? 0 : G.t * 0.03 * (i % 2 ? -1 : 1))); ctx.stroke(); }
+  const L = mapLayoutNow(), vt = levelPageTop(), vb = A.y1, vh = vb - vt;
+  S.max = Math.max(0, L.H - vh);
+  if (G.screenT < S.seenT || S.focus !== G.world + ':' + S.enter) { mapFocusWorld(G.world); S.focus = G.world + ':' + S.enter; } // just opened: show where the player is
+  S.seenT = G.screenT;
+  const dt = Math.min(0.05, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
+  if (!G.pdrag || !G.pdrag.moved) { if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-3.6 * dt); } else S.v = 0; }
+  const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
+  const sy = S.y - vt; // map y -> screen y is (y - sy)
+  const t = G.t, calm = save.calm;
+  // the land and the road, under everything
+  ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W_, vb - vt + (H_ - vb)); ctx.clip();
+  MS.drawLand(ctx, L, sy, vt, H_, DPR);
+  const nx = nextIdx();
+  let doneTo = null; for (let i = 0; i < LEVELS.length; i++) if (bestStarsOf(LEVELS[i].id) > 0) doneTo = L.stops[i].y;
+  MS.drawRoad(ctx, L, sy, vt, H_, doneTo);
+  MS.drawCast(ctx, L, sy, vt, H_, t, calm);
+  const wide = mapWide(), ctaOn = playable(nx) && envOpen(envOf(nx));
+  const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 320) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - 4 * u;
+  const tapBot = ctaOn && !wide ? ctaY - 6 * u : vb; // stops under the PLAY bar keep no tap target
+  // the stops
+  const BOSS = { a: '#c93a54', b: '#7a1a40', lip: '#42091f', line: '#22040e', ink: '#fff', rim: 'rgba(255,214,96,0.95)' };
+  const sr = Math.min(8 * u, L.stopR * 0.26);
+  let henAt = null;
+  for (let i = 0; i < LEVELS.length; i++) {
+    const st0 = L.stops[i], x = st0.x, y = st0.y - sy, Lv = LEVELS[i], boss = !!Lv.boss, r = boss ? L.stopR * 1.2 : L.stopR;
+    if (y < vt - r * 2 || y > H_ + r * 2) continue;
+    const w = st0.w, locked = !envOpen(w), open = playable(i), cur = open && i === nx;
+    const acc = MS.WORLD_LOOK[w].accent;
+    const face = open ? (boss ? BOSS : ui.faceOf(ui.mix(acc, '#d8862a', 0.15))) : ui.faceOf(ui.mix(boss ? '#8a2a48' : acc, '#6c7080', boss ? 0.6 : 0.75));
+    if (cur && !calm) { const p = 0.5 + 0.5 * Math.sin(t * 4); ctx.beginPath(); ctx.arc(x, y + 2 * u, r + (5 + 5 * p) * u, 0, 7); ctx.fillStyle = `rgba(255,255,255,${0.3 + 0.3 * p})`; ctx.fill(); }
+    const inView = y - r >= vt + 2 * u && y + r + sr * 3 <= tapBot && !(ctaOn && wide && x + r > ctaX - 6 * u && y + r + sr * 3 > ctaY - 6 * u);
+    if (locked || !inView) { // a quiet stone (behind a gate, or half under the header / screen edge: no tap target)
+      ctx.beginPath(); ctx.arc(x, y + 3 * u, r, 0, 7); ctx.fillStyle = face.lip || face.b; ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = face.a; ctx.fill(); ctx.lineWidth = 3 * u; ctx.strokeStyle = face.line; ctx.stroke();
+      if (!locked) { const ns = Math.min(28 * u, r * 0.76); ctx.font = `600 ${Math.round(ns)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = Math.max(3, ns * 0.2); ctx.strokeStyle = face.line; ctx.strokeText(String(Lv.id), x, y); ctx.fillStyle = '#fff'; ctx.fillText(String(Lv.id), x, y); }
+      if (!locked && open) for (let q = 0; q < 3; q++) drawStar(ctx, x + (q - 1) * sr * 2.4, y + r + sr * 1.15 - (q === 1 ? sr * 0.35 : 0), sr, q < starsOf(Lv.id));
+      if (cur) henAt = { x, y, r };
+      continue;
+    }
+    const grp = 'btn:lv:' + i;
+    const b = ui.button('lv:' + i, '', x - r, y - r, 2 * r, 2 * r, { face, disabled: !open, keepFace: true, round: r, shimmer: cur });
+    const fy = y - r + b.dy, fh = 2 * r - Math.min(6 * u, r * 0.26);
+    if (open) {
+      if (boss) drawCrown(x, fy - r * 0.02, Math.min(12 * u, r * 0.3));
+      const ns = Math.min(28 * u, r * 0.76);
+      ui.text(String(Lv.id), x, fy + fh * 0.5, { size: ns, align: 'center', color: '#fff', stroke: face.line, strokeW: Math.max(3, ns * 0.2), shadow: face.line, group: grp, tag: 'lvnum' + i });
+      for (let q = 0; q < 3; q++) drawStar(ctx, x + (q - 1) * sr * 2.4, y + r + sr * 1.15 - (q === 1 ? sr * 0.35 : 0), sr, q < starsOf(Lv.id));
+    } else {
+      ui.text(String(Lv.id), x, fy + fh * 0.3, { size: Math.min(14 * u, r * 0.4), align: 'center', color: 'rgba(255,255,255,0.8)', stroke: face.line, strokeW: 2.5 * u, group: grp, tag: 'lvnum' + i });
+      drawPadlock(x, fy + fh * 0.64, Math.min(10 * u, r * 0.3), null);
+    }
+    if (cur) henAt = { x, y, r };
+  }
+  // the hen waits beside the next level, on the side with more room
+  if (henAt) {
+    const hh = henAt.r * 2, side = henAt.x < A.cx ? 1 : -1, hx = henAt.x + side * (henAt.r + hh * 0.4), hy = henAt.y + henAt.r * 0.2;
+    drawHenAnim(ctx, 'idle', hx, hy - hh * 0.32, hh, t, { key: 'map', face: -side, calm, shadow: 0 });
+  }
+  // worlds behind their gate: fog, and the gate card at the foot of the world
+  const totalStars = bestTotal();
+  for (let w = 0; w < L.nw; w++) {
+    const top = L.bandTop(w) - sy, bot = top + L.BH;
+    if (bot < vt - 40 * u || top > H_) continue;
+    const locked = !envOpen(w);
+    if (locked) MS.drawFog(ctx, L, w, sy, t, calm);
+    // the world sign at its foot: number and name on a wooden board
+    const sp = MS.signSpot(L, w), syy = sp.y - sy, name = WORLDS[w] || '', ns = 15 * u;
+    if (!locked && syy > vt - 30 * u && syy < H_ + 30 * u) {
+      const tw = ui.measure(name, ns), bw2 = tw + 52 * u, bh2 = 30 * u, bx2 = clamp(L.pathX(sp.y) + (L.pathX(sp.y) < A.cx ? 1 : -1) * (bw2 / 2 + L.roadW), A.x + bw2 / 2 + 6 * u, A.x1 - bw2 / 2 - 6 * u);
+      ctx.fillStyle = '#5a3a1a'; ctx.fillRect(bx2 - bw2 * 0.3, syy - 4 * u, 5 * u, 22 * u); ctx.fillRect(bx2 + bw2 * 0.3 - 5 * u, syy - 4 * u, 5 * u, 22 * u);
+      ui.roundRect(bx2 - bw2 / 2, syy - bh2, bw2, bh2, 8 * u); ctx.fillStyle = '#c99a5a'; ctx.fill(); ctx.lineWidth = 3 * u; ctx.strokeStyle = '#5a3a1a'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx2 - bw2 / 2 + 15 * u, syy - bh2 / 2, 10 * u, 0, 7); ctx.fillStyle = MS.WORLD_LOOK[w].accent; ctx.fill();
+      ctx.font = `600 ${Math.round(12 * u)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(String(w + 1), bx2 - bw2 / 2 + 15 * u, syy - bh2 / 2 + 0.5 * u);
+      ctx.font = `600 ${Math.round(ns)}px ${FONT}`; ctx.fillStyle = '#3a2008'; ctx.fillText(name, bx2 + 12 * u, syy - bh2 / 2 + 0.5 * u);
+    }
+    if (locked) {
+      const need = envNeed(w), price = GATE_COINS(w), rich = save.wallet.coins >= price;
+      const cw = Math.min(A.w - 2 * pad, 330 * u), ch = 176 * u, cx0 = A.cx - cw / 2, cy0 = L.bandTop(w) + L.BH * 0.86 - ch - sy;
+      if (cy0 + ch < vt || cy0 > vb) continue;
+      const full = cy0 >= vt && cy0 + ch <= vb, n0 = ui.rects.length, b0 = ui.buttons.length;
+      ui.frame(cx0, cy0, cw, ch, { s: u, r: 18 * u, fw: 5 * u, lip: 4 * u, record: full, tag: 'levels:gatecard' + w });
+      ui.text(`World ${w + 1}: ${WORLDS[w]}`, A.cx, cy0 + 26 * u, { size: 17 * u, align: 'center', color: '#8a6238', maxW: cw - 24 * u, tag: 'levels:gatename' + w, noRecord: !full });
+      drawPadlock(A.cx - ui.measure(`Collect ${need} stars to open`, 17 * u) / 2 - 16 * u, cy0 + 58 * u, 11 * u, null);
+      ui.text(`Collect ${need} stars to open`, A.cx + 8 * u, cy0 + 58 * u, { size: 17 * u, align: 'center', color: ui.C.ink, maxW: cw - 60 * u, tag: 'levels:gate' + w, noRecord: !full });
+      drawStar(ctx, A.cx - ui.measure(`You have ${totalStars}`, 15 * u) / 2 - 12 * u, cy0 + 86 * u, 7 * u, true);
+      ui.text(`You have ${totalStars}`, A.cx + 4 * u, cy0 + 86 * u, { size: 15 * u, align: 'center', color: '#8a6238', tag: 'levels:gatehave' + w, noRecord: !full });
+      ui.button('gate:' + w, `Open now  ${price}`, cx0 + 18 * u, cy0 + 112 * u, cw - 36 * u, 46 * u, { kind: rich ? 'gold' : 'off', disabled: !rich, dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 17 * u });
+      if (!full) { ui.rects.length = n0; ui.buttons.length = b0; }
+    }
+  }
   ctx.restore();
-  // header (fixed, in the safe rect): back, the world's ribbon, all stars
+  // the fixed header: a soft band so the map slides under it
+  const hb = ctx.createLinearGradient(0, 0, 0, vt + 10 * u);
+  hb.addColorStop(0, 'rgba(26,16,48,0.94)'); hb.addColorStop(Math.max(0, (vt - 4 * u) / (vt + 10 * u)), 'rgba(26,16,48,0.88)'); hb.addColorStop(1, 'rgba(26,16,48,0)');
+  ctx.fillStyle = hb; ctx.fillRect(0, 0, W_, vt + 10 * u);
   const X0 = A.x + pad, X1 = A.x1 - pad, Y0 = A.y + pad, hy = Y0 + 23 * u;
   ui.button('back', '', X0, Y0, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
-  const totalStars = bestTotal();
-  const starTxt = `${totalStars} / ${LEVELS.length * 3}`;
-  const stw = ui.measure(starTxt, 17 * u);
+  const starTxt = `${totalStars} / ${LEVELS.length * 3}`, stw = ui.measure(starTxt, 17 * u);
   const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = X1 - chipW;
   ui.glass(chipX, hy - 18 * u, chipW, 36 * u);
   drawStar(ctx, chipX + 9 * u + 11 * u, hy, 9.5 * u, true);
   ui.record({ x: chipX + 9 * u, y: hy - 11 * u, w: 22 * u, h: 22 * u }, 'levels:staricon', 'levels:stars');
   ui.text(starTxt, X1 - 12 * u, hy + 0.5 * u, { size: 17 * u, align: 'right', color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'levels:stars', group: 'levels:stars' });
-  const titleL = X0 + 46 * u + 22 * u, titleR = chipX - 22 * u, wname = WORLDS[G.world] || 'Levels';
-  const rbw = clamp(ui.measure(wname, 21 * u) + 36 * u, Math.min(120 * u, titleR - titleL), titleR - titleL);
-  ui.ribbon(wname, (titleL + titleR) / 2, hy - 19 * u, rbw, 36 * u, { color: wacc, size: 21 * u, tag: 'levels:title' });
-  // world arrows, shop and the next star chest (C5/C6)
-  const rowY = A.y + 74 * u, rh = 46 * u;
-  if (G.world > 0) ui.button('world:-1', '', X0, rowY, 46 * u, rh, { kind: 'secondary', icon: ICON.left, iconS: 1.3 });
-  if (G.world < nW - 1) ui.button('world:1', '', X1 - 46 * u, rowY, 46 * u, rh, { kind: 'secondary', icon: ICON.right, iconS: 1.3 });
-  const midW = Math.min(A.w - 2 * pad - 2 * 56 * u, 320 * u), mx = A.cx - midW / 2, half = (midW - 10 * u) / 2;
-  ui.button('shop', String(save.wallet.coins), mx, rowY, half, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 17 * u });
+  // shop and the next star chest: their own row on a phone, beside the stars in landscape
   const chest = E.chestFor(totalStars, save.wallet.chests);
-  if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { kind: chest.ready ? 'primary' : 'off', shimmer: chest.ready, disabled: !chest.ready, dim: 1, iconS: 1.25, icon: (c, x, y, s) => drawChest(c, x, y, s, G.t, chest.ready ? 'ready' : 'locked'), size: 15 * u });
-  // where you are: one dot per world (the lit dot follows the swipe), and this world's stars
-  const list0 = LEVELS.slice(G.world * PER_ENV, G.world * PER_ENV + PER_ENV);
-  const dy = rowY + rh + 13 * u, ds = 12 * u, ws = list0.reduce((a, L) => a + starsOf(L.id), 0), wsTxt = `${ws}/${list0.length * 3}`;
-  const wsW = ui.measure(wsTxt, 13 * u), dotsW = nW * ds, allW = dotsW + 10 * u + 15 * u + wsW, dx0 = A.cx - allW / 2;
-  for (let i = 0; i < nW; i++) {
-    const open = envOpen(i) && i * PER_ENV < save.unlocked;
-    const lit = i === G.world ? 1 - frac : showNb && i === nb ? frac : 0;
-    ctx.beginPath(); ctx.arc(dx0 + ds * (i + 0.5), dy, (3 + 1.6 * lit) * u, 0, 7);
-    ctx.fillStyle = lit > 0.5 ? '#fff' : open ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.38)'; ctx.fill();
-    if (lit > 0.5) { ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(30,14,4,0.6)'; ctx.stroke(); }
+  const bw4 = wide ? 120 * u : 0, rowY = wide ? Y0 + 1 * u : Y0 + 46 * u + 12 * u, rh = 44 * u;
+  const midW = wide ? bw4 * 2 + 10 * u : Math.min(A.w - 2 * pad, 340 * u), mx = wide ? chipX - 14 * u - midW : A.cx - midW / 2, half = (midW - 10 * u) / 2;
+  ui.button('shop', String(save.wallet.coins), mx, rowY, half, rh, { kind: 'gold', icon: (c, x, y, s2) => drawCoin(c, x, y, s2 * 0.56, G.t), size: 17 * u });
+  if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { kind: chest.ready ? 'primary' : 'off', shimmer: chest.ready, disabled: !chest.ready, dim: 1, iconS: 1.25, icon: (c, x, y, s2) => drawChest(c, x, y, s2, G.t, chest.ready ? 'ready' : 'locked'), size: 15 * u });
+  // the ribbon names the world in the middle of the view
+  const midY = S.y + vh * 0.5;
+  let wv = 0;
+  for (let w = L.nw - 1; w >= 0; w--) if (midY >= L.bandTop(w) - L.BH * 0.02) { wv = w; break; }
+  for (let w = 0; w < L.nw; w++) if (midY >= L.bandTop(w)) { wv = w; break; }
+  const titleL = X0 + 46 * u + 18 * u, titleR = (wide ? mx : chipX) - 18 * u, wname = WORLDS[wv] || 'Levels';
+  const rbw = clamp(ui.measure(wname, 20 * u) + 36 * u, Math.min(120 * u, titleR - titleL), titleR - titleL);
+  ui.ribbon(wname, (titleL + titleR) / 2, hy - 18 * u, rbw, 36 * u, { color: MS.WORLD_LOOK[wv].accent, size: 20 * u, tag: 'levels:title' });
+  // how far along: a thin bar of the whole journey and the levels still to play
+  const cleared = LEVELS.reduce((a, Lv) => a + (bestStarsOf(Lv.id) > 0 ? 1 : 0), 0), left = LEVELS.length - cleared;
+  const py = wide ? Y0 + 46 * u + 12 * u : rowY + rh + 10 * u + 10 * u, pw = Math.min(A.w - 2 * pad, 340 * u), px0 = A.cx - pw / 2;
+  const lt = left ? `${left} level${left === 1 ? '' : 's'} to go` : 'Every level cleared!', ltw = ui.measure(lt, 13 * u), bw3 = pw - ltw - 12 * u;
+  ui.roundRect(px0, py - 4 * u, bw3, 8 * u, 4 * u); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
+  if (cleared) { ui.roundRect(px0, py - 4 * u, Math.max(8 * u, bw3 * cleared / LEVELS.length), 8 * u, 4 * u); ctx.fillStyle = '#f6c454'; ctx.fill(); }
+  ui.text(lt, px0 + pw, py + 0.5 * u, { size: 13 * u, align: 'right', color: '#fff', stroke: 'rgba(30,14,4,0.65)', strokeW: 2.5 * u, tag: 'levels:left' });
+  // the big PLAY at the foot of the screen (the map runs on under it)
+  if (ctaOn) {
+    if (!wide) { const fb = ctx.createLinearGradient(0, ctaY - 30 * u, 0, H_); fb.addColorStop(0, 'rgba(20,10,30,0)'); fb.addColorStop(1, 'rgba(20,10,30,0.5)'); ctx.fillStyle = fb; ctx.fillRect(0, ctaY - 30 * u, W_, H_ - ctaY + 30 * u); }
+    ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, ctaX, ctaY, ctaW, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: (wide ? 20 : 23) * u, round: 18 * u });
   }
-  ui.record({ x: dx0, y: dy - 5 * u, w: dotsW, h: 10 * u }, 'levels:dots');
-  drawStar(ctx, dx0 + dotsW + 10 * u + 6 * u, dy, 5.5 * u, true);
-  ui.text(wsTxt, dx0 + dotsW + 10 * u + 15 * u, dy + 0.5 * u, { size: 13 * u, color: '#fff', stroke: 'rgba(30,14,4,0.65)', strokeW: 2.5 * u, tag: 'levels:wstars' });
-  // the pages: this world at the pan, its neighbour sliding in beside it. A page that is not at rest keeps no tap
-  // targets and records nothing (the overlap check sees only a settled page).
-  const top = dy + 16 * u, bot = A.y1 - pad;
-  ctx.save(); ctx.beginPath(); ctx.rect(0, top - 8 * u, W_, H_ - top + 8 * u); ctx.clip();
-  const page = (w, ox) => {
-    const n0 = ui.rects.length, b0 = ui.buttons.length;
-    ctx.save(); ctx.translate(ox, 0);
-    drawLevelPage(w, top, bot, pad);
-    ctx.restore();
-    if (ox !== 0) { ui.rects.length = n0; ui.buttons.length = b0; }
-  };
-  page(G.world, LP.x);
-  if (showNb) page(nb, LP.x + side * pw);
-  ctx.restore();
-}
-
-// one world's page of the map (2026-11-15: an Angry Birds-style trail instead of a tile grid). A winding dirt path
-// climbs through the world's levels; each stop is a round button with its stars under it, the hen waits beside the
-// next level to play, and the boss sits at the top. A world still behind its star gate shows a gate card: collect the
-// stars, or open it with coins. The big PLAY sits under the trail when the next level to play is on this page.
-const MAP_PTS = {
-  tall: [[0.24, 0.88], [0.72, 0.7], [0.28, 0.5], [0.72, 0.3], [0.46, 0.1]],
-  wide: [[0.08, 0.72], [0.29, 0.3], [0.5, 0.7], [0.71, 0.3], [0.91, 0.56]],
-};
-function trail(pts) { // a smooth path through the points (Catmull-Rom as cubic Beziers)
-  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
-    ctx.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6, p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
-  }
-}
-function drawLevelPage(world, top0, bot, pad) {
-  const u = ui.u, A = ui.A;
-  const first = world * PER_ENV, list = LEVELS.slice(first, first + PER_ENV);
-  const themeOf = (L) => THEMES.find((t) => t.id === L.theme) || THEMES[0];
-  const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d);
-  const totalStars = bestTotal();
-  const locked = !envOpen(world);
-  const wide = A.w > A.h * 0.85;
-  const nx = nextIdx(), cta = !locked && nx >= first && nx < first + list.length && playable(nx);
-  const ctaH = cta ? 62 * u : 0, ctaGap = cta ? 16 * u : 0;
-  // the trail's box
-  const bx0 = A.x + pad, bw = A.w - 2 * pad, by0 = top0 + 6 * u, bh = bot - top0 - ctaH - ctaGap - 6 * u;
-  let r0 = clamp(wide ? Math.min(bw * 0.05, bh * 0.2) : Math.min(bw, bh) * 0.1, 18 * u, 46 * u), sr, pts;
-  for (let pass = 0; pass < 3; pass++) { // small or square rooms: shrink the stops until neighbours (and their stars) clear
-    sr = Math.min(9 * u, r0 * 0.26);
-    const ix = bx0 + r0 * 1.25, iw = bw - r0 * 2.5, iy = by0 + r0 * 1.1, ih = bh - r0 * 1.1 - r0 - sr * 3.2;
-    pts = (wide ? MAP_PTS.wide : MAP_PTS.tall).slice(0, list.length).map(([fx, fy]) => [ix + fx * iw, iy + fy * ih]);
-    let d = Infinity;
-    for (let a = 0; a < pts.length; a++) for (let b = a + 1; b < pts.length; b++) d = Math.min(d, Math.hypot(pts[a][0] - pts[b][0], pts[a][1] - pts[b][1]));
-    const need = r0 * 2 * 1.22 + sr * 2.6; // the boss stop is 1.22x; stars hang under each stop
-    if (d >= need) break;
-    r0 = Math.max(14 * u, r0 * (d / need) * 0.98);
-  }
-  // the path: in from the bottom (or the left), out over the top (or the right) toward the next world
-  const ends = wide ? [[bx0 - pad - 20 * u, pts[0][1]], ...pts, [A.x1 + 20 * u, pts[pts.length - 1][1]]] : [[pts[0][0] - r0, bot + 30 * u], ...pts, [pts[pts.length - 1][0], top0 - 20 * u]];
-  const acc = hex(themeOf(list[0] || LEVELS[0]).palette.accent, '#c98a3a');
-  ctx.save();
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  trail(ends); ctx.strokeStyle = 'rgba(40,20,6,0.55)'; ctx.lineWidth = r0 * 0.95; ctx.stroke();
-  trail(ends); ctx.strokeStyle = locked ? '#b9a98c' : '#ecd29a'; ctx.lineWidth = r0 * 0.72; ctx.stroke();
-  // the stretch already walked is a warmer gold
-  const doneN = list.filter((L) => bestStarsOf(L.id) > 0).length;
-  if (!locked && doneN > 0) { trail(ends.slice(0, doneN + 1 + (doneN === list.length ? 1 : 0))); ctx.strokeStyle = '#f6c454'; ctx.lineWidth = r0 * 0.72; ctx.stroke(); }
-  ctx.setLineDash([r0 * 0.18, r0 * 0.26]); trail(ends); ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = r0 * 0.09; ctx.stroke();
-  ctx.restore();
-  const BOSS = { a: '#c93a54', b: '#7a1a40', lip: '#42091f', line: '#22040e', ink: '#fff', rim: 'rgba(255,214,96,0.95)' };
-  let henAt = null;
-  list.forEach((L, k) => {
-    const i = first + k, [x, y] = pts[k], boss = !!L.boss, r = boss ? r0 * 1.22 : r0;
-    const open = playable(i), st = starsOf(L.id), cur = open && i === nx && cta;
-    const face = open ? (boss ? BOSS : ui.faceOf(ui.mix(acc, '#d8862a', 0.12))) : ui.faceOf(ui.mix(boss ? '#8a2a48' : acc, '#6c7080', boss ? 0.6 : 0.78));
-    const grp = 'btn:lv:' + i;
-    if (cur && !save.calm) { const p = 0.5 + 0.5 * Math.sin(G.t * 4); ctx.beginPath(); ctx.arc(x, y + 2 * u, r + (5 + 5 * p) * u, 0, 7); ctx.fillStyle = `rgba(255,255,255,${0.3 + 0.3 * p})`; ctx.fill(); }
-    if (locked) { // behind the gate: a quiet stone, no tap target (the gate card sits over the trail)
-      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = face.b; ctx.fill(); ctx.lineWidth = 3 * u; ctx.strokeStyle = face.line; ctx.stroke();
-      return;
-    }
-    const b = ui.button('lv:' + i, '', x - r, y - r, 2 * r, 2 * r, { face, disabled: !open, keepFace: true, round: r, shimmer: cur });
-    const fy = y - r + b.dy, fh = 2 * r - Math.min(6 * u, r * 0.26);
-    if (open) {
-      if (boss) drawCrown(x, fy - r * 0.02, Math.min(12 * u, r * 0.3));
-      const ns = Math.min(30 * u, r * 0.78);
-      ui.text(String(L.id), x, fy + fh * 0.5, { size: ns, align: 'center', color: '#fff', stroke: face.line, strokeW: Math.max(3, ns * 0.2), shadow: face.line, group: grp, tag: 'lvnum' + i });
-    } else {
-      ui.text(String(L.id), x, fy + fh * 0.3, { size: Math.min(15 * u, r * 0.4), align: 'center', color: 'rgba(255,255,255,0.8)', stroke: face.line, strokeW: 2.5 * u, group: grp, tag: 'lvnum' + i });
-      drawPadlock(x, fy + fh * 0.64, Math.min(11 * u, r * 0.3), null);
-    }
-    // the stars under the stop, on a little arc
-    if (open) for (let q = 0; q < 3; q++) drawStar(ctx, x + (q - 1) * sr * 2.4, y + r + sr * 1.15 - (q === 1 ? sr * 0.35 : 0), sr, q < st);
-    if (cur) henAt = { x, y, r };
-  });
-  // the hen waits beside the next level, on the side with more room
-  if (henAt) {
-    const hh = henAt.r * 1.9, side = henAt.x < A.cx ? 1 : -1, hx = henAt.x + side * (henAt.r + hh * 0.42), hy = henAt.y + henAt.r * 0.15;
-    drawHenAnim(ctx, 'idle', hx, hy - hh * 0.32, hh, G.t, { key: 'map', face: -side, calm: save.calm, shadow: 0 });
-  }
-  if (locked) { // the gate card: stars, or coins
-    const need = envNeed(world), price = GATE_COINS(world), rich = save.wallet.coins >= price;
-    const cw = Math.min(bw, 340 * u), ch = 168 * u, cx0 = A.cx - cw / 2, cy0 = by0 + (bh - ch) / 2;
-    ui.frame(cx0, cy0, cw, ch, { s: u, r: 18 * u, fw: 5 * u, lip: 4 * u, record: true, tag: 'levels:gatecard' });
-    drawPadlock(A.cx, cy0 + 30 * u, 14 * u, null);
-    ui.text(`Collect ${need} stars to open`, A.cx, cy0 + 62 * u, { size: 18 * u, align: 'center', color: ui.C.ink, maxW: cw - 24 * u, tag: 'levels:gate' });
-    drawStar(ctx, A.cx - ui.measure(`You have ${totalStars}`, 15 * u) / 2 - 12 * u, cy0 + 86 * u, 7 * u, true);
-    ui.text(`You have ${totalStars}`, A.cx + 4 * u, cy0 + 86 * u, { size: 15 * u, align: 'center', color: '#8a6238', tag: 'levels:gatehave' });
-    ui.button('gate:' + world, `Open now  ${price}`, cx0 + 18 * u, cy0 + 106 * u, cw - 36 * u, 46 * u, { kind: rich ? 'gold' : 'off', disabled: !rich, dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 17 * u });
-  }
-  if (cta) {
-    const w = Math.min(bw, 320 * u), y = bot - ctaH;
-    ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, A.cx - w / 2, y, w, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * u, round: 18 * u });
+  if (S.max > 0 && !calm) { // a thin scroll thumb
+    const th = Math.max(30 * u, vh * vh / L.H), ty2 = vt + (S.y / S.max) * (vh - th - 4 * u);
+    ui.roundRect(A.x1 - 5 * u, ty2, 3 * u, th, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
   }
 }
 
