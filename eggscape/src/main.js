@@ -387,10 +387,14 @@ function popup(wx, wy, text, o = {}) {
 function computeLayout() {
   const u = ui.u, A = ui.A;
   const twoRows = A.w < 760;
-  G.hudBottom = A.y + Math.round((twoRows ? 111 : 64) * u); // portrait: 7u more air under the two HUD rows (all inside the safe rect)
-  // bosses (v3.1): the phase bar gets its own strip under the HUD plate
+  // landscape phones (2026-11-16, mykee: "landscape needs proper work"): the HUD moves into a column on the left so the
+  // vault gets the whole height of the screen instead of sitting under a top band
+  G.sideHud = A.w > A.h * 1.3 && A.h < 560 * u;
+  G.hudCol = G.sideHud ? Math.round(Math.min(200 * u, A.w * 0.24)) : 0;
+  G.hudBottom = A.y + Math.round((G.sideHud ? 0 : twoRows ? 111 : 64) * u); // portrait: 7u more air under the two HUD rows (all inside the safe rect)
+  // bosses (v3.1): the phase bar gets its own strip under the HUD plate (in the side column on a landscape phone)
   G.bossBar = G.level && G.level.bossFight ? Math.round(30 * u) : 0;
-  G.hudBottom += G.bossBar;
+  if (!G.sideHud) G.hudBottom += G.bossBar;
   const top = G.hudBottom + 8 * u;
   // zoom buttons get their own strip (right column in landscape, bottom row in portrait) so they never sit on rings
   // (the bottom buttons are ~15% bigger than they were (48u), and sit on the safe rect, off the gesture bar)
@@ -398,7 +402,8 @@ function computeLayout() {
   G.zb = { bs, pad, side, bot: A.y1 - 6 * u - bs };
   const sw = side ? bs + 2 * pad : 0, sh = side ? 0 : bs + pad + 2 * u;
   // the vault frames inside the safe rect (the playfield itself still paints edge to edge)
-  G.play = { x: A.x, y: top, w: A.w - sw, h: A.y1 - top - 6 * u - sh };
+  const lw = G.sideHud ? G.hudCol + 2 * 12 * u : 0;
+  G.play = { x: A.x + lw, y: top, w: A.w - sw - lw, h: A.y1 - top - 6 * u - sh };
 }
 
 // Frame the vault. all: whole vault plus ground and nest. Else the ring the eggs are in plus two more outward.
@@ -3191,6 +3196,7 @@ function hudClock(cx, cy, r, low, frac) {
   ctx.restore();
 }
 function drawHUD() {
+  if (G.sideHud) { if (G.screen === 'win' || G.screen === 'fail') return; return drawSideHUD(); } // the result card and the hen take the stage
   const u = ui.u;
   const sim = G.sim;
   const pal = G.theme.palette;
@@ -3330,6 +3336,110 @@ function drawHUD() {
     ctx.fillStyle = hg; ctx.fill();
     ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(255,206,140,0.75)'; ctx.stroke();
     drawBossBar(ctx, ui, sim, bx, by, bw, bh, G.t);
+  }
+  if (G.screen === 'play' && sim.state === 'play') { drawZoomBtns(); drawAllyBtn(); drawStrikeBtn(); drawBankBtn(); }
+}
+
+// landscape phones: the HUD as a column on the left (pause + info, the level, the egg tray, the fuse, the score, the
+// boss bar), so the vault takes the full height. Same pieces and tags as the top HUD.
+function drawSideHUD() {
+  const u = ui.u, sim = G.sim, pal = G.theme.palette, A = ui.A;
+  const pad = 12 * u, X0 = A.x + pad, Y0 = A.y + pad, bs = 44 * u, cw = G.hudCol, pillH = 34 * u, gap = 8 * u;
+  ui.calm = save.calm;
+  const plate = /^rgba\(/.test(pal.plate || '') ? pal.plate : 'rgba(20,14,10,0.55)';
+  const al = (a) => plate.replace(/[\d.]+\)$/, a + ')');
+  const g = ctx.createLinearGradient(0, 0, X0 + cw + 24 * u, 0);
+  g.addColorStop(0, al(0.7)); g.addColorStop(0.75, al(0.38)); g.addColorStop(1, al(0));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, X0 + cw + 24 * u, H_);
+  let y = Y0;
+  ui.button('pause', '', X0, y, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
+  const infoOn = !!(G.infoKinds && G.infoKinds.length && sim.state === 'play' && (G.screen === 'play' || G.screen === 'pause'));
+  if (infoOn) drawInfoBtn(X0 + bs + gap, y, bs);
+  G.infoLow = 0;
+  y += bs + gap;
+  // level badge + name
+  const isLv = G.li >= 0, nameS = 16 * u, bd = 26 * u;
+  {
+    const inner = cw - (isLv ? 4 * u + bd + 6 * u : 13 * u) - 13 * u, nw = Math.min(ui.measure(G.level.name, nameS), inner);
+    const pw = (isLv ? 4 * u + bd + 6 * u : 13 * u) + nw + 13 * u, cy = y + pillH / 2;
+    ui.glass(X0, y, pw, pillH);
+    let tx = X0 + 13 * u;
+    if (isLv) {
+      const bx = X0 + 4 * u + bd / 2, acc = /^#[0-9a-f]{6}$/i.test(pal.accent || '') ? pal.accent : '#ffb52e';
+      ctx.beginPath(); ctx.arc(bx, cy, bd / 2, 0, 7);
+      const bg = ctx.createLinearGradient(0, cy - bd / 2, 0, cy + bd / 2);
+      bg.addColorStop(0, ui.tint(acc, 0.3)); bg.addColorStop(1, ui.tint(acc, -0.12));
+      ctx.fillStyle = bg; ctx.fill();
+      ctx.lineWidth = 1.5 * u; ctx.strokeStyle = ui.tint(acc, -0.62); ctx.stroke();
+      const nt = String(G.level.id);
+      ui.text(nt, bx, cy, { size: (nt.length > 1 ? 13 : 15) * u, align: 'center', color: '#fff', stroke: ui.tint(acc, -0.62), strokeW: 3 * u, tag: 'hud:levelNum', group: 'hud:level' });
+      tx = X0 + 4 * u + bd + 6 * u;
+    }
+    ui.text(G.level.name, tx, cy + 0.5 * u, { size: nameS, maxW: nw + 1, color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'hud:level', group: 'hud:level' });
+    y += pillH + gap;
+  }
+  // egg tray: every egg of the level, then saved / needed
+  const st = sim.stats(), met = st.saved >= st.target;
+  const slots = Math.max(G.level.eggs, sim.eggs.length), states = [];
+  for (const e of sim.eggs) if (!e.fled) states.push(e.saved ? 'saved' : e.alive ? 'alive' : 'broken');
+  while (states.length < slots) states.push('empty');
+  const needTxt = `${st.saved}/${st.target}`, needS = 18 * u, needW = ui.measure(needTxt.replace(/\d/g, '0'), needS);
+  const icon = Math.min(26 * u * Math.min(1, 4.5 / slots), (cw - 32 * u - needW) / slots / 0.9), traySpace = icon * 0.9, trayW = slots * traySpace;
+  const trayPillW = 10 * u + trayW + 9 * u + needW + 13 * u, ty = y + pillH / 2;
+  ui.glass(X0, y, trayPillW, pillH, met ? { a: 'rgba(52,96,36,0.92)', b: 'rgba(26,58,18,0.92)', border: 'rgba(190,255,150,0.6)' } : {});
+  states.forEach((sx, i) => { const e = sim.eggs[i]; drawEggIcon(ctx, X0 + 10 * u + traySpace * (i + 0.5), ty, icon, sx, e ? e.cracks : 0); });
+  ui.record({ x: X0 + 10 * u, y: ty - icon / 2, w: trayW, h: icon }, 'hud:tray');
+  ctx.fillStyle = 'rgba(255,232,196,0.3)';
+  ctx.fillRect(X0 + 10 * u + trayW + 3.5 * u, ty - pillH * 0.28, 1.5 * u, pillH * 0.56);
+  ui.text(needTxt, X0 + 10 * u + trayW + 9 * u, ty + 0.5 * u, { size: needS, color: met ? '#b9ff9a' : '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'hud:need' });
+  y += pillH + gap;
+  // the fuse and the score share a row
+  const timeTxt = sim.timeLimit ? fmtTime(sim.timeLeft) : '', timeS = 20 * u;
+  let rx = X0;
+  if (timeTxt) {
+    const low = sim.timeLeft <= 10, timeW = ui.measure(timeTxt.replace(/\d/g, '0'), timeS), tw = 8 * u + 22 * u + 5 * u + timeW + 12 * u, cy = y + pillH / 2;
+    ctx.save();
+    if (low && !save.calm) { const k = 1 + 0.05 * Math.sin(G.t * 12), cx = X0 + tw / 2; ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); }
+    ui.glass(X0, y, tw, pillH, low ? { a: 'rgba(196,52,30,0.95)', b: 'rgba(120,22,10,0.95)', border: 'rgba(255,190,160,0.8)' } : {});
+    hudClock(X0 + 8 * u + 11 * u, cy + 1 * u, 10 * u, low, sim.timeLeft / sim.timeLimit);
+    ui.record({ x: X0 + 8 * u, y: cy - 11 * u, w: 22 * u, h: 22 * u }, 'hud:clock', 'hud:time');
+    ui.text(timeTxt, X0 + 8 * u + 22 * u + 5 * u, cy + 0.5 * u, { size: timeS, color: low ? '#fff2c0' : '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 3.2 * u, tag: 'hud:time', group: 'hud:time' });
+    ctx.restore();
+    rx = X0 + tw + gap;
+  }
+  {
+    const scoreTxt = String(st.score), scoreS = 20 * u, cy = y + pillH / 2;
+    if (HUDS.lv !== G.run) { HUDS.lv = G.run; HUDS.score = st.score; HUDS.bump = 0; }
+    if (st.score !== HUDS.score) { HUDS.bump = st.score > HUDS.score ? 1 : 0; HUDS.score = st.score; }
+    HUDS.bump *= 0.88;
+    const sw = Math.max(ui.measure(scoreTxt, scoreS), ui.measure('000', scoreS)) + 26 * u, sx = Math.max(rx, X0 + cw - sw);
+    if (sx + sw <= X0 + cw + 4 * u) {
+      ui.glass(sx, y, sw, pillH);
+      ctx.save();
+      if (HUDS.bump > 0.02 && !save.calm) { const k = 1 + 0.22 * HUDS.bump, px = sx + sw - 13 * u; ctx.translate(px, cy); ctx.scale(k, k); ctx.translate(-px, -cy); }
+      ui.num(scoreTxt, sx + sw - 13 * u, cy, { size: scoreS, align: 'right', tag: 'hud:score' });
+      ctx.restore();
+    }
+  }
+  y += pillH + gap;
+  if (G.bossBar && sim.bx && sim.bx.boss) {
+    const bw = cw, bh = G.bossBar - 8 * u, m = 3 * u, by = y + m;
+    ui.roundRect(X0 - m, by - m + 2.5 * u, bw + 2 * m, bh + 2 * m, bh); ctx.fillStyle = 'rgba(10,2,0,0.3)'; ctx.fill();
+    ui.roundRect(X0 - m, by - m, bw + 2 * m, bh + 2 * m, bh);
+    const hg = ctx.createLinearGradient(0, by - m, 0, by + bh + m); hg.addColorStop(0, '#7a2a26'); hg.addColorStop(1, '#3a100e');
+    ctx.fillStyle = hg; ctx.fill(); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(255,206,140,0.75)'; ctx.stroke();
+    drawBossBar(ctx, ui, sim, X0, by, bw, bh, G.t);
+    y += G.bossBar + gap;
+  }
+  G.sideHudBottom = y;
+  // stall watch: Finish / Stuck? Retry, at the foot of the column
+  if (G.screen === 'play' && sim.state === 'play' && G.stall && G.stall.run === G.run) {
+    const enough = sim.savedLog.length >= (G.level.target || 1);
+    if ((enough && G.stall.t >= 5) || (!enough && G.stall.t >= 22)) {
+      const fh = 42 * u, fy = Math.max(y + 4 * u, A.y1 - pad - fh);
+      if (enough) ui.button('finish', 'Finish level', X0, fy, cw, fh, { kind: 'primary', shimmer: true, icon: ICON.check, size: 16 * u });
+      else ui.button('retry', 'Stuck? Retry', X0, fy, cw, fh, { kind: 'secondary', icon: ICON.retry, size: 15 * u });
+    }
   }
   if (G.screen === 'play' && sim.state === 'play') { drawZoomBtns(); drawAllyBtn(); drawStrikeBtn(); drawBankBtn(); }
 }
