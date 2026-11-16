@@ -1656,15 +1656,15 @@ const EVENT_SFX = {
   ratSquabble: ['rat_squeak'],
   ratCuff: ['rat_squeak', { pitch: 1.1 }],
   // salamander, gecko, chameleon, frog: fire and tongues
-  salFire: ['fire_breath', {}, 'hit'],
-  salPuff: ['fire_breath', { vol: 0.5, pitch: 1.3 }],
-  salHit: ['creature_hurt', { pitch: 0.95 }],
-  salFlinch: ['creature_hurt', { vol: 0.6, pitch: 1.05 }],
-  salShrug: ['release', { vol: 0.35 }],
-  salRivalEnd: ['release', { vol: 0.4 }],
-  geckoLick: ['tongue_lick'],
-  geckoMiss: ['tongue_lick', { vol: 0.5, pitch: 0.9 }],
-  geckoShrug: ['release', { vol: 0.35 }],
+  salFire: ['sal_breath', {}, 'hit'],
+  salPuff: ['sal_breath', { vol: 0.5, pitch: 1.35 }],
+  salHit: ['sal_yelp', { pitch: 0.95 }],
+  salFlinch: ['sal_yelp', { vol: 0.6, pitch: 1.1 }],
+  salShrug: ['sal_huff', { vol: 0.5 }],
+  salRivalEnd: ['sal_huff', { vol: 0.55, pitch: 0.9 }],
+  geckoLick: ['frost_lick'],
+  geckoMiss: ['gecko_chirp', { vol: 0.5, pitch: 1.1 }],
+  geckoShrug: ['gecko_chirp', { vol: 0.4, pitch: 0.92 }],
   chamSnatch: ['tongue_lick', { pitch: 0.85 }, 'hit'],
   chamMiss: ['tongue_lick', { vol: 0.5, pitch: 0.8 }],
   chamCoughed: ['squish', { vol: 0.6, pitch: 1.2 }],
@@ -2147,7 +2147,7 @@ function salEvent(ev, fx) {
   const once = (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } }; // first-time villain tips stay ~7 s (tipToast)
   switch (ev.type) {
     case 'salIn':
-      audio.play('lava_sizzle', { vol: 0.8, pitch: 0.8 });
+      audio.play('sal_call', { vol: 0.9 }); audio.play('ember_hiss', { vol: 0.5 });
       fx.chips(ev.x, ev.y, '#ff9a3a', 10, 2.4);
       fx.sparkle(ev.x, ev.y, 8, '#ffb347');
       if (!ev.boss) once('salIn', 'The lava salamander! It rides the ring under it: turn that ring to steer it.');
@@ -2186,13 +2186,11 @@ function salEvent(ev, fx) {
     case 'chamIn': audio.play('squish', { vol: 0.4, pitch: 1.4 }); fx.chips(ev.x, ev.y, '#9fe07a', 6, 1.4); break;
     case 'chamInside': once('chamIn', 'Sly steals power orbs with his tongue. Feed him the black flame to make him cough one up.'); break;
     case 'chamSnatch':
-      audio.play('squish', { vol: 0.8, pitch: 1.7 });
       fx.sparkle(ev.x, ev.y, 8, powerInfo(ev.power).color);
       popup(ev.x, ev.y + 0.5, 'Snatched!', { color: '#b8ff7a', size: 17, life: 0.9 });
       break;
     case 'chamGulp': audio.play('egg_bump', { vol: 0.5, pitch: 0.6 }); break;
     case 'chamMiss':
-      audio.play('squish', { vol: 0.45, pitch: 2 });
       popup(ev.x, ev.y + 0.5, 'Too slow, Sly!', { color: '#fff2a8', size: 16, life: 0.9 });
       break;
     case 'chamSick':
@@ -2204,33 +2202,30 @@ function salEvent(ev, fx) {
     case 'chamDrop': fx.sparkle(ev.x, ev.y, 6, powerInfo(ev.power).color); break;
     case 'chamBump': audio.play('rock_hit', { vol: 0.7, pitch: 1.1 }); popup(ev.x, ev.y + 0.55, 'Bump!', { color: '#ffe1a8', size: 16, life: 0.7 }); break;
     case 'geckoIn': // L15: Baron von Brr squeezes in through the outer ring (sim/salamander.js, species gecko)
-      audio.play('glass_crack', { vol: 0.4, pitch: 1.8 });
+      audio.play('glass_crack', { vol: 0.4, pitch: 1.8 }); audio.play('gecko_chirp', { vol: 0.7 });
       fx.chips(ev.x, ev.y, '#e6f6ff', 8, 1.8);
       break;
     case 'geckoInside':
       once('geckoIn', 'Baron von Brr is in! His feet ice the floor and his lick freezes eggs.');
       break;
     case 'geckoLick':
-      audio.play('glass_crack', { vol: 0.75, pitch: 1.3 });
-      audio.play('glass_break', { vol: 0.25, pitch: 1.8 });
-      fx.sparkle(ev.x, ev.y, 10, '#dff6ff');
+      fx.sparkle(ev.x, ev.y, 10, '#dff6ff'); // sound: frost_lick (EVENT_SFX)
       fx.chips(ev.x, ev.y, '#d9f3ff', 6, 1.6);
       popup(ev.x, ev.y + 0.55, 'Licked frozen!', { color: '#bfeaff', size: 18, life: 1.0 });
       once('geckoLick', 'A frozen egg is stuck, but nothing can crack it until it thaws.');
       break;
     case 'eggThaw':
-      audio.play('glass_break', { vol: 0.3, pitch: 1.7 });
+      audio.play('glass_crack', { vol: 0.45, pitch: 1.5 });
       fx.chips(ev.x, ev.y, '#e6f6ff', 7, 1.8);
       break;
     case 'geckoShrug':
       popup(ev.x, ev.y + 0.5, 'Too hard to lick', { color: '#e6e6e6', size: 15, life: 0.8 });
       break;
     case 'salWarn':
-      audio.play('fire_ignite', { vol: 0.55, pitch: 0.55 });
+      audio.play('sal_charge', { vol: 0.8 });
       fx.sparkle(ev.x, ev.y, 6, '#ffb347');
       break;
-    case 'salFire':
-      audio.play('fire_burn', { vol: 0.9 });
+    case 'salFire': // sound: sal_breath (EVENT_SFX)
       fx.chips(ev.x, ev.y, '#ff9a3a', 12, 2.6);
       fx.sparkle(ev.x, ev.y, 8, '#ffd27a');
       fx.shake = Math.max(fx.shake, 0.2);
@@ -2238,11 +2233,11 @@ function salEvent(ev, fx) {
       once('salFire', 'Red-hot wall! An egg that touches it cracks, but thorns on it burn away.');
       break;
     case 'salScorch':
-      audio.play('lava_sizzle', { vol: 0.7, pitch: 1.2 });
+      audio.play('ember_hiss', { vol: 0.7 });
       fx.smoke(ev.x, ev.y, 2, 'rgba(255,170,110,0.35)'); // the crack popup names the cause (red-hot wall)
       break;
     case 'salSteam':
-      audio.play('lava_sizzle', { vol: 0.6, pitch: 1.5 });
+      audio.play('ember_hiss', { vol: 0.6, pitch: 1.2 });
       fx.smoke(ev.x, ev.y + 0.15, 3, 'rgba(230,240,255,0.45)');
       popup(ev.x, ev.y + 0.6, 'Hiss! Cooled', { color: '#8fd0ff', size: 16, life: 0.9 });
       break;
@@ -2250,7 +2245,7 @@ function salEvent(ev, fx) {
       popup(ev.x, ev.y + 0.5, 'No crack', { color: '#e6e6e6', size: 15, life: 0.8 });
       break;
     case 'salCool':
-      audio.play('lava_sizzle');
+      audio.play('ember_hiss');
       audio.play('splash', { vol: 0.5 });
       fx.smoke(ev.hx, ev.hy + 0.25, 3, 'rgba(230,240,255,0.4)'); // light: the grey creature must stay readable
       popup(ev.hx, ev.hy + 0.85, 'Cooled!', { color: '#8fd0ff', size: 20 });
@@ -2259,24 +2254,23 @@ function salEvent(ev, fx) {
     case 'salHit': {
       const H = SAL_HIT[ev.kind];
       if (!H) break;
-      audio.play(H[2], { vol: 0.6, pitch: 1.3 });
+      audio.play(H[2] === 'lava_sizzle' ? 'ember_hiss' : H[2], { vol: 0.6, pitch: 1.3 });
       fx.sparkle(ev.x, ev.y, 8, H[1]);
       popup(ev.x, ev.y + 0.55, H[0], { color: H[1], size: 18, life: 0.9 });
       if (ev.kind === 'lava') once('salLava', 'Lava only recharges the salamander: its next breath comes sooner.');
       break;
     }
     case 'salRival':
-      audio.play('lava_sizzle', { vol: 0.7, pitch: 1.7 });
+      audio.play('sal_call', { vol: 0.8, pitch: 1.15 });
       fx.sparkle(ev.x, ev.y, 10, '#ffe27a');
       popup(ev.x, ev.y + 0.7, 'Face-off!', { color: '#ffe27a', size: 24, life: 1.2 });
       once('salRival', 'Snake vs salamander! While they square off, neither one bothers your eggs.');
       break;
-    case 'salPuff':
-      audio.play('fire_ignite', { vol: 0.7 });
+    case 'salPuff': // sound: sal_breath (EVENT_SFX)
       fx.burst(ev.x, ev.y, 6, (i, a, b) => ({ x: ev.x, y: ev.y, vx: (ev.tx - ev.x) * (0.8 + a) + (b - 0.5), vy: (ev.ty - ev.y) * (0.8 + a) + (b - 0.5), drag: 3, life: 0.35, size: 0.05, color: '#ffb347' }));
       break;
     case 'salDive':
-      audio.play('lava_sizzle', { vol: 0.8 });
+      audio.play('ember_hiss', { vol: 0.8 });
       audio.play('splash', { vol: 0.4, pitch: 0.6 });
       break;
   }

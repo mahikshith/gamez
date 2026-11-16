@@ -10,7 +10,7 @@ const dir = path.resolve(process.argv[2] || '.');
 const out = path.resolve(process.argv[3] || path.join(dir, 'out'));
 fs.mkdirSync(out, { recursive: true });
 
-const SIZES = [[390, 844], [360, 640], [1280, 720], [640, 360], [600, 600], [768, 1024]];
+const SIZES = [[390, 844], [360, 640], [1280, 720], [640, 360], [600, 600], [768, 1024], [1024, 768], [800, 1280], [1280, 800], [1180, 820], [820, 1180]]; // 2026-11-16: tablets too (mykee)
 
 const srv = http.createServer((q, r) => {
   const u = q.url.split('?')[0];

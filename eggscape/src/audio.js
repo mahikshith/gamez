@@ -53,6 +53,7 @@ export const SFX_NAMES = [
   'wing_bat', 'decoy_peep', 'goose_honk', 'power_use', // the hen bats the strike chick off her wing, the decoy, the goose ally, a power waking up
   // villain voices: each family gets a signature, so you can hear who is acting without looking
   'snake_hiss', 'snake_strike', 'eagle_screech', 'eagle_dive', 'rat_squeak', 'weasel_chitter', 'tongue_lick', 'fire_breath',
+  'gecko_chirp', 'frost_lick', 'sal_call', 'sal_charge', 'sal_breath', 'sal_yelp', 'sal_huff', 'ember_hiss',
   'crab_snap', 'ink_squirt', 'gator_snap', 'gear_whir', 'mosquito', 'jelly_zap', 'puff_swell', 'creature_hurt', 'stun_stars',
   'boss_roar', 'boss_slam',
 ];
@@ -70,7 +71,7 @@ const PITCH_VAR = {
   ui_tap: 0.015, ring_tick: 0.02, hud_pop: 0, ui_back: 0.01, ui_open: 0.01, score_tick: 0.004, countdown: 0,
   egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, rewind: 0.02, tada: 0, cheer_up: 0, cluck: 0.06,
   power_pickup: 0, strike_launch: 0.02, strike_hit: 0.02, crow: 0.02, egg_crack: 0.03, egg_break: 0.02,
-  rat_squeak: 0.1, weasel_chitter: 0.07, snake_hiss: 0.05, eagle_screech: 0.05, goose_honk: 0.05, decoy_peep: 0.08, creature_hurt: 0.08,
+  rat_squeak: 0.1, weasel_chitter: 0.07, snake_hiss: 0.05, eagle_screech: 0.05, goose_honk: 0.05, decoy_peep: 0.08, creature_hurt: 0.08, gecko_chirp: 0.08, sal_yelp: 0.08, sal_call: 0.3,
 };
 const DEFAULT_PITCH_VAR = 0.03;
 // Per-sound loudness trim (linear), from the render.mjs level analysis.
@@ -1165,11 +1166,64 @@ export function createAudioEngine(externalCtx = null, options = {}) {
         nz(v, { t, a: 0.0005, d: 0.01, g: 0.12, type: 'bandpass', f: 3500, q: 2 });
       }
     },
-    tongue_lick(v, o) { // a sticky tongue out and back: thwip, then a wet pop
+    tongue_lick(v, o) { // a sticky tongue out and back: a bright thwip up, then a small wet "tok" (kept above 600 Hz: low sweeps read as rude noises on phone speakers)
       const p = o.p;
-      nz(v, { color: 'pink', a: 0.01, d: 0.07, g: 0.4, type: 'bandpass', f: 700 * p, f2: 3200 * p, sw: 0.07, q: 1.5 });
-      tone(v, { f: 350 * p, f2: 1100 * p, gl: 0.06, a: 0.004, d: 0.06, g: 0.18 });
-      tone(v, { t: 0.1, f: 900 * p, f2: 300 * p, gl: 0.03, a: 0.002, d: 0.04, g: 0.25 });
+      nz(v, { color: 'pink', a: 0.006, d: 0.06, g: 0.3, type: 'bandpass', f: 1200 * p, f2: 4200 * p, sw: 0.05, q: 1.8 });
+      tone(v, { f: 700 * p, f2: 1900 * p, gl: 0.05, a: 0.003, d: 0.05, g: 0.12 });
+      modal(v, { t: 0.09, f: 1500 * p, r: [1, 1.8], d: 0.035, g: 0.16 });
+      nz(v, { t: 0.09, a: 0.0005, d: 0.012, g: 0.15, type: 'bandpass', f: 2600 * p, q: 2 });
+    },
+    gecko_chirp(v, o) { // a gecko's call: three or four quick bright chirps over dry clicks, no low end
+      const p = o.p, n = 3 + (rand() < 0.4 ? 1 : 0);
+      for (let k = 0; k < n; k++) {
+        const t = k * rr(0.065, 0.08), f = rr(2300, 2700) * p * (1 - k * 0.04);
+        tone(v, { t, f, fp: [[0, f * 0.85], [0.018, f * 1.12], [0.04, f]], a: 0.002, d: 0.045, g: 0.16 });
+        nz(v, { t, a: 0.0004, d: 0.008, g: 0.18, type: 'bandpass', f: 4200 * p, q: 2.5 });
+      }
+    },
+    frost_lick(v, o) { // the frost gecko's lick: a quick bright tongue swipe, then ice crystallising with a chime
+      const p = o.p;
+      nz(v, { a: 0.006, d: 0.06, g: 0.3, type: 'bandpass', f: 2500 * p, f2: 6500 * p, sw: 0.06, q: 1.6 });
+      tone(v, { f: 1400 * p, f2: 2800 * p, gl: 0.05, a: 0.003, d: 0.05, g: 0.08 });
+      nz(v, { t: 0.07, a: 0.04, d: 0.28, g: 0.1, type: 'highpass', f: 6000 });
+      pings(v, { t: 0.07, dur: 0.3, n: 10, fmin: 3500 * p, fmax: 8000 * p, g: 0.07, dmin: 0.05, dmax: 0.2 });
+      chime(v, { t: 0.08, f: 2093 * p, d: 0.45, g: 0.1, o2: 0.4 });
+      chime(v, { t: 0.14, f: 3136 * p, d: 0.4, g: 0.06 });
+    },
+    sal_call(v, o) { // the lava salamander's voice: a little dragon "rrr-ah!" with a rolled purr, then embers crackling
+      const p = o.p;
+      voice(v, { pts: [[0, 330 * p], [0.12, 420 * p], [0.22, 560 * p], [0.36, 400 * p]], fm: [1000 * p, 2500 * p], q: 3, d: 0.38, g: 0.24, vib: [26, 0.07] });
+      grains(v, { t: 0.15, dur: 0.35, n: 10, fmin: 2500, fmax: 6000, g: 0.12, decay: 0.004 });
+      chime(v, { t: 0.2, f: 1568 * p, d: 0.3, g: 0.05 });
+    },
+    sal_charge(v, o) { // embers gathering in its throat before a breath: a rising crackle and shimmer
+      const p = o.p;
+      nz(v, { a: 0.3, d: 0.08, g: 0.22, type: 'bandpass', f: 1200 * p, f2: 3500 * p, sw: 0.35, q: 1.5, expA: true });
+      grains(v, { dur: 0.4, n: 14, fmin: 2000, fmax: 6000, g: 0.12, decay: 0.004, curve: 0.6, fade: -0.6 });
+      tone(v, { f: 520 * p, f2: 1040 * p, gl: 0.35, a: 0.3, d: 0.08, g: 0.06, vib: [18, 0.03] });
+    },
+    sal_breath(v, o) { // the salamander's fire breath: a warm rising fwoosh, ember crackle and a bright flare on top (no rumble)
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.06, hold: 0.08, d: 0.35, g: 0.42, type: 'bandpass', f: 900 * p, f2: 2600 * p, sw: 0.25, q: 0.9, type2: 'highpass', f3: 500 });
+      nz(v, { a: 0.05, d: 0.3, g: 0.08, type: 'highpass', f: 5000 });
+      grains(v, { t: 0.06, dur: 0.5, n: 18, fmin: 1800 * p, fmax: 5500 * p, g: 0.17, decay: 0.005 });
+      tone(v, { type: 'triangle', f: 660 * p, f2: 1320 * p, gl: 0.3, a: 0.05, d: 0.3, g: 0.05 });
+    },
+    sal_yelp(v, o) { // the salamander hit: a short surprised squeak and a puff of sparks
+      const p = o.p;
+      voice(v, { pts: [[0, 620 * p], [0.05, 900 * p], [0.18, 520 * p]], fm: [1200 * p, 2800 * p], q: 3, d: 0.18, g: 0.22 });
+      grains(v, { t: 0.02, dur: 0.15, n: 6, fmin: 3000, fmax: 6500, g: 0.1, decay: 0.004 });
+    },
+    sal_huff(v, o) { // a dismissive little huff with a few sparks
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.015, d: 0.1, g: 0.6, type: 'bandpass', f: 900 * p, f2: 1600 * p, sw: 0.1, q: 1.2 });
+      grains(v, { t: 0.02, dur: 0.12, n: 4, fmin: 2500, fmax: 5000, g: 0.2, decay: 0.004 });
+    },
+    ember_hiss(v, o) { // steam / a scorch: a bright sizzle with crackle, no low tone
+      const p = o.p;
+      nz(v, { a: 0.01, d: 0.45, g: 0.2, type: 'highpass', f: 3000 * p, f2: 5500 * p, sw: 0.4 });
+      grains(v, { dur: 0.4, n: 14, fmin: 2500, fmax: 7000, g: 0.14, decay: 0.004 });
+      nz(v, { color: 'pink', a: 0.03, d: 0.3, g: 0.07, type: 'bandpass', f: 2200 * p, q: 0.8 });
     },
     fire_breath(v, o) { // a salamander / dragon breath: a roaring whoosh with crackle
       const p = o.p;
