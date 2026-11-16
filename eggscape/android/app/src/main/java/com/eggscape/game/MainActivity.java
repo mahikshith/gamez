@@ -41,11 +41,13 @@ public class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE));
             else vib.vibrate(ms);
         }
-        /** ads and the Premium purchase (src/ads.js): each answers later through window.__eggAd / __eggBuy */
+        /** ads and in-app products (src/ads.js): each answers later through window.__eggAd / __eggBuy / __eggGrant */
         @JavascriptInterface public void showRewarded(String tag, String id) { if (money != null) money.showRewarded(tag, id); }
         @JavascriptInterface public void showInterstitial(String id) { if (money != null) money.showInterstitial(id); }
         @JavascriptInterface public void buy(String sku, String id) { if (money != null) money.buy(sku, id); }
         @JavascriptInterface public void restorePurchases() { if (money != null) money.restore(); }
+        /** the age question answered "Under 13": child-directed ad requests (remembered by the shell) */
+        @JavascriptInterface public void setChildSafe(boolean on) { if (money != null) money.setChildSafe(on); }
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "ClickableViewAccessibility"})
