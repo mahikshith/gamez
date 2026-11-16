@@ -2934,7 +2934,7 @@ function render() {
 
 
   // UI
-  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info') drawHUD();
+  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info' && G.screen !== 'intro') drawHUD(); // the intro card carries the name, eggs and time (mykee: the name showed twice)
   if (G.screen === 'play') drawFlyers(); // prizes on their way to the HUD
   if (G.screen === 'play') {
     // the power card owns the top of the screen while it shows
@@ -3490,10 +3490,18 @@ function stackCard(title, build, o = {}) {
   ui.calm = save.calm;
   const A = ui.A, top = Math.max(G.hudBottom, A.y) + 16 * u; // the ribbon stands 8 units proud of the card
   const avail = A.y1 - top - 14 * u; // and the base lip 5 below
+  // o.twoCol on a wide screen (landscape): blocks marked right: true stack in a second column beside the rest
+  const two = !!o.twoCol && A.w > A.h * 1.15;
+  const colH = (L, s) => L.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
   const measure = (s) => {
+    if (two) {
+      const w = Math.min(A.w - 32 * u, 780 * s), cw = (w - 48 * s - 28 * s) / 2;
+      const blocks = build(s, cw), hl = colH(blocks.filter((b) => !b.right), s), hr = colH(blocks.filter((b) => b.right), s);
+      return { s, w, blocks, cw, hl, hr, h: CARD_HEAD * s + Math.max(hl, hr) + 22 * s };
+    }
     const w = Math.min(o.maxW || A.w - 32 * u, 420 * s);
     const blocks = build(s, w - 48 * s);
-    const h = CARD_HEAD * s + blocks.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0) + 22 * s;
+    const h = CARD_HEAD * s + colH(blocks, s) + 22 * s;
     return { s, w, blocks, h };
   };
   let m = measure(u);
@@ -3518,6 +3526,23 @@ function stackCard(title, build, o = {}) {
   ui.frame(x, y, w, h, { s, r: 24 * s });
   const rw = clamp(ui.measure(title, 24 * s) + 56 * s, w * 0.6, w - 14 * s);
   ui.ribbon(title, x + w / 2, y - 8 * s, rw, 40 * s, { s, color: o.ribbon || '#ee5a36', size: 24 * s, tag: 'card:title' });
+  if (two) { // each column centred in the card's height
+    const maxC = Math.max(m.hl, m.hr);
+    for (const [R, ch] of [[false, m.hl], [true, m.hr]]) {
+      let cy = y + CARD_HEAD * s + (maxC - ch) / 2;
+      const cx = x + 24 * s + (R ? m.cw + 28 * s : 0);
+      for (const b of blocks) {
+        if (!!b.right !== R) continue;
+        cy += b.gap ?? 10 * s;
+        if (b.at) b.at(cx, cy, m.cw);
+        b.draw(cx, cy, m.cw);
+        cy += b.h;
+      }
+    }
+    ui.roundRect(x + 24 * s + m.cw + 13 * s, y + CARD_HEAD * s + 4 * s, 2 * s, maxC - 4 * s, s); ctx.fillStyle = 'rgba(120,80,40,0.18)'; ctx.fill(); // the fold between the columns
+    ctx.restore();
+    return { x, y, w, h, s };
+  }
   let cy = y + CARD_HEAD * s;
   for (const b of blocks) {
     cy += b.gap ?? 10 * s;
@@ -3564,7 +3589,7 @@ function bossStage(x, y, w, h, s) {
 // first level of a world, first visit: its intro line rides on the level card (one card, no extra tap)
 function worldOpener(L) { return !!(L && L.intro && !L.boss && G.li >= 0 && (L.id - 1) % PER_ENV === 0 && !save.intro[L.id]); }
 function drawIntro() {
-  dim(0.42);
+  dim(0.62);
   const L = G.level, C = ui.C;
   const acc = /^#[0-9a-f]{6}$/i.test(G.theme.palette.accent || '') ? G.theme.palette.accent : '#ee5a36';
   // Chick Strike: a new strike chick gets a card of its own, once (the newest one reached; any older unseen ones with it)
@@ -3610,15 +3635,15 @@ function drawIntro() {
       ...(G.li === -1 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14 * s, { color: C.info, tag: 'intro:daily', gap: 6 * s })] : []),
       ...tip.map((l, i) => lineBlock(l, 15 * s, { color: C.ink2, tag: 'intro:tip' + i, gap: i ? 2 * s : 8 * s })),
       ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus, G.sim.MD.fuse), 14 * s, { color: C.info, tag: 'intro:bonus', gap: 6 * s })] : []),
-      ...strikePicker(s, iw),
-      { h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('go', 'PLAY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 25 * s }) },
+      ...strikePicker(s, iw).map((b) => ({ ...b, right: !b.stage })),
+      { right: true, h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('go', 'PLAY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 25 * s }) },
       // start boosters bought in the store (F7/F21): tap to pick, each shows its one-liner
-      { h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
+      { right: true, h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
     ];
-    if (!G.adBoost && !G.golden) B.push({ h: 48 * s, draw: (x, y, w) => ui.button('adboost', 'Watch an ad: free booster', x, y, w, 48 * s, { kind: 'ad', ad: true, size: 15.5 * s }) });
-    B.push({ h: 42 * s, draw: (x, y, w) => ui.button(G.li === -1 ? 'back' : 'levels', G.li === -1 ? 'Menu' : 'Levels', x + w * 0.22, y, w * 0.56, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) });
+    if (!G.adBoost && !G.golden) B.push({ right: true, h: 48 * s, draw: (x, y, w) => ui.button('adboost', 'Watch an ad: free booster', x, y, w, 48 * s, { kind: 'ad', ad: true, size: 15.5 * s }) });
+    B.push({ right: true, h: 42 * s, draw: (x, y, w) => ui.button(G.li === -1 ? 'back' : 'levels', G.li === -1 ? 'Menu' : 'Levels', x + w * 0.22, y, w * 0.56, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) });
     return B;
-  }, { ribbon: acc });
+  }, { ribbon: acc, twoCol: true });
 }
 
 // Chick Strike: the row of unlocked strike chicks on the intro card (tap one to take it), with the chosen one's downside
@@ -3626,8 +3651,19 @@ function strikePicker(s, iw) {
   const id = G.sim && G.sim.stk && G.sim.stk.id, open = strikesOpen();
   if (!G.sim || !G.sim.stk || !G.sim.stk.any || !open.length || (G.li >= 0 && G.level.id < STRIKE_FROM)) return [];
   const S = id ? STRIKE[id] : null, r = Math.min(21 * s, (iw - 8 * s * (open.length - 1)) / open.length / 2);
+  // the chosen chick on its own little stage (mykee 2026-11-16: show the picked chick clearly, not a small token)
+  const stage = S ? [{ stage: true, h: 92 * s, gap: 10 * s, draw: (x, y, w) => {
+    const sw = Math.min(110 * s, w * 0.34);
+    artStage(x, y, sw, 92 * s, s, () => drawStrikeStage(ctx, S.id, x, y + 4 * s, sw, 84 * s, G.t));
+    const tx = x + sw + 12 * s, tw = w - sw - 12 * s, up = wrapText(S.up, 14.5 * s, tw).slice(0, 2), dn = wrapText('Downside: ' + S.down, 13 * s, tw).slice(0, 2);
+    let ty = y + 46 * s - ((up.length + dn.length) * 17 * s + 24 * s) / 2 + 10 * s;
+    ui.text(S.name, tx, ty, { size: 19 * s, color: S.col ? S.col[1] : ui.C.ink, tag: 'intro:stkname', maxW: tw }); ty += 22 * s;
+    up.forEach((l, i) => { ui.text(l, tx, ty, { size: 14.5 * s, color: ui.C.ink, tag: 'intro:stkup' + i, maxW: tw }); ty += 17 * s; });
+    dn.forEach((l, i) => { ui.text(l, tx, ty, { size: 13 * s, color: ui.C.warn, tag: 'intro:stkdn' + i, maxW: tw }); ty += 16 * s; });
+  } }] : [];
   return [
-    { h: 2 * r + 4 * s, gap: 10 * s, draw: (x, y, w) => {
+    ...stage,
+    { h: 2 * r + 4 * s, gap: S ? 6 * s : 10 * s, draw: (x, y, w) => {
       const step = Math.min(2 * r + 12 * s, w / open.length), x0 = x + w / 2 - (step * (open.length - 1)) / 2;
       open.forEach((O, i) => {
         const cx = x0 + i * step, cy = y + r + 2 * s, rect = { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r };
@@ -3637,7 +3673,7 @@ function strikePicker(s, iw) {
         ui.buttons.push({ id: 'stk:pick:' + O.id, ...rect });
       });
     } },
-    lineBlock(S ? `${S.name}: ${S.down}` : `Pick a power chick for this level${save.wallet.charges ? ` (${save.wallet.charges} charges in your bag)` : ''}`, 13 * s, { color: ui.C.ink2, tag: 'intro:strike', gap: 4 * s }),
+    lineBlock(S ? 'Tap another chick to swap' : `Pick a power chick for this level${save.wallet.charges ? ` (${save.wallet.charges} charges in your bag)` : ''}`, 13 * s, { color: ui.C.ink2, tag: 'intro:strike', gap: 4 * s }),
   ];
 }
 
