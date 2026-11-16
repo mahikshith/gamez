@@ -228,7 +228,8 @@ const STILL = [
 ];
 // live cast: placed on the other side of the road from the still props at about the same height where possible
 const CAST = [
-  [['henNest', 0.9, 'A', 0.5, 96], ['rooster', 0.7, 'A', 0.5, 100], ['weaselHay', 0.52, 'A', 0.6, 80], ['chicks', 0.34, 'A', 0.5, 90], ['goose', 0.18, 'A', 0.5, 96]],
+// (no hen on a nest here: the hen at the next stop is THE hen; a second one read as a duplicate, mykee 2026-11-16)
+  [['rooster', 0.7, 'A', 0.5, 100], ['weaselHay', 0.52, 'A', 0.6, 80], ['chicks', 0.34, 'A', 0.5, 90], ['goose', 0.18, 'A', 0.5, 96]],
   [['snakeBranch', 0.86, 'A', 0.5, 120], ['chicks', 0.62, 'A', 0.5, 80], ['snake', 0.42, 'A', 0.5, 120], ['butterflies', 0.2, 'A', 0.5, 70]],
   [['gecko', 0.86, 'A', 0.5, 130], ['skater', 0.66, 'A', 0.5, 100], ['rooster', 0.42, 'A', 0.5, 96], ['snowfall', 0.22, 'A', 0.5, 80]],
   [['rats', 0.86, 'A', 0.5, 140], ['spike', 0.6, 'A', 0.5, 140], ['sparkle', 0.4, 'A', 0.5, 70], ['rats', 0.22, 'A', 0.5, 120]],
