@@ -122,6 +122,24 @@ export const chickMethods = {
     return true;
   },
 
+  // 2026-11-16 (mykee: "until the user taps it we should not take the power away"): a chick that reaches the nest
+  // with its power unused keeps it. The HUD shows it; a tap sets off a flash at the egg furthest out (it burns the
+  // thorns ahead of it, dazes snakes, rats and the eagle). Derived from egg fields, so rewind stays exact.
+  banked() { return this.eggs.filter((e) => e.saved && e.chick && TAP.has(e.chickKind) && !e.powU); },
+  fireBanked() {
+    if (this.state !== 'play') return false;
+    const b = this.banked()[0];
+    const pool = this.aliveEggs().filter((e) => !e.chick);
+    const lead = (pool.length ? pool : this.aliveEggs()).sort((x, y) => this.channelOf(y) - this.channelOf(x))[0];
+    if (!b || !lead) return false;
+    b.powU = 1;
+    const q = lead.body.getPosition(), p = { x: q.x, y: q.y };
+    const proxy = { id: b.id, body: { getPosition: () => p }, powK: 0, powT: 0, chickKind: 'glow', skip: lead };
+    this.emit('chickPower', { egg: proxy, kind: 'glow', x: p.x, y: p.y, banked: b.chickKind });
+    this.glowFlash(proxy);
+    return true;
+  },
+
   // ---------- every step (before the world step)
   chickStep(dt) {
     for (const S of this.snakes) if (S.daze > 0) S.daze = Math.max(0, S.daze - dt);
@@ -180,7 +198,7 @@ export const chickMethods = {
     }
     // the downside: the blast blows nearby eggs outward a little
     for (const e of this.aliveEggs()) {
-      if (e === egg || e.chick || e.honey > 0) continue;
+      if (e === egg || e === egg.skip || e.chick || e.honey > 0) continue;
       const q = e.body.getPosition(), dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 0.01;
       if (d > R) continue;
       const f = e.body.getMass() * 2.4 * (1 - d / R);

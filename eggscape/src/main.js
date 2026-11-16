@@ -872,6 +872,7 @@ async function press(id) {
     case 'zoom:out': setZoom((G.zm || 0) - 0.34); break;
     case 'zoom:auto': G.zm = null; break;
     case 'strike': fireStrike(); break; // Chick Strike
+    case 'bank': if (G.screen === 'play' && G.sim && G.sim.fireBanked()) audio.play('unlock', { pitch: 1.3 }); break; // a saved chick's kept power
     case 'stk:gotit': { const id = G.stkCard; save.strikeSeen = { ...(save.strikeSeen || {}) }; for (const S of strikesOpen()) save.strikeSeen[S.id] = 1; if (id) { G.stkSel = { lid: G.level.id, id }; G.sim.stkEquip(strikeFor(G.level, G.li)); } G.stkCard = null; persist(); break; }
     case 'ally': {
       // allies (v3.5): free on Easy and after a fail; otherwise a rewarded ad (never costs progress, the button stays on a miss)
@@ -1788,6 +1789,7 @@ function handleEvents() {
         break;
       }
       case 'save': {
+        if (ev.egg && ev.egg.chick && !ev.egg.powU && sim.banked && sim.banked().includes(ev.egg)) toast('Your chick kept its power. Tap the glowing chick button to use it.', 3);
         audio.play('egg_save', { pitch: 1 + (ev.combo - 1) * 0.12 });
         if (ev.combo > 1) audio.play('combo', { intensity: (ev.combo - 2) / 2 });
         buzz('save');
@@ -3109,6 +3111,25 @@ const allyIcon = (c, x, y, s) => { // a little rooster head: red comb, orange be
   c.fillStyle = '#fff'; c.beginPath(); c.arc(x + 0.12 * s, y - 0.07 * s, 0.02 * s, 0, 7); c.fill();
   c.restore();
 };
+// a chick that reached the nest with its power unused keeps it: a glowing chick button beside the strike / ally ones
+function drawBankBtn() {
+  const sim = G.sim, B = sim.banked ? sim.banked() : [];
+  if (!B.length) return;
+  const { bs, pad, side } = G.zb, u = ui.u, gap = 8 * u, n = (strikeShown() ? 1 : 0) + (allyShown() ? 1 : 0);
+  const x = side ? ui.A.x1 - pad - bs : ui.A.x + pad + n * (bs + gap), y = side ? G.play.y + (strikeShown() ? bs + gap : 0) : G.zb.bot;
+  const kind = B[0].chickKind, p = save.calm ? 0.5 : 0.5 + 0.5 * Math.sin(G.t * 5);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x + bs / 2, y + bs / 2, bs * (0.56 + 0.06 * p), 0, 7); ctx.fillStyle = `rgba(255,230,120,${0.25 + 0.25 * p})`; ctx.fill();
+  ctx.restore();
+  ui.button('bank', '', x, y, bs, bs, { kind: 'gold', round: bs / 2, icon: (c, cx, cy, sz) => drawKindChick(c, kind, cx, cy + sz * 0.08, sz * 0.62, G.t, {}) , iconS: 1.5 });
+  if (B.length > 1) {
+    const bx = x + bs * 0.86, by = y + bs * 0.14, br = 11 * u;
+    ctx.save(); ctx.fillStyle = '#2a7a2e'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * u;
+    ctx.beginPath(); ctx.arc(bx, by, br, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `700 ${12 * u}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('x' + B.length, bx, by + 0.5 * u); ctx.restore();
+  }
+}
 // the ally button sits in the zoom strip (bottom left in portrait, bottom of the right column in landscape); the choice opens beside or above it
 function drawAllyBtn() {
   if (!allyShown()) { G.allyOpen = false; return; }
@@ -3296,7 +3317,7 @@ function drawHUD() {
     ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(255,206,140,0.75)'; ctx.stroke();
     drawBossBar(ctx, ui, sim, bx, by, bw, bh, G.t);
   }
-  if (G.screen === 'play' && sim.state === 'play') { drawZoomBtns(); drawAllyBtn(); drawStrikeBtn(); }
+  if (G.screen === 'play' && sim.state === 'play') { drawZoomBtns(); drawAllyBtn(); drawStrikeBtn(); drawBankBtn(); }
 }
 
 // the HUD's "i": a round info glyph; while the level holds a kind this player has never opened, it pulses and wears a "New!" tag
