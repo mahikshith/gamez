@@ -753,7 +753,7 @@ export function drawEgg(ctx, egg, t, k) {
     ctx.stroke();
   }
   // the guardian feather wraps it in a cool shimmer
-  if (egg.guard > 0) {
+  if (egg.guard > 0 && !(egg.sbub > 0)) { // (the Bubble Chick's guard shows as its bubble: render/premium.js)
     eggPath(ctx, 1.16);
     ctx.strokeStyle = `rgba(140,230,255,${egg.guard < 1.5 ? 0.4 + 0.4 * Math.sin(t * 20) : 0.85})`;
     ctx.lineWidth = Math.max(2.5 * px, 0.03);
@@ -773,7 +773,7 @@ export function drawEgg(ctx, egg, t, k) {
     ctx.restore();
   }
   // v3 global-power overlays (art in powers.js)
-  for (const id of [egg.guard > 0 && 'feather', egg.curse > 0 && 'curse', egg.shrink > 0 && 'shrink']) { // v3.4 shrink ray
+  for (const id of [egg.guard > 0 && !(egg.sbub > 0) && 'feather', egg.curse > 0 && 'curse', egg.shrink > 0 && 'shrink']) { // v3.4 shrink ray
     if (!id) continue;
     ctx.save();
     ctx.translate(p.x, p.y);

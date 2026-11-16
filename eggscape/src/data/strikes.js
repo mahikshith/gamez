@@ -17,9 +17,22 @@ export const STRIKES = [
     up: 'A twister drops a villain in the outer channel.', down: 'The nearest ring spins an eighth of a turn.' },
   { id: 'glue', name: 'Sticky Chick', unlock: 31, t: 8, boss: 4, hold: 2, r: 0.5, col: ['#c78cff', '#7a3fc0', '#f0dcff', '#7dff6a'],
     up: 'Glues a villain in place for 8 s.', down: 'An egg that touches the glue is stuck for 2 s.' },
+  // 2026-11-16 premium chicks (shop only: no level unlocks them; economy.js PREMIUM_CHICKS has the prices). They aim at
+  // eggs or at time itself rather than at one villain, which is what makes them worth the coins.
+  //   phoenix: carry (s) the flight home to the basket; slow: how much slower its meter fills; once a level
+  //   tock: t (s) every villain and hazard stands still; cost (s) taken off the level clock
+  //   bubble: t (s) of bubble; fall: the net fall left to a bubbled egg (x g); pop: the shove when it pops
+  { id: 'phoenix', name: 'Phoenix Chick', premium: true, carry: 1.05, slow: 2, col: ['#ff7a2a', '#c2361a', '#ffd86a', '#fff3b0'],
+    up: 'Swoops on the egg in the most danger and flies it home to the basket.', down: 'Once a level, and its meter fills half as fast.' },
+  { id: 'tock', name: 'Tick-Tock Chick', premium: true, t: 5, cost: 10, col: ['#e2ae48', '#8a5a1c', '#fff0c0', '#2f7a8a'],
+    up: 'Rings its bell: every villain and hazard stops in time for 5 s.', down: 'The level clock loses 10 s.' },
+  { id: 'bubble', name: 'Bubble Chick', premium: true, t: 6, fall: 0.35, pop: 0.9, col: ['#7fdcff', '#2f8fd0', '#eefbff', '#ff8ad0'],
+    up: 'Blows a bubble round every egg: nothing can hurt them for 6 s.', down: 'Bubbled eggs float light and steer badly, then pop with a shove.' },
 ];
 export const STRIKE = Object.fromEntries(STRIKES.map((s) => [s.id, s]));
 export const STRIKE_IDS = STRIKES.map((s) => s.id);
+// the chicks whose flight goes to an egg (not a villain)
+export const EGG_STRIKES = new Set(['phoenix', 'bubble']);
 // charge: the base fill time, and how much longer it gets after each use; boosts per egg saved and per orb
 // 2026-11-15 economy: the clock fills the meter only `timed` times per level (it used to refill every 20 s, so waiting made
 // hard levels easy); after that only saved eggs and orbs fill it, or a Chick Charge bought with coins (economy.js 'chick')

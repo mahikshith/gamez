@@ -311,6 +311,39 @@ export function drawBoosterIcon(ctx, id, cx, cy, s, t = 0) {
     ctx.moveTo(0.14 + 0.03, -0.36 - b);
     ctx.arc(0.14, -0.36 - b, 0.03, 0, Math.PI * 2);
     ctx.stroke();
+  } else if (id === 'nest') {
+    // Wide Nest: a woven basket stretched wide, arrows pushing its rims out
+    ctx.beginPath(); ctx.moveTo(-0.44, -0.04); ctx.quadraticCurveTo(-0.4, 0.3, 0, 0.3); ctx.quadraticCurveTo(0.4, 0.3, 0.44, -0.04); ctx.closePath();
+    const g = ctx.createLinearGradient(0, -0.05, 0, 0.3); g.addColorStop(0, '#e6b866'); g.addColorStop(1, '#a8702a');
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = lw(0.04); ctx.strokeStyle = '#5a3a12'; ctx.stroke();
+    ctx.strokeStyle = 'rgba(90,58,18,0.55)'; ctx.lineWidth = lw(0.025);
+    for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(i * 0.11, -0.02); ctx.quadraticCurveTo(i * 0.09, 0.16, i * 0.06, 0.28); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(-0.38, 0.1); ctx.quadraticCurveTo(0, 0.17, 0.38, 0.1); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, -0.04, 0.44, 0.07, 0, 0, Math.PI * 2); ctx.fillStyle = '#f2cf86'; ctx.fill(); ctx.lineWidth = lw(0.04); ctx.strokeStyle = '#5a3a12'; ctx.stroke();
+    ctx.save(); ctx.translate(0, -0.12); eggPath(ctx, 0.22, 0.28); ctx.fillStyle = '#fff6e2'; ctx.fill(); ctx.lineWidth = lw(0.03); ctx.strokeStyle = '#8a6a3c'; ctx.stroke(); ctx.restore();
+    const push = 0.03 * Math.sin(t * 4);
+    for (const sd of [-1, 1]) {
+      ctx.save(); ctx.translate(sd * (0.4 + push), -0.3); ctx.scale(sd, 1);
+      ctx.beginPath(); ctx.moveTo(-0.1, 0); ctx.lineTo(0.06, 0); ctx.lineTo(0.06, -0.06); ctx.lineTo(0.16, 0.03); ctx.lineTo(0.06, 0.12); ctx.lineTo(0.06, 0.06); ctx.lineTo(-0.1, 0.06); ctx.closePath();
+      ctx.fillStyle = '#3fbf4a'; ctx.fill(); ctx.lineWidth = lw(0.025); ctx.strokeStyle = '#1f6a2a'; ctx.stroke(); ctx.restore();
+    }
+  } else if (id === 'snips') {
+    // Thorn Snips: a thorn cut in two, the shears closing on it
+    ctx.save(); ctx.translate(-0.16, 0.18);
+    ctx.beginPath(); ctx.moveTo(-0.12, 0.18); ctx.lineTo(0.12, 0.18); ctx.lineTo(0.02, -0.04); ctx.lineTo(-0.02, -0.04); ctx.closePath(); ctx.fillStyle = '#5f8a3a'; ctx.fill(); ctx.lineWidth = lw(0.03); ctx.strokeStyle = '#2a4418'; ctx.stroke();
+    ctx.translate(0.06, -0.12); ctx.rotate(0.6 + 0.1 * Math.sin(t * 3));
+    ctx.beginPath(); ctx.moveTo(-0.04, 0.06); ctx.lineTo(0.04, 0.06); ctx.lineTo(0, -0.16); ctx.closePath(); ctx.fillStyle = '#7aa84a'; ctx.fill(); ctx.stroke();
+    ctx.restore();
+    const cl = 0.5 + 0.5 * Math.sin(t * 5), a = 0.12 + 0.3 * cl;
+    ctx.save(); ctx.translate(0.08, -0.06); ctx.rotate(-0.7);
+    for (const sd of [-1, 1]) {
+      ctx.save(); ctx.rotate(sd * a);
+      ctx.beginPath(); ctx.moveTo(0, -0.03 * sd); ctx.lineTo(-0.42, 0); ctx.lineTo(0, 0.05 * sd); ctx.closePath(); ctx.fillStyle = '#e6eef4'; ctx.fill(); ctx.lineWidth = lw(0.025); ctx.strokeStyle = '#4a5866'; ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0.17, 0.07 * sd, 0.1, 0.07, 0, 0, Math.PI * 2); ctx.lineWidth = lw(0.055); ctx.strokeStyle = '#e8402e'; ctx.stroke();
+      ctx.restore();
+    }
+    ctx.beginPath(); ctx.arc(0, 0, 0.03, 0, Math.PI * 2); ctx.fillStyle = '#4a5866'; ctx.fill();
+    ctx.restore();
   } else {
     // unknown id: a question-mark disc
     ctx.beginPath();
@@ -531,17 +564,17 @@ function coinItemCard(id, st) {
 }
 
 function chickItem(S, st) {
-  const w = st.wallet, mine = ownsChick(w, S.id) || st.reach >= S.unlock, price = CHICK_PRICES[S.id], ok = w.coins >= price;
+  const w = st.wallet, mine = ownsChick(w, S.id) || (!S.premium && st.reach >= S.unlock), price = CHICK_PRICES[S.id], ok = w.coins >= price;
   return {
-    key: 'chick:' + S.id, name: S.name, owned: mine, badge: mine ? null : 'Lv ' + S.unlock,
-    line: mine ? 'Yours: usable in every level with villains.' : `Free at level ${S.unlock}. Or unlock it now.`,
+    key: 'chick:' + S.id, name: S.name, owned: mine, badge: mine || S.premium ? null : 'Lv ' + S.unlock, premium: !!S.premium,
+    line: S.premium ? `${S.up} Downside: ${S.down}${mine ? '' : ' Premium: coins only.'}` : mine ? 'Yours: usable in every level with villains.' : `Free at level ${S.unlock}. Or unlock it now.`,
     flash: flashOf(st, 'chick:' + S.id),
     icon: (ctx, cx, cy, it, t, bounce) => {
       drawStrikeToken(ctx, S.id, cx, cy, it * 0.38 * bounce, t, mine);
       if (!mine) padlock(ctx, cx + it * 0.27, cy + it * 0.27, it * 0.13);
     },
     btn: mine ? OWNED('chick:' + S.id, 'Yours') : { id: 'chick:' + S.id, label: String(price), coin: true, ...(ok ? GREEN : GREY) },
-    sub: mine ? null : { text: 'Unlock now', color: C.ink2 },
+    sub: mine ? null : { text: S.premium ? 'Premium chick' : 'Unlock now', color: S.premium ? '#b0700a' : C.ink2 },
   };
 }
 
@@ -711,7 +744,7 @@ function drawIapArt(ctx, sku, cx, cy, it, t, wallet) {
 // it from storeItem(key)). Each tile: its own colour, the art big, the name, and a chip at the bottom: the price (coins
 // or money), or Owned / Equipped / Yours.
 const TILE_HUES = ['#7fc3ff', '#ff9f8a', '#9be37a', '#ffd36a', '#c7a0ff', '#7fe0c4', '#ffb3d9', '#f5b38a'];
-const BOOST_HUE = { stone: '#aab4be', golden: '#ffd24a', time: '#ff9f5a', rewind: '#7fb3ff', sponge: '#f2e06a' };
+const BOOST_HUE = { stone: '#aab4be', golden: '#ffd24a', time: '#ff9f5a', rewind: '#7fb3ff', sponge: '#f2e06a', nest: '#e0b878', snips: '#9fdc8a' };
 const ITEM_HUE = { ally: '#ff8a72', goldhour: '#ffc74a', skip: '#8ac4ff' };
 
 function drawTile(ui, ctx, item, x, y, w, h, s, t) {
@@ -733,6 +766,7 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   ui.record({ x: acx - Math.min(w * 0.86, ah) / 2, y: acy - ah / 2, w: Math.min(w * 0.86, ah), h: ah }, 'store:tart:' + item.key);
   ui.text(item.short || item.name, x + w / 2, y + 6 * s + ah + 4 * s + nameS * 0.6, { size: nameS, align: 'center', maxW: w - 12 * s, color: tint(col, -0.72), tag: 'store:tname:' + item.key });
   if (item.badge) pill(ui, ctx, item.badge, x + 7 * s, y + 7 * s, 11.5 * s, '#5b3413', 'store:badge:' + item.key, s, 'store:tart:' + item.key); // e.g. the level a chick comes free
+  if (item.premium) { ui.roundRect(x + 3 * s, y + 3 * s, w - 6 * s, fh - 6 * s, r - 3 * s); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#ffc928'; ctx.stroke(); } // a premium chick: a gold inner rim (its token wears the crown)
   // the chip
   const cx0 = x + 8 * s, cy0 = y + fh - 8 * s - chipH, cwid = w - 16 * s;
   const coinChip = !!B.coin, ok = B.kind === 'primary' || B.kind === 'gold' || B.kind === 'secondary';
@@ -943,7 +977,9 @@ export function drawStore(ui, ctx, W, H, state) {
     head('Chick Charges');
     tiles(CHARGE_PACKS.map((P) => chargeItem(P, st)));
     head('Power chicks', 'chicks');
-    tiles([...STRIKES.map((S) => chickItem(S, st)), ...(money ? [iapItem('all_chicks', st)] : [])]);
+    tiles([...STRIKES.filter((S) => !S.premium).map((S) => chickItem(S, st)), ...(money ? [iapItem('all_chicks', st)] : [])]);
+    head('Premium chicks', 'premium'); // coins only: never in a level unlock or a chick pack
+    tiles(STRIKES.filter((S) => S.premium).map((S) => chickItem(S, st)));
   } else if (tab === 'hens') tiles(HEN_SKIN_ORDER.filter((id) => money || !HEN_SKINS[id].premium).map((id) => henItem(id, st)));
   else tiles(SKIN_ORDER.map((id) => skinItem(id, st)));
 

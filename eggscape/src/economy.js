@@ -46,10 +46,27 @@ export const BOOSTERS = {
     price: 40,
     sku: 'booster_sponge',
   },
+  // 2026-11-16: two more start boosts (sim.js opts.nest, sim/strike.js stkSnipStep)
+  nest: {
+    id: 'nest',
+    name: 'Wide Nest',
+    line: 'The hen\u2019s basket is 35% wider this level.',
+    price: 60,
+    sku: 'booster_nest',
+  },
+  snips: {
+    id: 'snips',
+    name: 'Thorn Snips',
+    line: 'Three thorns are snipped off as the level starts.',
+    price: 80,
+    sku: 'booster_snips',
+  },
 };
 
 // Stable display order for UI lists.
-export const BOOSTER_ORDER = ['stone', 'golden', 'time', 'rewind', 'sponge'];
+export const BOOSTER_ORDER = ['stone', 'golden', 'time', 'rewind', 'sponge', 'nest', 'snips'];
+// the star chests hand out the first five in turn (their rewards were set before the newer boosts)
+const CHEST_BOOSTS = BOOSTER_ORDER.slice(0, 5);
 
 export const AD_REWARDS = {
   doubleCoins: 'Double the coins from this level',
@@ -222,7 +239,7 @@ export function chestFor(totalStars, opened) {
     index,
     at,
     ready: (totalStars || 0) >= at,
-    reward: { coins: 30 + 10 * index, booster: BOOSTER_ORDER[index % BOOSTER_ORDER.length] },
+    reward: { coins: 30 + 10 * index, booster: CHEST_BOOSTS[index % CHEST_BOOSTS.length] },
   };
 }
 
@@ -356,8 +373,11 @@ export function useTicket(wallet, id) {
 
 // Power chicks: free when the player reaches their level (data/strikes.js unlock), or bought early for coins.
 // Prices rise with the unlock level, so the earliest chick is the cheapest shortcut.
-export const CHICK_PRICES = { freeze: 400, thunder: 400, bomb: 450, decoy: 500, tornado: 550, glue: 600 };
-export const CHICK_IDS = Object.keys(CHICK_PRICES);
+// 2026-11-16 premium chicks (data/strikes.js premium): coins only, no level ever unlocks them, and the real-money chick
+// products (All Power Chicks, Premium, the Flock Bundle) give the six level chicks, not these: CHICK_IDS stays those six.
+export const PREMIUM_CHICKS = { phoenix: 1800, tock: 1500, bubble: 1200 };
+export const CHICK_PRICES = { freeze: 400, thunder: 400, bomb: 450, decoy: 500, tornado: 550, glue: 600, ...PREMIUM_CHICKS };
+export const CHICK_IDS = Object.keys(CHICK_PRICES).filter((id) => !PREMIUM_CHICKS[id]);
 export const ownsChick = (w, id) => !!(w && Array.isArray(w.chicks) && w.chicks.includes(id));
 export function buyChick(wallet, id) {
   const w = sanitizeWallet(wallet), p = CHICK_PRICES[id];
@@ -403,12 +423,12 @@ export const IAP = {
   coins_7000: { sku: 'coins_7000', usd: 19.99, type: 'consumable', name: 'Vault of coins', coins: 7000 },
   starter_nest: { sku: 'starter_nest', usd: 1.99, type: 'once', name: 'Starter Nest', line: '600 coins, 3 Chick Charges, 2 of every boost and the Cocoa Hen.', coins: 600, charges: 3, boosts: 2, hen: 'cocoa' },
   bundle_helper: { sku: 'bundle_helper', usd: 3.99, type: 'consumable', name: 'Helper Bundle', line: '1000 coins, 5 Chick Charges, 3 Ally Tickets and 2 of every boost.', coins: 1000, charges: 5, ally: 3, boosts: 2 },
-  bundle_flock: { sku: 'bundle_flock', usd: 9.99, type: 'consumable', name: 'Flock Bundle', line: '3000 coins, 15 Chick Charges, 10 Ally Tickets and every power chick.', coins: 3000, charges: 15, ally: 10, chicks: true },
+  bundle_flock: { sku: 'bundle_flock', usd: 9.99, type: 'consumable', name: 'Flock Bundle', line: '3000 coins, 15 Chick Charges, 10 Ally Tickets and the six level power chicks.', coins: 3000, charges: 15, ally: 10, chicks: true },
   season_pack: { sku: 'season_pack', usd: 4.99, type: 'once', name: 'Season Pack', line: 'A world outfit for the hen, the Frosty egg and 800 coins.', coins: 800, egg: 'frosty', seasonHen: true },
   egg_bank: { sku: 'egg_bank', usd: 1.99, type: 'consumable', name: 'Golden Egg Bank', line: 'Every win drops coins in. Crack it open for all of them.', bank: true },
-  all_chicks: { sku: 'all_chicks', usd: 4.99, type: 'once', name: 'All Power Chicks', line: 'Every power chick, ready in every level with villains.', chicks: true },
+  all_chicks: { sku: 'all_chicks', usd: 4.99, type: 'once', name: 'All Power Chicks', line: 'The six level power chicks, ready in every level with villains.', chicks: true },
   no_ads: { sku: 'no_ads', usd: 2.99, type: 'once', name: 'No Ads', line: 'No more ad breaks between levels. Bonus videos stay your choice.', noInter: true },
-  eggscape_premium: { sku: 'eggscape_premium', usd: 7.99, type: 'once', name: 'Premium', line: 'No ad breaks, every ad bonus at once, all power chicks, the Golden Hen, 1500 coins and a free Chick Charge every day.', coins: 1500, chicks: true, premium: true },
+  eggscape_premium: { sku: 'eggscape_premium', usd: 7.99, type: 'once', name: 'Premium', line: 'No ad breaks, every ad bonus at once, the six level power chicks, the Golden Hen, 1500 coins and a free Chick Charge every day.', coins: 1500, chicks: true, premium: true },
 };
 export const COIN_PACKS = ['coins_250', 'coins_850', 'coins_1500', 'coins_3300', 'coins_7000'];
 export const usdHint = (sku) => (IAP[sku] ? '$' + IAP[sku].usd.toFixed(2) : '');
@@ -438,6 +458,9 @@ export function packFor(short) {
   return COIN_PACKS.find((sku) => IAP[sku].coins >= short) || COIN_PACKS[COIN_PACKS.length - 1];
 }
 
+// the six level chicks added to what the player owns (a premium chick bought with coins is kept)
+const withChicks = (have) => [...CHICK_IDS, ...(have || []).filter((id) => !CHICK_IDS.includes(id))];
+
 function addBoosts(w, n) {
   for (const id of BOOSTER_ORDER) {
     const room = MAX_OWNED - ownedCount(w, id), k = Math.min(n, room);
@@ -458,7 +481,7 @@ export function grantIap(wallet, sku, token, now = 0) {
   if (P.type === 'once') { // the entitlement
     if (P.noInter) w.noInter = true;
     if (P.premium) w.noAds = true;
-    if (P.chicks) w.chicks = [...CHICK_IDS];
+    if (P.chicks) w.chicks = withChicks(w.chicks);
     if (P.hen && !w.henSkins.includes(P.hen)) w.henSkins = [...w.henSkins, P.hen];
     if (sku === 'starter_nest') w.starter = true;
     if (P.seasonHen) {
@@ -473,7 +496,7 @@ export function grantIap(wallet, sku, token, now = 0) {
   if (P.charges) { const k = Math.min(P.charges, MAX_CHARGES - w.charges); w.charges += k; w.coins += (P.charges - k) * CHARGE_ITEM.price; }
   if (P.boosts) addBoosts(w, P.boosts);
   if (P.ally) w.tickets = { ...w.tickets, ally: Math.min(MAX_TICKETS, w.tickets.ally + P.ally) };
-  if (P.chicks && P.type === 'consumable') w.chicks = [...CHICK_IDS];
+  if (P.chicks && P.type === 'consumable') w.chicks = withChicks(w.chicks);
   if (P.bank) { w.coins += Math.max(BANK_OPEN, w.bank); w.bank = 0; } // the buy button only shows from BANK_OPEN coins up
   if (P.hen) w.henSkin = P.hen; // the new look is put on right away
   if (P.seasonHen) w.henSkin = w.season;
