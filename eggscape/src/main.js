@@ -22,7 +22,8 @@ import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
-import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeItem } from './ui/store.js';
+import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeItem, drawOfferArt } from './ui/store.js';
+import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
 import { geckoStrikeEv, drawGeckoCard, geckoAnchor } from './render/gecko15.js'; // L15: the frost gecko boss
@@ -365,6 +366,7 @@ function startLevel(i, opts = {}) {
 function setScreen(s) {
   G.screen = s;
   G.screenT = 0;
+  G.offerTried = false; // each end card / home visit / intro may ask the offer engine once
   if (s !== 'title') G.homeIntro = false; // the app-start entrance plays once; coming back to home only fades in
   ui.pressedId = null;
   if (s === 'title' || s === 'levels') warmNext();
@@ -877,7 +879,7 @@ function keyDown(e) {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.getMore) G.getMore = null; else G.detail = null; } return; }
+  if (modalOpen()) { if (k === 'Escape') { if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); } return; }
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
@@ -988,6 +990,9 @@ async function press(id) {
     case 'daily':
       await breakThen(() => startLevel(-1));
       break;
+    case 'stk:buy:freeze': case 'stk:buy:thunder': case 'stk:buy:bomb': case 'stk:buy:decoy': case 'stk:buy:tornado': case 'stk:buy:glue':
+      G.chickBuy = id.slice(8); // a locked chick on the intro: its small buy sheet
+      break;
     case 'stk:pick:freeze': case 'stk:pick:thunder': case 'stk:pick:bomb': case 'stk:pick:decoy': case 'stk:pick:tornado': case 'stk:pick:glue':
       { const pid = id.slice(9), cur = G.sim.stk && G.sim.stk.id; G.stkSel = { lid: G.level.id, id: cur === pid ? null : pid }; } // a second tap puts it back
       G.sim.stkEquip(strikeFor(G.level, G.li));
@@ -1055,6 +1060,52 @@ async function press(id) {
       break;
     case 'dt:close':
       G.detail = null;
+      break;
+    case 'of:no': // "No thanks" on an offer
+      if (G.offer) { OF.markDismissed(save, G.offer, Date.now(), G.offer.lv); persist(); }
+      G.offer = null;
+      break;
+    case 'of:buy': {
+      const O = G.offer;
+      G.offer = null;
+      if (O && O.sku) await buyIap(O.sku);
+      break;
+    }
+    case 'of:ad': { // a rewarded offer: a free Chick Charge, or free coins
+      const O = G.offer;
+      G.offer = null;
+      if (!O) break;
+      if (O.item === 'coins') { await press('ad:coins'); break; }
+      if (await rewarded('charge')) {
+        save.wallet = { ...save.wallet, charges: Math.min(E.MAX_CHARGES, save.wallet.charges + 1) };
+        persist(); audio.play('unlock'); toast('A Chick Charge is in your bag. Send your chick any time!', 2.8);
+      } else { OF.markDismissed(save, O, Date.now(), O.lv); persist(); } // no ad: counts as declined (the helper may follow later)
+      break;
+    }
+    case 'age:u13': case 'age:13':
+      save.age = id === 'age:u13' ? 'u13' : '13+';
+      G.ageAsk = false; persist();
+      ads.setChildSafe(save.age === 'u13');
+      break;
+    case 'age:later':
+      G.ageAsk = false; G.ageLater = true; // asked again next launch
+      break;
+    case 'pc:0': case 'pc:1': case 'pc:2': {
+      const P = G.parent;
+      G.parent = null;
+      if (!P) break;
+      if (P.q.choices[+id.slice(3)] === P.q.answer) await buyIap(P.sku, true);
+      else toast('Not quite. Ask a grown-up to help.', 2.4);
+      break;
+    }
+    case 'pc:cancel':
+      G.parent = null;
+      break;
+    case 'cb:buy': // the intro's chick sheet: unlock it for coins and pick it for this level
+      if (G.chickBuy) { const k = G.chickBuy; if (buyChickForLevel(k)) G.chickBuy = null; }
+      break;
+    case 'cb:close':
+      G.chickBuy = null;
       break;
     case 'gm:shop': // "Open shop": the coin packs on Deals (from inside the shop too)
       G.getMore = null;
@@ -1331,6 +1382,7 @@ async function rewarded(tag) {
   let ok = false;
   try { ok = await ads.rewarded(tag); } catch (_) { ok = false; }
   G.adBusy = false;
+  if (ok && !ads.premium) { OF.noteRewarded(save); persist(); } // the offer engine counts watched ads
   if (!ok) toast('No ad available right now. Try again in a moment.', 2.4);
   return ok;
 }
@@ -1342,6 +1394,7 @@ function openStore(tab, want = null) {
   G.storeTab = tab;
   G.sscroll = { y: 0, v: 0, max: 0, t: G.t, want };
   G.getMore = null; G.detail = null;
+  G.toasts = []; G.toast = null; // the level's tips do not follow into the shop
 }
 function goHome() {
   portal.gameplayStop(); releaseAll();
@@ -1351,14 +1404,16 @@ function goHome() {
 }
 // too few coins for something: the small "Get more" sheet (the cheapest pack that covers it, a free-coins ad, the shop)
 function needCoins(price) {
+  G.lastPrice = price; // the offer engine: the player came up short of this
   const short = Math.max(1, price - save.wallet.coins);
   G.getMore = { price, short, sku: E.packFor(short), t0: G.t };
   audio.play('ui_back');
 }
 // a real-money product. Web and dev builds have no store: a toast says so. The grant itself arrives through
 // ads.js (window.__eggGrant) and thanks the player in onGrant below; this only reports a purchase that did not finish.
-async function buyIap(sku) {
+async function buyIap(sku, checked = false) {
   if (!E.IAP[sku] || !E.iapAvailable(save.wallet, sku) || !ads.moneyShop) return;
+  if (OF.childSafe(save) && !checked) { G.parent = { sku, q: OF.parentQuestion() }; return; } // child-safe: a grown-up first
   if (!ads.canBuy) { toast('Purchases work in the app', 2.4); return; }
   const r = await ads.purchase(sku);
   if (r === 'pending') toast('Payment pending: it arrives as soon as it clears.', 3.2);
@@ -1368,20 +1423,150 @@ async function buyIap(sku) {
 // the featured card on Deals: the offer engine's pick, else the Starter Nest while it is for sale, else Premium
 function storeFeatured() {
   if (!ads.moneyShop) return null;
+  const o = OF.evaluate(save, 'shop', offerCtx());
+  if (o && o.sku) return { sku: o.sku, title: o.title, line: o.line };
   if (E.iapAvailable(save.wallet, 'starter_nest') && !save.wallet.payer) return { sku: 'starter_nest' };
   if (E.iapAvailable(save.wallet, PREMIUM_SKU)) return { sku: PREMIUM_SKU };
   return null;
 }
 const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today() });
 // popups and sheets over any screen; while one shows only its own buttons take taps
-function modalOpen() { return !!(G.getMore || G.detail); }
+function modalOpen() { return !!(G.getMore || G.detail || G.offer || G.ageAsk || G.parent || G.chickBuy); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
   const hb = G.hudBottom;
   if (G.screen === 'store' || G.screen === 'title') G.hudBottom = 0; // no HUD under these
-  try { if (G.getMore) drawGetMore(); else if (G.detail) drawDetail(); } finally { G.hudBottom = hb; }
+  try {
+    if (G.parent) drawParentCheck();
+    else if (G.getMore) drawGetMore();
+    else if (G.chickBuy) drawChickBuy();
+    else if (G.detail) drawDetail();
+    else if (G.offer) drawOffer();
+    else if (G.ageAsk) drawAgeAsk();
+  } finally { G.hudBottom = hb; }
 }
+// ---- the offer engine's moments (offers.js): the end card after its first second, home on arrival, the intro (a line)
+function offerCtx() {
+  const lv = G.li >= 0 && G.level ? G.level.id : null, st = G.sim && G.screen === 'fail' ? G.sim.stats() : null;
+  return { now: Date.now(), money: ads.moneyShop, levelId: lv, fails: lv != null ? ads.fails(lv) : 0, prevFails: G.prevFails || 0,
+    nearMiss: !!(st && st.saved === st.target - 1), lastPrice: G.lastPrice || 0, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0 };
+}
+function offerMoments() {
+  if (G.offerTried || modalOpen() || G.settingsOpen || G.adBusy) return;
+  const sc = G.screen;
+  if (sc === 'title' && G.screenT > 1.4) {
+    G.offerTried = true;
+    if (OF.needsAge(save, ads.moneyShop) && !G.ageLater) { G.ageAsk = true; return; } // first launch, once the home is up
+  } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0) G.offerTried = true;
+  else if (sc === 'intro' && G.screenT > 0.3 && G.li >= 0) { G.offerTried = true; G.introTip = null; } // the intro's gentle chick line
+  else return;
+  const moment = sc === 'title' ? 'home' : sc;
+  const ctx2 = offerCtx();
+  if (moment === 'intro') {
+    const c = lockedChicks()[0];
+    if (!c) return;
+    const o = OF.evaluate(save, 'intro', { ...ctx2, chick: c });
+    if (o) { OF.markShown(save, o, ctx2.now, ctx2.levelId); persist(); G.introTip = { id: c.id, line: o.line }; }
+    return;
+  }
+  const o = OF.evaluate(save, moment, ctx2);
+  if (!o) return;
+  OF.markShown(save, o, ctx2.now, ctx2.levelId); persist();
+  G.offer = { ...o, lv: ctx2.levelId };
+}
+// a calm modal card: art, title, one line, the price (or the free video), and a big "No thanks". No timers.
+function drawOffer() {
+  const O = G.offer;
+  dim(0.55);
+  stackCard(O.title, (s, iw) => {
+    const C = ui.C, lines = wrapText(O.line, 16.5 * s, iw).slice(0, 3), ad = O.item === 'charge' || O.item === 'coins';
+    return [
+      { h: 132 * s, gap: 4 * s, draw: (x, y, w) => {
+        const aw = Math.min(w, 170 * s);
+        ui.well(x + (w - aw) / 2, y, aw, 132 * s, { s, a: '#ffe9b0', b: '#fff6dc' });
+        drawOfferArt(ctx, O.sku || O.item, x + w / 2, y + 66 * s, 120 * s, G.t, save.wallet);
+        ui.record({ x: x + (w - aw) / 2, y, w: aw, h: 132 * s }, 'of:art');
+      } },
+      ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'of:line' + i, gap: i ? 2 * s : 10 * s })),
+      { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ad
+        ? ui.button('of:ad', O.item === 'coins' ? `Watch: +${E.AD_REWARDS.freeCoins.coins} coins` : 'Watch: free Chick Charge', x, y, w, 58 * s, { kind: 'ad', ad: true, shimmer: true, size: 18 * s })
+        : ui.button('of:buy', ads.price(O.sku), x + w * 0.1, y, w * 0.8, 58 * s, { kind: 'gold', shimmer: true, size: 24 * s }) },
+      { h: 56 * s, gap: 10 * s, draw: (x, y, w) => ui.button('of:no', 'No thanks', x, y, w, 56 * s, { kind: 'tertiary', size: 21 * s }) },
+    ];
+  }, { ribbon: '#e8402e' });
+}
+// first launch (app only, behind OF.AGE_GATE): a neutral question, two equal buttons, nothing pre-chosen
+function drawAgeAsk() {
+  dim(0.6);
+  stackCard('Welcome!', (s) => [
+    lineBlock('How old are you?', 22 * s, { color: ui.C.ink, tag: 'age:q', gap: 6 * s }),
+    { h: 64 * s, gap: 18 * s, draw: (x, y, w) => {
+      const hw = (w - 12 * s) / 2;
+      ui.button('age:u13', 'Under 13', x, y, hw, 64 * s, { kind: 'secondary', size: 20 * s });
+      ui.button('age:13', '13 or older', x + hw + 12 * s, y, hw, 64 * s, { kind: 'secondary', size: 20 * s });
+    } },
+    lineBlock('This keeps the game right for you.', 13.5 * s, { color: ui.C.ink2, tag: 'age:why', gap: 14 * s }),
+  ], { ribbon: '#3a80ea' });
+}
+// child-safe mode: a grown-up answers a small sum before any real-money purchase
+function drawParentCheck() {
+  const P = G.parent;
+  dim(0.6);
+  stackCard('Ask a grown-up', (s) => [
+    lineBlock('For a grown-up: what is', 16 * s, { color: ui.C.ink2, tag: 'pc:lead', gap: 4 * s }),
+    lineBlock(`${P.q.a} x ${P.q.b} ?`, 30 * s, { color: ui.C.ink, tag: 'pc:q', gap: 6 * s }),
+    { h: 58 * s, gap: 14 * s, draw: (x, y, w) => {
+      const bw = (w - 20 * s) / 3;
+      P.q.choices.forEach((v, i) => ui.button('pc:' + i, String(v), x + i * (bw + 10 * s), y, bw, 58 * s, { kind: 'secondary', size: 24 * s }));
+    } },
+    { h: 50 * s, gap: 12 * s, draw: (x, y, w) => ui.button('pc:cancel', 'Cancel', x, y, w, 50 * s, { kind: 'tertiary', size: 20 * s }) },
+  ], { ribbon: '#3a80ea' });
+}
+
+// ---- power chicks on the intro (2026-11-16, owner: "pick up the chicks before the level with the coins they have").
+// The intro's chick picker can show the chicks not unlocked yet; these are the calls it needs:
+//   lockedChicks()          [{ id, name, price, unlock, canAfford }] cheapest first (empty before STRIKE_FROM / no villains)
+//   chickOffer(id)          { price, canAfford, owned } or null
+//   buyChickForLevel(id)    buys it for coins and picks it for this level (true); too few coins opens Get more (false)
+//   press('stk:buy:<id>')   opens the small buy sheet (drawChickBuy)
+//   G.introTip              { id, line } | null: the offer engine's gentle suggestion for this intro (a line, no popup)
+function chickOffer(id) {
+  const S = STRIKE[id], price = E.CHICK_PRICES[id];
+  if (!S || !price) return null;
+  return { price, canAfford: save.wallet.coins >= price, owned: strikesOpen().some((q) => q.id === id) };
+}
+function lockedChicks() {
+  if (!G.sim || !G.sim.stk || !G.sim.stk.any || (G.li >= 0 && G.level.id < STRIKE_FROM)) return [];
+  const open = strikesOpen();
+  return STRIKES.filter((S) => !open.includes(S) && E.CHICK_PRICES[S.id])
+    .map((S) => ({ id: S.id, name: S.name, unlock: S.unlock, price: E.CHICK_PRICES[S.id], canAfford: save.wallet.coins >= E.CHICK_PRICES[S.id] }))
+    .sort((a, b) => a.price - b.price || a.unlock - b.unlock);
+}
+function buyChickForLevel(id) {
+  const O = chickOffer(id);
+  if (!O || O.owned) return false;
+  const w = E.buyChick(save.wallet, id);
+  if (!w) { needCoins(O.price); return false; }
+  save.wallet = w; persist(); audio.play('unlock');
+  if (G.level) { G.stkSel = { lid: G.level.id, id }; G.sim.stkEquip(strikeFor(G.level, G.li)); }
+  G.introTip = null;
+  toast(`${STRIKE[id].name} is yours!`, 2.4);
+  return true;
+}
+function drawChickBuy() {
+  const S = STRIKE[G.chickBuy], O = chickOffer(G.chickBuy);
+  if (!S || !O) { G.chickBuy = null; return; }
+  dim(0.55);
+  stackCard(S.name, (s, iw) => [
+    { h: 112 * s, gap: 4 * s, draw: (x, y, w) => { artStage(x + (w - 150 * s) / 2, y, 150 * s, 112 * s, s, () => drawStrikeStage(ctx, S.id, x + (w - 150 * s) / 2, y + 6 * s, 150 * s, 100 * s, G.t)); ui.record({ x: x + (w - 150 * s) / 2, y, w: 150 * s, h: 112 * s }, 'cb:art'); } },
+    ...wrapText(S.up, 15.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 15.5 * s, { color: ui.C.ink, tag: 'cb:up' + i, gap: i ? 2 * s : 10 * s })),
+    lineBlock(`Free at level ${S.unlock}, or yours now for every level.`, 13.5 * s, { color: ui.C.ink2, tag: 'cb:free', gap: 6 * s }),
+    { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button('cb:buy', `Unlock ${O.price}`, x + w * 0.1, y, w * 0.8, 56 * s, { kind: O.canAfford ? 'primary' : 'off', shimmer: O.canAfford, icon: (c, X, Y, Z) => drawCoin(c, X, Y, Z * 0.5, G.t), size: 21 * s }) },
+    { h: 48 * s, gap: 10 * s, draw: (x, y, w) => ui.button('cb:close', 'Not now', x, y, w, 48 * s, { kind: 'tertiary', size: 19 * s }) },
+  ], { ribbon: '#f0a01c' });
+}
+
 // a shop tile's detail sheet: the art big, the name, what it does, and its buy / equip button
 function drawDetail() {
   const it = G.screen === 'store' ? storeItem(G.detail, storeState()) : null;
@@ -2786,6 +2971,7 @@ function recordResult() {
 }
 
 function onWin() {
+  G.prevFails = G.li >= 0 && G.level ? ads.fails(G.level.id) : 0; // the offer engine: a level won after losing it 2+ times
   if (G.li >= 0 && G.level) ads.won(G.level.id);
   stopFuse();
   G.sim.burstVault();
@@ -2837,6 +3023,7 @@ function update(dt) {
       else if (C.kind === 'fail' && G.sim.state === 'failed') { setScreen('fail'); audio.play('level_fail'); }
     }
   }
+  offerMoments();
   computeLayout();
   if (G.screen === 'wonder') { wonder.update(dt); return; } // WONDER: its own loop; the campaign world stands still
   if (!G.sim) return;
@@ -3165,7 +3352,7 @@ function render() {
   if (G.screen === 'levels') drawLevels();
   if (G.screen === 'practice') drawPractice();
   if (G.screen === 'extras') wonder.drawExtras(); // Extras: Wonder Vaults + the Practice button
-  if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { ...storeState(), area: ui.A, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), featured: storeFeatured() }); drawToast(); }
+  if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { ...storeState(), area: ui.A, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), featured: storeFeatured() }); const n0 = ui.rects.length; drawToast(); ui.rects.length = n0; } // the shop's toast floats over its scrolling list (like a clipped card, it records nothing)
   if (G.settingsOpen && (G.screen === 'pause' || G.screen === 'title')) drawSettings();
   else G.settingsOpen = false;
   drawModals();
@@ -3737,7 +3924,7 @@ function drawToast() {
   const lines = wrapText(T.text, size, maxW - 32 * u - xw);
   const h = lines.length * size * 1.3 + 18 * u;
   const w = Math.min(maxW, Math.max(...lines.map((l) => ui.measure(l, size))) + 32 * u + xw);
-  const x = A.cx - w / 2, y = G.screen === 'title' && G.titleToastY ? G.titleToastY : Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
+  const x = A.cx - w / 2, y = G.screen === 'title' && G.titleToastY ? G.titleToastY : G.screen === 'store' ? A.y1 - h - 22 * u : Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
   G.toastRect = { x, y, w, h };
   ctx.save();
   ctx.globalAlpha = a; ui.aBase = a;
@@ -3973,9 +4160,10 @@ function drawIntro() {
 
 // Chick Strike: the row of unlocked strike chicks on the intro card (tap one to take it), with the chosen one's downside
 function strikePicker(s, iw) {
-  const id = G.sim && G.sim.stk && G.sim.stk.id, open = strikesOpen();
-  if (!G.sim || !G.sim.stk || !G.sim.stk.any || !open.length || (G.li >= 0 && G.level.id < STRIKE_FROM)) return [];
-  const S = id ? STRIKE[id] : null, r = Math.min(21 * s, (iw - 8 * s * (open.length - 1)) / open.length / 2);
+  const id = G.sim && G.sim.stk && G.sim.stk.id, open = strikesOpen(), locked = lockedChicks(); // locked: unlock for coins (shop hook)
+  if (!G.sim || !G.sim.stk || !G.sim.stk.any || !(open.length || locked.length) || (G.li >= 0 && G.level.id < STRIKE_FROM)) return [];
+  const row = [...open, ...locked.map((c) => ({ ...STRIKE[c.id], lockedPrice: c.price }))];
+  const S = id ? STRIKE[id] : null, r = Math.min(21 * s, (iw - 8 * s * (row.length - 1)) / row.length / 2);
   // the chosen chick on its own little stage (mykee 2026-11-16: show the picked chick clearly, not a small token)
   const stage = S ? [{ stage: true, h: 92 * s, gap: 10 * s, draw: (x, y, w) => {
     const sw = Math.min(110 * s, w * 0.34);
@@ -3989,16 +4177,27 @@ function strikePicker(s, iw) {
   return [
     ...stage,
     { h: 2 * r + 4 * s, gap: S ? 6 * s : 10 * s, draw: (x, y, w) => {
-      const step = Math.min(2 * r + 12 * s, w / open.length), x0 = x + w / 2 - (step * (open.length - 1)) / 2;
-      open.forEach((O, i) => {
+      const step = Math.min(2 * r + 12 * s, w / row.length), x0 = x + w / 2 - (step * (row.length - 1)) / 2;
+      row.forEach((O, i) => {
         const cx = x0 + i * step, cy = y + r + 2 * s, rect = { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r };
+        if (O.lockedPrice) { // not unlocked yet: dimmed, with its coin price; a tap opens the buy sheet
+          if (G.introTip && G.introTip.id === O.id && !save.calm) { ctx.save(); ctx.globalAlpha = 0.45 + 0.3 * Math.sin(G.t * 3); ctx.strokeStyle = '#ffc83a'; ctx.lineWidth = 3 * s; ctx.beginPath(); ctx.arc(cx, cy, r * 1.02, 0, 7); ctx.stroke(); ctx.restore(); }
+          ctx.save(); ctx.globalAlpha = 0.55; drawStrikeToken(ctx, O.id, cx, cy, r * 0.86, G.t, false); ctx.restore();
+          const pw = r * 1.9, ph = r * 0.62, py = cy + r - ph * 0.85;
+          ui.roundRect(cx - pw / 2, py, pw, ph, ph / 2); ctx.fillStyle = save.wallet.coins >= O.lockedPrice ? '#3eb42d' : '#8a7a68'; ctx.fill();
+          drawCoin(ctx, cx - pw / 2 + ph * 0.5, py + ph / 2, ph * 0.36, G.t);
+          ui.text(String(O.lockedPrice), cx + ph * 0.25, py + ph / 2 + 0.5 * s, { size: ph * 0.7, align: 'center', color: '#fff', maxW: pw - ph, noRecord: true });
+          ui.record(rect, 'btn:stk:buy:' + O.id, 'btn:stk:buy:' + O.id);
+          ui.buttons.push({ id: 'stk:buy:' + O.id, ...rect });
+          return;
+        }
         if (!id && !save.calm) { ctx.save(); ctx.globalAlpha = 0.35 + 0.25 * Math.sin(G.t * 4 + i * 0.7); ctx.strokeStyle = '#ffc83a'; ctx.lineWidth = 2.5 * s; ctx.beginPath(); ctx.arc(cx, cy, r * 0.98, 0, 7); ctx.stroke(); ctx.restore(); } // nothing picked yet: the row invites a tap
         drawStrikeToken(ctx, O.id, cx, cy, r * (O.id === id ? 1 : 0.86), G.t, O.id === id);
         ui.record(rect, 'btn:stk:pick:' + O.id, 'btn:stk:pick:' + O.id);
         ui.buttons.push({ id: 'stk:pick:' + O.id, ...rect });
       });
     } },
-    lineBlock(S ? 'Tap another chick to swap' : `Pick a power chick for this level${save.wallet.charges ? ` (${save.wallet.charges} charges in your bag)` : ''}`, 13 * s, { color: ui.C.ink2, tag: 'intro:strike', gap: 4 * s }),
+    lineBlock(G.introTip && !S ? G.introTip.line : S ? 'Tap another chick to swap' : `Pick a power chick for this level${save.wallet.charges ? ` (${save.wallet.charges} charges in your bag)` : ''}`, 13 * s, { color: G.introTip && !S ? ui.C.warn : ui.C.ink2, tag: 'intro:strike', gap: 4 * s }),
   ];
 }
 
@@ -5021,7 +5220,11 @@ async function boot() {
   });
   window.addEventListener('blur', clearKeys);
   installApp(() => { // Android back button (see app.js): consume it where the game has a natural "back"
-    if (G.getMore || G.detail) { if (G.getMore) G.getMore = null; else G.detail = null; return true; } // a sheet closes first
+    if (modalOpen()) { // a sheet closes first (an offer counts as "No thanks"; the age question waits for next launch)
+      if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null;
+      else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later');
+      return true;
+    }
     switch (G.screen) {
       case 'play': press('pause'); return true;
       case 'pause': press('resume'); return true;
@@ -5064,6 +5267,8 @@ async function boot() {
     persist();
   }
   ads.attach(save, persist, onGrant);
+  OF.startSession(save, Date.now()); persist();
+  if (OF.childSafe(save) && ads.moneyShop) ads.setChildSafe(true); // the shell also remembers it; this keeps both in step
   applyAudioSettings();
   // title runs over the live next level
   startLevel(nextIdx());

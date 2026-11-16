@@ -1351,3 +1351,11 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
   const str = tapped ? tapped.line : 'Tap a booster to use it this level';
   ui.text(str, x + w / 2, lineCy, { size: lineSize, align: 'center', maxW: w, color: tapped ? C.ink : C.ink2, tag: 'picker:line' });
 }
+
+// Art for an offer card (offers.js): a product by sku, or an item: 'charge' (a Chick Charge), 'coins', 'chick:<id>'.
+export function drawOfferArt(ctx, key, cx, cy, it, t, wallet) {
+  if (IAP[key]) return drawIapArt(ctx, key, cx, cy, it, t, wallet);
+  if (key === 'charge') return drawStrikeToken(ctx, 'freeze', cx, cy, it * 0.36, t, true);
+  if (key === 'coins') return coinPile(ctx, cx, cy, it, 3, t);
+  if (key.startsWith('chick:')) return drawStrikeToken(ctx, key.slice(6), cx, cy, it * 0.38, t, true);
+}
