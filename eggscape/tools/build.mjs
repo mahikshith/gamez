@@ -8,6 +8,8 @@ import { dirname, join, resolve } from 'node:path';
 import { zipFiles } from './zip.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// the version shown in Settings: the Android versionName (the APK's), else package.json
+const appVersion = (() => { try { const m = /versionName\s+'([^']+)'/.exec(readFileSync(join(ROOT, 'android/app/build.gradle'), 'utf8')); if (m) return m[1]; } catch (_) { /* no android shell */ } try { return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version; } catch (_) { return ''; } })();
 const TARGETS = ['web', 'poki', 'crazygames', 'gamedistribution', 'youtube'];
 const ALL_TARGETS = [...TARGETS, 'app'];
 const MAX_HTML = 5 * 1024 * 1024;
@@ -67,6 +69,7 @@ async function bundle(portal, { minify, sourcemap }) {
       __DEV__: JSON.stringify(!minify),
       __TEST__: JSON.stringify(test),
       __APP__: JSON.stringify(isApp),
+      __VERSION__: JSON.stringify(appVersion),
     },
     logLevel: 'warning',
   });

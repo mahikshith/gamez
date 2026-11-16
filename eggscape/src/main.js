@@ -1150,6 +1150,11 @@ async function press(id) {
       applyAudioSettings();
       persist();
       break;
+    case 'vibe':
+      save.vibe = save.vibe === false;
+      persist();
+      if (save.vibe) buzz('win');
+      break;
     case 'practice': // the Practice screen: every studio vault as a tile (also reachable from the pause card)
       portal.gameplayStop();
       setScreen('practice');
@@ -1259,7 +1264,7 @@ function heartBuzz() {
   try { vibrate(28); setTimeout(() => vibrate(42), 190); } catch (_) { /* optional */ }
 }
 function buzz(kind) {
-  if (save.calm || !save.sfx) return;
+  if (save.calm || save.vibe === false) return; // its own switch in Settings (2026-11-16 research: every top casual game has one)
   try { vibrate(HAPTIC_MS[kind] || 20); } catch (_) { /* haptics are optional */ }
 }
 
@@ -3817,19 +3822,25 @@ function drawPause() {
   // Practice and Info in their own colours
   stackCard('Paused', (s) => {
     const C = ui.C;
+    const sim = G.sim, st = sim.stats();
     const B = [
-      { h: 92 * s, gap: 4 * s, draw: (x, y, w) => { // resume / restart / levels / shop / settings as squares with a label under each
-        const items = [
-          ['resume', 'Play', ICON.play, 'primary'], ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, 'secondary'],
-          ['shop', 'Shop', (c, X, Y, S) => shopIcon(c, X, Y, S), 'gold'], ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad'],
-        ];
-        const n = items.length, gap = 8 * s, sq = Math.min(66 * s, (w - gap * (n - 1)) / n), x0 = x + (w - (sq * n + gap * (n - 1))) / 2;
-        items.forEach(([id, label, icon, kind], i) => {
-          const bx = x0 + i * (sq + gap), big = id === 'resume';
-          ui.button(id, '', bx, y, sq, sq, { kind, icon, iconS: big ? 1.55 : 1.35, round: 16 * s, shimmer: big });
-          ui.text(label, bx + sq / 2, y + sq + 13 * s, { size: 13 * s, align: 'center', color: C.ink, maxW: sq + gap, tag: 'pause:lbl:' + id });
-        });
+      // the goal, as a reminder (Royal Match / Candy Crush keep it in sight), with quick sound and music toggles beside it
+      { h: 44 * s, gap: 2 * s, draw: (x, y, w) => {
+        const tb = portal.showMuteButton ? 2 * 40 * s + 8 * s : 0, gw = w - tb - (tb ? 10 * s : 0);
+        ui.well(x, y, gw, 44 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
+        const goal = `Save ${st.target} of ${G.level.eggs}  \u00b7  ${st.saved} home` + (sim.timeLimit ? `  \u00b7  ${fmtTime(sim.timeLeft)} left` : '');
+        ui.text(goal, x + gw / 2, y + 22 * s, { size: 14 * s, align: 'center', color: C.warn, maxW: gw - 14 * s, tag: 'pause:goal' });
+        if (tb) {
+          ui.button('sfx', '', x + w - tb, y + 2 * s, 40 * s, 40 * s, { kind: save.sfx ? 'tertiary' : 'off', icon: ICON.sound(save.sfx), iconS: 1.15, round: 12 * s });
+          ui.button('music', '', x + w - 40 * s, y + 2 * s, 40 * s, 40 * s, { kind: save.music ? 'tertiary' : 'off', icon: ICON.note(save.music), iconS: 1.15, round: 12 * s });
+        }
       } },
+      // one big Resume (every reference gives resume the weight), then restart / levels / shop / settings as squares
+      { h: 56 * s, gap: 12 * s, draw: (x, y, w) => ui.button('resume', 'Resume', x + w * 0.08, y, w * 0.84, 56 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 23 * s, round: 18 * s }) },
+      iconRow([
+        ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, 'secondary'],
+        ['shop', 'Shop', (c, X, Y, S) => shopIcon(c, X, Y, S), 'gold'], ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad'],
+      ], s, 'pause', { gap: 10 * s, sq: 62 }),
       G.hint
         ? lineBlock('Finding a good move…', 17 * s, { color: C.warn, tag: 'pause:hint' })
         : G.sim.state !== 'play' ? null : { h: 46 * s, gap: 12 * s, draw: (x, y, w) => ui.button('hint', 'Show me a move', x, y, w, 46 * s, { kind: 'ad', ad: true, size: 16 * s }) },
@@ -3872,6 +3883,39 @@ function gearIcon(c, x, y, sz, col = '#6b3f17', hole = null) {
   c.closePath(); c.fill(); if (hole) c.fillStyle = hole; else c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(0, 0, sz * 0.13, 0, 7); c.fill(); c.restore();
 }
 
+// a row of square icon buttons with a label under each (pause card, settings toggles). items: [id, label, icon, kind]
+function iconRow(items, s, tag, o = {}) {
+  const sqMax = o.sq || 66;
+  return { h: Math.min(sqMax, 66) * s + 26 * s, gap: o.gap ?? 4 * s, draw: (x, y, w) => {
+    const n = items.length, gap = 8 * s, sq = Math.min(sqMax * s, (w - gap * (n - 1)) / n), x0 = x + (w - (sq * n + gap * (n - 1))) / 2;
+    items.forEach(([id, label, icon, kind], i) => {
+      const bx = x0 + i * (sq + gap), big = id === 'resume';
+      ui.button(id, '', bx, y, sq, sq, { kind, icon, iconS: big ? 1.55 : 1.35, round: 16 * s, shimmer: big });
+      ui.text(label, bx + sq / 2, y + sq + 13 * s, { size: 13 * s, align: 'center', color: ui.C.ink, maxW: sq + gap, tag: tag + ':lbl:' + id });
+    });
+  } };
+}
+// a small section heading on a card, with a rule either side
+function sectionBlock(title, s) {
+  return { h: 18 * s, gap: 12 * s, draw: (x, y, w) => {
+    const tw = ui.measure(title.toUpperCase(), 11.5 * s), cx = x + w / 2, cy = y + 9 * s;
+    ctx.fillStyle = 'rgba(122,80,40,0.28)';
+    ctx.fillRect(x, cy - 0.75 * s, w / 2 - tw / 2 - 10 * s, 1.5 * s); ctx.fillRect(cx + tw / 2 + 10 * s, cy - 0.75 * s, w / 2 - tw / 2 - 10 * s, 1.5 * s);
+    ui.text(title.toUpperCase(), cx, cy, { size: 11.5 * s, align: 'center', color: ui.C.ink2, tag: 'sec:' + title });
+  } };
+}
+// a phone with buzz marks (the vibration toggle); struck through when off
+const vibeIcon = (on) => (c, x, y, S) => {
+  c.save(); c.lineJoin = 'round'; c.lineCap = 'round';
+  const w = S * 0.36, h = S * 0.6;
+  ui.roundRect(x - w / 2, y - h / 2, w, h, S * 0.07); c.fillStyle = '#fff'; c.fill();
+  c.fillStyle = 'rgba(40,60,110,0.55)'; c.fillRect(x - w / 2 + S * 0.05, y - h / 2 + S * 0.07, w - S * 0.1, h - S * 0.18);
+  c.strokeStyle = '#fff'; c.lineWidth = S * 0.06;
+  for (const d of [-1, 1]) { c.beginPath(); c.moveTo(x + d * S * 0.3, y - S * 0.16); c.lineTo(x + d * S * 0.38, y - S * 0.05); c.lineTo(x + d * S * 0.3, y + S * 0.05); c.lineTo(x + d * S * 0.38, y + S * 0.16); c.stroke(); }
+  if (!on) { c.strokeStyle = '#e8402e'; c.lineWidth = S * 0.09; c.beginPath(); c.moveTo(x - S * 0.38, y - S * 0.38); c.lineTo(x + S * 0.38, y + S * 0.38); c.stroke(); }
+  c.restore();
+};
+
 // Settings (2026-11-15, mykee): sound, music, ring speed, difficulty, reduced motion, restore purchases. Opens over the
 // home or the pause card; only its own buttons take taps while it shows.
 function drawSettings() {
@@ -3879,13 +3923,15 @@ function drawSettings() {
   dim(0.55);
   stackCard('Settings', (s) => {
     const C = ui.C, B = [];
-    if (portal.showMuteButton) B.push({ h: 48 * s, draw: (x, y, w) => {
-      const hw = (w - 10 * s) / 2;
-      ui.button('sfx', save.sfx ? 'Sound: on' : 'Sound: off', x, y, hw, 48 * s, { kind: save.sfx ? 'tertiary' : 'off', icon: ICON.sound(save.sfx), size: 15.5 * s });
-      ui.button('music', save.music ? 'Music: on' : 'Music: off', x + hw + 10 * s, y, hw, 48 * s, { kind: save.music ? 'tertiary' : 'off', icon: ICON.note(save.music), size: 15.5 * s });
-    } });
+    // 2026-11-16 research (Candy Crush, Royal Match, CodyCross, Homescapes): a row of icon toggles on top (sound, music,
+    // vibration), then gameplay, then comfort, then purchases, the version at the foot
+    const tog = [];
+    if (portal.showMuteButton) tog.push(['sfx', 'Sound', ICON.sound(save.sfx), save.sfx], ['music', 'Music', ICON.note(save.music), save.music]);
+    if (__APP__ || (typeof navigator !== 'undefined' && navigator.vibrate)) tog.push(['vibe', 'Vibration', vibeIcon(save.vibe !== false), save.vibe !== false]);
+    if (tog.length) B.push(iconRow(tog.map(([id, label, icon, on]) => [id, label + (on ? '' : ' off'), icon, on ? 'secondary' : 'off']), s, 'set'));
+    B.push(sectionBlock('Gameplay', s));
     const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
-    B.push(lineBlock(`Ring speed: ${sp === 1 ? 'Normal' : sp < 1 ? 'Slower' : 'Faster'} (${Math.round(sp * 100)}%)`, 17 * s, { color: C.ink, tag: 'set:rslabel', gap: 14 * s }));
+    B.push(lineBlock(`Ring speed: ${sp === 1 ? 'Normal' : sp < 1 ? 'Slower' : 'Faster'} (${Math.round(sp * 100)}%)`, 17 * s, { color: C.ink, tag: 'set:rslabel', gap: 6 * s }));
     B.push({ h: 46 * s, gap: 6 * s, draw: (x, y, w) => { // - [seven steps] +
       const bw = 46 * s, n = RING_SPEEDS.length, tx = x + bw + 8 * s, tw = w - 2 * bw - 16 * s, cw = tw / n;
       ui.button('rs:-', '', x, y, bw, 46 * s, { kind: k > 0 ? 'secondary' : 'off', disabled: k <= 0, icon: ICON.left, iconS: 1.2 });
@@ -3900,14 +3946,16 @@ function drawSettings() {
       ui.record({ x: tx, y: y + 8 * s, w: tw, h: 30 * s }, 'set:rsbar');
     } });
     B.push(lineBlock('How fast a ring follows your finger', 13 * s, { color: C.ink2, tag: 'set:rshint', gap: 2 * s }));
-    B.push({ h: 42 * s, gap: 14 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) });
-    B.push({ h: 42 * s, draw: (x, y, w) => {
+    B.push({ h: 42 * s, gap: 10 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) });
+    B.push(sectionBlock('Comfort', s));
+    B.push({ h: 42 * s, gap: 6 * s, draw: (x, y, w) => {
       const hw = (w - 10 * s) / 2;
       ui.button('calm', save.calm ? 'Calm motion: on' : 'Calm motion: off', x, y, hw, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 14 * s });
       ui.button('set:saver', save.saver ? 'Battery saver: on' : 'Battery saver: off', x + hw + 10 * s, y, hw, 42 * s, { kind: 'tertiary', icon: save.saver ? ICON.check : null, size: 14 * s });
     } });
     if (ads.canBuyPremium || ads.premium) B.push({ h: 40 * s, draw: (x, y, w) => ui.button('set:restore', 'Restore purchases', x + w * 0.15, y, w * 0.7, 40 * s, { kind: 'tertiary', size: 14.5 * s }) });
     B.push({ h: 52 * s, gap: 14 * s, draw: (x, y, w) => ui.button('set:close', 'Done', x, y, w, 52 * s, { kind: 'primary', icon: ICON.check, size: 20 * s }) });
+    B.push(lineBlock('Eggscape ' + __VERSION__, 11.5 * s, { color: C.ink2, tag: 'set:version', gap: 6 * s }));
     return B;
   }, { ribbon: '#7a48e8' });
 }
@@ -4297,9 +4345,9 @@ function drawTitle() {
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
   // landscape: two balanced columns, logo + vault on the left, the buttons on the right, the meadow low across both
   const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? A.x + A.w * 0.73 : cx;
-  const blockH = 238 * u; // Play + Levels row + difficulty + Extras
-  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - 258 * u - 16 * u;
-  const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - 258 * u; // room for the Extras row (and its lip, clear of the phone's bottom edge) under the difficulty row
+  const blockH = 184 * u; // Play + Levels row + difficulty + Extras
+  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - 204 * u - 16 * u;
+  const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - 204 * u; // room for the Extras row (and its lip, clear of the phone's bottom edge) under the difficulty row
   G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t);
   // the earth under the controls falls into shade, so the buttons carry the bottom of the screen
   const sg = ctx.createLinearGradient(0, ground + 20 * u, 0, H_);
@@ -4359,8 +4407,8 @@ function drawTitle() {
   ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u });
   ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u });
   ui.button('shop', String(save.wallet.coins), bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 18 * u });
-  modeRow(bx - bw / 2, ry + rh + 10 * u, bw, 44 * u, u, true);
-  ui.button('extras', 'Extras', bx - bw / 2 + bw * 0.12, ry + rh + 10 * u + 44 * u + 10 * u, bw * 0.76, 40 * u, { kind: 'ad', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 16 * u, round: 14 * u });
+  // (2026-11-16 research: no top casual game puts a difficulty switch on home; it lives in Settings)
+  ui.button('extras', 'Extras', bx - bw / 2 + bw * 0.12, ry + rh + 12 * u, bw * 0.76, 40 * u, { kind: 'ad', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 16 * u, round: 14 * u });
 }
 
 // an invisible tap target on the home scene (the hen, the chest)
