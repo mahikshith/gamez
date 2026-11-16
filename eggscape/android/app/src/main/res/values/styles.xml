@@ -6,5 +6,5 @@
         <item name="android:statusBarColor">@color/egg_bg</item>
         <item name="android:navigationBarColor">@color/egg_bg</item>
     </style>
-    <color name="egg_bg">#d9782e</color>
+    <color name="egg_bg">#428abe</color>
 </resources>

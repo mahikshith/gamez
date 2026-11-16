@@ -19,72 +19,15 @@
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
   canvas#game { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
-  /* launch sting (2026-11-16, mykee: "a proper animation, never a loading page"): pure CSS + SVG so it plays the moment the
-     app opens, before the game script has even parsed. Three vault rings spin in and click their gaps into line, the egg
-     drops through into the nest, the logo bounces in letter by letter; then it cross-fades into the home screen. */
-  @font-face { font-family: 'FredokaS'; font-weight: 600; src: url(<!--SPLASH_FONT-->) format('woff2'); font-display: block; }
-  #splash { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; overflow: hidden;
-    background: radial-gradient(130% 70% at 50% 42%, #9fd6f5 0%, #5aa6dc 46%, #2b5f9e 100%); transition: opacity .5s ease; z-index: 5; }
-  #splash.out { opacity: 0; }
-  #splash::after { content: ''; position: absolute; left: -10%; right: -10%; bottom: -6vh; height: 24vh; border-radius: 50% 50% 0 0 / 40% 40% 0 0; background: linear-gradient(#7cc34e, #4c8f2f); }
-  #splash .rays { position: absolute; left: 50%; top: 46%; width: 180vmax; height: 180vmax; margin: -90vmax 0 0 -90vmax; background: repeating-conic-gradient(rgba(255,255,255,.10) 0 9deg, rgba(255,255,255,0) 9deg 22.5deg); animation: rays 14s linear infinite; }
-  #splash .word { position: absolute; top: max(6vh, env(safe-area-inset-top)); z-index: 2; font: 600 min(15vw, 9vh)/1 FredokaS, "Arial Rounded MT Bold", system-ui, sans-serif; letter-spacing: .02em; white-space: nowrap; }
-  #splash .word span { display: inline-block; color: #fff3c4; -webkit-text-stroke: .16em #7a3410; paint-order: stroke fill; text-shadow: 0 .09em 0 #5a240a, 0 .16em .12em rgba(40,10,0,.35);
-    background: linear-gradient(#fff8d8, #ffc93a); -webkit-background-clip: text; background-clip: text; opacity: 0; animation: drop .55s cubic-bezier(.2,1.5,.45,1) both; }
-  #splash .vault { position: relative; z-index: 2; width: min(84vw, 48vh); height: min(103vw, 59vh); margin-top: 6vh; }
-  #splash .ring { transform-box: view-box; transform-origin: 0 0; }
-  #splash .r1 { animation: spin1 1.15s cubic-bezier(.25,1.25,.4,1) .05s both; }
-  #splash .r2 { animation: spin2 1.15s cubic-bezier(.25,1.25,.4,1) .12s both; }
-  #splash .r3 { animation: spin3 1.15s cubic-bezier(.25,1.25,.4,1) .19s both; }
-  #splash .egg { transform-box: view-box; transform-origin: 0 0; animation: fall .55s cubic-bezier(.55,0,.75,.4) 1.25s both; }
-  #splash .eggin { transform-box: fill-box; transform-origin: 50% 100%; animation: squash .45s ease-out 1.8s both, wiggle 1.6s ease-in-out 2.3s infinite; }
-  #splash .spark { opacity: 0; transform-box: fill-box; transform-origin: 50% 50%; animation: spark .7s ease-out 1.85s both; }
-  #splash .glint { opacity: 0; animation: glint .5s ease-out 1.05s both; }
-  @keyframes rays { to { transform: rotate(360deg); } }
-  @keyframes drop { 0% { opacity: 0; transform: translateY(-60%) scale(.6); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
-  @keyframes spin1 { from { transform: rotate(-200deg) scale(.6); opacity: 0; } 25% { opacity: 1; } to { transform: rotate(0) scale(1); opacity: 1; } }
-  @keyframes spin2 { from { transform: rotate(250deg) scale(.6); opacity: 0; } 25% { opacity: 1; } to { transform: rotate(0) scale(1); opacity: 1; } }
-  @keyframes spin3 { from { transform: rotate(-300deg) scale(.6); opacity: 0; } 25% { opacity: 1; } to { transform: rotate(0) scale(1); opacity: 1; } }
-  @keyframes fall { from { transform: translateY(0); } to { transform: translateY(196px); } }
-  @keyframes squash { 0% { transform: scale(1.18,.8); } 35% { transform: scale(.92,1.1); } 70% { transform: scale(1.04,.97); } 100% { transform: none; } }
-  @keyframes wiggle { 0%, 70%, 100% { transform: rotate(0); } 78% { transform: rotate(-7deg); } 86% { transform: rotate(6deg); } 93% { transform: rotate(-3deg); } }
-  @keyframes spark { 0% { opacity: 0; transform: scale(.2); } 30% { opacity: 1; } 100% { opacity: 0; transform: scale(1.4) translateY(-14px); } }
-  @keyframes glint { 0% { opacity: 0; } 30% { opacity: .9; } 100% { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { #splash *, #splash .word span { animation-duration: .01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; } }
+  /* the instant before the first canvas frame: the home screen's sky, no logo, no motion (the game script removes it on the first paint).
+     Colours match the home sky top/horizon and android styles.xml's windowBackground, so the system splash flows straight into it. */
+  #splash { position: absolute; inset: 0; pointer-events: none; z-index: 5; background: linear-gradient(#428abe, #6eb5e5 30%, #b8ddf3 70%); }
 </style>
 <!--PORTAL_HEAD-->
 </head>
 <body>
 <canvas id="game" tabindex="0"></canvas>
-<div id="splash" aria-label="Eggscape">
-  <div class="rays"></div>
-  <div class="word"><span style="animation-delay:0.25s">E</span><span style="animation-delay:0.32s">G</span><span style="animation-delay:0.39s">G</span><span style="animation-delay:0.46s">S</span><span style="animation-delay:0.53s">C</span><span style="animation-delay:0.60s">A</span><span style="animation-delay:0.67s">P</span><span style="animation-delay:0.74s">E</span></div>
-  <svg class="vault" viewBox="-200 -190 400 490">
-    <defs><radialGradient id="eg" cx="38%" cy="30%" r="72%"><stop offset="0" stop-color="#fffdf4"/><stop offset=".6" stop-color="#f6e6c4"/><stop offset="1" stop-color="#d8bf96"/></radialGradient>
-      <radialGradient id="vb" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#2a1a40" stop-opacity=".35"/><stop offset="1" stop-color="#2a1a40" stop-opacity="0"/></radialGradient></defs>
-    <circle r="178" fill="url(#vb)"/>
-    <g class="ring r3"><circle r="150" fill="none" stroke="#5a2a0c" stroke-width="26" stroke-dasharray="880.477 62" stroke-dashoffset="-266.61924999999997" stroke-linecap="round"/><circle r="150" fill="none" stroke="#c27a3a" stroke-width="20" stroke-dasharray="880.477 62" stroke-dashoffset="-266.61924999999997" stroke-linecap="round"/><circle r="145.6" fill="none" stroke="#eaa860" stroke-width="3.6" stroke-dasharray="872.477 70" stroke-dashoffset="-270.61924999999997" stroke-linecap="round" opacity=".8"/><circle r="150" fill="none" stroke="#f6c454" stroke-width="16" stroke-dasharray="52 890.477" stroke-dashoffset="-523.5983333333334" stroke-linecap="round"/><circle r="150" fill="none" stroke="#f6c454" stroke-width="16" stroke-dasharray="40 902.477" stroke-dashoffset="-863.93725" stroke-linecap="round"/></g><g class="ring r2"><circle r="108" fill="none" stroke="#5a2a0c" stroke-width="24" stroke-dasharray="620.58344 58" stroke-dashoffset="-198.64586" stroke-linecap="round"/><circle r="108" fill="none" stroke="#c27a3a" stroke-width="18" stroke-dasharray="620.58344 58" stroke-dashoffset="-198.64586" stroke-linecap="round"/><circle r="104.04" fill="none" stroke="#eaa860" stroke-width="3.2" stroke-dasharray="612.58344 66" stroke-dashoffset="-202.64586" stroke-linecap="round" opacity=".8"/><circle r="108" fill="none" stroke="#f6c454" stroke-width="14" stroke-dasharray="46 632.58344" stroke-dashoffset="-263.89356" stroke-linecap="round"/><circle r="108" fill="none" stroke="#f6c454" stroke-width="14" stroke-dasharray="30 648.58344" stroke-dashoffset="-37.699079999999995" stroke-linecap="round"/></g><g class="ring r1"><circle r="66" fill="none" stroke="#5a2a0c" stroke-width="22" stroke-dasharray="362.68987999999996 52" stroke-dashoffset="-129.67246999999998" stroke-linecap="round"/><circle r="66" fill="none" stroke="#c27a3a" stroke-width="16" stroke-dasharray="362.68987999999996 52" stroke-dashoffset="-129.67246999999998" stroke-linecap="round"/><circle r="62.48" fill="none" stroke="#eaa860" stroke-width="2.9" stroke-dasharray="354.68987999999996 60" stroke-dashoffset="-133.67246999999998" stroke-linecap="round" opacity=".8"/><circle r="66" fill="none" stroke="#f6c454" stroke-width="12" stroke-dasharray="40 374.68987999999996" stroke-dashoffset="-287.9790833333333" stroke-linecap="round"/></g>
-    <path class="glint" d="M-14 64 L0 300 L14 64 Z" fill="#fff6c8" opacity="0"/>
-    <g transform="translate(0 232)">
-      <ellipse cx="0" cy="34" rx="78" ry="12" fill="rgba(30,40,10,.25)"/>
-      <path d="M-74 4c10 30 40 34 74 34s64-4 74-34" fill="#9a5f26" stroke="#5a3210" stroke-width="5" stroke-linejoin="round"/>
-      <path d="M-62 14c18 9 40 12 62 12s44-3 62-12M-54 24c16 6 34 8 54 8s38-2 54-8" fill="none" stroke="#e0a45a" stroke-width="4" stroke-linecap="round"/>
-    </g>
-    <g class="egg"><g class="eggin">
-      <path d="M0 -30C-15 -30 -27 -6 -27 12c0 16 12 27 27 27s27-11 27-27C27 -6 15 -30 0 -30z" fill="url(#eg)" stroke="#6b4a2a" stroke-width="3.5"/>
-      <ellipse cx="-9" cy="-14" rx="5" ry="3.4" fill="#fff" opacity=".85" transform="rotate(-30 -9 -14)"/>
-      <ellipse cx="-8" cy="8" rx="3.2" ry="4.2" fill="#3a2412"/><ellipse cx="8" cy="8" rx="3.2" ry="4.2" fill="#3a2412"/>
-      <circle cx="-7" cy="6.5" r="1.2" fill="#fff"/><circle cx="9" cy="6.5" r="1.2" fill="#fff"/>
-      <path d="M-6 18q6 6 12 0" fill="none" stroke="#3a2412" stroke-width="2.8" stroke-linecap="round"/>
-    </g></g>
-    <g fill="#fff3a0">
-      <path class="spark" d="M-70 196l4 10 10 4-10 4-4 10-4-10-10-4 10-4z"/>
-      <path class="spark" style="animation-delay:1.95s" d="M66 190l3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/>
-      <path class="spark" style="animation-delay:2.05s" d="M-30 168l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>
-      <path class="spark" style="animation-delay:2.0s" d="M34 166l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>
-    </g>
-  </svg>
-</div>
+<div id="splash"></div>
 <!--GAME_SCRIPT-->
 </body>
 </html>
