@@ -1,3 +1,4 @@
+import { themeFrame, themeButton, themeShape } from './theme.js';
 // Screen-space UI: every text and widget goes through here so we can measure,
 // fit, hit-test, and assert that nothing overlaps.
 //
@@ -272,6 +273,7 @@ export class UI {
     ctx.fillStyle = sh;
     ctx.fillRect(bx, by, bw, 12 * s);
     ctx.restore();
+    if (this.skin && this.skin.pack && !o.plain && w > 150 * s && h > 140 * s) themeFrame(ctx, this.skin, x, y, w, h, r, s); // the pack's border and corner ornaments
     if (o.record) this.record({ x, y, w, h }, o.tag || 'panel', o.group);
     return { x: bx, y: by, w: bw, h: bh };
   }
@@ -385,6 +387,7 @@ export class UI {
     const u = this.u;
     const pressed = this.pressedId === id;
     const SK = this.skin;
+    if (SK && SK.pack && (o.icon === ICON.pause || o.icon === ICON.grid)) { CURSK = SK; o = { ...o, icon: o.icon === ICON.pause ? THEMED.pause : THEMED.grid }; }
     let K = o.face || (SK && SK.kinds && SK.kinds[o.kind]) || KIND[o.kind] || KIND[LEGACY[o.color]] || (o.color ? faceOf(o.color) : KIND.gold);
     if (o.disabled && !o.keepFace) K = KIND.off;
     const lip = Math.min(6 * u, h * 0.13) * (o.disabled ? 0.55 : 1);
@@ -442,6 +445,7 @@ export class UI {
     }
     ctx.restore();
     if (SK && SK.deco && !o.disabled && !o.face && o.kind !== 'hud' && o.kind !== 'off' && h > 26 * u) this.deco(SK.deco, x, y + dy, w, fh, rad);
+    if (SK && SK.pack && !o.disabled && !o.face && o.kind !== 'hud' && o.kind !== 'off' && h > 26 * u) themeButton(ctx, SK, x, y + dy, w, fh, rad, u, o.kind === 'primary'); // the pack's material
     }
     const cy = y + dy + fh / 2;
     const size = o.size || Math.min(22 * u, h * 0.42);
@@ -585,6 +589,7 @@ const bar = (ctx, x, y, w, h) => {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   ctx.fillStyle = INK; ctx.fill();
 };
+let CURSK = null; // the skin whose pack shapes the themed pause/grid icons (set by button())
 export const ICON = {
   pause: G_((ctx, cx, cy, s) => { bar(ctx, cx - s * 0.27, cy - s * 0.3, s * 0.2, s * 0.6); bar(ctx, cx + s * 0.07, cy - s * 0.3, s * 0.2, s * 0.6); }),
   play: G_((ctx, cx, cy, s) => tri(ctx, cx - s * 0.2, cy - s * 0.28, cx + s * 0.3, cy, cx - s * 0.2, cy + s * 0.28, s)),
@@ -649,6 +654,11 @@ export const ICON = {
       if (!on) { ctx.beginPath(); ctx.moveTo(cx - s * 0.3, cy - s * 0.3); ctx.lineTo(cx + s * 0.32, cy + s * 0.32); ctx.stroke(); }
     });
   },
+};
+// pack shapes for the pause bars and the levels grid (ui/theme.js SH): baubles, mugs, gems, leaves, bubbles
+const THEMED = {
+  pause: G_((ctx, cx, cy, s) => { const f = themeShape(CURSK, 'bar'); if (!f) return ICON.pause(ctx, cx, cy, s); ctx.fillStyle = INK; f(ctx, cx - s * 0.27, cy - s * 0.3, s * 0.2, s * 0.6); f(ctx, cx + s * 0.07, cy - s * 0.3, s * 0.2, s * 0.6); }),
+  grid: G_((ctx, cx, cy, s) => { const f = themeShape(CURSK, 'cell'); if (!f) return ICON.grid(ctx, cx, cy, s); ctx.fillStyle = INK; ctx.strokeStyle = INK; const r = s * 0.15, d = s * 0.22; for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) f(ctx, cx + a * d, cy + b * d, r); }),
 };
 
 // A padlock with form: steel shackle, gold body, keyhole. s = half width of the body.

@@ -6,6 +6,7 @@
 //   picker: 'boost:<boosterId>', 'shop'
 import { drawEggSkinArt } from '../render/eggskins.js';
 import { ICON, C } from './ui.js';
+import { themeBack } from './theme.js';
 import { BOOSTERS, BOOSTER_ORDER, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin,
   CHARGE_ITEM, CHARGE_PACK, MAX_CHARGES, HEN_SKINS, HEN_SKIN_ORDER, ownsHenSkin } from '../economy.js';
 import { drawStrikeToken } from '../render/strike.js';
@@ -517,6 +518,7 @@ export function drawStore(ui, ctx, W, H, state) {
   const pad = D.pad * s;
 
   // the shop's own room: deep violet, a soft light from above, slow rays (still when reduced motion is on)
+  if (!themeBack(ctx, ui.skin, W, H, H * 0.8)) { // a skin pack paints its own room (ui/theme.js)
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0, '#4a3190');
   bg.addColorStop(0.55, '#2f1f66');
@@ -535,6 +537,7 @@ export function drawStore(ui, ctx, W, H, state) {
   }
   ctx.fill();
   ctx.restore();
+  }
 
   // ---- header: back, title ribbon, balance
   const bs = 46 * s;

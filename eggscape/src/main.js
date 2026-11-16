@@ -9,6 +9,7 @@ import { audio } from './audio.js';
 import { portal } from './sdk/portal.js';
 import { FX } from './render/fx.js';
 import * as W from './render/world.js';
+import { themeBack, themeWash, logoDress } from './ui/theme.js';
 import { menuFxBack, menuFxFront, menuFxStats } from './ui/menufx.js'; // the skin's living effect over the menus
 import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge } from './ui/ui.js';
 import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
@@ -2866,7 +2867,8 @@ function lastEggMoment(sim) {
 
 // ---------------------------------------------------------------- render
 const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1 };
-function menuFx() { if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
+const SCENE_SCREENS = { title: 1, store: 1, practice: 1 }; // these paint a full themed scene; the others keep the game behind and get a wash
+function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
 function renderAll() { render(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); } // + snow piles on the buttons, the gold sweep
 function render() {
   const t = G.t;
@@ -2884,7 +2886,7 @@ function render() {
   const fx = G.fx;
   G.backdrop.draw(ctx, t, G.bcam); // parallax: the layers slide and breathe against the camera
   G.weather.drawBack(ctx);
-  if (G.screen === 'title') { menuFx(); drawTitle(); drawToast(); if (G.settingsOpen) drawSettings(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene, no vault behind it
+  if (G.screen === 'title') { drawTitle(); drawToast(); if (G.settingsOpen) drawSettings(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene, no vault behind it
   // world
   const P = G.play, cv = G.cv;
   const cx = P.x + P.w / 2, cy = P.y + P.h / 2;
@@ -3033,7 +3035,7 @@ function render() {
     else { drawPopups(); drawToast(); }
     drawKeyHint();
   }
-  if (G.screen !== 'play' && G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store') menuFx(); // behind the cards (not over the board)
+  if (G.screen !== 'play' && G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'practice') menuFx(); // behind the cards (not over the board)
   if (G.screen === 'intro') drawIntro();
   if (G.screen === 'pause') drawPause();
   if (G.screen === 'info') drawInfo();
@@ -4632,14 +4634,15 @@ function drawTitle() {
   const blockH = 184 * u; // Play + Levels row + difficulty + Extras
   const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - 204 * u - 16 * u;
   const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - 204 * u; // room for the Extras row (and its lip, clear of the phone's bottom edge) under the difficulty row
-  G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t);
+  if (!themeBack(ctx, ui.skin, W_, H_, ground)) G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t); // a skin pack paints its whole scene instead
   // the earth under the controls falls into shade, so the buttons carry the bottom of the screen
   const sg = ctx.createLinearGradient(0, ground + 20 * u, 0, H_);
   sg.addColorStop(0, 'rgba(30,14,4,0)'); sg.addColorStop(1, 'rgba(30,14,4,0.5)');
   ctx.fillStyle = sg; ctx.fillRect(0, ground + 20 * u, W_, H_ - ground - 20 * u);
+  menuFx(); // the skin's falling effect: over the scene, under the logo and buttons
   const logoS = Math.min(66 * u, (wide ? A.w * 0.5 : A.w) / 7.3, A.h / 6);
   const ty = A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
-  const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, intro ? T * 1.7 : 9, FONT); // intro: the letters drop in a quicker cascade
+  const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, intro ? T * 1.7 : 9, FONT, ui.skin && ui.skin.pack ? (c, ch, i, sz, n) => logoDress(ui.skin, c, ch, i, sz, n) : null); // intro: the letters drop in a quicker cascade
   ui.record(logo, 'title:logo');
   const subY = ty + logoS * 0.5 + 18 * u;
   G.titleToastY = subY + 16 * u;
@@ -4913,9 +4916,12 @@ function drawPractice() {
   const u = ui.u, A = ui.A, pad = 14 * u, S = G.pscroll, vb = A.y1; // the list scrolls down to the bottom of the safe rect
   ui.calm = save.calm;
   const dt = Math.min(0.05, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
-  const bg = ctx.createLinearGradient(0, 0, 0, H_);
-  bg.addColorStop(0, '#1c1440'); bg.addColorStop(1, '#3a2152');
-  ctx.globalAlpha = 0.96; ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); ctx.globalAlpha = 1;
+  if (!themeBack(ctx, ui.skin, W_, H_, H_ * 0.8)) {
+    const bg = ctx.createLinearGradient(0, 0, 0, H_);
+    bg.addColorStop(0, '#1c1440'); bg.addColorStop(1, '#3a2152');
+    ctx.globalAlpha = 0.96; ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); ctx.globalAlpha = 1;
+  }
+  menuFx();
   const cols = A.w > A.h ? 5 : 3, gap = 12 * u, cw = Math.min((A.w - pad * 2 - gap * (cols - 1)) / cols, 136 * u), chh = cw;
   const gridW = cols * cw + (cols - 1) * gap, x0 = A.cx - gridW / 2;
   const vt = A.y + 70 * u, secH = 36 * u; // the list's top edge, a section header's height
