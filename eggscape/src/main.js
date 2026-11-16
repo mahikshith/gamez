@@ -83,7 +83,7 @@ const envNeed = (k) => (TEST ? 0 : GATE * k);
 // a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all
 const GATE_COINS = (k) => 80 + 40 * k;
 // Settings (2026-11-15): how fast the rings follow a finger, 0.6x .. 2x of the designed speed
-const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2];
+const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]; // 2026-11-16 mykee: experienced players want even faster (300%; no extra tunnelling seen in a 3x wall-crossing check)
 const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed : 1);
 const allOpen = () => TEST || !!save.tester;
 const envOpen = (k) => allOpen() || bestTotal() >= envNeed(k) || !!(save.gates && save.gates[k]);
@@ -262,6 +262,37 @@ function themeFor(level) {
   return THEMES.find((t) => t.id === level.theme) || THEMES[(level.id - 1) % THEMES.length];
 }
 
+// 2026-11-16 (mykee: the screen hangs when a level is tapped): a level's backdrop is the heaviest thing a level start
+// builds (several full-screen painted layers), so the last few are kept, and the level the player is most likely to
+// tap next is built ahead while the home or map screen sits idle
+const BD = new Map();
+function backdropFor(theme, seed) {
+  const key = theme.id + '|' + seed, sz = W_ + 'x' + H_ + '@' + DPR;
+  let b = BD.get(key);
+  if (b) BD.delete(key);
+  else {
+    b = createBackdrop(theme, seed);
+    const r0 = b.resize; b.resize = (w, h, d) => { b.sz = w + 'x' + h + '@' + d; return r0.call(b, w, h, d); };
+  }
+  BD.set(key, b);
+  if (BD.size > 3) BD.delete(BD.keys().next().value);
+  if (b.sz !== sz) b.resize(W_, H_, DPR);
+  b.setParallax(0, 0);
+  return b;
+}
+let warmT = 0;
+function warmNext() {
+  clearTimeout(warmT);
+  warmT = setTimeout(() => {
+    const go = () => {
+      if (G.screen !== 'title' && G.screen !== 'levels') return;
+      const L = LEVELS[clamp((save.unlocked || 1) - 1, 0, LEVELS.length - 1)];
+      try { backdropFor(themeFor(L), L.id * 97); } catch (_) { /* built at level start instead */ }
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 1500 }); else go();
+  }, 700);
+}
+
 function startLevel(i, opts = {}) {
   if (G.sim && G.sim.state === 'failed' && G.level) G.fails[G.level.id] = 1; // allies (v3.5): help is offered after a fail
   G.allyOpen = G.allyAd = false;
@@ -282,8 +313,7 @@ function startLevel(i, opts = {}) {
   G.golden = !!opts.golden;
   G.adBoost = opts.adBoost || null;
   G.freeRewind = !!G.boost.rewind;
-  G.backdrop = createBackdrop(G.theme, G.level.id * 97);
-  G.backdrop.resize(W_, H_, DPR);
+  G.backdrop = backdropFor(G.theme, G.level.id * 97);
   G.weather = createWeather(G.level.weather || THEME_WEATHER[G.theme.id] || 'none', G.level.id * 31);
   G.weather.resize(W_, H_, DPR);
   W.setSkin(save.wallet.skin);
@@ -335,6 +365,10 @@ function setScreen(s) {
   G.screen = s;
   G.screenT = 0;
   ui.pressedId = null;
+  if (s === 'title' || s === 'levels') warmNext();
+  // 2026-11-16 mykee: "you don't have to put New on the i every single time": a kind is new in the first level it is
+  // played in only, whether or not the player opens the panel (the tag stays up for the rest of that level)
+  if (s === 'play' && G.infoNew && G.infoKinds && G.infoKinds.some((k) => !save.seen['v:' + k])) { for (const k of G.infoKinds) save.seen['v:' + k] = 1; persist(); }
 }
 
 function firstGrabbable(from, dir) {
@@ -3905,7 +3939,7 @@ function drawSettings() {
     B.push(sectionBlock('Gameplay', s));
     const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
     B.push(lineBlock(`Ring speed: ${sp === 1 ? 'Normal' : sp < 1 ? 'Slower' : 'Faster'} (${Math.round(sp * 100)}%)`, 17 * s, { color: C.ink, tag: 'set:rslabel', gap: 6 * s }));
-    B.push({ h: 46 * s, gap: 6 * s, draw: (x, y, w) => { // - [seven steps] +
+    B.push({ h: 46 * s, gap: 6 * s, draw: (x, y, w) => { // - [nine steps] +
       const bw = 46 * s, n = RING_SPEEDS.length, tx = x + bw + 8 * s, tw = w - 2 * bw - 16 * s, cw = tw / n;
       ui.button('rs:-', '', x, y, bw, 46 * s, { kind: k > 0 ? 'secondary' : 'off', disabled: k <= 0, icon: ICON.left, iconS: 1.2 });
       ui.button('rs:+', '', x + w - bw, y, bw, 46 * s, { kind: k < n - 1 ? 'secondary' : 'off', disabled: k >= n - 1, icon: ICON.right, iconS: 1.2 });
@@ -4667,9 +4701,10 @@ function frame(now) {
   // 2026-11-16 battery (mykee: the phone heats up): never draw faster than 60 fps (a 120 Hz screen called us twice as
   // often for nothing), 30 fps with Battery saver on
   if (now - last < (save.saver ? 1000 / 30 : 1000 / 60) - 2.5) return;
-  const dt = Math.min(0.05, (now - last) / 1000 || 0.016);
+  const raw = last ? now - last : 16, dt = Math.min(0.05, raw / 1000 || 0.016);
   last = now;
   if (G.paused) return;
+  if (Q.want >= 0) { Q.i = Q.want; Q.want = -1; setDPR(); } // a resolution change lands before this frame draws (no empty frame)
   try {
     if (G.henSkinCur !== save.wallet.henSkin) { G.henSkinCur = save.wallet.henSkin; setHenSkin(G.henSkinCur); ui.skin = skinUI(G.henSkinCur); } // hen + rooster skin, and the menus' theme
     update(dt);
@@ -4680,21 +4715,27 @@ function frame(now) {
     if (!G.errs[msg]) { G.errs[msg] = 1; console.error('[eggscape] frame error', e); }
     try { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.globalAlpha = 1; } catch (_) { /* reset */ }
   }
-  adaptQuality(dt);
+  adaptQuality(raw);
 }
-// adaptive resolution (2026-11-15 performance pass): a phone that cannot hold ~45 fps drops the canvas resolution a
-// step (2x -> 1.6x -> 1.3x -> 1x device pixels); 10 s of headroom steps it back up. Only in play, never mid-swipe.
-const Q = { steps: [2, 1.6, 1.3, 1], i: 0, acc: 0, n: 0, good: 0 };
-function adaptQuality(dt) {
-  if (G.screen !== 'play' || document.hidden) { Q.acc = Q.n = 0; return; }
-  Q.acc += dt; Q.n++;
+// adaptive resolution (2026-11-15 performance pass, reworked 2026-11-16): a phone that cannot hold ~45 fps drops the
+// canvas resolution a step; 10 s of headroom steps it back up. mykee saw "black stutters" when a level starts and a
+// blurry picture: resizing the canvas clears it, and the old code resized AFTER drawing, so the screen showed one empty
+// (black) frame; the first seconds of a level (caches being built) always looked slow, so every phone dropped to 1x
+// device pixels and stayed blurry. Now: the first 3 s of play and one-off hitches (>100 ms: loading, GC) are not
+// counted, the floor is 1.5x (never mushy), and a change waits for the start of the next frame so it is drawn at once.
+const Q = { steps: [2, 1.75, 1.5], i: 0, acc: 0, n: 0, good: 0, warm: 0, want: -1 };
+function adaptQuality(ms) {
+  if (G.screen !== 'play' || document.hidden || G.paused) { Q.acc = Q.n = 0; Q.warm = 0; return; }
+  if ((Q.warm += ms / 1000) < 3) return; // the level's first seconds build caches: not a measure of the phone
+  if (ms > 100) return; // a single hitch, not a slow phone
+  Q.acc += ms / 1000; Q.n++;
   if (Q.acc < 2) return;
   const avg = Q.acc / Q.n;
   Q.acc = Q.n = 0;
+  if (save.saver) return; // Battery saver already runs a fixed 1.3x at 30 fps
   const cap = Math.min(window.devicePixelRatio || 1, 2);
-  if (save.saver) { if (avg > 1 / 26 && Q.i < Q.steps.length - 1) { Q.i++; setDPR(); } return; } // 30 fps by design
-  if (avg > 1 / 45 && Q.i < Q.steps.length - 1 && Q.steps[Q.i + 1] < cap + 0.01) { Q.i++; Q.good = 0; setDPR(); }
-  else if (avg < 1 / 58) { if ((Q.good += 2) >= 10 && Q.i > 0) { Q.i--; Q.good = 0; setDPR(); } }
+  if (avg > 1 / 45 && Q.i < Q.steps.length - 1 && Q.steps[Q.i + 1] < cap + 0.01) { Q.want = Q.i + 1; Q.good = 0; }
+  else if (avg < 1 / 55) { if ((Q.good += 2) >= 10 && Q.i > 0) { Q.want = Q.i - 1; Q.good = 0; } }
   else Q.good = 0;
 }
 function setDPR() {
