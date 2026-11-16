@@ -304,6 +304,7 @@ function startLevel(i, opts = {}) {
   G.level = i === -2 && G.demo ? G.demo : i < 0 ? dailyLevel() : LEVELS[i]; // -2: a dev chick demo (v3.2)
   G.theme = themeFor(G.level);
   G.boost = opts.boost || {};
+  introAutoPick(G.level, i);
   G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost, strike: strikeFor(G.level, i) });
   G.sim.ringSpeed = ringSpeed();
   // portals explain themselves the first time they show up anywhere (a practice vault has no intro card)
@@ -958,6 +959,8 @@ async function press(id) {
       setScreen('levels');
       break;
     case 'go': {
+      if (G.screen === 'intro' && introChicks().need) break; // a first-timer picks a chick first
+      { const T = introChicks(); if (T.id) { save.lastStk = T.id; if (T.choice) save.seen.pickN = (save.seen.pickN || 0) + 1; persist(); } }
       if (worldOpener(G.level)) { save.intro[G.level.id] = 1; persist(); }
       // owned boosters picked on the intro card are spent now and the level restarts with them
       const boost = { ...G.boost }; // keeps a booster the intro ad already gave
@@ -983,7 +986,7 @@ async function press(id) {
       await breakThen(() => startLevel(-1));
       break;
     case 'stk:pick:freeze': case 'stk:pick:thunder': case 'stk:pick:bomb': case 'stk:pick:decoy': case 'stk:pick:tornado': case 'stk:pick:glue':
-      { const pid = id.slice(9), cur = G.sim.stk && G.sim.stk.id; G.stkSel = { lid: G.level.id, id: cur === pid ? null : pid }; } // a second tap puts it back
+      { const pid = id.slice(9), cur = G.sim.stk && G.sim.stk.id; G.stkSel = { lid: G.level.id, id: cur === pid && strikesOpen().length < 2 ? null : pid }; G.introPick = { id: pid, t: G.t }; } // a lone chick toggles; with a choice, a tap picks
       G.sim.stkEquip(strikeFor(G.level, G.li));
       audio.play('cluck', { pitch: 2.2, vol: 0.5 });
       break;
@@ -3789,12 +3792,12 @@ function bossStage(x, y, w, h, s) {
 // first level of a world, first visit: its intro line rides on the level card (one card, no extra tap)
 function worldOpener(L) { return !!(L && L.intro && !L.boss && G.li >= 0 && (L.id - 1) % PER_ENV === 0 && !save.intro[L.id]); }
 function drawIntro() {
-  dim(0.62);
   const L = G.level, C = ui.C;
   const acc = /^#[0-9a-f]{6}$/i.test(G.theme.palette.accent || '') ? G.theme.palette.accent : '#ee5a36';
   // Chick Strike: a new strike chick gets a card of its own, once (the newest one reached; any older unseen ones with it)
-  const fresh = G.li >= 0 ? strikesOpen().filter((S) => S.unlock <= L.id && !(save.strikeSeen || {})[S.id]) : [];
+  const fresh = G.li >= 0 && G.sim && G.sim.stk && G.sim.stk.any ? strikesOpen().filter((S) => S.unlock <= L.id && !(save.strikeSeen || {})[S.id]) : [];
   if (fresh.length) {
+    dim(0.62);
     const S = fresh[fresh.length - 1];
     G.stkCard = S.id;
     stackCard('New: ' + S.name, (s, iw) => [
@@ -3807,6 +3810,7 @@ function drawIntro() {
     return;
   }
   if (L.intro && !save.intro[L.id] && !worldOpener(L)) {
+    dim(0.62);
     // a world's new mechanic gets one screen of its own the first time (C6); a boss also shows its face (I6)
     stackCard(L.intro.title, (s, iw) => [
       // (the framed villain portrait card was removed at the owner's request: bosses introduce themselves in the level)
@@ -3818,64 +3822,244 @@ function drawIntro() {
     ], { ribbon: L.boss ? '#c9342c' : acc });
     return;
   }
-  stackCard(G.li === -2 ? 'Lab' : G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`, (s, iw) => {
-    const wo = worldOpener(L);
-    const tip = wo ? wrapText(L.intro.line, 15 * s, iw).slice(0, 3) : L.tip ? wrapText(L.tip, 15 * s, iw).slice(0, 3) : [];
-    const B = [
-      lineBlock(L.name, 23 * s, { tag: 'intro:name', gap: 2 * s }),
-      ...(wo ? [lineBlock(WORLDS[envOf(G.li)] || L.intro.title, 14.5 * s, { color: acc, tag: 'intro:world', gap: 4 * s })] : []),
-      // the goal: the level's eggs in a tray, and how many must get home
-      { h: 70 * s, gap: 6 * s, draw: (x, y, w) => {
-        ui.well(x, y, w, 70 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
-        const n = L.eggs, sp = Math.min(32 * s, (w - 20 * s) / n), es = Math.min(28 * s, sp * 0.95);
-        for (let i = 0; i < n; i++) drawEggIcon(ctx, x + w / 2 + (i - (n - 1) / 2) * sp, y + 23 * s, es, 'alive');
-        ui.record({ x: x + w / 2 - n * sp / 2, y: y + 9 * s, w: n * sp, h: 28 * s }, 'intro:eggs');
-        ui.text(`Save ${L.target} of ${L.eggs} eggs before the fuse burns out`, x + w / 2, y + 53 * s, { size: 14.5 * s, align: 'center', maxW: w - 16 * s, color: C.warn, tag: 'intro:goal' });
-      } },
-      ...(G.li === -1 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14 * s, { color: C.info, tag: 'intro:daily', gap: 6 * s })] : []),
-      ...tip.map((l, i) => lineBlock(l, 15 * s, { color: C.ink2, tag: 'intro:tip' + i, gap: i ? 2 * s : 8 * s })),
-      ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus, G.sim.MD.fuse), 14 * s, { color: C.info, tag: 'intro:bonus', gap: 6 * s })] : []),
-      ...strikePicker(s, iw).map((b) => ({ ...b, right: !b.stage })),
-      { right: true, h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('go', 'PLAY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 25 * s }) },
-      // start boosters bought in the store (F7/F21): tap to pick, each shows its one-liner
-      { right: true, h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
-    ];
-    if (!G.adBoost && !G.golden) B.push({ right: true, h: 48 * s, draw: (x, y, w) => ui.button('adboost', 'Watch an ad: free booster', x, y, w, 48 * s, { kind: 'ad', ad: true, size: 15.5 * s }) });
-    B.push({ right: true, h: 42 * s, draw: (x, y, w) => ui.button(G.li === -1 ? 'back' : 'levels', G.li === -1 ? 'Menu' : 'Levels', x + w * 0.22, y, w * 0.56, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) });
-    return B;
-  }, { ribbon: acc, twoCol: true });
+  drawLevelIntro(L, acc);
 }
 
-// Chick Strike: the row of unlocked strike chicks on the intro card (tap one to take it), with the chosen one's downside
-function strikePicker(s, iw) {
-  const id = G.sim && G.sim.stk && G.sim.stk.id, open = strikesOpen();
-  if (!G.sim || !G.sim.stk || !G.sim.stk.any || !open.length || (G.li >= 0 && G.level.id < STRIKE_FROM)) return [];
-  const S = id ? STRIKE[id] : null, r = Math.min(21 * s, (iw - 8 * s * (open.length - 1)) / open.length / 2);
-  // the chosen chick on its own little stage (mykee 2026-11-16: show the picked chick clearly, not a small token)
-  const stage = S ? [{ stage: true, h: 92 * s, gap: 10 * s, draw: (x, y, w) => {
-    const sw = Math.min(110 * s, w * 0.34);
-    artStage(x, y, sw, 92 * s, s, () => drawStrikeStage(ctx, S.id, x, y + 4 * s, sw, 84 * s, G.t));
-    const tx = x + sw + 12 * s, tw = w - sw - 12 * s, up = wrapText(S.up, 14.5 * s, tw).slice(0, 2), dn = wrapText('Downside: ' + S.down, 13 * s, tw).slice(0, 2);
-    let ty = y + 46 * s - ((up.length + dn.length) * 17 * s + 24 * s) / 2 + 10 * s;
-    ui.text(S.name, tx, ty, { size: 19 * s, color: S.col ? S.col[1] : ui.C.ink, tag: 'intro:stkname', maxW: tw }); ty += 22 * s;
-    up.forEach((l, i) => { ui.text(l, tx, ty, { size: 14.5 * s, color: ui.C.ink, tag: 'intro:stkup' + i, maxW: tw }); ty += 17 * s; });
-    dn.forEach((l, i) => { ui.text(l, tx, ty, { size: 13 * s, color: ui.C.warn, tag: 'intro:stkdn' + i, maxW: tw }); ty += 16 * s; });
-  } }] : [];
-  return [
-    ...stage,
-    { h: 2 * r + 4 * s, gap: S ? 6 * s : 10 * s, draw: (x, y, w) => {
-      const step = Math.min(2 * r + 12 * s, w / open.length), x0 = x + w / 2 - (step * (open.length - 1)) / 2;
-      open.forEach((O, i) => {
-        const cx = x0 + i * step, cy = y + r + 2 * s, rect = { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r };
-        if (!id && !save.calm) { ctx.save(); ctx.globalAlpha = 0.35 + 0.25 * Math.sin(G.t * 4 + i * 0.7); ctx.strokeStyle = '#ffc83a'; ctx.lineWidth = 2.5 * s; ctx.beginPath(); ctx.arc(cx, cy, r * 0.98, 0, 7); ctx.stroke(); ctx.restore(); } // nothing picked yet: the row invites a tap
-        drawStrikeToken(ctx, O.id, cx, cy, r * (O.id === id ? 1 : 0.86), G.t, O.id === id);
-        ui.record(rect, 'btn:stk:pick:' + O.id, 'btn:stk:pick:' + O.id);
-        ui.buttons.push({ id: 'stk:pick:' + O.id, ...rect });
+// ---- the level intro: a full-screen page (mykee 2026-11-16: "this needs to be FULL SCREEN, not half the screen")
+// The world behind goes soft and dark; title, goal, who is hunting, the chick picker and PLAY use the whole screen.
+// Portrait: one column (title and goal on top, picker in the middle, PLAY at the bottom). Landscape: info left, picker + PLAY right.
+function introBackdrop() {
+  try { // a cheap blur: shrink the frame, stretch it back with smoothing (no per-frame ctx.filter on a phone)
+    const cw = canvas.width, ch = canvas.height, k = 1 / 10, sw = Math.max(8, Math.round(cw * k)), sh = Math.max(8, Math.round(ch * k));
+    const o = G.introBlur || (G.introBlur = document.createElement('canvas'));
+    if (o.width !== sw || o.height !== sh) { o.width = sw; o.height = sh; }
+    const oc = o.getContext('2d');
+    oc.imageSmoothingEnabled = true; oc.imageSmoothingQuality = 'high';
+    oc.clearRect(0, 0, sw, sh); oc.drawImage(canvas, 0, 0, sw, sh);
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(o, 0, 0, cw, ch);
+    ctx.restore();
+  } catch (e) { /* the plain dim below is enough */ }
+  dim(0.66);
+  const g = ctx.createRadialGradient(W_ / 2, H_ * 0.45, Math.min(W_, H_) * 0.25, W_ / 2, H_ * 0.45, Math.max(W_, H_) * 0.75);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(8,4,2,0.5)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W_, H_);
+}
+
+// which chicks this level offers: { open, id (the equipped one), choice (2+ to pick from), need (a first-timer must tap one) }
+function introChicks() {
+  const open = strikesOpen(), K = G.sim && G.sim.stk;
+  if (!K || !K.any || !open.length || (G.li >= 0 && G.level.id < STRIKE_FROM)) return { open: [], id: null, choice: false, need: false };
+  const choice = open.length > 1;
+  return { open, id: K.id || null, choice, need: choice && !K.id && (save.seen.pickN || 0) < 2 };
+}
+// the first two levels with a choice ask for a pick; after that the last used chick (else the newest) is already on
+function introAutoPick(L, i) {
+  const open = strikesOpen();
+  if (!open.length || (i >= 0 && L.id < STRIKE_FROM) || (G.stkSel && G.stkSel.lid === L.id)) return;
+  if (open.length > 1 && (save.seen.pickN || 0) < 2) return;
+  const last = open.find((S) => S.id === save.lastStk) || open[open.length - 1];
+  G.stkSel = { lid: L.id, id: last.id };
+}
+
+// one chick card. sel: 0..1 eased selection (lift, grow, bright border, glow, check); dim: another card is chosen
+function chickCard(S, x, y, w, h, s, o) {
+  const sel = o.sel, pulse = o.need && !save.calm ? 1 + 0.018 * Math.sin(G.t * 4 + o.i * 0.9) : 1;
+  const bn = o.bounce ? 1 + 0.07 * o.bounce * Math.sin(o.bt * 24) : 1;
+  const k = (1 + 0.08 * sel) * pulse * bn, cx = x + w / 2, cy = y + h / 2 - 7 * s * sel;
+  const ac = o.acc, r = 16 * s;
+  ctx.save();
+  ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-w / 2, -h / 2);
+  if (o.dim) ctx.globalAlpha = 0.8;
+  if (sel > 0.02) { // soft glow in the accent colour
+    ctx.save(); ctx.shadowColor = ac; ctx.shadowBlur = 26 * s * sel; ctx.globalAlpha *= sel;
+    ui.roundRect(0, 0, w, h, r); ctx.fillStyle = ac; ctx.fill(); ctx.restore();
+  }
+  ui.frame(0, 0, w, h, { s: s * 0.62, r, shadow: sel < 0.5 });
+  const pad = 7 * s;
+  if (o.wide) { // a lone chick: art on the left, name and power on the right
+    const aw = Math.min(h - 2 * pad, w * 0.4);
+    artStage(pad, pad, aw, h - 2 * pad, s, () => drawStrikeStage(ctx, S.id, pad, pad + 2 * s, aw, h - 2 * pad - 4 * s, G.t));
+    const tx = pad * 2 + aw, tw = w - tx - pad * 1.5;
+    const up = wrapText(S.up, 14 * s, tw).slice(0, 3), dn = wrapText('Downside: ' + S.down, 12 * s, tw).slice(0, 3);
+    let ty = h / 2 - ((up.length * 17 + dn.length * 15 + 26) * s) / 2 + 11 * s;
+    ui.text(S.name, tx, ty, { size: 19 * s, color: S.col ? S.col[1] : ui.C.ink, maxW: tw, noRecord: true }); ty += 25 * s;
+    up.forEach((l, j) => { ui.text(l, tx, ty, { size: 14 * s, color: ui.C.ink, maxW: tw, noRecord: true }); ty += 17 * s; });
+    dn.forEach((l, j) => { ui.text(l, tx, ty, { size: 12 * s, color: ui.C.warn, maxW: tw, noRecord: true }); ty += 15 * s; });
+  } else {
+    const ah = h - 2 * pad - o.textH;
+    artStage(pad, pad, w - 2 * pad, ah, s, () => drawStrikeStage(ctx, S.id, pad, pad + 2 * s, w - 2 * pad, ah - 4 * s, G.t));
+    let ty = pad + ah + o.ns * 0.75;
+    const nmCol = S.col ? ui.tint(S.col[1], -0.3) : ui.C.ink;
+    (o.two ? S.name.split(' ') : [S.name]).forEach((wd) => { ui.text(wd, w / 2, ty, { size: o.ns, align: 'center', color: nmCol, maxW: w - 2 * pad, noRecord: true }); ty += o.ns * 1.1; });
+    o.lines.forEach((l, j) => { ui.text(l, w / 2, ty, { size: o.ls, align: 'center', color: ui.C.ink, maxW: w - 2 * pad, noRecord: true }); ty += o.ls * 1.2; });
+  }
+  if (sel > 0.02) { // thick bright border + the check badge
+    ctx.save(); ctx.globalAlpha *= sel; ctx.lineJoin = 'round';
+    ui.roundRect(0, 0, w, h, r); ctx.lineWidth = 5 * s; ctx.strokeStyle = ac; ctx.stroke();
+    ui.roundRect(2.5 * s, 2.5 * s, w - 5 * s, h - 5 * s, r - 2.5 * s); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.stroke();
+    const br = 13 * s, bx = w - 4 * s, by = 4 * s;
+    ctx.beginPath(); ctx.arc(bx, by, br, 0, 7); ctx.fillStyle = '#3eb42d'; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx - br * 0.45, by + br * 0.02); ctx.lineTo(bx - br * 0.1, by + br * 0.38); ctx.lineTo(bx + br * 0.5, by - br * 0.34);
+    ctx.lineWidth = 3 * s; ctx.lineCap = 'round'; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// the picker block: cards in a grid (one row when they fit), or one wide card for a lone chick
+function pickerBlocks(s, iw, minW) {
+  const T = introChicks();
+  if (!T.open.length) { // chicks only work on villains: on a level without any, they rest (and say so, no picker to anticipate)
+    const rest = strikesOpen().length && !(G.li >= 0 && G.level.id < STRIKE_FROM);
+    return { blocks: rest ? [lineBlock('No villains here: your chicks rest this level.', 14.5 * s, { color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:rest', gap: 0 })] : [], T };
+  }
+  const n = T.open.length, gap = 10 * s, acc = G.introAcc;
+  const maxCols = Math.max(1, Math.floor((iw + gap) / (minW + gap)));
+  const rows = Math.ceil(n / maxCols), cols = Math.ceil(n / rows);
+  const cw = Math.min(n === 1 ? 360 * s : 150 * s, (iw - (cols - 1) * gap) / cols);
+  const ls = Math.max(10, Math.min(12.5 * s, cw / 9.5));
+  const lines = T.open.map((S) => wrapText(S.up, ls, cw - 14 * s).slice(0, 8));
+  // the name is the bigger line (1.2x the power text); a narrow card breaks it in two ("Thunder / Chick") rather than shrinking it
+  const nm = (S) => ui.measure(S.name, 100) / 100, nw = cw - 14 * s;
+  let ns = ls * 1.2; const two = T.open.some((S) => nm(S) * ns > nw);
+  if (two) ns = Math.min(ns, nw / Math.max(...T.open.flatMap((S) => S.name.split(' ').map((w) => ui.measure(w, 100) / 100))));
+  const nl = Math.max(...lines.map((l) => l.length)), textH = ns * 1.15 * (two ? 2 : 1) + 4 * s + nl * ls * 1.2 + 4 * s;
+  const ch = n === 1 ? 118 * s : Math.min(rows > 1 ? 170 * s : 300 * s, 64 * s + textH + (rows > 1 ? 0 : 38 * s));
+  const B = [];
+  const hint = T.need ? 'Pick a chick to help you' : T.choice ? 'Your chick for this level' : T.id ? 'Your chick takes this level with you' : 'Tap the chick to take it along';
+  B.push({ h: 24 * s, gap: 0, draw: (x, y, w) => {
+    const pu = T.need && !save.calm ? 1 + 0.04 * Math.sin(G.t * 4) : 1;
+    ctx.save(); ctx.translate(x + w / 2, y + 12 * s); ctx.scale(pu, pu); ctx.translate(-(x + w / 2), -(y + 12 * s));
+    ui.text(hint, x + w / 2, y + 12 * s, { size: 18 * s, align: 'center', maxW: w, color: T.need ? '#ffe27a' : '#fff6e0', stroke: 'rgba(40,20,5,0.85)', tag: 'intro:pickhint' });
+    ctx.restore();
+  } });
+  B.push({ h: rows * ch + (rows - 1) * gap + 22 * s, gap: 10 * s, draw: (x, y, w) => {
+    y += 16 * s; // room for a lifted card
+    T.open.forEach((S, i) => {
+      const r = Math.floor(i / cols), inRow = r === rows - 1 ? n - r * cols : cols, c = i - r * cols;
+      const rx = x + w / 2 - (inRow * cw + (inRow - 1) * gap) / 2 + c * (cw + gap), ry = y + r * (ch + gap);
+      const A = (G.cardSel || (G.cardSel = {})), want = S.id === T.id ? 1 : 0, st = A[S.id] || (A[S.id] = { v: want, t: G.t });
+      const dt = Math.min(0.05, Math.max(0, G.t - st.t)); st.t = G.t; st.v += (want - st.v) * Math.min(1, dt * 14);
+      const pk = G.introPick && G.introPick.id === S.id ? G.introPick : null, bt = pk ? G.t - pk.t : 9;
+      chickCard(S, rx, ry, cw, ch, s, { sel: st.v, dim: !!T.id && S.id !== T.id && T.choice, need: T.need, i, acc, wide: n === 1, lines: lines[i], ls, ns, two, textH,
+        bounce: bt < 0.4 && !save.calm ? 1 - bt / 0.4 : 0, bt });
+      const rect = { x: rx, y: ry, w: cw, h: ch };
+      ui.record(rect, 'btn:stk:pick:' + S.id, 'btn:stk:pick:' + S.id);
+      ui.buttons.push({ id: 'stk:pick:' + S.id, ...rect });
+    });
+  } });
+  const S = T.id ? STRIKE[T.id] : null;
+  if (S && T.choice) B.push(...wrapText('Downside: ' + S.down, 13.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 13.5 * s, { color: '#ffb48a', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:stkdn' + i, gap: i ? 1 * s : 2 * s })));
+  return { blocks: B, T };
+}
+
+function drawLevelIntro(L, acc) {
+  ui.calm = save.calm;
+  introBackdrop();
+  const u = ui.u, A = ui.A, C = ui.C, wo = worldOpener(L);
+  const land = A.w > A.h * 1.15;
+  G.introAcc = tintHex(/^#[0-9a-f]{6}$/i.test((ui.skin && ui.skin.ribbon) || '') ? ui.skin.ribbon : acc);
+  const kinds = G.li >= 0 && G.infoKinds ? G.infoKinds.filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 7) : [];
+  // never drop words: the text takes as many lines as it needs, one font step smaller when it runs past three
+  const tipText = wo ? L.intro.line : L.tip || '';
+  const tipSize = (s, iw) => (tipText && wrapText(tipText, 14.5 * s, iw).length > 3 ? 12.5 : 14.5) * s;
+  const tipLines = (s, iw) => (tipText ? wrapText(tipText, tipSize(s, iw), iw).slice(0, 6) : []);
+  const label = G.li === -2 ? 'Lab' : G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`;
+  const head = (s, iw) => [
+    { h: 40 * s, gap: 0, draw: (x, y, w) => ui.ribbon(label, x + w / 2, y, clamp(ui.measure(label, 26 * s) + 70 * s, 150 * s, w), 40 * s, { s, color: acc, size: 26 * s, tag: 'intro:level' }) },
+    { h: 42 * s, gap: 10 * s, draw: (x, y, w) => ui.text(L.name, x + w / 2, y + 22 * s, { size: 36 * s, align: 'center', maxW: w, color: '#fff', stroke: 'rgba(40,20,5,0.9)', shadow: 'rgba(0,0,0,0.35)', tag: 'intro:name' }) },
+    ...(wo ? [lineBlock(WORLDS[envOf(G.li)] || L.intro.title, 15 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:world', gap: 0 })] : []),
+  ];
+  const goal = (s, iw) => [
+    { h: 92 * s, gap: 14 * s, draw: (x, y, w) => {
+      ui.well(x, y, w, 92 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
+      const n = L.eggs, sp = Math.min(34 * s, (w - 20 * s) / n), es = Math.min(30 * s, sp * 0.95);
+      for (let i = 0; i < n; i++) drawEggIcon(ctx, x + w / 2 + (i - (n - 1) / 2) * sp, y + 27 * s, es, i < L.target ? 'alive' : 'alive');
+      ui.record({ x: x + w / 2 - n * sp / 2, y: y + 10 * s, w: n * sp, h: 32 * s }, 'intro:eggs');
+      ui.text(`Save ${L.target} of ${L.eggs} eggs`, x + w / 2, y + 58 * s, { size: 21 * s, align: 'center', maxW: w - 16 * s, color: C.warn, tag: 'intro:goal' });
+      ui.text(G.sim && G.sim.timeLimit ? `You have ${Math.round(G.sim.timeLimit)} s` : 'before the fuse burns out', x + w / 2, y + 78 * s, { size: 13.5 * s, align: 'center', maxW: w - 16 * s, color: C.ink2, tag: 'intro:fuse' });
+    } },
+    // star goals (mykee: "right before the level we need to show what to do to get 2 or 3 stars"): mirrors computeResult
+    ...(G.li >= 0 ? [{ h: 3 * 22 * s + 6 * s, gap: 10 * s, draw: (x, y, w) => {
+      const rows = [L.target === 1 ? 'Save the egg' : `Save ${L.target} eggs`, L.eggs === 1 ? 'Do not lose the egg' : 'Lose no eggs', 'Every egg home without a crack'];
+      const sr = 7.5 * s, bx = x + w / 2 - Math.min(w, 330 * s) / 2;
+      rows.forEach((t, i) => {
+        const ry = y + 3 * s + i * 22 * s + 11 * s;
+        for (let j = 0; j < 3; j++) drawStar(ctx, bx + sr + j * sr * 2.1, ry, sr, j <= i);
+        ui.text(t, bx + 3 * sr * 2.1 + 6 * s, ry, { size: 14.5 * s, color: '#fff6e0', stroke: 'rgba(40,20,5,0.85)', maxW: Math.min(w, 330 * s) - 3 * sr * 2.1 - 6 * s, tag: 'intro:star' + i });
+      });
+    } }] : []),
+    ...(G.li === -1 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14.5 * s, { color: '#9bd8ff', stroke: 'rgba(10,20,40,0.8)', tag: 'intro:daily', gap: 8 * s })] : []),
+  ];
+  const foes = (s, iw) => !kinds.length ? [] : [
+    lineBlock('Watch out for', 14 * s, { color: '#fff6e0', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:foes', gap: 14 * s }),
+    { h: 52 * s, gap: 4 * s, draw: (x, y, w) => {
+      const P = Math.min(48 * s, (w - 6 * s * (kinds.length - 1)) / kinds.length), x0 = x + w / 2 - (kinds.length * P + (kinds.length - 1) * 6 * s) / 2;
+      kinds.forEach((k, i) => {
+        const I = VILLAIN_INFO[k] || { group: 'creature' }, bg = PORTRAIT_BG[I.group] || PORTRAIT_BG.creature, px = x0 + i * (P + 6 * s), py = y + (52 * s - P) / 2;
+        ui.well(px, py, P, P, { s, r: 11 * s, a: bg[0], b: bg[1], border: 'rgba(40,24,10,0.7)', shade: 'rgba(0,0,10,0.45)', paint: () => drawVillainPortrait(ctx, k, px + P / 2, py + P / 2, P, G.t) });
+        ui.record({ x: px, y: py, w: P, h: P }, 'intro:foe' + i);
       });
     } },
-    lineBlock(S ? 'Tap another chick to swap' : `Pick a power chick for this level${save.wallet.charges ? ` (${save.wallet.charges} charges in your bag)` : ''}`, 13 * s, { color: ui.C.ink2, tag: 'intro:strike', gap: 4 * s }),
   ];
+  const notes = (s, iw) => [
+    ...tipLines(s, iw).map((l, i) => lineBlock(l, tipSize(s, iw), { color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:tip' + i, gap: i ? 2 * s : 12 * s })),
+    ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus, G.sim.MD.fuse), 14 * s, { color: '#9bd8ff', stroke: 'rgba(10,20,40,0.8)', tag: 'intro:bonus', gap: 8 * s })] : []),
+  ];
+  const boost = (s) => ({ h: 68 * s, gap: 10 * s, draw: (x, y, w) => {
+    ui.well(x, y, w, 68 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
+    drawBoosterPicker(ui, ctx, x + 6 * s, y + 3 * s, w - 12 * s, 62 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t });
+  } });
+  const play = (s, w0, need) => ({ h: 66 * s, gap: 12 * s, draw: (x, y, w) => ui.button('go', 'PLAY', x + (w - w0) / 2, y, w0, 66 * s, { kind: 'primary', shimmer: !need, disabled: need, icon: ICON.play, size: 27 * s }) });
+  const links = (s) => ({ h: 46 * s, gap: 10 * s, draw: (x, y, w) => {
+    const ad = !G.adBoost && !G.golden, bw = ad ? w * 0.36 : w * 0.5, gp = 10 * s, tw = ad ? bw + gp + w * 0.56 : bw, x0 = x + (w - tw) / 2;
+    ui.button(G.li === -1 ? 'back' : 'levels', G.li === -1 ? 'Menu' : 'Levels', x0, y, bw, 46 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s });
+    if (ad) ui.button('adboost', 'Free booster', x0 + bw + gp, y, w * 0.56, 46 * s, { kind: 'ad', ad: true, size: 15.5 * s });
+  } });
+
+  const fit = (s) => {
+    const pad = 20 * u, margin = 14 * u;
+    if (land) {
+      const lw = Math.min(A.w * 0.38, 420 * s), rw = Math.min(A.w - lw - 3 * pad, 560 * s), lx = A.x + pad + (A.w - 2 * pad - lw - rw - pad) / 2;
+      const left = [...head(s, lw), ...goal(s, lw), ...foes(s, lw), ...notes(s, lw)];
+      const P = pickerBlocks(s, rw, 84 * s);
+      const mid = [...P.blocks, ...(save.wallet ? [boost(s)] : [])], bot = [play(s, Math.min(rw, 360 * s), P.T.need), links(s)];
+      const col = (L2) => L2.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
+      return { s, land, left, mid, bot, lx, lw, rx: lx + lw + pad, rw, need: Math.max(col(left), col(mid) + col(bot) + 10 * s) };
+    }
+    const iw = Math.min(A.w - 2 * pad, 460 * s), x0 = A.cx - iw / 2;
+    const top = [...head(s, iw), ...goal(s, iw), ...foes(s, iw), ...notes(s, iw)];
+    const P = pickerBlocks(s, iw, 100 * s);
+    const mid = [...P.blocks, boost(s)], bot = [play(s, iw, P.T.need), links(s)];
+    const col = (L2) => L2.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
+    return { s, land, top, mid, bot, x0, iw, need: col(top) + col(mid) + col(bot) + 8 * s };
+  };
+  const avail = A.h - 36 * u;
+  let m = fit(u);
+  for (let n = 0; n < 5 && m.need > avail + 0.5 && m.s > u * 0.4; n++) m = fit(Math.max(u * 0.4, m.s * Math.min(0.97, avail / m.need)));
+  const s = m.s, colH = (L2) => L2.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
+  const put = (blocks, x, y, w) => { for (const b of blocks) { y += b.gap ?? 10 * s; b.draw(x, y, w); y += b.h; } };
+  const k = ui.pop(G.screenT, 0.32);
+  ctx.save();
+  if (k !== 1) { ctx.translate(A.cx, A.cy); ctx.scale(k, k); ctx.translate(-A.cx, -A.cy); }
+  const y0 = A.y + 18 * u, y1 = A.y1 - 14 * u;
+  if (m.land) {
+    put(m.left, m.lx, A.cy - colH(m.left) / 2 - 0, m.lw);
+    const hb = colH(m.bot), hm = colH(m.mid), room = y1 - y0 - hb;
+    put(m.mid, m.rx, y0 + Math.max(0, (room - hm) / 2), m.rw);
+    put(m.bot, m.rx, y1 - hb, m.rw);
+  } else {
+    const ht = colH(m.top), hb = colH(m.bot), hm = colH(m.mid), free = y1 - y0 - ht - hb - hm;
+    put(m.top, m.x0, y0 + Math.min(free * 0.15, 30 * u), m.iw);
+    const ty = y0 + Math.min(free * 0.15, 30 * u) + ht;
+    put(m.mid, m.x0, ty + Math.max(0, (y1 - hb - ty - hm) / 2), m.iw);
+    put(m.bot, m.x0, y1 - hb, m.iw);
+  }
+  ctx.restore();
 }
+const tintHex = (c) => c.length === 7 ? ui.tint(c, 0.35) : c; // the accent, a step brighter for borders and glow
 
 // v3.2: the lava salamander on its intro card, idling (code-drawn, the in-game art)
 function salIntroArt(x, y, w, h) {
