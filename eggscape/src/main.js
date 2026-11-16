@@ -177,7 +177,7 @@ function safeInsets() {
 }
 
 function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, 2, typeof Q !== 'undefined' ? Q.steps[Q.i] : 2);
+  DPR = Math.min(window.devicePixelRatio || 1, save.saver ? 1.3 : 2, typeof Q !== 'undefined' ? Q.steps[Q.i] : 2);
   W_ = Math.max(320, window.innerWidth);
   H_ = Math.max(320, window.innerHeight);
   canvas.width = Math.round(W_ * DPR);
@@ -604,6 +604,9 @@ function updateCamera(dt) {
   if (G.screen === 'pause' && !G.camSnap) return; // the shot holds under the pause card
   if (G.screen === 'play') cv.playT += dt;
   let T = camTarget();
+  // 2026-11-16 (mykee: "screen stuck, hard to control" on L13): while a finger holds a ring the camera stands
+  // completely still, so the ring under the finger never slides away from it. It eases on once the finger lets go.
+  if (!G.camSnap && G.screen === 'play' && G.sim && G.sim.rings.some((r) => r.held)) { T = { x: cam.x, y: cam.y, k: cam.k }; cv.vx = cv.vy = cv.vk = 0; }
   if (G.camSnap) {
     G.camSnap = false;
     // a new level opens wide (or on its boss) and eases in; a resize just snaps
@@ -1111,6 +1114,9 @@ async function press(id) {
       break;
     case 'set:close':
       G.settingsOpen = false;
+      break;
+    case 'set:saver':
+      save.saver = !save.saver; persist(); setDPR();
       break;
     case 'set:restore':
       ads.restore(); toast('Checking your purchases...', 2);
@@ -3687,7 +3693,11 @@ function drawSettings() {
     } });
     B.push(lineBlock('How fast a ring follows your finger', 13 * s, { color: C.ink2, tag: 'set:rshint', gap: 2 * s }));
     B.push({ h: 42 * s, gap: 14 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) });
-    B.push({ h: 42 * s, draw: (x, y, w) => ui.button('calm', save.calm ? 'Reduced motion: on' : 'Reduced motion: off', x, y, w, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 15 * s }) });
+    B.push({ h: 42 * s, draw: (x, y, w) => {
+      const hw = (w - 10 * s) / 2;
+      ui.button('calm', save.calm ? 'Calm motion: on' : 'Calm motion: off', x, y, hw, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 14 * s });
+      ui.button('set:saver', save.saver ? 'Battery saver: on' : 'Battery saver: off', x + hw + 10 * s, y, hw, 42 * s, { kind: 'tertiary', icon: save.saver ? ICON.check : null, size: 14 * s });
+    } });
     if (ads.canBuyPremium || ads.premium) B.push({ h: 40 * s, draw: (x, y, w) => ui.button('set:restore', 'Restore purchases', x + w * 0.15, y, w * 0.7, 40 * s, { kind: 'tertiary', size: 14.5 * s }) });
     B.push({ h: 52 * s, gap: 14 * s, draw: (x, y, w) => ui.button('set:close', 'Done', x, y, w, 52 * s, { kind: 'primary', icon: ICON.check, size: 20 * s }) });
     return B;
@@ -4396,6 +4406,9 @@ function shade(hex) {
 let last = 0;
 function frame(now) {
   requestAnimationFrame(frame); // first: an error below can never stop the loop (a stopped loop is a frozen level)
+  // 2026-11-16 battery (mykee: the phone heats up): never draw faster than 60 fps (a 120 Hz screen called us twice as
+  // often for nothing), 30 fps with Battery saver on
+  if (now - last < (save.saver ? 1000 / 30 : 1000 / 60) - 2.5) return;
   const dt = Math.min(0.05, (now - last) / 1000 || 0.016);
   last = now;
   if (G.paused) return;
@@ -4421,12 +4434,13 @@ function adaptQuality(dt) {
   const avg = Q.acc / Q.n;
   Q.acc = Q.n = 0;
   const cap = Math.min(window.devicePixelRatio || 1, 2);
+  if (save.saver) { if (avg > 1 / 26 && Q.i < Q.steps.length - 1) { Q.i++; setDPR(); } return; } // 30 fps by design
   if (avg > 1 / 45 && Q.i < Q.steps.length - 1 && Q.steps[Q.i + 1] < cap + 0.01) { Q.i++; Q.good = 0; setDPR(); }
   else if (avg < 1 / 58) { if ((Q.good += 2) >= 10 && Q.i > 0) { Q.i--; Q.good = 0; setDPR(); } }
   else Q.good = 0;
 }
 function setDPR() {
-  const d = Math.min(window.devicePixelRatio || 1, Q.steps[Q.i]);
+  const d = Math.min(window.devicePixelRatio || 1, Q.steps[Q.i], save.saver ? 1.3 : 2);
   if (Math.abs(d - DPR) < 0.01) return;
   DPR = d;
   canvas.width = Math.round(W_ * DPR); canvas.height = Math.round(H_ * DPR);
@@ -4499,7 +4513,7 @@ async function boot() {
   // the app build used to be an everything-unlocked test build: its saves carry 50 fake levels and 99999 coins. The first
   // real-progression launch starts the journey fresh (settings and the hen's skins carry over).
   if (typeof __APP__ !== 'undefined' && __APP__ && !save.real) {
-    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm, ringSpeed: save.ringSpeed };
+    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm, ringSpeed: save.ringSpeed, saver: save.saver };
     save = { ...defaultSave(), ...keep };
     ads.rebind(save);
   }
