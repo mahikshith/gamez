@@ -15,6 +15,7 @@ import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge } from './ui/ui.js';
 import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
 import { drawSnake } from './render/characters.js';
 import * as MS from './render/mapscene.js'; // the world map: land, road, scenery and cast
+import { drawRoadDress } from './render/mapamb.js'; // the outfit's pack strings its garland along the road
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
 import { drawSprite, drawBossCard, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
 import { drawHenAnim, henIdleEvents, resetHen, setHenSkin } from './render/hen.js';
@@ -5245,6 +5246,7 @@ function drawLevels() {
   const nx = nextIdx();
   let doneTo = null; for (let i = 0; i < LEVELS.length; i++) if (bestStarsOf(LEVELS[i].id) > 0) doneTo = L.stops[i].y;
   MS.drawRoad(ctx, L, sy, vt, H_, doneTo);
+  if (ui.skin && ui.skin.pack && ui.skin.pack.bg) drawRoadDress(ctx, L, sy, vt, H_, t, ui.skin.pack.bg, calm);
   MS.drawCast(ctx, L, sy, vt, H_, t, calm);
   const wide = mapWide(), ctaOn = playable(nx) && envOpen(envOf(nx));
   const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 320) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - 4 * u;
