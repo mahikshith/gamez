@@ -192,7 +192,8 @@ export class Sim {
     this.crackV = CRACK_V * this.vs * this.MD.crack;
     this.shatterV = SHATTER_V * this.vs;
     this.golden = opts.golden || false;
-    // start boosters (store): opts.stone, opts.time (+15 s), opts.sponge (pad under the first drop)
+    // start boosters (store): opts.stone, opts.time (+15 s), opts.sponge (pad under the first drop), opts.nest (a wider
+    // basket), opts.snips (three thorns snipped at the start: sim/strike.js)
     this.timeLimit = level.time ? Math.round(level.time * this.MD.fuse) + (opts.time ? 15 : 0) : 0;
     this.orbs = [];
     this.embers = [];
@@ -245,7 +246,7 @@ export class Sim {
 
     // nest + ground
     const n = L.nest || {};
-    this.nestW = (n.w || 1.9) + this.MD.nestW;
+    this.nestW = ((n.w || 1.9) + this.MD.nestW) * (this.opts.nest ? 1.35 : 1); // Wide Nest start boost: 35% wider
     this.nestPattern = n.pattern || 'sine';
     this.groundY = -(this.outerR + (n.drop ?? 0.6) + 0.35) * this.gy; // underwater: the surface, over the vault
     this.nestY = this.groundY + 0.02 * this.gy;
@@ -517,7 +518,7 @@ export class Sim {
       const moving = !ring.motor && !ring.follower && Math.abs(ring.omega) > 0.25;
       if (moving && !ring.moving) this.turns++;
       ring.moving = moving;
-      if (ring.retract) {
+      if (ring.retract && !this.stkFrozen()) { // (Tick-Tock's stopped time holds moving thorns where they are)
         const { period, on, phase = 0 } = ring.retract;
         const ph = (((this.t + phase) % period) + period) % period / period;
         const want = ph < on ? 1 : 0;
@@ -549,7 +550,7 @@ export class Sim {
     } else if (this.weather === 'current') this.wind = L.weatherOpts?.strength ?? 1.4;
 
     for (const egg of this.eggs) {
-      if (!egg.alive || egg.saved) continue;
+      if (!egg.alive || egg.saved || egg.phx) continue; // (an egg in the Phoenix's talons is out of the world: sim/strike.js)
       const b = egg.body;
       egg.impact = 0;
       if (egg.crackCD > 0) egg.crackCD -= dt;
@@ -698,7 +699,7 @@ export class Sim {
     this.later.length = 0;
     // impacts collected in post-solve
     for (const egg of this.eggs) {
-      if (!egg.alive || egg.saved) continue;
+      if (!egg.alive || egg.saved || egg.phx) continue;
       const v = egg.impact * (egg.water > 0 ? 0.5 : 1) * (egg.shrink > 0 ? 1.25 : 1); // water shell: landings count half; v3.4 a shrunk egg cracks easier
       // one bump per egg per BUMP_CD (a resting egg used to report one every step), unless this hit is clearly harder
       if (v > 0.6 && (egg.bumpCD <= 0 || v > egg.bumpV * 1.5)) { egg.bumpCD = BUMP_CD; egg.bumpV = v; this.emit('bump', { egg, v, on: egg.impactOn }); }
@@ -2367,6 +2368,7 @@ export class Sim {
     const EGG_KEYS = ['id', 'alive', 'saved', 'cracks', 'fire', 'fireKind', 'stone', 'bubble', 'golden', 'crackCD', 'safeT', 'portalCD', 'ch', 'mult', 'freefall', 'comet', 'cometUsed', 'seed', 'magnet', 'water', 'zap', 'glow', 'chick', 'meteor', 'honey', 'honeyCD', 'prize'];
     EGG_KEYS.push('peckK', 'peckT', 'peckHit'); // predators (v3)
     EGG_KEYS.push('kind', 'guard', 'rockskin', 'curse', 'drop', 'lavaCD', 'fled'); // v3
+    EGG_KEYS.push('sbub'); // the Bubble Chick's bubble (sim/strike.js)
     EGG_KEYS.push(...CHICK_KEYS); // v3.2 chick kinds
     EGG_KEYS.push('hotK'); // v3.2: the salamander breath that last scorched it
     EGG_KEYS.push('octo'); // v3.3: held by octopus (id + 1)
@@ -2726,7 +2728,7 @@ export class Sim {
         this.emit('vineClose', { x: q.x, y: q.y, ring: ring.i });
       }
     }
-    this.lavaStep(dt);
+    if (!this.stkFrozen()) this.lavaStep(dt); // Tick-Tock: lava rocks hang where they are
     v31Step(this, dt); // bosses (v3.1): boss attacks, falling ice (replaces the old top-down icicles), walls, ring locks
   }
 
@@ -2847,7 +2849,7 @@ export class Sim {
     return true;
   }
   aliveEggs() {
-    return this.eggs.filter((e) => e.alive && !e.saved);
+    return this.eggs.filter((e) => e.alive && !e.saved && !e.phx); // an egg the Phoenix is flying home is no one's to touch
   }
   channelOf(egg) {
     const p = egg.body.getPosition();

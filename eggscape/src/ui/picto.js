@@ -96,7 +96,8 @@ export function pictoGoal(c, kind, x, y, s, o = {}) {
   else pictoNo(c, x, y, s, (cc, X, Y, S) => pictoCracked(cc, X, Y, S));
 }
 
-// the strike chicks' powers as pictograms (animated a little). id: freeze thunder bomb decoy tornado glue
+// the strike chicks' powers as pictograms (animated a little). id: freeze thunder bomb decoy tornado glue, and the premium
+// phoenix (a flaming wing over an egg), tock (an alarm clock, hands stopped) and bubble (an egg in a bubble)
 export function pictoPower(c, id, x, y, s, t = 0) {
   c.save(); c.translate(x, y); c.lineCap = 'round'; c.lineJoin = 'round';
   const r = s * 0.42;
@@ -123,6 +124,24 @@ export function pictoPower(c, id, x, y, s, t = 0) {
     c.strokeStyle = '#7fe0c4'; c.lineWidth = s * 0.1;
     for (let i = 0; i < 4; i++) { const k = i / 3, w = r * (1.05 - 0.6 * k), yy = -r * 0.85 + k * r * 1.7, ph = Math.sin(t * 5 + i) * s * 0.05;
       c.beginPath(); c.moveTo(-w + ph, yy); c.quadraticCurveTo(0, yy + s * 0.14, w + ph, yy); c.stroke(); }
+  } else if (id === 'phoenix') { // a flame-tipped wing sweeping over an egg
+    drawEggIcon(c, s * 0.08, s * 0.12, s * 0.62, 'alive');
+    const fl = 0.9 + 0.1 * Math.sin(t * 12);
+    c.beginPath(); c.moveTo(-r * 0.9, r * 0.1); c.quadraticCurveTo(-r * 0.5, -r * 1.05 * fl, r * 0.95, -r * 0.75 * fl); c.quadraticCurveTo(r * 0.2, -r * 0.42, r * 0.5, -r * 0.2); c.quadraticCurveTo(-r * 0.1, -r * 0.3, -r * 0.9, r * 0.1); c.closePath();
+    c.fillStyle = '#ff6a1c'; c.fill(); c.lineWidth = s * 0.06; c.strokeStyle = '#7a1c06'; c.stroke();
+    c.beginPath(); c.moveTo(-r * 0.55, -r * 0.05); c.quadraticCurveTo(-r * 0.2, -r * 0.7 * fl, r * 0.62, -r * 0.62 * fl); c.lineWidth = s * 0.07; c.strokeStyle = '#ffd23a'; c.stroke();
+  } else if (id === 'tock') { // an alarm clock: two bells, the hands stopped
+    const j = Math.sin(t * 40) * 0.04;
+    c.rotate(j);
+    for (const sd of [-1, 1]) { c.beginPath(); c.arc(sd * r * 0.55, -r * 0.62, r * 0.3, Math.PI, 0); c.fillStyle = '#e2ae48'; c.fill(); c.lineWidth = s * 0.05; c.strokeStyle = ink; c.stroke(); }
+    c.beginPath(); c.arc(0, s * 0.06, r * 0.82, 0, TAU); c.fillStyle = '#fff7e2'; c.fill(); c.lineWidth = s * 0.08; c.strokeStyle = '#8a5a1c'; c.stroke();
+    c.lineWidth = s * 0.07; c.strokeStyle = ink; c.beginPath(); c.moveTo(0, s * 0.06); c.lineTo(0, s * 0.06 - r * 0.55); c.moveTo(0, s * 0.06); c.lineTo(r * 0.38, s * 0.06 + r * 0.12); c.stroke();
+  } else if (id === 'bubble') { // an egg inside a shimmering bubble
+    drawEggIcon(c, 0, s * 0.02, s * 0.58, 'alive');
+    const sp = t * 1.5;
+    c.lineWidth = s * 0.07;
+    for (const [o, col] of [[0, '#ff8ccc'], [2.1, '#6fd6ff'], [4.2, '#9ff08a']]) { c.beginPath(); c.arc(0, 0, r * 0.98, sp + o, sp + o + 1.8); c.strokeStyle = col; c.stroke(); }
+    c.beginPath(); c.ellipse(-r * 0.45, -r * 0.5, r * 0.2, r * 0.1, -0.7, 0, TAU); c.fillStyle = '#ffffff'; c.fill();
   } else { // glue: a purple blob with a drip
     const dr = (t * 0.7) % 1;
     c.beginPath(); c.ellipse(0, -s * 0.06, r * 0.95, r * 0.6, 0, 0, TAU); c.fillStyle = '#b070ff'; c.fill(); c.lineWidth = s * 0.06; c.strokeStyle = '#5a2a9a'; c.stroke();

@@ -59,7 +59,8 @@ import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
 import { strikeLayer } from './render/strikehit.js'; // Chick Strike: the villains' hit reactions
 import { pictoCheck, pictoCross, pictoWarn, pictoClock, pictoFlame, pictoGem, pictoTarget, pictoCracked, pictoBroken, pictoGoal, pictoPower, pictoStarMinus } from './ui/picto.js'; // icon-first cards
-import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js'; // Chick Strike powers
+import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js';
+import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' crown // Chick Strike powers
 import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
@@ -142,7 +143,8 @@ const powerInfo = (id) => POWER_INFO[id] || { name: id, line: '', color: '#fff' 
 // Chick Strike: the chicks the player has reached (save.unlocked counts levels; the level being started counts too), and the one equipped
 const strikeReach = () => Math.max(save.unlocked || 1, G.level && G.li >= 0 ? G.level.id : 0);
 // 2026-11-16: a chick bought in the shop (wallet.chicks) is open from then on, whatever the level
-const strikesOpen = () => STRIKES.filter((S) => strikeReach() >= S.unlock || E.ownsChick(save.wallet, S.id));
+// (a premium chick has no level: it is open only once bought)
+const strikesOpen = () => STRIKES.filter((S) => (!S.premium && strikeReach() >= S.unlock) || E.ownsChick(save.wallet, S.id));
 // 2026-11-15: the power chick is chosen per level on the intro card. It no longer carries over silently from the last
 // level; a retry of the same level keeps the choice (G.stkSel is per level id).
 function strikeFor(L, i) {
@@ -1047,9 +1049,11 @@ async function press(id) {
       await breakThen(() => startLevel(-1));
       break;
     case 'stk:buy:freeze': case 'stk:buy:thunder': case 'stk:buy:bomb': case 'stk:buy:decoy': case 'stk:buy:tornado': case 'stk:buy:glue':
+    case 'stk:buy:phoenix': case 'stk:buy:tock': case 'stk:buy:bubble':
       G.chickBuy = id.slice(8); // a locked chick on the intro: its small buy sheet
       break;
     case 'stk:pick:freeze': case 'stk:pick:thunder': case 'stk:pick:bomb': case 'stk:pick:decoy': case 'stk:pick:tornado': case 'stk:pick:glue':
+    case 'stk:pick:phoenix': case 'stk:pick:tock': case 'stk:pick:bubble':
       { const pid = id.slice(9), cur = G.sim.stk && G.sim.stk.id; G.stkSel = { lid: G.level.id, id: cur === pid && strikesOpen().length < 2 ? null : pid }; G.introPick = { id: pid, t: G.t }; } // a lone chick toggles; with a choice, a tap picks
       G.sim.stkEquip(strikeFor(G.level, G.li));
       audio.play('cluck', { pitch: 2.2, vol: 0.5 });
@@ -1622,10 +1626,11 @@ function drawChickBuy() {
   stackCard(S.name, (s, iw) => [
     { h: 112 * s, gap: 4 * s, draw: (x, y, w) => { artStage(x + (w - 150 * s) / 2, y, 150 * s, 112 * s, s, () => drawStrikeStage(ctx, S.id, x + (w - 150 * s) / 2, y + 6 * s, 150 * s, 100 * s, G.t)); ui.record({ x: x + (w - 150 * s) / 2, y, w: 150 * s, h: 112 * s }, 'cb:art'); } },
     ...wrapText(S.up, 15.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 15.5 * s, { color: ui.C.ink, tag: 'cb:up' + i, gap: i ? 2 * s : 10 * s })),
-    lineBlock(`Free at level ${S.unlock}, or yours now for every level.`, 13.5 * s, { color: ui.C.ink2, tag: 'cb:free', gap: 6 * s }),
+    lineBlock(S.premium ? 'Premium chick: yours for good, in every level with villains.' : `Free at level ${S.unlock}, or yours now for every level.`, 13.5 * s, { color: S.premium ? '#b0700a' : ui.C.ink2, tag: 'cb:free', gap: 6 * s }),
+    ...(S.premium ? wrapText('Downside: ' + S.down, 13.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 13.5 * s, { color: ui.C.warn, tag: 'cb:dn' + i, gap: i ? 2 * s : 4 * s })) : []),
     { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button('cb:buy', `Unlock ${O.price}`, x + w * 0.1, y, w * 0.8, 56 * s, { kind: O.canAfford ? 'primary' : 'off', shimmer: O.canAfford, icon: (c, X, Y, Z) => drawCoin(c, X, Y, Z * 0.5, G.t), size: 21 * s }) },
     { h: 48 * s, gap: 10 * s, draw: (x, y, w) => ui.button('cb:close', 'Not now', x, y, w, 48 * s, { kind: 'tertiary', size: 19 * s }) },
-  ], { ribbon: '#f0a01c' });
+  ], { ribbon: S.premium ? '#b8860b' : '#f0a01c' });
 }
 
 // a shop tile's detail sheet: the art big, the name, what it does, and its buy / equip button
@@ -2005,6 +2010,14 @@ const EVENT_SFX = {
   stkBlast: ['wind_gust', { vol: 0.4, pitch: 1.8 }],
   stkCalm: ['cluck', { vol: 0.35, pitch: 1.3 }],
   decoyOn: ['decoy_peep'],
+  // the premium chicks (their hit sounds play in render/strike.js strikeEvent)
+  stkScoop: ['fire_ignite', { vol: 0.6, pitch: 1.4 }],
+  stkDrop: ['star', { vol: 0.5, pitch: 1.2 }],
+  stkTick: (ev) => ['ring_tick', { vol: 0.55, pitch: ev.n % 2 ? 1.5 : 1.25 }],
+  stkTockEnd: ['rewind', { vol: 0.45, pitch: 1.6 }],
+  stkBubbleOn: ['bubble_on', { vol: 0.5, pitch: 1.2 }],
+  stkPop: ['bubble_pop', { vol: 0.5, pitch: 1.3 }],
+  stkSnip: (ev) => ['thorn_snap', { vol: 0.55, pitch: 1.5 + ev.n * 0.1 }],
   // powers
   powerOn: ['power_use'],
   magnetOn: ['power_use', { pitch: 0.8 }],
@@ -2489,7 +2502,7 @@ function fireStrike(force) {
   const sim = G.sim;
   if (!sim || !sim.stkOn() || G.screen !== 'play') return null;
   // meter not full: a Chick Charge from the bag sends the chick anyway (bought with coins / found in chests)
-  const bag = !force && !sim.stkReady() && !sim.stk.fly && sim.state === 'play' && (save.wallet.charges || 0) > 0;
+  const bag = !force && !sim.stkReady() && !sim.stk.fly && !sim.stk.spent && sim.state === 'play' && (save.wallet.charges || 0) > 0;
   if (!force && !bag && !sim.stkReady()) {
     G.stkWob = G.t; audio.play('motor_tick', { vol: 0.6, pitch: 1.4 });
     if (!sim.stk.fly && G.t - (G.stkNoBagT || -9) > 4) { G.stkNoBagT = G.t; toast('Not charged yet. Save eggs and grab orbs to fill it, or get Chick Charges in the shop.', 2.6); }
@@ -2497,7 +2510,12 @@ function fireStrike(force) {
   }
   const pick = G.stkPick && G.t - G.stkPick.t < 1.5 ? G.stkPick.key : null;
   const r = sim.stkFire({ ...strikeFrom(), pick, force, bag });
-  if (!r.ok) { G.stkWob = G.t; if (r.why === 'none') toast('No villain to strike right now.', 2); }
+  if (!r.ok) {
+    G.stkWob = G.t;
+    if (r.why === 'none') toast('No villain to strike right now.', 2);
+    else if (r.why === 'noegg') toast('No egg the chick can reach right now.', 2);
+    else if (r.why === 'spent' && G.t - (G.stkNoBagT || -9) > 3) { G.stkNoBagT = G.t; toast('The Phoenix Chick flies once a level.', 2.2); }
+  }
   else {
     G.stkPick = null;
     if (r.bag) { const w = E.useCharge(save.wallet); if (w) { save.wallet = w; persist(); } }
@@ -2513,9 +2531,9 @@ function strikeBtnRect() {
 function drawStrikeBtn() {
   if (!strikeShown()) return;
   const r = strikeBtnRect(), K = G.sim.stk;
-  drawStrikeButton(ctx, r.x, r.y, r.w, { id: K.id, m: K.m, busy: !!K.fly, t: G.t, fullT: G.stkFullT, wobT: G.stkWob, pressed: ui.pressedId === 'strike', calm: save.calm });
+  drawStrikeButton(ctx, r.x, r.y, r.w, { id: K.id, m: K.m, busy: !!(K.fly || K.phx || K.spent), t: G.t, fullT: G.stkFullT, wobT: G.stkWob, pressed: ui.pressedId === 'strike', calm: save.calm });
   const nb = save.wallet.charges || 0; // the Chick Charge bag: a small count badge on the button's corner
-  if (nb > 0 && K.m < 1 && !K.fly) {
+  if (nb > 0 && K.m < 1 && !K.fly && !K.spent) {
     const bx = r.x + r.w * 0.86, by = r.y + r.w * 0.14, br = 11 * ui.u;
     ctx.save(); ctx.fillStyle = '#2a7a2e'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * ui.u;
     ctx.beginPath(); ctx.arc(bx, by, br, 0, 7); ctx.fill(); ctx.stroke();
@@ -3391,7 +3409,7 @@ function render() {
   blastXf(() => drawBossOver(ctx, sim, k, t), 7.3); // bosses (v3.1): icicles, thrown orbs, fog, gale streaks
   { const wx = warpXfBegin(ctx, sim, 'e'); SL(['eagle'], (c) => W.drawEagleAt(c, sim, t, k)); warpXfEnd(ctx, wx); }
   blastXf(() => drawP2Front(ctx, sim, k, t), 11.3); // v3.4: decoy, frozen/zapped creatures, beams, spin, pepper cloud
-  drawStrikeWorld(ctx, sim, k, t, G.henAt); // Chick Strike: the chick on the hen's back, its flight, glue, twisters, chains
+  drawStrikeWorld(ctx, sim, k, t, G.henAt, (e) => drawEggFelt(e, t, k)); // Chick Strike: the chick on the hen's back, its flight, glue, twisters, chains
   drawAllies(ctx, sim, t, k); // v3.4: rooster and goose, in front of the vault AND of every creature layer (never half behind a villain)
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);
   fx.draw(ctx, 'front');
@@ -4276,7 +4294,8 @@ function introAutoPick(L, i) {
 }
 
 // a chick's power in at most three words, and its downside in a few more (the icon carries the rest)
-const POWER_WORDS = { freeze: ['Freeze 6s', 'Rings ice over'], thunder: ['Chain stun', 'Eggs get jolted'], bomb: ['Blast + clear', 'Eggs get shoved'], decoy: ['Lure 7s', 'Hunters speed up'], tornado: ['Twist ring', 'A ring spins'], glue: ['Glue 8s', 'Eggs can stick'] };
+const POWER_WORDS = { freeze: ['Freeze 6s', 'Rings ice over'], thunder: ['Chain stun', 'Eggs get jolted'], bomb: ['Blast + clear', 'Eggs get shoved'], decoy: ['Lure 7s', 'Hunters speed up'], tornado: ['Twist ring', 'A ring spins'], glue: ['Glue 8s', 'Eggs can stick'],
+  phoenix: ['Flies egg home', 'Once a level'], tock: ['Stop time 5s', 'Clock loses 10s'], bubble: ['Bubble eggs 6s', 'Eggs float, pop'] };
 // a long tip as one short line: its first sentence, cut at a comma or a word before ~46 characters
 function shortTip(t) {
   if (!t) return '';
@@ -4331,6 +4350,10 @@ function chickCard(S, x, y, w, h, s, o) {
     const nmCol = S.col ? ui.tint(S.col[1], -0.3) : ui.C.ink;
     (o.two ? S.name.split(' ') : [S.name]).forEach((wd) => { ui.text(wd, w / 2, ty, { size: o.ns, align: 'center', color: nmCol, maxW: w - 2 * pad, noRecord: true }); ty += o.ns * 1.1; });
     o.lines.forEach((l, j) => { ui.text(l, w / 2, ty, { size: o.ls, align: 'center', color: ui.C.ink, maxW: w - 2 * pad, noRecord: true }); ty += o.ls * 1.2; });
+  }
+  if (S.premium) { // a premium chick: a gold inner rim and the crown on the card's top-left corner
+    ctx.save(); ui.roundRect(3 * s, 3 * s, w - 6 * s, h - 6 * s, r - 3 * s); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#ffc928'; ctx.stroke(); ctx.restore();
+    drawPremiumBadge(ctx, 6 * s + 10 * s, 4 * s, 11 * s, G.t);
   }
   if (sel > 0.02) { // thick bright border + the check badge
     ctx.save(); ctx.globalAlpha *= sel; ctx.lineJoin = 'round';
