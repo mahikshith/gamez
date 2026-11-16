@@ -56,6 +56,7 @@ import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm,
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
 import { strikeLayer } from './render/strikehit.js'; // Chick Strike: the villains' hit reactions
+import { pictoCheck, pictoCross, pictoWarn, pictoClock, pictoFlame, pictoGem, pictoTarget, pictoCracked, pictoBroken, pictoGoal, pictoPower, pictoStarMinus } from './ui/picto.js'; // icon-first cards
 import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js'; // Chick Strike powers
 import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
@@ -311,7 +312,7 @@ function startLevel(i, opts = {}) {
   if (G.sim.portals.some((pt) => pt.pull || Math.hypot(pt.ax - pt.bx, pt.ay - pt.by) > 0.05) && !save.seen.portalTip) {
     save.seen.portalTip = 1; G.portalTip = 1;
   }
-  G.stkPick = null; G.stkWob = -9; G.stkFullT = 0; G.henAt = null;
+  G.introFoe = null; G.stkPick = null; G.stkWob = -9; G.stkFullT = 0; G.henAt = null;
   G.golden = !!opts.golden;
   G.adBoost = opts.adBoost || null;
   G.freeRewind = !!G.boost.rewind;
@@ -360,7 +361,7 @@ function startLevel(i, opts = {}) {
   if (opts.direct) {
     portal.gameplayStart();
     audio.musicIntro(); // the world's short intro sting, then its loop
-    toast(G.level.tip, 3.2);
+    toast(shortTip(G.level.tip), 3.2);
   }
 }
 
@@ -385,8 +386,26 @@ function firstGrabbable(from, dir) {
 }
 
 // ---------------------------------------------------------------- toasts & popups
+// owner 2026-11-16: players come to play, not to read. A message is one short line (the first sentence, about six words)
+// with an icon; the first-time tips keep two short sentences at most.
+function shortToast(t) {
+  if (!t || t.length <= 44) return t;
+  const ss = t.split(/(?<=[.!?])\s/);
+  let q = ss[0];
+  if (q.length < 22 && ss[1]) q += ' ' + ss[1];
+  if (q.length > 60) { const c = q.slice(0, 60); q = c.slice(0, c.lastIndexOf(' ')); }
+  return q;
+}
+// the icon a message wears: given, else guessed from its words
+function toastIcon(T) {
+  if (T.icon) return T.icon;
+  const t = T.text;
+  if (/time/i.test(t)) return 'clock'; if (/coin|treasure|chest/i.test(t)) return 'coin'; if (/streak|rewound/i.test(t)) return 'flame';
+  if (/egg/i.test(t)) return T.tip ? 'warn' : 'egg'; if (/frozen|freez|ice/i.test(t)) return 'freeze'; return T.tip ? 'warn' : null;
+}
 function toast(text, life = 2.6, icon = null) {
   if (!text) return;
+  text = shortToast(text);
   // a short game message never waits behind a long villain tip: the tip steps aside (keeping the rest of its time) and
   // the message goes ahead of any queued tips
   if (G.toast && G.toast.tip) { G.toasts.unshift({ ...G.toast, life: Math.max(2.5, G.toast.life) }); G.toast = null; }
@@ -397,6 +416,7 @@ function toast(text, life = 2.6, icon = null) {
 // and queue one after another instead of stacking. The same lines live on in the "i" panel.
 const TIP_LIFE = 7;
 function tipToast(text) {
+  text = shortToast(text);
   if (!text || (G.toast && G.toast.text === text) || G.toasts.some((q) => q.text === text)) return;
   G.toasts.push({ text, life: TIP_LIFE, icon: null, tip: true });
 }
@@ -919,6 +939,7 @@ function keyboardTurn(dt) {
 // ---------------------------------------------------------------- buttons
 async function press(id) {
   audio.play(id === 'pause' || id === 'levels' || id === 'practice' ? 'ui_back' : 'ui_tap');
+  if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
   switch (id) {
     case 'zoom:in': setZoom((G.zm || 0) + 0.34); break;
     case 'zoom:out': setZoom((G.zm || 0) - 0.34); break;
@@ -979,7 +1000,7 @@ async function press(id) {
       setScreen('play');
       portal.gameplayStart();
       audio.musicIntro(); // the world's short intro sting, then its loop
-      toast(G.level.tip, 3.4);
+      toast(shortTip(G.level.tip), 3.4);
       break;
     }
     case 'daily':
@@ -3612,9 +3633,10 @@ function drawToast() {
   const size = 16 * u;
   const A = ui.A, maxW = Math.min(A.w - 32 * u, 520 * u);
   const xw = T.tip ? 22 * u : 0; // a villain tip keeps a little close mark on its right: a tap puts it away
-  const lines = wrapText(T.text, size, maxW - 32 * u - xw);
-  const h = lines.length * size * 1.3 + 18 * u;
-  const w = Math.min(maxW, Math.max(...lines.map((l) => ui.measure(l, size))) + 32 * u + xw);
+  const ico = toastIcon(T), icw = ico ? 26 * u : 0;
+  const lines = wrapText(T.text, size, maxW - 32 * u - xw - icw);
+  const h = Math.max(lines.length * size * 1.3 + 18 * u, ico ? 34 * u : 0);
+  const w = Math.min(maxW, Math.max(...lines.map((l) => ui.measure(l, size))) + 32 * u + xw + icw);
   const x = A.cx - w / 2, y = G.screen === 'title' && G.titleToastY ? G.titleToastY : Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
   G.toastRect = { x, y, w, h };
   ctx.save();
@@ -3622,7 +3644,13 @@ function drawToast() {
   const k = ui.pop(age, 0.22);
   if (k !== 1) { ctx.translate(A.cx, y + h / 2); ctx.scale(k, k); ctx.translate(-A.cx, -(y + h / 2)); }
   ui.glass(x, y, w, h, { r: Math.min(h / 2, 18 * u), a: 'rgba(58,36,20,0.94)', b: 'rgba(28,16,8,0.94)', border: 'rgba(255,224,160,0.6)', record: true, tag: 'toast', group: 'toast' });
-  lines.forEach((l, i) => ui.text(l, A.cx - xw / 2, y + 9 * u + size * 1.3 * (i + 0.5), { size, align: 'center', color: '#fff8e8', group: 'toast', tag: 'toast:' + i }));
+  if (ico) { // the icon in the left margin
+    const ix = x + 22 * u, iy = y + h / 2, iz = 24 * u;
+    if (ico === 'warn') pictoWarn(ctx, ix, iy, iz); else if (ico === 'clock') pictoClock(ctx, ix, iy, iz); else if (ico === 'flame') pictoFlame(ctx, ix, iy, iz);
+    else if (ico === 'egg') drawEggIcon(ctx, ix, iy, iz, 'alive'); else if (ico === 'coin') drawCoin(ctx, ix, iy, 10 * u, G.t); else if (ico === 'check') pictoCheck(ctx, ix, iy, iz);
+    else if (ico === 'cross') pictoCross(ctx, ix, iy, iz); else pictoPower(ctx, ico, ix, iy, iz, G.t);
+  }
+  lines.forEach((l, i) => ui.text(l, A.cx - xw / 2 + icw / 2, y + (h - lines.length * size * 1.3) / 2 + size * 1.3 * (i + 0.5), { size, align: 'center', color: '#fff8e8', group: 'toast', tag: 'toast:' + i }));
   if (T.tip) { // the close mark, and a hairline that runs down with the tip's time
     const cx = x + w - 13 * u - 4 * u, cy = y + h / 2, r = 4.5 * u;
     ctx.strokeStyle = 'rgba(255,232,190,0.75)'; ctx.lineWidth = 2 * u; ctx.lineCap = 'round';
@@ -3863,6 +3891,15 @@ function introAutoPick(L, i) {
   G.stkSel = { lid: L.id, id: last.id };
 }
 
+// a chick's power in at most three words, and its downside in a few more (the icon carries the rest)
+const POWER_WORDS = { freeze: ['Freeze 6s', 'Rings ice over'], thunder: ['Chain stun', 'Eggs get jolted'], bomb: ['Blast + clear', 'Eggs get shoved'], decoy: ['Lure 7s', 'Hunters speed up'], tornado: ['Twist ring', 'A ring spins'], glue: ['Glue 8s', 'Eggs can stick'] };
+// a long tip as one short line: its first sentence, cut at a comma or a word before ~46 characters
+function shortTip(t) {
+  if (!t) return '';
+  let q = t.split(/(?<=[.!?:;])\s/)[0].replace(/[.:;]$/, '');
+  if (q.length > 46) { const c = q.slice(0, 46), i = Math.max(c.lastIndexOf(','), c.lastIndexOf(' \u2014 ')); q = i > 20 ? c.slice(0, i) : c.slice(0, c.lastIndexOf(' ')); }
+  return q;
+}
 // one chick card. sel: 0..1 eased selection (lift, grow, bright border, glow, check); dim: another card is chosen
 function chickCard(S, x, y, w, h, s, o) {
   const sel = o.sel, pulse = o.need && !save.calm ? 1 + 0.018 * Math.sin(G.t * 4 + o.i * 0.9) : 1;
@@ -3878,18 +3915,22 @@ function chickCard(S, x, y, w, h, s, o) {
   }
   ui.frame(0, 0, w, h, { s: s * 0.62, r, shadow: sel < 0.5 });
   const pad = 7 * s;
-  if (o.wide) { // a lone chick: art on the left, name and power on the right
+  const PW = POWER_WORDS[S.id] || ['', ''];
+  if (o.wide) { // a lone chick: art on the left; name, power pictogram + words, downside on the right
     const aw = Math.min(h - 2 * pad, w * 0.4);
     artStage(pad, pad, aw, h - 2 * pad, s, () => drawStrikeStage(ctx, S.id, pad, pad + 2 * s, aw, h - 2 * pad - 4 * s, G.t));
-    const tx = pad * 2 + aw, tw = w - tx - pad * 1.5;
-    const up = wrapText(S.up, 14 * s, tw).slice(0, 3), dn = wrapText('Downside: ' + S.down, 12 * s, tw).slice(0, 3);
-    let ty = h / 2 - ((up.length * 17 + dn.length * 15 + 26) * s) / 2 + 11 * s;
-    ui.text(S.name, tx, ty, { size: 19 * s, color: S.col ? S.col[1] : ui.C.ink, maxW: tw, noRecord: true }); ty += 25 * s;
-    up.forEach((l, j) => { ui.text(l, tx, ty, { size: 14 * s, color: ui.C.ink, maxW: tw, noRecord: true }); ty += 17 * s; });
-    dn.forEach((l, j) => { ui.text(l, tx, ty, { size: 12 * s, color: ui.C.warn, maxW: tw, noRecord: true }); ty += 15 * s; });
+    const tx = pad * 2 + aw, tw = w - tx - pad * 1.5, iz = 30 * s;
+    let ty = h / 2 - 38 * s;
+    ui.text(S.name, tx, ty, { size: 19 * s, color: S.col ? ui.tint(S.col[1], -0.3) : ui.C.ink, maxW: tw, noRecord: true }); ty += 34 * s;
+    pictoPower(ctx, S.id, tx + iz / 2, ty, iz, G.t); ui.text(PW[0], tx + iz + 6 * s, ty, { size: 16 * s, color: ui.C.ink, maxW: tw - iz - 6 * s, noRecord: true }); ty += 32 * s;
+    pictoWarn(ctx, tx + iz / 2, ty, iz * 0.7); ui.text(PW[1], tx + iz + 6 * s, ty, { size: 13 * s, color: ui.C.warn, maxW: tw - iz - 6 * s, noRecord: true });
   } else {
     const ah = h - 2 * pad - o.textH;
     artStage(pad, pad, w - 2 * pad, ah, s, () => drawStrikeStage(ctx, S.id, pad, pad + 2 * s, w - 2 * pad, ah - 4 * s, G.t));
+    // the power as a pictogram badge on the stage's corner
+    const bz = Math.min(ah * 0.5, w * 0.36), bx = w - pad - bz * 0.5 - 2 * s, by = pad + ah - bz * 0.5 - 2 * s;
+    ctx.beginPath(); ctx.arc(bx, by, bz * 0.56, 0, 7); ctx.fillStyle = 'rgba(20,28,50,0.85)'; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.stroke();
+    pictoPower(ctx, S.id, bx, by, bz * 0.95, G.t);
     let ty = pad + ah + o.ns * 0.75;
     const nmCol = S.col ? ui.tint(S.col[1], -0.3) : ui.C.ink;
     (o.two ? S.name.split(' ') : [S.name]).forEach((wd) => { ui.text(wd, w / 2, ty, { size: o.ns, align: 'center', color: nmCol, maxW: w - 2 * pad, noRecord: true }); ty += o.ns * 1.1; });
@@ -3913,14 +3954,14 @@ function pickerBlocks(s, iw, minW) {
   const T = introChicks();
   if (!T.open.length) { // chicks only work on villains: on a level without any, they rest (and say so, no picker to anticipate)
     const rest = strikesOpen().length && !(G.li >= 0 && G.level.id < STRIKE_FROM);
-    return { blocks: rest ? [lineBlock('No villains here: your chicks rest this level.', 14.5 * s, { color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:rest', gap: 0 })] : [], T };
+    return { blocks: rest ? [lineBlock('No villains: chicks rest', 14.5 * s, { color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:rest', gap: 0 })] : [], T };
   }
   const n = T.open.length, gap = 10 * s, acc = G.introAcc;
   const maxCols = Math.max(1, Math.floor((iw + gap) / (minW + gap)));
   const rows = Math.ceil(n / maxCols), cols = Math.ceil(n / rows);
   const cw = Math.min(n === 1 ? 360 * s : 150 * s, (iw - (cols - 1) * gap) / cols);
   const ls = Math.max(10, Math.min(12.5 * s, cw / 9.5));
-  const lines = T.open.map((S) => wrapText(S.up, ls, cw - 14 * s).slice(0, 8));
+  const lines = T.open.map((S) => wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s).slice(0, 2));
   // the name is the bigger line (1.2x the power text); a narrow card breaks it in two ("Thunder / Chick") rather than shrinking it
   const nm = (S) => ui.measure(S.name, 100) / 100, nw = cw - 14 * s;
   let ns = ls * 1.2; const two = T.open.some((S) => nm(S) * ns > nw);
@@ -3928,7 +3969,7 @@ function pickerBlocks(s, iw, minW) {
   const nl = Math.max(...lines.map((l) => l.length)), textH = ns * 1.15 * (two ? 2 : 1) + 4 * s + nl * ls * 1.2 + 4 * s;
   const ch = n === 1 ? 118 * s : Math.min(rows > 1 ? 170 * s : 300 * s, 64 * s + textH + (rows > 1 ? 0 : 38 * s));
   const B = [];
-  const hint = T.need ? 'Pick a chick to help you' : T.choice ? 'Your chick for this level' : T.id ? 'Your chick takes this level with you' : 'Tap the chick to take it along';
+  const hint = T.need ? 'Pick a chick to help you' : T.choice ? 'Your chick' : T.id ? 'Your chick' : 'Tap to take along';
   B.push({ h: 24 * s, gap: 0, draw: (x, y, w) => {
     const pu = T.need && !save.calm ? 1 + 0.04 * Math.sin(G.t * 4) : 1;
     ctx.save(); ctx.translate(x + w / 2, y + 12 * s); ctx.scale(pu, pu); ctx.translate(-(x + w / 2), -(y + 12 * s));
@@ -3951,7 +3992,11 @@ function pickerBlocks(s, iw, minW) {
     });
   } });
   const S = T.id ? STRIKE[T.id] : null;
-  if (S && T.choice) B.push(...wrapText('Downside: ' + S.down, 13.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 13.5 * s, { color: '#ffb48a', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:stkdn' + i, gap: i ? 1 * s : 2 * s })));
+  if (S && T.choice) B.push({ h: 20 * s, gap: 2 * s, draw: (x, y, w) => { // the downside: a warning sign and a few words
+    const tw = Math.min(w, ui.measure((POWER_WORDS[S.id] || ['', ''])[1], 14 * s) + 28 * s), x0 = x + w / 2 - tw / 2;
+    pictoWarn(ctx, x0 + 9 * s, y + 10 * s, 18 * s);
+    ui.text((POWER_WORDS[S.id] || ['', ''])[1], x0 + 22 * s, y + 10 * s, { size: 14 * s, color: '#ffb48a', stroke: 'rgba(40,20,5,0.8)', maxW: w - 24 * s, tag: 'intro:stkdn' });
+  } });
   return { blocks: B, T };
 }
 
@@ -3962,10 +4007,7 @@ function drawLevelIntro(L, acc) {
   const land = A.w > A.h * 1.15;
   G.introAcc = tintHex(/^#[0-9a-f]{6}$/i.test((ui.skin && ui.skin.ribbon) || '') ? ui.skin.ribbon : acc);
   const kinds = G.li >= 0 && G.infoKinds ? G.infoKinds.filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 7) : [];
-  // never drop words: the text takes as many lines as it needs, one font step smaller when it runs past three
   const tipText = wo ? L.intro.line : L.tip || '';
-  const tipSize = (s, iw) => (tipText && wrapText(tipText, 14.5 * s, iw).length > 3 ? 12.5 : 14.5) * s;
-  const tipLines = (s, iw) => (tipText ? wrapText(tipText, tipSize(s, iw), iw).slice(0, 6) : []);
   const label = G.li === -2 ? 'Lab' : G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`;
   const head = (s, iw) => [
     { h: 40 * s, gap: 0, draw: (x, y, w) => ui.ribbon(label, x + w / 2, y, clamp(ui.measure(label, 26 * s) + 70 * s, 150 * s, w), 40 * s, { s, color: acc, size: 26 * s, tag: 'intro:level' }) },
@@ -3973,40 +4015,57 @@ function drawLevelIntro(L, acc) {
     ...(wo ? [lineBlock(WORLDS[envOf(G.li)] || L.intro.title, 15 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:world', gap: 0 })] : []),
   ];
   const goal = (s, iw) => [
-    { h: 92 * s, gap: 14 * s, draw: (x, y, w) => {
-      ui.well(x, y, w, 92 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
-      const n = L.eggs, sp = Math.min(34 * s, (w - 20 * s) / n), es = Math.min(30 * s, sp * 0.95);
-      for (let i = 0; i < n; i++) drawEggIcon(ctx, x + w / 2 + (i - (n - 1) / 2) * sp, y + 27 * s, es, i < L.target ? 'alive' : 'alive');
-      ui.record({ x: x + w / 2 - n * sp / 2, y: y + 10 * s, w: n * sp, h: 32 * s }, 'intro:eggs');
-      ui.text(`Save ${L.target} of ${L.eggs} eggs`, x + w / 2, y + 58 * s, { size: 21 * s, align: 'center', maxW: w - 16 * s, color: C.warn, tag: 'intro:goal' });
-      ui.text(G.sim && G.sim.timeLimit ? `You have ${Math.round(G.sim.timeLimit)} s` : 'before the fuse burns out', x + w / 2, y + 78 * s, { size: 13.5 * s, align: 'center', maxW: w - 16 * s, color: C.ink2, tag: 'intro:fuse' });
+    // the goal as icons: the level's eggs (the ones you may skip faded) and the clock when there is one
+    { h: 66 * s, gap: 14 * s, draw: (x, y, w) => {
+      ui.well(x, y, w, 66 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
+      const n = L.eggs, sp = Math.min(34 * s, (w - 20 * s) / n), es = Math.min(30 * s, sp * 0.95), tl = G.sim && G.sim.timeLimit;
+      const ey = y + (tl ? 24 : 33) * s;
+      for (let i = 0; i < n; i++) { ctx.globalAlpha = i < L.target ? 1 : 0.4; drawEggIcon(ctx, x + w / 2 + (i - (n - 1) / 2) * sp, ey, es, 'alive'); }
+      ctx.globalAlpha = 1;
+      ui.record({ x: x + w / 2 - n * sp / 2, y: ey - 16 * s, w: n * sp, h: 32 * s }, 'intro:eggs');
+      if (tl) { // the clock and its seconds
+        const t = `${Math.round(tl)}s`, tw = ui.measure(t, 17 * s) + 24 * s, x0 = x + w / 2 - tw / 2;
+        pictoClock(ctx, x0 + 10 * s, y + 52 * s, 20 * s); ui.text(t, x0 + 24 * s, y + 52 * s, { size: 17 * s, color: C.warn, tag: 'intro:time' });
+      }
     } },
-    // star goals (mykee: "right before the level we need to show what to do to get 2 or 3 stars"): mirrors computeResult
-    ...(G.li >= 0 ? [{ h: 3 * 22 * s + 6 * s, gap: 10 * s, draw: (x, y, w) => {
-      const rows = [L.target === 1 ? 'Save the egg' : `Save ${L.target} eggs`, L.eggs === 1 ? 'Do not lose the egg' : 'Lose no eggs', 'Every egg home without a crack'];
-      const sr = 7.5 * s, bx = x + w / 2 - Math.min(w, 330 * s) / 2;
-      rows.forEach((t, i) => {
-        const ry = y + 3 * s + i * 22 * s + 11 * s;
+    // star goals (mykee: "right before the level we need to show what to do to get 2 or 3 stars"): mirrors computeResult, as pictograms
+    ...(G.li >= 0 ? [{ h: 3 * 32 * s + 6 * s, gap: 10 * s, draw: (x, y, w) => {
+      const sr = 9.5 * s, rw = 3 * sr * 2.1 + 10 * s + 124 * s, bx = x + w / 2 - rw / 2;
+      for (let i = 0; i < 3; i++) {
+        const ry = y + 3 * s + i * 32 * s + 16 * s;
+        ctx.save(); ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx - 6 * s, ry - 15 * s, rw + 12 * s, 30 * s, 15 * s) : ctx.rect(bx - 6 * s, ry - 15 * s, rw + 12 * s, 30 * s); ctx.fillStyle = 'rgba(20,10,4,0.42)'; ctx.fill(); ctx.restore();
         for (let j = 0; j < 3; j++) drawStar(ctx, bx + sr + j * sr * 2.1, ry, sr, j <= i);
-        ui.text(t, bx + 3 * sr * 2.1 + 6 * s, ry, { size: 14.5 * s, color: '#fff6e0', stroke: 'rgba(40,20,5,0.85)', maxW: Math.min(w, 330 * s) - 3 * sr * 2.1 - 6 * s, tag: 'intro:star' + i });
-      });
+        const gx = bx + 3 * sr * 2.1 + 10 * s + 62 * s;
+        pictoGoal(ctx, i, gx, ry, 28 * s, { n: L.target, t: G.t });
+        if (i === 0 && L.target > 5) ui.text('x' + L.target, gx + 40 * s, ry, { size: 14 * s, color: '#fff6e0', stroke: 'rgba(40,20,5,0.85)', tag: 'intro:starn' });
+        ui.record({ x: bx, y: ry - 14 * s, w: rw, h: 28 * s }, 'intro:star' + i);
+      }
     } }] : []),
     ...(G.li === -1 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14.5 * s, { color: '#9bd8ff', stroke: 'rgba(10,20,40,0.8)', tag: 'intro:daily', gap: 8 * s })] : []),
   ];
+  // who is in the level: portraits only; tap one for its one-line card
   const foes = (s, iw) => !kinds.length ? [] : [
-    lineBlock('Watch out for', 14 * s, { color: '#fff6e0', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:foes', gap: 14 * s }),
-    { h: 52 * s, gap: 4 * s, draw: (x, y, w) => {
-      const P = Math.min(48 * s, (w - 6 * s * (kinds.length - 1)) / kinds.length), x0 = x + w / 2 - (kinds.length * P + (kinds.length - 1) * 6 * s) / 2;
+    { h: 52 * s, gap: 14 * s, draw: (x, y, w) => {
+      const P = Math.min(48 * s, (w - 6 * s * (kinds.length - 1) - 30 * s) / kinds.length), x0 = x + w / 2 - (kinds.length * P + (kinds.length - 1) * 6 * s) / 2 + 12 * s;
+      pictoWarn(ctx, x0 - 18 * s, y + 26 * s, 22 * s);
       kinds.forEach((k, i) => {
-        const I = VILLAIN_INFO[k] || { group: 'creature' }, bg = PORTRAIT_BG[I.group] || PORTRAIT_BG.creature, px = x0 + i * (P + 6 * s), py = y + (52 * s - P) / 2;
-        ui.well(px, py, P, P, { s, r: 11 * s, a: bg[0], b: bg[1], border: 'rgba(40,24,10,0.7)', shade: 'rgba(0,0,10,0.45)', paint: () => drawVillainPortrait(ctx, k, px + P / 2, py + P / 2, P, G.t) });
-        ui.record({ x: px, y: py, w: P, h: P }, 'intro:foe' + i);
+        const I = VILLAIN_INFO[k] || { group: 'creature' }, bg = PORTRAIT_BG[I.group] || PORTRAIT_BG.creature, px = x0 + i * (P + 6 * s), py = y + (52 * s - P) / 2, on = G.introFoe === k;
+        ui.well(px, py, P, P, { s, r: 11 * s, a: bg[0], b: bg[1], border: on ? '#ffe27a' : 'rgba(40,24,10,0.7)', shade: 'rgba(0,0,10,0.45)', paint: () => drawVillainPortrait(ctx, k, px + P / 2, py + P / 2, P, G.t) });
+        const rect = { x: px, y: py, w: P, h: P };
+        ui.record(rect, 'btn:foe:' + i, 'btn:foe:' + i); ui.buttons.push({ id: 'foe:' + k, ...rect });
       });
+    } },
+    { h: 20 * s, gap: 2 * s, draw: (x, y, w) => { // the tapped villain's one line
+      const I = VILLAIN_INFO[G.introFoe];
+      if (I) ui.text(`${I.name}: ${shortTip(I.does)}`, x + w / 2, y + 10 * s, { size: 13.5 * s, align: 'center', maxW: w, color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:foeline' });
     } },
   ];
   const notes = (s, iw) => [
-    ...tipLines(s, iw).map((l, i) => lineBlock(l, tipSize(s, iw), { color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:tip' + i, gap: i ? 2 * s : 12 * s })),
-    ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus, G.sim.MD.fuse), 14 * s, { color: '#9bd8ff', stroke: 'rgba(10,20,40,0.8)', tag: 'intro:bonus', gap: 8 * s })] : []),
+    ...(shortTip(tipText) ? [lineBlock(shortTip(tipText), 14.5 * s, { color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:tip', gap: 6 * s })] : []),
+    ...(L.bonus ? [{ h: 22 * s, gap: 8 * s, draw: (x, y, w) => {
+      const t = BONUS_TEXT(L.bonus, G.sim.MD.fuse), tw = Math.min(w - 28 * s, ui.measure(t, 14 * s)) + 26 * s, x0 = x + w / 2 - tw / 2;
+      pictoTarget(ctx, x0 + 10 * s, y + 11 * s, 20 * s); ui.text(t, x0 + 24 * s, y + 11 * s, { size: 14 * s, color: '#9bd8ff', stroke: 'rgba(10,20,40,0.8)', maxW: w - 28 * s, tag: 'intro:bonus' });
+    } }] : []),
   ];
   const boost = (s) => ({ h: 68 * s, gap: 10 * s, draw: (x, y, w) => {
     ui.well(x, y, w, 68 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
@@ -4096,8 +4155,11 @@ function drawPause() {
       { h: 44 * s, gap: 2 * s, draw: (x, y, w) => {
         const tb = portal.showMuteButton ? 2 * 40 * s + 8 * s : 0, gw = w - tb - (tb ? 10 * s : 0);
         ui.well(x, y, gw, 44 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
-        const goal = `Save ${st.target} of ${G.level.eggs}  \u00b7  ${st.saved} home` + (sim.timeLimit ? `  \u00b7  ${fmtTime(sim.timeLeft)} left` : '');
-        ui.text(goal, x + gw / 2, y + 22 * s, { size: 14 * s, align: 'center', color: C.warn, maxW: gw - 14 * s, tag: 'pause:goal' });
+        // the goal as icons: an egg with saved / needed, and the clock when there is one
+        const a = `${st.saved}/${st.target}`, b = sim.timeLimit ? fmtTime(sim.timeLeft) : '', aw = 26 * s + ui.measure(a, 19 * s), bw = b ? 28 * s + ui.measure(b, 19 * s) : 0, gap = b ? 22 * s : 0;
+        let gx = x + gw / 2 - (aw + gap + bw) / 2;
+        drawEggIcon(ctx, gx + 10 * s, y + 22 * s, 26 * s, 'alive'); ui.text(a, gx + 26 * s, y + 22 * s, { size: 19 * s, color: st.saved >= st.target ? C.good : C.warn, tag: 'pause:goal' });
+        if (b) { gx += aw + gap; pictoClock(ctx, gx + 10 * s, y + 22 * s, 24 * s); ui.text(b, gx + 26 * s, y + 22 * s, { size: 19 * s, color: sim.timeLeft <= 10 ? C.bad : C.warn, tag: 'pause:time' }); }
         if (tb) {
           ui.button('sfx', '', x + w - tb, y + 2 * s, 40 * s, 40 * s, { kind: save.sfx ? 'tertiary' : 'off', icon: ICON.sound(save.sfx), iconS: 1.15, round: 12 * s });
           ui.button('music', '', x + w - 40 * s, y + 2 * s, 40 * s, 40 * s, { kind: save.music ? 'tertiary' : 'off', icon: ICON.note(save.music), iconS: 1.15, round: 12 * s });
@@ -4110,8 +4172,8 @@ function drawPause() {
         ['shop', 'Shop', (c, X, Y, S) => shopIcon(c, X, Y, S), 'gold'], ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad'],
       ], s, 'pause', { gap: 10 * s, sq: 62 }),
       G.hint
-        ? lineBlock('Finding a good move…', 17 * s, { color: C.warn, tag: 'pause:hint' })
-        : G.sim.state !== 'play' ? null : { h: 46 * s, gap: 12 * s, draw: (x, y, w) => ui.button('hint', 'Show me a move', x, y, w, 46 * s, { kind: 'ad', ad: true, size: 16 * s }) },
+        ? lineBlock('Hint…', 17 * s, { color: C.warn, tag: 'pause:hint' })
+        : G.sim.state !== 'play' ? null : { h: 46 * s, gap: 12 * s, draw: (x, y, w) => ui.button('hint', 'Hint', x + w * 0.2, y, w * 0.6, 46 * s, { kind: 'ad', ad: true, size: 16 * s }) },
       { h: 44 * s, draw: (x, y, w) => {
         const has = G.infoKinds.length && G.sim.state === 'play', hw = has ? (w - 10 * s) / 2 : w * 0.6, px = has ? x : x + w * 0.2;
         ui.button('practice', 'Practice', px, y, hw, 44 * s, { kind: 'orange', icon: ICON.grid, size: 15.5 * s });
@@ -4240,28 +4302,25 @@ function infoRows(s, iw) {
     const I = VILLAIN_INFO[kind] || { group: 'creature', name: kind, does: '', beat: '' };
     const items = []; // { str, size, color, x, y, pre?, preColor? } laid out from the row's top-left
     let y = 2 * s;
-    const add = (str, size, color, pre, preColor, indent = 0) => {
-      const full = pre ? pre + ' ' + str : str, lines = wrapText(full, size, tw - indent);
+    // icon-first: a warning sign for what it does, a check for how to beat it; one short line each (owner: players come to play, not to read)
+    const add = (str, size, color, ico, indent = 0) => {
+      const iw2 = ico ? size * 1.5 : 0, lines = wrapText(str, size, tw - indent - iw2).slice(0, 2);
       lines.forEach((l, i) => {
-        const p0 = i === 0 && pre && l.startsWith(pre) ? pre : null;
-        items.push({ str: p0 ? l.slice(pre.length + 1) : l, pre: p0, preColor, size, color, x: tx + (i ? indent : 0), y: y + size * lh / 2 });
+        items.push({ str: l, ico: i === 0 ? ico : null, size, color, x: tx + (i ? 0 : 0) + iw2, y: y + size * lh / 2 });
         y += size * lh;
       });
     };
     const tag = I.group === 'boss' ? 'BOSS' : I.group === 'hazard' ? 'HAZARD' : '';
     items.push({ str: I.name, size: nameS, color: I.group === 'boss' ? C.bad : C.ink, x: tx, y: y + nameS * 0.6, name: true, tag });
     y += nameS * 1.25;
-    add(I.does, lineS, C.ink);
+    add(shortTip(I.does), lineS, C.ink, 'warn');
     if (I.group === 'boss') {
       const atks = bossAttacks(G.level).filter((a) => I.attacks && I.attacks[a]);
-      if (atks.length) y += 3 * s;
-      for (const a of atks) add(I.attacks[a], atkS, C.ink2, (ATTACK_NAME[a] || ATTACK_EXTRA[a] || a) + ':', C.warn, 10 * s);
-      if (atks.length) y += 3 * s;
-      const ph = phaseWords(G.level);
-      if (ph) { add(ph, atkS, C.ink2, 'Phases:', C.warn, 10 * s); y += 3 * s; }
+      if (atks.length) add(atks.map((a) => ATTACK_NAME[a] || ATTACK_EXTRA[a] || a).join(' \u00b7 '), atkS, C.ink2, 'bolt');
+      const P3 = (G.level.bossFight && G.level.bossFight.phases) || [];
+      if (P3.length > 1) add(`${P3.length} phases`, atkS, C.ink2, 'bar');
     }
-    add(I.beat, lineS, C.ink, 'Beat it:', C.good);
-    if (I.more) add(I.more, lineS, C.ink2); // an extra line (L20: the cousins' duel)
+    add(shortTip(I.beat), lineS, C.ink, 'ok');
     const h = Math.max(P, y) + 14 * s;
     return { kind, I, items, h, P, ri };
   });
@@ -4315,7 +4374,10 @@ function drawInfo() {
       for (const it of R.items) {
         const yy = py + it.y, inside = yy - it.size * 0.6 >= vy && yy + it.size * 0.6 <= vy + vh;
         let xx = vx + it.x;
-        if (it.pre) { const r0 = ui.text(it.pre, xx, yy, { size: it.size, color: it.preColor, tag: grp + ':' + it.pre, group: grp, noRecord: !inside }); xx += r0.w + ui.measure(' ', it.size); }
+        if (it.ico) { // the trait icon sits in the margin left of the text
+          const ix = xx - it.size * 0.85, isz = it.size * 1.25;
+          if (it.ico === 'warn') pictoWarn(ctx, ix, yy, isz); else if (it.ico === 'ok') pictoCheck(ctx, ix, yy, isz); else if (it.ico === 'bolt') pictoPower(ctx, 'thunder', ix, yy, isz, G.t); else pictoClock(ctx, ix, yy, isz * 0.9);
+        }
         const r1 = ui.text(it.str, xx, yy, { size: it.size, color: it.color, maxW: vx + vw - xx, tag: grp + ':' + it.str.slice(0, 18), group: grp, noRecord: !inside });
         if (it.tag) { // a small group tag after the name when it fits
           const ts = 10.5 * s, tw2 = ui.measure(it.tag, ts) + 10 * s, tx2 = r1.x + r1.w + 8 * s;
@@ -4425,10 +4487,11 @@ function drawWin() {
   const T = {}; // where her stage and the stars sit on the card: the targets of her flight
   const cnt = r.total ? clamp(r.shownTotal / r.total, 0, 1) : 1; // the coins count up with the score
   const build = (s) => {
-    const rows = [['Eggs saved', `${r.saved} / ${r.eggs}`], ['Egg points', String(r.eggScore)], ['Time bonus', '+' + r.timeBonus]];
-    if (r.streakMult > 1) rows.push(['Star streak', 'x' + r.streakMult]);
-    if (r.hasBonus) rows.push(['Bonus', r.bonus ? 'Done!' : 'Missed']);
-    rows.push(['Coins', '+' + Math.round((r.coins || 0) * cnt)]);
+    // the tally as icon chips (egg, gem, clock, flame, target, coin) with their numbers: no labels to read
+    const rows = [['egg', `${r.saved}/${r.eggs}`], ['gem', String(r.eggScore)], ['clock', '+' + r.timeBonus]];
+    if (r.streakMult > 1) rows.push(['flame', 'x' + r.streakMult]);
+    if (r.hasBonus) rows.push(['target', r.bonus ? 'ok' : 'no']);
+    rows.push(['coin', '+' + Math.round((r.coins || 0) * cnt)]);
     const B = [];
     if (!side && !compact) B.push({ h: stH * s, gap: 0,
       at: (x, y, w) => { T.box = { x, y, w, h: stH * s }; T.henH = 0.685 * stH * s; T.clip = { x: 0, y: G.hudBottom, w: ui.w, h: y + stH * s - G.hudBottom }; },
@@ -4447,22 +4510,24 @@ function drawWin() {
         if (compact) ui.record(T.box, 'win:hen');
         ui.record(T.row, 'win:stars');
       } });
-    // the tally: a recessed table, one line per source of points
-    const rh = 22 * s;
-    B.push({ h: rows.length * rh + 10 * s, gap: 8 * s, draw: (x, y, w) => {
-      ui.well(x, y, w, rows.length * rh + 10 * s, { s });
-      rows.forEach(([a, b], i) => {
-        const ry = y + 5 * s + rh * (i + 0.5);
-        if (i) { ctx.fillStyle = 'rgba(110,66,24,0.16)'; ctx.fillRect(x + 10 * s, ry - rh / 2, w - 20 * s, 1); }
-        const coin = a === 'Coins', vx = x + w - 12 * s;
-        ui.text(a, x + 12 * s, ry, { size: 15 * s, color: C.ink2, tag: 'win:' + a, maxW: w / 2 - 12 * s });
-        const col = a === 'Bonus' ? (r.bonus ? C.good : C.ink2) : a === 'Star streak' ? C.warn : coin ? '#a85f00' : C.ink;
-        const vr = ui.text(b, vx, ry, { size: 16 * s, align: 'right', color: col, tag: 'win:v' + a, maxW: w / 2 - 34 * s });
-        if (coin) drawCoin(ctx, vr.x - 12 * s, ry, 8 * s, G.t);
+    // the tally: a recessed panel, two chips to a line
+    const rh = 32 * s, nr = Math.ceil(rows.length / 2);
+    B.push({ h: nr * rh + 10 * s, gap: 8 * s, draw: (x, y, w) => {
+      ui.well(x, y, w, nr * rh + 10 * s, { s });
+      rows.forEach(([k, v], i) => {
+        const cx = x + (i % 2) * w / 2 + 14 * s, ry = y + 5 * s + rh * (Math.floor(i / 2) + 0.5), ix = cx + 12 * s;
+        if (k === 'egg') drawEggIcon(ctx, ix, ry, 24 * s, 'saved'); else if (k === 'gem') pictoGem(ctx, ix, ry, 24 * s); else if (k === 'clock') pictoClock(ctx, ix, ry, 24 * s);
+        else if (k === 'flame') pictoFlame(ctx, ix, ry, 26 * s); else if (k === 'target') pictoTarget(ctx, ix, ry, 24 * s); else drawCoin(ctx, ix, ry, 11 * s, G.t);
+        const col = k === 'target' ? (r.bonus ? C.good : C.bad) : k === 'flame' ? C.warn : k === 'coin' ? '#a85f00' : C.ink;
+        if (k === 'target') { (r.bonus ? pictoCheck : pictoCross)(ctx, ix + 34 * s, ry, 24 * s); ui.record({ x: ix + 22 * s, y: ry - 12 * s, w: 24 * s, h: 24 * s }, 'win:bonus'); }
+        else ui.text(v, ix + 20 * s, ry, { size: 19 * s, color: col, tag: 'win:v' + k, maxW: w / 2 - 50 * s });
       });
     } });
     B.push({ h: 46 * s, gap: 8 * s, draw: (x, y, w) => ui.num(String(r.shownTotal), x + w / 2, y + 24 * s, { size: 40 * s, align: 'center', maxW: w, tag: 'win:total' }) });
-    if (r.missed) B.push(lineBlock('Next time: ' + r.missed, 13 * s, { color: C.ink2, tag: 'win:missed', gap: 0 })); // which goal the missing star needs
+    if (r.missed) B.push({ h: 30 * s, gap: 0, draw: (x, y, w) => { // which goal the missing star needs: a star-minus and the goal's pictogram
+      pictoStarMinus(ctx, x + w / 2 - 22 * s, y + 15 * s, 28 * s); pictoGoal(ctx, r.stars === 1 ? 1 : 2, x + w / 2 + 22 * s, y + 15 * s, 26 * s);
+      ui.record({ x: x + w / 2 - 40 * s, y, w: 80 * s, h: 30 * s }, 'win:missed');
+    } });
     // the buttons come with the card; their space is always reserved
     const last = G.li < 0 || G.li === LEVELS.length - 1;
     B.push({ h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
@@ -4472,8 +4537,8 @@ function drawWin() {
     } });
     B.push({ h: 48 * s, draw: (x, y, w) => {
       if (!inCard) return;
-      if (!G.doubled) ui.button('double', 'Double score and coins', x, y, w, 48 * s, { kind: 'ad', ad: true, size: 16 * s });
-      else ui.text('Score and coins doubled!', x + w / 2, y + 24 * s, { size: 18 * s, align: 'center', color: C.good, tag: 'win:doubled' });
+      if (!G.doubled) ui.button('double', 'Double', x + w * 0.15, y, w * 0.7, 48 * s, { kind: 'ad', ad: true, size: 16 * s });
+      else ui.text('Doubled!', x + w / 2, y + 24 * s, { size: 18 * s, align: 'center', color: C.good, tag: 'win:doubled' });
     } });
     return B;
   };
@@ -4570,7 +4635,12 @@ function drawFail() {
       drawCelebration(ctx, 'encourage', G.screenT, box, { henH: 0.685 * stH * s, calm: save.calm, pw: 0.5 });
       ui.record(box, 'fail:hen');
     } });
-    B.push(lineBlock(['So close! You can do it.', 'Nearly there! One more go?', 'Every try makes you better!'][(G.level.id || 0) % 3], 19 * s, { color: C.warn, tag: 'fail:cheer', gap: sd ? 2 * s : 8 * s }));
+    // why it failed: an icon and two or three words (the ribbon above says the same)
+    B.push({ h: 30 * s, gap: sd ? 2 * s : 8 * s, draw: (x, y, w) => {
+      const t = timeout ? 'No time left' : 'Too many eggs lost', tw = ui.measure(t, 19 * s) + 34 * s, x0 = x + w / 2 - tw / 2;
+      if (timeout) pictoClock(ctx, x0 + 12 * s, y + 15 * s, 28 * s); else pictoBroken(ctx, x0 + 12 * s, y + 15 * s, 28 * s);
+      ui.text(t, x0 + 30 * s, y + 15 * s, { size: 19 * s, color: C.warn, maxW: w - 34 * s, tag: 'fail:cheer' });
+    } });
     // how close: one slot per egg needed, the ones that got home filled in
     B.push({ h: 62 * s, gap: 6 * s, draw: (x, y, w) => {
       ui.well(x, y, w, 62 * s, { s });
@@ -4581,9 +4651,9 @@ function drawFail() {
         else drawEggIcon(ctx, ex, ey, es, 'slot');
       }
       ui.record({ x: x + w / 2 - n * sp / 2, y: y + 7 * s, w: n * sp, h: 26 * s }, 'fail:eggs');
-      ui.text(`Saved ${st.saved}, needed ${st.target}`, x + w / 2, y + 47 * s, { size: 15 * s, align: 'center', maxW: w - 16 * s, color: C.ink, tag: 'fail:stat' });
+      ui.text(`${st.saved}/${st.target}`, x + w / 2, y + 47 * s, { size: 17 * s, align: 'center', maxW: w - 16 * s, color: C.ink, tag: 'fail:stat' });
     } });
-    if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('Next try a farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: 6 * s }));
+    if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: 6 * s }));
     B.push({ h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 25 * s }) });
     // stuck (3 losses in a row on this level): skip ahead with an ad or coins
     if (G.li >= 0 && ads.stuck(G.level.id) && G.li < LEVELS.length - 1) B.push({ h: 46 * s, gap: 10 * s, draw: (x, y, w) => {
@@ -4591,7 +4661,7 @@ function drawFail() {
       ui.button('skip:ad', 'Skip level', x, y, hw, 46 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 15 * s } : { kind: 'ad', ad: true, size: 15 * s });
       ui.button('skip:coins', 'Skip ' + SKIP_COINS, x + hw + 8 * s, y, hw, 46 * s, { kind: rich ? 'gold' : 'off', disabled: !rich, dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 15 * s });
     } });
-    if (!G.usedRewind && G.sim.canRewind()) B.push({ h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rewind', G.freeRewind ? 'Free rewind 5 s' : 'Rewind 5 s, keep streak', x, y, w, 50 * s, G.freeRewind ? { kind: 'secondary', icon: ICON.rewind, size: 16.5 * s } : { kind: 'ad', ad: true, size: 16.5 * s }) });
+    if (!G.usedRewind && G.sim.canRewind()) B.push({ h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rewind', G.freeRewind ? 'Free rewind' : 'Rewind 5s', x, y, w, 50 * s, G.freeRewind ? { kind: 'secondary', icon: ICON.rewind, size: 16.5 * s } : { kind: 'ad', ad: true, size: 16.5 * s }) });
     B.push({ h: 44 * s, draw: (x, y, w) => ui.button('levels', 'Levels', x + w * 0.2, y, w * 0.6, 44 * s, { kind: 'tertiary', icon: ICON.grid, size: 16 * s }) });
     return B;
   }, { ...(sd ? sd.cardO : {}), ribbon: '#5a82c8' });
