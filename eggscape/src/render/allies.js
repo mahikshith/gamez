@@ -6,7 +6,7 @@
 // in sim/allies.js and allyPlace() there says where it is).
 import { ALLY, allyPlace, allyElapsed, flingAt } from '../sim/allies.js';
 import { drawHenAnim } from './hen.js';
-import { drawSkinHat, drawSkinNose, drawSkinNeck } from './skins.js';
+import { drawSkinHat, drawSkinNose, drawSkinOutfit, ovalGarment, skinHidesComb } from './skins.js';
 import { geckoAnchor } from './gecko15.js';
 
 const TAU = Math.PI * 2;
@@ -316,7 +316,11 @@ export function drawRooster(ctx, cx, cy, s, P) {
         plume(ctx, o, px, py, base + lerp(0.5, -0.42, t), len * (1 - 0.16 * Math.abs(t - 0.4)), 8.4, cols, 0.5);
       }
     }
-    drawSkinNeck(ctx, o, H.x - 3, H.y + 17, P.tt || 0); // 2026-11-15 skins: the scarf goes under the near wing
+    { // 2026-11-16 skins: the outfit over his body (under the near wing); his body oval rides the puffed chest
+      ctx.save(); ctx.translate(10, bodyY + 2); ctx.scale(P.chest, 1 + (P.chest - 1) * 0.5); ctx.translate(-10, -bodyY - 2);
+      drawSkinOutfit(ctx, o, P.tt || 0, ovalGarment(-2, bodyY, 34, 26, -0.38, [21, bodyY - 27, 36, bodyY - 17], { h0: 0.1, h1: 2.6, fa: 0.25, ba: 0.75 }));
+      ctx.restore();
+    }
     // near wing
     featherWing(ctx, o, 2, bodyY - 12, P.wa, P.sp, COCK.wing, COCK.wingTip, 1.2);
     // head details, in the head's own frame
@@ -333,13 +337,14 @@ export function drawRooster(ctx, cx, cy, s, P) {
       c.bezierCurveTo(14.6, -6.4, 13, -4.6, 11, -4.6);
       c.closePath();
     };
+    if (!skinHidesComb()) { // 2026-11-16: a hat that sits over the crown hides the comb
     ctx.save(); ctx.translate(0.5, -8); ctx.scale(0.96, 1.24); ctx.translate(0, 6); // a bigger, upright comb, sat on the crown (room for the brow)
     ctx.lineWidth = o * 2 / 1.1; ctx.strokeStyle = RED.line; ctx.beginPath(); combPath(ctx); ctx.stroke();
     ctx.fillStyle = grad(ctx, -4, -27, 4, -5, ['#ff5a43', RED.hi, RED.lo]); ctx.beginPath(); combPath(ctx); ctx.fill();
     ctx.save(); ctx.beginPath(); combPath(ctx); ctx.clip(); ctx.fillStyle = 'rgba(120,10,10,0.3)'; ctx.beginPath(); ctx.ellipse(2, -5.5, 15, 3.4, 0.05, 0, TAU); ctx.fill(); ctx.restore(); // where it meets the crown
     ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.moveTo(-12.4, -12); ctx.quadraticCurveTo(-12, -14, -10, -14); ctx.moveTo(-8.4, -19); ctx.quadraticCurveTo(-7, -21, -5, -20.4); ctx.moveTo(0, -23); ctx.quadraticCurveTo(1.6, -25, 3.6, -24.2); ctx.moveTo(9, -20.6); ctx.quadraticCurveTo(10.4, -21.4, 11.6, -20); ctx.stroke();
-    ctx.restore();
+    ctx.restore(); }
     drawSkinHat(ctx, o, P.tt || 0); // 2026-11-15: the rooster wears the hen's skin set (hat over the comb)
     drawSkinNose(ctx, o, 24.5, 1, P.tt || 0);
     // earlobe, wattle
@@ -475,6 +480,8 @@ export function drawGoose(ctx, cx, cy, s, P) {
     for (const [x, y] of [[14, 12], [24, 14], [8, 22], [19, 24], [2, 30], [13, 32]]) { ctx.moveTo(x - 4, y + dy + bodyY - 14); ctx.quadraticCurveTo(x, y + 4 + dy + bodyY - 14, x + 4, y + dy + bodyY - 14); }
     ctx.stroke();
     ctx.restore();
+    // 2026-11-16 skins: the goose wears the outfit too
+    drawSkinOutfit(ctx, o, P.tt || 0, ovalGarment(-2, bodyY, 38, 25, -0.12, [16, bodyY - 15, 29.5, bodyY - 6], { h0: 0.15, h1: 2.85, fa: 0.2, ba: 0.6 }));
     // head: beak and knob, eye
     ctx.save();
     ctx.translate(H.x, H.y);
@@ -505,6 +512,7 @@ export function drawGoose(ctx, cx, cy, s, P) {
       ctx.save(); ctx.clip(); ctx.fillStyle = 'rgba(90,150,210,0.85)'; ctx.beginPath(); ctx.ellipse(ex, ey + 3.5, 3.7, 2.4, 0, 0, TAU); ctx.fill(); ctx.restore();
       ctx.fillStyle = '#fff'; glint(ctx, ex - 1.2, ey - 1.6, 1.45); glint(ctx, ex + 1.3, ey + 1.5, 0.65);
     }
+    ctx.save(); ctx.translate(1.5, -3.3); ctx.scale(0.82, 0.82); drawSkinHat(ctx, o / 0.82, P.tt || 0); ctx.restore(); // the hat, in the hen's head units
     ctx.restore();
     // wing (near)
     if (sw) wing(ctx, o, 6, bodyY - 12, P.wa, P.sp, GOOSE.wing, GOOSE.tip, 1.12);

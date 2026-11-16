@@ -148,8 +148,19 @@ export const SKINS = {
   striped: { id: 'striped', name: 'Striped', line: 'Candy stripes in red and blue.', price: 120, sku: 'skin_striped' },
   dino: { id: 'dino', name: 'Dino', line: 'A green dino egg with spots.', price: 200, sku: 'skin_dino' },
   golden: { id: 'golden', name: 'Golden', line: 'Shiny gold, for looks only.', price: 300, sku: 'skin_golden' },
+  // 2026-11-16: a Christmas pair and one for each world theme
+  bauble: { id: 'bauble', name: 'Bauble', line: 'A shiny red Christmas bauble.', price: 160, sku: 'skin_bauble' },
+  candy: { id: 'candy', name: 'Candy Cane', line: 'Peppermint stripes, red and green.', price: 160, sku: 'skin_candy' },
+  frosty: { id: 'frosty', name: 'Frosty', line: 'Frosted ice and snowflakes.', price: 180, sku: 'skin_frosty' },
+  galaxy: { id: 'galaxy', name: 'Galaxy', line: 'A swirl of stars from the crystal caves.', price: 240, sku: 'skin_galaxy' },
+  lava: { id: 'lava', name: 'Lava Rock', line: 'Dark rock with glowing cracks.', price: 240, sku: 'skin_lava' },
+  thunder: { id: 'thunder', name: 'Thunder', line: 'Storm blue with a lightning bolt.', price: 200, sku: 'skin_thunder' },
+  treasure: { id: 'treasure', name: 'Treasure Map', line: 'X marks the spot.', price: 220, sku: 'skin_treasure' },
+  pearl: { id: 'pearl', name: 'Pearl', line: 'A pearly shell with a rainbow sheen.', price: 260, sku: 'skin_pearl' },
+  gator: { id: 'gator', name: 'Gator', line: 'Green scales and a pale belly.', price: 220, sku: 'skin_gator' },
+  robot: { id: 'robot', name: 'Robo Egg', line: 'Steel plates, rivets and blinking lights.', price: 280, sku: 'skin_robot' },
 };
-export const SKIN_ORDER = ['classic', 'speckled', 'striped', 'dino', 'golden'];
+export const SKIN_ORDER = ['classic', 'speckled', 'striped', 'dino', 'bauble', 'candy', 'frosty', 'galaxy', 'lava', 'thunder', 'treasure', 'pearl', 'gator', 'robot', 'golden'];
 
 export function ownsSkin(wallet, id) {
   if (id === 'classic') return true;
@@ -253,15 +264,26 @@ export function openDailyChest(wallet, dayStr) {
 // Each skin dresses the hen on the nest (and the rooster ally, who wears the matching set). Looks only.
 export const HEN_SKINS = {
   classic: { id: 'classic', name: 'Farm Classic', line: 'Cream feathers, red comb.', price: 0, sku: 'hen_classic' },
-  santa: { id: 'santa', name: 'Santa Hen', line: 'Red hat with a pompom and a fluffy white trim.', price: 250, sku: 'hen_santa' },
-  snowy: { id: 'snowy', name: 'Snowy Owl Look', line: 'Frosted white feathers and a knitted scarf.', price: 220, sku: 'hen_snowy' },
-  elf: { id: 'elf', name: 'Little Elf', line: 'Green elf cap with a jingle bell.', price: 220, sku: 'hen_elf' },
-  reindeer: { id: 'reindeer', name: 'Reindeer', line: 'Antlers and a shiny red nose.', price: 260, sku: 'hen_reindeer' },
-  cocoa: { id: 'cocoa', name: 'Cocoa Hen', line: 'Chocolate-brown feathers and a striped beanie.', price: 180, sku: 'hen_cocoa' },
-  royal: { id: 'royal', name: 'Royal Hen', line: 'Gold crown and an ermine collar.', price: 400, sku: 'hen_royal' },
+  santa: { id: 'santa', name: 'Santa Hen', line: 'A fur-trimmed Santa coat, a belt and a Santa hat.', price: 250, sku: 'hen_santa' },
+  snowy: { id: 'snowy', name: 'Snowy Owl Look', line: 'Frosted feathers, a Christmas jumper and a fur trapper hat.', price: 220, sku: 'hen_snowy' },
+  elf: { id: 'elf', name: 'Little Elf', line: 'A green elf tunic and a pointy cap with a jingle bell.', price: 220, sku: 'hen_elf' },
+  reindeer: { id: 'reindeer', name: 'Reindeer', line: 'A cosy reindeer suit, antlers and a shiny red nose.', price: 260, sku: 'hen_reindeer' },
+  cocoa: { id: 'cocoa', name: 'Cocoa Hen', line: 'Chocolate feathers, a striped jumper and a bobble beanie.', price: 180, sku: 'hen_cocoa' },
+  royal: { id: 'royal', name: 'Royal Hen', line: 'A velvet robe with ermine trim and a jewelled crown.', price: 400, sku: 'hen_royal' },
   golden: { id: 'golden', name: 'Golden Hen', line: 'Shining gold feathers. Comes with Premium.', price: 0, premium: true, sku: 'hen_golden' },
+  // 2026-11-16: one outfit for each world (world: the world it belongs to, 1..10)
+  farmer: { id: 'farmer', name: 'Farmer Hen', line: 'Denim dungarees and a straw hat.', price: 160, world: 1, sku: 'hen_farmer' },
+  lumberjack: { id: 'lumberjack', name: 'Lumberjack', line: 'A red check shirt and a knit beanie.', price: 180, world: 2, sku: 'hen_lumberjack' },
+  skier: { id: 'skier', name: 'Ski Champ', line: 'A puffy ski jacket and a bobble hat.', price: 200, world: 3, sku: 'hen_skier' },
+  miner: { id: 'miner', name: 'Crystal Miner', line: 'A hi-vis vest and a hard hat with a lamp.', price: 220, world: 4, sku: 'hen_miner' },
+  firefighter: { id: 'firefighter', name: 'Firefighter', line: 'A turnout coat and a red fire helmet.', price: 240, world: 5, sku: 'hen_firefighter' },
+  raincoat: { id: 'raincoat', name: 'Storm Chaser', line: 'A yellow raincoat and a sou\'wester.', price: 240, world: 6, sku: 'hen_raincoat' },
+  pirate: { id: 'pirate', name: 'Pirate Captain', line: 'A captain\'s coat, a red sash and a tricorn hat.', price: 300, world: 7, sku: 'hen_pirate' },
+  diver: { id: 'diver', name: 'Deep Diver', line: 'A wetsuit, a dive mask and a snorkel.', price: 280, world: 8, sku: 'hen_diver' },
+  fisher: { id: 'fisher', name: 'Bayou Fisher', line: 'A fishing vest and a bucket hat with a fly.', price: 260, world: 9, sku: 'hen_fisher' },
+  scientist: { id: 'scientist', name: 'Professor Hen', line: 'A white lab coat and round glasses.', price: 300, world: 10, sku: 'hen_scientist' },
 };
-export const HEN_SKIN_ORDER = ['classic', 'santa', 'snowy', 'elf', 'reindeer', 'cocoa', 'royal', 'golden'];
+export const HEN_SKIN_ORDER = ['classic', 'santa', 'snowy', 'elf', 'reindeer', 'cocoa', 'farmer', 'lumberjack', 'skier', 'miner', 'firefighter', 'raincoat', 'pirate', 'diver', 'fisher', 'scientist', 'royal', 'golden'];
 export function ownsHenSkin(w, id) {
   if (!HEN_SKINS[id]) return false;
   if (id === 'classic') return true;

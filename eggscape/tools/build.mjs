@@ -99,6 +99,7 @@ Third-party:
 async function buildOne(label, portal, { minify, sourcemap, zip }) {
   const js = await bundle(portal, { minify, sourcemap });
   const html = template
+    .replace('<!--SPLASH_FONT-->', () => 'data:font/woff2;base64,' + readFileSync(join(ROOT, 'assets/fonts/fredoka-600-latin.woff2')).toString('base64')) // the launch sting's logo font, usable before the script runs
     .replace('<!--PORTAL_HEAD-->', () => HEAD[portal])
     .replace('<!--GAME_SCRIPT-->', () => `<script>\n${escapeInline(js)}\n</script>`);
   const dir = join(ROOT, 'dist', label);
