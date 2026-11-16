@@ -271,6 +271,10 @@ function startLevel(i, opts = {}) {
   G.boost = opts.boost || {};
   G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost, strike: strikeFor(G.level, i) });
   G.sim.ringSpeed = ringSpeed();
+  // portals explain themselves the first time they show up anywhere (a practice vault has no intro card)
+  if (G.sim.portals.some((pt) => pt.pull || Math.hypot(pt.ax - pt.bx, pt.ay - pt.by) > 0.05) && !save.seen.portalTip) {
+    save.seen.portalTip = 1; G.portalTip = 1;
+  }
   G.stkPick = null; G.stkWob = -9; G.stkFullT = 0; G.henAt = null;
   G.golden = !!opts.golden;
   G.adBoost = opts.adBoost || null;
@@ -2499,6 +2503,7 @@ function heartbeat(dt) {
 }
 
 function drawDanger() {
+  return; // 2026-11-16 (mykee): no red screen edge when a gator opens its mouth or a snake closes in; the heartbeat sound stays
   if (save.calm || !(G.danger > 0.05)) return;
   const p = Math.exp(-(G.t - (G.beatT || -9)) * 5);
   const a = G.danger * (0.12 + 0.18 * p);
@@ -2629,6 +2634,7 @@ function update(dt) {
   if (G.slow && (G.slow.left -= dt) <= 0) G.slow = null;
   if (G.card && (G.card.t += dt) > G.card.dur) G.card = null;
   if (G.hen.t > 0 && (G.hen.t -= dt) <= 0) G.hen.mood = 'idle';
+  if (G.portalTip && G.screen === 'play' && !G.toast) { G.portalTip = 0; toast('Portal: an egg that falls into the purple swirl pops out of the orange one. Follow the dotted trail.', 3.6); }
   // stall watch (2026-11-15 softlock report): nothing moved and nothing came home for a while. Enough eggs home: offer
   // Finish. Not enough: after a long still spell offer Retry (an egg wedged, a creature sitting on it).
   if (G.screen === 'play' && sim.state === 'play') {
@@ -2693,6 +2699,7 @@ function update(dt) {
     if (b.alive && b.lit && b.spark) G.fx.add({ x: b.spark.x, y: b.spark.y, vx: (Math.random() - 0.5) * 2, vy: Math.random() * 2, g: 4, life: 0.25, size: 0.02, color: '#ffd34d', type: 'spark' });
   }
   for (const pt of sim.portals) {
+    if (!pt.pull && Math.hypot(pt.ax - pt.bx, pt.ay - pt.by) < 0.05) continue; // an orb spring draws its own sparkles
     if (Math.random() < 0.5) {
       const a = Math.random() * 6.283;
       const R = pt.pull || 0.5; // v3: the suction field reaches further
@@ -2813,7 +2820,11 @@ function render() {
   ctx.translate(-camX, -camY);
   W.drawVaultBack(ctx, sim, G.theme); // premium pass: plate behind the vault
   fx.draw(ctx, 'back');
-  blastXf(() => { for (const pt of sim.portals) W.drawPortalPull(ctx, pt, t); for (const pt of sim.portals) { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); } }, 0.4); // v3 portals
+  blastXf(() => { // v3 portals; an orb-only swirl (entry = exit, no pull) is drawn as an orb spring (2026-11-16)
+    const spring = (pt) => !pt.pull && Math.hypot(pt.ax - pt.bx, pt.ay - pt.by) < 0.05;
+    for (const pt of sim.portals) if (!spring(pt)) { W.drawPortalLink(ctx, pt, t); W.drawPortalPull(ctx, pt, t); }
+    for (const pt of sim.portals) { if (spring(pt)) W.drawOrbSpring(ctx, pt.ax, pt.ay, t); else { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); } }
+  }, 0.4);
   if (sim.timeLimit && sim.state === 'play') W.drawFuse(ctx, sim.outerR + 0.32, sim.timeLeft / sim.timeLimit, t, G.screen === 'play' ? fx : null, sim.rings[sim.rings.length - 1]); // v4: hugs a shaped vault
   if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length); // world 8: the basket under the boat
   { const tl = toWorld(0, G.hudBottom + 8 * ui.u), tr = toWorld(W_, 0); allyFrame(sim, { x0: tl.x, x1: tr.x, top: tl.y }, save.calm, G.screen === 'play' ? fx : null); } // the rooster's perch and the crow wave (render only)

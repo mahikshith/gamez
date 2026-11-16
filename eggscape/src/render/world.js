@@ -1025,6 +1025,45 @@ export function drawPortal(ctx, x, y, t, out) {
   ctx.restore();
 }
 
+// 2026-11-16 (mykee: "portals appear but don't suck"): a swirl that only gives out orbs (entry = exit, no pull) is
+// drawn as an orb spring, a golden fountain of light, so it never reads as a portal
+export function drawOrbSpring(ctx, x, y, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 0.5);
+  g.addColorStop(0, 'rgba(255,248,200,0.95)'); g.addColorStop(0.35, 'rgba(255,214,90,0.55)'); g.addColorStop(1, 'rgba(255,190,60,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 0.5, 0, TAU); ctx.fill();
+  // a ring of light that breathes
+  const br = 0.27 + 0.03 * Math.sin(t * 3);
+  ctx.strokeStyle = 'rgba(255,236,150,0.95)'; ctx.lineWidth = 0.04;
+  ctx.beginPath(); ctx.arc(0, 0, br, 0, TAU); ctx.stroke();
+  // sparkles rising out of it (y up in world space)
+  for (let i = 0; i < 6; i++) {
+    const ph = (t * 0.6 + i / 6) % 1, a = i * 2.4, rx = Math.cos(a) * 0.18 * (1 - ph);
+    const sz = 0.05 * Math.sin(Math.PI * ph);
+    ctx.fillStyle = `rgba(255,250,215,${0.9 * Math.sin(Math.PI * ph)})`;
+    ctx.save(); ctx.translate(rx, 0.1 + ph * 0.55); ctx.rotate(t * 2 + i);
+    ctx.beginPath(); for (let k = 0; k < 8; k++) { const r = k % 2 ? sz * 0.35 : sz, an = (k * Math.PI) / 4; ctx.lineTo(Math.cos(an) * r, Math.sin(an) * r); } ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// a real portal: a dotted trail of light runs from the entry to its exit, so the player sees where an egg will go
+export function drawPortalLink(ctx, pt, t) {
+  const dx = pt.bx - pt.ax, dy = pt.by - pt.ay, L = Math.hypot(dx, dy);
+  if (L < 0.5) return;
+  const nx = -dy / L, ny = dx / L, bend = Math.min(1.2, L * 0.2);
+  const mx = (pt.ax + pt.bx) / 2 + nx * bend, my = (pt.ay + pt.by) / 2 + ny * bend;
+  const n = Math.max(8, Math.round(L / 0.35));
+  for (let i = 1; i < n; i++) {
+    const f = ((i + t * 1.6) % n) / n, u = 1 - f;
+    const x = u * u * pt.ax + 2 * u * f * mx + f * f * pt.bx, y = u * u * pt.ay + 2 * u * f * my + f * f * pt.by;
+    const a = 0.7 * Math.sin(Math.PI * f);
+    ctx.fillStyle = f < 0.5 ? `rgba(170,150,255,${a})` : `rgba(255,190,110,${a})`;
+    ctx.beginPath(); ctx.arc(x, y, 0.06, 0, TAU); ctx.fill();
+  }
+}
+
 export function drawBomb(ctx, bomb, t) {
   const b = bomb.body, p = b.getPosition(), A = b.getAngle();
   const fl = bomb.lit ? 0.04 + 0.12 * Math.max(0, bomb.fuse / 2.5) : 0.16;
