@@ -450,9 +450,15 @@ function frameOf(all, maxCh) {
     else { R = Math.max(R, Math.hypot(hd.x, hd.y) + 0.6); yMin = -R; yMax = R; }
   }
   const P = G.play;
-  const k = Math.min(P.w / (2 * R), P.h / (yMax - yMin), 190);
+  // a wide play area is height-limited: keep an even margin all round so the rings and the hen never touch the edge
+  const m = camWide() ? 10 * ui.u : 0;
+  const k = Math.min((P.w - 2 * m) / (2 * R), (P.h - 2 * m) / (yMax - yMin), 190);
   return { x: 0, y: (yMin + yMax) / 2, k, R, yMin, yMax };
 }
+
+// landscape: the play area is much wider than tall, so the vault is framed by its height. Zooming in on the eggs would
+// crop the rings top and bottom (and the hen), so the camera rests on the whole vault and only the player's zoom moves it.
+const camWide = () => !!G.play && G.play.w > G.play.h * 1.25;
 
 // The base frame: the whole vault, or the eggs' rings; plus the player's own zoom. (The shot the camera rests on.)
 function camBase() {
@@ -462,7 +468,7 @@ function camBase() {
   for (const e of eggs) maxCh = Math.max(maxCh, sim.channelOf(e));
   const live = G.screen === 'play' && sim.state === 'play';
   const sky = sim.eagle && sim.eagle.phase !== 'away'; // the eagle hunts round the outside: show all of it
-  const whole = !live || sky || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || n <= 2;
+  const whole = !live || sky || camWide() || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || n <= 2;
   const F = frameOf(true, maxCh);
   let A = whole ? F : frameOf(false, maxCh);
   // a snake or a boss outside the eggs' rings widens the close-up frame into a square; never let that zoom
@@ -547,6 +553,7 @@ function camTarget() {
     return { x: F.x, y: F.y, k: F.k * lerp(CAM_WIDE, 0.92, ss01(G.screenT / 3)) };
   }
   if (G.zm != null || !cv.live) return B;
+  if (camWide()) { cv.smooth = 0.5; return B; } // landscape: a steady whole-vault shot, no hunting
   const L = leadEgg(sim);
   if (!L) return B;
   // the last egg needed is on its way out: lean in on it and the nest (gently; never while something hunts overhead)
@@ -612,6 +619,30 @@ function camPunch(amt, x, y) {
   if (x != null) { cv.kx = x; cv.ky = y; } else { cv.kx = G.cam.x; cv.ky = G.cam.y; }
 }
 
+// moment camera: an ally's hit or a power chick's landing. The camera eases toward the point of contact, pushes in a
+// modest 16%, holds, and eases back, all through the normal camera springs (just a pulled-in target). One at a time,
+// never in reduced motion, never while a finger holds a ring (the shot must stand still under it).
+function camMoment(x, y, hold = 0.6) {
+  const cv = G.cv;
+  if (save.calm || cv.mom || G.screen !== 'play' || !G.sim || G.sim.state !== 'play' || G.sim.rings.some((r) => r.held)) return;
+  cv.mom = { x, y, t: 0, hold };
+}
+const MOM_IN = 0.18, MOM_OUT = 0.3, MOM_ZOOM = 1.16;
+// the pulled-in version of the resting target T (weight 0..1 follows the moment's in, hold and out)
+function camMomentTarget(T, dt) {
+  const M = G.cv.mom;
+  if (!M) return T;
+  M.t += dt;
+  const end = MOM_IN + M.hold + MOM_OUT;
+  if (M.t >= end || save.calm || G.screen !== 'play') { G.cv.mom = null; return T; }
+  const w = M.t < MOM_IN ? ss01(M.t / MOM_IN) : M.t > end - MOM_OUT ? ss01((end - M.t) / MOM_OUT) : 1;
+  const k = T.k * MOM_ZOOM, P = G.play, hw = P.w / (2 * k), hh = P.h / (2 * k);
+  // follow the point, but never show more than a little past the resting frame's edges
+  const tx = clamp(M.x, T.x - (P.w / (2 * T.k)) * 0.45, T.x + (P.w / (2 * T.k)) * 0.45), ty = clamp(M.y, T.y - (P.h / (2 * T.k)) * 0.45, T.y + (P.h / (2 * T.k)) * 0.45);
+  G.cv.smooth = lerp(G.cv.smooth || 0.4, 0.3, w);
+  return { x: lerp(T.x, clamp(tx, T.x - hw * 0.3 - 1, T.x + hw * 0.3 + 1), w), y: lerp(T.y, ty, w), k: lerp(T.k, k, w) };
+}
+
 function updateCamera(dt) {
   const cv = G.cv, cam = G.cam;
   if (G.screen === 'pause' && !G.camSnap) return; // the shot holds under the pause card
@@ -620,6 +651,7 @@ function updateCamera(dt) {
   // 2026-11-16 (mykee: "screen stuck, hard to control" on L13): while a finger holds a ring the camera stands
   // completely still, so the ring under the finger never slides away from it. It eases on once the finger lets go.
   if (!G.camSnap && G.screen === 'play' && G.sim && G.sim.rings.some((r) => r.held)) { T = { x: cam.x, y: cam.y, k: cam.k }; cv.vx = cv.vy = cv.vk = 0; }
+  if (!G.camSnap) T = camMomentTarget(T, dt); else G.cv.mom = null;
   if (G.camSnap) {
     G.camSnap = false;
     // a new level opens wide (or on its boss) and eases in; a resize just snaps
@@ -1714,9 +1746,12 @@ function handleEvents() {
   const fx = G.fx;
   for (const ev of sim.events) {
     playEv(ev);
+    // moment camera (these events also have their own cases below)
+    if (ev.type === 'allyKnock') camMoment(ev.x, ev.y, 0.7); // the goose lands on its victim
+    else if (ev.type === 'stkLaunch') camMoment(ev.tx, ev.ty, 0.65); // the power chick in flight: hold where it lands
     switch (ev.type) {
       case 'allyCrow': // the rooster crows: one short shake and a beat of hit-stop (calm: none); the wave itself is drawn in render/allies.js
-        fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y);
+        fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y); camMoment(ev.x, ev.y);
         audio.play('crow');
         buzz('crow');
         break;
