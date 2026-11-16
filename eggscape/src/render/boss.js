@@ -454,7 +454,22 @@ function drawStar(ctx, x, y, r, col) {
 
 // the bar's portrait chip: a small code-drawn emblem per boss (screen space, y down)
 const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78', kingcrab: '#1f6a96', owl: '#1d3a5c', gator: '#2f5a3a' };
+// The chip is tiny but redraws a whole character; keep it on an offscreen canvas and refresh it ~12x a second.
+const EMB = new Map();
 function drawBossEmblem(ctx, kind, cx, cy, d, t) {
+  const sc = Math.max(1, ctx.getTransform().a), S = Math.ceil(d * sc) + 4, key = kind + '|' + S;
+  let E = EMB.get(key);
+  if (!E) { const c = document.createElement('canvas'); c.width = c.height = S; EMB.set(key, (E = { c, t: -9 })); }
+  if (t - E.t > 1 / 12 || t < E.t) {
+    const g = E.c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, S, S);
+    g.setTransform(sc, 0, 0, sc, S / 2, S / 2);
+    drawBossEmblemLive(g, kind, 0, 0, d, t);
+    E.t = t;
+  }
+  ctx.drawImage(E.c, cx - S / sc / 2, cy - S / sc / 2, S / sc, S / sc);
+}
+function drawBossEmblemLive(ctx, kind, cx, cy, d, t) {
   const r = d / 2;
   ctx.save();
   ctx.beginPath();
