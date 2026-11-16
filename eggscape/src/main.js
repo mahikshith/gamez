@@ -1793,6 +1793,7 @@ function handleEvents() {
         break;
       }
       case 'save': {
+        { const np = sim.nest.getPosition(); if (!G.nestDrops || G.nestDrops.run !== G.run) G.nestDrops = { run: G.run }; G.nestDrops[ev.n - 1] = { x: ev.x - np.x, y: Math.max(ev.y - np.y, 0.5), t0: G.t }; }
         if (ev.egg && ev.egg.chick && !ev.egg.powU && sim.banked && sim.banked().includes(ev.egg)) toast('Your chick kept its power. Tap the glowing chick button to use it.', 3);
         audio.play('egg_save', { pitch: 1 + (ev.combo - 1) * 0.12 });
         if (ev.combo > 1) audio.play('combo', { intensity: (ev.combo - 2) / 2 });
@@ -2826,7 +2827,7 @@ function render() {
     for (const pt of sim.portals) { if (spring(pt)) W.drawOrbSpring(ctx, pt.ax, pt.ay, t); else { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); } }
   }, 0.4);
   if (sim.timeLimit && sim.state === 'play') W.drawFuse(ctx, sim.outerR + 0.32, sim.timeLeft / sim.timeLimit, t, G.screen === 'play' ? fx : null, sim.rings[sim.rings.length - 1]); // v4: hugs a shaped vault
-  if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length); // world 8: the basket under the boat
+  if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length, G.nestDrops && G.nestDrops.run === G.run ? G.nestDrops : null, G.t); // world 8: the basket under the boat
   { const tl = toWorld(0, G.hudBottom + 8 * ui.u), tr = toWorld(W_, 0); allyFrame(sim, { x0: tl.x, x1: tr.x, top: tl.y }, save.calm, G.screen === 'play' ? fx : null); } // the rooster's perch and the crow wave (render only)
   const eggPts = sim.aliveEggs().map((e) => e.body.getPosition());
   const stuck = sim.aliveEggs().filter((e) => e.honey > 0);

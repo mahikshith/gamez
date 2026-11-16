@@ -721,7 +721,7 @@ export class Sim {
       egg.lastV = Math.hypot(vel.x, vel.y);
       if (egg.inNest > 0 && egg.lastV < 1.2) {
         egg.nestT += dt;
-        if (egg.nestT > 0.3) this.saveEgg(egg);
+        if (egg.nestT > 0.15) this.saveEgg(egg); // 2026-11-16: quicker, the egg then drops into the basket (render)
       } else egg.nestT = 0;
       if ((p.y - this.groundY) * this.gy < -3 || Math.abs(p.x) > 40) this.breakEgg(egg, 'lost');
     }

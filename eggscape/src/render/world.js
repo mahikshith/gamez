@@ -855,7 +855,7 @@ export function drawEggMult(ctx, egg, k, font) {
   ctx.restore();
 }
 
-export function drawNest(ctx, sim, theme, t, savedCount) {
+export function drawNest(ctx, sim, theme, t, savedCount, drops = null, now = 0) {
   const p = sim.nest.getPosition();
   const w = sim.nestW / 2;
   // a richer, deeper straw than the palette's flat tone, so the nest holds its own against the ground at phone size
@@ -886,8 +886,19 @@ export function drawNest(ctx, sim, theme, t, savedCount) {
   const n = Math.min(4, savedCount);
   for (let i = 0; i < n; i++) {
     ctx.save();
-    ctx.translate(-0.33 + i * 0.22, 0.34 + (i % 2) * 0.04);
-    ctx.scale(0.78, 0.78);
+    // 2026-11-16 (mykee: eggs sat on top of the basket, then popped inside): a new egg drops from where it landed
+    // down into its place, behind the basket's front, with a little squash as it settles
+    const sx = -0.33 + i * 0.22, sy = 0.5 + (i % 2) * 0.03, D = drops && drops[i], age = D ? now - D.t0 : 9;
+    let ex = sx, ey = sy, sq = 1, spin = 0;
+    if (age < 0.45) {
+      const f = clamp(age / 0.32, 0, 1), fe = f * f; // falls in under gravity
+      ex = D.x + (sx - D.x) * fe; ey = D.y + (sy - D.y) * fe;
+      spin = (1 - f) * (D.x > sx ? -0.5 : 0.5);
+      if (age > 0.32) { const k = (age - 0.32) / 0.13; sq = 1 - 0.16 * Math.sin(Math.PI * k); }
+    }
+    ctx.translate(ex, ey);
+    ctx.scale(0.78 / Math.sqrt(sq), 0.78 * sq);
+    ctx.rotate(spin);
     const rot = (i - 1.5) * 0.25;
     ctx.rotate(rot);
     eggPath(ctx);
