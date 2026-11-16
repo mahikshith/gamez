@@ -278,3 +278,70 @@ export function drawMapAmb(ctx, layer, w, G) {
   try { A[layer](ctx, G); } catch (e) { /* art must never break the frame */ }
   ctx.restore();
 }
+
+// ---- the outfit's theme on the map: a garland strung along the road, dressed by the skin's pack ----
+// winter: twinkling fairy lights; cabin: warm lanterns; castle hall: royal pennants; countryside: bunting;
+// harbour: signal flags (and gulls); deep places: glowing crystal lamps
+const DRESS = {
+  village: { wire: '#2a4a2a', post: '#5a3a1e', kind: 'bulb', cols: ['#ff4a3a', '#ffd23a', '#4ad86a', '#4ab0ff'] },
+  cabin: { wire: '#6a4a2a', post: '#4a2a14', kind: 'lantern', cols: ['#ffb84a'] },
+  hall: { wire: '#a87810', post: '#3a2468', kind: 'pennant', cols: ['#8a3ae8', '#ffd24a', '#c8323a'] },
+  hills: { wire: '#7a5a30', post: '#6a4424', kind: 'flag', cols: ['#ff6a5a', '#ffd23a', '#ffffff', '#5ab0ff', '#7ad85a'] },
+  harbor: { wire: '#c8a870', post: '#6a4a24', kind: 'signal', cols: ['#ffd23a', '#d8302a', '#1a4ab0', '#ffffff'] },
+  cave: { wire: '#4a3a78', post: '#2a2048', kind: 'crystal', cols: ['#c878ff', '#5ad2ff', '#ff8cdc'] },
+};
+export function drawRoadDress(ctx, L, sy, vt, vb, t, bg, calm) {
+  const D = DRESS[bg]; if (!D) return;
+  const u = L.u * 1.3, gap = 84 * L.u, off = L.roadW * 0.5 + 10 * L.u;
+  const yEnd = L.TOP * 0.62, yStart = L.stops[0].y + L.BH * 0.12;
+  const a = Math.max(yEnd, Math.floor((vt + sy - gap) / gap) * gap), b = Math.min(yStart, vb + sy + gap);
+  const pt = (y, side) => { const d = (L.pathX(y + 1) - L.pathX(y - 1)) / 2, n = Math.hypot(1, d); return { x: L.pathX(y) + (side * off) / n, y: y - sy - (side * off * d) / n }; };
+  ctx.save(); ctx.lineCap = 'round';
+  try {
+    for (let y = a; y + gap <= b; y += gap) {
+      const k = Math.round(y / gap), side = 1, p = pt(y, side), q = pt(y + gap, side), sag = 12 * u;
+      const at = (v) => ({ x: p.x + (q.x - p.x) * v, y: p.y + (q.y - p.y) * v + Math.sin(v * Math.PI) * sag });
+      // post, then the sagging line
+      ctx.strokeStyle = D.post; ctx.lineWidth = 3 * u; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y + 10 * u); ctx.stroke();
+      blob(ctx, p.x, p.y, 2.6 * u, D.post);
+      ctx.strokeStyle = D.wire; ctx.lineWidth = 1.4 * u; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.quadraticCurveTo((p.x + q.x) / 2, (p.y + q.y) / 2 + sag * 2, q.x, q.y); ctx.stroke();
+      const N = D.kind === 'lantern' || D.kind === 'crystal' ? 2 : 4;
+      for (let i = 0; i < N; i++) {
+        const v = (i + 1) / (N + 1), c = at(v), j = k * 5 + i, col = D.cols[j % D.cols.length], sw = calm ? 0 : Math.sin(t * 2.2 + j) * 0.18;
+        if (D.kind === 'bulb') {
+          const on = calm || fract(t * 0.7 + hash(j) * 0.9) > 0.25;
+          if (on) glow(ctx, col, c.x, c.y + 4 * u, 11 * u, 0.55);
+          ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(sw * 0.6);
+          ctx.fillStyle = '#3a4a3a'; ctx.fillRect(-1.6 * u, -1 * u, 3.2 * u, 3 * u);
+          ctx.fillStyle = on ? col : 'rgba(80,80,90,0.9)'; ctx.beginPath(); ctx.ellipse(0, 5 * u, 2.8 * u, 4 * u, 0, 0, TAU); ctx.fill();
+          if (on) blob(ctx, -0.9 * u, 3.8 * u, 1 * u, 'rgba(255,255,255,0.8)');
+          ctx.restore();
+        } else if (D.kind === 'pennant' || D.kind === 'flag' || D.kind === 'signal') {
+          ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(sw);
+          const s = (D.kind === 'pennant' ? 11 : 9) * u;
+          ctx.fillStyle = col; ctx.beginPath();
+          if (D.kind === 'signal') { ctx.rect(-s * 0.55, 0, s * 1.1, s * 1.1); ctx.fill(); ctx.fillStyle = D.cols[(j + 2) % D.cols.length]; ctx.fillRect(-s * 0.55, s * 0.36, s * 1.1, s * 0.38); }
+          else { ctx.moveTo(-s * 0.55, 0); ctx.lineTo(s * 0.55, 0); ctx.lineTo(0, s * (D.kind === 'pennant' ? 1.5 : 1.05)); ctx.closePath(); ctx.fill(); if (D.kind === 'pennant') { ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 1 * u; ctx.stroke(); } }
+          ctx.restore();
+        } else { // a hanging lamp: cabin lantern or a crystal
+          const fl = calm ? 1 : 0.8 + Math.sin(t * 7 + j * 3) * 0.1 + Math.sin(t * 11 + j) * 0.08;
+          glow(ctx, col, c.x, c.y + 8 * u, 20 * u, 0.6 * fl);
+          ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(sw * 0.5);
+          if (D.kind === 'lantern') {
+            ctx.fillStyle = '#3a2412'; ctx.fillRect(-4 * u, 1 * u, 8 * u, 2 * u); ctx.fillRect(-4 * u, 13 * u, 8 * u, 2 * u);
+            ctx.fillStyle = `rgba(255,${190 + 40 * fl | 0},90,1)`; ctx.fillRect(-3.2 * u, 3 * u, 6.4 * u, 10 * u);
+            ctx.strokeStyle = '#3a2412'; ctx.lineWidth = 1 * u; ctx.strokeRect(-3.2 * u, 3 * u, 6.4 * u, 10 * u);
+          } else {
+            ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, 1 * u); ctx.lineTo(4 * u, 7 * u); ctx.lineTo(0, 16 * u); ctx.lineTo(-4 * u, 7 * u); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.moveTo(0, 1 * u); ctx.lineTo(-4 * u, 7 * u); ctx.lineTo(-1 * u, 7 * u); ctx.closePath(); ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+    }
+    if (bg === 'harbor' && !calm) { // gulls wheel over the harbour skin's map
+      for (let g = 0; g < 2; g++) { const c = cross(t, 8, 6, g * 0.5, L.A.x - 40 * u, L.A.x1 + 40 * u, g ? -1 : 1); if (c) bird(ctx, c.x, vt + (60 + g * 90 + Math.sin(t + g) * 14) * u, 9 * u, t * 7 + g, '#ffffff'); }
+    }
+  } catch (e) { /* art must never break the frame */ }
+  ctx.restore();
+}
