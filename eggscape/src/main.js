@@ -931,6 +931,10 @@ async function press(id) {
       // allies (v3.5): free on Easy and after a fail; otherwise a rewarded ad (never costs progress, the button stays on a miss)
       if (G.screen !== 'play' || !allyShown()) break;
       if (!allyKinds().some((k) => G.sim.allyCan(k))) { toast('Nothing for a farm friend to help with yet.', 2.2); break; }
+      if (!allyFree() && !G.allyAd && save.wallet.tickets.ally > 0) { // an Ally Ticket (shop) stands in for the ad
+        const w = E.useTicket(save.wallet, 'ally');
+        if (w) { save.wallet = w; persist(); G.allyAd = true; toast(`Ally Ticket used (${w.tickets.ally} left)`, 2); }
+      }
       if (!allyFree() && !G.allyAd) {
         const ok = await rewarded('ally');
         if (ok) G.allyAd = true;
@@ -1143,6 +1147,12 @@ async function press(id) {
     case 'skip:ad': {
       if (G.screen !== 'fail') break;
       if (await rewarded('skip')) skipLevel();
+      break;
+    }
+    case 'skip:ticket': {
+      if (G.screen !== 'fail' || !(G.li >= 0 && ads.stuck(G.level.id))) break;
+      const w = E.useTicket(save.wallet, 'skip');
+      if (w) { save.wallet = w; persist(); skipLevel(); }
       break;
     }
     case 'skip:coins': {
@@ -3361,7 +3371,12 @@ function drawAllyBtn() {
     ctx.lineWidth = 2.5 * u; ctx.strokeStyle = `rgba(255,224,120,${0.7 * (1 - p)})`; ctx.stroke();
   }
   ui.button('ally', '', x, y, bs, bs, { kind: 'gold', icon: allyIcon, iconS: 1.45, disabled: !can, round: 15 * u });
-  if (!free && can) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
+  const tk = save.wallet.tickets.ally;
+  if (!free && can && tk > 0) { // "Use ticket (N)": a red ticket stub with the count instead of the ad badge
+    const tw2 = 30 * u, th2 = 17 * u, tx2 = x + bs - tw2 + 6 * u, ty2 = y + bs - th2 + 2 * u;
+    ui.roundRect(tx2, ty2, tw2, th2, 4 * u); ctx.fillStyle = '#e0412d'; ctx.fill(); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = '#5a110a'; ctx.stroke();
+    ui.text('x' + Math.min(tk, 99), tx2 + tw2 / 2, ty2 + th2 / 2 + 0.5 * u, { size: 12 * u, align: 'center', color: '#fff', maxW: tw2 - 4 * u, noRecord: true });
+  } else if (!free && can) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
   if (!G.allyOpen) return;
   const cw = 124 * u, ch = 46 * u;
   kinds.forEach((k, i) => {
@@ -4513,9 +4528,10 @@ function drawFail() {
     B.push({ h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 25 * s }) });
     // stuck (3 losses in a row on this level): skip ahead with an ad or coins
     if (G.li >= 0 && ads.stuck(G.level.id) && G.li < LEVELS.length - 1) B.push({ h: 46 * s, gap: 10 * s, draw: (x, y, w) => {
-      const hw = (w - 8 * s) / 2, rich = save.wallet.coins >= SKIP_COINS;
+      const hw = (w - 8 * s) / 2, rich = save.wallet.coins >= SKIP_COINS, tk = save.wallet.tickets.skip;
       ui.button('skip:ad', 'Skip level', x, y, hw, 46 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 15 * s } : { kind: 'ad', ad: true, size: 15 * s });
-      ui.button('skip:coins', 'Skip ' + SKIP_COINS, x + hw + 8 * s, y, hw, 46 * s, { kind: rich ? 'gold' : 'off', disabled: !rich, dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 15 * s });
+      if (tk > 0) ui.button('skip:ticket', `Use Skip Ticket (${tk})`, x + hw + 8 * s, y, hw, 46 * s, { kind: 'secondary', size: 14 * s }); // bought in the shop
+      else ui.button('skip:coins', 'Skip ' + SKIP_COINS, x + hw + 8 * s, y, hw, 46 * s, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 15 * s }); // too few coins: the tap opens Get more
     } });
     if (!G.usedRewind && G.sim.canRewind()) B.push({ h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rewind', G.freeRewind ? 'Free rewind 5 s' : 'Rewind 5 s, keep streak', x, y, w, 50 * s, G.freeRewind ? { kind: 'secondary', icon: ICON.rewind, size: 16.5 * s } : { kind: 'ad', ad: true, size: 16.5 * s }) });
     B.push({ h: 44 * s, draw: (x, y, w) => ui.button('levels', 'Levels', x + w * 0.2, y, w * 0.6, 44 * s, { kind: 'tertiary', icon: ICON.grid, size: 16 * s }) });
@@ -5108,6 +5124,7 @@ if (DEV) window.__egg = {
   },
   uiRect: (tag) => ui.rects.find((r) => r.tag === tag) || null, // QA strips: where a recorded block was drawn
   setSave(s) { loadSave(s); },
+  ads, // shop QA: stuck counts, prices, the purchase bridge
   get save() { return save; },
   // QA only: jump straight to an end screen with a plausible result
   showResult(kind, stars = 3, cheer = null, t = 9) {
