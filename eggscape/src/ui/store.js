@@ -4,6 +4,7 @@
 //   store:  'back', 'tab:boosters|powers|hens|skins', 'buy:<boosterId>', 'skin:<skinId>' (buy or equip), 'ad:coins',
 //           'charge:chick' / 'charge:chick3', 'hen:<henSkinId>' (buy or equip), 'premium'
 //   picker: 'boost:<boosterId>', 'shop'
+import { drawEggSkinArt } from '../render/eggskins.js';
 import { ICON, C } from './ui.js';
 import { BOOSTERS, BOOSTER_ORDER, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin,
   CHARGE_ITEM, CHARGE_PACK, MAX_CHARGES, HEN_SKINS, HEN_SKIN_ORDER, ownsHenSkin } from '../economy.js';
@@ -615,6 +616,7 @@ export function drawStore(ui, ctx, W, H, state) {
 
 // An egg of the given skin, centered at (cx, cy), egg height h (y-down local space).
 export function drawSkinPreview(ctx, id, cx, cy, h, t = 0) {
+  if (drawEggSkinArt(ctx, id, cx, cy, h, t)) return; // 2026-11-16: the newer egg skins (render/eggskins.js)
   const w = h * 0.78;
   ctx.save();
   ctx.translate(cx, cy);

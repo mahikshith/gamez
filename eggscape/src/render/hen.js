@@ -15,7 +15,7 @@
 // Local space is y-down in a 100-unit box centred on (cx, cy); feet rest at cy + 0.48 h. She faces o.face (-1 = left,
 // toward the nest she stands beside; the default) and turns while she walks.
 import { drawDrop } from './characters.js';
-import { drawSkinHat, drawSkinNose, drawSkinNeck, drawSkinBody, skinSleeve, skinHidesComb, drawSleeveCuff, HEN_TINT, setSkinId, skinId } from './skins.js';
+import { drawSkinHat, drawSkinNose, drawSkinOutfit, henGarment, skinSleeve, skinHidesComb, drawSleeveCuff, HEN_TINT, setSkinId, skinId } from './skins.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -45,6 +45,7 @@ const HEN = {
   far: ['#e6d3b0', '#cfb084'], tail: ['#fbf1de', '#e9d4ad'], tailLo: '#cfab76',
 };
 const HEN_BASE = { ...HEN };
+let HEN_G = null; // the outfit geometry for her body (skins.js henGarment), built on first use
 // 2026-11-15 skins (economy.js HEN_SKINS): the hen's feathers take the skin's tint, the hats and scarves come from skins.js;
 // the rooster ally wears the same set
 export function setHenSkin(id) { setSkinId(id); Object.assign(HEN, HEN_BASE, HEN_TINT[id] || {}); }
@@ -550,7 +551,7 @@ export function drawHenPose(ctx, P, cx, cy, h, o = {}) {
     drawTail(ctx, P, ol);
     if (P.tufts > 0.02) drawTufts(ctx, P.tufts, tt, ol);
     drawBody(ctx, H, ol);
-    if (o.skin !== false) { drawSkinBody(ctx, ol, tt, bodyPath); drawSkinNeck(ctx, ol, H.x - 5, H.y + 15.5, tt); }
+    if (o.skin !== false) drawSkinOutfit(ctx, ol, tt, HEN_G || (HEN_G = henGarment(bodyPath)));
     drawHead(ctx, H, P, f, tt, ol, o.hat);
     wing(ctx, ol, 1, -1, P.wa, P.sp, false); // near wing, over the body (and over her eye when she wipes it)
     if (o.breath >= 0 && o.breath < 1) drawBreath(ctx, H.x + 25, H.y + 5, o.breath);
@@ -671,7 +672,7 @@ function wing(ctx, o, x, y, raise, sp, far) {
   }
   ctx.restore();
   ctx.beginPath(); path(ctx); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
-  if (sl && sl.cuff && !far) drawSleeveCuff(ctx, o, L * 0.58, -W * 0.3, W * 0.78);
+  if (sl && sl.cuff && !far) drawSleeveCuff(ctx, o, L * 0.58, -W * 0.3, W * 0.78, sl.cuff);
   ctx.restore();
 }
 
