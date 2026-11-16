@@ -6,6 +6,7 @@
 // Layout and art only: main.js owns the scroll, the buttons, the hen at the next stop and the gate cards.
 // The still part of every band (ground, trees, barns, crystals...) is painted once into an offscreen canvas and blitted;
 // only the creatures, smoke, bubbles and sparkles are drawn live, and only for the bands on screen (battery).
+import { drawMapAmb } from './mapamb.js';
 import { drawVillainPortrait } from './villain-art.js';
 import { drawRooster, roosterPose, drawGoose, goosePose } from './allies.js';
 import { drawChick } from './characters.js';
@@ -564,18 +565,29 @@ export function drawCast(ctx, L, sy, vt, vb, t, calm) {
     const top = L.bandTop(w) - 120 * L.u - sy, bot = L.bandTop(w) + L.BH + 40 * L.u - sy;
     if (bot < vt || top > vb) continue;
     const S = STILL[w] || [], C = CAST[w] || [];
+    const G = calm ? null : ambBand(L, w, sy, t);
+    if (G) drawMapAmb(ctx, 'back', w, G);
     S.forEach((e, i) => { try { drawStillLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
     C.forEach((e, i) => { try { drawLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
+    if (G) drawMapAmb(ctx, 'front', w, G);
   }
+}
+// what the ambience layer (render/mapamb.js) needs to know about a band on screen
+function ambBand(L, w, sy, t) {
+  const B = bandLayout(L, w), S = STILL[w] || [];
+  return {
+    x0: L.A.x, x1: L.A.x1, y: L.bandTop(w) - sy, h: L.BH, u: L.u, t,
+    spots: (kind) => S.map((e, i) => (e[0] === kind && B.still[i] ? { x: B.still[i].x, y: B.still[i].y - sy, s: B.still[i].s } : null)).filter(Boolean),
+  };
 }
 
 // the fog over a world still behind its gate: drifting cloud banks
 export function drawFog(ctx, L, w, sy, t, calm) {
   const u = L.u, top = L.bandTop(w) - 30 * u - sy, h = L.BH + 30 * u;
   ctx.save();
-  ctx.fillStyle = 'rgba(232,238,248,0.55)'; ctx.fillRect(0, top + 20 * u, L.W, h - 20 * u);
+  ctx.fillStyle = 'rgba(232,238,248,0.32)'; ctx.fillRect(0, top + 20 * u, L.W, h - 20 * u); // light: the world's life shows through, a teaser
   const R = rng(w * 7 + 1);
-  for (let i = 0; i < 9; i++) { const fx = R(), fy = R(), s = (90 + R() * 70) * u, dx = calm ? 0 : Math.sin(t * 0.15 + i) * 20 * u; cloud(ctx, fx * L.W + dx, top + 30 * u + fy * (h - 60 * u), s, 'rgba(250,252,255,0.85)'); }
+  for (let i = 0; i < 6; i++) { const fx = R(), fy = R(), s = (80 + R() * 60) * u, dx = calm ? 0 : Math.sin(t * 0.15 + i) * 20 * u; cloud(ctx, fx * L.W + dx, top + 30 * u + fy * (h - 60 * u), s, 'rgba(250,252,255,0.7)'); }
   ctx.restore();
 }
 

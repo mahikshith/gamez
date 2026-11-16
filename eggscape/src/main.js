@@ -2476,8 +2476,6 @@ function handleEvents() {
 const STRIKE_API = {
   popup, audio,
   get sim() { return G.sim; },
-  mapJump(w) { G.world = w; G.mscroll.focus = ''; }, // map shots: show world w
-  mapScroll(y) { G.mscroll.y = y; G.mscroll.v = 0; G.mscroll.focus = G.world + ':' + G.mscroll.enter; },
   once(key, text, d = 3.2) { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } },
   hitStop: (s) => hitStop(s),
   punch: (a, x, y) => camPunch(a, x, y),
@@ -5619,6 +5617,8 @@ async function boot() {
 
 // test hook (used by the QA bot and screenshot tools); compiled out of release builds
 if (DEV) window.__egg = {
+  mapJump(w) { G.world = w; G.mscroll.focus = ''; }, // map shots: show world w
+  mapScroll(y) { G.mscroll.y = y; G.mscroll.v = 0; G.mscroll.focus = G.world + ':' + G.mscroll.enter; },
   G, LEVELS, LAB,
   get sim() { return G.sim; },
   start: (i, o) => startLevel(i, o),
