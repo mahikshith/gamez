@@ -398,7 +398,10 @@ export function thornLook(theme, mat) {
   const bg = (luma(P.skyTop) + luma(P.skyBottom)) / 2;
   const bone = bg < 0.12 || luma(ring) < 0.05 || reddish(P.skyTop) || reddish(P.skyBottom) || sunset(P.skyTop) || sunset(P.skyBottom) || reddish(ring) || reddish(P.ground);
   const [r, g, b] = hexRgb(ring), grey = Math.max(r, g, b) - Math.min(r, g, b) < 0.12;
-  L = { ...(bone ? TH_BONE : TH_RED), blunt: grey ? ['#4a515b', '#14171b', 'rgba(220,230,240,0.85)'] : ['#8d939b', '#2f3338', 'rgba(235,240,245,0.7)'] };
+  // 2026-11-16 (mykee: thorns looked white in some worlds and red in others): one thorn everywhere, red with a cream
+  // rim that keeps it readable on dark and red backdrops (the rim is drawn in drawThorns)
+  void bone;
+  L = { ...TH_RED, halo: true, blunt: grey ? ['#4a515b', '#14171b', 'rgba(220,230,240,0.85)'] : ['#8d939b', '#2f3338', 'rgba(235,240,245,0.7)'] };
   TH_LOOK.set(key, L);
   return L;
 }
@@ -485,6 +488,7 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
     shape(0, 0);
     ctx.lineJoin = 'miter';
     ctx.miterLimit = 8;
+    if (look.halo && !blunt) { ctx.lineWidth = Math.max(5.2 * px, 0.07); ctx.strokeStyle = 'rgba(255,240,214,0.92)'; ctx.stroke(); }
     ctx.lineWidth = Math.max(2.6 * px, 0.036);
     ctx.strokeStyle = edge;
     ctx.stroke();
