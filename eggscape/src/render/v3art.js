@@ -1236,7 +1236,8 @@ export function drawThornCurtain(ctx, cx, cy, len, h, t = 0, burn = 0) {
         ctx.lineTo(x + d * tl, y + tl * 0.5);
         ctx.lineTo(x, y + tl * 0.35);
         ctx.closePath();
-        ctx.fillStyle = charred ? `rgb(${Math.round(240 - 150 * burn)},${Math.round(56 - 30 * burn)},${Math.round(79 - 40 * burn)})` : '#f04058';
+        if (!charred) { ctx.lineWidth = o * 2.2; ctx.strokeStyle = 'rgba(255,240,214,0.92)'; ctx.stroke(); } // the same cream rim as every ring thorn
+        ctx.fillStyle = charred ? `rgb(${Math.round(240 - 150 * burn)},${Math.round(56 - 30 * burn)},${Math.round(79 - 40 * burn)})` : '#d23a3a';
         ctx.fill();
         ctx.lineWidth = o * 0.8;
         ctx.strokeStyle = '#2a0a12';
@@ -1249,7 +1250,7 @@ export function drawThornCurtain(ctx, cx, cy, len, h, t = 0, burn = 0) {
       ctx.lineTo(ex, ey + tl * 0.9);
       ctx.lineTo(ex + tl * 0.35, ey - tl * 0.2);
       ctx.closePath();
-      ctx.fillStyle = charred ? '#5a2030' : '#f04058';
+      ctx.fillStyle = charred ? '#5a2030' : '#d23a3a';
       ctx.fill();
       ctx.stroke();
       // fire eating the strand from below

@@ -398,7 +398,10 @@ export function thornLook(theme, mat) {
   const bg = (luma(P.skyTop) + luma(P.skyBottom)) / 2;
   const bone = bg < 0.12 || luma(ring) < 0.05 || reddish(P.skyTop) || reddish(P.skyBottom) || sunset(P.skyTop) || sunset(P.skyBottom) || reddish(ring) || reddish(P.ground);
   const [r, g, b] = hexRgb(ring), grey = Math.max(r, g, b) - Math.min(r, g, b) < 0.12;
-  L = { ...(bone ? TH_BONE : TH_RED), blunt: grey ? ['#4a515b', '#14171b', 'rgba(220,230,240,0.85)'] : ['#8d939b', '#2f3338', 'rgba(235,240,245,0.7)'] };
+  // 2026-11-16 (mykee: thorns looked white in some worlds and red in others): one thorn everywhere, red with a cream
+  // rim that keeps it readable on dark and red backdrops (the rim is drawn in drawThorns)
+  void bone;
+  L = { ...TH_RED, halo: true, blunt: grey ? ['#4a515b', '#14171b', 'rgba(220,230,240,0.85)'] : ['#8d939b', '#2f3338', 'rgba(235,240,245,0.7)'] };
   TH_LOOK.set(key, L);
   return L;
 }
@@ -485,6 +488,7 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
     shape(0, 0);
     ctx.lineJoin = 'miter';
     ctx.miterLimit = 8;
+    if (look.halo && !blunt) { ctx.lineWidth = Math.max(5.2 * px, 0.07); ctx.strokeStyle = 'rgba(255,240,214,0.92)'; ctx.stroke(); }
     ctx.lineWidth = Math.max(2.6 * px, 0.036);
     ctx.strokeStyle = edge;
     ctx.stroke();
@@ -855,7 +859,7 @@ export function drawEggMult(ctx, egg, k, font) {
   ctx.restore();
 }
 
-export function drawNest(ctx, sim, theme, t, savedCount) {
+export function drawNest(ctx, sim, theme, t, savedCount, drops = null, now = 0) {
   const p = sim.nest.getPosition();
   const w = sim.nestW / 2;
   // a richer, deeper straw than the palette's flat tone, so the nest holds its own against the ground at phone size
@@ -886,8 +890,19 @@ export function drawNest(ctx, sim, theme, t, savedCount) {
   const n = Math.min(4, savedCount);
   for (let i = 0; i < n; i++) {
     ctx.save();
-    ctx.translate(-0.33 + i * 0.22, 0.34 + (i % 2) * 0.04);
-    ctx.scale(0.78, 0.78);
+    // 2026-11-16 (mykee: eggs sat on top of the basket, then popped inside): a new egg drops from where it landed
+    // down into its place, behind the basket's front, with a little squash as it settles
+    const sx = -0.33 + i * 0.22, sy = 0.5 + (i % 2) * 0.03, D = drops && drops[i], age = D ? now - D.t0 : 9;
+    let ex = sx, ey = sy, sq = 1, spin = 0;
+    if (age < 0.45) {
+      const f = clamp(age / 0.32, 0, 1), fe = f * f; // falls in under gravity
+      ex = D.x + (sx - D.x) * fe; ey = D.y + (sy - D.y) * fe;
+      spin = (1 - f) * (D.x > sx ? -0.5 : 0.5);
+      if (age > 0.32) { const k = (age - 0.32) / 0.13; sq = 1 - 0.16 * Math.sin(Math.PI * k); }
+    }
+    ctx.translate(ex, ey);
+    ctx.scale(0.78 / Math.sqrt(sq), 0.78 * sq);
+    ctx.rotate(spin);
     const rot = (i - 1.5) * 0.25;
     ctx.rotate(rot);
     eggPath(ctx);
@@ -1023,6 +1038,45 @@ export function drawPortal(ctx, x, y, t, out) {
     ctx.beginPath(); ctx.arc(0.375 * Math.cos(an), 0.375 * Math.sin(an), s, 0, TAU); ctx.fill();
   }
   ctx.restore();
+}
+
+// 2026-11-16 (mykee: "portals appear but don't suck"): a swirl that only gives out orbs (entry = exit, no pull) is
+// drawn as an orb spring, a golden fountain of light, so it never reads as a portal
+export function drawOrbSpring(ctx, x, y, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 0.5);
+  g.addColorStop(0, 'rgba(255,248,200,0.95)'); g.addColorStop(0.35, 'rgba(255,214,90,0.55)'); g.addColorStop(1, 'rgba(255,190,60,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 0.5, 0, TAU); ctx.fill();
+  // a ring of light that breathes
+  const br = 0.27 + 0.03 * Math.sin(t * 3);
+  ctx.strokeStyle = 'rgba(255,236,150,0.95)'; ctx.lineWidth = 0.04;
+  ctx.beginPath(); ctx.arc(0, 0, br, 0, TAU); ctx.stroke();
+  // sparkles rising out of it (y up in world space)
+  for (let i = 0; i < 6; i++) {
+    const ph = (t * 0.6 + i / 6) % 1, a = i * 2.4, rx = Math.cos(a) * 0.18 * (1 - ph);
+    const sz = 0.05 * Math.sin(Math.PI * ph);
+    ctx.fillStyle = `rgba(255,250,215,${0.9 * Math.sin(Math.PI * ph)})`;
+    ctx.save(); ctx.translate(rx, 0.1 + ph * 0.55); ctx.rotate(t * 2 + i);
+    ctx.beginPath(); for (let k = 0; k < 8; k++) { const r = k % 2 ? sz * 0.35 : sz, an = (k * Math.PI) / 4; ctx.lineTo(Math.cos(an) * r, Math.sin(an) * r); } ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// a real portal: a dotted trail of light runs from the entry to its exit, so the player sees where an egg will go
+export function drawPortalLink(ctx, pt, t) {
+  const dx = pt.bx - pt.ax, dy = pt.by - pt.ay, L = Math.hypot(dx, dy);
+  if (L < 0.5) return;
+  const nx = -dy / L, ny = dx / L, bend = Math.min(1.2, L * 0.2);
+  const mx = (pt.ax + pt.bx) / 2 + nx * bend, my = (pt.ay + pt.by) / 2 + ny * bend;
+  const n = Math.max(8, Math.round(L / 0.35));
+  for (let i = 1; i < n; i++) {
+    const f = ((i + t * 1.6) % n) / n, u = 1 - f;
+    const x = u * u * pt.ax + 2 * u * f * mx + f * f * pt.bx, y = u * u * pt.ay + 2 * u * f * my + f * f * pt.by;
+    const a = 0.7 * Math.sin(Math.PI * f);
+    ctx.fillStyle = f < 0.5 ? `rgba(170,150,255,${a})` : `rgba(255,190,110,${a})`;
+    ctx.beginPath(); ctx.arc(x, y, 0.06, 0, TAU); ctx.fill();
+  }
 }
 
 export function drawBomb(ctx, bomb, t) {

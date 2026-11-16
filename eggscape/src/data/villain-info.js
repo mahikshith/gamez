@@ -33,7 +33,7 @@ export const VILLAIN_INFO = {
     does: 'A frost gecko in the vault: icy feet, and a lick that freezes eggs.',
     beat: 'Strikes and stone stop him. Each saved egg cancels his wind-up.',
     attacks: {
-      gale: 'He blows along his own channel. Stone is too heavy to blow.',
+      gale: 'His wind shoves eggs hard in his channel, nudges the rest and slowly turns free rings. Hold a ring to stop it drifting. Stone is too heavy to blow.',
       freeze: 'He licks a wall of his channel: it locks for 4 s. Use the others.',
       icicles: 'Turn the ring above an egg to swing its icicle away.',
     },

@@ -432,7 +432,8 @@ function bossStep(sim, B, dt) {
     A.ph = 'act';
     A.t = A.name === 'gale' ? GALE_T : 0.35;
     A.dur = A.t;
-    if (A.name === 'gale' && B.kind === 'blizzard' && sim.level.bossFight.gecko) { const C = sim.geckoOf(); if (C && sim.salLive(C)) A.ch = sim.salCh(C); } // his gale blows along his own channel
+    if (A.name === 'gale' && B.kind === 'blizzard' && sim.level.bossFight.gecko) { const C = sim.geckoOf(); if (C && sim.salLive(C)) A.ch = sim.salCh(C); } // his gale blows hardest along his own channel
+    if (A.name === 'gale' && B.kind === 'blizzard') A.turn = 0.7; // 2026-11-16 (mykee): the blizzard's gale also drags the rings round (gently: Grandpa Gator's roll spins them much faster)
     actAttack(sim, B, A, M);
     if (A.name === 'gale') animalsHit(sim, 'gust', { dir: A.dir, power: (sim.level.bossFight.gale ?? 5) * M.power / 5, dur: GALE_T });
     sim.emit('bossAct', { kind: B.kind, attack: A.name, x: B.x, y: B.y, ring: A.ring, dir: A.dir });
@@ -647,8 +648,14 @@ export function galeForce(sim, A, M, dt) {
   };
   for (const e of sim.aliveEggs()) {
     if (e.honey > 0 || e.icy > 0) continue;
-    if (A.ch != null && sim.channelOf(e) !== A.ch) continue; // L15: the gecko's gale runs along his own channel
-    push(e.body, e.stone > 0 ? 0.3 * sim.gk : e.chick ? 1.3 : e.bubbleFix ? 1.6 : sim.gk); // gk: the gale keeps its strength against heavier eggs (chicks and bubbles kept their weight)
+    // L15: the gecko's gale runs hardest along his own channel; 2026-11-16 (mykee: "the wind has no effect on the
+    // eggs") every other egg still feels most of it
+    const own = A.ch == null || sim.channelOf(e) === A.ch ? 1 : 0.4;
+    push(e.body, own * (e.stone > 0 ? 0.3 * sim.gk : e.chick ? 1.3 : e.bubbleFix ? 1.6 : sim.gk)); // gk: the gale keeps its strength against heavier eggs (chicks and bubbles kept their weight)
+  }
+  if (A.turn) for (const r of sim.rings) { // the rings drift with the wind (a held ring is in the player's hand)
+    if (r.held || r.motor || r.lock > 0 || !r.grabbable) continue;
+    r.target = r.body.getAngle() + A.dir * A.turn * ramp * 0.05; // ~0.5 rad/s at full gale
   }
   for (const r of sim.rocks) if (r.alive && (A.ch == null || sim.chAt(Math.hypot(r.body.getPosition().x, r.body.getPosition().y)) === A.ch)) push(r.body, 0.5 * sim.gk);
   void dt;

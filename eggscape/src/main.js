@@ -27,12 +27,13 @@ import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
 import { geckoStrikeEv, drawGeckoCard, geckoAnchor } from './render/gecko15.js'; // L15: the frost gecko boss
 import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar, drawMagnetField, bossPose, setBossView } from './render/boss.js'; // bosses (v3.1)
-import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
+import { galeNow, BOSS_TITLE, ATTACK_NAME, BOSS_MODE } from './sim/boss.js';
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
 import { drawP2Back, drawP2Front, p2Event } from './render/powers2.js'; // v3.4 powers and combos
 import { warpXfBegin, warpXfEnd } from './render/warp.js'; // v3.4 warp gate: a creature drawn going through it
 import { POWER_DEMOS } from './data/power-demos.js'; // v3.4 studio vaults
 import { CHICK_DEMOS } from './data/chick-demos.js';
+import { P2_TYPES } from './sim/powers2.js'; // practice tiles: which ids are power orbs
 import { BAYOU_DEMOS } from './data/bayou-demos.js'; // v3.7 Gator Bayou studio vaults
 import { FROG_DEMO } from './data/frog-demo.js'; // v3.3 frog studio level (dev)
 import { SEA_DEMOS } from './data/sea-demos.js'; // v3.3 studio levels (dev)
@@ -44,7 +45,7 @@ import { RIG as THIEF_RIG } from './sim/thieves.js';
 import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
 import { LAB_DEMOS } from './data/lab-demos.js'; // v4 Shape Lab studio levels: the clockwork cast and the owl
 import { drawClockwork, drawClockworkTele, cwEvent, drawCwIntro } from './render/clockwork.js'; // v4 clockwork spider, wind-up beetle, spring jack
-import { owlEvent } from './render/owl.js'; // v4 the Clockwork Owl
+import { owlEvent, drawOwlArt } from './render/owl.js'; // v4 the Clockwork Owl
 import { movesEvent } from './render/bossmoves.js'; // the boss variety moves
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
 import { drawCrawler, SPECIES as CRAWLER_SPECIES, crawlerAnim } from './render/crawlers.js'; // the salamander's cousins (dev strips; not in a level yet)
@@ -57,7 +58,7 @@ import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawSt
 import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
-import { drawVillainPortrait, PORTRAIT_BG } from './render/villain-art.js';
+import { drawVillainPortrait, PORTRAIT_BG, hasPortrait } from './render/villain-art.js';
 import { vibrate, installApp } from './app.js'; // Android WebView proof shell: bridge vibration, back button, FPS overlay (no-ops outside EGG_APP)
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -178,7 +179,7 @@ function safeInsets() {
 }
 
 function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, 2, typeof Q !== 'undefined' ? Q.steps[Q.i] : 2);
+  DPR = Math.min(window.devicePixelRatio || 1, save.saver ? 1.3 : 2, typeof Q !== 'undefined' ? Q.steps[Q.i] : 2);
   W_ = Math.max(320, window.innerWidth);
   H_ = Math.max(320, window.innerHeight);
   canvas.width = Math.round(W_ * DPR);
@@ -272,6 +273,10 @@ function startLevel(i, opts = {}) {
   G.boost = opts.boost || {};
   G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost, strike: strikeFor(G.level, i) });
   G.sim.ringSpeed = ringSpeed();
+  // portals explain themselves the first time they show up anywhere (a practice vault has no intro card)
+  if (G.sim.portals.some((pt) => pt.pull || Math.hypot(pt.ax - pt.bx, pt.ay - pt.by) > 0.05) && !save.seen.portalTip) {
+    save.seen.portalTip = 1; G.portalTip = 1;
+  }
   G.stkPick = null; G.stkWob = -9; G.stkFullT = 0; G.henAt = null;
   G.golden = !!opts.golden;
   G.adBoost = opts.adBoost || null;
@@ -605,6 +610,9 @@ function updateCamera(dt) {
   if (G.screen === 'pause' && !G.camSnap) return; // the shot holds under the pause card
   if (G.screen === 'play') cv.playT += dt;
   let T = camTarget();
+  // 2026-11-16 (mykee: "screen stuck, hard to control" on L13): while a finger holds a ring the camera stands
+  // completely still, so the ring under the finger never slides away from it. It eases on once the finger lets go.
+  if (!G.camSnap && G.screen === 'play' && G.sim && G.sim.rings.some((r) => r.held)) { T = { x: cam.x, y: cam.y, k: cam.k }; cv.vx = cv.vy = cv.vk = 0; }
   if (G.camSnap) {
     G.camSnap = false;
     // a new level opens wide (or on its boss) and eases in; a resize just snaps
@@ -839,6 +847,7 @@ async function press(id) {
     case 'zoom:out': setZoom((G.zm || 0) - 0.34); break;
     case 'zoom:auto': G.zm = null; break;
     case 'strike': fireStrike(); break; // Chick Strike
+    case 'bank': if (G.screen === 'play' && G.sim && G.sim.fireBanked()) audio.play('unlock', { pitch: 1.3 }); break; // a saved chick's kept power
     case 'stk:gotit': { const id = G.stkCard; save.strikeSeen = { ...(save.strikeSeen || {}) }; for (const S of strikesOpen()) save.strikeSeen[S.id] = 1; if (id) { G.stkSel = { lid: G.level.id, id }; G.sim.stkEquip(strikeFor(G.level, G.li)); } G.stkCard = null; persist(); break; }
     case 'ally': {
       // allies (v3.5): free on Easy and after a fail; otherwise a rewarded ad (never costs progress, the button stays on a miss)
@@ -1011,10 +1020,10 @@ async function press(id) {
       else if (G.infoFrom === 'wonder') setScreen('wonder');
       else { setScreen('play'); portal.gameplayStart(); }
       break;
-    case 'restart':
     case 'finish':
       if (G.screen === 'play' && G.sim && G.sim.finish()) audio.play('unlock');
       break;
+    case 'restart':
     case 'retry':
       portal.gameplayStop();
       if (id === 'retry' && G.screen === 'fail') { save.streak = 0; persist(); }
@@ -1081,6 +1090,9 @@ async function press(id) {
       break;
     case 'set:close':
       G.settingsOpen = false;
+      break;
+    case 'set:saver':
+      save.saver = !save.saver; persist(); setDPR();
       break;
     case 'set:restore':
       ads.restore(); toast('Checking your purchases...', 2);
@@ -1750,6 +1762,8 @@ function handleEvents() {
         break;
       }
       case 'save': {
+        { const np = sim.nest.getPosition(); if (!G.nestDrops || G.nestDrops.run !== G.run) G.nestDrops = { run: G.run }; G.nestDrops[ev.n - 1] = { x: ev.x - np.x, y: Math.max(ev.y - np.y, 0.5), t0: G.t }; }
+        if (ev.egg && ev.egg.chick && !ev.egg.powU && sim.banked && sim.banked().includes(ev.egg)) toast('Your chick kept its power. Tap the glowing chick button to use it.', 3);
         audio.play('egg_save', { pitch: 1 + (ev.combo - 1) * 0.12 });
         if (ev.combo > 1) audio.play('combo', { intensity: (ev.combo - 2) / 2 });
         buzz('save');
@@ -2461,6 +2475,7 @@ function heartbeat(dt) {
 }
 
 function drawDanger() {
+  return; // 2026-11-16 (mykee): no red screen edge when a gator opens its mouth or a snake closes in; the heartbeat sound stays
   if (save.calm || !(G.danger > 0.05)) return;
   const p = Math.exp(-(G.t - (G.beatT || -9)) * 5);
   const a = G.danger * (0.12 + 0.18 * p);
@@ -2591,6 +2606,7 @@ function update(dt) {
   if (G.slow && (G.slow.left -= dt) <= 0) G.slow = null;
   if (G.card && (G.card.t += dt) > G.card.dur) G.card = null;
   if (G.hen.t > 0 && (G.hen.t -= dt) <= 0) G.hen.mood = 'idle';
+  if (G.portalTip && G.screen === 'play' && !G.toast) { G.portalTip = 0; toast('Portal: an egg that falls into the purple swirl pops out of the orange one. Follow the dotted trail.', 3.6); }
   // stall watch (2026-11-15 softlock report): nothing moved and nothing came home for a while. Enough eggs home: offer
   // Finish. Not enough: after a long still spell offer Retry (an egg wedged, a creature sitting on it).
   if (G.screen === 'play' && sim.state === 'play') {
@@ -2655,6 +2671,7 @@ function update(dt) {
     if (b.alive && b.lit && b.spark) G.fx.add({ x: b.spark.x, y: b.spark.y, vx: (Math.random() - 0.5) * 2, vy: Math.random() * 2, g: 4, life: 0.25, size: 0.02, color: '#ffd34d', type: 'spark' });
   }
   for (const pt of sim.portals) {
+    if (!pt.pull && Math.hypot(pt.ax - pt.bx, pt.ay - pt.by) < 0.05) continue; // an orb spring draws its own sparkles
     if (Math.random() < 0.5) {
       const a = Math.random() * 6.283;
       const R = pt.pull || 0.5; // v3: the suction field reaches further
@@ -2776,9 +2793,13 @@ function render() {
   ctx.translate(-camX, -camY);
   W.drawVaultBack(ctx, sim, G.theme); // premium pass: plate behind the vault
   fx.draw(ctx, 'back');
-  blastXf(() => { for (const pt of sim.portals) W.drawPortalPull(ctx, pt, t); for (const pt of sim.portals) { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); } }, 0.4); // v3 portals
+  blastXf(() => { // v3 portals; an orb-only swirl (entry = exit, no pull) is drawn as an orb spring (2026-11-16)
+    const spring = (pt) => !pt.pull && Math.hypot(pt.ax - pt.bx, pt.ay - pt.by) < 0.05;
+    for (const pt of sim.portals) if (!spring(pt)) { W.drawPortalLink(ctx, pt, t); W.drawPortalPull(ctx, pt, t); }
+    for (const pt of sim.portals) { if (spring(pt)) W.drawOrbSpring(ctx, pt.ax, pt.ay, t); else { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); } }
+  }, 0.4);
   if (sim.timeLimit && sim.state === 'play') W.drawFuse(ctx, sim.outerR + 0.32, sim.timeLeft / sim.timeLimit, t, G.screen === 'play' ? fx : null, sim.rings[sim.rings.length - 1]); // v4: hugs a shaped vault
-  if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length); // world 8: the basket under the boat
+  if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length, G.nestDrops && G.nestDrops.run === G.run ? G.nestDrops : null, G.t); // world 8: the basket under the boat
   { const tl = toWorld(0, G.hudBottom + 8 * ui.u), tr = toWorld(W_, 0); allyFrame(sim, { x0: tl.x, x1: tr.x, top: tl.y }, save.calm, G.screen === 'play' ? fx : null); } // the rooster's perch and the crow wave (render only)
   const eggPts = sim.aliveEggs().map((e) => e.body.getPosition());
   const stuck = sim.aliveEggs().filter((e) => e.honey > 0);
@@ -2884,7 +2905,7 @@ function render() {
 
 
   // UI
-  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info') drawHUD();
+  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info' && G.screen !== 'intro') drawHUD(); // the intro card carries the name, eggs and time (mykee: the name showed twice)
   if (G.screen === 'play') drawFlyers(); // prizes on their way to the HUD
   if (G.screen === 'play') {
     // the power card owns the top of the screen while it shows
@@ -3074,6 +3095,25 @@ const allyIcon = (c, x, y, s) => { // a little rooster head: red comb, orange be
   c.fillStyle = '#fff'; c.beginPath(); c.arc(x + 0.12 * s, y - 0.07 * s, 0.02 * s, 0, 7); c.fill();
   c.restore();
 };
+// a chick that reached the nest with its power unused keeps it: a glowing chick button beside the strike / ally ones
+function drawBankBtn() {
+  const sim = G.sim, B = sim.banked ? sim.banked() : [];
+  if (!B.length) return;
+  const { bs, pad, side } = G.zb, u = ui.u, gap = 8 * u, n = (strikeShown() ? 1 : 0) + (allyShown() ? 1 : 0);
+  const x = side ? ui.A.x1 - pad - bs : ui.A.x + pad + n * (bs + gap), y = side ? G.play.y + (strikeShown() ? bs + gap : 0) : G.zb.bot;
+  const kind = B[0].chickKind, p = save.calm ? 0.5 : 0.5 + 0.5 * Math.sin(G.t * 5);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x + bs / 2, y + bs / 2, bs * (0.56 + 0.06 * p), 0, 7); ctx.fillStyle = `rgba(255,230,120,${0.25 + 0.25 * p})`; ctx.fill();
+  ctx.restore();
+  ui.button('bank', '', x, y, bs, bs, { kind: 'gold', round: bs / 2, icon: (c, cx, cy, sz) => drawKindChick(c, kind, cx, cy + sz * 0.08, sz * 0.62, G.t, {}) , iconS: 1.5 });
+  if (B.length > 1) {
+    const bx = x + bs * 0.86, by = y + bs * 0.14, br = 11 * u;
+    ctx.save(); ctx.fillStyle = '#2a7a2e'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * u;
+    ctx.beginPath(); ctx.arc(bx, by, br, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `700 ${12 * u}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('x' + B.length, bx, by + 0.5 * u); ctx.restore();
+  }
+}
 // the ally button sits in the zoom strip (bottom left in portrait, bottom of the right column in landscape); the choice opens beside or above it
 function drawAllyBtn() {
   if (!allyShown()) { G.allyOpen = false; return; }
@@ -3261,7 +3301,7 @@ function drawHUD() {
     ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(255,206,140,0.75)'; ctx.stroke();
     drawBossBar(ctx, ui, sim, bx, by, bw, bh, G.t);
   }
-  if (G.screen === 'play' && sim.state === 'play') { drawZoomBtns(); drawAllyBtn(); drawStrikeBtn(); }
+  if (G.screen === 'play' && sim.state === 'play') { drawZoomBtns(); drawAllyBtn(); drawStrikeBtn(); drawBankBtn(); }
 }
 
 // the HUD's "i": a round info glyph; while the level holds a kind this player has never opened, it pulses and wears a "New!" tag
@@ -3421,10 +3461,18 @@ function stackCard(title, build, o = {}) {
   ui.calm = save.calm;
   const A = ui.A, top = Math.max(G.hudBottom, A.y) + 16 * u; // the ribbon stands 8 units proud of the card
   const avail = A.y1 - top - 14 * u; // and the base lip 5 below
+  // o.twoCol on a wide screen (landscape): blocks marked right: true stack in a second column beside the rest
+  const two = !!o.twoCol && A.w > A.h * 1.15;
+  const colH = (L, s) => L.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
   const measure = (s) => {
+    if (two) {
+      const w = Math.min(A.w - 32 * u, 780 * s), cw = (w - 48 * s - 28 * s) / 2;
+      const blocks = build(s, cw), hl = colH(blocks.filter((b) => !b.right), s), hr = colH(blocks.filter((b) => b.right), s);
+      return { s, w, blocks, cw, hl, hr, h: CARD_HEAD * s + Math.max(hl, hr) + 22 * s };
+    }
     const w = Math.min(o.maxW || A.w - 32 * u, 420 * s);
     const blocks = build(s, w - 48 * s);
-    const h = CARD_HEAD * s + blocks.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0) + 22 * s;
+    const h = CARD_HEAD * s + colH(blocks, s) + 22 * s;
     return { s, w, blocks, h };
   };
   let m = measure(u);
@@ -3449,6 +3497,23 @@ function stackCard(title, build, o = {}) {
   ui.frame(x, y, w, h, { s, r: 24 * s });
   const rw = clamp(ui.measure(title, 24 * s) + 56 * s, w * 0.6, w - 14 * s);
   ui.ribbon(title, x + w / 2, y - 8 * s, rw, 40 * s, { s, color: o.ribbon || '#ee5a36', size: 24 * s, tag: 'card:title' });
+  if (two) { // each column centred in the card's height
+    const maxC = Math.max(m.hl, m.hr);
+    for (const [R, ch] of [[false, m.hl], [true, m.hr]]) {
+      let cy = y + CARD_HEAD * s + (maxC - ch) / 2;
+      const cx = x + 24 * s + (R ? m.cw + 28 * s : 0);
+      for (const b of blocks) {
+        if (!!b.right !== R) continue;
+        cy += b.gap ?? 10 * s;
+        if (b.at) b.at(cx, cy, m.cw);
+        b.draw(cx, cy, m.cw);
+        cy += b.h;
+      }
+    }
+    ui.roundRect(x + 24 * s + m.cw + 13 * s, y + CARD_HEAD * s + 4 * s, 2 * s, maxC - 4 * s, s); ctx.fillStyle = 'rgba(120,80,40,0.18)'; ctx.fill(); // the fold between the columns
+    ctx.restore();
+    return { x, y, w, h, s };
+  }
   let cy = y + CARD_HEAD * s;
   for (const b of blocks) {
     cy += b.gap ?? 10 * s;
@@ -3495,7 +3560,7 @@ function bossStage(x, y, w, h, s) {
 // first level of a world, first visit: its intro line rides on the level card (one card, no extra tap)
 function worldOpener(L) { return !!(L && L.intro && !L.boss && G.li >= 0 && (L.id - 1) % PER_ENV === 0 && !save.intro[L.id]); }
 function drawIntro() {
-  dim(0.42);
+  dim(0.62);
   const L = G.level, C = ui.C;
   const acc = /^#[0-9a-f]{6}$/i.test(G.theme.palette.accent || '') ? G.theme.palette.accent : '#ee5a36';
   // Chick Strike: a new strike chick gets a card of its own, once (the newest one reached; any older unseen ones with it)
@@ -3541,15 +3606,15 @@ function drawIntro() {
       ...(G.li === -1 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14 * s, { color: C.info, tag: 'intro:daily', gap: 6 * s })] : []),
       ...tip.map((l, i) => lineBlock(l, 15 * s, { color: C.ink2, tag: 'intro:tip' + i, gap: i ? 2 * s : 8 * s })),
       ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus, G.sim.MD.fuse), 14 * s, { color: C.info, tag: 'intro:bonus', gap: 6 * s })] : []),
-      ...strikePicker(s, iw),
-      { h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('go', 'PLAY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 25 * s }) },
+      ...strikePicker(s, iw).map((b) => ({ ...b, right: !b.stage })),
+      { right: true, h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('go', 'PLAY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 25 * s }) },
       // start boosters bought in the store (F7/F21): tap to pick, each shows its one-liner
-      { h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
+      { right: true, h: 72 * s, gap: 10 * s, draw: (x, y, w) => drawBoosterPicker(ui, ctx, x, y, w, 72 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t }) },
     ];
-    if (!G.adBoost && !G.golden) B.push({ h: 48 * s, draw: (x, y, w) => ui.button('adboost', 'Watch an ad: free booster', x, y, w, 48 * s, { kind: 'ad', ad: true, size: 15.5 * s }) });
-    B.push({ h: 42 * s, draw: (x, y, w) => ui.button(G.li === -1 ? 'back' : 'levels', G.li === -1 ? 'Menu' : 'Levels', x + w * 0.22, y, w * 0.56, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) });
+    if (!G.adBoost && !G.golden) B.push({ right: true, h: 48 * s, draw: (x, y, w) => ui.button('adboost', 'Watch an ad: free booster', x, y, w, 48 * s, { kind: 'ad', ad: true, size: 15.5 * s }) });
+    B.push({ right: true, h: 42 * s, draw: (x, y, w) => ui.button(G.li === -1 ? 'back' : 'levels', G.li === -1 ? 'Menu' : 'Levels', x + w * 0.22, y, w * 0.56, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) });
     return B;
-  }, { ribbon: acc });
+  }, { ribbon: acc, twoCol: true });
 }
 
 // Chick Strike: the row of unlocked strike chicks on the intro card (tap one to take it), with the chosen one's downside
@@ -3557,8 +3622,19 @@ function strikePicker(s, iw) {
   const id = G.sim && G.sim.stk && G.sim.stk.id, open = strikesOpen();
   if (!G.sim || !G.sim.stk || !G.sim.stk.any || !open.length || (G.li >= 0 && G.level.id < STRIKE_FROM)) return [];
   const S = id ? STRIKE[id] : null, r = Math.min(21 * s, (iw - 8 * s * (open.length - 1)) / open.length / 2);
+  // the chosen chick on its own little stage (mykee 2026-11-16: show the picked chick clearly, not a small token)
+  const stage = S ? [{ stage: true, h: 92 * s, gap: 10 * s, draw: (x, y, w) => {
+    const sw = Math.min(110 * s, w * 0.34);
+    artStage(x, y, sw, 92 * s, s, () => drawStrikeStage(ctx, S.id, x, y + 4 * s, sw, 84 * s, G.t));
+    const tx = x + sw + 12 * s, tw = w - sw - 12 * s, up = wrapText(S.up, 14.5 * s, tw).slice(0, 2), dn = wrapText('Downside: ' + S.down, 13 * s, tw).slice(0, 2);
+    let ty = y + 46 * s - ((up.length + dn.length) * 17 * s + 24 * s) / 2 + 10 * s;
+    ui.text(S.name, tx, ty, { size: 19 * s, color: S.col ? S.col[1] : ui.C.ink, tag: 'intro:stkname', maxW: tw }); ty += 22 * s;
+    up.forEach((l, i) => { ui.text(l, tx, ty, { size: 14.5 * s, color: ui.C.ink, tag: 'intro:stkup' + i, maxW: tw }); ty += 17 * s; });
+    dn.forEach((l, i) => { ui.text(l, tx, ty, { size: 13 * s, color: ui.C.warn, tag: 'intro:stkdn' + i, maxW: tw }); ty += 16 * s; });
+  } }] : [];
   return [
-    { h: 2 * r + 4 * s, gap: 10 * s, draw: (x, y, w) => {
+    ...stage,
+    { h: 2 * r + 4 * s, gap: S ? 6 * s : 10 * s, draw: (x, y, w) => {
       const step = Math.min(2 * r + 12 * s, w / open.length), x0 = x + w / 2 - (step * (open.length - 1)) / 2;
       open.forEach((O, i) => {
         const cx = x0 + i * step, cy = y + r + 2 * s, rect = { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r };
@@ -3568,7 +3644,7 @@ function strikePicker(s, iw) {
         ui.buttons.push({ id: 'stk:pick:' + O.id, ...rect });
       });
     } },
-    lineBlock(S ? `${S.name}: ${S.down}` : `Pick a power chick for this level${save.wallet.charges ? ` (${save.wallet.charges} charges in your bag)` : ''}`, 13 * s, { color: ui.C.ink2, tag: 'intro:strike', gap: 4 * s }),
+    lineBlock(S ? 'Tap another chick to swap' : `Pick a power chick for this level${save.wallet.charges ? ` (${save.wallet.charges} charges in your bag)` : ''}`, 13 * s, { color: ui.C.ink2, tag: 'intro:strike', gap: 4 * s }),
   ];
 }
 
@@ -3597,36 +3673,42 @@ function bossPortrait(ctx, bossId, x, y, w, h, t) { if (bossId === 'blizzard') r
 
 function drawPause() {
   dim(0.6);
+  // 2026-11-16 (mykee): square icon buttons, not full-width bars; a Shop in the game; "Info" instead of "Villains";
+  // Practice and Info in their own colours
   stackCard('Paused', (s) => {
+    const C = ui.C;
     const B = [
-      { h: 58 * s, gap: 6 * s, draw: (x, y, w) => ui.button('resume', 'RESUME', x, y, w, 58 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 23 * s }) },
-      G.hint
-        ? lineBlock('Finding a good move…', 17 * s, { color: ui.C.warn, tag: 'pause:hint' })
-        : G.sim.state !== 'play' ? null : { h: 48 * s, draw: (x, y, w) => ui.button('hint', 'Show me a move', x, y, w, 48 * s, { kind: 'ad', ad: true, size: 16.5 * s }) },
-      { h: 48 * s, draw: (x, y, w) => {
-        const hw = (w - 10 * s) / 2;
-        ui.button('restart', 'Restart', x, y, hw, 48 * s, { kind: 'secondary', icon: ICON.retry, size: 17 * s });
-        ui.button('levels', 'Levels', x + hw + 10 * s, y, hw, 48 * s, { kind: 'secondary', icon: ICON.grid, size: 17 * s });
+      { h: 92 * s, gap: 4 * s, draw: (x, y, w) => { // resume / restart / levels / shop / settings as squares with a label under each
+        const items = [
+          ['resume', 'Play', ICON.play, 'primary'], ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, 'secondary'],
+          ['shop', 'Shop', (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), 'gold'], ['settings', 'Settings', (c, X, Y, S) => gearIcon(c, X, Y, S, '#fff4dc', '#7c4fe0'), 'ad'],
+        ];
+        const n = items.length, gap = 8 * s, sq = Math.min(66 * s, (w - gap * (n - 1)) / n), x0 = x + (w - (sq * n + gap * (n - 1))) / 2;
+        items.forEach(([id, label, icon, kind], i) => {
+          const bx = x0 + i * (sq + gap), big = id === 'resume';
+          ui.button(id, '', bx, y, sq, sq, { kind, icon, iconS: big ? 1.55 : 1.35, round: 16 * s, shimmer: big });
+          ui.text(label, bx + sq / 2, y + sq + 13 * s, { size: 13 * s, align: 'center', color: C.ink, maxW: sq + gap, tag: 'pause:lbl:' + id });
+        });
       } },
-      G.infoKinds.length && G.sim.state === 'play' ? { h: 42 * s, draw: (x, y, w) => { // the "i" panel from the pause card
-        const hw = (w - 10 * s) / 2;
-        ui.button('practice', 'Practice', x, y, hw, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s });
-        ui.button('info', 'Villains', x + hw + 10 * s, y, hw, 42 * s, { kind: G.infoNew ? 'gold' : 'tertiary', icon: G.infoNew ? infoIcon : infoIconInk, iconS: 1.1, size: 15.5 * s });
-      } } : { h: 42 * s, draw: (x, y, w) => ui.button('practice', 'Practice', x + w * 0.2, y, w * 0.6, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) },
-      { h: 42 * s, gap: 16 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) },
+      G.hint
+        ? lineBlock('Finding a good move…', 17 * s, { color: C.warn, tag: 'pause:hint' })
+        : G.sim.state !== 'play' ? null : { h: 46 * s, gap: 12 * s, draw: (x, y, w) => ui.button('hint', 'Show me a move', x, y, w, 46 * s, { kind: 'ad', ad: true, size: 16 * s }) },
+      { h: 44 * s, draw: (x, y, w) => {
+        const has = G.infoKinds.length && G.sim.state === 'play', hw = has ? (w - 10 * s) / 2 : w * 0.6, px = has ? x : x + w * 0.2;
+        ui.button('practice', 'Practice', px, y, hw, 44 * s, { kind: 'orange', icon: ICON.grid, size: 15.5 * s });
+        if (has) ui.button('info', 'Info', x + hw + 10 * s, y, hw, 44 * s, { kind: G.infoNew ? 'gold' : 'secondary', icon: G.infoNew ? infoIcon : infoIcon, iconS: 1.1, size: 15.5 * s });
+      } },
     ].filter(Boolean);
-    if (G.sim.mode !== save.mode) B.push(lineBlock('The new mode starts when you restart', 13 * s, { color: ui.C.ink2, tag: 'pause:modenote', gap: 4 * s }));
-    B.push({ h: 44 * s, draw: (x, y, w) => ui.button('settings', 'Settings', x + w * 0.2, y, w * 0.6, 44 * s, { kind: 'tertiary', icon: gearIcon, size: 16 * s }) });
     return B;
   }, { ribbon: '#3a80ea' });
 }
 
 // a gear (the Settings button)
-function gearIcon(c, x, y, sz, col = '#6b3f17') {
+function gearIcon(c, x, y, sz, col = '#6b3f17', hole = null) {
   c.save(); c.translate(x, y); c.fillStyle = col; c.beginPath();
   const R = sz * 0.42, r = sz * 0.3;
   for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2, rr = i % 2 ? r : R; c.lineTo(Math.cos(a - 0.12) * rr, Math.sin(a - 0.12) * rr); c.lineTo(Math.cos(a + 0.12) * rr, Math.sin(a + 0.12) * rr); }
-  c.closePath(); c.fill(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(0, 0, sz * 0.13, 0, 7); c.fill(); c.restore();
+  c.closePath(); c.fill(); if (hole) c.fillStyle = hole; else c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(0, 0, sz * 0.13, 0, 7); c.fill(); c.restore();
 }
 
 // Settings (2026-11-15, mykee): sound, music, ring speed, difficulty, reduced motion, restore purchases. Opens over the
@@ -3658,7 +3740,11 @@ function drawSettings() {
     } });
     B.push(lineBlock('How fast a ring follows your finger', 13 * s, { color: C.ink2, tag: 'set:rshint', gap: 2 * s }));
     B.push({ h: 42 * s, gap: 14 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) });
-    B.push({ h: 42 * s, draw: (x, y, w) => ui.button('calm', save.calm ? 'Reduced motion: on' : 'Reduced motion: off', x, y, w, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 15 * s }) });
+    B.push({ h: 42 * s, draw: (x, y, w) => {
+      const hw = (w - 10 * s) / 2;
+      ui.button('calm', save.calm ? 'Calm motion: on' : 'Calm motion: off', x, y, hw, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 14 * s });
+      ui.button('set:saver', save.saver ? 'Battery saver: on' : 'Battery saver: off', x + hw + 10 * s, y, hw, 42 * s, { kind: 'tertiary', icon: save.saver ? ICON.check : null, size: 14 * s });
+    } });
     if (ads.canBuyPremium || ads.premium) B.push({ h: 40 * s, draw: (x, y, w) => ui.button('set:restore', 'Restore purchases', x + w * 0.15, y, w * 0.7, 40 * s, { kind: 'tertiary', size: 14.5 * s }) });
     B.push({ h: 52 * s, gap: 14 * s, draw: (x, y, w) => ui.button('set:close', 'Done', x, y, w, 52 * s, { kind: 'primary', icon: ICON.check, size: 20 * s }) });
     return B;
@@ -3694,12 +3780,28 @@ function infoRows(s, iw) {
       if (atks.length) y += 3 * s;
       for (const a of atks) add(I.attacks[a], atkS, C.ink2, (ATTACK_NAME[a] || ATTACK_EXTRA[a] || a) + ':', C.warn, 10 * s);
       if (atks.length) y += 3 * s;
+      const ph = phaseWords(G.level);
+      if (ph) { add(ph, atkS, C.ink2, 'Phases:', C.warn, 10 * s); y += 3 * s; }
     }
     add(I.beat, lineS, C.ink, 'Beat it:', C.good);
     if (I.more) add(I.more, lineS, C.ink2); // an extra line (L20: the cousins' duel)
     const h = Math.max(P, y) + 14 * s;
     return { kind, I, items, h, P, ri };
   });
+}
+// the boss bar's "PHASE 1/3" in plain words (mykee 2026-11-16): what a phase is and when the next one starts
+function phaseWords(level) {
+  const P = (level.bossFight && level.bossFight.phases) || [];
+  if (P.length < 2) return '';
+  const ev = (BOSS_MODE[save.mode] || BOSS_MODE.medium).every, egg = (n) => n + (n === 1 ? ' egg' : ' eggs');
+  const when = P.slice(1).map((p, i) => {
+    const a = p.at || {}, bits = [];
+    if (a.saved != null) bits.push('when ' + egg(a.saved) + ' ' + (a.saved === 1 ? 'is' : 'are') + ' home');
+    if (a.t) bits.push('after ' + Math.round(a.t * ev) + ' seconds');
+    return bits.length ? 'phase ' + (i + 2) + ' starts ' + bits.join(' or ') : '';
+  }).filter(Boolean);
+  const head = `The bar at the top splits the fight into ${P.length} phases. In each new phase the boss attacks faster and with new moves.`;
+  return when.length ? head + ' ' + when.join('; ').replace(/^p/, 'P') + '.' : head;
 }
 function drawInfo() {
   dim(0.62);
@@ -4034,9 +4136,9 @@ function drawTitle() {
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
   // landscape: two balanced columns, logo + vault on the left, the buttons on the right, the meadow low across both
   const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? A.x + A.w * 0.73 : cx;
-  const blockH = 232 * u; // Play + Levels row + difficulty + Extras
-  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - 244 * u - 16 * u;
-  const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - 244 * u; // room for the Extras row under the difficulty row
+  const blockH = 238 * u; // Play + Levels row + difficulty + Extras
+  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - 258 * u - 16 * u;
+  const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - 258 * u; // room for the Extras row (and its lip, clear of the phone's bottom edge) under the difficulty row
   G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t);
   // the earth under the controls falls into shade, so the buttons carry the bottom of the screen
   const sg = ctx.createLinearGradient(0, ground + 20 * u, 0, H_);
@@ -4097,7 +4199,7 @@ function drawTitle() {
   ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u });
   ui.button('shop', String(save.wallet.coins), bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 18 * u });
   modeRow(bx - bw / 2, ry + rh + 10 * u, bw, 44 * u, u, true);
-  ui.button('extras', 'Extras', bx - bw / 2, ry + rh + 10 * u + 44 * u + 8 * u, bw, 36 * u, { kind: 'hud', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 15 * u });
+  ui.button('extras', 'Extras', bx - bw / 2 + bw * 0.12, ry + rh + 10 * u + 44 * u + 10 * u, bw * 0.76, 40 * u, { kind: 'ad', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 16 * u, round: 14 * u });
 }
 
 // an invisible tap target on the home scene (the hen, the chest)
@@ -4283,6 +4385,30 @@ function drawLevels() {
 
 // PRACTICE: every studio vault as a tile, grouped under the LAB names; same tile kit and grid as the level map, scrolled vertically
 const PRACTICE_FACES = ['#d8862a', '#3a9a6a', '#4a82d0', '#b05aa8', '#c85a4a', '#2f9aa8', '#8a7ad8', '#9a8a2a'];
+// a practice tile's picture (mykee 2026-11-16: themed icons, not a letter): the chick, the creature's portrait, the power
+// or combo orb, the warp gate with who goes through it, the ally itself. Returns false when nothing fits (the letter stays).
+const PRACTICE_PORTRAIT = { octoden: 'octopus', reef: 'fish', weaselboss: 'weasel', ratking: 'rats', grandpa: 'gator', kingcrab: 'hermit', warp: 'snake', warp_eagle: 'eagle', warp_sal: 'salamander', warp_frog: 'frog', warp_octo: 'octopus', warp_boss: 'weasel' };
+function practiceIcon(k, x, y, r, t) {
+  const c = ctx;
+  try {
+    if (CHICK_DEMOS.some((d) => d.kind === k)) { drawKindChick(c, k, x, y + r * 0.12, r * 1.45, t); return true; }
+    if (k === 'rooster' || k === 'goose') {
+      const A2 = ALLY_ART, P = k === 'rooster' ? A2.roosterPose('idle', 0, t) : A2.goosePose('idle', 0, t);
+      (k === 'rooster' ? A2.drawRooster : A2.drawGoose)(c, x, y + r * 0.85, r * 1.9, P); return true;
+    }
+    if (k === 'owl') { c.save(); c.translate(x, y + r * 0.1); drawOwlArt(c, r * 1.8, t); c.restore(); return true; }
+    if (k.startsWith('combo_')) { drawOrb(c, 'combo_' + k.slice(6), x, y, r * 1.05, t); return true; }
+    if (P2_TYPES.includes(k)) { drawOrb(c, k, x, y, r * 1.05, t); return true; }
+    const pk = PRACTICE_PORTRAIT[k] || k;
+    if (k.startsWith('warp')) { // the gate behind, the traveller in front
+      c.save(); c.translate(x, y); c.scale(r / 0.55, r / 0.55); W.drawPortal(c, 0, 0, t, false); c.restore();
+      if (hasPortrait(pk)) drawVillainPortrait(c, pk, x + r * 0.35, y + r * 0.3, r * 1.15, t);
+      return true;
+    }
+    if (hasPortrait(pk)) { drawVillainPortrait(c, pk, x, y, r * 2.5, t); if (pk !== k && /boss|king|grandpa/.test(k)) drawCrown(x, y - r * 0.95, r * 0.32); return true; }
+  } catch (e) { /* a missing drawer keeps the letter */ }
+  return false;
+}
 function drawPractice() {
   const u = ui.u, A = ui.A, pad = 14 * u, S = G.pscroll, vb = A.y1; // the list scrolls down to the bottom of the safe rect
   ui.calm = save.calm;
@@ -4315,7 +4441,10 @@ function drawPractice() {
       const fy = ty + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mxT = x + cw / 2, grp = 'btn:demo:' + k;
       const rad = Math.min(24 * u, fh * 0.26);
       ctx.beginPath(); ctx.arc(mxT, fy + fh * 0.38, rad, 0, 7); ctx.fillStyle = 'rgba(30,10,0,0.28)'; ctx.fill();
-      ui.text(label[0].toUpperCase(), mxT, fy + fh * 0.38 + 1 * u, { size: rad * 1.25, align: 'center', color: '#fff', stroke: face0.line, strokeW: 3 * u, shadow: face0.line, group: grp, tag: 'pl' + k });
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 3 * u, fy + 3 * u, cw - 6 * u, fh * 0.64); ctx.clip();
+      const pic = practiceIcon(k, mxT, fy + fh * 0.38, rad * 1.15, G.t);
+      ctx.restore();
+      if (!pic) ui.text(label[0].toUpperCase(), mxT, fy + fh * 0.38 + 1 * u, { size: rad * 1.25, align: 'center', color: '#fff', stroke: face0.line, strokeW: 3 * u, shadow: face0.line, group: grp, tag: 'pl' + k });
       ui.text(label, mxT, fy + fh * 0.76, { size: Math.min(15 * u, fh * 0.15), align: 'center', color: '#fff', stroke: face0.line, strokeW: 3 * u, group: grp, tag: 'pn' + k, maxW: cw - 12 * u });
       if (part) { // a tile cut by the list edge keeps a tap area only inside the list and records nothing for the overlap check
         ui.rects.length = n0;
@@ -4353,6 +4482,9 @@ function shade(hex) {
 let last = 0;
 function frame(now) {
   requestAnimationFrame(frame); // first: an error below can never stop the loop (a stopped loop is a frozen level)
+  // 2026-11-16 battery (mykee: the phone heats up): never draw faster than 60 fps (a 120 Hz screen called us twice as
+  // often for nothing), 30 fps with Battery saver on
+  if (now - last < (save.saver ? 1000 / 30 : 1000 / 60) - 2.5) return;
   const dt = Math.min(0.05, (now - last) / 1000 || 0.016);
   last = now;
   if (G.paused) return;
@@ -4378,12 +4510,13 @@ function adaptQuality(dt) {
   const avg = Q.acc / Q.n;
   Q.acc = Q.n = 0;
   const cap = Math.min(window.devicePixelRatio || 1, 2);
+  if (save.saver) { if (avg > 1 / 26 && Q.i < Q.steps.length - 1) { Q.i++; setDPR(); } return; } // 30 fps by design
   if (avg > 1 / 45 && Q.i < Q.steps.length - 1 && Q.steps[Q.i + 1] < cap + 0.01) { Q.i++; Q.good = 0; setDPR(); }
   else if (avg < 1 / 58) { if ((Q.good += 2) >= 10 && Q.i > 0) { Q.i--; Q.good = 0; setDPR(); } }
   else Q.good = 0;
 }
 function setDPR() {
-  const d = Math.min(window.devicePixelRatio || 1, Q.steps[Q.i]);
+  const d = Math.min(window.devicePixelRatio || 1, Q.steps[Q.i], save.saver ? 1.3 : 2);
   if (Math.abs(d - DPR) < 0.01) return;
   DPR = d;
   canvas.width = Math.round(W_ * DPR); canvas.height = Math.round(H_ * DPR);
@@ -4456,7 +4589,7 @@ async function boot() {
   // the app build used to be an everything-unlocked test build: its saves carry 50 fake levels and 99999 coins. The first
   // real-progression launch starts the journey fresh (settings and the hen's skins carry over).
   if (typeof __APP__ !== 'undefined' && __APP__ && !save.real) {
-    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm, ringSpeed: save.ringSpeed };
+    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm, ringSpeed: save.ringSpeed, saver: save.saver };
     save = { ...defaultSave(), ...keep };
     ads.rebind(save);
   }
