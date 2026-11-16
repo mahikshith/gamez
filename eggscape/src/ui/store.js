@@ -578,7 +578,7 @@ export function drawStore(ui, ctx, W, H, state) {
   const avail = OY + AH - bodyTop - pad;
   const adLabelFull = `Watch ad: +${AD_REWARDS.freeCoins.coins} coins`;
   const cooling = adCooldownLeft > 0;
-  const adLabel = cooling ? `Free coins in ${fmtTime(adCooldownLeft)}` : adReady ? adLabelFull : 'Ad loading...';
+  const adLabel = cooling ? `Free coins in ${fmtTime(adCooldownLeft)}` : adReady ? adLabelFull : 'Free coins soon';
   const adOff = cooling || !adReady;
   // the rewarded ad is an offer, never a gate: violet like every other ad button, the reward in its label
   const adBtn = (x, y, w, h) => ui.button('ad:coins', adLabel, x, y, w, h, {

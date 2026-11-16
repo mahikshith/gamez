@@ -11,7 +11,7 @@ const UNL = +process.env.UNL || 13;
 (async () => {
   const b = await chromium.launch();
   for (const [w, h] of SIZES) {
-    const p = await b.newPage({ viewport: { width: w, height: h } });
+    const p = await b.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: +process.env.DSF || 1 });
     p.on('pageerror', (e) => console.log('ERR', String(e)));
     await p.goto(`http://localhost:${PORT}/`);
     await p.waitForFunction(() => window.__egg && __egg.G.screen === 'title', null, { timeout: 30000 });

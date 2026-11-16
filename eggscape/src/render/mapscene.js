@@ -520,23 +520,23 @@ function snakeOnBranch(ctx, x, y, s, t, face, calm) {
   shadow(ctx, trunkX, y, s * 0.3, s * 0.06);
   for (const [dx, dy, r] of [[-0.1, -1.4, 0.32], [0.18, -1.5, 0.28], [0.02, -1.7, 0.3]]) blobAt(ctx, trunkX + face * dx * s, y + dy * s, r * s, '#2e6e2c');
   for (const [dx, dy, r] of [[-0.06, -1.48, 0.22], [0.12, -1.6, 0.18]]) blobAt(ctx, trunkX + face * dx * s, y + dy * s, r * s, '#4a9a3c');
-  const bw = s * 0.09;
+  const bw = s * 0.075;
   const branch = () => { ctx.beginPath(); ctx.moveTo(bx0, branchY(bx0) - bw); ctx.lineTo(bx1, branchY(bx1) - bw * 0.5); ctx.lineTo(bx1, branchY(bx1) + bw * 0.5); ctx.lineTo(bx0, branchY(bx0) + bw); ctx.closePath(); ctx.fillStyle = '#7a5030'; ctx.fill(); };
   branch();
   blobAt(ctx, bx1 + face * 3 * u, branchY(bx1) - 4 * u, s * 0.06, '#5aa83a');
   // the coil: three turns along the branch, then the neck and head rise off the tip
-  const pts = [], turns = 3, xa = lerp(bx0, bx1, 0.18), xb = lerp(bx0, bx1, 0.82), R = bw * 1.6;
+  const pts = [], turns = 3, xa = lerp(bx0, bx1, 0.16), xb = lerp(bx0, bx1, 0.8), R = bw * 1.25;
   const lift = calm ? 0 : Math.sin(t * 1.4) * 0.15;
   // head first: the head end hangs over the tip, swaying
   const hx = bx1 + face * s * 0.12, hy = branchY(bx1) - s * 0.28;
   for (let q = 6; q >= 1; q--) { const v = q / 6; pts.push({ x: lerp(xb, hx + Math.sin(t * 1.4) * 4 * u, v), y: lerp(branchY(xb) - R * 0.6, hy + lift * s * 0.2, v) - Math.sin(v * Math.PI) * s * 0.1 }); }
   const N = 60;
-  for (let q = 0; q <= N; q++) { const v = q / N, bx = lerp(xb, xa, v), a = v * turns * TAU; pts.push({ x: bx + Math.sin(a) * R * 0.25 * face, y: branchY(bx) - Math.cos(a) * R }); }
+  for (let q = 0; q <= N; q++) { const v = q / N, bx = lerp(xb, xa, v), a = v * turns * TAU; pts.push({ x: bx, y: branchY(bx) - Math.cos(a) * R }); } // a helix seen side-on: top, front, bottom, behind
   for (let q = 1; q <= 8; q++) pts.push({ x: xa - face * q * 4 * u, y: branchY(xa) + R + q * 3 * u }); // the tail hangs
   drawSnake(ctx, pts, s * 0.035, t, { skin: 'violet', wave: 0 });
   // the branch again over the coil's back halves (where cos(a) < 0 the coil is behind)
   ctx.save(); ctx.beginPath();
-  for (let k2 = 0; k2 < turns; k2++) { const v0 = (k2 + 0.25) / turns, v1 = (k2 + 0.75) / turns; const x0 = lerp(xb, xa, v0), x1 = lerp(xb, xa, v1); ctx.rect(Math.min(x0, x1), by - s, Math.abs(x1 - x0), s * 2); }
+  for (let k2 = 0; k2 < turns; k2++) { const v0 = (k2 + 0.5) / turns, v1 = (k2 + 1) / turns; const x0 = lerp(xb, xa, v0), x1 = lerp(xb, xa, v1); ctx.rect(Math.min(x0, x1), by - s, Math.abs(x1 - x0), s * 2); }
   ctx.clip(); branch(); ctx.restore();
 }
 

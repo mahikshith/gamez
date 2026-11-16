@@ -4475,7 +4475,7 @@ async function boot() {
   setScreen('title');
   if (DEV) { const d = new URLSearchParams(location.search).get('demo'); if (d) window.__egg.startDemo(d); } // v3.2: ?demo=glow
   const sp = document.getElementById('splash'); // the launch animation hands over to the home page with a cross-fade
-  if (sp) { const minShow = 650 - (performance.now() - (window.__t0 || 0)); setTimeout(() => { sp.classList.add('out'); setTimeout(() => sp.remove(), 500); }, Math.max(0, minShow)); }
+  if (sp) { const minShow = 2300 - (performance.now() - (window.__t0 || 0)); /* the launch sting plays out (egg in the nest) before the home screen */ setTimeout(() => { sp.classList.add('out'); setTimeout(() => sp.remove(), 500); }, Math.max(0, minShow)); }
   portal.loadingDone();
   last = performance.now();
   requestAnimationFrame(frame);
