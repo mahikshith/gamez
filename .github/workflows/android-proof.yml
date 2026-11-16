@@ -4,7 +4,7 @@ name: Android proof APK
 on:
   workflow_dispatch:
   push:
-    branches: ['claude/project-thread-ah2hnr', 'claude/project-thread-3u7q3n']
+    branches: ['claude/project-thread-ah2hnr', 'claude/project-thread-3u7q3n', 'claude/project-thread-qrvc8j']
     paths: ['eggscape/android/**', 'eggscape/src/**', 'eggscape/tools/build.mjs', '.github/workflows/android-proof.yml']
 permissions:
   contents: write

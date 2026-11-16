@@ -15,6 +15,7 @@ const UNL = +process.env.UNL || 13;
     p.on('pageerror', (e) => console.log('ERR', String(e)));
     await p.goto(`http://localhost:${PORT}/`);
     await p.waitForFunction(() => window.__egg && __egg.G.screen === 'title', null, { timeout: 30000 });
+    await p.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 8000 }).catch(() => {}); // the launch sting hands over
     if (process.env.TITLE) { await p.evaluate(() => { for (let i = 0; i < 120; i++) __egg.frame(1 / 60); }); await p.screenshot({ path: `${out}/title-${w}x${h}.png` }); }
     await p.evaluate((n) => { const E = __egg; const st = {}; for (let i = 1; i < n; i++) st[i] = 1 + (i % 3); E.setSave({ unlocked: n, stars: st, wallet: { coins: 300 } }); E.G.screen = 'title'; E.press('levels'); }, UNL);
     for (const wi of WORLDS) {
