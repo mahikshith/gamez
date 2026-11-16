@@ -394,15 +394,18 @@ function swoopWing(ctx, sx, ang, span, C, o) {
   ctx.translate(sx * 22, 4);
   ctx.scale(sx, 1);
   ctx.rotate(-ang);
-  ctx.beginPath();
-  ctx.moveTo(0, -8);
-  ctx.bezierCurveTo(span * 0.35, -20, span * 0.8, -18, span, -10);
-  // three feather tips along the trailing edge
-  ctx.quadraticCurveTo(span * 0.98, -2, span * 0.82, 0);
-  ctx.quadraticCurveTo(span * 0.82, 7, span * 0.62, 6);
-  ctx.quadraticCurveTo(span * 0.58, 13, span * 0.4, 10);
-  ctx.quadraticCurveTo(span * 0.2, 14, 0, 8);
-  ctx.closePath();
+  const wing = () => {
+    ctx.beginPath();
+    ctx.moveTo(0, -8);
+    ctx.bezierCurveTo(span * 0.35, -20, span * 0.8, -18, span, -10);
+    // three feather tips along the trailing edge
+    ctx.quadraticCurveTo(span * 0.98, -2, span * 0.82, 0);
+    ctx.quadraticCurveTo(span * 0.82, 7, span * 0.62, 6);
+    ctx.quadraticCurveTo(span * 0.58, 13, span * 0.4, 10);
+    ctx.quadraticCurveTo(span * 0.2, 14, 0, 8);
+    ctx.closePath();
+  };
+  wing();
   ctx.fillStyle = C.shade;
   ctx.fill();
   ctx.save();
@@ -411,10 +414,11 @@ function swoopWing(ctx, sx, ang, span, C, o) {
   ctx.beginPath();
   ctx.ellipse(span * 0.4, -16, span * 0.7, 12, 0, 0, TAU);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(30,70,140,0.55)';
-  ctx.lineWidth = 2;
-  for (const f of [0.4, 0.62, 0.82]) { ctx.beginPath(); ctx.moveTo(span * f * 0.7, -8); ctx.lineTo(span * f, 4); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(30,70,140,0.4)';
+  ctx.lineWidth = 1.6;
+  for (const f of [0.4, 0.62, 0.82]) { ctx.beginPath(); ctx.moveTo(span * f * 0.8, -6); ctx.quadraticCurveTo(span * f * 0.95, -1, span * f, 3); ctx.stroke(); }
   ctx.restore();
+  wing(); // (2026-11-16) outline the wing itself: the stroke used to draw the last feather line, sticking out past the wing
   ctx.lineWidth = o;
   ctx.strokeStyle = LINE;
   ctx.stroke();
@@ -477,17 +481,23 @@ function swoopChick(ctx, t, o, st) {
   const fy = 6, bl = blinkAt(t, 3);
   cheeks(ctx, [[-18, fy + 10], [20, fy + 10]], 5, 0.4);
   for (const sx of [-1, 1]) eye(ctx, sx * 10 + 3, fy, 6.6, 8.8, t, o, { shut: bl, mood: glide ? 'happy' : null, look: { x: rise ? 0 : 1, y: rise ? -2 : 0 } });
-  // pointy beak, a little to the front
+  // a small hooked beak between the eyes (2026-11-16: the old long wedge cut across the face)
   ctx.beginPath();
-  ctx.moveTo(-1, fy + 9);
-  ctx.lineTo(16, fy + 13);
-  ctx.lineTo(-1, fy + 17);
+  ctx.moveTo(-2.5, fy + 9);
+  ctx.quadraticCurveTo(3, fy + 6.5, 9, fy + 9);
+  ctx.quadraticCurveTo(10, fy + 13, 4.5, fy + 17.5);
+  ctx.quadraticCurveTo(3, fy + 18.5, 2, fy + 16);
+  ctx.quadraticCurveTo(-1, fy + 13, -2.5, fy + 9);
   ctx.closePath();
-  ctx.fillStyle = '#ffb12e';
+  const bg = ctx.createLinearGradient(0, fy + 7, 0, fy + 18);
+  bg.addColorStop(0, '#ffd04a'); bg.addColorStop(1, '#f39a1c');
+  ctx.fillStyle = bg;
   ctx.fill();
   ctx.lineWidth = o * 0.8;
   ctx.strokeStyle = LINE;
   ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath(); ctx.ellipse(1.5, fy + 10, 2.4, 1.2, -0.2, 0, TAU); ctx.fill();
 }
 
 function bulkChick(ctx, t, o, st) {
@@ -622,10 +632,8 @@ function pickChick(ctx, t, o, st) {
   const wa = drill ? 0.9 + Math.sin(t * 30) * 0.2 : Math.sin(t * (9 + 30 * st.flap)) * (0.25 + 0.5 * st.flap) + (st.ready ? 0.3 : 0);
   stubWing(ctx, -30, 12, -1, wa, 1.05, C, o);
   // miner's helmet with a lamp
-  ctx.beginPath();
-  ctx.moveTo(-27, -10);
-  ctx.bezierCurveTo(-27, -36, 27, -36, 27, -10);
-  ctx.closePath();
+  const helm = () => { ctx.beginPath(); ctx.moveTo(-27, -10); ctx.bezierCurveTo(-27, -36, 27, -36, 27, -10); ctx.closePath(); };
+  helm();
   ctx.fillStyle = '#ffc531';
   ctx.fill();
   ctx.save();
@@ -639,6 +647,7 @@ function pickChick(ctx, t, o, st) {
   ctx.ellipse(-12, -24, 8, 4, -0.5, 0, TAU);
   ctx.fill();
   ctx.restore();
+  helm(); // outline the helmet (the stroke used to outline the shine spot instead)
   ctx.lineWidth = o;
   ctx.strokeStyle = LINE;
   ctx.stroke();
@@ -669,16 +678,14 @@ function pickChick(ctx, t, o, st) {
   for (const sx of [-1, 1]) eye(ctx, sx * 10 + 2, fy, 6.6, 8.6, t, o, { shut: drill ? 0.4 : bl });
   brows(ctx, [[-14, fy - 11, -3, fy - 9], [6, fy - 9, 17, fy - 12]], o);
   // drill beak: a metal cone with spiral grooves that spin while it drills
+  // (2026-11-16, mykee: "the beak is detached") the cone now sits in a brass chuck that is set into the face, and its
+  // outline is traced again after the grooves (the old stroke drew the last groove line instead of the cone)
   ctx.save();
-  ctx.translate(14, fy + 11);
+  ctx.translate(9, fy + 11);
   ctx.rotate(0.35);
-  const L = 34, W = 9.5;
-  ctx.beginPath();
-  ctx.moveTo(0, -W);
-  ctx.lineTo(L, 0);
-  ctx.lineTo(0, W);
-  ctx.quadraticCurveTo(-4, 0, 0, -W);
-  ctx.closePath();
+  const L = 30, W = 9;
+  const cone = () => { ctx.beginPath(); ctx.moveTo(4, -W); ctx.lineTo(4 + L, 0); ctx.lineTo(4, W); ctx.quadraticCurveTo(0, 0, 4, -W); ctx.closePath(); };
+  cone();
   const dg = ctx.createLinearGradient(0, -W, 0, W);
   dg.addColorStop(0, '#f4f6fa');
   dg.addColorStop(0.45, '#aeb7c4');
@@ -690,11 +697,23 @@ function pickChick(ctx, t, o, st) {
   ctx.strokeStyle = 'rgba(40,46,58,0.75)';
   ctx.lineWidth = 2.2;
   const ph = mod(t * (drill ? 60 : 4), 8);
-  for (let x = -8 + ph; x < L; x += 8) { ctx.beginPath(); ctx.moveTo(x, -W); ctx.lineTo(x + 6, W); ctx.stroke(); }
+  for (let x = -4 + ph; x < L + 4; x += 8) { ctx.beginPath(); ctx.moveTo(x, -W); ctx.lineTo(x + 6, W); ctx.stroke(); }
   ctx.restore();
+  cone();
   ctx.lineWidth = o * 0.85;
   ctx.strokeStyle = LINE;
   ctx.stroke();
+  // the chuck: a rounded brass collar, its back half tucked into the cheek
+  ctx.beginPath();
+  ctx.roundRect ? ctx.roundRect(-4, -W - 1.5, 9, 2 * W + 3, 3.5) : ctx.rect(-4, -W - 1.5, 9, 2 * W + 3);
+  const cg = ctx.createLinearGradient(0, -W, 0, W);
+  cg.addColorStop(0, '#ffd77a'); cg.addColorStop(1, '#d08a18');
+  ctx.fillStyle = cg;
+  ctx.fill();
+  ctx.lineWidth = o * 0.85;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillRect(-1.5, -W + 0.5, 2, 2 * W - 3);
   ctx.restore();
   ctx.restore();
 }
