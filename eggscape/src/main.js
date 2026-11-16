@@ -1423,6 +1423,11 @@ async function buyIap(sku, checked = false) {
 // the featured card on Deals: the offer engine's pick, else the Starter Nest while it is for sale, else Premium
 function storeFeatured() {
   if (!ads.moneyShop) return null;
+  if (G.featAt != null && G.t - G.featAt < 1 && G.screenT > 0.05) return G.feat; // asked once a second, not every frame
+  G.featAt = G.t; G.feat = featuredPick();
+  return G.feat;
+}
+function featuredPick() {
   const o = OF.evaluate(save, 'shop', offerCtx());
   if (o && o.sku) return { sku: o.sku, title: o.title, line: o.line };
   if (E.iapAvailable(save.wallet, 'starter_nest') && !save.wallet.payer) return { sku: 'starter_nest' };
