@@ -586,29 +586,53 @@ export function drawStore(ui, ctx, W, H, state) {
     kind: 'ad', shimmer: true, ad: !adOff, disabled: adOff, size: Math.min(19 * s, h * 0.38),
   });
 
+  // a long list (18 hens, 15 eggs) scrolls between the tabs and the bottom; cards cut by the edge keep a tap area only
+  // inside the list and record nothing for the overlap check
+  const SC = state.scroll || { y: 0, v: 0, max: 0 }, vt = bodyTop - 4 * s, vb = OY + AH;
+  const dt = Math.min(0.05, Math.max(0, t - (SC.t || t))); SC.t = t;
+  if (!state.dragging) { if (Math.abs(SC.v) > 8) { SC.y += SC.v * dt; SC.v *= Math.exp(-4.2 * dt); } else SC.v = 0; }
+  const place = (total) => { SC.max = Math.max(0, total - avail); SC.y = Math.max(0, Math.min(SC.max, SC.y)); return SC.max > 0 ? bodyTop - SC.y : bodyTop + Math.max(0, (avail - total) / 2); };
+  const clipped = (y, h, draw) => {
+    if (y + h < vt || y > vb) return;
+    const n0 = ui.rects.length, nb = ui.buttons.length;
+    draw();
+    if (y < vt || y + h > vb) {
+      ui.rects.length = n0;
+      for (let k = ui.buttons.length - 1; k >= nb; k--) { const b = ui.buttons[k], t2 = Math.max(b.y, vt), b2 = Math.min(b.y + b.h, vb); if (b2 - t2 < 8 * s) ui.buttons.splice(k, 1); else { b.y = t2; b.h = b2 - t2; } }
+    }
+  };
+  ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W, vb - vt); ctx.clip();
   if (cols === 1) {
     const cw = Math.min(AW - 2 * pad, 520 * s);
     const adH = D.adH * s, adGap = D.adGap * s;
-    // more cards than the layout was planned for (hens: 7) get shorter, never smaller than 64% of a booster card
-    const ch = Math.max(D.cardH * s * 0.64, Math.min(D.cardH * s, (avail - adGap - adH - (n - 1) * gap) / n));
+    // more cards than the layout was planned for get shorter, never smaller than 64% of a booster card; past that, it scrolls
+    const fit = (avail - adGap - adH - (n - 1) * gap) / n, ch = fit >= D.cardH * s * 0.64 ? Math.min(D.cardH * s, fit) : D.cardH * s * 0.86; // a scrolling list keeps its cards tall enough for two lines
     const total = n * ch + (n - 1) * gap + adGap + adH;
-    const y0 = bodyTop + Math.max(0, (avail - total) / 2);
+    const y0 = place(total);
     const x0 = OX + AW / 2 - cw / 2;
-    items.forEach((it, i) => drawCard(ui, ctx, it, x0, y0 + i * (ch + gap), cw, ch, s, t, true));
-    adBtn(x0, y0 + n * ch + (n - 1) * gap + adGap, cw, adH);
+    items.forEach((it, i) => { const y = y0 + i * (ch + gap); clipped(y, ch, () => drawCard(ui, ctx, it, x0, y, cw, ch, s, t, true)); });
+    const ay = y0 + n * ch + (n - 1) * gap + adGap;
+    clipped(ay, adH, () => adBtn(x0, ay, cw, adH));
   } else {
     const cw = Math.min((AW - 2 * pad - gap) / 2, 440 * s);
     const rows = Math.ceil((n + 1) / 2);
-    const ch = Math.max(D.cardH * s * 0.64, Math.min(D.cardH * s, (avail - (rows - 1) * gap) / rows));
+    const fit = (avail - (rows - 1) * gap) / rows, ch = fit >= D.cardH * s * 0.64 ? Math.min(D.cardH * s, fit) : D.cardH * s * 0.86;
     const total = rows * ch + (rows - 1) * gap;
-    const y0 = bodyTop + Math.max(0, (avail - total) / 2);
+    const y0 = place(total);
     const x0 = OX + AW / 2 - cw - gap / 2;
-    items.forEach((it, i) => drawCard(ui, ctx, it, x0 + (i % 2) * (cw + gap), y0 + Math.floor(i / 2) * (ch + gap), cw, ch, s, t, false));
+    items.forEach((it, i) => { const y = y0 + Math.floor(i / 2) * (ch + gap); clipped(y, ch, () => drawCard(ui, ctx, it, x0 + (i % 2) * (cw + gap), y, cw, ch, s, t, false)); });
     // the last cell: the free-coins ad
     const ax = x0 + (n % 2) * (cw + gap), ay = y0 + Math.floor(n / 2) * (ch + gap);
-    ui.frame(ax, ay, cw, ch - 4 * s, { s, r: 16 * s, fw: 4.5 * s, lip: 4 * s, record: true, tag: 'panel:card:ad' });
-    const bh = Math.min(D.adH * s, ch - 20 * s);
-    adBtn(ax + 12 * s, ay + (ch - 4 * s - bh) / 2, cw - 24 * s, bh);
+    clipped(ay, ch, () => {
+      ui.frame(ax, ay, cw, ch - 4 * s, { s, r: 16 * s, fw: 4.5 * s, lip: 4 * s, record: true, tag: 'panel:card:ad' });
+      const bh = Math.min(D.adH * s, ch - 20 * s);
+      adBtn(ax + 12 * s, ay + (ch - 4 * s - bh) / 2, cw - 24 * s, bh);
+    });
+  }
+  ctx.restore();
+  if (SC.max > 0 && !ui.calm) { // a thin scroll thumb
+    const th = Math.max(30 * s, (vb - vt) * (vb - vt) / (SC.max + vb - vt)), ty = vt + (SC.y / SC.max) * (vb - vt - th - 4 * s);
+    ui.roundRect(OX + AW - 5 * s, ty, 3 * s, th, 1.5 * s); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
   }
 }
 

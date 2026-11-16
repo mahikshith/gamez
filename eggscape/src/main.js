@@ -295,6 +295,7 @@ function startLevel(i, opts = {}) {
   G.infoKinds = villainKinds(G.level, G.sim);
   G.infoNew = G.infoKinds.some((k) => !save.seen['v:' + k]);
   G.iscroll = { y: 0, v: 0, max: 0, t: 0 };
+  G.sscroll = { y: 0, v: 0, max: 0, t: 0 }; // the shop's card list (18 hens, 15 eggs: it scrolls)
   G.danger = 0;
   G.onewayTip = false; // v3
   G.hen = { mood: 'idle', t: 0 };
@@ -671,7 +672,7 @@ function pointerDown(e) {
   onFirstInput();
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
-  const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : null;
+  const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : null;
   if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0 };
   if (G.screen === 'levels' && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0 }; // the world map scrolls by drag; a tap on a stop still presses
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
@@ -729,7 +730,7 @@ function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
   const pd = G.pdrag;
-  if (pd && pd.pid === e.pointerId && (G.screen === 'practice' || G.screen === 'info' || G.screen === 'levels')) {
+  if (pd && pd.pid === e.pointerId && (G.screen === 'practice' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store')) {
     if (!pd.moved && Math.abs(y - pd.y0) > 9 * ui.u) { pd.moved = true; ui.pressedId = null; }
     if (pd.moved) {
       const now = performance.now(), dtm = Math.max(1, now - pd.lt);
@@ -794,7 +795,7 @@ function pointerUp(e) {
 }
 
 function wheel(e) {
-  const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : null;
+  const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : null;
   if (SC) { e.preventDefault(); SC.y = clamp(SC.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -240, 240), 0, SC.max); SC.v = 0; return; }
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   e.preventDefault();
@@ -955,6 +956,7 @@ async function press(id) {
     case 'tab:hens':
     case 'tab:skins':
       G.storeTab = id.slice(4);
+      G.sscroll = { y: 0, v: 0, max: 0, t: G.t };
       break;
     case 'premium': {
       if (ads.premium || !ads.canBuyPremium) break;
@@ -2933,7 +2935,7 @@ function render() {
   if (G.screen === 'levels') drawLevels();
   if (G.screen === 'practice') drawPractice();
   if (G.screen === 'extras') wonder.drawExtras(); // Extras: Wonder Vaults + the Practice button
-  if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { area: ui.A, wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab, premium: { can: ads.canBuyPremium, owned: ads.premium, price: ads.premiumPrice } }); }
+  if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { area: ui.A, wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), premium: { can: ads.canBuyPremium, owned: ads.premium, price: ads.premiumPrice } }); }
   if (G.settingsOpen && (G.screen === 'pause' || G.screen === 'title')) drawSettings();
   else G.settingsOpen = false;
   if (G.adBusy) {
