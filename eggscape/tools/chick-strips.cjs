@@ -26,8 +26,14 @@ const STUDIO = {
   bulk: { ...base, theme: 'jungle', material: 'vine', orbs: [{ type: 'hatch_bulk', ch: 0, a: -90 }], rings: [{ gaps: [{ a: 90 }], thorns: [{ a: -50, n: 2 }, { a: -130, n: 2 }] }, { gaps: [{ a: -30 }] }, { gaps: [{ a: 160 }] }] },
   pick: { ...base, theme: 'blizzard', orbs: [{ type: 'hatch_pick', ch: 0, a: -90 }], rings: [{ gaps: [], ice: true }, { gaps: [{ a: -60 }], ice: [{ a: 160, len: 2 }] }, { gaps: [{ a: 160 }] }] },
 };
-// seconds after the tap for the 'power' and 'after' frames
-const WHEN = { glow: [0.22, 1.6], dash: [0.45, 2.2], swoop: [0.3, 2.6], bulk: [1.2, 6.0], pick: [0.4, 1.2] };
+// frames after the tap: [label, seconds after the tap], in order (the tap frame itself is at 0.07 s)
+const WHEN = {
+  glow: [['power', 0.22], ['after', 1.6]],
+  dash: [['power', 0.45], ['after', 2.2]],
+  swoop: [['launch', 0.12], ['flap', 0.22], ['flap+', 0.27], ['glide', 0.9], ['grab', 1.5], ['land', 2.0], ['after', 2.8]],
+  bulk: [['puff', 0.12], ['pop', 0.2], ['spring', 0.3], ['big', 1.2], ['wobble', 3.0], ['end', 4.75], ['pfff', 5.12], ['after', 5.8]],
+  pick: [['dive', 0.14], ['drill', 0.3], ['drill+', 0.45], ['bore', 0.55], ['recoil', 0.7], ['after', 1.2]],
+};
 
 const srv = http.createServer((q, r) => {
   const f = path.join(dir, q.url.split('?')[0] === '/' ? 'index.html' : q.url.split('?')[0]);
@@ -86,10 +92,8 @@ const srv = http.createServer((q, r) => {
     await run(0.07);
     const used = await p.evaluate(() => __egg.G.sim.eggs.some((e) => e.chick && e.powU));
     await shoot('tap');
-    await run(WHEN[kind][0]);
-    await shoot('power');
-    await run(WHEN[kind][1] - WHEN[kind][0]);
-    await shoot('after');
+    let tt = 0.07;
+    for (const [label, w] of WHEN[kind]) { await run(w - tt); tt = w; await shoot(label); }
     // strip: frames side by side with labels
     const html = `<html><body style="margin:0;background:#1d1712;color:#f5e6c8;font:15px sans-serif;display:flex;gap:6px;padding:6px">${frames.map((x) => `<div><div style="padding:2px 4px">${kind} - ${x.label}</div><img style="width:${CROP * ZOOM}px" src="data:image/png;base64,${fs.readFileSync(x.f).toString('base64')}"></div>`).join('')}</body></html>`;
     const W2 = CROP * ZOOM;
