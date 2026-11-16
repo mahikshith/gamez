@@ -9,6 +9,7 @@ import { audio } from './audio.js';
 import { portal } from './sdk/portal.js';
 import { FX } from './render/fx.js';
 import * as W from './render/world.js';
+import { menuFxBack, menuFxFront, menuFxStats } from './ui/menufx.js'; // the skin's living effect over the menus
 import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge } from './ui/ui.js';
 import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
 import { drawSnake } from './render/characters.js';
@@ -2861,6 +2862,9 @@ function lastEggMoment(sim) {
 }
 
 // ---------------------------------------------------------------- render
+const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1 };
+function menuFx() { if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
+function renderAll() { render(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); } // + snow piles on the buttons, the gold sweep
 function render() {
   const t = G.t;
   setSpriteCalm(save.calm); // reduced motion holds the flat sprites still
@@ -2872,12 +2876,12 @@ function render() {
     ctx.fillRect(0, 0, W_, H_);
     return;
   }
-  if (G.screen === 'levels') { drawLevels(); drawToast(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the map covers the screen: no vault drawn under it
+  if (G.screen === 'levels') { drawLevels(); menuFx(); drawToast(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the map covers the screen: no vault drawn under it
   const sim = G.sim;
   const fx = G.fx;
   G.backdrop.draw(ctx, t, G.bcam); // parallax: the layers slide and breathe against the camera
   G.weather.drawBack(ctx);
-  if (G.screen === 'title') { drawTitle(); drawToast(); if (G.settingsOpen) drawSettings(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene, no vault behind it
+  if (G.screen === 'title') { menuFx(); drawTitle(); drawToast(); if (G.settingsOpen) drawSettings(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene, no vault behind it
   // world
   const P = G.play, cv = G.cv;
   const cx = P.x + P.w / 2, cy = P.y + P.h / 2;
@@ -3026,6 +3030,7 @@ function render() {
     else { drawPopups(); drawToast(); }
     drawKeyHint();
   }
+  if (G.screen !== 'play' && G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store') menuFx(); // behind the cards (not over the board)
   if (G.screen === 'intro') drawIntro();
   if (G.screen === 'pause') drawPause();
   if (G.screen === 'info') drawInfo();
@@ -3035,7 +3040,7 @@ function render() {
   if (G.screen === 'levels') drawLevels();
   if (G.screen === 'practice') drawPractice();
   if (G.screen === 'extras') wonder.drawExtras(); // Extras: Wonder Vaults + the Practice button
-  if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { area: ui.A, wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), premium: { can: ads.canBuyPremium, owned: ads.premium, price: ads.premiumPrice } }); }
+  if (G.screen === 'store') { dim(0.7); drawStore(ui, ctx, W_, H_, { area: ui.A, wallet: save.wallet, t: G.t, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), premium: { can: ads.canBuyPremium, owned: ads.premium, price: ads.premiumPrice } }); menuFx(); /* the shop paints its own backdrop: the effect drifts over it */ }
   if (G.settingsOpen && (G.screen === 'pause' || G.screen === 'title')) drawSettings();
   else G.settingsOpen = false;
   if (G.adBusy) {
@@ -4803,7 +4808,7 @@ function frame(now) {
   try {
     if (G.henSkinCur !== save.wallet.henSkin) { G.henSkinCur = save.wallet.henSkin; setHenSkin(G.henSkinCur); ui.skin = skinUI(G.henSkinCur); } // hen + rooster skin, and the menus' theme
     update(dt);
-    render();
+    renderAll();
   } catch (e) {
     const msg = String((e && e.message) || e);
     G.errs = G.errs || {};
@@ -4951,7 +4956,7 @@ if (DEV) window.__egg = {
   strike(id) { if (!G.sim || !G.sim.stk) return null; if (id) G.sim.stkEquip(id); return fireStrike(true); }, // Chick Strike: fill the meter and fire
   strikeArt: { drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick },
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
-  frame(dt = 1 / 60) { update(dt); render(); },
+  frame(dt = 1 / 60) { update(dt); renderAll(); }, fxStats: menuFxStats,
   actSteps, // film strips replay planner moves through this
   snakeArt: drawSnake, // palette strips
   hen: { anim: drawHenAnim, legacy: drawHenLegacy, events: henIdleEvents, reset: resetHen }, // M7 strips
