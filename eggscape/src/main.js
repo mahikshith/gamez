@@ -3932,6 +3932,16 @@ function drawLevelIntro(L, acc) {
       ui.text(`Save ${L.target} of ${L.eggs} eggs`, x + w / 2, y + 58 * s, { size: 21 * s, align: 'center', maxW: w - 16 * s, color: C.warn, tag: 'intro:goal' });
       ui.text(G.sim && G.sim.timeLimit ? `You have ${Math.round(G.sim.timeLimit)} s` : 'before the fuse burns out', x + w / 2, y + 78 * s, { size: 13.5 * s, align: 'center', maxW: w - 16 * s, color: C.ink2, tag: 'intro:fuse' });
     } },
+    // star goals (mykee: "right before the level we need to show what to do to get 2 or 3 stars"): mirrors computeResult
+    ...(G.li >= 0 ? [{ h: 3 * 22 * s + 6 * s, gap: 10 * s, draw: (x, y, w) => {
+      const rows = [L.target === 1 ? 'Save the egg' : `Save ${L.target} eggs`, L.eggs === 1 ? 'Do not lose the egg' : 'Lose no eggs', 'Every egg home without a crack'];
+      const sr = 7.5 * s, bx = x + w / 2 - Math.min(w, 330 * s) / 2;
+      rows.forEach((t, i) => {
+        const ry = y + 3 * s + i * 22 * s + 11 * s;
+        for (let j = 0; j < 3; j++) drawStar(ctx, bx + sr + j * sr * 2.1, ry, sr, j <= i);
+        ui.text(t, bx + 3 * sr * 2.1 + 6 * s, ry, { size: 14.5 * s, color: '#fff6e0', stroke: 'rgba(40,20,5,0.85)', maxW: Math.min(w, 330 * s) - 3 * sr * 2.1 - 6 * s, tag: 'intro:star' + i });
+      });
+    } }] : []),
     ...(G.li === -1 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14.5 * s, { color: '#9bd8ff', stroke: 'rgba(10,20,40,0.8)', tag: 'intro:daily', gap: 8 * s })] : []),
   ];
   const foes = (s, iw) => !kinds.length ? [] : [
