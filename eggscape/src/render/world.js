@@ -458,7 +458,11 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
     const litA = (x0 - x1) * lcx + (y0 - y1) * lcy > 0;
     const blunt = th.kind === 'blunt';
     const fill = blunt ? look.blunt[0] : look.fill, edge = blunt ? look.blunt[1] : look.edge;
-    const lit = blunt || look.tip ? lighten(fill, blunt ? 0.4 : 0.6) : mix(fill, '#ff8a5c', 0.55), shade = look.tint && !blunt ? mix(darken(fill, 0.3), c, look.tint) : mix(fill, look.tip && !blunt ? '#8a6f52' : '#000000', look.tip && !blunt ? 0.55 : 0.36);
+    // the facet colours only depend on the look + theme thorn colour: work them out once, not per thorn per frame
+    const ck = blunt ? 'b' : 'n', cc = look.cols || (look.cols = {});
+    let cl = cc[ck];
+    if (!cl || cl.c !== c) cl = cc[ck] = { c, tipLit: look.tip ? lighten(look.tip, 0.35) : null, lit: blunt || look.tip ? lighten(fill, blunt ? 0.4 : 0.6) : mix(fill, '#ff8a5c', 0.55), shade: look.tint && !blunt ? mix(darken(fill, 0.3), c, look.tint) : mix(fill, look.tip && !blunt ? '#8a6f52' : '#000000', look.tip && !blunt ? 0.55 : 0.36) };
+    const lit = cl.lit, shade = cl.shade;
     let t0x, t0y, t1x, t1y;
     if (blunt) { [t0x, t0y] = P(tip, a - half * 0.35); [t1x, t1y] = P(tip, a + half * 0.35); }
     const shape = (ox, oy) => {
@@ -523,7 +527,7 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
       ctx.lineTo(x2, y2);
       ctx.lineTo(bx + (x2 - bx) * 0.56, by + (y2 - by) * 0.56);
       ctx.closePath();
-      ctx.fillStyle = lighten(look.tip, 0.35);
+      ctx.fillStyle = cl.tipLit;
       ctx.fill();
     }
     ctx.restore();
