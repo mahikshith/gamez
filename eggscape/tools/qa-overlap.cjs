@@ -70,12 +70,16 @@ const srv = http.createServer((q, r) => {
     for (const e of errors) problems.push(`${w}x${h} PAGE ERROR: ${e}`);
     await p.close();
   }
-  // contact sheet
-  const html = `<html><body style="margin:0;background:#222;color:#ddd;font:12px sans-serif;display:flex;flex-wrap:wrap;gap:6px">${shots.map((s) => `<div><div>${s.label}</div><img src="data:image/png;base64,${fs.readFileSync(s.f).toString('base64')}" style="height:300px"></div>`).join('')}</body></html>`;
-  const p2 = await b.newPage({ viewport: { width: 1800, height: 900 } });
-  await p2.setContent(html);
-  await p2.screenshot({ path: path.join(out, 'qa-sheet.png'), fullPage: true });
-  shots.forEach((s) => fs.unlinkSync(s.f));
+  // contact sheet: an HTML page next to the shots (file references; inlining 11 sizes of base64 PNGs crashed the tab)
+  try {
+    const html = `<html><body style="margin:0;background:#222;color:#ddd;font:12px sans-serif;display:flex;flex-wrap:wrap;gap:6px">${shots.map((s) => `<div><div>${s.label}</div><img src="${path.basename(s.f)}" style="height:300px"></div>`).join('')}</body></html>`;
+    const sheet = path.join(out, 'qa-sheet.html');
+    fs.writeFileSync(sheet, html);
+    const p2 = await b.newPage({ viewport: { width: 1800, height: 900 } });
+    await p2.goto('file://' + path.resolve(sheet), { waitUntil: 'load' });
+    await p2.screenshot({ path: path.join(out, 'qa-sheet.png'), fullPage: true });
+    shots.forEach((s) => fs.unlinkSync(s.f)); fs.unlinkSync(sheet);
+  } catch (e) { console.log('contact sheet skipped:', e.message.split('\n')[0]); }
   await b.close();
   srv.close();
   console.log(problems.length ? problems.join('\n') : 'NO OVERLAPS');
