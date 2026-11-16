@@ -63,17 +63,23 @@ export const stkMethods = {
     if (B && !['snake', 'salamander', 'kingcrab', 'gator'].includes(B.kind) && !(B.kind === 'blizzard' && this.geckoOf && this.geckoOf()) && !(B.kind === 'golem' && this.duke && this.duke()) && !B.den && !(B.kind === 'owl' && this.owl && this.owl.down)) add('bx', 'bx', B, B, true);
     return out;
   },
-  // what the strike goes for: a recent tap (pick), else the boss, else the creature nearest an egg
+  // what the strike goes for: a recent tap (pick), else the villain putting an egg in the most danger right now
+  // (mykee 2026-11-16: players fire when they are in deep trouble, so the chick must hit whoever is about to take an egg,
+  // not the big boss across the vault). Danger = distance to the nearest egg (a villain carrying or clamping an egg is at
+  // ~0, so it comes first); the boss only wins a near tie.
   stkChoose(pick) {
     const L = this.stkTargets();
     if (!L.length) return null;
     if (pick) { const P = L.find((e) => e.key === pick); if (P) return P; }
-    const boss = L.find((e) => e.boss);
-    if (boss) return boss;
     const eggs = this.aliveEggs().map((e) => e.body.getPosition());
-    if (!eggs.length) return L[0];
+    if (!eggs.length) return L.find((e) => e.boss) || L[0];
     let best = L[0], bd = Infinity;
-    for (const e of L) for (const p of eggs) { const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; best = e; } }
+    for (const e of L) {
+      let d = Infinity;
+      for (const p of eggs) d = Math.min(d, Math.hypot(e.x - p.x, e.y - p.y));
+      const score = d - (e.boss ? 0.4 : 0);
+      if (score < bd) { bd = score; best = e; }
+    }
     return best;
   },
   // a tap in the world: the creature under it, if any (main.js remembers it for 1.5 s)
