@@ -3830,7 +3830,7 @@ function chickCard(S, x, y, w, h, s, o) {
   const ac = o.acc, r = 16 * s;
   ctx.save();
   ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-w / 2, -h / 2);
-  if (o.dim) ctx.globalAlpha = 0.62;
+  if (o.dim) ctx.globalAlpha = 0.8;
   if (sel > 0.02) { // soft glow in the accent colour
     ctx.save(); ctx.shadowColor = ac; ctx.shadowBlur = 26 * s * sel; ctx.globalAlpha *= sel;
     ui.roundRect(0, 0, w, h, r); ctx.fillStyle = ac; ctx.fill(); ctx.restore();
@@ -3849,8 +3849,9 @@ function chickCard(S, x, y, w, h, s, o) {
   } else {
     const ah = h - 2 * pad - o.textH;
     artStage(pad, pad, w - 2 * pad, ah, s, () => drawStrikeStage(ctx, S.id, pad, pad + 2 * s, w - 2 * pad, ah - 4 * s, G.t));
-    let ty = pad + ah + 13 * s;
-    ui.text(S.name, w / 2, ty, { size: Math.min(16 * s, (w - 2 * pad) / 6.4), align: 'center', color: S.col ? S.col[1] : ui.C.ink, maxW: w - 2 * pad, noRecord: true }); ty += 17 * s;
+    let ty = pad + ah + o.ns * 0.75;
+    const nmCol = S.col ? ui.tint(S.col[1], -0.3) : ui.C.ink;
+    (o.two ? S.name.split(' ') : [S.name]).forEach((wd) => { ui.text(wd, w / 2, ty, { size: o.ns, align: 'center', color: nmCol, maxW: w - 2 * pad, noRecord: true }); ty += o.ns * 1.1; });
     o.lines.forEach((l, j) => { ui.text(l, w / 2, ty, { size: o.ls, align: 'center', color: ui.C.ink, maxW: w - 2 * pad, noRecord: true }); ty += o.ls * 1.2; });
   }
   if (sel > 0.02) { // thick bright border + the check badge
@@ -3878,9 +3879,13 @@ function pickerBlocks(s, iw, minW) {
   const rows = Math.ceil(n / maxCols), cols = Math.ceil(n / rows);
   const cw = Math.min(n === 1 ? 360 * s : 150 * s, (iw - (cols - 1) * gap) / cols);
   const ls = Math.max(10, Math.min(12.5 * s, cw / 9.5));
-  const lines = T.open.map((S) => wrapText(S.up, ls, cw - 14 * s).slice(0, 5));
-  const nl = Math.max(...lines.map((l) => l.length)), textH = 21 * s + nl * ls * 1.2 + 4 * s;
-  const ch = n === 1 ? 118 * s : Math.min(rows > 1 ? 160 * s : 240 * s, 64 * s + textH + (rows > 1 ? 0 : 38 * s));
+  const lines = T.open.map((S) => wrapText(S.up, ls, cw - 14 * s).slice(0, 8));
+  // the name is the bigger line (1.2x the power text); a narrow card breaks it in two ("Thunder / Chick") rather than shrinking it
+  const nm = (S) => ui.measure(S.name, 100) / 100, nw = cw - 14 * s;
+  let ns = ls * 1.2; const two = T.open.some((S) => nm(S) * ns > nw);
+  if (two) ns = Math.min(ns, nw / Math.max(...T.open.flatMap((S) => S.name.split(' ').map((w) => ui.measure(w, 100) / 100))));
+  const nl = Math.max(...lines.map((l) => l.length)), textH = ns * 1.15 * (two ? 2 : 1) + 4 * s + nl * ls * 1.2 + 4 * s;
+  const ch = n === 1 ? 118 * s : Math.min(rows > 1 ? 170 * s : 300 * s, 64 * s + textH + (rows > 1 ? 0 : 38 * s));
   const B = [];
   const hint = T.need ? 'Pick a chick to help you' : T.choice ? 'Your chick for this level' : T.id ? 'Your chick takes this level with you' : 'Tap the chick to take it along';
   B.push({ h: 24 * s, gap: 0, draw: (x, y, w) => {
@@ -3889,15 +3894,15 @@ function pickerBlocks(s, iw, minW) {
     ui.text(hint, x + w / 2, y + 12 * s, { size: 18 * s, align: 'center', maxW: w, color: T.need ? '#ffe27a' : '#fff6e0', stroke: 'rgba(40,20,5,0.85)', tag: 'intro:pickhint' });
     ctx.restore();
   } });
-  B.push({ h: rows * ch + (rows - 1) * gap + 14 * s, gap: 8 * s, draw: (x, y, w) => {
-    y += 8 * s; // room for a lifted card
+  B.push({ h: rows * ch + (rows - 1) * gap + 22 * s, gap: 10 * s, draw: (x, y, w) => {
+    y += 16 * s; // room for a lifted card
     T.open.forEach((S, i) => {
       const r = Math.floor(i / cols), inRow = r === rows - 1 ? n - r * cols : cols, c = i - r * cols;
       const rx = x + w / 2 - (inRow * cw + (inRow - 1) * gap) / 2 + c * (cw + gap), ry = y + r * (ch + gap);
       const A = (G.cardSel || (G.cardSel = {})), want = S.id === T.id ? 1 : 0, st = A[S.id] || (A[S.id] = { v: want, t: G.t });
       const dt = Math.min(0.05, Math.max(0, G.t - st.t)); st.t = G.t; st.v += (want - st.v) * Math.min(1, dt * 14);
       const pk = G.introPick && G.introPick.id === S.id ? G.introPick : null, bt = pk ? G.t - pk.t : 9;
-      chickCard(S, rx, ry, cw, ch, s, { sel: st.v, dim: !!T.id && S.id !== T.id && T.choice, need: T.need, i, acc, wide: n === 1, lines: lines[i], ls, textH,
+      chickCard(S, rx, ry, cw, ch, s, { sel: st.v, dim: !!T.id && S.id !== T.id && T.choice, need: T.need, i, acc, wide: n === 1, lines: lines[i], ls, ns, two, textH,
         bounce: bt < 0.4 && !save.calm ? 1 - bt / 0.4 : 0, bt });
       const rect = { x: rx, y: ry, w: cw, h: ch };
       ui.record(rect, 'btn:stk:pick:' + S.id, 'btn:stk:pick:' + S.id);
@@ -3916,7 +3921,10 @@ function drawLevelIntro(L, acc) {
   const land = A.w > A.h * 1.15;
   G.introAcc = tintHex(/^#[0-9a-f]{6}$/i.test((ui.skin && ui.skin.ribbon) || '') ? ui.skin.ribbon : acc);
   const kinds = G.li >= 0 && G.infoKinds ? G.infoKinds.filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 7) : [];
-  const tipLines = (s, iw) => (wo ? wrapText(L.intro.line, 14.5 * s, iw) : L.tip ? wrapText(L.tip, 14.5 * s, iw) : []).slice(0, land ? 3 : 2);
+  // never drop words: the text takes as many lines as it needs, one font step smaller when it runs past three
+  const tipText = wo ? L.intro.line : L.tip || '';
+  const tipSize = (s, iw) => (tipText && wrapText(tipText, 14.5 * s, iw).length > 3 ? 12.5 : 14.5) * s;
+  const tipLines = (s, iw) => (tipText ? wrapText(tipText, tipSize(s, iw), iw).slice(0, 6) : []);
   const label = G.li === -2 ? 'Lab' : G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`;
   const head = (s, iw) => [
     { h: 40 * s, gap: 0, draw: (x, y, w) => ui.ribbon(label, x + w / 2, y, clamp(ui.measure(label, 26 * s) + 70 * s, 150 * s, w), 40 * s, { s, color: acc, size: 26 * s, tag: 'intro:level' }) },
@@ -3956,7 +3964,7 @@ function drawLevelIntro(L, acc) {
     } },
   ];
   const notes = (s, iw) => [
-    ...tipLines(s, iw).map((l, i) => lineBlock(l, 14.5 * s, { color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:tip' + i, gap: i ? 2 * s : 12 * s })),
+    ...tipLines(s, iw).map((l, i) => lineBlock(l, tipSize(s, iw), { color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:tip' + i, gap: i ? 2 * s : 12 * s })),
     ...(L.bonus ? [lineBlock('Bonus: ' + BONUS_TEXT(L.bonus, G.sim.MD.fuse), 14 * s, { color: '#9bd8ff', stroke: 'rgba(10,20,40,0.8)', tag: 'intro:bonus', gap: 8 * s })] : []),
   ];
   const boost = (s) => ({ h: 68 * s, gap: 10 * s, draw: (x, y, w) => {
