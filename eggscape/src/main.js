@@ -336,6 +336,7 @@ function startLevel(i, opts = {}) {
   G.result = null;
   G.burstAt = null;
   G.usedRewind = false;
+  G.starsLive = 3;
   G.doubled = false;
   G.held.clear();
   G.keySel = firstGrabbable(0, 1);
@@ -2588,6 +2589,30 @@ function stopFuse() {
 }
 
 // ---------------------------------------------------------------- results
+// 2026-11-16 (mykee: "I saved every egg and still got 2 stars"): which stars are still within reach, shown live in the
+// egg tray, with a short note the moment one is lost. 2nd star: no egg lost; 3rd: also no egg cracked.
+function starsLive(sim) {
+  if (!sim) return 3;
+  const st = sim.stats();
+  if (st.broken > 0) return 1;
+  return sim.eggs.some((e) => !e.fled && e.cracks > 0) ? 2 : 3;
+}
+function watchStars() {
+  if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play' || G.li === -1) return;
+  const n = starsLive(G.sim), was = G.starsLive == null ? 3 : G.starsLive;
+  if (n < was) toast(n === 1 ? 'An egg was lost: 2nd and 3rd stars gone' : 'An egg cracked: 3rd star gone', 2.4);
+  G.starsLive = n;
+}
+const TRAY_STARS = (u) => 6 * u + 3 * 15 * u; // the width the tray's star group takes
+function drawTrayStars(x, y, u) {
+  const n = G.li === -1 ? 0 : starsLive(G.sim);
+  if (!n) return;
+  ctx.fillStyle = 'rgba(255,232,196,0.3)';
+  ctx.fillRect(x, y - 9 * u, 1.5 * u, 18 * u);
+  for (let i = 0; i < 3; i++) drawStar(ctx, x + 6 * u + 15 * u * (i + 0.5), y, 6.6 * u, i < n, 1, false);
+  ui.record({ x: x + 6 * u, y: y - 8 * u, w: 45 * u, h: 16 * u }, 'hud:stars');
+}
+
 function computeResult() {
   const sim = G.sim;
   const st = sim.stats();
@@ -2595,7 +2620,7 @@ function computeResult() {
   const timeBonus = Math.floor(sim.timeLeft) * 10;
   let stars = st.saved >= st.target ? 1 : 0;
   if (stars && st.broken === 0) stars = 2;
-  if (stars === 2 && st.perfect && !G.usedRewind) stars = 3;
+  if (stars === 2 && st.perfect) stars = 3; // 2026-11-16: a rewind (an ad reward) no longer costs the 3rd star
   const streak = stars === 3 ? (save.streak || 0) + 1 : 0;
   const streakMult = [1, 1, 1.2, 1.5, 2][Math.min(4, streak)];
   const base = st.score + timeBonus;
@@ -2605,7 +2630,8 @@ function computeResult() {
   const bonusCoins = bonus && !save.bonus[sk(L.id, sim.mode)] && G.li >= 0 ? BONUS_COINS : 0;
   let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id }).total + bonusCoins;
   if (G.li < 0) coins = G.li === -1 && stars && save.daily.paid !== today() ? coins + DAILY_COINS : 0; // the Daily Vault pays once a day; a lab vault pays nothing
-  return { stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus };
+  return { stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus,
+    missed: stars === 1 ? '2nd star: lose no eggs' : stars === 2 ? '3rd star: every egg home without a crack' : '' };
 }
 
 function recordResult() {
@@ -2669,6 +2695,7 @@ function onFail() {
 function update(dt) {
   G.t += dt;
   G.screenT += dt;
+  watchStars();
   if (G.endCard && (G.endCard.t -= dt) <= 0) { // the win / fail card, on game time
     const C = G.endCard;
     G.endCard = null;
@@ -3310,7 +3337,8 @@ function drawHUD() {
   const needTxt = `${st.saved}/${st.target}`, needS = 18 * u;
   const needW = ui.measure(needTxt.replace(/\d/g, '0'), needS);
   const pillH = 34 * u;
-  const trayPillW = 10 * u + trayW + 9 * u + needW + 13 * u;
+  const starW = G.li === -1 ? 0 : TRAY_STARS(u);
+  const trayPillW = 10 * u + trayW + 9 * u + needW + 13 * u + starW;
   const timeTxt = sim.timeLimit ? fmtTime(sim.timeLeft) : '';
   const timeS = 21 * u;
   const timeW = timeTxt ? ui.measure(timeTxt.replace(/\d/g, '0'), timeS) : 0;
@@ -3361,6 +3389,7 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(255,232,196,0.3)';
   ctx.fillRect(ex0 + trayW + 3.5 * u, trayY - pillH * 0.28, 1.5 * u, pillH * 0.56);
   ui.text(needTxt, ex0 + trayW + 9 * u, trayY + 0.5 * u, { size: needS, color: met ? '#b9ff9a' : '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'hud:need' });
+  if (starW) drawTrayStars(ex0 + trayW + 9 * u + needW + 6 * u, trayY, u);
   if (timeTxt) {
     const tx = trayX + trayPillW + 8 * u;
     const low = sim.timeLeft <= 10;
@@ -3437,14 +3466,16 @@ function drawSideHUD() {
   for (const e of sim.eggs) if (!e.fled) states.push(e.saved ? 'saved' : e.alive ? 'alive' : 'broken');
   while (states.length < slots) states.push('empty');
   const needTxt = `${st.saved}/${st.target}`, needS = 18 * u, needW = ui.measure(needTxt.replace(/\d/g, '0'), needS);
-  const icon = Math.min(26 * u * Math.min(1, 4.5 / slots), (cw - 32 * u - needW) / slots / 0.9), traySpace = icon * 0.9, trayW = slots * traySpace;
-  const trayPillW = 10 * u + trayW + 9 * u + needW + 13 * u, ty = y + pillH / 2;
+  const starW = G.li === -1 ? 0 : TRAY_STARS(u);
+  const icon = Math.min(26 * u * Math.min(1, 4.5 / slots), (cw - 32 * u - needW - starW) / slots / 0.9), traySpace = icon * 0.9, trayW = slots * traySpace;
+  const trayPillW = 10 * u + trayW + 9 * u + needW + 13 * u + starW, ty = y + pillH / 2;
   ui.glass(X0, y, trayPillW, pillH, met ? { a: 'rgba(52,96,36,0.92)', b: 'rgba(26,58,18,0.92)', border: 'rgba(190,255,150,0.6)' } : {});
   states.forEach((sx, i) => { const e = sim.eggs[i]; drawEggIcon(ctx, X0 + 10 * u + traySpace * (i + 0.5), ty, icon, sx, e ? e.cracks : 0); });
   ui.record({ x: X0 + 10 * u, y: ty - icon / 2, w: trayW, h: icon }, 'hud:tray');
   ctx.fillStyle = 'rgba(255,232,196,0.3)';
   ctx.fillRect(X0 + 10 * u + trayW + 3.5 * u, ty - pillH * 0.28, 1.5 * u, pillH * 0.56);
   ui.text(needTxt, X0 + 10 * u + trayW + 9 * u, ty + 0.5 * u, { size: needS, color: met ? '#b9ff9a' : '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'hud:need' });
+  if (starW) drawTrayStars(X0 + 10 * u + trayW + 9 * u + needW + 6 * u, ty, u);
   y += pillH + gap;
   // the fuse and the score share a row
   const timeTxt = sim.timeLimit ? fmtTime(sim.timeLeft) : '', timeS = 20 * u;
@@ -4242,7 +4273,7 @@ function drawWin() {
       });
     } });
     B.push({ h: 46 * s, gap: 8 * s, draw: (x, y, w) => ui.num(String(r.shownTotal), x + w / 2, y + 24 * s, { size: 40 * s, align: 'center', maxW: w, tag: 'win:total' }) });
-    if (r.rewound) B.push(lineBlock('Rewind used: 3 stars locked', 12 * s, { color: C.ink2, tag: 'win:rw', gap: 0 }));
+    if (r.missed) B.push(lineBlock('Next time: ' + r.missed, 13 * s, { color: C.ink2, tag: 'win:missed', gap: 0 })); // which goal the missing star needs
     // the buttons come with the card; their space is always reserved
     const last = G.li < 0 || G.li === LEVELS.length - 1;
     B.push({ h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
