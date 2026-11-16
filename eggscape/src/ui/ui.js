@@ -58,6 +58,7 @@ export class UI {
     this.debug = false;
     this.fr = 0; // frames drawn: drives the press springs and the CTA shimmer
     this.calm = false; // reduced motion: no squash, no shimmer
+    this.skin = null; // the hen skin's UI theme (data/skin-ui.js): button palettes, ribbon, frame wood, button deco
     this.spring = {};
     this.C = C;
     this.aBase = 1; // alpha every text returns to (a fading panel sets it for its own draw)
@@ -241,9 +242,10 @@ export class UI {
     // wood frame
     this.roundRect(x + 1.5 * s, y + 1.5 * s, w - 3 * s, h - 3 * s, r - 1.5 * s);
     const g = ctx.createLinearGradient(x, y, x + w * 0.25, y + h);
-    g.addColorStop(0, o.wa || '#f0b972');
-    g.addColorStop(0.5, o.wb || '#cf8c48');
-    g.addColorStop(1, o.wc || '#b06f34');
+    const WD = (this.skin && this.skin.wood) || [];
+    g.addColorStop(0, o.wa || WD[0] || '#f0b972');
+    g.addColorStop(0.5, o.wb || WD[1] || '#cf8c48');
+    g.addColorStop(1, o.wc || WD[2] || '#b06f34');
     ctx.fillStyle = g;
     ctx.fill();
     ctx.lineWidth = 1.2 * s;
@@ -303,7 +305,7 @@ export class UI {
 
   // Header ribbon with folded tails, centred on cx; (y, h) is the band. o.color: base hex.
   ribbon(text, cx, y, w, h, o = {}) {
-    const ctx = this.ctx, s = o.s || this.u, c = o.color || '#e8503a';
+    const ctx = this.ctx, s = o.s || this.u, SK = this.skin, c = (SK && SK.ribbon && !o.keep) ? SK.ribbon : o.color || '#e8503a';
     const dark = tint(c, -0.34), line = tint(c, -0.62), x = cx - w / 2, tail = Math.min(16 * s, h * 0.5), drop = h * 0.22;
     // tails
     for (const d of [-1, 1]) {
@@ -341,6 +343,13 @@ export class UI {
     g.addColorStop(1, tint(c, -0.12));
     ctx.fillStyle = g;
     ctx.fill();
+    if (SK && SK.stripes && !o.keep) { // candy-cane stripes
+      ctx.save(); ctx.clip();
+      ctx.fillStyle = 'rgba(255,255,255,0.42)';
+      for (let sx = x - h; sx < x + w + h; sx += 18 * s) { ctx.beginPath(); ctx.moveTo(sx, y + h); ctx.lineTo(sx + 7 * s, y + h); ctx.lineTo(sx + 7 * s + h * 0.7, y); ctx.lineTo(sx + h * 0.7, y); ctx.closePath(); ctx.fill(); }
+      ctx.restore();
+      this.roundRect(x, y, w, h, 5 * s);
+    }
     ctx.lineWidth = 1.5 * s;
     ctx.strokeStyle = line;
     ctx.stroke();
@@ -375,7 +384,8 @@ export class UI {
     const ctx = this.ctx;
     const u = this.u;
     const pressed = this.pressedId === id;
-    let K = o.face || KIND[o.kind] || KIND[LEGACY[o.color]] || (o.color ? faceOf(o.color) : KIND.gold);
+    const SK = this.skin;
+    let K = o.face || (SK && SK.kinds && SK.kinds[o.kind]) || KIND[o.kind] || KIND[LEGACY[o.color]] || (o.color ? faceOf(o.color) : KIND.gold);
     if (o.disabled && !o.keepFace) K = KIND.off;
     const lip = Math.min(6 * u, h * 0.13) * (o.disabled ? 0.55 : 1);
     const p = this.pressAmt(id, pressed);
@@ -431,6 +441,7 @@ export class UI {
       }
     }
     ctx.restore();
+    if (SK && SK.deco && !o.disabled && !o.face && o.kind !== 'hud' && o.kind !== 'off' && h > 26 * u) this.deco(SK.deco, x, y + dy, w, fh, rad);
     }
     const cy = y + dy + fh / 2;
     const size = o.size || Math.min(22 * u, h * 0.42);
@@ -460,6 +471,42 @@ export class UI {
     this.record(r, 'btn:' + id, 'btn:' + id);
     if (!o.disabled) this.buttons.push({ id, ...r });
     return { x, y, w, h, dy, cy };
+  }
+
+  // the skin's button decoration: a snow cap along the top edge, or two twinkles on the corners
+  deco(kind, x, y, w, h, rad) {
+    const ctx = this.ctx, u = this.u;
+    ctx.save();
+    if (kind === 'snow') {
+      const th = Math.min(7 * u, h * 0.22), x0 = x + rad * 0.35, x1 = x + w - rad * 0.35, n = Math.max(3, Math.round((x1 - x0) / (16 * u)));
+      ctx.beginPath();
+      ctx.moveTo(x0 - 2 * u, y + th * 0.4);
+      ctx.quadraticCurveTo(x0, y - th * 0.45, x0 + 6 * u, y - th * 0.35);
+      ctx.lineTo(x1 - 6 * u, y - th * 0.35);
+      ctx.quadraticCurveTo(x1, y - th * 0.45, x1 + 2 * u, y + th * 0.4);
+      for (let i = n; i >= 0; i--) { // the lumpy lower edge, one longer drip in the middle-ish
+        const xi = x0 + ((x1 - x0) * i) / n, dep = th * (0.55 + 0.35 * Math.abs(Math.sin(i * 2.3 + x * 0.01))) + (i === Math.floor(n * 0.62) ? th * 0.5 : 0);
+        ctx.quadraticCurveTo(xi + (x1 - x0) / n / 2, y + dep + th * 0.25, xi, y + th * 0.35);
+      }
+      ctx.closePath();
+      const g = ctx.createLinearGradient(0, y - th, 0, y + th);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#dbeeff');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.lineWidth = 1.4 * u;
+      ctx.strokeStyle = 'rgba(70,110,160,0.55)';
+      ctx.stroke();
+    } else if (kind === 'sparkle') {
+      const tw = this.calm ? 1 : 0.6 + 0.4 * Math.sin(this.fr * 0.08 + x * 0.05);
+      for (const [px, py, k] of [[x + 9 * u, y + 7 * u, 1], [x + w - 10 * u, y + h - 9 * u, 0.75]]) {
+        const r = 5 * u * k * tw;
+        ctx.beginPath();
+        ctx.moveTo(px, py - r); ctx.quadraticCurveTo(px, py, px + r, py); ctx.quadraticCurveTo(px, py, px, py + r); ctx.quadraticCurveTo(px, py, px - r, py); ctx.quadraticCurveTo(px, py, px, py - r);
+        ctx.fillStyle = 'rgba(255,255,240,0.95)';
+        ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   hit(px, py) {
