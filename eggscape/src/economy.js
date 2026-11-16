@@ -57,7 +57,9 @@ export const AD_REWARDS = {
 };
 
 export function defaultWallet() {
-  return { coins: 0, owned: {}, skins: ['classic'], skin: 'classic', chests: 0, charges: 0, henSkins: ['classic'], henSkin: 'classic', noAds: false, daily: '' };
+  return { coins: 0, owned: {}, skins: ['classic'], skin: 'classic', chests: 0, charges: 0, henSkins: ['classic'], henSkin: 'classic', noAds: false, daily: '',
+    // 2026-11-16 shop revamp: owned power chicks, the Golden Egg Bank, coin items, and what real money bought
+    chicks: [], bank: 0, golden: 0, tickets: { ally: 0, skip: 0 }, noInter: false, payer: false, spend: 0, lastBuyAt: 0, starter: false, season: '', premDay: '', tokens: [] };
 }
 
 // Make any loaded/saved value safe to use (old saves, hand-edited saves).
@@ -80,6 +82,22 @@ export function sanitizeWallet(w) {
     const n = Math.min(MAX_OWNED, Math.max(0, Math.floor(Number(owned[id]) || 0)));
     if (n > 0) out.owned[id] = n;
   }
+  const ch = Array.isArray(w.chicks) ? w.chicks.filter((id) => CHICK_PRICES[id]) : [];
+  out.chicks = ch.filter((id, i) => ch.indexOf(id) === i);
+  const int = (v, hi) => Math.max(0, Math.min(hi, Math.floor(Number(v) || 0)));
+  out.bank = int(w.bank, BANK_CAP);
+  out.golden = int(w.golden, 99);
+  const tk = w.tickets && typeof w.tickets === 'object' ? w.tickets : {};
+  out.tickets = { ally: int(tk.ally, MAX_TICKETS), skip: int(tk.skip, MAX_TICKETS) };
+  out.noInter = !!w.noInter;
+  out.payer = !!w.payer;
+  out.spend = Math.max(0, Math.round((Number(w.spend) || 0) * 100) / 100);
+  out.lastBuyAt = Math.max(0, Number(w.lastBuyAt) || 0);
+  out.starter = !!w.starter;
+  out.season = HEN_SKINS[w.season] ? w.season : '';
+  out.premDay = typeof w.premDay === 'string' ? w.premDay : '';
+  // purchase tokens already granted: a re-delivered purchase must never pay twice (newest kept if it ever grows long)
+  out.tokens = Array.isArray(w.tokens) ? w.tokens.filter((t) => typeof t === 'string' && t).slice(-MAX_TOKENS) : [];
   return out;
 }
 
@@ -230,9 +248,11 @@ export function openChest(wallet, chest) {
 // Bought in the shop, found in chests (star chests and the daily treasure chest). Never needed to finish a level.
 export const CHARGE_ITEM = { id: 'chick', name: 'Chick Charge', line: 'Send your power chick right now, meter or not.', price: 45, sku: 'chick_charge' };
 export const CHARGE_PACK = { id: 'chick3', name: 'Chick Charge x3', line: 'Three charges in one bag.', price: 120, n: 3, sku: 'chick_charge3' };
+export const CHARGE_PACK10 = { id: 'chick10', name: 'Chick Charge x10', line: 'A big sack of ten charges.', price: 350, n: 10, sku: 'chick_charge10' };
+export const CHARGE_PACKS = [CHARGE_ITEM, CHARGE_PACK, CHARGE_PACK10];
 export const MAX_CHARGES = 30;
 export function buyCharges(wallet, pack) {
-  const P = pack === 'chick3' ? CHARGE_PACK : CHARGE_ITEM, n = P.n || 1, w = sanitizeWallet(wallet);
+  const P = CHARGE_PACKS.find((q) => q.id === pack) || CHARGE_ITEM, n = P.n || 1, w = sanitizeWallet(wallet);
   if (w.coins < P.price || w.charges + n > MAX_CHARGES) return null;
   w.coins -= P.price; w.charges += n;
   return w;
@@ -301,4 +321,166 @@ export function equipHenSkin(wallet, id) {
   if (!HEN_SKINS[id] || !ownsHenSkin(w, id)) return null;
   w.henSkin = id;
   return w;
+}
+
+// ---------------------------------------------------------------- shop revamp (2026-11-16): coin items, power chicks, the bank
+// Coin items: an Ally Ticket calls the rooster or goose without an ad, Golden Hour doubles the coins of the next wins,
+// a Skip Ticket skips a level the player is stuck on (the fail card offers it after STUCK_FAILS losses).
+export const MAX_TICKETS = 99;
+export const ITEMS = {
+  ally: { id: 'ally', name: 'Ally Ticket', line: 'Call the rooster or the goose this try, no ad needed.', price: 80 },
+  goldhour: { id: 'goldhour', name: 'Golden Hour', line: 'Double coins on your next 3 wins.', price: 120, wins: 3 },
+  skip: { id: 'skip', name: 'Skip Ticket', line: 'Skip a level after 3 losses on it.', price: 150 },
+};
+export const ITEM_ORDER = ['ally', 'goldhour', 'skip'];
+export function itemCount(w, id) {
+  if (!w) return 0;
+  if (id === 'goldhour') return w.golden || 0;
+  return (w.tickets && w.tickets[id]) || 0;
+}
+export function buyItem(wallet, id) {
+  const I = ITEMS[id], w = sanitizeWallet(wallet);
+  if (!I || w.coins < I.price) return null;
+  if (id === 'goldhour') { if (w.golden + I.wins > 99) return null; w.golden += I.wins; }
+  else { if (w.tickets[id] >= MAX_TICKETS) return null; w.tickets = { ...w.tickets, [id]: w.tickets[id] + 1 }; }
+  w.coins -= I.price;
+  return w;
+}
+// spend one Ally or Skip Ticket; null if none
+export function useTicket(wallet, id) {
+  const w = sanitizeWallet(wallet);
+  if (!(w.tickets[id] > 0)) return null;
+  w.tickets = { ...w.tickets, [id]: w.tickets[id] - 1 };
+  return w;
+}
+
+// Power chicks: free when the player reaches their level (data/strikes.js unlock), or bought early for coins.
+// Prices rise with the unlock level, so the earliest chick is the cheapest shortcut.
+export const CHICK_PRICES = { freeze: 400, thunder: 400, bomb: 450, decoy: 500, tornado: 550, glue: 600 };
+export const CHICK_IDS = Object.keys(CHICK_PRICES);
+export const ownsChick = (w, id) => !!(w && Array.isArray(w.chicks) && w.chicks.includes(id));
+export function buyChick(wallet, id) {
+  const w = sanitizeWallet(wallet), p = CHICK_PRICES[id];
+  if (!p || ownsChick(w, id) || w.coins < p) return null;
+  w.coins -= p; w.chicks = [...w.chicks, id];
+  return w;
+}
+
+// The Golden Egg Bank: every win drops 10% of its coins (at least 2) into a glass egg, up to BANK_CAP. The coins inside
+// are only paid out by the egg_bank purchase ("Crack it open"), which unlocks at BANK_OPEN.
+export const BANK_CAP = 2000;
+export const BANK_OPEN = 600;
+// A win's coins: Golden Hour doubles them (one of its wins used up), then the bank takes its share on top (it is
+// not taken from the player's coins). bank false: no bank (web portals sell nothing). Returns { wallet, coins, doubled, bankAdd }.
+export function payWin(wallet, coins, bank = true) {
+  const w = sanitizeWallet(wallet);
+  let c = Math.max(0, Math.floor(coins || 0)), doubled = false;
+  if (c > 0 && w.golden > 0) { c *= 2; w.golden -= 1; doubled = true; }
+  w.coins += c;
+  const bankAdd = c > 0 && bank ? Math.min(BANK_CAP - w.bank, Math.max(2, Math.round(c * 0.1))) : 0;
+  w.bank += bankAdd;
+  return { wallet: w, coins: c, doubled, bankAdd };
+}
+
+// Premium's free Chick Charge, claimed on home once per local day
+export function claimPremiumCharge(wallet, dayStr) {
+  const w = sanitizeWallet(wallet);
+  if (!w.noAds || w.premDay === dayStr || w.charges >= MAX_CHARGES) return null;
+  w.charges += 1; w.premDay = dayStr;
+  return w;
+}
+
+// ---------------------------------------------------------------- real-money products (Google Play in-app products)
+// usd: the hint shown until Play returns the localized price (the store's price is what the player pays).
+// type: 'consumable' (bought again and again; Play consumes it after the grant) or 'once' (non-consumable; restore()
+// gives it back on a new install). One price for everyone: nothing here depends on who is buying.
+export const MAX_TOKENS = 400;
+export const IAP = {
+  coins_250: { sku: 'coins_250', usd: 0.99, type: 'consumable', name: 'Pouch of coins', coins: 250 },
+  coins_850: { sku: 'coins_850', usd: 2.99, type: 'consumable', name: 'Bag of coins', coins: 850 },
+  coins_1500: { sku: 'coins_1500', usd: 4.99, type: 'consumable', name: 'Sack of coins', coins: 1500, tag: 'Most popular' },
+  coins_3300: { sku: 'coins_3300', usd: 9.99, type: 'consumable', name: 'Chest of coins', coins: 3300, tag: 'Best value' },
+  coins_7000: { sku: 'coins_7000', usd: 19.99, type: 'consumable', name: 'Vault of coins', coins: 7000 },
+  starter_nest: { sku: 'starter_nest', usd: 1.99, type: 'once', name: 'Starter Nest', line: '600 coins, 3 Chick Charges, 2 of every boost and the Cocoa Hen.', coins: 600, charges: 3, boosts: 2, hen: 'cocoa' },
+  bundle_helper: { sku: 'bundle_helper', usd: 3.99, type: 'consumable', name: 'Helper Bundle', line: '1000 coins, 5 Chick Charges, 3 Ally Tickets and 2 of every boost.', coins: 1000, charges: 5, ally: 3, boosts: 2 },
+  bundle_flock: { sku: 'bundle_flock', usd: 9.99, type: 'consumable', name: 'Flock Bundle', line: '3000 coins, 15 Chick Charges, 10 Ally Tickets and every power chick.', coins: 3000, charges: 15, ally: 10, chicks: true },
+  season_pack: { sku: 'season_pack', usd: 4.99, type: 'once', name: 'Season Pack', line: 'A world outfit for the hen, the Frosty egg and 800 coins.', coins: 800, egg: 'frosty', seasonHen: true },
+  egg_bank: { sku: 'egg_bank', usd: 1.99, type: 'consumable', name: 'Golden Egg Bank', line: 'Every win drops coins in. Crack it open for all of them.', bank: true },
+  all_chicks: { sku: 'all_chicks', usd: 4.99, type: 'once', name: 'All Power Chicks', line: 'Every power chick, ready in every level with villains.', chicks: true },
+  no_ads: { sku: 'no_ads', usd: 2.99, type: 'once', name: 'No Ads', line: 'No more ad breaks between levels. Bonus videos stay your choice.', noInter: true },
+  eggscape_premium: { sku: 'eggscape_premium', usd: 7.99, type: 'once', name: 'Premium', line: 'No ad breaks, every ad bonus at once, all power chicks, the Golden Hen, 1500 coins and a free Chick Charge every day.', coins: 1500, chicks: true, premium: true },
+};
+export const COIN_PACKS = ['coins_250', 'coins_850', 'coins_1500', 'coins_3300', 'coins_7000'];
+export const usdHint = (sku) => (IAP[sku] ? '$' + IAP[sku].usd.toFixed(2) : '');
+
+// the world outfit a Season Pack gives: Ski Champ, or the first world outfit the player does not own yet
+export function seasonHen(w) {
+  const outfits = HEN_SKIN_ORDER.filter((id) => HEN_SKINS[id].world);
+  if (!ownsHenSkin(w, 'skier')) return 'skier';
+  return outfits.find((id) => !ownsHenSkin(w, id)) || 'skier';
+}
+
+// Can this product be bought right now? (one-time products already owned, the bank before it is full enough)
+export function iapAvailable(wallet, sku) {
+  const P = IAP[sku], w = wallet || {};
+  if (!P) return false;
+  if (sku === 'starter_nest') return !w.starter;
+  if (sku === 'season_pack') return !w.season;
+  if (sku === 'egg_bank') return (w.bank || 0) >= BANK_OPEN;
+  if (sku === 'all_chicks') return !w.noAds && CHICK_IDS.some((id) => !ownsChick(w, id));
+  if (sku === 'no_ads') return !w.noInter && !w.noAds;
+  if (sku === 'eggscape_premium') return !w.noAds;
+  return true;
+}
+
+// the cheapest coin pack that covers a shortfall (the biggest one if none does)
+export function packFor(short) {
+  return COIN_PACKS.find((sku) => IAP[sku].coins >= short) || COIN_PACKS[COIN_PACKS.length - 1];
+}
+
+function addBoosts(w, n) {
+  for (const id of BOOSTER_ORDER) {
+    const room = MAX_OWNED - ownedCount(w, id), k = Math.min(n, room);
+    if (k > 0) w.owned = { ...w.owned, [id]: ownedCount(w, id) + k };
+    if (n > k) w.coins += (n - k) * BOOSTERS[id].price; // a full slot is paid out at its price, as chests do
+  }
+}
+
+// Grant a purchase. Idempotent per purchase token: the token is remembered in the wallet, and a token seen before pays
+// nothing again. Non-consumables also carry an entitlement (No Ads, the chicks, a skin) that is (re)applied every time
+// their purchase is reported, with or without a new token; that is what restore() relies on after a reinstall.
+// Consumables are paid only against a new token. Returns { wallet, granted } (granted: coins and items were paid now).
+export function grantIap(wallet, sku, token, now = 0) {
+  const P = IAP[sku], w = sanitizeWallet(wallet);
+  if (!P) return { wallet: w, granted: false };
+  const tok = typeof token === 'string' ? token : '';
+  const fresh = !!tok && !w.tokens.includes(tok);
+  if (P.type === 'once') { // the entitlement
+    if (P.noInter) w.noInter = true;
+    if (P.premium) w.noAds = true;
+    if (P.chicks) w.chicks = [...CHICK_IDS];
+    if (P.hen && !w.henSkins.includes(P.hen)) w.henSkins = [...w.henSkins, P.hen];
+    if (sku === 'starter_nest') w.starter = true;
+    if (P.seasonHen) {
+      const hen = w.season || seasonHen(w);
+      w.season = hen;
+      if (!w.henSkins.includes(hen)) w.henSkins = [...w.henSkins, hen];
+    }
+    if (P.egg && !w.skins.includes(P.egg)) w.skins = [...w.skins, P.egg];
+  }
+  if (!fresh) return { wallet: w, granted: false };
+  w.coins += P.coins || 0;
+  if (P.charges) { const k = Math.min(P.charges, MAX_CHARGES - w.charges); w.charges += k; w.coins += (P.charges - k) * CHARGE_ITEM.price; }
+  if (P.boosts) addBoosts(w, P.boosts);
+  if (P.ally) w.tickets = { ...w.tickets, ally: Math.min(MAX_TICKETS, w.tickets.ally + P.ally) };
+  if (P.chicks && P.type === 'consumable') w.chicks = [...CHICK_IDS];
+  if (P.bank) { w.coins += Math.max(BANK_OPEN, w.bank); w.bank = 0; } // the buy button only shows from BANK_OPEN coins up
+  if (P.hen) w.henSkin = P.hen; // the new look is put on right away
+  if (P.seasonHen) w.henSkin = w.season;
+  if (P.premium) w.henSkin = 'golden';
+  w.tokens = [...w.tokens, tok].slice(-MAX_TOKENS);
+  w.payer = true;
+  w.spend = Math.round((w.spend + P.usd) * 100) / 100;
+  w.lastBuyAt = now || w.lastBuyAt;
+  return { wallet: w, granted: true };
 }

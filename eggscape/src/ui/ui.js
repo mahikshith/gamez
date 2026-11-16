@@ -624,6 +624,13 @@ export const ICON = {
     bar(ctx, cx - s * 0.19, cy - s * 0.36, s * 0.1, s * 0.2); bar(ctx, cx + s * 0.09, cy - s * 0.36, s * 0.1, s * 0.2);
     ctx.fillRect(cx - s * 0.07, cy + s * 0.04, s * 0.14, s * 0.13);
   }),
+  // a little house (Home: back to the title from the shop or the pause card)
+  home: G_((ctx, cx, cy, s) => {
+    ctx.fillStyle = INK; ctx.strokeStyle = INK; ctx.lineJoin = 'round'; ctx.lineWidth = s * 0.08;
+    ctx.beginPath(); ctx.moveTo(cx - s * 0.34, cy - s * 0.02); ctx.lineTo(cx, cy - s * 0.33); ctx.lineTo(cx + s * 0.34, cy - s * 0.02); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.rect(cx - s * 0.24, cy - s * 0.06, s * 0.48, s * 0.36); ctx.rect(cx - s * 0.07, cy + s * 0.09, s * 0.14, s * 0.21); ctx.fill('evenodd'); // the door is a hole
+  }),
+  plus: G_((ctx, cx, cy, s) => { bar(ctx, cx - s * 0.3, cy - s * 0.08, s * 0.6, s * 0.16); bar(ctx, cx - s * 0.08, cy - s * 0.3, s * 0.16, s * 0.6); }),
   check: G_((ctx, cx, cy, s) => { ctx.strokeStyle = INK; ctx.lineWidth = s * 0.17; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(cx - s * 0.26, cy + s * 0.02); ctx.lineTo(cx - s * 0.07, cy + s * 0.2); ctx.lineTo(cx + s * 0.28, cy - s * 0.2); ctx.stroke(); }),
   sound(on) {
     return G_((ctx, cx, cy, s) => {
