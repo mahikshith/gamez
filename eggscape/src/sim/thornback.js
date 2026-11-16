@@ -21,7 +21,9 @@ import { Vec2 } from 'planck';
 import { addSpike, removeWall } from './boss.js';
 
 export const THORN = {
-  svl: 1.5, spikeK: 0.85, speed: 0.375, // m snout to hips (Duke); Spike's size factor; m/s (75% of the salamander's walk)
+  // m snout to hips (Duke; was 1.5: now drawn at the salamander's presence, the hit tests follow); Spike's size factor;
+  // m/s (75% of the salamander's walk)
+  svl: 1.85, spikeK: 0.85, speed: 0.375,
   every: 7, dropT: 0.9, dropAt: 0.55, max: { duke: 3, spike: 2 },
   reach: 0.55, hipT: 0.7, hipAt: 0.32, shoveV: 1.7, clear: 1.3, bored: 4,
   flip: 4, flipV: 0.5, flipR: 0.55,
