@@ -6,7 +6,7 @@
 // in sim/allies.js and allyPlace() there says where it is).
 import { ALLY, allyPlace, allyElapsed, flingAt } from '../sim/allies.js';
 import { drawHenAnim } from './hen.js';
-import { drawSkinHat, drawSkinNose, drawSkinNeck } from './skins.js';
+import { drawSkinHat, drawSkinNose, drawSkinNeck, skinHidesComb } from './skins.js';
 import { geckoAnchor } from './gecko15.js';
 
 const TAU = Math.PI * 2;
@@ -333,13 +333,14 @@ export function drawRooster(ctx, cx, cy, s, P) {
       c.bezierCurveTo(14.6, -6.4, 13, -4.6, 11, -4.6);
       c.closePath();
     };
+    if (!skinHidesComb()) { // 2026-11-16: a hat that sits over the crown hides the comb
     ctx.save(); ctx.translate(0.5, -8); ctx.scale(0.96, 1.24); ctx.translate(0, 6); // a bigger, upright comb, sat on the crown (room for the brow)
     ctx.lineWidth = o * 2 / 1.1; ctx.strokeStyle = RED.line; ctx.beginPath(); combPath(ctx); ctx.stroke();
     ctx.fillStyle = grad(ctx, -4, -27, 4, -5, ['#ff5a43', RED.hi, RED.lo]); ctx.beginPath(); combPath(ctx); ctx.fill();
     ctx.save(); ctx.beginPath(); combPath(ctx); ctx.clip(); ctx.fillStyle = 'rgba(120,10,10,0.3)'; ctx.beginPath(); ctx.ellipse(2, -5.5, 15, 3.4, 0.05, 0, TAU); ctx.fill(); ctx.restore(); // where it meets the crown
     ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.moveTo(-12.4, -12); ctx.quadraticCurveTo(-12, -14, -10, -14); ctx.moveTo(-8.4, -19); ctx.quadraticCurveTo(-7, -21, -5, -20.4); ctx.moveTo(0, -23); ctx.quadraticCurveTo(1.6, -25, 3.6, -24.2); ctx.moveTo(9, -20.6); ctx.quadraticCurveTo(10.4, -21.4, 11.6, -20); ctx.stroke();
-    ctx.restore();
+    ctx.restore(); }
     drawSkinHat(ctx, o, P.tt || 0); // 2026-11-15: the rooster wears the hen's skin set (hat over the comb)
     drawSkinNose(ctx, o, 24.5, 1, P.tt || 0);
     // earlobe, wattle

@@ -15,7 +15,7 @@
 // Local space is y-down in a 100-unit box centred on (cx, cy); feet rest at cy + 0.48 h. She faces o.face (-1 = left,
 // toward the nest she stands beside; the default) and turns while she walks.
 import { drawDrop } from './characters.js';
-import { drawSkinHat, drawSkinNose, drawSkinNeck, HEN_TINT, setSkinId, skinId } from './skins.js';
+import { drawSkinHat, drawSkinNose, drawSkinNeck, drawSkinBody, skinSleeve, skinHidesComb, drawSleeveCuff, HEN_TINT, setSkinId, skinId } from './skins.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -550,7 +550,7 @@ export function drawHenPose(ctx, P, cx, cy, h, o = {}) {
     drawTail(ctx, P, ol);
     if (P.tufts > 0.02) drawTufts(ctx, P.tufts, tt, ol);
     drawBody(ctx, H, ol);
-    if (o.skin !== false) drawSkinNeck(ctx, ol, H.x - 5, H.y + 15.5, tt);
+    if (o.skin !== false) { drawSkinBody(ctx, ol, tt, bodyPath); drawSkinNeck(ctx, ol, H.x - 5, H.y + 15.5, tt); }
     drawHead(ctx, H, P, f, tt, ol, o.hat);
     wing(ctx, ol, 1, -1, P.wa, P.sp, false); // near wing, over the body (and over her eye when she wipes it)
     if (o.breath >= 0 && o.breath < 1) drawBreath(ctx, H.x + 25, H.y + 5, o.breath);
@@ -661,8 +661,17 @@ function wing(ctx, o, x, y, raise, sp, far) {
   for (let i = 0; i < 3; i++) { const u = i / 3, x0 = lerp(L * 0.62, L * 0.12, u), y0 = lerp(W * 0.25, -W * 0.25, u), x1 = lerp(L * 0.62, L * 0.12, u + 1 / 3), y1 = lerp(W * 0.25, -W * 0.25, u + 1 / 3); ctx.moveTo(x0, y0); ctx.quadraticCurveTo((x0 + x1) / 2 - 1.5, (y0 + y1) / 2 - 3.4, x1, y1); }
   for (let i = 1; i < n; i++) { const [tx, ty] = T[i]; ctx.moveTo(tx + 1, ty + 1.2); ctx.lineTo(lerp(tx, L * 0.5, 0.45), lerp(ty, -W * 0.05, 0.6)); } // quills between the primaries
   ctx.stroke();
+  const sl = skinSleeve();
+  if (sl) { // an outfit's sleeve over the shoulder half; the feather tips stay feathers
+    const cut = L * 0.58, sc = far ? sl.far : sl.c;
+    ctx.fillStyle = sc[0]; ctx.fillRect(-20, -60, cut + 20, 120);
+    ctx.fillStyle = sc[1]; ctx.fillRect(-20, -60, cut + 20, 60 + W * 0.15);
+    ctx.fillStyle = sl.lo; ctx.fillRect(-20, -60, cut + 20, 60 - W * 0.6);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.ellipse(cut * 0.45, W * 0.5, cut * 0.32, W * 0.16, 0.05, 0, TAU); ctx.fill();
+  }
   ctx.restore();
   ctx.beginPath(); path(ctx); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
+  if (sl && sl.cuff && !far) drawSleeveCuff(ctx, o, L * 0.58, -W * 0.3, W * 0.78);
   ctx.restore();
 }
 
@@ -763,7 +772,8 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
   // highlight: a soft lit patch on the back of the crown
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
   ctx.beginPath(); ctx.ellipse(-6, -6.5, 4.2, 2.6, -0.6, 0, TAU); ctx.fill();
-  // comb: four lobes (smaller than the rooster's five), wobbling from its base
+  // comb: four lobes (smaller than the rooster's five), wobbling from its base (hidden under a hat that covers the crown)
+  const combA = ctx.globalAlpha; if (skinHidesComb() && !hat) ctx.globalAlpha = 0;
   ctx.save();
   ctx.translate(1, -10); ctx.rotate(P.comb); ctx.translate(-1, 10);
   const combPath = (c) => { // three soft lobes, tallest in the middle, leaning a little forward
@@ -782,6 +792,7 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
   ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-9.2, -14.5); ctx.quadraticCurveTo(-8.6, -17, -6.4, -17.2); ctx.moveTo(-1.6, -21); ctx.quadraticCurveTo(0, -22.6, 2, -22); ctx.moveTo(8.2, -18.6); ctx.quadraticCurveTo(9.6, -19, 10.6, -17.8); ctx.stroke();
   ctx.restore();
+  ctx.globalAlpha = combA;
   // the acting face: two eyes with lids, a brow each (the far eye is foreshortened and sits just above the beak)
   const a0 = ctx.globalAlpha;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
