@@ -10,7 +10,9 @@ const dir = path.resolve(process.argv[2] || '.');
 const out = path.resolve(process.argv[3] || path.join(dir, 'out'));
 fs.mkdirSync(out, { recursive: true });
 
-const SIZES = [[390, 844], [360, 640], [1280, 720], [640, 360], [600, 600], [768, 1024], [1024, 768], [800, 1280], [1280, 800], [1180, 820], [820, 1180]]; // 2026-11-16: tablets too (mykee)
+const ALL_SIZES = [[390, 844], [360, 640], [1280, 720], [640, 360], [600, 600], [768, 1024], [1024, 768], [800, 1280], [1280, 800], [1180, 820], [820, 1180]]; // 2026-11-16: tablets too (mykee)
+// QA_SIZES="390x844,1024x768" runs a subset (a full run takes ~20 min)
+const SIZES = process.env.QA_SIZES ? process.env.QA_SIZES.split(',').map((s) => s.split('x').map(Number)) : ALL_SIZES;
 
 const srv = http.createServer((q, r) => {
   const u = q.url.split('?')[0];
