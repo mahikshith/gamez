@@ -2889,14 +2889,17 @@ function render() {
   for (const ring of sim.rings) {
     const held = ring.held || (ring.keyHeld && G.keySel === ring.i);
     const hover = !held && G.screen === 'play' && ((G.hover === ring && ring.grabbable) || (G.keys.__kb && G.keySel === ring.i));
-    ctx.save();
-    if (ring.denied > 0) ctx.rotate(Math.sin(t * 60) * 0.01 * ring.denied);
-    crowRingXf(ctx, ring.r, k); // the rooster's crow shivers every ring as the wave passes
-    W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck, water: sim.water });
-    W.drawV3Ring(ctx, ring, k, t, G.theme);
-    drawHardIce(ctx, ring, k, t); // v3.2
-    drawRingPulse(ring); // game feel: the grab ripple and detent blink
-    ctx.restore();
+    // level clear: whatever is fixed to a ring (curtains, grates, pads, honey, shutters, ice) leaves WITH the ring pieces
+    blastXf(() => {
+      ctx.save();
+      if (ring.denied > 0) ctx.rotate(Math.sin(t * 60) * 0.01 * ring.denied);
+      crowRingXf(ctx, ring.r, k); // the rooster's crow shivers every ring as the wave passes
+      W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck, water: sim.water });
+      W.drawV3Ring(ctx, ring, k, t, G.theme);
+      drawHardIce(ctx, ring, k, t); // v3.2
+      drawRingPulse(ring); // game feel: the grab ripple and detent blink
+      ctx.restore();
+    }, ring.i + 1);
   }
   blastXf(() => drawRockHud(ctx, sim, k, t), 15.3); // v3.3 M10: the rocking vault's level and warning arrows
   setBossView({ top: G.cam.y + (G.play.h / 2) / G.cam.k, k: G.cam.k, u: ui.u }); // bosses (v3.1): the cloud comes into view
@@ -2925,7 +2928,7 @@ function render() {
   if (sim.wx.bolt) { const b = sim.boltPoint(sim.wx.bolt); W.drawBoltWarn(ctx, b.x, b.y, t); }
   blastXf(() => W.drawBarriers(ctx, sim, t, k), 3.1); // predators (v3)
   // floating orbs: mystery until discovered (F19)
-  for (const o of sim.orbs) if (o.alive) flipped(o.x, o.y, (k) => drawOrb(ctx, o.type, 0, 0, 0.2 * k, t, !!save.seen[o.type]));
+  blastXf(() => { for (const o of sim.orbs) if (o.alive) flipped(o.x, o.y, (k) => drawOrb(ctx, o.type, 0, 0, 0.2 * k, t, !!save.seen[o.type])); }, 18.3); // a re-spawned orb can outlive the burst: it leaves with the rings
   drawHenAt(sim, k, t);
   if (G.screen === 'play' || G.screen === 'intro') { if (sim.water) drawRiseGuide(ctx, sim, t); else W.drawDropGuide(ctx, sim.rings[sim.rings.length - 1], sim.nest.getPosition().x, sim.nestW, t); }
   for (const r of sim.rocks) if (r.alive) W.drawRock(ctx, r, G.theme);
@@ -3051,11 +3054,13 @@ function drawHenAt(sim, k, t) {
   // brow clear the outermost ring, and takes the largest size that keeps her within ~1 m of where she used to stand
   let s = Math.max(0.95, Math.min(52, k * 1.5) / k), hx = seat ? seat.x : n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2;
   if (seat) s = Math.max(s, Math.min(60, k * 1.7) / k);
-  else for (const px of [66, 63, 60, 57, 54]) {
+  else for (const px of (G.henPx && G.henPx.run === G.run ? [G.henPx.px] : [66, 63, 60, 57, 54])) {
+    // the size is picked ONCE per run: re-picking it every frame made her shrink and grow as a moving nest (Daily) changed what fit
     const c = Math.max(0.95, Math.min(px, k * 1.9) / k), base = n.x + sim.nestW / 2 + 0.6 + (c - 0.95) / 2, R = sim.outerR + 0.1;
     let x = base;
     for (const [ox, oy] of [[0.32, 0.97], [0.46, 0.85]]) { const y = sim.groundY + oy * c * (sim.gy || 1), d = R * R - y * y; if (d > 0) x = Math.max(x, Math.sqrt(d) + ox * c - n.x * 0); }
-    if (x - base <= 1.1 && x + 0.45 * c <= sim.outerR + 0.5) { s = c; hx = x; break; }
+    const last = G.henPx && G.henPx.run === G.run; // a locked size is used as it is; x still follows the ring
+    if (last || (x - base <= 1.1 && x + 0.45 * c <= sim.outerR + 0.5)) { s = c; hx = x; if (!last && k > 25) G.henPx = { run: G.run, px }; break; }
   }
   G.henAt = { x: hx, y: seat ? seat.y : sim.groundY, s }; // Chick Strike: where the chick rides and launches from
   ctx.save();
