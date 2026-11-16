@@ -5,7 +5,7 @@
 // Battery saver, and a few still particles with reduced motion (calm). back() runs behind the panels; front() runs
 // after the whole screen is drawn and adds what must sit ON the UI: snow piles on button tops, a light sweep on gold.
 
-const TAU = Math.PI * 2, MAXP = 48;
+const TAU = Math.PI * 2, MAXP = 72;
 const mk = (w, h, f) => { const c = document.createElement('canvas'); c.width = w; c.height = h; f(c.getContext('2d'), w, h); return c; };
 const glow = (col, mid) => mk(48, 48, (g) => { const r = g.createRadialGradient(24, 24, 0, 24, 24, 24); r.addColorStop(0, col); r.addColorStop(mid || 0.35, col); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 48, 48); });
 const star4 = (col, halo) => mk(48, 48, (g) => { // a four-point twinkle with a soft halo
@@ -13,7 +13,7 @@ const star4 = (col, halo) => mk(48, 48, (g) => { // a four-point twinkle with a 
   g.fillStyle = col; g.beginPath(); g.moveTo(24, 2); g.quadraticCurveTo(24, 24, 46, 24); g.quadraticCurveTo(24, 24, 24, 46); g.quadraticCurveTo(24, 24, 2, 24); g.quadraticCurveTo(24, 24, 24, 2); g.fill();
 });
 const flake = () => mk(48, 48, (g) => { // six arms with little branches
-  g.translate(24, 24); g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = 3;
+  g.translate(24, 24); g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = 4.5;
   for (let i = 0; i < 6; i++) { g.save(); g.rotate((i * TAU) / 6); g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -20); g.moveTo(0, -12); g.lineTo(-6, -17); g.moveTo(0, -12); g.lineTo(6, -17); g.stroke(); g.restore(); }
 });
 const leaf = (a, b) => mk(48, 48, (g) => { g.translate(24, 24); g.rotate(-0.6); g.fillStyle = a; g.beginPath(); g.moveTo(-20, 0); g.quadraticCurveTo(0, -20, 20, 0); g.quadraticCurveTo(0, 20, -20, 0); g.fill(); g.strokeStyle = b; g.lineWidth = 2.5; g.beginPath(); g.moveTo(-20, 0); g.lineTo(16, 0); g.stroke(); });
@@ -26,7 +26,7 @@ const rain = () => mk(16, 48, (g) => { const r = g.createLinearGradient(0, 0, 0,
 // per effect: n particles; sprites; v = fall speed (u/s, negative rises); vx drift; sway amplitude; spin (rad/s); sz size range (u);
 // a alpha range; tw = twinkle in place (life seconds); flip = coin-like squash; rot = fixed tilt (rain)
 const FX = {
-  snow: { n: 44, spr: () => [glow('#fff', 0.5), flake(), glow('#fff', 0.25), flake()], v: [26, 62], vx: [-4, 4], sway: 16, spin: 1.6, sz: [9, 24], a: [0.6, 1], top: 1 },
+  snow: { n: 68, spr: () => [glow('#fff', 0.5), flake(), glow('#fff', 0.25), flake()], v: [26, 62], vx: [-4, 4], sway: 14, spin: 1.6, sz: [9, 16], a: [0.85, 1], top: 1, depth: 1, vig: 1 },
   marsh: { n: 18, spr: () => [marsh(), marsh(), glow('#fff', 0.15)], v: [-34, 30], vx: [-5, 5], sway: 10, spin: 0.9, sz: [16, 28], a: [0.75, 1], mix: 1 },
   glitter: { n: 26, spr: () => [star4('#fff6c0', 'rgba(255,215,90,0.55)'), star4('#fff', 'rgba(255,230,140,0.5)')], v: [-3, 3], vx: [-3, 3], sway: 0, spin: 0.3, sz: [12, 28], a: [0.7, 1], tw: [1.4, 3] },
   crystal: { n: 24, spr: () => [star4('#e8ccff', 'rgba(170,120,255,0.55)'), star4('#bff4ff', 'rgba(90,210,255,0.5)')], v: [-3, 3], vx: [-3, 3], sway: 0, spin: 0.3, sz: [12, 26], a: [0.7, 1], tw: [1.4, 3] },
@@ -49,6 +49,12 @@ function respawn(p, c, u, fresh) {
   const W = S.W, H = S.H, tw = !!c.tw;
   p.s = rnd(c.sz[0], c.sz[1]) * u; p.a = rnd(c.a[0], c.a[1]); p.spr = (Math.random() * S.spr.length) | 0;
   p.vy = rnd(c.v[0], c.v[1]) * u; p.vx = rnd(c.vx[0], c.vx[1]) * u; p.vr = (Math.random() - 0.5) * 2 * c.spin; p.ph = Math.random() * TAU; p.r = c.rot !== undefined ? c.rot : Math.random() * TAU;
+  if (c.depth) { // two depth layers: far = tiny, slow, faint dots; near = bigger, faster, soft flakes; a few huge out-of-focus ones
+    const q = Math.random();
+    if (q < 0.5) { p.spr = 0; p.s = rnd(3.5, 5.5) * u; p.vy *= 0.5; p.a *= 0.5; p.vr = 0; }
+    else if (q > 0.94) { p.spr = 2; p.s = rnd(26, 40) * u; p.vy *= 1.3; p.a = rnd(0.25, 0.4); p.vr = 0; }
+    else if (p.spr === 0) p.spr = 2;
+  }
   if (c.mix) { if (p.spr === 2) { p.vy = -Math.abs(p.vy); p.s *= 1.6; p.a *= 0.35; p.vr = 0; } else p.vy = Math.abs(p.vy); } // marshmallows sink, steam rises
   if (tw) { p.x = Math.random() * W; p.y = Math.random() * H; p.life = rnd(tw[0], tw[1]); p.age = fresh ? Math.random() * p.life : 0; return; }
   p.x = Math.random() * W; p.y = fresh ? Math.random() * H : p.vy >= 0 ? -p.s * 2 : H + p.s * 2; p.age = 0; p.life = 1;
@@ -69,6 +75,10 @@ export function menuFxBack(ctx, skin, save, W, H, u, DPR, t) {
   if (S.id !== skin.fx || S.W !== W || S.H !== H || S.calmed !== calm) setup(skin.fx, skin.fx, W, H, u, calm);
   const dt = S.t ? Math.min(0.05, Math.max(0, t - S.t)) : 0.016; S.t = t;
   const c = S.cfg, spr = S.spr;
+  if (c.vig) { // frosty corners: one cached gradient canvas
+    if (!S.vig || S.vigKey !== W + 'x' + H) S.vig = mk(Math.max(8, Math.round(W / 4)), Math.max(8, Math.round(H / 4)), (g, w, h) => { const r = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) / 2); r.addColorStop(0, 'rgba(225,244,255,0)'); r.addColorStop(1, 'rgba(225,244,255,0.5)'); g.fillStyle = r; g.fillRect(0, 0, w, h); }), S.vigKey = W + 'x' + H;
+    ctx.drawImage(S.vig, 0, 0, W, H);
+  }
   for (let i = 0; i < S.n; i++) {
     const p = P[i];
     if (!calm) {

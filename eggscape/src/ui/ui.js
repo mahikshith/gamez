@@ -478,20 +478,22 @@ export class UI {
     const ctx = this.ctx, u = this.u;
     ctx.save();
     if (kind === 'snow') {
-      // a lumpy cap: overlapping blobs of different size along the top edge with a soft blue shadow under it, and icicles
-      // on wide buttons (kept in the corners, clear of the label)
-      const x0 = x + rad * 0.6, x1 = x + w - rad * 0.6, span = x1 - x0, n = Math.max(3, Math.round(span / (15 * u))), top = y - 1.5 * u, th = Math.min(6.5 * u, h * 0.2);
-      const blob = (i) => { const f = Math.sin(i * 12.9898 + x * 0.013) * 43758.5453; return f - Math.floor(f); };
-      ctx.fillStyle = 'rgba(70,110,170,0.28)'; ctx.beginPath();
-      for (let i = 0; i <= n; i++) { const bx = x0 + (span * i) / n, r = th * (0.8 + 0.5 * blob(i)); ctx.moveTo(bx + r, top + th * 0.55 + 1.8 * u); ctx.arc(bx, top + th * 0.55 + 1.8 * u, r, 0, Math.PI * 2); }
-      ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.beginPath();
-      ctx.rect(x0, top, span, th * 0.7);
-      for (let i = 0; i <= n; i++) { const bx = x0 + (span * i) / n, r = th * (0.8 + 0.5 * blob(i)); ctx.moveTo(bx + r, top + th * 0.4); ctx.arc(bx, top + th * 0.4, r, 0, Math.PI * 2); }
-      ctx.fill();
+      // one continuous snow mound along the top edge: a single smooth path with a few gentle bumps, and a soft blue-grey
+      // underside; icicles on wide buttons stay in the corners, clear of the label
+      const x0 = x + rad * 0.5, x1 = x + w - rad * 0.5, span = x1 - x0, nb = w > 110 * u ? 4 : w > 70 * u ? 3 : 2, th = Math.min(7 * u, h * 0.22), base = y + th * 0.35, top = y - th * 0.7;
+      const hs = (i) => { const f = Math.sin(i * 12.9898 + x * 0.013) * 43758.5453; return f - Math.floor(f); };
+      const mound = (dy) => {
+        ctx.beginPath(); ctx.moveTo(x0 - 3 * u, base + dy);
+        for (let i = 0; i < nb; i++) { const a = x0 + (span * i) / nb, b2 = x0 + (span * (i + 1)) / nb, hh = top - th * 0.35 * hs(i) + dy; ctx.bezierCurveTo(a + (b2 - a) * 0.1, hh, b2 - (b2 - a) * 0.1, hh, b2, i === nb - 1 ? base + dy : y - th * 0.1 + dy); }
+        ctx.bezierCurveTo(x1 + 3 * u, base + th * 0.5 + dy, x1 - 6 * u, base + th * 0.9 + dy, x1 - 12 * u, base + th * 0.7 + dy); // a soft, slightly wavy underside
+        ctx.bezierCurveTo(x + w * 0.65, base + th * 1.1 + dy, x + w * 0.35, base + th * 0.5 + dy, x0 + 10 * u, base + th * 0.8 + dy);
+        ctx.bezierCurveTo(x0, base + th * 0.8 + dy, x0 - 3 * u, base + th * 0.5 + dy, x0 - 3 * u, base + dy); ctx.closePath();
+      };
+      mound(1.6 * u); ctx.fillStyle = 'rgba(80,115,170,0.32)'; ctx.fill(); // underside shade
+      mound(0); const g = ctx.createLinearGradient(0, top, 0, base + th); g.addColorStop(0, '#fff'); g.addColorStop(1, '#d6e8fa'); ctx.fillStyle = g; ctx.fill();
       if (w > 110 * u) { // icicles
         ctx.fillStyle = 'rgba(225,244,255,0.95)'; ctx.beginPath();
-        for (const [f, l] of [[0.1, 0.16], [0.17, 0.1], [0.9, 0.14], [0.83, 0.09]]) { const ix = x + w * f, iw = 2.2 * u, il = h * l + th * 0.6; ctx.moveTo(ix - iw, top + th * 0.8); ctx.lineTo(ix + iw, top + th * 0.8); ctx.lineTo(ix, top + th * 0.8 + il); ctx.closePath(); }
+        for (const [f, l] of [[0.1, 0.16], [0.17, 0.1], [0.9, 0.14], [0.83, 0.09]]) { const ix = x + w * f, iw = 2.2 * u, il = h * l + th * 0.6; ctx.moveTo(ix - iw, base + th * 0.5); ctx.lineTo(ix + iw, base + th * 0.5); ctx.lineTo(ix, base + th * 0.5 + il); ctx.closePath(); }
         ctx.fill();
       }
     } else if (kind === 'sparkle') {
