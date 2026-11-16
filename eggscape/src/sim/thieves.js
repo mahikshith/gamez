@@ -157,6 +157,7 @@ export const thiefMethods = {
       for (const T of L) for (const id of T.stash.splice(0)) { const e = this.eggs.find((q) => q.id === id); if (e && e.alive) this.breakEgg(e, 'thief'); }
       return;
     }
+    for (const T of L) if (T.shakeCD > 0) T.shakeCD -= dt;
     for (const T of L) {
       if (T.hitCD > 0) T.hitCD -= dt;
       if (T.zap > 0) T.zap = Math.max(0, T.zap - dt);
@@ -444,6 +445,18 @@ export const thiefMethods = {
     }
     return true;
   },
+  // 2026-11-16 (mykee: an egg stashed in the den never came back, and the player could not tell how to get it): any
+  // knock-out of a thief (a chick power, the rooster or goose, a power's freeze, zap, spin or scare, a daze) shakes ONE
+  // stashed egg loose from its den, not only a hit on a trapped weasel. A short cooldown per den keeps it one at a time.
+  thShake(T, why) {
+    const O = this.thOwner(T);
+    if (!O || !O.stash || !O.stash.length || (O.shakeCD || 0) > 0) return 0;
+    O.shakeCD = 1.5;
+    const id = O.stash.shift(), e = this.eggs.find((q) => q.id === id);
+    this.thFree(e, 'den');
+    if (e) { const p = e.body.getPosition(); this.emit('thiefShake', { kind: T.kind, why, x: p.x, y: p.y, n: O.stash.length }); }
+    return id;
+  },
   // let go of the egg it holds, where it is (a short safe moment so the release never cracks it)
   thLetGo(T, why) {
     if (!T.eid) return null;
@@ -652,6 +665,7 @@ export const thiefMethods = {
     if (['leap', 'hurt', 'warp', 'home', 'hide', 'wait', 'gone', 'defeated', 'flee'].includes(T.ph)) return;
     this.thLetGo(T, 'daze');
     if (T.ph === 'trapped') return;
+    this.thShake(T, why);
     if (T.ai === 'hunt') T.ch = T.r < this.thFloor(T.run) - 0.3 ? T.run - 1 : T.run;
     this.thSet(T, 'stunned', dur);
     this.emit('thiefDaze', { kind: T.kind, why, ...this.thBody(T) });
@@ -660,16 +674,16 @@ export const thiefMethods = {
   thiefP2Only(T, kind, Tm) {
     const b = this.thBody(T);
     if (T.ph === 'trapped' && kind !== 'pepper' && kind !== 'scare') { this.thHurt(T, kind, b); if (kind === 'ice') T.frozen = Math.min(Tm, 3); return; }
-    if (kind === 'ice') { this.thLetGo(T, 'daze'); T.frozen = Tm; if (T.ph === 'crouch' || T.ph === 'toss' || T.ph === 'brace') this.thSet(T, 'prowl'); this.emit('thiefFreeze', { kind: T.kind, ...b, t: Tm }); return; }
+    if (kind === 'ice') { this.thLetGo(T, 'daze'); this.thShake(T, 'ice'); T.frozen = Tm; if (T.ph === 'crouch' || T.ph === 'toss' || T.ph === 'brace') this.thSet(T, 'prowl'); this.emit('thiefFreeze', { kind: T.kind, ...b, t: Tm }); return; }
     if (kind === 'bolt' || kind === 'zap') { T.zap = 0.3; this.thDaze(T, Math.min(Tm, 3), kind); return; }
-    if ((kind === 'pepper' || kind === 'scare' || kind === 'out') && !T.boss) { this.thLetGo(T, 'daze'); T.k = 'scare'; T.tgt = 0; this.thSet(T, 'home', 6); return; }
+    if ((kind === 'pepper' || kind === 'scare' || kind === 'out') && !T.boss) { this.thLetGo(T, 'daze'); this.thShake(T, kind); T.k = 'scare'; T.tgt = 0; this.thSet(T, 'home', 6); return; }
     this.thDaze(T, kind === 'spin' || kind === 'out' ? 1.5 : 1.2, kind);
     T.next = Math.max(T.next, kind === 'pepper' || kind === 'scare' ? Tm : 2);
   },
   // the live ring (shock power) zaps a thief standing on it
   thiefShock(ri, Tm) { for (const T of this.thieves || []) if (this.thLive(T) && T.ch === ri && T.ph !== 'leap' && T.ph !== 'stunned' && T.ph !== 'home' && !(T.hitCD > 0)) { T.hitCD = 1; T.zap = 0.3; this.thDaze(T, Math.min(Tm, 2.5), 'zap'); } },
   // an ally knocks a thief out of the way: it lets go and runs home
-  thiefKnock(T) { if (!this.thLive(T)) return; this.thLetGo(T, 'daze'); T.k = 'scare'; if (T.boss) this.thSet(T, 'stunned', 2.5); else this.thSet(T, 'home', 6); },
+  thiefKnock(T) { if (!this.thLive(T)) return; this.thLetGo(T, 'daze'); this.thShake(T, 'ally'); T.k = 'scare'; if (T.boss) this.thSet(T, 'stunned', 2.5); else this.thSet(T, 'home', 6); },
 
   // ---------- the warp gate (sim/warp.js): it is swallowed as it springs and spat out on the far side of its run
   warpThief(W, T) {
