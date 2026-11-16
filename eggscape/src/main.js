@@ -26,7 +26,7 @@ import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
 import { geckoStrikeEv, drawGeckoCard, geckoAnchor } from './render/gecko15.js'; // L15: the frost gecko boss
 import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar, drawMagnetField, bossPose, setBossView } from './render/boss.js'; // bosses (v3.1)
-import { galeNow, BOSS_TITLE, ATTACK_NAME } from './sim/boss.js';
+import { galeNow, BOSS_TITLE, ATTACK_NAME, BOSS_MODE } from './sim/boss.js';
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
 import { drawP2Back, drawP2Front, p2Event } from './render/powers2.js'; // v3.4 powers and combos
 import { warpXfBegin, warpXfEnd } from './render/warp.js'; // v3.4 warp gate: a creature drawn going through it
@@ -1049,10 +1049,10 @@ async function press(id) {
       else if (G.infoFrom === 'wonder') setScreen('wonder');
       else { setScreen('play'); portal.gameplayStart(); }
       break;
-    case 'restart':
     case 'finish':
       if (G.screen === 'play' && G.sim && G.sim.finish()) audio.play('unlock');
       break;
+    case 'restart':
     case 'retry':
       portal.gameplayStop();
       if (id === 'retry' && G.screen === 'fail') { save.streak = 0; persist(); }
@@ -3665,36 +3665,42 @@ function bossPortrait(ctx, bossId, x, y, w, h, t) { if (bossId === 'blizzard') r
 
 function drawPause() {
   dim(0.6);
+  // 2026-11-16 (mykee): square icon buttons, not full-width bars; a Shop in the game; "Info" instead of "Villains";
+  // Practice and Info in their own colours
   stackCard('Paused', (s) => {
+    const C = ui.C;
     const B = [
-      { h: 58 * s, gap: 6 * s, draw: (x, y, w) => ui.button('resume', 'RESUME', x, y, w, 58 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 23 * s }) },
-      G.hint
-        ? lineBlock('Finding a good move…', 17 * s, { color: ui.C.warn, tag: 'pause:hint' })
-        : G.sim.state !== 'play' ? null : { h: 48 * s, draw: (x, y, w) => ui.button('hint', 'Show me a move', x, y, w, 48 * s, { kind: 'ad', ad: true, size: 16.5 * s }) },
-      { h: 48 * s, draw: (x, y, w) => {
-        const hw = (w - 10 * s) / 2;
-        ui.button('restart', 'Restart', x, y, hw, 48 * s, { kind: 'secondary', icon: ICON.retry, size: 17 * s });
-        ui.button('levels', 'Levels', x + hw + 10 * s, y, hw, 48 * s, { kind: 'secondary', icon: ICON.grid, size: 17 * s });
+      { h: 92 * s, gap: 4 * s, draw: (x, y, w) => { // resume / restart / levels / shop / settings as squares with a label under each
+        const items = [
+          ['resume', 'Play', ICON.play, 'primary'], ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, 'secondary'],
+          ['shop', 'Shop', (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), 'gold'], ['settings', 'Settings', (c, X, Y, S) => gearIcon(c, X, Y, S, '#fff4dc', '#7c4fe0'), 'ad'],
+        ];
+        const n = items.length, gap = 8 * s, sq = Math.min(66 * s, (w - gap * (n - 1)) / n), x0 = x + (w - (sq * n + gap * (n - 1))) / 2;
+        items.forEach(([id, label, icon, kind], i) => {
+          const bx = x0 + i * (sq + gap), big = id === 'resume';
+          ui.button(id, '', bx, y, sq, sq, { kind, icon, iconS: big ? 1.55 : 1.35, round: 16 * s, shimmer: big });
+          ui.text(label, bx + sq / 2, y + sq + 13 * s, { size: 13 * s, align: 'center', color: C.ink, maxW: sq + gap, tag: 'pause:lbl:' + id });
+        });
       } },
-      G.infoKinds.length && G.sim.state === 'play' ? { h: 42 * s, draw: (x, y, w) => { // the "i" panel from the pause card
-        const hw = (w - 10 * s) / 2;
-        ui.button('practice', 'Practice', x, y, hw, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s });
-        ui.button('info', 'Villains', x + hw + 10 * s, y, hw, 42 * s, { kind: G.infoNew ? 'gold' : 'tertiary', icon: G.infoNew ? infoIcon : infoIconInk, iconS: 1.1, size: 15.5 * s });
-      } } : { h: 42 * s, draw: (x, y, w) => ui.button('practice', 'Practice', x + w * 0.2, y, w * 0.6, 42 * s, { kind: 'tertiary', icon: ICON.grid, size: 15.5 * s }) },
-      { h: 42 * s, gap: 16 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) },
+      G.hint
+        ? lineBlock('Finding a good move…', 17 * s, { color: C.warn, tag: 'pause:hint' })
+        : G.sim.state !== 'play' ? null : { h: 46 * s, gap: 12 * s, draw: (x, y, w) => ui.button('hint', 'Show me a move', x, y, w, 46 * s, { kind: 'ad', ad: true, size: 16 * s }) },
+      { h: 44 * s, draw: (x, y, w) => {
+        const has = G.infoKinds.length && G.sim.state === 'play', hw = has ? (w - 10 * s) / 2 : w * 0.6, px = has ? x : x + w * 0.2;
+        ui.button('practice', 'Practice', px, y, hw, 44 * s, { kind: 'orange', icon: ICON.grid, size: 15.5 * s });
+        if (has) ui.button('info', 'Info', x + hw + 10 * s, y, hw, 44 * s, { kind: G.infoNew ? 'gold' : 'secondary', icon: G.infoNew ? infoIcon : infoIcon, iconS: 1.1, size: 15.5 * s });
+      } },
     ].filter(Boolean);
-    if (G.sim.mode !== save.mode) B.push(lineBlock('The new mode starts when you restart', 13 * s, { color: ui.C.ink2, tag: 'pause:modenote', gap: 4 * s }));
-    B.push({ h: 44 * s, draw: (x, y, w) => ui.button('settings', 'Settings', x + w * 0.2, y, w * 0.6, 44 * s, { kind: 'tertiary', icon: gearIcon, size: 16 * s }) });
     return B;
   }, { ribbon: '#3a80ea' });
 }
 
 // a gear (the Settings button)
-function gearIcon(c, x, y, sz, col = '#6b3f17') {
+function gearIcon(c, x, y, sz, col = '#6b3f17', hole = null) {
   c.save(); c.translate(x, y); c.fillStyle = col; c.beginPath();
   const R = sz * 0.42, r = sz * 0.3;
   for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2, rr = i % 2 ? r : R; c.lineTo(Math.cos(a - 0.12) * rr, Math.sin(a - 0.12) * rr); c.lineTo(Math.cos(a + 0.12) * rr, Math.sin(a + 0.12) * rr); }
-  c.closePath(); c.fill(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(0, 0, sz * 0.13, 0, 7); c.fill(); c.restore();
+  c.closePath(); c.fill(); if (hole) c.fillStyle = hole; else c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(0, 0, sz * 0.13, 0, 7); c.fill(); c.restore();
 }
 
 // Settings (2026-11-15, mykee): sound, music, ring speed, difficulty, reduced motion, restore purchases. Opens over the
@@ -3766,12 +3772,28 @@ function infoRows(s, iw) {
       if (atks.length) y += 3 * s;
       for (const a of atks) add(I.attacks[a], atkS, C.ink2, (ATTACK_NAME[a] || ATTACK_EXTRA[a] || a) + ':', C.warn, 10 * s);
       if (atks.length) y += 3 * s;
+      const ph = phaseWords(G.level);
+      if (ph) { add(ph, atkS, C.ink2, 'Phases:', C.warn, 10 * s); y += 3 * s; }
     }
     add(I.beat, lineS, C.ink, 'Beat it:', C.good);
     if (I.more) add(I.more, lineS, C.ink2); // an extra line (L20: the cousins' duel)
     const h = Math.max(P, y) + 14 * s;
     return { kind, I, items, h, P, ri };
   });
+}
+// the boss bar's "PHASE 1/3" in plain words (mykee 2026-11-16): what a phase is and when the next one starts
+function phaseWords(level) {
+  const P = (level.bossFight && level.bossFight.phases) || [];
+  if (P.length < 2) return '';
+  const ev = (BOSS_MODE[save.mode] || BOSS_MODE.medium).every, egg = (n) => n + (n === 1 ? ' egg' : ' eggs');
+  const when = P.slice(1).map((p, i) => {
+    const a = p.at || {}, bits = [];
+    if (a.saved != null) bits.push('when ' + egg(a.saved) + ' ' + (a.saved === 1 ? 'is' : 'are') + ' home');
+    if (a.t) bits.push('after ' + Math.round(a.t * ev) + ' seconds');
+    return bits.length ? 'phase ' + (i + 2) + ' starts ' + bits.join(' or ') : '';
+  }).filter(Boolean);
+  const head = `The bar at the top splits the fight into ${P.length} phases. In each new phase the boss attacks faster and with new moves.`;
+  return when.length ? head + ' ' + when.join('; ').replace(/^p/, 'P') + '.' : head;
 }
 function drawInfo() {
   dim(0.62);
