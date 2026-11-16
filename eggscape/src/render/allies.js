@@ -318,7 +318,7 @@ export function drawRooster(ctx, cx, cy, s, P) {
     }
     { // 2026-11-16 skins: the outfit over his body (under the near wing); his body oval rides the puffed chest
       ctx.save(); ctx.translate(10, bodyY + 2); ctx.scale(P.chest, 1 + (P.chest - 1) * 0.5); ctx.translate(-10, -bodyY - 2);
-      drawSkinOutfit(ctx, o, P.tt || 0, ovalGarment(-2, bodyY, 34, 26, -0.38, [13, bodyY - 24, 36, bodyY - 13], { h0: 0.1, h1: 2.6, fa: 0.25, ba: 0.75 }));
+      drawSkinOutfit(ctx, o, P.tt || 0, ovalGarment(-2, bodyY, 34, 26, -0.38, [21, bodyY - 27, 36, bodyY - 17], { h0: 0.1, h1: 2.6, fa: 0.25, ba: 0.75 }));
       ctx.restore();
     }
     // near wing
