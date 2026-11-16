@@ -478,24 +478,22 @@ export class UI {
     const ctx = this.ctx, u = this.u;
     ctx.save();
     if (kind === 'snow') {
-      const th = Math.min(7 * u, h * 0.22), x0 = x + rad * 0.35, x1 = x + w - rad * 0.35, n = Math.max(3, Math.round((x1 - x0) / (16 * u)));
-      ctx.beginPath();
-      ctx.moveTo(x0 - 2 * u, y + th * 0.4);
-      ctx.quadraticCurveTo(x0, y - th * 0.45, x0 + 6 * u, y - th * 0.35);
-      ctx.lineTo(x1 - 6 * u, y - th * 0.35);
-      ctx.quadraticCurveTo(x1, y - th * 0.45, x1 + 2 * u, y + th * 0.4);
-      for (let i = n; i >= 0; i--) { // the lumpy lower edge, one longer drip in the middle-ish
-        const xi = x0 + ((x1 - x0) * i) / n, dep = th * (0.55 + 0.35 * Math.abs(Math.sin(i * 2.3 + x * 0.01))) + (i === Math.floor(n * 0.62) ? th * 0.5 : 0);
-        ctx.quadraticCurveTo(xi + (x1 - x0) / n / 2, y + dep + th * 0.25, xi, y + th * 0.35);
-      }
-      ctx.closePath();
-      const g = ctx.createLinearGradient(0, y - th, 0, y + th);
-      g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#dbeeff');
-      ctx.fillStyle = g;
+      // a lumpy cap: overlapping blobs of different size along the top edge with a soft blue shadow under it, and icicles
+      // on wide buttons (kept in the corners, clear of the label)
+      const x0 = x + rad * 0.6, x1 = x + w - rad * 0.6, span = x1 - x0, n = Math.max(3, Math.round(span / (15 * u))), top = y - 1.5 * u, th = Math.min(6.5 * u, h * 0.2);
+      const blob = (i) => { const f = Math.sin(i * 12.9898 + x * 0.013) * 43758.5453; return f - Math.floor(f); };
+      ctx.fillStyle = 'rgba(70,110,170,0.28)'; ctx.beginPath();
+      for (let i = 0; i <= n; i++) { const bx = x0 + (span * i) / n, r = th * (0.8 + 0.5 * blob(i)); ctx.moveTo(bx + r, top + th * 0.55 + 1.8 * u); ctx.arc(bx, top + th * 0.55 + 1.8 * u, r, 0, Math.PI * 2); }
       ctx.fill();
-      ctx.lineWidth = 1.4 * u;
-      ctx.strokeStyle = 'rgba(70,110,160,0.55)';
-      ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.beginPath();
+      ctx.rect(x0, top, span, th * 0.7);
+      for (let i = 0; i <= n; i++) { const bx = x0 + (span * i) / n, r = th * (0.8 + 0.5 * blob(i)); ctx.moveTo(bx + r, top + th * 0.4); ctx.arc(bx, top + th * 0.4, r, 0, Math.PI * 2); }
+      ctx.fill();
+      if (w > 110 * u) { // icicles
+        ctx.fillStyle = 'rgba(225,244,255,0.95)'; ctx.beginPath();
+        for (const [f, l] of [[0.1, 0.16], [0.17, 0.1], [0.9, 0.14], [0.83, 0.09]]) { const ix = x + w * f, iw = 2.2 * u, il = h * l + th * 0.6; ctx.moveTo(ix - iw, top + th * 0.8); ctx.lineTo(ix + iw, top + th * 0.8); ctx.lineTo(ix, top + th * 0.8 + il); ctx.closePath(); }
+        ctx.fill();
+      }
     } else if (kind === 'sparkle') {
       const tw = this.calm ? 1 : 0.6 + 0.4 * Math.sin(this.fr * 0.08 + x * 0.05);
       for (const [px, py, k] of [[x + 9 * u, y + 7 * u, 1], [x + w - 10 * u, y + h - 9 * u, 0.75]]) {

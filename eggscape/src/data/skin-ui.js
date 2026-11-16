@@ -7,6 +7,7 @@
 // ribbon: the default ribbon colour; stripes: candy-cane stripes on ribbons
 // wood:   the card frame's three wood stops [light, mid, dark]
 // deco:   'snow' (a snow cap on button tops), 'sparkle' (twinkles on button corners) or null
+// fx:     the living effect over every menu screen (ui/menufx.js): snow, marsh, glitter, crystal, sparks, leaves, petals, embers, rain, coins, bubbles, fireflies
 // icons:  { shop: 'gift' | 'coin', settings: 'snowflake' | 'gear' }
 
 const face = (a, b, lip, line, ink = '#fff') => ({ a, b, lip, line, ink });
@@ -23,6 +24,7 @@ export const SKIN_UI = {
     ribbon: '#d8302a', stripes: true,
     wood: ['#e8a59a', '#b8423a', '#8a2620'],
     deco: 'snow',
+    fx: 'snow',
     icons: { shop: 'gift', settings: 'snowflake' },
   },
   snowy: {
@@ -34,6 +36,7 @@ export const SKIN_UI = {
     ribbon: '#4aa3e8',
     wood: ['#e6f4ff', '#a9cbe8', '#7aa2c8'],
     deco: 'snow',
+    fx: 'snow',
     icons: { shop: 'gift', settings: 'snowflake' },
   },
   elf: {
@@ -45,6 +48,7 @@ export const SKIN_UI = {
     ribbon: '#28a040', stripes: true,
     wood: ['#a8e0a0', '#3f9a4a', '#22702e'],
     deco: 'snow',
+    fx: 'snow',
     icons: { shop: 'gift', settings: 'snowflake' },
   },
   reindeer: {
@@ -56,6 +60,7 @@ export const SKIN_UI = {
     ribbon: '#a8642e',
     wood: ['#e0b48a', '#9a6236', '#6e3e1a'],
     deco: 'snow',
+    fx: 'snow',
     icons: { shop: 'gift', settings: 'snowflake' },
   },
   cocoa: {
@@ -67,6 +72,7 @@ export const SKIN_UI = {
     ribbon: '#8a4e26', stripes: true,
     wood: ['#d8a878', '#8a5226', '#5e3210'],
     deco: null,
+    fx: 'marsh',
     icons: { shop: 'coin', settings: 'gear' },
   },
   royal: {
@@ -78,6 +84,7 @@ export const SKIN_UI = {
     ribbon: '#6a3ac8',
     wood: ['#ffe9a0', '#e0b030', '#a87810'],
     deco: 'sparkle',
+    fx: 'glitter',
     icons: { shop: 'coin', settings: 'gear' },
   },
   golden: {
@@ -88,6 +95,7 @@ export const SKIN_UI = {
     ribbon: '#e0a020',
     wood: ['#fff0b0', '#f0c040', '#b88a10'],
     deco: 'sparkle',
+    fx: 'glitter',
     icons: { shop: 'coin', settings: 'gear' },
   },
   // 2026-11-16 world outfits (one per world): each re-themes the menus in its world's colours
@@ -97,6 +105,7 @@ export const SKIN_UI = {
     ribbon: '#3d6fb8',
     wood: ['#f2d488', '#c89a3a', '#8a6418'],
     deco: null,
+    fx: 'petals',
     icons: { shop: 'coin', settings: 'gear' },
   },
   lumberjack: {
@@ -105,6 +114,7 @@ export const SKIN_UI = {
     ribbon: '#c42a1a',
     wood: ['#c8946a', '#7a4a22', '#4a2a10'],
     deco: null,
+    fx: 'leaves',
     icons: { shop: 'coin', settings: 'gear' },
   },
   skier: {
@@ -113,6 +123,7 @@ export const SKIN_UI = {
     ribbon: '#1fa6b8',
     wood: ['#e6f4ff', '#a9cbe8', '#7aa2c8'],
     deco: 'snow',
+    fx: 'snow',
     icons: { shop: 'coin', settings: 'snowflake' },
   },
   miner: {
@@ -121,6 +132,7 @@ export const SKIN_UI = {
     ribbon: '#8a5ad8',
     wood: ['#c8b8a8', '#7a6a5a', '#4a3e34'],
     deco: 'sparkle',
+    fx: 'crystal',
     icons: { shop: 'coin', settings: 'gear' },
   },
   firefighter: {
@@ -129,6 +141,7 @@ export const SKIN_UI = {
     ribbon: '#e2532a',
     wood: ['#c89870', '#7a4a2a', '#4a2412'],
     deco: null,
+    fx: 'embers',
     icons: { shop: 'coin', settings: 'gear' },
   },
   raincoat: {
@@ -137,6 +150,7 @@ export const SKIN_UI = {
     ribbon: '#5a72a8',
     wood: ['#c8d0dc', '#7a8698', '#4a5466'],
     deco: null,
+    fx: 'rain',
     icons: { shop: 'coin', settings: 'gear' },
   },
   pirate: {
@@ -145,6 +159,7 @@ export const SKIN_UI = {
     ribbon: '#22408a',
     wood: ['#ffe9a0', '#c89a2a', '#8a6410'],
     deco: 'sparkle',
+    fx: 'coins',
     icons: { shop: 'coin', settings: 'gear' },
   },
   diver: {
@@ -153,6 +168,7 @@ export const SKIN_UI = {
     ribbon: '#1f9ad0',
     wood: ['#bfe8f0', '#5aa8c0', '#2e7088'],
     deco: null,
+    fx: 'bubbles',
     icons: { shop: 'coin', settings: 'gear' },
   },
   fisher: {
@@ -161,6 +177,7 @@ export const SKIN_UI = {
     ribbon: '#5a8a3a',
     wood: ['#c8c090', '#7d7a4a', '#4e4c28'],
     deco: null,
+    fx: 'fireflies',
     icons: { shop: 'coin', settings: 'gear' },
   },
   scientist: {
@@ -169,6 +186,7 @@ export const SKIN_UI = {
     ribbon: '#4aa0e0',
     wood: ['#e8eef4', '#a8b8c8', '#6a7a8c'],
     deco: 'sparkle',
+    fx: 'sparks',
     icons: { shop: 'coin', settings: 'gear' },
   },
 };
