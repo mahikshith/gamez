@@ -131,7 +131,7 @@ function star(ctx, x, y, r, rot, col) {
 }
 
 // The logo: each letter bobs on its own beat and drops in with a bounce when the screen opens.
-export function drawLogo(ctx, text, cx, cy, size, t, enter, font) {
+export function drawLogo(ctx, text, cx, cy, size, t, enter, font, dress) {
   ctx.save();
   ctx.font = `600 ${Math.round(size)}px ${font}`;
   ctx.textAlign = 'center';
@@ -167,6 +167,7 @@ export function drawLogo(ctx, text, cx, cy, size, t, enter, font) {
     g.addColorStop(1, '#f58e14');
     ctx.fillStyle = g;
     ctx.fillText(c, 0, 0);
+    if (dress) dress(ctx, c, i, size, [...text].length); // the skin pack's dressing: a hat, snow, a crown
     ctx.restore();
   });
   ctx.restore();
