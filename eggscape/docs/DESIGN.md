@@ -2,7 +2,7 @@
 
 Working title. Successor of "Ring Escape". Web only (Poki first, then CrazyGames, GameDistribution, own site).
 
-## Pitch
+The hen's eggs are stuck inside a spinning vault, and egg thieves (a weasel, rats, the Rat King) prowl it. Grab the rings, turn them,
 A sly fox locked the hen's eggs inside his spinning vault. Grab the rings, turn them,
 roll the eggs out gap by gap and drop them into the nest. Eggs are fragile: a hard fall,
 a thorn, or a heavy egg crashing into them cracks the shell. Three cracks and it's gone.

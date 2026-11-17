@@ -5,6 +5,11 @@
 //   node tools/audio/render.mjs            render + analyse everything
 //   node tools/audio/render.mjs --quick    SFX + loops only (skip music and long tests)
 //   node tools/audio/render.mjs --serve    just serve the repo for preview.html (http://127.0.0.1:8123/tools/audio/preview.html)
+//   --engine=qa/sound/engine-old.js        render another engine build (path from the eggscape root)
+//   --out=tools/audio/out/before           where the WAVs go (default tools/audio/out)
+//   --json=qa/sound/before.json            also write per-sound measurements (peak, RMS, loudest 400 ms, -40 dB length, bands)
+//   --worlds                               music: every world's theme spec from src/themes.js (30 s each) instead of the demo list
+//   --nocheck                              measurements only: skip the pass/fail checks and the live API test
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,8 +20,11 @@ import { DEMO_SPECS } from './demo-specs.js';
 const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
-const OUT = path.join(HERE, 'out');
-const args = new Set(process.argv.slice(2));
+const argv = process.argv.slice(2);
+const args = new Set(argv.filter((a) => !a.includes('=')));
+const opt = (k) => { const a = argv.find((x) => x.startsWith('--' + k + '=')); return a ? a.slice(k.length + 3) : null; };
+const ENGINE = opt('engine') || 'src/audio.js';
+const OUT = opt('out') ? path.resolve(ROOT, opt('out')) : path.join(HERE, 'out');
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.wav': 'audio/wav', '.css': 'text/css' };
 function serve(port = 0) {
@@ -24,7 +32,7 @@ function serve(port = 0) {
     const u = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (u === '/__harness') {
       res.writeHead(200, { 'content-type': 'text/html' });
-      res.end('<!doctype html><meta charset="utf-8"><button id="unlock">unlock</button><script type="module" src="/tools/audio/render-page.js"></script>');
+      res.end('<!doctype html><meta charset="utf-8"><button id="unlock">unlock</button><script type="module" src="/tools/audio/render-page.js?engine=' + encodeURIComponent('/' + ENGINE) + '"></script>');
       return;
     }
     const f = path.join(ROOT, path.normalize(u).replace(/^([/\\])+/, ''));
@@ -94,6 +102,35 @@ function analyse(inter, sr) {
   }
   return { nan, peakDb: db(peak), rmsDb: db(rms), dur: last >= 0 ? (last + 1) / sr : 0, start: first >= 0 ? first / sr : 0, centroid: ew ? cw / ew : 0, lastIdx: last };
 }
+// Phone-oriented measurements: loudest 400 ms RMS (a short-term loudness stand-in, unweighted), the time until the
+// sound stays 40 dB under its own peak (10 ms windows), and band energy below 150 Hz and 1-5 kHz (dB, of the total).
+function phoneMetrics(inter, sr) {
+  const n = inter.length / 2, mono = new Float32Array(n);
+  for (let i = 0; i < n; i++) mono[i] = (inter[2 * i] + inter[2 * i + 1]) * 0.5;
+  let peak = 0; for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(inter[2 * i]), Math.abs(inter[2 * i + 1]));
+  const w10 = Math.max(1, Math.floor(sr * 0.01)), thr = peak * Math.pow(10, -40 / 20);
+  let last = 0;
+  for (let s = 0; s + w10 <= n; s += w10) { let q = 0; for (let i = s; i < s + w10; i++) q += mono[i] * mono[i]; if (Math.sqrt(q / w10) > thr) last = s + w10; }
+  const w4 = Math.floor(sr * 0.4), hop = Math.floor(sr * 0.05);
+  let st = 0;
+  if (n <= w4) { let q = 0; for (let i = 0; i < n; i++) q += mono[i] * mono[i]; st = Math.sqrt(q / w4); }
+  else for (let s = 0; s + w4 <= n; s += hop) { let q = 0; for (let i = s; i < s + w4; i++) q += mono[i] * mono[i]; st = Math.max(st, Math.sqrt(q / w4)); }
+  const N = 4096, win = new Float64Array(N);
+  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
+  let lo = 0, mid = 0, tot = 0, band = 0;
+  const end = Math.max(last, Math.min(n, N));
+  for (let s = 0; s < end; s += N / 2) {
+    const re = new Float64Array(N), im = new Float64Array(N);
+    for (let i = 0; i < N && s + i < n; i++) re[i] = mono[s + i] * win[i];
+    fft(re, im);
+    for (let k = 1; k < N / 2; k++) {
+      const f = (k * sr) / N, e = re[k] * re[k] + im[k] * im[k];
+      tot += e; if (f >= 150 && f <= 8000) band += e; if (f < 150) lo += e; else if (f >= 1000 && f <= 5000) mid += e;
+    }
+  }
+  const rel = (x) => (tot > 0 && x > 0 ? 10 * Math.log10(x / tot) : -99);
+  return { stDb: db(st), dur40: last / sr, lowDb: rel(lo), midDb: rel(mid), bandFrac: tot > 0 ? band / tot : 0 };
+}
 function windowRms(inter, sr, sec) {
   const n = inter.length / 2, w = Math.floor(sr * sec), out = [];
   for (let s = 0; s + w <= n; s += w) {
@@ -116,8 +153,8 @@ function writeWav(file, inter, sr, frames) {
 
 // ------------------------------------------------------------------ cases
 const MAXDUR = { squish: 0.25, thunder: 4.5, level_win: 3.2, bomb_fuse: 2.8, bomb_explode: 2.8, level_fail: 2.6, unlock: 2.6, egg_save: 2.2, combo: 2.2, star: 2.2 };
-const SFX_NAMES = (await import(path.join(ROOT, 'src/audio.js'))).SFX_NAMES;
-const MATS = (await import(path.join(ROOT, 'src/audio.js'))).MATERIALS;
+const SFX_NAMES = (await import(path.join(ROOT, ENGINE))).SFX_NAMES;
+const MATS = (await import(path.join(ROOT, ENGINE))).MATERIALS;
 const cases = [];
 for (const name of SFX_NAMES) cases.push({ kind: 'sfx', id: name, name, opts: {} });
 cases.push(
@@ -142,7 +179,17 @@ for (const m of MATS) cases.push({ kind: 'ring', id: 'ring_' + m, material: m, s
 cases.push({ kind: 'ring', id: 'ring_wood@0.2', material: 'wood', speed: 0.2, dur: 2.5, loop: true });
 cases.push({ kind: 'fire', id: 'loop_fire', dur: 3, loop: true }, { kind: 'wind', id: 'loop_wind', level: 0.8, dur: 3, loop: true }, { kind: 'underwater', id: 'loop_underwater', dur: 3, loop: true });
 const quick = args.has('--quick');
-if (!quick) {
+if (args.has('--worlds')) {
+  // every world's own music spec, straight from src/themes.js (by text, so no canvas code runs in node)
+  const src = fs.readFileSync(path.join(ROOT, 'src/themes.js'), 'utf8');
+  const re = /\{ id: '(\w+)',[^\n]*?music: (\{[^}]*\})/g;
+  for (let m; (m = re.exec(src));) {
+    const spec = Function('return (' + m[2] + ')')();
+    cases.push({ kind: 'music', id: 'world_' + m[1], spec, dur: 30, loop: true, music: true, intro: true });
+  }
+  cases.push({ kind: 'music', id: 'world_farm@end_win', spec: { root: 'C', scale: 'major', bpm: 112, mood: 'cheerful morning' }, dur: 9, loop: true, music: true, intro: true, endAt: 4, end: 'win' });
+  cases.push({ kind: 'music', id: 'world_farm@end_fail', spec: { root: 'C', scale: 'major', bpm: 112, mood: 'cheerful morning' }, dur: 7, loop: true, music: true, intro: true, endAt: 4, end: 'fail' });
+} else if (!quick) {
   for (const d of DEMO_SPECS) cases.push({ kind: 'music', id: 'music_' + d.label.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, ''), spec: d.spec, dur: 40, loop: true, music: true });
   cases.push({ kind: 'music', id: 'music_xfade_farm_to_volcano', spec: DEMO_SPECS[1].spec, next: { at: 8, spec: DEMO_SPECS[8].spec }, dur: 14, loop: true, music: true });
   cases.push({ kind: 'music', id: 'music_long_farm_10min', spec: DEMO_SPECS[1].spec, dur: 600, sr: 22050, loop: true, music: true, long: true });
@@ -191,6 +238,7 @@ for (const c of cases) {
     a.windows = w;
     a.rtFactor = (c.dur * 1000) / res.ms;
   }
+  a.phone = phoneMetrics(inter, res.sr);
   if (c.kind === 'stress' && res.stats && res.stats.voices > 24) issues.push('voices ' + res.stats.voices + '>24');
   if (issues.length) fails++;
   rows.push({ c, a, raw, issues, stats: res.stats, ms: res.ms });
@@ -201,7 +249,7 @@ process.stdout.write('\n');
 // timbre sanity: expected spectral centroid ranges (Hz)
 const TIMBRE = {
   egg_crack: [2500, 12000], glass_crack: [3000, 12000], glass_break: [2500, 12000], thorn_hit: [2000, 12000], score_tick: [1500, 6000],
-  bomb_explode: [0, 900], thunder: [0, 700], rock_hit: [0, 1800], bomb_fuse: [3000, 12000], lava_sizzle: [2000, 12000],
+  bomb_explode: [0, 1200], thunder: [0, 900]  /* phone master: sub-150 Hz is cut, harmonics added */, rock_hit: [0, 1800], bomb_fuse: [3000, 12000], lava_sizzle: [2000, 12000],
   egg_bump: [150, 2500], squish: [80, 1200], splash: [600, 4000], fire_burn: [800, 6000],
 };
 for (const r of rows) {
@@ -225,6 +273,12 @@ if (mus.length) {
 }
 const st = rows.find((r) => r.c.kind === 'stress');
 if (st) console.log('\nStress: active voices after 40 plays =', st.stats && st.stats.voices, '| loops', st.stats && st.stats.loops.join(','));
+if (opt('json')) {
+  const J = rows.map((r) => ({ id: r.c.id, kind: r.c.kind, peakDb: r.a.peakDb, rmsDb: r.a.rmsDb, stDb: r.a.phone.stDb, dur40: r.a.phone.dur40, lowDb: r.a.phone.lowDb, midDb: r.a.phone.midDb, phoneDb: r.a.rmsDb + 10 * Math.log10(Math.max(1e-9, r.a.phone.bandFrac)), phoneStDb: r.a.phone.stDb + 10 * Math.log10(Math.max(1e-9, r.a.phone.bandFrac)), centroid: r.a.centroid, windows: r.a.windows || null }));
+  fs.writeFileSync(path.resolve(ROOT, opt('json')), JSON.stringify({ engine: ENGINE, rows: J }, null, 1));
+  console.log('Measurements in', opt('json'));
+}
+if (args.has('--nocheck')) { await browser.close(); srv.close(); console.log('\nWAVs in', OUT); process.exit(0); }
 
 // real AudioContext API checks
 await page.evaluate(() => window.apiPre());

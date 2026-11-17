@@ -1,5 +1,7 @@
 // Browser-side helpers for render.mjs: offline rendering + API robustness checks.
-import { audio, createAudioEngine, SFX_NAMES, MATERIALS } from '../../src/audio.js';
+// ?engine=/path/to/audio.js renders another engine build (render.mjs --engine=..., e.g. the pre-rework copy in qa/sound).
+const ENGINE = new URL(import.meta.url).searchParams.get('engine') || '../../src/audio.js';
+const { audio, createAudioEngine, SFX_NAMES, MATERIALS } = await import(ENGINE);
 
 function toB64(f32) {
   const u8 = new Uint8Array(f32.buffer, f32.byteOffset, f32.byteLength);
@@ -27,6 +29,8 @@ window.renderCase = async (c) => {
     else if (c.kind === 'underwater') eng.setUnderwater(true);
     else if (c.kind === 'music') {
       eng.music(c.spec);
+      if (c.intro && eng.musicIntro) eng.musicIntro();
+      if (c.endAt && eng.musicEnd) ctx.suspend(pre + c.endAt).then(() => { eng.musicEnd(c.end || 'win'); ctx.resume(); });
       if (c.next) ctx.suspend(pre + c.next.at).then(() => { eng.music(c.next.spec); ctx.resume(); });
     } else if (c.kind === 'stress') {
       eng.music(c.spec); eng.setFireLoop(true); eng.setWind(1); eng.setRingTurn(1);

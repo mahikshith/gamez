@@ -1,0 +1,253 @@
+// Raster sprites (sliced from the approved reference sheets by tools/slice-sprites.py). Each is an inlined WebP data URL.
+// Everything here fails soft: not loaded / missing id -> false, and callers fall back to their code-drawn art.
+import u_orb_fire_red from '../../assets/sprites/orb_fire_red.webp';
+import u_orb_fire_black from '../../assets/sprites/orb_fire_black.webp';
+import u_orb_fire_green from '../../assets/sprites/orb_fire_green.webp';
+import u_orb_fire_gold from '../../assets/sprites/orb_fire_gold.webp';
+import u_orb_stone from '../../assets/sprites/orb_stone.webp';
+import u_orb_bubble from '../../assets/sprites/orb_bubble.webp';
+import u_orb_water from '../../assets/sprites/orb_water.webp';
+import u_orb_thunder from '../../assets/sprites/orb_thunder.webp';
+import u_orb_thorn from '../../assets/sprites/orb_thorn.webp';
+import u_orb_magnet from '../../assets/sprites/orb_magnet.webp';
+import u_orb_twin from '../../assets/sprites/orb_twin.webp';
+import u_orb_golden from '../../assets/sprites/orb_golden.webp';
+import u_orb_hourglass from '../../assets/sprites/orb_hourglass.webp';
+import u_orb_feather from '../../assets/sprites/orb_feather.webp';
+import u_orb_rockskin from '../../assets/sprites/orb_rockskin.webp';
+import u_hen_dance from '../../assets/sprites/hen_dance.webp';
+import u_hen_worried from '../../assets/sprites/hen_worried.webp';
+import u_hen_cry from '../../assets/sprites/hen_cry.webp';
+import u_hen_proud from '../../assets/sprites/hen_proud.webp';
+import u_boss_snake from '../../assets/sprites/boss_snake.webp';
+import u_boss_blizzard from '../../assets/sprites/boss_blizzard.webp';
+import u_boss_golem from '../../assets/sprites/boss_golem.webp';
+import u_boss_salamander from '../../assets/sprites/boss_salamander.webp';
+import u_boss_eagle from '../../assets/sprites/boss_eagle.webp';
+import u_win_hen from '../../assets/sprites/win_hen.webp';
+
+import { drawHen } from './characters.js';
+import { drawThiefCard } from './thieves.js';
+import { drawKingCard } from './kingcrab.js';
+import { drawOwlCard } from './owl.js'; // v4 the Clockwork Owl card
+import { drawGatorCard } from './bayou.js'; // v3.7 Grandpa Gator's card
+import { drawHenAnim } from './hen.js';
+
+// M7: the animated, code-drawn hen everywhere. false = the old path (reference sprites with squash-and-stretch life).
+export const ANIMATED_HEN = true;
+
+const SRC = {
+  orb_fire_red: u_orb_fire_red, orb_fire_black: u_orb_fire_black, orb_fire_green: u_orb_fire_green, orb_fire_gold: u_orb_fire_gold, orb_stone: u_orb_stone, orb_bubble: u_orb_bubble, orb_water: u_orb_water, orb_thunder: u_orb_thunder, orb_thorn: u_orb_thorn, orb_magnet: u_orb_magnet, orb_twin: u_orb_twin, orb_golden: u_orb_golden, orb_hourglass: u_orb_hourglass, orb_feather: u_orb_feather, orb_rockskin: u_orb_rockskin, hen_dance: u_hen_dance, hen_worried: u_hen_worried, hen_cry: u_hen_cry, hen_proud: u_hen_proud, boss_snake: u_boss_snake, boss_blizzard: u_boss_blizzard, boss_golem: u_boss_golem, boss_salamander: u_boss_salamander, boss_eagle: u_boss_eagle, win_hen: u_win_hen,
+};
+
+const IMG = {}; // id -> HTMLImageElement, created on first use
+
+function get(id) {
+  try {
+    let im = IMG[id];
+    if (im === undefined) {
+      const u = SRC[id];
+      if (!u || typeof Image === 'undefined') return (IMG[id] = null);
+      im = IMG[id] = new Image();
+      im.src = u;
+    }
+    return im && im.complete && im.naturalWidth > 0 ? im : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function spriteReady(id) {
+  return !!get(id);
+}
+
+// Draw sprite `id` centred on (cx, cy), height h, aspect kept. Returns false if it isn't loaded.
+export function drawSprite(ctx, id, cx, cy, h) {
+  try {
+    const im = get(id);
+    if (!im || !(h > 0)) return false;
+    const w = (h * im.naturalWidth) / im.naturalHeight;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(im, cx - w / 2, cy - h / 2, w, h);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ---- life for flat sprites -------------------------------------------------------------------------------------------
+// A sprite cannot change pose, so it is moved instead: breathing squash and stretch from the feet, a bob, a little
+// sway, hops that squash on landing, shakes for anger and sobs, and an entrance pop with overshoot. Reduced motion
+// (setSpriteCalm, mirrored from the save by main.js) holds every sprite still.
+let CALM = false;
+export function setSpriteCalm(v) {
+  CALM = !!v;
+}
+export const isSpriteCalm = () => CALM;
+const easeOutBack = (x) => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2);
+
+// Transform for `mode` at time t: {sx, sy, dx, dy, rot} in units of the sprite height (dx, dy) and radians; pivot = feet.
+function aliveXf(mode, t, ph, amp) {
+  let sx = 1, sy = 1, dx = 0, dy = 0, rot = 0;
+  const br = Math.sin(t * 2.4 + ph);
+  switch (mode) {
+    case 'hop': { // bouncy hops: stretch in the air, squash when landing
+      const f = (t * 1.5 + ph) % 1, air = f < 0.6 ? Math.sin((f / 0.6) * Math.PI) : 0;
+      const land = f >= 0.6 ? Math.max(0, 1 - (f - 0.6) / 0.18) : 0;
+      dy = -0.1 * air * amp;
+      sy = 1 + 0.07 * air * amp - 0.13 * land * amp;
+      sx = 1 - 0.04 * air * amp + 0.09 * land * amp;
+      rot = Math.sin(f * Math.PI * 2) * 0.06 * amp;
+      break;
+    }
+    case 'shake': { // anger / sneer: bursts of trembling over a tense breath
+      const burst = Math.pow(Math.max(0, Math.sin(t * 2.6 + ph)), 2);
+      dx = Math.sin(t * 52) * 0.02 * burst * amp;
+      rot = Math.sin(t * 41) * 0.06 * burst * amp + Math.sin(t * 1.7 + ph) * 0.02;
+      sy = 1 + 0.04 * Math.sin(t * 9 + ph) * amp + 0.025 * br;
+      sx = 1 - 0.015 * Math.sin(t * 9 + ph) * amp;
+      break;
+    }
+    case 'cry': { // sobbing: quick heaves, a shiver and a droop that sways
+      const s = Math.sin(t * 8.5 + ph), h = Math.max(0, s);
+      dy = -0.05 * h * amp;
+      sy = 1 + 0.05 * h * amp - 0.025 * (1 - h) * amp;
+      sx = 1 - 0.02 * h * amp;
+      dx = Math.sin(t * 33) * 0.006 * amp;
+      rot = Math.sin(t * 4.2 + ph) * 0.07 * amp;
+      break;
+    }
+    case 'laugh': { // belly laugh: fast bounce and rock
+      const s = Math.sin(t * 9 + ph);
+      dy = -Math.abs(s) * 0.045 * amp;
+      rot = s * 0.07 * amp;
+      sy = 1 + 0.04 * Math.abs(s) * amp;
+      sx = 1 - 0.025 * Math.abs(s) * amp;
+      break;
+    }
+    case 'dance': { // happy sway with little hops
+      const s = Math.sin(t * 5 + ph);
+      dy = -Math.abs(s) * 0.05 * amp;
+      rot = s * 0.09 * amp;
+      sy = 1 + 0.04 * Math.abs(s) * amp;
+      sx = 1 - 0.02 * Math.abs(s) * amp;
+      break;
+    }
+    default: // breathe: feet planted, chest rises, slow sway, tiny bob
+      sy = 1 + 0.05 * br * amp;
+      sx = 1 - 0.025 * br * amp;
+      dy = -0.02 * (0.5 + 0.5 * Math.sin(t * 1.5 + ph)) * amp;
+      rot = Math.sin(t * 1.3 + ph) * 0.04 * amp;
+  }
+  return { sx, sy, dx, dy, rot };
+}
+
+// Draw sprite `id` centred on (cx, cy), height h, alive. mode: 'breathe' (default), 'hop', 'shake', 'cry', 'laugh', 'dance'.
+// o.age (seconds since it appeared) adds an entrance pop: scale-up with overshoot, a small settling tilt, a quick fade-in.
+// o.popFrom (0..1) is the pop's starting scale (default 0; a sprite swap uses ~0.85 so it does not vanish). o.amp scales the motion, o.phase offsets it so two sprites do not move in lockstep. Returns false if not loaded.
+export function drawSpriteAlive(ctx, id, cx, cy, h, t = 0, mode = 'breathe', o = {}) {
+  try {
+    if (!get(id) || !(h > 0)) return false;
+    const amp = o.amp == null ? 1 : o.amp;
+    const x = CALM ? { sx: 1, sy: 1, dx: 0, dy: 0, rot: 0 } : aliveXf(mode, t, o.phase || 0, amp);
+    let a = 1;
+    if (o.age != null && o.age < 0.6 && !CALM) {
+      const f = o.popFrom || 0, u = Math.max(0, Math.min(1, o.age / 0.5)), p = Math.max(0.001, f + (1 - f) * easeOutBack(u));
+      x.sx *= p; x.sy *= p; x.rot += (1 - u) * -0.25 * (1 - f);
+      a = f > 0 ? 1 : Math.max(0, Math.min(1, o.age * 8));
+    }
+    ctx.save();
+    ctx.globalAlpha *= a;
+    ctx.translate(cx + x.dx * h, cy + h / 2 + x.dy * h); // pivot at the feet
+    ctx.rotate(x.rot);
+    ctx.scale(x.sx, x.sy);
+    const ok = drawSprite(ctx, id, 0, -h / 2, h);
+    ctx.restore();
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Boss portrait fitted into the rect (x, y, w, h), bottom-anchored, with a gentle breathe and bob. bossId: 'weasel', 'snake',
+// 'blizzard', 'golem', 'salamander', 'eagle', 'ratking' (or the full 'boss_*' id). Returns false if not loaded.
+export function drawBossCard(ctx, bossId, x, y, w, h, t = 0, age = null) {
+  // The boss portrait is a WHOLE card (full reference cell, rounded corners), shown complete in a frame: never a cut-out.
+  try {
+    const id = String(bossId).startsWith('boss_') ? bossId : 'boss_' + bossId;
+    if (id === 'boss_weasel' || id === 'boss_ratking') return drawThiefCard(ctx, id.slice(5), x, y, w, h, t, age); // code-drawn: the same thief as in the level
+    if (id === 'boss_kingcrab') return drawKingCard(ctx, x, y, w, h, t, age); // world 8: code-drawn, the same crab as in the level
+    if (id === 'boss_owl') return drawOwlCard(ctx, x, y, w, h, t, age); // v4: code-drawn, the same owl as in the level
+    if (id === 'boss_gator') return drawGatorCard(ctx, x, y, w, h, t, age); // v3.7 code-drawn Grandpa Gator
+    const im = get(id);
+    if (!im || !(w > 0) || !(h > 0)) return false;
+    const pad = Math.max(2, h * 0.025);
+    const k = Math.min((w - pad * 2) / im.naturalWidth, (h - pad * 2) / im.naturalHeight);
+    let dw = im.naturalWidth * k, dh = im.naturalHeight * k;
+    // entrance: the card flips up and settles; afterwards it only floats a little
+    const e = age == null ? 1 : Math.min(1, Math.max(0, age / 0.45));
+    const pop = e < 1 ? 0.6 + 0.4 * (1 - Math.pow(1 - e, 3)) + Math.sin(e * Math.PI) * 0.08 : 1;
+    const bob = Math.sin(t * 2.1) * h * 0.012;
+    dw *= pop; dh *= pop;
+    const cx = x + w / 2, cy = y + h / 2 + bob;
+    const r = dw * 0.07;
+    const rr = (px, py, pw, ph, rad) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(px, py, pw, ph, rad) : ctx.rect(px, py, pw, ph); };
+    ctx.save();
+    ctx.globalAlpha *= Math.min(1, e * 2);
+    // drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    rr(cx - dw / 2 + pad * 0.6, cy - dh / 2 + pad * 1.2, dw, dh, r); ctx.fill();
+    // frame
+    ctx.fillStyle = '#5a3a1c';
+    rr(cx - dw / 2 - pad, cy - dh / 2 - pad, dw + pad * 2, dh + pad * 2, r + pad); ctx.fill();
+    ctx.fillStyle = '#f2c25a';
+    rr(cx - dw / 2 - pad * 0.45, cy - dh / 2 - pad * 0.45, dw + pad * 0.9, dh + pad * 0.9, r + pad * 0.45); ctx.fill();
+    ctx.drawImage(im, cx - dw / 2, cy - dh / 2, dw, dh);
+    ctx.restore();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ---- the hen, one look everywhere -------------------------------------------------------------------------------------
+// Every place that shows the hen (title, level cards, in-level hen) calls these, so it is the same art in the same moods.
+// h is the sprite height; cx, cy its centre. o: {key (separates two actors on one screen), enter (seconds since it
+// appeared: entrance pop), phase, amp, lean (-1..1: tilt toward something, e.g. the pointer)}.
+const HEN_LOOK = {
+  idle: ['hen_proud', 'breathe'], happy: ['hen_dance', 'hop'], dance: ['hen_dance', 'dance'],
+  worried: ['hen_worried', 'shake', 0.5], gasp: ['hen_worried', 'shake', 1], cry: ['hen_cry', 'cry'], sad: ['hen_cry', 'cry'],
+};
+const MOODS = {}; // actor key -> {mood, at}: when its mood last changed, on the caller's clock
+
+function actor(ctx, kind, look, fallback, mood, cx, cy, h, t, o) {
+  const [id, mode, amp] = look[mood] || look.idle;
+  const key = kind + (o.key || '');
+  let m = MOODS[key];
+  if (!m) m = MOODS[key] = { mood, at: -9 };
+  if (m.mood !== mood || t < m.at) { m.mood = mood; m.at = t; }
+  // a fresh appearance pops in from nothing; a mood change squashes from almost full size
+  const enter = o.enter != null && o.enter < 0.6;
+  const age = enter ? o.enter : t - m.at;
+  const opts = { age, amp: (o.amp == null ? 1 : o.amp) * (amp == null ? 1 : amp), phase: o.phase || 0, popFrom: enter ? 0 : 0.86 };
+  const lean = isSpriteCalm() ? 0 : Math.max(-1, Math.min(1, o.lean || 0));
+  ctx.save();
+  if (lean) { ctx.translate(cx, cy + h / 2); ctx.rotate(lean * 0.1); ctx.translate(-cx, -cy - h / 2); } // tilt from the feet
+  const ok = drawSpriteAlive(ctx, id, cx, cy, h, t, mode, opts);
+  ctx.restore();
+  if (!ok) fallback(ctx, cx, cy, h, mood, t);
+  return ok;
+}
+
+export function drawHenActor(ctx, mood, cx, cy, h, t = 0, o = {}) {
+  return ANIMATED_HEN ? drawHenAnim(ctx, mood, cx, cy, h, t, { ...o, calm: isSpriteCalm() }) : drawHenLegacy(ctx, mood, cx, cy, h, t, o);
+}
+
+// the old hen: reference sprites with squash-and-stretch life (kept one flag away, and for the side-by-side strips)
+export function drawHenLegacy(ctx, mood, cx, cy, h, t = 0, o = {}) {
+  return actor(ctx, 'hen', HEN_LOOK, (c, x, y, hh, m, tt) => drawHen(c, x, y, hh, HEN_LOOK[m] ? m : 'idle', tt), mood, cx, cy, h, t, o);
+}
+
+// start loading the hen sprites now so the first screen that needs them can use them
+for (const id of ['hen_dance', 'hen_worried', 'hen_cry', 'hen_proud']) get(id);

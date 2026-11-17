@@ -10,7 +10,7 @@ const dir = path.resolve(process.argv[2] || '.');
 const out = path.resolve(process.argv[3] || path.join(dir, 'out'));
 fs.mkdirSync(out, { recursive: true });
 
-const SIZES = [[390, 844], [360, 640], [1280, 720], [640, 360], [600, 600], [768, 1024]];
+const SIZES = [[390, 844], [360, 640], [1280, 720], [640, 360], [600, 600], [768, 1024], [1024, 768], [800, 1280], [1280, 800], [1180, 820], [820, 1180]]; // 2026-11-16: tablets too (mykee)
 
 const srv = http.createServer((q, r) => {
   const u = q.url.split('?')[0];
@@ -20,7 +20,7 @@ const srv = http.createServer((q, r) => {
     r.writeHead(200, { 'content-type': f.endsWith('.js') ? 'text/javascript' : 'text/html' });
     r.end(d);
   });
-}).listen(8768);
+}).listen(+process.env.QA_PORT || 8768); // QA_PORT: parallel runs each take their own port
 
 (async () => {
   const b = await chromium.launch();
@@ -30,7 +30,7 @@ const srv = http.createServer((q, r) => {
     const p = await b.newPage({ viewport: { width: w, height: h } });
     const errors = [];
     p.on('pageerror', (e) => errors.push(String(e)));
-    await p.goto('http://localhost:8768/');
+    await p.goto(`http://localhost:${+process.env.QA_PORT || 8768}/`);
     await p.waitForTimeout(800);
     const n = await p.evaluate(() => __egg.LEVELS.length);
     const check = async (label, fn, arg, shoot) => {
@@ -41,23 +41,45 @@ const srv = http.createServer((q, r) => {
     const frames = (k) => { for (let i = 0; i < k; i++) __egg.frame(1 / 60); };
     await check('title', (k) => { const E = __egg; E.G.screen = 'title'; E.G.screenT = 5; for (let i = 0; i < 3; i++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
     await check('levels', (k) => { const E = __egg; E.setSave({ unlocked: 20, stars: { 1: 3, 2: 2, 3: 1 } }); E.press('levels'); for (let i = 0; i < 30; i++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
+    await check('store', () => { const E = __egg; E.setSave({ unlocked: 20, wallet: { coins: 120, owned: { stone: 2, rewind: 1 } } }); E.press('shop'); for (let i = 0; i < 30; i++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
+    await check('store-skins', () => { const E = __egg; E.press('tab:skins'); for (let i = 0; i < 30; i++) E.frame(1 / 60); const o = E.overlaps(); E.press('back'); return o; }, 0, false);
+    await check('extras', () => { const E = __egg; E.G.screen = 'title'; E.press('extras'); for (let i = 0; i < 30; i++) E.frame(1 / 60); return E.overlaps(); }, 0, true); // WONDER: the Extras screen
+    await check('practice', () => { const E = __egg; E.G.screen = 'title'; E.press('practice'); E.G.pscroll.y = 0; for (let i = 0; i < 30; i++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
+    await check('practice-scrolled', () => { const E = __egg; E.G.pscroll.y = 400; for (let i = 0; i < 5; i++) E.frame(1 / 60); const o = E.overlaps(); E.G.pscroll.y = 1e6; for (let i = 0; i < 5; i++) E.frame(1 / 60); return o.concat(E.overlaps()); }, 0, true);
+    for (const k of ['planet', 'plan', 'mama', 'twin', 'hatch']) { // WONDER: each bonus vault in play, then its end cards
+      await check(`wonder-${k}`, (k) => { const E = __egg; E.startDemo(k); for (let i = 0; i < 60; i++) E.frame(1 / 60); return E.overlaps(); }, k, k === 'plan' || k === 'twin');
+      await check(`wonder-${k}-won`, () => { const E = __egg, g = E.wonder.state.game; g.end('won'); for (let i = 0; i < 200; i++) E.frame(1 / 60); return E.overlaps(); }, 0, k === 'twin');
+      await check(`wonder-${k}-failed`, (k) => { const E = __egg; E.startDemo(k); E.frame(1 / 60); E.wonder.state.game.end('failed'); for (let i = 0; i < 200; i++) E.frame(1 / 60); const o = E.overlaps(); E.press('wv:quit'); E.frame(1 / 60); return o; }, k, false);
+    }
+    await check('power-card', () => { const E = __egg; E.start(0); E.press('go'); E.G.card = { id: 'fire_gold', t: 0.3, dur: 2 }; for (let i = 0; i < 3; i++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
     for (let i = 0; i < n; i++) {
       const shoot = i === 0 || i === n - 1 || i === 12;
       await check(`L${i + 1}-intro`, (i) => { const E = __egg; E.start(i); for (let k = 0; k < 40; k++) E.frame(1 / 60); return E.overlaps(); }, i, shoot);
+      if (await p.evaluate((i) => !!__egg.LEVELS[i].intro, i)) await check(`L${i + 1}-intro-after`, () => { const E = __egg; E.press('gotit'); for (let k = 0; k < 10; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
       await check(`L${i + 1}-play`, (i) => { const E = __egg; E.press('go'); for (let k = 0; k < 90; k++) E.frame(1 / 60); return E.overlaps(); }, i, shoot);
     }
+    await check('daily-intro', () => { const E = __egg; E.start(-1); for (let k = 0; k < 40; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
     await check('pause', () => { const E = __egg; E.start(4); E.press('go'); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.press('pause'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
+    // the "i" panel (who is in this vault): a boss level, a full list, the scrolled middle, a practice vault, and from the pause card
+    for (const i of [4, 29, 39, 49]) await check(`info-L${i + 1}`, (i) => { const E = __egg; E.start(i); E.press('go'); for (let k = 0; k < 30; k++) E.frame(1 / 60); E.press('info'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return E.overlaps(); }, i, i === 39);
+    await check('info-scrolled', () => { const E = __egg, S = E.G.iscroll; S.y = S.max / 2; S.v = 0; E.frame(1 / 60); const o = E.overlaps(); S.y = S.max; E.frame(1 / 60); const o2 = o.concat(E.overlaps()); E.press('info:close'); E.frame(1 / 60); return o2; }, 0, false);
+    await check('info-practice', () => { const E = __egg; E.startDemo('beetle'); E.press('go'); for (let k = 0; k < 30; k++) E.frame(1 / 60); E.press('info'); for (let k = 0; k < 30; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('info:close'); return o; }, 0, false);
+    await check('info-from-pause', () => { const E = __egg; E.start(46); E.press('go'); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.press('pause'); for (let k = 0; k < 30; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('info'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return o.concat(E.overlaps()); }, 0, false);
     for (const s of [3, 2, 1]) await check(`win${s}`, (s) => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('win', s); for (let k = 0; k < 400; k++) E.frame(1 / 60); return E.overlaps(); }, s, s === 3);
     await check('fail', () => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('fail'); for (let k = 0; k < 120; k++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
     for (const e of errors) problems.push(`${w}x${h} PAGE ERROR: ${e}`);
     await p.close();
   }
-  // contact sheet
-  const html = `<html><body style="margin:0;background:#222;color:#ddd;font:12px sans-serif;display:flex;flex-wrap:wrap;gap:6px">${shots.map((s) => `<div><div>${s.label}</div><img src="data:image/png;base64,${fs.readFileSync(s.f).toString('base64')}" style="height:300px"></div>`).join('')}</body></html>`;
-  const p2 = await b.newPage({ viewport: { width: 1800, height: 900 } });
-  await p2.setContent(html);
-  await p2.screenshot({ path: path.join(out, 'qa-sheet.png'), fullPage: true });
-  shots.forEach((s) => fs.unlinkSync(s.f));
+  // contact sheet: an HTML page next to the shots (file references; inlining 11 sizes of base64 PNGs crashed the tab)
+  try {
+    const html = `<html><body style="margin:0;background:#222;color:#ddd;font:12px sans-serif;display:flex;flex-wrap:wrap;gap:6px">${shots.map((s) => `<div><div>${s.label}</div><img src="${path.basename(s.f)}" style="height:300px"></div>`).join('')}</body></html>`;
+    const sheet = path.join(out, 'qa-sheet.html');
+    fs.writeFileSync(sheet, html);
+    const p2 = await b.newPage({ viewport: { width: 1800, height: 900 } });
+    await p2.goto('file://' + path.resolve(sheet), { waitUntil: 'load' });
+    await p2.screenshot({ path: path.join(out, 'qa-sheet.png'), fullPage: true });
+    shots.forEach((s) => fs.unlinkSync(s.f)); fs.unlinkSync(sheet);
+  } catch (e) { console.log('contact sheet skipped:', e.message.split('\n')[0]); }
   await b.close();
   srv.close();
   console.log(problems.length ? problems.join('\n') : 'NO OVERLAPS');

@@ -21,7 +21,7 @@ function sweepCost(sim, ring, delta, fireOk) {
       if (!th.alive) continue;
       const hits = (th.side === 'in' && ch === ring.i) || (th.side === 'out' && ch === ring.i + 1);
       if (!hits) continue;
-      if (fireOk && (e.fire > 0 || e.steel > 0)) continue;
+      if (fireOk && (e.fire > 0 || e.stone > 0)) continue;
       const tw = a0 + th.a;
       // thorn sweeps from tw to tw+delta; does it cross phi (with margin)?
       const m = 0.32;

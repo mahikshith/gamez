@@ -26,13 +26,13 @@ export function wrap(a) {
   return a - Math.PI;
 }
 
-// Solid arcs of a ring given gaps [{a, len}] in ring-local angles.
-// Returns [[a0, a1], ...] covering the ring minus gaps (a1 > a0, may exceed TAU).
+// Solid arcs of a ring given gaps [{a, len}] in ring-local angles. r: the radius, or a function of the gap's angle
+// giving metres per radian there (shaped rings). Returns [[a0, a1], ...] covering the ring minus gaps (a1 > a0, may exceed TAU).
 export function solidArcs(r, gaps) {
   if (!gaps.length) return [[0, TAU]];
   const gs = gaps
     .map((g) => {
-      const half = g.len / (2 * r);
+      const half = g.len / (2 * (typeof r === 'function' ? r(g.a) : r));
       let a0 = g.a - half;
       a0 = ((a0 % TAU) + TAU) % TAU;
       return [a0, a0 + 2 * half];

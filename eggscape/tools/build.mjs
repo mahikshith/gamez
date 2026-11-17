@@ -1,4 +1,5 @@
-// Eggscape build: node tools/build.mjs [--target all|web|poki|crazygames|gamedistribution|youtube] [--dev] [--entry path]
+// Eggscape build: node tools/build.mjs [--target all|web|poki|crazygames|gamedistribution|youtube|app] [--dev] [--entry path]
+// --target app: Android WebView shell (portal 'web', real progression, own save key, __APP__ true). Never part of 'all'.
 import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, existsSync, statSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
@@ -7,12 +8,16 @@ import { dirname, join, resolve } from 'node:path';
 import { zipFiles } from './zip.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// the version shown in Settings: the Android versionName (the APK's), else package.json
+const appVersion = (() => { try { const m = /versionName\s+'([^']+)'/.exec(readFileSync(join(ROOT, 'android/app/build.gradle'), 'utf8')); if (m) return m[1]; } catch (_) { /* no android shell */ } try { return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version; } catch (_) { return ''; } })();
 const TARGETS = ['web', 'poki', 'crazygames', 'gamedistribution', 'youtube'];
+const ALL_TARGETS = [...TARGETS, 'app'];
 const MAX_HTML = 5 * 1024 * 1024;
 const MAX_GZIP = 2 * 1024 * 1024;
 
 const HEAD = {
   web: '',
+  app: '',
   // poki/crazygames tags are async so a slow/blackholed SDK host can never block page load; the adapter waits for the global.
   poki: '<script async id="poki-sdk" onerror="window.__sdkFail=1" src="https://game-cdn.poki.com/scripts/v2/poki-sdk.js"></script>',
   crazygames: '<script async id="cg-sdk" onerror="window.__sdkFail=1" src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>',
@@ -23,12 +28,13 @@ const HEAD = {
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : def; };
 const dev = args.includes('--dev');
+const test = args.includes('--test'); // playtest build: everything unlocked, separate save
 const targetArg = opt('--target', 'all');
 const entry = resolve(ROOT, opt('--entry', 'src/main.js'));
 const gdId = process.env.GD_GAME_ID || 'REPLACE_WITH_GD_GAME_ID';
 
-if (targetArg !== 'all' && !TARGETS.includes(targetArg)) {
-  console.error(`Unknown target "${targetArg}". Use all|${TARGETS.join('|')}`);
+if (targetArg !== 'all' && !ALL_TARGETS.includes(targetArg)) {
+  console.error(`Unknown target "${targetArg}". Use all|${ALL_TARGETS.join('|')}`);
   process.exit(2);
 }
 if (!existsSync(entry)) { console.error(`Entry not found: ${entry}`); process.exit(2); }
@@ -44,6 +50,8 @@ for (const ph of ['<!--PORTAL_HEAD-->', '<!--GAME_SCRIPT-->']) {
 const fmt = (n) => (n / 1024).toFixed(1).padStart(8) + ' KB';
 
 async function bundle(portal, { minify, sourcemap }) {
+  const isApp = portal === 'app';
+  if (isApp) portal = 'web';
   const res = await build({
     entryPoints: [entry],
     bundle: true,
@@ -54,11 +62,14 @@ async function bundle(portal, { minify, sourcemap }) {
     sourcemap: sourcemap ? 'inline' : false,
     legalComments: 'none',
     charset: 'utf8',
-    loader: { '.woff2': 'dataurl' },
+    loader: { '.woff2': 'dataurl', '.webp': 'dataurl' },
     define: {
       __PORTAL__: JSON.stringify(portal),
       __GD_ID__: JSON.stringify(gdId),
       __DEV__: JSON.stringify(!minify),
+      __TEST__: JSON.stringify(test),
+      __APP__: JSON.stringify(isApp),
+      __VERSION__: JSON.stringify(appVersion),
     },
     logLevel: 'warning',
   });
@@ -106,9 +117,10 @@ async function buildOne(label, portal, { minify, sourcemap, zip }) {
 }
 
 const rows = [];
-const list = targetArg === 'all' ? TARGETS : [targetArg];
+const list = test ? [] : targetArg === 'all' ? TARGETS : [targetArg];
 mkdirSync(join(ROOT, 'dist'), { recursive: true });
-for (const t of list) rows.push(await buildOne(t, t, { minify: !dev, sourcemap: false, zip: true }));
+for (const t of list) rows.push(await buildOne(t, t, { minify: !dev, sourcemap: false, zip: t !== 'app' }));
+if (test) rows.push(await buildOne('test', 'web', { minify: true, sourcemap: false, zip: false }));
 if (dev) rows.push(await buildOne('dev', 'web', { minify: false, sourcemap: true, zip: false }));
 
 console.log('\ntarget              index.html        gzip          zip');

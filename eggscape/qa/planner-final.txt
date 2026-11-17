@@ -1,0 +1,8 @@
+easy L14  won saved=3/3 t=43.8 broken=0
+medium L14  play saved=2/3 t=59.3 broken=0
+hard L14  won saved=3/3 t=44.7 broken=0
+hard L41  won saved=3/3 t=39.4 broken=0
+hard L42  won saved=3/3 t=35.8 broken=0
+hard L43  won saved=3/3 t=50 broken=0
+hard L44  play saved=2/3 t=47.3 broken=0
+hard L45  won saved=2/3 t=36.8 broken=1
