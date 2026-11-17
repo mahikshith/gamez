@@ -826,6 +826,7 @@ export function drawStrikeToken(ctx, id, cx, cy, r, t, sel) {
   ctx.restore();
 }
 export function drawStrikeStage(ctx, id, x, y, w, h, t) {
+  if (!(w > 14 && h > 14)) return; // a card squeezed too small for art (many chicks on a short screen): no art, never a negative arc radius
   if (STRIKE[id] && STRIKE[id].premium) stageBack(ctx, id, x, y, w, h, t);
   const s = h * 0.82, u = (t % 1.6) / 1.6, hop = Math.max(0, Math.sin(u * TAU)) * h * 0.08, sq = u > 0.5 ? 0.25 * Math.exp(-(u - 0.5) * 18) : -0.1 * Math.sin(u * TAU);
   contact(ctx, x + w / 2, y + h * 0.9, s * 0.3, s * 0.05, 0.3);

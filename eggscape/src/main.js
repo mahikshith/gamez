@@ -67,6 +67,13 @@ import { createWonder } from './wonder.js'; // WONDER: the bonus world (own scre
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
 import { drawVillainPortrait, PORTRAIT_BG, hasPortrait } from './render/villain-art.js';
 import { vibrate, installApp } from './app.js'; // Android WebView proof shell: bridge vibration, back button, FPS overlay (no-ops outside EGG_APP)
+// Safety net: an animated size that dips below zero (a shrinking bubble, a tiny card on a short screen) makes arc() /
+// ellipse() THROW, which kills the rest of that frame every frame. Clamp the radius to 0 instead (NaN too).
+for (const P of [typeof CanvasRenderingContext2D !== 'undefined' && CanvasRenderingContext2D.prototype, typeof OffscreenCanvasRenderingContext2D !== 'undefined' && OffscreenCanvasRenderingContext2D.prototype].filter(Boolean)) {
+  const arc = P.arc, el = P.ellipse;
+  P.arc = function (x, y, r, a0, a1, ccw) { return arc.call(this, x, y, r > 0 ? r : 0, a0, a1, ccw); };
+  if (el) P.ellipse = function (x, y, rx, ry, rot, a0, a1, ccw) { return el.call(this, x, y, rx > 0 ? rx : 0, ry > 0 ? ry : 0, rot, a0, a1, ccw); };
+}
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 // playtest build (build.mjs --test): every level, booster and skin unlocked, plenty of coins

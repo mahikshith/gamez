@@ -28,7 +28,7 @@ export function cog(ctx, x, y, r, a, fill, line, lw) {
 }
 // a soap bubble: a clear film with a rainbow rim that drifts round, a window highlight. a: its opacity
 export function bubbleBall(ctx, x, y, r, t, a = 1) {
-  if (r <= 0.3) return;
+  if (!(r >= 1.5)) return; // too small to read (and the inner arcs below would get a negative radius)
   ctx.save(); ctx.globalAlpha *= a;
   ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fillStyle = 'rgba(200,240,255,0.18)'; ctx.fill();
   const lw = Math.max(0.8, r * 0.12), sp = t * 1.3;
