@@ -43,9 +43,11 @@ let save = null, persist = () => {}, onGrant = () => {};
 function bridge() { try { return APP && typeof window !== 'undefined' && window.EggApp ? window.EggApp : null; } catch (_) { return null; } }
 // apply a purchase to the save. True when it is safely recorded (also when the token was granted before), so the shell
 // may consume / acknowledge it; false when the game cannot take it yet (no save loaded): the shell keeps it for later.
-function grant(sku, token) {
+// again: a one-time product the store says was granted and acknowledged before (a reinstall or a cleared save): the unlock
+// comes back, its coins and boosts are not paid twice (the token list went with the old save)
+function grant(sku, token, again) {
   if (!save || !save.wallet || !IAP[sku]) return false;
-  const r = grantIap(save.wallet, sku, token, Date.now());
+  const r = grantIap(save.wallet, sku, again === true && IAP[sku].type === 'once' ? '' : token, Date.now());
   save.wallet = r.wallet;
   persist();
   if (r.granted) { try { onGrant(sku); } catch (_) { /* the game's thank-you is cosmetic */ } }
@@ -54,7 +56,7 @@ function grant(sku, token) {
 if (typeof window !== 'undefined') {
   window.__eggAd = (id, ok) => { const p = st.pending.get(id); if (p) { st.pending.delete(id); p(!!ok); } };
   window.__eggBuy = (id, ok, state) => { const p = st.pending.get(id); if (p) { st.pending.delete(id); p(ok ? true : state === 'pending' ? 'pending' : false); } };
-  window.__eggGrant = (sku, token) => grant(String(sku || ''), String(token || ''));
+  window.__eggGrant = (sku, token, again) => grant(String(sku || ''), String(token || ''), again === true);
   // older shells only report Premium ownership (no token): the entitlement is applied, nothing is paid twice
   window.__eggOwned = (sku, on) => { if (on && sku === PREMIUM_SKU) grant(PREMIUM_SKU, ''); };
   window.__eggPrice = (sku, price) => { if (IAP[sku] && price) st.prices[sku] = String(price); };

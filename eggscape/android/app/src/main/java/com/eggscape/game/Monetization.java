@@ -27,7 +27,15 @@ import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback;
 import com.google.android.gms.ads.rewarded.RewardedAd;
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback;
 
+import org.json.JSONObject;
+
+import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
+
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -59,6 +67,13 @@ public class Monetization {
     /** bought once: acknowledged after the grant, given back by restore() */
     static final Set<String> ONE_TIME = new HashSet<>(Arrays.asList(
             "starter_nest", "season_pack", "all_chicks", "no_ads", PREMIUM_SKU));
+    /**
+     * Security: the app's licence key (Play Console > Monetize with Play > Monetization setup > Licensing, the base64 RSA
+     * public key). When set, a purchase is granted only if Google's signature over it checks out, which stops fake-billing
+     * apps from minting coins. Empty (test builds) skips the check. There is no game server, so this is the strongest
+     * check available on the device.
+     */
+    static final String PLAY_LICENSE_KEY = "";
     private static final String PREFS = "egg_money", PREF_CHILD = "childSafe";
 
     private final Activity act;
@@ -91,14 +106,17 @@ public class Monetization {
 
     // ------------------------------------------------------------------ JS answers
     private void js(String code) { act.runOnUiThread(() -> web.evaluateJavascript("(function(){try{" + code + "}catch(e){}})()", null)); }
-    private static String q(String s) { return "'" + (s == null ? "" : s.replace("\\", "\\\\").replace("'", "\\'")) + "'"; }
+    /** a JS string literal: JSONObject.quote escapes quotes, backslashes, newlines and U+2028/2029 (no injection, no syntax break) */
+    private static String q(String s) { return JSONObject.quote(s == null ? "" : s); }
     private void adResult(String id, boolean ok) { js("window.__eggAd&&window.__eggAd(" + q(id) + "," + ok + ")"); }
     private void buyResult(String id, boolean ok, String state) { js("window.__eggBuy&&window.__eggBuy(" + q(id) + "," + ok + "," + q(state) + ")"); }
 
     /** asks the page to grant one product; then(true) only once the game saved it */
     private interface Done { void run(boolean ok); }
-    private void grantJs(String sku, String token, Done then) {
-        String code = "(function(){try{return !!(window.__eggGrant&&window.__eggGrant(" + q(sku) + "," + q(token) + "))}catch(e){return false}})()";
+    private void grantJs(String sku, String token, boolean again, Done then) {
+        // again: a one-time product Play says we already acknowledged (a reinstall, a cleared save): give the unlock back,
+        // but never pay its coins and boosts a second time
+        String code = "(function(){try{return !!(window.__eggGrant&&window.__eggGrant(" + q(sku) + "," + q(token) + "," + again + "))}catch(e){return false}})()";
         act.runOnUiThread(() -> web.evaluateJavascript(code, v -> then.run("true".equals(v))));
     }
 
@@ -262,10 +280,10 @@ public class Monetization {
         if (p.getPurchaseState() != Purchase.PurchaseState.PURCHASED) { if (then != null) then.run(false); return; }
         List<String> skus = new ArrayList<>();
         for (String s : p.getProducts()) if (known(s)) skus.add(s);
-        if (skus.isEmpty()) { if (then != null) then.run(false); return; }
+        if (skus.isEmpty() || !verified(p)) { if (then != null) then.run(false); return; } // a forged purchase is never granted nor acknowledged
         final int[] left = { skus.size() };
         final boolean[] all = { true };
-        for (String sku : skus) grantJs(sku, p.getPurchaseToken(), ok -> {
+        for (String sku : skus) grantJs(sku, p.getPurchaseToken(), ONE_TIME.contains(sku) && p.isAcknowledged(), ok -> {
             if (!ok) all[0] = false;
             if (--left[0] > 0) return;
             if (all[0]) settle(p, skus);
@@ -280,5 +298,17 @@ public class Monetization {
         if (consumable) billing.consumeAsync(ConsumeParams.newBuilder().setPurchaseToken(p.getPurchaseToken()).build(), (r, token) -> { });
         else if (!p.isAcknowledged())
             billing.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(p.getPurchaseToken()).build(), r -> { });
+    }
+
+    /** Google's RSA signature over the purchase JSON, checked with the app's licence key (skipped while the key is empty) */
+    private static boolean verified(Purchase p) {
+        if (PLAY_LICENSE_KEY.isEmpty()) return true;
+        try {
+            PublicKey key = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(android.util.Base64.decode(PLAY_LICENSE_KEY, android.util.Base64.DEFAULT)));
+            Signature sig = Signature.getInstance("SHA1withRSA");
+            sig.initVerify(key);
+            sig.update(p.getOriginalJson().getBytes(StandardCharsets.UTF_8));
+            return sig.verify(android.util.Base64.decode(p.getSignature(), android.util.Base64.DEFAULT));
+        } catch (Exception e) { return false; }
     }
 }

@@ -3,6 +3,8 @@ package com.eggscape.game;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -23,7 +25,11 @@ import android.widget.Toast;
 
 import androidx.webkit.WebViewAssetLoader;
 
+import java.io.ByteArrayInputStream;
+
 public class MainActivity extends Activity {
+    /** the game is served from the APK's assets under this host; nothing else may load in the WebView (it carries the bridge) */
+    private static final String HOST = "appassets.androidplatform.net";
     private static final int BG = Color.parseColor("#428abe");
     private WebView web;
     private long lastBack = 0;
@@ -80,11 +86,33 @@ public class MainActivity extends Activity {
         s.setDisplayZoomControls(false);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
+        s.setAllowFileAccessFromFileURLs(false);
+        s.setAllowUniversalAccessFromFileURLs(false);
+        s.setGeolocationEnabled(false);
+        s.setSaveFormData(false);
+        s.setJavaScriptCanOpenWindowsAutomatically(false);
+        s.setSupportMultipleWindows(false);
+        if (Build.VERSION.SDK_INT >= 26) s.setSafeBrowsingEnabled(true);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         web.addJavascriptInterface(new Bridge(), "EggApp");
         web.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
-                return loader.shouldInterceptRequest(r.getUrl());
+                // security: the game is fully offline. Only our own assets load; any other request (a stray link, an injected
+                // script, a tracker) gets an empty 403 instead of reaching the network with the EggApp bridge on the page.
+                Uri u = r.getUrl();
+                if (u != null && HOST.equals(u.getHost()) && "https".equals(u.getScheme())) return loader.shouldInterceptRequest(u);
+                if (u != null && ("data".equals(u.getScheme()) || "blob".equals(u.getScheme()))) return null;
+                return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", null, new ByteArrayInputStream(new byte[0]));
+            }
+            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                // security: the WebView never leaves the game. A web link (store page, privacy policy) opens in the browser;
+                // every other scheme (intent:, file:, javascript:) is dropped.
+                Uri u = r.getUrl();
+                if (u != null && HOST.equals(u.getHost()) && "https".equals(u.getScheme())) return false;
+                if (u != null && r.isForMainFrame() && r.hasGesture() && ("https".equals(u.getScheme()) || "http".equals(u.getScheme()))) {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, u).addCategory(Intent.CATEGORY_BROWSABLE)); } catch (Exception e) { /* no browser */ }
+                }
+                return true;
             }
             @Override public void onPageFinished(WebView v, String url) { lastSafe = ""; pushSafe(); }
         });
@@ -94,8 +122,8 @@ public class MainActivity extends Activity {
         setContentView(web);
         money = new Monetization(this, web);
         hideBars();
-        if (b == null) web.loadUrl("https://appassets.androidplatform.net/index.html");
-        else web.restoreState(b);
+        // always start from our own page (restoreState could bring back any URL the saved state held)
+        web.loadUrl("https://" + HOST + "/index.html");
     }
 
     /**
@@ -149,7 +177,7 @@ public class MainActivity extends Activity {
 
     @Override public void onConfigurationChanged(android.content.res.Configuration c) { super.onConfigurationChanged(c); lastSafe = ""; lastInsets = null; web.post(this::pushSafe); }
 
-    @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); web.saveState(o); }
+    @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); } // the game keeps its own save (localStorage)
 
     @Override protected void onPause() { web.onPause(); web.pauseTimers(); super.onPause(); }
 
