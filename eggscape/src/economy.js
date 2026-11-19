@@ -76,7 +76,7 @@ export const AD_REWARDS = {
 export function defaultWallet() {
   return { coins: 0, owned: {}, skins: ['classic'], skin: 'classic', chests: 0, charges: 0, henSkins: ['classic'], henSkin: 'classic', noAds: false, daily: '',
     // 2026-11-16 shop revamp: owned power chicks, the Golden Egg Bank, coin items, and what real money bought
-    chicks: [], bank: 0, golden: 0, tickets: { ally: 0, skip: 0 }, noInter: false, payer: false, spend: 0, lastBuyAt: 0, starter: false, season: '', premDay: '', tokens: [] };
+    chicks: [], bank: 0, golden: 0, tickets: { ally: 0, skip: 0 }, noInter: false, payer: false, spend: 0, lastBuyAt: 0, starter: false, season: '', premDay: '', tokens: [], treasures: [] };
 }
 
 // Make any loaded/saved value safe to use (old saves, hand-edited saves).
@@ -115,6 +115,8 @@ export function sanitizeWallet(w) {
   out.premDay = typeof w.premDay === 'string' ? w.premDay : '';
   // purchase tokens already granted: a re-delivered purchase must never pay twice (newest kept if it ever grows long)
   out.tokens = Array.isArray(w.tokens) ? w.tokens.filter((t) => typeof t === 'string' && t).slice(-MAX_TOKENS) : [];
+  const tr = Array.isArray(w.treasures) ? w.treasures.filter((id) => BOSS_TREASURE_IDS.includes(id)) : [];
+  out.treasures = tr.filter((id, i) => tr.indexOf(id) === i);
   return out;
 }
 
@@ -257,6 +259,33 @@ export function openChest(wallet, chest) {
   }
   w.charges = Math.min(MAX_CHARGES, (w.charges || 0) + 1);
   w.chests = Math.max(w.chests, chest.index + 1);
+  return w;
+}
+
+// ---------------------------------------------------------------- boss treasure (2026-11-19)
+// A treasure chest stands beside every boss on the level map (mykee: "after clearing a boss level, show some treasure
+// and the unlockables"). Beating the boss opens it, once: coins, a booster and Chick Charges, growing world by world.
+// The chick that joins at the next level (strikes.js unlock = boss + 1) is shown in it as part of the reward.
+export const BOSS_TREASURE_IDS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+const TREASURE_BOOSTS = ['stone', 'time', 'golden', 'rewind', 'sponge', 'nest', 'snips', 'golden', 'time', 'stone'];
+export function bossTreasure(bossId) {
+  const w = BOSS_TREASURE_IDS.indexOf(bossId);
+  if (w < 0) return null;
+  return { id: bossId, coins: 150 + 50 * w, booster: TREASURE_BOOSTS[w], charges: w < 5 ? 2 : 3 };
+}
+export function treasureOpened(wallet, bossId) { return !!(wallet && Array.isArray(wallet.treasures) && wallet.treasures.includes(bossId)); }
+// Returns a new wallet with the treasure paid, or null when it was opened already (never pays twice)
+export function openBossTreasure(wallet, bossId) {
+  const T = bossTreasure(bossId);
+  if (!T || treasureOpened(wallet, bossId)) return null;
+  const w = sanitizeWallet(wallet);
+  w.coins += T.coins;
+  if (BOOSTERS[T.booster]) {
+    if (ownedCount(w, T.booster) < MAX_OWNED) w.owned[T.booster] = ownedCount(w, T.booster) + 1;
+    else w.coins += BOOSTERS[T.booster].price;
+  }
+  w.charges = Math.min(MAX_CHARGES, (w.charges || 0) + T.charges);
+  w.treasures = [...w.treasures, bossId];
   return w;
 }
 

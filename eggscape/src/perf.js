@@ -39,6 +39,9 @@ export function deviceGuess(nav = typeof navigator !== 'undefined' ? navigator :
   if (mobile) {
     if ((mem && mem <= 2) || (cores && cores <= 4)) tier = 'low';
     else if ((mem && mem <= 4) || weakGpu) tier = (mem && mem <= 4 && weakGpu) ? 'low' : 'medium';
+    // a phone that tells us little (no memory size, or no graphics chip name) starts on Medium, not High: Auto steps up
+    // after ~12 s of easy frames anyway, while starting too high would make the first seconds stutter (mykee 2026-11-19)
+    else if (!mem || !gpu || !cores) tier = 'medium';
   }
   return { tier, cores, mem, gpu, mobile };
 }
