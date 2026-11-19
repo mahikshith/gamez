@@ -1346,6 +1346,9 @@ async function press(id) {
       if (save.gfx === 'auto') save.gfxStep = -1; // Auto starts again from the phone's own guess
       applySettings(save); setDPR(); persist();
       break;
+    case 'set:fpsshow':
+      save.showFps = !save.showFps; persist();
+      break;
     case 'fps:auto': case 'fps:30': case 'fps:60':
       save.fps = id === 'fps:auto' ? 'auto' : +id.slice(4);
       applySettings(save); persist();
@@ -4750,6 +4753,7 @@ function drawSettings() {
       B.push(lineBlock(save.fps === 30 ? 'Saves battery, keeps the phone cool' : save.fps === 60 ? 'Smoothest motion, uses more battery' : `Now ${PERF.fpsCap} fps`, 13 * s, { color: C.ink2, tag: 'set:fpshint', gap: 4 * s }));
       B.push({ h: 42 * s, gap: 12 * s, draw: (x, y, w) => ui.button('calm', save.calm ? 'Calm motion: on' : 'Calm motion: off', x + w * 0.1, y, w * 0.8, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 14.5 * s }) });
       B.push(lineBlock('Calm motion: no screen shake or flashes', 13 * s, { color: C.ink2, tag: 'set:calmhint', gap: 4 * s }));
+      B.push({ h: 40 * s, gap: 10 * s, draw: (x, y, w) => ui.button('set:fpsshow', save.showFps ? 'Show frame rate: on' : 'Show frame rate: off', x + w * 0.1, y, w * 0.8, 40 * s, { kind: 'tertiary', icon: save.showFps ? ICON.check : null, size: 14 * s }) });
     } else if (tab === 'gameplay') {
       const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
       B.push(sectionBlock('Ring speed', s));
@@ -5597,10 +5601,22 @@ function frame(now) {
     if (!G.errs[msg]) { G.errs[msg] = 1; console.error('[eggscape] frame error', e); }
     try { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.globalAlpha = 1; } catch (_) { /* reset */ }
   }
+  if (save.showFps) drawFpsMeter(raw);
   perfTick(save, raw, !document.hidden && !G.paused && (G.screen === 'play' || G.screen === 'levels' || G.screen === 'title'));
 }
 // scrolling lists and the map (2026-11-19, mykee: "so slow"): a fling glides about 1/SCROLL_DRAG s of its speed (was 3.6-4.2)
 const SCROLL_DRAG = 2.3;
+// Settings > Display > Show frame rate (2026-11-19): frames per second over the last second, the quality step, and the
+// canvas resolution, in the top-left corner, so a tester can tell us how a phone really runs
+const FPSM = { n: 0, acc: 0, fps: 0 };
+function drawFpsMeter(ms) {
+  FPSM.n++; FPSM.acc += ms; if (FPSM.acc >= 1000) { FPSM.fps = Math.round(FPSM.n * 1000 / FPSM.acc); FPSM.n = 0; FPSM.acc = 0; }
+  const txt = `${FPSM.fps} fps \u00b7 ${TIER_NAME[PERF.tier]} \u00b7 ${DPR.toFixed(2)}x`;
+  ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.font = `700 11px ${FONT}`; const w = ctx.measureText(txt).width + 10;
+  const x = W_ / 2 - w / 2, y = ui.A.y1 - 17; // bottom centre, between the corner buttons
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x, y, w, 15); ctx.fillStyle = FPSM.fps >= 50 ? '#7dff6a' : FPSM.fps >= 28 ? '#ffd23a' : '#ff6a5a'; ctx.textBaseline = 'middle'; ctx.fillText(txt, x + 5, y + 8);
+  ctx.restore();
+}
 // adaptive quality: src/perf.js (2026-11-19). Before that (2026-11-15/16) only the resolution adapted, 2x to 1.5x.
 function setDPR() {
   const d = Math.min(window.devicePixelRatio || 1, PERF.dprCap);
