@@ -181,7 +181,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onPause() { web.onPause(); web.pauseTimers(); super.onPause(); }
 
-    @Override protected void onResume() { super.onResume(); web.onResume(); web.resumeTimers(); hideBars(); }
+    @Override protected void onResume() { super.onResume(); web.onResume(); web.resumeTimers(); hideBars(); if (money != null) money.onHostResume(); }
 
     @Override protected void onDestroy() { web.destroy(); super.onDestroy(); }
 

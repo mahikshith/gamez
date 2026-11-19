@@ -12,12 +12,14 @@
         android:theme="@style/Theme.Eggscape">
         <!-- AdMob: Google's public TEST app id. Replace with the real one from the AdMob console before a store release. -->
         <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713" />
+        <!-- singleTop, not singleTask (0.8.1): with singleTask, opening the app from its icon while an ad or the Play
+             purchase sheet was up closed that screen without telling the game, which then waited with no way back -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="fullUser"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|density|uiMode"
-            android:launchMode="singleTask">
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

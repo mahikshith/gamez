@@ -84,6 +84,10 @@ public class Monetization {
     private BillingClient billing;
     private final Map<String, ProductDetails> products = new HashMap<>();
     private String buyId, buySku;
+    /** the ad on screen now (its JS id) and its answer so far: the watchdog in onHostResume() answers for it if the ad's
+     *  screen went away without a dismiss callback */
+    private String showingId;
+    private boolean[] showingOk;
 
     Monetization(Activity act, WebView web) {
         this.act = act;
@@ -160,15 +164,39 @@ public class Monetization {
         }));
     }
 
+    /** an ad is over: answer the page once (the dismiss callback and the watchdog may both try) */
+    private void adDone(String id, boolean ok) {
+        if (id.equals(showingId)) { showingId = null; showingOk = null; }
+        adResult(id, ok);
+    }
+
+    /**
+     * 0.8.1 (mykee: a test ad left "no option to go back"): the game came back to the front. If an ad was showing and its
+     * dismiss callback has not come within 1.5 s, its screen was dropped (the app reopened from its icon, the system
+     * cleaned it up): answer for it so the game never waits on an ad that is gone. A rewarded ad pays only if Google
+     * already reported the reward.
+     */
+    void onHostResume() {
+        final String id = showingId;
+        if (id == null) return;
+        web.postDelayed(() -> {
+            if (!id.equals(showingId)) return;
+            boolean ok = showingOk != null && showingOk[0];
+            adDone(id, ok);
+            loadRewarded(); loadInterstitial();
+        }, 1500);
+    }
+
     void showRewarded(String tag, String id) {
         act.runOnUiThread(() -> {
             RewardedAd ad = rewarded;
             if (ad == null) { adResult(id, false); loadRewarded(); return; }
             rewarded = null;
             final boolean[] earned = { false };
+            showingId = id; showingOk = earned;
             ad.setFullScreenContentCallback(new FullScreenContentCallback() {
-                @Override public void onAdDismissedFullScreenContent() { adResult(id, earned[0]); loadRewarded(); }
-                @Override public void onAdFailedToShowFullScreenContent(@NonNull AdError e) { adResult(id, false); loadRewarded(); }
+                @Override public void onAdDismissedFullScreenContent() { adDone(id, earned[0]); loadRewarded(); }
+                @Override public void onAdFailedToShowFullScreenContent(@NonNull AdError e) { adDone(id, false); loadRewarded(); }
             });
             ad.show(act, reward -> earned[0] = true);
         });
@@ -179,9 +207,10 @@ public class Monetization {
             InterstitialAd ad = interstitial;
             if (ad == null) { adResult(id, false); loadInterstitial(); return; }
             interstitial = null;
+            showingId = id; showingOk = new boolean[] { true };
             ad.setFullScreenContentCallback(new FullScreenContentCallback() {
-                @Override public void onAdDismissedFullScreenContent() { adResult(id, true); loadInterstitial(); }
-                @Override public void onAdFailedToShowFullScreenContent(@NonNull AdError e) { adResult(id, false); loadInterstitial(); }
+                @Override public void onAdDismissedFullScreenContent() { adDone(id, true); loadInterstitial(); }
+                @Override public void onAdFailedToShowFullScreenContent(@NonNull AdError e) { adDone(id, false); loadInterstitial(); }
             });
             ad.show(act);
         });

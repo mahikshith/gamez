@@ -35,7 +35,7 @@ export const STUCK_FAILS = 3;
 export const SKIP_COINS = 150;
 export const INTER = { from: 8, gapS: 240, levels: 3 };
 
-const st = { busy: false, lastInter: 0, sinceInter: 0, prices: {}, fails: {}, seq: 0, pending: new Map(), childSafe: false };
+const st = { busy: false, lastInter: 0, sinceInter: 0, prices: {}, fails: {}, seq: 0, pending: new Map(), adWait: new Set(), childSafe: false };
 let save = null, persist = () => {}, onGrant = () => {};
 
 // the Android shell answers through these globals: window.__eggAd(id, ok), window.__eggBuy(id, ok, state),
@@ -54,7 +54,7 @@ function grant(sku, token, again) {
   return true;
 }
 if (typeof window !== 'undefined') {
-  window.__eggAd = (id, ok) => { const p = st.pending.get(id); if (p) { st.pending.delete(id); p(!!ok); } };
+  window.__eggAd = (id, ok) => { st.adWait.delete(id); const p = st.pending.get(id); if (p) { st.pending.delete(id); p(!!ok); } };
   window.__eggBuy = (id, ok, state) => { const p = st.pending.get(id); if (p) { st.pending.delete(id); p(ok ? true : state === 'pending' ? 'pending' : false); } };
   window.__eggGrant = (sku, token, again) => grant(String(sku || ''), String(token || ''), again === true);
   // older shells only report Premium ownership (no token): the entitlement is applied, nothing is paid twice
@@ -65,10 +65,13 @@ function callNative(fn, ...args) {
   const b = bridge();
   if (!b || typeof b[fn] !== 'function') return Promise.resolve(false);
   const id = 'r' + ++st.seq;
+  const ad = fn === 'showRewarded' || fn === 'showInterstitial';
   return new Promise((resolve) => {
     st.pending.set(id, resolve);
-    setTimeout(() => { if (st.pending.has(id)) { st.pending.delete(id); resolve(false); } }, 120000); // never hold the game
-    try { b[fn](...args, id); } catch (_) { st.pending.delete(id); resolve(false); }
+    if (ad) st.adWait.add(id);
+    // never hold the game (main.js also lets go of an ad wait after a few seconds of the game showing again: ads.cancelWait)
+    setTimeout(() => { st.adWait.delete(id); if (st.pending.has(id)) { st.pending.delete(id); resolve(false); } }, 120000);
+    try { b[fn](...args, id); } catch (_) { st.adWait.delete(id); st.pending.delete(id); resolve(false); }
   });
 }
 
@@ -98,6 +101,15 @@ export const ads = {
   },
   get childSafe() { return st.childSafe; },
   get busy() { return st.busy; },
+  // 0.8.1: mykee's test ad left the game greyed out with no way back. When the ad's screen closes without telling us
+  // (the system dropped it, the app was reopened from its icon), the player gets out with "Back to game" or Back.
+  // A rewarded ad given up this way pays nothing (Android already answers with the real result when it can).
+  cancelWait() {
+    let n = 0;
+    for (const id of st.adWait) { const p = st.pending.get(id); st.pending.delete(id); if (p) { p(false); n++; } }
+    st.adWait.clear();
+    return n;
+  },
 
   // a rewarded placement: resolves true when the reward is earned. Premium players get it without an ad.
   async rewarded(tag) {

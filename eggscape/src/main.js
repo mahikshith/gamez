@@ -807,7 +807,7 @@ function pointerDown(e) {
   onFirstInput();
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
-  if (modalOpen()) { if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; } return; } // a sheet or popup takes every tap
+  if (G.adBusy || modalOpen()) { if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; } return; } // a sheet or popup takes every tap (and an ad wait: only its "Back to game")
   const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : null;
   if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
   if (G.screen === 'levels' && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; // the world map scrolls by drag; a tap on a stop still presses
@@ -1001,6 +1001,7 @@ async function press(id) {
   audio.play(id === 'pause' || id === 'levels' || id === 'practice' ? 'ui_back' : 'ui_tap');
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
   switch (id) {
+    case 'ad:back': ads.cancelWait(); break; // an ad that never said it closed: back to the game (no reward)
     case 'zoom:in': setZoom((G.zm || 0) + 0.34); break;
     case 'zoom:out': setZoom((G.zm || 0) - 0.34); break;
     case 'zoom:auto': G.zm = null; break;
@@ -1455,6 +1456,26 @@ function openInfo() {
   setScreen('info');
 }
 
+// 0.8.1 ad wait (mykee's test ad: "no option for us to go back"). While an ad is up the app is covered and no frames
+// run here, so G.adVis counts only the time the game is on screen again with the ad still not reported closed: the
+// ad's screen was dropped (app reopened from its icon, the system cleaned it up). After 1.5 s a "Back to game" button
+// shows; after 8 s the game lets go by itself. Back does the same at any time.
+function adWatch(ms) {
+  if (document.hidden) return;
+  G.adVis = (G.adVis || 0) + Math.min(ms, 100) / 1000;
+  if (G.adVis > 8) ads.cancelWait();
+}
+function drawAdWait(W_, H_) {
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W_, H_);
+  ui.buttons.length = 0; ui.rects.length = 0; // nothing under the shade takes a tap while an ad is pending
+  if ((G.adVis || 0) < 1.5) return;
+  const s = ui.u, w = Math.min(320 * s, W_ - 40 * s), h = 150 * s, x = (W_ - w) / 2, y = (H_ - h) / 2;
+  ui.panel(x, y, w, h, { r: 20 * s });
+  ui.text('Waiting for the ad to close', W_ / 2, y + 34 * s, { size: 19 * s, align: 'center', maxW: w - 30 * s, color: '#fff6dc', noRecord: true });
+  ui.button('ad:back', 'Back to game', x + 30 * s, y + 70 * s, w - 60 * s, 56 * s, { kind: 'secondary', size: 21 * s });
+}
+
 function releaseAll() {
   for (const h of G.held.values()) h.ring.held = false;
   G.held.clear();
@@ -1462,7 +1483,7 @@ function releaseAll() {
 
 async function breakThen(fn, info = {}) {
   if (G.adBusy) return;
-  G.adBusy = true;
+  G.adBusy = true; G.adVis = 0;
   portal.gameplayStop();
   try { await ads.between({ levelId: G.level && G.li >= 0 ? G.level.id : 0, afterFail: G.screen === 'fail', ...info }); } catch (_) {}
   G.adBusy = false;
@@ -1471,7 +1492,7 @@ async function breakThen(fn, info = {}) {
 
 async function rewarded(tag) {
   if (G.adBusy) return false;
-  G.adBusy = true;
+  G.adBusy = true; G.adVis = 0;
   portal.gameplayStop();
   let ok = false;
   try { ok = await ads.rewarded(tag); } catch (_) { ok = false; }
@@ -3316,7 +3337,7 @@ function lastEggMoment(sim) {
 const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1 };
 const SCENE_SCREENS = { title: 1, store: 1, practice: 1 }; // these paint a full themed scene; the others keep the game behind and get a wash
 function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
-function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); } // + snow piles on the buttons, the gold sweep
+function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
 function render() {
   const t = G.t;
   setSpriteCalm(save.calm); // reduced motion holds the flat sprites still
@@ -3514,10 +3535,6 @@ function render() {
   if (G.settingsOpen && (G.screen === 'pause' || G.screen === 'title')) drawSettings();
   else G.settingsOpen = false;
   drawModals();
-  if (G.adBusy) {
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(0, 0, W_, H_);
-  }
   if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps();
 }
 
@@ -5602,6 +5619,7 @@ function frame(now) {
     try { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.globalAlpha = 1; } catch (_) { /* reset */ }
   }
   if (save.showFps) drawFpsMeter(raw);
+  if (G.adBusy) adWatch(raw);
   perfTick(save, raw, !document.hidden && !G.paused && (G.screen === 'play' || G.screen === 'levels' || G.screen === 'title'));
 }
 // scrolling lists and the map (2026-11-19, mykee: "so slow"): a fling glides about 1/SCROLL_DRAG s of its speed (was 3.6-4.2)
@@ -5666,6 +5684,7 @@ async function boot() {
   });
   window.addEventListener('blur', clearKeys);
   installApp(() => { // Android back button (see app.js): consume it where the game has a natural "back"
+    if (G.adBusy) { ads.cancelWait(); return true; } // a pending ad that never reported back: Back returns to the game
     if (modalOpen()) { // a sheet closes first (an offer counts as "No thanks"; the age question waits for next launch)
       if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null;
       else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later');
@@ -5735,7 +5754,7 @@ if (DEV) window.__egg = {
   perf: { bodyCache, ringCache, PERF, STEPS, applySettings: () => { applySettings(save); setDPR(); } },
   mapJump(w) { G.world = w; G.mscroll.focus = ''; }, // map shots: show world w
   mapScroll(y) { G.mscroll.y = y; G.mscroll.v = 0; G.mscroll.focus = G.world + ':' + G.mscroll.enter; },
-  G, LEVELS, LAB,
+  G, LEVELS, LAB, ui,
   get sim() { return G.sim; },
   start: (i, o) => startLevel(i, o),
   CHICK_DEMOS,
