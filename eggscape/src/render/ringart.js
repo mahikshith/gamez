@@ -366,9 +366,47 @@ function faceCanvas(ring, arcs, col, st, scale) {
 // ---------- the ring body (called with ctx in world space, not rotated) ----------
 // up: the water world, where eggs float up and rest on the underside of a ring: the slab's wall shows above the face
 // (seen from below), so it never covers the surface an egg rests on.
+// 2026-11-19 speed pass (mykee: rings "stuck" on a 2-3 year old phone): the whole slab (shadow, wall, outline, face,
+// bevel: ~10 thick strokes per ring) is painted once onto an offscreen canvas and stamped each frame, rotated. The
+// shadow and wall hang straight DOWN the screen, so a stamp turned away from the angle it was painted at would swing
+// them round; it is repainted once the ring has turned BODY.turn rad from that angle (0.2 rad: the wall is off by
+// under a pixel). A still ring is never repainted; a turning one a few times a second instead of every frame.
+export const bodyCache = { on: true, builds: 0, turn: 0.2 };
 export function drawRingBody(ctx, ring, col, st, k, up) {
-  const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2, px = 1 / k, A = ring.body.getAngle();
-  const arcs = ringArcs(ring);
+  const A = ring.body.getAngle(), arcs = ringArcs(ring);
+  if (bodyCache.on && ringCache.on && typeof document !== 'undefined' && ctx.getTransform) {
+    let B = null;
+    try { const m = ctx.getTransform(); B = bodyCanvas(ring, arcs, col, st, k, up, A, Math.hypot(m.a, m.b)); } catch (e) { B = null; }
+    if (B) {
+      ctx.save(); ctx.rotate(A - B.A); ctx.drawImage(B.canvas, -B.half, -B.half, B.half * 2, B.half * 2); ctx.restore();
+      return arcs;
+    }
+  }
+  paintBody(ctx, ring, arcs, col, st, k, up, A);
+  return arcs;
+}
+function bodyCanvas(ring, arcs, col, st, k, up, A, scale) {
+  const S = stateOf(ring), key = faceKey(ring, col) + '|' + (up ? 1 : 0) + '|' + (st.alpha || 1) + '|' + (st.shine ? 1 : 0);
+  let d = A - S.bA; d -= Math.round(d / TAU) * TAU;
+  if (S.bcv && S.bkey === key && Math.abs(d) < bodyCache.turn && scale <= S.bscale * 1.04 && scale > S.bscale * 0.6) return S.body;
+  const half = (ring.prof ? ringReach(ring) : ring.r) + RING_TH / 2 + 0.34;
+  let sc = scale * 1.15; // the same headroom as the face: the camera eases in and out, rebuild only on a real zoom
+  const MAX = 2048;
+  if (2 * half * sc > MAX) sc = MAX / (2 * half);
+  const size = Math.ceil(2 * half * sc);
+  const cv = S.bcv || document.createElement('canvas');
+  if (cv.width !== size || cv.height !== size) { cv.width = size; cv.height = size; }
+  const c = cv.getContext('2d');
+  if (!c) return null;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, size, size);
+  c.setTransform(sc, 0, 0, sc, size / 2, size / 2);
+  paintBody(c, ring, arcs, col, st, k, up, A);
+  S.bcv = cv; S.bkey = key; S.bscale = scale * 1.15; S.bA = A; S.body = { canvas: cv, half: size / 2 / sc, A };
+  bodyCache.builds++;
+  return S.body;
+}
+function paintBody(ctx, ring, arcs, col, st, k, up, A) {
+  const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2, px = 1 / k;
   const glassy = (st.alpha || 1) < 1;
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'round';
@@ -438,7 +476,6 @@ export function drawRingBody(ctx, ring, col, st, k, up) {
     ctx.strokeStyle = g2; ringLine(ctx, ring, ri + bw / 2, a0 + c0, a1 - c1); ctx.stroke();
   }
   ctx.restore();
-  return arcs;
 }
 
 // Charring where fire is working on a piece (dynamic, over the face). ctx rotated to the ring.

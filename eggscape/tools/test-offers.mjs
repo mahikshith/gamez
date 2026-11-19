@@ -91,7 +91,8 @@ const app = { money: true };
   ok(id(OF.evaluate(d, 'home', { ...app, now })) !== 'starter_nest', 'three "No thanks": silent for 14 days');
   // child-safe: no popups at all
   const kid = mk({ unlocked: 9, age: 'u13' }); OF.startSession(kid, T0); OF.startSession(kid, T0 + HOUR);
-  ok(OF.evaluate(kid, 'home', { ...app, now: T0 + HOUR }) === null && OF.blocked(kid, T0, 'home') === 'child', 'u13: no offers');
+  if (OF.AGE_GATE) ok(OF.evaluate(kid, 'home', { ...app, now: T0 + HOUR }) === null && OF.blocked(kid, T0, 'home') === 'child', 'u13: no offers');
+  else ok(OF.blocked(kid, T0, 'home') !== 'child', 'age gate off (2026-11-19): an old u13 answer no longer blocks offers');
   ok(OF.childSafe(kid) === OF.AGE_GATE, 'child-safe follows AGE_GATE');
   ok(OF.needsAge(mk(), true) === OF.AGE_GATE && !OF.needsAge(mk(), false) && !OF.needsAge(mk({ age: '13+' }), true), 'the age question: app only, once');
   const q = OF.parentQuestion(() => 0.5);

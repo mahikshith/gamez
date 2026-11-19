@@ -21,7 +21,9 @@ import { IAP, iapAvailable, BANK_OPEN } from './economy.js';
 
 // The first-launch age question and the child-safe mode behind it (no offer popups, a parent check before any
 // real-money purchase, child-directed ad requests). One switch, in case the owner picks another audience.
-export const AGE_GATE = true;
+// 2026-11-19 (mykee): off, no age question on the home screen. Store listing must then target 13+ (Play Console >
+// Target audience); a kids audience would need child-directed ads for everyone instead.
+export const AGE_GATE = false;
 
 export const CAPS = { perSession: 1, perDay: 2, gapMin: 30, fromLevel: 6, silenceAfter: 3, silenceDays: 14 };
 const DAY = 864e5, MIN = 6e4;

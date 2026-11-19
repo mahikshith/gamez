@@ -986,8 +986,8 @@ export function drawStore(ui, ctx, W, H, state) {
   // a long list scrolls between the tabs and the bottom; cards cut by the edge keep a tap area only inside the list and
   // record nothing for the overlap check
   const SC = state.scroll || { y: 0, v: 0, max: 0 }, vt = bodyTop - 4 * s, vb = OY + AH;
-  const dt = Math.min(0.05, Math.max(0, t - (SC.t || t))); SC.t = t;
-  if (!state.dragging) { if (Math.abs(SC.v) > 8) { SC.y += SC.v * dt; SC.v *= Math.exp(-4.2 * dt); } else SC.v = 0; }
+  const dt = Math.min(0.1, Math.max(0, t - (SC.t || t))); SC.t = t;
+  if (!state.dragging) { if (Math.abs(SC.v) > 8) { SC.y += SC.v * dt; SC.v *= Math.exp(-2.3 * dt); } else SC.v = 0; } // 2026-11-19: a longer glide (main.js SCROLL_DRAG)
   let total = 0;
   const at = {};
   rows.forEach((R, i) => { total += i ? R.before : 0; R.off = total; if (R.key) at[R.key] = total; total += R.h; });

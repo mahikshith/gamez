@@ -76,7 +76,7 @@ public class MainActivity extends Activity {
         web.setLongClickable(false);
         web.setHapticFeedbackEnabled(false);
         web.setOnLongClickListener(v -> true);
-        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        // 2026-11-19 speed pass: no hardware layer on the WebView (it drew every frame into an extra offscreen buffer first; WebView already draws straight to the GPU)
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);

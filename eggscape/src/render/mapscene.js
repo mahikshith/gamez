@@ -6,6 +6,7 @@
 // Layout and art only: main.js owns the scroll, the buttons, the hen at the next stop and the gate cards.
 // The still part of every band (ground, trees, barns, crystals...) is painted once into an offscreen canvas and blitted;
 // only the creatures, smoke, bubbles and sparkles are drawn live, and only for the bands on screen (battery).
+import { PERF } from '../perf.js'; // 2026-11-19 Low graphics: the cast is painted 12x a second, not every frame
 import { drawMapAmb } from './mapamb.js';
 import { drawVillainPortrait } from './villain-art.js';
 import { drawRooster, roosterPose, drawGoose, goosePose } from './allies.js';
@@ -558,19 +559,41 @@ function drawSummit(ctx, L, sy, t, calm) {
   ctx.beginPath(); ctx.moveTo(x + 37 * u, y - 52 * u); ctx.lineTo(x + 37 * u + 26 * u, y - 46 * u + (calm ? 0 : Math.sin(t * 4) * 2 * u)); ctx.lineTo(x + 37 * u, y - 38 * u); ctx.closePath(); ctx.fillStyle = '#e8402e'; ctx.fill();
 }
 
-export function drawCast(ctx, L, sy, vt, vb, t, calm) {
+export function drawCast(ctx, L, sy, vt, vb, t, calm, DPR = 1) {
   L.sy = sy;
   if (L.TOP + 60 * L.u - sy > vt) drawSummit(ctx, L, sy, t, calm);
   for (let w = 0; w < L.nw; w++) {
     const top = L.bandTop(w) - 120 * L.u - sy, bot = L.bandTop(w) + L.BH + 40 * L.u - sy;
     if (bot < vt || top > vb) continue;
-    const S = STILL[w] || [], C = CAST[w] || [];
-    const G = calm ? null : ambBand(L, w, sy, t);
-    if (G) drawMapAmb(ctx, 'back', w, G);
-    S.forEach((e, i) => { try { drawStillLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
-    C.forEach((e, i) => { try { drawLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
-    if (G) drawMapAmb(ctx, 'front', w, G);
+    if (PERF.low && typeof document !== 'undefined') { castCached(ctx, L, w, sy, t, calm, DPR); continue; }
+    castBand(ctx, L, w, sy, t, calm);
   }
+  L.sy = sy;
+}
+function castBand(ctx, L, w, sy, t, calm) {
+  L.sy = sy;
+  const S = STILL[w] || [], C = CAST[w] || [];
+  const G = calm ? null : ambBand(L, w, sy, t);
+  if (G) drawMapAmb(ctx, 'back', w, G);
+  S.forEach((e, i) => { try { drawStillLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
+  C.forEach((e, i) => { try { drawLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
+  if (G) drawMapAmb(ctx, 'front', w, G);
+}
+// 2026-11-19 Low graphics: a band's creatures are painted onto their own canvas 12 times a second (bands take turns)
+// and that picture is stamped every frame, so scrolling stays smooth while the cast still moves
+const CASTC = new Map();
+function castCached(ctx, L, w, sy, t, calm, DPR) {
+  const u = L.u, y0 = L.bandTop(w) - 120 * u, h = L.BH + 160 * u, key = `${L.W}x${h.toFixed(1)}x${DPR}`;
+  let E = CASTC.get(w);
+  if (!E || E.key !== key) { E = { cv: (E && E.cv) || document.createElement('canvas'), key, t: -1 }; E.cv.width = Math.ceil(L.W * DPR); E.cv.height = Math.ceil(h * DPR); CASTC.set(w, E); }
+  if (E.t < 0 || t - E.t >= 1 / 12 || t < E.t) {
+    const c = E.cv.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, E.cv.width, E.cv.height); c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    castBand(c, L, w, y0, t, calm);
+    E.t = t + (w % 2) * 0.04; // neighbouring bands repaint on different frames
+  }
+  ctx.drawImage(E.cv, 0, y0 - sy, L.W, h);
+  if (CASTC.size > 4) for (const k of CASTC.keys()) { if (Math.abs(k - w) > 1) CASTC.delete(k); }
 }
 // what the ambience layer (render/mapamb.js) needs to know about a band on screen
 function ambBand(L, w, sy, t) {

@@ -575,37 +575,118 @@ function frameAt(ctx, T, k, f) {
 }
 function leapPitch(sim, T) { return sim.thPitch ? sim.thPitch(T) : 0; }
 
-// the dens: an arched burrow (the weasel's and the Rat King's) or a gnawed round hole (the rats') in the floor ring
-export function drawThiefDens(ctx, sim, t, k) {
+// the dens. 2026-11-19 (mykee: "a 2D semicircle blob, the eggs float in space inside it; people don't understand what
+// the den does"): a real place built on the floor ring, with the thief's face on it so it reads as ITS home:
+//   weasel:   an earth mound with grass on top, a stone-rimmed arched burrow, a straw bed inside
+//   Rat King: a stone gatehouse, brick arch with a gold crown keystone, coins spilling out
+//   rats:     a wooden skirting block with the classic gnawed mouse hole, crumbs at the door
+// Stolen eggs lie on the straw just inside the doorway (sim: thHolds), so they sit IN the den, not over a blob.
+const DEN_LOOK = {
+  weasel: { w: 0.58, h: 0.56, W: 0.98, H: 0.9, a: '#a0703e', b: '#5a361a', rim: '#c9b28a', line: '#2e1a0a' },
+  ratking: { w: 0.66, h: 0.6, W: 1.1, H: 0.98, a: '#9a96a8', b: '#4c4858', rim: '#d8cfb6', line: '#26222e' },
+  rat: { w: 0.5, h: 0.52, W: 0.8, H: 0.8, a: '#b07a44', b: '#6e4422', rim: '#3a220e', line: '#2a1606' },
+};
+export function drawThiefDens(ctx, sim, t, k, over = false) {
   for (const T of sim.thieves || []) {
     if (T.home >= 0) continue; // it shares its boss's den
     if (T.kind === 'rat' && sim.thieves.some((o) => o.kind === 'rat' && o.home < 0 && o.id < T.id && o.denA === T.denA && o.run === T.run)) continue; // a pair shares one hole
     const ring = sim.rings[T.run], a = ring.body.getAngle() + T.denA, rf = ring.r - 0.08;
     pxAt(ctx, rf * Math.cos(a), rf * Math.sin(a), k, () => {
       ctx.rotate(Math.atan2(-Math.cos(a), -Math.sin(a)));
-      const rat = T.kind === 'rat', w = (rat ? 0.34 : T.kind === 'ratking' ? 0.75 : 0.5) * k, h = (rat ? 0.3 : T.kind === 'ratking' ? 0.56 : 0.44) * k, lw = Math.max(1.2, 0.04 * k);
-      ctx.beginPath();
-      if (rat) { // a gnawed round hole: toothy rim
-        for (let i = 0; i <= 16; i++) { const an = Math.PI + (i / 16) * Math.PI, rr = (i % 2 ? 0.88 : 1); ctx.lineTo(Math.cos(an) * w * rr, Math.sin(an) * h * 1.15 * rr + 2); }
-      } else { ctx.moveTo(-w, 2); ctx.bezierCurveTo(-w, -h * 1.25, w, -h * 1.25, w, 2); }
-      ctx.closePath();
-      const g = ctx.createLinearGradient(0, -h, 0, 0); g.addColorStop(0, '#120806'); g.addColorStop(1, '#2e1a10');
-      ctx.fillStyle = g; ctx.fill();
-      ctx.lineWidth = lw; ctx.strokeStyle = '#1a0c06'; ctx.stroke();
-      if (!rat) { // straw on its floor
-        ctx.strokeStyle = '#b8902e'; ctx.lineWidth = Math.max(1, 0.022 * k);
-        for (let i = 0; i < 7; i++) { const x = (-0.8 + (i / 6) * 1.6) * w * 0.8, an = (hash(i) - 0.5) * 1.2; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + Math.sin(an) * 0.14 * k, -Math.cos(an) * 0.1 * k); ctx.stroke(); }
-      }
-      // two eyes glinting in the dark while it hides inside
-      if (T.ph === 'hide' || T.ph === 'wait') {
-        const bl = Math.sin(t * 0.8 + T.id) > 0.92 ? 0.2 : 1;
-        ctx.fillStyle = rat ? '#ff5a6a' : '#ffd23a';
-        for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * w * 0.22, -h * 0.5, Math.max(1.2, 0.035 * k), Math.max(1.2, 0.035 * k) * bl, 0, 0, TAU); ctx.fill(); }
-      }
-      const O = T, n = O.stash.length;
-      if (n && sim.state === 'play') { ctx.fillStyle = `rgba(230,50,40,${0.55 + 0.4 * Math.sin(t * 6)})`; ctx.beginPath(); ctx.arc(0, -h * 1.25, Math.max(3, 0.09 * k), 0, TAU); ctx.fill(); }
+      if (over) drawDenOver(ctx, T, t, k, sim.state === 'play'); else drawDen(ctx, T, t, k);
     });
   }
+}
+function drawDen(ctx, T, t, k) {
+  const kind = T.kind === 'ratking' ? 'ratking' : T.kind === 'rat' ? 'rat' : 'weasel', D = DEN_LOOK[kind];
+  const w = D.w * k, h = D.h * k, W = D.W * k, H = D.H * k, lw = Math.max(1.2, 0.035 * k), R = (i) => hash(T.id * 31 + i);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  // contact shadow on the floor
+  ctx.fillStyle = 'rgba(10,6,4,0.3)'; ctx.beginPath(); ctx.ellipse(0, 1, W * 1.05, Math.max(2, H * 0.1), 0, 0, TAU); ctx.fill();
+  // the body: mound / gatehouse / skirting block
+  ctx.beginPath();
+  if (kind === 'weasel') { ctx.moveTo(-W, 3); ctx.bezierCurveTo(-W * 0.98, -H * 0.72, -W * 0.5, -H * 1.04, 0, -H); ctx.bezierCurveTo(W * 0.5, -H * 1.04, W * 0.98, -H * 0.72, W, 3); }
+  else if (kind === 'ratking') { const c = W * 0.18; ctx.moveTo(-W, 3); ctx.lineTo(-W, -H + c); ctx.quadraticCurveTo(-W, -H, -W + c, -H); ctx.lineTo(W - c, -H); ctx.quadraticCurveTo(W, -H, W, -H + c); ctx.lineTo(W, 3); }
+  else { const c = W * 0.12; ctx.moveTo(-W, 3); ctx.lineTo(-W, -H + c); ctx.quadraticCurveTo(-W, -H, -W + c, -H); ctx.lineTo(W - c, -H); ctx.quadraticCurveTo(W, -H, W, -H + c); ctx.lineTo(W, 3); }
+  ctx.closePath();
+  const g = ctx.createLinearGradient(-W * 0.5, -H, W * 0.4, 0); g.addColorStop(0, D.a); g.addColorStop(1, D.b);
+  ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = lw * 1.4; ctx.strokeStyle = D.line; ctx.stroke();
+  ctx.save(); ctx.clip();
+  if (kind === 'weasel') { // pebbles in the earth, a lit rim on the upper left
+    for (let i = 0; i < 9; i++) { const px = (R(i) * 2 - 1) * W * 0.85, py = -R(i + 20) * H * 0.85; ctx.fillStyle = i % 2 ? 'rgba(60,34,14,0.35)' : 'rgba(255,230,190,0.18)'; ctx.beginPath(); ctx.ellipse(px, py, (0.03 + R(i + 40) * 0.03) * k, (0.02 + R(i + 50) * 0.02) * k, R(i + 60) * 3, 0, TAU); ctx.fill(); }
+    ctx.strokeStyle = 'rgba(255,236,200,0.35)'; ctx.lineWidth = lw * 2; ctx.beginPath(); ctx.moveTo(-W * 0.9, -H * 0.45); ctx.bezierCurveTo(-W * 0.8, -H * 0.85, -W * 0.4, -H * 0.98, -W * 0.05, -H * 0.97); ctx.stroke();
+  } else if (kind === 'ratking') { // stone blocks
+    ctx.strokeStyle = 'rgba(30,26,40,0.45)'; ctx.lineWidth = lw * 0.8;
+    const bh = H / 4;
+    for (let r = 1; r < 4; r++) { ctx.beginPath(); ctx.moveTo(-W, -r * bh); ctx.lineTo(W, -r * bh); ctx.stroke(); for (let c = -2; c <= 2; c++) { const x = (c + (r % 2) * 0.5) * W * 0.42; ctx.beginPath(); ctx.moveTo(x, -r * bh); ctx.lineTo(x, -(r - 1) * bh); ctx.stroke(); } }
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(-W, -H, W * 2, H * 0.08);
+  } else { // wood grain and a skirting moulding along the top
+    ctx.strokeStyle = 'rgba(60,30,10,0.35)'; ctx.lineWidth = lw * 0.7;
+    for (let i = 0; i < 5; i++) { const y = -H * (0.15 + i * 0.17); ctx.beginPath(); ctx.moveTo(-W, y); ctx.bezierCurveTo(-W * 0.3, y - 3, W * 0.3, y + 3, W, y); ctx.stroke(); }
+    ctx.fillStyle = '#d29a5a'; ctx.fillRect(-W, -H, W * 2, H * 0.12); ctx.fillStyle = 'rgba(60,30,10,0.4)'; ctx.fillRect(-W, -H * 0.88, W * 2, Math.max(1, lw * 0.6));
+  }
+  ctx.restore();
+  // the doorway
+  const door = () => { ctx.beginPath(); ctx.moveTo(-w, 3); ctx.lineTo(-w, -h * 0.45); ctx.bezierCurveTo(-w, -h * 1.33, w, -h * 1.33, w, -h * 0.45); ctx.lineTo(w, 3); ctx.closePath(); };
+  door();
+  const dg = ctx.createLinearGradient(0, -h * 1.1, 0, 3); dg.addColorStop(0, '#060302'); dg.addColorStop(0.7, '#1c0f08'); dg.addColorStop(1, '#3a2312');
+  ctx.fillStyle = dg; ctx.fill();
+  // a straw bed on the den's floor, where stolen eggs lie
+  ctx.strokeStyle = '#d6aa3c'; ctx.lineWidth = Math.max(1, 0.022 * k);
+  for (let i = 0; i < 12; i++) { const x = (-0.9 + (i / 11) * 1.8) * w * 0.9, an = (R(i + 100) - 0.5) * 2.2, l = (0.08 + R(i + 110) * 0.08) * k; ctx.beginPath(); ctx.moveTo(x, -h * 0.12); ctx.lineTo(x + Math.cos(an) * l, -h * 0.12 - Math.sin(Math.abs(an)) * l * 0.5); ctx.stroke(); }
+  if (kind === 'ratking') { ctx.fillStyle = '#ffd23a'; ctx.strokeStyle = '#a06a00'; ctx.lineWidth = Math.max(1, 0.012 * k); for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.ellipse((R(i + 120) * 2 - 1) * W * 0.9, -1 - R(i + 130) * 2, 0.045 * k, 0.025 * k, 0, 0, TAU); ctx.fill(); ctx.stroke(); } }
+  // two eyes glinting in the dark while it hides inside
+  if (T.ph === 'hide' || T.ph === 'wait') {
+    const bl = Math.sin(t * 0.8 + T.id) > 0.92 ? 0.2 : 1, er = Math.max(1.4, 0.04 * k);
+    ctx.fillStyle = kind === 'rat' ? '#ff5a6a' : '#ffd23a';
+    for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * w * 0.24, -h * 0.62, er, er * bl, 0, 0, TAU); ctx.fill(); }
+  }
+}
+// over the eggs: shade inside the doorway (a stolen egg lies IN the dark), then the rim, the plaque and the alert
+function drawDenOver(ctx, T, t, k, live) {
+  const kind = T.kind === 'ratking' ? 'ratking' : T.kind === 'rat' ? 'rat' : 'weasel', D = DEN_LOOK[kind];
+  const w = D.w * k, h = D.h * k, W = D.W * k, H = D.H * k, lw = Math.max(1.2, 0.035 * k), R = (i) => hash(T.id * 31 + i);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const door = () => { ctx.beginPath(); ctx.moveTo(-w, 3); ctx.lineTo(-w, -h * 0.45); ctx.bezierCurveTo(-w, -h * 1.33, w, -h * 1.33, w, -h * 0.45); ctx.lineTo(w, 3); ctx.closePath(); };
+  if (T.stash.length) { door(); const sg = ctx.createLinearGradient(0, -h * 1.1, 0, 3); sg.addColorStop(0, 'rgba(8,4,2,0.62)'); sg.addColorStop(0.55, 'rgba(8,4,2,0.3)'); sg.addColorStop(1, 'rgba(8,4,2,0.08)'); ctx.fillStyle = sg; ctx.fill(); }
+  // its rim: stones round the burrow, bricks and a gold crown for the king, a gnawed edge for the rats
+  if (kind === 'rat') {
+    ctx.strokeStyle = D.rim; ctx.lineWidth = lw * 2.2; door(); ctx.stroke();
+    ctx.strokeStyle = '#e8b878'; ctx.lineWidth = lw; ctx.beginPath(); for (let i = 0; i <= 10; i++) { const u = i / 10, x = -w + u * 2 * w, y = -h * 0.45 - Math.sin(u * Math.PI) * h * 0.66 - (i % 2 ? 3 : 0); if (i) ctx.lineTo(x * 1.08, y * 1.05); else ctx.moveTo(x * 1.08, y * 1.05); } ctx.stroke();
+    ctx.fillStyle = '#d8b07a'; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc((R(i + 70) * 2 - 1) * w * 1.4, -1 - R(i + 80) * 3, Math.max(1, 0.018 * k), 0, TAU); ctx.fill(); } // crumbs
+  } else {
+    const n = kind === 'ratking' ? 9 : 8;
+    for (let i = 0; i <= n; i++) {
+      const u = i / n, ang = Math.PI - u * Math.PI, rx = w * 1.08, ry = h * 1.0, cx = Math.cos(ang) * rx, cy = -h * 0.45 - Math.sin(ang) * ry * 0.95 + (Math.abs(Math.cos(ang)) > 0.98 ? 0 : 0);
+      const sz = (kind === 'ratking' ? 0.085 : 0.07) * k * (0.85 + R(i + 90) * 0.3);
+      ctx.save(); ctx.translate(cx, Math.min(cy, -sz * 0.4)); ctx.rotate(-ang + Math.PI / 2);
+      ctx.beginPath(); if (kind === 'ratking') ctx.rect(-sz * 0.7, -sz * 0.55, sz * 1.4, sz * 1.1); else ctx.ellipse(0, 0, sz, sz * 0.75, 0, 0, TAU);
+      ctx.fillStyle = kind === 'ratking' ? '#b8b2c4' : i % 2 ? '#9a9088' : '#b4aa9e'; ctx.fill(); ctx.lineWidth = lw * 0.8; ctx.strokeStyle = D.line; ctx.stroke();
+      ctx.restore();
+    }
+    for (const sx of [-1, 1]) { const sz = 0.08 * k; ctx.beginPath(); ctx.ellipse(sx * w * 1.08, -sz * 0.4, sz, sz * 0.7, 0, 0, TAU); ctx.fillStyle = '#a49a90'; ctx.fill(); ctx.lineWidth = lw * 0.8; ctx.strokeStyle = D.line; ctx.stroke(); }
+    if (kind === 'ratking') crown(ctx, 0, -h * 1.16, 0.16 * k, lw);
+  }
+  // whose home this is: its face on a round plaque over the door (the king has his crown keystone instead)
+  if (kind !== 'ratking') {
+    const pr = (kind === 'rat' ? 0.13 : 0.15) * k, py = kind === 'rat' ? -H - pr * 0.2 : -H * 0.98 - pr * 0.35;
+    ctx.beginPath(); ctx.arc(0, py, pr, 0, TAU); ctx.fillStyle = '#f2dfb4'; ctx.fill(); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = D.line; ctx.stroke();
+    ctx.save(); ctx.beginPath(); ctx.arc(0, py, pr * 0.9, 0, TAU); ctx.clip(); ctx.translate(0, py); ctx.scale(1, 1); drawThiefEmblem(ctx, kind, pr * 0.8, t); ctx.restore();
+  }
+  // eggs inside: a pulsing red alert over the roof (tap a chick, the rooster or goose at it to knock one loose)
+  const n = T.stash.length;
+  if (n && live) {
+    const ay = -H - (kind === 'ratking' ? 0.3 : 0.38) * k, ar = Math.max(5, 0.1 * k), pu = 0.6 + 0.4 * Math.sin(t * 6);
+    ctx.fillStyle = `rgba(230,50,40,${0.7 + 0.3 * pu})`; ctx.beginPath(); ctx.arc(0, ay, ar, 0, TAU); ctx.fill(); ctx.lineWidth = Math.max(1, ar * 0.18); ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.fillRect(-ar * 0.11, ay - ar * 0.55, ar * 0.22, ar * 0.62); ctx.beginPath(); ctx.arc(0, ay + ar * 0.42, ar * 0.13, 0, TAU); ctx.fill();
+  }
+}
+function crown(ctx, x, y, s, lw) {
+  ctx.save(); ctx.translate(x, y);
+  ctx.beginPath(); ctx.moveTo(-s, s * 0.45); ctx.lineTo(-s, -s * 0.3); ctx.lineTo(-s * 0.5, s * 0.1); ctx.lineTo(0, -s * 0.55); ctx.lineTo(s * 0.5, s * 0.1); ctx.lineTo(s, -s * 0.3); ctx.lineTo(s, s * 0.45); ctx.closePath();
+  ctx.fillStyle = '#ffcc2a'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = '#7a4a00'; ctx.stroke();
+  ctx.fillStyle = '#e8402e'; ctx.beginPath(); ctx.arc(0, s * 0.15, s * 0.16, 0, TAU); ctx.fill();
+  ctx.restore();
 }
 
 // a thief in the level (under the eggs); the pounce / roll telegraph first

@@ -6,6 +6,7 @@ const MAX = 560;
 const TAU = 6.283185307;
 const easeOut = (u) => 1 - (1 - u) * (1 - u) * (1 - u);
 const backOut = (u) => { const c = 1.9, v = u - 1; return 1 + (c + 1) * v * v * v + c * v * v; };
+import { PERF } from '../perf.js';
 
 // ---- soft puff sprites: one small offscreen canvas per colour (a lumpy cloud with a lit top-left and a shaded
 // underside), so a puff costs one drawImage instead of a per-frame gradient
@@ -66,6 +67,7 @@ export class FX {
   }
 
   burst(x, y, n, f) {
+    if (PERF.low && n > 3) n = Math.ceil(n * 0.5); // 2026-11-19 Low graphics: half the particles
     for (let i = 0; i < n; i++) this.add(f(i, Math.random(), Math.random()));
   }
 

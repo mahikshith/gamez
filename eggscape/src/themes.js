@@ -3,6 +3,7 @@
 // Static scenery is prerendered into up to 3 parallax layers in resize(); draw() only blits
 // them plus a handful of animated elements. World camera is y-up (planck), meters.
 
+import { PERF } from './perf.js'; // 2026-11-19 graphics quality: Low flattens the layers, Medium/Low drop the light shafts
 
 // ---------------------------------------------------------------- math / rng / color
 const TAU = Math.PI * 2;
@@ -1987,7 +1988,7 @@ export function createBackdrop(theme, seed = 1) {
       if (art.back) { L.push({ cv: paint([art.sky], 'sky'), f: 0 }); L.push({ cv: paint([art.far], 'far'), f: 0.35 }); }
       else L.push({ cv: paint([art.sky, art.far], 'sky'), f: 0.35 });
       L.push({ cv: paint([art.near], 'near'), f: 1 });
-      S.layers = L;
+      S.layers = L; S.flat = null;
       // light shafts from the key light (top-left), breathing slowly
       S.shaft = null;
       if (at.shafts) { const [col, a, fx = 0.12, ang = 1.02, spread = 0.75, n = 6] = at.shafts; S.R = rng(S.seed + 55); S.shaft = sprite(Math.min(1, dpr * 0.5), S.W, S.H, (c) => rays(c, S.W * fx, -S.H * 0.12, ang, spread, S.H * 1.3, n, col, a, S.R)); }
@@ -2010,15 +2011,26 @@ export function createBackdrop(theme, seed = 1) {
       if (!S.layers.length) return;
       S.cam = cam || S.cam;
       const L = S.layers;
+      if (PERF.low) { // 2026-11-19 Low graphics: every layer (and the light shafts at their mean strength) flattened into ONE picture, one blit a frame, no parallax
+        if (!S.flat) {
+          const F = mkCanvas(L[0].cv.width, L[0].cv.height), c = F.getContext('2d', { alpha: false });
+          for (let i = 0; i < L.length; i++) { c.drawImage(L[i].cv, 0, 0, F.width, F.height); if (i === L.length - 2 && S.shaft) { c.globalAlpha = 0.72; c.drawImage(S.shaft.cv, 0, 0, F.width, F.height); c.globalAlpha = 1; } }
+          S.flat = F;
+        }
+        S.tf(ctx, 0); ctx.drawImage(S.flat, 0, 0, S.W, S.H); ctx.restore();
+        if (art.front) art.front(ctx, t, S);
+        if (FT) { const M2 = 2 * S.M; ctx.drawImage(FT[0].cv, -M2, -M2, FT[0].w, FT[0].h); ctx.drawImage(FT[1].cv, S.w - S.fw + M2, -M2, FT[1].w, FT[1].h); }
+        return;
+      }
       for (let i = 0; i < L.length; i++) {
         S.tf(ctx, L[i].f); ctx.drawImage(L[i].cv, 0, 0, S.W, S.H); ctx.restore();
         if (art.back && i === 0) art.back(ctx, t, S);
-        if (i === L.length - 2) { if (S.shaft) { S.tf(ctx, 0.2); ctx.globalAlpha = 0.72 + 0.28 * Math.sin(t * 0.45); ctx.drawImage(S.shaft.cv, 0, 0, S.W, S.H); ctx.globalAlpha = 1; ctx.restore(); } if (art.mid) art.mid(ctx, t, S); }
+        if (i === L.length - 2) { if (S.shaft && !PERF.lite) { S.tf(ctx, 0.2); ctx.globalAlpha = 0.72 + 0.28 * Math.sin(t * 0.45); ctx.drawImage(S.shaft.cv, 0, 0, S.W, S.H); ctx.globalAlpha = 1; ctx.restore(); } if (art.mid) art.mid(ctx, t, S); }
       }
       if (art.front) art.front(ctx, t, S);
       if (FT) { const [ox, oy] = fOff(), M2 = 2 * S.M; ctx.drawImage(FT[0].cv, ox - M2, oy - M2, FT[0].w, FT[0].h); ctx.drawImage(FT[1].cv, S.w - S.fw + M2 + ox, oy - M2, FT[1].w, FT[1].h); }
     },
-    drawAmbient(ctx, t = 0, cam) { if (A && A.list.length) drawAmbientList(ctx, t, A, S); },
+    drawAmbient(ctx, t = 0, cam) { if (A && A.list.length && !PERF.low) drawAmbientList(ctx, t, A, S); }, // Low graphics: no ambient creatures
     // info (optional): { x, k, nw } = the nest's screen x, px per metre and width in metres, for its contact shadow
     drawGround(ctx, x, y, w, h, t = 0, info) {
       if (!G) return;

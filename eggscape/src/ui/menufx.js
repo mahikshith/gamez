@@ -5,6 +5,7 @@
 // Battery saver, and a few still particles with reduced motion (calm). back() runs behind the panels; front() runs
 // after the whole screen is drawn and adds what must sit ON the UI: snow piles on button tops, a light sweep on gold.
 
+import { PERF } from '../perf.js'; // 2026-11-19: off on Low graphics (was: off with Battery saver)
 const TAU = Math.PI * 2, MAXP = 72;
 const mk = (w, h, f) => { const c = document.createElement('canvas'); c.width = w; c.height = h; f(c.getContext('2d'), w, h); return c; };
 const glow = (col, mid) => mk(48, 48, (g) => { const r = g.createRadialGradient(24, 24, 0, 24, 24, 24); r.addColorStop(0, col); r.addColorStop(mid || 0.35, col); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 48, 48); });
@@ -70,7 +71,7 @@ function setup(id, cfgId, W, H, u, calm) {
 
 // behind the panels. skin: ui.skin; t: seconds (game clock)
 export function menuFxBack(ctx, skin, save, W, H, u, DPR, t) {
-  if (!skin || !skin.fx || !FX[skin.fx] || save.saver) { S.id = null; return; }
+  if (!skin || !skin.fx || !FX[skin.fx] || PERF.low) { S.id = null; return; }
   const t0 = performance.now(), calm = !!save.calm;
   if (S.id !== skin.fx || S.W !== W || S.H !== H || S.calmed !== calm) setup(skin.fx, skin.fx, W, H, u, calm);
   const dt = S.t ? Math.min(0.05, Math.max(0, t - S.t)) : 0.016; S.t = t;
@@ -104,7 +105,7 @@ export function menuFxBack(ctx, skin, save, W, H, u, DPR, t) {
 
 // after the whole screen: snow piles on button tops (they grow, sit a while, melt), a light sweep over gold buttons
 export function menuFxFront(ctx, skin, save, buttons, H, u, t) {
-  if (!skin || !skin.fx || save.saver || S.id !== skin.fx) return;
+  if (!skin || !skin.fx || PERF.low || S.id !== skin.fx) return;
   const t0 = performance.now(), calm = !!save.calm;
   const usable = (b) => b.w > 60 * u && b.h > 26 * u && b.y > H * 0.1 && b.y + b.h < H * 0.98;
   if (skin.fx === 'snow') {

@@ -5,6 +5,8 @@ import { RING_TH, clamp, lerp } from './sim/geom.js';
 import { LEVELS } from './data/levels.js';
 import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop } from './themes.js';
+import { bodyCache, ringCache } from './render/ringart.js';
+import { PERF, applySettings, tick as perfTick, takeStep, STEPS, TIER_NAME } from './perf.js';
 import { audio } from './audio.js';
 import { portal } from './sdk/portal.js';
 import { FX } from './render/fx.js';
@@ -195,7 +197,7 @@ function safeInsets() {
 }
 
 function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, save.saver ? 1.3 : 2, typeof Q !== 'undefined' ? Q.steps[Q.i] : 2);
+  DPR = Math.min(window.devicePixelRatio || 1, PERF.dprCap);
   W_ = Math.max(320, window.innerWidth);
   H_ = Math.max(320, window.innerHeight);
   canvas.width = Math.round(W_ * DPR);
@@ -807,8 +809,8 @@ function pointerDown(e) {
   const id = ui.hit(x, y);
   if (modalOpen()) { if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; } return; } // a sheet or popup takes every tap
   const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : null;
-  if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0 };
-  if (G.screen === 'levels' && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0 }; // the world map scrolls by drag; a tap on a stop still presses
+  if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
+  if (G.screen === 'levels' && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; // the world map scrolls by drag; a tap on a stop still presses
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
   if (G.screen === 'info') { const C = G.infoCard; if (C && (x < C.x || x > C.x + C.w || y < C.y - 10 * ui.u || y > C.y + C.h + 6 * ui.u)) { G.pdrag = null; press('info:close'); } return; } // a tap off the card closes it
   if (G.screen === 'play' && G.toast && G.toast.tip && G.toastRect) { const R = G.toastRect; if (x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h) { G.toast.life = Math.min(G.toast.life, 0.2); return; } } // a tap on a villain tip puts it away
@@ -865,10 +867,14 @@ function pointerMove(e) {
   G.pointer = { x, y };
   const pd = G.pdrag;
   if (pd && pd.pid === e.pointerId && (G.screen === 'practice' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store')) {
-    if (!pd.moved && Math.abs(y - pd.y0) > 9 * ui.u) { pd.moved = true; ui.pressedId = null; }
+    if (!pd.moved && Math.abs(y - pd.y0) > 9 * ui.u) { pd.moved = true; ui.pressedId = null; pd.y0 = y; pd.s0 = pd.sc.y; } // no jump by the 9 px slop
     if (pd.moved) {
-      const now = performance.now(), dtm = Math.max(1, now - pd.lt);
-      pd.v = pd.v * 0.6 + ((pd.last - y) / dtm * 1000) * 0.4; pd.last = y; pd.lt = now;
+      // 2026-11-19 (mykee: "the scroll is so slow"): the fling speed is the finger's speed over its last ~100 ms (every
+      // coalesced touch point counts), not a smoothed per-event guess that lagged behind a quick flick
+      const now = performance.now(), pts = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+      if (pts.length) for (const q of pts) pd.smp.push([q.clientY, q.timeStamp || now]); else pd.smp.push([y, now]);
+      while (pd.smp.length > 2 && now - pd.smp[0][1] > 100) pd.smp.shift();
+      pd.last = y; pd.lt = now;
       pd.sc.y = clamp(pd.s0 + pd.y0 - y, 0, pd.sc.max); pd.sc.v = 0;
     }
     return;
@@ -902,9 +908,17 @@ function pointerMove(e) {
   }
 }
 
+// the speed a released drag carries on with (px/s, + = content moves up): the finger's travel over its last ~100 ms;
+// a finger that stopped before lifting carries nothing
+function flingSpeed(pd) {
+  const now = performance.now(), S = pd.smp || [];
+  if (S.length < 2 || now - S[S.length - 1][1] > 90) return 0;
+  const a = S[0], b = S[S.length - 1], dt = Math.max(16, b[1] - a[1]);
+  return clamp(((a[0] - b[0]) / dt) * 1000 * 1.15, -7000, 7000);
+}
 function pointerUp(e) {
   const pd = G.pdrag;
-  if (pd && pd.pid === e.pointerId) { if (pd.moved) pd.sc.v = clamp(pd.v, -3000, 3000); G.pdrag = null; }
+  if (pd && pd.pid === e.pointerId) { if (pd.moved) pd.sc.v = flingSpeed(pd); G.pdrag = null; }
   if (G.screen === 'wonder') wonder.pointerUp(e); // WONDER
   const ct = G.chickTap; // v3.2: tap = power
   if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) G.sim.tapChick(ct.id);
@@ -930,8 +944,8 @@ function pointerUp(e) {
 
 function wheel(e) {
   if (modalOpen()) return;
-  const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : null;
-  if (SC) { e.preventDefault(); SC.y = clamp(SC.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -240, 240), 0, SC.max); SC.v = 0; return; }
+  const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'levels' ? G.mscroll : null;
+  if (SC) { e.preventDefault(); SC.y = clamp(SC.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -400, 400), 0, SC.max); SC.v = 0; return; } // 2026-11-19: the world map scrolls with a mouse wheel too
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   e.preventDefault();
   setZoom((G.zm || 0) - clamp(e.deltaY, -120, 120) * 0.003);
@@ -1324,8 +1338,17 @@ async function press(id) {
     case 'set:close':
       G.settingsOpen = false;
       break;
-    case 'set:saver':
-      save.saver = !save.saver; persist(); setDPR();
+    case 'stab:display': case 'stab:gameplay': case 'stab:sound':
+      G.setTab = id.slice(5);
+      break;
+    case 'gfx:auto': case 'gfx:high': case 'gfx:medium': case 'gfx:low':
+      save.gfx = id.slice(4);
+      if (save.gfx === 'auto') save.gfxStep = -1; // Auto starts again from the phone's own guess
+      applySettings(save); setDPR(); persist();
+      break;
+    case 'fps:auto': case 'fps:30': case 'fps:60':
+      save.fps = id === 'fps:auto' ? 'auto' : +id.slice(4);
+      applySettings(save); persist();
       break;
     case 'set:restore':
       ads.restore(); toast('Checking your purchases...', 2);
@@ -3290,7 +3313,7 @@ function lastEggMoment(sim) {
 const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1 };
 const SCENE_SCREENS = { title: 1, store: 1, practice: 1 }; // these paint a full themed scene; the others keep the game behind and get a wash
 function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
-function renderAll() { themeTick(G.t, save.calm || save.saver); render(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); } // + snow piles on the buttons, the gold sweep
+function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); } // + snow piles on the buttons, the gold sweep
 function render() {
   const t = G.t;
   setSpriteCalm(save.calm); // reduced motion holds the flat sprites still
@@ -3305,7 +3328,9 @@ function render() {
   if (G.screen === 'levels') { drawLevels(); menuFx(); drawToast(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the map covers the screen: no vault drawn under it
   const sim = G.sim;
   const fx = G.fx;
+  if (DEV && G.probe) G.probe('bd0');
   G.backdrop.draw(ctx, t, G.bcam); // parallax: the layers slide and breathe against the camera
+  if (DEV && G.probe) G.probe('bd');
   G.weather.drawBack(ctx);
   if (G.screen === 'title') { drawTitle(); drawToast(); if (G.settingsOpen) drawSettings(); drawModals(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the home screen has its own scene (its skin effect drawn inside drawTitle), no vault behind it
   // world
@@ -3331,7 +3356,9 @@ function render() {
   if (roll) ctx.rotate(roll);
   ctx.scale(k, -k);
   ctx.translate(-camX, -camY);
+  if (DEV && G.probe) G.probe('ground');
   W.drawVaultBack(ctx, sim, G.theme); // premium pass: plate behind the vault
+  if (DEV && G.probe) G.probe('vaultback');
   fx.draw(ctx, 'back');
   blastXf(() => { // v3 portals; an orb-only swirl (entry = exit, no pull) is drawn as an orb spring (2026-11-16)
     const spring = (pt) => !pt.pull && Math.hypot(pt.ax - pt.bx, pt.ay - pt.by) < 0.05;
@@ -3339,8 +3366,11 @@ function render() {
     for (const pt of sim.portals) { if (spring(pt)) W.drawOrbSpring(ctx, pt.ax, pt.ay, t); else { W.drawPortal(ctx, pt.ax, pt.ay, t, false); W.drawPortal(ctx, pt.bx, pt.by, t, true); } }
   }, 0.4);
   if (sim.timeLimit && sim.state === 'play') W.drawFuse(ctx, sim.outerR + 0.32, sim.timeLeft / sim.timeLimit, t, G.screen === 'play' ? fx : null, sim.rings[sim.rings.length - 1]); // v4: hugs a shaped vault
+  if (DEV && G.probe) G.probe('portalsFuse');
   if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length, G.nestDrops && G.nestDrops.run === G.run ? G.nestDrops : null, G.t); // world 8: the basket under the boat
+  if (DEV && G.probe) G.probe('nest');
   { const tl = toWorld(0, G.hudBottom + 8 * ui.u), tr = toWorld(W_, 0); allyFrame(sim, { x0: tl.x, x1: tr.x, top: tl.y }, save.calm, G.screen === 'play' ? fx : null); } // the rooster's perch and the crow wave (render only)
+  if (DEV && G.probe) G.probe('ally');
   const eggPts = sim.aliveEggs().map((e) => e.body.getPosition());
   const stuck = sim.aliveEggs().filter((e) => e.honey > 0);
   for (const ring of sim.rings) {
@@ -3352,12 +3382,15 @@ function render() {
       if (ring.denied > 0) ctx.rotate(Math.sin(t * 60) * 0.01 * ring.denied);
       crowRingXf(ctx, ring.r, k); // the rooster's crow shivers every ring as the wave passes
       W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck, water: sim.water });
+      if (DEV && G.probe) G.probe('ringDraw');
       W.drawV3Ring(ctx, ring, k, t, G.theme);
       drawHardIce(ctx, ring, k, t); // v3.2
       drawRingPulse(ring); // game feel: the grab ripple and detent blink
+      if (DEV && G.probe) G.probe('ringExtras');
       ctx.restore();
     }, ring.i + 1);
   }
+  if (DEV && G.probe) G.probe('rings');
   blastXf(() => drawRockHud(ctx, sim, k, t), 15.3); // v3.3 M10: the rocking vault's level and warning arrows
   setBossView({ top: G.cam.y + (G.play.h / 2) / G.cam.k, k: G.cam.k, u: ui.u }); // bosses (v3.1): the cloud comes into view
   blastXf(() => drawBossRings(ctx, sim, k, t), 12.1); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
@@ -3386,6 +3419,7 @@ function render() {
   blastXf(() => W.drawBarriers(ctx, sim, t, k), 3.1); // predators (v3)
   // floating orbs: mystery until discovered (F19)
   blastXf(() => { for (const o of sim.orbs) if (o.alive) flipped(o.x, o.y, (k) => drawOrb(ctx, o.type, 0, 0, 0.2 * k, t, !!save.seen[o.type])); }, 18.3); // a re-spawned orb can outlive the burst: it leaves with the rings
+  if (DEV && G.probe) G.probe('mid');
   drawHenAt(sim, k, t);
   if (G.screen === 'play' || G.screen === 'intro') { if (sim.water) drawRiseGuide(ctx, sim, t); else W.drawDropGuide(ctx, sim.rings[sim.rings.length - 1], sim.nest.getPosition().x, sim.nestW, t); }
   for (const r of sim.rocks) if (r.alive) W.drawRock(ctx, r, G.theme);
@@ -3403,11 +3437,13 @@ function render() {
   SL(['thief'], (c) => drawThieves(c, sim, t, k)); // v3.6: the weasel and the rats on the ring floor
   blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
   SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
+  if (DEV && G.probe) G.probe('creatures');
   for (const e of sim.aliveEggs()) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash
   drawChickFX(ctx, sim, t, k);
   blastXf(() => { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); }, 10.4); // v3.3: the arms wrapped over a held egg
   blastXf(() => drawReefOver(ctx, sim, t, k), 8.2); // world 8: claws over a held egg, the silt cloud
   if (sim.water) drawBoat(ctx, sim, t, k); // world 8: the boat on the surface, over the hen's legs
+  blastXf(() => drawThiefDens(ctx, sim, t, k, true), 2.2); // 2026-11-19: the den's rim and shade over a stolen egg (it lies inside)
   blastXf(() => drawThievesOver(ctx, sim, t, k), 9.1); // v3.6: the weasel's jaws over a held egg, the trap ring
   SL(['mosq'], (c) => drawBayouOver(c, sim, t, k)); // v3.7: a turtle's beak round its egg, mosquito swarms
   SL(['snake'], (c) => W.drawSnakes(c, sim, t, k)); // predators (v3)
@@ -3418,14 +3454,17 @@ function render() {
   drawStrikeWorld(ctx, sim, k, t, G.henAt, (e) => drawEggFelt(e, t, k)); // Chick Strike: the chick on the hen's back, its flight, glue, twisters, chains
   drawAllies(ctx, sim, t, k); // v3.4: rooster and goose, in front of the vault AND of every creature layer (never half behind a villain)
   if (G.hintShow && G.screen === 'play') drawHintArrow(sim.rings[G.hintShow.ring], G.hintShow, t);
+  if (DEV && G.probe) G.probe('eggsAllies');
   fx.draw(ctx, 'front');
   for (const e of sim.aliveEggs()) W.drawEggMult(ctx, e, k, FONT);
 
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (DEV && G.probe) G.probe('fxfront');
   G.weather.calm = save.calm;
   G.weather.drawFront(ctx);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   G.backdrop.drawAmbient(ctx, t, G.cam);
+  if (DEV && G.probe) G.probe('weatherAmb');
   drawDanger(); // predators (v3)
   drawV3Tint(sim);
   if (fx.flash > 0 && !save.calm && fx.flashColor === 'clap') {
@@ -3448,7 +3487,9 @@ function render() {
 
 
   // UI
-  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info' && G.screen !== 'intro') drawHUD(); // the intro card carries the name, eggs and time (mykee: the name showed twice)
+  if (DEV && G.probe) G.probe('tintEtc');
+  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info' && G.screen !== 'intro') drawHUD();
+  if (DEV && G.probe) G.probe('hud'); // the intro card carries the name, eggs and time (mykee: the name showed twice)
   if (G.screen === 'play') drawFlyers(); // prizes on their way to the HUD
   if (G.screen === 'play') {
     // the power card owns the top of the screen while it shows
@@ -4319,8 +4360,8 @@ function chickCard(S, x, y, w, h, s, o) {
   ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-w / 2, -h / 2);
   if (o.dim) ctx.globalAlpha = 0.8;
   if (o.locked) ctx.globalAlpha = 0.72;
-  if (o.tipGlow) { ctx.save(); ctx.shadowColor = '#ffc83a'; ctx.shadowBlur = (16 + (save.calm ? 0 : 8 * Math.sin(G.t * 3))) * s; ui.roundRect(0, 0, w, h, r); ctx.fillStyle = '#ffc83a'; ctx.fill(); ctx.restore(); }
-  if (sel > 0.02) { // soft glow in the accent colour
+  if (o.tipGlow && !PERF.low) { ctx.save(); ctx.shadowColor = '#ffc83a'; ctx.shadowBlur = (16 + (save.calm ? 0 : 8 * Math.sin(G.t * 3))) * s; ui.roundRect(0, 0, w, h, r); ctx.fillStyle = '#ffc83a'; ctx.fill(); ctx.restore(); }
+  if (sel > 0.02 && !PERF.low) { // soft glow in the accent colour (a blur pass: not on Low graphics)
     ctx.save(); ctx.shadowColor = ac; ctx.shadowBlur = 26 * s * sel; ctx.globalAlpha *= sel;
     ui.roundRect(0, 0, w, h, r); ctx.fillStyle = ac; ctx.fill(); ctx.restore();
   }
@@ -4457,17 +4498,21 @@ function drawLevelIntro(L, acc) {
         pictoClock(ctx, x0 + 10 * s, y + 52 * s, 20 * s); ui.text(t, x0 + 24 * s, y + 52 * s, { size: 17 * s, color: C.warn, tag: 'intro:time' });
       }
     } },
-    // star goals (mykee: "right before the level we need to show what to do to get 2 or 3 stars"): mirrors computeResult, as pictograms
-    ...(G.li >= 0 ? [{ h: 3 * 32 * s + 6 * s, gap: 10 * s, draw: (x, y, w) => {
-      const sr = 9.5 * s, rw = 3 * sr * 2.1 + 10 * s + 124 * s, bx = x + w / 2 - rw / 2;
+    // star goals (mykee: "right before the level we need to show what to do to get 2 or 3 stars"): mirrors computeResult.
+    // 2026-11-19 (mykee: "hollow", "X marks", "people would be confused"): a solid cream panel, a heading, and each star
+    // row in plain words in dark ink, so a first-time player reads exactly what earns 1, 2 and 3 stars
+    ...(G.li >= 0 ? [{ h: 26 * s + 3 * 34 * s + 10 * s, gap: 10 * s, draw: (x, y, w) => {
+      const H = 26 * s + 3 * 34 * s + 10 * s;
+      ui.well(x, y, w, H, { s, a: '#f3e2bd', b: '#fbf0d6' });
+      ui.text('HOW TO EARN STARS', x + w / 2, y + 15 * s, { size: 12.5 * s, align: 'center', color: C.ink2, tag: 'intro:starhead' });
+      const eggWord = (n) => n + (n === 1 ? ' egg' : ' eggs');
+      const lines = [`Get ${L.target === L.eggs ? 'all ' + eggWord(L.eggs) : eggWord(L.target) + ' of ' + L.eggs} home`, 'Don\u2019t lose a single egg', 'No egg gets a crack'];
+      const sr = 9 * s, sw = 3 * sr * 2.15, tx = x + 16 * s + sw + 12 * s, tw = x + w - 12 * s - tx;
       for (let i = 0; i < 3; i++) {
-        const ry = y + 3 * s + i * 32 * s + 16 * s;
-        ctx.save(); ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx - 6 * s, ry - 15 * s, rw + 12 * s, 30 * s, 15 * s) : ctx.rect(bx - 6 * s, ry - 15 * s, rw + 12 * s, 30 * s); ctx.fillStyle = 'rgba(20,10,4,0.42)'; ctx.fill(); ctx.restore();
-        for (let j = 0; j < 3; j++) drawStar(ctx, bx + sr + j * sr * 2.1, ry, sr, j <= i);
-        const gx = bx + 3 * sr * 2.1 + 10 * s + 62 * s;
-        pictoGoal(ctx, i, gx, ry, 28 * s, { n: L.target, t: G.t });
-        if (i === 0 && L.target > 5) ui.text('x' + L.target, gx + 40 * s, ry, { size: 14 * s, color: '#fff6e0', stroke: 'rgba(40,20,5,0.85)', tag: 'intro:starn' });
-        ui.record({ x: bx, y: ry - 14 * s, w: rw, h: 28 * s }, 'intro:star' + i);
+        const ry = y + 26 * s + i * 34 * s + 17 * s;
+        if (i) { ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(x + 12 * s, ry - 17 * s, w - 24 * s, 1.2 * s); }
+        for (let j = 0; j < 3; j++) drawStar(ctx, x + 16 * s + sr + j * sr * 2.15, ry, sr, j <= i);
+        ui.text(lines[i], tx, ry + 0.5 * s, { size: 15.5 * s, color: C.ink, maxW: tw, tag: 'intro:star' + i });
       }
     } }] : []),
     ...(G.li === -1 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 14.5 * s, { color: '#9bd8ff', stroke: 'rgba(10,20,40,0.8)', tag: 'intro:daily', gap: 8 * s })] : []),
@@ -4489,13 +4534,21 @@ function drawLevelIntro(L, acc) {
       if (I) ui.text(`${I.name}: ${shortTip(I.does)}`, x + w / 2, y + 10 * s, { size: 13.5 * s, align: 'center', maxW: w, color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:foeline' });
     } },
   ];
-  const notes = (s, iw) => [
-    ...(shortTip(tipText) ? [lineBlock(shortTip(tipText), 14.5 * s, { color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:tip', gap: 6 * s })] : []),
-    ...(L.bonus ? [{ h: 22 * s, gap: 8 * s, draw: (x, y, w) => {
-      const t = BONUS_TEXT(L.bonus, G.sim.MD.fuse), tw = Math.min(w - 28 * s, ui.measure(t, 14 * s)) + 26 * s, x0 = x + w / 2 - tw / 2;
-      pictoTarget(ctx, x0 + 10 * s, y + 11 * s, 20 * s); ui.text(t, x0 + 24 * s, y + 11 * s, { size: 14 * s, color: '#9bd8ff', stroke: 'rgba(10,20,40,0.8)', maxW: w - 28 * s, tag: 'intro:bonus' });
-    } }] : []),
-  ];
+  // the level's tip and its bonus goal on a cream panel too (2026-11-19: no text floating on the dark backdrop)
+  const notes = (s, iw) => {
+    const tip = shortTip(tipText), bon = L.bonus ? BONUS_TEXT(L.bonus, G.sim.MD.fuse) : '';
+    if (!tip && !bon) return [];
+    const h = 12 * s + (tip ? 22 * s : 0) + (bon ? 24 * s : 0);
+    return [{ h, gap: 8 * s, draw: (x, y, w) => {
+      ui.well(x, y, w, h, { s, a: '#f3e2bd', b: '#fbf0d6' });
+      let yy = y + 6 * s;
+      if (tip) { ui.text(tip, x + w / 2, yy + 11 * s, { size: 14.5 * s, align: 'center', color: C.ink, maxW: w - 20 * s, tag: 'intro:tip' }); yy += 22 * s; }
+      if (bon) {
+        const tw = Math.min(w - 28 * s, ui.measure(bon, 14 * s)) + 26 * s, x0 = x + w / 2 - tw / 2;
+        pictoTarget(ctx, x0 + 10 * s, yy + 12 * s, 20 * s); ui.text('Bonus: ' + bon, x0 + 24 * s, yy + 12 * s, { size: 14 * s, color: '#1f5fa8', maxW: w - 40 * s, tag: 'intro:bonus' });
+      }
+    } }];
+  };
   const boost = (s) => ({ h: 68 * s, gap: 10 * s, draw: (x, y, w) => {
     ui.well(x, y, w, 68 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
     drawBoosterPicker(ui, ctx, x + 6 * s, y + 3 * s, w - 12 * s, 62 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t });
@@ -4680,43 +4733,69 @@ const vibeIcon = (on) => (c, x, y, S) => {
 function drawSettings() {
   ui.buttons.length = 0; ui.rects.length = 0;
   dim(0.55);
+  // 2026-11-19 (mykee): grouped like a real game's options: Display (graphics quality, frame rate, calm motion),
+  // Gameplay (ring speed, difficulty), Sound (sound, music, vibration). One tab shows at a time, so the card fits a
+  // 360x640 phone; the tabs, Restore purchases, Done and the version stay put.
+  const tab = SET_TABS.some((t) => t[0] === G.setTab) ? G.setTab : 'display';
   stackCard('Settings', (s) => {
     const C = ui.C, B = [];
-    // 2026-11-16 research (Candy Crush, Royal Match, CodyCross, Homescapes): a row of icon toggles on top (sound, music,
-    // vibration), then gameplay, then comfort, then purchases, the version at the foot
-    const tog = [];
-    if (portal.showMuteButton) tog.push(['sfx', 'Sound', ICON.sound(save.sfx), save.sfx], ['music', 'Music', ICON.note(save.music), save.music]);
-    if (__APP__ || (typeof navigator !== 'undefined' && navigator.vibrate)) tog.push(['vibe', 'Vibration', vibeIcon(save.vibe !== false), save.vibe !== false]);
-    if (tog.length) B.push(iconRow(tog.map(([id, label, icon, on]) => [id, label + (on ? '' : ' off'), icon, on ? 'secondary' : 'off']), s, 'set'));
-    B.push(sectionBlock('Gameplay', s));
-    const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
-    B.push(lineBlock(`Ring speed: ${sp === 1 ? 'Normal' : sp < 1 ? 'Slower' : 'Faster'} (${Math.round(sp * 100)}%)`, 17 * s, { color: C.ink, tag: 'set:rslabel', gap: 6 * s }));
-    B.push({ h: 46 * s, gap: 6 * s, draw: (x, y, w) => { // - [nine steps] +
-      const bw = 46 * s, n = RING_SPEEDS.length, tx = x + bw + 8 * s, tw = w - 2 * bw - 16 * s, cw = tw / n;
-      ui.button('rs:-', '', x, y, bw, 46 * s, { kind: k > 0 ? 'secondary' : 'off', disabled: k <= 0, icon: ICON.left, iconS: 1.2 });
-      ui.button('rs:+', '', x + w - bw, y, bw, 46 * s, { kind: k < n - 1 ? 'secondary' : 'off', disabled: k >= n - 1, icon: ICON.right, iconS: 1.2 });
-      ui.well(tx, y + 8 * s, tw, 30 * s, { s });
-      for (let i = 0; i < n; i++) {
-        const cx = tx + cw * (i + 0.5), on = i <= k, hgt = (10 + i * 2.2) * s;
-        ui.roundRect(cx - cw * 0.3, y + 23 * s - hgt / 2, cw * 0.6, hgt, 3 * s);
-        ctx.fillStyle = on ? (i === 2 ? '#3eb42d' : i < 2 ? '#3a80ea' : '#f3781c') : 'rgba(110,80,50,0.25)'; ctx.fill();
-        ui.buttons.push({ id: 'rs:' + i, x: tx + cw * i, y, w: cw, h: 46 * s });
-      }
-      ui.record({ x: tx, y: y + 8 * s, w: tw, h: 30 * s }, 'set:rsbar');
-    } });
-    B.push(lineBlock('How fast a ring follows your finger', 13 * s, { color: C.ink2, tag: 'set:rshint', gap: 2 * s }));
-    B.push({ h: 42 * s, gap: 10 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) });
-    B.push(sectionBlock('Comfort', s));
-    B.push({ h: 42 * s, gap: 6 * s, draw: (x, y, w) => {
-      const hw = (w - 10 * s) / 2;
-      ui.button('calm', save.calm ? 'Calm motion: on' : 'Calm motion: off', x, y, hw, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 14 * s });
-      ui.button('set:saver', save.saver ? 'Battery saver: on' : 'Battery saver: off', x + hw + 10 * s, y, hw, 42 * s, { kind: 'tertiary', icon: save.saver ? ICON.check : null, size: 14 * s });
-    } });
-    if (ads.canBuyPremium || ads.premium) B.push({ h: 40 * s, draw: (x, y, w) => ui.button('set:restore', 'Restore purchases', x + w * 0.15, y, w * 0.7, 40 * s, { kind: 'tertiary', size: 14.5 * s }) });
-    B.push({ h: 52 * s, gap: 14 * s, draw: (x, y, w) => ui.button('set:close', 'Done', x, y, w, 52 * s, { kind: 'primary', icon: ICON.check, size: 20 * s }) });
+    B.push({ h: 44 * s, gap: 4 * s, draw: (x, y, w) => segRow('stab:', SET_TABS, tab, x, y, w, 44 * s, s) });
+    if (tab === 'display') {
+      B.push(sectionBlock('Graphics', s));
+      B.push({ h: 42 * s, gap: 6 * s, draw: (x, y, w) => segRow('gfx:', [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], save.gfx, x, y, w, 42 * s, s) });
+      const gl = save.gfx === 'auto' ? `Auto picked ${TIER_NAME[PERF.tier]} for this phone` : save.gfx === 'high' ? 'Sharpest picture, every effect' : save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
+      B.push(lineBlock(gl, 13 * s, { color: C.ink2, tag: 'set:gfxhint', gap: 4 * s }));
+      B.push(sectionBlock('Frame rate', s));
+      B.push({ h: 42 * s, gap: 6 * s, draw: (x, y, w) => segRow('fps:', [['auto', 'Auto'], [30, '30 fps'], [60, '60 fps']], save.fps, x, y, w, 42 * s, s) });
+      B.push(lineBlock(save.fps === 30 ? 'Saves battery, keeps the phone cool' : save.fps === 60 ? 'Smoothest motion, uses more battery' : `Now ${PERF.fpsCap} fps`, 13 * s, { color: C.ink2, tag: 'set:fpshint', gap: 4 * s }));
+      B.push({ h: 42 * s, gap: 12 * s, draw: (x, y, w) => ui.button('calm', save.calm ? 'Calm motion: on' : 'Calm motion: off', x + w * 0.1, y, w * 0.8, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 14.5 * s }) });
+      B.push(lineBlock('Calm motion: no screen shake or flashes', 13 * s, { color: C.ink2, tag: 'set:calmhint', gap: 4 * s }));
+    } else if (tab === 'gameplay') {
+      const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
+      B.push(sectionBlock('Ring speed', s));
+      B.push(lineBlock(`${sp === 1 ? 'Normal' : sp < 1 ? 'Slower' : 'Faster'} (${Math.round(sp * 100)}%)`, 17 * s, { color: C.ink, tag: 'set:rslabel', gap: 6 * s }));
+      B.push({ h: 46 * s, gap: 6 * s, draw: (x, y, w) => { // - [nine steps] +
+        const bw = 46 * s, n = RING_SPEEDS.length, tx = x + bw + 8 * s, tw = w - 2 * bw - 16 * s, cw = tw / n;
+        ui.button('rs:-', '', x, y, bw, 46 * s, { kind: k > 0 ? 'secondary' : 'off', disabled: k <= 0, icon: ICON.left, iconS: 1.2 });
+        ui.button('rs:+', '', x + w - bw, y, bw, 46 * s, { kind: k < n - 1 ? 'secondary' : 'off', disabled: k >= n - 1, icon: ICON.right, iconS: 1.2 });
+        ui.well(tx, y + 8 * s, tw, 30 * s, { s });
+        for (let i = 0; i < n; i++) {
+          const cx = tx + cw * (i + 0.5), on = i <= k, hgt = (10 + i * 2.2) * s;
+          ui.roundRect(cx - cw * 0.3, y + 23 * s - hgt / 2, cw * 0.6, hgt, 3 * s);
+          ctx.fillStyle = on ? (i === 2 ? '#3eb42d' : i < 2 ? '#3a80ea' : '#f3781c') : 'rgba(110,80,50,0.25)'; ctx.fill();
+          ui.buttons.push({ id: 'rs:' + i, x: tx + cw * i, y, w: cw, h: 46 * s });
+        }
+        ui.record({ x: tx, y: y + 8 * s, w: tw, h: 30 * s }, 'set:rsbar');
+      } });
+      B.push(lineBlock('How fast a ring follows your finger', 13 * s, { color: C.ink2, tag: 'set:rshint', gap: 2 * s }));
+      B.push(sectionBlock('Difficulty', s));
+      B.push({ h: 42 * s, gap: 6 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) });
+      B.push(lineBlock('Easy: slower villains, more time', 13 * s, { color: C.ink2, tag: 'set:modehint', gap: 4 * s }));
+    } else {
+      const tog = [];
+      if (portal.showMuteButton) tog.push(['sfx', 'Sound', ICON.sound(save.sfx), save.sfx], ['music', 'Music', ICON.note(save.music), save.music]);
+      if (__APP__ || (typeof navigator !== 'undefined' && navigator.vibrate)) tog.push(['vibe', 'Vibration', vibeIcon(save.vibe !== false), save.vibe !== false]);
+      B.push(sectionBlock('Sound and feel', s));
+      if (tog.length) B.push(iconRow(tog.map(([id, label, icon, on]) => [id, label + (on ? '' : ' off'), icon, on ? 'secondary' : 'off']), s, 'set'));
+      else B.push(lineBlock('Sound follows the game site\u2019s own volume', 14 * s, { color: C.ink2, tag: 'set:portalsnd', gap: 8 * s }));
+    }
+    if (ads.canBuyPremium || ads.premium) B.push({ h: 40 * s, gap: 14 * s, draw: (x, y, w) => ui.button('set:restore', 'Restore purchases', x + w * 0.15, y, w * 0.7, 40 * s, { kind: 'tertiary', size: 14.5 * s }) });
+    B.push({ h: 52 * s, gap: 12 * s, draw: (x, y, w) => ui.button('set:close', 'Done', x, y, w, 52 * s, { kind: 'primary', icon: ICON.check, size: 20 * s }) });
     B.push(lineBlock('Eggscape ' + __VERSION__, 11.5 * s, { color: C.ink2, tag: 'set:version', gap: 6 * s }));
     return B;
   }, { ribbon: '#7a48e8' });
+}
+const SET_TABS = [['display', 'Display'], ['gameplay', 'Gameplay'], ['sound', 'Sound']];
+// a segmented control on a cream card: a recessed track, the chosen option a raised green key (like Easy/Medium/Hard)
+function segRow(pre, opts, cur, x, y, w, h, s) {
+  const p = 3 * s, bw = (w - 2 * p) / opts.length;
+  ui.well(x, y, w, h, { r: h / 2, s });
+  opts.forEach(([v, label], i) => {
+    const on = cur === v, size = Math.min(15.5 * s, h * 0.4, (bw - 8 * s) / Math.max(3, label.length * 0.56));
+    const hit = { x: x + p + i * bw, y, w: bw, h };
+    if (on) ui.button(pre + v, label, x + p + i * bw, y + p, bw, h - 2 * p - 1 * s, { kind: 'primary', round: h / 2, size, hit });
+    else ui.button(pre + v, label, x + p + i * bw, y + p, bw, h - 2 * p, { ghost: true, textColor: ui.C.ink2, size, hit });
+  });
 }
 
 // "Who's in this vault" (the "i" panel): the pause card's kit (cream card, wooden frame, ribbon), one row per villain,
@@ -4772,7 +4851,7 @@ function drawInfo() {
   dim(0.62);
   const u = ui.u, s = u, C = ui.C;
   ui.calm = save.calm;
-  const S = G.iscroll, dt = Math.min(0.05, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
+  const S = G.iscroll, dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
   const A = ui.A, w = Math.min(A.w - 24 * u, 470 * u), x = A.cx - w / 2, fw = 7 * s, pad = 14 * s, iw = w - 2 * fw - 2 * pad;
   const rows = infoRows(s, iw), title = 'Who\u2019s in this vault';
   const footH = 50 * s, head = CARD_HEAD * s, listH = rows.length ? rows.reduce((a, r) => a + r.h, 0) + 4 * s : 64 * s;
@@ -4788,7 +4867,7 @@ function drawInfo() {
   // the list viewport, between the ribbon and the footer
   const vx = x + fw + pad, vy = y + head - 4 * s, vw = iw, vh = Math.max(20 * s, y + h - fw - 12 * s - footH - 10 * s - vy);
   S.max = Math.max(0, listH - vh);
-  if (!G.pdrag || !G.pdrag.moved) { if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-4.2 * dt); } else S.v = 0; }
+  if (!G.pdrag || !G.pdrag.moved) { if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-SCROLL_DRAG * dt); } else S.v = 0; }
   const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
   ctx.save(); ctx.beginPath(); ctx.rect(x + fw, vy, w - 2 * fw, vh); ctx.clip();
   if (!rows.length) ui.text('Nothing hunts your eggs here: just you, the rings and gravity.', x + w / 2, vy + 30 * s, { size: 14.5 * s, align: 'center', maxW: iw, color: C.ink2, tag: 'info:empty' });
@@ -5265,8 +5344,8 @@ function drawLevels() {
   S.max = Math.max(0, L.H - vh);
   if (G.screenT < S.seenT || S.focus !== G.world + ':' + S.enter) { mapFocusWorld(G.world); S.focus = G.world + ':' + S.enter; } // just opened: show where the player is
   S.seenT = G.screenT;
-  const dt = Math.min(0.05, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
-  if (!G.pdrag || !G.pdrag.moved) { if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-3.6 * dt); } else S.v = 0; }
+  const dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
+  if (!G.pdrag || !G.pdrag.moved) { if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-SCROLL_DRAG * dt); } else S.v = 0; }
   const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
   const sy = S.y - vt; // map y -> screen y is (y - sy)
   const t = G.t, calm = save.calm;
@@ -5277,7 +5356,7 @@ function drawLevels() {
   let doneTo = null; for (let i = 0; i < LEVELS.length; i++) if (bestStarsOf(LEVELS[i].id) > 0) doneTo = L.stops[i].y;
   MS.drawRoad(ctx, L, sy, vt, H_, doneTo);
   if (ui.skin && ui.skin.pack && ui.skin.pack.bg) drawRoadDress(ctx, L, sy, vt, H_, t, ui.skin.pack.bg, calm);
-  MS.drawCast(ctx, L, sy, vt, H_, t, calm);
+  MS.drawCast(ctx, L, sy, vt, H_, t, calm, DPR);
   const wide = mapWide(), ctaOn = playable(nx) && envOpen(envOf(nx));
   const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 320) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - 4 * u;
   const tapBot = ctaOn && !wide ? ctaY - 6 * u : vb; // stops under the PLAY bar keep no tap target
@@ -5426,7 +5505,7 @@ function practiceIcon(k, x, y, r, t) {
 function drawPractice() {
   const u = ui.u, A = ui.A, pad = 14 * u, S = G.pscroll, vb = A.y1; // the list scrolls down to the bottom of the safe rect
   ui.calm = save.calm;
-  const dt = Math.min(0.05, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
+  const dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
   if (!themeBack(ctx, ui.skin, W_, H_, H_ * 0.8)) {
     const bg = ctx.createLinearGradient(0, 0, 0, H_);
     bg.addColorStop(0, '#1c1440'); bg.addColorStop(1, '#3a2152');
@@ -5440,7 +5519,7 @@ function drawPractice() {
   for (const g of LAB) total += secH + Math.ceil(g.items.length / cols) * (chh + gap) + 6 * u;
   S.max = Math.max(0, total + pad - (vb - vt));
   if (!G.pdrag || !G.pdrag.moved) { // momentum
-    if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-4.2 * dt); } else S.v = 0;
+    if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-SCROLL_DRAG * dt); } else S.v = 0;
   }
   const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
   // the list, clipped under the header
@@ -5500,12 +5579,14 @@ let last = 0;
 function frame(now) {
   requestAnimationFrame(frame); // first: an error below can never stop the loop (a stopped loop is a frozen level)
   // 2026-11-16 battery (mykee: the phone heats up): never draw faster than 60 fps (a 120 Hz screen called us twice as
-  // often for nothing), 30 fps with Battery saver on
-  if (now - last < (save.saver ? 1000 / 30 : 1000 / 60) - 2.5) return;
-  const raw = last ? now - last : 16, dt = Math.min(0.05, raw / 1000 || 0.016);
+  // often for nothing). 2026-11-19: 30 fps when Settings > Frame rate says so, or when Auto finds the phone can't hold 45
+  if (now - last < 1000 / PERF.fpsCap - 2.5) return;
+  // a slow phone catches up instead of slowing the world down (the cap was 0.05 s: at 5 fps the rings turned at a
+  // quarter speed and looked stuck); past 0.1 s a frame is a hitch and the world waits
+  const raw = last ? now - last : 16, dt = Math.min(0.1, raw / 1000 || 0.016);
   last = now;
   if (G.paused) return;
-  if (Q.want >= 0) { Q.i = Q.want; Q.want = -1; setDPR(); } // a resolution change lands before this frame draws (no empty frame)
+  if (takeStep(save)) { setDPR(); persist(); } // a quality change lands before this frame draws (no empty frame); Auto remembers it
   try {
     if (G.henSkinCur !== save.wallet.henSkin) { G.henSkinCur = save.wallet.henSkin; setHenSkin(G.henSkinCur); ui.skin = skinUI(G.henSkinCur); } // hen + rooster skin, and the menus' theme
     update(dt);
@@ -5516,35 +5597,20 @@ function frame(now) {
     if (!G.errs[msg]) { G.errs[msg] = 1; console.error('[eggscape] frame error', e); }
     try { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.globalAlpha = 1; } catch (_) { /* reset */ }
   }
-  adaptQuality(raw);
+  perfTick(save, raw, !document.hidden && !G.paused && (G.screen === 'play' || G.screen === 'levels' || G.screen === 'title'));
 }
-// adaptive resolution (2026-11-15 performance pass, reworked 2026-11-16): a phone that cannot hold ~45 fps drops the
-// canvas resolution a step; 10 s of headroom steps it back up. mykee saw "black stutters" when a level starts and a
-// blurry picture: resizing the canvas clears it, and the old code resized AFTER drawing, so the screen showed one empty
-// (black) frame; the first seconds of a level (caches being built) always looked slow, so every phone dropped to 1x
-// device pixels and stayed blurry. Now: the first 3 s of play and one-off hitches (>100 ms: loading, GC) are not
-// counted, the floor is 1.5x (never mushy), and a change waits for the start of the next frame so it is drawn at once.
-const Q = { steps: [2, 1.75, 1.5], i: 0, acc: 0, n: 0, good: 0, warm: 0, want: -1 };
-function adaptQuality(ms) {
-  if (G.screen !== 'play' || document.hidden || G.paused) { Q.acc = Q.n = 0; Q.warm = 0; return; }
-  if ((Q.warm += ms / 1000) < 3) return; // the level's first seconds build caches: not a measure of the phone
-  if (ms > 100) return; // a single hitch, not a slow phone
-  Q.acc += ms / 1000; Q.n++;
-  if (Q.acc < 2) return;
-  const avg = Q.acc / Q.n;
-  Q.acc = Q.n = 0;
-  if (save.saver) return; // Battery saver already runs a fixed 1.3x at 30 fps
-  const cap = Math.min(window.devicePixelRatio || 1, 2);
-  if (avg > 1 / 45 && Q.i < Q.steps.length - 1 && Q.steps[Q.i + 1] < cap + 0.01) { Q.want = Q.i + 1; Q.good = 0; }
-  else if (avg < 1 / 55) { if ((Q.good += 2) >= 10 && Q.i > 0) { Q.want = Q.i - 1; Q.good = 0; } }
-  else Q.good = 0;
-}
+// scrolling lists and the map (2026-11-19, mykee: "so slow"): a fling glides about 1/SCROLL_DRAG s of its speed (was 3.6-4.2)
+const SCROLL_DRAG = 2.3;
+// adaptive quality: src/perf.js (2026-11-19). Before that (2026-11-15/16) only the resolution adapted, 2x to 1.5x.
 function setDPR() {
-  const d = Math.min(window.devicePixelRatio || 1, Q.steps[Q.i], save.saver ? 1.3 : 2);
+  const d = Math.min(window.devicePixelRatio || 1, PERF.dprCap);
   if (Math.abs(d - DPR) < 0.01) return;
+  const up = d > DPR;
   DPR = d;
   canvas.width = Math.round(W_ * DPR); canvas.height = Math.round(H_ * DPR);
-  if (G.backdrop) G.backdrop.resize(W_, H_, DPR);
+  // the backdrop's layers are rebuilt only for a sharper step (a rebuild is a visible hitch on a slow phone, and a
+  // quality step DOWN mid-level is exactly when the phone is struggling): going down, the old layers just scale
+  if (G.backdrop && up) G.backdrop.resize(W_, H_, DPR);
   if (G.weather) G.weather.resize(W_, H_, DPR);
 }
 
@@ -5618,11 +5684,12 @@ async function boot() {
   // the app build used to be an everything-unlocked test build: its saves carry 50 fake levels and 99999 coins. The first
   // real-progression launch starts the journey fresh (settings and the hen's skins carry over).
   if (typeof __APP__ !== 'undefined' && __APP__ && !save.real) {
-    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm, ringSpeed: save.ringSpeed, saver: save.saver };
+    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm, ringSpeed: save.ringSpeed, saver: save.saver, gfx: save.gfx, fps: save.fps, gfxStep: save.gfxStep };
     save = { ...defaultSave(), ...keep };
     ads.rebind(save);
   }
   save.real = 1;
+  applySettings(save); setDPR(); // graphics quality: the phone's own guess or what it learned last time (src/perf.js)
   if (TEST) {
     const owned = {};
     for (const id of E.BOOSTER_ORDER) owned[id] = E.MAX_OWNED;
@@ -5649,6 +5716,7 @@ async function boot() {
 
 // test hook (used by the QA bot and screenshot tools); compiled out of release builds
 if (DEV) window.__egg = {
+  perf: { bodyCache, ringCache, PERF, STEPS, applySettings: () => { applySettings(save); setDPR(); } },
   mapJump(w) { G.world = w; G.mscroll.focus = ''; }, // map shots: show world w
   mapScroll(y) { G.mscroll.y = y; G.mscroll.v = 0; G.mscroll.focus = G.world + ':' + G.mscroll.enter; },
   G, LEVELS, LAB,
