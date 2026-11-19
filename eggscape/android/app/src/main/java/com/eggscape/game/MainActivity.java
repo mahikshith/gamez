@@ -179,7 +179,18 @@ public class MainActivity extends Activity {
 
     @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); } // the game keeps its own save (localStorage)
 
-    @Override protected void onPause() { web.onPause(); web.pauseTimers(); super.onPause(); }
+    /*
+     * 0.8.2 (mykee: the test ads never showed their close X, even after 30 s): WebView.pauseTimers() is GLOBAL. It froze
+     * the JavaScript of every WebView in the app, and AdMob's full-screen ads are WebViews too. The moment an ad opened
+     * over the game, this onPause froze the ad's own countdown, so "Reward in 8 seconds" never ticked and the close X
+     * never came. onPause now pauses only the game's page (it stops drawing and the game mutes itself on
+     * visibilitychange); the global freeze runs only when the app really goes to the background with no ad up.
+     */
+    @Override protected void onPause() { web.onPause(); super.onPause(); }
+
+    @Override protected void onStop() { if (money == null || !money.adShowing()) web.pauseTimers(); super.onStop(); }
+
+    @Override protected void onStart() { super.onStart(); web.resumeTimers(); }
 
     @Override protected void onResume() { super.onResume(); web.onResume(); web.resumeTimers(); hideBars(); if (money != null) money.onHostResume(); }
 

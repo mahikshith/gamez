@@ -176,6 +176,9 @@ public class Monetization {
      * cleaned it up): answer for it so the game never waits on an ad that is gone. A rewarded ad pays only if Google
      * already reported the reward.
      */
+    /** a full-screen ad is up (MainActivity must not freeze WebView timers: that would freeze the ad too) */
+    boolean adShowing() { return showingId != null; }
+
     void onHostResume() {
         final String id = showingId;
         if (id == null) return;
