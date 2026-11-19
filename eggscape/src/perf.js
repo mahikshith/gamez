@@ -72,6 +72,7 @@ export function applySettings(save) {
     PERF.step = save.gfxStep;
   } else PERF.step = FIRST[save.gfx];
   PERF.acc = PERF.n = PERF.good = PERF.warm = 0; PERF.want = -1;
+  PERF.slow30 = false; // 2026-11-19: a settings change starts clean (a learned 30 fps cap used to stick even after picking High)
   refresh(save);
 }
 function refresh(save) {

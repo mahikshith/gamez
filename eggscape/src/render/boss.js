@@ -559,8 +559,9 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   const ic = h * 1.15;
   drawBossEmblem(ctx, B.kind, x + ic * 0.45, y + h / 2, ic, t);
   const title = BOSS_TITLE[B.kind] || 'Boss';
-  const nameX = x + ic * 0.95, nameW = Math.min(w * 0.34, ui.measure(title, 13 * u) + 4);
-  ui.text(title, nameX, y + h / 2, { size: 13 * u, maxW: nameW, color: '#ffe3b0', stroke: 'rgba(0,0,0,0.6)', tag: 'hud:bossName' });
+  const slim = w < 230 * u; // beside the egg tray (2026-11-19): no name, the emblem says who it is
+  const nameX = x + ic * 0.95, nameW = slim ? 0 : Math.min(w * 0.34, ui.measure(title, 13 * u) + 4);
+  if (!slim) ui.text(title, nameX, y + h / 2, { size: 13 * u, maxW: nameW, color: '#ffe3b0', stroke: 'rgba(0,0,0,0.6)', tag: 'hud:bossName' });
   // phase segments
   const bx = nameX + nameW + 8 * u, bw = x + w - 6 * u - bx, by = y + h * 0.22, bh = h * 0.56, gap = 4 * u;
   const F = (B.den && sim.thiefBoss && sim.thiefBoss()) || (B.kind === 'gator' && sim.gatorBossBar && sim.gatorBossBar()); // v3.7: Grandpa's teeth

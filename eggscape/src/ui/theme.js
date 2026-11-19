@@ -199,10 +199,14 @@ export function themeBack(ctx, skin, W, H, gy) {
   if (!c) {
     const keys = Object.keys(cache); if (keys.length > 5) delete cache[keys[0]];
     const sc = Math.min(DPR, 1.5), k = Math.max(0.78, Math.min(1.5, Math.min(W, H) / 420));
-    c = cache[key] = mk(W * sc, H * sc, (g) => { g.scale(sc, sc); try { g.filter = 'saturate(1.4) contrast(1.06)'; } catch (_) { /* no canvas filters: the plain palette */ } BG[skin.pack.bg](g, W, H, gy, skin.pal, k); });
+    c = mk(W * sc, H * sc, (g) => { g.scale(sc, sc); BG[skin.pack.bg](g, W, H, gy, skin.pal, k); });
+    // the colour lift as ONE filtered copy (2026-11-19: a filter left on while painting every shape cost ~1 s per scene and
+    // froze the shop when a skin was equipped, mykee). No canvas filters: the plain palette.
+    try { const f = mk(c.width, c.height, (g) => { g.filter = 'saturate(1.4) contrast(1.06)'; g.drawImage(c, 0, 0); }); if (f) c = f; } catch (_) { /* keep plain */ }
+    cache[key] = c;
   }
   ctx.drawImage(c, 0, 0, W, H);
-  const k = Math.max(0.78, Math.min(1.5, Math.min(W, H) / 420)); ctx.save(); ctx.filter = 'none'; ANIM[skin.pack.bg](ctx, W, H, gy, skin.pal, k, CLK.t); ctx.restore(); // the live layer
+  const k = Math.max(0.78, Math.min(1.5, Math.min(W, H) / 420)); ctx.save(); ANIM[skin.pack.bg](ctx, W, H, gy, skin.pal, k, CLK.t); ctx.restore(); // the live layer
   return true;
 }
 // over a screen that keeps the game behind it (map, pause, intro, win, fail): a colour wash and a soft edge, no scene

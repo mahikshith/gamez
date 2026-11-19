@@ -206,15 +206,18 @@ export function drawJelly(ctx, x, y, s, t, o = {}) {
   // trailing tentacles (they lag the bell's pulse); they crackle yellow when it stings
   for (let i = 0; i < 6; i++) {
     const x0 = (-0.75 + i * 0.3) * bw, len = (0.55 + 0.2 * hash(i + 3)) * s * (o.stun ? 0.8 : 1);
-    ctx.beginPath(); ctx.moveTo(x0, bh * 0.15);
-    for (let j = 1; j <= 8; j++) { const q = j / 8; ctx.lineTo(x0 * (1 - 0.25 * q) + Math.sin(t * 3 - q * 5 + i) * 0.05 * s * q, bh * 0.15 + q * len); }
+    // (2026-11-19, mykee: stiff and boxy) a smooth curve with a travelling wave that grows toward the tip
+    ctx.beginPath(); let px = x0, py = bh * 0.15; ctx.moveTo(px, py);
+    for (let j = 1; j <= 12; j++) { const q = j / 12, nx = x0 * (1 - 0.25 * q) + (Math.sin(t * 3 - q * 6 + i * 1.3) * 0.09 + Math.sin(t * 1.7 - q * 3 + i) * 0.04) * s * q, ny = bh * 0.15 + q * len * (1 - 0.06 * Math.sin(t * 2 + i)); ctx.quadraticCurveTo(px, py, (px + nx) / 2, (py + ny) / 2); px = nx; py = ny; }
+    ctx.lineTo(px, py);
     ctx.strokeStyle = JF.line; ctx.lineWidth = lw * 1.9; ctx.stroke();
     ctx.strokeStyle = o.sting > 0 ? JF.sting : JF.tent; ctx.lineWidth = lw * 0.9; ctx.stroke();
   }
   // frilly oral arms
   for (const sx of [-1, 1]) {
-    ctx.beginPath(); ctx.moveTo(sx * bw * 0.18, bh * 0.1);
-    for (let j = 1; j <= 6; j++) { const q = j / 6; ctx.lineTo(sx * (bw * 0.18 + Math.sin(t * 2.4 + q * 4 + sx) * 0.06 * s), bh * 0.1 + q * 0.42 * s); }
+    ctx.beginPath(); let px = sx * bw * 0.18, py = bh * 0.1; ctx.moveTo(px, py);
+    for (let j = 1; j <= 10; j++) { const q = j / 10, nx = sx * (bw * 0.18 + Math.sin(t * 2.4 - q * 5 + sx) * 0.09 * s * (0.4 + q)), ny = bh * 0.1 + q * 0.42 * s; ctx.quadraticCurveTo(px, py, (px + nx) / 2, (py + ny) / 2); px = nx; py = ny; }
+    ctx.lineTo(px, py);
     ctx.strokeStyle = JF.line; ctx.lineWidth = lw * 4.2; ctx.stroke();
     ctx.strokeStyle = JF.arm; ctx.lineWidth = lw * 2.4; ctx.stroke();
   }
