@@ -1190,6 +1190,8 @@ export function drawEggKind(ctx, kind, cx, cy, rx, ry, rot = 0, t = 0, cracks = 
 // +x along the ring, +y out of it; R = the ring's radius in px, th = the ring band's thickness in px.
 //   o.hot   an egg is carrying a flame: the canes glow, so the player sees what the flame is for
 //   o.calm  reduced motion: it stands still
+// how far the fire has eaten from the middle of the gap (same units as len; th = ring band thickness)
+export const curtainFront = (len, th, burn) => (burn > 0 ? (len / 2 + th * 0.3) * Math.pow(Math.min(1, burn), 0.8) : 0);
 const BRAMBLE = { cane: '#4f8f37', back: '#356a2c', vein: '#b4e372', edge: '#132812', knot: '#6a4526', knotLit: '#9a6c3c', leaf: '#62b23c', leafLit: '#96d65e', th: '#d23a3a', thLit: '#ea634c', thShade: '#93282f', thEdge: '#3a0d0d', rim: 'rgba(255,240,214,0.92)', char: '#2b1a16', charTh: '#5a2030' };
 export function drawThornCurtain(ctx, len, th, R, t = 0, burn = 0, o = {}) {
   if (!(len > 0 && th > 0)) return;
@@ -1199,12 +1201,12 @@ export function drawThornCurtain(ctx, len, th, R, t = 0, burn = 0, o = {}) {
     R = Math.max(R || 0, len * 0.6);
     const half = len / 2 + th * 0.3; // the canes run into the root knots that sit over the ring ends
     const P = (s, d) => { const a = s / R, q = R + d; return [q * Math.sin(a), q * Math.cos(a) - R]; };
-    // which way is up, and where the light comes from (screen top-left), in this turned frame
+    // where the light comes from (screen top-left), in this turned frame
     const m = ctx.getTransform(), det = m.a * m.d - m.b * m.c || 1;
     const nrm = (x, y) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
-    const up = nrm(m.c / det, -m.a / det), light = nrm((m.c - m.d) / det, (m.b - m.a) / det);
+    const light = nrm((m.c - m.d) / det, (m.b - m.a) / det);
     const amp = th * 0.72, caneW = th * 0.6, ol = lw(1.6, th * 0.22), wn = (Math.PI * 3) / (2 * half), rock = 0.3 * Math.sin(tt * 1.1);
-    const gone = burn > 0 ? half * Math.pow(burn, 0.8) : 0; // the burnt-out middle
+    const gone = curtainFront(len, th, burn); // the burnt-out middle
     const dAt = (s, ph) => { const f = (s + half) / (2 * half), env = Math.min(1, Math.sin(Math.PI * clamp(f, 0, 1)) * 2.4); return amp * env * Math.sin(s * wn + ph + rock); };
     const path = (ph, s0, s1) => {
       const n = Math.max(3, Math.ceil(Math.abs(s1 - s0) / (th * 0.3)));
@@ -1312,21 +1314,13 @@ export function drawThornCurtain(ctx, len, th, R, t = 0, burn = 0, o = {}) {
       ctx.lineWidth = caneW * 0.6 + ol * 2; ctx.strokeStyle = B.edge; ctx.stroke();
       ctx.lineWidth = caneW * 0.6; ctx.strokeStyle = q ? backCol : caneCol; ctx.stroke();
     }
-    // fire at both burning ends, standing up whatever way the ring is turned
+    // the burning ends: a hot ember on each cane tip. The flames themselves are the game's own fire (main.js feeds
+    // G.fx.flameAt at curtainFronts), so a burning curtain burns exactly like a flame egg does.
     if (burn > 0 && burn < 1) {
       for (const side of [-1, 1]) for (const ph of [0, Math.PI]) {
-        const s = side * gone, [ex, ey] = P(s, dAt(s, ph));
-        const fh = th * (2.3 + 0.7 * Math.sin(tt * 13 + ph + side)) * (1 - burn * 0.35), fw = th * 0.75, px = -up[1], py = up[0], wob = Math.sin(tt * 9 + ph * 2 + side) * th * 0.3;
-        for (const [sc, col] of [[1, '#ff5a1a'], [0.66, '#ffb42a'], [0.34, '#fff2a0']]) {
-          ctx.beginPath();
-          ctx.moveTo(ex - px * fw * sc, ey - py * fw * sc);
-          ctx.quadraticCurveTo(ex - px * fw * sc + up[0] * fh * sc * 0.5, ey - py * fw * sc + up[1] * fh * sc * 0.5, ex + up[0] * fh * sc + px * wob, ey + up[1] * fh * sc + py * wob);
-          ctx.quadraticCurveTo(ex + px * fw * sc + up[0] * fh * sc * 0.5, ey + py * fw * sc + up[1] * fh * sc * 0.5, ex + px * fw * sc, ey + py * fw * sc);
-          ctx.quadraticCurveTo(ex - up[0] * fw * sc * 0.6, ey - up[1] * fw * sc * 0.6, ex - px * fw * sc, ey - py * fw * sc);
-          ctx.closePath();
-          ctx.fillStyle = col;
-          ctx.fill();
-        }
+        const s = side * gone, [ex, ey] = P(s, dAt(s, ph)), pl = 0.75 + 0.25 * Math.sin(tt * 17 + ph + side);
+        ctx.beginPath(); ctx.arc(ex, ey, caneW * 0.62, 0, Math.PI * 2); ctx.fillStyle = '#ff7a1a'; ctx.fill();
+        ctx.beginPath(); ctx.arc(ex, ey, caneW * 0.36 * pl, 0, Math.PI * 2); ctx.fillStyle = '#ffe27a'; ctx.fill();
       }
     }
   });

@@ -2,6 +2,7 @@
 import { Sim, DT, LEGACY_ORB, EAGLE_LEN } from './sim/sim.js';
 import { hintSearch, actSteps } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
+import { curtainFront } from './render/v3art.js'; // where a burning thorn curtain's fire has got to
 import { LEVELS } from './data/levels.js';
 import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop, setSceneCalm } from './themes.js';
@@ -3614,6 +3615,17 @@ function update(dt) {
     // v3.1 magnet: the pulled partner wobbles and throws small red/blue sparks
     if (e.magnet > 0 && e.joint && Math.random() < 0.3) { const q = Math.random() * 6.283; G.fx.add({ x: p.x + Math.cos(q) * 0.3, y: p.y + Math.sin(q) * 0.3, vx: Math.cos(q) * 0.8, vy: Math.sin(q) * 0.8, life: 0.25, size: 0.02, color: Math.random() < 0.5 ? '#ff4f5e' : '#4f8dff', type: 'spark' }); }
     if (e.comet) G.fx.add({ x: p.x + (Math.random() - 0.5) * 0.3, y: p.y + (Math.random() - 0.5) * 0.3, vx: v.x, vy: v.y + 0.6, life: 0.25, size: 0.08, grow: -0.2, color: '#9fe8ff', hot: '#ffffff', type: 'flame' });
+  }
+  // a burning thorn curtain burns with the game's own fire: flames climb from both burning ends as they eat outward
+  for (const ring of sim.rings) for (const g of ring.gaps) {
+    const C = g.curtain;
+    if (!C || C.vine || !C.alive || !C.burning) continue;
+    const A = ring.body.getAngle() + g.a, off = curtainFront(g.len, RING_TH, C.burn) / ring.r;
+    for (const sd of [-1, 1]) {
+      const a = A + sd * off, x = ring.r * Math.cos(a), y = ring.r * Math.sin(a);
+      G.fx.flameAt(x, y + 0.04, 1.15); G.fx.flameAt(x, y - 0.06, 0.9);
+      if (Math.random() < 0.06) G.fx.smoke(x, y + 0.25, 1);
+    }
   }
   for (const b of sim.bombs) {
     if (b.alive && b.lit && b.spark) G.fx.add({ x: b.spark.x, y: b.spark.y, vx: (Math.random() - 0.5) * 2, vy: Math.random() * 2, g: 4, life: 0.25, size: 0.02, color: '#ffd34d', type: 'spark' });
