@@ -686,6 +686,10 @@ function camTarget() {
   if (!sim) return { x: 0, y: 0, k: 60 };
   const cv = G.cv, B = camBase(), F = cv.F, P = G.play, gy = sim.gy || 1;
   cv.smooth = 0.4;
+  if (fuseIntroOn() && !sim.water) { // the fuse intro needs the spark (the top of the vault) in the shot, on a wide screen too
+    const top = sim.outerR + 0.8, bot = B.y - P.h / (2 * B.k);
+    if (B.y + P.h / (2 * B.k) < top) { const k = Math.min(B.k, P.h / (top - bot)); cv.smooth = 0.2; return { x: B.x, y: top - P.h / (2 * k), k }; }
+  }
   if (save.calm) return B;
   const eggPts = sim.aliveEggs().map((e) => e.body.getPosition());
   // win: push in on the nest and the hen; the nest sits low in the frame, the sky (or sea) above her
@@ -2421,7 +2425,7 @@ function overNest(sim, e) {
   return dy < 0.95 && dy > -0.3 && Math.abs(p.x - n.x) < sim.nestW / 2 + 0.05;
 }
 function drawEggFelt(e, t, k) {
-  const ml = e.joint && !save.calm ? magnetLean(e) : null; // 2026-11-20: a magnet's friend leans in when the rope goes taut
+  const ml = e.joint && !save.calm ? magnetLean(e) : null; // 2026-11-20: magnetised eggs stretch toward each other while they are pulled
   if (!ml) { drawEggFelt0(e, t, k); return; }
   const p = e.body.getPosition();
   ctx.save();
@@ -3962,7 +3966,7 @@ function render() {
   if (DEV && G.probe) G.probe('creatures');
   for (const e of sim.aliveEggs()) if (!overNest(sim, e)) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
   drawChickFX(ctx, sim, t, k);
-  drawMagnetField(ctx, sim, t, k, save.calm); // v3.1 magnet; 2026-11-20: over the eggs (the horseshoe, the band, the field lines)
+  drawMagnetField(ctx, sim, t, k, save.calm); // v3.1 magnet; 2026-11-20: over the eggs (the two poles, the field lines, the pull)
   blastXf(() => { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); }, 10.4); // v3.3: the arms wrapped over a held egg
   blastXf(() => drawReefOver(ctx, sim, t, k), 8.2); // world 8: claws over a held egg, the silt cloud
   if (sim.water) drawBoat(ctx, sim, t, k); // world 8: the boat on the surface, over the hen's legs
@@ -4713,15 +4717,15 @@ function wrapText(text, size, maxW) {
 // 2026-11-20 first-five ladder: until the level is first won it stays up until the player has turned a ring once; after
 // that it comes back, on the ring under the egg furthest along, whenever the player stalls for 4 s (G.teach).
 // ---------------------------------------------------------------- the fuse intro (2026-11-20, owner: "they did not even
-// realize that there was a timer ... let the user know the fuse that is turning and the timer are related. A proper
-// animation, not just verbosity"). The first fuse level of a save (level 2 in the ladder) opens with it, once:
-//   0.00-0.55  the HUD timer lifts out of its slot and grows to the middle; a match strike lights the fuse's spark
-//   0.55-2.95  a glowing dotted line runs spark -> timer; the timer ticks down 2 s while the spark creeps along the rope;
-//              big words across the screen, two lines at a time
-//   2.95-3.40  the timer flies home with a bounce and a tick, the 2 shown seconds roll back (the real fuse has not burnt)
-// The world does not step until it ends (update), a tap skips to the flight home, calm: one still frame for 1.8 s.
+// realize that there was a timer"; then, on seeing the first version: "for the first time we could show the timer and
+// then it animates and goes to the top section of the page and then simply show that the fuse starts. That's it").
+// The first fuse level of a save (level 2 in the ladder) opens with it, once:
+//   0.00-1.15  the timer, big, in the middle of the screen, with two big words
+//   1.15-1.75  it flies to its place in the top bar and lands with a bounce
+//   1.95-3.50  a match strike lights the fuse at the top of the vault, the rope is picked out, big words; then play
+// The world does not step until it ends (update), a tap skips to the end, calm: two stills.
 // Then, on the first three fuse levels, the HUD timer pulses with a flare of the spark at half time and at 10 s left.
-const FI_D = 3.4, FI_CALM = 1.8;
+const FI_D = 3.5, FI_CALM = 2.4, FI_FLY = 1.15, FI_LAND = 1.75, FI_STRIKE = 1.95;
 function fuseIntroOn() { return !!(G.fi && G.fi.run === G.run); }
 function fuseIntroTick(dt, sim) {
   if (G.screen !== 'play') return;
@@ -4739,10 +4743,9 @@ function fuseIntroTick(dt, sim) {
     const F = G.fi, D = F.calm ? FI_CALM : FI_D;
     F.t = DEV && G.fiHold != null ? G.fiHold : F.t + dt; // (dev: strips hold a moment)
     if (!F.calm) {
-      if (F.t >= 0.22 && !F.lit) { F.lit = true; G.fuseHandle = audio.play('bomb_fuse'); }
-      const n = Math.floor(clamp((F.t - 0.95) / 1.0, 0, 2)); // the two ticks, in step with the spark
-      if (n > F.ticked) { F.ticked = n; audio.play('countdown'); }
-      if (F.t >= FI_D - 0.12 && !F.home) { F.home = true; audio.play('hud_pop'); audio.play('countdown', { pitch: 1.3 }); }
+      if (!F.pop) { F.pop = true; audio.play('hud_pop'); }
+      if (F.t >= FI_LAND - 0.05 && !F.home) { F.home = true; audio.play('countdown', { pitch: 1.3 }); }
+      if (F.t >= FI_STRIKE && !F.lit) { F.lit = true; G.fuseHandle = audio.play('bomb_fuse'); }
     }
     if (F.t >= D) { G.fi = null; stopFuse(); }
     return;
@@ -4753,15 +4756,8 @@ function fuseIntroTick(dt, sim) {
     if (!H.ten && sim.timeLeft <= 10 && sim.timeLimit > 14) { H.ten = true; G.fp = { run: G.run, t0: G.t }; }
   }
 }
-function fuseIntroSkip() { const F = G.fi; if (!fuseIntroOn()) return false; if (F.calm) F.t = FI_CALM; else if (F.t < FI_D - 0.45) F.t = FI_D - 0.45; return true; }
-// seconds the intro shows (it burns 2 s for show, then rolls them back on the way home)
-function fuseShown(sim) {
-  const F = G.fi;
-  if (!fuseIntroOn()) return sim.timeLeft;
-  if (F.calm) return sim.timeLimit;
-  const burn = 2 * clamp((F.t - 0.75) / 2.2, 0, 1) * (1 - ease01((F.t - (FI_D - 0.45)) / 0.4));
-  return sim.timeLimit - burn;
-}
+function fuseIntroSkip() { const F = G.fi; if (!fuseIntroOn()) return false; const D = F.calm ? FI_CALM : FI_D; if (F.t < D - 0.3) F.t = D - 0.3; return true; }
+function fuseShown(sim) { return fuseIntroOn() ? sim.timeLimit : sim.timeLeft; } // the intro shows the whole time: nothing has burnt yet
 function ease01(k) { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); }
 const fpK = () => (G.fp && G.fp.run === G.run && G.t - G.fp.t0 < 0.9 ? (G.t - G.fp.t0) / 0.9 : -1);
 // the HUD timer's slot: where the intro flies from and back to; hidden while the big one is out, pulsing on a flare
@@ -4804,55 +4800,45 @@ function drawFuseIntro() {
     if (G.fiSlot) { ctx.save(); ctx.globalAlpha = 0.6 * a; ctx.strokeStyle = '#ffd34d'; ctx.lineWidth = 3 * u; ctx.setLineDash([3 * u, 7 * u]); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(G.fiSlot.x, G.fiSlot.y); ctx.stroke(); ctx.restore(); }
     return;
   }
-  const F = G.fi, T = F.calm ? 1.6 : F.t, secs = fuseShown(sim), frac = secs / sim.timeLimit;
+  const F = G.fi, calm = F.calm, T = F.t, D = calm ? FI_CALM : FI_D, secs = sim.timeLimit;
   const slot = G.fiSlot || { x: A.cx, y: A.y + 40 * u };
-  const land = A.w > A.h * 1.15;
-  const big = { x: A.cx, y: A.y + A.h * (land ? 0.4 : 0.42) }, S = Math.min(3, (A.w * 0.72) / (100 * u), (A.h * 0.15) / (34 * u));
-  const up = F.calm ? 1 : 1 - Math.pow(1 - ease01(T / 0.55), 2), back = F.calm ? 0 : ease01((T - (FI_D - 0.45)) / 0.4);
-  const show = up * (1 - back);
-  // a dim veil so the spark, the line and the words read (one flat fill)
-  ctx.save(); ctx.globalAlpha = 0.45 * show; ctx.fillStyle = '#0c0603'; ctx.fillRect(0, 0, W_, H_); ctx.restore();
-  // the rope itself, picked out over the veil (a round vault: a shaped one keeps the world's own rope)
-  const outer = sim.rings[sim.rings.length - 1];
-  if (!(outer && outer.prof)) {
-    const c0 = toScreen(0, 0), R = (sim.outerR + 0.32) * G.cam.k, a0 = Math.PI / 2, a1 = a0 + 6.2832 * frac;
-    ctx.save(); ctx.globalAlpha = 0.9 * show; ctx.lineCap = 'round'; ctx.strokeStyle = '#ffe9b0'; ctx.lineWidth = 4 * u;
-    ctx.beginPath(); ctx.arc(c0.x, c0.y, R, -a1, -a0); ctx.stroke(); ctx.restore();
-  }
-  // the spark, lit by a match strike and then made to glow
-  const p = toScreen(W.FUSE_TIP.x, W.FUSE_TIP.y), lit = F.calm ? 1 : ease01((T - 0.15) / 0.2);
+  const big = { x: A.cx, y: A.y + A.h * 0.4 }, S = Math.min(3, (A.w * 0.72) / (100 * u), (A.h * 0.15) / (34 * u));
+  const show = calm ? 1 : ease01(T / 0.25) * (1 - ease01((T - (D - 0.3)) / 0.3));
+  const fly = calm ? (T < FI_CALM / 2 ? 0 : 1) : ease01((T - FI_FLY) / (FI_LAND - FI_FLY)); // 0 in the middle, 1 home in the top bar
+  const lit = calm ? fly : ease01((T - FI_STRIKE) / 0.2);
+  // a dim veil so the timer, the spark and the words read (one flat fill)
+  ctx.save(); ctx.globalAlpha = 0.5 * show; ctx.fillStyle = '#0c0603'; ctx.fillRect(0, 0, W_, H_); ctx.restore();
+  // the fuse starts: the rope is picked out from the spark round the vault, a match strike lights it
   if (lit > 0) {
-    const fl = F.calm ? 0 : Math.max(0, 1 - (T - 0.22) / 0.35); // the strike flash
+    const p = toScreen(W.FUSE_TIP.x, W.FUSE_TIP.y), outer = sim.rings[sim.rings.length - 1];
+    if (!(outer && outer.prof)) { // a round vault (a shaped one keeps the world's own rope)
+      const c0 = toScreen(0, 0), R = (sim.outerR + 0.32) * G.cam.k, sweep = calm ? 1 : ease01((T - FI_STRIKE) / 0.7);
+      ctx.save(); ctx.globalAlpha = 0.9 * show; ctx.lineCap = 'round'; ctx.strokeStyle = '#ffe9b0'; ctx.lineWidth = 4 * u;
+      ctx.beginPath(); ctx.arc(c0.x, c0.y, R, -Math.PI / 2 - 6.2832 * sweep, -Math.PI / 2); ctx.stroke(); ctx.restore();
+    }
+    const fl = calm ? 0 : clamp(1 - (T - FI_STRIKE) / 0.45, 0, 1); // the strike flash
     ctx.save();
-    ctx.globalAlpha = 0.5 * show; ctx.fillStyle = '#ffd34d'; ctx.beginPath(); ctx.arc(p.x, p.y, (16 + 4 * Math.sin(G.t * 20)) * u, 0, 7); ctx.fill();
-    ctx.globalAlpha = show; ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(p.x, p.y, 6 * u, 0, 7); ctx.fill();
-    if (fl > 0) { ctx.globalAlpha = fl; ctx.strokeStyle = '#fff'; ctx.lineWidth = 4 * u; for (let i = 0; i < 8; i++) { const a = (i / 8) * 6.283 + 0.3, r0 = 10 * u, r1 = (18 + 34 * (1 - fl)) * u; ctx.beginPath(); ctx.moveTo(p.x + Math.cos(a) * r0, p.y + Math.sin(a) * r0); ctx.lineTo(p.x + Math.cos(a) * r1, p.y + Math.sin(a) * r1); ctx.stroke(); } }
+    ctx.globalAlpha = 0.5 * show * lit; ctx.fillStyle = '#ffd34d'; ctx.beginPath(); ctx.arc(p.x, p.y, (18 + (calm ? 0 : 5 * Math.sin(G.t * 20))) * u, 0, 7); ctx.fill();
+    ctx.globalAlpha = show * lit; ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(p.x, p.y, 7 * u, 0, 7); ctx.fill();
+    if (fl > 0) { ctx.globalAlpha = fl; ctx.strokeStyle = '#fff'; ctx.lineWidth = 4 * u; ctx.lineCap = 'round'; for (let i = 0; i < 8; i++) { const a = (i / 8) * 6.283 + 0.3, r0 = 12 * u, r1 = (20 + 38 * (1 - fl)) * u; ctx.beginPath(); ctx.moveTo(p.x + Math.cos(a) * r0, p.y + Math.sin(a) * r0); ctx.lineTo(p.x + Math.cos(a) * r1, p.y + Math.sin(a) * r1); ctx.stroke(); } }
+    if (!calm) for (let i = 0; i < 2; i++) { const q = ((T - FI_STRIKE) * 0.9 + i * 0.5) % 1; ctx.globalAlpha = show * (1 - q) * 0.8; ctx.strokeStyle = '#ffe58a'; ctx.lineWidth = 3 * u; ctx.beginPath(); ctx.arc(p.x, p.y, (14 + 46 * q) * u, 0, 7); ctx.stroke(); } // rings off the spark: look here
     ctx.restore();
   }
-  // the big timer: from its HUD slot to the middle and back home with a bounce
-  let cx, cy, sc;
-  if (back > 0) { const b = back, ov = Math.sin(b * Math.PI) * 0.18; cx = big.x + (slot.x - big.x) * b; cy = big.y + (slot.y - big.y) * b; sc = S + (1 - S) * b + ov * (1 - b) * 0 + (b > 0.85 ? Math.sin((b - 0.85) / 0.15 * Math.PI) * 0.25 : 0); }
-  else { cx = slot.x + (big.x - slot.x) * up; cy = slot.y + (big.y - slot.y) * up; sc = 1 + (S - 1) * up + (F.calm ? 0 : Math.sin(clamp(T / 0.55, 0, 1) * Math.PI) * 0.12); }
-  // the link: a glowing dotted line from the spark to the clock face, sparks running along it to the timer
-  const link = F.calm ? 1 : ease01((T - 0.55) / 0.3) * (1 - ease01((T - (FI_D - 0.6)) / 0.25));
-  const clockX = cx - 40 * u * sc, clockY = cy;
-  if (link > 0.01) {
-    ctx.save(); ctx.globalAlpha = link; ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(255,190,60,0.45)'; ctx.lineWidth = 9 * u; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(clockX, clockY); ctx.stroke();
-    ctx.strokeStyle = '#ffe58a'; ctx.lineWidth = 3.5 * u; ctx.setLineDash([2 * u, 9 * u]); ctx.lineDashOffset = F.calm ? 0 : -G.t * 60 * u; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(clockX, clockY); ctx.stroke(); ctx.setLineDash([]);
-    if (!F.calm) for (let i = 0; i < 3; i++) { const q = ((G.t * 1.4 + i / 3) % 1); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p.x + (clockX - p.x) * q, p.y + (clockY - p.y) * q, 3.5 * u, 0, 7); ctx.fill(); }
-    ctx.restore();
-  }
-  ctx.save(); ctx.translate(cx, cy); ctx.scale(sc, sc);
-  const tickK = F.calm ? 0 : Math.max(0, 1 - ((T - 0.95) % 1.0) / 0.25) * (T > 0.95 && T < 3.0 ? 1 : 0); // a little jump on each tick
-  if (tickK > 0) ctx.scale(1 + 0.06 * tickK, 1 + 0.06 * tickK);
-  timerPill(secs, frac, u);
+  // the timer: big in the middle, then up to its place in the top bar, landing with a bounce; it nods when the fuse is lit
+  const pop = calm ? 1 : 1 - Math.pow(1 - clamp(T / 0.32, 0, 1), 3) + 0.14 * Math.sin(clamp(T / 0.45, 0, 1) * Math.PI);
+  const landK = calm ? 1 : clamp((T - FI_LAND) / 0.32, 0, 1), nodK = calm ? 1 : clamp((T - FI_STRIKE) / 0.4, 0, 1);
+  const cx = big.x + (slot.x - big.x) * fly, cy = big.y + (slot.y - big.y) * fly;
+  const sc = pop * (S + (1 - S) * fly) * (1 + 0.03 * Math.sin(G.t * 6) * (1 - fly)) + (T >= FI_LAND ? 0.3 * Math.sin(landK * Math.PI) * (1 - landK) + 0.22 * Math.sin(nodK * Math.PI) : 0);
+  if (!calm && fly >= 1 && nodK < 1) { ctx.save(); ctx.globalAlpha = (1 - nodK) * show; ctx.strokeStyle = '#ffd34d'; ctx.lineWidth = 3 * u; ctx.beginPath(); ctx.ellipse(cx, cy, (52 + 34 * nodK) * u, (20 + 22 * nodK) * u, 0, 0, 7); ctx.stroke(); ctx.restore(); }
+  ctx.save(); ctx.globalAlpha = show < 1 && T > 1 ? 1 : Math.min(1, show * 1.6); ctx.translate(cx, cy); ctx.scale(sc, sc);
+  timerPill(secs, 1, u);
   ctx.restore();
-  // big words across the screen, two short lines at a time
-  const wy = big.y + 34 * u * S * 0.5 + 34 * u, size = Math.min(A.w * 0.13, 64 * u), maxW = A.w - 32 * u;
-  const w1 = F.calm ? 1 : ease01((T - 0.45) / 0.2) * (1 - ease01((T - 1.75) / 0.15)), w2 = F.calm ? 0 : ease01((T - 1.85) / 0.2) * (1 - ease01((T - 2.95) / 0.2));
-  if (w1 > 0.01) { const s1 = 0.8 + 0.2 * w1; ctx.save(); ctx.translate(A.cx, wy); ctx.scale(s1, s1); ctx.translate(-A.cx, -wy); fuseWords(F.calm ? ['THE FUSE IS', 'YOUR TIMER'] : ['THE FUSE', 'IS BURNING'], A.cx, wy, maxW, size, w1); ctx.restore(); }
-  if (w2 > 0.01) { const s2 = 0.8 + 0.2 * w2; ctx.save(); ctx.translate(A.cx, wy); ctx.scale(s2, s2); ctx.translate(-A.cx, -wy); fuseWords(['EGGS HOME', 'BEFORE IT ENDS!'], A.cx, wy, maxW, size, w2); ctx.restore(); }
+  // big words across the screen: the timer first, then the fuse
+  const wy = big.y + 34 * u * S * 0.5 + 40 * u, size = Math.min(A.w * 0.15, 72 * u), maxW = A.w - 32 * u;
+  const w1 = calm ? 1 - fly : ease01((T - 0.18) / 0.2) * (1 - ease01((T - (FI_FLY - 0.12)) / 0.2));
+  const w2 = calm ? fly : ease01((T - FI_STRIKE) / 0.2) * (1 - ease01((T - (D - 0.4)) / 0.25));
+  if (w1 > 0.01) { const s1 = 0.8 + 0.2 * w1; ctx.save(); ctx.translate(A.cx, wy); ctx.scale(s1, s1); ctx.translate(-A.cx, -wy); fuseWords(['YOUR TIME'], A.cx, wy, maxW, size, w1); ctx.restore(); }
+  if (w2 > 0.01) { const y2 = big.y, s2 = 0.8 + 0.2 * w2; ctx.save(); ctx.translate(A.cx, y2); ctx.scale(s2, s2); ctx.translate(-A.cx, -y2); fuseWords(['THE FUSE', 'IS LIT!'], A.cx, y2, maxW, size, w2); ctx.restore(); }
   if (show > 0.5) { ctx.save(); ctx.globalAlpha = 0.7 * show; ctx.font = `600 ${Math.round(14 * u)}px ${FONT}`; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('Tap to skip', A.cx, A.y + A.h - 22 * u); ctx.restore(); }
 }
 function drawKeyHint() {

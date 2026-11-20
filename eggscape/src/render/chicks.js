@@ -20,7 +20,7 @@ export const KIND = {
   dash: { name: 'Dash chick', base: '#ff8a2e', shade: '#d9561a', hi: '#ffc58a', belly: '#ffe2bd', glow: '255,140,50', orb: ['#ffc898', '#c24a10', '#3d1202'], line: 'Tap it once: it zooms along its channel, bonks snakes dizzy and grabs orbs. It can zoom right past a gap!' },
   swoop: { name: 'Swoop chick', base: '#55aef7', shade: '#2f72cc', hi: '#b8e2ff', belly: '#e6f5ff', glow: '90,175,255', orb: ['#c4e6ff', '#1f63c4', '#061c42'], line: 'Tap it once: it flies up through the ring above, tearing down a thorn curtain, then glides down.' },
   bulk: { name: 'Bulk chick', base: '#8ad44c', shade: '#4f9a2a', hi: '#cdf596', belly: '#e8f8c8', glow: '130,215,80', orb: ['#d4f5a8', '#3f8a1e', '#0f2a06'], line: 'Tap it once: it puffs up big and heavy for 5 s. Squashes thorns, snakes bounce off. Too big for gaps!' },
-  pick: { name: 'Pick chick', base: '#ad78ea', shade: '#7444ba', hi: '#dcc2ff', belly: '#f1e6ff', glow: '175,120,240', orb: ['#e2ccff', '#6630b0', '#1d0840'], line: 'Tap it once: its drill beak shatters ice under it for 6 s. On a normal ring it only chips thorns.' },
+  pick: { name: 'Drill Chick', base: '#ad78ea', shade: '#7444ba', hi: '#dcc2ff', belly: '#f1e6ff', glow: '175,120,240', orb: ['#e2ccff', '#6630b0', '#1d0840'], line: 'Tap it once: its drill beak shatters ice under it for 6 s. On a normal ring it only chips thorns.' },
 };
 export const chickLabel = (egg) => (egg && KIND[egg.chickKind] ? KIND[egg.chickKind].name.replace(' chick', '') + ' chick!' : 'Chick!');
 
@@ -760,7 +760,7 @@ function bulkPuffed(ctx, t, o, st, rx, ry, rot) {
 
 // ------------------------------------------------------------- the Drill Chick (2026-11-20 rebuild)
 // mykee (3rd time): "Drill Chick was not properly designed. Its beak was not properly aligned... they look stale". She is now
-// drawn three-quarter, facing +x like the dash chick: two eyes, and her BEAK is the drill: a small brass beak-root just
+// drawn three-quarter, facing +x like the dash chick: two eyes, and her BEAK is the drill: one orange spiral cone growing
 // under and between the eyes, and a chunky two-tone spiral bit coming out of it, in line with her gaze (forward-down).
 // The whole body turns so the bit points at the ring she drills (st.drillA), she stands on it head down, tail up.
 // Times (sim/chicks.js, unchanged): drill PICK_T 0.55 s (pow 1), recoil 0.35 s (pow 2), then st.after (s since the recoil
@@ -782,25 +782,36 @@ function drillSpin(t, st) {
   return { p, v: u < D ? 3.5 : 0, q: p };
 }
 
-// The bit, along +x from x 0 (radius W) to its point at x L: a chunky steel body that tapers in the last half, dark steel
-// with bright helical flutes (two-tone, so the turn reads at 40 px), a lit band along the top and a shaded underside.
-// Baked: 8 phases x (sharp | blurred), each a small picture (castkit bake), so a spinning bit costs one drawImage.
-function bitPath(c, L, W) {
+// Her beak IS the drill bit (mykee, 2026-11-20: "it looks like it put a drilling bit on top of its beak. Its beak should
+// be a drill bit. That's it"). One piece, in beak orange: a stout cone from her face (rounded where it sits on the face,
+// radius W) to its point at x L, cut by a dark spiral groove so the turn reads at 40 px, a lit band along the top and a
+// shaded underside. No steel, no ring, nothing clipped on.
+// Baked: 8 phases x (sharp | blurred), each a small picture (castkit bake), so a spinning beak costs one drawImage.
+const BK_W = PK.W + 1.5, BK_BACK = 7;
+function bitPath(c, L, W) { // a cone of three thread ridges, each a little proud of the next (the drill's stepped outline)
+  const N = 3, n = 1.3, rad = (x) => W * Math.pow(1 - x / L, 0.62);
   c.beginPath();
-  c.moveTo(0, -W);
-  c.lineTo(L * 0.5, -W * 0.93);
-  c.quadraticCurveTo(L * 0.86, -W * 0.7, L, 0);
-  c.quadraticCurveTo(L * 0.86, W * 0.7, L * 0.5, W * 0.93);
-  c.lineTo(0, W);
+  c.moveTo(-1, -W);
+  for (let i = 0; i < N; i++) {
+    const x0 = (L * i) / N, x1 = (L * (i + 1)) / N, r0 = rad(x0), r1 = rad(x1), last = i === N - 1;
+    c.quadraticCurveTo((x0 + x1) / 2 + 1.5, -(r0 + r1) / 2 - 1.1, x1, last ? 0 : -(r1 - n));
+    if (!last) c.lineTo(x1 + 0.4, -r1);
+  }
+  for (let i = N - 1; i >= 0; i--) {
+    const x0 = (L * i) / N, x1 = (L * (i + 1)) / N, r0 = rad(x0), r1 = rad(x1), last = i === N - 1;
+    if (!last) c.lineTo(x1, r1 - n);
+    c.quadraticCurveTo((x0 + x1) / 2 + 1.5, (r0 + r1) / 2 + 1.1, i ? x0 + 0.4 : -1, r0);
+  }
+  c.bezierCurveTo(-BK_BACK, W, -BK_BACK, -W, -1, -W);
   c.closePath();
 }
 function paintBit(c, L, W, ph, blur, o) {
   bitPath(c, L, W);
-  c.fillStyle = '#4a5468';
+  c.fillStyle = '#b9500c'; // the groove
   c.fill();
   c.save();
   c.clip();
-  const P = 9.5, bw = P * 0.46, sl = W * 0.55;
+  const P = L / 3, bw = P * 0.62, sl = W * 0.5;
   const band = (x, col) => {
     c.fillStyle = col;
     c.beginPath();
@@ -812,15 +823,15 @@ function paintBit(c, L, W, ph, blur, o) {
     c.closePath();
     c.fill();
   };
-  if (blur) { // a smear: both tones half way, faint flutes
-    c.fillStyle = '#a3adbd';
-    c.fillRect(-1, -W - 1, L + 2, 2 * W + 2);
-    for (let x = -P + ph * P; x < L + P; x += P) band(x, 'rgba(232,238,246,0.55)');
-  } else for (let x = -P + ph * P; x < L + P; x += P) band(x, '#dfe6f0');
-  c.fillStyle = 'rgba(255,255,255,0.42)'; // lit band along the top
-  c.fillRect(-1, -W * 0.72, L + 2, W * 0.3);
-  c.fillStyle = 'rgba(24,30,52,0.34)'; // shaded underside
-  c.fillRect(-1, W * 0.3, L + 2, W);
+  if (blur) { // a smear: both tones half way, faint threads
+    c.fillStyle = '#f0921f';
+    c.fillRect(-BK_BACK - 1, -W - 1, L + BK_BACK + 2, 2 * W + 2);
+    for (let x = -2 * P + ph * P; x < L + P; x += P) band(x, 'rgba(255,205,96,0.55)');
+  } else for (let x = -2 * P + ph * P; x < L + P; x += P) band(x, '#ffb52e');
+  c.fillStyle = 'rgba(255,246,200,0.5)'; // lit band along the top
+  c.beginPath(); c.moveTo(-BK_BACK, -W * 0.72); c.quadraticCurveTo(L * 0.5, -W * 0.56, L, -0.6); c.lineTo(L, 0.4); c.quadraticCurveTo(L * 0.5, -W * 0.3, -BK_BACK, -W * 0.42); c.closePath(); c.fill();
+  c.fillStyle = 'rgba(120,40,6,0.3)'; // shaded underside
+  c.beginPath(); c.moveTo(-BK_BACK, W * 0.3); c.quadraticCurveTo(L * 0.5, W * 0.22, L, 0.6); c.lineTo(L, W + 1); c.lineTo(-BK_BACK, W + 1); c.closePath(); c.fill();
   c.restore();
   bitPath(c, L, W);
   c.lineWidth = o * 0.8;
@@ -828,12 +839,12 @@ function paintBit(c, L, W, ph, blur, o) {
   c.lineJoin = 'round';
   c.stroke();
   c.fillStyle = '#ffffff';
-  c.beginPath(); c.arc(L - 3.2, -0.8, 1.05, 0, TAU); c.fill();
+  c.beginPath(); c.arc(L - 4.2, -0.9, 1.05, 0, TAU); c.fill();
 }
 function drillBit(ctx, L, W, spin, o) {
   const blur = spin.v > 9 ? 1 : 0, n = 8, idx = Math.floor(mod(spin.q, 1) * n), ph = idx / n;
   const pad = o;
-  if (!bake(ctx, 'pkBit|' + L + '|' + W + '|' + o.toFixed(2) + '|' + idx + '|' + blur, -pad, -W - pad, L + pad, W + pad, (c) => paintBit(c, L, W, ph, blur, o))) paintBit(ctx, L, W, ph, blur, o);
+  if (!bake(ctx, 'pkBit|' + L + '|' + W + '|' + o.toFixed(2) + '|' + idx + '|' + blur, -BK_BACK - pad, -W - pad, L + pad, W + pad, (c) => paintBit(c, L, W, ph, blur, o))) paintBit(ctx, L, W, ph, blur, o);
   if (spin.v > 5) { // whirr arcs either side
     const a = clamp((spin.v - 5) / 8, 0, 1), f = mod(spin.p * 0.5, 1);
     ctx.strokeStyle = `rgba(255,255,255,${0.85 * a})`;
@@ -845,38 +856,6 @@ function drillBit(ctx, L, W, spin, o) {
     }
     ctx.stroke();
   }
-}
-// the beak-root: her own orange beak, short and stout, hooding the bit's base (upper mandible over, lower under, a nostril),
-// with a brass ring where the bit comes out
-function pickRoot(c, o) {
-  const F = PK.F, W = PK.W;
-  const beak = () => { c.beginPath(); c.moveTo(F - 1, -W - 0.8); c.bezierCurveTo(F * 0.3, -W - 3.4, -7, -W - 2.6, -7, 0); c.bezierCurveTo(-7, W + 2.4, F * 0.3, W + 2.8, F - 1, W + 0.8); c.closePath(); };
-  beak();
-  c.fillStyle = '#ee7f16';
-  c.fill();
-  c.save();
-  c.clip();
-  c.fillStyle = '#ffb12e'; // upper mandible
-  c.beginPath(); c.moveTo(-8, -W - 5); c.lineTo(F, -W - 5); c.lineTo(F, 0.8); c.quadraticCurveTo(0, 2.6, -8, 0.6); c.closePath(); c.fill();
-  c.fillStyle = 'rgba(255,255,255,0.7)';
-  c.beginPath(); c.ellipse(-2, -W + 1.2, 3.2, 1.4, -0.25, 0, TAU); c.fill();
-  c.restore();
-  beak();
-  c.lineWidth = o * 0.8;
-  c.strokeStyle = LINE;
-  c.stroke();
-  c.lineWidth = o * 0.5; // the mouth line, and a nostril
-  c.beginPath(); c.moveTo(-5.5, 0.8); c.quadraticCurveTo(0, 2.8, F - 1.5, 1.2); c.stroke();
-  c.fillStyle = LINE;
-  c.beginPath(); c.ellipse(1.2, -W + 3.6, 1.1, 0.8, 0, 0, TAU); c.fill();
-  // brass ring
-  c.beginPath(); c.roundRect ? c.roundRect(F - 1.8, -W - 1.2, 3.2, 2 * W + 2.4, 1.4) : c.rect(F - 1.8, -W - 1.2, 3.2, 2 * W + 2.4);
-  c.fillStyle = '#e8b030';
-  c.fill();
-  c.lineWidth = o * 0.55;
-  c.stroke();
-  c.fillStyle = '#fff1b0';
-  c.fillRect(F - 1.1, -W - 0.4, 1.2, W * 0.7);
 }
 // the lamp's beam: a soft cone baked once (no gradient per frame), drawn from the lamp along +x
 let LAMP = null;
@@ -1084,22 +1063,20 @@ function pickChick(ctx, t, o, st) {
   ctx.translate(PK.x, PK.y);
   ctx.rotate(ba);
   ctx.fillStyle = 'rgba(80,40,140,0.28)'; // a soft shade under it on the chin
-  ctx.beginPath(); ctx.ellipse(6, PK.W + 2.5, 11, 3, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(5, BK_W + 1.5, 10, 3, 0, 0, TAU); ctx.fill();
   ctx.save();
-  ctx.translate(PK.F - 1, 0);
-  drillBit(ctx, PK.L, PK.W, spin, o);
+  drillBit(ctx, PK_LEN, BK_W, spin, o);
   if (glint >= 0) { // a glint running from the root to the point
-    const gx = PK.L * glint, w = PK.W * (gx < PK.L * 0.42 ? 0.95 : clamp((PK.L - gx) / (PK.L * 0.58), 0, 1) * 0.9);
+    const gx = PK_LEN * glint, w = BK_W * (gx < PK_LEN * 0.42 ? 0.95 : clamp((PK_LEN - gx) / (PK_LEN * 0.58), 0, 1) * 0.9);
     ctx.strokeStyle = `rgba(255,255,255,${Math.sin(glint * Math.PI)})`;
     ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(gx + w * 0.5, -w); ctx.lineTo(gx - w * 0.5, w); ctx.stroke();
   }
-  if (ting > 0) { ctx.fillStyle = '#ffffff'; sparkle(ctx, PK.L + 2, -3, 9 * ting); ctx.fillStyle = 'rgba(255,240,170,0.9)'; sparkle(ctx, PK.L + 2, -3, 4 * ting); }
+  if (ting > 0) { ctx.fillStyle = '#ffffff'; sparkle(ctx, PK_LEN + 2, -3, 9 * ting); ctx.fillStyle = 'rgba(255,240,170,0.9)'; sparkle(ctx, PK_LEN + 2, -3, 4 * ting); }
   if (sparks) { // ready: tiny sparks flick off the point
-    for (let i = 0; i < 2; i++) { const ph = mod(t * 2.6 + i * 0.5, 1); if (ph > 0.35) continue; ctx.fillStyle = i ? '#fff6b0' : '#ffffff'; sparkle(ctx, PK.L + 3 + ph * 14, (i ? -1 : 1) * (2 + ph * 12), 3.2 * Math.sin((ph / 0.35) * Math.PI)); }
+    for (let i = 0; i < 2; i++) { const ph = mod(t * 2.6 + i * 0.5, 1); if (ph > 0.35) continue; ctx.fillStyle = i ? '#fff6b0' : '#ffffff'; sparkle(ctx, PK_LEN + 3 + ph * 14, (i ? -1 : 1) * (2 + ph * 12), 3.2 * Math.sin((ph / 0.35) * Math.PI)); }
   }
   ctx.restore();
-  pickRoot(ctx, o);
   ctx.restore();
   ctx.restore();
   // steam off the hot bit (world-up, so outside the body's turn)

@@ -87,6 +87,7 @@ export const POWER = {
   water: { time: 8 }, // landing impacts count half
   magnet: { time: 8, len: 0.8 },
 };
+export const MAGNET = { pull: 2.4, same: 1.5, lead: 0.3, vmax: 5 }; // the pull in g: the egg behind, two eggs in one chamber, the egg in front
 export const ORB_TYPES = ['fire_red', 'fire_black', 'fire_green', 'fire_gold', 'stone', 'bubble', 'water', 'thunder', 'thorn', 'magnet', 'twin',
   'hourglass', 'feather', 'rockskin', 'curse', 'frost', ...P2_TYPES];
 export const LEGACY_ORB = { fire: 'fire_red', steel: 'stone', foxcurse: 'curse' }; // old item ids (levels and saves); v3.6 renamed the curse orb
@@ -574,6 +575,7 @@ export class Sim {
       // a chick flutters: most of its weight is carried by its wings
       if (egg.chick) b.applyForceToCenter(Vec2(0, b.getMass() * (this.g - 0.4 * this.g0)), true); // net fall 0.4 g0
       if (egg.magnet > 0 && (egg.magnet -= dt) <= 0) this.unMagnet(egg);
+      if (egg.joint && egg.joint.a === egg && !egg.joint.dead) this.magnetPull(egg.joint);
       if (this.wind) b.applyForceToCenter(Vec2(this.wind * this.pushK(egg) * b.getMass() * (egg.bubble > 0 ? 2.2 : 1), 0), true);
       if (this.water && b.isActive()) { // a little bob and sway as it drifts up
         const ph = this.t * WATER.bobW + egg.id * 1.7;
@@ -833,6 +835,7 @@ export class Sim {
         // momentum share: lighter egg takes more of the hit
         const mo = other.getMass(), me = body.getMass();
         v = closing * (2 * mo / (mo + me)) * 0.85;
+        if (egg.joint && !egg.joint.dead && (egg.joint.a === egg ? egg.joint.b : egg.joint.a).body === other) v = Math.min(v, 1); // magnet partners clack together: never a crack
       }
       if (uo.kind === 'seg' && (uo.seg.pad || uo.seg.honey)) egg.soft = true; // v3: sponge landings are always safe
       if (uo.kind === 'seg' && uo.seg.pad) {
@@ -1165,6 +1168,26 @@ export class Sim {
     egg.joint = best.joint = { j, a: egg, b: best, len: POWER.magnet.len };
     egg.magnet = best.magnet = POWER.magnet.time;
     this.emit('magnetOn', { egg, other: best });
+  }
+
+  // The magnet's pull (2026-11-20, mykee: "the force of attraction is not strong enough"). The rope alone only stopped the
+  // pair drifting apart; now the two eggs really attract for the 8 s: the one behind (further in) is hauled hard toward
+  // the one in front, which feels only a light tug back, so the pair is never held up by its own magnet. In the same
+  // chamber they rush together and clack. Stronger the closer they are, nothing once they touch (no squeezing).
+  magnetPull(J) {
+    const A = J.a, B = J.b;
+    if (!A.alive || !B.alive || A.saved || B.saved || A.phx || B.phx) return;
+    const pa = A.body.getPosition(), pb = B.body.getPosition(), dx = pb.x - pa.x, dy = pb.y - pa.y, d = Math.hypot(dx, dy);
+    const ease = Math.min(1, (d - EGG_W) / 0.2);
+    if (ease <= 0) { J.pull = 0; return; }
+    const ux = dx / d, uy = dy / d, ca = this.channelOf(A), cb = this.channelOf(B);
+    const va = A.body.getLinearVelocity(), vb = B.body.getLinearVelocity(), closing = (va.x - vb.x) * ux + (va.y - vb.y) * uy;
+    if (closing > MAGNET.vmax) { J.pull = 0; return; } // rushing together fast enough already
+    const s = Math.max(0.6, Math.min(1.3, 1.6 / d)) * ease * this.g0;
+    const ka = ca === cb ? MAGNET.same : ca < cb ? MAGNET.pull : MAGNET.lead, kb = ca === cb ? MAGNET.same : cb < ca ? MAGNET.pull : MAGNET.lead;
+    A.body.applyForceToCenter(Vec2(ux * s * ka * A.body.getMass(), uy * s * ka * A.body.getMass()), true);
+    B.body.applyForceToCenter(Vec2(-ux * s * kb * B.body.getMass(), -uy * s * kb * B.body.getMass()), true);
+    J.pull = s / this.g0; J.ka = ka; J.kb = kb; // for the look (render/magnet.js)
   }
 
   unMagnet(egg) {

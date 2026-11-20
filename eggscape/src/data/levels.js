@@ -117,7 +117,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 13, theme: "frozen", name: "Duck Pond", eggs: 3, target: 2, time: 100, spacing: 1, material: "wood", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.8}, snake: {delay: 14, speed: 0.33}, octopus: {ch: 3, a: -60, delay: 10, den: true}, bonus: {kind: "prize"}, eggKinds: ["duck"], tip: "The duck egg floats and rides the current. Let it drift to the gap.", orbs: [{type: "water", ch: 2, a: -21},{type: "thunder", ch: 3, a: -170},{type: "hatch_glow", ch: 3, a: 140}], seed: 102948, world: 3,
+    id: 13, theme: "frozen", name: "Duck Creek", eggs: 3, target: 2, time: 100, spacing: 1, material: "wood", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.8}, snake: {delay: 14, speed: 0.33}, octopus: {ch: 3, a: -60, delay: 10, den: true}, bonus: {kind: "prize"}, eggKinds: ["duck"], tip: "The duck egg floats and rides the current. Let it drift to the gap.", orbs: [{type: "water", ch: 2, a: -21},{type: "thunder", ch: 3, a: -170},{type: "hatch_glow", ch: 3, a: 140}], seed: 102948, world: 3,
     rings: [
       {gaps: [{a: 28}], thorns: [{a: 164, n: 1}]},
       {mat: "ice", gaps: [{a: 88, x: 2}], thorns: [{a: 169, n: 2},{a: -141, n: 2, side: "out", h: 0.26}], pads: [{a: -30, len: 1.54},{a: 131, len: 1.11}]},
@@ -127,7 +127,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 14, theme: "frozen", name: "Drifting Nest", eggs: 3, target: 2, time: 120, spacing: 1, material: "wood", nest: {w: 2.7, amp: 1.3, period: 8, pattern: "slide"}, weather: "current", weatherOpts: {strength: 0.7}, bonus: {kind: "turns", n: 13}, icicles: {every: 6, delay: 6, big: 3}, tip: "The ice ring has one gap. Drill a closer one with the purple chick, then drop fast: it freezes over in 6 s.", portals: [{a: [0,1.65], b: [0,1.65], emit: ["hatch_pick"], every: 9, pull: 0}], orbs: [{type: "hourglass", ch: 2, a: -112},{type: "thunder", ch: 4, a: 120},{type: "frost", ch: 3, a: -67},{type: "hatch_pick", ch: 1, a: -178}], seed: 110881, world: 3, intro: {title: "Pick chick", chick: "pick", line: "Hard ice is too tough for eggs. The purple orb hatches a pick chick: tap it on the ice and it drills a hole that freezes over 6 s later."},
+    id: 14, theme: "frozen", name: "Drifting Nest", eggs: 3, target: 2, time: 120, spacing: 1, material: "wood", nest: {w: 2.7, amp: 1.3, period: 8, pattern: "slide"}, weather: "current", weatherOpts: {strength: 0.7}, bonus: {kind: "turns", n: 13}, icicles: {every: 6, delay: 6, big: 3}, tip: "The ice ring has one gap. Drill a closer one with the purple chick, then drop fast: it freezes over in 6 s.", portals: [{a: [0,1.65], b: [0,1.65], emit: ["hatch_pick"], every: 9, pull: 0}], orbs: [{type: "hourglass", ch: 2, a: -112},{type: "thunder", ch: 4, a: 120},{type: "frost", ch: 3, a: -67},{type: "hatch_pick", ch: 1, a: -178}], seed: 110881, world: 3, intro: {title: "Drill Chick", chick: "pick", line: "Hard ice is too tough for eggs. The purple orb hatches the Drill Chick: tap it on the ice and it drills a hole that freezes over 6 s later."},
     rings: [
       {gaps: [{a: 1}], thorns: [{a: 65, n: 2}]},
       {mat: "ice", ice: true, gaps: [{a: 117}], pads: [{a: -86, len: 1.25},{a: 62, len: 1.6}]},

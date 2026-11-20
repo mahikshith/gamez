@@ -54,7 +54,7 @@ export const CHICK_DEMOS = [
   {
     id: 905, kind: 'pick', theme: 'blizzard', name: 'Pick: Ice Floor', eggs: 3, target: 2, time: 90, spacing: 1.05, material: 'wood', nest: { w: 2.6 }, seed: 9055,
     tip: 'Tap the purple chick on the ice: it drills a hole. Turn the hole under the others before it freezes over.',
-    intro: { title: 'Pick chick', line: 'The purple chick has a drill beak. Tap it once on an ice ring: the ice shatters into a hole for 6 s.' },
+    intro: { title: 'Drill Chick', line: 'The purple chick has a drill beak. Tap it once on an ice ring: the ice shatters into a hole for 6 s.' },
     orbs: [{ type: 'hatch_pick', ch: 1, a: -90 }],
     rings: [
       { gaps: [{ a: -90 }] },

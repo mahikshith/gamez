@@ -135,7 +135,7 @@ export const SPECS = [
     intro: { title: 'Falling ice', line: 'An icicle grows over an egg and shakes before it drops: turn the ring above to swing it away. Big chunks freeze a ring.' },
     tip: 'Ice leaves a slippery patch. The frost orb freezes the ring under your egg.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: -1, gear: true }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
-  { id: 13, world: 3, theme: 'frozen', name: 'Duck Pond', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5, eggKinds: ['duck'],
+  { id: 13, world: 3, theme: 'frozen', name: 'Duck Creek', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5, eggKinds: ['duck'],
     weather: 'current', weatherOpts: { strength: 0.8 }, snake: { delay: 14, speed: 0.33 },
     octopus: { ch: 3, a: -60, delay: 10, den: true },
     nest: { w: 2.8 }, bonus: { kind: 'prize' },
@@ -148,7 +148,7 @@ export const SPECS = [
     orbs: [{ type: 'hourglass', ch: 2 }, { type: 'thunder', ch: 4 }, { type: 'frost', ch: 3 }, { type: 'hatch_pick', ch: 1 }],
     tip: 'The ice ring has one gap. Drill a closer one with the purple chick, then drop fast: it freezes over in 6 s.',
     portals: [{ from: [1, 90], to: [1, 90], emit: ['hatch_pick'], every: 9, pull: 0 }],
-    intro: { title: 'Pick chick', chick: 'pick', line: 'Hard ice is too tough for eggs. The purple orb hatches a pick chick: tap it on the ice and it drills a hole that freezes over 6 s later.' }, useTap: true,
+    intro: { title: 'Drill Chick', chick: 'pick', line: 'Hard ice is too tough for eggs. The purple orb hatches the Drill Chick: tap it on the ice and it drills a hole that freezes over 6 s later.' }, useTap: true,
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, ice: true }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 15, world: 3, theme: 'blizzard', name: 'The Blizzard', boss: 'blizzard', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5,
     bossFight: { kind: 'blizzard', delay: 4, gale: 5, gecko: { delay: 3, dir: 1 }, phases: [
