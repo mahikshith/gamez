@@ -50,7 +50,7 @@ export function deviceGuess(nav = typeof navigator !== 'undefined' ? navigator :
 export const PERF = {
   step: 0, // index into STEPS while Auto; fixed tiers use their own first step
   want: -1, // a step change waiting for the start of the next frame
-  acc: 0, n: 0, good: 0, warm: 0, slow30: false,
+  acc: 0, n: 0, good: 0, warm: 0, slow30: false, work: 0, lift: 0, probes: 0,
   guess: null,
   get tier() { return STEPS[this.step][0]; },
   get low() { return this.tier === 'low'; },
@@ -82,14 +82,25 @@ function refresh(save) {
 
 // One frame went by (ms = time since the last drawn frame). Returns true when the step changed (main.js then resizes
 // the canvas at the start of the next frame). measuring: false on screens that stand still or while paused.
-export function tick(save, ms, measuring) {
-  if (!measuring) { PERF.acc = PERF.n = 0; PERF.warm = 0; return false; }
+// work: the game's own time on the last frame (ms, update + drawing commands).
+// skip: this gap is not the phone's pace (the frame before it baked pictures): left out, the window goes on
+export function tick(save, ms, measuring, work = 0, skip = false) {
+  if (!measuring) { PERF.acc = PERF.n = PERF.work = 0; PERF.warm = 0; return false; }
+  if (skip) return false;
   if ((PERF.warm += ms / 1000) < 3) return false; // a screen's first seconds build caches: not a measure of the phone
   if (ms > 120) return false; // one hitch (loading, garbage collection), not a slow phone
-  PERF.acc += ms / 1000; PERF.n++;
+  PERF.acc += ms / 1000; PERF.n++; PERF.work += work;
   if (PERF.acc < 2) return false;
-  const avg = PERF.acc / PERF.n;
-  PERF.acc = PERF.n = 0;
+  const avg = PERF.acc / PERF.n, wavg = PERF.work / PERF.n;
+  PERF.acc = PERF.n = PERF.work = 0;
+  // 2026-11-20 (mykee, 0.8.6: after buying a skin the meter went red at 30 fps and stayed, with 6.5 ms of work a
+  // frame): the 30 fps fallback used to latch for good. Now, held at 30 with lots of room (work well under a 60 fps
+  // frame), it tries 60 again after a few calm seconds, waiting longer each time it has to fall back
+  if (PERF.slow30 && save.fps === 'auto') {
+    if (wavg < 10 && avg < 1 / 26) { if (++PERF.lift >= 3 * (1 + PERF.probes)) { PERF.slow30 = false; PERF.lift = 0; PERF.probes = Math.min(4, PERF.probes + 1); refresh(save); } }
+    else PERF.lift = 0;
+    return false;
+  }
   if (save.gfx !== 'auto') return false;
   const target = PERF.fpsCap === 30 ? 1 / 26 : 1 / 45, easy = PERF.fpsCap === 30 ? 1 / 31 : 1 / 56;
   if (avg > target) {
@@ -102,6 +113,12 @@ export function tick(save, ms, measuring) {
     if ((PERF.good += 2) >= 12 && PERF.step > 0) { PERF.want = PERF.step - 1; PERF.good = 0; return true; }
   } else PERF.good = 0;
   return false;
+}
+// a new level: Auto's 30 fps fallback starts over (a slow stretch in one level, or a skin's first pictures being
+// baked, no longer holds every later level at 30)
+export function newLevel(save) {
+  PERF.lift = 0; PERF.acc = PERF.n = PERF.work = 0; PERF.warm = 0;
+  if (PERF.slow30 && save.fps === 'auto') { PERF.slow30 = false; refresh(save); }
 }
 // the waiting step change lands (called at the start of a frame, before drawing)
 // 2026-11-20: a step UP waits for the next level (changing the resolution mid-level is itself a visible hitch, and

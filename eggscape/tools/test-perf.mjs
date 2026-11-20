@@ -1,0 +1,32 @@
+// Auto quality and the 30 fps fallback (src/perf.js): node tools/test-perf.mjs
+import { PERF, applySettings, tick, newLevel, STEPS } from '../src/perf.js';
+let bad = 0;
+const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
+const save = { gfx: 'auto', fps: 'auto', gfxStep: STEPS.length - 1 };
+applySettings(save);
+const run = (secs, ms, work, skip = false) => { for (let t = 0; t < secs * 1000; t += ms) tick(save, ms, true, work, skip); };
+run(3, 16, 4); // warm-up
+run(6, 30, 20);
+ok(PERF.fpsCap === 30, 'lowest step, slow frames, heavy work: falls back to 30 fps');
+run(4, 33, 5);
+ok(PERF.fpsCap === 30, 'not back at once');
+run(4, 33, 5);
+ok(PERF.fpsCap === 60, 'held at 30 with lots of room: tries 60 again after a few calm seconds');
+run(6, 30, 20);
+ok(PERF.fpsCap === 30, 'still slow: back to 30');
+run(8, 33, 5);
+ok(PERF.fpsCap === 30, 'the second try waits longer');
+run(6, 33, 5);
+ok(PERF.fpsCap === 60, '... then tries again');
+run(6, 30, 20);
+ok(PERF.fpsCap === 30, 'slow again');
+newLevel(save);
+ok(PERF.fpsCap === 60, 'a new level starts at 60');
+run(3, 16, 4);
+run(8, 60, 30, true);
+ok(PERF.fpsCap === 60, 'gaps after frames that bake pictures (a new skin) are not counted');
+const fixed = { gfx: 'low', fps: 'auto' }; applySettings(fixed);
+for (let t = 0; t < 10000; t += 30) tick(fixed, 30, true, 20);
+ok(PERF.fpsCap === 60, 'a fixed graphics setting never drops to 30 on its own');
+console.log(bad ? `${bad} FAILED` : 'all perf checks passed');
+process.exit(bad ? 1 : 0);

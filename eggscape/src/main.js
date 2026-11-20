@@ -6,7 +6,7 @@ import { LEVELS } from './data/levels.js';
 import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop } from './themes.js';
 import { bodyCache, ringCache } from './render/ringart.js';
-import { PERF, applySettings, tick as perfTick, takeStep, STEPS, TIER_NAME } from './perf.js';
+import { PERF, applySettings, tick as perfTick, takeStep, newLevel as perfNewLevel, STEPS, TIER_NAME } from './perf.js';
 import { audio } from './audio.js';
 import { portal } from './sdk/portal.js';
 import { FX } from './render/fx.js';
@@ -350,6 +350,7 @@ function startLevel(i, opts = {}) {
   G.golden = !!opts.golden;
   G.adBoost = opts.adBoost || null;
   G.freeRewind = !!G.boost.rewind;
+  perfNewLevel(save); // Auto's 30 fps fallback is decided again in each level
   G.backdrop = backdropFor(G.theme, G.level.id * 97);
   G.weather = createWeather(G.level.weather || THEME_WEATHER[G.theme.id] || 'none', G.level.id * 31);
   G.weather.resize(W_, H_, DPR);
@@ -894,7 +895,7 @@ function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
   const pd = G.pdrag;
-  if (pd && pd.pid === e.pointerId && (G.screen === 'practice' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store' || G.screen === 'intro')) {
+  if (pd && pd.pid === e.pointerId && (G.screen === 'practice' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store' || G.screen === 'intro' || G.screen === 'pause')) { // 0.8.7: the pause page was missing here, so it never scrolled under a finger
     if (!pd.moved && pd.cand) { // the level page: two scrollers under the finger, the first clear move picks the axis
       const dx = x - pd.x0, dy = y - pd.y0;
       if (Math.max(Math.abs(dx), Math.abs(dy)) > 9 * ui.u) {
@@ -1477,6 +1478,7 @@ async function press(id) {
       break;
     default:
       if (id && id.startsWith('tr:boss:')) { G.treasure = { id: +id.slice(8), t: G.t, openedAt: null }; } // a boss treasure on the map
+      else if (id && id.startsWith('pgdn:')) { const c = CHEV[id.slice(5)]; if (c) { c.S.v = 0; c.S.to = Math.min(c.S.max, c.S.y + c.h * 0.7); audio.play('ui_tap'); } }
       else if (id === 'how:next') { if (G.how) { G.how.i++; G.how.t0 = G.t; } }
       else if (id && id.startsWith('lv:')) {
         const i = +id.slice(3);
@@ -4897,6 +4899,7 @@ function foeCard(k, i, s, iw) {
     if (bl.length) { ty += 5 * s; bl.forEach((l) => { ui.text(l, x + tx0, ty, { size: bs, color: '#2d7a1c', maxW: tw, tag: grp + ':b' + l.slice(0, 10), group: grp }); ty += bs * 1.25; }); }
   } };
 }
+const CHEV = {}; let CHEV_N = 0; // the scroll arrows on screen: id -> its scroller and view height
 const pageColH = (B, s) => B.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
 // a scrolling column of blocks inside V (screen coordinates; the scroll is applied to y, so recorded rects are real)
 function pageScroll(blocks, S, V, x, w, s, top) {
@@ -4913,7 +4916,11 @@ function pageScroll(blocks, S, V, x, w, s, top) {
   if (S.max > 0) { // soft edges, and an arrow while there is more below
     const fade = (yy, down) => { const g = ctx.createLinearGradient(0, yy, 0, yy + (down ? 22 : -22) * s); g.addColorStop(0, 'rgba(12,7,3,0.55)'); g.addColorStop(1, 'rgba(12,7,3,0)'); ctx.fillStyle = g; ctx.fillRect(V.x, down ? yy : yy - 22 * s, V.w, 22 * s); };
     if (S.y > 1) fade(V.y, true);
-    if (S.y < S.max - 1) { fade(V.y + V.h, false); chevron(Math.min(V.x + V.w - 18 * s, x + w + 6 * s), V.y + V.h - 18 * s + (save.calm ? 0 : 3 * s * Math.sin(G.t * 4)), 14 * s, 'd', S.y < 12 * s ? 1 : 0.6); }
+    if (S.y < S.max - 1) { fade(V.y + V.h, false);
+      // the "more below" arrow is a button too (0.8.7, mykee: "I click on that arrow and it leads nowhere"): one tap, most of a page down
+      const cx2 = Math.min(V.x + V.w - 22 * s, x + w + 2 * s), cy2 = V.y + V.h - 22 * s, cid = S.cid || (S.cid = ++CHEV_N);
+      chevron(cx2, cy2 + (save.calm ? 0 : 3 * s * Math.sin(G.t * 4)), 17 * s, 'd', 1);
+      CHEV[cid] = { S, h: V.h }; ui.buttons.push({ id: 'pgdn:' + cid, x: cx2 - 26 * s, y: cy2 - 26 * s, w: 52 * s, h: 52 * s }); }
   }
 }
 
@@ -6434,10 +6441,12 @@ function frame(now) {
   if (takeStep(save, G.screen === 'play' && !!G.sim)) { setDPR(); persist(); } // a quality change lands before this frame draws (no empty frame); Auto remembers it
   try {
     if (G.henSkinCur !== save.wallet.henSkin) { G.henSkinCur = save.wallet.henSkin; setHenSkin(G.henSkinCur); ui.skin = skinUI(G.henSkinCur); } // hen + rooster skin, and the menus' theme
-    const w0 = performance.now();
+    const w0 = performance.now(), b0 = stampStats.builds;
     update(dt);
     renderAll();
-    FPSM.work += performance.now() - w0;
+    FPSM.lastWork = performance.now() - w0;
+    FPSM.work += FPSM.lastWork;
+    FPSM.baked = stampStats.builds !== b0; // this frame baked pictures (a new skin's eggs, thorns): the next gap is not the phone's pace
   } catch (e) {
     const msg = String((e && e.message) || e);
     G.errs = G.errs || {};
@@ -6446,7 +6455,8 @@ function frame(now) {
   }
   if (save.showFps) drawFpsMeter(raw);
   if (G.adBusy) adWatch(raw);
-  perfTick(save, raw, !document.hidden && !G.paused && G.screen === 'play'); // 2026-11-19: Auto judges the phone on the game itself, not on a heavy menu (a themed home screen used to talk it down to Low for the next level)
+  perfTick(save, raw, !document.hidden && !G.paused && G.screen === 'play', FPSM.lastWork || 0, FPSM.bakedPrev);
+  FPSM.bakedPrev = FPSM.baked; FPSM.baked = false; // 2026-11-19: Auto judges the phone on the game itself, not on a heavy menu (a themed home screen used to talk it down to Low for the next level)
 }
 // scrolling lists and the map (2026-11-19, mykee: "so slow"): a fling glides about 1/SCROLL_DRAG s of its speed (was 3.6-4.2)
 const SCROLL_DRAG = 2.3;

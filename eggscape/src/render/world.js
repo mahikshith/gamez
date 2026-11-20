@@ -522,6 +522,7 @@ function thornSprite(ctx, art, blunt, litA, look, x1, y1, x2, y2, bx, by, Lf, sd
     S = { body: mk(2), shadow: mk(1) };
     if (!S.body || !S.shadow) return false;
     TH_SPR.set(key, S);
+    stampStats.builds++; // (perf.js: a frame that bakes a picture is not a measure of the phone)
     if (TH_SPR.size > 200) TH_SPR.delete(TH_SPR.keys().next().value);
   }
   const vx = (x2 - bx) / Lf, vy = (y2 - by) / Lf; // the live (swayed, stretched) axis
@@ -785,6 +786,7 @@ function eggSprite(ctx, egg, rot, t, k, px, ds, special) {
     c.rotate(rb);
     paintEggBody(c, egg, rb, t, k, px, ds, special);
     EGG_SPR.set(key, cv);
+    stampStats.builds++; // (perf.js: a frame that bakes a picture is not a measure of the phone)
     if (EGG_SPR.size > 240) EGG_SPR.delete(EGG_SPR.keys().next().value);
   }
   ctx.rotate(rot - rb);
