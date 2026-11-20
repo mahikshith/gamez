@@ -12,7 +12,7 @@ import { diag } from './diag.js'; // 0.8.7: the built-in speed log (Settings > D
 import { formStats } from './render/castkit.js';
 import { PERF, applySettings, tick as perfTick, takeStep, newLevel as perfNewLevel, STEPS, TIER_NAME } from './perf.js';
 import { speedTest, openSpeedTest } from './speedtest.js'; // 2026-11-20: Settings > Display > Speed test (on the player's own phone)
-import { audio } from './audio.js';
+import { audio, MAIN_THEME } from './audio.js';
 import { portal } from './sdk/portal.js';
 import { FX } from './render/fx.js';
 import * as W from './render/world.js';
@@ -415,7 +415,7 @@ function startLevel(i, opts = {}) {
   audio.setUnderwater(!!G.level.water);
   audio.setWind(0);
   audio.setFireLoop(false);
-  audio.music(G.theme.music);
+  audio.music({ ...G.theme.music, lvl: G.level.id, boss: !!G.level.bossFight }); // the world's tune, in this level's arrangement (a boss: faster, heavier drums)
   setScreen(opts.direct ? 'play' : 'intro');
   if (opts.direct) {
     portal.gameplayStart();
@@ -439,7 +439,7 @@ function setScreen(s) {
   G.offerTried = false; // each end card / home visit / intro may ask the offer engine once
   if (s !== 'title') G.homeIntro = false; // the app-start entrance plays once; coming back to home only fades in
   ui.pressedId = null;
-  if (s === 'title' || s === 'levels') warmNext();
+  if (s === 'title' || s === 'levels') { warmNext(); audio.music(MAIN_THEME); } // home and the map play the main theme
   // 2026-11-16 mykee: "you don't have to put New on the i every single time": a kind is new in the first level it is
   // played in only, whether or not the player opens the panel (the tag stays up for the rest of that level)
   if (s === 'play' && G.infoNew && G.infoKinds && G.infoKinds.some((k) => !save.seen['v:' + k])) { for (const k of G.infoKinds) save.seen['v:' + k] = 1; persist(); }

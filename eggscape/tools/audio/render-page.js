@@ -13,7 +13,7 @@ function toB64(f32) {
 window.renderCase = async (c) => {
   const sr = c.sr || 44100, len = Math.ceil(((c.dur || 5) + (c.preroll != null ? c.preroll : 0.5)) * sr);
   const ctx = new OfflineAudioContext(2, len, sr);
-  const eng = createAudioEngine(ctx, { seed: c.seed != null ? c.seed : 1234, limiter: c.limiter !== false });
+  const eng = createAudioEngine(ctx, { seed: c.seed != null ? c.seed : 1234, limiter: c.limiter !== false, ...(c.mute ? { mute: c.mute } : {}) });
   eng.unlock();
   if (c.material) eng.setMaterial(c.material);
   // Pre-roll: the compressor needs a moment after context start, so actions happen at `pre`.
@@ -43,6 +43,7 @@ window.renderCase = async (c) => {
   const t0 = performance.now();
   const buf = await ctx.startRendering();
   const ms = performance.now() - t0;
+  if (!stats && c.kind === 'music') { try { stats = eng.stats(); } catch (e) {} }
   const skip = Math.round(pre * sr), n = len - skip;
   const L = buf.getChannelData(0), R = buf.getChannelData(1), out = new Float32Array(n * 2);
   for (let i = 0; i < n; i++) { out[2 * i] = L[i + skip]; out[2 * i + 1] = R[i + skip]; }

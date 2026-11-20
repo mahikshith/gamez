@@ -37,6 +37,10 @@
   .tune small { color: var(--soft); }
   .play { background: var(--yolk); color: var(--yolk-ink); border-radius: 999px; padding: 12px 16px; min-height: 48px; font-size: 1rem; }
   .play.on { background: var(--comb); color: #fff; }
+  .play.old { background: transparent; border: 2px solid var(--line); color: var(--soft); }
+  .play.old.on { background: var(--comb); border-color: var(--comb); color: #fff; }
+  .play.hit { filter: brightness(0.9); }
+  .tune .row .no { min-height: 48px; margin-left: auto; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .tag { font: 800 0.72rem/1 var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--soft); }
   .vs { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
@@ -55,9 +59,12 @@
     <p>Every sound in the game, played by the game's own sound engine. Turn your phone's volume up and tap. Mark anything you dislike with the "No" button and the list at the bottom fills in.</p>
   </header>
   <section>
-    <h2>Theme tune: three candidates</h2>
-    <p>Each one is a written melody, the same every time, about 30 seconds a loop. The second time round a second instrument joins. Which one could you hum afterwards?</p>
-    <div class="tunes" id="tunes"></div>
+    <h2>Main theme</h2>
+    <p>The home screen and the level map play it, every world quotes its first two bars once a loop, and the level-win fanfare is built on it. On the farm it changes costume from level to level.</p>
+    <div class="tune" id="main"></div>
+    <div class="tunes" id="arrs"></div>
+    <p>The two other candidates, for comparison:</p>
+    <div class="grid" id="others"></div>
   </section>
   <section>
     <h2>The weasel's voice</h2>
@@ -67,9 +74,14 @@
     </div>
   </section>
   <section>
-    <h2>Music in each world today</h2>
-    <p>These melodies are made up by the engine as it plays, which is why none of them sticks. The plan is to give every world the chosen theme in its own costume.</p>
-    <div class="grid" id="worlds"></div>
+    <h2>World music</h2>
+    <p>Every world now has its own written tune that starts with a fanfare at full volume. "New" plays it; "Level 2" is how the next level in that world starts (another lead or key); "Boss" is the boss-level version; "Old" is the music you heard before. Each tune is about 30 seconds and changes its arrangement the second time round.</p>
+    <div class="tunes" id="worlds"></div>
+  </section>
+  <section>
+    <h2>Rebuilt sounds</h2>
+    <p>The 22 sounds you did not like, made again. "New" is the rebuilt one, "Old" is the one you heard before.</p>
+    <div class="tunes" id="rebuilt"></div>
   </section>
   <div id="groups" style="display:flex;flex-direction:column;gap:22px"></div>
   <section>
@@ -80,18 +92,19 @@
 </main>
 <div id="bar"><div class="in"><span id="now">Tap a sound</span><button id="stop" type="button">Stop music</button></div></div>
 <script>/*__ENGINE__*/</script>
+<script>/*__OLD_ENGINE__*/</script>
 <script>
 /*__DATA__*/
-const A = EggAudio.audio, $ = (id) => document.getElementById(id);
+const A = EggAudio.audio, OLD = DATA.hasOld && window.EggAudioOld ? EggAudioOld.audio : null, $ = (id) => document.getElementById(id);
 const nice = (n) => { const s = n.replace(/_/g, ' '); return s[0].toUpperCase() + s.slice(1); };
 let playing = null; const no = new Set();
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
-function wake() { try { A.unlock(); A.setSfx(true); A.setMusic(true); } catch (e) {} }
+function wake(E) { try { E = E || A; E.unlock(); E.setSfx(true); E.setMusic(true); } catch (e) {} }
 function sfx(name, label, btn) { wake(); A.play(name, { intensity: 0.8 }); $('now').textContent = label; btn.classList.add('hit'); setTimeout(() => btn.classList.remove('hit'), 160); }
-function stopMusic() { try { A.stopMusic(); } catch (e) {} if (playing) { playing.btn.classList.remove('on', 'hit'); playing.btn.textContent = playing.idle; } playing = null; }
-function music(spec, label, btn, idle) {
-  wake(); const same = playing && playing.btn === btn; stopMusic(); if (same) { $('now').textContent = 'Stopped'; return; }
-  setTimeout(() => { A.music(spec); }, 60);
+function stopMusic() { try { A.stopMusic(); } catch (e) {} try { if (OLD) OLD.stopMusic(); } catch (e) {} if (playing) { playing.btn.classList.remove('on', 'hit'); playing.btn.textContent = playing.idle; } playing = null; }
+function music(spec, label, btn, idle, E) {
+  E = E || A; wake(E); const same = playing && playing.btn === btn; stopMusic(); if (same) { $('now').textContent = 'Stopped'; return; }
+  setTimeout(() => { E.music(spec); }, 60);
   playing = { btn, idle }; btn.classList.add('on'); btn.textContent = 'Stop'; $('now').textContent = 'Playing: ' + label;
 }
 function noBtn(key, label) {
@@ -103,17 +116,31 @@ function pad(parent, name, label) {
   const c = el('div', 'cell'), b = el('button', 'pad', label); b.type = 'button'; b.onclick = () => sfx(name, label, b);
   c.append(b, noBtn(name, label)); parent.append(c);
 }
-for (const T of DATA.tunes) {
-  const c = el('div', 'tune'), b = el('button', 'play', 'Play'); b.type = 'button';
-  c.append(el('b', null, T.name), el('small', null, T.bpm + ' beats a minute'));
-  b.onclick = () => music({ tune: T.id }, T.name, b, 'Play'); c.append(b); $('tunes').append(c);
-}
+function playBtn(spec, label, text, E) { const b = el('button', 'play', text); b.type = 'button'; b.onclick = () => music(spec, label, b, text, E); return b; }
+{ const M = DATA.main, r = el('div', 'row');
+  r.append(playBtn(M.spec, M.name, 'Play ' + M.name), noBtn('m:main', M.name + ' (main theme)'));
+  $('main').append(el('b', null, M.name), el('small', null, M.info), r); }
+DATA.main.arrs.forEach((a, i) => {
+  const c = el('div', 'tune'), r = el('div', 'row');
+  r.append(playBtn(a.spec, 'Farm level ' + (i + 1) + ': ' + a.name, 'Play'), noBtn('m:arr' + i, 'Farm level ' + (i + 1) + ' (' + a.name + ')'));
+  c.append(el('b', null, 'Farm level ' + (i + 1)), el('small', null, a.info), r); $('arrs').append(c);
+});
+for (const T of DATA.others) { const c = el('div', 'cell'), b = el('button', 'pad', T.name); b.type = 'button'; b.onclick = () => music(T.spec, T.name, b, T.name); c.append(b, noBtn('m:' + T.spec.tune, T.name)); $('others').append(c); }
 for (const [n, l] of DATA.weasel.old) pad($('w-old'), n, l);
 for (const [n, l] of DATA.weasel.neu) pad($('w-new'), n, l);
 for (const W of DATA.worlds) {
-  const c = el('div', 'cell'), b = el('button', 'pad', W.name); b.type = 'button';
-  b.onclick = () => { const same = playing && playing.btn === b; wake(); stopMusic(); if (same) return; setTimeout(() => A.music(W.spec), 60); playing = { btn: b, idle: W.name }; b.classList.add('on', 'hit'); $('now').textContent = 'Playing: ' + W.name + ' music'; };
-  c.append(b, noBtn('m:' + W.id, W.name + ' music')); $('worlds').append(c);
+  const c = el('div', 'tune'), r = el('div', 'row');
+  r.append(playBtn(W.spec, W.name + ': ' + W.tune + ' (new)', 'New'));
+  if (W.level2) r.append(playBtn({ ...W.spec, lvl: 2 }, W.name + ': ' + W.tune + ', level 2', 'Level 2'));
+  r.append(playBtn({ ...W.spec, boss: true }, W.name + ': ' + W.tune + ', boss level', 'Boss'));
+  if (OLD && W.old) { const o = playBtn(W.old, W.name + ' (old music)', 'Old', OLD); o.classList.add('old'); r.append(o); }
+  r.append(noBtn('m:' + W.id, W.name + ' music'));
+  c.append(el('b', null, W.name), el('small', null, W.tune + ' · ' + W.info), r); $('worlds').append(c);
+}
+for (const n of DATA.rebuilt) {
+  const c = el('div', 'tune'), r = el('div', 'row'), b = el('button', 'play', 'New'), o = el('button', 'play old', 'Old');
+  b.type = o.type = 'button'; b.onclick = () => sfx(n, nice(n) + ' (new)', b); o.onclick = () => sfx(n + '_old', nice(n) + ' (old)', o);
+  r.append(b, o, noBtn(n, nice(n))); c.append(el('b', null, nice(n)), r); $('rebuilt').append(c);
 }
 for (const [title, names] of DATA.groups) {
   const s = el('section'), g = el('div', 'grid'); s.append(el('h2', null, title), g);

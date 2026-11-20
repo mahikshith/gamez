@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Renders chosen sounds / tunes to WAV (and MP3 when ffmpeg is there), for listening on a phone.
 //   node tools/audio/render-some.mjs <outDir> tune:strut tune:caper sfx:weasel_snicker sfx:weasel_chitter world:farm
-// tune:<id>[:seconds] a composed theme (src/audio.js TUNES); sfx:<name>[:pitch]; mood:<mood>:<root>:<scale>:<bpm>
+// tune:<id>[:seconds[:arr[:boss]]] a composed tune (src/audio.js TUNES), arr = level arrangement, boss = 1 for a boss level;
+// part:<id>:<lead|comp|bass|drums>[:seconds] one part of a tune alone (balance checks); intro:<id>[:seconds] the tune as a level starts it (musicIntro); sfx:<name>[:pitch[:intensity]]; mood:<mood>:<root>:<scale>:<bpm>[:seconds]
+// OLD_ENGINE=<path to an older audio.js> renders with that engine instead (e.g. git show HEAD:eggscape/src/audio.js > old.js)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +18,8 @@ fs.mkdirSync(OUT, { recursive: true });
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript' };
 const srv = http.createServer((req, res) => {
   const u = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  if (u === '/__harness') { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<!doctype html><meta charset="utf-8"><script type="module" src="/tools/audio/render-page.js"></script>'); return; }
+  if (u === '/__harness') { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<!doctype html><meta charset="utf-8"><script type="module" src="/tools/audio/render-page.js' + (process.env.OLD_ENGINE ? '?engine=/__old_engine.js' : '') + '"></script>'); return; }
+  if (u === '/__old_engine.js' && process.env.OLD_ENGINE) { res.writeHead(200, { 'content-type': 'text/javascript' }); res.end(fs.readFileSync(process.env.OLD_ENGINE)); return; }
   const f = path.join(ROOT, path.normalize(u).replace(/^([/\\])+/, ''));
   if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end('nf'); return; }
   res.writeHead(200, { 'content-type': MIME[path.extname(f)] || 'application/octet-stream', 'cache-control': 'no-store' }); fs.createReadStream(f).pipe(res);
@@ -37,9 +40,12 @@ await page.waitForFunction(() => window.ready === true);
 for (const w of what) {
   const [kind, a, b, c, d] = w.split(':');
   let cs;
-  if (kind === 'tune') cs = { kind: 'music', id: 'tune_' + a, spec: { tune: a }, dur: +b || 34, loop: true, music: true };
-  else if (kind === 'sfx') cs = { kind: 'sfx', id: 'sfx_' + a + (b ? '_p' + b : ''), name: a, opts: b ? { pitch: +b } : {}, dur: 2.5 };
-  else if (kind === 'mood') cs = { kind: 'music', id: 'mood_' + a, spec: { mood: a, root: b || 'C', scale: c || 'major', bpm: +d || 112 }, dur: 30, loop: true, music: true, intro: true };
+  const e = w.split(':')[5];
+  if (kind === 'part') cs = { kind: 'music', id: 'part_' + a + '_' + b, spec: { tune: a }, dur: +c || 40, loop: true, music: true, mute: Object.fromEntries(['lead', 'comp', 'bass', 'drums'].filter((k) => k !== b).map((k) => [k, 1])) };
+  else if (kind === 'tune') cs = { kind: 'music', id: 'tune_' + a + (c ? '_a' + c : '') + (d === '1' ? '_boss' : ''), spec: { tune: a, ...(c ? { arr: +c } : {}), ...(d === '1' ? { boss: true } : {}) }, dur: +b || 34, loop: true, music: true };
+  else if (kind === 'intro') cs = { kind: 'music', id: 'intro_' + a, spec: { tune: a }, dur: +b || 12, loop: true, music: true, intro: true };
+  else if (kind === 'sfx') cs = { kind: 'sfx', id: 'sfx_' + a + (b ? '_p' + b : ''), name: a, opts: { ...(b ? { pitch: +b } : {}), ...(c ? { intensity: +c } : {}) }, dur: 2.5 };
+  else if (kind === 'mood') cs = { kind: 'music', id: 'mood_' + a + '_' + (b || 'C') + (c || '') + (d || ''), spec: { mood: a, root: b || 'C', scale: c || 'major', bpm: +d || 112 }, dur: +e || 30, loop: true, music: true };
   else { console.error('unknown', w); continue; }
   const res = await page.evaluate((cc) => window.renderCase(cc), cs);
   const inter = new Float32Array(Buffer.from(res.b64, 'base64').buffer.slice(0));
@@ -47,6 +53,6 @@ for (const w of what) {
   const cut = cs.music ? inter : inter.subarray(0, Math.min(inter.length, (last + 4410) & ~1));
   const wav = path.join(OUT, cs.id + '.wav'); writeWav(wav, cut, res.sr);
   try { execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', wav, '-b:a', '128k', path.join(OUT, cs.id + '.mp3')]); } catch (e) {}
-  console.log(cs.id.padEnd(26), 'peak', (20 * Math.log10(peak || 1e-9)).toFixed(1), 'dB  rms', (10 * Math.log10(sum / inter.length || 1e-12)).toFixed(1), 'dB  len', (cut.length / 2 / res.sr).toFixed(2), 's  render', Math.round(res.ms), 'ms');
+  console.log(cs.id.padEnd(26), 'peak', (20 * Math.log10(peak || 1e-9)).toFixed(1), 'dB  rms', (10 * Math.log10(sum / inter.length || 1e-12)).toFixed(1), 'dB  len', (cut.length / 2 / res.sr).toFixed(2), 's  render', Math.round(res.ms), 'ms', res.stats && res.stats.musicErr ? 'MUSIC ERROR: ' + res.stats.musicErr : '');
 }
 await browser.close(); srv.close();
