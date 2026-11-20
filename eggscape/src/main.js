@@ -902,7 +902,7 @@ function pointerDown(e) {
     const cy = inR(G.ipRect) && G.ipage && G.ipage.max > 0 ? G.ipage : land && inR(G.ipRectR) && G.ipageR && G.ipageR.max > 0 ? G.ipageR : null;
     if (cx || cy) G.pdrag = { pid: e.pointerId, cand: { x: cx, y: cy }, x0: x, y0: y, s0: 0, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
   }
-  if (G.screen === 'levels' && G.mapTravel) G.mapTravel = null; // a touch during the trip: the map is the player's now
+  if (G.screen === 'levels' && G.mapTravel && !G.treasure) G.mapTravel = null; // a touch during the trip: the map is the player's now (not while the boss treasure sheet is up: the trip goes on after it)
   if (G.screen === 'levels' && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; // the world map scrolls by drag; a tap on a stop still presses
   // 0.8.7: a finger put on a list that is still gliding catches it there (it used to keep sliding under the finger
   // until the finger moved), and that touch does not also press the button it happened to land on
@@ -1427,7 +1427,7 @@ async function press(id) {
       const n = Math.min(LEVELS.length - 1, G.li + 1);
       if (G.li < 0) { setScreen(G.demo && G.level === G.demo ? 'practice' : 'title'); break; }
       if (G.li === LEVELS.length - 1) { setScreen('levels'); break; }
-      if (!playable(n)) { G.world = envOf(n); setScreen('levels'); break; } // the next environment waits behind its star gate
+      if (!playable(n)) { const due = treasureDue(G.li); G.world = envOf(n); G.toasts = []; G.toast = null; setScreen('levels'); if (due) G.treasure = { id: due, t: G.t, openedAt: null }; break; } // the next environment waits behind its star gate (a boss treasure still shut opens first)
       // 2026-11-20 (mykee: show the map between stages): back to the map, the hen hops along the road to the next stop,
       // and its level page opens on arrival (a tap anywhere first stops the trip and leaves the map in the player's hands)
       portal.gameplayStop();
@@ -1775,6 +1775,8 @@ function featuredPick() {
 }
 const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) } });
 // popups and sheets over any screen; while one shows only its own buttons take taps
+// the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
+function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
 function modalOpen() { return !!(G.getMore || G.detail || G.offer || G.ageAsk || G.parent || G.chickBuy || G.treasure || G.nudge); }
 function drawModals() {
   if (!modalOpen()) return;
@@ -6608,7 +6610,15 @@ function drawLevels() {
   // the trip to the next stop after a win (2026-11-20): the camera follows the hen hopping along, a burst on arrival,
   // then the level page opens by itself
   const TR = G.mapTravel && L.stops[G.mapTravel.from] && L.stops[G.mapTravel.to] ? G.mapTravel : null;
-  if (TR) {
+  // a boss was just beaten and its treasure is still shut: the chest opens first, then the hen walks on (2026-11-20:
+  // the win chain walked straight past it to the next level, so most players never saw their boss reward)
+  if (TR && !TR.tr) {
+    TR.tr = 1;
+    const due = treasureDue(TR.from);
+    if (due) G.treasure = { id: due, t: G.t, openedAt: null };
+  }
+  if (TR && G.treasure) { const a = L.stops[TR.from]; TR.t0 = -1; TR.x = a.x; TR.y = a.y; TR.p = 0; TR.e = 0; } // the trip waits for the treasure sheet
+  else if (TR) {
     if (TR.t0 < 0) TR.t0 = G.screenT;
     const a = L.stops[TR.from], b = L.stops[TR.to], p = clamp((G.screenT - TR.t0 - 0.5) / 1.2, 0, 1), e = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p);
     TR.x = a.x + (b.x - a.x) * e; TR.y = a.y + (b.y - a.y) * e; TR.p = p; TR.e = e;
