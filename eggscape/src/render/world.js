@@ -1604,7 +1604,7 @@ function onRing(ctx, k, rad, ang, draw) {
 }
 
 // Ring extras: thorn curtains, grates, molten holes, one-way chevrons. ctx in world space (not rotated).
-export function drawV3Ring(ctx, ring, k, t, theme) {
+export function drawV3Ring(ctx, ring, k, t, theme, o = null) {
   const A = ring.body.getAngle(), r = ring.r;
   for (const g of ring.gaps) {
     if (g.grate) onRing(ctx, k, r, A + g.a, () => drawGrate(ctx, 0, 0, g.len * k, RING_TH * k, t));
@@ -1615,7 +1615,7 @@ export function drawV3Ring(ctx, ring, k, t, theme) {
       continue;
     }
     if (C && (C.alive || C.burn < 1)) {
-      onRing(ctx, k, r - RING_TH / 2 - 0.05, A + g.a, () => drawThornCurtain(ctx, 0, 0, g.len * k, (RING_TH + 0.22) * k, t, C.alive ? C.burn : 1));
+      onRing(ctx, k, r, A + g.a, () => drawThornCurtain(ctx, g.len * k, RING_TH * k, r * k, t, C.alive ? C.burn : 1, { hot: !!(o && o.hot), calm: isSpriteCalm() }));
       if (C.burning && C.alive) {
         // flames eat it from the bottom up
         const q = { x: r * Math.cos(A + g.a), y: r * Math.sin(A + g.a) };

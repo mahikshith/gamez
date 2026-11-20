@@ -1183,84 +1183,146 @@ export function drawEggKind(ctx, kind, cx, cy, rx, ry, rot = 0, t = 0, cracks = 
 /* --------------------------------------------------------- THORN CURTAIN */
 
 // Thorn curtain hanging across a gap (only fire clears it). len = gap width px, h = hang length px.
-export function drawThornCurtain(ctx, cx, cy, len, h, t = 0, burn = 0) {
-  if (!(len > 0 && h > 0)) return;
+// Thorn curtain, rebuilt 2026-11-20 (mykee: "reddish white in small thorns... looks like an infection", "not properly
+// shown to the user"). A bramble gate: two thick green canes braided across the gap from a root knot on each ring
+// end, a few BIG thorns in the ring thorns' own look (red, two facets, cream rim) and a couple of leaves. It follows
+// the ring's curve, and fire eats it from the middle out. Local frame = world.js onRing at the ring's centre line:
+// +x along the ring, +y out of it; R = the ring's radius in px, th = the ring band's thickness in px.
+//   o.hot   an egg is carrying a flame: the canes glow, so the player sees what the flame is for
+//   o.calm  reduced motion: it stands still
+const BRAMBLE = { cane: '#4f8f37', back: '#356a2c', vein: '#b4e372', edge: '#132812', knot: '#6a4526', knotLit: '#9a6c3c', leaf: '#62b23c', leafLit: '#96d65e', th: '#d23a3a', thLit: '#ea634c', thShade: '#93282f', thEdge: '#3a0d0d', rim: 'rgba(255,240,214,0.92)', char: '#2b1a16', charTh: '#5a2030' };
+export function drawThornCurtain(ctx, len, th, R, t = 0, burn = 0, o = {}) {
+  if (!(len > 0 && th > 0)) return;
   safe(ctx, () => {
     burn = clamp(burn || 0, 0, 1);
-    ctx.translate(cx, cy);
-    const o = lw(1.2, h * 0.025), n = Math.max(3, Math.round(len / Math.max(6, h * 0.34)));
+    const B = BRAMBLE, tt = o.calm ? 0 : t;
+    R = Math.max(R || 0, len * 0.6);
+    const half = len / 2 + th * 0.3; // the canes run into the root knots that sit over the ring ends
+    const P = (s, d) => { const a = s / R, q = R + d; return [q * Math.sin(a), q * Math.cos(a) - R]; };
+    // which way is up, and where the light comes from (screen top-left), in this turned frame
+    const m = ctx.getTransform(), det = m.a * m.d - m.b * m.c || 1;
+    const nrm = (x, y) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
+    const up = nrm(m.c / det, -m.a / det), light = nrm((m.c - m.d) / det, (m.b - m.a) / det);
+    const amp = th * 0.72, caneW = th * 0.6, ol = lw(1.6, th * 0.22), wn = (Math.PI * 3) / (2 * half), rock = 0.3 * Math.sin(tt * 1.1);
+    const gone = burn > 0 ? half * Math.pow(burn, 0.8) : 0; // the burnt-out middle
+    const dAt = (s, ph) => { const f = (s + half) / (2 * half), env = Math.min(1, Math.sin(Math.PI * clamp(f, 0, 1)) * 2.4); return amp * env * Math.sin(s * wn + ph + rock); };
+    const path = (ph, s0, s1) => {
+      const n = Math.max(3, Math.ceil(Math.abs(s1 - s0) / (th * 0.3)));
+      ctx.beginPath();
+      for (let i = 0; i <= n; i++) { const s = s0 + ((s1 - s0) * i) / n, [x, y] = P(s, dAt(s, ph)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    };
+    const charK = burn > 0 ? Math.min(1, burn * 1.6) : 0;
+    const mixc = (a, b, k) => { const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16), c = (sh) => Math.round(((pa >> sh) & 255) + (((pb >> sh) & 255) - ((pa >> sh) & 255)) * k); return `rgb(${c(16)},${c(8)},${c(0)})`; };
+    const caneCol = charK ? mixc(B.cane, B.char, charK) : B.cane, backCol = charK ? mixc(B.back, B.char, charK) : B.back;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    const reach = h * (1 - burn * 0.92);
-    const sway = (x, y) => Math.sin(t * 2 + x * 0.25 + y * 0.05) * Math.min(2.5, len * 0.02) * (y / h);
-    const sp = [];
-    for (let i = 0; i < n; i++) sp.push({ x0: -len / 2 + (len * (i + 0.5)) / n, ln: reach * (0.78 + 0.22 * hash(i * 2 + 1)), ph: hash(i + 7) * 6 });
-    // rail the curtain grows from
-    ctx.beginPath();
-    ctx.moveTo(-len / 2 - 2, 0);
-    ctx.lineTo(len / 2 + 2, 0);
-    ctx.lineWidth = o * 3.2;
-    ctx.strokeStyle = '#2a0a12';
-    ctx.stroke();
-    ctx.lineWidth = o * 1.6;
-    ctx.strokeStyle = '#8a2234';
-    ctx.stroke();
-    const charred = burn > 0;
-    const vineCol = charred ? `rgb(${Math.round(122 - 80 * burn)},${Math.round(29 - 10 * burn)},${Math.round(46 - 24 * burn)})` : '#8a1f33';
-    // cross vines weaving between strands
-    ctx.lineWidth = o * 1.4;
-    ctx.strokeStyle = vineCol;
-    for (const yk of [0.35, 0.65]) {
-      const y = reach * yk;
-      ctx.beginPath();
-      sp.forEach((s, i) => { const x = s.x0 + sway(s.x0, y), yy = y + Math.sin(i * 1.7 + yk * 9) * h * 0.04; i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); });
-      ctx.stroke();
+    // one cane piece: dark outline, body, a light vein along the lit side
+    const cane = (ph, s0, s1, col, vein) => {
+      if (!(s1 - s0 > th * 0.1)) return;
+      path(ph, s0, s1); ctx.lineWidth = caneW + ol * 2; ctx.strokeStyle = B.edge; ctx.stroke();
+      path(ph, s0, s1); ctx.lineWidth = caneW; ctx.strokeStyle = col; ctx.stroke();
+      if (vein && !charK) { ctx.save(); ctx.translate(light[0] * caneW * 0.2, light[1] * caneW * 0.2); path(ph, s0 + th * 0.2, s1 - th * 0.2); ctx.lineWidth = caneW * 0.24; ctx.strokeStyle = B.vein; ctx.globalAlpha *= 0.75; ctx.stroke(); ctx.restore(); }
+    };
+    // the two live spans, either side of the burnt-out middle
+    const spans = gone > 0 ? [[-half, -gone], [gone, half]] : [[-half, half]];
+    // the flame's promise: with a burning egg about, the canes glow like tinder
+    if (o.hot && !burn) {
+      const a = 0.3 + 0.16 * Math.sin(tt * 5);
+      for (const ph of [0, Math.PI]) { path(ph, -half, half); ctx.lineWidth = caneW * 3.4; ctx.strokeStyle = `rgba(255,170,60,${a.toFixed(3)})`; ctx.stroke(); }
     }
-    for (const s of sp) {
-      const segs = Math.max(4, Math.round(h / (len / n * 0.5)));
-      const pts = [];
-      for (let k = 0; k <= segs; k++) { const y = (s.ln * k) / segs; pts.push([s.x0 + sway(s.x0, y) + Math.sin(k * 1.3 + s.ph) * len * 0.015, y]); }
-      for (const [w, col] of [[o * 3.6, '#2a0a12'], [o * 2.2, vineCol]]) {
+    for (const [s0, s1] of spans) cane(Math.PI, s0, s1, backCol, false);
+    // big thorns, in the ring thorns' own look: out of the ring and into it, by turns
+    const nOut = Math.max(2, Math.round(len / (th * 1.7))), L = th * 1.8, Wd = th * 1.3;
+    const thorns = [];
+    for (let i = 0; i < nOut; i++) thorns.push([-len / 2 + (len * (i + 0.5)) / nOut, 1, i]);
+    for (let i = 1; i < nOut; i++) thorns.push([-len / 2 + (len * i) / nOut, -1, i + 9]);
+    for (const [s, side, key] of thorns) {
+      if (Math.abs(s) < gone + th * 0.15) continue; // burnt off
+      const burnt = burn > 0 && Math.abs(s) < gone + th * 1.3;
+      const root = side * amp * 0.6, sw = L * (0.07 * Math.sin(tt * 1.6 + key * 1.9));
+      const [x0, y0] = P(s - Wd / 2, root), [x1, y1] = P(s + Wd / 2, root), [bx, by] = P(s, root);
+      const [tx0, ty0] = P(s, root + side * L), dx = (x1 - x0) / Wd, dy = (y1 - y0) / Wd;
+      const hook = side * L * 0.16, x2 = tx0 + dx * (hook + sw), y2 = ty0 + dy * (hook + sw);
+      const mx = (bx + x2) / 2, my = (by + y2) / 2;
+      const shape = () => {
         ctx.beginPath();
-        pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-        ctx.lineWidth = w;
-        ctx.strokeStyle = col;
-        ctx.stroke();
-      }
-      // thorns alternate sides
-      const tl = Math.max(3, Math.min(len / n * 0.4, h * 0.14));
-      for (let k = 1; k < segs; k++) {
-        const [x, y] = pts[k], d = k % 2 ? 1 : -1;
-        ctx.beginPath();
-        ctx.moveTo(x, y - tl * 0.3);
-        ctx.lineTo(x + d * tl, y + tl * 0.5);
-        ctx.lineTo(x, y + tl * 0.35);
+        ctx.moveTo(x0, y0);
+        ctx.quadraticCurveTo(mx - dx * Wd * 0.2, my - dy * Wd * 0.2, x2, y2);
+        ctx.quadraticCurveTo(mx + dx * Wd * 0.3, my + dy * Wd * 0.3, x1, y1);
         ctx.closePath();
-        if (!charred) { ctx.lineWidth = o * 2.2; ctx.strokeStyle = 'rgba(255,240,214,0.92)'; ctx.stroke(); } // the same cream rim as every ring thorn
-        ctx.fillStyle = charred ? `rgb(${Math.round(240 - 150 * burn)},${Math.round(56 - 30 * burn)},${Math.round(79 - 40 * burn)})` : '#d23a3a';
-        ctx.fill();
-        ctx.lineWidth = o * 0.8;
-        ctx.strokeStyle = '#2a0a12';
-        ctx.stroke();
+      };
+      ctx.lineJoin = 'miter';
+      ctx.miterLimit = 8;
+      shape();
+      if (!burnt) { ctx.lineWidth = lw(5.2, th * 0.5); ctx.strokeStyle = B.rim; ctx.stroke(); }
+      ctx.lineWidth = lw(2.6, th * 0.25); ctx.strokeStyle = B.thEdge; ctx.stroke();
+      ctx.fillStyle = burnt ? B.charTh : B.th; ctx.fill();
+      if (!burnt) {
+        // two facets meeting on a ridge from the root to the point; the one facing the light is lit
+        const litFirst = -dx * light[0] - dy * light[1] > 0;
+        ctx.save();
+        ctx.clip();
+        for (const q of [0, 1]) {
+          const ex = q ? x1 : x0, ey = q ? y1 : y0;
+          ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex + (ex - bx) * 0.8, ey + (ey - by) * 0.8); ctx.lineTo(x2 + (ex - bx) * 0.9 + (x2 - bx) * 0.3, y2 + (ey - by) * 0.9 + (y2 - by) * 0.3); ctx.lineTo(x2 + (x2 - bx) * 0.3, y2 + (y2 - by) * 0.3); ctx.closePath();
+          ctx.fillStyle = (q ? !litFirst : litFirst) ? B.thLit : B.thShade; ctx.fill();
+        }
+        ctx.restore();
+        if (!o.calm) {
+          const tw = ((tt * 0.45 + ((key * 0.618) % 1) + 1) % 1) * 9; // each point twinkles now and then, like the ring thorns
+          if (tw < 1) {
+            const g = Math.sin(Math.PI * tw) * th * 0.5;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(x2 - g, y2); ctx.quadraticCurveTo(x2, y2, x2, y2 + g); ctx.quadraticCurveTo(x2, y2, x2 + g, y2); ctx.quadraticCurveTo(x2, y2, x2, y2 - g); ctx.quadraticCurveTo(x2, y2, x2 - g, y2);
+            ctx.fill();
+          }
+        }
       }
-      // sharp tip
-      const [ex, ey] = pts[segs];
-      ctx.beginPath();
-      ctx.moveTo(ex - tl * 0.35, ey - tl * 0.2);
-      ctx.lineTo(ex, ey + tl * 0.9);
-      ctx.lineTo(ex + tl * 0.35, ey - tl * 0.2);
-      ctx.closePath();
-      ctx.fillStyle = charred ? '#5a2030' : '#d23a3a';
-      ctx.fill();
-      ctx.stroke();
-      // fire eating the strand from below
-      if (burn > 0 && burn < 1) {
-        const fh = (4 + 8 * hash(s.ph)) * (0.8 + 0.4 * Math.sin(t * 13 + s.ph)) + h * 0.05;
-        for (const [sc, col] of [[1, '#ff5a1a'], [0.65, '#ffb42a'], [0.3, '#fff2a0']]) {
+      ctx.lineJoin = 'round';
+    }
+    // the front cane, then the back one again where the braid brings it over
+    for (const [s0, s1] of spans) cane(0, s0, s1, caneCol, true);
+    for (let j = -3; j <= 3; j++) {
+      if (!(j & 1)) continue;
+      const c0 = (j * Math.PI - rock) / wn, c1 = ((j + 1) * Math.PI - rock) / wn;
+      for (const [s0, s1] of spans) { const a0 = Math.max(s0, c0 + th * 0.12), a1 = Math.min(s1, c1 - th * 0.12); if (a1 > a0) cane(Math.PI, a0, a1, backCol, false); }
+    }
+    // leaves by the roots: it is a plant, so fire is the answer
+    const leafK = 1 - Math.min(1, burn * 2.5);
+    if (leafK > 0.05) {
+      for (const [s, side, key] of [[-half * 0.8, 1, 1], [half * 0.8, -1, 2]]) {
+        const [x, y] = P(s, side * amp * 0.5), [x1, y1] = P(s + th * 0.6, side * amp * 0.5), ang = Math.atan2(y1 - y, x1 - x) + side * (0.95 + 0.14 * Math.sin(tt * 2 + key * 2.3));
+        const ll = th * 1.25 * leafK;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(ang);
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(ll * 0.45, -ll * 0.48, ll, 0); ctx.quadraticCurveTo(ll * 0.45, ll * 0.48, 0, 0); ctx.closePath();
+        ctx.lineWidth = lw(2, th * 0.22); ctx.strokeStyle = B.edge; ctx.stroke();
+        ctx.fillStyle = B.leaf; ctx.fill();
+        ctx.beginPath(); ctx.moveTo(ll * 0.12, 0); ctx.quadraticCurveTo(ll * 0.5, -ll * 0.3, ll * 0.86, -ll * 0.02); ctx.lineTo(ll * 0.12, 0); ctx.closePath();
+        ctx.fillStyle = B.leafLit; ctx.fill();
+        ctx.restore();
+      }
+    }
+    // the canes are tied round both ring ends: two turns of vine
+    for (const side of [-1, 1]) for (const q of [0, 1]) {
+      const s0 = side * (len / 2 + th * (0.1 + q * 0.55)), [x, y] = P(s0, 0), [xa, ya] = P(s0 + th, 0), ang = Math.atan2(ya - y, xa - x);
+      ctx.beginPath(); ctx.ellipse(x, y, th * 0.24, th * 0.78, ang, 0, Math.PI * 2);
+      ctx.lineWidth = caneW * 0.6 + ol * 2; ctx.strokeStyle = B.edge; ctx.stroke();
+      ctx.lineWidth = caneW * 0.6; ctx.strokeStyle = q ? backCol : caneCol; ctx.stroke();
+    }
+    // fire at both burning ends, standing up whatever way the ring is turned
+    if (burn > 0 && burn < 1) {
+      for (const side of [-1, 1]) for (const ph of [0, Math.PI]) {
+        const s = side * gone, [ex, ey] = P(s, dAt(s, ph));
+        const fh = th * (2.3 + 0.7 * Math.sin(tt * 13 + ph + side)) * (1 - burn * 0.35), fw = th * 0.75, px = -up[1], py = up[0], wob = Math.sin(tt * 9 + ph * 2 + side) * th * 0.3;
+        for (const [sc, col] of [[1, '#ff5a1a'], [0.66, '#ffb42a'], [0.34, '#fff2a0']]) {
           ctx.beginPath();
-          ctx.moveTo(ex - 3 * sc - 1, ey + 1);
-          ctx.quadraticCurveTo(ex - 3 * sc, ey - fh * sc * 0.5, ex + Math.sin(t * 9 + s.ph) * 1.5, ey - fh * sc);
-          ctx.quadraticCurveTo(ex + 3 * sc, ey - fh * sc * 0.5, ex + 3 * sc + 1, ey + 1);
+          ctx.moveTo(ex - px * fw * sc, ey - py * fw * sc);
+          ctx.quadraticCurveTo(ex - px * fw * sc + up[0] * fh * sc * 0.5, ey - py * fw * sc + up[1] * fh * sc * 0.5, ex + up[0] * fh * sc + px * wob, ey + up[1] * fh * sc + py * wob);
+          ctx.quadraticCurveTo(ex + px * fw * sc + up[0] * fh * sc * 0.5, ey + py * fw * sc + up[1] * fh * sc * 0.5, ex + px * fw * sc, ey + py * fw * sc);
+          ctx.quadraticCurveTo(ex - up[0] * fw * sc * 0.6, ey - up[1] * fw * sc * 0.6, ex - px * fw * sc, ey - py * fw * sc);
           ctx.closePath();
           ctx.fillStyle = col;
           ctx.fill();

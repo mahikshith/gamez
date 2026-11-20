@@ -3784,6 +3784,7 @@ function render() {
   { const tl = toWorld(0, G.hudBottom + 8 * ui.u), tr = toWorld(W_, 0); allyFrame(sim, { x0: tl.x, x1: tr.x, top: tl.y }, save.calm, G.screen === 'play' ? fx : null); } // the rooster's perch and the crow wave (render only)
   if (DEV && G.probe) G.probe('ally');
   const eggPts = sim.aliveEggs().map((e) => e.body.getPosition());
+  const V3O = { hot: sim.aliveEggs().some((e) => e.fire > 0 && (e.fireKind === 'fire_red' || e.fireKind === 'fire_black')) }; // a flame is about: thorn curtains glow like tinder
   const stuck = sim.aliveEggs().filter((e) => e.honey > 0);
   for (const ring of sim.rings) {
     const held = ring.held || (ring.keyHeld && G.keySel === ring.i);
@@ -3795,7 +3796,7 @@ function render() {
       crowRingXf(ctx, ring.r, k); // the rooster's crow shivers every ring as the wave passes
       W.drawRing(ctx, ring, G.theme, k, t, { held, hover, eggs: eggPts, simT: sim.t, stuck, water: sim.water });
       if (DEV && G.probe) G.probe('ringDraw');
-      W.drawV3Ring(ctx, ring, k, t, G.theme);
+      W.drawV3Ring(ctx, ring, k, t, G.theme, V3O);
       drawHardIce(ctx, ring, k, t); // v3.2
       drawRingPulse(ring); // game feel: the grab ripple and detent blink
       if (DEV && G.probe) G.probe('ringExtras');
