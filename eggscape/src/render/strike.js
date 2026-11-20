@@ -10,7 +10,7 @@
 //   bubble  sky blue with pink wings, a bubble wand, a bubble blown off the beak
 // Chick art is drawn in px space, y down, centred on the body; s = the body height in px.
 import { geckoAnchor } from './gecko15.js';
-import { clamp, lerp, ss, hash, blinkAt, form, contact } from './castkit.js';
+import { clamp, lerp, ss, hash, blinkAt, form, contact, bake } from './castkit.js';
 import { boltStroke } from './status.js';
 import { STRIKE, STRIKES, FLIGHT } from '../data/strikes.js';
 
@@ -76,12 +76,12 @@ function shard(ctx, bx, by, tx, ty, hw, lw) {
 // a stubby wing that acts: back = swept behind (a: down .. up), or thrown forward as a fist
 function frWing(ctx, s, x, y, a, far, lw, fwd) {
   ctx.save(); ctx.translate(x * s, y * s); if (!fwd) ctx.scale(-1, 1); ctx.rotate(a);
-  const p = () => {
-    ctx.beginPath(); ctx.moveTo(-0.04 * s, -0.08 * s); ctx.quadraticCurveTo(0.14 * s, -0.16 * s, 0.29 * s, -0.05 * s);
-    ctx.quadraticCurveTo(0.31 * s, -0.01 * s, 0.22 * s, 0.01 * s); ctx.quadraticCurveTo(0.3 * s, 0.05 * s, 0.25 * s, 0.08 * s); ctx.quadraticCurveTo(0.2 * s, 0.08 * s, 0.17 * s, 0.07 * s); ctx.quadraticCurveTo(0.21 * s, 0.13 * s, 0.14 * s, 0.14 * s);
-    ctx.quadraticCurveTo(-0.02 * s, 0.15 * s, -0.06 * s, 0.03 * s); ctx.closePath();
+  const p = (c) => {
+    c.beginPath(); c.moveTo(-0.04 * s, -0.08 * s); c.quadraticCurveTo(0.14 * s, -0.16 * s, 0.29 * s, -0.05 * s);
+    c.quadraticCurveTo(0.31 * s, -0.01 * s, 0.22 * s, 0.01 * s); c.quadraticCurveTo(0.3 * s, 0.05 * s, 0.25 * s, 0.08 * s); c.quadraticCurveTo(0.2 * s, 0.08 * s, 0.17 * s, 0.07 * s); c.quadraticCurveTo(0.21 * s, 0.13 * s, 0.14 * s, 0.14 * s);
+    c.quadraticCurveTo(-0.02 * s, 0.15 * s, -0.06 * s, 0.03 * s); c.closePath();
   };
-  form(ctx, p, { d: s * 0.035, lo: FR.wingLo, base: far ? FR.wingLo : FR.wing, hi: far ? FR.wing : FR.wingHi, line: FR.line, lw, noWeight: true });
+  form(ctx, p, { d: s * 0.035, lo: FR.wingLo, base: far ? FR.wingLo : FR.wing, hi: far ? FR.wing : FR.wingHi, line: FR.line, lw, noWeight: true, key: 'stkW' + s.toFixed(2), box: [-0.06 * s, -0.16 * s, 0.31 * s, 0.15 * s] });
   ctx.restore();
 }
 function frEye(ctx, s, E, M, lk, bl, lw) {
@@ -130,14 +130,15 @@ function frBeak(ctx, s, M, lw) { // a short chick beak; it gapes wide for the ye
   ctx.beginPath(); ctx.moveTo(h0[0], h0[1]); ctx.lineTo(t0[0], t0[1]); ctx.quadraticCurveTo(t1[0], t1[1], t3[0], t3[1]); ctx.closePath();
   ctx.fillStyle = FR.beakLo; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.beakLine; ctx.stroke();
   ctx.save(); ctx.translate(hx, hy); ctx.rotate(ua); ctx.translate(-hx, -hy);
-  const up = () => { ctx.beginPath(); ctx.moveTo(-0.12 * s, 0.01 * s); ctx.quadraticCurveTo(-0.04 * s, -0.11 * s, 0.06 * s, -0.07 * s); ctx.lineTo(0.21 * s, 0.035 * s); ctx.lineTo(-0.1 * s, 0.05 * s); ctx.closePath(); };
-  form(ctx, up, { d: s * 0.035, lo: FR.beakLo, base: FR.beak, hi: FR.beakHi, line: FR.beakLine, lw, noWeight: true, hiK: 0.7 });
+  const up = (c) => { c.beginPath(); c.moveTo(-0.12 * s, 0.01 * s); c.quadraticCurveTo(-0.04 * s, -0.11 * s, 0.06 * s, -0.07 * s); c.lineTo(0.21 * s, 0.035 * s); c.lineTo(-0.1 * s, 0.05 * s); c.closePath(); };
+  form(ctx, up, { d: s * 0.035, lo: FR.beakLo, base: FR.beak, hi: FR.beakHi, line: FR.beakLine, lw, noWeight: true, hiK: 0.7, key: 'stkK' + s.toFixed(2), box: [-0.12 * s, -0.11 * s, 0.21 * s, 0.05 * s] });
   ctx.restore();
   if (M.smirk > 0.05 && open < 0.3) { ctx.beginPath(); ctx.moveTo(-0.1 * s, 0.045 * s); ctx.quadraticCurveTo(-0.17 * s, 0.055 * s, -0.2 * s, (0.045 - 0.1 * M.smirk) * s); ctx.lineWidth = Math.max(0.9, s * 0.026); ctx.strokeStyle = FR.line; ctx.stroke(); }
   ctx.restore();
 }
 // the eggshell helmet every strike chick still wears; the Frost Chick's is iced over: a frost coat, icicles off the cracked
 // rim, the shard crest growing from the shell. It tips down over the eyes when the chick means business.
+const HELM_STILL = { freeze: 1, bomb: 1, decoy: 1, tornado: 1, bubble: 1, glue: 1 }; // shells whose markings do not move (thunder, phoenix, tock animate)
 function frHelmet(ctx, s, t, M, tr, sw, lw) {
   const id = CID; ctx.save();
   if (id === 'decoy') { ctx.translate(0, -0.03 * s); ctx.rotate(0.02 - tr * 0.06 + M.brow * 0.06); ctx.scale(1.04, 1.3); } // a nearly whole shell, down past the eyes
@@ -148,8 +149,9 @@ function frHelmet(ctx, s, t, M, tr, sw, lw) {
     shard(ctx, x * s, y * s, (x - Math.sin(a) * L) * s, (y - Math.cos(a) * L) * s, hw * s, lw);
   }
   const Z = [[0.38, 0.1], [0.29, -0.01], [0.19, 0.11], [0.09, 0.0], [-0.02, 0.11], [-0.13, 0.0], [-0.24, 0.1], [-0.35, -0.01]];
-  const dome = () => { ctx.beginPath(); ctx.moveTo(-0.45 * s, 0.02 * s); ctx.bezierCurveTo(-0.47 * s, -0.28 * s, -0.25 * s, -0.5 * s, 0.01 * s, -0.5 * s); ctx.bezierCurveTo(0.27 * s, -0.5 * s, 0.49 * s, -0.28 * s, 0.47 * s, 0.02 * s); for (const [x, y] of Z) ctx.lineTo(x * s, y * s); ctx.closePath(); };
+  const dome = (c) => { c.beginPath(); c.moveTo(-0.45 * s, 0.02 * s); c.bezierCurveTo(-0.47 * s, -0.28 * s, -0.25 * s, -0.5 * s, 0.01 * s, -0.5 * s); c.bezierCurveTo(0.27 * s, -0.5 * s, 0.49 * s, -0.28 * s, 0.47 * s, 0.02 * s); for (const [x, y] of Z) c.lineTo(x * s, y * s); c.closePath(); };
   form(ctx, dome, { d: s * 0.07, lo: FR.shellLo, base: FR.shell, hi: FR.shellHi || '#ffffff', line: FR.shellLine, lw, noWeight: true, hiK: 0.5,
+    key: HELM_STILL[id] ? 'stkH' + id + s.toFixed(2) : null, box: [-0.48 * s, -0.51 * s, 0.5 * s, 0.12 * s], // (baked unless its markings move)
     inner: (c) => {
       if (id !== 'freeze') { helmInner(c, id, s, t, lw); return; }
       const C = [[-0.5, -0.3], [-0.36, -0.22], [-0.29, -0.33], [-0.19, -0.25], [-0.1, -0.37], [0.02, -0.29], [0.11, -0.4], [0.22, -0.33], [0.3, -0.42], [0.5, -0.4], [0.5, -0.6], [-0.5, -0.6]];
@@ -184,13 +186,14 @@ function frostChick(ctx, s, t, o) {
   for (let i = 0; i < 3; i++) {
     const b = (0.95 - i * 0.5) * (1 - Math.max(0, tr) * 0.7) - Math.min(0, tr) * 0.5 + sw * 0.05, L = (0.25 - Math.abs(i - 1) * 0.03) * (1 + Math.max(0, tr) * 0.3) * s, c = Math.cos(b), sn = Math.sin(b);
     ctx.save(); ctx.translate(-0.46 * s, 0.24 * s); ctx.transform(-c, -sn, sn, -c, 0, 0);
-    form(ctx, () => { ctx.beginPath(); ctx.moveTo(0, -0.07 * s); ctx.quadraticCurveTo(L * 0.8, -0.1 * s, L, 0); ctx.quadraticCurveTo(L * 0.8, 0.09 * s, 0, 0.07 * s); ctx.closePath(); }, { d: s * 0.03, lo: FR.wingLo, base: FR.wing, hi: FR.wingHi, line: FR.line, lw, noWeight: true });
+    form(ctx, (c) => { c.beginPath(); c.moveTo(0, -0.07 * s); c.quadraticCurveTo(L * 0.8, -0.1 * s, L, 0); c.quadraticCurveTo(L * 0.8, 0.09 * s, 0, 0.07 * s); c.closePath(); }, { d: s * 0.03, lo: FR.wingLo, base: FR.wing, hi: FR.wingHi, line: FR.line, lw, noWeight: true,
+      key: 'stkT' + s.toFixed(2) + ',' + L.toFixed(2), box: [0, -0.1 * s, L, 0.1 * s] }); // (baked: the feather only turns)
     ctx.restore();
   }
   if (CID === 'phoenix') phoenixTail(ctx, s, t, tr, sw, lw);
   if (CID === 'tock') windKey(ctx, s, t, lw);
   if (wing > 0.25) frWing(ctx, s, -0.1, -0.02, lerp(0.5, -0.85, wing), true, lw);
-  form(ctx, () => frBody(ctx, s), { d: s * 0.085, lo: FR.lo, base: FR.base, hi: FR.hi, line: FR.line, lw, noWeight: true, hiK: 0.55,
+  form(ctx, (c) => frBody(c, s), { d: s * 0.085, lo: FR.lo, base: FR.base, hi: FR.hi, line: FR.line, lw, noWeight: true, hiK: 0.55, key: 'stkB' + CID + s.toFixed(2), box: [-0.62 * s, -0.45 * s, 0.54 * s, 0.46 * s],
     inner: (c) => {
       // the downy chest: a ruff of pale tufts
       const T = [[0.6, 0.06], [0.4, 0.1], [0.44, 0.17], [0.27, 0.17], [0.33, 0.25], [0.15, 0.25], [0.22, 0.33], [0.03, 0.34], [0.1, 0.42], [-0.1, 0.5], [0.6, 0.5]];
@@ -279,7 +282,7 @@ function helmCrest(ctx, id, s, t, tr, sw, lw) {
     ctx.beginPath(); ctx.arc(0.01 * s, -0.5 * s, 0.3 * s, Math.PI * 1.12, Math.PI * 1.88); two(ctx, s * 0.07, FR.brassLo, s * 0.04, FR.brass);
     for (const sd of [-1, 1]) {
       ctx.save(); ctx.translate(sd * 0.24 * s, -0.66 * s); ctx.rotate(sd * (0.5 + jit * 0.3));
-      form(ctx, () => { ctx.beginPath(); ctx.moveTo(-0.15 * s, 0.07 * s); ctx.bezierCurveTo(-0.15 * s, -0.12 * s, 0.15 * s, -0.12 * s, 0.15 * s, 0.07 * s); ctx.closePath(); }, { d: s * 0.04, lo: FR.brassLo, base: FR.brass, hi: FR.brassHi, line: FR.line, lw, noWeight: true });
+      form(ctx, (c) => { c.beginPath(); c.moveTo(-0.15 * s, 0.07 * s); c.bezierCurveTo(-0.15 * s, -0.12 * s, 0.15 * s, -0.12 * s, 0.15 * s, 0.07 * s); c.closePath(); }, { d: s * 0.04, lo: FR.brassLo, base: FR.brass, hi: FR.brassHi, line: FR.line, lw, noWeight: true, key: 'stkBell' + s.toFixed(2), box: [-0.15 * s, -0.08 * s, 0.15 * s, 0.07 * s] });
       ctx.beginPath(); ctx.arc(0, -0.1 * s, 0.03 * s, 0, TAU); ctx.fillStyle = FR.brassLo; ctx.fill();
       ctx.restore();
     }
@@ -454,7 +457,11 @@ export function drawStrikeChick(ctx, id, x, y, s, t, o = {}) {
   if (o.rot) ctx.rotate(o.rot);
   if (o.flip) ctx.scale(-1, 1);
   CID = CAST[id] ? id : 'freeze'; FR = CAST[CID];
-  frostChick(ctx, s, t, o);
+  // (p87: its size snaps to 5% steps and the rest is a scale, so a camera that eases its zoom does not make a new set of
+  // baked parts every frame; lines differ from the exact size by under 2.5%)
+  const q = s > 0 ? Math.pow(1.05, Math.round(Math.log(s) / Math.log(1.05))) : s;
+  if (q !== s && q > 0) ctx.scale(s / q, s / q);
+  frostChick(ctx, q, t, o);
   ctx.restore();
 }
 
@@ -773,18 +780,19 @@ export function drawStrikeButton(ctx, x, y, d, st) {
     }
   }
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(sc, sc);
-  // drop shadow and the rim
-  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(0, r * 0.1, r * 0.98, r * 0.98, 0, 0, TAU); ctx.fill();
-  const g = ctx.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#5a3c26'); g.addColorStop(1, '#2c1a10');
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
-  // the well the chick sits in
-  const ri = r * 0.74, g2 = ctx.createRadialGradient(-ri * 0.3, -ri * 0.4, ri * 0.1, 0, 0, ri);
-  g2.addColorStop(0, full ? '#fff3c4' : '#e9dcc4'); g2.addColorStop(1, full ? '#f0b54a' : '#a88e70');
-  ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(0, 0, ri, 0, TAU); ctx.fill();
-  // the ring: a track, the charge clockwise from the top (gold when full)
-  const rr = r * 0.87, lw = r * 0.17;
+  const ri = r * 0.74, rr = r * 0.87, lw = r * 0.17;
+  const plate = (c) => { // drop shadow and the rim, the well the chick sits in, the ring's track (p87: one baked picture)
+    c.fillStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.ellipse(0, r * 0.1, r * 0.98, r * 0.98, 0, 0, TAU); c.fill();
+    const g = c.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#5a3c26'); g.addColorStop(1, '#2c1a10');
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fill();
+    const g2 = c.createRadialGradient(-ri * 0.3, -ri * 0.4, ri * 0.1, 0, 0, ri);
+    g2.addColorStop(0, full ? '#fff3c4' : '#e9dcc4'); g2.addColorStop(1, full ? '#f0b54a' : '#a88e70');
+    c.fillStyle = g2; c.beginPath(); c.arc(0, 0, ri, 0, TAU); c.fill();
+    c.strokeStyle = 'rgba(20,10,4,0.55)'; c.lineWidth = lw; c.beginPath(); c.arc(0, 0, rr, 0, TAU); c.stroke();
+  };
   ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(20,10,4,0.55)'; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.stroke();
+  if (!bake(ctx, 'stkPlate' + (full ? 1 : 0) + r.toFixed(2), -r, -r, r, r * 1.1, plate)) plate(ctx);
+  // the ring: the charge clockwise from the top (gold when full)
   const m = clamp(st.m, 0, 1);
   if (m > 0.005) {
     ctx.strokeStyle = full ? '#ffcf3a' : col[0]; ctx.lineWidth = lw * 0.78;

@@ -8,7 +8,7 @@ import { TAU } from '../sim/geom.js';
 import { OWL } from '../sim/owl.js';
 import { statusClock, statusDraw, statusKind, dizzyStars, spiralEye } from './status.js';
 import { bossPip } from './boss.js';
-import { clamp, form, spline, blinkAt } from './castkit.js';
+import { clamp, form, spline, blinkAt, bake } from './castkit.js';
 
 const INK = '#1c1108';
 const BRASS = { base: '#c99a40', light: '#f4d384', dark: '#7d5420' };
@@ -46,7 +46,15 @@ function cog(c, x, y, r, n, a, col, lw) {
 // hangs limp when it is jammed; shutter eyelids and a brow plate that scowls; trousered legs whose talons spread to strike.
 const FACE = { base: '#e8c47a', light: '#fbe6ad', dark: '#b08a42' };
 const F = (col) => ({ lo: col.dark, base: col.base, hi: col.light, line: INK });
+// (p87 speed: the size snaps to 5% steps and the rest is a scale, so the baked blades, body and head survive a camera that
+// eases its zoom; lines differ from the exact size by under 2.5%)
 export function drawOwlArt(c, s, t, o = {}) {
+  const q = s > 0 ? Math.pow(1.05, Math.round(Math.log(s) / Math.log(1.05))) : s;
+  if (q === s || !(q > 0)) return owlArt(c, s, t, o);
+  c.save(); c.scale(s / q, s / q);
+  try { return owlArt(c, q, t, o); } finally { c.restore(); }
+}
+function owlArt(c, s, t, o = {}) {
   const lw = Math.max(1.4, s * 0.014), u = s, sl = o.slump || 0, wk = clamp(o.wing || 0, -1, 1), tal = o.talon || 0, eyeM = o.eye || 'idle';
   const limp = Math.max(clamp01(sl * 1.5), o.flap === 0 && wk <= 0 ? 0.85 : 0), ph = (o.flap || 0) * 2.2, beat = limp > 0.3 ? 0 : Math.sin(ph), free = 1 - Math.abs(wk);
   c.lineJoin = 'round'; c.lineCap = 'round';
@@ -71,8 +79,8 @@ export function drawOwlArt(c, s, t, o = {}) {
     for (let i = 4; i >= 0; i--) {
       const f = i / 4, len = (0.42 - 0.15 * f) * u, wd = (0.075 - 0.012 * f) * u;
       c.save(); c.rotate(-th + f * spread * 1.15 + lag * (1 - f) + (sd < 0 ? 0.03 : 0));
-      const blade = () => { c.beginPath(); c.moveTo(0, -wd * 0.55); c.quadraticCurveTo(len * 0.62, -wd * 1.05, len, wd * 0.1); c.quadraticCurveTo(len * 0.6, wd * 0.95, 0, wd * 0.55); c.closePath(); };
-      form(c, blade, { ...F(i % 2 ? COPPER : BRASS), d: lw * 2, hiK: 0.55, lw, noWeight: true, inner: () => { c.strokeStyle = DARKB.dark; c.lineWidth = lw * 0.7; c.beginPath(); c.moveTo(len * 0.08, 0); c.lineTo(len * 0.86, wd * 0.05); c.stroke(); } });
+      const blade = (c) => { c.beginPath(); c.moveTo(0, -wd * 0.55); c.quadraticCurveTo(len * 0.62, -wd * 1.05, len, wd * 0.1); c.quadraticCurveTo(len * 0.6, wd * 0.95, 0, wd * 0.55); c.closePath(); };
+      form(c, blade, { ...F(i % 2 ? COPPER : BRASS), d: lw * 2, hiK: 0.55, lw, noWeight: true, key: 'owlW' + u.toFixed(2) + ',' + i, box: [0, -wd * 1.05, len, wd * 0.95], inner: (c) => { c.strokeStyle = DARKB.dark; c.lineWidth = lw * 0.7; c.beginPath(); c.moveTo(len * 0.08, 0); c.lineTo(len * 0.86, wd * 0.05); c.stroke(); } });
       c.restore();
     }
     const cap = () => { c.beginPath(); c.ellipse(0.03 * u, 0, 0.085 * u, 0.07 * u, -th * 0.5, 0, TAU); };
@@ -93,8 +101,8 @@ export function drawOwlArt(c, s, t, o = {}) {
   }
   // body: a riveted brass teardrop, feather plates, a chest window with a turning cog, a belly hatch
   const B = [[0, -0.16], [0.17, -0.12], [0.265, 0.02], [0.25, 0.2], [0.14, 0.345], [0, 0.385], [-0.14, 0.345], [-0.25, 0.2], [-0.265, 0.02], [-0.17, -0.12]].map(([x, y]) => [x * u, y * u]);
-  const body = () => { c.beginPath(); spline(c, B, true); };
-  form(c, body, { ...F(BRASS), d: lw * 3.2, hiK: 0.45, lw: lw * 1.15, inner: () => {
+  const body = (c) => { c.beginPath(); spline(c, B, true); };
+  form(c, body, { ...F(BRASS), d: lw * 3.2, hiK: 0.45, lw: lw * 1.15, key: 'owlB' + u.toFixed(2), box: [-0.32 * u, -0.22 * u, 0.32 * u, 0.45 * u], inner: (c) => {
     c.strokeStyle = DARKB.dark; c.lineWidth = lw * 0.9;
     for (let r = 0; r < 3; r++) for (let i = -3; i <= 3; i++) { const x = (i + (r % 2) * 0.5) * 0.09 * u, y = (0.215 + r * 0.07) * u; c.beginPath(); c.arc(x, y, 0.045 * u, 0.15 * Math.PI, 0.85 * Math.PI); c.stroke(); }
     for (const sd of [-1, 1]) { c.fillStyle = COPPER.base; c.beginPath(); c.ellipse(sd * 0.105 * u, 0.37 * u, 0.07 * u, 0.06 * u, 0, 0, TAU); c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke(); } // trousers
@@ -113,12 +121,15 @@ export function drawOwlArt(c, s, t, o = {}) {
   const hyC = -0.2 * u + sl * 0.05 * u, tilt = sl * 0.25 + (o.look || 0) * 0.05 + Math.cos(ph) * 0.012 * free;
   c.save(); c.translate(0, hyC); c.rotate(tilt);
   const H = [[-0.3, -0.3], [-0.15, -0.2], [0, -0.225], [0.15, -0.2], [0.3, -0.3], [0.29, -0.04], [0.245, 0.11], [0.11, 0.195], [0, 0.205], [-0.11, 0.195], [-0.245, 0.11], [-0.29, -0.04]].map(([x, y]) => [x * u, y * u]);
-  const head = () => { c.beginPath(); spline(c, H, true, 0.42); };
-  form(c, head, { ...F(BRASS), d: lw * 3, hiK: 0.45, lw: lw * 1.15, inner: () => {
+  const head = (c) => { c.beginPath(); spline(c, H, true, 0.42); };
+  form(c, head, { ...F(BRASS), d: lw * 3, hiK: 0.45, lw: lw * 1.15, key: 'owlH' + u.toFixed(2), box: [-0.37 * u, -0.38 * u, 0.37 * u, 0.27 * u], inner: (c) => {
     for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(sd * 0.3 * u, -0.31 * u); c.lineTo(sd * 0.17 * u, -0.17 * u); c.lineTo(sd * 0.3 * u, -0.1 * u); c.closePath(); c.fillStyle = COPPER.base; c.fill(); }
     c.fillStyle = DARKB.dark; for (let i = 0; i < 7; i++) { const a = Math.PI * (1.2 + (i / 6) * 0.6); c.beginPath(); c.arc(Math.cos(a) * 0.225 * u, Math.sin(a) * 0.185 * u, 0.011 * u, 0, TAU); c.fill(); }
   } });
-  for (const sd of [-1, 1]) cel(c, (c) => E(c, sd * 0.115 * u, 0.015 * u, 0.125 * u, 0.13 * u), FACE, lw);
+  for (const sd of [-1, 1]) { // the face discs (baked: still in the head's frame)
+    const disc = (c) => cel(c, (c) => E(c, sd * 0.115 * u, 0.015 * u, 0.125 * u, 0.13 * u), FACE, lw);
+    if (!bake(c, 'owlF' + sd + u.toFixed(2) + ',' + lw.toFixed(2), sd * 0.115 * u - 0.13 * u - lw, -0.12 * u - lw, sd * 0.115 * u + 0.13 * u + lw, 0.15 * u + lw, disc)) disc(c);
+  }
   const blink = eyeM === 'idle' ? blinkAt(t, 11) : 0;
   for (const sd of [-1, 1]) {
     const ex = sd * 0.115 * u, ey = 0.01 * u, er = 0.09 * u;

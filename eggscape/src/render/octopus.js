@@ -165,18 +165,28 @@ function fillArm(ctx, P, w0, w1, fill, grow = 0) { // the arm silhouette in one 
   armPath(ctx, P, w0, w1, grow); ctx.fillStyle = fill; ctx.fill();
 }
 // the lighter underside: a pale strip along the concave side of the arm, with a row of suckers on it
+// (2026-11-20 speed, p87: the strip's 13 round-capped dashes are one fill of 13 capsules, the same shapes, and the suckers one
+// fill of discs: 2 draws an arm instead of 20, ~140 fewer per octopus a frame)
 function armUnder(ctx, P, w0, side, col, line, big) {
   ctx.lineCap = 'round';
+  ctx.beginPath();
   for (let j = 1; j < NS - 1; j++) {
     const dx = P[j + 1].x - P[j - 1].x, dy = P[j + 1].y - P[j - 1].y, l = Math.hypot(dx, dy) || 1, w = lerp(w0, w0 * 0.2, j / (NS - 1));
-    const nx = (-dy / l) * side, ny = (dx / l) * side, o = w * 0.22;
-    ctx.strokeStyle = rgb(col, 0.95); ctx.lineWidth = Math.max(0.7, w * 0.46);
-    ctx.beginPath(); ctx.moveTo(P[j].x + nx * o - (dx / l) * w * 0.3, P[j].y + ny * o - (dy / l) * w * 0.3); ctx.lineTo(P[j].x + nx * o + (dx / l) * w * 0.3, P[j].y + ny * o + (dy / l) * w * 0.3); ctx.stroke();
-    if (big && j % 2 === 1) { // sucker row: pale discs with a dark centre dot
-      ctx.fillStyle = rgb(line, 0.9);
-      ctx.beginPath(); ctx.arc(P[j].x + nx * o, P[j].y + ny * o, Math.max(0.45, w * 0.1), 0, TAU); ctx.fill();
-    }
+    const nx = (-dy / l) * side, ny = (dx / l) * side, o = w * 0.22, tx = dx / l, ty = dy / l, r = Math.max(0.7, w * 0.46) / 2;
+    const cx = P[j].x + nx * o, cy = P[j].y + ny * o, h = w * 0.3, an = Math.atan2(tx, -ty); // the dash's normal (-ty, tx)
+    const ax = cx - tx * h, ay = cy - ty * h, bx = cx + tx * h, by = cy + ty * h, qx = -ty * r, qy = tx * r;
+    ctx.moveTo(ax + qx, ay + qy); ctx.lineTo(bx + qx, by + qy); ctx.arc(bx, by, r, an, an - Math.PI, true);
+    ctx.lineTo(ax - qx, ay - qy); ctx.arc(ax, ay, r, an + Math.PI, an, true); ctx.closePath();
   }
+  ctx.fillStyle = rgb(col, 0.95); ctx.fill();
+  if (!big) return;
+  ctx.beginPath(); // sucker row: dark centre dots
+  for (let j = 1; j < NS - 1; j += 2) {
+    const dx = P[j + 1].x - P[j - 1].x, dy = P[j + 1].y - P[j - 1].y, l = Math.hypot(dx, dy) || 1, w = lerp(w0, w0 * 0.2, j / (NS - 1));
+    const nx = (-dy / l) * side, ny = (dx / l) * side, o = w * 0.22, x = P[j].x + nx * o, y = P[j].y + ny * o, r = Math.max(0.45, w * 0.1);
+    ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU);
+  }
+  ctx.fillStyle = rgb(line, 0.9); ctx.fill();
 }
 
 function mantlePath(ctx, s, sx, sy) {

@@ -273,13 +273,13 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
       else { ctx.fillStyle = fill; ctx.fill(); }
     };
     // form: lit from the top-left. A soft light on the upper planes and a core shade on the underside, clipped to the shape
+    // (2026-11-20 speed, p87: the shape itself is filled with the gradient: the same pixels as clipping to it and filling a
+    // big rectangle, without the clip, which is what a phone's graphics chip pays most for; ~10 clips a thief a frame)
     const bevel = (path, y0, y1, hi = 0.3, lo = 0.26) => {
-      ctx.save(); path(ctx); ctx.clip();
       const g = ctx.createLinearGradient(-6, y0, 6, y1);
       g.addColorStop(0, `rgba(255,226,170,${hi})`); g.addColorStop(0.34, 'rgba(255,226,170,0)');
       g.addColorStop(0.58, frozen ? 'rgba(30,80,130,0)' : 'rgba(50,14,0,0)'); g.addColorStop(1, frozen ? `rgba(30,80,130,${lo})` : `rgba(50,14,0,${lo})`);
-      ctx.fillStyle = g; ctx.fillRect(-400, y0 - 40, 800, y1 - y0 + 80);
-      ctx.restore();
+      const f0 = ctx.fillStyle; path(ctx); ctx.fillStyle = g; ctx.fill(); ctx.fillStyle = f0;
     };
     const ySpan = (pts, pad = 0) => { let a = 1e9, b = -1e9; for (const q of pts) { if (q.y < a) a = q.y; if (q.y > b) b = q.y; } return [a - pad, b + pad]; };
     const drawLimb = (L, pass) => {

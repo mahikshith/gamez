@@ -585,9 +585,12 @@ function solid(ctx, o, p, fill, line = LINE, w = 1) {
   ctx.lineWidth = o * w; ctx.strokeStyle = line; ctx.stroke();
 }
 // a filled shape with a hard two-tone split: `lo` covers the part of `p` below the line y = cut (in the current frame)
+// (2026-11-20 speed, p87: one fill with a hard-stop gradient across the cut, a device pixel wide, instead of a fill, a clip
+// and a second fill: the same picture without the clip)
 function twoTone(ctx, o, p, hi, lo, cut, line = LINE, w = 1) {
-  ctx.beginPath(); p(ctx); ctx.fillStyle = hi; ctx.fill();
-  ctx.save(); ctx.clip(); ctx.fillStyle = lo; ctx.fillRect(-200, cut, 400, 400); ctx.restore();
+  const m = ctx.getTransform ? ctx.getTransform() : null, hp = m ? 0.5 / (Math.hypot(m.c, m.d) || 1) : 0.5; // half a device pixel in local y
+  const g = ctx.createLinearGradient(0, cut - hp, 0, cut + hp); g.addColorStop(0, hi); g.addColorStop(1, lo);
+  ctx.beginPath(); p(ctx); ctx.fillStyle = g; ctx.fill();
   ctx.beginPath(); p(ctx); ctx.lineWidth = o * w; ctx.strokeStyle = line; ctx.stroke();
 }
 
