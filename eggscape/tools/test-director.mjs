@@ -96,5 +96,10 @@ const ctx = (o = {}) => ({ levelId: 12, now: T0, nearMiss: false, timeout: false
   ok(DR.hotBoosts(mk({ unlocked: 3 })).length === 0, 'no streak boosters in the first levels');
   ok(DR.rewindPrice(0) === 60 && DR.rewindPrice(1) === 120 && DR.rewindPrice(9) === 200, 'rewind price climbs, then holds');
 }
+{ // the early days: nothing sold before level 3 is won (any mode)
+  ok(DR.earlyDays({ stars: {} }) && DR.earlyDays({}) && DR.earlyDays({ stars: { 1: 3, 2: 3 } }), 'a new player, or L1-L2 won: early days');
+  ok(!DR.earlyDays({ stars: { 3: 1 } }) && !DR.earlyDays({ stars: { e3: 2 } }) && !DR.earlyDays({ stars: { h3: 1 } }), 'level 3 won in any mode: the shop and offers may show');
+  ok(DR.SELL_AFTER === 3, 'the gate sits at level 3');
+}
 console.log(bad ? `${bad} FAILED` : 'all director checks passed');
 process.exit(bad ? 1 : 0);

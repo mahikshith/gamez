@@ -189,6 +189,14 @@ const ART = {
     for (let i = 1; i <= 4; i++) { const u = i / 5 * k, px = x - d * 0.2 + u * d * 0.4, py = y + Math.sin(u * 14) * d * 0.04, s2 = i % 2 ? -1 : 1; ctx.beginPath(); ctx.moveTo(px - d * 0.03, py); ctx.lineTo(px, py + s2 * d * 0.09); ctx.lineTo(px + d * 0.03, py); ctx.closePath(); ctx.fill(); }
     ctx.restore();
   },
+  doors(ctx, x, y, d, t) { // a ring slab with a gap whose two red doors slide shut and open on a beat
+    const k = Math.max(0, Math.min(1, 0.5 + 0.9 * Math.sin(t * 2.2))), gw = d * 0.3, y0 = y + d * 0.08, h = d * 0.16;
+    ctx.fillStyle = '#b9854e'; ctx.fillRect(x - d * 0.42, y0, d * 0.42 - gw / 2, h); ctx.fillRect(x + gw / 2, y0, d * 0.42 - gw / 2, h);
+    ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1, d * 0.02); ctx.strokeRect(x - d * 0.42, y0, d * 0.42 - gw / 2, h); ctx.strokeRect(x + gw / 2, y0, d * 0.42 - gw / 2, h);
+    const dw = (gw / 2) * k;
+    if (dw > 0.5) for (const sd of [-1, 1]) { const x0 = sd < 0 ? x - gw / 2 : x + gw / 2 - dw; ctx.fillStyle = '#b8432f'; ctx.fillRect(x0, y0, dw, h); ctx.strokeStyle = '#4a140c'; ctx.strokeRect(x0, y0, dw, h); }
+    ctx.fillStyle = '#fff4dc'; ctx.beginPath(); ctx.ellipse(x, y0 - d * 0.16, d * 0.12, d * 0.15, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = INK; ctx.stroke();
+  },
   curse(ctx, x, y, d, t) { drawOrb(ctx, 'curse', x, y, d * 0.3, t, true); },
   thornorb(ctx, x, y, d, t) { drawOrb(ctx, 'thorn', x, y, d * 0.3, t, true); },
 };

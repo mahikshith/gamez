@@ -29,7 +29,7 @@ let ERR1 = false; // an actor that throws is reported once, and its portrait pla
 const P = (move, cap, more = {}) => ({ move, cap, ...more });
 const SHOW = {
   weasel: P('turn', 'Turn the ring as it crouches: BONK!', { fx: 'bonk' }),
-  'boss:weasel': P('turn', 'Turn the ring on it, then drop an egg on it', { fx: 'bonk' }),
+  'boss:weasel': P('turn', 'He crouches under a gap: turn it away. BONK!', { fx: 'bonk' }),
   snake: P('turn', 'Turn the gap away from its head', { fx: 'bonk' }),
   'boss:snake': P('tap', 'Tap your chick, then run the eggs home', { power: 'thunder', fx: 'zap' }),
   rats: P('turn', 'Turn a gap under the rolling egg', { fx: 'bonk' }),
@@ -67,6 +67,7 @@ const SHOW = {
   gusts: P('wait', 'Put a wall in the way of the wind'),
   popthorns: P('wait', 'Wait for the thorns to drop, then go'),
   vines: P('wait', 'Drop through before the vine closes'),
+  doors: P('wait', 'Park the egg on the door: it opens', { haz: 'door' }),
   curse: P('dodge', 'Steer the egg round the curse orb', { haz: 'curse' }),
   thornorb: P('dodge', 'Steer the egg round the thorn orb', { haz: 'thornorb' }),
 };
@@ -74,6 +75,17 @@ export function howToPlan(kind) {
   const p = SHOW[kind] || SHOW[String(kind).replace(/^boss:/, '')] || P('turn', 'Turn the ring to keep the egg away', { fx: 'bonk' });
   return { kind, ...p };
 }
+// the first-five ladder (2026-11-20, owner: every level from 2 on hands over a new toy, shown on its level card with the
+// game's own art): the red flame, the twin orb, the thorn curtain, the portal, the glow chick. move 'toy', plan.toy names it.
+const TOY = {
+  flame: 'Roll an egg into the red flame: thorns burn',
+  twin: 'The twin orb makes two eggs of one',
+  curtain: 'A flame egg burns the thorn curtain',
+  portal: 'The swirl drops an egg rings lower',
+  glow: 'Tap the glow chick: its flash burns thorns',
+};
+const TOY_NAME = { flame: 'Red flame', twin: 'Twin orb', curtain: 'Thorn curtain', portal: 'Portal', glow: 'Glow chick' };
+export function toyPlan(id) { return { kind: null, toy: id, move: 'toy', cap: TOY[id] || '', name: TOY_NAME[id] || id }; }
 // no villain in this level: the basic move
 export const BASIC = { kind: null, move: 'basic', cap: 'Drag a ring to turn it. Drop eggs into the basket.' };
 // Papa Rooster (the farm friend): tap him and he chases a thief off, the egg comes back
@@ -113,10 +125,11 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   const vLift = vD * (Wd ? 0.3 : 0.42);
   // where the villain stops: its nose just short of the egg, worked out in pixels so a big villain never overlaps it
   const vEnd = -Math.asin(clamp((eggS * 0.42 + vD * 0.46) / floor, 0.05, 0.95));
-  const drawE = (X, Y, S, st, wr) => (Wd ? Wd.egg(ctx, X, Y, st, wr, C, kW, t) : egg(ctx, X, Y, S, st, T, wr));
+  const drawE = (X, Y, S, st, wr, look) => (Wd ? Wd.egg(ctx, X, Y, st, wr, C, kW, t, look) : egg(ctx, X, Y, S, st, T, wr));
+  let toy = null; // move 'toy': { orb, look, deco, twin, portal, flash, burst } (drawn with the game's art through o.world)
 
   // ---- the timeline of each move -> ring turn th, egg angle eA, egg drop eD (0..1), villain angle vA, villain state
-  let th = 0, eA = 0, eD = 0, vA = -0.75, vOff = 0, vRot = 0, vAlpha = 1, vFx = '', fxK = 0, hand = null, stone = false, haz = null, btn = null, shot = null, done = 0;
+  let door = null, th = 0, eA = 0, eD = 0, vA = -0.75, vOff = 0, vRot = 0, vAlpha = 1, vFx = '', fxK = 0, hand = null, stone = false, haz = null, btn = null, shot = null, done = 0;
   const act = actorFor(plan), SG = act && act.stage ? act.stage(m) : null;
   const gap0 = SG ? SG.g0 : 0.4, dTh = SG ? SG.dTh : -gap0; // the gap starts to the right of the egg and comes under it (an actor may set its own scene)
   const walk = ease(seg(T, 0.2, 1.3));
@@ -176,6 +189,49 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     hand = dragHand(at, T, 0.9, 1.7, -0.25, 0.25);
     const d2 = ease(seg(T, 2.9, 3.4)); th = 0.5 * d + (-gap0 - 0.5) * d2; eA = 0.5 * d * (1 - d2);
     eD = seg(T, 3.45, 3.85); done = seg(T, 3.85, 4.2);
+  } else if (m === 'toy') {
+    vAlpha = 0;
+    const id = plan.toy, eggAt = (lift) => at(0, lift);
+    toy = { deco: { thorns: 0 }, look: null };
+    // an orb drifts down onto the egg: it is taken (a burst in its colour) and the egg changes
+    const orbIn = (type, t0, t1) => { const k = ease(seg(T, t0, t1)), p0 = at(-0.42, eggS * 1.9), p1 = eggAt(eggS * 0.55); if (T < t1 + 0.05) toy.orb = { type, x: p0.x + (p1.x - p0.x) * k, y: p0.y + (p1.y - p0.y) * k, a: 1 - seg(T, t1 - 0.05, t1 + 0.05) }; if (T > t1 && T < t1 + 0.45) toy.burst = { x: p1.x, y: p1.y, k: seg(T, t1, t1 + 0.45), col: type === 'twin' ? '#ffe58a' : type === 'hatch_glow' ? '#fff27a' : '#ff8a3a' }; };
+    if (id === 'flame' || id === 'curtain') {
+      orbIn('fire_red', 0.35, 1.0);
+      if (T > 1.0) toy.look = { fire: 1 };
+      const d = ease(seg(T, 1.2, 2.1)); th = -gap0 * d;
+      hand = dragHand(at, T, 1.1, 2.1, 0.5, 0.5 - gap0);
+      if (id === 'flame') { toy.deco = { thorns: 1, burnt: d > 0.5 }; eD = seg(T, 2.25, 2.65); done = seg(T, 2.65, 3.0); }
+      else { toy.deco = { curtain: seg(T, 2.1, 2.9) }; eD = seg(T, 2.95, 3.35); done = seg(T, 3.35, 3.7); }
+    } else if (id === 'twin') {
+      orbIn('twin', 0.35, 1.0);
+      const sp = ease(seg(T, 1.0, 1.4)), d = ease(seg(T, 1.6, 2.4)); th = -gap0 * d;
+      hand = dragHand(at, T, 1.5, 2.4, 0.5, 0.5 - gap0);
+      eD = seg(T, 2.45, 2.85);
+      const roll = ease(seg(T, 2.85, 3.1)), e2A = -0.17 * sp * (1 - roll);
+      toy.twin = { show: T > 1.0, a: e2A, eD: seg(T, 3.1, 3.5) };
+      done = seg(T, 3.5, 3.85);
+    } else if (id === 'portal') {
+      const r = ease(seg(T, 0.55, 1.35)); eA = -0.36 * r; th = 0.36 * r;
+      hand = dragHand(at, T, 0.45, 1.35, 0.15, -0.21);
+      const pin = at(-0.36, eggS * 0.5), pout = { x: nest.x + Z * 0.06, y: (C.y + floor + band + nest.y) / 2 - Z * 0.02 };
+      const sink = seg(T, 1.35, 1.7), pop = seg(T, 1.95, 2.2);
+      toy.portal = { pin, pout, sink, pop, outA: seg(T, 1.6, 1.9) * (1 - seg(T, 3.4, 3.8)), drop: seg(T, 2.2, 2.6) };
+      done = seg(T, 2.6, 2.95);
+    } else { // glow
+      orbIn('hatch_glow', 0.3, 0.8);
+      if (T > 0.8) toy.look = { chick: T > 1.05 };
+      toy.deco = { thorns: 1, burnt: T > 1.95 };
+      { const ck = eggAt(eggS * 0.5); hand = tapHand({ x: ck.x, y: ck.y, r: eggS * 0.5 }, T, 1.25, 1.6); } // tap the chick itself, as in play
+      if (T > 1.6 && T < 2.4) { const e0 = eggAt(eggS * 0.5); toy.flash = { x: e0.x, y: e0.y, k: seg(T, 1.6, 2.4) }; }
+      const d = ease(seg(T, 2.4, 3.1)); th = -gap0 * d;
+      eD = seg(T, 3.15, 3.55); done = seg(T, 3.55, 3.9);
+    }
+  } else if (plan.haz === 'door') { // a gate door: turn the shut door under the egg, it slides open, the egg drops
+    vAlpha = 0;
+    const d = ease(seg(T, 0.6, 1.4)); th = -gap0 * d;
+    hand = dragHand(at, T, 0.5, 1.4, 0.5, 0.5 - gap0);
+    door = ease(seg(T, 1.9, 2.25)) * (1 - seg(T, 3.6, 3.9));
+    eD = seg(T, 2.3, 2.7); done = seg(T, 2.7, 3.05);
   } else { // 'wait': something blocks the way for a beat (thorns, a web, the weather), then the egg goes through
     vAlpha = 0;
     const up = T < 1.7 ? 1 : 1 - seg(T, 1.7, 2.0);
@@ -187,7 +243,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
 
   // ---- the ring: a thick slab with one gap (the game's own ring when it is given)
   const gapA = gap0 + th, gw = 0.24;
-  if (Wd) Wd.ring(ctx, C, kW, gapA, t);
+  if (Wd) Wd.ring(ctx, C, kW, gapA, t, door, toy ? toy.deco : null);
   else {
     ctx.lineCap = 'round';
     for (const [lw, col] of [[band + 4, o.ringEdge || '#5a3416'], [band, o.ring || '#b9854e']]) {
@@ -196,6 +252,10 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     }
     ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = band * 0.22;
     arc(ctx, C, R - band * 0.25, gapA + gw / 2 + 0.03, gapA + TAU - gw / 2 - 0.03);
+  }
+  if (door != null && !Wd && door < 1) { // stand-in doors: two red leaves closing the gap from its edges
+    ctx.lineCap = 'butt'; const sh = (gw / 2) * (1 - door);
+    for (const [lw, col] of [[band + 4, '#4a140c'], [band, '#b8432f']]) { ctx.strokeStyle = col; ctx.lineWidth = lw; arc(ctx, C, R, gapA - gw / 2, gapA - gw / 2 + sh); arc(ctx, C, R, gapA + gw / 2 - sh, gapA + gw / 2); }
   }
   // the basket
   if (Wd) Wd.nest(ctx, nest.x, nest.y, Math.max(Z * 0.7, eggS * 2.2), done, t); else drawBasket(ctx, nest.x, nest.y, Z * 0.42, done);
@@ -242,7 +302,25 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     if ((vFx === 'bonk' || vFx === 'flip') && fxK < 0.5) { ctx.save(); ctx.globalAlpha *= 1 - seg(fxK, 0.3, 0.5); word(ctx, 'BONK!', Math.max(x + Z * 0.45, Math.min(cx - w * 0.12, v.x + vD * 0.3)), Math.max(y + Z * 0.16, v.y - vD * 0.3), Z * 0.16 * (1 + 0.3 * (1 - seg(fxK, 0, 0.12))), '#fff', '#c9342c'); ctx.restore(); }
     if (vFx === 'blast' && fxK < 0.4) burst(ctx, v.x, v.y, vD * (0.45 + fxK), 1 - fxK / 0.4, PCOL[plan.power] || '#ff8a3a');
   }
+  // ---- the toys: the orb on its way, the portals (the game's own art through o.world)
+  if (toy && toy.orb && toy.orb.a > 0.01) { ctx.save(); ctx.globalAlpha *= toy.orb.a; if (Wd && Wd.orb) Wd.orb(ctx, toy.orb.type, toy.orb.x, toy.orb.y, eggS * 0.42, t); else { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(toy.orb.x, toy.orb.y, eggS * 0.35, 0, TAU); ctx.fill(); } ctx.restore(); }
+  if (toy && toy.portal && Wd && Wd.portal) {
+    const P = toy.portal;
+    Wd.portal(ctx, P.pin.x, P.pin.y, kW * 0.9, t, false);
+    if (P.outA > 0.01) { ctx.save(); ctx.globalAlpha *= P.outA; Wd.portal(ctx, P.pout.x, P.pout.y, kW * 0.9 * (0.6 + 0.4 * P.outA), t, true); ctx.restore(); }
+  }
   // ---- the egg: on the floor at its angle, or dropping through the gap to the basket
+  if (toy && toy.portal) { // in at the purple swirl, out of the orange one, down into the basket
+    const P = toy.portal, land = nest.y - (Wd ? eggS * 0.42 : Z * 0.08);
+    if (done > 0) drawE(nest.x, land, eggS, false, false);
+    else if (P.sink < 1) { const b = at(eA, eggS * 0.5); ctx.save(); ctx.translate(P.pin.x, P.pin.y); ctx.rotate(P.sink * 5); ctx.scale(1 - P.sink * 0.95, 1 - P.sink * 0.95); ctx.translate(-P.pin.x, -P.pin.y); drawE(b.x + (P.pin.x - b.x) * P.sink, b.y + (P.pin.y - b.y) * P.sink, eggS, false, false); ctx.restore(); }
+    else if (P.pop > 0) { const k = P.drop * P.drop, ex = P.pout.x + (nest.x - P.pout.x) * P.drop, ey = P.pout.y + (land - P.pout.y) * k; ctx.save(); const sc = 0.1 + 0.9 * P.pop; ctx.translate(ex, ey); ctx.scale(sc, sc); ctx.translate(-ex, -ey); drawE(ex, ey, eggS, false, false); ctx.restore(); }
+  } else {
+    if (toy && toy.twin && toy.twin.show) { // the twin: a second egg beside the first, home just after it
+      const b2 = at(toy.twin.a, eggS * 0.5), land = nest.y - (Wd ? eggS * 0.42 : Z * 0.08), q = toy.twin.eD;
+      const ex = done > 0 ? nest.x - eggS * 0.55 : b2.x + (nest.x - eggS * 0.55 - b2.x) * q, ey = done > 0 ? land : b2.y + (land - b2.y) * q * q;
+      drawE(ex, ey, eggS, false, false);
+    }
   {
     const base = at(eA, eggS * 0.5);
     let ex = base.x, ey = base.y, sq = 1;
@@ -257,7 +335,16 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     if (done > 0) { ex = nest.x; ey = land; }
     if (o._bubble && !eD && !done) { ctx.save(); ctx.strokeStyle = 'rgba(150,225,255,0.95)'; ctx.lineWidth = 3; ctx.fillStyle = 'rgba(190,240,255,0.25)'; ctx.beginPath(); ctx.arc(ex, ey, eggS * 0.75, 0, TAU); ctx.fill(); ctx.stroke(); ctx.restore(); }
     const worry = AR ? !eD && !done && !!AR.threat : !eD && vAlpha > 0.5 && plan.kind && Math.abs(vA - eA) < 0.7;
-    drawE(ex, ey, eggS * sq, stone, worry);
+    drawE(ex, ey, eggS * sq, stone, worry, toy ? toy.look : null);
+  }
+  }
+  if (toy && toy.burst && toy.burst.k < 1) { const B = toy.burst; ctx.save(); ctx.globalAlpha *= 1 - B.k; ctx.strokeStyle = B.col; ctx.lineWidth = Math.max(2, eggS * 0.12 * (1 - B.k)); ctx.beginPath(); ctx.arc(B.x, B.y, eggS * (0.4 + 0.9 * B.k), 0, TAU); ctx.stroke(); ctx.restore(); }
+  if (toy && toy.flash) { // the glow chick's flash: a bright ring that sweeps out over the thorns
+    const F = toy.flash, R2 = Z * (0.1 + 0.55 * ease(F.k));
+    ctx.save(); ctx.globalAlpha *= 1 - F.k;
+    ctx.fillStyle = 'rgba(255,246,170,0.35)'; ctx.beginPath(); ctx.arc(F.x, F.y, R2, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#fff27a'; ctx.lineWidth = Math.max(2, Z * 0.025); ctx.stroke();
+    ctx.restore();
   }
   // the power or the rooster on its way
   if (btn) {

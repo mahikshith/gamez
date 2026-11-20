@@ -114,6 +114,15 @@ export function profile(save) {
 // ctx: { levelId, nearMiss, timeout, thorns (the level has thorns), villains (it has thieves/hunters), lockedChick
 //   ({ id, name } the best locked chick to try), owned ({ boosterId: count }), adReady, now, chickLevel (chicks exist) }
 // -> { kind: 'trialChick' | 'trialBoost' | 'buyBoost' | 'adBoost', id, price?, label, line } | null
+// The early days (2026-11-20 first-five ladder): until level SELL_AFTER is won (any mode) nothing is sold or advertised:
+// main.js asks this before the level page's Boosters tab, Free booster video and coin chip, the win card's Bonus chest,
+// every offer card, the home nudge and the fail help. One switch, easy to tune.
+export const SELL_AFTER = 3;
+export function earlyDays(save) {
+  const st = (save && save.stars) || {};
+  return !['', 'e', 'h'].some((m) => (st[m + SELL_AFTER] || 0) > 0);
+}
+
 export function failHelp(save, ctx) {
   const D = dirState(save), lv = ctx.levelId;
   if (lv == null) return null;

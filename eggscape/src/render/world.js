@@ -1330,6 +1330,7 @@ export function drawDebris(ctx, d, theme) {
 }
 
 // The fuse: a rope circling the vault that burns down. v4: on a shaped vault (ring = the outer ring) it hugs the shape.
+export const FUSE_TIP = { x: 0, y: 0 }; // where the spark was last drawn (world units): the fuse intro links it to the timer
 export function drawFuse(ctx, R, frac, t, fx, ring) {
   const start = Math.PI / 2;
   const end = start + TAU * frac;
@@ -1360,6 +1361,7 @@ export function drawFuse(ctx, R, frac, t, fx, ring) {
     ctx.stroke();
     ctx.setLineDash([]);
     const [x, y] = at(end);
+    FUSE_TIP.x = x; FUSE_TIP.y = y;
     if (fx && Math.random() < 0.7) {
       fx.add({ x, y, vx: (Math.random() - 0.5) * 2.5, vy: Math.random() * 2.5, g: 5, life: 0.3 + Math.random() * 0.2, size: 0.02, color: '#ffd34d', type: 'spark' });
     }

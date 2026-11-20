@@ -4,10 +4,11 @@
 // inputs give the same run twice; a snapshot taken mid-lunge resumes exactly; the hint search still finds moves.
 import { Sim, DT } from '../src/sim/sim.js';
 import { LEVELS } from '../src/data/levels.js';
+import { CATCH_LEVELS } from './fixtures/catch-levels.mjs'; // the drop tests use frozen vaults, section 1 uses the live levels
 import { hintSearch } from '../src/sim/search.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
-const lvl = (id, reach) => { const L = { ...LEVELS.find((l) => l.id === id) }; L.nest = { ...(L.nest || {}) }; if (reach == null) delete L.nest.reach; else L.nest.reach = reach; return L; };
+const lvl = (id, reach, src = CATCH_LEVELS) => { const L = { ...(src.find((l) => l.id === id) || LEVELS.find((l) => l.id === id)) }; L.nest = { ...(L.nest || {}) }; if (reach == null) delete L.nest.reach; else L.nest.reach = reach; return L; };
 // for the drop tests: the same level with the outer ring's gaps always open and its thorns gone, so the egg we put in a
 // gap falls straight out (the test is about the basket, not the vault)
 const plain = (id, reach) => { const L = lvl(id, reach), n = L.rings.length - 1; L.rings = L.rings.map((r, i) => (i < n ? r : { ...r, thorns: [], gaps: r.gaps.map(({ shut, curtain, ...g }) => g) })); return L; };
@@ -50,7 +51,7 @@ if (process.env.DBG) { const [id, d, side, mode] = process.env.DBG.split(','); c
   for (const L0 of LEVELS) {
     const outs = [];
     for (const reach of [null, 0]) {
-      const L = lvl(L0.id, reach), sim = new Sim(L, { mode: 'medium' });
+      const L = lvl(L0.id, reach, LEVELS), sim = new Sim(L, { mode: 'medium' });
       let r = L.id * 7919 + 3; const rnd = () => ((r = (r * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
       let ring = 0, until = 0, dir = 1, sig = '';
       for (let s = 0; s < 12 / DT && sim.state !== 'won' && sim.state !== 'failed'; s++) {

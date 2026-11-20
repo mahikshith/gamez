@@ -5,7 +5,8 @@
 //   3  the mastery goal, different from level to level: the level's own challenge from its data (few ring turns, beat
 //      a time, bring the speckled prize egg home, collect every orb). The turn and time numbers come from the planner's
 //      own solution with a margin (tools/gen.mjs), so every goal has been reached by a machine before a player meets it.
-// World 1 keeps the plain trio (home, lose none, no cracks) while the game is being learned.
+// World 1 keeps the plain trio (home, lose none, no cracks) while the game is being learned; L1 counts eggs home, L4-L5
+// add their own challenge (see levelGoals).
 // A star is its goal: the three are judged on their own, so a run can earn the 3rd without the 2nd.
 // Pure data in, data out: main.js draws them (level card, HUD stars, win card) and asks which are met.
 
@@ -20,6 +21,13 @@ export function levelGoals(L, fuse = 1, campaign = true) {
   const clean = { kind: 'clean', short: 'No cracks', long: 'No cracked eggs' };
   const perfect = { kind: 'perfect', short: 'Flawless', long: 'No egg lost or cracked' };
   const id = L.id || 0, world = Math.floor((id - 1) / PER_WORLD), slot = (id - 1) % PER_WORLD;
+  // the first five (2026-11-20): always the same kind of thing early. L1 counts eggs home (1, 2, all 3: it wins with
+  // one), L2-L3 add the care goals, the level's own challenge only from L4 (never a time goal before it)
+  if (campaign && id === 1 && t < n) {
+    const k = (m) => ({ kind: 'home', n: m, short: m === n ? `All ${n} home` : m === 1 ? '1 egg home' : `${m} home`, long: m === n ? `All ${n} eggs home` : m === 1 ? '1 egg home' : `${m} eggs home` });
+    return [k(t), ...[t + 1, n].filter((m, i, a) => m <= n && a.indexOf(m) === i).map(k), clean].slice(0, 3);
+  }
+  if (campaign && id >= 4 && world < 1 && t < n) { const g3 = bonusGoal(L, fuse); if (g3) return [home, all, g3]; }
   if (!campaign || id < 1 || world < 1) return [home, t === n ? clean : all, t === n ? (bonusGoal(L, fuse) || clean) : clean];
   const g3 = bonusGoal(L, fuse) || clean;
   let g2 = t === n ? clean : world >= 6 ? perfect : slot % 2 ? clean : all;
@@ -55,7 +63,7 @@ export function facts(sim) {
 export function judge(g, F) {
   const done = F.won;
   switch (g.kind) {
-    case 'home': return F.saved >= F.target ? 'met' : done ? 'lost' : 'open';
+    case 'home': return F.saved >= (g.n || F.target) ? 'met' : done ? 'lost' : 'open'; // n: a count of its own (L1: 1, 2, all 3 home)
     case 'all': return F.broken > 0 ? 'lost' : done ? 'met' : 'open';
     case 'clean': return F.crackedHome > 0 || (!done && F.crackedLive > 0) ? 'lost' : done ? 'met' : 'open'; // in play a cracked egg already counts
     case 'perfect': return F.broken > 0 || F.crackedHome > 0 || (!done && F.crackedLive > 0) ? 'lost' : done ? 'met' : 'open';
