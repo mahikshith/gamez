@@ -43,7 +43,8 @@ const app = { money: true };
   const a = OF.evaluate(s, 'fail', { ...app, now, levelId: 12, fails: 3, nearMiss: true });
   ok(id(a) === 'charge_ad' && a.item === 'charge', '3 fails: a free Chick Charge for an ad first');
   OF.markShown(s, a, now, 12); OF.markDismissed(s, a, now, 12);
-  ok(OF.evaluate(s, 'fail', { ...app, now: now + HOUR, levelId: 12, fails: 4 }) === null, 'one popup per session');
+  OF.markShown(s, { id: 'no_ads' }, now + HOUR, 12); // a second popup this session (CAPS.perSession = 2)
+  ok(OF.evaluate(s, 'fail', { ...app, now: now + 2 * HOUR, levelId: 12, fails: 4 }) === null, 'two popups per session at most');
   OF.startSession(s, now + 2 * HOUR);
   const b = OF.evaluate(s, 'fail', { ...app, now: now + 2 * HOUR, levelId: 12, fails: 3 });
   ok(id(b) === 'bundle_helper', 'ad declined on this level: Helper Bundle next');
@@ -78,11 +79,13 @@ const app = { money: true };
   let now = T0 + HOUR;
   const a = OF.evaluate(s, 'home', { ...app, now }); OF.markShown(s, a, now);
   OF.startSession(s, now + 10 * 6e4);
-  ok(OF.blocked(s, now + 10 * 6e4, 'home') === 'gap', '30 minutes between popups');
+  ok(OF.blocked(s, now + 10 * 6e4, 'home') === 'gap', '20 minutes between popups');
   OF.startSession(s, now + 40 * 6e4);
   const b = OF.evaluate(s, 'home', { ...app, now: now + 40 * 6e4 }); OF.markShown(s, b, now + 40 * 6e4);
   OF.startSession(s, now + 90 * 6e4);
-  ok(OF.blocked(s, now + 90 * 6e4, 'home') === 'day', 'two popups a day');
+  OF.markShown(s, { id: 'no_ads' }, now + 90 * 6e4);
+  OF.startSession(s, now + 140 * 6e4);
+  ok(OF.blocked(s, now + 140 * 6e4, 'home') === 'day', 'three popups a day at most');
   // three dismissals silence an offer for 14 days
   const d = mk({ unlocked: 12 }); OF.startSession(d, T0);
   now = T0;

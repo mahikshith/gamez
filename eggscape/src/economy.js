@@ -70,8 +70,19 @@ const CHEST_BOOSTS = BOOSTER_ORDER.slice(0, 5);
 
 export const AD_REWARDS = {
   doubleCoins: 'Double the coins from this level',
-  freeCoins: { coins: 25, cooldownSec: 180 },
+  // 2026-11-20 (research: CrazyGames caps currency videos at ~5 a day with shrinking rewards): the free-coins video pays
+  // a little less each time, six a day, a few minutes apart, so coins keep their worth and the shop keeps its pull
+  freeCoins: { coins: 40, ladder: [40, 30, 25, 20, 20, 15], cooldownSec: 180 },
 };
+// the coins the next free-coins video pays today (0: done for today). adDay: { day, n } in the save
+export function freeCoinsNext(adDay, day) {
+  const n = adDay && adDay.day === day ? Math.max(0, adDay.n | 0) : 0;
+  return AD_REWARDS.freeCoins.ladder[n] || 0;
+}
+export function noteFreeCoins(adDay, day) {
+  const n = adDay && adDay.day === day ? Math.max(0, adDay.n | 0) : 0;
+  return { day, n: n + 1 };
+}
 
 export function defaultWallet() {
   return { coins: 0, owned: {}, skins: ['classic'], skin: 'classic', chests: 0, charges: 0, henSkins: ['classic'], henSkin: 'classic', noAds: false, daily: '',

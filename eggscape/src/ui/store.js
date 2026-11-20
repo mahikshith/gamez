@@ -382,7 +382,9 @@ function fitWrap(ui, str, maxW, maxLines, maxSize, minSize) {
   return { size: minSize, lines };
 }
 
+let AD_NOW = 40; // what the next free-coins video pays (drawStore sets it)
 function fmtTime(sec) {
+  if (sec >= 3600) return 'Tomorrow'; // the day's free videos are used up
   const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
   return m + ':' + String(s).padStart(2, '0');
 }
@@ -823,6 +825,7 @@ const WEB_TABS = [['deals', 'Free coins'], ['boosters', 'Power-ups'], ['hens', '
 //   products shown: the app; false on web portals), dailyOpen (the daily chest was opened today) }
 export function drawStore(ui, ctx, W, H, state) {
   const { wallet, t = 0, adReady = false, adCooldownLeft = 0, flash = null } = state;
+  AD_NOW = state.adCoins || AD_REWARDS.freeCoins.coins;
   const money = state.money !== false, TABS = money ? STORE_TABS : WEB_TABS;
   const tab = TABS.some(([id]) => id === state.tab) ? state.tab : 'deals';
   const st = { wallet, t, flash, price: state.price || usdHint, reach: state.reach || 1, money };
@@ -924,7 +927,7 @@ export function drawStore(ui, ctx, W, H, state) {
   const cooling = adCooldownLeft > 0;
   const adOff = cooling || !adReady;
   if (tab === 'deals' && !money) { // web: coins come from play, the daily chest and rewarded ads (the portal's own)
-    const fh = (cols === 1 ? 150 : D.featH) * s, ad = { key: 'ad', name: 'Free coins', line: `Watch a short video for ${AD_REWARDS.freeCoins.coins} coins. A new one every few minutes.`, big: true, tag: 'Free',
+    const fh = (cols === 1 ? 150 : D.featH) * s, ad = { key: 'ad', name: 'Free coins', line: `Watch a short video for ${AD_NOW} coins. A few each day.`, big: true, tag: 'Free',
       flash: flash && flash.id === 'ad' ? flash.t : 99, icon: (c, cx, cy, it, tt, b) => coinPile(c, cx, cy, it * b, 3, tt),
       btn: { id: 'ad:coins', label: cooling ? fmtTime(adCooldownLeft) : adOff ? 'Soon' : 'Watch', kind: 'ad', ad: !adOff, disabled: adOff, size: 19 } };
     add(fh, (x, y, w) => drawCard(ui, ctx, ad, x, y, w, fh, s, t, true), 'coins', 0);
@@ -1041,7 +1044,7 @@ function drawAdCell(ui, ctx, x, y, w, h, s, t, o) {
   ui.well(x + p, y + p, w - 2 * p, artH, { s, r: 12 * s, a: '#e4d4ff', b: '#f4eeff', shade: 'rgba(60,20,130,0.25)', border: 'rgba(90,60,150,0.55)' });
   ui.record({ x: x + p, y: y + p, w: w - 2 * p, h: artH }, 'store:icon:ad');
   coinPile(ctx, x + w / 2, y + p + artH * 0.56, Math.min(artH * 1.05, w * 0.7), 1, t);
-  ui.num('+' + AD_REWARDS.freeCoins.coins, x + w / 2, y + p + artH + 4 * s + amH / 2, { size: 21 * s, align: 'center', maxW: w - 2 * p, tag: 'store:amt:ad' });
+  ui.num('+' + AD_NOW, x + w / 2, y + p + artH + 4 * s + amH / 2, { size: 21 * s, align: 'center', maxW: w - 2 * p, tag: 'store:amt:ad' });
   const label = o.cooling ? fmtTime(o.adCooldownLeft) : o.adOff ? 'Soon' : 'Free';
   ui.button('ad:coins', label, x + p, y + fh - p - bh, w - 2 * p, bh, { kind: 'ad', shimmer: !o.adOff, ad: !o.adOff, disabled: o.adOff, size: 17 * s });
 }

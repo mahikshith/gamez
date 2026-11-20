@@ -27,7 +27,8 @@ import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
-import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon } from './ui/store.js';
+import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview } from './ui/store.js';
+import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, freebies, trials, home nudges)
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
@@ -147,6 +148,13 @@ const AD_BOOST = ['golden', 'time', 'stone', 'sponge']; // the intro card's free
 // Daily Vault (C7): one pre-validated layout per day, the same for everyone; level index -1
 const DAILY_COINS = 40;
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// the free-coins video: what it pays now (a little less each time, six a day), and seconds until the next one
+const adCoins = () => E.freeCoinsNext(save.adDay, today());
+function adCd() {
+  if (adCoins() > 0) return E.adCooldownLeft(save.adClaim, Date.now());
+  const d = new Date(), m = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  return Math.max(3601, Math.ceil((m - d) / 1000)); // done for today ('Tomorrow')
+}
 function dailyLevel() {
   const d = new Date();
   return DAILY[Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5) % DAILY.length];
@@ -159,7 +167,7 @@ const powerInfo = (id) => POWER_INFO[id] || { name: id, line: '', color: '#fff' 
 const strikeReach = () => Math.max(save.unlocked || 1, G.level && G.li >= 0 ? G.level.id : 0);
 // 2026-11-16: a chick bought in the shop (wallet.chicks) is open from then on, whatever the level
 // (a premium chick has no level: it is open only once bought)
-const strikesOpen = () => STRIKES.filter((S) => (!S.premium && strikeReach() >= S.unlock) || E.ownsChick(save.wallet, S.id));
+const strikesOpen = () => STRIKES.filter((S) => (!S.premium && strikeReach() >= S.unlock) || E.ownsChick(save.wallet, S.id) || (G.trialChick && G.level && G.trialChick.lid === G.level.id && G.trialChick.id === S.id));
 // 2026-11-15: the power chick is chosen per level on the intro card. It no longer carries over silently from the last
 // level; a retry of the same level keeps the choice (G.stkSel is per level id).
 function strikeFor(L, i) {
@@ -168,7 +176,13 @@ function strikeFor(L, i) {
   const sel = G.stkSel && G.stkSel.lid === (L && L.id) ? G.stkSel.id : null;
   return sel && open.some((S) => S.id === sel) ? sel : null;
 }
+let lastCoins = null;
 function persist() {
+  { // the Director counts coins spent (any drop in the purse is a spend: coins only ever leave through a purchase)
+    const c = save.wallet ? save.wallet.coins || 0 : 0;
+    if (lastCoins != null && c < lastCoins) DR.noteSpend(save, lastCoins - c, G.screen || 'any');
+    lastCoins = c;
+  }
   try { portal.save(JSON.stringify(save)); } catch (e) { /* never block */ }
 }
 
@@ -339,7 +353,7 @@ function startLevel(i, opts = {}) {
   G.backdrop = backdropFor(G.theme, G.level.id * 97);
   G.weather = createWeather(G.level.weather || THEME_WEATHER[G.theme.id] || 'none', G.level.id * 31);
   G.weather.resize(W_, H_, DPR);
-  W.setSkin(save.wallet.skin);
+  W.setSkin(DR.trialSkin(save) || save.wallet.skin); // an egg skin on trial (the Director's win gift) is worn in play
   G.slow = G.card = G.hint = G.hintShow = null;
   G.lastEgg = false;
   G.snakeToast = false;
@@ -1088,9 +1102,13 @@ async function press(id) {
         if (w) { save.wallet = w; boost[b] = true; picked++; }
       }
       G.boostSel.clear();
+      // the win streak's free start boosters (Director: two or more levels won in a row)
+      const hot = G.li >= 0 ? DR.hotBoosts(save).filter((b) => !boost[b]) : [];
+      for (const b of hot) { boost[b] = true; picked++; }
       if (picked) {
         persist();
         startLevel(G.li, { direct: true, golden: G.golden || boost.golden, boost, adBoost: G.adBoost });
+        if (hot.length) toast(`Win streak ${DR.hotCount(save)}: free ${hot.map((b) => E.BOOSTERS[b].name).join(' + ')}!`, 3);
         break;
       }
       setScreen('play');
@@ -1100,7 +1118,7 @@ async function press(id) {
       break;
     }
     case 'daily':
-      await breakThen(() => startLevel(-1));
+      startLevel(-1);
       break;
     case 'stk:buy:freeze': case 'stk:buy:thunder': case 'stk:buy:bomb': case 'stk:buy:decoy': case 'stk:buy:tornado': case 'stk:buy:glue':
     case 'stk:buy:phoenix': case 'stk:buy:tock': case 'stk:buy:bubble':
@@ -1175,6 +1193,25 @@ async function press(id) {
     case 'dt:close':
       G.detail = null;
       break;
+    case 'help:go': await takeHelp(); break;
+    case 'nudge:no': if (G.nudge && G.nudge.kind === 'keep') DR.clearKeepAsk(save); G.nudge = null; persist(); break;
+    case 'nudge:yes': {
+      const n = G.nudge;
+      if (!n) break;
+      if (n.kind === 'keep') {
+        const w = E.buySkin(save.wallet, n.id);
+        if (!w) { needCoins(n.price); break; }
+        save.wallet = w; DR.clearKeepAsk(save); W.setSkin(w.skin); G.nudge = null; persist(); audio.play('unlock'); toast(`The ${n.name} Egg is yours!`, 2.4);
+      } else if (n.kind === 'welcome') {
+        const b = E.BOOSTER_ORDER[Math.floor(Math.random() * 5)];
+        save.wallet = { ...save.wallet, coins: save.wallet.coins + n.coins, owned: { ...(save.wallet.owned || {}), [b]: ((save.wallet.owned || {})[b] || 0) + 1 } };
+        G.nudge = null; persist(); audio.play('level_win'); toast(`+${n.coins} coins and a free ${E.BOOSTERS[b].name}!`, 2.8);
+      } else if (n.kind === 'afford') {
+        G.nudge = null; persist();
+        openStore(n.item.startsWith('chick:') ? 'boosters' : 'skins');
+      }
+      break;
+    }
     case 'of:no': // "No thanks" on an offer
       if (G.offer) { OF.markDismissed(save, G.offer, Date.now(), G.offer.lv); persist(); }
       G.offer = null;
@@ -1229,11 +1266,12 @@ async function press(id) {
       await press('ad:coins');
       break;
     case 'ad:coins': {
-      if (E.adCooldownLeft(save.adClaim, Date.now()) > 0) break;
-      const ok = await rewarded('coins');
+      if (adCd() > 0) break;
+      const pay = adCoins(), ok = await rewarded('coins');
       if (ok) {
-        save.wallet = E.addCoins(save.wallet, E.AD_REWARDS.freeCoins.coins);
+        save.wallet = E.addCoins(save.wallet, pay);
         save.adClaim = Date.now();
+        save.adDay = E.noteFreeCoins(save.adDay, today());
         G.storeFlash = { id: 'ad', t0: G.t };
         persist();
         audio.play('combo', { intensity: 0.5 });
@@ -1310,6 +1348,10 @@ async function press(id) {
       startLevel(G.li, { direct: true });
       break;
     case 'next': {
+      // 2026-11-20 (Google Play ad policy: no interstitial as a level begins, none between a tap and what it starts):
+      // the between-levels break, when one is due, comes here, as the player leaves the score card, before the map
+      if (G.adBusy) break;
+      if (G.screen === 'win') await breakThen(() => {});
       const n = Math.min(LEVELS.length - 1, G.li + 1);
       if (G.li < 0) { setScreen(G.demo && G.level === G.demo ? 'practice' : 'title'); break; }
       if (G.li === LEVELS.length - 1) { setScreen('levels'); break; }
@@ -1345,20 +1387,19 @@ async function press(id) {
       const ok = free || await rewarded('rewind');
       if (free) G.freeRewind = false;
       const back = ok && G.sim.rewind(5);
-      if (back) {
-        releaseAll();
-        stopFuse();
-        G.sim = back;
-        G.run = (G.run || 0) + 1;
-        G.usedRewind = true;
-        G.lastEgg = false;
-        G.hint = G.hintShow = G.card = G.slow = null;
-        G.fx = new FX();
-        setScreen('play');
-        portal.gameplayStart();
-        audio.play('rewind');
-        toast('Rewound 5 seconds. Streak kept!', 2.4);
-      }
+      if (back) rewound(back);
+      break;
+    }
+    case 'rewind:coins': { // Royal Match's continue: coins instead of a video, a little dearer each time on this level
+      if (G.screen !== 'fail' || G.usedRewind || !G.sim.canRewind()) break;
+      const lid = G.level.id, price = DR.rewindPrice((G.rewindBuys || {})[lid]);
+      if (save.wallet.coins < price) { needCoins(price); break; }
+      const back = G.sim.rewind(5);
+      if (!back) break;
+      save.wallet = { ...save.wallet, coins: save.wallet.coins - price };
+      G.rewindBuys = { ...(G.rewindBuys || {}), [lid]: ((G.rewindBuys || {})[lid] || 0) + 1 };
+      persist();
+      rewound(back);
       break;
     }
     case 'double': {
@@ -1439,11 +1480,11 @@ async function press(id) {
       else if (id === 'how:next') { if (G.how) { G.how.i++; G.how.t0 = G.t; } }
       else if (id && id.startsWith('lv:')) {
         const i = +id.slice(3);
-        if (playable(i)) await breakThen(() => startLevel(i));
+        if (playable(i)) startLevel(i);
       } else if (id && id.startsWith('demo:')) {
         // test build: the chick lab (v3.2), one practice vault per chick kind
         const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS, ...REEF_DEMOS, ...BAYOU_DEMOS, ...LAB_DEMOS].find((x) => x.kind === k);
-        if (d) { G.demo = d; await breakThen(() => startLevel(-2)); }
+        if (d) { G.demo = d; startLevel(-2); }
       } else if (id && id.startsWith('wv:')) { // WONDER: the bonus world's own buttons
         wonder.press(id);
       } else if (id && id.startsWith('mode:')) {
@@ -1528,11 +1569,29 @@ function releaseAll() {
   G.held.clear();
 }
 
+// back 5 seconds into the level from the fail card (a video, coins or a Free rewind): the run and the win streak go on
+function rewound(back) {
+  releaseAll();
+  stopFuse();
+  G.sim = back;
+  G.run = (G.run || 0) + 1;
+  G.usedRewind = true;
+  G.lastEgg = false;
+  G.hint = G.hintShow = G.card = G.slow = null;
+  G.fx = new FX();
+  G.failHelp = null;
+  DR.keepHot(save); persist();
+  setScreen('play');
+  portal.gameplayStart();
+  audio.play('rewind');
+  toast('Rewound 5 seconds. Streak kept!', 2.4);
+}
+
 async function breakThen(fn, info = {}) {
   if (G.adBusy) return;
   G.adBusy = true; G.adVis = 0;
   portal.gameplayStop();
-  try { await ads.between({ levelId: G.level && G.li >= 0 ? G.level.id : 0, afterFail: G.screen === 'fail', ...info }); } catch (_) {}
+  try { await ads.between({ levelId: G.level && G.li >= 0 ? G.level.id : 0, afterFail: G.screen === 'fail' || (G.li >= 0 && G.level && DR.frustration(save, G.level.id) >= 0.5), ...info }); } catch (_) {} // no ad break on a losing streak
   G.adBusy = false;
   fn();
 }
@@ -1598,7 +1657,7 @@ function featuredPick() {
 }
 const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today() });
 // popups and sheets over any screen; while one shows only its own buttons take taps
-function modalOpen() { return !!(G.getMore || G.detail || G.offer || G.ageAsk || G.parent || G.chickBuy || G.treasure); }
+function modalOpen() { return !!(G.getMore || G.detail || G.offer || G.ageAsk || G.parent || G.chickBuy || G.treasure || G.nudge); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
@@ -1610,6 +1669,7 @@ function drawModals() {
     else if (G.chickBuy) drawChickBuy();
     else if (G.detail) drawDetail();
     else if (G.offer) drawOffer();
+    else if (G.nudge) drawNudge();
     else if (G.ageAsk) drawAgeAsk();
     else if (G.treasure) drawTreasure();
   } finally { G.hudBottom = hb; }
@@ -1700,18 +1760,62 @@ function drawTreasure() {
 function offerCtx() {
   const lv = G.li >= 0 && G.level ? G.level.id : null, st = G.sim && G.screen === 'fail' ? G.sim.stats() : null;
   return { now: Date.now(), money: ads.moneyShop, levelId: lv, fails: lv != null ? ads.fails(lv) : 0, prevFails: G.prevFails || 0,
-    nearMiss: !!(st && st.saved === st.target - 1), lastPrice: G.lastPrice || 0, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0 };
+    nearMiss: !!(st && st.saved === st.target - 1), lastPrice: G.lastPrice || 0, adReady: adCd() === 0 };
+}
+// what the Director needs to know about this loss
+function failCtx(st) {
+  const L = G.level, kinds = villainKinds(L, G.sim).filter((k) => VILLAIN_INFO[k] && VILLAIN_INFO[k].group !== 'hazard');
+  const c = lockedChicks()[0] || null;
+  return { levelId: L.id, now: Date.now(), nearMiss: st.saved === st.target - 1, timeout: G.sim.timeLeft <= 0,
+    thorns: G.sim.rings.some((r) => r.thorns && r.thorns.length), villains: kinds.length > 0, lockedChick: c, chickLevel: L.id >= STRIKE_FROM,
+    owned: (save.wallet && save.wallet.owned) || {}, adReady: !G.adBusy };
+}
+// the fail card's help: a freebie, or the booster that fits, then straight back into the level
+async function takeHelp() {
+  const H = G.failHelp, lid = G.level && G.level.id;
+  if (!H || G.screen !== 'fail' || lid == null) return;
+  const boostRun = (b) => startLevel(G.li, b === 'golden' ? { direct: true, golden: true } : { direct: true, boost: { [b]: true } });
+  if (H.kind === 'trialChick') {
+    DR.noteTrial(save, lid, H, Date.now()); persist();
+    G.trialChick = { lid, id: H.id };
+    G.stkSel = { lid, id: H.id };
+    G.failHelp = null; portal.gameplayStop();
+    startLevel(G.li, { direct: true });
+    G.trialChick = { lid, id: H.id }; // (startLevel keeps it: the trial lasts this one try)
+    toast(`${(STRIKE[H.id] || {}).name || 'Your chick'} is with you this try. Tap it to send it!`, 3.2);
+  } else if (H.kind === 'trialBoost') {
+    DR.noteTrial(save, lid, H, Date.now()); persist();
+    G.failHelp = null; boostRun(H.id);
+    toast(`Free ${E.BOOSTERS[H.id].name}: ${E.BOOSTERS[H.id].line}`, 3.2);
+  } else if (H.kind === 'buyBoost') {
+    if (save.wallet.coins < H.price) { needCoins(H.price); return; }
+    save.wallet = { ...save.wallet, coins: save.wallet.coins - H.price }; persist();
+    G.failHelp = null; boostRun(H.id);
+  } else if (H.kind === 'adBoost') {
+    if (await rewarded('booster')) { G.failHelp = null; boostRun(H.id); toast(`${E.BOOSTERS[H.id].name}: ${E.BOOSTERS[H.id].line}`, 3); }
+  }
+}
+// home: the Director's one nudge (keep a trial skin, welcome back, you can afford a chick or skin)
+function homeNudge(now) {
+  const chicks = strikeReach() >= STRIKE_FROM ? STRIKES.filter((S) => !strikesOpen().includes(S) && E.CHICK_PRICES[S.id]).map((S) => ({ id: S.id, name: S.name, price: E.CHICK_PRICES[S.id] })).sort((a, b) => a.price - b.price) : [];
+  const n = DR.homeNudge(save, { now, chicks });
+  if (!n) return false;
+  if (n.kind !== 'keep') DR.noteNudge(save, n, now);
+  persist();
+  G.nudge = n;
+  return true;
 }
 function offerMoments() {
   if (G.offerTried || modalOpen() || G.settingsOpen || G.adBusy) return;
   const sc = G.screen;
-  if (sc === 'title' && G.screenT > 1.4) {
+  if ((sc === 'title' || (sc === 'levels' && !G.mapTravel && !G.treasure)) && G.screenT > 1.4) { // home, or the map (the app opens on it now)
     G.offerTried = true;
-    if (OF.needsAge(save, ads.moneyShop) && !G.ageLater) { G.ageAsk = true; return; } // first launch, once the home is up
-  } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0) G.offerTried = true;
+    if (sc === 'title' && OF.needsAge(save, ads.moneyShop) && !G.ageLater) { G.ageAsk = true; return; } // first launch, once the home is up
+    if (homeNudge(Date.now())) return; // the Director's nudge comes first; the paid offer can wait for another visit
+  } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0) { G.offerTried = true; if (sc === 'fail' && G.failHelp) return; } // one help on a fail card, never two
   else if (sc === 'intro' && G.screenT > 0.3 && G.li >= 0) { G.offerTried = true; G.introTip = null; } // the intro's gentle chick line
   else return;
-  const moment = sc === 'title' ? 'home' : sc;
+  const moment = sc === 'title' || sc === 'levels' ? 'home' : sc;
   const ctx2 = offerCtx();
   if (moment === 'intro') {
     const c = lockedChicks()[0];
@@ -1740,11 +1844,33 @@ function drawOffer() {
       } },
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'of:line' + i, gap: i ? 2 * s : 10 * s })),
       { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ad
-        ? ui.button('of:ad', O.item === 'coins' ? `Watch: +${E.AD_REWARDS.freeCoins.coins} coins` : 'Watch: free Chick Charge', x, y, w, 58 * s, { kind: 'ad', ad: true, shimmer: true, size: 18 * s })
+        ? ui.button('of:ad', O.item === 'coins' ? `Watch: +${adCoins()} coins` : 'Watch: free Chick Charge', x, y, w, 58 * s, { kind: 'ad', ad: true, shimmer: true, size: 18 * s })
         : ui.button('of:buy', ads.price(O.sku), x + w * 0.1, y, w * 0.8, 58 * s, { kind: 'gold', shimmer: true, size: 24 * s }) },
       { h: 56 * s, gap: 10 * s, draw: (x, y, w) => ui.button('of:no', 'No thanks', x, y, w, 56 * s, { kind: 'tertiary', size: 21 * s }) },
     ];
   }, { ribbon: '#e8402e' });
+}
+// the Director's home nudge: keep a trial skin, a welcome-back gift, or "you can unlock X now". One card, big art.
+function drawNudge() {
+  const n = G.nudge;
+  dim(0.55);
+  const title = n.kind === 'keep' ? `Keep the ${n.name} Egg?` : n.kind === 'welcome' ? 'Welcome back!' : 'You can unlock it now!';
+  const line = n.kind === 'keep' ? 'Your free try is over. Keep it for good:' : n.kind === 'welcome' ? `A gift for coming back: ${n.coins} coins and a free booster.` : `You have the coins for ${n.name}.`;
+  stackCard(title, (s, iw) => [
+    { h: 132 * s, gap: 4 * s, draw: (x, y, w) => {
+      const aw = Math.min(w, 170 * s);
+      ui.well(x + (w - aw) / 2, y, aw, 132 * s, { s, a: '#ffe9b0', b: '#fff6dc' });
+      if (n.kind === 'keep' || (n.kind === 'afford' && n.item.startsWith('skin:'))) drawSkinPreview(ctx, n.kind === 'keep' ? n.id : n.item.slice(5), x + w / 2, y + 66 * s, 104 * s, G.t);
+      else if (n.kind === 'afford') drawStrikeChick(ctx, n.item.slice(6), x + w / 2, y + 72 * s, 112 * s, G.t, {});
+      else drawOfferArt(ctx, 'coins', x + w / 2, y + 66 * s, 120 * s, G.t, save.wallet);
+      ui.record({ x: x + (w - aw) / 2, y, w: aw, h: 132 * s }, 'nudge:art');
+    } },
+    ...wrapText(line, 16.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 16.5 * s, { color: ui.C.ink, tag: 'nudge:line' + i, gap: i ? 2 * s : 10 * s })),
+    { h: 58 * s, gap: 14 * s, draw: (x, y, w) => n.kind === 'keep'
+      ? ui.button('nudge:yes', String(n.price), x + w * 0.1, y, w * 0.8, 58 * s, { kind: save.wallet.coins >= n.price ? 'gold' : 'off', dim: 1, shimmer: save.wallet.coins >= n.price, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 24 * s })
+      : ui.button('nudge:yes', n.kind === 'welcome' ? 'Collect' : 'See it', x + w * 0.1, y, w * 0.8, 58 * s, { kind: 'primary', shimmer: true, size: 22 * s }) },
+    ...(n.kind === 'welcome' ? [] : [{ h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('nudge:no', n.kind === 'keep' ? 'No thanks' : 'Later', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) }]),
+  ], { ribbon: n.kind === 'welcome' ? '#3cb043' : '#d89a1c' });
 }
 // first launch (app only, behind OF.AGE_GATE): a neutral question, two equal buttons, nothing pre-chosen
 function drawAgeAsk() {
@@ -1843,7 +1969,7 @@ function drawGetMore() {
   const M = G.getMore;
   dim(0.55);
   stackCard('Get more coins', (s) => {
-    const C = ui.C, P = E.IAP[M.sku], cd = E.adCooldownLeft(save.adClaim, Date.now());
+    const C = ui.C, P = E.IAP[M.sku], cd = adCd();
     return [
       lineBlock(`You need ${M.short} more coin${M.short > 1 ? 's' : ''}.`, 18 * s, { color: C.ink, tag: 'gm:need' }),
       ads.moneyShop && { h: 66 * s, gap: 12 * s, draw: (x, y, w) => { // the cheapest pack that covers it
@@ -1855,7 +1981,7 @@ function drawGetMore() {
         ui.text('coins', x + 70 * s, y + 47 * s, { size: 14 * s, color: C.ink2, tag: 'gm:unit', maxW: w - bw - 90 * s });
         ui.button('gm:iap:' + M.sku, ads.price(M.sku), x + w - bw - 9 * s, y + 11 * s, bw, 44 * s, { kind: 'primary', size: 18 * s });
       } },
-      { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('gm:ad', cd > 0 ? `Free coins in ${fmtTime(cd)}` : `Watch an ad: +${E.AD_REWARDS.freeCoins.coins} coins`, x, y, w, 50 * s, { kind: 'ad', ad: cd <= 0, disabled: cd > 0, shimmer: cd <= 0, size: 16.5 * s }) },
+      { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('gm:ad', cd > 3600 ? 'More free coins tomorrow' : cd > 0 ? `Free coins in ${fmtTime(cd)}` : `Watch an ad: +${adCoins()} coins`, x, y, w, 50 * s, { kind: 'ad', ad: cd <= 0, disabled: cd > 0, shimmer: cd <= 0, size: 16.5 * s }) },
       { h: 46 * s, gap: 10 * s, draw: (x, y, w) => ui.button('gm:shop', 'Open shop', x + w * 0.12, y, w * 0.76, 46 * s, { kind: 'secondary', icon: (c, X, Y, S) => shopIcon(c, X, Y, S), size: 17 * s }) },
       { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button('gm:close', 'Close', x, y, w, 56 * s, { kind: 'tertiary', size: 21 * s }) },
     ].filter(Boolean);
@@ -3269,6 +3395,14 @@ function onWin() {
     save.wallet = P.wallet; G.result.coins = P.coins; G.result.goldHour = P.doubled;
   }
   if (G.result.bonus) save.bonus[sk(G.level.id, G.sim.mode)] = 1;
+  if (G.li >= 0 && G.level) { // the Director: the result, a skin trial running down, and now and then a new one as a gift
+    DR.noteResult(save, G.level.id, true, { saved: G.sim.savedLog.length });
+    DR.tickTrial(save);
+    const gift = DR.winGift(save);
+    if (gift) { DR.startSkinTrial(save, gift.id, Date.now()); G.result.gift = gift; }
+    G.result.hot = DR.hotCount(save);
+  }
+  G.trialChick = null;
   recordResult();
   portal.gameplayStop();
   portal.happy();
@@ -3285,6 +3419,15 @@ function onWin() {
 
 function onFail() {
   if (G.li >= 0 && G.level) ads.fail(G.level.id);
+  G.failHelp = null;
+  if (G.li >= 0 && G.level) { // the Director: note the loss, then pick the one help card for the fail screen
+    const st = G.sim.stats();
+    DR.noteResult(save, G.level.id, false, { saved: st.saved });
+    DR.tickTrial(save);
+    G.failHelp = DR.failHelp(save, failCtx(st));
+    persist();
+  }
+  G.trialChick = null;
   stopFuse();
   audio.musicEnd('fail');
   portal.gameplayStop();
@@ -3470,7 +3613,7 @@ const SCENE_SCREENS = { title: 1, store: 1, practice: 1 }; // these paint a full
 function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
 function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
 function drawStoreScreen() { // the shop's toast floats over its scrolling list (like a clipped card, it records nothing)
-  drawStore(ui, ctx, W_, H_, { ...storeState(), area: ui.A, adReady: E.adCooldownLeft(save.adClaim, Date.now()) === 0, adCooldownLeft: E.adCooldownLeft(save.adClaim, Date.now()), tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), featured: storeFeatured() }); const n0 = ui.rects.length; drawToast(); ui.rects.length = n0; menuFx(); /* the shop paints its own backdrop: the effect drifts over it */
+  drawStore(ui, ctx, W_, H_, { ...storeState(), area: ui.A, adReady: adCd() === 0, adCooldownLeft: adCd(), adCoins: adCoins(), tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), featured: storeFeatured() }); const n0 = ui.rects.length; drawToast(); ui.rects.length = n0; menuFx(); /* the shop paints its own backdrop: the effect drifts over it */
 }
 function render() {
   const t = G.t;
@@ -4774,6 +4917,63 @@ function pageScroll(blocks, S, V, x, w, s, top) {
   }
 }
 
+// The level card's how-to stage in the game's own art (2026-11-20, mykee: "the weasel looks cartoonish and too small,
+// use the proper in-game drawings"): a tiny stand-in vault (one ring of the level's material, one egg, the nest) built
+// once per level and never stepped. The stage poses it each frame (ring angle, egg position) and draws it with the very
+// functions the play screen uses; the backdrop is the level's own, painted once into a small picture.
+const HOWW = { key: '', sim: null, ringR: 2.1, bk: '', bcv: null };
+function howWorld() {
+  const L = G.level;
+  if (!L || !G.theme) return null;
+  const key = L.id + '|' + (L.material || 'wood') + '|' + G.theme.id;
+  if (HOWW.key !== key) {
+    HOWW.key = key; HOWW.bk = '';
+    try {
+      HOWW.sim = new Sim({ id: -77, theme: L.theme, material: L.material || 'wood', eggs: 1, target: 1, time: 99, spacing: 1.05, nest: { w: 2.6 }, rings: [{ gaps: [{ a: -90 }] }, { gaps: [{ a: -90 }] }] }, { mode: 'medium' });
+      HOWW.ringR = HOWW.sim.rings[HOWW.sim.rings.length - 1].r;
+    } catch (e) { HOWW.sim = null; }
+  }
+  if (!HOWW.sim) return null;
+  const sim = HOWW.sim, ring = sim.rings[sim.rings.length - 1], egg = sim.eggs[0];
+  return {
+    ringR: HOWW.ringR,
+    back(c, x, y, w, h) {
+      const bk = key + '|' + Math.round(w) + 'x' + Math.round(h) + '@' + DPR;
+      if (HOWW.bk !== bk) {
+        try {
+          const cv = HOWW.bcv || (HOWW.bcv = document.createElement('canvas'));
+          cv.width = Math.max(2, Math.ceil(w * DPR)); cv.height = Math.max(2, Math.ceil(h * DPR));
+          const b = G.backdrop || backdropFor(G.theme, L.id * 97), q = cv.getContext('2d'), sc = w / W_, gy = H_ * 0.8;
+          q.setTransform(DPR * sc, 0, 0, DPR * sc, 0, DPR * (h * 0.9 - gy * sc));
+          b.draw(q, 0, { x: 0, y: 0, zoom: 1 });
+          b.drawGround(q, 0, gy, W_, H_ - gy, 0);
+          HOWW.bk = bk;
+        } catch (e) { return false; }
+      }
+      c.drawImage(HOWW.bcv, x, y, w, h);
+      return true;
+    },
+    ring(c, C, k, ang, t) {
+      try { ring.body.setAngle(ang); } catch (e) { /* drawn at its last angle */ }
+      c.save(); c.translate(C.x, C.y); c.scale(k, -k);
+      W.drawRing(c, ring, G.theme, k, t, { eggs: [] });
+      c.restore();
+    },
+    egg(c, X, Y, stone, worry, C, k, t) {
+      try { egg.body.setTransform({ x: (X - C.x) / k, y: -(Y - C.y) / k }, worry ? Math.sin(t * 22) * 0.08 : 0); } catch (e) { return; }
+      egg.stone = stone ? 1 : 0;
+      c.save(); c.translate(C.x, C.y); c.scale(k, -k);
+      W.drawEgg(c, egg, t, k);
+      c.restore();
+    },
+    nest(c, X, Y, wPx, glow, t) {
+      const p = sim.nest.getPosition(), kn = wPx / sim.nestW;
+      c.save(); c.translate(X, Y); c.scale(kn, -kn); c.translate(-p.x, -p.y);
+      W.drawNest(c, sim, G.theme, t, 0);
+      c.restore();
+    },
+  };
+}
 function drawLevelIntro(L, acc) {
   const section = pageSection, foeRow = foeCard, colH = pageColH, scrollCol = pageScroll;
   ui.calm = save.calm;
@@ -4890,7 +5090,7 @@ function drawLevelIntro(L, acc) {
     if (S) {
       // 2026-11-20 (show, don't tell): the picked chick's power as a moving cartoon, then its upside and downside
       const ul = wrapText(S.up || (POWER_WORDS[S.id] || [''])[0], 16 * s, iw - 30 * s).slice(0, 2), dl = wrapText('Downside: ' + (S.down || (POWER_WORDS[S.id] || ['', ''])[1]), 15 * s, iw - 30 * s).slice(0, 2);
-      const stH = Math.min((iw - 24 * s) * 0.52, 210 * s);
+      const stH = Math.min((iw - 24 * s) * 0.64, 250 * s);
       const h = 12 * s + 24 * s + stH + 10 * s + ul.length * 20 * s + 4 * s + dl.length * 19 * s + 8 * s;
       B.push({ h, gap: 8 * s, draw: (x, y, w) => {
         ui.well(x, y, w, h, { s, a: '#f3e2bd', b: '#fbf0d6' });
@@ -4899,7 +5099,7 @@ function drawLevelIntro(L, acc) {
         const Hc = G.howC || (G.howC = { id: null, t0: G.t });
         if (Hc.id !== S.id) { Hc.id = S.id; Hc.t0 = G.t; }
         const foe = kinds.find((k) => !/^(icicles|lava|lightning|embers|quake|rain|current|gusts|popthorns|vines|curse|thornorb)$/.test(k)) || 'snake', th = G.theme && G.theme.palette;
-        drawHowTo(ctx, chickPlan(S.id, '', foe.replace(/^boss:/, '') in VILLAIN_INFO ? foe.replace(/^boss:/, '') : foe), x + 12 * s, yy, w - 24 * s, stH, G.t - Hc.t0, { calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark });
+        drawHowTo(ctx, chickPlan(S.id, '', foe.replace(/^boss:/, '') in VILLAIN_INFO ? foe.replace(/^boss:/, '') : foe), x + 12 * s, yy, w - 24 * s, stH, G.t - Hc.t0, { world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark });
         ui.roundRect(x + 12 * s, yy, w - 24 * s, stH, Math.min(18, stH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
         ui.record({ x: x + 12 * s, y: yy, w: w - 24 * s, h: stH }, 'intro:chickstage');
         yy += stH + 10 * s + 9 * s;
@@ -4934,7 +5134,7 @@ function drawLevelIntro(L, acc) {
     const goalH = 54 * s, capH = 34 * s, dotsH = n > 1 ? 18 * s : 0, playH = withPlay ? 76 * s : 0, starH = G.li >= 0 ? 52 * s : 0;
     const fixed = pd * 2 + goalH + capH + dotsH + playH + 6 * s;
     let stageH = Math.min((iw - 2 * pd) * 0.6, 260 * s), stars = starH > 0;
-    if (availH && fixed + starH + stageH < availH) stageH = Math.min((iw - 2 * pd) * 0.9, 330 * s, availH - fixed - starH); // a tall phone: a bigger stage
+    if (availH && fixed + starH + stageH < availH) stageH = Math.min((iw - 2 * pd) * 1.02, 390 * s, availH - fixed - starH); // a tall phone: a bigger stage
     if (availH && fixed + starH + stageH > availH) {
       const room = availH - fixed - starH;
       if (room >= 140 * s) stageH = room; else { stars = false; stageH = clamp(availH - fixed, 120 * s, stageH); }
@@ -4955,9 +5155,10 @@ function drawLevelIntro(L, acc) {
       if (Hw.lid !== pg.lid) { Hw.lid = pg.lid; Hw.i = 0; Hw.t0 = G.t; }
       if (!save.calm && n > 1 && G.t - Hw.t0 >= HOWTO_LOOP) { Hw.i = (Hw.i + 1) % n; Hw.t0 = G.t; }
       const plan = plans[Hw.i % n], th = G.theme && G.theme.palette, sx = x + pd, sy2 = y + pd + goalH, sw = w - 2 * pd;
-      drawHowTo(ctx, plan, sx, sy2, sw, stageH, G.t - Hw.t0, { rooster: allyIcon, calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark });
+      drawHowTo(ctx, plan, sx, sy2, sw, stageH, G.t - Hw.t0, { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark });
       ui.roundRect(sx, sy2, sw, stageH, Math.min(18, stageH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
       ui.record({ x: sx, y: sy2, w: sw, h: stageH }, 'intro:stage');
+      hotBadge(sx + 8 * s, sy2 + stageH - 8 * s, s); // bottom left, clear of the villain and the egg
       if (n > 1) { ui.buttons.push({ id: 'how:next', x: sx, y: sy2, w: sw, h: stageH }); }
       // a name tag on the stage: who this is (BOSS in red)
       if (plan.kind && plan.move !== 'rooster') {
@@ -5042,6 +5243,20 @@ function drawLevelIntro(L, acc) {
     let by = y1 + 8 * u; for (const b of bot) { by += b.gap ?? 10 * s; b.draw(x0, by, iw); by += b.h; }
   }
   ctx.restore();
+}
+// the win streak on the level card: a flame with the count and the free boosters it brings to this level
+function hotBadge(x, y, s) {
+  const hb = G.li >= 0 ? DR.hotBoosts(save) : [];
+  if (!hb.length) return;
+  const n = `${DR.hotCount(save)} wins`, ih = 30 * s, nw = ui.measure(n, 16 * s), w = 12 * s + 24 * s + nw + 8 * s + hb.length * (ih + 2 * s) + 6 * s;
+  y -= ih + 8 * s; // (y is the badge's bottom)
+  const p = save.calm ? 0 : 0.5 + 0.5 * Math.sin(G.t * 3);
+  ui.roundRect(x, y, w, ih + 8 * s, (ih + 8 * s) / 2); ctx.fillStyle = 'rgba(150,40,10,0.9)'; ctx.fill();
+  ctx.lineWidth = 2 * s; ctx.strokeStyle = `rgba(255,${200 + 40 * p | 0},120,0.9)`; ctx.stroke();
+  pictoFlame(ctx, x + 6 * s + 12 * s, y + 4 * s + ih / 2, 24 * s);
+  ui.text(n, x + 32 * s, y + 4 * s + ih / 2, { size: 16 * s, color: '#fff', noRecord: true });
+  hb.forEach((b, i) => drawBoosterIcon(ctx, b, x + 32 * s + nw + 8 * s + i * (ih + 2 * s) + ih / 2, y + 4 * s + ih / 2, ih * 0.92, G.t));
+  ui.record({ x, y, w, h: ih + 8 * s }, 'intro:hot');
 }
 const tintHex = (c) => c.length === 7 ? ui.tint(c, 0.35) : c; // the accent, a step brighter for borders and glow
 
@@ -5555,6 +5770,7 @@ function drawWinPage() {
     cells.push(['egg', 'Egg points', String(r.eggScore), C.ink]);
     if (r.timeBonus) cells.push(['gem', 'Time bonus', '+' + r.timeBonus, C.ink]);
     if (r.streakMult > 1) cells.push(['flame', 'Star streak', 'x' + r.streakMult, C.warn]);
+    if (r.hot >= 2) cells.push(['flame', 'Wins in a row', String(r.hot), C.warn]);
     if (r.hasBonus) cells.push(['target', 'Bonus goal', r.bonus ? 'Done' : 'Missed', r.bonus ? C.good : C.bad]);
     const ch = 48 * s, nr = Math.ceil(cells.length / 2), CH = nr * ch + 10 * s;
     B.push({ h: CH, gap: 8 * s, draw: (x, y, w) => {
@@ -5573,6 +5789,13 @@ function drawWinPage() {
     } });
     if (G.li >= 0 && G.level.boss && E.bossTreasure(G.level.id) && !E.treasureOpened(save.wallet, G.level.id)) // the boss's treasure is waiting
       B.push(lineBlock('A boss treasure waits for you on the map!', 15 * s, { color: '#b86a00', tag: 'win:treasure', gap: 4 * s }));
+    if (r.gift) B.push({ h: 64 * s, gap: 6 * s, draw: (x, y, w) => { // the Director's gift: an egg skin to wear for the next levels
+      if (!inCard) return;
+      ui.well(x, y, w, 64 * s, { s, a: '#ffe9b0', b: '#fff6dc' });
+      drawSkinPreview(ctx, r.gift.id, x + 34 * s, y + 32 * s, 50 * s, G.t);
+      ui.text(`Free try: ${r.gift.name} Egg`, x + 66 * s, y + 22 * s, { size: 17 * s, color: ui.C.ink, maxW: w - 76 * s, tag: 'win:gift' });
+      ui.text(`Your eggs wear it for the next ${DR.DIR.skinLevels} levels`, x + 66 * s, y + 44 * s, { size: 13.5 * s, color: ui.C.ink2, maxW: w - 76 * s, tag: 'win:gift2' });
+    } });
     // Retry on the left, Next on the right (mykee 2026-11-19); their space is always reserved
     const last = G.li < 0 || G.li === LEVELS.length - 1;
     B.push({ h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
@@ -5700,6 +5923,21 @@ function drawFail() {
       ui.text(`${st.saved}/${st.target}`, x + w / 2, y + 47 * s, { size: 17 * s, align: 'center', maxW: w - 16 * s, color: C.ink, tag: 'fail:stat' });
     } });
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: 6 * s }));
+    const Hp = G.failHelp;
+    if (Hp) B.push({ h: 78 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
+      const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost', ad = Hp.kind === 'adBoost';
+      ui.well(x, y, w, 78 * s, { s, a: free ? '#d8f5c0' : '#ffe9b0', b: free ? '#f0ffe4' : '#fff6dc' });
+      const ax = x + 38 * s, ay = y + 39 * s;
+      if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, ax, ay + 6 * s, 48 * s, G.t, {});
+      else drawBoosterIcon(ctx, Hp.id, ax, ay, 56 * s, G.t);
+      const bw = Math.min(118 * s, w * 0.3), tx = x + 74 * s, tw = x + w - bw - 16 * s - tx;
+      ui.text(Hp.label, tx, y + 26 * s, { size: 16.5 * s, color: ui.C.ink, maxW: tw, tag: 'fail:help' });
+      const ln = wrapText(Hp.line, 12.5 * s, tw).slice(0, 2);
+      ln.forEach((l, i) => ui.text(l, tx, y + 48 * s + i * 15 * s, { size: 12.5 * s, color: ui.C.ink2, maxW: tw, tag: 'fail:help' + i }));
+      const lab = free ? 'FREE' : ad ? 'Watch' : String(Hp.price);
+      ui.button('help:go', lab, x + w - bw - 8 * s, y + 15 * s, bw, 48 * s, free ? { kind: 'primary', shimmer: true, size: 20 * s } : ad ? { kind: 'ad', ad: true, size: 17 * s } : { kind: save.wallet.coins >= Hp.price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s });
+      ui.record({ x, y, w, h: 78 * s }, 'fail:helpcard');
+    } });
     B.push({ h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 25 * s }) });
     // stuck (3 losses in a row on this level): skip ahead with an ad or coins
     if (G.li >= 0 && ads.stuck(G.level.id) && G.li < LEVELS.length - 1) B.push({ h: 46 * s, gap: 10 * s, draw: (x, y, w) => {
@@ -5708,7 +5946,21 @@ function drawFail() {
       if (tk > 0) ui.button('skip:ticket', `Use Skip Ticket (${tk})`, x + hw + 8 * s, y, hw, 46 * s, { kind: 'secondary', size: 14 * s }); // bought in the shop
       else ui.button('skip:coins', 'Skip ' + SKIP_COINS, x + hw + 8 * s, y, hw, 46 * s, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 15 * s }); // too few coins: the tap opens Get more
     } });
-    if (!G.usedRewind && G.sim.canRewind()) B.push({ h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rewind', G.freeRewind ? 'Free rewind' : 'Rewind 5s', x, y, w, 50 * s, G.freeRewind ? { kind: 'secondary', icon: ICON.rewind, size: 16.5 * s } : { kind: 'ad', ad: true, size: 16.5 * s }) });
+    if (!G.usedRewind && G.sim.canRewind()) {
+      // Rewind 5 s: a Free rewind booster, or a video, or coins (dearer each time on this level). It keeps the win streak.
+      const hl = G.li >= 0 ? DR.hotLost(save) : 0;
+      if (hl >= 2) B.push({ h: 26 * s, gap: 8 * s, draw: (x, y, w) => {
+        const t = `Rewind keeps your ${hl}-win streak`, tw = ui.measure(t, 15 * s) + 30 * s, x0 = x + w / 2 - tw / 2;
+        pictoFlame(ctx, x0 + 11 * s, y + 13 * s, 24 * s);
+        ui.text(t, x0 + 26 * s, y + 13 * s, { size: 15 * s, color: C.warn, maxW: w - 30 * s, tag: 'fail:hot' });
+      } });
+      const coinR = !G.freeRewind && !ads.premium && G.li >= 0, price = DR.rewindPrice((G.rewindBuys || {})[G.level.id]);
+      B.push({ h: 50 * s, gap: hl >= 2 ? 4 * s : 10 * s, draw: (x, y, w) => {
+        const hw = coinR ? (w - 8 * s) / 2 : w;
+        ui.button('rewind', G.freeRewind ? 'Free rewind' : 'Rewind 5s', x, y, hw, 50 * s, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: 16.5 * s } : { kind: 'ad', ad: true, size: 16.5 * s });
+        if (coinR) ui.button('rewind:coins', 'Rewind ' + price, x + hw + 8 * s, y, hw, 50 * s, { kind: save.wallet.coins >= price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 16.5 * s });
+      } });
+    }
     B.push({ h: 44 * s, draw: (x, y, w) => ui.button('levels', 'Levels', x + w * 0.2, y, w * 0.6, 44 * s, { kind: 'tertiary', icon: ICON.grid, size: 16 * s }) });
     return B;
   }, { ...(sd ? sd.cardO : {}), ribbon: '#5a82c8' });
@@ -6256,7 +6508,7 @@ async function boot() {
   window.addEventListener('keyup', keyUp);
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { clearKeys(); if (G.screen === 'play') press('pause'); }
+    if (document.hidden) { clearKeys(); if (G.screen === 'play') press('pause'); DR.noteSeen(save, Date.now()); persist(); } // the Director: when the app was last open (welcome-back gift)
     audioHold('hidden', document.hidden);
   });
   window.addEventListener('blur', clearKeys);
@@ -6310,7 +6562,7 @@ async function boot() {
     persist();
   }
   ads.attach(save, persist, onGrant);
-  OF.startSession(save, Date.now()); persist();
+  OF.startSession(save, Date.now()); if (!DR.dirState(save).lastSeen) DR.noteSeen(save, Date.now()); persist();
   if (OF.childSafe(save) && ads.moneyShop) ads.setChildSafe(true); // the shell also remembers it; this keeps both in step
   applyAudioSettings();
   // title runs over the live next level

@@ -6,6 +6,8 @@
 //   drawHowTo(ctx, plan, x, y, w, h, t, o)   plan = howToPlan(kind) or chickPlan(id); t = seconds (loops every LOOP s)
 //     o.rooster(ctx, x, y, s)  Papa Rooster's head for the call button (main.js allyIcon)
 //     o.calm                   reduced motion: the key frame of the move, standing still
+//     o.world                  the game's own art (main.js howWorld): { ringR (m), back, ring, egg, nest } draws the
+//                              level's real backdrop, ring slab, egg and nest instead of the flat stand-ins below
 //
 // The stage: the bottom of a big ring seen from inside (its centre above the panel), a gap in it, the basket below.
 // Everything on the ring turns with it; the egg stays at the lowest point and drops when the gap comes under it.
@@ -86,20 +88,29 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   const calm = !!o.calm, T = calm ? 2.25 : ((t % LOOP) + LOOP) % LOOP;
   const fade = calm ? 1 : Math.min(seg(T, 0, 0.25), 1 - seg(T, LOOP - 0.3, LOOP));
   const U = h, Z = Math.min(h, w * 0.62), cx = x + w / 2; // U: the stage's height (vertical placing); Z: the size of things (a tall stage does not blow them up)
+  const Wd = o.world || null;
   ctx.save();
-  // the panel: a soft sky, a meadow strip, rounded
+  // the panel: the level's own backdrop (else a soft sky and a meadow strip), rounded
   rr(ctx, x, y, w, h, Math.min(18, h * 0.08)); ctx.clip();
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, o.sky0 || '#9fdcff'); g.addColorStop(0.7, o.sky1 || '#e6f7ff'); g.addColorStop(1, o.sky1 || '#e6f7ff');
-  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = o.ground || '#8bd36a'; ctx.beginPath(); ctx.ellipse(cx, y + h * 1.06, w * 0.75, h * 0.2, 0, 0, TAU); ctx.fill();
+  if (!(Wd && Wd.back && Wd.back(ctx, x, y, w, h))) {
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, o.sky0 || '#9fdcff'); g.addColorStop(0.7, o.sky1 || '#e6f7ff'); g.addColorStop(1, o.sky1 || '#e6f7ff');
+    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = o.ground || '#8bd36a'; ctx.beginPath(); ctx.ellipse(cx, y + h * 1.06, w * 0.75, h * 0.2, 0, 0, TAU); ctx.fill();
+  }
   ctx.globalAlpha = fade;
 
   // ring geometry: centre above the panel; phi = 0 is straight down
-  const R = w * 0.94, C = { x: cx, y: y + U * 0.64 - R }, band = Z * 0.12, floor = R - band / 2;
+  // with the game's art the ring, the egg and the villain keep their in-game sizes (k = pixels per metre)
+  const R = Wd ? Math.min(w * 0.86, h * 1.3) : w * 0.94, kW = Wd ? R / Wd.ringR : 0, band = Wd ? 0.16 * kW : Z * 0.12, floor = R - band / 2;
+  const C = { x: cx, y: y + U * (Wd ? 0.6 : 0.64) - R };
   const at = (phi, lift) => ({ x: C.x + Math.sin(phi) * (floor - lift), y: C.y + Math.cos(phi) * (floor - lift) });
   const nest = { x: cx, y: y + U * 0.93 };
-  const eggS = Z * 0.24, vD = Z * 0.5, m = plan.move;
+  const eggS = Wd ? 0.56 * 1.06 * kW : Z * 0.24, vD = Z * (Wd ? 0.8 : 0.5), m = plan.move;
+  const vLift = vD * (Wd ? 0.3 : 0.42);
+  // where the villain stops: its nose just short of the egg, worked out in pixels so a big villain never overlaps it
+  const vEnd = -Math.asin(clamp((eggS * 0.42 + vD * 0.46) / floor, 0.05, 0.95));
+  const drawE = (X, Y, S, st, wr) => (Wd ? Wd.egg(ctx, X, Y, st, wr, C, kW, t) : egg(ctx, X, Y, S, st, T, wr));
 
   // ---- the timeline of each move -> ring turn th, egg angle eA, egg drop eD (0..1), villain angle vA, villain state
   let th = 0, eA = 0, eD = 0, vA = -0.75, vOff = 0, vRot = 0, vAlpha = 1, vFx = '', fxK = 0, hand = null, stone = false, haz = null, btn = null, shot = null, done = 0;
@@ -111,7 +122,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     hand = dragHand(at, T, 0.9, 1.9, 0.5, 0.5 - gap0);
     eD = seg(T, 2.0, 2.45); done = seg(T, 2.45, 2.8);
   } else if (m === 'turn') {
-    vA = -0.62 + 0.36 * walk;
+    vA = vEnd - 0.3 * (1 - walk);
     const d = ease(seg(T, 1.45, 2.25)); th = -gap0 * d;
     hand = dragHand(at, T, 1.35, 2.25, 0.5, 0.5 - gap0);
     if (T > 1.85) { vFx = plan.fx || 'bonk'; fxK = seg(T, 1.85, 2.9); }
@@ -119,12 +130,12 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     if (vFx) { vOff = 1; vRot = -fxK * 3.5; vAlpha = 1 - seg(T, 2.55, 2.95); }
     eD = seg(T, 2.3, 2.75); done = seg(T, 2.75, 3.1);
   } else if (m === 'tap' || m === 'rooster') {
-    vA = -0.6 + 0.32 * walk;
+    vA = vEnd - 0.3 * (1 - walk);
     btn = { x: x + Math.max(w * 0.1, Z * 0.16), y: y + U * 0.8, r: Z * 0.13, id: m === 'rooster' ? 'rooster' : plan.power || 'thunder' };
     hand = tapHand(btn, T, 1.25, 1.7);
     const hit = 2.15;
     const onEgg = plan.fx === 'carry' || plan.fx === 'bubble'; // the phoenix and the bubble go for the egg, not the villain
-    if (T > 1.62 && T < hit) { const k = ease(seg(T, 1.62, hit)), v = onEgg ? at(0, eggS * 0.5) : at(vA, vD * 0.42); shot = { x: btn.x + (v.x - btn.x) * k, y: btn.y + (v.y - btn.y) * k - Math.sin(k * Math.PI) * U * 0.25, k }; }
+    if (T > 1.62 && T < hit) { const k = ease(seg(T, 1.62, hit)), v = onEgg ? at(0, eggS * 0.5) : at(vA, vLift); shot = { x: btn.x + (v.x - btn.x) * k, y: btn.y + (v.y - btn.y) * k - Math.sin(k * Math.PI) * U * 0.25, k }; }
     if (T >= hit) {
       vFx = m === 'rooster' ? 'flee' : plan.fx || 'zap'; fxK = seg(T, hit, hit + 1.2);
       if (plan.fx === 'carry') { vFx = ''; o._carry = ease(seg(T, hit, hit + 0.9)); }
@@ -136,14 +147,14 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     eD = seg(T, 3.3, 3.7); done = seg(T, 3.7, 4.0);
     if (o._carry != null) { th = 0; eD = 0; done = seg(T, hit + 0.9, hit + 1.2); }
   } else if (m === 'stone') {
-    stone = T > 0.7; vA = -0.3;
+    stone = T > 0.7; vA = vEnd + 0.05;
     const d = ease(seg(T, 1.3, 2.0)); th = 0.3 * d; eA = 0.48 - 0.5 * d; // turning the ring rolls the stone egg down into it
     hand = dragHand(at, T, 1.2, 2.0, -0.2, 0.1);
     if (T > 1.95) { vFx = 'flip'; fxK = seg(T, 1.95, 3.0); vRot = Math.PI * ease(seg(T, 1.95, 2.3)); vA -= 0.6 * seg(T, 2.2, 3.0); vAlpha = 1 - seg(T, 2.5, 3.0); }
     const d2 = ease(seg(T, 2.3, 2.9)); th = 0.3 * d + (-gap0 - 0.3) * d2; eA = (0.48 - 0.5 * d) * (1 - d2);
     eD = seg(T, 2.95, 3.35); done = seg(T, 3.35, 3.7);
   } else if (m === 'drop') { // an egg from the ring above lands on the villain
-    vA = -0.6 + 0.45 * walk; eA = 0;
+    vA = vEnd - 0.3 * (1 - walk); eA = 0;
     const fall = seg(T, 1.6, 2.05);
     if (T > 2.0) { vFx = plan.fx || 'dizzy'; fxK = seg(T, 2.0, 3.0); if (vFx === 'flee') { vA -= ease(fxK) * 0.9; vAlpha = 1 - seg(T, 2.5, 3.0); } if (vFx === 'flip') { vRot = Math.PI * ease(seg(T, 2.0, 2.3)); vAlpha = 1 - seg(T, 2.6, 3.1); } }
     hand = dragHand(at, T, 1.1, 1.6, 0.9, 0.55, 0.55);
@@ -167,17 +178,20 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     eD = seg(T, 2.85, 3.25); done = seg(T, 3.25, 3.6);
   }
 
-  // ---- the ring: a thick slab with one gap
+  // ---- the ring: a thick slab with one gap (the game's own ring when it is given)
   const gapA = gap0 + th, gw = 0.24;
-  ctx.lineCap = 'round';
-  for (const [lw, col] of [[band + 4, o.ringEdge || '#5a3416'], [band, o.ring || '#b9854e']]) {
-    ctx.strokeStyle = col; ctx.lineWidth = lw;
-    arc(ctx, C, R, gapA + gw / 2, gapA + TAU - gw / 2);
+  if (Wd) Wd.ring(ctx, C, kW, gapA, t);
+  else {
+    ctx.lineCap = 'round';
+    for (const [lw, col] of [[band + 4, o.ringEdge || '#5a3416'], [band, o.ring || '#b9854e']]) {
+      ctx.strokeStyle = col; ctx.lineWidth = lw;
+      arc(ctx, C, R, gapA + gw / 2, gapA + TAU - gw / 2);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = band * 0.22;
+    arc(ctx, C, R - band * 0.25, gapA + gw / 2 + 0.03, gapA + TAU - gw / 2 - 0.03);
   }
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = band * 0.22;
-  arc(ctx, C, R - band * 0.25, gapA + gw / 2 + 0.03, gapA + TAU - gw / 2 - 0.03);
   // the basket
-  drawBasket(ctx, nest.x, nest.y, Z * 0.42, done);
+  if (Wd) Wd.nest(ctx, nest.x, nest.y, Math.max(Z * 0.7, eggS * 2.2), done, t); else drawBasket(ctx, nest.x, nest.y, Z * 0.42, done);
   // a hazard's warning mark on the floor, and its fall
   if (haz && haz.k === 'thorns') {
     for (let i = 0; i < 3; i++) { const p = at(0.14 + i * 0.07 + th, 0), up = haz.up; thornTri(ctx, p.x, p.y, Z * 0.07 * (0.25 + 0.75 * up), Math.atan2(C.x - p.x, p.y - C.y)); }
@@ -194,10 +208,10 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   }
   // ---- the villain on the ring
   if (vAlpha > 0.01 && plan.kind) {
-    const v = at(vA, vD * 0.42);
+    const v = at(vA, vLift);
     ctx.save(); ctx.globalAlpha *= vAlpha;
     // knocked back (bonk / blast): off to the left, a little up, then tumbling down out of the vault
-    const kb = vOff && (vFx === 'bonk' || vFx === 'blast') ? ease(fxK) : 0, kx = -w * 0.45 * kb, ky = -Z * 0.3 * Math.sin(Math.PI * Math.min(1, kb * 1.4)) + U * 0.7 * kb * kb;
+    const kb = vOff && (vFx === 'bonk' || vFx === 'blast') ? ease(fxK) : 0, kx = -w * (Wd ? 0.26 : 0.45) * kb, ky = -Z * 0.3 * Math.sin(Math.PI * Math.min(1, kb * 1.4)) + U * 0.7 * kb * kb;
     ctx.translate(v.x + kx, v.y + ky);
     if (vRot) ctx.rotate(vRot);
     ctx.rotate(-vA * 0.6);
@@ -218,15 +232,16 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     let ex = base.x, ey = base.y, sq = 1;
     if (o._drop && o._drop.fall < 1 && m === 'drop') { // the egg from above, falling onto the villain
       const top = y - U * 0.12, tgt = at(o._drop.vA, vD * 0.75);
-      if (o._drop.fall > 0) { const k = o._drop.fall * o._drop.fall; egg(ctx, tgt.x, top + (tgt.y - top) * k, eggS, false, T); }
-      else egg(ctx, tgt.x, top, eggS, false, T);
+      if (o._drop.fall > 0) { const k = o._drop.fall * o._drop.fall; drawE(tgt.x, top + (tgt.y - top) * k, eggS, false); }
+      else drawE(tgt.x, top, eggS, false);
     }
-    if (eD > 0) { const k = eD * eD; ex = base.x + (nest.x - base.x) * eD; ey = base.y + (nest.y - Z * 0.08 - base.y) * k; if (eD >= 1) sq = 1; }
-    if (o._carry != null && o._carry > 0) { const k = o._carry; ex = base.x + (nest.x - base.x) * k; ey = base.y + (nest.y - Z * 0.08 - base.y) * k - Math.sin(k * Math.PI) * U * 0.35; ctx.save(); ctx.globalAlpha *= 1 - seg(k, 0.85, 1); drawStrikeChick(ctx, 'phoenix', ex, ey - eggS * 0.7, eggS * 1.3, t, {}); ctx.restore(); }
-    if (done > 0) { ex = nest.x; ey = nest.y - Z * 0.08; }
+    const land = nest.y - (Wd ? eggS * 0.42 : Z * 0.08);
+    if (eD > 0) { const k = eD * eD; ex = base.x + (nest.x - base.x) * eD; ey = base.y + (land - base.y) * k; if (eD >= 1) sq = 1; }
+    if (o._carry != null && o._carry > 0) { const k = o._carry; ex = base.x + (nest.x - base.x) * k; ey = base.y + (land - base.y) * k - Math.sin(k * Math.PI) * U * 0.35; ctx.save(); ctx.globalAlpha *= 1 - seg(k, 0.85, 1); drawStrikeChick(ctx, 'phoenix', ex, ey - eggS * 0.7, eggS * 1.3, t, {}); ctx.restore(); }
+    if (done > 0) { ex = nest.x; ey = land; }
     if (o._bubble && !eD && !done) { ctx.save(); ctx.strokeStyle = 'rgba(150,225,255,0.95)'; ctx.lineWidth = 3; ctx.fillStyle = 'rgba(190,240,255,0.25)'; ctx.beginPath(); ctx.arc(ex, ey, eggS * 0.75, 0, TAU); ctx.fill(); ctx.stroke(); ctx.restore(); }
     const worry = !eD && vAlpha > 0.5 && plan.kind && Math.abs(vA - eA) < 0.7;
-    egg(ctx, ex, ey, eggS * sq, stone, T, worry);
+    drawE(ex, ey, eggS * sq, stone, worry);
   }
   // the power or the rooster on its way
   if (btn) {

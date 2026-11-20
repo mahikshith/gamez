@@ -13,7 +13,7 @@
 //   bundle_flock  a payer whose last purchase is 7+ days old (weekly)
 //   chick_tip     intro: a locked power chick the player can afford right now (a line on the card, daily at most)
 //   coins_ad      web: free coins for a rewarded ad when the player came up short (daily at most)
-// Caps: 1 popup per session, 2 per day, 30 min apart; none in the first session or before level 6; 3 dismissals of one
+// Caps (CAPS): 2 popups per session, 3 per day, 20 min apart; none in the first session or before level 6; 3 dismissals of one
 // offer silence it for 14 days; nothing at all for a child (save.age 'u13'). Score = fit x value - fatigue; a tie goes
 // to the cheaper offer. No timers and no countdowns anywhere: an offer is the same price for everyone, every time.
 // Web portals sell nothing: there only the rewarded suggestions (charge_ad, coins_ad) can come up.
@@ -25,7 +25,9 @@ import { IAP, iapAvailable, BANK_OPEN } from './economy.js';
 // Target audience); a kids audience would need child-directed ads for everyone instead.
 export const AGE_GATE = false;
 
-export const CAPS = { perSession: 1, perDay: 2, gapMin: 30, fromLevel: 9, silenceAfter: 3, silenceDays: 14 };
+// 2026-11-20 (mykee: monetise properly, keep the fun): 2 a session, 3 a day, 20 min apart; the Director's help cards on
+// the fail screen are not popups and do not count
+export const CAPS = { perSession: 2, perDay: 3, gapMin: 20, fromLevel: 9, silenceAfter: 3, silenceDays: 14 };
 const DAY = 864e5, MIN = 6e4;
 const dayKey = (now) => { const d = new Date(now); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 
@@ -52,7 +54,7 @@ export function offerState(save) {
     shown: obj(o.shown), dismissed: obj(o.dismissed),
     lastPopupAt: Number(o.lastPopupAt) || 0,
     popupsToday: o.popupsToday && typeof o.popupsToday.day === 'string' ? { day: o.popupsToday.day, n: Math.floor(Number(o.popupsToday.n) || 0) } : { day: '', n: 0 },
-    sessionPopup: !!o.sessionPopup,
+    sessionPopup: o.sessionPopup === true ? 1 : Math.max(0, Math.floor(Number(o.sessionPopup) || 0)), // popups this session
     ads: Math.max(0, Math.floor(Number(o.ads) || 0)), // rewarded ads watched in all
     lvAd: obj(o.lvAd), lvDeclined: obj(o.lvDeclined), lvHelper: obj(o.lvHelper), // per level: charge ad shown / declined, helper shown
   };
@@ -67,7 +69,7 @@ export function startSession(save, now, rand = Math.random) {
   if (!o.firstDay) o.firstDay = now;
   const d = dayKey(now);
   if (!o.days.includes(d)) o.days = [...o.days, d].slice(-30);
-  o.sessionPopup = false;
+  o.sessionPopup = 0;
   return o;
 }
 
@@ -99,7 +101,7 @@ export function blocked(save, now, moment) {
   if (childSafe(save)) return 'child';
   if (o.sessions <= 1) return 'first session';
   if ((save.unlocked || 1) < CAPS.fromLevel) return 'early';
-  if (o.sessionPopup) return 'session';
+  if (o.sessionPopup >= CAPS.perSession) return 'session';
   if (o.popupsToday.day === dayKey(now) && o.popupsToday.n >= CAPS.perDay) return 'day';
   if (now - o.lastPopupAt < CAPS.gapMin * MIN) return 'gap';
   return null;
@@ -152,7 +154,7 @@ export function markShown(save, offer, now, levelId) {
   o.lastPopupAt = now;
   const d = dayKey(now);
   o.popupsToday = o.popupsToday.day === d ? { day: d, n: o.popupsToday.n + 1 } : { day: d, n: 1 };
-  o.sessionPopup = true;
+  o.sessionPopup += 1;
   if (offer.id === 'charge_ad' && levelId != null) o.lvAd[levelId] = 1;
   if (offer.id === 'bundle_helper' && levelId != null) o.lvHelper[levelId] = 1;
 }
