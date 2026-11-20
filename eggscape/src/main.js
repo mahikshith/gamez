@@ -7,6 +7,8 @@ import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop } from './themes.js';
 import { bodyCache, ringCache } from './render/ringart.js';
 import { dragTo, grab, glideStep, snapPx } from './scroll.js';
+import { diag } from './diag.js'; // 0.8.7: the built-in speed log (Settings > Display > Share log)
+import { formStats } from './render/castkit.js';
 import { PERF, applySettings, tick as perfTick, takeStep, newLevel as perfNewLevel, STEPS, TIER_NAME } from './perf.js';
 import { speedTest, openSpeedTest } from './speedtest.js'; // 2026-11-20: Settings > Display > Speed test (on the player's own phone)
 import { audio } from './audio.js';
@@ -1057,6 +1059,7 @@ function keyboardTurn(dt) {
 
 // ---------------------------------------------------------------- buttons
 async function press(id) {
+  if (DIAG_MARK.test(id)) diag.mark(id); // the speed log: a hitch right after one of these names it
   audio.play(id === 'pause' || id === 'levels' || id === 'practice' ? 'ui_back' : 'ui_tap');
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
   switch (id) {
@@ -1477,6 +1480,11 @@ async function press(id) {
     case 'set:fpsshow':
       save.showFps = !save.showFps; persist();
       break;
+    case 'set:log': { // hand the speed log to the share sheet (app) or save it as a file (web)
+      const how = diag.share();
+      toast(how === 'download' ? 'Speed log saved to your downloads' : how ? 'Pick where to send the speed log' : 'Could not share the log here', 2.6);
+      break;
+    }
     case 'set:speed': // 2026-11-20: about 13 s on this phone, then one results screen; nothing saved changes unless "Use best setting"
       openSpeedTest({ canvas, ctx, save, persist, font: FONT, applySettings: () => { applySettings(save); setDPR(); }, done: () => resize() });
       break;
@@ -1665,8 +1673,9 @@ async function rewarded(tag) {
   G.adBusy = true; G.adVis = 0;
   portal.gameplayStop();
   let ok = false;
+  diag.mark('ad:start:' + tag);
   try { ok = await ads.rewarded(tag); } catch (_) { ok = false; }
-  G.adBusy = false;
+  G.adBusy = false; diag.mark('ad:end:' + (ok ? 'ok' : 'no'));
   if (ok && !ads.premium) { OF.noteRewarded(save); persist(); } // the offer engine counts watched ads
   if (!ok) toast('No ad available right now. Try again in a moment.', 2.4);
   return ok;
@@ -2078,6 +2087,7 @@ function skipLevel() {
   startLevel(n);
 }
 
+const DIAG_MARK = /^(iap:|buy:|item:|chick:|charge:|hen:|skin:|kit:|hset:|try:|sample$|bonus$|ad:|go$|retry$|next$|home:chest$|tr:)/;
 // Haptics on the hero beats (the app's EggApp bridge, navigator.vibrate on the web); off with reduced motion or sound off.
 const HAPTIC_MS = { save: 18, crack: 30, star: 22, win: 45, strike: 35, crow: 40, boss: 40, hit: 22 };
 // the power chick is ready: the button starts its heartbeat, the phone thumps lub-dub, a "Power ready!" tag pops by it
@@ -5572,6 +5582,9 @@ function drawSettings() {
       B.push({ h: 42 * s, gap: 12 * s, draw: (x, y, w) => ui.button('calm', save.calm ? 'Calm motion: on' : 'Calm motion: off', x + w * 0.1, y, w * 0.8, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 14.5 * s }) });
       B.push(lineBlock('Calm motion: no screen shake or flashes', 13 * s, { color: C.ink2, tag: 'set:calmhint', gap: 4 * s }));
       B.push({ h: 40 * s, gap: 10 * s, draw: (x, y, w) => { ui.button('set:fpsshow', save.showFps ? 'Show fps: on' : 'Show fps: off', x, y, w * 0.49, 40 * s, { kind: 'tertiary', icon: save.showFps ? ICON.check : null, size: 14 * s }); ui.button('set:speed', 'Speed test', x + w * 0.51, y, w * 0.49, 40 * s, { kind: 'tertiary', size: 14 * s }); } });
+      // 0.8.7 the speed log (mykee's idea): the game notes frame rates and hitches by itself; this hands the file over
+      B.push({ h: 42 * s, gap: 8 * s, draw: (x, y, w) => ui.button('set:log', 'Share speed log', x + w * 0.1, y, w * 0.8, 42 * s, { kind: 'tertiary', size: 14.5 * s }) });
+      B.push(lineBlock('A file about this phone\u2019s frame rates. It only leaves the phone if you send it.', 13 * s, { color: C.ink2, tag: 'set:loghint', gap: 4 * s }));
     } else if (tab === 'gameplay') {
       const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
       B.push(sectionBlock('Ring speed', s));
@@ -6584,12 +6597,13 @@ function frame(now) {
   } catch (e) {
     const msg = String((e && e.message) || e);
     G.errs = G.errs || {};
-    if (!G.errs[msg]) { G.errs[msg] = 1; console.error('[eggscape] frame error', e); }
+    if (!G.errs[msg]) { G.errs[msg] = 1; console.error('[eggscape] frame error', e); diag.error(msg); }
     try { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.globalAlpha = 1; } catch (_) { /* reset */ }
   }
   if (save.showFps) drawFpsMeter(raw);
   if (G.adBusy) adWatch(raw);
   perfTick(save, raw, !document.hidden && !G.paused && !G.adBusy && G.screen === 'play', FPSM.lastWork || 0, FPSM.bakedPrev, VSYNC.iv);
+  if (!document.hidden) diag.frame(raw, FPSM.lastWork || 0, VSYNC.iv, every, G.screen);
   FPSM.bakedPrev = FPSM.baked; FPSM.baked = false; // 2026-11-19: Auto judges the phone on the game itself, not on a heavy menu (a themed home screen used to talk it down to Low for the next level)
 }
 // 2026-11-20 pacing (tools/perf87/pacing.mjs): the world advances by whole screen refreshes. Callback times wobble by
@@ -6717,6 +6731,17 @@ async function boot() {
   }
   save.real = 1;
   applySettings(save); setDPR(); // graphics quality: the phone's own guess or what it learned last time (src/perf.js)
+  diag.init({
+    version: __VERSION__, app: typeof __APP__ !== 'undefined' && !!__APP__, perf: PERF, guess: () => PERF.guess,
+    counters: () => [stampStats.builds, bodyCache.builds, formStats.bakes],
+    sim: () => G.sim, state: () => (G.sim ? G.sim.state : ''),
+    level: () => ({
+      id: G.li >= 0 && G.level ? G.level.id : G.li, mode: save.mode || '', gfx: save.gfx || 'auto', fpsSet: save.fps || 'auto', step: PERF.step, low: PERF.low ? 1 : 0,
+      cap: PERF.fpsCap, pace: PERF.pace, hz: Math.round(1000 / VSYNC.iv), cv: [canvas.width, canvas.height], dpr: Math.round(DPR * 100) / 100,
+      egg: save.wallet.skin || '', hen: G.henSkinCur || '', rs: ringSpeed(), calm: save.calm ? 1 : 0,
+      rings: G.sim.rings.length, eggs: G.sim.eggs.length, foes: G.level ? villainKinds(G.level, G.sim) : [],
+    }),
+  });
   if (TEST) {
     const owned = {};
     for (const id of E.BOOSTER_ORDER) owned[id] = E.MAX_OWNED;
@@ -6744,6 +6769,7 @@ async function boot() {
 
 // test hook (used by the QA bot and screenshot tools); compiled out of release builds
 if (DEV) window.__egg = {
+  diag,
   howto: { drawHowTo, howToPlan, chickPlan, BASIC: HOWTO_BASIC, ROOSTER: HOWTO_ROOSTER, rooster: (c, x, y, s) => allyIcon(c, x, y, s) },
   stampStats,
   perf: { bodyCache, ringCache, PERF, STEPS, applySettings: () => { applySettings(save); setDPR(); } },

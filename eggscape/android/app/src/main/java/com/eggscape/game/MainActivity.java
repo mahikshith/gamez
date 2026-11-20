@@ -55,6 +55,113 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void restorePurchases() { if (money != null) money.restore(); }
         /** the age question answered "Under 13": child-directed ad requests (remembered by the shell) */
         @JavascriptInterface public void setChildSafe(boolean on) { if (money != null) money.setChildSafe(on); }
+        /** the speed log (src/diag.js): what Android knows about this phone right now, as JSON; full adds the parts that never change */
+        @JavascriptInterface public String deviceInfo(boolean full) { return deviceInfoJson(full); }
+        /** the speed log as a text file: saved to Downloads/Eggscape (Android 10+) and handed to the share sheet. Nothing is sent by the app itself. */
+        @JavascriptInterface public void shareLog(final String name, final String text) {
+            runOnUiThread(new Runnable() { @Override public void run() { shareLogNow(name, text); } });
+        }
+    }
+
+    // ---- the speed log's Android side (0.8.7): read-only facts about the phone, and the share sheet
+    private volatile int trimCount = 0, lastTrim = 0;
+    /** Android asking apps to give memory back: a phone under memory pressure stutters, so the log counts these */
+    @Override public void onTrimMemory(int level) { super.onTrimMemory(level); trimCount++; lastTrim = level; }
+
+    private String deviceInfoJson(boolean full) {
+        org.json.JSONObject o = new org.json.JSONObject();
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                o.put("powerSave", pm.isPowerSaveMode() ? 1 : 0);
+                if (Build.VERSION.SDK_INT >= 29) o.put("thermal", pm.getCurrentThermalStatus()); // 0 none .. 3 severe .. 6 shutdown
+            }
+            android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                o.put("availMb", mi.availMem / 1048576L);
+                o.put("lowMem", mi.lowMemory ? 1 : 0);
+                if (full) { o.put("totalMb", mi.totalMem / 1048576L); o.put("memClass", am.getMemoryClass()); o.put("lowRam", am.isLowRamDevice() ? 1 : 0); }
+            }
+            o.put("trim", trimCount);
+            o.put("trimLevel", lastTrim);
+            android.os.BatteryManager bm = (android.os.BatteryManager) getSystemService(Context.BATTERY_SERVICE);
+            if (bm != null) { o.put("battery", bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)); o.put("charging", bm.isCharging() ? 1 : 0); }
+            Display d = Build.VERSION.SDK_INT >= 30 ? getDisplay() : getWindowManager().getDefaultDisplay();
+            if (d != null) o.put("hz", Math.round(d.getRefreshRate() * 10f) / 10.0);
+            Runtime rt = Runtime.getRuntime();
+            o.put("javaHeapMb", (rt.totalMemory() - rt.freeMemory()) / 1048576L);
+            if (full) {
+                o.put("maker", Build.MANUFACTURER);
+                o.put("model", Build.MODEL);
+                o.put("device", Build.DEVICE);
+                o.put("hardware", Build.HARDWARE);
+                o.put("board", Build.BOARD);
+                o.put("android", Build.VERSION.RELEASE);
+                o.put("sdk", Build.VERSION.SDK_INT);
+                if (Build.VERSION.SDK_INT >= 31) { o.put("socMaker", Build.SOC_MANUFACTURER); o.put("soc", Build.SOC_MODEL); }
+                o.put("cores", rt.availableProcessors());
+                org.json.JSONArray mhz = new org.json.JSONArray(); // each core's top speed: shows the big and the small cores
+                for (int i = 0; i < 16; i++) {
+                    java.io.File f = new java.io.File("/sys/devices/system/cpu/cpu" + i + "/cpufreq/cpuinfo_max_freq");
+                    if (!f.exists()) break;
+                    java.io.BufferedReader br = null;
+                    try { br = new java.io.BufferedReader(new java.io.FileReader(f)); String ln = br.readLine(); if (ln != null) mhz.put(Integer.parseInt(ln.trim()) / 1000); }
+                    catch (Exception e) { break; }
+                    finally { if (br != null) try { br.close(); } catch (Exception e) { /* closed */ } }
+                }
+                if (mhz.length() > 0) o.put("cpuMhz", mhz);
+                if (d != null) {
+                    org.json.JSONArray modes = new org.json.JSONArray();
+                    for (Display.Mode m : d.getSupportedModes()) modes.put(m.getPhysicalWidth() + "x" + m.getPhysicalHeight() + "@" + Math.round(m.getRefreshRate()));
+                    o.put("modes", modes);
+                    Display.Mode cur = d.getMode();
+                    o.put("mode", cur.getPhysicalWidth() + "x" + cur.getPhysicalHeight() + "@" + Math.round(cur.getRefreshRate()));
+                }
+                o.put("density", (double) getResources().getDisplayMetrics().density);
+                if (Build.VERSION.SDK_INT >= 26) { android.content.pm.PackageInfo wv = WebView.getCurrentWebViewPackage(); if (wv != null) o.put("webview", wv.packageName + " " + wv.versionName); }
+                o.put("app", getPackageManager().getPackageInfo(getPackageName(), 0).versionName);
+            }
+        } catch (Throwable e) {
+            try { o.put("err", String.valueOf(e)); } catch (Exception e2) { /* nothing to add */ }
+        }
+        return o.toString();
+    }
+
+    private void shareLogNow(String name, String text) {
+        try {
+            if (name == null || !name.matches("[A-Za-z0-9._-]{1,80}")) name = "eggscape-log.txt";
+            if (text == null) text = "";
+            if (text.length() > 2000000) text = text.substring(text.length() - 2000000);
+            Uri uri = null;
+            if (Build.VERSION.SDK_INT >= 29) { // our own file in Downloads/Eggscape: no permission needed, and the tester can find it again
+                android.content.ContentValues cv = new android.content.ContentValues();
+                cv.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+                cv.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+                cv.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Eggscape");
+                uri = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                if (uri != null) {
+                    java.io.OutputStream os = getContentResolver().openOutputStream(uri);
+                    if (os == null) uri = null;
+                    else { try { os.write(text.getBytes("UTF-8")); } finally { os.close(); } }
+                }
+            }
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            send.putExtra(Intent.EXTRA_SUBJECT, name);
+            if (uri != null) {
+                send.putExtra(Intent.EXTRA_STREAM, uri);
+                send.setClipData(android.content.ClipData.newRawUri(name, uri));
+                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } else {
+                send.putExtra(Intent.EXTRA_TEXT, text.length() > 60000 ? text.substring(text.length() - 60000) : text); // older Android: the newest part as plain text
+            }
+            startActivity(Intent.createChooser(send, "Send the Eggscape speed log"));
+            if (uri != null) Toast.makeText(this, "Also saved in Downloads/Eggscape", Toast.LENGTH_LONG).show();
+        } catch (Throwable e) {
+            Toast.makeText(this, "Could not share the log", Toast.LENGTH_SHORT).show();
+        }
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "ClickableViewAccessibility"})
