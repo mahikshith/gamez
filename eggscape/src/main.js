@@ -4,7 +4,7 @@ import { hintSearch, actSteps } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
 import { LEVELS } from './data/levels.js';
 import { DAILY } from './data/daily.js';
-import { THEMES, createBackdrop } from './themes.js';
+import { THEMES, createBackdrop, setSceneCalm } from './themes.js';
 import { bodyCache, ringCache } from './render/ringart.js';
 import { dragTo, grab, glideStep, snapPx } from './scroll.js';
 import { diag } from './diag.js'; // 0.8.7: the built-in speed log (Settings > Display > Share log)
@@ -133,7 +133,7 @@ function loadSave(s) {
   ads.rebind(save);
 }
 // visual-only weather per theme; levels with a physics `weather` field use that instead
-const THEME_WEATHER = { farm: 'leaves', orchard: 'leaves', bramble: 'leaves', mushroom: 'fireflies', frozen: 'snow', blizzard: 'snow', dunes: 'sandstorm', haunted: 'ghosts', dragon: 'ash' };
+const THEME_WEATHER = { farm: 'leaves', coop: 'leaves', hayfield: 'leaves', pond: 'leaves', windmill: 'leaves', redbarn: 'leaves', orchard: 'leaves', bramble: 'leaves', mushroom: 'fireflies', frozen: 'snow', blizzard: 'snow', dunes: 'sandstorm', haunted: 'ghosts', dragon: 'ash' };
 // seven environments of five (v3)
 const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volcano', 'Storm Peaks', 'The Thieves\u2019 Vault', 'Coral Reef', 'Gator Bayou', 'Shape Lab'];
 // test build lab pages (v3.6): every studio vault, reachable without the dev console
@@ -315,6 +315,7 @@ function themeFor(level) {
 // builds (several full-screen painted layers), so the last few are kept, and the level the player is most likely to
 // tap next is built ahead while the home or map screen sits idle
 const BD = new Map();
+const BG_FORCE = DEV && typeof location !== 'undefined' ? new URLSearchParams(location.search).get('bg') : null;
 function backdropFor(theme, seed) {
   const key = theme.id + '|' + seed, sz = W_ + 'x' + H_ + '@' + DPR;
   let b = BD.get(key);
@@ -351,6 +352,7 @@ function startLevel(i, opts = {}) {
   G.li = i;
   G.level = i === -2 && G.demo ? G.demo : i < 0 ? dailyLevel() : LEVELS[i]; // -2: a dev chick demo (v3.2)
   G.theme = themeFor(G.level);
+  if (DEV && BG_FORCE) G.theme = THEMES.find((th) => th.id === BG_FORCE) || G.theme; // dev: ?bg=coop forces a level's backdrop theme
   G.boost = opts.boost || {};
   introAutoPick(G.level, i);
   G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost, strike: strikeFor(G.level, i) });
@@ -3707,6 +3709,7 @@ function drawStoreScreen() { // the shop's toast floats over its scrolling list 
 function render() {
   const t = G.t;
   setSpriteCalm(save.calm); // reduced motion holds the flat sprites still
+  setSceneCalm(save.calm); // and the farm scenes' live touches (src/render/farmscene.js)
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ui.begin();
   if (G.screen === 'wonder' || (G.screen === 'info' && G.infoFrom === 'wonder')) { wonder.render(); if (G.screen === 'info') drawInfo(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // WONDER (the "i" panel can sit over a Wonder Vault)

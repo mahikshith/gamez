@@ -4,6 +4,8 @@
 // them plus a handful of animated elements. World camera is y-up (planck), meters.
 
 import { PERF } from './perf.js'; // 2026-11-19 graphics quality: Low flattens the layers, Medium/Low drop the light shafts
+import { FARM_ART, setSceneCalm } from './render/farmscene.js'; // 2026-11-20: the Farm's five landmark scenes (coop .. redbarn)
+export { setSceneCalm };
 
 // ---------------------------------------------------------------- math / rng / color
 const TAU = Math.PI * 2;
@@ -1468,6 +1470,8 @@ ART.bayou = {
   },
 };
 
+Object.assign(ART, FARM_ART); // the Farm's landmark scenes paint in src/render/farmscene.js
+
 // ---------------------------------------------------------------- theme table
 const P = (skyTop, skyBottom, text, plate, accent, ring, thorn, nestStraw, ground, groundTop) => ({ skyTop, skyBottom, text, plate, accent, ring, thorn, nestStraw, ground, groundTop });
 const RING = {
@@ -1511,6 +1515,12 @@ export const THEMES = [
   { id: 'vault', name: "The Thieves' Vault", palette: P('#0a1a22', '#12303a', '#f2fdff', 'rgba(4,14,18,0.62)', '#ff9a3a', RING.tech, '#ff8a2a', '#d9b25a', '#1f3a42', '#4f8a94'), material: 'metal', ground: 'stone', ambient: 'sparkles', music: { root: 'A', scale: 'minor', bpm: 128, mood: 'heist finale' } },
   { id: 'lab', name: 'Shape Lab', palette: P('#0d1a2e', '#22344a', '#fff4e0', 'rgba(8,14,28,0.62)', '#ffb84d', RING.brass, '#2a1c10', '#d9b25a', '#4a2e18', '#a8744a'), material: 'metal', ground: 'wood', ambient: 'dust', music: { root: 'D', scale: 'dorian', bpm: 124, mood: 'tinkering clockwork finale' } },
   { id: 'bayou', name: 'Gator Bayou', palette: P('#1e1638', '#f09a52', '#fff4e6', 'rgba(20,14,30,0.6)', '#ffb04a', RING.darkwood, '#2a1a12', '#d9b25a', '#2e2a1a', '#56783a'), material: 'wood', ground: 'grass', ambient: 'fireflies', music: { root: 'E', scale: 'dorian', bpm: 96, mood: 'swampy blues at dusk' } },
+  // 2026-11-20: The Farm's five landmarks as level scenes (the places the world map shows), in level order
+  { id: 'coop', name: 'Hen House', palette: P('#4aa6e8', '#e4f5fb', '#ffffff', 'rgba(24,58,92,0.55)', '#ffcf3a', RING.wood, '#4a3426', '#e7bf63', '#6b4a2b', '#d9b45a'), material: 'wood', ground: 'dirt', ambient: 'pollen', music: { root: 'C', scale: 'major', bpm: 112, mood: 'cheerful morning' } },
+  { id: 'hayfield', name: 'Haystacks', palette: P('#56a6de', '#fbe7b4', '#ffffff', 'rgba(70,46,14,0.55)', '#ffbf3a', RING.wood, '#4a3020', '#e9c46a', '#7a5530', '#d8b25a'), material: 'wood', ground: 'dirt', ambient: 'pollen', music: { root: 'C', scale: 'major', bpm: 112, mood: 'cheerful morning' } },
+  { id: 'pond', name: 'Duck Pond', palette: P('#4aa2e2', '#e2f4f8', '#ffffff', 'rgba(20,56,84,0.55)', '#ffcf3a', RING.wood, '#3a3426', '#e2bc62', '#5a4428', '#5cb43c'), material: 'wood', ground: 'grass', ambient: 'pollen', music: { root: 'C', scale: 'major', bpm: 112, mood: 'cheerful morning' } },
+  { id: 'windmill', name: 'Windmill', palette: P('#5aa2d8', '#fde2a6', '#ffffff', 'rgba(60,52,24,0.55)', '#ff9a3a', RING.wood, '#4a2f20', '#e2b862', '#6a4a2c', '#78b443'), material: 'wood', ground: 'grass', ambient: 'pollen', music: { root: 'F', scale: 'major', bpm: 104, mood: 'lazy afternoon' } },
+  { id: 'redbarn', name: 'Big Red Barn', palette: P('#4a3a7a', '#ffc46a', '#fff1de', 'rgba(52,22,30,0.6)', '#ff8a2a', RING.wood, '#2a1a12', '#e0aa52', '#4a3020', '#b8904a'), material: 'wood', ground: 'dirt', ambient: 'dust', music: { root: 'D', scale: 'dorian', bpm: 96, mood: 'playful spooky harvest' } },
 ];
 
 // ---------------------------------------------------------------- the stage (v5): the ground band under the nest
