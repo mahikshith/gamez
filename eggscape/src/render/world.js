@@ -8,7 +8,7 @@ import { statusClock, statusDraw, boltStroke } from './status.js';
 import { drawEggPower, drawOrb } from './powers.js';
 import { EAGLE_LEN } from '../sim/sim.js';
 import { P2 } from '../sim/powers2.js'; // v3.4: shrink ray size
-import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawThornVine, drawGrate, drawOneWayMark } from './v3art.js';
+import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawGrate, drawOneWayMark } from './v3art.js';
 import { drawSkinPreview } from '../ui/store.js';
 import { ringPt, ringSpd, ringNormal, ringReach } from '../sim/shapes.js'; // v3.3 M10 vault shapes
 import { LIGHT, WALL, mix, lighten, darken, rgbOf, drawRingBody, drawRingBurn, drawPads, ringLine, ringBand } from './ringart.js';
@@ -1637,8 +1637,9 @@ export function drawV3Ring(ctx, ring, k, t, theme, o = null) {
     if (g.grate) onRing(ctx, k, r, A + g.a, () => drawGrate(ctx, 0, 0, g.len * k, RING_TH * k, t));
     if (g.narrow) onRing(ctx, k, r, A + g.a, () => drawNarrowBar(ctx, g.len * k, RING_TH * k));
     const C = g.curtain;
-    if (C && C.vine) { // v3.3 thorn vine: creeping across, or sealed (fire burns it back)
-      onRing(ctx, k, r, A + g.a, () => drawThornVine(ctx, g.len * k, RING_TH * k, C.u, t, C.alive, C.alive ? C.burn : 0, thornLook(theme, ring.mat)));
+    if (C && C.vine) { // v3.3 thorn vine: the same bramble as the curtain, creeping across, sealed, or burning back from its tip
+      const burn = C.alive ? C.burn : 0, uE = (C.alive ? 1 : C.u) * (1 - burn * 0.85);
+      if (uE > 0.02) onRing(ctx, k, r, A + g.a, () => drawThornCurtain(ctx, g.len * k, RING_TH * k, r * k, t, 0, { u: C.alive && !burn ? 1 : uE, warn: C.alive ? 0 : clamp01((C.u - 0.7) / 0.3), ember: burn > 0, calm: isSpriteCalm() }));
       continue;
     }
     if (C && (C.alive || C.burn < 1)) {

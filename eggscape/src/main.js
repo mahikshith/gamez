@@ -2,7 +2,7 @@
 import { Sim, DT, LEGACY_ORB, EAGLE_LEN } from './sim/sim.js';
 import { hintSearch, actSteps } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
-import { curtainFront } from './render/v3art.js'; // where a burning thorn curtain's fire has got to
+import { curtainFront, vineFront } from './render/v3art.js'; // where a burning thorn curtain's fire has got to
 import { LEVELS } from './data/levels.js';
 import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop, setSceneCalm } from './themes.js';
@@ -3700,7 +3700,12 @@ function update(dt) {
   // a burning thorn curtain burns with the game's own fire: flames climb from both burning ends as they eat outward
   for (const ring of sim.rings) for (const g of ring.gaps) {
     const C = g.curtain;
-    if (!C || C.vine || !C.alive || !C.burning) continue;
+    if (!C || !C.alive || !C.burning) continue;
+    if (C.vine) { // a sealed thorn vine burns back from its tip
+      const a = ring.body.getAngle() + g.a + vineFront(g.len, RING_TH, 1, C.burn) / ring.r, x = ring.r * Math.cos(a), y = ring.r * Math.sin(a);
+      G.fx.flameAt(x, y + 0.04, 1.15); G.fx.flameAt(x, y - 0.06, 0.9);
+      continue;
+    }
     const A = ring.body.getAngle() + g.a, off = curtainFront(g.len, RING_TH, C.burn) / ring.r;
     for (const sd of [-1, 1]) {
       const a = A + sd * off, x = ring.r * Math.cos(a), y = ring.r * Math.sin(a);
