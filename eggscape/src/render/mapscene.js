@@ -566,17 +566,21 @@ export function drawCast(ctx, L, sy, vt, vb, t, calm, DPR = 1) {
     const top = L.bandTop(w) - 120 * L.u - sy, bot = L.bandTop(w) + L.BH + 40 * L.u - sy;
     if (bot < vt || top > vb) continue;
     if (PERF.low && typeof document !== 'undefined') { castCached(ctx, L, w, sy, t, calm, DPR); continue; }
-    castBand(ctx, L, w, sy, t, calm);
+    castBand(ctx, L, w, sy, t, calm, vt, vb);
   }
   L.sy = sy;
 }
-function castBand(ctx, L, w, sy, t, calm) {
+function castBand(ctx, L, w, sy, t, calm, vt = -Infinity, vb = Infinity) {
   L.sy = sy;
   const S = STILL[w] || [], C = CAST[w] || [];
   const G = calm ? null : ambBand(L, w, sy, t);
   if (G) drawMapAmb(ctx, 'back', w, G);
-  S.forEach((e, i) => { try { drawStillLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
-  C.forEach((e, i) => { try { drawLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
+  // 0.8.7: only what is on the screen is drawn. A band is taller than most phones, and every creature in it was
+  // drawn every frame even when it sat above or below the view (about a third of the map's drawing while scrolling).
+  const B = vb < Infinity ? bandLayout(L, w) : null, u = L.u;
+  const off = (p, k) => { if (!p) return false; const y = p.y - sy, h = (TALL[k] || 1) * p.s * (AIRY[k] ? 2.2 : 1.5) + 70 * u; return y - h > vb || y + 80 * u < vt; };
+  S.forEach((e, i) => { if (B && off(B.still[i], e[0])) return; try { drawStillLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
+  C.forEach((e, i) => { if (B && off(B.cast[i], e[0])) return; try { drawLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
   if (G) drawMapAmb(ctx, 'front', w, G);
 }
 // 2026-11-19 Low graphics: a band's creatures are painted onto their own canvas 12 times a second (bands take turns)

@@ -6,6 +6,7 @@ import { LEVELS } from './data/levels.js';
 import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop } from './themes.js';
 import { bodyCache, ringCache } from './render/ringart.js';
+import { dragTo, grab, glideStep, snapPx } from './scroll.js';
 import { PERF, applySettings, tick as perfTick, takeStep, newLevel as perfNewLevel, STEPS, TIER_NAME } from './perf.js';
 import { speedTest, openSpeedTest } from './speedtest.js'; // 2026-11-20: Settings > Display > Speed test (on the player's own phone)
 import { audio } from './audio.js';
@@ -857,6 +858,9 @@ function pointerDown(e) {
   }
   if (G.screen === 'levels' && G.mapTravel) G.mapTravel = null; // a touch during the trip: the map is the player's now
   if (G.screen === 'levels' && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; // the world map scrolls by drag; a tap on a stop still presses
+  // 0.8.7: a finger put on a list that is still gliding catches it there (it used to keep sliding under the finger
+  // until the finger moved), and that touch does not also press the button it happened to land on
+  if (G.pdrag) { const pd0 = G.pdrag; for (const q of [pd0.sc, pd0.cand && pd0.cand.x, pd0.cand && pd0.cand.y]) if (q) { if (Math.abs(q.v) > 90) pd0.caught = true; q.v = 0; q.to = null; } if (pd0.caught) return; }
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
   if (G.screen === 'info') { const C = G.infoCard; if (C && (x < C.x || x > C.x + C.w || y < C.y - 10 * ui.u || y > C.y + C.h + 6 * ui.u)) { G.pdrag = null; press('info:close'); } return; } // a tap off the card closes it
   if (G.screen === 'play' && G.toast && G.toast.tip && G.toastRect) { const R = G.toastRect; if (x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h) { G.toast.life = Math.min(G.toast.life, 0.2); return; } } // a tap on a villain tip puts it away
@@ -918,9 +922,9 @@ function pointerMove(e) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) > 9 * ui.u) {
         const ax = Math.abs(dx) > Math.abs(dy) ? (pd.cand.x ? 'x' : null) : (pd.cand.y ? 'y' : null);
         if (!ax) { G.pdrag = null; return; }
-        pd.ax = ax; pd.sc = pd.cand[ax]; pd.moved = true; ui.pressedId = null; pd.y0 = ax === 'x' ? x : y; pd.s0 = pd.sc.y;
+        pd.ax = ax; pd.sc = pd.cand[ax]; pd.moved = true; ui.pressedId = null; pd.y0 = ax === 'x' ? x : y; pd.s0 = grab(pd.sc, scrollLim());
       }
-    } else if (!pd.moved && Math.abs(y - pd.y0) > 9 * ui.u) { pd.moved = true; ui.pressedId = null; pd.y0 = y; pd.s0 = pd.sc.y; } // no jump by the 9 px slop
+    } else if (!pd.moved && Math.abs(y - pd.y0) > 9 * ui.u) { pd.moved = true; ui.pressedId = null; pd.y0 = y; pd.s0 = grab(pd.sc, scrollLim()); } // no jump by the 9 px slop
     if (pd.moved) {
       // 2026-11-19 (mykee: "the scroll is so slow"): the fling speed is the finger's speed over its last ~100 ms (every
       // coalesced touch point counts), not a smoothed per-event guess that lagged behind a quick flick
@@ -930,7 +934,7 @@ function pointerMove(e) {
       if (pts.length) for (const q of pts) pd.smp.push([hx ? q.clientX : q.clientY, q.timeStamp || now]); else pd.smp.push([c, now]);
       while (pd.smp.length > 2 && now - pd.smp[0][1] > 100) pd.smp.shift();
       pd.last = c; pd.lt = now;
-      pd.sc.y = clamp(pd.s0 + pd.y0 - c, 0, pd.sc.max); pd.sc.v = 0;
+      dragTo(pd.sc, pd.s0 + pd.y0 - c, scrollLim()); // follows the finger; past an end it stretches (scroll.js)
     }
     return;
   }
@@ -4881,9 +4885,13 @@ function clipRecorded(r0, b0, V) {
 // a scroller's glide (the same feel as the map and the shop): fling, friction, clamp
 function glide(S) {
   const dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
-  if (S.to != null) { S.v = 0; S.y += (Math.min(S.to, S.max) - S.y) * Math.min(1, dt * 9); if (Math.abs(Math.min(S.to, S.max) - S.y) < 1 || (G.pdrag && G.pdrag.sc === S)) S.to = null; }
-  else if (!G.pdrag || !G.pdrag.moved || G.pdrag.sc !== S) { if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-SCROLL_DRAG * dt); } else S.v = 0; }
-  const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
+  glideDt(S, dt);
+}
+// the stretch past a list's ends (px): none with Reduced motion
+const scrollLim = () => (save.calm ? 0 : 110 * ui.u);
+function glideDt(S, dt) {
+  if (G.pdrag && G.pdrag.sc === S) { S.to = null; if (G.pdrag.moved) return; } // under a finger: the finger moves it
+  glideStep(S, dt, scrollLim());
 }
 function chevron(x, y, sz, dir, a = 1) { // a small round arrow: there is more this way
   ctx.save(); ctx.globalAlpha *= a;
@@ -4934,9 +4942,10 @@ function pageScroll(blocks, S, V, x, w, s, top) {
   glide(S);
   const r0 = ui.rects.length, b0 = ui.buttons.length;
   ctx.save(); ctx.beginPath(); ctx.rect(V.x, V.y, V.w, V.h); ctx.clip();
-  let y = V.y + (S.max > 0 || top ? 6 * s : Math.max(6 * s, (V.h - H) * 0.35)) - S.y;
+  const sY = snapPx(S.y, DPR);
+  let y = V.y + (S.max > 0 || top ? 6 * s : Math.max(6 * s, (V.h - H) * 0.35)) - sY;
   G.ipAnchor = {};
-  for (const b of blocks) { y += b.gap ?? 10 * s; if (b.anchor) G.ipAnchor[b.anchor] = y + S.y - V.y - 8 * s; if (y + b.h > V.y - 40 * s && y < V.y + V.h + 40 * s) b.draw(x, y, w); y += b.h; }
+  for (const b of blocks) { y += b.gap ?? 10 * s; if (b.anchor) G.ipAnchor[b.anchor] = y + sY - V.y - 8 * s; if (y + b.h > V.y - 40 * s && y < V.y + V.h + 40 * s) b.draw(x, y, w); y += b.h; }
   ctx.restore();
   clipRecorded(r0, b0, V);
   if (S.max > 0) { // soft edges, and an arrow while there is more below
@@ -4988,9 +4997,13 @@ function howWorld() {
     },
     ring(c, C, k, ang, t) {
       try { ring.body.setAngle(ang); } catch (e) { /* drawn at its last angle */ }
+      // 0.8.7: painted straight onto the stage, not through the ring's picture cache. At this zoom that picture is
+      // 2048 px square and was repainted whenever the demo turned the ring 0.2 rad; three scenes on the pause page,
+      // each at its own angle, repainted it every frame (the scroll there crawled). Clipped to a small stage the
+      // direct paint is cheap.
+      const on = bodyCache.on; bodyCache.on = false;
       c.save(); c.translate(C.x, C.y); c.scale(k, -k);
-      W.drawRing(c, ring, G.theme, k, t, { eggs: [] });
-      c.restore();
+      try { W.drawRing(c, ring, G.theme, k, t, { eggs: [] }); } finally { c.restore(); bodyCache.on = on; }
     },
     egg(c, X, Y, stone, worry, C, k, t) {
       try { egg.body.setTransform({ x: (X - C.x) / k, y: -(Y - C.y) / k }, worry ? Math.sin(t * 22) * 0.08 : 0); } catch (e) { return; }
@@ -5117,7 +5130,7 @@ function drawLevelIntro(L, acc) {
         const ay = cy + ch / 2, az = 15 * s;
         if (R.y > 2) chevron(x + az * 0.6, ay, az, 'l');
         if (R.y < R.max - 2) chevron(x + w - az * 0.6, ay, az, 'r', 0.9 + (save.calm ? 0 : 0.1 * Math.sin(G.t * 4)));
-        const pages = Math.min(n, Math.ceil(total / (cw + gap) - w / (cw + gap)) + 1), cur = Math.round((R.y / R.max) * (pages - 1));
+        const pages = Math.min(n, Math.ceil(total / (cw + gap) - w / (cw + gap)) + 1), cur = Math.round(clamp(R.y / R.max, 0, 1) * (pages - 1));
         for (let p = 0; p < pages; p++) { ctx.beginPath(); ctx.arc(x + w / 2 + (p - (pages - 1) / 2) * 14 * s, y + rowH - 5 * s, (p === cur ? 4 : 3) * s, 0, 7); ctx.fillStyle = p === cur ? '#ffe27a' : 'rgba(255,240,210,0.4)'; ctx.fill(); }
       }
     } });
@@ -5630,8 +5643,7 @@ function drawInfo() {
   // the list viewport, between the ribbon and the footer
   const vx = x + fw + pad, vy = y + head - 4 * s, vw = iw, vh = Math.max(20 * s, y + h - fw - 12 * s - footH - 10 * s - vy);
   S.max = Math.max(0, listH - vh);
-  if (!G.pdrag || !G.pdrag.moved) { if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-SCROLL_DRAG * dt); } else S.v = 0; }
-  const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
+  glideDt(S, dt);
   ctx.save(); ctx.beginPath(); ctx.rect(x + fw, vy, w - 2 * fw, vh); ctx.clip();
   if (!rows.length) ui.text('Nothing hunts your eggs here: just you, the rings and gravity.', x + w / 2, vy + 30 * s, { size: 14.5 * s, align: 'center', maxW: iw, color: C.ink2, tag: 'info:empty' });
   let ry = vy + 4 * s - S.y;
@@ -5669,7 +5681,7 @@ function drawInfo() {
       const g = ctx.createLinearGradient(0, yy, 0, yy + (up ? -10 : 10) * s); g.addColorStop(0, `rgba(${c},0.95)`); g.addColorStop(1, `rgba(${c},0)`); ctx.fillStyle = g; ctx.fillRect(x + fw, up ? yy - 10 * s : yy, w - 2 * fw, 10 * s); };
     if (S.y > 1) fade(vy, false);
     if (S.y < S.max - 1) fade(vy + vh, true);
-    const th = Math.max(26 * s, vh * vh / listH), ty = vy + (S.y / S.max) * (vh - th);
+    const th = Math.max(26 * s, vh * vh / listH), ty = vy + clamp(S.y / S.max, 0, 1) * (vh - th);
     ui.roundRect(x + w - fw - 6 * s, ty, 3.5 * s, th, 1.75 * s); ctx.fillStyle = 'rgba(122,78,30,0.45)'; ctx.fill();
   }
   const fy = y + h - fw - 12 * s - footH;
@@ -6217,9 +6229,8 @@ function drawLevels() {
     if (TR.arrived && G.screenT - TR.arrived > 0.6) { G.mapTravel = null; if (playable(TR.to)) press('lv:' + TR.to); }
   }
   const dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
-  if (!G.pdrag || !G.pdrag.moved) { if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-SCROLL_DRAG * dt); } else S.v = 0; }
-  const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
-  const sy = S.y - vt; // map y -> screen y is (y - sy)
+  glideDt(S, dt);
+  const sy = snapPx(S.y - vt, DPR); // map y -> screen y is (y - sy); whole device pixels, so the painted land stays crisp
   const t = G.t, calm = save.calm;
   // the land and the road, under everything
   ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W_, vb - vt + (H_ - vb)); ctx.clip();
@@ -6379,7 +6390,7 @@ function drawLevels() {
     ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, ctaX, ctaY, ctaW, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: (wide ? 20 : 23) * u, round: 18 * u });
   }
   if (S.max > 0 && !calm) { // a thin scroll thumb
-    const th = Math.max(30 * u, vh * vh / L.H), ty2 = vt + (S.y / S.max) * (vh - th - 4 * u);
+    const th = Math.max(30 * u, vh * vh / L.H), ty2 = vt + clamp(S.y / S.max, 0, 1) * (vh - th - 4 * u);
     ui.roundRect(A.x1 - 5 * u, ty2, 3 * u, th, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
   }
 }
@@ -6426,10 +6437,7 @@ function drawPractice() {
   let total = 0;
   for (const g of LAB) total += secH + Math.ceil(g.items.length / cols) * (chh + gap) + 6 * u;
   S.max = Math.max(0, total + pad - (vb - vt));
-  if (!G.pdrag || !G.pdrag.moved) { // momentum
-    if (Math.abs(S.v) > 8) { S.y += S.v * dt; S.v *= Math.exp(-SCROLL_DRAG * dt); } else S.v = 0;
-  }
-  const cl = clamp(S.y, 0, S.max); if (cl !== S.y) S.v = 0; S.y = cl;
+  glideDt(S, dt);
   // the list, clipped under the header
   ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W_, vb - vt); ctx.clip();
   let y = vt - S.y + 4 * u, gi = 0;
@@ -6466,7 +6474,7 @@ function drawPractice() {
   const tl = A.x + pad + 68 * u, trr = A.x1 - pad - 68 * u;
   ui.ribbon('Practice', A.cx, hy - 19 * u, clamp(170 * u, 90 * u, Math.max(90 * u, trr - tl)), 36 * u, { color: '#8a5ad8', size: 21 * u, tag: 'practice:title' });
   if (S.max > 0 && !save.calm) { // a thin scroll thumb
-    const th = Math.max(30 * u, (vb - vt) * (vb - vt) / (total + pad)), ty2 = vt + (S.y / S.max) * (vb - vt - th - 4 * u);
+    const th = Math.max(30 * u, (vb - vt) * (vb - vt) / (total + pad)), ty2 = vt + clamp(S.y / S.max, 0, 1) * (vb - vt - th - 4 * u);
     ui.roundRect(A.x1 - 5 * u, ty2, 3 * u, th, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
   }
 }
@@ -6543,7 +6551,7 @@ function frameDt(raw) {
   return s;
 }
 // scrolling lists and the map (2026-11-19, mykee: "so slow"): a fling glides about 1/SCROLL_DRAG s of its speed (was 3.6-4.2)
-const SCROLL_DRAG = 2.3;
+// (the numbers and the feel live in scroll.js)
 // Settings > Display > Show frame rate (2026-11-19): frames per second over the last second, the quality step, and the
 // canvas resolution, in the top-left corner, so a tester can tell us how a phone really runs
 // 2026-11-20: also the screen's refresh rate, the game's own work per frame (ms, update + drawing commands) and the
