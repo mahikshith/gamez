@@ -621,7 +621,7 @@ export class Sim {
 
     for (const o of this.orbs) if (o.alive) this.moveOrb(o, dt);
     this.portals.forEach((pt, i) => {
-      if (!pt.emit || !pt.emit.length || (pt.timer -= dt) > 0) return;
+      if (!pt.emit || !pt.emit.length || this.state !== 'play' || (pt.timer -= dt) > 0) return; // (no new orbs once the level is decided: one used to pop out of thin air after the vault had burst)
       pt.timer = pt.every;
       const src = 'p' + i;
       if (this.orbs.filter((o) => o.alive && o.src === src).length >= 2) return;
@@ -1245,6 +1245,10 @@ export class Sim {
     const loc = (rad, ang) => ({ x: rad * Math.cos(ang) - r, y: rad * Math.sin(ang) });
     const verts = [loc(ri, -half), loc(ro, -half), loc(ro, half), loc(ri, half)];
     const out = how === 'blast' ? 3.5 : 0.6;
+    if (quiet && how === 'blast') { // the level-clear burst: every piece its own speed and spin, so the vault scatters instead of swelling as dotted circles; under water (hardly any gravity) the pieces are gone in a second
+      const sp = out * (0.55 + 1.1 * this.rand()), ja = wa + (this.rand() - 0.5) * 0.9;
+      this.addDebris(ring.mat, verts, x, y, wa, Math.cos(ja) * sp, Math.sin(ja) * sp + 1 * this.gy, (this.rand() - 0.5) * 12, this.water ? 0.9 + 0.5 * this.rand() : 2.8, { mat: ring.mat });
+    } else
     this.addDebris(how === 'burn' ? 'char' : ring.mat, verts, x, y, wa, Math.cos(wa) * out + (this.rand() - 0.5), Math.sin(wa) * out + 1, (this.rand() - 0.5) * 6, how === 'burn' ? 1.6 : 2.8, { mat: ring.mat });
     if (!quiet) this.emit(how === 'burn' ? 'segBurn' : how === 'blast' ? 'segBlast' : 'segBreak', { x, y, mat: ring.mat });
   }

@@ -509,7 +509,7 @@ function popup(wx, wy, text, o = {}) {
     twin.life = twin.max;
     return;
   }
-  G.popups.push({ x: s.x, y: s.y, text, key, n: 1, sub: o.sub || '', color: o.color || '#fff', life: o.life || 1.3, max: o.life || 1.3, size: (o.size || 26) * ui.u, placed: false });
+  G.popups.push({ x: s.x, y: s.y, text, key, n: 1, sub: o.sub || '', color: o.color || '#fff', life: o.life || 1.3, max: o.life || 1.3, size: (o.size || 26) * ui.u, placed: false, down: !!o.down });
 }
 
 // ---------------------------------------------------------------- camera
@@ -2738,7 +2738,7 @@ function handleEvents() {
         const parts = [];
         if (ev.perfect && !noPts) parts.push('PERFECT');
         if (ev.combo > 1 && !noPts) parts.push('COMBO x' + ev.combo);
-        popup(ev.x, ev.y + 0.9, noPts ? 'Home!' : '+' + ev.pts, { sub: parts.join('  '), color: '#ffe066', size: 30, life: 1.6 });
+        popup(ev.x, ev.y + (G.sim.water ? -1.15 : 0.9), noPts ? 'Home!' : '+' + ev.pts, { sub: parts.join('  '), color: '#ffe066', size: 30, life: 1.6, down: !!G.sim.water });
         portal.happy();
         hen('happy', 1.6);
         break;
@@ -3883,7 +3883,7 @@ function render() {
   ctx.scale(k, -k);
   ctx.translate(-camX, -camY);
   if (DEV && G.probe) G.probe('ground');
-  W.drawVaultBack(ctx, sim, G.theme); // premium pass: plate behind the vault
+  { const bq = blastQ(); if (bq < 0.3) { if (bq > 0) { ctx.save(); ctx.globalAlpha *= 1 - bq / 0.3; } W.drawVaultBack(ctx, sim, G.theme); if (bq > 0) ctx.restore(); } } // premium pass: plate behind the vault (it goes with the vault: it used to stay as a ghost disc)
   if (DEV && G.probe) G.probe('vaultback');
   fx.draw(ctx, 'back');
   blastXf(() => { // v3 portals; an orb-only swirl (entry = exit, no pull) is drawn as an orb spring (2026-11-16)
@@ -4047,16 +4047,21 @@ function render() {
 // level clear: the vault bursts, and whatever lived in it (creatures, portals, dens, bosses) is blown outward with the
 // ring pieces, tumbling and fading, instead of hanging in the air where the rings were. seed: a per-layer spin.
 const BLAST_T = 0.85;
+const blastQ = () => (G.burstAt != null && G.sim && (G.sim.state === 'winning' || G.sim.state === 'won') ? (G.t - G.burstAt) / BLAST_T : 0);
+// 2026-11-20 (mykee: "when the level is completed everything breaks ... certain instances where it's not properly
+// handled"): the layer used to swell to 2.6x from the vault's centre while it fell, so a weasel, a gator or the Rat King
+// standing on the ground sank through the earth, and portals hung on as giant ghosts. Now it is blown off in under half a
+// second: a small kick outward and up, a slight turn, gone.
 function blastXf(draw, seed = 0) {
-  const q = G.burstAt != null && G.sim && (G.sim.state === 'winning' || G.sim.state === 'won') ? (G.t - G.burstAt) / BLAST_T : 0;
+  const q = blastQ();
   if (q <= 0) return draw();
-  if (q >= 1) return;
-  const e = q * q;
+  if (q >= 0.55) return;
+  const u = q / 0.55, e = 1 - (1 - u) * (1 - u);
   ctx.save();
-  ctx.globalAlpha *= 1 - q;
-  ctx.translate(0, -1.6 * e); // falls a little as it flies (world y is up)
-  ctx.rotate((seed % 2 ? 1 : -1) * 0.5 * e);
-  ctx.scale(1 + 1.6 * e, 1 + 1.6 * e);
+  ctx.globalAlpha *= 1 - u * u;
+  ctx.translate(0, 0.5 * e * (G.sim.gy || 1)); // lifted off (world y is up; under water "up" is down)
+  ctx.rotate((seed % 2 ? 1 : -1) * 0.12 * e);
+  ctx.scale(1 + 0.28 * e, 1 + 0.28 * e);
   try { draw(); } finally { ctx.restore(); }
 }
 function flipped(x, y, draw) {
@@ -4648,7 +4653,7 @@ function drawPopups() {
     // v3.1: never overlap an older popup: step above it, or below the whole stack when there is no room above.
     // The new spot sticks (p.y), so labels don't jump back and forth from frame to frame.
     const hit = (yy) => placed.find((q) => Math.abs(q.x - x) < (q.w + w) / 2 + 6 && Math.abs(q.y - yy) < (q.h + h) / 2 + 4);
-    let down = false;
+    let down = p.down; // (under the sea the score stacks downward, under the boat: upward it covered the hen)
     for (let tries = 0, q; tries < 16 && (q = hit(y)); tries++) {
       if (!down) { y = q.y - (q.h + h) / 2 - 5; if (y < minY) { down = true; y = minY; } }
       else y = q.y + (q.h + h) / 2 + 5;
@@ -4843,6 +4848,7 @@ function drawFuseIntro() {
 }
 function drawKeyHint() {
   const T = G.teach;
+  if (G.sim.state !== 'play') return; // the level is decided: no drag hand over a vault that is bursting
   if (G.level.id !== 1 || G.held.size || (!T && G.sim.savedLog.length > 0)) return;
   let r = G.sim.rings[0];
   if (T) {
