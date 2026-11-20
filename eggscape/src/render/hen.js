@@ -371,8 +371,10 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
     if (mood === 'gasp' && st.worryT < 0.3) { st.startleAt = st.c; st.startleK++; st.startleV = o.variant != null ? o.variant : nextVariant(st.startleV, st.startleK + n); }
     else if (mood === 'worried' && st.worryT < 0.3) { st.startleAt = st.c; st.startleK++; st.startleV = 0; } // something creeping close: the plain jump
     if (mood === 'phew') { st.phewAt = st.c; st.phewK++; st.phewV = o.variant != null ? o.variant : nextVariant(st.phewV, st.phewK + n); }
+    if (mood === 'catch') { st.phewAt = st.c; st.phewK++; st.phewV = 0; st.cheerQ = st.c + 0.92; } // she ran and caught it: phew (eyes shut, a breath, the sweat flicked away), then the cheer
     st.mood = mood; st.n = n;
   }
+  if (st.cheerQ && st.c >= st.cheerQ) { st.cheerQ = 0; fireCheer(false); }
   if (st.queued && st.c - st.cheerAt > REACT.happy[Math.max(0, st.cheerV)].len * 0.7) fireCheer(true); // later hops skip the crouch
   if (calm) { st.cheerAt = -9; st.startleAt = -9; st.phewAt = -9; st.queued = false; }
 
@@ -415,10 +417,25 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
   // facing the way she goes, instead of gliding across the ground standing still
   const drift = calm ? 0 : clamp(o.drift || 0, -60, 60);
   st.dv = (st.dv || 0) + (drift - (st.dv || 0)) * (1 - Math.exp(-dt * 8));
-  const dW = clamp(Math.abs(st.dv) / WALK_SPEED * 1.4, 0, 1);
+  const C = o.carry && !calm ? o.carry : null; // nest.reach: she holds the basket (see below)
+  const dW = C ? 0 : clamp(Math.abs(st.dv) / WALK_SPEED * 1.4, 0, 1);
   if (dW > 0.02) { st.phase += Math.abs(st.dv) * dt * 0.42 * (1 - walkAmt); walkAmt = Math.max(walkAmt, dW); }
+  // nest.reach: she carries the basket (o.carry: v, a = its speed m/s and acceleration m/s^2; rx, ry = its near rim in her
+  // box, units, screen x). A walk at a stroll, a sprint at a run (big fast strides, leaning in, comb and tail streaming
+  // back), a squash as she bursts off, a skid as she brakes (feet planted ahead, leaning back)
+  let run = 0, skid = 0, kick = 0;
+  if (C) {
+    st.cv = (st.cv || 0) + (C.v - (st.cv || 0)) * (1 - Math.exp(-dt * 16));
+    const sp = Math.abs(st.cv), af = C.a * (st.cv >= 0 ? 1 : -1); // + = speeding up along her run
+    st.ca = (st.ca || 0) + (af - (st.ca || 0)) * (1 - Math.exp(-dt * 20));
+    run = clamp((sp - 1.4) / 2.6, 0, 1);
+    skid = clamp(-st.ca / 18, 0, 1) * clamp(sp / 1.2, 0, 1);
+    kick = clamp(st.ca / 18, 0, 1) * (1 - run * 0.6);
+    const go = clamp(sp / 0.5, 0, 1);
+    if (go > 0.01) { st.phase += Math.min(30, 6 + sp * 4.2) * dt * (1 - skid * 0.85); walkAmt = Math.max(walkAmt, go); }
+  }
   // facing: the way she walks, else home (toward the nest); a quick squash-turn, never a pop
-  st.faceT = Math.abs(st.sv) > 3 ? Math.sign(st.sv) : Math.abs(st.dv) > 4 ? Math.sign(st.dv) : home;
+  st.faceT = C ? (Math.abs(st.cv) > 0.25 ? Math.sign(st.cv) : Math.abs(st.cv) > 0.05 ? st.faceT : home) : Math.abs(st.sv) > 3 ? Math.sign(st.sv) : Math.abs(st.dv) > 4 ? Math.sign(st.dv) : home;
   st.face = calm ? st.faceT : st.face + (st.faceT - st.face) * (1 - Math.exp(-dt / 0.045));
   if (walkAmt > 0.001) {
     const sp = Math.sin(st.phase), cp = Math.cos(st.phase);
@@ -433,7 +450,19 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
     P.sq += Math.cos(st.phase * 2) * 0.012 * walkAmt;
     P.sway += sp * 0.03 * walkAmt;
     P.tail += -0.1 * walkAmt;
+    if (run > 0) { // the sprint: longer, higher strides, head thrust forward, comb and tail streaming, far wing out for balance
+      P.fL += run * 6 * Math.max(0, sp); P.fR += run * 6 * Math.max(0, -sp); P.sL += run * 7 * cp; P.sR -= run * 7 * cp;
+      P.lift += run * 2.2 * Math.abs(sp); P.lean += 0.2 * run; P.hx += 4 * run; P.hy += 2.5 * run; P.hr -= 0.08 * run;
+      P.comb += 0.32 * run + Math.sin(st.phase * 2) * 0.06 * run; P.tail += 0.32 * run; P.tsp += 0.6 * run; P.tufts += 0.35 * run;
+      P.wf = lerp(P.wf, 1.1 + Math.sin(st.phase * 2) * 0.25, 0.8 * run); P.sp = Math.max(P.sp, 0.6 * run);
+      P.eWide = lerp(P.eWide, 0.7, run); P.brow = lerp(P.brow, 0.25, run); P.browY = lerp(P.browY, -1, run); P.grit = lerp(P.grit, 0.8, run); P.beak = lerp(P.beak, 2.2, run); P.smile = lerp(P.smile, -0.2, run); P.lid = lerp(P.lid, 0, run);
+    }
   }
+  if (skid > 0) { // the stop: feet planted out ahead, sitting back, squashed, a grimace
+    P.sL += 9 * skid; P.sR += 6 * skid; P.fL *= 1 - skid; P.fR *= 1 - skid; P.lean -= 0.34 * skid; P.sq -= 0.07 * skid; P.lift *= 1 - skid;
+    P.hx -= 3 * skid; P.comb -= 0.15 * skid; P.tail -= 0.2 * skid; P.eWide = lerp(P.eWide, 1, skid); P.teeth = lerp(P.teeth, 1, skid * 0.8);
+  }
+  if (kick > 0) { P.sq -= 0.09 * kick; P.lean += 0.18 * kick; P.hx += 3 * kick; } // bursting off: crouched, leaning in
 
   // ---- idle one-shots (only while she is at rest)
   let beakPeck = 0;
@@ -478,6 +507,28 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
   if (su >= 0 && su < R2.len) R2.f(P, su);
   const pu = calm ? 99 : st.c - st.phewAt, R3 = REACT.phew[Math.max(0, st.phewV)];
   if (pu >= 0 && pu < R3.len) { const x = R3.f(P, pu) || {}; if (x.heart >= 0) heart = x.heart; if (x.breath >= 0 && x.breath < 1) breath = x.breath; }
+  // ---- nest.reach: her near wing rests on the basket's rim and grips it while it moves (it lets go for a reaction while
+  // the basket stands still). The wing points at the rim from her shoulder through the body's own lean (an inverse of
+  // drawHenPose's body frame) and opens just far enough to reach it.
+  if (C && C.rx != null) {
+    const moving = clamp(Math.abs(st.cv) / 0.3, 0, 1);
+    const busy = (cu >= 0 && cu < R1.len) || (su >= 0 && su < R2.len) || (pu >= 0 && pu < R3.len);
+    const want = Math.max(moving, busy ? 0 : wI * (1 - st.w.worry));
+    st.grip = (st.grip ?? want) + (want - (st.grip ?? want)) * (1 - Math.exp(-dt / 0.1));
+    const g = ss(0, 1, st.grip);
+    if (g > 0.002) {
+      const fs0 = st.face >= 0 ? 1 : -1, fa = Math.max(0.1, Math.abs(st.face));
+      let u = (C.rx - (st.x + P.dx)) * fs0 / fa, v = C.ry - (44 - P.lift);
+      const r = -(P.lean + P.sway), cr = Math.cos(r), sr = Math.sin(r);
+      const sx = (1 - 0.7 * P.sq) * P.puff, sy = (1 + P.sq) * P.puff;
+      const bx = (u * cr - v * sr) / sx, by = (u * sr + v * cr) / sy + 44;
+      const dx = bx - 1, dy = by + 1, d = Math.hypot(dx, dy);
+      let raise = Math.atan2(dy, dx) - (Math.PI - 0.3);
+      while (raise > Math.PI - 0.6) raise -= TAU;
+      while (raise <= -Math.PI - 0.6) raise += TAU;
+      P.wa = lerp(P.wa, raise, g); P.sp = lerp(P.sp, clamp((d - 37) / 9, 0, 1.2), g);
+    }
+  }
   // ---- the Chick Strike (the world hen only): the chick lands on her back, she winds her wing under it and bats it away
   let world = null;
   if (key === 'level') { world = {}; if (STK.n++ < 3 && !calm) { const b = strikeLayer(P, world); if (b) blink = 0; } }

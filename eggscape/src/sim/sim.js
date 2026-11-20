@@ -16,6 +16,7 @@ import { cwMethods } from './clockwork.js'; // v4 the clockwork cast: spider, wi
 import { owlMethods } from './owl.js'; // v4 the Clockwork Owl boss
 import { bayouMethods } from './bayou.js'; // v3.7 Gator Bayou: alligator, snapping turtle, mosquito swarm, Grandpa Gator
 import { stkMethods } from './strike.js'; // Chick Strike powers
+import { reachMethods } from './henreach.js'; // the hen runs the basket under an egg (nest.reach)
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
@@ -261,6 +262,7 @@ export class Sim {
     this.nest.createFixture({ shape: new Polygon([V(-w - 0.08, 0.5), V(-w, 0.08), V(-w + 0.14, 0.12), V(-w + 0.04, 0.5)]), ...nestFix });
     this.nest.createFixture({ shape: new Polygon([V(w + 0.08, 0.5), V(w - 0.04, 0.5), V(w - 0.14, 0.12), V(w, 0.08)]), ...nestFix });
     this.nest.createFixture({ shape: new Box(w - 0.12, 0.25, V(0, 0.38), 0), isSensor: true, ...filt('NEST'), userData: { kind: 'nestIn' } });
+    this.reachInit(L); // nest.reach: the hen runs the basket (sim/henreach.js)
     this.ground = this.world.createBody({ type: 'static', position: Vec2(0, this.groundY - 0.5 * this.gy) });
     this.ground.createFixture({ shape: new Box(60, 0.5), friction: 0.8, ...filt('GROUND'), userData: { kind: 'ground' } });
 
@@ -539,7 +541,7 @@ export class Sim {
     if (this.nestAmp) {
       const cur = this.nest.getPosition().x;
       this.nest.setLinearVelocity(Vec2((this.nestXAt(this.t) - cur) / dt, 0));
-    }
+    } else if (this.reach) this.reachStep(dt);
 
     // wind gusts, or a steady underwater current
     if (L.wind) {
@@ -731,7 +733,7 @@ export class Sim {
       egg.ch = ch;
       const vel = egg.body.getLinearVelocity();
       egg.lastV = Math.hypot(vel.x, vel.y);
-      if (egg.inNest > 0 && egg.lastV < 1.2) {
+      if (egg.inNest > 0 && (this.reach ? this.reachRelV(egg) : egg.lastV) < 1.2) { // a running basket: settled in it
         egg.nestT += dt;
         if (egg.nestT > 0.15) this.saveEgg(egg); // 2026-11-16: quicker, the egg then drops into the basket (render)
       } else egg.nestT = 0;
@@ -1034,6 +1036,7 @@ export class Sim {
     const b = egg.body;
     const p = b.getPosition(), vel = b.getLinearVelocity(), a = b.getAngle();
     this.emit('break', { egg, why, x: p.x, y: p.y, vx: vel.x, vy: vel.y });
+    if (this.reach) this.reachBroken(egg, why, p);
     if (egg.joint) this.unMagnet(egg);
     // shell shards as physics debris
     const n = 7;
@@ -1057,6 +1060,7 @@ export class Sim {
     const pts = 100 * egg.mult * (perfect ? 2 : 1) * (egg.cometUsed === true ? 2 : 1) * this.combo;
     this.savedLog.push({ id: egg.id, t: this.t, cracks: egg.cracks, pts, mult: egg.mult, combo: this.combo, prize: egg.prize, chick: egg.chick });
     this.emit('save', { egg, x: p.x, y: p.y, n: this.savedLog.length, pts, perfect, combo: this.combo, mult: egg.mult });
+    if (this.reach) this.reachSaved(egg, p);
     if (egg.joint) this.unMagnet(egg);
     this.kill.push(egg.body);
   }
@@ -2411,7 +2415,7 @@ export class Sim {
       pred: this.predState(), // predators (v3)
       wx: { ...this.wx, bolt: this.wx.bolt ? { ...this.wx.bolt } : null },
       embers: this.embers.map((m) => ({ ...m })),
-      nest: bodyS(this.nest),
+      nest: bodyS(this.nest), hr: this.reach ? this.reachState() : null,
       v3: this.v3State(),
       v31: v31State(this), // bosses (v3.1)
       chick: this.chickState(), // v3.2
@@ -2490,6 +2494,7 @@ export class Sim {
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
     setB(sim.nest, S.nest);
+    if (sim.reach) sim.reachLoad(S.hr);
     sim.rs = S.rs; // re-creating eggs and orbs above drew from the rng
     sim.snaps = [];
     return sim;
@@ -2891,5 +2896,6 @@ Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
 Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl
 Object.assign(Sim.prototype, stkMethods); // Chick Strike powers (sim/strike.js)
+Object.assign(Sim.prototype, reachMethods); // the hen runs the basket (sim/henreach.js)
 
 export { EGG_H, EGG_W, RING_TH };

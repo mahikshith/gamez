@@ -823,7 +823,7 @@ export function drawEgg(ctx, egg, t, k) {
   const rot = a + (egg.cracks >= 2 ? Math.sin(t * 17 + egg.seed) * 0.05 : 0);
   const special = egg.kind && !(egg.stone > 0) && !egg.golden;
   // contact shadow: a soft dark pool on the surface under a resting or rolling egg (toward the ring below it)
-  if (sp < 2.6) {
+  if (sp < 2.6 && !egg.home) { // (an egg at home sits in the straw: the basket's hollow is its shade)
     const d = Math.hypot(p.x, p.y), up = d > 0.01 ? Math.max(0, p.y / d) : 0;
     let nx = d > 0.3 ? p.x / d : 0, ny = d > 0.3 ? p.y / d : -1;
     nx = nx * (1 - up); ny = ny * (1 - up) - up; // upper half of the vault: the support is below, not outward
@@ -904,7 +904,7 @@ export function drawEgg(ctx, egg, t, k) {
   const look = sp > 0.3 ? { x: (v.x / sp) * 0.022, y: (v.y / sp) * 0.02 } : { x: 0, y: 0 };
   const scared = sp > 3.2 || egg.fear > 0;
   const hurt = egg.cracks > 0 && !scared;
-  const blink = !scared && Math.sin(t * 1.3 + egg.seed) > 0.985;
+  const blink = egg.home || (!scared && Math.sin(t * 1.3 + egg.seed) > 0.985); // at home: content, eyes shut in happy arcs
   const eyeY = 0.03, ex = 0.082, ink = egg.stone > 0 ? '#1c1a18' : '#2a1a10';
   ctx.lineCap = 'round';
   for (const sx of [-ex, ex]) {
@@ -941,6 +941,7 @@ export function drawEgg(ctx, egg, t, k) {
     ctx.ellipse(0, -0.075, 0.03, 0.04, 0, 0, TAU); ctx.fill();
     ctx.fillStyle = '#e8606a'; ctx.beginPath(); ctx.ellipse(0, -0.092, 0.018, 0.016, 0, 0, TAU); ctx.fill();
   } else if (hurt) { ctx.moveTo(-0.036, -0.066); ctx.quadraticCurveTo(-0.018, -0.046, 0, -0.062); ctx.quadraticCurveTo(0.018, -0.078, 0.036, -0.058); ctx.stroke(); }
+  else if (egg.home) { ctx.arc(0, -0.012, 0.055, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); }
   else { ctx.arc(0, -0.022, 0.045, Math.PI * 1.22, Math.PI * 1.78); ctx.stroke(); }
   ctx.restore();
 }
@@ -964,16 +965,24 @@ export function drawEggMult(ctx, egg, k, font) {
   ctx.restore();
 }
 
-export function drawNest(ctx, sim, theme, t, savedCount, drops = null, now = 0) {
+// o: { k (px per m: the egg sprites' scale), mid() (draws the live eggs over the basket, in world space, between the eggs
+// at home and the front wall) }
+export function drawNest(ctx, sim, theme, t, savedCount, drops = null, now = 0, o = {}) {
   const p = sim.nest.getPosition();
   const w = sim.nestW / 2;
   // a richer, deeper straw than the palette's flat tone, so the nest holds its own against the ground at phone size
   const straw = mix(theme?.palette?.nestStraw || '#c9a24a', '#d08a1c', 0.42);
   const dk = mix(straw, '#3a1a02', 0.66), line = mix(straw, '#241002', 0.86), lt = lighten(straw, 0.42);
+  // a new egg at home weighs the basket down for a moment: it dips and springs back (render only)
+  let dip = 0;
+  if (drops && savedCount > 0) { const D = drops[Math.min(4, savedCount) - 1], age = D ? now - D.t0 : 9; if (age < 0.6) dip = -0.06 * Math.sin(Math.min(1, age / 0.6) * Math.PI) * Math.exp(-age * 3); }
+  const nestXf = () => {
+    ctx.translate(p.x, p.y + dip);
+    // a moving basket leans a touch into its travel and settles when it stops (render only)
+    const vx = sim.nest.getLinearVelocity().x, sk = clamp(-vx * 0.035, -0.06, 0.06); if (sk) ctx.transform(1, 0, sk, 1, 0, 0);
+  };
   ctx.save();
-  ctx.translate(p.x, p.y);
-  // a moving basket leans a touch into its travel and settles when it stops (render only)
-  { const vx = sim.nest.getLinearVelocity().x, sk = clamp(-vx * 0.035, -0.06, 0.06); if (sk) ctx.transform(1, 0, sk, 1, 0, 0); }
+  nestXf();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   // 2026-11-20 speed: the straw is painted once into two stamps (behind and in front of the saved eggs), see stamp.js
@@ -996,36 +1005,9 @@ export function drawNest(ctx, sim, theme, t, savedCount, drops = null, now = 0) 
   ctx.fillStyle = hg; ctx.fill();
   };
   if (!stamp(ctx, 'nest:back:' + NK, NK, BX0, BY0, BX1, BY1, nestBack)) nestBack(ctx);
-  // saved eggs nestled inside
-  const n = Math.min(4, savedCount);
-  for (let i = 0; i < n; i++) {
-    ctx.save();
-    // 2026-11-16 (mykee: eggs sat on top of the basket, then popped inside): a new egg drops from where it landed
-    // down into its place, behind the basket's front, with a little squash as it settles
-    const sx = -0.33 + i * 0.22, sy = 0.5 + (i % 2) * 0.03, D = drops && drops[i], age = D ? now - D.t0 : 9;
-    let ex = sx, ey = sy, sq = 1, spin = 0;
-    if (age < 0.45) {
-      const f = clamp(age / 0.32, 0, 1), fe = f * f; // falls in under gravity
-      ex = D.x + (sx - D.x) * fe; ey = D.y + (sy - D.y) * fe;
-      spin = (1 - f) * (D.x > sx ? -0.5 : 0.5);
-      if (age > 0.32) { const k = (age - 0.32) / 0.13; sq = 1 - 0.16 * Math.sin(Math.PI * k); }
-    }
-    ctx.translate(ex, ey);
-    ctx.scale(0.78 / Math.sqrt(sq), 0.78 * sq);
-    ctx.rotate(spin);
-    const rot = (i - 1.5) * 0.25;
-    ctx.rotate(rot);
-    eggPath(ctx);
-    ctx.rotate(-rot);
-    ctx.fillStyle = shellGradient(ctx, '#ffffff', '#fff6e4', '#f3e0be', '#d3b488');
-    ctx.fill();
-    ctx.strokeStyle = '#6b4526';
-    ctx.lineWidth = 0.028;
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.beginPath(); ctx.ellipse(-0.085, 0.13, 0.024, 0.05, 0.6, 0, TAU); ctx.fill();
-    ctx.restore();
-  }
+  // the eggs at home: the real eggs (skin, kind, cracks), sitting in the straw with their lower part behind the front wall
+  drawHomeEggs(ctx, sim, savedCount, drops, now, t, o.k || 60);
+  if (o.mid) { ctx.restore(); o.mid(); ctx.save(); nestXf(); } // live eggs over / in the basket: behind the front wall too
   const nestFront = (ctx) => {
   // bowl: lit from the top-left, falling into shade underneath
   const bowl = () => {
@@ -1103,6 +1085,49 @@ export function drawNest(ctx, sim, theme, t, savedCount, drops = null, now = 0) 
   };
   if (!stamp(ctx, 'nest:front:' + NK, NK, BX0, BY0, BX1, BY1, nestFront)) nestFront(ctx);
   ctx.restore();
+}
+
+// The eggs at home in the basket (nest-local frame: y up from the basket floor, x from its middle). Each is the egg
+// itself (its skin, kind, cracks, gold) drawn through drawEgg's sprite cache with a content face: up to four side by side,
+// the later ones tucked a little behind, the lower ~40 % behind the basket's front wall (drawn after this). A new one
+// starts exactly where the live egg was saved (drops[i] = {x, y, a, t0}, nest-local) and settles into its place with a
+// squash; the ones already there bob. gy -1 (underwater) mirrors it: the caller flips the frame.
+const HOME_SLOT = [[-0.21, -0.1], [0.21, 0.12], [-0.6, -0.2], [0.6, 0.22]]; // x (at w 1.4), tilt
+const HOME = new WeakMap(); // real egg -> its stand-in drawn at home (made once)
+const HOME_V = { x: 0, y: 0 };
+function homeEgg(e) {
+  let h = HOME.get(e);
+  if (!h) {
+    const body = { p: { x: 0, y: 0 }, a: 0, getPosition() { return this.p; }, getAngle() { return this.a; }, getLinearVelocity() { return HOME_V; } };
+    h = { body, home: 1, kind: e.kind, cracks: e.cracks || 0, seed: e.seed || 0, golden: e.golden, prize: e.prize, chick: e.chick, mult: 1 };
+    HOME.set(e, h);
+  }
+  return h;
+}
+export function drawHomeEggs(ctx, sim, savedCount, drops, now, t, k, depth = 0) {
+  const n = Math.min(4, savedCount);
+  if (!n) return;
+  const w = sim.nestW / 2, f = clamp((w - 0.35) / 1.05, 0.62, 1.15), W = w + 0.13;
+  const latest = drops && drops[n - 1] ? now - drops[n - 1].t0 : 9;
+  for (let i = n - 1; i >= 0; i--) { // the later ones first: they sit a touch further back
+    const S = sim.savedLog[i], e = S && sim.eggs.find((q) => q.id === S.id);
+    if (!e) continue;
+    const H = homeEgg(e), B = H.body, ds = (KIND_S[e.kind] || 1) * EGG_DRAW;
+    const sx = HOME_SLOT[i][0] * f, s = sx / W, lip = depth || 0.5 - 0.07 * (1 - s * s) - 0.03; // the front rope's top edge here
+    const sy = lip + 0.07 * ds + (i >= 2 ? 0.035 : 0), tilt = HOME_SLOT[i][1];
+    const D = drops && drops[i], age = D ? now - D.t0 : 9;
+    let x = sx, y = sy, a = tilt, sq = 0;
+    if (age < 0.5) {
+      const u = clamp(age / 0.3, 0, 1), e2 = u * u * (3 - 2 * u); // from where it was saved into its place
+      x = D.x + (sx - D.x) * e2; y = D.y + (sy - D.y) * e2;
+      const a0 = Math.atan2(Math.sin(D.a || 0), Math.cos(D.a || 0)); a = a0 + (tilt - a0) * e2;
+      if (age > 0.22) sq = 0.14 * Math.sin(Math.PI * clamp((age - 0.22) / 0.2, 0, 1)) * Math.exp(-(age - 0.22) * 4);
+    } else if (latest < 0.6 && i < n - 1) y -= 0.035 * Math.sin(Math.PI * clamp((latest - 0.18) / 0.32, 0, 1)) * (1 - 0.3 * i); // nudged by the new one
+    B.p.x = x; B.p.y = y; B.a = a;
+    if (sq) { ctx.save(); ctx.translate(x, y - 0.28 * ds); ctx.scale(1 + sq * 0.7, 1 - sq); ctx.translate(-x, -(y - 0.28 * ds)); }
+    drawEgg(ctx, H, t, k);
+    if (sq) ctx.restore();
+  }
 }
 
 export function drawPortal(ctx, x, y, t, out) {

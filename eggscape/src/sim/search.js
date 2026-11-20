@@ -69,7 +69,7 @@ export function value(sim) {
       const p = e.body.getPosition(), u = e.body.getLinearVelocity(), g = sim.g, s = sim.gy || 1, uy = u.y * s;
       const h = Math.max(0, (p.y - sim.nestY) * s), tf = (uy + Math.sqrt(uy * uy + 2 * g * h)) / g;
       const nx = sim.nestAmp ? sim.nestXAt(sim.t + tf) : sim.nest.getPosition().x;
-      if (Math.abs(p.x + u.x * (sim.water ? Math.min(tf, 0.6) : tf) - nx) > sim.nestW / 2 - 0.15) v -= 2400;
+      if (Math.abs(p.x + u.x * (sim.water ? Math.min(tf, 0.6) : tf) - nx) > sim.nestW / 2 - 0.15 && !(sim.reach && sim.reachCatchable(e))) v -= 2400; // nest.reach: the hen runs it under
     }
     // shaping: how far the floor ring's nearest gap is from the egg, so "bring a gap round" scores
     const ring = sim.rings[c];

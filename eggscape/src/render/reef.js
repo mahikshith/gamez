@@ -3,6 +3,7 @@
 // Crisp cel-shaded code art in the house style: dark outline, two-tone shading, no pale rims or halos. ctx is in world
 // space (m, y up); each creature is drawn in a local y-DOWN px space (pxSpace). Frozen / stunned looks: render/status.js.
 import { RING_TH, TAU, EGG_H, EGG_W } from '../sim/geom.js';
+import { drawHomeEggs } from './world.js';
 import { HERMIT, PUFF, JELLY } from '../sim/reef.js';
 import { statusClock, statusDraw, dizzyStars, spiralEye, boltStroke } from './status.js';
 import { drawKingCrab, drawKingOver, iceShards } from './kingcrab.js';
@@ -452,13 +453,10 @@ export function drawSurface(ctx, sim, theme, t, k, saved) {
   ctx.fillStyle = '#e8fbff';
   for (let i = 0; i < 5; i++) { const x = -6 + i * 3 + Math.sin(t * 0.3 + i) * 0.4; ctx.beginPath(); ctx.moveTo(x - 0.3, y0); ctx.lineTo(x + 0.3, y0); ctx.lineTo(x + 1.6, y0 - 7); ctx.lineTo(x + 0.4, y0 - 7); ctx.closePath(); ctx.fill(); }
   ctx.globalAlpha = 1;
-  // the basket: an upside-down wicker dome under the boat; the eggs float up into it
+  // the basket: an upside-down wicker dome under the boat; the eggs float up into it (the real eggs, upside down)
+  if (saved > 0) { ctx.save(); ctx.translate(n.x, n.y); ctx.scale(1, -1); drawHomeEggs(ctx, sim, saved, null, 0, t, k, 0.36); ctx.restore(); }
   pxSpace(ctx, n.x, n.y, k, () => {
     const W = w * k, H = 0.62 * k, lw = Math.max(1.2, 0.04 * k);
-    for (let i = 0; i < Math.min(4, saved); i++) { // saved eggs tucked up in it
-      ctx.save(); ctx.translate((-0.33 + i * 0.22) * k, (0.34 + (i % 2) * 0.04) * k); ctx.rotate((i - 1.5) * 0.25 + Math.PI);
-      ctx.beginPath(); ctx.ellipse(0, 0, EGG_W * 0.38 * k, EGG_H * 0.38 * k, 0, 0, TAU); fillStroke(ctx, '#f7ecd6', '#5a4028', lw * 0.7); ctx.restore();
-    }
     ctx.beginPath(); ctx.moveTo(-W - 0.1 * k, 0.05 * k); ctx.quadraticCurveTo(-W, H, 0, H); ctx.quadraticCurveTo(W, H, W + 0.1 * k, 0.05 * k);
     ctx.lineTo(W - 0.06 * k, 0.05 * k); ctx.quadraticCurveTo(W * 0.9, H * 0.78, 0, H * 0.8); ctx.quadraticCurveTo(-W * 0.9, H * 0.78, -W + 0.06 * k, 0.05 * k); ctx.closePath();
     fillStroke(ctx, '#c99a4a', '#4a2e10', lw);

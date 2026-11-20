@@ -644,6 +644,25 @@ function leadEgg(sim) {
   return out;
 }
 
+// nest.reach: while the hen is out with the basket (or an egg is about to drop to her) keep her run in the shot: from
+// the basket's far rim to the hen, both where they are and where she is running to. [left, right, extra pan room, dir]
+const RZ = [{ x: 0, y: 0 }, { x: 0, y: 0 }, 0, 0];
+function reachZone(sim, L) {
+  if (!sim.reach || (L.ch < sim.rings.length - 1 && sim.hr.mode === 'idle')) return null;
+  const H = sim.hr, X0 = sim.nestX0, n = sim.nest.getPosition(), to = H.mode === 'run' ? H.tx : H.x;
+  const hen = G.henAt ? G.henAt.x - n.x + 0.4 * (G.henAt.s || 1) : sim.nestW / 2 + 1.3;
+  RZ[0].x = X0 + Math.min(H.x, to) - sim.nestW / 2 - 0.15; RZ[0].y = sim.nestY;
+  RZ[1].x = X0 + Math.max(H.x, to) + hen; RZ[1].y = sim.nestY + 1.1;
+  RZ[2] = Math.max(Math.abs(H.x), Math.abs(to)) + 0.5; RZ[3] = Math.sign(to - H.x) || Math.sign(H.x);
+  return RZ;
+}
+// after the frame is settled: slide it (no zoom) so the run is in it, the side she runs to first
+function reachPan(T, rz) {
+  const hw = G.play.w / (2 * T.k), a = rz[0].x - 0.2, b = rz[1].x + 0.25;
+  if (b - a <= 2 * hw) T.x = clamp(T.x, b - hw, a + hw);
+  else T.x = rz[3] < 0 ? a + hw : b - hw;
+}
+
 // The director: where the camera wants to be. Shots, in order: the win push-in on nest and hen, the level's
 // establishing shot (wide, or on the boss), the last egg's approach, then the base frame leaning toward the action.
 // A player zoom (buttons, wheel, pinch) overrides the leaning; reduced motion keeps the plain base frame.
@@ -681,7 +700,10 @@ function camTarget() {
     const nest = sim.nest.getPosition(), out = L.ch >= n;
     const T = { x: lerp(L.x, nest.x, 0.5), y: lerp(L.y, nest.y, 0.5) + 0.3 * gy, k: Math.min(F.k * (out ? 1.32 : 1.12), 190) };
     cv.smooth = 0.5;
-    return keepInView(T, [...eggPts, { x: nest.x - sim.nestW / 2, y: nest.y - 0.2 * gy }, { x: nest.x + sim.nestW / 2 + (sim.water ? 0 : 1.3), y: nest.y + 0.9 * gy }], 0.5);
+    const rz = reachZone(sim, L);
+    const T2 = keepInView(T, [...eggPts, { x: nest.x - sim.nestW / 2, y: nest.y - 0.2 * gy }, { x: nest.x + sim.nestW / 2 + (sim.water ? 0 : 1.3), y: nest.y + 0.9 * gy }], 0.5);
+    if (rz) { reachPan(T2, rz); if (sim.hr.mode !== 'idle') cv.smooth = 0.3; }
+    return T2;
   }
   // 2026-11-15 action cam (mykee: "no in-game camera movement"): during play the camera follows the action on its own:
   // it pushes in (up to ACTION_ZOOM) on the lead egg and the gap it is heading for, and pulls back out just enough to
@@ -690,17 +712,18 @@ function camTarget() {
   if (!cv.sky && !boss && !sim.kc && !sim.water) { // bosses, the King Crab and the sea keep their framed shots
     if (sim.rings.some((r) => r.held || r.keyHeld) && cv.lastAct) return cv.lastAct;
     const fx0 = lerp(L.x, L.gx, 0.4), fy0 = lerp(L.y, L.gy, 0.4);
-    const pts = [...eggPts];
+    const pts = [...eggPts], rz = reachZone(sim, L);
     if (sim.stkTargets) for (const v of sim.stkTargets()) if (eggPts.some((p) => Math.hypot(p.x - v.x, p.y - v.y) < 2.6)) pts.push({ x: v.x, y: v.y });
     const k0 = Math.min(F.k * ACTION_ZOOM, 190);
     let T = keepInView({ x: lerp(F.x, fx0, 0.6), y: lerp(F.y, fy0, 0.6), k: k0 }, pts, 0.85);
     T.k = Math.max(T.k, F.k); // never wider than the whole vault
     // never show empty space past the vault when it could show vault instead
     const hw = P.w / (2 * T.k), hh = P.h / (2 * T.k);
-    const mx = Math.max(0, F.R + 0.4 - hw);
+    const mx = Math.max(0, F.R + 0.4 + (rz ? rz[2] : 0) - hw);
     T.x = clamp(T.x, F.x - mx, F.x + mx);
     if (F.yMax - F.yMin > 2 * hh) T.y = clamp(T.y, F.yMin + hh, F.yMax - hh); else T.y = (F.yMin + F.yMax) / 2;
     cv.smooth = 0.9; // slow and soft: a camera operator, not a chase cam
+    if (rz) { reachPan(T, rz); if (sim.hr.mode !== 'idle') cv.smooth = 0.3; } // nest.reach: keep up with the hen's run
     cv.lastAct = T;
     return T;
   }
@@ -712,7 +735,9 @@ function camTarget() {
     const sx = Math.max(0, P.w / (2 * B.k) - F.R) + 0.1, sy = Math.max(0, P.h / (2 * B.k) - (F.yMax - F.yMin) / 2) + 0.1;
     dx = clamp(dx, -sx, sx); dy = clamp(dy, -Math.min(sy, 0.9), Math.min(sy, 0.9));
   } else { const d = Math.hypot(dx, dy); if (d > 0.6) { dx *= 0.6 / d; dy *= 0.6 / d; } }
-  return keepInView({ x: B.x + dx, y: B.y + dy, k: B.k }, eggPts, 0.5);
+  const T3 = keepInView({ x: B.x + dx, y: B.y + dy, k: B.k }, eggPts, 0.5), rz3 = reachZone(sim, L);
+  if (rz3) { reachPan(T3, rz3); if (sim.hr.mode !== 'idle') cv.smooth = 0.3; } // nest.reach (a boss level too)
+  return T3;
 }
 const ACTION_ZOOM = 1.32; // the action cam pushes in this far past the whole-vault frame at most
 const CAM_WIDE = 0.8; // the establishing shot starts this much wider than the whole vault
@@ -2366,6 +2391,15 @@ function eggFeel(sim, e, dt, nd, ntx, nty) {
   }
 }
 // draw one egg through its squash: pressed against the surface it hit (and planted on it), bulging sideways
+// the live eggs over the basket are drawn by drawNest between the eggs at home and its front wall (no allocation a frame)
+const NEST_O = { k: 60, t: 0, mid: () => { const sim = G.sim; for (const e of sim.aliveEggs()) if (overNest(sim, e)) drawEggFelt(e, NEST_O.t, NEST_O.k); } };
+function nestPass(k, t) { NEST_O.k = k; NEST_O.t = t; return NEST_O; }
+// an egg over the basket, low enough that its bottom is below the rim: drawn between the eggs at home and the front wall
+function overNest(sim, e) {
+  if (sim.water || !e.body) return false;
+  const p = e.body.getPosition(), n = sim.nest.getPosition(), dy = p.y - n.y;
+  return dy < 0.95 && dy > -0.3 && Math.abs(p.x - n.x) < sim.nestW / 2 + 0.05;
+}
 function drawEggFelt(e, t, k) {
   const st = EGGFX.get(e), sq = st ? st.s : 0, fs = st && Math.abs(sq) < 0.02 ? st.fs : 0;
   if ((Math.abs(sq) < 0.004 && fs < 0.004) || save.calm) { const p0 = e.body.getPosition(); ctx.save(); crowEggXf(ctx, p0.x, p0.y, G.sim.gy || 1); if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); ctx.restore(); return; }
@@ -2658,9 +2692,9 @@ function handleEvents() {
         break;
       }
       case 'save': {
-        { const np = sim.nest.getPosition(); if (!G.nestDrops || G.nestDrops.run !== G.run) G.nestDrops = { run: G.run }; G.nestDrops[ev.n - 1] = { x: ev.x - np.x, y: Math.max(ev.y - np.y, 0.5), t0: G.t }; }
+        { const np = sim.nest.getPosition(); if (!G.nestDrops || G.nestDrops.run !== G.run) G.nestDrops = { run: G.run }; G.nestDrops[ev.n - 1] = { x: ev.x - np.x, y: ev.y - np.y, a: ev.egg && ev.egg.body ? ev.egg.body.getAngle() : 0, t0: G.t }; } // the egg at home starts where the live one was
         if (ev.egg && ev.egg.chick && !ev.egg.powU && sim.banked && sim.banked().includes(ev.egg)) toast('Your chick kept its power. Tap the glowing chick button to use it.', 3);
-        audio.play('egg_save', { pitch: 1 + (ev.combo - 1) * 0.12 });
+        audio.play('egg_save', { pitch: (1 + (ev.combo - 1) * 0.12) * (ev.egg && ev.egg.caught ? 1.22 : 1) }); // nest.reach: a catch sings a little higher
         if (ev.combo > 1) audio.play('combo', { intensity: (ev.combo - 2) / 2 });
         buzz('save');
         if (sim.water) { fx.sparkle(ev.x, ev.y, 14); fx.wave(ev.x, ev.y, 1.2, '#fff6c2', 0.5, 0.12); fx.wave(ev.x, ev.y, 1.9, '#ffffff', 0.65, 0.06, { delay: 0.08 }); }
@@ -2675,6 +2709,18 @@ function handleEvents() {
         hen('happy', 1.6);
         break;
       }
+      case 'lunge': // nest.reach: the hen runs the basket under a falling egg
+        if (!save.calm) fx.dust(ev.x + (sim.nestW / 2 + 0.7) * (ev.dir > 0 ? 1 : 0.4), sim.groundY + 0.04, 5, 'rgba(214,190,150,0.8)');
+        audio.play('flap', { intensity: 0.6, vol: 0.6 });
+        break;
+      case 'catch': // ... and caught it (after the normal 'save')
+        popup(ev.x, ev.y + 1.75, 'CATCH!', { color: '#7dff8a', size: 32, life: 1.4 });
+        camPunch(0.05, ev.x, ev.y);
+        hen('catch', 2.4);
+        break;
+      case 'catchMiss': // she ran for it and it still broke: the 'break' above has her crying already; she looks at it
+        hen('sad', 1.8);
+        break;
       case 'gate':
         audio.play('combo', { intensity: clamp((ev.gx - 2) / 3, 0, 1) });
         fx.sparkle(ev.x, ev.y, 8, '#ffd23f');
@@ -3791,7 +3837,7 @@ function render() {
   }, 0.4);
   if (sim.timeLimit && sim.state === 'play') W.drawFuse(ctx, sim.outerR + 0.32, sim.timeLeft / sim.timeLimit, t, G.screen === 'play' ? fx : null, sim.rings[sim.rings.length - 1]); // v4: hugs a shaped vault
   if (DEV && G.probe) G.probe('portalsFuse');
-  if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length, G.nestDrops && G.nestDrops.run === G.run ? G.nestDrops : null, G.t); // world 8: the basket under the boat
+  if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length, G.nestDrops && G.nestDrops.run === G.run ? G.nestDrops : null, G.t, nestPass(k, t)); // world 8: the basket under the boat
   if (DEV && G.probe) G.probe('nest');
   { const tl = toWorld(0, G.hudBottom + 8 * ui.u), tr = toWorld(W_, 0); allyFrame(sim, { x0: tl.x, x1: tr.x, top: tl.y }, save.calm, G.screen === 'play' ? fx : null); } // the rooster's perch and the crow wave (render only)
   if (DEV && G.probe) G.probe('ally');
@@ -3846,7 +3892,7 @@ function render() {
   blastXf(() => { for (const o of sim.orbs) if (o.alive) flipped(o.x, o.y, (k) => drawOrb(ctx, o.type, 0, 0, 0.2 * k, t, !!save.seen[o.type])); }, 18.3); // a re-spawned orb can outlive the burst: it leaves with the rings
   if (DEV && G.probe) G.probe('mid');
   drawHenAt(sim, k, t);
-  if (G.screen === 'play' || G.screen === 'intro') { if (sim.water) drawRiseGuide(ctx, sim, t); else W.drawDropGuide(ctx, sim.rings[sim.rings.length - 1], sim.nest.getPosition().x, sim.nestW, t); }
+  if (G.screen === 'play' || G.screen === 'intro') { if (sim.water) drawRiseGuide(ctx, sim, t); else W.drawDropGuide(ctx, sim.rings[sim.rings.length - 1], sim.reach ? sim.nestX0 : sim.nest.getPosition().x, sim.nestW, t); } // nest.reach: judged from her home spot (no flicker while she runs)
   for (const r of sim.rocks) if (r.alive) W.drawRock(ctx, r, G.theme);
   for (const b of sim.bombs) if (b.alive) b.spark = W.drawBomb(ctx, b, t);
   for (const d of sim.debris) W.drawDebris(ctx, d, G.theme);
@@ -3863,7 +3909,7 @@ function render() {
   blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
   SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
   if (DEV && G.probe) G.probe('creatures');
-  for (const e of sim.aliveEggs()) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash
+  for (const e of sim.aliveEggs()) if (!overNest(sim, e)) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
   drawChickFX(ctx, sim, t, k);
   blastXf(() => { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); }, 10.4); // v3.3: the arms wrapped over a held egg
   blastXf(() => drawReefOver(ctx, sim, t, k), 8.2); // world 8: claws over a held egg, the silt cloud
@@ -3965,24 +4011,31 @@ function flipped(x, y, draw) {
   ctx.restore();
 }
 
+const HEN_N = { x: 0, y: 0 };
 // The hen sits beside the nest (F16) and reacts: happy on a save, gasp on a crack, cry on a break.
 function drawHenAt(sim, k, t) {
   if (k < 20) return; // too small to read
   // on a phone the vault leaves k ~ 35 px/m: draw her at least ~50 px tall so she is visible, and step her out from the nest
   const n = sim.nest.getPosition();
   const seat = sim.water ? boatSeat(sim, t) : null; // world 8: she rides in the boat
+  // nest.reach: her spot is worked out at the basket's home and carried along with it (she holds it as it runs; the
+  // ring clearance below would otherwise pin her in place while the basket ran off)
+  const run = sim.reach && !seat ? n.x - sim.nestX0 : 0;
+  if (run) HEN_N.x = sim.nestX0, HEN_N.y = n.y;
+  const nh = run ? HEN_N : n;
   // v4: the mascot is as big as her patch allows (up to 66 px, was 52): she steps out from the nest until her comb and
   // brow clear the outermost ring, and takes the largest size that keeps her within ~1 m of where she used to stand
-  let s = Math.max(0.95, Math.min(52, k * 1.5) / k), hx = seat ? seat.x : n.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2;
+  let s = Math.max(0.95, Math.min(52, k * 1.5) / k), hx = seat ? seat.x : nh.x + sim.nestW / 2 + 0.6 + (s - 0.95) / 2;
   if (seat) s = Math.max(s, Math.min(60, k * 1.7) / k);
   else for (const px of (G.henPx && G.henPx.run === G.run ? [G.henPx.px] : [66, 63, 60, 57, 54])) {
     // the size is picked ONCE per run: re-picking it every frame made her shrink and grow as a moving nest (Daily) changed what fit
-    const c = Math.max(0.95, Math.min(px, k * 1.9) / k), base = n.x + sim.nestW / 2 + 0.6 + (c - 0.95) / 2, R = sim.outerR + 0.1;
+    const c = Math.max(0.95, Math.min(px, k * 1.9) / k), base = nh.x + sim.nestW / 2 + 0.6 + (c - 0.95) / 2, R = sim.outerR + 0.1;
     let x = base;
-    for (const [ox, oy] of [[0.32, 0.97], [0.46, 0.85]]) { const y = sim.groundY + oy * c * (sim.gy || 1), d = R * R - y * y; if (d > 0) x = Math.max(x, Math.sqrt(d) + ox * c - n.x * 0); }
+    for (const [ox, oy] of [[0.32, 0.97], [0.46, 0.85]]) { const y = sim.groundY + oy * c * (sim.gy || 1), d = R * R - y * y; if (d > 0) x = Math.max(x, Math.sqrt(d) + ox * c - nh.x * 0); }
     const last = G.henPx && G.henPx.run === G.run; // a locked size is used as it is; x still follows the ring
     if (last || (x - base <= 1.1 && x + 0.45 * c <= sim.outerR + 0.5)) { s = c; hx = x; if (!last && k > 25) G.henPx = { run: G.run, px }; break; }
   }
+  hx += run;
   G.henAt = { x: hx, y: seat ? seat.y : sim.groundY, s }; // Chick Strike: where the chick rides and launches from
   ctx.save();
   ctx.translate(hx, seat ? seat.y : sim.groundY);
@@ -4006,8 +4059,21 @@ function drawHenAt(sim, k, t) {
     }
     // her patch moves with a sliding basket: hand her its speed so she walks with it (local units are hs/100 px)
     const hp = G.henPrev, dtr = hp ? t - hp.t : 0, drift = hp && dtr > 0 && dtr < 0.2 && hp.run === G.run ? ((hx - hp.x) / dtr) * k * 100 / hs : 0;
-    G.henPrev = { x: hx, t, run: G.run };
-    drawHenActor(ctx, G.hen.mood, 0, -0.49 * hs, hs, t, { key: 'level', n: G.hen.n, look: G.screen === 'play' ? look : 0, danger: G.danger, shadow: 0.26, drift });
+    // nest.reach: she holds the basket and runs it under an egg: hand her its speed, its acceleration and where its rim is
+    let carry = null;
+    if (sim.reach && !seat) {
+      const v = sim.nest.getLinearVelocity().x, a = hp && dtr > 0 && dtr < 0.2 && hp.run === G.run ? (v - (hp.v || 0)) / dtr : 0, C = G.henCarry || (G.henCarry = { v: 0, a: 0, rx: 0, ry: 0 });
+      C.v = v; C.a = clamp(a, -60, 60); C.rx = ((n.x + sim.nestW / 2 + 0.1 - hx) * k * 100) / hs; C.ry = 49 - ((sim.nestY + 0.5 - sim.groundY) * k * 100) / hs;
+      carry = C;
+      // dust at her feet and straw off the basket's trailing edge while she sprints (a few bits, not every frame)
+      if (Math.abs(v) > 2.2 && G.screen === 'play' && !save.calm && t - (G.henDustT || 0) > 0.07) {
+        G.henDustT = t; const dir = Math.sign(v);
+        G.fx.dust(hx - dir * 0.15, sim.groundY + 0.04, 2, 'rgba(214,190,150,0.75)');
+        G.fx.add({ x: n.x - dir * (sim.nestW / 2 + 0.05), y: sim.nestY + 0.45, vx: -dir * (1 + Math.random() * 1.5), vy: 0.8 + Math.random() * 1.4, g: 9.5, drag: 0.8, life: 0.7, size: 0.05 + Math.random() * 0.03, color: G.theme?.palette?.nestStraw || '#d9b45a', type: 'chip', rot: Math.random() * 6, vr: (Math.random() - 0.5) * 16, floor: sim.groundY + 0.02 });
+      }
+    }
+    G.henPrev = { x: hx, t, run: G.run, v: carry ? carry.v : 0 };
+    drawHenActor(ctx, G.hen.mood, 0, -0.49 * hs, hs, t, { key: 'level', n: G.hen.n, look: G.screen === 'play' && !carry ? look : carry ? undefined : 0, danger: G.danger, shadow: 0.26, drift, carry });
     ctx.restore();
     return;
   }
