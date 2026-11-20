@@ -578,8 +578,15 @@ function frameOf(all, maxCh) {
   const P = G.play;
   // a wide play area is height-limited: keep an even margin all round so the rings and the hen never touch the edge
   const m = camWide() ? 10 * ui.u : 0;
+  // a small vault (level 1) is narrower than the basket with the hen beside it: the whole-vault shot widens to hold
+  // both, so the first thing a new player sees is the hen at her basket (2026-11-20: she stood off screen)
+  let cx = 0;
+  if (all && !sim.water && !sim.nestAmp && sim.nestX0 != null) {
+    const l = Math.min(-R, sim.nestX0 - sim.nestW / 2 - 0.25), r = Math.max(R, sim.nestX0 + sim.nestW / 2 + 1.5);
+    if (r - l > 2 * R + 1e-6) { R = (r - l) / 2; cx = (l + r) / 2; }
+  }
   const k = Math.min((P.w - 2 * m) / (2 * R), (P.h - 2 * m) / (yMax - yMin), 190);
-  return { x: 0, y: (yMin + yMax) / 2, k, R, yMin, yMax };
+  return { x: cx, y: (yMin + yMax) / 2, k, R, yMin, yMax };
 }
 
 // landscape: the play area is much wider than tall, so the vault is framed by its height. Zooming in on the eggs would
@@ -698,6 +705,7 @@ function camTarget() {
     return { x: F.x, y: F.y, k: F.k * lerp(CAM_WIDE, 0.92, ss01(G.screenT / 3)) };
   }
   if (G.zm != null || !cv.live) return B;
+  if (sim.rings.length <= 2) { cv.smooth = 0.5; return B; } // a two-ring vault is one steady shot: rings, basket and hen
   if (camWide()) { cv.smooth = 0.5; return B; } // landscape: a steady whole-vault shot, no hunting
   const L = leadEgg(sim);
   if (!L) return B;

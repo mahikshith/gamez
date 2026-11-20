@@ -2603,8 +2603,8 @@ export class Sim {
     if (egg.golden) { egg.golden = 0; egg.safeT = 0.6; this.emit('goldenSave', { egg }); return; }
     if (egg.safeT > 0) return;
     const key = 'c' + ring.i + ':' + ring.gaps.indexOf(g);
-    if (this.MD.softThorns && !egg.chick) {
-      // Easy: a crack (never the breaking one) and a shove off, once per touch
+    if ((this.MD.softThorns || this.level.softCurtain) && !egg.chick) {
+      // Easy, and the level that first teaches the curtain (level.softCurtain): a crack (never the breaking one) and a shove off, once per touch
       if (!egg.spk.has(key)) {
         egg.spk.add(key);
         this.defer(() => {

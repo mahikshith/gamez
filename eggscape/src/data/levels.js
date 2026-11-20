@@ -22,7 +22,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 3, theme: "pond", name: "Duck Pond", eggs: 3, target: 2, time: 100, spacing: 1.1, material: "wood", nest: {w: 3, reach: 1.0}, tip: "Burn the curtain: roll an egg into the red flame, then onto the thorns.", portals: [{a: [0,1.75], b: [0,1.75], emit: ["fire_red"], every: 6, pull: 0}], orbs: [{type: "twin", ch: 0, a: 90},{type: "fire_red", ch: 1, a: -15}], seed: 23760, world: 1, intro: {title: "Twin orb", line: "The twin orb splits an egg in two: more eggs home! Then burn the thorn curtain with the red flame."},
+    id: 3, theme: "pond", name: "Duck Pond", eggs: 3, target: 2, time: 100, spacing: 1.1, material: "wood", nest: {w: 3, reach: 1.0}, softCurtain: true, tip: "Burn the curtain: roll an egg into the red flame, then onto the thorns.", portals: [{a: [0,1.75], b: [0,1.75], emit: ["fire_red"], every: 6, pull: 0}], orbs: [{type: "twin", ch: 1, a: -90},{type: "fire_red", ch: 1, a: -15}], seed: 23760, world: 1, intro: {title: "Twin orb", line: "The twin orb splits an egg in two: more eggs home! Then burn the thorn curtain with the red flame."},
     rings: [
       {gaps: [{a: 152, len: 0.95}], pads: [{a: -27, len: 1.82}]},
       {gaps: [{a: -143, len: 0.95, curtain: 1}], pads: [{a: -88, len: 1.54},{a: -46, len: 1.01}]},

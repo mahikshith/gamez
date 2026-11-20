@@ -65,8 +65,8 @@ export const SPECS = [
     tip: 'Roll an egg into the red flame, then into the thorns.',
     rings: [{ gaps: 1, gapLen: 0.95 }, { gaps: 1, gapLen: 0.9, thorns: 1, size: [2, 3] }, { gaps: 2, gapLen: 0.9, thorns: 1, size: [2, 2] }] },
   { id: 3, world: 1, theme: 'pond', name: 'Duck Pond', eggs: 3, target: 2, spacing: 1.1, material: 'wood', minMoves: 3, fuseX: 1.6,
-    nest: { w: 3.0, reach: 1.0 },
-    orbs: [{ type: 'twin', ch: 0, a: 90 }, { type: 'fire_red', ch: 1 }], portals: [{ from: [1, 90], to: [1, 90], emit: ['fire_red'], every: 6, pull: 0 }],
+    nest: { w: 3.0, reach: 1.0 }, softCurtain: true, // the first curtain only cracks an egg and pushes it back
+    orbs: [{ type: 'twin', ch: 1, a: -90 }, { type: 'fire_red', ch: 1 }] /* twin under the first drop, not in the egg chamber: there the pile took it by itself at 2 s and a twin got squashed */, portals: [{ from: [1, 90], to: [1, 90], emit: ['fire_red'], every: 6, pull: 0 }],
     intro: { title: 'Twin orb', line: 'The twin orb splits an egg in two: more eggs home! Then burn the thorn curtain with the red flame.' },
     tip: 'Burn the curtain: roll an egg into the red flame, then onto the thorns.',
     rings: [{ gaps: 1, gapLen: 0.95 }, { gaps: 1, curtain: 1, gapLen: 0.95 }, { gaps: 2, gapX: [2], thorns: 1, size: [1, 2] }] },
