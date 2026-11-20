@@ -43,7 +43,7 @@ const app = { money: true };
   const a = OF.evaluate(s, 'fail', { ...app, now, levelId: 12, fails: 3, nearMiss: true });
   ok(id(a) === 'charge_ad' && a.item === 'charge', '3 fails: a free Chick Charge for an ad first');
   OF.markShown(s, a, now, 12); OF.markDismissed(s, a, now, 12);
-  OF.markShown(s, { id: 'no_ads' }, now + HOUR, 12); // a second popup this session (CAPS.perSession = 2)
+  OF.markShown(s, { id: 'egg_bank' }, now + HOUR, 12); // a second popup this session (CAPS.perSession = 2)
   ok(OF.evaluate(s, 'fail', { ...app, now: now + 2 * HOUR, levelId: 12, fails: 4 }) === null, 'two popups per session at most');
   OF.startSession(s, now + 2 * HOUR);
   const b = OF.evaluate(s, 'fail', { ...app, now: now + 2 * HOUR, levelId: 12, fails: 3 });
@@ -62,15 +62,23 @@ const app = { money: true };
 {
   const s = mk({ unlocked: 25, wallet: { payer: true, lastBuyAt: T0 - 8 * DAY, starter: true } }); OF.startSession(s, T0); OF.startSession(s, T0 + HOUR);
   const o = OF.evaluate(s, 'home', { ...app, now: T0 + HOUR });
-  ok(id(o) === 'bundle_flock', 'payer, last purchase 8 days ago: Flock Bundle');
+  ok(id(o) === 'eggscape_collector', 'payer, last purchase 8 days ago: The Whole Coop');
   const recent = mk({ unlocked: 25, wallet: { payer: true, lastBuyAt: T0 - 2 * DAY, starter: true } }); OF.startSession(recent, T0); OF.startSession(recent, T0 + HOUR);
-  ok(id(OF.evaluate(recent, 'home', { ...app, now: T0 + HOUR })) !== 'bundle_flock', 'not within 7 days of a purchase');
-  OF.markShown(s, o, T0 + HOUR); OF.startSession(s, T0 + 3 * DAY);
-  ok(id(OF.evaluate(s, 'home', { ...app, now: T0 + 3 * DAY })) !== 'bundle_flock', 'Flock Bundle weekly at most');
-  const ads = mk({ unlocked: 9 }); OF.startSession(ads, T0); OF.startSession(ads, T0 + HOUR); ads.offers.firstDay = T0 - 30 * DAY; ads.offers.ads = 5;
-  ok(id(OF.evaluate(ads, 'home', { ...app, now: T0 + HOUR })) === 'no_ads', '5 rewarded ads, non-payer: No Ads');
-  const prem = mk({ unlocked: 22 }); OF.startSession(prem, T0); prem.offers.firstDay = T0 - 30 * DAY; prem.offers.days = ['a', 'b', 'c', 'd']; OF.startSession(prem, T0 + HOUR);
-  ok(id(OF.evaluate(prem, 'home', { ...app, now: T0 + HOUR })) === 'eggscape_premium', 'level 20+, 5 play days: Premium');
+  ok(id(OF.evaluate(recent, 'home', { ...app, now: T0 + HOUR })) !== 'eggscape_collector', 'not within 7 days of a purchase');
+  OF.markShown(s, o, T0 + HOUR); OF.startSession(s, T0 + 10 * DAY);
+  ok(id(OF.evaluate(s, 'home', { ...app, now: T0 + 10 * DAY })) !== 'eggscape_collector', 'The Whole Coop every 14 days at most');
+  const free = mk({ unlocked: 25, wallet: { starter: true } }); OF.startSession(free, T0); OF.startSession(free, T0 + HOUR); free.offers.firstDay = T0 - 30 * DAY;
+  ok(id(OF.evaluate(free, 'home', { ...app, now: T0 + HOUR })) !== 'eggscape_collector', 'never offered to someone who neither paid nor owns Premium');
+  const owner = mk({ unlocked: 25, wallet: { noAds: true, payer: true, lastBuyAt: T0 - 9 * DAY, starter: true, collector: true } }); OF.startSession(owner, T0); OF.startSession(owner, T0 + HOUR);
+  ok(OF.evaluate(owner, 'home', { ...app, now: T0 + HOUR }) === null, 'owns The Whole Coop: nothing more to offer');
+  ok(!('no_ads' in E.IAP) && !('bundle_flock' in E.IAP), 'No Ads and the Flock Bundle are gone');
+  const prem = mk({ unlocked: 12 }); OF.startSession(prem, T0); prem.offers.firstDay = T0 - 30 * DAY; prem.offers.days = ['a', 'b']; OF.startSession(prem, T0 + HOUR);
+  ok(id(OF.evaluate(prem, 'home', { ...app, now: T0 + HOUR })) === 'eggscape_premium', 'level 12+, 3 play days: Unlock Everything');
+  OF.markShown(prem, { id: 'eggscape_premium' }, T0 + HOUR); OF.startSession(prem, T0 + 3 * DAY);
+  ok(id(OF.evaluate(prem, 'home', { ...app, now: T0 + 3 * DAY })) !== 'eggscape_premium', 'Unlock Everything every 7 days at most');
+  const early = mk({ unlocked: 11 }); OF.startSession(early, T0); early.offers.firstDay = T0 - 30 * DAY; early.offers.days = ['a', 'b']; OF.startSession(early, T0 + HOUR);
+  ok(id(OF.evaluate(early, 'home', { ...app, now: T0 + HOUR })) !== 'eggscape_premium', 'not before level 12');
+  ok(!/no ads/i.test(OF.evaluate(prem, 'shop', { ...app, now: T0 + 8 * DAY }).line || ''), 'its line does not lead with "no ads"');
 }
 
 // ---- caps
@@ -83,13 +91,13 @@ const app = { money: true };
   OF.startSession(s, now + 40 * 6e4);
   const b = OF.evaluate(s, 'home', { ...app, now: now + 40 * 6e4 }); OF.markShown(s, b, now + 40 * 6e4);
   OF.startSession(s, now + 90 * 6e4);
-  OF.markShown(s, { id: 'no_ads' }, now + 90 * 6e4);
+  OF.markShown(s, { id: 'egg_bank' }, now + 90 * 6e4);
   OF.startSession(s, now + 140 * 6e4);
   ok(OF.blocked(s, now + 140 * 6e4, 'home') === 'day', 'three popups a day at most');
   // three dismissals silence an offer for 14 days
   const d = mk({ unlocked: 12 }); OF.startSession(d, T0);
   now = T0;
-  for (let k = 0; k < 3; k++) { now += DAY; OF.startSession(d, now); const q = OF.evaluate(d, 'home', { ...app, now }); ok(id(q) === 'starter_nest', `starter offered, dismissal ${k + 1}`); OF.markShown(d, q, now); OF.markDismissed(d, q, now); }
+  for (let k = 0; k < 3; k++) { now += DAY; OF.startSession(d, now); d.offers.days = d.offers.days.slice(0, 2); /* keep Unlock Everything (3 play days) out of this one */ const q = OF.evaluate(d, 'home', { ...app, now }); ok(id(q) === 'starter_nest', `starter offered, dismissal ${k + 1}`); OF.markShown(d, q, now); OF.markDismissed(d, q, now); }
   d.offers.shown.starter_nest = []; // make the show-count rule not the reason
   now += DAY; OF.startSession(d, now);
   ok(id(OF.evaluate(d, 'home', { ...app, now })) !== 'starter_nest', 'three "No thanks": silent for 14 days');

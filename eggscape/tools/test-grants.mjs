@@ -26,13 +26,14 @@ const fresh = E.grantIap(E.defaultWallet(), 'starter_nest', 'tokS', 5);
 ok(fresh.granted && fresh.wallet.starter && fresh.wallet.coins === 600, 'restore on a new install grants the non-consumable again');
 
 // entitlement re-applied even when the token is known (a flag lost from the save)
-let nw = E.grantIap(E.defaultWallet(), 'no_ads', 'tokN', 1).wallet;
-nw = { ...nw, noInter: false };
-r = E.grantIap(nw, 'no_ads', 'tokN', 2);
-ok(!r.granted && r.wallet.noInter, 'non-consumable entitlement comes back with a known token');
+let nw = E.grantIap(E.defaultWallet(), 'eggscape_premium', 'tokN', 1).wallet;
+nw = { ...nw, noAds: false };
+r = E.grantIap(nw, 'eggscape_premium', 'tokN', 2);
+ok(!r.granted && r.wallet.noAds && r.wallet.coins === 1500, 'non-consumable entitlement comes back with a known token');
 
 const p = E.grantIap(E.defaultWallet(), 'eggscape_premium', 'tokP', 1).wallet;
-ok(p.noAds && p.coins === 1500 && p.chicks.length === E.CHICK_IDS.length && p.henSkin === 'golden' && E.ownsHenSkin(p, 'golden'), 'premium contents');
+ok(p.noAds && p.coins === 1500 && p.chicks.length === E.CHICK_IDS.length && p.henSkin === 'golden' && E.ownsHenSkin(p, 'golden') && E.ownsSkin(p, 'golden'), 'premium contents (Golden Hen and Golden egg)');
+ok(E.IAP.eggscape_premium.usd === 2.99 && !/no ads/i.test(E.IAP.eggscape_premium.line), 'Unlock Everything is $2.99 and does not lead with "no ads"');
 ok(E.grantIap(p, 'eggscape_premium', 'tokP', 2).wallet.coins === 1500, 'premium coins once');
 const legacy = E.grantIap(E.defaultWallet(), 'eggscape_premium', '', 1);
 ok(!legacy.granted && legacy.wallet.noAds && legacy.wallet.coins === 0, 'old shell (no token): entitlement only');
@@ -43,13 +44,15 @@ b = E.grantIap(b, 'egg_bank', 'tokB', 1).wallet;
 ok(b.coins === 700 && b.bank === 0, 'bank pays its coins and empties');
 ok(E.grantIap(b, 'egg_bank', 'tokB', 2).wallet.coins === 700, 'bank token not paid twice');
 
-const f = E.grantIap({ ...E.defaultWallet(), charges: 25 }, 'bundle_flock', 'tokF', 1).wallet;
-ok(f.charges === E.MAX_CHARGES && f.coins === 3000 + 10 * E.CHARGE_ITEM.price && f.tickets.ally === 10 && f.chicks.length === 6, 'flock bundle: charges over the cap paid as coins');
+const f = E.grantIap({ ...E.defaultWallet(), charges: 27 }, 'bundle_helper', 'tokF', 1).wallet;
+ok(f.charges === E.MAX_CHARGES && f.coins === 800 + 2 * E.CHARGE_ITEM.price && f.tickets.ally === 3 && E.ownedCount(f, 'snips') === 2, 'helper bundle: charges over the cap paid as coins');
+ok(E.iapAvailable(f, 'bundle_helper') && E.IAP.bundle_helper.usd === 1.99, 'helper bundle is repeatable, $1.99');
 
-const sp = E.grantIap(E.defaultWallet(), 'season_pack', 'tokSe', 1).wallet;
-ok(sp.season === 'skier' && sp.henSkin === 'skier' && sp.skins.includes('frosty') && sp.coins === 800, 'season pack: Ski Champ + Frosty + 800');
-const sp2 = E.grantIap({ ...E.defaultWallet(), henSkins: ['classic', 'skier'] }, 'season_pack', 'tokSe2', 1).wallet;
-ok(sp2.season && sp2.season !== 'skier', 'season pack picks an outfit not owned yet');
+// the catalogue (2026-11-20 shop 2.0): exactly these products, nothing removed left behind
+ok(Object.keys(E.IAP).sort().join() === ['bundle_helper', 'coins_1500', 'coins_250', 'coins_3300', 'coins_850', 'eggscape_collector', 'eggscape_premium', 'egg_bank', 'starter_nest'].sort().join(), 'catalogue: 9 products');
+ok(E.COIN_PACKS.join() === 'coins_250,coins_850,coins_1500,coins_3300' && E.IAP.starter_nest.usd === 0.99 && E.IAP.eggscape_collector.usd === 5.99, 'prices: starter $0.99, coop $5.99, four coin packs');
+const old = E.sanitizeWallet({ noInter: true, season: 'skier', henSkins: ['classic', 'skier'], coins: 5 });
+ok(old.noInter && old.season === 'skier' && old.henSkins.includes('skier') && old.coins === 5, 'old saves keep their old flags harmlessly');
 
 // the JS bridge the Android shell calls
 const save = { wallet: E.defaultWallet() };
@@ -62,7 +65,9 @@ ok(saved >= 2, 'every grant is persisted');
 ok(!ads.interstitialAllowed({ levelId: 30 }), 'payers get no interstitials');
 const s2 = { wallet: { ...E.defaultWallet(), noInter: true } };
 ads.rebind(s2);
-ok(!ads.interstitialAllowed({ levelId: 30 }), 'No Ads owners get no interstitials');
+ok(!ads.interstitialAllowed({ levelId: 30 }), 'old No Ads owners still get no interstitials');
+const { INTER } = await import('../src/ads.js');
+ok(INTER.on === false, 'the app shows no interstitials at all (INTER.on false)');
 ads.rebind({ wallet: E.defaultWallet() });
 
 const tok = E.sanitizeWallet({ tokens: Array.from({ length: E.MAX_TOKENS + 50 }, (_, i) => 't' + i) });

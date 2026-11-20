@@ -87,7 +87,9 @@ export function noteFreeCoins(adDay, day) {
 export function defaultWallet() {
   return { coins: 0, owned: {}, skins: ['classic'], skin: 'classic', chests: 0, charges: 0, henSkins: ['classic'], henSkin: 'classic', noAds: false, daily: '',
     // 2026-11-16 shop revamp: owned power chicks, the Golden Egg Bank, coin items, and what real money bought
-    chicks: [], bank: 0, golden: 0, tickets: { ally: 0, skip: 0 }, noInter: false, payer: false, spend: 0, lastBuyAt: 0, starter: false, season: '', premDay: '', tokens: [], treasures: [] };
+    chicks: [], bank: 0, golden: 0, tickets: { ally: 0, skip: 0 }, noInter: false, payer: false, spend: 0, lastBuyAt: 0, starter: false, season: '', premDay: '', tokens: [], treasures: [],
+    // 2026-11-20 shop 2.0: The Whole Coop owned; the boosters tried free from the shop (Free sample), and today's claim
+    collector: false, sampled: [], sampleDay: '', sampleId: '' };
 }
 
 // Make any loaded/saved value safe to use (old saves, hand-edited saves).
@@ -128,6 +130,11 @@ export function sanitizeWallet(w) {
   out.tokens = Array.isArray(w.tokens) ? w.tokens.filter((t) => typeof t === 'string' && t).slice(-MAX_TOKENS) : [];
   const tr = Array.isArray(w.treasures) ? w.treasures.filter((id) => BOSS_TREASURE_IDS.includes(id)) : [];
   out.treasures = tr.filter((id, i) => tr.indexOf(id) === i);
+  const sa = Array.isArray(w.sampled) ? w.sampled.filter((id) => BOOSTERS[id]) : [];
+  out.sampled = sa.filter((id, i) => sa.indexOf(id) === i);
+  out.sampleDay = typeof w.sampleDay === 'string' ? w.sampleDay : '';
+  out.sampleId = BOOSTERS[w.sampleId] ? w.sampleId : '';
+  if (w.collector) Object.assign(out, collectAll(out));
   return out;
 }
 
@@ -455,29 +462,53 @@ export function claimPremiumCharge(wallet, dayStr) {
 // type: 'consumable' (bought again and again; Play consumes it after the grant) or 'once' (non-consumable; restore()
 // gives it back on a new install). One price for everyone: nothing here depends on who is buying.
 export const MAX_TOKENS = 400;
+// 2026-11-20 shop 2.0 (mykee: "$2.99 to unlock everything", "sell bundles, not single items", "the user must not feel
+// bad in the shop"): one clear ladder of three one-time bundles (Starter $0.99 < Unlock Everything $2.99 < The Whole Coop
+// $5.99), one repeatable Helper Bundle, the bank and four coin packs. Gone: the $19.99 vault, the Flock Bundle, the
+// Season Pack, All Chicks and No Ads (each sat beside a bundle that already held it). Old saves keep their old flags
+// (noInter, season) harmlessly; nothing was ever sold live, so nothing needs migrating.
 export const IAP = {
   coins_250: { sku: 'coins_250', usd: 0.99, type: 'consumable', name: 'Pouch of coins', coins: 250 },
   coins_850: { sku: 'coins_850', usd: 2.99, type: 'consumable', name: 'Bag of coins', coins: 850 },
   coins_1500: { sku: 'coins_1500', usd: 4.99, type: 'consumable', name: 'Sack of coins', coins: 1500, tag: 'Most popular' },
   coins_3300: { sku: 'coins_3300', usd: 9.99, type: 'consumable', name: 'Chest of coins', coins: 3300, tag: 'Best value' },
-  coins_7000: { sku: 'coins_7000', usd: 19.99, type: 'consumable', name: 'Vault of coins', coins: 7000 },
-  starter_nest: { sku: 'starter_nest', usd: 1.99, type: 'once', name: 'Starter Nest', line: '600 coins, 3 Chick Charges, 2 of every boost and the Cocoa Hen.', coins: 600, charges: 3, boosts: 2, hen: 'cocoa' },
-  bundle_helper: { sku: 'bundle_helper', usd: 3.99, type: 'consumable', name: 'Helper Bundle', line: '1000 coins, 5 Chick Charges, 3 Ally Tickets and 2 of every boost.', coins: 1000, charges: 5, ally: 3, boosts: 2 },
-  bundle_flock: { sku: 'bundle_flock', usd: 9.99, type: 'consumable', name: 'Flock Bundle', line: '3000 coins, 15 Chick Charges, 10 Ally Tickets and the six level power chicks.', coins: 3000, charges: 15, ally: 10, chicks: true },
-  season_pack: { sku: 'season_pack', usd: 4.99, type: 'once', name: 'Season Pack', line: 'A world outfit for the hen, the Frosty egg and 800 coins.', coins: 800, egg: 'frosty', seasonHen: true },
+  starter_nest: { sku: 'starter_nest', usd: 0.99, type: 'once', name: 'Starter Nest', line: '600 coins, 3 Chick Charges, 2 of every boost and the Cocoa Hen. Only once.', coins: 600, charges: 3, boosts: 2, hen: 'cocoa' },
+  eggscape_premium: { sku: 'eggscape_premium', usd: 2.99, type: 'once', name: 'Unlock Everything', line: 'Every bonus without a video, every level open, the six power chicks, the Golden Hen and egg, 1500 coins and a free Chick Charge every day.', coins: 1500, chicks: true, premium: true, egg: 'golden', daily: 1 },
+  eggscape_collector: { sku: 'eggscape_collector', usd: 5.99, type: 'once', name: 'The Whole Coop', line: 'All of Unlock Everything, every hen outfit, every egg, the three premium chicks and 3000 coins. Forever.', coins: 3000, chicks: true, premium: true, egg: 'golden', daily: 1, collector: true },
+  bundle_helper: { sku: 'bundle_helper', usd: 1.99, type: 'consumable', name: 'Helper Bundle', line: '800 coins, 5 Chick Charges, 3 Ally Tickets and 2 of every boost.', coins: 800, charges: 5, ally: 3, boosts: 2 },
   egg_bank: { sku: 'egg_bank', usd: 1.99, type: 'consumable', name: 'Golden Egg Bank', line: 'Every win drops coins in. Crack it open for all of them.', bank: true },
-  all_chicks: { sku: 'all_chicks', usd: 4.99, type: 'once', name: 'All Power Chicks', line: 'The six level power chicks, ready in every level with villains.', chicks: true },
-  no_ads: { sku: 'no_ads', usd: 2.99, type: 'once', name: 'No Ads', line: 'No more ad breaks between levels. Bonus videos stay your choice.', noInter: true },
-  eggscape_premium: { sku: 'eggscape_premium', usd: 3.99, type: 'once', name: 'Unlock Everything', line: 'No ads ever. Every level, all six power chicks, the Golden Hen and 1500 coins.', coins: 1500, chicks: true, premium: true },
 };
-export const COIN_PACKS = ['coins_250', 'coins_850', 'coins_1500', 'coins_3300', 'coins_7000'];
+export const COIN_PACKS = ['coins_250', 'coins_850', 'coins_1500', 'coins_3300'];
+export const BUNDLES = ['starter_nest', 'eggscape_premium', 'eggscape_collector']; // the shop's good / better / best
 export const usdHint = (sku) => (IAP[sku] ? '$' + IAP[sku].usd.toFixed(2) : '');
 
-// the world outfit a Season Pack gives: Ski Champ, or the first world outfit the player does not own yet
-export function seasonHen(w) {
-  const outfits = HEN_SKIN_ORDER.filter((id) => HEN_SKINS[id].world);
-  if (!ownsHenSkin(w, 'skier')) return 'skier';
-  return outfits.find((id) => !ownsHenSkin(w, id)) || 'skier';
+// What a bundle holds, counted from the tables (the shop's content strip and its badges): coins, charges, boosts each,
+// ally tickets, the hen, the eggs, the chicks, and the premium perks (no videos, every level, a charge a day)
+export function bundleParts(sku) {
+  const P = IAP[sku];
+  if (!P) return null;
+  const hens = P.collector ? HEN_SKIN_ORDER.filter((id) => id !== 'classic') : [P.hen, P.premium && 'golden'].filter(Boolean);
+  const eggs = P.collector ? SKIN_ORDER.filter((id) => id !== 'classic') : P.egg ? [P.egg] : [];
+  const chicks = P.collector ? Object.keys(CHICK_PRICES) : P.chicks ? CHICK_IDS.slice() : [];
+  return { coins: P.coins || 0, charges: P.charges || 0, boosts: P.boosts || 0, ally: P.ally || 0, hens, eggs, chicks, premium: !!P.premium, daily: P.daily || 0 };
+}
+// the coin worth of a bundle, priced from the tables: coins + boosts at their coin price + charges at CHARGE_ITEM.price
+// + tickets + hen outfits, egg skins and chicks at their coin prices.
+export function bundleValue(sku) {
+  const B = bundleParts(sku);
+  if (!B) return 0;
+  const boosts = B.boosts * BOOSTER_ORDER.reduce((a, id) => a + BOOSTERS[id].price, 0);
+  // the charge a day counts as one month of them (30); the other perks (no videos, levels open) count 0
+  return B.coins + boosts + (B.charges + B.daily * 30) * CHARGE_ITEM.price + B.ally * ITEMS.ally.price
+    + B.hens.reduce((a, id) => a + HEN_SKINS[id].price, 0) + B.eggs.reduce((a, id) => a + SKINS[id].price, 0) + B.chicks.reduce((a, id) => a + CHICK_PRICES[id], 0);
+}
+// how many times more than the same money buys in plain coins (at the smallest pack's rate), rounded DOWN: the card's
+// "6x value" is never a typed-in number and never overclaims. 0 for a product that is not a bundle.
+export const COIN_RATE = IAP.coins_250.coins / IAP.coins_250.usd;
+export function bundleTimes(sku) {
+  const P = IAP[sku];
+  if (!P || P.bank || COIN_PACKS.includes(sku)) return 0;
+  return Math.floor(bundleValue(sku) / (P.usd * COIN_RATE));
 }
 
 // Can this product be bought right now? (one-time products already owned, the bank before it is full enough)
@@ -485,11 +516,9 @@ export function iapAvailable(wallet, sku) {
   const P = IAP[sku], w = wallet || {};
   if (!P) return false;
   if (sku === 'starter_nest') return !w.starter;
-  if (sku === 'season_pack') return !w.season;
   if (sku === 'egg_bank') return (w.bank || 0) >= BANK_OPEN;
-  if (sku === 'all_chicks') return !w.noAds && CHICK_IDS.some((id) => !ownsChick(w, id));
-  if (sku === 'no_ads') return !w.noInter && !w.noAds;
   if (sku === 'eggscape_premium') return !w.noAds;
+  if (sku === 'eggscape_collector') return !w.collector;
   return true;
 }
 
@@ -500,6 +529,12 @@ export function packFor(short) {
 
 // the six level chicks added to what the player owns (a premium chick bought with coins is kept)
 const withChicks = (have) => [...CHICK_IDS, ...(have || []).filter((id) => !CHICK_IDS.includes(id))];
+// The Whole Coop: every hen outfit, egg skin and chick in the tables (sanitizeWallet runs it again on every load, so a
+// skin added in a later update is the collector's too)
+function collectAll(w) {
+  const add = (have, all) => [...have, ...all.filter((id) => !have.includes(id))];
+  return { collector: true, noAds: true, skins: add(w.skins, SKIN_ORDER), henSkins: add(w.henSkins, HEN_SKIN_ORDER.filter((id) => !HEN_SKINS[id].premium)), chicks: add(w.chicks, Object.keys(CHICK_PRICES)) };
+}
 
 function addBoosts(w, n) {
   for (const id of BOOSTER_ORDER) {
@@ -519,31 +554,112 @@ export function grantIap(wallet, sku, token, now = 0) {
   const tok = typeof token === 'string' ? token : '';
   const fresh = !!tok && !w.tokens.includes(tok);
   if (P.type === 'once') { // the entitlement
-    if (P.noInter) w.noInter = true;
     if (P.premium) w.noAds = true;
     if (P.chicks) w.chicks = withChicks(w.chicks);
     if (P.hen && !w.henSkins.includes(P.hen)) w.henSkins = [...w.henSkins, P.hen];
     if (sku === 'starter_nest') w.starter = true;
-    if (P.seasonHen) {
-      const hen = w.season || seasonHen(w);
-      w.season = hen;
-      if (!w.henSkins.includes(hen)) w.henSkins = [...w.henSkins, hen];
-    }
     if (P.egg && !w.skins.includes(P.egg)) w.skins = [...w.skins, P.egg];
+    if (P.collector) Object.assign(w, collectAll(w)); // every outfit, egg and chick, also those added in later updates
   }
   if (!fresh) return { wallet: w, granted: false };
   w.coins += P.coins || 0;
   if (P.charges) { const k = Math.min(P.charges, MAX_CHARGES - w.charges); w.charges += k; w.coins += (P.charges - k) * CHARGE_ITEM.price; }
   if (P.boosts) addBoosts(w, P.boosts);
   if (P.ally) w.tickets = { ...w.tickets, ally: Math.min(MAX_TICKETS, w.tickets.ally + P.ally) };
-  if (P.chicks && P.type === 'consumable') w.chicks = withChicks(w.chicks);
   if (P.bank) { w.coins += Math.max(BANK_OPEN, w.bank); w.bank = 0; } // the buy button only shows from BANK_OPEN coins up
   if (P.hen) w.henSkin = P.hen; // the new look is put on right away
-  if (P.seasonHen) w.henSkin = w.season;
-  if (P.premium) w.henSkin = 'golden';
+  if (P.premium && !P.collector) w.henSkin = 'golden';
   w.tokens = [...w.tokens, tok].slice(-MAX_TOKENS);
   w.payer = true;
   w.spend = Math.round((w.spend + P.usd) * 100) / 100;
   w.lastBuyAt = now || w.lastBuyAt;
   return { wallet: w, granted: true };
+}
+
+// ---------------------------------------------------------------- shop 2.0 (2026-11-20): kits, sets, free samples, bonus chest
+// Kits: bundles for coins on the Power-ups tab. Price = the parts at their coin prices, less the discount, rounded to
+// 10. All or nothing: a kit is "Full" while any of its parts is at MAX_OWNED (nothing is paid out as coins here).
+export const KITS = {
+  rescue: { id: 'rescue', name: 'Rescue Kit', parts: ['stone', 'nest', 'sponge'], off: 0.2 },
+  time: { id: 'time', name: 'Time Kit', parts: ['time', 'rewind', 'golden'], off: 0.2 },
+  toolbox: { id: 'toolbox', name: 'Full Toolbox', parts: BOOSTER_ORDER.slice(), off: 0.25 },
+};
+export const KIT_ORDER = ['rescue', 'time', 'toolbox'];
+const round10 = (n) => Math.round(n / 10) * 10;
+const partsCoins = (K) => K.parts.reduce((a, id) => a + BOOSTERS[id].price, 0);
+export const kitPrice = (id) => (KITS[id] ? round10(partsCoins(KITS[id]) * (1 - KITS[id].off)) : 0);
+export const kitSave = (id) => (KITS[id] ? partsCoins(KITS[id]) - kitPrice(id) : 0);
+export const kitFull = (wallet, id) => !!KITS[id] && KITS[id].parts.some((b) => ownedCount(wallet, b) >= MAX_OWNED);
+export function buyKit(wallet, id) {
+  const K = KITS[id];
+  if (!K || !wallet || kitFull(wallet, id) || wallet.coins < kitPrice(id)) return null;
+  const owned = { ...wallet.owned };
+  for (const b of K.parts) owned[b] = ownedCount(wallet, b) + 1;
+  return { ...wallet, coins: wallet.coins - kitPrice(id), owned };
+}
+
+// Sets: a hen outfit and the egg that goes with it, at the top of the Hens tab. Price = 75% of the parts still not
+// owned, rounded to 10; shown only while two or more parts are missing. Buying owns and equips both.
+export const SETS = {
+  winter: { id: 'winter', name: 'Winter', hen: 'santa', egg: 'candy' },
+  explorer: { id: 'explorer', name: 'Explorer', hen: 'pirate', egg: 'treasure' },
+  crystal: { id: 'crystal', name: 'Crystal', hen: 'miner', egg: 'galaxy' },
+  storm: { id: 'storm', name: 'Storm', hen: 'raincoat', egg: 'thunder' },
+};
+export const SET_ORDER = ['winter', 'explorer', 'crystal', 'storm'];
+export const SET_OFF = 0.25;
+function setMissing(wallet, id) {
+  const S = SETS[id];
+  if (!S) return null;
+  return { hen: ownsHenSkin(wallet, S.hen) ? 0 : HEN_SKINS[S.hen].price, egg: ownsSkin(wallet, S.egg) ? 0 : SKINS[S.egg].price, n: (ownsHenSkin(wallet, S.hen) ? 0 : 1) + (ownsSkin(wallet, S.egg) ? 0 : 1) };
+}
+export const setAvailable = (wallet, id) => { const M = setMissing(wallet, id); return !!M && M.n >= 2; };
+export const setPrice = (wallet, id) => { const M = setMissing(wallet, id); return M ? round10((M.hen + M.egg) * (1 - SET_OFF)) : 0; };
+export const setSave = (wallet, id) => { const M = setMissing(wallet, id); return M ? M.hen + M.egg - setPrice(wallet, id) : 0; };
+export function buySet(wallet, id) {
+  const S = SETS[id];
+  if (!S || !wallet || !setAvailable(wallet, id)) return null;
+  const w = sanitizeWallet(wallet), price = setPrice(w, id);
+  if (w.coins < price) return null;
+  w.coins -= price;
+  if (!w.henSkins.includes(S.hen)) w.henSkins = [...w.henSkins, S.hen];
+  if (!w.skins.includes(S.egg)) w.skins = [...w.skins, S.egg];
+  w.henSkin = S.hen; w.skin = S.egg;
+  return w;
+}
+
+// Free sample (the shop's FREE TODAY row): one booster the player never tried, free once a local day, no video. After
+// all seven were sampled the tile becomes "Free boost": today's booster (it rotates by date) for a short video, once a
+// day. -> { id, video (needs a video), done (claimed today) }
+const dayHash = (day) => { let h = 0; for (const c of String(day)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
+export function sampleFor(wallet, day) {
+  const w = wallet || {}, sampled = Array.isArray(w.sampled) ? w.sampled : [];
+  if (w.sampleDay === day && BOOSTERS[w.sampleId]) return { id: w.sampleId, video: false, done: true };
+  const fresh = BOOSTER_ORDER.filter((id) => !sampled.includes(id));
+  if (fresh.length) return { id: fresh.find((id) => !ownedCount(w, id)) || fresh[0], video: false, done: false };
+  return { id: BOOSTER_ORDER[dayHash(day) % BOOSTER_ORDER.length], video: true, done: false };
+}
+// claim today's sample (the game shows the video first when sampleFor says so). New wallet, or null if done today.
+// A booster already at MAX_OWNED is paid at its coin price, as chests do.
+export function claimSample(wallet, day) {
+  const S = sampleFor(wallet, day);
+  if (S.done) return null;
+  const w = sanitizeWallet(wallet);
+  if (ownedCount(w, S.id) < MAX_OWNED) w.owned = { ...w.owned, [S.id]: ownedCount(w, S.id) + 1 };
+  else w.coins += BOOSTERS[S.id].price;
+  if (!w.sampled.includes(S.id)) w.sampled = [...w.sampled, S.id];
+  w.sampleDay = day; w.sampleId = S.id;
+  return w;
+}
+
+// Bonus chest (the win card's one video when an ad break would have been due, ads.js bonusDue): 40 coins and one
+// booster picked by the level id, so the same level always shows the same chest
+export const BONUS_CHEST = { coins: 40 };
+export const bonusChest = (levelId) => ({ coins: BONUS_CHEST.coins, booster: BOOSTER_ORDER[Math.abs(Math.floor(levelId || 0)) % BOOSTER_ORDER.length] });
+export function openBonusChest(wallet, levelId) {
+  const R = bonusChest(levelId), w = sanitizeWallet(wallet);
+  w.coins += R.coins;
+  if (ownedCount(w, R.booster) < MAX_OWNED) w.owned = { ...w.owned, [R.booster]: ownedCount(w, R.booster) + 1 };
+  else w.coins += BOOSTERS[R.booster].price;
+  return w;
 }

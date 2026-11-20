@@ -1965,7 +1965,7 @@ export function createBackdrop(theme, seed = 1) {
     setParallax(ox = 0, oy = 0) { S.px = ox; S.py = oy; },
     resize(w, h, dpr = 1) {
       w = Math.max(1, w); h = Math.max(1, h);
-      dpr = clamp(dpr || 1, 1, 2); const M = Math.round(Math.max(w, h) * 0.03);
+      dpr = clamp(dpr || 1, 0.5, 2); const M = Math.round(Math.max(w, h) * 0.03);
       while (dpr > 0.75 && (w + 2 * M) * (h + 2 * M) * dpr * dpr > 2.8e6) dpr -= 0.25;
       Object.assign(S, { w, h, dpr, M, W: w + 2 * M, H: h + 2 * M, u: Math.min(w, h) / 100, port: w / h < 0.8, R0: Math.min(w, h) * 0.45 });
       S.cx = S.W / 2; S.cy = S.H / 2; S.cam = { x: 0, y: 0, zoom: 1 };
@@ -2012,14 +2012,21 @@ export function createBackdrop(theme, seed = 1) {
       S.cam = cam || S.cam;
       const L = S.layers;
       if (PERF.low) { // 2026-11-19 Low graphics: every layer (and the light shafts at their mean strength) flattened into ONE picture, one blit a frame, no parallax
-        if (!S.flat) {
-          const F = mkCanvas(L[0].cv.width, L[0].cv.height), c = F.getContext('2d', { alpha: false });
-          for (let i = 0; i < L.length; i++) { c.drawImage(L[i].cv, 0, 0, F.width, F.height); if (i === L.length - 2 && S.shaft) { c.globalAlpha = 0.72; c.drawImage(S.shaft.cv, 0, 0, F.width, F.height); c.globalAlpha = 1; } }
+        // 2026-11-20 (perf87): the picture is the visible screen only, in the canvas's own device pixels, copied 1:1 at
+        // (0, 0) (it was the bigger layer with its margins, scaled and off the pixel grid every frame); the still
+        // top-corner framing is baked in too when no animation is drawn between it and the layers
+        const m = ctx.getTransform(), d = m.a, pw = Math.round(S.w * d), ph = Math.round(S.h * d), withFT = !!FT && !art.front;
+        if (!S.flat || S.flat.width !== pw || S.flat.height !== ph || m.b || m.c || Math.abs(d - m.d) > 1e-6) {
+          if (m.b || m.c || Math.abs(d - m.d) > 1e-6 || !(pw > 0 && ph > 0)) { S.flat = null; S.tf(ctx, 0); for (const l of L) ctx.drawImage(l.cv, 0, 0, S.W, S.H); ctx.restore(); if (art.front) art.front(ctx, t, S); if (FT) { const M2 = 2 * S.M; ctx.drawImage(FT[0].cv, -M2, -M2, FT[0].w, FT[0].h); ctx.drawImage(FT[1].cv, S.w - S.fw + M2, -M2, FT[1].w, FT[1].h); } return; }
+          const F = S.flat && S.flat.width === pw && S.flat.height === ph ? S.flat : mkCanvas(pw, ph), c = F.getContext('2d', { alpha: false });
+          c.setTransform(d, 0, 0, d, 0, 0);
+          for (let i = 0; i < L.length; i++) { c.drawImage(L[i].cv, -S.M, -S.M, S.W, S.H); if (i === L.length - 2 && S.shaft) { c.globalAlpha = 0.72; c.drawImage(S.shaft.cv, -S.M, -S.M, S.W, S.H); c.globalAlpha = 1; } }
+          if (withFT) { const M2 = 2 * S.M; c.drawImage(FT[0].cv, -M2, -M2, FT[0].w, FT[0].h); c.drawImage(FT[1].cv, S.w - S.fw + M2, -M2, FT[1].w, FT[1].h); }
           S.flat = F;
         }
-        S.tf(ctx, 0); ctx.drawImage(S.flat, 0, 0, S.W, S.H); ctx.restore();
+        ctx.save(); ctx.setTransform(1, 0, 0, 1, Math.round(m.e), Math.round(m.f)); ctx.drawImage(S.flat, 0, 0); ctx.restore();
         if (art.front) art.front(ctx, t, S);
-        if (FT) { const M2 = 2 * S.M; ctx.drawImage(FT[0].cv, -M2, -M2, FT[0].w, FT[0].h); ctx.drawImage(FT[1].cv, S.w - S.fw + M2, -M2, FT[1].w, FT[1].h); }
+        if (FT && !withFT) { const M2 = 2 * S.M; ctx.drawImage(FT[0].cv, -M2, -M2, FT[0].w, FT[0].h); ctx.drawImage(FT[1].cv, S.w - S.fw + M2, -M2, FT[1].w, FT[1].h); }
         return;
       }
       for (let i = 0; i < L.length; i++) {

@@ -2,16 +2,20 @@
 // Drawing only: every text and widget goes through ui.text / ui.button / ui.panel / ui.record so
 // the game's overlap checker can verify the layout. Input is routed by the game from button ids:
 //   store:  'back', 'home', 'store:coins' (jump to the coin packs), 'tab:deals|boosters|hens|skins',
-//           'iap:<sku>' / 'feat:<sku>' (real money), 'buy:<boosterId>', 'item:<ally|goldhour|skip>', 'chick:<strikeId>',
-//           'charge:chick|chick3|chick10', 'skin:<skinId>' / 'hen:<henSkinId>' (buy or equip), 'ad:coins'
+//           'iap:<sku>' (real money), 'buy:<boosterId>', 'item:<ally|goldhour|skip>', 'chick:<strikeId>',
+//           'charge:chick|chick3|chick10', 'skin:<skinId>' / 'hen:<henSkinId>' (buy or equip), 'ad:coins',
+//           'kit:<kitId>' / 'hset:<setId>' (coin bundles), 'home:chest' (daily gift), 'sample' (free sample / free boost),
+//           'tile:<key>' (a tile or a bundle's art: the detail sheet)
 //   A coin button the player cannot afford stays tappable (off face): the game answers with its "Get more" sheet.
 //   picker: 'boost:<boosterId>', 'shop'
+import { glideStep, snapPx } from '../scroll.js';
 import { drawEggSkinArt } from '../render/eggskins.js';
-import { ICON, C, tint } from './ui.js';
+import { ICON, C, tint, drawAdBadge } from './ui.js';
 import { themeBack } from './theme.js';
 import { BOOSTERS, BOOSTER_ORDER, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin,
   CHARGE_PACKS, MAX_CHARGES, HEN_SKINS, HEN_SKIN_ORDER, ownsHenSkin, ITEMS, ITEM_ORDER, itemCount, CHICK_PRICES, ownsChick,
-  IAP, COIN_PACKS, iapAvailable, usdHint, BANK_OPEN, BANK_CAP } from '../economy.js';
+  IAP, COIN_PACKS, iapAvailable, usdHint, BANK_OPEN, BANK_CAP, BUNDLES, bundleParts, bundleTimes, CHICK_IDS,
+  KITS, KIT_ORDER, kitPrice, kitSave, kitFull, SETS, SET_ORDER, setAvailable, setPrice, setSave, sampleFor } from '../economy.js';
 import { drawStrikeToken, STRIKES } from '../render/strike.js';
 import { drawHenPose, henPose, setHenSkin } from '../render/hen.js';
 import { skinId } from '../render/skins.js';
@@ -532,7 +536,7 @@ function skinItem(id, st) {
     btn = { id: 'skin:' + id, label: String(k.price), coin: true, ...(ok ? GREEN : GREY) };
   }
   return {
-    key: 'skin:' + id, name: k.name, line: k.line, owned: owns,
+    key: 'skin:' + id, name: k.name, line: k.line, owned: owns, trying: !owns && st.trial && st.trial.skin === id,
     flash: flashOf(st, 'skin:' + id),
     icon: (ctx, cx, cy, it, t, bounce) => drawSkinPreview(ctx, id, cx, cy + it * 0.02, it * 0.8 * bounce, t),
     btn, sub: null,
@@ -582,7 +586,7 @@ function chickItem(S, st) {
 }
 
 // the hen in a skin, standing, for the shop card (the global skin is put back right after)
-function drawHenSkinPreview(ctx, id, cx, cy, h, t) {
+export function drawHenSkinPreview(ctx, id, cx, cy, h, t) {
   const was = skinId();
   setHenSkin(id);
   try { drawHenPose(ctx, henPose({}), cx, cy, h, { face: 1, tt: t, shadow: false, calm: true }); } finally { setHenSkin(was); }
@@ -597,7 +601,7 @@ function henItem(id, st) {
   else if (k.premium) btn = { id: 'iap:' + PREMIUM, label: 'Unlock all', size: 16, kind: 'gold' };
   else { const ok = w.coins >= k.price; btn = { id: 'hen:' + id, label: String(k.price), coin: true, ...(ok ? GREEN : GREY) }; }
   return {
-    key: 'hen:' + id, name: k.name, line: k.line, owned: owns,
+    key: 'hen:' + id, name: k.name, line: k.line, owned: owns, trying: !owns && st.trial && st.trial.hen === id,
     flash: flashOf(st, 'hen:' + id),
     icon: (ctx, cx, cy, it, t, bounce) => drawHenSkinPreview(ctx, id, cx, cy + it * 0.04, it * 0.84 * bounce, t),
     btn, sub: null,
@@ -609,7 +613,7 @@ const PREMIUM = 'eggscape_premium';
 function iapItem(sku, st, o = {}) {
   const P = IAP[sku], can = iapAvailable(st.wallet, sku), id = (o.pre || 'iap:') + sku;
   return {
-    key: (o.pre || 'iap:') + sku, name: o.name || P.name, short: sku === 'all_chicks' ? 'All chicks' : null, line: o.line || P.line, owned: !can, big: !!o.big, tag: o.tag, tall: sku === PREMIUM,
+    key: (o.pre || 'iap:') + sku, name: o.name || P.name, line: o.line || P.line, owned: !can, big: !!o.big, tag: o.tag, tall: sku === PREMIUM,
     flash: flashOf(st, 'iap:' + sku),
     icon: (ctx, cx, cy, it, t, bounce) => drawIapArt(ctx, sku, cx, cy, it * bounce, t, st.wallet),
     btn: can ? { id, label: st.price(sku), kind: sku === PREMIUM || o.big ? 'gold' : 'primary', size: o.big ? 19 : 17 } : OWNED(id),
@@ -621,7 +625,7 @@ function bankItem(st) {
   const b = st.wallet.bank || 0, open = b >= BANK_OPEN;
   return {
     key: 'bank', name: 'Golden Egg Bank', owned: open, flash: flashOf(st, 'iap:egg_bank'),
-    line: open ? `${fmtNum(b)} coins inside! Crack it open to take them all.` : `${fmtNum(b)} coins inside. Every win drops more in.`,
+    line: open ? `${fmtNum(b)} coins inside!` : 'Wins fill it up.',
     bar: { p: Math.min(1, b / BANK_CAP), mark: BANK_OPEN / BANK_CAP },
     icon: (ctx, cx, cy, it, t, bounce) => drawGlassEgg(ctx, cx, cy, it * 0.8 * bounce, b / BANK_CAP, t),
     btn: open ? { id: 'iap:egg_bank', label: 'Crack it open', kind: 'gold', size: 15 } : { id: 'bank:wait', label: 'Filling', kind: 'off', disabled: true, size: 15 },
@@ -720,26 +724,274 @@ function drawIapArt(ctx, sku, cx, cy, it, t, wallet) {
   const P = IAP[sku];
   if (COIN_PACKS.includes(sku)) return coinPile(ctx, cx, cy, it, COIN_PACKS.indexOf(sku) + 2, t);
   if (sku === 'egg_bank') return drawGlassEgg(ctx, cx, cy, it * 0.8, ((wallet && wallet.bank) || 0) / BANK_CAP, t);
-  if (sku === PREMIUM) { drawHenSkinPreview(ctx, 'golden', cx, cy + it * 0.04, it * 0.84, t); sparkle(ctx, cx + it * 0.3, cy - it * 0.3, it * 0.08, 0.6 + 0.4 * Math.sin(t * 3)); return; }
+  if (sku === PREMIUM) { // the Golden Hen, her golden egg, and the power chicks at her feet
+    drawStrikeToken(ctx, 'thunder', cx - it * 0.33, cy + it * 0.22, it * 0.13, t, true);
+    drawHenSkinPreview(ctx, 'golden', cx - it * 0.02, cy + it * 0.02, it * 0.8, t);
+    drawSkinPreview(ctx, 'golden', cx + it * 0.3, cy + it * 0.24, it * 0.3, t);
+    sparkle(ctx, cx + it * 0.3, cy - it * 0.3, it * 0.08, 0.6 + 0.4 * Math.sin(t * 3));
+    return;
+  }
+  if (sku === 'eggscape_collector') { // the whole coop: three hens in their best outfits and a row of eggs
+    drawHenSkinPreview(ctx, 'pirate', cx - it * 0.24, cy - it * 0.02, it * 0.56, t);
+    drawHenSkinPreview(ctx, 'santa', cx + it * 0.24, cy - it * 0.02, it * 0.56, t + 1);
+    drawHenSkinPreview(ctx, 'royal', cx, cy - it * 0.06, it * 0.66, t + 2);
+    ['galaxy', 'golden', 'lava', 'pearl'].forEach((e, i) => drawSkinPreview(ctx, e, cx + (i - 1.5) * it * 0.17, cy + it * 0.32, it * 0.2, t));
+    sparkle(ctx, cx + it * 0.36, cy - it * 0.32, it * 0.07, 0.6 + 0.4 * Math.sin(t * 3));
+    return;
+  }
   if (sku === 'starter_nest') { drawHenSkinPreview(ctx, P.hen, cx - it * 0.08, cy + it * 0.02, it * 0.74, t); coinPile(ctx, cx + it * 0.26, cy + it * 0.24, it * 0.6, 3, t); return; }
-  if (sku === 'season_pack') { drawHenSkinPreview(ctx, (wallet && wallet.season) || 'skier', cx - it * 0.1, cy + it * 0.02, it * 0.74, t); drawSkinPreview(ctx, P.egg, cx + it * 0.28, cy + it * 0.2, it * 0.36, t); return; }
-  if (sku === 'no_ads') {
-    ctx.save(); ctx.translate(cx, cy);
-    const w = it * 0.56, h = it * 0.4;
-    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-w / 2, -h / 2, w, h, it * 0.06) : ctx.rect(-w / 2, -h / 2, w, h);
-    ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = it * 0.03; ctx.strokeStyle = '#6b3f17'; ctx.stroke();
-    ctx.fillStyle = '#6b3f17'; ctx.font = `700 ${Math.round(it * 0.22)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('AD', 0, it * 0.01);
-    ctx.strokeStyle = '#e8402e'; ctx.lineWidth = it * 0.07; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.arc(0, 0, it * 0.36, 0, Math.PI * 2); ctx.moveTo(-it * 0.25, -it * 0.25); ctx.lineTo(it * 0.25, it * 0.25); ctx.stroke();
+  // the Helper Bundle: power chicks over a pile of coins, and an Ally Ticket
+  coinPile(ctx, cx, cy + it * 0.16, it * 0.8, 3, t);
+  for (const [id, dx, dy] of [['freeze', -0.18, -0.12], ['thunder', 0.18, -0.12]]) drawStrikeToken(ctx, id, cx + dx * it, cy + dy * it, it * 0.19, t, true);
+  drawItemArt(ctx, 'ally', cx + it * 0.26, cy + it * 0.28, it * 0.42, t);
+}
+
+// ---------------------------------------------------------------- shop 2.0 (2026-11-20): bundles as pictures
+// mykee: "less text, show don't tell", "sell bundles, not single items", "the user must not feel bad in the shop".
+// A bundle card is its art, a strip of what is inside (icons with count badges, all counted from economy.js
+// bundleParts), a value badge computed from the price tables (bundleTimes: never typed in, never a fake "was" price)
+// and one price button. The art opens the detail sheet with the whole list in words.
+
+// a bundle's content strip: [{ art, n }] (n: the count badge, '' for none)
+function partsOf(sku) {
+  const B = bundleParts(sku);
+  if (!B) return [];
+  const out = [], hens = B.hens.length > 2 ? [{ art: 'hens', n: 'x' + B.hens.length }] : B.hens.map((h) => ({ art: 'hen:' + h, n: '' }));
+  const eggs = B.eggs.length > 1 ? [{ art: 'eggs', n: 'x' + B.eggs.length }] : B.eggs.map((e) => ({ art: 'egg:' + e, n: '' }));
+  const chicks = B.chicks.length ? [{ art: B.chicks.length > CHICK_IDS.length ? 'chicks9' : 'chicks', n: 'x' + B.chicks.length }] : [];
+  const perks = B.premium ? [{ art: 'novideo', n: '' }, { art: 'levels', n: 'All' }] : [];
+  const coins = B.coins ? [{ art: 'coins', n: fmtNum(B.coins) }] : [];
+  if (B.hens.length > 2) out.push(...hens, ...eggs, ...chicks, ...coins, ...perks); // the coop: the wardrobe first
+  else if (B.premium) out.push(...perks, ...chicks, ...hens, ...eggs, ...coins);
+  else out.push(...coins, ...hens, ...eggs, ...chicks);
+  if (B.charges) out.push({ art: 'charge', n: 'x' + B.charges });
+  if (B.boosts) out.push({ art: 'boosts', n: 'x' + B.boosts });
+  if (B.ally) out.push({ art: 'ally', n: 'x' + B.ally });
+  if (B.daily) out.push({ art: 'daily', n: B.daily + '/day' });
+  return out;
+}
+
+// one content icon, centred in a cell of size c
+function drawPart(ctx, art, cx, cy, c, t) {
+  if (art === 'coins') return coinPile(ctx, cx, cy, c * 0.95, 3, t);
+  if (art === 'charge') return drawStrikeToken(ctx, 'freeze', cx, cy, c * 0.34, t, true);
+  if (art === 'ally') return drawItemArt(ctx, 'ally', cx, cy, c * 1.05, t);
+  if (art === 'boosts') { drawBoosterIcon(ctx, 'stone', cx - c * 0.2, cy + c * 0.08, c * 0.5, t); drawBoosterIcon(ctx, 'time', cx + c * 0.2, cy + c * 0.1, c * 0.5, t); drawBoosterIcon(ctx, 'golden', cx, cy - c * 0.1, c * 0.52, t); return; }
+  if (art === 'chicks' || art === 'chicks9') {
+    const ids = art === 'chicks' ? ['bomb', 'thunder', 'freeze'] : ['tock', 'bubble', 'phoenix'];
+    drawStrikeToken(ctx, ids[0], cx - c * 0.2, cy + c * 0.1, c * 0.2, t, true); drawStrikeToken(ctx, ids[1], cx + c * 0.2, cy + c * 0.1, c * 0.2, t, true); drawStrikeToken(ctx, ids[2], cx, cy - c * 0.12, c * 0.22, t, true);
+    return;
+  }
+  if (art.startsWith('hen:')) return drawHenSkinPreview(ctx, art.slice(4), cx, cy + c * 0.03, c * 0.9, t);
+  if (art === 'hens') { drawHenSkinPreview(ctx, 'pirate', cx - c * 0.2, cy + c * 0.02, c * 0.66, t); drawHenSkinPreview(ctx, 'royal', cx + c * 0.12, cy + c * 0.04, c * 0.72, t + 1); return; }
+  if (art.startsWith('egg:')) return drawSkinPreview(ctx, art.slice(4), cx, cy, c * 0.72, t);
+  if (art === 'eggs') { drawSkinPreview(ctx, 'galaxy', cx - c * 0.18, cy + c * 0.04, c * 0.54, t); drawSkinPreview(ctx, 'lava', cx + c * 0.18, cy + c * 0.04, c * 0.54, t); drawSkinPreview(ctx, 'golden', cx, cy - c * 0.06, c * 0.6, t); return; }
+  if (art === 'novideo') { // a video tile struck through: the bonuses come without one
+    const w = c * 0.62, h = w * 0.72;
+    drawAdBadge(ctx, cx - w / 2, cy, w, h);
+    ctx.save(); ctx.strokeStyle = '#e8402e'; ctx.lineWidth = c * 0.075; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(cx, cy, c * 0.4, 0, Math.PI * 2); ctx.moveTo(cx - c * 0.28, cy - c * 0.28); ctx.lineTo(cx + c * 0.28, cy + c * 0.28); ctx.stroke(); ctx.restore();
+    return;
+  }
+  if (art === 'levels') { // an open padlock: every level open
+    ctx.save(); ctx.translate(cx, cy + c * 0.08);
+    ctx.lineWidth = c * 0.09; ctx.strokeStyle = '#6a727a'; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(c * 0.14, -c * 0.2, c * 0.15, Math.PI, 0); ctx.lineTo(c * 0.29, -c * 0.08); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-c * 0.3, -c * 0.14, c * 0.46, c * 0.38, c * 0.07) : ctx.rect(-c * 0.3, -c * 0.14, c * 0.46, c * 0.38);
+    ctx.fillStyle = '#ffc83a'; ctx.fill(); ctx.lineWidth = c * 0.045; ctx.strokeStyle = '#8a5200'; ctx.stroke();
+    ctx.fillStyle = '#8a5200'; ctx.beginPath(); ctx.arc(-c * 0.07, c * 0.03, c * 0.05, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
     return;
   }
-  // bundles and the chick pack: power chick tokens over a pile of coins
-  const ids = sku === 'all_chicks' ? [['thunder', -0.22, 0.14], ['bomb', 0.22, 0.14], ['freeze', 0, -0.14]]
-    : sku === 'bundle_flock' ? [['glue', -0.25, -0.12], ['tornado', 0.25, -0.12], ['freeze', 0, -0.2]] : [['freeze', -0.18, -0.12], ['thunder', 0.18, -0.12]];
-  if (sku !== 'all_chicks') coinPile(ctx, cx, cy + it * 0.16, it * 0.8, sku === 'bundle_flock' ? 5 : 3, t);
-  for (const [id, dx, dy] of ids) drawStrikeToken(ctx, id, cx + dx * it, cy + dy * it, it * (sku === 'all_chicks' ? 0.24 : 0.19), t, true);
-  if (sku === 'bundle_helper') drawItemArt(ctx, 'ally', cx + it * 0.26, cy + it * 0.28, it * 0.42, t);
+  if (art === 'daily') { // a calendar page with a Chick Charge: one free every day
+    ctx.save();
+    const w = c * 0.62, h = c * 0.6, x = cx - w / 2 - c * 0.08, y = cy - h / 2 - c * 0.04;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, c * 0.08) : ctx.rect(x, y, w, h); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.lineWidth = c * 0.04; ctx.strokeStyle = '#7a5630'; ctx.stroke();
+    ctx.fillStyle = '#e8402e'; ctx.fillRect(x + c * 0.02, y + c * 0.02, w - c * 0.04, h * 0.26);
+    ctx.fillStyle = '#c9b89a'; for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) ctx.fillRect(x + w * (0.16 + i * 0.26), y + h * (0.44 + j * 0.24), w * 0.14, h * 0.12);
+    ctx.restore();
+    drawStrikeToken(ctx, 'freeze', cx + c * 0.2, cy + c * 0.18, c * 0.2, t, true);
+  }
+}
+
+// a count badge under an icon: dark pill, white numerals, centred on (cx, y)
+function countBadge(ui, ctx, str, cx, y, s, tag, group, maxW = 99 * s) {
+  const sz = 11.5 * s, w = Math.min(maxW, Math.max(sz * 1.6, ui.measure(str, sz) + 9 * s)), h = sz * 1.4;
+  ui.roundRect(cx - w / 2, y - h / 2, w, h, h / 2); ctx.fillStyle = '#5b3413'; ctx.fill();
+  ctx.lineWidth = 1.2 * s; ctx.strokeStyle = 'rgba(255,236,200,0.85)'; ctx.stroke();
+  ui.text(str, cx, y + 0.5 * s, { size: sz, align: 'center', color: '#fff', maxW: w - 6 * s, tag, group }); // a narrow cell shrinks the numerals, never lets them touch the next badge
+}
+
+// the strip of what a bundle holds: one or two rows of icon cells, each with its count. Returns the height used.
+function stripLayout(n, w, maxH, s) {
+  const g = 5 * s, badge = 8 * s;
+  for (const rows of [1, 2]) {
+    const per = Math.ceil(n / rows), c = Math.min(46 * s, (w - (per - 1) * g) / per, (maxH - rows * badge - (rows - 1) * g) / rows);
+    if (c >= 30 * s || rows === 2) return { rows, per, c, g, h: rows * (c + badge) + (rows - 1) * g };
+  }
+}
+function drawStrip(ui, ctx, parts, x, y, w, maxH, s, t, key) {
+  const L = stripLayout(parts.length, w, maxH, s), tag = 'store:strip:' + key;
+  ui.record({ x, y, w, h: L.h }, tag);
+  parts.forEach((P, i) => {
+    const r = Math.floor(i / L.per), inRow = Math.min(L.per, parts.length - r * L.per), k = i - r * L.per;
+    const x0 = x + (w - (inRow * L.c + (inRow - 1) * L.g)) / 2 + k * (L.c + L.g), y0 = y + r * (L.c + 8 * s + L.g);
+    ui.roundRect(x0, y0, L.c, L.c, 10 * s); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fill();
+    ctx.lineWidth = 1.2 * s; ctx.strokeStyle = 'rgba(122,80,40,0.28)'; ctx.stroke();
+    drawPart(ctx, P.art, x0 + L.c / 2, y0 + L.c / 2 - (P.n ? 2 * s : 0), L.c * 0.86, t);
+    if (P.n) countBadge(ui, ctx, P.n, x0 + L.c / 2, y0 + L.c + 1 * s, s, `${tag}:${i}`, tag, L.c + L.g - 2 * s);
+  });
+  return L.h;
+}
+
+// the value badge: a gold starburst with the computed "6x" over "value"
+function valueBadge(ui, ctx, times, cx, cy, r, s, t, tag, group) {
+  if (!(times >= 2)) return;
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(ui.calm ? 0 : Math.sin(t * 1.3) * 0.05);
+  ctx.beginPath();
+  for (let i = 0; i < 24; i++) { const a = (i / 24) * Math.PI * 2, rr = i % 2 ? r * 0.84 : r; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  ctx.closePath(); ctx.fillStyle = '#e8402e'; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = '#7a1a0a'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.72, 0, Math.PI * 2); ctx.lineWidth = 1.2 * s; ctx.strokeStyle = 'rgba(255,230,200,0.6)'; ctx.stroke();
+  ctx.restore();
+  ui.text(times + 'x', cx, cy - r * 0.14, { size: r * 0.66, align: 'center', color: '#fff', stroke: '#7a1a0a', strokeW: 3 * s, maxW: r * 1.5, tag, group });
+  ui.text('value', cx, cy + r * 0.4, { size: r * 0.34, align: 'center', color: '#ffe9b0', maxW: r * 1.4, tag: tag + ':l', group });
+}
+
+// a tall card's art across its banner (bw x bh): the bundle's cast spread out over the width
+function drawBanner(ctx, sku, cx, cy, bw, bh, t, wallet, k = 1) {
+  const sp = Math.min(bw * 0.2, bh * 0.66), H = bh * 0.86 * k;
+  if (sku === PREMIUM) { // the Golden Hen with her golden egg, the power chicks at her feet
+    drawStrikeToken(ctx, 'thunder', cx - sp * 1.25, cy + bh * 0.2, bh * 0.12 * k, t, true);
+    drawStrikeToken(ctx, 'freeze', cx - sp * 0.85, cy + bh * 0.28, bh * 0.12 * k, t + 1, true);
+    drawStrikeToken(ctx, 'bomb', cx + sp * 1.3, cy + bh * 0.26, bh * 0.12 * k, t + 2, true);
+    drawHenSkinPreview(ctx, 'golden', cx - sp * 0.1, cy + bh * 0.03, H, t);
+    drawSkinPreview(ctx, 'golden', cx + sp * 0.62, cy + bh * 0.2, bh * 0.38 * k, t);
+    sparkle(ctx, cx + sp * 0.9, cy - bh * 0.3, bh * 0.07, 0.6 + 0.4 * Math.sin(t * 3));
+    sparkle(ctx, cx - sp * 0.95, cy - bh * 0.2, bh * 0.05, 0.6 + 0.4 * Math.sin(t * 3 + 2));
+    return;
+  }
+  if (sku === 'eggscape_collector') { // three hens in their best outfits, a row of eggs in front
+    const hx = cx - bw * 0.04; // a little left: the value badge has the top right corner
+    for (const [id, dx, sc] of [['pirate', -1.05, 0.76], ['santa', 1.05, 0.76], ['royal', 0, 0.9]]) drawHenSkinPreview(ctx, id, hx + dx * sp, cy - bh * 0.04 + (1 - sc) * bh * 0.3, H * sc, t + dx);
+    ['galaxy', 'thunder', 'golden', 'lava', 'pearl', 'robot'].forEach((e, i) => drawSkinPreview(ctx, e, cx + (i - 2.5) * Math.min(bh * 0.24, bw * 0.12), cy + bh * 0.33, bh * 0.24 * k, t));
+    return;
+  }
+  drawIapArt(ctx, sku, cx, cy + bh * 0.02, Math.min(bh * 1.1, bw * 0.62) * k, t, wallet);
+}
+
+// a bundle as a tall card: the art across the top (tag pill left, value badge right), the name, the strip, the price.
+// hero: the gold frame and the bigger art (Unlock Everything)
+function drawBundleTall(ui, ctx, sku, x, y, w, h, s, t, st, o = {}) {
+  const P = IAP[sku], lip = 4 * s, fh = h - lip, p = 10 * s, fl = flashOf(st, 'iap:' + sku), fa = fl < 0.9 ? 1 - fl / 0.9 : 0;
+  const gold = o.hero ? { wa: '#fff1a8', wb: '#ffc83a', wc: '#c98a10', glow: '#ffe27a', glowA: Math.max(fa, ui.calm ? 0 : 0.25 + 0.15 * Math.sin(t * 2.2)) } : { glow: '#ffe27a', glowA: fa };
+  ui.frame(x, y, w, fh, { s, r: 18 * s, fw: (o.hero ? 6 : 4.5) * s, lip, record: true, tag: 'panel:card:' + sku, ...gold });
+  const bw = w - 2 * p, bh = o.artH, bx = x + p, by = y + p;
+  ui.well(bx, by, bw, bh, { s, r: 13 * s, a: o.hero ? '#ffe9a8' : '#cfe9fb', b: o.hero ? '#fff7d8' : '#eaf6ff', shade: 'rgba(20,70,130,0.25)', border: 'rgba(60,90,130,0.5)' });
+  ui.record({ x: bx, y: by, w: bw, h: bh }, 'store:icon:' + sku);
+  ui.buttons.push({ id: 'tile:iap:' + sku, x: bx, y: by, w: bw, h: bh }); // the art: what is inside, in words
+  if (o.hero && !ui.calm) { // soft rays behind the hero's art
+    ctx.save(); ui.roundRect(bx, by, bw, bh, 13 * s); ctx.clip(); ctx.translate(bx + bw / 2, by + bh * 0.62); ctx.rotate(t * 0.15);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath();
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; ctx.moveTo(0, 0); ctx.arc(0, 0, bw, a, a + 0.22); }
+    ctx.fill(); ctx.restore();
+  }
+  const bounce = fl < 0.6 ? 1 + 0.18 * Math.sin((fl / 0.6) * Math.PI) : 1;
+  drawBanner(ctx, sku, bx + bw / 2, by + bh / 2, bw, bh, t, st.wallet, bounce);
+  if (o.tag) pill(ui, ctx, o.tag, bx + 6 * s, by + 6 * s, 12.5 * s, '#e8402e', 'store:tag:' + sku, s, 'store:icon:' + sku);
+  const vr = Math.min(30 * s, bh * 0.3);
+  valueBadge(ui, ctx, bundleTimes(sku), bx + bw - vr - 5 * s, by + vr + 5 * s, vr, s, t, 'store:value:' + sku, 'store:icon:' + sku);
+  let cy = by + bh + 6 * s;
+  const nameS = (o.hero ? 21 : 18) * s;
+  ui.text(P.name, x + w / 2, cy + nameS * 0.6, { size: nameS, align: 'center', maxW: bw, color: C.ink, tag: 'store:name:' + sku });
+  cy += nameS * 1.25;
+  const btnH = (o.hero ? 50 : 44) * s, room = y + fh - p - btnH - 8 * s - cy, L = stripLayout(partsOf(sku).length, bw, room, s);
+  drawStrip(ui, ctx, partsOf(sku), bx, cy + Math.max(0, (room - L.h) / 2), bw, room, s, t, sku); // a shorter strip sits centred (side by side the cards share one height)
+  ui.button('iap:' + sku, st.price(sku), bx + bw * 0.08, y + fh - p - btnH, bw * 0.84, btnH, { kind: o.hero ? 'gold' : 'primary', size: (o.hero ? 22 : 19) * s, shimmer: !!o.hero });
+}
+// the height a tall bundle card needs for its art height, strip and button at width w
+function bundleTallH(sku, w, artH, s, hero) {
+  const L = stripLayout(partsOf(sku).length, w - 20 * s, 200 * s, s);
+  return 10 * s + artH + 6 * s + (hero ? 21 : 18) * s * 1.25 + L.h + 8 * s + (hero ? 50 : 44) * s + 10 * s + 4 * s;
+}
+
+// a bundle as a wide card: the art square on the left, the name, the strip and the price on the right
+function drawBundleWide(ui, ctx, sku, x, y, w, h, s, t, st, o = {}) {
+  const P = IAP[sku], lip = 4 * s, fh = h - lip, p = 10 * s, fl = flashOf(st, 'iap:' + sku), fa = fl < 0.9 ? 1 - fl / 0.9 : 0;
+  ui.frame(x, y, w, fh, { s, r: 16 * s, fw: 4.5 * s, lip, glow: '#ffe27a', glowA: fa, record: true, tag: 'panel:card:' + sku });
+  const a = fh - 2 * p, ax = x + p, ay = y + p;
+  ui.well(ax, ay, a, a, { s, r: 12 * s, a: '#cfe9fb', b: '#eaf6ff', shade: 'rgba(20,70,130,0.28)', border: 'rgba(60,90,130,0.55)' });
+  ui.record({ x: ax, y: ay, w: a, h: a }, 'store:icon:' + sku);
+  ui.buttons.push({ id: 'tile:iap:' + sku, x: ax, y: ay, w: a, h: a });
+  const bounce = fl < 0.6 ? 1 + 0.18 * Math.sin((fl / 0.6) * Math.PI) : 1;
+  drawIapArt(ctx, sku, ax + a / 2, ay + a / 2, a * 0.98 * bounce, t, st.wallet);
+  const vr = Math.min(24 * s, a * 0.2);
+  valueBadge(ui, ctx, bundleTimes(sku), ax + vr + 2 * s, ay + vr + 2 * s, vr, s, t, 'store:value:' + sku, 'store:icon:' + sku);
+  if (o.tag) pill(ui, ctx, o.tag, ax + 4 * s, ay + a - 22 * s, 11.5 * s, '#2f8f2a', 'store:tag:' + sku, s, 'store:icon:' + sku);
+  const tx = ax + a + 10 * s, tw = x + w - p - 2 * s - tx, btnH = 42 * s, nameS = 17.5 * s;
+  ui.text(P.name, tx + tw / 2, ay + nameS * 0.6, { size: nameS, align: 'center', maxW: tw, color: C.ink, tag: 'store:name:' + sku });
+  const sy = ay + nameS * 1.3, room = ay + a - btnH - 6 * s - sy;
+  const L = stripLayout(partsOf(sku).length, tw, room, s);
+  drawStrip(ui, ctx, partsOf(sku), tx, sy + Math.max(0, (room - L.h) / 2), tw, room, s, t, sku);
+  ui.button('iap:' + sku, st.price(sku), tx, ay + a - btnH, tw, btnH, { kind: 'primary', size: 19 * s });
+}
+
+// a one-time bundle the player owns: a slim "Yours" row at the end of the section
+function drawOwnedRow(ui, ctx, sku, x, y, w, h, s, t, st) {
+  ui.frame(x, y, w, h - 3 * s, { s, r: 14 * s, fw: 3.5 * s, lip: 3 * s, record: true, tag: 'panel:card:' + sku, ca: '#f2f8ea', cb: '#e2efd2' });
+  const a = h - 3 * s - 10 * s;
+  drawIapArt(ctx, sku, x + 8 * s + a / 2, y + 5 * s + a / 2, a, t, st.wallet);
+  ui.record({ x: x + 8 * s, y: y + 5 * s, w: a, h: a }, 'store:icon:' + sku);
+  const cy = y + (h - 3 * s) / 2, yw = 86 * s;
+  ui.text(IAP[sku].name, x + a + 18 * s, cy, { size: 16 * s, maxW: w - a - yw - 30 * s, color: C.ink, tag: 'store:name:' + sku });
+  ui.button('owned:' + sku, 'Yours', x + w - yw - 8 * s, cy - 15 * s, yw, 30 * s, { kind: 'tertiary', disabled: true, keepFace: true, dim: 1, icon: ICON.check, size: 14 * s });
+}
+
+// FREE TODAY: the daily gift, a free sample (or a free boost for a video), free coins for a video. Tiles that act on a tap.
+function freeTiles(st, state) {
+  const w = st.wallet, day = state.day || '', S = sampleFor(w, day), cd = state.adCooldownLeft || 0, prem = !!w.noAds, adOff = !prem && (cd > 0 || !state.adReady);
+  // Unlock Everything: the "video" tiles pay at once (ads.rewarded), so they carry no film badge
+  const DONE = { label: 'Tomorrow', keepFace: true, disabled: true };
+  return [
+    { key: 'free:daily', name: 'Daily gift', hue: '#ffc74a', tap: 'home:chest', flash: flashOf(st, 'free:daily'),
+      icon: (c, cx, cy, it, tt, b) => drawChest(c, cx, cy + it * 0.08, it * 0.72 * b, tt, state.dailyOpen ? 'open' : 'ready'),
+      btn: state.dailyOpen ? DONE : { label: 'Open', kind: 'primary' } },
+    { key: 'free:sample', name: S.video ? 'Free boost' : 'Free sample', hue: BOOST_HUE[S.id] || '#9be37a', tap: 'sample', flash: flashOf(st, 'free:sample'),
+      icon: (c, cx, cy, it, tt, b) => drawBoosterIcon(c, S.id, cx, cy, it * 0.7 * b, tt),
+      btn: S.done ? DONE : S.video && !prem ? { label: 'Free', kind: 'ad', ad: true } : { label: 'Free', kind: 'primary' } },
+    { key: 'free:coins', name: 'Free coins', hue: '#c7a0ff', tap: 'ad:coins', flash: state.flash && state.flash.id === 'ad' ? state.flash.t : 99, num: '+' + AD_NOW,
+      icon: (c, cx, cy, it, tt, b) => coinPile(c, cx, cy - it * 0.06, it * 0.86 * b, 3, tt),
+      btn: cd >= 3600 ? DONE : cd > 0 ? { label: fmtTime(cd), kind: 'off', disabled: true } : prem ? { label: 'Free', kind: 'primary' } : { label: adOff ? 'Soon' : 'Free', kind: adOff ? 'off' : 'ad', ad: !adOff, disabled: adOff } },
+  ];
+}
+
+// coin bundles: a kit of boosts, a set of hen + egg
+function kitItem(id, st) {
+  const K = KITS[id], w = st.wallet, price = kitPrice(id), full = kitFull(w, id), ok = !full && w.coins >= price;
+  const names = K.parts.map((b) => BOOSTERS[b].name);
+  return {
+    key: 'kit:' + id, name: K.name, flash: flashOf(st, 'kit:' + id), hue: id === 'toolbox' ? '#ffd36a' : id === 'time' ? '#ffb38a' : '#a8d8ff',
+    line: K.parts.length === BOOSTER_ORDER.length ? 'One of every boost.' : names.join(', ') + '.',
+    badge: 'Save ' + kitSave(id), badgeCol: '#2f8f2a',
+    icon: (ctx, cx, cy, it, t, bounce) => kitArt(ctx, K.parts, cx, cy, it * bounce, t),
+    btn: { id: 'kit:' + id, label: full ? 'Full' : String(price), disabled: full, coin: !full, ...(ok ? GREEN : GREY) },
+    sub: { text: `${K.parts.length} boosts, ${Math.round(K.off * 100)}% off`, color: C.good },
+  };
+}
+function kitArt(ctx, parts, cx, cy, it, t) {
+  if (parts.length <= 3) { const P = [[-0.2, 0.12], [0.2, 0.12], [0, -0.14]]; parts.forEach((b, i) => drawBoosterIcon(ctx, b, cx + P[i][0] * it, cy + P[i][1] * it, it * 0.44, t)); return; }
+  parts.forEach((b, i) => { const r = i < 4 ? 0 : 1, k = r ? i - 4 : i, n = r ? 3 : 4; drawBoosterIcon(ctx, b, cx + (k - (n - 1) / 2) * it * 0.24, cy + (r ? 0.16 : -0.12) * it, it * 0.3, t); });
+}
+function setItem(id, st) {
+  const S = SETS[id], w = st.wallet, price = setPrice(w, id), ok = w.coins >= price;
+  return {
+    key: 'set:' + id, name: S.name + ' set', flash: flashOf(st, 'set:' + id), hue: { winter: '#bfe3ff', explorer: '#ffd08a', crystal: '#d4b8ff', storm: '#ffe680' }[id],
+    line: `The ${HEN_SKINS[S.hen].name} and the ${SKINS[S.egg].name} egg, worn together.`,
+    badge: 'Save ' + setSave(w, id), badgeCol: '#2f8f2a',
+    icon: (ctx, cx, cy, it, t, bounce) => { drawHenSkinPreview(ctx, S.hen, cx - it * 0.1, cy + it * 0.02, it * 0.8 * bounce, t); drawSkinPreview(ctx, S.egg, cx + it * 0.26, cy + it * 0.2, it * 0.36 * bounce, t); },
+    btn: { id: 'hset:' + id, label: String(price), coin: true, ...(ok ? GREEN : GREY) },
+    sub: { text: 'Hen + egg, 25% off', color: C.good },
+  };
 }
 
 // ---- icon tiles (2026-11-16, owner: "every item as a curvy, colourful icon tile with the price at the bottom; tap shows
@@ -751,7 +1003,8 @@ const BOOST_HUE = { stone: '#aab4be', golden: '#ffd24a', time: '#ff9f5a', rewind
 const ITEM_HUE = { ally: '#ff8a72', goldhour: '#ffc74a', skip: '#8ac4ff' };
 
 function drawTile(ui, ctx, item, x, y, w, h, s, t) {
-  const lip = 5 * s, fh = h - lip, r = 18 * s, col = item.hue || '#7fc3ff', B = item.btn;
+  // item.tap: the tile acts at once (the FREE TODAY row) instead of opening the detail sheet; item.trying: worn on trial
+  const lip = 5 * s, fh = h - lip, r = 18 * s, col = item.hue || '#7fc3ff', B = item.trying ? { label: 'Trying', kind: 'secondary' } : item.btn;
   const fl = item.flash < 0.9 ? 1 - item.flash / 0.9 : 0;
   if (fl > 0.01) { ui.roundRect(x - 4 * s, y - 4 * s, w + 8 * s, h + 8 * s, r + 4 * s); ctx.fillStyle = `rgba(255,226,122,${0.85 * fl})`; ctx.fill(); }
   ui.roundRect(x, y + lip, w, fh, r); ctx.fillStyle = tint(col, -0.42); ctx.fill(); // the lip
@@ -761,23 +1014,26 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   const on = B.keepFace && B.label === 'Equipped';
   ctx.lineWidth = (on ? 4 : 2.5) * s; ctx.strokeStyle = on ? '#ffc83a' : tint(col, -0.5); ctx.stroke();
   // a soft light behind the art
-  const chipH = 26 * s, nameS = 13 * s, ah = fh - chipH - nameS * 1.3 - 16 * s, acx = x + w / 2, acy = y + 6 * s + ah / 2;
+  const chipH = 26 * s, nameS = 13 * s, top = item.badgeCol ? 18 * s : 0, ah = fh - chipH - nameS * 1.3 - 16 * s - top, acx = x + w / 2, acy = y + 6 * s + top + ah / 2; // a Save pill gets its own room above the art
   const lg = ctx.createRadialGradient(acx, acy, 0, acx, acy, Math.min(w, ah) * 0.55); lg.addColorStop(0, 'rgba(255,255,255,0.75)'); lg.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = lg; ctx.fillRect(x, y, w, ah + 12 * s);
   const bounce = item.flash < 0.6 ? 1 + 0.2 * Math.sin((item.flash / 0.6) * Math.PI) : 1;
   item.icon(ctx, acx, acy, Math.min(w * 0.86, ah * 1.06), t, bounce);
   ui.record({ x: acx - Math.min(w * 0.86, ah) / 2, y: acy - ah / 2, w: Math.min(w * 0.86, ah), h: ah }, 'store:tart:' + item.key);
-  ui.text(item.short || item.name, x + w / 2, y + 6 * s + ah + 4 * s + nameS * 0.6, { size: nameS, align: 'center', maxW: w - 12 * s, color: tint(col, -0.72), tag: 'store:tname:' + item.key });
-  if (item.badge) pill(ui, ctx, item.badge, x + 7 * s, y + 7 * s, 11.5 * s, '#5b3413', 'store:badge:' + item.key, s, 'store:tart:' + item.key); // e.g. the level a chick comes free
+  const nm = item.short || item.name, nmw = ui.measure(nm, nameS), nmMax = w - 12 * s; // shrink a long name to fit whole ("Snowy Owl Look" at 360 px) rather than cut it
+  ui.text(nm, x + w / 2, y + 6 * s + top + ah + 4 * s + nameS * 0.6, { size: nmw > nmMax ? Math.floor(nameS * nmMax / nmw * 0.97) : nameS, align: 'center', maxW: w - 12 * s, color: tint(col, -0.72), tag: 'store:tname:' + item.key });
+  if (item.badge) pill(ui, ctx, item.badge, x + 7 * s, y + 7 * s, 11.5 * s, item.badgeCol || '#5b3413', 'store:badge:' + item.key, s, 'store:tart:' + item.key); // e.g. the level a chick comes free, a kit's saving
+  if (item.num) ui.num(item.num, acx, acy + ah * 0.32, { size: 19 * s, align: 'center', maxW: w - 16 * s, tag: 'store:tnum:' + item.key, group: 'store:tart:' + item.key }); // what the free video pays
   if (item.premium) { ui.roundRect(x + 3 * s, y + 3 * s, w - 6 * s, fh - 6 * s, r - 3 * s); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#ffc928'; ctx.stroke(); } // a premium chick: a gold inner rim (its token wears the crown)
   // the chip
   const cx0 = x + 8 * s, cy0 = y + fh - 8 * s - chipH, cwid = w - 16 * s;
   const coinChip = !!B.coin, ok = B.kind === 'primary' || B.kind === 'gold' || B.kind === 'secondary';
-  const fill = B.keepFace ? '#fffaf0' : B.disabled ? '#b8ad9e' : coinChip ? (ok ? '#3eb42d' : '#a09383') : B.kind === 'gold' ? '#f6a21b' : B.kind === 'secondary' ? '#3a80ea' : B.kind === 'off' ? '#a09383' : '#3eb42d';
+  const fill = B.keepFace ? '#fffaf0' : B.disabled ? '#b8ad9e' : coinChip ? (ok ? '#3eb42d' : '#a09383') : B.kind === 'gold' ? '#f6a21b' : B.kind === 'secondary' ? '#3a80ea' : B.kind === 'ad' ? '#7a48e8' : B.kind === 'off' ? '#a09383' : '#3eb42d';
   ui.roundRect(cx0, cy0, cwid, chipH, chipH / 2); ctx.fillStyle = fill; ctx.fill();
   ctx.lineWidth = 1.5 * s; ctx.strokeStyle = B.keepFace ? 'rgba(47,143,42,0.6)' : 'rgba(30,15,5,0.45)'; ctx.stroke();
-  const ls = 14.5 * s, lw = ui.measure(B.label, ls), icoW = coinChip || B.keepFace ? ls * 1.15 : 0, tx = x + w / 2 - (lw + icoW) / 2;
+  const ls = 14.5 * s, lw = ui.measure(B.label, ls), icoW = coinChip || B.keepFace ? ls * 1.15 : B.ad ? ls * 1.45 : 0, tx = x + w / 2 - (lw + icoW) / 2;
   if (coinChip) drawCoin(ctx, tx + ls * 0.5, cy0 + chipH / 2, ls * 0.5, t);
+  else if (B.ad) drawAdBadge(ctx, tx, cy0 + chipH / 2, ls * 1.2, ls * 0.86); // a video: the same film badge as every ad button
   else if (B.keepFace) { ctx.strokeStyle = C.good; ctx.lineWidth = 2.5 * s; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(tx + ls * 0.1, cy0 + chipH / 2); ctx.lineTo(tx + ls * 0.38, cy0 + chipH / 2 + ls * 0.28); ctx.lineTo(tx + ls * 0.85, cy0 + chipH / 2 - ls * 0.3); ctx.stroke(); }
   ui.text(B.label, tx + icoW + lw / 2, cy0 + chipH / 2 + 0.5 * s, { size: ls, align: 'center', maxW: cwid - icoW - 8 * s, color: B.keepFace ? C.good : '#fff', stroke: B.keepFace ? null : 'rgba(30,15,5,0.55)', strokeW: 3 * s, tag: 'store:chip:' + item.key });
   if (item.count > 0) { // how many the player holds
@@ -785,11 +1041,11 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
     ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fillStyle = '#e8402e'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#5a110a'; ctx.stroke();
     ui.text(String(item.count), bx, by + 0.5 * s, { size: 13 * s, align: 'center', maxW: br * 1.7, color: '#fff', tag: 'store:count:' + item.key, group: 'store:tart:' + item.key });
   }
-  ui.buttons.push({ id: 'tile:' + item.key, x, y, w, h });
+  if (!(item.tap && B.disabled)) ui.buttons.push({ id: item.tap || 'tile:' + item.key, x, y, w, h });
 }
 
 // one item by its key (the detail sheet asks for it): 'stone', 'item:ally', 'charge:chick3', 'chick:thunder', 'hen:elf',
-// 'skin:dino', 'iap:all_chicks'. st: { wallet, t, flash, price(sku), reach }
+// 'skin:dino', 'iap:starter_nest', 'kit:rescue', 'set:winter'. st: { wallet, t, flash, price(sku), reach }
 export function storeItem(key, st0) {
   const st = { price: usdHint, reach: 1, t: 0, ...st0 };
   const [kind, id] = key.includes(':') ? [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)] : ['boost', key];
@@ -800,6 +1056,8 @@ export function storeItem(key, st0) {
   if (kind === 'hen' && HEN_SKINS[id]) return henItem(id, st);
   if (kind === 'skin' && SKINS[id]) return skinItem(id, st);
   if (kind === 'iap' && IAP[id]) return iapItem(id, st);
+  if (kind === 'kit' && KITS[id]) return kitItem(id, st);
+  if (kind === 'set' && SETS[id]) return setItem(id, st);
   return null;
 }
 // the tile's colour and count badge for an item
@@ -809,6 +1067,7 @@ function tileLook(item, i) {
   else if (k.startsWith('item:')) item.hue = ITEM_HUE[id];
   else if (k.startsWith('charge:')) item.hue = '#8fd8ff';
   else if (k.startsWith('chick:')) { const S = STRIKES.find((q) => q.id === id); item.hue = S && S.col ? S.col[0] : '#ffd36a'; }
+  else if (item.hue) return item; // kits, sets and the free tiles bring their own
   else if (k.startsWith('iap:')) item.hue = '#d7b0ff';
   else if (k.startsWith('go:')) item.hue = ['#ffd36a', '#ff9f8a', '#9be37a'][i % 3];
   else item.hue = TILE_HUES[i % TILE_HUES.length];
@@ -816,9 +1075,10 @@ function tileLook(item, i) {
 }
 
 // The shop's tabs: Deals | Power-ups | Hens | Eggs.
-export const STORE_TABS = [['deals', 'Deals'], ['boosters', 'Power-ups'], ['hens', 'Hens'], ['skins', 'Eggs']];
-// on the web (no real money) the first tab is the free coins: the rewarded-ad claim, the daily chest, coins from play
-const WEB_TABS = [['deals', 'Free coins'], ['boosters', 'Power-ups'], ['hens', 'Hens'], ['skins', 'Eggs']];
+// 2026-11-20 shop 2.0: Deals became Featured (free things first, three bundles, coin packs last); the id stays 'deals'
+export const STORE_TABS = [['deals', 'Featured'], ['boosters', 'Power-ups'], ['hens', 'Hens'], ['skins', 'Eggs']];
+// on the web (no real money) the first tab is the free things: the daily gift, a free sample, free coins for a video
+const WEB_TABS = [['deals', 'Free'], ['boosters', 'Power-ups'], ['hens', 'Hens'], ['skins', 'Eggs']];
 
 // state: { area, wallet, t, adReady, adCooldownLeft, flash, tab, scroll (also .want: 'coins' | 'bank' jumps there once),
 //   dragging, price(sku), featured: { sku } | null, reach (furthest level, for the power chicks), money (real-money
@@ -828,7 +1088,7 @@ export function drawStore(ui, ctx, W, H, state) {
   AD_NOW = state.adCoins || AD_REWARDS.freeCoins.coins;
   const money = state.money !== false, TABS = money ? STORE_TABS : WEB_TABS;
   const tab = TABS.some(([id]) => id === state.tab) ? state.tab : 'deals';
-  const st = { wallet, t, flash, price: state.price || usdHint, reach: state.reach || 1, money };
+  const st = { wallet, t, flash, price: state.price || usdHint, reach: state.reach || 1, money, trial: state.trial };
   // the room paints edge to edge (W x H); everything in it lays out in the safe rect (state.area, else the whole screen)
   const AR = state.area || { x: 0, y: 0, w: W, h: H }, OX = AR.x, OY = AR.y, AW = AR.w, AH = AR.h;
   const { cols, s } = planLayout(AW, AH, ui.u);
@@ -880,7 +1140,8 @@ export function drawStore(ui, ctx, W, H, state) {
   ui.num(balStr, px + 7 * s + cr * 2 + 6 * s, py + ph / 2, { size: balSize, tag: 'store:balance', group: 'store:balance' });
   ui.button('store:coins', '', px + pw - 4 * s - pb, py + (ph - pb) / 2, pb, pb, { kind: 'primary', icon: ICON.plus, iconS: 1.05, round: 11 * s });
   const rl = OX + pad + 2 * bs + hg + 16 * s, rr = px - 16 * s;
-  if (rr - rl >= 64 * s) ui.ribbon('Shop', (rl + rr) / 2, headCy - 19 * s, Math.min(150 * s, rr - rl), 38 * s, { s, color: '#f0a01c', size: 24 * s, tag: 'store:title' });
+  const rw = Math.min(150 * s, rr - rl), rs = Math.min(24 * s, Math.floor((24 * s * (rw - 26 * s)) / ui.measure('Shop', 24 * s))); // a 4-digit balance at 360 px: a smaller title, never "Sh..."
+  if (rr - rl >= 64 * s) ui.ribbon('Shop', (rl + rr) / 2, headCy - 19 * s, rw, 38 * s, { s, color: '#f0a01c', size: rs, tag: 'store:title' });
 
   // ---- tabs
   const tg = 6 * s, tabW = Math.min(130 * s, (AW - 2 * pad - tg * (TABS.length - 1)) / TABS.length), tabH = (D.tabH + 2) * s;
@@ -915,8 +1176,8 @@ export function drawStore(ui, ctx, W, H, state) {
 
   // icon tiles: 3 to a row upright, 5-6 on a wide screen; a short last row is centred
   const tn = cols === 1 ? 3 : Math.max(4, Math.min(6, Math.floor((cw + gap) / (138 * s + gap))));
-  const tiles = (items, key) => {
-    const tw = (cw - (tn - 1) * gap) / tn, th = Math.round(tw * (cols === 1 ? 1.22 : 1.12));
+  const tiles = (items, key, n = tn) => {
+    const tn = n, tw = (cw - (tn - 1) * gap) / tn, th = Math.round(Math.min(tw * (cols === 1 ? 1.22 : 1.12), 200 * s));
     items.forEach(tileLook);
     for (let i = 0; i < items.length; i += tn) {
       const R = items.slice(i, i + tn);
@@ -924,22 +1185,9 @@ export function drawStore(ui, ctx, W, H, state) {
     }
   };
 
-  const cooling = adCooldownLeft > 0;
-  const adOff = cooling || !adReady;
-  if (tab === 'deals' && !money) { // web: coins come from play, the daily chest and rewarded ads (the portal's own)
-    const fh = (cols === 1 ? 150 : D.featH) * s, ad = { key: 'ad', name: 'Free coins', line: `Watch a short video for ${AD_NOW} coins. A few each day.`, big: true, tag: 'Free',
-      flash: flash && flash.id === 'ad' ? flash.t : 99, icon: (c, cx, cy, it, tt, b) => coinPile(c, cx, cy, it * b, 3, tt),
-      btn: { id: 'ad:coins', label: cooling ? fmtTime(adCooldownLeft) : adOff ? 'Soon' : 'Watch', kind: 'ad', ad: !adOff, disabled: adOff, size: 19 } };
-    add(fh, (x, y, w) => drawCard(ui, ctx, ad, x, y, w, fh, s, t, true), 'coins', 0);
-    head('More coins');
-    cards([
-      { key: 'daily', name: 'Daily treasure', line: 'A free chest every day: coins and Chick Charges.', owned: !!state.dailyOpen, flash: 99,
-        icon: (c, cx, cy, it, tt) => drawChest(c, cx, cy + it * 0.06, it * 0.78, tt, state.dailyOpen ? 'open' : 'ready'),
-        btn: state.dailyOpen ? { id: 'daily:wait', label: 'Tomorrow', kind: 'off', disabled: true, size: 15 } : { id: 'home:chest', label: 'Open', kind: 'primary', size: 19 }, sub: null },
-      { key: 'earn', name: 'Coins from play', line: 'Every win pays coins. Three stars and the Daily Vault pay more.', owned: false, flash: 99,
-        icon: (c, cx, cy, it, tt) => { coinPile(c, cx + it * 0.12, cy + it * 0.16, it * 0.7, 2, tt); drawSkinPreview(c, 'classic', cx - it * 0.14, cy - it * 0.06, it * 0.5, tt); },
-        btn: { id: 'play', label: 'Play', kind: 'primary', size: 19 }, sub: null },
-    ]);
+  const freeRow = () => { head('Free today', 'free'); tiles(freeTiles(st, { ...state, adReady, adCooldownLeft })); };
+  if (tab === 'deals' && !money) { // web: nothing for money; the free row, then where coins go
+    freeRow();
     head('Spend your coins');
     const go = (tabId, name, chip, icon) => ({ key: 'go:' + tabId, name, line: '', flash: 99, icon, btn: { label: chip, kind: 'secondary' } });
     tiles([
@@ -948,36 +1196,40 @@ export function drawStore(ui, ctx, W, H, state) {
       go('skins', 'Eggs', 'Skins', (c, cx, cy, it, tt) => { drawSkinPreview(c, 'galaxy', cx - it * 0.16, cy, it * 0.56, tt); drawSkinPreview(c, 'dino', cx + it * 0.18, cy + it * 0.06, it * 0.5, tt); }),
     ]);
   } else if (tab === 'deals') {
-    const f = state.featured && IAP[state.featured.sku] && iapAvailable(wallet, state.featured.sku) ? state.featured : null;
-    const fh = (cols === 1 ? 168 : D.featH) * s;
-    // 2026-11-20 (mykee: the $3.99 "unlock everything, no ads, the game is yours" was missing from the store): it leads
-    // the Deals tab, big, every time it is still for sale
-    const prem = iapAvailable(wallet, PREMIUM) && (!f || f.sku !== PREMIUM);
-    if (prem) add(fh * 1.08, (x, y, w) => drawCard(ui, ctx, iapItem(PREMIUM, st, { big: true, tag: 'Best value' }), x, y, w, fh * 1.08, s, t, true), 'premium', 0);
-    if (f) add(fh, (x, y, w) => drawCard(ui, ctx, iapItem(f.sku, st, { pre: 'feat:', big: true, tag: f.tag || 'Special offer', name: f.title, line: f.line }), x, y, w, fh, s, t, true), 'featured', prem ? gap : 0);
-    head('Coins', 'coins');
-    // coin packs: 2 to a row in portrait, 3 in landscape; the sixth cell is the free-coins ad
-    const pc = cols === 1 ? 2 : 3, cells = [...COIN_PACKS, 'ad'], phh = D.packH * s;
-    for (let i = 0; i < cells.length; i += pc) {
-      const R = cells.slice(i, i + pc);
-      add(phh, (x, y, w) => {
-        const cwi = (w - (pc - 1) * gap) / pc;
-        R.forEach((sku, j) => {
-          const cx0 = x + j * (cwi + gap);
-          if (sku === 'ad') drawAdCell(ui, ctx, cx0, y, cwi, phh, s, t, { cooling, adCooldownLeft, adOff, flash });
-          else drawPack(ui, ctx, sku, cx0, y, cwi, phh, s, t, st);
-        });
-      }, null, i ? gap : 6 * s);
+    // 2026-11-20 shop 2.0 (research: Brawl Stars' free daily item, Royal Match's three-tier bundles, value badges): the shop
+    // gives before it asks. FREE TODAY, then the three bundles (Unlock Everything the hero), then the repeatable Helper
+    // Bundle and the bank, the coin packs last. No popups on entering.
+    freeRow();
+    head('Bundles', 'bundles');
+    const forSale = BUNDLES.filter((sku) => iapAvailable(wallet, sku)), owned = BUNDLES.filter((sku) => !forSale.includes(sku));
+    const hero = (sku) => sku === PREMIUM, tag = (sku) => (sku === PREMIUM ? 'Most popular' : null);
+    if (cols === 2 && forSale.length) { // wide: the bundles side by side, the hero in the middle
+      // each card's width by how much it holds (the hero's strip has the most icons)
+      const wt = forSale.map((sku) => (hero(sku) ? 1.15 : sku === 'starter_nest' ? 0.8 : 1.05)), unit = (cw - (forSale.length - 1) * gap) / wt.reduce((a, b) => a + b, 0), artH = 92 * s;
+      const rh = Math.max(...forSale.map((sku, j) => bundleTallH(sku, unit * wt[j], artH, s, hero(sku))));
+      add(rh, (x, y) => { let xx = x; forSale.forEach((sku, j) => { drawBundleTall(ui, ctx, sku, xx, y, unit * wt[j], rh, s, t, st, { hero: hero(sku), artH, tag: tag(sku) }); xx += unit * wt[j] + gap; }); }, null, 6 * s);
+    } else {
+      forSale.forEach((sku, i) => {
+        if (sku === 'starter_nest') { const h = 156 * s; add(h, (x, y, w) => drawBundleWide(ui, ctx, sku, x, y, w, h, s, t, st), null, i ? gap : 6 * s); return; }
+        const artH = (hero(sku) ? 150 : 118) * s, h = bundleTallH(sku, cw, artH, s, hero(sku));
+        add(h, (x, y, w) => drawBundleTall(ui, ctx, sku, x, y, w, h, s, t, st, { hero: hero(sku), artH, tag: tag(sku) }), null, i ? gap + 2 * s : 6 * s);
+      });
     }
-    const bundles = ['bundle_helper', 'bundle_flock', 'season_pack'];
-    if (!f || f.sku !== 'starter_nest') { if (iapAvailable(wallet, 'starter_nest')) bundles.unshift('starter_nest'); }
-    head('Bundles');
-    cards(bundles.map((sku) => iapItem(sku, st)));
-    head('Golden Egg Bank', 'bank');
+    for (const sku of owned) add(52 * s, (x, y, w) => drawOwnedRow(ui, ctx, sku, x, y, w, 52 * s, s, t, st), null, forSale.length ? gap : 6 * s);
+    head('Top up', 'bank');
+    const hh = 156 * s;
+    add(hh, (x, y, w) => drawBundleWide(ui, ctx, 'bundle_helper', x, y, w, hh, s, t, st, { tag: 'Any time' }), null, 6 * s);
     cards([bankItem(st)]);
-    head('No ads');
-    cards([iapItem('no_ads', st), ...(iapAvailable(wallet, PREMIUM) ? [] : [iapItem(PREMIUM, st)])]);
+    head('Coins', 'coins');
+    // the four coin packs: 2 x 2 upright, 4 across on a wide screen
+    const pc = cols === 1 ? 2 : 4, phh = D.packH * s;
+    for (let i = 0; i < COIN_PACKS.length; i += pc) {
+      const R = COIN_PACKS.slice(i, i + pc);
+      add(phh, (x, y, w) => { const cwi = (w - (pc - 1) * gap) / pc; R.forEach((sku, j) => drawPack(ui, ctx, sku, x + j * (cwi + gap), y, cwi, phh, s, t, st)); }, null, i ? gap : 6 * s);
+    }
   } else if (tab === 'boosters') {
+    head('Kits'); // bundles for coins first: a few boosts together for less
+    tiles(KIT_ORDER.map((id) => kitItem(id, st)));
     head('Boosts');
     tiles(BOOSTER_ORDER.map((id) => boosterItem(id, st)));
     head('Helpers');
@@ -985,24 +1237,28 @@ export function drawStore(ui, ctx, W, H, state) {
     head('Chick Charges');
     tiles(CHARGE_PACKS.map((P) => chargeItem(P, st)));
     head('Power chicks', 'chicks');
-    tiles([...STRIKES.filter((S) => !S.premium).map((S) => chickItem(S, st)), ...(money ? [iapItem('all_chicks', st)] : [])]);
+    tiles(STRIKES.filter((S) => !S.premium).map((S) => chickItem(S, st)));
     head('Premium chicks', 'premium'); // coins only: never in a level unlock or a chick pack
     tiles(STRIKES.filter((S) => S.premium).map((S) => chickItem(S, st)));
-  } else if (tab === 'hens') tiles(HEN_SKIN_ORDER.filter((id) => money || !HEN_SKINS[id].premium).map((id) => henItem(id, st)));
-  else tiles(SKIN_ORDER.map((id) => skinItem(id, st)));
+  } else if (tab === 'hens') {
+    const sets = SET_ORDER.filter((id) => setAvailable(wallet, id));
+    if (sets.length) { head('Sets', 'sets'); tiles(sets.map((id) => setItem(id, st)), null, cols === 1 ? 2 : 4); head('Outfits'); } // two big tiles a row: the pair is the picture
+    tiles(HEN_SKIN_ORDER.filter((id) => money || !HEN_SKINS[id].premium).map((id) => henItem(id, st)));
+  } else tiles(SKIN_ORDER.map((id) => skinItem(id, st)));
 
   // a long list scrolls between the tabs and the bottom; cards cut by the edge keep a tap area only inside the list and
   // record nothing for the overlap check
   const SC = state.scroll || { y: 0, v: 0, max: 0 }, vt = bodyTop - 4 * s, vb = OY + AH;
   const dt = Math.min(0.1, Math.max(0, t - (SC.t || t))); SC.t = t;
-  if (!state.dragging) { if (Math.abs(SC.v) > 8) { SC.y += SC.v * dt; SC.v *= Math.exp(-2.3 * dt); } else SC.v = 0; } // 2026-11-19: a longer glide (main.js SCROLL_DRAG)
+  const lim = ui.calm ? 0 : 110 * s; // 0.8.7: the one scroll feel (scroll.js): a fling glides, the ends stretch and settle
+  if (!state.dragging) glideStep(SC, dt, lim);
   let total = 0;
   const at = {};
   rows.forEach((R, i) => { total += i ? R.before : 0; R.off = total; if (R.key) at[R.key] = total; total += R.h; });
   SC.max = Math.max(0, total - avail);
   if (SC.want) { if (at[SC.want] != null) { SC.y = at[SC.want] - (rows[0] && at[SC.want] ? 4 * s : 0); SC.v = 0; } SC.want = null; }
-  SC.y = Math.max(0, Math.min(SC.max, SC.y));
-  const y0 = SC.max > 0 ? bodyTop - SC.y : bodyTop + Math.max(0, (avail - total) / 2);
+  SC.y = Math.max(-lim, Math.min(SC.max + lim, SC.y));
+  const y0 = bodyTop - snapPx(SC.y, state.dpr || 1); // 2026-11-20: a short list starts at the top (the web's Free tab floated mid-screen)
   const clipped = (y, h, draw) => {
     if (y + h < vt || y > vb) return;
     const n0 = ui.rects.length, nb = ui.buttons.length;
@@ -1017,7 +1273,7 @@ export function drawStore(ui, ctx, W, H, state) {
   for (const R of rows) { const y = y0 + R.off; clipped(y, R.h, () => R.draw(x0, y, cw)); }
   ctx.restore();
   if (SC.max > 0 && !ui.calm) { // a thin scroll thumb
-    const th = Math.max(30 * s, (vb - vt) * (vb - vt) / (SC.max + vb - vt)), ty = vt + (SC.y / SC.max) * (vb - vt - th - 4 * s);
+    const th = Math.max(30 * s, (vb - vt) * (vb - vt) / (SC.max + vb - vt)), ty = vt + Math.max(0, Math.min(1, SC.y / SC.max)) * (vb - vt - th - 4 * s);
     ui.roundRect(OX + AW - 5 * s, ty, 3 * s, th, 1.5 * s); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
   }
 }
@@ -1034,19 +1290,6 @@ function drawPack(ui, ctx, sku, x, y, w, h, s, t, st) {
   if (P.tag) pill(ui, ctx, P.tag, x + p + 5 * s, y + p + 5 * s, 11.5 * s, P.tag === 'Best value' ? '#2f8f2a' : '#e8402e', 'store:tag:' + sku, s, 'store:icon:' + sku);
   ui.num(fmtNum(P.coins), x + w / 2, y + p + artH + 4 * s + amH / 2, { size: 21 * s, align: 'center', maxW: w - 2 * p, tag: 'store:amt:' + sku });
   ui.button('iap:' + sku, st.price(sku), x + p, y + fh - p - bh, w - 2 * p, bh, { kind: 'primary', size: 17 * s });
-}
-
-// the free-coins rewarded ad as the last cell of the coin grid (an offer, never a gate: violet like every ad button)
-function drawAdCell(ui, ctx, x, y, w, h, s, t, o) {
-  const lip = 4 * s, fh = h - lip, p = 9 * s, fa = o.flash && o.flash.id === 'ad' && o.flash.t < 0.9 ? 1 - o.flash.t / 0.9 : 0;
-  ui.frame(x, y, w, fh, { s, r: 16 * s, fw: 4.5 * s, lip, glow: '#ffe27a', glowA: fa, record: true, tag: 'panel:card:ad' });
-  const bh = 42 * s, amH = 26 * s, artH = fh - 2 * p - bh - amH - 4 * s;
-  ui.well(x + p, y + p, w - 2 * p, artH, { s, r: 12 * s, a: '#e4d4ff', b: '#f4eeff', shade: 'rgba(60,20,130,0.25)', border: 'rgba(90,60,150,0.55)' });
-  ui.record({ x: x + p, y: y + p, w: w - 2 * p, h: artH }, 'store:icon:ad');
-  coinPile(ctx, x + w / 2, y + p + artH * 0.56, Math.min(artH * 1.05, w * 0.7), 1, t);
-  ui.num('+' + AD_NOW, x + w / 2, y + p + artH + 4 * s + amH / 2, { size: 21 * s, align: 'center', maxW: w - 2 * p, tag: 'store:amt:ad' });
-  const label = o.cooling ? fmtTime(o.adCooldownLeft) : o.adOff ? 'Soon' : 'Free';
-  ui.button('ad:coins', label, x + p, y + fh - p - bh, w - 2 * p, bh, { kind: 'ad', shimmer: !o.adOff, ad: !o.adOff, disabled: o.adOff, size: 17 * s });
 }
 
 // ---------------------------------------------------------------- egg skins and chests

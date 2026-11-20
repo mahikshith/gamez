@@ -12,6 +12,7 @@
 // and caches sprites + gradients at resize(). The caller must have set ctx.setTransform(dpr,0,0,dpr,0,0).
 
 import { BOLT } from './status.js';
+import { PERF } from '../perf.js';
 export const WEATHER_KINDS = ['none', 'thunder', 'quake', 'embers', 'rain', 'snow', 'sandstorm', 'fog', 'ghosts', 'current', 'leaves', 'ash', 'fireflies'];
 
 const TAU = Math.PI * 2;
@@ -943,6 +944,9 @@ BUILD.current = (S) => {
     },
     back(ctx) {
       const t = S.t, w = S.w, h = S.h;
+      // 2026-11-20 Low graphics (perf87): only the bubbles (they show the current); the 3 skewed light shafts and the 3
+      // caustic strips were 6 big additive fills a frame (~2 ms of a Low frame on level 13)
+      if (PERF.low) { drawBub(ctx, 0, 0.3); return; }
       // light shafts
       ctx.globalCompositeOperation = 'lighter';
       for (let i = 0; i < 3; i++) {

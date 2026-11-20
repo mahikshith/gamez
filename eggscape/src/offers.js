@@ -8,9 +8,9 @@
 //   charge_ad     3+ fails in a row on a level: a free Chick Charge for a rewarded ad (once per level)
 //   bundle_helper the same, but only if that ad was declined on this level (once per level, at most once a day)
 //   egg_bank      won a level lost 2+ times before, and the bank holds 600+ (every 3 days)
-//   no_ads        5+ rewarded ads watched, non-payer (every 5 days)
-//   premium       level 20+ and 5+ distinct play days (every 14 days)
-//   bundle_flock  a payer whose last purchase is 7+ days old (weekly)
+//   premium       level 12+ and 3+ distinct play days (every 7 days)
+//   collector     owns Premium or paid before, last purchase 7+ days old (every 14 days)
+//   (2026-11-20 shop 2.0: No Ads and the Flock Bundle are gone; Unlock Everything is $2.99 and comes earlier)
 //   chick_tip     intro: a locked power chick the player can afford right now (a line on the card, daily at most)
 //   coins_ad      web: free coins for a rewarded ad when the player came up short (daily at most)
 // Caps (CAPS): 2 popups per session, 3 per day, 20 min apart; none in the first session or before level 6; 3 dismissals of one
@@ -32,12 +32,11 @@ const DAY = 864e5, MIN = 6e4;
 const dayKey = (now) => { const d = new Date(now); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 
 const TEXT = {
-  starter_nest: { title: 'Starter Nest', line: '600 coins, 3 Chick Charges, 2 of every boost and the Cocoa Hen. Only once.' },
-  bundle_helper: { title: 'Helper Bundle', line: 'Stuck here? 1000 coins, 5 Chick Charges, 3 Ally Tickets and 2 of every boost.' },
+  starter_nest: { title: 'Starter Nest', line: 'A small start: 600 coins, 3 Chick Charges, 2 of every boost and the Cocoa Hen. Only once.' },
+  bundle_helper: { title: 'Helper Bundle', line: 'Stuck here? 800 coins, 5 Chick Charges, 3 Ally Tickets and 2 of every boost.' },
   egg_bank: { title: 'Your Golden Egg Bank is full', line: 'Crack it open and take every coin inside.' },
-  no_ads: { title: 'No more ad breaks', line: 'Play on without breaks between levels. Bonus videos stay your choice.' },
-  eggscape_premium: { title: 'Unlock Everything', line: 'One payment and the game is yours: no ads ever, every level open, all power chicks and the Golden Hen.' },
-  bundle_flock: { title: 'Flock Bundle', line: '3000 coins, 15 Chick Charges, 10 Ally Tickets and every power chick.' },
+  eggscape_premium: { title: 'Unlock Everything', line: 'One payment and the game is yours: every bonus without a video, every level open, all six power chicks and the Golden Hen.' },
+  eggscape_collector: { title: 'The Whole Coop', line: 'Every hen outfit, every egg, the three premium chicks and 3000 coins. Forever.' },
   charge_ad: { title: 'A free Chick Charge', line: 'Watch a short video and your power chick is ready at once next try.' },
   coins_ad: { title: 'Free coins', line: 'Watch a short video for 25 coins.' },
 };
@@ -127,9 +126,8 @@ export function evaluate(save, moment, ctx = {}) {
     else if (o.lvDeclined[lv] && !o.lvHelper[lv] && shownSince(o, 'bundle_helper', now - DAY) < 1) sku('bundle_helper', 0.9 + (short ? 0.2 : 0), 2);
   }
   if ((moment === 'win' || shop) && (shop || (ctx.prevFails || 0) >= 2) && (w.bank || 0) >= BANK_OPEN && (shop || every(o, 'egg_bank', now, 3))) sku('egg_bank', 0.9, 1.5);
-  if ((calm || shop) && o.ads >= 5 && !payer && (shop || every(o, 'no_ads', now, 5))) sku('no_ads', 0.6, 1.2);
-  if ((calm || shop) && unlocked >= 20 && o.days.length >= 5 && (shop || every(o, 'eggscape_premium', now, 14))) sku('eggscape_premium', 0.7, 2.5);
-  if ((calm || shop) && payer && now - (w.lastBuyAt || 0) >= 7 * DAY && (shop || every(o, 'bundle_flock', now, 7))) sku('bundle_flock', 0.8, 2);
+  if ((calm || shop) && unlocked >= 12 && o.days.length >= 3 && (shop || every(o, 'eggscape_premium', now, 7))) sku('eggscape_premium', 0.7, 2.5);
+  if ((calm || shop) && (payer || w.noAds) && now - (w.lastBuyAt || 0) >= 7 * DAY && (shop || every(o, 'eggscape_collector', now, 14))) sku('eggscape_collector', 0.8, 2);
   if (moment === 'intro' && ctx.chick && (w.coins || 0) >= ctx.chick.price && every(o, 'chick_tip', now, 1)) {
     C.push({ id: 'chick_tip', item: 'chick:' + ctx.chick.id, gentle: true, fit: 0.5, value: 1, usd: 0, title: ctx.chick.name, line: `Unlock ${ctx.chick.name} now for ${ctx.chick.price} coins` });
   }

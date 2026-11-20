@@ -9,6 +9,7 @@
 //   spent    coins spent in all, and on what kind                                 (is this a coin spender?)
 //   trials   the freebies given: per level, per day, the chicks and skins tried    (never the same freebie twice)
 //   trial    an egg skin on trial: { id, left (levels), from }                    (try it, then keep it)
+//   henTrial a hen outfit on trial, the same shape (2026-11-20: the shop's "Try it free" on any egg or outfit)
 //   lastSeen the last time the app was open                                       (the welcome-back gift)
 //
 // The help ladder on the fail card (one extra card, under RETRY, never more):
@@ -28,7 +29,7 @@
 // Fun guards: never anything on a first loss unless it was a near miss; no popup and no interstitial on a losing
 // streak (main.js asks frustration() before an interstitial); every level stays free to beat; one price for everyone;
 // no timers. A payer is never shown ads-for-help first (coins and owned boosts first).
-import { BOOSTERS, SKINS, SKIN_ORDER, CHICK_PRICES } from './economy.js';
+import { BOOSTERS, SKINS, SKIN_ORDER, CHICK_PRICES, HEN_SKINS } from './economy.js';
 
 const DAY = 864e5;
 const dayKey = (now) => { const d = new Date(now); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
@@ -41,13 +42,15 @@ export function dirState(save) {
     att: obj(d.att),
     recent: Array.isArray(d.recent) ? d.recent.filter((x) => x === 'w' || x === 'f').slice(-12) : [],
     spent: { all: Math.max(0, Number(d.spent && d.spent.all) || 0), by: obj(d.spent && d.spent.by) },
-    trials: { lv: obj(d.trials && d.trials.lv), day: d.trials && typeof d.trials.day === 'string' ? d.trials.day : '', n: Math.max(0, Number(d.trials && d.trials.n) || 0), chicks: Array.isArray(d.trials && d.trials.chicks) ? d.trials.chicks : [], skins: Array.isArray(d.trials && d.trials.skins) ? d.trials.skins : [] },
+    trials: { lv: obj(d.trials && d.trials.lv), day: d.trials && typeof d.trials.day === 'string' ? d.trials.day : '', n: Math.max(0, Number(d.trials && d.trials.n) || 0), chicks: Array.isArray(d.trials && d.trials.chicks) ? d.trials.chicks : [], skins: Array.isArray(d.trials && d.trials.skins) ? d.trials.skins : [], hens: Array.isArray(d.trials && d.trials.hens) ? d.trials.hens : [] },
     trial: d.trial && SKINS[d.trial.id] && d.trial.left > 0 ? { id: d.trial.id, left: Math.floor(d.trial.left), from: Number(d.trial.from) || 0 } : null,
+    henTrial: d.henTrial && HEN_SKINS[d.henTrial.id] && d.henTrial.left > 0 ? { id: d.henTrial.id, left: Math.floor(d.henTrial.left), from: Number(d.henTrial.from) || 0 } : null,
     keepAsk: d.keepAsk && SKINS[d.keepAsk] ? d.keepAsk : null,
+    keepAskHen: d.keepAskHen && HEN_SKINS[d.keepAskHen] ? d.keepAskHen : null,
     winsToSkin: Number.isFinite(d.winsToSkin) ? d.winsToSkin : DIR.skinEvery[0] + 1,
     lastSeen: Number(d.lastSeen) || 0,
     welcomeAt: Number(d.welcomeAt) || 0,
-    afford: obj(d.afford),
+    afford: obj(d.afford), affordAt: Math.max(0, Number(d.affordAt) || 0),
     hot: Math.max(0, Number(d.hot) || 0), hotLost: Math.max(0, Number(d.hotLost) || 0),
   };
   return save.dir;
@@ -152,7 +155,7 @@ export function noteTrial(save, levelId, help, now) {
 // -> { id, name } a skin to wear for the next few levels, or null
 export function winGift(save, ctx = {}) {
   const D = dirState(save), w = save.wallet || {};
-  if (D.trial || D.keepAsk || D.winsToSkin > 0 || (save.unlocked || 1) < 6) return null;
+  if (D.trial || D.keepAsk || D.keepAskHen || D.winsToSkin > 0 || (save.unlocked || 1) < 6) return null;
   const owned = new Set(Array.isArray(w.skins) ? w.skins : ['classic']);
   const pool = SKIN_ORDER.filter((id) => id !== 'classic' && !owned.has(id) && !D.trials.skins.includes(id) && SKINS[id].price <= 300);
   if (!pool.length) return null;
@@ -165,29 +168,62 @@ export function startSkinTrial(save, id, now, rand = Math.random) {
   D.trials.skins = [...D.trials.skins, id].slice(-30);
   D.winsToSkin = DIR.skinEvery[0] + Math.floor(rand() * (DIR.skinEvery[1] - DIR.skinEvery[0] + 1));
 }
-// a level finished (won or lost): one level less on the trial; at the end home asks "Keep it?"
+// a level finished (won or lost): one level less on each trial; at the end home asks "Keep it?". Returns the egg skin
+// whose trial just ended (or null); a hen outfit's end is noted the same way (keepAskHen)
 export function tickTrial(save) {
-  const D = dirState(save);
+  const D = dirState(save), w = save.wallet || {};
+  if (D.henTrial && --D.henTrial.left <= 0) {
+    const h = D.henTrial.id;
+    D.henTrial = null;
+    if (!(Array.isArray(w.henSkins) && w.henSkins.includes(h))) D.keepAskHen = h;
+  }
   if (!D.trial) return null;
   D.trial.left--;
   if (D.trial.left > 0) return null;
   const id = D.trial.id;
   D.trial = null;
-  const w = save.wallet || {};
   if (!(Array.isArray(w.skins) && w.skins.includes(id))) D.keepAsk = id;
   return id;
 }
 export const trialSkin = (save) => { const D = dirState(save); return D.trial ? D.trial.id : null; };
-export function clearKeepAsk(save) { dirState(save).keepAsk = null; }
+export const trialHen = (save) => { const D = dirState(save); return D.henTrial ? D.henTrial.id : null; };
+export function clearKeepAsk(save, kind = 'skin') { const D = dirState(save); if (kind === 'hen') D.keepAskHen = null; else D.keepAsk = null; }
+
+// ---- "Try it free" in the shop (2026-11-20): any egg skin or hen outfit the player does not own, worn for the next
+// DIR.skinLevels levels. Each one once (trials.skins / trials.hens remember it); one trial per kind at a time: trying
+// another egg ends the egg on trial (and the same for outfits). Premium-only outfits (the Golden Hen) are not tried.
+// kind: 'skin' | 'hen'. owned: the player already owns it (the caller asks economy.js)
+export function canTry(save, kind, id, owned) {
+  const D = dirState(save);
+  if (owned) return false;
+  if (kind === 'skin') return !!SKINS[id] && id !== 'classic' && !D.trials.skins.includes(id);
+  if (kind === 'hen') return !!HEN_SKINS[id] && id !== 'classic' && !HEN_SKINS[id].premium && !D.trials.hens.includes(id);
+  return false;
+}
+export function startTry(save, kind, id, now, owned = false) {
+  if (!canTry(save, kind, id, owned)) return false;
+  const D = dirState(save), T = { id, left: DIR.skinLevels, from: now };
+  if (kind === 'hen') { D.henTrial = T; D.trials.hens = [...D.trials.hens, id].slice(-40); if (D.keepAskHen === id) D.keepAskHen = null; }
+  else { D.trial = T; D.trials.skins = [...D.trials.skins, id].slice(-30); if (D.keepAsk === id) D.keepAsk = null; }
+  return true;
+}
+// the player put on (bought or equipped) something else of that kind: the trial ends quietly, no "Keep it?"
+export function endTrial(save, kind) { const D = dirState(save); if (kind === 'hen') D.henTrial = null; else D.trial = null; }
+// what is on trial right now, and how many levels are left: { skin: { id, left } | null, hen: { id, left } | null }
+export function trials(save) { const D = dirState(save); return { skin: D.trial ? { id: D.trial.id, left: D.trial.left } : null, hen: D.henTrial ? { id: D.henTrial.id, left: D.henTrial.left } : null }; }
 
 // ---- home: one thing at most, in this order
 // ctx: { now, chicks: [{ id, name, price }] locked chicks, money }
 // -> { kind: 'keep', id, price } | { kind: 'welcome', coins } | { kind: 'afford', item, name, price } | null
 export function homeNudge(save, ctx) {
   const D = dirState(save), now = ctx.now || Date.now(), coins = (save.wallet && save.wallet.coins) || 0;
-  if (D.keepAsk) return { kind: 'keep', id: D.keepAsk, name: SKINS[D.keepAsk].name, price: SKINS[D.keepAsk].price };
+  if (D.keepAsk) return { kind: 'keep', what: 'skin', id: D.keepAsk, name: SKINS[D.keepAsk].name, price: SKINS[D.keepAsk].price };
+  if (D.keepAskHen) return { kind: 'keep', what: 'hen', id: D.keepAskHen, name: HEN_SKINS[D.keepAskHen].name, price: HEN_SKINS[D.keepAskHen].price };
   if (D.lastSeen && now - D.lastSeen >= DIR.welcomeDays * DAY && now - D.welcomeAt >= DIR.welcomeDays * DAY && (save.unlocked || 1) >= 3) return { kind: 'welcome', coins: DIR.welcomeCoins };
   // the first time the coins reach a locked chick (the strongest pull) or a skin: say so once
+  // 0.8.7: and at most one of these a day. A player sitting on a pile of coins used to get one on every visit to the
+  // map, a new item each time, until every affordable item had been named: a popup in the way of playing.
+  if (D.affordAt && now - D.affordAt < DAY && now >= D.affordAt) return null;
   const c = (ctx.chicks || []).find((q) => coins >= q.price && !D.afford['c:' + q.id]);
   if (c) return { kind: 'afford', item: 'chick:' + c.id, name: c.name, price: c.price };
   const w = save.wallet || {}, owned = new Set(Array.isArray(w.skins) ? w.skins : ['classic']);
@@ -198,6 +234,7 @@ export function homeNudge(save, ctx) {
 export function noteNudge(save, n, now) {
   const D = dirState(save);
   if (n.kind === 'welcome') D.welcomeAt = now;
+  if (n.kind === 'afford') D.affordAt = now;
   if (n.kind === 'afford') D.afford[(n.item.startsWith('chick:') ? 'c:' : 's:') + n.item.split(':')[1]] = 1;
 }
 export { CHICK_PRICES };

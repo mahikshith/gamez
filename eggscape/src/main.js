@@ -29,7 +29,7 @@ import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
-import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview } from './ui/store.js';
+import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview } from './ui/store.js';
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, freebies, trials, home nudges)
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
@@ -112,7 +112,7 @@ const GATE_COINS = (k) => 80 + 40 * k;
 // Settings (2026-11-15): how fast the rings follow a finger, 0.6x .. 2x of the designed speed
 const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5]; // 2026-11-16 mykee: experienced players want even faster (300%; no extra tunnelling seen in a 3x wall-crossing check)
 const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed : RING_SPEED_DEFAULT);
-const allOpen = () => TEST || !!save.tester || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($3.99) opens every level
+const allOpen = () => TEST || !!save.tester || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($2.99) opens every level
 const envOpen = (k) => allOpen() || bestTotal() >= envNeed(k) || !!(save.gates && save.gates[k]);
 const playable = (i) => i >= 0 && i < LEVELS.length && (allOpen() || (i < save.unlocked && envOpen(envOf(i))));
 // the level the Play button means: the first one not yet cleared (in the order of the map), else the frontier.
@@ -1179,6 +1179,7 @@ async function press(id) {
       if (!w) { toast('Come back tomorrow for another chest.', 2.2); break; }
       const R = E.dailyChest(today());
       save.wallet = w; persist(); audio.play('unlock');
+      if (G.screen === 'store') G.storeFlash = { id: 'free:daily', t0: G.t }; // the shop's FREE TODAY tile
       toast(`Treasure! +${R.coins} coins, +${R.charges} Chick Charge${R.charges > 1 ? 's' : ''}`, 3);
       break;
     }
@@ -1217,14 +1218,14 @@ async function press(id) {
       G.detail = null;
       break;
     case 'help:go': await takeHelp(); break;
-    case 'nudge:no': if (G.nudge && G.nudge.kind === 'keep') DR.clearKeepAsk(save); G.nudge = null; persist(); break;
+    case 'nudge:no': if (G.nudge && G.nudge.kind === 'keep') DR.clearKeepAsk(save, G.nudge.what); G.nudge = null; persist(); break;
     case 'nudge:yes': {
       const n = G.nudge;
       if (!n) break;
       if (n.kind === 'keep') {
-        const w = E.buySkin(save.wallet, n.id);
+        const hen = n.what === 'hen', w = hen ? E.buyHenSkin(save.wallet, n.id) : E.buySkin(save.wallet, n.id);
         if (!w) { needCoins(n.price); break; }
-        save.wallet = w; DR.clearKeepAsk(save); W.setSkin(w.skin); G.nudge = null; persist(); audio.play('unlock'); toast(`The ${n.name} Egg is yours!`, 2.4);
+        save.wallet = w; DR.clearKeepAsk(save, n.what); if (!hen) W.setSkin(w.skin); G.nudge = null; persist(); audio.play('unlock'); toast(hen ? `The ${n.name} is yours!` : `The ${n.name} Egg is yours!`, 2.4);
       } else if (n.kind === 'welcome') {
         const b = E.BOOSTER_ORDER[Math.floor(Math.random() * 5)];
         save.wallet = { ...save.wallet, coins: save.wallet.coins + n.coins, owned: { ...(save.wallet.owned || {}), [b]: ((save.wallet.owned || {})[b] || 0) + 1 } };
@@ -1425,6 +1426,25 @@ async function press(id) {
       rewound(back);
       break;
     }
+    case 'sample': { // 2026-11-20 shop 2.0, FREE TODAY: a boost never tried, free; once all are tried, today's boost for a video
+      const S = E.sampleFor(save.wallet, today());
+      if (S.done || (S.video && !(await rewarded('sample')))) break;
+      const w = E.claimSample(save.wallet, today());
+      if (!w) break;
+      save.wallet = w; persist(); G.storeFlash = { id: 'free:sample', t0: G.t }; audio.play('unlock');
+      toast(`Free ${E.BOOSTERS[S.id].name}! ${E.BOOSTERS[S.id].line}`, 3);
+      break;
+    }
+    case 'bonus': { // the win card's Bonus chest (when an ad break would have been due): 40 coins and a boost for a video
+      if (G.doubled || !G.result || !G.result.chest || !(G.li >= 0 && G.level)) break;
+      if (!(await rewarded('bonus'))) break; // Premium: granted at once, no video (ads.rewarded)
+      const R = E.bonusChest(G.level.id);
+      save.wallet = E.openBonusChest(save.wallet, G.level.id); G.doubled = true; G.result.chestOpen = true;
+      recordResult(); persist();
+      audio.play('combo', { intensity: 1 }); portal.happy();
+      toast(`+${R.coins} coins and a ${E.BOOSTERS[R.booster].name}!`, 2.6);
+      break;
+    }
     case 'double': {
       if (G.doubled) break;
       const ok = await rewarded('double');
@@ -1549,13 +1569,29 @@ async function press(id) {
       } else if (id && id.startsWith('hen:')) {
         const k = id.slice(4);
         const w = E.ownsHenSkin(save.wallet, k) ? E.equipHenSkin(save.wallet, k) : E.buyHenSkin(save.wallet, k);
-        if (w) { save.wallet = w; persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
+        if (w) { save.wallet = w; DR.endTrial(save, 'hen'); persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); } // a chosen look ends a trial
         else if (E.HEN_SKINS[k] && save.wallet.coins < E.HEN_SKINS[k].price) needCoins(E.HEN_SKINS[k].price);
       } else if (id && id.startsWith('skin:')) {
         const k = id.slice(5);
         const w = E.ownsSkin(save.wallet, k) ? E.equipSkin(save.wallet, k) : E.buySkin(save.wallet, k);
-        if (w) { save.wallet = w; persist(); W.setSkin(w.skin); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
+        if (w) { save.wallet = w; DR.endTrial(save, 'skin'); persist(); W.setSkin(w.skin); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
         else if (E.SKINS[k] && save.wallet.coins < E.SKINS[k].price) needCoins(E.SKINS[k].price);
+      } else if (id && id.startsWith('kit:')) { // 2026-11-20 shop 2.0: a kit of boosts for coins (all or nothing)
+        const k = id.slice(4), w = E.buyKit(save.wallet, k);
+        if (w) { save.wallet = w; persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); G.detail = null; toast(`${E.KITS[k].name}: ${E.KITS[k].parts.length} boosts added`, 2.4); }
+        else if (E.KITS[k] && !E.kitFull(save.wallet, k)) needCoins(E.kitPrice(k));
+      } else if (id && id.startsWith('hset:')) { // a hen outfit and its egg, both put on ('set:' is the settings card's)
+        const k = id.slice(5), S = E.SETS[k], w = E.buySet(save.wallet, k);
+        if (w) { save.wallet = w; DR.endTrial(save, 'hen'); DR.endTrial(save, 'skin'); persist(); W.setSkin(w.skin); G.storeFlash = { id: 'set:' + k, t0: G.t }; audio.play('unlock'); G.detail = null; toast(`The ${S.name} set is yours!`, 2.4); }
+        else if (S && E.setAvailable(save.wallet, k)) needCoins(E.setPrice(save.wallet, k));
+      } else if (id && id.startsWith('try:')) { // "Try it free": wear it for the next few levels (the Director's trial machinery)
+        const [kind, k] = [id.slice(4, id.indexOf(':', 4)), id.slice(id.indexOf(':', 4) + 1)];
+        const owned = kind === 'hen' ? E.ownsHenSkin(save.wallet, k) : E.ownsSkin(save.wallet, k);
+        if (DR.startTry(save, kind, k, Date.now(), owned)) {
+          persist(); G.storeFlash = { id: kind + ':' + k, t0: G.t }; audio.play('unlock'); G.detail = null;
+          const name = kind === 'hen' ? E.HEN_SKINS[k].name : E.SKINS[k].name + ' egg';
+          toast(`Trying the ${name} for ${DR.DIR.skinLevels} levels`, 2.6);
+        }
       }
   }
 }
@@ -1683,7 +1719,7 @@ function featuredPick() {
   if (E.iapAvailable(save.wallet, PREMIUM_SKU)) return { sku: PREMIUM_SKU };
   return null;
 }
-const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today() });
+const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) } });
 // popups and sheets over any screen; while one shows only its own buttons take taps
 function modalOpen() { return !!(G.getMore || G.detail || G.offer || G.ageAsk || G.parent || G.chickBuy || G.treasure || G.nudge); }
 function drawModals() {
@@ -1882,13 +1918,14 @@ function drawOffer() {
 function drawNudge() {
   const n = G.nudge;
   dim(0.55);
-  const title = n.kind === 'keep' ? `Keep the ${n.name} Egg?` : n.kind === 'welcome' ? 'Welcome back!' : 'You can unlock it now!';
+  const title = n.kind === 'keep' ? (n.what === 'hen' ? `Keep the ${n.name}?` : `Keep the ${n.name} Egg?`) : n.kind === 'welcome' ? 'Welcome back!' : 'You can unlock it now!';
   const line = n.kind === 'keep' ? 'Your free try is over. Keep it for good:' : n.kind === 'welcome' ? `A gift for coming back: ${n.coins} coins and a free booster.` : `You have the coins for ${n.name}.`;
   stackCard(title, (s, iw) => [
     { h: 132 * s, gap: 4 * s, draw: (x, y, w) => {
       const aw = Math.min(w, 170 * s);
       ui.well(x + (w - aw) / 2, y, aw, 132 * s, { s, a: '#ffe9b0', b: '#fff6dc' });
-      if (n.kind === 'keep' || (n.kind === 'afford' && n.item.startsWith('skin:'))) drawSkinPreview(ctx, n.kind === 'keep' ? n.id : n.item.slice(5), x + w / 2, y + 66 * s, 104 * s, G.t);
+      if (n.kind === 'keep' && n.what === 'hen') drawHenSkinPreview(ctx, n.id, x + w / 2, y + 70 * s, 118 * s, G.t);
+      else if (n.kind === 'keep' || (n.kind === 'afford' && n.item.startsWith('skin:'))) drawSkinPreview(ctx, n.kind === 'keep' ? n.id : n.item.slice(5), x + w / 2, y + 66 * s, 104 * s, G.t);
       else if (n.kind === 'afford') drawStrikeChick(ctx, n.item.slice(6), x + w / 2, y + 72 * s, 112 * s, G.t, {});
       else drawOfferArt(ctx, 'coins', x + w / 2, y + 66 * s, 120 * s, G.t, save.wallet);
       ui.record({ x: x + (w - aw) / 2, y, w: aw, h: 132 * s }, 'nudge:art');
@@ -1976,6 +2013,9 @@ function drawChickBuy() {
 function drawDetail() {
   const it = G.screen === 'store' ? storeItem(G.detail, storeState()) : null;
   if (!it) { G.detail = null; return; }
+  // an egg or outfit the player does not own: "Try it free" under the price (each one once; trying shows how long is left)
+  const dk = G.detail.slice(0, G.detail.indexOf(':')), di = G.detail.slice(G.detail.indexOf(':') + 1);
+  const tryK = (dk === 'skin' || dk === 'hen') && !it.owned && (it.trying || DR.canTry(save, dk, di, false)) ? [dk, di] : null;
   dim(0.55);
   stackCard(it.name, (s, iw) => {
     const C = ui.C, B = it.btn, lines = wrapText(it.line, 16.5 * s, iw).slice(0, 4);
@@ -1989,6 +2029,9 @@ function drawDetail() {
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'dt:line' + i, gap: i ? 2 * s : 10 * s })),
       ...(it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 6 * s })] : []),
       { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x + w * 0.1, y, w * 0.8, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
+      ...(tryK ? [{ h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
+        ? ui.button('try:on', `Trying: ${DR.trials(save)[tryK[0]].left} level${DR.trials(save)[tryK[0]].left > 1 ? 's' : ''} left`, x + w * 0.1, y, w * 0.8, 50 * s, { kind: 'secondary', disabled: true, keepFace: true, dim: 1, size: 18 * s })
+        : ui.button('try:' + tryK.join(':'), 'Try it free', x + w * 0.1, y, w * 0.8, 50 * s, { kind: 'secondary', size: 20 * s }) }] : []),
       { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('dt:close', 'Close', x, y, w, 50 * s, { kind: 'tertiary', size: 20 * s }) },
     ];
   }, { ribbon: '#7a48e8' });
@@ -3430,6 +3473,9 @@ function onWin() {
     const gift = DR.winGift(save);
     if (gift) { DR.startSkinTrial(save, gift.id, Date.now()); G.result.gift = gift; }
     G.result.hot = DR.hotCount(save);
+    // 2026-11-20 shop 2.0 (no interstitials in the app): when an ad break would have been due, the win card offers a
+    // Bonus chest video instead of Double coins. Never on a losing streak.
+    if (ads.bonusDue({ levelId: G.level.id, frustrated: DR.frustration(save, G.level.id) >= 0.5 })) { ads.noteBonus(); G.result.chest = E.bonusChest(G.level.id); }
   }
   G.trialChick = null;
   recordResult();
@@ -5889,8 +5935,17 @@ function drawWinPage() {
     } });
     B.push({ h: 48 * s, draw: (x, y, w) => {
       if (!inCard) return;
-      if (!G.doubled) ui.button('double', (r.coins || 0) > 0 ? `Double coins: +${r.coins}` : 'Double', x + w * 0.1, y, w * 0.8, 48 * s, { kind: 'ad', ad: true, size: 16 * s });
-      else ui.text('Coins doubled!', x + w / 2, y + 24 * s, { size: 18 * s, align: 'center', color: C.good, tag: 'win:doubled' });
+      if (r.chest && !G.doubled) { // the Bonus chest: one video, the chest, its coins and its boost shown as art on the button
+        const bw = w * 0.84, bx = x + w * 0.08, ch = r.chest, B2 = ui.button('bonus', '', bx, y, bw, 48 * s, { kind: 'ad', shimmer: true });
+        let cx = bx + 14 * s;
+        const cy = B2.cy;
+        if (!ads.premium) { drawAdBadge(ctx, cx, cy, 24 * s, 17 * s); cx += 30 * s; } // Premium: no video, the chest opens at once
+        drawChest(ctx, cx + 17 * s, cy + 3 * s, 34 * s, G.t, 'ready'); cx += 40 * s;
+        const ax = bx + bw - 16 * s; // what is inside, as art: a boost and coins
+        drawBoosterIcon(ctx, ch.booster, ax - 14 * s, cy, 30 * s, G.t); drawCoin(ctx, ax - 40 * s, cy + 6 * s, 9 * s, G.t); drawCoin(ctx, ax - 48 * s, cy - 3 * s, 9 * s, G.t + 1);
+        ui.text('Bonus chest', cx, cy, { size: 17 * s, maxW: ax - 60 * s - cx, color: '#fff', stroke: '#2b1566', strokeW: 3 * s, tag: 'win:bonus', group: 'btn:bonus' });
+      } else if (!G.doubled) ui.button('double', (r.coins || 0) > 0 ? `Double coins: +${r.coins}` : 'Double', x + w * 0.1, y, w * 0.8, 48 * s, { kind: 'ad', ad: true, size: 16 * s });
+      else ui.text(r.chestOpen ? 'Bonus chest opened!' : 'Coins doubled!', x + w / 2, y + 24 * s, { size: 18 * s, align: 'center', color: C.good, tag: 'win:doubled' });
     } });
     return B;
   };
@@ -6519,7 +6574,7 @@ function frame(now) {
   if (G.paused) return;
   if (takeStep(save, G.screen === 'play' && !!G.sim)) { setDPR(); persist(); } // a quality change lands before this frame draws (no empty frame); Auto remembers it
   try {
-    if (G.henSkinCur !== save.wallet.henSkin) { G.henSkinCur = save.wallet.henSkin; setHenSkin(G.henSkinCur); ui.skin = skinUI(G.henSkinCur); } // hen + rooster skin, and the menus' theme
+    { const hs = DR.trialHen(save) || save.wallet.henSkin; if (G.henSkinCur !== hs) { G.henSkinCur = hs; setHenSkin(hs); ui.skin = skinUI(hs); } } // hen + rooster skin (an outfit on trial too), and the menus' theme
     const w0 = performance.now(), b0 = stampStats.builds;
     update(dt);
     renderAll();

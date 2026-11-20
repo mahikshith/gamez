@@ -768,6 +768,9 @@ const EGG_STEP = TAU / 48;
 function eggSprite(ctx, egg, rot, t, k, px, ds, special) {
   if (!stampStats.on || special || egg.curse > 0 || typeof document === 'undefined' || !ctx.getTransform) return false;
   const plain = egg.stone > 0 || egg.golden || egg.fire > 0 || skin === 'classic';
+  // the animated skins (galaxy, lava, pearl, robot) are always drawn live: a skin the player paid for keeps its
+  // animation on every graphics setting (a helper's Low-only freeze was measured at ~40 canvas calls a frame: not
+  // worth taking a bought look away)
   if (!plain && EGG_ANIM_SKIN.has(skin)) return false;
   const m = ctx.getTransform(), sc = Math.hypot(m.a, m.b) || 1; // device pixels per unit of the egg's frame
   const sq = Math.pow(1.15, Math.ceil(Math.log(sc) / Math.log(1.15)));
@@ -786,6 +789,8 @@ function eggSprite(ctx, egg, rot, t, k, px, ds, special) {
     c.rotate(rb);
     paintEggBody(c, egg, rb, t, k, px, ds, special);
     EGG_SPR.set(key, cv);
+    // tools/perf87/eggwhy.cjs: egg sprite churn (off by default)
+    if (stampStats.dbg) { const D = stampStats.dbg; D.egg = (D.egg || 0) + 1; D.seen = D.seen || new Set(); if (D.seen.has(key)) D.eggAgain = (D.eggAgain || 0) + 1; D.seen.add(key); D.sq = D.sq || {}; D.sq[sq.toFixed(2)] = 1; }
     stampStats.builds++; // (perf.js: a frame that bakes a picture is not a measure of the phone)
     if (EGG_SPR.size > 240) EGG_SPR.delete(EGG_SPR.keys().next().value);
   }
@@ -1105,7 +1110,25 @@ export function drawPortal(ctx, x, y, t, out) {
   const c2 = out ? '#ffd27a' : '#45d3ff';
   ctx.save();
   ctx.translate(x, y);
-  // the well: deep centre, a lit lip
+  // 2026-11-20 speed (perf87: one portal was ~63 canvas calls a frame, 378 on level 20): the well and its spiral only
+  // turn, so they are one stamp drawn rotated; the rim is a still stamp; only the riding sparks are drawn live
+  const spin = (out ? -1 : 1) * t * 2.6;
+  ctx.rotate(spin);
+  const well = (c) => portalWell(c, 0, out, c1, c2);
+  if (!stamp(ctx, out ? 'portal:well:o' : 'portal:well:i', 1, -0.47, -0.47, 0.47, 0.47, well)) well(ctx);
+  ctx.rotate(-spin);
+  const rim = (c) => portalRim(c, out, c1, c2);
+  if (!stamp(ctx, out ? 'portal:rim:o' : 'portal:rim:i', 1, -0.45, -0.45, 0.45, 0.45, rim)) rim(ctx);
+  // sparks riding the rim
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 3; i++) {
+    const an = (out ? 1 : -1) * t * 1.4 + (i * TAU) / 3, s = 0.016 + 0.01 * Math.sin(t * 7 + i * 2);
+    ctx.beginPath(); ctx.arc(0.375 * Math.cos(an), 0.375 * Math.sin(an), s, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+// the well: deep centre, a lit lip; spiral arms, fat at the rim and drawn to nothing at the centre (base: their turn)
+function portalWell(ctx, base0, out, c1, c2) {
   const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 0.46);
   g.addColorStop(0, '#020108');
   g.addColorStop(0.5, out ? '#2a0f06' : '#140c2a');
@@ -1115,10 +1138,9 @@ export function drawPortal(ctx, x, y, t, out) {
   ctx.beginPath();
   ctx.arc(0, 0, 0.46, 0, TAU);
   ctx.fill();
-  // spiral arms, fat at the rim and drawn to nothing at the centre
   ctx.lineCap = 'round';
   for (let i = 0; i < 4; i++) {
-    const base = (out ? -1 : 1) * t * 2.6 + (i * TAU) / 4;
+    const base = base0 + (i * TAU) / 4;
     ctx.strokeStyle = i % 2 ? c1 : c2;
     let px0 = 0, py0 = 0;
     for (let s = 0; s <= 14; s++) {
@@ -1130,7 +1152,9 @@ export function drawPortal(ctx, x, y, t, out) {
       px0 = qx; py0 = qy;
     }
   }
-  // rim: a solid ring of light with a dark seat and a hot inner edge
+}
+// rim: a solid ring of light with a dark seat and a hot inner edge (lit from a fixed side: it does not turn)
+function portalRim(ctx, out, c1, c2) {
   ctx.strokeStyle = 'rgba(8,4,20,0.75)'; ctx.lineWidth = 0.1;
   ctx.beginPath(); ctx.arc(0, 0, 0.375, 0, TAU); ctx.stroke();
   const rg = ctx.createLinearGradient(-0.3, 0.3, 0.3, -0.3);
@@ -1139,13 +1163,6 @@ export function drawPortal(ctx, x, y, t, out) {
   ctx.beginPath(); ctx.arc(0, 0, 0.375, 0, TAU); ctx.stroke();
   ctx.strokeStyle = lighten(c2, 0.6, 0.9); ctx.lineWidth = 0.014;
   ctx.beginPath(); ctx.arc(0, 0, 0.39, Math.PI * 0.55, Math.PI * 1.0); ctx.stroke();
-  // sparks riding the rim
-  ctx.fillStyle = '#ffffff';
-  for (let i = 0; i < 3; i++) {
-    const an = (out ? 1 : -1) * t * 1.4 + (i * TAU) / 3, s = 0.016 + 0.01 * Math.sin(t * 7 + i * 2);
-    ctx.beginPath(); ctx.arc(0.375 * Math.cos(an), 0.375 * Math.sin(an), s, 0, TAU); ctx.fill();
-  }
-  ctx.restore();
 }
 
 // 2026-11-16 (mykee: "portals appear but don't suck"): a swirl that only gives out orbs (entry = exit, no pull) is

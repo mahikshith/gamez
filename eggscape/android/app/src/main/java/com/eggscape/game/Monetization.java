@@ -63,10 +63,10 @@ public class Monetization {
     static final String PREMIUM_SKU = "eggscape_premium";
     /** bought again and again: consumed after the grant (keep in sync with IAP in src/economy.js) */
     static final Set<String> CONSUMABLE = new HashSet<>(Arrays.asList(
-            "coins_250", "coins_850", "coins_1500", "coins_3300", "coins_7000", "bundle_helper", "bundle_flock", "egg_bank"));
+            "coins_250", "coins_850", "coins_1500", "coins_3300", "bundle_helper", "egg_bank"));
     /** bought once: acknowledged after the grant, given back by restore() */
     static final Set<String> ONE_TIME = new HashSet<>(Arrays.asList(
-            "starter_nest", "season_pack", "all_chicks", "no_ads", PREMIUM_SKU));
+            "starter_nest", PREMIUM_SKU, "eggscape_collector"));
     /**
      * Security: the app's licence key (Play Console > Monetize with Play > Monetization setup > Licensing, the base64 RSA
      * public key). When set, a purchase is granted only if Google's signature over it checks out, which stops fake-billing

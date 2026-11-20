@@ -14,8 +14,8 @@
 //   ally     a farm friend for this attempt booster  a free booster on the intro  hint    a hint
 //   skip     skip a level you are stuck on  charge   one Chick Charge             gate    open the next world early
 // Stuck help: after STUCK_FAILS fails in a row on one level the fail card offers Skip (ad, or coins) and a free charge.
-// Interstitials (app only): never before level INTER.from, never right after a fail, at least INTER.gapS seconds and
-// INTER.levels finished levels apart, never for premium players.
+// Interstitials (app only): off since 2026-11-20 (INTER.on). Their cadence (never before level INTER.from, INTER.gapS
+// seconds and INTER.levels finished levels apart) now offers the win card's Bonus chest video instead.
 // Real-money products (2026-11-16 shop revamp): the table lives in economy.js (IAP). The Android shell buys through Play
 // Billing and hands every purchase it sees to window.__eggGrant(sku, token); the grant is idempotent per token, and the
 // shell consumes or acknowledges a purchase only after that call returned true (so a crash mid-way never loses one).
@@ -33,7 +33,10 @@ export const PREMIUM_SKU = 'eggscape_premium';
 export const PREMIUM_PRICE_HINT = usdHint(PREMIUM_SKU); // shown until the store returns the real localized price
 export const STUCK_FAILS = 3;
 export const SKIP_COINS = 150;
-export const INTER = { from: 8, gapS: 240, levels: 3 };
+// 2026-11-20 shop 2.0 (mykee: "every ad should be beneficial, for the player and for us"): the app shows no
+// interstitials (on: false). The same cadence now decides when the win card offers the Bonus chest video instead of
+// "Double coins" (bonusDue). Web portals keep their own commercialBreak exactly as before: portals require it.
+export const INTER = { on: false, from: 8, gapS: 240, levels: 3 };
 
 const st = { busy: false, lastInter: 0, sinceInter: 0, prices: {}, fails: {}, seq: 0, pending: new Map(), adWait: new Set(), childSafe: false };
 let save = null, persist = () => {}, onGrant = () => {};
@@ -130,16 +133,24 @@ export const ads = {
     st.sinceInter++;
     const b = bridge();
     if (!b) { try { await portal.commercialBreak(); } catch (_) { /* fail open */ } return; }
-    if (!this.interstitialAllowed(info)) return;
+    if (!INTER.on || !this.interstitialAllowed(info)) return;
     st.busy = true;
     try { if (await callNative('showInterstitial')) { st.lastInter = Date.now(); st.sinceInter = 0; } } catch (_) { /* fail open */ }
     st.busy = false;
   },
   interstitialAllowed({ levelId = 0, afterFail = false } = {}) {
     if (this.premium || this.payer || afterFail || levelId < INTER.from) return false;
-    if (st.sinceInter < INTER.levels) return false;
-    return Date.now() - st.lastInter >= INTER.gapS * 1000;
+    return this.cadence();
   },
+  cadence() { return st.sinceInter >= INTER.levels && Date.now() - st.lastInter >= INTER.gapS * 1000; },
+  // the win card's Bonus chest (app only): when an ad break would have been due by the old cadence, never on a losing
+  // streak (main.js passes frustrated: DR.frustration >= 0.5). Payers and Premium get it too (Premium: no video).
+  // The caller reports it shown (noteBonus) so the cadence restarts, as a shown interstitial did.
+  bonusDue({ levelId = 0, frustrated = false } = {}) {
+    if (!MONEY || frustrated || levelId < INTER.from) return false;
+    return this.cadence();
+  },
+  noteBonus() { st.lastInter = Date.now(); st.sinceInter = 0; },
 
   // stuck detection: the fail card asks how many times in a row this level was lost
   fail(levelId) { st.fails[levelId] = (st.fails[levelId] || 0) + 1; return st.fails[levelId]; },

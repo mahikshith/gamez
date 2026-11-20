@@ -389,7 +389,9 @@ export function drawRingBody(ctx, ring, col, st, k, up) {
 function bodyCanvas(ring, arcs, col, st, k, up, A, scale) {
   const S = stateOf(ring), key = faceKey(ring, col) + '|' + (up ? 1 : 0) + '|' + (st.alpha || 1) + '|' + (st.shine ? 1 : 0);
   let d = A - S.bA; d -= Math.round(d / TAU) * TAU;
-  if (S.bcv && S.bkey === key && Math.abs(d) < bodyCache.turn && scale <= S.bscale * 1.04 && scale > S.bscale * 0.6) return S.body;
+  if (S.bcv && S.bkey === key && Math.abs(d) < bodyCache.turn && scale <= S.bhi * 1.04 && scale > S.bscale * 0.6) return S.body;
+  // tools/perf87/why.cjs sets bodyCache.why = {} to count why sprites re-bake (off by default: null)
+  if (bodyCache.why) { const w = !S.bcv ? 'new' : S.bkey !== key ? 'key' : Math.abs(d) >= bodyCache.turn ? 'turn' : 'scale'; bodyCache.why[w] = (bodyCache.why[w] || 0) + 1; if (w === 'key') bodyCache.why[S.bkey + ' -> ' + key] = 1; if (w === 'scale') bodyCache.why['sc ' + (scale / S.bscale).toFixed(2)] = 1; }
   const half = (ring.prof ? ringReach(ring) : ring.r) + RING_TH / 2 + 0.34;
   let sc = scale * 1.15; // the same headroom as the face: the camera eases in and out, rebuild only on a real zoom
   const MAX = 2048;
@@ -405,7 +407,10 @@ function bodyCanvas(ring, arcs, col, st, k, up, A, scale) {
   c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, size, size);
   c.setTransform(sc, 0, 0, sc, size / 2, size / 2);
   paintBody(c, ring, arcs, col, st, k, up, A);
-  S.bcv = cv; S.bkey = key; S.bscale = Math.max(sc, scale * 1.15); S.bA = A; S.body = { canvas: cv, half: size / 2 / sc, A };
+  // 2026-11-20 (perf87): zooming OUT is judged against the scale asked for, not the scale of a larger canvas kept from
+  // before (that one can be up to 1.45x bigger, so a slow zoom-out failed the 0.6 test on EVERY frame: levels 27 and
+  // 44 re-baked a ring body ~50 times a second while the camera eased out); zooming IN against the sharper of the two
+  S.bcv = cv; S.bkey = key; S.bscale = scale * 1.15; S.bhi = Math.max(sc, scale * 1.15); S.bA = A; S.body = { canvas: cv, half: size / 2 / sc, A };
   bodyCache.builds++;
   return S.body;
 }
@@ -540,17 +545,24 @@ export function drawPads(ctx, ring, theme, px, t, eggs, simT) {
         hole.moveTo(q[0] + sz * 0.85, q[1]); hole.arc(q[0], q[1], sz * 0.85, 0, TAU);
       }
       C.pores = { lip, hole };
+      // 2026-11-20 (perf87): the run's bounding box, once (it was measured again every frame, and the egg test below
+      // walked every sample point for every egg: ~80 KB of garbage a frame on a phone's unoptimised first pass)
+      C.bx0 = 1e9; C.by0 = 1e9; C.bx1 = -1e9; C.by1 = -1e9;
+      for (const L of [C.out, C.s0]) for (const q of L) { if (q[0] < C.bx0) C.bx0 = q[0]; if (q[0] > C.bx1) C.bx1 = q[0]; if (q[1] < C.by0) C.by0 = q[1]; if (q[1] > C.by1) C.by1 = q[1]; }
       cache.set(ck, C);
     }
     // does anything press or wobble this run right now?
     let dyn = false;
     for (const seg of Rn.segs) { const d = simT - seg.hitT; if (d >= 0 && d < 0.6) { dyn = true; break; } }
     if (!dyn && near.length) {
-      for (let i = 0; i <= n && !dyn; i++) { const s0 = C.s0[i]; for (const q of near) if (Math.hypot(q.x - s0[0], q.y - s0[1]) < 0.3) { dyn = true; break; } }
+      for (let j = 0; j < near.length && !dyn; j++) {
+        const qx = near[j].x, qy = near[j].y;
+        if (qx < C.bx0 - 0.3 || qx > C.bx1 + 0.3 || qy < C.by0 - 0.3 || qy > C.by1 + 0.3) continue; // nowhere near this run
+        for (let i = 0; i <= n; i++) { const s0 = C.s0[i], ex = qx - s0[0], ey = qy - s0[1]; if (ex * ex + ey * ey < 0.09) { dyn = true; break; } }
+      }
     }
     Rn.C = C; Rn.dyn = dyn; Rn.n = n; dynAny = dynAny || dyn;
-    for (const q of C.out) { bx0 = Math.min(bx0, q[0]); bx1 = Math.max(bx1, q[0]); by0 = Math.min(by0, q[1]); by1 = Math.max(by1, q[1]); }
-    for (const q of C.s0) { bx0 = Math.min(bx0, q[0]); bx1 = Math.max(bx1, q[0]); by0 = Math.min(by0, q[1]); by1 = Math.max(by1, q[1]); }
+    if (C.bx0 < bx0) bx0 = C.bx0; if (C.bx1 > bx1) bx1 = C.bx1; if (C.by0 < by0) by0 = C.by0; if (C.by1 > by1) by1 = C.by1;
   }
   // 2026-11-20 speed: a pad nothing presses is stamped (painted once per 0.2 rad of turn, see stamp.js)
   const paintRuns = (ctx) => {
