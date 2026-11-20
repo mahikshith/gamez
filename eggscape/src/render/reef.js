@@ -40,16 +40,21 @@ export const JELLY_ART = 1.3;
 // it lunges.
 export function drawHermit(ctx, x, y, s, t, o = {}) {
   const face = o.face || 1, pose = o.pose || 'walk', u = o.u ?? 0, lw = Math.max(1.5, s * 0.036), part = o.part || 'all', HC = o.ice ? HCI : HCP;
-  const flip = pose === 'flip', pinch = pose === 'pinch', carry = pose === 'carry';
+  const pinch = pose === 'pinch', carry = pose === 'carry';
+  const fk = clamp(o.flipK ?? (pose === 'flip' ? 1 : 0), 0, 1), flip = fk > 0.5, daze = clamp(o.daze || 0, 0, 1); // fk: how far over on its back
   ctx.save();
   ctx.translate(x, y);
   ctx.globalAlpha *= o.alpha ?? 1;
   if (pose === 'in') { const k = back(sstep(u)); ctx.translate(0, (1 - k) * 0.2 * s); ctx.scale(0.4 + 0.6 * k, 0.4 + 0.6 * k); }
   ctx.scale(face, 1);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  if (part !== 'front' && !flip) { ctx.fillStyle = 'rgba(0,0,0,0.24)'; ctx.beginPath(); ctx.ellipse(-0.02 * s, 0, 0.44 * s, 0.035 * s, 0, 0, TAU); ctx.fill(); }
-  if (flip) { ctx.translate(0, -0.3 * s); ctx.rotate(Math.PI + Math.sin(t * 9) * 0.12); ctx.translate(0, 0.3 * s); } // on its back, in place
-  const ph = (o.walk || 0) / 0.028, bob = pose === 'walk' || carry ? Math.abs(Math.sin(ph)) * 0.012 * s : 0;
+  if (part !== 'front') { ctx.fillStyle = 'rgba(0,0,0,0.24)'; ctx.beginPath(); ctx.ellipse(-0.02 * s, 0, (0.44 - 0.16 * fk) * s, 0.035 * s, 0, 0, TAU); ctx.fill(); }
+  if (fk > 0) { // the tumble: a little hop as it rolls over its shell, then it rocks on its back, kicking; the same roll back
+    const ef = sstep(fk), hop = Math.sin(ef * Math.PI) * 0.16 * s, rock = fk > 0.97 ? Math.sin(t * 9) * 0.12 : 0;
+    ctx.translate(0, -0.3 * s - hop); ctx.rotate(-Math.PI * ef + rock); ctx.translate(0, 0.3 * s);
+  }
+  if (daze > 0) { ctx.translate(0, -0.25 * s); ctx.rotate(Math.sin(t * 22) * 0.09 * daze); ctx.translate(0, 0.25 * s); } // shakes it off
+  const ph = (o.walk || 0) / 0.028, bob = pose === 'walk' || pose === 'stalk' || carry ? Math.abs(Math.sin(ph)) * 0.012 * s : 0;
   // the acted grab: rear back (anticipation), then lunge
   const rear = pinch ? Math.sin(clamp(u / 0.8, 0, 1) * Math.PI) * 0.16 + Math.sin(t * 40) * 0.012 : 0, lunge = pinch ? sstep((u - 0.8) / 0.2) : 0;
   ctx.translate(lunge * 0.07 * s - rear * 0.12 * s, -bob);
@@ -58,7 +63,7 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     for (let i = 0; i < 3; i++) {
       const c = ((((ph + i * 2.1 + (near ? 0 : Math.PI)) / TAU) % 1) + 1) % 1, st = 0.62, stride = 0.07 * s;
       let fx, lift = 0;
-      if (flip) { fx = Math.sin(t * 13 + i * 2 + (near ? 0 : 1.5)) * 0.03 * s; lift = 0.05 * s + Math.cos(t * 13 + i * 2) * 0.03 * s; }
+      if (flip) { fx = Math.sin(t * 13 + i * 2 + (near ? 0 : 1.5)) * 0.05 * s; lift = 0.06 * s + Math.cos(t * 13 + i * 2) * 0.05 * s; }
       else if (c < st) fx = stride * (0.5 - c / st); else { const q = (c - st) / (1 - st); fx = stride * (-0.5 + q * q * (3 - 2 * q)); lift = Math.sin(q * Math.PI) * 0.05 * s; }
       const hip = [(0.03 + i * 0.06) * s, -0.16 * s], foot = [(0.02 + i * 0.105 + (near ? 0.03 : -0.02)) * s + fx, -lift];
       const K = ik(hip[0], hip[1], foot[0], foot[1], 0.13 * s, 0.15 * s, -1);
@@ -99,6 +104,8 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
   if (part !== 'back') {
     legs(true);
     const cx = 0.17 * s, cy = -0.2 * s, look = pinch ? 0.7 : 0.45;
+    // brow mood: + scowl (inner ends down), - worried; it schemes on the walk, scowls at an egg, is smug with one, frets when flipped
+    const mood = o.ice ? -0.6 : flip || daze > 0.3 ? -1 : pinch ? 1 : pose === 'stalk' ? 0.75 : carry ? 0.45 : 0.3;
     // the small far claw, behind the body
     const snapK = pinch ? 0.5 + 0.5 * Math.sin(t * 24) : carry ? 0.08 : 0.3 + 0.12 * Math.sin(t * 3);
     const raise = pinch ? 0.55 + 0.45 * sstep(u * 2.5) - lunge * 0.7 : carry ? 0.12 : flip ? 0.5 + Math.sin(t * 8) * 0.2 : Math.sin(t * 1.7) * 0.05;
@@ -109,7 +116,9 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
       limb(ctx, [[bx, by], [tx, ty]], [0.022 * s, 0.018 * s], HC.body, HC.line, lw * 0.75);
       const er = 0.052 * s;
       if (o.stun) { ctx.beginPath(); ctx.arc(tx, ty, er, 0, TAU); fillStroke(ctx, HC.white, HC.line, lw * 0.8); spiralEye(ctx, tx, ty, er * 0.8, t, sd, HC.line); }
-      else eye(ctx, tx, ty, { r: er, white: HC.white, iris: HC.eye, irisR: 0.5, pupilR: 0.2, look: { x: look, y: pinch ? 0.25 : 0.1 }, lid: Math.max(pinch ? 0.3 : 0.08, o.ice ? 0 : blinkAt(t, 2)), mad: pinch ? sd * -0.5 + 0.25 : 0, lidCol: HC.body, line: HC.line, lw: lw * 0.75 });
+      else eye(ctx, tx, ty, { r: er, white: HC.white, iris: HC.eye, irisR: 0.5, pupilR: 0.2, look: { x: look, y: pinch ? 0.25 : 0.1 }, lid: Math.max(pinch ? 0.3 : carry ? 0.42 : 0.08, o.ice ? 0 : blinkAt(t, 2)), mad: pinch ? sd * -0.5 + 0.25 : carry ? sd * 0.2 : 0, lidCol: HC.body, line: HC.line, lw: lw * 0.75 });
+      { const ix = tx - sd * er * 0.75, ox = tx + sd * er * 0.95, by0 = ty - er * (1.32 + (mood < 0 ? 0.12 : 0)), m = mood * er * 0.42;
+        ctx.beginPath(); ctx.moveTo(ix, by0 + m); ctx.lineTo(ox, by0 - m); ctx.lineWidth = lw * 1.25; ctx.strokeStyle = HC.line; ctx.stroke(); }
     }
     // feelers
     ctx.beginPath(); for (const [a, L] of [[-0.5, 0.13], [-0.2, 0.11]]) { const w = Math.sin(t * 3.1 + a * 9) * 0.15; ctx.moveTo(cx + 0.1 * s, cy - 0.04 * s); ctx.quadraticCurveTo(cx + 0.1 * s + Math.cos(a) * L * s * 0.6, cy - 0.04 * s + Math.sin(a) * L * s * 0.9, cx + 0.1 * s + Math.cos(a + w) * L * s, cy - 0.04 * s + Math.sin(a + w) * L * s); }
@@ -118,8 +127,11 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     const cara = () => { ctx.beginPath(); ctx.ellipse(cx, cy, 0.15 * s, 0.115 * s, -0.2, 0, TAU); };
     form(ctx, cara, { d: 0.035 * s, lo: HC.bodyLo, base: HC.body, hi: HC.bodyHi, hiK: 0.55, line: HC.line, lw, noWeight: true });
     ctx.beginPath();
-    if (pinch || flip) ctx.ellipse(cx + 0.085 * s, cy + 0.035 * s, 0.022 * s, 0.028 * s, 0, 0, TAU); else { ctx.moveTo(cx + 0.05 * s, cy + 0.03 * s); ctx.quadraticCurveTo(cx + 0.09 * s, cy + 0.06 * s, cx + 0.125 * s, cy + 0.02 * s); }
-    if (pinch || flip) { ctx.fillStyle = HC.mouth; ctx.fill(); } ctx.lineWidth = lw * 0.8; ctx.strokeStyle = HC.line; ctx.stroke();
+    const oMouth = pinch || flip || daze > 0.3;
+    if (oMouth) ctx.ellipse(cx + 0.085 * s, cy + 0.035 * s, 0.022 * s, (0.028 + (flip ? 0.008 * Math.sin(t * 11) : 0)) * s, 0, 0, TAU);
+    else if (carry) { ctx.moveTo(cx + 0.035 * s, cy + 0.02 * s); ctx.quadraticCurveTo(cx + 0.085 * s, cy + 0.08 * s, cx + 0.135 * s, cy + 0.005 * s); } // a smug grin
+    else { ctx.moveTo(cx + 0.05 * s, cy + 0.03 * s); ctx.quadraticCurveTo(cx + 0.09 * s, cy + 0.06 * s, cx + 0.125 * s, cy + 0.02 * s); }
+    if (oMouth) { ctx.fillStyle = HC.mouth; ctx.fill(); } ctx.lineWidth = lw * 0.8; ctx.strokeStyle = HC.line; ctx.stroke();
     // the great pincer, in front: up and chattering in the telegraph, hugging the egg when it carries one
     claw(ctx, HC, cx + 0.03 * s, cy + 0.07 * s, 0.16 * s, -0.1 - raise * 1.05 + lunge * 0.25, snapK, lw, false);
   }
@@ -267,12 +279,15 @@ const wantOf = (c) => (c.fz > 0 ? { k: 'ice', left: c.fz } : c.stn > 0 || c.zp >
 function hermitFrame(sim, H, t, k) {
   const fl = sim.reefFloor(H.ch), x = fl * Math.cos(H.a), y = fl * Math.sin(H.a);
   const rot = Math.atan2(Math.cos(H.a), -Math.sin(H.a)); // after ctx.rotate(-rot) in the y-down px space, local -y (up) points to the vault centre
-  const pose = H.ph === 'flip' ? 'flip' : H.ph === 'pinch' ? 'pinch' : H.ph === 'carry' ? 'carry' : H.ph === 'in' ? 'in' : 'walk';
+  const pose = H.ph === 'flip' ? 'flip' : H.ph === 'pinch' ? 'pinch' : H.ph === 'carry' ? 'carry' : H.ph === 'in' ? 'in' : H.ph === 'stalk' ? 'stalk' : 'walk';
   const u = H.dur > 0 ? clamp(1 - H.t / H.dur, 0, 1) : 0;
   // the face flips so it always reads upright on screen (as the thieves do): +x along the floor
   const sx = -Math.sin(H.a) * H.face; // screen x direction of its facing (rough)
   void sx;
-  return { x, y, rot, o: { face: H.face, walk: H.odo, pose, u, stun: H.ph === 'flip' && H.k !== 'sting' ? 1 : H.zp > 0 ? 1 : 0, alpha: 1 } };
+  // the flip rolls over in 0.22 s and back in the last 0.35 s of it; the second after it (rest 1 s) it shakes off the daze
+  const flipK = H.ph === 'flip' ? Math.min(clamp((H.dur - H.t) / 0.22, 0, 1), clamp(H.t / 0.35, 0, 1)) : 0;
+  const daze = H.ph === 'rest' && H.dur <= 1.01 ? clamp(H.t / H.dur, 0, 1) : 0;
+  return { x, y, rot, o: { face: H.face, walk: H.odo, pose, u, flipK, daze, stun: (H.ph === 'flip' && H.k !== 'sting' && flipK > 0.5) || daze > 0.4 ? 1 : H.zp > 0 ? 1 : 0, alpha: 1 } };
 }
 // the frozen look: the creature in the ice palette with crisp shards stuck on it (as the King Crab), shaking as it cracks;
 // shards drop off as it thaws. A zap keeps status.js's arcs. sh = { x, y, r, seed }: where the shards sit (local px).
@@ -302,7 +317,7 @@ function drawHermitAt(ctx, sim, H, t, k, part) {
     const box = { x0: -0.6 * s, y0: -0.75 * s, x1: 0.6 * s, y1: 0.1 * s };
     if (st && st.k === 'stun' && part !== 'all') draw(ctx, false);
     else withStatus(ctx, st, box, k, { x: -0.05 * s, y: -0.3 * s, r: 0.3 * s, seed: 3 + H.id }, draw, part !== 'back');
-    if (part !== 'back' && F.o.pose === 'flip' && !(H.fz > 0)) dizzyStars(ctx, 0.05 * s, -0.62 * s, 0.22 * s, 0.07 * s, t, { n: 3, size: Math.max(4, s * 0.08) });
+    if (part !== 'back' && F.o.pose === 'flip' && F.o.flipK > 0.6 && !(H.fz > 0)) dizzyStars(ctx, 0.05 * s, -0.62 * s, 0.22 * s, 0.07 * s, t, { n: 3, size: Math.max(4, s * 0.08) });
   });
 }
 function pufferFrame(sim, P) {

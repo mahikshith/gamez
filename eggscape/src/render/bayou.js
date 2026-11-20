@@ -238,7 +238,7 @@ export function drawTurtle(ctx, s, t = 0, o = {}) {
     ctx.fillStyle = 'rgba(0,0,0,0.26)'; ctx.beginPath(); ctx.ellipse(-2, 0.4, 40 - 8 * Math.sin(flip * Math.PI), 2.4, 0, 0, TAU); ctx.fill();
     // the tumble: it rolls over its tail in profile with a little hop, then rocks on its dome
     if (flip > 0) { const e = flip * flip * (3 - 2 * flip); ctx.translate(-6 * Math.sin(e * Math.PI), -16 - Math.sin(e * Math.PI) * 13); ctx.rotate(-Math.PI * e + (onBack ? Math.sin(t * 5.5) * 0.09 * flail * flip : 0)); ctx.translate(0, 16); }
-    else ctx.translate(0, -walk * Math.abs(Math.sin(g)) * 0.7 - (head > 0.3 ? 0 : 0)); // a slow rolling crawl
+    else { ctx.translate(0, -walk * Math.abs(Math.sin(g)) * 0.7); const br = (o.breathe || 0) * Math.sin(t * 2.3); ctx.scale(1 - br * 0.01, 1 + br * 0.04); } // a slow rolling crawl; breathing when still
     const leg = (hipX, ph, far, hind) => {
       const c = (((g + ph) / TAU) % 1 + 1) % 1, st = 0.66, stride = 7 * walk;
       let fx, lift = 0;
@@ -282,7 +282,7 @@ export function drawTurtle(ctx, s, t = 0, o = {}) {
     } });
     ctx.beginPath(); ctx.arc(11.6, -3.4, 0.6, 0, TAU); ctx.fillStyle = C.line; ctx.fill(); // nostril
     if (o.eye === 'spiral') { ctx.beginPath(); ctx.arc(2.6, -3.6, 3, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 2.6, -3.6, 3, t, 1, C.line); }
-    else eye(ctx, 2.6, -3.6, { r: 3, iris: C.eye, irisLo: C.eyeLo, pupil: 'round', pupilR: 0.36, look: { x: 0.5, y: 0.1 }, lid: Math.max(o.glare ? 0.3 : 0.16, blinkAt(t, 7)), mad: o.glare ? 0.42 : 0.12, lidCol: C.skin, line: C.line, lw: lw * 0.7, shut: o.eye === 'shut' ? 1 : 0 });
+    else eye(ctx, 2.6, -3.6, { r: 3, iris: C.eye, irisLo: C.eyeLo, pupil: 'round', pupilR: 0.36, look: { x: o.lookX ?? 0.5, y: 0.1 }, lid: Math.max(o.glare ? 0.3 : 0.16, blinkAt(t, 7)), mad: o.glare ? 0.42 : 0.12, lidCol: C.skin, line: C.line, lw: lw * 0.7, shut: o.eye === 'shut' ? 1 : 0 });
     if (o.glare) { ctx.beginPath(); ctx.moveTo(-1.6, -8); ctx.lineTo(6.4, -5.4); ink(lw * 1.2); }
     ctx.restore();
     // plastron (belly plate): on its back this is what faces up
@@ -424,6 +424,14 @@ export function drawBayou(ctx, sim, t, k) {
     const rf = sim.byFloor(T.ch), A = look('t' + T.id, sim, T.x, T.y, T.face, t), L = TURTLE.L * k, st = statusClock(sim, 'bt' + T.id, want(T), t);
     const flipU = T.ph === 'flip' ? ss(0, 0.25, T.t) : T.ph === 'right' ? 1 - ss(0, 1, T.t / T.dur) : 0;
     const o = { head: T.ph === 'warn' ? -0.9 : T.ph === 'clamp' ? 0.75 : 0, mouth: T.ph === 'warn' ? ss(0, 1, T.t / Math.max(0.01, T.dur)) : 0, gait: (A.g / 9 / (0.106 * TURTLE.L)) * TAU, walk: clamp(A.sp / 0.05, 0, 1), flip: flipU, flail: 1, shell: T.ph === 'shell' ? 1 - ss(0.75, 1, T.t / T.dur) : 0, eye: st && st.k === 'stun' ? 'spiral' : T.ph === 'flip' ? 'spiral' : undefined, glare: T.ph === 'warn' || T.ph === 'clamp', stars: (st && st.k === 'stun') || (T.ph === 'flip' && T.t > 0.3) ? 1 : 0 };
+    if (!st || st.k !== 'ice') { // render-only life: the head and jaw glide between poses (pull back fast, strike faster), and
+      // standing still it breathes, looks about and pokes its head out now and then, so it never sits like a sticker
+      const dtt = clamp(t - (A.ht ?? t), 0, 0.1), idle = T.ph === 'crawl' ? 1 - o.walk : 0; A.ht = t;
+      if (idle > 0) { o.head += idle * (0.16 * Math.sin(t * 0.7 + T.id * 2) + 0.5 * ss(0.5, 1, Math.sin(t * 0.37 + T.id))); o.breathe = idle; o.lookX = 0.65 * Math.tanh(3 * Math.sin(t * 0.45 + T.id * 1.7)); }
+      A.hd = A.hd == null ? o.head : A.hd + (o.head - A.hd) * (1 - Math.exp(-dtt * (o.head > A.hd + 0.3 ? 30 : 11)));
+      A.mo = A.mo == null ? o.mouth : A.mo + (o.mouth - A.mo) * (1 - Math.exp(-dtt * 16));
+      o.head = A.hd; o.mouth = A.mo;
+    }
     frame(ctx, T, rf, k, () => {
       ctx.scale(A.f >= 0 ? 1 : -1, 1);
       const box = { x0: -L * 0.62, y0: -L * 0.5, x1: L * 0.7, y1: L * 0.1 };
@@ -440,7 +448,7 @@ export function drawBayouOver(ctx, sim, t, k) {
     frame(ctx, T, rf, k, () => {
       ctx.scale(A && A.f < 0 ? -1 : 1, 1);
       ctx.save(); ctx.beginPath(); ctx.rect(L * 0.35, -L * 0.4, L * 0.4, L * 0.4); ctx.clip();
-      drawTurtle(ctx, L, t, { head: 0.75, glare: 1 });
+      drawTurtle(ctx, L, t, { head: A && A.hd != null ? A.hd : 0.75, mouth: A && A.mo != null ? A.mo : 0, glare: 1 });
       ctx.restore();
     });
   }

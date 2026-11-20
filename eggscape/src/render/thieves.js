@@ -729,6 +729,7 @@ function drawOne(ctx, sim, T, t, k, head) {
       if ((L.st === 'prowl' || L.st === 'stalk') && t - (D.carT ?? -9) < 0.12) L.st = 'idle';
       pose = thiefBlend('t' + T.id, thiefPose(T.kind, L.st, t, L.u, T.odo), t, T.ph === 'leap' || T.ph === 'trapped' || T.ph === 'sqThrow' || T.ph === 'tumble' ? 22 : 9);
       if (T.cuff > 0) pose = cuffPose(pose, T);
+      if (T.kind === 'weasel') pose = voiceBeats(T, pose, L);
       D.pose = { ...pose };
     }
     if (D.fz > 0 && !frozen) D.thawT = t;
@@ -751,6 +752,34 @@ function drawOne(ctx, sim, T, t, k, head) {
     if (T.cuff > 0 && !head) cuffSmear(ctx, T, s);
     if (!head && t - D.thawT < 0.6) thawShards(ctx, k, (t - D.thawT) / 0.6, mid);
   });
+}
+// the weasel acts its voice (main.js plays it on the same sim tick the phase starts; audio.js sets the beats): two sniffs
+// and a curious "mm?" as it crouches (weasel_sniff), a shoulder hitch on every "hee" of its snicker as it comes in and as it
+// grabs (weasel_snicker, 4 hees), a startled jump on the "yipe!" when it runs off beaten (weasel_yelp). Additive, after the
+// pose blend, on a copy (the blend memory stays clean).
+const SNICK = [0, 0.091, 0.194, 0.309];
+const beat = (e, c, w) => (e > c && e < c + w ? Math.sin(((e - c) / w) * Math.PI) : 0);
+function voiceBeats(T, pose, L) {
+  const e = T.dur - T.t;
+  if (!(e >= 0) || e > 0.6) return pose;
+  if (T.ph === 'crouch') {
+    const sn = beat(e, 0, 0.07) + beat(e, 0.11, 0.07), mm = beat(e, 0.24, 0.17);
+    if (!sn && !mm) return pose;
+    return { ...pose, hr: pose.hr + 0.1 * sn - 0.2 * mm, hy: pose.hy + 1.4 * sn - 2.2 * mm, whisk: pose.whisk + 2.5 * sn, ear: pose.ear - 0.35 * mm, lid: Math.max(0, pose.lid - 0.3 * mm) };
+  }
+  if (T.ph === 'in' || T.ph === 'grab') {
+    const f = T.ph === 'grab' ? 1 / 1.1 : 1; let h = 0;
+    for (const c of SNICK) h += beat(e, c * f, 0.075 * f);
+    if (T.ph === 'in' && e < 0.42) L.o.eye = 'happy';
+    if (!h) return pose;
+    return { ...pose, by: pose.by + 1.3 * h, hr: pose.hr - 0.07 * h, hy: pose.hy - 0.8 * h, jaw: T.ph === 'in' ? pose.jaw + 0.35 * h : pose.jaw, tw: pose.tw + 0.15 * h };
+  }
+  if (T.ph === 'flee' && e < 0.3) {
+    const j = beat(e, 0, 0.22);
+    L.o.eye = 'wide';
+    return { ...pose, by: pose.by + 4 * j, ear: 1, puff: Math.max(pose.puff, j), jaw: pose.jaw + 0.5 * j };
+  }
+  return pose;
 }
 // a walking thief meets an egg on its floor that it is not after (a rat getting behind its egg, a weasel passing one by):
 // it hops over it instead of walking through it. Render only: a lift in metres on a smooth arc over the egg.
