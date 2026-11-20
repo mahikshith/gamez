@@ -22,7 +22,13 @@ let CALM = false;
 export function setSceneCalm(v) { CALM = !!v; } // main.js: save.calm, every frame
 const still = () => CALM || PERF.low;
 // the layer transform for live bits: on Low the backdrop is one flat picture without parallax, so they sit on it 1:1
-function tfL(ctx, S, f) { if (PERF.low) { ctx.save(); ctx.translate(-S.M, -S.M); } else S.tf(ctx, f); }
+// 2026-11-20 (mykee: "background should not distract... it shouldn't be that bright. It could be kind of off colour"):
+// the whole scene stands behind a veil. The near layer is washed toward the sky's pale colour when it is baked (flat,
+// and more behind the vault), every living thing is baked with the same wash, and whatever is drawn per frame goes
+// on at LIVE_A. Nothing in the backdrop keeps a pure, saturated colour: those belong to rings, eggs and thorns.
+const VEIL = { flat: 0.42, sprite: 0.36, col: '#eef3f0' }, LIVE_A = 0.8;
+function veilSprite(c, cv) { c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-atop'; c.fillStyle = rgba(VEIL.col, VEIL.sprite); c.fillRect(0, 0, cv.width, cv.height); c.restore(); }
+function tfL(ctx, S, f) { if (PERF.low) { ctx.save(); ctx.translate(-S.M, -S.M); } else S.tf(ctx, f); ctx.globalAlpha = LIVE_A; }
 
 // ------------------------------------------------------------------ colour and painting kit
 const TAU = Math.PI * 2;
@@ -159,6 +165,7 @@ function paintSky(c, S, o) {
 function vaultHaze(c, S, col, a) {
   const { w, h, M, port } = S, m = Math.min(w, h), x = M + w * (port ? 0.5 : 0.58), y = M + h * (port ? 0.49 : 0.46);
   c.save(); c.globalCompositeOperation = 'source-atop';
+  c.fillStyle = rgba(col, VEIL.flat); c.fillRect(0, 0, S.W, S.H); // the whole near layer steps back
   c.fillStyle = radial(c, x, y, m * 0.2, m * 0.64, [[0, rgba(col, a)], [0.55, rgba(col, a * 0.7)], [1, rgba(col, 0)]]); c.fillRect(0, 0, S.W, S.H);
   c.restore();
 }
@@ -620,7 +627,7 @@ function gooseSprite(dpr, s, dip) {
   c.beginPath(); c.ellipse(14, -34, 4.6, 4, 0, 0, TAU); c.fillStyle = '#ffffff'; c.fill(); c.stroke();
   c.beginPath(); c.moveTo(18, -35.5); c.lineTo(25, -33.5); c.lineTo(18, -31.6); c.closePath(); c.fillStyle = '#ff9a2a'; c.fill(); c.strokeStyle = '#a85a10'; c.lineWidth = 0.8; c.stroke();
   circle(c, 15.4, -35, 1.1, '#2a2a30'); circle(c, 15.7, -35.4, 0.4, '#ffffff');
-  return { cv, w, h };
+  veilSprite(c, cv); return { cv, w, h };
 }
 const pond = {
   atmo: { haze: ['#e6f6ff', 0.34, 22], bloom: ['#ffffff', 0.35, 10], key: ['#fff6d0', 0.07], shadow: ['#0c3020', 0.2] },
@@ -731,14 +738,14 @@ function sails(ctx, x, y, k, ang) {
   ctx.save(); ctx.translate(x, y); ctx.scale(k, k);
   for (let q = 0; q < 4; q++) {
     ctx.save(); ctx.rotate(ang + q * TAU / 4);
-    ctx.fillStyle = '#4e3218'; ctx.fillRect(-2.6, -4, 5.2, -106);
-    ctx.fillStyle = 'rgba(252,246,230,0.96)'; ctx.fillRect(2.6, -20, 20, -84);
-    ctx.fillStyle = 'rgba(206,190,158,0.75)'; ctx.fillRect(14, -20, 8.6, -84);
-    ctx.strokeStyle = '#6e4a28'; ctx.lineWidth = 1.6; ctx.strokeRect(2.6, -20, 20, -84);
+    ctx.fillStyle = '#8f7c68'; ctx.fillRect(-2.6, -4, 5.2, -106);
+    ctx.fillStyle = 'rgba(246,244,236,0.96)'; ctx.fillRect(2.6, -20, 20, -84);
+    ctx.fillStyle = 'rgba(222,214,198,0.75)'; ctx.fillRect(14, -20, 8.6, -84);
+    ctx.strokeStyle = '#a48f78'; ctx.lineWidth = 1.6; ctx.strokeRect(2.6, -20, 20, -84);
     ctx.beginPath(); for (let i = 1; i < 7; i++) { ctx.moveTo(2.6, -20 - i * 12); ctx.lineTo(22.6, -20 - i * 12); } ctx.moveTo(12.6, -20); ctx.lineTo(12.6, -104); ctx.lineWidth = 0.9; ctx.stroke();
     ctx.restore();
   }
-  ctx.fillStyle = '#3e2410'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.fill(); ctx.fillStyle = '#8a5a34'; ctx.beginPath(); ctx.arc(-1.4, -1.4, 4, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#857362'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.fill(); ctx.fillStyle = '#b39a80'; ctx.beginPath(); ctx.arc(-1.4, -1.4, 4, 0, TAU); ctx.fill();
   ctx.restore();
 }
 // a wheat field: golden stalks with ears, denser and taller at the screen edges
@@ -987,7 +994,7 @@ const win = (t, a, b, f = 0.25) => sstep(0, 1, (t - a) / f) * (1 - sstep(0, 1, (
 const cyc = (t, per, off = 0) => fract((t + off) / per) * per; // seconds into a repeating routine
 function bake(dpr, w, h, fn) {
   const cv = document.createElement('canvas'), d = Math.min(2, dpr || 1); cv.width = Math.max(1, Math.ceil(w * d)); cv.height = Math.max(1, Math.ceil(h * d));
-  const c = cv.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0); fn(c, w, h); return { cv, w, h };
+  const c = cv.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0); fn(c, w, h); veilSprite(c, cv); return { cv, w, h };
 }
 // draw a baked sprite with its anchor (ax, ay as fractions of its box) at x, y; mirrored when face < 0
 function stamp(ctx, sp, x, y, ax = 0.5, ay = 1, face = 1, sc = 1) {
@@ -1038,7 +1045,7 @@ function coopLive(ctx, t, S) {
   // the rooster: stands, puffs up, crows, settles (a 9 s routine), now and then glances back
   { const c = st ? 0 : cyc(t, 9.2, 1.6), sp = c > 5.2 && c < 6.9 ? L.roo[2] : c > 4.7 && c < 7.2 ? L.roo[1] : L.roo[0], look = !st && Math.sin(t * 0.6) > 0.7 ? -1 : 1;
     stamp(ctx, sp, L.post[0], L.post[1] - (st ? 0 : Math.max(0, Math.sin(c * 1.3)) * 0.15 * u), 0.5, 1, L.post[2] * look);
-    if (!st && c > 5.3 && c < 7.6) for (let k = 0; k < 3; k++) { const a = (c - 5.3 - k * 0.35) / 1.5; if (a <= 0 || a >= 1) continue; const nx = L.post[0] + L.post[2] * (5 + a * 9) * u, ny = L.post[1] - L.roo[0].h * 0.9 - a * 12 * u; ctx.globalAlpha = Math.min(1, a * 5) * (1 - a); ctx.fillStyle = '#5a3a6a'; ctx.beginPath(); ctx.ellipse(nx, ny, 1 * u, 0.75 * u, -0.4, 0, TAU); ctx.fill(); ctx.fillRect(nx + 0.75 * u, ny - 3.6 * u, 0.3 * u, 3.6 * u); ctx.globalAlpha = 1; } }
+    if (!st && c > 5.3 && c < 7.6) for (let k = 0; k < 3; k++) { const a = (c - 5.3 - k * 0.35) / 1.5; if (a <= 0 || a >= 1) continue; const nx = L.post[0] + L.post[2] * (5 + a * 9) * u, ny = L.post[1] - L.roo[0].h * 0.9 - a * 12 * u; ctx.globalAlpha = Math.min(1, a * 5) * (1 - a); ctx.fillStyle = '#5a3a6a'; ctx.beginPath(); ctx.ellipse(nx, ny, 1 * u, 0.75 * u, -0.4, 0, TAU); ctx.fill(); ctx.fillRect(nx + 0.75 * u, ny - 3.6 * u, 0.3 * u, 3.6 * u); ctx.globalAlpha = LIVE_A; } }
   // chicks: one pecks and hops between three spots, one scratches and looks about
   for (let i = 0; i < L.chicks.length; i++) {
     const ch = L.chicks[i]; if (!vis(S, ch[0], 20 * u)) continue;
@@ -1098,7 +1105,7 @@ function pondLive(ctx, t, S) {
     let k, dir, dip = 0; if (c < 9) { k = sstep(0, 9, c); dir = 1; } else if (c < 13) { k = 1; dir = 1; dip = win(c, 9.6, 12, 0.3); } else if (c < 22) { k = 1 - sstep(13, 22, c); dir = -1; } else { k = 0; dir = -1; dip = win(c, 22.6, 25, 0.3); }
     const x = lerp(G.xa, G.xb, k), y = G.y + (st ? 0 : Math.sin(t * 2.1) * 0.2 * u), mv = (c < 9 || (c > 13 && c < 22)) && !st ? 1 : 0;
     if (!st) { ctx.strokeStyle = 'rgba(235,252,255,0.55)'; ctx.lineWidth = 0.3 * u; for (let q = 0; q < 2; q++) { const a = fract(t * 0.5 + q * 0.5); ctx.globalAlpha = (1 - a) * 0.8; ctx.beginPath(); ctx.ellipse(x, y, (3 + a * 5) * u, (0.7 + a * 1.2) * u, 0, 0, TAU); ctx.stroke(); }
-      if (mv) { ctx.globalAlpha = 0.6; const tx = x - dir * 3.5 * u; ctx.beginPath(); ctx.moveTo(tx, y - 0.2 * u); ctx.lineTo(tx - dir * 7 * u, y - 1.2 * u); ctx.moveTo(tx, y + 0.4 * u); ctx.lineTo(tx - dir * 7 * u, y + 1.6 * u); ctx.stroke(); } ctx.globalAlpha = 1; }
+      if (mv) { ctx.globalAlpha = 0.6; const tx = x - dir * 3.5 * u; ctx.beginPath(); ctx.moveTo(tx, y - 0.2 * u); ctx.lineTo(tx - dir * 7 * u, y - 1.2 * u); ctx.moveTo(tx, y + 0.4 * u); ctx.lineTo(tx - dir * 7 * u, y + 1.6 * u); ctx.stroke(); } ctx.globalAlpha = LIVE_A; }
     stamp(ctx, dip > 0.5 ? G.sp[1] : G.sp[0], x, y, 0.5, 0.78, dir); }
   // the frog on its pad: blinks; every so often hops off into the water (a splash ring) and climbs back later
   { const F = L.frog, c = st ? 0 : cyc(t, 15, 5); let fx = F[0], fy = F[1], show = 1, sc = 1;
@@ -1106,7 +1113,7 @@ function pondLive(ctx, t, S) {
     else if (c >= 10.7 && c < 13.6) { show = 0; const a = (c - 10.7) / 1.6; if (a < 1) { ctx.strokeStyle = `rgba(235,252,255,${(1 - a) * 0.8})`; ctx.lineWidth = 0.3 * u; ctx.beginPath(); ctx.ellipse(F[0] + 8 * u * F[2], F[1] + 1 * u, (0.5 + a * 4) * u, (0.2 + a * 1.1) * u, 0, 0, TAU); ctx.stroke(); } }
     else if (c >= 13.6) { ctx.globalAlpha = sstep(13.6, 14.4, c); }
     if (show) { stamp(ctx, F.sp, fx, fy, 0.5, 1, F[2], sc); const blink = !st && (cyc(t, 3.1) < 0.14 || cyc(t, 7.3) < 0.12); if (blink && sc === 1) { ctx.fillStyle = '#4f9a36'; ctx.beginPath(); ctx.ellipse(fx - F[2] * 0.6 * u, fy - 2.5 * u, 0.6 * u, 0.6 * u, 0, 0, TAU); ctx.ellipse(fx + F[2] * 0.9 * u, fy - 2.5 * u, 0.6 * u, 0.6 * u, 0, 0, TAU); ctx.fill(); } }
-    ctx.globalAlpha = 1; }
+    ctx.globalAlpha = LIVE_A; }
   // dragonflies: dart to a new spot, hover with a shimmer
   if (!st) for (let i = 0; i < L.dfly.length; i++) {
     const [x0, y0, col] = L.dfly[i], per = 3.2 + i, c = cyc(t, per, i * 1.7), n = Math.floor((t + i * 1.7) / per), e = sstep(0, 0.45, c);
@@ -1133,7 +1140,7 @@ function millLive(ctx, t, S) {
   const L = S.live, m = S.mill; if (!m) return;
   const st = still(), u = S.u;
   tfL(ctx, S, 1);
-  sails(ctx, m.x, m.y, m.k, st ? 0.5 : t * 0.35);
+  sails(ctx, m.x, m.y, m.k, st ? 0.5 : t * 0.2);
   if (L && !st) {
     swayStrips(ctx, t, S, L.sway);
     for (let i = 0; i < 2; i++) { const a = t * (0.32 + i * 0.07) + i * 3, r = (34 + i * 10) * m.k; vBird(ctx, m.x + Math.cos(a) * r, m.y - 8 * m.k + Math.sin(a) * r * 0.35, 1.3 * u, t * 9 + i, '#3a3440'); }
@@ -1151,9 +1158,9 @@ function barnLive(ctx, t, S) {
   const st = still(), u = S.u;
   tfL(ctx, S, 1);
   if (!st) { ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.42 + 0.16 * Math.sin(t * 2.3) * Math.sin(t * 0.9 + 1); stamp(ctx, B.glow, B.gx, B.gy, 0.5, 0.5);
-    ctx.globalAlpha = 0.5 + 0.2 * Math.sin(t * 7.3) * Math.sin(t * 3.1); stamp(ctx, B.lglow, B.lamp[0], B.lamp[1], 0.5, 0.5);
-    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; }
+    ctx.globalAlpha = 0.26 + 0.1 * Math.sin(t * 2.3) * Math.sin(t * 0.9 + 1); stamp(ctx, B.glow, B.gx, B.gy, 0.5, 0.5);
+    ctx.globalAlpha = 0.32 + 0.12 * Math.sin(t * 7.3) * Math.sin(t * 3.1); stamp(ctx, B.lglow, B.lamp[0], B.lamp[1], 0.5, 0.5);
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = LIVE_A; }
   // the weather vane: a cockerel that swings about its pole in the gusts (edge-on as it turns)
   { const g = st ? 1 : Math.cos(Math.sin(t * 0.37) * 1.4 + Math.sin(t * 1.9) * 0.25 * win(cyc(t, 11), 0, 3, 0.5)), [vx, vy, k] = B.vane, sx = Math.abs(g) < 0.12 ? 0.12 * Math.sign(g || 1) : g;
     ctx.save(); ctx.translate(vx, vy); ctx.scale(sx * k, k); ctx.fillStyle = '#3a3438';
