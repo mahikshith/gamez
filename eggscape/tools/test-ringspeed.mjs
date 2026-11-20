@@ -27,7 +27,7 @@ for (const sp of speeds.split(',').map(Number)) {
         if (q && Math.abs(d - q.d) < 0.6) for (const rg of sim.rings) {
           if ((q.d - rg.r) * (d - rg.r) < 0) { // crossed this ring's centre line
             const la = wrap(a - rg.body.getAngle());
-            const near = rg.gaps.some((g) => Math.abs(wrap(la - g.a)) * rg.r < g.len / 2 + 0.45) || (rg.segs || []).some((sg) => sg.alive === false || sg.broken);
+            const near = rg.gaps.some((g) => Math.abs(wrap(la - g.a)) * rg.r < g.len / 2 + 0.6) || (rg.segs || []).some((sg) => sg.alive === false || sg.broken);
             if (!near) cross++;
           }
         }

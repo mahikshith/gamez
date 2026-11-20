@@ -15,12 +15,15 @@
 import { drawVillainPortrait } from './villain-art.js';
 import { drawHand } from './wonder.js';
 import { drawStrikeChick } from './strike.js';
+import { actorFor } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers)
+import { statusDraw } from './status.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const ease = (u) => { u = clamp(u, 0, 1); return u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u); };
 const seg = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
 export const LOOP = 4.6;
+let ERR1 = false; // an actor that throws is reported once, and its portrait plays instead
 
 // the move that beats each villain, and the one line under the cartoon (short: the picture does the talking)
 const P = (move, cap, more = {}) => ({ move, cap, ...more });
@@ -114,8 +117,10 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
 
   // ---- the timeline of each move -> ring turn th, egg angle eA, egg drop eD (0..1), villain angle vA, villain state
   let th = 0, eA = 0, eD = 0, vA = -0.75, vOff = 0, vRot = 0, vAlpha = 1, vFx = '', fxK = 0, hand = null, stone = false, haz = null, btn = null, shot = null, done = 0;
-  const gap0 = 0.4; // the gap starts to the right of the egg
+  const act = actorFor(plan), SG = act && act.stage ? act.stage(m) : null;
+  const gap0 = SG ? SG.g0 : 0.4, dTh = SG ? SG.dTh : -gap0; // the gap starts to the right of the egg and comes under it (an actor may set its own scene)
   const walk = ease(seg(T, 0.2, 1.3));
+  const SA = act ? { x, y, w, h, cx, C, floor, band, k: Wd ? kW : Z / 2.5, at, g0: gap0, eggS, ground: Wd ? y + h * 0.9 : y + h * 0.95, calm } : null;
   if (m === 'basic') {
     vAlpha = 0;
     const d = ease(seg(T, 0.9, 1.9)); th = -gap0 * d;
@@ -123,8 +128,9 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     eD = seg(T, 2.0, 2.45); done = seg(T, 2.45, 2.8);
   } else if (m === 'turn') {
     vA = vEnd - 0.3 * (1 - walk);
-    const d = ease(seg(T, 1.45, 2.25)); th = -gap0 * d;
-    hand = dragHand(at, T, 1.35, 2.25, 0.5, 0.5 - gap0);
+    const d = ease(seg(T, 1.45, 2.25)); th = dTh * d;
+    hand = SG && SG.hand ? dragHand(at, T, 1.35, 2.25, SG.hand[0], SG.hand[1]) : dragHand(at, T, 1.35, 2.25, 0.5, 0.5 - gap0);
+    if (SG && SG.egg) eA = SG.egg(T);
     if (T > 1.85) { vFx = plan.fx || 'bonk'; fxK = seg(T, 1.85, 2.9); }
     vA += th;
     if (vFx) { vOff = 1; vRot = -fxK * 3.5; vAlpha = 1 - seg(T, 2.55, 2.95); }
@@ -135,14 +141,15 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     hand = tapHand(btn, T, 1.25, 1.7);
     const hit = 2.15;
     const onEgg = plan.fx === 'carry' || plan.fx === 'bubble'; // the phoenix and the bubble go for the egg, not the villain
-    if (T > 1.62 && T < hit) { const k = ease(seg(T, 1.62, hit)), v = onEgg ? at(0, eggS * 0.5) : at(vA, vLift); shot = { x: btn.x + (v.x - btn.x) * k, y: btn.y + (v.y - btn.y) * k - Math.sin(k * Math.PI) * U * 0.25, k }; }
+    if (T > 1.62 && T < hit) { const k = ease(seg(T, 1.62, hit)), v = onEgg ? at(0, eggS * 0.5) : act && act.aim ? act.aim(SA) : at(vA, vLift); shot = { x: btn.x + (v.x - btn.x) * k, y: btn.y + (v.y - btn.y) * k - Math.sin(k * Math.PI) * U * 0.25, k }; }
     if (T >= hit) {
       vFx = m === 'rooster' ? 'flee' : plan.fx || 'zap'; fxK = seg(T, hit, hit + 1.2);
       if (plan.fx === 'carry') { vFx = ''; o._carry = ease(seg(T, hit, hit + 0.9)); }
       if (plan.fx === 'bubble') { o._bubble = 1; vFx = T > hit + 0.35 ? 'dizzy' : ''; fxK = seg(T, hit + 0.35, hit + 1.4); }
     }
     if (vFx === 'flee' || vFx === 'blast') { vOff = vFx === 'blast' ? 1 : 0; if (vFx === 'flee') vA -= ease(fxK) * 0.9; vRot = vFx === 'blast' ? -fxK * 6 : 0; vAlpha = 1 - seg(T, hit + 0.6, hit + 1.1); }
-    const d = ease(seg(T, 2.75, 3.3)); th = -gap0 * d;
+    const d = ease(seg(T, 2.75, 3.3)); th = dTh * d;
+    if (SG && SG.egg) eA = SG.egg(T);
     if (vFx !== 'flee' && vFx !== 'blast') vA += th; // a frozen or stunned villain rides the ring
     eD = seg(T, 3.3, 3.7); done = seg(T, 3.7, 4.0);
     if (o._carry != null) { th = 0; eD = 0; done = seg(T, hit + 0.9, hit + 1.2); }
@@ -206,8 +213,15 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
       if (haz.boom > 0) burst(ctx, mk.x, mk.y - Z * 0.05, Z * 0.22 * (0.5 + haz.boom), 1 - haz.boom, hk === 'icicles' ? '#d9f4ff' : hk === 'lightning' ? '#fff27a' : '#ff8a3a');
     }
   }
-  // ---- the villain on the ring
-  if (vAlpha > 0.01 && plan.kind) {
+  // ---- the villain: its own rig acting the scene (howact.js), else its portrait on the ring
+  let AR = null;
+  if (act) {
+    ctx.save();
+    try { SA.T = T; SA.t = t; SA.m = m; SA.th = th; SA.fx = plan.fx; SA.eA = eA; AR = act.draw(ctx, SA); } catch (e) { AR = null; if (!ERR1) { ERR1 = true; try { console.warn('howto actor', plan.kind, e); } catch (e2) { /* no console */ } } }
+    ctx.restore();
+    if (AR && AR.bonk > 0 && AR.bonk < 1) { ctx.save(); ctx.globalAlpha *= 1 - seg(AR.bonk, 0.6, 1); word(ctx, 'BONK!', clamp(AR.x, x + Z * 0.3, x + w - Z * 0.3), Math.max(y + Z * 0.16, AR.y), Z * 0.15 * (1 + 0.3 * Math.sin(Math.min(1, AR.bonk * 2.5) * Math.PI)), '#fff', '#c8321e'); ctx.restore(); }
+  }
+  if (!AR && vAlpha > 0.01 && plan.kind) {
     const v = at(vA, vLift);
     ctx.save(); ctx.globalAlpha *= vAlpha;
     // knocked back (bonk / blast): off to the left, a little up, then tumbling down out of the vault
@@ -216,8 +230,10 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     if (vRot) ctx.rotate(vRot);
     ctx.rotate(-vA * 0.6);
     if (vFx === 'flee') ctx.scale(-1, 1);
-    drawVillainPortrait(ctx, plan.kind, 0, 0, vD, vFx === 'freeze' || vFx === 'stop' || vFx === 'glue' ? 0 : t);
-    if (vFx === 'freeze' && fxK > 0) { ctx.globalAlpha *= 0.55 * Math.min(1, fxK * 4); ctx.fillStyle = '#bfe6ff'; ctx.beginPath(); ctx.ellipse(0, 0, vD * 0.48, vD * 0.42, 0, 0, TAU); ctx.fill(); ctx.strokeStyle = '#2f6f9e'; ctx.lineWidth = 3; ctx.stroke(); }
+    const held = vFx === 'freeze' || vFx === 'stop' || vFx === 'glue';
+    // frozen: the game's own ice (status.js): the villain's colours go icy inside a shell that follows its outline
+    if (vFx === 'freeze' && fxK > 0) statusDraw(ctx, { x0: -vD * 0.56, y0: -vD * 0.56, x1: vD * 0.56, y1: vD * 0.56 }, (c) => drawVillainPortrait(c, plan.kind, 0, 0, vD, 0), { k: 'ice', age: fxK * 1.2, left: 9, hold: 0, zap: -1, crack: 0, seed: 7 + plan.kind.length }, {});
+    else drawVillainPortrait(ctx, plan.kind, 0, 0, vD, held ? 0 : t);
     if (vFx === 'glue' && fxK > 0) { ctx.globalAlpha *= 0.6; ctx.fillStyle = '#c9a3ff'; ctx.beginPath(); ctx.ellipse(0, vD * 0.3, vD * 0.5, vD * 0.16, 0, 0, TAU); ctx.fill(); }
     if (vFx === 'bubble' && fxK > 0) { ctx.strokeStyle = 'rgba(160,230,255,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, vD * 0.55, 0, TAU); ctx.stroke(); }
     ctx.restore();
@@ -240,7 +256,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     if (o._carry != null && o._carry > 0) { const k = o._carry; ex = base.x + (nest.x - base.x) * k; ey = base.y + (land - base.y) * k - Math.sin(k * Math.PI) * U * 0.35; ctx.save(); ctx.globalAlpha *= 1 - seg(k, 0.85, 1); drawStrikeChick(ctx, 'phoenix', ex, ey - eggS * 0.7, eggS * 1.3, t, {}); ctx.restore(); }
     if (done > 0) { ex = nest.x; ey = land; }
     if (o._bubble && !eD && !done) { ctx.save(); ctx.strokeStyle = 'rgba(150,225,255,0.95)'; ctx.lineWidth = 3; ctx.fillStyle = 'rgba(190,240,255,0.25)'; ctx.beginPath(); ctx.arc(ex, ey, eggS * 0.75, 0, TAU); ctx.fill(); ctx.stroke(); ctx.restore(); }
-    const worry = !eD && vAlpha > 0.5 && plan.kind && Math.abs(vA - eA) < 0.7;
+    const worry = AR ? !eD && !done && !!AR.threat : !eD && vAlpha > 0.5 && plan.kind && Math.abs(vA - eA) < 0.7;
     drawE(ex, ey, eggS * sq, stone, worry);
   }
   // the power or the rooster on its way

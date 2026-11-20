@@ -51,6 +51,10 @@ export const PERF = {
   step: 0, // index into STEPS while Auto; fixed tiers use their own first step
   want: -1, // a step change waiting for the start of the next frame
   acc: 0, n: 0, good: 0, warm: 0, slow30: false, work: 0, lift: 0, probes: 0,
+  miss: 0, bad: 0, // late frames in the current window; bad windows in a row
+  fails: [0, 0, 0, 0, 0, 0], // per step: how often Auto had to leave it this session (climbing back waits longer)
+  pace: 1, pn: 0, pm: 0, // fast screens (72-100 Hz): draw every refresh (1) or every second one (2); frames and missed frames of the pace window
+  why: '', // the last decision, for the fps meter / speed test ('gpu' = frames late with little JS work, 'js' = JS work)
   guess: null,
   get tier() { return STEPS[this.step][0]; },
   get low() { return this.tier === 'low'; },
@@ -71,7 +75,9 @@ export function applySettings(save) {
     }
     PERF.step = save.gfxStep;
   } else PERF.step = FIRST[save.gfx];
-  PERF.acc = PERF.n = PERF.good = PERF.warm = 0; PERF.want = -1;
+  PERF.acc = PERF.n = PERF.good = PERF.warm = PERF.miss = PERF.bad = PERF.work = 0; PERF.want = -1;
+  PERF.fails.fill(0);
+  PERF.pace = 1; PERF.pn = PERF.pm = 0;
   PERF.slow30 = false; // 2026-11-19: a settings change starts clean (a learned 30 fps cap used to stick even after picking High)
   refresh(save);
 }
@@ -80,19 +86,47 @@ function refresh(save) {
   PERF.fpsCap = save.fps === 30 ? 30 : save.fps === 60 ? 60 : (PERF.slow30 ? 30 : 60);
 }
 
+// 2026-11-20 governor rework (mykee's flagship walked down to Low 0.8x at 30 fps with 2-7 ms of JS work a frame).
+// The old rule stepped down on ONE 2 s window whose MEAN gap was over 22 ms: a few GC pauses, a cache bake or an ad
+// could do that, and a 90 Hz screen that drew every second refresh (45 fps) sat right on the line. Now:
+//  - a frame is LATE when its gap is over 1.5 frame budgets (budget = 1000 / fps cap: 16.7 ms at 60, so a 90 Hz screen
+//    drawing every second refresh, 22 ms, is on time; a missed refresh at 60 Hz, 33 ms, is late);
+//  - a window is bad when over 20% of its frames are late; it takes TWO bad windows in a row (4 s of play) to step
+//    down, so a short burst of effects or a GC storm is not mistaken for a slow phone;
+//  - hitches over 120 ms, the first 3 s of a screen, frames after picture bakes and ad time are never counted;
+//  - the lever follows the evidence: JS work under 60% of the budget means the time goes into drawing pixels (raster,
+//    GPU, compositing), so Auto takes the next ladder step, which lowers the resolution first (High 2x -> 1.75x);
+//    heavy JS work (over 60% of the budget) means fewer canvas commands help more: it skips to the next detail tier;
+//  - climbing back needs 12 s of clean frames (under 3% late, work under half the budget), and twice as long again for
+//    each time the step above already failed this session (24, 48 s; after 3 failures it stays down until the next
+//    launch), so Auto cannot see-saw between two steps.
+const LATE = 1.5, BAD = 0.2, CLEAN = 0.03, JS_HEAVY = 0.6;
+
 // One frame went by (ms = time since the last drawn frame). Returns true when the step changed (main.js then resizes
 // the canvas at the start of the next frame). measuring: false on screens that stand still or while paused.
 // work: the game's own time on the last frame (ms, update + drawing commands).
 // skip: this gap is not the phone's pace (the frame before it baked pictures): left out, the window goes on
-export function tick(save, ms, measuring, work = 0, skip = false) {
-  if (!measuring) { PERF.acc = PERF.n = PERF.work = 0; PERF.warm = 0; return false; }
+// iv: the screen's refresh interval (ms)
+export function tick(save, ms, measuring, work = 0, skip = false, iv = 16.7) {
+  if (!measuring) { PERF.acc = PERF.n = PERF.work = PERF.miss = 0; PERF.warm = 0; PERF.pn = PERF.pm = 0; return false; }
   if (skip) return false;
   if ((PERF.warm += ms / 1000) < 3) return false; // a screen's first seconds build caches: not a measure of the phone
   if (ms > 120) return false; // one hitch (loading, garbage collection), not a slow phone
+  // 2026-11-20 the pace on a fast screen (mykee's 91 Hz phone; the root of its stutter): at 90 Hz a frame has 11 ms,
+  // not 16.7. A frame that needs 12-16 ms (fine at 60 Hz) misses its refresh and shows for 22 ms, so play jumped
+  // between 91 and 45 fps from one frame to the next. The app asks the screen for its 60 Hz mode (MainActivity); where
+  // the screen stays fast and more than one frame in eight misses, the game draws every SECOND refresh from then on:
+  // a steady 45 looks far smoother than 91 and 45 mixed. It stays that way for the session (a new Settings choice tries again).
+  if (iv < 14.5 && PERF.pace === 1 && PERF.fpsCap === 60) {
+    PERF.pn++; if (ms > iv * 1.5) PERF.pm++;
+    if (PERF.pn >= 120) { if (PERF.pm > PERF.pn * 0.125) { PERF.pace = 2; PERF.why = 'pace'; PERF.acc = PERF.n = PERF.work = PERF.miss = PERF.bad = 0; } PERF.pn = PERF.pm = 0; }
+  }
+  const budget = 1000 / PERF.fpsCap;
   PERF.acc += ms / 1000; PERF.n++; PERF.work += work;
+  if (ms > budget * LATE) PERF.miss++;
   if (PERF.acc < 2) return false;
-  const avg = PERF.acc / PERF.n, wavg = PERF.work / PERF.n;
-  PERF.acc = PERF.n = PERF.work = 0;
+  const avg = PERF.acc / PERF.n, wavg = PERF.work / PERF.n, late = PERF.miss / PERF.n;
+  PERF.acc = PERF.n = PERF.work = PERF.miss = 0;
   // 2026-11-20 (mykee, 0.8.6: after buying a skin the meter went red at 30 fps and stayed, with 6.5 ms of work a
   // frame): the 30 fps fallback used to latch for good. Now, held at 30 with lots of room (work well under a 60 fps
   // frame), it tries 60 again after a few calm seconds, waiting longer each time it has to fall back
@@ -102,22 +136,32 @@ export function tick(save, ms, measuring, work = 0, skip = false) {
     return false;
   }
   if (save.gfx !== 'auto') return false;
-  const target = PERF.fpsCap === 30 ? 1 / 26 : 1 / 45, easy = PERF.fpsCap === 30 ? 1 / 31 : 1 / 56;
-  if (avg > target) {
+  if (late > BAD) {
     PERF.good = 0;
-    if (PERF.step < STEPS.length - 1) { PERF.want = PERF.step + 1; return true; }
-    if (!PERF.slow30 && save.fps === 'auto') { PERF.slow30 = true; refresh(save); } // the lowest step still can't hold 45: a steady 30 beats a jumpy 40
+    if (++PERF.bad < 2) return false; // one bad window (a burst of effects, a GC storm): wait for a second one
+    PERF.bad = 0;
+    const js = wavg > budget * JS_HEAVY;
+    PERF.why = js ? 'js' : 'gpu';
+    if (PERF.step < STEPS.length - 1) {
+      let to = PERF.step + 1;
+      if (js) { const t = STEPS[PERF.step][0]; while (to < STEPS.length - 1 && STEPS[to][0] === t) to++; } // straight to the next detail tier
+      PERF.fails[PERF.step] = Math.min(3, PERF.fails[PERF.step] + 1);
+      PERF.want = to; return true;
+    }
+    if (!PERF.slow30 && save.fps === 'auto') { PERF.slow30 = true; refresh(save); } // the lowest step still can't hold the pace: a steady 30 beats a jumpy 40
     return false;
   }
-  if (avg < easy && PERF.fpsCap === 60) {
-    if ((PERF.good += 2) >= 12 && PERF.step > 0) { PERF.want = PERF.step - 1; PERF.good = 0; return true; }
+  PERF.bad = 0;
+  if (late < CLEAN && wavg < budget * 0.5 && PERF.fpsCap === 60) {
+    const f = PERF.step > 0 ? PERF.fails[PERF.step - 1] : 0, need = f >= 3 ? Infinity : 12 * 2 ** f;
+    if ((PERF.good += 2) >= need && PERF.step > 0) { PERF.want = PERF.step - 1; PERF.good = 0; PERF.why = 'up'; return true; }
   } else PERF.good = 0;
   return false;
 }
 // a new level: Auto's 30 fps fallback starts over (a slow stretch in one level, or a skin's first pictures being
 // baked, no longer holds every later level at 30)
 export function newLevel(save) {
-  PERF.lift = 0; PERF.acc = PERF.n = PERF.work = 0; PERF.warm = 0;
+  PERF.lift = 0; PERF.acc = PERF.n = PERF.work = PERF.miss = PERF.bad = 0; PERF.warm = 0;
   if (PERF.slow30 && save.fps === 'auto') { PERF.slow30 = false; refresh(save); }
 }
 // the waiting step change lands (called at the start of a frame, before drawing)
@@ -126,11 +170,13 @@ export function newLevel(save) {
 export function takeStep(save, playing = false) {
   if (PERF.want < 0) return false;
   if (playing && PERF.want < PERF.step) return false;
-  PERF.warm = 0;
+  PERF.warm = 0; PERF.bad = 0;
   PERF.step = PERF.want; PERF.want = -1;
   if (save.gfx === 'auto') save.gfxStep = PERF.step;
   refresh(save);
   return true;
 }
+// the speed test (src/speedtest.js) draws at each step in turn, then puts back exactly what was running
+export function benchStep(i, dprCap = STEPS[i][1]) { PERF.step = i; PERF.dprCap = dprCap; }
 // for the Settings line: what Auto is running right now
 export const TIER_NAME = { high: 'High', medium: 'Medium', low: 'Low' };

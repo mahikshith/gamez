@@ -7,6 +7,7 @@ import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop } from './themes.js';
 import { bodyCache, ringCache } from './render/ringart.js';
 import { PERF, applySettings, tick as perfTick, takeStep, newLevel as perfNewLevel, STEPS, TIER_NAME } from './perf.js';
+import { speedTest, openSpeedTest } from './speedtest.js'; // 2026-11-20: Settings > Display > Speed test (on the player's own phone)
 import { audio } from './audio.js';
 import { portal } from './sdk/portal.js';
 import { FX } from './render/fx.js';
@@ -193,7 +194,11 @@ function persist() {
 
 // ---------------------------------------------------------------- canvas
 const canvas = document.getElementById('game') || Object.assign(document.body.appendChild(document.createElement('canvas')), { id: 'game' });
-const ctx = canvas.getContext('2d');
+// 2026-11-20 speed: an opaque canvas. Every screen paints the whole canvas each frame anyway (nothing below it ever
+// shows), and an opaque canvas lets the compositor skip blending it over the page and skip the page background under it
+// (one less full-screen fill a frame, which a phone's graphics chip pays for). desynchronized is NOT used: on some
+// WebViews it draws straight to the screen and tears.
+const ctx = canvas.getContext('2d', { alpha: false });
 const ui = new UI(ctx);
 let W_ = 0, H_ = 0, DPR = 1;
 
@@ -1447,6 +1452,9 @@ async function press(id) {
       break;
     case 'set:fpsshow':
       save.showFps = !save.showFps; persist();
+      break;
+    case 'set:speed': // 2026-11-20: about 13 s on this phone, then one results screen; nothing saved changes unless "Use best setting"
+      openSpeedTest({ canvas, ctx, save, persist, font: FONT, applySettings: () => { applySettings(save); setDPR(); }, done: () => resize() });
       break;
     case 'fps:auto': case 'fps:30': case 'fps:60':
       save.fps = id === 'fps:auto' ? 'auto' : +id.slice(4);
@@ -3497,9 +3505,12 @@ function update(dt) {
   if (G.hint) hintWork();
   if (G.hitstop > 0) G.hitstop -= dt;
   else if (running && !G.adBusy) {
-    G.acc += Math.min(sdt, 0.1);
+    // 2026-11-20 pacing: the step count rounds a little early (acc may sit up to a quarter step below zero), so a frame
+    // of exactly two steps never wobbles between 1 and 3 on float noise; a long frame catches up over the next few
+    // frames (at most 8 steps in one) instead of in one heavy frame that makes the next one late as well
+    G.acc = Math.min(G.acc + Math.min(sdt, 0.1), 0.1);
     let n = 0;
-    while (G.acc >= DT && n < 24) { if (DEV && G.autoplay) botTick(sim, G.botMem || (G.botMem = {})); sim.step(); G.acc -= DT; n++; }
+    while (G.acc >= DT * 0.75 && n < 8) { if (DEV && G.autoplay) botTick(sim, G.botMem || (G.botMem = {})); sim.step(); G.acc -= DT; n++; }
     handleEvents();
   }
   ringTicks(sim);
@@ -5006,7 +5017,9 @@ function drawLevelIntro(L, acc) {
   const kinds = G.li >= 0 && G.infoKinds ? G.infoKinds.filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 8) : [];
   const label = G.li === -2 ? 'Lab' : G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`;
   const INK = 'rgba(40,20,5,0.9)';
-  const head = (s) => [
+  // slim: the Chicks step keeps only the level ribbon (the name and world were read on the Level tab), so the power's
+  // cartoon and the chicks to pick from fit the screen together
+  const head = (s, slim) => slim ? [{ h: 44 * s, gap: 0, draw: (x, y, w) => ui.ribbon(label, x + w / 2, y, clamp(ui.measure(label, 28 * s) + 74 * s, 160 * s, w), 44 * s, { s, color: acc, size: 28 * s, tag: 'intro:level' }) }] : [
     { h: 44 * s, gap: 0, draw: (x, y, w) => ui.ribbon(label, x + w / 2, y, clamp(ui.measure(label, 28 * s) + 74 * s, 160 * s, w), 44 * s, { s, color: acc, size: 28 * s, tag: 'intro:level' }) },
     { h: 42 * s, gap: 8 * s, draw: (x, y, w) => ui.text(L.name, x + w / 2, y + 22 * s, { size: 34 * s, align: 'center', maxW: w, color: '#fff', stroke: INK, shadow: 'rgba(0,0,0,0.35)', tag: 'intro:name' }) },
     ...(wo || WORLDS[envOf(G.li)] ? [lineBlock(wo ? (WORLDS[envOf(G.li)] || L.intro.title) : WORLDS[envOf(G.li)], 17 * s, { color: '#ffe27a', stroke: INK, tag: 'intro:world', gap: 2 * s })] : []),
@@ -5063,13 +5076,14 @@ function drawLevelIntro(L, acc) {
     }
     const items = [...T.open.map((S) => ({ S })), ...locked.map((c) => ({ S: STRIKE[c.id], locked: c }))];
     const n = items.length, gap = 12 * s, one = n === 1;
-    const cw = one ? Math.min(iw, 380 * s) : Math.min(164 * s, (iw - 2 * gap) / 2.35), ch = one ? 136 * s : cw * 1.3;
+    const demo = !!T.id && !land; // the picked chick's power plays above the row (portrait)
+    const cw = one ? Math.min(iw, 380 * s) : Math.min(164 * s, (iw - 2 * gap) / 2.35), ch = one ? 136 * s : cw * (demo ? 1.16 : 1.3);
     const ns = Math.min(18 * s, cw / 8.2), ls = Math.min(15 * s, cw / 10);
     const lines = items.map(({ S }) => wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s - ls * 2.2).slice(0, 2));
     const nw = cw - 14 * s, two = items.some(({ S }) => ui.measure(S.name, ns) > nw);
     const nl = Math.max(...lines.map((l) => l.length)), textH = ns * 1.15 * (two ? 2 : 1) + 6 * s + nl * ls * 1.2 + ls * 0.6 + 6 * s;
     const B = [{ ...section(T.need ? 'PICK A CHICK TO HELP YOU' : 'YOUR CHICK', s, 'chick'), anchor: 'chick' }];
-    if (!one) B.push(lineBlock('Swipe for more. Tap one to take it.', 14 * s, { color: '#fff0d4', stroke: INK, tag: 'intro:swipe', gap: 2 * s }));
+    if (!one && !demo) B.push(lineBlock('Swipe for more. Tap one to take it.', 14 * s, { color: '#fff0d4', stroke: INK, tag: 'intro:swipe', gap: 2 * s }));
     const rowH = ch + 30 * s;
     B.push({ h: rowH, gap: 4 * s, draw: (x, y, w) => {
       const R = G.car || (G.car = { y: 0, v: 0, max: 0, t: G.t, lid: null });
@@ -5112,12 +5126,14 @@ function drawLevelIntro(L, acc) {
     if (S) {
       // 2026-11-20 (show, don't tell): the picked chick's power as a moving cartoon, then its upside and downside
       const ul = wrapText(S.up || (POWER_WORDS[S.id] || [''])[0], 16 * s, iw - 30 * s).slice(0, 2), dl = wrapText('Downside: ' + (S.down || (POWER_WORDS[S.id] || ['', ''])[1]), 15 * s, iw - 30 * s).slice(0, 2);
-      const stH = Math.min((iw - 24 * s) * 0.64, 250 * s);
-      const h = 12 * s + 24 * s + stH + 10 * s + ul.length * 20 * s + 4 * s + dl.length * 19 * s + 8 * s;
+      const over = 12 * s + 10 * s + ul.length * 20 * s + 4 * s + dl.length * 19 * s + 8 * s + (demo ? 0 : 24 * s);
+      // the stage takes the room the page has left (so nothing is cut off at PLAY), within a sensible size
+      const stH = demo && G.ipAvail > 0 ? clamp(G.ipAvail - colH(B, s) - over - 22 * s, 150 * s, Math.min((iw - 24 * s) * 0.9, 300 * s)) : Math.min((iw - 24 * s) * 0.64, 250 * s);
+      const h = over + stH;
       B.push({ h, gap: 8 * s, draw: (x, y, w) => {
         ui.well(x, y, w, h, { s, a: '#f3e2bd', b: '#fbf0d6' });
-        let yy = y + 12 * s + 11 * s;
-        ui.text(S.name, x + w / 2, yy, { size: 19 * s, align: 'center', color: S.col ? ui.tint(S.col[1], -0.3) : C.ink, maxW: w - 24 * s, tag: 'intro:pickname' }); yy += 15 * s;
+        let yy = y + 12 * s;
+        if (!demo) { yy += 11 * s; ui.text(S.name, x + w / 2, yy, { size: 19 * s, align: 'center', color: S.col ? ui.tint(S.col[1], -0.3) : C.ink, maxW: w - 24 * s, tag: 'intro:pickname' }); yy += 15 * s; }
         const Hc = G.howC || (G.howC = { id: null, t0: G.t });
         if (Hc.id !== S.id) { Hc.id = S.id; Hc.t0 = G.t; }
         const foe = kinds.find((k) => !/^(icicles|lava|lightning|embers|quake|rain|current|gusts|popthorns|vines|curse|thornorb)$/.test(k)) || 'snake', th = G.theme && G.theme.palette;
@@ -5129,6 +5145,9 @@ function drawLevelIntro(L, acc) {
         yy += 4 * s;
         dl.forEach((l, i) => { ui.text(l, x + w / 2, yy, { size: 15 * s, align: 'center', color: C.warn, maxW: w - 24 * s, tag: 'intro:pickdn' + i }); yy += 19 * s; });
       } });
+      // 0.8.7 (mykee: the power's cartoon was cut off at the fold; "make it full screen, guide the user"): the picked
+      // chick's power plays FIRST, on this level's own villain, and the row of chicks to pick from sits under it
+      if (demo) B.splice(1, 0, B.pop());
     } else if (tipL) B.push(lineBlock(tipL, 15 * s, { color: '#ffe27a', stroke: INK, tag: 'intro:offer', gap: 6 * s }));
     return { T, blocks: B };
   };
@@ -5260,8 +5279,9 @@ function drawLevelIntro(L, acc) {
     const bot = lvTab ? [{ ...links(s), gap: 0 }] : [play(s, iw, P.T.need), links(s)], hb = colH(bot, s) + 8 * s;
     // the title and the two tabs stay put; the tab's content scrolls under them
     let hy = A.y + topH - 2 * s;
-    for (const b of [...head(s), tabs(s, P)]) { hy += b.gap ?? 10 * s; b.draw(x0, hy, iw); hy += b.h; }
+    for (const b of [...head(s, !lvTab), tabs(s, P)]) { hy += b.gap ?? 10 * s; b.draw(x0, hy, iw); hy += b.h; }
     const y0 = hy + 4 * s, y1 = A.y1 - hb - 8 * u;
+    G.ipAvail = lvTab ? 0 : y1 - y0; // the room the Chicks step has (read by chicks() on the next frame)
     G.ipRect = { x: A.x, y: y0, w: A.w, h: y1 - y0 };
     const body = !lvTab ? [...P.blocks, ...boost(s)] : [...howCard(s, iw, y1 - y0 - 34 * s, true, P.T.need)];
     if (body.length) body[0] = { ...body[0], gap: 6 * s };
@@ -5326,6 +5346,22 @@ function pauseTiles(items, s, cols = 3) { // items: [id, label, icon, kind]; an 
     });
   } };
 }
+// 0.8.7 (mykee: "the info on the pause page should be an animation, not text"): each villain of this level as its
+// own little cartoon (the level card's stage: the villain's game rig, the move that beats it), one line under it
+function foeStage(kd, i, s, iw) {
+  const C = ui.C, stH = Math.min((iw - 24 * s) * 0.58, 220 * s), plan = howToPlan(kd), I = VILLAIN_INFO[kd] || { name: kd }, H = 12 * s + stH + 36 * s;
+  return { h: H, gap: 10 * s, draw: (x, y, w) => {
+    ui.well(x, y, w, H, { s, a: '#f3e2bd', b: '#fbf0d6' });
+    const sx = x + 12 * s, sy = y + 12 * s, sw = w - 24 * s, th = G.theme && G.theme.palette;
+    drawHowTo(ctx, plan, sx, sy, sw, stH, G.t + i * 1.3, { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark });
+    ui.roundRect(sx, sy, sw, stH, Math.min(18, stH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
+    ui.record({ x: sx, y: sy, w: sw, h: stH }, 'pause:stage' + i);
+    const nm = I.name, ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
+    ui.roundRect(sx + sw - 8 * s - tw, sy + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = I.group === 'boss' ? 'rgba(160,30,40,0.9)' : 'rgba(30,24,40,0.72)'; ctx.fill();
+    ui.text(nm, sx + sw - 8 * s - tw / 2, sy + 21 * s, { size: ts, align: 'center', color: '#fff', maxW: tw - 12 * s, noRecord: true });
+    ui.text(plan.cap, x + w / 2, sy + stH + 18 * s, { size: 16.5 * s, align: 'center', color: '#2d6a1c', maxW: w - 24 * s, tag: 'pause:cap' + i });
+  } };
+}
 function drawPause() {
   ui.calm = save.calm;
   introBackdrop();
@@ -5373,7 +5409,7 @@ function drawPause() {
         if (!ok[i]) pictoCross(ctx, x + w - 24 * s, ry, 22 * s);
       });
     } } : null,
-    ...(kinds.length ? [pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeCard(kd, i, s, iw))] : []),
+    ...(kinds.length ? [pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeStage(kd, i, s, iw))] : []),
   ].filter(Boolean);
   const land = A.w > A.h * 1.15 && kinds.length;
   if (land) { // a phone on its side: the controls on the left, the villains scroll on their own on the right
@@ -5384,7 +5420,7 @@ function drawPause() {
     const pr = G.ppageR || (G.ppageR = { y: 0, v: 0, max: 0, t: G.t, lid: null });
     if (pr.lid !== pg.lid) { pr.lid = pg.lid; pr.y = 0; pr.v = 0; }
     G.ppRectR = { x: rx - pad / 2, y: A.y + 6 * u, w: A.x1 - (rx - pad / 2), h: A.h - 12 * u };
-    pageScroll([pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeCard(kd, i, s, rw))], pr, G.ppRectR, rx, rw, s);
+    pageScroll([pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeStage(kd, i, s, rw))], pr, G.ppRectR, rx, rw, s);
   } else {
     G.ppRect = { x: A.x, y: A.y + 6 * u, w: A.w, h: A.h - 12 * u }; G.ppRectR = null;
     pageScroll(blocks, pg, G.ppRect, x0, iw, s);
@@ -5476,7 +5512,7 @@ function drawSettings() {
       B.push(lineBlock(save.fps === 30 ? 'Saves battery, keeps the phone cool' : save.fps === 60 ? 'Smoothest motion, uses more battery' : `Now ${PERF.fpsCap} fps`, 13 * s, { color: C.ink2, tag: 'set:fpshint', gap: 4 * s }));
       B.push({ h: 42 * s, gap: 12 * s, draw: (x, y, w) => ui.button('calm', save.calm ? 'Calm motion: on' : 'Calm motion: off', x + w * 0.1, y, w * 0.8, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 14.5 * s }) });
       B.push(lineBlock('Calm motion: no screen shake or flashes', 13 * s, { color: C.ink2, tag: 'set:calmhint', gap: 4 * s }));
-      B.push({ h: 40 * s, gap: 10 * s, draw: (x, y, w) => ui.button('set:fpsshow', save.showFps ? 'Show frame rate: on' : 'Show frame rate: off', x + w * 0.1, y, w * 0.8, 40 * s, { kind: 'tertiary', icon: save.showFps ? ICON.check : null, size: 14 * s }) });
+      B.push({ h: 40 * s, gap: 10 * s, draw: (x, y, w) => { ui.button('set:fpsshow', save.showFps ? 'Show fps: on' : 'Show fps: off', x, y, w * 0.49, 40 * s, { kind: 'tertiary', icon: save.showFps ? ICON.check : null, size: 14 * s }); ui.button('set:speed', 'Speed test', x + w * 0.51, y, w * 0.49, 40 * s, { kind: 'tertiary', size: 14 * s }); } });
     } else if (tab === 'gameplay') {
       const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
       B.push(sectionBlock('Ring speed', s));
@@ -6449,21 +6485,28 @@ function shade(hex) {
 // ---------------------------------------------------------------- loop
 let last = 0;
 // the screen's own refresh interval (ms), from the median gap between frame callbacks (drawn or skipped)
-const VSYNC = { last: 0, buf: [], iv: 1000 / 60 };
+// 2026-11-20 pacing: ivs is a slow average of the callback gaps near iv (a precise refresh interval for snapping dt);
+// err is the time snapped off dt and not yet given back
+const VSYNC = { last: 0, buf: [], iv: 1000 / 60, ivs: 0, err: 0 };
 function frame(now) {
   requestAnimationFrame(frame); // first: an error below can never stop the loop (a stopped loop is a frozen level)
-  if (VSYNC.last) { const d = now - VSYNC.last; if (d > 4 && d < 45) { VSYNC.buf.push(d); if (VSYNC.buf.length >= 31) { VSYNC.buf.sort((a, b) => a - b); VSYNC.iv = VSYNC.buf[15]; VSYNC.buf.length = 0; } } }
+  if (VSYNC.last) {
+    const d = now - VSYNC.last;
+    if (d > 4 && d < 45) { VSYNC.buf.push(d); if (VSYNC.buf.length >= 31) { VSYNC.buf.sort((a, b) => a - b); VSYNC.iv = VSYNC.buf[15]; VSYNC.buf.length = 0; if (!VSYNC.ivs || Math.abs(VSYNC.ivs - VSYNC.iv) > VSYNC.iv * 0.2) VSYNC.ivs = VSYNC.iv; } }
+    if (VSYNC.ivs && Math.abs(d - VSYNC.ivs) < VSYNC.ivs * 0.25) VSYNC.ivs += (d - VSYNC.ivs) * 0.05;
+  }
   VSYNC.last = now;
+  if (speedTest.active) { speedTest.frame(now); last = now; return; } // the speed test has the screen (and the taps) until it closes
   // 2026-11-16 battery (mykee: the phone heats up): never draw faster than 60 fps (a 120 Hz screen called us twice as
   // often for nothing). 2026-11-19: 30 fps when Settings > Frame rate says so, or when Auto finds the phone can't hold 45.
   // 2026-11-20 (mykee: stutters even on a high-end phone): the cap counts whole screen refreshes. The old time test drew
   // every SECOND refresh on a 90 Hz screen (45 fps, a visible judder), Auto read 45 fps as "too slow" and walked the
   // phone down to Low and 30 fps. Now 60 and 90 Hz draw every refresh, 120 and 144 Hz every second one.
-  const every = Math.max(1, Math.floor((1000 / PERF.fpsCap) / VSYNC.iv + 0.1));
+  const every = Math.max(1, Math.floor((1000 / PERF.fpsCap) / VSYNC.iv + 0.1), VSYNC.iv < 14.5 ? PERF.pace : 1); // PERF.pace: a fast screen that keeps missing refreshes draws every second one
   if (now - last < every * VSYNC.iv - VSYNC.iv * 0.5) return;
   // a slow phone catches up instead of slowing the world down (the cap was 0.05 s: at 5 fps the rings turned at a
   // quarter speed and looked stuck); past 0.1 s a frame is a hitch and the world waits
-  const raw = last ? now - last : 16, dt = Math.min(0.1, raw / 1000 || 0.016);
+  const raw = last ? now - last : 16, dt = Math.min(0.1, frameDt(raw) / 1000 || 0.016);
   last = now;
   if (G.paused) return;
   if (takeStep(save, G.screen === 'play' && !!G.sim)) { setDPR(); persist(); } // a quality change lands before this frame draws (no empty frame); Auto remembers it
@@ -6483,8 +6526,21 @@ function frame(now) {
   }
   if (save.showFps) drawFpsMeter(raw);
   if (G.adBusy) adWatch(raw);
-  perfTick(save, raw, !document.hidden && !G.paused && G.screen === 'play', FPSM.lastWork || 0, FPSM.bakedPrev);
+  perfTick(save, raw, !document.hidden && !G.paused && !G.adBusy && G.screen === 'play', FPSM.lastWork || 0, FPSM.bakedPrev, VSYNC.iv);
   FPSM.bakedPrev = FPSM.baked; FPSM.baked = false; // 2026-11-19: Auto judges the phone on the game itself, not on a heavy menu (a themed home screen used to talk it down to Low for the next level)
+}
+// 2026-11-20 pacing (tools/perf87/pacing.mjs): the world advances by whole screen refreshes. Callback times wobble by
+// a millisecond or so; fed straight in, a 60 Hz frame got 1, 2 or 3 physics steps (8.3 ms each) at random instead
+// of 2, and things on screen moved in uneven jumps even at a full 60 fps. A gap within 30% of a whole number of
+// refreshes counts as exactly that many; the time snapped off is given back a tenth at a time (all at once past half a
+// refresh, or with the next gap that is not a whole number of refreshes), so the game clock never drifts from the real one.
+function frameDt(raw) {
+  const iv = VSYNC.ivs, n = iv ? Math.max(1, Math.round(raw / iv)) : 0;
+  if (!n || Math.abs(raw - n * iv) >= iv * 0.3) { const r = raw + VSYNC.err; VSYNC.err = 0; return r; }
+  let s = n * iv; VSYNC.err += raw - s;
+  const c = Math.abs(VSYNC.err) > iv * 0.5 ? VSYNC.err : VSYNC.err * 0.1;
+  s += c; VSYNC.err -= c;
+  return s;
 }
 // scrolling lists and the map (2026-11-19, mykee: "so slow"): a fling glides about 1/SCROLL_DRAG s of its speed (was 3.6-4.2)
 const SCROLL_DRAG = 2.3;
@@ -6492,12 +6548,18 @@ const SCROLL_DRAG = 2.3;
 // canvas resolution, in the top-left corner, so a tester can tell us how a phone really runs
 // 2026-11-20: also the screen's refresh rate, the game's own work per frame (ms, update + drawing commands) and the
 // worst frame gap of the last second: a high gap with low work means the phone's graphics chip, not the game code
-const FPSM = { n: 0, acc: 0, fps: 0, work: 0, wms: 0, worst: 0, w: 0 };
+const FPSM = { n: 0, acc: 0, fps: 0, work: 0, wms: 0, worst: 0, w: 0, txt: '', tw: 0, font: '', dpr: 0, tier: '' };
 function drawFpsMeter(ms) {
   FPSM.n++; FPSM.acc += ms; FPSM.worst = Math.max(FPSM.worst, ms);
-  if (FPSM.acc >= 1000) { FPSM.fps = Math.round(FPSM.n * 1000 / FPSM.acc); FPSM.wms = FPSM.work / FPSM.n; FPSM.w = FPSM.worst; FPSM.n = 0; FPSM.acc = 0; FPSM.work = 0; FPSM.worst = 0; }
-  const txt = `${FPSM.fps} fps \u00b7 ${Math.round(1000 / VSYNC.iv)} Hz \u00b7 ${TIER_NAME[PERF.tier]} \u00b7 ${DPR.toFixed(2)}x \u00b7 ${FPSM.wms.toFixed(1)} ms \u00b7 max ${Math.round(FPSM.w)}`;
-  ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.font = `700 11px ${FONT}`; const w = ctx.measureText(txt).width + 10;
+  if (FPSM.acc >= 1000) { FPSM.fps = Math.round(FPSM.n * 1000 / FPSM.acc); FPSM.wms = FPSM.work / FPSM.n; FPSM.w = FPSM.worst; FPSM.n = 0; FPSM.acc = 0; FPSM.work = 0; FPSM.worst = 0; FPSM.txt = ''; }
+  // the line (and its width) is built once a second or when the quality step changes, not every frame (no per-frame strings)
+  if (!FPSM.txt || FPSM.dpr !== DPR || FPSM.tier !== PERF.tier) {
+    FPSM.dpr = DPR; FPSM.tier = PERF.tier; FPSM.font = `700 11px ${FONT}`;
+    FPSM.txt = `${FPSM.fps} fps \u00b7 ${Math.round(1000 / VSYNC.iv)} Hz \u00b7 ${TIER_NAME[PERF.tier]} \u00b7 ${DPR.toFixed(2)}x \u00b7 ${FPSM.wms.toFixed(1)} ms \u00b7 max ${Math.round(FPSM.w)}`;
+    ctx.font = FPSM.font; FPSM.tw = ctx.measureText(FPSM.txt).width + 10;
+  }
+  const txt = FPSM.txt;
+  ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.font = FPSM.font; const w = FPSM.tw;
   const x = W_ / 2 - w / 2, y = ui.A.y1 - 17; // bottom centre, between the corner buttons
   ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x, y, w, 15); ctx.fillStyle = FPSM.fps >= 50 ? '#7dff6a' : FPSM.fps >= 28 ? '#ffd23a' : '#ff6a5a'; ctx.textBaseline = 'middle'; ctx.fillText(txt, x + 5, y + 8);
   ctx.restore();

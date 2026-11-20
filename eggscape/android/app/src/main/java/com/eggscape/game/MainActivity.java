@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.Display;
 import android.view.DisplayCutout;
 import android.view.View;
 import android.view.WindowInsets;
@@ -123,6 +124,10 @@ public class MainActivity extends Activity {
         web.setOnApplyWindowInsetsListener((v, ins) -> { lastInsets = ins; pushSafe(); return v.onApplyWindowInsets(ins); });
         web.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> { if (r - l != or - ol || bt - t != ob - ot) v.post(this::pushSafe); });
         setContentView(web);
+        // 2026-11-20 speed: the WebView covers the window and paints its own background, so the window's background
+        // (a full-screen fill under it on every frame) is dropped. The launch preview still uses the theme colour.
+        w.setBackgroundDrawable(null);
+        prefer60Hz();
         money = new Monetization(this, web);
         hideBars();
         // always start from our own page (restoreState could bring back any URL the saved state held)
@@ -158,6 +163,35 @@ public class MainActivity extends Activity {
         }
         // the WebView's CSS px are dp: divide by density
         return new int[] { Math.round(t / d), Math.round(b / d), Math.round(l / d), Math.round(r / d) };
+    }
+
+    /**
+     * 2026-11-20 (mykee's 90 Hz flagship stuttered): the game never draws faster than 60 fps, but on a 90 Hz screen 60
+     * fps cannot be shown evenly, so it drew every 11 ms refresh (or every second one, 45 fps, whenever a frame ran
+     * long) and the physics, which steps in 8.3 ms, moved things by 1 and 2 steps in turn. Asking the screen for its
+     * 60 Hz mode (same resolution) gives every frame 16.7 ms, even motion, and saves battery. The system may ignore the
+     * wish (battery saver, some makers); the game measures the real rate either way.
+     */
+    private void prefer60Hz() {
+        if (Build.VERSION.SDK_INT < 23) return;
+        try {
+            Display d;
+            if (Build.VERSION.SDK_INT >= 30) d = getDisplay();
+            else d = getWindowManager().getDefaultDisplay();
+            if (d == null) return;
+            Display.Mode cur = d.getMode(), best = null;
+            for (Display.Mode m : d.getSupportedModes()) {
+                if (m.getPhysicalWidth() != cur.getPhysicalWidth() || m.getPhysicalHeight() != cur.getPhysicalHeight()) continue;
+                float hz = m.getRefreshRate();
+                if (hz < 59f || hz > 61f) continue;
+                best = m;
+            }
+            if (best == null) return;
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.preferredDisplayModeId = best.getModeId();
+            lp.preferredRefreshRate = best.getRefreshRate();
+            getWindow().setAttributes(lp);
+        } catch (Exception e) { /* keep the screen's own rate */ }
     }
 
     private void pushSafe() {
