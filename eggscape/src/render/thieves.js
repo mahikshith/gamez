@@ -1026,7 +1026,7 @@ export function thiefEvent(ev, fx, U) {
     case 'thiefStash':
       audio.play('level_fail', { vol: 0.25, pitch: 1.6 });
       popup(ev.x, ev.y + 0.7, ev.lost ? 'Into the hole!' : 'Stashed!', { color: '#ff7a5a', size: 18, life: 1 });
-      if (!ev.lost) once('thiefStash', `The ${who} stashed an egg in its den! Knock it with a chick, the rooster or goose, or trap it and drop an egg on it: the egg pops back out.`, 5);
+      if (!ev.lost) once('thiefStash', `The ${who} stashed an egg in its den! It wriggles free in a few seconds. Bonk the ${who} to get it back sooner.`, 4);
       break;
     case 'thiefShake': audio.play('unlock', { vol: 0.6, pitch: 1.2 }); fx.sparkle(ev.x, ev.y, 12, '#bff0a0'); popup(ev.x, ev.y + 0.7, 'Egg freed!', { color: '#bff0a0', size: 20, life: 1.2 }); break;
     case 'thiefDrop': if (ev.why === 'tired' || ev.why === 'turned') popup(ev.x, ev.y + 0.6, 'Dropped it!', { color: '#bff0a0', size: 16, life: 0.8 }); break;

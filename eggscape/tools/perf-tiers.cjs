@@ -34,7 +34,8 @@ const run =
 };
 (async () => {
   const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
-  const page = await b.newPage({ viewport: { width: 393, height: 851 }, deviceScaleFactor: 2.75, hasTouch: true });
+  const [VW, VH, VD] = (process.env.VIEW || '393x851x2.75').split('x').map(Number); // VIEW=360x640x2: a 720p phone
+  const page = await b.newPage({ viewport: { width: VW, height: VH }, deviceScaleFactor: VD, hasTouch: true });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
   await page.goto(`http://localhost:${PORT}/`);
   await page.waitForFunction(() => window.__egg && __egg.G.screen, null, { timeout: 60000 });

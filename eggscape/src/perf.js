@@ -104,8 +104,12 @@ export function tick(save, ms, measuring) {
   return false;
 }
 // the waiting step change lands (called at the start of a frame, before drawing)
-export function takeStep(save) {
+// 2026-11-20: a step UP waits for the next level (changing the resolution mid-level is itself a visible hitch, and
+// Auto used to climb and fall again and again during play); a step DOWN lands at once, then Auto waits again
+export function takeStep(save, playing = false) {
   if (PERF.want < 0) return false;
+  if (playing && PERF.want < PERF.step) return false;
+  PERF.warm = 0;
   PERF.step = PERF.want; PERF.want = -1;
   if (save.gfx === 'auto') save.gfxStep = PERF.step;
   refresh(save);

@@ -456,7 +456,8 @@ function drawCard(ui, ctx, item, x, y, cw, ch, s, t, wide) {
   const blockH = tagH + nameSize * 1.2 + desc.lines.length * lineH + barH;
   let cy = y + (fh - blockH) / 2;
   if (item.tag) { pill(ui, ctx, item.tag, tx, cy + 1 * s, 13 * s, '#e8402e', 'store:tag:' + item.key, s); cy += tagH; }
-  ui.text(item.name, tx, cy + nameSize * 0.6, { size: nameSize, maxW: tw, color: C.ink, tag: 'store:name:' + item.key });
+  const nmS = fitWrap(ui, item.name, tw, 1, nameSize, nameSize * 0.72).size;
+  ui.text(item.name, tx, cy + nameSize * 0.6, { size: nmS, maxW: tw, color: C.ink, tag: 'store:name:' + item.key });
   cy += nameSize * 1.2;
   desc.lines.forEach((ln, i) => {
     ui.text(ln, tx, cy + lineH * (i + 0.5), { size: desc.size, maxW: tw, color: C.ink2, tag: `store:desc:${item.key}:${i}` });
@@ -480,7 +481,7 @@ function drawFeaturedNarrow(ui, ctx, item, tx, y, xr, fh, p, s, t) {
     if (item.sub) ui.text(item.sub.text, xr, cy + 9.5 * s, { size: 12.5 * s, align: 'right', maxW: tw - pw - 6 * s, color: item.sub.color, tag: 'store:sub:' + item.key });
     cy += 23 * s;
   }
-  const nameSize = 21 * s;
+  const nameSize = fitWrap(ui, item.name, tw, 1, 21 * s, 15 * s).size; // shrink a long name (Unlock Everything) rather than cut it
   ui.text(item.name, tx, cy + nameSize * 0.6, { size: nameSize, maxW: tw, color: C.ink, tag: 'store:name:' + item.key });
   cy += nameSize * 1.22;
   const room = by - 4 * s - cy, desc = fitWrap(ui, item.line, tw, Math.max(1, Math.min(3, Math.floor(room / (11 * s * 1.18)))), 14 * s, 11 * s), lineH = desc.size * 1.18;
@@ -591,7 +592,7 @@ function henItem(id, st) {
   let btn;
   if (equipped) btn = { id: 'hen:' + id, label: 'Equipped', disabled: true, keepFace: true, size: 14, kind: 'tertiary', icon: ICON.check };
   else if (owns) btn = { id: 'hen:' + id, label: 'Equip', size: 19, kind: 'secondary' };
-  else if (k.premium) btn = { id: 'iap:' + PREMIUM, label: 'Premium', size: 16, kind: 'gold' };
+  else if (k.premium) btn = { id: 'iap:' + PREMIUM, label: 'Unlock all', size: 16, kind: 'gold' };
   else { const ok = w.coins >= k.price; btn = { id: 'hen:' + id, label: String(k.price), coin: true, ...(ok ? GREEN : GREY) }; }
   return {
     key: 'hen:' + id, name: k.name, line: k.line, owned: owns,
@@ -946,7 +947,11 @@ export function drawStore(ui, ctx, W, H, state) {
   } else if (tab === 'deals') {
     const f = state.featured && IAP[state.featured.sku] && iapAvailable(wallet, state.featured.sku) ? state.featured : null;
     const fh = (cols === 1 ? 168 : D.featH) * s;
-    if (f) add(fh, (x, y, w) => drawCard(ui, ctx, iapItem(f.sku, st, { pre: 'feat:', big: true, tag: f.tag || 'Special offer', name: f.title, line: f.line }), x, y, w, fh, s, t, true), 'featured', 0);
+    // 2026-11-20 (mykee: the $3.99 "unlock everything, no ads, the game is yours" was missing from the store): it leads
+    // the Deals tab, big, every time it is still for sale
+    const prem = iapAvailable(wallet, PREMIUM) && (!f || f.sku !== PREMIUM);
+    if (prem) add(fh * 1.08, (x, y, w) => drawCard(ui, ctx, iapItem(PREMIUM, st, { big: true, tag: 'Best value' }), x, y, w, fh * 1.08, s, t, true), 'premium', 0);
+    if (f) add(fh, (x, y, w) => drawCard(ui, ctx, iapItem(f.sku, st, { pre: 'feat:', big: true, tag: f.tag || 'Special offer', name: f.title, line: f.line }), x, y, w, fh, s, t, true), 'featured', prem ? gap : 0);
     head('Coins', 'coins');
     // coin packs: 2 to a row in portrait, 3 in landscape; the sixth cell is the free-coins ad
     const pc = cols === 1 ? 2 : 3, cells = [...COIN_PACKS, 'ad'], phh = D.packH * s;
@@ -967,8 +972,8 @@ export function drawStore(ui, ctx, W, H, state) {
     cards(bundles.map((sku) => iapItem(sku, st)));
     head('Golden Egg Bank', 'bank');
     cards([bankItem(st)]);
-    head('No ads & Premium');
-    cards([iapItem('no_ads', st), iapItem(PREMIUM, st)]);
+    head('No ads');
+    cards([iapItem('no_ads', st), ...(iapAvailable(wallet, PREMIUM) ? [] : [iapItem(PREMIUM, st)])]);
   } else if (tab === 'boosters') {
     head('Boosts');
     tiles(BOOSTER_ORDER.map((id) => boosterItem(id, st)));

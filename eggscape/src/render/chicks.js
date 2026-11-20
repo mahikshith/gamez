@@ -7,6 +7,7 @@ import { EGG_H, EGG_W, RING_TH, TAU, eggPoint } from '../sim/geom.js';
 import { GLOW_R, BULK_LEN, DASH_T, PICK_T } from '../sim/chicks.js';
 import { drawEgg } from './world.js';
 import { POWER_INFO, ORB_ART } from './powers.js';
+import { stamp } from './stamp.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const mod = (a, b) => ((a % b) + b) % b;
@@ -1282,6 +1283,7 @@ export function drawChickEgg(ctx, egg, t, k) {
 
 // Over the ring drawn by world.js: glossy pale-blue ice on hard-ice segments, frost cracks, and a hole
 // that freezes over again from its edges.
+const ICE_SLOT = new WeakMap(); // ring -> its own stamp slot (the ring object itself is the pads' slot)
 export function drawHardIce(ctx, ring, k, t) {
   if (!ring.hardIce) return;
   const A = ring.body.getAngle(), r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2;
@@ -1296,64 +1298,87 @@ export function drawHardIce(ctx, ring, k, t) {
   const px = 1 / k;
   ctx.save();
   ctx.rotate(A);
-  for (const R of runs) {
-    const arc = (r0, r1) => { ctx.beginPath(); ctx.arc(0, 0, r1, R.a0, R.a1); ctx.arc(0, 0, r0, R.a1, R.a0, true); ctx.closePath(); };
-    // thick glacier blue, a touch fatter than the ring so it reads as a different material
-    arc(ri - 0.02, ro + 0.02);
-    const g = ctx.createRadialGradient(0, 0, ri - 0.02, 0, 0, ro + 0.02);
-    g.addColorStop(0, '#3fa6dc');
-    g.addColorStop(0.35, '#8ad8f8');
-    g.addColorStop(0.62, '#e4f8ff');
-    g.addColorStop(0.8, '#a8e4fb');
-    g.addColorStop(1, '#4fb2e2');
-    ctx.fillStyle = g;
-    ctx.fill();
-    // crystal blocks: a seam every ~0.4 m, each block with a bright facet
-    const n = Math.max(1, Math.round(((R.a1 - R.a0) * r) / 0.4));
-    ctx.save();
-    arc(ri - 0.02, ro + 0.02);
-    ctx.clip();
-    for (let i = 0; i < n; i++) {
-      const b0 = R.a0 + (i / n) * (R.a1 - R.a0), b1 = R.a0 + ((i + 1) / n) * (R.a1 - R.a0), bm = (b0 + b1) / 2;
-      ctx.beginPath();
-      ctx.moveTo((ri - 0.02) * Math.cos(b0), (ri - 0.02) * Math.sin(b0));
-      ctx.lineTo((ro + 0.02) * Math.cos(bm), (ro + 0.02) * Math.sin(bm));
-      ctx.lineTo((ro + 0.02) * Math.cos(b0), (ro + 0.02) * Math.sin(b0));
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(255,255,255,0.32)';
+  // 2026-11-20 speed pass: the ice runs only change when a block breaks or refreezes, so they are one stamp in the
+  // ring's own frame (turning with it); only the twinkles and the holes are drawn live
+  const paintRuns = (ctx) => {
+    for (const R of runs) {
+      const arc = (r0, r1) => { ctx.beginPath(); ctx.arc(0, 0, r1, R.a0, R.a1); ctx.arc(0, 0, r0, R.a1, R.a0, true); ctx.closePath(); };
+      // thick glacier blue, a touch fatter than the ring so it reads as a different material
+      arc(ri - 0.02, ro + 0.02);
+      const g = ctx.createRadialGradient(0, 0, ri - 0.02, 0, 0, ro + 0.02);
+      g.addColorStop(0, '#3fa6dc');
+      g.addColorStop(0.35, '#8ad8f8');
+      g.addColorStop(0.62, '#e4f8ff');
+      g.addColorStop(0.8, '#a8e4fb');
+      g.addColorStop(1, '#4fb2e2');
+      ctx.fillStyle = g;
       ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo((ri - 0.02) * Math.cos(b1), (ri - 0.02) * Math.sin(b1));
-      ctx.lineTo((ro + 0.02) * Math.cos(b1), (ro + 0.02) * Math.sin(b1));
-      ctx.strokeStyle = 'rgba(25,90,140,0.7)';
-      ctx.lineWidth = Math.max(1.4 * px, 0.012);
-      ctx.stroke();
-      // a frost crack in every other block
-      if (i % 2 === 0) {
-        const da = (0.05 / r) * (1 + 0.5 * Math.sin(i * 12.9898 + r * 7));
+      // crystal blocks: a seam every ~0.4 m, each block with a bright facet
+      const n = Math.max(1, Math.round(((R.a1 - R.a0) * r) / 0.4));
+      ctx.save();
+      arc(ri - 0.02, ro + 0.02);
+      ctx.clip();
+      for (let i = 0; i < n; i++) {
+        const b0 = R.a0 + (i / n) * (R.a1 - R.a0), b1 = R.a0 + ((i + 1) / n) * (R.a1 - R.a0), bm = (b0 + b1) / 2;
         ctx.beginPath();
-        ctx.moveTo((ri - 0.01) * Math.cos(bm), (ri - 0.01) * Math.sin(bm));
-        ctx.lineTo(r * Math.cos(bm + da), r * Math.sin(bm + da));
-        ctx.lineTo((r + 0.05) * Math.cos(bm - da), (r + 0.05) * Math.sin(bm - da));
-        ctx.moveTo(r * Math.cos(bm + da), r * Math.sin(bm + da));
-        ctx.lineTo((r + 0.03) * Math.cos(bm + da * 3), (r + 0.03) * Math.sin(bm + da * 3));
-        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-        ctx.lineWidth = Math.max(1.6 * px, 0.013);
+        ctx.moveTo((ri - 0.02) * Math.cos(b0), (ri - 0.02) * Math.sin(b0));
+        ctx.lineTo((ro + 0.02) * Math.cos(bm), (ro + 0.02) * Math.sin(bm));
+        ctx.lineTo((ro + 0.02) * Math.cos(b0), (ro + 0.02) * Math.sin(b0));
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.32)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo((ri - 0.02) * Math.cos(b1), (ri - 0.02) * Math.sin(b1));
+        ctx.lineTo((ro + 0.02) * Math.cos(b1), (ro + 0.02) * Math.sin(b1));
+        ctx.strokeStyle = 'rgba(25,90,140,0.7)';
+        ctx.lineWidth = Math.max(1.4 * px, 0.012);
         ctx.stroke();
+        // a frost crack in every other block
+        if (i % 2 === 0) {
+          const da = (0.05 / r) * (1 + 0.5 * Math.sin(i * 12.9898 + r * 7));
+          ctx.beginPath();
+          ctx.moveTo((ri - 0.01) * Math.cos(bm), (ri - 0.01) * Math.sin(bm));
+          ctx.lineTo(r * Math.cos(bm + da), r * Math.sin(bm + da));
+          ctx.lineTo((r + 0.05) * Math.cos(bm - da), (r + 0.05) * Math.sin(bm - da));
+          ctx.moveTo(r * Math.cos(bm + da), r * Math.sin(bm + da));
+          ctx.lineTo((r + 0.03) * Math.cos(bm + da * 3), (r + 0.03) * Math.sin(bm + da * 3));
+          ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+          ctx.lineWidth = Math.max(1.6 * px, 0.013);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+      // glossy streak and a frosted rim
+      ctx.beginPath();
+      ctx.arc(0, 0, ro - RING_TH * 0.18, R.a0 + 0.03, R.a1 - 0.03);
+      ctx.lineWidth = Math.max(2 * px, RING_TH * 0.13);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.stroke();
+      arc(ri - 0.02, ro + 0.02);
+      ctx.lineWidth = Math.max(2.5 * px, 0.024);
+      ctx.strokeStyle = '#1b5a86';
+      ctx.stroke();
+    }
+  };
+  if (runs.length) {
+    let key = r.toFixed(3);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const RO = ro + 0.05, RI = ri - 0.05;
+    for (const R of runs) {
+      key += '|' + R.a0.toFixed(4) + ':' + R.a1.toFixed(4);
+      const n = Math.max(2, Math.ceil((R.a1 - R.a0) / 0.2));
+      for (let i = 0; i <= n; i++) {
+        const q = R.a0 + ((R.a1 - R.a0) * i) / n, c = Math.cos(q), sn = Math.sin(q);
+        for (const rr of [RI, RO]) { x0 = Math.min(x0, rr * c); x1 = Math.max(x1, rr * c); y0 = Math.min(y0, rr * sn); y1 = Math.max(y1, rr * sn); }
       }
     }
-    ctx.restore();
-    // glossy streak and a frosted rim
-    ctx.beginPath();
-    ctx.arc(0, 0, ro - RING_TH * 0.18, R.a0 + 0.03, R.a1 - 0.03);
-    ctx.lineWidth = Math.max(2 * px, RING_TH * 0.13);
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.stroke();
-    arc(ri - 0.02, ro + 0.02);
-    ctx.lineWidth = Math.max(2.5 * px, 0.024);
-    ctx.strokeStyle = '#1b5a86';
-    ctx.stroke();
+    let slot = ICE_SLOT.get(ring);
+    if (!slot) ICE_SLOT.set(ring, (slot = {}));
+    if (!stamp(ctx, slot, key, x0 - 0.05, y0 - 0.05, x1 + 0.05, y1 + 0.05, paintRuns)) paintRuns(ctx);
+  }
+  for (const R of runs) {
+    const n = Math.max(1, Math.round(((R.a1 - R.a0) * r) / 0.4));
     // twinkles
     for (let i = 0; i < n; i++) {
       const a = R.a0 + ((i + 0.3) / n) * (R.a1 - R.a0), tw = Math.max(0, Math.sin(t * 2.3 + i * 2.1 + r));

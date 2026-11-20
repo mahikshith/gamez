@@ -4,6 +4,7 @@
 // The top face is EXACTLY the physics band (ri..ro); the wall and shadow only ever show below a ring, never on the
 // surface an egg rests on, so nothing about where eggs sit changes.
 // One painter serves circles (fast arcs) and the shaped vaults (square / hex / spiral polylines via ringPt).
+import { stamp } from './stamp.js';
 import { RING_TH, TAU, rng } from '../sim/geom.js';
 import { ringPt, ringSpd, ringReach, ringNormal } from '../sim/shapes.js';
 
@@ -393,15 +394,18 @@ function bodyCanvas(ring, arcs, col, st, k, up, A, scale) {
   let sc = scale * 1.15; // the same headroom as the face: the camera eases in and out, rebuild only on a real zoom
   const MAX = 2048;
   if (2 * half * sc > MAX) sc = MAX / (2 * half);
-  const size = Math.ceil(2 * half * sc);
+  let size = Math.ceil(2 * half * sc);
   const cv = S.bcv || document.createElement('canvas');
-  if (cv.width !== size || cv.height !== size) { cv.width = size; cv.height = size; }
+  // 2026-11-20 speed: keep the canvas we have when it is big enough (resizing it reallocates the picture on the graphics
+  // chip, a hitch on a phone, and the camera's small zooms used to resize it 1-3 times a second); grow in steps of 64
+  if (cv.width >= size && cv.width <= size * 1.45 && cv.width === cv.height) { size = cv.width; sc = size / (2 * half); }
+  else { size = Math.min(MAX, Math.ceil(size / 64) * 64); sc = size / (2 * half); cv.width = size; cv.height = size; }
   const c = cv.getContext('2d');
   if (!c) return null;
   c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, size, size);
   c.setTransform(sc, 0, 0, sc, size / 2, size / 2);
   paintBody(c, ring, arcs, col, st, k, up, A);
-  S.bcv = cv; S.bkey = key; S.bscale = scale * 1.15; S.bA = A; S.body = { canvas: cv, half: size / 2 / sc, A };
+  S.bcv = cv; S.bkey = key; S.bscale = Math.max(sc, scale * 1.15); S.bA = A; S.body = { canvas: cv, half: size / 2 / sc, A };
   bodyCache.builds++;
   return S.body;
 }
@@ -493,6 +497,7 @@ export function drawRingBurn(ctx, ring) {
 
 // ---------- sponge pads: a fat foam cushion wrapped round the ring; eggs sink into it, it jiggles on a hit ----------
 // ctx rotated to the ring. eggs: world positions.
+const PADS = new WeakMap(); // ring -> { A: angle the pad stamp was painted at, ver }
 const PADC = new WeakMap(); // ring -> Map(run key -> static look: geometry + Path2D shapes, rebuilt only when an egg presses or a hit wobbles)
 export function drawPads(ctx, ring, theme, px, t, eggs, simT) {
   const runs = [];
@@ -512,6 +517,7 @@ export function drawPads(ctx, ring, theme, px, t, eggs, simT) {
   const dx = -Math.sin(A) * 0.06, dy = -Math.cos(A) * 0.06; // world-down in ring space: the cushion's thickness
   let cache = PADC.get(ring);
   if (!cache) PADC.set(ring, (cache = new Map()));
+  let dynAny = false, bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
   for (const Rn of runs) {
     const ck = Rn.a0.toFixed(5) + '|' + Rn.a1.toFixed(5), n = Math.max(6, Math.ceil(((Rn.a1 - Rn.a0) * (ring.prof ? ringReach(ring) : r)) / 0.03));
     let C = cache.get(ck);
@@ -542,54 +548,72 @@ export function drawPads(ctx, ring, theme, px, t, eggs, simT) {
     if (!dyn && near.length) {
       for (let i = 0; i <= n && !dyn; i++) { const s0 = C.s0[i]; for (const q of near) if (Math.hypot(q.x - s0[0], q.y - s0[1]) < 0.3) { dyn = true; break; } }
     }
-    let L = C.look;
-    if (dyn || !L) {
-      const top = new Array(n + 1);
-      for (let i = 0; i <= n; i++) {
-        const th = Rn.a0 + ((Rn.a1 - Rn.a0) * i) / n;
-        let h = C.h0[i];
-        const s0 = C.s0[i];
-        for (const q of near) { const d = Math.hypot(q.x - s0[0], q.y - s0[1]); if (d < 0.3) h -= 0.085 * (1 - d / 0.3) * (1 - d / 0.3); }
-        const seg = Rn.segs[Math.min(Rn.segs.length - 1, Math.floor(((th - Rn.a0) / (Rn.a1 - Rn.a0)) * Rn.segs.length))], dt = simT - seg.hitT;
-        if (dt >= 0 && dt < 0.6) h += Math.min(0.045, seg.hitV * 0.009) * Math.exp(-dt * 7) * Math.sin(dt * 45 + th * 12);
-        top[i] = P(ri - Math.max(0.015, h), th);
-      }
-      const out = C.out;
-      const shape = new Path2D(), topLine = new Path2D(), outLine = new Path2D(), crest = new Path2D();
-      for (let i = 0; i <= n; i++) { if (i) { shape.lineTo(out[i][0], out[i][1]); outLine.lineTo(out[i][0], out[i][1]); } else { shape.moveTo(out[i][0], out[i][1]); outLine.moveTo(out[i][0], out[i][1]); } }
-      for (let i = n; i >= 0; i--) { shape.lineTo(top[i][0], top[i][1]); if (i === n) topLine.moveTo(top[i][0], top[i][1]); else topLine.lineTo(top[i][0], top[i][1]); }
-      shape.closePath();
-      for (let i = 1; i < n; i++) { const x = top[i][0] * 0.82 + out[i][0] * 0.18, y = top[i][1] * 0.82 + out[i][1] * 0.18; if (i > 1) crest.lineTo(x, y); else crest.moveTo(x, y); }
-      L = { shape, topLine, outLine, crest };
-      if (!dyn) C.look = L; // resting look: keep it
-    }
-    if (dyn) C.look = null;
-    ctx.lineJoin = 'round';
-    // thickness (darker foam below) with its outline
-    ctx.translate(dx, dy);
-    ctx.fillStyle = deep; ctx.fill(L.shape);
-    ctx.strokeStyle = line; ctx.lineWidth = Math.max(2.4 * px, 0.03); ctx.stroke(L.shape);
-    ctx.translate(-dx / 2, -dy / 2);
-    ctx.fillStyle = deep; ctx.fill(L.shape);
-    ctx.translate(-dx / 2, -dy / 2);
-    // top face
-    ctx.strokeStyle = line; ctx.lineWidth = Math.max(2.4 * px, 0.03); ctx.stroke(L.shape);
-    ctx.fillStyle = base; ctx.fill(L.shape);
-    ctx.save();
-    ctx.clip(L.shape);
-    // soft form: light on the puffy inner face, warm shade where it tucks under the ring's outer side
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = softC; ctx.lineWidth = 0.1; ctx.stroke(L.outLine);
-    ctx.strokeStyle = hiC; ctx.lineWidth = 0.085; ctx.stroke(L.topLine);
-    // pores: dark hole, light lower lip (pressed into the foam)
-    ctx.fillStyle = lipC;
-    ctx.translate(dx * 0.1, dy * 0.1); ctx.fill(C.pores.lip); ctx.translate(-dx * 0.1, -dy * 0.1);
-    ctx.fillStyle = holeC; ctx.fill(C.pores.hole);
-    ctx.restore();
-    // crisp crest highlight along the puffy edge
-    ctx.strokeStyle = 'rgba(255,252,225,0.95)';
-    ctx.lineWidth = Math.max(1.3 * px, 0.016);
-    ctx.lineCap = 'round';
-    ctx.stroke(L.crest);
+    Rn.C = C; Rn.dyn = dyn; Rn.n = n; dynAny = dynAny || dyn;
+    for (const q of C.out) { bx0 = Math.min(bx0, q[0]); bx1 = Math.max(bx1, q[0]); by0 = Math.min(by0, q[1]); by1 = Math.max(by1, q[1]); }
+    for (const q of C.s0) { bx0 = Math.min(bx0, q[0]); bx1 = Math.max(bx1, q[0]); by0 = Math.min(by0, q[1]); by1 = Math.max(by1, q[1]); }
   }
+  // 2026-11-20 speed: a pad nothing presses is stamped (painted once per 0.2 rad of turn, see stamp.js)
+  const paintRuns = (ctx) => {
+    for (const Rn of runs) {
+      const C = Rn.C, dyn = Rn.dyn, n = Rn.n;
+    let L = C.look;
+      if (dyn || !L) {
+        const top = new Array(n + 1);
+        for (let i = 0; i <= n; i++) {
+          const th = Rn.a0 + ((Rn.a1 - Rn.a0) * i) / n;
+          let h = C.h0[i];
+          const s0 = C.s0[i];
+          for (const q of near) { const d = Math.hypot(q.x - s0[0], q.y - s0[1]); if (d < 0.3) h -= 0.085 * (1 - d / 0.3) * (1 - d / 0.3); }
+          const seg = Rn.segs[Math.min(Rn.segs.length - 1, Math.floor(((th - Rn.a0) / (Rn.a1 - Rn.a0)) * Rn.segs.length))], dt = simT - seg.hitT;
+          if (dt >= 0 && dt < 0.6) h += Math.min(0.045, seg.hitV * 0.009) * Math.exp(-dt * 7) * Math.sin(dt * 45 + th * 12);
+          top[i] = P(ri - Math.max(0.015, h), th);
+        }
+        const out = C.out;
+        const shape = new Path2D(), topLine = new Path2D(), outLine = new Path2D(), crest = new Path2D();
+        for (let i = 0; i <= n; i++) { if (i) { shape.lineTo(out[i][0], out[i][1]); outLine.lineTo(out[i][0], out[i][1]); } else { shape.moveTo(out[i][0], out[i][1]); outLine.moveTo(out[i][0], out[i][1]); } }
+        for (let i = n; i >= 0; i--) { shape.lineTo(top[i][0], top[i][1]); if (i === n) topLine.moveTo(top[i][0], top[i][1]); else topLine.lineTo(top[i][0], top[i][1]); }
+        shape.closePath();
+        for (let i = 1; i < n; i++) { const x = top[i][0] * 0.82 + out[i][0] * 0.18, y = top[i][1] * 0.82 + out[i][1] * 0.18; if (i > 1) crest.lineTo(x, y); else crest.moveTo(x, y); }
+        L = { shape, topLine, outLine, crest };
+        if (!dyn) C.look = L; // resting look: keep it
+      }
+      if (dyn) C.look = null;
+      ctx.lineJoin = 'round';
+      // thickness (darker foam below) with its outline
+      ctx.translate(dx, dy);
+      ctx.fillStyle = deep; ctx.fill(L.shape);
+      ctx.strokeStyle = line; ctx.lineWidth = Math.max(2.4 * px, 0.03); ctx.stroke(L.shape);
+      ctx.translate(-dx / 2, -dy / 2);
+      ctx.fillStyle = deep; ctx.fill(L.shape);
+      ctx.translate(-dx / 2, -dy / 2);
+      // top face
+      ctx.strokeStyle = line; ctx.lineWidth = Math.max(2.4 * px, 0.03); ctx.stroke(L.shape);
+      ctx.fillStyle = base; ctx.fill(L.shape);
+      ctx.save();
+      ctx.clip(L.shape);
+      // soft form: light on the puffy inner face, warm shade where it tucks under the ring's outer side
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = softC; ctx.lineWidth = 0.1; ctx.stroke(L.outLine);
+      ctx.strokeStyle = hiC; ctx.lineWidth = 0.085; ctx.stroke(L.topLine);
+      // pores: dark hole, light lower lip (pressed into the foam)
+      ctx.fillStyle = lipC;
+      ctx.translate(dx * 0.1, dy * 0.1); ctx.fill(C.pores.lip); ctx.translate(-dx * 0.1, -dy * 0.1);
+      ctx.fillStyle = holeC; ctx.fill(C.pores.hole);
+      ctx.restore();
+      // crisp crest highlight along the puffy edge
+      ctx.strokeStyle = 'rgba(255,252,225,0.95)';
+      ctx.lineWidth = Math.max(1.3 * px, 0.016);
+      ctx.lineCap = 'round';
+      ctx.stroke(L.crest);
+  }
+  };
+  if (!dynAny) {
+    let ps = PADS.get(ring);
+    let d = A - (ps ? ps.A : A); d -= Math.round(d / TAU) * TAU;
+    if (!ps || Math.abs(d) > 0.2) PADS.set(ring, (ps = { A, ver: (ps ? ps.ver : 0) + 1 }));
+    const key = runs.map((Rn) => Rn.a0.toFixed(4) + ':' + Rn.a1.toFixed(4)).join(',') + '|' + base + '|' + ps.ver;
+    if (stamp(ctx, ring, key, bx0 - 0.15, by0 - 0.15, bx1 + 0.15, by1 + 0.15, paintRuns)) return;
+  }
+  paintRuns(ctx);
+
 }

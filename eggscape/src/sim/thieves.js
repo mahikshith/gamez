@@ -51,6 +51,8 @@ export const HUNT = {
   hold: m3(2.6, 0, 0), // s it carries an egg before letting go by itself (0 = all the way to the den)
   next: m3(4, 2.4, 1.8), // s between hunts
   away: m3(14, 10, 8), // s a hit level weasel hides in its den
+  wriggle: m3(6, 8, 11), // s an egg in a level thief's den wriggles free on its own (2026-11-20: no endless loop)
+  wriggleBoss: m3(12, 15, 19), // the same in a boss's den
   trapR: 1.8, sneakMax: 2.5, far: 1.7, near: 0.2,
 };
 export const ROLL = {
@@ -158,6 +160,12 @@ export const thiefMethods = {
       return;
     }
     for (const T of L) if (T.shakeCD > 0) T.shakeCD -= dt;
+    // 2026-11-20 (mykee's testers: once the weasel had an egg in its den it never came back without Papa Rooster or a
+    // power, an endless loop in levels that have neither): a stashed egg wriggles free by itself after a while
+    for (const T of L) {
+      if (!T.stash || !T.stash.length) { T.denT = 0; continue; }
+      if ((T.denT = (T.denT || 0) + dt) >= this.thM(T.boss ? HUNT.wriggleBoss : HUNT.wriggle)) { T.denT = 0; T.shakeCD = 0; this.thShake(T, 'wriggle'); }
+    }
     for (const T of L) {
       if (T.hitCD > 0) T.hitCD -= dt;
       if (T.zap > 0) T.zap = Math.max(0, T.zap - dt);
@@ -368,7 +376,7 @@ export const thiefMethods = {
     if (T.lu < 1) return;
     T.a = wrap(T.a1); T.r = T.r1;
     T.ch = clamp(this.chAt(T.r + 0.05), 1, T.run);
-    if (T.blocked) { T.ch = T.run; T.next = this.thM(HUNT.next); this.thSet(T, 'bonk', HUNT.bonk); return; }
+    if (T.blocked) { T.ch = T.run; T.next = this.thM(HUNT.next); this.thSet(T, 'bonk', HUNT.bonk); this.thShake(T, 'bonk'); return; } // a bonk also shakes an egg loose from its den (2026-11-20)
     if (T.k === 'hop') { T.ch = T.run; this.thSet(T, T.eid ? 'carry' : 'prowl'); return; }
     const G = RIG[T.kind], e = this.eggs.find((x) => x.id === T.tgt), m = this.thPt(T, G.mouthX, G.mouthY); // the bite lands level (not along the flight's pitch)
     if (e && this.thCan(T, e)) { const p = e.body.getPosition(); if (Math.hypot(p.x - m.x, p.y - m.y) < G.reach + 0.2) { this.thTake(T, e); return; } }

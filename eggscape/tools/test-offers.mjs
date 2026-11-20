@@ -15,21 +15,22 @@ const app = { money: true };
   ok(s.offers.seed === 0 && s.offers.sessions === 1, 'A/B arm set once, first session counted');
   OF.startSession(s, T0 + DAY, () => 0.9);
   ok(s.offers.seed === 0, 'the arm never changes');
-  ok(OF.evaluate(s, 'home', { ...app, now: T0 + DAY }) === null, 'nothing before level 6');
   s.unlocked = 8;
+  ok(OF.evaluate(s, 'home', { ...app, now: T0 + DAY }) === null, 'nothing before level 9');
+  s.unlocked = 12;
   const first = mk({ unlocked: 9 }); OF.startSession(first, T0);
   ok(OF.evaluate(first, 'win', { ...app, now: T0 }) === null, 'nothing in the first session');
   const o = OF.evaluate(s, 'win', { ...app, now: T0 + DAY });
-  ok(id(o) === 'starter_nest' && o.sku === 'starter_nest', 'level 8, second session: Starter Nest');
+  ok(id(o) === 'starter_nest' && o.sku === 'starter_nest', 'level 12, second session: Starter Nest');
   ok(OF.evaluate(s, 'play', { ...app, now: T0 + DAY }) === null, 'never during play');
   ok(OF.evaluate(s, 'win', { money: false, now: T0 + DAY }) === null, 'web: no purchase offers');
   // shown 3 times (three sessions) then never again
   let t = T0 + DAY;
   for (let k = 0; k < 3; k++) { const q = OF.evaluate(s, 'home', { ...app, now: t }); ok(id(q) === 'starter_nest', `starter shown #${k + 1}`); OF.markShown(s, q, t); t += DAY / 2; OF.startSession(s, t); }
   ok(id(OF.evaluate(s, 'home', { ...app, now: t })) !== 'starter_nest', 'starter at most 3 times');
-  const late = mk({ unlocked: 9 }); OF.startSession(late, T0); OF.startSession(late, T0 + 8 * DAY);
+  const late = mk({ unlocked: 12 }); OF.startSession(late, T0); OF.startSession(late, T0 + 8 * DAY);
   ok(id(OF.evaluate(late, 'home', { ...app, now: T0 + 8 * DAY })) !== 'starter_nest', 'starter only in the first 7 days');
-  const bought = mk({ unlocked: 9, wallet: { starter: true } }); OF.startSession(bought, T0); OF.startSession(bought, T0 + HOUR);
+  const bought = mk({ unlocked: 12, wallet: { starter: true } }); OF.startSession(bought, T0); OF.startSession(bought, T0 + HOUR);
   ok(id(OF.evaluate(bought, 'home', { ...app, now: T0 + HOUR })) !== 'starter_nest', 'never after bought');
 }
 
@@ -73,7 +74,7 @@ const app = { money: true };
 
 // ---- caps
 {
-  const s = mk({ unlocked: 9 }); OF.startSession(s, T0); OF.startSession(s, T0 + HOUR);
+  const s = mk({ unlocked: 12 }); OF.startSession(s, T0); OF.startSession(s, T0 + HOUR);
   let now = T0 + HOUR;
   const a = OF.evaluate(s, 'home', { ...app, now }); OF.markShown(s, a, now);
   OF.startSession(s, now + 10 * 6e4);
@@ -83,7 +84,7 @@ const app = { money: true };
   OF.startSession(s, now + 90 * 6e4);
   ok(OF.blocked(s, now + 90 * 6e4, 'home') === 'day', 'two popups a day');
   // three dismissals silence an offer for 14 days
-  const d = mk({ unlocked: 9 }); OF.startSession(d, T0);
+  const d = mk({ unlocked: 12 }); OF.startSession(d, T0);
   now = T0;
   for (let k = 0; k < 3; k++) { now += DAY; OF.startSession(d, now); const q = OF.evaluate(d, 'home', { ...app, now }); ok(id(q) === 'starter_nest', `starter offered, dismissal ${k + 1}`); OF.markShown(d, q, now); OF.markDismissed(d, q, now); }
   d.offers.shown.starter_nest = []; // make the show-count rule not the reason

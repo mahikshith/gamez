@@ -25,7 +25,7 @@ import { IAP, iapAvailable, BANK_OPEN } from './economy.js';
 // Target audience); a kids audience would need child-directed ads for everyone instead.
 export const AGE_GATE = false;
 
-export const CAPS = { perSession: 1, perDay: 2, gapMin: 30, fromLevel: 6, silenceAfter: 3, silenceDays: 14 };
+export const CAPS = { perSession: 1, perDay: 2, gapMin: 30, fromLevel: 9, silenceAfter: 3, silenceDays: 14 };
 const DAY = 864e5, MIN = 6e4;
 const dayKey = (now) => { const d = new Date(now); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 
@@ -34,7 +34,7 @@ const TEXT = {
   bundle_helper: { title: 'Helper Bundle', line: 'Stuck here? 1000 coins, 5 Chick Charges, 3 Ally Tickets and 2 of every boost.' },
   egg_bank: { title: 'Your Golden Egg Bank is full', line: 'Crack it open and take every coin inside.' },
   no_ads: { title: 'No more ad breaks', line: 'Play on without breaks between levels. Bonus videos stay your choice.' },
-  eggscape_premium: { title: 'Premium', line: 'No ad breaks, every ad bonus at once, all power chicks, the Golden Hen and a free Chick Charge every day.' },
+  eggscape_premium: { title: 'Unlock Everything', line: 'One payment and the game is yours: no ads ever, every level open, all power chicks and the Golden Hen.' },
   bundle_flock: { title: 'Flock Bundle', line: '3000 coins, 15 Chick Charges, 10 Ally Tickets and every power chick.' },
   charge_ad: { title: 'A free Chick Charge', line: 'Watch a short video and your power chick is ready at once next try.' },
   coins_ad: { title: 'Free coins', line: 'Watch a short video for 25 coins.' },
@@ -117,8 +117,8 @@ export function evaluate(save, moment, ctx = {}) {
   const C = [];
   const sku = (id, fit, value) => { if (money && iapAvailable(w, id)) C.push({ id, sku: id, fit, value, usd: IAP[id].usd, ...TEXT[id] }); };
   const end = moment === 'win' || moment === 'fail', calm = end || moment === 'home';
-  // starter nest
-  if ((calm || shop) && !payer && !w.starter && (unlocked >= 8 || o.sessions >= 3) && (shop || shownCount(o, 'starter_nest') < 3) && now - (o.firstDay || now) < 7 * DAY) sku('starter_nest', 1 + (short ? 0.2 : 0), 3);
+  // starter nest: only after the first two bosses (2026-11-20, mykee: the $1.99 popup came far too early)
+  if ((calm || shop) && !payer && !w.starter && (shop || unlocked >= 12) && (shop || shownCount(o, 'starter_nest') < 3) && now - (o.firstDay || now) < 7 * DAY) sku('starter_nest', 1 + (short ? 0.2 : 0), 3);
   // stuck: a free charge for an ad first; the helper bundle only after that ad was declined on this level
   if (moment === 'fail' && (ctx.fails || 0) >= 3 && lv != null) {
     if (!o.lvAd[lv]) C.push({ id: 'charge_ad', item: 'charge', fit: 1 + (ctx.nearMiss ? 0.2 : 0), value: 1, usd: 0, ...TEXT.charge_ad });

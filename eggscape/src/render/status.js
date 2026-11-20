@@ -106,6 +106,7 @@ export function spiralEye(ctx, x, y, r, t, dir = 1, ink = '#2a1a0a') {
 }
 
 // ---------------------------------------------------------------- off-screen snapshot of the creature
+const OLC = new Map(); // state seed -> outline (see statusDraw)
 let CA = null, C1 = null, C2 = null, CT = null; // creature, ring, shell, tiny outline sampler (pooled, grown on demand)
 function pool(c, w, h, read) {
   if (!c) { c = document.createElement('canvas'); c._read = !!read; }
@@ -249,7 +250,15 @@ export function statusDraw(ctx, box, draw, st, o = {}) {
   if (k === 'ice' && st.crack > 0) { jx = Math.sin(age * 83) * 0.9 * st.crack; jy = Math.cos(age * 71) * 0.6 * st.crack; }
   if (thaw) { const dec = 1 - clamp(age / ICE.thaw, 0, 1); jx = Math.sin(age * 58) * 2.4 * dec; jy = Math.cos(age * 47) * 1.2 * dec; }
   const needOutline = k === 'ice' || thaw || zapping;
-  const OL = needOutline ? outline(S) : null;
+  // 2026-11-20 speed (real phones): the outline is read back from the graphics chip (getImageData), which stalls the
+  // whole frame on a phone. The art's clock is held while frozen, so the outline (local units) is sampled ONCE per
+  // state and reused (the thaw reuses the ice's outline)
+  let OL = null;
+  if (needOutline) {
+    const ok = st.seed + '|' + st.hold + '|' + (zapping ? 'z' : 'i');
+    OL = OLC.get(ok);
+    if (!OL) { OL = outline(S); if (OLC.size > 40) OLC.clear(); OLC.set(ok, OL); }
+  }
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const bx = S.ox + jx * sc, by = S.oy + jy * sc;

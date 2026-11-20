@@ -457,7 +457,7 @@ export const IAP = {
   egg_bank: { sku: 'egg_bank', usd: 1.99, type: 'consumable', name: 'Golden Egg Bank', line: 'Every win drops coins in. Crack it open for all of them.', bank: true },
   all_chicks: { sku: 'all_chicks', usd: 4.99, type: 'once', name: 'All Power Chicks', line: 'The six level power chicks, ready in every level with villains.', chicks: true },
   no_ads: { sku: 'no_ads', usd: 2.99, type: 'once', name: 'No Ads', line: 'No more ad breaks between levels. Bonus videos stay your choice.', noInter: true },
-  eggscape_premium: { sku: 'eggscape_premium', usd: 7.99, type: 'once', name: 'Premium', line: 'No ad breaks, every ad bonus at once, the six level power chicks, the Golden Hen, 1500 coins and a free Chick Charge every day.', coins: 1500, chicks: true, premium: true },
+  eggscape_premium: { sku: 'eggscape_premium', usd: 3.99, type: 'once', name: 'Unlock Everything', line: 'No ads ever. Every level, all six power chicks, the Golden Hen and 1500 coins.', coins: 1500, chicks: true, premium: true },
 };
 export const COIN_PACKS = ['coins_250', 'coins_850', 'coins_1500', 'coins_3300', 'coins_7000'];
 export const usdHint = (sku) => (IAP[sku] ? '$' + IAP[sku].usd.toFixed(2) : '');
