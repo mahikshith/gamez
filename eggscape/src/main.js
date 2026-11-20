@@ -6315,7 +6315,9 @@ function drawLevels() {
   const BOSS = { a: '#c93a54', b: '#7a1a40', lip: '#42091f', line: '#22040e', ink: '#fff', rim: 'rgba(255,214,96,0.95)' };
   const sr = Math.min(8 * u, L.stopR * 0.26);
   let henAt = null;
+  const FM = MS.FARM; // 0.8.7: World 1 (The Farm) has landmarks for stops (render/mapfarm.js), drawn after this loop
   for (let i = 0; i < LEVELS.length; i++) {
+    if (FM && L.stops[i].w === 0) continue;
     const st0 = L.stops[i], x = st0.x, y = st0.y - sy, Lv = LEVELS[i], boss = !!Lv.boss, r = boss ? L.stopR * 1.2 : L.stopR;
     if (y < vt - r * 2 || y > H_ + r * 2) continue;
     const w = st0.w, locked = !envOpen(w), open = playable(i), cur = open && i === nx;
@@ -6345,6 +6347,28 @@ function drawLevels() {
     }
     if (cur) henAt = { x, y, r };
   }
+  // The Farm: each landmark IS the stop's button (the whole building, same press squash as a button), drawn far to near;
+  // a plaque on a post at the road side carries the number and stars, or a padlock; the next level's ground glows
+  if (FM) for (let i = Math.min(LEVELS.length, FM.FARM_LANDMARKS.length) - 1; i >= 0; i--) {
+    const m = FM.farmStop(L, i);
+    if (!m || L.stops[i].w !== 0 || m.y - sy - 230 * u > H_ || m.plaque.y - sy + 40 * u < vt) continue;
+    const Lv = LEVELS[i], open = playable(i) && envOpen(0), cur = open && i === nx, tp = m.tap;
+    const id = 'lv:' + i, grp = 'btn:lv:' + i, tb = ctaOn && wide && tp.x1 > ctaX - 6 * u ? Math.min(tapBot, ctaY - 6 * u) : tapBot;
+    const ty0 = Math.max(tp.y0 - sy, vt + 2 * u), ty1 = Math.min(tp.y1 - sy, tb); // a big landmark half under the header still answers a tap on what shows
+    const inView = ty1 - ty0 >= Math.min(72 * u, (tp.y1 - tp.y0) * 0.9);
+    let p = 0;
+    if (inView) { ui.button(id, '', tp.x0, ty0, tp.x1 - tp.x0, ty1 - ty0, { ghost: true, disabled: !open }); p = calm ? 0 : ui.pressAmt(id, ui.pressedId === id); }
+    FM.drawFarmLandmark(ctx, L, m, sy, t, calm, p, cur ? (calm ? 0.75 : 0.6 + 0.3 * Math.sin(t * 2.6)) : 0, DPR);
+    const B = FM.drawFarmPlaque(ctx, L, m, sy, p), ns = 28 * u, sr2 = 8 * u;
+    if (open) {
+      if (Lv.boss) drawCrown(B.cx, B.top - 1 * u, 11 * u);
+      if (inView && B.num - ns * 0.6 >= ty0 && B.num + ns * 0.6 <= ty1) ui.text(String(Lv.id), B.cx, B.num, { size: ns, align: 'center', color: '#fff', stroke: '#4a2a10', strokeW: Math.max(3, ns * 0.2), shadow: '#4a2a10', group: grp, tag: 'lvnum' + i });
+      else { ctx.font = `600 ${Math.round(ns)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = Math.max(3, ns * 0.2); ctx.strokeStyle = '#4a2a10'; ctx.strokeText(String(Lv.id), B.cx, B.num); ctx.fillStyle = '#fff'; ctx.fillText(String(Lv.id), B.cx, B.num); }
+      for (let q = 0; q < 3; q++) drawStar(ctx, B.cx + (q - 1) * sr2 * 2.4, B.stars - (q === 1 ? sr2 * 0.3 : 0), sr2, q < starsOf(Lv.id));
+    } else drawPadlock(B.cx, B.mid, 13 * u, null);
+    if (cur) henAt = { x: m.hen.x, y: m.hen.y - sy, r: L.stopR, farm: m };
+  }
+  if (FM) FM.drawFarmFront(ctx, L, sy, t, calm, vt, H_); // the crow that perches on the barn's vane flies over the landmarks
   // the boss treasures: a chest beside every boss stop, on the side away from where the hen would stand
   for (let i = 0; i < LEVELS.length; i++) {
     const Lv = LEVELS[i];
@@ -6382,6 +6406,10 @@ function drawLevels() {
       for (let q = 0; q < 8; q++) { const an = q * Math.PI / 4 + 0.3, rr = L.stopR * (1.1 + 1.6 * k); drawStar(ctx, b.x + Math.cos(an) * rr, by + Math.sin(an) * rr, 6 * u * (1 - k * 0.5), true); }
       ctx.restore();
     }
+  } else if (henAt && henAt.farm) { // The Farm: on the road beside the plaque, facing it (where the trip along the road ends)
+    const r = henAt.r, hh = r * 2;
+    ctx.beginPath(); ctx.ellipse(henAt.x, henAt.y + r * 0.2, hh * 0.28, hh * 0.07, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
+    drawHenAnim(ctx, 'idle', henAt.x, henAt.y - r * 0.9 - hh * 0.32, hh, t, { key: 'map', face: henAt.farm.side, calm, shadow: 0 });
   } else if (henAt) {
     const hh = henAt.r * 2, side = henAt.x < A.cx ? 1 : -1, hx = henAt.x + side * (henAt.r + hh * 0.4), hy = henAt.y + henAt.r * 0.2;
     drawHenAnim(ctx, 'idle', hx, hy - hh * 0.32, hh, t, { key: 'map', face: -side, calm, shadow: 0 });

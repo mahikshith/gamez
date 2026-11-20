@@ -15,6 +15,8 @@ import { drawSnake } from './snake.js';
 import { drawHenAnim } from './hen.js';
 import { drawEggFriend } from './title.js';
 import { drawCrawler } from './crawlers.js';
+import { paintFarmBand, drawFarmLive } from './mapfarm.js'; // 0.8.7: World 1 is one painted farm with landmark stops
+export * as FARM from './mapfarm.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -326,6 +328,7 @@ const cache = new Map(); // key -> { canvas, key }
 const EDGE = 60; // hill crest overhang above the band (x u)
 
 function paintBand(c, L, w) {
+  if (w === 0) { paintFarmBand(c, L, EDGE * L.u); return; } // The Farm: its own painter (render/mapfarm.js)
   const u = L.u, BH = L.BH, W = L.W, E = EDGE * u, look = WORLD_LOOK[w] || WORLD_LOOK[0];
   // the band: a wavy hill line on top, then the ground gradient
   const R = rng(w * 31 + 5), ph = R() * TAU, ph2 = R() * TAU;
@@ -397,8 +400,8 @@ export function drawRoad(ctx, L, sy, vt, vb, doneTo) {
   const seg = (a, b) => { ctx.beginPath(); let first = true; for (let y = Math.max(a, yEnd); y <= Math.min(b, yStart) + 0.1; y += 6) { const x = L.pathX(y); if (first) { ctx.moveTo(x, y - sy); first = false; } else ctx.lineTo(x, y - sy); } };
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   // per world, so each world's road wears its own colours
-  for (let w = 0; w < L.nw; w++) {
-    const a = Math.max(y0, L.bandTop(w) - 2), b = Math.min(y1, L.bandTop(w) + L.BH + 2);
+  for (let w = 1; w < L.nw; w++) { // World 1's dirt road is painted with its land (mapfarm.js), up to the farm's hill crest
+    const a = Math.max(y0, L.bandTop(w) - 2), b = Math.min(y1, L.bandTop(w) + L.BH + (w === 1 ? -EDGE * u * 0.5 : 2));
     if (a >= b) continue;
     const R = WORLD_LOOK[w].road;
     seg(a, b); ctx.strokeStyle = 'rgba(20,10,0,0.25)'; ctx.lineWidth = L.roadW + 8 * u; ctx.stroke();
@@ -406,8 +409,12 @@ export function drawRoad(ctx, L, sy, vt, vb, doneTo) {
     seg(a, b); ctx.strokeStyle = R[0]; ctx.lineWidth = L.roadW; ctx.stroke();
   }
   // the stretch already walked shines gold
-  if (doneTo != null && doneTo < yStart) { const a = Math.max(y0, doneTo), b = Math.min(y1, yStart); if (a < b) { seg(a, b); ctx.strokeStyle = '#f6c454'; ctx.lineWidth = L.roadW * 0.62; ctx.stroke(); } }
-  for (let w = 0; w < L.nw; w++) {
+  if (doneTo != null && doneTo < yStart) {
+    const a = Math.max(y0, doneTo), b = Math.min(y1, yStart), f0 = L.bandTop(0);
+    if (a < Math.min(b, f0)) { seg(a, Math.min(b, f0)); ctx.strokeStyle = '#f6c454'; ctx.lineWidth = L.roadW * 0.62; ctx.stroke(); }
+    if (Math.max(a, f0) < b) { seg(Math.max(a, f0), b); ctx.strokeStyle = 'rgba(255,206,84,0.6)'; ctx.lineWidth = L.roadW * 0.56; ctx.stroke(); ctx.strokeStyle = 'rgba(255,244,190,0.55)'; ctx.lineWidth = L.roadW * 0.18; ctx.stroke(); } // The Farm: a warm golden trail over the dirt
+  }
+  for (let w = 1; w < L.nw; w++) {
     const a = Math.max(y0, L.bandTop(w)), b = Math.min(y1, L.bandTop(w) + L.BH);
     if (a >= b) continue;
     ctx.setLineDash([6 * u, 9 * u]); seg(a, b); ctx.strokeStyle = WORLD_LOOK[w].road[2]; ctx.lineWidth = 3 * u; ctx.stroke(); ctx.setLineDash([]);
@@ -572,6 +579,7 @@ export function drawCast(ctx, L, sy, vt, vb, t, calm, DPR = 1) {
 }
 function castBand(ctx, L, w, sy, t, calm, vt = -Infinity, vb = Infinity) {
   L.sy = sy;
+  if (w === 0) { try { drawFarmLive(ctx, L, sy, t, calm, vt, vb); } catch (_) {} return; } // The Farm's routines (mapfarm.js)
   const S = STILL[w] || [], C = CAST[w] || [];
   const G = calm ? null : ambBand(L, w, sy, t);
   if (G) drawMapAmb(ctx, 'back', w, G);
