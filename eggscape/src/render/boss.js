@@ -600,37 +600,5 @@ function drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t) {
   ui.text(label, bx + bw / 2, y + h / 2, { size: 12 * u, align: 'center', maxW: bw - 8 * u, color: '#fff', stroke: 'rgba(0,0,0,0.75)', tag: 'hud:bossPhase' });
 }
 
-// ---------- magnet (v3.1): no tether line. Each egg of a magnet pair wears a pulsing horseshoe field: thin arcs
-// that ripple outward on the side facing its partner, red at one tip and blue at the other.
-export function drawMagnetField(ctx, sim, t) {
-  for (const e of sim.aliveEggs()) {
-    if (!(e.magnet > 0) || !e.joint) continue;
-    const o = e.joint.a === e ? e.joint.b : e.joint.a;
-    if (!o || !o.alive || o.saved || !o.body) continue;
-    const p = e.body.getPosition(), q = o.body.getPosition(), dir = Math.atan2(q.y - p.y, q.x - p.x);
-    const fade = Math.min(1, e.magnet / 0.6);
-    ctx.save();
-    ctx.lineCap = 'round';
-    for (let i = 0; i < 3; i++) {
-      const f = (t * 0.9 + i / 3 + (e.id % 2) * 0.17) % 1, R = 0.33 + 0.34 * f, span = 1.0 - 0.35 * f;
-      ctx.globalAlpha = fade * (1 - f) * 0.9;
-      ctx.lineWidth = 0.028 * (1 - 0.4 * f);
-      ctx.strokeStyle = '#ff4f5e';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, R, dir - span, dir);
-      ctx.stroke();
-      ctx.strokeStyle = '#4f8dff';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, R, dir, dir + span);
-      ctx.stroke();
-      // tips
-      for (const [a, c] of [[dir - span, '#ff4f5e'], [dir + span, '#4f8dff']]) {
-        ctx.fillStyle = c;
-        ctx.beginPath();
-        ctx.arc(p.x + R * Math.cos(a), p.y + R * Math.sin(a), 0.03 * (1 - 0.4 * f), 0, TAU);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-  }
-}
+// ---------- magnet: its look moved to render/magnet.js (2026-11-20 redesign)
+export { drawMagnetField } from './magnet.js';

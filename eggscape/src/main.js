@@ -41,6 +41,7 @@ import { botTick } from './dev/bot.js';
 import { geckoStrikeEv, drawGeckoCard, geckoAnchor } from './render/gecko15.js'; // L15: the frost gecko boss
 import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar, drawMagnetField, bossPose, setBossView } from './render/boss.js'; // bosses (v3.1)
 import { galeNow, BOSS_TITLE, ATTACK_NAME, BOSS_MODE } from './sim/boss.js';
+import { magnetEvent, magnetLean } from './render/magnet.js'; // 2026-11-20: the magnet's look
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
 import { drawP2Back, drawP2Front, p2Event } from './render/powers2.js'; // v3.4 powers and combos
 import { warpXfBegin, warpXfEnd } from './render/warp.js'; // v3.4 warp gate: a creature drawn going through it
@@ -2418,6 +2419,15 @@ function overNest(sim, e) {
   return dy < 0.95 && dy > -0.3 && Math.abs(p.x - n.x) < sim.nestW / 2 + 0.05;
 }
 function drawEggFelt(e, t, k) {
+  const ml = e.joint && !save.calm ? magnetLean(e) : null; // 2026-11-20: a magnet's friend leans in when the rope goes taut
+  if (!ml) { drawEggFelt0(e, t, k); return; }
+  const p = e.body.getPosition();
+  ctx.save();
+  ctx.translate(p.x + ml.dx, p.y + ml.dy); ctx.rotate(ml.a); ctx.scale(1 + ml.s, 1 - ml.s * 0.5); ctx.rotate(-ml.a); ctx.translate(-p.x, -p.y);
+  drawEggFelt0(e, t, k);
+  ctx.restore();
+}
+function drawEggFelt0(e, t, k) {
   const st = EGGFX.get(e), sq = st ? st.s : 0, fs = st && Math.abs(sq) < 0.02 ? st.fs : 0;
   if ((Math.abs(sq) < 0.004 && fs < 0.004) || save.calm) { const p0 = e.body.getPosition(); ctx.save(); crowEggXf(ctx, p0.x, p0.y, G.sim.gy || 1); if (!drawChickEgg(ctx, e, t, k)) W.drawEgg(ctx, e, t, k); ctx.restore(); return; }
   const p = e.body.getPosition();
@@ -2790,7 +2800,7 @@ function handleEvents() {
         break;
       case 'hatch':
         fx.sparkle(ev.x, ev.y, 16, '#ffe14d');
-        popup(ev.x, ev.y + 0.5, chickLabel(ev.egg), { color: '#ffe14d', size: 24 });
+        popup(ev.x, ev.y + 0.95, chickLabel(ev.egg), { color: '#ffe14d', size: 24 }); // (2026-11-20: above the chick, clear of its pop out of the shell)
         hen('happy', 1.2);
         break;
       case 'zap':
@@ -2901,6 +2911,10 @@ function handleEvents() {
       case 'magnetOn':
       case 'magnetOff':
         audio.play('ui_open', { vol: 0.5 });
+        magnetEvent(ev, fx);
+        break;
+      case 'magnetMiss':
+        magnetEvent(ev, fx);
         break;
       case 'goldenSave':
         audio.play('thorn_snap');
@@ -3928,7 +3942,6 @@ function render() {
   for (const b of sim.bombs) if (b.alive) b.spark = W.drawBomb(ctx, b, t);
   for (const d of sim.debris) W.drawDebris(ctx, d, G.theme);
   blastXf(() => { W.drawLavaRocks(ctx, sim, k, t); W.drawIcicles(ctx, sim, k, t); }, 16.2); // v3
-  drawMagnetField(ctx, sim, t); // v3.1: a magnetic field look instead of a tether line
   blastXf(() => drawBossUnder(ctx, sim, k, t), 4.3);
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
   SL(['sal'], (c) => drawSalamanders(c, sim, t, k)); // v3.2: the lava salamander walks the floor, under the eggs
@@ -3942,6 +3955,7 @@ function render() {
   if (DEV && G.probe) G.probe('creatures');
   for (const e of sim.aliveEggs()) if (!overNest(sim, e)) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
   drawChickFX(ctx, sim, t, k);
+  drawMagnetField(ctx, sim, t, k, save.calm); // v3.1 magnet; 2026-11-20: over the eggs (the horseshoe, the band, the field lines)
   blastXf(() => { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); }, 10.4); // v3.3: the arms wrapped over a held egg
   blastXf(() => drawReefOver(ctx, sim, t, k), 8.2); // world 8: claws over a held egg, the silt cloud
   if (sim.water) drawBoat(ctx, sim, t, k); // world 8: the boat on the surface, over the hen's legs
@@ -7129,6 +7143,7 @@ if (DEV) window.__egg = {
   press,
   strike(id) { if (!G.sim || !G.sim.stk) return null; if (id) G.sim.stkEquip(id); return fireStrike(true); }, // Chick Strike: fill the meter and fire
   strikeArt: { drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick },
+  chickArt: { drawKindChick, drawChickEgg }, // chick kinds pose sheets (QA strips)
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
   frame(dt = 1 / 60) { update(dt); renderAll(); }, fxStats: menuFxStats,
   actSteps, // film strips replay planner moves through this
