@@ -19,6 +19,7 @@ import { stkMethods } from './strike.js'; // Chick Strike powers
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
+const FAST_RIM = 9.6; // m/s at a ring's wall: above this (ring speed past 350%) the physics takes half steps
 
 // Impact thresholds: approach speed along the contact normal (m/s).
 // Both are quoted at 10 m/s^2 and scale with sqrt(g / 10) (Sim.vs), so the fall HEIGHT that cracks stays the same at any gravity.
@@ -639,7 +640,17 @@ export class Sim {
     this.stkStep(dt); // Chick Strike powers
 
     if (GAP_NUDGE.acc > 0 && this.state === 'play') this.gapNudge();
-    this.world.step(dt, 8, 3);
+    // 2026-11-20 ring speeds past 350% (mykee: seasoned players want faster still): a wall edge that sweeps more than
+    // about 8 cm in one step can press an egg through (tools/test-ringspeed.mjs: none up to 3.5x, 2 in 70 k steps at 4x).
+    // While a ring turns that fast the physics takes two half steps (the forces of this step are kept for both).
+    let fast = false;
+    for (const ring of this.rings) if (Math.abs(ring.omega) * ring.r > FAST_RIM) { fast = true; break; }
+    if (fast) {
+      this.world.setAutoClearForces(false);
+      this.world.step(dt / 2, 8, 3);
+      this.world.setAutoClearForces(true);
+      this.world.step(dt / 2, 8, 3);
+    } else this.world.step(dt, 8, 3);
     this.afterStep(dt);
   }
 

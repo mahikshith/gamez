@@ -28,6 +28,7 @@ import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
 import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview } from './ui/store.js';
+import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, freebies, trials, home nudges)
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
@@ -88,9 +89,12 @@ const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 const TEST = typeof __TEST__ !== 'undefined' && __TEST__;
 
 // ---------------------------------------------------------------- save
+// 0.8.7 (mykee: "by default at least between medium and high ring turning speed"): new players start at 150%; a save
+// still on the old default of 100% moves up once (save.rsDef), a speed the player picked is never touched
+const RING_SPEED_DEFAULT = 1.5;
 const SAVE_VER = 3; // v3: 35 new levels, progress resets; settings, wallet and discoveries carry over
 // mode: difficulty (F32); stars/best are kept per mode (Medium uses the v1 keys); calm = reduced motion
-const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), gates: {}, ringSpeed: 1, adClaim: 0, daily: { day: '', best: 0, paid: '' } });
+const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), gates: {}, ringSpeed: RING_SPEED_DEFAULT, rsDef: 2, adClaim: 0, daily: { day: '', best: 0, paid: '' } });
 let save = defaultSave();
 const MODE_LIST = ['easy', 'medium', 'hard'];
 const sk = (id, mode = save.mode) => (mode === 'medium' ? String(id) : mode[0] + id);
@@ -104,8 +108,8 @@ const envNeed = (k) => (TEST ? 0 : GATE * k);
 // a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all
 const GATE_COINS = (k) => 80 + 40 * k;
 // Settings (2026-11-15): how fast the rings follow a finger, 0.6x .. 2x of the designed speed
-const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]; // 2026-11-16 mykee: experienced players want even faster (300%; no extra tunnelling seen in a 3x wall-crossing check)
-const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed : 1);
+const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5]; // 2026-11-16 mykee: experienced players want even faster (300%; no extra tunnelling seen in a 3x wall-crossing check)
+const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed : RING_SPEED_DEFAULT);
 const allOpen = () => TEST || !!save.tester || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($3.99) opens every level
 const envOpen = (k) => allOpen() || bestTotal() >= envNeed(k) || !!(save.gates && save.gates[k]);
 const playable = (i) => i >= 0 && i < LEVELS.length && (allOpen() || (i < save.unlocked && envOpen(envOf(i))));
@@ -118,6 +122,7 @@ function nextIdx() {
 }
 function loadSave(s) {
   save = { ...defaultSave(), ...s };
+  if (s.rsDef !== 2) { save.rsDef = 2; if (!(+s.ringSpeed) || +s.ringSpeed === 1) save.ringSpeed = RING_SPEED_DEFAULT; }
   save.wallet = E.sanitizeWallet(save.wallet);
   if (!MODE_LIST.includes(save.mode)) save.mode = 'medium';
   for (const [o, n] of Object.entries(LEGACY_ORB)) if (save.seen[o]) save.seen[n] = 1; // v1 discoveries
@@ -374,7 +379,7 @@ function startLevel(i, opts = {}) {
   G.result = null;
   G.burstAt = null;
   G.usedRewind = false;
-  G.starsLive = 3;
+  G.goals = GL.levelGoals(G.level, G.sim.MD.fuse, i >= 0); G.goalOk = [true, true, true];
   G.doubled = false;
   G.held.clear();
   G.keySel = firstGrabbable(0, 1);
@@ -397,7 +402,14 @@ function startLevel(i, opts = {}) {
     portal.gameplayStart();
     audio.musicIntro(); // the world's short intro sting, then its loop
     toast(shortTip(G.level.tip), 3.2);
+    settingsTip();
   }
+}
+// once, early on (level 2 or 3): rings, sound and music can be changed in Settings (the pause button)
+function settingsTip() {
+  if (save.seen.setTip || G.li < 1 || G.li > 6) return;
+  save.seen.setTip = 1; persist();
+  toast('Change ring speed and sound in Settings', 4);
 }
 
 function setScreen(s) {
@@ -1116,6 +1128,7 @@ async function press(id) {
       portal.gameplayStart();
       audio.musicIntro(); // the world's short intro sting, then its loop
       toast(shortTip(G.level.tip), 3.4);
+      settingsTip();
       break;
     }
     case 'daily':
@@ -1496,6 +1509,7 @@ async function press(id) {
         const b = id.slice(6);
         if (G.boostSel.has(b)) G.boostSel.delete(b); else G.boostSel.add(b);
         G.boostLast = b;
+      } else if (id === 'inext') { await press('itab:chicks');
       } else if (id && id.startsWith('itab:')) { // the level page's tabs
         if (G.itab !== id.slice(5)) { G.itab = id.slice(5); if (G.ipage) { G.ipage.y = 0; G.ipage.v = 0; G.ipage.to = null; } }
       } else if (id && id.startsWith('tile:')) { // a shop tile: its detail sheet
@@ -3317,25 +3331,26 @@ function stopFuse() {
 // ---------------------------------------------------------------- results
 // 2026-11-16 (mykee: "I saved every egg and still got 2 stars"): which stars are still within reach, shown live in the
 // egg tray, with a short note the moment one is lost. 2nd star: no egg lost; 3rd: also no egg cracked.
-function starsLive(sim) {
-  if (!sim) return 3;
-  const st = sim.stats();
-  if (st.broken > 0) return 1;
-  return sim.eggs.some((e) => !e.fled && e.cracks > 0) ? 2 : 3;
+// 0.8.7: the three goals change from level to level (src/goals.js); a star is its goal, each judged on its own
+function goalsLive(sim) {
+  if (!sim || !G.goals) return [true, true, true];
+  const F = GL.facts(sim);
+  return G.goals.map((g) => GL.judge(g, F) !== 'lost');
 }
 function watchStars() {
-  if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play' || G.li === -1) return;
-  const n = starsLive(G.sim), was = G.starsLive == null ? 3 : G.starsLive;
-  if (n < was) toast(n === 1 ? 'An egg was lost: 2nd and 3rd stars gone' : 'An egg cracked: 3rd star gone', 2.4);
-  G.starsLive = n;
+  if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play' || G.li === -1 || !G.goals) return;
+  if ((G.goalTick = (G.goalTick || 0) + 1) % 6) return; // ten times a second is plenty
+  const now = goalsLive(G.sim), was = G.goalOk || [true, true, true];
+  for (let i = 1; i < 3; i++) if (was[i] && !now[i]) { const l = GL.lostLine(G.goals[i]); if (l) toast(`${l}: a star is gone`, 2.4); }
+  G.goalOk = now;
 }
 const TRAY_STARS = (u) => 6 * u + 3 * 15 * u; // the width the tray's star group takes
 function drawTrayStars(x, y, u) {
-  const n = G.li === -1 ? 0 : starsLive(G.sim);
-  if (!n) return;
+  if (G.li === -1) return;
+  const ok = G.goalOk || [true, true, true];
   ctx.fillStyle = 'rgba(255,232,196,0.3)';
   ctx.fillRect(x, y - 9 * u, 1.5 * u, 18 * u);
-  for (let i = 0; i < 3; i++) drawStar(ctx, x + 6 * u + 15 * u * (i + 0.5), y, 6.6 * u, i < n, 1, false);
+  for (let i = 0; i < 3; i++) drawStar(ctx, x + 6 * u + 15 * u * (i + 0.5), y, 6.6 * u, ok[i], 1, false);
   ui.record({ x: x + 6 * u, y: y - 8 * u, w: 45 * u, h: 16 * u }, 'hud:stars');
 }
 
@@ -3344,9 +3359,9 @@ function computeResult() {
   const st = sim.stats();
   const L = G.level;
   const timeBonus = Math.floor(sim.timeLeft) * 10;
-  let stars = st.saved >= st.target ? 1 : 0;
-  if (stars && st.broken === 0) stars = 2;
-  if (stars === 2 && st.perfect) stars = 3; // 2026-11-16: a rewind (an ad reward) no longer costs the 3rd star
+  // 0.8.7: one star per goal (src/goals.js); a rewind (an ad reward) costs no star
+  const goals = G.goals || GL.levelGoals(L, sim.MD.fuse, G.li >= 0), F = GL.facts(sim), sc = GL.score(goals, { ...F, won: st.saved >= st.target });
+  const stars = sc.stars;
   const streak = stars === 3 ? (save.streak || 0) + 1 : 0;
   const streakMult = [1, 1, 1.2, 1.5, 2][Math.min(4, streak)];
   const base = st.score + timeBonus;
@@ -3357,8 +3372,8 @@ function computeResult() {
   let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id }).total + bonusCoins;
   if (G.li < 0) coins = G.li === -1 && stars && save.daily.paid !== today() ? coins + DAILY_COINS : 0; // the Daily Vault pays once a day; a lab vault pays nothing
   const cracked = sim.savedLog.filter((q) => q.cracks > 0).length, used = sim.timeLimit ? Math.max(0, sim.timeLimit - Math.max(0, sim.timeLeft)) : sim.t;
-  return { broken: st.broken, cracked, used, stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus,
-    missed: stars === 1 ? '2nd star: lose no eggs' : stars === 2 ? '3rd star: every egg home without a crack' : '' };
+  return { broken: st.broken, cracked, used, stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus && !goals.some((g) => g.kind === L.bonus.kind), // a bonus that is a star goal is not listed twice
+    goals: goals.map((g, i) => ({ long: g.long, ok: sc.met[i], res: GL.outcome(g, F, sc.met[i]) })) };
 }
 
 function recordResult() {
@@ -5019,7 +5034,7 @@ function drawLevelIntro(L, acc) {
       let yy = y + 84 * s;
       if (stars) {
         ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x + 12 * s, yy, w - 24 * s, 1.5 * s);
-        const lab = [L.target === L.eggs ? `All ${n} home` : `${L.target} of ${n} home`, 'Lose none', 'No cracks'], cw3 = (w - 16 * s) / 3, sr = 9.5 * s;
+        const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0)).map((g) => g.short), cw3 = (w - 16 * s) / 3, sr = 9.5 * s;
         for (let i = 0; i < 3; i++) {
           const cx = x + 8 * s + cw3 * (i + 0.5);
           if (i) { ctx.fillStyle = 'rgba(122,80,40,0.14)'; ctx.fillRect(cx - cw3 / 2, yy + 10 * s, 1.2 * s, 50 * s); }
@@ -5183,15 +5198,19 @@ function drawLevelIntro(L, acc) {
       if (n > 1) { for (let q = 0; q < n; q++) { ctx.beginPath(); ctx.arc(x + w / 2 + (q - (n - 1) / 2) * 16 * s, yy + 6 * s, (q === Hw.i % n ? 5 : 3.5) * s, 0, 7); ctx.fillStyle = q === Hw.i % n ? '#c9842a' : 'rgba(120,80,30,0.35)'; ctx.fill(); } yy += dotsH; }
       if (stars) { // the three stars, short
         ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x + pd, yy, w - 2 * pd, 1.5 * s);
-        const lab = [L.target === L.eggs ? `All ${nE} home` : `${L.target} of ${nE} home`, 'Lose none', 'No cracks'], cw3 = (w - 2 * pd) / 3, sr = 8 * s;
+        const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0)).map((g) => g.short), cw3 = (w - 2 * pd) / 3, sr = 12 * s;
         for (let i = 0; i < 3; i++) {
           const cx3 = x + pd + cw3 * (i + 0.5);
-          for (let j = 0; j < 3; j++) drawStar(ctx, cx3 + (j - 1) * sr * 2.15, yy + 16 * s, sr, j <= i);
+          if (i) { ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(cx3 - cw3 / 2, yy + 8 * s, 1.2 * s, starH - 14 * s); }
+          drawStar(ctx, cx3, yy + 17 * s, sr, true); // one star for each goal
           ui.text(lab[i], cx3, yy + 38 * s, { size: 14.5 * s, align: 'center', color: C.ink, maxW: cw3 - 6 * s, tag: 'intro:star' + i });
         }
         yy += starH;
       }
-      if (withPlay) ui.button('go', 'PLAY', x + pd, yy + 8 * s, w - 2 * pd, 62 * s, { kind: 'primary', shimmer: !need, icon: ICON.play, size: 28 * s });
+      // 0.8.7 (mykee: "rather than PLAY, show NEXT, then the chick picks"): with chicks to choose from, the Level tab leads
+      // on to the Chicks tab, and PLAY waits there; a level with no chicks yet plays straight away
+      if (withPlay) { const toCh = introHasChicks();
+        ui.button(toCh ? 'inext' : 'go', toCh ? 'NEXT' : 'PLAY', x + pd, yy + 8 * s, w - 2 * pd, 62 * s, { kind: 'primary', shimmer: true, icon: toCh ? ICON.next : ICON.play, size: 28 * s }); }
     } }];
   };
   // two quick tabs under the title (portrait): Level (the goal, stars, villains) and Chicks (the helper chick, boosters)
@@ -5265,6 +5284,8 @@ function hotBadge(x, y, s) {
   hb.forEach((b, i) => drawBoosterIcon(ctx, b, x + 32 * s + nw + 8 * s + i * (ih + 2 * s) + ih / 2, y + 4 * s + ih / 2, ih * 0.92, G.t));
   ui.record({ x, y, w, h: ih + 8 * s }, 'intro:hot');
 }
+// the level page has a Chicks step when this level lets a chick come along (owned or still locked)
+function introHasChicks() { const T = introChicks(); return !!(T && ((T.open && T.open.length) || T.need)) || (G.li >= 0 && G.level.id >= STRIKE_FROM && lockedChicks().length > 0); }
 const tintHex = (c) => c.length === 7 ? ui.tint(c, 0.35) : c; // the accent, a step brighter for borders and glow
 
 // v3.2: the lava salamander on its intro card, idling (code-drawn, the in-game art)
@@ -5340,6 +5361,18 @@ function drawPause() {
     ], s, wide ? 6 : 3),
     G.hint ? lineBlock('Hint…', 18 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:hint', gap: 14 * s })
       : sim.state !== 'play' ? null : { h: 54 * s, gap: 14 * s, draw: (x, y, w) => ui.button('hint', 'Watch for a hint', x, y, w, 54 * s, { kind: 'ad', ad: true, size: 19 * s, round: 18 * s }) },
+    // the three stars of this level and how each stands right now
+    G.li >= 0 && G.goals && sim.state === 'play' ? { h: 3 * 32 * s + 12 * s, gap: 14 * s, draw: (x, y, w) => {
+      ui.well(x, y, w, 3 * 32 * s + 12 * s, { s, a: '#f3e2bd', b: '#fbf0d6' });
+      const ok = goalsLive(sim);
+      G.goals.forEach((g, i) => {
+        const ry = y + 6 * s + 32 * s * (i + 0.5);
+        if (i) { ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(x + 10 * s, ry - 16 * s, w - 20 * s, 1.2 * s); }
+        drawStar(ctx, x + 26 * s, ry, 11 * s, ok[i]);
+        ui.text(g.long, x + 48 * s, ry, { size: 16.5 * s, color: ok[i] ? C.ink : 'rgba(80,50,25,0.6)', maxW: w - 96 * s, tag: 'pause:goal' + i });
+        if (!ok[i]) pictoCross(ctx, x + w - 24 * s, ry, 22 * s);
+      });
+    } } : null,
     ...(kinds.length ? [pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeCard(kd, i, s, iw))] : []),
   ].filter(Boolean);
   const land = A.w > A.h * 1.15 && kinds.length;
@@ -5447,16 +5480,16 @@ function drawSettings() {
     } else if (tab === 'gameplay') {
       const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
       B.push(sectionBlock('Ring speed', s));
-      B.push(lineBlock(`${sp === 1 ? 'Normal' : sp < 1 ? 'Slower' : 'Faster'} (${Math.round(sp * 100)}%)`, 17 * s, { color: C.ink, tag: 'set:rslabel', gap: 6 * s }));
-      B.push({ h: 46 * s, gap: 6 * s, draw: (x, y, w) => { // - [nine steps] +
+      B.push(lineBlock(`${sp === RING_SPEED_DEFAULT ? 'Standard' : sp < RING_SPEED_DEFAULT ? 'Slower' : sp >= 3.5 ? 'Pro' : 'Faster'} (${Math.round(sp * 100)}%)`, 17 * s, { color: C.ink, tag: 'set:rslabel', gap: 6 * s }));
+      B.push({ h: 46 * s, gap: 6 * s, draw: (x, y, w) => { // - [one bar per speed] +
         const bw = 46 * s, n = RING_SPEEDS.length, tx = x + bw + 8 * s, tw = w - 2 * bw - 16 * s, cw = tw / n;
         ui.button('rs:-', '', x, y, bw, 46 * s, { kind: k > 0 ? 'secondary' : 'off', disabled: k <= 0, icon: ICON.left, iconS: 1.2 });
         ui.button('rs:+', '', x + w - bw, y, bw, 46 * s, { kind: k < n - 1 ? 'secondary' : 'off', disabled: k >= n - 1, icon: ICON.right, iconS: 1.2 });
         ui.well(tx, y + 8 * s, tw, 30 * s, { s });
         for (let i = 0; i < n; i++) {
-          const cx = tx + cw * (i + 0.5), on = i <= k, hgt = (10 + i * 2.2) * s;
+          const cx = tx + cw * (i + 0.5), on = i <= k, hgt = (9 + i * 18 / (n - 1)) * s, dfl = RING_SPEEDS.indexOf(RING_SPEED_DEFAULT);
           ui.roundRect(cx - cw * 0.3, y + 23 * s - hgt / 2, cw * 0.6, hgt, 3 * s);
-          ctx.fillStyle = on ? (i === 2 ? '#3eb42d' : i < 2 ? '#3a80ea' : '#f3781c') : 'rgba(110,80,50,0.25)'; ctx.fill();
+          ctx.fillStyle = on ? (i === dfl ? '#3eb42d' : i < dfl ? '#3a80ea' : RING_SPEEDS[i] >= 3.5 ? '#e0452f' : '#f3781c') : 'rgba(110,80,50,0.25)'; ctx.fill();
           ui.buttons.push({ id: 'rs:' + i, x: tx + cw * i, y, w: cw, h: 46 * s });
         }
         ui.record({ x: tx, y: y + 8 * s, w: tw, h: 30 * s }, 'set:rsbar');
@@ -5747,12 +5780,7 @@ function drawWinPage() {
       at: (x, y, w) => { T.box = { x, y, w, h: stH * s }; T.henH = 0.685 * stH * s; T.clip = { x: 0, y: G.hudBottom, w: ui.w, h: y + stH * s - G.hudBottom }; },
       draw: () => { henStage(T.box, s, true); if (inCard) drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, clip: T.clip, fxBig }); ui.record(T.box, 'win:hen'); } });
     // how you did: each star's goal, ticked or crossed, with what happened (why it is 1 or 2 stars)
-    const broken = r.broken ?? (r.stars < 2 ? 1 : 0), cracked = r.cracked ?? 0, egg = (n) => n + (n === 1 ? ' egg' : ' eggs');
-    const goals = [
-      [r.target === r.eggs ? `All ${r.eggs} eggs home` : `${r.target} of ${r.eggs} eggs home`, r.stars >= 1, `${r.saved} home`],
-      ['Lose no eggs', r.stars >= 2, broken ? `${egg(broken)} lost` : 'None lost'],
-      ['No cracked eggs', r.stars >= 3, cracked ? `${egg(cracked)} cracked` : r.stars >= 3 ? 'No cracks' : broken ? 'Eggs were lost' : 'An egg cracked'],
-    ];
+    const goals = (r.goals || []).map((g) => [g.long, g.ok, g.res]);
     const gh = 40 * s, GH = 30 * s + 3 * gh + 6 * s;
     B.push({ h: GH, gap: 10 * s, draw: (x, y, w) => {
       ui.well(x, y, w, GH, { s, a: '#f3e2bd', b: '#fbf0d6' });
@@ -5761,10 +5789,10 @@ function drawWinPage() {
       goals.forEach(([txt, ok, res], i) => {
         const ry = y + 30 * s + i * gh + gh / 2;
         if (i) { ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(x + 10 * s, ry - gh / 2, w - 20 * s, 1.2 * s); }
-        for (let j = 0; j < 3; j++) drawStar(ctx, gx + sr + j * sr * 2.05, ry, sr, j <= i && ok);
+        drawStar(ctx, gx + sr * 1.6, ry, sr * 1.7, ok); // one star, one goal
         const ix = x + w - 22 * s;
         (ok ? pictoCheck : pictoCross)(ctx, ix, ry, 24 * s);
-        const rw = ui.measure(res, 14.5 * s), tx = gx + sr * 6.2 + 8 * s, rx = ix - 18 * s;
+        const rw = ui.measure(res, 14.5 * s), tx = gx + sr * 3.6 + 8 * s, rx = ix - 18 * s;
         ui.text(res, rx, ry, { size: 14.5 * s, align: 'right', color: ok ? '#2d7a1c' : '#b3301c', maxW: w * 0.36, tag: 'win:res' + i });
         ui.text(txt, tx, ry, { size: 16 * s, color: ok ? C.ink : 'rgba(80,50,25,0.75)', maxW: rx - Math.min(rw, w * 0.36) - 10 * s - tx, tag: 'win:goal' + i });
       });
