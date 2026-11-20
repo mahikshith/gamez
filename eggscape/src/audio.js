@@ -52,7 +52,7 @@ export const SFX_NAMES = [
   'power_pickup', 'strike_launch', 'strike_hit', 'crow', // hero beats: an orb taken, Chick Strike, the rooster ally
   'wing_bat', 'decoy_peep', 'goose_honk', 'power_use', // the hen bats the strike chick off her wing, the decoy, the goose ally, a power waking up
   // villain voices: each family gets a signature, so you can hear who is acting without looking
-  'snake_hiss', 'snake_strike', 'eagle_screech', 'eagle_dive', 'rat_squeak', 'weasel_chitter', 'tongue_lick', 'fire_breath',
+  'snake_hiss', 'snake_strike', 'eagle_screech', 'eagle_dive', 'rat_squeak', 'weasel_chitter', 'weasel_snicker', 'weasel_sniff', 'weasel_yelp', 'tongue_lick', 'fire_breath',
   'gecko_chirp', 'frost_lick', 'sal_call', 'sal_charge', 'sal_breath', 'sal_yelp', 'sal_huff', 'ember_hiss',
   'crab_snap', 'ink_squirt', 'gator_snap', 'gear_whir', 'mosquito', 'jelly_zap', 'puff_swell', 'creature_hurt', 'stun_stars',
   'boss_roar', 'boss_slam',
@@ -71,14 +71,14 @@ const PITCH_VAR = {
   ui_tap: 0.015, ring_tick: 0.02, hud_pop: 0, ui_back: 0.01, ui_open: 0.01, score_tick: 0.004, countdown: 0,
   egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, rewind: 0.02, tada: 0, cheer_up: 0, cluck: 0.06,
   power_pickup: 0, strike_launch: 0.02, strike_hit: 0.02, crow: 0.02, egg_crack: 0.03, egg_break: 0.02,
-  rat_squeak: 0.1, weasel_chitter: 0.07, snake_hiss: 0.05, eagle_screech: 0.05, goose_honk: 0.05, decoy_peep: 0.08, creature_hurt: 0.08, gecko_chirp: 0.08, sal_yelp: 0.08, sal_call: 0.3,
+  rat_squeak: 0.1, weasel_chitter: 0.07, weasel_snicker: 0.06, weasel_sniff: 0.05, weasel_yelp: 0.08, snake_hiss: 0.05, eagle_screech: 0.05, goose_honk: 0.05, decoy_peep: 0.08, creature_hurt: 0.08, gecko_chirp: 0.08, sal_yelp: 0.08, sal_call: 0.3,
 };
 const DEFAULT_PITCH_VAR = 0.03;
 // Per-sound loudness trim (linear), from the render.mjs level analysis.
 // The hero beats were redesigned for phone speakers and carry their own levels (1 here).
 const SFX_GAIN = {
   ui_back: 1.2, ui_open: 1.2, ring_tick: 0.5, score_tick: 0.8, strike_launch: 1.8,
-  eagle_screech: 0.5, creature_hurt: 0.55, boss_roar: 0.75, goose_honk: 0.8, weasel_chitter: 0.8, mosquito: 1.5, // voices sit under the hero beats
+  eagle_screech: 0.5, creature_hurt: 0.55, boss_roar: 0.75, goose_honk: 0.8, weasel_chitter: 0.8, weasel_yelp: 0.55, weasel_snicker: 0.9, mosquito: 1.5, // voices sit under the hero beats
   thorn_hit: 1.6, bubble_on: 1.6, portal_enter: 1.5, portal_exit: 1.8, twin_hatch: 1.4,
   wind_gust: 2.4, rewind: 2.1, bomb_fuse: 0.7, fire_burn: 1.3,
   hen_hop: 2.4, hen_land: 1.8, flap: 2.6, confetti: 2, cluck: 1.4,
@@ -266,6 +266,112 @@ function mixedPreset(name) {
   Q.verb = P.verb * MIX.verb;
   Q.delay = { ...P.delay, mix: P.delay.mix * MIX.delayMix, fb: P.delay.fb * MIX.delayFb };
   return (MIXED[name] = Q);
+}
+
+// ---------------------------------------------------------------- composed theme tunes (2026-11-20, mykee: "we need a
+// theme kind of a music, Angry Birds has a theme"). Unlike the mood presets, whose melodies are generated, a tune is
+// written out note by note so it is the SAME tune every time and a player can hum it.
+// bars[i] = { ch: chord degree (or [first half, second half]), n: [[step 0..15, scale degree, length in steps, velocity?], ...] }
+// Degrees count from the tonic an octave above the pad centre: 7 = the tonic one octave up, 14 = two up.
+// pick = the pickup notes played in the last bar of the two-bar intro. cluck = { bar: 'pattern' } hen clucks as percussion.
+const N = (...a) => a; // one note, for readability below
+const TUNE_ACC = {
+  polka: {
+    comp: { inst: 'banjo', pat: '..x...x...x...x.', lvl: 0.05 },
+    bass: { inst: 'tuba', pat: 'R...5...R...5...', lvl: 0.36 },
+    drums: { kick: 'X.......x.......', clap: '....x.......x...', shaker: 'x.x.x.x.x.x.x.x.', block: '..x...x...x...x.', lvl: 0.85 },
+  },
+  shuffle: {
+    comp: { inst: 'pluck', pat: '....x.....x.x...', lvl: 0.05 },
+    bass: { inst: 'tuba', pat: 'R.....r.5.....a.', lvl: 0.36 },
+    drums: { kick: 'X.....x.x.......', clap: '....x.......x...', hat: 'x..xx..xx..xx..x', block: '......x.......x.', lvl: 0.85 },
+  },
+  bounce: {
+    comp: { inst: 'pluck', pat: '..x..x....x..x..', lvl: 0.045 },
+    bass: { inst: 'round', pat: 'R..r..5.R..r..a.', lvl: 0.34 },
+    drums: { kick: 'X......xx.......', clap: '....x.......x...', shaker: 'x.x.x.x.x.x.x.x.', lvl: 0.8 },
+  },
+};
+const STRUT_A1 = { ch: 0, n: [N(0, 9, 2), N(2, 9, 2), N(4, 9, 2), N(6, 11, 4, 1), N(10, 9, 2), N(12, 7, 4)] };       // mi mi mi SOL, mi do
+const STRUT_A2 = { ch: 4, n: [N(0, 8, 2), N(2, 8, 2), N(4, 8, 2), N(6, 10, 4, 1), N(10, 8, 2), N(12, 6, 4)] };       // re re re FA, re ti
+const CAPER_A1 = { ch: 0, n: [N(0, 7, 2), N(3, 7, 1, 0.7), N(4, 9, 2), N(6, 7, 2), N(8, 11, 4, 1), N(12, 9, 2), N(14, 7, 2)] };
+const CAPER_A2 = { ch: [4, 0], n: [N(0, 8, 2), N(3, 8, 1, 0.7), N(4, 9, 2), N(6, 8, 2), N(8, 7, 6)] };
+const SUNNY_A1 = { ch: 0, n: [N(0, 11, 2), N(2, 14, 4, 1), N(6, 16, 2), N(8, 15, 2), N(10, 14, 2), N(12, 12, 4)] };
+const SUNNY_A2 = { ch: 3, n: [N(0, 12, 2), N(2, 14, 4, 1), N(6, 17, 2), N(8, 16, 2), N(10, 14, 2), N(12, 15, 4)] };
+const SUNNY_E1 = { ch: 0, n: [N(0, 11, 2), N(2, 14, 4), N(6, 16, 2), N(8, 18, 4, 1), N(12, 19, 2), N(14, 18, 2)] };
+const SUNNY_E2 = { ch: [4, 0], n: [N(0, 15, 2), N(2, 13, 2), N(4, 15, 2), N(6, 16, 2), N(8, 14, 8, 1)] };
+export const TUNES = {
+  // "Chicken Strut": a pecking three-note figure and a leap, stepped down and back, over an oom-pah. C major.
+  strut: {
+    name: 'Chicken Strut', root: 'C', scale: 'major', bpm: 126, swing: 0, acc: 'polka', trim: 1.05,
+    lead: { inst: 'banjo', alt: 'marimba', lvl: 0.3, fx: 0.08, harm: -2 },
+    pick: [N(8, 4, 2), N(10, 5, 2), N(12, 6, 2), N(14, 8, 2)],
+    cluck: { 3: '............x.x.', 7: '..............x.', 15: '............x.x.' },
+    bars: [
+      STRUT_A1, STRUT_A2,
+      { ch: 0, n: [N(0, 9, 2), N(2, 9, 2), N(4, 9, 2), N(6, 11, 4), N(10, 14, 4, 1), N(14, 12, 2)] },
+      { ch: [4, 0], n: [N(0, 11, 4), N(4, 10, 2), N(6, 8, 2), N(8, 7, 6)] },
+      STRUT_A1, STRUT_A2,
+      { ch: 3, n: [N(0, 10, 2), N(2, 10, 2), N(4, 10, 2), N(6, 12, 4, 1), N(10, 10, 2), N(12, 8, 4)] },
+      { ch: [4, 0], n: [N(0, 11, 2), N(2, 12, 2), N(4, 13, 2), N(6, 15, 2), N(8, 14, 6, 1)] },
+      { ch: 3, n: [N(0, 12, 6), N(6, 10, 2), N(8, 12, 4), N(12, 14, 4)] },
+      { ch: 0, n: [N(0, 11, 6), N(6, 9, 2), N(8, 11, 4), N(12, 14, 4)] },
+      { ch: 1, n: [N(0, 10, 6), N(6, 8, 2), N(8, 10, 4), N(12, 12, 4)] },
+      { ch: 4, n: [N(0, 11, 4), N(4, 11, 4), N(8, 11, 2), N(10, 12, 2), N(12, 13, 2), N(14, 15, 2)] },
+      STRUT_A1, STRUT_A2,
+      { ch: [3, 0], n: [N(0, 10, 2), N(2, 10, 2), N(4, 10, 2), N(6, 12, 4, 1), N(10, 11, 2), N(12, 9, 4)] },
+      { ch: [4, 0], n: [N(0, 8, 4), N(4, 6, 4), N(8, 7, 4), N(12, 14, 2, 1)] },
+    ],
+  },
+  // "Coop Caper": a sneaky swung figure in a bright minor (dorian), for a game about thieves after the eggs. D dorian.
+  caper: {
+    name: 'Coop Caper', root: 'D', scale: 'dorian', bpm: 116, swing: 0.2, acc: 'shuffle', trim: 1.05,
+    lead: { inst: 'pluck', alt: 'banjo', lvl: 0.3, fx: 0.1, harm: -2 },
+    pick: [N(10, 4, 2), N(12, 5, 2), N(14, 6, 2)],
+    cluck: { 7: '............x.x.', 15: '..............x.' },
+    bars: [
+      CAPER_A1, CAPER_A2,
+      { ch: 6, n: [N(0, 6, 2), N(3, 6, 1, 0.7), N(4, 8, 2), N(6, 6, 2), N(8, 10, 4, 1), N(12, 8, 2), N(14, 6, 2)] },
+      { ch: [4, 0], n: [N(0, 8, 2), N(2, 9, 2), N(4, 8, 2), N(6, 6, 2), N(8, 7, 4), N(12, 11, 2, 1)] },
+      CAPER_A1, CAPER_A2,
+      { ch: 3, n: [N(0, 10, 2), N(3, 10, 1, 0.7), N(4, 12, 2), N(6, 10, 2), N(8, 14, 4, 1), N(12, 12, 2), N(14, 10, 2)] },
+      { ch: [4, 0], n: [N(0, 11, 2), N(2, 10, 2), N(4, 9, 2), N(6, 8, 2), N(8, 7, 6)] },
+      { ch: 2, n: [N(0, 9, 4), N(4, 11, 4), N(8, 13, 6)] },
+      { ch: 6, n: [N(0, 13, 2), N(2, 12, 2), N(4, 11, 2), N(6, 10, 2), N(8, 8, 6)] },
+      { ch: 2, n: [N(0, 9, 4), N(4, 11, 4), N(8, 13, 4), N(12, 14, 4)] },
+      { ch: 4, n: [N(0, 15, 4, 1), N(4, 13, 2), N(6, 11, 2), N(8, 8, 4), N(12, 8, 3)] },
+      CAPER_A1, CAPER_A2,
+      { ch: 3, n: [N(0, 10, 2), N(3, 10, 1, 0.7), N(4, 12, 2), N(6, 10, 2), N(8, 14, 4, 1), N(12, 12, 2), N(14, 10, 2)] },
+      { ch: [4, 0], n: [N(0, 11, 2), N(2, 10, 2), N(4, 9, 2), N(6, 8, 2), N(8, 7, 4), N(12, 14, 2, 1)] },
+    ],
+  },
+  // "Sunny Side Up": a wide, sweet tune that climbs and settles, for a gentler identity. G major.
+  sunny: {
+    name: 'Sunny Side Up', root: 'G', scale: 'major', bpm: 108, swing: 0.1, acc: 'bounce', trim: 1.05,
+    lead: { inst: 'marimba', alt: 'banjo', lvl: 0.3, fx: 0.14, harm: -2 },
+    pick: [N(12, 11, 2), N(14, 13, 2)],
+    bars: [
+      SUNNY_A1, SUNNY_A2,
+      { ch: 0, n: [N(0, 11, 2), N(2, 14, 4), N(6, 16, 2), N(8, 18, 4, 1), N(12, 16, 2), N(14, 14, 2)] },
+      { ch: 4, n: [N(0, 15, 6), N(6, 13, 2), N(8, 11, 6)] },
+      SUNNY_A1, SUNNY_A2, SUNNY_E1, SUNNY_E2,
+      { ch: 5, n: [N(0, 12, 4), N(4, 14, 2), N(6, 16, 2), N(8, 19, 6, 1)] },
+      { ch: 3, n: [N(0, 17, 4), N(4, 16, 2), N(6, 14, 2), N(8, 12, 6)] },
+      { ch: 1, n: [N(0, 15, 4), N(4, 17, 2), N(6, 19, 2), N(8, 17, 4), N(12, 15, 4)] },
+      { ch: 4, n: [N(0, 18, 6, 1), N(6, 17, 2), N(8, 15, 4), N(12, 13, 2), N(14, 11, 2)] },
+      SUNNY_A1, SUNNY_A2, SUNNY_E1, SUNNY_E2,
+    ],
+  },
+};
+function tunePreset(T) {
+  if (T.P) return T.P;
+  const A = TUNE_ACC[T.acc] || TUNE_ACC.polka;
+  return (T.P = {
+    scale: T.scale, bpm: T.bpm, trim: T.trim || 1.2, swing: T.swing || 0, bpc: 1, secBars: T.bars.length, form: ['A'],
+    prog: { A: T.bars.map((b) => (Array.isArray(b.ch) ? b.ch[0] : b.ch)) },
+    comp: { ...A.comp, in: ['A'] }, bass: { ...A.bass }, drums: { ...A.drums, in: ['A'] },
+    verb: 0.08, delay: { steps: 3, fb: 0.2, mix: 0.3 },
+  });
 }
 
 // ---------------------------------------------------------------- small utils
@@ -1166,6 +1272,26 @@ export function createAudioEngine(externalCtx = null, options = {}) {
         nz(v, { t, a: 0.0005, d: 0.01, g: 0.12, type: 'bandpass', f: 3500, q: 2 });
       }
     },
+    // The weasel's voice (2026-11-20, mykee did not like the old chitter, a burst of square-wave clicks): three little
+    // character sounds instead, all voiced and above ~700 Hz so a phone plays them cleanly.
+    weasel_snicker(v, o) { // "hee-hee-hee-hee": a sly giggle, each "hee" flicks up, the run slides down and slows
+      const p = o.p, n = 4;
+      for (let k = 0; k < n; k++) {
+        const t = k * 0.085 + k * k * 0.006, f = (1180 - k * 95) * p;
+        voice(v, { t, pts: [[0, f * 0.86], [0.022, f * 1.08], [0.07, f * 0.82]], fm: [1500 * p, 3100 * p], q: 3.2, d: 0.07, g: 0.34 - k * 0.04 });
+        nz(v, { t, a: 0.004, d: 0.035, g: 0.045, type: 'bandpass', f: 4200, q: 1.4 }); // the breath on each "h"
+      }
+    },
+    weasel_sniff(v, o) { // it is about to pounce: two quick sniffs and a curious little "mm?" that rises
+      const p = o.p;
+      for (const t of [0, 0.11]) nz(v, { t, a: 0.02, d: 0.045, g: 0.11, type: 'bandpass', f: 2200 * p, f2: 4800 * p, sw: 0.06, q: 2.2 });
+      voice(v, { t: 0.24, pts: [[0, 820 * p], [0.05, 860 * p], [0.14, 1240 * p]], fm: [1300 * p, 2800 * p], q: 3, d: 0.15, g: 0.26 });
+    },
+    weasel_yelp(v, o) { // bonked or chased off: a startled "yipe!" that shoots up and tumbles down, then two pattering steps
+      const p = o.p;
+      voice(v, { pts: [[0, 950 * p], [0.035, 1900 * p], [0.09, 1500 * p], [0.2, 760 * p]], fm: [1700 * p, 3300 * p], q: 2.6, d: 0.2, g: 0.42, vib: [38, 0.03] });
+      for (const t of [0.22, 0.29]) nz(v, { t, a: 0.001, d: 0.02, g: 0.07, type: 'bandpass', f: 2600, q: 2.5 });
+    },
     tongue_lick(v, o) { // a sticky tongue out and back: a bright thwip up, then a small wet "tok" (kept above 600 Hz: low sweeps read as rude noises on phone speakers)
       const p = o.p;
       nz(v, { color: 'pink', a: 0.006, d: 0.06, g: 0.3, type: 'bandpass', f: 1200 * p, f2: 4200 * p, sw: 0.05, q: 1.8 });
@@ -1565,8 +1691,10 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   }
 
   function createInstance(spec, t0) {
-    const pname = resolveMood(spec.mood);
-    const P = mixedPreset(pname);
+    const tune = has(TUNES, spec.tune) ? TUNES[spec.tune] : null;
+    if (tune) spec = { root: tune.root, scale: tune.scale, bpm: tune.bpm, ...spec, mood: 'happy' };
+    const pname = tune ? 'tune:' + spec.tune : resolveMood(spec.mood);
+    const P = tune ? tunePreset(tune) : mixedPreset(pname);
     const rootKey = String(spec.root || 'C').trim().toUpperCase();
     const pc = has(NOTE, rootKey) ? NOTE[rootKey] : 0;
     const scaleName = has(SCALES, spec.scale) ? spec.scale : P.scale;
@@ -1581,7 +1709,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       bassBase: tonic3, padLo: tonic3 + 3,   // bass an octave up from the old mix: G2..F#3 roots a phone can play leadBase: tonic3 + 12 + (P.lead ? P.lead.oct : 12),
       nt: t0, idx: 0, dead: false, stopAt: 0, secIdx: -2, sec: 'I', barInSec: 0, cycle: 0,
       chord: 0, nextChord: 0, motifA: null, motifB: null, variants: null, arpI: 0, leadInst: P.lead ? P.lead.inst : null,
-      nodes: [],
+      nodes: [], tune,
     };
     const keep = (n) => { I.nodes.push(n); return n; };
     I.xf = keep(mkGain(0)); I.xf.connect(N.mIn);
@@ -1705,6 +1833,17 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       if (fx) { const s = mkGain(fx); L.push(s); g.connect(s); s.connect(I.fx); }
       mNodes(o, L);
     },
+    banjo(I, t, f, dur, vel, dest, fx) { // a bright twangy pluck: a quick dip into the pitch, a nasal body, gone in a quarter second
+      const L = [], g = mkGain(0), bp = mkFilter('peaking', Math.min(f * 3, 3800), 2.5), lp = mkFilter('lowpass', 6500, 0.8); L.push(g, bp, lp);
+      bp.gain.value = 9; lp.frequency.setValueAtTime(7000, t); lp.frequency.setTargetAtTime(Math.max(f * 2.5, 1400), t, 0.07);
+      const end = mEnv(g, t, 0.002, vel, Math.min(0.2 + dur * 0.35, 0.5), 0, 0, 0);
+      const o1 = mOsc('sawtooth', f, t, end, L), o2 = mOsc('square', f, t, end, L, 5), m2 = mkGain(0.3); L.push(m2);
+      for (const o of [o1, o2]) { o.frequency.setValueAtTime(f * 1.025, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.03); }
+      const s = mNoise(t, t + 0.02, L), ng = mkGain(0); L.push(ng); ng.gain.setValueAtTime(vel * 0.5, t); ng.gain.setTargetAtTime(0, t + 0.001, 0.004);
+      o1.connect(bp); o2.connect(m2); m2.connect(bp); s.connect(ng); ng.connect(bp); bp.connect(lp); lp.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o1, L);
+    },
     bubble(I, t, f, dur, vel, dest) {
       const L = [], g = mkGain(0); L.push(g);
       const end = mEnv(g, t, 0.003, vel, 0.07, 0, 0, 0);
@@ -1734,6 +1873,13 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       const end = mEnv(g, t, 0.004, vel * 0.8, 0.25, 0.55, dur, 0.06);
       const o = mOsc('sawtooth', f, t, end, L), o2 = mOsc('square', f * 0.5, t, end, L, -10), m = mkGain(0.4); L.push(m);
       o.connect(lp); o2.connect(m); m.connect(lp); lp.connect(g); g.connect(I.bus); mNodes(o, L);
+    },
+    tuba(I, t, f, dur, vel) { // oom-pah bass: a round brass puff, its harmonics carry it on a phone
+      const L = [], g = mkGain(0), lp = mkFilter('lowpass', f * 3, 1.2); L.push(g, lp);
+      lp.frequency.setValueAtTime(f * 2, t); lp.frequency.linearRampToValueAtTime(f * 5, t + 0.04); lp.frequency.setTargetAtTime(f * 3, t + 0.05, 0.08);
+      const end = mEnv(g, t, 0.018, vel * 0.8, 0.3, 0.7, Math.min(dur, 0.26), 0.07);
+      const o = mOsc('sawtooth', f, t, end, L), h = mOsc('sine', f * 2, t, end, L), hg = mkGain(0.45), o2 = mOsc('sine', f, t, end, L); L.push(hg);
+      o.connect(lp); o2.connect(lp); h.connect(hg); hg.connect(lp); lp.connect(g); g.connect(I.bus); mNodes(o, L);
     },
     sub(I, t, f, dur, vel) {
       const L = [], g = mkGain(0); L.push(g);
@@ -1794,6 +1940,18 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       const s = mNoise(t, t + 0.1, L, 1, 'pink'), lp = mkFilter('lowpass', 900, 0.7), ng = mkGain(0); L.push(lp, ng);
       ng.gain.setValueAtTime(0.25 * v, t); ng.gain.setTargetAtTime(0, t, 0.02);
       o.connect(g); s.connect(lp); lp.connect(ng); ng.connect(g); g.connect(I.drums); mNodes(o, L);
+    },
+    block(I, t, v) { // a wood block: the "pah" of the oom-pah
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.0008, 0.13 * v, 0.05, 0, 0, 0);
+      const o = mOsc('sine', 1180, t, end, L), o2 = mOsc('sine', 1770, t, end, L), g2 = mkGain(0.5); L.push(g2);
+      o.connect(g); o2.connect(g2); g2.connect(g); g.connect(I.drums); mNodes(o, L);
+    },
+    cluck(I, t, v) { // the hen joins the band: a short "bok" (a voiced blip through two formants)
+      const L = [], g = mkGain(0), b1 = mkFilter('bandpass', 1250, 3), b2 = mkFilter('bandpass', 2600, 4); L.push(g, b1, b2);
+      const end = mEnv(g, t, 0.004, 0.55 * v, 0.09, 0, 0, 0);
+      const o = mOsc('sawtooth', 620, t, end, L); o.frequency.setValueAtTime(560, t); o.frequency.linearRampToValueAtTime(760, t + 0.025); o.frequency.linearRampToValueAtTime(480, t + 0.09);
+      o.connect(b1); o.connect(b2); b1.connect(g); b2.connect(g); g.connect(I.drums); mNodes(o, L);
     },
     dum(I, t, v) { DRUM.tom(I, t, v * 0.9, 95); },
     tek(I, t, v) {
@@ -1866,13 +2024,14 @@ export function createAudioEngine(externalCtx = null, options = {}) {
         pad(I, t, [r, r + 7], 4 * 16 * sd - 0.05, { lvl: P.drone.lvl, cut: 700, a: 1.2, r: 1.2 });
       }
     }
+    if (I.tune && s === 8 && I.sec !== 'I') { const c = I.tune.bars[I.barInSec % I.tune.bars.length].ch; if (Array.isArray(c)) I.chord = c[1]; } // a tune may change chord mid-bar
     const sec = I.sec, swing = s % 2 === 1 ? P.swing * sd : 0, tt = t + swing;
     const hv = () => 0.9 + I.rng() * 0.2;
     // drums
     const D = P.drums;
     if (D && sec !== 'I' && inSec(D.in, sec)) {
       const fill = I.lastBarOfSec && s >= 12 && (I.secIdx % 2 === 1);
-      for (const k of ['kick', 'clap', 'hat', 'shaker', 'rim', 'tom', 'dum', 'tek']) {
+      for (const k of ['kick', 'clap', 'hat', 'shaker', 'rim', 'tom', 'dum', 'tek', 'block']) {
         const pat = D[k]; if (!pat) continue;
         const c = pat[s]; if (c === '.' || !VEL[c]) continue;
         if (fill && (k === 'clap' || k === 'tom')) continue;
@@ -1919,6 +2078,20 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       let m = degMidi(I.harm, I.chord + k, I.padLo - (I.padLo % 12) + 12);
       if (I.pent) m = snapPent(m, I.bassBase);
       INST[A.inst](I, tt, mtof(m), sd * 2, A.lvl * hv(), I.bus, A.inst === 'bell' ? 0.6 : 0.25);
+    }
+    // a composed tune: its written melody (second time round on the other instrument, with a line a third below)
+    if (I.tune) {
+      const T = I.tune, TL = T.lead, nb = T.bars.length;
+      const notes = sec === 'I' ? (I.barInSec === 1 ? T.pick : null) : T.bars[I.barInSec % nb].n;
+      const again = I.cycle % 2 === 1, inst = INST[again && TL.alt ? TL.alt : TL.inst] || INST.pluck;
+      if (notes) for (let i = 0; i < notes.length; i++) {
+        const e = notes[i]; if (e[0] !== s) continue;
+        const v = TL.lvl * (e[3] || 0.82) * hv(), len = e[2] * sd * 0.92;
+        inst(I, tt, mtof(degMidi(I.harm, e[1], I.leadBase - 12)), len, v, I.bus, TL.fx);
+        if (again && TL.harm && e[2] >= 2) inst(I, tt + 0.004, mtof(degMidi(I.harm, e[1] + TL.harm, I.leadBase - 12)), len, v * 0.5, I.bus, 0);
+      }
+      const ck = sec !== 'I' && T.cluck && T.cluck[I.barInSec % nb];
+      if (ck && VEL[ck[s]]) DRUM.cluck(I, tt, VEL[ck[s]] * hv());
     }
     // lead motif
     const Ld = P.lead;
@@ -1994,7 +2167,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   }
   // ---- the intro sting and a clean ending, in the playing world's key on its own lead instrument
   function stingNotes(I, t, kind) {
-    const P = I.P, sd = I.sd, Ld = P.lead, inst = INST[(Ld && Ld.inst) || 'pluck'] || INST.pluck;
+    const P = I.P, sd = I.sd, Ld = P.lead || (I.tune && I.tune.lead), inst = INST[(Ld && Ld.inst) || 'pluck'] || INST.pluck;
     const lvl = (Ld ? Ld.lvl : 0.25) * 1.1, fx = Ld ? Ld.fx : 0.1;
     const note = (deg, base) => { let m = degMidi(I.harm, deg, base); if (I.pent) m = snapPent(m, I.bassBase); return mtof(m); };
     const lead = (step, deg, len, vel) => inst(I, t + step * sd, note(deg, I.leadBase - 12), len * sd, lvl * vel, I.bus, fx);
@@ -2044,7 +2217,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
 
   function specKey(spec) {
     const p = resolveMood(spec.mood);
-    return p + '|' + String(spec.root || '').toUpperCase() + '|' + (spec.scale || '') + '|' + (spec.bpm || '');
+    return (has(TUNES, spec.tune) ? 'tune:' + spec.tune : p) + '|' + String(spec.root || '').toUpperCase() + '|' + (spec.scale || '') + '|' + (spec.bpm || '');
   }
 
   // a hero beat pushes the ring ticks and creak down for a moment
@@ -2147,7 +2320,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     get ctx() { return ctx; },
     get ready() { return ready; },
     stats: safe(() => ({ voices: voices.filter((v) => !v.done && v.end > ctx.currentTime).length, musicInstances: instances.length, mood: curInst ? curInst.pname : null, loops: Object.keys(loops).filter((k) => loops[k]) }), {}),
-    sfxNames: SFX_NAMES, materials: MATERIALS, moods: MOODS,
+    sfxNames: SFX_NAMES, materials: MATERIALS, moods: MOODS, tunes: Object.keys(TUNES),
   };
 }
 

@@ -2387,7 +2387,8 @@ let lastBump = 0;
 // every villain family has a voice, every power / chick / ally beat is heard. [sfx, opts, haptic] or (ev) => that.
 // Hero beats that land on the player (a boss attack, a snap at an egg) also buzz. A per-event 60 ms gate keeps
 // bursts of the same event from machine-gunning.
-const thiefVoice = (ev) => (ev.kind === 'rat' || ev.kind === 'ratking' ? 'rat_squeak' : 'weasel_chitter');
+// the weasel has its own little voice per moment (snicker / sniff / yelp); the rats keep their squeak
+const thiefVoice = (ev, w = 'weasel_snicker') => (ev.kind === 'rat' || ev.kind === 'ratking' ? 'rat_squeak' : w);
 const EVENT_SFX = {
   // allies: the rooster's crow lives in handleEvents (with its haptic); the goose honks
   allyCall: (ev) => (ev.kind === 'goose' ? ['goose_honk'] : ['cluck', { intensity: 1, pitch: 0.85 }]),
@@ -2443,13 +2444,13 @@ const EVENT_SFX = {
   eagleEat: ['snake_strike', { vol: 0.5, pitch: 0.6 }],
   // the weasel, the rats and the Rat King
   thiefIn: (ev) => [thiefVoice(ev), { vol: 0.7 }],
-  thiefWarn: (ev) => [thiefVoice(ev), { vol: 0.6 }],
+  thiefWarn: (ev) => [thiefVoice(ev, 'weasel_sniff'), { vol: 0.7 }],
   thiefGrab: (ev) => [thiefVoice(ev), { vol: 0.7, pitch: 1.1 }, 'hit'],
   thiefHit: (ev) => ['creature_hurt', { pitch: ev.kind === 'rat' ? 1.5 : ev.boss ? 0.75 : 1.1 }],
   thiefFlinch: (ev) => ['creature_hurt', { vol: 0.6, pitch: ev.kind === 'rat' ? 1.6 : 1.2 }],
   thiefDaze: ['stun_stars', { pitch: 1.1 }],
   thiefDefeat: ['creature_hurt', { pitch: 0.7 }],
-  thiefFlee: (ev) => [thiefVoice(ev), { vol: 0.5, pitch: 1.2 }],
+  thiefFlee: (ev) => [thiefVoice(ev, 'weasel_yelp'), { vol: 0.6, pitch: 1.05 }],
   thiefBack: (ev) => [thiefVoice(ev), { vol: 0.4 }],
   thiefHide: ['release', { vol: 0.4 }],
   thiefMiss: ['wind_gust', { vol: 0.3, pitch: 2 }],
@@ -2558,7 +2559,7 @@ const EVENT_SFX = {
   mvDiveGrab: ['eagle_screech', { vol: 0.6, pitch: 0.9 }, 'hit'],
   mvDiveDrop: ['release', { vol: 0.5 }],
   mvPopEnd: ['release', { vol: 0.4, pitch: 0.8 }],
-  mvPopMiss: ['weasel_chitter', { vol: 0.5, pitch: 0.8 }],
+  mvPopMiss: ['weasel_yelp', { vol: 0.5, pitch: 0.9 }],
   mvShardShrug: ['glass_crack', { vol: 0.3, pitch: 1.8 }],
   // hazards that had no sound
   fallWarn: ['near_miss', { vol: 0.6 }],
