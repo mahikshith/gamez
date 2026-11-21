@@ -236,6 +236,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     vAlpha = 0;
     const up = T < 1.7 ? 1 : 1 - seg(T, 1.7, 2.0);
     haz = { k: 'thorns', up };
+    if (plan.kind === 'spider') { vAlpha = up; vA = vEnd; } // the spider is on the stage while its web (the thorns) shuts the gap, then it is gone
     const d = ease(seg(T, 2.05, 2.8)); th = -gap0 * d;
     hand = dragHand(at, T, 1.95, 2.8, 0.5, 0.5 - gap0);
     eD = seg(T, 2.85, 3.25); done = seg(T, 3.25, 3.6);

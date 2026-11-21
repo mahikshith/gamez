@@ -267,23 +267,23 @@ export function drawTurtle(ctx, s, t = 0, o = {}) {
     const hx = 39 + head * 8.5 - tuck * 18, hy = 13.5 + (head < 0 ? -head * 2.2 : 0) - tuck * 1.5 + (onBack ? Math.sin(t * 7) * 1.2 * flail : 0), tilt = (head < 0 ? head * 0.22 : head * 0.06) - (onBack ? 0.25 : 0);
     limb(ctx, [[24, -11], [(24 + hx) / 2 - 2, -(hy - 3 + head * 1.5)], [hx - 5, -(hy - 1)]], [6, 5.4, 5.6], C.skin, C.line, lw * 0.9);
     ctx.strokeStyle = C.skinLo; ctx.lineWidth = 1; for (let i = 1; i <= 2; i++) { const f = i / 3, x = lerp(26, hx - 7, f); if (hx - 7 > 30) { ctx.beginPath(); ctx.moveTo(x, -(hy - 5)); ctx.quadraticCurveTo(x + 1.6, -(hy - 1), x, -(hy + 2.5)); ctx.stroke(); } }
-    ctx.save(); ctx.translate(hx, -hy); ctx.rotate(tilt);
+    ctx.save(); ctx.translate(hx, -hy); ctx.rotate(tilt); ctx.scale(1.22, 1.22); // a bigger head on the same shell: the face must read at phone size
     // lower jaw (drops open), mouth, then the skull with its hooked beak
-    const mo = mouth * 0.55;
+    const mo = mouth * 0.78;
     ctx.save(); ctx.translate(-3, 2.5); ctx.rotate(mo);
     ctx.beginPath(); spline(ctx, [[-2, -1.5], [6, -1.2], [13.5, -0.4], [14.2, 1.2], [8, 4.6], [-1, 5.6], [-4.5, 2]], true); ctx.fillStyle = C.skinLo; ctx.fill(); ink(lw * 0.85);
     ctx.beginPath(); ctx.moveTo(8, -1.3); ctx.lineTo(14.4, -0.6); ctx.lineTo(13.6, 1.8); ctx.lineTo(9.5, 2.4); ctx.closePath(); ctx.fillStyle = C.beak; ctx.fill(); ink(lw * 0.6);
     ctx.restore();
-    if (mouth > 0.08) { ctx.beginPath(); ctx.moveTo(-3, 2.2); ctx.lineTo(11, 0.6); ctx.lineTo(-3 + 14 * Math.cos(mo), 2.5 + 14 * Math.sin(mo) - 1.4); ctx.closePath(); ctx.fillStyle = C.mouth; ctx.fill(); }
+    if (mouth > 0.08) { ctx.beginPath(); ctx.moveTo(-3, 2.2); ctx.lineTo(11, 0.6); ctx.lineTo(-3 + 14 * Math.cos(mo), 2.5 + 14 * Math.sin(mo) - 1.4); ctx.closePath(); ctx.fillStyle = mouth > 0.4 ? '#d8343c' : C.mouth; ctx.fill(); }
     const skull = () => { ctx.beginPath(); spline(ctx, [[-9.5, -1], [-7.5, -7], [-1, -9.6], [6, -8], [11, -4.2], [15.2, 1.4], [14.4, 3.6], [11, 1.2], [4, 2.2], [-4, 3.2], [-9, 2.6]], true, 0.5); };
     form(ctx, skull, { d: 2.2, lo: C.skinLo, base: C.skin, hi: C.skinHi, hiK: 0.5, line: C.line, lw, noWeight: true, inner: () => {
       ctx.beginPath(); ctx.moveTo(7.5, -9); ctx.lineTo(18, -6); ctx.lineTo(18, 6); ctx.lineTo(6.5, 6); ctx.quadraticCurveTo(10, -1, 7.5, -9); ctx.fillStyle = C.beak; ctx.fill();
       ctx.beginPath(); ctx.moveTo(9, -6.6); ctx.quadraticCurveTo(12.5, -3.4, 14, 0); ctx.lineWidth = 1.3; ctx.strokeStyle = C.beakHi; ctx.stroke();
     } });
     ctx.beginPath(); ctx.arc(11.6, -3.4, 0.6, 0, TAU); ctx.fillStyle = C.line; ctx.fill(); // nostril
-    if (o.eye === 'spiral') { ctx.beginPath(); ctx.arc(2.6, -3.6, 3, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 2.6, -3.6, 3, t, 1, C.line); }
-    else eye(ctx, 2.6, -3.6, { r: 3, iris: C.eye, irisLo: C.eyeLo, pupil: 'round', pupilR: 0.36, look: { x: o.lookX ?? 0.5, y: 0.1 }, lid: Math.max(o.glare ? 0.3 : 0.16, blinkAt(t, 7)), mad: o.glare ? 0.42 : 0.12, lidCol: C.skin, line: C.line, lw: lw * 0.7, shut: o.eye === 'shut' ? 1 : 0 });
-    if (o.glare) { ctx.beginPath(); ctx.moveTo(-1.6, -8); ctx.lineTo(6.4, -5.4); ink(lw * 1.2); }
+    if (o.eye === 'spiral') { ctx.beginPath(); ctx.arc(2.6, -3.6, 3.7, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 2.6, -3.6, 3.4, t, 1, C.line); }
+    else eye(ctx, 2.6, -3.6, { r: 3.7, white: '#fff6d8', irisR: 0.66, iris: C.eye, irisLo: C.eyeLo, pupil: 'round', pupilR: 0.36, look: { x: o.lookX ?? 0.5, y: 0.1 }, lid: Math.max(o.glare ? 0.3 : 0.16, blinkAt(t, 7)), mad: o.glare ? 0.42 : 0.12, lidCol: C.skin, line: C.line, lw: lw * 0.7, shut: o.eye === 'shut' ? 1 : 0 });
+    { const g = o.glare ? 1 : o.eye === 'spiral' ? -1 : 0.25; ctx.beginPath(); ctx.moveTo(-2, -8.4 + g * 0.6); ctx.lineTo(6.8, -8.4 + g * 3); ink(lw * 1.5); } // a heavy brow: a scowl when it means it
     ctx.restore();
     // plastron (belly plate): on its back this is what faces up
     const plast = () => { S([[-33, 8], [-30, 3.4], [0, 2.2], [27, 3.4], [30, 8], [0, 9.5]]); };

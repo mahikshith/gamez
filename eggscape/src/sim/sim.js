@@ -87,7 +87,7 @@ export const POWER = {
   water: { time: 8 }, // landing impacts count half
   magnet: { time: 8, len: 0.8 },
 };
-export const MAGNET = { pull: 2.4, same: 1.5, lead: 0.3, vmax: 5 }; // the pull in g: the egg behind, two eggs in one chamber, the egg in front
+export const MAGNET = { pull: 2.4, same: 1.5, lead: 0.3, vmax: 3 }; // the pull in g: the egg behind, two eggs in one chamber, the egg in front
 export const ORB_TYPES = ['fire_red', 'fire_black', 'fire_green', 'fire_gold', 'stone', 'bubble', 'water', 'thunder', 'thorn', 'magnet', 'twin',
   'hourglass', 'feather', 'rockskin', 'curse', 'frost', ...P2_TYPES];
 export const LEGACY_ORB = { fire: 'fire_red', steel: 'stone', foxcurse: 'curse' }; // old item ids (levels and saves); v3.6 renamed the curse orb
@@ -1181,10 +1181,13 @@ export class Sim {
     const ease = Math.min(1, (d - EGG_W) / 0.2);
     if (ease <= 0) { J.pull = 0; return; }
     const ux = dx / d, uy = dy / d, ca = this.channelOf(A), cb = this.channelOf(B);
-    const va = A.body.getLinearVelocity(), vb = B.body.getLinearVelocity(), closing = (va.x - vb.x) * ux + (va.y - vb.y) * uy;
-    if (closing > MAGNET.vmax) { J.pull = 0; return; } // rushing together fast enough already
     const s = Math.max(0.6, Math.min(1.3, 1.6 / d)) * ease * this.g0;
-    const ka = ca === cb ? MAGNET.same : ca < cb ? MAGNET.pull : MAGNET.lead, kb = ca === cb ? MAGNET.same : cb < ca ? MAGNET.pull : MAGNET.lead;
+    let ka = ca === cb ? MAGNET.same : ca < cb ? MAGNET.pull : MAGNET.lead, kb = ca === cb ? MAGNET.same : cb < ca ? MAGNET.pull : MAGNET.lead;
+    // an egg already moving toward its partner at vmax is not pushed any faster: hauled through a gap it would land harder
+    // than a plain fall and crack (CRACK_V 6), which a helping power must never do
+    const va = A.body.getLinearVelocity(), vb = B.body.getLinearVelocity();
+    if (va.x * ux + va.y * uy > MAGNET.vmax) ka = 0;
+    if (-(vb.x * ux + vb.y * uy) > MAGNET.vmax) kb = 0;
     A.body.applyForceToCenter(Vec2(ux * s * ka * A.body.getMass(), uy * s * ka * A.body.getMass()), true);
     B.body.applyForceToCenter(Vec2(-ux * s * kb * B.body.getMass(), -uy * s * kb * B.body.getMass()), true);
     J.pull = s / this.g0; J.ka = ka; J.kb = kb; // for the look (render/magnet.js)

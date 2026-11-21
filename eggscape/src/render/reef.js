@@ -196,12 +196,15 @@ export function drawPuffer(ctx, x, y, s, t, o = {}) {
   ctx.save(); ctx.translate(-rx * 0.05, ry * 0.3); ctx.rotate(0.55 + Math.sin(t * 13) * 0.5);
   ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-0.02 * s, 0.07 * s, -0.11 * s, 0.07 * s); ctx.quadraticCurveTo(-0.1 * s, 0.01 * s, 0, 0); ctx.closePath(); fillStroke(ctx, PF.fin, PF.line, lw * 0.85); ctx.restore();
   // face: big eyes (cross when it is swollen), a puckered mouth
-  const ex = rx * 0.5, ey = -ry * 0.3, er = (0.06 + 0.02 * sw) * s;
+  const ex = rx * 0.5, ey = -ry * 0.3, er = (0.088 - 0.008 * sw) * s; // a big eye even when small: the face reads at phone size
   const swelling = (o.sw ?? 0) > 0.05 && (o.sw ?? 0) < 0.95;
   if (o.stun) { ctx.beginPath(); ctx.arc(ex, ey, er, 0, TAU); fillStroke(ctx, PF.white, PF.line, lw * 0.9); spiralEye(ctx, ex, ey, er * 0.8, t, 1, PF.line); }
   else eye(ctx, ex, ey, { r: er * (swelling ? 1.15 : 1), white: PF.white, iris: PF.eye, irisR: 0.55, pupilR: 0.22, look: { x: 0.5, y: 0.15 }, lid: Math.max(sw > 0.5 ? 0.22 : 0, o.ice ? 0 : blinkAt(t, 4)), mad: sw > 0.5 ? 0.35 : 0, lidCol: PF.body, line: PF.line, lw: lw * 0.85 });
   if (sw > 0.5 && !o.stun) { ctx.strokeStyle = PF.line; ctx.lineWidth = lw * 1.2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(ex - er * 1.1, ey - er * 1.5); ctx.lineTo(ex + er * 0.9, ey - er * 1.0); ctx.stroke(); }
-  ctx.beginPath(); ctx.ellipse(rx * 0.97, ry * 0.14, (0.032 + (swelling ? 0.012 : 0)) * s, (0.026 + 0.016 * sw + (swelling ? 0.012 : 0)) * s, 0, 0, TAU); fillStroke(ctx, PF.mouth, PF.line, lw * 0.8);
+  if (sw < 0.3 && !swelling) { // small: a fat pout, two lips pushed out, smacking now and then
+    const pk = 1 + 0.18 * Math.max(0, Math.sin(t * 2.3)), mx = rx * 1.0, my = ry * 0.2;
+    for (const d of [-1, 1]) { ctx.beginPath(); ctx.ellipse(mx + 0.012 * s * pk, my + d * 0.018 * s, 0.03 * s * pk, 0.019 * s, d * 0.25, 0, TAU); fillStroke(ctx, PF.mouth, PF.line, lw * 0.8); }
+  } else { ctx.beginPath(); ctx.ellipse(rx * 0.97, ry * 0.14, (0.032 + (swelling ? 0.012 : 0)) * s, (0.026 + 0.016 * sw + (swelling ? 0.012 : 0)) * s, 0, 0, TAU); fillStroke(ctx, PF.mouth, PF.line, lw * 0.8); }
   ctx.beginPath(); ctx.arc(rx * 0.97, ry * 0.14, 0.012 * s, 0, TAU); ctx.fillStyle = '#5a1a10'; ctx.fill();
   ctx.restore();
 }
