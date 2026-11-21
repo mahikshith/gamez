@@ -67,7 +67,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 8, theme: "mushroom", name: "Woodcutter Glade", eggs: 3, target: 2, time: 75, spacing: 1, material: "wood", nest: {w: 2.8}, snake: {delay: 7, speed: 0.45}, bonus: {kind: "time", s: 40}, tip: "The snake stops to melt a wall: that is your moment to drop.", barriers: [{ring: 1, a: 133},{ring: 2, a: -124}], orbs: [{type: "fire_red", ch: 1, a: 164},{type: "rockskin", ch: 3, a: -79}], seed: 63353, world: 2, intro: {title: "Wooden walls", line: "Walls stand on the ring floors. They stop eggs and snakes alike. Fire burns them; snake venom melts them."},
+    id: 8, theme: "mushroom", name: "Woodcutter Glade", eggs: 3, target: 2, time: 75, spacing: 1, material: "wood", nest: {w: 2.8}, frog: {ch: 2, a: -120, delay: 6, every: 7}, bonus: {kind: "time", s: 40}, tip: "Grab the orbs before the frog licks them up. A flaming egg scares it off.", barriers: [{ring: 1, a: 133},{ring: 2, a: -124}], orbs: [{type: "fire_red", ch: 1, a: 164},{type: "rockskin", ch: 3, a: -79}], seed: 63353, world: 2, intro: {title: "The frog", line: "It hops from ring to ring, plugs gaps and licks up orbs. Wooden walls block eggs: fire burns them."},
     rings: [
       {gaps: [{a: 169}], thorns: [{a: 76, n: 2}]},
       {gaps: [{a: 26, x: 2},{a: -144}], thorns: [{a: -26, n: 3}], pads: [{a: 161, len: 1.3},{a: 88, len: 1.59}]},
@@ -212,7 +212,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 22, theme: "volcano", name: "Melt-Through", eggs: 3, target: 2, time: 70, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 2.8}, bonus: {kind: "time", s: 35}, tip: "This ring has no gap. Wait for a lava hole, or burn one with the black flame.", orbs: [{type: "fire_black", ch: 2, a: -106},{type: "water", ch: 3, a: -97},{type: "hourglass", ch: 4, a: 32}], seed: 174219, world: 5, intro: {title: "Lava rocks", line: "Lava rocks crash onto the rings, glow, then melt a hole that heals 5 s later. The water shell cools them. Lava only feeds the salamander."}, salamander: {delay: 6, every: 7, a: 30, ch: 3},
+    id: 22, theme: "volcano", name: "Melt-Through", eggs: 3, target: 2, time: 70, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 2.8}, bonus: {kind: "time", s: 35}, tip: "This ring has no gap. Wait for a lava hole, or burn one with the black flame.", orbs: [{type: "fire_black", ch: 2, a: -106},{type: "water", ch: 3, a: -97},{type: "hourglass", ch: 4, a: 32},{type: "warp", ch: 1, a: -60}], seed: 174219, world: 5, intro: {title: "Lava rocks", line: "Lava rocks crash onto the rings, glow, then melt a hole that heals 5 s later. The water shell cools them. Lava only feeds the salamander."}, salamander: {delay: 6, every: 7, a: 30, ch: 3},
     rings: [
       {gaps: [{a: 53}], thorns: [{a: 2, n: 1}]},
       {gaps: [{a: 128, x: 2}], thorns: [{a: 4, n: 2},{a: -68, n: 2, side: "out", h: 0.26}], pads: [{a: -177, len: 1.35}]},
@@ -265,7 +265,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 27, theme: "storm", name: "Eagle Crag", eggs: 3, target: 2, time: 160, spacing: 1, material: "metal", nest: {w: 3}, weather: "thunder", bonus: {kind: "prize"}, eagle: {delay: 8, every: 11}, gusts: {delay: 10, every: 14, strength: 1.8, dur: 1.6}, tip: "Wait deeper in the vault, then cross the outer channel right after a dive.", orbs: [{type: "feather", ch: 3, a: 81},{type: "fire_green", ch: 4, a: 21},{type: "hatch_pick", ch: 1, a: -77}], seed: 213814, world: 6, intro: {title: "The eagle", line: "The eagle reaches in only through gaps in the outer ring. When it screeches, turn that gap away."},
+    id: 27, theme: "storm", name: "Eagle Crag", eggs: 3, target: 2, time: 160, spacing: 1, material: "metal", nest: {w: 3}, weather: "thunder", bonus: {kind: "prize"}, eagle: {delay: 8, every: 11}, gusts: {delay: 10, every: 14, strength: 1.8, dur: 1.6}, tip: "Wait deeper in the vault, then cross the outer channel right after a dive.", orbs: [{type: "feather", ch: 3, a: 81},{type: "fire_green", ch: 4, a: 21},{type: "hatch_pick", ch: 1, a: -77},{type: "warp", ch: 3, a: -60}], seed: 213814, world: 6, intro: {title: "The eagle", line: "The eagle reaches in only through gaps in the outer ring. When it screeches, turn that gap away."},
     rings: [
       {gaps: [{a: 160}], thorns: [{a: 112, n: 1}]},
       {mat: "ice", ice: true, gaps: [{a: -35}], pads: [{a: -140, len: 1.36}]},
@@ -363,7 +363,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 36, theme: "reef", name: "Under the Waves", eggs: 3, target: 2, time: 80, spacing: 1.05, material: "coral", water: true, nest: {w: 2.8}, bonus: {kind: "time", s: 40}, hermit: {ch: 1, a: 70, delay: 1.5}, tip: "A tucked egg is safe from thorns. Turn a gap to the crab and the egg floats out through it.", orbs: [{type: "bubble", ch: 2, a: 166}], seed: 285085, world: 8, intro: {title: "Coral Reef", line: "Underwater, eggs float UP! Line the gaps up toward the top to reach the hen's boat. A hermit crab tucks eggs in its shell: bump an egg into it, or turn a gap to it."},
+    id: 36, theme: "reef", name: "Under the Waves", eggs: 3, target: 2, time: 80, spacing: 1.05, material: "coral", water: true, nest: {w: 2.8}, bonus: {kind: "time", s: 40}, hermit: {ch: 1, a: 70, delay: 1.5}, fish: {ch: 2, n: 7, speed: 0.9, a: 20, turn: 14}, tip: "A tucked egg is safe from thorns. Turn a gap to the crab and the egg floats out through it.", orbs: [{type: "bubble", ch: 2, a: 166}], seed: 285085, world: 8, intro: {title: "Coral Reef", line: "Underwater, eggs float UP! Line the gaps up toward the top to reach the hen's boat. A hermit crab tucks eggs in its shell: bump an egg into it, or turn a gap to it."},
     rings: [
       {gaps: [{a: 175}]},
       {gaps: [{a: -116, x: 2}], thorns: [{a: 13, n: 2}], pads: [{a: 148, len: 1.53}]},
@@ -382,7 +382,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 38, theme: "reef", name: "Jelly Drift", eggs: 3, target: 2, time: 140, spacing: 1.05, material: "coral", water: true, nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.4}, bonus: {kind: "prize"}, jelly: {ch: 2, a: 30, delay: 2}, tip: "The shock ring makes the ring under the egg live: jellyfish and crabs that touch it are stunned.", orbs: [{type: "shock", ch: 1, a: -23},{type: "water", ch: 3, a: -13}], seed: 300924, world: 8, intro: {title: "Jellyfish", line: "A jellyfish drifts through the reef. Its sting cracks an egg, but its glow lights up murky water. Water washes it away; a live ring stuns it."},
+    id: 38, theme: "reef", name: "Jelly Drift", eggs: 3, target: 2, time: 140, spacing: 1.05, material: "coral", water: true, nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.4}, bonus: {kind: "prize"}, jelly: {ch: 2, a: 30, delay: 2}, fish: {ch: 3, n: 7, speed: 1, a: 160, turn: 12}, tip: "The shock ring makes the ring under the egg live: jellyfish and crabs that touch it are stunned.", orbs: [{type: "shock", ch: 1, a: -23},{type: "water", ch: 3, a: -13}], seed: 300924, world: 8, intro: {title: "Jellyfish", line: "A jellyfish drifts through the reef. Its sting cracks an egg, but its glow lights up murky water. Water washes it away; a live ring stuns it."},
     rings: [
       {gear: 1, gaps: [{a: -123}], thorns: [{a: -49, n: 1}]},
       {gear: 2, gaps: [{a: -51, x: 2}], thorns: [{a: 166, n: 1}], pads: [{a: 60, len: 1.53}]},
@@ -412,7 +412,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 41, theme: "bayou", name: "Gator Crossing", eggs: 3, target: 2, time: 110, spacing: 1.15, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 14}, gator: {ch: 4, a: -60, delay: 6}, tip: "Turn the gap away from his jaws and he bites nothing. Pepper makes him sneeze and swim off.", orbs: [{type: "pepper", ch: 2, a: -6},{type: "fire_red", ch: 3, a: 60}], seed: 324683, world: 9, intro: {title: "Gator Bayou", line: "An alligator lies in the outer channel like a log. Asleep, his back is a bridge. Awake, he snaps at eggs that drop near his jaws."},
+    id: 41, theme: "bayou", name: "Gator Crossing", eggs: 3, target: 2, time: 110, spacing: 1.15, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 14}, gator: {ch: 4, a: -60, delay: 6}, frog: {ch: 2, a: -130, delay: 16, every: 8}, tip: "Turn the gap away from his jaws and he bites nothing. Pepper makes him sneeze and swim off.", orbs: [{type: "pepper", ch: 2, a: -6},{type: "fire_red", ch: 3, a: 60}], seed: 324683, world: 9, intro: {title: "Gator Bayou", line: "An alligator lies in the outer channel like a log. Asleep, his back is a bridge. Awake, he snaps at eggs that drop near his jaws."},
     rings: [
       {gaps: [{a: -28}], thorns: [{a: 93, n: 1}]},
       {gear: 2, gaps: [{a: 77}], thorns: [{a: 21, n: 2},{a: -3, n: 2, side: "out", h: 0.26}], pads: [{a: 163, len: 1.44}]},
@@ -433,7 +433,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 43, theme: "bayou", name: "Snapper Slough", eggs: 3, target: 2, time: 120, spacing: 1.15, material: "wood", nest: {w: 2.8}, bonus: {kind: "prize"}, gator: {ch: 5, a: -50, delay: 9}, turtle: {ch: 3, a: -110, delay: 4}, mosquito: {ch: 1, a: 30, delay: 12}, tip: "A clamped egg is safe but stuck. Drop another egg on the shell to free it.", orbs: [{type: "laser", ch: 1, a: 35},{type: "rockskin", ch: 2, a: -49},{type: "decoy", ch: 3, a: 29},{type: "pepper", ch: 4, a: -133}], seed: 340519, world: 9, intro: {title: "Snapping turtle", line: "The turtle clamps an egg: safe from everything, but stuck. Drop an egg or a stone egg on its shell and it flips over. The laser beak cuts vines and thorns."},
+    id: 43, theme: "bayou", name: "Snapper Slough", eggs: 3, target: 2, time: 120, spacing: 1.15, material: "wood", nest: {w: 2.8}, bonus: {kind: "prize"}, gator: {ch: 5, a: -50, delay: 9}, turtle: {ch: 3, a: -110, delay: 4}, mosquito: {ch: 1, a: 30, delay: 12}, tip: "A clamped egg is safe but stuck. Drop another egg on the shell to free it.", orbs: [{type: "laser", ch: 1, a: 35},{type: "rockskin", ch: 2, a: -49},{type: "decoy", ch: 3, a: 29},{type: "pepper", ch: 4, a: -133},{type: "warp", ch: 3, a: -40}], seed: 340519, world: 9, intro: {title: "Snapping turtle", line: "The turtle clamps an egg: safe from everything, but stuck. Drop an egg or a stone egg on its shell and it flips over. The laser beak cuts vines and thorns."},
     rings: [
       {gaps: [{a: -159}], thorns: [{a: 35, n: 1}]},
       {oneway: 1, gaps: [{a: 104, x: 2}], thorns: [{a: -158, n: 2, side: "out", h: 0.26},{a: 63, n: 2, side: "out", h: 0.26}], pads: [{a: 52, len: 1.61}]},
@@ -444,7 +444,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 44, theme: "bayou", name: "Decoy Delta", eggs: 3, target: 2, time: 160, spacing: 1.15, material: "wood", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.5}, bonus: {kind: "turns", n: 15}, eggKinds: ["duck"], gator: {ch: 4, a: -70, delay: 7}, turtle: {ch: 3, a: -60, delay: 6}, mosquito: {ch: 2, a: 140, delay: 9}, tip: "The gator bites the decoy first. Send real eggs past while he chews wood.", orbs: [{type: "decoy", ch: 1, a: -124},{type: "fire_red", ch: 2, a: -93},{type: "laser", ch: 3, a: -105},{type: "pepper", ch: 4, a: -7}], seed: 348440, world: 9, intro: {title: "Swamp current", line: "The current pushes every egg along, and the duck egg floats on it. Throw the decoy to pull the gator, the turtle and the swarm off your real eggs."},
+    id: 44, theme: "bayou", name: "Decoy Delta", eggs: 3, target: 2, time: 160, spacing: 1.15, material: "wood", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.5}, bonus: {kind: "turns", n: 15}, eggKinds: ["duck"], gator: {ch: 4, a: -70, delay: 7}, turtle: {ch: 3, a: -60, delay: 6}, mosquito: {ch: 2, a: 140, delay: 9}, tip: "The gator bites the decoy first. Send real eggs past while he chews wood.", orbs: [{type: "decoy", ch: 1, a: -124},{type: "fire_red", ch: 2, a: -93},{type: "laser", ch: 3, a: -105},{type: "pepper", ch: 4, a: -7},{type: "spin", ch: 4, a: -70}], seed: 348440, world: 9, intro: {title: "Swamp current", line: "The current pushes every egg along, and the duck egg floats on it. Throw the decoy to pull the gator, the turtle and the swarm off your real eggs."},
     rings: [
       {gaps: [{a: 2}], thorns: [{a: -168, n: 1}]},
       {gaps: [{a: -173}], thorns: [{a: 97, n: 3},{a: 12, n: 2, side: "out", h: 0.26}], pads: [{a: 143, len: 1.37}]},
@@ -475,7 +475,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 47, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 30}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30}], beetle: {ch: 2, delay: 3, a: -167}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "Turn the beetle's ring to wind him: he marches the way you turned it, shoves eggs ahead and crushes thorns. Unwound, he is a wall."},
+    id: 47, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 30}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30},{type: "shock", ch: 4, a: -60}], beetle: {ch: 2, delay: 3, a: -167}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "Turn the beetle's ring to wind him: he marches the way you turned it, shoves eggs ahead and crushes thorns. Unwound, he is a wall."},
     rings: [
       {gaps: [{a: 124}], thorns: [{a: 45, n: 1}]},
       {gaps: [{a: 164, x: 2},{a: 31, grate: 1}], thorns: [{a: -6, n: 2},{a: -113, n: 2, side: "out", h: 0.26}], pads: [{a: -135, len: 1.03}]},

@@ -43,7 +43,7 @@ import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar,
 import { galeNow, BOSS_TITLE, ATTACK_NAME, BOSS_MODE } from './sim/boss.js';
 import { magnetEvent, magnetLean } from './render/magnet.js'; // 2026-11-20: the magnet's look
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
-import { drawP2Back, drawP2Front, p2Event } from './render/powers2.js'; // v3.4 powers and combos
+import { drawP2Back, drawP2Front, p2Event, drawLiveRing } from './render/powers2.js'; // v3.4 powers and combos
 import { warpXfBegin, warpXfEnd } from './render/warp.js'; // v3.4 warp gate: a creature drawn going through it
 import { POWER_DEMOS } from './data/power-demos.js'; // v3.4 studio vaults
 import { CHICK_DEMOS } from './data/chick-demos.js';
@@ -5370,12 +5370,13 @@ function howWorld() {
       try { W.drawRing(c, ring, G.theme, k, t, { eggs: [] }); if (ring.gaps[0] && ring.gaps[0].curtain) W.drawV3Ring(c, ring, k, t, G.theme); } finally { c.restore(); bodyCache.on = on; } // the curtain: the game's own drawV3Ring (and so drawThornCurtain)
     },
     egg(c, X, Y, stone, worry, C, k, t, look = null) {
-      try { egg.body.setTransform({ x: (X - C.x) / k, y: -(Y - C.y) / k }, worry ? Math.sin(t * 22) * 0.08 : 0); } catch (e) { return; }
-      egg.stone = stone ? 1 : 0;
+      try { egg.body.setTransform({ x: (X - C.x) / k, y: -(Y - C.y) / k }, (look && look.rot) || (worry ? Math.sin(t * 22) * 0.08 : 0)); } catch (e) { return; }
+      egg.stone = stone || (look && look.iron) ? 1 : 0; egg.iron = look && look.iron ? 1 : 0; // iron: the Electromagnet card
       egg.fire = look && look.fire ? 6 : 0; egg.fireKind = look && look.fire ? 'fire_red' : null; egg.chick = !!(look && look.chick);
       c.save(); c.translate(C.x, C.y); c.scale(k, -k);
-      try { W.drawEgg(c, egg, t, k); } finally { c.restore(); egg.fire = 0; egg.chick = false; }
+      try { W.drawEgg(c, egg, t, k); } finally { c.restore(); egg.fire = 0; egg.chick = false; egg.iron = 0; }
     },
+    live(c, C, k, t, a) { c.save(); c.translate(C.x, C.y); c.scale(k, -k); try { drawLiveRing(c, ring, k, t, a); } finally { c.restore(); } }, // the shock ring (Electromagnet card)
     orb(c, type, X, Y, r, t) { drawOrb(c, type, X, Y, r, t, true); },
     portal(c, X, Y, k, t, out) { c.save(); c.translate(X, Y); c.scale(k, -k); try { W.drawPortal(c, 0, 0, t, out); } finally { c.restore(); } },
     nest(c, X, Y, wPx, glow, t) {
@@ -5545,8 +5546,8 @@ function drawLevelIntro(L, acc) {
   // that beats each villain (or, with no villain, of the basic move), one short line under it, the goal and the stars,
   // and PLAY right inside the card. Several villains take turns (tap the stage for the next one).
   const howPlans = () => {
-    const toys = G.li >= 0 ? { 2: ['flame'], 3: ['twin', 'curtain'], 4: ['portal', 'glow'] }[L.id] || [] : []; // the first-five ladder: each level's new toy, first
-    const P0 = [...toys.map(toyPlan), ...(kinds.length ? kinds.map((k) => howToPlan(k)) : toys.length ? [] : [HOWTO_BASIC])];
+    const toys = G.li >= 0 ? { 2: ['flame'], 3: ['twin', 'curtain'], 4: ['portal', 'glow'], 22: ['warp'], 27: ['warp'], 43: ['bait'], 44: ['sweep', 'twister'], 47: ['magnet'] }[L.id] || [] : []; // the first-five ladder: each level's new toy, first (2026-11-20: and the Practice content placed in L22-L47)
+    const P0 = [...toys.map((id) => toyPlan(id, L.salamander ? 'salamander' : L.eagle ? 'eagle' : 'snake')), ...(kinds.length ? kinds.map((k) => howToPlan(k)) : toys.length ? [] : [HOWTO_BASIC])];
     if (kinds.some((k) => k === 'weasel' || k === 'rats' || k === 'boss:weasel') && G.sim && G.sim.ally && G.sim.ally.avail.includes('rooster') && !(G.li >= 0 && G.li < 4 && L.id < 5)) P0.push(HOWTO_ROOSTER); // Papa Rooster from L5 (the first-five ladder)
     return P0;
   };

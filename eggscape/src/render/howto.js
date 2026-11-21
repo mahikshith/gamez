@@ -17,6 +17,15 @@ import { drawHand } from './wonder.js';
 import { drawStrikeChick } from './strike.js';
 import { actorFor } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers)
 import { statusDraw } from './status.js';
+import { beamSparks, scorchStub, drawPepperCloud, drawTwister, drawSneeze, drawDecoyAt, TWIST_T } from './powers2.js'; // 2026-11-20: Practice content in the campaign
+import { paintVortex } from './warp.js';
+import { drawFrog, FROG_ART } from './frog.js';
+import { FROG } from '../sim/frog.js';
+import { drawFish } from './sea.js';
+import { FISH } from '../sim/sea.js';
+import { drawGator } from './bayou.js';
+import { GATOR } from '../sim/bayou.js';
+import { drawEagle } from './v3art.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -35,8 +44,8 @@ const SHOW = {
   rats: P('turn', 'Turn a gap under the rolling egg', { fx: 'bonk' }),
   'boss:ratking': P('turn', 'Trap him with a ring turn, then hit him', { fx: 'bonk' }),
   octopus: P('tap', 'Zap it with a chick: it lets the egg go', { power: 'thunder', fx: 'zap' }),
-  fish: P('drop', 'Drop an egg on them: they scatter', { fx: 'flee' }),
-  frog: P('tap', 'A chick scares it off', { power: 'bomb', fx: 'blast' }),
+  fish: P('fish', 'The school carries eggs along, even to a gap'),
+  frog: P('frog', 'It plugs gaps. A flaming egg scares it off'),
   eagle: P('turn', 'Turn a wall over the egg: the eagle bonks', { fx: 'bonk' }),
   'boss:eagle': P('turn', 'Turn a wall over the egg it dives at', { fx: 'bonk' }),
   salamander: P('turn', 'Turn its ring: it slides off', { fx: 'bonk' }),
@@ -83,9 +92,17 @@ const TOY = {
   curtain: 'A flame egg burns the thorn curtain',
   portal: 'The swirl drops an egg rings lower',
   glow: 'Tap the glow chick: its flash burns thorns',
+  // 2026-11-20: Practice content placed in the campaign (warp L22/L27, combos L43/L44/L47)
+  warp: 'The warp gate sends the next attacker far away',
+  bait: 'Decoy + warp: creatures chase the decoy away',
+  sweep: 'Laser + spin: the beam sweeps, every thorn cut',
+  twister: 'Pepper + spin: a twister sneezes them away',
+  magnet: 'Shock + iron: iron eggs stick to the live ring',
 };
-const TOY_NAME = { flame: 'Red flame', twin: 'Twin orb', curtain: 'Thorn curtain', portal: 'Portal', glow: 'Glow chick' };
-export function toyPlan(id) { return { kind: null, toy: id, move: 'toy', cap: TOY[id] || '', name: TOY_NAME[id] || id }; }
+const TOY_NAME = { flame: 'Red flame', twin: 'Twin orb', curtain: 'Thorn curtain', portal: 'Portal', glow: 'Glow chick', warp: 'Warp gate', bait: 'Bait and switch', sweep: 'Sweep beam', twister: 'Pepper twister', magnet: 'Electromagnet' };
+const NEW_TOYS = ['warp', 'bait', 'sweep', 'twister', 'magnet']; // these need the game's own art (o.world)
+// foe: the creature a toy scene shows (the warp gate takes the level's own: 'salamander', 'eagle', else a snake)
+export function toyPlan(id, foe) { return { kind: null, toy: id, move: 'toy', cap: TOY[id] || '', name: TOY_NAME[id] || id, foe }; }
 // no villain in this level: the basic move
 export const BASIC = { kind: null, move: 'basic', cap: 'Drag a ring to turn it. Drop eggs into the basket.' };
 // Papa Rooster (the farm friend): tap him and he chases a thief off, the egg comes back
@@ -121,7 +138,8 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   const C = { x: cx, y: y + U * (Wd ? 0.6 : 0.64) - R };
   const at = (phi, lift) => ({ x: C.x + Math.sin(phi) * (floor - lift), y: C.y + Math.cos(phi) * (floor - lift) });
   const nest = { x: cx, y: y + U * 0.93 };
-  const eggS = Wd ? 0.56 * 1.06 * kW : Z * 0.24, vD = Z * (Wd ? 0.8 : 0.5), m = plan.move;
+  const eggS = Wd ? 0.56 * 1.06 * kW : Z * 0.24, vD = Z * (Wd ? 0.8 : 0.5);
+  const m = !Wd && (plan.move === 'frog' || plan.move === 'fish' || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy))) ? 'basic' : plan.move; // the rigs need the game's art
   const vLift = vD * (Wd ? 0.3 : 0.42);
   // where the villain stops: its nose just short of the egg, worked out in pixels so a big villain never overlaps it
   const vEnd = -Math.asin(clamp((eggS * 0.42 + vD * 0.46) / floor, 0.05, 0.95));
@@ -217,6 +235,114 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
       const sink = seg(T, 1.35, 1.7), pop = seg(T, 1.95, 2.2);
       toy.portal = { pin, pout, sink, pop, outA: seg(T, 1.6, 1.9) * (1 - seg(T, 3.4, 3.8)), drop: seg(T, 2.2, 2.6) };
       done = seg(T, 2.6, 2.95);
+    } else if (NEW_TOYS.includes(id)) { // 2026-11-20: Practice content placed in the campaign, shown with the game's own art
+      const k = kW, W2 = (X, Y) => ({ x: (X - C.x) / k, y: -(Y - C.y) / k }), inW = (fn) => { ctx.save(); ctx.translate(C.x, C.y); ctx.scale(k, -k); try { fn(); } finally { ctx.restore(); } };
+      const eggPx = () => at(eA, eggS * 0.5), wAng = (phi) => phi - Math.PI / 2; // a stage angle (0 = straight down) -> world angle
+      const combo = (t0) => { if (T > t0 && T < t0 + 0.5) toy.burst = { x: eggPx().x, y: eggPx().y, k: seg(T, t0, t0 + 0.5), col: '#ffd23f' }; if (T > t0 && T < t0 + 0.9) toy.word = { s: 'COMBO!', k: seg(T, t0, t0 + 0.9) }; };
+      const turnIn = (t0, t1) => { const d = ease(seg(T, t0, t1)); th = -gap0 * d; hand = dragHand(at, T, t0 - 0.1, t1, 0.5, 0.5 - gap0); };
+      if (id === 'warp') { // the gate swallows the next creature that goes for the egg and spits it out far away
+        orbIn('warp', 0.3, 0.85);
+        turnIn(2.95, 3.5); eD = seg(T, 3.55, 3.95); done = seg(T, 3.95, 4.3);
+        const foe = plan.foe || 'snake', act2 = foe === 'eagle' ? null : actorFor({ kind: foe, move: 'tap' });
+        const SA2 = { x, y, w, h, cx, C, floor, band, k, at, g0: gap0, eggS, ground: y + h * 0.9, calm, T: Math.min(T, 1.75), t, m: 'tap', th: 0, fx: '', eA: 0 };
+        const head = act2 && act2.aim ? act2.aim(SA2) : { x: x + w * 0.68, y: at(0, 0).y - eggS * 1.45 };
+        const g1 = { x: head.x, y: head.y }, ex = { x: x + w * 0.24, y: y + h * 0.28 }, gR = 0.5 * k;
+        const drawFoe = () => {
+          if (act2) act2.draw(ctx, SA2);
+          else { const u = ease(seg(T, 0.9, 1.75)), p0 = { x: x + w * 1.1, y: y - h * 0.05 }; drawEagle(ctx, p0.x + (head.x - p0.x) * u, p0.y + (head.y - p0.y) * u, 3.0 * k * 0.38, t, { w: { dive: 1 }, face: -1, pitch: 0.35 }); } // EAGLE_LEN 3 m: scaled down to fit the stage
+        };
+        toy.under = () => {
+          if (T > 0.85 && T < 1.85) { const e0 = eggPx(), a = t * 4; ctx.save(); ctx.translate(e0.x + Math.cos(a) * eggS * 0.75, e0.y - eggS * 0.1 + Math.sin(a) * eggS * 0.22); paintVortex(ctx, eggS * 0.2, t, 'in', 1, 1); ctx.restore(); } // armed: a swirl circles the egg
+          const op = (t0, t1, c0, c1) => (T < t0 || T > c1 ? 0 : Math.min(back01(seg(T, t0, t1)), 1 - seg(T, c0, c1)));
+          const o1 = op(1.75, 1.95, 2.35, 2.6), o2 = op(2.3, 2.5, 3.1, 3.4);
+          if (T < 1.85) drawFoe();
+          else if (T < 2.35) { const u = ease(seg(T, 1.85, 2.35)); ctx.save(); ctx.translate(g1.x, g1.y); ctx.rotate(u * 5); ctx.scale(1 - 0.96 * u, 1 - 0.96 * u); ctx.translate(-g1.x, -g1.y); ctx.globalAlpha *= 1 - 0.7 * u * u * u; drawFoe(); ctx.restore(); }
+          if (o1 > 0.01) { ctx.save(); ctx.translate(g1.x, g1.y); ctx.scale(o1, o1); paintVortex(ctx, gR, t, 'in', 1, 1); ctx.restore(); }
+          if (o2 > 0.01) { ctx.save(); ctx.translate(ex.x, ex.y); ctx.scale(o2, o2); paintVortex(ctx, gR, t + 0.7, 'out', 1, 1); ctx.restore(); }
+          if (T > 2.45) { const u = seg(T, 2.45, 2.85), sc = 0.04 + 0.96 * back01(u), drift = seg(T, 2.9, 3.9); ctx.save(); ctx.globalAlpha *= 1 - seg(T, 3.4, 3.9); ctx.translate(ex.x - drift * w * 0.25, ex.y + drift * h * 0.1); ctx.rotate((u - 1) * 4); ctx.scale(sc, sc); ctx.translate(-head.x, -head.y); drawFoe(); ctx.restore(); if (u >= 1) dizzy(ctx, ex.x - drift * w * 0.25, ex.y - k * 0.45, k * 0.3, T, 1 - drift); }
+        };
+      } else if (id === 'bait') { // decoy + warp: the decoy goes through the gate and the gator chases it off
+        orbIn('warp', 0.5, 1.05); combo(1.05);
+        turnIn(2.85, 3.4); eD = seg(T, 3.45, 3.85); done = seg(T, 3.85, 4.2);
+        const dA = 0.25, dp = at(dA, eggS * 0.62), ex = { x: x + w * 0.2, y: y + h * 0.24 }, gR = 0.5 * k;
+        toy.under = () => {
+          const o1 = T < 1.2 || T > 2.0 ? 0 : Math.min(back01(seg(T, 1.2, 1.4)), 1 - seg(T, 1.75, 2.0)), o2 = T < 1.7 || T > 2.7 ? 0 : Math.min(back01(seg(T, 1.7, 1.9)), 1 - seg(T, 2.4, 2.7));
+          if (o1 > 0.01) { const g = at(dA, eggS * 0.15); ctx.save(); ctx.translate(g.x, g.y); ctx.scale(o1, o1 * 0.5); paintVortex(ctx, gR, t, 'in', 1, 1); ctx.restore(); }
+          if (o2 > 0.01) { ctx.save(); ctx.translate(ex.x, ex.y); ctx.scale(o2, o2); paintVortex(ctx, gR, t + 0.7, 'out', 1, 1); ctx.restore(); }
+          // the decoy: sits by the egg, sinks into the gate spinning, pops out of the far one and tumbles away
+          let D = null;
+          if (T < 1.35) D = { x: dp.x, y: dp.y, s: 1, r: -dA };
+          else if (T < 1.75) { const u = ease(seg(T, 1.35, 1.75)), g = at(dA, eggS * 0.15); D = { x: dp.x + (g.x - dp.x) * u, y: dp.y + (g.y - dp.y) * u, s: 1 - 0.95 * u, r: u * 6 }; }
+          else if (T > 1.85) { const u = seg(T, 1.85, 2.1), f = seg(T, 2.1, 2.9); D = { x: ex.x - f * w * 0.3, y: ex.y + f * f * h * 0.5 - Math.sin(f * Math.PI) * h * 0.12, s: 0.05 + 0.95 * back01(u), r: f * -5 }; }
+          if (D) inW(() => drawDecoyAt(ctx, (D.x - C.x) / k, -(D.y - C.y) / k, 0.62 * D.s, k, t, D.r));
+          // the gator: creeps up on the egg, then turns and runs after the decoy
+          const gA0 = -1.05, gA1 = -0.8, run = seg(T, 2.0, 2.9), gA = gA0 + (gA1 - gA0) * ease(seg(T, 0.2, 1.1)) - run * run * 0.9;
+          ctx.save(); ctx.globalAlpha *= 1 - seg(T, 2.55, 2.95);
+          gatorAt(ctx, at, gA, T > 1.95 ? -1 : 1, k, t, { jaw: T < 1.9 ? 0.25 + 0.25 * Math.abs(Math.sin(t * 5)) : 0.6, gait: t * 6 * (T < 1.1 || T > 2 ? 1 : 0.2), eye: 'open' }, floor);
+          ctx.restore();
+        };
+      } else if (id === 'sweep') { // laser + spin: the beam sweeps round and cuts the thorns by the gap
+        orbIn('laser', 0.3, 0.85);
+        const s2 = ease(seg(T, 0.85, 1.35)); if (T > 0.85 && T < 1.4) { const p0 = at(-0.42, eggS * 1.9), p1 = eggPx(); toy.orb2 = { type: 'spin', x: p0.x + (p1.x - p0.x) * s2, y: p0.y + (p1.y - p0.y) * s2 }; }
+        combo(1.35);
+        const bU = seg(T, 1.45, 2.45), bPhi = 1.0 - 2.0 * bU, gapA = gap0;
+        toy.deco = { thorns: 1, burnt: bPhi < gapA + 0.05 };
+        turnIn(2.65, 3.2); eD = seg(T, 3.25, 3.65); done = seg(T, 3.65, 4.0);
+        const cutT = 1.45 + ((1.0 - gapA) / 2.0) * 1.0;
+        toy.over = () => {
+          if (T > 1.35 && T < 2.7) inW(() => { // the spin's wind round the ring
+            ctx.strokeStyle = `rgba(240,255,250,${0.75 * (1 - seg(T, 2.4, 2.7))})`; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.03, 2.5 / k);
+            for (let j = 0; j < 4; j++) { const r = Wd.ringR * (0.82 + 0.06 * j), a0 = -Math.PI / 2 - 1 + t * 3 + j * 1.3; ctx.beginPath(); ctx.arc(0, 0, r, a0, a0 + 0.5); ctx.stroke(); }
+          });
+          if (T > cutT && T < cutT + 1.1) inW(() => { for (const s of [-1, 1]) { const a = wAng(gapA + s * 0.244), r = Wd.ringR - 0.1; scorchStub(ctx, r * Math.cos(a), r * Math.sin(a), a + Math.PI, 0.4, k, (T - cutT) / 1.1); } });
+          if (bU > 0 && bU < 1) { // the beam from the beak in the middle of the vault (above the panel)
+            const a = wAng(bPhi), c = Math.cos(a), s = Math.sin(a), far = Wd.ringR + 1.2;
+            inW(() => {
+              ctx.save(); ctx.lineCap = 'round';
+              for (let i = 1; i <= 6; i++) { ctx.globalAlpha = 0.25 * (1 - i / 7); ctx.fillStyle = '#ff6a4a'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, far, a + i * 0.035, a + (i - 1) * 0.035, true); ctx.closePath(); ctx.fill(); }
+              ctx.globalAlpha = 1;
+              for (const [lw, col] of [[0.36, 'rgba(255,60,40,0.45)'], [0.16, '#ff5a3c'], [0.065, '#fff4ec']]) { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(far * c, far * s); ctx.stroke(); }
+              ctx.restore();
+              beamSparks(ctx, Wd.ringR * c, Wd.ringR * s, a - Math.PI / 2, k, t, 6, 1.2);
+            });
+          }
+        };
+      } else if (id === 'twister') { // pepper + spin: the smoke winds into a twister and the gator sneezes himself away
+        orbIn('pepper', 0.3, 0.85);
+        const s2 = ease(seg(T, 1.0, 1.5)); if (T > 1.0 && T < 1.55) { const p0 = at(-0.42, eggS * 1.9), p1 = eggPx(); toy.orb2 = { type: 'spin', x: p0.x + (p1.x - p0.x) * s2, y: p0.y + (p1.y - p0.y) * s2 }; }
+        combo(1.5);
+        turnIn(2.95, 3.5); eD = seg(T, 3.55, 3.95); done = seg(T, 3.95, 4.3);
+        const gA = -0.5, sn0 = 2.0;
+        toy.under = () => {
+          const su = (T - sn0) / 1.3, ah = seg(T, sn0, sn0 + 0.45), choo = seg(T, sn0 + 0.45, sn0 + 1.2), off = seg(T, sn0 + 0.6, sn0 + 1.4);
+          ctx.save(); ctx.globalAlpha *= 1 - seg(T, sn0 + 1.1, sn0 + 1.45);
+          const p = at(gA, 0);
+          ctx.translate(-off * off * w * 0.45, -Math.sin(off * Math.PI) * h * 0.25); ctx.translate(p.x, p.y); ctx.rotate(-off * 2.4); ctx.translate(-p.x, -p.y);
+          gatorAt(ctx, at, gA, 1, k, t, { jaw: T < sn0 ? 0.2 + 0.3 * Math.abs(Math.sin(t * 5)) : ah < 1 ? 0.15 + 0.5 * ah : 0.85 * (1 - choo), eye: T < sn0 ? 'open' : ah < 1 ? 'squint' : 'spiral', sneeze: choo > 0 && choo < 1 ? 1 - choo : 0, stars: off > 0 ? 1 : 0, gait: 0, nose: T > sn0 && ah < 1 ? -0.18 * ah : 0 }, floor);
+          ctx.restore();
+        };
+        toy.over = () => {
+          const e0 = eggPx(), P = W2(e0.x, e0.y);
+          if (T > 0.85 && T < 1.6) inW(() => drawPepperCloud(ctx, P.x, P.y - 0.05, 0.6, Math.min(seg(T, 0.85, 1.15), 1 - seg(T, 1.5, 1.6)), k, t));
+          if (T > 1.5 && T < 1.5 + TWIST_T) { const u = (T - 1.5) / TWIST_T, g = at(gA * ease(clamp((u - 0.3) / 0.4, 0, 1)), 0), G2 = W2(g.x, g.y); inW(() => drawTwister(ctx, P.x + (G2.x - P.x) * 0.6 * ease(clamp((u - 0.25) / 0.45, 0, 1)), P.y - 0.2, 0.55, u, k, t)); }
+          { const su = (T - sn0) / 1.3, off = seg(T, sn0 + 0.6, sn0 + 1.4); if (su > 0 && su < 1 && off < 0.4) { const q = at(gA + 0.2, k * 0.35); inW(() => { const P = W2(Math.max(q.x, x + w * 0.22), Math.max(q.y - h * 0.06, y + h * 0.14)); drawSneeze(ctx, P.x, P.y, Math.PI * 0.8, su, k, t, 0.45); }); } }
+        };
+      } else if (id === 'magnet') { // shock + iron: the iron egg sticks to the live ring and rides it up the wall
+        orbIn('iron', 0.3, 0.85);
+        const s2 = ease(seg(T, 0.95, 1.45)); if (T > 0.95 && T < 1.5) { const p0 = at(-0.42, eggS * 1.9), p1 = eggPx(); toy.orb2 = { type: 'shock', x: p0.x + (p1.x - p0.x) * s2, y: p0.y + (p1.y - p0.y) * s2 }; }
+        combo(1.45);
+        const d = ease(seg(T, 1.6, 2.5)), up = -0.5;
+        th = up * d; hand = dragHand(at, T, 1.5, 2.5, -0.1, -0.1 + up);
+        const slide = ease(seg(T, 2.85, 3.15)), gapNow = gap0 + up;
+        eA = T < 2.85 ? th : up + (gapNow - up) * slide;
+        eD = seg(T, 3.15, 3.55); done = seg(T, 3.55, 3.9);
+        if (T > 0.85) toy.look = { iron: 1, rot: eD > 0 ? 0 : eA };
+        const live = Math.min(seg(T, 1.45, 1.6), 1 - seg(T, 2.65, 2.85));
+        toy.over = () => {
+          if (live > 0.01 && Wd.live) Wd.live(ctx, C, k, t, live);
+          if (live > 0.3 && T > 1.6) { const e0 = at(eA, 0); ctx.save(); ctx.strokeStyle = '#bfe9ff'; ctx.lineWidth = Math.max(1.5, k * 0.02); ctx.lineJoin = 'round'; for (let i = 0; i < 2; i++) { const R = (Math.sin(t * 37 + i * 9) + 1) / 2, ox = (i ? 1 : -1) * eggS * 0.3; ctx.beginPath(); ctx.moveTo(e0.x + ox, e0.y); ctx.lineTo(e0.x + ox * 0.6 + (R - 0.5) * 6, e0.y - eggS * 0.15); ctx.lineTo(e0.x + ox * 0.4, e0.y - eggS * 0.3); ctx.stroke(); } ctx.restore(); }
+        };
+      }
     } else { // glow
       orbIn('hatch_glow', 0.3, 0.8);
       if (T > 0.8) toy.look = { chick: T > 1.05 };
@@ -225,6 +351,40 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
       if (T > 1.6 && T < 2.4) { const e0 = eggAt(eggS * 0.5); toy.flash = { x: e0.x, y: e0.y, k: seg(T, 1.6, 2.4) }; }
       const d = ease(seg(T, 2.4, 3.1)); th = -gap0 * d;
       eD = seg(T, 3.15, 3.55); done = seg(T, 3.55, 3.9);
+    }
+  } else if (m === 'frog' || m === 'fish') { // 2026-11-20: the frog and the fish school on their own game rigs
+    vAlpha = 0; toy = { deco: { thorns: 0 }, look: null };
+    const k = kW;
+    if (m === 'frog') { // it hops into the gap and plugs it; a flaming egg scares it off, the gap is free again
+      const fA0 = -0.62, hop = seg(T, 0.8, 1.25), esc = seg(T, 1.9, 2.5);
+      { const u = ease(seg(T, 1.0, 1.55)), p0 = at(-0.3, eggS * 1.9), p1 = at(0, eggS * 0.55); if (T < 1.6) toy.orb = { type: 'fire_red', x: p0.x + (p1.x - p0.x) * u, y: p0.y + (p1.y - p0.y) * u, a: 1 - seg(T, 1.5, 1.6) }; if (T > 1.55 && T < 2.0) toy.burst = { x: p1.x, y: p1.y, k: seg(T, 1.55, 2.0), col: '#ff8a3a' }; }
+      if (T > 1.55) toy.look = { fire: 1 };
+      const d = ease(seg(T, 2.55, 3.1)); th = -gap0 * d; hand = dragHand(at, T, 2.45, 3.1, 0.5, 0.5 - gap0);
+      eD = seg(T, 3.15, 3.55); done = seg(T, 3.55, 3.9);
+      toy.under = () => {
+        const sPx = FROG.w * FROG_ART * k, op = { face: 1, look: { x: 0.7, y: 0.1 }, id: 3 };
+        let phi = fA0, lift = 0, al = 1;
+        if (T < 0.8) { op.crouch = seg(T, 0.35, 0.8); op.puff = Math.sin(seg(T, 0.4, 0.8) * Math.PI); }
+        else if (T < 1.25) { phi = fA0 + (gap0 - fA0) * ease(hop); lift = Math.sin(hop * Math.PI) * k * 0.8; op.stretch = Math.sin(hop * Math.PI); }
+        else if (T < 1.9) { phi = gap0; lift = -band * 0.35; op.face = -1; op.plug = 1; op.squash = 0.5 * (1 - seg(T, 1.25, 1.45)); op.scared = seg(T, 1.6, 1.75); op.look = { x: 0.8, y: 0.3 }; if (T > 1.75) op.shake = 2; }
+        else { phi = gap0 + 0.7 * esc; lift = Math.sin(esc * Math.PI * 0.7) * k * 1.8 + esc * k * 0.6; op.stretch = Math.min(1, esc * 3); op.scared = 1; al = 1 - seg(T, 2.25, 2.5); }
+        const p = at(phi, lift);
+        ctx.save(); ctx.globalAlpha *= al; ctx.translate(p.x, p.y); ctx.rotate(-phi + (T > 1.9 ? -0.5 * Math.sin(esc * Math.PI) : 0)); drawFrog(ctx, 0, 0, sPx, t, op); ctx.restore();
+      };
+    } else { // the school swims along the channel and carries the egg to the gap
+      const sp = 0.62, ph = (TT) => -1.2 + sp * (TT - 0.2), tDrop = 0.2 + (gap0 - 0.03 + 1.2) / sp;
+      eA = clamp(ph(T) + 0.03, 0, gap0); eD = seg(T, tDrop, tDrop + 0.4); done = seg(T, tDrop + 0.4, tDrop + 0.75);
+      toy.under = () => {
+        const L = FISH.len * 1.4 * k, phS = ph(T);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(225,250,255,0.5)'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1.5, k * 0.03); ctx.setLineDash([k * 0.16, k * 0.22]); ctx.lineDashOffset = -t * k * 0.6;
+        for (let j = 0; j < 2; j++) { ctx.beginPath(); arc(ctx, C, floor - eggS * (0.35 + 0.35 * j), phS - 0.55, phS + 0.05); ctx.stroke(); }
+        ctx.restore();
+        for (let j = 0; j < 7; j++) {
+          const phi = phS - j * 0.075 - (j % 2) * 0.03, lift = eggS * (0.22 + 0.62 * ((j * 0.37) % 1)) + Math.sin(t * 2.2 + j) * eggS * 0.06, p = at(phi, lift);
+          ctx.save(); ctx.globalAlpha *= Math.min(seg(T, 0.1, 0.5), 1 - seg(T, 3.7, 4.2)); drawFish(ctx, p.x, p.y, L, -phi + Math.sin(t * 3 + j) * 0.08, t, { flip: 1, beat: t * 10 + j * 1.3 }); ctx.restore();
+        }
+      };
     }
   } else if (plan.haz === 'door') { // a gate door: turn the shut door under the egg, it slides open, the egg drops
     vAlpha = 0;
@@ -305,6 +465,8 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   }
   // ---- the toys: the orb on its way, the portals (the game's own art through o.world)
   if (toy && toy.orb && toy.orb.a > 0.01) { ctx.save(); ctx.globalAlpha *= toy.orb.a; if (Wd && Wd.orb) Wd.orb(ctx, toy.orb.type, toy.orb.x, toy.orb.y, eggS * 0.42, t); else { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(toy.orb.x, toy.orb.y, eggS * 0.35, 0, TAU); ctx.fill(); } ctx.restore(); }
+  if (toy && toy.orb2 && Wd && Wd.orb) Wd.orb(ctx, toy.orb2.type, toy.orb2.x, toy.orb2.y, eggS * 0.42, t);
+  if (toy && toy.under) toy.under();
   if (toy && toy.portal && Wd && Wd.portal) {
     const P = toy.portal;
     Wd.portal(ctx, P.pin.x, P.pin.y, kW * 0.9, t, false);
@@ -339,6 +501,8 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     drawE(ex, ey, eggS * sq, stone, worry, toy ? toy.look : null);
   }
   }
+  if (toy && toy.over) toy.over();
+  if (toy && toy.word && toy.word.k < 1) { const e0 = at(eA, eggS * 1.6), q = toy.word.k; ctx.save(); ctx.globalAlpha *= 1 - seg(q, 0.7, 1); word(ctx, toy.word.s, clamp(e0.x, x + Z * 0.4, x + w - Z * 0.4), e0.y - q * Z * 0.08, Z * 0.15 * (1 + 0.35 * (1 - seg(q, 0, 0.15))), '#ffe14a', '#8a4a00'); ctx.restore(); }
   if (toy && toy.burst && toy.burst.k < 1) { const B = toy.burst; ctx.save(); ctx.globalAlpha *= 1 - B.k; ctx.strokeStyle = B.col; ctx.lineWidth = Math.max(2, eggS * 0.12 * (1 - B.k)); ctx.beginPath(); ctx.arc(B.x, B.y, eggS * (0.4 + 0.9 * B.k), 0, TAU); ctx.stroke(); ctx.restore(); }
   if (toy && toy.flash) { // the glow chick's flash: a bright ring that sweeps out over the thorns
     const F = toy.flash, R2 = Z * (0.1 + 0.55 * ease(F.k));
@@ -453,4 +617,13 @@ function word(ctx, str, x, y, size, fill, stroke) {
 function tick(ctx, x, y, r) {
   ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fillStyle = '#3cb043'; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke();
   ctx.lineWidth = r * 0.28; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(x - r * 0.45, y); ctx.lineTo(x - r * 0.1, y + r * 0.35); ctx.lineTo(x + r * 0.5, y - r * 0.35); ctx.stroke(); ctx.restore();
+}
+// an overshooting ease (a gate pops open)
+function back01(u) { u = clamp(u, 0, 1); const c = 2.2; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); }
+// the gator on the stage floor at angle phi (the game's rig, render/bayou.js), face +1 = snout to the right
+function gatorAt(ctx, at, phi, face, k, t, o, floor) {
+  const p = at(phi, 0), s = GATOR.L * k * 0.85;
+  ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(-phi + (o.nose || 0) * face); ctx.scale(face, 1);
+  drawGator(ctx, s, t, { walk: 1, bend: floor, ...o });
+  ctx.restore();
 }
