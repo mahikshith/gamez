@@ -29,6 +29,7 @@ const dist = (a, b) => Math.abs(wrapD(a - b));
 const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
 // level fields copied from the spec as they are (not laid out)
 const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'weasel', 'rats', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander', 'octopus', 'chameleon'];
+LEVEL_KEYS.push('softCurtain'); // the level that first teaches the thorn curtain
 LEVEL_KEYS.push('hermit', 'puffer', 'jelly'); // world 8 Coral Reef
 LEVEL_KEYS.push('shape', 'rock', 'spider'); // v4 Shape Lab: vault shape, the rocking vault, the clockwork spider (beetle and jack are laid out below)
 LEVEL_KEYS.push('gator', 'turtle', 'mosquito'); // world 9 Gator Bayou
@@ -96,7 +97,7 @@ function layRing(spec, i, r, R, prev) {
       if (dist(a, BOTTOM) < (i === 0 ? 55 : 42)) continue;
       if (gaps.some((o) => dist(o.a, a) < 75)) continue;
       if (prev && prev.gaps.some((o) => dist(o.a, a) < 30)) continue;
-      let len = xs.length && Math.max(...xs) >= 3 && g === 0 ? 0.7 : GAP_LEN;
+      let len = rs.gapLen || (xs.length && Math.max(...xs) >= 3 && g === 0 ? 0.7 : GAP_LEN); // gapLen: a wider gap (the first-five ladder)
       if ((spec.eggKinds || []).includes('ostrich') && g === nG - 1) len = WIDE_GAP; // the last gap is the ostrich's way down
       gaps.push({ a, x: 1, len });
       ok = true;
@@ -382,7 +383,7 @@ export async function evaluate(spec, L) {
     Object.assign(rec, { roughState: q.state, roughBroken: q.broken });
     if (q.state !== 'won') return fail('rough');
   }
-  const T = { ...L, time: fuse(rec, spec.id) };
+  const T = { ...L, time: fuse(rec, spec) };
   const h = solve(T, { mode: 'hard' }), e = solve(T, { mode: 'easy' });
   Object.assign(rec, { hard: h.state === 'won' ? (h.broken === 0 ? 2 : 1) : 0, hardT: h.t, easy: e.state === 'won' ? (e.broken === 0 ? 2 : 1) : 0, secs: Math.round((Date.now() - t0) / 1000) });
   // Easy must be clearable for 2 stars (no broken egg): the star gates (I5) count on it
@@ -448,9 +449,12 @@ function pick(id, found) {
 }
 
 // the fuse: generous on L1-L2, tight from L3 (F30). Easy/Hard scale it at run time.
-function fuse(c, id) {
-  const t = id <= 2 ? c.plannerT * 3 + 25 : c.plannerT * 2.2 + 15;
-  return Math.max(id <= 2 ? 45 : 30, Math.min(160, Math.round(t / 5) * 5));
+// spec.noFuse: no clock at all (time 0: the sim, HUD and goals run without one); spec.fuseX stretches it (the first five)
+function fuse(c, spec) {
+  const id = spec.id;
+  if (spec.noFuse) return 0;
+  const t = (id <= 2 ? c.plannerT * 3 + 25 : c.plannerT * 2.2 + 15) * (spec.fuseX || 1);
+  return Math.max(id <= 2 ? 45 : 30, Math.min(spec.fuseX ? 240 : 160, Math.round(t / 5) * 5));
 }
 
 function writeLevels(chosen) {
@@ -513,7 +517,7 @@ async function main() {
       if (k === 'bonus' && c.level.bonus && spec.bonus && c.level.bonus.kind === spec.bonus.kind) continue; // keeps the n / s found by the planner
       if (spec[k] !== undefined) c.level[k] = spec[k]; else delete c.level[k];
     }
-    c.level.time = fuse(c, spec.id); // seed stays: it seeds the sim's rng (weather, debris), so play matches validation
+    c.level.time = fuse(c, spec); // seed stays: it seeds the sim's rng (weather, debris), so play matches validation
     chosen.push(c.level);
     report.push(`L${spec.id}: kept ${found.length}, seed ${c.seed}, stars ${c.stars}, planner ${c.plannerT}s/${c.moves} moves, exploit ${c.exploit}, hard ${c.hard} (${c.hardT}s), easy ${c.easy}, fuse ${c.level.time}s, hardness ${hardness(c).toFixed(1)}`);
   }
@@ -535,7 +539,7 @@ async function daily(n, tries, jobs, assembleOnly) {
     const f = join(OUT_DIR, `D${k}.json`);
     const c = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8'))[0] : null;
     if (!c) continue;
-    c.level.time = fuse(c, 10);
+    c.level.time = fuse(c, { id: 10 });
     levels.push(c.level);
   }
   const rows = levels.map((L) => '  ' + JSON.stringify(L).replace(/"(\w+)":/g, '$1: ')).join(',\n');

@@ -3,11 +3,14 @@ package com.eggscape.game;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.Display;
 import android.view.DisplayCutout;
 import android.view.View;
 import android.view.WindowInsets;
@@ -23,13 +26,18 @@ import android.widget.Toast;
 
 import androidx.webkit.WebViewAssetLoader;
 
+import java.io.ByteArrayInputStream;
+
 public class MainActivity extends Activity {
-    private static final int BG = Color.parseColor("#1b1410");
+    /** the game is served from the APK's assets under this host; nothing else may load in the WebView (it carries the bridge) */
+    private static final String HOST = "appassets.androidplatform.net";
+    private static final int BG = Color.parseColor("#428abe");
     private WebView web;
     private long lastBack = 0;
     private Vibrator vib;
     private String lastSafe = "";
     private WindowInsets lastInsets;
+    private Monetization money;
 
     /** JS bridge: window.EggApp.vibrate(ms) */
     public class Bridge {
@@ -39,6 +47,120 @@ public class MainActivity extends Activity {
             if (ms > 500) ms = 500;
             if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE));
             else vib.vibrate(ms);
+        }
+        /** ads and in-app products (src/ads.js): each answers later through window.__eggAd / __eggBuy / __eggGrant */
+        @JavascriptInterface public void showRewarded(String tag, String id) { if (money != null) money.showRewarded(tag, id); }
+        @JavascriptInterface public void showInterstitial(String id) { if (money != null) money.showInterstitial(id); }
+        @JavascriptInterface public void buy(String sku, String id) { if (money != null) money.buy(sku, id); }
+        @JavascriptInterface public void restorePurchases() { if (money != null) money.restore(); }
+        /** the age question answered "Under 13": child-directed ad requests (remembered by the shell) */
+        @JavascriptInterface public void setChildSafe(boolean on) { if (money != null) money.setChildSafe(on); }
+        /** the speed log (src/diag.js): what Android knows about this phone right now, as JSON; full adds the parts that never change */
+        @JavascriptInterface public String deviceInfo(boolean full) { return deviceInfoJson(full); }
+        /** the speed log as a text file: saved to Downloads/Eggscape (Android 10+) and handed to the share sheet. Nothing is sent by the app itself. */
+        @JavascriptInterface public void shareLog(final String name, final String text) {
+            runOnUiThread(new Runnable() { @Override public void run() { shareLogNow(name, text); } });
+        }
+    }
+
+    // ---- the speed log's Android side (0.8.7): read-only facts about the phone, and the share sheet
+    private volatile int trimCount = 0, lastTrim = 0;
+    /** Android asking apps to give memory back: a phone under memory pressure stutters, so the log counts these */
+    @Override public void onTrimMemory(int level) { super.onTrimMemory(level); trimCount++; lastTrim = level; }
+
+    private String deviceInfoJson(boolean full) {
+        org.json.JSONObject o = new org.json.JSONObject();
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                o.put("powerSave", pm.isPowerSaveMode() ? 1 : 0);
+                if (Build.VERSION.SDK_INT >= 29) o.put("thermal", pm.getCurrentThermalStatus()); // 0 none .. 3 severe .. 6 shutdown
+            }
+            android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                o.put("availMb", mi.availMem / 1048576L);
+                o.put("lowMem", mi.lowMemory ? 1 : 0);
+                if (full) { o.put("totalMb", mi.totalMem / 1048576L); o.put("memClass", am.getMemoryClass()); o.put("lowRam", am.isLowRamDevice() ? 1 : 0); }
+            }
+            o.put("trim", trimCount);
+            o.put("trimLevel", lastTrim);
+            android.os.BatteryManager bm = (android.os.BatteryManager) getSystemService(Context.BATTERY_SERVICE);
+            if (bm != null) { o.put("battery", bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)); o.put("charging", bm.isCharging() ? 1 : 0); }
+            Display d = Build.VERSION.SDK_INT >= 30 ? getDisplay() : getWindowManager().getDefaultDisplay();
+            if (d != null) o.put("hz", Math.round(d.getRefreshRate() * 10f) / 10.0);
+            Runtime rt = Runtime.getRuntime();
+            o.put("javaHeapMb", (rt.totalMemory() - rt.freeMemory()) / 1048576L);
+            if (full) {
+                o.put("maker", Build.MANUFACTURER);
+                o.put("model", Build.MODEL);
+                o.put("device", Build.DEVICE);
+                o.put("hardware", Build.HARDWARE);
+                o.put("board", Build.BOARD);
+                o.put("android", Build.VERSION.RELEASE);
+                o.put("sdk", Build.VERSION.SDK_INT);
+                if (Build.VERSION.SDK_INT >= 31) { o.put("socMaker", Build.SOC_MANUFACTURER); o.put("soc", Build.SOC_MODEL); }
+                o.put("cores", rt.availableProcessors());
+                org.json.JSONArray mhz = new org.json.JSONArray(); // each core's top speed: shows the big and the small cores
+                for (int i = 0; i < 16; i++) {
+                    java.io.File f = new java.io.File("/sys/devices/system/cpu/cpu" + i + "/cpufreq/cpuinfo_max_freq");
+                    if (!f.exists()) break;
+                    java.io.BufferedReader br = null;
+                    try { br = new java.io.BufferedReader(new java.io.FileReader(f)); String ln = br.readLine(); if (ln != null) mhz.put(Integer.parseInt(ln.trim()) / 1000); }
+                    catch (Exception e) { break; }
+                    finally { if (br != null) try { br.close(); } catch (Exception e) { /* closed */ } }
+                }
+                if (mhz.length() > 0) o.put("cpuMhz", mhz);
+                if (d != null) {
+                    org.json.JSONArray modes = new org.json.JSONArray();
+                    for (Display.Mode m : d.getSupportedModes()) modes.put(m.getPhysicalWidth() + "x" + m.getPhysicalHeight() + "@" + Math.round(m.getRefreshRate()));
+                    o.put("modes", modes);
+                    Display.Mode cur = d.getMode();
+                    o.put("mode", cur.getPhysicalWidth() + "x" + cur.getPhysicalHeight() + "@" + Math.round(cur.getRefreshRate()));
+                }
+                o.put("density", (double) getResources().getDisplayMetrics().density);
+                if (Build.VERSION.SDK_INT >= 26) { android.content.pm.PackageInfo wv = WebView.getCurrentWebViewPackage(); if (wv != null) o.put("webview", wv.packageName + " " + wv.versionName); }
+                o.put("app", getPackageManager().getPackageInfo(getPackageName(), 0).versionName);
+            }
+        } catch (Throwable e) {
+            try { o.put("err", String.valueOf(e)); } catch (Exception e2) { /* nothing to add */ }
+        }
+        return o.toString();
+    }
+
+    private void shareLogNow(String name, String text) {
+        try {
+            if (name == null || !name.matches("[A-Za-z0-9._-]{1,80}")) name = "eggscape-log.txt";
+            if (text == null) text = "";
+            if (text.length() > 2000000) text = text.substring(text.length() - 2000000);
+            Uri uri = null;
+            if (Build.VERSION.SDK_INT >= 29) { // our own file in Downloads/Eggscape: no permission needed, and the tester can find it again
+                android.content.ContentValues cv = new android.content.ContentValues();
+                cv.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+                cv.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+                cv.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Eggscape");
+                uri = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                if (uri != null) {
+                    java.io.OutputStream os = getContentResolver().openOutputStream(uri);
+                    if (os == null) uri = null;
+                    else { try { os.write(text.getBytes("UTF-8")); } finally { os.close(); } }
+                }
+            }
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            send.putExtra(Intent.EXTRA_SUBJECT, name);
+            if (uri != null) {
+                send.putExtra(Intent.EXTRA_STREAM, uri);
+                send.setClipData(android.content.ClipData.newRawUri(name, uri));
+                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } else {
+                send.putExtra(Intent.EXTRA_TEXT, text.length() > 60000 ? text.substring(text.length() - 60000) : text); // older Android: the newest part as plain text
+            }
+            startActivity(Intent.createChooser(send, "Send the Eggscape speed log"));
+            if (uri != null) Toast.makeText(this, "Also saved in Downloads/Eggscape", Toast.LENGTH_LONG).show();
+        } catch (Throwable e) {
+            Toast.makeText(this, "Could not share the log", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -54,6 +176,9 @@ public class MainActivity extends Activity {
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(this)).build();
 
+        // 2026-11-20: test (debug) builds can be traced from a computer (chrome://inspect, Performance tab) to see where a
+        // real phone spends its frame time; release builds never allow it
+        if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) WebView.setWebContentsDebuggingEnabled(true);
         web = new WebView(this);
         web.setBackgroundColor(BG);
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -62,7 +187,7 @@ public class MainActivity extends Activity {
         web.setLongClickable(false);
         web.setHapticFeedbackEnabled(false);
         web.setOnLongClickListener(v -> true);
-        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        // 2026-11-19 speed pass: no hardware layer on the WebView (it drew every frame into an extra offscreen buffer first; WebView already draws straight to the GPU)
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -72,11 +197,33 @@ public class MainActivity extends Activity {
         s.setDisplayZoomControls(false);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
+        s.setAllowFileAccessFromFileURLs(false);
+        s.setAllowUniversalAccessFromFileURLs(false);
+        s.setGeolocationEnabled(false);
+        s.setSaveFormData(false);
+        s.setJavaScriptCanOpenWindowsAutomatically(false);
+        s.setSupportMultipleWindows(false);
+        if (Build.VERSION.SDK_INT >= 26) s.setSafeBrowsingEnabled(true);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         web.addJavascriptInterface(new Bridge(), "EggApp");
         web.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
-                return loader.shouldInterceptRequest(r.getUrl());
+                // security: the game is fully offline. Only our own assets load; any other request (a stray link, an injected
+                // script, a tracker) gets an empty 403 instead of reaching the network with the EggApp bridge on the page.
+                Uri u = r.getUrl();
+                if (u != null && HOST.equals(u.getHost()) && "https".equals(u.getScheme())) return loader.shouldInterceptRequest(u);
+                if (u != null && ("data".equals(u.getScheme()) || "blob".equals(u.getScheme()))) return null;
+                return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", null, new ByteArrayInputStream(new byte[0]));
+            }
+            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                // security: the WebView never leaves the game. A web link (store page, privacy policy) opens in the browser;
+                // every other scheme (intent:, file:, javascript:) is dropped.
+                Uri u = r.getUrl();
+                if (u != null && HOST.equals(u.getHost()) && "https".equals(u.getScheme())) return false;
+                if (u != null && r.isForMainFrame() && r.hasGesture() && ("https".equals(u.getScheme()) || "http".equals(u.getScheme()))) {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, u).addCategory(Intent.CATEGORY_BROWSABLE)); } catch (Exception e) { /* no browser */ }
+                }
+                return true;
             }
             @Override public void onPageFinished(WebView v, String url) { lastSafe = ""; pushSafe(); }
         });
@@ -84,9 +231,14 @@ public class MainActivity extends Activity {
         web.setOnApplyWindowInsetsListener((v, ins) -> { lastInsets = ins; pushSafe(); return v.onApplyWindowInsets(ins); });
         web.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> { if (r - l != or - ol || bt - t != ob - ot) v.post(this::pushSafe); });
         setContentView(web);
+        // 2026-11-20 speed: the WebView covers the window and paints its own background, so the window's background
+        // (a full-screen fill under it on every frame) is dropped. The launch preview still uses the theme colour.
+        w.setBackgroundDrawable(null);
+        prefer60Hz();
+        money = new Monetization(this, web);
         hideBars();
-        if (b == null) web.loadUrl("https://appassets.androidplatform.net/index.html");
-        else web.restoreState(b);
+        // always start from our own page (restoreState could bring back any URL the saved state held)
+        web.loadUrl("https://" + HOST + "/index.html");
     }
 
     /**
@@ -120,6 +272,35 @@ public class MainActivity extends Activity {
         return new int[] { Math.round(t / d), Math.round(b / d), Math.round(l / d), Math.round(r / d) };
     }
 
+    /**
+     * 2026-11-20 (mykee's 90 Hz flagship stuttered): the game never draws faster than 60 fps, but on a 90 Hz screen 60
+     * fps cannot be shown evenly, so it drew every 11 ms refresh (or every second one, 45 fps, whenever a frame ran
+     * long) and the physics, which steps in 8.3 ms, moved things by 1 and 2 steps in turn. Asking the screen for its
+     * 60 Hz mode (same resolution) gives every frame 16.7 ms, even motion, and saves battery. The system may ignore the
+     * wish (battery saver, some makers); the game measures the real rate either way.
+     */
+    private void prefer60Hz() {
+        if (Build.VERSION.SDK_INT < 23) return;
+        try {
+            Display d;
+            if (Build.VERSION.SDK_INT >= 30) d = getDisplay();
+            else d = getWindowManager().getDefaultDisplay();
+            if (d == null) return;
+            Display.Mode cur = d.getMode(), best = null;
+            for (Display.Mode m : d.getSupportedModes()) {
+                if (m.getPhysicalWidth() != cur.getPhysicalWidth() || m.getPhysicalHeight() != cur.getPhysicalHeight()) continue;
+                float hz = m.getRefreshRate();
+                if (hz < 59f || hz > 61f) continue;
+                best = m;
+            }
+            if (best == null) return;
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.preferredDisplayModeId = best.getModeId();
+            lp.preferredRefreshRate = best.getRefreshRate();
+            getWindow().setAttributes(lp);
+        } catch (Exception e) { /* keep the screen's own rate */ }
+    }
+
     private void pushSafe() {
         if (web == null) return;
         int[] s = safeInsetsPx();
@@ -140,11 +321,22 @@ public class MainActivity extends Activity {
 
     @Override public void onConfigurationChanged(android.content.res.Configuration c) { super.onConfigurationChanged(c); lastSafe = ""; lastInsets = null; web.post(this::pushSafe); }
 
-    @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); web.saveState(o); }
+    @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); } // the game keeps its own save (localStorage)
 
-    @Override protected void onPause() { web.onPause(); web.pauseTimers(); super.onPause(); }
+    /*
+     * 0.8.2 (mykee: the test ads never showed their close X, even after 30 s): WebView.pauseTimers() is GLOBAL. It froze
+     * the JavaScript of every WebView in the app, and AdMob's full-screen ads are WebViews too. The moment an ad opened
+     * over the game, this onPause froze the ad's own countdown, so "Reward in 8 seconds" never ticked and the close X
+     * never came. onPause now pauses only the game's page (it stops drawing and the game mutes itself on
+     * visibilitychange); the global freeze runs only when the app really goes to the background with no ad up.
+     */
+    @Override protected void onPause() { web.onPause(); super.onPause(); }
 
-    @Override protected void onResume() { super.onResume(); web.onResume(); web.resumeTimers(); hideBars(); }
+    @Override protected void onStop() { if (money == null || !money.adShowing()) web.pauseTimers(); super.onStop(); }
+
+    @Override protected void onStart() { super.onStart(); web.resumeTimers(); }
+
+    @Override protected void onResume() { super.onResume(); web.onResume(); web.resumeTimers(); hideBars(); if (money != null) money.onHostResume(); }
 
     @Override protected void onDestroy() { web.destroy(); super.onDestroy(); }
 

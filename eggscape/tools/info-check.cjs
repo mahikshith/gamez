@@ -100,11 +100,13 @@ function scan(L, where, INFO) {
     const runs = [...LEVELS.map((L, i) => ({ id: 'L' + (i + 1), i })), ...labs.map((k) => ({ id: 'demo:' + k, demo: k })), ...wonders.map((k) => ({ id: 'wonder:' + k, demo: k, wonder: 1 }))];
     for (const R of runs) {
       const r = await p.evaluate(async (R) => {
-        const E = __egg, G = E.G;
+        const E = __egg, G = E.G; E.save.seen.pickN = 5; // past the first-timer chick pick (PLAY would open the Chicks tab)
         if (R.wonder) E.startDemo(R.demo); else if (R.demo) { G.screen = 'practice'; await E.press('demo:' + R.demo); } else E.start(R.i); // a practice tile, as the Practice screen opens it
         if (!R.wonder) E.press('go');
         for (let k = 0; k < 30; k++) E.frame(1 / 60);
-        const hud = !R.wonder && E.uiRect('btn:info'); // the HUD button is there when (and only when) the list is not empty
+        // 2026-11-19: no HUD "i" any more; the pause page lists the villains (checked: same kinds, no overlaps)
+        let pk = null, pov = [];
+        if (!R.wonder && G.screen === 'play') { E.press('pause'); for (let k = 0; k < 20; k++) E.frame(1 / 60); pk = (G.pauseKinds || []).slice(); pov = E.overlaps(); E.press('resume'); for (let k = 0; k < 3; k++) E.frame(1 / 60); }
         const kinds = R.wonder ? E.openInfo() : G.infoKinds.slice();
         if (!R.wonder) { if (kinds.length) E.press('info'); else E.openInfo(); }
         let ov = [];
@@ -112,13 +114,14 @@ function scan(L, where, INFO) {
         const S = G.iscroll; S.y = S.max; E.frame(1 / 60); ov = ov.concat(E.overlaps());
         const screen = G.screen;
         E.press('info:close'); E.frame(1 / 60);
-        return { kinds, hud: !!hud, screen, back: G.screen, missing: kinds.filter((k) => !E.VILLAIN_INFO[k]), ov: ov.map((o) => o.join(' x ')) };
+        return { kinds, pk, pov: pov.map((o) => o.join(' x ')), screen, back: G.screen, missing: kinds.filter((k) => !E.VILLAIN_INFO[k]), ov: ov.map((o) => o.join(' x ')) };
       }, R);
       opened++;
       const where = `${w}x${h} ${R.id}`;
       if (r.screen !== 'info') bad(`${where}: the panel did not open (screen ${r.screen})`);
       if (r.missing.length) bad(`${where}: kinds missing from the table: ${r.missing.join(', ')}`);
-      if (!R.wonder && r.hud !== r.kinds.length > 0) bad(`${where}: HUD "i" shown=${r.hud} but ${r.kinds.length} kinds`);
+      if (r.pk && r.R !== 0 && R.i !== undefined && r.pk.length !== r.kinds.filter((k) => k).length && r.pk.length < 8) bad(`${where}: pause page lists ${r.pk.length} villains, the panel ${r.kinds.length}`);
+      if (r.pov && r.pov.length) bad(`${where}: pause page overlaps: ${r.pov.join('; ')}`);
       if (r.ov.length) bad(`${where}: overlaps: ${r.ov.join('; ')}`);
       const exp = expect[R.id];
       if (exp) for (const k of exp) if (!r.kinds.includes(k)) bad(`${where}: the level has "${k}" but the panel does not list it`);

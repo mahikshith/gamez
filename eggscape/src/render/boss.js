@@ -454,7 +454,22 @@ function drawStar(ctx, x, y, r, col) {
 
 // the bar's portrait chip: a small code-drawn emblem per boss (screen space, y down)
 const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78', kingcrab: '#1f6a96', owl: '#1d3a5c', gator: '#2f5a3a' };
+// The chip is tiny but redraws a whole character; keep it on an offscreen canvas and refresh it ~12x a second.
+const EMB = new Map();
 function drawBossEmblem(ctx, kind, cx, cy, d, t) {
+  const sc = Math.max(1, ctx.getTransform().a), S = Math.ceil(d * sc) + 4, key = kind + '|' + S;
+  let E = EMB.get(key);
+  if (!E) { const c = document.createElement('canvas'); c.width = c.height = S; EMB.set(key, (E = { c, t: -9 })); }
+  if (t - E.t > 1 / 12 || t < E.t) {
+    const g = E.c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, S, S);
+    g.setTransform(sc, 0, 0, sc, S / 2, S / 2);
+    drawBossEmblemLive(g, kind, 0, 0, d, t);
+    E.t = t;
+  }
+  ctx.drawImage(E.c, cx - S / sc / 2, cy - S / sc / 2, S / sc, S / sc);
+}
+function drawBossEmblemLive(ctx, kind, cx, cy, d, t) {
   const r = d / 2;
   ctx.save();
   ctx.beginPath();
@@ -544,8 +559,9 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   const ic = h * 1.15;
   drawBossEmblem(ctx, B.kind, x + ic * 0.45, y + h / 2, ic, t);
   const title = BOSS_TITLE[B.kind] || 'Boss';
-  const nameX = x + ic * 0.95, nameW = Math.min(w * 0.34, ui.measure(title, 13 * u) + 4);
-  ui.text(title, nameX, y + h / 2, { size: 13 * u, maxW: nameW, color: '#ffe3b0', stroke: 'rgba(0,0,0,0.6)', tag: 'hud:bossName' });
+  const slim = w < 230 * u; // beside the egg tray (2026-11-19): no name, the emblem says who it is
+  const nameX = x + ic * 0.95, nameW = slim ? 0 : Math.min(w * 0.34, ui.measure(title, 13 * u) + 4);
+  if (!slim) ui.text(title, nameX, y + h / 2, { size: 13 * u, maxW: nameW, color: '#ffe3b0', stroke: 'rgba(0,0,0,0.6)', tag: 'hud:bossName' });
   // phase segments
   const bx = nameX + nameW + 8 * u, bw = x + w - 6 * u - bx, by = y + h * 0.22, bh = h * 0.56, gap = 4 * u;
   const F = (B.den && sim.thiefBoss && sim.thiefBoss()) || (B.kind === 'gator' && sim.gatorBossBar && sim.gatorBossBar()); // v3.7: Grandpa's teeth
@@ -584,37 +600,5 @@ function drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t) {
   ui.text(label, bx + bw / 2, y + h / 2, { size: 12 * u, align: 'center', maxW: bw - 8 * u, color: '#fff', stroke: 'rgba(0,0,0,0.75)', tag: 'hud:bossPhase' });
 }
 
-// ---------- magnet (v3.1): no tether line. Each egg of a magnet pair wears a pulsing horseshoe field: thin arcs
-// that ripple outward on the side facing its partner, red at one tip and blue at the other.
-export function drawMagnetField(ctx, sim, t) {
-  for (const e of sim.aliveEggs()) {
-    if (!(e.magnet > 0) || !e.joint) continue;
-    const o = e.joint.a === e ? e.joint.b : e.joint.a;
-    if (!o || !o.alive || o.saved || !o.body) continue;
-    const p = e.body.getPosition(), q = o.body.getPosition(), dir = Math.atan2(q.y - p.y, q.x - p.x);
-    const fade = Math.min(1, e.magnet / 0.6);
-    ctx.save();
-    ctx.lineCap = 'round';
-    for (let i = 0; i < 3; i++) {
-      const f = (t * 0.9 + i / 3 + (e.id % 2) * 0.17) % 1, R = 0.33 + 0.34 * f, span = 1.0 - 0.35 * f;
-      ctx.globalAlpha = fade * (1 - f) * 0.9;
-      ctx.lineWidth = 0.028 * (1 - 0.4 * f);
-      ctx.strokeStyle = '#ff4f5e';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, R, dir - span, dir);
-      ctx.stroke();
-      ctx.strokeStyle = '#4f8dff';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, R, dir, dir + span);
-      ctx.stroke();
-      // tips
-      for (const [a, c] of [[dir - span, '#ff4f5e'], [dir + span, '#4f8dff']]) {
-        ctx.fillStyle = c;
-        ctx.beginPath();
-        ctx.arc(p.x + R * Math.cos(a), p.y + R * Math.sin(a), 0.03 * (1 - 0.4 * f), 0, TAU);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-  }
-}
+// ---------- magnet: its look moved to render/magnet.js (2026-11-20 redesign)
+export { drawMagnetField } from './magnet.js';

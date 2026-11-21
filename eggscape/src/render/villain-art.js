@@ -35,35 +35,43 @@ function chip(ctx, cx, cy, r, col) {
   ctx.lineWidth = Math.max(1, r * 0.1); ctx.strokeStyle = '#ffe3b0'; ctx.stroke();
 }
 
+// a snake's spine through a coil of control points (box units, head first), smoothed (Catmull-Rom), centred on x, y;
+// dir -1 mirrors it
+const S_COIL = [[-0.04, -0.2], [0.14, -0.22], [0.3, -0.1], [0.14, 0.04], [-0.14, 0.02], [-0.3, 0.16], [-0.12, 0.3], [0.18, 0.3], [0.34, 0.22]];
+function coil(x, y, d, C, dir) {
+  const out = [], P = C.map(([a, b]) => [x + a * d * dir, y + b * d]);
+  for (let i = 0; i < P.length - 1; i++) {
+    const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(P.length - 1, i + 2)];
+    for (let k = 0; k < 6; k++) { const u = k / 6, u2 = u * u, u3 = u2 * u; out.push({ x: 0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * u + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * u2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * u3), y: 0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * u + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * u2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * u3) }); }
+  }
+  out.push({ x: P[P.length - 1][0], y: P[P.length - 1][1] });
+  return out;
+}
+
 const ART = {
-  snake(ctx, x, y, d, t) {
-    const pts = [];
-    for (let i = 0; i <= 24; i++) { const u = i / 24; pts.push({ x: x + d * (0.08 - 0.5 * u), y: y - d * 0.08 + Math.sin(u * 5.2 + 0.4) * d * 0.14 + u * d * 0.14 }); }
-    drawSnake(ctx, pts, d * 0.06, t, { skin: 'violet' });
+  // 2026-11-19 (mykee: "only the head and a bit of tail"): the whole snake, coiled in an S inside the box, head up
+  snake(ctx, x, y, d, t) { drawSnake(ctx, coil(x, y + d * 0.05, d * 0.94, S_COIL, 1), d * 0.044, t, { skin: 'violet', look: { x: 0.3, y: 0.6 } }); },
+  'boss:snake'(ctx, x, y, d, t) { // the big one coiled in front, the small fast one curled behind it
+    drawSnake(ctx, coil(x + d * 0.22, y - d * 0.2, d * 0.44, S_COIL, -1), d * 0.026, t, { skin: 'emerald' });
+    drawSnake(ctx, coil(x - d * 0.02, y + d * 0.1, d * 0.8, S_COIL, 1), d * 0.052, t, { skin: 'violet' });
   },
-  'boss:snake'(ctx, x, y, d, t) {
-    const big = [], small = [];
-    for (let i = 0; i <= 24; i++) { const u = i / 24; big.push({ x: x + d * (0.06 - 0.5 * u), y: y + d * 0.14 + Math.sin(u * 5 + 0.3) * d * 0.08 }); }
-    for (let i = 0; i <= 16; i++) { const u = i / 16; small.push({ x: x + d * (-0.34 + 0.44 * u), y: y - d * 0.22 + Math.sin(u * 6 + 1) * d * 0.05 }); }
-    drawSnake(ctx, small, d * 0.035, t, { skin: 'emerald' });
-    drawSnake(ctx, big, d * 0.07, t, { skin: 'violet' });
-  },
-  weasel(ctx, x, y, d, t) { const s = d * 0.5; drawThief(ctx, x - d * 0.04, y + d * 0.22, s, t, thiefPose('weasel', 'idle', t), { face: 1 }, 'weasel'); },
+
+  weasel(ctx, x, y, d, t) { const s = d * 0.5; drawThief(ctx, x - d * 0.14, y + d * 0.18, s, t, thiefPose('weasel', 'idle', t), { face: 1 }, 'weasel'); },
   rats(ctx, x, y, d, t) {
     const s = d * 0.38;
     drawThief(ctx, x - d * 0.16, y + d * 0.12, s, t + 0.7, thiefPose('rat', 'idle', t + 0.7), { face: 1 }, 'rat');
     drawThief(ctx, x + d * 0.08, y + d * 0.32, s, t, thiefPose('rat', 'idle', t), { face: 1 }, 'rat');
   },
-  'boss:weasel'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.22, y - d * 0.04); drawThiefEmblem(ctx, 'weasel', d * 0.62, t); ctx.restore(); },
-  'boss:ratking'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.2, y - d * 0.06); drawThiefEmblem(ctx, 'ratking', d * 0.56, t); ctx.restore(); },
+  'boss:weasel'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.08, y - d * 0.02); drawThiefEmblem(ctx, 'weasel', d * 0.5, t); ctx.restore(); },
+  'boss:ratking'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.08, y - d * 0.02); drawThiefEmblem(ctx, 'ratking', d * 0.48, t); ctx.restore(); },
   octopus(ctx, x, y, d, t) { drawOctopus(ctx, x, y - d * 0.08, d * 0.3, t, {}); },
   fish(ctx, x, y, d, t) {
     const L = d * 0.3;
     [[-0.2, -0.16, 0], [0.16, -0.02, 1.3], [-0.12, 0.2, 2.1]].forEach(([fx, fy, ph]) => drawFish(ctx, x + fx * d + Math.sin(t * 1.3 + ph) * d * 0.03, y + fy * d, L, 0, t + ph, { flip: 1 }));
   },
   frog(ctx, x, y, d, t) { drawFrog(ctx, x, y + d * 0.3, d * 0.8, t, { look: { x: 0.4, y: 0.1 }, face: 1 }); },
-  eagle(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.06, d * 0.42, t, { w: { hover: 1 }, phase: t * 8.5, face: 1 }); },
-  'boss:eagle'(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.06, d * 0.46, t, { w: { hover: 1 }, phase: t * 8.5, face: -1 }); },
+  eagle(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.08, d * 0.54, t, { w: { hover: 1 }, phase: t * 8.5, face: 1 }); },
+  'boss:eagle'(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.08, d * 0.56, t, { w: { hover: 1 }, phase: t * 8.5, face: -1 }); },
   salamander(ctx, x, y, d, t) {
     const S = d * 0.4;
     drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9101 });
@@ -76,19 +84,19 @@ const ART = {
   puffer(ctx, x, y, d, t) { drawPuffer(ctx, x, y, d * 0.62, t, { sw: 0.5 + 0.5 * Math.sin(t * 1.4) }); },
   jelly(ctx, x, y, d, t) { drawJelly(ctx, x, y - d * 0.12, d * 0.72, t, {}); },
   gator(ctx, x, y, d, t) { ctx.save(); ctx.translate(x - d * 0.1, y + d * 0.16); drawGator(ctx, d * 0.86, t, { jaw: 0.35 + 0.15 * Math.sin(t * 1.6), eye: 'open', look: -0.4 }); ctx.restore(); },
-  'boss:gator'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawGatorEmblem(ctx, d * 0.5, t); ctx.restore(); },
+  'boss:gator'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.08, y); drawGatorEmblem(ctx, d * 0.42, t); ctx.restore(); },
   turtle(ctx, x, y, d, t) { ctx.save(); ctx.translate(x - d * 0.04, y + d * 0.18); drawTurtle(ctx, d * 0.84, t, { head: 0.1 + 0.1 * Math.sin(t * 1.5), glare: 1 }); ctx.restore(); },
   mosquito(ctx, x, y, d, t) { drawSwarm(ctx, x, y, d * 0.3, t, {}); },
-  spider(ctx, x, y, d, t) { drawCwIntro(ctx, 'spider', x - d / 2, y - d / 2, d, d * 0.9, t); },
-  beetle(ctx, x, y, d, t) { drawCwIntro(ctx, 'beetle', x - d / 2, y - d * 0.36, d, d * 0.5, t); },
-  jack(ctx, x, y, d, t) { drawCwIntro(ctx, 'jack', x - d / 2, y - d * 0.45, d, d * 0.8, t); },
+  spider(ctx, x, y, d, t) { drawCwIntro(ctx, 'spider', x - d * 0.42, y - d * 0.4, d * 0.84, d * 0.74, t); },
+  beetle(ctx, x, y, d, t) { drawCwIntro(ctx, 'beetle', x - d * 0.52, y - d * 0.4, d * 0.8, d * 0.68, t); },
+  jack(ctx, x, y, d, t) { drawCwIntro(ctx, 'jack', x - d / 2, y - d * 0.72, d, d * 1.1, t); },
   'boss:kingcrab'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawKingEmblem(ctx, d * 0.38, t); ctx.restore(); },
   'boss:owl'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y - d * 0.06); drawOwlEmblem(ctx, d * 0.3, t); ctx.restore(); },
   // the boss-bar emblems (render/boss.js drawBossEmblem; that function is not exported, so the two shapes are redrawn here)
-  'boss:blizzard'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawGeckoEmblem(ctx, d * 0.34, t); ctx.restore(); }, // Baron von Brr, the frost gecko
+  'boss:blizzard'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawGeckoEmblem(ctx, d * 0.23, t); ctx.restore(); }, // Baron von Brr, the frost gecko
   'boss:golem'(ctx, x, y, d, t) { const r = d * 0.34; chip(ctx, x, y, r, '#6a4fc8'); ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip(); ctx.translate(x, y); drawThornEmblem(ctx, r, t); ctx.restore(); }, // Duke Quartz
-  chameleon(ctx, x, y, d, t) { const S = d * 0.34; drawCrawler(ctx, x + 0.8 * S, y + d * 0.02, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', look: { x: 0.5, y: 0.4 }, id: 9260 }, 'chameleon'); }, // L26: Sly, the orb thief
-  spike(ctx, x, y, d, t) { const S = d * 0.36; drawCrawler(ctx, x + 0.75 * S, y + d * 0.04, S, t, { heading: 0, curve: -0.14 / S, pose: 'idle', look: { x: 0.4, y: 0.5 }, id: 9120 }, 'thornback'); }, // Spike, the sandy thorn-back
+  chameleon(ctx, x, y, d, t) { const S = d * 0.44; drawCrawler(ctx, x + 0.8 * S, y + d * 0.02, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', look: { x: 0.5, y: 0.4 }, id: 9260 }, 'chameleon'); }, // L26: Sly, the orb thief
+  spike(ctx, x, y, d, t) { const S = d * 0.46; drawCrawler(ctx, x + 0.75 * S, y + d * 0.04, S, t, { heading: 0, curve: -0.14 / S, pose: 'idle', look: { x: 0.4, y: 0.5 }, id: 9120 }, 'thornback'); }, // Spike, the sandy thorn-back
   // ---- hazards: small icons
   icicles(ctx, x, y, d, t) {
     const sh = Math.sin(t * 9) * d * 0.012 * (Math.sin(t * 1.3) > 0.5 ? 1 : 0);
@@ -180,6 +188,14 @@ const ART = {
     ctx.fillStyle = '#c23a3a';
     for (let i = 1; i <= 4; i++) { const u = i / 5 * k, px = x - d * 0.2 + u * d * 0.4, py = y + Math.sin(u * 14) * d * 0.04, s2 = i % 2 ? -1 : 1; ctx.beginPath(); ctx.moveTo(px - d * 0.03, py); ctx.lineTo(px, py + s2 * d * 0.09); ctx.lineTo(px + d * 0.03, py); ctx.closePath(); ctx.fill(); }
     ctx.restore();
+  },
+  doors(ctx, x, y, d, t) { // a ring slab with a gap whose two red doors slide shut and open on a beat
+    const k = Math.max(0, Math.min(1, 0.5 + 0.9 * Math.sin(t * 2.2))), gw = d * 0.3, y0 = y + d * 0.08, h = d * 0.16;
+    ctx.fillStyle = '#b9854e'; ctx.fillRect(x - d * 0.42, y0, d * 0.42 - gw / 2, h); ctx.fillRect(x + gw / 2, y0, d * 0.42 - gw / 2, h);
+    ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1, d * 0.02); ctx.strokeRect(x - d * 0.42, y0, d * 0.42 - gw / 2, h); ctx.strokeRect(x + gw / 2, y0, d * 0.42 - gw / 2, h);
+    const dw = (gw / 2) * k;
+    if (dw > 0.5) for (const sd of [-1, 1]) { const x0 = sd < 0 ? x - gw / 2 : x + gw / 2 - dw; ctx.fillStyle = '#b8432f'; ctx.fillRect(x0, y0, dw, h); ctx.strokeStyle = '#4a140c'; ctx.strokeRect(x0, y0, dw, h); }
+    ctx.fillStyle = '#fff4dc'; ctx.beginPath(); ctx.ellipse(x, y0 - d * 0.16, d * 0.12, d * 0.15, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = INK; ctx.stroke();
   },
   curse(ctx, x, y, d, t) { drawOrb(ctx, 'curse', x, y, d * 0.3, t, true); },
   thornorb(ctx, x, y, d, t) { drawOrb(ctx, 'thorn', x, y, d * 0.3, t, true); },

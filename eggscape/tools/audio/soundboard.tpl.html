@@ -1,0 +1,154 @@
+<title>Eggscape Sound Board</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@400;600;800&display=swap">
+<style>
+  /* Layout: one column of sections; inside each, a wrapping grid of big tap pads. A sticky "now playing" bar at the bottom. */
+  :root {
+    --bg: #fbf6e9; --panel: #fffdf6; --ink: #3a2414; --soft: #7a6350; --line: #e6d9bd;
+    --yolk: #f5a800; --yolk-ink: #3a2414; --comb: #c8321e; --leaf: #2f8f3a; --pad: #f3e7c8; --pad-on: #ffd866;
+    --display: 'Baloo 2', 'Trebuchet MS', system-ui, sans-serif; --body: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #23160d; --panel: #2e1e12; --ink: #fbf1dc; --soft: #c9b394; --line: #4a3423;
+    --yolk: #ffbe2e; --yolk-ink: #2a1a0c; --comb: #ff6a52; --leaf: #6fd27a; --pad: #3a2718; --pad-on: #7a5410; color-scheme: dark } }
+  :root[data-theme="dark"] {
+    --bg: #23160d; --panel: #2e1e12; --ink: #fbf1dc; --soft: #c9b394; --line: #4a3423;
+    --yolk: #ffbe2e; --yolk-ink: #2a1a0c; --comb: #ff6a52; --leaf: #6fd27a; --pad: #3a2718; --pad-on: #7a5410; color-scheme: dark }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.45 var(--body); padding-block: 20px 120px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  h1 { font: 800 2rem/1.05 var(--display); margin: 0; text-wrap: balance; }
+  h2 { font: 800 1.3rem/1.15 var(--display); margin: 0; text-wrap: balance; }
+  p { margin: 0; color: var(--soft); max-width: 62ch; }
+  header { display: flex; flex-direction: column; gap: 6px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 8px; }
+  .tunes { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  button { font: 800 0.95rem/1.2 var(--body); color: var(--ink); border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button:focus-visible { outline: 3px solid var(--leaf); outline-offset: 2px; }
+  .pad { background: var(--pad); border-radius: 12px; padding: 12px 10px; min-height: 48px; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .pad:active, .pad.hit { background: var(--pad-on); }
+  .cell { display: flex; gap: 4px; min-width: 0; }
+  .cell .pad { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .no { background: transparent; border: 1px solid var(--line); border-radius: 12px; width: 44px; flex: none; font-weight: 800; color: var(--soft); }
+  .no[aria-pressed="true"] { background: var(--comb); border-color: var(--comb); color: #fff; }
+  .tune { background: var(--pad); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .tune b { font: 800 1.15rem/1.1 var(--display); }
+  .tune small { color: var(--soft); }
+  .play { background: var(--yolk); color: var(--yolk-ink); border-radius: 999px; padding: 12px 16px; min-height: 48px; font-size: 1rem; }
+  .play.on { background: var(--comb); color: #fff; }
+  .play.old { background: transparent; border: 2px solid var(--line); color: var(--soft); }
+  .play.old.on { background: var(--comb); border-color: var(--comb); color: #fff; }
+  .play.hit { filter: brightness(0.9); }
+  .tune .row .no { min-height: 48px; margin-left: auto; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .tag { font: 800 0.72rem/1 var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--soft); }
+  .vs { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .vs > div { display: flex; flex-direction: column; gap: 8px; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--line);
+    padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  #bar .in { max-width: 860px; margin: 0 auto; display: flex; gap: 10px; align-items: center; }
+  #now { flex: 1; min-width: 0; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #stop { background: var(--ink); color: var(--bg); border-radius: 999px; padding: 10px 16px; min-height: 44px; }
+  #list { font: 600 0.95rem/1.4 var(--body); color: var(--ink); background: var(--pad); border-radius: 12px; padding: 12px; min-height: 48px; user-select: all; overflow-wrap: anywhere; }
+  #copy { background: var(--leaf); color: #fff; border-radius: 999px; padding: 10px 16px; min-height: 44px; }
+</style>
+<main>
+  <header>
+    <h1>Eggscape Sound Board</h1>
+    <p>Every sound in the game, played by the game's own sound engine. Turn your phone's volume up and tap. Mark anything you dislike with the "No" button and the list at the bottom fills in.</p>
+  </header>
+  <section>
+    <h2>Main theme</h2>
+    <p>The home screen and the level map play it, every world quotes its first two bars once a loop, and the level-win fanfare is built on it. On the farm it changes costume from level to level.</p>
+    <div class="tune" id="main"></div>
+    <div class="tunes" id="arrs"></div>
+    <p>The two other candidates, for comparison:</p>
+    <div class="grid" id="others"></div>
+  </section>
+  <section>
+    <h2>The weasel's voice</h2>
+    <div class="vs">
+      <div><span class="tag">Before</span><div class="grid" id="w-old"></div></div>
+      <div><span class="tag">New</span><div class="grid" id="w-new"></div></div>
+    </div>
+  </section>
+  <section>
+    <h2>World music</h2>
+    <p>Every world now has its own written tune that starts with a fanfare at full volume. "New" plays it; "Level 2" is how the next level in that world starts (another lead or key); "Boss" is the boss-level version; "Old" is the music you heard before. Each tune is about 30 seconds and changes its arrangement the second time round.</p>
+    <div class="tunes" id="worlds"></div>
+  </section>
+  <section>
+    <h2>Rebuilt sounds</h2>
+    <p>The 22 sounds you did not like, made again. "New" is the rebuilt one, "Old" is the one you heard before.</p>
+    <div class="tunes" id="rebuilt"></div>
+  </section>
+  <div id="groups" style="display:flex;flex-direction:column;gap:22px"></div>
+  <section>
+    <h2>Sounds you marked "No"</h2>
+    <div id="list">Nothing marked yet.</div>
+    <div class="row"><button id="copy" type="button">Copy the list</button><span id="copied" class="tag" hidden>Copied</span></div>
+  </section>
+</main>
+<div id="bar"><div class="in"><span id="now">Tap a sound</span><button id="stop" type="button">Stop music</button></div></div>
+<script>/*__ENGINE__*/</script>
+<script>/*__OLD_ENGINE__*/</script>
+<script>
+/*__DATA__*/
+const A = EggAudio.audio, OLD = DATA.hasOld && window.EggAudioOld ? EggAudioOld.audio : null, $ = (id) => document.getElementById(id);
+const nice = (n) => { const s = n.replace(/_/g, ' '); return s[0].toUpperCase() + s.slice(1); };
+let playing = null; const no = new Set();
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+function wake(E) { try { E = E || A; E.unlock(); E.setSfx(true); E.setMusic(true); } catch (e) {} }
+function sfx(name, label, btn) { wake(); A.play(name, { intensity: 0.8 }); $('now').textContent = label; btn.classList.add('hit'); setTimeout(() => btn.classList.remove('hit'), 160); }
+function stopMusic() { try { A.stopMusic(); } catch (e) {} try { if (OLD) OLD.stopMusic(); } catch (e) {} if (playing) { playing.btn.classList.remove('on', 'hit'); playing.btn.textContent = playing.idle; } playing = null; }
+function music(spec, label, btn, idle, E) {
+  E = E || A; wake(E); const same = playing && playing.btn === btn; stopMusic(); if (same) { $('now').textContent = 'Stopped'; return; }
+  setTimeout(() => { E.music(spec); }, 60);
+  playing = { btn, idle }; btn.classList.add('on'); btn.textContent = 'Stop'; $('now').textContent = 'Playing: ' + label;
+}
+function noBtn(key, label) {
+  const b = el('button', 'no', 'No'); b.type = 'button'; b.setAttribute('aria-pressed', 'false'); b.setAttribute('aria-label', 'I do not like ' + label);
+  b.onclick = () => { const on = !no.has(label); on ? no.add(label) : no.delete(label); b.setAttribute('aria-pressed', String(on)); $('list').textContent = no.size ? 'I do not like: ' + [...no].join(', ') : 'Nothing marked yet.'; };
+  return b;
+}
+function pad(parent, name, label) {
+  const c = el('div', 'cell'), b = el('button', 'pad', label); b.type = 'button'; b.onclick = () => sfx(name, label, b);
+  c.append(b, noBtn(name, label)); parent.append(c);
+}
+function playBtn(spec, label, text, E) { const b = el('button', 'play', text); b.type = 'button'; b.onclick = () => music(spec, label, b, text, E); return b; }
+{ const M = DATA.main, r = el('div', 'row');
+  r.append(playBtn(M.spec, M.name, 'Play ' + M.name), noBtn('m:main', M.name + ' (main theme)'));
+  $('main').append(el('b', null, M.name), el('small', null, M.info), r); }
+DATA.main.arrs.forEach((a, i) => {
+  const c = el('div', 'tune'), r = el('div', 'row');
+  r.append(playBtn(a.spec, 'Farm level ' + (i + 1) + ': ' + a.name, 'Play'), noBtn('m:arr' + i, 'Farm level ' + (i + 1) + ' (' + a.name + ')'));
+  c.append(el('b', null, 'Farm level ' + (i + 1)), el('small', null, a.info), r); $('arrs').append(c);
+});
+for (const T of DATA.others) { const c = el('div', 'cell'), b = el('button', 'pad', T.name); b.type = 'button'; b.onclick = () => music(T.spec, T.name, b, T.name); c.append(b, noBtn('m:' + T.spec.tune, T.name)); $('others').append(c); }
+for (const [n, l] of DATA.weasel.old) pad($('w-old'), n, l);
+for (const [n, l] of DATA.weasel.neu) pad($('w-new'), n, l);
+for (const W of DATA.worlds) {
+  const c = el('div', 'tune'), r = el('div', 'row');
+  r.append(playBtn(W.spec, W.name + ': ' + W.tune + ' (new)', 'New'));
+  if (W.level2) r.append(playBtn({ ...W.spec, lvl: 2 }, W.name + ': ' + W.tune + ', level 2', 'Level 2'));
+  r.append(playBtn({ ...W.spec, boss: true }, W.name + ': ' + W.tune + ', boss level', 'Boss'));
+  if (OLD && W.old) { const o = playBtn(W.old, W.name + ' (old music)', 'Old', OLD); o.classList.add('old'); r.append(o); }
+  r.append(noBtn('m:' + W.id, W.name + ' music'));
+  c.append(el('b', null, W.name), el('small', null, W.tune + ' · ' + W.info), r); $('worlds').append(c);
+}
+for (const n of DATA.rebuilt) {
+  const c = el('div', 'tune'), r = el('div', 'row'), b = el('button', 'play', 'New'), o = el('button', 'play old', 'Old');
+  b.type = o.type = 'button'; b.onclick = () => sfx(n, nice(n) + ' (new)', b); o.onclick = () => sfx(n + '_old', nice(n) + ' (old)', o);
+  r.append(b, o, noBtn(n, nice(n))); c.append(el('b', null, nice(n)), r); $('rebuilt').append(c);
+}
+for (const [title, names] of DATA.groups) {
+  const s = el('section'), g = el('div', 'grid'); s.append(el('h2', null, title), g);
+  for (const n of names) pad(g, n, nice(n)); $('groups').append(s);
+}
+$('stop').onclick = () => { stopMusic(); document.querySelectorAll('.pad.on').forEach((p) => p.classList.remove('on', 'hit')); $('now').textContent = 'Stopped'; };
+$('copy').onclick = () => {
+  const t = $('list').textContent, done = () => { $('copied').hidden = false; setTimeout(() => { $('copied').hidden = true; }, 1500); };
+  try { navigator.clipboard.writeText(t).then(done, () => { const r = document.createRange(); r.selectNodeContents($('list')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }); } catch (e) { const r = document.createRange(); r.selectNodeContents($('list')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+};
+</script>

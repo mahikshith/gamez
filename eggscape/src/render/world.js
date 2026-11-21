@@ -1,4 +1,5 @@
 // Draws the playfield in world space: ctx is pre-transformed (meters, y up).
+import { stamp, stampStats } from './stamp.js';
 import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
 import { drawChick } from './characters.js';
 import { isSpriteCalm } from './sprites.js';
@@ -7,7 +8,7 @@ import { statusClock, statusDraw, boltStroke } from './status.js';
 import { drawEggPower, drawOrb } from './powers.js';
 import { EAGLE_LEN } from '../sim/sim.js';
 import { P2 } from '../sim/powers2.js'; // v3.4: shrink ray size
-import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawThornVine, drawGrate, drawOneWayMark } from './v3art.js';
+import { drawLavaRock, drawMeltHole, drawIcicle, drawEggKind, drawThornCurtain, drawGrate, drawOneWayMark } from './v3art.js';
 import { drawSkinPreview } from '../ui/store.js';
 import { ringPt, ringSpd, ringNormal, ringReach } from '../sim/shapes.js'; // v3.3 M10 vault shapes
 import { LIGHT, WALL, mix, lighten, darken, rgbOf, drawRingBody, drawRingBurn, drawPads, ringLine, ringBand } from './ringart.js';
@@ -160,16 +161,19 @@ export function drawRing(ctx, ring, theme, k, t, opts = {}) {
   }
   drawThorns(ctx, ring, theme, px, t, opts);
   // grab highlight (screen-constant width, not a glow)
+  // 2026-11-15: gold with a dark core line, never white: thorns are white (bone) or red, and a white rim read as thorns
   if (opts.held || opts.hover) {
-    ctx.strokeStyle = opts.held ? '#ffffff' : 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = (opts.held ? 3 : 2) * px;
     ctx.lineCap = 'butt';
     ctx.setLineDash(opts.held ? [] : [8 * px, 6 * px]);
-    for (const [a0, a1] of arcs) {
-      ringLine(ctx, ring, ro + 4 * px, a0, a1);
-      ctx.stroke();
-      ringLine(ctx, ring, ri - 4 * px, a0, a1);
-      ctx.stroke();
+    const pass = opts.held ? [[9 * px, 'rgba(255,190,40,0.22)'], [4.5 * px, 'rgba(60,30,0,0.55)'], [2.6 * px, '#ffc83a']] : [[3.5 * px, 'rgba(60,30,0,0.45)'], [2 * px, 'rgba(255,200,58,0.85)']];
+    for (const [lw, c] of pass) {
+      ctx.strokeStyle = c; ctx.lineWidth = lw;
+      for (const [a0, a1] of arcs) {
+        ringLine(ctx, ring, ro + 5 * px, a0, a1);
+        ctx.stroke();
+        ringLine(ctx, ring, ri - 5 * px, a0, a1);
+        ctx.stroke();
+      }
     }
     ctx.setLineDash([]);
   }
@@ -395,11 +399,143 @@ export function thornLook(theme, mat) {
   const bg = (luma(P.skyTop) + luma(P.skyBottom)) / 2;
   const bone = bg < 0.12 || luma(ring) < 0.05 || reddish(P.skyTop) || reddish(P.skyBottom) || sunset(P.skyTop) || sunset(P.skyBottom) || reddish(ring) || reddish(P.ground);
   const [r, g, b] = hexRgb(ring), grey = Math.max(r, g, b) - Math.min(r, g, b) < 0.12;
-  L = { ...(bone ? TH_BONE : TH_RED), blunt: grey ? ['#4a515b', '#14171b', 'rgba(220,230,240,0.85)'] : ['#8d939b', '#2f3338', 'rgba(235,240,245,0.7)'] };
+  // 2026-11-16 (mykee: thorns looked white in some worlds and red in others): one thorn everywhere, red with a cream
+  // rim that keeps it readable on dark and red backdrops (the rim is drawn in drawThorns)
+  void bone;
+  L = { ...TH_RED, halo: true, blunt: grey ? ['#4a515b', '#14171b', 'rgba(220,230,240,0.85)'] : ['#8d939b', '#2f3338', 'rgba(235,240,245,0.7)'] };
   TH_LOOK.set(key, L);
   return L;
 }
 export const RING_MAT_BASE = { wood: '#b9854e', stone: '#8f8a83', ice: '#8fcbea', glass: '#5ec9c4', metal: '#8f99a5', cloud: '#aab3c6', obsidian: '#3b3443', vine: '#4f8a3a', mushroom: '#c2508f', coral: '#ec6f61', bone: '#cfc4ab', gold: '#d6a12c', brass: '#b8873a' };
+
+// One thorn's art (shadow, root collar, outlined two-facet body, glint) from its key points, in whatever frame they are in.
+function paintThornArt(ctx, x0, y0, x1, y1, x2, y2, mx, my, bx, by, t0x, t0y, t1x, t1y, sdx, sdy, litA, blunt, fill, edge, lit, shade, look, cl, px, parts = 3) {
+  const shape = (ox, oy) => {
+    ctx.beginPath();
+    ctx.moveTo(x0 + ox, y0 + oy);
+    if (blunt) {
+      // blunt grey spike: a stubby cone with a rounded tip (cracks, never breaks)
+      ctx.lineTo(t0x + ox, t0y + oy);
+      ctx.quadraticCurveTo(x2 + (x2 - mx) * 0.25 + ox, y2 + (y2 - my) * 0.25 + oy, t1x + ox, t1y + oy);
+    } else {
+      // a curved, hooked silhouette drawn to a needle point
+      ctx.quadraticCurveTo(mx + (y1 - y0) * 0.14 + ox, my - (x1 - x0) * 0.14 + oy, x2 + ox, y2 + oy);
+      ctx.quadraticCurveTo(mx - (y1 - y0) * 0.06 + ox, my + (x1 - x0) * 0.06 + oy, x1 + ox, y1 + oy);
+    }
+    ctx.lineTo(x1 + ox, y1 + oy);
+    ctx.closePath();
+  };
+  // cast shadow, then the root collar where it grows out of the ring
+  if (parts & 1) {
+    shape(sdx, sdy);
+    ctx.fillStyle = 'rgba(10,4,14,0.3)';
+    ctx.fill();
+  }
+  if (!(parts & 2)) return;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = 0.07;
+  ctx.beginPath(); ctx.moveTo(x0 + (x1 - x0) * 0.12, y0 + (y1 - y0) * 0.12); ctx.lineTo(x1 + (x0 - x1) * 0.12, y1 + (y0 - y1) * 0.12); ctx.stroke();
+  // body: outline under, then two facets meeting on a ridge that runs from the root to the point
+  shape(0, 0);
+  ctx.lineJoin = 'miter';
+  ctx.miterLimit = 8;
+  if (look.halo && !blunt) { ctx.lineWidth = Math.max(5.2 * px, 0.07); ctx.strokeStyle = 'rgba(255,240,214,0.92)'; ctx.stroke(); }
+  ctx.lineWidth = Math.max(2.6 * px, 0.036);
+  ctx.strokeStyle = edge;
+  ctx.stroke();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  const rx = blunt ? x2 : x2 * 0.92 + mx * 0.08, ry = blunt ? y2 : y2 * 0.92 + my * 0.08;
+  for (const side of [0, 1]) {
+    const ex = side ? x1 : x0, ey = side ? y1 : y0, isLit = side ? !litA : litA;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(ex + (ex - bx) * 0.6, ey + (ey - by) * 0.6);
+    ctx.lineTo(x2 + (ex - bx) * 0.8 + (x2 - bx) * 0.3, y2 + (ey - by) * 0.8 + (y2 - by) * 0.3);
+    ctx.lineTo(rx + (x2 - bx) * 0.3, ry + (y2 - by) * 0.3);
+    ctx.closePath();
+    ctx.fillStyle = isLit ? lit : shade;
+    ctx.fill();
+  }
+  if (look.tip && !blunt) {
+    // bone thorns keep a blood-red point: the danger colour, on a shape that pops
+    ctx.beginPath();
+    ctx.moveTo(x0 + (x2 - x0) * 0.56, y0 + (y2 - y0) * 0.56);
+    ctx.lineTo(x2 + (x2 - bx) * 0.3, y2 + (y2 - by) * 0.3);
+    ctx.lineTo(x1 + (x2 - x1) * 0.56, y1 + (y2 - y1) * 0.56);
+    ctx.closePath();
+    ctx.fillStyle = look.tip;
+    ctx.fill();
+    const lx0 = litA ? x0 : x1, ly0 = litA ? y0 : y1;
+    ctx.beginPath();
+    ctx.moveTo(lx0 + (x2 - lx0) * 0.56, ly0 + (y2 - ly0) * 0.56);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(bx + (x2 - bx) * 0.56, by + (y2 - by) * 0.56);
+    ctx.closePath();
+    ctx.fillStyle = cl.tipLit;
+    ctx.fill();
+  }
+  ctx.restore();
+  // a hard glint down the lit edge, and now and then the point itself catches the light
+  const gx = litA ? x0 : x1, gy = litA ? y0 : y1, tx = blunt ? (litA ? t0x : t1x) : x2, ty = blunt ? (litA ? t0y : t1y) : y2;
+  ctx.strokeStyle = look.hl;
+  ctx.lineWidth = Math.max(px, 0.014);
+  ctx.beginPath();
+  ctx.moveTo(gx * 0.72 + tx * 0.28 + (bx - gx) * 0.22, gy * 0.72 + ty * 0.28 + (by - gy) * 0.22);
+  ctx.lineTo(gx * 0.3 + tx * 0.7 + (bx - gx) * 0.12, gy * 0.3 + ty * 0.7 + (by - gy) * 0.12);
+  ctx.stroke();
+}
+
+// 2026-11-20 speed pass (mykee: stutters on 3-4 year old phones): a thorn is ~15 curved fills, strokes and a clip. It is
+// painted once per look and size into a small picture in its own frame (x along the root, y up to the point), then each
+// frame it is placed with one transform: the sway is a lean of that frame, a retract/bristle a stretch along it.
+const TH_SPR = new Map();
+function thornSprite(ctx, art, blunt, litA, look, x1, y1, x2, y2, bx, by, Lf, sdx, sdy) {
+  if (!stampStats.on || typeof document === 'undefined' || !ctx.getTransform) return false;
+  const hx = x1 - bx, hy = y1 - by, hw = Math.hypot(hx, hy);
+  if (!(hw > 0.005)) return false;
+  const ux = hx / hw, uy = hy / hw;
+  const m = ctx.getTransform(), sc = Math.hypot(m.a, m.b) || 1;
+  const sq = Math.pow(1.15, Math.ceil(Math.log(sc) / Math.log(1.15)));
+  const key = look.fill + look.edge + (look.halo ? 'h' : '') + (look.tip || '') + look.hl + '|' + (blunt ? 'b' : 'n') + (litA ? 1 : 0) + '|' + Math.round(hw * 250) + '|' + Math.round(Lf * 100) + '|' + sq.toFixed(1);
+  let S = TH_SPR.get(key);
+  const pad = 0.06 + 6 / sq, X = hw * 1.25 + pad, Y0 = -pad, Y1 = Lf * 1.2 + pad;
+  if (!S) {
+    const W = Math.ceil(2 * X * sq), H = Math.ceil((Y1 - Y0) * sq);
+    if (W > 512 || H > 512 || W < 2 || H < 2) return false;
+    const vx = (x2 - bx) / Lf, vy = (y2 - by) / Lf, det = ux * vy - uy * vx; // baked along the axis it has right now
+    if (Math.abs(det) < 1e-6) return false;
+    const mk = (parts) => {
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      const c = cv.getContext('2d');
+      if (!c) return null;
+      // ring space -> the thorn's own frame -> sprite pixels (x from -X, y from Y0)
+      const a = (sq * vy) / det, b = (-sq * uy) / det, cc = (-sq * vx) / det, d = (sq * ux) / det;
+      c.setTransform(a, b, cc, d, -(a * bx + cc * by) + X * sq, -(b * bx + d * by) - Y0 * sq);
+      art(c, parts, 0, 0);
+      return cv;
+    };
+    S = { body: mk(2), shadow: mk(1) };
+    if (!S.body || !S.shadow) return false;
+    TH_SPR.set(key, S);
+    stampStats.builds++; // (perf.js: a frame that bakes a picture is not a measure of the phone)
+    if (TH_SPR.size > 200) TH_SPR.delete(TH_SPR.keys().next().value);
+  }
+  const vx = (x2 - bx) / Lf, vy = (y2 - by) / Lf; // the live (swayed, stretched) axis
+  ctx.save();
+  ctx.transform(ux, uy, vx, vy, bx + sdx, by + sdy);
+  ctx.drawImage(S.shadow, -X, Y0, 2 * X, Y1 - Y0);
+  ctx.restore();
+  ctx.save();
+  ctx.transform(ux, uy, vx, vy, bx, by);
+  ctx.drawImage(S.body, -X, Y0, 2 * X, Y1 - Y0);
+  ctx.restore();
+  return true;
+}
 
 function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
   const c = theme?.palette?.thorn || '#3a2a2a', look = thornLook(theme, ring.mat);
@@ -452,82 +588,16 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
     const litA = (x0 - x1) * lcx + (y0 - y1) * lcy > 0;
     const blunt = th.kind === 'blunt';
     const fill = blunt ? look.blunt[0] : look.fill, edge = blunt ? look.blunt[1] : look.edge;
-    const lit = blunt || look.tip ? lighten(fill, blunt ? 0.4 : 0.6) : mix(fill, '#ff8a5c', 0.55), shade = look.tint && !blunt ? mix(darken(fill, 0.3), c, look.tint) : mix(fill, look.tip && !blunt ? '#8a6f52' : '#000000', look.tip && !blunt ? 0.55 : 0.36);
+    // the facet colours only depend on the look + theme thorn colour: work them out once, not per thorn per frame
+    const ck = blunt ? 'b' : 'n', cc = look.cols || (look.cols = {});
+    let cl = cc[ck];
+    if (!cl || cl.c !== c) cl = cc[ck] = { c, tipLit: look.tip ? lighten(look.tip, 0.35) : null, lit: blunt || look.tip ? lighten(fill, blunt ? 0.4 : 0.6) : mix(fill, '#ff8a5c', 0.55), shade: look.tint && !blunt ? mix(darken(fill, 0.3), c, look.tint) : mix(fill, look.tip && !blunt ? '#8a6f52' : '#000000', look.tip && !blunt ? 0.55 : 0.36) };
+    const lit = cl.lit, shade = cl.shade;
     let t0x, t0y, t1x, t1y;
     if (blunt) { [t0x, t0y] = P(tip, a - half * 0.35); [t1x, t1y] = P(tip, a + half * 0.35); }
-    const shape = (ox, oy) => {
-      ctx.beginPath();
-      ctx.moveTo(x0 + ox, y0 + oy);
-      if (blunt) {
-        // blunt grey spike: a stubby cone with a rounded tip (cracks, never breaks)
-        ctx.lineTo(t0x + ox, t0y + oy);
-        ctx.quadraticCurveTo(x2 + (x2 - mx) * 0.25 + ox, y2 + (y2 - my) * 0.25 + oy, t1x + ox, t1y + oy);
-      } else {
-        // a curved, hooked silhouette drawn to a needle point
-        ctx.quadraticCurveTo(mx + (y1 - y0) * 0.14 + ox, my - (x1 - x0) * 0.14 + oy, x2 + ox, y2 + oy);
-        ctx.quadraticCurveTo(mx - (y1 - y0) * 0.06 + ox, my + (x1 - x0) * 0.06 + oy, x1 + ox, y1 + oy);
-      }
-      ctx.lineTo(x1 + ox, y1 + oy);
-      ctx.closePath();
-    };
-    // cast shadow, then the root collar where it grows out of the ring
-    shape(sdx, sdy);
-    ctx.fillStyle = 'rgba(10,4,14,0.3)';
-    ctx.fill();
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = edge;
-    ctx.lineWidth = 0.07;
-    ctx.beginPath(); ctx.moveTo(x0 + (x1 - x0) * 0.12, y0 + (y1 - y0) * 0.12); ctx.lineTo(x1 + (x0 - x1) * 0.12, y1 + (y0 - y1) * 0.12); ctx.stroke();
-    // body: outline under, then two facets meeting on a ridge that runs from the root to the point
-    shape(0, 0);
-    ctx.lineJoin = 'miter';
-    ctx.miterLimit = 8;
-    ctx.lineWidth = Math.max(2.6 * px, 0.036);
-    ctx.strokeStyle = edge;
-    ctx.stroke();
-    ctx.fillStyle = fill;
-    ctx.fill();
-    ctx.save();
-    ctx.clip();
-    const rx = blunt ? x2 : x2 * 0.92 + mx * 0.08, ry = blunt ? y2 : y2 * 0.92 + my * 0.08;
-    for (const side of [0, 1]) {
-      const ex = side ? x1 : x0, ey = side ? y1 : y0, isLit = side ? !litA : litA;
-      ctx.beginPath();
-      ctx.moveTo(bx, by);
-      ctx.lineTo(ex + (ex - bx) * 0.6, ey + (ey - by) * 0.6);
-      ctx.lineTo(x2 + (ex - bx) * 0.8 + (x2 - bx) * 0.3, y2 + (ey - by) * 0.8 + (y2 - by) * 0.3);
-      ctx.lineTo(rx + (x2 - bx) * 0.3, ry + (y2 - by) * 0.3);
-      ctx.closePath();
-      ctx.fillStyle = isLit ? lit : shade;
-      ctx.fill();
-    }
-    if (look.tip && !blunt) {
-      // bone thorns keep a blood-red point: the danger colour, on a shape that pops
-      ctx.beginPath();
-      ctx.moveTo(x0 + (x2 - x0) * 0.56, y0 + (y2 - y0) * 0.56);
-      ctx.lineTo(x2 + (x2 - bx) * 0.3, y2 + (y2 - by) * 0.3);
-      ctx.lineTo(x1 + (x2 - x1) * 0.56, y1 + (y2 - y1) * 0.56);
-      ctx.closePath();
-      ctx.fillStyle = look.tip;
-      ctx.fill();
-      const lx0 = litA ? x0 : x1, ly0 = litA ? y0 : y1;
-      ctx.beginPath();
-      ctx.moveTo(lx0 + (x2 - lx0) * 0.56, ly0 + (y2 - ly0) * 0.56);
-      ctx.lineTo(x2, y2);
-      ctx.lineTo(bx + (x2 - bx) * 0.56, by + (y2 - by) * 0.56);
-      ctx.closePath();
-      ctx.fillStyle = lighten(look.tip, 0.35);
-      ctx.fill();
-    }
-    ctx.restore();
-    // a hard glint down the lit edge, and now and then the point itself catches the light
-    const gx = litA ? x0 : x1, gy = litA ? y0 : y1, tx = blunt ? (litA ? t0x : t1x) : x2, ty = blunt ? (litA ? t0y : t1y) : y2;
-    ctx.strokeStyle = look.hl;
-    ctx.lineWidth = Math.max(px, 0.014);
-    ctx.beginPath();
-    ctx.moveTo(gx * 0.72 + tx * 0.28 + (bx - gx) * 0.22, gy * 0.72 + ty * 0.28 + (by - gy) * 0.22);
-    ctx.lineTo(gx * 0.3 + tx * 0.7 + (bx - gx) * 0.12, gy * 0.3 + ty * 0.7 + (by - gy) * 0.12);
-    ctx.stroke();
+    const art = (g, parts, ox = sdx, oy = sdy) => paintThornArt(g, x0, y0, x1, y1, x2, y2, mx, my, bx, by, t0x, t0y, t1x, t1y, ox, oy, litA, blunt, fill, edge, lit, shade, look, cl, px, parts);
+    const Lf = Math.abs(th.tip - th.base);
+    if (!(Lf > 0.02 && L >= Lf * 0.6 && thornSprite(ctx, art, blunt, litA, look, x1, y1, x2, y2, bx, by, Lf, sdx, sdy))) art(ctx, 3);
     if (!blunt && !calm) {
       const tw = ((t * 0.45 + ((th.key * 0.618) % 1) + 1) % 1) * 9; // each point twinkles for a moment every couple of seconds
       if (tw < 1) {
@@ -572,52 +642,8 @@ function shellGradient(ctx, c0, c1, c2, c3) {
   return g;
 }
 
-export function drawEgg(ctx, egg, t, k) {
-  const b = egg.body;
-  const p = b.getPosition();
-  const a = b.getAngle();
-  const px = 1 / k;
-  if (egg.chick) {
-    // hatched (gold flame): the chick flaps hard while it falls
-    const v = b.getLinearVelocity();
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.scale(px, -px); // helpers draw in pixels, y down
-    drawChick(ctx, 0, 0, 0.5 * k, t, v.y < -0.3 ? 1 : 0.3, egg.peckK ? Math.min(1, (egg.peckT || 0) / 0.6) : 0); // v3: 1.5x inside drawChick; peck 0..1
-    ctx.restore();
-    return;
-  }
-  const v = b.getLinearVelocity();
-  const sp = Math.hypot(v.x, v.y);
-  // v3: special eggs are bigger/smaller; a badly cracked egg trembles
-  const sc = egg.shrink > 0 ? SHRINK_S : KIND_S[egg.kind] || 1; // v3.4: a shrunk egg is quail size
-  const ds = sc * EGG_DRAW;
-  const rot = a + (egg.cracks >= 2 ? Math.sin(t * 17 + egg.seed) * 0.05 : 0);
-  const special = egg.kind && !(egg.stone > 0) && !egg.golden;
-  // contact shadow: a soft dark pool on the surface under a resting or rolling egg (toward the ring below it)
-  if (sp < 2.6) {
-    const d = Math.hypot(p.x, p.y), up = d > 0.01 ? Math.max(0, p.y / d) : 0;
-    let nx = d > 0.3 ? p.x / d : 0, ny = d > 0.3 ? p.y / d : -1;
-    nx = nx * (1 - up); ny = ny * (1 - up) - up; // upper half of the vault: the support is below, not outward
-    if (egg.wsh) { nx = egg.wsh.x; ny = egg.wsh.y; } // WONDER hook: bonus vaults with their own gravity say where the egg's support is
-    const nl = Math.hypot(nx, ny) || 1, na = Math.atan2(ny / nl, nx / nl), f = 1 - sp / 2.6;
-    ctx.save();
-    ctx.translate(p.x + (nx / nl) * 0.215 * sc, p.y + (ny / nl) * 0.215 * sc);
-    ctx.rotate(na);
-    ctx.fillStyle = `rgba(14,6,18,${(0.2 * f).toFixed(3)})`;
-    ctx.beginPath(); ctx.ellipse(0, 0, 0.085 * sc, 0.27 * sc, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = `rgba(14,6,18,${(0.3 * f).toFixed(3)})`;
-    ctx.beginPath(); ctx.ellipse(0.012 * sc, 0, 0.05 * sc, 0.2 * sc, 0, 0, TAU); ctx.fill();
-    ctx.restore();
-  }
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  const D = null; // squash and stretch come from the feel layer in main.js (one source, driven by real impacts)
-  if (D) { ctx.rotate(D.ang); ctx.scale(D.s, 1 / D.s); ctx.rotate(-D.ang); }
-  ctx.save();
-  ctx.scale(ds, ds);
-  // shell: the path turns with the egg, the light stays put (top-left)
-  ctx.rotate(rot);
+// The egg's shell in the egg's scaled frame: call it rotated by rot; it leaves the context rotated by rot.
+function paintEggBody(ctx, egg, rot, t, k, px, ds, special) {
   eggPath(ctx);
   ctx.rotate(-rot);
   if (egg.stone > 0) ctx.fillStyle = shellGradient(ctx, '#f1eee6', '#b3afa6', '#7d7a74', '#4a4743');
@@ -735,6 +761,92 @@ export function drawEgg(ctx, egg, t, k) {
   ctx.lineWidth = Math.max(2.4 * px, 0.034) / ds;
   ctx.stroke();
   ctx.rotate(rot);
+}
+const EGG_SPR = new Map();
+const EGG_ANIM_SKIN = new Set(['galaxy', 'lava', 'pearl', 'robot']);
+const EGG_STEP = TAU / 48;
+function eggSprite(ctx, egg, rot, t, k, px, ds, special) {
+  if (!stampStats.on || special || egg.curse > 0 || typeof document === 'undefined' || !ctx.getTransform) return false;
+  const plain = egg.stone > 0 || egg.golden || egg.fire > 0 || skin === 'classic';
+  // the animated skins (galaxy, lava, pearl, robot) are always drawn live: a skin the player paid for keeps its
+  // animation on every graphics setting (a helper's Low-only freeze was measured at ~40 canvas calls a frame: not
+  // worth taking a bought look away)
+  if (!plain && EGG_ANIM_SKIN.has(skin)) return false;
+  const m = ctx.getTransform(), sc = Math.hypot(m.a, m.b) || 1; // device pixels per unit of the egg's frame
+  const sq = Math.pow(1.15, Math.ceil(Math.log(sc) / Math.log(1.15)));
+  const bi = ((Math.round(rot / EGG_STEP) % 48) + 48) % 48, rb = bi * EGG_STEP;
+  const look = (egg.stone > 0 ? 's' : egg.golden ? 'g' : egg.fire > 0 ? 'f' : 'n' + skin) + '|' + (egg.prize ? egg.seed : 0) + '|' + (egg.honey > 0 ? 1 : 0) + '|' + Math.min(egg.cracks || 0, 3) + (egg.seed & 1) + '|' + ds.toFixed(3);
+  const key = look + '|' + bi + '|' + sq.toFixed(1);
+  let cv = EGG_SPR.get(key);
+  const B = 0.36; // half box, egg units (shell 0.21 x 0.28 plus honey and rims)
+  if (!cv) {
+    const W = Math.max(8, Math.ceil(2 * B * sq));
+    if (W > 512) return false;
+    cv = document.createElement('canvas'); cv.width = cv.height = W;
+    const c = cv.getContext('2d');
+    if (!c) return false;
+    c.setTransform(W / (2 * B), 0, 0, W / (2 * B), W / 2, W / 2);
+    c.rotate(rb);
+    paintEggBody(c, egg, rb, t, k, px, ds, special);
+    EGG_SPR.set(key, cv);
+    // tools/perf87/eggwhy.cjs: egg sprite churn (off by default)
+    if (stampStats.dbg) { const D = stampStats.dbg; D.egg = (D.egg || 0) + 1; D.seen = D.seen || new Set(); if (D.seen.has(key)) D.eggAgain = (D.eggAgain || 0) + 1; D.seen.add(key); D.sq = D.sq || {}; D.sq[sq.toFixed(2)] = 1; }
+    stampStats.builds++; // (perf.js: a frame that bakes a picture is not a measure of the phone)
+    if (EGG_SPR.size > 240) EGG_SPR.delete(EGG_SPR.keys().next().value);
+  }
+  ctx.rotate(rot - rb);
+  ctx.drawImage(cv, -B, -B, 2 * B, 2 * B);
+  ctx.rotate(rb);
+  return true;
+}
+
+export function drawEgg(ctx, egg, t, k) {
+  const b = egg.body;
+  const p = b.getPosition();
+  const a = b.getAngle();
+  const px = 1 / k;
+  if (egg.chick) {
+    // hatched (gold flame): the chick flaps hard while it falls
+    const v = b.getLinearVelocity();
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(px, -px); // helpers draw in pixels, y down
+    drawChick(ctx, 0, 0, 0.5 * k, t, v.y < -0.3 ? 1 : 0.3, egg.peckK ? Math.min(1, (egg.peckT || 0) / 0.6) : 0); // v3: 1.5x inside drawChick; peck 0..1
+    ctx.restore();
+    return;
+  }
+  const v = b.getLinearVelocity();
+  const sp = Math.hypot(v.x, v.y);
+  // v3: special eggs are bigger/smaller; a badly cracked egg trembles
+  const sc = egg.shrink > 0 ? SHRINK_S : KIND_S[egg.kind] || 1; // v3.4: a shrunk egg is quail size
+  const ds = sc * EGG_DRAW;
+  const rot = a + (egg.cracks >= 2 ? Math.sin(t * 17 + egg.seed) * 0.05 : 0);
+  const special = egg.kind && !(egg.stone > 0) && !egg.golden;
+  // contact shadow: a soft dark pool on the surface under a resting or rolling egg (toward the ring below it)
+  if (sp < 2.6 && !egg.home) { // (an egg at home sits in the straw: the basket's hollow is its shade)
+    const d = Math.hypot(p.x, p.y), up = d > 0.01 ? Math.max(0, p.y / d) : 0;
+    let nx = d > 0.3 ? p.x / d : 0, ny = d > 0.3 ? p.y / d : -1;
+    nx = nx * (1 - up); ny = ny * (1 - up) - up; // upper half of the vault: the support is below, not outward
+    if (egg.wsh) { nx = egg.wsh.x; ny = egg.wsh.y; } // WONDER hook: bonus vaults with their own gravity say where the egg's support is
+    const nl = Math.hypot(nx, ny) || 1, na = Math.atan2(ny / nl, nx / nl), f = 1 - sp / 2.6;
+    ctx.save();
+    ctx.translate(p.x + (nx / nl) * 0.215 * sc, p.y + (ny / nl) * 0.215 * sc);
+    ctx.rotate(na);
+    ctx.fillStyle = `rgba(14,6,18,${(0.2 * f).toFixed(3)})`;
+    ctx.beginPath(); ctx.ellipse(0, 0, 0.085 * sc, 0.27 * sc, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = `rgba(14,6,18,${(0.3 * f).toFixed(3)})`;
+    ctx.beginPath(); ctx.ellipse(0.012 * sc, 0, 0.05 * sc, 0.2 * sc, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  const D = null; // squash and stretch come from the feel layer in main.js (one source, driven by real impacts)
+  if (D) { ctx.rotate(D.ang); ctx.scale(D.s, 1 / D.s); ctx.rotate(-D.ang); }
+  ctx.save();
+  ctx.scale(ds, ds);
+  // 2026-11-20 speed pass: the shell (paint, cracks, light, outline) is one picture per 7.5 degrees of turn; the light
+  // barely moves inside a step, and one drawImage replaces ~30 curved fills, clips and gradients per egg per frame
+  if (!eggSprite(ctx, egg, rot, t, k, px, ds, special)) { ctx.rotate(rot); paintEggBody(ctx, egg, rot, t, k, px, ds, special); }
   if (egg.glow > 0) {
     eggPath(ctx, 1.1);
     ctx.strokeStyle = `rgba(110,255,120,${Math.min(1, egg.glow)})`;
@@ -742,7 +854,7 @@ export function drawEgg(ctx, egg, t, k) {
     ctx.stroke();
   }
   // the guardian feather wraps it in a cool shimmer
-  if (egg.guard > 0) {
+  if (egg.guard > 0 && !(egg.sbub > 0)) { // (the Bubble Chick's guard shows as its bubble: render/premium.js)
     eggPath(ctx, 1.16);
     ctx.strokeStyle = `rgba(140,230,255,${egg.guard < 1.5 ? 0.4 + 0.4 * Math.sin(t * 20) : 0.85})`;
     ctx.lineWidth = Math.max(2.5 * px, 0.03);
@@ -762,7 +874,7 @@ export function drawEgg(ctx, egg, t, k) {
     ctx.restore();
   }
   // v3 global-power overlays (art in powers.js)
-  for (const id of [egg.guard > 0 && 'feather', egg.curse > 0 && 'curse', egg.shrink > 0 && 'shrink']) { // v3.4 shrink ray
+  for (const id of [egg.guard > 0 && !(egg.sbub > 0) && 'feather', egg.curse > 0 && 'curse', egg.shrink > 0 && 'shrink']) { // v3.4 shrink ray
     if (!id) continue;
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -792,7 +904,7 @@ export function drawEgg(ctx, egg, t, k) {
   const look = sp > 0.3 ? { x: (v.x / sp) * 0.022, y: (v.y / sp) * 0.02 } : { x: 0, y: 0 };
   const scared = sp > 3.2 || egg.fear > 0;
   const hurt = egg.cracks > 0 && !scared;
-  const blink = !scared && Math.sin(t * 1.3 + egg.seed) > 0.985;
+  const blink = egg.home || (!scared && Math.sin(t * 1.3 + egg.seed) > 0.985); // at home: content, eyes shut in happy arcs
   const eyeY = 0.03, ex = 0.082, ink = egg.stone > 0 ? '#1c1a18' : '#2a1a10';
   ctx.lineCap = 'round';
   for (const sx of [-ex, ex]) {
@@ -829,6 +941,7 @@ export function drawEgg(ctx, egg, t, k) {
     ctx.ellipse(0, -0.075, 0.03, 0.04, 0, 0, TAU); ctx.fill();
     ctx.fillStyle = '#e8606a'; ctx.beginPath(); ctx.ellipse(0, -0.092, 0.018, 0.016, 0, 0, TAU); ctx.fill();
   } else if (hurt) { ctx.moveTo(-0.036, -0.066); ctx.quadraticCurveTo(-0.018, -0.046, 0, -0.062); ctx.quadraticCurveTo(0.018, -0.078, 0.036, -0.058); ctx.stroke(); }
+  else if (egg.home) { ctx.arc(0, -0.012, 0.055, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); }
   else { ctx.arc(0, -0.022, 0.045, Math.PI * 1.22, Math.PI * 1.78); ctx.stroke(); }
   ctx.restore();
 }
@@ -852,16 +965,29 @@ export function drawEggMult(ctx, egg, k, font) {
   ctx.restore();
 }
 
-export function drawNest(ctx, sim, theme, t, savedCount) {
+// o: { k (px per m: the egg sprites' scale), mid() (draws the live eggs over the basket, in world space, between the eggs
+// at home and the front wall) }
+export function drawNest(ctx, sim, theme, t, savedCount, drops = null, now = 0, o = {}) {
   const p = sim.nest.getPosition();
   const w = sim.nestW / 2;
   // a richer, deeper straw than the palette's flat tone, so the nest holds its own against the ground at phone size
   const straw = mix(theme?.palette?.nestStraw || '#c9a24a', '#d08a1c', 0.42);
   const dk = mix(straw, '#3a1a02', 0.66), line = mix(straw, '#241002', 0.86), lt = lighten(straw, 0.42);
+  // a new egg at home weighs the basket down for a moment: it dips and springs back (render only)
+  let dip = 0;
+  if (drops && savedCount > 0) { const D = drops[Math.min(4, savedCount) - 1], age = D ? now - D.t0 : 9; if (age < 0.6) dip = -0.06 * Math.sin(Math.min(1, age / 0.6) * Math.PI) * Math.exp(-age * 3); }
+  const nestXf = () => {
+    ctx.translate(p.x, p.y + dip);
+    // a moving basket leans a touch into its travel and settles when it stops (render only)
+    const vx = sim.nest.getLinearVelocity().x, sk = clamp(-vx * 0.035, -0.06, 0.06); if (sk) ctx.transform(1, 0, sk, 1, 0, 0);
+  };
   ctx.save();
-  ctx.translate(p.x, p.y);
+  nestXf();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
+  // 2026-11-20 speed: the straw is painted once into two stamps (behind and in front of the saved eggs), see stamp.js
+  const NK = straw + '|' + w.toFixed(3), BX0 = -w - 0.5, BX1 = w + 0.5, BY0 = -0.2, BY1 = 0.78;
+  const nestBack = (ctx) => {
   // contact shadow on the ground
   ctx.fillStyle = 'rgba(10,6,14,0.24)';
   ctx.beginPath(); ctx.ellipse(0.05, -0.03, w + 0.32, 0.1, 0, 0, TAU); ctx.fill();
@@ -877,25 +1003,12 @@ export function drawNest(ctx, sim, theme, t, savedCount) {
   hg.addColorStop(0, mix(straw, '#1a0c02', 0.72)); hg.addColorStop(1, mix(straw, '#090402', 0.93));
   ctx.beginPath(); ctx.ellipse(0, 0.47, w + 0.1, 0.13, 0, 0, TAU);
   ctx.fillStyle = hg; ctx.fill();
-  // saved eggs nestled inside
-  const n = Math.min(4, savedCount);
-  for (let i = 0; i < n; i++) {
-    ctx.save();
-    ctx.translate(-0.33 + i * 0.22, 0.34 + (i % 2) * 0.04);
-    ctx.scale(0.78, 0.78);
-    const rot = (i - 1.5) * 0.25;
-    ctx.rotate(rot);
-    eggPath(ctx);
-    ctx.rotate(-rot);
-    ctx.fillStyle = shellGradient(ctx, '#ffffff', '#fff6e4', '#f3e0be', '#d3b488');
-    ctx.fill();
-    ctx.strokeStyle = '#6b4526';
-    ctx.lineWidth = 0.028;
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.beginPath(); ctx.ellipse(-0.085, 0.13, 0.024, 0.05, 0.6, 0, TAU); ctx.fill();
-    ctx.restore();
-  }
+  };
+  if (!stamp(ctx, 'nest:back:' + NK, NK, BX0, BY0, BX1, BY1, nestBack)) nestBack(ctx);
+  // the eggs at home: the real eggs (skin, kind, cracks), sitting in the straw with their lower part behind the front wall
+  drawHomeEggs(ctx, sim, savedCount, drops, now, t, o.k || 60);
+  if (o.mid) { ctx.restore(); o.mid(); ctx.save(); nestXf(); } // live eggs over / in the basket: behind the front wall too
+  const nestFront = (ctx) => {
   // bowl: lit from the top-left, falling into shade underneath
   const bowl = () => {
     ctx.beginPath();
@@ -969,7 +1082,52 @@ export function drawNest(ctx, sim, theme, t, savedCount) {
     for (const [x, y, ddx, ddy] of stray) { ctx.moveTo(x, y); ctx.lineTo(x + ddx, y + ddy); }
     ctx.stroke();
   }
+  };
+  if (!stamp(ctx, 'nest:front:' + NK, NK, BX0, BY0, BX1, BY1, nestFront)) nestFront(ctx);
   ctx.restore();
+}
+
+// The eggs at home in the basket (nest-local frame: y up from the basket floor, x from its middle). Each is the egg
+// itself (its skin, kind, cracks, gold) drawn through drawEgg's sprite cache with a content face: up to four side by side,
+// the later ones tucked a little behind, the lower ~40 % behind the basket's front wall (drawn after this). A new one
+// starts exactly where the live egg was saved (drops[i] = {x, y, a, t0}, nest-local) and settles into its place with a
+// squash; the ones already there bob. gy -1 (underwater) mirrors it: the caller flips the frame.
+const HOME_SLOT = [[-0.21, -0.1], [0.21, 0.12], [-0.6, -0.2], [0.6, 0.22]]; // x (at w 1.4), tilt
+const HOME = new WeakMap(); // real egg -> its stand-in drawn at home (made once)
+const HOME_V = { x: 0, y: 0 };
+function homeEgg(e) {
+  let h = HOME.get(e);
+  if (!h) {
+    const body = { p: { x: 0, y: 0 }, a: 0, getPosition() { return this.p; }, getAngle() { return this.a; }, getLinearVelocity() { return HOME_V; } };
+    h = { body, home: 1, kind: e.kind, cracks: e.cracks || 0, seed: e.seed || 0, golden: e.golden, prize: e.prize, chick: e.chick, mult: 1 };
+    HOME.set(e, h);
+  }
+  return h;
+}
+export function drawHomeEggs(ctx, sim, savedCount, drops, now, t, k, depth = 0) {
+  const n = Math.min(4, savedCount);
+  if (!n) return;
+  const w = sim.nestW / 2, f = clamp((w - 0.35) / 1.05, 0.62, 1.15), W = w + 0.13;
+  const latest = drops && drops[n - 1] ? now - drops[n - 1].t0 : 9;
+  for (let i = n - 1; i >= 0; i--) { // the later ones first: they sit a touch further back
+    const S = sim.savedLog[i], e = S && sim.eggs.find((q) => q.id === S.id);
+    if (!e) continue;
+    const H = homeEgg(e), B = H.body, ds = (KIND_S[e.kind] || 1) * EGG_DRAW;
+    const sx = HOME_SLOT[i][0] * f, s = sx / W, lip = depth || 0.5 - 0.07 * (1 - s * s) - 0.03; // the front rope's top edge here
+    const sy = lip + 0.07 * ds + (i >= 2 ? 0.035 : 0), tilt = HOME_SLOT[i][1];
+    const D = drops && drops[i], age = D ? now - D.t0 : 9;
+    let x = sx, y = sy, a = tilt, sq = 0;
+    if (age < 0.5) {
+      const u = clamp(age / 0.3, 0, 1), e2 = u * u * (3 - 2 * u); // from where it was saved into its place
+      x = D.x + (sx - D.x) * e2; y = D.y + (sy - D.y) * e2;
+      const a0 = Math.atan2(Math.sin(D.a || 0), Math.cos(D.a || 0)); a = a0 + (tilt - a0) * e2;
+      if (age > 0.22) sq = 0.14 * Math.sin(Math.PI * clamp((age - 0.22) / 0.2, 0, 1)) * Math.exp(-(age - 0.22) * 4);
+    } else if (latest < 0.6 && i < n - 1) y -= 0.035 * Math.sin(Math.PI * clamp((latest - 0.18) / 0.32, 0, 1)) * (1 - 0.3 * i); // nudged by the new one
+    B.p.x = x; B.p.y = y; B.a = a;
+    if (sq) { ctx.save(); ctx.translate(x, y - 0.28 * ds); ctx.scale(1 + sq * 0.7, 1 - sq); ctx.translate(-x, -(y - 0.28 * ds)); }
+    drawEgg(ctx, H, t, k);
+    if (sq) ctx.restore();
+  }
 }
 
 export function drawPortal(ctx, x, y, t, out) {
@@ -977,7 +1135,25 @@ export function drawPortal(ctx, x, y, t, out) {
   const c2 = out ? '#ffd27a' : '#45d3ff';
   ctx.save();
   ctx.translate(x, y);
-  // the well: deep centre, a lit lip
+  // 2026-11-20 speed (perf87: one portal was ~63 canvas calls a frame, 378 on level 20): the well and its spiral only
+  // turn, so they are one stamp drawn rotated; the rim is a still stamp; only the riding sparks are drawn live
+  const spin = (out ? -1 : 1) * t * 2.6;
+  ctx.rotate(spin);
+  const well = (c) => portalWell(c, 0, out, c1, c2);
+  if (!stamp(ctx, out ? 'portal:well:o' : 'portal:well:i', 1, -0.47, -0.47, 0.47, 0.47, well)) well(ctx);
+  ctx.rotate(-spin);
+  const rim = (c) => portalRim(c, out, c1, c2);
+  if (!stamp(ctx, out ? 'portal:rim:o' : 'portal:rim:i', 1, -0.45, -0.45, 0.45, 0.45, rim)) rim(ctx);
+  // sparks riding the rim
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 3; i++) {
+    const an = (out ? 1 : -1) * t * 1.4 + (i * TAU) / 3, s = 0.016 + 0.01 * Math.sin(t * 7 + i * 2);
+    ctx.beginPath(); ctx.arc(0.375 * Math.cos(an), 0.375 * Math.sin(an), s, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+// the well: deep centre, a lit lip; spiral arms, fat at the rim and drawn to nothing at the centre (base: their turn)
+function portalWell(ctx, base0, out, c1, c2) {
   const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 0.46);
   g.addColorStop(0, '#020108');
   g.addColorStop(0.5, out ? '#2a0f06' : '#140c2a');
@@ -987,10 +1163,9 @@ export function drawPortal(ctx, x, y, t, out) {
   ctx.beginPath();
   ctx.arc(0, 0, 0.46, 0, TAU);
   ctx.fill();
-  // spiral arms, fat at the rim and drawn to nothing at the centre
   ctx.lineCap = 'round';
   for (let i = 0; i < 4; i++) {
-    const base = (out ? -1 : 1) * t * 2.6 + (i * TAU) / 4;
+    const base = base0 + (i * TAU) / 4;
     ctx.strokeStyle = i % 2 ? c1 : c2;
     let px0 = 0, py0 = 0;
     for (let s = 0; s <= 14; s++) {
@@ -1002,7 +1177,9 @@ export function drawPortal(ctx, x, y, t, out) {
       px0 = qx; py0 = qy;
     }
   }
-  // rim: a solid ring of light with a dark seat and a hot inner edge
+}
+// rim: a solid ring of light with a dark seat and a hot inner edge (lit from a fixed side: it does not turn)
+function portalRim(ctx, out, c1, c2) {
   ctx.strokeStyle = 'rgba(8,4,20,0.75)'; ctx.lineWidth = 0.1;
   ctx.beginPath(); ctx.arc(0, 0, 0.375, 0, TAU); ctx.stroke();
   const rg = ctx.createLinearGradient(-0.3, 0.3, 0.3, -0.3);
@@ -1011,13 +1188,45 @@ export function drawPortal(ctx, x, y, t, out) {
   ctx.beginPath(); ctx.arc(0, 0, 0.375, 0, TAU); ctx.stroke();
   ctx.strokeStyle = lighten(c2, 0.6, 0.9); ctx.lineWidth = 0.014;
   ctx.beginPath(); ctx.arc(0, 0, 0.39, Math.PI * 0.55, Math.PI * 1.0); ctx.stroke();
-  // sparks riding the rim
-  ctx.fillStyle = '#ffffff';
-  for (let i = 0; i < 3; i++) {
-    const an = (out ? 1 : -1) * t * 1.4 + (i * TAU) / 3, s = 0.016 + 0.01 * Math.sin(t * 7 + i * 2);
-    ctx.beginPath(); ctx.arc(0.375 * Math.cos(an), 0.375 * Math.sin(an), s, 0, TAU); ctx.fill();
+}
+
+// 2026-11-16 (mykee: "portals appear but don't suck"): a swirl that only gives out orbs (entry = exit, no pull) is
+// drawn as an orb spring, a golden fountain of light, so it never reads as a portal
+export function drawOrbSpring(ctx, x, y, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 0.5);
+  g.addColorStop(0, 'rgba(255,248,200,0.95)'); g.addColorStop(0.35, 'rgba(255,214,90,0.55)'); g.addColorStop(1, 'rgba(255,190,60,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 0.5, 0, TAU); ctx.fill();
+  // a ring of light that breathes
+  const br = 0.27 + 0.03 * Math.sin(t * 3);
+  ctx.strokeStyle = 'rgba(255,236,150,0.95)'; ctx.lineWidth = 0.04;
+  ctx.beginPath(); ctx.arc(0, 0, br, 0, TAU); ctx.stroke();
+  // sparkles rising out of it (y up in world space)
+  for (let i = 0; i < 6; i++) {
+    const ph = (t * 0.6 + i / 6) % 1, a = i * 2.4, rx = Math.cos(a) * 0.18 * (1 - ph);
+    const sz = 0.05 * Math.sin(Math.PI * ph);
+    ctx.fillStyle = `rgba(255,250,215,${0.9 * Math.sin(Math.PI * ph)})`;
+    ctx.save(); ctx.translate(rx, 0.1 + ph * 0.55); ctx.rotate(t * 2 + i);
+    ctx.beginPath(); for (let k = 0; k < 8; k++) { const r = k % 2 ? sz * 0.35 : sz, an = (k * Math.PI) / 4; ctx.lineTo(Math.cos(an) * r, Math.sin(an) * r); } ctx.closePath(); ctx.fill();
+    ctx.restore();
   }
   ctx.restore();
+}
+// a real portal: a dotted trail of light runs from the entry to its exit, so the player sees where an egg will go
+export function drawPortalLink(ctx, pt, t) {
+  const dx = pt.bx - pt.ax, dy = pt.by - pt.ay, L = Math.hypot(dx, dy);
+  if (L < 0.5) return;
+  const nx = -dy / L, ny = dx / L, bend = Math.min(1.2, L * 0.2);
+  const mx = (pt.ax + pt.bx) / 2 + nx * bend, my = (pt.ay + pt.by) / 2 + ny * bend;
+  const n = Math.max(8, Math.round(L / 0.35));
+  for (let i = 1; i < n; i++) {
+    const f = ((i + t * 1.6) % n) / n, u = 1 - f;
+    const x = u * u * pt.ax + 2 * u * f * mx + f * f * pt.bx, y = u * u * pt.ay + 2 * u * f * my + f * f * pt.by;
+    const a = 0.7 * Math.sin(Math.PI * f);
+    ctx.fillStyle = f < 0.5 ? `rgba(170,150,255,${a})` : `rgba(255,190,110,${a})`;
+    ctx.beginPath(); ctx.arc(x, y, 0.06, 0, TAU); ctx.fill();
+  }
 }
 
 export function drawBomb(ctx, bomb, t) {
@@ -1121,6 +1330,7 @@ export function drawDebris(ctx, d, theme) {
 }
 
 // The fuse: a rope circling the vault that burns down. v4: on a shaped vault (ring = the outer ring) it hugs the shape.
+export const FUSE_TIP = { x: 0, y: 0 }; // where the spark was last drawn (world units): the fuse intro links it to the timer
 export function drawFuse(ctx, R, frac, t, fx, ring) {
   const start = Math.PI / 2;
   const end = start + TAU * frac;
@@ -1151,6 +1361,7 @@ export function drawFuse(ctx, R, frac, t, fx, ring) {
     ctx.stroke();
     ctx.setLineDash([]);
     const [x, y] = at(end);
+    FUSE_TIP.x = x; FUSE_TIP.y = y;
     if (fx && Math.random() < 0.7) {
       fx.add({ x, y, vx: (Math.random() - 0.5) * 2.5, vy: Math.random() * 2.5, g: 5, life: 0.3 + Math.random() * 0.2, size: 0.02, color: '#ffd34d', type: 'spark' });
     }
@@ -1420,18 +1631,19 @@ function onRing(ctx, k, rad, ang, draw) {
 }
 
 // Ring extras: thorn curtains, grates, molten holes, one-way chevrons. ctx in world space (not rotated).
-export function drawV3Ring(ctx, ring, k, t, theme) {
+export function drawV3Ring(ctx, ring, k, t, theme, o = null) {
   const A = ring.body.getAngle(), r = ring.r;
   for (const g of ring.gaps) {
     if (g.grate) onRing(ctx, k, r, A + g.a, () => drawGrate(ctx, 0, 0, g.len * k, RING_TH * k, t));
     if (g.narrow) onRing(ctx, k, r, A + g.a, () => drawNarrowBar(ctx, g.len * k, RING_TH * k));
     const C = g.curtain;
-    if (C && C.vine) { // v3.3 thorn vine: creeping across, or sealed (fire burns it back)
-      onRing(ctx, k, r, A + g.a, () => drawThornVine(ctx, g.len * k, RING_TH * k, C.u, t, C.alive, C.alive ? C.burn : 0, thornLook(theme, ring.mat)));
+    if (C && C.vine) { // v3.3 thorn vine: the same bramble as the curtain, creeping across, sealed, or burning back from its tip
+      const burn = C.alive ? C.burn : 0, uE = (C.alive ? 1 : C.u) * (1 - burn * 0.85);
+      if (uE > 0.02) onRing(ctx, k, r, A + g.a, () => drawThornCurtain(ctx, g.len * k, RING_TH * k, r * k, t, 0, { u: C.alive && !burn ? 1 : uE, warn: C.alive ? 0 : clamp01((C.u - 0.7) / 0.3), ember: burn > 0, calm: isSpriteCalm() }));
       continue;
     }
     if (C && (C.alive || C.burn < 1)) {
-      onRing(ctx, k, r - RING_TH / 2 - 0.05, A + g.a, () => drawThornCurtain(ctx, 0, 0, g.len * k, (RING_TH + 0.22) * k, t, C.alive ? C.burn : 1));
+      onRing(ctx, k, r, A + g.a, () => drawThornCurtain(ctx, g.len * k, RING_TH * k, r * k, t, C.alive ? C.burn : 1, { hot: !!(o && o.hot), calm: isSpriteCalm() }));
       if (C.burning && C.alive) {
         // flames eat it from the bottom up
         const q = { x: r * Math.cos(A + g.a), y: r * Math.sin(A + g.a) };

@@ -62,15 +62,15 @@ export function octoLook(theme) {
 // jet), splay (struck), squash (mantle), lift (arms raised), grip (arms pressed on the wall), scheme (front arms twirl),
 // menace (brow slant / narrowed eyes), mouth (open), smug (half-lidded, wide grin), slack (stunned)
 const POSES = {
-  idle: { curl: 0.7, spread: 0.85, wave: 0.28, swim: 0.3, reach: 0, stream: 0, splay: 0, squash: 0, lift: 0, grip: 1, scheme: 1, menace: 0.6, mouth: 0, smug: 0.2, slack: 0 },
-  seek: { curl: 0.3, spread: 0.62, wave: 0.2, swim: 0.7, reach: 0.5, stream: 0.1, splay: 0, squash: 0, lift: 0.15, grip: 0.9, scheme: 0, menace: 1, mouth: 0.1, smug: 0, slack: 0 },
-  warn: { curl: 0.15, spread: 1.0, wave: 0.15, swim: 0, reach: 0.85, stream: 0, splay: 0, squash: -0.25, lift: 1, grip: 0.2, scheme: 0, menace: 1, mouth: 0.6, smug: 0, slack: 0 },
-  grab: { curl: 0.15, spread: 0.85, wave: 0.1, swim: 0, reach: 1, stream: 0, splay: 0, squash: 0.25, lift: 0.4, grip: 0, scheme: 0, menace: 1, mouth: 1, smug: 0, slack: 0 },
-  carry: { curl: 0.8, spread: 0.72, wave: 0.2, swim: 0.45, reach: 0, stream: 0, splay: 0, squash: 0, lift: 0, grip: 1, scheme: 0, menace: 0.35, mouth: 0, smug: 1, slack: 0 },
+  idle: { curl: 0.7, spread: 0.85, wave: 0.62, swim: 0.45, reach: 0, stream: 0, splay: 0, squash: 0, lift: 0, grip: 0.55, scheme: 1, menace: 0.6, mouth: 0, smug: 0.2, slack: 0 },
+  seek: { curl: 0.45, spread: 0.62, wave: 0.5, swim: 0.7, reach: 0.5, stream: 0.1, splay: 0, squash: 0, lift: 0.15, grip: 0.9, scheme: 0, menace: 1, mouth: 0.1, smug: 0, slack: 0 },
+  warn: { curl: 0.15, spread: 1.0, wave: 0.35, swim: 0, reach: 0.85, stream: 0, splay: 0, squash: -0.25, lift: 1, grip: 0.2, scheme: 0, menace: 1, mouth: 0.6, smug: 0, slack: 0 },
+  grab: { curl: 0.15, spread: 0.85, wave: 0.28, swim: 0, reach: 1, stream: 0, splay: 0, squash: 0.25, lift: 0.4, grip: 0, scheme: 0, menace: 1, mouth: 1, smug: 0, slack: 0 },
+  carry: { curl: 0.8, spread: 0.72, wave: 0.5, swim: 0.45, reach: 0, stream: 0, splay: 0, squash: 0, lift: 0, grip: 0.6, scheme: 0, menace: 0.35, mouth: 0, smug: 1, slack: 0 },
   squirt: { curl: 0.2, spread: 1.1, wave: 0.12, swim: 0, reach: 0.35, stream: 0, splay: 0, squash: -0.4, lift: 0.9, grip: 0.3, scheme: 0, menace: 1, mouth: 0.8, smug: 0, slack: 0 },
   struck: { curl: 0.1, spread: 1.45, wave: 0.9, swim: 0, reach: 0, stream: 0, splay: 1, squash: 0.35, lift: 0.3, grip: 0, scheme: 0, menace: 0, mouth: 0.5, smug: 0, slack: 0 },
-  jet: { curl: 0.15, spread: 0.12, wave: 0.25, swim: 0, reach: 0, stream: 1, splay: 0, squash: -0.4, lift: 0, grip: 0, scheme: 0, menace: 0.7, mouth: 0, smug: 0, slack: 0 },
-  slack: { curl: 0.55, spread: 1.25, wave: 0.1, swim: 0, reach: 0, stream: 0, splay: 0, squash: 0.3, lift: -0.25, grip: 1, scheme: 0, menace: 0, mouth: 0.5, smug: 0, slack: 1 },
+  jet: { curl: 0.15, spread: 0.12, wave: 0.45, swim: 0, reach: 0, stream: 1, splay: 0, squash: -0.4, lift: 0, grip: 0, scheme: 0, menace: 0.7, mouth: 0, smug: 0, slack: 0 },
+  slack: { curl: 0.55, spread: 1.25, wave: 0.22, swim: 0, reach: 0, stream: 0, splay: 0, squash: 0.3, lift: -0.25, grip: 1, scheme: 0, menace: 0, mouth: 0.5, smug: 0, slack: 1 },
 };
 export function octoAnim() {
   const A = { ...POSES.idle };
@@ -82,10 +82,10 @@ export function octoAnim() {
 }
 
 // ---------------------------------------------------------------- rig
-const NA = 8, NS = 11; // arms, points per arm
+const NA = 8, NS = 15; // arms, points per arm (15: the arm bends in a smooth curve, 2026-11-19)
 const armPts = Array.from({ length: NA }, () => Array.from({ length: NS }, () => ({ x: 0, y: 0 })));
 const armSide = new Array(NA).fill(1);
-const ARM_W0 = 0.17, ARM_W1 = 0.032; // x s
+const ARM_W0 = 0.21, ARM_W1 = 0.04; // x s (2026-11-19: fuller arms that taper to a point)
 function freeArm(i, s, t, A, look, seed, W) {
   const f = (2 * i) / (NA - 1) - 1, side = f < 0 ? 1 : -1, back = i % 2, front = Math.abs(f) < 0.5;
   armSide[i] = side;
@@ -136,34 +136,57 @@ function wrapArm(P, E, k0, sweep) {
   return wrapPts;
 }
 
+// one arm as a single smooth tapered shape (2026-11-19, mykee: the arms looked boxy): both edges run through the spine's
+// points as curves, a round tip; drawn as one outline + one fill instead of a stroked segment per joint
+const EL = Array.from({ length: NS }, () => ({ x: 0, y: 0 })), ER = Array.from({ length: NS }, () => ({ x: 0, y: 0 }));
+function armPath(ctx, P, w0, w1, grow = 0) {
+  let tn = 0, hw = 0;
+  for (let j = 0; j < NS; j++) {
+    const a = P[Math.max(0, j - 1)], b = P[Math.min(NS - 1, j + 1)], dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1, u = j / (NS - 1);
+    hw = (w1 + (w0 - w1) * Math.pow(1 - u, 1.15) + grow) / 2; const nx = -dy / l, ny = dx / l;
+    EL[j].x = P[j].x + nx * hw; EL[j].y = P[j].y + ny * hw; ER[j].x = P[j].x - nx * hw; ER[j].y = P[j].y - ny * hw;
+    if (j === NS - 1) tn = Math.atan2(ny, nx);
+  }
+  ctx.beginPath(); ctx.moveTo(EL[0].x, EL[0].y);
+  for (let j = 1; j < NS - 1; j++) ctx.quadraticCurveTo(EL[j].x, EL[j].y, (EL[j].x + EL[j + 1].x) / 2, (EL[j].y + EL[j + 1].y) / 2);
+  ctx.lineTo(EL[NS - 1].x, EL[NS - 1].y);
+  ctx.arc(P[NS - 1].x, P[NS - 1].y, hw, tn, tn - Math.PI, true); // the round tip
+  for (let j = NS - 2; j > 0; j--) ctx.quadraticCurveTo(ER[j].x, ER[j].y, (ER[j].x + ER[j - 1].x) / 2, (ER[j].y + ER[j - 1].y) / 2);
+  ctx.lineTo(ER[0].x, ER[0].y);
+  ctx.closePath();
+}
 function strokeArm(ctx, P, w0, w1, fill, line, lw) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (let pass = 0; pass < 2; pass++) {
-    ctx.strokeStyle = pass ? fill : line;
-    for (let j = 0; j < NS - 1; j++) {
-      const u = (j + 0.5) / (NS - 1), w = lerp(w0, w1, u);
-      ctx.lineWidth = pass ? w : w + 2 * lw;
-      ctx.beginPath(); ctx.moveTo(P[j].x, P[j].y); ctx.lineTo(P[j + 1].x, P[j + 1].y); ctx.stroke();
-    }
-  }
+  armPath(ctx, P, w0, w1);
+  ctx.strokeStyle = line; ctx.lineWidth = 2 * lw; ctx.stroke();
+  ctx.fillStyle = fill; ctx.fill();
 }
 function fillArm(ctx, P, w0, w1, fill, grow = 0) { // the arm silhouette in one colour (ice shells, overlays)
-  ctx.strokeStyle = fill; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (let j = 0; j < NS - 1; j++) { ctx.lineWidth = lerp(w0, w1, (j + 0.5) / (NS - 1)) + grow; ctx.beginPath(); ctx.moveTo(P[j].x, P[j].y); ctx.lineTo(P[j + 1].x, P[j + 1].y); ctx.stroke(); }
+  armPath(ctx, P, w0, w1, grow); ctx.fillStyle = fill; ctx.fill();
 }
 // the lighter underside: a pale strip along the concave side of the arm, with a row of suckers on it
+// (2026-11-20 speed, p87: the strip's 13 round-capped dashes are one fill of 13 capsules, the same shapes, and the suckers one
+// fill of discs: 2 draws an arm instead of 20, ~140 fewer per octopus a frame)
 function armUnder(ctx, P, w0, side, col, line, big) {
   ctx.lineCap = 'round';
+  ctx.beginPath();
   for (let j = 1; j < NS - 1; j++) {
     const dx = P[j + 1].x - P[j - 1].x, dy = P[j + 1].y - P[j - 1].y, l = Math.hypot(dx, dy) || 1, w = lerp(w0, w0 * 0.2, j / (NS - 1));
-    const nx = (-dy / l) * side, ny = (dx / l) * side, o = w * 0.22;
-    ctx.strokeStyle = rgb(col, 0.95); ctx.lineWidth = Math.max(0.7, w * 0.46);
-    ctx.beginPath(); ctx.moveTo(P[j].x + nx * o - (dx / l) * w * 0.3, P[j].y + ny * o - (dy / l) * w * 0.3); ctx.lineTo(P[j].x + nx * o + (dx / l) * w * 0.3, P[j].y + ny * o + (dy / l) * w * 0.3); ctx.stroke();
-    if (big && j % 2 === 1) { // sucker row: pale discs with a dark centre dot
-      ctx.fillStyle = rgb(line, 0.9);
-      ctx.beginPath(); ctx.arc(P[j].x + nx * o, P[j].y + ny * o, Math.max(0.45, w * 0.1), 0, TAU); ctx.fill();
-    }
+    const nx = (-dy / l) * side, ny = (dx / l) * side, o = w * 0.22, tx = dx / l, ty = dy / l, r = Math.max(0.7, w * 0.46) / 2;
+    const cx = P[j].x + nx * o, cy = P[j].y + ny * o, h = w * 0.3, an = Math.atan2(tx, -ty); // the dash's normal (-ty, tx)
+    const ax = cx - tx * h, ay = cy - ty * h, bx = cx + tx * h, by = cy + ty * h, qx = -ty * r, qy = tx * r;
+    ctx.moveTo(ax + qx, ay + qy); ctx.lineTo(bx + qx, by + qy); ctx.arc(bx, by, r, an, an - Math.PI, true);
+    ctx.lineTo(ax - qx, ay - qy); ctx.arc(ax, ay, r, an + Math.PI, an, true); ctx.closePath();
   }
+  ctx.fillStyle = rgb(col, 0.95); ctx.fill();
+  if (!big) return;
+  ctx.beginPath(); // sucker row: dark centre dots
+  for (let j = 1; j < NS - 1; j += 2) {
+    const dx = P[j + 1].x - P[j - 1].x, dy = P[j + 1].y - P[j - 1].y, l = Math.hypot(dx, dy) || 1, w = lerp(w0, w0 * 0.2, j / (NS - 1));
+    const nx = (-dy / l) * side, ny = (dx / l) * side, o = w * 0.22, x = P[j].x + nx * o, y = P[j].y + ny * o, r = Math.max(0.45, w * 0.1);
+    ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU);
+  }
+  ctx.fillStyle = rgb(line, 0.9); ctx.fill();
 }
 
 function mantlePath(ctx, s, sx, sy) {
@@ -278,7 +301,9 @@ export function drawOctopus(ctx, x, y, s, t, o = {}) {
 function drawOctoFace(ctx, s, sx, sy, t, tt, o, look, lw, A, pal, brow, pk, frz, stn) {
   const hit = o.hitK > 0.05 ? o.hit : null;
   const ey = -0.14 * s * sy, ex = 0.22 * s * sx, rx = 0.175 * s, ry = 0.125 * s;
-  const menace = clamp(A.menace, -0.2, 1), smug = clamp(A.smug, 0, 1);
+  // a resting octopus is never still in the face (2026-11-19): every few seconds a slow smug smirk with one brow up
+  const rest = clamp(1 - A.reach - A.mouth - A.splay, 0, 1), smirk = frz ? 0 : Math.pow(Math.max(0, Math.sin(tt * 0.55 + (o.seed || 0) * 1.3)), 6) * rest;
+  const menace = clamp(A.menace, -0.2, 1), smug = clamp(A.smug + 0.75 * smirk, 0, 1);
   const slack = stn > 0.01, X = hit === 'zap' || hit === 'flash';
   const heavy = frz ? 0.55 : smug * 0.55 + (hit === 'tired' ? 0.5 : 0); // half-lidded: smug, tired, or frozen mid-blink
   const blink = !frz && !slack && ((tt + (o.seed || 0)) % 4.1 < 0.11) ? 1 : 0;
@@ -302,7 +327,7 @@ function drawOctoFace(ctx, s, sx, sy, t, tt, o, look, lw, A, pal, brow, pk, frz,
       ctx.strokeStyle = rgb(C.pupil); ctx.lineWidth = Math.max(1, ry * 0.36); ctx.lineCap = 'round';
       const d = ry * 0.62; ctx.beginPath(); ctx.moveTo(cx - d, ey - d); ctx.lineTo(cx + d, ey + d); ctx.moveTo(cx + d, ey - d); ctx.lineTo(cx - d, ey + d); ctx.stroke();
     } else { // the slit pupil, eyes locked on the target
-      let lx = 0, ly = 0.12;
+      let lx = frz ? 0 : 0.5 * Math.sin(tt * 0.8 + (o.seed || 0)), ly = 0.12 + (frz ? 0 : 0.2 * Math.sin(tt * 0.53)); // no target: the eyes rove
       if (look) { const dx = look.x - cx, dy = look.y - ey, l = Math.hypot(dx, dy) || 1; lx = dx / l; ly = dy / l; }
       const dil = A.reach > 0.5 ? 1.35 : 1;
       ctx.fillStyle = rgb(C.pupil);

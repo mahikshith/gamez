@@ -48,17 +48,19 @@ function defs() {
   DEF = {
     // Frost gecko: glassy ice-blue, a leaf-fat tail with an icicle tip, huge round toe pads, gold slit eyes that give you the side-eye.
     gecko: {
-      hw: [[0, 9], [14, 10], [30, 12], [46, 13.6], [60, 13.4], [72, 11.4], [82, 10.2], [94, 12.6], [110, 13.4], [130, 10.6], [152, 6], [168, 3], [178, 1.2]],
-      wave: 5.4, tail: [2, 9], sway: 0.55, lat: [24, 25.5], hs: 1.4, shadow: [15, 17],
-      G: { ...LEG_G, l1f: 12.5, l1h: 13, l2f: 12.5, l2h: 13, wf: 8, wh: 9.4, wl: 6, hf: 4.4, hh: 5.4, hl: 3.2, toes: 5, spread: 0.54, lenF: 8.2, lenH: 8.8, toeW: 2, tip: 3.9, pad: 2.7, palm: 4.2, knee: 0 },
-      pal: palOf({ line: '#1c4c8a', lo: '#4f9bd6', base: '#9fd6f6', hi: '#d2f0ff', top: '#ffffff', blot: '#2467b4', blotHi: '#6fbdf0', jaw: '#f0fbff', leg: '#8cc8ee', legLo: '#4688c4', pad: '#ffffff', lid: '#5aa6dc', eye: '#ffd640', eyeLo: '#f09a1e', pupil: '#0b1a36', mouth: '#1f2a52', throat: '#5a4a86', tongue: '#ff8aa2', tooth: '#ffffff' }),
-      pattern: geckoPattern, head: geckoHead, ground: geckoGround, after: geckoAfter, eyesOnly: (ctx, E) => geckoEyes(ctx, E, true),
+      // a fuller body and a bigger head than the first cut (he now has the salamander's presence on screen)
+      hw: [[0, 10.4], [14, 11.6], [30, 14], [46, 15.8], [60, 15.6], [72, 13.2], [82, 11.8], [94, 14.4], [110, 15.4], [130, 12.2], [152, 6.9], [168, 3.4], [178, 1.3]],
+      wave: 5.4, tail: [2, 9], sway: 0.55, lat: [26.5, 28], hs: 1.5, shadow: [15, 17],
+      G: { ...LEG_G, l1f: 12.5, l1h: 13, l2f: 12.5, l2h: 13, wf: 9, wh: 10.6, wl: 6.6, hf: 4.4, hh: 5.4, hl: 3.2, toes: 5, spread: 0.54, lenF: 8.2, lenH: 8.8, toeW: 2, tip: 3.9, pad: 2.7, palm: 4.2, knee: 0 },
+      pal: palOf({ line: '#1c4c8a', lo: '#4f9bd6', base: '#9fd6f6', hi: '#d2f0ff', top: '#ffffff', blot: '#2467b4', blotHi: '#6fbdf0', jaw: '#f0fbff', leg: '#8cc8ee', legLo: '#4688c4', pad: '#ffffff', lid: '#5aa6dc', eye: '#ffd640', eyeLo: '#f09a1e', pupil: '#0b1a36', mouth: '#1f2a52', throat: '#5a4a86', tongue: '#ff8aa2', tooth: '#ffffff',
+        spike: '#f2fcff', spikeLo: '#3f86c8', spikeTip: '#ffffff', glint: '#ffffff', facet: '#86c2ee' }),
+      pattern: geckoPattern, head: geckoHead, ground: geckoGround, over: geckoCrystals, after: geckoAfter, eyesOnly: (ctx, E) => geckoEyes(ctx, E, true),
     },
   };
   // Thorn-back lizard: a sandy bruiser with a red-tipped ridge, a crown of horns, an underbite and a permanent scowl.
   DEF.thornback = {
-    hw: [[0, 10], [16, 12], [30, 14.6], [44, 16], [58, 16], [70, 14], [82, 10], [100, 6.6], [125, 3.8], [150, 1.3]],
-    wave: 3.8, tail: [2, 6], sway: 0.35, lat: [25, 26], hs: 1.3, shadow: [16, 18],
+    hw: [[0, 11], [16, 13.2], [30, 16], [44, 17.6], [58, 17.6], [70, 15.4], [82, 11], [100, 7.2], [125, 4.2], [150, 1.4]],
+    wave: 3.8, tail: [2, 6], sway: 0.35, lat: [27, 28], hs: 1.38, shadow: [16, 18],
     G: { ...LEG_G, l1f: 11, l1h: 12, l2f: 11, l2h: 11.5, wf: 11.5, wh: 13.5, wl: 8.8, hf: 7, hh: 8.6, hl: 5.2, toes: 4, spread: 0.5, lenF: 6, lenH: 6.6, toeW: 2.8, tip: 1.5, pad: 0.9, palm: 5.2, knee: 3 },
     pal: palOf({ line: '#5b3513', lo: '#8a5a26', base: '#c79a4e', hi: '#e3bf6e', top: '#f7e3a0', blot: '#6f3f1a', blotHi: '#a0652c', jaw: '#f4e4b0', leg: '#b98a42', legLo: '#7a4c1e', pad: '#fff3cc', lid: '#93612a', eye: '#fff4c8', eyeLo: '#e8c478', pupil: '#1e1004', mouth: '#4a1410', throat: '#7c2a1e', tongue: '#f2788a', tooth: '#fffbe6', spike: '#f8ecc4', spikeLo: '#c9a160', spikeTip: '#c2331c' }),
     pattern: thornPattern, head: thornHead, under: thornFlanks, over: thornRidge, after: thornSnort,
@@ -71,8 +73,8 @@ function defs() {
   };
   // Chameleon: leaf green with teal bands, a helmet, a lollipop tail and two turret eyes that never agree. Smug about it.
   DEF.chameleon = {
-    hw: [[0, 8], [14, 9], [34, 11.4], [50, 13], [64, 13], [76, 11], [86, 8], [100, 6.2], [130, 4.8], [170, 3.8], [200, 3], [210, 2.2]],
-    wave: 2.6, tail: [1, 3], sway: 0.25, lat: [21.5, 22.5], hs: 1.32, shadow: [13, 16],
+    hw: [[0, 8.8], [14, 10], [34, 12.6], [50, 14.4], [64, 14.4], [76, 12.2], [86, 8.8], [100, 6.8], [130, 5.2], [170, 4.1], [200, 3.2], [210, 2.3]],
+    wave: 2.6, tail: [1, 3], sway: 0.25, lat: [23.5, 24.5], hs: 1.4, shadow: [13, 16],
     G: { ...LEG_G, l1f: 13, l1h: 14, l2f: 13, l2h: 13.5, wf: 7.4, wh: 8.4, wl: 5.8, hf: 4, hh: 4.8, hl: 3, toes: 2, spread: 1.1, lenF: 6.6, lenH: 7, toeW: 4.4, tip: 3, pad: 1.5, palm: 3.6, knee: 0 },
     pal: palOf({ line: '#1d5a2c', lo: '#2c8a40', base: '#58c24a', hi: '#96e062', top: '#dcf88e', blot: '#15827a', blotHi: '#4cc8ac', jaw: '#f0f7a6', leg: '#4bb043', legLo: '#277536', pad: '#f6e56a', lid: '#46a846', eye: '#fff8d8', eyeLo: '#e6dc9a', pupil: '#0f200c', mouth: '#4a0b12', throat: '#8a1c1a', tongue: '#ff6f8a', tooth: '#ffffff', dot: '#ffe14a' }),
     pattern: chamPattern, head: chamHead, over: chamCrest, after: chamTongue,
@@ -383,14 +385,27 @@ function lolling(ctx, E, fx) { // dazed: the tongue hangs out of the low corner
 }
 
 /* ================================================================ FROST GECKO */
-// crystal plates down the back: sharp rhombs, one facet lit. An icicle tail tip, frost freckles, glassy gloss.
+// frosted saddles down the back (the crystals stand on them: geckoCrystals), an icicle tail tip, a granular hide that
+// catches the light, frost freckles, glassy gloss.
 function geckoPattern(ctx, E) {
   const { U, K } = E;
   for (const [uc, L, hv] of [[39, 15, 0.66], [58, 19, 0.8], [78, 14, 0.66], [102, 13, 0.6], [119, 12, 0.62], [135, 10, 0.6], [149, 8, 0.6]]) {
     const s1 = litSide(uc), a = uv(uc - L / 2, 0), b = uv(uc + L / 2, 0), c1 = uv(uc - 1, s1 * hv), c2 = uv(uc - 1, -s1 * hv), m = uv(uc + 1, 0);
-    ctx.beginPath(); poly(ctx, [a, c1, b, c2]); ctx.fillStyle = rgb(K.blot); ctx.fill();
+    ctx.beginPath(); poly(ctx, [a, c1, b, c2]); ctx.fillStyle = rgb(K.blot, 0.85); ctx.fill();
     ctx.beginPath(); poly(ctx, [a, c1, m]); ctx.fillStyle = rgb(K.blotHi); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(m[0], m[1]); ctx.lineTo(b[0], b[1]); ctx.strokeStyle = rgb(K.top, 0.55); ctx.lineWidth = 0.9 * U; ctx.stroke();
+  }
+  // granules: the bead scales of a real gecko, each a pale dome with a shadow on its far side (two batched paths)
+  const sh = [-LX * 0.55 * U, -LY * 0.55 * U];
+  for (const [col, al, dx, dy, rk] of [[K.lo, 0.42, sh[0], sh[1], 1.05], [K.top, 0.5, 0, 0, 0.82]]) {
+    ctx.fillStyle = rgb(col, al); ctx.beginPath();
+    for (let u = 22, row = 0; u < 156; u += 4.6, row++) {
+      const w = spInto(u, Q).w / U, r = Math.min(1.25, 0.32 + w * 0.06) * U * rk;
+      for (let v = -0.84 + (row % 2) * 0.21; v < 0.9; v += 0.42) {
+        if (Math.abs(v) < 0.2 && u < 150) continue; // the spine is the crystals' ridge
+        const p = uv(u, v); ctx.moveTo(p[0] + dx + r, p[1] + dy); ctx.arc(p[0] + dx, p[1] + dy, r, 0, TAU);
+      }
+    }
+    ctx.fill();
   }
   // the icicle: the last of the tail is clear ice
   ctx.beginPath();
@@ -402,6 +417,30 @@ function geckoPattern(ctx, E) {
   for (const [u, v, r] of [[34, -0.6, 1.3], [48, 0.62, 1.5], [50, -0.7, 1], [68, 0.66, 1.4], [70, -0.62, 1.2], [88, 0.5, 1.1], [96, -0.55, 1.3], [112, 0.66, 1.2], [128, -0.6, 1]]) { const p = uv(u, v); ctx.moveTo(p[0] + r * U, p[1]); ctx.arc(p[0], p[1], r * U, 0, TAU); }
   ctx.fill();
   gloss(ctx, E, [[30, 46], [50, 53], [66, 74], [92, 108], [112, 115]], 0.7, 2.1, 0.95);
+}
+// The crystals: clusters of faceted ice prisms grown out of the spine, raking back toward the tail, a big one flanked by
+// two small ones splayed out. Each has a lit facet, a far facet, a clear tip and a white rim glint (crystalSpike). A
+// glint runs down the ridge now and then, crystal by crystal, as if he turned under a lamp (geckoAfter draws it).
+const TIPS = []; // crystal tips of the creature being drawn: x, y, size (the glints in its 'after' pass)
+const GCRY = [[32, 0.85], [48, 1.15], [64, 1.0], [80, 0.72], [98, 0.82], [113, 0.72], [128, 0.58], [142, 0.44]];
+function geckoCrystals(ctx, E) {
+  const { U, K, lw, P } = E, tips = (E.tips = TIPS);
+  tips.length = 0;
+  if (P.melt > 0.4) return;
+  const grow = (1 + 0.12 * P.angry + 0.08 * P.swell) * (1 - P.melt);
+  ctx.fillStyle = rgb(K.line, 0.22); ctx.beginPath(); // each cluster sits in a little pool of its own shade (it stands proud)
+  for (const [u, k] of GCRY) { const q = spInto(u + 3 * k, Q), r = 7 * k * U * grow; ctx.moveTo(q.x - LX * r * 0.35 + r, q.y - LY * r * 0.35); ctx.ellipse(q.x - LX * r * 0.35, q.y - LY * r * 0.35, r, r * 0.8, 0, 0, TAU); }
+  ctx.fill();
+  for (const [u, k] of GCRY) {
+    const q = spInto(u, Q), qx = q.x, qy = q.y, nx = q.nx, ny = q.ny, tx = -ny, ty = nx, r = 12 * k * U * grow;
+    if (u < 90) for (const sd of [-1, 1]) { // on the back, two little ones splayed out to the sides (the tail's are single: cheaper, and slimmer)
+      const bx0 = qx + nx * sd * q.w * 0.22, by0 = qy + ny * sd * q.w * 0.22, rr = r * 0.66;
+      crystalSpike(ctx, K, bx0 - tx * rr * 0.25, by0 - ty * rr * 0.25, bx0 + (tx * 0.62 + nx * sd * 0.8) * rr - LX * rr * 0.2, by0 + (ty * 0.62 + ny * sd * 0.8) * rr - LY * rr * 0.2, rr * 0.36, lw * 0.85);
+    }
+    const ex = qx + tx * r * 1.05 - LX * r * 0.3, ey = qy + ty * r * 1.05 - LY * r * 0.3;
+    crystalSpike(ctx, K, qx - tx * r * 0.32, qy - ty * r * 0.32, ex, ey, r * 0.4, lw);
+    tips.push(ex, ey, r);
+  }
 }
 // a four-point twinkle
 function twinkle(ctx, x, y, r, al) {
@@ -427,10 +466,18 @@ function geckoAfter(ctx, E) {
     ctx.fillStyle = `rgba(238,250,255,${0.6 * k * Math.sin((f / 0.7) * Math.PI)})`;
     ctx.beginPath(); ctx.arc(X, Y, (1.8 + f * 4.4) * U, 0, TAU); ctx.arc(X + 2.4 * U, Y + 1 * U, (1.2 + f * 3) * U, 0, TAU); ctx.fill();
   }
-  for (let i = 0; i < 5; i++) { // ice glints
-    const f = mod(t * 0.7 + i * 0.37, 1), q = spInto(26 + i * 31, Q), sd = i % 2 ? 1 : -1;
-    twinkle(ctx, q.x + q.nx * sd * (q.w + 5 * U) + LX * 3 * U, q.y + q.ny * sd * (q.w + 5 * U) + LY * 3 * U, (3.2 + 2.6 * P.frost) * U * Math.sin(f * Math.PI), (0.45 + 0.5 * P.frost) * glow * Math.sin(f * Math.PI));
+  const T = E.tips, n = T ? T.length / 3 : 0;
+  if (!n) return;
+  // the light catches the crystals: a glint runs down the ridge, crystal by crystal (every ~2.4 s; faster in a frost)
+  const sweep = mod(t * (0.42 + 0.3 * P.frost) + E.id * 0.37, 1) * 1.6 - 0.15;
+  for (let i = 0; i < n; i++) {
+    const k = Math.max(0, 1 - Math.abs(sweep - i / (n - 1)) * 5);
+    if (k <= 0.02) continue;
+    const x = T[i * 3], y = T[i * 3 + 1], r = T[i * 3 + 2];
+    twinkle(ctx, x + LX * r * 0.08, y + LY * r * 0.08, (2.4 + r / U * 0.55) * U * k, (0.6 + 0.4 * P.frost) * glow * k);
   }
+  const f = mod(t * 0.9 + E.id, 1.3); // and one crystal always holds a soft sparkle
+  if (f < 1) { const i = (Math.floor(t * 0.9 + E.id) * 3) % n; twinkle(ctx, T[i * 3], T[i * 3 + 1], 2.8 * U * Math.sin(f * Math.PI), 0.7 * glow * Math.sin(f * Math.PI)); }
 }
 function geckoEyes(ctx, E, wide) {
   const { K, P, t, lwH, fu, lx, ly, opts, id, ha } = E;
@@ -506,11 +553,14 @@ function thornFlanks(ctx, E) { // side thorns: they break the outline, so the si
 const LAY_U = 79;
 function thornRidge(ctx, E) { // the ridge down the spine, biggest over the shoulders; 'lay' flicks one off behind
   const { U, lw, P, t, opts, x0, y0 } = E, popped = P.lay > 0.35;
+  E.tips = TIPS; TIPS.length = 0;
   for (let u = 132; u >= 34; u -= u > 97 ? 8.5 : 9) {
     if (u < 98 && u > 88) u = 88;
     if (popped && Math.abs(u - LAY_U) < 3) continue;
     const q = spInto(u, Q), r = (u > 92 ? 5.4 - (u - 92) * 0.06 : 7 + 2.6 * Math.sin((Math.PI * (u - 30)) / 62)) * U * (1 + 0.12 * P.angry), tx = -q.ny, ty = q.nx;
-    spike(ctx, E, q.x - tx * r * 0.25, q.y - ty * r * 0.25, q.x + tx * r * 1.15 - LX * r * 0.3, q.y + ty * r * 1.15 - LY * r * 0.3, r * 0.52, lw);
+    const ex = q.x + tx * r * 1.15 - LX * r * 0.3, ey = q.y + ty * r * 1.15 - LY * r * 0.3;
+    spike(ctx, E, q.x - tx * r * 0.25, q.y - ty * r * 0.25, ex, ey, r * 0.52, lw);
+    if (E.D.cry) TIPS.push(ex, ey, r);
   }
   if (P.lay > 0.25 && P.lay < 0.98) {
     const k = clamp((P.lay - 0.3) / 0.6, 0, 1), a = spAt(LAY_U), b = spAt(Math.min(UMAX - 4, LAY_U + 70));
@@ -526,13 +576,27 @@ function thornPattern(ctx, E) {
   for (const uc of [38.5, 56.5, 74.5, 92]) poly(ctx, [uv(uc - 3.5, -1.25), uv(uc - 0.5, 0), uv(uc - 3.5, 1.25), uv(uc + 3.5, 1.25), uv(uc + 6, 0), uv(uc + 3.5, -1.25)]);
   for (const [u, L] of [[106, 5], [119, 4.2], [131, 3.6]]) poly(ctx, [uv(u, -1.4), uv(u + L, -1.4), uv(u + L, 1.4), uv(u, 1.4)]);
   ctx.fill();
-  ctx.fillStyle = rgb(K.top, 0.7); ctx.beginPath(); // pebbly scales
-  for (let u = 31, i = 0; u < 98; u += 5.5, i++) { const p = uv(u, (i % 2 ? 0.52 : -0.56) + 0.08 * Math.sin(u)); ctx.moveTo(p[0] + 1.25 * U, p[1]); ctx.arc(p[0], p[1], 1.25 * U, 0, TAU); }
-  ctx.fill();
+  // pebbly scales over the whole hide: a shade under each, a lit cap on top (two batched paths); bigger on the back
+  for (const [col, al, o, rk] of [[K.lo, 0.5, 0.6, 1.08], [K.top, 0.62, 0, 0.78]]) {
+    ctx.fillStyle = rgb(col, al); ctx.beginPath();
+    for (let u = 24, row = 0; u < 132; u += 5, row++) {
+      const w = spInto(u, Q).w / U, r = Math.min(1.6, 0.4 + w * 0.07) * U * rk;
+      for (let v = -0.9 + (row % 2) * 0.25; v < 0.95; v += 0.5) {
+        if (Math.abs(v) < 0.22) continue; // the ridge
+        const p = uv(u, v + 0.05 * Math.sin(u * 1.3)); ctx.moveTo(p[0] - LX * o * U + r, p[1] - LY * o * U); ctx.arc(p[0] - LX * o * U, p[1] - LY * o * U, r, 0, TAU);
+      }
+    }
+    ctx.fill();
+  }
   gloss(ctx, E, [[33, 40], [62, 68]], 0.66, 1.5, 0.5);
 }
 function thornSnort(ctx, E) { // it snorts: two puffs out of the nostrils when it is cross (and now and then anyway)
   const { U, P, t, hcx, hcy, ha, hs, id } = E, f = P.angry > 0.2 ? mod(t * 2.2, 1) : mod(t + id * 0.7, 3.4) / 0.7;
+  const T = E.tips, n = E.D.cry && T && !E.belly ? T.length / 3 : 0;
+  if (n > 1) { // Duke's crystals catch the light: a glint runs down the ridge from tail to crown
+    const sweep = mod(t * 0.38 + id * 0.29, 1) * 1.6 - 0.15;
+    for (let i = 0; i < n; i++) { const k = Math.max(0, 1 - Math.abs(sweep - i / (n - 1)) * 5); if (k > 0.02) twinkle(ctx, T[i * 3], T[i * 3 + 1], (2.2 + T[i * 3 + 2] / U * 0.5) * U * k, 0.85 * k); }
+  }
   if (f >= 1 || P.dazed > 0.3 || E.belly) return;
   const ca = Math.cos(ha), sa = Math.sin(ha);
   ctx.fillStyle = `rgba(255,250,236,${0.6 * Math.sin(f * Math.PI)})`; ctx.beginPath();
@@ -585,6 +649,25 @@ function chamPattern(ctx, E) {
   ctx.fillStyle = rgb(K.dot); ctx.beginPath(); // a row of yellow dots down each flank
   for (let u = 29; u < 90; u += 7) for (const v of [-0.6, 0.6]) { const p = uv(u, v); ctx.moveTo(p[0] + 1.6 * U, p[1]); ctx.arc(p[0], p[1], 1.6 * U, 0, TAU); }
   ctx.fill();
+  // tubercles: a hide of little domes, a shade under each and a lit cap (two batched paths)
+  for (const [col, al, o, rk] of [[K.lo, 0.45, 0.5, 1.05], [K.top, 0.45, 0, 0.75]]) {
+    ctx.fillStyle = rgb(col, al); ctx.beginPath();
+    for (let u = 20, row = 0; u < 150; u += 4.4, row++) {
+      const w = spInto(u, Q).w / U, r = Math.min(1.15, 0.3 + w * 0.06) * U * rk;
+      for (let v = -0.88 + (row % 2) * 0.22; v < 0.92; v += 0.44) { const p = uv(u, v); ctx.moveTo(p[0] - LX * o * U + r, p[1] - LY * o * U); ctx.arc(p[0] - LX * o * U, p[1] - LY * o * U, r, 0, TAU); }
+    }
+    ctx.fill();
+  }
+  // his trick: a ripple of colour runs down him from crown to tail now and then (stronger while he hunts or snatches)
+  const { t, P, opts } = E, wv = mod(t * 0.3 + E.id * 0.41, 1) * 300 - 50, amp = 0.48 + 0.3 * clamp(Math.max(P.snatch * 3, opts.hunt || 0), 0, 1);
+  if (wv > -16 && wv < 236 && !(opts.camo > 0.5)) { // (the band always spans 3+ samples of the body)
+    const c = hues(mod(0.78 + 0.36 * (0.5 + 0.5 * Math.sin(t * 0.37 + E.id)), 1)); // magenta to gold: never his own green
+    const u0 = Math.max(14, wv - 30), u1 = Math.min(UMAX - 2, wv + 30), pa = uv(wv - 30, 0), pb = uv(wv + 30, 0), g = ctx.createLinearGradient(pa[0], pa[1], pb[0], pb[1]);
+    g.addColorStop(0, rgb(c, 0)); g.addColorStop(0.5, rgb(c, amp)); g.addColorStop(1, rgb(c, 0));
+    const L = [], R = [];
+    for (let u = u0; u <= u1 + 0.01; u += 5) { L.push(uv(u, -1.3)); R.unshift(uv(u, 1.3)); }
+    ctx.beginPath(); poly(ctx, L.concat(R)); ctx.fillStyle = g; ctx.fill(); // one smooth band (a gradient along the spine)
+  }
   gloss(ctx, E, [[30, 42], [56, 60], [100, 112]], 0.6, 1.6, 0.8);
 }
 function chamCrest(ctx, E) { // saw teeth down the spine, leaning out of the light

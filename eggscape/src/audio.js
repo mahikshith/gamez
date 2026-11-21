@@ -30,7 +30,7 @@ const MAX_VOICES = 24;
 const MERGE_WINDOW = 0.03;      // s: same-name plays inside this window merge
 const MUSIC_BUS_DB = -12;       // music fader relative to the SFX fader (both feed the limiter)
 const MUSIC_TRIM_DB = -7;       // loop trim: with the bass moved up where a phone plays it, -7 dB keeps the music ~8 dB under the hero SFX in the phone band (qa/sound/after.md)
-const RING_TICK_GAP = 0.075;    // s: at most ~13 ring ticks a second, however many rings turn
+const RING_TICK_GAP = 0.085;    // s: at most ~12 ring ticks a second, however many rings turn (and softer when that fast)
 const HERO_DUCK = 0.35;         // ring ticks / creak gain while a hero SFX sounds
 const HERO_HOLD = 0.35;         // s: how long a hero SFX holds that duck
 const XFADE = 1.0;              // s: music crossfade
@@ -52,7 +52,8 @@ export const SFX_NAMES = [
   'power_pickup', 'strike_launch', 'strike_hit', 'crow', // hero beats: an orb taken, Chick Strike, the rooster ally
   'wing_bat', 'decoy_peep', 'goose_honk', 'power_use', // the hen bats the strike chick off her wing, the decoy, the goose ally, a power waking up
   // villain voices: each family gets a signature, so you can hear who is acting without looking
-  'snake_hiss', 'snake_strike', 'eagle_screech', 'eagle_dive', 'rat_squeak', 'weasel_chitter', 'tongue_lick', 'fire_breath',
+  'snake_hiss', 'snake_strike', 'eagle_screech', 'eagle_dive', 'rat_squeak', 'weasel_chitter', 'weasel_snicker', 'weasel_sniff', 'weasel_yelp', 'tongue_lick', 'fire_breath',
+  'gecko_chirp', 'frost_lick', 'sal_call', 'sal_charge', 'sal_breath', 'sal_yelp', 'sal_huff', 'ember_hiss',
   'crab_snap', 'ink_squirt', 'gator_snap', 'gear_whir', 'mosquito', 'jelly_zap', 'puff_swell', 'creature_hurt', 'stun_stars',
   'boss_roar', 'boss_slam',
 ];
@@ -70,17 +71,19 @@ const PITCH_VAR = {
   ui_tap: 0.015, ring_tick: 0.02, hud_pop: 0, ui_back: 0.01, ui_open: 0.01, score_tick: 0.004, countdown: 0,
   egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, rewind: 0.02, tada: 0, cheer_up: 0, cluck: 0.06,
   power_pickup: 0, strike_launch: 0.02, strike_hit: 0.02, crow: 0.02, egg_crack: 0.03, egg_break: 0.02,
-  rat_squeak: 0.1, weasel_chitter: 0.07, snake_hiss: 0.05, eagle_screech: 0.05, goose_honk: 0.05, decoy_peep: 0.08, creature_hurt: 0.08,
+  rat_squeak: 0.1, weasel_chitter: 0.07, weasel_snicker: 0.06, weasel_sniff: 0.05, weasel_yelp: 0.08, snake_hiss: 0.05, eagle_screech: 0.05, goose_honk: 0.05, decoy_peep: 0.08, creature_hurt: 0.08, gecko_chirp: 0.08, sal_yelp: 0.08, sal_call: 0.3,
 };
 const DEFAULT_PITCH_VAR = 0.03;
 // Per-sound loudness trim (linear), from the render.mjs level analysis.
 // The hero beats were redesigned for phone speakers and carry their own levels (1 here).
 const SFX_GAIN = {
   ui_back: 1.2, ui_open: 1.2, ring_tick: 0.5, score_tick: 0.8, strike_launch: 1.8,
-  eagle_screech: 0.5, creature_hurt: 0.55, boss_roar: 0.75, goose_honk: 0.8, weasel_chitter: 0.8, mosquito: 1.5, // voices sit under the hero beats
-  thorn_hit: 1.6, bubble_on: 1.6, portal_enter: 1.5, portal_exit: 1.8, twin_hatch: 1.4,
+  eagle_screech: 0.5, creature_hurt: 0.55, boss_roar: 0.75, goose_honk: 0.8, weasel_chitter: 0.8, weasel_yelp: 0.55, weasel_snicker: 0.9, mosquito: 1.5, // voices sit under the hero beats
+  thorn_hit: 1.6, bubble_on: 1.6, twin_hatch: 1.4,
   wind_gust: 2.4, rewind: 2.1, bomb_fuse: 0.7, fire_burn: 1.3,
-  hen_hop: 2.4, hen_land: 1.8, flap: 2.6, confetti: 2, cluck: 1.4,
+  hen_hop: 1.6, hen_land: 1.8, flap: 2.6, confetti: 2, cluck: 1.4,
+  // the versions before 2026-11-20, kept for the Sound Board's OLD buttons
+  ring_tick_old: 0.5, creature_hurt_old: 0.55, boss_roar_old: 0.75, portal_enter_old: 1.5, portal_exit_old: 1.8, hen_hop_old: 2.4,
 };
 
 // Surface materials: f/r/d = modal knock (base Hz, partial ratios, decay s), n/nf/nq = contact noise,
@@ -106,6 +109,8 @@ const NOTE = { C: 0, 'C#': 1, DB: 1, D: 2, 'D#': 3, EB: 3, E: 4, F: 5, 'F#': 6, 
 const SCALES = {
   major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], dorian: [0, 2, 3, 5, 7, 9, 10],
   phrygian: [0, 1, 3, 5, 7, 8, 10], lydian: [0, 2, 4, 6, 7, 9, 11], pentatonic: [0, 2, 4, 7, 9],
+  // for the composed tunes
+  harmonicMinor: [0, 2, 3, 5, 7, 8, 11], phrygianDominant: [0, 1, 4, 5, 7, 8, 10], doubleHarmonic: [0, 1, 4, 5, 7, 8, 11], mixolydian: [0, 2, 4, 5, 7, 9, 10],
 };
 const PENT = new Set([0, 2, 4, 7, 9]);
 
@@ -267,6 +272,815 @@ function mixedPreset(name) {
   return (MIXED[name] = Q);
 }
 
+// ---------------------------------------------------------------- composed tunes (2026-11-20, mykee: "we need a theme kind of a
+// music, Angry Birds has a theme"; then: "every level the music sounds the same ... it starts very slow and then picks up").
+// Every world plays a written tune, note by note: the same tune every time, so a player can hum it. All of them quote the
+// main theme's hook (Chicken Strut, bars 1-2: three pecks, a leap, back down) once per 16 bars, bent into the world's
+// scale, rhythm and instrument. A tune opens on a one-bar pickup fanfare with the whole band (no pad intro, no fade).
+//
+// Notation: one string per bar, 'chord | notes'. chord = a scale degree (0 = I), or 'a,b' for two halves of the bar.
+// notes = 'degree/length' tokens in steps (a 16th; a 12-step bar is 6/8 or 3/4), 'r/len' a rest; degree 7 = the tonic an
+// octave up; '#' or 'b' after the degree bends it a semitone; '!' accents, '~' softens, '@' hands the note to the answer
+// voice (call and response).
+const N = (...a) => a; // one note, for readability in the older tunes below
+function tb(s) {
+  const k = s.indexOf('|'), chs = s.slice(0, k).trim().split(',').map(Number), n = [];
+  let st = 0;
+  for (const tok of s.slice(k + 1).trim().split(/\s+/)) {
+    const m = /^(r|-?\d+)([#b]?)([!~@]*)\/(\d+)([!~@]*)$/.exec(tok);
+    if (!m) throw new Error('bad note ' + tok + ' in ' + s);
+    const len = +m[4], fl = m[3] + m[5];
+    if (m[1] !== 'r') n.push([st, +m[1], len, fl.includes('!') ? 1 : fl.includes('~') ? 0.62 : 0, m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0, fl.includes('@') ? 1 : 0]);
+    st += len;
+  }
+  return { ch: chs.length > 1 ? chs : chs[0], n, len: st };
+}
+const tbars = (a) => a.map((b) => (typeof b === 'string' ? tb(b) : b));
+// Accompaniments. bass/comp patterns: one char per step (X accent, x normal, o ghost, . rest; bass tokens R root,
+// r ghost root, 5 fifth, 3 third, 8 octave, 7 step below, a approach to the next chord, - hold).
+// comp.mode: 'chord' (a triad), 'arp' (one chord tone per hit, walking up and down), 'root' (root + fifth).
+// d = the drum kit (first time round), d2 = the busier kit (second time round, boss levels); patterns per drum voice.
+const TUNE_ACC = {
+  polka: { // oom-pah: tuba on 1 and 3, banjo chops and a wood block on the off-beats
+    comp: { inst: 'banjo', pat: '..x...x...x...x.', lvl: 0.05 },
+    bass: { inst: 'tuba', pat: 'R...5...R...5...', lvl: 0.3 },
+    d: { kick: 'X.......x.......', snare: '....x.......x...', shaker: 'x.x.x.x.x.x.x.x.', block: '..x...x...x...x.' },
+    d2: { kick: 'X...x...X...x...', snare: '....x.......x..x', hat: 'x.x.x.x.x.x.x.x.', block: '..x...x...x...x.', clap: '....x.......x...' }, lvl: 0.85,
+  },
+  barnyard: { // the Farm on a fiddle: walking bass, stomp and clap
+    comp: { inst: 'pizz', pat: '..x...x...x...x.', lvl: 0.05 },
+    bass: { inst: 'pluck', pat: 'R...3...5...a...', lvl: 0.36 },
+    d: { stomp: 'X.......X.......', clap: '....x.......x...', shaker: 'x.x.x.x.x.x.x.x.' },
+    d2: { stomp: 'X...x...X...x...', clap: '....x.......x...', shaker: 'xxx.xxx.xxx.xxx.', block: '...x.......x....' }, lvl: 0.85,
+  },
+  skip: { // light and bright for the whistle: a skipping bass, shaker and rim
+    comp: { inst: 'harp', pat: 'x.x.x.x.x.x.x.x.', lvl: 0.045, mode: 'arp' },
+    bass: { inst: 'round', pat: 'R..r..5.R..r..a.', lvl: 0.34 },
+    d: { kick: 'X......xX.......', rim: '....x.......x...', shaker: 'x.x.x.x.x.x.x.x.' },
+    d2: { kick: 'X......xX.....x.', snare: '....x.......x...', shaker: 'xxxxxxxxxxxxxxxx', block: '..x...x...x...x.' }, lvl: 0.85,
+  },
+  squeeze: { // the accordion's polka: tuba, accordion chords on the off-beats, a snare
+    comp: { inst: 'accordion', pat: '..x...x...x...x.', lvl: 0.04 },
+    bass: { inst: 'tuba', pat: 'R...5...R...3...', lvl: 0.36 },
+    d: { kick: 'X.......X.......', snare: '....x.......x...', shaker: 'x.x.x.x.x.x.x.x.' },
+    d2: { kick: 'X...x...X...x...', snare: '....x.......x.xx', hat: 'x.x.x.x.x.x.x.x.', block: '..x...x...x...x.' }, lvl: 0.85,
+  },
+  bigband: { // the whole farm band: brass chords, tuba, snare and cymbals
+    comp: { inst: 'brass', pat: '..x...x...x...x.', lvl: 0.04 },
+    bass: { inst: 'tuba', pat: 'R...5...R.5.a...', lvl: 0.38 },
+    d: { kick: 'X...x...X...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', block: '..x...x...x...x.' },
+    d2: { kick: 'X...x...X...x...', snare: '....x..x....x.xx', hat: 'xxxxxxxxxxxxxxxx', crash: 'X...............' }, lvl: 0.85,
+  },
+  hoedown: { // stomp-clap and a walking bass under a fiddle
+    comp: { inst: 'banjo', pat: '..x...x...x...x.', lvl: 0.045 },
+    bass: { inst: 'pluck', pat: 'R...3...5...3...', lvl: 0.38 },
+    d: { stomp: 'X.......X.......', clap: '....x.......x...', shaker: '..x...x...x...x.' },
+    d2: { stomp: 'X...X...X...X...', clap: '....x.......x...', shaker: 'x.x.x.x.x.x.x.x.', block: '.......x.......x' }, lvl: 0.9,
+  },
+  swing: { // pizzicato walking bass, brushes, soft pizz chords on 2 and 4
+    comp: { inst: 'pizz', pat: '....x.......x...', lvl: 0.05 },
+    bass: { inst: 'upright', pat: 'R...3...5...a...', lvl: 0.4 },
+    d: { kick: 'x.......x.......', brush: '....x.......x...', hat: 'x..xx..xx..xx..x' },
+    d2: { kick: 'x.......x.....x.', brush: '..x.x...x.x.x...', hat: 'x.xxx.xxx.xxx.xx', snap: '....x.......x...' }, lvl: 0.8,
+  },
+  tiptoe: { // staccato low strings on the eighths, a wood block, a soft tick
+    comp: { inst: 'celesta', pat: 'x.......x.......', lvl: 0.035, mode: 'arp' },
+    bass: { inst: 'upright', pat: 'R.r.5.r.R.r.5.r.', lvl: 0.36 },
+    d: { block: '..x...x...x...x.', kick: 'x.......x.......', tick: 'x...x...x...x...' },
+    d2: { block: '..x...x...x.x.x.', kick: 'x.....x.x.......', tick: 'x.x.x.x.x.x.x.x.', snare: '....x.......x...' }, lvl: 0.85,
+  },
+  jig: { // 6/8: bodhran, a drone of root and fifth, bass on the two dotted beats
+    comp: { inst: 'harp', pat: 'x.x.x.x.x.x.', lvl: 0.035, mode: 'arp' }, drone: { lvl: 0.022 },
+    bass: { inst: 'round', pat: 'R.....5.....', lvl: 0.34 },
+    d: { bodhran: 'X...x.X...x.', shaker: '..x...x...x.' },
+    d2: { bodhran: 'X.x.x.X.x.x.', shaker: 'x.x.x.x.x.x.', rim: '......x.....' }, lvl: 0.9,
+  },
+  glade: { // soft off-beat plucks, a round bass, a shaker
+    comp: { inst: 'pluck', pat: '..x...x...x...x.', lvl: 0.04 },
+    bass: { inst: 'round', pat: 'R.....5.R.....5.', lvl: 0.24 },
+    d: { kick: 'X.......x.......', rim: '......x.......x.', shaker: 'x.x.x.x.x.x.x.x.' },
+    d2: { kick: 'X.....x.x.......', rim: '..x...x...x...x.', shaker: 'xxxxxxxxxxxxxxxx', block: '.......x.......x' }, lvl: 0.8,
+  },
+  waltz: { // 3/4: bass on one, harp arpeggios, a sleigh-bell sparkle on two and three
+    comp: { inst: 'harp', pat: 'x.x.x.x.x.x.', lvl: 0.04, mode: 'arp' },
+    bass: { inst: 'round', pat: 'R...........', lvl: 0.34 },
+    d: { kick: 'x...........', sleigh: '....x...x...' },
+    d2: { kick: 'x...........', sleigh: '....x.x.x.x.', tick: '..x...x...x.' }, lvl: 0.8,
+  },
+  shimmer: { // a pulsing arpeggio bass, kick on the beat, hats
+    comp: { inst: 'bell', pat: 'x.......x.......', lvl: 0.03, mode: 'arp' },
+    bass: { inst: 'saw', pat: 'R.R.8.R.R.R.8.R.', lvl: 0.26 },
+    d: { kick: 'X...x...X...x...', hat: '..x...x...x...x.', clap: '....x.......x...' },
+    d2: { kick: 'X...x...X...x...', hat: 'x.xxx.xxx.xxx.xx', clap: '....x.......x...', rim: '..x.......x.....' }, lvl: 0.8,
+  },
+  caravan: { // dum-tek hand drums and a plucked bass, a low drone
+    comp: { inst: 'pluck', pat: '..x.....x.x.....', lvl: 0.035, mode: 'root' }, drone: { lvl: 0.02 },
+    bass: { inst: 'pluck', pat: 'R.....R.R...5...', lvl: 0.34 },
+    d: { dum: 'X.....x.x.......', tek: '...x..x.....x.x.', shaker: '..x...x...x...x.' },
+    d2: { dum: 'X.....x.x...x...', tek: '..xx..x..x..x.xx', shaker: 'x.x.x.x.x.x.x.x.' }, lvl: 0.9,
+  },
+  gallop: { // sleigh bells and a galloping bass
+    comp: { inst: 'accordion', pat: '....x.......x...', lvl: 0.035 },
+    bass: { inst: 'pluck', pat: 'R.RRR.RRR.RRR.RR', lvl: 0.32 },
+    d: { kick: 'X.......X.......', snare: '....x.......x...', sleigh: 'x.xxx.xxx.xxx.xx' },
+    d2: { kick: 'X...X...X...X...', snare: '....x.......x.xx', sleigh: 'xxxxxxxxxxxxxxxx', crash: 'X...............' }, lvl: 0.85,
+  },
+  jungle: { // toms and a shaker under the call and response
+    comp: { inst: 'kalimba', pat: '..x.....x.x.....', lvl: 0.04, mode: 'arp' },
+    bass: { inst: 'round', pat: 'R..R..5.R..R..a.', lvl: 0.2 },
+    d: { tom: 'x.....x...x.....', kick: 'X.......X.......', shaker: 'x.xxx.xxx.xxx.xx' },
+    d2: { tom: 'x..x..x...x.x.x.', kick: 'X..x....X..x....', shaker: 'xxxxxxxxxxxxxxxx', rim: '....x.......x...' }, lvl: 0.9,
+  },
+  charmer: { // a frame drum and a drone under the reed
+    comp: { inst: 'pluck', pat: 'x.......x.......', lvl: 0.03, mode: 'root' }, drone: { lvl: 0.028 },
+    bass: { inst: 'round', pat: 'R.......R...5...', lvl: 0.32 },
+    d: { dum: 'X.......x.x.....', tek: '....x.......x...', shaker: '..x...x...x...x.' },
+    d2: { dum: 'X..x....x.x.....', tek: '..x.x.x...x.x.xx', shaker: 'x.x.x.x.x.x.x.x.' }, lvl: 0.9,
+  },
+  shanty: { // 6/8: stomps, a deep "ho!" from the crew, accordion chords
+    comp: { inst: 'accordion', pat: '..x.x...x.x.', lvl: 0.035 },
+    bass: { inst: 'tuba', pat: 'R.....5.....', lvl: 0.36 },
+    d: { stomp: 'X.....X.....', clap: '...x.....x..', ho: 'x...........' },
+    d2: { stomp: 'X..x..X..x..', clap: '...x.....x..', ho: 'x.....x.....', shaker: 'x.x.x.x.x.x.' }, lvl: 0.9,
+  },
+  calypso: { // syncopated bass, steel chords, bubbles for percussion
+    comp: { inst: 'steel', pat: '..x..x....x..x..', lvl: 0.035 },
+    bass: { inst: 'round', pat: 'R..R..5.R..R..5.', lvl: 0.24 },
+    d: { kick: 'X..x....X..x....', rim: '...x..x....x..x.', shaker: 'x.x.x.x.x.x.x.x.', bub: '......x.......x.' },
+    d2: { kick: 'X..x....X..x....', rim: '...x..x....x..x.', shaker: 'xxxxxxxxxxxxxxxx', bub: '..x...x...x...x.', block: 'x.......x.......' }, lvl: 0.85,
+  },
+  heroic: { // driving sixteenths and timpani
+    comp: { inst: 'brass', pat: 'x.......x.......', lvl: 0.035 },
+    bass: { inst: 'saw', pat: 'RrRrRrRrRrRr5r5r', lvl: 0.22 },
+    d: { kick: 'X.......X.......', snare: '....x.......x...', timp: 'X.......x.......', hat: 'x.x.x.x.x.x.x.x.' },
+    d2: { kick: 'X...X...X...X...', snare: '....x.......x.xx', timp: 'X..x..x.X.......', hat: 'xxxxxxxxxxxxxxxx', crash: 'X...............' }, lvl: 0.7,
+  },
+  clockwork: { // tick-tock wood blocks, a ratchet, pizzicato
+    comp: { inst: 'pizz', pat: '..x...x...x...x.', lvl: 0.045 },
+    bass: { inst: 'upright', pat: 'R...5...R...5...', lvl: 0.36 },
+    d: { tick: 'x.......x.......', tock: '....x.......x...', kick: 'x.......x.......', ratchet: '..............x.' },
+    d2: { tick: 'x...x...x...x...', tock: '..x...x...x...x.', kick: 'x.......x.......', ratchet: '......x.......x.', snare: '....x.......x...' }, lvl: 0.85,
+  },
+  spookwaltz: { // 3/4: a low pluck on one, glassy chords on two and three
+    comp: { inst: 'celesta', pat: '....x...x...', lvl: 0.035 },
+    bass: { inst: 'upright', pat: 'R...........', lvl: 0.6 },
+    d: { kick: 'x...........', tick: '....x...x...' },
+    d2: { kick: 'x...........', tick: '....x...x...', block: '..x.......x.' }, lvl: 0.8,
+  },
+  wardrum: { // big war drums and toms, a stabbing bass
+    comp: { inst: 'brass', pat: 'x.....x.........', lvl: 0.035 },
+    bass: { inst: 'saw', pat: 'R.R.R.R.R.R.R.8.', lvl: 0.24 },
+    d: { boom: 'X.....x.X.......', tom: '......x.......x.', snare: '....x.......x...' },
+    d2: { boom: 'X..x..x.X..x....', tom: '..x...x...x.x.xx', snare: '....x.......x...', crash: 'X...............' }, lvl: 0.9,
+  },
+  halftime: { // the dragon: half-time drums under slow brass
+    comp: { inst: 'brass', pat: 'x...............', lvl: 0.04 },
+    bass: { inst: 'saw', pat: 'R.......R...5...', lvl: 0.34 },
+    d: { boom: 'X.........x.....', snare: '........X.......', hat: 'x.x.x.x.x.x.x.x.' },
+    d2: { boom: 'X...X.....x.X...', snare: '....X.......X...', hat: 'xxxxxxxxxxxxxxxx', crash: 'X...............' }, lvl: 0.9,
+  },
+  heist: { // a sneaky walking bass, finger snaps on two and four
+    comp: { inst: 'epiano', pat: '..x.....x..x....', lvl: 0.04 },
+    bass: { inst: 'round', pat: 'R..r..5.8..7..5a', lvl: 0.24 },
+    d: { kick: 'X.....x...X.....', snap: '....x.......x...', hat: 'x..xx..xx..xx..x' },
+    d2: { kick: 'X.....x...X...x.', snap: '....x.......x...', hat: 'xxxxxxxxxxxxxxxx', rim: '..x.......x.....' }, lvl: 0.85,
+  },
+  tinker: { // the lab: a bouncy synth bass, clap, shaker and little wood blocks
+    comp: { inst: 'pizz', pat: 'x..x..x.x..x..x.', lvl: 0.035, mode: 'arp' },
+    bass: { inst: 'round', pat: 'R..R..R.5..5..a.', lvl: 0.22 },
+    d: { kick: 'X.......X.......', clap: '....x.......x...', shaker: 'x.x.x.x.x.x.x.x.', block: '...x......x....x' },
+    d2: { kick: 'X.....x.X.......', clap: '....x.......x...', shaker: 'xxxxxxxxxxxxxxxx', block: '.x.x..x...x..x.x', ratchet: '..............x.' }, lvl: 0.85,
+  },
+  swamp: { // a shuffle: jaw harp on the off-beats, a slow walking bass, brushes
+    comp: { inst: 'jaw', pat: '..x...x...x...x.', lvl: 0.05, mode: 'one' },
+    bass: { inst: 'upright', pat: 'R...5...8...5...', lvl: 0.38 },
+    d: { kick: 'X.......X.......', brush: '....x.......x...', hat: 'x..xx..xx..xx..x' },
+    d2: { kick: 'X.....x.X.......', snare: '....x.......x...', hat: 'x.xxx.xxx.xxx.xx', brush: '..x.......x.....' }, lvl: 0.85,
+  },
+  shuffle: {
+    comp: { inst: 'pluck', pat: '....x.....x.x...', lvl: 0.05 },
+    bass: { inst: 'tuba', pat: 'R.....r.5.....a.', lvl: 0.36 },
+    d: { kick: 'X.....x.x.......', clap: '....x.......x...', hat: 'x..xx..xx..xx..x', block: '......x.......x.' }, lvl: 0.85,
+  },
+  bounce: {
+    comp: { inst: 'pluck', pat: '..x..x....x..x..', lvl: 0.045 },
+    bass: { inst: 'round', pat: 'R..r..5.R..r..a.', lvl: 0.34 },
+    d: { kick: 'X......xx.......', clap: '....x.......x...', shaker: 'x.x.x.x.x.x.x.x.' }, lvl: 0.8,
+  },
+};
+const STRUT_A1 = '0 | 9/2 9/2 9/2 11/4! 9/2 7/4';     // the hook: mi mi mi SOL, mi do
+const STRUT_A2 = '4 | 8/2 8/2 8/2 10/4! 8/2 6/4';     //           re re re FA, re ti
+const CAPER_A1 = { ch: 0, n: [N(0, 7, 2), N(3, 7, 1, 0.7), N(4, 9, 2), N(6, 7, 2), N(8, 11, 4, 1), N(12, 9, 2), N(14, 7, 2)] };
+const CAPER_A2 = { ch: [4, 0], n: [N(0, 8, 2), N(3, 8, 1, 0.7), N(4, 9, 2), N(6, 8, 2), N(8, 7, 6)] };
+const SUNNY_A1 = { ch: 0, n: [N(0, 11, 2), N(2, 14, 4, 1), N(6, 16, 2), N(8, 15, 2), N(10, 14, 2), N(12, 12, 4)] };
+const SUNNY_A2 = { ch: 3, n: [N(0, 12, 2), N(2, 14, 4, 1), N(6, 17, 2), N(8, 16, 2), N(10, 14, 2), N(12, 15, 4)] };
+const SUNNY_E1 = { ch: 0, n: [N(0, 11, 2), N(2, 14, 4), N(6, 16, 2), N(8, 18, 4, 1), N(12, 19, 2), N(14, 18, 2)] };
+const SUNNY_E2 = { ch: [4, 0], n: [N(0, 15, 2), N(2, 13, 2), N(4, 15, 2), N(6, 16, 2), N(8, 14, 8, 1)] };
+// lead = { inst, alt (second time round), lvl, fx (echo send), harm (counter line second time round: degrees, -2 = a
+// third below, 7 = an octave up), oct (semitones) }. arrs = the level arrangements; a level plays arrs[(level - 1) % n].
+// hook = the bars (1-based) that quote Chicken Strut's hook, for the checker.
+export const TUNES = {
+  // "Chicken Strut", the main theme: a pecking three-note figure and a leap, stepped down and back, over an oom-pah.
+  // The Farm plays it in five arrangements, one per level: banjo in C, fiddle in D, whistle in F, accordion in G and
+  // the whole band with brass in A.
+  strut: {
+    name: 'Chicken Strut', root: 'C', scale: 'major', bpm: 126, swing: 0, acc: 'polka', trim: 0.79, hook: [1, 2],
+    lead: { inst: 'banjo', alt: 'fiddle', lvl: 0.42, fx: 0.08, harm: -2 },
+    pick: '4 | 11!/4 r/4 4/2 5/2 6/2 8/2',
+    cluck: { 3: '............x.x.', 7: '..............x.', 15: '............x.x.' },
+    bars: [
+      STRUT_A1, STRUT_A2,
+      '0 | 9/2 9/2 9/2 11/4 14/4! 12/2',
+      '4,0 | 11/4 10/2 8/2 7/8',
+      STRUT_A1, STRUT_A2,
+      '3 | 10/2 10/2 10/2 12/4! 10/2 8/4',
+      '4,0 | 11/2 12/2 13/2 15/2 14/8!',
+      '3 | 12/6 10/2 12/4 14/4',
+      '0 | 11/6 9/2 11/4 14/4',
+      '1 | 10/6 8/2 10/4 12/4',
+      '4 | 11/4 11/4 11/2 12/2 13/2 15/2',
+      STRUT_A1, STRUT_A2,
+      '3,0 | 10/2 10/2 10/2 12/4! 11/2 9/4',
+      '4,0 | 8/4 6/4 7/4 14/2! r/2',
+    ],
+    arrs: [
+      { name: 'banjo, C' },
+      { name: 'fiddle, D', tr: 2, bpm: 120, lead: { inst: 'fiddle', alt: 'banjo', lvl: 0.27, harm: -2 }, acc: 'barnyard' },
+      { name: 'whistle, F', tr: 5, bpm: 124, lead: { inst: 'whistle', alt: 'accordion', lvl: 0.27, harm: -2, oct: -12 }, acc: 'skip' },
+      { name: 'accordion, G', tr: -5, bpm: 128, lead: { inst: 'accordion', alt: 'whistle', lvl: 0.25, harm: -2, alto: 12 }, acc: 'squeeze' },
+      { name: 'full band with brass, A', tr: -3, bpm: 132, lead: { inst: 'brass', alt: 'banjo', lvl: 0.26, harm: -2, dbl: 'banjo' }, acc: 'bigband' },
+    ],
+  },
+  // Hay Barn: a hoedown. The fiddle saws eighth-note runs over a stomp-clap; the hook comes back in the last A. G major.
+  barn: {
+    name: 'Hayloft Hoedown', root: 'G', scale: 'major', bpm: 134, acc: 'hoedown', trim: 0.98, hook: [13, 14],
+    lead: { inst: 'fiddle', alt: 'banjo', lvl: 0.27, fx: 0.06, harm: -2 },
+    pick: '4 | 8!/4 r/4 4/2 5/2 6/2 8/2',
+    bars: [
+      '0 | 7/2 4/2 7/2 9/2 11/2 9/2 7/2 9/2',
+      '3 | 10/2 9/2 10/2 12/2 10/4! 9/2 7/2',
+      '0 | 9/2 7/2 4/2 7/2 9/2 11/2 9/2 7/2',
+      '4 | 8/2 6/2 4/2 6/2 8/4! 11/2 8/2',
+      '0 | 7/2 4/2 7/2 9/2 11/2 9/2 7/2 9/2',
+      '3 | 10/2 9/2 10/2 12/2 10/4! 9/2 7/2',
+      '0 | 9/2 7/2 4/2 7/2 9/2 11/2 9/2 7/2',
+      '4,0 | 8/2 6/2 4/2 6/2 7/8!',
+      '3 | 12/2 14/2 12/2 10/2 12/4! 10/2 9/2',
+      '0 | 11/2 9/2 7/2 9/2 11/4! 14/4',
+      '1 | 12/2 13/2 12/2 10/2 8/4! 10/2 12/2',
+      '4 | 13/2 11/2 10/2 8/2 4/4! 6/2 8/2',
+      '0 | 11/2 11/1 11/1 13/4! 11/2 9/2 11/2 9/2',
+      '4 | 8/2 8/1 8/1 10/4! 8/2 6/2 8/2 6/2',
+      '0,3 | 7/2 9/2 11/2 9/2 10/2 12/2 14/4!',
+      '4 | 13/2 12/2 11/2 10/2 8/2 6/2 4/2 6/2',
+    ],
+  },
+  // Apple Orchard: an easy swing on a tin whistle, lazy long notes and swung pickups. F major.
+  orchard: {
+    name: 'Orchard Swing', root: 'F', scale: 'major', bpm: 112, swing: 0.22, acc: 'swing', trim: 0.86, hook: [9, 10],
+    lead: { inst: 'whistle', alt: 'vibes', lvl: 0.27, fx: 0.12, harm: -2 },
+    pick: '4 | 11!/4 r/4 8/2 9/2 10/2 11/2',
+    bars: [
+      '0 | 9/6 7/2 9/4 11/4',
+      '5 | 12/6 11/2 9/8',
+      '1 | 8/6 9/2 10/4 12/4',
+      '4 | 11/6 10/2 8/4 r/4',
+      '0 | 9/6 7/2 9/4 11/4',
+      '5 | 12/6 14/2 12/8!',
+      '1,4 | 10/4 8/4 11/4 10/4',
+      '0 | 9/2 8/2 7/12',
+      '3 | 12/2 12/2 12/2 14/4! 12/2 10/4',
+      '0 | 11/2 11/2 11/2 13/4! 11/2 9/4',
+      '1 | 10/4 12/4 15/4! 12/4',
+      '4 | 13/4 11/4 8/4 6/4',
+      '0 | 9/6 7/2 9/4 11/4',
+      '5 | 12/6 14/2 12/8!',
+      '1,4 | 10/4 8/4 11/4 10/4',
+      '0,4 | 7/6 r/2 11/2 10/2 8/2 6/2',
+    ],
+  },
+  // Pumpkin Patch: a spooky-cute tiptoe on a bassoon, staccato steps in D harmonic minor.
+  pumpkin: {
+    name: 'Pumpkin Tiptoe', root: 'D', scale: 'harmonicMinor', bpm: 104, acc: 'tiptoe', trim: 0.78, hook: [9, 10],
+    lead: { inst: 'bassoon', alt: 'celesta', lvl: 0.3, fx: 0.06, harm: -2, oct: -12, alto: 12 },
+    pick: '4 | 4!/2 r/2 r/4 6/1 r/1 8/1 r/1 4/2 6/2',
+    bars: [
+      '0 | 4/1 r/1 7/1 r/1 9/1 r/1 7/1 r/1 4/4! r/4',
+      '4 | 6/1 r/1 8/1 r/1 4/1 r/1 6/1 r/1 4/4! r/4',
+      '0,3 | 4/1 r/1 7/1 r/1 9/1 r/1 11/1 r/1 10/2 9/2 7/4',
+      '4 | 8/2 6/2 4/2 6/2 4/8!',
+      '0 | 4/1 r/1 7/1 r/1 9/1 r/1 7/1 r/1 4/4! r/4',
+      '4 | 6/1 r/1 8/1 r/1 4/1 r/1 6/1 r/1 4/4! r/4',
+      '5 | 5/1 r/1 7/1 r/1 9/1 r/1 7/1 r/1 5/4! r/4',
+      '4,0 | 6/2 4/2 6/2 8/2 7/8!',
+      '0 | 9/1 r/1 9/1 r/1 9/1 r/1 11/3! r/1 9/1 r/1 7/3 r/1',
+      '4 | 8/1 r/1 8/1 r/1 8/1 r/1 10/3! r/1 8/1 r/1 6/3 r/1',
+      '3 | 10/2 12/2 14/2 12/2 10/4! 7/4',
+      '4 | 11/2 10/2 8/2 6/2 4/4! r/4',
+      '0 | 4/1 r/1 7/1 r/1 9/1 r/1 7/1 r/1 4/4! r/4',
+      '4 | 6/1 r/1 8/1 r/1 4/1 r/1 6/1 r/1 4/4! r/4',
+      '5 | 5/1 r/1 7/1 r/1 9/1 r/1 7/1 r/1 5/4! r/4',
+      '4 | 6/2 4/2 6/2 8/2 4/4! 6/4',
+    ],
+  },
+  // Bramble Woods: a forest jig in 6/8 on a tin whistle, over a bodhran and a drone. A dorian.
+  bramble: {
+    name: 'Bramble Jig', root: 'A', scale: 'dorian', bpm: 156, spb: 12, strong: [0, 6], acc: 'jig', trim: 0.71, hook: [9, 10],
+    lead: { inst: 'whistle', alt: 'fiddle', lvl: 0.26, fx: 0.08, harm: -2 },
+    pick: '4 | 11!/4 r/2 11/2 12/2 13/2',
+    bars: [
+      '0 | 14/2 11/2 9/2 7/2 9/2 11/2',
+      '6 | 13/2 10/2 8/2 6/2 8/2 10/2',
+      '0 | 14/2 11/2 9/2 11/4 12/2',
+      '3 | 10/4 9/2 10/2 12/2 14/2',
+      '0 | 14/2 11/2 9/2 7/2 9/2 11/2',
+      '6 | 13/2 10/2 8/2 6/2 8/2 10/2',
+      '0 | 14/2 15/2 16/2 14/2 11/2 9/2',
+      '6,0 | 13/2 15/2 13/2 14/6!',
+      '0 | 14/2 14/2 14/2 16/3! 14/1 11/2',
+      '6 | 13/2 13/2 13/2 15/3! 13/1 10/2',
+      '3 | 17/2 16/2 14/2 12/2 14/2 15/2',
+      '4 | 15/4 13/2 11/6!',
+      '0 | 14/2 11/2 9/2 7/2 9/2 11/2',
+      '6 | 13/2 10/2 8/2 6/2 8/2 10/2',
+      '0 | 14/2 15/2 16/2 14/2 11/2 9/2',
+      '6,4 | 10/2 8/2 6/2 11/2 10/2 8/2',
+    ],
+  },
+  // Mushroom Glade: a bouncy night tune on a kalimba, dotted rhythms, the bright lydian colour. E lydian.
+  mushroom: {
+    name: 'Glowcap Bounce', root: 'E', scale: 'lydian', bpm: 100, swing: 0.08, acc: 'glade', trim: 0.81, hook: [9, 10],
+    lead: { inst: 'kalimba', alt: 'celesta', lvl: 0.45, fx: 0.18, harm: -2 },
+    pick: '4 | 11!/4 r/4 4/2 6/2 8/2 10/2',
+    bars: [
+      '0 | 7/3 9/1 11/4! 9/2 7/2 4/4',
+      '1 | 8/3 10/1 12/4! 10/2 8/2 5/4',
+      '0 | 7/3 9/1 11/2 14/2 11/4! 9/4',
+      '5 | 12/4 11/2 9/2 7/8!',
+      '0 | 7/3 9/1 11/4! 9/2 7/2 4/4',
+      '1 | 8/3 10/1 12/4! 10/2 8/2 5/4',
+      '0 | 7/3 9/1 11/2 14/2 11/4! 9/4',
+      '1,0 | 8/2 10/2 12/2 10/2 7/8!',
+      '0 | 9/3 9/1 9/2 11/4! 9/2 7/4',
+      '1 | 8/3 8/1 8/2 10/4! 8/2 6/4',
+      '5 | 12/3 13/1 14/4! 12/2 11/2 9/4',
+      '1,4 | 15/4 13/4 11/4 8/4',
+      '0 | 7/3 9/1 11/4! 9/2 7/2 4/4',
+      '1 | 8/3 10/1 12/4! 10/2 8/2 5/4',
+      '0 | 7/3 9/1 11/2 14/2 11/4! 9/4',
+      '0,4 | 7/6 r/2 11/2 10/2 9/2 8/2',
+    ],
+  },
+  // Frozen Lake: a skating waltz in 3/4 on a celesta over harp arpeggios. D major.
+  frozen: {
+    name: 'Skating Waltz', root: 'D', scale: 'major', bpm: 96, spb: 12, strong: [0], acc: 'waltz', trim: 0.91, hook: [9, 10],
+    lead: { inst: 'celesta', alt: 'glock', lvl: 0.4, fx: 0.16, harm: -2 },
+    pick: '4 | 11!/4 8/2 10/2 13/4',
+    bars: [
+      '0 | 7/4 9/4 11/4',
+      '0 | 14/8 11/4',
+      '4 | 13/4 12/4 11/4',
+      '4 | 11/8 8/4',
+      '4 | 8/4 11/4 13/4',
+      '4 | 15/8 13/4',
+      '0 | 14/4 13/4 11/4',
+      '0 | 9/8 r/4',
+      '0 | 9/2 9/2 9/2 11/4! 9/2',
+      '4 | 8/2 8/2 8/2 10/4! 8/2',
+      '3 | 10/4 12/4 14/4',
+      '4 | 13/8 r/4',
+      '0 | 14/4 11/4 9/4',
+      '5 | 12/8 9/4',
+      '1 | 8/4 10/4 12/4',
+      '4 | 11/4 8/4 6/4',
+    ],
+  },
+  // Crystal Cave: glittering and driving, glass bells with an echo over a pulsing arpeggio bass. B minor pentatonic.
+  crystal: {
+    name: 'Crystal Pulse', root: 'B', scale: 'minor', pent: true, bpm: 110, acc: 'shimmer', trim: 0.76, hook: [9, 10],
+    lead: { inst: 'glass', alt: 'kalimba', lvl: 0.3, fx: 0.32, harm: 7 },
+    delay: { steps: 3, fb: 0.3, mix: 0.45 },
+    pick: '6 | 13!/4 r/4 10/2 11/2 13/2 14/2',
+    bars: [
+      '0 | 11/2 9/2 7/2 9/2 11/4! 14/4',
+      '5 | 14/2 11/2 9/2 7/2 9/4! 7/4',
+      '2 | 9/2 11/2 13/2 11/2 16/4! 13/4',
+      '6 | 13/4 10/2 13/2 17/4! 13/4',
+      '0 | 11/2 9/2 7/2 9/2 11/4! 14/4',
+      '5 | 14/2 11/2 9/2 7/2 9/4! 7/4',
+      '2 | 9/2 11/2 13/2 11/2 16/4! 13/4',
+      '6,0 | 10/2 9/2 7/2 6/2 7/8!',
+      '0 | 9/2 9/2 9/2 11/4! 9/2 7/4',
+      '6 | 10/2 10/2 10/2 13/4! 10/2 13/4',
+      '5 | 14/2 16/2 17/4! 16/2 14/2 11/4',
+      '6 | 17/4 13/4 10/4 13/4',
+      '0 | 11/2 9/2 7/2 9/2 11/4! 14/4',
+      '5 | 14/2 11/2 9/2 7/2 9/4! 7/4',
+      '2 | 9/2 11/2 13/2 11/2 16/4! 13/4',
+      '6 | 10/2 9/2 10/2 13/2 10/4! 6/4',
+    ],
+  },
+  // Desert Dunes: a caravan on a plucked oud over dum-tek hand drums. D phrygian dominant.
+  dunes: {
+    name: 'Caravan', root: 'D', scale: 'phrygianDominant', bpm: 116, acc: 'caravan', trim: 1.07, hook: [9, 10],
+    lead: { inst: 'oud', alt: 'shehnai', lvl: 0.32, fx: 0.1, harm: -2 },
+    pick: '1 | 8!/4 r/4 10/2 9/2 8/2 9/2',
+    bars: [
+      '0 | 7/2 8/2 9/4! 11/4 9/2 8/2',
+      '1 | 8/6 9/2 8/2 7/2 8/4',
+      '0 | 11/2 12/2 11/2 9/2 11/4! 14/4',
+      '6 | 13/4 12/2 11/2 13/8',
+      '0 | 7/2 8/2 9/4! 11/4 9/2 8/2',
+      '1 | 8/6 9/2 8/2 7/2 8/4',
+      '3 | 10/2 12/2 14/4! 12/2 10/2 8/4',
+      '1,0 | 8/4 9/2 8/2 7/8!',
+      '0 | 9/2 9/2 9/2 11/4! 9/2 7/4',
+      '1 | 8/2 8/2 8/2 10/4! 8/2 13/4',
+      '0 | 14/4 13/2 12/2 11/4! 12/2 13/2',
+      '1 | 15/8 12/4 10/4',
+      '0 | 7/2 8/2 9/4! 11/4 9/2 8/2',
+      '1 | 8/6 9/2 8/2 7/2 8/4',
+      '0 | 11/2 12/2 11/2 9/2 11/4! 14/4',
+      '1,0 | 8/4 9/2 8/2 7/4 6/4',
+    ],
+  },
+  // Pine Blizzard: a sleigh gallop on brass, sleigh bells and a galloping bass. G (harmonic) minor.
+  blizzard: {
+    name: 'Sleigh Gallop', root: 'G', scale: 'harmonicMinor', bpm: 138, acc: 'gallop', trim: 0.82, hook: [9, 10],
+    lead: { inst: 'brass', alt: 'fiddle', lvl: 0.26, fx: 0.06, harm: -2, oct: -12, alto: 12 },
+    pick: '4 | 11!/4 r/4 11/2 11/1 11/1 13/2 13/2',
+    bars: [
+      '0 | 7/2 7/1 7/1 9/2 9/1 9/1 11/4! 9/4',
+      '5 | 12/2 12/1 12/1 11/2 11/1 11/1 9/4! 7/4',
+      '3 | 10/2 10/1 10/1 12/2 12/1 12/1 14/4! 12/4',
+      '4 | 11/4 13/4 11/8!',
+      '0 | 7/2 7/1 7/1 9/2 9/1 9/1 11/4! 9/4',
+      '5 | 12/2 12/1 12/1 11/2 11/1 11/1 9/4! 7/4',
+      '3,4 | 14/2 12/2 10/2 12/2 11/4! 13/4',
+      '0 | 7/4 11/4 14/8!',
+      '0 | 16/2 16/1 16/1 18/4! 16/2 14/2 16/2 14/2',
+      '4 | 15/2 15/1 15/1 17/4! 15/2 13/2 15/2 13/2',
+      '5 | 16/4 14/4 12/4 14/4',
+      '4 | 15/4 13/4 11/8!',
+      '0 | 7/2 7/1 7/1 9/2 9/1 9/1 11/4! 9/4',
+      '5 | 12/2 12/1 12/1 11/2 11/1 11/1 9/4! 7/4',
+      '3,4 | 14/2 12/2 10/2 12/2 11/4! 13/4',
+      '0,4 | 14/4 11/4 13/4 11/4',
+    ],
+  },
+  // Jungle Ruins: call and response, a marimba calls and a low marimba answers, over toms. E minor pentatonic.
+  jungle: {
+    name: 'Ruins Call', root: 'E', scale: 'minor', pent: true, bpm: 124, acc: 'jungle', trim: 0.7, hook: [9, 10],
+    lead: { inst: 'marimba', alt: 'kalimba', answer: 'woodmarimba', lvl: 0.45, fx: 0.1, harm: 7 },
+    pick: '6 | 13!/4 r/4 10/2 11/2 13/2 13/2',
+    bars: [
+      '0 | 7/2 9/2 11/4! 9/2@ 7/2@ 4/4@',
+      '6 | 13/2 11/2 10/4! 13/2@ 10/2@ 6/4@',
+      '5 | 14/2 11/2 9/4! 14/2@ 11/2@ 9/4@',
+      '6,0 | 13/2 10/2 13/2 10/2 7/8!',
+      '0 | 7/2 9/2 11/4! 9/2@ 7/2@ 4/4@',
+      '6 | 13/2 11/2 10/4! 13/2@ 10/2@ 6/4@',
+      '5 | 14/2 11/2 9/4! 14/2@ 11/2@ 9/4@',
+      '3,0 | 10/2 9/2 7/2 9/2 7/8!',
+      '0 | 9/2 9/2 9/2 11/4! 9/2@ 7/4@',
+      '6 | 10/2 10/2 10/2 13/4! 10/2@ 6/4@',
+      '3 | 14/2 14/2 17/4! 14/4 10/4',
+      '6 | 13/4 11/2 10/2 13/8!',
+      '0 | 7/2 9/2 11/4! 9/2@ 7/2@ 4/4@',
+      '6 | 13/2 11/2 10/4! 13/2@ 10/2@ 6/4@',
+      '5 | 14/2 11/2 9/4! 14/2@ 11/2@ 9/4@',
+      '3,6 | 10/2 9/2 7/2 9/2 10/4! 13/4',
+    ],
+  },
+  // Pyramid Tomb: a snake charmer on a nasal reed over a frame drum and a drone. C double harmonic.
+  tomb: {
+    name: 'Snake Charmer', root: 'C', scale: 'doubleHarmonic', bpm: 108, acc: 'charmer', trim: 0.78, hook: [9, 10],
+    lead: { inst: 'shehnai', alt: 'oud', lvl: 0.27, fx: 0.12, harm: -2 },
+    pick: '1 | 8!/4 r/4 8/2 9/2 10/2 9/2',
+    bars: [
+      '0 | 7/6 8/2 9/4! 8/2 7/2',
+      '1 | 8/6 9/2 10/4! 9/2 8/2',
+      '0 | 11/4 12/2 11/2 9/4! 8/2 9/2',
+      '1,0 | 8/4 10/4 7/8!',
+      '0 | 7/6 8/2 9/4! 8/2 7/2',
+      '1 | 8/6 9/2 10/4! 9/2 8/2',
+      '3 | 10/2 12/2 14/4! 12/2 10/2 12/4',
+      '1,0 | 12/2 11/2 9/2 8/2 7/8!',
+      '0 | 9/2 9/2 9/2 11/4! 9/2 7/4',
+      '1 | 8/2 8/2 8/2 10/4! 8/2 13/4',
+      '0 | 14/4 15/2 14/2 11/4! 12/2 11/2',
+      '1 | 10/4 12/4 8/8!',
+      '0 | 7/6 8/2 9/4! 8/2 7/2',
+      '1 | 8/6 9/2 10/4! 9/2 8/2',
+      '0 | 11/4 12/2 11/2 9/4! 8/2 9/2',
+      '1 | 8/4 10/4 12/4 10/4',
+    ],
+  },
+  // Pirate Cove: a sea shanty in 6/8 on an accordion, the crew stamping and calling "ho!". D minor.
+  cove: {
+    name: 'Cove Shanty', root: 'D', scale: 'minor', bpm: 144, spb: 12, strong: [0, 6], acc: 'shanty', trim: 0.71, hook: [9, 10],
+    lead: { inst: 'accordion', alt: 'fiddle', lvl: 0.26, fx: 0.06, harm: -2 },
+    pick: '4 | 11!/4 r/2 4/2 6/2 8/2',
+    bars: [
+      '0 | 4/4 7/2 7/4 9/2',
+      '0 | 9/4 11/2 9/4 7/2',
+      '6 | 6/4 8/2 8/4 10/2',
+      '6 | 10/4 8/2 6/6!',
+      '0 | 4/4 7/2 7/4 9/2',
+      '0 | 11/4 12/2 11/4 9/2',
+      '6 | 10/4 9/2 8/4 6/2',
+      '4,0 | 8/4 6/2 7/6!',
+      '0 | 9/2 9/2 9/2 11/4! 9/2',
+      '6 | 8/2 8/2 8/2 10/4! 8/2',
+      '2 | 13/4 14/2 13/4 11/2',
+      '4 | 11/4 12/2 11/4 8/2',
+      '0 | 4/4 7/2 7/4 9/2',
+      '0 | 11/4 12/2 11/4 9/2',
+      '6 | 10/4 9/2 8/4 6/2',
+      '4 | 8/4 6/2 4/4 6/2',
+    ],
+  },
+  // Coral Reef: a calypso on a steel drum, a syncopated bass, bubbles for percussion. Bb major.
+  reef: {
+    name: 'Reef Calypso', root: 'BB', scale: 'major', bpm: 104, acc: 'calypso', trim: 0.79, hook: [9, 10],
+    lead: { inst: 'steel', alt: 'marimba', lvl: 0.45, fx: 0.12, harm: -2 },
+    pick: '4 | 11!/4 r/4 6/2 8/2 10/2 11/2',
+    bars: [
+      '0 | 9/3 9/3 11/2 r/2 9/2 7/4',
+      '3 | 10/3 10/3 12/2 r/2 10/2 7/4',
+      '0 | 9/3 11/3 14/2 r/2 12/2 11/4',
+      '4 | 11/3 10/3 8/2 6/4! 8/4',
+      '0 | 9/3 9/3 11/2 r/2 9/2 7/4',
+      '3 | 10/3 10/3 12/2 r/2 10/2 7/4',
+      '1,4 | 8/3 10/3 12/2 11/4! 8/4',
+      '0 | 9/3 8/3 7/10!',
+      '0 | 9/3 9/3 9/2 11/4! 9/2 7/2',
+      '4 | 8/3 8/3 8/2 11/4! 8/2 6/2',
+      '5 | 12/3 14/3 16/2 r/2 14/2 12/4',
+      '1,4 | 15/4 13/4 11/4 8/4',
+      '0 | 9/3 9/3 11/2 r/2 9/2 7/4',
+      '3 | 10/3 10/3 12/2 r/2 10/2 7/4',
+      '1,4 | 8/3 10/3 12/2 11/4! 8/4',
+      '0,4 | 7/6 r/2 8/2 9/2 10/2 11/2',
+    ],
+  },
+  // Storm Peaks: a heroic gallop, brass over timpani and driving sixteenths. E (harmonic) minor.
+  storm: {
+    name: 'Storm Rider', root: 'E', scale: 'harmonicMinor', bpm: 150, acc: 'heroic', trim: 0.6, hook: [9, 10],
+    lead: { inst: 'brass', alt: 'brass', lvl: 0.33, fx: 0.06, harm: 7, oct: -12 },
+    pick: '4 | 11!/4 r/4 8/2 8/2 10/2 13/2',
+    bars: [
+      '0 | 7/6 7/2 11/8!',
+      '5 | 12/6 11/2 9/4 7/4',
+      '3 | 10/6 10/2 14/8!',
+      '4 | 13/4 11/4 8/8!',
+      '0 | 7/6 7/2 11/8!',
+      '5 | 12/6 11/2 9/4 7/4',
+      '3,4 | 10/4 12/4 13/4! 11/4',
+      '0 | 14/4 11/4 7/8!',
+      '0 | 9/2 9/2 9/2 11/4! 9/2 7/4',
+      '4 | 8/2 8/2 8/2 10/4! 8/2 6/4',
+      '5 | 12/4 14/4 16/6! 14/2',
+      '4 | 15/4 13/4 11/8!',
+      '0 | 7/6 7/2 11/8!',
+      '5 | 12/6 11/2 9/4 7/4',
+      '3,4 | 10/4 12/4 13/4! 11/4',
+      '0,4 | 14/4 11/4 13/4 11/4',
+    ],
+  },
+  // Clocktower: clockwork, a music box over pizzicato and tick-tock wood blocks. A major.
+  clock: {
+    name: 'Clockwork', root: 'A', scale: 'major', bpm: 120, acc: 'clockwork', trim: 0.87, hook: [9, 10],
+    lead: { inst: 'musicbox', alt: 'pizz', lvl: 0.32, fx: 0.12, harm: -7 },
+    pick: '4 | 11!/4 r/4 11/2 13/2 15/2 13/2',
+    bars: [
+      '0 | 7/2 11/2 9/2 11/2 7/2 11/2 9/2 11/2',
+      '4 | 13/2 11/2 8/2 11/2 13/2 11/2 8/2 11/2',
+      '3 | 10/2 14/2 12/2 14/2 10/2 14/2 12/2 14/2',
+      '4 | 11/4 8/4 13/4! 11/4',
+      '0 | 7/2 11/2 9/2 11/2 7/2 11/2 9/2 11/2',
+      '4 | 13/2 11/2 8/2 11/2 13/2 11/2 8/2 11/2',
+      '1,4 | 8/2 10/2 12/2 10/2 11/4! 13/4',
+      '0 | 7/4 11/4 14/8!',
+      '0 | 16/2 16/2 16/2 18/4! 16/2 14/4',
+      '4 | 15/2 15/2 15/2 17/4! 15/2 13/4',
+      '3 | 17/4 14/4 12/4 14/4',
+      '4 | 13/2 15/2 13/2 11/2 8/8!',
+      '0 | 7/2 11/2 9/2 11/2 7/2 11/2 9/2 11/2',
+      '4 | 13/2 11/2 8/2 11/2 13/2 11/2 8/2 11/2',
+      '1,4 | 8/2 10/2 12/2 10/2 11/4! 13/4',
+      '0,4 | 14/4 11/4 13/2 11/2 8/4',
+    ],
+  },
+  // Haunted Graveyard: a spooky waltz in 3/4, a theremin gliding over a low pluck and glassy chords. C harmonic minor.
+  haunted: {
+    name: 'Ghost Waltz', root: 'C', scale: 'harmonicMinor', bpm: 84, spb: 12, strong: [0], acc: 'spookwaltz', trim: 0.65, hook: [9, 10],
+    lead: { inst: 'theremin', alt: 'celesta', lvl: 0.26, fx: 0.2, harm: -2 },
+    pick: '4 | 11!/4 8/4 13/4',
+    bars: [
+      '0 | 7/4 9/4 11/4',
+      '0 | 14/8 11/4',
+      '4 | 13/4 11/4 8/4',
+      '4 | 11/12',
+      '3 | 10/4 12/4 14/4',
+      '0 | 14/4 11/4 9/4',
+      '4 | 13/4 12/4 11/4',
+      '0 | 7/12',
+      '0 | 9/2 9/2 9/2 11/4! 9/2',
+      '4 | 8/2 8/2 8/2 10/4! 8/2',
+      '5 | 12/4 14/4 16/4',
+      '4 | 15/8 13/4',
+      '0 | 14/4 11/4 9/4',
+      '3 | 10/4 12/4 14/4',
+      '4 | 13/4 11/4 8/4',
+      '4 | 8/4 11/4 13/4',
+    ],
+  },
+  // Volcano: war drums and a gritty lead in F phrygian, the flat second grinding against the tonic.
+  volcano: {
+    name: 'War Drums', root: 'F', scale: 'phrygian', bpm: 146, acc: 'wardrum', trim: 0.87, hook: [9, 10],
+    lead: { inst: 'square', alt: 'brass', lvl: 0.24, fx: 0.06, harm: 7, oct: -12, alto: 0 },
+    pick: '1 | 8!/4 r/4 8/2 8/2 10/2 8/2',
+    bars: [
+      '0 | 7/4 7/2 8/2 7/4! 4/4',
+      '1 | 8/4 8/2 10/2 8/4! 5/4',
+      '0 | 9/4 9/2 10/2 11/4! 9/4',
+      '6 | 13/4 10/4 8/8!',
+      '0 | 7/4 7/2 8/2 7/4! 4/4',
+      '1 | 8/4 8/2 10/2 8/4! 5/4',
+      '3 | 10/4 12/4 14/4! 12/4',
+      '1,0 | 8/4 10/4 7/8!',
+      '0 | 9/2 9/2 9/2 11/4! 9/2 7/4',
+      '1 | 8/2 8/2 8/2 10/4! 8/2 13/4',
+      '0 | 14/4 13/2 12/2 11/4! 14/4',
+      '1 | 15/8 12/4 10/4',
+      '0 | 7/4 7/2 8/2 7/4! 4/4',
+      '1 | 8/4 8/2 10/2 8/4! 5/4',
+      '3 | 10/4 12/4 14/4! 12/4',
+      '1 | 8/4 10/4 12/4 13/4',
+    ],
+  },
+  // Dragon's Lair: slow heavy brass, then the B section breaks into running eighths, then the brass again. F# minor.
+  dragon: {
+    name: "Dragon's Hoard", root: 'F#', scale: 'harmonicMinor', bpm: 100, acc: 'halftime', trim: 0.89, hook: [9, 10],
+    lead: { inst: 'brass', alt: 'shehnai', lvl: 0.27, fx: 0.08, harm: -2, oct: -12, alto: 12 },
+    pick: '4 | 11!/4 r/4 8/2 10/2 11/2 13/2',
+    bars: [
+      '0 | 7/8 9/8',
+      '5 | 12/8 14/4 12/4',
+      '3 | 10/8 12/8',
+      '4 | 11/12 r/4',
+      '0 | 7/8 9/8',
+      '5 | 12/8 14/4 12/4',
+      '3,4 | 12/8 13/8',
+      '0 | 14/12 r/4',
+      '0 | 9/2 9/2 9/2 11/4! 9/2 7/4',
+      '4 | 8/2 8/2 8/2 10/4! 8/2 6/4',
+      '5 | 12/2 14/2 16/2 14/2 12/2 11/2 12/2 14/2',
+      '4 | 13/2 11/2 13/2 15/2 13/4! 11/4',
+      '0 | 7/8 9/8',
+      '5 | 12/8 14/4 12/4',
+      '3,4 | 12/8 13/8',
+      '4 | 11/4 13/4 15/4 13/4',
+    ],
+  },
+  // The Thieves' Vault: a heist, vibes over a sneaky walking bass and finger snaps. A (harmonic) minor, swung.
+  vault: {
+    name: 'Vault Heist', root: 'A', scale: 'harmonicMinor', bpm: 128, swing: 0.18, acc: 'heist', trim: 0.64, hook: [9, 10],
+    lead: { inst: 'vibes', alt: 'brass', lvl: 0.45, fx: 0.12, harm: -2 },
+    pick: '4 | 11!/4 r/4 8/2 r/2 6/2 8/2',
+    bars: [
+      '0 | 7/3 r/1 7/2 9/2 11/4! 9/2 r/2',
+      '5 | 12/3 r/1 11/2 9/2 7/4! r/4',
+      '3 | 10/3 r/1 10/2 12/2 14/4! 12/2 r/2',
+      '4 | 13/3 r/1 11/2 8/2 11/8!',
+      '0 | 7/3 r/1 7/2 9/2 11/4! 9/2 r/2',
+      '5 | 12/3 r/1 11/2 9/2 7/4! r/4',
+      '3,4 | 14/2 12/2 10/2 12/2 13/4! 11/4',
+      '0 | 14/2 r/2 11/2 r/2 7/4! r/4',
+      '0 | 9/2 r/1 9/1 9/2 11/4! 9/2 7/4',
+      '4 | 8/2 r/1 8/1 8/2 10/4! 8/2 6/4',
+      '5 | 12/4 14/4 16/6! 14/2',
+      '4 | 15/4 13/4 11/8!',
+      '0 | 7/3 r/1 7/2 9/2 11/4! 9/2 r/2',
+      '5 | 12/3 r/1 11/2 9/2 7/4! r/4',
+      '3,4 | 14/2 12/2 10/2 12/2 13/4! 11/4',
+      '0,4 | 14/2 r/2 11/2 r/2 13/2 r/2 15/4',
+    ],
+  },
+  // Shape Lab: tinkering, a glockenspiel zig-zagging over a bouncy bass, claps and little blocks. D dorian.
+  lab: {
+    name: 'Tinker Lab', root: 'D', scale: 'dorian', bpm: 132, acc: 'tinker', trim: 0.64, hook: [9, 10],
+    lead: { inst: 'glock', alt: 'kalimba', lvl: 0.4, fx: 0.14, harm: -2 },
+    pick: '4 | 11!/4 r/4 6/2 8/2 9/2 8/2',
+    bars: [
+      '0 | 7/2 9/2 11/2 9/2 11/2 13/2 11/4!',
+      '3 | 10/2 12/2 14/2 12/2 10/2 12/2 10/4!',
+      '0 | 14/2 13/2 11/2 9/2 11/2 9/2 7/4!',
+      '6 | 13/2 12/2 10/2 8/2 13/8!',
+      '0 | 7/2 9/2 11/2 9/2 11/2 13/2 11/4!',
+      '3 | 10/2 12/2 14/2 12/2 10/2 12/2 10/4!',
+      '4 | 11/2 13/2 15/2 13/2 11/4! 8/4',
+      '0 | 7/4 r/4 7/8!',
+      '0 | 9/1 r/1 9/1 r/1 9/2 11/4! 9/2 7/4',
+      '6 | 8/1 r/1 8/1 r/1 8/2 10/4! 8/2 6/4',
+      '2 | 9/2 11/2 13/2 16/2 13/4! 11/4',
+      '3 | 14/2 12/2 10/2 12/2 14/8!',
+      '0 | 7/2 9/2 11/2 9/2 11/2 13/2 11/4!',
+      '3 | 10/2 12/2 14/2 12/2 10/2 12/2 10/4!',
+      '4 | 11/2 13/2 15/2 13/2 11/4! 8/4',
+      '4 | 11/2 8/2 11/2 13/2 15/4 13/4',
+    ],
+  },
+  // Gator Bayou: swamp blues, a bottleneck slide lead and a twanging jaw harp, shuffled. E mixolydian with blue notes.
+  bayou: {
+    name: 'Bayou Blues', root: 'E', scale: 'mixolydian', bpm: 92, swing: 0.3, acc: 'swamp', trim: 0.76, hook: [9, 10],
+    lead: { inst: 'slide', alt: 'accordion', lvl: 0.28, fx: 0.1, harm: -2 },
+    pick: '4 | 11!/4 r/4 8/2 9b/2 9/2 11/2',
+    bars: [
+      '0 | 7/4 9b/2 9/2 11/4! 9/4',
+      '0 | 14/4 13/2 11/2 9/2 r/2 7/4',
+      '3 | 10/4 12/2 13/2 12/4! 10/4',
+      '0 | 9/4 7/4 4/8!',
+      '3 | 10/4 12/2 10/2 14/4! 12/4',
+      '0 | 11/4 9/2 7/2 11/4! 9/4',
+      '4 | 11/4 13/2 11/2 8/4! 6/4',
+      '0 | 7/12! r/4',
+      '0 | 9/2 9/2 9/2 11/4! 9/2 7/4',
+      '1 | 8/2 8/2 8/2 10/4! 8/2 13/4',
+      '3 | 14/4 12/2 10/2 12/4! 14/4',
+      '4 | 15/4 13/4 11/8!',
+      '0 | 7/4 9b/2 9/2 11/4! 9/4',
+      '0 | 14/4 13/2 11/2 9/2 r/2 7/4',
+      '4 | 11/4 13/2 11/2 8/4! 6/4',
+      '0,4 | 7/4 9b/2 9/2 11/4 13/4',
+    ],
+  },
+  // The two other theme candidates from 2026-11-20 (kept for the Sound Board)
+  caper: {
+    name: 'Coop Caper', root: 'D', scale: 'dorian', bpm: 116, swing: 0.2, acc: 'shuffle', trim: 1.05,
+    lead: { inst: 'pluck', alt: 'banjo', lvl: 0.3, fx: 0.1, harm: -2 },
+    pick: { ch: 4, n: [N(0, 11, 4, 1), N(10, 4, 2), N(12, 5, 2), N(14, 6, 2)] },
+    cluck: { 7: '............x.x.', 15: '..............x.' },
+    bars: [
+      CAPER_A1, CAPER_A2,
+      { ch: 6, n: [N(0, 6, 2), N(3, 6, 1, 0.7), N(4, 8, 2), N(6, 6, 2), N(8, 10, 4, 1), N(12, 8, 2), N(14, 6, 2)] },
+      { ch: [4, 0], n: [N(0, 8, 2), N(2, 9, 2), N(4, 8, 2), N(6, 6, 2), N(8, 7, 4), N(12, 11, 2, 1)] },
+      CAPER_A1, CAPER_A2,
+      { ch: 3, n: [N(0, 10, 2), N(3, 10, 1, 0.7), N(4, 12, 2), N(6, 10, 2), N(8, 14, 4, 1), N(12, 12, 2), N(14, 10, 2)] },
+      { ch: [4, 0], n: [N(0, 11, 2), N(2, 10, 2), N(4, 9, 2), N(6, 8, 2), N(8, 7, 6)] },
+      { ch: 2, n: [N(0, 9, 4), N(4, 11, 4), N(8, 13, 6)] },
+      { ch: 6, n: [N(0, 13, 2), N(2, 12, 2), N(4, 11, 2), N(6, 10, 2), N(8, 8, 6)] },
+      { ch: 2, n: [N(0, 9, 4), N(4, 11, 4), N(8, 13, 4), N(12, 14, 4)] },
+      { ch: 4, n: [N(0, 15, 4, 1), N(4, 13, 2), N(6, 11, 2), N(8, 8, 4), N(12, 8, 3)] },
+      CAPER_A1, CAPER_A2,
+      { ch: 3, n: [N(0, 10, 2), N(3, 10, 1, 0.7), N(4, 12, 2), N(6, 10, 2), N(8, 14, 4, 1), N(12, 12, 2), N(14, 10, 2)] },
+      { ch: [4, 0], n: [N(0, 11, 2), N(2, 10, 2), N(4, 9, 2), N(6, 8, 2), N(8, 7, 4), N(12, 14, 2, 1)] },
+    ],
+  },
+  sunny: {
+    name: 'Sunny Side Up', root: 'G', scale: 'major', bpm: 108, swing: 0.1, acc: 'bounce', trim: 1.05,
+    lead: { inst: 'marimba', alt: 'banjo', lvl: 0.3, fx: 0.14, harm: -2 },
+    pick: { ch: 4, n: [N(0, 8, 4, 1), N(12, 11, 2), N(14, 13, 2)] },
+    bars: [
+      SUNNY_A1, SUNNY_A2,
+      { ch: 0, n: [N(0, 11, 2), N(2, 14, 4), N(6, 16, 2), N(8, 18, 4, 1), N(12, 16, 2), N(14, 14, 2)] },
+      { ch: 4, n: [N(0, 15, 6), N(6, 13, 2), N(8, 11, 6)] },
+      SUNNY_A1, SUNNY_A2, SUNNY_E1, SUNNY_E2,
+      { ch: 5, n: [N(0, 12, 4), N(4, 14, 2), N(6, 16, 2), N(8, 19, 6, 1)] },
+      { ch: 3, n: [N(0, 17, 4), N(4, 16, 2), N(6, 14, 2), N(8, 12, 6)] },
+      { ch: 1, n: [N(0, 15, 4), N(4, 17, 2), N(6, 19, 2), N(8, 17, 4), N(12, 15, 4)] },
+      { ch: 4, n: [N(0, 18, 6, 1), N(6, 17, 2), N(8, 15, 4), N(12, 13, 2), N(14, 11, 2)] },
+      SUNNY_A1, SUNNY_A2, SUNNY_E1, SUNNY_E2,
+    ],
+  },
+};
+for (const T of Object.values(TUNES)) { T.bars = tbars(T.bars); if (typeof T.pick === 'string') T.pick = tb(T.pick); }
+// The main theme: home screen, world map, and the reference every world quotes.
+export const MAIN_THEME = { tune: 'strut' };
+// One preset per tune and arrangement: the accompaniment, mix and echo the scheduler needs.
+// Which arrangement a level plays: spec.arr if given, else by level number, so two levels in a row never open alike.
+// A tune without its own list has two: as written, and (even levels) the lead and the other instrument swapped, a tone up.
+function tuneArr(T, spec) {
+  const n = T.arrs ? T.arrs.length : 2;
+  if (spec.arr != null && isFinite(spec.arr)) return ((Math.floor(+spec.arr) % n) + n) % n;
+  return spec.lvl ? (((Math.floor(+spec.lvl) - 1) % n) + n) % n : 0;
+}
+function tunePreset(T, arr) {
+  const key = 'P' + arr;
+  if (T[key]) return T[key];
+  const L0 = T.lead, swap = arr === 1 && !T.arrs && L0.alt;
+  const R = (T.arrs && T.arrs[arr]) || (swap ? { name: 'second level: ' + L0.alt + ' leads, a tone up', tr: 2,
+    lead: { inst: L0.alt, alt: L0.inst, oct: (L0.oct || 0) + (L0.alto || 0), alto: -(L0.alto || 0) } } : {});
+  const A = TUNE_ACC[R.acc || T.acc] || TUNE_ACC.polka;
+  return (T[key] = {
+    scale: T.scale, bpm: R.bpm || T.bpm, trim: T.trim || 1, swing: T.swing || 0, A,
+    drums: { lvl: A.lvl || 0.85 }, verb: 0.08, delay: T.delay || { steps: 3, fb: 0.2, mix: 0.3 },
+    lead: { ...T.lead, ...(R.lead || {}) }, tr: R.tr || 0, arrName: R.name || '', bpmBase: R.bpm || T.bpm,
+    compOct: A.comp.oct != null ? A.comp.oct : ['accordion', 'brass', 'epiano', 'jaw'].includes(A.comp.inst) ? 0 : 12,
+  });
+}
+
 // ---------------------------------------------------------------- small utils
 const has = (o, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
@@ -293,6 +1107,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   let sfxOn = true, musicOn = true, paused = false;
   const useLimiter = options.limiter !== false;
   const usePhone = options.phone !== false;
+  const MUTE = options.mute || {};  // dev measurements only: { lead, comp, bass, drums } silences a part of the composed tunes
   const rand = mulberry32(options.seed != null ? options.seed : (Math.random() * 4294967296) >>> 0);
   const rr = (a, b) => a + (b - a) * rand();
   const N = {};               // shared graph nodes
@@ -306,6 +1121,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   let ringIdleSince = 0, windIdleSince = 0, ringIdleTimer = 0, windIdleTimer = 0;
 
   let musicSpec = null;       // desired spec (kept while music is off)
+  let musicErr = null;        // the last error a music step threw (diagnostics: stats().musicErr)
   let curInst = null;
   let instances = [];
   let schedTimer = null;
@@ -644,6 +1460,27 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   }
 
   // ------------------------------------------------------------- SFX designs
+  // vox: a voice whose vowel moves. A sawtooth (plus a little noise rasp) through two band-pass formants that glide.
+  // p.pts pitch path [[dt, Hz]], p.f1 / p.f2 formant paths, p.g level, p.rasp breath, p.vib [rate, depth],
+  // p.brass opens a low-pass with the attack, p.swell makes the level grow to the end. Returns the output gain.
+  function vox(v, p) {
+    const t0 = v.t + (p.t || 0), d = p.d, o1 = vosc(v, 'sawtooth', p.pts[0][1], t0, t0 + d + 0.03);
+    sweep(o1.frequency, t0, p.pts);
+    if (p.vib) { const l = vosc(v, 'sine', p.vib[0], t0, t0 + d + 0.03), lg = vg(v, p.pts[0][1] * p.vib[1]); l.connect(lg); lg.connect(o1.frequency); }
+    const b1 = vf(v, 'bandpass', p.f1[0][1], 4), b2 = vf(v, 'bandpass', p.f2[0][1], 5), amp = vg(v, 0), mix = vg(v, 1);
+    sweep(b1.frequency, t0, p.f1); sweep(b2.frequency, t0, p.f2);
+    let src = o1;
+    if (p.brass) { const lp = vf(v, 'lowpass', 400, 1.2); lp.frequency.setValueAtTime(400, t0); lp.frequency.exponentialRampToValueAtTime(3200, t0 + 0.15); o1.connect(lp); src = lp; }
+    src.connect(b1); src.connect(b2);
+    if (p.rasp) { const n = vnoise(v, 'pink', t0, t0 + d + 0.03), ng = vg(v, p.rasp * 0.6); n.connect(ng); ng.connect(b1); ng.connect(b2); }
+    const b2g = vg(v, 0.7); b1.connect(mix); b2.connect(b2g); b2g.connect(mix); mix.connect(amp); amp.connect(v.out);
+    const g = p.g * 2.2;
+    if (p.swell) { amp.gain.setValueAtTime(0, t0); amp.gain.linearRampToValueAtTime(g * 0.35, t0 + 0.04); amp.gain.linearRampToValueAtTime(g, t0 + d * 0.92); }
+    else { amp.gain.setValueAtTime(0, t0); amp.gain.linearRampToValueAtTime(g, t0 + Math.min(0.02, d * 0.2)); amp.gain.setValueAtTime(g, t0 + d * 0.7); }
+    amp.gain.exponentialRampToValueAtTime(g * 0.005, t0 + d); amp.gain.setValueAtTime(0, t0 + d + 0.01);
+    return mix;
+  }
+
   const SFX = {
     ui_tap(v, o) { // short and dry: a bright tick on a tiny knock
       const p = o.p;
@@ -664,14 +1501,14 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       bell(v, { t: 0.02, f: 659.3 * p, d: 0.3, g: 0.14 });
       bell(v, { t: 0.09, f: 987.8 * p, d: 0.4, g: 0.15 });
     },
-    grab(v, o) {
+    grab_old(v, o) {
       const p = o.p, m = MAT[st.material];
       tone(v, { f: 230 * p, f2: 140 * p, gl: 0.05, a: 0.002, d: 0.07, g: 0.34 });
       nz(v, { color: 'pink', a: 0.0005, d: 0.02, g: 0.26, type: 'bandpass', f: 1800 * p, q: 1.8 });
       tone(v, { type: 'triangle', f: 1100 * p, a: 0.0005, d: 0.015, g: 0.05 });
       modal(v, { f: m.f * p, r: m.r, d: Math.min(m.d, 0.12) * 0.6, g: 0.07 });
     },
-    release(v, o) {
+    release_old(v, o) {
       const p = o.p;
       tone(v, { f: 180 * p, f2: 120 * p, gl: 0.04, a: 0.002, d: 0.05, g: 0.22 });
       nz(v, { color: 'pink', a: 0.0008, d: 0.03, g: 0.12, type: 'lowpass', f: 1400 * p });
@@ -735,7 +1572,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       if (idx === 2) tone(v, { t: 0.12, f: f * 2, a: 0.003, d: 0.4, g: 0.1 });
       send(v, 0.1);
     },
-    level_win(v, o) { // a hero beat: the old app's fanfare (C E G C chime run) with a short brass body on the last chord
+    level_win_old(v, o) { // a hero beat: the old app's fanfare (C E G C chime run) with a short brass body on the last chord
       const p = o.pitch, C5 = 523.25 * p;
       const brass = (t, f, hold, g) => {
         for (const det of [-6, 6]) tone(v, { type: 'sawtooth', t, f, det, a: 0.02, hold, d: 0.28, g, lp: Math.min(f * 3, 5000), lq: 1 });
@@ -759,7 +1596,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       send(v, 0.1);
     },
     // ---- the hen's routines: short hits timed to her moves (intensity scales the bigger routines)
-    hen_hop(v, o) {
+    hen_hop_old(v, o) {
       const p = o.p, i = o.i;
       tone(v, { f: 210 * p, f2: 560 * p * (1 + 0.3 * i), gl: 0.12, a: 0.004, d: 0.13, g: 0.2 });
       tone(v, { type: 'triangle', f: 420 * p, f2: 1100 * p, gl: 0.1, a: 0.004, d: 0.08, g: 0.05 });
@@ -830,7 +1667,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       modal(v, { f: 1400 * p, r: [1, 2.6, 4.1], d: 0.03, g: 0.14 });
       modal(v, { t: 0.002, f: 2600 * p, r: [1, 2.756, 5.404], d: 0.16, g: 0.05 });
     },
-    fire_ignite(v, o) {
+    fire_ignite_old(v, o) {
       const p = o.p;
       nz(v, { color: 'pink', a: 0.03, d: 0.55, g: 0.42, type: 'lowpass', f: 250, f2: 3200 * p, sw: 0.12, q: 1 });
       tone(v, { f: 90, f2: 55, gl: 0.25, a: 0.02, d: 0.25, g: 0.3 });
@@ -882,7 +1719,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       chirp(0.08, 1); chirp(0.2, 1.12);
       send(v, 0.15);
     },
-    portal_enter(v, o) {
+    portal_enter_old(v, o) {
       const p = o.p;
       if (v.pan) { const b = clamp(o.pan, -1, 1); v.pan.pan.setValueAtTime(clamp(b - 0.5, -1, 1), v.t); v.pan.pan.linearRampToValueAtTime(clamp(b + 0.5, -1, 1), v.t + 0.6); }
       nz(v, { color: 'pink', a: 0.25, d: 0.4, g: 0.36, type: 'bandpass', f: 300 * p, f2: 2800 * p, sw: 0.5, q: 2.5 });
@@ -890,7 +1727,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       tone(v, { t: 0.5, f: 120, f2: 60, gl: 0.1, d: 0.15, g: 0.24 });
       send(v, 0.25);
     },
-    portal_exit(v, o) {
+    portal_exit_old(v, o) {
       const p = o.p;
       if (v.pan) { const b = clamp(o.pan, -1, 1); v.pan.pan.setValueAtTime(clamp(b + 0.5, -1, 1), v.t); v.pan.pan.linearRampToValueAtTime(clamp(b - 0.5, -1, 1), v.t + 0.5); }
       nz(v, { color: 'pink', a: 0.45, d: 0.04, g: 0.36, type: 'bandpass', f: 2800 * p, f2: 350 * p, sw: 0.47, q: 2.5, expA: true });
@@ -944,7 +1781,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       grains(v, { t: 0.01, dur: 0.5, n: 14, fmin: 3000, fmax: 8000, g: 0.15, decay: 0.01, curve: 1.6 });
       send(v, 0.15);
     },
-    rock_hit(v, o) {
+    rock_hit_old(v, o) {
       const p = o.p, i = o.i, lvl = 0.35 + 0.65 * i;
       modal(v, { f: 210 * p, r: [1, 1.93, 3.2], amps: [1, 0.4, 0.15], d: 0.07, g: 0.3 * lvl });
       nz(v, { color: 'brown', a: 0.002, d: 0.14, g: 0.6 * lvl, type: 'lowpass', f: 600 });
@@ -976,7 +1813,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       tone(v, { t: 0.25, f: 120 * p, f2: 60 * p, gl: 0.15, d: 0.2, g: 0.14 });
       nz(v, { color: 'pink', a: 0.1, d: 0.8, g: 0.08, type: 'bandpass', f: 1800, q: 0.7 });
     },
-    thunder(v, o) {
+    thunder_old(v, o) {
       const p = o.p;
       nz(v, { a: 0.01, d: 0.25, g: 0.1, type: 'bandpass', f: 1200 * p, q: 0.6, type2: 'lowpass', f3: 2200 });
       for (let k = 0; k < 4; k++) {
@@ -1013,7 +1850,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       tone(v, { t: T, f: 900 * p, f2: 600 * p, gl: 0.03, d: 0.03, g: 0.1 });
     },
     // squish: egg lands on a foam/sponge pad ("safe landing"). Soft attacks only, no clicks.
-    squish(v, o) {
+    squish_old(v, o) {
       const p = o.p, i = o.i, lvl = 0.25 + 0.6 * i;
       tone(v, { f: 165 * p, f2: 85 * p, gl: 0.08, a: 0.006, d: 0.08 + 0.05 * i, g: lvl * 0.6 });
       nz(v, { color: 'pink', a: 0.008, d: 0.07 + 0.03 * i, g: lvl * 0.4, type: 'lowpass', f: 950 * p, f2: 320 * p, sw: 0.09, q: 0.9 });
@@ -1021,7 +1858,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       tone(v, { t: 0.014, f: 320 * p, f2: 170 * p, gl: 0.05, a: 0.008, d: 0.05, g: lvl * 0.1 });
     },
     // a ring passes a detent: a short, dry ratchet click in the vault's own material (o.i = how fast it is turning)
-    ring_tick(v, o) {
+    ring_tick_old(v, o) {
       const p = o.p, i = o.i, m = MAT[st.material];
       nz(v, { color: 'pink', a: 0.0004, d: 0.004 + 0.004 * i, g: 0.1 + 0.08 * i, type: 'bandpass', f: 2600 * p, q: 2.2 });
       modal(v, { f: m.f * 2.1 * p, r: [1, 2.3], d: Math.min(m.d, 0.04) * 0.5, g: 0.04 + 0.04 * i });
@@ -1081,7 +1918,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       tone(v, { type: 'triangle', t: 0.03, f: 600 * p, f2: 1600 * p, gl: 0.14, a: 0.01, d: 0.12, g: 0.14 });
       tone(v, { t: 0.12, f: 2200 * p, a: 0.002, d: 0.08, g: 0.06 });
     },
-    strike_hit(v, o) { // Chick Strike lands: a punchy thump, a knock and a bright crack, then one bell
+    strike_hit_old(v, o) { // Chick Strike lands: a punchy thump, a knock and a bright crack, then one bell
       const p = o.p;
       nz(v, { a: 0.0003, d: 0.016, g: 0.55, type: 'highpass', f: 3000 });
       knock(v, { f: 520 * p, f2: 210 * p, d: 0.13, g: 0.55, nf: 1600, n: 0.45 });
@@ -1089,7 +1926,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       chime(v, { t: 0.02, f: 1568 * p, d: 0.3, g: 0.12 });
       send(v, 0.08);
     },
-    crow(v, o) { // the rooster ally: cock-a-doodle-doo, a buzzy voice through two formants, last syllable long
+    crow_old(v, o) { // the rooster ally: cock-a-doodle-doo, a buzzy voice through two formants, last syllable long
       const p = o.p, f0 = 560 * p;
       const syl = (t, f1, f2, d, g) => {
         const t0 = v.t + t, o1 = vosc(v, 'sawtooth', f1, t0, t0 + d + 0.05), o2 = vosc(v, 'square', f1 * 0.5, t0, t0 + d + 0.05);
@@ -1138,7 +1975,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       const l = vosc(v, 'sine', 17, r.t0, r.tEnd), lg = vg(v, 0.12); l.connect(lg); lg.connect(r.amp.gain);
       nz(v, { a: 0.04, d: 0.25, g: 0.08, type: 'highpass', f: 8000 });
     },
-    snake_strike(v, o) { // the lunge: a sharp hiss burst and a snap of the jaws
+    snake_strike_old(v, o) { // the lunge: a sharp hiss burst and a snap of the jaws
       const p = o.p;
       nz(v, { a: 0.008, d: 0.12, g: 0.4, type: 'bandpass', f: 4500 * p, f2: 6500 * p, q: 1.2 });
       knock(v, { t: 0.07, f: 700 * p, f2: 300 * p, d: 0.06, g: 0.4, nf: 2400, n: 0.6 });
@@ -1165,11 +2002,84 @@ export function createAudioEngine(externalCtx = null, options = {}) {
         nz(v, { t, a: 0.0005, d: 0.01, g: 0.12, type: 'bandpass', f: 3500, q: 2 });
       }
     },
-    tongue_lick(v, o) { // a sticky tongue out and back: thwip, then a wet pop
+    // The weasel's voice (2026-11-20, mykee did not like the old chitter, a burst of square-wave clicks): three little
+    // character sounds instead, all voiced and above ~700 Hz so a phone plays them cleanly.
+    weasel_snicker(v, o) { // "hee-hee-hee-hee": a sly giggle, each "hee" flicks up, the run slides down and slows
+      const p = o.p, n = 4;
+      for (let k = 0; k < n; k++) {
+        const t = k * 0.085 + k * k * 0.006, f = (1180 - k * 95) * p;
+        voice(v, { t, pts: [[0, f * 0.86], [0.022, f * 1.08], [0.07, f * 0.82]], fm: [1500 * p, 3100 * p], q: 3.2, d: 0.07, g: 0.34 - k * 0.04 });
+        nz(v, { t, a: 0.004, d: 0.035, g: 0.045, type: 'bandpass', f: 4200, q: 1.4 }); // the breath on each "h"
+      }
+    },
+    weasel_sniff(v, o) { // it is about to pounce: two quick sniffs and a curious little "mm?" that rises
       const p = o.p;
-      nz(v, { color: 'pink', a: 0.01, d: 0.07, g: 0.4, type: 'bandpass', f: 700 * p, f2: 3200 * p, sw: 0.07, q: 1.5 });
-      tone(v, { f: 350 * p, f2: 1100 * p, gl: 0.06, a: 0.004, d: 0.06, g: 0.18 });
-      tone(v, { t: 0.1, f: 900 * p, f2: 300 * p, gl: 0.03, a: 0.002, d: 0.04, g: 0.25 });
+      for (const t of [0, 0.11]) nz(v, { t, a: 0.02, d: 0.045, g: 0.11, type: 'bandpass', f: 2200 * p, f2: 4800 * p, sw: 0.06, q: 2.2 });
+      voice(v, { t: 0.24, pts: [[0, 820 * p], [0.05, 860 * p], [0.14, 1240 * p]], fm: [1300 * p, 2800 * p], q: 3, d: 0.15, g: 0.26 });
+    },
+    weasel_yelp(v, o) { // bonked or chased off: a startled "yipe!" that shoots up and tumbles down, then two pattering steps
+      const p = o.p;
+      voice(v, { pts: [[0, 950 * p], [0.035, 1900 * p], [0.09, 1500 * p], [0.2, 760 * p]], fm: [1700 * p, 3300 * p], q: 2.6, d: 0.2, g: 0.42, vib: [38, 0.03] });
+      for (const t of [0.22, 0.29]) nz(v, { t, a: 0.001, d: 0.02, g: 0.07, type: 'bandpass', f: 2600, q: 2.5 });
+    },
+    tongue_lick_old(v, o) { // a sticky tongue out and back: a bright thwip up, then a small wet "tok" (kept above 600 Hz: low sweeps read as rude noises on phone speakers)
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.006, d: 0.06, g: 0.3, type: 'bandpass', f: 1200 * p, f2: 4200 * p, sw: 0.05, q: 1.8 });
+      tone(v, { f: 700 * p, f2: 1900 * p, gl: 0.05, a: 0.003, d: 0.05, g: 0.12 });
+      modal(v, { t: 0.09, f: 1500 * p, r: [1, 1.8], d: 0.035, g: 0.16 });
+      nz(v, { t: 0.09, a: 0.0005, d: 0.012, g: 0.15, type: 'bandpass', f: 2600 * p, q: 2 });
+    },
+    gecko_chirp(v, o) { // a gecko's call: three or four quick bright chirps over dry clicks, no low end
+      const p = o.p, n = 3 + (rand() < 0.4 ? 1 : 0);
+      for (let k = 0; k < n; k++) {
+        const t = k * rr(0.065, 0.08), f = rr(2300, 2700) * p * (1 - k * 0.04);
+        tone(v, { t, f, fp: [[0, f * 0.85], [0.018, f * 1.12], [0.04, f]], a: 0.002, d: 0.045, g: 0.16 });
+        nz(v, { t, a: 0.0004, d: 0.008, g: 0.18, type: 'bandpass', f: 4200 * p, q: 2.5 });
+      }
+    },
+    frost_lick(v, o) { // the frost gecko's lick: a quick bright tongue swipe, then ice crystallising with a chime
+      const p = o.p;
+      nz(v, { a: 0.006, d: 0.06, g: 0.3, type: 'bandpass', f: 2500 * p, f2: 6500 * p, sw: 0.06, q: 1.6 });
+      tone(v, { f: 1400 * p, f2: 2800 * p, gl: 0.05, a: 0.003, d: 0.05, g: 0.08 });
+      nz(v, { t: 0.07, a: 0.04, d: 0.28, g: 0.1, type: 'highpass', f: 6000 });
+      pings(v, { t: 0.07, dur: 0.3, n: 10, fmin: 3500 * p, fmax: 8000 * p, g: 0.07, dmin: 0.05, dmax: 0.2 });
+      chime(v, { t: 0.08, f: 2093 * p, d: 0.45, g: 0.1, o2: 0.4 });
+      chime(v, { t: 0.14, f: 3136 * p, d: 0.4, g: 0.06 });
+    },
+    sal_call(v, o) { // the lava salamander's voice: a little dragon "rrr-ah!" with a rolled purr, then embers crackling
+      const p = o.p;
+      voice(v, { pts: [[0, 330 * p], [0.12, 420 * p], [0.22, 560 * p], [0.36, 400 * p]], fm: [1000 * p, 2500 * p], q: 3, d: 0.38, g: 0.24, vib: [26, 0.07] });
+      grains(v, { t: 0.15, dur: 0.35, n: 10, fmin: 2500, fmax: 6000, g: 0.12, decay: 0.004 });
+      chime(v, { t: 0.2, f: 1568 * p, d: 0.3, g: 0.05 });
+    },
+    sal_charge_old(v, o) { // embers gathering in its throat before a breath: a rising crackle and shimmer
+      const p = o.p;
+      nz(v, { a: 0.3, d: 0.08, g: 0.22, type: 'bandpass', f: 1200 * p, f2: 3500 * p, sw: 0.35, q: 1.5, expA: true });
+      grains(v, { dur: 0.4, n: 14, fmin: 2000, fmax: 6000, g: 0.12, decay: 0.004, curve: 0.6, fade: -0.6 });
+      tone(v, { f: 520 * p, f2: 1040 * p, gl: 0.35, a: 0.3, d: 0.08, g: 0.06, vib: [18, 0.03] });
+    },
+    sal_breath(v, o) { // the salamander's fire breath: a warm rising fwoosh, ember crackle and a bright flare on top (no rumble)
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.06, hold: 0.08, d: 0.35, g: 0.42, type: 'bandpass', f: 900 * p, f2: 2600 * p, sw: 0.25, q: 0.9, type2: 'highpass', f3: 500 });
+      nz(v, { a: 0.05, d: 0.3, g: 0.08, type: 'highpass', f: 5000 });
+      grains(v, { t: 0.06, dur: 0.5, n: 18, fmin: 1800 * p, fmax: 5500 * p, g: 0.17, decay: 0.005 });
+      tone(v, { type: 'triangle', f: 660 * p, f2: 1320 * p, gl: 0.3, a: 0.05, d: 0.3, g: 0.05 });
+    },
+    sal_yelp_old(v, o) { // the salamander hit: a short surprised squeak and a puff of sparks
+      const p = o.p;
+      voice(v, { pts: [[0, 620 * p], [0.05, 900 * p], [0.18, 520 * p]], fm: [1200 * p, 2800 * p], q: 3, d: 0.18, g: 0.22 });
+      grains(v, { t: 0.02, dur: 0.15, n: 6, fmin: 3000, fmax: 6500, g: 0.1, decay: 0.004 });
+    },
+    sal_huff(v, o) { // a dismissive little huff with a few sparks
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.015, d: 0.1, g: 0.6, type: 'bandpass', f: 900 * p, f2: 1600 * p, sw: 0.1, q: 1.2 });
+      grains(v, { t: 0.02, dur: 0.12, n: 4, fmin: 2500, fmax: 5000, g: 0.2, decay: 0.004 });
+    },
+    ember_hiss(v, o) { // steam / a scorch: a bright sizzle with crackle, no low tone
+      const p = o.p;
+      nz(v, { a: 0.01, d: 0.45, g: 0.2, type: 'highpass', f: 3000 * p, f2: 5500 * p, sw: 0.4 });
+      grains(v, { dur: 0.4, n: 14, fmin: 2500, fmax: 7000, g: 0.14, decay: 0.004 });
+      nz(v, { color: 'pink', a: 0.03, d: 0.3, g: 0.07, type: 'bandpass', f: 2200 * p, q: 0.8 });
     },
     fire_breath(v, o) { // a salamander / dragon breath: a roaring whoosh with crackle
       const p = o.p;
@@ -1190,7 +2100,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       nz(v, { color: 'pink', t: 0.03, a: 0.02, d: 0.18, g: 0.3, type: 'bandpass', f: 1800 * p, f2: 700 * p, q: 1.4 });
       tone(v, { t: 0.1, f: 900 * p, f2: 1800 * p, gl: 0.04, a: 0.002, d: 0.04, g: 0.12 });
     },
-    gator_snap(v, o) { // a heavy jaw chomp
+    gator_snap_old(v, o) { // a heavy jaw chomp
       const p = o.p;
       nz(v, { a: 0.0005, d: 0.02, g: 0.45, type: 'bandpass', f: 2200 * p, q: 1.2 });
       knock(v, { f: 420 * p, f2: 160 * p, d: 0.16, g: 0.6, nf: 900, n: 0.5 });
@@ -1212,12 +2122,12 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       tone(v, { type: 'square', f: 1600 * p, a: 0.002, hold: 0.08, d: 0.08, g: 0.04, vib: [60, 0.1] });
       grains(v, { dur: 0.22, n: 10, fmin: 2500, fmax: 6000, g: 0.25, decay: 0.003 });
     },
-    puff_swell(v, o) { // a puffer fish blowing up: a rising bubbly inflate
+    puff_swell_old(v, o) { // a puffer fish blowing up: a rising bubbly inflate
       const p = o.p;
       tone(v, { f: 220 * p, f2: 760 * p, gl: 0.3, a: 0.05, d: 0.32, g: 0.25, vib: [14, 0.05] });
       nz(v, { color: 'pink', a: 0.1, d: 0.25, g: 0.12, type: 'bandpass', f: 600 * p, f2: 1800 * p, sw: 0.3, q: 2 });
     },
-    creature_hurt(v, o) { // any villain hit: a squawky "oof" over a thump (pitch tells big from small)
+    creature_hurt_old(v, o) { // any villain hit: a squawky "oof" over a thump (pitch tells big from small)
       const p = o.p;
       knock(v, { f: 360 * p, f2: 200 * p, d: 0.08, g: 0.35, nf: 1500, n: 0.5 });
       voice(v, { t: 0.02, pts: [[0, 700 * p], [0.05, 900 * p], [0.2, 420 * p]], fm: [900 * p, 2200 * p], q: 3, d: 0.2, g: 0.5 });
@@ -1227,16 +2137,191 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       tone(v, { f: 380 * p, fp: [[0, 380 * p], [0.08, 700 * p], [0.3, 360 * p]], a: 0.004, d: 0.3, g: 0.22, vib: [9, 0.06] });
       [2637, 3136, 3520, 3136].forEach((f, k) => tone(v, { t: 0.08 + k * 0.08, f: f * p, a: 0.002, d: 0.12, g: 0.06 }));
     },
-    boss_roar(v, o) { // a boss's voice: a big growling roar (formants up where a phone can play them)
+    boss_roar_old(v, o) { // a boss's voice: a big growling roar (formants up where a phone can play them)
       const p = o.p;
       voice(v, { pts: [[0, 120 * p], [0.15, 165 * p], [0.55, 95 * p]], fm: [650, 1400], q: 2.5, d: 0.6, g: 0.9, vib: [7, 0.04] });
       nz(v, { color: 'pink', a: 0.06, d: 0.5, g: 0.25, type: 'bandpass', f: 900, q: 1.2 });
     },
-    boss_slam(v, o) { // a boss attack lands: a heavy thump and a rattle
+    boss_slam_old(v, o) { // a boss attack lands: a heavy thump and a rattle
       const p = o.p;
       knock(v, { f: 260 * p, f2: 110 * p, d: 0.25, g: 0.7, nf: 700, n: 0.6 });
       nz(v, { a: 0.0005, d: 0.02, g: 0.4, type: 'bandpass', f: 2500, q: 1 });
       grains(v, { t: 0.03, dur: 0.25, n: 9, fmin: 600, fmax: 2200, g: 0.15, decay: 0.012 });
+    },
+    // ---- 2026-11-20: 22 effects rebuilt as small cartoon foley in the warm, wooden world of egg_save / cluck / the
+    // weasel's voice: a transient (what touched), a body (what it is made of), a character tail (what it feels like),
+    // with the body kept between ~300 Hz and 4 kHz where a phone speaker plays. The old versions stay as '<name>_old'.
+    grab(v, o) { // the hand takes the ring: a soft wooden "tok" (a little of the vault's own material under it)
+      const p = o.p, m = MAT[st.material];
+      nz(v, { a: 0.0004, d: 0.004, g: 0.1, type: 'bandpass', f: 3200 * p, q: 2 });                       // fingertip
+      modal(v, { f: 640 * p, r: [1, 2.45, 3.9], amps: [1, 0.45, 0.2], d: 0.055, g: 0.23 });               // wood
+      tone(v, { type: 'triangle', f: 560 * p, f2: 440 * p, gl: 0.03, a: 0.001, d: 0.04, g: 0.08 });         // the "o" of tok
+      modal(v, { f: m.f * p, r: m.r.slice(0, 2), d: Math.min(m.d, 0.05) * 0.6, g: 0.05 });
+    },
+    release(v, o) { // and lets go: a lighter "tk-up", the pitch lifting
+      const p = o.p;
+      nz(v, { a: 0.0003, d: 0.003, g: 0.08, type: 'bandpass', f: 4200 * p, q: 2 });
+      modal(v, { f: 880 * p, r: [1, 2.6], amps: [1, 0.35], d: 0.03, g: 0.18 });
+      tone(v, { type: 'triangle', t: 0.012, f: 700 * p, f2: 980 * p, gl: 0.03, a: 0.002, d: 0.035, g: 0.07 });
+    },
+    ring_tick(v, o) { // a ring passes a detent: a wooden toy ratchet, tiny, pitched by the ring (alternating tick / tock)
+      const p = o.p * ((tickTock++ & 1) ? 0.9 : 1), i = o.i;
+      nz(v, { a: 0.0003, d: 0.0025, g: 0.09 + 0.04 * i, type: 'bandpass', f: 2600 * p, q: 3 });
+      modal(v, { f: 1250 * p, r: [1, 2.7], amps: [1, 0.3], d: 0.018, g: 0.075 + 0.03 * i });
+    },
+    squish(v, o) { // the egg lands on a sponge: a wet "splotch", a squelch that sinks, a tiny comic "pip" of air
+      const p = o.p, i = o.i, lvl = 0.3 + 0.6 * i;
+      nz(v, { color: 'pink', a: 0.002, d: 0.012, g: lvl * 0.35, type: 'bandpass', f: 1900 * p, q: 1.5 });
+      nz(v, { color: 'pink', t: 0.004, a: 0.01, d: 0.08 + 0.03 * i, g: lvl * 0.7, type: 'bandpass', f: 1500 * p, f2: 520 * p, sw: 0.08, q: 3.5 });
+      tone(v, { t: 0.004, f: 640 * p, f2: 300 * p, gl: 0.07, a: 0.006, d: 0.07, g: lvl * 0.28 });
+      tone(v, { t: 0.075 + 0.02 * i, f: 1500 * p, f2: 2300 * p, gl: 0.025, a: 0.003, d: 0.03, g: lvl * 0.07 });
+    },
+    hen_hop(v, o) { // the hen hops: a feather flutter, a springy "boing", and a tiny "bok"
+      const p = o.p, i = o.i;
+      for (let k = 0; k < 3; k++) nz(v, { t: k * 0.016, a: 0.003, d: 0.014, g: 0.07, type: 'bandpass', f: 2600, q: 1.2 });
+      tone(v, { type: 'triangle', t: 0.01, f: 360 * p, fp: [[0, 360 * p], [0.07, 720 * p * (1 + 0.15 * i)], [0.13, 640 * p]], a: 0.004, d: 0.14, g: 0.2, vib: [16, 0.025] });
+      voice(v, { t: 0.12, pts: [[0, 600 * p], [0.02, 760 * p], [0.07, 520 * p]], fm: [1250, 2600], q: 3, d: 0.075, g: 0.16 });
+    },
+    crow(v, o) { // the rooster, a hero: a proud "cock-a-doodle-doo" in four syllables, mid-voiced, the last one long
+      const p = o.p, f = 430 * p;
+      // [start, length, pitch path (x f), vowel formants]
+      vox(v, { t: 0, d: 0.1, pts: [[0, f], [0.05, f * 1.12], [0.1, f * 1.05]], f1: [[0, 800], [0.1, 700]], f2: [[0, 1300], [0.1, 1150]], g: 0.223, rasp: 0.25 });       // cock
+      vox(v, { t: 0.13, d: 0.08, pts: [[0, f * 1.12], [0.08, f * 1.22]], f1: [[0, 850], [0.08, 900]], f2: [[0, 1500], [0.08, 1600]], g: 0.202, rasp: 0.2 });           // a
+      vox(v, { t: 0.24, d: 0.12, pts: [[0, f * 1.33], [0.06, f * 1.5], [0.12, f * 1.45]], f1: [[0, 650], [0.12, 800]], f2: [[0, 1100], [0.12, 1400]], g: 0.23, rasp: 0.2 }); // doo-
+      vox(v, { t: 0.37, d: 0.09, pts: [[0, f * 1.45], [0.09, f * 1.5]], f1: [[0, 800], [0.09, 700]], f2: [[0, 1400], [0.09, 1100]], g: 0.202, rasp: 0.2 });              // -dle
+      vox(v, { t: 0.48, d: 0.5, pts: [[0, f * 1.5], [0.12, f * 1.6], [0.36, f * 1.42], [0.5, f * 1.1]], f1: [[0, 700], [0.5, 520]], f2: [[0, 1150], [0.5, 950]], g: 0.245, rasp: 0.28, vib: [6, 0.018] }); // doooo
+      nz(v, { t: 0.5, color: 'pink', a: 0.06, d: 0.3, g: 0.086, type: 'bandpass', f: 700, f2: 1800, sw: 0.3, q: 0.9 }); // his chest of air (the stun)
+      send(v, 0.08);
+    },
+    level_win(v, o) { // a hero beat: the main theme's hook on brass and banjo (mi mi mi SOL mi do), a cymbal swell, ending high
+      const p = o.pitch, C5 = 523.25 * p, E = C5 * 1.26, G = C5 * 1.498;
+      const brass = (t, f, hold, g) => { for (const det of [-7, 7]) tone(v, { type: 'sawtooth', t, f, det, a: 0.02, hold, d: 0.18, g, lp: Math.min(f * 4, 5000), lq: 1.1 }); };
+      const banjo = (t, f, g) => { tone(v, { type: 'square', t, f, a: 0.002, d: 0.22, g, lp: Math.min(f * 5, 6000), lq: 2 }); nz(v, { t, a: 0.0005, d: 0.006, g: g * 0.8, type: 'bandpass', f: 3000, q: 1.5 }); };
+      const hook = [[0, E, 0.07], [0.1, E, 0.07], [0.2, E, 0.07], [0.3, G, 0.16], [0.5, E, 0.07], [0.6, C5, 0.12]];
+      for (const [t, f, h] of hook) { brass(t, f, h, 0.1); banjo(t, f * 2, 0.09); }
+      knock(v, { t: 0, f: 260, f2: 150, d: 0.1, g: 0.25, nf: 1500, n: 0.3 });
+      // the swell into the last chord, then the chord (C E G C) held, the banjo and a sparkle going up
+      nz(v, { t: 0.45, a: 0.4, d: 0.05, g: 0.05, type: 'highpass', f: 5000, expA: true });
+      const T = 0.86;
+      for (const k of [1, 1.26, 1.5, 2]) brass(T, C5 * k, 0.55, 0.07);
+      knock(v, { t: T, f: 300, f2: 170, d: 0.12, g: 0.32, nf: 1500, n: 0.3 });
+      nz(v, { t: T, a: 0.002, d: 0.9, g: 0.08, type: 'highpass', f: 4500 });                   // the cymbal
+      [[T, 2], [T + 0.08, 2.52], [T + 0.16, 3], [T + 0.24, 4]].forEach(([t, k]) => banjo(t, C5 * k, 0.06));
+      chime(v, { t: T + 0.3, f: C5 * 4, d: 0.7, g: 0.07, o3: 0.06 });
+      pings(v, { t: T + 0.1, dur: 0.8, n: 10, fmin: 3000, fmax: 6000, g: 0.035, dmin: 0.05, dmax: 0.2 });
+      send(v, 0.1);
+    },
+    strike_hit(v, o) { // Chick Strike lands: a meaty comic "bonk" (a hollow knock whose pitch drops) and a short ring
+      const p = o.p;
+      nz(v, { a: 0.0004, d: 0.008, g: 0.35, type: 'bandpass', f: 2500 * p, q: 1.2 });
+      tone(v, { type: 'triangle', f: 640 * p, f2: 300 * p, gl: 0.08, a: 0.001, d: 0.11, g: 0.55 });
+      modal(v, { f: 470 * p, r: [1, 2.7, 4.1], amps: [1, 0.5, 0.25], d: 0.12, g: 0.3 });
+      nz(v, { color: 'pink', a: 0.002, d: 0.06, g: 0.25, type: 'bandpass', f: 900 * p, q: 1.5 });
+      modal(v, { t: 0.02, f: 1480 * p, r: [1, 2.76], amps: [1, 0.3], d: 0.22, g: 0.06 });
+      send(v, 0.06);
+    },
+    rock_hit(v, o) { // a stone knock with grit: a gritty crack, a short stony body, a trickle of grit
+      const p = o.p, i = o.i, lvl = 0.45 + 0.55 * i;
+      grains(v, { dur: 0.02, n: 4, fmin: 1600 * p, fmax: 3600 * p, q: 1.5, g: 0.23 * lvl, decay: 0.004 });
+      modal(v, { f: 380 * p, r: [1, 1.93, 3.2], amps: [1, 0.55, 0.25], d: 0.06, g: 0.23 * lvl });
+      tone(v, { type: 'triangle', f: 420 * p, f2: 240 * p, gl: 0.05, a: 0.001, d: 0.07, g: 0.18 * lvl });
+      grains(v, { t: 0.02, dur: 0.1, n: 7, fmin: 800 * p, fmax: 2000 * p, q: 1.2, g: 0.086 * lvl, decay: 0.006, fade: 0.8 });
+    },
+    fire_ignite(v, o) { // "fwoomp": air pulled in, then a soft roar with a crackle
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.09, d: 0.02, g: 0.22, type: 'bandpass', f: 700 * p, f2: 1600 * p, sw: 0.1, q: 1.4, expA: true });
+      nz(v, { color: 'pink', t: 0.1, a: 0.012, d: 0.4, g: 0.7, type: 'bandpass', f: 1200 * p, f2: 520 * p, sw: 0.3, q: 0.9 });
+      tone(v, { type: 'triangle', t: 0.1, f: 380 * p, f2: 210 * p, gl: 0.16, a: 0.008, d: 0.2, g: 0.15 });
+      grains(v, { t: 0.13, dur: 0.35, n: 9, fmin: 1800, fmax: 4500, q: 1.4, g: 0.16, decay: 0.005, fade: 0.7 });
+    },
+    portal_enter(v, o) { // the egg goes in: a glassy down-sweep with a gurgling slurp
+      const p = o.p;
+      for (const [k, g] of [[1, 0.16], [2.32, 0.07], [4.25, 0.035]]) tone(v, { f: 1500 * k * p, f2: 520 * k * p, gl: 0.3, a: 0.004, d: 0.3, g });
+      const r = nz(v, { color: 'pink', t: 0.03, a: 0.03, d: 0.22, g: 0.3, type: 'bandpass', f: 2200 * p, f2: 600 * p, sw: 0.25, q: 6 });
+      const l = vosc(v, 'sine', 24, r.t0, r.tEnd), lg = vg(v, 0.12); l.connect(lg); lg.connect(r.amp.gain);
+      send(v, 0.12);
+    },
+    portal_exit(v, o) { // and comes out: a glassy up-sweep and a round "pop"
+      const p = o.p;
+      for (const [k, g] of [[1, 0.14], [2.32, 0.06], [4.25, 0.03]]) tone(v, { f: 520 * k * p, f2: 1500 * k * p, gl: 0.14, a: 0.02, d: 0.16, g, expA: true });
+      tone(v, { t: 0.13, f: 700 * p, f2: 1500 * p, gl: 0.02, a: 0.001, d: 0.06, g: 0.32 });
+      nz(v, { t: 0.13, a: 0.0004, d: 0.006, g: 0.2, type: 'bandpass', f: 2800, q: 1.5 });
+      send(v, 0.12);
+    },
+    thunder(v, o) { // a crack overhead, then a rumble that rolls away (kept in the band a phone plays, under 1.5 s)
+      const p = o.p;
+      nz(v, { a: 0.0005, d: 0.03, g: 0.35, type: 'highpass', f: 1800 * p });
+      grains(v, { dur: 0.08, n: 9, fmin: 1500, fmax: 5000, q: 1.2, g: 0.3, decay: 0.008 });
+      const r = nz(v, { color: 'brown', t: 0.03, a: 0.06, d: 1.25, g: 0.6, type: 'lowpass', f: 1300 * p, f2: 450 * p, sw: 1.1, q: 0.7 });
+      const l = vosc(v, 'sine', 7, r.t0, r.tEnd), lg = vg(v, 0.25); l.frequency.setValueAtTime(9, r.t0); l.frequency.linearRampToValueAtTime(4, r.tEnd); l.connect(lg); lg.connect(r.amp.gain);
+      nz(v, { color: 'pink', t: 0.05, a: 0.05, d: 0.6, g: 0.12, type: 'bandpass', f: 500 * p, q: 0.8 });
+    },
+    snake_strike(v, o) { // the lunge: a whip of air, a crack, a hiss that trails off
+      const p = o.p;
+      nz(v, { color: 'pink', a: 0.04, d: 0.015, g: 0.714, type: 'bandpass', f: 1200 * p, f2: 3800 * p, sw: 0.05, q: 1.6, expA: true });
+      nz(v, { t: 0.05, a: 0.0003, d: 0.006, g: 0.595, type: 'highpass', f: 2800 });
+      tone(v, { type: 'triangle', t: 0.05, f: 900 * p, f2: 500 * p, gl: 0.03, a: 0.001, d: 0.04, g: 0.476 });
+      nz(v, { t: 0.055, a: 0.006, hold: 0.05, d: 0.18, g: 0.637, type: 'bandpass', f: 4600 * p, f2: 3000 * p, sw: 0.2, q: 1.2 });
+    },
+    tongue_lick(v, o) { // a sticky "thwip" out, a smack, and it snaps back
+      const p = o.p;
+      tone(v, { f: 520 * p, f2: 1500 * p, gl: 0.05, a: 0.004, d: 0.05, g: 0.22 });
+      nz(v, { color: 'pink', a: 0.004, d: 0.045, g: 0.18, type: 'bandpass', f: 1200 * p, f2: 3200 * p, sw: 0.05, q: 2 });
+      for (const t of [0.06, 0.072]) nz(v, { t, a: 0.0003, d: 0.005, g: 0.3, type: 'bandpass', f: 1600 * p, q: 3 });   // sticky
+      tone(v, { t: 0.09, f: 1400 * p, f2: 620 * p, gl: 0.035, a: 0.002, d: 0.04, g: 0.2 });
+      modal(v, { t: 0.125, f: 1100 * p, r: [1, 1.8], d: 0.03, g: 0.2 });                                                // snap
+    },
+    sal_charge(v, o) { // a rising rattle growl in its throat: a rolled "rrr" climbing, embers stirring
+      const p = o.p, t0 = v.t, d = 0.42;
+      const r = vox(v, { t: 0, d, pts: [[0, 170 * p], [d, 330 * p]], f1: [[0, 650], [d, 900]], f2: [[0, 1300], [d, 1900]], g: 0.21, rasp: 0.6, swell: true });
+      const l = vosc(v, 'square', 26, t0, t0 + d + 0.03), lg = vg(v, 0.3); l.frequency.setValueAtTime(22, t0); l.frequency.linearRampToValueAtTime(34, t0 + d);
+      l.connect(lg); lg.connect(r.gain);
+      grains(v, { t: 0.1, dur: 0.33, n: 9, fmin: 2000, fmax: 5000, g: 0.1, decay: 0.004, curve: 0.6, fade: -0.6 });
+    },
+    sal_yelp(v, o) { // the salamander is hit: a comic "yowp!" (a "y" opening to "ow", shut with a "p")
+      const p = o.p;
+      vox(v, { t: 0, d: 0.17, pts: [[0, 640 * p], [0.04, 980 * p], [0.17, 560 * p]], f1: [[0, 420], [0.05, 800], [0.17, 650]], f2: [[0, 2300], [0.05, 1300], [0.17, 900]], g: 0.102, rasp: 0.1 });
+      nz(v, { t: 0.17, a: 0.0004, d: 0.008, g: 0.108, type: 'bandpass', f: 1500, q: 2 });
+      grains(v, { t: 0.03, dur: 0.12, n: 5, fmin: 3000, fmax: 6000, g: 0.042, decay: 0.004 });
+    },
+    gator_snap(v, o) { // a deep hollow jaw clap (two rows of teeth), then a little water
+      const p = o.p;
+      for (const [t, g] of [[0, 0.34], [0.014, 0.26]]) nz(v, { t, a: 0.0004, d: 0.012, g, type: 'bandpass', f: 1900 * p, q: 1.6 });
+      modal(v, { f: 520 * p, r: [1, 2.3, 3.6], amps: [1, 0.4, 0.2], d: 0.12, g: 0.68 });
+      tone(v, { type: 'triangle', f: 460 * p, f2: 250 * p, gl: 0.07, a: 0.003, hold: 0.03, d: 0.12, g: 0.68 });
+      nz(v, { color: 'pink', a: 0.004, hold: 0.02, d: 0.09, g: 0.637, type: 'bandpass', f: 650 * p, q: 2.2 });                     // hollow mouth
+      for (const [t, f] of [[0.09, 700], [0.13, 950], [0.16, 820]]) tone(v, { t, f: f * p, f2: f * 1.7 * p, gl: 0.03, a: 0.003, d: 0.04, g: 0.107 });
+      nz(v, { t: 0.08, a: 0.01, d: 0.12, g: 0.083, type: 'bandpass', f: 2200, f2: 1200, q: 1 });
+    },
+    puff_swell(v, o) { // a puffer fish blows up: a squeaky rubber-balloon stretch over a breath of air
+      const p = o.p, t0 = v.t, d = 0.36;
+      const r = tone(v, { type: 'sawtooth', f: 420 * p, fp: [[0, 420 * p], [0.12, 520 * p], [0.28, 760 * p], [d, 820 * p]], a: 0.02, hold: d - 0.08, d: 0.06, g: 0.1, lp: 2600, lq: 5 });
+      const l = vosc(v, 'sine', 19, t0, t0 + d + 0.08), lg = vg(v, 22 * p); l.frequency.setValueAtTime(14, t0); l.frequency.linearRampToValueAtTime(26, t0 + d);
+      l.connect(lg); lg.connect(r.o.frequency);
+      nz(v, { color: 'pink', a: 0.1, hold: 0.15, d: 0.1, g: 0.1, type: 'bandpass', f: 900 * p, f2: 2000 * p, sw: d, q: 1.5 });
+      tone(v, { t: d, f: 900 * p, f2: 1300 * p, gl: 0.02, a: 0.002, d: 0.03, g: 0.08 });                            // stretched tight
+    },
+    creature_hurt(v, o) { // any villain hit: one shared comic "oof" (a thump, an "oo" that drops, the breath out); pitch = size
+      const p = o.p;
+      knock(v, { f: 420 * p, f2: 240 * p, d: 0.06, g: 0.3, nf: 1500, n: 0.4 });
+      vox(v, { t: 0.015, d: 0.17, pts: [[0, 330 * p], [0.04, 360 * p], [0.17, 240 * p]], f1: [[0, 520], [0.17, 450]], f2: [[0, 1050], [0.17, 900]], g: 0.48, rasp: 0.15 });
+      nz(v, { t: 0.15, color: 'pink', a: 0.01, d: 0.07, g: 0.12, type: 'bandpass', f: 1600 * p, q: 1.2 });
+    },
+    boss_roar(v, o) { // a boss's voice: big but musical, a low brassy growl that opens into "RAAH" (root and fifth)
+      const p = o.p, d = 0.95;
+      const r = vox(v, { t: 0, d, pts: [[0, 98 * p], [0.18, 131 * p], [0.6, 123 * p], [d, 92 * p]], f1: [[0, 520], [0.2, 760], [d, 600]], f2: [[0, 1000], [0.2, 1250], [d, 1050]], g: 0.75, rasp: 0.45, brass: true });
+      vox(v, { t: 0.04, d: d - 0.1, pts: [[0, 147 * p], [0.18, 196 * p], [0.6, 185 * p], [d - 0.1, 139 * p]], f1: [[0, 560], [0.2, 800], [d - 0.1, 620]], f2: [[0, 1100], [0.2, 1350], [d - 0.1, 1100]], g: 0.35, rasp: 0.3 });
+      const l = vosc(v, 'sine', 34, v.t, v.t + d + 0.05), lg = vg(v, 0.18); l.connect(lg); lg.connect(r.gain);
+      nz(v, { color: 'pink', a: 0.08, d: 0.6, g: 0.1, type: 'bandpass', f: 1100, q: 1 });
+    },
+    boss_slam(v, o) { // a boss attack lands: a floor-shaking thud (body a phone can still hear) and debris raining down
+      const p = o.p;
+      nz(v, { a: 0.0005, d: 0.012, g: 0.4, type: 'bandpass', f: 2000, q: 1 });
+      tone(v, { f: 170 * p, f2: 55 * p, gl: 0.18, a: 0.002, d: 0.3, g: 0.35 });
+      tone(v, { type: 'triangle', f: 420 * p, f2: 200 * p, gl: 0.1, a: 0.001, d: 0.18, g: 0.75 });
+      nz(v, { color: 'pink', a: 0.002, d: 0.16, g: 0.7, type: 'bandpass', f: 560 * p, q: 1.3 });
+      grains(v, { t: 0.06, dur: 0.45, n: 14, fmin: 700, fmax: 2600, q: 1.3, g: 0.26, decay: 0.008, curve: 1.4, fade: 0.7 });
+      for (let k = 0; k < 3; k++) modal(v, { t: rr(0.12, 0.45), f: rr(500, 900), r: [1, 1.93], d: 0.03, g: 0.06 });
     },
   };
 
@@ -1276,9 +2361,13 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       i: clamp(opts.intensity != null ? +opts.intensity : (name === 'star' || name === 'combo' || name === 'countdown' ? 0 : 0.6), 0, 1) || 0,
     };
     if (o.vol <= 0.001) return NOOP_HANDLE;
-    const t = now();
+    const t = now(), base = name.endsWith('_old') ? name.slice(0, -4) : name; // '<name>_old': the version before 2026-11-20 (Sound Board)
     // ring ticks: a hard rate limit across all rings, so constant turning stays a light ratchet
-    if (name === 'ring_tick') { if (t - lastRingTick < RING_TICK_GAP && t >= lastRingTick) return NOOP_HANDLE; lastRingTick = t; }
+    if (base === 'ring_tick') {
+      const gap = t - lastRingTick;
+      if (gap < RING_TICK_GAP && t >= lastRingTick) return NOOP_HANDLE;
+      lastRingTick = t; if (gap < 0.14) o.vol *= 0.65; // a fast spin: the clicks thin out and soften, never a machine gun
+    }
     // merge same-name hits inside the window
     const lp = lastPlay.get(name);
     if (lp && !lp.v.done && t - lp.time < MERGE_WINDOW) {
@@ -1294,19 +2383,19 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       stopVoice(voices[k], 0.015);
       voices.splice(k, 1);
     }
-    const pv = PITCH_VAR[name] != null ? PITCH_VAR[name] : DEFAULT_PITCH_VAR;
+    const pv = PITCH_VAR[base] != null ? PITCH_VAR[base] : DEFAULT_PITCH_VAR;
     o.p = o.pitch * (pv ? rr(1 - pv, 1 + pv) : 1);
-    const v = newVoice(name, o, name === 'ring_tick' ? N.tick : UI_SOUNDS.has(name) ? N.ui : N.world);
+    const v = newVoice(name, o, base === 'ring_tick' ? N.tick : UI_SOUNDS.has(base) ? N.ui : N.world);
     try { SFX[name](v, o); } catch (e) { stopVoice(v, 0.01); return NOOP_HANDLE; }
     voices.push(v);
     if (!offline) setTimeout(() => cleanupVoice(v), (v.end - t + 0.15) * 1000);
     const h = { stop() { try { stopVoice(v); } catch (e) {} }, duration: v.end - v.t, get playing() { return !v.done && ctx.currentTime < v.end; } };
     lastPlay.set(name, { time: t, v, h, vol: o.vol });
-    if (name === 'level_win') duckMusic(0.55, 2.2);
-    else if (name === 'level_fail' || name === 'unlock') duckMusic(0.45, 1.4);
-    else if (name === 'bomb_explode' || name === 'thunder') duckMusic(0.3, 1.0);
-    else if (HERO.has(name) && o.vol > 0.3) duckMusic(0.25, 0.3);
-    if (HERO.has(name) && o.vol > 0.3) heroDuck();
+    if (base === 'level_win') duckMusic(0.55, 2.2);
+    else if (base === 'level_fail' || base === 'unlock') duckMusic(0.45, 1.4);
+    else if (base === 'bomb_explode' || base === 'thunder') duckMusic(0.3, 1.0);
+    else if (HERO.has(base) && o.vol > 0.3) duckMusic(0.25, 0.3);
+    if (HERO.has(base) && o.vol > 0.3) heroDuck();
     return h;
   }
 
@@ -1511,23 +2600,28 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   }
 
   function createInstance(spec, t0) {
-    const pname = resolveMood(spec.mood);
-    const P = mixedPreset(pname);
-    const rootKey = String(spec.root || 'C').trim().toUpperCase();
-    const pc = has(NOTE, rootKey) ? NOTE[rootKey] : 0;
-    const scaleName = has(SCALES, spec.scale) ? spec.scale : P.scale;
+    // a composed tune plays its own key, scale and tempo (per level arrangement); spec.root / scale / bpm are for the
+    // generated mood music only
+    const tune = has(TUNES, spec.tune) ? TUNES[spec.tune] : null, arr = tune ? tuneArr(tune, spec) : 0;
+    const pname = tune ? 'tune:' + spec.tune : resolveMood(spec.mood);
+    const P = tune ? tunePreset(tune, arr) : mixedPreset(pname);
+    const rootKey = String((tune ? tune.root : spec.root) || 'C').trim().toUpperCase();
+    const pc0 = has(NOTE, rootKey) ? NOTE[rootKey] : 0, pc = tune ? (((pc0 + P.tr) % 12) + 12) % 12 : pc0;
+    const scaleName = tune ? tune.scale : has(SCALES, spec.scale) ? spec.scale : P.scale;
     const harm = scaleName === 'pentatonic' ? SCALES.major : SCALES[scaleName];
     const pent = scaleName === 'pentatonic';
-    const bpm = clamp(+spec.bpm || P.bpm, 50, 200);
+    const bpm = clamp(tune ? P.bpm + (spec.boss ? 12 : 0) : +spec.bpm || P.bpm, 50, 200);
     const sd = 60 / bpm / 4;
     const rng = mulberry32(hashStr(pname + '|' + pc + '|' + scaleName + '|' + bpm));
-    const tonic3 = pc >= 7 ? 36 + pc : 48 + pc;   // pad / harmony centre (G2..F#3)
+    // pad / harmony centre (G2..F#3); a tune's arrangement moves it by its transposition, so the register stays put
+    const tonic3 = tune ? (pc0 >= 7 ? 36 + pc0 : 48 + pc0) + P.tr : pc >= 7 ? 36 + pc : 48 + pc;
     const I = {
       key: pname + '|' + pc + '|' + scaleName + '|' + bpm, P, pname, sd, rng, harm, pent,
-      bassBase: tonic3, padLo: tonic3 + 3,   // bass an octave up from the old mix: G2..F#3 roots a phone can play leadBase: tonic3 + 12 + (P.lead ? P.lead.oct : 12),
+      bassBase: tonic3, padLo: tonic3 + 3,   // bass an octave up from the old mix: G2..F#3 roots a phone can play
+      leadBase: tonic3 + 12 + (!tune && P.lead ? P.lead.oct : 12),   // (was swallowed by the comment above: every melody threw a non-finite frequency and never sounded)
       nt: t0, idx: 0, dead: false, stopAt: 0, secIdx: -2, sec: 'I', barInSec: 0, cycle: 0,
       chord: 0, nextChord: 0, motifA: null, motifB: null, variants: null, arpI: 0, leadInst: P.lead ? P.lead.inst : null,
-      nodes: [],
+      nodes: [], tune, spb: tune ? tune.spb || 16 : 16, boss: !!(tune && spec.boss), arr,
     };
     const keep = (n) => { I.nodes.push(n); return n; };
     I.xf = keep(mkGain(0)); I.xf.connect(N.mIn);
@@ -1548,7 +2642,13 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     I.trem = keep(mkGain(0.8));
     const tl = keep(ctx.createOscillator()); tl.frequency.value = pname === 'storm' ? 6.5 : 4.8; tl.start(t0);
     const tlg = keep(mkGain(0.2)); tl.connect(tlg); tlg.connect(I.trem.gain); I.trem.connect(I.bus); I.tlfo = tl;
-    I.xf.gain.setValueAtTime(0, t0); I.xf.gain.linearRampToValueAtTime(1, t0 + XFADE);
+    if (tune) {
+      I.xf.gain.setValueAtTime(0, t0); I.xf.gain.linearRampToValueAtTime(1, t0 + 0.012); // a tune opens at full level
+      I.hs = keep(ctx.createBufferSource()); I.hs.buffer = buf('white'); I.hs.loop = true; I.hs.start(t0);
+      I.hbp = keep(mkFilter('bandpass', 6000, 1)); I.hg = keep(mkGain(0));
+      I.hs.connect(I.hbp); I.hbp.connect(I.hg); I.hg.connect(I.drums);
+    }
+    else { I.xf.gain.setValueAtTime(0, t0); I.xf.gain.linearRampToValueAtTime(1, t0 + XFADE); }
     return I;
   }
 
@@ -1557,6 +2657,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     const kill = () => {
       try { I.lfo && I.lfo.stop(); } catch (e) {}
       try { I.tlfo.stop(); } catch (e) {}
+      try { I.hs && I.hs.stop(); } catch (e) {}
       for (const n of I.nodes) { try { n.disconnect(); } catch (e) {} }
     };
     if (offline) return;
@@ -1585,6 +2686,22 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     s.start(t, rand() * 1.5); s.stop(t1); list.push(s); return s;
   }
 
+  // a reed (bassoon / shehnai): saw + square through one vowel formant, vibrato after the attack, a small scoop
+  function reed(I, t, f, dur, vel, dest, fx, form, q, cut, scoop) {
+    const L = [], g = mkGain(0), bp = mkFilter('peaking', form, q), lp = mkFilter('lowpass', cut, 0.8); L.push(g, bp, lp);
+    bp.gain.value = 10;
+    const end = mEnv(g, t, 0.025, vel, 0.25, 0.8, Math.max(dur, 0.06), 0.06);
+    const o1 = mOsc('sawtooth', f, t, end, L), o2 = mOsc('square', f, t, end, L, 5), m2 = mkGain(0.35); L.push(m2);
+    o1.frequency.setValueAtTime(f * (1 - scoop), t); o1.frequency.exponentialRampToValueAtTime(f, t + 0.05);
+    if (dur > 0.22) {
+      const lf = mOsc('sine', 5.2, t, end, L), lg = mkGain(0); L.push(lg);
+      lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * 0.009, t + 0.25);
+      lf.connect(lg); lg.connect(o1.frequency); lg.connect(o2.frequency);
+    }
+    o1.connect(bp); o2.connect(m2); m2.connect(bp); bp.connect(lp); lp.connect(g); g.connect(dest);
+    if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+    mNodes(o1, L);
+  }
   const INST = {
     pluck(I, t, f, dur, vel, dest, fx) {
       const L = [], g = mkGain(0), lp = mkFilter('lowpass', Math.min(f * 8, 7000), 1.2); L.push(g, lp);
@@ -1651,6 +2768,173 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       if (fx) { const s = mkGain(fx); L.push(s); g.connect(s); s.connect(I.fx); }
       mNodes(o, L);
     },
+    banjo(I, t, f, dur, vel, dest, fx) { // a bright twangy pluck: a quick dip into the pitch, a nasal body, gone in a quarter second
+      const L = [], g = mkGain(0), bp = mkFilter('peaking', Math.min(f * 3, 3800), 2.5), lp = mkFilter('lowpass', 6500, 0.8); L.push(g, bp, lp);
+      bp.gain.value = 9; lp.frequency.setValueAtTime(7000, t); lp.frequency.setTargetAtTime(Math.max(f * 2.5, 1400), t, 0.07);
+      const end = mEnv(g, t, 0.002, vel, Math.min(0.2 + dur * 0.35, 0.5), 0, 0, 0);
+      const o1 = mOsc('sawtooth', f, t, end, L), o2 = mOsc('square', f, t, end, L, 5), m2 = mkGain(0.3); L.push(m2);
+      for (const o of [o1, o2]) { o.frequency.setValueAtTime(f * 1.025, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.03); }
+      const s = mNoise(t, t + 0.02, L), ng = mkGain(0); L.push(ng); ng.gain.setValueAtTime(vel * 0.5, t); ng.gain.setTargetAtTime(0, t + 0.001, 0.004);
+      o1.connect(bp); o2.connect(m2); m2.connect(bp); s.connect(ng); ng.connect(bp); bp.connect(lp); lp.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o1, L);
+    },
+    // ---- the composed tunes' band (2026-11-20). Each voice is a few oscillators, a filter or two and one envelope;
+    // nothing rings longer than ~1.5 s, so the voice count stays near the old pad-based music.
+    fiddle(I, t, f, dur, vel, dest, fx) { // two detuned saws, a bowed attack (rosin noise), vibrato that grows in, a wooden body peak
+      const L = [], g = mkGain(0), pk = mkFilter('peaking', 2600, 1.1), lp = mkFilter('lowpass', Math.min(f * 7, 6000), 0.7); L.push(g, pk, lp);
+      pk.gain.value = 5;
+      const end = mEnv(g, t, 0.03, vel, 0.25, 0.72, Math.max(dur, 0.07), 0.08);
+      const o1 = mOsc('sawtooth', f, t, end, L);
+      if (dur > 0.22) { // vibrato grows in on held notes only
+        const lf = mOsc('sine', 5.8, t, end, L), lg = mkGain(0); L.push(lg);
+        lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * 0.008, t + 0.22); lf.connect(lg); lg.connect(o1.frequency);
+      }
+      const s = mNoise(t, t + 0.06, L), nb = mkFilter('bandpass', 3200, 1.4), ng = mkGain(0); L.push(nb, ng);
+      ng.gain.setValueAtTime(vel * 0.45, t); ng.gain.setTargetAtTime(0, t + 0.01, 0.012);
+      o1.connect(pk); s.connect(nb); nb.connect(ng); ng.connect(pk); pk.connect(lp); lp.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o1, L);
+    },
+    whistle(I, t, f, dur, vel, dest, fx) { // a tin whistle: near-sine with a breathy chiff and a little scoop into the note
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.022, vel, 0.2, 0.8, Math.max(dur, 0.06), 0.05);
+      const o = mOsc('sine', f, t, end, L), o2 = mOsc('triangle', f * 2, t, end, L), m2 = mkGain(0.12); L.push(m2);
+      o.frequency.setValueAtTime(f * 0.975, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.035);
+      const s = mNoise(t, t + 0.08, L), nb = mkFilter('bandpass', Math.min(f * 3, 7000), 2), ng = mkGain(0); L.push(nb, ng);
+      ng.gain.setValueAtTime(vel * 0.55, t); ng.gain.setTargetAtTime(vel * 0.06, t + 0.02, 0.02);
+      o.connect(g); o2.connect(m2); m2.connect(g); s.connect(nb); nb.connect(ng); ng.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o, L);
+    },
+    accordion(I, t, f, dur, vel, dest, fx) { // two reeds a few cents apart (the musette shimmer), a reedy square under a soft low-pass
+      const L = [], g = mkGain(0), lp = mkFilter('lowpass', Math.min(f * 6, 3600), 0.9); L.push(g, lp);
+      const end = mEnv(g, t, 0.018, vel, 0.2, 0.85, Math.max(dur, 0.06), 0.05);
+      const o1 = mOsc('sawtooth', f, t, end, L, -9), o2 = mOsc('square', f, t, end, L, 9), m2 = mkGain(0.55); L.push(m2);
+      o1.connect(lp); o2.connect(m2); m2.connect(lp); lp.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o1, L);
+    },
+    brass(I, t, f, dur, vel, dest, fx) { // two saws through a low-pass that opens with the blow ("bwah"), a touch of vibrato late
+      const L = [], g = mkGain(0), lp = mkFilter('lowpass', f * 1.5, 1.2); L.push(g, lp);
+      lp.frequency.setValueAtTime(f * 1.4, t); lp.frequency.linearRampToValueAtTime(Math.min(f * 7, 6000), t + 0.045); lp.frequency.setTargetAtTime(Math.min(f * 4, 4200), t + 0.05, 0.12);
+      const end = mEnv(g, t, 0.028, vel, 0.3, 0.75, Math.max(dur, 0.08), 0.07);
+      const o1 = mOsc('sawtooth', f, t, end, L, -6), o2 = mOsc('sawtooth', f, t, end, L, 6);
+      o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o1, L);
+    },
+    harp(I, t, f, dur, vel, dest, fx) { // a plucked string, soft and round
+      const L = [], g = mkGain(0), lp = mkFilter('lowpass', Math.min(f * 5, 5000), 0.7); L.push(g, lp);
+      const end = mEnv(g, t, 0.003, vel, 0.7, 0, 0, 0);
+      const o = mOsc('triangle', f, t, end, L), o2 = mOsc('sine', f * 2, t, t + 0.3, L), m2 = mkGain(0.25); L.push(m2);
+      o.connect(lp); o2.connect(m2); m2.connect(lp); lp.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o, L);
+    },
+    pizz(I, t, f, dur, vel, dest, fx) { // a plucked violin string: short, woody
+      const L = [], g = mkGain(0), lp = mkFilter('lowpass', Math.min(f * 5, 4500), 1.4); L.push(g, lp);
+      lp.frequency.setValueAtTime(Math.min(f * 7, 6000), t); lp.frequency.setTargetAtTime(f * 2, t, 0.05);
+      const end = mEnv(g, t, 0.002, vel, 0.22, 0, 0, 0);
+      const o = mOsc('triangle', f, t, end, L), o2 = mOsc('sawtooth', f, t, end, L, 4), m2 = mkGain(0.3); L.push(m2);
+      o.connect(lp); o2.connect(m2); m2.connect(lp); lp.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o, L);
+    },
+    celesta(I, t, f, dur, vel, dest, fx) { // little hammered bars: a sine with a quick 4th-harmonic sparkle and a softer octave
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.002, vel, 0.9, 0, 0, 0);
+      const o = mOsc('sine', f, t, end, L), o2 = mOsc('sine', f * 2, t, t + 0.5, L), o4 = mOsc('sine', f * 4, t, t + 0.12, L), m2 = mkGain(0), m4 = mkGain(0); L.push(m2, m4);
+      m2.gain.setValueAtTime(0.3, t); m2.gain.setTargetAtTime(0, t, 0.12); m4.gain.setValueAtTime(0.22, t); m4.gain.setTargetAtTime(0, t, 0.025);
+      o.connect(g); o2.connect(m2); m2.connect(g); o4.connect(m4); m4.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o, L);
+    },
+    glock(I, t, f, dur, vel, dest, fx) { // a glockenspiel: steel bar partials (1, 2.76, 5.4), bright and ringing
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.001, vel, 1.0, 0, 0, 0);
+      const o = mOsc('sine', f, t, end, L), o2 = mOsc('sine', f * 2.76, t, t + 0.4, L), o3 = mOsc('sine', f * 5.4, t, t + 0.1, L), m2 = mkGain(0), m3 = mkGain(0); L.push(m2, m3);
+      m2.gain.setValueAtTime(0.35, t); m2.gain.setTargetAtTime(0, t, 0.09); m3.gain.setValueAtTime(0.18, t); m3.gain.setTargetAtTime(0, t, 0.02);
+      o.connect(g); o2.connect(m2); m2.connect(g); o3.connect(m3); m3.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o, L);
+    },
+    glass(I, t, f, dur, vel, dest, fx) { // glass bells: a pure tone with an inharmonic shimmer (2.32, 4.25) and a slow beat
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.002, vel, 1.1, 0, 0, 0);
+      const o = mOsc('sine', f, t, end, L), ob = mOsc('sine', f * 1.003, t, end, L), o2 = mOsc('sine', f * 2.32, t, t + 0.35, L), m2 = mkGain(0), mb = mkGain(0.5); L.push(m2, mb);
+      m2.gain.setValueAtTime(0.3, t); m2.gain.setTargetAtTime(0, t, 0.07);
+      o.connect(g); ob.connect(mb); mb.connect(g); o2.connect(m2); m2.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o, L);
+    },
+    musicbox(I, t, f, dur, vel, dest, fx) { // a comb tine: a sine that rings, a high inharmonic ping and a tiny pin click
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.001, vel, 1.2, 0, 0, 0);
+      const o = mOsc('sine', f, t, end, L), o2 = mOsc('sine', f * 5.4, t, t + 0.08, L), m2 = mkGain(0); L.push(m2);
+      m2.gain.setValueAtTime(0.25, t); m2.gain.setTargetAtTime(0, t, 0.015);
+      const s = mNoise(t, t + 0.01, L), hp = mkFilter('highpass', 5000, 0.7), ng = mkGain(0); L.push(hp, ng);
+      ng.gain.setValueAtTime(vel * 0.25, t); ng.gain.setTargetAtTime(0, t, 0.002);
+      o.connect(g); o2.connect(m2); m2.connect(g); s.connect(hp); hp.connect(ng); ng.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o, L);
+    },
+    kalimba(I, t, f, dur, vel, dest, fx) { // a thumb piano: round tine, a soft woody thud and the high "tang" partial
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.002, vel, 0.65, 0, 0, 0);
+      const o = mOsc('sine', f, t, end, L), o2 = mOsc('sine', f * 5.9, t, t + 0.06, L), o3 = mOsc('triangle', f, t, t + 0.08, L), m2 = mkGain(0), m3 = mkGain(0); L.push(m2, m3);
+      m2.gain.setValueAtTime(0.2, t); m2.gain.setTargetAtTime(0, t, 0.012); m3.gain.setValueAtTime(0.4, t); m3.gain.setTargetAtTime(0, t, 0.02);
+      o.connect(g); o2.connect(m2); m2.connect(g); o3.connect(m3); m3.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o, L);
+    },
+    woodmarimba(I, t, f, dur, vel, dest, fx) { INST.marimba(I, t, f / 2, dur, vel * 1.15, dest, fx); }, // the answer, an octave down
+    bassoon(I, t, f, dur, vel, dest, fx) { reed(I, t, f, dur, vel, dest, fx, 520, 1.6, 1900, 0.04); },  // a reed: dark formant
+    shehnai(I, t, f, dur, vel, dest, fx) { reed(I, t, f, dur, vel, dest, fx, 1350, 3, 3800, 0.025); }, // a nasal double reed
+    steel(I, t, f, dur, vel, dest, fx) { // a steel pan: a bright FM strike settling into a sine with a strong octave
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.002, vel, 0.75, 0, 0, 0);
+      const c = mOsc('sine', f, t, end, L), m = mOsc('sine', f * 2, t, t + 0.15, L), mg = mkGain(0), o2 = mOsc('sine', f * 2, t, t + 0.45, L), g2 = mkGain(0); L.push(mg, g2);
+      mg.gain.setValueAtTime(f * 1.1, t); mg.gain.setTargetAtTime(0, t, 0.03);
+      g2.gain.setValueAtTime(0.35, t); g2.gain.setTargetAtTime(0, t, 0.12);
+      m.connect(mg); mg.connect(c.frequency); c.connect(g); o2.connect(g2); g2.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(c, L);
+    },
+    theremin(I, t, f, dur, vel, dest, fx) { // a theremin: glides from the last note, wide vibrato, a soft swell
+      const L = [], g = mkGain(0), lp = mkFilter('lowpass', 2600, 0.7); L.push(g, lp);
+      const end = mEnv(g, t, 0.07, vel, 0.3, 0.9, Math.max(dur, 0.1), 0.12);
+      const from = I.thF || f, o = mOsc('sine', f, t, end, L), o2 = mOsc('triangle', f, t, end, L), m2 = mkGain(0.35); L.push(m2);
+      for (const x of [o, o2]) { x.frequency.setValueAtTime(from, t); x.frequency.exponentialRampToValueAtTime(f, t + 0.12); }
+      I.thF = f;
+      const lf = mOsc('sine', 6.2, t, end, L), lg = mkGain(f * 0.014); L.push(lg); lf.connect(lg); lg.connect(o.frequency); lg.connect(o2.frequency);
+      o.connect(lp); o2.connect(m2); m2.connect(lp); lp.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o, L);
+    },
+    slide(I, t, f, dur, vel, dest, fx) { // a bottleneck slide guitar: slides up into each note, a slow vibrato, a twangy body
+      const L = [], g = mkGain(0), pk = mkFilter('peaking', 1500, 1.5), lp = mkFilter('lowpass', Math.min(f * 6, 4200), 0.9); L.push(g, pk, lp);
+      pk.gain.value = 6;
+      const end = mEnv(g, t, 0.006, vel, 0.6, 0.55, Math.max(dur, 0.08), 0.1);
+      const o1 = mOsc('sawtooth', f, t, end, L), o2 = mOsc('triangle', f, t, end, L, 4), m1 = mkGain(0.45); L.push(m1);
+      for (const x of [o1, o2]) { x.frequency.setValueAtTime(f * 0.94, t); x.frequency.exponentialRampToValueAtTime(f, t + 0.08); }
+      if (dur > 0.25) {
+        const lf = mOsc('sine', 4.8, t, end, L), lg = mkGain(0); L.push(lg);
+        lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * 0.01, t + 0.3);
+        lf.connect(lg); lg.connect(o1.frequency); lg.connect(o2.frequency);
+      }
+      o1.connect(m1); m1.connect(pk); o2.connect(pk); pk.connect(lp); lp.connect(g); g.connect(dest);
+      if (fx) { const sn = mkGain(fx); L.push(sn); g.connect(sn); sn.connect(I.fx); }
+      mNodes(o1, L);
+    },
+    jaw(I, t, f, dur, vel, dest) { // a jaw harp: a buzzy low twang whose vowel sweeps "boi-oing"
+      const L = [], g = mkGain(0), bp = mkFilter('bandpass', 500, 6), lp = mkFilter('lowpass', 3000, 0.7); L.push(g, bp, lp);
+      bp.frequency.setValueAtTime(450, t); bp.frequency.exponentialRampToValueAtTime(1700, t + 0.07); bp.frequency.exponentialRampToValueAtTime(700, t + 0.25);
+      const end = mEnv(g, t, 0.004, vel * 2.2, 0.32, 0, 0, 0);
+      const fo = f > 220 ? f / 2 : f, o = mOsc('sawtooth', fo, t, end, L);
+      o.connect(bp); bp.connect(lp); lp.connect(g); g.connect(dest);
+      mNodes(o, L);
+    },
     bubble(I, t, f, dur, vel, dest) {
       const L = [], g = mkGain(0); L.push(g);
       const end = mEnv(g, t, 0.003, vel, 0.07, 0, 0, 0);
@@ -1680,6 +2964,20 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       const end = mEnv(g, t, 0.004, vel * 0.8, 0.25, 0.55, dur, 0.06);
       const o = mOsc('sawtooth', f, t, end, L), o2 = mOsc('square', f * 0.5, t, end, L, -10), m = mkGain(0.4); L.push(m);
       o.connect(lp); o2.connect(m); m.connect(lp); lp.connect(g); g.connect(I.bus); mNodes(o, L);
+    },
+    tuba(I, t, f, dur, vel) { // oom-pah bass: a round brass puff, its harmonics carry it on a phone
+      const L = [], g = mkGain(0), lp = mkFilter('lowpass', f * 3, 1.2); L.push(g, lp);
+      lp.frequency.setValueAtTime(f * 2, t); lp.frequency.linearRampToValueAtTime(f * 5, t + 0.04); lp.frequency.setTargetAtTime(f * 3, t + 0.05, 0.08);
+      const end = mEnv(g, t, 0.018, vel * 0.8, 0.3, 0.7, Math.min(dur, 0.26), 0.07);
+      const o = mOsc('sawtooth', f, t, end, L), h = mOsc('sine', f * 2, t, end, L), hg = mkGain(0.45), o2 = mOsc('sine', f, t, end, L); L.push(hg);
+      o.connect(lp); o2.connect(lp); h.connect(hg); hg.connect(lp); lp.connect(g); g.connect(I.bus); mNodes(o, L);
+    },
+    upright(I, t, f, dur, vel) { // a plucked double bass: a woody thump, short and round
+      const L = [], g = mkGain(0), lp = mkFilter('lowpass', f * 5, 1.1); L.push(g, lp);
+      lp.frequency.setValueAtTime(f * 8, t); lp.frequency.setTargetAtTime(f * 2.5, t, 0.04);
+      const end = mEnv(g, t, 0.004, vel * 0.85, 0.35, 0, 0, 0);
+      const o = mOsc('triangle', f, t, end, L), h = mOsc('sine', f * 2, t, end, L), hg = mkGain(0.35), o2 = mOsc('sawtooth', f, t, t + 0.06, L), sg = mkGain(0.3); L.push(hg, sg);
+      o.connect(lp); h.connect(hg); hg.connect(lp); o2.connect(sg); sg.connect(lp); lp.connect(g); g.connect(I.bus); mNodes(o, L);
     },
     sub(I, t, f, dur, vel) {
       const L = [], g = mkGain(0); L.push(g);
@@ -1717,11 +3015,13 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       s.connect(bp); bp.connect(g); g.connect(I.drums); mNodes(s, L);
     },
     hat(I, t, v) {
+      if (I.hg) { hiHit(I, t, 8500, 0.8, 0.075 * v, 0.001, 0.012); return; }
       const L = [], g = mkGain(0), hp = mkFilter('highpass', 7500, 0.7); L.push(g, hp);
       const end = mEnv(g, t, 0.001, 0.09 * v, 0.045, 0, 0, 0);
       const s = mNoise(t, end, L); s.connect(hp); hp.connect(g); g.connect(I.drums); mNodes(s, L);
     },
     shaker(I, t, v) {
+      if (I.hg) { hiHit(I, t, 6500, 0.9, 0.1 * v, 0.012, 0.018); return; }
       const L = [], g = mkGain(0), bp = mkFilter('bandpass', 6500, 0.9); L.push(g, bp);
       g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.1 * v, t + 0.012); g.gain.setTargetAtTime(0, t + 0.014, 0.018);
       const s = mNoise(t, t + 0.12, L); s.connect(bp); bp.connect(g); g.connect(I.drums); mNodes(s, L);
@@ -1741,6 +3041,79 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       ng.gain.setValueAtTime(0.25 * v, t); ng.gain.setTargetAtTime(0, t, 0.02);
       o.connect(g); s.connect(lp); lp.connect(ng); ng.connect(g); g.connect(I.drums); mNodes(o, L);
     },
+    block(I, t, v, f = 1180) { // a wood block: the "pah" of the oom-pah
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.0008, 0.13 * v, 0.05, 0, 0, 0);
+      const o = mOsc('sine', f, t, end, L), o2 = mOsc('sine', f * 1.5, t, end, L), g2 = mkGain(0.5); L.push(g2);
+      o.connect(g); o2.connect(g2); g2.connect(g); g.connect(I.drums); mNodes(o, L);
+    },
+    cluck(I, t, v) { // the hen joins the band: a short "bok" (a voiced blip through two formants)
+      const L = [], g = mkGain(0), b1 = mkFilter('bandpass', 1250, 3), b2 = mkFilter('bandpass', 2600, 4); L.push(g, b1, b2);
+      const end = mEnv(g, t, 0.004, 0.55 * v, 0.09, 0, 0, 0);
+      const o = mOsc('sawtooth', 620, t, end, L); o.frequency.setValueAtTime(560, t); o.frequency.linearRampToValueAtTime(760, t + 0.025); o.frequency.linearRampToValueAtTime(480, t + 0.09);
+      o.connect(b1); o.connect(b2); b1.connect(g); b2.connect(g); g.connect(I.drums); mNodes(o, L);
+    },
+    // ---- the tunes' extra percussion
+    snare(I, t, v) { // a snare: a short drum tone and a crisp rattle
+      const L = [], g = mkGain(0), bp = mkFilter('bandpass', 2400, 0.8); L.push(g, bp);
+      const end = mEnv(g, t, 0.001, 0.32 * v, 0.14, 0, 0, 0);
+      const o = mOsc('triangle', 240, t, t + 0.08, L), og = mkGain(0); L.push(og);
+      o.frequency.setValueAtTime(260, t); o.frequency.exponentialRampToValueAtTime(180, t + 0.05);
+      og.gain.setValueAtTime(0.9, t); og.gain.setTargetAtTime(0, t, 0.018);
+      const s = mNoise(t, end, L); s.connect(bp); bp.connect(g); o.connect(og); og.connect(g); g.connect(I.drums); mNodes(s, L);
+    },
+    stomp(I, t, v) { // a boot on boards: a woody thud
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.002, 0.75 * v, 0.16, 0, 0, 0);
+      const o = mOsc('sine', 190, t, end, L); o.frequency.setValueAtTime(200, t); o.frequency.exponentialRampToValueAtTime(90, t + 0.07);
+      const s = mNoise(t, t + 0.06, L, 1, 'pink'), bp = mkFilter('bandpass', 650, 1.3), ng = mkGain(0); L.push(bp, ng);
+      ng.gain.setValueAtTime(0.5 * v, t); ng.gain.setTargetAtTime(0, t, 0.015);
+      o.connect(g); s.connect(bp); bp.connect(ng); ng.connect(g); g.connect(I.drums); mNodes(o, L);
+    },
+    brush(I, t, v) { hiHit(I, t, 3800, 0.9, 0.13 * v, 0.025, 0.04); }, // a brush swish on the snare
+    snap(I, t, v) { // a finger snap
+      const L = [], g = mkGain(0), bp = mkFilter('bandpass', 2100, 3); L.push(g, bp);
+      const end = mEnv(g, t, 0.0005, 0.5 * v, 0.035, 0, 0, 0);
+      const s = mNoise(t, end, L); s.connect(bp); bp.connect(g); g.connect(I.drums); mNodes(s, L);
+    },
+    tick(I, t, v) { DRUM.block(I, t, v * 0.8, 2350); },   // the clock's tick: a high block
+    tock(I, t, v) { DRUM.block(I, t, v, 1250); },         // and its tock
+    ratchet(I, t, v) { // a winding ratchet: four quick clicks
+      const L = [], g = mkGain(0), bp = mkFilter('bandpass', 3000, 2.5); L.push(g, bp);
+      for (let k = 0; k < 4; k++) { const tk = t + k * 0.016; g.gain.setValueAtTime(0.16 * v * (1 - k * 0.15), tk); g.gain.setTargetAtTime(0, tk + 0.0005, 0.003); }
+      const s = mNoise(t, t + 0.09, L); s.connect(bp); bp.connect(g); g.connect(I.drums); mNodes(s, L);
+    },
+    sleigh(I, t, v) { hiHit(I, t, 7200, 3, 0.16 * v, 0.0005, 0.012, 3, 0.011); }, // sleigh bells: three tiny bright strikes
+    bodhran(I, t, v) { // a frame drum hit with a tipper: a low skin tone and a slap
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.002, 0.6 * v, 0.2, 0, 0, 0);
+      const o = mOsc('triangle', 150, t, end, L); o.frequency.setValueAtTime(175, t); o.frequency.exponentialRampToValueAtTime(110, t + 0.1);
+      const s = mNoise(t, t + 0.05, L, 1, 'pink'), bp = mkFilter('bandpass', 900, 1.2), ng = mkGain(0); L.push(bp, ng);
+      ng.gain.setValueAtTime(0.4 * v, t); ng.gain.setTargetAtTime(0, t, 0.012);
+      o.connect(g); s.connect(bp); bp.connect(ng); ng.connect(g); g.connect(I.drums); mNodes(o, L);
+    },
+    ho(I, t, v) { // the crew: a short deep "ho!" (a voice through an "o" vowel)
+      const L = [], g = mkGain(0), b1 = mkFilter('bandpass', 480, 4), b2 = mkFilter('bandpass', 850, 5); L.push(g, b1, b2);
+      const end = mEnv(g, t, 0.02, 0.9 * v, 0.24, 0, 0, 0);
+      const f = mtof(I.bassBase), o = mOsc('sawtooth', f, t, end, L), o2 = mOsc('sawtooth', f, t, end, L, 14);
+      o.frequency.setValueAtTime(f * 1.05, t); o.frequency.exponentialRampToValueAtTime(f * 0.94, t + 0.22);
+      o.connect(b1); o.connect(b2); o2.connect(b1); b1.connect(g); b2.connect(g); g.connect(I.drums); mNodes(o, L);
+    },
+    timp(I, t, v) { // timpani on the key note: a low boom with its harmonics so a phone hears it
+      const L = [], g = mkGain(0); L.push(g);
+      const end = mEnv(g, t, 0.003, 0.55 * v, 0.55, 0, 0, 0);
+      const f = mtof(I.bassBase), o = mOsc('sine', f, t, end, L), o2 = mOsc('sine', f * 1.5, t, t + 0.3, L), o3 = mOsc('sine', f * 2, t, t + 0.3, L), m2 = mkGain(0.4); L.push(m2);
+      o.frequency.setValueAtTime(f * 1.03, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.06);
+      o.connect(g); o2.connect(m2); o3.connect(m2); m2.connect(g); g.connect(I.drums); mNodes(o, L);
+    },
+    boom(I, t, v) { DRUM.tom(I, t, v * 1.1, 78); DRUM.tom(I, t, v * 0.45, 156); }, // a war drum: a big tom and its skin overtone
+    crash(I, t, v) { // a cymbal: bright noise that rings half a second
+      const L = [], g = mkGain(0), hp = mkFilter('highpass', 4800, 0.7), bp = mkFilter('peaking', 8000, 1); L.push(g, hp, bp);
+      bp.gain.value = 5;
+      const end = mEnv(g, t, 0.002, 0.11 * v, 0.6, 0, 0, 0);
+      const s = mNoise(t, end, L); s.connect(hp); hp.connect(bp); bp.connect(g); g.connect(I.drums); mNodes(s, L);
+    },
+    bub(I, t, v) { INST.bubble(I, t, 500 + I.rng() * 500, 0.06, 0.16 * v, I.drums); }, // a bubble for percussion
     dum(I, t, v) { DRUM.tom(I, t, v * 0.9, 95); },
     tek(I, t, v) {
       const L = [], g = mkGain(0), bp = mkFilter('bandpass', 3200, 2.2); L.push(g, bp);
@@ -1786,6 +3159,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   function inSec(list, sec) { return !list || list.includes(sec) || (sec === 'I' && list.includes('I')); }
 
   function stepInstance(I, idx, t) {
+    if (I.tune) { stepTune(I, idx, t); return; }
     const P = I.P, bar = Math.floor(idx / 16), s = idx % 16, sd = I.sd;
     if (s === 0) {
       const info = sectionOf(I, bar);
@@ -1818,7 +3192,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     const D = P.drums;
     if (D && sec !== 'I' && inSec(D.in, sec)) {
       const fill = I.lastBarOfSec && s >= 12 && (I.secIdx % 2 === 1);
-      for (const k of ['kick', 'clap', 'hat', 'shaker', 'rim', 'tom', 'dum', 'tek']) {
+      for (const k of ['kick', 'clap', 'hat', 'shaker', 'rim', 'tom', 'dum', 'tek', 'block']) {
         const pat = D[k]; if (!pat) continue;
         const c = pat[s]; if (c === '.' || !VEL[c]) continue;
         if (fill && (k === 'clap' || k === 'tom')) continue;
@@ -1879,6 +3253,116 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       }
     }
   }
+  // ---- a composed tune, played note by note (TUNES). Bar 0 is the pickup: the whole band hits the downbeat, the lead
+  // plays its fanfare over a snare roll, and bar 1 lands with a cymbal. No pad intro, no fade, no layers creeping in.
+  // Second time round (and on a boss level) the drums switch to the busier kit, the lead goes to the other instrument
+  // and the first one plays a counter line under it.
+  const ARP = [0, 2, 4, 7, 4, 2], TRIAD = [0, 2, 4], ROOT5 = [0, 4], ONE = [0];
+  // Chords: the whole chord shares one envelope and one filter (a third of the nodes of three separate notes), with a
+  // timbre that stands in for each comp instrument: [wave, attack, decay, sustain, cutoff, Q]
+  const CHORD_TONE = {
+    banjo: ['square', 0.003, 0.16, 0, 3000, 2.2], pluck: ['triangle', 0.003, 0.3, 0, 2600, 1], pizz: ['triangle', 0.002, 0.2, 0, 1900, 1.4],
+    harp: ['triangle', 0.003, 0.7, 0, 3000, 0.8], accordion: ['sawtooth', 0.015, 0.2, 0.75, 2000, 0.8], brass: ['sawtooth', 0.025, 0.25, 0.65, 2200, 1.2],
+    steel: ['sine', 0.002, 0.4, 0, 6000, 0.7], celesta: ['sine', 0.002, 0.7, 0, 6000, 0.7], bell: ['sine', 0.002, 0.8, 0, 6000, 0.7],
+    epiano: ['triangle', 0.004, 0.6, 0.25, 2400, 0.8], kalimba: ['sine', 0.002, 0.5, 0, 6000, 0.7],
+  };
+  const CF = [0, 0, 0];
+  function chordVoice(I, t, n, dur, vel, inst) {
+    const C = CHORD_TONE[inst] || CHORD_TONE.pluck, L = [], g = mkGain(0), lp = mkFilter('lowpass', C[4], C[5]); L.push(g, lp);
+    const end = mEnv(g, t, C[1], vel, C[2], C[3], Math.max(dur, 0.05), 0.06);
+    let first = null;
+    for (let j = 0; j < n; j++) { const o = mOsc(C[0], CF[j], t, end, L, j ? (j - 1.5) * 6 : 0); o.connect(lp); first = first || o; }
+    lp.connect(g); g.connect(I.bus); mNodes(first, L);
+  }
+  // The high percussion (hat, shaker, brush, sleigh bells) of a tune shares one looping noise, band-pass and gain per
+  // instance: each hit only moves the filter and the gain, so a busy shaker creates no nodes at all.
+  function hiHit(I, t, f, q, peak, att, tau, pulses = 1, gap = 0) {
+    const g = I.hg.gain, bp = I.hbp;
+    bp.frequency.setValueAtTime(f, t); bp.Q.setValueAtTime(q, t);
+    g.cancelScheduledValues(t); g.setValueAtTime(0, t);
+    for (let k = 0; k < pulses; k++) {
+      const tk = t + k * gap, pk = peak * (1 - k * 0.25);
+      if (k) g.setValueAtTime(pk, tk); else g.linearRampToValueAtTime(pk, tk + att);
+      g.setTargetAtTime(0, tk + (k ? 0.0005 : att), tau);
+    }
+  }
+  function compMidi(I, deg, oct) {
+    let m = degMidi(I.harm, deg, 0); m = ((m % 12) + 12) % 12; m += I.padLo - (I.padLo % 12); if (m < I.padLo) m += 12;
+    return m + oct;
+  }
+  function stepTune(I, idx, t) {
+    const T = I.tune, P = I.P, A = P.A, spb = I.spb, bar = Math.floor(idx / spb), s = idx % spb, sd = I.sd, nb = T.bars.length;
+    const pick = bar === 0, bi = pick ? -1 : (bar - 1) % nb, cycle = pick ? 0 : Math.floor((bar - 1) / nb);
+    const B = pick ? T.pick : T.bars[bi], half = s * 2 < spb ? 0 : 1;
+    const chord = Array.isArray(B.ch) ? B.ch[half] : B.ch;
+    const nB = pick ? T.bars[0] : T.bars[(bi + 1) % nb], nextChord = Array.isArray(nB.ch) ? nB.ch[0] : nB.ch;
+    const again = cycle % 2 === 1, heavy = again || I.boss, lastBar = bi === nb - 1, beat = spb === 12 && T.strong && T.strong.length > 1 ? 6 : 4;
+    const tt = t + (s % 2 === 1 ? P.swing * sd : 0);
+    const hv = () => 0.9 + I.rng() * 0.2;
+    // drums
+    if (MUTE.drums) { /* measuring */ } else if (pick) { // the groove from the first beat, a cymbal on the downbeat and a snare roll into bar 1
+      if (s === 0) { DRUM.crash(I, tt, 1); DRUM.kick(I, tt, 1); }
+      const roll = (s * 2 >= spb && s % 2 === 0) || s >= spb - 3;
+      for (const k in A.d) { const c = A.d[k][s]; if (c && VEL[c] && k !== 'kick' && !(roll && (k === 'snare' || k === 'clap'))) DRUM[k](I, tt, VEL[c] * hv()); }
+      if (roll) DRUM.snare(I, tt, 0.45 + 0.45 * (s / spb));
+    } else {
+      const D = heavy && A.d2 ? A.d2 : A.d, fill = lastBar && s >= spb - 4;
+      for (const k in D) {
+        const c = D[k][s];
+        if (c && c !== '.' && VEL[c] && !(fill && (k === 'snare' || k === 'clap'))) DRUM[k](I, tt, VEL[c] * hv());
+      }
+      if (fill && (s % 2 === 0 || s === spb - 1)) DRUM.snare(I, tt, (0.45 + 0.12 * (s - spb + 4)) * hv());
+      if (s === 0 && bi === 0) DRUM.crash(I, tt, 0.9);
+      if (I.boss && s % beat === 0) DRUM.boom(I, tt, (s === 0 ? 0.8 : 0.55) * hv());
+    }
+    // drone (a root and fifth under the bar)
+    if (A.drone && s === 0 && (pick || bi % 2 === 0)) pad(I, t, [I.bassBase + 12, I.bassBase + 19], 2 * spb * sd - 0.05, { lvl: A.drone.lvl, cut: 900, a: 0.03, r: 0.3 });
+    // bass
+    const BS = A.bass, bc = BS.pat[s];
+    if (!MUTE.bass && bc && bc !== '.' && bc !== '-') {
+      let len = 1; while (s + len < spb && BS.pat[s + len] === '-') len++;
+      let deg = chord, oct = 0, v = 1;
+      if (bc === '5') deg += 4; else if (bc === '3') deg += 2; else if (bc === '8') oct = 12; else if (bc === '7') deg -= 1;
+      else if (bc === 'a') deg = nextChord + (I.rng() < 0.5 ? 1 : -1);
+      else if (bc === 'r') v = 0.55;
+      let m = degMidi(I.harm, deg, I.bassBase) + oct;
+      while (m > I.bassBase + 14) m -= 12; while (m < I.bassBase - 5) m += 12;
+      BASS[BS.inst](I, tt, mtof(m), len * sd * 0.92, BS.lvl * v * (pick && s === 0 ? 1.15 : 1) * hv());
+    }
+    // chords / arpeggio
+    const C = A.comp, cc = C.pat[s];
+    if (!MUTE.comp && (VEL[cc] || (pick && s === 0))) {
+      let len = 1; while (s + len < spb && C.pat[s + len] === '.') len++;
+      const inst = INST[C.inst] || INST.pluck, oct = P.compOct, v = C.lvl * (pick && s === 0 ? 1.6 : VEL[cc] || 1) * hv();
+      if (C.mode === 'arp' && !(pick && s === 0)) inst(I, tt, mtof(compMidi(I, chord + ARP[I.arpI++ % 6], oct)), Math.min(len, 3) * sd, v * 6, I.bus, 0);
+      else {
+        const ks = C.mode === 'root' ? ROOT5 : C.mode === 'one' ? ONE : TRIAD, dur = (pick && s === 0 ? 6 : Math.min(len, 3)) * sd;
+        if (C.mode === 'one') inst(I, tt, mtof(compMidi(I, chord, oct)), dur, v * 6, I.bus, 0);
+        else { for (let j = 0; j < ks.length; j++) CF[j] = mtof(compMidi(I, chord + ks[j], oct)); chordVoice(I, tt, ks.length, dur, v * 3.6, C.inst); }
+      }
+    }
+    // the melody
+    const LD = P.lead, notes = B.n;
+    for (let i = 0; i < notes.length; i++) {
+      const e = notes[i]; if (e[0] !== s || MUTE.lead) continue;
+      const answer = e[5] && LD.answer, useAlt = again && LD.alt && !answer;
+      const inst = INST[answer ? LD.answer : useAlt ? LD.alt : LD.inst] || INST.pluck;
+      const oct = (LD.oct || 0) + (useAlt ? LD.alto || 0 : 0);
+      const v = LD.lvl * (e[3] || 0.82) * hv() * (pick ? 1.1 : 1), len = e[2] * sd * 0.92;
+      const m = degMidi(I.harm, e[1], I.leadBase - 12) + (e[4] || 0) + oct;
+      inst(I, tt, mtof(m), len, v, I.bus, LD.fx);
+      if (answer) continue;
+      if (useAlt && LD.harm && e[2] >= 2) { // the counter line: the first instrument, a third under (or an octave away)
+        const hm = degMidi(I.harm, e[1] + LD.harm, I.leadBase - 12) + (e[4] || 0) + (LD.oct || 0);
+        (INST[LD.inst] || INST.pluck)(I, tt + 0.004, mtof(hm), len, v * 0.5, I.bus, 0);
+      } else if (pick && e[2] >= 4) { // the pickup's accents: a third under, for a fuller fanfare
+        inst(I, tt + 0.004, mtof(degMidi(I.harm, e[1] - 2, I.leadBase - 12) + oct), len, v * 0.55, I.bus, 0);
+      }
+      if (LD.dbl && !useAlt) (INST[LD.dbl] || INST.pluck)(I, tt + 0.003, mtof(m + 12), len, v * 0.4, I.bus, 0);
+    }
+    const ck = !pick && T.cluck && T.cluck[bi];
+    if (ck && VEL[ck[s]]) DRUM.cluck(I, tt, VEL[ck[s]] * hv());
+  }
   function snapPent(m, base) {
     const rel = (((m - base) % 12) + 12) % 12;
     if (PENT.has(rel)) return m;
@@ -1889,7 +3373,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   function scheduleInstance(I, until, nowT) {
     while (I.nt < until) {
       if (I.stopAt && I.nt >= I.stopAt) { destroyInstance(I); return; }
-      if (I.nt >= nowT - 0.02) { try { stepInstance(I, I.idx, I.nt); } catch (e) {} }
+      if (I.nt >= nowT - 0.02) { try { stepInstance(I, I.idx, I.nt); } catch (e) { musicErr = String(e && e.message); } }
       I.idx++; I.nt += I.sd;
     }
   }
@@ -1934,7 +3418,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   function startMusic(spec) {
     const t = now() + 0.05;
     const I = createInstance(spec, t);
-    if (curInst) fadeOutInstance(curInst, XFADE);
+    if (curInst) fadeOutInstance(curInst, I.tune ? 0.3 : XFADE);
     curInst = I; instances.push(I);
     startScheduler();
   }
@@ -1943,8 +3427,9 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     const P = I.P, sd = I.sd, Ld = P.lead, inst = INST[(Ld && Ld.inst) || 'pluck'] || INST.pluck;
     const lvl = (Ld ? Ld.lvl : 0.25) * 1.1, fx = Ld ? Ld.fx : 0.1;
     const note = (deg, base) => { let m = degMidi(I.harm, deg, base); if (I.pent) m = snapPent(m, I.bassBase); return mtof(m); };
-    const lead = (step, deg, len, vel) => inst(I, t + step * sd, note(deg, I.leadBase - 12), len * sd, lvl * vel, I.bus, fx);
-    const bass = (step, len, vel) => (BASS[P.bass && P.bass.inst] || BASS.round)(I, t + step * sd, note(0, I.bassBase), len * sd, (P.bass ? P.bass.lvl : 0.3) * vel);
+    const PB = P.bass || (P.A && P.A.bass), oct = I.tune ? Ld.oct || 0 : 0;
+    const lead = (step, deg, len, vel) => inst(I, t + step * sd, note(deg, I.leadBase - 12 + oct), len * sd, lvl * vel, I.bus, fx);
+    const bass = (step, len, vel) => (BASS[PB && PB.inst] || BASS.round)(I, t + step * sd, note(0, I.bassBase), len * sd, (PB ? PB.lvl : 0.3) * vel);
     if (kind === 'start') {        // a pickup: 5 - 1 - 3 - 5, the last one held over the root
       lead(0, -3, 2, 0.8); lead(2, 0, 2, 0.85); lead(4, 2, 2, 0.9); lead(6, 4, 6, 1); lead(6, 7, 6, 0.45);
       bass(6, 6, 1); DRUM.kick(I, t + 6 * sd, 1);
@@ -1955,6 +3440,10 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       for (const d of [0, 2, 4]) lead(0, d, 8, 0.75); lead(0, 7, 8, 0.6);
       bass(0, 8, 1); DRUM.kick(I, t, 1);
       return 8;
+    }
+    if (I.tune) { // fail: the theme's three pecks, falling (mi - re - do) and slowing
+      lead(0, 9, 3, 0.75); lead(3, 8, 4, 0.65); lead(7, 7, 10, 0.7); bass(7, 10, 0.8);
+      return 16;
     }
     lead(0, 4, 2, 0.7); lead(2, 2, 2, 0.65); lead(4, 0, 8, 0.7); bass(4, 8, 0.8);   // fail: a gentle 5 - 3 - 1
     return 12;
@@ -1967,6 +3456,12 @@ export function createAudioEngine(externalCtx = null, options = {}) {
   // A level starts: the sting, then the loop from its first full section (its pad intro skipped).
   function musicIntro() {
     if (!ready || !musicOn || !unlockedOnce || !musicSpec) return;
+    if (has(TUNES, musicSpec.tune)) { // a tune: start it again from its pickup fanfare, at full level
+      const T0 = now() + 0.04, J = createInstance(musicSpec, T0);
+      if (curInst) fadeOutInstance(curInst, 0.15);
+      curInst = J; instances.push(J); startScheduler();
+      return;
+    }
     const t = now() + 0.05, I = stingInstance(musicSpec, t);
     const steps = stingNotes(I, t, 'start');
     I.nt = t + steps * I.sd; I.idx = 32;
@@ -1990,6 +3485,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
 
   function specKey(spec) {
     const p = resolveMood(spec.mood);
+    if (has(TUNES, spec.tune)) return 'tune:' + spec.tune + '|' + tuneArr(TUNES[spec.tune], spec) + '|' + (spec.boss ? 'boss' : '') + '|' + (spec.lvl || 0);
     return p + '|' + String(spec.root || '').toUpperCase() + '|' + (spec.scale || '') + '|' + (spec.bpm || '');
   }
 
@@ -2092,8 +3588,8 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     // diagnostics (not part of the game contract)
     get ctx() { return ctx; },
     get ready() { return ready; },
-    stats: safe(() => ({ voices: voices.filter((v) => !v.done && v.end > ctx.currentTime).length, musicInstances: instances.length, mood: curInst ? curInst.pname : null, loops: Object.keys(loops).filter((k) => loops[k]) }), {}),
-    sfxNames: SFX_NAMES, materials: MATERIALS, moods: MOODS,
+    stats: safe(() => ({ voices: voices.filter((v) => !v.done && v.end > ctx.currentTime).length, musicInstances: instances.length, mood: curInst ? curInst.pname : null, musicErr, loops: Object.keys(loops).filter((k) => loops[k]) }), {}),
+    sfxNames: SFX_NAMES, materials: MATERIALS, moods: MOODS, tunes: Object.keys(TUNES),
   };
 }
 

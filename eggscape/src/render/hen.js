@@ -15,6 +15,7 @@
 // Local space is y-down in a 100-unit box centred on (cx, cy); feet rest at cy + 0.48 h. She faces o.face (-1 = left,
 // toward the nest she stands beside; the default) and turns while she walks.
 import { drawDrop } from './characters.js';
+import { drawSkinHat, drawSkinNose, drawSkinOutfit, henGarment, skinSleeve, skinHidesComb, drawSleeveCuff, HEN_TINT, setSkinId, skinId } from './skins.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -43,6 +44,11 @@ const HEN = {
   wing: ['#fffaf0', '#f1e1c3'], wingLo: '#d6b583',
   far: ['#e6d3b0', '#cfb084'], tail: ['#fbf1de', '#e9d4ad'], tailLo: '#cfab76',
 };
+const HEN_BASE = { ...HEN };
+let HEN_G = null; // the outfit geometry for her body (skins.js henGarment), built on first use
+// 2026-11-15 skins (economy.js HEN_SKINS): the hen's feathers take the skin's tint, the hats and scarves come from skins.js;
+// the rooster ally wears the same set
+export function setHenSkin(id) { setSkinId(id); Object.assign(HEN, HEN_BASE, HEN_TINT[id] || {}); }
 
 /* ------------------------------------------------------------------ idle schedule */
 // One slot per period; each slot holds at most one event at a hashed moment. Returns u 0..1 inside the event, or -1.
@@ -365,8 +371,10 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
     if (mood === 'gasp' && st.worryT < 0.3) { st.startleAt = st.c; st.startleK++; st.startleV = o.variant != null ? o.variant : nextVariant(st.startleV, st.startleK + n); }
     else if (mood === 'worried' && st.worryT < 0.3) { st.startleAt = st.c; st.startleK++; st.startleV = 0; } // something creeping close: the plain jump
     if (mood === 'phew') { st.phewAt = st.c; st.phewK++; st.phewV = o.variant != null ? o.variant : nextVariant(st.phewV, st.phewK + n); }
+    if (mood === 'catch') { st.phewAt = st.c; st.phewK++; st.phewV = 0; st.cheerQ = st.c + 0.92; } // she ran and caught it: phew (eyes shut, a breath, the sweat flicked away), then the cheer
     st.mood = mood; st.n = n;
   }
+  if (st.cheerQ && st.c >= st.cheerQ) { st.cheerQ = 0; fireCheer(false); }
   if (st.queued && st.c - st.cheerAt > REACT.happy[Math.max(0, st.cheerV)].len * 0.7) fireCheer(true); // later hops skip the crouch
   if (calm) { st.cheerAt = -9; st.startleAt = -9; st.phewAt = -9; st.queued = false; }
 
@@ -405,8 +413,29 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
     st.phase += Math.abs(st.sv) * dt * 0.42;
     walkAmt = clamp(Math.abs(st.sv) / WALK_SPEED * 1.6, 0, 1);
   } else st.sv = 0;
+  // 2026-11-15: her patch itself moves with a sliding basket (o.drift, units/s): she walks along with it, stepping and
+  // facing the way she goes, instead of gliding across the ground standing still
+  const drift = calm ? 0 : clamp(o.drift || 0, -60, 60);
+  st.dv = (st.dv || 0) + (drift - (st.dv || 0)) * (1 - Math.exp(-dt * 8));
+  const C = o.carry && !calm ? o.carry : null; // nest.reach: she holds the basket (see below)
+  const dW = C ? 0 : clamp(Math.abs(st.dv) / WALK_SPEED * 1.4, 0, 1);
+  if (dW > 0.02) { st.phase += Math.abs(st.dv) * dt * 0.42 * (1 - walkAmt); walkAmt = Math.max(walkAmt, dW); }
+  // nest.reach: she carries the basket (o.carry: v, a = its speed m/s and acceleration m/s^2; rx, ry = its near rim in her
+  // box, units, screen x). A walk at a stroll, a sprint at a run (big fast strides, leaning in, comb and tail streaming
+  // back), a squash as she bursts off, a skid as she brakes (feet planted ahead, leaning back)
+  let run = 0, skid = 0, kick = 0;
+  if (C) {
+    st.cv = (st.cv || 0) + (C.v - (st.cv || 0)) * (1 - Math.exp(-dt * 16));
+    const sp = Math.abs(st.cv), af = C.a * (st.cv >= 0 ? 1 : -1); // + = speeding up along her run
+    st.ca = (st.ca || 0) + (af - (st.ca || 0)) * (1 - Math.exp(-dt * 20));
+    run = clamp((sp - 1.4) / 2.6, 0, 1);
+    skid = clamp(-st.ca / 18, 0, 1) * clamp(sp / 1.2, 0, 1);
+    kick = clamp(st.ca / 18, 0, 1) * (1 - run * 0.6);
+    const go = clamp(sp / 0.5, 0, 1);
+    if (go > 0.01) { st.phase += Math.min(30, 6 + sp * 4.2) * dt * (1 - skid * 0.85); walkAmt = Math.max(walkAmt, go); }
+  }
   // facing: the way she walks, else home (toward the nest); a quick squash-turn, never a pop
-  st.faceT = Math.abs(st.sv) > 3 ? Math.sign(st.sv) : home;
+  st.faceT = C ? (Math.abs(st.cv) > 0.25 ? Math.sign(st.cv) : Math.abs(st.cv) > 0.05 ? st.faceT : home) : Math.abs(st.sv) > 3 ? Math.sign(st.sv) : Math.abs(st.dv) > 4 ? Math.sign(st.dv) : home;
   st.face = calm ? st.faceT : st.face + (st.faceT - st.face) * (1 - Math.exp(-dt / 0.045));
   if (walkAmt > 0.001) {
     const sp = Math.sin(st.phase), cp = Math.cos(st.phase);
@@ -421,7 +450,19 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
     P.sq += Math.cos(st.phase * 2) * 0.012 * walkAmt;
     P.sway += sp * 0.03 * walkAmt;
     P.tail += -0.1 * walkAmt;
+    if (run > 0) { // the sprint: longer, higher strides, head thrust forward, comb and tail streaming, far wing out for balance
+      P.fL += run * 6 * Math.max(0, sp); P.fR += run * 6 * Math.max(0, -sp); P.sL += run * 7 * cp; P.sR -= run * 7 * cp;
+      P.lift += run * 2.2 * Math.abs(sp); P.lean += 0.2 * run; P.hx += 4 * run; P.hy += 2.5 * run; P.hr -= 0.08 * run;
+      P.comb += 0.32 * run + Math.sin(st.phase * 2) * 0.06 * run; P.tail += 0.32 * run; P.tsp += 0.6 * run; P.tufts += 0.35 * run;
+      P.wf = lerp(P.wf, 1.1 + Math.sin(st.phase * 2) * 0.25, 0.8 * run); P.sp = Math.max(P.sp, 0.6 * run);
+      P.eWide = lerp(P.eWide, 0.7, run); P.brow = lerp(P.brow, 0.25, run); P.browY = lerp(P.browY, -1, run); P.grit = lerp(P.grit, 0.8, run); P.beak = lerp(P.beak, 2.2, run); P.smile = lerp(P.smile, -0.2, run); P.lid = lerp(P.lid, 0, run);
+    }
   }
+  if (skid > 0) { // the stop: feet planted out ahead, sitting back, squashed, a grimace
+    P.sL += 9 * skid; P.sR += 6 * skid; P.fL *= 1 - skid; P.fR *= 1 - skid; P.lean -= 0.34 * skid; P.sq -= 0.07 * skid; P.lift *= 1 - skid;
+    P.hx -= 3 * skid; P.comb -= 0.15 * skid; P.tail -= 0.2 * skid; P.eWide = lerp(P.eWide, 1, skid); P.teeth = lerp(P.teeth, 1, skid * 0.8);
+  }
+  if (kick > 0) { P.sq -= 0.09 * kick; P.lean += 0.18 * kick; P.hx += 3 * kick; } // bursting off: crouched, leaning in
 
   // ---- idle one-shots (only while she is at rest)
   let beakPeck = 0;
@@ -466,6 +507,28 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
   if (su >= 0 && su < R2.len) R2.f(P, su);
   const pu = calm ? 99 : st.c - st.phewAt, R3 = REACT.phew[Math.max(0, st.phewV)];
   if (pu >= 0 && pu < R3.len) { const x = R3.f(P, pu) || {}; if (x.heart >= 0) heart = x.heart; if (x.breath >= 0 && x.breath < 1) breath = x.breath; }
+  // ---- nest.reach: her near wing rests on the basket's rim and grips it while it moves (it lets go for a reaction while
+  // the basket stands still). The wing points at the rim from her shoulder through the body's own lean (an inverse of
+  // drawHenPose's body frame) and opens just far enough to reach it.
+  if (C && C.rx != null) {
+    const moving = clamp(Math.abs(st.cv) / 0.3, 0, 1);
+    const busy = (cu >= 0 && cu < R1.len) || (su >= 0 && su < R2.len) || (pu >= 0 && pu < R3.len);
+    const want = Math.max(moving, busy ? 0 : wI * (1 - st.w.worry));
+    st.grip = (st.grip ?? want) + (want - (st.grip ?? want)) * (1 - Math.exp(-dt / 0.1));
+    const g = ss(0, 1, st.grip);
+    if (g > 0.002) {
+      const fs0 = st.face >= 0 ? 1 : -1, fa = Math.max(0.1, Math.abs(st.face));
+      let u = (C.rx - (st.x + P.dx)) * fs0 / fa, v = C.ry - (44 - P.lift);
+      const r = -(P.lean + P.sway), cr = Math.cos(r), sr = Math.sin(r);
+      const sx = (1 - 0.7 * P.sq) * P.puff, sy = (1 + P.sq) * P.puff;
+      const bx = (u * cr - v * sr) / sx, by = (u * sr + v * cr) / sy + 44;
+      const dx = bx - 1, dy = by + 1, d = Math.hypot(dx, dy);
+      let raise = Math.atan2(dy, dx) - (Math.PI - 0.3);
+      while (raise > Math.PI - 0.6) raise -= TAU;
+      while (raise <= -Math.PI - 0.6) raise += TAU;
+      P.wa = lerp(P.wa, raise, g); P.sp = lerp(P.sp, clamp((d - 37) / 9, 0, 1.2), g);
+    }
+  }
   // ---- the Chick Strike (the world hen only): the chick lands on her back, she winds her wing under it and bats it away
   let world = null;
   if (key === 'level') { world = {}; if (STK.n++ < 3 && !calm) { const b = strikeLayer(P, world); if (b) blink = 0; } }
@@ -539,6 +602,7 @@ export function drawHenPose(ctx, P, cx, cy, h, o = {}) {
     drawTail(ctx, P, ol);
     if (P.tufts > 0.02) drawTufts(ctx, P.tufts, tt, ol);
     drawBody(ctx, H, ol);
+    if (o.skin !== false) drawSkinOutfit(ctx, ol, tt, HEN_G || (HEN_G = henGarment(bodyPath)));
     drawHead(ctx, H, P, f, tt, ol, o.hat);
     wing(ctx, ol, 1, -1, P.wa, P.sp, false); // near wing, over the body (and over her eye when she wipes it)
     if (o.breath >= 0 && o.breath < 1) drawBreath(ctx, H.x + 25, H.y + 5, o.breath);
@@ -572,9 +636,12 @@ function solid(ctx, o, p, fill, line = LINE, w = 1) {
   ctx.lineWidth = o * w; ctx.strokeStyle = line; ctx.stroke();
 }
 // a filled shape with a hard two-tone split: `lo` covers the part of `p` below the line y = cut (in the current frame)
+// (2026-11-20 speed, p87: one fill with a hard-stop gradient across the cut, a device pixel wide, instead of a fill, a clip
+// and a second fill: the same picture without the clip)
 function twoTone(ctx, o, p, hi, lo, cut, line = LINE, w = 1) {
-  ctx.beginPath(); p(ctx); ctx.fillStyle = hi; ctx.fill();
-  ctx.save(); ctx.clip(); ctx.fillStyle = lo; ctx.fillRect(-200, cut, 400, 400); ctx.restore();
+  const m = ctx.getTransform ? ctx.getTransform() : null, hp = m ? 0.5 / (Math.hypot(m.c, m.d) || 1) : 0.5; // half a device pixel in local y
+  const g = ctx.createLinearGradient(0, cut - hp, 0, cut + hp); g.addColorStop(0, hi); g.addColorStop(1, lo);
+  ctx.beginPath(); p(ctx); ctx.fillStyle = g; ctx.fill();
   ctx.beginPath(); p(ctx); ctx.lineWidth = o * w; ctx.strokeStyle = line; ctx.stroke();
 }
 
@@ -649,8 +716,17 @@ function wing(ctx, o, x, y, raise, sp, far) {
   for (let i = 0; i < 3; i++) { const u = i / 3, x0 = lerp(L * 0.62, L * 0.12, u), y0 = lerp(W * 0.25, -W * 0.25, u), x1 = lerp(L * 0.62, L * 0.12, u + 1 / 3), y1 = lerp(W * 0.25, -W * 0.25, u + 1 / 3); ctx.moveTo(x0, y0); ctx.quadraticCurveTo((x0 + x1) / 2 - 1.5, (y0 + y1) / 2 - 3.4, x1, y1); }
   for (let i = 1; i < n; i++) { const [tx, ty] = T[i]; ctx.moveTo(tx + 1, ty + 1.2); ctx.lineTo(lerp(tx, L * 0.5, 0.45), lerp(ty, -W * 0.05, 0.6)); } // quills between the primaries
   ctx.stroke();
+  const sl = skinSleeve();
+  if (sl) { // an outfit's sleeve over the shoulder half; the feather tips stay feathers
+    const cut = L * 0.58, sc = far ? sl.far : sl.c;
+    ctx.fillStyle = sc[0]; ctx.fillRect(-20, -60, cut + 20, 120);
+    ctx.fillStyle = sc[1]; ctx.fillRect(-20, -60, cut + 20, 60 + W * 0.15);
+    ctx.fillStyle = sl.lo; ctx.fillRect(-20, -60, cut + 20, 60 - W * 0.6);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.ellipse(cut * 0.45, W * 0.5, cut * 0.32, W * 0.16, 0.05, 0, TAU); ctx.fill();
+  }
   ctx.restore();
   ctx.beginPath(); path(ctx); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
+  if (sl && sl.cuff && !far) drawSleeveCuff(ctx, o, L * 0.58, -W * 0.3, W * 0.78, sl.cuff);
   ctx.restore();
 }
 
@@ -751,7 +827,8 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
   // highlight: a soft lit patch on the back of the crown
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
   ctx.beginPath(); ctx.ellipse(-6, -6.5, 4.2, 2.6, -0.6, 0, TAU); ctx.fill();
-  // comb: four lobes (smaller than the rooster's five), wobbling from its base
+  // comb: four lobes (smaller than the rooster's five), wobbling from its base (hidden under a hat that covers the crown)
+  const combA = ctx.globalAlpha; if (skinHidesComb() && !hat) ctx.globalAlpha = 0;
   ctx.save();
   ctx.translate(1, -10); ctx.rotate(P.comb); ctx.translate(-1, 10);
   const combPath = (c) => { // three soft lobes, tallest in the middle, leaning a little forward
@@ -770,6 +847,7 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
   ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-9.2, -14.5); ctx.quadraticCurveTo(-8.6, -17, -6.4, -17.2); ctx.moveTo(-1.6, -21); ctx.quadraticCurveTo(0, -22.6, 2, -22); ctx.moveTo(8.2, -18.6); ctx.quadraticCurveTo(9.6, -19, 10.6, -17.8); ctx.stroke();
   ctx.restore();
+  ctx.globalAlpha = combA;
   // the acting face: two eyes with lids, a brow each (the far eye is foreshortened and sits just above the beak)
   const a0 = ctx.globalAlpha;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -827,6 +905,7 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
   }
   ctx.restore();
   if (hat) hat(ctx, P, o); // in the head's frame: (0, -16) is the top of her crown under the comb
+  else if (skinId() !== 'classic') { drawSkinHat(ctx, o, tt); drawSkinNose(ctx, o, 21, 1.8, tt); }
   ctx.restore();
 }
 

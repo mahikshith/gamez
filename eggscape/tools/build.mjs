@@ -1,5 +1,5 @@
 // Eggscape build: node tools/build.mjs [--target all|web|poki|crazygames|gamedistribution|youtube|app] [--dev] [--entry path]
-// --target app: Android WebView proof shell (portal 'web', all levels unlocked + own save like --test, __APP__ true). Never part of 'all'.
+// --target app: Android WebView shell (portal 'web', real progression, own save key, __APP__ true). Never part of 'all'.
 import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, existsSync, statSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
@@ -8,6 +8,8 @@ import { dirname, join, resolve } from 'node:path';
 import { zipFiles } from './zip.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// the version shown in Settings: the Android versionName (the APK's), else package.json
+const appVersion = (() => { try { const m = /versionName\s+'([^']+)'/.exec(readFileSync(join(ROOT, 'android/app/build.gradle'), 'utf8')); if (m) return m[1]; } catch (_) { /* no android shell */ } try { return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version; } catch (_) { return ''; } })();
 const TARGETS = ['web', 'poki', 'crazygames', 'gamedistribution', 'youtube'];
 const ALL_TARGETS = [...TARGETS, 'app'];
 const MAX_HTML = 5 * 1024 * 1024;
@@ -65,8 +67,9 @@ async function bundle(portal, { minify, sourcemap }) {
       __PORTAL__: JSON.stringify(portal),
       __GD_ID__: JSON.stringify(gdId),
       __DEV__: JSON.stringify(!minify),
-      __TEST__: JSON.stringify(test || isApp),
+      __TEST__: JSON.stringify(test),
       __APP__: JSON.stringify(isApp),
+      __VERSION__: JSON.stringify(appVersion),
     },
     logLevel: 'warning',
   });

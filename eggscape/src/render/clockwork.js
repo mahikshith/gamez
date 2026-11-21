@@ -6,7 +6,7 @@ import { RING_TH, TAU } from '../sim/geom.js';
 import { ringPt, ringSpd } from '../sim/shapes.js';
 import { SPIDER, BEETLE, JACK } from '../sim/clockwork.js';
 import { statusClock, statusDraw, dizzyStars, spiralEye } from './status.js';
-import { form, ik, limb, back, zed } from './castkit.js';
+import { form, ik, limb, back, zed, eye, blinkAt } from './castkit.js';
 
 const INK = '#1a120a';
 const BRASS = { base: '#c8963e', light: '#f2cf7c', dark: '#7a5220' };
@@ -72,20 +72,20 @@ export function drawSpiderArt(c, s, t, o = {}) {
     }
     if (sp && i === 0) { const w = Math.sin(t * 16 + far * 2.2); fx = (0.3 + 0.03 * w) * s; lift = (0.12 + 0.07 * w) * s; } // front legs pull silk
     if (sp && i === 1) { fx += Math.sin(t * 16 + 1.4 + far) * 0.02 * s; }
-    if (curl) { const tx = hx + (i < 2 ? 0.07 : -0.05) * s, ty = -0.05 * s; fx += (tx - fx) * curl; lift += (-ty - lift) * curl; }
+    if (curl) { const tx = hx + (i < 2 ? 0.02 : -0.05) * s, ty = -0.02 * s; /* tucked low, under the face */ fx += (tx - fx) * curl; lift += (-ty - lift) * curl; }
     fy = -lift;
     const hy = hipY + (far ? -0.008 * s : 0), [l1, l2] = SP_L[i];
     let K = ik(hx, hy, fx, fy, l1 * s * (1 - curl * 0.35), l2 * s * (1 - curl * 0.35), 1);
     const K2 = ik(hx, hy, fx, fy, l1 * s * (1 - curl * 0.35), l2 * s * (1 - curl * 0.35), -1);
     if (K2[1] < K[1]) K = K2; // the knee is always the high joint
     const col = far ? '#55657c' : '#c8d6ea';
-    limb(c, [[hx, hy], K, [fx, fy]], [lw * 0.62, lw * 0.5, lw * 0.2], col, INK, lw * 0.62);
+    limb(c, [[hx, hy], K, [fx, fy]], [lw * 0.95, lw * 0.78, lw * 0.4], col, INK, lw * 0.6); // sturdy legs: it must read as a body on legs, not a stick insect
     c.beginPath(); c.arc(K[0], K[1], lw * (far ? 0.75 : 0.95), 0, TAU); c.fillStyle = far ? TEALK.dark : TEALK.base; c.fill(); c.lineWidth = lw * 0.55; c.strokeStyle = INK; c.stroke();
   };
   for (let i = 3; i >= 0; i--) leg(i, 1);
   // abdomen: a banded gunmetal drum tipped up at the back, a brass gear on its flank and the wind-up key on top
   c.save(); c.translate(-0.15 * s, -0.23 * s + bob + sink * 0.8); c.rotate(-0.28 + lag - curl * 0.15);
-  const abd = () => { c.beginPath(); c.ellipse(-0.05 * s, 0, 0.21 * s, 0.16 * s, 0, 0, TAU); };
+  const abd = () => { c.beginPath(); c.ellipse(-0.05 * s, 0, 0.23 * s, 0.18 * s, 0, 0, TAU); };
   form(c, abd, { d: lw * 2.4, lo: SPB.dark, base: SPB.base, hi: SPB.light, hiK: 0.5, line: INK, lw, inner: () => {
     c.strokeStyle = TEALK.base; c.lineWidth = 0.03 * s;
     for (const x of [-0.15, 0.03]) { c.beginPath(); c.moveTo(x * s, -0.17 * s); c.quadraticCurveTo((x + 0.04) * s, 0, x * s, 0.17 * s); c.stroke(); }
@@ -99,24 +99,33 @@ export function drawSpiderArt(c, s, t, o = {}) {
   c.beginPath(); c.moveTo(-0.05 * s, 0.01 * s); c.lineTo(-0.05 * s + Math.cos(ga) * gr * 0.9, 0.01 * s + Math.sin(ga) * gr * 0.9); c.lineWidth = lw * 0.6; c.stroke();
   key(c, -0.05 * s, -0.15 * s, s * 1.8, (o.key || 0) * 1.6, lw);
   c.restore();
-  // cephalothorax and head, fangs, lens eyes facing forward
+  // the head: one round steel dome (the mascot's face) with two big lens eyes, brows, fangs and a mouth; the face acts the
+  // state: bored while it waits, scheming as it marches, gritting its teeth as it spins, frets when frozen, spirals when stunned
   c.save(); c.translate(0, bob + sink);
-  for (const sd of [0, 1]) { const a = sp ? Math.sin(t * 20 + sd * 2) * 0.012 * s : 0; c.beginPath(); c.moveTo((0.22 - sd * 0.015) * s, -0.14 * s); c.quadraticCurveTo((0.27 - sd * 0.015) * s + a, -0.09 * s, (0.235 - sd * 0.02) * s, -0.06 * s); c.strokeStyle = INK; c.lineWidth = lw * 2; c.stroke(); c.strokeStyle = '#e8eef6'; c.lineWidth = lw * 0.8; c.stroke(); }
-  const body = () => { c.beginPath(); c.ellipse(0.08 * s, -0.19 * s, 0.15 * s, 0.1 * s, -0.08, 0, TAU); };
+  const spin = sp > 0, hot = o.eye === 'hot' || spin, dizzy = o.eye === 'spiral', fret = !dizzy && curl > 0.3, bored = !hot && !dizzy && !fret;
+  for (const sd of [0, 1]) { const a = spin ? Math.sin(t * 20 + sd * 2) * 0.012 * s : 0; c.beginPath(); c.moveTo((0.2 - sd * 0.03) * s, -0.13 * s); c.quadraticCurveTo((0.265 - sd * 0.03) * s + a, -0.085 * s, (0.225 - sd * 0.035) * s, -0.045 * s); c.strokeStyle = INK; c.lineWidth = lw * 2.1; c.stroke(); c.strokeStyle = '#e8eef6'; c.lineWidth = lw * 0.9; c.stroke(); }
+  const HX = 0.1 * s, HY = -0.24 * s, body = () => { c.beginPath(); c.ellipse(HX, HY, 0.165 * s, 0.148 * s, -0.08, 0, TAU); };
   form(c, body, { d: lw * 2, lo: SPB.dark, base: SPB.base, hi: SPB.light, hiK: 0.5, line: INK, lw });
-  c.fillStyle = BRASS.light; for (const x of [0.0, 0.08]) { c.beginPath(); c.arc(x * s, -0.25 * s, 0.013 * s, 0, TAU); c.fill(); }
-  const hot = o.eye === 'hot' || sp > 0;
-  for (const [ex, ey, r, far] of [[0.205, -0.22, 0.033, 1], [0.19, -0.18, 0.045, 0]]) {
+  c.fillStyle = BRASS.light; for (const x of [-0.01, 0.045]) { c.beginPath(); c.arc(x * s, -0.355 * s, 0.014 * s, 0, TAU); c.fill(); c.lineWidth = lw * 0.5; c.strokeStyle = INK; c.stroke(); } // rivets
+  const lk = bored ? { x: 0.7 * Math.sin(t * 0.8), y: 0.1 } : spin ? { x: 0.7, y: 0.55 } : fret ? { x: 0, y: -0.2 } : { x: 0.8, y: 0.15 };
+  const lid = dizzy ? 0 : fret ? 0 : spin ? 0.32 : hot ? 0.22 : Math.max(0.42, blinkAt(t, 3.1));
+  const brow = fret || dizzy ? -1 : spin ? 1 : hot ? 0.75 : 0.1; // + scowl (inner end down), - worried
+  for (const [ex, ey, r, sd] of [[0.105, -0.3, 0.054, -1], [0.188, -0.262, 0.066, 1]]) {
     const X = ex * s, Y = ey * s, R = r * s;
-    c.beginPath(); c.arc(X, Y, R, 0, TAU); c.fillStyle = INK; c.fill();
-    if (o.eye === 'spiral') { spiralEye(c, X, Y, R * 0.9, t, far ? -1 : 1, '#ffd0a0'); continue; }
-    if (hot) { c.save(); c.globalAlpha = 0.35 + 0.15 * Math.sin(t * 12); c.beginPath(); c.arc(X, Y, R * 1.9, 0, TAU); c.fillStyle = '#ff7a2a'; c.fill(); c.restore(); }
-    const pu = hot ? 0.74 + 0.07 * Math.sin(t * 14) : 0.6;
-    c.beginPath(); c.arc(X, Y, R * pu, 0, TAU); c.fillStyle = hot ? '#ff8a3a' : (curl ? '#7a2a20' : '#ff3b2a'); c.fill();
-    if (hot) { c.beginPath(); c.arc(X + R * 0.1, Y, R * 0.34, 0, TAU); c.fillStyle = '#ffe9a0'; c.fill(); }
-    c.beginPath(); c.arc(X - R * 0.28, Y - R * 0.32, R * 0.22, 0, TAU); c.fillStyle = '#fff4d8'; c.fill();
+    if (hot && !dizzy) { c.save(); c.globalAlpha = 0.3 + 0.12 * Math.sin(t * 12); c.beginPath(); c.arc(X, Y, R * 1.45, 0, TAU); c.fillStyle = '#ff7a2a'; c.fill(); c.restore(); } // the lens glows hot
+    if (dizzy) { c.beginPath(); c.arc(X, Y, R, 0, TAU); c.fillStyle = '#fff4d8'; c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke(); spiralEye(c, X, Y, R * 0.85, t, sd, INK); }
+    else eye(c, X, Y, { r: R, white: '#fff4d8', iris: hot ? '#ff6a1a' : curl ? '#9a3a2a' : '#ff3b2a', irisR: 0.62, pupilR: 0.26, wide: fret, look: lk, lid, mad: hot ? sd * -0.35 : 0, lidCol: SPB.base, line: INK, lw: lw * 0.8 });
+    const ix = X - sd * R * 0.8, ox = X + sd * R * 0.95, by = Y - R * (1.3 + (brow < 0 ? 0.15 : 0)), m = brow * R * 0.42;
+    c.beginPath(); c.moveTo(ix, by + m); c.lineTo(ox, by - m); c.lineWidth = lw * 1.35; c.strokeStyle = INK; c.stroke();
   }
-  if (hot && o.eye !== 'spiral') { c.beginPath(); c.moveTo(0.13 * s, -0.27 * s); c.lineTo(0.235 * s, -0.23 * s); c.strokeStyle = INK; c.lineWidth = lw * 1.3; c.stroke(); } // a mean brow
+  // the mouth, between the fangs: a sly grin marching, gritted teeth spinning, a wobbly "o" when frozen or dazed, flat when bored
+  const mx = 0.205 * s, my = -0.165 * s;
+  c.beginPath();
+  if (fret || dizzy) { c.ellipse(mx, my, 0.02 * s, (0.024 + 0.006 * Math.sin(t * 9)) * s, 0, 0, TAU); c.fillStyle = '#3a0e0a'; c.fill(); }
+  else if (spin) { c.roundRect(mx - 0.04 * s, my - 0.014 * s, 0.07 * s, 0.028 * s, 0.01 * s); c.fillStyle = '#f4f0e6'; c.fill(); c.moveTo(mx - 0.005 * s, my - 0.014 * s); c.lineTo(mx - 0.005 * s, my + 0.014 * s); }
+  else if (hot) { c.moveTo(mx - 0.05 * s, my - 0.012 * s); c.quadraticCurveTo(mx - 0.005 * s, my + 0.03 * s, mx + 0.035 * s, my - 0.02 * s); }
+  else { c.moveTo(mx - 0.035 * s, my); c.lineTo(mx + 0.025 * s, my - 0.004 * s); }
+  c.lineWidth = lw * 0.85; c.strokeStyle = INK; c.stroke();
   c.restore();
   for (let i = 3; i >= 0; i--) leg(i, 0);
 }
@@ -187,13 +196,21 @@ export function drawBeetleArt(c, s, t, o = {}) {
   const wob = walking * Math.sin(g * 2 - 1) * 0.02 * s + (o.tip ? Math.sin(t * 9) * 0.02 * s : 0) - slack * 0.03 * s;
   c.strokeStyle = INK; c.lineWidth = lw * 1.2;
   for (const d of [0, 0.035]) { const tx = (0.375 + d) * s + wob, ty = (-0.275 + d * 0.9) * s - wob * 0.5 + slack * 0.07 * s; c.beginPath(); c.moveTo(0.265 * s, -0.175 * s); c.quadraticCurveTo((0.305 + d) * s, -0.285 * s, tx, ty); c.stroke(); c.beginPath(); c.arc(tx, ty, 0.017 * s, 0, TAU); c.fillStyle = BRASS.light; c.fill(); c.stroke(); }
-  const head = () => { c.beginPath(); c.ellipse(0.245 * s, -0.125 * s, 0.085 * s, 0.075 * s, 0, 0, TAU); };
+  const head = () => { c.beginPath(); c.ellipse(0.25 * s, -0.13 * s, 0.1 * s, 0.088 * s, 0, 0, TAU); };
   form(c, head, { d: lw * 1.8, lo: HEADC.dark, base: HEADC.base, hi: HEADC.light, hiK: 0.5, line: INK, lw, noWeight: true });
-  const ex = 0.275 * s, ey = -0.135 * s, er = 0.038 * s;
-  c.beginPath(); c.arc(ex, ey, er, 0, TAU); c.fillStyle = INK; c.fill();
-  if (o.eye === 'spiral') spiralEye(c, ex, ey, er, t, 1, '#ffe0a0');
-  else if (o.eye === 'off') { c.beginPath(); c.arc(ex, ey, er * 0.66, 0, TAU); c.fillStyle = '#5a4a30'; c.fill(); c.beginPath(); c.moveTo(ex - er * 0.6, ey + er * 0.1); c.quadraticCurveTo(ex, ey + er * 0.5, ex + er * 0.6, ey + er * 0.1); c.strokeStyle = '#d9a040'; c.lineWidth = lw * 0.9; c.stroke(); }
-  else { c.beginPath(); c.arc(ex, ey, er * 0.7, 0, TAU); c.fillStyle = o.lamp ? '#ffe36a' : '#d9a040'; c.fill(); if (o.lamp) { c.beginPath(); c.arc(ex, ey, er * 0.36, 0, TAU); c.fillStyle = '#fffbe0'; c.fill(); } c.beginPath(); c.arc(ex - er * 0.25, ey - er * 0.3, er * 0.2, 0, TAU); c.fillStyle = '#ffffff'; c.fill(); }
+  // the face: one big lamp-lens eye with a lid and a brow, and a mouth. Marching: a determined squint and a grin (the lens
+  // lit); winding down: the lid droops; asleep: shut; tipped over: wide and worried, an "o"; stunned: a spiral
+  const ex = 0.28 * s, ey = -0.15 * s, er = 0.06 * s, tip = !!o.tip, dz = o.eye === 'spiral', off = o.eye === 'off';
+  if (dz) { c.beginPath(); c.arc(ex, ey, er, 0, TAU); c.fillStyle = '#fff4d8'; c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke(); spiralEye(c, ex, ey, er * 0.85, t, 1, INK); }
+  else eye(c, ex, ey, { r: er, white: '#fff4d8', iris: o.lamp ? '#ffb21a' : '#c98a2a', irisR: 0.6, pupilR: 0.26, wide: tip, look: tip ? { x: 0, y: -0.4 } : { x: 0.75, y: 0.2 }, lid: off ? (slack > 0.6 ? 1 : 0.55 + 0.4 * slack) : tip ? 0 : o.lamp ? 0.28 : Math.max(0.3, blinkAt(t, 2.7)), shut: off && slack > 0.95 ? 1 : 0, mad: o.lamp ? -0.3 : 0, lidCol: HEADC.base, line: INK, lw: lw * 0.8 });
+  { const m = tip || dz ? -1 : o.lamp ? 1 : off ? -0.4 : 0.2, bx = ex - er * 0.9, bx2 = ex + er * 0.9, by = ey - er * 1.35; c.beginPath(); c.moveTo(bx, by - m * er * 0.3); c.lineTo(bx2, by + m * er * 0.3); c.lineWidth = lw * 1.3; c.strokeStyle = INK; c.stroke(); }
+  if (!(o.yawn > 0)) { // the mouth (the yawn below takes its place)
+    const mx = 0.3 * s, my = -0.085 * s; c.beginPath();
+    if (tip || dz) { c.ellipse(mx, my, 0.016 * s, (0.02 + 0.005 * Math.sin(t * 10)) * s, 0, 0, TAU); c.fillStyle = '#3a0e0a'; c.fill(); }
+    else if (o.lamp) { c.moveTo(mx - 0.035 * s, my - 0.008 * s); c.quadraticCurveTo(mx, my + 0.02 * s, mx + 0.03 * s, my - 0.014 * s); }
+    else { c.moveTo(mx - 0.03 * s, my); c.quadraticCurveTo(mx, my - 0.008 * s * (off ? -1 : 1), mx + 0.028 * s, my); }
+    c.lineWidth = lw * 0.85; c.strokeStyle = INK; c.stroke();
+  }
   // skirt, then the wing-case dome
   const skirt = () => { c.beginPath(); c.roundRect(-0.315 * s, -0.105 * s, 0.56 * s, 0.062 * s, 0.022 * s); };
   form(c, skirt, { d: lw * 1.4, lo: PEWTER.dark, base: PEWTER.base, hi: PEWTER.light, hiK: 0.6, line: INK, lw, noWeight: true });
@@ -249,13 +266,17 @@ export function drawJackArt(c, s, t, o = {}) {
     cel(c, (c) => { c.moveTo(hx - hr * 0.8, hy - hr * 0.55); c.quadraticCurveTo(hx + hr * 0.2, hy - hr * 2.2, hx + hr * 0.9, hy - hr * 1.7); c.lineTo(hx + hr * 0.75, hy - hr * 0.6); c.closePath(); }, { base: '#7b4bc4', light: '#a982e6', dark: '#45237a' }, lw);
     c.beginPath(); c.arc(hx + hr * 0.95, hy - hr * 1.75, hr * 0.24, 0, TAU); c.fillStyle = '#ffd23a'; c.fill(); c.lineWidth = lw; c.strokeStyle = INK; c.stroke();
     // face: eyes, red nose, a wide grin
+    const pop = o.pop || 0, dz = o.eye === 'spiral';
     for (const sd of [-1, 1]) {
-      const ex = hx + sd * hr * 0.38, ey = hy - hr * 0.12;
-      if (o.eye === 'spiral') spiralEye(c, ex, ey, hr * 0.2, t, sd);
-      else { c.beginPath(); c.arc(ex, ey, hr * 0.13, 0, TAU); c.fillStyle = INK; c.fill(); c.beginPath(); c.arc(ex - hr * 0.04, ey - hr * 0.05, hr * 0.045, 0, TAU); c.fillStyle = '#fff'; c.fill(); }
+      const ex = hx + sd * hr * 0.38, ey = hy - hr * 0.12, er = hr * (0.2 + 0.06 * pop);
+      if (dz) { c.beginPath(); c.arc(ex, ey, er, 0, TAU); c.fillStyle = '#fff'; c.fill(); c.lineWidth = lw * 0.7; c.strokeStyle = INK; c.stroke(); spiralEye(c, ex, ey, er * 0.85, t, sd, INK); }
+      else eye(c, ex, ey, { r: er, white: '#ffffff', iris: pop > 0.5 ? '#2a6ad8' : '#24160c', irisR: pop > 0.5 ? 0.6 : 0.7, pupilR: 0.3, wide: pop > 0.5, look: { x: sd * 0.1 + 0.3, y: pop > 0.5 ? -0.3 : 0.2 }, lid: pop > 0.5 ? 0 : 0.35, mad: pop > 0.5 ? 0 : sd * -0.25, lidCol: '#f6dfb6', line: INK, lw: lw * 0.7 });
+      const m = dz ? -1 : pop > 0.5 ? -0.6 : 0.8; c.beginPath(); c.moveTo(ex - sd * er * 0.8, ey - er * 1.35 + m * er * 0.35); c.lineTo(ex + sd * er * 0.9, ey - er * 1.35 - m * er * 0.35); c.lineWidth = lw * 1.1; c.strokeStyle = INK; c.stroke();
     }
-    c.beginPath(); c.arc(hx, hy + hr * 0.1, hr * 0.17, 0, TAU); c.fillStyle = '#e0302a'; c.fill(); c.lineWidth = lw; c.strokeStyle = INK; c.stroke();
-    c.beginPath(); c.moveTo(hx - hr * 0.55, hy + hr * 0.32); c.quadraticCurveTo(hx, hy + hr * 0.85, hx + hr * 0.55, hy + hr * 0.32); c.lineWidth = lw * 1.3; c.stroke();
+    c.beginPath(); c.arc(hx, hy + hr * 0.12, hr * 0.17, 0, TAU); c.fillStyle = '#e0302a'; c.fill(); c.lineWidth = lw; c.strokeStyle = INK; c.stroke();
+    c.beginPath();
+    if (pop > 0.5 || dz) { c.ellipse(hx, hy + hr * 0.58, hr * 0.26, hr * (dz ? 0.14 + 0.04 * Math.sin(t * 10) : 0.24), 0, 0, TAU); c.fillStyle = '#8a1a20'; c.fill(); c.lineWidth = lw; c.stroke(); }
+    else { c.moveTo(hx - hr * 0.55, hy + hr * 0.36); c.quadraticCurveTo(hx + hr * 0.05, hy + hr * 0.85, hx + hr * 0.6, hy + hr * 0.25); c.lineWidth = lw * 1.3; c.stroke(); } // a sly lopsided grin
   }
   // the box: teal with a yellow star, brass corners; the lid hinges at its back (left) edge
   c.save(); c.translate(rx, ry);
@@ -271,8 +292,14 @@ export function drawJackArt(c, s, t, o = {}) {
   c.strokeStyle = INK; c.lineWidth = lw * 2.4; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(cr) * 0.07 * s, cy + Math.sin(cr) * 0.07 * s); c.stroke();
   c.strokeStyle = BRASS.light; c.lineWidth = lw * 1.1; c.stroke();
   c.beginPath(); c.arc(cx, cy, 0.018 * s, 0, TAU); c.fillStyle = BRASS.base; c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke();
+  // shut with an egg near: the lid lifts a crack and two eyes peek out after it (the telegraph that it is about to pop)
+  const peek = !o.jam && !(o.lid > 0) ? clamp01(((o.rattle || 0) - 0.15) / 0.5) : 0;
+  if (peek > 0) {
+    c.beginPath(); c.roundRect(-W * 0.36, top - 0.05 * s * peek, W * 0.72, 0.055 * s * peek + 0.004 * s, 0.01 * s); c.fillStyle = '#0c0a10'; c.fill();
+    if (peek > 0.35) for (const sd of [-1, 1]) { const ex = W * (0.06 + sd * 0.09) + Math.sin(t * 3) * 0.01 * s, ey = top - 0.024 * s * peek; c.beginPath(); c.ellipse(ex, ey, 0.024 * s, 0.017 * s * peek, 0, 0, TAU); c.fillStyle = '#fff4d8'; c.fill(); c.beginPath(); c.arc(ex + 0.008 * s, ey, 0.009 * s * peek, 0, TAU); c.fillStyle = INK; c.fill(); }
+  }
   // lid
-  const la = -(o.lid || 0) * 1.65; // just past upright, so it still reads as a lid
+  const la = -Math.max(o.lid || 0, peek * 0.22) * 1.65; // just past upright, so it still reads as a lid
   c.save(); c.translate(-W / 2, top); c.rotate(la);
   cel(c, (c) => { c.roundRect(-0.01 * s, -0.045 * s, W + 0.02 * s, 0.05 * s, 0.015 * s); }, TEALK, lw, false);
   c.restore();
@@ -296,7 +323,7 @@ export function drawClockwork(ctx, sim, t, k) {
     const q = sim.cwFloor(J.fi, J.la, 0), up = q.up, st = statusClock(sim, 'cj' + J.id, want(J.ice, J.stun), t);
     const near = J.ph === 'ready' ? Math.max(0, ...eggs.map((p) => clamp01(1 - (Math.hypot(p.x - q.x, p.y - q.y) - 0.35) / 0.6))) : 0;
     const M = sim.cwMode || 'medium', rel = JACK.reload[M] - JACK.out;
-    const o = J.ph === 'out' ? { lid: 1, out: clamp01((JACK.out - J.t) / 0.08) } : J.ph === 'reload' ? { lid: J.t > 0.25 ? 1 : J.t / 0.25, out: clamp01((J.t - 0.3) / Math.max(0.1, rel - 0.3)), crank: t * 9 } : { lid: 0, out: 0, rattle: near, jam: J.ph === 'jam' };
+    const o = J.ph === 'out' ? { lid: 1, out: clamp01((JACK.out - J.t) / 0.08), pop: 1 } : J.ph === 'reload' ? { lid: J.t > 0.25 ? 1 : J.t / 0.25, out: clamp01((J.t - 0.3) / Math.max(0.1, rel - 0.3)), crank: t * 9 } : { lid: 0, out: 0, rattle: near, jam: J.ph === 'jam' };
     if (st && st.k === 'stun') o.eye = 'spiral';
     pxSpace(ctx, q.x, q.y, k, () => { ctx.rotate(-(up - Math.PI / 2)); const z = JS * k; ctx.translate(0, JACK_SINK * z); statusDraw(ctx, { x0: -0.35 * z, y0: -0.9 * z, x1: 0.35 * z, y1: 0.08 * z }, (c) => drawJackArt(c, z, st ? st.hold : t, o), st, { quick: true }); });
   }

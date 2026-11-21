@@ -1,0 +1,3 @@
+L41 easy seed2 t=80.0 step#9599 worst=116.5ms SLOW
+L47 easy seed1 t=80.0 step#9599 worst=81.0ms SLOW
+soak done, problems: 2

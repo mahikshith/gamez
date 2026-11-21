@@ -16,9 +16,11 @@ import { cwMethods } from './clockwork.js'; // v4 the clockwork cast: spider, wi
 import { owlMethods } from './owl.js'; // v4 the Clockwork Owl boss
 import { bayouMethods } from './bayou.js'; // v3.7 Gator Bayou: alligator, snapping turtle, mosquito swarm, Grandpa Gator
 import { stkMethods } from './strike.js'; // Chick Strike powers
+import { reachMethods } from './henreach.js'; // the hen runs the basket under an egg (nest.reach)
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
+const FAST_RIM = 9.6; // m/s at a ring's wall: above this (ring speed past 350%) the physics takes half steps
 
 // Impact thresholds: approach speed along the contact normal (m/s).
 // Both are quoted at 10 m/s^2 and scale with sqrt(g / 10) (Sim.vs), so the fall HEIGHT that cracks stays the same at any gravity.
@@ -85,6 +87,7 @@ export const POWER = {
   water: { time: 8 }, // landing impacts count half
   magnet: { time: 8, len: 0.8 },
 };
+export const MAGNET = { pull: 2.4, same: 1.5, lead: 0.3, vmax: 3 }; // the pull in g: the egg behind, two eggs in one chamber, the egg in front
 export const ORB_TYPES = ['fire_red', 'fire_black', 'fire_green', 'fire_gold', 'stone', 'bubble', 'water', 'thunder', 'thorn', 'magnet', 'twin',
   'hourglass', 'feather', 'rockskin', 'curse', 'frost', ...P2_TYPES];
 export const LEGACY_ORB = { fire: 'fire_red', steel: 'stone', foxcurse: 'curse' }; // old item ids (levels and saves); v3.6 renamed the curse orb
@@ -192,7 +195,8 @@ export class Sim {
     this.crackV = CRACK_V * this.vs * this.MD.crack;
     this.shatterV = SHATTER_V * this.vs;
     this.golden = opts.golden || false;
-    // start boosters (store): opts.stone, opts.time (+15 s), opts.sponge (pad under the first drop)
+    // start boosters (store): opts.stone, opts.time (+15 s), opts.sponge (pad under the first drop), opts.nest (a wider
+    // basket), opts.snips (three thorns snipped at the start: sim/strike.js)
     this.timeLimit = level.time ? Math.round(level.time * this.MD.fuse) + (opts.time ? 15 : 0) : 0;
     this.orbs = [];
     this.embers = [];
@@ -245,7 +249,7 @@ export class Sim {
 
     // nest + ground
     const n = L.nest || {};
-    this.nestW = (n.w || 1.9) + this.MD.nestW;
+    this.nestW = ((n.w || 1.9) + this.MD.nestW) * (this.opts.nest ? 1.35 : 1); // Wide Nest start boost: 35% wider
     this.nestPattern = n.pattern || 'sine';
     this.groundY = -(this.outerR + (n.drop ?? 0.6) + 0.35) * this.gy; // underwater: the surface, over the vault
     this.nestY = this.groundY + 0.02 * this.gy;
@@ -259,6 +263,7 @@ export class Sim {
     this.nest.createFixture({ shape: new Polygon([V(-w - 0.08, 0.5), V(-w, 0.08), V(-w + 0.14, 0.12), V(-w + 0.04, 0.5)]), ...nestFix });
     this.nest.createFixture({ shape: new Polygon([V(w + 0.08, 0.5), V(w - 0.04, 0.5), V(w - 0.14, 0.12), V(w, 0.08)]), ...nestFix });
     this.nest.createFixture({ shape: new Box(w - 0.12, 0.25, V(0, 0.38), 0), isSensor: true, ...filt('NEST'), userData: { kind: 'nestIn' } });
+    this.reachInit(L); // nest.reach: the hen runs the basket (sim/henreach.js)
     this.ground = this.world.createBody({ type: 'static', position: Vec2(0, this.groundY - 0.5 * this.gy) });
     this.ground.createFixture({ shape: new Box(60, 0.5), friction: 0.8, ...filt('GROUND'), userData: { kind: 'ground' } });
 
@@ -463,7 +468,7 @@ export class Sim {
     return this.rings[this.rings.length - 1];
   }
   maxOmega(ring) {
-    return Math.min(2.2, 2.7 / ring.r) * (ring.M.slow || 1);
+    return Math.min(2.2, 2.7 / ring.r) * (ring.M.slow || 1) * (this.ringSpeed || 1); // ringSpeed: the player's setting
   }
 
   // ---------- step ----------
@@ -517,7 +522,7 @@ export class Sim {
       const moving = !ring.motor && !ring.follower && Math.abs(ring.omega) > 0.25;
       if (moving && !ring.moving) this.turns++;
       ring.moving = moving;
-      if (ring.retract) {
+      if (ring.retract && !this.stkFrozen()) { // (Tick-Tock's stopped time holds moving thorns where they are)
         const { period, on, phase = 0 } = ring.retract;
         const ph = (((this.t + phase) % period) + period) % period / period;
         const want = ph < on ? 1 : 0;
@@ -537,7 +542,7 @@ export class Sim {
     if (this.nestAmp) {
       const cur = this.nest.getPosition().x;
       this.nest.setLinearVelocity(Vec2((this.nestXAt(this.t) - cur) / dt, 0));
-    }
+    } else if (this.reach) this.reachStep(dt);
 
     // wind gusts, or a steady underwater current
     if (L.wind) {
@@ -549,7 +554,7 @@ export class Sim {
     } else if (this.weather === 'current') this.wind = L.weatherOpts?.strength ?? 1.4;
 
     for (const egg of this.eggs) {
-      if (!egg.alive || egg.saved) continue;
+      if (!egg.alive || egg.saved || egg.phx) continue; // (an egg in the Phoenix's talons is out of the world: sim/strike.js)
       const b = egg.body;
       egg.impact = 0;
       if (egg.crackCD > 0) egg.crackCD -= dt;
@@ -570,6 +575,7 @@ export class Sim {
       // a chick flutters: most of its weight is carried by its wings
       if (egg.chick) b.applyForceToCenter(Vec2(0, b.getMass() * (this.g - 0.4 * this.g0)), true); // net fall 0.4 g0
       if (egg.magnet > 0 && (egg.magnet -= dt) <= 0) this.unMagnet(egg);
+      if (egg.joint && egg.joint.a === egg && !egg.joint.dead) this.magnetPull(egg.joint);
       if (this.wind) b.applyForceToCenter(Vec2(this.wind * this.pushK(egg) * b.getMass() * (egg.bubble > 0 ? 2.2 : 1), 0), true);
       if (this.water && b.isActive()) { // a little bob and sway as it drifts up
         const ph = this.t * WATER.bobW + egg.id * 1.7;
@@ -615,7 +621,7 @@ export class Sim {
 
     for (const o of this.orbs) if (o.alive) this.moveOrb(o, dt);
     this.portals.forEach((pt, i) => {
-      if (!pt.emit || !pt.emit.length || (pt.timer -= dt) > 0) return;
+      if (!pt.emit || !pt.emit.length || this.state !== 'play' || (pt.timer -= dt) > 0) return; // (no new orbs once the level is decided: one used to pop out of thin air after the vault had burst)
       pt.timer = pt.every;
       const src = 'p' + i;
       if (this.orbs.filter((o) => o.alive && o.src === src).length >= 2) return;
@@ -638,7 +644,17 @@ export class Sim {
     this.stkStep(dt); // Chick Strike powers
 
     if (GAP_NUDGE.acc > 0 && this.state === 'play') this.gapNudge();
-    this.world.step(dt, 8, 3);
+    // 2026-11-20 ring speeds past 350% (mykee: seasoned players want faster still): a wall edge that sweeps more than
+    // about 8 cm in one step can press an egg through (tools/test-ringspeed.mjs: none up to 3.5x, 2 in 70 k steps at 4x).
+    // While a ring turns that fast the physics takes two half steps (the forces of this step are kept for both).
+    let fast = false;
+    for (const ring of this.rings) if (Math.abs(ring.omega) * ring.r > FAST_RIM) { fast = true; break; }
+    if (fast) {
+      this.world.setAutoClearForces(false);
+      this.world.step(dt / 2, 8, 3);
+      this.world.setAutoClearForces(true);
+      this.world.step(dt / 2, 8, 3);
+    } else this.world.step(dt, 8, 3);
     this.afterStep(dt);
   }
 
@@ -678,9 +694,9 @@ export class Sim {
     const A = this.nestAmp, x0 = this.nestX0;
     const s = (u) => u * u * (3 - 2 * u);
     switch (this.nestPattern) {
-      case 'slide': { // constant speed, end to end
-        const f = (ph + 0.25) % 1;
-        return x0 + A * (f < 0.5 ? 4 * f - 1 : 3 - 4 * f);
+      case 'slide': { // near-constant speed, end to end; 2026-11-15: the ends are rounded (it used to reverse in one step)
+        const f = (ph + 0.25) % 1, e = 0.97;
+        return x0 + A * Math.asin(e * Math.sin(TAU * (f - 0.25))) / Math.asin(e);
       }
       case 'stopgo': { // glide to an end, wait there, glide back
         const f = (ph + 0.15) % 1;
@@ -698,7 +714,7 @@ export class Sim {
     this.later.length = 0;
     // impacts collected in post-solve
     for (const egg of this.eggs) {
-      if (!egg.alive || egg.saved) continue;
+      if (!egg.alive || egg.saved || egg.phx) continue;
       const v = egg.impact * (egg.water > 0 ? 0.5 : 1) * (egg.shrink > 0 ? 1.25 : 1); // water shell: landings count half; v3.4 a shrunk egg cracks easier
       // one bump per egg per BUMP_CD (a resting egg used to report one every step), unless this hit is clearly harder
       if (v > 0.6 && (egg.bumpCD <= 0 || v > egg.bumpV * 1.5)) { egg.bumpCD = BUMP_CD; egg.bumpV = v; this.emit('bump', { egg, v, on: egg.impactOn }); }
@@ -719,9 +735,9 @@ export class Sim {
       egg.ch = ch;
       const vel = egg.body.getLinearVelocity();
       egg.lastV = Math.hypot(vel.x, vel.y);
-      if (egg.inNest > 0 && egg.lastV < 1.2) {
+      if (egg.inNest > 0 && (this.reach ? this.reachRelV(egg) : egg.lastV) < 1.2) { // a running basket: settled in it
         egg.nestT += dt;
-        if (egg.nestT > 0.3) this.saveEgg(egg);
+        if (egg.nestT > 0.15) this.saveEgg(egg); // 2026-11-16: quicker, the egg then drops into the basket (render)
       } else egg.nestT = 0;
       if ((p.y - this.groundY) * this.gy < -3 || Math.abs(p.x) > 40) this.breakEgg(egg, 'lost');
     }
@@ -819,6 +835,7 @@ export class Sim {
         // momentum share: lighter egg takes more of the hit
         const mo = other.getMass(), me = body.getMass();
         v = closing * (2 * mo / (mo + me)) * 0.85;
+        if (egg.joint && !egg.joint.dead && (egg.joint.a === egg ? egg.joint.b : egg.joint.a).body === other) v = Math.min(v, 1); // magnet partners clack together: never a crack
       }
       if (uo.kind === 'seg' && (uo.seg.pad || uo.seg.honey)) egg.soft = true; // v3: sponge landings are always safe
       if (uo.kind === 'seg' && uo.seg.pad) {
@@ -1022,6 +1039,7 @@ export class Sim {
     const b = egg.body;
     const p = b.getPosition(), vel = b.getLinearVelocity(), a = b.getAngle();
     this.emit('break', { egg, why, x: p.x, y: p.y, vx: vel.x, vy: vel.y });
+    if (this.reach) this.reachBroken(egg, why, p);
     if (egg.joint) this.unMagnet(egg);
     // shell shards as physics debris
     const n = 7;
@@ -1045,6 +1063,7 @@ export class Sim {
     const pts = 100 * egg.mult * (perfect ? 2 : 1) * (egg.cometUsed === true ? 2 : 1) * this.combo;
     this.savedLog.push({ id: egg.id, t: this.t, cracks: egg.cracks, pts, mult: egg.mult, combo: this.combo, prize: egg.prize, chick: egg.chick });
     this.emit('save', { egg, x: p.x, y: p.y, n: this.savedLog.length, pts, perfect, combo: this.combo, mult: egg.mult });
+    if (this.reach) this.reachSaved(egg, p);
     if (egg.joint) this.unMagnet(egg);
     this.kill.push(egg.body);
   }
@@ -1151,6 +1170,29 @@ export class Sim {
     this.emit('magnetOn', { egg, other: best });
   }
 
+  // The magnet's pull (2026-11-20, mykee: "the force of attraction is not strong enough"). The rope alone only stopped the
+  // pair drifting apart; now the two eggs really attract for the 8 s: the one behind (further in) is hauled hard toward
+  // the one in front, which feels only a light tug back, so the pair is never held up by its own magnet. In the same
+  // chamber they rush together and clack. Stronger the closer they are, nothing once they touch (no squeezing).
+  magnetPull(J) {
+    const A = J.a, B = J.b;
+    if (!A.alive || !B.alive || A.saved || B.saved || A.phx || B.phx) return;
+    const pa = A.body.getPosition(), pb = B.body.getPosition(), dx = pb.x - pa.x, dy = pb.y - pa.y, d = Math.hypot(dx, dy);
+    const ease = Math.min(1, (d - EGG_W) / 0.2);
+    if (ease <= 0) { J.pull = 0; return; }
+    const ux = dx / d, uy = dy / d, ca = this.channelOf(A), cb = this.channelOf(B);
+    const s = Math.max(0.6, Math.min(1.3, 1.6 / d)) * ease * this.g0;
+    let ka = ca === cb ? MAGNET.same : ca < cb ? MAGNET.pull : MAGNET.lead, kb = ca === cb ? MAGNET.same : cb < ca ? MAGNET.pull : MAGNET.lead;
+    // an egg already moving toward its partner at vmax is not pushed any faster: hauled through a gap it would land harder
+    // than a plain fall and crack (CRACK_V 6), which a helping power must never do
+    const va = A.body.getLinearVelocity(), vb = B.body.getLinearVelocity();
+    if (va.x * ux + va.y * uy > MAGNET.vmax) ka = 0;
+    if (-(vb.x * ux + vb.y * uy) > MAGNET.vmax) kb = 0;
+    A.body.applyForceToCenter(Vec2(ux * s * ka * A.body.getMass(), uy * s * ka * A.body.getMass()), true);
+    B.body.applyForceToCenter(Vec2(-ux * s * kb * B.body.getMass(), -uy * s * kb * B.body.getMass()), true);
+    J.pull = s / this.g0; J.ka = ka; J.kb = kb; // for the look (render/magnet.js)
+  }
+
   unMagnet(egg) {
     const J = egg.joint;
     if (!J) return;
@@ -1206,6 +1248,10 @@ export class Sim {
     const loc = (rad, ang) => ({ x: rad * Math.cos(ang) - r, y: rad * Math.sin(ang) });
     const verts = [loc(ri, -half), loc(ro, -half), loc(ro, half), loc(ri, half)];
     const out = how === 'blast' ? 3.5 : 0.6;
+    if (quiet && how === 'blast') { // the level-clear burst: every piece its own speed and spin, so the vault scatters instead of swelling as dotted circles; under water (hardly any gravity) the pieces are gone in a second
+      const sp = out * (0.55 + 1.1 * this.rand()), ja = wa + (this.rand() - 0.5) * 0.9;
+      this.addDebris(ring.mat, verts, x, y, wa, Math.cos(ja) * sp, Math.sin(ja) * sp + 1 * this.gy, (this.rand() - 0.5) * 12, this.water ? 0.9 + 0.5 * this.rand() : 2.8, { mat: ring.mat });
+    } else
     this.addDebris(how === 'burn' ? 'char' : ring.mat, verts, x, y, wa, Math.cos(wa) * out + (this.rand() - 0.5), Math.sin(wa) * out + 1, (this.rand() - 0.5) * 6, how === 'burn' ? 1.6 : 2.8, { mat: ring.mat });
     if (!quiet) this.emit(how === 'burn' ? 'segBurn' : how === 'blast' ? 'segBlast' : 'segBreak', { x, y, mat: ring.mat });
   }
@@ -2367,6 +2413,7 @@ export class Sim {
     const EGG_KEYS = ['id', 'alive', 'saved', 'cracks', 'fire', 'fireKind', 'stone', 'bubble', 'golden', 'crackCD', 'safeT', 'portalCD', 'ch', 'mult', 'freefall', 'comet', 'cometUsed', 'seed', 'magnet', 'water', 'zap', 'glow', 'chick', 'meteor', 'honey', 'honeyCD', 'prize'];
     EGG_KEYS.push('peckK', 'peckT', 'peckHit'); // predators (v3)
     EGG_KEYS.push('kind', 'guard', 'rockskin', 'curse', 'drop', 'lavaCD', 'fled'); // v3
+    EGG_KEYS.push('sbub'); // the Bubble Chick's bubble (sim/strike.js)
     EGG_KEYS.push(...CHICK_KEYS); // v3.2 chick kinds
     EGG_KEYS.push('hotK'); // v3.2: the salamander breath that last scorched it
     EGG_KEYS.push('octo'); // v3.3: held by octopus (id + 1)
@@ -2398,7 +2445,7 @@ export class Sim {
       pred: this.predState(), // predators (v3)
       wx: { ...this.wx, bolt: this.wx.bolt ? { ...this.wx.bolt } : null },
       embers: this.embers.map((m) => ({ ...m })),
-      nest: bodyS(this.nest),
+      nest: bodyS(this.nest), hr: this.reach ? this.reachState() : null,
       v3: this.v3State(),
       v31: v31State(this), // bosses (v3.1)
       chick: this.chickState(), // v3.2
@@ -2477,6 +2524,7 @@ export class Sim {
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
     setB(sim.nest, S.nest);
+    if (sim.reach) sim.reachLoad(S.hr);
     sim.rs = S.rs; // re-creating eggs and orbs above drew from the rng
     sim.snaps = [];
     return sim;
@@ -2585,8 +2633,8 @@ export class Sim {
     if (egg.golden) { egg.golden = 0; egg.safeT = 0.6; this.emit('goldenSave', { egg }); return; }
     if (egg.safeT > 0) return;
     const key = 'c' + ring.i + ':' + ring.gaps.indexOf(g);
-    if (this.MD.softThorns && !egg.chick) {
-      // Easy: a crack (never the breaking one) and a shove off, once per touch
+    if ((this.MD.softThorns || this.level.softCurtain) && !egg.chick) {
+      // Easy, and the level that first teaches the curtain (level.softCurtain): a crack (never the breaking one) and a shove off, once per touch
       if (!egg.spk.has(key)) {
         egg.spk.add(key);
         this.defer(() => {
@@ -2726,7 +2774,7 @@ export class Sim {
         this.emit('vineClose', { x: q.x, y: q.y, ring: ring.i });
       }
     }
-    this.lavaStep(dt);
+    if (!this.stkFrozen()) this.lavaStep(dt); // Tick-Tock: lava rocks hang where they are
     v31Step(this, dt); // bosses (v3.1): boss attacks, falling ice (replaces the old top-down icicles), walls, ring locks
   }
 
@@ -2839,8 +2887,15 @@ export class Sim {
   }
 
   // ---------- queries ----------
+  // the player calls it a day once enough eggs are home (a creature sits on the last egg, an egg is wedged): the level
+  // ends as a win with the eggs saved so far
+  finish() {
+    if (this.state !== 'play' || this.savedLog.length < (this.level.target || 1)) return false;
+    this.state = 'winning'; this.endTimer = 0.5;
+    return true;
+  }
   aliveEggs() {
-    return this.eggs.filter((e) => e.alive && !e.saved);
+    return this.eggs.filter((e) => e.alive && !e.saved && !e.phx); // an egg the Phoenix is flying home is no one's to touch
   }
   channelOf(egg) {
     const p = egg.body.getPosition();
@@ -2871,5 +2926,6 @@ Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
 Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl
 Object.assign(Sim.prototype, stkMethods); // Chick Strike powers (sim/strike.js)
+Object.assign(Sim.prototype, reachMethods); // the hen runs the basket (sim/henreach.js)
 
 export { EGG_H, EGG_W, RING_TH };

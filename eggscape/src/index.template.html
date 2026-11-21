@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#1b1410">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Eggscape</title>
+<script>window.__t0 = performance.now();</script>
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1b1410; }
   body {
@@ -18,16 +19,15 @@
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
   canvas#game { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
-  #loading {
-    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
-    text-align: center; color: #f3d9a4; font-size: 22px; letter-spacing: .04em; pointer-events: none;
-  }
+  /* the instant before the first canvas frame: the home screen's sky, no logo, no motion (the game script removes it on the first paint).
+     Colours match the home sky top/horizon and android styles.xml's windowBackground, so the system splash flows straight into it. */
+  #splash { position: absolute; inset: 0; pointer-events: none; z-index: 5; background: linear-gradient(#428abe, #6eb5e5 30%, #b8ddf3 70%); }
 </style>
 <!--PORTAL_HEAD-->
 </head>
 <body>
 <canvas id="game" tabindex="0"></canvas>
-<div id="loading">Loading…</div>
+<div id="splash"></div>
 <!--GAME_SCRIPT-->
 </body>
 </html>

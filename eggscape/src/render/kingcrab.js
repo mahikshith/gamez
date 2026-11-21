@@ -8,7 +8,7 @@ import { KC } from '../sim/kingcrab.js';
 import { ATTACK_NAME } from '../sim/boss.js';
 import { bossPip } from './boss.js';
 import { dizzyStars, spiralEye, boltStroke } from './status.js';
-import { limb, blinkAt } from './castkit.js';
+import { limb, blinkAt, bake } from './castkit.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const sstep = (v) => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
@@ -26,10 +26,13 @@ export const KCP = { line: '#2a0806', shell: '#d6402c', lo: '#8f1f16', hi: '#ff8
 // ---------------------------------------------------------------- the body (local px, y down, "up" = toward the vault)
 // s px per metre. o: { look {x, y} (unit, local), eye 'normal'|'x'|'squeeze'|'spiral'|'mad', flash 0..1, stamp 0..1,
 //      legs (walk phase), sweat, mouth 0..1, crown (bool) }
-export function drawCrabBody(ctx, s, t, o = {}) {
+export function drawCrabBody(ctx, s0, t, o = {}) {
+  // (p87: the size snaps to 5% steps, the rest is a scale, so the baked shell survives a camera that eases its zoom)
+  const s = s0 > 0 ? Math.pow(1.05, Math.round(Math.log(s0) / Math.log(1.05))) : s0;
   const lw = Math.max(1.3, s * 0.035), C = o.ice ? KCI : KCP;
   const br = 1 + 0.015 * Math.sin(t * 2.2), stamp = o.stamp || 0;
   ctx.save();
+  if (s !== s0 && s > 0) ctx.scale(s0 / s, s0 / s);
   ctx.translate(0, -stamp * 0.12 * s);
   // v5 poses. rear: it squats and swells to blow bubbles (wind-up), then stretches up as it blows. tuck: legs pulled in, the
   // shell spins (its width oscillates) for the whirlpool. toss: it leans away and rocks, flicking barnacles.
@@ -56,47 +59,52 @@ export function drawCrabBody(ctx, s, t, o = {}) {
     }
   }
   // the carapace: broad and armoured, a serrated front edge, crown spikes along the top
-  const W = 0.98 * s, H = 0.5 * s * br, top = -0.42 * s * br;
-  const shape = () => {
-    ctx.beginPath();
-    ctx.moveTo(-W, 0.02 * s);
-    ctx.bezierCurveTo(-W * 1.04, top * 0.9, -W * 0.5, top * 1.25, 0, top * 1.22);
-    ctx.bezierCurveTo(W * 0.5, top * 1.25, W * 1.04, top * 0.9, W, 0.02 * s);
-    for (let i = 0; i <= 10; i++) { const q = i / 10, x = W - q * 2 * W; ctx.lineTo(x, (0.14 + (i % 2 ? 0.05 : 0)) * s + Math.sin(q * Math.PI) * 0.08 * s); }
-    ctx.closePath();
+  // (2026-11-20 speed, p87: still between breaths, so it is one baked picture per breath step: 8 steps across the breath,
+  // under 0.2 px apart at the largest size; ~30 draws and two clips become one drawImage)
+  const brq = 1 + Math.round((br - 1) / 0.004) * 0.004, W = 0.98 * s, H = 0.5 * s * brq, top = -0.42 * s * brq, flashOn = o.flash > 0 && Math.floor(t * 16) % 2;
+  const carapace = (c) => {
+      const shape = () => {
+      c.beginPath();
+      c.moveTo(-W, 0.02 * s);
+      c.bezierCurveTo(-W * 1.04, top * 0.9, -W * 0.5, top * 1.25, 0, top * 1.22);
+      c.bezierCurveTo(W * 0.5, top * 1.25, W * 1.04, top * 0.9, W, 0.02 * s);
+      for (let i = 0; i <= 10; i++) { const q = i / 10, x = W - q * 2 * W; c.lineTo(x, (0.14 + (i % 2 ? 0.05 : 0)) * s + Math.sin(q * Math.PI) * 0.08 * s); }
+      c.closePath();
+    };
+    c.save(); c.translate(lw * 0.35, lw * 0.5); shape(); c.lineWidth = lw * 1.8; c.strokeStyle = C.line; c.stroke(); c.restore(); // weighted line
+    shape();
+    c.fillStyle = o.flash > 0 && Math.floor(t * 16) % 2 ? C.hi : C.shell; c.fill();
+    c.save(); c.clip();
+    c.fillStyle = C.lo; c.beginPath(); c.ellipse(0, H * 0.55, W * 1.2, H * 0.55, 0, 0, TAU); c.fill();
+    c.fillStyle = C.lo; c.beginPath(); c.ellipse(W * 1.05, top * 0.3, W * 0.22, H * 0.9, 0.25, 0, TAU); c.fill();
+    c.fillStyle = C.hi; c.beginPath(); c.ellipse(-W * 0.35, top * 0.85, W * 0.32, H * 0.14, -0.15, 0, TAU); c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.55)'; c.beginPath(); c.ellipse(-W * 0.5, top * 0.92, W * 0.1, H * 0.045, -0.25, 0, TAU); c.fill();
+    c.fillStyle = C.spot;
+    for (const [x, y, r] of [[-0.55, -0.12, 0.07], [0.5, -0.16, 0.06], [-0.2, -0.3, 0.05], [0.25, -0.33, 0.045], [0.7, 0.0, 0.05], [-0.75, 0.01, 0.045]]) { c.beginPath(); c.arc(x * s, y * s, r * s, 0, TAU); c.fill(); }
+    // armour plate lines
+    c.strokeStyle = C.lo; c.lineWidth = lw * 1.1;
+    for (const sx of [-1, 1]) { c.beginPath(); c.moveTo(sx * W * 0.2, top * 1.1); c.quadraticCurveTo(sx * W * 0.32, top * 0.3, sx * W * 0.22, 0.12 * s); c.stroke(); }
+    c.restore();
+    shape(); c.lineWidth = lw * 1.2; c.strokeStyle = C.line; c.stroke();
+    // side spikes on the shell rim
+    for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) {
+      const a = -0.35 - i * 0.32, bx = sx * W * (0.98 - i * 0.07) * 1, by = top * (0.35 + i * 0.3);
+      c.beginPath(); c.moveTo(bx, by - 0.05 * s); c.lineTo(bx + sx * 0.13 * s * Math.cos(a), by + 0.13 * s * Math.sin(a) - 0.02 * s); c.lineTo(bx - sx * 0.02 * s, by + 0.05 * s); c.closePath();
+      fillStroke(c, C.shell, C.line, lw);
+    }
+    // the crown: three gold points on its brow
+    if (o.crown !== false) {
+      const cy = top * 1.18, cw = 0.26 * s;
+      c.beginPath(); c.moveTo(-cw, cy + 0.04 * s);
+      c.lineTo(-cw * 1.05, cy - 0.17 * s); c.lineTo(-cw * 0.5, cy - 0.06 * s); c.lineTo(0, cy - 0.23 * s); c.lineTo(cw * 0.5, cy - 0.06 * s); c.lineTo(cw * 1.05, cy - 0.17 * s); c.lineTo(cw, cy + 0.04 * s);
+      c.closePath();
+      c.fillStyle = C.crown; c.fill();
+      c.save(); c.clip(); c.fillStyle = C.crownLo; c.fillRect(-cw * 1.2, cy - 0.02 * s, cw * 2.4, 0.08 * s); c.restore();
+      c.lineWidth = lw; c.strokeStyle = C.line; c.stroke();
+      c.fillStyle = '#2f8ad8'; c.beginPath(); c.arc(0, cy - 0.03 * s, 0.035 * s, 0, TAU); c.fill(); c.lineWidth = lw * 0.7; c.stroke();
+    }
   };
-  ctx.save(); ctx.translate(lw * 0.35, lw * 0.5); shape(); ctx.lineWidth = lw * 1.8; ctx.strokeStyle = C.line; ctx.stroke(); ctx.restore(); // weighted line
-  shape();
-  ctx.fillStyle = o.flash > 0 && Math.floor(t * 16) % 2 ? C.hi : C.shell; ctx.fill();
-  ctx.save(); ctx.clip();
-  ctx.fillStyle = C.lo; ctx.beginPath(); ctx.ellipse(0, H * 0.55, W * 1.2, H * 0.55, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = C.lo; ctx.beginPath(); ctx.ellipse(W * 1.05, top * 0.3, W * 0.22, H * 0.9, 0.25, 0, TAU); ctx.fill();
-  ctx.fillStyle = C.hi; ctx.beginPath(); ctx.ellipse(-W * 0.35, top * 0.85, W * 0.32, H * 0.14, -0.15, 0, TAU); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.ellipse(-W * 0.5, top * 0.92, W * 0.1, H * 0.045, -0.25, 0, TAU); ctx.fill();
-  ctx.fillStyle = C.spot;
-  for (const [x, y, r] of [[-0.55, -0.12, 0.07], [0.5, -0.16, 0.06], [-0.2, -0.3, 0.05], [0.25, -0.33, 0.045], [0.7, 0.0, 0.05], [-0.75, 0.01, 0.045]]) { ctx.beginPath(); ctx.arc(x * s, y * s, r * s, 0, TAU); ctx.fill(); }
-  // armour plate lines
-  ctx.strokeStyle = C.lo; ctx.lineWidth = lw * 1.1;
-  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx * W * 0.2, top * 1.1); ctx.quadraticCurveTo(sx * W * 0.32, top * 0.3, sx * W * 0.22, 0.12 * s); ctx.stroke(); }
-  ctx.restore();
-  shape(); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = C.line; ctx.stroke();
-  // side spikes on the shell rim
-  for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) {
-    const a = -0.35 - i * 0.32, bx = sx * W * (0.98 - i * 0.07) * 1, by = top * (0.35 + i * 0.3);
-    ctx.beginPath(); ctx.moveTo(bx, by - 0.05 * s); ctx.lineTo(bx + sx * 0.13 * s * Math.cos(a), by + 0.13 * s * Math.sin(a) - 0.02 * s); ctx.lineTo(bx - sx * 0.02 * s, by + 0.05 * s); ctx.closePath();
-    fillStroke(ctx, C.shell, C.line, lw);
-  }
-  // the crown: three gold points on its brow
-  if (o.crown !== false) {
-    const cy = top * 1.18, cw = 0.26 * s;
-    ctx.beginPath(); ctx.moveTo(-cw, cy + 0.04 * s);
-    ctx.lineTo(-cw * 1.05, cy - 0.17 * s); ctx.lineTo(-cw * 0.5, cy - 0.06 * s); ctx.lineTo(0, cy - 0.23 * s); ctx.lineTo(cw * 0.5, cy - 0.06 * s); ctx.lineTo(cw * 1.05, cy - 0.17 * s); ctx.lineTo(cw, cy + 0.04 * s);
-    ctx.closePath();
-    ctx.fillStyle = C.crown; ctx.fill();
-    ctx.save(); ctx.clip(); ctx.fillStyle = C.crownLo; ctx.fillRect(-cw * 1.2, cy - 0.02 * s, cw * 2.4, 0.08 * s); ctx.restore();
-    ctx.lineWidth = lw; ctx.strokeStyle = C.line; ctx.stroke();
-    ctx.fillStyle = '#2f8ad8'; ctx.beginPath(); ctx.arc(0, cy - 0.03 * s, 0.035 * s, 0, TAU); ctx.fill(); ctx.lineWidth = lw * 0.7; ctx.stroke();
-  }
+  if (!bake(ctx, 'kc' + s.toFixed(2) + (o.ice ? 'i' : '') + (flashOn ? 'f' : '') + (o.crown !== false ? 'c' : '') + brq.toFixed(3), -1.25 * s - 2 * lw, -0.95 * s - 2 * lw, 1.25 * s + 2 * lw, 0.32 * s + 2 * lw, carapace)) carapace(ctx);
   // eye stalks and eyes
   const lk = o.look || { x: 0, y: -1 }, eye = o.eye || 'normal';
   for (const sx of [-1, 1]) {

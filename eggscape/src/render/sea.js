@@ -161,7 +161,15 @@ function octFrame(sim, C, R, t, k, pal) {
   const wall = { nx: ox * ca - oy * sa, ny: ox * sa + oy * ca, d: wd };
   const fz = R.fzK > 0.01 ? { k: R.fzK, left: C.fz > 0 ? C.fz : 9, t0: R.t0 - 0 } : null;
   if (fz) fz.t0 = R.t0;
-  return { p, s, wd, o: { rot: R.rot, A, pal, wall, egg: R.egg, wrap: R.wrap, look, pulse: R.pulse, hit: R.hit, hitK: R.hitK, alpha, scale, seed: C.id * 1.7, sub: R.sub, fz, stn: R.stn, zap: R.zap, shake: R.shake } };
+  // the jet is acted: a big squeeze of the mantle (it goes long and thin, the arms snap shut behind it) and a slower recovery
+  // (the mantle refills, the arms fan open a little), two strokes that fade as it coasts. On a reused copy of the pose.
+  let AA = A;
+  if (C.ph === 'jet' && !frozen) {
+    const ju = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1, q = (ju * 2.2) % 1, kick = (q < 0.22 ? q / 0.22 : 1 - (q - 0.22) / 0.78) * (1 - ju * 0.55);
+    AA = R.ja || (R.ja = {}); for (const c in A) AA[c] = A[c];
+    AA.squash = A.squash - 0.55 * kick + 0.35 * (1 - kick) * (1 - ju); AA.stream = Math.min(1.3, A.stream + 0.3 * kick); AA.spread = A.spread + 0.55 * (1 - kick) * (1 - ju * 0.5); AA.curl = A.curl + 0.4 * (1 - kick); AA.wave = A.wave + 0.3 * kick;
+  }
+  return { p, s, wd, o: { rot: R.rot, A: AA, pal, wall, egg: R.egg, wrap: R.wrap, look, pulse: R.pulse, hit: R.hit, hitK: R.hitK, alpha, scale, seed: C.id * 1.7, sub: R.sub, fz, stn: R.stn, zap: R.zap, shake: R.shake } };
 }
 
 function fishState(sim, S, t) {

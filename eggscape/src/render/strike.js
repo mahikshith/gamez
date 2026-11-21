@@ -5,13 +5,17 @@
 //   freeze  ice blue, iced shell, icicles, a shard crest        thunder  storm yellow, scorched shell, two prongs and a spark
 //   bomb    orange, a red firecracker casing, a lit fuse              decoy    cream, a nearly whole shell with eye-holes
 //   tornado teal, a swirl of head feathers, a spiral crack      glue     purple, green goo dripping off the shell
+// The three premium chicks (2026-11-16) wear the same shell, dressed up more, and carry a gold crown badge:
+//   phoenix flame orange, a crest of live flame, a long burning tail   tock  brass, twin alarm bells, a clock-face shell, a wind-up key
+//   bubble  sky blue with pink wings, a bubble wand, a bubble blown off the beak
 // Chick art is drawn in px space, y down, centred on the body; s = the body height in px.
 import { geckoAnchor } from './gecko15.js';
-import { clamp, lerp, ss, hash, blinkAt, form, contact } from './castkit.js';
+import { clamp, lerp, ss, hash, blinkAt, form, contact, bake } from './castkit.js';
 import { boltStroke } from './status.js';
 import { STRIKE, STRIKES, FLIGHT } from '../data/strikes.js';
 
 import { hitBegin, hitRage, drawHitFx } from './strikehit.js';
+import { premiumWorld, premiumEvent, drawPremiumBadge, flameTongue, cog, bubbleBall } from './premium.js'; // the premium chicks' effects
 import { henStrike, henAnchors, henWingOver } from './hen.js'; // the hen's wing launches the chick
 const TAU = Math.PI * 2;
 export const strikeColor = (id) => (STRIKE[id] ? STRIKE[id].col[0] : '#fff');
@@ -72,12 +76,12 @@ function shard(ctx, bx, by, tx, ty, hw, lw) {
 // a stubby wing that acts: back = swept behind (a: down .. up), or thrown forward as a fist
 function frWing(ctx, s, x, y, a, far, lw, fwd) {
   ctx.save(); ctx.translate(x * s, y * s); if (!fwd) ctx.scale(-1, 1); ctx.rotate(a);
-  const p = () => {
-    ctx.beginPath(); ctx.moveTo(-0.04 * s, -0.08 * s); ctx.quadraticCurveTo(0.14 * s, -0.16 * s, 0.29 * s, -0.05 * s);
-    ctx.quadraticCurveTo(0.31 * s, -0.01 * s, 0.22 * s, 0.01 * s); ctx.quadraticCurveTo(0.3 * s, 0.05 * s, 0.25 * s, 0.08 * s); ctx.quadraticCurveTo(0.2 * s, 0.08 * s, 0.17 * s, 0.07 * s); ctx.quadraticCurveTo(0.21 * s, 0.13 * s, 0.14 * s, 0.14 * s);
-    ctx.quadraticCurveTo(-0.02 * s, 0.15 * s, -0.06 * s, 0.03 * s); ctx.closePath();
+  const p = (c) => {
+    c.beginPath(); c.moveTo(-0.04 * s, -0.08 * s); c.quadraticCurveTo(0.14 * s, -0.16 * s, 0.29 * s, -0.05 * s);
+    c.quadraticCurveTo(0.31 * s, -0.01 * s, 0.22 * s, 0.01 * s); c.quadraticCurveTo(0.3 * s, 0.05 * s, 0.25 * s, 0.08 * s); c.quadraticCurveTo(0.2 * s, 0.08 * s, 0.17 * s, 0.07 * s); c.quadraticCurveTo(0.21 * s, 0.13 * s, 0.14 * s, 0.14 * s);
+    c.quadraticCurveTo(-0.02 * s, 0.15 * s, -0.06 * s, 0.03 * s); c.closePath();
   };
-  form(ctx, p, { d: s * 0.035, lo: FR.wingLo, base: far ? FR.wingLo : FR.wing, hi: far ? FR.wing : FR.wingHi, line: FR.line, lw, noWeight: true });
+  form(ctx, p, { d: s * 0.035, lo: FR.wingLo, base: far ? FR.wingLo : FR.wing, hi: far ? FR.wing : FR.wingHi, line: FR.line, lw, noWeight: true, key: 'stkW' + s.toFixed(2), box: [-0.06 * s, -0.16 * s, 0.31 * s, 0.15 * s] });
   ctx.restore();
 }
 function frEye(ctx, s, E, M, lk, bl, lw) {
@@ -126,14 +130,15 @@ function frBeak(ctx, s, M, lw) { // a short chick beak; it gapes wide for the ye
   ctx.beginPath(); ctx.moveTo(h0[0], h0[1]); ctx.lineTo(t0[0], t0[1]); ctx.quadraticCurveTo(t1[0], t1[1], t3[0], t3[1]); ctx.closePath();
   ctx.fillStyle = FR.beakLo; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.beakLine; ctx.stroke();
   ctx.save(); ctx.translate(hx, hy); ctx.rotate(ua); ctx.translate(-hx, -hy);
-  const up = () => { ctx.beginPath(); ctx.moveTo(-0.12 * s, 0.01 * s); ctx.quadraticCurveTo(-0.04 * s, -0.11 * s, 0.06 * s, -0.07 * s); ctx.lineTo(0.21 * s, 0.035 * s); ctx.lineTo(-0.1 * s, 0.05 * s); ctx.closePath(); };
-  form(ctx, up, { d: s * 0.035, lo: FR.beakLo, base: FR.beak, hi: FR.beakHi, line: FR.beakLine, lw, noWeight: true, hiK: 0.7 });
+  const up = (c) => { c.beginPath(); c.moveTo(-0.12 * s, 0.01 * s); c.quadraticCurveTo(-0.04 * s, -0.11 * s, 0.06 * s, -0.07 * s); c.lineTo(0.21 * s, 0.035 * s); c.lineTo(-0.1 * s, 0.05 * s); c.closePath(); };
+  form(ctx, up, { d: s * 0.035, lo: FR.beakLo, base: FR.beak, hi: FR.beakHi, line: FR.beakLine, lw, noWeight: true, hiK: 0.7, key: 'stkK' + s.toFixed(2), box: [-0.12 * s, -0.11 * s, 0.21 * s, 0.05 * s] });
   ctx.restore();
   if (M.smirk > 0.05 && open < 0.3) { ctx.beginPath(); ctx.moveTo(-0.1 * s, 0.045 * s); ctx.quadraticCurveTo(-0.17 * s, 0.055 * s, -0.2 * s, (0.045 - 0.1 * M.smirk) * s); ctx.lineWidth = Math.max(0.9, s * 0.026); ctx.strokeStyle = FR.line; ctx.stroke(); }
   ctx.restore();
 }
 // the eggshell helmet every strike chick still wears; the Frost Chick's is iced over: a frost coat, icicles off the cracked
 // rim, the shard crest growing from the shell. It tips down over the eyes when the chick means business.
+const HELM_STILL = { freeze: 1, bomb: 1, decoy: 1, tornado: 1, bubble: 1, glue: 1 }; // shells whose markings do not move (thunder, phoenix, tock animate)
 function frHelmet(ctx, s, t, M, tr, sw, lw) {
   const id = CID; ctx.save();
   if (id === 'decoy') { ctx.translate(0, -0.03 * s); ctx.rotate(0.02 - tr * 0.06 + M.brow * 0.06); ctx.scale(1.04, 1.3); } // a nearly whole shell, down past the eyes
@@ -144,8 +149,9 @@ function frHelmet(ctx, s, t, M, tr, sw, lw) {
     shard(ctx, x * s, y * s, (x - Math.sin(a) * L) * s, (y - Math.cos(a) * L) * s, hw * s, lw);
   }
   const Z = [[0.38, 0.1], [0.29, -0.01], [0.19, 0.11], [0.09, 0.0], [-0.02, 0.11], [-0.13, 0.0], [-0.24, 0.1], [-0.35, -0.01]];
-  const dome = () => { ctx.beginPath(); ctx.moveTo(-0.45 * s, 0.02 * s); ctx.bezierCurveTo(-0.47 * s, -0.28 * s, -0.25 * s, -0.5 * s, 0.01 * s, -0.5 * s); ctx.bezierCurveTo(0.27 * s, -0.5 * s, 0.49 * s, -0.28 * s, 0.47 * s, 0.02 * s); for (const [x, y] of Z) ctx.lineTo(x * s, y * s); ctx.closePath(); };
+  const dome = (c) => { c.beginPath(); c.moveTo(-0.45 * s, 0.02 * s); c.bezierCurveTo(-0.47 * s, -0.28 * s, -0.25 * s, -0.5 * s, 0.01 * s, -0.5 * s); c.bezierCurveTo(0.27 * s, -0.5 * s, 0.49 * s, -0.28 * s, 0.47 * s, 0.02 * s); for (const [x, y] of Z) c.lineTo(x * s, y * s); c.closePath(); };
   form(ctx, dome, { d: s * 0.07, lo: FR.shellLo, base: FR.shell, hi: FR.shellHi || '#ffffff', line: FR.shellLine, lw, noWeight: true, hiK: 0.5,
+    key: HELM_STILL[id] ? 'stkH' + id + s.toFixed(2) : null, box: [-0.48 * s, -0.51 * s, 0.5 * s, 0.12 * s], // (baked unless its markings move)
     inner: (c) => {
       if (id !== 'freeze') { helmInner(c, id, s, t, lw); return; }
       const C = [[-0.5, -0.3], [-0.36, -0.22], [-0.29, -0.33], [-0.19, -0.25], [-0.1, -0.37], [0.02, -0.29], [0.11, -0.4], [0.22, -0.33], [0.3, -0.42], [0.5, -0.4], [0.5, -0.6], [-0.5, -0.6]];
@@ -180,11 +186,14 @@ function frostChick(ctx, s, t, o) {
   for (let i = 0; i < 3; i++) {
     const b = (0.95 - i * 0.5) * (1 - Math.max(0, tr) * 0.7) - Math.min(0, tr) * 0.5 + sw * 0.05, L = (0.25 - Math.abs(i - 1) * 0.03) * (1 + Math.max(0, tr) * 0.3) * s, c = Math.cos(b), sn = Math.sin(b);
     ctx.save(); ctx.translate(-0.46 * s, 0.24 * s); ctx.transform(-c, -sn, sn, -c, 0, 0);
-    form(ctx, () => { ctx.beginPath(); ctx.moveTo(0, -0.07 * s); ctx.quadraticCurveTo(L * 0.8, -0.1 * s, L, 0); ctx.quadraticCurveTo(L * 0.8, 0.09 * s, 0, 0.07 * s); ctx.closePath(); }, { d: s * 0.03, lo: FR.wingLo, base: FR.wing, hi: FR.wingHi, line: FR.line, lw, noWeight: true });
+    form(ctx, (c) => { c.beginPath(); c.moveTo(0, -0.07 * s); c.quadraticCurveTo(L * 0.8, -0.1 * s, L, 0); c.quadraticCurveTo(L * 0.8, 0.09 * s, 0, 0.07 * s); c.closePath(); }, { d: s * 0.03, lo: FR.wingLo, base: FR.wing, hi: FR.wingHi, line: FR.line, lw, noWeight: true,
+      key: 'stkT' + s.toFixed(2) + ',' + L.toFixed(2), box: [0, -0.1 * s, L, 0.1 * s] }); // (baked: the feather only turns)
     ctx.restore();
   }
+  if (CID === 'phoenix') phoenixTail(ctx, s, t, tr, sw, lw);
+  if (CID === 'tock') windKey(ctx, s, t, lw);
   if (wing > 0.25) frWing(ctx, s, -0.1, -0.02, lerp(0.5, -0.85, wing), true, lw);
-  form(ctx, () => frBody(ctx, s), { d: s * 0.085, lo: FR.lo, base: FR.base, hi: FR.hi, line: FR.line, lw, noWeight: true, hiK: 0.55,
+  form(ctx, (c) => frBody(c, s), { d: s * 0.085, lo: FR.lo, base: FR.base, hi: FR.hi, line: FR.line, lw, noWeight: true, hiK: 0.55, key: 'stkB' + CID + s.toFixed(2), box: [-0.62 * s, -0.45 * s, 0.54 * s, 0.46 * s],
     inner: (c) => {
       // the downy chest: a ruff of pale tufts
       const T = [[0.6, 0.06], [0.4, 0.1], [0.44, 0.17], [0.27, 0.17], [0.33, 0.25], [0.15, 0.25], [0.22, 0.33], [0.03, 0.34], [0.1, 0.42], [-0.1, 0.5], [0.6, 0.5]];
@@ -200,6 +209,10 @@ function frostChick(ctx, s, t, o) {
   const e0 = { cx: 0.27 * s, cy: -0.07 * s, rx: 0.108 * s, ry: 0.15 * s, sd: -1 }, e1 = { cx: 0.03 * s, cy: -0.065 * s, rx: 0.15 * s, ry: 0.168 * s, sd: 1 };
   if (CID === 'freeze') { frEye(ctx, s, e0, M, lk, bl, lw); frEye(ctx, s, e1, M, lk, bl, lw); frBeak(ctx, s, M, lw); frHelmet(ctx, s, t, M, tr, sw, lw); }
   else castFace(ctx, s, t, M, lk, bl, lw, tr, sw, e0, e1, o);
+  if (CID === 'bubble' && o.fog !== false && M.open < 0.3) { // blowing a bubble off the beak now and then; it pops at full size
+    const u = (t * 0.38) % 1, g = ss(0.05, 0.85, u);
+    if (u < 0.9 && g > 0.02) bubbleBall(ctx, (0.56 + g * 0.16) * s, (0.12 - g * 0.06) * s, (0.03 + g * 0.17) * s, t, 1);
+  }
   ctx.restore();
   // cold breath: a few pale puffs off the beak
   const fog = CID !== 'freeze' || o.fog === false ? -1 : typeof o.fog === 'number' ? o.fog : (o.mood === undefined || o.mood === 'idle' || o.mood === 'smug') ? ((t * 0.42) % 1) / 0.5 : -1;
@@ -222,6 +235,12 @@ const CAST = {
   bomb: { ...CAST_COMMON, base: '#f08a24', lo: '#c25e12', hi: '#ffb45a', line: '#7a3408', down: '#ffe2a0', downLo: '#f2b866', wing: '#d9661a', wingLo: '#a8440c', wingHi: '#ffa64a', brow: '#6a2a06', lid: '#d9741c', iris: '#b02a0e', irisHi: '#ff8a2a', shell: '#c8302a', shellLo: '#8c1a16', shellHi: '#f0635a', shellLine: '#4c0c0a' },
   decoy: { ...CAST_COMMON, base: '#f0d49e', lo: '#c79a58', hi: '#fff0cc', line: '#7a5426', down: '#fff6de', downLo: '#e6c88e', wing: '#d8a860', wingLo: '#a87a38', wingHi: '#f0cc8a', brow: '#4a2e10', lid: '#e2c084', iris: '#5a3410', irisHi: '#b87a2a', shell: '#fff6e2', shellLo: '#dcc7a0' },
   tornado: { ...CAST_COMMON, base: '#35cdb0', lo: '#12907e', hi: '#9af2dc', line: '#0c5a4e', down: '#d2fff2', downLo: '#8ae0cc', wing: '#17a08c', wingLo: '#0c6e60', wingHi: '#58dcc4', brow: '#083f38', lid: '#22b49a', iris: '#0c6a5c', irisHi: '#3fe0c0' },
+  phoenix: { ...CAST_COMMON, base: '#ff6a1c', lo: '#c8380e', hi: '#ffbe4a', line: '#7a1c06', down: '#ffe68a', downLo: '#ffb23a', wing: '#e8461a', wingLo: '#a82a0a', wingHi: '#ff9e3a', brow: '#4a1004', lid: '#f0581a', iris: '#b85a00', irisHi: '#ffd23a',
+    shell: '#ffe9ae', shellLo: '#d69a3a', shellHi: '#fff8de', shellLine: '#7a4206', flame: '#ff5a12', flameHi: '#ffd23a', flameCore: '#fff6c8' },
+  tock: { ...CAST_COMMON, base: '#dca447', lo: '#9e6a1c', hi: '#ffe08e', line: '#583808', down: '#fff1cc', downLo: '#e8c47c', wing: '#b47c2a', wingLo: '#7a4e14', wingHi: '#e6b65c', brow: '#3a2406', lid: '#c88e2e', iris: '#1d6878', irisHi: '#48d2da',
+    shell: '#fbf6ea', shellLo: '#cfc2a2', shellLine: '#6a5530', brass: '#e8b84a', brassLo: '#9a6a18', brassHi: '#fff0a8', ink: '#2b1d0c' },
+  bubble: { ...CAST_COMMON, base: '#7cd6ff', lo: '#3a98d6', hi: '#d2f6ff', line: '#17568a', down: '#ffffff', downLo: '#c8ecff', wing: '#ff8ccc', wingLo: '#cc5498', wingHi: '#ffc6e6', brow: '#14406a', lid: '#58bdee', iris: '#b8287e', irisHi: '#ff78c4',
+    shell: '#f4fbff', shellLo: '#b6d6ea', shellLine: '#47789a' },
   glue: { ...CAST_COMMON, base: '#a866ee', lo: '#6f34bc', hi: '#d6acff', line: '#3f1680', down: '#ecd6ff', downLo: '#c096f0', wing: '#7e3fd0', wingLo: '#52209a', wingHi: '#b07af0', brow: '#2c0c5e', lid: '#9450e0', iris: '#4a1a90', irisHi: '#b46aff', goo: '#8cf56a', gooLo: '#3fb83a', gooLine: '#1f7a22' },
 };
 let CID = 'freeze', FUSE = 1; // the chick being drawn; how much of the Boom Chick's fuse is left
@@ -253,6 +272,29 @@ function helmCrest(ctx, id, s, t, tr, sw, lw) {
     two(ctx, s * 0.12, FR.line, s * 0.085, FR.base);
     ctx.beginPath(); for (let i = 20; i >= 4; i--) { const u = i / 24, a = 1.2 + u * TAU * 1.15 + sw * 0.12, r = (0.035 + u * 0.19) * s - s * 0.018; const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.85; if (i === 20) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
     ctx.lineWidth = s * 0.025; ctx.strokeStyle = FR.hi; ctx.stroke();
+  } else if (id === 'phoenix') { // a crest of live flame: five tongues, each with its own flicker, licking back in flight
+    for (let i = 0; i < 5; i++) {
+      const x = -0.3 + i * 0.15, f = 0.85 + 0.15 * Math.sin(t * 13 + i * 2.1) * Math.sin(t * 7.3 + i), L = (0.36 + (i === 2 ? 0.2 : i % 2 ? 0.1 : 0)) * f;
+      flameTongue(ctx, x * s, -0.4 * s, L * s, 0.1 * s, -0.5 + i * 0.25 - tr * 0.6 + Math.sin(t * 5 + i) * 0.08, FR.flame, FR.flameHi, FR.flameCore);
+    }
+  } else if (id === 'tock') { // twin alarm bells on a brass bow, the hammer between them (it rattles when it rings)
+    const ring = tr > 0.3 || Math.sin(t * 1.3) > 0.85, jit = ring ? Math.sin(t * 60) * 0.12 : 0;
+    ctx.beginPath(); ctx.arc(0.01 * s, -0.5 * s, 0.3 * s, Math.PI * 1.12, Math.PI * 1.88); two(ctx, s * 0.07, FR.brassLo, s * 0.04, FR.brass);
+    for (const sd of [-1, 1]) {
+      ctx.save(); ctx.translate(sd * 0.24 * s, -0.66 * s); ctx.rotate(sd * (0.5 + jit * 0.3));
+      form(ctx, (c) => { c.beginPath(); c.moveTo(-0.15 * s, 0.07 * s); c.bezierCurveTo(-0.15 * s, -0.12 * s, 0.15 * s, -0.12 * s, 0.15 * s, 0.07 * s); c.closePath(); }, { d: s * 0.04, lo: FR.brassLo, base: FR.brass, hi: FR.brassHi, line: FR.line, lw, noWeight: true, key: 'stkBell' + s.toFixed(2), box: [-0.15 * s, -0.08 * s, 0.15 * s, 0.07 * s] });
+      ctx.beginPath(); ctx.arc(0, -0.1 * s, 0.03 * s, 0, TAU); ctx.fillStyle = FR.brassLo; ctx.fill();
+      ctx.restore();
+    }
+    ctx.save(); ctx.translate(0.01 * s, -0.5 * s); ctx.rotate(jit * 3);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -0.2 * s); two(ctx, s * 0.05, FR.line, s * 0.025, FR.brassHi);
+    ctx.beginPath(); ctx.arc(0, -0.22 * s, 0.045 * s, 0, TAU); ctx.fillStyle = FR.brass; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.line; ctx.stroke();
+    ctx.restore();
+  } else if (id === 'bubble') { // a bubble wand stuck in the shell, a soap film shimmering in its ring
+    const wx = (0.34 - tr * 0.1) * s, wy = (-0.86 + Math.sin(t * 2.2) * 0.02) * s;
+    ctx.beginPath(); ctx.moveTo(0.1 * s, -0.42 * s); ctx.quadraticCurveTo(0.2 * s, -0.6 * s, wx - 0.08 * s, wy + 0.1 * s); two(ctx, s * 0.06, FR.wingLo, s * 0.035, FR.wing);
+    bubbleBall(ctx, wx, wy, 0.13 * s, t, 0.75);
+    ctx.beginPath(); ctx.arc(wx, wy, 0.13 * s, 0, TAU); two(ctx, s * 0.055, FR.wingLo, s * 0.03, FR.wingHi);
   } else if (id === 'glue') { // a blob of goo sat on top
     const w = Math.sin(t * 5) * 0.02;
     ctx.beginPath(); ctx.ellipse(0.02 * s, -0.5 * s, (0.2 + w) * s, (0.11 - w) * s, 0, 0, TAU); ctx.fillStyle = FR.goo; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.gooLine; ctx.stroke();
@@ -274,6 +316,25 @@ function helmInner(c, id, s, t, lw) {
     c.beginPath(); for (let i = 0; i <= 26; i++) { const u = i / 26, a = u * TAU * 1.6 + 0.6, r = (0.02 + u * 0.2) * s, x = 0.06 * s + Math.cos(a) * r, y = -0.2 * s + Math.sin(a) * r * 0.8; if (i) c.lineTo(x, y); else c.moveTo(x, y); }
     c.lineCap = 'round'; c.lineWidth = Math.max(1, s * 0.022); c.strokeStyle = FR.shellLine; c.stroke();
     c.fillStyle = FR.shellLo; for (const [x, y, r] of [[-0.3, -0.12, 0.02], [0.33, -0.28, 0.018]]) { c.beginPath(); c.arc(x * s, y * s, r * s, 0, TAU); c.fill(); }
+  } else if (id === 'phoenix') { // scorched gold: a sooty crown, a glowing ember crack, a flame mark
+    c.fillStyle = 'rgba(110,40,10,0.45)'; poly(c, [[-0.5, -0.34], [-0.34, -0.27], [-0.22, -0.38], [-0.08, -0.3], [0.06, -0.42], [0.2, -0.33], [0.34, -0.4], [0.5, -0.36], [0.5, -0.6], [-0.5, -0.6]], s); c.fill();
+    poly(c, [[0.24, -0.48], [0.18, -0.36], [0.26, -0.28], [0.19, -0.16], [0.24, -0.06]], s); two(c, s * (0.07 + 0.02 * Math.sin(t * 8)), '#ff5a12', s * 0.028, '#fff2a0');
+    flameTongue(c, -0.12 * s, -0.04 * s, 0.24 * s, 0.075 * s, 0, '#e8461a', '#ffb22a', '#fff1b8');
+  } else if (id === 'tock') { // the shell is a clock face: twelve ticks, two hands that keep time
+    const cx = 0.02 * s, cy = -0.2 * s, R = 0.2 * s;
+    c.beginPath(); c.arc(cx, cy, R * 1.12, 0, TAU); c.fillStyle = FR.brass; c.fill();
+    c.beginPath(); c.arc(cx, cy, R, 0, TAU); c.fillStyle = '#fffdf6'; c.fill(); c.lineWidth = lw; c.strokeStyle = FR.brassLo; c.stroke();
+    c.strokeStyle = FR.ink; c.lineCap = 'round';
+    for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU, k = i % 3 ? 0.84 : 0.72; c.lineWidth = Math.max(0.7, s * (i % 3 ? 0.012 : 0.022)); c.beginPath(); c.moveTo(cx + Math.cos(a) * R * k, cy + Math.sin(a) * R * k); c.lineTo(cx + Math.cos(a) * R * 0.94, cy + Math.sin(a) * R * 0.94); c.stroke(); }
+    const ah = t * 0.5 - Math.PI / 2, am = Math.floor(t) * (TAU / 12) - Math.PI / 2; // the minute hand jumps a tick a second
+    c.lineWidth = Math.max(1, s * 0.03); c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(ah) * R * 0.5, cy + Math.sin(ah) * R * 0.5); c.stroke();
+    c.lineWidth = Math.max(0.8, s * 0.02); c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(am) * R * 0.8, cy + Math.sin(am) * R * 0.8); c.stroke();
+    c.beginPath(); c.arc(cx, cy, s * 0.025, 0, TAU); c.fillStyle = '#c8302a'; c.fill();
+  } else if (id === 'bubble') { // little soap bubbles printed on a pearly shell
+    for (const [x, y, r, col] of [[-0.3, -0.26, 0.06, '#ff9ad6'], [0.12, -0.36, 0.05, '#8fe0ff'], [0.32, -0.18, 0.045, '#c8a8ff'], [-0.1, -0.12, 0.04, '#9cf0d8'], [-0.38, -0.06, 0.03, '#8fe0ff']]) {
+      c.beginPath(); c.arc(x * s, y * s, r * s, 0, TAU); c.lineWidth = Math.max(0.8, s * 0.018); c.strokeStyle = col; c.stroke();
+      c.beginPath(); c.arc((x - r * 0.35) * s, (y - r * 0.35) * s, r * 0.28 * s, 0, TAU); c.fillStyle = '#ffffff'; c.fill();
+    }
   } else if (id === 'glue') { // goo running down from the top
     for (const [oy, col] of [[0.025, FR.gooLo], [0, FR.goo]]) { c.fillStyle = col; c.fillRect(-0.6 * s, -0.7 * s, 1.2 * s, (0.44 + oy) * s); for (const [x, d] of [[-0.36, 0.1], [-0.2, 0.02], [-0.04, 0.14], [0.13, 0.04], [0.28, 0.11], [0.42, 0.0]]) { c.beginPath(); c.ellipse(x * s, (-0.27 + oy + d * 0.5) * s, 0.085 * s, (0.08 + d) * s, 0, 0, TAU); c.fill(); } }
     c.fillStyle = 'rgba(255,255,255,0.7)'; c.beginPath(); c.ellipse(-0.22 * s, -0.37 * s, 0.08 * s, 0.03 * s, -0.6, 0, TAU); c.fill();
@@ -287,9 +348,38 @@ function helmRim(ctx, id, s, t, tr, sw, lw) {
     ctx.fillStyle = '#fffbe0'; for (const [, , x, y] of PRONG) { ctx.beginPath(); ctx.arc(x * s, y * s, s * 0.035, 0, TAU); ctx.fill(); }
   } else if (id === 'bomb') { // the fuse's collar
     ctx.beginPath(); ctx.ellipse(0.02 * s, -0.48 * s, 0.1 * s, 0.045 * s, 0, 0, TAU); ctx.fillStyle = '#8d858b'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.shellLine; ctx.stroke();
+  } else if (id === 'phoenix') { // embers drift up off the rim
+    for (let i = 0; i < 4; i++) { const u = (t * 0.8 + i / 4) % 1, x = (-0.36 + i * 0.24 + Math.sin(t * 3 + i * 2) * 0.05) * s, y = (0.02 - u * 0.75) * s; ctx.globalAlpha = Math.sin(u * Math.PI); ctx.fillStyle = i % 2 ? '#ffd23a' : '#ff7a1a'; ctx.beginPath(); ctx.arc(x, y, s * (0.035 - u * 0.02), 0, TAU); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  } else if (id === 'tock') { // a little cog on the side of the shell, turning a tick at a time
+    cog(ctx, 0.42 * s, -0.08 * s, 0.1 * s, Math.floor(t * 2) * 0.35 + ss(0, 0.12, (t * 2) % 1) * 0.35, FR.brass, FR.brassLo, lw);
+  } else if (id === 'bubble') { // two bubbles float up off the rim
+    for (let i = 0; i < 2; i++) { const u = (t * 0.45 + i * 0.5) % 1; ctx.globalAlpha = Math.sin(u * Math.PI); bubbleBall(ctx, (i ? 0.44 : -0.42) * s + Math.sin(t * 3 + i) * 0.03 * s, (0.02 - u * 0.6) * s, (0.05 + 0.02 * i) * s, t, 1); }
+    ctx.globalAlpha = 1;
   } else if (id === 'glue') { // strands dripping off the rim
     for (const [x, len, ph] of [[-0.4, 0.2, 0], [-0.27, 0.1, 2], [0.43, 0.26, 4]]) { const L = len * (1 + 0.25 * Math.sin(t * 2.4 + ph)), ex = (x - tr * 0.08 + sw * 0.01) * s, ey = (0.02 + L) * s; ctx.beginPath(); ctx.moveTo(x * s, 0); ctx.lineTo(ex, ey); two(ctx, s * 0.075, FR.gooLine, s * 0.05, FR.goo); ctx.beginPath(); ctx.arc(ex, ey, s * 0.045, 0, TAU); ctx.fillStyle = FR.goo; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.gooLine; ctx.stroke(); }
   }
+}
+// the Phoenix's tail: three long burning plumes that sweep behind it, an eye of gold near each tip
+function phoenixTail(ctx, s, t, tr, sw, lw) {
+  for (let i = 0; i < 3; i++) {
+    const b = (0.55 - i * 0.42) * (1 - Math.max(0, tr) * 0.6) - Math.min(0, tr) * 0.4 + Math.sin(t * 3 + i) * 0.07, L = (0.5 + (i === 1 ? 0.14 : 0)) * (1 + Math.max(0, tr) * 0.35) * s;
+    ctx.save(); ctx.translate(-0.44 * s, 0.2 * s); ctx.rotate(Math.PI - b);
+    const plume = () => { ctx.beginPath(); ctx.moveTo(0, -0.05 * s); ctx.bezierCurveTo(L * 0.4, -0.16 * s, L * 0.8, -0.1 * s, L, Math.sin(t * 9 + i * 2) * 0.03 * s); ctx.bezierCurveTo(L * 0.8, 0.1 * s, L * 0.4, 0.14 * s, 0, 0.05 * s); ctx.closePath(); };
+    form(ctx, plume, { d: s * 0.04, lo: FR.lo, base: FR.flame, hi: FR.flameHi, line: FR.line, lw, noWeight: true, hiK: 0.6 });
+    ctx.beginPath(); ctx.ellipse(L * 0.78, 0, 0.06 * s, 0.04 * s, 0, 0, TAU); ctx.fillStyle = FR.flameCore; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.lo; ctx.stroke();
+    flameTongue(ctx, L * 0.98, 0, 0.18 * s, 0.05 * s, Math.PI / 2 + Math.sin(t * 11 + i) * 0.2, FR.flame, FR.flameHi, FR.flameCore); // the burning tip
+    ctx.restore();
+  }
+}
+// Tick-Tock's wind-up key in its back: it turns (seen edge-on half the time)
+function windKey(ctx, s, t, lw) {
+  ctx.save(); ctx.translate(-0.48 * s, 0.0); ctx.rotate(-0.25);
+  ctx.beginPath(); ctx.moveTo(0.08 * s, 0); ctx.lineTo(-0.16 * s, 0); two(ctx, s * 0.07, FR.line, s * 0.045, FR.brass);
+  const k = Math.cos(t * 3.2);
+  ctx.translate(-0.24 * s, 0); ctx.scale(1, Math.max(0.12, Math.abs(k)));
+  for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(0, sd * 0.09 * s, 0.08 * s, 0.09 * s, 0, 0, TAU); ctx.fillStyle = k > 0 ? FR.brass : FR.brassLo; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = FR.line; ctx.stroke(); ctx.beginPath(); ctx.arc(0, sd * 0.09 * s, 0.03 * s, 0, TAU); ctx.fillStyle = FR.line; ctx.fill(); }
+  ctx.restore();
 }
 // the face of the other five: the decoy peeks through eye-holes in a nearly whole shell, the twister's eyes roll, one of the
 // sticky chick's is half glued shut
@@ -314,6 +404,9 @@ const WAKE = {
   decoy: { puff: '#fff6e2', pa: 0.55, chip: 'feather', c1: '#fff6e2', c2: '#dcc08a' },
   tornado: { puff: '#dcfff4', pa: 0.25, chip: 'feather', c1: '#eafffa', c2: '#58dcc4' },
   glue: { rib: ['#3fb83a', '#a8ff86', 0.62], chip: 'drop', c1: '#8cf56a', c2: '#3fb83a' },
+  phoenix: { rib: ['#ff4a12', '#ffd84a', 0.5], puff: '#5a3a30', pa: 0.25, chip: 'ember', c1: '#fff3b0', c2: '#ff6a1a' },
+  tock: { puff: '#fff4d8', pa: 0.35, chip: 'gear', c1: '#ffe08a', c2: '#a8741e' },
+  bubble: { chip: 'bubble', c1: '#ffffff', c2: '#8fe0ff' },
 };
 function castWake(ctx, id, a, tgt, ue, k, S, t) {
   const W = WAKE[id]; if (!W) return;
@@ -345,6 +438,8 @@ function castWake(ctx, id, a, tgt, ue, k, S, t) {
     px(ctx, x + nx * sd * age * sp + ny * age * 0.5, y + ny * sd * age * sp - nx * age * 0.5 - age * age * g, k, () => {
       ctx.globalAlpha = 1 - c * c; ctx.rotate(W.chip === 'drop' ? 0 : i * 1.3 + age * (W.chip === 'feather' ? 5 : 13) * sd);
       ctx.beginPath();
+      if (W.chip === 'gear') { cog(ctx, 0, 0, r * 1.1, 0, W.c1, W.c2, Math.max(0.6, r * 0.12)); return; }
+      if (W.chip === 'bubble') { bubbleBall(ctx, 0, 0, r * 1.2, t, 1); return; }
       if (W.chip === 'star') { ctx.moveTo(0, -r * 1.3); ctx.quadraticCurveTo(0, 0, r * 1.3, 0); ctx.quadraticCurveTo(0, 0, 0, r * 1.3); ctx.quadraticCurveTo(0, 0, -r * 1.3, 0); ctx.quadraticCurveTo(0, 0, 0, -r * 1.3); }
       else if (W.chip === 'feather') ctx.ellipse(0, 0, r * 1.2, r * 0.45, 0, 0, TAU);
       else ctx.arc(0, 0, r * 0.7, 0, TAU);
@@ -362,7 +457,11 @@ export function drawStrikeChick(ctx, id, x, y, s, t, o = {}) {
   if (o.rot) ctx.rotate(o.rot);
   if (o.flip) ctx.scale(-1, 1);
   CID = CAST[id] ? id : 'freeze'; FR = CAST[CID];
-  frostChick(ctx, s, t, o);
+  // (p87: its size snaps to 5% steps and the rest is a scale, so a camera that eases its zoom does not make a new set of
+  // baked parts every frame; lines differ from the exact size by under 2.5%)
+  const q = s > 0 ? Math.pow(1.05, Math.round(Math.log(s) / Math.log(1.05))) : s;
+  if (q !== s && q > 0) ctx.scale(s / q, s / q);
+  frostChick(ctx, q, t, o);
   ctx.restore();
 }
 
@@ -438,7 +537,7 @@ function frostWorld(ctx, sim, K, k, t, hen, S, id) {
   if (RIDE.sim !== sim) { RIDE.sim = sim; RIDE.b = K.m >= 1 || boat || F ? 1 : 0; RIDE.t = t; RIDE.land = -99; RIDE.hit = -99; RIDE.rel = null; }
   const dT = clamp(t - RIDE.t, 0, 0.05); RIDE.t = t;
   if (!F) {
-    if (POST.was) { POST.was = false; POST.t0 = id === 'decoy' ? -99 : t; RIDE.hit = t; RIDE.rel = null; RIDE.b = boat ? 1 : 0; } // the decoy stays out there, posing as an egg
+    if (POST.was) { POST.was = false; POST.t0 = id === 'decoy' || id === 'phoenix' ? -99 : t; RIDE.hit = t; RIDE.rel = null; RIDE.b = boat ? 1 : 0; } // the decoy stays out there, posing as an egg
     const hit = t - RIDE.hit, look = toC(POST.tgt || back);
     if (id === 'decoy' && sim.p2d && sim.p2d.alive && sim.p2.decoy && sim.p2.decoy.stk) { if (hit < 0.7) henStrike({ phase: 'after', u: hit, tx: look[0], ty: look[1] }); return; }
     const tau = t - POST.t0, home = boat ? back : gp;
@@ -504,10 +603,13 @@ function frostWorld(ctx, sim, K, k, t, hen, S, id) {
   });
 }
 
-export function drawStrikeWorld(ctx, sim, k, t, hen) {
+// egg(e): draws an egg as the game does (the Phoenix carries one; Tick-Tock's sepia leaves them in colour)
+export function drawStrikeWorld(ctx, sim, k, t, hen, egg = () => {}) {
   const K = sim.stk;
-  if (!K || !K.id) return;
+  if (!K) return;
   const cs = Math.min(0.95, Math.max(0.6, 40 / k)), S = cs * k; // the chick: 0.6 m, never under ~40 px (it must read on a phone)
+  premiumWorld(ctx, sim, k, t, S, (id, x, y, s, o) => drawStrikeChick(ctx, id, x, y, s, t, o), egg); // premium chicks, Thorn Snips
+  if (!K.id || K.phx) return; // (while the Phoenix flies an egg home it is drawn there, not on the hen)
   // glue patches (under everything else here)
   for (const P of K.glue) drawGoo(ctx, P, k, t);
   // tornado funnels, thunder chains
@@ -598,9 +700,16 @@ function drawFrost(ctx, E, k, t) {
 // api: { audio, popup, once, sim, hitStop(s), punch(amt, x, y), slow(left, scale) }
 export function strikeEvent(ev, fx, api) {
   const { audio, popup, once } = api;
+  if (premiumEvent(ev, fx, api)) return true;
   switch (ev.type) {
     case 'stkReady': audio.play('cluck', { pitch: 2.6, vol: 0.45 }); return true;
-    case 'stkFire': api.slow(0.3, 0.4); audio.play('hen_hop', { pitch: 1.6, vol: 0.6 }); return true;
+    case 'stkFire':
+      api.slow(0.3, 0.4); audio.play('hen_hop', { pitch: 1.6, vol: 0.6 });
+      if (ev.id === 'phoenix') { // it rises from a burst of embers on her back
+        audio.play('fire_ignite', { vol: 0.7, pitch: 1.2 });
+        fx.burst(ev.x, ev.y, 18, (i, a, b) => ({ x: ev.x + (a - 0.5) * 0.5, y: ev.y - 0.1, vx: (a - 0.5) * 2.4, vy: 1.2 + b * 2.6, drag: 1.3, life: 0.5 + b * 0.6, size: 0.05 + a * 0.06, color: i % 3 ? '#ff6a1a' : '#ffb02a', hot: '#fff3b0', type: 'flame' }));
+      }
+      return true;
     case 'stkLaunch': {
       audio.play('strike_launch'); audio.play('cluck', { intensity: 1, pitch: 1.75, vol: 0.7 });
       fx.whoosh(ev.x, ev.y, ev.tx - ev.x, ev.ty - ev.y);
@@ -610,6 +719,13 @@ export function strikeEvent(ev, fx, api) {
     case 'stkHit': {
       const S = STRIKE[ev.id], col = S ? S.col : ['#fff', '#fff', '#fff'];
       if (ev.miss) { audio.play('bubble_pop', { pitch: 0.8 }); popup(ev.x, ev.y + 0.5, 'Missed!', { color: '#ffe0b0', size: 18 }); return true; }
+      if (S && S.premium) { // no villain takes this hit: the Phoenix grabs an egg, the Bubble Chick blows, Tick-Tock rings (premium.js)
+        api.hitStop(0.06); fx.kick(0.25);
+        if (ev.id === 'phoenix') audio.play('fire_burn', { vol: 0.6, pitch: 1.3 });
+        else if (ev.id === 'bubble') { audio.play('bubble_on', { pitch: 0.9 }); popup(ev.x, ev.y + 1.2, 'Bubbles!', { color: col[2], size: 22 }); fx.wave(ev.x, ev.y, 1.6, '#d8f6ff', 0.5, 0.1); }
+        if (api.buzz) api.buzz('strike');
+        return true;
+      }
       hitBegin(ev, POST.ang);
       audio.play('strike_hit', { pitch: ev.boss ? 0.8 : 1 }); if (api.buzz) api.buzz('strike'); // the hero beat; the chick's own effect sound plays with it
       api.hitStop(ev.boss ? 0.12 : 0.08); api.punch(ev.boss ? 0.09 : 0.06, ev.x, ev.y); fx.kick(ev.boss ? 0.55 : 0.4);
@@ -638,28 +754,45 @@ export function strikeEvent(ev, fx, api) {
 
 // ---------------------------------------------------------------- the HUD button
 // st: { id, m (0..1), busy, t, fullT (when it filled), wobT (last "not yet" tap), pressed, calm }
+// heartbeat: two quick thumps (lub at 0, dub at 0.22 s) every BEAT seconds; returns the extra scale
+const BEAT = 1.05;
+export function heartbeat(since) {
+  if (since < 0) return 0;
+  const p = since % BEAT, thump = (c, a) => a * Math.exp(-((p - c) * (p - c)) / 0.0035);
+  return thump(0.06, 0.16) + thump(0.28, 0.1);
+}
 export function drawStrikeButton(ctx, x, y, d, st) {
   const id = st.id, col = STRIKE[id].col, full = st.m >= 1 && !st.busy, t = st.t, r = d / 2;
   let sc = 1, rot = 0;
   if (!st.calm) {
-    if (full) { const p = ((t - (st.fullT || 0)) % 1.2 + 1.2) % 1.2; sc = 1 + 0.11 * Math.exp(-5 * p) * Math.sin(p * 17) * (p < 0.7 ? 1 : 0); }
+    if (full) sc = 1 + heartbeat(t - (st.fullT || 0)); // 2026-11-15: a lub-dub heartbeat while the power is ready
     const w = t - (st.wobT ?? -9); if (w < 0.55) rot = 0.22 * Math.exp(-7 * w) * Math.sin(w * 34);
     if (st.pressed) sc *= 0.92;
   }
   const cx = x + r, cy = y + r;
+  if (full && !st.calm) { // each beat sends a gold ring out from the button
+    const since = t - (st.fullT || 0);
+    for (const off of [0, 0.22]) {
+      const q = (((since - off) % BEAT) + BEAT) % BEAT / 0.7;
+      if (since < off || q >= 1) continue;
+      ctx.save(); ctx.globalAlpha = (1 - q) * (off ? 0.45 : 0.75); ctx.strokeStyle = '#ffcf3a'; ctx.lineWidth = r * 0.14 * (1 - q) + 1;
+      ctx.beginPath(); ctx.arc(cx, cy, r * (1 + 0.55 * q), 0, TAU); ctx.stroke(); ctx.restore();
+    }
+  }
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(sc, sc);
-  // drop shadow and the rim
-  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(0, r * 0.1, r * 0.98, r * 0.98, 0, 0, TAU); ctx.fill();
-  const g = ctx.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#5a3c26'); g.addColorStop(1, '#2c1a10');
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
-  // the well the chick sits in
-  const ri = r * 0.74, g2 = ctx.createRadialGradient(-ri * 0.3, -ri * 0.4, ri * 0.1, 0, 0, ri);
-  g2.addColorStop(0, full ? '#fff3c4' : '#e9dcc4'); g2.addColorStop(1, full ? '#f0b54a' : '#a88e70');
-  ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(0, 0, ri, 0, TAU); ctx.fill();
-  // the ring: a track, the charge clockwise from the top (gold when full)
-  const rr = r * 0.87, lw = r * 0.17;
+  const ri = r * 0.74, rr = r * 0.87, lw = r * 0.17;
+  const plate = (c) => { // drop shadow and the rim, the well the chick sits in, the ring's track (p87: one baked picture)
+    c.fillStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.ellipse(0, r * 0.1, r * 0.98, r * 0.98, 0, 0, TAU); c.fill();
+    const g = c.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#5a3c26'); g.addColorStop(1, '#2c1a10');
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fill();
+    const g2 = c.createRadialGradient(-ri * 0.3, -ri * 0.4, ri * 0.1, 0, 0, ri);
+    g2.addColorStop(0, full ? '#fff3c4' : '#e9dcc4'); g2.addColorStop(1, full ? '#f0b54a' : '#a88e70');
+    c.fillStyle = g2; c.beginPath(); c.arc(0, 0, ri, 0, TAU); c.fill();
+    c.strokeStyle = 'rgba(20,10,4,0.55)'; c.lineWidth = lw; c.beginPath(); c.arc(0, 0, rr, 0, TAU); c.stroke();
+  };
   ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(20,10,4,0.55)'; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.stroke();
+  if (!bake(ctx, 'stkPlate' + (full ? 1 : 0) + r.toFixed(2), -r, -r, r, r * 1.1, plate)) plate(ctx);
+  // the ring: the charge clockwise from the top (gold when full)
   const m = clamp(st.m, 0, 1);
   if (m > 0.005) {
     ctx.strokeStyle = full ? '#ffcf3a' : col[0]; ctx.lineWidth = lw * 0.78;
@@ -694,11 +827,37 @@ export function drawStrikeToken(ctx, id, cx, cy, r, t, sel) {
   ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r * 0.94, 0, TAU); ctx.clip();
   drawStrikeChick(ctx, id, cx - r * 0.2, cy + r * 0.26, r * 1.45, sel ? t : 0.4, { feet: false, fog: false, mood: sel ? 'smug' : 'idle', squash: sel ? Math.sin(t * 6) * 0.03 : 0 });
   ctx.restore();
+  if (STRIKE[id] && STRIKE[id].premium) { // premium: a gold double rim and the crown on top
+    ctx.lineWidth = r * 0.08; ctx.strokeStyle = '#ffd23a'; ctx.beginPath(); ctx.arc(cx, cy, r * 1.02, 0, TAU); ctx.stroke();
+    drawPremiumBadge(ctx, cx + r * 0.62, cy - r * 0.78, r * 0.34, t);
+  }
   ctx.restore();
 }
 export function drawStrikeStage(ctx, id, x, y, w, h, t) {
-  const s = h * 0.82, u = (t % 1.6) / 1.6, hop = Math.max(0, Math.sin(u * TAU)) * h * 0.08, sq = u > 0.5 ? 0.25 * Math.exp(-(u - 0.5) * 18) : -0.1 * Math.sin(u * TAU);
+  if (!(w > 14 && h > 14)) return; // a card squeezed too small for art (many chicks on a short screen): no art, never a negative arc radius
+  if (STRIKE[id] && STRIKE[id].premium) stageBack(ctx, id, x, y, w, h, t);
+  // 2026-11-19 (mykee: "all the birds are bouncing at the same time"): each chick hops on its own beat and period
+  let hsh = 0; for (let i = 0; i < id.length; i++) hsh = (hsh * 31 + id.charCodeAt(i)) % 997;
+  const per = 1.35 + (hsh % 7) * 0.11, ph = (hsh % 13) / 13 * per;
+  const s = h * 0.82, u = ((t + ph) % per) / per, hop = Math.max(0, Math.sin(u * TAU)) * h * 0.08, sq = u > 0.5 ? 0.25 * Math.exp(-(u - 0.5) * 18) : -0.1 * Math.sin(u * TAU);
   contact(ctx, x + w / 2, y + h * 0.9, s * 0.3, s * 0.05, 0.3);
   const f = s * 0.6; drawStrikeChick(ctx, id, x + w / 2 - f * 0.05, y + h * 0.9 - f * 0.56 - hop, f, t, { squash: sq, wing: hop > 2 ? 0.9 : 0, mood: hop > 2 ? 'ready' : 'smug', trail: hop > 2 ? 0.5 : -sq, look: { x: 0.3, y: 0.2 } });
+}
+// behind a premium chick on its card: what its power looks like (a ring of fire, a ticking clock, bubbles rising)
+function stageBack(ctx, id, x, y, w, h, t) {
+  const cx = x + w / 2, cy = y + h * 0.56, R = Math.min(w, h) * 0.42;
+  ctx.save();
+  if (id === 'phoenix') {
+    for (let i = 0; i < 9; i++) { const a = (i / 9) * TAU + t * 0.6, f = 0.75 + 0.25 * Math.sin(t * 9 + i * 1.7); flameTongue(ctx, cx + Math.cos(a) * R * 0.8, cy + Math.sin(a) * R * 0.8, R * 0.42 * f, R * 0.11, a + Math.PI / 2, 'rgba(255,90,20,0.55)', 'rgba(255,200,60,0.6)', 'rgba(255,246,200,0.6)'); }
+    for (let i = 0; i < 6; i++) { const u = (t * 0.5 + i / 6) % 1; ctx.globalAlpha = Math.sin(u * Math.PI); ctx.fillStyle = i % 2 ? '#ffd23a' : '#ff7a1a'; ctx.beginPath(); ctx.arc(x + w * (0.15 + 0.7 * hash(i)), y + h * (1 - u), Math.max(1, h * 0.018), 0, TAU); ctx.fill(); }
+  } else if (id === 'tock') {
+    ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fillStyle = '#fff4d8'; ctx.fill(); ctx.lineWidth = Math.max(1.5, R * 0.06); ctx.strokeStyle = '#a8741e'; ctx.stroke();
+    ctx.strokeStyle = '#6a4a1a'; ctx.lineCap = 'round';
+    for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; ctx.lineWidth = Math.max(1, R * (i % 3 ? 0.025 : 0.05)); ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * R * 0.82, cy + Math.sin(a) * R * 0.82); ctx.lineTo(cx + Math.cos(a) * R * 0.94, cy + Math.sin(a) * R * 0.94); ctx.stroke(); }
+    const a = Math.floor(t) * (TAU / 60) * 5 - Math.PI / 2; ctx.strokeStyle = '#a8241a'; ctx.lineWidth = Math.max(1, R * 0.03); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * R * 0.85, cy + Math.sin(a) * R * 0.85); ctx.stroke();
+  } else if (id === 'bubble') {
+    for (let i = 0; i < 7; i++) { const u = (t * 0.3 + i / 7) % 1; bubbleBall(ctx, x + w * (0.1 + 0.8 * hash(i + 2)) + Math.sin(t * 2 + i) * w * 0.03, y + h * (1.05 - u * 1.1), h * (0.05 + 0.06 * hash(i + 9)), t, Math.sin(u * Math.PI)); }
+  }
+  ctx.restore();
 }
 export { STRIKES };

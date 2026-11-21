@@ -105,7 +105,8 @@ export const bayouMethods = {
   // the collider in the creature's frame (x along the floor, y up into the channel): the bottom follows the floor's curve
   byPoly(ch, len, h, nose) {
     const rf = this.byFloor(ch), sag = (d) => (d * d) / (2 * rf), H = len / 2;
-    return [[-H, sag(H) + 0.015], [-H * 0.4, sag(H * 0.4)], [H * 0.4, sag(H * 0.4)], [H, sag(H) + 0.015], [H, sag(H) + h * nose], [H * 0.45, sag(H * 0.45) + h], [-H * 0.45, sag(H * 0.45) + h], [-H, sag(H) + h * 0.45]];
+    // the back is a low ridge, never a flat shelf: an egg that lands on it rolls off one end instead of resting there
+    return [[-H, sag(H) + 0.015], [-H * 0.4, sag(H * 0.4)], [H * 0.4, sag(H * 0.4)], [H, sag(H) + 0.015], [H, sag(H) + h * nose], [H * 0.45, sag(H * 0.45) + h * 0.86], [0, h], [-H * 0.45, sag(H * 0.45) + h * 0.86], [-H, sag(H) + h * 0.45]];
   },
   // feet point (floor, middle of the body) and the frame: n = up into the channel, tx = along the floor (counter-clockwise)
   byFrame(C, rad) {
@@ -153,6 +154,27 @@ export const bayouMethods = {
     this.gators.forEach((G, i) => { this.gOne(G, dt, play); this.byDrive(this.gBody[i], G, dt); const F = this.byFrame(G); G.x = F.x; G.y = F.y; });
     this.turtles.forEach((T, i) => { this.tOne(T, dt, play); this.byDrive(this.tBody[i], T, dt); const F = this.byFrame(T); T.x = F.x; T.y = F.y; });
     for (const Q of this.mosqs) this.qOne(Q, dt, play);
+    if (play) { this.gators.forEach((G) => this.byShrug(G, this.gLen(G), Math.min(G.boss ? 0.55 : 0.42, GATOR.h * Math.sqrt(G.s) * (G.boss ? 1.1 : 1)), dt)); this.turtles.forEach((T) => this.byShrug(T, TURTLE.L, TURTLE.h, dt)); }
+  },
+  // an egg that comes to rest on a creature's back (where no ring can reach it) is shrugged off the nearer end after a
+  // moment, so it can never sit there for good (2026-11-15: eggs wedged on gator/turtle backs softlocked a level)
+  byShrug(C, len, h, dt) {
+    if (C.ph === 'hid' || C.ph === 'gone') { C.restE = 0; C.restT = 0; return; }
+    const F = this.byFrame(C);
+    let on = null;
+    for (const e of this.aliveEggs()) {
+      if (!this.byFree(e)) continue;
+      const p = e.body.getPosition(), dx = p.x - F.x, dy = p.y - F.y, al = dx * F.tx + dy * F.ty, up = dx * F.nx + dy * F.ny;
+      if (Math.abs(al) < len / 2 + 0.05 && up > h * 0.6 && up < h + 0.5 && e.body.getLinearVelocity().length() < 0.35) { on = { e, al }; break; }
+    }
+    if (!on) { C.restE = 0; C.restT = 0; return; }
+    if (C.restE !== on.e.id) { C.restE = on.e.id; C.restT = 0; }
+    C.restT = (C.restT || 0) + dt;
+    if (C.restT < 0.9) return;
+    C.restT = 0;
+    const b = on.e.body, m = b.getMass(), dir = Math.abs(on.al) > 0.05 ? Math.sign(on.al) : -(C.face || 1);
+    b.applyLinearImpulse(Vec2((F.tx * dir * 2.2 + F.nx * 1.1) * m, (F.ty * dir * 2.2 + F.ny * 1.1) * m), b.getPosition(), true);
+    this.emit('byShrug', { egg: on.e, x: b.getPosition().x, y: b.getPosition().y });
   },
   byTimers(C, dt) {
     if (C.zap > 0) C.zap = Math.max(0, C.zap - dt); else if (C.stn > 0) C.stn = Math.max(0, C.stn - dt);

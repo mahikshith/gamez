@@ -26,7 +26,9 @@ for (const id in INFO) {
   POWER_INFO[id] = { name, line, color };
   GLASS[id] = glass;
 }
-for (const C of COMBOS) POWER_INFO['combo_' + C.id] = { name: 'COMBO! ' + C.name, line: C.line, color: '#ffd23f' };
+// the pickup card says one short line (2026-11-20, owner: less text, the picture teaches); the album keeps C.line
+const COMBO_CARD = { shatter: 'Frozen creatures are knocked out.', sweep: 'The beam sweeps round: every thorn cut.', cannon: 'Tiny iron eggs smash through.', twister: 'Every creature sneezes out to the rim.', magnet: 'Iron eggs stick to the live ring.', bait: 'Creatures chase the decoy far away.', stink: 'Biters flee for far longer.' };
+for (const C of COMBOS) POWER_INFO['combo_' + C.id] = { name: 'COMBO! ' + C.name, line: COMBO_CARD[C.id] || C.line, color: '#ffd23f' };
 
 const OUT = '#1b1410';
 const hash = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -331,6 +333,269 @@ function solidLa(ring, la) {
   return false;
 }
 
+// ======================================================================== 2026-11-20 polish: Sweep beam and Pepper twister
+// (owner: "asset quality needs to be maintained ... those assets need to be properly animated"). Render only: what the
+// powers DO is unchanged (sim/powers2.js). Exported pieces are reused by the level card's toy stages (howto.js).
+const SEE_FONT = '"Fredoka", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif'; // ui.js FONT
+const BR = { base: '#d9a441', lo: '#a8712a', hi: '#ffe39a', dark: '#7a4c18', line: '#4a2a08' }; // brass
+const mixHex = (a, b, u) => { const p = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16); u = clamp01(u); return `rgb(${[0, 1, 2].map((i) => Math.round(p(a, i) + (p(b, i) - p(a, i)) * u)).join(',')})`; };
+
+// The laser beak: a brass muzzle on a riveted hub, cooling bands, a collar and a lens that glows up when it is about to
+// fire and goes white-hot while it fires. Pixel space, pointing +x, y down; s = muzzle length px. heat 0..1, rec 0..1.
+export function drawLaserBeak(ctx, s, heat, rec, t) {
+  const lw = Math.max(1.2, s * 0.045);
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  // the hub (it stays put; the muzzle kicks back on it)
+  ctx.beginPath(); ctx.arc(0, 0, s * 0.34, 0, TAU); ctx.fillStyle = BR.lo; ctx.fill();
+  ctx.beginPath(); ctx.arc(-s * 0.04, -s * 0.05, s * 0.27, 0, TAU); ctx.fillStyle = BR.base; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-s * 0.12, -s * 0.16, s * 0.1, s * 0.05, -0.5, 0, TAU); ctx.fillStyle = BR.hi; ctx.fill();
+  ctx.beginPath(); ctx.arc(0, 0, s * 0.34, 0, TAU); ctx.strokeStyle = BR.line; ctx.lineWidth = lw; ctx.stroke();
+  ctx.fillStyle = BR.dark;
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + 0.5; ctx.beginPath(); ctx.arc(Math.cos(a) * s * 0.25, Math.sin(a) * s * 0.25, s * 0.032, 0, TAU); ctx.fill(); }
+  ctx.translate(-clamp01(rec) * s * 0.2, 0);
+  // the muzzle: a beak-shaped brass barrel, lit from above
+  const barrel = () => { ctx.beginPath(); ctx.moveTo(s * 0.08, -s * 0.2); ctx.quadraticCurveTo(s * 0.5, -s * 0.2, s * 0.86, -s * 0.12); ctx.lineTo(s * 0.86, s * 0.12); ctx.quadraticCurveTo(s * 0.5, s * 0.2, s * 0.08, s * 0.2); ctx.closePath(); };
+  barrel(); ctx.fillStyle = BR.base; ctx.fill();
+  ctx.save(); barrel(); ctx.clip();
+  ctx.fillStyle = BR.lo; ctx.fillRect(0, s * 0.04, s, s * 0.3);
+  ctx.fillStyle = BR.hi; ctx.fillRect(s * 0.14, -s * 0.15, s * 0.66, s * 0.05);
+  if (heat > 0.05) { ctx.globalAlpha = 0.55 * heat; ctx.fillStyle = '#ff6a3a'; ctx.fillRect(s * 0.62, -s * 0.2, s * 0.26, s * 0.4); ctx.globalAlpha = 1; } // the barrel glows near the lens
+  ctx.restore();
+  barrel(); ctx.strokeStyle = BR.line; ctx.lineWidth = lw; ctx.stroke();
+  // cooling bands
+  for (const bx of [0.3, 0.45, 0.6]) {
+    const h = s * (0.2 - bx * 0.08) + s * 0.03;
+    ctx.beginPath(); ctx.rect(s * bx - s * 0.03, -h, s * 0.06, h * 2); ctx.fillStyle = BR.dark; ctx.fill(); ctx.lineWidth = lw * 0.7; ctx.stroke();
+  }
+  // the collar and the lens
+  ctx.beginPath(); ctx.rect(s * 0.84, -s * 0.17, s * 0.12, s * 0.34); ctx.fillStyle = BR.dark; ctx.fill(); ctx.lineWidth = lw; ctx.stroke();
+  ctx.fillStyle = BR.base; ctx.fillRect(s * 0.86, -s * 0.15, s * 0.08, s * 0.06);
+  const lx = s * 0.98, lr = s * 0.11;
+  if (heat > 0.02) { // the glow it throws: two soft discs, no gradient
+    ctx.globalAlpha = 0.28 * heat; ctx.fillStyle = '#ff5a3c'; ctx.beginPath(); ctx.arc(lx, 0, lr * (2.2 + 1.6 * heat), 0, TAU); ctx.fill();
+    ctx.globalAlpha = 0.45 * heat; ctx.fillStyle = '#ffb08a'; ctx.beginPath(); ctx.arc(lx, 0, lr * (1.4 + 0.6 * heat), 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.beginPath(); ctx.arc(lx, 0, lr, 0, TAU); ctx.fillStyle = mixHex('#5a1208', '#ff5a3c', heat * 1.4); ctx.fill();
+  ctx.beginPath(); ctx.arc(lx + lr * 0.12, 0, lr * 0.55, 0, TAU); ctx.fillStyle = mixHex('#8a2210', '#fff4ec', heat); ctx.fill();
+  ctx.beginPath(); ctx.arc(lx, 0, lr, 0, TAU); ctx.strokeStyle = BR.line; ctx.lineWidth = lw * 0.8; ctx.stroke();
+  ctx.beginPath(); ctx.arc(lx - lr * 0.35, -lr * 0.4, lr * 0.22, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
+  ctx.restore();
+}
+export const BEAK_M = 0.62; // m: the muzzle's length in the vault (an egg is 0.59 m tall)
+
+// sparks spraying where a beam meets something (world space at x, y; a = the beam's angle; n sparks; u = a seed clock)
+export function beamSparks(ctx, x, y, a, k, u, n = 5, size = 1) {
+  const R = rng(Math.floor(u * 40) + Math.floor((x + 9) * 31) + Math.floor((y + 9) * 17));
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (let i = 0; i < n; i++) {
+    const b = a + Math.PI + (R() - 0.5) * 2.2, l = (0.12 + 0.28 * R()) * size, o = 0.04 * R();
+    ctx.strokeStyle = i % 2 ? '#fff3b0' : '#ffb03a'; ctx.lineWidth = Math.max(0.02, (1.6 + R()) / k) * size;
+    ctx.beginPath(); ctx.moveTo(x + o * Math.cos(b), y + o * Math.sin(b)); ctx.lineTo(x + (o + l) * Math.cos(b), y + (o + l) * Math.sin(b)); ctx.stroke();
+  }
+  ctx.fillStyle = '#fff8e0'; ctx.beginPath(); ctx.arc(x, y, Math.max(0.035, 2.4 / k) * size, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+// a thorn the beam cut: a charred stub on the ring, its cut edge glowing, a wisp of smoke; u = 0..1 over its second
+export function scorchStub(ctx, x, y, ang, h, k, u) {
+  const a = 1 - clamp01((u - 0.6) / 0.4), glow = 1 - clamp01(u / 0.7);
+  ctx.save();
+  ctx.globalAlpha *= a;
+  ctx.translate(x, y); ctx.rotate(ang); // +x points along the thorn (out of the wall)
+  const w = 0.075, hh = h * 0.32;
+  ctx.beginPath(); ctx.moveTo(0, -w); ctx.lineTo(hh, -w * 0.55); ctx.lineTo(hh * 0.92, w * 0.5); ctx.lineTo(0, w); ctx.closePath();
+  ctx.fillStyle = '#2b1a12'; ctx.fill(); ctx.strokeStyle = 'rgba(20,10,6,0.9)'; ctx.lineWidth = Math.max(0.012, 1 / k); ctx.stroke();
+  if (glow > 0) { ctx.strokeStyle = `rgba(255,${120 + 100 * glow},50,${glow})`; ctx.lineWidth = Math.max(0.03, 2.2 / k); ctx.beginPath(); ctx.moveTo(hh, -w * 0.55); ctx.lineTo(hh * 0.92, w * 0.5); ctx.stroke(); }
+  for (let i = 0; i < 2; i++) { const q = (u * 1.4 + i * 0.45) % 1; ctx.globalAlpha = a * 0.45 * (1 - q); ctx.fillStyle = '#6b625c'; ctx.beginPath(); ctx.arc(hh + q * 0.45, (i ? 0.05 : -0.04) + Math.sin(q * 6 + i) * 0.04, 0.04 + q * 0.09, 0, TAU); ctx.fill(); }
+  ctx.restore();
+}
+
+// ---- pepper smoke: soft puffs (baked once into a small picture, three tints) with pepper specks that swirl
+const PUFF = { cv: null };
+function puffSprite() {
+  if (PUFF.cv !== null) return PUFF.cv;
+  PUFF.cv = false;
+  if (typeof document === 'undefined') return false;
+  try {
+    const n = 96, cv = document.createElement('canvas'); cv.width = n * 3; cv.height = n;
+    const q = cv.getContext('2d');
+    [['#c98a5e', '#a4643e', '#ecc29a'], ['#b97a52', '#8e5232', '#dcae86'], ['#d69a6c', '#ad6c44', '#f4d0ac']].forEach(([b, lo, hi], i) => {
+      const cx = n * i + n / 2, cy = n / 2, r = n * 0.4;
+      const blob = (x, y, rr) => { q.beginPath(); q.arc(x, y, rr, 0, TAU); };
+      q.save();
+      blob(cx, cy, r); q.fillStyle = b; q.fill();
+      q.save(); blob(cx, cy, r); q.clip();
+      blob(cx + r * 0.18, cy + r * 0.32, r * 0.82); q.fillStyle = lo; q.fill(); // the shaded underside
+      blob(cx - r * 0.06, cy - r * 0.04, r * 0.74); q.fillStyle = b; q.fill();
+      blob(cx - r * 0.3, cy - r * 0.34, r * 0.34); q.fillStyle = hi; q.fill(); // the lit top
+      q.restore();
+      blob(cx, cy, r); q.strokeStyle = 'rgba(74,30,12,0.55)'; q.lineWidth = 3; q.stroke(); // thin, dark-tinted outline
+      q.restore();
+    });
+    PUFF.cv = cv;
+  } catch (e) { PUFF.cv = false; }
+  return PUFF.cv;
+}
+function puff(ctx, x, y, r, tint, a) {
+  const cv = puffSprite();
+  if (a <= 0.01 || r <= 0) return;
+  ctx.globalAlpha = a;
+  if (cv) { ctx.save(); ctx.translate(x, y); ctx.scale(1, -1); ctx.drawImage(cv, (tint % 3) * 96, 0, 96, 96, -r * 1.25, -r * 1.25, r * 2.5, r * 2.5); ctx.restore(); }
+  else { ctx.fillStyle = '#c98a5e'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
+}
+function speck(ctx, x, y, s, rot, col) { ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, 0, s, s * 0.55, 0, 0, TAU); ctx.fill(); ctx.restore(); }
+// the cloud: world space, centre (x, y), radius r, f = how thick 0..1
+export function drawPepperCloud(ctx, x, y, r, f, k, t) {
+  if (f <= 0.01) return;
+  ctx.save();
+  const n = 11;
+  for (let i = 0; i < n; i++) { // back to front: the lower puffs last
+    const a = hash(i * 1.7) * TAU + t * 0.22 * (i % 2 ? 1 : -1), d = r * 0.58 * Math.sqrt(hash(i * 2.3 + 1)) * (0.7 + 0.3 * f);
+    const pr = r * (0.34 + 0.16 * hash(i * 3.1)) * (0.7 + 0.3 * f) * (1 + 0.05 * Math.sin(t * 2.2 + i));
+    puff(ctx, x + d * Math.cos(a), y + d * Math.sin(a) * 0.8 + r * 0.12 * (i / n - 0.5), pr, i, 0.93 * f);
+  }
+  ctx.globalAlpha = f;
+  const sz = Math.max(0.022, 1.7 / k);
+  for (let i = 0; i < 24; i++) { // pepper specks riding the smoke round
+    const a = hash(i * 5.3) * TAU + t * (0.7 + hash(i) * 0.9) * (i % 3 ? 1 : -1), d = r * (0.25 + 0.6 * hash(i * 7.7 + 2));
+    speck(ctx, x + d * Math.cos(a), y + d * Math.sin(a) * 0.82, sz * (0.8 + 0.6 * hash(i * 1.3)), a * 2 + t, i % 4 === 0 ? '#1b0a06' : '#7a1408');
+  }
+  ctx.fillStyle = '#ffd27a';
+  for (let i = 0; i < 4; i++) { const a = hash(i * 9.1) * TAU + t * 1.3, d = r * 0.5 * hash(i * 4.4 + 3), tw = Math.sin(t * 9 + i * 2); if (tw > 0.2) { star(ctx, x + d * Math.cos(a), y + d * Math.sin(a), sz * 1.6 * tw, 4, 0.35); ctx.fill(); } }
+  ctx.restore();
+}
+// the twister: the spin winds the smoke into a funnel that whirls, then flings it out. u 0..1 over TWIST_T s
+export const TWIST_T = 1.6;
+export function drawTwister(ctx, x, y, r, u, k, t) {
+  if (u >= 1) return;
+  const g = clamp01(u / 0.3), f = clamp01((u - 0.12) / 0.3), out = clamp01((u - 0.68) / 0.32), gE = g * g * (3 - 2 * g);
+  ctx.save();
+  // 1) the cloud is pulled in round and round
+  if (f < 1) {
+    for (let i = 0; i < 9; i++) {
+      const a = hash(i * 1.7) * TAU + t * (2 + 9 * gE), d = r * 0.6 * (1 - 0.7 * gE) * (0.5 + 0.5 * hash(i * 2.3 + 1));
+      puff(ctx, x + d * Math.cos(a), y + d * Math.sin(a) * 0.7, r * (0.36 + 0.12 * hash(i)) * (1 - 0.35 * gE), i, 0.92 * (1 - f));
+    }
+  }
+  // 2) the funnel: narrow at the floor, wide at the top, each layer whirling faster near the bottom
+  if (f > 0) {
+    const H = r * 1.35 * (0.6 + 0.4 * f), lift = out * r * 0.7, spread = 1 + out * 0.5, n = 9, bend = r * 0.22;
+    for (const front of [false, true]) {
+      for (let j = 0; j < n; j++) {
+        const h = j / (n - 1), yy = y - r * 0.3 + lift + H * h, rx = r * (0.07 + 0.42 * h * h + 0.06 * h) * spread, sz = r * (0.1 + 0.15 * h) * (1 - 0.3 * out);
+        const sway = Math.sin(t * 3.1 + j * 0.6) * bend * h + bend * h * h; // the funnel leans and snakes as it whirls
+        const m = 4 + Math.round(h * 4);
+        for (let q = 0; q < m; q++) {
+          const a = j * 0.9 + (q / m) * TAU + t * (12 - j * 0.8), sn = Math.sin(a);
+          if ((sn > 0) !== front) continue;
+          puff(ctx, x + sway + rx * Math.cos(a), yy + rx * 0.3 * sn, sz * (1 + 0.4 * out), j + q, (front ? 0.97 : 0.72) * f * (1 - out) * (1 - out));
+        }
+      }
+    }
+    // wind streaks and pepper whipped round the funnel
+    ctx.globalAlpha = 0.8 * f * (1 - out);
+    ctx.strokeStyle = 'rgba(255,248,236,0.9)'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.025, 2 / k);
+    for (let j = 0; j < 3; j++) { const h = 0.3 + 0.3 * j, yy = y - r * 0.3 + lift + H * h, rx = r * (0.07 + 0.42 * h * h + 0.06 * h) * spread + r * 0.12, a0 = t * (8 - j) + j * 2; ctx.save(); ctx.translate(x + bend * h * h, yy); ctx.scale(1, 0.3); ctx.beginPath(); ctx.arc(0, 0, rx * 1.15, a0, a0 + 1.6); ctx.stroke(); ctx.restore(); }
+    const sz = Math.max(0.022, 1.7 / k);
+    for (let i = 0; i < 26; i++) {
+      const j = i % n, h = j / (n - 1), yy = y - r * 0.3 + lift + H * h, rx = (r * (0.12 + 0.42 * h * h) * spread + r * 0.06) * (1 + out * 1.5), a = hash(i * 3.3) * TAU + t * (13 - j);
+      ctx.globalAlpha = f * (1 - out * 0.8);
+      speck(ctx, x + bend * h * h + rx * Math.cos(a), yy + rx * 0.3 * Math.sin(a), sz, a, i % 4 === 0 ? '#1b0a06' : '#7a1408');
+    }
+  }
+  ctx.restore();
+}
+// a creature's sneeze, at its head (x, y), blowing along dir: "ah..." with watery eyes, then "CHOO!", a jolt and a
+// spray of pepper. u 0..1 over SNEEZE_T s. sz = the creature's head size (m).
+export const SNEEZE_T = 1.3;
+export function drawSneeze(ctx, x, y, dir, u, k, t, sz = 0.5) {
+  if (u >= 1 || u < 0) return;
+  const ah = clamp01(u / 0.36), choo = clamp01((u - 0.36) / 0.64), fade = 1 - clamp01((u - 0.75) / 0.25);
+  ctx.save();
+  // watery eyes: two drops welling up and running off
+  if (u < 0.75) for (let i = 0; i < 2; i++) {
+    const q = (u * 2.2 + i * 0.5) % 1, dx = (i ? 1 : -1) * sz * 0.35, dy = sz * 0.25 - q * sz * 0.5, s = Math.max(0.045, 3.2 / k) * (0.6 + 0.6 * ah);
+    ctx.globalAlpha = (1 - q) * Math.min(1, ah * 2) * fade;
+    ctx.beginPath(); ctx.moveTo(x + dx, y + dy - s * 1.4); ctx.quadraticCurveTo(x + dx + s, y + dy, x + dx, y + dy + s * 0.6); ctx.quadraticCurveTo(x + dx - s, y + dy, x + dx, y + dy - s * 1.4);
+    ctx.fillStyle = '#9fdcff'; ctx.fill(); ctx.strokeStyle = '#1d5d8a'; ctx.lineWidth = Math.max(0.012, 1 / k); ctx.stroke();
+  }
+  // the spray: pepper and spit blown out along dir, and three jolt lines
+  if (choo > 0) {
+    const c = Math.cos(dir), s = Math.sin(dir);
+    ctx.globalAlpha = fade;
+    for (let i = 0; i < 12; i++) {
+      const b = dir + (hash(i * 2.1) - 0.5) * 1.1, d = sz * (0.3 + (0.6 + hash(i)) * 1.6 * Math.pow(choo, 0.6)), ps = Math.max(0.025, (1.6 + 1.6 * hash(i * 5)) / k);
+      ctx.fillStyle = i % 3 === 0 ? '#e0502a' : i % 3 === 1 ? '#ffb07a' : '#7a1408';
+      ctx.beginPath(); ctx.arc(x + d * Math.cos(b), y + d * Math.sin(b), ps * (1 - 0.4 * choo), 0, TAU); ctx.fill();
+    }
+    if (choo < 0.5) { ctx.strokeStyle = '#fff6e6'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.025, 2.2 / k); for (let i = -1; i <= 1; i++) { const b = dir + Math.PI + i * 0.5, r0 = sz * (0.55 + choo), r1 = r0 + sz * 0.35; ctx.globalAlpha = 1 - choo * 2; ctx.beginPath(); ctx.moveTo(x + r0 * Math.cos(b), y + r0 * Math.sin(b)); ctx.lineTo(x + r1 * Math.cos(b), y + r1 * Math.sin(b)); ctx.stroke(); } }
+    if (choo < 0.6) puff(ctx, x + c * sz * (0.5 + choo), y + s * sz * (0.5 + choo), sz * (0.25 + 0.4 * choo), 2, 0.8 * (1 - choo / 0.6));
+  }
+  // the words, in pixel space over the head
+  const word = (txt, px0, py0, size, fill, a, sc) => {
+    if (a <= 0.01) return;
+    ctx.save(); ctx.translate(px0, py0); ctx.scale(1 / k, -1 / k); ctx.scale(sc, sc);
+    ctx.globalAlpha = a; ctx.font = `700 ${Math.round(size)}px ${SEE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(3, size * 0.22); ctx.strokeStyle = '#4a1a08'; ctx.strokeText(txt, 0, 0); ctx.fillStyle = fill; ctx.fillText(txt, 0, 0);
+    ctx.restore();
+  };
+  const fs = Math.max(13, Math.min(22, k * 0.42));
+  word('ah...', x - sz * 0.1, y + sz * 0.75 + ah * sz * 0.25, fs * (0.8 + 0.25 * ah), '#ffe6c8', ah * (1 - choo * 2.5), 1 + 0.06 * Math.sin(t * 9));
+  if (choo > 0) word('CHOO!', x + Math.cos(dir) * sz * 0.4, y + sz * 0.95 + choo * sz * 0.3, fs * 1.35, '#ffb07a', fade, choo < 0.15 ? 0.6 + 0.4 * (choo / 0.15) * 1.25 : 1.05 - 0.05 * clamp01((choo - 0.15) / 0.2));
+  ctx.restore();
+}
+
+// ---- in-play state of the polish (render side only; keyed to the sim it belongs to)
+const POL = { sim: null, seen: new WeakSet(), stubs: [], tw: null };
+function polFor(sim) { if (POL.sim !== sim) { POL.sim = sim; POL.seen = new WeakSet(); POL.stubs.length = 0; POL.tw = null; } return POL; }
+// creatures a twister reaches: where each one's head is now (live), for its sneeze
+function sneezers(sim) {
+  const L = [];
+  for (const S of sim.snakes || []) if (!S.gone && S.pts && S.pts.length) L.push({ k: 's', o: S, sz: 0.45 * (S.size || 1) });
+  for (const C of sim.sals || []) if (C.pts && C.pts.length && (!sim.salLive || sim.salLive(C))) L.push({ k: 'c', o: C, sz: 0.5 * (C.size || 1) });
+  if (sim.eagle && !sim.eagle.end) L.push({ k: 'e', o: sim.eagle, sz: 0.8 });
+  for (const F of sim.frogs || []) L.push({ k: 'x', o: F, sz: 0.5 });
+  for (const G of sim.gators || []) if (G.ph !== 'hid' && G.ph !== 'gone' && G.ph !== 'beaten') L.push({ k: 'g', o: G, sz: 0.6 });
+  for (const T of sim.turtles || []) L.push({ k: 'x', o: T, sz: 0.5 });
+  for (const Q of sim.mosqs || []) L.push({ k: 'x', o: Q, sz: 0.45 });
+  return L;
+}
+function headOf(w) { const o = w.o; if (w.k === 's' || w.k === 'c') return o.pts[0] || null; return Number.isFinite(o.x) ? o : null; }
+
+// the live ring (shock): a blue glow along its solid wall and bolts crawling round it; a = strength 0..1. Also the level
+// card's Electromagnet stage (howto.js).
+export function drawLiveRing(ctx, ring, k, t, a, seed = 0) {
+  const A = ring.body.getAngle();
+    ctx.save();
+    ctx.globalAlpha = a * (0.55 + 0.2 * Math.sin(t * 17));
+    ctx.strokeStyle = 'rgba(110,200,255,1)';
+    ctx.lineWidth = RING_TH + 0.1;
+    const n = Math.ceil((TAU * ring.r) / 0.12);
+    ctx.beginPath();
+    let on = false;
+    for (let i = 0; i <= n; i++) {
+      const la = (i / n) * TAU, s = solidLa(ring, la), w = A + la;
+      if (s) { if (!on) ctx.moveTo(ring.r * Math.cos(w), ring.r * Math.sin(w)); else ctx.lineTo(ring.r * Math.cos(w), ring.r * Math.sin(w)); }
+      on = s;
+    }
+    ctx.stroke();
+    ctx.globalAlpha = a;
+    const R = rng(Math.floor(t * 20) + seed * 77);
+    ctx.lineJoin = 'round';
+    for (let j = 0; j < 7; j++) {
+      const la = R() * TAU, len = 0.35 + R() * 0.45;
+      if (!solidLa(ring, la) || !solidLa(ring, la + len / ring.r)) continue;
+      ctx.beginPath();
+      for (let q = 0; q <= 6; q++) { const b = A + la + (q / 6) * (len / ring.r), rr = ring.r + (R() - 0.5) * 0.2; q ? ctx.lineTo(rr * Math.cos(b), rr * Math.sin(b)) : ctx.moveTo(rr * Math.cos(b), rr * Math.sin(b)); }
+      boltStroke(ctx, Math.max(0.03, 1.5 / k), 1);
+    }
+    ctx.restore();
+}
+// the wooden decoy egg at world (x, y), h m tall (level card: Bait and switch)
+export function drawDecoyAt(ctx, x, y, h, k, t, rot = 0) { px(ctx, x, y, k, rot, () => paintDecoy(ctx, h * k, t, Math.max(1.6, k * 0.035), false)); }
+
 // Under the eggs: the live ring, scorched sponge, iron bars, frosted thorns, blacked-out doors and portals, the beak.
 export function drawP2Back(ctx, sim, k, t) {
   const P = sim.p2;
@@ -418,49 +683,36 @@ export function drawP2Back(ctx, sim, k, t) {
     ctx.restore();
   }
   // the live ring: lightning crawls round it
-  if (P.shock > 0 && P.shockR >= 0) {
-    const ring = sim.rings[P.shockR], A = ring.body.getAngle(), end = P.shock < 1.5 ? (Math.sin(t * 30) > 0 ? 1 : 0.35) : 1;
-    const a = Math.min(1, P.shock / 0.3, (P2.shock.t - P.shock) / 0.2) * end;
-    ctx.save();
-    ctx.globalAlpha = a * (0.55 + 0.2 * Math.sin(t * 17));
-    ctx.strokeStyle = 'rgba(110,200,255,1)';
-    ctx.lineWidth = RING_TH + 0.1;
-    const n = Math.ceil((TAU * ring.r) / 0.12);
-    ctx.beginPath();
-    let on = false;
-    for (let i = 0; i <= n; i++) {
-      const la = (i / n) * TAU, s = solidLa(ring, la), w = A + la;
-      if (s) { if (!on) ctx.moveTo(ring.r * Math.cos(w), ring.r * Math.sin(w)); else ctx.lineTo(ring.r * Math.cos(w), ring.r * Math.sin(w)); }
-      on = s;
-    }
-    ctx.stroke();
-    ctx.globalAlpha = a;
-    const R = rng(Math.floor(t * 20) + P.shockR * 77);
-    ctx.lineJoin = 'round';
-    for (let j = 0; j < 7; j++) {
-      const la = R() * TAU, len = 0.35 + R() * 0.45;
-      if (!solidLa(ring, la) || !solidLa(ring, la + len / ring.r)) continue;
-      ctx.beginPath();
-      for (let q = 0; q <= 6; q++) { const b = A + la + (q / 6) * (len / ring.r), rr = ring.r + (R() - 0.5) * 0.2; q ? ctx.lineTo(rr * Math.cos(b), rr * Math.sin(b)) : ctx.moveTo(rr * Math.cos(b), rr * Math.sin(b)); }
-      boltStroke(ctx, Math.max(0.03, 1.5 / k), 1);
-    }
-    ctx.restore();
-  }
-  // the laser beak in the middle of the vault, pointing where it last fired (pips: shots left)
+  if (P.shock > 0 && P.shockR >= 0) drawLiveRing(ctx, sim.rings[P.shockR], k, t, Math.min(1, P.shock / 0.3, (P2.shock.t - P.shock) / 0.2) * (P.shock < 1.5 ? (Math.sin(t * 30) > 0 ? 1 : 0.35) : 1), P.shockR);
+  // the laser beak in the middle of the vault, pointing where it last fired (pips: shots left). 2026-11-20: a brass
+  // muzzle (was a tiny yellow stub): the lens glows up while a shot is ready, kicks back and goes white-hot as it fires,
+  // and shudders through the sweep; where a beam cuts a thorn, sparks and a charred stub stay on the ring for a second.
   if (P.laser > 0 && (P.shots > 0 || P.sweep >= 0 || P.beams.length)) {
-    const s = Math.max(0.42, 15 / k) * k, ready = P.shots > 0 && P.sweep < 0;
+    const s = Math.max(BEAK_M * k, 24), ready = P.shots > 0 && P.sweep < 0;
+    let heat = ready ? 0.35 + 0.25 * Math.sin(t * 6) : 0.15, rec = 0;
+    for (const B of P.beams) { heat = Math.max(heat, 1 - B.t / 0.5); rec = Math.max(rec, 1 - B.t / 0.18); }
+    if (P.sweep >= 0) { heat = Math.max(heat, Math.min(1, 0.4 + P.sweep * 3) * (0.88 + 0.12 * Math.sin(t * 40))); rec = Math.max(rec, 0.35 + 0.15 * Math.sin(t * 55)); }
     px(ctx, 0, 0, k, P.aim, () => {
       ctx.save();
-      if (Math.cos(P.aim) < 0) ctx.scale(1, -1); // pointing left: keep the beak the right way up
-      if (ready) { const g = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 0.9); g.addColorStop(0, `rgba(255,90,60,${0.35 + 0.15 * Math.sin(t * 6)})`); g.addColorStop(1, 'rgba(255,90,60,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, s * 0.9, 0, TAU); ctx.fill(); }
-      beak(ctx, s, ready ? 0.5 + 0.5 * Math.sin(t * 8) : 1);
+      if (Math.cos(P.aim) < 0) ctx.scale(1, -1); // pointing left: keep the muzzle the right way up
+      drawLaserBeak(ctx, s, heat, rec, t);
       ctx.restore();
     });
     for (let i = 0; i < P.shots; i++) {
-      const a = P.aim + Math.PI + (i - (P.shots - 1) / 2) * 0.55, r = Math.max(0.3, 11 / k);
+      const a = P.aim + Math.PI + (i - (P.shots - 1) / 2) * 0.55, r = Math.max(0.42, (s * 0.5) / k);
       ctx.beginPath(); ctx.arc(r * Math.cos(a), r * Math.sin(a), Math.max(0.045, 2.6 / k), 0, TAU);
       ctx.fillStyle = '#ff5a3c'; ctx.fill(); ctx.strokeStyle = OUT; ctx.lineWidth = lw(1.2); ctx.stroke();
     }
+  }
+  // thorns the beam cut: a charred stub each, for a second
+  const PL = polFor(sim), cutting = P.laser > 0 || P.sweep >= 0 || P.beams.length > 0;
+  for (const ring of sim.rings) for (const th of ring.thorns) if (!th.alive && !PL.seen.has(th)) { PL.seen.add(th); if (cutting && PL.stubs.length < 24) PL.stubs.push({ ring, th, t0: sim.t }); }
+  for (let i = PL.stubs.length - 1; i >= 0; i--) {
+    const S = PL.stubs[i], u = (sim.t - S.t0) / 1.1;
+    if (u >= 1 || u < 0) { PL.stubs.splice(i, 1); continue; }
+    const th = S.th, w = S.ring.body.getAngle() + th.a, out = th.tip > th.base ? 0 : Math.PI, bx = th.base * Math.cos(w), by = th.base * Math.sin(w);
+    scorchStub(ctx, bx, by, w + out, Math.abs(th.tip - th.base), k, u);
+    if (u < 0.3) beamSparks(ctx, bx + (th.tip - th.base) * 0.3 * Math.cos(w), by + (th.tip - th.base) * 0.3 * Math.sin(w), P.aim, k, t, 6, 1.1 - u * 2);
   }
 }
 
@@ -611,9 +863,9 @@ export function drawP2Front(ctx, sim, k, t) {
     }
   }
   // laser beams (and the sweep)
-  const reach = sim.outerR + 3;
+  const reach = sim.outerR + 3, from = (Math.max(BEAK_M * k, 24) * 0.98) / k; // the beam leaves the beak's lens
   const beam = (a, f, w0) => {
-    const c = Math.cos(a), s = Math.sin(a), x0 = 0.3 * c, y0 = 0.3 * s, x1 = reach * c, y1 = reach * s;
+    const c = Math.cos(a), s = Math.sin(a), x0 = from * c, y0 = from * s, x1 = reach * c, y1 = reach * s;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.globalAlpha = f;
@@ -629,7 +881,10 @@ export function drawP2Front(ctx, sim, k, t) {
     for (let i = 1; i <= 8; i++) { ctx.globalAlpha = 0.28 * (1 - i / 9); ctx.fillStyle = '#ff6a4a'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, sim.outerR + 0.3, a - d * i * 0.07, a - d * (i - 1) * 0.07, d < 0); ctx.closePath(); ctx.fill(); }
     ctx.restore();
     beam(a, 1, P2.laser.w * 1.2);
+    // it cuts through every wall it crosses: sparks spray where the beam meets each ring
+    for (const ring of sim.rings) if (solidLa(ring, a - ring.body.getAngle())) beamSparks(ctx, ring.r * Math.cos(a), ring.r * Math.sin(a), a + (d > 0 ? -Math.PI / 2 : Math.PI / 2), k, t + ring.i, 4, 0.9);
   }
+  for (const B of P.beams) if (B.t < 0.2) for (const ring of sim.rings) if (solidLa(ring, B.a - ring.body.getAngle())) beamSparks(ctx, ring.r * Math.cos(B.a), ring.r * Math.sin(B.a), B.a, k, t + ring.i, 3, 0.8);
   // spin storm: wind streaks whip round the channels
   if (P.spin > 0) {
     const el = P.spinMax - P.spin, f = clamp01(Math.min(el / 0.3, P.spin / 0.4)), d = P.spinDir;
@@ -658,25 +913,19 @@ export function drawP2Front(ctx, sim, k, t) {
     for (let j = 0; j < 3; j++) { const y = top * (0.3 + 0.2 * j); zig(ctx, (R() - 0.5) * 0.6, y, (R() - 0.5) * 3, y - 1.2, 4, 0.2, R); boltStroke(ctx, Math.max(0.025, 1.2 / k), 1); }
     ctx.restore();
   }
-  // pepper cloud: thick enough to hide what is behind it
-  const C = P.cloud;
-  if (C) {
-    const f = clamp01(Math.min((C.max - C.t) / 0.25, C.t / 0.6));
-    ctx.save();
-    for (let i = 0; i < 14; i++) {
-      const a = hash(i * 1.7) * TAU + t * 0.25 * (i % 2 ? 1 : -1), d = C.r * 0.62 * Math.sqrt(hash(i * 2.3 + 1)), x = C.x + d * Math.cos(a), y = C.y + d * Math.sin(a), r = C.r * (0.38 + 0.2 * hash(i * 3.1)) * (0.75 + 0.25 * f);
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, `rgba(${i % 3 ? '168,96,62' : '196,128,86'},${0.95 * f})`);
-      g.addColorStop(0.65, `rgba(150,80,50,${0.85 * f})`);
-      g.addColorStop(1, 'rgba(150,80,50,0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  // pepper cloud: thick enough to hide what is behind it (layered puffs, pepper specks swirling in it)
+  const C = P.cloud, PL = polFor(sim);
+  if (C) drawPepperCloud(ctx, C.x, C.y, C.r, clamp01(Math.min((C.max - C.t) / 0.25, C.t / 0.6)), k, t);
+  // Pepper twister (pepper + spin): the smoke winds into a whirling funnel, then every creature sneezes (render only:
+  // the sim has already flung them out to the rim)
+  if (PL.tw) {
+    const W = PL.tw, el = sim.t - W.t0;
+    if (el < 0 || el > Math.max(TWIST_T, 0.25 + SNEEZE_T) + 0.1) PL.tw = null;
+    else {
+      drawTwister(ctx, W.x, W.y, W.r, el / TWIST_T, k, t);
+      const us = (el - 0.25) / SNEEZE_T;
+      if (us > 0 && us < 1) for (const w of W.who) { const h = headOf(w); if (h) drawSneeze(ctx, h.x, h.y, Math.atan2(h.y, h.x), us, k, t, w.sz); }
     }
-    ctx.fillStyle = `rgba(70,14,6,${0.85 * f})`;
-    for (let i = 0; i < 22; i++) {
-      const a = hash(i * 5.3) * TAU + t * (0.4 + hash(i) * 0.6), d = C.r * 0.8 * hash(i * 7.7 + 2);
-      ctx.beginPath(); ctx.arc(C.x + d * Math.cos(a), C.y + d * Math.sin(a), Math.max(0.02, 1.4 / k), 0, TAU); ctx.fill();
-    }
-    ctx.restore();
   }
   drawWarp(ctx, sim, k, t); // the Warp Gate's portals and the armed swirl
 }
@@ -728,6 +977,7 @@ export function p2Event(ev, fx, api) {
       }
       break;
     case 'p2Combo': {
+      if (ev.id === 'twister' && api.sim) { const PL = polFor(api.sim); PL.tw = { t0: api.sim.t, x: ev.x, y: ev.y, r: P2.pepper.r, who: sneezers(api.sim) }; }
       audio.play('combo', { intensity: 1 });
       audio.play('level_win', { vol: 0.4, pitch: 1.4 });
       fx.sparkle(ev.x, ev.y, 24, '#ffd23f');
