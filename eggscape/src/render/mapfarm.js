@@ -13,6 +13,7 @@
 //                  no state, no allocation in the loops, no gradients made per frame, no shadowBlur.
 // Reduced motion (calm): everything holds still.
 import { drawRooster, roosterPose, drawGoose, goosePose } from './allies.js';
+import { freeCanvas } from './cvfree.js';
 import { drawChick } from './characters.js';
 import { drawThief, thiefPose } from './thieves.js';
 
@@ -100,18 +101,25 @@ function roadEdge(L, y0, y1, s) { let e = s > 0 ? -Infinity : Infinity; for (let
 
 export function farmPlan(L) {
   if (L._farm) return L._farm;
-  const u = L.u, A = L.A, top = L.bandTop(0), lms = [], n = Math.min(5, L.stops.length);
+  const plan = planStops(L, 0, LMS);
+  plan.props = planProps(L, plan);
+  return (L._farm = plan);
+}
+// 0.8.10: the landmark planner is shared by every world painted as a place (mapcave.js uses it too): world w's five
+// stops, each landmark S (the LMS shape above) placed off the road beside its plaque, clear of the sign above.
+export function planStops(L, w, LMSw) {
+  const u = L.u, A = L.A, top = L.bandTop(w), lms = [], i0 = w * 5, n = Math.max(0, Math.min(5, L.stops.length - i0));
   // the plaques first (they only depend on the stops): on a post at the road side, beside the stop
   const plq = [];
   for (let i = 0; i < n; i++) {
-    const st = L.stops[i], s = LMS[i].pref, py = st.y + 54 * u, px = roadEdge(L, py - (PLQ.post + PLQ.h) * u, py, s) + s * (3 + PLQ.w / 2) * u;
+    const st = L.stops[i0 + i], s = LMSw[i].pref, py = st.y + 54 * u, px = roadEdge(L, py - (PLQ.post + PLQ.h) * u, py, s) + s * (3 + PLQ.w / 2) * u;
     plq.push({ x: px, y: py, board: { x: px - (PLQ.w / 2) * u, y: py - (PLQ.post + PLQ.h) * u, w: PLQ.w * u, h: PLQ.h * u } });
   }
-  const sign2 = L.nw > 1 ? signBox(L, 1) : null;
+  const sign2 = L.nw > w + 1 ? signBox(L, w + 1) : null;
   const hitsPlaque = (i, x0, x1, y0, y1) => plq.some((q, j) => j !== i && x0 < q.board.x + q.board.w && x1 > q.board.x && y0 < q.y && y1 > q.board.y);
   const hitsRoad = (x0, x1, y0, y1) => { for (let y = y0; y <= y1 + 0.1; y += 4) { const x = L.pathX(y); if (x + L.roadW * 0.5 > x0 && x - L.roadW * 0.5 < x1) return true; } return false; };
   for (let i = 0; i < n; i++) {
-    const S = LMS[i], st = L.stops[i];
+    const S = LMSw[i], st = L.stops[i0 + i];
     let best = null;
     for (const s of [S.pref, -S.pref]) {
       for (const [sc, ddy] of [[1, 0], [1, 14], [0.92, 14], [0.92, 28], [0.85, 30], [0.85, 44]]) {
@@ -124,7 +132,7 @@ export function farmPlan(L) {
           if (bx0 < A.x - sl || bx1 > A.x1 + sl) break;
           if (hitsRoad(bx0 - S.gap * d * 0.5, bx1 + S.gap * d * 0.5, y0, fy + 4 * u)) continue;
           if (hitsPlaque(i, bx0, bx1, fy - S.top * d, fy + 6 * d)) continue;
-          if (sign2 && bx0 < sign2.x1 && bx1 > sign2.x0 && fy - S.top * d * 0.86 < sign2.y1) continue; // World 2's sign stands just above the farm
+          if (sign2 && bx0 < sign2.x1 && bx1 > sign2.x0 && fy - S.top * d * 0.86 < sign2.y1) continue; // the next world's sign stands just above
           best = { x, y: fy, d, sc, side: s, flip: s !== S.pref };
         }
         if (best) break;
@@ -141,7 +149,7 @@ export function farmPlan(L) {
     // the plaque is part of the button when it touches the landmark; else the button is the landmark alone (the plaque is drawn)
     if (pb.x < tx1 + 30 * u && pb.x + pb.w > tx0 - 30 * u) { tx0 = Math.min(tx0, pb.x); tx1 = Math.max(tx1, pb.x + pb.w); ty0 = Math.min(ty0, pb.y); ty1 = Math.max(ty1, py + 2 * u); }
     tx0 = Math.max(tx0, A.x); tx1 = Math.min(tx1, A.x1);
-    lms.push({ i, kind: S.kind, x: best.x, y: best.y, d, side: s, flip: best.flip, plaque: { x: px, y: py, board: pb }, tap: { x0: tx0, y0: ty0, x1: tx1, y1: ty1 }, hen: { x: st.x - s * 6 * u, y: st.y, face: s } });
+    lms.push({ i, gi: i0 + i, S, kind: S.kind, x: best.x, y: best.y, d, side: s, flip: best.flip, plaque: { x: px, y: py, board: pb }, tap: { x0: tx0, y0: ty0, x1: tx1, y1: ty1 }, hen: { x: st.x - s * 6 * u, y: st.y, face: s } });
   }
   // touch boxes never overlap: the nearer (lower) landmark gives up the top of its box where the one above sits
   for (let i = 0; i < lms.length; i++) for (let j = i + 1; j < lms.length; j++) {
@@ -150,9 +158,7 @@ export function farmPlan(L) {
       if (a.y1 - (b.y1 + 3 * u) >= 72 * u) a.y0 = b.y1 + 3 * u; else b.y1 = Math.max(b.y0 + 72 * u, a.y0 - 3 * u);
     }
   }
-  const plan = { lms, top, u };
-  plan.props = planProps(L, plan);
-  return (L._farm = plan);
+  return { lms, top, u, w };
 }
 
 // the still props and the cast's homes. Positions are designed on a phone (420 units wide, the band ~670 tall) and
@@ -199,10 +205,11 @@ function planProps(L, plan) {
   }
   return out;
 }
-function signBox(L, w = 0) { const y = L.bandTop(w) + L.BH * 0.955, u = L.u, x = L.pathX(y), bw = 170 * u, s = x < L.cx ? 1 : -1, cx = clamp(x + s * (bw / 2 + L.roadW), L.A.x + bw / 2 + 6 * u, L.A.x1 - bw / 2 - 6 * u); return { x0: cx - bw / 2, x1: cx + bw / 2, y0: y - 40 * u, y1: y + 24 * u }; }
+export function signBox(L, w = 0) { const y = L.bandTop(w) + L.BH * 0.955, u = L.u, x = L.pathX(y), bw = 170 * u, s = x < L.cx ? 1 : -1, cx = clamp(x + s * (bw / 2 + L.roadW), L.A.x + bw / 2 + 6 * u, L.A.x1 - bw / 2 - 6 * u); return { x0: cx - bw / 2, x1: cx + bw / 2, y0: y - 40 * u, y1: y + 24 * u }; }
 // a landmark's painted box in map coordinates
-function lmArt(m) { const S = LMS[m.i], d = m.d, a = m.flip ? -S.x1 : S.x0, b = m.flip ? -S.x0 : S.x1; return { x0: m.x + a * d, x1: m.x + b * d, y0: m.y - S.top * d, y1: m.y + 8 * d }; }
+export function lmArt(m) { const S = m.S, d = m.d, a = m.flip ? -S.x1 : S.x0, b = m.flip ? -S.x0 : S.x1; return { x0: m.x + a * d, x1: m.x + b * d, y0: m.y - S.top * d, y1: m.y + 8 * d }; }
 export function farmStop(L, i) { const p = farmPlan(L); return p.lms[i] || null; }
+export { PLQ, roadEdge };
 
 // ------------------------------------------------------------------ the band, painted once
 // c: the band canvas context, already translated so that map y (L coordinates) is drawn at y - top + E
@@ -570,9 +577,16 @@ function fencePost(c) { // the rooster's post (taller, with a cap)
 
 // ------------------------------------------------------------------ landmark sprites
 const SPR = new Map();
-function landmarkSprite(m, DPR) {
-  const S = LMS[m.i], d = m.d, key = `${m.kind}|${d.toFixed(3)}|${DPR}|${m.flip ? 1 : 0}`;
-  let e = SPR.get(m.i);
+// 0.8.10: the landmark pictures of every world but `keepWorld` go back to the phone (called when a level starts: the
+// map is not on screen then; a landmark is repainted the next time its band is drawn)
+export function freeLandmarks(keepWorld = -1, per = 5) {
+  for (const [gi, e] of SPR) if (Math.floor(gi / per) !== keepWorld) { freeCanvas(e.cv); SPR.delete(gi); }
+}
+// a landmark's body painted once into its own canvas (keyed by the stop's map index), stamped every frame; paint(c, m)
+// draws it in design units with the foot at the origin (shared with the other places: mapcave.js)
+export function landmarkSprite(m, DPR, paint = (c, mm) => LM_PAINT[mm.kind](c)) {
+  const S = m.S, d = m.d, key = `${m.kind}|${d.toFixed(3)}|${DPR}|${m.flip ? 1 : 0}`;
+  let e = SPR.get(m.gi);
   if (e && e.key === key) return e;
   if (typeof document === 'undefined') return null;
   const pad = 30, x0 = (S.x0 - pad) * d, y0 = -(S.top + pad) * d, w = (S.x1 - S.x0 + 2 * pad) * d, h = (S.top + pad + 34) * d;
@@ -581,9 +595,9 @@ function landmarkSprite(m, DPR) {
   const c = cv.getContext('2d');
   c.setTransform(DPR, 0, 0, DPR, 0, 0); c.clearRect(0, 0, w, h);
   c.translate(-x0, -y0); c.scale(d, d); c.lineJoin = 'round'; c.lineCap = 'round';
-  try { LM_PAINT[m.kind](c); } catch (err) { /* art never breaks the map */ }
+  try { paint(c, m); } catch (err) { /* art never breaks the map */ }
   e = { key, cv, x0, y0, w, h };
-  SPR.set(m.i, e);
+  SPR.set(m.gi, e);
   return e;
 }
 
@@ -865,14 +879,22 @@ const LM_PAINT = { coop: paintCoop, hay: paintHay, pond: paintPond, mill: paintM
 // ------------------------------------------------------------------ landmarks on the map (called by main.js)
 // p: the press (0 rest .. 1 held), same squash as a button. glow: 0..1 the breathing golden glow of the next level.
 export function drawFarmLandmark(ctx, L, m, sy, t, calm, p, glow, DPR) {
-  const y = m.y - sy, d = m.d, S = LMS[m.i];
+  const y = drawLandmarkBody(ctx, m, sy, t, calm, p, glow, DPR);
+  if (y == null) return;
+  // live bits
+  if (m.kind === 'mill') { const d = m.d; ctx.save(); if (p && !calm) { ctx.translate(m.x, y); ctx.scale(1 + 0.035 * p, 1 - 0.045 * p); ctx.translate(-m.x, -y); } millSails(ctx, m.x + MILL_HUB[0] * d, y + MILL_HUB[1] * d, d, calm ? 0.35 : t * 0.7); ctx.restore(); }
+}
+// the shared part: the next level's glow pool, the stamped body (squashed by a press), the golden motes; returns the
+// foot's screen y (null when the sprite is not ready)
+export function drawLandmarkBody(ctx, m, sy, t, calm, p, glow, DPR, paint, glowCol = '#ffe27a', moteCol = '#fff1a8') {
+  const y = m.y - sy, d = m.d, S = m.S;
   const gcx = m.x + ((S.x0 + S.x1) / 2) * d * (m.flip ? -1 : 1), grx = (S.x1 - S.x0) * d * 0.7;
   if (glow > 0) { // layered ellipses make a soft pool of warm light (no gradient per frame)
-    ctx.save(); ctx.fillStyle = '#ffe27a';
+    ctx.save(); ctx.fillStyle = glowCol;
     for (let q = 0; q < 5; q++) { const k = 1 - q * 0.17; ctx.globalAlpha = glow * 0.26; ctx.beginPath(); ctx.ellipse(gcx, y + 2 * d, grx * k, grx * 0.36 * k, 0, 0, TAU); ctx.fill(); }
     ctx.restore();
   }
-  const e = landmarkSprite(m, DPR); if (!e) return;
+  const e = landmarkSprite(m, DPR, paint); if (!e) return null;
   ctx.save();
   if (p && !calm) { ctx.translate(m.x, y); ctx.scale(1 + 0.035 * p, 1 - 0.045 * p); ctx.translate(-m.x, -y); }
   const X = Math.round((m.x + (m.flip ? -e.x0 - e.w : e.x0)) * DPR) / DPR, Yy = Math.round((y + e.y0) * DPR) / DPR;
@@ -880,12 +902,11 @@ export function drawFarmLandmark(ctx, L, m, sy, t, calm, p, glow, DPR) {
   ctx.restore();
   // the next level: golden motes drift up around it
   if (glow > 0 && !calm) {
-    ctx.fillStyle = '#fff1a8';
+    ctx.fillStyle = moteCol;
     for (let q = 0; q < 7; q++) { const a = fract(t * 0.35 + q / 7), mx = gcx + Math.sin(q * 2.4) * grx * 0.85 + Math.sin(t * 1.5 + q) * 4 * d, my = y - 6 * d - a * 90 * d, r = (2.2 + (q % 3) * 0.8) * d; ctx.globalAlpha = Math.min(1, a * 4) * (1 - a) * 0.95; ctx.beginPath(); ctx.arc(mx, my, r, 0, TAU); ctx.fill(); }
     ctx.globalAlpha = 1;
   }
-  // live bits
-  if (m.kind === 'mill') { ctx.save(); if (p && !calm) { ctx.translate(m.x, y); ctx.scale(1 + 0.035 * p, 1 - 0.045 * p); ctx.translate(-m.x, -y); } millSails(ctx, m.x + MILL_HUB[0] * d, y + MILL_HUB[1] * d, d, calm ? 0.35 : t * 0.7); ctx.restore(); }
+  return y;
 }
 // the plaque board on its post (main.js puts the number, stars or padlock on it); returns where those go
 export function drawFarmPlaque(ctx, L, m, sy, p) {
@@ -1158,3 +1179,6 @@ function wheatSway(ctx, wh, sy, u, t, calm) {
     ctx.save(); ctx.translate(tx, ty); ctx.rotate(a); ctx.beginPath(); ctx.ellipse(0, -3 * s, 1.7 * s, 3.8 * s, 0, 0, TAU); ctx.fillStyle = i % 3 ? '#efc055' : '#f8dc8a'; ctx.fill(); ctx.restore();
   }
 }
+
+// 0.8.10: the Farm as the first entry of the places registry (mapscene.js PLACES)
+export const PLACE = { landmarks: LMS, paintBand: paintFarmBand, drawLive: drawFarmLive, drawFront: drawFarmFront, stop: farmStop, drawLandmark: drawFarmLandmark, drawPlaque: drawFarmPlaque };

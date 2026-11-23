@@ -16,8 +16,14 @@ import { drawSnake } from './snake.js';
 import { drawHenAnim } from './hen.js';
 import { drawEggFriend } from './title.js';
 import { drawCrawler } from './crawlers.js';
-import { paintFarmBand, drawFarmLive } from './mapfarm.js'; // 0.8.7: World 1 is one painted farm with landmark stops
+import { PLACE as FARM_PLACE, freeLandmarks } from './mapfarm.js'; // 0.8.7: World 1 is one painted farm with landmark stops
+import { PLACE as CAVE_PLACE } from './mapcave.js'; // 0.8.10: World 4, the Crystal Caves, the same way
 export * as FARM from './mapfarm.js';
+// 0.8.10: the worlds painted as one place, by world index. Each entry: { landmarks (the LMS shapes), paintBand(c, L, E),
+// drawLive(ctx, L, sy, t, calm, vt, vb), drawFront?(...), stop(L, i) (i: 0..4 within the world), drawLandmark(ctx, L, m,
+// sy, t, calm, press, glow, DPR), drawPlaque(ctx, L, m, sy, press) }. main.js draws their stops as landmarks; a world
+// not listed keeps the round stops, the generic band and the walking cast. The next world plugs in here.
+export const PLACES = { 0: FARM_PLACE, 3: CAVE_PLACE };
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -268,7 +274,7 @@ function bandLayout(L, w) {
     for (const sc of [1, 0.84, 0.7, 0.58]) {
       const s = e[4] * u * sc, h = s * (TALL[k] || 0.9), half = s * (WIDE[k] || 0.45);
       for (const dy of [0, -0.05, 0.05, -0.1, 0.1, -0.15]) {
-        const fy = clamp(e[1] + dy, 0.08, 0.99);
+        const fy = clamp(e[1] + dy, 0.08, 0.9); // 0.8.10: nothing stands on the seam (the world below rises over the last tenth)
         const p0 = L.place(w, fy, null, e[3], h, half);
         for (const p of [p0, L.place(w, fy, p0.side > 0 ? 'L' : 'R', e[3], h, half)]) {
           if (!p.fit) continue;
@@ -327,9 +333,24 @@ function drawStill(c, L, w, e, i) {
 // ------------------------------------------------------------------ static band cache
 const cache = new Map(); // key -> { canvas, key }
 const EDGE = 60; // hill crest overhang above the band (x u)
+const HEAD = 46; // 0.8.10: headroom over the crest for the join's edge (hedges, snow-capped rocks, a rock lip) (x u)
+// where band w's crest (the wavy top of its ground, which overlaps the band above) is at x, in map y
+const CREST = [];
+function crestFn(L, w) {
+  let f = CREST[w];
+  if (!f || f.W !== L.W || f.E !== EDGE * L.u) { const R = rng(w * 31 + 5), ph = R() * TAU, ph2 = R() * TAU, W = L.W, E = EDGE * L.u; f = CREST[w] = (x) => E * 0.5 + Math.sin((x / W) * TAU * 1.3 + ph) * E * 0.28 + Math.sin((x / W) * TAU * 3.1 + ph2) * E * 0.12; f.W = W; f.E = E; }
+  return f;
+}
+export function crestY(L, w, x) { return L.bandTop(w) - EDGE * L.u + crestFn(L, w)(x); }
+// the map y where the road crosses band w's crest (the join between world w and world w + 1)
+export function seamY(L, w) { let y = L.bandTop(w); for (let k = 0; k < 8; k++) y = crestY(L, w, L.pathX(y)); return y; }
 
 function paintBand(c, L, w) {
-  if (w === 0) { paintFarmBand(c, L, EDGE * L.u); return; } // The Farm: its own painter (render/mapfarm.js)
+  if (PLACES[w]) { PLACES[w].paintBand(c, L, EDGE * L.u); try { paintJoin(c, L, w); } catch (_) {} return; } // a place: its own painter (mapfarm.js, mapcave.js)
+  paintGeneric(c, L, w);
+  try { paintJoin(c, L, w); } catch (_) { /* the edge never breaks the map */ }
+}
+function paintGeneric(c, L, w) {
   const u = L.u, BH = L.BH, W = L.W, E = EDGE * u, look = WORLD_LOOK[w] || WORLD_LOOK[0];
   // the band: a wavy hill line on top, then the ground gradient
   const R = rng(w * 31 + 5), ph = R() * TAU, ph2 = R() * TAU;
@@ -363,14 +384,84 @@ function paintBand(c, L, w) {
   c.restore();
 }
 
+// ------------------------------------------------------------------ the joins between worlds (0.8.10)
+// The world below rises into the world above along its crest; a ruler-straight colour change read as a seam. Each pair
+// gets an edge of its own along that crest, painted once with the lower band: a hedge, frost and snow, snow-capped
+// rocks at the cave, a basalt lip, a stone wall, a sandy shore, a reedy bank, a metal kerb. The road (stroked over
+// everything) keeps a clear gap; the world sign that stands on the crest keeps clear posts.
+const JOIN = ['hedge', 'frost', 'snowrock', 'lip', 'basalt', 'wall', 'shore', 'reeds', 'kerb'];
+function paintJoin(c, L, w) {
+  if (w >= L.nw - 1 || !JOIN[w]) return;
+  const u = L.u, E = EDGE * u, top = L.bandTop(w), W = L.W, kind = JOIN[w], R = rng(w * 53 + 9);
+  const sg = MS_SIGN(L, w + 1), gap = L.roadW * 0.5 + 10 * u;
+  const onRoad = (x0, x1, y) => { const rx = L.pathX(y); return x1 > rx - gap && x0 < rx + gap; };
+  const onSign = (x0, x1) => x1 > sg.x0 - 2 * u && x0 < sg.x1 + 2 * u;
+  c.save(); c.translate(0, E - top); c.lineJoin = 'round'; c.lineCap = 'round';
+  const cy = (x) => crestY(L, w, x);
+  // along the crest: a soft band of the upper world's colour where the two grounds meet, cut at the road
+  const up = WORLD_LOOK[w + 1], lo = WORLD_LOOK[w];
+  for (let x = -20; x < W + 20; x += 6 * u) {
+    const y = cy(x); if (onRoad(x - 3 * u, x + 3 * u, y)) continue;
+    c.beginPath(); c.ellipse(x, y + 2 * u, 7 * u, 3.4 * u, 0, 0, TAU); c.fillStyle = withA(up.ground[1], 0.16); c.fill();
+  }
+  const items = [];
+  for (let x = -14 * u; x < W + 14 * u;) {
+    const s = (17 + R() * 19) * u, y = cy(x) + (3 + R() * 4) * u, low = R() < 0.3;
+    if (!onRoad(x - s * 0.7, x + s * 0.7, y) && !(onSign(x - s * 0.7, x + s * 0.7) && !low)) items.push([x, y, low ? s * 0.6 : s, R()]);
+    x += s * (0.75 + R() * 0.7);
+  }
+  for (const [x, y, s, r] of items) joinItem(c, kind, x, y, s, r, u, lo, up);
+  c.restore();
+}
+function joinItem(c, kind, x, y, s, r, u, lo, up) {
+  const sh = (rx, a = 0.25) => { c.beginPath(); c.ellipse(x + s * 0.12, y + s * 0.06, rx, s * 0.14, 0, 0, TAU); c.fillStyle = `rgba(20,14,30,${a})`; c.fill(); };
+  const boulder = (base, hi, ink, cap) => { // a faceted rock lit from the upper left, an optional cap (snow) on top
+    sh(s * 0.62);
+    const pts = [x - s * 0.6, y, x - s * 0.52, y - s * 0.42, x - s * 0.18, y - s * (0.72 + r * 0.2), x + s * 0.3, y - s * 0.62, x + s * 0.58, y - s * 0.2, x + s * 0.55, y];
+    c.beginPath(); c.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); c.closePath();
+    c.fillStyle = base; c.fill(); c.strokeStyle = ink; c.lineWidth = Math.max(1, s * 0.05); c.stroke();
+    c.beginPath(); c.moveTo(x - s * 0.52, y - s * 0.42); c.lineTo(x - s * 0.18, y - s * (0.72 + r * 0.2)); c.lineTo(x + s * 0.3, y - s * 0.62); c.lineTo(x + s * 0.02, y - s * 0.3); c.lineTo(x - s * 0.36, y - s * 0.2); c.closePath(); c.fillStyle = hi; c.fill();
+    c.beginPath(); c.moveTo(x + s * 0.3, y - s * 0.62); c.lineTo(x + s * 0.58, y - s * 0.2); c.lineTo(x + s * 0.55, y); c.lineTo(x + s * 0.1, y); c.lineTo(x + s * 0.02, y - s * 0.3); c.closePath(); c.fillStyle = 'rgba(10,6,24,0.28)'; c.fill();
+    if (cap) { c.beginPath(); c.moveTo(x - s * 0.56, y - s * 0.36); c.quadraticCurveTo(x - s * 0.4, y - s * 0.6, x - s * 0.18, y - s * (0.78 + r * 0.2)); c.quadraticCurveTo(x + s * 0.1, y - s * 0.74, x + s * 0.34, y - s * 0.64); c.quadraticCurveTo(x + s * 0.5, y - s * 0.42, x + s * 0.4, y - s * 0.4); c.quadraticCurveTo(x + s * 0.2, y - s * 0.5, x + s * 0.06, y - s * 0.4); c.quadraticCurveTo(x - s * 0.2, y - s * 0.5, x - s * 0.56, y - s * 0.36); c.fillStyle = cap; c.fill(); c.strokeStyle = 'rgba(120,160,200,0.6)'; c.lineWidth = Math.max(0.8, s * 0.03); c.stroke(); }
+  };
+  const clump = (dark, mid, hi, ink) => { // a leafy clump: lobes with a lit top-left
+    sh(s * 0.6, 0.2);
+    const L3 = [[-0.32, -0.3, 0.32], [0.3, -0.3, 0.3], [0, -0.52, 0.36], [-0.12, -0.2, 0.3], [0.16, -0.16, 0.28]];
+    c.beginPath(); for (const [dx, dy, rr] of L3) { c.moveTo(x + dx * s + rr * s + 1, y + dy * s); c.arc(x + dx * s, y + dy * s, rr * s + 1, 0, TAU); } c.fillStyle = ink; c.fill();
+    c.beginPath(); for (const [dx, dy, rr] of L3) { c.moveTo(x + dx * s + rr * s, y + dy * s); c.arc(x + dx * s, y + dy * s, rr * s, 0, TAU); } c.fillStyle = mid; c.fill();
+    c.beginPath(); c.arc(x + 0.22 * s, y - 0.12 * s, 0.3 * s, 0, TAU); c.fillStyle = dark; c.fill();
+    c.beginPath(); c.arc(x - 0.16 * s, y - 0.6 * s, 0.16 * s, 0, TAU); c.arc(x - 0.36 * s, y - 0.38 * s, 0.1 * s, 0, TAU); c.fillStyle = hi; c.fill();
+  };
+  const drift = (col, shade) => { c.beginPath(); c.ellipse(x, y - s * 0.06, s * 0.7, s * 0.24, 0, Math.PI, TAU); c.closePath(); c.fillStyle = col; c.fill(); c.beginPath(); c.ellipse(x + s * 0.1, y - s * 0.02, s * 0.6, s * 0.1, 0, 0, Math.PI); c.fillStyle = shade; c.fill(); };
+  const reed = (n, col, hi) => { for (let k = 0; k < n; k++) { const bx = x + (k - n / 2) * s * 0.12, h = s * (0.8 + ((k * 37 + r * 100) % 7) / 10), a = ((k % 3) - 1) * 0.18; c.strokeStyle = k % 2 ? col : hi; c.lineWidth = Math.max(1, s * 0.06); c.beginPath(); c.moveTo(bx, y); c.quadraticCurveTo(bx + a * h * 0.3, y - h * 0.6, bx + a * h, y - h); c.stroke(); if (k % 3 === 0) { c.beginPath(); c.ellipse(bx + a * h * 0.8, y - h * 0.8, s * 0.06, s * 0.16, a, 0, TAU); c.fillStyle = '#7a4a26'; c.fill(); } } };
+  switch (kind) {
+    case 'hedge': if (r < 0.2) { sh(s * 0.4, 0.2); c.fillStyle = '#7a4e2a'; c.fillRect(x - s * 0.06, y - s * 0.6, s * 0.12, s * 0.6); const y2 = y - s * 0.55; c.save(); c.translate(0, -s * 0.5); clump('#3f7f2e', '#5aa03e', '#9ad466', '#2f5a22'); c.restore(); void y2; } else clump('#3f7f2e', '#5aa03e', '#8fcf5a', '#2f5a22'); break;
+    case 'frost': if (r < 0.45) drift('#f4fbff', 'rgba(150,190,220,0.6)'); else { clump('#2f6a34', '#3f8a40', '#6ab057', '#1f4a24'); c.beginPath(); c.ellipse(x - s * 0.1, y - s * 0.66, s * 0.3, s * 0.1, -0.2, 0, TAU); c.ellipse(x + s * 0.22, y - s * 0.46, s * 0.18, s * 0.07, 0.2, 0, TAU); c.fillStyle = '#f6fbff'; c.fill(); } break;
+    case 'snowrock': if (r < 0.3) drift('#f4fbff', 'rgba(140,170,215,0.6)'); else boulder('#4a3d78', '#6c5aa8', '#2a2050', '#f6fbff'); break;
+    case 'lip': boulder('#3a2a3a', '#5a4258', '#1c1220', null); if (r > 0.4) { c.strokeStyle = 'rgba(255,140,50,0.8)'; c.lineWidth = Math.max(1, s * 0.05); c.beginPath(); c.moveTo(x - s * 0.2, y - s * 0.1); c.lineTo(x - s * 0.05, y - s * 0.35); c.lineTo(x + s * 0.12, y - s * 0.42); c.stroke(); } c.strokeStyle = 'rgba(255,150,70,0.55)'; c.lineWidth = Math.max(1, s * 0.05); c.beginPath(); c.moveTo(x - s * 0.5, y - s * 0.44); c.lineTo(x - s * 0.18, y - s * (0.72 + r * 0.2)); c.lineTo(x + s * 0.3, y - s * 0.62); c.stroke(); break;
+    case 'basalt': boulder(r < 0.5 ? '#5a6578' : '#4a3a36', r < 0.5 ? '#8c98aa' : '#6a524a', '#2a2e3a', null); break;
+    case 'wall': { // a low wall of dressed blocks, broken here and there
+      if (r < 0.18) { boulder('#8a7456', '#b09a74', '#4a3a22', null); break; }
+      const bw = s * 1.1, bh = s * 0.5; sh(bw * 0.55, 0.2);
+      for (let k = 0; k < 2; k++) { const yy = y - k * bh, xx = x - bw / 2 + (k ? bw * 0.25 : 0), ww = k ? bw * 0.6 : bw; if (k && r < 0.5) break; c.fillStyle = '#9c855f'; c.fillRect(xx, yy - bh, ww, bh); c.fillStyle = '#c2ab80'; c.fillRect(xx, yy - bh, ww, bh * 0.22); c.fillStyle = 'rgba(40,28,14,0.25)'; c.fillRect(xx + ww * 0.82, yy - bh, ww * 0.18, bh); c.strokeStyle = '#5a4528'; c.lineWidth = Math.max(1, s * 0.05); c.strokeRect(xx, yy - bh, ww, bh); }
+      break;
+    }
+    case 'shore': if (r < 0.5) { drift('#ead39c', 'rgba(150,110,60,0.35)'); c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = Math.max(1, s * 0.07); c.beginPath(); c.moveTo(x - s * 0.6, y - s * 0.3); c.quadraticCurveTo(x - s * 0.3, y - s * 0.4, x, y - s * 0.3); c.quadraticCurveTo(x + s * 0.3, y - s * 0.2, x + s * 0.6, y - s * 0.32); c.stroke(); } else { drift('#e2c88e', 'rgba(150,110,60,0.35)'); c.beginPath(); c.ellipse(x, y - s * 0.12, s * 0.16, s * 0.1, -0.4, 0, TAU); c.fillStyle = '#ffb6a0'; c.fill(); c.strokeStyle = '#c0705a'; c.lineWidth = 1; c.stroke(); } break;
+    case 'reeds': drift('#6a5a3a', 'rgba(30,30,10,0.35)'); reed(5, '#4a7a32', '#6a9a44'); break;
+    case 'kerb': { if (r < 0.35) { reed(4, '#4a6a32', '#6a8a44'); break; } const bw = s * 1.2, bh = s * 0.34; sh(bw * 0.5, 0.2); c.fillStyle = '#6a7a98'; c.fillRect(x - bw / 2, y - bh, bw, bh); c.fillStyle = '#9aaac4'; c.fillRect(x - bw / 2, y - bh, bw, bh * 0.3); c.strokeStyle = '#2a3448'; c.lineWidth = Math.max(1, s * 0.05); c.strokeRect(x - bw / 2, y - bh, bw, bh); for (const k of [-0.35, 0.35]) { c.beginPath(); c.arc(x + k * bw, y - bh * 0.5, s * 0.05, 0, TAU); c.fillStyle = '#c8d2e4'; c.fill(); } break; }
+    default: break;
+  }
+}
+
 function bandCanvas(L, w, DPR) {
-  const W = L.W, h = L.BH + EDGE * L.u, key = `${W}x${L.BH}x${L.u.toFixed(3)}x${DPR}x${L.A.x}x${L.A.w}`;
+  const W = L.W, h = L.BH + (EDGE + HEAD) * L.u, key = `${W}x${L.BH}x${L.u.toFixed(3)}x${DPR}x${L.A.x}x${L.A.w}`;
   const hit = cache.get(w);
   if (hit && hit.key === key) { cache.delete(w); cache.set(w, hit); return hit.canvas; } // LRU touch
   if (typeof document === 'undefined') return null;
   const cv = (hit && hit.canvas) || document.createElement('canvas');
   cv.width = Math.ceil(W * DPR); cv.height = Math.ceil(h * DPR);
   const c = cv.getContext('2d'); c.setTransform(DPR, 0, 0, DPR, 0, 0); c.clearRect(0, 0, W, h);
+  c.translate(0, HEAD * L.u); // the painters draw with y 0 at the crest's overhang; the headroom sits above it
   paintBand(c, L, w);
   cache.delete(w); cache.set(w, { canvas: cv, key });
   while (cache.size > 4) { const k0 = cache.keys().next().value; freeCanvas(cache.get(k0).canvas); cache.delete(k0); } // keep the few bands around the view (0.8.10: one that leaves gives its picture back at once)
@@ -384,10 +475,10 @@ export function drawLand(ctx, L, sy, vt, vb, DPR) {
   const skyB = L.TOP + EDGE * u - sy;
   if (skyB > vt) { const g = ctx.createLinearGradient(0, -sy, 0, skyB); g.addColorStop(0, '#20305a'); g.addColorStop(1, '#5a7ab0'); ctx.fillStyle = g; ctx.fillRect(0, vt, W, Math.min(vb, skyB) - vt + 1); }
   for (let w = L.nw - 1; w >= 0; w--) {
-    const top = L.bandTop(w) - EDGE * u - sy, bot = L.bandTop(w) + L.BH - sy;
+    const top = L.bandTop(w) - (EDGE + HEAD) * u - sy, bot = L.bandTop(w) + L.BH - sy;
     if (bot < vt - 4 || top > vb + 4) continue;
     const cv = bandCanvas(L, w, DPR);
-    if (cv) ctx.drawImage(cv, 0, top, W, L.BH + EDGE * u);
+    if (cv) ctx.drawImage(cv, 0, top, W, L.BH + (EDGE + HEAD) * u);
   }
   // under World 1: the farm's soil
   const b0 = L.bandTop(0) + L.BH - sy;
@@ -395,32 +486,72 @@ export function drawLand(ctx, L, sy, vt, vb, DPR) {
 }
 
 // ------------------------------------------------------------------ the road
+// 0.8.10 (mykee: "between the two worlds there is no proper connection ... a stutter in the pathway"): the road is ONE
+// path from the summit down to the Farm, stroked in map space with gradients built once per layout, so its centre
+// line, width and edges run on through every join; each world's colours hold inside the world and blend into the next
+// over about a road width, centred where the world below's ground edge crosses the road. World 1's dirt road is painted
+// with its land (mapfarm.js): the stroked road takes on the farm's dirt there and fades into it just under the crest.
+const FARM_ROAD = ['#d8b07a', '#b3874f', 'rgba(255,255,255,0)'];
+function roadKit(L, ctx) {
+  if (L._road) return L._road;
+  const u = L.u, H = L.H, B = L.roadW * 0.6, yEnd = L.TOP * 0.62, yStart = L.stops[0].y + L.BH * 0.12;
+  const seams = []; for (let w = 0; w < L.nw - 1; w++) seams[w] = seamY(L, w); // seams[w]: between world w and w + 1
+  const cols = (w, k) => (w === 0 ? FARM_ROAD : WORLD_LOOK[w].road)[k];
+  const mk = (colOf) => { // one colour per world, blended across each join; on the farm side it fades into the painted road
+    const g = ctx.createLinearGradient(0, 0, 0, H), stop = (y, c) => g.addColorStop(clamp(y / H, 0, 1), c);
+    for (let w = L.nw - 1; w >= 0; w--) {
+      const y0 = w === L.nw - 1 ? 0 : seams[w] + B, y1 = w === 0 ? H : seams[w - 1] - B;
+      if (w === 0) { stop(y0, colOf(0)); stop(Math.min(H, y0 + 2.2 * L.roadW), withA(colOf(0), 0)); stop(H, withA(colOf(0), 0)); } else { stop(y0, colOf(w)); stop(y1, colOf(w)); }
+    }
+    return g;
+  };
+  // the arc length along the road from the summit, every 6 px of map y: the dashes stay put while the map scrolls
+  const arc = []; let acc = 0, px = L.pathX(yEnd); for (let y = yEnd, i = 0; y <= yStart + 6; y += 6, i++) { const x = L.pathX(y); acc += i ? Math.hypot(x - px, 6) : 0; arc.push(acc); px = x; }
+  L._road = {
+    yEnd, yStart, seams, arc, farmY: seams[0] + B + 2.2 * L.roadW,
+    shade: mk(() => 'rgba(20,10,0,0.22)'), edge: mk((w) => cols(w, 1)), fill: mk((w) => cols(w, 0)), dash: mk((w) => cols(w, 2)),
+  };
+  // the walked stretch: solid gold over the stroked worlds, the farm's softer gold trail over its dirt
+  const gg = ctx.createLinearGradient(0, 0, 0, H), gs = (y, c) => gg.addColorStop(clamp(y / H, 0, 1), c);
+  gs(0, '#f6c454'); gs(seams[0] - B, '#f6c454'); gs(seams[0] + B, 'rgba(255,206,84,0.6)'); gs(H, 'rgba(255,206,84,0.6)');
+  const gh = ctx.createLinearGradient(0, 0, 0, H), hs = (y, c) => gh.addColorStop(clamp(y / H, 0, 1), c);
+  hs(0, 'rgba(255,244,190,0.3)'); hs(seams[0] - B, 'rgba(255,244,190,0.3)'); hs(seams[0] + B, 'rgba(255,244,190,0.55)'); hs(H, 'rgba(255,244,190,0.55)');
+  L._road.gold = gg; L._road.goldHi = gh;
+  return L._road;
+}
+// a colour (#hex or rgba()) with its alpha set to a
+function withA(c, a) {
+  if (c[0] === '#') { const n = parseInt(c.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+  const m = c.match(/rgba?\(([^)]*)\)/); if (!m) return c; const p = m[1].split(',').map((v) => v.trim()); return `rgba(${p[0]},${p[1]},${p[2]},${(p[3] != null ? +p[3] : 1) * a})`;
+}
 export function drawRoad(ctx, L, sy, vt, vb, doneTo) {
-  const u = L.u, y0 = Math.max(0, vt + sy - 40 * u), y1 = Math.min(L.H, vb + sy + 40 * u);
-  const yEnd = L.TOP * 0.62, yStart = L.stops[0].y + L.BH * 0.12;
-  const seg = (a, b) => { ctx.beginPath(); let first = true; for (let y = Math.max(a, yEnd); y <= Math.min(b, yStart) + 0.1; y += 6) { const x = L.pathX(y); if (first) { ctx.moveTo(x, y - sy); first = false; } else ctx.lineTo(x, y - sy); } };
-  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  // per world, so each world's road wears its own colours
-  for (let w = 1; w < L.nw; w++) { // World 1's dirt road is painted with its land (mapfarm.js), up to the farm's hill crest
-    const a = Math.max(y0, L.bandTop(w) - 2), b = Math.min(y1, L.bandTop(w) + L.BH + (w === 1 ? -EDGE * u * 0.5 : 2));
-    if (a >= b) continue;
-    const R = WORLD_LOOK[w].road;
-    seg(a, b); ctx.strokeStyle = 'rgba(20,10,0,0.25)'; ctx.lineWidth = L.roadW + 8 * u; ctx.stroke();
-    seg(a, b); ctx.strokeStyle = R[1]; ctx.lineWidth = L.roadW + 5 * u; ctx.stroke();
-    seg(a, b); ctx.strokeStyle = R[0]; ctx.lineWidth = L.roadW; ctx.stroke();
-  }
-  // the stretch already walked shines gold
-  if (doneTo != null && doneTo < yStart) {
-    const a = Math.max(y0, doneTo), b = Math.min(y1, yStart), f0 = L.bandTop(0);
-    if (a < Math.min(b, f0)) { seg(a, Math.min(b, f0)); ctx.strokeStyle = '#f6c454'; ctx.lineWidth = L.roadW * 0.62; ctx.stroke(); }
-    if (Math.max(a, f0) < b) { seg(Math.max(a, f0), b); ctx.strokeStyle = 'rgba(255,206,84,0.6)'; ctx.lineWidth = L.roadW * 0.56; ctx.stroke(); ctx.strokeStyle = 'rgba(255,244,190,0.55)'; ctx.lineWidth = L.roadW * 0.18; ctx.stroke(); } // The Farm: a warm golden trail over the dirt
-  }
-  for (let w = 1; w < L.nw; w++) {
-    const a = Math.max(y0, L.bandTop(w)), b = Math.min(y1, L.bandTop(w) + L.BH);
-    if (a >= b) continue;
-    ctx.setLineDash([6 * u, 9 * u]); seg(a, b); ctx.strokeStyle = WORLD_LOOK[w].road[2]; ctx.lineWidth = 3 * u; ctx.stroke(); ctx.setLineDash([]);
-  }
+  const u = L.u, K = roadKit(L, ctx), rw = L.roadW;
+  const y0 = Math.max(K.yEnd, vt + sy - 40 * u), y1 = Math.min(K.yStart, K.farmY, vb + sy + 40 * u);
+  if (y0 >= y1) { if (doneTo != null) gold(); return; }
+  const i0 = Math.max(0, Math.floor((y0 - K.yEnd) / 6)), i1 = Math.ceil((y1 - K.yEnd) / 6);
+  const path = (a, b) => { ctx.beginPath(); for (let i = a; i <= b; i++) { const y = Math.min(K.yEnd + i * 6, K.yStart); const x = L.pathX(y); if (i === a) ctx.moveTo(x, y); else ctx.lineTo(x, y); } };
+  ctx.save(); ctx.translate(0, -sy); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  path(i0, i1);
+  ctx.strokeStyle = K.shade; ctx.lineWidth = rw + 8 * u; ctx.stroke();
+  ctx.strokeStyle = K.edge; ctx.lineWidth = rw + 3 * u; ctx.stroke();
+  ctx.strokeStyle = K.fill; ctx.lineWidth = rw - 2 * u; ctx.stroke();
   ctx.restore();
+  gold();
+  ctx.save(); ctx.translate(0, -sy); ctx.lineCap = 'butt';
+  path(i0, Math.min(i1, Math.ceil((K.seams[0] - K.yEnd) / 6)));
+  ctx.setLineDash([6 * u, 9 * u]); ctx.lineDashOffset = K.arc[i0] || 0; ctx.strokeStyle = K.dash; ctx.lineWidth = 3 * u; ctx.stroke(); ctx.setLineDash([]);
+  ctx.restore();
+  // the stretch already walked shines gold (over the farm's painted road too)
+  function gold() {
+    if (doneTo == null || doneTo >= K.yStart) return;
+    const a = Math.max(vt + sy - 40 * u, doneTo, K.yEnd), b = Math.min(vb + sy + 40 * u, K.yStart);
+    if (a >= b) return;
+    ctx.save(); ctx.translate(0, -sy); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); for (let y = a, f = 1; ; y += 6) { const yy = Math.min(y, b); const x = L.pathX(yy); if (f) { ctx.moveTo(x, yy); f = 0; } else ctx.lineTo(x, yy); if (yy >= b) break; }
+    ctx.strokeStyle = K.gold; ctx.lineWidth = rw * 0.6; ctx.stroke();
+    ctx.strokeStyle = K.goldHi; ctx.lineWidth = rw * 0.18; ctx.stroke();
+    ctx.restore();
+  }
 }
 
 // ------------------------------------------------------------------ the live layer: the cast and moving bits
@@ -580,7 +711,7 @@ export function drawCast(ctx, L, sy, vt, vb, t, calm, DPR = 1) {
 }
 function castBand(ctx, L, w, sy, t, calm, vt = -Infinity, vb = Infinity) {
   L.sy = sy;
-  if (w === 0) { try { drawFarmLive(ctx, L, sy, t, calm, vt, vb); } catch (_) {} return; } // The Farm's routines (mapfarm.js)
+  if (PLACES[w]) { try { PLACES[w].drawLive(ctx, L, sy, t, calm, vt, vb); } catch (_) {} return; } // a place's own routines (mapfarm.js, mapcave.js)
   const S = STILL[w] || [], C = CAST[w] || [];
   const G = calm ? null : ambBand(L, w, sy, t);
   if (G) drawMapAmb(ctx, 'back', w, G);
@@ -591,6 +722,13 @@ function castBand(ctx, L, w, sy, t, calm, vt = -Infinity, vb = Infinity) {
   S.forEach((e, i) => { if (B && off(B.still[i], e[0])) return; try { drawStillLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
   C.forEach((e, i) => { if (B && off(B.cast[i], e[0])) return; try { drawLive(ctx, L, w, e, i, t, calm); } catch (_) {} });
   if (G) drawMapAmb(ctx, 'front', w, G);
+}
+// 0.8.10: a level is starting, the map is off screen: every band picture but the played world's, every creature
+// layer and every other world's landmarks go back to the phone (up to ~80 MB on a sharp screen were held through play)
+export function mapRelease(keepWorld = -1) {
+  for (const [w, e] of cache) if (w !== keepWorld) { freeCanvas(e.canvas); cache.delete(w); }
+  for (const [w, e] of CASTC) { freeCanvas(e.cv); CASTC.delete(w); }
+  freeLandmarks(keepWorld, PER);
 }
 // 2026-11-19 Low graphics: a band's creatures are painted onto their own canvas 12 times a second (bands take turns)
 // and that picture is stamped every frame, so scrolling stays smooth while the cast still moves
