@@ -5546,7 +5546,7 @@ function drawLevelIntro(L, acc) {
   // that beats each villain (or, with no villain, of the basic move), one short line under it, the goal and the stars,
   // and PLAY right inside the card. Several villains take turns (tap the stage for the next one).
   const howPlans = () => {
-    const toys = G.li >= 0 ? { 2: ['flame'], 3: ['twin', 'curtain'], 4: ['portal', 'glow'], 22: ['warp'], 27: ['warp'], 43: ['bait'], 44: ['sweep', 'twister'], 47: ['magnet'] }[L.id] || [] : []; // the first-five ladder: each level's new toy, first (2026-11-20: and the Practice content placed in L22-L47)
+    const toys = G.li >= 0 ? { 2: ['flame'], 3: ['twin', 'curtain'], 4: ['portal', 'glow'], 18: ['bulk'], 22: ['warp'], 27: ['warp'], 43: ['bait'], 44: ['sweep', 'twister'], 47: ['magnet'] }[L.id] || [] : []; // the first-five ladder: each level's new toy, first (2026-11-20: and the Practice content placed in L22-L47)
     const P0 = [...toys.map((id) => toyPlan(id, L.salamander ? 'salamander' : L.eagle ? 'eagle' : 'snake')), ...(kinds.length ? kinds.map((k) => howToPlan(k)) : toys.length ? [] : [HOWTO_BASIC])];
     if (kinds.some((k) => k === 'weasel' || k === 'rats' || k === 'boss:weasel') && G.sim && G.sim.ally && G.sim.ally.avail.includes('rooster') && !(G.li >= 0 && G.li < 4 && L.id < 5)) P0.push(HOWTO_ROOSTER); // Papa Rooster from L5 (the first-five ladder)
     return P0;

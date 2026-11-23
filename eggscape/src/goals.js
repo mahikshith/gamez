@@ -28,7 +28,7 @@ export function levelGoals(L, fuse = 1, campaign = true) {
     return [k(t), ...[t + 1, n].filter((m, i, a) => m <= n && a.indexOf(m) === i).map(k), clean].slice(0, 3);
   }
   if (campaign && id >= 4 && world < 1 && t < n) { const g3 = bonusGoal(L, fuse); if (g3) return [home, all, g3]; }
-  if (!campaign || id < 1 || world < 1) return [home, t === n ? clean : all, t === n ? (bonusGoal(L, fuse) || clean) : clean];
+  if (!campaign || id < 1 || world < 1) return [home, t === n ? clean : all, t === n ? (bonusGoal(L, fuse) || all) : clean]; // t === n with no bonus: 'Lose none' is its own star where a twin orb makes an extra egg (L3)
   const g3 = bonusGoal(L, fuse) || clean;
   let g2 = t === n ? clean : world >= 6 ? perfect : slot % 2 ? clean : all;
   if (g2.kind === g3.kind) g2 = all;

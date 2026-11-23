@@ -421,7 +421,7 @@ function puffSprite() {
   try {
     const n = 96, cv = document.createElement('canvas'); cv.width = n * 3; cv.height = n;
     const q = cv.getContext('2d');
-    [['#c98a5e', '#a4643e', '#ecc29a'], ['#b97a52', '#8e5232', '#dcae86'], ['#d69a6c', '#ad6c44', '#f4d0ac']].forEach(([b, lo, hi], i) => {
+    [['#e4553a', '#b93524', '#ff9a7c'], ['#d84a31', '#a82c1d', '#f78c6e'], ['#ee6846', '#c2412a', '#ffae90']] /* 2026-11-23 (mykee: "the brown kind of paper thing... simply a red cloud"): pepper is red */.forEach(([b, lo, hi], i) => {
       const cx = n * i + n / 2, cy = n / 2, r = n * 0.4;
       const blob = (x, y, rr) => { q.beginPath(); q.arc(x, y, rr, 0, TAU); };
       q.save();

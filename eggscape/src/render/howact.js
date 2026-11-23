@@ -77,8 +77,8 @@ function snakeTrack(S, Wh) {
   return { pt, total, ext, wall, tip, sd };
 }
 const SBODY = [];
-function snake(ctx, S) {
-  const { T, t, m, k } = S, r = 0.074 * k, Wh = r * 1.9 * 1.16, TR = snakeTrack(S, Wh), H = hitOf(S); // three quarters of its size in a vault: the stage is a close-up of one gap
+function snake(ctx, S, O = {}) {
+  const { T, t, m, k } = S, r = 0.074 * k * (O.size || 1), Wh = r * 1.9 * 1.16, TR = snakeTrack(S, Wh), H = hitOf(S); // three quarters of its size in a vault: the stage is a close-up of one gap
   const walk = ease(seg(T, 0.2, 1.3));
   let sH = TR.total * (0.12 + 0.88 * walk), expr = walk < 1 ? 'hunt' : 'snarl', mouth = 0, frozen = 0, flash = 0, droop = 0, stars = 0, tt = t, bonk = 0, threat = T < TB, glue = 0;
   if (m === 'turn') {
@@ -105,7 +105,7 @@ function snake(ctx, S) {
     } else { expr = 'shock'; } // the phoenix carries the egg off: it can only stare
   } else if (walk >= 1) { threat = true; } // poised under the gap, tongue out
   // the body: it follows its own track, so every bend passes through the same places (a real slither, no sliding)
-  const Ls = 2.5 * k, step = Math.max(5, Wh * 0.22), wl = TAU / (Wh * 5.2), amp = Wh * 0.42;
+  const Ls = 2.5 * k * (O.size || 1), step = Math.max(5, Wh * 0.22), wl = TAU / (Wh * 5.2), amp = Wh * 0.42;
   let n = 0;
   for (let d = 0; d <= Ls; d += step) {
     const s = sH - d, q = TR.pt(s), taper = Math.min(1, d / (Wh * 2.2)) * (1 - 0.5 * droop), w = Math.sin(s * wl) * amp * taper;
@@ -116,7 +116,7 @@ function snake(ctx, S) {
   const head = SBODY[0];
   if (glue > 0) puddle(ctx, head.x, head.y + Wh * 0.9, Wh * 2.4, glue);
   if (H.k === 'blast') boom(ctx, TR.tip.x, TR.tip.y, Wh * 3, H.age);
-  drawSnake(ctx, SBODY, r, tt, { skin: 'violet', thick: 1.16, head: 5.4, wave: 0, expr, mouthOpen: mouth, frozen, flash, droop, stars, look: { x: -TR.sd * 0.5, y: -0.7 } });
+  drawSnake(ctx, SBODY, r, tt, { skin: O.skin || 'violet', thick: 1.16, head: 5.4, wave: 0, expr, mouthOpen: mouth, frozen, flash, droop, stars, look: { x: -TR.sd * 0.5, y: -0.7 } });
   return { threat, bonk, x: TR.wall.x + TR.sd * Wh * 0.6, y: TR.wall.y - S.band - Wh * 2.6, own: true };
 }
 
@@ -226,16 +226,26 @@ function crawler(species) {
   };
 }
 
+// Serpent Hollow (2026-11-23, mykee: "a congested head and body"): the boss is two snakes, so two snakes act it, each
+// whole and on its own side: the big slow one comes up under the gap, the small fast one from the other side.
+function twoSnakes(ctx, S) {
+  snake(ctx, { ...S, g0: -S.g0 * 1.25, T: Math.max(0, S.T - 0.12) }, { size: 0.72, skin: 'emerald' });
+  return snake(ctx, S, { size: 1.12 });
+}
+
 export const ACTORS = {
-  snake: { draw: snake, stage: () => ({ g0: 0.42, dTh: -0.42, hand: [-0.14, -0.56] }), aim: (S) => S.at(S.g0, -(S.band / 2 + 0.3 * S.k)) },
-  weasel: { draw: weasel, stage: () => ({ g0: 0.36, dTh: -0.36, hand: [-0.14, -0.5] }), aim: (S) => ({ x: S.at(S.g0, 0).x, y: S.ground - 0.3 * S.k }) },
+  // pan: the camera steps to the villain's side (a share of the stage's width), so it is whole in the picture
+  snake: { draw: snake, stage: () => ({ g0: 0.42, dTh: -0.42, hand: [-0.14, -0.56], pan: -0.1 }), aim: (S) => S.at(S.g0, -(S.band / 2 + 0.3 * S.k)) },
+  'boss:snake': { draw: twoSnakes, stage: () => ({ g0: 0.42, dTh: -0.42, hand: [-0.14, -0.56] }), aim: (S) => S.at(S.g0, -(S.band / 2 + 0.3 * S.k)) },
+  weasel: { draw: weasel, stage: () => ({ g0: 0.36, dTh: -0.36, hand: [-0.14, -0.5], pan: -0.16 }), aim: (S) => ({ x: S.at(S.g0, 0).x, y: S.ground - 0.3 * S.k }) },
   rats: { draw: rats, stage: (m) => ({ g0: RAT_ROLL - 0.42, dTh: 0.42, hand: [0.16, 0.58], egg: (T) => RAT_ROLL * ease(seg(T, 0.3, m === 'turn' ? 2.25 : 2.1)) }), aim: (S) => S.at(RAT_ROLL + 0.3, 0.25 * S.k) },
   salamander: { draw: crawler('salamander'), aim: (S) => S.at(-0.3, 0.15 * S.k) },
   chameleon: { draw: crawler('chameleon'), aim: (S) => S.at(-0.3, 0.15 * S.k) },
   spike: { draw: crawler('thornback'), aim: (S) => S.at(-0.3, 0.15 * S.k) },
 };
 // the moves an actor plays; any other plan keeps the portrait
-const PLAYS = { snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'] };
+ACTORS['boss:weasel'] = ACTORS.weasel; // the Weasel Raid's boss is the weasel himself: his whole body, not a head on the ring
+const PLAYS = { 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'] };
 export function actorFor(plan) {
   const k = plan && plan.kind;
   return k && ACTORS[k] && PLAYS[k].includes(plan.move) ? ACTORS[k] : null;

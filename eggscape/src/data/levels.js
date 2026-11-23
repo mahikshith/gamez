@@ -14,32 +14,32 @@ export const LEVELS = [
     ],
   },
   {
-    id: 2, theme: "hayfield", name: "Haystacks", eggs: 3, target: 2, time: 90, spacing: 1.1, material: "wood", nest: {w: 3.3, reach: 1.0}, tip: "Roll an egg into the red flame, then into the thorns.", orbs: [{type: "fire_red", ch: 1, a: 134}], seed: 15843, world: 1, intro: {title: "Red flame", line: "Red thorns break eggs. An egg that rolls through the red flame burns every thorn it touches."},
+    id: 2, theme: "hayfield", name: "Haystacks", eggs: 3, target: 2, time: 50, spacing: 1.1, material: "wood", nest: {w: 3.1, reach: 0.7}, tip: "Roll an egg into the red flame, then into the thorns.", orbs: [{type: "fire_red", ch: 1, a: 134}], seed: 15843, world: 1, intro: {title: "Red flame", line: "Red thorns break eggs. An egg that rolls through the red flame burns every thorn it touches."},
     rings: [
       {gaps: [{a: -5, len: 0.95}], pads: [{a: -106, len: 1.65}]},
-      {gaps: [{a: -149, len: 0.9}], thorns: [{a: 159, n: 3}], pads: [{a: -92, len: 1.41},{a: 30, len: 1.19}]},
-      {gaps: [{a: 175, len: 0.9},{a: 11, len: 0.9}], thorns: [{a: 125, n: 2}], pads: [{a: -85, len: 1.22},{a: -154, len: 1.61}]},
+      {gaps: [{a: -149, len: 0.9}], thorns: [{a: 159, n: 3},{a: -180, n: 2}], pads: [{a: -92, len: 1.41},{a: 30, len: 1.19}]},
+      {gaps: [{a: 175, len: 0.9},{a: 11, len: 0.9}], thorns: [{a: 125, n: 2},{a: 42, n: 2}], pads: [{a: -85, len: 1.22},{a: -154, len: 1.61}]},
     ],
   },
   {
-    id: 3, theme: "pond", name: "Duck Pond", eggs: 3, target: 2, time: 100, spacing: 1.1, material: "wood", nest: {w: 3, reach: 1.0}, softCurtain: true, tip: "Burn the curtain: roll an egg into the red flame, then onto the thorns.", portals: [{a: [0,1.75], b: [0,1.75], emit: ["fire_red"], every: 6, pull: 0}], orbs: [{type: "twin", ch: 1, a: -90},{type: "fire_red", ch: 1, a: -15}], seed: 23760, world: 1, intro: {title: "Twin orb", line: "The twin orb splits an egg in two: more eggs home! Then burn the thorn curtain with the red flame."},
+    id: 3, theme: "pond", name: "Duck Pond", eggs: 3, target: 3, time: 60, spacing: 1.1, material: "wood", nest: {w: 2.9, reach: 0.7}, softCurtain: true, tip: "Burn the curtain: roll an egg into the red flame, then onto the thorns.", portals: [{a: [0,1.75], b: [0,1.75], emit: ["fire_red"], every: 6, pull: 0}], orbs: [{type: "twin", ch: 1, a: -90},{type: "fire_red", ch: 1, a: -15}], seed: 23760, world: 1, intro: {title: "Twin orb", line: "The twin orb splits an egg in two: more eggs home! Then burn the thorn curtain with the red flame."},
     rings: [
       {gaps: [{a: 152, len: 0.95}], pads: [{a: -27, len: 1.82}]},
       {gaps: [{a: -143, len: 0.95, curtain: 1}], pads: [{a: -88, len: 1.54},{a: -46, len: 1.01}]},
-      {gaps: [{a: 12, x: 2},{a: 158}], thorns: [{a: 56, n: 1}], pads: [{a: -95, len: 1.42},{a: -154, len: 1.62}]},
+      {gaps: [{a: 12, x: 2},{a: 158}], thorns: [{a: 44, n: 2},{a: 128, n: 2}], pads: [{a: -95, len: 1.42},{a: -154, len: 1.62}]},
     ],
   },
   {
-    id: 4, theme: "windmill", name: "Windmill", eggs: 3, target: 2, time: 95, spacing: 1.05, material: "wood", nest: {w: 3, reach: 0.8}, bonus: {kind: "time", s: 30}, tip: "Tap your glow chick next to thorns. The swirl drops an egg two rings lower.", portals: [{a: [-1.47,-0.85], b: [3.29,-1.9]}], orbs: [{type: "hatch_glow", ch: 1, a: 21}], seed: 31708, world: 1, intro: {title: "Glow chick", chick: "glow", line: "The yellow orb hatches a glow chick. Tap it once: a flash burns every thorn near it."},
+    id: 4, theme: "windmill", name: "Windmill", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "wood", nest: {w: 2.8, reach: 0.5}, bonus: {kind: "time", s: 30}, tip: "Tap your glow chick next to thorns. The swirl drops an egg two rings lower.", portals: [{a: [-1.47,-0.85], b: [3.29,-1.9]}], orbs: [{type: "hatch_glow", ch: 1, a: 21}], seed: 31708, world: 1, intro: {title: "Glow chick", chick: "glow", line: "The yellow orb hatches a glow chick. Tap it once: a flash burns every thorn near it."},
     rings: [
       {gaps: [{a: 81, len: 0.9}], pads: [{a: -44, len: 1.87}]},
-      {gaps: [{a: 25}], thorns: [{a: 132, n: 3}], pads: [{a: -85, len: 1.46},{a: -39, len: 1.05}]},
+      {gaps: [{a: 25}], thorns: [{a: 132, n: 3},{a: 57, n: 2}], pads: [{a: -85, len: 1.46},{a: -39, len: 1.05}]},
       {gaps: [{a: 114}], thorns: [{a: 14, n: 2},{a: -81, n: 2, side: "out", h: 0.26}], pads: [{a: -82, len: 1.39},{a: 52, len: 1.78}]},
       {gaps: [{a: -18, x: 3, len: 0.7},{a: 171}], thorns: [{a: 111, n: 2}], pads: [{a: -98, len: 1.16},{a: 67, len: 1.15}]},
     ],
   },
   {
-    id: 5, theme: "redbarn", name: "Big Red Barn", eggs: 3, target: 2, time: 115, spacing: 1.05, material: "wood", boss: "weasel", bossFight: {kind: "weasel", delay: 3, den: {a: 30, hp: 3}, throws: ["thorn"], phases: [{attacks: ["pop"], every: 7},{at: {saved: 1, t: 40}, attacks: ["throw","pop"], every: 8},{at: {saved: 2, t: 75}, attacks: ["throw","pop"], every: 7}]}, nest: {w: 3, reach: 0.8}, bonus: {kind: "prize"}, tip: "Papa Rooster chases thieves off. The green flame mends cracks.", orbs: [{type: "hatch_glow", ch: 1, a: 26},{type: "fire_red", ch: 2, a: -14},{type: "fire_green", ch: 3, a: 49}], seed: 39600, world: 1, intro: {title: "Boss: Weasel Raid", line: "When the weasel crouches under a gap, turn that ring away: BONK! Then drop an egg on him."},
+    id: 5, theme: "redbarn", name: "Big Red Barn", eggs: 3, target: 2, time: 80, spacing: 1.05, material: "wood", boss: "weasel", bossFight: {kind: "weasel", delay: 3, den: {a: 30, hp: 3}, throws: ["thorn"], phases: [{attacks: ["pop"], every: 6},{at: {saved: 1, t: 30}, attacks: ["throw","pop"], every: 7},{at: {saved: 2, t: 55}, attacks: ["throw","pop"], every: 6}]}, nest: {w: 2.8, reach: 0.5}, bonus: {kind: "prize"}, tip: "Papa Rooster chases thieves off. The green flame mends cracks.", orbs: [{type: "hatch_glow", ch: 1, a: 26},{type: "fire_red", ch: 2, a: -14},{type: "fire_green", ch: 3, a: 49}], seed: 39600, world: 1, intro: {title: "Boss: Weasel Raid", line: "When the weasel crouches under a gap, turn that ring away: BONK! Then drop an egg on him."},
     rings: [
       {gaps: [{a: -23, len: 0.9}], pads: [{a: -133, len: 1.88}]},
       {gaps: [{a: 47, x: 2}], thorns: [{a: 104, n: 1}], pads: [{a: -87, len: 1.12},{a: 78, len: 1.13}]},

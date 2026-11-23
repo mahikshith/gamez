@@ -15,6 +15,7 @@
 import { drawVillainPortrait } from './villain-art.js';
 import { drawHand } from './wonder.js';
 import { drawStrikeChick } from './strike.js';
+import { drawKindChick } from './chicks.js'; // the bulk chick's own art (L18's card)
 import { actorFor } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers)
 import { statusDraw } from './status.js';
 import { beamSparks, scorchStub, drawPepperCloud, drawTwister, drawSneeze, drawDecoyAt, TWIST_T } from './powers2.js'; // 2026-11-20: Practice content in the campaign
@@ -92,6 +93,7 @@ const TOY = {
   curtain: 'A flame egg burns the thorn curtain',
   portal: 'The swirl drops an egg rings lower',
   glow: 'Tap the glow chick: its flash burns thorns',
+  bulk: 'Tap the bulk chick: it squashes thorns', // 2026-11-23: L18 had no picture for its new chick
   // 2026-11-20: Practice content placed in the campaign (warp L22/L27, combos L43/L44/L47)
   warp: 'The warp gate sends the next attacker far away',
   bait: 'Decoy + warp: creatures chase the decoy away',
@@ -99,7 +101,7 @@ const TOY = {
   twister: 'Pepper + spin: a twister sneezes them away',
   magnet: 'Shock + iron: iron eggs stick to the live ring',
 };
-const TOY_NAME = { flame: 'Red flame', twin: 'Twin orb', curtain: 'Thorn curtain', portal: 'Portal', glow: 'Glow chick', warp: 'Warp gate', bait: 'Bait and switch', sweep: 'Sweep beam', twister: 'Pepper twister', magnet: 'Electromagnet' };
+const TOY_NAME = { flame: 'Red flame', twin: 'Twin orb', curtain: 'Thorn curtain', portal: 'Portal', glow: 'Glow chick', bulk: 'Bulk chick', warp: 'Warp gate', bait: 'Bait and switch', sweep: 'Sweep beam', twister: 'Pepper twister', magnet: 'Electromagnet' };
 const NEW_TOYS = ['warp', 'bait', 'sweep', 'twister', 'magnet']; // these need the game's own art (o.world)
 // foe: the creature a toy scene shows (the warp gate takes the level's own: 'salamander', 'eagle', else a snake)
 export function toyPlan(id, foe) { return { kind: null, toy: id, move: 'toy', cap: TOY[id] || '', name: TOY_NAME[id] || id, foe }; }
@@ -130,6 +132,10 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
     ctx.fillStyle = o.ground || '#8bd36a'; ctx.beginPath(); ctx.ellipse(cx, y + h * 1.06, w * 0.75, h * 0.2, 0, 0, TAU); ctx.fill();
   }
+  // 2026-11-23 (mykee: "the background is highlighted", "extreme close-up", villains cut by the stage's edge): the
+  // backdrop stands back behind a veil in the world's own sky colour, and a scene with a villain in it is seen from a
+  // step back (the ground stays put), so the whole villain is in the picture.
+  if (Wd) { ctx.save(); ctx.globalAlpha = 0.42; ctx.fillStyle = o.sky1 || '#f6ead0'; ctx.fillRect(x, y, w, h); ctx.globalAlpha = 0.16; ctx.fillStyle = '#fff6e0'; ctx.fillRect(x, y, w, h); ctx.restore(); }
   ctx.globalAlpha = fade;
 
   // ring geometry: centre above the panel; phi = 0 is straight down
@@ -212,7 +218,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     const id = plan.toy, eggAt = (lift) => at(0, lift);
     toy = { deco: { thorns: 0 }, look: null };
     // an orb drifts down onto the egg: it is taken (a burst in its colour) and the egg changes
-    const orbIn = (type, t0, t1) => { const k = ease(seg(T, t0, t1)), p0 = at(-0.42, eggS * 1.9), p1 = eggAt(eggS * 0.55); if (T < t1 + 0.05) toy.orb = { type, x: p0.x + (p1.x - p0.x) * k, y: p0.y + (p1.y - p0.y) * k, a: 1 - seg(T, t1 - 0.05, t1 + 0.05) }; if (T > t1 && T < t1 + 0.45) toy.burst = { x: p1.x, y: p1.y, k: seg(T, t1, t1 + 0.45), col: type === 'twin' ? '#ffe58a' : type === 'hatch_glow' ? '#fff27a' : '#ff8a3a' }; };
+    const orbIn = (type, t0, t1) => { const k = ease(seg(T, t0, t1)), p0 = at(-0.42, eggS * 1.9), p1 = eggAt(eggS * 0.55); if (T < t1 + 0.05) toy.orb = { type, x: p0.x + (p1.x - p0.x) * k, y: p0.y + (p1.y - p0.y) * k, a: 1 - seg(T, t1 - 0.05, t1 + 0.05) }; if (T > t1 && T < t1 + 0.45) toy.burst = { x: p1.x, y: p1.y, k: seg(T, t1, t1 + 0.45), col: type === 'twin' ? '#ffe58a' : type === 'hatch_glow' ? '#fff27a' : type === 'hatch_bulk' ? '#b6f070' : '#ff8a3a' }; };
     if (id === 'flame' || id === 'curtain') {
       orbIn('fire_red', 0.35, 1.0);
       if (T > 1.0) toy.look = { fire: 1 };
@@ -343,6 +349,22 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
           if (live > 0.3 && T > 1.6) { const e0 = at(eA, 0); ctx.save(); ctx.strokeStyle = '#bfe9ff'; ctx.lineWidth = Math.max(1.5, k * 0.02); ctx.lineJoin = 'round'; for (let i = 0; i < 2; i++) { const R = (Math.sin(t * 37 + i * 9) + 1) / 2, ox = (i ? 1 : -1) * eggS * 0.3; ctx.beginPath(); ctx.moveTo(e0.x + ox, e0.y); ctx.lineTo(e0.x + ox * 0.6 + (R - 0.5) * 6, e0.y - eggS * 0.15); ctx.lineTo(e0.x + ox * 0.4, e0.y - eggS * 0.3); ctx.stroke(); } ctx.restore(); }
         };
       }
+    } else if (id === 'bulk') { // the green orb hatches the bulk chick; a tap puffs it up: it rolls over the thorns, bridges the gap, then lets go
+      orbIn('hatch_bulk', 0.3, 0.8);
+      const puffT = 1.55, sq = 2.3, offT = 3.05, big = T >= puffT && T < offT;
+      toy.look = T > 0.8 ? { hide: 1 } : null;
+      toy.deco = { thorns: 1, burnt: T > sq };
+      { const ck = eggAt(eggS * 0.5); hand = T < 1.7 ? tapHand({ x: ck.x, y: ck.y, r: eggS * 0.5 }, T, 1.2, 1.55) : dragHand(at, T, 1.8, 2.85, 0.5, 0.5 - gap0); }
+      if (T > puffT && T < puffT + 0.7) toy.word = { s: 'PUFF!', k: seg(T, puffT, puffT + 0.7) };
+      if (T > sq && T < sq + 0.7) toy.word = { s: 'SQUASH!', k: seg(T, sq, sq + 0.7) };
+      const d = ease(seg(T, 1.9, 2.85)); th = -gap0 * d;
+      eD = seg(T, offT + 0.1, offT + 0.5); done = seg(T, offT + 0.5, offT + 0.85);
+      toy.over = () => {
+        if (T <= 0.8) return;
+        const sC = 0.5 * kW, base = eggAt(0.3 * kW), land = nest.y - eggS * 0.42, kx = eD, X = base.x + (nest.x - base.x) * kx, Y = base.y + (land - base.y) * kx * kx;
+        const u = (sC * 1.5) / 100;
+        drawKindChick(ctx, 'bulk', X, done > 0 ? land : Y, sC, t, big ? { pow: 1, powT: 5 - (T - puffT) * (5 / (offT - puffT)), rx: (0.68 * kW) / u, ry: (0.41 * kW) / u, rot: 0 } : { ready: T < puffT, hatch: T < 1.4 ? (T - 0.8) : undefined });
+      };
     } else { // glow
       orbIn('hatch_glow', 0.3, 0.8);
       if (T > 0.8) toy.look = { chick: T > 1.05 };
@@ -402,6 +424,10 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     eD = seg(T, 2.85, 3.25); done = seg(T, 3.25, 3.6);
   }
 
+  { // the camera (see the veil above): a step back for a scene with a villain, and a step to the villain's side
+    const zm = o.zoom || (Wd && (['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy))) ? 0.8 : 1), pan = SG && SG.pan ? SG.pan * w : 0;
+    if (zm !== 1 || pan) { ctx.translate(cx + pan, y + h); ctx.scale(zm, zm); ctx.translate(-cx, -(y + h)); }
+  }
   // ---- the ring: a thick slab with one gap (the game's own ring when it is given)
   const gapA = gap0 + th, gw = 0.24;
   if (Wd) Wd.ring(ctx, C, kW, gapA, t, door, toy ? toy.deco : null);
@@ -498,7 +524,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     if (done > 0) { ex = nest.x; ey = land; }
     if (o._bubble && !eD && !done) { ctx.save(); ctx.strokeStyle = 'rgba(150,225,255,0.95)'; ctx.lineWidth = 3; ctx.fillStyle = 'rgba(190,240,255,0.25)'; ctx.beginPath(); ctx.arc(ex, ey, eggS * 0.75, 0, TAU); ctx.fill(); ctx.stroke(); ctx.restore(); }
     const worry = AR ? !eD && !done && !!AR.threat : !eD && vAlpha > 0.5 && plan.kind && Math.abs(vA - eA) < 0.7;
-    drawE(ex, ey, eggS * sq, stone, worry, toy ? toy.look : null);
+    if (!(toy && toy.look && toy.look.hide)) drawE(ex, ey, eggS * sq, stone, worry, toy ? toy.look : null); // hide: the toy draws its own actor there (the bulk chick)
   }
   }
   if (toy && toy.over) toy.over();

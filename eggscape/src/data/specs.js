@@ -55,28 +55,31 @@ export const SPECS = [
   //   L5 Big Red Barn: the Weasel Raid boss and Papa Rooster, fought with everything learned.
   //   Gate doors, gears and grey spikes first appear later (L6+), each taught there.
   //   `fuseX` stretches the generated fuse (L2-L5: generous while the game is learned); `gapLen` (ring) = a wider gap.
+  // 2026-11-23 (mykee: the first five are way too easy on Medium): L1 stays a sure win (a star per egg), L3 asks for 3 (the twin makes a 4th), the fuses are 50/60/60/80 s
+  // (the clumsy bot's median win is 14/18/22/29 s), the hen reaches less, and thorns sit just past the gaps of L2-L4 (an overshoot costs an egg).
+  // levels.js holds the tuned rings; these specs only mirror the targets and the fuse.
   { id: 1, world: 1, theme: 'coop', name: 'Hen House', eggs: 3, target: 1, spacing: 1.15, material: 'wood', minMoves: 2, noFuse: true,
     nest: { w: 3.6, reach: 1.2 },
     rings: [{ gaps: 1, gapLen: 1.0 }, { gaps: 2, gapLen: 1.1, pads: 2 }] },
-  { id: 2, world: 1, theme: 'hayfield', name: 'Haystacks', eggs: 3, target: 2, spacing: 1.1, material: 'wood', minMoves: 3, fuseX: 1.6,
+  { id: 2, world: 1, theme: 'hayfield', name: 'Haystacks', eggs: 3, target: 2, spacing: 1.1, material: 'wood', minMoves: 3, fuseX: 0.9,
     nest: { w: 3.3, reach: 1.0 },
     orbs: [{ type: 'fire_red', ch: 1 }],
     intro: { title: 'Red flame', line: 'Red thorns break eggs. An egg that rolls through the red flame burns every thorn it touches.' },
     tip: 'Roll an egg into the red flame, then into the thorns.',
     rings: [{ gaps: 1, gapLen: 0.95 }, { gaps: 1, gapLen: 0.9, thorns: 1, size: [2, 3] }, { gaps: 2, gapLen: 0.9, thorns: 1, size: [2, 2] }] },
-  { id: 3, world: 1, theme: 'pond', name: 'Duck Pond', eggs: 3, target: 2, spacing: 1.1, material: 'wood', minMoves: 3, fuseX: 1.6,
+  { id: 3, world: 1, theme: 'pond', name: 'Duck Pond', eggs: 3, target: 3, spacing: 1.1, material: 'wood', minMoves: 3, fuseX: 0.95,
     nest: { w: 3.0, reach: 1.0 }, softCurtain: true, // the first curtain only cracks an egg and pushes it back
     orbs: [{ type: 'twin', ch: 1, a: -90 }, { type: 'fire_red', ch: 1 }] /* twin under the first drop, not in the egg chamber: there the pile took it by itself at 2 s and a twin got squashed */, portals: [{ from: [1, 90], to: [1, 90], emit: ['fire_red'], every: 6, pull: 0 }],
     intro: { title: 'Twin orb', line: 'The twin orb splits an egg in two: more eggs home! Then burn the thorn curtain with the red flame.' },
     tip: 'Burn the curtain: roll an egg into the red flame, then onto the thorns.',
     rings: [{ gaps: 1, gapLen: 0.95 }, { gaps: 1, curtain: 1, gapLen: 0.95 }, { gaps: 2, gapX: [2], thorns: 1, size: [1, 2] }] },
-  { id: 4, world: 1, theme: 'windmill', name: 'Windmill', eggs: 3, target: 2, spacing: 1.05, material: 'wood', minMoves: 3, fuseX: 1.6, useTap: true,
+  { id: 4, world: 1, theme: 'windmill', name: 'Windmill', eggs: 3, target: 2, spacing: 1.05, material: 'wood', minMoves: 3, fuseX: 1.0, useTap: true,
     nest: { w: 3.0, reach: 0.8 }, bonus: { kind: 'time' },
     orbs: [{ type: 'hatch_glow', ch: 1 }], portals: [{ from: [1, -150], to: [3, -30] }],
     intro: { title: 'Glow chick', chick: 'glow', line: 'The yellow orb hatches a glow chick. Tap it once: a flash burns every thorn near it.' },
     tip: 'Tap your glow chick next to thorns. The swirl drops an egg two rings lower.',
     rings: [{ gaps: 1, gapLen: 0.9 }, { gaps: 1, thorns: 1, size: [2, 3] }, { gaps: 1, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2] }] },
-  { id: 5, world: 1, theme: 'redbarn', name: 'Big Red Barn', boss: 'weasel', eggs: 3, target: 2, spacing: 1.05, material: 'wood', minMoves: 4, fuseX: 1.6,
+  { id: 5, world: 1, theme: 'redbarn', name: 'Big Red Barn', boss: 'weasel', eggs: 3, target: 2, spacing: 1.05, material: 'wood', minMoves: 4, fuseX: 1.1,
     nest: { w: 3.0, reach: 0.8 }, bonus: { kind: 'prize' },
     orbs: [{ type: 'hatch_glow', ch: 1 }, { type: 'fire_red', ch: 2 }, { type: 'fire_green', ch: 3 }],
     bossFight: { kind: 'weasel', delay: 3, den: { a: 30, hp: 3 }, throws: ['thorn'], phases: [
