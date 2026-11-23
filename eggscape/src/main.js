@@ -5334,15 +5334,22 @@ function captureBack() { // keep what is on the canvas now as this visit's backd
 function introBackdrop() {
   if (G.frzActive) return; // the frozen picture already is this backdrop
   try { // a cheap blur: shrink the frame, stretch it back with smoothing (no per-frame ctx.filter on a phone)
-    const cw = canvas.width, ch = canvas.height, k = 1 / 10, sw = Math.max(8, Math.round(cw * k)), sh = Math.max(8, Math.round(ch * k));
+    // 0.8.10: the speed log shows two or three frames of 60 to 140 ms every time a level card or the pause page opens.
+    // The shrunken copy was 84x187: a web view keeps canvases that small in ordinary memory, so copying the screen
+    // into it read the whole frame back from the graphics chip, every frame of the first quarter second. Now the
+    // scratch picture is a third of the screen (large enough to stay on the chip); the frame is shrunk into it, then
+    // shrunk again inside it (to a ninth), and that corner is stretched back over the screen: no read-back at all.
+    const cw = canvas.width, ch = canvas.height, sw = Math.max(260, Math.round(cw / 3)), sh = Math.max(260, Math.round(ch / 3));
+    const tw = Math.max(8, Math.round(sw / 3)), tH = Math.max(8, Math.round(sh / 3));
     const o = G.introBlur || (G.introBlur = document.createElement('canvas'));
     if (o.width !== sw || o.height !== sh) { o.width = sw; o.height = sh; }
     const oc = o.getContext('2d');
     oc.imageSmoothingEnabled = true; oc.imageSmoothingQuality = 'high';
-    oc.clearRect(0, 0, sw, sh); oc.drawImage(canvas, 0, 0, sw, sh);
+    oc.globalCompositeOperation = 'copy'; oc.drawImage(canvas, 0, 0, sw, sh);
+    oc.globalCompositeOperation = 'source-over'; oc.drawImage(o, 0, 0, sw, sh, 0, 0, tw, tH);
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(o, 0, 0, cw, ch);
+    ctx.drawImage(o, 0.5, 0.5, tw - 1, tH - 1, 0, 0, cw, ch);
     ctx.restore();
   } catch (e) { /* the plain dim below is enough */ }
   dim(0.66);
