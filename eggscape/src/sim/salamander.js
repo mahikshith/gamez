@@ -18,6 +18,19 @@
 // the channel, lava and quakes don't hurt it (lava recharges its breath), lightning, a glow flash or a dash bonk daze it.
 // A snake meeting it in its channel starts a face-off (RIVAL_T): neither bothers the eggs, then both back off.
 // On a win it dives into a lava pit; on a loss it stops and grins.
+//
+// The brain (BRAIN, shared by the salamander, the frost gecko and the thorn-backs; the chameleon hunts orbs instead):
+//   Notice: an egg within BRAIN.see m of the head, or ahead in its channel within BRAIN.sight m, becomes its target (C.ht).
+//     The first one after BRAIN.quiet s without a target emits salAlert: the art snaps the head round, flares, pops a "!".
+//   Chase: a target in its channel is gone after the shorter way; one behind it means a U-turn ('turn': all four feet down,
+//     then BRAIN.turn s, the head swinging round in a tight loop). A target in another channel: it heads for the gap toward
+//     it and climbs with a BRAIN.hunt s cooldown. While hunting it walks PRED.chase x faster (Easy 1x).
+//   Strike (the salamander, not the boss): an egg by either wall of its channel up to BRAIN.reach m ahead, and PRED.salGap s
+//     since the last breath: it stops and breathes at that wall, with the same telegraph. No egg near: the old `every` rhythm.
+//   Eggs still in the centre chamber are not hunted (they are where every level starts). The boss notices and turns round,
+//   but keeps its own pace, climbs and breath rhythm (salBossSync). The thorn-backs turn round but get no chase speed-up.
+// Size: the salamander is drawn and hit-tested at SAL.small x (its body sits inside its channel); the boss is 1.3x that.
+//   salRank(C) (1, or the boss's 1.3) keeps its walk speed and the idle breath's reach as they were.
 import { RING_TH, TAU, wrap, clamp } from './geom.js';
 import { BOSS_MODE, bossPhases } from './boss.js';
 import { thornMethods, THORN } from './thornback.js'; // L20: Duke Quartz and Spike, the thorn-back lizards
@@ -30,8 +43,16 @@ export const SAL = {
   every: 6, warn: 0.7, fire: 0.55, lit: 0.12, settle: 0.4, hotT: 4, // s
   cool: 5, hiss: 0.6, wetCD: 2.5, coolBack: 1.0, // water
   rival: 3, rivalR: 1.0, rivalGap: 1.3, rivalCD: 9, rivalBack: 1.2, // snake face-off
-  climbCD: 4, boss: 1.3,
+  climbCD: 4, boss: 1.3, small: 0.76,
 };
+export const BRAIN = {
+  see: 2.6, sight: 5, lose: 4, lost: 6.5, quiet: 6, alert: 0.9, // m notice / ahead in its channel / keep / keep in its channel; s re-alert, art
+  turn: 0.6, turnCD: 2.5, behind: 0.45, loopR: 0.3, loopW: 0.3, // s U-turn, s between U-turns, m behind that turns it, the loop (m ahead, m across)
+  reach: 1.3, chin: 0.2, wall: 0.5, hunt: 1.5, sated: 3, // m breath range ahead (from chin m), m from a wall's centre line, s climb cooldown while hunting,
+  // s it walks on after an aimed breath
+};
+// phases in which a crawler looks about for eggs
+const SENSE = new Set(['walk', 'brake', 'turn', 'warn', 'fire', 'settle', 'rest', 'block', 'lick', 'hip', 'drop', 'gloat']);
 // The frost gecko (species 'gecko': Baron von Brr, the level-15 boss; level.bossFight.gecko {delay, dir}). The same crawler,
 // a little slower, with no fire: he crawls in through a gap of the outer ring, hunts the leading egg, and the
 // level's blizzard attacks (sim/boss.js gale, freeze, icicles) come from him. Icy feet: the floor he walked on stays icy
@@ -61,13 +82,14 @@ export const salMethods = {
     const n = this.rings.length;
     if (n < 2) return;
     list.forEach((P, i) => {
-      const isBoss = (boss && i === 0) || !!P.gecko || P.thorn === 'duke', size = P.gecko ? GECKO.svl / SAL.svl : P.cham ? CHAM.svl / SAL.svl : P.thorn ? (THORN.svl / SAL.svl) * (P.thorn === 'spike' ? THORN.spikeK : 1) : P.size || (isBoss ? SAL.boss : 1);
+      const isBoss = (boss && i === 0) || !!P.gecko || P.thorn === 'duke', size = P.gecko ? GECKO.svl / SAL.svl : P.cham ? CHAM.svl / SAL.svl : P.thorn ? (THORN.svl / SAL.svl) * (P.thorn === 'spike' ? THORN.spikeK : 1) : (P.size || (isBoss ? SAL.boss : 1)) * SAL.small;
       this.sals.push({ sp: P.gecko ? 'gecko' : P.cham ? 'chameleon' : P.thorn ? 'thornback' : 'sal', bored: 0, lk: -1, ent: null, ik: 0, ...(P.thorn ? { role: P.thorn, dropT: 0, fcd: 0, flipCD: 0, weakT: null, duel: null, duels: 0, fk: '' } : {}),
         ...(P.cham ? { tg: null, held: null, cough: null, ate: [], goods: [], sickT: 0, bumpCD: 0, goal: -1, ga: 0 } : {}),
         id: i, size, boss: isBoss ? 1 : 0, ch: clamp(P.ch ?? 2, 1, n - 1), dir: P.dir === -1 ? -1 : 1, a0: deg(P.a ?? 90),
         every: P.every || SAL.every, ph: 'wait', t: P.delay ?? 3, dur: 1, pend: null, pendT: 0, mv: 1, stopAt: 0,
         a: 0, rad: 0, pts: [], odo: 0, car: -1, carA: 0, next: 0, tw: 1, cool: 0, wetCD: 0, back: 0, shove: 0,
         rivalCD: 0, rid: -1, rv: 0, climbCD: 0, climb: null, charge: 0, lavaCD: 0, hold: 0, bph: 0, bk: -1, bsaved: 0, hole: 0,
+        ht: -1, htT: BRAIN.quiet, alT: 0, brT: 9, tcd: 0, jet: 0, jk: -1, ut: 0, uA: 0, uR: 0, uD: 1, // the brain (BRAIN)
       });
     });
   },
@@ -75,6 +97,7 @@ export const salMethods = {
   // ---------- geometry helpers
   salMid(c) { return (this.rings[c - 1].r + this.rings[c].r) / 2; },
   salStride(C) { return 0.4 * SAL.svl * C.size; },
+  salRank(C) { return C.sp === 'sal' ? C.size / SAL.small : C.size; }, // 1, or the boss's 1.3 (the drawn size is SAL.small x that)
   salBodyLen(C) { return SAL.len * SAL.svl * C.size; },
   salHead(C) { return C.pts[0] || { x: C.rad * Math.cos(C.a), y: C.rad * Math.sin(C.a) }; },
   salLive(C) { return C.ph !== 'wait' && C.ph !== 'gone' && C.pts.length > 1; },
@@ -93,12 +116,13 @@ export const salMethods = {
   // where the jet lands: the wall (C.tw: 0 inner, 1 outer) of its channel, SAL.ahead in front of the snout
   salTarget(C) {
     const c = this.salCh(C), ri = c - 1 + C.tw, ring = this.rings[ri], h = this.salHead(C);
-    const a = Math.atan2(h.y, h.x) + C.dir * (SAL.ahead * C.size) / Math.max(0.5, Math.hypot(h.x, h.y));
+    const a = Math.atan2(h.y, h.x) + C.dir * this.salAhead(C) / Math.max(0.5, Math.hypot(h.x, h.y));
     return { ri, a, x: ring.r * Math.cos(a), y: ring.r * Math.sin(a) };
   },
   // pick the wall: the one nearer an egg (within 1.6 m), else the lower one (the side eggs rest on)
+  salAhead(C) { return C.jet > 0 ? C.jet : SAL.ahead * this.salRank(C); }, // m ahead of the snout: an aimed breath's, else the idle one's
   salPickWall(C) {
-    const c = this.salCh(C), h = this.salHead(C), a = Math.atan2(h.y, h.x) + C.dir * (SAL.ahead * C.size) / Math.max(0.5, C.rad);
+    const c = this.salCh(C), h = this.salHead(C), a = Math.atan2(h.y, h.x) + C.dir * this.salAhead(C) / Math.max(0.5, C.rad);
     const spot = (ri) => ({ x: this.rings[ri].r * Math.cos(a), y: this.rings[ri].r * Math.sin(a) });
     const A = spot(c - 1), B = spot(c);
     let best = 1.6, w = Math.sin(a) > 0 ? 0 : 1;
@@ -147,7 +171,9 @@ export const salMethods = {
     if (C.ph === 'gone' || C.ph === 'warp') return; // v3.4: 'warp' = inside a warp gate (sim/warp.js moves it)
     if (C.ph === 'wait') { if (play && (C.t -= dt) <= 0) this.salEnter(C); return; }
     this.salCarry(C);
-    for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD', 'bored']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
+    for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD', 'bored', 'tcd', 'alT']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
+    C.brT = Math.min(99, C.brT + dt);
+    if (play && C.sp !== 'chameleon') { if (SENSE.has(C.ph)) this.salSense(C, dt); else if (C.ht < 0) C.htT = Math.min(99, C.htT + dt); }
     if (C.sp === 'gecko') { this.geckoOne(C, dt, play); return; }
     if (C.sp === 'thornback') { this.thornOne(C, dt, play); return; }
     if (C.sp === 'chameleon') { this.chamOne(C, dt, play); return; }
@@ -161,14 +187,21 @@ export const salMethods = {
     switch (C.ph) {
       case 'in': if ((C.t -= dt) <= 0) this.salSet(C, 'walk'); break;
       case 'walk': {
+        if (play && C.cool <= 0 && !C.boss && C.bored <= 0 && C.brT >= this.PM.salGap && !C.climb && !this.salCrossing(C)) { // an egg by a wall just ahead: breathe at it
+          const S = this.salStrikeAt(C);
+          if (S) { C.tw = S.w; C.jet = S.jet; C.jk = S.id; this.salHalt(C, 'warn', SAL.warn * this.PM.warn); break; }
+        }
         if (play && C.cool <= 0 && (C.next -= dt) <= 0 && !C.climb && !this.salCrossing(C)) {
+          C.jet = 0; C.jk = -1;
           C.tw = this.salPickWall(C);
           this.salHalt(C, 'warn', SAL.warn * this.PM.warn);
           break;
         }
-        this.salMove(C, SAL.speed * Math.sqrt(C.size) * dt);
+        if (play && C.cool <= 0 && C.bored <= 0 && this.salChase(C)) break;
+        this.salMove(C, SAL.speed * Math.sqrt(this.salRank(C)) * this.salPace(C) * dt);
         break;
       }
+      case 'turn': this.salTurnStep(C, dt); break;
       case 'brake': {
         const r = (C.stopAt - C.odo) * C.mv, d = Math.min(Math.max(0, r), SAL.brakeV * dt);
         if (C.mv > 0) this.salMove(C, d, true); else this.salBackWalk(C, d);
@@ -183,7 +216,8 @@ export const salMethods = {
         if ((C.t -= dt) <= 0) this.salSet(C, 'settle', SAL.settle);
         break;
       case 'settle':
-        if ((C.t -= dt) <= 0) { C.next = this.salEvery(C); this.salSet(C, 'walk'); }
+        if ((C.t -= dt) <= 0) { if (C.jet > 0) C.bored = BRAIN.sated; // an aimed breath: it walks on for a while (no camping on one egg)
+          C.next = C.jet > 0 ? Math.max(C.next, this.salEvery(C) * 0.5) : this.salEvery(C); C.jet = 0; C.jk = -1; this.salSet(C, 'walk'); }
         break;
       case 'hiss': if ((C.t -= dt) <= 0) { C.back = SAL.coolBack * C.size; this.salSet(C, 'retreat'); } break;
       case 'retreat': {
@@ -208,6 +242,8 @@ export const salMethods = {
   salSet(C, ph, t = 0) {
     C.ph = ph; C.t = C.dur = t; C.pend = null;
     C.mv = ph === 'retreat' ? -1 : 1;
+    if (ph === 'turn') { C.ut = C.rad <= this.salMid(this.salCh(C)) ? 1 : -1; C.uA = C.a; C.uR = C.rad; C.uD = C.dir; C.climb = null; }
+    if (ph === 'warn' && C.jet > 0) this.salAim(C);
     if (ph === 'warn') { const T = this.salTarget(C), h = C.pts[0]; this.emit('salWarn', { x: T.x, y: T.y, hx: h.x, hy: h.y, ring: T.ri, id: C.id }); }
   },
   // Stop with all four feet down: a walk runs on (fast) to the next phase of the stride where every foot is planted
@@ -241,7 +277,7 @@ export const salMethods = {
     const n = this.rings.length, ch = clamp(C.ch, 1, n - 1), r = this.salMid(ch), m = Math.ceil(this.salBodyLen(C) / SAL.trail) + 2;
     C.rad = r; C.a = C.a0; C.pts = [];
     for (let i = 0; i < m; i++) C.pts.push(this.salPt({}, C.a - C.dir * (i * SAL.trail) / r, r));
-    C.ph = 'in'; C.t = C.dur = 0.6; C.next = C.boss ? this.salEvery(C) * 0.6 : C.every * (this.PM.sal || 1) * 0.6;
+    C.ph = 'in'; C.t = C.dur = 0.6; C.next = C.boss ? this.salEvery(C) * 0.6 : C.every * (this.PM.sal || 1) * 0.6; C.brT = 0;
     C.car = -1;
     this.salCarry(C);
     this.emit('salIn', { x: C.pts[0].x, y: C.pts[0].y, id: C.id, boss: C.boss });
@@ -253,7 +289,7 @@ export const salMethods = {
       const d = wrap(this.rings[C.car].body.getAngle() - C.carA);
       if (Math.abs(d) > 1e-9) {
         for (const q of C.pts) this.salPt(q, q.a + d, q.r);
-        C.a += d;
+        C.a += d; C.uA += d; // (uA: where a U-turn started rides along too)
       }
     }
     let car = -1;
@@ -279,7 +315,7 @@ export const salMethods = {
       else {
         gt = tang; gr = aligned || committed || Math.abs(tang) < K.len / 2 + 0.2 ? this.salMid(K.to) : this.salMid(from);
         if (aligned || committed) { const m0 = this.salMid(from), m1 = this.salMid(K.to); lo = Math.min(m0, m1) - 0.05; hi = Math.max(m0, m1) + 0.05; }
-        if (this.chAt(C.rad) === K.to && Math.abs(C.rad - this.salMid(K.to)) < 0.12) { C.climb = null; C.climbCD = SAL.climbCD; if (C.sp !== 'sal') C.dir = C.sp === 'chameleon' ? this.chamDir(C) : this.geckoDir(C); }
+        if (this.chAt(C.rad) === K.to && Math.abs(C.rad - this.salMid(K.to)) < 0.12) { C.climb = null; C.climbCD = C.ht >= 0 && !C.boss ? BRAIN.hunt : SAL.climbCD; if (C.sp !== 'sal') C.dir = C.sp === 'chameleon' ? this.chamDir(C) : this.geckoDir(C); }
       }
     }
     const dr = gr - C.rad, L = Math.hypot(gt, dr) || 1, s = Math.min(d, L);
@@ -299,7 +335,11 @@ export const salMethods = {
     const n = this.rings.length;
     let top = -1;
     if (C.sp === 'chameleon') top = C.goal; // L26: toward the orb he wants, not the eggs
-    else for (const e of this.aliveEggs()) { const c = this.channelOf(e); if (c < n) top = Math.max(top, c); }
+    else {
+      const T = C.boss ? null : this.salTargetEgg(C); // hunting (the brain): toward its target's channel
+      if (T) top = this.channelOf(T);
+      else for (const e of this.aliveEggs()) { const c = this.channelOf(e); if (c < n) top = Math.max(top, c); }
+    }
     if (top < 0) return;
     const tc = clamp(top, 1, n - 1);
     if (tc === hc) return;
@@ -344,10 +384,98 @@ export const salMethods = {
     else this.salTrailBack(C, Math.abs(d));
   },
 
+  // ---------- the brain (BRAIN): notice, chase, strike
+  // an egg it can go for: one out in the channels (not still in the centre chamber, not on its way out of the vault), and not
+  // one a thief, a crab, an octopus or a lick holds (the gecko leaves a frozen one be)
+  salPreyOK(C, e) { const c = this.channelOf(e); return c >= 1 && c < this.rings.length && !(e.thf || e.hc || e.octo || e.hold || (C.sp === 'gecko' && e.icy > 0)); },
+  // where an egg is from its head: distance, its channel, and m along its channel (ccw +)
+  salRel(C, e) {
+    const h = C.pts[0], p = e.body.getPosition(), n = this.rings.length, hc = this.salCh(C), ce = clamp(this.channelOf(e), 1, n - 1);
+    const hr = Math.max(0.5, Math.hypot(h.x, h.y)), along = wrap(Math.atan2(p.y, p.x) - Math.atan2(h.y, h.x)) * hr;
+    return { p, d: Math.hypot(p.x - h.x, p.y - h.y), ce, same: ce === hc, along };
+  },
+  // look about: keep the target while it stays near, else take the nearest egg it notices. The first one after a quiet spell alerts it.
+  salSense(C, dt) {
+    let best = null, bs = 1e9;
+    for (const e of this.aliveEggs()) {
+      if (!this.salPreyOK(C, e)) continue;
+      const R = this.salRel(C, e), keep = e.id === C.ht, ahead = R.along * C.dir;
+      const seen = keep ? R.d < BRAIN.lose || (R.same && Math.abs(R.along) < BRAIN.lost) : R.d < BRAIN.see || (R.same && ahead > 0 && ahead < BRAIN.sight);
+      if (!seen) continue;
+      const sc = (R.same ? Math.abs(R.along) : R.d + 1) - (keep ? 0.5 : 0);
+      if (sc < bs) { bs = sc; best = e; }
+    }
+    if (!best) { C.ht = -1; C.htT = Math.min(99, C.htT + dt); return null; }
+    if (best.id !== C.ht && C.htT >= BRAIN.quiet) {
+      const h = C.pts[0], p = best.body.getPosition();
+      C.alT = BRAIN.alert;
+      this.emit('salAlert', { id: C.id, sp: C.sp, x: h.x, y: h.y, ex: p.x, ey: p.y, egg: best });
+    }
+    C.ht = best.id; C.htT = 0;
+    return best;
+  },
+  salTargetEgg(C) { return C.ht >= 0 ? this.eggs.find((x) => x.id === C.ht && x.alive && !x.saved) || null : null; },
+  // walk speed factor: PRED.chase while it has a target (not the boss: its pace stays with the fight's rhythm)
+  salPace(C) { return C.ht >= 0 && !C.boss && !(C.bored > 0) ? this.PM.chase || 1 : 1; },
+  // which way to go for its target: the shorter way round in its channel, or toward the gap that leads to the target's
+  // channel. A target behind it: halt (all four feet down) and U-turn. true = it changed phase.
+  salChase(C) {
+    const e = this.salTargetEgg(C);
+    if (!e || C.climb || C.tcd > 0 || this.salCrossing(C)) return false;
+    const R = this.salRel(C, e), hc = this.salCh(C), h = C.pts[0], ha = Math.atan2(h.y, h.x), hr = Math.max(0.5, Math.hypot(h.x, h.y));
+    let want = 0;
+    if (R.same) { if (Math.abs(R.along) > BRAIN.behind) want = Math.sign(R.along); }
+    else {
+      const ring = this.rings[R.ce > hc ? hc : hc - 1], ra = ring.body.getAngle(), ea = Math.atan2(R.p.y, R.p.x);
+      const ways = ring.gaps.filter((g) => this.snakeGap(g) && g.len >= 0.6).map((g) => g.a).concat(this.salHoles(ring).filter((q) => q.len >= 0.6).map((q) => q.a));
+      let bs = 1e9;
+      for (const la of ways) {
+        const dh = wrap(ra + la - ha) * hr, sc = Math.abs(dh) + 0.5 * Math.abs(wrap(ra + la - ea)) * hr;
+        if (sc < bs) { bs = sc; want = Math.abs(dh) > BRAIN.behind ? Math.sign(dh) : 0; }
+      }
+    }
+    if (!want || want === C.dir) return false;
+    this.salHalt(C, 'turn', BRAIN.turn);
+    return true;
+  },
+  // the U-turn: the head swings round in a tight loop (BRAIN.loopR ahead, BRAIN.loopW across) and the body follows its trail
+  salTurnStep(C, dt) {
+    C.t -= dt;
+    const u = clamp(1 - C.t / C.dur, 0, 1), th = Math.PI * u * u * (3 - 2 * u);
+    const along = BRAIN.loopR * Math.sin(th), across = C.ut * BRAIN.loopW * 0.5 * (1 - Math.cos(th));
+    const r0 = C.rad, a0 = C.a, hc = this.salCh(C);
+    C.rad = clamp(C.uR + across, this.rings[hc - 1].r + RING_TH / 2 + 0.12, this.rings[hc].r - RING_TH / 2 - 0.12);
+    C.a = wrap(C.uA + (C.uD * along) / Math.max(0.5, C.uR));
+    C.odo += Math.hypot(C.rad - r0, wrap(C.a - a0) * Math.max(0.5, C.rad));
+    this.geckoTrail(C);
+    if (C.t <= 0) { C.dir = -C.uD; C.tcd = BRAIN.turnCD; this.salSet(C, 'walk'); }
+  },
+  // an egg by either wall of its channel, ahead of the snout within breath range: {w: the wall (0 inner, 1 outer), jet: m ahead, id}
+  salStrikeAt(C) {
+    const h = C.pts[0], hc = this.salCh(C), hr = Math.max(0.5, Math.hypot(h.x, h.y)), ha = Math.atan2(h.y, h.x);
+    let best = null;
+    for (const e of this.aliveEggs()) {
+      if (!this.salPreyOK(C, e)) continue;
+      const p = e.body.getPosition(), d = Math.hypot(p.x, p.y), ahead = wrap(Math.atan2(p.y, p.x) - ha) * hr * C.dir;
+      if (ahead < BRAIN.chin || ahead > BRAIN.reach) continue; // under its chin or behind: it walks on (and turns round after)
+      const o0 = Math.abs(d - this.rings[hc - 1].r), o1 = Math.abs(d - this.rings[hc].r), w = o0 < o1 ? 0 : 1;
+      if (Math.min(o0, o1) < BRAIN.wall && (!best || ahead < best.ahead)) best = { w, ahead, jet: clamp(ahead, 0.35, BRAIN.reach), id: e.id };
+    }
+    return best;
+  },
+  // on the telegraph's first beat: aim the breath where the egg it chose is now (it may have moved on while it braked)
+  salAim(C) {
+    const e = this.eggs.find((x) => x.id === C.jk && x.alive && !x.saved);
+    if (!e) return;
+    const h = C.pts[0], p = e.body.getPosition(), hr = Math.max(0.5, Math.hypot(h.x, h.y)), ahead = wrap(Math.atan2(p.y, p.x) - Math.atan2(h.y, h.x)) * hr * C.dir;
+    C.jet = clamp(ahead, 0.35, BRAIN.reach);
+  },
+
   // ---------- the breath
   salFire(C) {
     const T = this.salTarget(C), ring = this.rings[T.ri], la = T.a - ring.body.getAngle(), half = (SAL.hotLen * C.size) / (2 * ring.r);
     const k = ++this.salBurnN;
+    C.brT = 0;
     let n = 0;
     ring.segs.forEach((sg, si) => {
       if (!sg.alive || Math.abs(wrap((sg.a0 + sg.a1) / 2 - la)) > half) return;
@@ -473,8 +601,8 @@ export const salMethods = {
       if (S.gone || !S.inside || S.carried || S.stun > 0 || S.back > 0 || S.knock > 0 || S.rival > 0 || S.flee >= 0 || !S.pts.length) continue;
       if (this.chAt(S.rad) !== this.chAt(C.rad) || hc !== this.chAt(S.rad)) continue;
       const sh = S.pts[0];
-      const near = Math.hypot(sh.x - h.x, sh.y - h.y) < SAL.rivalR * C.size ||
-        C.pts.some((q, i) => i % 4 === 0 && Math.hypot(q.x - sh.x, q.y - sh.y) < 0.7 * C.size) ||
+      const k = this.salRank(C), near = Math.hypot(sh.x - h.x, sh.y - h.y) < SAL.rivalR * k || // (the meeting range keeps its old size)
+        C.pts.some((q, i) => i % 4 === 0 && Math.hypot(q.x - sh.x, q.y - sh.y) < 0.7 * k) ||
         S.pts.some((q, i) => i % 4 === 0 && Math.hypot(q.x - h.x, q.y - h.y) < 0.7);
       if (!near) continue;
       if (S.spit) { const b = this.barriers[S.spit.b]; if (b) b.venom = 0; S.spit = null; }
@@ -493,13 +621,13 @@ export const salMethods = {
     const h = C.pts[0], sh = S.pts[0];
     // nose to nose but never touching: back up to a head gap, and only stop with all four feet down
     const q = C.odo / this.salStride(C), f = q - Math.floor(q), planted = f < 0.1 || (f >= 0.5 && f < 0.6);
-    if ((el < 1.0 && Math.hypot(sh.x - h.x, sh.y - h.y) < SAL.rivalGap * C.size) || ((C.rv & 4) && !planted)) { C.rv |= 4; this.salBackWalk(C, SAL.backV * C.size * dt); }
+    if ((el < 1.0 && Math.hypot(sh.x - h.x, sh.y - h.y) < SAL.rivalGap * this.salRank(C)) || ((C.rv & 4) && !planted)) { C.rv |= 4; this.salBackWalk(C, SAL.backV * C.size * dt); }
     else C.rv &= ~4;
     if (el >= 1.0 && !(C.rv & 1)) { C.rv |= 1; S.mouthOpen = 1; this.emit('venomSpit', { x: sh.x, y: sh.y, tx: h.x, ty: h.y, id: S.id, rival: 1 }); }
     if (el >= 1.5 && !(C.rv & 2)) { C.rv |= 2; this.emit('salPuff', { x: h.x, y: h.y, tx: sh.x, ty: sh.y, id: C.id }); }
     if ((C.t -= dt) <= 0) {
       this.salRelease(C);
-      C.rivalCD = SAL.rivalCD; C.back = SAL.rivalBack * C.size;
+      C.rivalCD = SAL.rivalCD; C.back = SAL.rivalBack * this.salRank(C);
       this.salSet(C, 'retreat');
       this.emit('salRivalEnd', { x: (h.x + sh.x) / 2, y: (h.y + sh.y) / 2 });
     }
@@ -547,8 +675,9 @@ export const salMethods = {
         if (play && C.bored <= 0 && !C.climb) {
           const e = this.geckoPrey(C);
           if (e) { C.lk = e.id; C.lkd = 0; this.salHalt(C, 'lick', GECKO.lick); break; }
+          if (this.salChase(C)) break; // the brain: a target behind him turns him round
         }
-        this.salMove(C, GECKO.speed * dt);
+        this.salMove(C, GECKO.speed * (C.bored > 0 ? 1 : this.salPace(C)) * dt);
         break;
       }
       case 'brake': {
@@ -558,6 +687,7 @@ export const salMethods = {
         break;
       }
       case 'atk': if (!play || !B || !B.atk) this.salSet(C, 'walk'); break;
+      case 'turn': this.salTurnStep(C, dt); break;
       case 'lick':
         if (!C.lkd && C.dur - C.t >= GECKO.lickAt) { C.lkd = 1; this.geckoLick(C); }
         if ((C.t -= dt) <= 0) { C.bored = GECKO.bored; C.climbCD = Math.max(C.climbCD, GECKO.bored * 0.5); this.salSet(C, 'walk'); }

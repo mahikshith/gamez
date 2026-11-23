@@ -6,6 +6,7 @@
 // (after the rings, render/boss.js drawBossRings). drawThornOver: attack effects over the eggs (render/boss.js drawBossOver).
 import { RING_TH, TAU } from '../sim/geom.js';
 import { THORN } from '../sim/thornback.js';
+import { BRAIN } from '../sim/salamander.js';
 import { SPIKE, spikePt } from '../sim/boss.js';
 import { drawCrawler, drawCrawlerThorn } from './crawlers.js';
 import { crystalSpike } from './cousins.js';
@@ -73,7 +74,7 @@ function step(sim, C, S, dt, t) {
   if (flinch && !S.wasFl) S.hurtT = t;
   S.wasFl = flinch;
   const hu = (t - S.hurtT) / 0.55;
-  const moving = C.ph === 'walk' || C.ph === 'brake' || C.ph === 'retreat' || C.ph === 'in';
+  const moving = C.ph === 'walk' || C.ph === 'brake' || C.ph === 'retreat' || C.ph === 'in' || C.ph === 'turn';
   const ra = Math.atan2(S.hy, S.hx), rr = Math.hypot(S.hx, S.hy);
   const aimAt = (x, y) => clamp(wrap(Math.atan2(y - S.hy, x - S.hx) - S.hd), -1.1, 1.1);
   const outward = (r) => (r > rr ? 1 : -1); // a flick toward a ring of radius r
@@ -124,6 +125,10 @@ function step(sim, C, S, dt, t) {
     } else if (A.name === 'shards') { // he shakes his back: shards leave his spines
       W.shake = warn ? 0.4 + 0.6 * u : 1; W.swell = 1; W.crouch = 0.4; W.angry = 1; W.mouth = 0.4; look = { x: 0.3, y: 0.6 };
     }
+  } else if (C.alT > 0 && moving) { // the brain's alert: the head snaps to the egg he just noticed, the spines bristle
+    const e = sim.eggs.find((x) => x.id === C.ht && x.alive && !x.saved), f = Math.sin(Math.PI * clamp((BRAIN.alert - C.alT) / (BRAIN.alert * 0.85), 0, 1));
+    if (e) { const p = e.body.getPosition(); aim = aimAt(p.x, p.y); }
+    W.rear = 0.3 * f; W.swell = f; W.angry = f; look = { x: 1, y: 0 };
   } else if (C.bored > 0 && moving) { look = { x: 0.6, y: 0.4 * Math.sin(t * 2) }; W.angry = 0.2; }
   W.walk = moving ? 1 : 0;
   for (const c of CH) S.B[c] += (W[c] - S.B[c]) * (1 - Math.exp(-dt * RATE[c]));

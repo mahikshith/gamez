@@ -2884,6 +2884,7 @@ const EVENT_SFX = {
   ratCuff: ['rat_squeak', { pitch: 1.1 }],
   // salamander, gecko, chameleon, frog: fire and tongues
   salFire: ['sal_breath', {}, 'hit'],
+  salAlert: (ev) => (ev.sp === 'gecko' ? ['gecko_chirp', { vol: 0.55, pitch: 1.25 }] : ['sal_huff', { vol: 0.55, pitch: ev.sp === 'thornback' ? 0.8 : 1.3 }]), // the brain: it has noticed an egg (the "!" is the art's)
   salPuff: ['sal_breath', { vol: 0.5, pitch: 1.35 }],
   salHit: ['sal_yelp', { pitch: 0.95 }],
   salFlinch: ['sal_yelp', { vol: 0.6, pitch: 1.1 }],

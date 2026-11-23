@@ -127,6 +127,8 @@ export const PRED = {
 Object.assign(PRED.easy, { stun: 1.4, back: 1.3 }); Object.assign(PRED.medium, { stun: 1, back: 1 }); Object.assign(PRED.hard, { stun: 0.75, back: 0.8 });
 // sal = gap between the salamander's breaths x (its telegraph uses warn)
 PRED.easy.sal = 1.35; PRED.medium.sal = 1; PRED.hard.sal = 0.8;
+// the crawlers' brain (sim/salamander.js BRAIN): chase = walk speed x while hunting an egg, salGap = s between proximity breaths
+Object.assign(PRED.easy, { chase: 1, salGap: 3.5 }); Object.assign(PRED.medium, { chase: 1.35, salGap: 2.5 }); Object.assign(PRED.hard, { chase: 1.5, salGap: 2.5 });
 // Snake kinds: only a level spec's `kind` turns a trait on; otherwise every snake is classic and the skin is cosmetic.
 export const SNAKE_KIND = {
   classic: { skin: 'violet' },

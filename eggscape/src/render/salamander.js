@@ -11,7 +11,7 @@ import { drawVenom } from './v3art.js';
 import { statusClock, statusDraw, dizzyStars } from './status.js';
 import { spline, blinkAt } from './castkit.js';
 import { RING_TH, TAU } from '../sim/geom.js';
-import { SAL } from '../sim/salamander.js';
+import { SAL, BRAIN } from '../sim/salamander.js';
 import { drawGecko15 } from './gecko15.js'; // L15: the frost gecko is a sim crawler too
 import { drawThorn20 } from './crystal20.js'; // L20: Duke Quartz and Spike, the thorn-backs
 import { drawCham26 } from './cham26.js'; // L26: Sly the chameleon
@@ -575,7 +575,7 @@ function poseOf(C) {
   if (sa === 'angry' || sa === 'strain') return { pose: 'hiss', p: 0.6 };
   const u = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1;
   switch (C.ph) {
-    case 'walk': case 'brake': case 'retreat': return { pose: 'walk' };
+    case 'walk': case 'brake': case 'retreat': case 'turn': return { pose: 'walk' };
     case 'warn': return { pose: 'breath', p: 0.42 * u, aimAt: 'target' };
     case 'fire': return { pose: 'breath', p: 0.42 + 0.44 * u, aimAt: 'target' };
     case 'settle': return { pose: 'breath', p: 0.86 + 0.14 * u, aimAt: 'target' };
@@ -622,6 +622,9 @@ export function drawSalamanders(ctx, sim, t, k) {
     let aim = 0, fireLen = 44, tgt = null;
     if (W.aimAt === 'target') { const T = sim.salTarget(C); tgt = { x: T.x * k, y: -T.y * k }; }
     else if (W.aimAt === 'snake') { const S = sim.snakes.find((x) => x.id === C.rid) || sim.snakes.find((x) => x.rivalId === C.id && x.rival > 0); if (S && S.pts.length) tgt = { x: S.pts[0].x * k, y: -S.pts[0].y * k }; }
+    // the brain's alert: the head snaps round to the egg it just noticed (the "!" is drawn after, over every crawler)
+    const al = C.alT > 0 && !tgt ? alertEgg(sim, C) : null;
+    if (al) tgt = { x: al.x * k, y: -al.y * k };
     if (tgt) {
       const hip = at(82 * U), hd = at(13 * U), hb = at(25 * U);
       const fore = 0.22 * B.crouch + 0.26 * Math.sin(Math.PI * clamp(B.rear, 0, 1)) * (1 - B.crouch * 0.5), f = (82 - 13) / 82, c = 1 - f * fore + 0.07 * B.rear * f;
@@ -632,7 +635,7 @@ export function drawSalamanders(ctx, sim, t, k) {
       fireLen = clamp(Math.hypot(tgt.x - (hc.x + Math.cos(ha) * m), tgt.y - (hc.y + Math.sin(ha) * m)) / U, 12, 90);
       if (W.puff) fireLen = Math.min(fireLen * 0.55, 26);
     }
-    R.aim += (aim - R.aim) * Math.min(1, dt * 10);
+    R.aim += (aim - R.aim) * Math.min(1, dt * (al ? 22 : 10));
     // eyes: toward the target, else ahead
     const lx = tgt ? 1 : 0.85, ly = tgt ? clamp(R.aim, -1, 1) : 0.15 * Math.sin(t * 0.7 + C.id);
     R.lookX += (lx - R.lookX) * Math.min(1, dt * 6); R.lookY += (ly - R.lookY) * Math.min(1, dt * 6);
@@ -642,6 +645,10 @@ export function drawSalamanders(ctx, sim, t, k) {
       ...R.A.opts(), gait: C.odo * k, trail: at, id: 50 + C.id, glow, cool: R.cool, aim: R.aim, fireLen, look: { x: R.lookX, y: R.lookY }, out: R.out,
     };
     if (W.grin) { o.mouth = 0.32; }
+    if (al) { // startled: it rears a little, the cheeks flare and the brows drop, then it settles back into the walk
+      const u = 1 - C.alT / BRAIN.alert, f = Math.sin(Math.PI * clamp(u / 0.85, 0, 1));
+      o.blend = { ...o.blend, rear: Math.max(o.blend.rear, 0.3 * f), swell: Math.max(o.blend.swell, 0.8 * f), angry: Math.max(o.blend.angry, f), mouth: Math.max(o.blend.mouth, 0.25 * f) };
+    }
     if (C.ph === 'dive') o.dive = (C.odo - C.hole) * k;
     // boss: the lava rocks come out of its mouth (mouth open, glowing) while it throws
     const BX = sim.bx && sim.bx.boss;
@@ -671,4 +678,25 @@ export function drawSalamanders(ctx, sim, t, k) {
     }
   }
   for (const f of after) f();
+  for (const C of sim.sals || []) if (C.alT > 0 && C.pts.length > 2 && C.ph !== 'wait' && C.ph !== 'gone') drawAlertMark(ctx, C, k);
+}
+// the egg a crawler has just noticed (its position), or null
+function alertEgg(sim, C) {
+  const e = C.ht >= 0 ? sim.eggs.find((x) => x.id === C.ht && x.alive && !x.saved) : null;
+  return e ? e.body.getPosition() : null;
+}
+// the "!" over a crawler that has just noticed an egg: it pops up over the head, holds, and fades
+function drawAlertMark(ctx, C, k) {
+  const u = 1 - C.alT / BRAIN.alert, h = C.pts[Math.min(C.pts.length - 1, Math.round((0.2 * SAL.svl * C.size) / SAL.trail))], pop = u < 0.18 ? sstep(u / 0.18) * (1 + 0.25 * Math.sin(Math.PI * u / 0.18)) : 1, fade = 1 - sstep((u - 0.7) / 0.3);
+  const s = 0.34 * k * pop, x = h.x * k, y = -h.y * k - (0.62 + 0.12 * sstep(u / 0.3)) * k;
+  if (!(s > 0.5) || fade <= 0) return;
+  ctx.save();
+  ctx.globalAlpha *= fade;
+  ctx.scale(1 / k, -1 / k); ctx.translate(x, y); // px, y down (the world ctx is y up)
+  ctx.beginPath(); ctx.arc(0, 0, s, 0, TAU); ctx.fillStyle = '#fff6d6'; ctx.fill();
+  ctx.lineWidth = Math.max(1.5, s * 0.14); ctx.strokeStyle = '#5a1a08'; ctx.stroke();
+  ctx.fillStyle = '#d2340c';
+  ctx.beginPath(); ctx.moveTo(-s * 0.17, -s * 0.66); ctx.lineTo(s * 0.17, -s * 0.66); ctx.lineTo(s * 0.09, s * 0.22); ctx.lineTo(-s * 0.09, s * 0.22); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, s * 0.5, s * 0.14, 0, TAU); ctx.fill();
+  ctx.restore();
 }

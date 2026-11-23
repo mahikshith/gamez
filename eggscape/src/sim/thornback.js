@@ -35,7 +35,7 @@ const mod = (a, b) => ((a % b) + b) % b;
 export const thornMethods = {
   thornOf(role) { return (this.sals || []).find((C) => C.sp === 'thornback' && C.role === role) || null; },
   duke() { return this.thornOf('duke'); },
-  thornSvl(C) { return C.size * 1.8; },
+  thornSvl(C) { return C.size * 1.8; }, // (SAL.svl: C.size is THORN.svl / SAL.svl)
 
   thornEnter(C) {
     const B = this.bx && this.bx.boss;
@@ -78,11 +78,13 @@ export const thornMethods = {
           if (e) { C.lk = e.id; C.lkd = 0; this.salHalt(C, 'hip', THORN.hipT); break; }
         }
         if (play && C.dropT <= 0 && !C.climb && !this.salCrossing(C) && C.ph === 'walk') { C.lkd = 0; this.salHalt(C, 'drop', THORN.dropT); break; }
+        if (play && C.bored <= 0 && !C.climb && !(duke && B && B.atk) && this.salChase(C)) break; // the brain: a target behind him turns him round
         if (this.thornBlocked(C)) { if (C.ph !== 'block') { this.salSet(C, 'block'); this.emit('thornBlocked', { x: C.pts[0].x, y: C.pts[0].y, id: C.id }); } break; }
         if (C.ph === 'block') this.salSet(C, 'walk');
-        this.salMove(C, spd * dt);
+        this.salMove(C, spd * dt); // no chase speed-up (PRED.chase): the planner found Medium too hard with it; they turn round instead
         break;
       }
+      case 'turn': this.salTurnStep(C, dt); break;
       case 'brake': {
         const r = (C.stopAt - C.odo) * C.mv, d = Math.min(Math.max(0, r), 1.1 * dt);
         if (C.mv > 0) this.salMove(C, d, true); else this.salBackWalk(C, d);

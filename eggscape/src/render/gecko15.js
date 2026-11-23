@@ -4,7 +4,7 @@
 // (sim/boss.js gale, freeze, icicles) come from him where he stands. Everything here is read from the sim (his trail,
 // phase, the boss attack) and never written back. Drawn from drawSalamanders (render/salamander.js), under the eggs.
 import { RING_TH, TAU } from '../sim/geom.js';
-import { GECKO } from '../sim/salamander.js';
+import { GECKO, BRAIN } from '../sim/salamander.js';
 import { drawCrawler } from './crawlers.js';
 import { statusClock } from './status.js';
 import { hash } from './castkit.js';
@@ -65,7 +65,7 @@ function step(sim, C, B, dt, t) {
   if (B.dizzy > 0 && !S.wasDz) S.hurtT = t;
   S.wasFl = flinch; S.wasDz = B.dizzy > 0;
   const hu = (t - S.hurtT) / 0.55; // the hurt take: a hop, eyes wide, jaw dropped
-  const moving = C.ph === 'walk' || C.ph === 'brake' || C.ph === 'retreat' || C.ph === 'in';
+  const moving = C.ph === 'walk' || C.ph === 'brake' || C.ph === 'retreat' || C.ph === 'in' || C.ph === 'turn';
   const a = Math.atan2(S.hy, S.hx);
   // head turn toward a world point (radians off his heading, clamped)
   const aimAt = (x, y) => clamp(wrap(Math.atan2(y - S.hy, x - S.hx) - S.hd), -1.1, 1.1);
@@ -101,6 +101,10 @@ function step(sim, C, B, dt, t) {
       aim = 0.5 * Math.sign(Math.cos(S.hd - (a + Math.PI / 2)) || 1) * (warn ? sstep(u / 0.3) : 0.4); // he looks back over his shoulder
       look = { x: 0.3, y: 0 };
     }
+  } else if (C.alT > 0 && moving) { // the brain's alert: the head snaps to the egg he just noticed, the crest flares, the tongue tastes the air
+    const e = sim.eggs.find((x) => x.id === C.ht && x.alive && !x.saved), f = Math.sin(Math.PI * clamp((BRAIN.alert - C.alT) / (BRAIN.alert * 0.85), 0, 1));
+    if (e) { const p = e.body.getPosition(); aim = aimAt(p.x, p.y); }
+    W.rear = 0.3 * f; W.swell = 0.8 * f; W.angry = f; W.tongue = 0.6 * f; look = { x: 1, y: 0 };
   } else if (C.bored > 0 && moving) { W.tongue = C.bored > GECKO.bored - 1.2 ? 0.7 : 0; look = { x: 0.6, y: 0.4 * Math.sin(t * 2) }; } // smug, wandering off
   if (!(A && A.name === 'freeze' && C.ph === 'atk')) { S.touch = Math.max(0, S.touch - dt * 4); if (!A || A.name !== 'freeze') S.crack = 0; }
   W.walk = moving ? 1 : 0;
