@@ -162,3 +162,62 @@ export function pictoPower(c, id, x, y, s, t = 0) {
   }
   c.restore();
 }
+
+// An egg skin's power as one glyph (economy.js SKINS[id].perk.icon): the shop cards and sheet, the level card's chip and
+// the HUD chip all draw the same one. Nothing here moves except the few that already breathe.
+export function pictoPerk(c, icon, x, y, s, t = 0) {
+  const r = s * 0.4;
+  c.save(); c.translate(x, y); c.lineCap = 'round'; c.lineJoin = 'round';
+  if (icon === 'crack') { // a four-leaf clover over an egg: luck, not damage
+    c.restore(); drawEggIcon(c, x, y + s * 0.04, s * 0.84, 'alive'); c.save(); c.translate(x, y);
+    c.fillStyle = '#3eb42d'; c.strokeStyle = '#1d6a12'; c.lineWidth = s * 0.05;
+    for (let i = 0; i < 4; i++) { const a = (i * TAU) / 4 + 0.78; c.beginPath(); c.ellipse(Math.cos(a) * r * 0.3, Math.sin(a) * r * 0.3 - s * 0.02, r * 0.26, r * 0.2, a, 0, TAU); c.fill(); c.stroke(); }
+  } else if (icon === 'bounce') { // an egg over a bounce arc
+    c.strokeStyle = '#8a5a1c'; c.lineWidth = s * 0.09;
+    c.beginPath(); c.moveTo(-r, r * 0.8); c.quadraticCurveTo(0, r * 0.1, r, r * 0.8); c.stroke();
+    c.beginPath(); c.moveTo(-r * 1.05, r * 0.85); c.lineTo(r * 1.05, r * 0.85); c.lineWidth = s * 0.08; c.strokeStyle = ink; c.stroke();
+    c.restore(); drawEggIcon(c, x, y - s * 0.16, s * 0.52, 'alive'); return;
+  } else if (icon === 'thorn') { // a thorn with a shield plate in front of it
+    c.fillStyle = '#c23a55'; c.strokeStyle = '#6a1225'; c.lineWidth = s * 0.06;
+    c.beginPath(); c.moveTo(r * 0.15, -r * 0.95); c.lineTo(r * 0.75, r * 0.6); c.lineTo(-r * 0.2, r * 0.3); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = '#7fc3ff'; c.strokeStyle = '#1d4a7a'; c.lineWidth = s * 0.07;
+    c.beginPath(); c.moveTo(-r * 0.85, -r * 0.6); c.lineTo(-r * 0.05, -r * 0.35); c.lineTo(-r * 0.05, r * 0.45); c.quadraticCurveTo(-r * 0.5, r * 0.3, -r * 0.85, -r * 0.1); c.closePath(); c.fill(); c.stroke();
+  } else if (icon === 'coin') { // a gold coin with a plus
+    const g = c.createLinearGradient(-r, -r, r, r); g.addColorStop(0, '#ffe27a'); g.addColorStop(1, '#c47f0a');
+    c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fillStyle = g; c.fill(); c.lineWidth = s * 0.08; c.strokeStyle = '#8a5200'; c.stroke();
+    c.beginPath(); c.arc(0, 0, r * 0.72, 0, TAU); c.fillStyle = '#ffd34a'; c.fill();
+    c.strokeStyle = '#8a5200'; c.lineWidth = s * 0.11;
+    c.beginPath(); c.moveTo(-r * 0.38, 0); c.lineTo(r * 0.38, 0); c.moveTo(0, -r * 0.38); c.lineTo(0, r * 0.38); c.stroke();
+  } else if (icon === 'clock') { c.restore(); pictoClock(c, x, y, s); return; } else if (icon === 'flame') { c.restore(); pictoFlame(c, x, y, s); return; } else if (icon === 'frost') { // a snowflake
+    c.strokeStyle = '#bfeaff'; c.lineWidth = s * 0.1;
+    c.beginPath();
+    for (let i = 0; i < 6; i++) { const a = (i * TAU) / 6, ca = Math.cos(a), sa = Math.sin(a); c.moveTo(0, 0); c.lineTo(ca * r, sa * r); const bx = ca * r * 0.58, by = sa * r * 0.58, b = r * 0.3; c.moveTo(bx, by); c.lineTo(bx + Math.cos(a + 0.8) * b, by + Math.sin(a + 0.8) * b); c.moveTo(bx, by); c.lineTo(bx + Math.cos(a - 0.8) * b, by + Math.sin(a - 0.8) * b); }
+    c.stroke();
+  } else if (icon === 'pull') { // an orb with arrows drawn in to it
+    c.beginPath(); c.arc(0, 0, r * 0.42, 0, TAU); c.fillStyle = '#9d8cff'; c.fill(); c.lineWidth = s * 0.06; c.strokeStyle = '#3a2a7a'; c.stroke();
+    c.strokeStyle = '#3a2a7a'; c.lineWidth = s * 0.08;
+    for (let i = 0; i < 4; i++) { const a = (i * TAU) / 4 + 0.78, ca = Math.cos(a), sa = Math.sin(a); c.beginPath(); c.moveTo(ca * r, sa * r); c.lineTo(ca * r * 0.56, sa * r * 0.56); c.lineTo(ca * r * 0.8 - sa * r * 0.22, sa * r * 0.8 + ca * r * 0.22); c.stroke(); }
+  } else if (icon === 'zap') { // the game's bolt colours (render/status.js BOLT)
+    c.beginPath(); c.moveTo(s * 0.08, -r * 1.05); c.lineTo(-r * 0.55, s * 0.04); c.lineTo(-s * 0.02, s * 0.04); c.lineTo(-s * 0.12, r * 1.05); c.lineTo(r * 0.6, -s * 0.08); c.lineTo(s * 0.04, -s * 0.08); c.closePath();
+    c.fillStyle = '#ffc61a'; c.fill(); c.lineWidth = s * 0.07; c.strokeStyle = '#1b1350'; c.stroke();
+  } else if (icon === 'shell') { // a pearly shell, and the crack it turns a break into
+    c.beginPath(); c.arc(0, r * 0.45, r * 0.95, Math.PI, 0); c.closePath();
+    const g = c.createLinearGradient(0, -r * 0.5, 0, r * 0.5); g.addColorStop(0, '#fff6ff'); g.addColorStop(1, '#ffd8ef');
+    c.fillStyle = g; c.fill(); c.lineWidth = s * 0.07; c.strokeStyle = '#8a5a7a'; c.stroke();
+    c.lineWidth = s * 0.05;
+    for (const a of [-0.9, -0.3, 0.3, 0.9]) { c.beginPath(); c.moveTo(0, r * 0.45); c.lineTo(Math.sin(a) * r * 0.9, r * 0.45 - Math.cos(a) * r * 0.9); c.stroke(); }
+  } else if (icon === 'drop') { // an egg falling out of a jaw
+    c.strokeStyle = '#2f7a3a'; c.fillStyle = '#4aa84f'; c.lineWidth = s * 0.06;
+    c.beginPath(); c.moveTo(-r, -r * 0.9); c.lineTo(r, -r * 0.9); c.lineTo(r * 0.72, -r * 0.3); c.lineTo(-r * 0.72, -r * 0.3); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = '#fff';
+    for (let i = -2; i <= 2; i++) { c.beginPath(); c.moveTo(i * r * 0.3 - r * 0.1, -r * 0.3); c.lineTo(i * r * 0.3 + r * 0.1, -r * 0.3); c.lineTo(i * r * 0.3, -r * 0.02); c.closePath(); c.fill(); }
+    c.restore(); drawEggIcon(c, x, y + s * 0.22, s * 0.46, 'alive'); return;
+  } else { // grip: a tyre tread on a slope
+    c.strokeStyle = '#9aa6b2'; c.lineWidth = s * 0.09;
+    c.beginPath(); c.moveTo(-r, r * 0.85); c.lineTo(r, r * 0.25); c.stroke();
+    c.beginPath(); c.arc(0, -r * 0.2, r * 0.52, 0, TAU); c.fillStyle = '#4a5560'; c.fill(); c.lineWidth = s * 0.07; c.strokeStyle = '#1c242c'; c.stroke();
+    c.strokeStyle = '#cfd8e0'; c.lineWidth = s * 0.07;
+    for (let i = 0; i < 6; i++) { const a = (i * TAU) / 6 + t * 0.6; c.beginPath(); c.moveTo(Math.cos(a) * r * 0.26, -r * 0.2 + Math.sin(a) * r * 0.26); c.lineTo(Math.cos(a) * r * 0.5, -r * 0.2 + Math.sin(a) * r * 0.5); c.stroke(); }
+  }
+  c.restore();
+}

@@ -6,6 +6,7 @@
 //   icon   the shape set of the pause bars and the levels grid
 //   logo   how the title letters are dressed (Santa hat + snow, crown, beanie ...)
 // Nothing here runs per particle; scenes and ornaments are canvases built once, panels/buttons add a few paths.
+import { freeCanvas } from '../render/cvfree.js';
 const TAU = Math.PI * 2;
 const mk = (w, h, f) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); const g = c.getContext('2d'); f(g, c.width, c.height); return c; };
 const rng = (seed) => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
@@ -200,12 +201,12 @@ export function themeBack(ctx, skin, W, H, gy, list = false) {
   const key = skin.id + '|' + W + 'x' + H + '|' + gy + '|' + Math.min(DPR, 1.5);
   let c = cache[key];
   if (!c) {
-    const keys = Object.keys(cache); if (keys.length > 5) delete cache[keys[0]];
+    const keys = Object.keys(cache); if (keys.length > 5) { freeCanvas(cache[keys[0]]); delete cache[keys[0]]; }
     const sc = Math.min(DPR, 1.5), k = Math.max(0.78, Math.min(1.5, Math.min(W, H) / 420));
     c = mk(W * sc, H * sc, (g) => { g.scale(sc, sc); BG[skin.pack.bg](g, W, H, gy, skin.pal, k); });
     // the colour lift as ONE filtered copy (2026-11-19: a filter left on while painting every shape cost ~1 s per scene and
     // froze the shop when a skin was equipped, mykee). No canvas filters: the plain palette.
-    try { const f = mk(c.width, c.height, (g) => { g.filter = 'saturate(1.4) contrast(1.06)'; g.drawImage(c, 0, 0); }); if (f) c = f; } catch (_) { /* keep plain */ }
+    try { const f = mk(c.width, c.height, (g) => { g.filter = 'saturate(1.4) contrast(1.06)'; g.drawImage(c, 0, 0); }); if (f) { freeCanvas(c); c = f; } } catch (_) { /* keep plain */ }
     cache[key] = c;
   }
   ctx.drawImage(c, 0, 0, W, H);
@@ -219,7 +220,7 @@ export function themeWash(ctx, skin, W, H) {
   const key = 'wash|' + skin.id + '|' + W + 'x' + H;
   let c = cache[key];
   if (!c) {
-    const keys = Object.keys(cache); if (keys.length > 5) delete cache[keys[0]];
+    const keys = Object.keys(cache); if (keys.length > 5) { freeCanvas(cache[keys[0]]); delete cache[keys[0]]; }
     c = cache[key] = mk(W / 3, H / 3, (g, w, h) => { const r = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.hypot(w, h) * 0.55); r.addColorStop(0, 'rgba(0,0,0,0)'); r.addColorStop(1, skin.pal.wash); g.fillStyle = r; g.fillRect(0, 0, w, h); g.fillStyle = skin.pal.tint; g.fillRect(0, 0, w, h); });
   }
   ctx.drawImage(c, 0, 0, W, H);

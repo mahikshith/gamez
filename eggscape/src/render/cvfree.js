@@ -14,3 +14,14 @@ export function freeCanvas(cv) {
     cv.width = 1; cv.height = 1;
   } catch (_) { /* a picture that cannot shrink is left to the collector */ }
 }
+
+// every picture reachable from an object (its fields, arrays and Maps, a few levels down): a per-level helper that is
+// thrown away gives its sprites back in one call
+export function freeDeep(o, depth = 3) {
+  if (!o || typeof o !== 'object') return;
+  if (typeof o.getContext === 'function') { freeCanvas(o); return; }
+  if (depth <= 0) return;
+  if (ArrayBuffer.isView(o)) return;
+  const vals = Array.isArray(o) ? o : o instanceof Map ? [...o.values()] : o instanceof Set ? [...o] : Object.values(o);
+  for (const v of vals) if (v && typeof v === 'object') freeDeep(v, depth - 1);
+}

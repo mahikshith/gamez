@@ -73,7 +73,7 @@ import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
 import { strikeLayer } from './render/strikehit.js'; // Chick Strike: the villains' hit reactions
 import { streakFlame } from './ui/flame.js';
-import { pictoCheck, pictoCross, pictoWarn, pictoClock, pictoFlame, pictoGem, pictoTarget, pictoCracked, pictoBroken, pictoGoal, pictoPower, pictoStarMinus, pictoNoVideo } from './ui/picto.js'; // icon-first cards
+import { pictoCheck, pictoCross, pictoWarn, pictoClock, pictoFlame, pictoGem, pictoTarget, pictoCracked, pictoBroken, pictoGoal, pictoPower, pictoPerk, pictoStarMinus, pictoNoVideo } from './ui/picto.js'; // icon-first cards
 import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js';
 import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' crown // Chick Strike powers
 import { STRIKES, STRIKE, STRIKE_FROM, EGG_STRIKES } from './data/strikes.js';
@@ -325,6 +325,17 @@ function themeFor(level) {
 // tap next is built ahead while the home or map screen sits idle
 const BD = new Map();
 const BG_FORCE = DEV && typeof location !== 'undefined' ? new URLSearchParams(location.search).get('bg') : null;
+// 0.8.10: the phone says memory is short (Android onTrimMemory, levels 10/15 while the game is on screen, 60/80 behind):
+// every picture the screen in front does not need goes back now, instead of waiting until the system kills the page
+function trimPictures(level) {
+  try {
+    stampSweep();
+    MS.mapRelease(G.screen === 'levels' ? G.world : G.li >= 0 ? envOf(G.li) : -1);
+    for (const [k, v] of [...BD]) if (v !== G.backdrop) { v.sz = ''; if (v.dispose) v.dispose(); BD.delete(k); }
+    diag.note({ trim: level, fr: [cvStats.freed, Math.round(cvStats.mb)] });
+  } catch (_) { /* never in the way of the game */ }
+}
+if (typeof window !== 'undefined') window.__eggTrim = trimPictures;
 function backdropFor(theme, seed) {
   const key = theme.id + '|' + seed, sz = W_ + 'x' + H_ + '@' + DPR;
   let b = BD.get(key);
@@ -359,6 +370,10 @@ function warmNext() {
   }, 700);
 }
 
+// the egg skin worn in play (a free try counts) and its power (src/economy.js SKINS[id].perk, run by src/sim/perks.js)
+const eggPerkId = () => DR.trialSkin(save) || E.equippedSkin(save.wallet);
+const eggPerk = () => E.skinPerk(eggPerkId());
+
 function startLevel(i, opts = {}) {
   if (G.sim && G.sim.state === 'failed' && G.level) G.fails[G.level.id] = 1; // allies (v3.5): help is offered after a fail
   G.allyOpen = G.allyAd = false;
@@ -371,7 +386,7 @@ function startLevel(i, opts = {}) {
   if (DEV && BG_FORCE) G.theme = THEMES.find((th) => th.id === BG_FORCE) || G.theme; // dev: ?bg=coop forces a level's backdrop theme
   G.boost = opts.boost || {};
   introAutoPick(G.level, i);
-  G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost, strike: strikeFor(G.level, i) });
+  G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost, strike: strikeFor(G.level, i), perk: i === -2 ? null : eggPerkId() });
   releaseRings(G.sim.rings); stampSweep(); // 0.8.10: the last level's ring and prop pictures go back to the phone now (render/cvfree.js)
   MS.mapRelease(i >= 0 ? envOf(i) : -1); // and the map's pictures: only the played world's band waits for the way back
   G.sim.ringSpeed = ringSpeed();
@@ -385,9 +400,11 @@ function startLevel(i, opts = {}) {
   G.freeRewind = !!G.boost.rewind;
   perfNewLevel(save); // Auto's 30 fps fallback is decided again in each level
   G.backdrop = backdropFor(G.theme, G.level.id * 97);
+  if (G.weather && G.weather.dispose) G.weather.dispose(); // 0.8.10: the last level's weather sprites go back
   G.weather = createWeather(G.level.weather || THEME_WEATHER[G.theme.id] || 'none', G.level.id * 31);
   G.weather.resize(W_, H_, DPR);
   W.setSkin(DR.trialSkin(save) || save.wallet.skin); // an egg skin on trial (the Director's win gift) is worn in play
+  G.perkT = -9; // the HUD power chip pulses when the skin's power fires
   G.slow = G.card = G.hint = G.hintShow = null;
   G.lastEgg = false;
   G.snakeToast = false;
@@ -1696,7 +1713,8 @@ async function press(id) {
         if (DR.startTry(save, kind, k, Date.now(), owned)) {
           persist(); G.storeFlash = { id: kind + ':' + k, t0: G.t }; audio.play('unlock'); G.detail = null;
           const name = kind === 'hen' ? E.HEN_SKINS[k].name : E.SKINS[k].name + ' egg';
-          toast(`Trying the ${name} for ${DR.DIR.skinLevels} levels`, 2.6);
+          const pk = kind === 'skin' ? E.skinPerk(k) : null; // a free try brings the power along: say so
+          toast(pk ? `Trying the ${name} for ${DR.DIR.skinLevels} levels, with ${pk.name}` : `Trying the ${name} for ${DR.DIR.skinLevels} levels`, 2.8);
         }
       }
   }
@@ -2177,9 +2195,11 @@ function drawDetail() {
         ui.record({ x: x + (w - aw) / 2, y, w: aw, h: 140 * s }, 'dt:art');
       } },
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'dt:line' + i, gap: i ? 2 * s : 10 * s })),
+      ...(it.perk ? [perkRow(it.perk, s, 10 * s)] : []), // an egg skin's power: the icon, its name and four words
       ...(it.parts || []).map((P, i) => partRow(P, s, 'dt:part' + i, i ? 2 * s : 10 * s)), // a kit or a set: what is inside, one row each
       ...(it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 6 * s })] : []),
       { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x + w * 0.1, y, w * 0.8, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
+      ...(tryK && it.perk && !it.trying ? [lineBlock('The power comes with it.', 14 * s, { color: C.ink2, tag: 'dt:perkfree', gap: 8 * s })] : []),
       ...(tryK ? [{ h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
         ? ui.button('try:on', `Trying: ${DR.trials(save)[tryK[0]].left} level${DR.trials(save)[tryK[0]].left > 1 ? 's' : ''} left`, x + w * 0.1, y, w * 0.8, 50 * s, { kind: 'secondary', disabled: true, keepFace: true, dim: 1, size: 18 * s })
         : ui.button('try:' + tryK.join(':'), 'Try it free', x + w * 0.1, y, w * 0.8, 50 * s, { kind: 'secondary', size: 20 * s }) }] : []),
@@ -2187,6 +2207,14 @@ function drawDetail() {
     ];
   }, { ribbon: '#7a48e8' });
 }
+// an egg skin's power on its sheet: the icon in a cell, then "Name: four words"
+const perkRow = (P, s, gap) => ({ h: 44 * s, gap, draw: (x, y, w) => {
+  ui.roundRect(x + 2 * s, y, w - 4 * s, 44 * s, 11 * s); ctx.fillStyle = 'rgba(122,72,232,0.14)'; ctx.fill();
+  ui.roundRect(x + 6 * s, y + 4 * s, 36 * s, 36 * s, 9 * s); ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fill();
+  pictoPerk(ctx, P.icon, x + 24 * s, y + 22 * s, 30 * s, G.t);
+  ui.text(P.name, x + 50 * s, y + 15 * s, { size: 16 * s, maxW: w - 58 * s, color: ui.C.ink, tag: 'dt:perkname' });
+  ui.text(P.line, x + 50 * s, y + 33 * s, { size: 13.5 * s, maxW: w - 58 * s, color: '#5a2ea8', tag: 'dt:perkline' });
+} });
 // one "what you get" row: the part's art in a small cell, then its words (a kit's boosts, a set's outfit and egg)
 const partRow = (P, s, tag, gap, o = {}) => ({ h: 40 * s, gap, draw: (x, y, w) => {
   ui.roundRect(x + 2 * s, y + 2 * s, 36 * s, 36 * s, 9 * s); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fill();
@@ -2911,6 +2939,48 @@ function playEv(ev) {
   audio.play(r[0], { ...(r[1] || {}), pan: clamp((ev.x || 0) / 6, -0.6, 0.6) });
   if (r[2]) buzz(r[2]);
 }
+// The egg skin's power firing (sim/perks.js 'perk'): one short beat built from effects the game already has, a sound
+// from the set, a light buzz, and the HUD chip pulses. No flashes, so Calm motion needs nothing switched off.
+function perkBeat(ev, fx) {
+  const P = eggPerk();
+  if (!P) return;
+  G.perkT = G.t;
+  buzz('pick');
+  const x = ev.x, y = ev.y;
+  if (ev.id === 'robot') { // Grip: a servo sparkle as it brakes on ice (no popup: it happens often)
+    fx.sparkle(x, y - 0.1, 5, '#cfe4ff');
+    audio.play('motor_tick', { vol: 0.35, pitch: 1.6 });
+    return;
+  }
+  if (ev.id === 'galaxy') { // Star Pull: the orb streaks in
+    fx.sparkle(ev.ox ?? x, ev.oy ?? y, 8, '#bfa8ff');
+    fx.whoosh(ev.ox ?? x, ev.oy ?? y, x - (ev.ox ?? x), y - (ev.oy ?? y));
+    audio.play('power_pickup', { vol: 0.5, pitch: 1.35 });
+    return;
+  }
+  const say = (txt, col) => popup(x, y + 0.55, txt, { color: col, size: 20, life: 1.1 });
+  if (ev.id === 'speckled') { fx.sparkle(x, y, 12, '#9bff8a'); fx.impact(x, y, 0.3, '#b6ffa0'); audio.play('near_miss', { vol: 0.8 }); say('LUCKY FRECKLES!', '#8dff78'); }
+  else if (ev.id === 'dino') { fx.chips(x, y, '#5fd16a', 9, 2.4); fx.impact(x, y, 0.34, '#7fe08a'); audio.play('thorn_snap'); audio.play('steel_on', { vol: 0.4, pitch: 1.4 }); say('THICK SHELL!', '#7fe08a'); }
+  else if (ev.id === 'lava') { for (let i = 0; i < 7; i++) fx.flameAt(x + (Math.random() - 0.5) * 0.3, y + (Math.random() - 0.5) * 0.3, 1.1); fx.smoke(x, y + 0.25, 3); audio.play('fire_burn'); audio.play('fire_ignite', { vol: 0.5, pitch: 1.3 }); say('HOT SHELL!', '#ff9b3a'); }
+  else if (ev.id === 'frosty') { const fxx = ev.vx ?? x, fxy = ev.vy ?? y; fx.sparkle(fxx, fxy, 14, '#dff6ff'); fx.wave(fxx, fxy, 1.1, '#dff6ff', 0.5, 0.12); audio.play('glass_crack', { vol: 0.8, pitch: 0.75 }); audio.play('frost_lick', { vol: 0.6 }); say('FROST TOUCH!', '#bfe6ff'); }
+  else if (ev.id === 'thunder') { const zx = ev.vx ?? x, zy = ev.vy ?? y; fx.sparkle(zx, zy, 12, '#ffe14a'); fx.impact(zx, zy, 0.4, '#fff3a6'); audio.play('thunder', { vol: 0.6, pitch: 1.2 }); say('THUNDER EGG!', '#ffe14a'); }
+  else if (ev.id === 'pearl') { fx.sparkle(x, y, 14, '#ffd8ef'); fx.wave(x, y, 0.9, '#fff6ff', 0.5, 0.1); audio.play('glass_crack', { vol: 0.5, pitch: 1.5 }); audio.play('unlock', { vol: 0.5 }); say('PEARL SHINE!', '#ffc9ea'); }
+  else if (ev.id === 'gator') { const gx = ev.vx ?? x, gy = ev.vy ?? y; fx.chips(gx, gy, '#4aa84f', 8, 2.2); audio.play('gator_snap', { vol: 0.8 }); say('SNAP BACK!', '#8de08a'); }
+}
+// the HUD's power chip: the equipped egg's power icon in a small glass pill, pulsing for a beat when it fires
+function perkChipHud(x, y, u) {
+  const P = eggPerk();
+  if (!P) return 0;
+  const h = 30 * u, w = 34 * u, age = G.t - (G.perkT ?? -9), pu = age < 0.6 && !save.calm ? 1 + 0.22 * Math.sin((age / 0.6) * Math.PI) : 1;
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2); ctx.scale(pu, pu); ctx.translate(-(x + w / 2), -(y + h / 2));
+  ui.glass(x, y, w, h, age < 0.9 ? { a: 'rgba(96,72,32,0.95)', b: 'rgba(58,40,14,0.95)', border: 'rgba(255,226,122,0.9)' } : {});
+  pictoPerk(ctx, P.icon, x + w / 2, y + h / 2, 22 * u, G.t);
+  ctx.restore();
+  ui.record({ x, y, w, h }, 'hud:perk');
+  return w;
+}
+
 function handleEvents() {
   const sim = G.sim;
   const fx = G.fx;
@@ -3186,6 +3256,7 @@ function handleEvents() {
         audio.play('thorn_snap');
         popup(ev.egg.body.getPosition().x, ev.egg.body.getPosition().y + 0.5, 'GOLDEN SHELL!', { color: '#ffd23f', size: 22 });
         break;
+      case 'perk': perkBeat(ev, fx); break; // the egg skin's power fires (sim/perks.js)
       case 'timeout':
         if (ev.won) break;
         audio.play('level_fail');
@@ -3839,7 +3910,10 @@ function onWin() {
   const L = G.level, firstWorld = G.li >= 0 && L.world != null && !LEVELS.some((l) => l.world === L.world && bestStarsOf(l.id) > 0);
   G.result.cheer = pickRoutine({ stars: G.result.stars, streak: G.result.streak, boss: !!L.boss && G.li >= 0, firstWorld, last: save.lastCheer });
   save.lastCheer = G.result.cheer;
-  { // Golden Hour doubles the coins; the Golden Egg Bank takes its share on top (app only)
+  { // the egg skin's coin power (Shiny, Midas, Treasure Sense) first, then Golden Hour, then the bank's share
+    const pre = G.result.coins, pk = eggPerk();
+    G.result.coins = E.perkCoins(eggPerkId(), pre, G.sim.savedLog.length);
+    G.result.perkCoins = G.result.coins - pre; G.result.perkGold = !!(pk && pk.id === 'golden');
     const P = E.payWin(save.wallet, G.result.coins, ads.moneyShop);
     save.wallet = P.wallet; G.result.coins = P.coins; G.result.goldHour = P.doubled;
   }
@@ -4681,6 +4755,7 @@ function drawHUD() {
   }
   const infoOn = false; // 2026-11-19 (mykee): no "i" button in the HUD; who is in the vault is on the pause page
   let leftEdge = X0 + bs + 8 * u;
+  { const pw = perkChipHud(leftEdge, row1 - 15 * u, u); if (pw) leftEdge += pw + 8 * u; } // the equipped egg's power
   const rightEdge = chipX - 8 * u;
   // tray + timer content
   const slots = Math.max(G.level.eggs, sim.eggs.length);
@@ -4809,6 +4884,7 @@ function drawSideHUD() {
   let y = Y0;
   ui.button('pause', '', X0, y, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
   // (the "i" button moved into the pause page, 2026-11-19)
+  perkChipHud(X0 + bs + gap, Y0 + (bs - 30 * u) / 2, u); // the equipped egg's power
   G.infoLow = 0;
   y += bs + gap;
   // level badge + name
@@ -6024,6 +6100,7 @@ function drawLevelIntro(L, acc) {
       ui.record({ x: sx, y: sy2, w: sw, h: stageH }, 'intro:stage');
       hotBadge(sx + 8 * s, sy2 + stageH - 8 * s, s); // bottom left, clear of the villain and the egg
       tryChip(sx + 8 * s, sy2 + 8 * s, sw * 0.68, s); // top left: a free try running
+      perkChipCard(sx + sw - 8 * s, sy2 + stageH - 8 * s, sw * 0.62, s); // bottom right: the equipped egg's power
       if (n > 1) { ui.buttons.push({ id: 'how:next', x: sx, y: sy2, w: sw, h: stageH }); }
       // a name tag on the stage: who this is (BOSS in red)
       if (plan.teach) { // the power chick's first level: its name in the chick's own colour
@@ -6150,6 +6227,27 @@ function tryChip(x, y, maxW, s) {
   tasteArt(T, x + h / 2 + 2 * s, y + h / 2, h * 0.8, false);
   ui.text(str, x + h + 4 * s, y + h / 2, { size: fs, color: '#fff', maxW: w - h - 12 * s, noRecord: true });
   ui.record({ x, y, w, h }, 'intro:try');
+}
+// the equipped egg's power on the level card: its icon and at most four words (x, y = the chip's right edge and bottom)
+function perkChipCard(x, y, maxW, s) {
+  const P = eggPerk();
+  if (!P) return;
+  const h = 30 * s, fs = 13 * s, str = P.line;
+  const w = Math.min(maxW, h + ui.measure(str, fs) + 12 * s), x0 = x - w, y0 = y - h;
+  ui.roundRect(x0, y0, w, h, h / 2); ctx.fillStyle = 'rgba(70,40,110,0.88)'; ctx.fill();
+  ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(226,206,255,0.9)'; ctx.stroke();
+  pictoPerk(ctx, P.icon, x0 + h / 2 + 2 * s, y0 + h / 2, h * 0.76, G.t);
+  ui.text(str, x0 + h + 2 * s, y0 + h / 2, { size: fs, color: '#fff', maxW: w - h - 10 * s, noRecord: true });
+  ui.record({ x: x0, y: y0, w, h }, 'intro:perk');
+}
+// Midas (the Golden egg's power): three little gold glints breathing over the coins on the win card
+function goldGlints(x, y, s) {
+  ctx.save(); ctx.fillStyle = '#fff3a0';
+  for (const [dx, dy, ph] of [[-7, -11, 0], [32, 9, 2.1], [13, -13, 4.2]]) {
+    const R = 4.5 * s * (0.5 + 0.5 * Math.sin(G.t * 3 + ph)), cx = x + dx * s, cy = y + dy * s;
+    ctx.beginPath(); ctx.moveTo(cx, cy - R); ctx.quadraticCurveTo(cx, cy, cx + R, cy); ctx.quadraticCurveTo(cx, cy, cx, cy + R); ctx.quadraticCurveTo(cx, cy, cx - R, cy); ctx.quadraticCurveTo(cx, cy, cx, cy - R); ctx.fill();
+  }
+  ctx.restore();
 }
 // the win streak on the level card: a flame with the count and the free boosters it brings to this level
 function hotBadge(x, y, s) {
@@ -6775,6 +6873,7 @@ function drawWinPage() {
       cells.forEach(([k2, lab, v, col], i) => {
         const cx = x + (i % 2) * w / 2, cy = y + 5 * s + ch * Math.floor(i / 2), ix = cx + 24 * s, iy = cy + ch / 2;
         if (k2 === 'clock') pictoClock(ctx, ix, iy, 26 * s); else if (k2 === 'target') pictoTarget(ctx, ix, iy, 26 * s); else drawCoin(ctx, ix, iy, 12 * s, G.t);
+        if (k2 === 'coin' && r.perkGold && !save.calm) goldGlints(ix, iy, s); // Midas (the Golden egg): the count-up shimmers
         ui.text(lab, ix + 20 * s, iy - 10 * s, { size: 12.5 * s, color: C.ink2, maxW: w / 2 - 50 * s, tag: 'win:l' + k2 });
         ui.text(v, ix + 20 * s, iy + 9 * s, { size: 19 * s, color: col, maxW: w / 2 - 50 * s, tag: 'win:v' + k2 });
       });

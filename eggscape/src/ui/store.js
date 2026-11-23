@@ -11,10 +11,11 @@
 //   picker: 'boost:<boosterId>', 'shop'
 import { glideStep, snapPx } from '../scroll.js';
 import { drawEggSkinArt } from '../render/eggskins.js';
+import { pictoPerk } from './picto.js'; // an egg skin's power as one glyph
 import { ICON, C, tint, drawAdBadge } from './ui.js';
 import { themeBack } from './theme.js';
 import { BOOSTERS, BOOSTER_ORDER, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin,
-  CHARGE_PACKS, MAX_CHARGES, HEN_SKINS, HEN_SKIN_ORDER, ownsHenSkin, ITEMS, ITEM_ORDER, itemCount, CHICK_PRICES, ownsChick,
+  CHARGE_PACKS, MAX_CHARGES, HEN_SKINS, HEN_SKIN_ORDER, ownsHenSkin, ITEMS, ITEM_ORDER, itemCount, CHICK_PRICES, ownsChick, skinPerk,
   IAP, COIN_PACKS, iapAvailable, usdHint, BANK_OPEN, BANK_CAP, BUNDLES, bundleParts, bundleTimes, CHICK_IDS,
   KITS, KIT_ORDER, kitPrice, kitSave, kitFull, SETS, SET_ORDER, setAvailable, setPrice, setSave, sampleFor, bundleValue, dailyDeal, DEAL_OFF } from '../economy.js';
 import { drawStrikeToken, STRIKES } from '../render/strike.js';
@@ -546,8 +547,9 @@ function skinItem(id, st) {
     const ok = canAffordSkin(w, id);
     btn = { id: 'skin:' + id, label: String(k.price), coin: true, ...(ok ? GREEN : GREY) };
   }
+  const P = skinPerk(id);
   return withDeal({
-    key: 'skin:' + id, name: k.name, line: k.line, owned: owns, trying: !owns && st.trial && st.trial.skin === id,
+    key: 'skin:' + id, name: k.name, line: k.line, perk: P, // the power shows as its own chip and row (drawTile, main.js perkRow) owned: owns, trying: !owns && st.trial && st.trial.skin === id,
     flash: flashOf(st, 'skin:' + id),
     icon: (ctx, cx, cy, it, t, bounce) => drawSkinPreview(ctx, id, cx, cy + it * 0.02, it * 0.8 * bounce, t),
     btn, sub: null,
@@ -1103,7 +1105,8 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   const on = B.keepFace && B.label === 'Equipped';
   ctx.lineWidth = (on ? 4 : 2.5) * s; ctx.strokeStyle = on ? '#ffc83a' : tint(col, -0.5); ctx.stroke();
   // a soft light behind the art
-  const chipH = 26 * s, nameS = 13 * s, top = item.why ? 30 * s : item.badgeCol ? 18 * s : 0, ah = fh - chipH - nameS * 1.3 - 16 * s - top, acx = x + w / 2, acy = y + 6 * s + top + ah / 2; // a Save pill gets its own room above the art
+  const pkH = item.perk ? 21 * s : 0; // an egg skin's power: its own pill under the name
+  const chipH = 26 * s, nameS = 13 * s, top = item.why ? 30 * s : item.badgeCol ? 18 * s : 0, ah = fh - chipH - nameS * 1.3 - 16 * s - top - pkH, acx = x + w / 2, acy = y + 6 * s + top + ah / 2; // a Save pill gets its own room above the art
   const lg = ctx.createRadialGradient(acx, acy, 0, acx, acy, Math.min(w, ah) * 0.55); lg.addColorStop(0, 'rgba(255,255,255,0.75)'); lg.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = lg; ctx.fillRect(x, y, w, ah + 12 * s);
   const bounce = item.flash < 0.6 ? 1 + 0.2 * Math.sin((item.flash / 0.6) * Math.PI) : 1;
@@ -1111,6 +1114,14 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   ui.record({ x: acx - Math.min(w * 0.86, ah) / 2, y: acy - ah / 2, w: Math.min(w * 0.86, ah), h: ah }, 'store:tart:' + item.key);
   const nm = item.short || item.name, nmw = ui.measure(nm, nameS), nmMax = w - 12 * s; // shrink a long name to fit whole ("Snowy Owl Look" at 360 px) rather than cut it
   ui.text(nm, x + w / 2, y + 6 * s + top + ah + 4 * s + nameS * 0.6, { size: nmw > nmMax ? Math.floor(nameS * nmMax / nmw * 0.97) : nameS, align: 'center', maxW: w - 12 * s, color: tint(col, -0.72), tag: 'store:tname:' + item.key });
+  if (item.perk) { // the egg skin's power: its icon and at most four words
+    const py = y + 6 * s + top + ah + 4 * s + nameS * 1.3, ph = 19 * s, room = w - 8 * s - ph - 10 * s;
+    const fs = Math.max(7 * s, Math.min(10.5 * s, (10.5 * s * room) / Math.max(1, ui.measure(item.perk.line, 10.5 * s)))); // the whole line fits, however small the tile
+    const pw2 = Math.min(w - 8 * s, ph + ui.measure(item.perk.line, fs) + 10 * s), px2 = x + (w - pw2) / 2;
+    ui.roundRect(px2, py, pw2, ph, ph / 2); ctx.fillStyle = 'rgba(70,40,110,0.9)'; ctx.fill();
+    pictoPerk(ctx, item.perk.icon, px2 + ph / 2 + 1 * s, py + ph / 2, ph * 0.76, t);
+    ui.text(item.perk.line, px2 + ph + 1 * s, py + ph / 2, { size: fs, color: '#fff', maxW: pw2 - ph - 8 * s, tag: 'store:perk:' + item.key, group: 'store:tart:' + item.key });
+  }
   if (item.why) { // FOR YOU: why this one, on a small ribbon across the top of the tile
     const F = fitWrap(ui, item.why, w - 26 * s, 2, 11.5 * s, 9.5 * s), lh = F.size * 1.12, rh = Math.max(18 * s, F.lines.length * lh + 5 * s), ry = y + 6 * s;
     ctx.fillStyle = '#7a48e8'; ctx.beginPath(); ctx.moveTo(x + 4 * s, ry); ctx.lineTo(x + w - 4 * s, ry); ctx.lineTo(x + w - 10 * s, ry + rh / 2); ctx.lineTo(x + w - 4 * s, ry + rh); ctx.lineTo(x + 4 * s, ry + rh); ctx.lineTo(x + 10 * s, ry + rh / 2); ctx.closePath(); ctx.fill();

@@ -95,6 +95,7 @@ export function lean(save, ctx = {}) {
 //   price, owned (bool or a count for boosts), tried (was on a free try) }], lastLoss: 'time' | 'thorns' | 'villains' | 'nest' | null }
 // -> { hero: sku | null, order: [sku], forYou: [{ key, why }] (at most 3, things the player can pay for in coins right now) }
 const LOSS_BOOST = { time: 'time', thorns: 'snips', villains: 'stone', nest: 'nest' };
+const LOSS_SKIN = { thorns: { ids: ['dino', 'lava'], why: 'Helps with thorns' }, villains: { ids: ['frosty', 'thunder', 'gator'], why: 'Helps with villains' }, time: { ids: ['candy'], why: 'Helps with the clock' } };
 export function shopPlan(save, ctx = {}) {
   const M = model(save, ctx), w = save.wallet || {}, now = ctx.now || Date.now(), o = save.offers || {};
   const bundles = Array.isArray(ctx.bundles) ? ctx.bundles : [], has = (s) => bundles.includes(s);
@@ -109,6 +110,8 @@ export function shopPlan(save, ctx = {}) {
   const free = (i) => !i.owned, pick = [], take = (i, why) => { if (i && pick.length < 3 && !pick.some((p) => p.key === i.key)) pick.push({ key: i.key, why }); };
   const cheap = (a, b) => b.price - a.price; // the best the purse can pay for comes first
   if (M.mood === 'stuck' && ctx.lastLoss) take(items.find((i) => i.kind === 'boost' && i.key === 'boost:' + LOSS_BOOST[ctx.lastLoss]), 'Helps on your level');
+  // 0.8.10: egg skins carry a power, so the same stuck rule can answer with one whose power fits the last loss
+  if (M.mood === 'stuck' && LOSS_SKIN[ctx.lastLoss]) take(items.filter((i) => i.kind === 'skin' && free(i) && LOSS_SKIN[ctx.lastLoss].ids.includes(i.key.slice(5))).sort(cheap)[0], LOSS_SKIN[ctx.lastLoss].why);
   take(items.filter((i) => i.tried && free(i) && (i.kind === 'skin' || i.kind === 'hen' || i.kind === 'chick')).sort(cheap)[0], 'You tried it');
   const fav = M.taste === 'looks' ? ['set', 'hen', 'skin'] : M.taste === 'power' ? ['chick', 'kit', 'boost'] : ['chick', 'hen', 'skin', 'kit'];
   for (const k of fav) take(items.filter((i) => i.kind === k && (k === 'boost' || k === 'kit' ? true : free(i))).sort(cheap)[0], 'You can get it now');

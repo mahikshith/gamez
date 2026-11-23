@@ -510,7 +510,7 @@ export const seaMethods = {
       if (k < 0.05) continue;
       va /= k;
       const tx = -p.y / d, ty = p.x / d, v = b.getLinearVelocity(), vt = v.x * tx + v.y * ty;
-      const m = b.getMass(), acc = clamp((va - vt) * FISH.push, -FISH.maxA, FISH.maxA) * Math.min(1, k / 1.2) * S.push * M.push, up = Math.abs(acc) * FISH.lift;
+      const m = b.getMass(), acc = clamp((va - vt) * FISH.push, -FISH.maxA, FISH.maxA) * Math.min(1, k / 1.2) * S.push * M.push * this.gripK(), up = Math.abs(acc) * FISH.lift; // Grip (Robo Egg): the current carries it 35% less
       b.applyForceToCenter({ x: (tx * acc - (p.x / d) * up) * m, y: (ty * acc - (p.y / d) * up) * m }, true); // along, and a little off the floor
     }
   },

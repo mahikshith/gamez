@@ -12,6 +12,7 @@
 // and caches sprites + gradients at resize(). The caller must have set ctx.setTransform(dpr,0,0,dpr,0,0).
 
 import { BOLT } from './status.js';
+import { freeDeep } from './cvfree.js';
 import { PERF } from '../perf.js';
 export const WEATHER_KINDS = ['none', 'thunder', 'quake', 'embers', 'rain', 'snow', 'sandstorm', 'fog', 'ghosts', 'current', 'leaves', 'ash', 'fireflies'];
 
@@ -171,6 +172,7 @@ export function createWeather(kind, seed = 1, opts = {}) {
     shakeX: 0, shakeY: 0, flash: 0,
     calm: !!opts.calm, // reduced motion: no flash, no bolt flicker (the caller may change it any time)
     resize, update, drawBack, drawFront, trigger,
+    dispose: () => { freeDeep(S.sp); freeDeep(S.G); S.sp = null; S.G = {}; }, // 0.8.10: its sprites go back when the level ends
   };
 
   // event pool: ember sparks, grit, dust, gust streaks, leaves, flares (shared by every kind)
@@ -203,7 +205,7 @@ export function createWeather(kind, seed = 1, opts = {}) {
     // scratch ctx for building cached gradients (gradients are context-independent)
     const sc = mkc(2, 2).getContext('2d');
     S.sc = sc;
-    S.G = {};
+    freeDeep(S.G); S.G = {};
     K = BUILD[kind] ? BUILD[kind](S, { spawnE, rr, bolts, burst: (x, y) => trigger('ember_burst', { sx: x, sy: y }) }) : null;
     if (K) K.init();
   }

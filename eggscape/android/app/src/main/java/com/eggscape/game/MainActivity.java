@@ -105,8 +105,17 @@ public class MainActivity extends Activity {
 
     // ---- the speed log's Android side (0.8.7): read-only facts about the phone, and the share sheet
     private volatile int trimCount = 0, lastTrim = 0;
+    private static volatile int renderGone = 0; // times the page's process died and the game was started again
     /** Android asking apps to give memory back: a phone under memory pressure stutters, so the log counts these */
-    @Override public void onTrimMemory(int level) { super.onTrimMemory(level); trimCount++; lastTrim = level; }
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level); trimCount++; lastTrim = level;
+        // 0.8.10: memory is short: the page gives back every picture the screen in front does not need (main.js
+        // trimPictures). UI_HIDDEN (20) is only "the app left the screen" and is skipped.
+        if (level != TRIM_MEMORY_UI_HIDDEN && level >= TRIM_MEMORY_RUNNING_LOW && web != null) {
+            final int lv = level;
+            runOnUiThread(() -> { try { if (web != null) web.evaluateJavascript("window.__eggTrim&&window.__eggTrim(" + lv + ")", null); } catch (Exception e) { /* page not up yet */ } });
+        }
+    }
 
     // 0.8.10: this app's own memory as Android counts it (graphics = the pictures on the graphics chip, where the web
     // view keeps its canvases). Reading it takes tens of milliseconds, so a background thread samples it and the log
@@ -155,6 +164,7 @@ public class MainActivity extends Activity {
             }
             o.put("trim", trimCount);
             o.put("trimLevel", lastTrim);
+            o.put("renderGone", renderGone);
             android.os.BatteryManager bm = (android.os.BatteryManager) getSystemService(Context.BATTERY_SERVICE);
             if (bm != null) { o.put("battery", bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)); o.put("charging", bm.isCharging() ? 1 : 0); }
             Display d = Build.VERSION.SDK_INT >= 30 ? getDisplay() : getWindowManager().getDefaultDisplay();
@@ -295,6 +305,16 @@ public class MainActivity extends Activity {
                 return true;
             }
             @Override public void onPageFinished(WebView v, String url) { lastSafe = ""; pushSafe(); }
+            // 0.8.10: Android may kill the page's own process when the phone is out of memory (or it can crash). Left
+            // unhandled, that closes the whole app in the player's face. The dead view is dropped and the game starts
+            // again from the title: progress lives in the page's storage, so nothing is lost but the level in play.
+            @Override public boolean onRenderProcessGone(WebView v, android.webkit.RenderProcessGoneDetail d) {
+                renderGone++;
+                try { android.view.ViewParent p = v.getParent(); if (p instanceof android.view.ViewGroup) ((android.view.ViewGroup) p).removeView(v); v.destroy(); } catch (Exception e) { /* already gone */ }
+                if (v == web) web = null;
+                recreate();
+                return true;
+            }
         });
         // the safe area: every insets change (rotation, cutout, gesture nav switched on) is handed to the page
         web.setOnApplyWindowInsetsListener((v, ins) -> { lastInsets = ins; pushSafe(); return v.onApplyWindowInsets(ins); });
@@ -318,7 +338,7 @@ public class MainActivity extends Activity {
      */
     private int[] safeInsetsPx() {
         int t = 0, b = 0, l = 0, r = 0;
-        WindowInsets ins = lastInsets != null ? lastInsets : web.getRootWindowInsets();
+        WindowInsets ins = lastInsets != null ? lastInsets : web != null ? web.getRootWindowInsets() : null;
         float d = getResources().getDisplayMetrics().density;
         if (ins != null && Build.VERSION.SDK_INT >= 30) {
             android.graphics.Insets bars = ins.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
@@ -386,9 +406,9 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
     }
 
-    @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) { hideBars(); web.post(this::pushSafe); } }
+    @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) { hideBars(); if (web != null) web.post(this::pushSafe); } }
 
-    @Override public void onConfigurationChanged(android.content.res.Configuration c) { super.onConfigurationChanged(c); lastSafe = ""; lastInsets = null; web.post(this::pushSafe); }
+    @Override public void onConfigurationChanged(android.content.res.Configuration c) { super.onConfigurationChanged(c); lastSafe = ""; lastInsets = null; if (web != null) web.post(this::pushSafe); }
 
     @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); } // the game keeps its own save (localStorage)
 
@@ -399,19 +419,20 @@ public class MainActivity extends Activity {
      * never came. onPause now pauses only the game's page (it stops drawing and the game mutes itself on
      * visibilitychange); the global freeze runs only when the app really goes to the background with no ad up.
      */
-    @Override protected void onPause() { web.onPause(); super.onPause(); }
+    @Override protected void onPause() { if (web != null) web.onPause(); super.onPause(); }
 
-    @Override protected void onStop() { if (money == null || !money.adShowing()) web.pauseTimers(); super.onStop(); }
+    @Override protected void onStop() { if (web != null && (money == null || !money.adShowing())) web.pauseTimers(); super.onStop(); }
 
-    @Override protected void onStart() { super.onStart(); web.resumeTimers(); }
+    @Override protected void onStart() { super.onStart(); if (web != null) web.resumeTimers(); }
 
-    @Override protected void onResume() { super.onResume(); web.onResume(); web.resumeTimers(); hideBars(); if (money != null) money.onHostResume(); }
+    @Override protected void onResume() { super.onResume(); if (web != null) { web.onResume(); web.resumeTimers(); } hideBars(); if (money != null) money.onHostResume(); }
 
-    @Override protected void onDestroy() { web.destroy(); super.onDestroy(); }
+    @Override protected void onDestroy() { if (web != null) web.destroy(); super.onDestroy(); }
 
     @SuppressWarnings("deprecation")
     @Override public void onBackPressed() {
         // the game consumes back where it has a natural back (pause, menus); otherwise press twice within 2 s to exit
+        if (web == null) { finish(); return; }
         web.evaluateJavascript("(function(){try{return window.__eggBack?window.__eggBack():false}catch(e){return false}})()", r -> {
             if ("true".equals(r)) return;
             long now = System.currentTimeMillis();

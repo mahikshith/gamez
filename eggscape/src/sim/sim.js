@@ -16,6 +16,7 @@ import { cwMethods } from './clockwork.js'; // v4 the clockwork cast: spider, wi
 import { owlMethods } from './owl.js'; // v4 the Clockwork Owl boss
 import { bayouMethods } from './bayou.js'; // v3.7 Gator Bayou: alligator, snapping turtle, mosquito swarm, Grandpa Gator
 import { stkMethods } from './strike.js'; // Chick Strike powers
+import { perkMethods, PERK } from './perks.js'; // 0.8.10 egg skin powers
 import { reachMethods } from './henreach.js'; // the hen runs the basket under an egg (nest.reach)
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
@@ -192,12 +193,13 @@ export class Sim {
     this.opts = opts;
     this.mode = MODES[opts.mode] ? opts.mode : 'medium';
     this.MD = MODES[this.mode];
-    this.crackV = CRACK_V * this.vs * this.MD.crack;
+    this.crackV = CRACK_V * this.vs * this.MD.crack * (opts.perk === 'striped' ? PERK.bouncy : 1); // Bouncy (Striped egg): harder landings before a crack
     this.shatterV = SHATTER_V * this.vs;
     this.golden = opts.golden || false;
     // start boosters (store): opts.stone, opts.time (+15 s), opts.sponge (pad under the first drop), opts.nest (a wider
     // basket), opts.snips (every start thorn snipped: sim/strike.js)
-    this.timeLimit = level.time ? Math.round(level.time * this.MD.fuse) + (opts.time ? 15 : 0) : 0;
+    // egg skin powers (sim/perks.js): opts.perk = the skin worn in play; Sweet Seconds (Candy Cane) adds 5 s
+    this.timeLimit = level.time ? Math.round(level.time * this.MD.fuse) + (opts.time ? 15 : 0) + (opts.perk === 'candy' ? PERK.sweet : 0) : 0;
     this.orbs = [];
     this.embers = [];
     this.snakes = []; // predators (v3): see buildPredators
@@ -300,6 +302,7 @@ export class Sim {
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
     this.p2Init(); // v3.4 powers
     this.stkInit(); // Chick Strike powers (sim/strike.js): data only until one is fired
+    this.perkInit(); // egg skin powers (sim/perks.js)
   }
 
   makeRing(i, r, spec, mat) {
@@ -576,7 +579,7 @@ export class Sim {
       if (egg.chick) b.applyForceToCenter(Vec2(0, b.getMass() * (this.g - 0.4 * this.g0)), true); // net fall 0.4 g0
       if (egg.magnet > 0 && (egg.magnet -= dt) <= 0) this.unMagnet(egg);
       if (egg.joint && egg.joint.a === egg && !egg.joint.dead) this.magnetPull(egg.joint);
-      if (this.wind) b.applyForceToCenter(Vec2(this.wind * this.pushK(egg) * b.getMass() * (egg.bubble > 0 ? 2.2 : 1), 0), true);
+      if (this.wind) b.applyForceToCenter(Vec2(this.wind * this.pushK(egg) * b.getMass() * (egg.bubble > 0 ? 2.2 : 1) * (this.weather === 'current' ? this.gripK() : 1), 0), true); // Grip (Robo Egg): a current pushes less
       if (this.water && b.isActive()) { // a little bob and sway as it drifts up
         const ph = this.t * WATER.bobW + egg.id * 1.7;
         b.applyForceToCenter(Vec2(Math.sin(ph) * WATER.sway * b.getMass(), Math.cos(ph * 1.3) * WATER.bob * b.getMass()), true);
@@ -642,6 +645,7 @@ export class Sim {
     if (this.state === 'play') this.v3Step(dt);
     this.p2Step(dt); // v3.4 powers
     this.stkStep(dt); // Chick Strike powers
+    if (this.pk) this.perkStep(dt); // egg skin powers
 
     if (GAP_NUDGE.acc > 0 && this.state === 'play') this.gapNudge();
     // 2026-11-20 ring speeds past 350% (mykee: seasoned players want faster still): a wall edge that sweeps more than
@@ -882,6 +886,7 @@ export class Sim {
       if (egg.golden) { egg.golden = 0; egg.safeT = 0.6; this.defer(() => this.removeThorn(th, 'snap')); this.emit('goldenSave', { egg }); c.setEnabled(false); return; }
       if (egg.safeT > 0) return;
       if (egg.icy > 0) return; // L15: frozen solid, a thorn can't get in
+      if (this.pk && this.pk.id === 'lava' && !egg.chick && this.perkTake('lava', egg, { th: th.key })) { egg.safeT = 0.5; this.defer(() => this.removeThorn(th, 'burn')); c.setEnabled(false); return; } // Hot Shell: the first thorn burns away
       if (egg.chick && (th.kind === 'blunt' || this.MD.softThorns)) { egg.peckHit = th.key + 1; return; } // predators (v3): chick pecks
       // blunt spikes (and every thorn on Easy) only crack, and stay solid; a chick has no shell
       if ((th.kind === 'blunt' || this.MD.softThorns) && !egg.chick) {
@@ -899,6 +904,18 @@ export class Sim {
         return;
       }
       if (!GRAZE.off && !egg.chick && this.thornGraze(c, egg, th)) return; // a slow touch on the flank: near miss
+      if (this.pk && this.pk.id === 'dino' && this.perkTake('dino', egg)) { // Thick Shell: the first popping thorn only cracks it, and it is shoved off
+        egg.safeT = 1.4; egg.spk.add(th.key); c.setEnabled(false); // long enough to be pushed clear of this thorn
+        this.defer(() => {
+          if (!egg.alive || egg.saved) return;
+          if (egg.cracks < 2) this.crack(egg, 0, 'spike');
+          const b = egg.body, p = b.getPosition(), t = th.ring.body.getWorldPoint(Vec2(th.tip * Math.cos(th.a), th.tip * Math.sin(th.a)));
+          const dx = p.x - t.x, dy = p.y - t.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 2.6 * this.vs;
+          b.setLinearVelocity(Vec2(0, 0));
+          b.applyLinearImpulse(Vec2((dx / d) * m, (dy / d) * m), p, true);
+        });
+        return;
+      }
       egg.safeT = 1; // one break only
       this.defer(() => { egg.safeT = 0; this.breakEgg(egg, 'thorn'); });
       c.setEnabled(false);
@@ -908,6 +925,7 @@ export class Sim {
       // bounce by surface: sponge and honey are dead, wood and stone give a little back
       const eb = seg.pad || seg.honey ? PAD_BOUNCE : EGG_BOUNCE[seg.ring.mat];
       if (eb !== undefined && (ua.kind === 'egg' ? fa : fb) === egg.fix) c.setRestitution(seg.pad || seg.honey ? eb : Math.max(eb, seg.ring.M.re)); // not the bubble's own skin
+      if (this.pk) this.perkSeg(c, egg); // Grip (Robo Egg): a little hold on ice
       // black fire burns through whatever ring floor the egg rests on; red fire never burns rings
       if (egg.fireKind === 'fire_black' && egg.fire > 0 && seg.alive && !seg.hardIce) {
         seg.burn += DT;
@@ -1024,6 +1042,7 @@ export class Sim {
   // n = cracks to add (the crack ladder can add two at once). 3 cracks = broken.
   crack(egg, v, why = 'impact', n = 1) {
     if (!egg.alive || egg.saved || egg.chick || egg.stone > 0 || egg.guard > 0 || egg.clamp > 0 || egg.icy > 0) return; // a chick never cracks; stone, the feather, a snapping turtle's beak (v3.7) and the gecko's ice (L15) take it
+    if (this.pk && this.pk.id === 'speckled' && this.perkTake('speckled', egg, { why })) { egg.crackCD = CRACK_COOLDOWN; return; } // Lucky Freckles: the first crack is shrugged off
     egg.cracks += n;
     egg.crackCD = CRACK_COOLDOWN;
     const p = egg.body.getPosition();
@@ -1035,6 +1054,10 @@ export class Sim {
     if (!egg.alive || egg.saved) return;
     if (egg.guard > 0 && !GUARD_PASS.has(why)) return; // v3 guardian feather
     if (egg.clamp > 0 && !GUARD_PASS.has(why)) return; // v3.7 held by a snapping turtle
+    if ((why === 'impact' || why === 'fall') && this.pk && this.pk.id === 'pearl' && !egg.chick && this.perkTake('pearl', egg, { why })) { // Pearl Shine: the first hard landing that would break it leaves it on its last crack
+      egg.cracks = 2; egg.crackCD = CRACK_COOLDOWN; egg.safeT = Math.max(egg.safeT, 0.5);
+      return;
+    }
     egg.alive = false;
     const b = egg.body;
     const p = b.getPosition(), vel = b.getLinearVelocity(), a = b.getAngle();
@@ -2459,6 +2482,7 @@ export class Sim {
       reef: this.reefState(), // world 8
       cw: this.cwState(), owl: this.owlState(), // v4 the clockwork cast and the Clockwork Owl
       bayou: this.bayouState(), // v3.7 Gator Bayou
+      perk: this.perkState(), // egg skin powers: what is used up
     };
   }
 
@@ -2520,6 +2544,7 @@ export class Sim {
     sim.reefLoad(S.reef); // world 8
     sim.cwLoad(S.cw); sim.owlLoad(S.owl); // v4
     sim.bayouLoad(S.bayou); // v3.7 Gator Bayou
+    sim.perkLoad(S.perk); // egg skin powers
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
@@ -2926,6 +2951,7 @@ Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
 Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl
 Object.assign(Sim.prototype, stkMethods); // Chick Strike powers (sim/strike.js)
+Object.assign(Sim.prototype, perkMethods); // egg skin powers (sim/perks.js)
 Object.assign(Sim.prototype, reachMethods); // the hen runs the basket (sim/henreach.js)
 
 export { EGG_H, EGG_W, RING_TH };

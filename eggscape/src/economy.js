@@ -199,26 +199,43 @@ export function adCooldownLeft(lastClaimMs, nowMs) {
   return left > 0 ? Math.ceil(left) : 0;
 }
 
-// ---------------------------------------------------------------- egg skins (cosmetic only)
-// Never sold as an advantage: a skin changes how the egg looks and nothing else.
+// ---------------------------------------------------------------- egg skins
+// Every skin but Classic carries one small power (0.8.10): one thing, once a level or a modest passive. The sim runs it
+// (src/sim/perks.js, `new Sim(level, { perk: id })`); the coin perks are paid here (perkCoins). A power is a pleasant
+// edge, never a requirement: every level stays beatable, and three stars reachable, with the Classic egg.
+// perk: { id (the skin), name, icon (ui/picto.js pictoPerk), line (at most four words on the cards) }
+const PK = (id, name, icon, line) => ({ id, name, icon, line });
 export const SKINS = {
   classic: { id: 'classic', name: 'Classic', line: 'The good old cream egg.', price: 0, sku: 'skin_classic' },
-  speckled: { id: 'speckled', name: 'Speckled', line: 'Cream shell with brown freckles.', price: 120, sku: 'skin_speckled' },
-  striped: { id: 'striped', name: 'Striped', line: 'Candy stripes in red and blue.', price: 120, sku: 'skin_striped' },
-  dino: { id: 'dino', name: 'Dino', line: 'A green dino egg with spots.', price: 200, sku: 'skin_dino' },
-  golden: { id: 'golden', name: 'Golden', line: 'Shiny gold, for looks only.', price: 300, sku: 'skin_golden' },
+  speckled: { id: 'speckled', name: 'Speckled', line: 'Cream shell with brown freckles.', price: 120, sku: 'skin_speckled', perk: PK('speckled', 'Lucky Freckles', 'crack', 'First crack is free') },
+  striped: { id: 'striped', name: 'Striped', line: 'Candy stripes in red and blue.', price: 120, sku: 'skin_striped', perk: PK('striped', 'Bouncy', 'bounce', 'Takes harder landings') },
+  dino: { id: 'dino', name: 'Dino', line: 'A green dino egg with spots.', price: 200, sku: 'skin_dino', perk: PK('dino', 'Thick Shell', 'thorn', 'First thorn only cracks') },
+  golden: { id: 'golden', name: 'Golden', line: 'Shiny gold, and richer wins.', price: 300, sku: 'skin_golden', perk: PK('golden', 'Midas', 'coin', '+15% win coins') },
   // 2026-11-16: a Christmas pair and one for each world theme
-  bauble: { id: 'bauble', name: 'Bauble', line: 'A shiny red Christmas bauble.', price: 160, sku: 'skin_bauble' },
-  candy: { id: 'candy', name: 'Candy Cane', line: 'Peppermint stripes, red and green.', price: 160, sku: 'skin_candy' },
-  frosty: { id: 'frosty', name: 'Frosty', line: 'Frosted ice and snowflakes.', price: 180, sku: 'skin_frosty' },
-  galaxy: { id: 'galaxy', name: 'Galaxy', line: 'A swirl of stars from the crystal caves.', price: 240, sku: 'skin_galaxy' },
-  lava: { id: 'lava', name: 'Lava Rock', line: 'Dark rock with glowing cracks.', price: 240, sku: 'skin_lava' },
-  thunder: { id: 'thunder', name: 'Thunder', line: 'Storm blue with a lightning bolt.', price: 200, sku: 'skin_thunder' },
-  treasure: { id: 'treasure', name: 'Treasure Map', line: 'X marks the spot.', price: 220, sku: 'skin_treasure' },
-  pearl: { id: 'pearl', name: 'Pearl', line: 'A pearly shell with a rainbow sheen.', price: 260, sku: 'skin_pearl' },
-  gator: { id: 'gator', name: 'Gator', line: 'Green scales and a pale belly.', price: 220, sku: 'skin_gator' },
-  robot: { id: 'robot', name: 'Robo Egg', line: 'Steel plates, rivets and blinking lights.', price: 280, sku: 'skin_robot' },
+  bauble: { id: 'bauble', name: 'Bauble', line: 'A shiny red Christmas bauble.', price: 160, sku: 'skin_bauble', perk: PK('bauble', 'Shiny', 'coin', '+10% win coins') },
+  candy: { id: 'candy', name: 'Candy Cane', line: 'Peppermint stripes, red and green.', price: 160, sku: 'skin_candy', perk: PK('candy', 'Sweet Seconds', 'clock', '+5 s each level') },
+  frosty: { id: 'frosty', name: 'Frosty', line: 'Frosted ice and snowflakes.', price: 180, sku: 'skin_frosty', perk: PK('frosty', 'Frost Touch', 'frost', 'Freezes on touch') },
+  galaxy: { id: 'galaxy', name: 'Galaxy', line: 'A swirl of stars from the crystal caves.', price: 240, sku: 'skin_galaxy', perk: PK('galaxy', 'Star Pull', 'pull', 'Longer orb reach') },
+  lava: { id: 'lava', name: 'Lava Rock', line: 'Dark rock with glowing cracks.', price: 240, sku: 'skin_lava', perk: PK('lava', 'Hot Shell', 'flame', 'Burns a thorn') },
+  thunder: { id: 'thunder', name: 'Thunder', line: 'Storm blue with a lightning bolt.', price: 200, sku: 'skin_thunder', perk: PK('thunder', 'Zap', 'zap', 'Stuns on touch') },
+  treasure: { id: 'treasure', name: 'Treasure Map', line: 'X marks the spot.', price: 220, sku: 'skin_treasure', perk: PK('treasure', 'Treasure Sense', 'coin', '+3 coins an egg') },
+  pearl: { id: 'pearl', name: 'Pearl', line: 'A pearly shell with a rainbow sheen.', price: 260, sku: 'skin_pearl', perk: PK('pearl', 'Pearl Shine', 'shell', 'First break only cracks') },
+  gator: { id: 'gator', name: 'Gator', line: 'Green scales and a pale belly.', price: 220, sku: 'skin_gator', perk: PK('gator', 'Snap Back', 'drop', 'Drops a carried egg') },
+  robot: { id: 'robot', name: 'Robo Egg', line: 'Steel plates, rivets and blinking lights.', price: 280, sku: 'skin_robot', perk: PK('robot', 'Grip', 'grip', 'Grips ice and drift') },
 };
+// the power of a skin (null for Classic), and the coins a win pays with it on
+export function skinPerk(id) { return (SKINS[id] && SKINS[id].perk) || null; }
+// Coin perks on a win: Shiny +10%, Midas +15%, Treasure Sense +3 per egg home. Prices and offers never change.
+// coins = what the level paid (levelCoins + bonus); saved = eggs brought home. Returns the coins to pay.
+export function perkCoins(skinId, coins, saved = 0) {
+  const c = Math.max(0, Math.floor(coins || 0)), p = skinPerk(skinId);
+  if (!c || !p) return c;
+  if (p.id === 'bauble') return Math.round(c * 1.1);
+  if (p.id === 'golden') return Math.round(c * 1.15);
+  if (p.id === 'treasure') return c + 3 * Math.max(0, Math.floor(saved || 0));
+  return c;
+}
+
 export const SKIN_ORDER = ['classic', 'speckled', 'striped', 'dino', 'bauble', 'candy', 'frosty', 'galaxy', 'lava', 'thunder', 'treasure', 'pearl', 'gator', 'robot', 'golden'];
 
 export function ownsSkin(wallet, id) {

@@ -1,5 +1,6 @@
 // Draws the playfield in world space: ctx is pre-transformed (meters, y up).
 import { stamp, stampStats } from './stamp.js';
+import { freeCanvas } from './cvfree.js';
 import { EGG_H, EGG_W, RING_TH, TAU, eggPoint, rng } from '../sim/geom.js';
 import { drawChick } from './characters.js';
 import { isSpriteCalm } from './sprites.js';
@@ -523,7 +524,7 @@ function thornSprite(ctx, art, blunt, litA, look, x1, y1, x2, y2, bx, by, Lf, sd
     if (!S.body || !S.shadow) return false;
     TH_SPR.set(key, S);
     stampStats.builds++; // (perf.js: a frame that bakes a picture is not a measure of the phone)
-    if (TH_SPR.size > 200) TH_SPR.delete(TH_SPR.keys().next().value);
+    if (TH_SPR.size > 200) { const k0 = TH_SPR.keys().next().value, old = TH_SPR.get(k0); freeCanvas(old.body); freeCanvas(old.shadow); TH_SPR.delete(k0); }
   }
   const vx = (x2 - bx) / Lf, vy = (y2 - by) / Lf; // the live (swayed, stretched) axis
   ctx.save();
@@ -792,7 +793,7 @@ function eggSprite(ctx, egg, rot, t, k, px, ds, special) {
     // tools/perf87/eggwhy.cjs: egg sprite churn (off by default)
     if (stampStats.dbg) { const D = stampStats.dbg; D.egg = (D.egg || 0) + 1; D.seen = D.seen || new Set(); if (D.seen.has(key)) D.eggAgain = (D.eggAgain || 0) + 1; D.seen.add(key); D.sq = D.sq || {}; D.sq[sq.toFixed(2)] = 1; }
     stampStats.builds++; // (perf.js: a frame that bakes a picture is not a measure of the phone)
-    if (EGG_SPR.size > 240) EGG_SPR.delete(EGG_SPR.keys().next().value);
+    if (EGG_SPR.size > 240) { const k0 = EGG_SPR.keys().next().value; freeCanvas(EGG_SPR.get(k0)); EGG_SPR.delete(k0); } // 0.8.10: the picture goes back at once
   }
   ctx.rotate(rot - rb);
   ctx.drawImage(cv, -B, -B, 2 * B, 2 * B);
