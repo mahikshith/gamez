@@ -79,6 +79,18 @@ export function pictoShinyEgg(c, x, y, s, t = 0) {
 export function pictoNo(c, x, y, s, draw) {
   draw(c, x, y, s); pictoCross(c, x + s * 0.2, y + s * 0.18, s * 0.7);
 }
+// a film tile with a play triangle and a slash across it: "no videos". tile: the tile colour, slash: the bar's colour
+export function pictoNoVideo(c, x, y, s, tile = '#fff', slash = '#ff5a44') {
+  c.save(); c.lineJoin = 'round'; c.lineCap = 'round';
+  const w = s * 0.74, h = s * 0.54, r = s * 0.12;
+  c.strokeStyle = tile; c.fillStyle = tile; c.lineWidth = s * 0.09;
+  c.beginPath(); c.roundRect(x - w / 2, y - h / 2, w, h, r); c.stroke();
+  c.beginPath(); c.moveTo(x - s * 0.08, y - s * 0.14); c.lineTo(x + s * 0.17, y); c.lineTo(x - s * 0.08, y + s * 0.14); c.closePath(); c.fill();
+  const a = [x - s * 0.36, y - s * 0.34], b = [x + s * 0.36, y + s * 0.34];
+  c.strokeStyle = 'rgba(40,20,5,0.55)'; c.lineWidth = s * 0.2; c.beginPath(); c.moveTo(...a); c.lineTo(...b); c.stroke(); // a dark edge so the bar reads on any tile
+  c.strokeStyle = slash; c.lineWidth = s * 0.11; c.beginPath(); c.moveTo(...a); c.lineTo(...b); c.stroke();
+  c.restore();
+}
 export function pictoStarMinus(c, x, y, s) {
   drawStar(c, x - s * 0.1, y, s * 0.36, false, 1, true);
   c.save(); c.fillStyle = '#e0412d'; c.strokeStyle = ink; c.lineWidth = s * 0.05;

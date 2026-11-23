@@ -9,6 +9,8 @@
 //   bundle_helper the same, but only if that ad was declined on this level (once per level, at most once a day)
 //   egg_bank      won a level lost 2+ times before, and the bank holds 600+ (every 3 days)
 //   premium       level 12+ and 3+ distinct play days (every 7 days)
+//   skip_videos   non-payer of Unlock Everything who watched 3+ videos today or 8+ in all, at a win or home (every 3 days):
+//                 'Skip the videos' leads to the Unlock Everything sheet; outranks the generic premium rule, no level 12 / play-day need
 //   collector     owns Premium or paid before, last purchase 7+ days old (every 14 days)
 //   (2026-11-20 shop 2.0: No Ads and the Flock Bundle are gone; Unlock Everything is $2.99 and comes earlier)
 //   chick_tip     intro: a locked power chick the player can afford right now (a line on the card, daily at most)
@@ -35,6 +37,7 @@ const TEXT = {
   starter_nest: { title: 'Starter Nest', line: 'A small start: 600 coins, 3 Chick Charges, 2 of every boost and the Cocoa Hen. Only once.' },
   bundle_helper: { title: 'Helper Bundle', line: 'Stuck here? 800 coins, 5 Chick Charges, 3 Ally Tickets and 2 of every boost.' },
   egg_bank: { title: 'Your Golden Egg Bank is full', line: 'Crack it open and take every coin inside.' },
+  skip_videos: { title: 'Skip the videos', line: 'Unlock Everything gives every video reward at once. One payment, yours for good.' },
   eggscape_premium: { title: 'Unlock Everything', line: 'One payment and the game is yours: every bonus without a video, every level open, all six power chicks and the Golden Hen.' },
   eggscape_collector: { title: 'The Whole Coop', line: 'Every hen outfit, every egg, the three premium chicks and 3000 coins. Forever.' },
   charge_ad: { title: 'A free Chick Charge', line: 'Watch a short video and your power chick is ready at once next try.' },
@@ -55,6 +58,8 @@ export function offerState(save) {
     popupsToday: o.popupsToday && typeof o.popupsToday.day === 'string' ? { day: o.popupsToday.day, n: Math.floor(Number(o.popupsToday.n) || 0) } : { day: '', n: 0 },
     sessionPopup: o.sessionPopup === true ? 1 : Math.max(0, Math.floor(Number(o.sessionPopup) || 0)), // popups this session
     ads: Math.max(0, Math.floor(Number(o.ads) || 0)), // rewarded ads watched in all
+    adsDay: o.adsDay && typeof o.adsDay.day === 'string' ? { day: o.adsDay.day, n: Math.max(0, Math.floor(Number(o.adsDay.n) || 0)) } : { day: '', n: 0 }, // ... and today
+    chipDay: typeof o.chipDay === 'string' ? o.chipDay : '', // the day the "Skip videos for good" chip last showed
     lvAd: obj(o.lvAd), lvDeclined: obj(o.lvDeclined), lvHelper: obj(o.lvHelper), // per level: charge ad shown / declined, helper shown
   };
   return save.offers;
@@ -72,7 +77,21 @@ export function startSession(save, now, rand = Math.random) {
   return o;
 }
 
-export function noteRewarded(save) { offerState(save).ads += 1; }
+export function noteRewarded(save, now = Date.now()) {
+  const o = offerState(save), d = dayKey(now);
+  o.ads += 1;
+  o.adsDay = o.adsDay.day === d ? { day: d, n: o.adsDay.n + 1 } : { day: d, n: 1 };
+}
+// videos watched today
+export const adsToday = (save, now = Date.now()) => { const o = offerState(save); return o.adsDay.day === dayKey(now) ? o.adsDay.n : 0; };
+export const VIDEOS = { today: 3, all: 8 }; // the "too many videos" line
+// the small "Skip videos for good" chip after a rewarded video: money shop, not premium, not a child, 3+ videos today, once a day
+export function skipChip(save, now, money) {
+  const o = offerState(save);
+  if (!money || childSafe(save) || (save.wallet || {}).noAds || o.chipDay === dayKey(now) || adsToday(save, now) < VIDEOS.today) return false;
+  return true;
+}
+export function markChip(save, now) { offerState(save).chipDay = dayKey(now); }
 
 // ---- the age question and child-safe mode
 export const needsAge = (save, money) => AGE_GATE && !!money && save.age !== 'u13' && save.age !== '13+';
@@ -126,6 +145,8 @@ export function evaluate(save, moment, ctx = {}) {
     else if (o.lvDeclined[lv] && !o.lvHelper[lv] && shownSince(o, 'bundle_helper', now - DAY) < 1) sku('bundle_helper', 0.9 + (short ? 0.2 : 0), 2);
   }
   if ((moment === 'win' || shop) && (shop || (ctx.prevFails || 0) >= 2) && (w.bank || 0) >= BANK_OPEN && (shop || every(o, 'egg_bank', now, 3))) sku('egg_bank', 0.9, 1.5);
+  // too many videos: a calm moment only, never the shop card; the button opens the bundle's sheet, it never pays
+  if ((moment === 'win' || moment === 'home') && money && !w.noAds && iapAvailable(w, 'eggscape_premium') && (adsToday(save, now) >= VIDEOS.today || o.ads >= VIDEOS.all) && every(o, 'skip_videos', now, 3)) C.push({ id: 'skip_videos', sku: 'eggscape_premium', fit: 1, value: 2.5, usd: IAP.eggscape_premium.usd, ...TEXT.skip_videos });
   if ((calm || shop) && unlocked >= 12 && o.days.length >= 3 && (shop || every(o, 'eggscape_premium', now, 7))) sku('eggscape_premium', 0.7, 2.5);
   if ((calm || shop) && (payer || w.noAds) && now - (w.lastBuyAt || 0) >= 7 * DAY && (shop || every(o, 'eggscape_collector', now, 14))) sku('eggscape_collector', 0.8, 2);
   if (moment === 'intro' && ctx.chick && (w.coins || 0) >= ctx.chick.price && every(o, 'chick_tip', now, 1)) {
@@ -137,7 +158,7 @@ export function evaluate(save, moment, ctx = {}) {
     if (silenced(o, c.id, now)) continue;
     if (shop && !c.sku) continue;
     const d = o.dismissed[c.id], fatigue = 0.25 * shownSince(o, c.id, now - 14 * DAY) + 0.4 * (d ? Math.min(d.n, CAPS.silenceAfter) : 0);
-    c.score = c.fit * c.value - fatigue;
+    c.score = c.fit * ((ctx.lean && ctx.lean[c.id]) || 1) * c.value - fatigue; // lean: the Brain's fit for this player (brain.js), order only
     if (!best || c.score > best.score + 1e-9 || (Math.abs(c.score - best.score) <= 1e-9 && c.usd < best.usd)) best = c;
   }
   if (!best) return null;

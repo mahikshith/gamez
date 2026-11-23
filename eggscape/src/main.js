@@ -36,6 +36,7 @@ import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeI
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, freebies, trials, home nudges)
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
+import * as BR from './brain.js'; // 2026-11-23: the Brain, one arbiter over the Director and the offer engine (who is playing, when to ask, what fits)
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
 import { geckoStrikeEv, drawGeckoCard, geckoAnchor } from './render/gecko15.js'; // L15: the frost gecko boss
@@ -71,7 +72,7 @@ import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm,
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
 import { strikeLayer } from './render/strikehit.js'; // Chick Strike: the villains' hit reactions
-import { pictoCheck, pictoCross, pictoWarn, pictoClock, pictoFlame, pictoGem, pictoTarget, pictoCracked, pictoBroken, pictoGoal, pictoPower, pictoStarMinus } from './ui/picto.js'; // icon-first cards
+import { pictoCheck, pictoCross, pictoWarn, pictoClock, pictoFlame, pictoGem, pictoTarget, pictoCracked, pictoBroken, pictoGoal, pictoPower, pictoStarMinus, pictoNoVideo } from './ui/picto.js'; // icon-first cards
 import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js';
 import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' crown // Chick Strike powers
 import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
@@ -1290,13 +1291,15 @@ async function press(id) {
       break;
     }
     case 'of:no': // "No thanks" on an offer
-      if (G.offer) { OF.markDismissed(save, G.offer, Date.now(), G.offer.lv); persist(); }
+      if (G.offer) { OF.markDismissed(save, G.offer, Date.now(), G.offer.lv); BR.note(save, 'no', { id: G.offer.id }); if (!G.offer.sku) BR.note(save, 'videoNo'); persist(); }
       G.offer = null;
       break;
     case 'of:buy': {
       const O = G.offer;
       G.offer = null;
-      if (O && O.sku) await buyIap(O.sku);
+      if (O) BR.note(save, 'yes', { id: O.id });
+      if (O && O.id === 'skip_videos') { openStore('deals'); G.detail = 'iap:' + PREMIUM_SKU; } // a look at what it gives, never a payment from the card
+      else if (O && O.sku) await buyIap(O.sku);
       break;
     }
     case 'of:ad': { // a rewarded offer: a free Chick Charge, or free coins
@@ -1307,7 +1310,7 @@ async function press(id) {
       if (await rewarded('charge')) {
         save.wallet = { ...save.wallet, charges: Math.min(E.MAX_CHARGES, save.wallet.charges + 1) };
         persist(); audio.play('unlock'); toast('A Chick Charge is in your bag. Send your chick any time!', 2.8);
-      } else { OF.markDismissed(save, O, Date.now(), O.lv); persist(); } // no ad: counts as declined (the helper may follow later)
+      } else { OF.markDismissed(save, O, Date.now(), O.lv); BR.note(save, 'no', { id: O.id }); BR.note(save, 'videoNo'); persist(); } // no ad: counts as declined (the helper may follow later)
       break;
     }
     case 'age:u13': case 'age:13':
@@ -1528,6 +1531,7 @@ async function press(id) {
       save.showFps = !save.showFps; persist();
       break;
     case 'set:log': { // hand the speed log to the share sheet (app) or save it as a file (web)
+      diag.note({ brain: BR.trace(save), who: BR.model(save) }); // the Brain's last decisions travel with the speed log
       const how = diag.share();
       toast(how === 'download' ? 'Speed log saved to your downloads' : how ? 'Pick where to send the speed log' : 'Could not share the log here', 2.6);
       break;
@@ -1538,6 +1542,9 @@ async function press(id) {
     case 'fps:auto': case 'fps:30': case 'fps:60':
       save.fps = id === 'fps:auto' ? 'auto' : +id.slice(4);
       applySettings(save); persist();
+      break;
+    case 'set:novideo': case 'chip:skip': // the "what you get" sheet of Unlock Everything: the shop opens on it, nothing is charged
+      G.skipChip = null; G.settingsOpen = false; openStore('deals'); G.detail = 'iap:' + PREMIUM_SKU;
       break;
     case 'set:restore':
       ads.restore(); toast('Checking your purchases...', 2);
@@ -1728,7 +1735,11 @@ async function rewarded(tag) {
   diag.mark('ad:start:' + tag);
   try { ok = await ads.rewarded(tag); } catch (_) { ok = false; }
   G.adBusy = false; diag.mark('ad:end:' + (ok ? 'ok' : 'no'));
-  if (ok && !ads.premium) { OF.noteRewarded(save); persist(); } // the offer engine counts watched ads
+  if (ok && !ads.premium) {
+    const now = Date.now(); OF.noteRewarded(save, now); BR.note(save, 'video');
+    if (OF.skipChip(save, now, ads.moneyShop)) { OF.markChip(save, now); G.skipChip = { t0: G.t }; } // once a day, after the 3rd video of the day
+    persist();
+  } // the offer engine counts watched ads
   if (!ok) toast('No ad available right now. Try again in a moment.', 2.4);
   return ok;
 }
@@ -1887,7 +1898,7 @@ function drawTreasure() {
 function offerCtx() {
   const lv = G.li >= 0 && G.level ? G.level.id : null, st = G.sim && G.screen === 'fail' ? G.sim.stats() : null;
   return { now: Date.now(), money: ads.moneyShop, levelId: lv, fails: lv != null ? ads.fails(lv) : 0, prevFails: G.prevFails || 0,
-    nearMiss: !!(st && st.saved === st.target - 1), lastPrice: G.lastPrice || 0, adReady: adCd() === 0 };
+    nearMiss: !!(st && st.saved === st.target - 1), lastPrice: G.lastPrice || 0, adReady: adCd() === 0, lean: BR.lean(save, { levelId: lv }) };
 }
 // what the Director needs to know about this loss
 function failCtx(st) {
@@ -1928,6 +1939,7 @@ function homeNudge(now) {
   const n = DR.homeNudge(save, { now, chicks });
   if (!n) return false;
   if (n.kind !== 'keep') DR.noteNudge(save, n, now);
+  BR.note(save, 'ask', { id: 'nudge:' + n.kind, kind: 'nudge' }, now); BR.why(save, 'home', 'nudge:' + n.kind, 'the Director\'s nudge comes before any paid offer', now);
   persist();
   G.nudge = n;
   return true;
@@ -1939,7 +1951,7 @@ function offerMoments() {
     G.offerTried = true;
     if (sc === 'title' && OF.needsAge(save, ads.moneyShop) && !G.ageLater) { G.ageAsk = true; return; } // first launch, once the home is up
     if (earlyDays()) return; // nothing sold before L3 is won
-    if (homeNudge(Date.now())) return; // the Director's nudge comes first; the paid offer can wait for another visit
+    if (BR.gate(save, 'home').nudge && homeNudge(Date.now())) return; // the Director's nudge comes first; the paid offer can wait for another visit
   } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0 && !(sc === 'win' && revealing(G.result))) { G.offerTried = true; if ((sc === 'fail' && G.failHelp) || earlyDays()) return; } // one help on a fail card, never two
   else if (sc === 'intro' && G.screenT > 0.3 && G.li >= 0) { G.offerTried = true; G.introTip = null; if (earlyDays()) return; } // the intro's gentle chick line
   else return;
@@ -1954,7 +1966,13 @@ function offerMoments() {
   }
   const o = OF.evaluate(save, moment, ctx2);
   if (!o) return;
-  OF.markShown(save, o, ctx2.now, ctx2.levelId); persist();
+  // the Brain's gate: a paid offer needs the money gate (it backs off after a "no", rests after a purchase, and leaves a
+  // winning run alone); a free or video suggestion only needs "one ask at a time"
+  const gt = BR.gate(save, moment, ctx2), paid = !!o.sku;
+  if (paid ? !gt.money : !gt.nudge) { BR.why(save, moment, null, `${o.id} held back: ${gt.why}`, ctx2.now); return; }
+  OF.markShown(save, o, ctx2.now, ctx2.levelId);
+  BR.note(save, 'ask', { id: o.id, kind: paid ? 'money' : 'video' }, ctx2.now); BR.why(save, moment, o.id, 'the best fit at a calm moment', ctx2.now);
+  persist();
   G.offer = { ...o, lv: ctx2.levelId };
 }
 // a calm modal card: art, title, one line, the price (or the free video), and a big "No thanks". No timers.
@@ -1973,7 +1991,7 @@ function drawOffer() {
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'of:line' + i, gap: i ? 2 * s : 10 * s })),
       { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ad
         ? ui.button('of:ad', O.item === 'coins' ? `Watch: +${adCoins()} coins` : 'Watch: free Chick Charge', x, y, w, 58 * s, { kind: 'ad', ad: true, shimmer: true, size: 18 * s })
-        : ui.button('of:buy', ads.price(O.sku), x + w * 0.1, y, w * 0.8, 58 * s, { kind: 'gold', shimmer: true, size: 24 * s }) },
+        : ui.button('of:buy', O.id === 'skip_videos' ? 'See what you get' : ads.price(O.sku), x + w * 0.1, y, w * 0.8, 58 * s, { kind: 'gold', shimmer: true, size: 24 * s }) },
       { h: 56 * s, gap: 10 * s, draw: (x, y, w) => ui.button('of:no', 'No thanks', x, y, w, 56 * s, { kind: 'tertiary', size: 21 * s }) },
     ];
   }, { ribbon: '#e8402e' });
@@ -2124,6 +2142,7 @@ function drawGetMore() {
 }
 function onGrant(sku) {
   const P = E.IAP[sku];
+  BR.note(save, 'buy', { money: true }); // the Brain rests after a purchase: no paid offer for a day
   G.storeFlash = { id: 'iap:' + sku, t0: G.t };
   if (G.getMore && save.wallet.coins >= G.getMore.price) G.getMore = null;
   audio.play('unlock');
@@ -3584,7 +3603,7 @@ function onWin() {
   }
   if (G.result.bonus) save.bonus[sk(G.level.id, G.sim.mode)] = 1;
   if (G.li >= 0 && G.level) { // the Director: the result, a skin trial running down, and now and then a new one as a gift
-    DR.noteResult(save, G.level.id, true, { saved: G.sim.savedLog.length });
+    DR.noteResult(save, G.level.id, true, { saved: G.sim.savedLog.length }); BR.note(save, 'level');
     DR.tickTrial(save);
     G.result.hot = DR.hotCount(save);
     // 2026-11-20 shop 2.0 (no interstitials in the app): when an ad break would have been due, the win card offers a
@@ -3634,7 +3653,7 @@ function onFail() {
   G.failHelp = null;
   if (G.li >= 0 && G.level) { // the Director: note the loss, then pick the one help card for the fail screen
     const st = G.sim.stats();
-    DR.noteResult(save, G.level.id, false, { saved: st.saved });
+    DR.noteResult(save, G.level.id, false, { saved: st.saved }); BR.note(save, 'level');
     DR.tickTrial(save);
     G.failHelp = earlyDays() ? null : DR.failHelp(save, failCtx(st));
     persist();
@@ -3864,7 +3883,7 @@ function lastEggMoment(sim) {
 const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1 };
 const SCENE_SCREENS = { title: 1, store: 1, practice: 1 }; // these paint a full themed scene; the others keep the game behind and get a wash
 function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
-function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
+function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
 function drawStoreScreen() { // the shop's toast floats over its scrolling list (like a clipped card, it records nothing)
   drawStore(ui, ctx, W_, H_, { ...storeState(), area: ui.A, adReady: adCd() === 0, adCooldownLeft: adCd(), adCoins: adCoins(), tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), featured: storeFeatured() }); const n0 = ui.rects.length; drawToast(); ui.rects.length = n0; menuFx(); /* the shop paints its own backdrop: the effect drifts over it */
 }
@@ -4713,6 +4732,31 @@ function drawPopups() {
   }
 }
 
+// "Skip videos for good": a small chip at the foot of the screen for 5 s after the day's 3rd+ video. Not a popup: it takes the
+// lowest free spot that touches nothing recorded (so never the reward, NEXT or a card), and not at all in play or over a sheet.
+const CHIP_LIFE = 5;
+function drawSkipChip() {
+  const K = G.skipChip;
+  if (!K) return;
+  const age = G.t - K.t0;
+  if (age > CHIP_LIFE || G.screen === 'play' || ads.premium) { G.skipChip = null; return; }
+  if (modalOpen() || G.settingsOpen || G.adBusy || G.screen === 'wonder' || (G.screen === 'store' && G.detail)) return;
+  const u = ui.u, A = ui.A, size = 15.5 * u, label = 'Skip videos for good', h = 38 * u, ic = 26 * u;
+  const w = Math.min(A.w - 24 * u, ui.measure(label, size) + ic + 40 * u), x = A.cx - w / 2;
+  let y = null;
+  for (let yy = A.y1 - h - 10 * u; yy > A.y1 - 190 * u; yy -= 6 * u) { // up from the bottom edge until nothing recorded is under it
+    if (!ui.rects.some((r) => x < r.x + r.w + 4 * u && x + w > r.x - 4 * u && yy < r.y + r.h + 4 * u && yy + h > r.y - 4 * u)) { y = yy; break; }
+  }
+  if (y == null) { K.made = K.made == null ? G.t : K.made; if (G.t - K.made > 45) G.skipChip = null; else K.t0 = G.t; return; } // no free spot on this screen: it waits for the next one (at most 45 s), its 5 s start when it shows
+  const a = Math.min(1, age * 4, (CHIP_LIFE - age) * 3);
+  ctx.save(); ctx.globalAlpha = a; ui.aBase = a;
+  ui.glass(x, y, w, h, { r: h / 2, a: 'rgba(58,36,20,0.94)', b: 'rgba(28,16,8,0.94)', border: 'rgba(255,224,160,0.6)', record: true, tag: 'chip:skip', group: 'chip:skip' });
+  pictoNoVideo(ctx, x + 12 * u + ic / 2, y + h / 2, ic);
+  ui.text(label, x + 12 * u + ic + 6 * u, y + h / 2, { size, color: '#fff8e8', maxW: w - ic - 30 * u, group: 'chip:skip', tag: 'chip:skip:l' });
+  ui.aBase = 1; ctx.restore();
+  ui.buttons.push({ id: 'chip:skip', x, y: y - 4 * u, w, h: h + 8 * u });
+  if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps();
+}
 function drawToast() {
   const T = G.toast;
   if (!T) return;
@@ -5961,6 +6005,7 @@ const SI = { // white glyphs for the colored badges, drawn in a box of about S p
   sparkle: (c, x, y, S) => { const st = (cx, cy, R) => { c.beginPath(); for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4 - Math.PI / 2, r = i % 2 ? R * 0.26 : R; c.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } c.closePath(); c.fill(); }; st(x - S * 0.06, y + S * 0.04, S * 0.36); st(x + S * 0.28, y - S * 0.26, S * 0.15); },
   fps: (c, x, y, S) => { c.font = `800 ${S * 0.66}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('60', x, y + S * 0.04); },
   leaf: (c, x, y, S) => { c.beginPath(); c.moveTo(x - S * 0.32, y + S * 0.32); c.quadraticCurveTo(x - S * 0.4, y - S * 0.3, x + S * 0.32, y - S * 0.34); c.quadraticCurveTo(x + S * 0.4, y + S * 0.3, x - S * 0.32, y + S * 0.32); c.fill(); c.strokeStyle = 'rgba(40,90,30,0.8)'; c.lineWidth = S * 0.07; c.lineCap = 'round'; c.beginPath(); c.moveTo(x - S * 0.3, y + S * 0.3); c.lineTo(x + S * 0.14, y - S * 0.14); c.stroke(); },
+  novideo: (c, x, y, S) => pictoNoVideo(c, x, y, S * 1.18, '#fff', '#ff6a50'),
   watch: (c, x, y, S) => { c.lineWidth = S * 0.1; c.lineCap = 'round'; c.beginPath(); c.arc(x, y + S * 0.06, S * 0.29, 0, 7); c.stroke(); c.fillRect(x - S * 0.08, y - S * 0.4, S * 0.16, S * 0.1); c.beginPath(); c.moveTo(x, y + S * 0.06); c.lineTo(x + S * 0.14, y - S * 0.1); c.stroke(); },
   dial: (c, x, y, S) => { c.lineWidth = S * 0.11; c.lineCap = 'round'; c.beginPath(); c.arc(x, y + S * 0.12, S * 0.32, Math.PI * 1.05, Math.PI * 1.95); c.stroke(); c.beginPath(); c.moveTo(x, y + S * 0.12); c.lineTo(x + S * 0.17, y - S * 0.12); c.stroke(); c.beginPath(); c.arc(x, y + S * 0.12, S * 0.07, 0, 7); c.fill(); },
   file: (c, x, y, S) => { c.beginPath(); c.moveTo(x - S * 0.26, y - S * 0.36); c.lineTo(x + S * 0.08, y - S * 0.36); c.lineTo(x + S * 0.28, y - S * 0.16); c.lineTo(x + S * 0.28, y + S * 0.36); c.lineTo(x - S * 0.26, y + S * 0.36); c.closePath(); c.fill(); c.strokeStyle = 'rgba(40,40,60,0.55)'; c.lineWidth = S * 0.07; for (const k of [0, 0.14, 0.28]) { c.beginPath(); c.moveTo(x - S * 0.14, y - S * 0.0 + S * k); c.lineTo(x + S * 0.16, y + S * k); c.stroke(); } },
@@ -6060,6 +6105,7 @@ function drawSettings() {
   B.push(setRow(s, 'set:fpsshow', 'Show fps', 'dial', '#8a6ad0', { on: !!save.showFps }));
   B.push(setRow(s, 'set:speed', 'Speed test', 'watch', '#e8702f', { act: 'Start' }));
   B.push(setRow(s, 'set:log', 'Share speed log', 'file', '#5a7aa8', { act: 'Share' })); // 0.8.7: the game notes frame rates and hitches by itself; this hands the file over
+  if (ads.moneyShop && !ads.premium && !OF.childSafe(save)) B.push(setRow(s, 'set:novideo', 'No videos', 'novideo', '#7a48e8', { act: 'See' })); // the sheet of Unlock Everything (no payment starts here)
   if (ads.canBuyPremium || ads.premium) B.push(setRow(s, 'set:restore', 'Restore purchases', 'ring', '#c88a1c', { act: 'Restore' }));
   if (land) B.push({ h: 16 * s, gap: 8 * s, draw: (x, y, w) => ui.text('Eggscape ' + __VERSION__, x + w / 2, y + 8 * s, { size: 12.5 * s, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' }) });
   G.setRect = V;

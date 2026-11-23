@@ -119,5 +119,49 @@ const app = { money: true };
   ok(OF.evaluate(intro, 'intro', { ...app, now: T0 + HOUR, chick: { id: 'glue', name: 'Sticky Chick', price: 600 } }) === null, 'intro: not when too expensive');
 }
 
+// ---- too many videos: "Skip the videos"
+{
+  const NOW = T0 + 2 * DAY + HOUR;
+  const mkv = (o = {}) => { const s = mk({ unlocked: 9, ...o, wallet: { starter: true, ...(o.wallet || {}) } }); OF.startSession(s, T0); OF.startSession(s, T0 + HOUR); return s; };
+  const watch = (s, n, t = NOW) => { for (let k = 0; k < n; k++) OF.noteRewarded(s, t); };
+  const s = mkv(); watch(s, 2);
+  ok(id(OF.evaluate(s, 'home', { ...app, now: NOW })) !== 'skip_videos', '2 videos today, 2 in all: nothing');
+  watch(s, 1);
+  const o = OF.evaluate(s, 'home', { ...app, now: NOW });
+  ok(id(o) === 'skip_videos' && o.sku === 'eggscape_premium' && o.title === 'Skip the videos' && /every video reward at once/.test(o.line), '3 videos today: Skip the videos, selling Unlock Everything');
+  ok(id(OF.evaluate(s, 'win', { ...app, now: NOW })) === 'skip_videos', 'also at a win');
+  ok(OF.evaluate(s, 'fail', { ...app, now: NOW, fails: 1 }) === null && OF.evaluate(s, 'play', { ...app, now: NOW }) === null, 'never on a fail card, never in play');
+  ok(id(OF.evaluate(s, 'shop', { ...app, now: NOW })) !== 'skip_videos', 'not the shop featured card');
+  const old = mkv(); old.offers.ads = 8; OF.noteRewarded(old, NOW - 5 * DAY); // 9 in all, 1 today (the old day does not count)
+  ok(OF.adsToday(old, NOW) === 0 && id(OF.evaluate(old, 'home', { ...app, now: NOW })) === 'skip_videos', '8+ videos in all counts without today');
+  const few = mkv(); few.offers.ads = 7; ok(id(OF.evaluate(few, 'home', { ...app, now: NOW })) !== 'skip_videos', '7 in all and none today: nothing');
+  ok(OF.evaluate(s, 'home', { money: false, now: NOW }) === null, 'web: nothing');
+  const own = mkv({ wallet: { noAds: true } }); watch(own, 5); ok(id(OF.evaluate(own, 'home', { ...app, now: NOW })) !== 'skip_videos', 'owns Unlock Everything: nothing');
+  const early = mk({ unlocked: 5, wallet: { starter: true } }); OF.startSession(early, T0); OF.startSession(early, T0 + HOUR); watch(early, 4);
+  ok(OF.evaluate(early, 'home', { ...app, now: NOW }) === null, 'level 9 floor (CAPS.fromLevel) still holds');
+  const first = mk({ unlocked: 9, wallet: { starter: true } }); OF.startSession(first, T0); watch(first, 4, T0);
+  ok(OF.evaluate(first, 'home', { ...app, now: T0 }) === null, 'first session: nothing');
+  const kid = mkv({ age: 'u13' }); watch(kid, 4);
+  ok(OF.childSafe(kid) ? OF.evaluate(kid, 'home', { ...app, now: NOW }) === null : true, 'child-safe: nothing');
+  const gap = mkv(); watch(gap, 4); OF.markShown(gap, { id: 'egg_bank' }, NOW - 5 * 6e4);
+  ok(OF.evaluate(gap, 'home', { ...app, now: NOW }) === null, 'obeys the 20 min gap');
+  const sil = mkv(); watch(sil, 4); sil.offers.dismissed.skip_videos = { n: 3, lastAt: NOW - DAY };
+  ok(id(OF.evaluate(sil, 'home', { ...app, now: NOW })) !== 'skip_videos', 'silenced after 3 "No thanks"');
+  OF.markShown(s, o, NOW); OF.startSession(s, NOW + 2 * HOUR);
+  ok(id(OF.evaluate(s, 'home', { ...app, now: NOW + 2 * HOUR })) !== 'skip_videos', 'not again within 3 days');
+  s.offers.ads = 8; OF.startSession(s, NOW + 3 * DAY);
+  ok(id(OF.evaluate(s, 'home', { ...app, now: NOW + 3 * DAY + HOUR })) === 'skip_videos', 'again after 3 days');
+  // outranks the generic premium rule (level 12, 3 play days)
+  const pr = mkv({ unlocked: 12 }); pr.offers.firstDay = T0 - 30 * DAY; pr.offers.days = ['a', 'b']; watch(pr, 3);
+  ok(id(OF.evaluate(pr, 'home', { ...app, now: NOW })) === 'skip_videos', 'outranks the generic Unlock Everything offer');
+  // the chip
+  const c = mkv(); watch(c, 2);
+  ok(!OF.skipChip(c, NOW, true), 'chip: not before 3 videos today'); watch(c, 1);
+  ok(OF.skipChip(c, NOW, true) && !OF.skipChip(c, NOW, false), 'chip: 3 videos today, real-money shop only');
+  OF.markChip(c, NOW); ok(!OF.skipChip(c, NOW, true) && OF.skipChip(c, NOW + DAY, true) === false, 'chip: once a day (and tomorrow needs 3 new videos)');
+  watch(c, 3, NOW + DAY); ok(OF.skipChip(c, NOW + DAY, true), 'chip: again the next day after 3 videos');
+  const co = mkv({ wallet: { noAds: true } }); watch(co, 4); ok(!OF.skipChip(co, NOW, true), 'chip: not for Premium owners');
+}
+
 console.log(fails ? `${fails} FAILED` : 'all offer checks passed');
 process.exit(fails ? 1 : 0);
