@@ -101,5 +101,48 @@ const ctx = (o = {}) => ({ levelId: 12, now: T0, nearMiss: false, timeout: false
   ok(!DR.earlyDays({ stars: { 3: 1 } }) && !DR.earlyDays({ stars: { e3: 2 } }) && !DR.earlyDays({ stars: { h3: 1 } }), 'level 3 won in any mode: the shop and offers may show');
   ok(DR.SELL_AFTER === 3, 'the gate sits at level 3');
 }
+{ // tastes: a free try of a store item at a win, in a fixed rotation (0.8.9)
+  const CH = [{ id: 'bomb', name: 'Boom Chick', price: 450 }, { id: 'freeze', name: 'Frost Chick', price: 400 }];
+  const win = (s, lv, o = {}) => { DR.noteResult(s, lv, true, {}); DR.tickTrial(s); const T = DR.winTaste(s, { levelId: lv, boss: lv % 5 === 0, chicks: CH, rand: () => 0, ...o }); if (T) DR.startTaste(s, T, T0, () => 0); return T; };
+  const s = mk({ unlocked: 1 });
+  const early = [1, 2, 3, 4].map((lv) => win(s, lv));
+  ok(early.every((T) => T === null), 'no taste before the first boss');
+  const t1 = win(s, 5);
+  ok(t1 && t1.kind === 'skin' && t1.id === 'speckled', 'the first taste comes with the level 5 boss win: the cheapest egg skin');
+  ok(DR.trialSkin(s) === 'speckled', 'the egg skin is worn');
+  ok(DR.dirState(s).winsToSkin === 4, 'the counter winds up to 4..6');
+  let got = [], lv = 6;
+  while (got.length < 3 && lv < 40) { const T = win(s, lv++); if (T) got.push(T); }
+  ok(got.map((T) => T.kind).join() === 'hen,chick,boost', `then the rotation: ${got.map((T) => T.kind).join()}`);
+  ok(got[0].id === 'farmer' && !got.some((T) => T.kind === 'hen' && T.id === 'golden'), 'the cheapest outfit, never a premium one');
+  ok(got[1].id === 'freeze', 'the cheapest locked chick');
+  { const { BOOSTERS } = await import('../src/economy.js'); const top = Math.max(...Object.values(BOOSTERS).map((b) => b.price)); ok(BOOSTERS[got[2].id].price === top, `the dearest booster the bag has none of (${got[2].id})`); }
+  { const c = mk({ unlocked: 12 }), D = DR.dirState(c); D.tasteN = 2; D.winsToSkin = 0; DR.startTaste(c, { kind: 'chick', id: 'freeze', name: 'Frost Chick' }, T0, () => 0);
+    ok(DR.trialChick(c) === 'freeze', 'a chick on trial is open'); DR.tickTrial(c); DR.tickTrial(c); DR.tickTrial(c);
+    ok(DR.trialChick(c) === null && !DR.homeNudge(c, { now: T0 }), 'after 3 levels it is locked again, and nothing asks'); }
+  const gaps = []; let since = 0;
+  for (let i = 0; i < 40; i++) { since++; const T = win(s, 40 + i); if (T) { gaps.push(since); since = 0; } }
+  ok(gaps.length > 0 && gaps.every((g) => g >= 4 && g <= 6), `one taste every 4 to 6 wins (${gaps.join(',')})`);
+  const seen = DR.dirState(s).trials;
+  ok(new Set(seen.skins).size === seen.skins.length && new Set(seen.hens).size === seen.hens.length && new Set(seen.chicks).size === seen.chicks.length, 'each item once');
+}
+{ // skip rules: a kind still running or asking "Keep it?" is passed over; a chick only where the next level can use one
+  const s = mk({ unlocked: 10 });
+  const set = (o) => Object.assign(DR.dirState(s), o); // (dirState rebuilds save.dir: set it fresh each time)
+  set({ tasteN: 4, winsToSkin: 0, trial: { id: 'dino', left: 2, from: T0 } });
+  const T = DR.winTaste(s, { levelId: 20, chicks: [] });
+  ok(T && T.kind === 'hen', 'egg skin running: the hen outfit instead');
+  set({ tasteN: 2 });
+  const C = DR.winTaste(s, { levelId: 20, chicks: [] });
+  ok(C && C.kind === 'boost', 'no chick the next level can use: a booster instead');
+  set({ trial: null, keepAsk: 'dino', tasteN: 0 });
+  ok(DR.winTaste(s, { levelId: 20, chicks: [] }).kind === 'hen', 'a "Keep it?" pending: no new egg skin');
+}
+{ // a player who owns everything gets nothing
+  const { SKINS, HEN_SKINS, BOOSTERS } = await import('../src/economy.js');
+  const s = mk({ unlocked: 30, wallet: { coins: 0, skins: Object.keys(SKINS), henSkins: Object.keys(HEN_SKINS), owned: Object.fromEntries(Object.keys(BOOSTERS).map((b) => [b, 2])) } });
+  Object.assign(DR.dirState(s), { winsToSkin: 0, tasteN: 1 });
+  ok(DR.winTaste(s, { levelId: 30, chicks: [] }) === null, 'owns everything: no taste');
+}
 console.log(bad ? `${bad} FAILED` : 'all director checks passed');
 process.exit(bad ? 1 : 0);

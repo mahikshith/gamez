@@ -182,7 +182,7 @@ const powerInfo = (id) => POWER_INFO[id] || { name: id, line: '', color: '#fff' 
 const strikeReach = () => Math.max(save.unlocked || 1, G.level && G.li >= 0 ? G.level.id : 0);
 // 2026-11-16: a chick bought in the shop (wallet.chicks) is open from then on, whatever the level
 // (a premium chick has no level: it is open only once bought)
-const strikesOpen = () => STRIKES.filter((S) => (!S.premium && strikeReach() >= S.unlock) || E.ownsChick(save.wallet, S.id) || (G.trialChick && G.level && G.trialChick.lid === G.level.id && G.trialChick.id === S.id));
+const strikesOpen = () => STRIKES.filter((S) => (!S.premium && strikeReach() >= S.unlock) || E.ownsChick(save.wallet, S.id) || DR.trialChick(save) === S.id || (G.trialChick && G.level && G.trialChick.lid === G.level.id && G.trialChick.id === S.id));
 // 2026-11-15: the power chick is chosen per level on the intro card. It no longer carries over silently from the last
 // level; a retry of the same level keeps the choice (G.stkSel is per level id).
 function strikeFor(L, i) {
@@ -1119,7 +1119,7 @@ async function press(id) {
     case 'zoom:auto': G.zm = null; break;
     case 'strike': fireStrike(); break; // Chick Strike
     case 'bank': if (G.screen === 'play' && G.sim && G.sim.fireBanked()) audio.play('unlock', { pitch: 1.3 }); break; // a saved chick's kept power
-    case 'stk:gotit': { const id = G.stkCard; save.strikeSeen = { ...(save.strikeSeen || {}) }; for (const S of strikesOpen()) save.strikeSeen[S.id] = 1; if (id) { G.stkSel = { lid: G.level.id, id }; G.sim.stkEquip(strikeFor(G.level, G.li)); } G.stkCard = null; persist(); break; }
+    case 'stk:gotit': { const id = G.stkCard; save.strikeSeen = { ...(save.strikeSeen || {}) }; for (const S of strikesOpen()) if (S.id !== DR.trialChick(save)) save.strikeSeen[S.id] = 1; /* a chick on free try still gets its own card when it really joins */ if (id) { G.stkSel = { lid: G.level.id, id }; G.sim.stkEquip(strikeFor(G.level, G.li)); } G.stkCard = null; persist(); break; }
     case 'ally': {
       // allies (v3.5): free on Easy and after a fail; otherwise a rewarded ad (never costs progress, the button stays on a miss)
       if (G.screen !== 'play' || !allyShown()) break;
@@ -3586,8 +3586,6 @@ function onWin() {
   if (G.li >= 0 && G.level) { // the Director: the result, a skin trial running down, and now and then a new one as a gift
     DR.noteResult(save, G.level.id, true, { saved: G.sim.savedLog.length });
     DR.tickTrial(save);
-    const gift = DR.winGift(save);
-    if (gift) { DR.startSkinTrial(save, gift.id, Date.now()); G.result.gift = gift; }
     G.result.hot = DR.hotCount(save);
     // 2026-11-20 shop 2.0 (no interstitials in the app): when an ad break would have been due, the win card offers a
     // Bonus chest video instead of Double coins. Never on a losing streak.
@@ -3599,6 +3597,17 @@ function onWin() {
   if (G.li >= 0 && L.boss && E.bossTreasure(L.id) && !E.treasureOpened(save.wallet, L.id) && bossBeaten(L.id)) { // the boss treasure opens in the celebration, not on the map
     const w = E.openBossTreasure(save.wallet, L.id);
     if (w) { save.wallet = w; G.result.treasure = E.bossTreasure(L.id); persist(); }
+  }
+  if (G.li >= 0) { // a taste (Director): a free try of a store item, after recordResult so a chick this win unlocks anyway is not "tasted"
+    const nextOk = G.li + 1 < LEVELS.length && L.id + 1 >= STRIKE_FROM;
+    const chicks = nextOk ? STRIKES.filter((S) => !strikesOpen().includes(S) && E.CHICK_PRICES[S.id]).map((S) => ({ id: S.id, name: S.name, price: E.CHICK_PRICES[S.id] })) : [];
+    const T = DR.winTaste(save, { levelId: L.id, boss: !!L.boss, chicks });
+    if (T) {
+      DR.startTaste(save, T, Date.now());
+      if (T.kind === 'boost') save.wallet = E.tasteBooster(save.wallet, T.id);
+      if (T.kind === 'chick') G.stkSel = { lid: L.id + 1, id: T.id }; // picked for the next level by itself
+      G.result.gift = T; persist();
+    }
   }
   G.result.hotB = G.li >= 0 && G.result.hot >= 2 ? DR.hotBoosts(save) : []; // what the next level's start will give (the same call it uses)
   { const r = G.result, list = [];
@@ -5622,6 +5631,7 @@ function drawLevelIntro(L, acc) {
       ui.roundRect(sx, sy2, sw, stageH, Math.min(18, stageH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
       ui.record({ x: sx, y: sy2, w: sw, h: stageH }, 'intro:stage');
       hotBadge(sx + 8 * s, sy2 + stageH - 8 * s, s); // bottom left, clear of the villain and the egg
+      tryChip(sx + 8 * s, sy2 + 8 * s, sw * 0.68, s); // top left: a free try running
       if (n > 1) { ui.buttons.push({ id: 'how:next', x: sx, y: sy2, w: sw, h: stageH }); }
       // a name tag on the stage: who this is (BOSS in red)
       if (plan.kind && plan.move !== 'rooster') {
@@ -5716,6 +5726,21 @@ function drawLevelIntro(L, acc) {
     let by = y1 + 8 * u; for (const b of bot) { by += b.gap ?? 10 * s; b.draw(x0, by, iw); by += b.h; }
   }
   ctx.restore();
+}
+// a taste running (egg skin, hen outfit or chick on free try) on the level card: its art, its name, the levels left
+function tryChip(x, y, maxW, s) {
+  if (G.li < 0) return;
+  const R = DR.trials(save), k = R.skin ? 'skin' : R.hen ? 'hen' : R.chick ? 'chick' : null;
+  if (!k) return;
+  const q = R[k], T = { kind: k, id: q.id, name: k === 'skin' ? (E.SKINS[q.id] || {}).name || q.id : k === 'hen' ? (E.HEN_SKINS[q.id] || {}).name || q.id : (STRIKE[q.id] || {}).name || q.id };
+  const h = 34 * s, fs = 13.5 * s, lv = `${q.left} ${q.left === 1 ? 'level' : 'levels'} left`;
+  let str = `Free try: ${tasteName(T)}, ${lv}`;
+  for (const alt of [`Free try: ${tasteName(T)}, ${q.left} ${q.left === 1 ? 'level' : 'levels'}`, `${tasteName(T)}: free, ${q.left} ${q.left === 1 ? 'level' : 'levels'}`]) if (h + ui.measure(str, fs) + 14 * s > maxW) str = alt; // a long name: a shorter form, never cut
+  const w = Math.min(maxW, h + ui.measure(str, fs) + 12 * s);
+  ui.roundRect(x, y, w, h, h / 2); ctx.fillStyle = 'rgba(30,70,130,0.88)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(200,230,255,0.9)'; ctx.stroke();
+  tasteArt(T, x + h / 2 + 2 * s, y + h / 2, h * 0.8, false);
+  ui.text(str, x + h + 4 * s, y + h / 2, { size: fs, color: '#fff', maxW: w - h - 12 * s, noRecord: true });
+  ui.record({ x, y, w, h }, 'intro:try');
 }
 // the win streak on the level card: a flame with the count and the free boosters it brings to this level
 function hotBadge(x, y, s) {
@@ -6380,15 +6405,16 @@ function drawWinPage() {
       const its = treasureItems(r.treasure), iw = Math.min(46 * s, (w * 0.5) / 3);
       its.forEach(([k2, n], j) => { const ix = x + w - 8 * s - (2.5 - j) * iw; rewardIcon(k2, r.treasure, ix, y + 23 * s, 26 * s); ui.text(n, ix, y + 47 * s, { size: 13 * s, align: 'center', color: C.ink, maxW: iw - 2 * s, tag: 'win:tri' + j }); });
     } });
-    if (r.gift) B.push({ h: 64 * s, gap: 6 * s, draw: (x, y, w) => { // the Director's gift: an egg skin, already on, for the next levels
+    if (r.gift) B.push({ h: 64 * s, gap: 6 * s, draw: (x, y, w) => { // the taste: a store item, already on, for the next levels
       if (!inCard) return;
+      const T = r.gift;
       rowWell(x, y, w, 64 * s, '#ffe9b0', '#fff6dc');
-      drawSkinPreview(ctx, r.gift.id, x + 34 * s, y + 32 * s, 50 * s, G.t);
-      const bw = 86 * s, bx = x + w - bw - 8 * s; // the "Equipped" tag on the right
+      tasteArt(T, x + 34 * s, y + 32 * s, (T.kind === 'hen' ? 54 : 50) * s, false);
+      const tag = T.kind === 'boost' ? 'Added' : 'Equipped', bw = Math.max(72 * s, ui.measure(tag, 14 * s) + 22 * s), bx = x + w - bw - 8 * s; // the tag on the right
       ui.roundRect(bx, y + 19 * s, bw, 26 * s, 13 * s); ctx.fillStyle = '#3eaa2a'; ctx.fill();
-      ui.text('Equipped', bx + bw / 2, y + 32 * s, { size: 14 * s, align: 'center', color: '#fff', maxW: bw - 10 * s, tag: 'win:equip' });
-      ui.text(`Free try: ${eggName(r.gift.name)}`, x + 66 * s, y + 21 * s, { size: 16 * s, color: C.ink, maxW: bx - x - 72 * s, tag: 'win:gift' });
-      tickLine(`On for the next ${DR.DIR.skinLevels} levels`, x + 66 * s, y + 44 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: bx - x - 72 * s, tag: 'win:gift2' });
+      ui.text(tag, bx + bw / 2, y + 32 * s, { size: 14 * s, align: 'center', color: '#fff', maxW: bw - 10 * s, tag: 'win:equip' });
+      ui.text(`Free try: ${tasteName(T)}`, x + 66 * s, y + 21 * s, { size: 16 * s, color: C.ink, maxW: bx - x - 72 * s, tag: 'win:gift' });
+      tickLine(T.kind === 'boost' ? '+1 in your bag' : `On for the next ${DR.DIR.skinLevels} levels`, x + 66 * s, y + 44 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: bx - x - 72 * s, tag: 'win:gift2' });
     } });
     if (r.hot >= 2) B.push({ h: 56 * s, gap: 6 * s, draw: (x, y, w) => { // the win streak, and the boosters it brings to the next level
       if (!inCard) return;
@@ -6480,69 +6506,89 @@ function rewardIcon(k, R, x, y, sz) {
 }
 // one line under a reveal or in a card row: a green tick, then the words
 function tickLine(str, x, y, size, o = {}) {
+  if (o.fit) size = Math.min(size, o.fit * 20 / (ui.measure(str, 20) + 28)); // a long line shrinks whole (tick and words), never cut
   const tw = ui.measure(str, size), w = size * 1.35 + tw, x0 = o.align === 'left' ? x : x - w / 2;
   pictoCheck(ctx, x0 + size * 0.5, y, size * 1.15);
   ui.text(str, x0 + size * 1.35, y, { size, color: o.color || '#fff', stroke: o.stroke, strokeW: o.stroke ? Math.max(2, size * 0.2) : undefined, maxW: o.maxW ? o.maxW - size * 1.35 : undefined, tag: o.tag });
 }
+// a taste's art (the reveal's hero, the card's row): the egg skin, the hen in the outfit (alive: she cheers), the chick, the booster
+const tasteName = (T) => (T.kind === 'skin' ? eggName(T.name) : T.name);
+const tasteLine = (T) => (T.kind === 'boost' ? '+1 in your bag' : `${T.kind === 'skin' ? 'On your eggs for' : T.kind === 'hen' ? 'On your hen for' : 'Free to use for'} the next ${DR.DIR.skinLevels} levels`);
+function tasteArt(T, x, y, h, live) {
+  if (T.kind === 'skin') drawSkinPreview(ctx, T.id, x, y, h * 0.92, G.t);
+  else if (T.kind === 'hen') {
+    if (!live) { drawHenSkinPreview(ctx, T.id, x, y, h, G.t); return; }
+    setHenSkin(T.id);
+    try { drawHenAnim(ctx, 'happy', x, y, h, G.t, { key: 'taste', face: 1, n: Math.floor(G.t / 1.7), calm: save.calm, shadow: 0 }); } finally { setHenSkin(G.henSkinCur || 'classic'); }
+  } else if (T.kind === 'chick') drawStrikeChick(ctx, T.id, x, y + h * 0.1, h * 0.82, G.t, {});
+  else drawBoosterIcon(ctx, T.id, x, y, h * 0.82, G.t);
+}
+// 0.8.9 TASTE: every reveal is big and sits in the middle of the page (mykee: "never small visuals")
 function drawReveal(r) {
   const RV = r.rv, it = RV.list[RV.i], calm = save.calm, A = ui.A, u = ui.u, ink = 'rgba(60,28,6,0.9)';
   const t = calm ? 1.35 : RV.t, fin = calm ? 1 : clamp(RV.t / 0.18, 0, 1);
   dim(0.84 * (RV.i ? 1 : fin)); // the show sinks under the first one (deep: the prize alone on the page)
-  const S = Math.min(A.w * 0.8, A.h * 0.5, 360 * u), cx = A.cx, cy = A.y + A.h * 0.45;
-  const heroY = cy - 0.12 * S, rowY = cy + 0.3 * S, lineY = cy + 0.53 * S, ls = Math.max(15 * u, Math.min(21 * u, 0.065 * S));
+  const S = Math.min(A.w * 0.9, A.h * 0.46, 420 * u), cx = A.cx, cy = A.y + A.h * 0.52;
+  const heroY = cy - 0.3 * S, rowY = cy + 0.27 * S, ls = Math.max(17 * u, Math.min(27 * u, 0.085 * S));
   ctx.save(); ctx.globalAlpha = fin; // rays and a warm glow behind the prize
-  sunburst(cx, heroY, S * 0.95, 'rgba(255,226,140,0.17)', 14);
-  const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.6); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
+  sunburst(cx, heroY, S * 1.25, 'rgba(255,226,140,0.17)', 14);
+  const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.75); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
   ctx.fillStyle = g; ctx.fillRect(cx - S, heroY - S, 2 * S, 2 * S);
   ctx.restore();
   const head = it.kind === 'treasure' ? 'BOSS TREASURE!' : it.kind === 'gift' ? 'FREE TRY!' : `${r.hot} WINS IN A ROW!`;
-  { // the headline: a ribbon that pops in
-    const hs = Math.min(30 * u, 0.1 * S), hw = Math.min(A.w - 40 * u, ui.measure(head, hs) + 70 * u), pk = calm ? 1 : backK(t / 0.3), hy = cy - 0.66 * S;
+  const headline = () => { // the headline: a ribbon that pops in (drawn last: a jumping hen or a chick's fuse goes under it)
+    const hs = Math.min(39 * u, 0.12 * S), hw = Math.min(A.w - 36 * u, ui.measure(head, hs) + 80 * u), pk = calm ? 1 : backK(t / 0.3), hy = cy - 0.98 * S;
     ctx.save(); ctx.translate(cx, hy); ctx.scale(pk, pk); ctx.translate(-cx, -hy);
     ui.ribbon(head, cx, hy - hs * 0.85, hw, hs * 1.7, { color: it.kind === 'hot' ? '#e4572a' : it.kind === 'gift' ? '#2f8fd8' : '#d89a1c', size: hs, noRecord: true });
     ctx.restore();
-  }
+  };
   const pop = (t0, x, y, sc, draw) => { const k = calm ? 1 : backK((t - t0) / 0.32); if (k <= 0.01) return; ctx.save(); ctx.translate(x, y); ctx.scale(k * sc, k * sc); draw(); ctx.restore(); };
   if (it.kind === 'treasure') {
-    const R = r.treasure, open = t >= 0.6, items = treasureItems(R);
-    const p = clamp(t / 0.35, 0, 1), drop = calm ? 0 : -S * 0.9 * (1 - p) * (1 - p); // it drops in, lands, shakes, bursts open
+    const R = r.treasure, open = t >= 0.6, items = treasureItems(R), cs = S * 0.8;
+    const p = clamp(t / 0.35, 0, 1), drop = calm ? 0 : -S * 1.1 * (1 - p) * (1 - p); // it drops in, lands, shakes, bursts open
     const shake = !calm && t > 0.35 && t < 0.6 ? Math.sin(t * 70) * 0.1 * (t - 0.3) / 0.3 : 0, sq = !calm && t > 0.35 && t < 0.45 ? 1 - 0.12 * Math.sin((t - 0.35) / 0.1 * Math.PI) : 1;
-    if (open && !calm && t < 1) { const a = (t - 0.6) / 0.4; ctx.save(); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 8 * u * (1 - a); ctx.beginPath(); ctx.arc(cx, heroY, S * (0.15 + 0.45 * a), 0, 7); ctx.stroke(); sunburst(cx, heroY, S * (0.3 + 0.5 * a), `rgba(255,250,210,${0.5 * (1 - a)})`, 10); ctx.restore(); }
-    ctx.save(); ctx.translate(cx, heroY + drop + S * 0.21); ctx.rotate(shake); ctx.scale(1 / sq, sq); ctx.translate(-cx, -(heroY + S * 0.21));
-    drawChest(ctx, cx, heroY, S * 0.58, G.t, open ? 'open' : 'ready');
+    if (open && !calm && t < 1) { const a = (t - 0.6) / 0.4; ctx.save(); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 10 * u * (1 - a); ctx.beginPath(); ctx.arc(cx, heroY, S * (0.25 + 0.6 * a), 0, 7); ctx.stroke(); sunburst(cx, heroY, S * (0.45 + 0.7 * a), `rgba(255,250,210,${0.5 * (1 - a)})`, 10); ctx.restore(); }
+    ctx.save(); ctx.translate(cx, heroY + drop + cs * 0.36); ctx.rotate(shake); ctx.scale(1 / sq, sq); ctx.translate(-cx, -(heroY + cs * 0.36));
+    drawChest(ctx, cx, heroY, cs, G.t, open ? 'open' : 'ready');
     ctx.restore();
     // what was inside pops out of the chest into a row, then flies off to the bag (top right)
-    const sp = Math.min(S * 0.36, (A.w - 40 * u) / 3), isz = S * 0.23;
+    const sp = Math.min(S * 0.38, (A.w - 30 * u) / 3), isz = S * 0.3, ns = Math.max(20 * u, isz * 0.34);
     items.forEach(([k, n, lab], j) => {
       const t0 = 0.68 + 0.1 * j, sx = cx + (j - 1) * sp, a = calm ? 1 : clamp((t - t0) / 0.3, 0, 1);
       if (a <= 0) return;
       const fl = calm ? 0 : ss01((t - 1.5 - 0.04 * j) / 0.28), bx = A.x + A.w - 34 * u, by = A.y + 30 * u;
-      const x = lerp(lerp(cx, sx, a), bx, fl), y = lerp(lerp(heroY, rowY, a) - Math.sin(a * Math.PI) * S * 0.22, by, fl), sc = (calm ? 1 : backK(a)) * (1 - 0.7 * fl);
+      const x = lerp(lerp(cx, sx, a), bx, fl), y = lerp(lerp(heroY, rowY, a) - Math.sin(a * Math.PI) * S * 0.25, by, fl), sc = (calm ? 1 : backK(a)) * (1 - 0.7 * fl);
       ctx.save(); ctx.globalAlpha = 1 - fl * fl;
       ctx.translate(x, y); ctx.scale(sc, sc); rewardIcon(k, R, 0, 0, isz); ctx.restore();
       if (fl < 0.05 && a >= 1) {
-        ui.text(n, sx, rowY + isz * 0.72, { size: Math.max(17 * u, isz * 0.34), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 4 * u, tag: 'rv:n' + j });
-        ui.text(lab, sx, rowY + isz * 0.72 + Math.max(17 * u, isz * 0.34) * 0.95, { size: ls * 0.8, align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:l' + j });
+        ui.text(n, sx, rowY + isz * 0.7, { size: ns, align: 'center', color: '#fff6c8', stroke: ink, strokeW: 4.5 * u, tag: 'rv:n' + j });
+        ui.text(lab, sx, rowY + isz * 0.7 + ns, { size: Math.min(ls * 0.82, (sp - 10 * u) * 20 / ui.measure(lab, 20)), align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:l' + j });
       }
     });
-    if (t > 1.05) tickLine('Added to your bag', cx, lineY + S * 0.12, ls, { stroke: ink, tag: 'rv:line' });
-  } else if (it.kind === 'gift') {
-    const G2 = r.gift;
-    pop(0, cx, heroY, 1, () => { ctx.rotate(calm ? 0 : Math.sin(G.t * 3) * 0.06); drawSkinPreview(ctx, G2.id, 0, 0, S * 0.5, G.t); });
-    if (calm || t > 0.3) ui.text(eggName(G2.name), cx, rowY, { size: Math.min(34 * u, 0.11 * S), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 5 * u, maxW: A.w - 40 * u, tag: 'rv:name' });
-    if (calm || t > 0.6) tickLine(`On your eggs for the next ${DR.DIR.skinLevels} levels`, cx, lineY, ls, { stroke: ink, maxW: A.w - 32 * u, tag: 'rv:line' });
+    if (t > 1.05) tickLine('Added to your bag', cx, cy + 0.74 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
+  } else if (it.kind === 'gift') { // a taste: the item itself, alive, its name, where it lives, and what it does now
+    const T = r.gift;
+    pop(0, cx, heroY, 1, () => { if (T.kind === 'skin' || T.kind === 'boost') ctx.rotate(calm ? 0 : Math.sin(G.t * 3) * 0.06); tasteArt(T, 0, 0, S * 0.76, true); });
+    if (calm || t > 0.3) ui.text(tasteName(T), cx, cy + 0.2 * S, { size: Math.min(44 * u, 0.14 * S), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 6 * u, maxW: A.w - 40 * u, tag: 'rv:name' });
+    if (calm || t > 0.45) { // "From the shop", with the shop's own icon: where it lives
+      const fs = ls * 0.85, fw = ui.measure('From the shop', fs) + fs * 1.7, fx = cx - fw / 2;
+      shopIcon(ctx, fx + fs * 0.7, cy + 0.36 * S, fs * 1.9);
+      ui.text('From the shop', fx + fs * 1.7, cy + 0.36 * S, { size: fs, color: '#ffe9b0', stroke: ink, tag: 'rv:shop' });
+    }
+    if (calm || t > 0.6) tickLine(tasteLine(T), cx, cy + 0.6 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
   } else { // the win streak: a flame with the count, and the boosters the next level starts with
-    pop(0, cx, heroY - S * 0.04, 1, () => { pictoFlame(ctx, 0, 0, S * 0.42); });
-    if (calm || t > 0.15) ui.num(String(r.hot), cx, heroY + S * 0.07, { size: S * 0.17, align: 'center', tag: 'rv:count' });
-    const B = r.hotB, sp = Math.min(S * 0.36, (A.w - 40 * u) / B.length), isz = S * 0.28;
+    pop(0, cx, heroY - S * 0.04, 1, () => { pictoFlame(ctx, 0, 0, S * 0.66); });
+    if (calm || t > 0.15) ui.num(String(r.hot), cx, heroY + S * 0.1, { size: S * 0.26, align: 'center', tag: 'rv:count' });
+    const B = r.hotB, sp = Math.min(S * 0.42, (A.w - 30 * u) / B.length), isz = S * 0.36;
     B.forEach((b, j) => {
       const bx = cx + (j - (B.length - 1) / 2) * sp;
       pop(0.4 + 0.12 * j, bx, rowY, 1, () => drawBoosterIcon(ctx, b, 0, 0, isz, G.t));
-      if (calm || t > 0.6 + 0.12 * j) ui.text((E.BOOSTERS[b] || {}).name || b, bx, rowY + isz * 0.72, { size: ls * 0.8, align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:b' + j });
+      if (calm || t > 0.6 + 0.12 * j) ui.text((E.BOOSTERS[b] || {}).name || b, bx, rowY + isz * 0.68, { size: ls * 0.85, align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:b' + j });
     });
-    if (calm || t > 0.9) tickLine('Free at the start of the next level', cx, lineY + S * 0.06, ls, { stroke: ink, maxW: A.w - 32 * u, tag: 'rv:line' });
+    if (calm || t > 0.9) tickLine('Free at the start of the next level', cx, cy + 0.68 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
   }
-  if (RV.list.length > 1) RV.list.forEach((q, j) => { ctx.beginPath(); ctx.arc(cx + (j - (RV.list.length - 1) / 2) * 16 * u, Math.min(A.y1 - 22 * u, cy + 0.78 * S), (j === RV.i ? 5 : 3.5) * u, 0, 7); ctx.fillStyle = j === RV.i ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.fill(); });
+  headline();
+  if (RV.list.length > 1) RV.list.forEach((q, j) => { ctx.beginPath(); ctx.arc(cx + (j - (RV.list.length - 1) / 2) * 18 * u, Math.min(A.y1 - 22 * u, cy + 0.9 * S), (j === RV.i ? 6 : 4) * u, 0, 7); ctx.fillStyle = j === RV.i ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.fill(); });
 }
 
 // One result star. It stamps into its socket: falls in big and tilted, hits on its beat (R0.stars[q]) with a squash and

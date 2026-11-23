@@ -291,6 +291,13 @@ export function bossTreasure(bossId) {
   if (w < 0) return null;
   return { id: bossId, coins: 150 + 50 * w, booster: TREASURE_BOOSTS[w], charges: w < 5 ? 2 : 3 };
 }
+// +1 of a booster into a wallet (a full stack pays its price in coins instead): the boss treasure and a win's taste
+function giveBooster(w, id) {
+  if (!BOOSTERS[id]) return;
+  if (ownedCount(w, id) < MAX_OWNED) w.owned[id] = ownedCount(w, id) + 1;
+  else w.coins += BOOSTERS[id].price;
+}
+export function tasteBooster(wallet, id) { const w = sanitizeWallet(wallet); giveBooster(w, id); return w; }
 export function treasureOpened(wallet, bossId) { return !!(wallet && Array.isArray(wallet.treasures) && wallet.treasures.includes(bossId)); }
 // Returns a new wallet with the treasure paid, or null when it was opened already (never pays twice)
 export function openBossTreasure(wallet, bossId) {
@@ -298,10 +305,7 @@ export function openBossTreasure(wallet, bossId) {
   if (!T || treasureOpened(wallet, bossId)) return null;
   const w = sanitizeWallet(wallet);
   w.coins += T.coins;
-  if (BOOSTERS[T.booster]) {
-    if (ownedCount(w, T.booster) < MAX_OWNED) w.owned[T.booster] = ownedCount(w, T.booster) + 1;
-    else w.coins += BOOSTERS[T.booster].price;
-  }
+  giveBooster(w, T.booster);
   w.charges = Math.min(MAX_CHARGES, (w.charges || 0) + T.charges);
   w.treasures = [...w.treasures, bossId];
   return w;

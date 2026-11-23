@@ -33,7 +33,7 @@ import { BOOSTERS, SKINS, SKIN_ORDER, CHICK_PRICES, HEN_SKINS } from './economy.
 
 const DAY = 864e5;
 const dayKey = (now) => { const d = new Date(now); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
-export const DIR = { trialsPerDay: 2, skinEvery: [5, 8], skinLevels: 3, welcomeDays: 2, welcomeCoins: 60 };
+export const DIR = { trialsPerDay: 2, skinEvery: [5, 8], tasteEvery: [4, 6], skinLevels: 3, welcomeDays: 2, welcomeCoins: 60 };
 
 export function dirState(save) {
   const d = save.dir && typeof save.dir === 'object' ? save.dir : {};
@@ -42,12 +42,14 @@ export function dirState(save) {
     att: obj(d.att),
     recent: Array.isArray(d.recent) ? d.recent.filter((x) => x === 'w' || x === 'f').slice(-12) : [],
     spent: { all: Math.max(0, Number(d.spent && d.spent.all) || 0), by: obj(d.spent && d.spent.by) },
-    trials: { lv: obj(d.trials && d.trials.lv), day: d.trials && typeof d.trials.day === 'string' ? d.trials.day : '', n: Math.max(0, Number(d.trials && d.trials.n) || 0), chicks: Array.isArray(d.trials && d.trials.chicks) ? d.trials.chicks : [], skins: Array.isArray(d.trials && d.trials.skins) ? d.trials.skins : [], hens: Array.isArray(d.trials && d.trials.hens) ? d.trials.hens : [] },
+    trials: { lv: obj(d.trials && d.trials.lv), day: d.trials && typeof d.trials.day === 'string' ? d.trials.day : '', n: Math.max(0, Number(d.trials && d.trials.n) || 0), chicks: Array.isArray(d.trials && d.trials.chicks) ? d.trials.chicks : [], skins: Array.isArray(d.trials && d.trials.skins) ? d.trials.skins : [], hens: Array.isArray(d.trials && d.trials.hens) ? d.trials.hens : [], boosts: Array.isArray(d.trials && d.trials.boosts) ? d.trials.boosts : [] },
     trial: d.trial && SKINS[d.trial.id] && d.trial.left > 0 ? { id: d.trial.id, left: Math.floor(d.trial.left), from: Number(d.trial.from) || 0 } : null,
     henTrial: d.henTrial && HEN_SKINS[d.henTrial.id] && d.henTrial.left > 0 ? { id: d.henTrial.id, left: Math.floor(d.henTrial.left), from: Number(d.henTrial.from) || 0 } : null,
+    chickTrial: d.chickTrial && CHICK_PRICES[d.chickTrial.id] && d.chickTrial.left > 0 ? { id: d.chickTrial.id, left: Math.floor(d.chickTrial.left), from: Number(d.chickTrial.from) || 0 } : null,
+    tasteN: Math.max(0, Number(d.tasteN) || 0),
     keepAsk: d.keepAsk && SKINS[d.keepAsk] ? d.keepAsk : null,
     keepAskHen: d.keepAskHen && HEN_SKINS[d.keepAskHen] ? d.keepAskHen : null,
-    winsToSkin: Number.isFinite(d.winsToSkin) ? d.winsToSkin : DIR.skinEvery[0] + 1,
+    winsToSkin: Number.isFinite(d.winsToSkin) ? d.winsToSkin : DIR.skinEvery[0] + 1, // (0.8.9: the wins until the next taste)
     lastSeen: Number(d.lastSeen) || 0,
     welcomeAt: Number(d.welcomeAt) || 0,
     afford: obj(d.afford), affordAt: Math.max(0, Number(d.affordAt) || 0),
@@ -186,6 +188,7 @@ export function tickTrial(save) {
     D.henTrial = null;
     if (!(Array.isArray(w.henSkins) && w.henSkins.includes(h))) D.keepAskHen = h;
   }
+  if (D.chickTrial && --D.chickTrial.left <= 0) D.chickTrial = null; // a chick on trial simply goes back to locked: no ask
   if (!D.trial) return null;
   D.trial.left--;
   if (D.trial.left > 0) return null;
@@ -196,6 +199,65 @@ export function tickTrial(save) {
 }
 export const trialSkin = (save) => { const D = dirState(save); return D.trial ? D.trial.id : null; };
 export const trialHen = (save) => { const D = dirState(save); return D.henTrial ? D.henTrial.id : null; };
+export const trialChick = (save) => { const D = dirState(save); return D.chickTrial ? D.chickTrial.id : null; };
+
+// ---- tastes (0.8.9, mykee: "give the user the taste of the skins... test them out for a limited period, so the user
+// understands what is in the store"): now and then a win gives a free try of a store item the player does not own,
+// in a fixed rotation: an egg skin, a hen outfit, a power chick, a booster sample. The first comes with the first boss
+// win (level 5, with the treasure), then one every DIR.tasteEvery wins (winsToSkin counts them down). One a win at most;
+// a kind with nothing to give or still running is passed over. Same for every player; no clocks, no prices.
+export const TASTE_KINDS = ['skin', 'hen', 'chick', 'boost'];
+// ctx: { levelId, boss (this win was a boss), chicks: [{ id, name, price }] locked chicks the next level could use
+// (empty when it cannot), rand } -> { kind, id, name } | null
+export function winTaste(save, ctx = {}) {
+  const D = dirState(save);
+  if (D.tasteN === 0 ? !((ctx.levelId || 0) >= 5 && (ctx.boss || D.winsToSkin <= 0)) : D.winsToSkin > 0) return null;
+  for (let k = 0; k < TASTE_KINDS.length; k++) {
+    const kind = TASTE_KINDS[(D.tasteN + k) % TASTE_KINDS.length], T = tasteOf(save, kind, ctx);
+    if (T) return T;
+  }
+  return null;
+}
+// the first three tastes give the cheapest of a kind, later ones any (so the pricey ones feel like a climb)
+function pickOf(D, pool, price, rand) {
+  if (!pool.length) return null;
+  const by = [...pool].sort((a, b) => price(a) - price(b));
+  return D.tasteN < 3 ? by[0] : by[Math.floor((rand ? rand() : Math.random()) * by.length)];
+}
+function tasteOf(save, kind, ctx) {
+  const D = dirState(save), w = save.wallet || {};
+  if (kind === 'skin') {
+    if (D.trial || D.keepAsk) return null;
+    const own = new Set(Array.isArray(w.skins) ? w.skins : ['classic']);
+    const id = pickOf(D, SKIN_ORDER.filter((q) => q !== 'classic' && !own.has(q) && !D.trials.skins.includes(q)), (q) => SKINS[q].price, ctx.rand);
+    return id ? { kind, id, name: SKINS[id].name } : null;
+  }
+  if (kind === 'hen') {
+    if (D.henTrial || D.keepAskHen) return null;
+    const own = new Set(Array.isArray(w.henSkins) ? w.henSkins : ['classic']);
+    const id = pickOf(D, Object.keys(HEN_SKINS).filter((q) => q !== 'classic' && !HEN_SKINS[q].premium && !own.has(q) && !D.trials.hens.includes(q)), (q) => HEN_SKINS[q].price, ctx.rand);
+    return id ? { kind, id, name: HEN_SKINS[id].name } : null;
+  }
+  if (kind === 'chick') {
+    if (D.chickTrial) return null;
+    const c = (ctx.chicks || []).filter((q) => !D.trials.chicks.includes(q.id)).sort((a, b) => a.price - b.price)[0];
+    return c ? { kind, id: c.id, name: c.name } : null;
+  }
+  // a booster sample: one the bag has none of, the dearest first, each once while others are left
+  const own = (id) => (w.owned && w.owned[id]) || 0, ids = Object.keys(BOOSTERS).filter((id) => own(id) === 0).sort((a, b) => BOOSTERS[b].price - BOOSTERS[a].price);
+  const id = ids.find((q) => !D.trials.boosts.includes(q)) || null;
+  return id ? { kind, id, name: BOOSTERS[id].name } : null;
+}
+// switch the taste on (a booster's +1 is paid by the caller: economy.tasteBooster) and wind the counter up again
+export function startTaste(save, T, now, rand = Math.random) {
+  const D = dirState(save), L = { id: T.id, left: DIR.skinLevels, from: now };
+  if (T.kind === 'skin') { D.trial = L; D.trials.skins = [...D.trials.skins, T.id].slice(-30); }
+  else if (T.kind === 'hen') { D.henTrial = L; D.trials.hens = [...D.trials.hens, T.id].slice(-40); }
+  else if (T.kind === 'chick') { D.chickTrial = L; D.trials.chicks = [...D.trials.chicks, T.id].slice(-20); }
+  else D.trials.boosts = [...D.trials.boosts, T.id].slice(-20);
+  D.tasteN++;
+  D.winsToSkin = DIR.tasteEvery[0] + Math.floor(rand() * (DIR.tasteEvery[1] - DIR.tasteEvery[0] + 1));
+}
 export function clearKeepAsk(save, kind = 'skin') { const D = dirState(save); if (kind === 'hen') D.keepAskHen = null; else D.keepAsk = null; }
 
 // ---- "Try it free" in the shop (2026-11-20): any egg skin or hen outfit the player does not own, worn for the next
@@ -219,7 +281,7 @@ export function startTry(save, kind, id, now, owned = false) {
 // the player put on (bought or equipped) something else of that kind: the trial ends quietly, no "Keep it?"
 export function endTrial(save, kind) { const D = dirState(save); if (kind === 'hen') D.henTrial = null; else D.trial = null; }
 // what is on trial right now, and how many levels are left: { skin: { id, left } | null, hen: { id, left } | null }
-export function trials(save) { const D = dirState(save); return { skin: D.trial ? { id: D.trial.id, left: D.trial.left } : null, hen: D.henTrial ? { id: D.henTrial.id, left: D.henTrial.left } : null }; }
+export function trials(save) { const D = dirState(save); return { skin: D.trial ? { id: D.trial.id, left: D.trial.left } : null, hen: D.henTrial ? { id: D.henTrial.id, left: D.henTrial.left } : null, chick: D.chickTrial ? { id: D.chickTrial.id, left: D.chickTrial.left } : null }; }
 
 // ---- home: one thing at most, in this order
 // ctx: { now, chicks: [{ id, name, price }] locked chicks, money }
