@@ -21,16 +21,22 @@
 // After each rung the game comes back where the player was, checks again, and climbs if it is still slow. The rung that
 // worked is remembered and tried first the next time. If none works the watchdog rests for a day. At most three cures
 // in ten minutes. Everything is written to the speed log as "rec" and "prb" lines. Nothing leaves the phone.
+//
+// Ahead of time (mykee, 2026-11-23: "something that refreshes or removes all the previous level memory from the graphic
+// processor"): once a phone has fallen ill and a rung has cured it, the game remembers how far into the session it was
+// (seconds, and pictures handed back, the measure of how much it has drawn and thrown away). In later sessions it
+// climbs that same rung by itself at 80% of that point, on the map, the level card or home, while everything is still
+// fast: a blink between levels instead of a slow stretch. Never sooner than four minutes into a session.
 
 const KEY = 'eggscape.rec.v1';
 const SAFE = { intro: 1, levels: 1, title: 1 };
-const MENU = 0.72, JS_X = 3, JS_MIN = 30, NEED = 20, DAY = 86400000;
+const MENU = 0.72, JS_X = 3, JS_MIN = 30, NEED = 20, DAY = 86400000, PRE = 0.8, PRE_MIN = 300;
 
 export const REC = {
   on: false, rungs: 1, state: 'off', // ok | suspect | sick | verify | off
   healthy: 0, bad: 0, badScr: {}, ref: {}, stepOk: -1,
   base: 0, probes: 0, last: null, want: false, wins: 0,
-  why: '', rung: 0, inc: null, v: null, note: '', store: {}, log: null, st: null, now: Date.now,
+  why: '', rung: 0, inc: null, v: null, note: '', store: {}, log: null, st: null, now: Date.now, age: null,
 };
 
 function load() { try { const s = REC.st && REC.st.getItem(KEY); const o = s ? JSON.parse(s) : {}; return o && typeof o === 'object' ? o : {}; } catch (_) { return {}; } }
@@ -40,12 +46,13 @@ const r1 = (x) => Math.round(x * 10) / 10;
 // the probe's own verdict: is ms slow against the healthy time? (no healthy time, or a phone that never drew fast: no verdict)
 export function probeSlow(ms, base = REC.base) { return base > 0 && base < 12 && ms > Math.max(3 * base, base + 8); }
 
-// o: { storage, log (line) => void, rungs 1..3, now () => ms, off true = switched off (a test, a demo) }
+// o: { storage, log (line) => void, rungs 1..3, now () => ms, off true = switched off (a test, a demo),
+//      age () => { s: seconds this page has run, fr: pictures handed back so far } }
 // -> the mark to come back to after a cure that is under 25 s old ({ scr, li, world, rung, why, ... }), or null
 export function recInit(o = {}) {
-  REC.st = o.storage || null; REC.log = o.log || null; REC.rungs = Math.max(1, Math.min(3, o.rungs || 1)); REC.now = o.now || Date.now;
+  REC.st = o.storage || null; REC.log = o.log || null; REC.rungs = Math.max(1, Math.min(3, o.rungs || 1)); REC.now = o.now || Date.now; REC.age = o.age || null;
   REC.store = load(); REC.base = +REC.store.base || 0;
-  REC.healthy = REC.bad = REC.probes = REC.wins = 0; REC.badScr = {}; REC.ref = {}; REC.stepOk = -1; REC.last = null; REC.want = false; REC.inc = null; REC.v = null; REC.why = ''; REC.rung = 0;
+  REC.healthy = REC.bad = REC.probes = REC.wins = 0; REC.badScr = {}; REC.ref = {}; REC.stepOk = -1; REC.last = null; REC.want = false; REC.inc = null; REC.v = null; REC.why = ''; REC.rung = 0; REC.note = '';
   const t = REC.now(), m = REC.store.mark;
   REC.on = !o.off; REC.state = REC.on ? 'ok' : 'off';
   if (REC.on && REC.store.off && t - REC.store.off < DAY) { REC.state = 'off'; say({ e: 'rest', h: r1((DAY - (t - REC.store.off)) / 3600000) }); }
@@ -98,6 +105,8 @@ function sick(why) {
   REC.store.hist = h;
   if (h.length >= 3) { REC.state = 'off'; say({ e: 'limit' }); keep(); return; } // three cures in ten minutes: leave it to the quality steps
   REC.state = 'sick'; REC.why = why; REC.rung = REC.rung || Math.min(REC.rungs, REC.store.best || 1);
+  // how far into the session it struck (the earliest seen): the point to stay ahead of from now on
+  try { const a = REC.age && REC.age(); if (a && a.s > 0) { const i = REC.store.ill; REC.store.ill = { s: Math.round(i ? Math.min(i.s, a.s) : a.s), fr: Math.round(i ? Math.min(i.fr, a.fr) : a.fr) }; keep(); } } catch (_) { /* optional */ }
   say(Object.assign({ e: 'sick', why, rung: REC.rung, p: REC.last, base: r1(REC.base) }, REC.inc));
 }
 
@@ -116,6 +125,11 @@ export function recProbe(p) {
 function verify(w) { const v = REC.v; v.n++; v.fps += w.fps; v.cap = w.cap; verdict(); }
 function verdict() {
   const v = REC.v; if (!v || !v.p || v.n < 3) return;
+  if (v.m.why === 'pre') { // a refresh ahead of time: nothing was wrong, nothing to judge
+    say({ e: 'fresh', rung: v.m.rung, fps: r1(v.fps / v.n), p: r1(v.p.n), base: r1(REC.base) });
+    REC.v = null; REC.state = 'ok'; REC.healthy = NEED; REC.bad = 0; REC.badScr = {}; REC.inc = null; REC.rung = 0;
+    return;
+  }
   const m = v.m, fps = v.fps / v.n, pOk = !probeSlow(v.p.n), fOk = fps >= 0.8 * (m.ref || v.cap || 60);
   const ok = m.why === 'gpu' ? pOk : fOk && (pOk || !(REC.base > 0));
   REC.v = null;
@@ -138,9 +152,21 @@ export function recDue(scr, busy, playT = 99) {
   if (SAFE[scr] || (scr === 'play' && playT < 12)) return REC.rung;
   return 0;
 }
-// the cure starts: the mark the next page (or the next app start) comes back to. where: { scr, li, world }
-export function recGo(where) {
+// A refresh ahead of time is due: a healthy phone that has been ill before, a rung that cured it, and this session now
+// 80% as far along (seconds, or pictures handed back) as it was when it struck. -> the rung, or 0
+export function recPre(scr, busy) {
+  if (!REC.on || REC.state !== 'ok' || REC.bad || busy || !SAFE[scr] || !REC.age) return 0;
+  const i = REC.store.ill, b = REC.store.best; if (!i || !b || !(i.s >= PRE_MIN)) return 0;
+  const a = REC.age(), t = REC.now();
+  if (!(a.s >= PRE * i.s || (i.fr >= 2000 && a.fr >= PRE * i.fr))) return 0;
+  if ((REC.store.hist || []).filter((x) => t - x < 600000).length >= 3) return 0;
+  return Math.min(REC.rungs, b);
+}
+// the cure starts: the mark the next page (or the next app start) comes back to. where: { scr, li, world };
+// pre: the rung of a refresh ahead of time (recPre), else the watchdog's own rung
+export function recGo(where, pre = 0) {
   const t = REC.now(), i = REC.inc || {};
+  if (pre) { REC.rung = pre; REC.why = 'pre'; }
   const m = { at: t, scr: where.scr === 'play' ? 'intro' : where.scr, li: where.li, world: where.world, rung: REC.rung, why: REC.why, fps: i.fps || 0, js: i.js || 0, ref: i.ref || 0, rjs: i.rjs || 0 };
   REC.store.mark = m; (REC.store.hist = REC.store.hist || []).push(t); keep();
   say({ e: 'go', rung: m.rung, why: m.why, s: where.scr, step: REC.stepOk });

@@ -1,6 +1,6 @@
 // The slow-drawing watchdog (src/recover.js): what counts as ill, what does not, and the ladder of cures.
 // node tools/test-recover.mjs
-import { REC, recInit, recWindow, recProbe, recDue, recGo, recIll, probeSlow } from '../src/recover.js';
+import { REC, recInit, recWindow, recProbe, recDue, recPre, recGo, recIll, probeSlow } from '../src/recover.js';
 let n = 0, bad = 0;
 const ok = (c, m) => { n++; if (!c) { bad++; console.log('FAIL', m); } };
 const mem = () => { const m = {}; return { getItem: (k) => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, m }; };
@@ -8,7 +8,8 @@ let clock = 1e6; const now = () => clock;
 const logs = []; const log = (o) => logs.push(o);
 const W = (scr, fps, js, o = {}) => recWindow({ scr, fps, js, dpr: 2, cap: 60, step: 0, ...o });
 const healthy = (st, k = 30) => { for (let i = 0; i < k; i++) { W('play', 60, 8); W('intro', 60, 4); if (REC.want) recProbe({ n: 2 }); } };
-const start = (st, rungs = 3) => { logs.length = 0; return recInit({ storage: st, log, rungs, now }); };
+let age = { s: 0, fr: 0 };
+const start = (st, rungs = 3) => { logs.length = 0; return recInit({ storage: st, log, rungs, now, age: () => age }); };
 
 // 1. mykee's session: healthy for minutes, then the level 13 card at 33 fps and play at 78 ms a frame
 let st = mem(); ok(start(st) === null, 'a first start has nothing to come back to');
@@ -93,5 +94,27 @@ ok(REC.state === 'off' && logs.some((l) => l.e === 'limit'), 'the fourth in ten 
 st = mem(); recInit({ storage: st, log, now, off: true }); W('intro', 10, 4); ok(REC.state === 'off' && recDue('intro', false) === 0, 'off is off');
 st = mem(); st.setItem('eggscape.rec.v1', JSON.stringify({ mark: { at: clock - 60000, scr: 'intro', li: 2, rung: 1, why: 'gpu' } }));
 ok(start(st) === null && REC.state === 'ok', 'a mark older than 25 s is a normal start');
+
+// 9. ahead of time: the phone fell ill 657 s into a session (9000 pictures handed back) and rung 1 cured it
+st = mem(); clock += 1e8; age = { s: 657, fr: 9000 }; start(st); healthy(st);
+ok(recPre('levels', false) === 0, 'a phone that was never ill is never refreshed ahead of time');
+W('intro', 33, 4); W('intro', 33, 4); recProbe({ n: 31 }); recGo({ scr: 'intro', li: 12, world: 2 });
+ok(JSON.parse(st.m['eggscape.rec.v1']).ill.s === 657, 'the point where it struck is remembered');
+clock += 1500; age = { s: 2, fr: 0 }; start(st); recProbe({ n: 2 }); W('intro', 60, 4); W('intro', 60, 4); W('intro', 60, 4);
+ok(REC.state === 'ok' && recPre('levels', false) === 0, 'cured; two seconds into the new page nothing is due');
+// the next session
+clock += 3600000; age = { s: 10, fr: 50 }; start(st); healthy(st, 12);
+age = { s: 500, fr: 3000 }; ok(recPre('levels', false) === 0, 'at 500 s of 657: not yet');
+age = { s: 530, fr: 3000 }; ok(recPre('play', false) === 0 && recPre('win', false) === 0 && recPre('levels', true) === 0, 'at 530 s: due, but never in play, on the win page or under a sheet');
+ok(recPre('levels', false) === 1, 'on the map: the rung that cured it');
+age = { s: 200, fr: 7300 }; ok(recPre('intro', false) === 1, 'or when as many pictures have gone by, whichever comes first');
+const mp = recGo({ scr: 'levels', li: 10, world: 2 }, 1);
+ok(mp.why === 'pre' && mp.rung === 1 && mp.scr === 'levels', 'the mark says it was ahead of time');
+clock += 1200; age = { s: 1, fr: 0 }; back = start(st); recProbe({ n: 2 }); W('levels', 60, 3); W('levels', 60, 3); W('levels', 60, 3);
+ok(back.why === 'pre' && REC.state === 'ok' && logs.some((l) => l.e === 'fresh') && REC.note !== 'ok', 'back on the map, no verdict, no toast');
+// a phone that fell ill early (under five minutes) is not refreshed ahead of time: too often
+st = mem(); clock += 1e8; age = { s: 120, fr: 800 }; start(st); healthy(st); W('intro', 33, 4); W('intro', 33, 4); recProbe({ n: 31 }); recGo({ scr: 'intro', li: 2, world: 0 });
+clock += 1500; age = { s: 2, fr: 0 }; start(st); recProbe({ n: 2 }); W('intro', 60, 4); W('intro', 60, 4); W('intro', 60, 4);
+age = { s: 119, fr: 799 }; ok(recPre('levels', false) === 0, 'struck at two minutes: no refresh ahead of time');
 console.log(bad ? `${bad} of ${n} FAILED` : `recover: ${n} checks passed`);
 process.exit(bad ? 1 : 0);

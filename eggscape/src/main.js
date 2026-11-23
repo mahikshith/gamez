@@ -80,7 +80,7 @@ import { STRIKES, STRIKE, STRIKE_FROM, EGG_STRIKES } from './data/strikes.js';
 import { drawHand as teachHand } from './render/wonder.js'; // the teaching hand (Papa Rooster's first call)
 import { stampStats, stampSweep } from './render/stamp.js';
 import { cvStats, freeCanvas } from './render/cvfree.js';
-import { REC, recInit, recWindow, recProbe, recDue, recGo, recIll } from './recover.js';
+import { REC, recInit, recWindow, recProbe, recDue, recPre, recGo, recIll } from './recover.js';
 import { drawHowTo, howToPlan, chickPlan, toyPlan, floorPlan, chickTeach, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
@@ -7819,6 +7819,7 @@ function watchFrame(raw, work, every) {
   const busy = G.adBusy || ads.busy || !!G.getMore || !!G.detail || !!G.chickBuy || G.settingsOpen || speedTest.active || G.screenT < 0.5;
   const rung = recDue(s, busy, G.sim ? G.sim.t : 99);
   if (rung) cure(rung);
+  else { const pre = recPre(s, busy); if (pre) cure(pre, true); } // ahead of time, at the point this phone fell ill before
 }
 // Android's own word on heat (0 none, 1 light, 2 moderate, 3 severe ...): a phone that throttles itself is slow for
 // another reason. Only asked while the watchdog is already counting bad seconds.
@@ -7857,10 +7858,10 @@ function gpuProbe() {
 // The cure (rung 1 loads the page again, 2 ends the page's process, 3 starts the app again). The save goes first, with
 // the quality step from before the phone fell ill; the Android shell also keeps a copy of the save for the next start,
 // because the web view writes its storage to disk a few seconds late and rungs 2 and 3 do not wait for it.
-function cure(rung) {
-  if (save.gfx === 'auto' && REC.stepOk >= 0) save.gfxStep = REC.stepOk;
+function cure(rung, pre = false) {
+  if (!pre && save.gfx === 'auto' && REC.stepOk >= 0) save.gfxStep = REC.stepOk;
   persist();
-  recGo({ scr: G.screen, li: G.li, world: G.world });
+  recGo({ scr: G.screen, li: G.li, world: G.world }, pre ? rung : 0);
   diag.flush();
   if (DEV && FAKE && FAKE.loads > 0) { FAKE.loads--; FAKE.came = 1; try { sessionStorage.setItem('egg.fake', JSON.stringify(FAKE)); } catch (_) { /* test only */ } }
   try {
@@ -8036,7 +8037,7 @@ async function boot() {
   const back = (() => {
     try {
       const q = new URLSearchParams(location.search), b = window.EggApp;
-      return recInit({ storage: localStorage, log: (o) => diag.note(o), rungs: b && typeof b.recover === 'function' ? 3 : 1, off: TEST || q.get('rec') === '0' || !!q.get('demo') });
+      return recInit({ storage: localStorage, log: (o) => diag.note(o), rungs: b && typeof b.recover === 'function' ? 3 : 1, age: () => ({ s: performance.now() / 1000, fr: cvStats.freed }), off: TEST || q.get('rec') === '0' || !!q.get('demo') });
     } catch (_) { return null; }
   })();
   if (TEST) {
