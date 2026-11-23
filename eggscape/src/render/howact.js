@@ -16,6 +16,8 @@ import { drawThief, thiefPose } from './thieves.js';
 import { RIG } from '../sim/thieves.js';
 import { drawCrawler } from './crawlers.js';
 import { drawSalamander } from './salamander.js';
+import { drawGator } from './bayou.js';
+import { GATOR } from '../sim/bayou.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -122,8 +124,8 @@ function snake(ctx, S, O = {}) {
 
 // ------------------------------------------------------------------ the weasel
 // On the ground under the vault: it prowls in, crouches under the gap and springs at it. Turn: the wall is there instead.
-function weasel(ctx, S) {
-  const { T, t, m, k } = S, s = RIG.weasel.s * k, H = hitOf(S), g = S.g0, sd = g >= 0 ? 1 : -1, face = -sd;
+function weasel(ctx, S, K = 'weasel', X = null) { // K: the rig ('ratking': the Rat King, crowned, a little under his vault size so he fits the stage)
+  const { T, t, m, k } = S, s = RIG[K].s * k * (K === 'ratking' ? 0.8 : 1), H = hitOf(S), g = S.g0, sd = g >= 0 ? 1 : -1, face = -sd;
   const gy = S.ground, wallP = S.at(g, -(S.band / 2)), xg = wallP.x + sd * s * 0.38, x0 = S.cx + sd * (S.w * 0.5 + s * 0.9);
   const walk = ease(seg(T, 0.2, 1.0));
   let x = lerp(x0, xg, walk), y = gy, rot = 0, st = walk < 1 ? 'prowl' : 'crouch', u = seg(T, 1.0, 1.65), odo = Math.abs(x - x0) / k, tt = t;
@@ -153,7 +155,7 @@ function weasel(ctx, S) {
   if (H.k === 'blast') boom(ctx, xg, gy - s * 0.25, s * 0.7, H.age);
   ctx.save(); ctx.globalAlpha *= alpha;
   ctx.translate(x, y - s * 0.24); if (rot) ctx.rotate(rot); ctx.translate(0, s * 0.24);
-  drawThief(ctx, 0, 0, s, tt, thiefPose('weasel', st, tt, u, odo), o, 'weasel');
+  drawThief(ctx, 0, 0, s, tt, thiefPose(K, st, tt, u, odo), X ? { ...o, ...X } : o, K);
   ctx.restore();
   return { threat, bonk, x: wallP.x - sd * s * 0.35, y: wallP.y - S.band - s * 0.5, own: true };
 }
@@ -233,19 +235,33 @@ function twoSnakes(ctx, S) {
   return snake(ctx, S, { size: 1.12 });
 }
 
+// Grandpa Gator (2026-11-23: a boss is shown whole, never as a head): he lumbers along the ring to the egg, an egg from
+// above lands on him, he sees stars and rides the ring away. Timings are howto.js's 'drop'.
+function bossGator(ctx, S) {
+  const { T, t, k } = S, walk = ease(seg(T, 0.2, 1.3)), hit = T > 2.0, s = GATOR.L * k * 0.9;
+  const phi = -0.6 - 0.3 * (1 - walk) + (hit ? S.th : 0), p = S.at(phi, 0);
+  ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(-phi);
+  drawGator(ctx, s, t, { boss: 1, walk: hit ? 0 : 1, bend: S.floor, jaw: hit ? 0.12 : 0.2 + 0.3 * Math.abs(Math.sin(t * 5)), eye: hit ? 'spiral' : 'open', stars: hit ? 1 : 0, gait: walk < 1 ? walk * 3 : 0 });
+  ctx.restore();
+  return { threat: !hit, bonk: hit ? seg(T, 2.0, 2.55) : 0, x: p.x + s * 0.2, y: p.y - s * 0.45, own: true };
+}
+
+const CRAWL = () => ({ g0: 0.4, dTh: -0.4, pan: 0.1 }); // the crawlers come along the ring from the left: the camera steps that way
 export const ACTORS = {
   // pan: the camera steps to the villain's side (a share of the stage's width), so it is whole in the picture
   snake: { draw: snake, stage: () => ({ g0: 0.42, dTh: -0.42, hand: [-0.14, -0.56], pan: -0.1 }), aim: (S) => S.at(S.g0, -(S.band / 2 + 0.3 * S.k)) },
   'boss:snake': { draw: twoSnakes, stage: () => ({ g0: 0.42, dTh: -0.42, hand: [-0.14, -0.56] }), aim: (S) => S.at(S.g0, -(S.band / 2 + 0.3 * S.k)) },
   weasel: { draw: weasel, stage: () => ({ g0: 0.36, dTh: -0.36, hand: [-0.14, -0.5], pan: -0.16 }), aim: (S) => ({ x: S.at(S.g0, 0).x, y: S.ground - 0.3 * S.k }) },
   rats: { draw: rats, stage: (m) => ({ g0: RAT_ROLL - 0.42, dTh: 0.42, hand: [0.16, 0.58], egg: (T) => RAT_ROLL * ease(seg(T, 0.3, m === 'turn' ? 2.25 : 2.1)) }), aim: (S) => S.at(RAT_ROLL + 0.3, 0.25 * S.k) },
-  salamander: { draw: crawler('salamander'), aim: (S) => S.at(-0.3, 0.15 * S.k) },
-  chameleon: { draw: crawler('chameleon'), aim: (S) => S.at(-0.3, 0.15 * S.k) },
-  spike: { draw: crawler('thornback'), aim: (S) => S.at(-0.3, 0.15 * S.k) },
+  'boss:ratking': { draw: (c, S) => weasel(c, S, 'ratking', { crown: 1 }), stage: () => ({ g0: 0.36, dTh: -0.36, hand: [-0.14, -0.5], pan: -0.2 }), aim: (S) => ({ x: S.at(S.g0, 0).x, y: S.ground - 0.4 * S.k }) },
+  'boss:gator': { draw: bossGator, stage: () => ({ g0: 0.4, dTh: -0.4, pan: 0.1 }) },
+  salamander: { draw: crawler('salamander'), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
+  chameleon: { draw: crawler('chameleon'), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
+  spike: { draw: crawler('thornback'), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
 };
 // the moves an actor plays; any other plan keeps the portrait
 ACTORS['boss:weasel'] = ACTORS.weasel; // the Weasel Raid's boss is the weasel himself: his whole body, not a head on the ring
-const PLAYS = { 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'] };
+const PLAYS = { 'boss:ratking': ['turn', 'tap', 'rooster'], 'boss:gator': ['drop'], 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'] };
 export function actorFor(plan) {
   const k = plan && plan.kind;
   return k && ACTORS[k] && PLAYS[k].includes(plan.move) ? ACTORS[k] : null;

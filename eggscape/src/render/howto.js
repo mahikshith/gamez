@@ -425,7 +425,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   }
 
   { // the camera (see the veil above): a step back for a scene with a villain, and a step to the villain's side
-    const zm = o.zoom || (Wd && (['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy))) ? 0.8 : 1), pan = SG && SG.pan ? SG.pan * w : 0;
+    const zm = o.zoom || (Wd && (['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.kind === 'spider') ? 0.8 : 1), pan = SG && SG.pan ? SG.pan * w : !act && plan.kind && vAlpha > 0 && zm !== 1 ? 0.05 * w : 0; // a portrait villain stands on the left
     if (zm !== 1 || pan) { ctx.translate(cx + pan, y + h); ctx.scale(zm, zm); ctx.translate(-cx, -(y + h)); }
   }
   // ---- the ring: a thick slab with one gap (the game's own ring when it is given)
