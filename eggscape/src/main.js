@@ -34,6 +34,8 @@ import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
 import { drawStore, drawCoin, drawBoosterPicker, boosterLayout, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, PROMISE } from './ui/store.js';
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
+import * as SK from './skip.js'; // 2026-11-23: the pause page's Skip level (one rewarded video)
+import { createPurse } from './ui/purse.js'; // 2026-11-23: one coin-gain effect for every place the purse grows
 import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, freebies, trials, home nudges)
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
 import * as BR from './brain.js'; // 2026-11-23: the Brain, one arbiter over the Director and the offer engine (who is playing, when to ask, what fits)
@@ -136,7 +138,7 @@ const playable = (i) => i >= 0 && i < LEVELS.length && (allOpen() || (i < save.u
 // 2026-11-15: it was save.unlocked - 1, which an everything-unlocked build set to 50 ("PLAY Level 50" on every launch)
 function nextIdx() {
   const lim = allOpen() ? LEVELS.length : Math.min(LEVELS.length, save.unlocked);
-  for (let i = 0; i < lim; i++) if (!bestStarsOf(LEVELS[i].id)) return i;
+  for (let i = 0; i < lim; i++) if (!bestStarsOf(LEVELS[i].id) && !SK.isSkipped(save, LEVELS[i].id)) return i; // a skipped level is passed (no stars)
   return Math.max(0, lim - 1);
 }
 function loadSave(s) {
@@ -1119,7 +1121,7 @@ function keyDown(e) {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.treasure) G.treasure = null; } return; }
+  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
@@ -1163,6 +1165,7 @@ function keyboardTurn(dt) {
 // ---------------------------------------------------------------- buttons
 async function press(id) {
   if (DIAG_MARK.test(id)) diag.mark(id); // the speed log: a hitch right after one of these names it
+  { const b = ui.buttons.find((q) => q.id === id); if (b && b.w < ui.w * 1.5) G.pressAt = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; } // coins a press brings fly from its button (purse.gain)
   audio.play(id === 'pause' || id === 'levels' || id === 'practice' ? 'ui_back' : 'ui_tap');
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
   switch (id) {
@@ -1287,8 +1290,8 @@ async function press(id) {
     case 'home:chest': {
       const w = E.openDailyChest(save.wallet, today());
       if (!w) { toast('Come back tomorrow for another chest.', 2.2); break; }
-      const R = E.dailyChest(today());
-      save.wallet = w; persist(); audio.play('unlock');
+      const R = E.dailyChest(today()), src = G.pressAt;
+      save.wallet = w; persist(); audio.play('treasure_open'); purse.gain({ src }); // the chest's own cue, then its coins fly into the purse
       if (G.screen === 'store') G.storeFlash = { id: 'free:daily', t0: G.t }; // the shop's FREE TODAY tile
       toast(`Treasure! +${R.coins} coins, +${R.charges} Chick Charge${R.charges > 1 ? 's' : ''}`, 3);
       break;
@@ -1339,7 +1342,7 @@ async function press(id) {
       } else if (n.kind === 'welcome') {
         const b = E.BOOSTER_ORDER[Math.floor(Math.random() * 5)];
         save.wallet = { ...save.wallet, coins: save.wallet.coins + n.coins, owned: { ...(save.wallet.owned || {}), [b]: ((save.wallet.owned || {})[b] || 0) + 1 } };
-        G.nudge = null; persist(); audio.play('level_win'); toast(`+${n.coins} coins and a free ${E.BOOSTERS[b].name}!`, 2.8);
+        G.nudge = null; persist(); audio.play('level_win'); purse.gain({ src: G.pressAt }); toast(`+${n.coins} coins and a free ${E.BOOSTERS[b].name}!`, 2.8);
       } else if (n.kind === 'afford') {
         G.nudge = null; persist();
         openStore(null, n.item); // straight onto that chick or egg, with a ring on it
@@ -1404,9 +1407,10 @@ async function press(id) {
       break;
     case 'ad:coins': {
       if (adCd() > 0) break;
-      const pay = adCoins(), ok = await rewarded('coins');
+      const pay = adCoins(), src = G.pressAt, ok = await rewarded('coins');
       if (ok) {
         save.wallet = E.addCoins(save.wallet, pay);
+        purse.gain({ src }); // the coins fly from the button into the purse, which rolls up
         save.adClaim = Date.now();
         save.adDay = E.noteFreeCoins(save.adDay, today());
         G.storeFlash = { id: 'ad', t0: G.t };
@@ -1431,7 +1435,7 @@ async function press(id) {
     case 'tr:close': G.treasure = null; break;
     case 'tr:open': { // the boss treasure: paid once, then the sheet shows what came out
       const T = G.treasure, w = T && bossBeaten(T.id) ? E.openBossTreasure(save.wallet, T.id) : null;
-      if (w) { save.wallet = w; persist(); audio.play('level_win'); buzz('treasure'); T.openedAt = G.t; }
+      if (w) { const src = G.pressAt; save.wallet = w; persist(); audio.play('treasure_open'); buzz('treasure'); T.openedAt = G.t; purse.gain({ src, delay: 0.35 }); } // its own cue (not the win sting); the coins follow the lid
       break;
     }
     case 'tr:shop': G.treasure = null; openStore('boosters', 'premium'); break; // "See premium chicks": their row
@@ -1439,7 +1443,7 @@ async function press(id) {
     case 'chest': {
       const total = bestTotal();
       const w = E.openChest(save.wallet, E.chestFor(total, save.wallet.chests));
-      if (w) { save.wallet = w; persist(); audio.play('level_win'); toast('Chest opened! Coins and a booster.', 2.4); }
+      if (w) { save.wallet = w; persist(); audio.play('treasure_open'); purse.gain({ src: G.pressAt }); toast('Chest opened! Coins and a booster.', 2.4); }
       break;
     }
     case 'adboost': {
@@ -1458,6 +1462,27 @@ async function press(id) {
       if (G.screen === 'play' && G.sim.state === 'play') { setScreen('pause'); portal.gameplayStop(); releaseAll(); }
       else if (G.screen === 'intro') setScreen('levels');
       break;
+    case 'pause:skip': // the pause page's Skip level: a small sheet first (what happens, one video, cancel)
+      if (G.screen === 'pause' && skipNow()) G.skipAsk = { t0: G.t };
+      break;
+    case 'sk:no':
+      G.skipAsk = null;
+      break;
+    case 'sk:go': {
+      G.skipAsk = null;
+      if (G.screen !== 'pause' || !skipNow()) break;
+      const lid = G.level.id, li = G.li;
+      if (!(await rewarded('skip'))) break; // no video, no skip (rewarded() says so in a toast); Premium: at once
+      if (G.screen !== 'pause' || G.li !== li || !SK.applySkip(save, skipLv())) break;
+      ads.won(lid); diag.mark('skip:' + lid); persist();
+      portal.gameplayStop(); releaseAll(); stopFuse();
+      // as Next does after a win: the map, the hen hops to the next stop and its level page opens (a star gate: the map waits there)
+      const n = li + 1;
+      G.world = envOf(n); G.toasts = []; G.toast = null;
+      G.mapTravel = playable(n) ? { from: li, to: n, t0: -1 } : null;
+      setScreen('levels'); // (no toast: on a small map it covers the stops; the hen's hop says it)
+      break;
+    }
     case 'resume':
       setScreen('play');
       portal.gameplayStart();
@@ -1550,11 +1575,13 @@ async function press(id) {
     }
     case 'bonus': { // the win card's Bonus chest (when an ad break would have been due): 40 coins and a boost for a video
       if (G.doubled || !G.result || !G.result.chest || !(G.li >= 0 && G.level)) break;
+      const src = G.pressAt;
       if (!(await rewarded('bonus'))) break; // Premium: granted at once, no video (ads.rewarded)
-      const R = E.bonusChest(G.level.id);
+      const R = E.bonusChest(G.level.id), first = !G.result.purseGo;
       save.wallet = E.openBonusChest(save.wallet, G.level.id); G.doubled = true; G.result.chestOpen = true;
       recordResult(); persist();
-      audio.play('combo', { intensity: 1 }); portal.happy();
+      G.result.purseGo = true; purse.gain({ from: first ? G.result.purse0 : undefined, src }); // the win's own coins too, if their roll had not run yet
+      audio.play('treasure_open'); portal.happy();
       toast(`+${R.coins} coins and a ${E.BOOSTERS[R.booster].name}!`, 2.6);
       break;
     }
@@ -1562,12 +1589,18 @@ async function press(id) {
       if (G.doubled) break;
       const ok = await rewarded('double');
       if (ok && G.result) {
+        const r = G.result, a = r.coins || 0, first = !r.purseGo;
         G.doubled = true;
-        G.result.total *= 2;
-        G.result.shownTotal = G.result.total;
-        save.wallet = E.addCoins(save.wallet, G.result.coins);
-        G.result.coins *= 2;
+        r.total *= 2;
+        r.shownTotal = r.total;
+        save.wallet = E.addCoins(save.wallet, a);
+        r.coins *= 2;
         recordResult();
+        // 2026-11-23 the doubling moment (drawWinCoins): "+30" on the card, a big x2 stamps onto it, the number rolls to
+        // "+60" with a burst, then the purse rolls from the old total to the new one. The wallet is already paid.
+        r.dbl = { t0: G.t, a, b: r.coins, beat: 0 };
+        r.purseGo = true;
+        purse.gain({ from: first ? r.purse0 : undefined, src: r.coinAt || G.pressAt, delay: save.calm ? 0.25 : DBL_LEN });
         audio.play('combo', { intensity: 1 });
         portal.happy();
       }
@@ -1889,11 +1922,11 @@ function shopBrain() {
 }
 // forYou ([{ key, why }], the FOR YOU row), hero (a bundle sku) and order ([sku, ...], the BUNDLES row): the Brain's plan. balHold: the balance shown while a purchase reveal's coins fly.
 const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) },
-  ...shopBrain(), balHold: G.got && G.got.coins0 != null && G.t - G.got.t0 < G.got.land ? G.got.coins0 : null });
+  ...shopBrain(), balHold: purse.held() ?? (G.got && G.got.coins0 != null && !G.got.flown ? G.got.coins0 : null) });
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
 function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
-function modalOpen() { return !!(G.got || G.getMore || G.detail || G.offer || G.ageAsk || G.parent || G.chickBuy || G.treasure || G.nudge); }
+function modalOpen() { return !!(G.got || G.getMore || G.detail || G.offer || G.ageAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
@@ -1909,6 +1942,7 @@ function drawModals() {
     else if (G.nudge) drawNudge();
     else if (G.ageAsk) drawAgeAsk();
     else if (G.treasure) drawTreasure();
+    else if (G.skipAsk) drawSkipAsk();
   } finally { G.hudBottom = hb; }
 }
 // ---- boss treasure (2026-11-19, mykee: "after clearing a boss level, show some treasure, the unlockables, the new birds;
@@ -2312,7 +2346,7 @@ function gotItems(rows) {
 }
 function startGot(o) { // o: { name, sku?, key?, items: [{ art, label }], coins? (coins paid in, they fly) }
   const n = o.items.length;
-  G.got = { t0: G.t, popped: 0, landed: false, ...o, end: 0.6 + 0.14 * n + 0.75, land: 0.6 + 0.14 * n + 0.6, coins0: !save.calm && o.coins > 0 ? Math.max(0, save.wallet.coins - o.coins) : null };
+  G.got = { t0: G.t, popped: 0, landed: false, ...o, end: 0.6 + 0.14 * n + 0.75, land: 0.6 + 0.14 * n + 0.6, coins0: o.coins > 0 ? Math.max(0, save.wallet.coins - o.coins) : null };
   G.detail = null;
   audio.play('tada'); buzz('treasure');
 }
@@ -2326,7 +2360,7 @@ function drawGot() {
   const R = G.got, calm = save.calm, A = ui.A, u = ui.u, t = calm ? R.end + 1 : G.t - R.t0, ink = 'rgba(60,28,6,0.9)';
   if (!calm) {
     while (R.popped < R.items.length && t >= 0.6 + 0.14 * R.popped + 0.08) { R.popped++; audio.play('hud_pop', { vol: 0.7 }); }
-    if (!R.landed && R.coins0 != null && t >= R.land) { R.landed = true; audio.play('score_tick'); buzz('star'); }
+    if (!R.landed && R.coins0 != null && t >= R.land) R.landed = true; // (the purse's own landing sounds and buzzes)
   }
   dim(0.84 * clamp(t / 0.18, 0, 1));
   const S = Math.min(A.w * 0.9, A.h * 0.46, 420 * u), cx = A.cx, cy = A.y + A.h * 0.5, heroY = cy - 0.42 * S;
@@ -2353,16 +2387,8 @@ function drawGot() {
     pop(t0, x, y, () => drawPart(ctx, it.art, 0, 0, cell * 0.72, G.t));
     if (calm || t > t0 + 0.2) { const wr = ui.measure(it.label, ls) > cell - 6 * u, L = wr ? wrapText(it.label, ls * 0.92, cell - 6 * u).slice(0, 2) : [it.label]; L.forEach((ln, q) => ui.text(ln, x, y + cell * 0.36 + ls * 0.7 + q * ls * 1.05, { size: wr ? ls * 0.92 : ls, align: 'center', color: '#fff', stroke: ink, strokeW: 4 * u, maxW: cell - 4 * u, tag: `got:l${j}:${q}` })); }
   });
-  // coins fly from the pile to the balance, top right
-  if (!calm && R.coins0 != null && coinAt && t > R.land - 0.6 && t < R.land + 0.05) {
-    const bx = A.x + A.w - 70 * u, by = A.y + 36 * u;
-    for (let i = 0; i < 10; i++) {
-      const q = clamp((t - (R.land - 0.6) - i * 0.03) / 0.45, 0, 1);
-      if (q <= 0 || q >= 1) continue;
-      const e = q * q * (3 - 2 * q), x = lerp(coinAt.x + (i - 4.5) * 4 * u, bx, e), y = lerp(coinAt.y, by, e) - Math.sin(q * Math.PI) * 60 * u;
-      drawCoin(ctx, x, y, 11 * u, G.t + i);
-    }
-  }
+  // coins fly from the pile into the balance, which rolls up: the one coin-gain effect (purse.gain)
+  if (R.coins0 != null && !R.flown && (calm || t > R.land - 0.6)) { R.flown = true; purse.gain({ from: R.coins0, src: coinAt }); }
   const yEnd = Math.min(A.y1 - 34 * u, top + rowsN * rowH + 16 * u);
   if (t > R.end - 0.2) tickLine('Added to your bag', cx, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: A.w - 36 * u, tag: 'got:line' });
   pop(0.06, cx, cy - 0.98 * S, () => { const hs = Math.min(39 * u, 0.12 * S), w = Math.min(A.w - 36 * u, ui.measure('YOU GOT!', hs) + 80 * u); ui.ribbon('YOU GOT!', 0, -hs * 0.85, w, hs * 1.7, { color: '#d89a1c', size: hs, noRecord: true }); });
@@ -2401,6 +2427,32 @@ function onGrant(sku) {
   if (P && G.screen !== 'play') { G.detail = null; G.parent = null; gotIap(sku); return; } // 0.8.9: the "YOU GOT!" reveal (not over a running level)
   audio.play('unlock');
   toast(`Thank you! ${P ? P.name : 'Your purchase'} is yours.`, 3);
+}
+
+// 2026-11-23 the pause page's Skip level (src/skip.js holds the rule): a real journey level, not won, not skipped
+// before, not the last, not level 1 while the first-run coach teaches; one rewarded video the player picks. It sits
+// quietly on the pause page: no pop-up offers it.
+const skipLv = () => ({ id: G.level ? G.level.id : 0, count: LEVELS.length, journey: G.li >= 0 && LEVELS[G.li] === G.level && !G.demo, coaching: !!G.teach || firstRun(), won: !!G.level && bestStarsOf(G.level.id) > 0 });
+const skipNow = () => !!G.sim && G.sim.state === 'play' && SK.canSkip(save, skipLv());
+function drawSkipAsk() {
+  if (G.screen !== 'pause') { G.skipAsk = null; return; }
+  dim(0.55);
+  stackCard('Skip level?', (s) => [
+    lineBlock('Skip to the next level', 19 * s, { color: ui.C.ink, tag: 'sk:what' }),
+    lineBlock('Come back for stars any time', 14.5 * s, { color: ui.C.ink2, tag: 'sk:back', gap: 6 * s }),
+    { h: 56 * s, gap: 16 * s, draw: (x, y, w) => ui.button('sk:go', ads.premium ? 'Skip level' : 'Watch to skip', x, y, w, 56 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 20 * s } : { kind: 'ad', ad: true, size: 19 * s }) },
+    { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('sk:no', 'Cancel', x + w * 0.15, y, w * 0.7, 50 * s, { kind: 'tertiary', size: 19 * s }) },
+  ], { ribbon: '#7a48e8' });
+}
+
+// the one coin-gain effect (src/ui/purse.js): every counter draws purse.shown(); every grant calls purse.gain()
+const purse = createPurse({ clock: () => G.t, calm: () => !!save.calm, wallet: () => (save && save.wallet ? save.wallet.coins || 0 : 0), screen: () => G.screen, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k) });
+// a coin counter (the gold shop button on home and the map): the rolling number, a pop when the coins land
+function purseBtn(x, y, w, h, size) {
+  const sc = purse.pop(), cx = x + w / 2, cy = y + h / 2;
+  if (sc !== 1) { ctx.save(); ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.translate(-cx, -cy); }
+  ui.button('shop', String(purse.shown()), x, y, w, h, { kind: 'gold', icon: (c, X, Y, S) => { drawCoin(c, X, Y, S * 0.56, G.t); purse.at({ x: X, y: Y }); }, size });
+  if (sc !== 1) ctx.restore();
 }
 
 // stuck help: skip this level. It opens the next one; the skipped level keeps no stars and can be played any time.
@@ -3927,6 +3979,7 @@ function onWin() {
   const L = G.level, firstWorld = G.li >= 0 && L.world != null && !LEVELS.some((l) => l.world === L.world && bestStarsOf(l.id) > 0);
   G.result.cheer = pickRoutine({ stars: G.result.stars, streak: G.result.streak, boss: !!L.boss && G.li >= 0, firstWorld, last: save.lastCheer });
   save.lastCheer = G.result.cheer;
+  G.result.purse0 = save.wallet.coins; // the purse before this win: the card rolls it up to the new total (purse.gain)
   { // the egg skin's coin power (Shiny, Midas, Treasure Sense) first, then Golden Hour, then the bank's share
     const pre = G.result.coins, pk = eggPerk();
     G.result.coins = E.perkCoins(eggPerkId(), pre, G.sim.savedLog.length);
@@ -4216,9 +4269,9 @@ function lastEggMoment(sim) {
 const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1 };
 const SCENE_SCREENS = { title: 1, store: 1, practice: 1, levels: 1 }; // these paint a full themed scene (0.8.10: the map paints its own whole picture too, and the wash, drawn after it, dimmed its header and PLAY); the others keep the game behind and get a wash
 function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
-function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
+function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); purse.draw(ctx, ui.u, ui.A, drawCoin, ui); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
 function drawStoreScreen() { // the shop's toast floats over its scrolling list (like a clipped card, it records nothing)
-  drawStore(ui, ctx, W_, H_, { ...storeState(), area: ui.A, adReady: adCd() === 0, adCooldownLeft: adCd(), adCoins: adCoins(), tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), featured: storeFeatured() }); const n0 = ui.rects.length; drawToast(); ui.rects.length = n0; menuFx(); /* the shop paints its own backdrop: the effect drifts over it */
+  drawStore(ui, ctx, W_, H_, { ...storeState(), area: ui.A, adReady: adCd() === 0, adCooldownLeft: adCd(), adCoins: adCoins(), tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), featured: storeFeatured() }); { const ci = ui.rects.find((r) => r.tag === 'store:coinicon'); if (ci) purse.at({ x: ci.x + ci.w / 2, y: ci.y + ci.h / 2 }); } const n0 = ui.rects.length; drawToast(); ui.rects.length = n0; menuFx(); /* the shop paints its own backdrop: the effect drifts over it */
 }
 function render() {
   const t = G.t;
@@ -6286,7 +6339,7 @@ function drawLevelIntro(L, acc) {
   if (k !== 1) { ctx.translate(A.cx, A.cy); ctx.scale(k, k); ctx.translate(-A.cx, -A.cy); }
   // the coin balance, top right: tap it to open the shop
   const topH = 46 * s, cbw = Math.max(104 * s, ui.measure(String(save.wallet.coins), 19 * s) + 62 * s);
-  if (!earlyDays()) ui.button('shop', String(save.wallet.coins), A.x1 - pad - cbw, A.y + 8 * u, cbw, topH - 4 * s, { kind: 'gold', icon: (c, x, y, sz) => drawCoin(c, x, y, sz * 0.56, G.t), size: 19 * s });
+  if (!earlyDays()) purseBtn(A.x1 - pad - cbw, A.y + 8 * u, cbw, topH - 4 * s, 19 * s); // the level card's coins roll and pop like every other counter (ui/purse.js)
   const P = chicks(s, land ? Math.min(A.w * 0.5, 600 * s) : Math.min(A.w - 2 * pad, 520 * s));
   if (land) {
     const rw = Math.min(A.w * 0.5 - pad * 1.5, 600 * s), lw = Math.min(A.w - rw - pad * 3, 520 * s), lx = A.x + pad + (A.w - 3 * pad - lw - rw) / 2, rx = lx + lw + pad;
@@ -6470,6 +6523,8 @@ function drawPause() {
     ], s, wide ? 6 : 3),
     G.hint ? lineBlock('Hint…', 18 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:hint', gap: 14 * s })
       : sim.state !== 'play' ? null : { h: 54 * s, gap: 14 * s, draw: (x, y, w) => ui.button('hint', 'Watch for a hint', x, y, w, 54 * s, { kind: 'ad', ad: true, size: 19 * s, round: 18 * s }) },
+    // 2026-11-23 Skip level (mykee): one video the player picks, quietly here and nowhere else (src/skip.js says when)
+    skipNow() ? { h: 48 * s, gap: 10 * s, draw: (x, y, w) => ui.button('pause:skip', 'Skip level', x + w * 0.15, y, w * 0.7, 48 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 18 * s, round: 16 * s } : { kind: 'ad', ad: true, size: 18 * s, round: 16 * s }) } : null,
     // the three stars of this level and how each stands right now
     G.li >= 0 && G.goals && sim.state === 'play' ? { h: 3 * 32 * s + 12 * s, gap: 14 * s, draw: (x, y, w) => {
       ui.well(x, y, w, 3 * 32 * s + 12 * s, { s, a: '#f3e2bd', b: '#fbf0d6' });
@@ -6982,6 +7037,7 @@ function drawWinPage() {
         const cx = x + (i % 2) * w / 2, cy = y + 5 * s + ch * Math.floor(i / 2), ix = cx + 24 * s, iy = cy + ch / 2;
         if (k2 === 'clock') pictoClock(ctx, ix, iy, 26 * s); else if (k2 === 'target') pictoTarget(ctx, ix, iy, 26 * s); else drawCoin(ctx, ix, iy, 12 * s, G.t);
         if (k2 === 'coin' && r.perkGold && !save.calm) goldGlints(ix, iy, s); // Midas (the Golden egg): the count-up shimmers
+        if (k2 === 'coin') { drawWinCoins(r, ix, iy, w / 2, s, cnt, inCard); return; } // the count-up, its roll into the purse, and the doubling moment
         ui.text(lab, ix + 20 * s, iy - 10 * s, { size: 12.5 * s, color: C.ink2, maxW: w / 2 - 50 * s, tag: 'win:l' + k2 });
         ui.text(v, ix + 20 * s, iy + 9 * s, { size: 19 * s, color: col, maxW: w / 2 - 50 * s, tag: 'win:v' + k2 });
       });
@@ -7114,7 +7170,7 @@ function drawWinPage() {
 // after her show, one big reveal per thing this win unlocked (the boss treasure, a free skin try, the win streak's free
 // boosters), ~1.8 s each, over the dimmed show; a tap skips to the next. Reduced motion: each one a still for 1 s.
 const REVEAL_LEN = 1.8, REVEAL_CUE = { treasure: 0.6, gift: 0.12, hot: 0.12 };
-const REVEAL_SND = { treasure: ['level_win'], gift: ['unlock'], hot: ['combo', { intensity: 1 }] };
+const REVEAL_SND = { treasure: ['treasure_open'], gift: ['unlock'], hot: ['combo', { intensity: 1 }] }; // 2026-11-23: the treasure's own music, not the win sting again
 const eggName = (n) => n.replace(/ Egg$/, '') + ' Egg'; // the skins' names: "Robo Egg" and "Galaxy" alike
 const backK = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2); // a pop that overshoots
 // what a boss treasure holds, as [art, count, label] (the reveal and the card's row)
@@ -7184,6 +7240,7 @@ function drawReveal(r) {
       }
     });
     if (t > 1.05) tickLine('Added to your bag', cx, cy + 0.74 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
+    if (!r.trFlown && r.purse0 != null && (calm || t >= 1.5)) { r.trFlown = true; purse.gain({ from: r.purse0, to: r.purse0 + R.coins, src: { x: cx - sp, y: rowY } }); } // its coins into the purse (the win's own follow on the card)
   } else if (it.kind === 'gift') { // a taste: the item itself, alive, its name, where it lives, and what it does now
     const T = r.gift;
     pop(0, cx, heroY, 1, () => { if (T.kind === 'skin' || T.kind === 'boost') ctx.rotate(calm ? 0 : Math.sin(G.t * 3) * 0.06); tasteArt(T, 0, 0, S * 0.76, true); });
@@ -7207,6 +7264,55 @@ function drawReveal(r) {
   }
   headline();
   if (RV.list.length > 1) RV.list.forEach((q, j) => { ctx.beginPath(); ctx.arc(cx + (j - (RV.list.length - 1) / 2) * 18 * u, Math.min(A.y1 - 22 * u, cy + 0.9 * S), (j === RV.i ? 6 : 4) * u, 0, 7); ctx.fillStyle = j === RV.i ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.fill(); });
+}
+
+// 2026-11-23 the win card's coins (mykee: "when the ad is finished ... show the coins double kind of a thing, the
+// existing count and the double count"). Without a doubling: "+N" counts up with the score, then rolls into the purse
+// (purse.gain: coins fly from this cell to the purse, top right). With one: the label keeps the first count ("Coins 30 x2"),
+// a big x2 stamps down beside "+30", the number rolls to "+60" with a burst of coins, and then the purse rolls from the
+// old total to the new one. Reduced motion: the stamp is simply there, a 0.25 s roll and the pop.
+const DBL_LEN = 1.05; // s from the end of the video to the purse's own roll
+function drawWinCoins(r, ix, iy, cw, s, cnt, inCard) {
+  const C = ui.C, calm = save.calm, tx = ix + 20 * s, maxW = cw - 50 * s, D = r.dbl, col = '#a85f00';
+  r.coinAt = { x: ix, y: iy };
+  if (!r.purseGo && inCard && cnt >= 1 && r.purse0 != null) { // the tally has counted up: into the purse
+    r.purseGo = true;
+    purse.gain({ from: r.purse0 + (r.trFlown && r.treasure ? r.treasure.coins : 0), src: r.coinAt });
+  }
+  if (!D) {
+    ui.text('Coins', tx, iy - 10 * s, { size: 12.5 * s, color: C.ink2, maxW, tag: 'win:lcoin' });
+    ui.text('+' + Math.round((r.coins || 0) * cnt), tx, iy + 9 * s, { size: 19 * s, color: col, maxW, tag: 'win:vcoin' });
+    return;
+  }
+  const t = G.t - D.t0, ST = calm ? 0 : 0.32, R0 = calm ? 0 : 0.42, R1 = calm ? 0.25 : 0.95;
+  const k = clamp((t - R0) / (R1 - R0), 0, 1), val = Math.round(D.a + (D.b - D.a) * (1 - (1 - k) ** 3));
+  if (!calm && D.beat < 1 && t >= ST) { D.beat = 1; audio.play('star', { intensity: 1 }); buzz('star'); } // the stamp lands
+  if (D.beat < 2 && t >= R1) { D.beat = 2; if (!calm) audio.play('tada', { intensity: 0.5 }); buzz('tick'); } // the burst
+  if (k > 0 && k < 1 && Math.floor(t / 0.06) !== D.tk) { D.tk = Math.floor(t / 0.06); audio.play('score_tick', { vol: 0.3, pitch: 1 + 0.6 * k }); }
+  const vw = ui.measure('+' + D.b, 19 * s), vx = tx + vw / 2, vy = iy + 9 * s;
+  ui.text(`Coins ${D.a} x2`, tx, iy - 10 * s, { size: 12.5 * s, color: C.ink2, maxW, tag: 'win:lcoin' }); // the first count stays readable
+  const pq = (t - R1) / 0.3, pk = pq > 0 && pq < 1 ? 1 + 0.35 * Math.sin(pq * Math.PI) : 1;
+  ctx.save(); ctx.translate(vx, vy); ctx.scale(pk, pk); ctx.translate(-vx, -vy);
+  ui.text('+' + val, tx, vy, { size: 19 * s, color: col, maxW, tag: 'win:vcoin' });
+  ctx.restore();
+  if (!calm) { // the burst as it lands on the doubled number: a ring and coins thrown out
+    const q = (t - R1) / 0.55;
+    if (q > 0 && q < 1) {
+      ctx.save(); ctx.globalAlpha = 1 - q;
+      ctx.strokeStyle = '#ffe27a'; ctx.lineWidth = 5 * s * (1 - q); ctx.beginPath(); ctx.arc(vx, vy, (12 + 40 * q) * s, 0, 7); ctx.stroke();
+      for (let i = 0; i < 9; i++) { const a = i * 0.698 + 0.2, rr = (14 + 46 * q) * s; drawCoin(ctx, vx + Math.cos(a) * rr, vy + Math.sin(a) * rr - 14 * s * Math.sin(q * Math.PI), 6 * s * (1 - 0.5 * q), G.t + i); }
+      ctx.restore();
+    }
+  }
+  // the x2 stamp: falls in big and tilted, lands beside the first count with a squash and a shock ring, and stays
+  const cx0 = ix - 24 * s, sx = Math.min(cx0 + cw - 22 * s, tx + vw + 24 * s), sy = vy + 1 * s, p = ST ? clamp(t / ST, 0, 1) : 1;
+  const land = t - ST, sq = !calm && land > 0 && land < 0.16 ? 1 + 0.22 * Math.sin((land / 0.16) * Math.PI) : 1;
+  const sc = (3.2 - 2.2 * p * p) * sq, rot = -0.6 * (1 - p) - 0.16;
+  if (!calm && land > 0 && land < 0.4) { const q = land / 0.4; ctx.save(); ctx.globalAlpha = 1 - q; ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 4 * s * (1 - q); ctx.beginPath(); ctx.arc(sx, sy, (10 + 30 * q) * s, 0, 7); ctx.stroke(); ctx.restore(); }
+  ctx.save(); ctx.globalAlpha = Math.min(1, p * 2.5); ctx.translate(sx, sy); ctx.rotate(rot); ctx.scale(sc, sc);
+  ui.text('x2', 0, 0, { size: 22 * s, align: 'center', color: '#ff5a1f', stroke: '#fffaf0', strokeW: 4.5 * s, noRecord: true });
+  ctx.restore();
+  ui.record({ x: sx - 15 * s, y: sy - 9 * s, w: 30 * s, h: 19 * s }, 'win:x2'); // its resting place (the overlap check)
 }
 
 // One result star. It stamps into its socket: falls in big and tilted, hits on its beat (R0.stars[q]) with a squash and
@@ -7429,7 +7535,7 @@ function drawTitle() {
   const tw = (bw - 16 * u) / 3, ry = by + ph + 10 * u, rh = 54 * u, paid = save.daily.paid === today();
   pop(0.33, bx - bw / 2 + tw / 2, ry + rh / 2, () => ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u }));
   pop(0.4, bx - bw / 2 + tw * 1.5 + 8 * u, ry + rh / 2, () => ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u }));
-  pop(0.47, bx - bw / 2 + tw * 2.5 + 16 * u, ry + rh / 2, () => ui.button('shop', String(save.wallet.coins), bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, { kind: 'gold', icon: (c, x, y, s) => drawCoin(c, x, y, s * 0.56, G.t), size: 18 * u }));
+  pop(0.47, bx - bw / 2 + tw * 2.5 + 16 * u, ry + rh / 2, () => purseBtn(bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, 18 * u));
   // the Golden Egg Bank: a small glass egg beside the coins, filling as wins drop coins in (tap: its card in the shop)
   if (save.wallet.bank > 0 && ads.moneyShop) {
     const eh = Math.min(rh * 0.8, 44 * u), ew = eh * 0.78, ex = bx + bw / 2 + 8 * u + ew / 2, ey = ry + rh / 2 - 2 * u;
@@ -7522,7 +7628,7 @@ function drawLevels() {
   ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W_, vb - vt + (H_ - vb)); ctx.clip();
   MS.drawLand(ctx, L, sy, vt, H_, DPR);
   const nx = nextIdx();
-  let doneTo = null; for (let i = 0; i < LEVELS.length; i++) if (bestStarsOf(LEVELS[i].id) > 0) doneTo = L.stops[i].y;
+  let doneTo = null; for (let i = 0; i < LEVELS.length; i++) if (bestStarsOf(LEVELS[i].id) > 0 || SK.isSkipped(save, LEVELS[i].id)) doneTo = L.stops[i].y;
   MS.drawRoad(ctx, L, sy, vt, H_, doneTo);
   if (ui.skin && ui.skin.pack && ui.skin.pack.bg) drawRoadDress(ctx, L, sy, vt, H_, t, ui.skin.pack.bg, calm);
   MS.drawCast(ctx, L, sy, vt, H_, t, calm, DPR);
@@ -7689,7 +7795,7 @@ function drawLevels() {
   const chest = E.chestFor(totalStars, save.wallet.chests);
   const bw4 = wide ? 120 * u : 0, rowY = wide ? Y0 + 1 * u : Y0 + 46 * u + 12 * u, rh = 44 * u;
   const midW = wide ? bw4 * 2 + 10 * u : Math.min(A.w - 2 * pad, 340 * u), mx = wide ? chipX - 14 * u - midW : A.cx - midW / 2, half = (midW - 10 * u) / 2;
-  ui.button('shop', String(save.wallet.coins), mx, rowY, half, rh, { kind: 'gold', icon: (c, x, y, s2) => drawCoin(c, x, y, s2 * 0.56, G.t), size: 17 * u });
+  purseBtn(mx, rowY, half, rh, 17 * u);
   if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { kind: chest.ready ? 'primary' : 'off', shimmer: chest.ready, disabled: !chest.ready, dim: 1, iconS: 1.25, icon: (c, x, y, s2) => drawChest(c, x, y, s2, G.t, chest.ready ? 'ready' : 'locked'), size: 15 * u });
   // the ribbon names the world in the middle of the view
   const midY = S.y + vh * 0.5;
@@ -8176,6 +8282,7 @@ if (DEV) window.__egg = {
   frogArt: drawFrog, // v3.3: pose gallery (QA strips)
   seaAnim, // v3.3: the octopus's and fishes' render state (QA strips)
   handle: () => handleEvents(),
+  purse, // the coin-gain effect (QA strips: purse.state)
   overlaps: () => G.overlaps,
   // the "i" panel (tools/info-check.cjs, qa-overlap): the table, the kind finder, the portraits, and an opener for any screen
   VILLAIN_INFO, villainKinds, bossAttacks, villainArt: drawVillainPortrait,

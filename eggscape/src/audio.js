@@ -42,7 +42,7 @@ const POST_DB = 3.4;            // DynamicsCompressor auto make-up gain for the 
 export const SFX_NAMES = [
   'ui_tap', 'ui_back', 'ui_open', 'grab', 'release',
   'egg_bump', 'egg_crack', 'egg_break', 'egg_save', 'combo',
-  'star', 'level_win', 'level_fail', 'unlock',
+  'star', 'level_win', 'level_fail', 'unlock', 'treasure_open',
   'thorn_hit', 'thorn_snap', 'fire_ignite', 'fire_burn', 'steel_on', 'steel_clang',
   'bubble_on', 'bubble_pop', 'twin_hatch', 'portal_enter', 'portal_exit',
   'bomb_fuse', 'bomb_explode', 'glass_crack', 'glass_break', 'rock_hit', 'wood_break',
@@ -58,18 +58,18 @@ export const SFX_NAMES = [
   'boss_roar', 'boss_slam',
 ];
 // Hero beats: short, dry, on top of everything; playing one ducks the ring ticks / creak and dips the music.
-const HERO = new Set(['egg_save', 'egg_crack', 'egg_break', 'star', 'combo', 'level_win', 'level_fail', 'unlock',
+const HERO = new Set(['egg_save', 'egg_crack', 'egg_break', 'star', 'combo', 'level_win', 'level_fail', 'unlock', 'treasure_open',
   'power_pickup', 'strike_launch', 'strike_hit', 'crow', 'boss_slam']);
 
 export const MATERIALS = ['wood', 'stone', 'ice', 'mushroom', 'glass', 'metal', 'coral', 'vine', 'cloud', 'obsidian', 'bone', 'gold'];
 
 // Sounds that are interface/feedback, not world events: they bypass the underwater filter.
-const UI_SOUNDS = new Set(['power_pickup', 'hud_pop', 'ui_tap', 'ui_back', 'ui_open', 'combo', 'star', 'level_win', 'level_fail', 'unlock', 'score_tick', 'countdown', 'egg_save', 'rewind',
+const UI_SOUNDS = new Set(['power_pickup', 'hud_pop', 'ui_tap', 'ui_back', 'ui_open', 'combo', 'star', 'level_win', 'level_fail', 'unlock', 'treasure_open', 'score_tick', 'countdown', 'egg_save', 'rewind',
   'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up']);
 // Random pitch spread per sound (fraction). Musical stings stay in tune.
 const PITCH_VAR = {
   ui_tap: 0.015, ring_tick: 0.02, hud_pop: 0, ui_back: 0.01, ui_open: 0.01, score_tick: 0.004, countdown: 0,
-  egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, rewind: 0.02, tada: 0, cheer_up: 0, cluck: 0.06,
+  egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, treasure_open: 0, rewind: 0.02, tada: 0, cheer_up: 0, cluck: 0.06,
   power_pickup: 0, strike_launch: 0.02, strike_hit: 0.02, crow: 0.02, egg_crack: 0.03, egg_break: 0.02,
   rat_squeak: 0.1, weasel_chitter: 0.07, weasel_snicker: 0.06, weasel_sniff: 0.05, weasel_yelp: 0.08, snake_hiss: 0.05, eagle_screech: 0.05, goose_honk: 0.05, decoy_peep: 0.08, creature_hurt: 0.08, gecko_chirp: 0.08, sal_yelp: 0.08, sal_call: 0.3,
 };
@@ -2211,6 +2211,28 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       pings(v, { t: T + 0.1, dur: 0.8, n: 10, fmin: 3000, fmax: 6000, g: 0.035, dmin: 0.05, dmax: 0.2 });
       send(v, 0.1);
     },
+    // 2026-11-23 (mykee: "the level completion celebration and treasure open have the same music"): a chest opening has
+    // its own cue, unlike the win sting in key, rhythm and colour. The win is brass and banjo in C, a repeated-note hook
+    // (E E E G E C) on an eighth-note pulse into a held C chord with a cymbal. The treasure is D major on harp and
+    // glockenspiel: the lid's wooden thunk, an even rising run of fast sixteenths (D5 F#5 A5 D6 F#6 A6 D7), a bright
+    // Dadd9 bell chord (D6 F#6 A6 E7) over a soft pad, and a shimmering tail of high sparkles. No brass, no banjo.
+    treasure_open(v, o) {
+      const p = o.pitch, D5 = 587.33 * p, R = [1, 1.26, 1.498, 2, 2.52, 2.997, 4];  // D F# A D F# A D (just-ish, as the win's chords)
+      knock(v, { t: 0, f: 190, f2: 110, d: 0.11, g: 0.32, nf: 900, n: 0.45 });              // the lid: a hollow wooden thunk
+      nz(v, { t: 0.01, color: 'pink', a: 0.04, d: 0.12, g: 0.06, type: 'bandpass', f: 500, f2: 2400, sw: 0.14, q: 1.4 }); // a creak of air
+      const harp = (t, f, g) => { // a plucked string: a bright attack that darkens, plus a soft octave
+        tone(v, { type: 'triangle', t, f, a: 0.0015, d: 0.5, g, lp: Math.min(f * 6, 9000), lq: 0.8 });
+        tone(v, { t, f: f * 2, a: 0.001, d: 0.18, g: g * 0.35 });
+      };
+      R.forEach((k, j) => { const t = 0.07 + j * 0.05; harp(t, D5 * k, 0.12); if (j >= 3) bell(v, { t, f: D5 * k * 2, d: 0.35, g: 0.035 }); });
+      const T = 0.45;
+      for (const k of [2, 2.52, 2.997, 4.49]) bell(v, { t: T, f: D5 * k, d: 1.3, g: 0.085 });     // Dadd9 on glockenspiel
+      for (const k of [1, 1.498]) tone(v, { t: T, f: D5 * k, a: 0.05, hold: 0.25, d: 0.8, g: 0.07 }); // a soft sine pad under it
+      nz(v, { t: T - 0.05, a: 0.25, d: 0.9, g: 0.03, type: 'highpass', f: 7000 });            // air rising into the shimmer
+      for (let i = 0; i < 8; i++) chime(v, { t: T + 0.08 + i * 0.07, f: D5 * (i % 2 ? 5.99 : 4.49) * (1 + 0.002 * i), d: 0.25, g: 0.05 * (1 - i / 10), o2: 0.15 }); // the tremolo shimmer (A7 / E7)
+      pings(v, { t: T + 0.1, dur: 0.9, n: 12, fmin: 4500, fmax: 9000, g: 0.03, dmin: 0.05, dmax: 0.18 });
+      send(v, 0.3);
+    },
     strike_hit(v, o) { // Chick Strike lands: a meaty comic "bonk" (a hollow knock whose pitch drops) and a short ring
       const p = o.p;
       nz(v, { a: 0.0004, d: 0.008, g: 0.35, type: 'bandpass', f: 2500 * p, q: 1.2 });
@@ -2391,7 +2413,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     if (!offline) setTimeout(() => cleanupVoice(v), (v.end - t + 0.15) * 1000);
     const h = { stop() { try { stopVoice(v); } catch (e) {} }, duration: v.end - v.t, get playing() { return !v.done && ctx.currentTime < v.end; } };
     lastPlay.set(name, { time: t, v, h, vol: o.vol });
-    if (base === 'level_win') duckMusic(0.55, 2.2);
+    if (base === 'level_win' || base === 'treasure_open') duckMusic(0.55, 2.2);
     else if (base === 'level_fail' || base === 'unlock') duckMusic(0.45, 1.4);
     else if (base === 'bomb_explode' || base === 'thunder') duckMusic(0.3, 1.0);
     else if (HERO.has(base) && o.vol > 0.3) duckMusic(0.25, 0.3);
