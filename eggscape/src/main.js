@@ -114,6 +114,7 @@ const bestStarsOf = (id) => Math.max(0, ...MODE_LIST.map((m) => save.stars[sk(id
 // 2026-11-20 first-five ladder: nothing is sold or advertised until level 3 is won. The one switch for every entry point
 // (level page Boosters tab, Free booster video, coin/shop chip; win card Bonus chest and offers; the Director's nudges
 // and fail help; offer cards anywhere). The map's own shop button stays. Tune it here.
+E.setPlatform(!ads.moneyShop); // 0.8.11: a web portal sells nothing, so wins and videos pay more there (economy.js PLATFORM)
 const earlyDays = () => DR.earlyDays(save); // src/director.js: SELL_AFTER
 const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0);
 const envOf = (i) => Math.floor(i / PER_ENV);
@@ -631,8 +632,13 @@ function camBase() {
   for (const e of eggs) maxCh = Math.max(maxCh, sim.channelOf(e));
   const live = G.screen === 'play' && sim.state === 'play';
   const sky = sim.eagle && sim.eagle.phase !== 'away'; // the eagle hunts round the outside: show all of it
-  const whole = !live || sky || camWide() || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || n <= 2;
   const F = frameOf(true, maxCh);
+  // 0.8.11 tablets (mykee: "people could download the APK on a tablet"): on a big screen the whole vault already shows
+  // the eggs larger than a phone's close-up does, so the camera rests on the whole vault there, basket and hen in the
+  // shot, instead of pushing in and cropping the rings (measured: 1280x800 lost the basket, 800x1280 the outer ring).
+  // Steady once the fit reaches TABLET_K px per metre, and until it falls clearly below (no flicker at the line).
+  cv.steady = Math.min(W_, H_) >= TABLET_MIN && F.k >= (cv.steady ? TABLET_K * 0.9 : TABLET_K);
+  const whole = !live || sky || camWide() || cv.steady || maxCh >= n - 1 || (sim.nestAmp && maxCh >= n - 2) || n <= 2;
   let A = whole ? F : frameOf(false, maxCh);
   // a snake or a boss outside the eggs' rings widens the close-up frame into a square; never let that zoom
   // out further than the whole vault (it cropped big vaults AND shrank the eggs): show the whole vault instead
@@ -740,7 +746,7 @@ function camTarget() {
   }
   if (G.zm != null || !cv.live) return B;
   if (sim.rings.length <= 2) { cv.smooth = 0.5; return B; } // a two-ring vault is one steady shot: rings, basket and hen
-  if (camWide()) { cv.smooth = 0.5; return B; } // landscape: a steady whole-vault shot, no hunting
+  if (camWide() || cv.steady) { cv.smooth = 0.5; return B; } // landscape, or a tablet: a steady whole-vault shot, no hunting
   const L = leadEgg(sim);
   if (!L) return B;
   // the last egg needed is on its way out: lean in on it and the nest (gently; never while something hunts overhead)
@@ -788,6 +794,7 @@ function camTarget() {
   if (rz3) { reachPan(T3, rz3); if (sim.hr.mode !== 'idle') cv.smooth = 0.3; } // nest.reach (a boss level too)
   return T3;
 }
+const TABLET_MIN = 600, TABLET_K = 36; // a screen at least 600 px on its short side; the whole vault fits at 36 px a metre or more (a phone's close-up of a six-ring vault is 34 to 38)
 const ACTION_ZOOM = 1.32; // the action cam pushes in this far past the whole-vault frame at most
 const CAM_WIDE = 0.8; // the establishing shot starts this much wider than the whole vault
 
@@ -2371,7 +2378,9 @@ function drawGetMore() {
         ui.button('gm:iap:' + M.sku, ads.price(M.sku), x + w - bw - 9 * s, y + 11 * s, bw, 44 * s, { kind: 'primary', size: 18 * s });
       } },
       { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('gm:ad', cd > 3600 ? 'More free coins tomorrow' : cd > 0 ? `Free coins in ${fmtTime(cd)}` : `Watch an ad: +${adCoins()} coins`, x, y, w, 50 * s, { kind: 'ad', ad: cd <= 0, disabled: cd > 0, shimmer: cd <= 0, size: 16.5 * s }) },
-      { h: 46 * s, gap: 10 * s, draw: (x, y, w) => ui.button('gm:shop', 'Open shop', x + w * 0.12, y, w * 0.76, 46 * s, { kind: 'secondary', icon: (c, X, Y, S) => shopIcon(c, X, Y, S), size: 17 * s }) },
+      // the web has no coin packs: the second way to coins there is the Free tab (the daily gift, the free sample), and wins
+      !ads.moneyShop && lineBlock('Every win pays coins too.', 14.5 * s, { color: C.ink2, tag: 'gm:win', gap: 8 * s }),
+      { h: 46 * s, gap: 10 * s, draw: (x, y, w) => ui.button('gm:shop', ads.moneyShop ? 'Open shop' : 'Free gifts', x + w * 0.12, y, w * 0.76, 46 * s, { kind: 'secondary', icon: (c, X, Y, S) => shopIcon(c, X, Y, S), size: 17 * s }) },
       { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button('gm:close', 'Close', x, y, w, 56 * s, { kind: 'tertiary', size: 21 * s }) },
     ].filter(Boolean);
   }, { ribbon: '#e89a10' });

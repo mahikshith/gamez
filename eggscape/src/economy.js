@@ -68,6 +68,21 @@ export const BOOSTER_ORDER = ['stone', 'golden', 'time', 'rewind', 'sponge', 'ne
 // the star chests hand out the first five in turn (their rewards were set before the newer boosts)
 const CHEST_BOOSTS = BOOSTER_ORDER.slice(0, 5);
 
+// ---------------------------------------------------------------- where the game runs (0.8.11)
+// The app sells coins and bundles for real money; a web portal (Poki, CrazyGames, GameDistribution) cannot, so there
+// the player EARNS everything and the game earns from the videos the player chooses to watch. One catalog and one set
+// of prices for both; only the income differs, the same for every player of that platform:
+//   wins and the daily gift pay double; the free-coins video pays more, eight times a day, a minute apart (the app's
+//   shrinking ladder protects the coin packs, which do not exist here); the Golden Hen, a Premium gift in the app,
+//   is a coin outfit.
+export const PLATFORM = { web: false };
+const WEB = { winMult: 2, ladder: [60, 60, 50, 50, 40, 40, 40, 40], cooldownSec: 60, goldenHen: 900 };
+let HEN_GOLD_APP = null;
+export function setPlatform(web) {
+  PLATFORM.web = !!web;
+  if (!HEN_GOLD_APP) HEN_GOLD_APP = { ...HEN_SKINS.golden };
+  HEN_SKINS.golden = PLATFORM.web ? { ...HEN_GOLD_APP, price: WEB.goldenHen, premium: false, line: 'Shining gold feathers. The top prize.' } : { ...HEN_GOLD_APP };
+}
 export const AD_REWARDS = {
   doubleCoins: 'Double the coins from this level',
   // 2026-11-20 (research: CrazyGames caps currency videos at ~5 a day with shrinking rewards): the free-coins video pays
@@ -77,7 +92,7 @@ export const AD_REWARDS = {
 // the coins the next free-coins video pays today (0: done for today). adDay: { day, n } in the save
 export function freeCoinsNext(adDay, day) {
   const n = adDay && adDay.day === day ? Math.max(0, adDay.n | 0) : 0;
-  return AD_REWARDS.freeCoins.ladder[n] || 0;
+  return (PLATFORM.web ? WEB.ladder : AD_REWARDS.freeCoins.ladder)[n] || 0;
 }
 export function noteFreeCoins(adDay, day) {
   const n = adDay && adDay.day === day ? Math.max(0, adDay.n | 0) : 0;
@@ -153,12 +168,12 @@ export function ownedCount(wallet, id) {
 //   perfect +5 for a perfect clutch                     (0 or 5)
 // Win examples: 1 star ~15-17, 2 stars ~22, 3 stars perfect ~32-36.
 export function levelCoins(result) {
-  const r = result || {};
+  const r = result || {}, k = PLATFORM.web ? WEB.winMult : 1; // the web pays double: play is the only way to coins there
   const stars = Math.max(0, Math.min(3, Math.floor(r.stars || 0)));
   const saved = Math.max(0, Math.min(r.eggs > 0 ? r.eggs : 6, Math.floor(r.saved || 0)));
-  const base = 4 + 2 * saved;
-  const starCoins = 5 * stars;
-  const perfect = r.perfect && stars > 0 ? 5 : 0;
+  const base = (4 + 2 * saved) * k;
+  const starCoins = 5 * stars * k;
+  const perfect = r.perfect && stars > 0 ? 5 * k : 0;
   return { base, stars: starCoins, perfect, total: base + starCoins + perfect };
 }
 
@@ -195,7 +210,7 @@ export function useBooster(wallet, id) {
 // Seconds until the free-coins ad is available again. lastClaimMs: Date.now() of last claim (0 = never).
 export function adCooldownLeft(lastClaimMs, nowMs) {
   if (!lastClaimMs) return 0;
-  const left = AD_REWARDS.freeCoins.cooldownSec - (nowMs - lastClaimMs) / 1000;
+  const left = (PLATFORM.web ? WEB.cooldownSec : AD_REWARDS.freeCoins.cooldownSec) - (nowMs - lastClaimMs) / 1000;
   return left > 0 ? Math.ceil(left) : 0;
 }
 
@@ -358,7 +373,7 @@ export function useCharge(wallet) {
 export function dailyChest(dayStr) {
   let h = 0;
   for (const c of String(dayStr)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  const coins = [25, 30, 40, 30, 50, 35, 60][h % 7], charges = h % 3 === 0 ? 2 : 1;
+  const coins = [25, 30, 40, 30, 50, 35, 60][h % 7] * (PLATFORM.web ? WEB.winMult : 1), charges = h % 3 === 0 ? 2 : 1;
   return { coins, charges };
 }
 export function openDailyChest(wallet, dayStr) {
