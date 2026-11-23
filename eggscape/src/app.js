@@ -4,11 +4,14 @@
 const isApp = () => (typeof __APP__ !== 'undefined' && __APP__) || (typeof window !== 'undefined' && window.EGG_APP === true);
 
 // Haptics: through the native bridge when the shell offers it, navigator.vibrate otherwise.
-export function vibrate(ms) {
+export function vibrate(p) { // a number of ms, or a pattern [on, off, on, ...]
   try {
     const b = typeof window !== 'undefined' && window.EggApp;
-    if (isApp() && b && typeof b.vibrate === 'function') { b.vibrate(ms | 0); return; }
-    if (navigator.vibrate) navigator.vibrate(ms);
+    if (isApp() && b) {
+      if (Array.isArray(p) && typeof b.vibratePattern === 'function') { b.vibratePattern(p.map((v) => v | 0).join(',')); return; }
+      if (typeof b.vibrate === 'function') { b.vibrate((Array.isArray(p) ? p.reduce((s, v, i) => s + (i % 2 ? 0 : v), 0) : p) | 0); return; }
+    }
+    if (navigator.vibrate) navigator.vibrate(p);
   } catch (_) { /* haptics are optional */ }
 }
 

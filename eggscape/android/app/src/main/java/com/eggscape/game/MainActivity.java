@@ -45,8 +45,25 @@ public class MainActivity extends Activity {
         public void vibrate(int ms) {
             if (vib == null || ms <= 0) return;
             if (ms > 500) ms = 500;
-            if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE));
+            if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createOneShot(ms, ms >= 30 ? 255 : 140));
             else vib.vibrate(ms);
+        }
+        /** a pattern "on,off,on,..." in ms: strong (255) for beats of 30 ms or more, lighter (140) for short ones */
+        @JavascriptInterface
+        public void vibratePattern(String csv) {
+            if (vib == null || csv == null) return;
+            try {
+                String[] p = csv.split(",");
+                int n = Math.min(p.length, 12);
+                long[] tm = new long[n + 1]; int[] amp = new int[n + 1];
+                tm[0] = 0; amp[0] = 0; // the waveform starts with a pause
+                for (int i = 0; i < n; i++) {
+                    int v = Math.max(0, Math.min(400, Integer.parseInt(p[i].trim())));
+                    tm[i + 1] = v; amp[i + 1] = (i % 2 == 0) ? (v >= 30 ? 255 : 140) : 0;
+                }
+                if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createWaveform(tm, amp, -1));
+                else vib.vibrate(tm, -1);
+            } catch (Exception ignored) { /* haptics are optional */ }
         }
         /** ads and in-app products (src/ads.js): each answers later through window.__eggAd / __eggBuy / __eggGrant */
         @JavascriptInterface public void showRewarded(String tag, String id) { if (money != null) money.showRewarded(tag, id); }

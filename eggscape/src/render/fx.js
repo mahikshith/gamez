@@ -80,7 +80,7 @@ export class FX {
   kick(tr) { if (tr > this.shake) this.shake = Math.min(1, tr); }
 
   update(dt) {
-    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * (1.3 + 1.6 * this.shake)); // big hits fall off fast, the tail lingers a touch
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * (0.9 + 1.0 * this.shake)); // 0.8.9: slower, so a 0.35 hit is felt for about 0.3 s and a 0.7 one for 0.4 s (it was gone in 0.2)
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 3);
     if (this.punch > 0) this.punch = Math.max(0, this.punch - dt * 2.5);
     const p = this.p;

@@ -898,7 +898,7 @@ function pointerDown(e) {
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
   if (G.adBusy || modalOpen()) { if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; } return; } // a sheet or popup takes every tap (and an ad wait: only its "Back to game")
-  const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'pause' ? (G.ppRectR && x >= G.ppRectR.x ? G.ppageR : G.ppage) : null;
+  const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'pause' ? (G.ppRectR && x >= G.ppRectR.x ? G.ppageR : G.ppage) : null;
   if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
   if (G.screen === 'intro') { // 2026-11-19 level page: the page scrolls up/down, the chick row left/right (the first clear move picks)
     const inR = (R) => R && x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h;
@@ -1031,7 +1031,7 @@ function pointerUp(e) {
   if (pd && pd.pid === e.pointerId) { if (pd.moved && pd.sc) pd.sc.v = flingSpeed(pd); G.pdrag = null; }
   if (G.screen === 'wonder') wonder.pointerUp(e); // WONDER
   const ct = G.chickTap; // v3.2: tap = power
-  if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) G.sim.tapChick(ct.id);
+  if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) { G.sim.tapChick(ct.id); buzz('chick'); }
   G.chickTap = null;
   const lt = G.laserTap;
   if (lt && lt.pid === e.pointerId && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 14 * ui.u && G.t - lt.t < 0.45 && G.sim) { const w = toWorld(lt.x, lt.y); G.sim.fireLaser(Math.atan2(w.y, w.x)); }
@@ -1054,7 +1054,7 @@ function pointerUp(e) {
 
 function wheel(e) {
   if (modalOpen()) return;
-  const SC = G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'levels' ? G.mscroll : G.screen === 'pause' ? (G.ppRectR && e.clientX >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'intro' ? (e.shiftKey && G.car ? G.car : G.ipRectR && ui.A.w > ui.A.h * 1.15 && e.clientX >= G.ipRectR.x ? G.ipageR : G.ipage) : null;
+  const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'levels' ? G.mscroll : G.screen === 'pause' ? (G.ppRectR && e.clientX >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'intro' ? (e.shiftKey && G.car ? G.car : G.ipRectR && ui.A.w > ui.A.h * 1.15 && e.clientX >= G.ipRectR.x ? G.ipageR : G.ipage) : null;
   if (SC) { e.preventDefault(); SC.y = clamp(SC.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -400, 400), 0, SC.max); SC.v = 0; return; } // 2026-11-19: the world map scrolls with a mouse wheel too
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   e.preventDefault();
@@ -1070,6 +1070,7 @@ function keyDown(e) {
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
+  if (k === 'Escape' && !e.repeat && G.settingsOpen) { press('set:close'); return; }
   if ((k === 'Escape' || k === 'p' || k === 'P') && !e.repeat) {
     if (G.screen === 'play') press('pause');
     else if (G.screen === 'pause') press('resume');
@@ -1370,7 +1371,7 @@ async function press(id) {
     case 'tr:close': G.treasure = null; break;
     case 'tr:open': { // the boss treasure: paid once, then the sheet shows what came out
       const T = G.treasure, w = T && bossBeaten(T.id) ? E.openBossTreasure(save.wallet, T.id) : null;
-      if (w) { save.wallet = w; persist(); audio.play('level_win'); vibrate(30); T.openedAt = G.t; }
+      if (w) { save.wallet = w; persist(); audio.play('level_win'); buzz('treasure'); T.openedAt = G.t; }
       break;
     }
     case 'tr:shop': G.treasure = null; openStore('boosters'); break;
@@ -1513,13 +1514,10 @@ async function press(id) {
       break;
     }
     case 'settings':
-      G.settingsOpen = true;
+      G.settingsOpen = true; G.setSeq = (G.setSeq || 0) + 1;
       break;
     case 'set:close':
       G.settingsOpen = false;
-      break;
-    case 'stab:display': case 'stab:gameplay': case 'stab:sound':
-      G.setTab = id.slice(5);
       break;
     case 'gfx:auto': case 'gfx:high': case 'gfx:medium': case 'gfx:low':
       save.gfx = id.slice(4);
@@ -1564,7 +1562,12 @@ async function press(id) {
     case 'vibe':
       save.vibe = save.vibe === false;
       persist();
-      if (save.vibe) buzz('win');
+      if (save.vibe) { lastBuzz.t = -9; buzz('win'); } // one sample, so the player feels what it is
+      break;
+    case 'shake':
+      save.shake = save.shake === false;
+      persist();
+      if (save.shake && !save.calm) G.fx.shake = Math.max(G.fx.shake, 0.6);
       break;
     case 'practice': // the Practice screen: every studio vault as a tile (also reachable from the pause card)
       portal.gameplayStop();
@@ -1937,7 +1940,7 @@ function offerMoments() {
     if (sc === 'title' && OF.needsAge(save, ads.moneyShop) && !G.ageLater) { G.ageAsk = true; return; } // first launch, once the home is up
     if (earlyDays()) return; // nothing sold before L3 is won
     if (homeNudge(Date.now())) return; // the Director's nudge comes first; the paid offer can wait for another visit
-  } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0) { G.offerTried = true; if ((sc === 'fail' && G.failHelp) || earlyDays()) return; } // one help on a fail card, never two
+  } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0 && !(sc === 'win' && revealing(G.result))) { G.offerTried = true; if ((sc === 'fail' && G.failHelp) || earlyDays()) return; } // one help on a fail card, never two
   else if (sc === 'intro' && G.screenT > 0.3 && G.li >= 0) { G.offerTried = true; G.introTip = null; if (earlyDays()) return; } // the intro's gentle chick line
   else return;
   const moment = sc === 'title' || sc === 'levels' ? 'home' : sc;
@@ -2140,8 +2143,12 @@ function skipLevel() {
 }
 
 const DIAG_MARK = /^(iap:|buy:|item:|chick:|charge:|hen:|skin:|kit:|hset:|try:|sample$|bonus$|ad:|go$|retry$|next$|home:chest$|tr:)/;
-// Haptics on the hero beats (the app's EggApp bridge, navigator.vibrate on the web); off with reduced motion or sound off.
-const HAPTIC_MS = { save: 18, crack: 30, star: 22, win: 45, strike: 35, crow: 40, boss: 40, hit: 22 };
+// Haptics on the hero beats (the app's EggApp bridge, navigator.vibrate on the web). 0.8.9: only the Vibration switch turns
+// them off (not sound, not Calm motion), and each beat has its own pattern [on, off, on, ...] in ms: 18 to 30 ms one-shots
+// were not felt on most phones.
+const HAPTIC = { save: 30, crack: 45, broke: [60, 40, 80], star: 35, win: [40, 60, 40, 60, 120], fail: [120, 80, 160], strike: 50, crow: 70, boss: 80, hit: 40, thorn: 35, pick: 25, chick: 20, treasure: [30, 40, 30, 40, 150], tap: 25, tick: 20 };
+const EV_BUZZ = { break: 'broke', bossHit: 'hit', bossFlinch: 'hit', thiefHit: 'hit', thiefDefeat: 'hit', snakeRecoil: 'hit', eagleSlam: 'hit', kcHit: 'hit', gatorHit: 'hit', owlJam: 'hit', allyKnock: 'hit', pickup: 'pick', thornSnap: 'thorn', thornBurn: 'thorn', stkLaunch: 'strike' }; // events that had a sound but no buzz
+let lastBuzz = { t: -9, p: 0 };
 // the power chick is ready: the button starts its heartbeat, the phone thumps lub-dub, a "Power ready!" tag pops by it
 function powerReady() {
   G.stkFullT = G.t; G.stkBeats = 0;
@@ -2149,12 +2156,15 @@ function powerReady() {
   if (strikeShown()) { const r = strikeBtnRect(); G.popups.push({ x: r.x + r.w / 2, y: r.y - 16 * ui.u, text: 'Power ready!', key: 'pready', n: 1, sub: '', color: '#ffcf3a', life: 1.6, max: 1.6, size: 20 * ui.u, placed: false }); }
 }
 function heartBuzz() {
-  if (save.calm || !save.sfx) return;
-  try { vibrate(28); setTimeout(() => vibrate(42), 190); } catch (_) { /* optional */ }
+  if (save.vibe === false) return;
+  try { vibrate([30, 130, 50]); lastBuzz = { t: G.t, p: 80 }; } catch (_) { /* optional */ }
 }
 function buzz(kind) {
-  if (save.calm || save.vibe === false) return; // its own switch in Settings (2026-11-16 research: every top casual game has one)
-  try { vibrate(HAPTIC_MS[kind] || 20); } catch (_) { /* haptics are optional */ }
+  if (save.vibe === false) return; // its own switch in Settings (2026-11-16 research: every top casual game has one)
+  const pat = HAPTIC[kind] || 25, pw = Array.isArray(pat) ? pat.reduce((a, v, i) => a + (i % 2 ? 0 : v), 0) : pat;
+  if (G.t - lastBuzz.t < 0.06 && pw <= lastBuzz.p) return; // one buzz per 60 ms: the stronger beat wins
+  lastBuzz = { t: G.t, p: pw };
+  try { vibrate(pat); } catch (_) { /* haptics are optional */ }
 }
 
 function applyAudioSettings() {
@@ -2660,6 +2670,7 @@ function handleEvents() {
   const fx = G.fx;
   for (const ev of sim.events) {
     playEv(ev);
+    if (EV_BUZZ[ev.type]) buzz(EV_BUZZ[ev.type]);
     // moment camera (these events also have their own cases below)
     if (ev.type === 'allyKnock') camMoment(ev.x, ev.y, 0.7); // the goose lands on its victim
     else if (ev.type === 'stkLaunch') camMoment(ev.tx, ev.ty, 0.65); // the power chick in flight: hold where it lands
@@ -3470,8 +3481,9 @@ function hen(mood, t) {
 // skip the hen's win / fail routine to its final pose (a tap off the buttons, Enter, or reduced motion)
 function skipCheer() {
   const r = G.result;
+  if (G.screen === 'win' && r && revealing(r) && r.t >= WIN_SHOW) { r.rv.i++; r.rv.t = 0; return; } // a tap during a reward reveal: the next one (or the card)
   if (G.screen === 'win' && r) {
-    const end = Math.max(routine(r.cheer).len, WIN_SHOW + WIN_IN); // straight to the card, the routine at its final pose
+    const end = revealing(r) ? WIN_SHOW : Math.max(routine(r.cheer).len, WIN_SHOW + WIN_IN); // straight to the card (or to the rewards first), the routine at its final pose
     if (r.t < end) { r.t = end; r.shownTotal = r.total; if (r.stars) { audio.play('star', { intensity: (r.stars - 1) / 2 }); buzz('star'); } }
   } else if (G.screen === 'fail') G.screenT = Math.max(G.screenT, routine('encourage').len);
 }
@@ -3576,7 +3588,18 @@ function onWin() {
     if (!earlyDays() && ads.bonusDue({ levelId: G.level.id, frustrated: DR.frustration(save, G.level.id) >= 0.5 })) { ads.noteBonus(); G.result.chest = E.bonusChest(G.level.id); }
   }
   G.trialChick = null;
+  G.result.prevBest = G.li >= 0 ? save.best[sk(L.id, G.sim.mode)] || 0 : null; // the card's "NEW BEST!" compares with the best before this run
   recordResult();
+  if (G.li >= 0 && L.boss && E.bossTreasure(L.id) && !E.treasureOpened(save.wallet, L.id) && bossBeaten(L.id)) { // the boss treasure opens in the celebration, not on the map
+    const w = E.openBossTreasure(save.wallet, L.id);
+    if (w) { save.wallet = w; G.result.treasure = E.bossTreasure(L.id); persist(); }
+  }
+  G.result.hotB = G.li >= 0 && G.result.hot >= 2 ? DR.hotBoosts(save) : []; // what the next level's start will give (the same call it uses)
+  { const r = G.result, list = [];
+    if (r.treasure) list.push({ kind: 'treasure' });
+    if (r.gift) list.push({ kind: 'gift' });
+    if (r.hotB.length) list.push({ kind: 'hot' });
+    r.rv = { list: list.slice(0, 3), i: 0, t: 0 }; }
   portal.gameplayStop();
   portal.happy();
   { // the payoff: three fountains of sparkles walk out from the nest while the camera pushes in on her
@@ -3591,6 +3614,7 @@ function onWin() {
 }
 
 function onFail() {
+  buzz('fail');
   if (G.li >= 0 && G.level) ads.fail(G.level.id);
   G.failHelp = null;
   if (G.li >= 0 && G.level) { // the Director: note the loss, then pick the one help card for the fail screen
@@ -3757,8 +3781,17 @@ function update(dt) {
   if (G.toast && (!G.toast.tip || G.screen === 'play') && !fuseIntroOn()) { G.toast.life -= dt; if (G.toast.life <= 0) G.toast = null; } // a villain tip's clock stops while the game is paused
   if (!G.toast && G.toasts.length) G.toast = { ...G.toasts.shift(), t0: G.t };
   if (G.result && G.screen === 'win') {
-    if (save.calm) skipCheer(); // reduced motion: straight to the card and her final pose
-    const r = G.result, R0 = routine(r.cheer), t0 = r.t;
+    const r = G.result, RV = r.rv;
+    if (save.calm && !(revealing(r) && r.t >= WIN_SHOW)) skipCheer(); // reduced motion: straight to the card and her final pose (each reward still shows for a second)
+    if (revealing(r) && r.t >= WIN_SHOW) { // the reward reveals hold the show's clock: the card waits behind them
+      r.t = WIN_SHOW;
+      const it = RV.list[RV.i], cue = save.calm ? 0 : REVEAL_CUE[it.kind], t1 = RV.t + dt;
+      if (RV.t <= cue && t1 > cue || (cue === 0 && RV.t === 0)) { audio.play(...REVEAL_SND[it.kind]); buzz('win'); }
+      RV.t = t1;
+      if (RV.t >= (save.calm ? 1 : REVEAL_LEN)) { RV.i++; RV.t = 0; }
+      return;
+    }
+    const R0 = routine(r.cheer), t0 = r.t;
     r.t += dt;
     // the score counts up from the first star to the end of the routine; each star lands on one of her beats
     const s0 = R0.stars[0], k = clamp((r.t - s0) / Math.max(0.6, R0.len - 0.3 - s0), 0, 1);
@@ -3862,12 +3895,12 @@ function render() {
   // world
   const P = G.play, cv = G.cv;
   const cx = P.x + P.w / 2, cy = P.y + P.h / 2;
-  // Screen shake from trauma (fx.shake, 0..1): squared, so small hits barely move and big ones thump; smooth
+  // Screen shake from trauma (fx.shake, 0..1): power 1.4 (0.35 is about 2.5 px, 0.7 about 7), so small hits still read and big ones thump; smooth
   // noise (summed sines), not per-frame random, with a whisper of roll. A few px at most. Reduced motion (C10)
   // turns off shakes, punches and flashes.
-  const tr = save.calm ? 0 : fx.shake * fx.shake, amp = clamp(7 * ui.u, 5, 10) * tr;
-  const ox = save.calm ? 0 : amp * (Math.sin(t * 53.1) + 0.6 * Math.sin(t * 31.7 + 2.1)) / 1.6 + G.weather.shakeX;
-  const oy = save.calm ? 0 : amp * (Math.sin(t * 47.3 + 1.3) + 0.6 * Math.sin(t * 27.9 + 0.4)) / 1.6 + G.weather.shakeY;
+  const tr = save.calm || save.shake === false ? 0 : Math.pow(fx.shake, 1.4), amp = clamp(11 * ui.u, 8, 16) * tr;
+  const ox = save.calm || save.shake === false ? 0 : amp * (Math.sin(t * 53.1) + 0.6 * Math.sin(t * 31.7 + 2.1)) / 1.6 + G.weather.shakeX;
+  const oy = save.calm || save.shake === false ? 0 : amp * (Math.sin(t * 47.3 + 1.3) + 0.6 * Math.sin(t * 27.9 + 0.4)) / 1.6 + G.weather.shakeY;
   const roll = 0.012 * tr * Math.sin(t * 41.3 + 0.7);
   // the punch zooms about the point of impact, not the screen centre
   const kick = save.calm ? 0 : cv.kick, k = G.cam.k * (1 + 0.025 * fx.punch + kick);
@@ -5680,14 +5713,15 @@ function drawLevelIntro(L, acc) {
 function hotBadge(x, y, s) {
   const hb = G.li >= 0 ? DR.hotBoosts(save) : [];
   if (!hb.length) return;
-  const n = `${DR.hotCount(save)} wins`, ih = 30 * s, nw = ui.measure(n, 16 * s), w = 12 * s + 24 * s + nw + 8 * s + hb.length * (ih + 2 * s) + 6 * s;
+  const n = `${DR.hotCount(save)} wins`, ih = 30 * s, nw = ui.measure(n, 16 * s), fw = ui.measure('Free', 15 * s) + 8 * s, w = 12 * s + 24 * s + nw + 8 * s + fw + hb.length * (ih + 2 * s) + 6 * s;
   y -= ih + 8 * s; // (y is the badge's bottom)
   const p = save.calm ? 0 : 0.5 + 0.5 * Math.sin(G.t * 3);
   ui.roundRect(x, y, w, ih + 8 * s, (ih + 8 * s) / 2); ctx.fillStyle = 'rgba(150,40,10,0.9)'; ctx.fill();
   ctx.lineWidth = 2 * s; ctx.strokeStyle = `rgba(255,${200 + 40 * p | 0},120,0.9)`; ctx.stroke();
   pictoFlame(ctx, x + 6 * s + 12 * s, y + 4 * s + ih / 2, 24 * s);
   ui.text(n, x + 32 * s, y + 4 * s + ih / 2, { size: 16 * s, color: '#fff', noRecord: true });
-  hb.forEach((b, i) => drawBoosterIcon(ctx, b, x + 32 * s + nw + 8 * s + i * (ih + 2 * s) + ih / 2, y + 4 * s + ih / 2, ih * 0.92, G.t));
+  ui.text('Free', x + 32 * s + nw + 8 * s, y + 4 * s + ih / 2, { size: 15 * s, color: '#ffe066', noRecord: true }); // the boosters cost nothing: say so
+  hb.forEach((b, i) => drawBoosterIcon(ctx, b, x + 32 * s + nw + 8 * s + fw + i * (ih + 2 * s) + ih / 2, y + 4 * s + ih / 2, ih * 0.92, G.t));
   ui.record({ x, y, w, h: ih + 8 * s }, 'intro:hot');
 }
 // the level page has a Chicks step when this level lets a chick come along (owned or still locked)
@@ -5876,68 +5910,123 @@ const vibeIcon = (on) => (c, x, y, S) => {
   c.restore();
 };
 
-// Settings (2026-11-15, mykee): sound, music, ring speed, difficulty, reduced motion, restore purchases. Opens over the
-// home or the pause card; only its own buttons take taps while it shows.
-function drawSettings() {
-  ui.buttons.length = 0; ui.rects.length = 0;
-  dim(0.55);
-  // 2026-11-19 (mykee): grouped like a real game's options: Display (graphics quality, frame rate, calm motion),
-  // Gameplay (ring speed, difficulty), Sound (sound, music, vibration). One tab shows at a time, so the card fits a
-  // 360x640 phone; the tabs, Restore purchases, Done and the version stay put.
-  const tab = SET_TABS.some((t) => t[0] === G.setTab) ? G.setTab : 'display';
-  stackCard('Settings', (s) => {
-    const C = ui.C, B = [];
-    B.push({ h: 44 * s, gap: 4 * s, draw: (x, y, w) => segRow('stab:', SET_TABS, tab, x, y, w, 44 * s, s) });
-    if (tab === 'display') {
-      B.push(sectionBlock('Graphics', s));
-      B.push({ h: 42 * s, gap: 6 * s, draw: (x, y, w) => segRow('gfx:', [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], save.gfx, x, y, w, 42 * s, s) });
-      const gl = save.gfx === 'auto' ? `Auto picked ${TIER_NAME[PERF.tier]} for this phone` : save.gfx === 'high' ? 'Sharpest picture, every effect' : save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
-      B.push(lineBlock(gl, 13 * s, { color: C.ink2, tag: 'set:gfxhint', gap: 4 * s }));
-      B.push(sectionBlock('Frame rate', s));
-      B.push({ h: 42 * s, gap: 6 * s, draw: (x, y, w) => segRow('fps:', [['auto', 'Auto'], [30, '30 fps'], [60, '60 fps']], save.fps, x, y, w, 42 * s, s) });
-      B.push(lineBlock(save.fps === 30 ? 'Saves battery, keeps the phone cool' : save.fps === 60 ? 'Smoothest motion, uses more battery' : `Now ${PERF.fpsCap} fps`, 13 * s, { color: C.ink2, tag: 'set:fpshint', gap: 4 * s }));
-      B.push({ h: 42 * s, gap: 12 * s, draw: (x, y, w) => ui.button('calm', save.calm ? 'Calm motion: on' : 'Calm motion: off', x + w * 0.1, y, w * 0.8, 42 * s, { kind: 'tertiary', icon: save.calm ? ICON.check : null, size: 14.5 * s }) });
-      B.push(lineBlock('Calm motion: no screen shake or flashes', 13 * s, { color: C.ink2, tag: 'set:calmhint', gap: 4 * s }));
-      B.push({ h: 40 * s, gap: 10 * s, draw: (x, y, w) => { ui.button('set:fpsshow', save.showFps ? 'Show fps: on' : 'Show fps: off', x, y, w * 0.49, 40 * s, { kind: 'tertiary', icon: save.showFps ? ICON.check : null, size: 14 * s }); ui.button('set:speed', 'Speed test', x + w * 0.51, y, w * 0.49, 40 * s, { kind: 'tertiary', size: 14 * s }); } });
-      // 0.8.7 the speed log (mykee's idea): the game notes frame rates and hitches by itself; this hands the file over
-      B.push({ h: 42 * s, gap: 8 * s, draw: (x, y, w) => ui.button('set:log', 'Share speed log', x + w * 0.1, y, w * 0.8, 42 * s, { kind: 'tertiary', size: 14.5 * s }) });
-      B.push(lineBlock('A file about this phone\u2019s frame rates. It only leaves the phone if you send it.', 13 * s, { color: C.ink2, tag: 'set:loghint', gap: 4 * s }));
-    } else if (tab === 'gameplay') {
-      const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
-      B.push(sectionBlock('Ring speed', s));
-      B.push(lineBlock(`${sp === RING_SPEED_DEFAULT ? 'Standard' : sp < RING_SPEED_DEFAULT ? 'Slower' : sp >= 3.5 ? 'Pro' : 'Faster'} (${Math.round(sp * 100)}%)`, 17 * s, { color: C.ink, tag: 'set:rslabel', gap: 6 * s }));
-      B.push({ h: 46 * s, gap: 6 * s, draw: (x, y, w) => { // - [one bar per speed] +
-        const bw = 46 * s, n = RING_SPEEDS.length, tx = x + bw + 8 * s, tw = w - 2 * bw - 16 * s, cw = tw / n;
-        ui.button('rs:-', '', x, y, bw, 46 * s, { kind: k > 0 ? 'secondary' : 'off', disabled: k <= 0, icon: ICON.left, iconS: 1.2 });
-        ui.button('rs:+', '', x + w - bw, y, bw, 46 * s, { kind: k < n - 1 ? 'secondary' : 'off', disabled: k >= n - 1, icon: ICON.right, iconS: 1.2 });
-        ui.well(tx, y + 8 * s, tw, 30 * s, { s });
-        for (let i = 0; i < n; i++) {
-          const cx = tx + cw * (i + 0.5), on = i <= k, hgt = (9 + i * 18 / (n - 1)) * s, dfl = RING_SPEEDS.indexOf(RING_SPEED_DEFAULT);
-          ui.roundRect(cx - cw * 0.3, y + 23 * s - hgt / 2, cw * 0.6, hgt, 3 * s);
-          ctx.fillStyle = on ? (i === dfl ? '#3eb42d' : i < dfl ? '#3a80ea' : RING_SPEEDS[i] >= 3.5 ? '#e0452f' : '#f3781c') : 'rgba(110,80,50,0.25)'; ctx.fill();
-          ui.buttons.push({ id: 'rs:' + i, x: tx + cw * i, y, w: cw, h: 46 * s });
-        }
-        ui.record({ x: tx, y: y + 8 * s, w: tw, h: 30 * s }, 'set:rsbar');
-      } });
-      B.push(lineBlock('How fast a ring follows your finger', 13 * s, { color: C.ink2, tag: 'set:rshint', gap: 2 * s }));
-      B.push(sectionBlock('Difficulty', s));
-      B.push({ h: 42 * s, gap: 6 * s, draw: (x, y, w) => modeRow(x, y, w, 42 * s, s) });
-      B.push(lineBlock('Easy: slower villains, more time', 13 * s, { color: C.ink2, tag: 'set:modehint', gap: 4 * s }));
-    } else {
-      const tog = [];
-      if (portal.showMuteButton) tog.push(['sfx', 'Sound', ICON.sound(save.sfx), save.sfx], ['music', 'Music', ICON.note(save.music), save.music]);
-      if (__APP__ || (typeof navigator !== 'undefined' && navigator.vibrate)) tog.push(['vibe', 'Vibration', vibeIcon(save.vibe !== false), save.vibe !== false]);
-      B.push(sectionBlock('Sound and feel', s));
-      if (tog.length) B.push(iconRow(tog.map(([id, label, icon, on]) => [id, label + (on ? '' : ' off'), icon, on ? 'secondary' : 'off']), s, 'set'));
-      else B.push(lineBlock('Sound follows the game site\u2019s own volume', 14 * s, { color: C.ink2, tag: 'set:portalsnd', gap: 8 * s }));
-    }
-    if (ads.canBuyPremium || ads.premium) B.push({ h: 40 * s, gap: 14 * s, draw: (x, y, w) => ui.button('set:restore', 'Restore purchases', x + w * 0.15, y, w * 0.7, 40 * s, { kind: 'tertiary', size: 14.5 * s }) });
-    B.push({ h: 52 * s, gap: 12 * s, draw: (x, y, w) => ui.button('set:close', 'Done', x, y, w, 52 * s, { kind: 'primary', icon: ICON.check, size: 20 * s }) });
-    B.push(lineBlock('Eggscape ' + __VERSION__, 11.5 * s, { color: C.ink2, tag: 'set:version', gap: 6 * s }));
-    return B;
-  }, { ribbon: '#7a48e8' });
+// Settings (2026-11-15, mykee; 0.8.9: a full page with an icon on every row, "not half page"): the pause page's kit
+// (header ribbon, one scrolling column, a big Done pinned below). Opens over the home or the pause page; only its own
+// buttons take taps while it shows. Three sections: Sound and feel, Gameplay, Display.
+const SI = { // white glyphs for the colored badges, drawn in a box of about S px around (x, y)
+  sound: (c, x, y, S) => { c.beginPath(); c.moveTo(x - S * 0.34, y - S * 0.12); c.lineTo(x - S * 0.16, y - S * 0.12); c.lineTo(x + S * 0.04, y - S * 0.3); c.lineTo(x + S * 0.04, y + S * 0.3); c.lineTo(x - S * 0.16, y + S * 0.12); c.lineTo(x - S * 0.34, y + S * 0.12); c.closePath(); c.fill(); c.lineWidth = S * 0.09; c.beginPath(); c.arc(x + S * 0.06, y, S * 0.18, -0.9, 0.9); c.stroke(); c.beginPath(); c.arc(x + S * 0.06, y, S * 0.33, -0.9, 0.9); c.stroke(); },
+  note: (c, x, y, S) => { c.beginPath(); c.ellipse(x - S * 0.14, y + S * 0.22, S * 0.15, S * 0.11, -0.4, 0, 7); c.fill(); c.lineWidth = S * 0.1; c.beginPath(); c.moveTo(x - S * 0.02, y + S * 0.2); c.lineTo(x - S * 0.02, y - S * 0.3); c.lineTo(x + S * 0.26, y - S * 0.18); c.stroke(); },
+  buzz: (c, x, y, S) => vibeIcon(true)(c, x, y, S * 1.15),
+  shake: (c, x, y, S) => { c.lineWidth = S * 0.09; const w = S * 0.4, h = S * 0.56; for (const [dx, a] of [[-0.09, 0.45], [0.09, 1]]) { c.globalAlpha = a; ui.roundRect(x + S * dx - w / 2, y - h / 2, w, h, S * 0.08); c.stroke(); } c.globalAlpha = 1; for (const d of [-1, 1]) { c.beginPath(); c.moveTo(x + d * S * 0.4, y - S * 0.14); c.lineTo(x + d * S * 0.4, y + S * 0.14); c.stroke(); } },
+  ring: (c, x, y, S) => { c.lineWidth = S * 0.13; c.lineCap = 'round'; c.beginPath(); c.arc(x, y, S * 0.28, -0.3, Math.PI * 1.45); c.stroke(); const ax = x + S * 0.28 * Math.cos(-0.3), ay = y + S * 0.28 * Math.sin(-0.3); c.beginPath(); c.moveTo(ax + S * 0.17, ay - S * 0.02); c.lineTo(ax - S * 0.08, ay - S * 0.2); c.lineTo(ax - S * 0.1, ay + S * 0.1); c.closePath(); c.fill(); },
+  flag: (c, x, y, S) => { c.lineWidth = S * 0.1; c.lineCap = 'round'; c.beginPath(); c.moveTo(x - S * 0.22, y + S * 0.34); c.lineTo(x - S * 0.22, y - S * 0.34); c.stroke(); c.beginPath(); c.moveTo(x - S * 0.22, y - S * 0.32); c.lineTo(x + S * 0.32, y - S * 0.14); c.lineTo(x - S * 0.22, y + S * 0.06); c.closePath(); c.fill(); },
+  sparkle: (c, x, y, S) => { const st = (cx, cy, R) => { c.beginPath(); for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4 - Math.PI / 2, r = i % 2 ? R * 0.26 : R; c.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } c.closePath(); c.fill(); }; st(x - S * 0.06, y + S * 0.04, S * 0.36); st(x + S * 0.28, y - S * 0.26, S * 0.15); },
+  fps: (c, x, y, S) => { c.font = `800 ${S * 0.66}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('60', x, y + S * 0.04); },
+  leaf: (c, x, y, S) => { c.beginPath(); c.moveTo(x - S * 0.32, y + S * 0.32); c.quadraticCurveTo(x - S * 0.4, y - S * 0.3, x + S * 0.32, y - S * 0.34); c.quadraticCurveTo(x + S * 0.4, y + S * 0.3, x - S * 0.32, y + S * 0.32); c.fill(); c.strokeStyle = 'rgba(40,90,30,0.8)'; c.lineWidth = S * 0.07; c.lineCap = 'round'; c.beginPath(); c.moveTo(x - S * 0.3, y + S * 0.3); c.lineTo(x + S * 0.14, y - S * 0.14); c.stroke(); },
+  watch: (c, x, y, S) => { c.lineWidth = S * 0.1; c.lineCap = 'round'; c.beginPath(); c.arc(x, y + S * 0.06, S * 0.29, 0, 7); c.stroke(); c.fillRect(x - S * 0.08, y - S * 0.4, S * 0.16, S * 0.1); c.beginPath(); c.moveTo(x, y + S * 0.06); c.lineTo(x + S * 0.14, y - S * 0.1); c.stroke(); },
+  dial: (c, x, y, S) => { c.lineWidth = S * 0.11; c.lineCap = 'round'; c.beginPath(); c.arc(x, y + S * 0.12, S * 0.32, Math.PI * 1.05, Math.PI * 1.95); c.stroke(); c.beginPath(); c.moveTo(x, y + S * 0.12); c.lineTo(x + S * 0.17, y - S * 0.12); c.stroke(); c.beginPath(); c.arc(x, y + S * 0.12, S * 0.07, 0, 7); c.fill(); },
+  file: (c, x, y, S) => { c.beginPath(); c.moveTo(x - S * 0.26, y - S * 0.36); c.lineTo(x + S * 0.08, y - S * 0.36); c.lineTo(x + S * 0.28, y - S * 0.16); c.lineTo(x + S * 0.28, y + S * 0.36); c.lineTo(x - S * 0.26, y + S * 0.36); c.closePath(); c.fill(); c.strokeStyle = 'rgba(40,40,60,0.55)'; c.lineWidth = S * 0.07; for (const k of [0, 0.14, 0.28]) { c.beginPath(); c.moveTo(x - S * 0.14, y - S * 0.0 + S * k); c.lineTo(x + S * 0.16, y + S * k); c.stroke(); } },
+};
+function setBadge(kind, col, x, y, d) {
+  ui.roundRect(x, y, d, d, d * 0.3); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = Math.max(1.5, d * 0.05); ctx.strokeStyle = 'rgba(40,20,5,0.55)'; ctx.stroke();
+  ctx.save(); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff'; ctx.lineJoin = 'round'; SI[kind](ctx, x + d / 2, y + d / 2, d * 0.62); ctx.restore();
 }
-const SET_TABS = [['display', 'Display'], ['gameplay', 'Gameplay'], ['sound', 'Sound']];
+function setSwitch(x, y, w, h, on) {
+  ui.roundRect(x, y, w, h, h / 2); ctx.fillStyle = on ? '#3eb42d' : '#a98f73'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = on ? '#256f19' : '#6e5238'; ctx.stroke();
+  const r = h / 2 - 3, kx = on ? x + w - h / 2 : x + h / 2;
+  ctx.beginPath(); ctx.arc(kx, y + h / 2 + 1, r, 0, 7); ctx.fillStyle = 'rgba(40,20,5,0.25)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(kx, y + h / 2, r, 0, 7); ctx.fillStyle = '#fffaf0'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(70,40,10,0.5)'; ctx.stroke();
+  if (on) pictoCheck(ctx, x + h * 0.5, y + h / 2, h * 0.42, '#fff'); // the green side also says "on" in a shape, not just a colour
+}
+// a big row: badge, name (and a small line), then a switch (on !== undefined), a value, or a chevron; the whole row is the button
+function setRow(s, id, label, kind, col, o = {}) {
+  const h = (o.sub ? 66 : 60) * s;
+  return { h, gap: 8 * s, draw: (x, y, w) => {
+    ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+    const d = 42 * s, bx = x + 12 * s, by = y + (h - d) / 2, sw = 58 * s, sh = 32 * s;
+    setBadge(kind, col, bx, by, d);
+    const tx = bx + d + 12 * s, tw = w - (tx - x) - sw - 22 * s;
+    ui.text(label, tx, y + h / 2 - (o.sub ? 9 : 0) * s, { size: 19 * s, color: ui.C.ink, maxW: tw, tag: 'set:l:' + id });
+    if (o.sub) ui.text(o.sub, tx, y + h / 2 + 13 * s, { size: 13 * s, color: ui.C.ink2, maxW: tw, tag: 'set:s:' + id });
+    if (o.on !== undefined) setSwitch(x + w - sw - 12 * s, y + (h - sh) / 2, sw, sh, o.on);
+    else if (o.act) { ui.roundRect(x + w - 82 * s - 10 * s, y + (h - 34 * s) / 2, 82 * s, 34 * s, 17 * s); ctx.fillStyle = '#3a80ea'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#1d4a9a'; ctx.stroke(); ui.text(o.act, x + w - 51 * s, y + h / 2 + 1 * s, { size: 15 * s, align: 'center', color: '#fff', tag: 'set:a:' + id }); }
+    ui.buttons.push({ id, x, y, w, h });
+  } };
+}
+// a card with a header (badge, name, value) and a control under it: ring speed, difficulty, graphics, frame rate
+function setCard(s, label, kind, col, val, ctlH, ctl, hint) {
+  const hh = 62 * s, hn = hint ? 22 * s : 0, h = hh + ctlH + hn + 10 * s;
+  return { h, gap: 8 * s, draw: (x, y, w) => {
+    ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+    const d = 42 * s, bx = x + 12 * s, by = y + (hh - d) / 2 - 1 * s;
+    setBadge(kind, col, bx, by, d);
+    ui.text(label, bx + d + 12 * s, by + d / 2, { size: 19 * s, color: ui.C.ink, tag: 'set:l:' + label });
+    if (val) ui.text(val, x + w - 14 * s, by + d / 2, { size: 16 * s, align: 'right', color: ui.C.ink2, maxW: w * 0.4, tag: 'set:v:' + label });
+    ctl(x + 12 * s, y + hh, w - 24 * s);
+    if (hint) ui.text(hint, x + w / 2, y + hh + ctlH + 12 * s, { size: 13 * s, align: 'center', color: ui.C.ink2, maxW: w - 24 * s, tag: 'set:h:' + label });
+  } };
+}
+function setHead(title, s) {
+  return { h: 22 * s, gap: 14 * s, draw: (x, y, w) => {
+    ui.text(title.toUpperCase(), x + 4 * s, y + 11 * s, { size: 15 * s, color: '#fff', stroke: 'rgba(30,14,4,0.85)', strokeW: 3 * s, tag: 'set:sec:' + title });
+    const tw = ui.measure(title.toUpperCase(), 15 * s) + 16 * s; ctx.fillStyle = 'rgba(255,240,210,0.25)'; ctx.fillRect(x + tw, y + 10 * s, w - tw, 2 * s);
+  } };
+}
+function drawSettings() {
+  ui.buttons.length = 0; ui.rects.length = 0; ui.calm = save.calm;
+  const u = ui.u, A = ui.A, C = ui.C, s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, land = A.h < 520 * u;
+  const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#3b2468'); bg.addColorStop(1, '#1c1233');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); // a full page: nothing of the game shows behind it
+  const cw = Math.min(A.w - 2 * pad, 560 * s), x0 = A.cx - cw / 2;
+  const pg = G.setpage || (G.setpage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
+  if (pg.lid !== G.setSeq) { pg.lid = G.setSeq; pg.y = 0; pg.v = 0; }
+  // header: back, the ribbon, and (landscape) Done
+  const hy = A.y + 10 * u, hh = 46 * s;
+  ui.button('set:close', '', A.x + pad, hy, 46 * s, hh, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * s });
+  ui.ribbon('Settings', A.cx, hy, clamp(ui.measure('Settings', 28 * s) + 80 * s, 170 * s, A.w - 2 * (pad + 56 * s)), hh, { s, color: '#7a48e8', size: 28 * s, tag: 'set:title' });
+  let vb = A.y1 - (land ? 2 * u : pad);
+  if (land) ui.button('set:close', 'Done', A.x1 - pad - 130 * s, hy, 130 * s, hh, { kind: 'primary', icon: ICON.check, size: 19 * s });
+  else {
+    ui.text('Eggscape ' + __VERSION__, A.cx, A.y1 - pad - 6 * s, { size: 12.5 * s, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' });
+    ui.button('set:close', 'Done', x0, A.y1 - pad - 20 * s - 56 * s, cw, 56 * s, { kind: 'primary', icon: ICON.check, size: 22 * s });
+    vb = A.y1 - pad - 20 * s - 56 * s - 8 * s;
+  }
+  const vt = hy + hh + 6 * u, V = { x: A.x, y: vt, w: A.w, h: Math.max(60, vb - vt) };
+  const B = [], on = (v) => v !== false;
+  B.push(setHead('Sound and feel', s));
+  if (portal.showMuteButton) { B.push(setRow(s, 'sfx', 'Sound', 'sound', '#3a80ea', { on: save.sfx })); B.push(setRow(s, 'music', 'Music', 'note', '#9a5ae8', { on: save.music })); }
+  if (__APP__ || (typeof navigator !== 'undefined' && navigator.vibrate)) B.push(setRow(s, 'vibe', 'Vibration', 'buzz', '#e8702f', { on: on(save.vibe) }));
+  B.push(setRow(s, 'shake', 'Screen shake', 'shake', '#d8453a', { on: on(save.shake) && !save.calm, sub: save.calm ? 'Off while Calm motion is on' : null }));
+  B.push(setHead('Gameplay', s));
+  const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
+  B.push(setCard(s, 'Ring speed', 'ring', '#2fa84f', `${sp === RING_SPEED_DEFAULT ? 'Standard' : sp < RING_SPEED_DEFAULT ? 'Slower' : sp >= 3.5 ? 'Pro' : 'Faster'} ${Math.round(sp * 100)}%`, 46 * s, (x, y, w) => { // - [one bar per speed] +
+    const bw = 46 * s, n = RING_SPEEDS.length, tx = x + bw + 8 * s, tw = w - 2 * bw - 16 * s, cw2 = tw / n;
+    ui.button('rs:-', '', x, y, bw, 46 * s, { kind: k > 0 ? 'secondary' : 'off', disabled: k <= 0, icon: ICON.left, iconS: 1.2 });
+    ui.button('rs:+', '', x + w - bw, y, bw, 46 * s, { kind: k < n - 1 ? 'secondary' : 'off', disabled: k >= n - 1, icon: ICON.right, iconS: 1.2 });
+    ui.well(tx, y + 8 * s, tw, 30 * s, { s });
+    for (let i = 0; i < n; i++) {
+      const cx = tx + cw2 * (i + 0.5), onI = i <= k, hgt = (9 + i * 18 / (n - 1)) * s, dfl = RING_SPEEDS.indexOf(RING_SPEED_DEFAULT);
+      ui.roundRect(cx - cw2 * 0.3, y + 23 * s - hgt / 2, cw2 * 0.6, hgt, 3 * s);
+      ctx.fillStyle = onI ? (i === dfl ? '#3eb42d' : i < dfl ? '#3a80ea' : RING_SPEEDS[i] >= 3.5 ? '#e0452f' : '#f3781c') : 'rgba(110,80,50,0.25)'; ctx.fill();
+      ui.buttons.push({ id: 'rs:' + i, x: tx + cw2 * i, y, w: cw2, h: 46 * s });
+    }
+    ui.record({ x: tx, y: y + 8 * s, w: tw, h: 30 * s }, 'set:rsbar');
+  }));
+  B.push(setCard(s, 'Difficulty', 'flag', '#e0a21c', null, 42 * s, (x, y, w) => modeRow(x, y, w, 42 * s, s)));
+  B.push(setHead('Display', s));
+  const gl = save.gfx === 'auto' ? `Auto picked ${TIER_NAME[PERF.tier]} for this phone` : save.gfx === 'high' ? 'Sharpest picture, every effect' : save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
+  B.push(setCard(s, 'Graphics', 'sparkle', '#2aa7a0', null, 42 * s, (x, y, w) => segRow('gfx:', [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], save.gfx, x, y, w, 42 * s, s), gl));
+  const fl = save.fps === 30 ? 'Saves battery, keeps the phone cool' : save.fps === 60 ? 'Smoothest motion, uses more battery' : `Now ${PERF.fpsCap} fps`;
+  B.push(setCard(s, 'Frame rate', 'fps', '#3a80ea', null, 42 * s, (x, y, w) => segRow('fps:', [['auto', 'Auto'], [30, '30 fps'], [60, '60 fps']], save.fps, x, y, w, 42 * s, s), fl));
+  B.push(setRow(s, 'calm', 'Calm motion', 'leaf', '#4aa83a', { on: !!save.calm, sub: 'No shake or flashes' }));
+  B.push(setRow(s, 'set:fpsshow', 'Show fps', 'dial', '#8a6ad0', { on: !!save.showFps }));
+  B.push(setRow(s, 'set:speed', 'Speed test', 'watch', '#e8702f', { act: 'Start' }));
+  B.push(setRow(s, 'set:log', 'Share speed log', 'file', '#5a7aa8', { act: 'Share' })); // 0.8.7: the game notes frame rates and hitches by itself; this hands the file over
+  if (ads.canBuyPremium || ads.premium) B.push(setRow(s, 'set:restore', 'Restore purchases', 'ring', '#c88a1c', { act: 'Restore' }));
+  if (land) B.push({ h: 16 * s, gap: 8 * s, draw: (x, y, w) => ui.text('Eggscape ' + __VERSION__, x + w / 2, y + 8 * s, { size: 12.5 * s, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' }) });
+  G.setRect = V;
+  pageScroll(B, pg, V, x0, cw, s, true);
+}
 // a segmented control on a cream card: a recessed track, the chosen option a raised green key (like Easy/Medium/Hard)
 function segRow(pre, opts, cur, x, y, w, h, s) {
   const p = 3 * s, bw = (w - 2 * p) / opts.length;
@@ -6072,7 +6161,9 @@ function drawInfo() {
 //    below; in landscape in from the right while she settles on the left). The same routine carries on at card size.
 // The buttons come with the card (~2 s), in space that is always reserved; a tap anywhere skips straight to the card.
 const WIN_SHOW = 1.6, WIN_IN = 0.38;
-const winIn = (r) => (save.calm ? 1 : clamp((r.t - WIN_SHOW) / WIN_IN, 0, 1));
+const winIn = (r) => (revealing(r) ? 0 : save.calm ? 1 : clamp((r.t - WIN_SHOW) / WIN_IN, 0, 1));
+// what this win unlocked, shown one by one between her show and the card (onWin builds r.rv.list); a tap skips to the next
+const revealing = (r) => !!(r && r.rv && r.rv.i < r.rv.list.length);
 const ss01 = (x) => { const k = clamp(x, 0, 1); return k * k * (3 - 2 * k); };
 
 // landscape with room: a stage left of the card (the win and fail cards)
@@ -6223,39 +6314,78 @@ function drawWinPage() {
         ui.text(txt, tx, ry, { size: 16 * s, color: ok ? C.ink : 'rgba(80,50,25,0.75)', maxW: rx - Math.min(rw, w * 0.36) - 10 * s - tx, tag: 'win:goal' + i });
       });
     } });
-    // the numbers, each with its name: time, coins, egg points, time bonus (+ streak, bonus goal)
+    // the cells: your time, coins (+ the bonus goal)
     const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
     const cells = [];
     if (r.used != null) cells.push(['clock', 'Your time', mmss(r.used), C.ink]);
     cells.push(['coin', 'Coins', '+' + Math.round((r.coins || 0) * cnt), '#a85f00']);
-    cells.push(['egg', 'Egg points', String(r.eggScore), C.ink]);
-    if (r.timeBonus) cells.push(['gem', 'Time bonus', '+' + r.timeBonus, C.ink]);
-    if (r.streakMult > 1) cells.push(['flame', 'Star streak', 'x' + r.streakMult, C.warn]);
-    if (r.hot >= 2) cells.push(['flame', 'Wins in a row', String(r.hot), C.warn]);
     if (r.hasBonus) cells.push(['target', 'Bonus goal', r.bonus ? 'Done' : 'Missed', r.bonus ? C.good : C.bad]);
     const ch = 48 * s, nr = Math.ceil(cells.length / 2), CH = nr * ch + 10 * s;
     if (!first) B.push({ h: CH, gap: 8 * s, draw: (x, y, w) => {
       ui.well(x, y, w, CH, { s });
       cells.forEach(([k2, lab, v, col], i) => {
         const cx = x + (i % 2) * w / 2, cy = y + 5 * s + ch * Math.floor(i / 2), ix = cx + 24 * s, iy = cy + ch / 2;
-        if (k2 === 'egg') drawEggIcon(ctx, ix, iy, 26 * s, 'saved'); else if (k2 === 'gem') pictoGem(ctx, ix, iy, 26 * s); else if (k2 === 'clock') pictoClock(ctx, ix, iy, 26 * s);
-        else if (k2 === 'flame') pictoFlame(ctx, ix, iy, 28 * s); else if (k2 === 'target') pictoTarget(ctx, ix, iy, 26 * s); else drawCoin(ctx, ix, iy, 12 * s, G.t);
+        if (k2 === 'clock') pictoClock(ctx, ix, iy, 26 * s); else if (k2 === 'target') pictoTarget(ctx, ix, iy, 26 * s); else drawCoin(ctx, ix, iy, 12 * s, G.t);
         ui.text(lab, ix + 20 * s, iy - 10 * s, { size: 12.5 * s, color: C.ink2, maxW: w / 2 - 50 * s, tag: 'win:l' + k2 });
         ui.text(v, ix + 20 * s, iy + 9 * s, { size: 19 * s, color: col, maxW: w / 2 - 50 * s, tag: 'win:v' + k2 });
       });
     } });
-    if (!first) B.push({ h: 52 * s, gap: 8 * s, draw: (x, y, w) => {
-      ui.text('SCORE', x + w / 2, y + 7 * s, { size: 13 * s, align: 'center', color: '#ffe9b0', stroke: 'rgba(60,30,8,0.6)', tag: 'win:scorelab' });
-      ui.num(String(r.shownTotal), x + w / 2, y + 32 * s, { size: 36 * s, align: 'center', maxW: w, tag: 'win:total' });
+    // the score as one sum (mykee: "egg points, time bonus, the streak: what exactly are those?"):
+    // Egg points + Time left x streak = SCORE, then NEW BEST! or the best so far
+    const fmt = (n) => Math.round(n).toLocaleString('en-US');
+    const terms = [['egg', fmt(r.eggScore), 'Egg points']];
+    if (r.timeBonus) terms.push(['+'], ['clock', fmt(r.timeBonus), 'Time left']);
+    if (r.streakMult > 1) terms.push(['x'], ['flame', 'x' + r.streakMult, '3-star streak']);
+    const best = r.prevBest != null ? (r.total > r.prevBest ? 'new' : r.prevBest) : null, SH = (best != null ? 124 : 104) * s;
+    if (!first) B.push({ h: SH, gap: 8 * s, draw: (x, y, w) => {
+      ui.well(x, y, w, SH, { s, a: '#f3e2bd', b: '#fbf0d6' });
+      const ops = terms.filter((q) => q.length === 1).length, nt = terms.length - ops, ow = 16 * s, tw = (w - 12 * s - ops * ow) / nt;
+      let tx = x + 6 * s;
+      terms.forEach((q, i) => {
+        if (q.length === 1) { ui.text(q[0], tx + ow / 2, y + 26 * s, { size: 20 * s, align: 'center', color: C.ink2, tag: 'win:op' + i }); tx += ow; return; }
+        const [k2, v, lab] = q, mx = tx + tw / 2, vw = Math.min(ui.measure(v, 19 * s), tw - 30 * s), ix = mx - (vw + 26 * s) / 2 + 11 * s;
+        if (k2 === 'egg') drawEggIcon(ctx, ix, y + 24 * s, 22 * s, 'saved'); else if (k2 === 'clock') pictoClock(ctx, ix, y + 24 * s, 22 * s); else pictoFlame(ctx, ix, y + 24 * s, 24 * s);
+        ui.text(v, ix + 15 * s, y + 25 * s, { size: 19 * s, color: k2 === 'flame' ? C.warn : C.ink, maxW: tw - 30 * s, tag: 'win:v' + k2 });
+        ui.text(lab, mx, y + 47 * s, { size: 12 * s, align: 'center', color: C.ink2, maxW: tw - 4 * s, tag: 'win:l' + k2 });
+        tx += tw;
+      });
+      ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x + 12 * s, y + 60 * s, w - 24 * s, 1.5 * s); // the line under a sum
+      ui.text('=', x + 22 * s, y + 82 * s, { size: 24 * s, align: 'center', color: C.ink2, tag: 'win:eq' });
+      ui.text('SCORE', x + 42 * s, y + 82 * s, { size: 14 * s, color: C.ink2, tag: 'win:scorelab' });
+      ui.num(fmt(r.shownTotal), x + w / 2 + 24 * s, y + 82 * s, { size: 32 * s, align: 'center', maxW: w - 130 * s, tag: 'win:total' });
+      if (best === 'new') { if (r.shownTotal >= r.total) { const bw = 120 * s; ui.ribbon('NEW BEST!', x + w / 2 + 24 * s, y + 101 * s, bw, 22 * s, { s, color: '#3eaa2a', size: 14 * s, noRecord: true }); ui.record({ x: x + w / 2 + 24 * s - bw / 2, y: y + 101 * s, w: bw, h: 22 * s }, 'win:best'); } }
+      else if (best != null) ui.text(`Best ${fmt(best)}`, x + w / 2 + 24 * s, y + 111 * s, { size: 14 * s, align: 'center', color: C.ink2, tag: 'win:best' });
     } });
-    if (G.li >= 0 && G.level.boss && E.bossTreasure(G.level.id) && !E.treasureOpened(save.wallet, G.level.id)) // the boss's treasure is waiting
-      B.push(lineBlock('A boss treasure waits for you on the map!', 15 * s, { color: '#b86a00', tag: 'win:treasure', gap: 4 * s }));
-    if (r.gift) B.push({ h: 64 * s, gap: 6 * s, draw: (x, y, w) => { // the Director's gift: an egg skin to wear for the next levels
+    // what this win unlocked, shown in the reveals: each a row with its art and a green tick
+    const rowWell = (x, y, w, h, a, b) => ui.well(x, y, w, h, { s, a, b });
+    if (r.treasure) B.push({ h: 60 * s, gap: 6 * s, draw: (x, y, w) => { // the boss treasure, opened: the chest and what it gave
       if (!inCard) return;
-      ui.well(x, y, w, 64 * s, { s, a: '#ffe9b0', b: '#fff6dc' });
+      rowWell(x, y, w, 60 * s, '#ffe9b0', '#fff6dc');
+      drawChest(ctx, x + 34 * s, y + 32 * s, 46 * s, G.t, 'open');
+      ui.text('Boss treasure', x + 66 * s, y + 18 * s, { size: 15.5 * s, color: C.ink, maxW: w * 0.42, tag: 'win:tr' });
+      tickLine('In your bag', x + 66 * s, y + 41 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: w * 0.4, tag: 'win:tr2' });
+      const its = treasureItems(r.treasure), iw = Math.min(46 * s, (w * 0.5) / 3);
+      its.forEach(([k2, n], j) => { const ix = x + w - 8 * s - (2.5 - j) * iw; rewardIcon(k2, r.treasure, ix, y + 23 * s, 26 * s); ui.text(n, ix, y + 47 * s, { size: 13 * s, align: 'center', color: C.ink, maxW: iw - 2 * s, tag: 'win:tri' + j }); });
+    } });
+    if (r.gift) B.push({ h: 64 * s, gap: 6 * s, draw: (x, y, w) => { // the Director's gift: an egg skin, already on, for the next levels
+      if (!inCard) return;
+      rowWell(x, y, w, 64 * s, '#ffe9b0', '#fff6dc');
       drawSkinPreview(ctx, r.gift.id, x + 34 * s, y + 32 * s, 50 * s, G.t);
-      ui.text(`Free try: ${r.gift.name} Egg`, x + 66 * s, y + 22 * s, { size: 17 * s, color: ui.C.ink, maxW: w - 76 * s, tag: 'win:gift' });
-      ui.text(`Your eggs wear it for the next ${DR.DIR.skinLevels} levels`, x + 66 * s, y + 44 * s, { size: 13.5 * s, color: ui.C.ink2, maxW: w - 76 * s, tag: 'win:gift2' });
+      const bw = 86 * s, bx = x + w - bw - 8 * s; // the "Equipped" tag on the right
+      ui.roundRect(bx, y + 19 * s, bw, 26 * s, 13 * s); ctx.fillStyle = '#3eaa2a'; ctx.fill();
+      ui.text('Equipped', bx + bw / 2, y + 32 * s, { size: 14 * s, align: 'center', color: '#fff', maxW: bw - 10 * s, tag: 'win:equip' });
+      ui.text(`Free try: ${eggName(r.gift.name)}`, x + 66 * s, y + 21 * s, { size: 16 * s, color: C.ink, maxW: bx - x - 72 * s, tag: 'win:gift' });
+      tickLine(`On for the next ${DR.DIR.skinLevels} levels`, x + 66 * s, y + 44 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: bx - x - 72 * s, tag: 'win:gift2' });
+    } });
+    if (r.hot >= 2) B.push({ h: 56 * s, gap: 6 * s, draw: (x, y, w) => { // the win streak, and the boosters it brings to the next level
+      if (!inCard) return;
+      const hb = r.hotB || [];
+      rowWell(x, y, w, 56 * s, '#ffe0cc', '#fff3ea');
+      pictoFlame(ctx, x + 26 * s, y + 28 * s, 34 * s);
+      const iw = 34 * s, ax = x + w - 8 * s - hb.length * iw;
+      ui.text(`${r.hot} wins in a row`, x + 50 * s, y + (hb.length ? 18 : 28) * s, { size: 15.5 * s, color: C.ink, maxW: ax - x - 56 * s, tag: 'win:hot' });
+      if (hb.length) tickLine('Free next level', x + 50 * s, y + 39 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: ax - x - 56 * s, tag: 'win:hot2' });
+      hb.forEach((b, j) => drawBoosterIcon(ctx, b, ax + (j + 0.5) * iw, y + 28 * s, 30 * s, G.t));
     } });
     // Retry on the left, Next on the right (mykee 2026-11-19); their space is always reserved
     const last = G.li < 0 || G.li === LEVELS.length - 1;
@@ -6288,7 +6418,7 @@ function drawWinPage() {
   // the card slides in: up from below (portrait), in from the right (landscape)
   const dx = side ? (1 - e) * (ui.w - card.x + 20 * u) : 0, dy = side ? 0 : (1 - e) * (ui.h - card.y + 20 * u);
   // the show's big title under her feet: it fades as the card (which has its own) comes, and the card passes over it
-  const ta = save.calm ? 0 : 1 - ss01((r.t - WIN_SHOW + 0.15) / 0.3);
+  const ta = save.calm || (revealing(r) && r.t >= WIN_SHOW) ? 0 : 1 - ss01((r.t - WIN_SHOW + 0.15) / 0.3); // gone under the reward reveals
   if (ta > 0.01) {
     const ts = Math.min(34 * u, A.w * 0.085), tw = Math.min(A.w - 56 * u, ui.measure(title, ts) + 60 * u), pk = ui.pop(r.t, 0.35);
     ctx.save();
@@ -6320,6 +6450,86 @@ function drawWinPage() {
   }
   drawCelebration(ctx, r.cheer, r.t, box, { pw, calm, henH: L(BIG.henH, T.henH), seed, clip: BIG.full, fxBig });
   BIG.stars.forEach((p, q) => drawWinStar(r, R0, q, L(p.x, T.stars[q].x + dx), L(p.y, T.stars[q].y + dy), L(BIG.R, T.R), calm));
+  if (revealing(r) && r.t >= WIN_SHOW) drawReveal(r);
+}
+
+// 0.8.9 (mykee: "treasures and freebies need to be shown in the celebration... unlocked right after it, not on the map"):
+// after her show, one big reveal per thing this win unlocked (the boss treasure, a free skin try, the win streak's free
+// boosters), ~1.8 s each, over the dimmed show; a tap skips to the next. Reduced motion: each one a still for 1 s.
+const REVEAL_LEN = 1.8, REVEAL_CUE = { treasure: 0.6, gift: 0.12, hot: 0.12 };
+const REVEAL_SND = { treasure: ['level_win'], gift: ['unlock'], hot: ['combo', { intensity: 1 }] };
+const eggName = (n) => n.replace(/ Egg$/, '') + ' Egg'; // the skins' names: "Robo Egg" and "Galaxy" alike
+const backK = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2); // a pop that overshoots
+// what a boss treasure holds, as [art, count, label] (the reveal and the card's row)
+const treasureItems = (R) => [['coin', '+' + R.coins, 'coins'], ['boost', '+1', (E.BOOSTERS[R.booster] || {}).name || 'Booster'], ['charge', '+' + R.charges, 'Chick Charges']];
+function rewardIcon(k, R, x, y, sz) {
+  if (k === 'coin') drawCoin(ctx, x, y, sz * 0.42, G.t); else if (k === 'boost') drawBoosterIcon(ctx, R.booster, x, y, sz, G.t); else pictoPower(ctx, 'thunder', x, y, sz * 0.95, G.t);
+}
+// one line under a reveal or in a card row: a green tick, then the words
+function tickLine(str, x, y, size, o = {}) {
+  const tw = ui.measure(str, size), w = size * 1.35 + tw, x0 = o.align === 'left' ? x : x - w / 2;
+  pictoCheck(ctx, x0 + size * 0.5, y, size * 1.15);
+  ui.text(str, x0 + size * 1.35, y, { size, color: o.color || '#fff', stroke: o.stroke, strokeW: o.stroke ? Math.max(2, size * 0.2) : undefined, maxW: o.maxW ? o.maxW - size * 1.35 : undefined, tag: o.tag });
+}
+function drawReveal(r) {
+  const RV = r.rv, it = RV.list[RV.i], calm = save.calm, A = ui.A, u = ui.u, ink = 'rgba(60,28,6,0.9)';
+  const t = calm ? 1.35 : RV.t, fin = calm ? 1 : clamp(RV.t / 0.18, 0, 1);
+  dim(0.84 * (RV.i ? 1 : fin)); // the show sinks under the first one (deep: the prize alone on the page)
+  const S = Math.min(A.w * 0.8, A.h * 0.5, 360 * u), cx = A.cx, cy = A.y + A.h * 0.45;
+  const heroY = cy - 0.12 * S, rowY = cy + 0.3 * S, lineY = cy + 0.53 * S, ls = Math.max(15 * u, Math.min(21 * u, 0.065 * S));
+  ctx.save(); ctx.globalAlpha = fin; // rays and a warm glow behind the prize
+  sunburst(cx, heroY, S * 0.95, 'rgba(255,226,140,0.17)', 14);
+  const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.6); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
+  ctx.fillStyle = g; ctx.fillRect(cx - S, heroY - S, 2 * S, 2 * S);
+  ctx.restore();
+  const head = it.kind === 'treasure' ? 'BOSS TREASURE!' : it.kind === 'gift' ? 'FREE TRY!' : `${r.hot} WINS IN A ROW!`;
+  { // the headline: a ribbon that pops in
+    const hs = Math.min(30 * u, 0.1 * S), hw = Math.min(A.w - 40 * u, ui.measure(head, hs) + 70 * u), pk = calm ? 1 : backK(t / 0.3), hy = cy - 0.66 * S;
+    ctx.save(); ctx.translate(cx, hy); ctx.scale(pk, pk); ctx.translate(-cx, -hy);
+    ui.ribbon(head, cx, hy - hs * 0.85, hw, hs * 1.7, { color: it.kind === 'hot' ? '#e4572a' : it.kind === 'gift' ? '#2f8fd8' : '#d89a1c', size: hs, noRecord: true });
+    ctx.restore();
+  }
+  const pop = (t0, x, y, sc, draw) => { const k = calm ? 1 : backK((t - t0) / 0.32); if (k <= 0.01) return; ctx.save(); ctx.translate(x, y); ctx.scale(k * sc, k * sc); draw(); ctx.restore(); };
+  if (it.kind === 'treasure') {
+    const R = r.treasure, open = t >= 0.6, items = treasureItems(R);
+    const p = clamp(t / 0.35, 0, 1), drop = calm ? 0 : -S * 0.9 * (1 - p) * (1 - p); // it drops in, lands, shakes, bursts open
+    const shake = !calm && t > 0.35 && t < 0.6 ? Math.sin(t * 70) * 0.1 * (t - 0.3) / 0.3 : 0, sq = !calm && t > 0.35 && t < 0.45 ? 1 - 0.12 * Math.sin((t - 0.35) / 0.1 * Math.PI) : 1;
+    if (open && !calm && t < 1) { const a = (t - 0.6) / 0.4; ctx.save(); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 8 * u * (1 - a); ctx.beginPath(); ctx.arc(cx, heroY, S * (0.15 + 0.45 * a), 0, 7); ctx.stroke(); sunburst(cx, heroY, S * (0.3 + 0.5 * a), `rgba(255,250,210,${0.5 * (1 - a)})`, 10); ctx.restore(); }
+    ctx.save(); ctx.translate(cx, heroY + drop + S * 0.21); ctx.rotate(shake); ctx.scale(1 / sq, sq); ctx.translate(-cx, -(heroY + S * 0.21));
+    drawChest(ctx, cx, heroY, S * 0.58, G.t, open ? 'open' : 'ready');
+    ctx.restore();
+    // what was inside pops out of the chest into a row, then flies off to the bag (top right)
+    const sp = Math.min(S * 0.36, (A.w - 40 * u) / 3), isz = S * 0.23;
+    items.forEach(([k, n, lab], j) => {
+      const t0 = 0.68 + 0.1 * j, sx = cx + (j - 1) * sp, a = calm ? 1 : clamp((t - t0) / 0.3, 0, 1);
+      if (a <= 0) return;
+      const fl = calm ? 0 : ss01((t - 1.5 - 0.04 * j) / 0.28), bx = A.x + A.w - 34 * u, by = A.y + 30 * u;
+      const x = lerp(lerp(cx, sx, a), bx, fl), y = lerp(lerp(heroY, rowY, a) - Math.sin(a * Math.PI) * S * 0.22, by, fl), sc = (calm ? 1 : backK(a)) * (1 - 0.7 * fl);
+      ctx.save(); ctx.globalAlpha = 1 - fl * fl;
+      ctx.translate(x, y); ctx.scale(sc, sc); rewardIcon(k, R, 0, 0, isz); ctx.restore();
+      if (fl < 0.05 && a >= 1) {
+        ui.text(n, sx, rowY + isz * 0.72, { size: Math.max(17 * u, isz * 0.34), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 4 * u, tag: 'rv:n' + j });
+        ui.text(lab, sx, rowY + isz * 0.72 + Math.max(17 * u, isz * 0.34) * 0.95, { size: ls * 0.8, align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:l' + j });
+      }
+    });
+    if (t > 1.05) tickLine('Added to your bag', cx, lineY + S * 0.12, ls, { stroke: ink, tag: 'rv:line' });
+  } else if (it.kind === 'gift') {
+    const G2 = r.gift;
+    pop(0, cx, heroY, 1, () => { ctx.rotate(calm ? 0 : Math.sin(G.t * 3) * 0.06); drawSkinPreview(ctx, G2.id, 0, 0, S * 0.5, G.t); });
+    if (calm || t > 0.3) ui.text(eggName(G2.name), cx, rowY, { size: Math.min(34 * u, 0.11 * S), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 5 * u, maxW: A.w - 40 * u, tag: 'rv:name' });
+    if (calm || t > 0.6) tickLine(`On your eggs for the next ${DR.DIR.skinLevels} levels`, cx, lineY, ls, { stroke: ink, maxW: A.w - 32 * u, tag: 'rv:line' });
+  } else { // the win streak: a flame with the count, and the boosters the next level starts with
+    pop(0, cx, heroY - S * 0.04, 1, () => { pictoFlame(ctx, 0, 0, S * 0.42); });
+    if (calm || t > 0.15) ui.num(String(r.hot), cx, heroY + S * 0.07, { size: S * 0.17, align: 'center', tag: 'rv:count' });
+    const B = r.hotB, sp = Math.min(S * 0.36, (A.w - 40 * u) / B.length), isz = S * 0.28;
+    B.forEach((b, j) => {
+      const bx = cx + (j - (B.length - 1) / 2) * sp;
+      pop(0.4 + 0.12 * j, bx, rowY, 1, () => drawBoosterIcon(ctx, b, 0, 0, isz, G.t));
+      if (calm || t > 0.6 + 0.12 * j) ui.text((E.BOOSTERS[b] || {}).name || b, bx, rowY + isz * 0.72, { size: ls * 0.8, align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:b' + j });
+    });
+    if (calm || t > 0.9) tickLine('Free at the start of the next level', cx, lineY + S * 0.06, ls, { stroke: ink, maxW: A.w - 32 * u, tag: 'rv:line' });
+  }
+  if (RV.list.length > 1) RV.list.forEach((q, j) => { ctx.beginPath(); ctx.arc(cx + (j - (RV.list.length - 1) / 2) * 16 * u, Math.min(A.y1 - 22 * u, cy + 0.78 * S), (j === RV.i ? 5 : 3.5) * u, 0, 7); ctx.fillStyle = j === RV.i ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.fill(); });
 }
 
 // One result star. It stamps into its socket: falls in big and tilted, hits on its beat (R0.stars[q]) with a squash and
@@ -7052,6 +7262,7 @@ async function boot() {
       else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.treasure) G.treasure = null;
       return true;
     }
+    if (G.settingsOpen) { press('set:close'); return true; } // the Settings page closes first
     switch (G.screen) {
       case 'play': press('pause'); return true;
       case 'pause': press('resume'); return true;
@@ -7185,9 +7396,10 @@ if (DEV) window.__egg = {
   ads, // shop QA: stuck counts, prices, the purchase bridge
   get save() { return save; },
   // QA only: jump straight to an end screen with a plausible result
-  showResult(kind, stars = 3, cheer = null, t = 9) {
-    if (kind === 'win') G.result = { broken: stars < 2 ? 1 : 0, cracked: stars === 2 ? 1 : 0, used: 47, stars, saved: stars < 2 ? 2 : 3, eggs: 3, eggScore: 4200, timeBonus: 380, streak: stars === 3 ? 3 : 0, streakMult: stars === 3 ? 1.5 : 1, total: 6870, shownTotal: 6870, t, target: 2, perfect: stars === 3, rewound: false, coins: 34, bonus: true, hasBonus: stars === 3, cheer: cheer || pickRoutine({ stars }) };
-    else G.sim.state = 'failed';
+  showResult(kind, stars = 3, cheer = null, t = 9, extra = null) {
+    if (kind === 'win') G.result = { broken: stars < 2 ? 1 : 0, cracked: stars === 2 ? 1 : 0, used: 47, stars, saved: stars < 2 ? 2 : 3, eggs: 3, eggScore: 4200, timeBonus: 380, streak: stars === 3 ? 3 : 0, streakMult: stars === 3 ? 1.5 : 1, total: 6870, shownTotal: 6870, t, target: 2, perfect: stars === 3, rewound: false, coins: 34, bonus: true, hasBonus: stars === 3, cheer: cheer || pickRoutine({ stars }), prevBest: 7200, hotB: [] };
+    if (kind === 'win' && extra) { Object.assign(G.result, extra); const r = G.result; r.rv = { list: [r.treasure && { kind: 'treasure' }, r.gift && { kind: 'gift' }, r.hotB.length && { kind: 'hot' }].filter(Boolean).slice(0, 3), i: 0, t: 0 }; if (t > WIN_SHOW) r.rv.i = r.rv.list.length; } // QA: rewards (extra: { treasure, gift, hot, hotB })
+    else if (kind !== 'win') G.sim.state = 'failed';
     setScreen(kind);
   },
 };
