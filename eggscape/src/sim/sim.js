@@ -196,7 +196,7 @@ export class Sim {
     this.shatterV = SHATTER_V * this.vs;
     this.golden = opts.golden || false;
     // start boosters (store): opts.stone, opts.time (+15 s), opts.sponge (pad under the first drop), opts.nest (a wider
-    // basket), opts.snips (three thorns snipped at the start: sim/strike.js)
+    // basket), opts.snips (every start thorn snipped: sim/strike.js)
     this.timeLimit = level.time ? Math.round(level.time * this.MD.fuse) + (opts.time ? 15 : 0) : 0;
     this.orbs = [];
     this.embers = [];

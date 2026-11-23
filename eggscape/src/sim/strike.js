@@ -30,7 +30,7 @@ export const stkMethods = {
       id, any, on: !!(id && any), m: id && this.mode === 'easy' ? CHARGE.easy : 0, base: CHARGE.base, uses: 0, full: 0, saved: 0,
       fly: null, fx: [], glue: [], held: {}, gl: [], rage: 0, dcy: 0, n: 0,
       spent: 0, phx: null, tock: 0, tockRe: 0, tick: 0, // premium chicks: the Phoenix's one flight and its carry, Tick-Tock's stopped time
-      snip: this.opts.snips ? { n: 3, t: 0.9 } : null, // Thorn Snips (start boost): three snips, the first a beat after the start
+      snip: this.opts.snips ? { list: null, i: 0, t: 0.9, iv: 0.15, per: 1 } : null, // Thorn Snips (start boost): every thorn on the rings at the start, the first a beat in
     };
     this.stkEv = 0;
   },
@@ -279,18 +279,26 @@ export const stkMethods = {
       this.emit('stkPop', { egg: e, x: p.x, y: p.y });
     }
   },
-  // ---------- Thorn Snips (start boost): three thorns snipped off, one at a time, a beat after the level starts
+  // ---------- Thorn Snips (start boost): every thorn on the rings at the start is snipped, nearest to the eggs first, one
+  // after another (two or more at a time on a thorny level, so the whole run is over in about 3 s). Thorns that come
+  // later (boss orbs, lizard drops, regrowing vines) are not on the list: the boost is for the start.
   stkSnipStep() {
     const P = this.stk.snip;
     if (this.state !== 'play' || (P.t -= DT) > 0) return;
-    const live = [];
-    for (const ring of this.rings) for (const th of ring.thorns) if (th.alive) live.push(th);
-    if (!live.length || P.n <= 0) { this.stk.snip = null; return; }
-    const th = live[Math.floor(this.stkRand() * live.length)], q = this.thornAt(th);
-    this.emit('stkSnip', { x: q.x, y: q.y, n: 4 - P.n });
-    this.removeThorn(th, 'snip');
-    P.n--; P.t = 0.32;
-    if (P.n <= 0) this.stk.snip = null;
+    if (!P.list) {
+      const live = [], es = this.eggs.filter((e) => e.body).map((e) => e.body.getPosition());
+      this.rings.forEach((ring, ri) => ring.thorns.forEach((th, ti) => { if (!th.alive) return; const q = this.thornAt(th); let d = 1e9; for (const p of es) d = Math.min(d, Math.hypot(q.x - p.x, q.y - p.y)); live.push({ ri, ti, d }); }));
+      live.sort((a, b) => a.d - b.d); P.list = live.map((o) => [o.ri, o.ti]); // indices, so the state stays plain data
+      P.per = Math.max(1, Math.ceil(P.list.length * 0.15 / 2.1)); P.iv = Math.min(0.18, 2.1 / Math.ceil(P.list.length / P.per));
+    }
+    for (let k = 0; k < P.per && P.i < P.list.length; P.i++) {
+      const rg = this.rings[P.list[P.i][0]], th = rg && rg.thorns[P.list[P.i][1]]; if (!th || !th.alive) continue;
+      const q = this.thornAt(th);
+      this.emit('stkSnip', { x: q.x, y: q.y, n: P.i + 1 });
+      this.removeThorn(th, 'snip'); k++;
+    }
+    P.t = P.iv;
+    if (P.i >= P.list.length) this.stk.snip = null;
   },
 
   // ---------- the hit

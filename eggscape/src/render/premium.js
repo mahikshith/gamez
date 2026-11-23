@@ -187,6 +187,7 @@ export function premiumEvent(ev, fx, api) {
       RT.snips.push({ x: ev.x, y: ev.y, t0: null });
       fx.chips(ev.x, ev.y, '#7a9a5a', 5, 2);
       if (ev.n === 1) popup(ev.x, ev.y + 0.6, 'Snip!', { color: '#ffffff', size: 20 });
+      RT.snips.length > 8 && RT.snips.shift();
       return true;
   }
   return false;

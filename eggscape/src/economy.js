@@ -57,7 +57,7 @@ export const BOOSTERS = {
   snips: {
     id: 'snips',
     name: 'Thorn Snips',
-    line: 'Three thorns are snipped off as the level starts.',
+    line: 'Snips every thorn at the start.',
     price: 80,
     sku: 'booster_snips',
   },

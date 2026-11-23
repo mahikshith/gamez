@@ -72,6 +72,7 @@ import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm,
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
 import { strikeLayer } from './render/strikehit.js'; // Chick Strike: the villains' hit reactions
+import { streakFlame } from './ui/flame.js';
 import { pictoCheck, pictoCross, pictoWarn, pictoClock, pictoFlame, pictoGem, pictoTarget, pictoCracked, pictoBroken, pictoGoal, pictoPower, pictoStarMinus, pictoNoVideo } from './ui/picto.js'; // icon-first cards
 import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js';
 import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' crown // Chick Strike powers
@@ -2358,7 +2359,7 @@ const DIAG_MARK = /^(iap:|deal:|buy:|item:|chick:|charge:|hen:|skin:|kit:|hset:|
 // them off (not sound, not Calm motion), and each beat has its own pattern [on, off, on, ...] in ms: 18 to 30 ms one-shots
 // were not felt on most phones.
 const HAPTIC = { save: 30, crack: 45, broke: [60, 40, 80], star: 35, win: [40, 60, 40, 60, 120], fail: [120, 80, 160], strike: 50, crow: 70, boss: 80, hit: 40, thorn: 35, pick: 25, chick: 20, treasure: [30, 40, 30, 40, 150], tap: 25, tick: 20 };
-const EV_BUZZ = { break: 'broke', bossHit: 'hit', bossFlinch: 'hit', thiefHit: 'hit', thiefDefeat: 'hit', snakeRecoil: 'hit', eagleSlam: 'hit', kcHit: 'hit', gatorHit: 'hit', owlJam: 'hit', allyKnock: 'hit', pickup: 'pick', thornSnap: 'thorn', thornBurn: 'thorn', stkLaunch: 'strike' }; // events that had a sound but no buzz
+const EV_BUZZ = { break: 'broke', bossHit: 'hit', bossFlinch: 'hit', thiefHit: 'hit', thiefDefeat: 'hit', snakeRecoil: 'hit', eagleSlam: 'hit', kcHit: 'hit', gatorHit: 'hit', owlJam: 'hit', allyKnock: 'hit', pickup: 'pick', thornSnap: 'thorn', thornBurn: 'thorn', stkLaunch: 'strike', stkSnip: 'pick' }; // events that had a sound but no buzz
 let lastBuzz = { t: -9, p: 0 };
 // the power chick is ready: the button starts its heartbeat, the phone thumps lub-dub, a "Power ready!" tag pops by it
 function powerReady() {
@@ -2701,7 +2702,7 @@ const EVENT_SFX = {
   stkTockEnd: ['rewind', { vol: 0.45, pitch: 1.6 }],
   stkBubbleOn: ['bubble_on', { vol: 0.5, pitch: 1.2 }],
   stkPop: ['bubble_pop', { vol: 0.5, pitch: 1.3 }],
-  stkSnip: (ev) => ['thorn_snap', { vol: 0.55, pitch: 1.5 + ev.n * 0.1 }],
+  stkSnip: (ev) => ['thorn_snap', { vol: 0.55, pitch: 1.5 + (ev.n % 4) * 0.1 }],
   // powers
   powerOn: ['power_use'],
   magnetOn: ['power_use', { pitch: 0.8 }],
@@ -5994,7 +5995,7 @@ function hotBadge(x, y, s) {
   const p = save.calm ? 0 : 0.5 + 0.5 * Math.sin(G.t * 3);
   ui.roundRect(x, y, w, ih + 8 * s, (ih + 8 * s) / 2); ctx.fillStyle = 'rgba(150,40,10,0.9)'; ctx.fill();
   ctx.lineWidth = 2 * s; ctx.strokeStyle = `rgba(255,${200 + 40 * p | 0},120,0.9)`; ctx.stroke();
-  pictoFlame(ctx, x + 6 * s + 12 * s, y + 4 * s + ih / 2, 24 * s);
+  streakFlame(ctx, 'hot:card', x + 6 * s + 12 * s, y + 4 * s + ih / 2 + 1 * s, 28 * s, DR.hotCount(save), G.t, save.calm);
   ui.text(n, x + 32 * s, y + 4 * s + ih / 2, { size: 16 * s, color: '#fff', noRecord: true });
   ui.text('Free', x + 32 * s + nw + 8 * s, y + 4 * s + ih / 2, { size: 15 * s, color: '#ffe066', noRecord: true }); // the boosters cost nothing: say so
   hb.forEach((b, i) => drawBoosterIcon(ctx, b, x + 32 * s + nw + 8 * s + fw + i * (ih + 2 * s) + ih / 2, y + 4 * s + ih / 2, ih * 0.92, G.t));
@@ -6665,7 +6666,7 @@ function drawWinPage() {
       if (!inCard) return;
       const hb = r.hotB || [];
       rowWell(x, y, w, 56 * s, '#ffe0cc', '#fff3ea');
-      pictoFlame(ctx, x + 26 * s, y + 28 * s, 34 * s);
+      streakFlame(ctx, 'hot:win', x + 26 * s, y + 29 * s, 38 * s, r.hot, G.t, save.calm);
       const iw = 34 * s, ax = x + w - 8 * s - hb.length * iw;
       ui.text(`${r.hot} wins in a row`, x + 50 * s, y + (hb.length ? 18 : 28) * s, { size: 15.5 * s, color: C.ink, maxW: ax - x - 56 * s, tag: 'win:hot' });
       if (hb.length) tickLine('Free next level', x + 50 * s, y + 39 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: ax - x - 56 * s, tag: 'win:hot2' });
@@ -6822,7 +6823,7 @@ function drawReveal(r) {
     }
     if (calm || t > 0.6) tickLine(tasteLine(T), cx, cy + 0.6 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
   } else { // the win streak: a flame with the count, and the boosters the next level starts with
-    pop(0, cx, heroY - S * 0.04, 1, () => { pictoFlame(ctx, 0, 0, S * 0.66); });
+    pop(0, cx, heroY - S * 0.04, 1, () => { streakFlame(ctx, 'hot:rv', 0, 0, S * 0.66, r.hot, G.t, calm); });
     if (calm || t > 0.15) ui.num(String(r.hot), cx, heroY + S * 0.1, { size: S * 0.26, align: 'center', tag: 'rv:count' });
     const B = r.hotB, sp = Math.min(S * 0.42, (A.w - 30 * u) / B.length), isz = S * 0.36;
     B.forEach((b, j) => {
