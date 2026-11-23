@@ -35,18 +35,40 @@ public class MainActivity extends Activity {
     private WebView web;
     private long lastBack = 0;
     private Vibrator vib;
+    private volatile int buzzes = 0;
+    // 0.8.10: buzzes are marked as game feedback (USAGE_GAME), so Android applies the phone's media vibration setting to
+    // them; without attributes they were "unknown", which some phones file under touch feedback (often switched off)
+    private static final android.media.AudioAttributes GAME_ATTR = new android.media.AudioAttributes.Builder()
+        .setUsage(android.media.AudioAttributes.USAGE_GAME).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
     private String lastSafe = "";
     private WindowInsets lastInsets;
     private Monetization money;
 
     /** JS bridge: window.EggApp.vibrate(ms) */
     public class Bridge {
+        /** 0.8.10: what can stop a buzz on this phone, for the speed log and the Settings row (mykee felt none in 0.8.9,
+         *  with Battery saver on all session: Android mutes app vibration in Battery saver) */
+        @JavascriptInterface
+        public String hapticInfo() {
+            org.json.JSONObject o = new org.json.JSONObject();
+            try {
+                o.put("has", vib != null && vib.hasVibrator() ? 1 : 0);
+                if (vib != null && Build.VERSION.SDK_INT >= 26) o.put("amp", vib.hasAmplitudeControl() ? 1 : 0);
+                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (pm != null) o.put("saver", pm.isPowerSaveMode() ? 1 : 0);
+                android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                if (am != null) o.put("ringer", am.getRingerMode()); // 0 silent, 1 vibrate, 2 normal
+                o.put("sent", buzzes);
+            } catch (Exception ignored) { /* optional */ }
+            return o.toString();
+        }
         @JavascriptInterface
         public void vibrate(int ms) {
             if (vib == null || ms <= 0) return;
             if (ms > 500) ms = 500;
-            if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createOneShot(ms, ms >= 30 ? 255 : 140));
+            if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createOneShot(ms, ms >= 30 ? 255 : 140), GAME_ATTR);
             else vib.vibrate(ms);
+            buzzes++;
         }
         /** a pattern "on,off,on,..." in ms: strong (255) for beats of 30 ms or more, lighter (140) for short ones */
         @JavascriptInterface
@@ -61,8 +83,9 @@ public class MainActivity extends Activity {
                     int v = Math.max(0, Math.min(400, Integer.parseInt(p[i].trim())));
                     tm[i + 1] = v; amp[i + 1] = (i % 2 == 0) ? (v >= 30 ? 255 : 140) : 0;
                 }
-                if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createWaveform(tm, amp, -1));
+                if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createWaveform(tm, amp, -1), GAME_ATTR);
                 else vib.vibrate(tm, -1);
+                buzzes++;
             } catch (Exception ignored) { /* haptics are optional */ }
         }
         /** ads and in-app products (src/ads.js): each answers later through window.__eggAd / __eggBuy / __eggGrant */

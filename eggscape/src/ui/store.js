@@ -1190,7 +1190,7 @@ export function drawStore(ui, ctx, W, H, state) {
   const pad = D.pad * s;
 
   // the shop's own room: deep violet, a soft light from above, slow rays (still when reduced motion is on)
-  if (!themeBack(ctx, ui.skin, W, H, H * 0.8)) { // a skin pack paints its own room (ui/theme.js)
+  if (!themeBack(ctx, ui.skin, W, H, H * 0.8, true)) { // a skin pack paints its own room (ui/theme.js)
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0, '#4a3190');
   bg.addColorStop(0.55, '#2f1f66');
@@ -1256,6 +1256,9 @@ export function drawStore(ui, ctx, W, H, state) {
   const cw = cols === 1 ? Math.min(AW - 2 * pad, 520 * s) : Math.min(AW - 2 * pad, 2 * 440 * s + gap);
   const rows = [];
   const add = (h, draw, key, before = gap) => rows.push({ h, draw, key, before });
+  // 0.8.10 (mykee: the shop must open ON the item the player tapped): which row holds each card, and where each was drawn
+  const SC0 = state.scroll || {}, rowOf = {}, HL = SC0.hl, hit = (key) => { rowOf[key] = rows.length; };
+  let hlR = null; const mark = (key, x, y, w, h) => { if (HL && HL.key === key) hlR = { x, y, w, h }; };
   const head = (title, key) => { add(D.headH * s, (x, y, w) => {
     const sz = 12.5 * s, tw2 = ui.measure(title.toUpperCase(), sz), cx = x + w / 2, cy = y + D.headH * s / 2;
     ctx.fillStyle = 'rgba(255,236,200,0.28)';
@@ -1266,7 +1269,8 @@ export function drawStore(ui, ctx, W, H, state) {
   const cards = (items, key, ch = D.cardH * s) => {
     for (let i = 0; i < items.length; i += cols) {
       const R = items.slice(i, i + cols), rh = R.some((it) => it.tall) ? ch * 1.2 : ch; // a long line (Premium) gets a taller row
-      add(rh, (x, y, w) => { const k = R.length, cwi = (w - (k - 1) * gap) / k; R.forEach((it, j) => drawCard(ui, ctx, it, x + j * (cwi + gap), y, cwi, rh, s, t, k === 1)); }, i ? null : key, rows.length && rows[rows.length - 1].head ? 6 * s : gap);
+      R.forEach((it) => hit(it.key));
+      add(rh, (x, y, w) => { const k = R.length, cwi = (w - (k - 1) * gap) / k; R.forEach((it, j) => { drawCard(ui, ctx, it, x + j * (cwi + gap), y, cwi, rh, s, t, k === 1); mark(it.key, x + j * (cwi + gap), y, cwi, rh); }); }, i ? null : key, rows.length && rows[rows.length - 1].head ? 6 * s : gap);
     }
   };
 
@@ -1277,7 +1281,8 @@ export function drawStore(ui, ctx, W, H, state) {
     items.forEach(tileLook);
     for (let i = 0; i < items.length; i += tn) {
       const R = items.slice(i, i + tn);
-      add(th, (x, y, w) => { const x1 = x + (w - (R.length * tw + (R.length - 1) * gap)) / 2; R.forEach((it, j) => drawTile(ui, ctx, it, x1 + j * (tw + gap), y, tw, th, s, t)); }, i ? null : key, rows.length && rows[rows.length - 1].head ? 6 * s : gap);
+      R.forEach((it) => hit(it.key));
+      add(th, (x, y, w) => { const x1 = x + (w - (R.length * tw + (R.length - 1) * gap)) / 2; R.forEach((it, j) => { drawTile(ui, ctx, it, x1 + j * (tw + gap), y, tw, th, s, t); mark(it.key, x1 + j * (tw + gap), y, tw, th); }); }, i ? null : key, rows.length && rows[rows.length - 1].head ? 6 * s : gap);
     }
   };
 
@@ -1318,11 +1323,13 @@ export function drawStore(ui, ctx, W, H, state) {
       // each card's width by how much it holds (the hero's strip has the most icons)
       const wt = forSale.map((sku) => (hero(sku) ? 1.15 : sku === 'starter_nest' ? 0.8 : 1.05)), unit = (cw - (forSale.length - 1) * gap) / wt.reduce((a, b) => a + b, 0), artH = 92 * s;
       const rh = Math.max(...forSale.map((sku, j) => bundleTallH(sku, unit * wt[j], artH, s, hero(sku))));
-      add(rh, (x, y) => { let xx = x; forSale.forEach((sku, j) => { drawBundleTall(ui, ctx, sku, xx, y, unit * wt[j], rh, s, t, st, { hero: hero(sku), artH, tag: tag(sku) }); xx += unit * wt[j] + gap; }); }, null, 6 * s);
+      forSale.forEach((sku) => hit('iap:' + sku));
+      add(rh, (x, y) => { let xx = x; forSale.forEach((sku, j) => { drawBundleTall(ui, ctx, sku, xx, y, unit * wt[j], rh, s, t, st, { hero: hero(sku), artH, tag: tag(sku) }); mark('iap:' + sku, xx, y, unit * wt[j], rh); xx += unit * wt[j] + gap; }); }, null, 6 * s);
     } else {
       forSale.forEach((sku, i) => {
         const artH = (hero(sku) ? 150 : 118) * s, h = bundleTallH(sku, cw, artH, s, hero(sku));
-        add(h, (x, y, w) => drawBundleTall(ui, ctx, sku, x, y, w, h, s, t, st, { hero: hero(sku), artH, tag: tag(sku) }), null, i ? gap + 2 * s : 6 * s);
+        hit('iap:' + sku);
+        add(h, (x, y, w) => { drawBundleTall(ui, ctx, sku, x, y, w, h, s, t, st, { hero: hero(sku), artH, tag: tag(sku) }); mark('iap:' + sku, x, y, w, h); }, null, i ? gap + 2 * s : 6 * s);
       });
     }
     for (const sku of owned) add(52 * s, (x, y, w) => drawOwnedRow(ui, ctx, sku, x, y, w, 52 * s, s, t, st), null, forSale.length ? gap : 6 * s);
@@ -1331,7 +1338,8 @@ export function drawStore(ui, ctx, W, H, state) {
     const pc = cols === 1 ? 2 : 4, phh = D.packH * s;
     for (let i = 0; i < COIN_PACKS.length; i += pc) {
       const R = COIN_PACKS.slice(i, i + pc);
-      add(phh, (x, y, w) => { const cwi = (w - (pc - 1) * gap) / pc; R.forEach((sku, j) => drawPack(ui, ctx, sku, x + j * (cwi + gap), y, cwi, phh, s, t, st)); }, null, i ? gap : 6 * s);
+      R.forEach((sku) => hit('iap:' + sku));
+      add(phh, (x, y, w) => { const cwi = (w - (pc - 1) * gap) / pc; R.forEach((sku, j) => { drawPack(ui, ctx, sku, x + j * (cwi + gap), y, cwi, phh, s, t, st); mark('iap:' + sku, x + j * (cwi + gap), y, cwi, phh); }); }, null, i ? gap : 6 * s);
     }
     head('More', 'bank'); // the repeatable Helper Bundle (the same card as the bundles upright) and the bank
     if (cols === 1) { const artH = 118 * s, hh = bundleTallH('bundle_helper', cw, artH, s, false); add(hh, (x, y, w) => drawBundleTall(ui, ctx, 'bundle_helper', x, y, w, hh, s, t, st, { artH }), null, 6 * s); }
@@ -1340,7 +1348,7 @@ export function drawStore(ui, ctx, W, H, state) {
   } else if (tab === 'boosters') {
     head('Kits'); // bundles for coins first: a few boosts together for less
     tiles(KIT_ORDER.map((id) => kitItem(id, st)));
-    head('Boosts');
+    head('Boosts', 'boosts');
     tiles(BOOSTER_ORDER.map((id) => boosterItem(id, st)));
     head('Helpers');
     tiles(ITEM_ORDER.map((id) => coinItemCard(id, st)));
@@ -1366,7 +1374,15 @@ export function drawStore(ui, ctx, W, H, state) {
   const at = {};
   rows.forEach((R, i) => { total += i ? R.before : 0; R.off = total; if (R.key) at[R.key] = total; total += R.h; });
   SC.max = Math.max(0, total - avail);
-  if (SC.want) { if (at[SC.want] != null) { SC.y = at[SC.want] - (rows[0] && at[SC.want] ? 4 * s : 0); SC.v = 0; } SC.want = null; }
+  if (SC.want) { // a section ('coins', 'bank', 'premium'...) lands at the top; a card ('chick:frost', 'iap:coins_s') a little under it, whole, and gets a ring
+    const ri = rowOf[SC.want], R = ri != null ? rows[ri] : null;
+    if (R) {
+      const to = Math.max(0, Math.min(SC.max, R.off - (R.h < avail * 0.72 ? Math.min(avail * 0.22, avail - R.h - 8 * s) : 8 * s)));
+      SC.y = ui.calm ? to : Math.max(0, to - 56 * s); SC.to = ui.calm ? null : to; SC.v = 0; // set straight there, then one soft settle
+      SC.hl = { key: SC.want, t0: t };
+    } else if (at[SC.want] != null) { SC.y = at[SC.want] - (rows[0] && at[SC.want] ? 4 * s : 0); SC.v = 0; }
+    SC.want = null;
+  }
   SC.y = Math.max(-lim, Math.min(SC.max + lim, SC.y));
   const y0 = bodyTop - snapPx(SC.y, state.dpr || 1); // 2026-11-20: a short list starts at the top (the web's Free tab floated mid-screen)
   const clipped = (y, h, draw) => {
@@ -1381,6 +1397,16 @@ export function drawStore(ui, ctx, W, H, state) {
   const x0 = OX + AW / 2 - cw / 2;
   ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W, vb - vt); ctx.clip();
   for (const R of rows) { const y = y0 + R.off; clipped(y, R.h, () => R.draw(x0, y, cw)); }
+  if (hlR && HL) { // the wanted card: a gold ring that pulses twice and lets go (Calm motion: a still ring)
+    const k = (t - HL.t0) / 1.2;
+    if (k >= 0 && k < 1) {
+      const a = ui.calm ? 1 : Math.min(1, (1 - k) * 3), p = ui.calm ? 0 : 0.5 - 0.5 * Math.cos(k * Math.PI * 4), o = (4 + 4 * p) * s;
+      ctx.save(); ctx.globalAlpha = a;
+      ui.roundRect(hlR.x - o, hlR.y - o, hlR.w + 2 * o, hlR.h + 2 * o, 20 * s + o); ctx.lineWidth = (5 + 2 * p) * s; ctx.strokeStyle = 'rgba(255,214,60,0.45)'; ctx.stroke();
+      ui.roundRect(hlR.x - o, hlR.y - o, hlR.w + 2 * o, hlR.h + 2 * o, 20 * s + o); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#fff3a8'; ctx.stroke();
+      ctx.restore();
+    } else if (k >= 1) SC.hl = null;
+  }
   ctx.restore();
   if (SC.max > 0 && !ui.calm) { // a thin scroll thumb
     const th = Math.max(30 * s, (vb - vt) * (vb - vt) / (SC.max + vb - vt)), ty = vt + Math.max(0, Math.min(1, SC.y / SC.max)) * (vb - vt - th - 4 * s);
@@ -1694,7 +1720,7 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
     // a single small Shop chip
     const cs = Math.min(rowH, 46 * u);
     const cw = Math.min(w, Math.max(cs * 2.2, 100 * u));
-    ui.button('shop', 'Shop', x + w / 2 - cw / 2, rowY + (rowH - cs) / 2, cw, cs, {
+    ui.button('shop:boosts', 'Shop', x + w / 2 - cw / 2, rowY + (rowH - cs) / 2, cw, cs, { // the shop opens on its Boosts row
       kind: 'gold', icon: coinIcon(t), size: Math.min(18 * u, cs * 0.42),
     });
     ui.text('Spend coins on start boosters', x + w / 2, lineCy, { size: lineSize, align: 'center', maxW: w, color: C.ink2, tag: 'picker:hint' });

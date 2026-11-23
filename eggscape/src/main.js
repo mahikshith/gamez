@@ -914,6 +914,7 @@ function pointerDown(e) {
   if (G.adBusy || modalOpen()) { if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; } return; } // a sheet or popup takes every tap (and an ad wait: only its "Back to game")
   const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'pause' ? (G.ppRectR && x >= G.ppRectR.x ? G.ppageR : G.ppage) : null;
   if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
+  if (SC && G.settingsOpen && /^rs:\d+$/.test(id || '')) Object.assign(G.pdrag, { bar: true, x0: x }); // the ring speed bar: a sideways drag slides it, an up/down one scrolls the page
   if (G.screen === 'intro') { // 2026-11-19 level page: the page scrolls up/down, the chick row left/right (the first clear move picks)
     const inR = (R) => R && x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h;
     const land = ui.A.w > ui.A.h * 1.15, cx = inR(G.carRect) && G.car && G.car.max > 0 ? G.car : null;
@@ -921,7 +922,7 @@ function pointerDown(e) {
     if (cx || cy) G.pdrag = { pid: e.pointerId, cand: { x: cx, y: cy }, x0: x, y0: y, s0: 0, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
   }
   if (G.screen === 'levels' && G.mapTravel && !G.treasure) G.mapTravel = null; // a touch during the trip: the map is the player's now (not while the boss treasure sheet is up: the trip goes on after it)
-  if (G.screen === 'levels' && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; // the world map scrolls by drag; a tap on a stop still presses
+  if (G.screen === 'levels' && !G.settingsOpen && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; // the world map scrolls by drag; a tap on a stop still presses
   // 0.8.7: a finger put on a list that is still gliding catches it there (it used to keep sliding under the finger
   // until the finger moved), and that touch does not also press the button it happened to land on
   if (G.pdrag) { const pd0 = G.pdrag; for (const q of [pd0.sc, pd0.cand && pd0.cand.x, pd0.cand && pd0.cand.y]) if (q) { if (Math.abs(q.v) > 90) pd0.caught = true; q.v = 0; q.to = null; } if (pd0.caught) return; }
@@ -981,7 +982,14 @@ function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
   const pd = G.pdrag;
-  if (pd && pd.pid === e.pointerId && (G.screen === 'practice' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store' || G.screen === 'intro' || G.screen === 'pause')) { // 0.8.7: the pause page was missing here, so it never scrolled under a finger
+  if (pd && pd.pid === e.pointerId && (G.settingsOpen || G.screen === 'practice' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store' || G.screen === 'intro' || G.screen === 'pause')) { // 0.8.7: the pause page was missing here, so it never scrolled under a finger (0.8.10: and Settings over the title, mykee: "users are not able to scroll it")
+    if (pd.bar && (pd.scrub || (!pd.moved && Math.abs(x - pd.x0) > 9 * ui.u && Math.abs(x - pd.x0) > Math.abs(y - pd.y0)))) { // the speed bar follows the finger sideways
+      if (!pd.scrub) { pd.scrub = pd.moved = true; ui.pressedId = null; }
+      const b = ui.buttons.find((q) => /^rs:\d+$/.test(q.id) && x >= q.x && x < q.x + q.w), L = ui.buttons.filter((q) => /^rs:\d+$/.test(q.id));
+      const id = b ? b.id : L.length ? (x < L[0].x ? L[0].id : L[L.length - 1].id) : null;
+      if (id && RING_SPEEDS[+id.slice(3)] !== ringSpeed()) press(id);
+      return;
+    }
     if (!pd.moved && pd.cand) { // the level page: two scrollers under the finger, the first clear move picks the axis
       const dx = x - pd.x0, dy = y - pd.y0;
       if (Math.max(Math.abs(dx), Math.abs(dy)) > 9 * ui.u) {
@@ -1042,7 +1050,7 @@ function flingSpeed(pd) {
 }
 function pointerUp(e) {
   const pd = G.pdrag;
-  if (pd && pd.pid === e.pointerId) { if (pd.moved && pd.sc) pd.sc.v = flingSpeed(pd); G.pdrag = null; }
+  if (pd && pd.pid === e.pointerId) { if (pd.moved && pd.sc && !pd.scrub) pd.sc.v = flingSpeed(pd); G.pdrag = null; }
   if (G.screen === 'wonder') wonder.pointerUp(e); // WONDER
   const ct = G.chickTap; // v3.2: tap = power
   if (ct && ct.pid === e.pointerId && Math.hypot(e.clientX - ct.x, e.clientY - ct.y) < 14 * ui.u && G.t - ct.t < 0.45 && G.sim) { G.sim.tapChick(ct.id); buzz('chick'); }
@@ -1229,6 +1237,9 @@ async function press(id) {
     case 'store':
       openStore('deals');
       break;
+    case 'shop:boosts': // the level card's empty booster well: the shop's Boosts row
+      openStore('boosters', 'boosts');
+      break;
     case 'home': // back to the title from the shop or the pause card (the level in progress is left)
       goHome();
       break;
@@ -1252,7 +1263,7 @@ async function press(id) {
       break;
     }
     case 'home:premium':
-      openStore('deals');
+      openStore('deals', 'iap:' + PREMIUM_SKU);
       break;
     case 'home:charge': { // Premium's free Chick Charge of the day
       const w = E.claimPremiumCharge(save.wallet, today());
@@ -1300,7 +1311,7 @@ async function press(id) {
         G.nudge = null; persist(); audio.play('level_win'); toast(`+${n.coins} coins and a free ${E.BOOSTERS[b].name}!`, 2.8);
       } else if (n.kind === 'afford') {
         G.nudge = null; persist();
-        openStore(n.item.startsWith('chick:') ? 'boosters' : 'skins');
+        openStore(null, n.item); // straight onto that chick or egg, with a ring on it
       }
       break;
     }
@@ -1312,7 +1323,7 @@ async function press(id) {
       const O = G.offer;
       G.offer = null;
       if (O) BR.note(save, 'yes', { id: O.id });
-      if (O && O.id === 'skip_videos') { openStore('deals'); G.detail = 'iap:' + PREMIUM_SKU; } // a look at what it gives, never a payment from the card
+      if (O && O.id === 'skip_videos') { openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; } // a look at what it gives, never a payment from the card
       else if (O && O.sku) await buyIap(O.sku);
       break;
     }
@@ -1352,10 +1363,11 @@ async function press(id) {
     case 'cb:close':
       G.chickBuy = null;
       break;
-    case 'gm:shop': // "Open shop": the coin packs on Deals (from inside the shop too)
-      G.getMore = null;
-      openStore('deals', 'coins');
+    case 'gm:shop': { // "Open shop": the coin packs on Deals (from inside the shop too), on the pack the sheet suggested
+      const sku = G.getMore && G.getMore.sku; G.getMore = null;
+      openStore('deals', sku && ads.moneyShop ? 'iap:' + sku : 'coins');
       break;
+    }
     case 'gm:ad':
       await press('ad:coins');
       break;
@@ -1391,7 +1403,7 @@ async function press(id) {
       if (w) { save.wallet = w; persist(); audio.play('level_win'); buzz('treasure'); T.openedAt = G.t; }
       break;
     }
-    case 'tr:shop': G.treasure = null; openStore('boosters'); break;
+    case 'tr:shop': G.treasure = null; openStore('boosters', 'premium'); break; // "See premium chicks": their row
     case 'tr:play': { const T = G.treasure; G.treasure = null; const i = LEVELS.findIndex((Lv) => Lv.id === T.id); if (i >= 0 && playable(i)) startLevel(i); break; }
     case 'chest': {
       const total = bestTotal();
@@ -1558,12 +1570,12 @@ async function press(id) {
       applySettings(save); persist();
       break;
     case 'set:novideo': case 'chip:skip': // the "what you get" sheet of Unlock Everything: the shop opens on it, nothing is charged
-      G.skipChip = null; G.settingsOpen = false; openStore('deals'); G.detail = 'iap:' + PREMIUM_SKU;
+      G.skipChip = null; G.settingsOpen = false; openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU;
       break;
     case 'set:restore':
       ads.restore(); toast('Checking your purchases...', 2);
       break;
-    case 'rs:-': case 'rs:+': case 'rs:0': case 'rs:1': case 'rs:2': case 'rs:3': case 'rs:4': case 'rs:5': case 'rs:6': {
+    case 'rs:-': case 'rs:+': case 'rs:0': case 'rs:1': case 'rs:2': case 'rs:3': case 'rs:4': case 'rs:5': case 'rs:6': case 'rs:7': case 'rs:8': case 'rs:9': case 'rs:10': case 'rs:11': { // one per RING_SPEEDS (0.8.10: the bars past 200% did nothing)
       const k = RING_SPEEDS.indexOf(ringSpeed()), n = id === 'rs:-' ? k - 1 : id === 'rs:+' ? k + 1 : +id.slice(3);
       save.ringSpeed = RING_SPEEDS[clamp(n, 0, RING_SPEEDS.length - 1)];
       if (G.sim) G.sim.ringSpeed = save.ringSpeed;
@@ -1773,11 +1785,14 @@ async function rewarded(tag) {
 // ---------------------------------------------------------------- shop (2026-11-16 revamp)
 // the shop opens on a tab (and optionally scrolled to a section: 'coins' | 'bank'); Back returns to the exact screen it
 // was opened from (title, intro, fail card, pause)
+// want: a row ('coins', 'boosts', 'premium') or one card ('chick:frost', 'skin:dino', 'iap:coins_s'); the shop opens
+// on its tab, scrolled so that card sits whole near the top, with a ring on it (ui/store.js). No tab: the card's own.
+const storeTabFor = (k) => (!k ? 'deals' : /^(chick|boost|kit|item|charge):|^(boosts|chicks|premium)$/.test(k) || E.BOOSTERS[k] ? 'boosters' : /^(hen|set):/.test(k) ? 'hens' : /^skin:/.test(k) ? 'skins' : 'deals');
 function openStore(tab, want = null) {
   if (G.screen !== 'store') { G.storeFrom = G.screen; G.storeFlash = null; setScreen('store'); }
-  G.storeTab = tab;
+  G.storeTab = tab || storeTabFor(want);
   G.sscroll = { y: 0, v: 0, max: 0, t: G.t, want };
-  G.getMore = null; G.detail = null;
+  G.getMore = null; G.detail = null; G.chickBuy = null; // (the level card's chick sheet used to stay open over the shop)
   G.toasts = []; G.toast = null; // the level's tips do not follow into the shop
 }
 function goHome() {
@@ -2358,9 +2373,26 @@ const DIAG_MARK = /^(iap:|deal:|buy:|item:|chick:|charge:|hen:|skin:|kit:|hset:|
 // Haptics on the hero beats (the app's EggApp bridge, navigator.vibrate on the web). 0.8.9: only the Vibration switch turns
 // them off (not sound, not Calm motion), and each beat has its own pattern [on, off, on, ...] in ms: 18 to 30 ms one-shots
 // were not felt on most phones.
-const HAPTIC = { save: 30, crack: 45, broke: [60, 40, 80], star: 35, win: [40, 60, 40, 60, 120], fail: [120, 80, 160], strike: 50, crow: 70, boss: 80, hit: 40, thorn: 35, pick: 25, chick: 20, treasure: [30, 40, 30, 40, 150], tap: 25, tick: 20 };
+const HAPTIC = { attack: [40, 35, 60], slam: [70, 40, 90], save: 30, crack: 45, broke: [60, 40, 80], star: 35, win: [40, 60, 40, 60, 120], fail: [120, 80, 160], strike: 50, crow: 70, boss: 80, hit: 40, thorn: 35, pick: 25, chick: 20, treasure: [30, 40, 30, 40, 150], tap: 25, tick: 20 };
 const EV_BUZZ = { break: 'broke', bossHit: 'hit', bossFlinch: 'hit', thiefHit: 'hit', thiefDefeat: 'hit', snakeRecoil: 'hit', eagleSlam: 'hit', kcHit: 'hit', gatorHit: 'hit', owlJam: 'hit', allyKnock: 'hit', pickup: 'pick', thornSnap: 'thorn', thornBurn: 'thorn', stkLaunch: 'strike', stkSnip: 'pick' }; // events that had a sound but no buzz
 let lastBuzz = { t: -9, p: 0 };
+// 0.8.10 (mykee on 0.8.9: "I didn't feel vibrations or any shaky effects on any level. The user should feel it when an
+// egg is cracked or hurt, when a villain attacks"). Measured: a crack shook the view 1.4 px and a break 3.9 px (on a
+// phone's sharp screen: nothing), and a villain grabbing, biting or stinging an egg neither shook nor buzzed. Every
+// moment a villain goes for an egg, or something hits hard, now has a shake (trauma 0..1) and a buzz.
+const EV_HURT = {
+  // a villain goes for an egg
+  snakeEat: [0.5, 'attack'], snakeHit: [0.3, 'hit'], venomSpit: [0.35, 'attack'], eagleGrab: [0.55, 'attack'], eagleSteal: [0.55, 'attack'], eagleDive: [0.25, 'tick'],
+  thiefGrab: [0.5, 'attack'], thiefPounce: [0.4, 'attack'], chamSnatch: [0.45, 'attack'], chamGulp: [0.5, 'attack'], geckoLick: [0.35, 'attack'],
+  frogTongue: [0.35, 'attack'], frogEat: [0.5, 'attack'], frogGulp: [0.45, 'attack'], frogLand: [0.2, 'tick'], octGrab: [0.5, 'attack'], octInk: [0.3, 'attack'],
+  hermitGrab: [0.45, 'attack'], gatorSnap: [0.55, 'attack'], jellySting: [0.45, 'attack'], mosqLatch: [0.35, 'attack'], owlGrab: [0.5, 'attack'], owlSlam: [0.6, 'slam'],
+  turtleClamp: [0.45, 'attack'], mvDiveGrab: [0.5, 'attack'], kcSnap: [0.5, 'attack'], salScorch: [0.45, 'attack'], salFire: [0.3, 'attack'], puffSpine: [0.35, 'attack'],
+  thornSwipe: [0.4, 'attack'], thornThrown: [0.3, 'attack'], ratCuff: [0.3, 'attack'], webCatch: [0.3, 'attack'], spiderFlung: [0.3, 'attack'],
+  // hits that land
+  icicleHit: [0.45, 'hit'], emberHit: [0.4, 'hit'], lightning: [0.6, 'slam'], quake: [0.7, 'slam'], explode: [0.7, 'slam'], smash: [0.55, 'slam'], scorch: [0.4, 'hit'],
+  heatCrack: [0.4, 'hit'], lavaBlast: [0.55, 'slam'], bossStomp: [0.75, 'slam'], bossPunch: [0.65, 'slam'], bossThrow: [0.3, 'hit'], cannonSmash: [0.55, 'slam'], beetleCrush: [0.5, 'slam'],
+  mvShardHit: [0.4, 'hit'], mvMagma: [0.5, 'slam'], kcBonk: [0.4, 'hit'], stkHit: [0.35, 'hit'], stkBlast: [0.55, 'slam'], laserHit: [0.25, 'hit'],
+};
 // the power chick is ready: the button starts its heartbeat, the phone thumps lub-dub, a "Power ready!" tag pops by it
 function powerReady() {
   G.stkFullT = G.t; G.stkBeats = 0;
@@ -2883,6 +2915,8 @@ function handleEvents() {
   for (const ev of sim.events) {
     playEv(ev);
     if (EV_BUZZ[ev.type]) buzz(EV_BUZZ[ev.type]);
+    const hurt = EV_HURT[ev.type];
+    if (hurt) { fx.shake = Math.max(fx.shake, hurt[0]); if (!EV_BUZZ[ev.type]) buzz(hurt[1]); }
     // moment camera (these events also have their own cases below)
     if (ev.type === 'allyKnock') camMoment(ev.x, ev.y, 0.7); // the goose lands on its victim
     else if (ev.type === 'stkLaunch') camMoment(ev.tx, ev.ty, 0.65); // the power chick in flight: hold where it lands
@@ -2920,6 +2954,7 @@ function handleEvents() {
           camPunch(0.028, ev.x, ev.y);
         }
         hen('gasp', 1.2);
+        fx.shake = Math.max(fx.shake, 0.4 + 0.15 * clamp((ev.v || 4) / 8, 0, 1)); // 0.8.10: a crack is felt
         buzz('crack');
         if (ev.why === 'spike') audio.play('rock_hit', { vol: 0.6 });
         // v3: crack stage pop (G34), so every crack is explained
@@ -2939,7 +2974,7 @@ function handleEvents() {
           fx.impact(ev.x, ev.y, 0.62, ev.why === 'thorn' || ev.why === 'curtain' || ev.why === 'thornball' ? '#ff6f5e' : '#ffd76a');
           fx.shell(ev.x, ev.y, 0, 1, 0.9, 9, sim.water ? undefined : sim.groundY + 0.02);
         }
-        fx.kick(0.6);
+        fx.kick(0.6); fx.shake = Math.max(fx.shake, 0.7); // 0.8.10: a lost egg thumps
         G.hitstop = save.calm ? 0.07 : 0.1;
         camPunch(0.05, ev.x, ev.y);
         hen('cry', 2.2);
@@ -4074,7 +4109,7 @@ function lastEggMoment(sim) {
 
 // ---------------------------------------------------------------- render
 const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1 };
-const SCENE_SCREENS = { title: 1, store: 1, practice: 1 }; // these paint a full themed scene; the others keep the game behind and get a wash
+const SCENE_SCREENS = { title: 1, store: 1, practice: 1, levels: 1 }; // these paint a full themed scene (0.8.10: the map paints its own whole picture too, and the wash, drawn after it, dimmed its header and PLAY); the others keep the game behind and get a wash
 function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
 function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
 function drawStoreScreen() { // the shop's toast floats over its scrolling list (like a clipped card, it records nothing)
@@ -4125,7 +4160,8 @@ function render() {
   // Screen shake from trauma (fx.shake, 0..1): power 1.4 (0.35 is about 2.5 px, 0.7 about 7), so small hits still read and big ones thump; smooth
   // noise (summed sines), not per-frame random, with a whisper of roll. A few px at most. Reduced motion (C10)
   // turns off shakes, punches and flashes.
-  const tr = save.calm || save.shake === false ? 0 : Math.pow(fx.shake, 1.4), amp = clamp(11 * ui.u, 8, 16) * tr;
+  // 0.8.10: stronger (a crack about 6 px, a broken egg about 11, a boss slam about 16): 0.8.9's 1.4 px crack was not seen on a phone
+  const tr = save.calm || save.shake === false ? 0 : Math.pow(fx.shake, 1.15), amp = clamp(19 * ui.u, 15, 26) * tr;
   const ox = save.calm || save.shake === false ? 0 : amp * (Math.sin(t * 53.1) + 0.6 * Math.sin(t * 31.7 + 2.1)) / 1.6 + G.weather.shakeX;
   const oy = save.calm || save.shake === false ? 0 : amp * (Math.sin(t * 47.3 + 1.3) + 0.6 * Math.sin(t * 27.9 + 0.4)) / 1.6 + G.weather.shakeY;
   const roll = 0.012 * tr * Math.sin(t * 41.3 + 0.7);
@@ -5181,11 +5217,21 @@ function drawKeyHint() {
 // build(s, w) returns [{ h, gap?, draw(x, y, w) }]; w is the card's inner width.
 // o.ribbon: header colour; the card pops in with the screen (o.dx / o.dy: it slides instead, the win card).
 const CARD_HEAD = 50;
+// 0.8.10 (mykee: "settings, celebrations, rewards, the level card are not full screen, please make them full screen
+// according to the user's screen"): a stack card fills the safe area on a phone. The panel runs edge to edge and from
+// the ribbon down to the bottom lip; its content column keeps a readable width and sits in the middle of that panel, so
+// a tall screen gives the art and the rows more room instead of leaving the game showing round a small card.
+// Landscape and tablets keep the floating card (a page 1000 px wide reads badly), as does any caller passing full: false.
+function cardFull(o, A) {
+  if (o.full === false || o.twoCol && A.w > A.h * 1.15) return false;
+  return A.h > A.w * 1.15; // portrait: the page is the screen
+}
 function stackCard(title, build, o = {}) {
   const u = ui.u;
   ui.calm = save.calm;
   const A = ui.A, top = Math.max(G.hudBottom, A.y) + 16 * u; // the ribbon stands 8 units proud of the card
   const avail = A.y1 - top - 14 * u; // and the base lip 5 below
+  const full = cardFull(o, A);
   // o.twoCol on a wide screen (landscape): blocks marked right: true stack in a second column beside the rest
   const two = !!o.twoCol && A.w > A.h * 1.15;
   const colH = (L, s) => L.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
@@ -5195,23 +5241,27 @@ function stackCard(title, build, o = {}) {
       const blocks = build(s, cw), hl = colH(blocks.filter((b) => !b.right), s), hr = colH(blocks.filter((b) => b.right), s);
       return { s, w, blocks, cw, hl, hr, h: CARD_HEAD * s + Math.max(hl, hr) + 22 * s };
     }
-    const w = Math.min(o.maxW || A.w - 32 * u, 420 * s);
-    const blocks = build(s, w - 48 * s);
+    const w = full ? A.w : Math.min(o.maxW || A.w - 32 * u, 420 * s);
+    const inner = full ? Math.min(w - 32 * s, 420 * s - 48 * s) : w - 48 * s; // the content column, centred on a full page
+    const blocks = build(s, inner);
     const h = CARD_HEAD * s + colH(blocks, s) + 22 * s;
-    return { s, w, blocks, h };
+    return { s, w, blocks, h, inner };
   };
   let m = measure(u);
   // a narrower card wraps its text into more lines, so one rescale can still be too tall: step down until it fits
   for (let n = 0; n < 4 && m.h > avail + 0.5 && m.s > u * 0.45; n++) m = measure(Math.max(u * 0.45, m.s * Math.min(0.97, avail / m.h)));
   const { s, w, blocks } = m;
-  const h = Math.min(m.h, avail);
-  const x = (o.cx || A.cx) - w / 2;
-  const y = Math.max(top, (A.y1 + Math.max(G.hudBottom, A.y)) / 2 - h / 2);
+  const inner = m.inner ?? w - 48 * s, pad = (w - inner) / 2; // where the content column starts inside the panel
+  const h = full ? avail : Math.min(m.h, avail);
+  const x = full ? A.x : (o.cx || A.cx) - w / 2;
+  const y = full ? top : Math.max(top, (A.y1 + Math.max(G.hudBottom, A.y)) / 2 - h / 2);
+  // a full page spreads what is left over: the blocks keep their order, the room goes above and below them
+  const slack = full ? Math.max(0, h - m.h) : 0;
   // o.hidden: lay out only (each block's at(x, y, w) learns where it will sit); o.dx / o.dy: slide the card (win card entrance)
   if (o.hidden) {
-    let cy = y + CARD_HEAD * s;
-    for (const b of blocks) { cy += b.gap ?? 10 * s; if (b.at) b.at(x + 24 * s, cy, w - 48 * s); cy += b.h; }
-    return { x, y, w, h, s };
+    let cy = y + CARD_HEAD * s + slack * 0.45;
+    for (const b of blocks) { cy += b.gap ?? 10 * s; if (b.at) b.at(x + pad, cy, inner); cy += b.h; }
+    return { x, y, w, h, s, full };
   }
   ctx.save();
   if (o.dx || o.dy) ctx.translate(o.dx || 0, o.dy || 0);
@@ -5219,7 +5269,7 @@ function stackCard(title, build, o = {}) {
     const k = ui.pop(G.screenT, 0.32);
     if (k !== 1) { ctx.translate(x + w / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + h / 2)); }
   }
-  ui.frame(x, y, w, h, { s, r: 24 * s });
+  ui.frame(x, y, w, h, { s, r: full ? 2 * s : 24 * s });
   const rw = clamp(ui.measure(title, 24 * s) + 56 * s, w * 0.6, w - 14 * s);
   ui.ribbon(title, x + w / 2, y - 8 * s, rw, 40 * s, { s, color: o.ribbon || '#ee5a36', size: 24 * s, tag: 'card:title' });
   if (two) { // each column centred in the card's height
@@ -5239,15 +5289,15 @@ function stackCard(title, build, o = {}) {
     ctx.restore();
     return { x, y, w, h, s };
   }
-  let cy = y + CARD_HEAD * s;
+  let cy = y + CARD_HEAD * s + slack * 0.45;
   for (const b of blocks) {
     cy += b.gap ?? 10 * s;
-    if (b.at) b.at(x + 24 * s, cy, w - 48 * s);
-    b.draw(x + 24 * s, cy, w - 48 * s);
+    if (b.at) b.at(x + pad, cy, inner);
+    b.draw(x + pad, cy, inner);
     cy += b.h;
   }
   ctx.restore();
-  return { x, y, w, h, s };
+  return { x, y, w, h, s, full };
 }
 
 // one centered line of text as a stack block (brown ink on the cream card)
@@ -7364,7 +7414,7 @@ function drawPractice() {
   const u = ui.u, A = ui.A, pad = 14 * u, S = G.pscroll, vb = A.y1; // the list scrolls down to the bottom of the safe rect
   ui.calm = save.calm;
   const dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
-  if (!themeBack(ctx, ui.skin, W_, H_, H_ * 0.8)) {
+  if (!themeBack(ctx, ui.skin, W_, H_, H_ * 0.8, true)) {
     const bg = ctx.createLinearGradient(0, 0, 0, H_);
     bg.addColorStop(0, '#1c1440'); bg.addColorStop(1, '#3a2152');
     ctx.globalAlpha = 0.96; ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); ctx.globalAlpha = 1;
@@ -7606,6 +7656,7 @@ async function boot() {
   diag.init({
     version: __VERSION__, app: typeof __APP__ !== 'undefined' && !!__APP__, perf: PERF, guess: () => PERF.guess,
     counters: () => [stampStats.builds, bodyCache.builds, formStats.bakes],
+    haptics: () => { try { const b = typeof window !== 'undefined' && window.EggApp; return b && b.hapticInfo ? JSON.parse(b.hapticInfo() || '{}') : null; } catch (_) { return null; } },
     canvas, freed: () => [cvStats.freed, Math.round(cvStats.mb)],
     // the web view gave the canvas back after losing it: every cached picture may be blank, so the ones in reach are repainted
     onRestore: () => { releaseRings([]); stampSweep(); stampSweep(); if (G.backdrop) G.backdrop.resize(W_, H_, DPR); if (G.weather) G.weather.resize(W_, H_, DPR); G.frz = null; },

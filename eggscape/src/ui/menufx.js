@@ -27,7 +27,7 @@ const rain = () => mk(16, 48, (g) => { const r = g.createLinearGradient(0, 0, 0,
 // per effect: n particles; sprites; v = fall speed (u/s, negative rises); vx drift; sway amplitude; spin (rad/s); sz size range (u);
 // a alpha range; tw = twinkle in place (life seconds); flip = coin-like squash; rot = fixed tilt (rain)
 const FX = {
-  snow: { n: 68, spr: () => [glow('#fff', 0.5), flake(), glow('#fff', 0.25), flake()], v: [26, 62], vx: [-4, 4], sway: 14, spin: 1.6, sz: [9, 16], a: [0.85, 1], top: 1, depth: 1, vig: 1 },
+  snow: { n: 68, spr: () => [glow('#fff', 0.5), flake(), glow('#fff', 0.25), flake()], v: [26, 62], vx: [-4, 4], sway: 14, spin: 1.6, sz: [9, 16], a: [0.85, 1], top: 1, depth: 1 },
   marsh: { n: 18, spr: () => [marsh(), marsh(), glow('#fff', 0.15)], v: [-34, 30], vx: [-5, 5], sway: 10, spin: 0.9, sz: [16, 28], a: [0.75, 1], mix: 1 },
   glitter: { n: 26, spr: () => [star4('#fff6c0', 'rgba(255,215,90,0.55)'), star4('#fff', 'rgba(255,230,140,0.5)')], v: [-3, 3], vx: [-3, 3], sway: 0, spin: 0.3, sz: [12, 28], a: [0.7, 1], tw: [1.4, 3] },
   crystal: { n: 24, spr: () => [star4('#e8ccff', 'rgba(170,120,255,0.55)'), star4('#bff4ff', 'rgba(90,210,255,0.5)')], v: [-3, 3], vx: [-3, 3], sway: 0, spin: 0.3, sz: [12, 26], a: [0.7, 1], tw: [1.4, 3] },
@@ -76,10 +76,8 @@ export function menuFxBack(ctx, skin, save, W, H, u, DPR, t) {
   if (S.id !== skin.fx || S.W !== W || S.H !== H || S.calmed !== calm) setup(skin.fx, skin.fx, W, H, u, calm);
   const dt = S.t ? Math.min(0.05, Math.max(0, t - S.t)) : 0.016; S.t = t;
   const c = S.cfg, spr = S.spr;
-  if (c.vig) { // frosty corners: one cached gradient canvas
-    if (!S.vig || S.vigKey !== W + 'x' + H) S.vig = mk(Math.max(8, Math.round(W / 4)), Math.max(8, Math.round(H / 4)), (g, w, h) => { const r = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) / 2); r.addColorStop(0, 'rgba(225,244,255,0)'); r.addColorStop(1, 'rgba(225,244,255,0.5)'); g.fillStyle = r; g.fillRect(0, 0, w, h); }), S.vigKey = W + 'x' + H;
-    ctx.drawImage(S.vig, 0, 0, W, H);
-  }
+  // (0.8.10, mykee: "the screen is turning whitish"): the snow's frosty corners, a pale veil at half strength over the
+  // whole screen and its buttons, are gone; the falling snow alone carries the look
   for (let i = 0; i < S.n; i++) {
     const p = P[i];
     if (!calm) {

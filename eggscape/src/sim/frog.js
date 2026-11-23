@@ -26,6 +26,7 @@ export const FROG = {
   reach: 2.4, scareReach: 3.6, // m of arc to the gap it hops through
   tongue: 1.5, lickWarn: 0.5, tongueT: 0.4, gulpT: 0.65, lickCD: 4, // m, s
   scareR: 1.7, scareCD: 4, scareHop: 1.5, // m, s, height factor of the escape hop
+  hunt: 2.5, // s: an egg in another channel brings the next hop forward to this gap since the last one (0.8.10: the frog hunts)
   grab: 0.35, // fraction of the tongue phase at which it reaches its prey
   hang: 0.12, // sin(angle) past which a frog's surface is a ceiling and it drops
   low: -0.3, // a gap must sit below this sin(angle) (the lower part of the vault) to be hopped through
@@ -183,7 +184,12 @@ export const frogMethods = {
     switch (F.ph) {
       case 'sit': {
         if (F.lickCD <= 0) { const pr = this.frogPrey(F, M); if (pr) { this.frogLick(F, pr, M); return; } }
-        if ((F.next -= dt) > 0) return;
+        // 0.8.10: an egg in another channel brings the hop forward (never closer together than FROG.hunt), so the frog
+        // goes after the eggs instead of sitting out its timer
+        if ((F.next -= dt) > 0) {
+          const full = F.every * M.every, aim = this.frogAim();
+          if (!(aim && !aim.idle && aim.ch !== F.fi && full - F.next >= FROG.hunt * M.every)) return;
+        }
         const plan = this.frogPick(F, false, null);
         if (plan) { this.frogPlan(F, plan, false); this.frogSet(F, 'crouch', FROG.hopWarn * M.warn); this.emit('frogCrouch', { x: F.x, y: F.y, id: F.id }); } else F.next = 1.5;
         break;
@@ -293,10 +299,26 @@ export const frogMethods = {
   // ---------- hopping
   // candidate hops: through a gap of the floor ring (down, into the next channel out) or of the ring above (up);
   // `step` hops along the floor toward a gap when none is in reach. scared: away from the threat, and further.
+  // 0.8.10 (mykee: "the frog tends to move upward only, it doesn't have a brain of its own"): where the frog wants to
+  // be. The eggs run from the middle outward to the basket, so the frog goes for the egg that is closest to getting
+  // home: its channel, and its angle. Returns null when no egg is loose (then it hops as it likes, as before).
+  frogAim() {
+    let best = null, bs = -1e9;
+    for (const e of this.aliveEggs()) {
+      const p = e.body.getPosition(), ch = this.channelOf(e);
+      const sc = ch * 10 - Math.abs(wrap(Math.atan2(p.y, p.x) + Math.PI / 2)) ; // further out, and nearer the bottom, matters more
+      if (sc > bs) { bs = sc; best = { x: p.x, y: p.y, ch, w: Math.atan2(p.y, p.x) }; }
+    }
+    // no egg loose (they are all home or gone): it waits where the eggs will come through, the lower outer channels,
+    // instead of drifting into the middle of the vault
+    if (!best) { const ch = Math.max(0, this.rings.length - 2); best = { x: 0, y: -1, ch, w: -Math.PI / 2, idle: 1 }; }
+    return best;
+  },
   frogPick(F, scared, th) {
     if (F.side > 0) return null; // hops start from a floor in the lower half
     const n = this.rings.length, wf = F.wa, reach = scared ? FROG.scareReach : FROG.reach;
     const away = (w) => (th ? Math.abs(wrap(w - Math.atan2(th.y, th.x))) : 0);
+    const aim = scared ? null : this.frogAim();
     const C = [];
     for (const hk of ['down', 'up']) {
       const ri = hk === 'down' ? F.fi : F.fi - 1, ti = hk === 'down' ? F.fi + 1 : F.fi - 1;
@@ -308,7 +330,18 @@ export const frogMethods = {
         if (Math.sin(wg) > FROG.low || Math.abs(wrap(wg - wf)) * ring.r > reach) return;
         for (const side of [1, -1]) {
           const land = this.frogLandAt(F, hk, ri, ti, g, wg, side);
-          if (land) C.push({ hk, hr: ri, hg: k, ti, ...land, w: scared ? 0.2 + away(wg + side * 0.1) : 1 });
+          if (!land) continue;
+          let w = 1;
+          if (aim) {
+            // the channel it would land in, against the egg's: on it is best, one step toward it is good, away is poor
+            const d0 = Math.abs(F.fi + (F.fi >= aim.ch ? 0 : 1) - aim.ch), d1 = Math.abs(ti - aim.ch);
+            w = d1 === 0 ? 6 : d1 < d0 ? 3 : d1 === d0 ? 1 : 0.25;
+            // and how near the egg it lands, going round (a frog beside the egg can plug the gap under it)
+            const wl = this.rings[land.tpl >= 0 ? ti : ti].body.getAngle() + land.tla;
+            w *= 1 + 2.2 * Math.max(0, 1 - Math.abs(wrap(wl - aim.w)) / 1.2);
+            if (land.tpl >= 0 && d1 === 0) w *= 1.8; // landing IN a gap of the egg's channel: its signature move
+          }
+          C.push({ hk, hr: ri, hg: k, ti, ...land, w: scared ? 0.2 + away(wg + side * 0.1) : w });
         }
       });
     }
@@ -346,15 +379,23 @@ export const frogMethods = {
     let tw = null;
     if (scared && th) tw = wf + (wrap(wf - Math.atan2(th.y, th.x)) >= 0 ? 1 : -1) * (2.0 / this.rings[F.fi].r);
     else {
+      // 0.8.10: toward the gap that leads to the egg it is after; without a loose egg, the nearest usable gap, as before
+      const aim = this.frogAim();
       let bd = 1e9;
       for (const ri of [F.fi, F.fi - 1]) {
         if (ri < 0 || (ri === F.fi && F.fi > n - 2)) continue; // ring F.fi leads down only if there is a channel below it
+        const ti = ri === F.fi ? F.fi + 1 : F.fi - 1;
         const ring = this.rings[ri];
         for (const g of ring.gaps) {
           const wg = ring.body.getAngle() + g.a, d = wrap(wg - wf);
-          if (this.frogGapOk(g) && Math.sin(wg) <= FROG.low && Math.abs(d) * ring.r < bd) { bd = Math.abs(d) * ring.r; tw = wf + clamp(d, -1.4 / ring.r, 1.4 / ring.r); }
+          if (!this.frogGapOk(g) || Math.sin(wg) > FROG.low) continue;
+          // the cost: how far round the gap is, plus a penalty for a gap that leads away from the egg
+          const cost = Math.abs(d) * ring.r + (aim ? 3 * Math.max(0, Math.abs(ti - aim.ch) - Math.abs(F.fi - aim.ch)) : 0);
+          if (cost < bd) { bd = cost; tw = wf + clamp(d, -1.4 / ring.r, 1.4 / ring.r); }
         }
       }
+      // no gap at all to walk to: shuffle round toward the egg anyway, so it never looks stuck
+      if (tw === null && aim) { const d = wrap(aim.w - wf); if (Math.abs(d) * this.rings[F.fi].r > 0.6) tw = wf + clamp(d, -1.4 / this.rings[F.fi].r, 1.4 / this.rings[F.fi].r); }
     }
     if (tw === null || Math.abs(wrap(tw - wf)) * this.rings[F.fi].r < 0.3) return null;
     const T = this.rings[F.fi], land = this.frogLandSpot(F, T, F.fi, tw);

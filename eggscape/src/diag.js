@@ -55,6 +55,7 @@ function closeLevel(res) {
   const o = { k: 'end', t: T(), id: L.id, res: res || '', s: Math.round((now() - L.at) / 1000), n: L.n, fps: r1(L.n / Math.max(0.001, L.span / 1000)), late: L.n ? r1(100 * L.late / L.n) : 0, worst: Math.round(L.worst), js: L.n ? r1(L.js / L.n) : 0, jsx: r1(L.jsx), hits: L.hits };
   const nat = native(false); if (nat) o.nat = nat;
   try { if (D.env.freed) o.fr = D.env.freed(); } catch (_) { /* optional */ } // [pictures given back so far, MB]
+  try { if (D.env.haptics) { const h = D.env.haptics(); if (h) o.hap = h; } } catch (_) { /* optional */ } // 0.8.10: buzzes sent, and what could be muting them (Battery saver, ringer)
   push(o);
   D.L = null; D.sim = null; resetWin(); save();
 }

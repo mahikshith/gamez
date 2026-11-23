@@ -190,7 +190,10 @@ const ANIM = {
 
 const cache = {};
 // the scene for this skin, painted once per size (gy: where the ground line sits; default 78% down)
-export function themeBack(ctx, skin, W, H, gy) {
+// list: a scrolling list sits over the scene (shop, Practice). A pale ground (the winter pack's snow) then gets a night
+// shade, so the list's light headings and the cards keep their contrast (0.8.10, mykee: the snowy shop was "too whitish")
+const lightGround = (p) => { const c = p && p.ground && p.ground[0]; if (!c || c[0] !== '#' || c.length < 7) return false; const n = parseInt(c.slice(1, 7), 16); return (0.3 * (n >> 16) + 0.59 * ((n >> 8) & 255) + 0.11 * (n & 255)) / 255 > 0.7; };
+export function themeBack(ctx, skin, W, H, gy, list = false) {
   if (!skin || !skin.pack) return false;
   const DPR = ctx.getTransform().a || 1;
   gy = Math.round(gy || H * 0.78);
@@ -207,6 +210,7 @@ export function themeBack(ctx, skin, W, H, gy) {
   }
   ctx.drawImage(c, 0, 0, W, H);
   const k = Math.max(0.78, Math.min(1.5, Math.min(W, H) / 420)); ctx.save(); ANIM[skin.pack.bg](ctx, W, H, gy, skin.pal, k, CLK.t); ctx.restore(); // the live layer
+  if (list && lightGround(skin.pal)) { const y0 = Math.round(gy || H * 0.78) - 40 * k, g = ctx.createLinearGradient(0, y0, 0, H); g.addColorStop(0, 'rgba(14,24,56,0)'); g.addColorStop(0.35, 'rgba(14,24,56,0.55)'); g.addColorStop(1, 'rgba(14,24,56,0.7)'); ctx.fillStyle = g; ctx.fillRect(0, y0, W, H - y0); }
   return true;
 }
 // over a screen that keeps the game behind it (map, pause, intro, win, fail): a colour wash and a soft edge, no scene
