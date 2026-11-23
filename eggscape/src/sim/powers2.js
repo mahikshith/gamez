@@ -10,7 +10,8 @@
 //   thunderclap : every creature stunned CLAP.stun s (the big ones CLAP.big s) | gate doors and portals black out:
 //                 doors stay as they are, portals neither pull nor send, multiplier gates pay nothing
 //   laser       : LASER.shots taps within LASER.t s: a beam from the centre cuts thorns, barriers, thorn curtains and
-//                 walls on its line and scares creatures off it | it also burns every sponge pad it crosses
+//                 walls on its line; every villain it crosses is singed and stunned or driven off (bosses flinch:
+//                 p2LaserFoes) | it also burns every sponge pad it crosses
 //   spin        : the whole rig spins as one for SPIN.t s and flings creatures out to the rim | eggs tumble too
 //   pepper      : creatures sneeze and flee for PEPPER.flee s | a smoke cloud hides part of the board PEPPER.cloud s
 //   shrink      : eggs shrink to quail size SHRINK.t s: through grates, creatures lose track | they crack easier
@@ -50,6 +51,7 @@ const P2_MODE = { easy: { up: 1.15, down: 0.7 }, medium: { up: 1, down: 1 }, har
 const BOSS_RESIST = 0.4;
 const FIRE_RESIST = 0.5; // frost on the lava salamander
 const BIG = 0.6; // the eagle (a big one): stun share
+const LASER_FLINCH = 0.6; // s a boss flinches when the beam crosses it (no stun, no kill)
 
 // The combo album (future page): pairs, names and one line each, in discovery order.
 export const COMBOS = [
@@ -73,7 +75,7 @@ export const p2Methods = {
     this.p2 = {
       nova: 0, shock: 0, shockR: -1, dark: 0, clap: 0, laser: 0, shots: 0, aim: -Math.PI / 2, sweep: -1, sweepA: 0, sweepDir: 1,
       spin: 0, spinMax: 0, spinDir: 1, pep: 0, cloud: null, shrink: 0, iron: 0, decoy: null,
-      beams: [], fx: {}, pads: [], n: 0, warp: null,
+      beams: [], fx: {}, lz: {}, pads: [], n: 0, warp: null,
     };
     this.p2d = null; // the decoy's body ({decoy, id, alive, chick, body}); its plain state is p2.decoy
     // narrow gaps get a bar only an iron egg feels (switched in p2Pass); drawn while iron is on.
@@ -303,6 +305,44 @@ export const p2Methods = {
     this.p2Mark('b', kind === 'out' ? 'ice' : kind === 'bolt' ? 'zap' : kind === 'pepper' ? 'pep' : kind, Math.max(1, t), B.x, B.y);
   },
 
+  // ---------- the beam on the villains (v0.8.9, mykee: "the laser could also affect the villains"). Each one once per beam
+  // (P.lz: key -> s, so the sweep does not hit it every step). A plain villain is singed and stunned or driven off ~3 s in
+  // its own stun / flee state and lets go of what it holds; a boss only flinches (LASER_FLINCH s) and takes a hit only where
+  // powers already hurt it (a dizzy Grandpa Gator, a trapped thief boss). One 'laserHit' {kind, x, y, boss} per villain.
+  p2LaserFoes(test) {
+    const P = this.p2, T = 3 * this.p2M.up, F = LASER_FLINCH, lz = P.lz || (P.lz = {});
+    const hit = (key, kind, x, y, boss) => { if (lz[key] > 0) return false; lz[key] = 1.4; this.emit('laserHit', { kind, x, y, boss: boss ? 1 : 0 }); return true; };
+    for (const V of this.stkTargets()) {
+      const R = V.ref, ty = V.type;
+      if (ty === 'snake') {
+        if (!R.pts.some((q, i) => i % 3 === 0 && test(q.x, q.y, 0.25)) || !hit(V.key, 'snake', V.x, V.y, V.boss)) continue;
+        if (V.boss) { R.stun = Math.max(R.stun, F); R.hurt = 'drop'; R.strike = 0; R.mood = 'shock'; R.moodT = F; this.p2Mark('s' + R.id, 'scare', F); } // a snake boss: flinch
+        else this.p2Snake(R, 'scare', T);
+      } else if (ty === 'sal') {
+        if (!R.pts.some((q, i) => i % 3 === 0 && test(q.x, q.y, 0.3)) || !hit(V.key, R.sp === 'sal' ? 'salamander' : R.sp, V.x, V.y, R.boss)) continue;
+        if (R.boss) this.salDaze(R, F, 'bolt'); else this.p2Sal(R, 'scare', T);
+      } else if (ty === 'gator') {
+        const Fr = this.byFrame(R), len = this.gLen(R);
+        let on = false;
+        for (let k = -2; k <= 2 && !on; k++) { const d = (k / 2) * len * 0.45; on = test(Fr.x + Fr.tx * d + Fr.nx * 0.15, Fr.y + Fr.ty * d + Fr.ny * 0.15, 0.2 * R.s); }
+        if (!on || !hit(V.key, 'gator', Fr.x, Fr.y, R.boss)) continue;
+        if (!R.boss) this.gFlee(R, T, 'laser');
+        else if (!this.gatorHurt(R, 'laser')) { R.flinch = Math.max(R.flinch || 0, F); R.stn = R.stnMax = Math.max(R.stn, F); } // Grandpa: a tooth only while dizzy
+      } else {
+        const reach = { eagle: 0.9, thief: 0.3, frog: 0.4, octo: 0.5, fish: 0.6, hermit: 0.35, puff: 0.4, jelly: 0.35, kc: 0.9, spider: 0.3, beetle: 0.35, jack: 0.3, turtle: 0.45, mosq: 0.35, bx: 0.9 }[ty] ?? 0.4;
+        let on = !(ty === 'octo' && R.ph === 'in') && test(V.x, V.y, reach); // an octopus still climbing in cannot be stunned yet
+        if (ty === 'kc') for (const C of R.claws) if (this.kcIn(C) && test(this.kcTip(C).x, this.kcTip(C).y, 0.3)) { on = true; this.kcRecoil(C, 'zap'); } // claws on the line let go
+        if (!on || !hit(V.key, ty === 'thief' ? R.kind : ty, V.x, V.y, V.boss)) continue;
+        if (ty === 'eagle') this.p2EagleHit('scare', T); // it drops a carried egg
+        else if (ty === 'thief') { if (!R.boss) this.thiefP2Only(R, 'scare', T); else if (R.ph === 'trapped') this.thHurt(R, 'zap', this.thBody(R)); else { R.zap = 0.3; this.thDaze(R, F, 'zap'); } }
+        else if (ty === 'turtle') { if (R.eid) this.tLet(R, 'laser'); this.stkApply(V, 'bolt', T, 'laser'); }
+        else if (ty === 'mosq') this.qScatter(R, Math.max(T, 3), 'laser');
+        else if (ty === 'kc' || ty === 'bx') { const B = this.bx && this.bx.boss; if (B) { B.flinch = Math.max(B.flinch || 0, F); B.dizzy = Math.max(B.dizzy || 0, F); this.p2Mark('b', 'scare', F); } }
+        else this.stkApply(V, 'bolt', T, 'laser'); // frog, octopus, fish, crabs, puffers, jellies, spiders, beetles, jacks: their own stun
+      }
+    }
+  },
+
   // ---------- the decoy
   p2Decoy(egg) {
     const P = this.p2, p = egg.body.getPosition(), r = Math.hypot(p.x, p.y) || 1;
@@ -407,16 +447,7 @@ export const p2Methods = {
       const q = ringPoint(this, W.ri, W.la, this.rings[W.ri].r - RING_TH / 2 - 0.25);
       if (test(q.x, q.y, W.w / 2 + 0.05)) { removeWall(this, W, 'laser'); n++; }
     }
-    // creatures on the line back off
-    const T = 3 * this.p2M.up;
-    for (const S of this.p2Snakes()) if (S.pts.some((q, i) => i % 3 === 0 && test(q.x, q.y, 0.25)) && !(this.p2.fx['s' + S.id]?.k === 'scare')) this.p2Snake(S, 'scare', T);
-    for (const C of this.p2Sals()) if (C.pts.some((q, i) => i % 3 === 0 && test(q.x, q.y, 0.3)) && C.ph !== 'retreat') this.p2Sal(C, 'scare', T);
-    const E = this.p2Eagle();
-    if (E && test(E.x, E.y, 0.9) && E.phase !== 'dazed' && E.phase !== 'up') this.p2EagleHit('scare', T);
-    for (const V of this.thieves || []) { if (!this.thLive(V)) continue; const b = this.thBody(V); if (test(b.x, b.y, 0.3) && V.ph !== 'home') this.thiefP2Only(V, 'scare', T); }
-    this.bayouLaser?.(test, T); // v3.7
-    const B = this.bx && this.bx.boss;
-    if (B && test(B.x, B.y, 0.9) && this.p2.fx.b?.k !== 'scare') this.p2Boss('scare', T);
+    this.p2LaserFoes(test); // v0.8.9: every villain on the line reacts
     return n;
   },
   p2Curtain(ring, g, why) {
@@ -541,6 +572,7 @@ export const p2Methods = {
     for (const B of P.beams) B.t += DT;
     while (P.beams.length && P.beams[0].t > 0.5) P.beams.shift();
     for (const k in P.fx) if ((P.fx[k].t -= DT) <= 0) delete P.fx[k];
+    if (P.lz) for (const k in P.lz) if ((P.lz[k] -= DT) <= 0) delete P.lz[k];
     if (P.warp) this.warpStep(dt); // sim/warp.js: the gate, the swallowed creature, the pulled eggs
     // the sweep beam (laser + spin): a full circle in P2.laser.sweep s
     if (P.sweep >= 0) {

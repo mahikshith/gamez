@@ -519,18 +519,6 @@ export const bayouMethods = {
     }
     void mode;
   },
-  // the laser beak's line (sim/powers2.js p2Cut): gators on it back off (a dizzy Grandpa takes a hit), swarms scatter
-  bayouLaser(test, T) {
-    if (!this.gators) return;
-    for (const G of this.gators) {
-      if (G.ph === 'hid' || G.ph === 'gone' || G.ph === 'beaten') continue;
-      const F = this.byFrame(G), len = this.gLen(G);
-      let on = false;
-      for (let k = -2; k <= 2 && !on; k++) { const d = (k / 2) * len * 0.45; on = test(F.x + F.tx * d + F.nx * 0.15, F.y + F.ty * d + F.ny * 0.15, 0.2 * G.s); }
-      if (on && !this.gatorHurt(G, 'laser')) this.gFlee(G, T * (G.boss ? 0.4 : 1), 'laser');
-    }
-    for (const Q of this.mosqs) if (Q.ph !== 'scatter' && test(Q.x, Q.y, 0.35)) this.qScatter(Q, MOSQ.scatter, 'laser');
-  },
   bayouHit(kind, o) {
     if (!this.turtles) return 0;
     let n = 0;

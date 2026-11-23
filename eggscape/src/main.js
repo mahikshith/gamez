@@ -2942,6 +2942,12 @@ function handleEvents() {
         audio.play('level_fail');
         toast("Time's up!", 2.2);
         break;
+      case 'laserHit': // v0.8.9: the beam singes a villain (sim/powers2.js p2LaserFoes): sizzle, soot and smoke, a buzz
+        audio.play('lava_sizzle', { vol: 0.6, pitch: 1.6 }); audio.play('glass_crack', { vol: 0.35, pitch: 2.2 });
+        fx.chips(ev.x, ev.y, '#2b1a12', 8, 2); fx.smoke(ev.x, ev.y + 0.1, ev.boss ? 3 : 5, 'rgba(50,44,44,0.6)');
+        buzz('hit');
+        if (!save.seen.laserFoe) { save.seen.laserFoe = 1; persist(); tipToast('The laser stuns villains too!'); }
+        break;
       case 'vaultBurst':
         G.burstAt = G.t; // 2026-11-15: every creature and portal is blown out with the rings (blastXf), none left hanging
         audio.play('bomb_explode', { vol: 0.8 });
@@ -5299,11 +5305,13 @@ const pageSection = (str, s, tag) => ({ h: 26 * s, gap: 18 * s, draw: (x, y, w) 
   if (lw > 12 * s) { ctx.fillStyle = 'rgba(255,226,122,0.45)'; ctx.fillRect(x, y + 13 * s, lw, 1.5 * s); ctx.fillRect(x + w - lw, y + 13 * s, lw, 1.5 * s); }
   ui.text(str, x + w / 2, y + 13 * s, { size: ts, align: 'center', maxW: w, color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', tag: 'intro:sec:' + tag });
 } });
+const lvLaser = () => ((G.level && G.level.orbs) || []).some((o) => o.type === 'laser'); // v0.8.9: the laser cannon hits villains too
 // every villain: a big living portrait, its name, what it does and how to beat it (no tapping needed to read it)
 function foeCard(k, i, s, iw) {
   const C = ui.C;
   const I = VILLAIN_INFO[k] || { name: k, does: '', group: 'creature' }, P = 96 * s, tx0 = P + 26 * s, tw = iw - tx0 - 14 * s;
   const ds = 15.5 * s, bs = 15 * s, dl = wrapText(I.does || '', ds, tw).slice(0, 2), bl = I.beat ? wrapText('Beat it: ' + I.beat, bs, tw).slice(0, 2) : [];
+  if (I.group !== 'hazard' && lvLaser()) bl.push(I.group === 'boss' ? 'Laser: it flinches.' : 'Laser: stuns it.'); // v0.8.9: the beam hits villains too
   const th = 12 * s + 26 * s + dl.length * ds * 1.25 + (bl.length ? 5 * s + bl.length * bs * 1.25 : 0) + 10 * s, h = Math.max(P + 18 * s, th);
   return { h, gap: i ? 10 * s : 8 * s, draw: (x, y, w) => {
     const grp = 'intro:foe' + i;
@@ -5779,6 +5787,11 @@ function foeStage(kd, i, s, iw) {
     const nm = I.name, ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
     ui.roundRect(sx + sw - 8 * s - tw, sy + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = I.group === 'boss' ? 'rgba(160,30,40,0.9)' : 'rgba(30,24,40,0.72)'; ctx.fill();
     ui.text(nm, sx + sw - 8 * s - tw / 2, sy + 21 * s, { size: ts, align: 'center', color: '#fff', maxW: tw - 12 * s, noRecord: true });
+    if (I.group !== 'hazard' && lvLaser()) { // v0.8.9: a red tag in the stage's corner says what the laser does to it
+      const lt = I.group === 'boss' ? 'Laser: it flinches' : 'Laser: stuns it', ls = 13.5 * s, lw = ui.measure(lt, ls) + 20 * s;
+      ui.roundRect(sx + 8 * s, sy + stH - 34 * s, lw, 26 * s, 13 * s); ctx.fillStyle = 'rgba(176,34,24,0.9)'; ctx.fill();
+      ui.text(lt, sx + 8 * s + lw / 2, sy + stH - 21 * s, { size: ls, align: 'center', color: '#fff', noRecord: true });
+    }
     ui.text(plan.cap, x + w / 2, sy + stH + 18 * s, { size: 16.5 * s, align: 'center', color: '#2d6a1c', maxW: w - 24 * s, tag: 'pause:cap' + i });
   } };
 }

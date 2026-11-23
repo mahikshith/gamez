@@ -366,7 +366,7 @@ export const SPECS = [
 
 
   // ---------------- 9 Gator Bayou (v3.7): an alligator, a mosquito swarm and a snapping turtle; Grandpa Gator at L45.
-  // Thorn vines are the clock. Powers taught here: Pepper Puff (L41), Decoy Egg (L42), Laser Beak (L43).
+  // Thorn vines are the clock. Powers taught here: Pepper Puff (L41), Decoy Egg (L42), Laser Cannon (L43).
   { id: 41, world: 9, theme: 'bayou', name: 'Gator Crossing', eggs: 3, target: 2, spacing: 1.15, material: 'wood', minMoves: 4,
     nest: { w: 2.8 }, bonus: { kind: 'turns' }, gator: { ch: 4, a: -60, delay: 6 }, frog: { ch: 2, a: -130, delay: 16, every: 8 },
     orbs: [{ type: 'pepper', ch: 2 }, { type: 'fire_red', ch: 3 }],
@@ -382,7 +382,7 @@ export const SPECS = [
   { id: 43, world: 9, theme: 'bayou', name: 'Snapper Slough', eggs: 3, target: 2, spacing: 1.15, material: 'wood', minMoves: 5,
     nest: { w: 2.8 }, bonus: { kind: 'prize' }, gator: { ch: 5, a: -50, delay: 9 }, turtle: { ch: 3, a: -110, delay: 4 }, mosquito: { ch: 1, a: 30, delay: 12 },
     orbs: [{ type: 'laser', ch: 1 }, { type: 'rockskin', ch: 2 }, { type: 'decoy', ch: 3 }, { type: 'pepper', ch: 4 }, { type: 'warp', ch: 3 }],
-    intro: { title: 'Snapping turtle', line: 'The turtle clamps an egg: safe from everything, but stuck. Drop an egg or a stone egg on its shell and it flips over. The laser beak cuts vines and thorns.' },
+    intro: { title: 'Snapping turtle', line: 'The turtle clamps an egg: safe from everything, but stuck. Drop an egg or a stone egg on its shell and it flips over. The laser cannon cuts vines and thorns and stuns the turtle.' },
     tip: 'A clamped egg is safe but stuck. Drop another egg on the shell to free it.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, vine: 1, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, vine: 1, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 44, world: 9, theme: 'bayou', name: 'Decoy Delta', eggs: 3, target: 2, spacing: 1.15, material: 'wood', minMoves: 5, eggKinds: ['duck'],

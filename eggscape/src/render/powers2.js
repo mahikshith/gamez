@@ -14,7 +14,7 @@ const INFO = {
   frostnova: ['Frost nova', 'Every creature freezes and thorns turn brittle. Rings lock, then go icy.', '#9fe9ff', ['#effcff', '#2a86b8', '#062a40']],
   shock: ['Shock ring', 'This ring zaps creatures away for 8 s. Eggs that touch it bounce off.', '#6fd0ff', ['#c8eeff', '#1b5f9e', '#06193a']],
   thunderclap: ['Thunderclap', 'Every creature is stunned. Doors and portals black out a while.', '#ffe14a', ['#fff3b0', '#6b5a1a', '#1f1904']],
-  laser: ['Laser beak', 'Tap to fire: cuts thorns and walls in a line. It burns sponge too.', '#ff4b3a', ['#ffb3a0', '#8f1a10', '#2c0503']],
+  laser: ['Laser cannon', 'Tap to fire: cuts thorns and walls, stuns villains. Burns sponge too.', '#ff4b3a', ['#ffb3a0', '#8f1a10', '#2c0503']],
   spin: ['Spin storm', 'The whole vault spins and flings creatures to the rim. Eggs tumble!', '#7ff0d8', ['#d2fff5', '#13806e', '#032a24']],
   pepper: ['Pepper puff', 'Creatures sneeze and flee for 8 s. The smoke hides the board a moment.', '#ff6a2a', ['#ffc39a', '#9c2c08', '#300b00']],
   shrink: ['Shrink ray', 'Eggs go quail size: through grates, hard to track. They crack easier.', '#c49bff', ['#eedcff', '#5b2fa0', '#1a0838']],
@@ -191,30 +191,22 @@ EMBLEM_ART.thunderclap = (ctx, t) => {
   ctx.strokeStyle = '#5a3c00'; ctx.lineWidth = 6; ctx.stroke();
   ctx.restore();
 };
-function beak(ctx, s, glow) {
-  // a golden beak pointing +x, s = its length; the tip glows red
-  ctx.lineJoin = 'round';
-  const g = ctx.createLinearGradient(0, -s * 0.4, 0, s * 0.4);
-  g.addColorStop(0, '#ffe68a'); g.addColorStop(0.5, '#f2a91c'); g.addColorStop(1, '#a85f00');
-  ctx.beginPath(); ctx.moveTo(-s * 0.55, -s * 0.36); ctx.quadraticCurveTo(s * 0.15, -s * 0.34, s * 0.5, -s * 0.02); ctx.lineTo(-s * 0.5, s * 0.03); ctx.closePath();
-  ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = '#4a2a00'; ctx.lineWidth = s * 0.07; ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(-s * 0.5, s * 0.08); ctx.lineTo(s * 0.42, s * 0.05); ctx.quadraticCurveTo(s * 0.05, s * 0.3, -s * 0.48, s * 0.3); ctx.closePath();
-  ctx.fillStyle = '#d98a10'; ctx.fill(); ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.beginPath(); ctx.ellipse(-s * 0.15, -s * 0.22, s * 0.2, s * 0.05, 0.1, 0, TAU); ctx.fill();
-  const r = s * (0.13 + 0.03 * glow);
-  const gl = ctx.createRadialGradient(s * 0.5, 0, 0, s * 0.5, 0, r * 2.2);
-  gl.addColorStop(0, '#ffffff'); gl.addColorStop(0.35, '#ff5a3c'); gl.addColorStop(1, 'rgba(255,60,40,0)');
-  ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(s * 0.5, 0, r * 2.2, 0, TAU); ctx.fill();
-}
-EMBLEM_ART.laser = (ctx, t) => {
+EMBLEM_ART.laser = (ctx, t) => { // the little laser cannon (drawLaserBeak, below), aiming up and right with its beam
   ctx.save();
+  const a = -0.55, sz = 96, ox = -30, oy = 4, x0 = ox + Math.cos(a) * sz * 0.95, y0 = oy + Math.sin(a) * sz * 0.95;
   ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(255,70,50,0.55)'; ctx.lineWidth = 24 + 4 * Math.sin(t * 9);
-  ctx.beginPath(); ctx.moveTo(30, 0); ctx.lineTo(110, 0); ctx.stroke();
-  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 8; ctx.stroke();
-  ctx.translate(-12, 0);
-  beak(ctx, 92, 0.5 + 0.5 * Math.sin(t * 7));
+  ctx.strokeStyle = 'rgba(255,190,160,0.8)'; ctx.lineWidth = 20 + 4 * Math.sin(t * 9);
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + Math.cos(a) * 60, y0 + Math.sin(a) * 60); ctx.stroke();
+  ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 8; ctx.stroke();
+  ctx.translate(ox, oy);
+  // a cream rim round the silhouette: the red cannon on red glass
+  const c = Math.cos(a), sn = Math.sin(a), o = 7;
+  ctx.fillStyle = ctx.strokeStyle = '#fff1d6';
+  ctx.beginPath(); ctx.arc(0, sz * 0.17, sz * 0.38 + o, 0, TAU); ctx.fill();
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * sz * 0.21, sz * 0.52, sz * 0.14 + o, sz * 0.08 + o, 0, 0, TAU); ctx.fill(); }
+  ctx.lineWidth = sz * 0.42 + o * 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(c * sz * 0.8, sn * sz * 0.8); ctx.stroke();
+  ctx.beginPath(); ctx.arc(c * sz * 0.92, sn * sz * 0.92, sz * 0.3 + o, 0, TAU); ctx.fill();
+  drawLaserBeak(ctx, sz, 0.75 + 0.25 * Math.sin(t * 7), 0, t, a, 3);
   ctx.restore();
 };
 EMBLEM_ART.spin = (ctx, t) => {
@@ -340,50 +332,113 @@ const SEE_FONT = '"Fredoka", "Arial Rounded MT Bold", "Trebuchet MS", system-ui,
 const BR = { base: '#d9a441', lo: '#a8712a', hi: '#ffe39a', dark: '#7a4c18', line: '#4a2a08' }; // brass
 const mixHex = (a, b, u) => { const p = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16); u = clamp01(u); return `rgb(${[0, 1, 2].map((i) => Math.round(p(a, i) + (p(b, i) - p(a, i)) * u)).join(',')})`; };
 
-// The laser beak: a brass muzzle on a riveted hub, cooling bands, a collar and a lens that glows up when it is about to
-// fire and goes white-hot while it fires. Pixel space, pointing +x, y down; s = muzzle length px. heat 0..1, rec 0..1.
-export function drawLaserBeak(ctx, s, heat, rec, t) {
-  const lw = Math.max(1.2, s * 0.045);
+// The laser cannon (v0.8.9, mykee: "a proper kind of laser, a small kind of cannon"; was a thin brass muzzle): a round red
+// turret pod on two stubby feet, a swivel cap with a face, a short fat ivory barrel with two gold bands and a flared gold
+// muzzle holding a big red crystal. The crystal glows up while a shot is ready and goes white-hot as it fires; the barrel
+// kicks back and the pod squashes; a puff of smoke rolls off the muzzle after. Pixel space, y down: the pivot (the cap) at
+// 0,0, the crystal s*0.95 out along aim (rad, y down; 0 = right). heat 0..1, rec 0..1 (the kick), shots: red lights on the
+// pod's belt (-1: none), puff 0..1 over the smoke after a shot (0: none). The old 5-argument calls still work.
+const CN = { pod: ['#e2493d', '#ac2c25', '#ff9a85'], ivy: ['#f7ecd2', '#d5bc8e', '#fffdf6'], gold: ['#f5b83a', '#c47c16', '#ffe9a6'], foot: '#8a3020', line: '#4a2410' };
+export function drawLaserBeak(ctx, s, heat, rec, t, aim = 0, shots = 3, puff = 0) {
+  const lw = Math.max(1.5, s * 0.055), L = CN.line, kick = clamp01(rec), c = Math.cos(aim), sn = Math.sin(aim);
+  const lx = c * (s * 0.95 - kick * s * 0.2), ly = sn * (s * 0.95 - kick * s * 0.2), lr = s * 0.17; // the crystal, after the kick
+  const path = (f) => { ctx.beginPath(); f(); };
+  const fillLine = (col, w = lw) => { ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = L; ctx.lineWidth = w; ctx.stroke(); };
   ctx.save();
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  // the hub (it stays put; the muzzle kicks back on it)
-  ctx.beginPath(); ctx.arc(0, 0, s * 0.34, 0, TAU); ctx.fillStyle = BR.lo; ctx.fill();
-  ctx.beginPath(); ctx.arc(-s * 0.04, -s * 0.05, s * 0.27, 0, TAU); ctx.fillStyle = BR.base; ctx.fill();
-  ctx.beginPath(); ctx.ellipse(-s * 0.12, -s * 0.16, s * 0.1, s * 0.05, -0.5, 0, TAU); ctx.fillStyle = BR.hi; ctx.fill();
-  ctx.beginPath(); ctx.arc(0, 0, s * 0.34, 0, TAU); ctx.strokeStyle = BR.line; ctx.lineWidth = lw; ctx.stroke();
-  ctx.fillStyle = BR.dark;
-  for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + 0.5; ctx.beginPath(); ctx.arc(Math.cos(a) * s * 0.25, Math.sin(a) * s * 0.25, s * 0.032, 0, TAU); ctx.fill(); }
-  ctx.translate(-clamp01(rec) * s * 0.2, 0);
-  // the muzzle: a beak-shaped brass barrel, lit from above
-  const barrel = () => { ctx.beginPath(); ctx.moveTo(s * 0.08, -s * 0.2); ctx.quadraticCurveTo(s * 0.5, -s * 0.2, s * 0.86, -s * 0.12); ctx.lineTo(s * 0.86, s * 0.12); ctx.quadraticCurveTo(s * 0.5, s * 0.2, s * 0.08, s * 0.2); ctx.closePath(); };
-  barrel(); ctx.fillStyle = BR.base; ctx.fill();
-  ctx.save(); barrel(); ctx.clip();
-  ctx.fillStyle = BR.lo; ctx.fillRect(0, s * 0.04, s, s * 0.3);
-  ctx.fillStyle = BR.hi; ctx.fillRect(s * 0.14, -s * 0.15, s * 0.66, s * 0.05);
-  if (heat > 0.05) { ctx.globalAlpha = 0.55 * heat; ctx.fillStyle = '#ff6a3a'; ctx.fillRect(s * 0.62, -s * 0.2, s * 0.26, s * 0.4); ctx.globalAlpha = 1; } // the barrel glows near the lens
-  ctx.restore();
-  barrel(); ctx.strokeStyle = BR.line; ctx.lineWidth = lw; ctx.stroke();
-  // cooling bands
-  for (const bx of [0.3, 0.45, 0.6]) {
-    const h = s * (0.2 - bx * 0.08) + s * 0.03;
-    ctx.beginPath(); ctx.rect(s * bx - s * 0.03, -h, s * 0.06, h * 2); ctx.fillStyle = BR.dark; ctx.fill(); ctx.lineWidth = lw * 0.7; ctx.stroke();
-  }
-  // the collar and the lens
-  ctx.beginPath(); ctx.rect(s * 0.84, -s * 0.17, s * 0.12, s * 0.34); ctx.fillStyle = BR.dark; ctx.fill(); ctx.lineWidth = lw; ctx.stroke();
-  ctx.fillStyle = BR.base; ctx.fillRect(s * 0.86, -s * 0.15, s * 0.08, s * 0.06);
-  const lx = s * 0.98, lr = s * 0.11;
-  if (heat > 0.02) { // the glow it throws: two soft discs, no gradient
-    ctx.globalAlpha = 0.28 * heat; ctx.fillStyle = '#ff5a3c'; ctx.beginPath(); ctx.arc(lx, 0, lr * (2.2 + 1.6 * heat), 0, TAU); ctx.fill();
-    ctx.globalAlpha = 0.45 * heat; ctx.fillStyle = '#ffb08a'; ctx.beginPath(); ctx.arc(lx, 0, lr * (1.4 + 0.6 * heat), 0, TAU); ctx.fill();
+  if (heat > 0.02) { // the glow the crystal throws: two soft discs, no gradient
+    ctx.globalAlpha = 0.26 * heat; ctx.fillStyle = '#ff5a3c'; path(() => ctx.arc(lx, ly, lr * (2.2 + 1.8 * heat), 0, TAU)); ctx.fill();
+    ctx.globalAlpha = 0.42 * heat; ctx.fillStyle = '#ffb08a'; path(() => ctx.arc(lx, ly, lr * (1.4 + 0.7 * heat), 0, TAU)); ctx.fill();
     ctx.globalAlpha = 1;
   }
-  ctx.beginPath(); ctx.arc(lx, 0, lr, 0, TAU); ctx.fillStyle = mixHex('#5a1208', '#ff5a3c', heat * 1.4); ctx.fill();
-  ctx.beginPath(); ctx.arc(lx + lr * 0.12, 0, lr * 0.55, 0, TAU); ctx.fillStyle = mixHex('#8a2210', '#fff4ec', heat); ctx.fill();
-  ctx.beginPath(); ctx.arc(lx, 0, lr, 0, TAU); ctx.strokeStyle = BR.line; ctx.lineWidth = lw * 0.8; ctx.stroke();
-  ctx.beginPath(); ctx.arc(lx - lr * 0.35, -lr * 0.4, lr * 0.22, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
+  // the pod and its feet squash down on the kick (anchored at the feet)
+  const R = s * 0.38, py = s * 0.17, fy = py + R * 0.92;
+  ctx.save();
+  ctx.translate(0, fy); ctx.scale(1 + 0.1 * kick, 1 - 0.13 * kick); ctx.translate(0, -fy);
+  for (const sx of [-1, 1]) { path(() => ctx.ellipse(sx * R * 0.55, fy, R * 0.36, R * 0.2, 0, 0, TAU)); fillLine(CN.foot); }
+  const pod = () => path(() => ctx.arc(0, py, R, 0, TAU));
+  pod(); ctx.fillStyle = CN.pod[1]; ctx.fill();
+  ctx.save(); pod(); ctx.clip();
+  path(() => ctx.arc(-R * 0.12, py - R * 0.14, R * 0.94, 0, TAU)); ctx.fillStyle = CN.pod[0]; ctx.fill();
+  path(() => ctx.ellipse(-R * 0.42, py - R * 0.5, R * 0.26, R * 0.13, -0.6, 0, TAU)); ctx.fillStyle = CN.pod[2]; ctx.fill();
+  const by = py + R * 0.38, bh = R * 0.34; // the gold belt with the shot lights
+  ctx.fillStyle = CN.gold[0]; ctx.fillRect(-R, by - bh / 2, R * 2, bh);
+  ctx.fillStyle = CN.gold[1]; ctx.fillRect(-R, by + bh * 0.18, R * 2, bh * 0.32);
+  ctx.strokeStyle = L; ctx.lineWidth = lw * 0.8; ctx.beginPath(); ctx.moveTo(-R, by - bh / 2); ctx.lineTo(R, by - bh / 2); ctx.moveTo(-R, by + bh / 2); ctx.lineTo(R, by + bh / 2); ctx.stroke();
+  ctx.restore();
+  pod(); ctx.strokeStyle = L; ctx.lineWidth = lw; ctx.stroke();
+  if (shots >= 0) for (let i = 0; i < 3; i++) {
+    const x = (i - 1) * R * 0.5, on = i < shots, r = R * 0.14;
+    path(() => ctx.arc(x, by, r, 0, TAU)); fillLine(on ? '#ff3b2f' : '#5a1a12', lw * 0.7);
+    if (on) { ctx.fillStyle = '#ffd0c0'; path(() => ctx.arc(x - r * 0.3, by - r * 0.3, r * 0.35, 0, TAU)); ctx.fill(); }
+  }
+  ctx.restore();
+  // the barrel turns on the cap; it kicks back along itself
+  ctx.save();
+  ctx.rotate(aim);
+  if (c < 0) ctx.scale(1, -1); // pointing left: keep the light on top
+  ctx.translate(-kick * s * 0.2, 0);
+  const x0 = s * 0.08, x1 = s * 0.72, h0 = s * 0.21, h1 = s * 0.195;
+  const barrel = () => path(() => { ctx.moveTo(x0, -h0); ctx.lineTo(x1, -h1); ctx.lineTo(x1, h1); ctx.lineTo(x0, h0); ctx.closePath(); });
+  barrel(); ctx.fillStyle = CN.ivy[0]; ctx.fill();
+  ctx.save(); barrel(); ctx.clip();
+  ctx.fillStyle = CN.ivy[1]; ctx.fillRect(x0, h0 * 0.3, x1, h0);
+  ctx.fillStyle = CN.ivy[2]; ctx.fillRect(x0 + s * 0.08, -h0 * 0.68, s * 0.5, h0 * 0.28);
+  if (heat > 0.05) { ctx.globalAlpha = 0.5 * heat; ctx.fillStyle = '#ff7a4a'; ctx.fillRect(s * 0.5, -h0, s * 0.3, h0 * 2); ctx.globalAlpha = 1; } // it warms toward the muzzle
+  ctx.restore();
+  barrel(); ctx.strokeStyle = L; ctx.lineWidth = lw; ctx.stroke();
+  for (const bx of [0.34, 0.56]) { // two gold bands
+    const hb = s * (0.235 - bx * 0.03);
+    path(() => ctx.roundRect ? ctx.roundRect(s * bx - s * 0.045, -hb, s * 0.09, hb * 2, s * 0.025) : ctx.rect(s * bx - s * 0.045, -hb, s * 0.09, hb * 2)); fillLine(CN.gold[0], lw * 0.85);
+    ctx.fillStyle = CN.gold[2]; ctx.fillRect(s * bx - s * 0.022, -hb * 0.8, s * 0.044, hb * 0.35);
+  }
+  // the flared muzzle and its crystal
+  const m0 = s * 0.7, m1 = s * 0.93, mh = s * 0.3;
+  path(() => { ctx.moveTo(m0, -h1 - s * 0.02); ctx.quadraticCurveTo(s * 0.86, -h1, m1, -mh); ctx.lineTo(m1, mh); ctx.quadraticCurveTo(s * 0.86, h1, m0, h1 + s * 0.02); ctx.closePath(); }); fillLine(CN.gold[0]);
+  ctx.save(); path(() => { ctx.moveTo(m0, s * 0.03); ctx.lineTo(m1, s * 0.08); ctx.lineTo(m1, mh); ctx.quadraticCurveTo(s * 0.86, h1, m0, h1 + s * 0.02); ctx.closePath(); }); ctx.fillStyle = CN.gold[1]; ctx.fill(); ctx.restore();
+  ctx.fillStyle = CN.gold[2]; path(() => ctx.ellipse(s * 0.84, -s * 0.15, s * 0.05, s * 0.022, -0.5, 0, TAU)); ctx.fill();
+  path(() => ctx.ellipse(m1, 0, s * 0.06, mh, 0, 0, TAU)); fillLine(CN.gold[1], lw * 0.85);
+  const cx = m1 - s * 0.01; // the crystal: a fat faceted gem, dark red cold, red when charged, white-hot as it fires
+  path(() => ctx.arc(cx, 0, lr, 0, TAU)); fillLine(mixHex('#7a1208', '#ff3b24', heat * 1.5));
+  path(() => { ctx.moveTo(cx - lr * 0.55, -lr * 0.2); ctx.lineTo(cx - lr * 0.1, -lr * 0.62); ctx.lineTo(cx + lr * 0.5, -lr * 0.25); ctx.lineTo(cx + lr * 0.3, lr * 0.42); ctx.lineTo(cx - lr * 0.35, lr * 0.38); ctx.closePath(); });
+  ctx.fillStyle = mixHex('#b02814', '#fff6ee', heat > 0.75 ? 1 : heat * 0.9); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; path(() => ctx.ellipse(cx - lr * 0.38, -lr * 0.42, lr * 0.2, lr * 0.11, -0.6, 0, TAU)); ctx.fill();
+  ctx.restore();
+  // the swivel cap with its face: eyes on where it aims, squeezed shut as it fires
+  const cr = s * 0.25;
+  path(() => ctx.arc(0, 0, cr, 0, TAU)); ctx.fillStyle = CN.pod[1]; ctx.fill();
+  path(() => ctx.arc(-cr * 0.1, -cr * 0.12, cr * 0.86, 0, TAU)); ctx.fillStyle = CN.pod[0]; ctx.fill();
+  path(() => ctx.ellipse(-cr * 0.45, -cr * 0.55, cr * 0.22, cr * 0.11, -0.6, 0, TAU)); ctx.fillStyle = CN.pod[2]; ctx.fill();
+  path(() => ctx.arc(0, 0, cr, 0, TAU)); ctx.strokeStyle = L; ctx.lineWidth = lw; ctx.stroke();
+  const ex = c * cr * 0.22, ey = sn * cr * 0.16 + cr * 0.05, squint = kick > 0.25;
+  for (const sx of [-1, 1]) {
+    const x = ex + sx * cr * 0.38, y = ey;
+    if (squint) { ctx.strokeStyle = L; ctx.lineWidth = lw * 1.1; path(() => { ctx.moveTo(x - sx * cr * 0.16, y - cr * 0.15); ctx.lineTo(x + sx * cr * 0.1, y); ctx.lineTo(x - sx * cr * 0.16, y + cr * 0.15); }); ctx.stroke(); continue; }
+    path(() => ctx.ellipse(x, y, cr * 0.25, cr * 0.31, 0, 0, TAU)); fillLine('#fffdf6', lw * 0.8);
+    const blink = (t + 0.3) % 3.7 < 0.12;
+    if (blink) { ctx.fillStyle = CN.pod[0]; path(() => ctx.ellipse(x, y, cr * 0.27, cr * 0.33, 0, 0, TAU)); ctx.fill(); ctx.strokeStyle = L; ctx.lineWidth = lw * 0.9; path(() => { ctx.moveTo(x - cr * 0.2, y); ctx.lineTo(x + cr * 0.2, y); }); ctx.stroke(); continue; }
+    const qx = x + c * cr * 0.1, qy = y + sn * cr * 0.13;
+    ctx.fillStyle = '#1e1008'; path(() => ctx.arc(qx, qy, cr * 0.15, 0, TAU)); ctx.fill();
+    ctx.fillStyle = '#fff'; path(() => ctx.arc(qx - cr * 0.05, qy - cr * 0.06, cr * 0.055, 0, TAU)); ctx.fill();
+  }
+  if (heat > 0.8 && kick > 0.15) { // the shot: a white-hot star on the crystal
+    ctx.fillStyle = '#fffaf0'; ctx.globalAlpha = Math.min(1, kick * 1.5);
+    path(() => { for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + t * 3, r = i % 2 ? lr * 0.6 : lr * 1.5; ctx.lineTo(lx + Math.cos(a) * r, ly + Math.sin(a) * r); } ctx.closePath(); }); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (puff > 0 && puff < 1) { // a puff of smoke rolls up off the muzzle
+    for (let i = 0; i < 3; i++) {
+      const q = clamp01(puff * 1.2 - i * 0.12), r = lr * (0.7 + 1.3 * q) * (1 - i * 0.15);
+      ctx.globalAlpha = 0.75 * (1 - q) * (q > 0 ? 1 : 0);
+      ctx.fillStyle = i === 1 ? '#c9c0b8' : '#e8e2dc';
+      path(() => ctx.arc(lx + c * lr * (0.4 + q * 1.4) + (i - 1) * lr * 0.9, ly + sn * lr * (0.4 + q * 1.4) - q * s * 0.45 - i * lr * 0.3, r, 0, TAU)); ctx.fill();
+      ctx.strokeStyle = 'rgba(74,36,16,0.45)'; ctx.lineWidth = lw * 0.6; ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
   ctx.restore();
 }
-export const BEAK_M = 0.62; // m: the muzzle's length in the vault (an egg is 0.59 m tall)
+export const BEAK_M = 0.74; // m: the cannon's reach to its crystal (an egg is 0.56 m tall: the cannon stands a little taller)
 
 // sparks spraying where a beam meets something (world space at x, y; a = the beam's angle; n sparks; u = a seed clock)
 export function beamSparks(ctx, x, y, a, k, u, n = 5, size = 1) {
@@ -684,25 +739,17 @@ export function drawP2Back(ctx, sim, k, t) {
   }
   // the live ring: lightning crawls round it
   if (P.shock > 0 && P.shockR >= 0) drawLiveRing(ctx, sim.rings[P.shockR], k, t, Math.min(1, P.shock / 0.3, (P2.shock.t - P.shock) / 0.2) * (P.shock < 1.5 ? (Math.sin(t * 30) > 0 ? 1 : 0.35) : 1), P.shockR);
-  // the laser beak in the middle of the vault, pointing where it last fired (pips: shots left). 2026-11-20: a brass
-  // muzzle (was a tiny yellow stub): the lens glows up while a shot is ready, kicks back and goes white-hot as it fires,
-  // and shudders through the sweep; where a beam cuts a thorn, sparks and a charred stub stay on the ring for a second.
+  // the laser cannon in the middle of the vault, turned where it last fired (lights on its belt: shots left). 2026-11-23:
+  // a chunky cartoon cannon (was a brass muzzle): the crystal glows while a shot is ready, the barrel kicks back, the pod
+  // squashes and the crystal goes white-hot as it fires, then a puff of smoke; it shudders through the sweep.
   if (P.laser > 0 && (P.shots > 0 || P.sweep >= 0 || P.beams.length)) {
     const s = Math.max(BEAK_M * k, 24), ready = P.shots > 0 && P.sweep < 0;
-    let heat = ready ? 0.35 + 0.25 * Math.sin(t * 6) : 0.15, rec = 0;
+    let heat = ready ? 0.35 + 0.25 * Math.sin(t * 6) : 0.15, rec = 0, puff = 0;
     for (const B of P.beams) { heat = Math.max(heat, 1 - B.t / 0.5); rec = Math.max(rec, 1 - B.t / 0.18); }
+    const last = P.beams[P.beams.length - 1];
+    if (last && P.sweep < 0) puff = clamp01((last.t - 0.05) / 0.45);
     if (P.sweep >= 0) { heat = Math.max(heat, Math.min(1, 0.4 + P.sweep * 3) * (0.88 + 0.12 * Math.sin(t * 40))); rec = Math.max(rec, 0.35 + 0.15 * Math.sin(t * 55)); }
-    px(ctx, 0, 0, k, P.aim, () => {
-      ctx.save();
-      if (Math.cos(P.aim) < 0) ctx.scale(1, -1); // pointing left: keep the muzzle the right way up
-      drawLaserBeak(ctx, s, heat, rec, t);
-      ctx.restore();
-    });
-    for (let i = 0; i < P.shots; i++) {
-      const a = P.aim + Math.PI + (i - (P.shots - 1) / 2) * 0.55, r = Math.max(0.42, (s * 0.5) / k);
-      ctx.beginPath(); ctx.arc(r * Math.cos(a), r * Math.sin(a), Math.max(0.045, 2.6 / k), 0, TAU);
-      ctx.fillStyle = '#ff5a3c'; ctx.fill(); ctx.strokeStyle = OUT; ctx.lineWidth = lw(1.2); ctx.stroke();
-    }
+    px(ctx, 0, 0, k, 0, () => drawLaserBeak(ctx, s, heat, rec, t, -P.aim, P.shots, puff)); // px flips y: a world angle a is -a on screen
   }
   // thorns the beam cut: a charred stub each, for a second
   const PL = polFor(sim), cutting = P.laser > 0 || P.sweep >= 0 || P.beams.length > 0;
@@ -863,7 +910,7 @@ export function drawP2Front(ctx, sim, k, t) {
     }
   }
   // laser beams (and the sweep)
-  const reach = sim.outerR + 3, from = (Math.max(BEAK_M * k, 24) * 0.98) / k; // the beam leaves the beak's lens
+  const reach = sim.outerR + 3, from = (Math.max(BEAK_M * k, 24) * 0.95) / k; // the beam leaves the cannon's crystal
   const beam = (a, f, w0) => {
     const c = Math.cos(a), s = Math.sin(a), x0 = from * c, y0 = from * s, x1 = reach * c, y1 = reach * s;
     ctx.save();
@@ -872,6 +919,12 @@ export function drawP2Front(ctx, sim, k, t) {
     ctx.strokeStyle = 'rgba(255,60,40,0.45)'; ctx.lineWidth = w0 * 2.6; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
     ctx.strokeStyle = '#ff5a3c'; ctx.lineWidth = w0 * 1.1; ctx.stroke();
     ctx.strokeStyle = '#fff4ec'; ctx.lineWidth = w0 * 0.45; ctx.stroke();
+    // the muzzle flash on the crystal: a red ring, a white-hot star, matching the cannon's lens
+    const fr = w0 * (1.6 + 1.4 * f);
+    ctx.fillStyle = 'rgba(255,90,60,0.55)'; ctx.beginPath(); ctx.arc(x0, y0, fr * 1.5, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#fff4ec'; ctx.beginPath();
+    for (let i = 0; i < 10; i++) { const b = a + (i / 10) * TAU, r = i % 2 ? fr * 0.45 : fr * (i % 4 ? 1 : 1.35); ctx.lineTo(x0 + Math.cos(b) * r, y0 + Math.sin(b) * r); }
+    ctx.closePath(); ctx.fill();
     ctx.restore();
   };
   for (const B of P.beams) { const u = B.t / 0.5; beam(B.a, 1 - u * u, P2.laser.w * (1 - 0.4 * u)); }
@@ -955,7 +1008,7 @@ export function p2Event(ev, fx, api) {
           break;
         case 'laser':
           audio.play('fire_ignite', { vol: 0.7, pitch: 1.8 });
-          once('laser', 'Laser beak! Tap anywhere to fire from the middle of the vault.');
+          once('laser', 'Laser cannon! Tap anywhere to fire from the middle of the vault.');
           break;
         case 'spin':
           audio.play('wind_gust', { vol: 0.9, pitch: 0.8 }); audio.play('motor_tick', { vol: 0.6 });

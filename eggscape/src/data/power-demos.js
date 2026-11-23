@@ -27,7 +27,7 @@ export const POWER_DEMOS = [
     rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 140, shut: { period: 6, open: 0.5 } }] }, { gaps: [{ a: -40, x: 2 }] }, { gaps: [{ a: 90 }] }],
   },
   {
-    ...base, id: 954, kind: 'laser', theme: 'farm', name: 'Laser beak', seed: 9544,
+    ...base, id: 954, kind: 'laser', theme: 'farm', name: 'Laser cannon', seed: 9544,
     tip: 'Tap anywhere to fire the beak: it cuts thorns, walls and curtains in a line. It burns sponge too.',
     snake: { delay: 1, speed: 0.4, a: 60 }, orbs: [orb('laser')], barriers: [{ ring: 2, a: -30 }],
     rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: -30, curtain: 1 }, { a: 150 }], thorns: [{ a: -60, n: 3 }], pads: [{ a: -110, len: 1.2 }] }, { gaps: [{ a: 20 }], thorns: [{ a: -80, n: 2 }], pads: [{ a: -140, len: 1.3 }] }, { gaps: [{ a: -70 }] }],
@@ -108,7 +108,7 @@ export const POWER_DEMOS = [
   },
   {
     ...base, id: 962, kind: 'combo_sweep', theme: 'farm', name: 'Combo: Sweep beam', seed: 9622,
-    tip: 'Laser beak and spin storm together: the beam sweeps a full circle.',
+    tip: 'Laser cannon and spin storm together: the beam sweeps a full circle.',
     orbs: [orb('laser', 1, -100), orb('spin', 1, -80)], barriers: [{ ring: 2, a: 60 }],
     rings: [{ gaps: [{ a: -100 }] }, { gaps: [{ a: 150 }], thorns: [{ a: -40, n: 2 }, { a: 60, n: 3 }], pads: [{ a: -140, len: 1.0 }] }, { gaps: [{ a: 20, curtain: 1 }], thorns: [{ a: -100, n: 2 }, { a: 170, n: 2 }] }, { gaps: [{ a: -70 }] }],
   },
