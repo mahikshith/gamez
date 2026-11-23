@@ -32,7 +32,7 @@ import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
-import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview } from './ui/store.js';
+import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, PROMISE } from './ui/store.js';
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, freebies, trials, home nudges)
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
@@ -898,6 +898,9 @@ function pointerDown(e) {
   onFirstInput();
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
+  if (!G.adBusy && G.detail && !G.got && G.dscroll && G.detail === 'iap:' + G.dscroll.key && G.dscroll.max > 0 && G.dlRect && x >= G.dlRect.x && x <= G.dlRect.x + G.dlRect.w && y >= G.dlRect.y && y <= G.dlRect.y + G.dlRect.h) { // the bundle sheet's list scrolls under a finger
+    const D = G.dscroll; G.pdrag = { pid: e.pointerId, sc: D, y0: y, s0: D.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; D.v = 0; D.to = null;
+  }
   if (G.adBusy || modalOpen()) { if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; } return; } // a sheet or popup takes every tap (and an ad wait: only its "Back to game")
   const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'pause' ? (G.ppRectR && x >= G.ppRectR.x ? G.ppageR : G.ppage) : null;
   if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
@@ -1054,6 +1057,7 @@ function pointerUp(e) {
 }
 
 function wheel(e) {
+  if (G.detail && G.dscroll && G.detail === 'iap:' + G.dscroll.key && G.dscroll.max > 0 && !G.got) { e.preventDefault(); G.dscroll.y = clamp(G.dscroll.y + clamp(e.deltaY, -400, 400), 0, G.dscroll.max); G.dscroll.v = 0; return; }
   if (modalOpen()) return;
   const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'levels' ? G.mscroll : G.screen === 'pause' ? (G.ppRectR && e.clientX >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'intro' ? (e.shiftKey && G.car ? G.car : G.ipRectR && ui.A.w > ui.A.h * 1.15 && e.clientX >= G.ipRectR.x ? G.ipageR : G.ipage) : null;
   if (SC) { e.preventDefault(); SC.y = clamp(SC.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -400, 400), 0, SC.max); SC.v = 0; return; } // 2026-11-19: the world map scrolls with a mouse wheel too
@@ -1067,7 +1071,7 @@ function keyDown(e) {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.treasure) G.treasure = null; } return; }
+  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.treasure) G.treasure = null; } return; }
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
@@ -1643,13 +1647,25 @@ async function press(id) {
         const w = E.ownsSkin(save.wallet, k) ? E.equipSkin(save.wallet, k) : E.buySkin(save.wallet, k);
         if (w) { save.wallet = w; DR.endTrial(save, 'skin'); persist(); W.setSkin(w.skin); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
         else if (E.SKINS[k] && save.wallet.coins < E.SKINS[k].price) needCoins(E.SKINS[k].price);
+      } else if (id === 'got:tap') { // the purchase reveal: a tap skips to its end, the next closes it
+        const R = G.got;
+        if (R && !save.calm && G.t - R.t0 < R.end) { R.t0 = G.t - R.end; R.popped = R.items.length; if (R.coins0 != null) R.landed = true; }
+        else G.got = null;
+      } else if (id === 'deal:buy') { // TODAY'S DEAL (coins, once a day)
+        const D = E.dailyDeal(save.wallet, today()), w = D && !D.done ? E.buyDeal(save.wallet, today()) : null;
+        if (w) {
+          const it = storeItem(D.key, storeState()), parts = it && it.parts ? it.parts : []; // one egg or outfit: the prize alone, big
+          save.wallet = w; if (D.key.startsWith('hen:') || D.key.startsWith('set:')) DR.endTrial(save, 'hen'); if (D.key.startsWith('skin:') || D.key.startsWith('set:')) { DR.endTrial(save, 'skin'); W.setSkin(w.skin); }
+          persist(); G.storeFlash = { id: 'deal', t0: G.t };
+          startGot({ name: it ? it.name : "Today's deal", key: D.key, items: parts.map((P) => ({ art: P.art, label: P.text })) });
+        } else if (D && !D.done) needCoins(D.price);
       } else if (id && id.startsWith('kit:')) { // 2026-11-20 shop 2.0: a kit of boosts for coins (all or nothing)
         const k = id.slice(4), w = E.buyKit(save.wallet, k);
-        if (w) { save.wallet = w; persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); G.detail = null; toast(`${E.KITS[k].name}: ${E.KITS[k].parts.length} boosts added`, 2.4); }
+        if (w) { save.wallet = w; persist(); G.storeFlash = { id, t0: G.t }; startGot({ name: E.KITS[k].name, key: 'kit:' + k, items: E.KITS[k].parts.map((b) => ({ art: 'boost:' + b, label: '+1 ' + E.BOOSTERS[b].name })) }); }
         else if (E.KITS[k] && !E.kitFull(save.wallet, k)) needCoins(E.kitPrice(k));
       } else if (id && id.startsWith('hset:')) { // a hen outfit and its egg, both put on ('set:' is the settings card's)
         const k = id.slice(5), S = E.SETS[k], w = E.buySet(save.wallet, k);
-        if (w) { save.wallet = w; DR.endTrial(save, 'hen'); DR.endTrial(save, 'skin'); persist(); W.setSkin(w.skin); G.storeFlash = { id: 'set:' + k, t0: G.t }; audio.play('unlock'); G.detail = null; toast(`The ${S.name} set is yours!`, 2.4); }
+        if (w) { save.wallet = w; DR.endTrial(save, 'hen'); DR.endTrial(save, 'skin'); persist(); W.setSkin(w.skin); G.storeFlash = { id: 'set:' + k, t0: G.t }; startGot({ name: S.name + ' set', key: 'set:' + k, items: [{ art: 'hen:' + S.hen, label: E.HEN_SKINS[S.hen].name }, { art: 'egg:' + S.egg, label: E.SKINS[S.egg].name + ' egg' }] }); }
         else if (S && E.setAvailable(save.wallet, k)) needCoins(E.setPrice(save.wallet, k));
       } else if (id && id.startsWith('try:')) { // "Try it free": wear it for the next few levels (the Director's trial machinery)
         const [kind, k] = [id.slice(4, id.indexOf(':', 4)), id.slice(id.indexOf(':', 4) + 1)];
@@ -1791,18 +1807,41 @@ function featuredPick() {
   if (E.iapAvailable(save.wallet, PREMIUM_SKU)) return { sku: PREMIUM_SKU };
   return null;
 }
-const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) } });
+// The Brain's plan for the Featured tab (brain.js shopPlan): the bundle that leads, the order of the bundles, and up to
+// three coin things for this player (what they tried free, what their purse can pay for, what helps on their level).
+// Asked once a second and when the purse changes, not every frame. G.forYou (QA) overrides the picks.
+function shopBrain() {
+  const w = save.wallet, sig = `${w.coins}|${(w.skins || []).length}|${(w.henSkins || []).length}|${(w.chicks || []).length}|${w.noAds}|${w.starter}|${w.collector}`;
+  if (G.shopPlan && G.shopPlan.sig === sig && G.t - G.shopPlan.at < 1 && G.t >= G.shopPlan.at) return G.shopPlan.out;
+  const D = DR.dirState(save), tr = D.trials || {}, items = [];
+  for (const id of E.SKIN_ORDER) if (id !== 'classic') items.push({ key: 'skin:' + id, kind: 'skin', price: E.SKINS[id].price, owned: (w.skins || []).includes(id), tried: (tr.skins || []).includes(id) });
+  for (const id of E.HEN_SKIN_ORDER) if (id !== 'classic' && !E.HEN_SKINS[id].premium) items.push({ key: 'hen:' + id, kind: 'hen', price: E.HEN_SKINS[id].price, owned: (w.henSkins || []).includes(id), tried: (tr.hens || []).includes(id) });
+  for (const c of lockedChicks()) items.push({ key: 'chick:' + c.id, kind: 'chick', price: c.price, owned: false, tried: (tr.chicks || []).includes(c.id) });
+  for (const id of E.BOOSTER_ORDER) items.push({ key: 'boost:' + id, kind: 'boost', price: E.BOOSTERS[id].price, owned: E.ownedCount(w, id) });
+  for (const id of Object.keys(E.KITS)) items.push({ key: 'kit:' + id, kind: 'kit', price: E.kitPrice(id), owned: false });
+  for (const id of E.SET_ORDER) { const S = E.SETS[id], has = (w.henSkins || []).includes(S.hen) && (w.skins || []).includes(S.egg); items.push({ key: 'set:' + id, kind: 'set', price: E.setPrice(w, id), owned: has }); }
+  const bundles = ads.moneyShop ? ['starter_nest', PREMIUM_SKU, 'eggscape_collector'].filter((k) => E.iapAvailable(w, k)) : [];
+  const P = BR.shopPlan(save, { now: Date.now(), bundles, items, lastLoss: G.lastLoss || null });
+  const forYou = (G.forYou || P.forYou).filter((p) => storeItem(p.key, { wallet: w }));
+  if (!G.shopPlan || G.shopPlan.pick !== forYou.map((p) => p.key).join()) BR.why(save, 'shop', forYou.map((p) => p.key).join(' ') || null, `lead ${P.hero || 'none'}; for you by taste ${P.model.taste}, purse ${P.model.coins}`);
+  G.shopPlan = { sig, at: G.t, pick: forYou.map((p) => p.key).join(), out: { forYou, hero: P.hero, order: P.order.length ? P.order : null } };
+  return G.shopPlan.out;
+}
+// forYou ([{ key, why }], the FOR YOU row), hero (a bundle sku) and order ([sku, ...], the BUNDLES row): the Brain's plan. balHold: the balance shown while a purchase reveal's coins fly.
+const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) },
+  ...shopBrain(), balHold: G.got && G.got.coins0 != null && G.t - G.got.t0 < G.got.land ? G.got.coins0 : null });
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
 function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
-function modalOpen() { return !!(G.getMore || G.detail || G.offer || G.ageAsk || G.parent || G.chickBuy || G.treasure || G.nudge); }
+function modalOpen() { return !!(G.got || G.getMore || G.detail || G.offer || G.ageAsk || G.parent || G.chickBuy || G.treasure || G.nudge); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
   const hb = G.hudBottom;
   if (G.screen === 'store' || G.screen === 'title') G.hudBottom = 0; // no HUD under these
   try {
-    if (G.parent) drawParentCheck();
+    if (G.got) drawGot();
+    else if (G.parent) drawParentCheck();
     else if (G.getMore) drawGetMore();
     else if (G.chickBuy) drawChickBuy();
     else if (G.detail) drawDetail();
@@ -1903,6 +1942,7 @@ function offerCtx() {
 // what the Director needs to know about this loss
 function failCtx(st) {
   const L = G.level, kinds = villainKinds(L, G.sim).filter((k) => VILLAIN_INFO[k] && VILLAIN_INFO[k].group !== 'hazard');
+  G.lastLoss = G.sim.timeLimit && G.sim.timeLeft <= 0 ? 'time' : G.sim.rings.some((r) => r.thorns && r.thorns.length) && st.saved < st.target - 1 ? 'thorns' : kinds.length ? 'villains' : 'nest'; // the Brain's shop pick: what would have helped
   const c = lockedChicks()[0] || null;
   return { levelId: L.id, now: Date.now(), nearMiss: st.saved === st.target - 1, timeout: !!G.sim.timeLimit && G.sim.timeLeft <= 0, // a level with no clock (L1) never times out
     thorns: G.sim.rings.some((r) => r.thorns && r.thorns.length), villains: kinds.length > 0, lockedChick: c, chickLevel: L.id >= STRIKE_FROM,
@@ -2093,6 +2133,7 @@ function drawChickBuy() {
 
 // a shop tile's detail sheet: the art big, the name, what it does, and its buy / equip button
 function drawDetail() {
+  if (G.screen === 'store' && G.detail.startsWith('iap:') && E.IAP[G.detail.slice(4)]) return drawIapSheet(G.detail.slice(4));
   const it = G.screen === 'store' ? storeItem(G.detail, storeState()) : null;
   if (!it) { G.detail = null; return; }
   // an egg or outfit the player does not own: "Try it free" under the price (each one once; trying shows how long is left)
@@ -2109,6 +2150,7 @@ function drawDetail() {
         ui.record({ x: x + (w - aw) / 2, y, w: aw, h: 140 * s }, 'dt:art');
       } },
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'dt:line' + i, gap: i ? 2 * s : 10 * s })),
+      ...(it.parts || []).map((P, i) => partRow(P, s, 'dt:part' + i, i ? 2 * s : 10 * s)), // a kit or a set: what is inside, one row each
       ...(it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 6 * s })] : []),
       { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x + w * 0.1, y, w * 0.8, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
       ...(tryK ? [{ h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
@@ -2118,6 +2160,145 @@ function drawDetail() {
     ];
   }, { ribbon: '#7a48e8' });
 }
+// one "what you get" row: the part's art in a small cell, then its words (a kit's boosts, a set's outfit and egg)
+const partRow = (P, s, tag, gap, o = {}) => ({ h: 40 * s, gap, draw: (x, y, w) => {
+  ui.roundRect(x + 2 * s, y + 2 * s, 36 * s, 36 * s, 9 * s); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fill();
+  drawPart(ctx, P.art, x + 20 * s, y + 20 * s, 34 * s, G.t);
+  ui.text(P.text, x + 48 * s, y + 20 * s, { size: 16 * s, maxW: w - 52 * s, color: ui.C.ink, tag, noRecord: o.noRecord });
+} });
+// 0.8.9 the bundle sheet ("what you get"), G.detail 'iap:<sku>': the banner art big, a plain promise, one row per part
+// (the outfits, eggs and chicks one by one in a small grid; a long list scrolls inside the sheet with the game's one
+// scroll feel), the honest value line, "One-time purchase", the price button (the only thing here that pays) and Not now
+const SHEET_CELL = { w: 72, h: 76 };
+function drawIapSheet(sku) {
+  const P = E.IAP[sku], can = E.iapAvailable(save.wallet, sku), rows = iapRows(sku, LEVELS.length), price = ads.price(sku);
+  if (!G.dscroll || G.dscroll.key !== sku) G.dscroll = { y: 0, v: 0, max: 0, t: G.t, key: sku };
+  const DS = G.dscroll, longList = rows.length > 2 || rows.some((R) => R.grid);
+  dim(0.55);
+  stackCard(P.name, (s, iw) => {
+    const C = ui.C, rowH = 40 * s, cw = SHEET_CELL.w * s, chh = SHEET_CELL.h * s, per = Math.max(3, Math.floor(iw / cw));
+    let ch = 0;
+    for (const R of rows) { ch += rowH; if (R.grid) ch += Math.ceil(R.grid.length / per) * chh + 4 * s; }
+    const vl = wrapText(iapValueLine(sku, price), 14.5 * s, iw).filter(Boolean).slice(0, 2), once = P.type === 'once', artH = 112 * s;
+    const fixed = (CARD_HEAD + 22) * s + artH + 4 * s + (PROMISE[sku] ? 24 * s : 0) + 10 * s + vl.length * 18.5 * s + (vl.length ? 8 * s : 0) + (once ? 21 * s : 0) + 68 * s + 54 * s;
+    const avail = ui.A.y1 - Math.max(G.hudBottom, ui.A.y) - 30 * ui.u, two = longList && ui.A.w > ui.A.h * 1.15; // landscape: a long list is the right column
+    const listH = Math.min(ch, Math.max(110 * s, two ? avail - (CARD_HEAD + 22 + 10) * s : avail - fixed));
+    return [
+      { h: artH, gap: 4 * s, draw: (x, y, w) => {
+        ui.well(x, y, w, artH, { s, r: 13 * s, a: '#ffe9a8', b: '#fff7d8', shade: 'rgba(20,70,130,0.2)', border: 'rgba(60,90,130,0.45)' });
+        if (!save.calm) { ctx.save(); ui.roundRect(x, y, w, artH, 13 * s); ctx.clip(); sunburst(x + w / 2, y + artH * 0.6, w, 'rgba(255,255,255,0.35)', 10); ctx.restore(); }
+        drawIapBanner(ctx, sku, x + w / 2, y + artH / 2, w, artH, G.t, save.wallet);
+        ui.record({ x, y, w, h: artH }, 'dt:art');
+      } },
+      PROMISE[sku] && lineBlock(PROMISE[sku], 14.5 * s, { color: C.ink2, tag: 'dt:promise', gap: 6 * s }),
+      { h: listH, gap: 10 * s, right: two, draw: (x, y, w) => {
+        const dt = clamp(G.t - (DS.t || G.t), 0, 0.1), lim = scrollLim(); DS.t = G.t; DS.max = Math.max(0, ch - listH);
+        if (!(G.pdrag && G.pdrag.sc === DS && G.pdrag.moved)) glideStep(DS, dt, lim);
+        DS.y = clamp(DS.y, -lim, DS.max + lim);
+        G.dlRect = { x: x - 6 * s, y, w: w + 12 * s, h: listH };
+        ctx.save(); ui.roundRect(x - 6 * s, y, w + 12 * s, listH, 12 * s); ctx.fillStyle = 'rgba(122,80,40,0.08)'; ctx.fill(); ctx.clip();
+        const vis = (yy, hh) => yy >= y - 0.5 && yy + hh <= y + listH + 0.5, seen = (yy, hh) => yy + hh > y && yy < y + listH;
+        let cy = y - snapPx(DS.y, window.devicePixelRatio || 1);
+        rows.forEach((R, i) => {
+          if (seen(cy, rowH)) partRow(R, s, 'dt:row' + i, 0, { noRecord: !vis(cy, rowH) }).draw(x, cy, w);
+          cy += rowH;
+          if (!R.grid) return;
+          const x1 = x + (w - per * cw) / 2;
+          R.grid.forEach((g, j) => {
+            const gx = x1 + (j % per) * cw, gy = cy + Math.floor(j / per) * chh;
+            if (!seen(gy, chh)) return;
+            ui.roundRect(gx + 3 * s, gy + 2 * s, cw - 6 * s, chh - 4 * s, 10 * s); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
+            drawPart(ctx, g.art, gx + cw / 2, gy + 25 * s, 40 * s, G.t);
+            const nm = ui.measure(g.name, 11 * s) > cw - 10 * s ? wrapText(g.name, 10.5 * s, cw - 10 * s).slice(0, 2) : [g.name], ns = nm.length > 1 ? 10.5 * s : 11 * s; // a long name on two lines, never "Crystal Mi..."
+            nm.forEach((ln, q) => ui.text(ln, gx + cw / 2, gy + chh - 12 * s - (nm.length - 1 - q) * ns * 1.08, { size: ns, align: 'center', maxW: cw - 8 * s, color: C.ink2, tag: `dt:g${i}:${j}:${q}`, noRecord: !vis(gy, chh) }));
+          });
+          cy += Math.ceil(R.grid.length / per) * chh + 4 * s;
+        });
+        ctx.restore();
+        if (DS.max > 0) { // a thin thumb, and a soft fade where more is below
+          const th = Math.max(24 * s, listH * listH / (DS.max + listH)), ty = y + clamp(DS.y / DS.max, 0, 1) * (listH - th);
+          ui.roundRect(x + w + 1 * s, ty, 3 * s, th, 1.5 * s); ctx.fillStyle = 'rgba(122,80,40,0.45)'; ctx.fill();
+          if (DS.y < DS.max - 2) { const g = ctx.createLinearGradient(0, y + listH - 22 * s, 0, y + listH); g.addColorStop(0, 'rgba(255,244,222,0)'); g.addColorStop(1, 'rgba(255,244,222,0.95)'); ctx.fillStyle = g; ctx.fillRect(x - 4 * s, y + listH - 22 * s, w + 6 * s, 22 * s); }
+        }
+      } },
+      ...vl.map((l, i) => lineBlock(l, 14.5 * s, { color: C.good, tag: 'dt:value' + i, gap: i ? 2 * s : 8 * s })),
+      once && lineBlock('One-time purchase', 14 * s, { color: C.ink2, tag: 'dt:once', gap: 4 * s }),
+      { h: 56 * s, gap: 12 * s, draw: (x, y, w) => (can
+        ? ui.button('iap:' + sku, price, x + w * 0.08, y, w * 0.84, 56 * s, { kind: sku === PREMIUM_SKU ? 'gold' : 'primary', size: 23 * s, shimmer: !save.calm })
+        : ui.button('dt:owned', 'Yours', x + w * 0.08, y, w * 0.84, 56 * s, { kind: 'tertiary', disabled: true, keepFace: true, dim: 1, icon: ICON.check, size: 19 * s })) },
+      { h: 46 * s, gap: 8 * s, draw: (x, y, w) => ui.button('dt:close', 'Not now', x + w * 0.2, y, w * 0.6, 46 * s, { kind: 'tertiary', size: 18 * s }) },
+    ].filter(Boolean);
+  }, { ribbon: '#7a48e8', twoCol: longList });
+}
+
+// 0.8.9 JACKPOT (mykee: "they should feel like they are hitting a jackpot"): a bundle, a coin pack, a kit, a set or the
+// daily deal landing in the wallet plays "YOU GOT!": rays, the prize big, what was inside popping out one by one with
+// its count, coins flying to the balance (which waits for them), a sound and a buzz. A tap skips to the end, the next
+// closes it. Calm motion: the still end picture, nothing flies. Single coin tiles keep their quick flash.
+const GOT_SHORT = { novideo: 'No videos', levels: 'All levels', daily: '+1 charge a day' };
+function gotItems(rows) {
+  const short = (t) => t.replace(/^\d+ of every boost \((\d+) in all\)$/, '$1 boosts').replace(' hen outfits', ' outfits').replace(' egg skins', ' eggs').replace(' power chicks', ' chicks').replace(' Chick Charges', ' charges').replace(' Ally Tickets', ' tickets').replace(/ outfit$/, '');
+  return rows.map((R) => ({ art: R.art, label: GOT_SHORT[R.art] || (/^\d/.test(R.text) ? '+' + short(R.text) : short(R.text)) })).slice(0, 8);
+}
+function startGot(o) { // o: { name, sku?, key?, items: [{ art, label }], coins? (coins paid in, they fly) }
+  const n = o.items.length;
+  G.got = { t0: G.t, popped: 0, landed: false, ...o, end: 0.6 + 0.14 * n + 0.75, land: 0.6 + 0.14 * n + 0.6, coins0: !save.calm && o.coins > 0 ? Math.max(0, save.wallet.coins - o.coins) : null };
+  G.detail = null;
+  audio.play('tada'); buzz('treasure');
+}
+function gotIap(sku) {
+  const P = E.IAP[sku];
+  if (!P) return;
+  const rows = P.bank ? [{ art: 'coins', text: 'Bank coins' }] : iapRows(sku, LEVELS.length);
+  startGot({ name: P.name, sku, items: gotItems(rows), coins: rows[0] && rows[0].art === 'coins' ? (P.coins || 0) : 0 });
+}
+function drawGot() {
+  const R = G.got, calm = save.calm, A = ui.A, u = ui.u, t = calm ? R.end + 1 : G.t - R.t0, ink = 'rgba(60,28,6,0.9)';
+  if (!calm) {
+    while (R.popped < R.items.length && t >= 0.6 + 0.14 * R.popped + 0.08) { R.popped++; audio.play('hud_pop', { vol: 0.7 }); }
+    if (!R.landed && R.coins0 != null && t >= R.land) { R.landed = true; audio.play('score_tick'); buzz('star'); }
+  }
+  dim(0.84 * clamp(t / 0.18, 0, 1));
+  const S = Math.min(A.w * 0.9, A.h * 0.46, 420 * u), cx = A.cx, cy = A.y + A.h * 0.5, heroY = cy - 0.42 * S;
+  ctx.save(); ctx.globalAlpha = clamp(t / 0.18, 0, 1);
+  sunburst(cx, heroY, S * 1.3, 'rgba(255,226,140,0.17)', 14);
+  const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.75); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
+  ctx.fillStyle = g; ctx.fillRect(cx - S, heroY - S, 2 * S, 2 * S);
+  ctx.restore();
+  const pop = (t0, x, y, draw) => { const k = calm ? 1 : backK((t - t0) / 0.32); if (k <= 0.01) return; ctx.save(); ctx.translate(x, y); ctx.scale(k, k); draw(); ctx.restore(); };
+  // the prize: the bundle's banner art, or the item itself
+  const hw = Math.min(A.w - 30 * u, S * 1.05), hh = S * 0.5;
+  pop(0.1, cx, heroY, () => {
+    if (R.sku) drawIapBanner(ctx, R.sku, 0, 0, hw, hh, G.t, save.wallet);
+    else { const it = storeItem(R.key, storeState()); if (it) it.icon(ctx, 0, 0, hh * 1.1, G.t, 1); }
+  });
+  if (calm || t > 0.35) ui.text(R.name, cx, heroY + hh * 0.62, { size: Math.min(34 * u, 0.1 * S), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 5 * u, maxW: A.w - 40 * u, tag: 'got:name' });
+  // what was inside: one by one into a grid (up to 4 a row)
+  const n = R.items.length, per = Math.max(1, Math.min(4, n)), rowsN = Math.ceil(n / per), cell = Math.min(S * 0.27, (A.w - 30 * u) / per), top = heroY + hh * 0.62 + 0.13 * S;
+  const ls = Math.max(13 * u, Math.min(18 * u, cell * 0.16)), rowH = cell * 0.78 + ls * 2.6;
+  let coinAt = null;
+  R.items.forEach((it, j) => {
+    const r = Math.floor(j / per), inRow = Math.min(per, n - r * per), k = j - r * per, x = cx + (k - (inRow - 1) / 2) * cell, y = top + r * rowH + cell * 0.32, t0 = 0.6 + 0.14 * j;
+    if (it.art === 'coins' && !coinAt) coinAt = { x, y };
+    pop(t0, x, y, () => drawPart(ctx, it.art, 0, 0, cell * 0.72, G.t));
+    if (calm || t > t0 + 0.2) { const wr = ui.measure(it.label, ls) > cell - 6 * u, L = wr ? wrapText(it.label, ls * 0.92, cell - 6 * u).slice(0, 2) : [it.label]; L.forEach((ln, q) => ui.text(ln, x, y + cell * 0.36 + ls * 0.7 + q * ls * 1.05, { size: wr ? ls * 0.92 : ls, align: 'center', color: '#fff', stroke: ink, strokeW: 4 * u, maxW: cell - 4 * u, tag: `got:l${j}:${q}` })); }
+  });
+  // coins fly from the pile to the balance, top right
+  if (!calm && R.coins0 != null && coinAt && t > R.land - 0.6 && t < R.land + 0.05) {
+    const bx = A.x + A.w - 70 * u, by = A.y + 36 * u;
+    for (let i = 0; i < 10; i++) {
+      const q = clamp((t - (R.land - 0.6) - i * 0.03) / 0.45, 0, 1);
+      if (q <= 0 || q >= 1) continue;
+      const e = q * q * (3 - 2 * q), x = lerp(coinAt.x + (i - 4.5) * 4 * u, bx, e), y = lerp(coinAt.y, by, e) - Math.sin(q * Math.PI) * 60 * u;
+      drawCoin(ctx, x, y, 11 * u, G.t + i);
+    }
+  }
+  const yEnd = Math.min(A.y1 - 34 * u, top + rowsN * rowH + 16 * u);
+  if (t > R.end - 0.2) tickLine('Added to your bag', cx, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: A.w - 36 * u, tag: 'got:line' });
+  pop(0.06, cx, cy - 0.98 * S, () => { const hs = Math.min(39 * u, 0.12 * S), w = Math.min(A.w - 36 * u, ui.measure('YOU GOT!', hs) + 80 * u); ui.ribbon('YOU GOT!', 0, -hs * 0.85, w, hs * 1.7, { color: '#d89a1c', size: hs, noRecord: true }); });
+  ui.buttons.push({ id: 'got:tap', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); // a tap anywhere
+}
+
 function drawGetMore() {
   const M = G.getMore;
   dim(0.55);
@@ -2145,6 +2326,7 @@ function onGrant(sku) {
   BR.note(save, 'buy', { money: true }); // the Brain rests after a purchase: no paid offer for a day
   G.storeFlash = { id: 'iap:' + sku, t0: G.t };
   if (G.getMore && save.wallet.coins >= G.getMore.price) G.getMore = null;
+  if (P && G.screen !== 'play') { G.detail = null; G.parent = null; gotIap(sku); return; } // 0.8.9: the "YOU GOT!" reveal (not over a running level)
   audio.play('unlock');
   toast(`Thank you! ${P ? P.name : 'Your purchase'} is yours.`, 3);
 }
@@ -2161,7 +2343,7 @@ function skipLevel() {
   startLevel(n);
 }
 
-const DIAG_MARK = /^(iap:|buy:|item:|chick:|charge:|hen:|skin:|kit:|hset:|try:|sample$|bonus$|ad:|go$|retry$|next$|home:chest$|tr:)/;
+const DIAG_MARK = /^(iap:|deal:|buy:|item:|chick:|charge:|hen:|skin:|kit:|hset:|try:|sample$|bonus$|ad:|go$|retry$|next$|home:chest$|tr:)/;
 // Haptics on the hero beats (the app's EggApp bridge, navigator.vibrate on the web). 0.8.9: only the Vibration switch turns
 // them off (not sound, not Calm motion), and each beat has its own pattern [on, off, on, ...] in ms: 18 to 30 ms one-shots
 // were not felt on most phones.

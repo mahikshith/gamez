@@ -89,7 +89,9 @@ export function defaultWallet() {
     // 2026-11-16 shop revamp: owned power chicks, the Golden Egg Bank, coin items, and what real money bought
     chicks: [], bank: 0, golden: 0, tickets: { ally: 0, skip: 0 }, noInter: false, payer: false, spend: 0, lastBuyAt: 0, starter: false, season: '', premDay: '', tokens: [], treasures: [],
     // 2026-11-20 shop 2.0: The Whole Coop owned; the boosters tried free from the shop (Free sample), and today's claim
-    collector: false, sampled: [], sampleDay: '', sampleId: '' };
+    collector: false, sampled: [], sampleDay: '', sampleId: '',
+    // 0.8.9 TODAY'S DEAL: the day it was bought and what it was (once a day)
+    dealDay: '', dealKey: '' };
 }
 
 // Make any loaded/saved value safe to use (old saves, hand-edited saves).
@@ -134,6 +136,8 @@ export function sanitizeWallet(w) {
   out.sampled = sa.filter((id, i) => sa.indexOf(id) === i);
   out.sampleDay = typeof w.sampleDay === 'string' ? w.sampleDay : '';
   out.sampleId = BOOSTERS[w.sampleId] ? w.sampleId : '';
+  out.dealDay = typeof w.dealDay === 'string' ? w.dealDay : '';
+  out.dealKey = typeof w.dealKey === 'string' ? w.dealKey : '';
   if (w.collector) Object.assign(out, collectAll(out));
   return out;
 }
@@ -653,6 +657,52 @@ export function claimSample(wallet, day) {
   else w.coins += BOOSTERS[S.id].price;
   if (!w.sampled.includes(S.id)) w.sampled = [...w.sampled, S.id];
   w.sampleDay = day; w.sampleId = S.id;
+  return w;
+}
+
+// TODAY'S DEAL (0.8.9, mykee: "they should feel like they are hitting a jackpot", "no pressure"): one coin item a day
+// at 30% off, picked by the day from the kits, sets, eggs and outfits the player does not own yet. The pick depends only
+// on the day and what the wallet owns (no per-player pricing), the price only on the item's own coin price. Once a day;
+// no clock, no countdown: the shop only says "New deal tomorrow".
+export const DEAL_OFF = 0.3;
+// the item's normal coin price (kits and sets at their own bundle price), 0 when it cannot be the deal today
+function dealWas(w, key) {
+  const [k, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+  if (k === 'kit') return KITS[id] && !kitFull(w, id) ? kitPrice(id) : 0;
+  if (k === 'set') return setAvailable(w, id) ? setPrice(w, id) : 0;
+  if (k === 'skin') return SKINS[id] && !ownsSkin(w, id) ? SKINS[id].price : 0;
+  if (k === 'hen') return HEN_SKINS[id] && !HEN_SKINS[id].premium && !ownsHenSkin(w, id) ? HEN_SKINS[id].price : 0;
+  return 0;
+}
+// every candidate, the four kinds dealt in turn (so the days do not run through all the eggs first)
+const DEAL_ALL = (() => {
+  const L = [KIT_ORDER.map((id) => 'kit:' + id), SET_ORDER.map((id) => 'set:' + id), SKIN_ORDER.map((id) => 'skin:' + id), HEN_SKIN_ORDER.map((id) => 'hen:' + id)], out = [];
+  for (let i = 0; L.some((a) => i < a.length); i++) for (const a of L) if (i < a.length) out.push(a[i]);
+  return out;
+})();
+// what can be the deal for this wallet (not owned, not full), in that fixed order
+export const dealPool = (wallet) => DEAL_ALL.filter((k) => dealWas(wallet || {}, k) > 0);
+export const dealPrice = (was) => round10(was * (1 - DEAL_OFF));
+// -> { key, price, was, done } (done: bought today, the card says "Got it"), or null when nothing is left to offer
+export function dailyDeal(wallet, day) {
+  const w = wallet || {};
+  if (w.dealDay === day && w.dealKey) return { key: w.dealKey, price: 0, was: 0, done: true };
+  // the day picks a place in the fixed list; the first item from there on that this wallet can take is the deal (buying
+  // something else does not move it, only the deal item itself becoming owned does)
+  const n = DEAL_ALL.length, at = (Math.imul(dayHash(day), 2654435761) >>> 0) % n;
+  for (let i = 0; i < n; i++) { const key = DEAL_ALL[(at + i) % n], was = dealWas(w, key); if (was > 0) return { key, price: dealPrice(was), was, done: false }; }
+  return null;
+}
+// buy today's deal: the item is the player's (outfits and eggs put on, as a normal buy does). New wallet, or null.
+export function buyDeal(wallet, day) {
+  const D = dailyDeal(wallet, day);
+  if (!D || D.done || !wallet || wallet.coins < D.price) return null;
+  const w = sanitizeWallet(wallet), [k, id] = [D.key.slice(0, D.key.indexOf(':')), D.key.slice(D.key.indexOf(':') + 1)];
+  if (k === 'kit') { for (const b of KITS[id].parts) w.owned = { ...w.owned, [b]: ownedCount(w, b) + 1 }; } // kitFull was checked: no slot is at MAX_OWNED
+  else if (k === 'set') { const S = SETS[id]; if (!w.henSkins.includes(S.hen)) w.henSkins = [...w.henSkins, S.hen]; if (!w.skins.includes(S.egg)) w.skins = [...w.skins, S.egg]; w.henSkin = S.hen; w.skin = S.egg; }
+  else if (k === 'skin') { w.skins = [...w.skins, id]; w.skin = id; }
+  else if (k === 'hen') { w.henSkins = [...w.henSkins, id]; w.henSkin = id; }
+  w.coins -= D.price; w.dealDay = day; w.dealKey = D.key;
   return w;
 }
 

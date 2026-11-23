@@ -139,5 +139,35 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
   ok(DR.trialSkin(old) === 'dino' && DR.trialHen(old) === null, 'old saves: the egg trial carries on, no hen trial');
 }
 
+// ---- TODAY'S DEAL (0.8.9): one coin item a day at 30% off, the same pick for the same day and wallet, once a day
+{
+  const days = Array.from({ length: 40 }, (_, i) => `2026-12-${String((i % 28) + 1).padStart(2, '0')}${i >= 28 ? 'x' : ''}`);
+  const w0 = W({ coins: 5000 });
+  ok(days.every((d) => JSON.stringify(E.dailyDeal(w0, d)) === JSON.stringify(E.dailyDeal(W({ coins: 5000 }), d))), 'the pick is the same for the same day and wallet');
+  ok(days.every((d) => JSON.stringify(E.dailyDeal(w0, d)) === JSON.stringify(E.dailyDeal(W({ coins: 7 }), d))), 'the pick and price do not depend on the balance');
+  ok(new Set(days.map((d) => E.dailyDeal(w0, d).key)).size >= 5, 'the deal changes from day to day');
+  const own = W({ coins: 5000, skins: ['classic', 'galaxy', 'dino', 'pearl'], henSkins: ['classic', 'santa', 'pirate'] });
+  const owned = (w, k) => { const id = k.slice(k.indexOf(':') + 1); return k.startsWith('skin:') ? E.ownsSkin(w, id) : k.startsWith('hen:') ? E.ownsHenSkin(w, id) : k.startsWith('set:') ? !E.setAvailable(w, id) : E.kitFull(w, id); };
+  ok(days.every((d) => { const D = E.dailyDeal(own, d); return D && !owned(own, D.key) && !/golden$/.test(D.key.startsWith('hen:') ? D.key : ''); }), 'never an owned item (nor the Golden Hen)');
+  const r10 = (n) => Math.round(n / 10) * 10;
+  ok(days.every((d) => { const D = E.dailyDeal(w0, d); return D.price === r10(D.was * 0.7) && D.price % 10 === 0 && D.price < D.was; }), 'price is 30% off, rounded to 10');
+  const day = days[0], D = E.dailyDeal(w0, day), b = E.buyDeal(w0, day);
+  ok(b && b.coins === 5000 - D.price && (owned(b, D.key) || D.key.startsWith('kit:')), `buying it: ${D.key} for ${D.price} (was ${D.was})`);
+  ok(E.buyDeal(b, day) === null && E.dailyDeal(b, day).done, 'once a day: afterwards it is "Got it"');
+  const next = E.dailyDeal(b, days[1]);
+  ok(next && !next.done && E.buyDeal(b, days[1]), 'a new deal the next day');
+  const poor = W({ coins: 5 });
+  ok(days.every((d) => E.buyDeal(poor, d) === null) && poor.coins === 5, 'too few coins: nothing bought, the wallet never goes negative');
+  ok(days.every((d) => { const x = E.buyDeal(W({ coins: E.dailyDeal(w0, d).price }), d); return x && x.coins === 0; }), 'exactly enough: the balance lands on 0');
+  const k = W({ coins: 5000, owned: { stone: 9 } });
+  ok(days.every((d) => !['kit:rescue', 'kit:toolbox'].includes(E.dailyDeal(k, d).key)), 'a kit that would overflow a full slot is never the deal');
+  const p = E.grantIap(W({ coins: 500 }), 'eggscape_premium', 'tq', 1).wallet, kp = E.dailyDeal(p, day).key;
+  const p2 = E.buyHenSkin({ ...p, coins: 999 }, kp.startsWith('hen:') && kp !== 'hen:santa' ? 'santa' : 'elf');
+  ok(E.dailyDeal(p2, day).key === kp, 'buying some other item does not move the day\'s deal');
+  const all = E.grantIap(W(), 'eggscape_collector', 'tz', 1).wallet; all.owned = Object.fromEntries(E.BOOSTER_ORDER.map((id) => [id, 9]));
+  ok(E.dailyDeal(all, day) === null && E.buyDeal({ ...all, coins: 9999 }, day) === null, 'nothing left to offer: no deal');
+  ok(E.sanitizeWallet({ dealDay: 3, dealKey: {} }).dealDay === '' && E.sanitizeWallet(b).dealKey === D.key, 'the deal fields survive a save and a bad save');
+}
+
 console.log(fails ? `${fails} FAILED` : 'all shop checks passed');
 process.exit(fails ? 1 : 0);
