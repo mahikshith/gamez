@@ -32,7 +32,7 @@ import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
-import { drawStore, drawCoin, drawBoosterPicker, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, PROMISE } from './ui/store.js';
+import { drawStore, drawCoin, drawBoosterPicker, boosterLayout, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, PROMISE } from './ui/store.js';
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, freebies, trials, home nudges)
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
@@ -81,7 +81,7 @@ import { drawHand as teachHand } from './render/wonder.js'; // the teaching hand
 import { stampStats, stampSweep } from './render/stamp.js';
 import { cvStats, freeCanvas } from './render/cvfree.js';
 import { REC, recInit, recWindow, recProbe, recDue, recPre, recGo, recIll } from './recover.js';
-import { drawHowTo, howToPlan, chickPlan, toyPlan, floorPlan, chickTeach, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
+import { drawHowTo, howToPlan, chickPlan, toyPlan, floorPlan, chickTeach, threatWords, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
 import { drawVillainPortrait, PORTRAIT_BG, hasPortrait } from './render/villain-art.js';
@@ -1650,6 +1650,7 @@ async function press(id) {
       if (id && id.startsWith('tr:boss:')) { G.treasure = { id: +id.slice(8), t: G.t, openedAt: null }; } // a boss treasure on the map
       else if (id && id.startsWith('pgdn:')) { const c = CHEV[id.slice(5)]; if (c) { c.S.v = 0; c.S.to = Math.min(c.S.max, c.S.y + c.h * 0.7); audio.play('ui_tap'); } }
       else if (id === 'how:next') { if (G.how) { G.how.i++; G.how.t0 = G.t; } }
+      else if (id && id.startsWith('how:pick:')) { if (G.how) { G.how.i = +id.slice(9); G.how.t0 = G.t; audio.play('ui_tap'); } } // a threat's tile on the level card: play its scene again
       else if (id && id.startsWith('lv:')) {
         const i = +id.slice(3);
         if (playable(i)) startLevel(i);
@@ -5913,6 +5914,22 @@ function teachFirst(key) {
   if (!TEACH0) { TEACH0 = {}; for (const L of LEVELS) for (const k of levelThings(L)) if (!(k in TEACH0)) TEACH0[k] = L.id; }
   return TEACH0[key];
 }
+// 2026-11-23: the first campaign level each villain or hazard kind is met on (its card teaches it in full)
+let KIND0 = null;
+function kindFirst(k) {
+  if (!KIND0) { KIND0 = {}; for (const L of LEVELS) for (const x of villainKinds(L)) if (!(x in KIND0)) KIND0[x] = L.id; }
+  return KIND0[k];
+}
+// the level card's tile for a scene (2026-11-23): its art and two or three words; a tap plays that scene again
+const TOY_ORB = { flame: 'fire_red', twin: 'twin', curtain: 'fire_red', portal: 'warp', glow: 'hatch_glow', bulk: 'hatch_bulk', warp: 'warp', bait: 'decoy', sweep: 'laser', twister: 'pepper', magnet: 'iron' };
+function howTile(p) {
+  if (p.move === 'rooster') return { name: 'Rooster helps', art: (c, X, Y, r) => allyIcon(c, X, Y, r * 1.5) };
+  if (p.teach) return { name: 'Your chick', art: teachChip('chick').art };
+  if (p.move === 'floor') return { name: p.name, art: teachChip('floor:' + p.surf).art };
+  if (p.move === 'toy') return { name: p.name, art: (c, X, Y, r) => drawOrb(c, TOY_ORB[p.toy] || 'fire_red', X, Y, r, G.t, true) };
+  if (p.kind) return { name: threatWords(p.kind), boss: /^boss:/.test(p.kind), art: (c, X, Y, r) => drawVillainPortrait(c, p.kind, X, Y, r * 3.3, G.t) };
+  return null;
+}
 // a reminder chip: the thing's own art and a short name ('New' ones in green)
 function teachChip(key) {
   const [kind, id] = key.split(':'), MAT = { ice: ['#a8dcf5', '#3f7fa8'], honey: ['#f2b233', '#9a5a0a'], cloud: ['#dfe6f2', '#7d879a'] };
@@ -5988,8 +6005,9 @@ function drawLevelIntro(L, acc) {
     const T = introChicks(), locked = lockedChicks();
     if (!T.open.length && locked.length) T.id = null;
     if (!T.open.length && !locked.length) {
-      const rest = strikesOpen().length && !(G.li >= 0 && G.level.id < STRIKE_FROM);
-      return { T, blocks: rest ? [lineBlock('No villains here: your chicks rest', 16 * s, { color: '#fff0d4', stroke: INK, tag: 'intro:rest', gap: 16 * s })] : [] };
+      // 2026-11-23 (mykee: no empty or "none" sections): with no chick to take along the tab is the boosters' alone, and
+      // they take the whole page (the old "No villains here: your chicks rest" line is gone)
+      return { T, blocks: [] };
     }
     const items = [...T.open.map((S) => ({ S })), ...locked.map((c) => ({ S: STRIKE[c.id], locked: c }))];
     const n = items.length, gap = 12 * s, one = n === 1;
@@ -6071,10 +6089,21 @@ function drawLevelIntro(L, acc) {
     } else if (tipL) B.push(lineBlock(tipL, 15 * s, { color: '#ffe27a', stroke: INK, tag: 'intro:offer', gap: 6 * s }));
     return { T, blocks: B };
   };
-  const boost = (s) => !save.wallet ? [] : [section('BOOSTERS', s, 'boost'), { h: 76 * s, gap: 8 * s, draw: (x, y, w) => {
-    ui.well(x, y, w, 76 * s, { s, a: '#dcbb84', b: '#e9d2a2' });
-    drawBoosterPicker(ui, ctx, x + 6 * s, y + 4 * s, w - 12 * s, 68 * s, { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, selected: G.boostSel, lastTapped: G.boostLast, t: G.t });
-  } }];
+  // 2026-11-23 (mykee: "we don't show it as an empty kind of a thing ... it should be dynamic"): the booster well takes the
+  // room the page has left. Alone on its tab (a level with no chicks yet) it fills the page with a grid of big named tiles
+  // instead of one thin row over an empty screen; under the chicks it is one row whose tiles grow to fill it.
+  const boost = (s, room = 0) => {
+    if (!save.wallet) return [];
+    const hd = section('BOOSTERS', s, 'boost'), r0 = room - hd.h - 6 * s - 8 * s - 26 * s, rows = r0 >= 250 * s ? 4 : r0 >= 170 * s ? 2 : 1;
+    const st = { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t, rows };
+    const iw0 = Math.min(A.w - 2 * pad, 520 * s) - 12 * s, wH = rows > 1 ? Math.min(clamp(r0, 76 * s, 560 * s), boosterLayout(ui, iw0, clamp(r0, 76 * s, 560 * s) - 8 * s, st).used + 8 * s) : 96 * s; // (the well hugs its tiles; one row: tiles big enough to read)
+    return [hd, { h: wH, gap: 8 * s, draw: (x, y, w) => {
+      ui.well(x, y, w, wH, { s, a: '#dcbb84', b: '#e9d2a2' });
+      drawBoosterPicker(ui, ctx, x + 6 * s, y + 4 * s, w - 12 * s, wH - 8 * s, st);
+    } }];
+  };
+  // the Level tab's NEXT (PLAY when the level has no chick step), pinned under the card's scroll area (2026-11-23)
+  const nextPin = (s) => ({ h: 62 * s, gap: 0, draw: (x, y, w) => { const toCh = introHasChicks(); ui.button(toCh ? 'inext' : 'go', toCh ? 'NEXT' : 'PLAY', x, y, w, 62 * s, { kind: 'primary', shimmer: true, icon: toCh ? ICON.next : ICON.play, size: 28 * s }); } });
   const play = (s, w0, need) => ({ h: 66 * s, gap: 0, draw: (x, y, w) => ui.button('go', 'PLAY', x + (w - w0) / 2, y, w0, 66 * s, { kind: 'primary', shimmer: !need, icon: ICON.play, size: 28 * s }) });
   const links = (s) => ({ h: 50 * s, gap: 10 * s, draw: (x, y, w) => {
     const ad = !G.adBoost && !G.golden && !earlyDays(), bw = ad ? w * 0.4 : w * 0.5, gp = 10 * s, aw = w - bw - gp, tw = ad ? w : bw, x0 = x + (w - tw) / 2;
@@ -6104,28 +6133,37 @@ function drawLevelIntro(L, acc) {
       else continue;
       acted.push(k);
     }
-    const seenK = (k) => !!save.seen['v:' + k], vs = kinds.map((k) => howToPlan(k)).sort((a, b) => seenK(a.kind) - seenK(b.kind));
-    let P = [...P0, ...vs];
+    // 2026-11-23 (mykee: the level card is the only lesson now): every threat in the level has its scene (what it does,
+    // then what to do) and a tile under the stage. The scenes that play by themselves are the ones new here: met for
+    // the first time on this level, or not yet met by this player. The others wait on their tiles, a tap away.
+    const newK = (k) => !save.seen['v:' + k] || (G.li >= 0 && kindFirst(k) === L.id);
+    const vNew = kinds.filter(newK).map((k) => howToPlan(k, { harm: true })), vOld = kinds.filter((k) => !newK(k)).map((k) => howToPlan(k, { harm: true }));
+    let P = [...P0, ...vNew];
     if (kinds.some((k) => k === 'weasel' || k === 'rats' || k === 'boss:weasel') && G.sim && G.sim.ally && G.sim.ally.avail.includes('rooster') && !(G.li >= 0 && G.li < 4 && L.id < 5)) P.push(HOWTO_ROOSTER); // Papa Rooster from L5 (the first-five ladder)
-    if (!P.length) P = [HOWTO_BASIC];
-    P = P.slice(0, 3);
+    if (!P.length && !vOld.length) P = [HOWTO_BASIC];
+    let auto = P.map((p, i) => i);
+    P = [...P, ...vOld];
+    if (!auto.length) auto = P.map((p, i) => i); // nothing new: the reminders take turns
     const shown = new Set(P.filter((p) => p.move === 'floor').map((p) => 'floor:' + p.surf).concat(P.filter((p) => p.move === 'toy').map((p) => 'toy:' + p.toy), P.some((p) => p.teach) ? ['chick'] : []));
     const chips = things.filter((k) => !shown.has(k) && !acted.includes(k) && !k.startsWith('mix:') && (k !== 'chick' || chickOn)).map((k) => ({ ...teachChip(k), fresh: teachFirst(k) === L.id }));
     chips.sort((a, b) => b.fresh - a.fresh); // the new ones first
-    return (G.howT = { lid: pg.lid, plans: P, chips });
+    const tiles = P.map((p, i) => { const T = howTile(p); return T && { ...T, i, fresh: auto.includes(i) && !!(p.kind ? newK(p.kind) : p.move !== 'rooster') }; }).filter(Boolean);
+    return (G.howT = { lid: pg.lid, plans: P, chips, auto, tiles: tiles.length > 1 ? tiles : [] }); // one scene alone needs no tiles: its stage and caption already say it all
   };
   const howPlans = () => howTeach().plans;
   const howCard = (s, iw, availH, withPlay, need) => {
-    const plans = howPlans(), n = plans.length, pd = 12 * s, chips = howTeach().chips;
+    const plans = howPlans(), n = plans.length, pd = 12 * s, chips = howTeach().chips, HT = howTeach(), tiles = HT.tiles, auto = HT.auto;
     const goalH = 54 * s, capH = 34 * s, dotsH = n > 1 ? 18 * s : 0, playH = withPlay ? 76 * s : 0, starH = G.li >= 0 ? 52 * s : 0, chipH = chips.length ? 38 * s : 0;
     const fixed = pd * 2 + goalH + capH + dotsH + playH + chipH + 6 * s;
+    // the threat tiles (2026-11-23) take the place of the dots; the stage keeps the size it had (a longer card scrolls)
+    const tn = tiles.length, tCols = Math.min(tn, 4), tRows = tn ? Math.ceil(tn / tCols) : 0, tGap = 6 * s, tileH = (tn <= 2 ? 72 : 64) * s, tilesH = tn ? tRows * tileH + (tRows - 1) * tGap + 10 * s : 0;
     let stageH = Math.min((iw - 2 * pd) * 0.6, 260 * s), stars = starH > 0;
     if (availH && fixed + starH + stageH < availH) stageH = Math.min((iw - 2 * pd) * 1.02, 390 * s, availH - fixed - starH); // a tall phone: a bigger stage
     if (availH && fixed + starH + stageH > availH) {
       const room = availH - fixed - starH;
       if (room >= 140 * s) stageH = room; else { stars = false; stageH = clamp(availH - fixed, 120 * s, stageH); }
     }
-    const H = fixed + stageH + (stars ? starH : 0);
+    const H = fixed + stageH + (stars ? starH : 0) + (tn ? tilesH - dotsH : 0), goalsFirst = !!(availH && stars && H + 24 * s > availH + 34 * s); // (the scroll column adds 24 px; availH is its height less 34 px)
     return [{ h: H, gap: 4 * s, draw: (x, y, w) => {
       ui.well(x, y, w, H, { s, a: '#f3e2bd', b: '#fbf0d6' });
       // the goal: eggs to bring home and the clock, one row
@@ -6138,10 +6176,11 @@ function drawLevelIntro(L, acc) {
       if (tl) { const cx2 = x + w - pd - 70 * s; pictoClock(ctx, cx2, y + pd + goalH / 2, 26 * s); ui.text(`${Math.round(tl)} s`, cx2 + 18 * s, y + pd + goalH / 2, { size: 19 * s, color: C.warn, tag: 'intro:time', maxW: 56 * s }); }
       // the stage
       const Hw = G.how || (G.how = { i: 0, t0: G.t, lid: null });
-      if (Hw.lid !== pg.lid) { Hw.lid = pg.lid; Hw.i = Math.max(0, plans.findIndex((p) => p.move === 'toy' || p.move === 'floor' || p.teach || (p.kind && !save.seen['v:' + p.kind]))); Hw.t0 = G.t; } // the new one first (L31: the gate doors)
-      if (!save.calm && n > 1 && G.t - Hw.t0 >= (plans[Hw.i % n].loop || HOWTO_LOOP)) { Hw.i = (Hw.i + 1) % n; Hw.t0 = G.t; } // (the ice scene plays twice as long: too late, then early)
+      if (Hw.lid !== pg.lid) { Hw.lid = pg.lid; Hw.i = auto[0] || 0; Hw.t0 = G.t; } // the new one first (L31: the gate doors)
+      if (!save.calm && n > 1 && G.t - Hw.t0 >= (plans[Hw.i % n].loop || HOWTO_LOOP)) { const at = auto.indexOf(Hw.i % n); Hw.i = at < 0 ? auto[0] : auto[(at + 1) % auto.length]; Hw.t0 = G.t; } // the new ones take turns; a tapped reminder plays once (the ice scene plays twice as long: too late, then early)
       const plan = plans[Hw.i % n], th = G.theme && G.theme.palette, sx = x + pd, sy2 = y + pd + goalH, sw = w - 2 * pd;
-      drawHowTo(ctx, plan, sx, sy2, sw, stageH, G.t - Hw.t0, { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark });
+      const ho = { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark };
+      drawHowTo(ctx, plan, sx, sy2, sw, stageH, G.t - Hw.t0, ho);
       ui.roundRect(sx, sy2, sw, stageH, Math.min(18, stageH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
       ui.record({ x: sx, y: sy2, w: sw, h: stageH }, 'intro:stage');
       hotBadge(sx + 8 * s, sy2 + stageH - 8 * s, s); // bottom left, clear of the villain and the egg
@@ -6167,9 +6206,27 @@ function drawLevelIntro(L, acc) {
         ui.text(nm, sx + sw - 8 * s - tw / 2, sy2 + 21 * s, { size: ts, align: 'center', color: '#fff', noRecord: true });
       }
       let yy = sy2 + stageH;
-      ui.text(plan.cap, x + w / 2, yy + capH / 2 + 1 * s, { size: 17.5 * s, align: 'center', color: '#2d6a1c', maxW: w - 2 * pd, tag: 'intro:cap' });
+      // under the stage: what it does while the harm plays (red), then what to do (green)
+      const harmNow = plan.kind && plan.move !== 'rooster' && !save.calm && (ho._phase === 'harm' || (!plan.harm && ho._pt < 1.6));
+      ui.text(harmNow ? threatWords(plan.kind) : plan.cap, x + w / 2, yy + capH / 2 + 1 * s, { size: 17.5 * s, align: 'center', color: harmNow ? '#b8321e' : '#2d6a1c', maxW: w - 2 * pd, tag: 'intro:cap' });
       yy += capH;
-      if (n > 1) { for (let q = 0; q < n; q++) { ctx.beginPath(); ctx.arc(x + w / 2 + (q - (n - 1) / 2) * 16 * s, yy + 6 * s, (q === Hw.i % n ? 5 : 3.5) * s, 0, 7); ctx.fillStyle = q === Hw.i % n ? '#c9842a' : 'rgba(120,80,30,0.35)'; ctx.fill(); } yy += dotsH; }
+      const rowTiles = () => {
+      if (tn) { // every threat (and new thing) of the level: its art and two or three words; the one playing is lit; a tap replays it
+        const cw = (w - 2 * pd - (tCols - 1) * tGap) / tCols, fs = 14 * s;
+        tiles.forEach((T, k) => {
+          const c = k % tCols, r = Math.floor(k / tCols), inRow = Math.min(tCols, tn - r * tCols), rx = x + pd + c * (cw + tGap) + ((tCols - inRow) * (cw + tGap)) / 2, ry = yy + 4 * s + r * (tileH + tGap), on = T.i === Hw.i % n;
+          ui.roundRect(rx, ry, cw, tileH, 12 * s); ctx.fillStyle = on ? 'rgba(255,214,110,0.55)' : 'rgba(122,80,40,0.10)'; ctx.fill();
+          ctx.lineWidth = (on ? 2.5 : 1.5) * s; ctx.strokeStyle = on ? '#c9842a' : T.boss ? 'rgba(160,30,40,0.55)' : 'rgba(122,80,40,0.35)'; ctx.stroke();
+          const ar = Math.min(tileH * 0.29, cw * 0.24);
+          ctx.save(); ctx.beginPath(); ctx.rect(rx + 2 * s, ry + 2 * s, cw - 4 * s, tileH - fs - 8 * s); ctx.clip(); T.art(ctx, rx + cw / 2, ry + 4 * s + ar * 1.05, ar); ctx.restore();
+          ui.text(T.name, rx + cw / 2, ry + tileH - fs * 0.5 - 6 * s, { size: fs, align: 'center', color: T.boss ? '#a01e28' : C.ink, maxW: cw - 8 * s, tag: 'intro:tile' + k });
+          if (T.fresh && tn > 1) { ctx.beginPath(); ctx.arc(rx + cw - 9 * s, ry + 9 * s, 5 * s, 0, 7); ctx.fillStyle = '#3cb043'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); } // a green dot: new on this card
+          ui.buttons.push({ id: 'how:pick:' + T.i, x: rx, y: ry, w: cw, h: tileH });
+        });
+        yy += tilesH;
+      } else if (n > 1) { for (let q = 0; q < n; q++) { ctx.beginPath(); ctx.arc(x + w / 2 + (q - (n - 1) / 2) * 16 * s, yy + 6 * s, (q === Hw.i % n ? 5 : 3.5) * s, 0, 7); ctx.fillStyle = q === Hw.i % n ? '#c9842a' : 'rgba(120,80,30,0.35)'; ctx.fill(); } yy += dotsH; }
+      };
+      const rowChips = () => {
       if (chips.length) { // 0.8.10: what this level also holds, taught on an earlier card: one row of small chips (those that fit)
         const ch = 30 * s, fs = 13.5 * s, gp = 6 * s, room = w - 2 * pd, ws = chips.map((c) => ch + ui.measure(c.name, fs) + 10 * s);
         let k = 0, tot = 0; while (k < chips.length && tot + ws[k] + (k ? gp : 0) <= room) { tot += ws[k] + (k ? gp : 0); k++; }
@@ -6183,6 +6240,8 @@ function drawLevelIntro(L, acc) {
         }
         yy += chipH;
       }
+      };
+      const rowStars = () => {
       if (stars) { // the three stars, short
         ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x + pd, yy, w - 2 * pd, 1.5 * s);
         const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0)).map((g) => g.short), cw3 = (w - 2 * pd) / 3, sr = 12 * s;
@@ -6194,10 +6253,13 @@ function drawLevelIntro(L, acc) {
         }
         yy += starH;
       }
+      };
+      // 2026-11-23 (coordinator: the goals seen without scrolling where possible): a card that scrolls puts the star
+      // goals right under the caption, the tiles and chips after them; a card that fits keeps the old order
+      if (goalsFirst) { rowStars(); rowTiles(); rowChips(); } else { rowTiles(); rowChips(); rowStars(); }
       // 0.8.7 (mykee: "rather than PLAY, show NEXT, then the chick picks"): with chicks to choose from, the Level tab leads
       // on to the Chicks tab, and PLAY waits there; a level with no chicks yet plays straight away
-      if (withPlay) { const toCh = introHasChicks();
-        ui.button(toCh ? 'inext' : 'go', toCh ? 'NEXT' : 'PLAY', x + pd, yy + 8 * s, w - 2 * pd, 62 * s, { kind: 'primary', shimmer: true, icon: toCh ? ICON.next : ICON.play, size: 28 * s }); }
+      // 2026-11-23 (coordinator): NEXT / PLAY is no longer inside the card but pinned under it (nextPin), always whole in view
     } }];
   };
   // two quick tabs under the title (portrait): Level (the goal, stars, villains) and Chicks (the helper chick, boosters)
@@ -6244,15 +6306,15 @@ function drawLevelIntro(L, acc) {
   } else {
     const noTabs = earlyDays() && !(P.T.open.length || lockedChicks().length); // early days: no Boosters tab, the Level page only
     const iw = Math.min(A.w - 2 * pad, 520 * s), x0 = A.cx - iw / 2, lvTab = noTabs || G.itab !== 'chicks';
-    // 2026-11-20: on the Level tab PLAY sits inside the how-to card, right under the cartoon
-    const bot = lvTab ? [{ ...links(s), gap: 0 }] : [play(s, iw, P.T.need), links(s)], hb = colH(bot, s) + 8 * s;
+    // 2026-11-20: on the Level tab PLAY sat inside the how-to card; 2026-11-23: it is pinned right under the card instead
+    const bot = lvTab ? [nextPin(s), links(s)] : [play(s, iw, P.T.need), links(s)], hb = colH(bot, s) + 8 * s; // NEXT pinned under the card (2026-11-23)
     // the title and the two tabs stay put; the tab's content scrolls under them
     let hy = A.y + topH - 2 * s;
     for (const b of [...head(s, !lvTab), ...(noTabs ? [] : [tabs(s, P)])]) { hy += b.gap ?? 10 * s; b.draw(x0, hy, iw); hy += b.h; }
     const y0 = hy + 4 * s, y1 = A.y1 - hb - 8 * u;
     G.ipAvail = lvTab ? 0 : y1 - y0; // the room the Chicks step has (read by chicks() on the next frame)
     G.ipRect = { x: A.x, y: y0, w: A.w, h: y1 - y0 };
-    const body = !lvTab ? [...P.blocks, ...boost(s)] : [...howCard(s, iw, y1 - y0 - 34 * s, true, P.T.need)];
+    const body = !lvTab ? [...P.blocks, ...boost(s, P.T.open.length || lockedChicks().length ? 0 : y1 - y0 - colH(P.blocks, s) - 6 * s)] : [...howCard(s, iw, y1 - y0 - 34 * s, false, P.T.need)];
     if (body.length) body[0] = { ...body[0], gap: 6 * s };
     scrollCol(body, pg, G.ipRect, x0, iw, s, true);
     let by = y1 + 8 * u; for (const b of bot) { by += b.gap ?? 10 * s; b.draw(x0, by, iw); by += b.h; }

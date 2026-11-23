@@ -16,7 +16,7 @@ import { drawVillainPortrait } from './villain-art.js';
 import { drawHand } from './wonder.js';
 import { drawStrikeChick, drawStrikeButton } from './strike.js'; // 0.8.10: the chick scenes show the real HUD badge
 import { drawKindChick } from './chicks.js'; // the bulk chick's own art (L18's card)
-import { actorFor } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers)
+import { actorFor, harmActor, BREATH_AT, CHAM_ORB, BUMP_A } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers)
 import { statusDraw } from './status.js';
 import { beamSparks, scorchStub, drawPepperCloud, drawTwister, drawSneeze, drawDecoyAt, TWIST_T } from './powers2.js'; // 2026-11-20: Practice content in the campaign
 import { paintVortex } from './warp.js';
@@ -27,6 +27,7 @@ import { FISH } from '../sim/sea.js';
 import { drawGator } from './bayou.js';
 import { GATOR } from '../sim/bayou.js';
 import { drawEagle } from './v3art.js';
+import { drawSalHeat } from './salamander.js'; // the game's own red-hot wall (the salamander's harm beat)
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -73,18 +74,52 @@ const SHOW = {
   embers: P('dodge', 'Keep the egg out from under the embers', { haz: 'embers' }),
   quake: P('wait', 'Park the egg in a dip, then move'),
   rain: P('wait', 'Turn in small steps, let eggs settle'),
-  current: P('wait', 'Let the current carry the egg to a gap'),
-  gusts: P('wait', 'Put a wall in the way of the wind'),
+  current: P('ride', 'Let the current carry it to a gap'),
+  gusts: P('ride', 'Turn a gap downwind: it blows in'),
   popthorns: P('wait', 'Wait for the thorns to drop, then go'),
   vines: P('wait', 'Drop through before the vine closes'),
   doors: P('wait', 'Park the egg on the door: it opens', { haz: 'door' }),
   curse: P('dodge', 'Steer the egg round the curse orb', { haz: 'curse' }),
   thornorb: P('dodge', 'Steer the egg round the thorn orb', { haz: 'thornorb' }),
 };
-export function howToPlan(kind) {
+export function howToPlan(kind, o = {}) {
   const p = SHOW[kind] || SHOW[String(kind).replace(/^boss:/, '')] || P('turn', 'Turn the ring to keep the egg away', { fx: 'bonk' });
-  return { kind, ...p };
+  const q = { kind, ...p };
+  // o.harm (the level card): the scene opens with what the threat DOES to an egg, then the move that beats it
+  if (o.harm && HARM[kind]) { const [t, word] = HARM[kind]; q.harm = { t, word }; q.loop = (p.loop || LOOP) + HARM_T; }
+  return q;
 }
+// "What it does, then what to do" (2026-11-23, mykee: the level card is the only lesson now, "they should be
+// self-explanatory"). Each threat's scene on the level card opens with a short beat of the harm it does, acted on the
+// same stage with the same art (the egg grabbed, cracked, blocked, pushed, bitten...), ending in a red cross; then the
+// counter plays as before, ending in the tick. THREAT: the two or three words that name the harm (the card's reminder
+// tiles and the caption under that first beat). A kind whose own rig already shows its attack in the scene (the snake
+// lunging, the weasel pouncing, the rats rolling the egg, the crawlers, the frog plugging, the fish carrying) has no harm
+// beat, only the words.
+export const HARM_T = 2.7;
+const HARM = {
+  octopus: ['steal', 'GRAB!'], hermit: ['steal', 'TAKEN!'], 'boss:kingcrab': ['steal', 'GRAB!'],
+  eagle: ['snatch', 'SNATCH!'], 'boss:eagle': ['snatch', 'SNATCH!'], 'boss:owl': ['snatch', 'SNATCH!'],
+  icicles: ['fall', 'CRACK!'], lava: ['fall', 'CRACK!'], lightning: ['fall', 'ZAP!'], embers: ['fall', 'CRACK!'], 'boss:salamander': ['fall', 'CRACK!'],
+  jelly: ['sting', 'STING!'], 'boss:blizzard': ['frost', 'FROZEN!'],
+  thornorb: ['orb', 'CRACK!'], curse: ['orb', 'FUSE x2!'], popthorns: ['pop', 'CRACK!'],
+  puffer: ['block', 'BLOCKED!'], spider: ['block', 'WEBBED!'], vines: ['block', 'BLOCKED!'], turtle: ['block', 'STUCK!'], doors: ['block', 'SHUT!'],
+  current: ['push', 'PUSHED!'], gusts: ['push', 'BLOWN!'], beetle: ['push', 'PUSHED!'], 'boss:golem': ['push', 'BUMP!'], quake: ['push', 'SHAKE!'], rain: ['push', 'SLIDE!'],
+  mosquito: ['lift', 'LIFTED!'], gator: ['bite', 'CHOMP!'], jack: ['bounce', 'BOING!'],
+  // 2026-11-23 the crawlers (their own rigs act it, howact.js harmActor): the jet heats the wall, the tongue takes an orb, the hip shoves
+  salamander: ['breath', 'CRACK!'], chameleon: ['tongue', 'GULP!'], spike: ['bump', 'BUMP!'],
+};
+export const THREAT = {
+  snake: 'Eats eggs', weasel: 'Steals eggs', rats: 'Roll eggs away', octopus: 'Grabs eggs', fish: 'Sweep eggs', frog: 'Plugs gaps',
+  eagle: 'Snatches eggs', salamander: 'Heats walls', spike: 'Bumps eggs', chameleon: 'Steals orbs', hermit: 'Carries eggs',
+  puffer: 'Plugs a gap', jelly: 'Stings eggs', gator: 'Bites eggs', turtle: 'Clamps eggs', mosquito: 'Lift eggs up', spider: 'Webs gaps',
+  beetle: 'Pushes eggs', jack: 'Flings eggs', icicles: 'Fall on eggs', lava: 'Rocks fall', lightning: 'Zaps eggs', gusts: 'Blow eggs',
+  embers: 'Burn eggs', quake: 'Shakes eggs', rain: 'Slippery rings', current: 'Pushes eggs', popthorns: 'Spikes pop up', vines: 'Seal gaps',
+  doors: 'Shut gaps', curse: 'Fuse x2', thornorb: 'Cracks eggs',
+  'boss:weasel': 'Steals eggs', 'boss:snake': 'Two snakes', 'boss:blizzard': 'Freezes eggs', 'boss:golem': 'Bumps eggs', 'boss:salamander': 'Spits lava',
+  'boss:eagle': 'Dives for eggs', 'boss:ratking': 'Pounces', 'boss:kingcrab': 'Claws eggs', 'boss:gator': 'Shakes rings', 'boss:owl': 'Swoops at eggs',
+};
+export const threatWords = (kind) => THREAT[kind] || THREAT[String(kind).replace(/^boss:/, '')] || 'Hunts eggs';
 // the first-five ladder (2026-11-20, owner: every level from 2 on hands over a new toy, shown on its level card with the
 // game's own art): the red flame, the twin orb, the thorn curtain, the portal, the glow chick. move 'toy', plan.toy names it.
 const TOY = {
@@ -127,8 +162,11 @@ const PCOL = { freeze: '#8fd8ff', thunder: '#ffe14a', bomb: '#ff8a3a', decoy: '#
 // ------------------------------------------------------------------ the stage
 export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   o._drop = null; o._carry = null; o._bubble = 0;
-  const LP = plan.loop || LOOP, calm = !!o.calm, T = calm ? (plan.move === 'floor' ? (plan.surf === 'ice' ? 4.75 : 1.4) : 2.25) : ((t % LP) + LP) % LP;
-  const fade = calm ? 1 : Math.min(seg(T, 0, 0.25), 1 - seg(T, LP - 0.3, LP));
+  const LP = plan.loop || LOOP, calm = !!o.calm, T0 = calm ? (plan.move === 'floor' ? (plan.surf === 'ice' ? 4.75 : 1.4) : 2.25) : ((t % LP) + LP) % LP;
+  // the harm beat first (howToPlan(kind, { harm })), then the counter on its own clock; a soft cut between the two
+  const HB = plan.harm && !calm ? HARM_T : 0, hp = HB > 0 && T0 < HB, T = hp || !HB ? T0 : T0 - HB;
+  o._phase = hp ? 'harm' : 'beat'; o._pt = T;
+  const fade = calm ? 1 : hp ? Math.min(seg(T0, 0, 0.25), 1 - seg(T0, HB - 0.3, HB)) : Math.min(seg(T, 0, 0.25), 1 - seg(T0, LP - 0.3, LP));
   const U = h, Z = Math.min(h, w * 0.62), cx = x + w / 2; // U: the stage's height (vertical placing); Z: the size of things (a tall stage does not blow them up)
   const Wd = o.world || null;
   ctx.save();
@@ -153,7 +191,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   const at = (phi, lift) => ({ x: C.x + Math.sin(phi) * (floor - lift), y: C.y + Math.cos(phi) * (floor - lift) });
   const nest = { x: cx, y: y + U * 0.93 };
   const eggS = Wd ? 0.56 * 1.06 * kW : Z * 0.24, vD = Z * (Wd ? 0.8 : 0.5);
-  const m = !Wd && (plan.move === 'frog' || plan.move === 'fish' || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.move === 'floor') ? 'basic' : plan.move; // the rigs need the game's art
+  const m = hp ? 'harm' : !Wd && (plan.move === 'frog' || plan.move === 'fish' || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.move === 'floor') ? 'basic' : plan.move; // the rigs need the game's art
   const vLift = vD * (Wd ? 0.3 : 0.42);
   // where the villain stops: its nose just short of the egg, worked out in pixels so a big villain never overlaps it
   const vEnd = -Math.asin(clamp((eggS * 0.42 + vD * 0.46) / floor, 0.05, 0.95));
@@ -162,11 +200,18 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
 
   // ---- the timeline of each move -> ring turn th, egg angle eA, egg drop eD (0..1), villain angle vA, villain state
   let eLift = 0, eAlpha = 1, slideV = 0, miss = 0, door = null, th = 0, eA = 0, eD = 0, vA = -0.75, vOff = 0, vRot = 0, vAlpha = 1, vFx = '', fxK = 0, hand = null, stone = false, haz = null, btn = null, shot = null, done = 0;
-  const act = actorFor(plan), SG = act && act.stage ? act.stage(m) : null;
+  const act = hp ? harmActor(plan.kind) : actorFor(plan), SG = act && act.stage ? act.stage(m) : null;
   const gap0 = SG ? SG.g0 : 0.4, dTh = SG ? SG.dTh : -gap0; // the gap starts to the right of the egg and comes under it (an actor may set its own scene)
   const walk = ease(seg(T, 0.2, 1.3));
   const SA = act ? { x, y, w, h, cx, C, floor, band, k: Wd ? kW : Z / 2.5, at, g0: gap0, eggS, ground: Wd ? y + h * 0.9 : y + h * 0.95, calm } : null;
-  if (m === 'basic') {
+  if (m === 'harm') {
+    vAlpha = 0; toy = { deco: { thorns: 0 }, look: null };
+    harmBeat(ctx, plan, T, t, { x, y, w, h, cx, C, floor, band, at, eggS, vD, vEnd, gap0, Z, U, Wd, kW, nest, calm, drawE }, (q) => {
+      if (q.th != null) th = q.th; if (q.eA != null) eA = q.eA; if (q.eLift != null) eLift = q.eLift; if (q.eAlpha != null) eAlpha = q.eAlpha;
+      if (q.slideV != null) slideV = q.slideV; if (q.eD != null) eD = q.eD; if (q.haz) haz = q.haz; if (q.hand) hand = q.hand; if (q.door != null) door = q.door;
+      Object.assign(toy, q.toy || {});
+    });
+  } else if (m === 'basic') {
     vAlpha = 0;
     const d = ease(seg(T, 0.9, 1.9)); th = -gap0 * d;
     hand = dragHand(at, T, 0.9, 1.9, 0.5, 0.5 - gap0);
@@ -462,6 +507,18 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     hand = dragHand(at, T, 0.5, 1.4, 0.5, 0.5 - gap0);
     door = ease(seg(T, 1.9, 2.25)) * (1 - seg(T, 3.6, 3.9));
     eD = seg(T, 2.3, 2.7); done = seg(T, 2.7, 3.05);
+  } else if (m === 'ride') { // 2026-11-23: the current or the wind is a help: a turn puts a gap downstream, the flow carries the egg in
+    vAlpha = 0; toy = { deco: { thorns: 0 }, look: null };
+    const d = ease(seg(T, 0.5, 1.3)); th = -0.2 * d; hand = dragHand(at, T, 0.4, 1.3, 0.5, 0.3); // the gap comes round a little, downstream of the egg
+    const gNow = gap0 + th, P = seg(T, 1.4, 2.4); eA = gNow * ease(P); slideV = P > 0 && P < 1 ? Math.sin(P * Math.PI) : 0;
+    eD = seg(T, 2.45, 2.85); done = seg(T, 2.85, 3.2);
+    const gust = plan.kind === 'gusts';
+    toy.over = () => {
+      const a = Math.min(seg(T, 0.1, 0.4), 1 - seg(T, 2.6, 3.0)); ctx.save(); ctx.globalAlpha *= a; ctx.lineCap = 'round';
+      if (!gust) { ctx.strokeStyle = 'rgba(80,170,230,0.8)'; ctx.lineWidth = Math.max(2, eggS * 0.07); ctx.setLineDash([eggS * 0.35, eggS * 0.3]); ctx.lineDashOffset = t * eggS * 2.2; for (let j = 0; j < 3; j++) { ctx.beginPath(); const r = floor - eggS * (0.3 + 0.45 * j); for (let i = 0; i <= 24; i++) { const ph = -0.9 + 1.8 * i / 24, X = C.x + Math.sin(ph) * r, Y = C.y + Math.cos(ph) * r; if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); } ctx.stroke(); } }
+      else { const e0 = at(0, eggS * 0.5); ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = Math.max(2, eggS * 0.06); for (let i = 0; i < 5; i++) { const u = ((t * 1.3 + i * 0.23) % 1), Y = e0.y - eggS * (0.1 + 0.35 * (i % 3)) - U * 0.12 * (i % 2), X = x + w * (1.2 - u * 1.3); ctx.beginPath(); ctx.moveTo(X, Y); ctx.quadraticCurveTo(X - w * 0.12, Y - eggS * 0.15, X - w * 0.22, Y); ctx.stroke(); } }
+      ctx.restore();
+    };
   } else { // 'wait': something blocks the way for a beat (thorns, a web, the weather), then the egg goes through
     vAlpha = 0;
     const up = T < 1.7 ? 1 : 1 - seg(T, 1.7, 2.0);
@@ -473,7 +530,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   }
 
   { // the camera (see the veil above): a step back for a scene with a villain, and a step to the villain's side
-    const zm = o.zoom || (Wd && (['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.kind === 'spider') ? 0.8 : Wd && plan.move === 'floor' ? 0.86 : 1), pan = SG && SG.pan ? SG.pan * w : !act && plan.kind && vAlpha > 0 && zm !== 1 ? 0.05 * w : 0; // a portrait villain stands on the left
+    const zm = o.zoom || (Wd && (hp || ['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.kind === 'spider') ? 0.8 : Wd && plan.move === 'floor' ? 0.86 : 1), pan = SG && SG.pan ? SG.pan * w : !act && plan.kind && vAlpha > 0 && zm !== 1 ? 0.05 * w : 0; // a portrait villain stands on the left
     if (zm !== 1 || pan) { ctx.translate(cx + pan, y + h); ctx.scale(zm, zm); ctx.translate(-cx, -(y + h)); }
   }
   // ---- the ring: a thick slab with one gap (the game's own ring when it is given)
@@ -496,6 +553,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   if (Wd) Wd.nest(ctx, nest.x, nest.y, Math.max(Z * 0.7, eggS * 2.2), done, t); else drawBasket(ctx, nest.x, nest.y, Z * 0.42, done);
   // a hazard's warning mark on the floor, and its fall
   if (haz && haz.k === 'thorns') {
+    if (plan.kind === 'vines' && haz.up > 0.02) { ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#2f6a2a'; ctx.lineWidth = Math.max(3, eggS * 0.1); ctx.beginPath(); for (let i = 0; i <= 16; i++) { const p = at(0.12 + th + 0.2 * haz.up * (i / 16), Math.sin(i * 1.3) * eggS * 0.06); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); } ctx.stroke(); ctx.restore(); }
     for (let i = 0; i < 3; i++) { const p = at(0.14 + i * 0.07 + th, 0), up = haz.up; thornTri(ctx, p.x, p.y, Z * 0.07 * (0.25 + 0.75 * up), Math.atan2(C.x - p.x, p.y - C.y)); }
   } else if (haz) {
     const mk = at(0, 0);
@@ -719,3 +777,144 @@ function gatorAt(ctx, at, phi, face, k, t, o, floor) {
   drawGator(ctx, s, t, { walk: 1, bend: floor, ...o });
   ctx.restore();
 }
+
+// ------------------------------------------------------------------ the harm beat (howToPlan(kind, { harm: true }))
+// What the threat does to an egg, acted on the stage before the counter: the same ring, egg and nest, the threat in its
+// own art (the eagle and the gator on their game rigs, the rest in their portraits). Times in seconds of HARM_T.
+// set(q) hands the stage its timeline (ring turn th, egg angle eA, lift, alpha, hazard, hand) and toy layers (under/over/word/look).
+function harmBeat(ctx, plan, T, t, S, set) {
+  const { x, y, w, h, at, eggS, vD, vEnd, gap0, Z, U, Wd, kW, floor, band } = S, kind = plan.kind, H = plan.harm, q = { toy: {} }, Q = q.toy;
+  const under = [], over = [];
+  const pv = (X, Y, d, o2 = {}) => { ctx.save(); ctx.globalAlpha *= o2.a == null ? 1 : o2.a; ctx.translate(X, Y); if (o2.rot) ctx.rotate(o2.rot); if (o2.sx) ctx.scale(o2.sx, o2.sy || o2.sx); drawVillainPortrait(ctx, kind, 0, 0, d, o2.still ? 0 : t); ctx.restore(); };
+  const say = (t0, s2 = H.word) => { if (T > t0 && T < t0 + 1.25) Q.word = { s: s2, k: seg(T, t0, t0 + 1.25), red: 1 }; };
+  const lost = (t0, P) => over.push(() => { if (T > t0) { ctx.save(); ctx.globalAlpha *= seg(T, t0, t0 + 0.2) * (1 - seg(T, HARM_T - 0.35, HARM_T)); cross(ctx, P.x, P.y, Z * 0.1 * (0.7 + 0.3 * ease(seg(T, t0, t0 + 0.25)))); ctx.restore(); } });
+  const E0 = at(0, eggS * 0.5), egg = (X, Y, look) => S.drawE(X, Y, eggS, false, true, look);
+  const turnGap = (t0, t1) => { const d = ease(seg(T, t0, t1)); q.th = -gap0 * d; q.hand = dragHand(at, T, t0, t1, 0.5, 0.5 - gap0); return d; };
+  const ty = H.t;
+  if (ty === 'steal') { // it comes along the floor, takes the egg and goes off with it
+    const walk = ease(seg(T, 0.2, 1.0)), go = ease(seg(T, 1.3, 2.3)), up = kind === 'octopus' ? 1 : 0;
+    const vA = vEnd - 0.55 * (1 - walk) - 0.9 * go, v = at(vA, vD * 0.3 + up * go * U * 0.45);
+    if (T > 1.05) { q.eA = -0.9 * go; q.eLift = up * go * U * 0.45 + eggS * 0.15 * seg(T, 1.05, 1.2); }
+    q.eAlpha = 1 - seg(T, 2.0, 2.4);
+    over.push(() => pv(v.x, v.y, vD, { rot: -vA * 0.6, a: 1 - seg(T, 2.0, 2.4) }));
+    say(1.05); lost(1.7, E0);
+  } else if (ty === 'snatch') { // it dives from the sky, grabs the egg and flies off with it
+    const P0 = { x: x + w * 1.08, y: y - h * 0.1 }, hold = { x: E0.x, y: E0.y - eggS * 0.75 }, P2 = { x: x - w * 0.2, y: y - h * 0.15 };
+    const dive = ease(seg(T, 0.25, 1.05)), go = ease(seg(T, 1.3, 2.25));
+    const bx = T < 1.3 ? P0.x + (hold.x - P0.x) * dive : hold.x + (P2.x - hold.x) * go, by = T < 1.3 ? P0.y + (hold.y - P0.y) * dive : hold.y + (P2.y - hold.y) * go * go;
+    if (T > 1.1) Q.look = { hide: 1 };
+    const bird = () => {
+      if ((kind === 'eagle' || kind === 'boss:eagle') && Wd) drawEagle(ctx, bx, by - eggS * 0.2, 3.0 * kW * 0.38 * (kind === 'boss:eagle' ? 1.15 : 1), t, T < 1.1 ? { w: { dive: 1 }, face: -1, pitch: 0.35 } : { w: { carry: 1 }, face: -1, phase: t * 6, toes: 1 });
+      else pv(bx, by, vD, { rot: T < 1.1 ? -0.3 : 0.2 });
+    };
+    over.push(() => { if (T > 1.1) egg(bx, by + eggS * 0.75); bird(); });
+    say(1.1); lost(1.75, E0);
+  } else if (ty === 'fall') { // the warning glow under the egg, then it lands on it
+    q.haz = { k: kind === 'boss:salamander' ? 'lava' : kind, warn: seg(T, 0.15, 0.6) * (1 - seg(T, 1.1, 1.2)), fall: seg(T, 0.75, 1.15), boom: seg(T, 1.15, 1.75) };
+    if (T > 1.15) Q.look = { cracks: 3 };
+    say(1.15); lost(1.5, { x: E0.x - eggS * 0.62, y: E0.y + eggS * 0.1 });
+  } else if (ty === 'sting') { // it drifts down onto the egg, its sting cracks it, it drifts on
+    const dn = ease(seg(T, 0.2, 1.1)), off = ease(seg(T, 1.6, 2.5)), Y0 = Math.max(y + vD * 0.35, E0.y - U * 0.6), Y1 = E0.y - eggS * 0.85;
+    const jx = E0.x + w * 0.3 * off, jy = Y0 + (Y1 - Y0) * dn - off * U * 0.4;
+    if (T > 1.15) Q.look = { cracks: 3 };
+    over.push(() => { pv(jx, jy, vD * 0.9, { a: 1 - seg(T, 2.2, 2.5) }); if (T > 1.1 && T < 1.6) zig(ctx, E0.x, E0.y, eggS * 0.9, T, 1 - seg(T, 1.1, 1.6)); });
+    say(1.15); lost(1.5, { x: E0.x - eggS * 0.62, y: E0.y + eggS * 0.1 });
+  } else if (ty === 'frost') { // he walks up to the egg and his lick freezes it
+    const walk = ease(seg(T, 0.2, 1.0)), vA = vEnd - 0.55 * (1 - walk), v = at(vA, vD * 0.3), ice = seg(T, 1.1, 1.4);
+    if (T > 1.15) Q.look = { cracks: 2 };
+    under.push(() => pv(v.x, v.y, vD, { rot: -vA * 0.6 }));
+    over.push(() => { if (ice > 0) { ctx.save(); ctx.globalAlpha *= 0.55 * ice; ctx.fillStyle = '#cdefff'; ctx.strokeStyle = '#7fc7ee'; ctx.lineWidth = Math.max(2, eggS * 0.06); ctx.beginPath(); ctx.ellipse(E0.x, E0.y, eggS * 0.5, eggS * 0.6, 0, 0, TAU); ctx.fill(); ctx.stroke(); ctx.restore(); if (T < 1.6) burst(ctx, E0.x, E0.y, eggS * 0.8, 1 - seg(T, 1.1, 1.6), '#d9f4ff'); } });
+    say(1.15); lost(1.6, { x: E0.x - eggS * 0.62, y: E0.y + eggS * 0.1 });
+  } else if (ty === 'orb') { // the egg is rolled into the orb and takes it
+    const d = ease(seg(T, 0.3, 1.1)), oA = 0.16, hit = oA - (eggS * 0.8) / floor;
+    q.th = 0.25 * d; q.hand = dragHand(at, T, 0.3, 1.1, -0.25, 0.0); q.eA = -0.45 + (hit + 0.45) * d;
+    const O = at(oA, eggS * 0.5), Ee = at(hit, eggS * 0.5);
+    under.push(() => { if (T < 1.12) pv(O.x, O.y, eggS * 1.7); else if (T < 1.5) burst(ctx, O.x, O.y, eggS * 0.7, 1 - seg(T, 1.12, 1.5), kind === 'curse' ? '#b46cff' : '#ff5a4a'); });
+    if (kind === 'curse') { // the fuse: a little clock whose hand races
+      over.push(() => { if (T > 1.15) { const X = Ee.x, Y = Ee.y - eggS * 1.25, r = eggS * 0.32; ctx.save(); ctx.globalAlpha *= seg(T, 1.15, 1.3) * (1 - seg(T, HARM_T - 0.35, HARM_T)); ctx.fillStyle = '#fff4dc'; ctx.strokeStyle = '#6a2a8a'; ctx.lineWidth = Math.max(2, r * 0.2); ctx.beginPath(); ctx.arc(X, Y, r, 0, TAU); ctx.fill(); ctx.stroke(); const a = (calmT(S) ? 1 : t * 14); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + Math.sin(a) * r * 0.75, Y - Math.cos(a) * r * 0.75); ctx.stroke(); ctx.restore(); } });
+      say(1.15);
+    } else { if (T > 1.15) Q.look = { cracks: 3 }; say(1.15); lost(1.5, { x: Ee.x - eggS * 0.62, y: Ee.y + eggS * 0.1 }); }
+  } else if (ty === 'pop') { // forge spikes pump up under the resting egg
+    const up = T < 0.85 ? 0.15 + 0.15 * Math.sin(T * 9) : 0.3 + 0.7 * ease(seg(T, 0.85, 1.05));
+    q.eLift = Z * 0.05 * up;
+    under.push(() => { for (let i = -1; i <= 1; i++) { const p = at(i * 0.065, 0); thornTri(ctx, p.x, p.y, Z * 0.08 * (0.25 + 0.75 * up), Math.atan2(S.C.x - p.x, p.y - S.C.y)); } });
+    if (T > 1.05) Q.look = { cracks: 3 };
+    say(1.05); lost(1.45, { x: E0.x - eggS * 0.62, y: E0.y + eggS * 0.1 });
+  } else if (ty === 'block') { // the gap comes under the egg, but something sits in it: the egg bumps and stays
+    const d = turnGap(0.35, 1.25), gA = gap0 + (q.th || 0), G0 = at(gA, -band * 0.05), bump = seg(T, 1.3, 1.7);
+    q.eLift = Math.sin(bump * Math.PI) * eggS * 0.35;
+    if (kind === 'doors') q.door = 0;
+    if (kind === 'turtle') { const walk = ease(seg(T, 0.05, 0.35)), V = at(-0.5 * (1 - walk), eggS * 0.95 + (q.eLift || 0)); over.push(() => pv(V.x, V.y, vD * 0.85, { rot: 0 })); }
+    else if (kind === 'puffer') under.push(() => { const sw = 0.85 + 0.15 * Math.sin(t * 3) + 0.25 * seg(T, 1.25, 1.4); pv(G0.x, G0.y, vD * 0.75 * sw); });
+    else if (kind === 'spider') under.push(() => {
+      const k = seg(T, 0.1, 0.6), a0 = at(gA - 0.14, -band * 0.1), a1 = at(gA + 0.14, -band * 0.1);
+      ctx.save(); ctx.globalAlpha *= 0.9 * k; ctx.strokeStyle = '#f4f4f4'; ctx.lineWidth = Math.max(1.5, eggS * 0.035);
+      for (let i = 0; i < 5; i++) { const f = (i + 0.5) / 5, b0 = at(gA - 0.14, -band * (0.4 - f * 0.6)), b1 = at(gA + 0.14, -band * (0.4 - f * 0.6)); ctx.beginPath(); ctx.moveTo(b0.x, b0.y); ctx.lineTo(b1.x, b1.y); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(a0.x, a0.y - band * 0.3); ctx.lineTo(a1.x, a1.y + band * 0.3); ctx.moveTo(a0.x, a0.y + band * 0.3); ctx.lineTo(a1.x, a1.y - band * 0.3); ctx.stroke(); ctx.restore();
+      const V = at(gA + 0.32, vD * 0.3); pv(V.x, V.y, vD * 0.8, { rot: -(gA + 0.32) * 0.6 });
+    });
+    else if (kind === 'vines') under.push(() => {
+      const k = seg(T, 0.05, 0.6), a0 = gA - 0.14;
+      ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#2f6a2a'; ctx.lineWidth = Math.max(3, eggS * 0.1); ctx.beginPath();
+      for (let i = 0; i <= 16; i++) { const a = a0 + 0.28 * k * (i / 16), p = at(a, -band * 0.05 + Math.sin(i * 1.3) * eggS * 0.06); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }
+      ctx.stroke(); ctx.restore();
+      for (let i = 1; i <= 4; i++) { const a = a0 + 0.28 * k * (i / 5), p = at(a, 0); thornTri(ctx, p.x, p.y, Z * 0.06, Math.atan2(S.C.x - p.x, p.y - S.C.y)); }
+    });
+    say(1.35); lost(1.55, { x: G0.x + eggS * 0.9, y: G0.y + eggS * 0.2 });
+  } else if (ty === 'push') { // the egg is shoved along the floor, away from the gap
+    Q.gap = -0.42; const P = seg(T, 0.6, 1.9); q.eA = 0.72 * ease(P); q.slideV = P > 0 && P < 1 ? -Math.sin(P * Math.PI) : 0;
+    if (kind === 'quake') { q.th = Math.sin(t * 45) * 0.03 * (T > 0.5 && T < 1.9 ? 1 : 0); q.eLift = Math.abs(Math.sin(T * 9)) * eggS * 0.4 * (T > 0.5 && T < 1.9 ? 1 : 0); }
+    if (kind === 'beetle' || kind === 'boss:golem') { const walk = ease(seg(T, 0.05, 0.6)), vA = (q.eA || 0) - (eggS * 0.45 + vD * 0.35) / floor - 0.4 * (1 - walk), V = at(vA, vD * 0.3); under.push(() => pv(V.x, V.y, vD, { rot: -vA * 0.6 })); }
+    else over.push(() => { // the flow: the current's dashes, the gust's streaks, the rain
+      const a = Math.min(seg(T, 0.2, 0.6), 1 - seg(T, 1.9, 2.3));
+      ctx.save(); ctx.globalAlpha *= a; ctx.lineCap = 'round';
+      if (kind === 'current') { ctx.strokeStyle = 'rgba(80,170,230,0.8)'; ctx.lineWidth = Math.max(2, eggS * 0.07); ctx.setLineDash([eggS * 0.35, eggS * 0.3]); ctx.lineDashOffset = -t * eggS * 2.2; for (let j = 0; j < 3; j++) { ctx.beginPath(); const r = floor - eggS * (0.3 + 0.45 * j); for (let i = 0; i <= 24; i++) { const ph = -0.9 + 1.8 * i / 24, X = S.C.x + Math.sin(ph) * r, Y = S.C.y + Math.cos(ph) * r; if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); } ctx.stroke(); } }
+      else if (kind === 'rain') { ctx.strokeStyle = 'rgba(90,150,220,0.7)'; ctx.lineWidth = Math.max(1.5, eggS * 0.04); for (let i = 0; i < 14; i++) { const X = x + ((i * 0.137 + 0.05) % 1) * w, Y = y + (((t * 1.4 + i * 0.29) % 1)) * h; ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X - eggS * 0.08, Y + eggS * 0.35); ctx.stroke(); } }
+      else if (kind !== 'quake') { ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = Math.max(2, eggS * 0.06); for (let i = 0; i < 5; i++) { const u = ((t * 1.3 + i * 0.23) % 1), Y = E0.y - eggS * (0.1 + 0.35 * (i % 3)) - U * 0.12 * (i % 2), X = x + w * (u * 1.3 - 0.2); ctx.beginPath(); ctx.moveTo(X, Y); ctx.quadraticCurveTo(X + w * 0.12, Y - eggS * 0.15, X + w * 0.22, Y); ctx.stroke(); } }
+      ctx.restore();
+    });
+    say(1.2);
+  } else if (ty === 'lift') { // the swarm comes down on the egg and carries it up over the gap
+    const dn = ease(seg(T, 0.15, 0.85)); turnGap(1.0, 1.8); q.eLift = U * 0.2 * ease(seg(T, 0.9, 1.4));
+    const Y0 = y + vD * 0.3, V = { x: E0.x, y: Y0 + (E0.y - (q.eLift || 0) - eggS * 0.85 - Y0) * dn };
+    over.push(() => pv(V.x, V.y + Math.sin(t * 8) * eggS * 0.05, vD * 0.85));
+    say(1.4); lost(1.9, at(0, -band * 0.6));
+  } else if (ty === 'bite') { // the egg rolls toward his gap: CHOMP
+    const d = ease(seg(T, 0.3, 1.05)); q.eA = 0.3 * d; q.eAlpha = T < 1.2 ? 1 : 0; Q.gap = 0.42;
+    const snap = T > 1.1 && T < 1.35, gp = 0.66;
+    under.push(() => {
+      if (Wd) gatorAt(ctx, at, gp, -1, kW, t, { jaw: snap ? 0.05 : T < 1.1 ? 0.35 + 0.25 * Math.abs(Math.sin(t * 5)) : 0.12, eye: 'open', gait: 0 }, floor);
+      else { const V = at(gp, vD * 0.3); pv(V.x, V.y, vD); }
+    });
+    if (T > 1.2 && T < 1.7) over.push(() => burst(ctx, at(0.34, eggS * 0.5).x, at(0.34, eggS * 0.5).y, eggS * 0.7, 1 - seg(T, 1.2, 1.7), '#fff3c0'));
+    say(1.15); lost(1.5, at(0.3, eggS * 0.5));
+  } else if (ty === 'breath') { // its jet lands on the wall under the egg: that patch glows red-hot (drawSalHeat, as in play) and cracks the egg on it
+    const hotOn = T > 1.45, h = hotOn ? Math.max(0, 4 - (T - 1.45)) : 0;
+    if (hotOn) under.push(() => {
+      const a0 = BREATH_AT - Math.PI / 2 - 0.2, HS = HEAT.sim, sg = HS.rings[0].segs[0];
+      HS.rings[0].r = Wd ? Wd.ringR : floor / 40; sg.a0 = a0; sg.a1 = a0 + 0.4; sg.hot = h; sg.hotK = 1;
+      const k = Wd ? kW : 40; ctx.save(); ctx.globalAlpha *= Math.min(1, seg(T, 1.45, 1.6)) * (1 - seg(T, HARM_T - 0.35, HARM_T)); ctx.translate(S.C.x, S.C.y); ctx.scale(k, -k);
+      try { drawSalHeat(ctx, HS, k, t); } finally { ctx.restore(); }
+    });
+    if (T > 1.65) Q.look = { cracks: 3 };
+    say(1.65); lost(1.95, { x: E0.x - eggS * 0.62, y: E0.y + eggS * 0.1 });
+  } else if (ty === 'tongue') { // the orb by the egg is gone in one lick
+    const O = at(CHAM_ORB, eggS * 0.4), gone = seg(T, 1.35, 1.75), M = at(CHAM_ORB - 0.3, eggS * 0.3);
+    under.push(() => { if (gone < 1) { const X = O.x + (M.x - O.x) * gone, Y = O.y + (M.y - O.y) * gone, r = eggS * 0.42 * (1 - 0.7 * gone); if (Wd && Wd.orb) Wd.orb(ctx, 'fire_red', X, Y, r, t); else { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(X, Y, r * 0.8, 0, TAU); ctx.fill(); } } });
+    say(1.75);
+  } else if (ty === 'bump') { // he walks on into the egg and shoves it along
+    Q.gap = 1.1; q.eA = BUMP_A * ease(seg(T, 1.0, 1.9)); q.slideV = 0;
+    say(1.2);
+  } else if (ty === 'bounce') { // the egg rolls onto its lid and is flung right over the gap
+    const jA = -0.22, J = at(jA, vD * 0.18), roll = ease(seg(T, 0.2, 0.8)), fly = seg(T, 0.85, 1.65);
+    q.eA = T < 0.85 ? -0.6 + (jA + 0.6) * roll : jA + (0.95 - jA) * fly; q.eLift = T < 0.85 ? 0 : Math.sin(fly * Math.PI) * U * 0.45;
+    under.push(() => pv(J.x, J.y, vD * 0.8, { sy: T > 0.85 && T < 1.05 ? 1.25 : 1, sx: 1 }));
+    say(0.85); lost(1.7, at(gap0, -band * 0.6));
+  }
+  if (under.length) Q.under = () => under.forEach((f) => f());
+  if (over.length) Q.over = () => over.forEach((f) => f());
+  set(q);
+}
+const calmT = (S) => !!S.calm;
+// a stand-in for the sim that drawSalHeat reads: one ring, one hot section (one object, reused every frame)
+const HEAT = { sim: { sals: [{ ph: 'none' }], rings: [{ r: 2.1, body: { getAngle: () => 0 }, segs: [{ alive: true, hot: 0, hotK: 1, a0: 0, a1: 0 }] }] } };

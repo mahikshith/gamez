@@ -201,7 +201,24 @@ function crawler(species) {
     const walk = ease(seg(T, 0.2, 1.3));
     let vA = lerp(start, stop, walk), pose = walk < 1 ? 'walk' : 'idle', p = 0, tt = t, status = null, alpha = 1, glue = 0, threat = T < TB;
     let gait = (vA - start) * S.floor;
-    if (m === 'turn') {
+    let aim = 0, fireLen = 0, target = null;
+    if (m === 'harm') { // 2026-11-23 the harm beat (howto.js harmBeat): what this crawler does, acted by its own rig
+      threat = true;
+      if (species === 'salamander') { // it stops a body length off and breathes its jet at the wall under the egg (the game's own jet)
+        const st2 = stop - 0.42; vA = lerp(start, st2, walk); gait = (vA - start) * S.floor;
+        if (T > 1.0) {
+          pose = 'breath'; p = T < 1.3 ? 0.42 * seg(T, 1.0, 1.3) : T < 1.9 ? 0.42 + 0.44 * seg(T, 1.3, 1.9) : 0.86 + 0.14 * seg(T, 1.9, 2.3);
+          const hd = S.at(vA, lift), tg = S.at(BREATH_AT, 0), hdg = -vA, want = Math.atan2(tg.y - hd.y, tg.x - hd.x);
+          aim = clamp(Math.atan2(Math.sin(want - hdg), Math.cos(want - hdg)), -1.15, 1.15); fireLen = clamp(Math.hypot(tg.x - hd.x, tg.y - hd.y) / (s / 100) * 0.85, 12, 90);
+        }
+      } else if (species === 'chameleon') { // it stops short of the orb by the egg and its tongue snatches the orb
+        const st2 = stop - 0.34; vA = lerp(start, st2, walk); gait = (vA - start) * S.floor;
+        if (T > 1.0) { pose = 'snatch'; p = seg(T, 1.0, 2.0); target = S.at(CHAM_ORB, S.eggS * 0.4); }
+      } else { // the thorn-back walks on into the egg and shoves it along the channel
+        const push = ease(seg(T, 1.0, 1.9)); vA = lerp(start, stop, walk) + BUMP_A * push; gait = (vA - start) * S.floor;
+        if (T > 1.9) { pose = 'idle'; gait = (stop + BUMP_A - start) * S.floor; }
+      }
+    } else if (m === 'turn') {
       vA += S.th; // it rides the ring
       if (T >= TB) { const q = seg(T, TB, 3.1); pose = 'dazed'; vA -= 0.75 * q * q; threat = false; }
     } else if (m === 'stone') {
@@ -222,6 +239,8 @@ function crawler(species) {
     if (H.k === 'blast') { const b = S.at(stop - 0.12, lift); boom(ctx, b.x, b.y, s * 0.6, H.age); }
     ctx.save(); ctx.globalAlpha *= alpha;
     const o = { heading, curve: -1 / S.floor, trail, gait, pose, p, status, look: { x: 0.6, y: -0.3 }, id: 9300 };
+    if (aim || fireLen) { o.aim = aim; o.fireLen = fireLen; }
+    if (target) o.target = target;
     if (species === 'salamander') drawSalamander(ctx, head.x, head.y, s, tt, { ...o, glow: 0.8 }); else drawCrawler(ctx, head.x, head.y, s, tt, o, species);
     ctx.restore();
     return { threat, bonk: 0, x: head.x, y: head.y - s * 0.6, own: true };
@@ -246,6 +265,10 @@ function bossGator(ctx, S) {
   return { threat: !hit, bonk: hit ? seg(T, 2.0, 2.55) : 0, x: p.x + s * 0.2, y: p.y - s * 0.45, own: true };
 }
 
+// the harm beats' marks (howto.js reads them too): where the salamander's jet lands, where Sly's orb sits, how far the
+// thorn-back shoves the egg
+export const BREATH_AT = 0, CHAM_ORB = -0.22, BUMP_A = 0.5;
+export const harmActor = (kind) => (kind === 'salamander' || kind === 'chameleon' || kind === 'spike' ? ACTORS[kind] : null);
 const CRAWL = () => ({ g0: 0.4, dTh: -0.4, pan: 0.1 }); // the crawlers come along the ring from the left: the camera steps that way
 export const ACTORS = {
   // pan: the camera steps to the villain's side (a share of the stage's width), so it is whole in the picture
