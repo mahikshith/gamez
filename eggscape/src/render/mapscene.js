@@ -18,12 +18,14 @@ import { drawEggFriend } from './title.js';
 import { drawCrawler } from './crawlers.js';
 import { PLACE as FARM_PLACE, freeLandmarks } from './mapfarm.js'; // 0.8.7: World 1 is one painted farm with landmark stops
 import { PLACE as CAVE_PLACE } from './mapcave.js'; // 0.8.10: World 4, the Crystal Caves, the same way
+import { PLACE as VOLCANO_PLACE, freeSalamanders } from './mapvolcano.js'; // 0.8.12: World 5, the Volcano
+import { PLACE as THIEVES_PLACE, freeThieves } from './mapthieves.js'; // 0.8.12: World 7, the Thieves' Vault
 export * as FARM from './mapfarm.js';
 // 0.8.10: the worlds painted as one place, by world index. Each entry: { landmarks (the LMS shapes), paintBand(c, L, E),
 // drawLive(ctx, L, sy, t, calm, vt, vb), drawFront?(...), stop(L, i) (i: 0..4 within the world), drawLandmark(ctx, L, m,
 // sy, t, calm, press, glow, DPR), drawPlaque(ctx, L, m, sy, press) }. main.js draws their stops as landmarks; a world
 // not listed keeps the round stops, the generic band and the walking cast. The next world plugs in here.
-export const PLACES = { 0: FARM_PLACE, 3: CAVE_PLACE };
+export const PLACES = { 0: FARM_PLACE, 3: CAVE_PLACE, 4: VOLCANO_PLACE, 6: THIEVES_PLACE };
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -44,7 +46,7 @@ export const WORLD_LOOK = [
   { name: 'Crystal Caves', ground: ['#5a4592', '#2c2156'], hill: '#6c55a8', road: ['#9a86d6', '#3e2f78', 'rgba(255,240,255,0.6)'], accent: '#8a5ad8' },
   { name: 'Volcano', ground: ['#6a3424', '#2c130d'], hill: '#7c4030', road: ['#4a3a36', '#1a100c', 'rgba(255,150,60,0.7)'], accent: '#e2532a' },
   { name: 'Storm Peaks', ground: ['#8aa0bf', '#4a5e80'], hill: '#a0b4cf', road: ['#c7cfd9', '#4e5a6c', 'rgba(255,255,255,0.6)'], accent: '#5a72a8' },
-  { name: 'The Thieves’ Vault', ground: ['#8a7456', '#43341f'], hill: '#9c855f', road: ['#b8a07a', '#5a4528', 'rgba(255,220,120,0.6)'], accent: '#c89a2a' },
+  { name: 'The Thieves’ Vault', ground: ['#2c4458', '#142232'], hill: '#3a5670', road: ['#b23a40', '#5a1420', 'rgba(255,214,110,0.75)'], accent: '#c89a2a' },
   { name: 'Coral Reef', ground: ['#3fbde0', '#145a94'], hill: '#5ccbe8', road: ['#f2deaa', '#b08a4a', 'rgba(255,255,255,0.6)'], accent: '#1f9ad0' },
   { name: 'Gator Bayou', ground: ['#6e9550', '#2c4a2a'], hill: '#7fa85c', road: ['#a07a4a', '#4e3418', 'rgba(255,230,170,0.5)'], accent: '#5a8a3a' },
   { name: 'Shape Lab', ground: ['#3f5684', '#1c2742'], hill: '#4e679a', road: ['#c3cddd', '#5a6880', 'rgba(120,200,255,0.8)'], accent: '#4aa0e0' },
@@ -441,9 +443,9 @@ function joinItem(c, kind, x, y, s, r, u, lo, up) {
     case 'lip': boulder('#3a2a3a', '#5a4258', '#1c1220', null); if (r > 0.4) { c.strokeStyle = 'rgba(255,140,50,0.8)'; c.lineWidth = Math.max(1, s * 0.05); c.beginPath(); c.moveTo(x - s * 0.2, y - s * 0.1); c.lineTo(x - s * 0.05, y - s * 0.35); c.lineTo(x + s * 0.12, y - s * 0.42); c.stroke(); } c.strokeStyle = 'rgba(255,150,70,0.55)'; c.lineWidth = Math.max(1, s * 0.05); c.beginPath(); c.moveTo(x - s * 0.5, y - s * 0.44); c.lineTo(x - s * 0.18, y - s * (0.72 + r * 0.2)); c.lineTo(x + s * 0.3, y - s * 0.62); c.stroke(); break;
     case 'basalt': boulder(r < 0.5 ? '#5a6578' : '#4a3a36', r < 0.5 ? '#8c98aa' : '#6a524a', '#2a2e3a', null); break;
     case 'wall': { // a low wall of dressed blocks, broken here and there
-      if (r < 0.18) { boulder('#8a7456', '#b09a74', '#4a3a22', null); break; }
+      if (r < 0.18) { boulder('#4a6278', '#7a92a8', '#1c2c3c', null); break; }
       const bw = s * 1.1, bh = s * 0.5; sh(bw * 0.55, 0.2);
-      for (let k = 0; k < 2; k++) { const yy = y - k * bh, xx = x - bw / 2 + (k ? bw * 0.25 : 0), ww = k ? bw * 0.6 : bw; if (k && r < 0.5) break; c.fillStyle = '#9c855f'; c.fillRect(xx, yy - bh, ww, bh); c.fillStyle = '#c2ab80'; c.fillRect(xx, yy - bh, ww, bh * 0.22); c.fillStyle = 'rgba(40,28,14,0.25)'; c.fillRect(xx + ww * 0.82, yy - bh, ww * 0.18, bh); c.strokeStyle = '#5a4528'; c.lineWidth = Math.max(1, s * 0.05); c.strokeRect(xx, yy - bh, ww, bh); }
+      for (let k = 0; k < 2; k++) { const yy = y - k * bh, xx = x - bw / 2 + (k ? bw * 0.25 : 0), ww = k ? bw * 0.6 : bw; if (k && r < 0.5) break; c.fillStyle = '#5a7288'; c.fillRect(xx, yy - bh, ww, bh); c.fillStyle = '#8aa2b8'; c.fillRect(xx, yy - bh, ww, bh * 0.22); c.fillStyle = 'rgba(10,20,34,0.3)'; c.fillRect(xx + ww * 0.82, yy - bh, ww * 0.18, bh); c.strokeStyle = '#1c2c3c'; c.lineWidth = Math.max(1, s * 0.05); c.strokeRect(xx, yy - bh, ww, bh); }
       break;
     }
     case 'shore': if (r < 0.5) { drift('#ead39c', 'rgba(150,110,60,0.35)'); c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = Math.max(1, s * 0.07); c.beginPath(); c.moveTo(x - s * 0.6, y - s * 0.3); c.quadraticCurveTo(x - s * 0.3, y - s * 0.4, x, y - s * 0.3); c.quadraticCurveTo(x + s * 0.3, y - s * 0.2, x + s * 0.6, y - s * 0.32); c.stroke(); } else { drift('#e2c88e', 'rgba(150,110,60,0.35)'); c.beginPath(); c.ellipse(x, y - s * 0.12, s * 0.16, s * 0.1, -0.4, 0, TAU); c.fillStyle = '#ffb6a0'; c.fill(); c.strokeStyle = '#c0705a'; c.lineWidth = 1; c.stroke(); } break;
@@ -556,11 +558,26 @@ export function drawRoad(ctx, L, sy, vt, vb, doneTo) {
 
 // ------------------------------------------------------------------ the live layer: the cast and moving bits
 const HKEYS = {};
+// 0.8.12: a creature that wanders walks one way facing that way, eases to a stop, turns round (a quick squash
+// through the middle, never a slide backwards), walks back and turns again. dx: its offset, f: its facing scale
+// (1 right .. -1 left; the portraits face right)
+const turnF = (q) => { const c = Math.cos(clamp(q, 0, 1) * Math.PI); return (c < 0 ? -1 : 1) * Math.max(0.15, Math.abs(c)); };
+function pace(tt, A, walk = 2.6, rest = 1.2) {
+  const C = 2 * (walk + rest), k = ((tt % C) + C) % C;
+  if (k < walk) return { dx: lerp(-A, A, ss(k / walk)), f: 1 };
+  if (k < walk + rest) return { dx: A, f: turnF((k - walk - rest * 0.3) / (rest * 0.45)) };
+  if (k < 2 * walk + rest) return { dx: lerp(A, -A, ss((k - walk - rest) / walk)), f: -1 };
+  return { dx: -A, f: -turnF((k - 2 * walk - rest - rest * 0.3) / (rest * 0.45)) };
+}
 function drawLive(ctx, L, w, e, i, t, calm) {
   const p = spotOf(L, w, e, i, true); if (!p) return;
   const { x, s } = p, u = L.u, k = e[0], face = p.side < 0 ? 1 : -1; // face the road
   const y = p.y - L.sy, tt = calm ? 0 : t + i * 1.7 + w * 0.9;
   const port = (kind, d, yy = y - d * 0.42, xx = x) => drawVillainPortrait(ctx, kind, xx, yy, d, tt);
+  const roam = (kind, d, yy, A, walk, rest) => { // a portrait that paces: faces the way it goes, turns at the ends
+    const P = calm ? { dx: 0, f: face } : pace(tt, A, walk, rest);
+    ctx.save(); ctx.translate(x + P.dx, yy); ctx.scale(P.f, 1); drawVillainPortrait(ctx, kind, 0, 0, d, tt); ctx.restore();
+  };
   switch (k) {
     case 'henNest': {
       nest(ctx, x, y - s * 0.05, s * 0.9);
@@ -579,8 +596,8 @@ function drawLive(ctx, L, w, e, i, t, calm) {
       break;
     }
     case 'goose': {
-      const walk = calm ? 0 : Math.sin(tt * 0.5) * s * 0.25, dir = Math.cos(tt * 0.5) >= 0 ? 1 : -1;
-      ctx.save(); ctx.translate(x + walk, y); ctx.scale(dir * 1, 1); drawGoose(ctx, 0, -s * 0.38, s * 0.6, goosePose('waddle', 0, tt)); ctx.restore();
+      const P = calm ? { dx: 0, f: face } : pace(tt * 0.8, s * 0.25, 3, 1.4);
+      ctx.save(); ctx.translate(x + P.dx, y); ctx.scale(P.f, 1); drawGoose(ctx, 0, -s * 0.38, s * 0.6, goosePose('waddle', 0, tt)); ctx.restore();
       break;
     }
     case 'weaselHay': { // peeks out from behind a haystack, ducks back
@@ -597,14 +614,14 @@ function drawLive(ctx, L, w, e, i, t, calm) {
     case 'butterflies': for (let q = 0; q < 3; q++) { const a = tt * 0.8 + q * 2.1, bx = x + Math.sin(a) * s * 0.5, by = y - s * 0.5 + Math.sin(a * 1.7) * s * 0.25, f = calm ? 1 : Math.abs(Math.sin(tt * 12 + q)); ctx.fillStyle = ['#ffd23a', '#ff8ab0', '#8ad0ff'][q]; ctx.beginPath(); ctx.ellipse(bx - 4 * u * f, by, 4 * u * f, 6 * u, -0.3, 0, TAU); ctx.ellipse(bx + 4 * u * f, by, 4 * u * f, 6 * u, 0.3, 0, TAU); ctx.fill(); } break;
     case 'gecko': { rock(ctx, x, y, s * 0.8, '#9cc8e4', '#eaf6ff'); const S2 = s * 0.3; drawCrawler(ctx, x + face * 0.8 * S2, y - s * 0.4, S2, tt, { heading: face > 0 ? 0 : Math.PI, curve: -0.12 / S2, pose: 'idle', look: { x: 0.5 * face, y: 0.4 }, id: 9150 }, 'gecko'); break; }
     case 'skater': { // a chick sliding across the ice
-      const v = calm ? 0 : Math.sin(tt * 0.9), sx = x + v * s * 0.3;
+      const P = calm ? { dx: 0, f: 1 } : pace(tt, s * 0.3, 1.8, 1), sx = x + P.dx, moving = Math.abs(P.f) === 1 && Math.abs(P.dx) < s * 0.29;
       ctx.beginPath(); ctx.ellipse(x, y - 3 * u, s * 0.62, s * 0.14, 0, 0, TAU); ctx.fillStyle = 'rgba(190,225,245,0.9)'; ctx.fill();
-      ctx.save(); ctx.translate(sx, y - s * 0.2); ctx.rotate(-v * 0.15); drawChick(ctx, 0, 0, s * 0.42, tt, 1, 0); ctx.restore();
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2 * u; ctx.beginPath(); ctx.moveTo(sx - Math.sign(Math.cos(tt * 0.9) || 1) * s * 0.3, y - 2 * u); ctx.lineTo(sx, y - 2 * u); ctx.stroke();
+      ctx.save(); ctx.translate(sx, y - s * 0.2); ctx.scale(P.f, 1); ctx.rotate(moving ? 0.12 : 0); drawChick(ctx, 0, 0, s * 0.42, tt, 1, 0); ctx.restore(); // leans into the slide
+      if (moving && !calm) { ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2 * u; ctx.beginPath(); ctx.moveTo(sx - P.f * s * 0.3, y - 2 * u); ctx.lineTo(sx, y - 2 * u); ctx.stroke(); } // the scratch behind
       break;
     }
     case 'snowfall': if (!calm) for (let q = 0; q < 14; q++) { const fx2 = ((q * 37.3) % 100) / 100, py = ((t * 18 * u + q * 41 * u) % (s * 2)); blobAt(ctx, x - s + fx2 * s * 2 + Math.sin(t + q) * 6 * u, y - s * 2 + py, 2 * u, 'rgba(255,255,255,0.9)'); } break;
-    case 'rats': { const run = calm ? 0 : Math.sin(tt * 0.7) * s * 0.35; port('rats', s * 1.0, y - s * 0.45, x + run); break; }
+    case 'rats': roam('rats', s * 1.0, y - s * 0.45, s * 0.35, 2.2, 1.1); break;
     case 'spike': crystal(ctx, x + face * s * 0.35, y, s * 0.4, '#5ad0e0', '#d8fbff'); port('spike', s * 0.95, y - s * 0.38, x - face * s * 0.1); break;
     case 'sparkle': if (!calm) for (let q = 0; q < 6; q++) { const a = (t * 1.3 + q) % 2, r = Math.sin((a / 2) * Math.PI) * 4 * u, sx = x + Math.cos(q * 2.4) * s * 0.6, sy2 = y - s * 0.4 + Math.sin(q * 1.7) * s * 0.4; ctx.fillStyle = 'rgba(255,240,255,0.9)'; ctx.beginPath(); ctx.moveTo(sx, sy2 - r * 2); ctx.lineTo(sx + r * 0.5, sy2); ctx.lineTo(sx, sy2 + r * 2); ctx.lineTo(sx - r * 0.5, sy2); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(sx - r * 2, sy2); ctx.lineTo(sx, sy2 + r * 0.5); ctx.lineTo(sx + r * 2, sy2); ctx.lineTo(sx, sy2 - r * 0.5); ctx.closePath(); ctx.fill(); } break;
     case 'salamander': rock(ctx, x, y, s * 0.9, '#3a2420', '#6a4034'); port('salamander', s * 0.95, y - s * 0.62); break;
@@ -617,19 +634,19 @@ function drawLive(ctx, L, w, e, i, t, calm) {
     }
     case 'chameleon': rock(ctx, x, y, s * 0.8, '#5a6578', '#9aa6b8'); port('chameleon', s * 0.9, y - s * 0.6); break;
     case 'bolt': if (!calm && (t % 5) < 0.18) { ctx.strokeStyle = 'rgba(255,250,200,0.95)'; ctx.lineWidth = 4 * u; ctx.beginPath(); ctx.moveTo(x, y - s * 1.6); ctx.lineTo(x - s * 0.12, y - s * 1.0); ctx.lineTo(x + s * 0.08, y - s * 0.9); ctx.lineTo(x - s * 0.06, y - s * 0.2); ctx.stroke(); } cloud(ctx, x, y - s * 1.6, s * 0.7, 'rgba(90,100,130,0.85)'); break;
-    case 'weasel': { const run = calm ? 0 : Math.sin(tt * 0.6) * s * 0.3; port('weasel', s * 1.1, y - s * 0.45, x + run); coins(ctx, x - face * s * 0.5, y, s * 0.4); break; }
+    case 'weasel': coins(ctx, x - face * s * 0.5, y, s * 0.4); roam('weasel', s * 1.1, y - s * 0.45, s * 0.3, 2.4, 1.4); break;
     case 'puffer': { const b = calm ? 0 : Math.sin(tt * 1.2) * s * 0.1; port('puffer', s * 0.95, y - s * 0.55 + b); break; }
-    case 'fish': port('fish', s * 1.1, y - s * 0.5, x + (calm ? 0 : Math.sin(tt * 0.5) * s * 0.3)); break;
-    case 'hermit': port('hermit', s, y - s * 0.4, x + (calm ? 0 : Math.sin(tt * 0.4) * s * 0.25)); break;
+    case 'fish': roam('fish', s * 1.1, y - s * 0.5, s * 0.3, 3, 0.9); break;
+    case 'hermit': roam('hermit', s, y - s * 0.4, s * 0.25, 3.4, 1.6); break;
     case 'jelly': port('jelly', s * 0.9, y - s * 0.6 + (calm ? 0 : Math.sin(tt * 1.1) * s * 0.15)); break;
     case 'bubbles': if (!calm) for (let q = 0; q < 8; q++) { const a = (t * 0.35 + q / 8) % 1; ctx.beginPath(); ctx.arc(x + Math.sin(q * 1.9 + a * 5) * s * 0.4, y - a * s * 1.8, (2 + (q % 3) * 1.5) * u, 0, TAU); ctx.strokeStyle = `rgba(255,255,255,${0.8 * (1 - a)})`; ctx.lineWidth = 1.5 * u; ctx.stroke(); } break;
     case 'weedLive': break;
     case 'gator': { pond(ctx, x, y - s * 0.12, s * 0.75, s * 0.2, ['#6a8a5a', '#3a5a3a', 'rgba(20,40,20,0.4)']); ctx.save(); ctx.beginPath(); ctx.rect(x - s, y - s * 1.4, s * 2, s * 1.4 - s * 0.14); ctx.clip(); port('gator', s * 0.95, y - s * 0.2 + (calm ? 0 : Math.sin(tt * 0.8) * s * 0.03)); ctx.restore(); ctx.strokeStyle = 'rgba(200,230,200,0.5)'; ctx.lineWidth = 1.5 * u; ctx.beginPath(); ctx.ellipse(x, y - s * 0.14, s * 0.5 + (t % 2) * 6 * u, s * 0.07, 0, 0, TAU); ctx.stroke(); break; }
     case 'turtle': { ctx.fillStyle = '#6a4a2a'; ctx.beginPath(); ctx.ellipse(x, y - s * 0.06, s * 0.55, s * 0.1, 0, 0, TAU); ctx.fill(); port('turtle', s * 0.8, y - s * 0.34); break; }
     case 'frog': lily(ctx, x, y - s * 0.06, s * 0.9); port('frog', s * 0.7, y - s * 0.55); break;
-    case 'mosquito': port('mosquito', s, y - s * 0.6, x + (calm ? 0 : Math.sin(tt * 0.9) * s * 0.3)); break;
+    case 'mosquito': roam('mosquito', s, y - s * 0.6 + (calm ? 0 : Math.sin(tt * 3) * s * 0.04), s * 0.3, 1.8, 0.7); break;
     case 'spider': { const sw = calm ? 0 : Math.sin(tt * 1.3) * 0.2; ctx.strokeStyle = 'rgba(220,230,255,0.7)'; ctx.lineWidth = 1.2 * u; const ax = x, ay = y - s * 1.4, bx = ax + Math.sin(sw) * s * 0.7, by = ay + Math.cos(sw) * s * 0.7; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); port('spider', s * 0.8, by + s * 0.1, bx); break; }
-    case 'beetle': port('beetle', s, y - s * 0.3, x + (calm ? 0 : Math.sin(tt * 0.5) * s * 0.25)); break;
+    case 'beetle': roam('beetle', s, y - s * 0.3, s * 0.25, 3, 1.3); break;
     case 'jack': port('jack', s * 0.9, y - s * 0.4); break;
     case 'gearLive': gear(ctx, x - s * 0.25, y - s * 0.5, s * 0.32, '#8a9ab8', 10, calm ? 0 : t * 0.8); gear(ctx, x + s * 0.22, y - s * 0.3, s * 0.22, '#c8a050', 7, calm ? 0 : -t * 1.15 + 0.2); break;
     default: break;
@@ -729,6 +746,7 @@ export function mapRelease(keepWorld = -1) {
   for (const [w, e] of cache) if (w !== keepWorld) { freeCanvas(e.canvas); cache.delete(w); }
   for (const [w, e] of CASTC) { freeCanvas(e.cv); CASTC.delete(w); }
   freeLandmarks(keepWorld, PER);
+  freeThieves(); freeSalamanders(); // 0.8.12: the Vault's thieves and the Volcano's salamanders are stamped from small pictures
 }
 // 2026-11-19 Low graphics: a band's creatures are painted onto their own canvas 12 times a second (bands take turns)
 // and that picture is stamped every frame, so scrolling stays smooth while the cast still moves
@@ -756,12 +774,24 @@ function ambBand(L, w, sy, t) {
 }
 
 // the fog over a world still behind its gate: drifting cloud banks
+// a world behind its gate: one soft veil of mist rising from the world's foot (where the gate card stands), thinning
+// upward to a light haze, so the stops, their numbers and padlocks, and the world's life all still show through.
+// 0.8.12: was a wash and six cloud puffs dropped over the stops and creatures. The veil is a small gradient strip made
+// once and stretched (no gradient per frame).
+let VEIL = null;
+function veilStrip() {
+  if (VEIL || typeof document === 'undefined') return VEIL;
+  VEIL = document.createElement('canvas'); VEIL.width = 2; VEIL.height = 128;
+  const g = VEIL.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 128);
+  for (let i = 0; i <= 12; i++) { const k = i / 12, q = Math.min(1, k / 0.84), a = k <= 0.84 ? 0.16 + 0.7 * q * q * q : 0.86 - 0.72 * ((k - 0.84) / 0.16) ** 0.7; gr.addColorStop(k, `rgba(238,243,250,${a.toFixed(3)})`); } // haze above, thick at the foot, then a soft lip below the edge
+  g.fillStyle = gr; g.fillRect(0, 0, 2, 128);
+  return VEIL;
+}
 export function drawFog(ctx, L, w, sy, t, calm) {
-  const u = L.u, top = L.bandTop(w) - 30 * u - sy, h = L.BH + 30 * u;
+  const u = L.u, top = L.bandTop(w) - sy, h = L.BH, v = veilStrip();
   ctx.save();
-  ctx.fillStyle = 'rgba(232,238,248,0.32)'; ctx.fillRect(0, top + 20 * u, L.W, h - 20 * u); // light: the world's life shows through, a teaser
-  const R = rng(w * 7 + 1);
-  for (let i = 0; i < 6; i++) { const fx = R(), fy = R(), s = (80 + R() * 60) * u, dx = calm ? 0 : Math.sin(t * 0.15 + i) * 20 * u; cloud(ctx, fx * L.W + dx, top + 30 * u + fy * (h - 60 * u), s, 'rgba(250,252,255,0.7)'); }
+  ctx.fillStyle = 'rgba(232,238,248,0.14)'; ctx.fillRect(0, top, L.W, h * 0.45); // the far part of the world: only a haze
+  if (v) { const vh = (h * 0.55) / 0.84; ctx.drawImage(v, 0, 0, 2, 128, 0, top + h * 0.45, L.W, vh); } // thickening down to the world's foot, fading out just past it
   ctx.restore();
 }
 

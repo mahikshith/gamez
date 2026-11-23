@@ -727,7 +727,7 @@ function gearSprite(dpr, r, teeth, col, dark, light) {
   });
 }
 function spin(ctx, sp, x, y, a) { ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.drawImage(sp.cv, -sp.w / 2, -sp.h / 2, sp.w, sp.h); ctx.restore(); }
-function flame(ctx, x, y, s, t, k) {
+export function flame(ctx, x, y, s, t, k) { // 0.8.12: also the torch and brazier fire on the map (mapvolcano.js, mapthieves.js)
   const f = 1 + 0.18 * Math.sin(t * 13 + k) + 0.1 * Math.sin(t * 23 + k * 2), sw = Math.sin(t * 7 + k) * 0.15 * s;
   const tear = (w, h, col) => { ctx.beginPath(); ctx.moveTo(x - w, y); ctx.quadraticCurveTo(x - w, y - h * 0.5, x + sw, y - h); ctx.quadraticCurveTo(x + w, y - h * 0.5, x + w, y); ctx.quadraticCurveTo(x, y + w * 0.8, x - w, y); ctx.fillStyle = col; ctx.fill(); };
   tear(s * 0.55, s * 2 * f, '#ff7a1a'); tear(s * 0.36, s * 1.4 * f, '#ffc23a'); tear(s * 0.18, s * 0.8 * f, '#fff3c0');

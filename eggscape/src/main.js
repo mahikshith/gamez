@@ -7485,6 +7485,10 @@ function drawLevels() {
       ctx.beginPath(); ctx.arc(x, y + 3 * u, r, 0, 7); ctx.fillStyle = face.lip || face.b; ctx.fill();
       ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = face.a; ctx.fill(); ctx.lineWidth = 3 * u; ctx.strokeStyle = face.line; ctx.stroke();
       if (!locked) { const ns = Math.min(28 * u, r * 0.76); ctx.font = `600 ${Math.round(ns)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = Math.max(3, ns * 0.2); ctx.strokeStyle = face.line; ctx.strokeText(String(Lv.id), x, y); ctx.fillStyle = '#fff'; ctx.fillText(String(Lv.id), x, y); }
+      if (locked) { // 0.8.12: behind a gate the stone still shows its number, with the padlock under it (it was blank)
+        const ns = Math.min(14 * u, r * 0.4); ctx.font = `600 ${Math.round(ns)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 2.5 * u; ctx.strokeStyle = face.line; ctx.strokeText(String(Lv.id), x, y - r * 0.38); ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillText(String(Lv.id), x, y - r * 0.38);
+        drawPadlock(x, y + r * 0.22, Math.min(10 * u, r * 0.3), null);
+      }
       if (!locked && open) for (let q = 0; q < 3; q++) drawStar(ctx, x + (q - 1) * sr * 2.4, y + r + sr * 1.15 - (q === 1 ? sr * 0.35 : 0), sr, q < starsOf(Lv.id));
       if (cur) henAt = { x, y, r };
       continue;

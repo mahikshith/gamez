@@ -122,7 +122,7 @@ export function planStops(L, w, LMSw) {
     const S = LMSw[i], st = L.stops[i0 + i];
     let best = null;
     for (const s of [S.pref, -S.pref]) {
-      for (const [sc, ddy] of [[1, 0], [1, 14], [0.92, 14], [0.92, 28], [0.85, 30], [0.85, 44]]) {
+      for (const [sc, ddy] of S.tries || [[1, 0], [1, 14], [0.92, 14], [0.92, 28], [0.85, 30], [0.85, 44]]) { // S.tries: a landmark's own list of sizes and drops
         const d = u * sc * (S.sc0 || 1), fy = st.y + (S.dy + ddy) * u, y0 = fy - S.top * S.rows * d, sl = (S.x1 - S.x0) * d * 0.1;
         // start against the road and walk outward until it is clear of the road and the other plaques
         for (let k = 0; k < 80 && !best; k++) {
