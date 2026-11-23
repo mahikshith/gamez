@@ -79,11 +79,13 @@ import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' c
 import { STRIKES, STRIKE, STRIKE_FROM, EGG_STRIKES } from './data/strikes.js';
 import { drawHand as teachHand } from './render/wonder.js'; // the teaching hand (Papa Rooster's first call)
 import { stampStats, stampSweep } from './render/stamp.js';
-import { cvStats } from './render/cvfree.js';
+import { cvStats, freeCanvas } from './render/cvfree.js';
+import { REC, recInit, recWindow, recProbe, recDue, recGo, recIll } from './recover.js';
 import { drawHowTo, howToPlan, chickPlan, toyPlan, floorPlan, chickTeach, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
 import { drawVillainPortrait, PORTRAIT_BG, hasPortrait } from './render/villain-art.js';
+import { drawExtrasMark } from './render/extras.js';
 import { vibrate, installApp } from './app.js'; // Android WebView proof shell: bridge vibration, back button, FPS overlay (no-ops outside EGG_APP)
 // Safety net: an animated size that dips below zero (a shrinking bubble, a tiny card on a short screen) makes arc() /
 // ellipse() THROW, which kills the rest of that frame every frame. Clamp the radius to 0 instead (NaN too).
@@ -117,6 +119,9 @@ const bestStarsOf = (id) => Math.max(0, ...MODE_LIST.map((m) => save.stars[sk(id
 E.setPlatform(!ads.moneyShop); // 0.8.11: a web portal sells nothing, so wins and videos pay more there (economy.js PLATFORM)
 const earlyDays = () => DR.earlyDays(save); // src/director.js: SELL_AFTER
 const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0);
+// a brand-new player (nothing won yet, nothing unlocked): home is the logo and one big PLAY, and PLAY goes straight into
+// level 1 with the teaching hand (no map, no level card). Any win, or a level unlocked, and home is the full home.
+const firstRun = () => !TEST && !allOpen() && bestTotal() === 0 && (save.unlocked || 1) <= 1;
 const envOf = (i) => Math.floor(i / PER_ENV);
 const envNeed = (k) => (TEST ? 0 : GATE * k);
 // a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all
@@ -255,7 +260,7 @@ function resize() {
 
 // ---------------------------------------------------------------- game state
 const G = {
-  pscroll: { y: 0, v: 0, max: 0, t: 0 }, pdrag: null, // Practice screen scroll
+  pscroll: { y: 0, v: 0, max: 0, t: 0 }, escroll: { y: 0, v: 0, max: 0, t: 0 }, pdrag: null, // Practice and Extras screen scroll
   mscroll: { y: 0, v: 0, max: 0, t: 0, seenT: Infinity, focus: '', enter: 0 }, mapL: null, // the world map's scroll (px from the map's top) and layout
   iscroll: { y: 0, v: 0, max: 0, t: 0 }, infoKinds: [], infoNew: false, infoFrom: 'play', infoCard: null, // the "i" panel (drawInfo)
   screen: 'loading',
@@ -315,7 +320,7 @@ const G = {
 };
 
 // WONDER: the bonus world's controller. It gets the canvas, the UI kit and a few shell services; it never touches the campaign save keys.
-const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, setScreen: (s) => setScreen(s), leave: () => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); setScreen('extras'); } });
+const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, escroll: () => G.escroll, glide: (S, dt) => glideDt(S, dt), setScreen: (s) => setScreen(s), leave: () => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); setScreen('extras'); } });
 
 function themeFor(level) {
   return THEMES.find((t) => t.id === level.theme) || THEMES[(level.id - 1) % THEMES.length];
@@ -937,7 +942,7 @@ function pointerDown(e) {
     const D = G.dscroll; G.pdrag = { pid: e.pointerId, sc: D, y0: y, s0: D.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; D.v = 0; D.to = null;
   }
   if (G.adBusy || modalOpen()) { if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; } return; } // a sheet or popup takes every tap (and an ad wait: only its "Back to game")
-  const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'pause' ? (G.ppRectR && x >= G.ppRectR.x ? G.ppageR : G.ppage) : null;
+  const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'extras' ? G.escroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'pause' ? (G.ppRectR && x >= G.ppRectR.x ? G.ppageR : G.ppage) : null;
   if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
   if (SC && G.settingsOpen && /^rs:\d+$/.test(id || '')) Object.assign(G.pdrag, { bar: true, x0: x }); // the ring speed bar: a sideways drag slides it, an up/down one scrolls the page
   if (G.screen === 'intro') { // 2026-11-19 level page: the page scrolls up/down, the chick row left/right (the first clear move picks)
@@ -1007,7 +1012,7 @@ function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
   const pd = G.pdrag;
-  if (pd && pd.pid === e.pointerId && (G.settingsOpen || G.screen === 'practice' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store' || G.screen === 'intro' || G.screen === 'pause')) { // 0.8.7: the pause page was missing here, so it never scrolled under a finger (0.8.10: and Settings over the title, mykee: "users are not able to scroll it")
+  if (pd && pd.pid === e.pointerId && (G.settingsOpen || G.screen === 'practice' || G.screen === 'extras' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store' || G.screen === 'intro' || G.screen === 'pause')) { // 0.8.7: the pause page was missing here, so it never scrolled under a finger (0.8.10: and Settings over the title, mykee: "users are not able to scroll it")
     if (pd.bar && (pd.scrub || (!pd.moved && Math.abs(x - pd.x0) > 9 * ui.u && Math.abs(x - pd.x0) > Math.abs(y - pd.y0)))) { // the speed bar follows the finger sideways
       if (!pd.scrub) { pd.scrub = pd.moved = true; ui.pressedId = null; }
       const b = ui.buttons.find((q) => /^rs:\d+$/.test(q.id) && x >= q.x && x < q.x + q.w), L = ui.buttons.filter((q) => /^rs:\d+$/.test(q.id));
@@ -1102,7 +1107,7 @@ function pointerUp(e) {
 function wheel(e) {
   if (G.detail && G.dscroll && G.detail === 'iap:' + G.dscroll.key && G.dscroll.max > 0 && !G.got) { e.preventDefault(); G.dscroll.y = clamp(G.dscroll.y + clamp(e.deltaY, -400, 400), 0, G.dscroll.max); G.dscroll.v = 0; return; }
   if (modalOpen()) return;
-  const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'levels' ? G.mscroll : G.screen === 'pause' ? (G.ppRectR && e.clientX >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'intro' ? (e.shiftKey && G.car ? G.car : G.ipRectR && ui.A.w > ui.A.h * 1.15 && e.clientX >= G.ipRectR.x ? G.ipageR : G.ipage) : null;
+  const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'extras' ? G.escroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'levels' ? G.mscroll : G.screen === 'pause' ? (G.ppRectR && e.clientX >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'intro' ? (e.shiftKey && G.car ? G.car : G.ipRectR && ui.A.w > ui.A.h * 1.15 && e.clientX >= G.ipRectR.x ? G.ipageR : G.ipage) : null;
   if (SC) { e.preventDefault(); SC.y = clamp(SC.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -400, 400), 0, SC.max); SC.v = 0; return; } // 2026-11-19: the world map scrolls with a mouse wheel too
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   e.preventDefault();
@@ -1194,6 +1199,7 @@ async function press(id) {
       }
       break;
     case 'play': {
+      if (G.screen === 'title' && firstRun()) { portal.gameplayStop(); startLevel(0, { direct: true }); break; } // first launch: PLAY is level 1, playing
       // 2026-11-20 (mykee: "people wouldn't even look at the map"): home's PLAY opens the map, Angry Birds style, with
       // the hen at the next level; one more tap there opens the level page
       const i = nextIdx();
@@ -1637,6 +1643,7 @@ async function press(id) {
       break;
     case 'extras': // the Extras menu: Wonder Vaults (bonus) and, in the test build, the Practice vaults
       portal.gameplayStop();
+      if (G.screen === 'title') G.escroll = { y: 0, v: 0, max: 0, t: G.t };
       setScreen('extras');
       break;
     default:
@@ -5270,32 +5277,53 @@ function drawKeyHint() {
   const T = G.teach;
   if (G.sim.state !== 'play') return; // the level is decided: no drag hand over a vault that is bursting
   if (G.level.id !== 1 || G.held.size || (!T && G.sim.savedLog.length > 0)) return;
-  let r = G.sim.rings[0];
+  const sim = G.sim, L = leadEgg(sim);
+  if (!L) return;
+  let r = sim.rings[0];
   if (T) {
     if (T.last == null) T.last = G.t;
-    if (G.sim.turns !== T.turns || G.sim.rings.some((q) => q.held || q.keyHeld)) { T.turns = G.sim.turns; T.last = G.t; if (T.turns > 0) T.first = false; }
+    if (sim.turns !== T.turns || sim.rings.some((q) => q.held || q.keyHeld)) { T.turns = sim.turns; T.last = G.t; if (T.turns > 0) T.first = false; }
     if (!T.first) {
-      if (G.t - T.last < 4 || G.sim.state !== 'play') return;
-      const L = leadEgg(G.sim);
-      if (!L || L.ch >= G.sim.rings.length) return;
-      r = G.sim.rings[L.ch];
-    }
+      if (G.t - T.last < 3 || sim.state !== 'play') return;
+      if (L.ch >= sim.rings.length) return;
+      r = sim.rings[L.ch];
+    } else if (L.ch < sim.rings.length) r = sim.rings[L.ch];
   }
-  const c = toScreen(0, 0);
-  const R = r.r * G.cam.k, u = ui.u;
-  const sw = Math.sin(G.t * 1.6);
-  const a0 = -Math.PI * 0.75, a = a0 + sw * 0.6;
-  const x = c.x + Math.cos(a) * R, y = c.y + Math.sin(a) * R;
+  // the lesson in one motion: a hand takes the ring where its gap is now and drags it along the ring until the gap sits
+  // under the egg; the gap lights up there and the arrows say "down". Then it starts again.
+  const u = ui.u, c = toScreen(0, 0), R = r.r * G.cam.k, E = toScreen(L.x, L.y), Gp = toScreen(L.gx, L.gy);
+  const ea = Math.atan2(E.y - c.y, E.x - c.x), ga = Math.atan2(Gp.y - c.y, Gp.x - c.x);
+  let d = ea - ga; d = Math.atan2(Math.sin(d), Math.cos(d));
+  if (Math.abs(d) < 0.14) return; // the gap is already under the egg: nothing to teach
+  const P = 3.4, q = save.calm ? 0.6 : (G.t % P) / P, mv = ease01((q - 0.14) / 0.5), end = ga + d;
+  const ang = ga + d * mv, hx = c.x + Math.cos(ang) * R, hy = c.y + Math.sin(ang) * R;
+  const show = save.calm ? 1 : ease01(q / 0.1) * (1 - ease01((q - 0.9) / 0.1)), land = save.calm ? 1 : ease01((q - 0.62) / 0.12) * (1 - ease01((q - 0.95) / 0.05));
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (const [lw, col] of [[6 * u, 'rgba(40,18,4,0.55)'], [3 * u, '#fff']]) {
-    ctx.beginPath(); ctx.arc(c.x, c.y, R, a0 - 0.6, a0 + 0.6);
+  // the way: a dashed arc from the gap to the egg
+  ctx.globalAlpha = show;
+  for (const [lw, col] of [[6 * u, 'rgba(40,18,4,0.5)'], [3 * u, '#fff']]) {
+    ctx.beginPath(); ctx.arc(c.x, c.y, R, Math.min(ga, end), Math.max(ga, end));
     ctx.strokeStyle = col; ctx.setLineDash([7 * u, 8 * u]); ctx.lineWidth = lw; ctx.stroke();
   }
   ctx.setLineDash([]);
-  // the hand: a pointing glove, tilted, pressing a little as it changes direction
-  const press = 1 - 0.08 * Math.abs(Math.cos(G.t * 1.6));
-  ctx.translate(x, y); ctx.rotate(-0.35); ctx.scale(u * press, u * press);
+  // the gap, lit under the egg, and two arrows down toward the next ring and the basket
+  if (land > 0) {
+    const gw = Math.max(0.22, (r.gaps[0] ? r.gaps[0].len / r.r : 0.5)) / 2, pulse = save.calm ? 1 : 0.75 + 0.25 * Math.sin(G.t * 7);
+    ctx.globalAlpha = land * pulse;
+    ctx.beginPath(); ctx.arc(c.x, c.y, R, end - gw, end + gw); ctx.strokeStyle = 'rgba(255,224,110,0.55)'; ctx.lineWidth = 15 * u; ctx.stroke();
+    ctx.beginPath(); ctx.arc(c.x, c.y, R, end - gw, end + gw); ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 4 * u; ctx.stroke();
+    const tx = c.x + Math.cos(end) * R, ty = c.y + Math.sin(end) * R;
+    for (let i = 0; i < 2; i++) {
+      const yy = ty + (16 + i * 13) * u, a2 = land * (save.calm ? 1 : 0.45 + 0.55 * Math.max(0, Math.sin(G.t * 6 - i * 1.2)));
+      ctx.globalAlpha = a2; ctx.beginPath(); ctx.moveTo(tx - 8 * u, yy - 4 * u); ctx.lineTo(tx, yy + 3 * u); ctx.lineTo(tx + 8 * u, yy - 4 * u);
+      ctx.strokeStyle = 'rgba(40,18,4,0.55)'; ctx.lineWidth = 7 * u; ctx.stroke(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3.4 * u; ctx.stroke();
+    }
+  }
+  // the hand: a pointing glove, tilted, pressing down while it drags
+  ctx.globalAlpha = show;
+  const press = 1 - 0.1 * (q > 0.12 && q < 0.7 ? 1 : 0);
+  ctx.translate(hx, hy); ctx.rotate(-0.35); ctx.scale(u * press, u * press);
   ctx.beginPath(); ctx.arc(0, 0, 11, 0, 7); ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
   const hand = () => {
     ctx.beginPath();
@@ -5308,6 +5336,15 @@ function drawKeyHint() {
   ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(74,42,18,0.5)';
   ctx.beginPath(); ctx.moveTo(10, 10); ctx.lineTo(10, 16); ctx.moveTo(15, 11); ctx.lineTo(15, 16); ctx.stroke();
   ctx.restore();
+  // two words above the vault until the first turn
+  if (T && T.first) {
+    const txt = 'Drag the ring', ts = 18 * u, wd = ui.measure(txt, ts) + 30 * u, hh = 34 * u;
+    const py = Math.max(G.hudBottom + 8 * u, c.y - sim.outerR * G.cam.k - hh - 10 * u), px = ui.A.cx - wd / 2;
+    ctx.save(); ctx.globalAlpha = ease01(G.screenT / 0.5);
+    ui.roundRect(px, py, wd, hh, hh / 2); ctx.fillStyle = 'rgba(30,14,4,0.62)'; ctx.fill();
+    ui.text(txt, ui.A.cx, py + hh / 2 + 0.5 * u, { size: ts, align: 'center', color: '#fff', tag: 'coach:drag' });
+    ctx.restore();
+  }
 }
 
 // Centered card used by intro/pause/win/fail: a cream card in a wooden frame with a ribbon header. Content is a
@@ -7238,7 +7275,8 @@ const introBack = (p) => { const c = 1.9; p = Math.min(1, Math.max(0, p)); retur
 function drawTitle() {
   const u = ui.u;
   ui.calm = save.calm;
-  const intro = !!G.homeIntro && !save.calm && G.screenT < 1.2, T = G.screenT;
+  const fr = firstRun(); // a brand-new player: the logo's arrival is the moment (slower), one big PLAY, nothing else yet
+  const intro = !!G.homeIntro && !save.calm && G.screenT < (fr ? 2.6 : 1.2), T = fr ? G.screenT * 0.55 : G.screenT;
   // a piece's progress 0..1 (starts at `d` s, takes `dur` s); 1 when there is no entrance
   const ent = (d, dur = 0.32) => (intro ? Math.min(1, Math.max(0, (T - d) / dur)) : 1);
   // draw fn() popped in around (px, py): scale with a little overshoot, fading up
@@ -7257,9 +7295,9 @@ function drawTitle() {
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
   // landscape: two balanced columns, logo + vault on the left, the buttons on the right, the meadow low across both
   const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? A.x + A.w * 0.73 : cx;
-  const blockH = 184 * u; // Play + Levels row + difficulty + Extras
-  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - 204 * u - 16 * u;
-  const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - 204 * u; // room for the Extras row (and its lip, clear of the phone's bottom edge) under the difficulty row
+  const blockH = (fr ? 100 : 184) * u; // Play + Levels row + difficulty + Extras
+  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - (fr ? 124 : 208) * u - 16 * u;
+  const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - (fr ? 124 : 208) * u; // room for the Extras row (and its lip, clear of the phone's bottom edge) under the difficulty row
   if (!themeBack(ctx, ui.skin, W_, H_, ground)) G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t); // a skin pack paints its whole scene instead
   // the earth under the controls falls into shade, so the buttons carry the bottom of the screen
   const sg = ctx.createLinearGradient(0, ground + 20 * u, 0, H_);
@@ -7293,10 +7331,10 @@ function drawTitle() {
   const ft = ctx.createRadialGradient(hx, ground, 2, hx, ground, henH * 0.5); ft.addColorStop(0, 'rgba(40,20,4,0.28)'); ft.addColorStop(1, 'rgba(40,20,4,0)');
   ctx.fillStyle = ft; ctx.beginPath(); ctx.ellipse(hx, ground, henH * 0.5, henH * 0.12, 0, 0, Math.PI * 2); ctx.fill();
   pop(0.2, hx, ground, () => drawHenAnim(ctx, G.henHomeHop > G.t ? 'happy' : 'idle', hx, ground - henH * 0.5, henH, G.t, { key: 'home', face: 1, calm: save.calm, n: G.henHomeN || 0, shadow: 0 }), 0.4);
-  homeHit('home:hen', hx - henH * 0.45, ground - henH, henH * 0.9, henH);
+  if (!fr) homeHit('home:hen', hx - henH * 0.45, ground - henH, henH * 0.9, henH); // (first launch: the hen only welcomes)
   const chestOpen = save.wallet.daily === today(), cs = Math.min(eggH * 1.35, 62 * u);
   const chx = wide ? bx + bw / 2 + Math.min(70 * u, (A.x1 - bx - bw / 2) * 0.5) : A.x1 - Math.max(cs * 0.7, A.w * 0.12), chy = ground - cs * 0.42;
-  if (!(wide && chx + cs * 0.6 > A.x1)) {
+  if (!fr && !(wide && chx + cs * 0.6 > A.x1)) {
     const tagS = 13 * u;
     pop(0.4, chx, ground, () => {
       drawChest(ctx, chx, chy, cs, G.t, chestOpen ? 'open' : 'ready');
@@ -7310,7 +7348,7 @@ function drawTitle() {
   pop(0.05, vx, vy, () => drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm), 0.5); // the toy vault and the meadow friends settle in
   pop(0.2, A.x + 30 * u, A.y + 30 * u, () => ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }));
   // remove ads / buy the game (app, until bought): a small gold pill in the top corner
-  if (ads.canBuyPremium) {
+  if (fr) { /* first launch: nothing sold */ } else if (ads.canBuyPremium) {
     const ps = 14 * u, pw2 = ui.measure('Unlock all', ps) + 44 * u, py2 = A.y + 10 * u;
     pop(0.3, A.x1 - pw2 / 2 - 10 * u, py2 + 17 * u, () => ui.button('home:premium', 'Unlock all', A.x1 - pw2 - 10 * u, py2, pw2, 34 * u, { kind: 'gold', size: ps, icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) }));
   } else if (ads.premium && save.wallet.premDay !== today() && save.wallet.charges < E.MAX_CHARGES) { // Premium: a free Chick Charge every day
@@ -7318,13 +7356,14 @@ function drawTitle() {
     pop(0.3, A.x1 - pw2 / 2 - 10 * u, py2 + 17 * u, () => ui.button('home:charge', lbl, A.x1 - pw2 - 10 * u, py2, pw2, 34 * u, { kind: 'primary', shimmer: true, size: ps, icon: (c, x, y, sz) => drawStrikeToken(c, 'freeze', x, y, sz * 0.42, G.t, true) }));
   }
   // PLAY breathes
-  const ph = 70 * u, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
+  const ph = (fr ? 84 : 70) * u, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
   pop(0.25, bx, by + ph / 2, () => {
     ctx.save();
     ctx.translate(bx, by + ph / 2); ctx.scale(br, br); ctx.translate(-bx, -(by + ph / 2));
-    ui.button('play', nextIdx() > 0 ? `PLAY  Level ${LEVELS[nextIdx()].id}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * u, round: 20 * u });
+    ui.button('play', nextIdx() > 0 ? `PLAY  Level ${LEVELS[nextIdx()].id}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: (fr ? 34 : 28) * u, round: 20 * u });
     ctx.restore();
   });
+  if (fr) { if (fade) ctx.globalAlpha = 1; return; } // first launch: PLAY alone (Levels, Daily, Shop, Extras and the bank come with the first win)
   const tw = (bw - 16 * u) / 3, ry = by + ph + 10 * u, rh = 54 * u, paid = save.daily.paid === today();
   pop(0.33, bx - bw / 2 + tw / 2, ry + rh / 2, () => ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u }));
   pop(0.4, bx - bw / 2 + tw * 1.5 + 8 * u, ry + rh / 2, () => ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u }));
@@ -7339,7 +7378,8 @@ function drawTitle() {
     }
   }
   // (2026-11-16 research: no top casual game puts a difficulty switch on home; it lives in Settings)
-  pop(0.54, bx, ry + rh + 32 * u, () => ui.button('extras', 'Extras', bx - bw / 2 + bw * 0.12, ry + rh + 12 * u, bw * 0.76, 40 * u, { kind: 'ad', icon: (c, x, y, s) => drawStar(c, x, y, s * 0.5, true), size: 16 * u, round: 14 * u }));
+  // Extras: as wide as Play, 52 u tall, with the Extras page's little planet and egg
+  pop(0.54, bx, ry + rh + 10 * u + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ry + rh + 10 * u, bw, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: 1.8, size: 20 * u, round: 17 * u }));
   if (fade) ctx.globalAlpha = 1;
 }
 
@@ -7733,7 +7773,11 @@ function frame(now) {
   const raw = last ? now - last : 16, dt = Math.min(0.1, frameDt(raw) / 1000 || 0.016);
   last = now;
   if (G.paused) return;
-  if (takeStep(save, G.screen === 'play' && !!G.sim)) { setDPR(); persist(); } // a quality change lands before this frame draws (no empty frame); Auto remembers it
+  if (takeStep(save, G.screen === 'play' && !!G.sim)) {
+    if (recIll() && save.gfx === 'auto' && REC.stepOk >= 0) save.gfxStep = REC.stepOk; // a step taken while the drawing is ill is not this phone's own level (src/recover.js)
+    setDPR(); persist(); // a quality change lands before this frame draws (no empty frame); Auto remembers it
+  }
+  if (REC.want && !G.adBusy && (G.screen !== 'play' || REC.state !== 'ok')) recProbe({ n: gpuProbe() }); // rare: three early on, then on the menus about every two minutes, and whenever the watchdog asks
   try {
     { const hs = DR.trialHen(save) || save.wallet.henSkin; if (G.henSkinCur !== hs) { G.henSkinCur = hs; setHenSkin(hs); ui.skin = skinUI(hs); } } // hen + rooster skin (an outfit on trial too), and the menus' theme
     const w0 = performance.now(), b0 = stampStats.builds;
@@ -7752,7 +7796,82 @@ function frame(now) {
   if (G.adBusy) adWatch(raw);
   perfTick(save, raw, !document.hidden && !G.paused && !G.adBusy && G.screen === 'play', FPSM.lastWork || 0, FPSM.bakedPrev, VSYNC.iv);
   if (!document.hidden) diag.frame(raw, FPSM.lastWork || 0, VSYNC.iv, every, G.screen);
+  watchFrame(raw, FPSM.lastWork || 0, every);
   FPSM.bakedPrev = FPSM.baked; FPSM.baked = false; // 2026-11-19: Auto judges the phone on the game itself, not on a heavy menu (a themed home screen used to talk it down to Low for the next level)
+}
+// ---- the slow-drawing watchdog's hands (the thinking is in src/recover.js)
+// one second of frames on one screen, as the watchdog wants it: no hidden page, no ad, not a screen's first 0.7 s
+// (it is still building its pictures), no frame that follows a picture bake
+const RW = { scr: '', n: 0, span: 0, js: 0, t: 0 };
+function watchFrame(raw, work, every) {
+  if (!REC.on || REC.state === 'off') return;
+  const s = G.screen;
+  if (s !== RW.scr || document.hidden || G.adBusy || raw > 400) { if (s !== RW.scr) RW.t = 0; RW.scr = s; RW.n = RW.span = RW.js = 0; return; }
+  if ((RW.t += raw) < 700 || FPSM.bakedPrev) return;
+  RW.n++; RW.span += raw; RW.js += work;
+  if (RW.span < 1000) return;
+  let fps = RW.n * 1000 / RW.span, js = RW.js / RW.n;
+  RW.n = RW.span = RW.js = 0;
+  const cap = 1000 / (every * VSYNC.iv);
+  if (DEV && FAKE) { const ill = fakeIll(); fps = cap * (ill ? FAKE.fps || 0.4 : 1); js = ill ? js * (FAKE.js || 8) + 30 : Math.min(js, 8); } // the page test plays a healthy phone that falls ill (a headless browser has no steady pace of its own)
+  recWindow({ scr: s, fps, js, dpr: DPR, cap, step: PERF.step, hot: REC.bad > 0 && phoneHot() });
+  if (REC.note) { const n = REC.note; REC.note = ''; if (n === 'ok') toast('Back to full speed', 2.2); }
+  const busy = G.adBusy || ads.busy || !!G.getMore || !!G.detail || !!G.chickBuy || G.settingsOpen || speedTest.active || G.screenT < 0.5;
+  const rung = recDue(s, busy, G.sim ? G.sim.t : 99);
+  if (rung) cure(rung);
+}
+// Android's own word on heat (0 none, 1 light, 2 moderate, 3 severe ...): a phone that throttles itself is slow for
+// another reason. Only asked while the watchdog is already counting bad seconds.
+function phoneHot() {
+  try { const b = window.EggApp; if (b && typeof b.deviceInfo === 'function') return (JSON.parse(b.deviceInfo(false) || '{}').thermal || 0) >= 2; } catch (_) { /* no shell */ }
+  return false;
+}
+// The probe: one fixed drawing job on a fresh canvas, timed to the last pixel. With the graphics chip it takes a
+// millisecond or three; painted by the processor, several times that. Reading one pixel back (through a 1 px canvas
+// that is kept off the chip on purpose) makes the web view finish the job before the clock stops. The fresh canvas is
+// handed straight back. The game's own canvas is never read.
+let PROBE_PIX = null;
+const FAKE = DEV ? (() => { try { return JSON.parse(sessionStorage.getItem('egg.fake') || 'null'); } catch (_) { return null; } })() : null;
+// dev only: { loads: pages still ill, after: healthy seconds before it starts, fps, js, p, ok } in sessionStorage 'egg.fake'
+function fakeIll() { return FAKE.loads > 0 && (REC.wins >= (FAKE.after || 24) || !!FAKE.came); }
+function gpuProbe() {
+  if (DEV && FAKE) return fakeIll() ? FAKE.p || 40 : FAKE.ok || 2;
+  try {
+    const N = 384, c = document.createElement('canvas'); c.width = c.height = N;
+    const g = c.getContext('2d');
+    if (!PROBE_PIX) { const d = document.createElement('canvas'); d.width = d.height = 1; PROBE_PIX = d.getContext('2d', { willReadFrequently: true }); }
+    const t0 = performance.now();
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 24; i++) {
+      const x = (i * 97) % N, y = (i * 61) % N, gr = g.createRadialGradient(x, y, 4, x, y, N);
+      gr.addColorStop(0, 'rgba(255,200,120,0.06)'); gr.addColorStop(1, 'rgba(40,80,200,0.02)');
+      g.fillStyle = gr; g.fillRect(0, 0, N, N);
+    }
+    PROBE_PIX.drawImage(c, 0, 0, N, N, 0, 0, 1, 1);
+    PROBE_PIX.getImageData(0, 0, 1, 1);
+    const ms = performance.now() - t0;
+    freeCanvas(c);
+    return ms;
+  } catch (_) { return 0; }
+}
+// The cure (rung 1 loads the page again, 2 ends the page's process, 3 starts the app again). The save goes first, with
+// the quality step from before the phone fell ill; the Android shell also keeps a copy of the save for the next start,
+// because the web view writes its storage to disk a few seconds late and rungs 2 and 3 do not wait for it.
+function cure(rung) {
+  if (save.gfx === 'auto' && REC.stepOk >= 0) save.gfxStep = REC.stepOk;
+  persist();
+  recGo({ scr: G.screen, li: G.li, world: G.world });
+  diag.flush();
+  if (DEV && FAKE && FAKE.loads > 0) { FAKE.loads--; FAKE.came = 1; try { sessionStorage.setItem('egg.fake', JSON.stringify(FAKE)); } catch (_) { /* test only */ } }
+  try {
+    const b = window.EggApp;
+    if (rung >= 2 && b && typeof b.recover === 'function') {
+      let rec = ''; try { rec = localStorage.getItem('eggscape.rec.v1') || ''; } catch (_) { rec = ''; }
+      b.recover(rung, JSON.stringify({ at: Date.now(), save: JSON.stringify(save), rec, log: diag.lines().slice(-400).join('\n') }));
+      return;
+    }
+  } catch (_) { /* an older shell: the page reload below */ }
+  location.reload();
 }
 // 2026-11-20 pacing (tools/perf87/pacing.mjs): the world advances by whole screen refreshes. Callback times wobble by
 // a millisecond or so; fed straight in, a 60 Hz frame got 1, 2 or 3 physics steps (8.3 ms each) at random instead
@@ -7879,6 +7998,24 @@ async function boot() {
     ads.rebind(save);
   }
   save.real = 1;
+  // 0.8.12: a cure by the slow-drawing watchdog that started the page's process or the whole app again (src/recover.js):
+  // the Android shell kept the save, the watchdog's notes and the end of the speed log, because the web view writes
+  // its own storage to disk a few seconds late
+  try {
+    const b = window.EggApp, raw = b && typeof b.unstash === 'function' ? b.unstash() : '';
+    const st = raw ? JSON.parse(raw) : null;
+    if (st && Date.now() - st.at < 60000) {
+      const sv = JSON.parse(st.save); if (sv && sv.v === SAVE_VER) { loadSave(sv); ads.rebind(save); persist(); }
+      if (st.rec) localStorage.setItem('eggscape.rec.v1', st.rec);
+      if (st.log) { // the lines the storage did not get to keep
+        const K = 'eggscape.diag.v1', old = localStorage.getItem(K) || '', sl = st.log.split('\n'), i = old ? sl.lastIndexOf(old.slice(old.lastIndexOf('\n') + 1)) : -1;
+        const add = sl.slice(i + 1); if (add.length) localStorage.setItem(K, (old ? old + '\n' : '') + add.join('\n'));
+      }
+    }
+  } catch (_) { /* no shell, or nothing kept */ }
+  // 0.8.12: quality steps learned by 0.8.9 to 0.8.11 may be the ill phone's (mykee's flagship came back from its restart on
+  // Low at 0.8x): Auto starts once more from the phone's own guess
+  if (!save.seen.gfx812) { save.seen.gfx812 = 1; if (save.gfx === 'auto') save.gfxStep = -1; }
   applySettings(save); setDPR(); // graphics quality: the phone's own guess or what it learned last time (src/perf.js)
   diag.init({
     version: __VERSION__, app: typeof __APP__ !== 'undefined' && !!__APP__, perf: PERF, guess: () => PERF.guess,
@@ -7895,6 +8032,13 @@ async function boot() {
       rings: G.sim.rings.length, eggs: G.sim.eggs.length, foes: G.level ? villainKinds(G.level, G.sim) : [],
     }),
   });
+  // the slow-drawing watchdog (src/recover.js): back = where the player was when a cure began, if this start is one
+  const back = (() => {
+    try {
+      const q = new URLSearchParams(location.search), b = window.EggApp;
+      return recInit({ storage: localStorage, log: (o) => diag.note(o), rungs: b && typeof b.recover === 'function' ? 3 : 1, off: TEST || q.get('rec') === '0' || !!q.get('demo') });
+    } catch (_) { return null; }
+  })();
   if (TEST) {
     const owned = {};
     for (const id of E.BOOSTER_ORDER) owned[id] = E.MAX_OWNED;
@@ -7906,21 +8050,20 @@ async function boot() {
   OF.startSession(save, Date.now()); if (!DR.dirState(save).lastSeen) DR.noteSeen(save, Date.now()); persist();
   if (OF.childSafe(save) && ads.moneyShop) ads.setChildSafe(true); // the shell also remembers it; this keeps both in step
   applyAudioSettings();
-  // 2026-11-20 first-five ladder (mykee: "the user decides in the first 5 levels"): the very first launch of a brand-new
-  // player (nothing ever won) goes straight into level 1, playing: no title, no map, no level card. A later launch with
-  // still nothing won meets the title as before (PLAY leads on as always).
-  const first = !TEST && bestTotal() === 0 && !save.seen.boot1 && !new URLSearchParams(location.search).get('demo');
-  if (first) { save.seen.boot1 = 1; persist(); startLevel(0, { direct: true }); } else {
-  // title runs over the live next level
+  // title runs over the live next level. A brand-new player meets the title (the logo moment, one big PLAY), and PLAY goes
+  // straight into level 1 (press 'play'); a returning player opens the app on the map (2026-11-20, mykee).
+  if (back) { // a cure by the slow-drawing watchdog: straight back to the level card, the map or home, with no entrance
+    if (back.scr === 'intro' && back.li >= 0 && LEVELS[back.li]) startLevel(back.li);
+    else { startLevel(nextIdx()); if (back.scr === 'levels') { G.world = back.world >= 0 ? back.world : envOf(nextIdx()); setScreen('levels'); } else setScreen('title'); }
+  } else {
   startLevel(nextIdx());
-  // 2026-11-20 (mykee): a returning player opens the app on the map (a first launch still meets the home screen)
   if (bestTotal() > 0 && !TEST) { G.world = envOf(nextIdx()); setScreen('levels'); } else setScreen('title');
   }
   if (DEV) { const d = new URLSearchParams(location.search).get('demo'); if (d) window.__egg.startDemo(d); } // v3.2: ?demo=glow
-  if (!first) { G.homeIntro = true; G.screenT = 0; } // the home page plays its entrance from here (the setup above must not eat it)
+  if (!back) { G.homeIntro = true; G.screenT = 0; } // the home page plays its entrance from here (the setup above must not eat it)
   const sp = document.getElementById('splash'); // the plain sky behind the canvas goes as soon as the first frames are painted
   if (sp) requestAnimationFrame(() => requestAnimationFrame(() => sp.remove()));
-  if (sp) { const minShow = 2300 - (performance.now() - (window.__t0 || 0)); /* the launch sting plays out (egg in the nest) before the home screen */ setTimeout(() => { sp.classList.add('out'); setTimeout(() => sp.remove(), 500); }, Math.max(0, minShow)); }
+  if (sp) { const minShow = back ? 0 : 2300 - (performance.now() - (window.__t0 || 0)); /* the launch sting plays out (egg in the nest) before the home screen */ setTimeout(() => { sp.classList.add('out'); setTimeout(() => sp.remove(), 500); }, Math.max(0, minShow)); }
   portal.loadingDone();
   last = performance.now();
   requestAnimationFrame(frame);
@@ -7928,7 +8071,7 @@ async function boot() {
 
 // test hook (used by the QA bot and screenshot tools); compiled out of release builds
 if (DEV) window.__egg = {
-  diag,
+  diag, rec: REC,
   howto: { drawHowTo, howToPlan, chickPlan, BASIC: HOWTO_BASIC, ROOSTER: HOWTO_ROOSTER, rooster: (c, x, y, s) => allyIcon(c, x, y, s) },
   stampStats,
   perf: { bodyCache, ringCache, PERF, STEPS, applySettings: () => { applySettings(save); setDPR(); } },

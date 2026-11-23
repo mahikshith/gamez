@@ -101,6 +101,49 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void shareLog(final String name, final String text) {
             runOnUiThread(new Runnable() { @Override public void run() { shareLogNow(name, text); } });
         }
+        /**
+         * 0.8.12, the slow-drawing watchdog (src/recover.js): the page found that the web view no longer draws with the
+         * graphics chip and that loading the page again did not cure it. rung 2 ends the page's own process (the game
+         * comes back through onRenderProcessGone), rung 3 starts the whole app again (what mykee did by hand). keep is
+         * the page's save and notes: the web view writes its storage to disk a few seconds late, so they are kept here
+         * (written at once) and handed back to the next start by unstash().
+         */
+        @JavascriptInterface public void recover(final int rung, final String keep) {
+            try { getSharedPreferences("egg", MODE_PRIVATE).edit().putString("stash", keep == null ? "" : keep).commit(); } catch (Throwable e) { /* the page's own storage is the fallback */ }
+            runOnUiThread(new Runnable() { @Override public void run() { recoverNow(rung); } });
+        }
+        @JavascriptInterface public String unstash() {
+            try {
+                android.content.SharedPreferences p = getSharedPreferences("egg", MODE_PRIVATE);
+                String v = p.getString("stash", "");
+                if (v.length() > 0) p.edit().remove("stash").commit();
+                return v;
+            } catch (Throwable e) { return ""; }
+        }
+    }
+
+    private static volatile int cures = 0; // deliberate restarts of the page's process, for the speed log
+    private void recoverNow(int rung) {
+        if (money != null && money.adShowing()) return; // never under an ad; the page asks again at the next calm moment
+        if (rung == 2 && Build.VERSION.SDK_INT >= 29 && web != null) {
+            try {
+                android.webkit.WebViewRenderProcess rp = web.getWebViewRenderProcess();
+                if (rp != null && rp.terminate()) { cures++; return; }
+            } catch (Throwable e) { /* the full restart below */ }
+        }
+        restartApp();
+    }
+    /** A clean start of the whole app: a tiny activity in a process of its own ends this one and opens the game again. */
+    private void restartApp() {
+        try {
+            Intent i = new Intent(this, RestartActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            i.putExtra("pid", android.os.Process.myPid());
+            startActivity(i);
+            overridePendingTransition(0, 0);
+        } catch (Throwable e) {
+            try { recreate(); } catch (Throwable e2) { /* stay as we are */ }
+        }
     }
 
     // ---- the speed log's Android side (0.8.7): read-only facts about the phone, and the share sheet
@@ -165,6 +208,7 @@ public class MainActivity extends Activity {
             o.put("trim", trimCount);
             o.put("trimLevel", lastTrim);
             o.put("renderGone", renderGone);
+            if (cures > 0) o.put("cures", cures);
             android.os.BatteryManager bm = (android.os.BatteryManager) getSystemService(Context.BATTERY_SERVICE);
             if (bm != null) { o.put("battery", bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)); o.put("charging", bm.isCharging() ? 1 : 0); }
             Display d = Build.VERSION.SDK_INT >= 30 ? getDisplay() : getWindowManager().getDefaultDisplay();

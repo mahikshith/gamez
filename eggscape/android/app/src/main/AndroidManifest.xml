@@ -25,5 +25,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 0.8.12: starts the game again in a fresh process when its drawing has gone slow for good (src/recover.js).
+             Its own process, not exported, never in the recent-apps list. -->
+        <activity
+            android:name=".RestartActivity"
+            android:exported="false"
+            android:process=":restart"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Eggscape" />
     </application>
 </manifest>

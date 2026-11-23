@@ -11,6 +11,7 @@ import { FX } from './render/fx.js';
 import * as W from './render/world.js';
 import { drawHenActor } from './render/sprites.js';
 import { ICON, drawStar, drawEggIcon } from './ui/ui.js';
+import { drawExtraIcon } from './render/extras.js';
 import { drawSpace, drawPlanet, drawSun, drawRail, drawPull, drawLamp, drawBolts, drawTurnArrow, drawFrost, drawStopClock, drawHand } from './render/wonder.js';
 
 export function createWonder(env) {
@@ -474,97 +475,89 @@ export function createWonder(env) {
   }
 
   // ---------------------------------------------------------------- the Extras screen (menu): Wonder Vaults + Practice
-  const TILE = { planet: '#5a6ad8', plan: '#3f9fd0', mama: '#d8862a', twin: '#3fa86a', hatch: '#e0a81c' };
-  // Bonus first (the Wonder Vaults, with their stars), then Practice as its own section at the bottom, under its own
-  // heading, on the same tile kit as the level map. The whole block is centred in the safe rect below the header.
+  // One column of wide row cards (two columns on a wide screen): a big picture tile on the left, the name and its one
+  // line, the stars on the right. Wonder Vaults (bonus) first, then Practice under its own heading in the same row style.
+  // The rows grow to fill the page; when they cannot fit at their smallest height the page scrolls (env.glide, as Practice).
+  const TILE = { planet: '#5a6ad8', plan: '#3f9fd0', mama: '#d8862a', twin: '#3fa86a', hatch: '#e0a81c', practice: '#3fae4a' };
   function drawExtras() {
-    const z = env.size(), A = ui.A, u = ui.u, pad = 14 * u, t = env.time(), sv = env.save();
+    const z = env.size(), A = ui.A, u = ui.u, pad = 14 * u, t = env.time(), sv = env.save(), SC = env.escroll();
     ui.calm = sv.calm;
+    const dt = clamp(t - (SC.t || t), 0, 0.1); SC.t = t;
     const bg = ctx.createLinearGradient(0, 0, 0, z.H);
     bg.addColorStop(0, '#1c1440'); bg.addColorStop(1, '#3a2152');
     ctx.globalAlpha = 0.96; ctx.fillStyle = bg; ctx.fillRect(0, 0, z.W, z.H); ctx.globalAlpha = 1;
     ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 16 * u; ctx.lineCap = 'round';
     for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(z.W * 0.86, z.H * 0.9, Math.min(z.W, z.H) * (0.22 + 0.15 * i), 2.4 + i * 0.5 + (sv.calm ? 0 : t * 0.03 * (i % 2 ? -1 : 1)), 5.6 + i * 0.4 + (sv.calm ? 0 : t * 0.03 * (i % 2 ? -1 : 1))); ctx.stroke(); }
     ctx.restore();
-    const X0 = A.x + pad, X1 = A.x1 - pad, Y0 = A.y + pad, hy = Y0 + 23 * u;
+    // layout: the list's viewport, the column(s), and the row height
+    const X0 = A.x + pad, X1 = A.x1 - pad, Y0 = A.y + pad, hy = Y0 + 23 * u, vt = A.y + 70 * u, vb = A.y1;
+    const wide = A.w > A.h * 1.15, cols = wide ? 2 : 1, gap = 10 * u, colGap = 12 * u, headH = 30 * u, secGap = 14 * u;
+    const listW = Math.min(A.w - 2 * pad, wide ? 860 * u : 460 * u), rowW = (listW - colGap * (cols - 1)) / cols, lx = A.cx - listW / 2;
+    const n = WONDER_LEVELS.length, wvRows = Math.ceil(n / cols), nRows = wvRows + 1;
+    const fixedH = 2 * headH + secGap + (wvRows - 1) * gap;
+    const rowH = clamp((vb - vt - pad - fixedH - 4 * u) / nRows, 84 * u, 108 * u);
+    const total = 4 * u + fixedH + nRows * rowH + pad;
+    SC.max = Math.max(0, total - (vb - vt));
+    env.glide(SC, dt);
+    // the list, clipped under the header
+    ctx.save(); ctx.beginPath(); ctx.rect(0, vt, z.W, vb - vt); ctx.clip();
+    let y = vt - SC.y + 4 * u;
+    const out = (yy, hh) => yy < vt || yy + hh > vb;
+    const head = (txt, yy, tag, chip) => {
+      const tw = ui.measure(txt, 18 * u), cw2 = chip ? ui.measure(chip, 11 * u) + 16 * u : 0, nr = out(yy, headH);
+      ui.text(txt, lx + 4 * u, yy + headH / 2 - 1 * u, { size: 18 * u, color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, tag, noRecord: nr });
+      if (chip) { const cx0 = lx + 4 * u + tw + 8 * u; ui.roundRect(cx0, yy + headH / 2 - 10 * u, cw2, 19 * u, 9.5 * u); ctx.fillStyle = '#ffd24a'; ctx.fill(); ui.text(chip, cx0 + cw2 / 2, yy + headH / 2 + 0.5 * u, { size: 11 * u, align: 'center', color: '#5a2a08', tag: tag + ':chip', noRecord: nr }); }
+    };
+    const row = (L, x, ry) => {
+      const prac = !!L.practice, s = prac ? 0 : starsOf(L.key), key = prac ? 'practice' : L.key, face = ui.faceOf(TILE[key] || '#8a5ad8');
+      const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
+      const b = ui.button(id, '', x, ry, rowW, rowH, { face, keepFace: true, round: 18 * u });
+      const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, 88 * u, rowW * 0.26), tx = x + 8 * u + (fh - ts) / 2 - 3 * u;
+      drawExtraIcon(ctx, key, tx + ts / 2, fy + fh / 2, ts, t, { calm: sv.calm });
+      // the right edge: three stars on a dark pill, or a round chevron for Practice
+      const sr = Math.min(8.5 * u, rowW / 40), pillW = sr * 8.6, rightW = prac ? 30 * u : pillW;
+      const rx = x + rowW - 14 * u - rightW / 2, cy = fy + fh / 2;
+      if (prac) {
+        ctx.beginPath(); ctx.arc(rx, cy, 15 * u, 0, 7); ctx.fillStyle = 'rgba(30,10,0,0.3)'; ctx.fill();
+        ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3.4 * u; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(rx - 3 * u, cy - 7 * u); ctx.lineTo(rx + 4 * u, cy); ctx.lineTo(rx - 3 * u, cy + 7 * u); ctx.stroke(); ctx.restore();
+      } else {
+        ui.roundRect(rx - sr * 4.3, cy - sr * 1.45, sr * 8.6, sr * 2.9, sr * 1.45); ctx.fillStyle = 'rgba(30,10,0,0.3)'; ctx.fill();
+        for (let q = 0; q < 3; q++) drawStar(ctx, rx + (q - 1) * sr * 2.65, cy, sr, q < s);
+      }
+      // the words, between the picture and the right edge; the one line wraps to a second rather than shrink
+      const ttx = tx + ts + 12 * u, tw = x + rowW - 14 * u - rightW - 8 * u - ttx, ps = 12.5 * u, lines = wrapText(L.pitch, ps, tw).slice(0, 2);
+      const blockH = 22 * u + 4 * u + lines.length * 15 * u, top = fy + (fh - blockH) / 2;
+      ui.text(L.name, ttx, top + 11 * u, { size: 19 * u, color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname:' + key, maxW: tw });
+      lines.forEach((l, i) => ui.text(l, ttx, top + 26 * u + 7.5 * u + i * 15 * u, { size: ps, color: 'rgba(255,255,255,0.9)', group: grp, tag: 'wvpitch:' + key + i, maxW: tw }));
+      if (part) { // a row cut by the list edge records nothing for the overlap check and taps only inside the list
+        ui.rects.length = n0;
+        const bt = ui.buttons[nb]; if (bt) { const t2 = Math.max(bt.y, vt), b2 = Math.min(bt.y + bt.h, vb); if (b2 - t2 < 8 * u) ui.buttons.length = nb; else { bt.y = t2; bt.h = b2 - t2; } }
+      }
+    };
+    head('Wonder Vaults', y, 'extras:wv', 'BONUS');
+    y += headH;
+    WONDER_LEVELS.forEach((L, i) => row(L, lx + (i % cols) * (rowW + colGap), y + Math.floor(i / cols) * (rowH + gap)));
+    y += wvRows * rowH + (wvRows - 1) * gap + secGap;
+    head('Practice', y, 'extras:practice');
+    y += headH;
+    row({ practice: true, key: '_practice', name: 'Practice', pitch: 'Try any villain or power' }, lx, y);
+    ctx.restore();
+    // the header band over the list: back, title, stars
+    ctx.fillStyle = '#1c1440'; ctx.globalAlpha = 0.94; ctx.fillRect(0, 0, z.W, vt - 4 * u); ctx.globalAlpha = 1;
+    const g2 = ctx.createLinearGradient(0, vt - 4 * u, 0, vt + 10 * u); g2.addColorStop(0, 'rgba(10,4,24,0.55)'); g2.addColorStop(1, 'rgba(10,4,24,0)'); ctx.fillStyle = g2; ctx.fillRect(0, vt - 4 * u, z.W, 14 * u);
     ui.button('back', '', X0, Y0, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
-    const total = WONDER_LEVELS.reduce((a, L) => a + starsOf(L.key), 0), starTxt = `${total} / ${WONDER_LEVELS.length * 3}`, stw = ui.measure(starTxt, 17 * u);
+    const total3 = WONDER_LEVELS.reduce((a, L) => a + starsOf(L.key), 0), starTxt = `${total3} / ${WONDER_LEVELS.length * 3}`, stw = ui.measure(starTxt, 17 * u);
     const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = X1 - chipW;
     ui.glass(chipX, hy - 18 * u, chipW, 36 * u);
     drawStar(ctx, chipX + 20 * u, hy, 9.5 * u, true);
     ui.text(starTxt, X1 - 12 * u, hy + 0.5 * u, { size: 17 * u, color: '#fff', align: 'right', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'extras:stars' });
     const tl = X0 + 68 * u, trr = chipX - 22 * u;
     ui.ribbon('Extras', (tl + trr) / 2, hy - 19 * u, clamp(140 * u, 90 * u, trr - tl), 36 * u, { color: '#8a5ad8', size: 21 * u, tag: 'extras:title' });
-    const head = (txt, yy, tag, chip) => {
-      const tw = ui.measure(txt, 17 * u), cw2 = chip ? ui.measure(chip, 11 * u) + 16 * u : 0, x0 = A.cx - (tw + (chip ? 8 * u + cw2 : 0)) / 2;
-      ui.text(txt, x0, yy, { size: 17 * u, color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, tag });
-      if (chip) { ui.roundRect(x0 + tw + 8 * u, yy - 9 * u, cw2, 18 * u, 9 * u); ctx.fillStyle = '#ffd24a'; ctx.fill(); ui.text(chip, x0 + tw + 8 * u + cw2 / 2, yy + 0.5 * u, { size: 11 * u, align: 'center', color: '#5a2a08', tag: tag + ':chip' }); }
-    };
-    // sizes: the bonus grid, then one Practice tile (same size) under its own heading
-    const n = WONDER_LEVELS.length, wide = A.w > A.h, cols = wide ? n : A.w < 420 ? 2 : 3, rows = Math.ceil(n / cols), gap = 10 * u;
-    const headH = 28 * u, secGap = 22 * u, top0 = A.y + 74 * u, bot = A.y1 - pad;
-    const cw = Math.min((A.w - 2 * pad - gap * (cols - 1)) / cols, 150 * u);
-    const room = bot - top0 - 2 * headH - secGap, chh = Math.max(40 * u, Math.min((room - gap * rows) / (rows + 1), cw * 0.92, 150 * u));
-    const blockH = headH + rows * chh + (rows - 1) * gap + secGap + headH + chh;
-    let y = top0 + Math.max(0, (bot - top0 - blockH) / 2);
-    head('Wonder Vaults', y + 9 * u, 'extras:wv', 'BONUS');
-    y += headH;
-    const tile = (L, i, x, ty, w) => {
-      const s = L.practice ? 0 : starsOf(L.key), face = ui.faceOf(L.practice ? '#3fae4a' : TILE[L.key] || '#8a5ad8');
-      const b = ui.button(L.practice ? 'practice' : 'wv:play:' + L.key, '', x, ty, w, chh, { face, keepFace: true, round: 18 * u });
-      const fy = ty + b.dy, fh = chh - Math.min(6 * u, chh * 0.13), mx = x + w / 2, grp = L.practice ? 'btn:practice' : 'btn:wv:play:' + L.key;
-      const tall = fh > 96 * u;
-      if (L.practice) ICON.grid(ctx, mx, fy + fh * (tall ? 0.24 : 0.27), Math.min(30 * u, fh * 0.3));
-      else if (!wonderIcon(ctx, L.key, mx, fy + fh * (tall ? 0.24 : 0.27), Math.min(34 * u, fh * 0.34), env.time(), face.line)) ui.text(String(i + 1), mx, fy + fh * (tall ? 0.24 : 0.27), { size: Math.min(30 * u, fh * 0.3), align: 'center', color: '#fff', stroke: face.line, strokeW: 4 * u, shadow: face.line, group: grp, tag: 'wvnum' + i });
-      ui.text(L.name, mx, fy + fh * (tall ? 0.5 : 0.56), { size: Math.min(15 * u, fh * 0.15), align: 'center', color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname' + i, maxW: w - 12 * u });
-      if (tall) ui.text(L.pitch, mx, fy + fh * 0.66, { size: 10.5 * u, align: 'center', color: 'rgba(255,255,255,0.85)', group: grp, tag: 'wvpitch' + i, maxW: w - 12 * u });
-      if (L.practice) return;
-      const sr = Math.min(8.5 * u, w / 12, fh * 0.1), sy = fy + fh * 0.85;
-      ui.roundRect(mx - sr * 4.3, sy - sr * 1.45, sr * 8.6, sr * 2.9, sr * 1.45); ctx.fillStyle = 'rgba(30,10,0,0.3)'; ctx.fill();
-      for (let q = 0; q < 3; q++) drawStar(ctx, mx + (q - 1) * sr * 2.65, sy, sr, q < s);
-    };
-    WONDER_LEVELS.forEach((L, i) => {
-      const r = Math.floor(i / cols), inRow = r === rows - 1 ? n - cols * (rows - 1) : cols, c = i - r * cols;
-      const rowW = inRow * cw + (inRow - 1) * gap;
-      tile(L, i, A.cx - rowW / 2 + c * (cw + gap), y + r * (chh + gap), cw);
-    });
-    y += rows * chh + (rows - 1) * gap + secGap;
-    // section: Practice (every villain and power in a sandbox vault)
-    head('Practice', y + 9 * u, 'extras:practice');
-    y += headH;
-    tile({ practice: true, key: '_practice', name: 'Practice', pitch: 'Try any villain or power' }, n, A.cx - cw / 2, y, cw);
+    if (SC.max > 0 && !sv.calm) { // a thin scroll thumb
+      const th = Math.max(30 * u, (vb - vt) * (vb - vt) / total), ty2 = vt + clamp(SC.y / SC.max, 0, 1) * (vb - vt - th - 4 * u);
+      ui.roundRect(A.x1 - 5 * u, ty2, 3 * u, th, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
+    }
   }
 
   return { start, has: (k) => !!wonderByKey(k), update, render, pointerDown, pointerMove, pointerUp, press, drawExtras, resize() { S.snap = true; if (S.backdrop) { const z = env.size(); S.backdrop.resize(z.W, z.H, z.DPR); } }, get state() { return S; }, LEVELS: WONDER_LEVELS, toScreen, starsOf };
-}
-
-// a Wonder Vault tile's picture (mykee 2026-11-16: themed icons, not numbers). s is the icon's height; line is the tile's ink.
-function wonderIcon(c, key, x, y, s, t, line) {
-  const r = s / 2, lw = Math.max(1.5, s * 0.07);
-  const egg = (ex, ey, er, fill) => { c.beginPath(); c.ellipse(ex, ey + er * 0.1, er * 0.78, er, 0, 0, Math.PI * 2); c.fillStyle = fill; c.fill(); c.lineWidth = lw; c.strokeStyle = line; c.stroke(); };
-  c.save(); c.lineJoin = 'round'; c.lineCap = 'round';
-  if (key === 'planet') { // a little world with an egg moon in orbit
-    c.beginPath(); c.arc(x, y, r * 0.62, 0, Math.PI * 2); const g = c.createLinearGradient(x, y - r, x, y + r); g.addColorStop(0, '#9ff0ff'); g.addColorStop(1, '#3a8ad8'); c.fillStyle = g; c.fill(); c.lineWidth = lw; c.strokeStyle = line; c.stroke();
-    c.beginPath(); c.ellipse(x, y, r * 1.0, r * 0.32, -0.35, 0, Math.PI * 2); c.lineWidth = lw * 1.1; c.strokeStyle = '#ffe9a8'; c.stroke();
-    const a = t * 1.4; egg(x + Math.cos(a) * r * 0.95, y + Math.sin(a) * r * 0.32 - Math.cos(a) * r * 0.3, r * 0.24, '#fff6e0');
-  } else if (key === 'plan') { // a stopwatch
-    c.beginPath(); c.arc(x, y + r * 0.1, r * 0.78, 0, Math.PI * 2); c.fillStyle = '#fff6e0'; c.fill(); c.lineWidth = lw * 1.3; c.strokeStyle = line; c.stroke();
-    c.fillStyle = line; c.fillRect(x - r * 0.14, y - r * 0.9, r * 0.28, r * 0.2);
-    const a = t * 2 - Math.PI / 2; c.beginPath(); c.moveTo(x, y + r * 0.1); c.lineTo(x + Math.cos(a) * r * 0.55, y + r * 0.1 + Math.sin(a) * r * 0.55); c.lineWidth = lw * 1.2; c.strokeStyle = '#e8402e'; c.stroke();
-    c.beginPath(); c.arc(x, y + r * 0.1, lw, 0, Math.PI * 2); c.fillStyle = line; c.fill();
-  } else if (key === 'mama') { // a heart in a call bubble
-    c.beginPath(); c.ellipse(x, y - r * 0.05, r * 0.95, r * 0.72, 0, 0, Math.PI * 2); c.moveTo(x - r * 0.3, y + r * 0.55); c.lineTo(x - r * 0.55, y + r * 0.95); c.lineTo(x + r * 0.05, y + r * 0.62);
-    c.fillStyle = '#fff6e0'; c.fill(); c.lineWidth = lw; c.strokeStyle = line; c.stroke();
-    const k = 1 + 0.08 * Math.sin(t * 5), hr = r * 0.32 * k; c.beginPath(); c.moveTo(x, y + hr * 0.9); c.bezierCurveTo(x - hr * 2, y - hr * 0.4, x - hr * 0.7, y - hr * 1.6, x, y - hr * 0.5); c.bezierCurveTo(x + hr * 0.7, y - hr * 1.6, x + hr * 2, y - hr * 0.4, x, y + hr * 0.9); c.fillStyle = '#e8402e'; c.fill();
-  } else if (key === 'twin') { // two little vaults side by side
-    for (const d of [-1, 1]) { const cx = x + d * r * 0.48; for (const rr of [0.5, 0.28]) { c.beginPath(); c.arc(cx, y, r * rr, 0.5 + d * t * 0.8, 0.5 + d * t * 0.8 + 5.2); c.lineWidth = lw * 1.4; c.strokeStyle = '#fff6e0'; c.stroke(); } c.beginPath(); c.arc(cx, y, r * 0.1, 0, Math.PI * 2); c.fillStyle = '#ffd24a'; c.fill(); }
-  } else if (key === 'hatch') { // a cracked egg with a chick peeking
-    egg(x, y + r * 0.12, r * 0.85, '#fff6e0');
-    c.beginPath(); c.arc(x, y - r * 0.15, r * 0.4, 0, Math.PI * 2); c.fillStyle = '#ffd24a'; c.fill(); c.lineWidth = lw; c.strokeStyle = line; c.stroke();
-    c.fillStyle = line; for (const d of [-1, 1]) { c.beginPath(); c.arc(x + d * r * 0.14, y - r * 0.2, r * 0.06, 0, Math.PI * 2); c.fill(); }
-    c.beginPath(); c.moveTo(x - r * 0.08, y - r * 0.08); c.lineTo(x + r * 0.08, y - r * 0.08); c.lineTo(x, y + r * 0.04); c.closePath(); c.fillStyle = '#ff8a2a'; c.fill();
-    c.beginPath(); c.moveTo(x - r * 0.66, y + r * 0.05); for (let q = 0; q <= 6; q++) c.lineTo(x - r * 0.66 + q * r * 0.22, y + r * (q % 2 ? -0.08 : 0.12)); c.lineTo(x + r * 0.66, y + r * 0.9); c.lineTo(x - r * 0.66, y + r * 0.9); c.closePath();
-    c.fillStyle = '#fff6e0'; c.fill(); c.lineWidth = lw; c.strokeStyle = line; c.stroke();
-  } else { c.restore(); return false; }
-  c.restore(); return true;
 }
