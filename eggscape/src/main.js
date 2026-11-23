@@ -8007,9 +8007,9 @@ async function boot() {
     if (st && Date.now() - st.at < 60000) {
       const sv = JSON.parse(st.save); if (sv && sv.v === SAVE_VER) { loadSave(sv); ads.rebind(save); persist(); }
       if (st.rec) localStorage.setItem('eggscape.rec.v1', st.rec);
-      if (st.log) { // the lines the storage did not get to keep
-        const K = 'eggscape.diag.v1', old = localStorage.getItem(K) || '', sl = st.log.split('\n'), i = old ? sl.lastIndexOf(old.slice(old.lastIndexOf('\n') + 1)) : -1;
-        const add = sl.slice(i + 1); if (add.length) localStorage.setItem(K, (old ? old + '\n' : '') + add.join('\n'));
+      if (st.log) { // the lines the storage did not get to keep (either side may be a few lines ahead of the other)
+        const K = 'eggscape.diag.v1', old = localStorage.getItem(K) || '', have = new Set(old.split('\n').slice(-900));
+        const add = st.log.split('\n').filter((l) => l && !have.has(l)); if (add.length) localStorage.setItem(K, (old ? old + '\n' : '') + add.join('\n'));
       }
     }
   } catch (_) { /* no shell, or nothing kept */ }
