@@ -6,7 +6,7 @@ import { curtainFront, vineFront } from './render/v3art.js'; // where a burning 
 import { LEVELS } from './data/levels.js';
 import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop, setSceneCalm } from './themes.js';
-import { bodyCache, ringCache } from './render/ringart.js';
+import { bodyCache, ringCache, releaseRings } from './render/ringart.js';
 import { dragTo, grab, glideStep, snapPx } from './scroll.js';
 import { diag } from './diag.js'; // 0.8.7: the built-in speed log (Settings > Display > Share log)
 import { formStats } from './render/castkit.js';
@@ -77,7 +77,8 @@ import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawSt
 import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' crown // Chick Strike powers
 import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
 import { drawHand as teachHand } from './render/wonder.js'; // the teaching hand (Papa Rooster's first call)
-import { stampStats } from './render/stamp.js';
+import { stampStats, stampSweep } from './render/stamp.js';
+import { cvStats } from './render/cvfree.js';
 import { drawHowTo, howToPlan, chickPlan, toyPlan, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
@@ -332,7 +333,14 @@ function backdropFor(theme, seed) {
     const r0 = b.resize; b.resize = (w, h, d) => { b.sz = w + 'x' + h + '@' + d; return r0.call(b, w, h, d); };
   }
   BD.set(key, b);
-  if (BD.size > 3) BD.delete(BD.keys().next().value);
+  // 0.8.10: two are kept (the level in play and the one built ahead), and one that leaves hands its pictures back at
+  // once (about 25 MB each on a sharp screen; they used to wait for the garbage collector: render/cvfree.js)
+  while (BD.size > 2) {
+    let old = null;
+    for (const [k, v] of BD) if (v !== b && v !== G.backdrop) { old = k; break; }
+    if (old == null) break;
+    const v = BD.get(old); BD.delete(old); v.sz = ''; if (v.dispose) v.dispose();
+  }
   if (b.sz !== sz) b.resize(W_, H_, DPR);
   b.setParallax(0, 0);
   return b;
@@ -363,6 +371,7 @@ function startLevel(i, opts = {}) {
   G.boost = opts.boost || {};
   introAutoPick(G.level, i);
   G.sim = new Sim(G.level, { golden: !!opts.golden, mode: save.mode, ...G.boost, strike: strikeFor(G.level, i) });
+  releaseRings(G.sim.rings); stampSweep(); // 0.8.10: the last level's ring and prop pictures go back to the phone now (render/cvfree.js)
   G.sim.ringSpeed = ringSpeed();
   // portals explain themselves the first time they show up anywhere (a practice vault has no intro card)
   if (G.sim.portals.some((pt) => pt.pull || Math.hypot(pt.ax - pt.bx, pt.ay - pt.by) > 0.05) && !save.seen.portalTip) {
@@ -1721,6 +1730,7 @@ function rewound(back) {
   releaseAll();
   stopFuse();
   G.sim = back;
+  releaseRings(back.rings); // 0.8.10: the pictures of the rings that were rewound away
   G.run = (G.run || 0) + 1;
   G.usedRewind = true;
   G.lastEgg = false;
@@ -7588,6 +7598,9 @@ async function boot() {
   diag.init({
     version: __VERSION__, app: typeof __APP__ !== 'undefined' && !!__APP__, perf: PERF, guess: () => PERF.guess,
     counters: () => [stampStats.builds, bodyCache.builds, formStats.bakes],
+    canvas, freed: () => [cvStats.freed, Math.round(cvStats.mb)],
+    // the web view gave the canvas back after losing it: every cached picture may be blank, so the ones in reach are repainted
+    onRestore: () => { releaseRings([]); stampSweep(); stampSweep(); if (G.backdrop) G.backdrop.resize(W_, H_, DPR); if (G.weather) G.weather.resize(W_, H_, DPR); G.frz = null; },
     sim: () => G.sim, state: () => (G.sim ? G.sim.state : ''),
     level: () => ({
       id: G.li >= 0 && G.level ? G.level.id : G.li, mode: save.mode || '', gfx: save.gfx || 'auto', fpsSet: save.fps || 'auto', step: PERF.step, low: PERF.low ? 1 : 0,

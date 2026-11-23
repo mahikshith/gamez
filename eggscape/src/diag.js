@@ -12,6 +12,7 @@
 //   hit   one hitch (a gap over 100 ms): where, and what had just happened (mk)
 //   gov   Auto changed the graphics step, the frame cap or the pace, and why
 //   end   the level's summary, with Android's heat and memory state
+//   ctx   the web view took the canvas off the graphics chip (lost) or gave it back (back): 0.8.10, see render/cvfree.js
 //   mk    something worth knowing about (a purchase, an ad, a skin put on)   err   a frame error   vis   app hidden / shown
 // No names, accounts, locations or identifiers. Pure bookkeeping in frame(): no allocation, a few adds per frame.
 
@@ -53,6 +54,7 @@ function closeLevel(res) {
   const w = winLine('w'); if (w) push(w);
   const o = { k: 'end', t: T(), id: L.id, res: res || '', s: Math.round((now() - L.at) / 1000), n: L.n, fps: r1(L.n / Math.max(0.001, L.span / 1000)), late: L.n ? r1(100 * L.late / L.n) : 0, worst: Math.round(L.worst), js: L.n ? r1(L.js / L.n) : 0, jsx: r1(L.jsx), hits: L.hits };
   const nat = native(false); if (nat) o.nat = nat;
+  try { if (D.env.freed) o.fr = D.env.freed(); } catch (_) { /* optional */ } // [pictures given back so far, MB]
   push(o);
   D.L = null; D.sim = null; resetWin(); save();
 }
@@ -96,6 +98,14 @@ export const diag = {
     try { D.dev = JSON.stringify(dev); } catch (_) { D.dev = ''; } // kept aside: a long session pushes the line out of the log, the shared file still leads with it
     D.gov = govKey(); resetWin();
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { push({ k: 'vis', t: T(), h: document.hidden ? 1 : 0 }); if (document.hidden) save(true); });
+    // 0.8.10: the canvas losing its graphics-chip backing is the suspected start of the level 13 collapse; the log says so now
+    try {
+      const cv = D.env.canvas;
+      if (cv && cv.addEventListener) {
+        cv.addEventListener('contextlost', () => { push({ k: 'ctx', t: T(), e: 'lost', s: D.scr }); save(true); });
+        cv.addEventListener('contextrestored', () => { push({ k: 'ctx', t: T(), e: 'back', s: D.scr }); if (D.env.onRestore) { try { D.env.onRestore(); } catch (_) { /* optional */ } } });
+      }
+    } catch (_) { /* optional */ }
     if (typeof window !== 'undefined') {
       window.addEventListener('pagehide', () => save(true));
       window.addEventListener('error', (e) => diag.error((e && e.message) || 'error'));

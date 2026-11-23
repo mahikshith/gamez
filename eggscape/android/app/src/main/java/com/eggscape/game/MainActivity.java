@@ -85,9 +85,38 @@ public class MainActivity extends Activity {
     /** Android asking apps to give memory back: a phone under memory pressure stutters, so the log counts these */
     @Override public void onTrimMemory(int level) { super.onTrimMemory(level); trimCount++; lastTrim = level; }
 
+    // 0.8.10: this app's own memory as Android counts it (graphics = the pictures on the graphics chip, where the web
+    // view keeps its canvases). Reading it takes tens of milliseconds, so a background thread samples it and the log
+    // gets the last sample: never a hitch in the game. The speed log of 0.8.9 showed the phone's free memory falling
+    // about 115 MB a level until drawing collapsed; these numbers say whether that is fixed.
+    private volatile int memGfxMb = -1, memNativeMb = -1, memPssMb = -1;
+    private volatile long memAt = 0;
+    private volatile boolean memBusy = false;
+    private void sampleMemory() {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (memBusy || now - memAt < 4000) return;
+        memBusy = true; memAt = now;
+        Thread t = new Thread(new Runnable() { @Override public void run() {
+            try {
+                android.os.Debug.MemoryInfo mi = new android.os.Debug.MemoryInfo();
+                android.os.Debug.getMemoryInfo(mi);
+                memGfxMb = kbStat(mi, "summary.graphics"); memNativeMb = kbStat(mi, "summary.native-heap"); memPssMb = mi.getTotalPss() / 1024;
+            } catch (Throwable e) { /* the log is optional */ }
+            memBusy = false;
+        } }, "egg-mem");
+        t.setPriority(Thread.MIN_PRIORITY); t.setDaemon(true);
+        try { t.start(); } catch (Throwable e) { memBusy = false; }
+    }
+    private static int kbStat(android.os.Debug.MemoryInfo mi, String key) {
+        if (Build.VERSION.SDK_INT < 23) return -1;
+        try { String v = mi.getMemoryStat(key); return v == null ? -1 : Integer.parseInt(v.trim()) / 1024; } catch (Throwable e) { return -1; }
+    }
+
     private String deviceInfoJson(boolean full) {
         org.json.JSONObject o = new org.json.JSONObject();
         try {
+            sampleMemory();
+            if (memPssMb >= 0) { o.put("gfxMb", memGfxMb); o.put("nativeMb", memNativeMb); o.put("pssMb", memPssMb); }
             android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
             if (pm != null) {
                 o.put("powerSave", pm.isPowerSaveMode() ? 1 : 0);

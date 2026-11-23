@@ -3,6 +3,7 @@
 // silhouette), a weighted ink line (heavier on the shadow side), tapered limbs that bend at real joints, and a glossy eye
 // with a lid. All of it is plain path work: no shadowBlur, no filters, no per-frame gradients.
 import { PERF } from '../perf.js';
+import { freeCanvas } from './cvfree.js';
 const TAU = Math.PI * 2;
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export const lerp = (a, b, k) => a + (b - a) * k;
@@ -71,7 +72,7 @@ export function bake(ctx, key, x0, y0, x1, y1, paint) {
     paint(c);
     E = { cv, x0: bx, y0: by, w, h, px: W * H };
     BK.set(k, E); bkPx += E.px; formStats.bakes++;
-    while (BK.size > BK_MAX || bkPx > BK_PX) { const [k0, e0] = BK.entries().next().value; BK.delete(k0); bkPx -= e0.px; }
+    while (BK.size > BK_MAX || bkPx > BK_PX) { const [k0, e0] = BK.entries().next().value; BK.delete(k0); bkPx -= e0.px; freeCanvas(e0.cv); }
   } else { BK.delete(k); BK.set(k, E); formStats.hits++; } // keep the ones in use at the young end
   ctx.drawImage(E.cv, E.x0, E.y0, E.w, E.h);
   return true;

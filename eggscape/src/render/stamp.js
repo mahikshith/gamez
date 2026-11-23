@@ -8,6 +8,7 @@
 //     key    anything that changes the picture (colours, state): a different key repaints
 //     box    x0..x1, y0..y1 in the drawing's units (the current transform's space)
 //     paint  (c) => draw the picture on context c, in the same units
+import { freeCanvas } from './cvfree.js';
 const SL = new Map();
 const MAX = 2048;
 export const stampStats = { builds: 0, on: true };
@@ -32,10 +33,19 @@ export function stamp(ctx, slot, key, x0, y0, x1, y1, paint) {
     paint(c);
     S = { cv, key, sc: Math.max(sx, sy) };
     SL.set(slot, S);
-    if (SL.size > 64) { const first = SL.keys().next().value; if (first !== slot) SL.delete(first); }
+    if (SL.size > 64) { const first = SL.keys().next().value; if (first !== slot) { freeCanvas(SL.get(first).cv); SL.delete(first); } }
     stampStats.builds++;
   }
+  S.gen = GEN;
   ctx.drawImage(S.cv, x0, y0, bw, bh);
   return true;
+}
+// 0.8.10: at each level start the stamps nobody drew since the last level start (the old level's pads, nests, props)
+// give their pictures back. Slots are often objects of the old level, so they would otherwise sit here until 64 newer
+// ones pushed them out, and their canvases until the garbage collector ran.
+let GEN = 1;
+export function stampSweep() {
+  for (const [slot, S] of SL) if ((S.gen || 0) < GEN) { freeCanvas(S.cv); SL.delete(slot); }
+  GEN++;
 }
 export function dropStamp(slot) { SL.delete(slot); }

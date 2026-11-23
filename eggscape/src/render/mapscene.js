@@ -7,6 +7,7 @@
 // The still part of every band (ground, trees, barns, crystals...) is painted once into an offscreen canvas and blitted;
 // only the creatures, smoke, bubbles and sparkles are drawn live, and only for the bands on screen (battery).
 import { PERF } from '../perf.js'; // 2026-11-19 Low graphics: the cast is painted 12x a second, not every frame
+import { freeCanvas } from './cvfree.js';
 import { drawMapAmb } from './mapamb.js';
 import { drawVillainPortrait } from './villain-art.js';
 import { drawRooster, roosterPose, drawGoose, goosePose } from './allies.js';
@@ -372,7 +373,7 @@ function bandCanvas(L, w, DPR) {
   const c = cv.getContext('2d'); c.setTransform(DPR, 0, 0, DPR, 0, 0); c.clearRect(0, 0, W, h);
   paintBand(c, L, w);
   cache.delete(w); cache.set(w, { canvas: cv, key });
-  while (cache.size > 4) cache.delete(cache.keys().next().value); // keep the few bands around the view
+  while (cache.size > 4) { const k0 = cache.keys().next().value; freeCanvas(cache.get(k0).canvas); cache.delete(k0); } // keep the few bands around the view (0.8.10: one that leaves gives its picture back at once)
   return cv;
 }
 
@@ -605,7 +606,7 @@ function castCached(ctx, L, w, sy, t, calm, DPR) {
     E.t = t + (w % 2) * 0.04; // neighbouring bands repaint on different frames
   }
   ctx.drawImage(E.cv, 0, y0 - sy, L.W, h);
-  if (CASTC.size > 4) for (const k of CASTC.keys()) { if (Math.abs(k - w) > 1) CASTC.delete(k); }
+  if (CASTC.size > 4) for (const k of [...CASTC.keys()]) { if (Math.abs(k - w) > 1) { freeCanvas(CASTC.get(k).cv); CASTC.delete(k); } }
 }
 // what the ambience layer (render/mapamb.js) needs to know about a band on screen
 function ambBand(L, w, sy, t) {

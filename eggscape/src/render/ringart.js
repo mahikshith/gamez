@@ -5,6 +5,7 @@
 // surface an egg rests on, so nothing about where eggs sit changes.
 // One painter serves circles (fast arcs) and the shaped vaults (square / hex / spiral polylines via ringPt).
 import { stamp } from './stamp.js';
+import { freeCanvas } from './cvfree.js';
 import { RING_TH, TAU, rng } from '../sim/geom.js';
 import { ringPt, ringSpd, ringReach, ringNormal } from '../sim/shapes.js';
 
@@ -50,6 +51,21 @@ function stateOf(ring) {
   let s = STATE.get(ring);
   if (!s) STATE.set(ring, (s = { memo: new Map(), canvas: null, key: '', scale: 0 }));
   return s;
+}
+// 0.8.10: a level that ends gives its ring pictures back (a face and a body per ring, up to 16 MB each on a sharp
+// screen) instead of leaving them for the garbage collector. Called with the old sim's rings when a new one is made.
+// keep: the rings of the level that is starting. Every other ring that still holds a picture lets it go: the old level's,
+// and the rings of level card scenes and demos, which belong to no sim.
+const HELD = new Set(); // rings with a picture (strong on purpose: they are let go here, at the next level start)
+export function releaseRings(keep) {
+  const K = new Set(keep || []);
+  for (const ring of HELD) {
+    if (K.has(ring)) continue;
+    HELD.delete(ring);
+    const S = STATE.get(ring); if (!S) continue;
+    freeCanvas(S.canvas); freeCanvas(S.bcv);
+    S.canvas = null; S.key = ''; S.scale = 0; S.bcv = null; S.bkey = ''; S.body = null; S.memo.clear();
+  }
 }
 // Polyline for a shaped ring at radius rad from a0 to a1 (ends nudged inside so a spiral end stays on its own side).
 function poly(ring, rad, a0, a1) {
@@ -360,6 +376,7 @@ function faceCanvas(ring, arcs, col, st, scale) {
   c.setTransform(sc, 0, 0, sc, size / 2, size / 2);
   paintFace(c, ring, arcs, col, st, 1 / sc);
   S.canvas = cv; S.key = key; S.scale = scale; S.half = size / 2 / sc;
+  HELD.add(ring);
   ringCache.builds++;
   return S;
 }
@@ -411,6 +428,7 @@ function bodyCanvas(ring, arcs, col, st, k, up, A, scale) {
   // before (that one can be up to 1.45x bigger, so a slow zoom-out failed the 0.6 test on EVERY frame: levels 27 and
   // 44 re-baked a ring body ~50 times a second while the camera eased out); zooming IN against the sharper of the two
   S.bcv = cv; S.bkey = key; S.bscale = scale * 1.15; S.bhi = Math.max(sc, scale * 1.15); S.bA = A; S.body = { canvas: cv, half: size / 2 / sc, A };
+  HELD.add(ring);
   bodyCache.builds++;
   return S.body;
 }
