@@ -14,7 +14,7 @@
 
 import { drawVillainPortrait } from './villain-art.js';
 import { drawHand } from './wonder.js';
-import { drawStrikeChick } from './strike.js';
+import { drawStrikeChick, drawStrikeButton } from './strike.js'; // 0.8.10: the chick scenes show the real HUD badge
 import { drawKindChick } from './chicks.js'; // the bulk chick's own art (L18's card)
 import { actorFor } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers)
 import { statusDraw } from './status.js';
@@ -105,6 +105,14 @@ const TOY_NAME = { flame: 'Red flame', twin: 'Twin orb', curtain: 'Thorn curtain
 const NEW_TOYS = ['warp', 'bait', 'sweep', 'twister', 'magnet']; // these need the game's own art (o.world)
 // foe: the creature a toy scene shows (the warp gate takes the level's own: 'salamander', 'eagle', else a snake)
 export function toyPlan(id, foe) { return { kind: null, toy: id, move: 'toy', cap: TOY[id] || '', name: TOY_NAME[id] || id, foe }; }
+// 0.8.10 (mykee on L11: "we are not providing relevant information ... where the floor is slippery"): a ring floor that
+// behaves on its own gets its own scene on the first level that has it. loop: a longer scene (ice plays it twice: too late, then early)
+const FLOOR = { ice: ['Ice: eggs slide', 'Ice floor', 7.4], honey: ['Honey: eggs stick', 'Honey', 4.8], cloud: ['Cloud: eggs bounce', 'Cloud floor', 4.8] };
+export const FLOORS = Object.keys(FLOOR);
+export function floorPlan(surf) { const F = FLOOR[surf] || FLOOR.ice; return { kind: null, move: 'floor', surf, cap: F[0], name: F[1], loop: F[2] }; }
+// 0.8.10 (mykee on L9: "Do they have to click on it?"): the power chick on the first level that has one: a saved egg fills
+// its badge, the finger taps it when it glows, the chick flies at the villain
+export function chickTeach(id, villain = 'snake') { return { ...chickPlan(id, 'Full? Tap your chick', villain), teach: 1, name: 'Your chick' }; }
 // no villain in this level: the basic move
 export const BASIC = { kind: null, move: 'basic', cap: 'Drag a ring to turn it. Drop eggs into the basket.' };
 // Papa Rooster (the farm friend): tap him and he chases a thief off, the egg comes back
@@ -119,8 +127,8 @@ const PCOL = { freeze: '#8fd8ff', thunder: '#ffe14a', bomb: '#ff8a3a', decoy: '#
 // ------------------------------------------------------------------ the stage
 export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   o._drop = null; o._carry = null; o._bubble = 0;
-  const calm = !!o.calm, T = calm ? 2.25 : ((t % LOOP) + LOOP) % LOOP;
-  const fade = calm ? 1 : Math.min(seg(T, 0, 0.25), 1 - seg(T, LOOP - 0.3, LOOP));
+  const LP = plan.loop || LOOP, calm = !!o.calm, T = calm ? (plan.move === 'floor' ? (plan.surf === 'ice' ? 4.75 : 1.4) : 2.25) : ((t % LP) + LP) % LP;
+  const fade = calm ? 1 : Math.min(seg(T, 0, 0.25), 1 - seg(T, LP - 0.3, LP));
   const U = h, Z = Math.min(h, w * 0.62), cx = x + w / 2; // U: the stage's height (vertical placing); Z: the size of things (a tall stage does not blow them up)
   const Wd = o.world || null;
   ctx.save();
@@ -145,7 +153,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   const at = (phi, lift) => ({ x: C.x + Math.sin(phi) * (floor - lift), y: C.y + Math.cos(phi) * (floor - lift) });
   const nest = { x: cx, y: y + U * 0.93 };
   const eggS = Wd ? 0.56 * 1.06 * kW : Z * 0.24, vD = Z * (Wd ? 0.8 : 0.5);
-  const m = !Wd && (plan.move === 'frog' || plan.move === 'fish' || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy))) ? 'basic' : plan.move; // the rigs need the game's art
+  const m = !Wd && (plan.move === 'frog' || plan.move === 'fish' || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.move === 'floor') ? 'basic' : plan.move; // the rigs need the game's art
   const vLift = vD * (Wd ? 0.3 : 0.42);
   // where the villain stops: its nose just short of the egg, worked out in pixels so a big villain never overlaps it
   const vEnd = -Math.asin(clamp((eggS * 0.42 + vD * 0.46) / floor, 0.05, 0.95));
@@ -153,7 +161,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   let toy = null; // move 'toy': { orb, look, deco, twin, portal, flash, burst } (drawn with the game's art through o.world)
 
   // ---- the timeline of each move -> ring turn th, egg angle eA, egg drop eD (0..1), villain angle vA, villain state
-  let door = null, th = 0, eA = 0, eD = 0, vA = -0.75, vOff = 0, vRot = 0, vAlpha = 1, vFx = '', fxK = 0, hand = null, stone = false, haz = null, btn = null, shot = null, done = 0;
+  let eLift = 0, eAlpha = 1, slideV = 0, miss = 0, door = null, th = 0, eA = 0, eD = 0, vA = -0.75, vOff = 0, vRot = 0, vAlpha = 1, vFx = '', fxK = 0, hand = null, stone = false, haz = null, btn = null, shot = null, done = 0;
   const act = actorFor(plan), SG = act && act.stage ? act.stage(m) : null;
   const gap0 = SG ? SG.g0 : 0.4, dTh = SG ? SG.dTh : -gap0; // the gap starts to the right of the egg and comes under it (an actor may set its own scene)
   const walk = ease(seg(T, 0.2, 1.3));
@@ -175,6 +183,12 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   } else if (m === 'tap' || m === 'rooster') {
     vA = vEnd - 0.3 * (1 - walk);
     btn = { x: x + Math.max(w * 0.1, Z * 0.16), y: y + U * 0.8, r: Z * 0.13, id: m === 'rooster' ? 'rooster' : plan.power || 'thunder' };
+    if (m === 'tap') { // 0.8.10: the HUD's own chick badge: a saved egg tops up its meter, it beats gold, the finger taps it
+      btn.r = Z * 0.2; btn.x = x + Math.max(w * 0.12, btn.r * 1.25); btn.y = y + U * 0.76;
+      btn.m = 0.6 + 0.4 * ease(seg(T, 0.6, 1.0)); btn.busy = T > 1.62;
+      const sv = { x: nest.x - eggS * 0.45, y: nest.y - eggS * 0.42 }; btn.saved = { x: sv.x, y: T < 0.45 ? y - eggS + (sv.y - y + eggS) * Math.pow(seg(T, 0.1, 0.45), 2) : sv.y, a: seg(T, 0.05, 0.12) }; // an egg comes home first: that is what fills the badge
+      if (T > 0.45 && T < 1.0) { const k = ease(seg(T, 0.45, 0.95)); btn.spark = { x: sv.x + (btn.x - sv.x) * k, y: sv.y + (btn.y - sv.y) * k - Math.sin(k * Math.PI) * U * 0.2, k }; }
+    }
     hand = tapHand(btn, T, 1.25, 1.7);
     const hit = 2.15;
     const onEgg = plan.fx === 'carry' || plan.fx === 'bubble'; // the phoenix and the bubble go for the egg, not the villain
@@ -374,6 +388,40 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
       const d = ease(seg(T, 2.4, 3.1)); th = -gap0 * d;
       eD = seg(T, 3.15, 3.55); done = seg(T, 3.55, 3.9);
     }
+  } else if (m === 'floor') { // 0.8.10: a ring floor of its own (the game's ring art in that material, through o.world)
+    vAlpha = 0; toy = { deco: { mat: plan.surf, thorns: 0 }, look: null };
+    const fall = (t0, t1) => { const k = seg(T, t0, t1); return (1 - k * k) * h * 0.55 * (T < t1 ? 1 : 0); }; // dropped in from the ring above
+    if (plan.surf === 'ice') { // too late: it lands, slides fast, flies over the gap into the thorn on its far edge. Early: the gap waits where it lands
+      toy.deco = { mat: 'ice', thorns: 1, one: 1 }; toy.gap = 0.3;
+      if (T < 3.3) {
+        eLift = fall(0.2, 0.62);
+        const u = seg(T, 0.62, 1.5); eA = -0.62 * Math.cos(Math.PI * 0.736 * u); slideV = T > 0.62 && T < 1.5 ? Math.sin(Math.PI * 0.736 * u) : 0; // a pendulum with no friction: it would climb as high as it fell
+        if (eA > -0.04 && T < 1.5) eLift += Math.sin(seg(eA, -0.04, 0.42) * Math.PI * 0.55) * eggS * 0.55; // too fast: it flies over the gap
+        if (T >= 1.5) { eLift = eggS * 0.55 * Math.sin(Math.PI * 0.55) * (1 - seg(T, 1.5, 1.7)); miss = seg(T, 1.5, 2.9); toy.look = { cracks: 3 }; if (T < 2.2) toy.word = { s: 'CRACK!', k: seg(T, 1.5, 2.2), red: 1 }; }
+        eAlpha = 1 - seg(T, 2.4, 2.9);
+      } else {
+        const d = ease(seg(T, 3.4, 4.1)); th = -0.66 * d; hand = dragHand(at, T, 3.4, 4.1, 0.55, -0.11);
+        eA = -0.68; eLift = fall(4.3, 4.68); eAlpha = seg(T, 4.25, 4.32);
+        const u = seg(T, 4.68, 4.95); eA = -0.68 + 0.23 * u * u; slideV = T > 4.68 && T < 4.95 ? 0.5 + 0.5 * u : 0;
+        eD = seg(T, 4.95, 5.35); done = seg(T, 5.35, 5.75);
+      }
+    } else if (plan.surf === 'honey') { // it sits in the honey and rides the turn up the wall, then the honey lets go and it rolls into the gap
+      toy.deco = { mat: null, honey: { off: 0.5, len: 0.8 } };
+      const g0 = -0.5, d = ease(seg(T, 0.7, 1.7)); th = 0.5 * d;
+      hand = dragHand(at, T, 0.7, 1.7, -0.02, 0.48);
+      const let1 = ease(seg(T, 2.35, 2.85)); eA = th * (1 - let1);
+      if (T > 1.9 && T < 2.35) eA += Math.sin(t * 40) * 0.012; // the honey stretches, then gives
+      if (T > 2.35 && T < 2.85) toy.word = { s: 'SLURP!', k: seg(T, 2.35, 2.95) };
+      eD = seg(T, 2.95, 3.35); done = seg(T, 3.35, 3.7);
+      toy.gap = g0;
+    } else { // cloud: the egg bounces high off the soft floor, right over the gap; once it sits still, the turn brings the gap under it
+      toy.deco = { mat: 'cloud' };
+      const hops = [[0.2, 0.55, 0], [0.55, 1.15, 1.9], [1.15, 1.6, 1.0], [1.6, 1.9, 0.45]];
+      for (const [a, b, H] of hops) if (T >= a && T < b) { const k = seg(T, a, b); eLift = H ? 4 * k * (1 - k) * H * eggS : (1 - k * k) * h * 0.55; }
+      eA = 0.0 + 0.4 * Math.sin(seg(T, 0.55, 1.15) * Math.PI) * (T < 1.15 ? 1 : 0); // the big bounce carries it over the gap and back
+      const d = ease(seg(T, 2.25, 3.0)); th = -gap0 * d; hand = dragHand(at, T, 2.15, 3.0, 0.5, 0.5 - gap0);
+      eD = seg(T, 3.05, 3.45); done = seg(T, 3.45, 3.8);
+    }
   } else if (m === 'frog' || m === 'fish') { // 2026-11-20: the frog and the fish school on their own game rigs
     vAlpha = 0; toy = { deco: { thorns: 0 }, look: null };
     const k = kW;
@@ -425,11 +473,11 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   }
 
   { // the camera (see the veil above): a step back for a scene with a villain, and a step to the villain's side
-    const zm = o.zoom || (Wd && (['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.kind === 'spider') ? 0.8 : 1), pan = SG && SG.pan ? SG.pan * w : !act && plan.kind && vAlpha > 0 && zm !== 1 ? 0.05 * w : 0; // a portrait villain stands on the left
+    const zm = o.zoom || (Wd && (['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.kind === 'spider') ? 0.8 : Wd && plan.move === 'floor' ? 0.86 : 1), pan = SG && SG.pan ? SG.pan * w : !act && plan.kind && vAlpha > 0 && zm !== 1 ? 0.05 * w : 0; // a portrait villain stands on the left
     if (zm !== 1 || pan) { ctx.translate(cx + pan, y + h); ctx.scale(zm, zm); ctx.translate(-cx, -(y + h)); }
   }
   // ---- the ring: a thick slab with one gap (the game's own ring when it is given)
-  const gapA = gap0 + th, gw = 0.24;
+  const gapA = (toy && toy.gap != null ? toy.gap : gap0) + th, gw = 0.24;
   if (Wd) Wd.ring(ctx, C, kW, gapA, t, door, toy ? toy.deco : null);
   else {
     ctx.lineCap = 'round';
@@ -505,14 +553,16 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     else if (P.sink < 1) { const b = at(eA, eggS * 0.5); ctx.save(); ctx.translate(P.pin.x, P.pin.y); ctx.rotate(P.sink * 5); ctx.scale(1 - P.sink * 0.95, 1 - P.sink * 0.95); ctx.translate(-P.pin.x, -P.pin.y); drawE(b.x + (P.pin.x - b.x) * P.sink, b.y + (P.pin.y - b.y) * P.sink, eggS, false, false); ctx.restore(); }
     else if (P.pop > 0) { const k = P.drop * P.drop, ex = P.pout.x + (nest.x - P.pout.x) * P.drop, ey = P.pout.y + (land - P.pout.y) * k; ctx.save(); const sc = 0.1 + 0.9 * P.pop; ctx.translate(ex, ey); ctx.scale(sc, sc); ctx.translate(-ex, -ey); drawE(ex, ey, eggS, false, false); ctx.restore(); }
   } else {
+    if (btn && btn.saved && btn.saved.a > 0) { ctx.save(); ctx.globalAlpha *= btn.saved.a; drawE(btn.saved.x, btn.saved.y, eggS, false, false); ctx.restore(); } // the egg saved before the scene's (its spark fills the badge)
     if (toy && toy.twin && toy.twin.show) { // the twin: a second egg beside the first, home just after it
       const b2 = at(toy.twin.a, eggS * 0.5), land = nest.y - (Wd ? eggS * 0.42 : Z * 0.08), q = toy.twin.eD;
       const ex = done > 0 ? nest.x - eggS * 0.55 : b2.x + (nest.x - eggS * 0.55 - b2.x) * q, ey = done > 0 ? land : b2.y + (land - b2.y) * q * q;
       drawE(ex, ey, eggS, false, false);
     }
   {
-    const base = at(eA, eggS * 0.5);
+    const base = at(eA, eggS * 0.5 + eLift);
     let ex = base.x, ey = base.y, sq = 1;
+    if (eAlpha < 1) { ctx.save(); ctx.globalAlpha *= clamp(eAlpha, 0, 1); }
     if (o._drop && o._drop.fall < 1 && m === 'drop') { // the egg from above, falling onto the villain
       const top = y - U * 0.12, tgt = at(o._drop.vA, vD * 0.75);
       if (o._drop.fall > 0) { const k = o._drop.fall * o._drop.fall; drawE(tgt.x, top + (tgt.y - top) * k, eggS, false); }
@@ -524,11 +574,18 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     if (done > 0) { ex = nest.x; ey = land; }
     if (o._bubble && !eD && !done) { ctx.save(); ctx.strokeStyle = 'rgba(150,225,255,0.95)'; ctx.lineWidth = 3; ctx.fillStyle = 'rgba(190,240,255,0.25)'; ctx.beginPath(); ctx.arc(ex, ey, eggS * 0.75, 0, TAU); ctx.fill(); ctx.stroke(); ctx.restore(); }
     const worry = AR ? !eD && !done && !!AR.threat : !eD && vAlpha > 0.5 && plan.kind && Math.abs(vA - eA) < 0.7;
+    if (slideV > 0.15 && !eD) { // sliding on ice: speed lines trail the egg
+      ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(2, eggS * 0.07);
+      for (let i = 0; i < 3; i++) { const a0 = eA - 0.1 - i * 0.025, a1 = a0 - 0.18 * slideV, rr2 = floor - eggS * (0.25 + 0.25 * i); ctx.globalAlpha *= 0.9; ctx.beginPath(); for (let j = 0; j <= 8; j++) { const a = a0 + (a1 - a0) * (j / 8); const X = C.x + Math.sin(a) * rr2, Y = C.y + Math.cos(a) * rr2 - eLift; if (j) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); } ctx.stroke(); }
+      ctx.restore();
+    }
     if (!(toy && toy.look && toy.look.hide)) drawE(ex, ey, eggS * sq, stone, worry, toy ? toy.look : null); // hide: the toy draws its own actor there (the bulk chick)
+    if (eAlpha < 1) ctx.restore();
+    if (miss > 0 && miss < 1) { ctx.save(); ctx.globalAlpha *= Math.min(1, miss * 6) * (1 - seg(miss, 0.8, 1)); cross(ctx, ex - eggS * 0.62, ey + eggS * 0.1, Z * 0.085); ctx.restore(); } // the egg is lost: a red cross (the tick's twin)
   }
   }
   if (toy && toy.over) toy.over();
-  if (toy && toy.word && toy.word.k < 1) { const e0 = at(eA, eggS * 1.6), q = toy.word.k; ctx.save(); ctx.globalAlpha *= 1 - seg(q, 0.7, 1); word(ctx, toy.word.s, clamp(e0.x, x + Z * 0.4, x + w - Z * 0.4), e0.y - q * Z * 0.08, Z * 0.15 * (1 + 0.35 * (1 - seg(q, 0, 0.15))), '#ffe14a', '#8a4a00'); ctx.restore(); }
+  if (toy && toy.word && toy.word.k < 1) { const e0 = at(eA, eggS * 1.6), q = toy.word.k; ctx.save(); ctx.globalAlpha *= 1 - seg(q, 0.7, 1); word(ctx, toy.word.s, toy.word.red ? clamp(e0.x - eggS * 0.9, x + Z * 0.4, x + w * 0.5) : clamp(e0.x, x + Z * 0.4, x + w - Z * 0.4), toy.word.red ? Math.max(y + Z * 0.3, e0.y + eggS * 0.2) : e0.y - q * Z * 0.08, Z * 0.15 * (1 + 0.35 * (1 - seg(q, 0, 0.15))), toy.word.red ? '#fff' : '#ffe14a', toy.word.red ? '#c9342c' : '#8a4a00'); ctx.restore(); }
   if (toy && toy.burst && toy.burst.k < 1) { const B = toy.burst; ctx.save(); ctx.globalAlpha *= 1 - B.k; ctx.strokeStyle = B.col; ctx.lineWidth = Math.max(2, eggS * 0.12 * (1 - B.k)); ctx.beginPath(); ctx.arc(B.x, B.y, eggS * (0.4 + 0.9 * B.k), 0, TAU); ctx.stroke(); ctx.restore(); }
   if (toy && toy.flash) { // the glow chick's flash: a bright ring that sweeps out over the thorns
     const F = toy.flash, R2 = Z * (0.1 + 0.55 * ease(F.k));
@@ -538,7 +595,11 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     ctx.restore();
   }
   // the power or the rooster on its way
-  if (btn) {
+  if (btn && btn.m != null) { // the real HUD badge (render/strike.js): its meter, its gold heartbeat, a pulsing ring while it waits for the tap
+    if (btn.spark) { const S2 = btn.spark; ctx.save(); ctx.globalAlpha *= 1 - seg(S2.k, 0.85, 1); ctx.fillStyle = 'rgba(255,230,120,0.45)'; ctx.beginPath(); ctx.arc(S2.x, S2.y, Z * 0.09, 0, TAU); ctx.fill(); star5(ctx, S2.x, S2.y, Z * 0.07 * (1 + 0.25 * Math.sin(S2.k * 9))); ctx.restore(); }
+    if (T > 1.0 && T < 1.7) { const q = calm ? 0.4 : ((T - 1.0) * 1.6) % 1; ctx.save(); ctx.globalAlpha *= (1 - q) * 0.9; ctx.strokeStyle = '#ffcf3a'; ctx.lineWidth = Math.max(3, btn.r * 0.16 * (1 - q)); ctx.beginPath(); ctx.arc(btn.x, btn.y, btn.r * (1.15 + 0.6 * q), 0, TAU); ctx.stroke(); ctx.restore(); }
+    drawStrikeButton(ctx, btn.x - btn.r, btn.y - btn.r, btn.r * 2, { id: btn.id, m: btn.m, busy: btn.busy, t: T, fullT: 1.0, wobT: -9, pressed: !!(hand && hand.press), calm });
+  } else if (btn) {
     ctx.save();
     const pr = btn.r * (hand && hand.press ? 0.92 : 1);
     ctx.beginPath(); ctx.arc(btn.x, btn.y + 3, pr, 0, TAU); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
@@ -551,6 +612,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     const col = PCOL[btn.id] || '#fff';
     ctx.save(); ctx.globalAlpha *= 0.9;
     if (btn.id === 'rooster' && o.rooster) o.rooster(ctx, shot.x, shot.y, Z * 0.32);
+    else if (btn.m != null) { ctx.globalAlpha = fade; drawStrikeChick(ctx, btn.id, shot.x, shot.y, Z * 0.26, t, { mood: 'ready', feet: false, fog: false, wing: Math.abs(Math.sin(t * 24)), trail: 0.8, stretch: 0.18 * Math.sin(shot.k * Math.PI) }); } // the chick itself flies the arc
     else { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(shot.x, shot.y, Z * 0.05, 0, TAU); ctx.fill(); ctx.globalAlpha *= 0.4; ctx.beginPath(); ctx.arc(shot.x, shot.y, Z * 0.09, 0, TAU); ctx.fill(); }
     ctx.restore();
   }
@@ -639,6 +701,10 @@ function burst(ctx, x, y, r, a, col) {
 function word(ctx, str, x, y, size, fill, stroke) {
   ctx.save(); ctx.font = `800 ${Math.round(size)}px "Fredoka", "Baloo 2", system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round'; ctx.lineWidth = size * 0.28; ctx.strokeStyle = stroke; ctx.strokeText(str, x, y); ctx.fillStyle = fill; ctx.fillText(str, x, y); ctx.restore();
+}
+function cross(ctx, x, y, r) {
+  ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fillStyle = '#d23a2a'; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+  ctx.lineWidth = r * 0.28; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x - r * 0.4, y - r * 0.4); ctx.lineTo(x + r * 0.4, y + r * 0.4); ctx.moveTo(x + r * 0.4, y - r * 0.4); ctx.lineTo(x - r * 0.4, y + r * 0.4); ctx.stroke(); ctx.restore();
 }
 function tick(ctx, x, y, r) {
   ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fillStyle = '#3cb043'; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke();

@@ -1717,13 +1717,23 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
   const lineCy = y + rowH + gapV + lineH / 2;
 
   if (!owned.length) {
-    // a single small Shop chip
-    const cs = Math.min(rowH, 46 * u);
-    const cw = Math.min(w, Math.max(cs * 2.2, 100 * u));
-    ui.button('shop:boosts', 'Shop', x + w / 2 - cw / 2, rowY + (rowH - cs) / 2, cw, cs, { // the shop opens on its Boosts row
-      kind: 'gold', icon: coinIcon(t), size: Math.min(18 * u, cs * 0.42),
+    // 0.8.10 (mykee: "the power-up page is empty or half empty"): with nothing owned the row still shows what a
+    // booster IS: the four cheapest, each with its art and its coin price, the whole row opening the shop's Boosts tab
+    const show = BOOSTER_ORDER.filter((id) => BOOSTERS[id] && BOOSTERS[id].price > 0).sort((a, b) => BOOSTERS[a].price - BOOSTERS[b].price).slice(0, 4);
+    const n2 = show.length, gap2 = Math.min(8 * u, w * 0.025);
+    const c2 = Math.max(12, Math.min(rowH, (w - (n2 - 1) * gap2) / n2, 56 * u));
+    const x2 = x + w / 2 - (n2 * c2 + (n2 - 1) * gap2) / 2, cy2 = rowY + (rowH - c2) / 2;
+    show.forEach((id, i) => {
+      const cx = x2 + i * (c2 + gap2), B = BOOSTERS[id], afford = (wallet && wallet.coins || 0) >= B.price;
+      ui.button('shop:boosts', '', cx, cy2, c2, c2, { kind: 'tertiary', round: 14 * u });
+      ctx.save(); ctx.globalAlpha = 0.55; drawBoosterIcon(ctx, id, cx + c2 / 2, cy2 + c2 * 0.42, c2 * 0.56, t); ctx.restore();
+      const ps = Math.max(8, c2 * 0.2), pw = Math.min(c2 - 4 * u, ui.measure(String(B.price), ps) + ps * 2.1);
+      ui.roundRect(cx + c2 / 2 - pw / 2, cy2 + c2 - ps * 1.5 - 3 * u, pw, ps * 1.5, ps * 0.75);
+      ctx.fillStyle = afford ? 'rgba(42,26,10,0.88)' : 'rgba(42,26,10,0.6)'; ctx.fill();
+      drawCoin(ctx, cx + c2 / 2 - pw / 2 + ps * 0.75, cy2 + c2 - ps * 0.75 - 3 * u, ps * 0.52, t);
+      ui.text(String(B.price), cx + c2 / 2 - pw / 2 + ps * 1.3, cy2 + c2 - ps * 0.75 - 3 * u, { size: ps, color: afford ? '#ffe27a' : '#d8c8a8', maxW: pw - ps * 1.5, noRecord: true });
     });
-    ui.text('Spend coins on start boosters', x + w / 2, lineCy, { size: lineSize, align: 'center', maxW: w, color: C.ink2, tag: 'picker:hint' });
+    ui.text('Boosters give you a head start. Tap to see them.', x + w / 2, lineCy, { size: lineSize, align: 'center', maxW: w, color: C.ink2, tag: 'picker:hint' });
     return;
   }
 

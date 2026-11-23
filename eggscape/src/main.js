@@ -76,11 +76,11 @@ import { streakFlame } from './ui/flame.js';
 import { pictoCheck, pictoCross, pictoWarn, pictoClock, pictoFlame, pictoGem, pictoTarget, pictoCracked, pictoBroken, pictoGoal, pictoPower, pictoStarMinus, pictoNoVideo } from './ui/picto.js'; // icon-first cards
 import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js';
 import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' crown // Chick Strike powers
-import { STRIKES, STRIKE, STRIKE_FROM } from './data/strikes.js';
+import { STRIKES, STRIKE, STRIKE_FROM, EGG_STRIKES } from './data/strikes.js';
 import { drawHand as teachHand } from './render/wonder.js'; // the teaching hand (Papa Rooster's first call)
 import { stampStats, stampSweep } from './render/stamp.js';
 import { cvStats } from './render/cvfree.js';
-import { drawHowTo, howToPlan, chickPlan, toyPlan, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
+import { drawHowTo, howToPlan, chickPlan, toyPlan, floorPlan, chickTeach, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
 import { drawVillainPortrait, PORTRAIT_BG, hasPortrait } from './render/villain-art.js';
@@ -378,7 +378,7 @@ function startLevel(i, opts = {}) {
   if (G.sim.portals.some((pt) => pt.pull || Math.hypot(pt.ax - pt.bx, pt.ay - pt.by) > 0.05) && !save.seen.portalTip) {
     save.seen.portalTip = 1; G.portalTip = 1;
   }
-  G.introFoe = null; G.stkPick = null; G.stkWob = -9; G.stkFullT = 0; G.henAt = null;
+  G.introFoe = null; G.stkPick = null; G.stkWob = -9; G.stkFullT = 0; G.henAt = null; G.stkHint = null; G.stkHintN = 0;
   G.golden = !!opts.golden;
   G.adBoost = opts.adBoost || null;
   G.freeRewind = !!G.boost.rewind;
@@ -2396,6 +2396,7 @@ const EV_HURT = {
 // the power chick is ready: the button starts its heartbeat, the phone thumps lub-dub, a "Power ready!" tag pops by it
 function powerReady() {
   G.stkFullT = G.t; G.stkBeats = 0;
+  if ((G.stkHintN || 0) < 2) { G.stkHintN = (G.stkHintN || 0) + 1; G.stkHint = G.t; } // the first two times on a level: the tap coach on the badge
   heartBuzz();
   if (strikeShown()) { const r = strikeBtnRect(); G.popups.push({ x: r.x + r.w / 2, y: r.y - 16 * ui.u, text: 'Power ready!', key: 'pready', n: 1, sub: '', color: '#ffcf3a', life: 1.6, max: 1.6, size: 20 * ui.u, placed: false }); }
 }
@@ -3281,6 +3282,18 @@ function drawStrikeBtn() {
     ctx.beginPath(); ctx.arc(bx, by, br, 0, 7); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = `700 ${12 * ui.u}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('+' + Math.min(nb, 99), bx, by + 0.5 * ui.u); ctx.restore();
+  }
+  // 0.8.10 (mykee on L9: "Do they have to click on it?"): the "Power ready!" tag lived 1.6 s and the heartbeat is a gold
+  // shimmer in a corner, so a player who did not know the badge was a button never saw either. The first two times it fills
+  // on a level, a big gold ring pulses round it and a finger taps it until the chick goes.
+  if (G.stkHint != null && !(G.sim.stkReady && G.sim.stkReady())) G.stkHint = null;
+  if (G.stkHint != null && (EGG_STRIKES.has(K.id) || !G.sim.stkTargets || G.sim.stkTargets().length > 0)) { // (with no villain in yet a tap only says "No villain": the coach waits)
+    const cx = r.x + r.w / 2, cy = r.y + r.w / 2, u = ui.u, ph = save.calm ? 0.35 : ((G.t - G.stkHint) * 1.2) % 1, press = !save.calm && ph > 0.35 && ph < 0.6;
+    ctx.save();
+    for (const q of save.calm ? [0.35] : [ph, (ph + 0.5) % 1]) { ctx.globalAlpha = 0.85 * (1 - q); ctx.strokeStyle = '#ffcf3a'; ctx.lineWidth = (7 - 4 * q) * u; ctx.beginPath(); ctx.arc(cx, cy, r.w * (0.62 + 0.55 * q), 0, 7); ctx.stroke(); }
+    ctx.globalAlpha = 1; ctx.lineWidth = 3 * u; ctx.strokeStyle = 'rgba(60,30,0,0.6)'; ctx.beginPath(); ctx.arc(cx, cy, r.w * 0.6, 0, 7); ctx.stroke();
+    ctx.restore();
+    ctx.save(); ctx.translate(cx + r.w * 0.04, cy - r.w * (press ? 0.02 : 0.16)); ctx.rotate(Math.PI + 0.25); teachHand(ctx, 0, 0, r.w * 1.05, press, 1); ctx.restore(); // from above: the badge sits on the screen's bottom edge
   }
   ui.record(r, 'btn:strike', 'btn:strike');
   ui.buttons.push({ id: 'strike', ...r });
@@ -5231,7 +5244,7 @@ function stackCard(title, build, o = {}) {
   ui.calm = save.calm;
   const A = ui.A, top = Math.max(G.hudBottom, A.y) + 16 * u; // the ribbon stands 8 units proud of the card
   const avail = A.y1 - top - 14 * u; // and the base lip 5 below
-  const full = cardFull(o, A);
+  let full = cardFull(o, A);
   // o.twoCol on a wide screen (landscape): blocks marked right: true stack in a second column beside the rest
   const two = !!o.twoCol && A.w > A.h * 1.15;
   const colH = (L, s) => L.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
@@ -5250,6 +5263,19 @@ function stackCard(title, build, o = {}) {
   let m = measure(u);
   // a narrower card wraps its text into more lines, so one rescale can still be too tall: step down until it fits
   for (let n = 0; n < 4 && m.h > avail + 0.5 && m.s > u * 0.45; n++) m = measure(Math.max(u * 0.45, m.s * Math.min(0.97, avail / m.h)));
+  // 0.8.10 (mykee: a page that is "empty or half empty"): a full page with room to spare grows its own content
+  // instead of leaving a void, up to o.grow (a third bigger by default: enough to fill a tall phone, never comic).
+  if (full && !two && m.h < avail * 0.94) {
+    const cap = u * (o.grow || 1.34);
+    for (let n = 0; n < 3 && m.s < cap - 0.001 && m.h < avail * 0.94; n++) {
+      const t = measure(Math.min(cap, m.s * Math.min(1.5, (avail * 0.94) / m.h)));
+      if (t.h > avail) break;
+      m = t;
+    }
+    // a card of a few lines and a button (a boss's hello, a short notice) stays a floating card: stretched over a
+    // whole page it would be mostly blank paper
+    if (m.h < avail * 0.6 && o.full !== true) { full = false; m = measure(u); }
+  }
   const { s, w, blocks } = m;
   const inner = m.inner ?? w - 48 * s, pad = (w - inner) / 2; // where the content column starts inside the panel
   const h = full ? avail : Math.min(m.h, avail);
@@ -5258,9 +5284,15 @@ function stackCard(title, build, o = {}) {
   // a full page spreads what is left over: the blocks keep their order, the room goes above and below them
   const slack = full ? Math.max(0, h - m.h) : 0;
   // o.hidden: lay out only (each block's at(x, y, w) learns where it will sit); o.dx / o.dy: slide the card (win card entrance)
+  // what is still left over after growing is shared out between the rows (a little air everywhere, not one hole at the
+  // bottom); anything beyond a comfortable gap sits above and below the stack
+  // (the lines of one paragraph, blocks with a hairline gap, stay together)
+  const loose = (b) => (b.gap ?? 10 * s) >= 6 * s, nLoose = blocks.filter(loose).length;
+  const air = nLoose ? Math.min(slack / (nLoose + 1), 26 * s) : 0;
+  const top0 = Math.max(0, slack - air * nLoose) * 0.42;
   if (o.hidden) {
-    let cy = y + CARD_HEAD * s + slack * 0.45;
-    for (const b of blocks) { cy += b.gap ?? 10 * s; if (b.at) b.at(x + pad, cy, inner); cy += b.h; }
+    let cy = y + CARD_HEAD * s + top0;
+    for (const b of blocks) { cy += (b.gap ?? 10 * s) + (loose(b) ? air : 0); if (b.at) b.at(x + pad, cy, inner); cy += b.h; }
     return { x, y, w, h, s, full };
   }
   ctx.save();
@@ -5289,9 +5321,9 @@ function stackCard(title, build, o = {}) {
     ctx.restore();
     return { x, y, w, h, s };
   }
-  let cy = y + CARD_HEAD * s + slack * 0.45;
+  let cy = y + CARD_HEAD * s + top0;
   for (const b of blocks) {
-    cy += b.gap ?? 10 * s;
+    cy += (b.gap ?? 10 * s) + (loose(b) ? air : 0);
     if (b.at) b.at(x + pad, cy, inner);
     b.draw(x + pad, cy, inner);
     cy += b.h;
@@ -5701,7 +5733,7 @@ function howWorld() {
       try { ring.body.setAngle(ang); } catch (e) { /* drawn at its last angle */ }
       { // the toy scenes (howto 'toy'): thorns by the gap that a flame burns, a thorn curtain across it
         const on = !!(deco && deco.thorns && !deco.burnt), g = ring.gaps[0];
-        for (const th of ring.thorns) { if (th.alive && !on && deco && deco.burnt) W.thornCrumble(th, t); th.alive = on; }
+        ring.thorns.forEach((th, i) => { const live = on && (deco.one == null || deco.one === i); if (th.alive && !live && deco && deco.burnt) W.thornCrumble(th, t); th.alive = live; }); // one: the far thorn only (the ice scene)
         if (g) g.curtain = deco && deco.curtain != null ? { alive: deco.curtain < 1, burn: deco.curtain, burning: deco.curtain > 0 && deco.curtain < 1, fixes: [] } : null;
       }
       { const g = ring.gaps[0]; if (g) { if (door != null) { g.shut = g.shut || { period: 4, open: 0.5, phase: 0 }; g.o = door; } else if (g.shut) { g.shut = null; g.o = 1; } } } // the gate-door scene (how-to 'doors')
@@ -5710,15 +5742,18 @@ function howWorld() {
       // each at its own angle, repainted it every frame (the scroll there crawled). Clipped to a small stage the
       // direct paint is cheap.
       const on = bodyCache.on; bodyCache.on = false;
+      // 0.8.10 the floor scenes: the ring in that material (ice, cloud) and a honey pad that rides it (off: radians from the gap)
+      const mat0 = ring.mat; if (deco && deco.mat) ring.mat = deco.mat;
+      ring.honey = deco && deco.honey ? [{ a: -Math.PI / 2 + deco.honey.off, len: deco.honey.len, dry: 0 }] : [];
       c.save(); c.translate(C.x, C.y); c.scale(k, -k);
-      try { W.drawRing(c, ring, G.theme, k, t, { eggs: [] }); if (ring.gaps[0] && ring.gaps[0].curtain) W.drawV3Ring(c, ring, k, t, G.theme); } finally { c.restore(); bodyCache.on = on; } // the curtain: the game's own drawV3Ring (and so drawThornCurtain)
+      try { W.drawRing(c, ring, G.theme, k, t, { eggs: [] }); if (ring.gaps[0] && ring.gaps[0].curtain) W.drawV3Ring(c, ring, k, t, G.theme); } finally { c.restore(); bodyCache.on = on; ring.mat = mat0; } // the curtain: the game's own drawV3Ring (and so drawThornCurtain)
     },
     egg(c, X, Y, stone, worry, C, k, t, look = null) {
       try { egg.body.setTransform({ x: (X - C.x) / k, y: -(Y - C.y) / k }, (look && look.rot) || (worry ? Math.sin(t * 22) * 0.08 : 0)); } catch (e) { return; }
       egg.stone = stone || (look && look.iron) ? 1 : 0; egg.iron = look && look.iron ? 1 : 0; // iron: the Electromagnet card
-      egg.fire = look && look.fire ? 6 : 0; egg.fireKind = look && look.fire ? 'fire_red' : null; egg.chick = !!(look && look.chick);
+      egg.fire = look && look.fire ? 6 : 0; egg.fireKind = look && look.fire ? 'fire_red' : null; egg.chick = !!(look && look.chick); egg.cracks = (look && look.cracks) || 0;
       c.save(); c.translate(C.x, C.y); c.scale(k, -k);
-      try { W.drawEgg(c, egg, t, k); } finally { c.restore(); egg.fire = 0; egg.chick = false; egg.iron = 0; }
+      try { W.drawEgg(c, egg, t, k); } finally { c.restore(); egg.fire = 0; egg.chick = false; egg.iron = 0; egg.cracks = 0; }
     },
     live(c, C, k, t, a) { c.save(); c.translate(C.x, C.y); c.scale(k, -k); try { drawLiveRing(c, ring, k, t, a); } finally { c.restore(); } }, // the shock ring (Electromagnet card)
     orb(c, type, X, Y, r, t) { drawOrb(c, type, X, Y, r, t, true); },
@@ -5730,6 +5765,41 @@ function howWorld() {
       c.restore();
     },
   };
+}
+// 0.8.10 (mykee: L11's card said nothing about the slippery ice; on L9 "Do they have to click on [the chick]?"): what a
+// level teaches comes from the level itself. Each thing it holds (a ring floor, a toy orb, the power chick, the other
+// orbs) has a key; the first level that has a key acts it out on the card, later levels show it as a small chip.
+const HATCH_NAME = { hatch_glow: 'Glow chick', hatch_bulk: 'Bulk chick', hatch_dash: 'Dash chick', hatch_swoop: 'Swoop chick', hatch_pick: 'Drill chick' };
+const TEACH_TOY = { fire_red: 'flame', twin: 'twin', hatch_glow: 'glow', hatch_bulk: 'bulk', warp: 'warp' }; // orbs with an acted scene (howto.js TOY)
+function levelThings(L) {
+  const R = L.rings || [], O = [...new Set((L.orbs || []).map((o) => o.type))], f = [];
+  const mat = (r) => r.mat || L.material || 'wood';
+  if (R.some((r) => mat(r) === 'ice')) f.push('floor:ice');
+  if (R.some((r) => r.honey && r.honey.length)) f.push('floor:honey');
+  if (R.some((r) => mat(r) === 'cloud')) f.push('floor:cloud');
+  if (L.id >= STRIKE_FROM) f.push('chick');
+  for (const o of O) if (TEACH_TOY[o]) f.push('toy:' + TEACH_TOY[o]);
+  if (R.some((r) => r.curtain)) f.push('toy:curtain');
+  if ((L.portals || []).some((p) => p.a && p.b && (p.a[0] !== p.b[0] || p.a[1] !== p.b[1]))) f.push('toy:portal'); // (a portal that only emits orbs is no portal)
+  if (O.includes('hatch_glow') && L.id >= STRIKE_FROM) f.push('mix:glow'); // the first level with a hatch chick AND a power chick: tap which? (L9)
+  for (const o of O) if (!TEACH_TOY[o]) f.push('orb:' + o);
+  return f;
+}
+let TEACH0 = null; // key -> the first level id that has it
+function teachFirst(key) {
+  if (!TEACH0) { TEACH0 = {}; for (const L of LEVELS) for (const k of levelThings(L)) if (!(k in TEACH0)) TEACH0[k] = L.id; }
+  return TEACH0[key];
+}
+// a reminder chip: the thing's own art and a short name ('New' ones in green)
+function teachChip(key) {
+  const [kind, id] = key.split(':'), MAT = { ice: ['#a8dcf5', '#3f7fa8'], honey: ['#f2b233', '#9a5a0a'], cloud: ['#dfe6f2', '#7d879a'] };
+  const name = kind === 'floor' ? { ice: 'Ice', honey: 'Honey', cloud: 'Cloud' }[id] : kind === 'chick' ? 'Tap chick' : kind === 'toy' ? ({ flame: 'Red flame', twin: 'Twin egg', curtain: 'Curtain', portal: 'Portal', glow: 'Glow chick', bulk: 'Bulk chick', warp: 'Warp gate' }[id] || id) : HATCH_NAME[id] || powerInfo(id).name;
+  const art = (c, X, Y, r) => {
+    if (kind === 'floor') { const M = MAT[id]; c.save(); c.lineCap = 'round'; c.lineWidth = r * 0.62; c.strokeStyle = M[1]; c.beginPath(); c.arc(X, Y - r * 1.2, r * 1.9, Math.PI * 0.32, Math.PI * 0.68); c.stroke(); c.lineWidth = r * 0.42; c.strokeStyle = M[0]; c.stroke(); c.restore(); }
+    else if (kind === 'chick') { const id2 = strikeFor(G.level, G.li) || (strikesOpen()[0] || {}).id || 'freeze'; drawStrikeChick(c, id2, X - r * 0.15, Y + r * 0.25, r * 1.6, 0.4, { feet: false, fog: false }); }
+    else drawOrb(c, kind === 'toy' ? ({ flame: 'fire_red', twin: 'twin', glow: 'hatch_glow', bulk: 'hatch_bulk', warp: 'warp', curtain: 'fire_red', portal: 'warp' }[id] || id) : id, X, Y, r, G.t, true);
+  };
+  return { key, name, art };
 }
 function drawLevelIntro(L, acc) {
   const section = pageSection, foeRow = foeCard, colH = pageColH, scrollCol = pageScroll;
@@ -5846,7 +5916,10 @@ function drawLevelIntro(L, acc) {
       }
     } });
     // the chosen chick in words: what it does and what it costs you
-    const S = T.id ? STRIKE[T.id] : null, tipL = !S && G.introTip && locked.some((c) => c.id === G.introTip.id) ? (shortTip(G.introTip.line) || G.introTip.line) : '';
+    // 0.8.10 (mykee: "the power-up page is empty or half empty"): with no chick picked yet the page still shows a power
+    // at work, that of the first chick in the row, under a line saying it is only a look
+    const prev = !T.id && T.open.length ? T.open[0] : null;
+    const S = T.id ? STRIKE[T.id] : prev, tipL = !S && G.introTip && locked.some((c) => c.id === G.introTip.id) ? (shortTip(G.introTip.line) || G.introTip.line) : '';
     if (S) {
       // 2026-11-20 (show, don't tell): the picked chick's power as a moving cartoon, then its upside and downside
       const ul = wrapText(S.up || (POWER_WORDS[S.id] || [''])[0], 16 * s, iw - 30 * s).slice(0, 2), dl = wrapText('Downside: ' + (S.down || (POWER_WORDS[S.id] || ['', ''])[1]), 15 * s, iw - 30 * s).slice(0, 2);
@@ -5889,16 +5962,40 @@ function drawLevelIntro(L, acc) {
   // the how-to card (2026-11-20, mykee's friend: "nobody reads the instructions"): a short looping cartoon of the move
   // that beats each villain (or, with no villain, of the basic move), one short line under it, the goal and the stars,
   // and PLAY right inside the card. Several villains take turns (tap the stage for the next one).
-  const howPlans = () => {
+  // 0.8.10: the scenes come from what the level holds (levelThings): the fixed entries below, then each thing this level is
+  // the first to have, then the villains (new ones first); at most three scenes, the rest as reminder chips under the stage
+  const howTeach = () => {
+    if (G.howT && G.howT.lid === pg.lid) return G.howT;
     const toys = G.li >= 0 ? { 2: ['flame'], 3: ['twin', 'curtain'], 4: ['portal', 'glow'], 18: ['bulk'], 22: ['warp'], 27: ['warp'], 43: ['bait'], 44: ['sweep', 'twister'], 47: ['magnet'] }[L.id] || [] : []; // the first-five ladder: each level's new toy, first (2026-11-20: and the Practice content placed in L22-L47)
-    const P0 = [...toys.map((id) => toyPlan(id, L.salamander ? 'salamander' : L.eagle ? 'eagle' : 'snake')), ...(kinds.length ? kinds.map((k) => howToPlan(k)) : toys.length ? [] : [HOWTO_BASIC])];
-    if (kinds.some((k) => k === 'weasel' || k === 'rats' || k === 'boss:weasel') && G.sim && G.sim.ally && G.sim.ally.avail.includes('rooster') && !(G.li >= 0 && G.li < 4 && L.id < 5)) P0.push(HOWTO_ROOSTER); // Papa Rooster from L5 (the first-five ladder)
-    return P0;
+    const things = G.li >= 0 ? levelThings(L) : [], fresh = things.filter((k) => teachFirst(k) === L.id), foeOf = L.salamander ? 'salamander' : L.eagle ? 'eagle' : 'snake';
+    const chickOn = things.includes('chick') && strikesOpen().length > 0, chickId = strikeFor(L, G.li) || (strikesOpen()[0] || {}).id;
+    const foe = (kinds.find((k) => !/^(icicles|lava|lightning|embers|quake|rain|current|gusts|popthorns|vines|doors|curse|thornorb)$/.test(k)) || 'snake').replace(/^boss:/, '');
+    const acted = [], P0 = [];
+    for (const id of toys) { P0.push(toyPlan(id, foeOf)); acted.push('toy:' + id); }
+    for (const k of fresh) {
+      const [kind, id] = k.split(':');
+      if (kind === 'floor') P0.push(floorPlan(id));
+      else if (kind === 'toy' && !toys.includes(id)) P0.push(toyPlan(id, foeOf));
+      else if (kind === 'mix') P0.push({ ...toyPlan(id, foeOf), again: 1 });
+      else if (kind === 'chick' && chickOn && chickId) P0.push(chickTeach(chickId, foe in VILLAIN_INFO ? foe : 'snake'));
+      else continue;
+      acted.push(k);
+    }
+    const seenK = (k) => !!save.seen['v:' + k], vs = kinds.map((k) => howToPlan(k)).sort((a, b) => seenK(a.kind) - seenK(b.kind));
+    let P = [...P0, ...vs];
+    if (kinds.some((k) => k === 'weasel' || k === 'rats' || k === 'boss:weasel') && G.sim && G.sim.ally && G.sim.ally.avail.includes('rooster') && !(G.li >= 0 && G.li < 4 && L.id < 5)) P.push(HOWTO_ROOSTER); // Papa Rooster from L5 (the first-five ladder)
+    if (!P.length) P = [HOWTO_BASIC];
+    P = P.slice(0, 3);
+    const shown = new Set(P.filter((p) => p.move === 'floor').map((p) => 'floor:' + p.surf).concat(P.filter((p) => p.move === 'toy').map((p) => 'toy:' + p.toy), P.some((p) => p.teach) ? ['chick'] : []));
+    const chips = things.filter((k) => !shown.has(k) && !acted.includes(k) && !k.startsWith('mix:') && (k !== 'chick' || chickOn)).map((k) => ({ ...teachChip(k), fresh: teachFirst(k) === L.id }));
+    chips.sort((a, b) => b.fresh - a.fresh); // the new ones first
+    return (G.howT = { lid: pg.lid, plans: P, chips });
   };
+  const howPlans = () => howTeach().plans;
   const howCard = (s, iw, availH, withPlay, need) => {
-    const plans = howPlans(), n = plans.length, pd = 12 * s;
-    const goalH = 54 * s, capH = 34 * s, dotsH = n > 1 ? 18 * s : 0, playH = withPlay ? 76 * s : 0, starH = G.li >= 0 ? 52 * s : 0;
-    const fixed = pd * 2 + goalH + capH + dotsH + playH + 6 * s;
+    const plans = howPlans(), n = plans.length, pd = 12 * s, chips = howTeach().chips;
+    const goalH = 54 * s, capH = 34 * s, dotsH = n > 1 ? 18 * s : 0, playH = withPlay ? 76 * s : 0, starH = G.li >= 0 ? 52 * s : 0, chipH = chips.length ? 38 * s : 0;
+    const fixed = pd * 2 + goalH + capH + dotsH + playH + chipH + 6 * s;
     let stageH = Math.min((iw - 2 * pd) * 0.6, 260 * s), stars = starH > 0;
     if (availH && fixed + starH + stageH < availH) stageH = Math.min((iw - 2 * pd) * 1.02, 390 * s, availH - fixed - starH); // a tall phone: a bigger stage
     if (availH && fixed + starH + stageH > availH) {
@@ -5918,8 +6015,8 @@ function drawLevelIntro(L, acc) {
       if (tl) { const cx2 = x + w - pd - 70 * s; pictoClock(ctx, cx2, y + pd + goalH / 2, 26 * s); ui.text(`${Math.round(tl)} s`, cx2 + 18 * s, y + pd + goalH / 2, { size: 19 * s, color: C.warn, tag: 'intro:time', maxW: 56 * s }); }
       // the stage
       const Hw = G.how || (G.how = { i: 0, t0: G.t, lid: null });
-      if (Hw.lid !== pg.lid) { Hw.lid = pg.lid; Hw.i = Math.max(0, plans.findIndex((p) => p.move === 'toy' || (p.kind && !save.seen['v:' + p.kind]))); Hw.t0 = G.t; } // the new one first (L31: the gate doors)
-      if (!save.calm && n > 1 && G.t - Hw.t0 >= HOWTO_LOOP) { Hw.i = (Hw.i + 1) % n; Hw.t0 = G.t; }
+      if (Hw.lid !== pg.lid) { Hw.lid = pg.lid; Hw.i = Math.max(0, plans.findIndex((p) => p.move === 'toy' || p.move === 'floor' || p.teach || (p.kind && !save.seen['v:' + p.kind]))); Hw.t0 = G.t; } // the new one first (L31: the gate doors)
+      if (!save.calm && n > 1 && G.t - Hw.t0 >= (plans[Hw.i % n].loop || HOWTO_LOOP)) { Hw.i = (Hw.i + 1) % n; Hw.t0 = G.t; } // (the ice scene plays twice as long: too late, then early)
       const plan = plans[Hw.i % n], th = G.theme && G.theme.palette, sx = x + pd, sy2 = y + pd + goalH, sw = w - 2 * pd;
       drawHowTo(ctx, plan, sx, sy2, sw, stageH, G.t - Hw.t0, { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark });
       ui.roundRect(sx, sy2, sw, stageH, Math.min(18, stageH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
@@ -5928,12 +6025,16 @@ function drawLevelIntro(L, acc) {
       tryChip(sx + 8 * s, sy2 + 8 * s, sw * 0.68, s); // top left: a free try running
       if (n > 1) { ui.buttons.push({ id: 'how:next', x: sx, y: sy2, w: sw, h: stageH }); }
       // a name tag on the stage: who this is (BOSS in red)
-      if (plan.kind && plan.move !== 'rooster') {
+      if (plan.teach) { // the power chick's first level: its name in the chick's own colour
+        const S = STRIKE[plan.power] || {}, nm = 'New: ' + (S.name || 'Chick'), ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
+        ui.roundRect(sx + sw - 8 * s - tw, sy2 + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = 'rgba(46,120,40,0.9)'; ctx.fill();
+        ui.text(nm, sx + sw - 8 * s - tw / 2, sy2 + 21 * s, { size: ts, align: 'center', color: '#fff', maxW: tw - 12 * s, noRecord: true });
+      } else if (plan.kind && plan.move !== 'rooster') {
         const I = VILLAIN_INFO[plan.kind] || { name: plan.kind }, nm = I.name, ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
         ui.roundRect(sx + sw - 8 * s - tw, sy2 + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = I.group === 'boss' ? 'rgba(160,30,40,0.9)' : 'rgba(30,24,40,0.72)'; ctx.fill();
         ui.text(nm, sx + sw - 8 * s - tw / 2, sy2 + 21 * s, { size: ts, align: 'center', color: '#fff', maxW: tw - 12 * s, noRecord: true });
-      } else if (plan.move === 'toy') { // the first-five ladder: the level's new toy
-        const nm = 'New: ' + plan.name, ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
+      } else if (plan.move === 'toy' || plan.move === 'floor') { // the first-five ladder: the level's new toy (0.8.10: and a new ring floor; a toy shown again has no "New")
+        const nm = (plan.again ? '' : 'New: ') + plan.name, ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
         ui.roundRect(sx + sw - 8 * s - tw, sy2 + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = 'rgba(46,120,40,0.9)'; ctx.fill();
         ui.text(nm, sx + sw - 8 * s - tw / 2, sy2 + 21 * s, { size: ts, align: 'center', color: '#fff', maxW: tw - 12 * s, noRecord: true });
       } else if (plan.move === 'rooster') {
@@ -5945,6 +6046,19 @@ function drawLevelIntro(L, acc) {
       ui.text(plan.cap, x + w / 2, yy + capH / 2 + 1 * s, { size: 17.5 * s, align: 'center', color: '#2d6a1c', maxW: w - 2 * pd, tag: 'intro:cap' });
       yy += capH;
       if (n > 1) { for (let q = 0; q < n; q++) { ctx.beginPath(); ctx.arc(x + w / 2 + (q - (n - 1) / 2) * 16 * s, yy + 6 * s, (q === Hw.i % n ? 5 : 3.5) * s, 0, 7); ctx.fillStyle = q === Hw.i % n ? '#c9842a' : 'rgba(120,80,30,0.35)'; ctx.fill(); } yy += dotsH; }
+      if (chips.length) { // 0.8.10: what this level also holds, taught on an earlier card: one row of small chips (those that fit)
+        const ch = 30 * s, fs = 13.5 * s, gp = 6 * s, room = w - 2 * pd, ws = chips.map((c) => ch + ui.measure(c.name, fs) + 10 * s);
+        let k = 0, tot = 0; while (k < chips.length && tot + ws[k] + (k ? gp : 0) <= room) { tot += ws[k] + (k ? gp : 0); k++; }
+        let cx4 = x + (w - tot) / 2; const cy4 = yy + 4 * s;
+        for (let i = 0; i < k; i++) {
+          const c = chips[i];
+          ui.roundRect(cx4, cy4, ws[i], ch, ch / 2); ctx.fillStyle = c.fresh ? 'rgba(46,120,40,0.16)' : 'rgba(122,80,40,0.12)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = c.fresh ? 'rgba(46,120,40,0.7)' : 'rgba(122,80,40,0.4)'; ctx.stroke();
+          c.art(ctx, cx4 + ch / 2 + 1 * s, cy4 + ch / 2, ch * 0.36);
+          ui.text(c.name, cx4 + ch + 2 * s, cy4 + ch / 2 + 0.5 * s, { size: fs, color: c.fresh ? '#2d6a1c' : C.ink, maxW: ws[i] - ch - 6 * s, tag: 'intro:chip' + i });
+          cx4 += ws[i] + gp;
+        }
+        yy += chipH;
+      }
       if (stars) { // the three stars, short
         ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x + pd, yy, w - 2 * pd, 1.5 * s);
         const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0)).map((g) => g.short), cw3 = (w - 2 * pd) / 3, sr = 12 * s;
