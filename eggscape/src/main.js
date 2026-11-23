@@ -5390,8 +5390,8 @@ function drawKeyHint() {
   ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(74,42,18,0.5)';
   ctx.beginPath(); ctx.moveTo(10, 10); ctx.lineTo(10, 16); ctx.moveTo(15, 11); ctx.lineTo(15, 16); ctx.stroke();
   ctx.restore();
-  // two words above the vault until the first turn
-  if (T && T.first) {
+  // two words above the vault until the first turn (a card over the level has the floor)
+  if (T && T.first && !G.card) {
     const txt = 'Drag the ring', ts = 18 * u, wd = ui.measure(txt, ts) + 30 * u, hh = 34 * u;
     const py = Math.max(G.hudBottom + 8 * u, c.y - sim.outerR * G.cam.k - hh - 10 * u), px = ui.A.cx - wd / 2;
     ctx.save(); ctx.globalAlpha = ease01(G.screenT / 0.5);
