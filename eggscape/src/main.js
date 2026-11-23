@@ -2667,7 +2667,7 @@ function handleEvents() {
     switch (ev.type) {
       case 'allyCrow': // the rooster crows: one short shake and a beat of hit-stop (calm: none); the wave itself is drawn in render/allies.js
         fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y); camMoment(ev.x, ev.y);
-        audio.play('crow');
+        audio.play('crow_old'); // 2026-11-23 mykee: the rebuilt crow is out, the earlier one is back
         buzz('crow');
         break;
       case 'bump':
