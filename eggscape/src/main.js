@@ -4934,12 +4934,16 @@ function hudClock(cx, cy, r, low, frac) {
 // records are replayed on every frame the copy is used, so taps and the overlap check see the same thing.
 const HL = new Map();
 const HUD_CACHE = { on: true, builds: 0 };
+// A layer is at most this many pixels. Measured in headless Chromium: copying a 768x246 layer (High at 2x) made the
+// browser flush the frame's drawing right there, in the middle of the frame, while 576x185 (1.5x) did not. The phones
+// this pass is for run Low and Medium, where the layers are far smaller; a bigger HUD is drawn live as before.
+const HL_MAX_PX = 120000;
 function hudLayer(slot, key, x, y, w, h, paint) {
   const m = HUD_CACHE.on && ctx === ui.ctx && ctx.getTransform ? ctx.getTransform() : null;
   if (!m || Math.abs(m.a - DPR) > 1e-5 || Math.abs(m.d - DPR) > 1e-5 || m.b || m.c || m.e || m.f || ctx.globalAlpha !== 1) return paint(); // not the plain screen transform: draw as before
   const x0 = Math.max(0, Math.floor(x * DPR)), y0 = Math.max(0, Math.floor(y * DPR));
   const pw = Math.min(canvas.width, Math.ceil((x + w) * DPR)) - x0, ph = Math.min(canvas.height, Math.ceil((y + h) * DPR)) - y0;
-  if (!(pw > 0 && ph > 0)) return paint();
+  if (!(pw > 0 && ph > 0) || pw * ph > HL_MAX_PX) return paint();
   let L = HL.get(slot);
   if (!L || L.key !== key || L.x0 !== x0 || L.y0 !== y0 || L.pw !== pw || L.ph !== ph || L.dpr !== DPR) {
     const cv = (L && L.cv) || document.createElement('canvas');
