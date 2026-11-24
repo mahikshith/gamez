@@ -26,17 +26,19 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 { // earning: nothing in the first levels, then one spin per three wins, banked up to three
   const early = mk({ unlocked: 3 });
-  ok(!SP.open(early) && SP.noteWin(early) === false && SP.banked(early) === 0 && SP.daily(early, 'd1') === false, 'before level 3 is won there is no wheel, no meter, no daily spin');
+  ok(!SP.open(early) && SP.noteWin(early) === false && SP.banked(early) === 0, 'before level 3 is won there is no wheel and no meter');
   const s = mk();
   ok(SP.left(s) === 3 && SP.noteWin(s) === false && SP.left(s) === 2 && SP.noteWin(s) === false && SP.left(s) === 1, 'the meter counts down: 3, 2, 1 levels to the spin');
   ok(SP.noteWin(s) === true && SP.banked(s) === 1 && SP.left(s) === 3, 'the third win earns a spin and the meter starts again');
   for (let i = 0; i < 12; i++) SP.noteWin(s);
   ok(SP.banked(s) === SP.SPIN.bankMax, 'spins wait in the bank, at most three');
   const d = mk();
-  ok(SP.daily(d, 'd1') === true && SP.banked(d) === 1 && SP.daily(d, 'd1') === false && SP.banked(d) === 1 && SP.daily(d, 'd2') === true && SP.banked(d) === 2, 'one free spin a day, once');
+  for (let i = 0; i < 30; i++) SP.noteWin(d, false);
+  ok(SP.banked(d) === 0 && SP.left(d) === 3, 'replaying old levels for the same stars earns nothing (spins come from progress only)');
+  ok(typeof SP.daily === 'undefined', 'there is no free daily spin');
 }
 { // the ways: free first; with nothing banked a chosen video (three a day) and coins on a climbing ladder (three a day)
-  const s = mk(); SP.daily(s, 'd1');
+  const s = mk(); for (let i = 0; i < 3; i++) SP.noteWin(s);
   let W = SP.ways(s, 'd1');
   ok(W.free && !W.ad && W.coin === null, 'a banked spin: only the free spin is offered (no ad, no price)');
   ok(SP.spin(s, 'ad', 'd1') === null && SP.spin(s, 'coin', 'd1') === null, 'and the other ways are refused while it waits');
@@ -55,7 +57,7 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const p = mk({ wallet: { ...defaultWallet(), coins: 10 } }); ok(SP.spin(p, 'coin', 'd1') === null && p.wallet.coins === 10, 'too few coins: no spin, nothing taken');
 }
 { // prizes land in the wallet; a full stack pays coins; the rare bird is something not owned
-  const s = mk(); SP.daily(s, 'd1');
+  const s = mk(); for (let i = 0; i < 3; i++) SP.noteWin(s);
   const r = SP.spin(s, 'free', 'd1', seq(0)); // the first slice: 15 coins
   ok(r.prize.kind === 'coins' && s.wallet.coins === 515, 'coins: +15');
   const w = SP.grant(defaultWallet(), { kind: 'booster', item: 'stone', n: 2 }); ok(ownedCount(w, 'stone') === 2, 'boosters: +2 Stone shell');
@@ -73,6 +75,24 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   console.log('     mean worth of a spin: ' + m.toFixed(1) + ' coins');
   ok(m < SP.SPIN.coin[0], 'the mean worth of a spin is under the first coin price');
   ok(m > 25, 'and it is a real gift when it is free');
+}
+{ // the engine: time in the game moves the meter, the wheel grows with the world reached, the odds never move
+  const s = mk();
+  let got = 0; for (let i = 0; i < 4; i++) got += SP.notePlayed(s, 'd1') ? 1 : 0;
+  ok(SP.left(s) === 2 && got === 0, 'four levels played in a day (won or lost): one step on the meter');
+  for (let i = 0; i < 40; i++) SP.notePlayed(s, 'd1');
+  ok(SP.left(s) === 1 && SP.banked(s) === 0, 'at most two such steps a day (playing all day cannot farm spins)');
+  for (let i = 0; i < 4; i++) SP.notePlayed(s, 'd2');
+  ok(SP.banked(s) === 1, 'the next day the third step opens the spin');
+  ok(SP.tier(mk({ unlocked: 5 })) === 0 && SP.tier(mk({ unlocked: 11 })) === 1 && SP.tier(mk({ unlocked: 30 })) === 2 && SP.tier(mk({ unlocked: 45 })) === 3, 'the wheel has four sizes: worlds 1-2, 3-5, 6-8, 9-10');
+  const w0 = SP.wheel(mk({ unlocked: 5 })), w3 = SP.wheel(mk({ unlocked: 45 }));
+  ok(w0.find((o) => o.id === 'c1').n === 15 && w3.find((o) => o.id === 'c1').n === 40 && w3.find((o) => o.id === 'c3').n === 200, 'coin slices grow with the world: 15 -> 40, 80 -> 200');
+  ok(w0.every((o, i) => o.pct === w3[i].pct), 'the odds are the same at every size');
+  const late = mk({ unlocked: 45 }); for (let i = 0; i < 3; i++) SP.noteWin(late);
+  const c0 = late.wallet.coins, r = SP.spin(late, 'free', 'd1', seq(0));
+  ok(r.prize.n === 40 && late.wallet.coins === c0 + 40, 'and the prize paid is the amount the wheel showed');
+  ok([5, 11, 30, 45].every((u) => { const sv = mk({ unlocked: u }); return SP.meanWorth(defaultWallet(), SP.coinX(sv)) < SP.ways(sv, 'd9').coin; }), 'at every size the first coin spin costs more than a spin is worth on average');
+  ok(SP.ways(mk({ unlocked: 45 }), 'd9').coin === 180, 'the coin price grows with the wheel (70 -> 180 in the last worlds)');
 }
 { // unsafe saves
   const s = { unlocked: 9, wallet: defaultWallet(), spin: { wins: 'x', bank: 99, t: null } };

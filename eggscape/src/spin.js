@@ -8,16 +8,27 @@
 //   - a roll is one uniform draw over the weights; nothing about the player (purse, spend, mood) changes it;
 //   - no timer anywhere: a spin never expires.
 //
-// How spins are earned: one for every SPIN.every journey levels won (the meter on the map and the win card:
-// "2 more levels to your spin"), one free each day, never before level SPIN.from is won. Spins wait in the bank
-// (at most SPIN.bankMax). With no spin banked, the wheel offers a spin by a chosen video (SPIN.adPerDay a day) and a
+// How spins are earned: by progress only (mykee: "as the user keeps progressing levels one by one it should be like an
+// unlockable", and a wheel that hands out gifts every day would give the shop away). One spin for every SPIN.every
+// FRESH wins: a level passed for the first time, or with more stars than before, or the day's Daily Vault. Replaying
+// an old level for the same stars moves nothing. The meter on the map and the win card counts down ("2 more levels to
+// your spin"). Never before level SPIN.from is won. Spins wait in the bank (at most SPIN.bankMax). With no spin banked, the wheel offers a spin by a chosen video (SPIN.adPerDay a day) and a
 // spin for coins at a price that climbs through the day (SPIN.coin: three a day at most, so nobody can pour a purse
 // into it), the odds beside the price.
 //
-// save.spin = { wins, bank, day, t: { day, ad, coin }, n }   (state() makes any save safe)
+// The engine around it (mykee: "the reward should also depend on how much time the user spends on the game, level and
+// a lot of other factors"). What it may change, the same for every player at the same point of the game:
+//   - how fast spins come: fresh wins, and time in the game (every SPIN.playEvery levels PLAYED in a day, won or lost,
+//     is one more step, at most SPIN.playMax a day), so a stuck player still gets there;
+//   - how big the prizes are: tier(save) grows with the world reached and multiplies the coin slices (the wheel shows
+//     the real amounts);
+//   - when the wheel is shown (main.js asks brain.gate).
+// What it may never change: the odds. Not by purse, spend, mood or anything else about the player.
+//
+// save.spin = { wins, bank, t: { day, ad, coin, played, steps }, n }   (state() makes any save safe)
 import { BOOSTERS, BOOSTER_ORDER, HEN_SKINS, HEN_SKIN_ORDER, CHICK_IDS, CHICK_PRICES, ITEMS, CHARGE_ITEM, MAX_OWNED, MAX_CHARGES, MAX_TICKETS, sanitizeWallet, ownedCount, ownsHenSkin, ownsChick } from './economy.js';
 
-export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [70, 100, 140], rareCoins: 300 };
+export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [70, 100, 140], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [11, 26, 41], tierX: [1, 1.5, 2, 2.5] };
 
 // The wheel, clockwise from the top. w = weight = slice size = odds in percent (they add up to 100).
 export const TABLE = [
@@ -33,6 +44,8 @@ export const TABLE = [
 const TOTAL = TABLE.reduce((a, s) => a + s.w, 0);
 // the odds as shown to the player: [{ id, kind, n, pct }]
 export const odds = () => TABLE.map((s) => ({ id: s.id, kind: s.kind, n: s.n, pct: (s.w * 100) / TOTAL }));
+// the wheel as drawn for this save: [{ id, kind, n (coins already x tier), pct }]
+export const wheel = (save) => odds().map((o) => (o.kind === 'coins' ? { ...o, n: Math.round((o.n * coinX(save)) / 5) * 5 } : o));
 // each slice's arc on the wheel as fractions of a turn, clockwise from the top: [{ id, a0, a1 }]
 export function slices() { let a = 0; return TABLE.map((s) => { const a0 = a; a += s.w / TOTAL; return { id: s.id, a0, a1: a }; }); }
 
@@ -40,7 +53,7 @@ const int = (v, hi) => Math.max(0, Math.min(hi, Math.floor(Number(v) || 0)));
 export function state(save) {
   const s = save.spin && typeof save.spin === 'object' ? save.spin : {};
   const v = s.t && typeof s.t === 'object' ? s.t : {};
-  return (save.spin = { wins: int(s.wins, SPIN.every - 1), bank: int(s.bank, SPIN.bankMax), day: typeof s.day === 'string' ? s.day : '', t: { day: typeof v.day === 'string' ? v.day : '', ad: int(v.ad, 99), coin: int(v.coin, 99) }, n: int(s.n, 1e9) });
+  return (save.spin = { wins: int(s.wins, SPIN.every - 1), bank: int(s.bank, SPIN.bankMax), t: { day: typeof v.day === 'string' ? v.day : '', ad: int(v.ad, 99), coin: int(v.coin, 99), played: int(v.played, 999), steps: int(v.steps, 99) }, n: int(s.n, 1e9) });
 }
 // the wheel exists for this player (nothing is offered in the first levels)
 export const open = (save) => (save.unlocked || 1) > SPIN.from;
@@ -49,33 +62,33 @@ export const banked = (save) => (open(save) ? state(save).bank : 0);
 export const left = (save) => SPIN.every - state(save).wins;
 export const meter = (save) => ({ have: state(save).wins, of: SPIN.every, left: left(save), bank: banked(save) });
 
-// a journey level was won: the meter moves; returns true when this win earned a spin
-export function noteWin(save) {
+// the wheel's size: 0..3 by the level reached (worlds 3, 6 and 9 open the next one). Coins on the wheel are x tierX.
+export const tier = (save) => SPIN.tierAt.filter((lv) => (save.unlocked || 1) >= lv).length;
+export const coinX = (save) => SPIN.tierX[tier(save)];
+const step = (S) => { S.wins++; if (S.wins < SPIN.every) return false; S.wins = 0; if (S.bank < SPIN.bankMax) S.bank++; return true; };
+// a level was played to its end, won or lost (the caller leaves out runs given up in the first seconds): time in the
+// game. Every SPIN.playEvery of them in a day is one step on the meter, at most SPIN.playMax steps a day.
+export function notePlayed(save, dayStr) {
   if (!open(save)) return false;
-  const S = state(save);
-  S.wins++;
-  if (S.wins < SPIN.every) return false;
-  S.wins = 0;
-  if (S.bank < SPIN.bankMax) S.bank++;
-  return true;
+  const S = today(save, dayStr);
+  S.t.played++;
+  if (S.t.played % SPIN.playEvery || S.t.steps >= SPIN.playMax) return false;
+  S.t.steps++;
+  return step(S);
 }
-// the day's free spin (dayStr: the game's own day key); true when it was given now
-export function daily(save, dayStr) {
-  if (!open(save)) return false;
-  const S = state(save);
-  if (!dayStr || S.day === dayStr) return false;
-  S.day = dayStr;
-  if (S.bank < SPIN.bankMax) S.bank++;
-  return true;
+// a level was won. fresh: first time passed, or more stars than before, or today's Daily Vault (the caller knows).
+// The meter moves only on a fresh win; returns true when this win earned a spin.
+export function noteWin(save, fresh = true) {
+  if (!open(save) || !fresh) return false;
+  return step(state(save));
 }
-
 // ---- the ways to spin right now (dayStr: the game's own day key; the video and coin counts start again each day).
 // free: a banked spin. ad: a chosen video, only with nothing banked. coin: the price of the next coin spin today
 // (null once today's ladder is used up, or while a free spin waits).
-const today = (save, dayStr) => { const S = state(save); if (dayStr && S.t.day !== dayStr) S.t = { day: dayStr, ad: 0, coin: 0 }; return S; };
+function today(save, dayStr) { const S = state(save); if (dayStr && S.t.day !== dayStr) S.t = { day: dayStr, ad: 0, coin: 0, played: 0, steps: 0 }; return S; }
 export function ways(save, dayStr) {
   const S = today(save, dayStr), on = open(save);
-  const coin = S.t.coin < SPIN.coin.length ? SPIN.coin[S.t.coin] : null;
+  const coin = S.t.coin < SPIN.coin.length ? Math.round((SPIN.coin[S.t.coin] * coinX(save)) / 10) * 10 : null; // the price grows with the wheel
   return { free: on && S.bank > 0, ad: on && !S.bank && S.t.ad < SPIN.adPerDay, coin: on && !S.bank ? coin : null, adLeft: Math.max(0, SPIN.adPerDay - S.t.ad) };
 }
 
@@ -87,9 +100,9 @@ export function roll(rand = Math.random) {
 }
 // what a slice turns into for this wallet (which booster, which rare bird). rand picks among equals.
 // -> { id, kind, n, item?, name, worth }   kind: coins | booster | charge | skip | hen | chick
-export function prizeFor(slice, wallet, rand = Math.random) {
+export function prizeFor(slice, wallet, rand = Math.random, x = 1) {
   const pick = (list) => list[Math.min(list.length - 1, Math.floor(rand() * list.length))];
-  if (slice.kind === 'coins') return { id: slice.id, kind: 'coins', n: slice.n, name: `${slice.n} coins`, worth: slice.n };
+  if (slice.kind === 'coins') { const n = Math.round((slice.n * x) / 5) * 5; return { id: slice.id, kind: 'coins', n, name: `${n} coins`, worth: n }; }
   if (slice.kind === 'charge') return { id: slice.id, kind: 'charge', n: slice.n, name: CHARGE_ITEM.name, worth: CHARGE_ITEM.price * slice.n };
   if (slice.kind === 'skip') return { id: slice.id, kind: 'skip', n: 1, name: ITEMS.skip.name, worth: ITEMS.skip.price };
   if (slice.kind === 'booster') {
@@ -126,21 +139,21 @@ export function spin(save, how, dayStr, rand = Math.random) {
     if (W.coin == null || sanitizeWallet(save.wallet).coins < W.coin) return null;
     paid = W.coin; save.wallet = sanitizeWallet(save.wallet); save.wallet.coins -= paid; S.t.coin++;
   } else return null;
-  const slice = roll(rand), prize = prizeFor(slice, save.wallet, rand);
+  const slice = roll(rand), prize = prizeFor(slice, save.wallet, rand, coinX(save));
   save.wallet = grant(save.wallet, prize);
   S.n++;
   return { prize, slice, how, paid };
 }
 // the mean worth of one spin in coins (boosters at shop price, the rare bird at the mean of what is left): the test
 // holds it under the first coin price, so a coin spin is a sink on average
-export function meanWorth(wallet) {
+export function meanWorth(wallet, x = 1) {
   let v = 0;
   for (const s of TABLE) {
     if (s.kind === 'booster') v += (s.w / TOTAL) * s.n * (BOOSTER_ORDER.reduce((a, b) => a + BOOSTERS[b].price, 0) / BOOSTER_ORDER.length);
     else if (s.kind === 'rare') {
       const hens = HEN_SKIN_ORDER.filter((h) => !HEN_SKINS[h].premium && HEN_SKINS[h].price > 0 && !ownsHenSkin(wallet, h)).map((h) => HEN_SKINS[h].price), ch = CHICK_IDS.filter((c) => !ownsChick(wallet, c)).map((c) => CHICK_PRICES[c]), all = [...hens, ...ch];
       v += (s.w / TOTAL) * (all.length ? all.reduce((a, b) => a + b, 0) / all.length : SPIN.rareCoins);
-    } else v += (s.w / TOTAL) * prizeFor(s, wallet, () => 0).worth;
+    } else v += (s.w / TOTAL) * prizeFor(s, wallet, () => 0, x).worth;
   }
   return v;
 }
