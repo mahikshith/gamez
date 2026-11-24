@@ -458,15 +458,10 @@ function startLevel(i, opts = {}) {
     portal.gameplayStart();
     audio.musicIntro(); // the world's short intro sting, then its loop
     toast(shortTip(G.level.tip), 3.2);
-    settingsTip();
   }
 }
-// once, early on (level 2 or 3): rings, sound and music can be changed in Settings (the pause button)
-function settingsTip() {
-  if (save.seen.setTip || G.li < 1 || G.li > 6) return;
-  save.seen.setTip = 1; persist();
-  toast('Change ring speed and sound in Settings', 4);
-}
+// (0.8.14: the 4 s "Change ring speed and sound in Settings" toast is gone: nobody read it. The ring speed strip on the
+// level cards of levels 2 to 5 and the mark on the Settings buttons do that job now.)
 
 function setScreen(s) {
   if (G.screen === 'intro' && s !== 'intro' && G.toast) G.toast = null; // the level page's hints stay on the level page
@@ -1263,7 +1258,6 @@ async function press(id) {
       portal.gameplayStart();
       audio.musicIntro(); // the world's short intro sting, then its loop
       toast(shortTip(G.level.tip), 3.4);
-      settingsTip();
       break;
     }
     case 'daily':
@@ -1606,6 +1600,7 @@ async function press(id) {
     }
     case 'settings':
       G.settingsOpen = true; G.setSeq = (G.setSeq || 0) + 1;
+      if (!save.seen.setOpen) { save.seen = { ...save.seen, setOpen: 1 }; G.setFirst = { seq: G.setSeq, t0: G.t }; persist(); } // the first visit: the ring speed row draws the eye
       break;
     case 'set:close':
       G.settingsOpen = false;
@@ -1641,6 +1636,7 @@ async function press(id) {
       const k = RING_SPEEDS.indexOf(ringSpeed()), n = id === 'rs:-' ? k - 1 : id === 'rs:+' ? k + 1 : +id.slice(3);
       save.ringSpeed = RING_SPEEDS[clamp(n, 0, RING_SPEEDS.length - 1)];
       if (G.sim) G.sim.ringSpeed = save.ringSpeed;
+      if (!save.seen.rsTried) { save.seen = { ...save.seen, rsTried: 1 }; if (G.screen === 'intro') G.rsDone = { seq: G.scrSeq, lid: G.level && G.level.id }; } // the level card's strip: a tick and where it lives
       persist();
       break;
     }
@@ -2491,10 +2487,10 @@ function shopMarkNow() { // asked by every shop button each frame: worked out ag
 // the shop was opened: what it shows now counts as seen (the mark waits for the coins to reach something more)
 function shopSeen() { const m = shopMarkNow(); if ((save.seen.shopSawN || 0) !== m.n) { DR.seenShop(save, m); persist(); } }
 // the mark itself: a red badge with a white "!" (or a count) that pulses 1 -> 1.18 every 1.2 s; still under Calm
-function markBadge(x, y, r, t, label = '!') {
-  const k = save.calm ? 1 : 1 + 0.09 * (1 - Math.cos(((t % 1.2) / 1.2) * Math.PI * 2));
+function markBadge(x, y, r, t, label = '!', steady = false) {
+  const still = save.calm || steady, k = still ? 1 : 1 + 0.09 * (1 - Math.cos(((t % 1.2) / 1.2) * Math.PI * 2));
   ctx.save(); ctx.translate(x, y); ctx.scale(k, k);
-  if (!save.calm) { const a = ((t % 1.2) / 1.2); ctx.globalAlpha = 0.45 * (1 - a); ctx.beginPath(); ctx.arc(0, 0, r * (1 + 0.7 * a), 0, 7); ctx.fillStyle = '#ff6b5a'; ctx.fill(); ctx.globalAlpha = 1; }
+  if (!still) { const a = ((t % 1.2) / 1.2); ctx.globalAlpha = 0.45 * (1 - a); ctx.beginPath(); ctx.arc(0, 0, r * (1 + 0.7 * a), 0, 7); ctx.fillStyle = '#ff6b5a'; ctx.fill(); ctx.globalAlpha = 1; }
   ctx.beginPath(); ctx.arc(0, r * 0.12, r, 0, 7); ctx.fillStyle = 'rgba(60,8,4,0.35)'; ctx.fill(); // its shadow
   ctx.beginPath(); ctx.arc(0, 0, r, 0, 7);
   const g = ctx.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#ff6a55'); g.addColorStop(1, '#d8251a');
@@ -2540,6 +2536,14 @@ function drawShopHand() {
   // the hand taps the button (still under Calm: it just points)
   const per = 1.1, q = save.calm ? 0.5 : (el % per) / per, press = q > 0.4 && q < 0.7, hs = Math.min(B.h * 1.3, 56 * u);
   teachHand(ctx, B.x + B.w * 0.8, B.y + B.h * (press ? 0.5 : 0.66), hs, press, a); // on the right half: the coin count stays readable
+}
+// 0.8.14 the same mark on every way into Settings (home's gear, the pause button, the pause page's tile), from level 2
+// until Settings was opened once (save.seen.setOpen)
+const settingsMarkOn = () => !!save && !save.seen.setOpen && (save.unlocked || 1) >= 2 && !firstRun();
+function setMarkAt(x, y, w, h, steady = false) {
+  if (!settingsMarkOn()) return;
+  const r = Math.min(10 * ui.u, h * 0.26);
+  markBadge(Math.min(x + w - r * 0.3, ui.A.x1 - r - 1), Math.max(y + r * 0.3, ui.A.y + r + 1), r, G.t, '!', steady);
 }
 // a coin counter (the gold shop button on home and the map): the rolling number, a pop when the coins land
 // 0.8.14: with the shop mark on, a shimmer runs over it and the badge pulses on its top right corner
@@ -4873,6 +4877,7 @@ function drawHUD() {
   ctx.fillRect(0, 0, W_, G.hudBottom + 12 * u);
   const row1 = Y0 + bs / 2;
   ui.button('pause', '', X0, Y0, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
+  setMarkAt(X0, Y0, bs, bs, true); // 0.8.14: Settings lives behind pause until it was opened once (a still badge: never a blink during play)
   // score chip (right)
   const st = sim.stats();
   const scoreTxt = String(st.score);
@@ -5039,6 +5044,7 @@ function drawSideHUD() {
   ctx.fillStyle = g; ctx.fillRect(0, 0, X0 + cw + 24 * u, H_);
   let y = Y0;
   ui.button('pause', '', X0, y, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
+  setMarkAt(X0, y, bs, bs, true); // 0.8.14: the Settings mark (see the portrait HUD)
   // (the "i" button moved into the pause page, 2026-11-19)
   perkChipHud(X0 + bs + gap, Y0 + (bs - 30 * u) / 2, u); // the equipped egg's power
   G.infoLow = 0;
@@ -6465,7 +6471,7 @@ function drawLevelIntro(L, acc) {
   if (land) {
     const rw = Math.min(A.w * 0.5 - pad * 1.5, 600 * s), lw = Math.min(A.w - rw - pad * 3, 520 * s), lx = A.x + pad + (A.w - 3 * pad - lw - rw) / 2, rx = lx + lw + pad;
     const left = [...head(s), ...howCard(s, lw, 0, false, P.T.need)];
-    const bot = [play(s, Math.min(rw, 380 * s), P.T.need), links(s)], hb = colH(bot, s);
+    const bot = [...rsStripBlock(s), play(s, Math.min(rw, 380 * s), P.T.need), links(s)], hb = colH(bot, s); // 0.8.14: the ring speed strip (levels 2-5) right above PLAY
     const y0 = A.y + topH + 10 * u, y1 = A.y1 - 10 * u;
     G.ipRect = { x: A.x, y: A.y + 6 * u, w: lx + lw + pad / 2 - A.x, h: y1 - A.y - 6 * u }; // the coin chip sits over the right column only
     scrollCol(left, pg, G.ipRect, lx, lw, s);
@@ -6481,7 +6487,7 @@ function drawLevelIntro(L, acc) {
     const noTabs = earlyDays() && !(P.T.open.length || lockedChicks().length); // early days: no Boosters tab, the Level page only
     const iw = Math.min(A.w - 2 * pad, 520 * s), x0 = A.cx - iw / 2, lvTab = noTabs || G.itab !== 'chicks';
     // 2026-11-20: on the Level tab PLAY sat inside the how-to card; 2026-11-23: it is pinned right under the card instead
-    const bot = lvTab ? [nextPin(s), links(s)] : [play(s, iw, P.T.need), links(s)], hb = colH(bot, s) + 8 * s; // NEXT pinned under the card (2026-11-23)
+    const bot = [...(lvTab ? rsStripBlock(s) : []), ...(lvTab ? [nextPin(s), links(s)] : [play(s, iw, P.T.need), links(s)])], hb = colH(bot, s) + 8 * s; // NEXT pinned under the card (2026-11-23); 0.8.14: the ring speed strip (levels 2-5) right above it
     // the title and the two tabs stay put; the tab's content scrolls under them
     let hy = A.y + topH - 2 * s;
     for (const b of [...head(s, !lvTab), ...(noTabs ? [] : [tabs(s, P)])]) { hy += b.gap ?? 10 * s; b.draw(x0, hy, iw); hy += b.h; }
@@ -6802,6 +6808,76 @@ function setHead(title, s) {
     const tw = ui.measure(title.toUpperCase(), 15 * s) + 16 * s; ctx.fillStyle = 'rgba(255,240,210,0.25)'; ctx.fillRect(x + tw, y + 10 * s, w - tw, 2 * s);
   } };
 }
+const rsLabel = (sp) => `${sp === RING_SPEED_DEFAULT ? 'Standard' : sp < RING_SPEED_DEFAULT ? 'Slower' : sp >= 3.5 ? 'Pro' : 'Faster'} ${Math.round(sp * 100)}%`;
+// the ring speed control: - [one bar per speed] + (Settings, and the level card's strip; the same press ids rs:-, rs:+, rs:<i>)
+function ringSpeedCtl(x, y, w, s, k, h = 46 * s) {
+  const bw = h, n = RING_SPEEDS.length, tx = x + bw + 8 * s, tw = w - 2 * bw - 16 * s, cw2 = tw / n, bh = h * 30 / 46;
+  ui.button('rs:-', '', x, y, bw, h, { kind: k > 0 ? 'secondary' : 'off', disabled: k <= 0, icon: ICON.left, iconS: 1.2 });
+  ui.button('rs:+', '', x + w - bw, y, bw, h, { kind: k < n - 1 ? 'secondary' : 'off', disabled: k >= n - 1, icon: ICON.right, iconS: 1.2 });
+  ui.well(tx, y + (h - bh) / 2, tw, bh, { s });
+  for (let i = 0; i < n; i++) {
+    const cx = tx + cw2 * (i + 0.5), onI = i <= k, hgt = (9 + i * 18 / (n - 1)) * s * (h / (46 * s)), dfl = RING_SPEEDS.indexOf(RING_SPEED_DEFAULT);
+    ui.roundRect(cx - cw2 * 0.3, y + h / 2 - hgt / 2, cw2 * 0.6, hgt, 3 * s);
+    ctx.fillStyle = onI ? (i === dfl ? '#3eb42d' : i < dfl ? '#3a80ea' : RING_SPEEDS[i] >= 3.5 ? '#e0452f' : '#f3781c') : 'rgba(110,80,50,0.25)'; ctx.fill();
+    ui.buttons.push({ id: 'rs:' + i, x: tx + cw2 * i, y, w: cw2, h });
+  }
+  ui.record({ x: tx, y: y + (h - bh) / 2, w: tw, h: bh }, 'set:rsbar');
+}
+// a soft gold ring round a row that should draw the eye (t: seconds since it began, it lets go after dur; Calm: still)
+function pulseRing(x, y, w, h, r, s, t, dur) {
+  const k = t / dur; if (k < 0 || k >= 1) return;
+  const a = save.calm ? 1 : Math.min(1, (1 - k) * 3), p = save.calm ? 0 : 0.5 - 0.5 * Math.cos(k * Math.PI * 2 * Math.max(2, Math.round(dur / 0.6))), o = (3 + 4 * p) * s;
+  ctx.save(); ctx.globalAlpha = a;
+  ui.roundRect(x - o, y - o, w + 2 * o, h + 2 * o, r + o); ctx.lineWidth = (5 + 2 * p) * s; ctx.strokeStyle = 'rgba(255,214,60,0.5)'; ctx.stroke();
+  ui.roundRect(x - o, y - o, w + 2 * o, h + 2 * o, r + o); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#fff3a8'; ctx.stroke();
+  ctx.restore();
+}
+// ---- 0.8.14 (mykee: "users have never tried increasing the settings or the ring speed ... In the initial first 5 levels
+// itself, we should show these controls"): the ring speed strip on the level card of levels 2 to 5, until the player
+// has changed the speed once (save.seen.rsTried) or has won level 5. It is the real control: a small ring turning at
+// the chosen speed, the same - / bars / + as Settings, and the teaching hand tapping + until the player touches it.
+// After the first change, for that visit: a tick and "You can change it any time in Settings" with the gear.
+const RS_STRIP_H = 84, RS_STRIP_LOW = 60; // a short screen (a 360x640 phone): no words before the first change, the ring, the bars and the hand say it
+const rsStripH = () => (!save.seen.rsTried && ui.A.h < 800 * ui.u ? RS_STRIP_LOW : RS_STRIP_H);
+function ringSpeedStripOn() {
+  if (G.screen !== 'intro' || G.li < 0 || G.demo || !G.level || G.level.id < 2 || G.level.id > 5) return false;
+  if (bestStarsOf(5) > 0) return false;
+  return !save.seen.rsTried || !!(G.rsDone && G.rsDone.seq === G.scrSeq && G.rsDone.lid === G.level.id);
+}
+function ringSpeedStrip(x, y, w, s) {
+  if (!ringSpeedStripOn()) return 0;
+  const H = rsStripH() * s, C = ui.C, sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp), done = !!save.seen.rsTried, low = H < RS_STRIP_H * s;
+  ui.well(x, y, w, H, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+  // the little ring: it turns at the chosen speed, so a change shows at once
+  const rr = 17 * s, rcx = x + 12 * s + rr + 2 * s, rcy = y + H - 8 * s - 22 * s, dt = clamp(G.t - (G.rsT ?? G.t), 0, 0.1), ang = save.calm ? 0.6 : (G.rsAng = (G.rsAng || 0) + dt * 1.6 * sp);
+  G.rsT = G.t;
+  ctx.save(); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(rcx, rcy, rr, ang + 0.55, ang + Math.PI * 2 - 0.55); ctx.lineWidth = 7 * s; ctx.strokeStyle = '#6b3f17'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(rcx, rcy, rr, ang + 0.55, ang + Math.PI * 2 - 0.55); ctx.lineWidth = 4 * s; ctx.strokeStyle = '#d99a4e'; ctx.stroke();
+  drawEggIcon(ctx, rcx, rcy, 15 * s, 'alive');
+  ctx.restore();
+  ui.record({ x: rcx - rr - 4 * s, y: rcy - rr - 4 * s, w: 2 * rr + 8 * s, h: 2 * rr + 8 * s }, 'rs:ring');
+  // the top line: what it is and a nudge; after the first change, where it lives
+  const ty = y + 17 * s, lx = x + 14 * s;
+  if (low) { /* no words: the hand on + says it */ } else if (!done) {
+    ui.text('RING SPEED', lx, ty, { size: 14.5 * s, color: C.ink, tag: 'rs:head' });
+    ui.text('Too slow? Turn it up', x + w - 14 * s, ty, { size: 13.5 * s, align: 'right', color: C.ink2, maxW: w - ui.measure('RING SPEED', 14.5 * s) - 44 * s, tag: 'rs:hint' });
+  } else {
+    const t = 'You can change it any time in Settings', ts = Math.min(13.5 * s, (w - 70 * s) * 20 / ui.measure(t, 20)), tw = ui.measure(t, ts), x1 = x + w / 2 - (tw + 46 * s) / 2;
+    pictoCheck(ctx, x1 + 9 * s, ty, 18 * s);
+    ui.text(t, x1 + 22 * s, ty, { size: ts, color: '#2d6a1c', tag: 'rs:done' });
+    settingsIcon(ctx, x1 + 22 * s + tw + 14 * s, ty, 20 * s, '#6b3f17', '#f0dcb2');
+  }
+  const cx = rcx + rr + 12 * s, ch = 44 * s;
+  ringSpeedCtl(cx, y + H - 8 * s - ch, x + w - 10 * s - cx, s, k, ch);
+  if (!done) { // the hand taps + until the player touches the control
+    const B = ui.buttons.find((b) => b.id === 'rs:+'), per = 1.2, q = save.calm ? 0.5 : (G.t % per) / per, press = q > 0.42 && q < 0.72;
+    if (B) teachHand(ctx, B.x + B.w * 0.58, B.y + B.h * (press ? 0.45 : 0.62), Math.min(B.h * 1.15, 52 * s), press, 1);
+  }
+  return H;
+}
+// the strip as a block for the level card's pinned column (RS_STRIP_H tall), or nothing
+const rsStripBlock = (s) => (ringSpeedStripOn() ? [{ h: rsStripH() * s, gap: 8 * s, draw: (x, y, w) => ringSpeedStrip(x, y, w, s) }] : []);
 function drawSettings() {
   ui.buttons.length = 0; ui.rects.length = 0; ui.calm = save.calm;
   const u = ui.u, A = ui.A, C = ui.C, s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, land = A.h < 520 * u;
@@ -6829,19 +6905,11 @@ function drawSettings() {
   B.push(setRow(s, 'shake', 'Screen shake', 'shake', '#d8453a', { on: on(save.shake) && !save.calm, sub: save.calm ? 'Off while Calm motion is on' : null }));
   B.push(setHead('Gameplay', s));
   const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
-  B.push(setCard(s, 'Ring speed', 'ring', '#2fa84f', `${sp === RING_SPEED_DEFAULT ? 'Standard' : sp < RING_SPEED_DEFAULT ? 'Slower' : sp >= 3.5 ? 'Pro' : 'Faster'} ${Math.round(sp * 100)}%`, 46 * s, (x, y, w) => { // - [one bar per speed] +
-    const bw = 46 * s, n = RING_SPEEDS.length, tx = x + bw + 8 * s, tw = w - 2 * bw - 16 * s, cw2 = tw / n;
-    ui.button('rs:-', '', x, y, bw, 46 * s, { kind: k > 0 ? 'secondary' : 'off', disabled: k <= 0, icon: ICON.left, iconS: 1.2 });
-    ui.button('rs:+', '', x + w - bw, y, bw, 46 * s, { kind: k < n - 1 ? 'secondary' : 'off', disabled: k >= n - 1, icon: ICON.right, iconS: 1.2 });
-    ui.well(tx, y + 8 * s, tw, 30 * s, { s });
-    for (let i = 0; i < n; i++) {
-      const cx = tx + cw2 * (i + 0.5), onI = i <= k, hgt = (9 + i * 18 / (n - 1)) * s, dfl = RING_SPEEDS.indexOf(RING_SPEED_DEFAULT);
-      ui.roundRect(cx - cw2 * 0.3, y + 23 * s - hgt / 2, cw2 * 0.6, hgt, 3 * s);
-      ctx.fillStyle = onI ? (i === dfl ? '#3eb42d' : i < dfl ? '#3a80ea' : RING_SPEEDS[i] >= 3.5 ? '#e0452f' : '#f3781c') : 'rgba(110,80,50,0.25)'; ctx.fill();
-      ui.buttons.push({ id: 'rs:' + i, x: tx + cw2 * i, y, w: cw2, h: 46 * s });
-    }
-    ui.record({ x: tx, y: y + 8 * s, w: tw, h: 30 * s }, 'set:rsbar');
-  }));
+  const rsFirst = G.setFirst && G.setFirst.seq === G.setSeq ? G.t - G.setFirst.t0 : 99; // the first visit: a soft ring round this row for ~3 s
+  const rsCard = setCard(s, 'Ring speed', 'ring', '#2fa84f', rsLabel(sp), 46 * s, (x, y, w) => ringSpeedCtl(x, y, w, s, k));
+  const rsB = rsFirst < 3.2 ? { ...rsCard, draw: (x, y, w) => { rsCard.draw(x, y, w); pulseRing(x, y, w, rsCard.h, 16 * s, s, rsFirst, 3); } } : rsCard;
+  B.push(rsB);
+  if (rsFirst < 0.1 && pg.y === 0) G.setRsAt = true; // scroll so the row is in view (below)
   B.push(setCard(s, 'Difficulty', 'flag', '#e0a21c', null, 42 * s, (x, y, w) => modeRow(x, y, w, 42 * s, s)));
   B.push(setHead('Display', s));
   const gl = save.gfx === 'auto' ? `Auto picked ${TIER_NAME[PERF.tier]} for this phone` : save.gfx === 'high' ? 'Sharpest picture, every effect' : save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
@@ -6856,6 +6924,10 @@ function drawSettings() {
   if (ads.canBuyPremium || ads.premium) B.push(setRow(s, 'set:restore', 'Restore purchases', 'ring', '#c88a1c', { act: 'Restore' }));
   if (land) B.push({ h: 16 * s, gap: 8 * s, draw: (x, y, w) => ui.text('Eggscape ' + __VERSION__, x + w / 2, y + 8 * s, { size: 12.5 * s, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' }) });
   G.setRect = V;
+  if (G.setRsAt) { // the first visit: the ring speed row in view (on a short screen the page starts scrolled to it)
+    G.setRsAt = false; let yy = 0; for (const b of B) { yy += b.gap ?? 10 * s; if (b === rsB) break; yy += b.h; }
+    const H = pageColH(B, s) + 18 * s; pg.y = clamp(yy + rsCard.h - V.h + 20 * s, 0, Math.max(0, H - V.h)); pg.v = 0;
+  }
   pageScroll(B, pg, V, x0, cw, s, true);
 }
 // a segmented control on a cream card: a recessed track, the chosen option a raised green key (like Easy/Medium/Hard)
@@ -7676,7 +7748,7 @@ function drawTitle() {
     homeHit('home:chest', chx - cs * 0.6, chy - cs * 0.62 - tagS, cs * 1.2, cs * 1.1 + tagS);
   }
   pop(0.05, vx, vy, () => drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm), 0.5); // the toy vault and the meadow friends settle in
-  pop(0.2, A.x + 30 * u, A.y + 30 * u, () => ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }));
+  pop(0.2, A.x + 30 * u, A.y + 30 * u, () => { ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }); setMarkAt(A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u); }); // 0.8.14: the Settings mark
   // remove ads / buy the game (app, until bought): a small gold pill in the top corner
   if (fr) { /* first launch: nothing sold */ } else if (ads.canBuyPremium) {
     const ps = 14 * u, pw2 = ui.measure('Unlock all', ps) + 44 * u, py2 = A.y + 10 * u;
