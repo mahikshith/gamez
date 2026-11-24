@@ -2543,7 +2543,7 @@ function drawGot() {
   // coins fly from the pile into the balance, which rolls up: the one coin-gain effect (purse.gain)
   if (R.coins0 != null && !R.flown && (calm || t > R.land - 0.6)) { R.flown = true; purse.gain({ from: R.coins0, src: coinAt || (R.art === 'coins' ? { x: cx, y: heroY } : null) }); }
   const yEnd = Math.min(A.y1 - 34 * u, top + rowsN * rowH + 16 * u);
-  if (t > R.end - 0.2 && R.line !== '') tickLine(R.line || 'Added to your bag', cx, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: A.w - 36 * u, tag: 'got:line' });
+  if (t > R.end - 0.2 && R.line !== '') tickLine(R.line || 'Added to your bag', cx, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: A.w - 36 * u, tag: 'got:line', coin: !!R.lineCoin });
   pop(0.06, cx, cy - 0.98 * S, () => { const hs = Math.min(39 * u, 0.12 * S), w = Math.min(A.w - 36 * u, ui.measure('YOU GOT!', hs) + 80 * u); ui.ribbon('YOU GOT!', 0, -hs * 0.85, w, hs * 1.7, { color: '#d89a1c', size: hs, noRecord: true }); });
   ui.buttons.push({ id: 'got:tap', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); // a tap anywhere
 }
@@ -7738,7 +7738,7 @@ function rewardIcon(k, R, x, y, sz) {
 function tickLine(str, x, y, size, o = {}) {
   if (o.fit) size = Math.min(size, o.fit * 20 / (ui.measure(str, 20) + 28)); // a long line shrinks whole (tick and words), never cut
   const tw = ui.measure(str, size), w = size * 1.35 + tw, x0 = o.align === 'left' ? x : x - w / 2;
-  pictoCheck(ctx, x0 + size * 0.5, y, size * 1.15);
+  if (o.coin) drawCoin(ctx, x0 + size * 0.5, y, size * 0.5, G.t); else pictoCheck(ctx, x0 + size * 0.5, y, size * 1.15); // (o.coin: a line about coins still to find is not a tick)
   ui.text(str, x0 + size * 1.35, y, { size, color: o.color || '#fff', stroke: o.stroke, strokeW: o.stroke ? Math.max(2, size * 0.2) : undefined, maxW: o.maxW ? o.maxW - size * 1.35 : undefined, tag: o.tag });
 }
 // a taste's art (the reveal's hero, the card's row): the egg skin, the hen in the outfit (alive: she cheers), the chick, the booster
@@ -8521,6 +8521,18 @@ async function spinGo(how) {
   audio.play('slot_lever'); buzz('tap');
   if (save.calm) { S.run.forEach((r, i) => { S.reels[i] = r.a1; }); S.run = null; S.st = S.miss ? 'stolen' : 'stopped'; S.tStop = S.miss ? G.t : G.t - 9; S.lit = !S.miss; if (S.miss) { S.missT = G.t; S.vSide = -1; audio.play('slot_miss'); } } else { S.st = 'spinning'; audio.play('slot_spin', { intensity: 1, vol: 0.8 }); }
 }
+// After coins arrive, the one thing to point at (engine/conduct.js suggest; mykee: "suggest by the coins he holds"):
+// the best thing to own that these coins have brought within reach, else the nearest one just out of reach. A line
+// under the prize, never a popup; nothing in the first levels.
+function coinsReach(gained) {
+  if (earlyDays()) return '';
+  const w = save.wallet, buyable = new Set(lockedChicks().map((c) => c.id));
+  const items = E.unlockables(w).filter((u) => u.kind !== 'chick' || buyable.has(u.id)).map((u) => ({ key: u.kind + ':' + u.id, kind: u.kind, price: E.unlockPrice(w, u.price).price, owned: false }));
+  const R = ENG.suggest(save, items, { gained });
+  if (!R) return '';
+  const [kind, id] = R.key.split(':'), name = kind === 'skin' ? `${E.SKINS[id].name} egg` : kind === "hen" ? E.HEN_SKINS[id].name : (STRIKES.find((k) => k.id === id) || { name: 'chick' }).name;
+  return R.short ? `${R.short} more coins for the ${name}` : `Enough for the ${name} now`;
+}
 // a winning pull: what the reveal will say (the prize is already in the wallet)
 function spinPrize(S, res, how, w0, c0) {
   const snap = (w) => JSON.stringify({ ...E.sanitizeWallet(w), coins: 0 });
@@ -8528,13 +8540,14 @@ function spinPrize(S, res, how, w0, c0) {
   ledWhy = 'spin'; BR.why(save, 'spin', res.slice.id, how); persist();
   if (gained > 0) purse.hold(c0 - res.paid); // the prize coins fly in with the reveal, not before
   const chick = P.kind === 'chick' ? STRIKES.find((k) => k.id === P.item) : null;
-  const coins = P.kind === 'coins' || conv;
+  const coins = P.kind === 'coins' || conv, reach = P.kind === 'coins' ? coinsReach(gained) : '';
   S.big = P.rare || P.kind === 'coupon' || res.slice.id === 'c3' ? 1 : 0.4; // how loud the machine cheers
   S.got = {
     name: coins ? `${gained} coins` : P.kind === 'booster' ? (P.n > 1 ? `${P.n} x ${P.name}` : P.name) : P.kind === 'hen' ? `${P.name} outfit` : chick ? chick.name : P.name,
     art: coins ? 'coins' : P.kind === 'booster' ? 'boost:' + P.item : P.kind === 'coupon' ? 'ticket' : P.kind === 'charge' ? 'charge' : P.kind === 'skip' ? 'skip' : P.kind === 'hen' ? 'hen:' + P.item : 'chick:' + P.item,
     items: !coins && gained > 0 ? [{ art: 'coins', label: '+' + gained }] : [], coins: gained > 0 ? gained : 0, quiet: true,
-    line: conv ? 'Your bag was full: coins instead' : P.kind === 'coins' ? '' : P.kind === 'coupon' ? 'Half off one thing in the shop' : P.kind === 'hen' || P.kind === 'chick' ? 'Yours to keep' : gained > 0 ? 'Bag full: the rest in coins' : 'Added to your bag',
+    lineCoin: / more coins /.test(reach),
+    line: conv ? 'Your bag was full: coins instead' : P.kind === 'coins' ? reach : P.kind === 'coupon' ? 'Half off one thing in the shop' : P.kind === 'hen' || P.kind === 'chick' ? 'Yours to keep' : gained > 0 ? 'Bag full: the rest in coins' : 'Added to your bag',
   };
 }
 function drawSpin() {

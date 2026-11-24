@@ -20,6 +20,7 @@ Nothing personal is kept here: counts only, never a raw log.
 node tools/sim-players.mjs --save --note "why this run"   # the town, the crowd, the clickers; about half a minute
 node tools/read-log.mjs path/to/eggscape-log.txt          # file a shared speed log into real.json
 node tools/test-players.mjs                               # the quick check that no rule breaks (part of the test list)
+node tools/test-promise.mjs                               # what a rule promises, a page must offer (every booster can be picked, every way to spin has a button)
 ```
 
 Options: `--n 300` players of each kind, `--days 30`, `--seed 1`, `--only quitter`, `--crowd 3000`, `--clickers 300`, `--quick` (the eight kinds only), `--json`.

@@ -76,6 +76,14 @@ export const BOOSTERS = {
   },
 };
 
+// A row of tiles that holds `fit` of them: all of `list` when it fits, else one page of it with the last place kept for
+// the "next page" tile. Nothing is ever left out: every item is on exactly one page. -> { items, more: null | { pg, pages } }
+export function pageOf(list, fit, page = 0) {
+  if (list.length <= fit) return { items: list, more: null };
+  if (fit < 2) return { items: list.slice(0, Math.max(1, fit)), more: null };
+  const per = fit - 1, pages = Math.ceil(list.length / per), pg = (((page | 0) % pages) + pages) % pages;
+  return { items: list.slice(pg * per, pg * per + per), more: { pg, pages } };
+}
 // Stable display order for UI lists.
 export const BOOSTER_ORDER = ['stone', 'golden', 'time', 'rewind', 'sponge', 'nest', 'snips', 'scare'];
 // the star chests hand out the first five in turn (their rewards were set before the newer boosts)

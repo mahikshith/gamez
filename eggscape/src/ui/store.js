@@ -14,7 +14,7 @@ import { drawEggSkinArt } from '../render/eggskins.js';
 import { pictoPerk } from './picto.js'; // an egg skin's power as one glyph
 import { ICON, C, tint, drawAdBadge } from './ui.js';
 import { themeBack } from './theme.js';
-import { BOOSTERS, BOOSTER_ORDER, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin,
+import { BOOSTERS, BOOSTER_ORDER, pageOf, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin,
   CHARGE_PACKS, MAX_CHARGES, HEN_SKINS, HEN_SKIN_ORDER, ownsHenSkin, ITEMS, ITEM_ORDER, itemCount, CHICK_PRICES, ownsChick, skinPerk,
   IAP, COIN_PACKS, iapAvailable, usdHint, BANK_OPEN, BANK_CAP, BUNDLES, bundleParts, bundleTimes, CHICK_IDS,
   KITS, KIT_ORDER, kitPrice, kitSave, kitFull, SETS, SET_ORDER, setAvailable, setPrice, setSave, sampleFor, bundleValue, dailyDeal, DEAL_OFF, unlockPrice, couponHeld } from '../economy.js';
@@ -1871,9 +1871,7 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   // Scarecrow won on the Lucky Spin that cannot be picked is a broken promise), and no tile shrinks: when they do not
   // all fit, the last tile turns the row to its next page
   const fit = Math.max(1, Math.floor((w + gap) / (c + gap)));
-  let items = all, more = null;
-  if (all.length > fit && fit > 1) { const per = fit - 1, pages = Math.ceil(all.length / per), pg = (((state.page || 0) % pages) + pages) % pages; items = all.slice(pg * per, pg * per + per); more = { pg, pages }; }
-  else if (all.length > fit) items = all.slice(0, fit);
+  const { items, more } = pageOf(all, fit, state.page || 0);
   const n = items.length + (more ? 1 : 0);
   // the label: BOOSTERS, or the one just tapped and what it does
   const tapped = lastTapped && BOOSTERS[lastTapped] && ownedCount(wallet, lastTapped) > 0 ? BOOSTERS[lastTapped] : null;
