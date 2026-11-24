@@ -7,6 +7,7 @@
 //   Oracle   predictions, graded                   src/engine/oracle.js
 //   Conduct  one thing leads at each moment        src/engine/conduct.js   (asks the Brain's gate, src/brain.js)
 //   Herald   one local reminder                    src/engine/herald.js
+//   Tally    what was shown and what was taken     src/engine/tally.js
 // The Director (help on a hard level), the Spin (wheel rules), the shop and the offers keep their own modules; the
 // Conductor is where they meet.
 import * as HUB from './hub.js';
@@ -15,6 +16,7 @@ import * as PU from './pulse.js';
 import * as OR from './oracle.js';
 import * as CO from './conduct.js';
 import * as HE from './herald.js';
+import * as TA from './tally.js';
 
 const HOUR = 3600000;
 HUB.add('ledger', {
@@ -60,6 +62,13 @@ HUB.add('herald', {
   plan: HE.plan, opened: HE.opened, shouldAsk: HE.shouldAsk, answer: HE.answer, setOff: HE.setOff, line: HE.line,
   state: (save) => { const H = HE.herState(save); return { ok: H.ok, off: H.off, ignored: H.ignored }; },
 });
+HUB.add('tally', {
+  seen: TA.seen, took: TA.took, screen: TA.screen, table: TA.table, line: TA.line,
+  on(type, d) {
+    if (type === 'result') TA.level(d.save, d.r, d.ctx || {});
+    else if (type === 'close') TA.leave(d.save, d.ctx && d.ctx.screen, d.ctx && d.ctx.level, d.ctx && d.ctx.lastWon, d.now);
+  },
+});
 
 // ---- the game's side
 // a save was loaded or swapped: look at the purse without filing anything
@@ -72,14 +81,14 @@ export function open(save, now = Date.now(), from = '') {
   const reminder = HUB.ask('herald', 'opened', [save, from, now], null);
   return { fresh, awayH, reminder };
 }
-// the game went to the background. ctx: what is waiting (see herald.reasons) + { hour, child, waiting }. -> the reminder to schedule, or null
+// the game went to the background. ctx: what is waiting (see herald.reasons) + { hour, child, waiting, screen, level, lastWon }. -> the reminder to schedule, or null
 export function close(save, ctx = {}, now = Date.now()) {
   HUB.emit('close', { save, ctx, now });
   const F = HUB.ask('pulse', 'facts', [save, now], null);
   return HUB.ask('herald', 'plan', [save, { ...ctx, hour: F ? F.bestHour : -1 }, now], null);
 }
 export function levelStart(save, ctx = {}, now = Date.now()) { HUB.emit('levelStart', { save, ctx, now }); }
-// a level ended. r: { id, won, secs, near }; ctx: { hard, videoShown, coinShown }
+// a level ended. r: { id, won, secs, near }; ctx: { hard, videoShown, coinShown, rewound, boosts }
 export function result(save, r, ctx = {}, now = Date.now()) { HUB.emit('result', { save, r, ctx, now }); }
 export function video(save) { HUB.emit('video', { save }); }
 // file what changed in the purse since the last look, and note the sign of life
@@ -100,6 +109,13 @@ export const herald = {
   setOff: (save, off) => HUB.ask('herald', 'setOff', [save, off]),
   state: (save) => HUB.ask('herald', 'state', [save], { ok: 0, off: false, ignored: 0 }),
 };
+// what was shown and taken: ids are the game's own button names; seconds per screen
+export const tally = {
+  seen: (save, id) => HUB.ask('tally', 'seen', [save, id]),
+  took: (save, id) => HUB.ask('tally', 'took', [save, id]),
+  screen: (save, name, secs, level) => HUB.ask('tally', 'screen', [save, name, secs, level]),
+  table: (save) => HUB.ask('tally', 'table', [save], null),
+};
 // the speed log's lines: one per subsystem, and who is up
 export function lines(save, ctx = {}) {
   return {
@@ -108,6 +124,7 @@ export function lines(save, ctx = {}) {
     pulse: HUB.ask('pulse', 'line', [save, ctx.now || Date.now()], 'off'),
     oracle: HUB.ask('oracle', 'line', [save, ctx], 'off'),
     herald: HUB.ask('herald', 'line', [save], 'off'),
+    tally: HUB.ask('tally', 'line', [save], 'off'),
   };
 }
 export { HUB };

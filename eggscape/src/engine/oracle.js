@@ -17,7 +17,10 @@ import { slot } from './hub.js';
 import * as PU from './pulse.js';
 import * as LE from './ledger.js';
 
-export const ORACLE = { trust: 12, good: 0.2 }; // a prediction may steer once it was graded `trust` times with a Brier score under `good`
+// A prediction may steer once it was graded `trust` times, is better than a coin (Brier score under `good`; always
+// saying 50% scores 0.25) and says about as often "yes" as it happens (within `cal`). The first build asked for a score
+// under 0.2, which no honest guess about a 65% event can reach (the simulated players showed it: tools/sim-players.mjs).
+export const ORACLE = { trust: 12, good: 0.24, cal: 0.12, keep: 0.94 }; // keep: how much an old answer still counts after each new one
 export const LEARN = { min: 8, edge: 0.005, rate: 0.5, rateMin: 0.06, aMin: 0.3, aMax: 2.5, bMax: 2.5 }; // step = rate / sqrt(n + 1), never under rateMin
 const logit = (p) => { const q = Math.max(0.02, Math.min(0.98, p)); return Math.log(q / (1 - q)); };
 const sig = (z) => 1 / (1 + Math.exp(-z));
@@ -31,7 +34,7 @@ export function oraState(save) {
   if (cur && SAFE.has(cur)) return cur;
   const o = cur && typeof cur === 'object' ? cur : {}, cal = {}, open = {}, base = {}, fit = {};
   for (const k of KEYS) {
-    const c = (o.cal && o.cal[k]) || {}; cal[k] = { n: Math.floor(num(c.n)), hit: Math.floor(num(c.hit)), sq: num(c.sq) };
+    const c = (o.cal && o.cal[k]) || {}; cal[k] = { n: Math.floor(num(c.n)), hit: Math.floor(num(c.hit)), sq: num(c.sq), y: Math.floor(num(c.y)), sp: num(c.sp), ey: num(c.ey), en: num(c.en) };
     const q = o.open && o.open[k]; if (q && typeof q === 'object') open[k] = { p: clamp(num(q.p), 0, 1), p0: clamp(num(q.p0 == null ? q.p : q.p0), 0, 1), id: String(q.id || '').slice(0, 24), t: num(q.t) };
     const b = (o.base && o.base[k]) || {}, f = (o.fit && o.fit[k]) || {};
     base[k] = { n: Math.floor(num(b.n)), sq: num(b.sq) };
@@ -69,8 +72,10 @@ export function predict(save, ctx = {}) {
     out.back = { p: clamp(p), why };
   }
   { // says yes to a chosen video when one is offered
-    const seen = num(o.ads), no = num(B.videoNo), why = [`watched ${seen}, turned down ${no}`];
-    let p = (seen + 1) / (seen + no + 3);
+    // what he did the last times a video was really on the card (the newest answers count most); before there are a
+    // few of those, the plain counts. The counts alone overrate him: a button passed by is not counted as a "no"
+    const seen = num(o.ads), no = num(B.videoNo), c = oraState(save).cal.video, own = c.en >= 3, why = [own ? `took ${c.y} of ${c.n} videos offered` : `watched ${seen}, turned down ${no}`];
+    let p = own ? (c.ey + 1) / (c.en + 3) : (seen + 1) / (seen + no + 3);
     if (w.noAds) { p = 0.02; why.push('Premium: no videos needed'); }
     out.video = { p: clamp(p), why };
   }
@@ -124,7 +129,8 @@ export function settle(save, key, yes, id = null) {
   if (!q || (id != null && q.id !== String(id))) return null;
   delete O.open[key];
   const c = O.cal[key], y = yes ? 1 : 0;
-  c.n += 1; c.hit += (q.p >= 0.5) === !!yes ? 1 : 0; c.sq += (q.p - y) * (q.p - y);
+  c.n += 1; c.hit += (q.p >= 0.5) === !!yes ? 1 : 0; c.sq += (q.p - y) * (q.p - y); c.y += y; c.sp += q.p;
+  c.ey = c.ey * ORACLE.keep + y; c.en = c.en * ORACLE.keep + 1;
   { // the rules and the fit are graded on the same answer; then the fit takes one small step toward it
     const b = O.base[key], f = O.fit[key], x = logit(q.p0), p1 = sig(f.a * x + f.b), err = y - p1;
     b.n += 1; b.sq += (q.p0 - y) * (q.p0 - y);
@@ -138,7 +144,7 @@ export function settle(save, key, yes, id = null) {
 }
 export const openOf = (save, key) => oraState(save).open[key] || null;
 // may this prediction steer yet? Only once it has been right often enough on this phone
-export function trusted(save, key) { const c = oraState(save).cal[key]; return !!c && c.n >= ORACLE.trust && c.sq / c.n < ORACLE.good; }
+export function trusted(save, key) { const c = oraState(save).cal[key]; return !!c && c.n >= ORACLE.trust && c.sq / c.n < ORACLE.good && Math.abs(c.sp - c.y) / c.n <= ORACLE.cal; }
 export function line(save, ctx = {}) {
   const P = predict(save, ctx), O = oraState(save), r = (v) => Math.round(v * 100);
   return KEYS.map((k) => { const c = O.cal[k], b = O.base[k], f = O.fit[k]; return `${k} ${r(P[k].p)}%${c.n ? ` (right ${c.hit}/${c.n}, brier ${(c.sq / c.n).toFixed(2)}${trusted(save, k) ? ', trusted' : ''}${f.n ? `; rules ${(b.sq / b.n).toFixed(2)} learned ${(f.sq / f.n).toFixed(2)}${learned(O, k) ? ' in use' : ''}, lean ${f.b.toFixed(2)} sharp ${f.a.toFixed(2)}` : ''})` : ''}`; }).join(' | ') + ` | spend next 10 lv ~${P.spendNext10} | try ${P.trySecs} s`;

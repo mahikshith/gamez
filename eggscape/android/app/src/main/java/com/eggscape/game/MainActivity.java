@@ -108,7 +108,11 @@ public class MainActivity extends Activity {
          * window.__eggNotif(true | false). openedFrom: the reminder this launch came from ("" = from the icon), read once.
          */
         @JavascriptInterface public void notifyAt(String atMs, String id, String title, String text) {
-            try { Reminders.schedule(MainActivity.this, Long.parseLong(atMs), id, title, text); } catch (Throwable e) { /* optional */ }
+            try { Reminders.schedule(MainActivity.this, 0, Long.parseLong(atMs), id, title, text); } catch (Throwable e) { /* optional */ }
+        }
+        /** the later notes of a long absence: slot 1 and 2 (herald.js). Opening the game cancels all of them. */
+        @JavascriptInterface public void notifyMore(String slot, String atMs, String id, String title, String text) {
+            try { Reminders.schedule(MainActivity.this, Integer.parseInt(slot), Long.parseLong(atMs), id, title, text); } catch (Throwable e) { /* optional */ }
         }
         @JavascriptInterface public void notifyCancel() { Reminders.cancel(MainActivity.this); }
         @JavascriptInterface public String notifyState() { return Reminders.state(MainActivity.this); }

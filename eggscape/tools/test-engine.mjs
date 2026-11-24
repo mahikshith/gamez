@@ -5,6 +5,7 @@ import * as PU from '../src/engine/pulse.js';
 import * as OR from '../src/engine/oracle.js';
 import * as CO from '../src/engine/conduct.js';
 import * as HE from '../src/engine/herald.js';
+import * as TA from '../src/engine/tally.js';
 import { defaultWallet, BOOSTERS } from '../src/economy.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
@@ -117,6 +118,25 @@ const HOUR = 3600000, DAY = 24 * HOUR, T0 = new Date(2026, 10, 24, 18, 0, 0).get
   ok(bust.fit.win.a === 1 && bust.fit.win.b === OR.LEARN.bMax && bust.fit.win.n === 0 && bust.fit.win.sq === 0 && bust.base.win.n === 0 && bust.open.win.p0 === 0.4, 'a broken or older save is read safely (a guess noted before this build is graded as the rules\' own)');
   ok(/rules \d\.\d\d learned \d\.\d\d in use/.test(OR.line(s, {})), 'the speed log shows rules against learned: ' + OR.line(s, {}).split(' | ')[0]);
 }
+{ // the tally: what was shown, what was taken, where the time went; counts only
+  const s = mk();
+  for (let i = 0; i < 5; i++) TA.seen(s, 'double'); TA.took(s, 'double'); TA.took(s, 'win:shop');
+  const T = TA.talState(s);
+  ok(T.b.double[0] === 5 && T.b.double[1] === 1 && T.b['win:shop'][0] === 1 && T.b['win:shop'][1] === 1, 'shown five times, taken once; a tap on something never counted as shown still counts as shown once');
+  TA.screen(s, 'play', 62.4, 7); TA.screen(s, 'store', 20, 7); TA.screen(s, 'store', 9000, 9);
+  ok(T.sc.play === 62 && T.sc.store === 20 + TA.TALLY.maxSecs && T.shop.n === 2 && T.shop.first === 7, 'seconds per screen (a phone left lying counts ten minutes at most), the shop\'s visits and the level of the first one');
+  TA.level(s, { id: 7, won: false, secs: 40, near: true }, { rewound: true, boosts: 2 }); TA.level(s, { id: 7, won: true, secs: 55 }, {});
+  ok(T.lv[7].join(',') === '2,1,95,1,1,2', 'a row per level: tries, wins, seconds, one egg short, Rewinds, boosters: ' + T.lv[7].join(','));
+  for (let i = 0; i < 20; i++) TA.leave(s, i % 2 ? 'fail' : 'levels', 7, false, T0 + i);
+  ok(T.end.length === TA.TALLY.ends && T.end[T.end.length - 1].sc === 'fail', 'the last sessions\' ends are kept, the oldest dropped');
+  for (let i = 0; i < 300; i++) TA.seen(s, 'x' + i);
+  ok(Object.keys(T.b).length === TA.TALLY.ids && JSON.stringify(TA.table(s)).length < 6000, `it cannot grow without end: ${Object.keys(T.b).length} names, ${JSON.stringify(TA.table(s)).length} bytes`);
+  const back = TA.talState({ eng: { tal: JSON.parse(JSON.stringify(TA.table(s))) } });
+  ok(back.b.double[0] === 5 && back.lv[7][2] === 95 && back.shop.first === 7, 'it survives being saved and loaded');
+  const bust = TA.talState({ eng: { tal: { b: { 'a<b>': [1, 2], ok: 'x', fine: [-3, 2.7] }, sc: 7, lv: { x: [1], 3: [1, 'a'] }, end: [null, { sc: 'play<', lv: -2 }] } } });
+  ok(!bust.b.ok && bust.b.fine[0] === 0 && bust.b.fine[1] === 2 && bust.lv[3].join(',') === '1,0,0,0,0,0' && bust.end.length === 1 && bust.end[0].sc === 'play', 'a broken save is read safely');
+  ok(/double 1\/5 \(20%\)/.test(TA.line(s)) && /shop opened 2 \(first at level 7\)/.test(TA.line(s)), 'one line for the speed log: ' + TA.line(s).slice(0, 150));
+}
 { // the conductor: one thing leads; what is his first, asking last; the Brain's gate holds asks back
   const s = mk({ unlocked: 14, offers: { sessions: 3 } });
   const C = [{ id: 'offer', sys: 'offers', kind: 'money' }, { id: 'meter', sys: 'spin', kind: 'progress', near: 0.67 }, { id: 'chest', sys: 'chest', kind: 'progress', near: 0.9 }, { id: 'spin', sys: 'spin', kind: 'gift' }, { id: 'vid', sys: 'ads', kind: 'video' }];
@@ -167,6 +187,18 @@ const HOUR = 3600000, DAY = 24 * HOUR, T0 = new Date(2026, 10, 24, 18, 0, 0).get
   const d = mk({ eng: { her: { ok: 1 } } });
   let q = HE.plan(d, { hour: 18 }, T0); HE.opened(d, '', q.at + HOUR);
   ok(HE.plan(d, { hour: 18 }, q.at + HOUR) === null, 'the daily chest alone is not worth a second reminder after one was ignored');
+  { // a long absence: three notes in all (about a day, three days, a week), each for something true, then silence
+    const w = mk({ unlocked: 9, eng: { her: { ok: 1 } } }), W = HE.plan(w, { spins: 1, hour: 18, unlocked: 9 }, T0), ats = [W.at, ...W.more.map((m) => m.at)];
+    ok(W.more.length === 2 && W.more[0].id === 'back' && W.more[1].id === 'back2' && ats.every((t, i) => !i || t - ats[i - 1] >= 20 * HOUR) && ats.every((t) => new Date(t).getHours() === 18), `planned on leaving: ${ats.map((t) => ((t - T0) / DAY).toFixed(1)).join(', ')} days later, never two in one day, at his hour`);
+    ok(W.more[0].at - T0 >= 2 * DAY, 'the second speaks of the welcome-back gift only once that gift exists (two days away)');
+    ok(HE.plan(mk({ unlocked: 2, eng: { her: { ok: 1 } } }), { spins: 1, hour: 18, unlocked: 2 }, T0).more.length === 0, 'no later notes before the level the gift exists from');
+    const r1 = HE.opened(w, 'back', W.more[0].at + HOUR), H1 = HE.herState(w);
+    ok(r1.hit && r1.shown === 2 && r1.id === 'back' && H1.n === 2 && H1.opened === 1 && H1.ignored === 0 && H1.sent.filter((q) => q.open).length === 1, 'he opens the game from the second: two were shown, one opened, nothing counts as ignored');
+    const W2 = HE.plan(w, { spins: 1, hour: 18, unlocked: 9 }, T0 + 10 * DAY); HE.opened(w, '', T0 + 30 * DAY);
+    ok(HE.herState(w).ignored === HE.HERALD.giveUp - 1 && HE.plan(w, { spins: 1, hour: 18, unlocked: 9 }, T0 + 30 * DAY).more.length === 0 && W2.more.length === 2, 'all three ignored, back by himself weeks later: one single note next time, no series');
+    const back = HE.herState({ eng: { her: JSON.parse(JSON.stringify(HE.herState(mk({ unlocked: 9, eng: { her: { ok: 1, plan: { at: 5, id: 'spin', more: [{ at: 9, id: 'back' }, null, { at: 0 }] } } } })))) } });
+    ok(back.plan.more.length === 1 && back.plan.more[0].id === 'back', 'the plan survives being saved and loaded');
+  }
   ok(/allowed|switched off/.test(HE.line(s)), 'one line for the speed log: ' + HE.line(s));
 }
 { // 0.8.15 Scarecrow booster in the sim: villains are scared off while it stands, and a saved sim restores exactly

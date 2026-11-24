@@ -12,7 +12,7 @@ export const MAX_OWNED = 9;
 // 0.8.15 (the coin loop measured: more than one free booster or charge a level arrived and none was needed, so none was
 // ever bought). Free gifts fill a stack only up to GIFT_MAX; past that a gift pays GIFT_FULL of its price in coins.
 // Buying is still open up to MAX_OWNED: the bag has room for what the player chooses to pay for.
-export const GIFT_MAX = 5;
+export const GIFT_MAX = 3;
 export const GIFT_FULL = 0.5;
 
 export const BOOSTERS = {

@@ -225,9 +225,15 @@ function engOpen() {
   if (R && R.reminder && R.reminder.fired) diag.note({ reminder: R.reminder });
 }
 // the game went to the background: the Oracle notes its guess for "comes back", the Herald plans one reminder (app only)
-function engClose() {
-  const P = ENG.close(save, waitingCtx(), Date.now()), b = appBridge();
-  try { if (P && b && typeof b.notifyAt === 'function') b.notifyAt(String(P.at), P.id, P.title, P.text); } catch (_) { /* no shell */ }
+function engClose(screen = G.screen) {
+  tallyFlush();
+  const P = ENG.close(save, { ...waitingCtx(), unlocked: save.unlocked || 1, screen, level: G.level && G.li >= 0 ? G.level.id : 0, lastWon: G.screen === 'win' }, Date.now()), b = appBridge();
+  try {
+    if (P && b && typeof b.notifyAt === 'function') {
+      b.notifyAt(String(P.at), P.id, P.title, P.text);
+      if (typeof b.notifyMore === 'function') (P.more || []).forEach((m, i) => b.notifyMore(String(i + 1), String(m.at), m.id, m.title, m.text)); // the two later notes of a long absence; all are cancelled on opening
+    }
+  } catch (_) { /* no shell */ }
 }
 // ---- reminders (app only, 0.8.15): the Herald (engine/herald.js) decides; this is the question and the switch.
 // Asked once, on a good win with a spin near; "No thanks" is final (Settings can turn them on); never for a child profile.
@@ -254,6 +260,34 @@ if (typeof window !== 'undefined') window.__eggNotif = (ok) => {
   } catch (_) { /* optional */ }
   G.remFrom = null;
 };
+// ---- the Tally (engine/tally.js): which buttons and offers were on a page he saw, which he tapped, seconds per screen.
+// Looked at three times a second, never per frame; one count per visit of a page.
+const TAL_IDS = new Set(['double', 'bonus', 'sample', 'chest', 'daily', 'rewind', 'rewind:coins', 'skip:ad', 'skip:ticket', 'skip:coins', 'ad:coins', 'adboost', 'shop', 'store', 'win:shop', 'gm:shop', 'gm:ad', 'tr:shop', 'tr:open',
+  'home:chest', 'home:bank', 'home:premium', 'home:charge', 'home:hen', 'premium', 'set:novideo', 'chip:skip', 'strike', 'ally', 'settings', 'practice', 'extras', 'info', 'retry', 'next', 'restart', 'hint', 'cb:buy', 'pause:skip', 'store:coins', 'set:remind', 'rem:yes', 'calm']);
+const TAL_PRE = /^(buy|charge|chick|hen|skin|kit|item|iap|gm:iap|try|boost|hset|spin|stk:buy|stk:pick|tr:boss|lv|tab):/;
+const talCache = new Map();
+function tallyKey(id) {
+  if (!id) return null;
+  if (id === 'of:buy' || id === 'of:ad') return G.offer ? 'of:' + G.offer.id : null;
+  if (id === 'nudge:yes') return G.nudge ? 'nudge:' + G.nudge.kind : null;
+  if (id === 'help:go') return G.failHelp ? 'help:' + G.failHelp.kind : null;
+  let k = talCache.get(id);
+  if (k === undefined) { const m = TAL_IDS.has(id) ? null : TAL_PRE.exec(id); k = TAL_IDS.has(id) ? id : m ? (m[1] === 'tab' ? id : m[1]) : null; if (talCache.size < 400) talCache.set(id, k); }
+  return k;
+}
+const talView = { n: 0, key: '', seen: new Set(), sc: '', t0: 0 };
+function tallyFlush() { // the seconds on the screen that was up are filed; the clock starts again
+  const now = performance.now();
+  if (talView.sc && talView.t0) ENG.tally.screen(save, talView.sc, (now - talView.t0) / 1000, save.unlocked || 1);
+  talView.sc = G.screen || ''; talView.t0 = now;
+}
+function tallyFrame() {
+  if (++talView.n % 20) return;
+  if (talView.sc !== G.screen) tallyFlush();
+  const key = `${G.scrSeq}|${G.settingsOpen ? 1 : 0}|${G.offer ? G.offer.id : ''}|${G.detail || ''}|${G.getMore ? 1 : 0}|${G.nudge ? 1 : 0}|${G.remAsk ? 1 : 0}|${G.chickBuy || ''}|${G.skipAsk ? 1 : 0}|${G.treasure ? 1 : 0}`;
+  if (key !== talView.key) { talView.key = key; talView.seen.clear(); }
+  for (const b of ui.buttons) { const k = tallyKey(b.id); if (k && !talView.seen.has(k)) { talView.seen.add(k); ENG.tally.seen(save, k); } }
+}
 function persist() {
   ledger(ledWhy);
   { // the Director counts coins spent (any drop in the purse is a spend: coins only ever leave through a purchase)
@@ -1214,6 +1248,7 @@ function keyboardTurn(dt) {
 // ---------------------------------------------------------------- buttons
 async function press(id) {
   if (DIAG_MARK.test(id)) diag.mark(id); // the speed log: a hitch right after one of these names it
+  { const k = tallyKey(id); if (k) ENG.tally.took(save, k); }
   ledger(ledWhy); ledWhy = ledWhyOf(id); // what changed before this press is filed under the last reason; what this press changes, under its own
   { const b = ui.buttons.find((q) => q.id === id); if (b && b.w < ui.w * 1.5) G.pressAt = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; } // coins a press brings fly from its button (purse.gain)
   audio.play(id === 'pause' || id === 'levels' || id === 'practice' ? 'ui_back' : 'ui_tap');
@@ -1678,7 +1713,7 @@ async function press(id) {
       save.showFps = !save.showFps; persist();
       break;
     case 'set:log': { // hand the speed log to the share sheet (app) or save it as a file (web)
-      diag.note({ brain: BR.trace(save), who: BR.model(save), tries: DR.triesLine(save), mode: save.mode, eng: ENG.lines(save, { levelId: save.unlocked || 1 }), spin: save.spin || null }); // the Brain's last decisions travel with the speed log; 0.8.15: tries and wins per level (how hard the game really is)
+      diag.note({ brain: BR.trace(save), who: BR.model(save), tries: DR.triesLine(save), mode: save.mode, eng: ENG.lines(save, { levelId: save.unlocked || 1 }), tal: ENG.tally.table(save), first: (save.eng && save.eng.pulse && save.eng.pulse.first) || 0, spin: save.spin || null }); // the Brain's last decisions travel with the speed log; 0.8.15: tries and wins per level (how hard the game really is)
       const how = diag.share();
       toast(how === 'download' ? 'Speed log saved to your downloads' : how ? 'Pick where to send the speed log' : 'Could not share the log here', 2.6);
       break;
@@ -4226,7 +4261,7 @@ function onWin() {
   if (G.result.bonus) save.bonus[sk(G.level.id, G.sim.mode)] = 1;
   if (G.li >= 0 && G.level) { // the Director: the result, a skin trial running down, and now and then a new one as a gift
     DR.noteResult(save, G.level.id, true, { saved: G.sim.savedLog.length }); BR.note(save, 'level');
-    ENG.result(save, { id: G.level.id, won: true, secs: G.sim.t, near: false }, { hard: isHardLevel(G.level), videoShown: !ads.premium && !earlyDays(), coinShown: false });
+    ENG.result(save, { id: G.level.id, won: true, secs: G.sim.t, near: false }, { hard: isHardLevel(G.level), videoShown: !ads.premium && !earlyDays(), coinShown: false, rewound: !!G.usedRewind, boosts: Object.keys(G.boost || {}).filter((k) => G.boost[k]).length });
     DR.tickTrial(save);
     G.result.hot = DR.hotCount(save);
     // 2026-11-20 shop 2.0 (no interstitials in the app): when an ad break would have been due, the win card offers a
@@ -4287,7 +4322,7 @@ function onFail() {
   if (G.li >= 0 && G.level) { // the Director: note the loss, then pick the one help card for the fail screen
     const st = G.sim.stats();
     DR.noteResult(save, G.level.id, false, { saved: st.saved }); BR.note(save, 'level');
-    { const canRew = !G.usedRewind && G.sim.canRewind(); ENG.result(save, { id: G.level.id, won: false, secs: G.sim.t, near: st.target >= 2 && st.saved === st.target - 1 }, { hard: isHardLevel(G.level), near: st.target >= 2 && st.saved === st.target - 1, videoShown: !ads.premium, coinShown: canRew && !ads.premium, price: DR.rewindPrice((G.rewindBuys || {})[G.level.id]) }); }
+    { const canRew = !G.usedRewind && G.sim.canRewind(); ENG.result(save, { id: G.level.id, won: false, secs: G.sim.t, near: st.target >= 2 && st.saved === st.target - 1 }, { hard: isHardLevel(G.level), near: st.target >= 2 && st.saved === st.target - 1, videoShown: !ads.premium, coinShown: canRew && !ads.premium, price: DR.rewindPrice((G.rewindBuys || {})[G.level.id]), rewound: !!G.usedRewind, boosts: Object.keys(G.boost || {}).filter((k) => G.boost[k]).length }); }
     DR.tickTrial(save);
     { // the spin meter: the third loss in a row on a level banks a cheer-up spin (once per level); time played is a slow step
       const run = ((save.dir && save.dir.att && save.dir.att[G.level.id]) || {}).streak || 0;
@@ -8447,6 +8482,7 @@ function frame(now) {
     const w0 = performance.now(), b0 = stampStats.builds;
     update(dt);
     renderAll();
+    tallyFrame();
     FPSM.lastWork = performance.now() - w0;
     FPSM.work += FPSM.lastWork;
     FPSM.baked = stampStats.builds !== b0; // this frame baked pictures (a new skin's eggs, thorns): the next gap is not the phone's pace
@@ -8617,8 +8653,8 @@ async function boot() {
   window.addEventListener('keyup', keyUp);
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { clearKeys(); if (G.screen === 'play') press('pause'); DR.noteSeen(save, Date.now()); engClose(); persist(); } // the Director: when the app was last open (welcome-back gift)
-    else engOpen();
+    if (document.hidden) { const sc0 = G.screen; clearKeys(); if (G.screen === 'play') press('pause'); DR.noteSeen(save, Date.now()); engClose(sc0); persist(); } // the Director: when the app was last open (welcome-back gift)
+    else { talView.t0 = performance.now(); engOpen(); }
     audioHold('hidden', document.hidden);
   });
   window.addEventListener('blur', clearKeys);
@@ -8760,7 +8796,7 @@ if (DEV) window.__egg = {
   strikeArt: { drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick },
   chickArt: { drawKindChick, drawChickEgg }, // chick kinds pose sheets (QA strips)
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
-  frame(dt = 1 / 60) { update(dt); renderAll(); }, fxStats: menuFxStats,
+  frame(dt = 1 / 60) { update(dt); renderAll(); tallyFrame(); }, fxStats: menuFxStats,
   actSteps, // film strips replay planner moves through this
   snakeArt: drawSnake, // palette strips
   hen: { anim: drawHenAnim, legacy: drawHenLegacy, events: henIdleEvents, reset: resetHen }, // M7 strips

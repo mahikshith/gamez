@@ -6,10 +6,14 @@
 //   - only for something real that is waiting: a banked spin, a spin one level away, the daily chest, a chest one star away
 //   - one a day at most, never between 21:00 and 09:00, at the hour this player usually plays
 //   - each one ignored makes the next come later; three ignored in a row and they stop until he comes back by himself
+//   - a player who stays away is told three times in all, about a day, three days and a week after he left (the
+//     simulated players showed that one note and then silence was all a leaving player ever got: tools/sim-players.mjs).
+//     The second and third say what is true by then: the welcome-back gift (director.js) is waiting. Then nothing more.
+//     All three are planned on leaving and all are cancelled the moment he opens the game.
 //   - asked once, on a win, from level HERALD.askFrom, never for a child profile; a switch in Settings turns them off
 import { slot } from './hub.js';
 
-export const HERALD = { askFrom: 6, quietFrom: 21, quietTo: 9, hour: 18, minAheadH: 18, giveUp: 3, sent: 6 };
+export const HERALD = { askFrom: 6, quietFrom: 21, quietTo: 9, hour: 18, minAheadH: 18, giveUp: 3, sent: 6, backDays: [3, 7], backFrom: 3 }; // backDays: the two later notes, days after leaving; backFrom: the level the welcome-back gift exists from
 const HOUR = 3600000, num = (v) => Math.max(0, Number(v) || 0);
 const SAFE = new WeakSet();
 export function herState(save) {
@@ -19,7 +23,7 @@ export function herState(save) {
   const s = {
     ok: h.ok === 1 ? 1 : h.ok === -1 ? -1 : 0, // 1 allowed, -1 refused, 0 never asked
     asked: num(h.asked), off: !!h.off, // off: the player's own switch in Settings
-    plan: h.plan && typeof h.plan === 'object' && num(h.plan.at) ? { at: num(h.plan.at), id: String(h.plan.id || '').slice(0, 12) } : null,
+    plan: h.plan && typeof h.plan === 'object' && num(h.plan.at) ? { at: num(h.plan.at), id: String(h.plan.id || '').slice(0, 12), more: (Array.isArray(h.plan.more) ? h.plan.more : []).filter((m) => m && num(m.at)).slice(0, 2).map((m) => ({ at: num(m.at), id: String(m.id || '').slice(0, 12) })) } : null,
     sent: Array.isArray(h.sent) ? h.sent.filter((q) => q && num(q.t)).slice(-HERALD.sent).map((q) => ({ t: num(q.t), id: String(q.id || '').slice(0, 12), open: q.open ? 1 : 0 })) : [],
     ignored: Math.floor(num(h.ignored)), n: Math.floor(num(h.n)), opened: Math.floor(num(h.opened)),
   };
@@ -35,6 +39,8 @@ const TEXT = {
   chest: ['One star to your next chest', 'There is an egg skin inside.'],
   chest0: ['One star to your next chest', 'Coins and a booster are inside.'],
   daily: ['A new treasure chest is in the coop', 'Today’s coins are waiting.'],
+  back: ['The hen kept a gift for you', 'Coins and a booster for coming back.'],
+  back2: ['Your welcome-back gift is still here', 'The hen and her eggs are waiting.'],
 };
 export function reasons(ctx = {}) {
   const r = [];
@@ -64,8 +70,11 @@ export function plan(save, ctx = {}, now = Date.now()) {
   if (!id || (id === 'daily' && last && last.id === 'daily' && !last.open)) return null;
   const wait = HERALD.minAheadH * (1 + H.ignored); // ignored once: a day later still; twice: later again
   const at = slotAt(now + wait * HOUR, ctx.hour == null ? -1 : ctx.hour);
-  H.plan = { at, id };
-  return { at, id, title: TEXT[id][0], text: TEXT[id][1] };
+  // the two later notes, only for a player who has not been ignoring them, and only where the gift they speak of exists
+  const more = [];
+  if (!H.ignored && num(ctx.unlocked) >= HERALD.backFrom) HERALD.backDays.forEach((d, i) => { const t = slotAt(Math.max(now + d * 24 * HOUR, at + 20 * HOUR), ctx.hour == null ? -1 : ctx.hour), mid = i ? 'back2' : 'back'; if (!more.length || t - more[more.length - 1].at >= 20 * HOUR) more.push({ at: t, id: mid, title: TEXT[mid][0], text: TEXT[mid][1] }); });
+  H.plan = { at, id, more: more.map((m) => ({ at: m.at, id: m.id })) };
+  return { at, id, title: TEXT[id][0], text: TEXT[id][1], more };
 }
 // the game came to the front. from: the reminder id it was opened from ('' = by himself). Settles the plan that was pending.
 export function opened(save, from = '', now = Date.now()) {
@@ -73,12 +82,12 @@ export function opened(save, from = '', now = Date.now()) {
   H.plan = null;
   if (!P) return null;
   if (now < P.at) return { fired: false }; // he came back before it was due: it is cancelled, nothing to grade
-  const hit = !!from;
-  H.sent = [...H.sent, { t: P.at, id: P.id, open: hit ? 1 : 0 }].slice(-HERALD.sent);
-  H.n += 1;
-  if (hit) { H.opened += 1; H.ignored = 0; } else H.ignored += 1;
+  const shown = [P, ...(P.more || [])].filter((q) => q.at <= now), hit = !!from, by = hit ? shown.find((q) => q.id === from) || shown[shown.length - 1] : null;
+  H.sent = [...H.sent, ...shown.map((q) => ({ t: q.at, id: q.id, open: q === by ? 1 : 0 }))].slice(-HERALD.sent);
+  H.n += shown.length;
+  if (hit) { H.opened += 1; H.ignored = 0; } else H.ignored = Math.min(HERALD.giveUp, H.ignored + shown.length);
   if (!hit && H.ignored >= HERALD.giveUp && now - P.at > 5 * 24 * HOUR) H.ignored = HERALD.giveUp - 1; // he came back by himself after days away: one more chance
-  return { fired: true, hit, id: P.id };
+  return { fired: true, hit, id: by ? by.id : P.id, shown: shown.length };
 }
 // is this win the moment to ask for permission? Once, on a good win, when there is something real to promise.
 export function shouldAsk(save, ctx = {}) {

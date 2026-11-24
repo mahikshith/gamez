@@ -13,7 +13,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 
 /**
- * 0.8.15: one local reminder, planned by the game when it goes to the background (src/engine/herald.js decides whether,
+ * 0.8.15: local reminders (one, and for a long absence two later ones; each replaces the last on the screen), planned by the game when it goes to the background (src/engine/herald.js decides whether,
  * when and what; this class only keeps the appointment). Nothing is sent to or received from any server: the alarm
  * and the notification are made on this phone. The alarm is inexact (no exact-alarm permission), a reboot drops it
  * (the game plans the next one the next time it is closed), and opening the game cancels it.
@@ -34,18 +34,20 @@ public class Reminders extends BroadcastReceiver {
         } catch (Throwable t) { return "off"; }
     }
 
-    private static PendingIntent alarmIntent(Context c, String id, String title, String text, int flags) {
+    static final int SLOTS = 3; // the reminder itself, and the two later notes of a long absence (herald.js backDays)
+
+    private static PendingIntent alarmIntent(Context c, int slot, String id, String title, String text, int flags) {
         Intent i = new Intent(c, Reminders.class).setAction(ACTION);
         if (id != null) i.putExtra("id", id).putExtra("title", title).putExtra("text", text);
-        return PendingIntent.getBroadcast(c, REQ, i, flags | PendingIntent.FLAG_IMMUTABLE);
+        return PendingIntent.getBroadcast(c, REQ + 10 + slot, i, flags | PendingIntent.FLAG_IMMUTABLE);
     }
 
-    static void schedule(Context c, long atMs, String id, String title, String text) {
+    static void schedule(Context c, int slot, long atMs, String id, String title, String text) {
         try {
-            if (!"granted".equals(state(c)) || atMs <= System.currentTimeMillis() || title == null || title.isEmpty()) return;
+            if (slot < 0 || slot >= SLOTS || !"granted".equals(state(c)) || atMs <= System.currentTimeMillis() || title == null || title.isEmpty()) return;
             AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
             if (am == null) return;
-            PendingIntent pi = alarmIntent(c, id == null ? "" : id, clip(title, 60), clip(text, 120), PendingIntent.FLAG_UPDATE_CURRENT);
+            PendingIntent pi = alarmIntent(c, slot, id == null ? "" : id, clip(title, 60), clip(text, 120), PendingIntent.FLAG_UPDATE_CURRENT);
             am.cancel(pi);
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, pi); // inexact on purpose: a reminder may come a little late, never needs the exact-alarm permission
         } catch (Throwable t) { /* a reminder is optional */ }
@@ -54,8 +56,10 @@ public class Reminders extends BroadcastReceiver {
     static void cancel(Context c) {
         try {
             AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
-            PendingIntent pi = alarmIntent(c, null, null, null, PendingIntent.FLAG_NO_CREATE);
-            if (am != null && pi != null) { am.cancel(pi); pi.cancel(); }
+            for (int slot = 0; slot < SLOTS; slot++) {
+                PendingIntent pi = alarmIntent(c, slot, null, null, null, PendingIntent.FLAG_NO_CREATE);
+                if (am != null && pi != null) { am.cancel(pi); pi.cancel(); }
+            }
             NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.cancel(NOTE_ID); // one that is already showing goes too: he is in the game now
         } catch (Throwable t) { /* optional */ }

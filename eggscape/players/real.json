@@ -1,0 +1,1 @@
+{ "about": "Counts from shared speed logs (tools/read-log.mjs). Empty until the first log from build 0.8.15 or later is filed.", "logs": 0, "phones": {}, "levels": {}, "buttons": {}, "screens": {}, "ends": {}, "shopFirst": [] }
