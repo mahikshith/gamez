@@ -1568,7 +1568,13 @@ async function press(id) {
       const total = bestTotal();
       const ch = E.chestFor(total, save.wallet.chests), sk = ch && ch.reward.skin && !E.ownsSkin(save.wallet, ch.reward.skin) ? E.SKINS[ch.reward.skin] : null;
       const w = E.openChest(save.wallet, ch);
-      if (w) { save.wallet = w; persist(); audio.play('treasure_open'); purse.gain({ src: G.pressAt }); toast(sk ? `Chest opened! The ${sk.name} egg, coins and a booster.` : 'Chest opened! Coins and a booster.', 2.8); }
+      if (w) { // 0.8.15: what came out is shown, not told (the same reveal a shop pack and a spin prize get): the egg skin or the
+        // booster large, and each thing in the chest popping in under it while the coins fly to the purse
+        const c0 = save.wallet.coins, gained = w.coins - c0, B = E.BOOSTERS[ch.reward.booster], gotB = E.ownedCount(w, ch.reward.booster) > E.ownedCount(save.wallet, ch.reward.booster);
+        save.wallet = w; persist(); audio.play('treasure_open'); if (gained > 0) purse.hold(c0);
+        startGot({ name: sk ? `${sk.name} egg` : 'Star chest', art: sk ? 'egg:' + ch.reward.skin : 'chest', quiet: true, coins: gained,
+          items: [gained > 0 && { art: 'coins', label: '+' + gained }, gotB && B && { art: 'boost:' + ch.reward.booster, label: B.name }].filter(Boolean), line: sk ? 'Yours to keep' : 'Added to your bag' });
+      }
       break;
     }
     case 'adboost': {
@@ -8479,7 +8485,7 @@ const villainName = (k) => `The ${(VILLAIN_INFO[k] || {}).name || "villain"}`;
 const sliceName = (s) => (s.kind === 'villain' ? 'Three villains' : s.kind === 'coins' ? `${s.n} coins` : s.kind === 'booster' ? (s.n > 1 ? `${s.n} boosters` : '1 booster') : s.kind === 'coupon' ? 'Half-price ticket' : s.kind === 'charge' ? E.CHARGE_ITEM.name : s.kind === 'scare' ? E.BOOSTERS.scare.name : s.kind === 'skip' ? E.ITEMS.skip.name : 'Rare bird');
 const sliceNote = (s) => (s.kind === 'villain' ? 'No prize. Never twice in a row' : s.kind === 'booster' ? 'Any kind' : s.kind === 'coupon' ? `${Math.round((E.COUPON.coins * SP.coinX(save)) / 5) * 5} coins if you hold one` : s.kind === 'scare' ? 'Villains keep away at the start' : s.kind === 'rare' ? 'An outfit or a chick you do not own' : '');
 // the prize's picture: the reveal's hero and the odds sheet's rows share it
-function spinArt(c, art, x, y, s, t) { if (art === 'ticket') drawTicket(c, x, y, s * 0.9); else if (art === 'skip') drawItemArt(c, 'skip', x, y, s, t); else drawPart(c, art, x, y, s, t); }
+function spinArt(c, art, x, y, s, t) { if (art === 'chest') drawChest(c, x, y + s * 0.06, s * 0.62, t, 'open'); else if (art === 'ticket') drawTicket(c, x, y, s * 0.9); else if (art === 'skip') drawItemArt(c, 'skip', x, y, s, t); else drawPart(c, art, x, y, s, t); }
 const REEL_T = [1.9, 2.55, 3.3]; // seconds each reel runs: left, middle, right (the last one keeps you waiting)
 function openSpin() {
   if (!SP.open(save) || G.screen === 'spin') return;
