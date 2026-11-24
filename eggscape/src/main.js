@@ -215,6 +215,8 @@ function waitingCtx() {
   const total = bestTotal(), ch = E.chestFor(total, save.wallet.chests), on = SP.open(save), spins = on ? SP.banked(save) : 0, left = on ? SP.left(save) : 0;
   return { spins, spinLeft: spins ? 0 : left, starsToChest: ch && !ch.ready ? ch.at - total : 0, chestSkin: !!(ch && ch.reward.skin && !E.ownsSkin(save.wallet, ch.reward.skin)), daily: true, child: OF.childSafe(save), waiting: spins > 0 || left === 1 };
 }
+// what a skin, an outfit or a chick costs him right now: half while a half-price ticket is held (economy.js COUPON)
+const upPrice = (list) => E.unlockPrice(save.wallet, list).price;
 const appBridge = () => { try { return typeof window !== 'undefined' && window.EggApp ? window.EggApp : null; } catch (_) { return null; } };
 // the game came to the front: a session starts or goes on; a reminder that was pending is cancelled and graded
 function engOpen() {
@@ -1814,7 +1816,7 @@ async function press(id) {
       } else if (id && id.startsWith('chick:')) {
         const k = id.slice(6), w = E.buyChick(save.wallet, k);
         if (w) { save.wallet = w; persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); toast(`${(STRIKES.find((S) => S.id === k) || {}).name || 'Power chick'} is yours!`, 2.4); }
-        else if (E.CHICK_PRICES[k] && save.wallet.coins < E.CHICK_PRICES[k]) needCoins(E.CHICK_PRICES[k]);
+        else if (E.CHICK_PRICES[k] && save.wallet.coins < upPrice(E.CHICK_PRICES[k])) needCoins(upPrice(E.CHICK_PRICES[k]));
       } else if (id && id.startsWith('charge:')) {
         const w = E.buyCharges(save.wallet, id.slice(7)), P = E.CHARGE_PACKS.find((q) => q.id === id.slice(7));
         if (w) { save.wallet = w; persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
@@ -1823,12 +1825,12 @@ async function press(id) {
         const k = id.slice(4);
         const w = E.ownsHenSkin(save.wallet, k) ? E.equipHenSkin(save.wallet, k) : E.buyHenSkin(save.wallet, k);
         if (w) { save.wallet = w; DR.endTrial(save, 'hen'); persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); } // a chosen look ends a trial
-        else if (E.HEN_SKINS[k] && save.wallet.coins < E.HEN_SKINS[k].price) needCoins(E.HEN_SKINS[k].price);
+        else if (E.HEN_SKINS[k] && save.wallet.coins < upPrice(E.HEN_SKINS[k].price)) needCoins(upPrice(E.HEN_SKINS[k].price));
       } else if (id && id.startsWith('skin:')) {
         const k = id.slice(5);
         const w = E.ownsSkin(save.wallet, k) ? E.equipSkin(save.wallet, k) : E.buySkin(save.wallet, k);
         if (w) { save.wallet = w; DR.endTrial(save, 'skin'); persist(); W.setSkin(w.skin); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
-        else if (E.SKINS[k] && save.wallet.coins < E.SKINS[k].price) needCoins(E.SKINS[k].price);
+        else if (E.SKINS[k] && save.wallet.coins < upPrice(E.SKINS[k].price)) needCoins(upPrice(E.SKINS[k].price));
       } else if (id === 'got:tap') { // the purchase reveal: a tap skips to its end, the next closes it
         const R = G.got;
         if (R && !save.calm && G.t - R.t0 < R.end) { R.t0 = G.t - R.end; R.popped = R.items.length; if (R.coins0 != null) R.landed = true; }
@@ -2002,8 +2004,8 @@ function shopBrain() {
   const w = save.wallet, sig = `${w.coins}|${(w.skins || []).length}|${(w.henSkins || []).length}|${(w.chicks || []).length}|${w.noAds}|${w.starter}|${w.collector}`;
   if (G.shopPlan && G.shopPlan.sig === sig && G.t - G.shopPlan.at < 1 && G.t >= G.shopPlan.at) return G.shopPlan.out;
   const D = DR.dirState(save), tr = D.trials || {}, items = [];
-  for (const id of E.SKIN_ORDER) if (id !== 'classic') items.push({ key: 'skin:' + id, kind: 'skin', price: E.SKINS[id].price, owned: (w.skins || []).includes(id), tried: (tr.skins || []).includes(id) });
-  for (const id of E.HEN_SKIN_ORDER) if (id !== 'classic' && !E.HEN_SKINS[id].premium) items.push({ key: 'hen:' + id, kind: 'hen', price: E.HEN_SKINS[id].price, owned: (w.henSkins || []).includes(id), tried: (tr.hens || []).includes(id) });
+  for (const id of E.SKIN_ORDER) if (id !== 'classic') items.push({ key: 'skin:' + id, kind: 'skin', price: upPrice(E.SKINS[id].price), owned: (w.skins || []).includes(id), tried: (tr.skins || []).includes(id) });
+  for (const id of E.HEN_SKIN_ORDER) if (id !== 'classic' && !E.HEN_SKINS[id].premium) items.push({ key: 'hen:' + id, kind: 'hen', price: upPrice(E.HEN_SKINS[id].price), owned: (w.henSkins || []).includes(id), tried: (tr.hens || []).includes(id) });
   for (const c of lockedChicks()) items.push({ key: 'chick:' + c.id, kind: 'chick', price: c.price, owned: false, tried: (tr.chicks || []).includes(c.id) });
   for (const id of E.BOOSTER_ORDER) items.push({ key: 'boost:' + id, kind: 'boost', price: E.BOOSTERS[id].price, owned: E.ownedCount(w, id) });
   for (const id of Object.keys(E.KITS)) items.push({ key: 'kit:' + id, kind: 'kit', price: E.kitPrice(id), owned: false });
@@ -2313,7 +2315,7 @@ function drawParentCheck() {
 //   press('stk:buy:<id>')   opens the small buy sheet (drawChickBuy)
 //   G.introTip              { id, line } | null: the offer engine's gentle suggestion for this intro (a line, no popup)
 function chickOffer(id) {
-  const S = STRIKE[id], price = E.CHICK_PRICES[id];
+  const S = STRIKE[id], price = upPrice(E.CHICK_PRICES[id]);
   if (!S || !price) return null;
   return { price, canAfford: save.wallet.coins >= price, owned: strikesOpen().some((q) => q.id === id) };
 }
@@ -2321,7 +2323,7 @@ function lockedChicks() {
   if (!G.sim || !G.sim.stk || !G.sim.stk.any || (G.li >= 0 && G.level.id < STRIKE_FROM)) return [];
   const open = strikesOpen();
   return STRIKES.filter((S) => !open.includes(S) && E.CHICK_PRICES[S.id])
-    .map((S) => ({ id: S.id, name: S.name, unlock: S.unlock, price: E.CHICK_PRICES[S.id], canAfford: save.wallet.coins >= E.CHICK_PRICES[S.id] }))
+    .map((S) => ({ id: S.id, name: S.name, unlock: S.unlock, price: upPrice(E.CHICK_PRICES[S.id]), canAfford: save.wallet.coins >= upPrice(E.CHICK_PRICES[S.id]) }))
     .sort((a, b) => a.price - b.price || a.unlock - b.unlock);
 }
 function buyChickForLevel(id) {
@@ -2370,7 +2372,12 @@ function drawDetail() {
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'dt:line' + i, gap: i ? 2 * s : 10 * s })),
       ...(it.perk ? [perkRow(it.perk, s, 10 * s)] : []), // an egg skin's power: the icon, its name and four words
       ...(it.parts || []).map((P, i) => partRow(P, s, 'dt:part' + i, i ? 2 * s : 10 * s)), // a kit or a set: what is inside, one row each
-      ...(it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 6 * s })] : []),
+      ...(it.sub && it.sub.strike ? [{ h: 24 * s, gap: 6 * s, draw: (x, y, w) => { // a half-price ticket in hand: the old price struck through, and what the ticket does
+        const was = it.sub.text, tail = '  Half price with your ticket', fs = 15 * s, ww = ui.measure(was, fs), tw2 = ui.measure(tail, fs), x0 = x + (w - ww - tw2) / 2, cy = y + 12 * s;
+        ui.text(was, x0, cy, { size: fs, color: it.sub.color, tag: 'dt:was' });
+        ctx.save(); ctx.strokeStyle = '#e8402e'; ctx.lineWidth = 2.4 * s; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0 - 2 * s, cy + fs * 0.18); ctx.lineTo(x0 + ww + 2 * s, cy - fs * 0.18); ctx.stroke(); ctx.restore();
+        ui.text(tail, x0 + ww, cy, { size: fs, color: '#7a48e8', maxW: w - ww, tag: 'dt:sub' });
+      } }] : it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 6 * s })] : []),
       { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x, y, w, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
       ...(tryK && it.perk && !it.trying ? [lineBlock('The power comes with it.', 14 * s, { color: C.ink2, tag: 'dt:perkfree', gap: 8 * s })] : []),
       ...(tryK ? [{ h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
@@ -2601,8 +2608,8 @@ const purse = createPurse({ clock: () => G.t, calm: () => !!save.calm, wallet: (
 // something new (an egg, an outfit, a reached chick, a set) the player has not seen in the shop yet
 function markItems() {
   const w = save.wallet, tr = DR.dirState(save).trials || {}, items = [];
-  for (const id of E.SKIN_ORDER) if (id !== 'classic') items.push({ key: 'skin:' + id, kind: 'skin', price: E.SKINS[id].price, owned: (w.skins || []).includes(id), tried: (tr.skins || []).includes(id) });
-  for (const id of E.HEN_SKIN_ORDER) if (id !== 'classic' && !E.HEN_SKINS[id].premium) items.push({ key: 'hen:' + id, kind: 'hen', price: E.HEN_SKINS[id].price, owned: (w.henSkins || []).includes(id), tried: (tr.hens || []).includes(id) });
+  for (const id of E.SKIN_ORDER) if (id !== 'classic') items.push({ key: 'skin:' + id, kind: 'skin', price: upPrice(E.SKINS[id].price), owned: (w.skins || []).includes(id), tried: (tr.skins || []).includes(id) });
+  for (const id of E.HEN_SKIN_ORDER) if (id !== 'classic' && !E.HEN_SKINS[id].premium) items.push({ key: 'hen:' + id, kind: 'hen', price: upPrice(E.HEN_SKINS[id].price), owned: (w.henSkins || []).includes(id), tried: (tr.hens || []).includes(id) });
   for (const c of lockedChicks()) items.push({ key: 'chick:' + c.id, kind: 'chick', price: c.price, owned: false, tried: (tr.chicks || []).includes(c.id) });
   for (const id of E.SET_ORDER) { const S = E.SETS[id]; items.push({ key: 'set:' + id, kind: 'set', price: E.setPrice(w, id), owned: (w.henSkins || []).includes(S.hen) && (w.skins || []).includes(S.egg) }); }
   return items.filter((i) => storeItem(i.key, { wallet: w }));

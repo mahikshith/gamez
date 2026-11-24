@@ -17,7 +17,7 @@ import { themeBack } from './theme.js';
 import { BOOSTERS, BOOSTER_ORDER, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin,
   CHARGE_PACKS, MAX_CHARGES, HEN_SKINS, HEN_SKIN_ORDER, ownsHenSkin, ITEMS, ITEM_ORDER, itemCount, CHICK_PRICES, ownsChick, skinPerk,
   IAP, COIN_PACKS, iapAvailable, usdHint, BANK_OPEN, BANK_CAP, BUNDLES, bundleParts, bundleTimes, CHICK_IDS,
-  KITS, KIT_ORDER, kitPrice, kitSave, kitFull, SETS, SET_ORDER, setAvailable, setPrice, setSave, sampleFor, bundleValue, dailyDeal, DEAL_OFF } from '../economy.js';
+  KITS, KIT_ORDER, kitPrice, kitSave, kitFull, SETS, SET_ORDER, setAvailable, setPrice, setSave, sampleFor, bundleValue, dailyDeal, DEAL_OFF, unlockPrice, couponHeld } from '../economy.js';
 import { drawStrikeToken, STRIKES } from '../render/strike.js';
 import { drawHenPose, henPose, setHenSkin } from '../render/hen.js';
 import { skinId } from '../render/skins.js';
@@ -495,6 +495,7 @@ function drawCard(ui, ctx, item, x, y, cw, ch, s, t, wide) {
   });
   if (item.sub) {
     ui.text(item.sub.text, bx + bw / 2, by + bh + 3 * s + subSize * 0.55, { size: subSize, align: 'center', maxW: bw, color: item.sub.color, tag: 'store:sub:' + item.key });
+    strikeSub(ui, ctx, item.sub, bx + bw / 2, by + bh + 3 * s + subSize * 0.55, subSize, s, false);
   }
 
   // name + one-line explanation (wrapped), centered vertically in the middle column
@@ -531,7 +532,7 @@ function drawFeaturedNarrow(ui, ctx, item, tx, y, xr, fh, p, s, t) {
   let cy = y + p;
   if (item.tag) {
     const pw = pill(ui, ctx, item.tag, tx, cy, 13 * s, '#e8402e', 'store:tag:' + item.key, s);
-    if (item.sub) ui.text(item.sub.text, xr, cy + 9.5 * s, { size: 12.5 * s, align: 'right', maxW: tw - pw - 6 * s, color: item.sub.color, tag: 'store:sub:' + item.key });
+    if (item.sub) { ui.text(item.sub.text, xr, cy + 9.5 * s, { size: 12.5 * s, align: 'right', maxW: tw - pw - 6 * s, color: item.sub.color, tag: 'store:sub:' + item.key }); strikeSub(ui, ctx, item.sub, xr, cy + 9.5 * s, 12.5 * s, s, true); }
     cy += 23 * s;
   }
   const nameSize = fitWrap(ui, item.name, tw, 1, 21 * s, 15 * s).size; // shrink a long name (Unlock Everything) rather than cut it
@@ -560,9 +561,23 @@ const flashOf = (st, id) => (st.flash && st.flash.id === id ? st.flash.t : 99);
 // show the same deal price and buy through 'deal:buy'
 const dealOn = (st, key) => (st.deal && !st.deal.done && st.deal.key === key ? st.deal : null);
 const OFF_TAG = Math.round(DEAL_OFF * 100) + '% off';
+// THE HALF-PRICE TICKET (0.8.15, won on the wheel; economy.js COUPON): while one is held, every skin, outfit and chick
+// still to own shows half its price with the old one struck through; the first one bought uses the ticket up. No clock.
+const TICKET_COL = '#7a48e8';
+function withTicket(item, st, list) {
+  const U = unlockPrice(st.wallet, list);
+  if (!U.coupon || item.owned || !item.btn || item.btn.disabled || !item.btn.coin) return item;
+  return { ...item, btn: { ...item.btn, label: String(U.price), ...(st.wallet.coins >= U.price ? GREEN : GREY) }, sub: { text: String(U.was), color: 'rgba(110,70,30,0.8)', strike: true }, ticket: U };
+}
+// a sub line that is an old price: struck through in red (cx: its middle, or its right edge with right = true)
+function strikeSub(ui, ctx, sub, x, y, size, s, right) {
+  if (!sub || !sub.strike) return;
+  const w = ui.measure(sub.text, size), x0 = right ? x - w : x - w / 2;
+  ctx.save(); ctx.strokeStyle = '#e8402e'; ctx.lineWidth = 2.2 * s; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0 - 2 * s, y + size * 0.16); ctx.lineTo(x0 + w + 2 * s, y - size * 0.16); ctx.stroke(); ctx.restore();
+}
 function withDeal(item, st) {
   const D = dealOn(st, item.key);
-  if (!D) return item;
+  if (!D || item.ticket) return item; // a ticket in hand is the better price: the item shows that
   return { ...item, badge: OFF_TAG + ' today', badgeCol: '#e8402e', btn: { id: 'deal:buy', label: String(D.price), coin: true, ...(st.wallet.coins >= D.price ? GREEN : GREY) }, sub: { text: `Today's deal, was ${D.was}`, color: '#c0392b' }, deal: D };
 }
 
@@ -593,12 +608,12 @@ function skinItem(id, st) {
     btn = { id: 'skin:' + id, label: String(k.price), coin: true, ...(ok ? GREEN : GREY) };
   }
   const P = skinPerk(id);
-  return withDeal({
-    key: 'skin:' + id, name: k.name, line: k.line, perk: P, // the power shows as its own chip and row (drawTile, main.js perkRow) owned: owns, trying: !owns && st.trial && st.trial.skin === id,
+  return withDeal(withTicket({
+    key: 'skin:' + id, name: k.name, line: k.line, perk: P, owned: owns, trying: !owns && st.trial && st.trial.skin === id, // perk: the power shows as its own chip and row (drawTile, main.js perkRow)
     flash: flashOf(st, 'skin:' + id),
     icon: (ctx, cx, cy, it, t, bounce) => drawSkinPreview(ctx, id, cx, cy + it * 0.02, it * 0.8 * bounce, t),
     btn, sub: null,
-  }, st);
+  }, st, k.price), st);
 }
 
 function chargeItem(P, st) {
@@ -630,7 +645,7 @@ function coinItemCard(id, st) {
 
 function chickItem(S, st) {
   const w = st.wallet, mine = ownsChick(w, S.id) || (!S.premium && st.reach >= S.unlock), price = CHICK_PRICES[S.id], ok = w.coins >= price;
-  return {
+  return withTicket({
     key: 'chick:' + S.id, name: S.name, owned: mine, badge: mine || S.premium ? null : 'Lv ' + S.unlock, premium: !!S.premium,
     line: S.premium ? `${S.up} Downside: ${S.down}${mine ? '' : ' Premium: coins only.'}` : mine ? 'Yours: usable in every level with villains.' : `Free at level ${S.unlock}. Or unlock it now.`,
     flash: flashOf(st, 'chick:' + S.id),
@@ -640,7 +655,7 @@ function chickItem(S, st) {
     },
     btn: mine ? OWNED('chick:' + S.id, 'Yours') : { id: 'chick:' + S.id, label: String(price), coin: true, ...(ok ? GREEN : GREY) },
     sub: mine ? null : { text: S.premium ? 'Premium chick' : 'Unlock now', color: S.premium ? '#b0700a' : C.ink2 },
-  };
+  }, st, mine ? 0 : price);
 }
 
 // the hen in a skin, standing, for the shop card (the global skin is put back right after)
@@ -658,12 +673,12 @@ function henItem(id, st) {
   else if (owns) btn = { id: 'hen:' + id, label: 'Equip', size: 19, kind: 'secondary' };
   else if (k.premium) btn = { id: 'tile:iap:' + PREMIUM, label: 'Unlock all', size: 16, kind: 'gold' }; // what Unlock Everything holds first
   else { const ok = w.coins >= k.price; btn = { id: 'hen:' + id, label: String(k.price), coin: true, ...(ok ? GREEN : GREY) }; }
-  return withDeal({
+  return withDeal(withTicket({
     key: 'hen:' + id, name: k.name, line: k.line, owned: owns, trying: !owns && st.trial && st.trial.hen === id,
     flash: flashOf(st, 'hen:' + id),
     icon: (ctx, cx, cy, it, t, bounce) => drawHenSkinPreview(ctx, id, cx, cy + it * 0.04, it * 0.84 * bounce, t),
     btn, sub: null,
-  }, st);
+  }, st, k.premium ? 0 : k.price), st);
 }
 
 const PREMIUM = 'eggscape_premium';
@@ -1180,11 +1195,21 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   const fill = B.keepFace ? '#fffaf0' : B.disabled ? '#b8ad9e' : coinChip ? (ok ? '#3eb42d' : '#a09383') : B.kind === 'gold' ? '#f6a21b' : B.kind === 'secondary' ? '#3a80ea' : B.kind === 'ad' ? '#7a48e8' : B.kind === 'off' ? '#a09383' : '#3eb42d';
   ui.roundRect(cx0, cy0, cwid, chipH, chipH / 2); ctx.fillStyle = fill; ctx.fill();
   ctx.lineWidth = 1.5 * s; ctx.strokeStyle = B.keepFace ? 'rgba(47,143,42,0.6)' : 'rgba(30,15,5,0.45)'; ctx.stroke();
-  const ls = 14.5 * s, lw = ui.measure(B.label, ls), icoW = coinChip || B.keepFace ? ls * 1.15 : B.ad ? ls * 1.45 : 0, tx = x + w / 2 - (lw + icoW) / 2;
+  const ls = 14.5 * s, lw = ui.measure(B.label, ls), icoW = coinChip || B.keepFace ? ls * 1.15 : B.ad ? ls * 1.45 : 0;
+  // a half-price ticket in hand: the old price, small and struck through, stands before the new one
+  const TK = item.ticket && coinChip && !item.trying ? item.ticket : null, ws = ls * 0.8, wasW = TK ? ui.measure(String(TK.was), ws) + 7 * s : 0, tx = x + w / 2 - (lw + icoW + wasW) / 2 + wasW;
+  if (TK) {
+    const wx = tx - wasW, wy = cy0 + chipH / 2 + 0.5 * s;
+    ui.text(String(TK.was), wx, wy, { size: ws, color: 'rgba(255,255,255,0.82)', tag: 'store:was:' + item.key, group: 'store:chip:' + item.key });
+    ctx.save(); ctx.strokeStyle = '#ff5a48'; ctx.lineWidth = 2.2 * s; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(wx - 1.5 * s, wy + ws * 0.2); ctx.lineTo(wx + wasW - 5.5 * s, wy - ws * 0.2); ctx.stroke(); ctx.restore();
+    const tg = '-50%', ts = 10.5 * s, pw = ui.measure(tg, ts) + 12 * s, ph = ts * 1.7, px = x + w - pw - 5 * s, py = y + 5 * s; // the tag sits in the tile's corner, the art keeps its size
+    ui.roundRect(px, py, pw, ph, ph / 2); ctx.fillStyle = TICKET_COL; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(40,15,80,0.7)'; ctx.stroke();
+    ui.text(tg, px + pw / 2, py + ph / 2 + 0.5 * s, { size: ts, align: 'center', color: '#fff', tag: 'store:off:' + item.key, group: 'store:tart:' + item.key });
+  }
   if (coinChip) drawCoin(ctx, tx + ls * 0.5, cy0 + chipH / 2, ls * 0.5, t);
   else if (B.ad) drawAdBadge(ctx, tx, cy0 + chipH / 2, ls * 1.2, ls * 0.86); // a video: the same film badge as every ad button
   else if (B.keepFace) { ctx.strokeStyle = C.good; ctx.lineWidth = 2.5 * s; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(tx + ls * 0.1, cy0 + chipH / 2); ctx.lineTo(tx + ls * 0.38, cy0 + chipH / 2 + ls * 0.28); ctx.lineTo(tx + ls * 0.85, cy0 + chipH / 2 - ls * 0.3); ctx.stroke(); }
-  ui.text(B.label, tx + icoW + lw / 2, cy0 + chipH / 2 + 0.5 * s, { size: ls, align: 'center', maxW: cwid - icoW - 8 * s, color: B.keepFace ? C.good : '#fff', stroke: B.keepFace ? null : 'rgba(30,15,5,0.55)', strokeW: 3 * s, tag: 'store:chip:' + item.key });
+  ui.text(B.label, tx + icoW + lw / 2, cy0 + chipH / 2 + 0.5 * s, { size: ls, align: 'center', maxW: cwid - icoW - wasW - 8 * s, color: B.keepFace ? C.good : '#fff', stroke: B.keepFace ? null : 'rgba(30,15,5,0.55)', strokeW: 3 * s, tag: 'store:chip:' + item.key });
   if (item.count > 0) { // how many the player holds
     const br = 11 * s, bx = x + w - br - 5 * s, by = y + br + 5 * s;
     ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fillStyle = '#e8402e'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#5a110a'; ctx.stroke();
