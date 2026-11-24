@@ -4876,7 +4876,7 @@ function drawAllyBtn() {
     if (!free && can && tk > 0) allyTicket(x, y, bs, tk); else if (!free && can) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
   };
   G.roosterCoach = coach;
-  if (still) { hudLayer('ally', x + ',' + y + ',' + bs + '|' + (can ? 1 : 0) + (free ? 1 : 0) + '|' + Math.min(tk || 0, 99) + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x - 3 * u, y - 3 * u, bs + 12 * u, bs + 9 * u, face); return; }
+  if (still) { hudLayer('ally', W_ + ',' + H_ + '|' + (can ? 1 : 0) + (free ? 1 : 0) + '|' + Math.min(tk || 0, 99) + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x - 3 * u, y - 3 * u, bs + 12 * u, bs + 9 * u, face); return; }
   face();
   // 2026-11-20 (mykee: "we did not show the user how to use Papa Rooster"): the first time he can help, a hand taps his
   // button and a bubble says what he does; that first call is free
@@ -4954,7 +4954,7 @@ function hudLayer(slot, key, x, y, w, h, paint) {
     leakState(main, c);
     ctx = c; ui.ctx = c;
     try { ret = paint(); } finally { ctx = main; ui.ctx = main; }
-    L = { cv, key, x0, y0, pw, ph, dpr: DPR, ret, rects: ui.rects.slice(r0), buttons: ui.buttons.slice(b0) };
+    L = { cv, key, x0, y0, pw, ph, dpr: DPR, ret, rects: ui.rects.slice(r0), buttons: ui.buttons.slice(b0), left: { lineJoin: c.lineJoin, lineCap: c.lineCap, lineWidth: c.lineWidth, miterLimit: c.miterLimit, textAlign: c.textAlign, textBaseline: c.textBaseline, fillStyle: c.fillStyle, strokeStyle: c.strokeStyle, font: c.font } };
     HL.set(slot, L);
     HUD_CACHE.builds++;
   } else {
@@ -4964,7 +4964,7 @@ function hudLayer(slot, key, x, y, w, h, paint) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(L.cv, x0, y0);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  leakState(L.cv.getContext('2d'), ctx);
+  leakState(L.left, ctx);
   return L.ret;
 }
 // Drawing code all over the game leans on what earlier code left set on the context (ui.text leaves round line joins,
@@ -5331,7 +5331,7 @@ function drawZoomBtns() {
   if (items.some(([id]) => btnLive(id))) return paint(); // a pressed button squashes: drawn live
   // 0.8.15 speed: the buttons stand still, so they are one picture (hudLayer) until one is pressed or the layout moves
   const [xa, ya] = at(0), [xb, yb] = at(items.length - 1), x0 = Math.min(xa, xb) - 3 * u, y0 = Math.min(ya, yb) - 3 * u;
-  hudLayer('zoom', items.length + '|' + xa + ',' + ya + ',' + xb + ',' + yb + ',' + bs + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x0, y0, Math.max(xa, xb) + bs + 3 * u - x0, Math.max(ya, yb) + bs + 6 * u - y0, paint);
+  hudLayer('zoom', items.length + '|' + W_ + ',' + H_ + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x0, y0, Math.max(xa, xb) + bs + 3 * u - x0, Math.max(ya, yb) + bs + 6 * u - y0, paint);
 }
 
 function drawPopups() {
