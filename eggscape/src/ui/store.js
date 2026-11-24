@@ -1112,8 +1112,8 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   const bounce = item.flash < 0.6 ? 1 + 0.2 * Math.sin((item.flash / 0.6) * Math.PI) : 1;
   item.icon(ctx, acx, acy, Math.min(w * 0.86, ah * 1.06), t, bounce);
   ui.record({ x: acx - Math.min(w * 0.86, ah) / 2, y: acy - ah / 2, w: Math.min(w * 0.86, ah), h: ah }, 'store:tart:' + item.key);
-  const nm = item.short || item.name, nmw = ui.measure(nm, nameS), nmMax = w - 12 * s; // shrink a long name to fit whole ("Snowy Owl Look" at 360 px) rather than cut it
-  ui.text(nm, x + w / 2, y + 6 * s + top + ah + 4 * s + nameS * 0.6, { size: nmw > nmMax ? Math.floor(nameS * nmMax / nmw * 0.97) : nameS, align: 'center', maxW: w - 12 * s, color: tint(col, -0.72), tag: 'store:tname:' + item.key });
+  const nm = item.short || item.name, nmw = ui.measure(nm, nameS), nmMax = w - 7 * s; // (0.8.14: "Snowy Owl Look" keeps the size of its neighbours; only a longer name still shrinks) shrink a long name to fit whole ("Snowy Owl Look" at 360 px) rather than cut it
+  ui.text(nm, x + w / 2, y + 6 * s + top + ah + 4 * s + nameS * 0.6, { size: nmw > nmMax ? Math.floor(nameS * nmMax / nmw * 0.97) : nameS, align: 'center', maxW: nmMax, color: tint(col, -0.72), tag: 'store:tname:' + item.key });
   if (item.perk) { // the egg skin's power: its icon and at most four words
     const py = y + 6 * s + top + ah + 4 * s + nameS * 1.3, ph = 19 * s, room = w - 8 * s - ph - 10 * s;
     const fs = Math.max(7 * s, Math.min(10.5 * s, (10.5 * s * room) / Math.max(1, ui.measure(item.perk.line, 10.5 * s)))); // the whole line fits, however small the tile
@@ -1198,7 +1198,10 @@ export function drawStore(ui, ctx, W, H, state) {
   // the room paints edge to edge (W x H); everything in it lays out in the safe rect (state.area, else the whole screen)
   const AR = state.area || { x: 0, y: 0, w: W, h: H }, OX = AR.x, OY = AR.y, AW = AR.w, AH = AR.h;
   const { cols, s } = planLayout(AW, AH, ui.u);
-  const pad = D.pad * s;
+  // 0.8.14: one content column for the header, the tabs and every row (ui.pageBox: the same side margin as the level card)
+  const gap = D.gap * s, pad = ui.pageBox(Infinity, AR).pad;
+  const cw = cols === 1 ? Math.min(AW - 2 * pad, 520 * s) : Math.min(AW - 2 * pad, 2 * 440 * s + gap);
+  const P = ui.pageBox(cw, AR);
 
   // the shop's own room: deep violet, a soft light from above, slow rays (still when reduced motion is on)
   if (!themeBack(ctx, ui.skin, W, H, H * 0.8, true)) { // a skin pack paints its own room (ui/theme.js)
@@ -1222,37 +1225,33 @@ export function drawStore(ui, ctx, W, H, state) {
   ctx.restore();
   }
 
-  // ---- header: back (to where the shop was opened from), home, title ribbon, balance with a "+" to the coin packs
-  const bs = 46 * s, hg = 8 * s;
-  ui.button('back', '', OX + pad, OY + pad, bs, bs, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * s });
-  ui.button('home', '', OX + pad + bs + hg, OY + pad, bs, bs, { kind: 'hud', icon: ICON.home, iconS: 1.25, round: 15 * s });
-  const headCy = OY + pad + bs / 2 - 2 * s;
-
+  // ---- header (0.8.14: the one page header, ui.pageHeader): back and home on the left, the Shop ribbon in the middle of
+  // the screen, the balance on the right (the same gold coin button as the level card; its "+" opens the coin packs)
   const coinFl = flash && (flash.id === 'coins' || flash.id === 'ad') && flash.t < 0.9 ? 1 - flash.t / 0.9 : 0;
   // the balance rolls to its new value (a purchase counts down, an ad reward counts up)
   if (state.balHold != null) BAL.v = state.balHold; // a purchase reveal: the balance waits for its coins to land
   else if (BAL.v == null || ui.calm || Math.abs(wallet.coins - BAL.v) > 5000) BAL.v = wallet.coins;
   else if (BAL.v !== wallet.coins) { const d = wallet.coins - BAL.v; BAL.v += Math.abs(d) < 1.5 ? d : d * 0.16; }
   const balStr = String(Math.round(BAL.v));
-  const balSize = 22 * s;
-  const cr = 13 * s;
-  const tw = ui.measure(String(wallet.coins).replace(/\d/g, '0'), balSize);
-  const ph = 40 * s, pb = 32 * s;
-  const pw = 7 * s + cr * 2 + 6 * s + tw + 8 * s + pb + 4 * s;
-  const px = OX + AW - pad - pw, py = headCy - ph / 2;
-  ui.buttons.push({ id: 'store:coins', x: px, y: py, w: pw, h: ph }); // the whole pill jumps to the coin packs
-  ui.glass(px, py, pw, ph, { border: coinFl ? `rgba(255,226,120,${0.5 + 0.5 * coinFl})` : 'rgba(255,224,170,0.5)', a: 'rgba(40,24,80,0.9)', b: 'rgba(20,10,46,0.9)' });
-  drawCoin(ctx, px + 7 * s + cr, py + ph / 2, cr * (1 + 0.15 * coinFl), t);
-  ui.record({ x: px + 7 * s, y: py + ph / 2 - cr, w: cr * 2, h: cr * 2 }, 'store:coinicon', 'store:balance');
-  ui.num(balStr, px + 7 * s + cr * 2 + 6 * s, py + ph / 2, { size: balSize, tag: 'store:balance', group: 'store:balance' });
-  ui.button('store:coins', '', px + pw - 4 * s - pb, py + (ph - pb) / 2, pb, pb, { kind: 'primary', icon: ICON.plus, iconS: 1.05, round: 11 * s });
-  const rl = OX + pad + 2 * bs + hg + 16 * s, rr = px - 16 * s;
-  const rw = Math.min(150 * s, rr - rl), rs = Math.min(24 * s, Math.floor((24 * s * (rw - 26 * s)) / ui.measure('Shop', 24 * s))); // a 4-digit balance at 360 px: a smaller title, never "Sh..."
-  if (rr - rl >= 64 * s) ui.ribbon('Shop', (rl + rr) / 2, headCy - 19 * s, rw, 38 * s, { s, color: '#f0a01c', size: rs, tag: 'store:title' });
+  const hs = P.s, balSize = 21 * hs;
+  // coin, number and "+" are one group, centred in the button (as wide as its widest digits: it does not jitter while it rolls)
+  const balW = ui.measure(String(wallet.coins).replace(/\d/g, '0'), balSize), cr = 11.5 * hs, pr = 9 * hs, grpW = 2 * cr + 6 * hs + balW + 7 * hs + 2 * pr;
+  const coinW = Math.max(96 * hs, grpW + 24 * hs);
+  ui.pageHeader(P, { back: 'back', left2: { id: 'home', icon: ICON.home }, title: 'Shop', color: '#f0a01c', tag: 'store:title', right: { w: coinW, draw: (bx, by, bw, bh) => {
+    ui.button('store:coins', '', bx, by, bw, bh, { kind: 'gold', shimmer: coinFl > 0, iconS: 1, size: balSize, icon: (c, X, Y) => {
+      const gx = X - grpW / 2;
+      drawCoin(c, gx + cr, Y, cr * (1 + 0.15 * coinFl), t);
+      ui.record({ x: gx, y: Y - cr, w: 2 * cr, h: 2 * cr }, 'store:coinicon', 'btn:store:coins'); // where the coins fly to (main.js)
+      ui.text(balStr, gx + 2 * cr + 6 * hs + balW / 2, Y, { size: balSize, align: 'center', color: '#fff', stroke: '#6b3d04', strokeW: Math.max(2 * hs, balSize * 0.15), shadow: '#6b3d04', shadowD: balSize * 0.07, tag: 'store:balance', group: 'btn:store:coins' });
+      const pcx = gx + grpW - pr; // the "+": the coin packs
+      c.beginPath(); c.arc(pcx, Y, pr, 0, 7); c.fillStyle = '#3cb043'; c.fill(); c.lineWidth = 1.6 * hs; c.strokeStyle = '#1f6b24'; c.stroke();
+      c.fillStyle = '#fff'; c.fillRect(pcx - pr * 0.5, Y - pr * 0.13, pr, pr * 0.26); c.fillRect(pcx - pr * 0.13, Y - pr * 0.5, pr * 0.26, pr);
+    } });
+  } } });
 
-  // ---- tabs
-  const tg = 6 * s, tabW = Math.min(130 * s, (AW - 2 * pad - tg * (TABS.length - 1)) / TABS.length), tabH = (D.tabH + 2) * s;
-  const tabX = OX + AW / 2 - (tabW * TABS.length + tg * (TABS.length - 1)) / 2, tabY = OY + D.tabY * s;
+  // ---- tabs: the same left and right edge as the cards under them
+  const tg = 6 * s, tabW = Math.min(130 * s, (cw - tg * (TABS.length - 1)) / TABS.length), tabH = (D.tabH + 2) * s;
+  const tabX = OX + AW / 2 - (tabW * TABS.length + tg * (TABS.length - 1)) / 2, tabY = P.bottom + 8 * s;
   // one label size for every tab, the largest at which the longest label fits
   const tabS = Math.min(17 * s, ...TABS.map(([, l]) => (tabW - 18 * s) * 17 * s / ui.measure(l, 17 * s)));
   for (const [i, [id, label]] of TABS.entries()) {
@@ -1261,10 +1260,8 @@ export function drawStore(ui, ctx, W, H, state) {
   }
 
   // ---- body: one scrolling column of rows (section headings, card rows, the coin-pack grid)
-  const gap = D.gap * s;
-  const bodyTop = OY + D.top * s;
+  const bodyTop = tabY + tabH + 6 * s;
   const avail = OY + AH - bodyTop - pad;
-  const cw = cols === 1 ? Math.min(AW - 2 * pad, 520 * s) : Math.min(AW - 2 * pad, 2 * 440 * s + gap);
   const rows = [];
   const add = (h, draw, key, before = gap) => rows.push({ h, draw, key, before });
   // 0.8.10 (mykee: the shop must open ON the item the player tapped): which row holds each card, and where each was drawn
@@ -1340,7 +1337,7 @@ export function drawStore(ui, ctx, W, H, state) {
       forSale.forEach((sku, i) => {
         const artH = (hero(sku) ? 150 : 118) * s, h = bundleTallH(sku, cw, artH, s, hero(sku));
         hit('iap:' + sku);
-        add(h, (x, y, w) => { drawBundleTall(ui, ctx, sku, x, y, w, h, s, t, st, { hero: hero(sku), artH, tag: tag(sku) }); mark('iap:' + sku, x, y, w, h); }, null, i ? gap + 2 * s : 6 * s);
+        add(h, (x, y, w) => { drawBundleTall(ui, ctx, sku, x, y, w, h, s, t, st, { hero: hero(sku), artH, tag: tag(sku) }); mark('iap:' + sku, x, y, w, h); }, null, i ? gap : 6 * s);
       });
     }
     for (const sku of owned) add(52 * s, (x, y, w) => drawOwnedRow(ui, ctx, sku, x, y, w, 52 * s, s, t, st), null, forSale.length ? gap : 6 * s);

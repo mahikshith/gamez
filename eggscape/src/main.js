@@ -2120,7 +2120,7 @@ function drawOffer() {
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'of:line' + i, gap: i ? 2 * s : 10 * s })),
       { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ad
         ? ui.button('of:ad', O.item === 'coins' ? `Watch: +${adCoins()} coins` : 'Watch: free Chick Charge', x, y, w, 58 * s, { kind: 'ad', ad: true, shimmer: true, size: 18 * s })
-        : ui.button('of:buy', O.id === 'skip_videos' ? 'See what you get' : ads.price(O.sku), x + w * 0.1, y, w * 0.8, 58 * s, { kind: 'gold', shimmer: true, size: 24 * s }) },
+        : ui.button('of:buy', O.id === 'skip_videos' ? 'See what you get' : ads.price(O.sku), x, y, w, 58 * s, { kind: 'gold', shimmer: true, size: 24 * s }) },
       { h: 56 * s, gap: 10 * s, draw: (x, y, w) => ui.button('of:no', 'No thanks', x, y, w, 56 * s, { kind: 'tertiary', size: 21 * s }) },
     ];
   }, { ribbon: '#e8402e' });
@@ -2143,8 +2143,8 @@ function drawNudge() {
     } },
     ...wrapText(line, 16.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 16.5 * s, { color: ui.C.ink, tag: 'nudge:line' + i, gap: i ? 2 * s : 10 * s })),
     { h: 58 * s, gap: 14 * s, draw: (x, y, w) => n.kind === 'keep'
-      ? ui.button('nudge:yes', String(n.price), x + w * 0.1, y, w * 0.8, 58 * s, { kind: save.wallet.coins >= n.price ? 'gold' : 'off', dim: 1, shimmer: save.wallet.coins >= n.price, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 24 * s })
-      : ui.button('nudge:yes', n.kind === 'welcome' ? 'Collect' : 'See it', x + w * 0.1, y, w * 0.8, 58 * s, { kind: 'primary', shimmer: true, size: 22 * s }) },
+      ? ui.button('nudge:yes', String(n.price), x, y, w, 58 * s, { kind: save.wallet.coins >= n.price ? 'gold' : 'off', dim: 1, shimmer: save.wallet.coins >= n.price, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 24 * s })
+      : ui.button('nudge:yes', n.kind === 'welcome' ? 'Collect' : 'See it', x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: 22 * s }) },
     ...(n.kind === 'welcome' ? [] : [{ h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('nudge:no', n.kind === 'keep' ? 'No thanks' : 'Later', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) }]),
   ], { ribbon: n.kind === 'welcome' ? '#3cb043' : '#d89a1c' });
 }
@@ -2215,7 +2215,7 @@ function drawChickBuy() {
     ...wrapText(S.up, 15.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 15.5 * s, { color: ui.C.ink, tag: 'cb:up' + i, gap: i ? 2 * s : 10 * s })),
     lineBlock(S.premium ? 'Premium chick: yours for good, in every level with villains.' : `Free at level ${S.unlock}, or yours now for every level.`, 13.5 * s, { color: S.premium ? '#b0700a' : ui.C.ink2, tag: 'cb:free', gap: 6 * s }),
     ...(S.premium ? wrapText('Downside: ' + S.down, 13.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 13.5 * s, { color: ui.C.warn, tag: 'cb:dn' + i, gap: i ? 2 * s : 4 * s })) : []),
-    { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button('cb:buy', `Unlock ${O.price}`, x + w * 0.1, y, w * 0.8, 56 * s, { kind: O.canAfford ? 'primary' : 'off', shimmer: O.canAfford, icon: (c, X, Y, Z) => drawCoin(c, X, Y, Z * 0.5, G.t), size: 21 * s }) },
+    { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button('cb:buy', `Unlock ${O.price}`, x, y, w, 56 * s, { kind: O.canAfford ? 'primary' : 'off', shimmer: O.canAfford, icon: (c, X, Y, Z) => drawCoin(c, X, Y, Z * 0.5, G.t), size: 21 * s }) },
     { h: 48 * s, gap: 10 * s, draw: (x, y, w) => ui.button('cb:close', 'Not now', x, y, w, 48 * s, { kind: 'tertiary', size: 19 * s }) },
   ], { ribbon: S.premium ? '#b8860b' : '#f0a01c' });
 }
@@ -2242,11 +2242,11 @@ function drawDetail() {
       ...(it.perk ? [perkRow(it.perk, s, 10 * s)] : []), // an egg skin's power: the icon, its name and four words
       ...(it.parts || []).map((P, i) => partRow(P, s, 'dt:part' + i, i ? 2 * s : 10 * s)), // a kit or a set: what is inside, one row each
       ...(it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 6 * s })] : []),
-      { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x + w * 0.1, y, w * 0.8, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
+      { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x, y, w, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
       ...(tryK && it.perk && !it.trying ? [lineBlock('The power comes with it.', 14 * s, { color: C.ink2, tag: 'dt:perkfree', gap: 8 * s })] : []),
       ...(tryK ? [{ h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
-        ? ui.button('try:on', `Trying: ${DR.trials(save)[tryK[0]].left} level${DR.trials(save)[tryK[0]].left > 1 ? 's' : ''} left`, x + w * 0.1, y, w * 0.8, 50 * s, { kind: 'secondary', disabled: true, keepFace: true, dim: 1, size: 18 * s })
-        : ui.button('try:' + tryK.join(':'), 'Try it free', x + w * 0.1, y, w * 0.8, 50 * s, { kind: 'secondary', size: 20 * s }) }] : []),
+        ? ui.button('try:on', `Trying: ${DR.trials(save)[tryK[0]].left} level${DR.trials(save)[tryK[0]].left > 1 ? 's' : ''} left`, x, y, w, 50 * s, { kind: 'secondary', disabled: true, keepFace: true, dim: 1, size: 18 * s })
+        : ui.button('try:' + tryK.join(':'), 'Try it free', x, y, w, 50 * s, { kind: 'secondary', size: 20 * s }) }] : []),
       { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('dt:close', 'Close', x, y, w, 50 * s, { kind: 'tertiary', size: 20 * s }) },
     ];
   }, { ribbon: '#7a48e8' });
@@ -2275,7 +2275,7 @@ function drawIapSheet(sku) {
   const DS = G.dscroll, longList = rows.length > 2 || rows.some((R) => R.grid);
   dim(0.55);
   stackCard(P.name, (s, iw) => {
-    const C = ui.C, rowH = 40 * s, cw = SHEET_CELL.w * s, chh = SHEET_CELL.h * s, per = Math.max(3, Math.floor(iw / cw));
+    const C = ui.C, rowH = 40 * s, cw = SHEET_CELL.w * s, chh = SHEET_CELL.h * s, per = Math.max(3, Math.floor((iw - 12 * s) / cw));
     let ch = 0;
     for (const R of rows) { ch += rowH; if (R.grid) ch += Math.ceil(R.grid.length / per) * chh + 4 * s; }
     const vl = wrapText(iapValueLine(sku, price), 14.5 * s, iw).filter(Boolean).slice(0, 2), once = P.type === 'once', artH = 112 * s;
@@ -2294,8 +2294,9 @@ function drawIapSheet(sku) {
         const dt = clamp(G.t - (DS.t || G.t), 0, 0.1), lim = scrollLim(); DS.t = G.t; DS.max = Math.max(0, ch - listH);
         if (!(G.pdrag && G.pdrag.sc === DS && G.pdrag.moved)) glideStep(DS, dt, lim);
         DS.y = clamp(DS.y, -lim, DS.max + lim);
-        G.dlRect = { x: x - 6 * s, y, w: w + 12 * s, h: listH };
-        ctx.save(); ui.roundRect(x - 6 * s, y, w + 12 * s, listH, 12 * s); ctx.fillStyle = 'rgba(122,80,40,0.08)'; ctx.fill(); ctx.clip();
+        G.dlRect = { x, y, w, h: listH };
+        ctx.save(); ui.roundRect(x, y, w, listH, 12 * s); ctx.fillStyle = 'rgba(122,80,40,0.08)'; ctx.fill(); ctx.clip();
+        const x0 = x; x += 6 * s; w -= 12 * s; // (0.8.14: the panel stands on the sheet's column, its rows 6 units inside it; it used to overhang the art and the buttons)
         const vis = (yy, hh) => yy >= y - 0.5 && yy + hh <= y + listH + 0.5, seen = (yy, hh) => yy + hh > y && yy < y + listH;
         let cy = y - snapPx(DS.y, window.devicePixelRatio || 1);
         rows.forEach((R, i) => {
@@ -2316,16 +2317,16 @@ function drawIapSheet(sku) {
         ctx.restore();
         if (DS.max > 0) { // a thin thumb, and a soft fade where more is below
           const th = Math.max(24 * s, listH * listH / (DS.max + listH)), ty = y + clamp(DS.y / DS.max, 0, 1) * (listH - th);
-          ui.roundRect(x + w + 1 * s, ty, 3 * s, th, 1.5 * s); ctx.fillStyle = 'rgba(122,80,40,0.45)'; ctx.fill();
-          if (DS.y < DS.max - 2) { const g = ctx.createLinearGradient(0, y + listH - 22 * s, 0, y + listH); g.addColorStop(0, 'rgba(255,244,222,0)'); g.addColorStop(1, 'rgba(255,244,222,0.95)'); ctx.fillStyle = g; ctx.fillRect(x - 4 * s, y + listH - 22 * s, w + 6 * s, 22 * s); }
+          ui.roundRect(x + w + 1.5 * s, ty, 3 * s, th, 1.5 * s); ctx.fillStyle = 'rgba(122,80,40,0.45)'; ctx.fill();
+          if (DS.y < DS.max - 2) { const g = ctx.createLinearGradient(0, y + listH - 22 * s, 0, y + listH); g.addColorStop(0, 'rgba(255,244,222,0)'); g.addColorStop(1, 'rgba(255,244,222,0.95)'); ctx.fillStyle = g; ctx.fillRect(x0, y + listH - 22 * s, w + 8 * s, 22 * s); }
         }
       } },
       ...vl.map((l, i) => lineBlock(l, 14.5 * s, { color: C.good, tag: 'dt:value' + i, gap: i ? 2 * s : 8 * s })),
       once && lineBlock('One-time purchase', 14 * s, { color: C.ink2, tag: 'dt:once', gap: 4 * s }),
       { h: 56 * s, gap: 12 * s, draw: (x, y, w) => (can
-        ? ui.button('iap:' + sku, price, x + w * 0.08, y, w * 0.84, 56 * s, { kind: sku === PREMIUM_SKU ? 'gold' : 'primary', size: 23 * s, shimmer: !save.calm })
-        : ui.button('dt:owned', 'Yours', x + w * 0.08, y, w * 0.84, 56 * s, { kind: 'tertiary', disabled: true, keepFace: true, dim: 1, icon: ICON.check, size: 19 * s })) },
-      { h: 46 * s, gap: 8 * s, draw: (x, y, w) => ui.button('dt:close', 'Not now', x + w * 0.2, y, w * 0.6, 46 * s, { kind: 'tertiary', size: 18 * s }) },
+        ? ui.button('iap:' + sku, price, x, y, w, 56 * s, { kind: sku === PREMIUM_SKU ? 'gold' : 'primary', size: 23 * s, shimmer: !save.calm })
+        : ui.button('dt:owned', 'Yours', x, y, w, 56 * s, { kind: 'tertiary', disabled: true, keepFace: true, dim: 1, icon: ICON.check, size: 19 * s })) },
+      { h: 46 * s, gap: 8 * s, draw: (x, y, w) => ui.button('dt:close', 'Not now', x, y, w, 46 * s, { kind: 'tertiary', size: 18 * s }) },
     ].filter(Boolean);
   }, { ribbon: '#7a48e8', twoCol: longList });
 }
@@ -2409,7 +2410,7 @@ function drawGetMore() {
       { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('gm:ad', cd > 3600 ? 'More free coins tomorrow' : cd > 0 ? `Free coins in ${fmtTime(cd)}` : `Watch an ad: +${adCoins()} coins`, x, y, w, 50 * s, { kind: 'ad', ad: cd <= 0, disabled: cd > 0, shimmer: cd <= 0, size: 16.5 * s }) },
       // the web has no coin packs: the second way to coins there is the Free tab (the daily gift, the free sample), and wins
       !ads.moneyShop && lineBlock('Every win pays coins too.', 14.5 * s, { color: C.ink2, tag: 'gm:win', gap: 8 * s }),
-      { h: 46 * s, gap: 10 * s, draw: (x, y, w) => ui.button('gm:shop', ads.moneyShop ? 'Open shop' : 'Free gifts', x + w * 0.12, y, w * 0.76, 46 * s, { kind: 'secondary', icon: (c, X, Y, S) => shopIcon(c, X, Y, S), size: 17 * s }) },
+      { h: 46 * s, gap: 10 * s, draw: (x, y, w) => ui.button('gm:shop', ads.moneyShop ? 'Open shop' : 'Free gifts', x, y, w, 46 * s, { kind: 'secondary', icon: (c, X, Y, S) => shopIcon(c, X, Y, S), size: 17 * s }) },
       { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button('gm:close', 'Close', x, y, w, 56 * s, { kind: 'tertiary', size: 21 * s }) },
     ].filter(Boolean);
   }, { ribbon: '#e89a10' });
@@ -6237,11 +6238,11 @@ function drawLevelIntro(L, acc) {
   const plan = plans[Hw.i % nP];
 
   // ---- the header: back on the left, the level ribbon in the middle, the coins on the right, one centre line
-  const HDR = 44 * s;
+  const HDR = 52 * s; // = ui.pageBox's header line (shop, Settings, Extras, Practice)
   const header = (x, y, w) => {
     ui.button(G.li === -1 ? 'back' : 'levels', '', x, y, HDR, HDR, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: HDR / 2 });
-    const cbw = early ? 0 : Math.max(96 * s, ui.measure(String(save.wallet.coins), 18 * s) + 60 * s);
-    if (cbw) purseBtn(x + w - cbw, y, cbw, HDR, 18 * s); // the coins roll and pop like every other counter (ui/purse.js)
+    const cbw = early ? 0 : Math.max(104 * s, ui.measure(String(save.wallet.coins), 21 * s) + 64 * s);
+    if (cbw) purseBtn(x + w - cbw, y, cbw, HDR, 21 * s); // the coins roll and pop like every other counter (ui/purse.js)
     const tail = 16 * s, side = Math.max(HDR, cbw) + 8 * s + tail, rwMax = Math.max(90 * s, w - 2 * side);
     const rw = Math.min(rwMax, Math.max(150 * s, ui.measure(label, 25 * s) + 48 * s));
     ui.ribbon(label, x + w / 2, y + 2 * s, rw, HDR - 6 * s, { s, color: acc, size: 25 * s, tag: 'intro:level' });
@@ -7021,17 +7022,16 @@ function drawSettings() {
   const pg = G.setpage || (G.setpage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
   if (pg.lid !== G.setSeq) { pg.lid = G.setSeq; pg.y = 0; pg.v = 0; }
   // header: back, the ribbon, and (landscape) Done
-  const hy = A.y + 10 * u, hh = 46 * s;
-  ui.button('set:close', '', A.x + pad, hy, 46 * s, hh, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * s });
-  ui.ribbon('Settings', A.cx, hy, clamp(ui.measure('Settings', 28 * s) + 80 * s, 170 * s, A.w - 2 * (pad + 56 * s)), hh, { s, color: '#7a48e8', size: 28 * s, tag: 'set:title' });
+  // (0.8.14: the one page header, ui.pageHeader; back sits on the rows' left edge, Done on their right edge)
+  const P = ui.pageBox(560 * s), hy = P.y, hh = P.h;
+  ui.pageHeader(P, { back: 'set:close', title: 'Settings', color: '#7a48e8', tag: 'set:title', right: land ? { w: 130 * s, draw: (x, y, w, h) => ui.button('set:close', 'Done', x, y, w, h, { kind: 'primary', icon: ICON.check, size: 19 * s }) } : null });
   let vb = A.y1 - (land ? 2 * u : pad);
-  if (land) ui.button('set:close', 'Done', A.x1 - pad - 130 * s, hy, 130 * s, hh, { kind: 'primary', icon: ICON.check, size: 19 * s });
-  else {
+  if (!land) {
     ui.text('Eggscape ' + __VERSION__, A.cx, A.y1 - pad - 6 * s, { size: 12.5 * s, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' });
     ui.button('set:close', 'Done', x0, A.y1 - pad - 20 * s - 56 * s, cw, 56 * s, { kind: 'primary', icon: ICON.check, size: 22 * s });
     vb = A.y1 - pad - 20 * s - 56 * s - 8 * s;
   }
-  const vt = hy + hh + 6 * u, V = { x: A.x, y: vt, w: A.w, h: Math.max(60, vb - vt) };
+  const vt = hy + hh + 8 * s, V = { x: A.x, y: vt, w: A.w, h: Math.max(60, vb - vt) };
   const B = [], on = (v) => v !== false;
   B.push(setHead('Sound and feel', s));
   if (portal.showMuteButton) { B.push(setRow(s, 'sfx', 'Sound', 'sound', '#3a80ea', { on: save.sfx })); B.push(setRow(s, 'music', 'Music', 'note', '#9a5ae8', { on: save.music })); }
@@ -7400,9 +7400,9 @@ function drawWinPage() {
       ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x + 12 * s, y + 60 * s, w - 24 * s, 1.5 * s); // the line under a sum
       ui.text('=', x + 22 * s, y + 82 * s, { size: 24 * s, align: 'center', color: C.ink2, tag: 'win:eq' });
       ui.text('SCORE', x + 42 * s, y + 82 * s, { size: 14 * s, color: C.ink2, tag: 'win:scorelab' });
-      ui.num(fmt(r.shownTotal), x + w / 2 + 24 * s, y + 82 * s, { size: 32 * s, align: 'center', maxW: w - 130 * s, tag: 'win:total' });
-      if (best === 'new') { if (r.shownTotal >= r.total) { const bw = 120 * s; ui.ribbon('NEW BEST!', x + w / 2 + 24 * s, y + 101 * s, bw, 22 * s, { s, color: '#3eaa2a', size: 14 * s, noRecord: true }); ui.record({ x: x + w / 2 + 24 * s - bw / 2, y: y + 101 * s, w: bw, h: 22 * s }, 'win:best'); } }
-      else if (best != null) ui.text(`Best ${fmt(best)}`, x + w / 2 + 24 * s, y + 111 * s, { size: 14 * s, align: 'center', color: C.ink2, tag: 'win:best' });
+      ui.num(fmt(r.shownTotal), x + w / 2, y + 82 * s, { size: 32 * s, align: 'center', maxW: w - 196 * s, tag: 'win:total' }); // 0.8.14: the total and the best under it stand on the card's centre line (they sat 24 units right of it)
+      if (best === 'new') { if (r.shownTotal >= r.total) { const bw = 120 * s; ui.ribbon('NEW BEST!', x + w / 2, y + 101 * s, bw, 22 * s, { s, color: '#3eaa2a', size: 14 * s, noRecord: true }); ui.record({ x: x + w / 2 - bw / 2, y: y + 101 * s, w: bw, h: 22 * s }, 'win:best'); } }
+      else if (best != null) ui.text(`Best ${fmt(best)}`, x + w / 2, y + 111 * s, { size: 14 * s, align: 'center', color: C.ink2, tag: 'win:best' });
     } });
     // what this win unlocked, shown in the reveals: each a row with its art and a green tick
     const rowWell = (x, y, w, h, a, b) => ui.well(x, y, w, h, { s, a, b });
@@ -7448,7 +7448,7 @@ function drawWinPage() {
     if (!earlyDays()) B.push({ h: 48 * s, draw: (x, y, w) => { // nothing advertised before L3 is won (the Double coins video too)
       if (!inCard) return;
       if (r.chest && !G.doubled) { // the Bonus chest: one video, the chest, its coins and its boost shown as art on the button
-        const bw = w * 0.84, bx = x + w * 0.08, ch = r.chest, B2 = ui.button('bonus', '', bx, y, bw, 48 * s, { kind: 'ad', shimmer: true });
+        const bw = w, bx = x, ch = r.chest, B2 = ui.button('bonus', '', bx, y, bw, 48 * s, { kind: 'ad', shimmer: true });
         let cx = bx + 14 * s;
         const cy = B2.cy;
         if (!ads.premium) { drawAdBadge(ctx, cx, cy, 24 * s, 17 * s); cx += 30 * s; } // Premium: no video, the chest opens at once
@@ -7456,7 +7456,7 @@ function drawWinPage() {
         const ax = bx + bw - 16 * s; // what is inside, as art: a boost and coins
         drawBoosterIcon(ctx, ch.booster, ax - 14 * s, cy, 30 * s, G.t); drawCoin(ctx, ax - 40 * s, cy + 6 * s, 9 * s, G.t); drawCoin(ctx, ax - 48 * s, cy - 3 * s, 9 * s, G.t + 1);
         ui.text('Bonus chest', cx, cy, { size: 17 * s, maxW: ax - 60 * s - cx, color: '#fff', stroke: '#2b1566', strokeW: 3 * s, tag: 'win:bonus', group: 'btn:bonus' });
-      } else if (!G.doubled) ui.button('double', (r.coins || 0) > 0 ? `Double coins: +${r.coins}` : 'Double', x + w * 0.1, y, w * 0.8, 48 * s, { kind: 'ad', ad: true, size: 16 * s });
+      } else if (!G.doubled) ui.button('double', (r.coins || 0) > 0 ? `Double coins: +${r.coins}` : 'Double', x, y, w, 48 * s, { kind: 'ad', ad: true, size: 16 * s });
       else ui.text(r.chestOpen ? 'Bonus chest opened!' : 'Coins doubled!', x + w / 2, y + 24 * s, { size: 18 * s, align: 'center', color: C.good, tag: 'win:doubled' });
     } });
     return B;
@@ -7900,7 +7900,7 @@ function drawTitle() {
     ctx.restore();
   });
   if (fr) { if (fade) ctx.globalAlpha = 1; return; } // first launch: PLAY alone (Levels, Daily, Shop, Extras and the bank come with the first win)
-  const tw = (bw - 16 * u) / 3, ry = by + ph + 10 * u, rh = 54 * u, paid = save.daily.paid === today();
+  const tw = (bw - 16 * u) / 3, ry = by + ph + 8 * u, rh = 54 * u, /* 0.8.14: one gutter, 8 units, across and down the block */ paid = save.daily.paid === today();
   pop(0.33, bx - bw / 2 + tw / 2, ry + rh / 2, () => ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u }));
   pop(0.4, bx - bw / 2 + tw * 1.5 + 8 * u, ry + rh / 2, () => ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u }));
   pop(0.47, bx - bw / 2 + tw * 2.5 + 16 * u, ry + rh / 2, () => purseBtn(bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, 18 * u));
@@ -7915,7 +7915,7 @@ function drawTitle() {
   }
   // (2026-11-16 research: no top casual game puts a difficulty switch on home; it lives in Settings)
   // Extras: as wide as Play, 52 u tall, with the Extras page's little planet and egg
-  pop(0.54, bx, ry + rh + 10 * u + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ry + rh + 10 * u, bw, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: 1.8, size: 20 * u, round: 17 * u }));
+  pop(0.54, bx, ry + rh + 8 * u + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ry + rh + 8 * u, bw, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: 1.8, size: 20 * u, round: 17 * u }));
   if (fade) ctx.globalAlpha = 1;
 }
 
@@ -8206,7 +8206,7 @@ function practiceIcon(k, x, y, r, t) {
   return false;
 }
 function drawPractice() {
-  const u = ui.u, A = ui.A, pad = 14 * u, S = G.pscroll, vb = A.y1; // the list scrolls down to the bottom of the safe rect
+  const u = ui.u, A = ui.A, pad = ui.pageBox().pad, S = G.pscroll, vb = A.y1; // the list scrolls down to the bottom of the safe rect
   ui.calm = save.calm;
   const dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
   if (!themeBack(ctx, ui.skin, W_, H_, H_ * 0.8, true)) {
@@ -8217,7 +8217,8 @@ function drawPractice() {
   menuFx();
   const cols = A.w > A.h ? 5 : 3, gap = 12 * u, cw = Math.min((A.w - pad * 2 - gap * (cols - 1)) / cols, 136 * u), chh = cw;
   const gridW = cols * cw + (cols - 1) * gap, x0 = A.cx - gridW / 2;
-  const vt = A.y + 70 * u, secH = 36 * u; // the list's top edge, a section header's height
+  const P = ui.pageBox(gridW); // 0.8.14: the header stands on the grid's own column (ui.pageHeader)
+  const vt = P.bottom + 8 * P.s, secH = 36 * u; // the list's top edge, a section header's height
   let total = 0;
   for (const g of LAB) total += secH + Math.ceil(g.items.length / cols) * (chh + gap) + 6 * u;
   S.max = Math.max(0, total + pad - (vb - vt));
@@ -8230,7 +8231,8 @@ function drawPractice() {
     if (y + secH > vt && y < vb) ui.text(g.name, x0 + 2 * u, y + secH / 2 - 2 * u, { size: 17 * u, color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, tag: 'practice:h' + gi, maxW: gridW - 4 * u, noRecord: y < vt || y + secH > vb });
     y += secH;
     g.items.forEach(([k, label], j) => {
-      const c = j % cols, r = Math.floor(j / cols), x = x0 + c * (cw + gap), ty = y + r * (chh + gap);
+      const c = j % cols, r = Math.floor(j / cols), nr = Math.min(cols, g.items.length - r * cols); // a short last row is centred, like the shop's
+      const x = x0 + (cols - nr) * (cw + gap) / 2 + c * (cw + gap), ty = y + r * (chh + gap);
       if (ty + chh < vt || ty > vb) return;
       const part = ty < vt || ty + chh > vb, n0 = ui.rects.length, nb = ui.buttons.length;
       const b = ui.button('demo:' + k, '', x, ty, cw, chh, { face: face0, keepFace: true, round: 18 * u });
@@ -8253,10 +8255,7 @@ function drawPractice() {
   // header band over the list: back, title
   ctx.fillStyle = '#1c1440'; ctx.globalAlpha = 0.94; ctx.fillRect(0, 0, W_, vt - 4 * u); ctx.globalAlpha = 1;
   const g2 = ctx.createLinearGradient(0, vt - 4 * u, 0, vt + 10 * u); g2.addColorStop(0, 'rgba(10,4,24,0.55)'); g2.addColorStop(1, 'rgba(10,4,24,0)'); ctx.fillStyle = g2; ctx.fillRect(0, vt - 4 * u, W_, 14 * u);
-  const hy = A.y + pad + 23 * u;
-  ui.button('back', '', A.x + pad, A.y + pad, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
-  const tl = A.x + pad + 68 * u, trr = A.x1 - pad - 68 * u;
-  ui.ribbon('Practice', A.cx, hy - 19 * u, clamp(170 * u, 90 * u, Math.max(90 * u, trr - tl)), 36 * u, { color: '#8a5ad8', size: 21 * u, tag: 'practice:title' });
+  ui.pageHeader(P, { back: 'back', title: 'Practice', color: '#8a5ad8', tag: 'practice:title' });
   if (S.max > 0 && !save.calm) { // a thin scroll thumb
     const th = Math.max(30 * u, (vb - vt) * (vb - vt) / (total + pad)), ty2 = vt + clamp(S.y / S.max, 0, 1) * (vb - vt - th - 4 * u);
     ui.roundRect(A.x1 - 5 * u, ty2, 3 * u, th, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();

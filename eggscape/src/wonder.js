@@ -480,7 +480,7 @@ export function createWonder(env) {
   // The rows grow to fill the page; when they cannot fit at their smallest height the page scrolls (env.glide, as Practice).
   const TILE = { planet: '#5a6ad8', plan: '#3f9fd0', mama: '#d8862a', twin: '#3fa86a', hatch: '#e0a81c', practice: '#3fae4a' };
   function drawExtras() {
-    const z = env.size(), A = ui.A, u = ui.u, pad = 14 * u, t = env.time(), sv = env.save(), SC = env.escroll();
+    const z = env.size(), A = ui.A, u = ui.u, t = env.time(), sv = env.save(), SC = env.escroll();
     ui.calm = sv.calm;
     const dt = clamp(t - (SC.t || t), 0, 0.1); SC.t = t;
     const bg = ctx.createLinearGradient(0, 0, 0, z.H);
@@ -490,12 +490,16 @@ export function createWonder(env) {
     for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(z.W * 0.86, z.H * 0.9, Math.min(z.W, z.H) * (0.22 + 0.15 * i), 2.4 + i * 0.5 + (sv.calm ? 0 : t * 0.03 * (i % 2 ? -1 : 1)), 5.6 + i * 0.4 + (sv.calm ? 0 : t * 0.03 * (i % 2 ? -1 : 1))); ctx.stroke(); }
     ctx.restore();
     // layout: the list's viewport, the column(s), and the row height
-    const X0 = A.x + pad, X1 = A.x1 - pad, Y0 = A.y + pad, hy = Y0 + 23 * u, vt = A.y + 70 * u, vb = A.y1;
-    const wide = A.w > A.h * 1.15, cols = wide ? 2 : 1, gap = 10 * u, colGap = 12 * u, headH = 30 * u, secGap = 14 * u;
-    const listW = Math.min(A.w - 2 * pad, wide ? 860 * u : 460 * u), rowW = (listW - colGap * (cols - 1)) / cols, lx = A.cx - listW / 2;
+    // (0.8.14: the header and the rows share one column, ui.pageBox / ui.pageHeader, like every other page)
+    const wide = A.w > A.h * 1.15, cols = wide ? 2 : 1, colGap = 12 * u, headH = 30 * u;
+    const P = ui.pageBox(wide ? 860 * u : 460 * u), pad = P.pad, vt = P.bottom + 8 * P.s, vb = A.y1;
+    const listW = P.w, rowW = (listW - colGap * (cols - 1)) / cols, lx = P.x;
     const n = WONDER_LEVELS.length, wvRows = Math.ceil(n / cols), nRows = wvRows + 1;
+    const rowH = clamp((vb - vt - pad - (2 * headH + 14 * u + (wvRows - 1) * 10 * u) - 4 * u) / nRows, 84 * u, 108 * u);
+    // a tall screen with room to spare: the rows stand a little further apart (up to 12 units each), not one hole at the bottom
+    const spare = Math.max(0, vb - vt - pad - 4 * u - (2 * headH + 14 * u + (wvRows - 1) * 10 * u) - nRows * rowH), air = Math.min(12 * u, spare / (wvRows + 1));
+    const gap = 10 * u + air, secGap = 14 * u + air;
     const fixedH = 2 * headH + secGap + (wvRows - 1) * gap;
-    const rowH = clamp((vb - vt - pad - fixedH - 4 * u) / nRows, 84 * u, 108 * u);
     const total = 4 * u + fixedH + nRows * rowH + pad;
     SC.max = Math.max(0, total - (vb - vt));
     env.glide(SC, dt);
@@ -545,14 +549,14 @@ export function createWonder(env) {
     // the header band over the list: back, title, stars
     ctx.fillStyle = '#1c1440'; ctx.globalAlpha = 0.94; ctx.fillRect(0, 0, z.W, vt - 4 * u); ctx.globalAlpha = 1;
     const g2 = ctx.createLinearGradient(0, vt - 4 * u, 0, vt + 10 * u); g2.addColorStop(0, 'rgba(10,4,24,0.55)'); g2.addColorStop(1, 'rgba(10,4,24,0)'); ctx.fillStyle = g2; ctx.fillRect(0, vt - 4 * u, z.W, 14 * u);
-    ui.button('back', '', X0, Y0, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
-    const total3 = WONDER_LEVELS.reduce((a, L) => a + starsOf(L.key), 0), starTxt = `${total3} / ${WONDER_LEVELS.length * 3}`, stw = ui.measure(starTxt, 17 * u);
-    const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = X1 - chipW;
-    ui.glass(chipX, hy - 18 * u, chipW, 36 * u);
-    drawStar(ctx, chipX + 20 * u, hy, 9.5 * u, true);
-    ui.text(starTxt, X1 - 12 * u, hy + 0.5 * u, { size: 17 * u, color: '#fff', align: 'right', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'extras:stars' });
-    const tl = X0 + 68 * u, trr = chipX - 22 * u;
-    ui.ribbon('Extras', (tl + trr) / 2, hy - 19 * u, clamp(140 * u, 90 * u, trr - tl), 36 * u, { color: '#8a5ad8', size: 21 * u, tag: 'extras:title' });
+    const total3 = WONDER_LEVELS.reduce((a, L) => a + starsOf(L.key), 0), starTxt = `${total3} / ${WONDER_LEVELS.length * 3}`, hs = P.s, stw = ui.measure(starTxt, 17 * hs);
+    const chipW = 10 * hs + 20 * hs + 5 * hs + stw + 12 * hs;
+    ui.pageHeader(P, { back: 'back', title: 'Extras', color: '#8a5ad8', tag: 'extras:title', right: { w: chipW, draw: (x, y, w, h) => {
+      const ch = h - 6 * hs, cy = y + 2 * hs + ch / 2; // the ribbon's band: one centre line
+      ui.glass(x, cy - ch / 2, w, ch);
+      drawStar(ctx, x + 10 * hs + 10 * hs, cy, 9.5 * hs, true);
+      ui.text(starTxt, x + w - 12 * hs, cy + 0.5 * hs, { size: 17 * hs, color: '#fff', align: 'right', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * hs, tag: 'extras:stars' });
+    } } });
     if (SC.max > 0 && !sv.calm) { // a thin scroll thumb
       const th = Math.max(30 * u, (vb - vt) * (vb - vt) / total), ty2 = vt + clamp(SC.y / SC.max, 0, 1) * (vb - vt - th - 4 * u);
       ui.roundRect(A.x1 - 5 * u, ty2, 3 * u, th, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();

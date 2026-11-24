@@ -367,6 +367,35 @@ export class UI {
     if (text) this.text(text, cx, y + h / 2, { size: o.size || h * 0.6, align: 'center', maxW: w - 20 * s, color: '#fff', stroke: line, strokeW: Math.max(2.5, h * 0.11), shadow: line, tag: o.tag, group: o.group, noRecord: o.noRecord });
   }
 
+  // ---- the one page header (0.8.14 alignment pass): every full page (shop, Settings, Extras, Practice) lays its header
+  // out through these two, with the level card's metrics, so the pages cannot drift apart again.
+  // pageBox(maxW, A): the page's content column and its header line. s: the page scale; pad: the side margin; x, w: the
+  // column (centred in the safe rect, never wider than maxW); y, h: the header line; bottom: where the header ends.
+  pageBox(maxW = Infinity, A = this.A) {
+    const u = this.u, s = u * Math.max(0.82, Math.min(1, A.w / (390 * u))), pad = 16 * u;
+    const w = Math.min(A.w - 2 * pad, maxW), h = 52 * s, y = A.y + 4 * s; // 52: the header buttons keep the size they had before the pass (the owner's rule: nothing shrinks)
+    return { s, pad, x: A.x + A.w / 2 - w / 2, w, y, h, bottom: y + h, cy: y + h / 2 };
+  }
+  // pageHeader(P, o): back at the column's left edge, the title's ribbon centred on the column (= the screen), the
+  // right slot (coins, stars, Done) at its right edge; all on one centre line, all P.h tall.
+  // o.back: the back button's id; o.left2: { id, icon } a second button beside it (the shop's home), kept only while the
+  // title still has its room; o.right: { w, draw(x, y, w, h) }; o.title, o.color, o.tag: the ribbon.
+  pageHeader(P, o = {}) {
+    const { s, x, y, w, h } = P, g = 8 * s, tail = 16 * s;
+    const rightW = o.right ? o.right.w : 0;
+    const want = Math.max(150 * s, this.measure(o.title, 25 * s) + 48 * s);
+    const room = (leftW) => w - 2 * (Math.max(leftW, rightW) + g + tail);
+    // the second left button stays while it costs the title nothing (the right slot is as wide anyway) or the title keeps its full width
+    const two = !!o.left2 && (2 * h + g <= Math.max(h, rightW) + 0.5 || room(2 * h + g) >= want);
+    const leftW = two ? 2 * h + g : h;
+    this.button(o.back || 'back', '', x, y, h, h, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: h / 2 });
+    if (two) this.button(o.left2.id, '', x + h + g, y, h, h, { kind: 'hud', icon: o.left2.icon, iconS: 1.25, round: h / 2 });
+    if (o.right) o.right.draw(x + w - rightW, y, rightW, h);
+    const rw = Math.max(60 * s, Math.min(want, room(leftW))); // (a five-digit balance on a narrow phone: the ribbon narrows before it meets the coins)
+    this.ribbon(o.title, x + w / 2, y + 2 * s, rw, h - 6 * s, { s, color: o.color, size: 25 * s, tag: o.tag });
+    return { two, ribL: x + w / 2 - rw / 2 - tail, ribR: x + w / 2 + rw / 2 + tail };
+  }
+
   // 0 (rest) .. 1 (held down), a springy follow of the pressed state; one step per frame per id
   pressAmt(id, down) {
     let S = this.spring[id];
