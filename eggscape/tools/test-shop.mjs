@@ -46,7 +46,7 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
 
 // ---- kits
 {
-  ok(E.kitPrice('rescue') === 110 && E.kitPrice('time') === 140 && E.kitPrice('toolbox') === 300, 'kit prices: parts less 20% / 25%, rounded to 10');
+  ok(E.kitPrice('rescue') === 110 && E.kitPrice('time') === 140 && E.kitPrice('toolbox') === 370, 'kit prices: parts less 20% / 25%, rounded to 10');
   for (const id of E.KIT_ORDER) {
     const K = E.KITS[id], full = sum(K.parts.map((b) => E.BOOSTERS[b].price));
     ok(E.kitPrice(id) === Math.round(full * (1 - K.off) / 10) * 10 && E.kitSave(id) === full - E.kitPrice(id) && E.kitSave(id) > 0, `${id}: saves ${E.kitSave(id)}`);
@@ -56,7 +56,7 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
   ok(E.buyKit(W({ coins: 100 }), 'rescue') === null, 'too few coins: null');
   const full = W({ coins: 999, owned: { golden: E.MAX_OWNED } });
   ok(E.kitFull(full, 'time') && E.buyKit(full, 'time') === null && E.kitFull(full, 'toolbox') && !E.kitFull(full, 'rescue'), 'a part at the max: that kit is Full, all or nothing');
-  const tb = E.buyKit(W({ coins: 300 }), 'toolbox');
+  const tb = E.buyKit(W({ coins: 370 }), 'toolbox');
   ok(tb && tb.coins === 0 && E.BOOSTER_ORDER.every((b) => E.ownedCount(tb, b) === 1), 'toolbox: one of every boost');
 }
 
@@ -90,7 +90,7 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
   const days = new Set(['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23', '2026-11-24', '2026-11-25'].map((d) => E.sampleFor(all, d).id));
   ok(days.size > 1, 'the free boost rotates by date');
   const maxed = E.claimSample(W({ coins: 0, sampled: E.BOOSTER_ORDER.slice(), owned: Object.fromEntries(E.BOOSTER_ORDER.map((b) => [b, E.MAX_OWNED])) }), d1);
-  ok(maxed && maxed.coins === E.BOOSTERS[v.id].price, 'a boost at the max is paid at its coin price');
+  ok(maxed && maxed.coins === E.giftCoins(v.id) && E.giftCoins(v.id) * 2 === E.BOOSTERS[v.id].price, 'a free boost into a full stack pays half its coin price (0.8.15)');
   ok(E.sanitizeWallet({ sampled: ['stone', 'nope', 'stone'], sampleDay: 3 }).sampled.join() === 'stone', 'sanitize: sampled kept clean');
 }
 

@@ -122,6 +122,7 @@ export const MODES = {
 // Medium and Hard, for everyone alike. It pays half as many coins again (economy.js levelCoins) and says so on its
 // card and on the map. Easy is left alone. tools/planner-modes.mjs must still win each of them (the list lives here,
 // not in the generated level data, so the levels themselves are untouched).
+export const SCARE_S = 20; // the Scarecrow booster stands this long
 export const HARD_IDS = [9, 14, 19, 24, 29, 34, 39, 44, 49];
 export const HARD_LEVEL = { easy: 1, medium: 0.8, hard: 0.9 };
 export const isHardLevel = (level) => !!level && HARD_IDS.includes(level.id);
@@ -223,6 +224,7 @@ export class Sim {
     this.lastSaveT = -9;
     // v3 physics: global power timers, lava rocks, icicles
     this.slowT = 0; this.curseT = 0; this.jitT = 0; this.guardT = 0; this.skinT = 0;
+    this.scareT = opts.scare ? SCARE_S : 0; this.scareTick = 0; // 0.8.15 Scarecrow booster: every villain keeps away while it stands
     this.lavaRocks = []; this.icicles = [];
     const LV = typeof level.lava === 'object' && level.lava, IC = level.icicles;
     this.v3T = { lava: LV ? LV.delay ?? 5 : -1, ice: IC ? IC.delay ?? 4 : -1 };
@@ -2780,6 +2782,11 @@ export class Sim {
     off('guardT', 'feather');
     off('skinT', 'rockskin');
     off('curseT', 'curse');
+    if (this.scareT > 0) { // the Scarecrow: whoever is in the vault, or comes in, is scared off again and again until it falls
+      const first = this.scareT === SCARE_S;
+      if ((this.scareTick -= DT) <= 0) { this.scareTick = 0.6; this.scareQuiet = !first; this.p2All('scare', Math.min(2.5, this.scareT + 0.6)); this.scareQuiet = false; }
+      off('scareT', 'scarecrow');
+    }
     if (this.curseT > 0 && (this.jitT -= DT) <= 0) {
       this.jitT = 0.18; // cursed eggs twitch
       for (const e of this.aliveEggs()) if (e.curse > 0 && e.honey <= 0) { const m = e.body.getMass(); e.body.applyLinearImpulse(Vec2((this.rand() - 0.5) * 0.8 * m, this.rand() * 0.4 * m), e.body.getPosition(), true); }
@@ -2899,14 +2906,14 @@ export class Sim {
 
   v3State() {
     return {
-      slowT: this.slowT, curseT: this.curseT, jitT: this.jitT, guardT: this.guardT || 0, skinT: this.skinT || 0, v3T: { ...this.v3T },
+      slowT: this.slowT, curseT: this.curseT, jitT: this.jitT, guardT: this.guardT || 0, skinT: this.skinT || 0, scareT: this.scareT || 0, scareTick: this.scareTick || 0, v3T: { ...this.v3T },
       lavaRocks: this.lavaRocks.map((k) => ({ ...k })), icicles: this.icicles.map((c) => ({ ...c })),
       rings: this.rings.map((r) => ({ melt: r.segs.map((g) => g.melt || 0), cur: r.gaps.map((g) => (g.curtain ? [g.curtain.alive, g.curtain.burn, g.curtain.burning, g.curtain.u, g.curtain.w] : null)) })),
     };
   }
   v3Restore(V) {
     if (!V) return;
-    Object.assign(this, { slowT: V.slowT, curseT: V.curseT, jitT: V.jitT, guardT: V.guardT, skinT: V.skinT, v3T: { ...V.v3T } });
+    Object.assign(this, { slowT: V.slowT, curseT: V.curseT, jitT: V.jitT, guardT: V.guardT, skinT: V.skinT, scareT: V.scareT || 0, scareTick: V.scareTick || 0, v3T: { ...V.v3T } });
     this.lavaRocks = V.lavaRocks.map((k) => ({ ...k }));
     this.icicles = V.icicles.map((c) => ({ ...c }));
     V.rings.forEach((rs, i) => {

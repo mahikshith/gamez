@@ -217,7 +217,7 @@ export const p2Methods = {
   p2Snakes() { return this.snakes.filter((S) => !S.gone && S.inside && S.pts.length > 1 && !S.carried && !S.warp && !(S.flee >= 0)); },
   p2Sals() { return (this.sals || []).filter((C) => this.salLive(C) && C.ph !== 'in' && C.ph !== 'dive' && C.ph !== 'grin' && C.ph !== 'warp'); },
   p2Eagle() { const E = this.eagle; return E && !E.end && !E.warp && E.phase !== 'away' && E.phase !== 'enter' ? E : null; },
-  p2Mark(key, k, t, x, y) { this.p2.fx[key] = { k, t, max: t }; if (x != null) this.emit('p2Hit', { kind: k, x, y }); },
+  p2Mark(key, k, t, x, y) { this.p2.fx[key] = { k, t, max: t }; if (x != null && !this.scareQuiet) this.emit('p2Hit', { kind: k, x, y }); }, // (the Scarecrow re-scares quietly: one cue, not one every beat)
 
   p2Snake(S, kind, T) {
     const f = this.level.bossFight && this.level.bossFight.kind === 'snake' ? BOSS_RESIST * 1.5 : 1, h = S.pts[0];

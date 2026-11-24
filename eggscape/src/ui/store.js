@@ -350,6 +350,51 @@ export function drawBoosterIcon(ctx, id, cx, cy, s, t = 0) {
     }
     ctx.beginPath(); ctx.arc(0, 0, 0.03, 0, Math.PI * 2); ctx.fillStyle = '#4a5866'; ctx.fill();
     ctx.restore();
+  } else if (id === 'scare') {
+    // Scarecrow (0.8.15): a burlap head with button eyes and a stitched grin under a floppy straw hat, on its post.
+    // It sways a little; straw sticks out at the neck and the hat brim.
+    const sw = 0.05 * Math.sin(t * 2.2);
+    // the post and the cross arm with straw cuffs
+    ctx.fillStyle = '#8a5a2c'; ctx.strokeStyle = '#4a2c10'; ctx.lineWidth = lw(0.035);
+    ctx.beginPath(); ctx.roundRect(-0.045, 0.1, 0.09, 0.4, 0.02); ctx.fill(); ctx.stroke();
+    ctx.save(); ctx.translate(0, 0.27); ctx.rotate(sw * 0.5);
+    ctx.beginPath(); ctx.roundRect(-0.4, -0.04, 0.8, 0.08, 0.03); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#e8b83a'; ctx.lineWidth = lw(0.03);
+    for (const sd of [-1, 1]) for (const k of [-1, 0, 1]) { ctx.beginPath(); ctx.moveTo(sd * 0.36, 0); ctx.lineTo(sd * (0.47 + 0.02 * Math.abs(k)), k * 0.07); ctx.stroke(); }
+    ctx.restore();
+    ctx.save(); ctx.translate(0, 0.05); ctx.scale(1.16, 1.16); ctx.rotate(sw);
+    // straw collar
+    ctx.strokeStyle = '#e8b83a'; ctx.lineWidth = lw(0.035);
+    for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(i * 0.045, 0.1); ctx.lineTo(i * 0.075, 0.22 + 0.02 * (i % 2 ? 1 : -1)); ctx.stroke(); }
+    // the head: a burlap sack
+    const hg = ctx.createLinearGradient(-0.22, -0.3, 0.22, 0.14);
+    hg.addColorStop(0, '#f1d9a4'); hg.addColorStop(1, '#d2a866');
+    ctx.beginPath(); ctx.ellipse(0, -0.08, 0.235, 0.215, 0, 0, Math.PI * 2); ctx.fillStyle = hg; ctx.fill();
+    ctx.lineWidth = lw(0.04); ctx.strokeStyle = '#7a4f22'; ctx.stroke();
+    // a patch
+    ctx.save(); ctx.translate(0.13, 0.0); ctx.rotate(0.3);
+    ctx.fillStyle = '#c46a3a'; ctx.fillRect(-0.05, -0.04, 0.1, 0.08);
+    ctx.strokeStyle = '#7a3a1a'; ctx.lineWidth = lw(0.014); ctx.setLineDash([0.02, 0.02]); ctx.strokeRect(-0.05, -0.04, 0.1, 0.08); ctx.setLineDash([]);
+    ctx.restore();
+    // button eyes
+    for (const sd of [-1, 1]) {
+      ctx.beginPath(); ctx.arc(sd * 0.085, -0.1, 0.048, 0, Math.PI * 2); ctx.fillStyle = '#2e2018'; ctx.fill();
+      ctx.fillStyle = '#f6e7c4'; ctx.beginPath(); ctx.arc(sd * 0.085 - 0.014, -0.112, 0.011, 0, Math.PI * 2); ctx.arc(sd * 0.085 + 0.014, -0.088, 0.011, 0, Math.PI * 2); ctx.fill();
+    }
+    // a carrot-stub nose and the stitched grin
+    ctx.beginPath(); ctx.moveTo(-0.022, -0.045); ctx.lineTo(0.022, -0.045); ctx.lineTo(0, -0.005); ctx.closePath(); ctx.fillStyle = '#e8762a'; ctx.fill();
+    ctx.strokeStyle = '#5a3414'; ctx.lineWidth = lw(0.024);
+    ctx.beginPath(); ctx.arc(0, -0.02, 0.12, 0.25 * Math.PI, 0.75 * Math.PI); ctx.stroke();
+    ctx.lineWidth = lw(0.018);
+    for (const a of [0.33, 0.5, 0.67]) { const x = Math.cos(a * Math.PI) * 0.12, y = -0.02 + Math.sin(a * Math.PI) * 0.12; ctx.beginPath(); ctx.moveTo(x, y - 0.025); ctx.lineTo(x, y + 0.025); ctx.stroke(); }
+    // the hat: wide floppy brim, dented crown, a red band
+    ctx.fillStyle = '#d99a2e'; ctx.strokeStyle = '#7a4f12'; ctx.lineWidth = lw(0.04);
+    ctx.beginPath(); ctx.ellipse(0, -0.235, 0.36, 0.075, -0.06, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-0.17, -0.25); ctx.quadraticCurveTo(-0.15, -0.5, 0.0, -0.47); ctx.quadraticCurveTo(0.17, -0.5, 0.17, -0.26); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-0.172, -0.3); ctx.quadraticCurveTo(0, -0.25, 0.172, -0.31); ctx.lineWidth = lw(0.055); ctx.strokeStyle = '#d8342a'; ctx.stroke();
+    ctx.strokeStyle = '#f2c85a'; ctx.lineWidth = lw(0.022);
+    for (const [x0, x1] of [[-0.3, -0.39], [0.27, 0.37], [-0.2, -0.26]]) { ctx.beginPath(); ctx.moveTo(x0, -0.22); ctx.lineTo(x1, -0.16); ctx.stroke(); }
+    ctx.restore();
   } else {
     // unknown id: a question-mark disc
     ctx.beginPath();

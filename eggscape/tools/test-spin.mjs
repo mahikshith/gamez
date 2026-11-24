@@ -1,6 +1,6 @@
 // The Lucky Spin's rules (src/spin.js): node tools/test-spin.mjs
 import * as SP from '../src/spin.js';
-import { defaultWallet, ownedCount, MAX_OWNED, HEN_SKINS, HEN_SKIN_ORDER, CHICK_IDS, ownsHenSkin } from '../src/economy.js';
+import { defaultWallet, ownedCount, GIFT_MAX, HEN_SKINS, HEN_SKIN_ORDER, CHICK_IDS, ownsHenSkin, SKINS, SKIN_ORDER, CHICK_PRICES, BOOSTERS, COUPON, unlockPrice, unlockables, buySkin, buyHenSkin, buyChick, canAffordSkin } from '../src/economy.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
 const mk = (o = {}) => ({ unlocked: 8, wallet: { ...defaultWallet(), coins: 500 }, ...o });
@@ -45,15 +45,15 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const r1 = SP.spin(s, 'free', 'd1', seq(0));
   ok(r1 && r1.how === 'free' && r1.paid === 0 && SP.banked(s) === 0, 'the free spin is used');
   W = SP.ways(s, 'd1');
-  ok(!W.free && W.ad && W.coin === 70, 'then: a video spin, or 70 coins');
+  ok(!W.free && W.ad && W.coin === 80, 'then: a video spin, or 80 coins');
   const c0 = s.wallet.coins, r2 = SP.spin(s, 'coin', 'd1', seq(0.99, 0));
-  ok(r2 && r2.paid === 70 && SP.ways(s, 'd1').coin === 100, 'a coin spin costs 70, the next 100');
-  SP.spin(s, 'coin', 'd1', seq(0)); ok(SP.ways(s, 'd1').coin === 140, 'then 140');
+  ok(r2 && r2.paid === 80 && SP.ways(s, 'd1').coin === 110, 'a coin spin costs 80, the next 110');
+  SP.spin(s, 'coin', 'd1', seq(0)); ok(SP.ways(s, 'd1').coin === 150, 'then 150');
   SP.spin(s, 'coin', 'd1', seq(0)); ok(SP.ways(s, 'd1').coin === null && SP.spin(s, 'coin', 'd1') === null, 'three coin spins a day, then no more (nobody can pour a purse into it)');
-  ok(c0 - 70 <= s.wallet.coins + 240 + 1, 'the coins left the purse');
+  ok(c0 - 80 <= s.wallet.coins + 260 + 1, 'the coins left the purse');
   for (let i = 0; i < 3; i++) ok(!!SP.spin(s, 'ad', 'd1', seq(0)), `video spin ${i + 1} of 3`);
   ok(SP.spin(s, 'ad', 'd1') === null && !SP.ways(s, 'd1').ad, 'three video spins a day, then none');
-  W = SP.ways(s, 'd2'); ok(W.ad && W.coin === 70, 'a new day: the video spins and the price ladder start again');
+  W = SP.ways(s, 'd2'); ok(W.ad && W.coin === 80, 'a new day: the video spins and the price ladder start again');
   const p = mk({ wallet: { ...defaultWallet(), coins: 10 } }); ok(SP.spin(p, 'coin', 'd1') === null && p.wallet.coins === 10, 'too few coins: no spin, nothing taken');
 }
 { // prizes land in the wallet; a full stack pays coins; the rare bird is something not owned
@@ -61,8 +61,8 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const r = SP.spin(s, 'free', 'd1', seq(0)); // the first slice: 15 coins
   ok(r.prize.kind === 'coins' && s.wallet.coins === 515, 'coins: +15');
   const w = SP.grant(defaultWallet(), { kind: 'booster', item: 'stone', n: 2 }); ok(ownedCount(w, 'stone') === 2, 'boosters: +2 Stone shell');
-  const full = { ...defaultWallet(), owned: { stone: MAX_OWNED } }, wf = SP.grant(full, { kind: 'booster', item: 'stone', n: 1 });
-  ok(ownedCount(wf, 'stone') === MAX_OWNED && wf.coins === 40, 'a full stack pays its coin price instead (never an empty spin)');
+  const full = { ...defaultWallet(), owned: { stone: GIFT_MAX } }, wf = SP.grant(full, { kind: 'booster', item: 'stone', n: 1 });
+  ok(ownedCount(wf, 'stone') === GIFT_MAX && wf.coins === 20, 'a gift into a full stack pays half its price in coins (never an empty spin, never a flood)');
   ok(SP.grant(defaultWallet(), { kind: 'charge', n: 1 }).charges === 1 && SP.grant(defaultWallet(), { kind: 'skip', n: 1 }).tickets.skip === 1, 'a Chick Charge and a Skip Ticket land');
   const rare = SP.TABLE.find((t) => t.kind === 'rare'), P = SP.prizeFor(rare, defaultWallet(), seq(0));
   ok((P.kind === 'hen' && !HEN_SKINS[P.item].premium) || P.kind === 'chick', 'the rare slice gives a hen outfit or a chick, never a real-money one');
@@ -92,7 +92,7 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const c0 = late.wallet.coins, r = SP.spin(late, 'free', 'd1', seq(0));
   ok(r.prize.n === 40 && late.wallet.coins === c0 + 40, 'and the prize paid is the amount the wheel showed');
   ok([5, 11, 30, 45].every((u) => { const sv = mk({ unlocked: u }); return SP.meanWorth(defaultWallet(), SP.coinX(sv)) < SP.ways(sv, 'd9').coin; }), 'at every size the first coin spin costs more than a spin is worth on average');
-  ok(SP.ways(mk({ unlocked: 45 }), 'd9').coin === 180, 'the coin price grows with the wheel (70 -> 180 in the last worlds)');
+  ok(SP.ways(mk({ unlocked: 45 }), 'd9').coin === 200, 'the coin price grows with the wheel (80 -> 200 in the last worlds)');
 }
 { // the cheer-up spin: the third loss in a row on a level, once per level, two a day
   const s = mk();
@@ -107,6 +107,32 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 { // unsafe saves
   const s = { unlocked: 9, wallet: defaultWallet(), spin: { wins: 'x', bank: 99, t: null } };
   ok(SP.banked(s) === 3 && SP.left(s) === 3, 'a broken save is made safe');
+}
+{ // 0.8.15: the half-price ticket and the Scarecrow
+  const cp = SP.TABLE.find((t) => t.kind === 'coupon'), sh = SP.TABLE.find((t) => t.kind === 'scare');
+  const w0 = { ...defaultWallet(), coins: 500 }, P = SP.prizeFor(cp, w0, () => 0, 1);
+  ok(P.kind === 'coupon' && P.worth > 100, 'the ticket slice gives a half-price ticket');
+  const w1 = SP.grant(w0, P);
+  ok(w1.coupon === 1 && w1.coins === 500, 'it is held in the purse and adds no coins');
+  const P2 = SP.prizeFor(cp, w1, () => 0, 1.5);
+  ok(P2.kind === 'coins' && P2.n === 60 && P2.instead === 'coupon', 'a second ticket while one is held pays coins instead (40 x the tier), as the odds sheet says');
+  const U = unlockPrice(w1, SKINS.dino.price), U0 = unlockPrice(w0, SKINS.dino.price);
+  ok(U.price === 100 && U.was === 200 && U.coupon && U0.price === 200 && !U0.coupon, 'with a ticket the Dino egg costs 100, crossed out 200; without one 200');
+  const poor = { ...w1, coins: 110 };
+  ok(canAffordSkin(poor, 'dino') && !canAffordSkin({ ...poor, coupon: 0 }, 'dino'), 'the ticket brings a thing within reach');
+  const b = buySkin(poor, 'dino');
+  ok(b && b.coins === 10 && b.coupon === 0 && b.skins.includes('dino'), 'buying uses the ticket up: once, on the thing he chose');
+  ok(buySkin({ ...b, coins: 500 }, 'lava').coins === 500 - SKINS.lava.price, 'the next thing is at its list price again');
+  const h = buyHenSkin({ ...w1 }, 'royal'), c = buyChick({ ...w1, coins: 500 }, 'bomb');
+  ok(h && h.coins === 500 - 200 && h.coupon === 0 && c && c.coins === 500 - CHICK_PRICES.bomb / 2 && c.coupon === 0, 'it works on hen outfits and power chicks the same way');
+  const all = { ...defaultWallet(), skins: SKIN_ORDER.slice(), henSkins: HEN_SKIN_ORDER.slice(), chicks: Object.keys(CHICK_PRICES) };
+  ok(unlockables(all).length === 0 && SP.prizeFor(cp, all, () => 0, 1).kind === 'coins', 'nothing left to own: the ticket slice pays coins');
+  const S = SP.prizeFor(sh, w0, () => 0, 1), ws = SP.grant(w0, S);
+  ok(S.kind === 'booster' && S.item === 'scare' && ownedCount(ws, 'scare') === 1, 'the Scarecrow slice gives one Scarecrow');
+  let seen = false; const r = lcg(3);
+  for (let i = 0; i < 400; i++) if (SP.prizeFor(SP.TABLE.find((t) => t.id === 'b1'), w0, r, 1).item === 'scare') seen = true;
+  ok(!seen && BOOSTERS.scare.price === 90, 'the random booster slice never gives a Scarecrow (it has its own slice and its own odds)');
+  ok(COUPON.max === 1, 'one ticket at a time');
 }
 console.log(bad ? `\n${bad} FAILED` : '\nall spin checks passed');
 process.exit(bad ? 1 : 0);

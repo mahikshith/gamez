@@ -9,6 +9,11 @@
 // new products that call addCoins(); buy() / useBooster() stay the only spend paths.
 
 export const MAX_OWNED = 9;
+// 0.8.15 (the coin loop measured: more than one free booster or charge a level arrived and none was needed, so none was
+// ever bought). Free gifts fill a stack only up to GIFT_MAX; past that a gift pays GIFT_FULL of its price in coins.
+// Buying is still open up to MAX_OWNED: the bag has room for what the player chooses to pay for.
+export const GIFT_MAX = 5;
+export const GIFT_FULL = 0.5;
 
 export const BOOSTERS = {
   stone: {
@@ -61,10 +66,18 @@ export const BOOSTERS = {
     price: 80,
     sku: 'booster_snips',
   },
+  // 0.8.15 (mykee: "one time immunity from villains"): every villain in the vault keeps away while it stands
+  scare: {
+    id: 'scare',
+    name: 'Scarecrow',
+    line: 'Villains keep away for the first 20 seconds.',
+    price: 90,
+    sku: 'booster_scare',
+  },
 };
 
 // Stable display order for UI lists.
-export const BOOSTER_ORDER = ['stone', 'golden', 'time', 'rewind', 'sponge', 'nest', 'snips'];
+export const BOOSTER_ORDER = ['stone', 'golden', 'time', 'rewind', 'sponge', 'nest', 'snips', 'scare'];
 // the star chests hand out the first five in turn (their rewards were set before the newer boosts)
 const CHEST_BOOSTS = BOOSTER_ORDER.slice(0, 5);
 
@@ -105,6 +118,8 @@ export function defaultWallet() {
     chicks: [], bank: 0, golden: 0, tickets: { ally: 0, skip: 0 }, noInter: false, payer: false, spend: 0, lastBuyAt: 0, starter: false, season: '', premDay: '', tokens: [], treasures: [],
     // 2026-11-20 shop 2.0: The Whole Coop owned; the boosters tried free from the shop (Free sample), and today's claim
     collector: false, sampled: [], sampleDay: '', sampleId: '',
+    // 0.8.15: a half-price ticket held (0 or 1)
+    coupon: 0,
     // 0.8.9 TODAY'S DEAL: the day it was bought and what it was (once a day)
     dealDay: '', dealKey: '' };
 }
@@ -153,6 +168,7 @@ export function sanitizeWallet(w) {
   out.sampleId = BOOSTERS[w.sampleId] ? w.sampleId : '';
   out.dealDay = typeof w.dealDay === 'string' ? w.dealDay : '';
   out.dealKey = typeof w.dealKey === 'string' ? w.dealKey : '';
+  out.coupon = Number(w.coupon) > 0 ? 1 : 0;
   if (w.collector) Object.assign(out, collectAll(out));
   return out;
 }
@@ -163,16 +179,16 @@ export function ownedCount(wallet, id) {
 
 // Coins for finishing a level. result: { stars 0..3, saved, eggs, perfect, levelId }.
 // A loss still pays a small consolation so a bad run never feels wasted.
-//   base    4 for showing up, +2 per saved egg          (4..~16)
+//   base    8 for showing up, +3 per saved egg          (8..~26)
 //   stars   5 per star                                  (0..15)
 //   perfect +5 for a perfect clutch                     (0 or 5)
-// Win examples: 1 star ~15-17, 2 stars ~22, 3 stars perfect ~32-36.
+// Win examples: 1 star ~19-22, 2 stars ~24-27, 3 stars perfect ~37-46.
 export const HARD_PAY = 1.5;
 export function levelCoins(result) {
   const r = result || {}, k = PLATFORM.web ? WEB.winMult : 1; // the web pays double: play is the only way to coins there
   const stars = Math.max(0, Math.min(3, Math.floor(r.stars || 0)));
   const saved = Math.max(0, Math.min(r.eggs > 0 ? r.eggs : 6, Math.floor(r.saved || 0)));
-  const base = (4 + 2 * saved) * k;
+  const base = (8 + 3 * saved) * k; // 0.8.15: was 4 + 2 a saved egg; the purse now moves between bosses
   const starCoins = 5 * stars * k;
   const perfect = r.perfect && stars > 0 ? 5 * k : 0;
   const sum = base + starCoins + perfect, hard = r.hard && stars > 0 ? Math.round(sum * (HARD_PAY - 1)) : 0; // a level marked hard pays half as much again
@@ -265,20 +281,42 @@ export function equippedSkin(wallet) {
 }
 
 export function canAffordSkin(wallet, id) {
-  return !!(SKINS[id] && wallet && !ownsSkin(wallet, id) && wallet.coins >= SKINS[id].price);
+  return !!(SKINS[id] && wallet && !ownsSkin(wallet, id) && wallet.coins >= unlockPrice(wallet, SKINS[id].price).price);
 }
 
 // Buy a skin (and equip it right away). New wallet, or null if unknown / owned / too poor.
 export function buySkin(wallet, id) {
   if (!canAffordSkin(wallet, id)) return null;
   const skins = Array.isArray(wallet.skins) ? wallet.skins : ['classic'];
-  return { ...wallet, coins: wallet.coins - SKINS[id].price, skins: [...skins, id], skin: id };
+  const U = unlockPrice(wallet, SKINS[id].price);
+  return { ...wallet, coins: wallet.coins - U.price, coupon: U.coupon ? 0 : wallet.coupon || 0, skins: [...skins, id], skin: id };
 }
 
 // Equip an owned skin. New wallet, or null if not owned.
 export function equipSkin(wallet, id) {
   if (!SKINS[id] || !ownsSkin(wallet, id)) return null;
   return { ...wallet, skin: id };
+}
+
+// ---------------------------------------------------------------- the half-price ticket (0.8.15)
+// mykee: "a 50% off ... on the unlockables ... a proper cross mark". A prize of the Lucky Spin: one thing to own (an egg
+// skin, a hen outfit, a power chick) at half its coin price, the player's choice: it is used by the first of them he
+// buys. One held at a time, it never runs out and there is no clock on it. The shop shows the old price crossed out on
+// everything it fits while he holds it. It is the one prize that makes coins leave the purse instead of adding to it.
+export const COUPON = { off: 0.5, max: 1, coins: 40 }; // coins: what a second ticket pays while one is held (x the wheel's tier)
+export const couponHeld = (wallet) => (wallet && Number(wallet.coupon) > 0 ? 1 : 0);
+// the coin price of a thing to own for this wallet: { price, was, coupon } (was = the list price; coupon: the ticket applies)
+export function unlockPrice(wallet, list) {
+  const was = Math.max(0, Math.floor(Number(list) || 0)), on = couponHeld(wallet) && was > 0;
+  return { price: on ? Math.max(5, Math.round((was * (1 - COUPON.off)) / 5) * 5) : was, was, coupon: !!on };
+}
+// everything a ticket could be used on right now: [{ kind: 'skin' | 'hen' | 'chick', id, price }]
+export function unlockables(wallet) {
+  const w = wallet || {}, out = [];
+  for (const id of SKIN_ORDER) if (SKINS[id] && SKINS[id].price > 0 && !ownsSkin(w, id)) out.push({ kind: 'skin', id, price: SKINS[id].price });
+  for (const id of HEN_SKIN_ORDER) if (HEN_SKINS[id] && !HEN_SKINS[id].premium && HEN_SKINS[id].price > 0 && !ownsHenSkin(w, id)) out.push({ kind: 'hen', id, price: HEN_SKINS[id].price });
+  for (const id of Object.keys(CHICK_PRICES)) if (!ownsChick(w, id)) out.push({ kind: 'chick', id, price: CHICK_PRICES[id] });
+  return out;
 }
 
 // ---------------------------------------------------------------- star chests
@@ -312,13 +350,9 @@ export function openChest(wallet, chest) {
   const w = sanitizeWallet(wallet);
   w.coins += chest.reward.coins;
   const id = chest.reward.booster;
-  if (BOOSTERS[id]) {
-    if (ownedCount(w, id) < MAX_OWNED) w.owned[id] = ownedCount(w, id) + 1;
-    else w.coins += BOOSTERS[id].price;
-  }
+  giveBooster(w, id);
   const sk = chest.reward.skin;
   if (sk && SKINS[sk]) { if (!w.skins.includes(sk)) w.skins = [...w.skins, sk]; else w.coins += Math.round(SKINS[sk].price / 2); }
-  w.charges = Math.min(MAX_CHARGES, (w.charges || 0) + 1);
   w.chests = Math.max(w.chests, chest.index + 1);
   return w;
 }
@@ -332,14 +366,18 @@ const TREASURE_BOOSTS = ['stone', 'time', 'golden', 'rewind', 'sponge', 'nest', 
 export function bossTreasure(bossId) {
   const w = BOSS_TREASURE_IDS.indexOf(bossId);
   if (w < 0) return null;
-  return { id: bossId, coins: 150 + 50 * w, booster: TREASURE_BOOSTS[w], charges: w < 5 ? 2 : 3 };
+  return { id: bossId, coins: 120 + 40 * w, booster: TREASURE_BOOSTS[w], charges: 1 }; // 0.8.15: 120 to 480 coins (was 150 to 600) and one charge (was 2 or 3): a normal win pays more instead
 }
 // +1 of a booster into a wallet (a full stack pays its price in coins instead): the boss treasure and a win's taste
-function giveBooster(w, id) {
+function giveBooster(w, id, n = 1) {
   if (!BOOSTERS[id]) return;
-  if (ownedCount(w, id) < MAX_OWNED) w.owned[id] = ownedCount(w, id) + 1;
-  else w.coins += BOOSTERS[id].price;
+  const k = Math.max(0, Math.min(n, GIFT_MAX - ownedCount(w, id)));
+  if (k > 0) w.owned = { ...w.owned, [id]: ownedCount(w, id) + k };
+  w.coins += giftCoins(id, n - k);
 }
+// what n gifts of a booster pay when the stack is full (half price, rounded to 5)
+export const giftCoins = (id, n = 1) => (BOOSTERS[id] && n > 0 ? Math.round((BOOSTERS[id].price * GIFT_FULL * n) / 5) * 5 : 0);
+export function giftBooster(wallet, id, n = 1) { const w = sanitizeWallet(wallet); giveBooster(w, id, n); return w; }
 export function tasteBooster(wallet, id) { const w = sanitizeWallet(wallet); giveBooster(w, id); return w; }
 export function treasureOpened(wallet, bossId) { return !!(wallet && Array.isArray(wallet.treasures) && wallet.treasures.includes(bossId)); }
 // Returns a new wallet with the treasure paid, or null when it was opened already (never pays twice)
@@ -423,8 +461,9 @@ export function ownsHenSkin(w, id) {
 }
 export function buyHenSkin(wallet, id) {
   const w = sanitizeWallet(wallet), k = HEN_SKINS[id];
-  if (!k || k.premium || ownsHenSkin(w, id) || w.coins < k.price) return null;
-  w.coins -= k.price; w.henSkins = [...w.henSkins, id]; w.henSkin = id;
+  const U = k ? unlockPrice(w, k.price) : null;
+  if (!k || k.premium || ownsHenSkin(w, id) || w.coins < U.price) return null;
+  w.coins -= U.price; if (U.coupon) w.coupon = 0; w.henSkins = [...w.henSkins, id]; w.henSkin = id;
   return w;
 }
 export function equipHenSkin(wallet, id) {
@@ -475,8 +514,9 @@ export const CHICK_IDS = Object.keys(CHICK_PRICES).filter((id) => !PREMIUM_CHICK
 export const ownsChick = (w, id) => !!(w && Array.isArray(w.chicks) && w.chicks.includes(id));
 export function buyChick(wallet, id) {
   const w = sanitizeWallet(wallet), p = CHICK_PRICES[id];
-  if (!p || ownsChick(w, id) || w.coins < p) return null;
-  w.coins -= p; w.chicks = [...w.chicks, id];
+  const U = p ? unlockPrice(w, p) : null;
+  if (!p || ownsChick(w, id) || w.coins < U.price) return null;
+  w.coins -= U.price; if (U.coupon) w.coupon = 0; w.chicks = [...w.chicks, id];
   return w;
 }
 
@@ -692,8 +732,7 @@ export function claimSample(wallet, day) {
   const S = sampleFor(wallet, day);
   if (S.done) return null;
   const w = sanitizeWallet(wallet);
-  if (ownedCount(w, S.id) < MAX_OWNED) w.owned = { ...w.owned, [S.id]: ownedCount(w, S.id) + 1 };
-  else w.coins += BOOSTERS[S.id].price;
+  giveBooster(w, S.id);
   if (!w.sampled.includes(S.id)) w.sampled = [...w.sampled, S.id];
   w.sampleDay = day; w.sampleId = S.id;
   return w;
@@ -752,7 +791,6 @@ export const bonusChest = (levelId) => ({ coins: BONUS_CHEST.coins, booster: BOO
 export function openBonusChest(wallet, levelId) {
   const R = bonusChest(levelId), w = sanitizeWallet(wallet);
   w.coins += R.coins;
-  if (ownedCount(w, R.booster) < MAX_OWNED) w.owned = { ...w.owned, [R.booster]: ownedCount(w, R.booster) + 1 };
-  else w.coins += BOOSTERS[R.booster].price;
+  giveBooster(w, R.booster);
   return w;
 }

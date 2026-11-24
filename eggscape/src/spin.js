@@ -30,19 +30,21 @@
 //     most SPIN.cheerMax a day. A gift, not a sale: nothing is asked for it.
 //
 // save.spin = { wins, bank, t: { day, ad, coin, played, steps, cheer }, n, cheered: [levelId, ...] }   (state() makes any save safe)
-import { BOOSTERS, BOOSTER_ORDER, HEN_SKINS, HEN_SKIN_ORDER, CHICK_IDS, CHICK_PRICES, ITEMS, CHARGE_ITEM, MAX_OWNED, MAX_CHARGES, MAX_TICKETS, sanitizeWallet, ownedCount, ownsHenSkin, ownsChick } from './economy.js';
+import { BOOSTERS, BOOSTER_ORDER, HEN_SKINS, HEN_SKIN_ORDER, CHICK_IDS, CHICK_PRICES, ITEMS, CHARGE_ITEM, GIFT_MAX, MAX_CHARGES, MAX_TICKETS, COUPON, couponHeld, unlockables, giftBooster, sanitizeWallet, ownedCount, ownsHenSkin, ownsChick } from './economy.js';
 
-export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [70, 100, 140], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [11, 26, 41], tierX: [1, 1.5, 2, 2.5], cheerAt: 3, cheerMax: 2 };
+export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [80, 110, 150], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [11, 26, 41], tierX: [1, 1.5, 2, 2.5], cheerAt: 3, cheerMax: 2 };
 
 // The wheel, clockwise from the top. w = weight = slice size = odds in percent (they add up to 100).
 export const TABLE = [
-  { id: 'c1', kind: 'coins', n: 15, w: 24 },
-  { id: 'b1', kind: 'booster', n: 1, w: 20 },
-  { id: 'c2', kind: 'coins', n: 30, w: 18 },
-  { id: 'ch', kind: 'charge', n: 1, w: 14 },
-  { id: 'b2', kind: 'booster', n: 2, w: 8 },
-  { id: 'c3', kind: 'coins', n: 80, w: 7 },
-  { id: 'sk', kind: 'skip', n: 1, w: 6 },
+  { id: 'c1', kind: 'coins', n: 15, w: 22 },
+  { id: 'b1', kind: 'booster', n: 1, w: 17 },
+  { id: 'cp', kind: 'coupon', n: 1, w: 8 }, // 0.8.15: a half-price ticket for one thing to own (economy.js COUPON)
+  { id: 'c2', kind: 'coins', n: 30, w: 16 },
+  { id: 'ch', kind: 'charge', n: 1, w: 12 },
+  { id: 'sh', kind: 'scare', n: 1, w: 6 }, // 0.8.15: a Scarecrow (villains keep away at the start of one level)
+  { id: 'b2', kind: 'booster', n: 2, w: 7 },
+  { id: 'c3', kind: 'coins', n: 80, w: 5 },
+  { id: 'sk', kind: 'skip', n: 1, w: 4 },
   { id: 'rare', kind: 'rare', n: 1, w: 3 },
 ];
 const TOTAL = TABLE.reduce((a, s) => a + s.w, 0);
@@ -118,9 +120,15 @@ export function prizeFor(slice, wallet, rand = Math.random, x = 1) {
   if (slice.kind === 'coins') { const n = Math.round((slice.n * x) / 5) * 5; return { id: slice.id, kind: 'coins', n, name: `${n} coins`, worth: n }; }
   if (slice.kind === 'charge') return { id: slice.id, kind: 'charge', n: slice.n, name: CHARGE_ITEM.name, worth: CHARGE_ITEM.price * slice.n };
   if (slice.kind === 'skip') return { id: slice.id, kind: 'skip', n: 1, name: ITEMS.skip.name, worth: ITEMS.skip.price };
-  if (slice.kind === 'booster') {
-    const room = BOOSTER_ORDER.filter((b) => ownedCount(wallet, b) + slice.n <= MAX_OWNED), b = pick(room.length ? room : BOOSTER_ORDER);
+  if (slice.kind === 'booster') { // any booster but the Scarecrow (it has its own slice), one with room in the bag first
+    const all = BOOSTER_ORDER.filter((b) => b !== 'scare'), room = all.filter((b) => ownedCount(wallet, b) + slice.n <= GIFT_MAX), b = pick(room.length ? room : all);
     return { id: slice.id, kind: 'booster', n: slice.n, item: b, name: BOOSTERS[b].name, worth: BOOSTERS[b].price * slice.n };
+  }
+  if (slice.kind === 'scare') return { id: slice.id, kind: 'booster', n: slice.n, item: 'scare', name: BOOSTERS.scare.name, worth: BOOSTERS.scare.price * slice.n };
+  if (slice.kind === 'coupon') { // a ticket already held, or nothing left to use one on: coins instead (said on the odds sheet)
+    const U = unlockables(wallet);
+    if (couponHeld(wallet) || !U.length) { const n = Math.round((COUPON.coins * x) / 5) * 5; return { id: slice.id, kind: 'coins', n, name: `${n} coins`, worth: n, instead: 'coupon' }; }
+    return { id: slice.id, kind: 'coupon', n: 1, name: 'Half-price ticket', worth: Math.round(U.reduce((a, u) => a + u.price, 0) / U.length * COUPON.off) };
   }
   // the rare bird: a hen outfit or a power chick the player does not own (never a real-money one); none left: coins
   const hens = HEN_SKIN_ORDER.filter((h) => !HEN_SKINS[h].premium && HEN_SKINS[h].price > 0 && !ownsHenSkin(wallet, h));
@@ -133,7 +141,8 @@ export function prizeFor(slice, wallet, rand = Math.random, x = 1) {
 export function grant(wallet, P) {
   const w = sanitizeWallet(wallet);
   if (P.kind === 'coins') w.coins += P.n;
-  else if (P.kind === 'booster') { const room = MAX_OWNED - ownedCount(w, P.item), n = Math.min(P.n, room); if (n > 0) w.owned[P.item] = ownedCount(w, P.item) + n; w.coins += (P.n - n) * BOOSTERS[P.item].price; }
+  else if (P.kind === 'booster') return giftBooster(w, P.item, P.n); // a full stack pays half the price in coins, so a spin is never empty
+  else if (P.kind === 'coupon') w.coupon = 1;
   else if (P.kind === 'charge') { const n = Math.min(P.n, MAX_CHARGES - w.charges); w.charges += n; w.coins += (P.n - n) * CHARGE_ITEM.price; }
   else if (P.kind === 'skip') { if (w.tickets.skip < MAX_TICKETS) w.tickets = { ...w.tickets, skip: w.tickets.skip + 1 }; else w.coins += ITEMS.skip.price; }
   else if (P.kind === 'hen') { if (!ownsHenSkin(w, P.item)) w.henSkins = [...w.henSkins, P.item]; else w.coins += P.worth; }
@@ -162,7 +171,7 @@ export function spin(save, how, dayStr, rand = Math.random) {
 export function meanWorth(wallet, x = 1) {
   let v = 0;
   for (const s of TABLE) {
-    if (s.kind === 'booster') v += (s.w / TOTAL) * s.n * (BOOSTER_ORDER.reduce((a, b) => a + BOOSTERS[b].price, 0) / BOOSTER_ORDER.length);
+    if (s.kind === 'booster') { const all = BOOSTER_ORDER.filter((b) => b !== 'scare'); v += (s.w / TOTAL) * s.n * (all.reduce((a, b) => a + BOOSTERS[b].price, 0) / all.length); }
     else if (s.kind === 'rare') {
       const hens = HEN_SKIN_ORDER.filter((h) => !HEN_SKINS[h].premium && HEN_SKINS[h].price > 0 && !ownsHenSkin(wallet, h)).map((h) => HEN_SKINS[h].price), ch = CHICK_IDS.filter((c) => !ownsChick(wallet, c)).map((c) => CHICK_PRICES[c]), all = [...hens, ...ch];
       v += (s.w / TOTAL) * (all.length ? all.reduce((a, b) => a + b, 0) / all.length : SPIN.rareCoins);

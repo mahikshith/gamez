@@ -10,7 +10,7 @@ const sum = (f) => { let ad = null, t = 0, k = 0; for (;;) { const c = f(ad, day
 // the app: as it was
 E.setPlatform(false);
 const appWin = E.levelCoins(win), [appVid, appN] = sum(E.freeCoinsNext), appChest = E.dailyChest(day).coins;
-ok(appWin.total === 30, 'app: a perfect 3-star win pays 30');
+ok(appWin.total === 37, 'app: a perfect 3-star win pays 37');
 ok(appWin.base + appWin.stars + appWin.perfect === appWin.total, 'app: the parts add up');
 ok(appVid === 150 && appN === 6, 'app: six videos a day, 150 coins');
 ok(E.HEN_SKINS.golden.premium === true && E.HEN_SKINS.golden.price === 0, 'app: the Golden Hen comes with Premium');
@@ -21,7 +21,7 @@ ok(E.adCooldownLeft(1000, 1000 + 61000) > 0, 'app: the video rests three minutes
 const prices = JSON.stringify([E.SKIN_ORDER.map((id) => E.SKINS[id].price), E.CHICK_PRICES, E.BOOSTER_ORDER.map((id) => E.BOOSTERS[id].price)]);
 E.setPlatform(true);
 const webWin = E.levelCoins(win), [webVid, webN] = sum(E.freeCoinsNext);
-ok(webWin.total === 60, 'web: the same win pays 60');
+ok(webWin.total === 74, 'web: the same win pays 74');
 ok(webWin.base + webWin.stars + webWin.perfect === webWin.total, 'web: the parts add up');
 ok(webVid === 380 && webN === 8, 'web: eight videos a day, 380 coins');
 ok(E.dailyChest(day).coins === appChest * 2, 'web: the daily gift pays double');
@@ -34,6 +34,6 @@ ok(!/Premium/.test(E.HEN_SKINS.golden.line), 'web: no word of Premium on the Gol
 
 // and back
 E.setPlatform(false);
-ok(E.levelCoins(win).total === 30 && E.HEN_SKINS.golden.premium === true, 'switching back restores the app profile');
+ok(E.levelCoins(win).total === 37 && E.HEN_SKINS.golden.premium === true, 'switching back restores the app profile');
 console.log(bad ? `${bad} of ${n} FAILED` : `web profile: ${n} checks passed`);
 process.exit(bad ? 1 : 0);

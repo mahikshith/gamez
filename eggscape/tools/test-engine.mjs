@@ -142,5 +142,29 @@ const HOUR = 3600000, DAY = 24 * HOUR, T0 = new Date(2026, 10, 24, 18, 0, 0).get
   ok(HE.plan(d, { hour: 18 }, q.at + HOUR) === null, 'the daily chest alone is not worth a second reminder after one was ignored');
   ok(/allowed|switched off/.test(HE.line(s)), 'one line for the speed log: ' + HE.line(s));
 }
+{ // 0.8.15 Scarecrow booster in the sim: villains are scared off while it stands, and a saved sim restores exactly
+  const { Sim, DT, SCARE_S } = await import('../src/sim/sim.js');
+  const { LEVELS } = await import('../src/data/levels.js');
+  const run = (sim, secs) => { for (let i = 0; i < secs / DT && sim.state === 'play'; i++) { sim.step(); sim.events.length = 0; } };
+  const sig = (sim) => JSON.stringify([sim.t, sim.scareT, sim.eggs.map((e) => { const p = e.body.getPosition(); return [e.alive, +p.x.toFixed(6), +p.y.toFixed(6)]; })]);
+  let scared = 0, tried = 0, exact = 0, same = 0;
+  for (const id of [8, 12, 16, 18, 22, 27, 33, 38, 42, 47]) {
+    const L = LEVELS[id - 1]; tried++;
+    const a = new Sim(L, { mode: 'medium', scare: true });
+    let hit = false;
+    for (let i = 0; i < 12 / DT && a.state === 'play'; i++) { a.step(); a.events.length = 0; if (Object.values(a.p2.fx).some((f) => f.k === 'scare')) hit = true; }
+    if (hit) scared++;
+    const b = new Sim(L, { mode: 'medium', scare: true }); run(b, 4);
+    const S = b.fullState(), c = Sim.fromState(L, S, b.opts); run(b, 4); run(c, 4);
+    { const pb = b.eggs.map((q) => q.body.getPosition()), pc = c.eggs.map((q) => q.body.getPosition()); if (b.scareT === c.scareT && b.scareTick === c.scareTick && b.t === c.t && pb.every((q, i) => Math.hypot(q.x - pc[i].x, q.y - pc[i].y) < 0.02)) exact++; } // (a restored sim's resting contacts settle a hair differently with or without the booster)
+    const d = new Sim(L, { mode: 'medium' }), e = new Sim(L, { mode: 'medium' }); run(d, 6); run(e, 6);
+    if (sig(d) === sig(e) && d.scareT === 0) same++;
+  }
+  ok(scared >= 5, `villains are scared off on ${scared} of ${tried} sampled levels within 12 s`);
+  ok(exact === tried, `a sim saved with the Scarecrow up restores with its clock and its eggs where they were (${exact}/${tried})`);
+  ok(same === tried, 'without the booster nothing in the sim changes');
+  const z = new Sim(LEVELS[11], { mode: 'easy', scare: true }); run(z, SCARE_S + 1);
+  ok(z.state !== 'play' || z.scareT === 0, `it stands ${SCARE_S} s and then falls`);
+}
 console.log(bad ? `\n${bad} FAILED` : '\nall engine checks passed');
 process.exit(bad ? 1 : 0);
