@@ -597,11 +597,10 @@ export function drawThiefDens(ctx, sim, t, k, over = false) {
     });
   }
 }
-// 0.8.15 (mykee: "redesign the weasel den, make it cool"): a proposal, shown to him as a picture first and drawn only
-// while window.__denV2 is set. The weasel lives in a hollow tree stump: flared roots on the ring, a snapped top, a
+// 0.8.15 (mykee: "redesign the weasel den, make it cool"): shown to him as a picture first, then made the den. The weasel lives in a hollow tree stump: flared roots on the ring, a snapped top, a
 // plank-framed door with a lantern that swings and lights the loot inside, a bent stovepipe that puffs, toadstools
 // at a root and a crooked KEEP OUT board with his paw print. Same doorway and the same place for stolen eggs.
-const denV2 = () => typeof window !== 'undefined' && !!window.__denV2;
+const denV2 = () => typeof window === 'undefined' || window.__denV2 !== false; // mykee, 15:53: "Proceed": the stump is the weasel's den now (window.__denV2 = false shows the old mound, for a before/after picture)
 const stumpPath = (ctx, W, H) => {
   ctx.beginPath(); ctx.moveTo(-W * 1.14, 3);
   ctx.quadraticCurveTo(-W * 0.84, -H * 0.06, -W * 0.8, -H * 0.42); ctx.lineTo(-W * 0.76, -H * 0.9);
@@ -692,7 +691,7 @@ function drawStumpOver(ctx, T, t, k, live) {
 // dev studio: one den upright on its own, for a before/after picture (v2: the proposed look)
 export function drawDenAlone(ctx, t, k, o = {}) {
   const T = { id: 1, kind: o.kind || 'weasel', ph: o.ph || 'wait', stash: o.stash ? [1] : [] }, was = typeof window !== 'undefined' ? window.__denV2 : 0;
-  if (typeof window !== 'undefined') window.__denV2 = !!o.v2;
+  if (typeof window !== 'undefined') window.__denV2 = o.v2 !== 0 && o.v2 !== false;
   ctx.save(); drawDen(ctx, T, t, k); ctx.restore(); if (o.between) o.between(); ctx.save(); drawDenOver(ctx, T, t, k, true); ctx.restore();
   if (typeof window !== 'undefined') window.__denV2 = was;
 }
