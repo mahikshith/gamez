@@ -1218,9 +1218,25 @@ async function press(id) {
       setScreen('levels');
       break;
     case 'go': {
-      // 2026-11-24: PLAY never refuses. Until 0.8.12 the first two levels with a choice of chicks (level 13 for every
-      // player) sent PLAY back to the Chicks tab with a 2 s toast until a tile was tapped; a tester's log shows 105 taps
-      // on PLAY over three app starts and no level. A chick is on from the start now (introAutoPick), a tap changes it.
+      // The first two levels with a choice of chicks (level 13 for every player) ask the player to tap one (mykee,
+      // 2026-11-24: "provide the opportunity for the user to tap on the chick rather than defaulting"). Until 0.8.12
+      // PLAY only sent them to the Chicks tab with a 2 s toast: a tester's log shows 105 taps on PLAY over three app
+      // starts and no level 13. Now the button itself says PICK A CHICK, a hand taps the chicks, a refused tap makes
+      // them jump, and the third refused tap takes the newest chick along so the card can never be a dead end.
+      if (G.screen === 'intro' && introChicks().need) {
+        const A = G.pickAsk && G.pickAsk.lid === G.level.id ? G.pickAsk : (G.pickAsk = { lid: G.level.id, n: 0, t: 0 });
+        A.n++; A.t = G.t;
+        if (A.n < 3) {
+          if (ui.A.w > ui.A.h * 1.15) { if (G.ipageR && G.ipAnchorR && G.ipAnchorR.chick != null) G.ipageR.to = G.ipAnchorR.chick; }
+          else { G.itab = 'chicks'; if (G.ipage) { G.ipage.y = 0; G.ipage.v = 0; G.ipage.to = null; } } // portrait: the Chicks tab
+          audio.play('cluck', { pitch: 0.8, vol: 0.5 });
+          toast('Tap a chick first', 2.4); break;
+        }
+        const open = strikesOpen(), S = open[open.length - 1];
+        G.toasts = []; G.toast = null; // (the nudge's own toast goes with it)
+        G.stkSel = { lid: G.level.id, id: S.id }; G.introPick = { id: S.id, t: G.t, lid: G.level.id };
+        G.sim.stkEquip(strikeFor(G.level, G.li));
+      }
       { const T = introChicks(); if (T.id) { save.lastStk = T.id; if (T.choice) save.seen.pickN = (save.seen.pickN || 0) + 1; persist(); } }
       if (worldOpener(G.level)) { save.intro[G.level.id] = 1; persist(); }
       // owned boosters picked on the intro card are spent now and the level restarts with them
@@ -5623,12 +5639,13 @@ function introChicks() {
   const open = strikesOpen(), K = G.sim && G.sim.stk;
   if (!K || !K.any || !open.length || (G.li >= 0 && G.level.id < STRIKE_FROM)) return { open: [], id: null, choice: false, need: false };
   const choice = open.length > 1;
-  return { open, id: K.id || null, choice, need: false }; // need: nothing has to be tapped before PLAY (2026-11-24, see 'go')
+  return { open, id: K.id || null, choice, need: choice && !K.id && (save.seen.pickN || 0) < 2 };
 }
-// the last used chick (else the newest) is already on when the card opens; the player taps another to change it
+// the first two levels with a choice ask for a pick; after that the last used chick (else the newest) is already on
 function introAutoPick(L, i) {
   const open = strikesOpen();
   if (!open.length || (i >= 0 && L.id < STRIKE_FROM) || (G.stkSel && G.stkSel.lid === L.id)) return;
+  if (open.length > 1 && (save.seen.pickN || 0) < 2) return;
   const last = open.find((S) => S.id === save.lastStk) || open[open.length - 1];
   G.stkSel = { lid: L.id, id: last.id };
 }
@@ -5643,17 +5660,18 @@ function shortTip(t) {
   if (q.length > 46) { const c = q.slice(0, 46), i = Math.max(c.lastIndexOf(','), c.lastIndexOf(' \u2014 ')); q = i > 20 ? c.slice(0, i) : c.slice(0, c.lastIndexOf(' ')); }
   return q;
 }
-// 2026-11-24 (mykee: "show it to the user visually, some way to select a power chick"): on the first two cards with a
-// choice of chicks a hand taps one of the other chicks, until the player taps a chick on that card. A chick is always
-// on already, so this teaches the swap and never stands between the player and PLAY.
-const swapHintOn = (T) => !!(T && T.choice && (save.seen.pickN || 0) < 2 && G.level && !(G.introPick && G.introPick.lid === G.level.id));
-function swapHand(tiles, T, V, s) { // tiles: [{ id, locked, x, y, w, h }] as drawn; V: the row's visible rect
-  if (!swapHintOn(T)) return;
-  const ok = tiles.filter((q) => !q.locked && q.id !== T.id && q.x + q.w * 0.5 > V.x + 8 * s && q.x + q.w * 0.5 < V.x + V.w - 8 * s);
-  const q = ok[0] || tiles.find((q) => !q.locked && q.id !== T.id && q.x + q.w > V.x + 24 * s && q.x < V.x + V.w - 24 * s);
-  if (!q) return;
-  const u = save.calm ? 0.5 : (G.t % 1.7) / 1.7, press = u > 0.42 && u < 0.7, lift = press ? 0 : Math.min(1, Math.abs(u - 0.56) * 3.2);
-  const hx = clamp(q.x + q.w * 0.5, V.x + 22 * s, V.x + V.w - 22 * s), hy = q.y + q.h * 0.36, hs = Math.min(q.w * 0.62, 92 * s);
+// 2026-11-24 (mykee: "show it to the user visually, some way to select a power chick ... if they click on play, some
+// indication that they need to select a chick"): while a pick is asked for, a hand taps the chicks in turn; after a
+// refused PLAY it taps faster and the tiles jump (pickAsked: seconds since that tap).
+const pickJump = (bt, locked, T) => { const a = T.need && !locked ? pickAsked() : 9, b = Math.min(bt, a); return { bounce: b < 0.45 && !save.calm ? 1.6 * (1 - b / 0.45) : 0, bt: b }; };
+const pickAsked = () => (G.pickAsk && G.level && G.pickAsk.lid === G.level.id && G.pickAsk.n ? G.t - G.pickAsk.t : 99);
+function pickHand(tiles, T, V, s) { // tiles: [{ id, locked, x, y, w, h }] as drawn; V: the row's visible rect
+  if (!T || !T.need) return;
+  const ok = tiles.filter((q) => !q.locked && q.x + q.w * 0.5 > V.x + 8 * s && q.x + q.w * 0.5 < V.x + V.w - 8 * s);
+  if (!ok.length) return;
+  const per = pickAsked() < 4 ? 1.0 : 1.6, ph = save.calm ? 0.5 : (G.t % per) / per, q = ok[save.calm ? 0 : Math.floor(G.t / per) % ok.length];
+  const press = ph > 0.42 && ph < 0.72, lift = press ? 0 : Math.min(1, Math.abs(ph - 0.57) * 3.2);
+  const hx = q.x + q.w * 0.56, hy = q.y + q.h * 0.34, hs = Math.min(q.w * 0.62, 92 * s);
   teachHand(ctx, hx + lift * hs * 0.1, hy + lift * hs * 0.16, hs, press, 1);
 }
 // one chick card. sel: 0..1 eased selection (lift, grow, bright border, glow, check); dim: another card is chosen
@@ -5753,7 +5771,7 @@ function pickerBlocks(s, iw, minW) {
   const nl = Math.max(...lines.map((l) => l.length)), textH = ns * 1.15 * (two ? 2 : 1) + 4 * s + nl * ls * 1.2 + ls * 0.6 + 4 * s;
   const ch = n === 1 ? 118 * s : Math.min(rows > 1 ? 170 * s : 300 * s, 64 * s + textH + (rows > 1 ? 0 : 38 * s));
   const B = [];
-  const hint = swapHintOn(T) ? 'Tap a chick to swap' : T.choice ? 'Your chick' : T.id ? 'Your chick' : 'Tap to take along';
+  const hint = T.need ? (pickAsked() < 60 ? 'Tap a chick first' : 'Pick a chick to help you') : T.choice ? 'Your chick' : T.id ? 'Your chick' : 'Tap to take along';
   B.push({ h: 24 * s, gap: 0, draw: (x, y, w) => {
     const pu = T.need && !save.calm ? 1 + 0.04 * Math.sin(G.t * 4) : 1;
     ctx.save(); ctx.translate(x + w / 2, y + 12 * s); ctx.scale(pu, pu); ctx.translate(-(x + w / 2), -(y + 12 * s));
@@ -5770,14 +5788,14 @@ function pickerBlocks(s, iw, minW) {
       const dt = Math.min(0.05, Math.max(0, G.t - st.t)); st.t = G.t; st.v += (want - st.v) * Math.min(1, dt * 14);
       const pk = G.introPick && G.introPick.id === S.id ? G.introPick : null, bt = pk ? G.t - pk.t : 9;
       chickCard(S, rx, ry, cw, ch, s, { sel: st.v, dim: !!T.id && S.id !== T.id && T.choice, locked: LK, tipGlow: !!(LK && G.introTip && G.introTip.id === S.id), need: T.need, i, acc, wide: n === 1, lines: lines[i], ls, ns, two, textH,
-        bounce: bt < 0.4 && !save.calm ? 1 - bt / 0.4 : 0, bt });
+        ...pickJump(bt, !!LK, T) });
       const rect = { x: rx, y: ry, w: cw, h: ch };
       const bid = LK ? 'stk:buy:' + S.id : 'stk:pick:' + S.id;
       ui.record(rect, 'btn:' + bid, 'btn:' + bid);
       ui.buttons.push({ id: bid, ...rect });
       tiles.push({ id: S.id, locked: !!LK, ...rect });
     });
-    swapHand(tiles, T, { x, y, w, h: rows * (ch + gap) }, s);
+    pickHand(tiles, T, { x, y, w, h: rows * (ch + gap) }, s);
   } });
   if (G.introTip && locked.some((c) => c.id === G.introTip.id) && !T.id) B.push(lineBlock(shortTip(G.introTip.line) || G.introTip.line, 13.5 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.85)', tag: 'intro:offer', gap: 2 * s }));
   const S = T.id ? STRIKE[T.id] : null;
@@ -6084,7 +6102,7 @@ function drawLevelIntro(L, acc) {
     const lines = items.map(({ S }) => wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s - ls * 2.2).slice(0, 2));
     const nw = cw - 14 * s, two = items.some(({ S }) => ui.measure(S.name, ns) > nw);
     const nl = Math.max(...lines.map((l) => l.length)), textH = ns * 1.15 * (two ? 2 : 1) + 6 * s + nl * ls * 1.2 + ls * 0.6 + 6 * s;
-    const B = [{ ...section(swapHintOn(T) ? 'TAP A CHICK TO SWAP' : 'YOUR CHICK', s, 'chick'), anchor: 'chick' }];
+    const B = [{ ...section(T.need ? (pickAsked() < 60 ? 'TAP A CHICK FIRST' : 'PICK A CHICK TO HELP YOU') : 'YOUR CHICK', s, 'chick'), anchor: 'chick' }];
     if (!one && !demo) B.push(lineBlock('Swipe for more. Tap one to take it.', 14 * s, { color: '#fff0d4', stroke: INK, tag: 'intro:swipe', gap: 2 * s }));
     const rowH = ch + 30 * s;
     B.push({ h: rowH, gap: 4 * s, draw: (x, y, w) => {
@@ -6094,7 +6112,7 @@ function drawLevelIntro(L, acc) {
       if (R.lid !== L.id + ':' + G.li) { // a new level: the picked chick starts in view
         R.lid = L.id + ':' + G.li; R.v = 0;
         const si = Math.max(0, items.findIndex((it) => it.S.id === T.id));
-        R.y = clamp(swapHintOn(T) ? si * (cw + gap) + cw - w + 2 * pad : si * (cw + gap) - (w - cw) / 2, 0, R.max); // while the hand teaches the swap, the chick before the picked one is whole in view
+        R.y = clamp(si * (cw + gap) - (w - cw) / 2, 0, R.max);
       }
       glide(R);
       const off = total <= w ? (w - total) / 2 : pad - R.y, V = { x, y, w, h: rowH };
@@ -6109,12 +6127,12 @@ function drawLevelIntro(L, acc) {
         const dt = Math.min(0.05, Math.max(0, G.t - st.t)); st.t = G.t; st.v += (want - st.v) * Math.min(1, dt * 14);
         const pk = G.introPick && G.introPick.id === S.id ? G.introPick : null, bt = pk ? G.t - pk.t : 9;
         chickCard(S, rx, cy, cw, ch, s, { sel: st.v, dim: !!T.id && S.id !== T.id && T.choice, locked: LK, tipGlow: !!(LK && G.introTip && G.introTip.id === S.id), need: T.need, i, acc: G.introAcc, wide: one, lines: lines[i], ls, ns, two, textH,
-          bounce: bt < 0.4 && !save.calm ? 1 - bt / 0.4 : 0, bt });
+          ...pickJump(bt, !!LK, T) });
         const rect = { x: rx, y: cy, w: cw, h: ch }, bid = LK ? 'stk:buy:' + S.id : 'stk:pick:' + S.id;
         ui.record(rect, 'btn:' + bid, 'btn:' + bid); ui.buttons.push({ id: bid, ...rect });
         tiles.push({ id: S.id, locked: !!LK, ...rect });
       });
-      swapHand(tiles, T, V, s);
+      pickHand(tiles, T, V, s);
       ctx.restore();
       clipRecorded(r0, b0, V);
       if (R.max > 0) { // arrows where there is more, and a row of dots for where you are
@@ -6173,7 +6191,7 @@ function drawLevelIntro(L, acc) {
   };
   // the Level tab's NEXT (PLAY when the level has no chick step), pinned under the card's scroll area (2026-11-23)
   const nextPin = (s) => ({ h: 62 * s, gap: 0, draw: (x, y, w) => { const toCh = introHasChicks(); ui.button(toCh ? 'inext' : 'go', toCh ? 'NEXT' : 'PLAY', x, y, w, 62 * s, { kind: 'primary', shimmer: true, icon: toCh ? ICON.next : ICON.play, size: 28 * s }); } });
-  const play = (s, w0, need) => ({ h: 66 * s, gap: 0, draw: (x, y, w) => ui.button('go', 'PLAY', x + (w - w0) / 2, y, w0, 66 * s, { kind: 'primary', shimmer: !need, icon: ICON.play, size: 28 * s }) });
+  const play = (s, w0, need) => ({ h: 66 * s, gap: 0, draw: (x, y, w) => ui.button('go', need ? 'PICK A CHICK' : 'PLAY', x + (w - w0) / 2, y, w0, 66 * s, need ? { kind: 'off', size: 24 * s } : { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * s }) }); // need: the button says what is missing (it still takes the tap and nudges)
   const links = (s) => ({ h: 50 * s, gap: 10 * s, draw: (x, y, w) => {
     const ad = !G.adBoost && !G.golden && !earlyDays(), bw = ad ? w * 0.4 : w * 0.5, gp = 10 * s, aw = w - bw - gp, tw = ad ? w : bw, x0 = x + (w - tw) / 2;
     ui.button(G.li === -1 ? 'back' : 'levels', G.li === -1 ? 'Menu' : 'Levels', x0, y, bw, 50 * s, { kind: 'tertiary', icon: ICON.grid, size: 17 * s });
