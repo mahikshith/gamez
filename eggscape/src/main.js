@@ -1820,7 +1820,7 @@ async function press(id) {
         const lid = G.level && G.level.id; G.boostPg = { lid, n: (G.boostPg && G.boostPg.lid === lid ? G.boostPg.n : 0) + 1 }; audio.play('ui_tap');
       } else if (id && id.startsWith('boost:')) {
         const b = id.slice(6);
-        if (G.boostSel.has(b)) G.boostSel.delete(b); else G.boostSel.add(b);
+        if (G.boostSel.has(b)) G.boostSel.delete(b); else { G.boostSel.add(b); if (!(save.seen || {})['bu:' + b]) { save.seen = { ...(save.seen || {}), ['bu:' + b]: 1 }; persist(); } }
         G.boostLast = b;
       } else if (id === 'inext') { await press('itab:chicks');
       } else if (id && id.startsWith('itab:')) { // the level page's tabs
@@ -4858,6 +4858,8 @@ function flipped(x, y, draw) {
 }
 
 // which boosters this level has a use for (they lead the level card's row) and which it has none for (they come last)
+// a booster's lesson (level card): the one he owns, has never picked and this level has a use for; none in the first levels
+function boostTeach(L) { return earlyDays() ? null : boostUse(L).first.find((id) => E.ownedCount(save.wallet, id) > 0 && !(save.seen || {})['bu:' + id]) || null; }
 function boostUse(L) {
   const foes = villainKinds(L).some((k) => (VILLAIN_INFO[k] || {}).group !== 'hazard'), thorns = (L.rings || []).some((r) => r.thorns && r.thorns.length);
   return { first: [foes && 'scare', thorns && 'snips'].filter(Boolean), last: [!foes && 'scare', !thorns && 'snips'].filter(Boolean) };
@@ -6711,7 +6713,7 @@ function drawLevelIntro(L, acc) {
   };
   const adOn = showBoost && !G.adBoost && !G.golden;
   const boostState = () => ({ wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t,
-    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: tabMark, s, page: G.boostPg && G.boostPg.lid === L.id ? G.boostPg.n : 0, ...boostUse(L) });
+    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: tabMark, s, page: G.boostPg && G.boostPg.lid === L.id ? G.boostPg.n : 0, ...boostUse(L), teach: boostTeach(L) });
   const bottom = (x, w) => { // draws from the bottom of the safe rect up; returns the top of what it drew
     let y = A.y1 - 6 * s - BTN;
     bigButton(x, y, w);

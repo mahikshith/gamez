@@ -1860,7 +1860,7 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
 // the shop's Boosts row). state.mark(x, y, r): the caller's pulsing mark, on the video tile and on each owned booster
 // not armed yet. state.s: the card's scale. Fits in (x, y, w, h).
 export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
-  const { wallet, selected = new Set(), lastTapped = null, t = 0, hide = [], ad = null, mark = null, first = [], last = [] } = state, s = state.s || ui.u;
+  const { wallet, selected = new Set(), lastTapped = null, t = 0, hide = [], ad = null, mark = null, first = [], last = [], teach = null } = state, s = state.s || ui.u;
   // (the ones this level has a use for lead, the ones it has no use for come last: a Scarecrow where no villain lives)
   const rank = (id) => (first.includes(id) ? 0 : last.includes(id) ? 2 : 1);
   const owned = BOOSTER_ORDER.filter((id) => ownedCount(wallet, id) > 0 && !hide.includes(id)).sort((a, b) => rank(a) - rank(b));
@@ -1874,7 +1874,9 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   const { items, more } = pageOf(all, fit, state.page || 0);
   const n = items.length + (more ? 1 : 0);
   // the label: BOOSTERS, or the one just tapped and what it does
-  const tapped = lastTapped && BOOSTERS[lastTapped] && ownedCount(wallet, lastTapped) > 0 ? BOOSTERS[lastTapped] : null;
+  // (0.8.15, a booster's lesson: one he owns, has never picked and this level has a use for is named before any tap,
+  // with what it does, and its tile glows; no free booster is given for it)
+  const say = lastTapped && BOOSTERS[lastTapped] && ownedCount(wallet, lastTapped) > 0 ? lastTapped : teach && BOOSTERS[teach] && ownedCount(wallet, teach) > 0 && !selected.has(teach) ? teach : null, tapped = say ? BOOSTERS[say] : null;
   let str = 'BOOSTERS';
   if (tapped) { const full = `${tapped.name}: ${tapped.line}`; str = ui.measure(full, lab) <= w ? full : tapped.name; }
   const lw = Math.min(w, ui.measure(str, lab));
@@ -1890,6 +1892,7 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
       if (mark) mark(cx + c - 9 * s, ty + 9 * s, 7.5 * s); // (inside the tile's corner: clear of its neighbours and the label)
     } else if (it.own) {
       ui.button('boost:' + id, '', cx, ty, c, c, { kind: on ? 'primary' : 'tertiary', round: 14 * s });
+      if (id === teach && !on && !lastTapped) { const k = ui.calm ? 0.7 : 0.5 + 0.5 * Math.sin(t * 4); ctx.save(); ui.roundRect(cx - 2 * s, ty - 2 * s, c + 4 * s, c + 4 * s, 16 * s); ctx.lineWidth = 3 * s; ctx.strokeStyle = `rgba(255,196,40,${0.35 + 0.6 * k})`; ctx.stroke(); ctx.restore(); }
       drawBoosterIcon(ctx, id, cx + c / 2, ty + c * 0.38, c * 0.5, t);
       // how many you have, on a chip where the others show their price
       const ps = Math.min(c * 0.22, 14 * s), str = '\u00d7' + ownedCount(wallet, id), pw = Math.min(c - 6 * s, ui.measure(str, ps) + ps * 1.2), py = ty + c - ps * 1.45 - 6 * s;
