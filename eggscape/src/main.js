@@ -588,7 +588,14 @@ function shortToast(t) {
   const ss = t.split(/(?<=[.!?])\s/);
   let q = ss[0];
   if (q.length < 22 && ss[1]) q += ' ' + ss[1];
-  if (q.length > 60) { const c = q.slice(0, 60); q = c.slice(0, c.lastIndexOf(' ')); }
+  // 0.8.15: a tip is never cut in the middle of a sentence (33 tips ended like "...carry a bomb away from your").
+  // Up to 84 letters (two lines on a phone) it stays whole; a longer one ends at its last comma or colon before that,
+  // or keeps only its opening sentence; failing both it stays whole on three lines
+  if (q.length > 84) {
+    const c = q.slice(0, 84), i = Math.max(c.lastIndexOf(','), c.lastIndexOf(':'), c.lastIndexOf(';'));
+    if (i >= 30) q = c.slice(0, i) + '.';
+    else if (ss[0].length <= 84 && ss[0].length >= 22) q = ss[0];
+  }
   return q;
 }
 // the icon a message wears: given, else guessed from its words
