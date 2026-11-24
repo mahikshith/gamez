@@ -6217,18 +6217,20 @@ function drawLevelIntro(L, acc) {
     if (nP > 1) ui.buttons.push({ id: 'how:next', x, y, w, h });
   } });
   // the tiles of what is on this level: one even grid; the one playing is green with a play mark; a tap plays it again
-  const tiles = HT.tiles, tn = tiles.length, tCols = Math.min(tn, 4), tRows = tn ? Math.ceil(tn / tCols) : 0, tileH = 58 * s, tGap = 8 * s;
-  const tileBlock = !tn ? (nP > 1 ? { h: 14 * s, gap: gp, draw: (x, y, w) => { for (let q = 0; q < nP; q++) { ctx.beginPath(); ctx.arc(x + w / 2 + (q - (nP - 1) / 2) * 16 * s, y + 7 * s, (q === Hw.i % nP ? 5 : 3.5) * s, 0, 7); ctx.fillStyle = q === Hw.i % nP ? '#3cb043' : 'rgba(120,80,30,0.35)'; ctx.fill(); } } } : null)
+  // (a name too long for its tile takes two lines, never an ellipsis; the tiles then stand a little taller)
+  const tiles = HT.tiles, tn = tiles.length, tCols = Math.min(tn, 4), tRows = tn ? Math.ceil(tn / tCols) : 0, tGap = 8 * s, tFs = 14 * s;
+  const tileLines = (w) => { const cw = (w - (tCols - 1) * tGap) / tCols; return tiles.map((Ti) => (ui.measure(Ti.name, tFs) <= cw - 8 * s ? [Ti.name] : wrapText(Ti.name, tFs, cw - 8 * s).slice(0, 2))); };
+  const tileBlock = (w0) => { const TL = tn ? tileLines(w0) : [], two = TL.some((l) => l.length > 1), tileH = (two ? 72 : 58) * s; return !tn ? (nP > 1 ? { h: 14 * s, gap: gp, draw: (x, y, w) => { for (let q = 0; q < nP; q++) { ctx.beginPath(); ctx.arc(x + w / 2 + (q - (nP - 1) / 2) * 16 * s, y + 7 * s, (q === Hw.i % nP ? 5 : 3.5) * s, 0, 7); ctx.fillStyle = q === Hw.i % nP ? '#3cb043' : 'rgba(120,80,30,0.35)'; ctx.fill(); } } } : null)
     : { h: tRows * tileH + (tRows - 1) * tGap, gap: gp, draw: (x, y, w) => {
-      const cw = (w - (tCols - 1) * tGap) / tCols, fs = 14 * s;
+      const cw = (w - (tCols - 1) * tGap) / tCols, fs = tFs, nl = two ? 2 : 1;
       tiles.forEach((Ti, k) => {
         const c = k % tCols, r = Math.floor(k / tCols), inRow = Math.min(tCols, tn - r * tCols), rx = x + c * (cw + tGap) + ((tCols - inRow) * (cw + tGap)) / 2, ry = y + r * (tileH + tGap), on = Ti.i === Hw.i % nP;
         ui.roundRect(rx, ry, cw, tileH, 12 * s); ctx.fillStyle = on ? '#5cbf3a' : 'rgba(122,80,40,0.10)'; ctx.fill();
         if (on) { const g = ctx.createLinearGradient(0, ry, 0, ry + tileH); g.addColorStop(0, 'rgba(255,255,255,0.28)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fill(); }
         ctx.lineWidth = (on ? 3 : 1.5) * s; ctx.strokeStyle = on ? '#2f7a1c' : Ti.boss ? 'rgba(160,30,40,0.55)' : 'rgba(122,80,40,0.35)'; ctx.stroke();
-        const ar = Math.min(tileH * 0.27, cw * 0.24);
-        ctx.save(); ctx.beginPath(); ctx.rect(rx + 2 * s, ry + 2 * s, cw - 4 * s, tileH - fs - 8 * s); ctx.clip(); Ti.art(ctx, rx + cw / 2, ry + 4 * s + ar * 1.05, ar); ctx.restore();
-        ui.text(Ti.name, rx + cw / 2, ry + tileH - fs * 0.5 - 6 * s, { size: fs, align: 'center', color: on ? '#fff' : Ti.boss ? '#a01e28' : C.ink, stroke: on ? '#2a6a18' : null, strokeW: 3 * s, maxW: cw - 8 * s, tag: 'intro:tile' + k });
+        const ar = Math.min(58 * s * 0.27, cw * 0.24), tl = TL[k], ty0 = ry + tileH - 6 * s - nl * fs * 1.12;
+        ctx.save(); ctx.beginPath(); ctx.rect(rx + 2 * s, ry + 2 * s, cw - 4 * s, ty0 - ry - 2 * s); ctx.clip(); Ti.art(ctx, rx + cw / 2, ry + 4 * s + ar * 1.05, ar); ctx.restore();
+        tl.forEach((l, j) => ui.text(l, rx + cw / 2, ty0 + (nl - tl.length) * fs * 0.56 + fs * 0.56 + j * fs * 1.12, { size: fs, align: 'center', color: on ? '#fff' : Ti.boss ? '#a01e28' : C.ink, stroke: on ? '#2a6a18' : null, strokeW: 3 * s, maxW: cw - 8 * s, tag: 'intro:tile' + k + ':' + j }));
         if (on) { // the "playing" mark: a white disc with a green play triangle, top left
           const mx = rx + 11 * s, my = ry + 11 * s, mr = 7.5 * s;
           ctx.beginPath(); ctx.arc(mx, my, mr, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
@@ -6237,7 +6239,7 @@ function drawLevelIntro(L, acc) {
         if (Ti.fresh && !on) { ctx.beginPath(); ctx.arc(rx + cw - 9 * s, ry + 9 * s, 5 * s, 0, 7); ctx.fillStyle = '#ff9f1c'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); } // new on this card
         ui.buttons.push({ id: 'how:pick:' + Ti.i, x: rx, y: ry, w: cw, h: tileH });
       });
-    } };
+    } }; };
   // the reminder chips (what this level also holds, taught on an earlier card): every one whole, wrapped to more rows
   const chips = HT.chips, chH = 28 * s, chFs = 14 * s;
   const chipRows = (w) => { const ws = chips.map((c) => Math.min(w, chH + ui.measure(c.name, chFs) + 12 * s)), R = []; let cur = [], cw = 0; ws.forEach((cw0, i) => { if (cur.length && cw + gp * 0.75 + cw0 > w) { R.push(cur); cur = []; cw = 0; } cw += (cur.length ? gp * 0.75 : 0) + cw0; cur.push(i); }); if (cur.length) R.push(cur); return { R, ws }; };
@@ -6419,7 +6421,7 @@ function drawLevelIntro(L, acc) {
     if (lvTab) {
       const pk = perkBlock(iw); if (pk) pre.push(pk);
       pre.push(goalRow);
-      post.push(capBlock(iw), ...[tileBlock, chipBlock(iw), starBlock].filter(Boolean));
+      post.push(capBlock(iw), ...[tileBlock(iw), chipBlock(iw), starBlock].filter(Boolean));
       B = fitCol(pre, levelStage, post, V.h, Math.min(165 * s, iw * 0.5), Math.min(iw * 0.95, 560 * s));
     } else {
       pre.push(carBlock(iw)); post.push(chickCap(iw));
@@ -6461,7 +6463,7 @@ function drawLevelIntro(L, acc) {
     const pr = G.ipageR || (G.ipageR = { y: 0, v: 0, max: 0, t: G.t, lid: null });
     if (pr.lid !== pg.lid + ':' + (lvTab ? 0 : 1)) { pr.lid = pg.lid + ':' + (lvTab ? 0 : 1); pr.y = 0; pr.v = 0; }
     G.ipRectR = { x: rx - gap2 / 2, y: ry, w: A.x1 - (rx - gap2 / 2), h: yb - ry };
-    const RB = (lvTab ? [perkBlock(rw), tileBlock, chipBlock(rw)] : [carBlock(rw)]).filter(Boolean);
+    const RB = (lvTab ? [perkBlock(rw), tileBlock(rw), chipBlock(rw)] : [carBlock(rw)]).filter(Boolean);
     const room = G.ipRectR.h - pageColH(RB, s) - 6 * s;
     if (room > 0 && RB.length) { const add = Math.min(room / (RB.length + 1), 20 * s); RB.forEach((b, i) => { RB[i] = { ...b, gap: (b.gap ?? 10 * s) + add }; }); }
     if (RB.length) RB[0] = { ...RB[0], gap: RB[0].gap - gp };
