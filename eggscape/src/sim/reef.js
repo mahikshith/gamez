@@ -29,6 +29,8 @@ export const HERMIT = {
   walk: m3(0.28, 0.4, 0.48), stalk: m3(0.45, 0.62, 0.75), carry: m3(0.24, 0.32, 0.38), // m/s
   warn: m3(1.25, 0.85, 0.65), reach: 0.62, see: 2.4, // s telegraph, m grab reach, m it notices an egg
   hold: m3(3.5, 6, 8), flip: m3(4, 3, 2.4), rest: 2, ban: 6, in: 0.7, // s
+  roll: 0.5, pop: 0.48, // s: the entrance (render/reef.js). Its empty shell rolls in for the last `roll` s of the wait and the crab pops out `pop` s
+  // before it starts to walk. Both only emit events ('hermitRoll', 'hermitPop'): `delay` + `in` still say when it is live.
   hit: 1.6, // m/s: an egg or rock this fast hitting it flips it
 };
 export const PUFF = {
@@ -173,7 +175,13 @@ export const reefMethods = {
   hermitOne(H, dt, end) {
     if (H.banT > 0 && (H.banT -= dt) <= 0) H.ban = 0;
     if (H.hitCD > 0) H.hitCD -= dt;
-    if (H.ph === 'wait') { if (!end && (H.t -= dt) <= 0) { this.hermitSet(H, 'in', HERMIT.in); this.emit('hermitIn', { ...this.hermitBody(H), id: H.id }); } return; }
+    if (H.ph === 'wait') {
+      if (end) return;
+      const t0 = H.t;
+      if ((H.t -= dt) <= 0) { this.hermitSet(H, 'in', HERMIT.in); this.emit('hermitIn', { ...this.hermitBody(H), id: H.id }); }
+      else if (t0 > HERMIT.roll && H.t <= HERMIT.roll) this.emit('hermitRoll', { ...this.hermitBody(H), id: H.id });
+      return;
+    }
     const e = H.eid ? this.eggs.find((q) => q.id === H.eid && q.alive) : null;
     if (H.eid && !e) H.eid = 0;
     if (end) { if (H.eid) this.hermitLetGo(H, 'end'); if (H.ph !== 'flip') this.hermitSet(H, 'rest', 9); return; }
@@ -187,7 +195,7 @@ export const reefMethods = {
       return;
     }
     switch (H.ph) {
-      case 'in': if ((H.t -= dt) <= 0) this.hermitSet(H, 'walk'); break;
+      case 'in': { const t0 = H.t; if ((H.t -= dt) <= 0) this.hermitSet(H, 'walk'); else if (t0 > HERMIT.pop && H.t <= HERMIT.pop) this.emit('hermitPop', { ...this.hermitBody(H), id: H.id }); break; }
       case 'walk': case 'rest': {
         if (H.ph === 'rest' && (H.t -= dt) > 0) { this.hermitWalk(H, null, this.reefM(HERMIT.walk) * 0.3, dt); break; }
         H.ph = 'walk';
