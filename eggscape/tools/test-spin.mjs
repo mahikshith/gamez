@@ -94,6 +94,16 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   ok([5, 11, 30, 45].every((u) => { const sv = mk({ unlocked: u }); return SP.meanWorth(defaultWallet(), SP.coinX(sv)) < SP.ways(sv, 'd9').coin; }), 'at every size the first coin spin costs more than a spin is worth on average');
   ok(SP.ways(mk({ unlocked: 45 }), 'd9').coin === 180, 'the coin price grows with the wheel (70 -> 180 in the last worlds)');
 }
+{ // the cheer-up spin: the third loss in a row on a level, once per level, two a day
+  const s = mk();
+  ok(SP.noteLoss(s, 7, 1, 'd1') === false && SP.noteLoss(s, 7, 2, 'd1') === false && SP.banked(s) === 0, 'one or two losses: nothing yet');
+  ok(SP.noteLoss(s, 7, 3, 'd1') === true && SP.banked(s) === 1, 'the third loss in a row on a level banks a free spin');
+  ok(SP.noteLoss(s, 7, 4, 'd1') === false && SP.noteLoss(s, 7, 9, 'd2') === false && SP.banked(s) === 1, 'once per level, ever');
+  ok(SP.noteLoss(s, 8, 3, 'd1') === true && SP.noteLoss(s, 9, 3, 'd1') === false && SP.banked(s) === 2, 'two cheer-up spins a day at most');
+  ok(SP.noteLoss(s, 9, 3, 'd2') === true && SP.banked(s) === 3, 'the next day another level can cheer again');
+  ok(SP.noteLoss(mk({ unlocked: 2 }), 2, 5, 'd1') === false, 'never in the first levels');
+  const w = SP.ways(s, 'd2'); ok(w.free && !w.ad && w.coin === null, 'it is a plain free spin: no video, no price');
+}
 { // unsafe saves
   const s = { unlocked: 9, wallet: defaultWallet(), spin: { wins: 'x', bank: 99, t: null } };
   ok(SP.banked(s) === 3 && SP.left(s) === 3, 'a broken save is made safe');

@@ -25,10 +25,14 @@
 //   - when the wheel is shown (main.js asks brain.gate).
 // What it may never change: the odds. Not by purse, spend, mood or anything else about the player.
 //
-// save.spin = { wins, bank, t: { day, ad, coin, played, steps }, n }   (state() makes any save safe)
+//   - a cheer-up spin (mykee: "when the user feels down and cannot win a level and tried at least three times, we could
+//     show it so that they feel great"): the third loss in a row on a level banks one free spin, once per level, at
+//     most SPIN.cheerMax a day. A gift, not a sale: nothing is asked for it.
+//
+// save.spin = { wins, bank, t: { day, ad, coin, played, steps, cheer }, n, cheered: [levelId, ...] }   (state() makes any save safe)
 import { BOOSTERS, BOOSTER_ORDER, HEN_SKINS, HEN_SKIN_ORDER, CHICK_IDS, CHICK_PRICES, ITEMS, CHARGE_ITEM, MAX_OWNED, MAX_CHARGES, MAX_TICKETS, sanitizeWallet, ownedCount, ownsHenSkin, ownsChick } from './economy.js';
 
-export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [70, 100, 140], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [11, 26, 41], tierX: [1, 1.5, 2, 2.5] };
+export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [70, 100, 140], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [11, 26, 41], tierX: [1, 1.5, 2, 2.5], cheerAt: 3, cheerMax: 2 };
 
 // The wheel, clockwise from the top. w = weight = slice size = odds in percent (they add up to 100).
 export const TABLE = [
@@ -53,7 +57,7 @@ const int = (v, hi) => Math.max(0, Math.min(hi, Math.floor(Number(v) || 0)));
 export function state(save) {
   const s = save.spin && typeof save.spin === 'object' ? save.spin : {};
   const v = s.t && typeof s.t === 'object' ? s.t : {};
-  return (save.spin = { wins: int(s.wins, SPIN.every - 1), bank: int(s.bank, SPIN.bankMax), t: { day: typeof v.day === 'string' ? v.day : '', ad: int(v.ad, 99), coin: int(v.coin, 99), played: int(v.played, 999), steps: int(v.steps, 99) }, n: int(s.n, 1e9) });
+  return (save.spin = { wins: int(s.wins, SPIN.every - 1), bank: int(s.bank, SPIN.bankMax), t: { day: typeof v.day === 'string' ? v.day : '', ad: int(v.ad, 99), coin: int(v.coin, 99), played: int(v.played, 999), steps: int(v.steps, 99), cheer: int(v.cheer, 99) }, n: int(s.n, 1e9), cheered: Array.isArray(s.cheered) ? s.cheered.filter((x) => Number.isFinite(x)).slice(-80) : [] });
 }
 // the wheel exists for this player (nothing is offered in the first levels)
 export const open = (save) => (save.unlocked || 1) > SPIN.from;
@@ -76,6 +80,15 @@ export function notePlayed(save, dayStr) {
   S.t.steps++;
   return step(S);
 }
+// a level was lost. failsInRow: losses in a row on this level, this one included (director.js keeps it). The third
+// banks a cheer-up spin: once per level, at most SPIN.cheerMax a day, never over the bank's size. true when given now.
+export function noteLoss(save, levelId, failsInRow, dayStr) {
+  if (!open(save) || !(levelId > 0) || failsInRow < SPIN.cheerAt) return false;
+  const S = today(save, dayStr);
+  if (S.cheered.includes(levelId) || S.t.cheer >= SPIN.cheerMax || S.bank >= SPIN.bankMax) return false;
+  S.cheered = [...S.cheered, levelId].slice(-80); S.t.cheer++; S.bank++;
+  return true;
+}
 // a level was won. fresh: first time passed, or more stars than before, or today's Daily Vault (the caller knows).
 // The meter moves only on a fresh win; returns true when this win earned a spin.
 export function noteWin(save, fresh = true) {
@@ -85,7 +98,7 @@ export function noteWin(save, fresh = true) {
 // ---- the ways to spin right now (dayStr: the game's own day key; the video and coin counts start again each day).
 // free: a banked spin. ad: a chosen video, only with nothing banked. coin: the price of the next coin spin today
 // (null once today's ladder is used up, or while a free spin waits).
-function today(save, dayStr) { const S = state(save); if (dayStr && S.t.day !== dayStr) S.t = { day: dayStr, ad: 0, coin: 0, played: 0, steps: 0 }; return S; }
+function today(save, dayStr) { const S = state(save); if (dayStr && S.t.day !== dayStr) S.t = { day: dayStr, ad: 0, coin: 0, played: 0, steps: 0, cheer: 0 }; return S; }
 export function ways(save, dayStr) {
   const S = today(save, dayStr), on = open(save);
   const coin = S.t.coin < SPIN.coin.length ? Math.round((SPIN.coin[S.t.coin] * coinX(save)) / 10) * 10 : null; // the price grows with the wheel
