@@ -7645,11 +7645,13 @@ function drawLevels() {
     const due = treasureDue(TR.from);
     if (due) G.treasure = { id: due, t: G.t, openedAt: null };
   }
-  if (TR && G.treasure) { const a = L.stops[TR.from]; TR.t0 = -1; TR.x = a.x; TR.y = a.y; TR.p = 0; TR.e = 0; } // the trip waits for the treasure sheet
+  if (TR && G.treasure) { const a = L.stops[TR.from]; TR.t0 = -1; TR.x = a.x; TR.y = a.y; TR.p = 0; TR.e = 0; TR.dur = 1.2; } // the trip waits for the treasure sheet
   else if (TR) {
     if (TR.t0 < 0) TR.t0 = G.screenT;
-    const a = L.stops[TR.from], b = L.stops[TR.to], p = clamp((G.screenT - TR.t0 - 0.5) / 1.2, 0, 1), e = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p);
-    TR.x = a.x + (b.x - a.x) * e; TR.y = a.y + (b.y - a.y) * e; TR.p = p; TR.e = e;
+    // 0.8.14: she walks the ROAD (the road is the curve x = pathX(y) through every stop), not a straight line over the
+    // scenery; a longer stretch (a world's last stop to the next world's first) takes a little longer
+    const a = L.stops[TR.from], b = L.stops[TR.to], dur = 1.2 * clamp(Math.abs(b.y - a.y) / (L.BH * 0.175), 1, 1.8), p = clamp((G.screenT - TR.t0 - 0.5) / dur, 0, 1), e = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p);
+    TR.y = a.y + (b.y - a.y) * e; TR.x = L.pathX(TR.y); TR.p = p; TR.e = e; TR.dur = dur;
     mapFocusY(TR.y, 0.55);
     if (p >= 1 && !TR.arrived) { TR.arrived = G.screenT; audio.play('unlock', { pitch: 1.15 }); buzz('tap'); }
     if (TR.arrived && G.screenT - TR.arrived > 0.6) { G.mapTravel = null; if (playable(TR.to)) press('lv:' + TR.to); }
@@ -7669,79 +7671,54 @@ function drawLevels() {
   const wide = mapWide(), ctaOn = playable(nx) && envOpen(envOf(nx));
   const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 320) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - 4 * u;
   const tapBot = ctaOn && !wide ? ctaY - 6 * u : vb; // stops under the PLAY bar keep no tap target
-  // the stops
-  const BOSS = { a: '#c93a54', b: '#7a1a40', lip: '#42091f', line: '#22040e', ink: '#fff', rim: 'rgba(255,214,96,0.95)' };
-  const sr = Math.min(8 * u, L.stopR * 0.26);
-  let henAt = null;
-  const PL = MS.PLACES; // 0.8.7 The Farm, 0.8.10 the Crystal Caves: worlds painted as places have landmarks for stops (render/mapfarm.js, mapcave.js), drawn after this loop
-  for (let i = 0; i < LEVELS.length; i++) {
-    if (PL[L.stops[i].w]) continue;
-    const st0 = L.stops[i], x = st0.x, y = st0.y - sy, Lv = LEVELS[i], boss = !!Lv.boss, r = boss ? L.stopR * 1.2 : L.stopR;
-    if (y < vt - r * 2 || y > H_ + r * 2) continue;
-    const w = st0.w, locked = !envOpen(w), open = playable(i), cur = open && i === nx;
-    const acc = MS.WORLD_LOOK[w].accent;
-    const face = open ? (boss ? BOSS : ui.faceOf(ui.mix(acc, '#d8862a', 0.15))) : ui.faceOf(ui.mix(boss ? '#8a2a48' : acc, '#6c7080', boss ? 0.6 : 0.75));
-    if (cur && !calm) { const p = 0.5 + 0.5 * Math.sin(t * 4); ctx.beginPath(); ctx.arc(x, y + 2 * u, r + (5 + 5 * p) * u, 0, 7); ctx.fillStyle = `rgba(255,255,255,${0.3 + 0.3 * p})`; ctx.fill(); }
-    const inView = y - r >= vt + 2 * u && y + r + sr * 3 <= tapBot && !(ctaOn && wide && x + r > ctaX - 6 * u && y + r + sr * 3 > ctaY - 6 * u);
-    if (locked || !inView) { // a quiet stone (behind a gate, or half under the header / screen edge: no tap target)
-      ctx.beginPath(); ctx.arc(x, y + 3 * u, r, 0, 7); ctx.fillStyle = face.lip || face.b; ctx.fill();
-      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = face.a; ctx.fill(); ctx.lineWidth = 3 * u; ctx.strokeStyle = face.line; ctx.stroke();
-      if (!locked) { const ns = Math.min(28 * u, r * 0.76); ctx.font = `600 ${Math.round(ns)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = Math.max(3, ns * 0.2); ctx.strokeStyle = face.line; ctx.strokeText(String(Lv.id), x, y); ctx.fillStyle = '#fff'; ctx.fillText(String(Lv.id), x, y); }
-      if (locked) { // 0.8.12: behind a gate the stone still shows its number, with the padlock under it (it was blank)
-        const ns = Math.min(14 * u, r * 0.4); ctx.font = `600 ${Math.round(ns)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 2.5 * u; ctx.strokeStyle = face.line; ctx.strokeText(String(Lv.id), x, y - r * 0.38); ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillText(String(Lv.id), x, y - r * 0.38);
-        drawPadlock(x, y + r * 0.22, Math.min(10 * u, r * 0.3), null);
-      }
-      if (!locked && open) for (let q = 0; q < 3; q++) drawStar(ctx, x + (q - 1) * sr * 2.4, y + r + sr * 1.15 - (q === 1 ? sr * 0.35 : 0), sr, q < starsOf(Lv.id));
-      if (cur) henAt = { x, y, r };
-      continue;
-    }
-    const grp = 'btn:lv:' + i;
-    const b = ui.button('lv:' + i, '', x - r, y - r, 2 * r, 2 * r, { face, disabled: !open, keepFace: true, round: r, shimmer: cur });
-    const fy = y - r + b.dy, fh = 2 * r - Math.min(6 * u, r * 0.26);
-    if (open) {
-      if (boss) drawCrown(x, fy - r * 0.02, Math.min(12 * u, r * 0.3));
-      const ns = Math.min(28 * u, r * 0.76);
-      ui.text(String(Lv.id), x, fy + fh * 0.5, { size: ns, align: 'center', color: '#fff', stroke: face.line, strokeW: Math.max(3, ns * 0.2), shadow: face.line, group: grp, tag: 'lvnum' + i });
-      for (let q = 0; q < 3; q++) drawStar(ctx, x + (q - 1) * sr * 2.4, y + r + sr * 1.15 - (q === 1 ? sr * 0.35 : 0), sr, q < starsOf(Lv.id));
-    } else {
-      ui.text(String(Lv.id), x, fy + fh * 0.3, { size: Math.min(14 * u, r * 0.4), align: 'center', color: 'rgba(255,255,255,0.8)', stroke: face.line, strokeW: 2.5 * u, group: grp, tag: 'lvnum' + i });
-      drawPadlock(x, fy + fh * 0.64, Math.min(10 * u, r * 0.3), null);
-    }
-    if (cur) henAt = { x, y, r };
-  }
-  // a place's landmarks: each IS the stop's button (the whole building, same press squash as a button), drawn far to near;
-  // a plaque on a post at the road side carries the number and stars, or a padlock; the next level's ground glows
+  G.mapView = { vt, vb: tapBot, cta: ctaOn ? { x: ctaX, y: ctaY, w: ctaW, h: ctaH } : null }; // QA: the part of the map that shows
+  // a place's landmarks (0.8.7 the Farm, 0.8.10 the Crystal Caves, 0.8.12 the Volcano and the Vault): scenery beside the
+  // road, drawn far to near; the level to play's landmark glows. 0.8.14: they are no longer the buttons (mykee: the hen
+  // stood on the road by one landmark while its level's sign stood at another); the stop is the nest on the road
+  const PL = MS.PLACES;
   const placeW = Object.keys(PL).map(Number).sort((a, b) => b - a);
   for (const w of placeW) {
     const Pz = PL[w], i0 = w * PER_ENV;
     for (let k = Math.min(LEVELS.length - i0, Pz.landmarks.length) - 1; k >= 0; k--) {
       const i = i0 + k, m = Pz.stop(L, k);
-      if (!m || L.stops[i].w !== w || m.y - sy - 230 * u > H_ || m.plaque.y - sy + 40 * u < vt) continue;
-      const Lv = LEVELS[i], open = playable(i) && envOpen(w), cur = open && i === nx, tp = m.tap;
-      const id = 'lv:' + i, grp = 'btn:lv:' + i, tb = ctaOn && wide && tp.x1 > ctaX - 6 * u ? Math.min(tapBot, ctaY - 6 * u) : tapBot;
-      const ty0 = Math.max(tp.y0 - sy, vt + 2 * u), ty1 = Math.min(tp.y1 - sy, tb); // a big landmark half under the header still answers a tap on what shows
-      const inView = ty1 - ty0 >= Math.min(72 * u, (tp.y1 - tp.y0) * 0.9);
-      let p = 0;
-      if (inView) { ui.button(id, '', tp.x0, ty0, tp.x1 - tp.x0, ty1 - ty0, { ghost: true, disabled: !open }); p = calm ? 0 : ui.pressAmt(id, ui.pressedId === id); }
-      Pz.drawLandmark(ctx, L, m, sy, t, calm, p, cur ? (calm ? 0.75 : 0.6 + 0.3 * Math.sin(t * 2.6)) : 0, DPR);
-      const B = Pz.drawPlaque(ctx, L, m, sy, p), ns = 28 * u, sr2 = 8 * u;
-      if (open) {
-        if (Lv.boss) drawCrown(B.cx, B.top - 1 * u, 11 * u);
-        if (inView && B.num - ns * 0.6 >= ty0 && B.num + ns * 0.6 <= ty1) ui.text(String(Lv.id), B.cx, B.num, { size: ns, align: 'center', color: '#fff', stroke: '#4a2a10', strokeW: Math.max(3, ns * 0.2), shadow: '#4a2a10', group: grp, tag: 'lvnum' + i });
-        else { ctx.font = `600 ${Math.round(ns)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = Math.max(3, ns * 0.2); ctx.strokeStyle = '#4a2a10'; ctx.strokeText(String(Lv.id), B.cx, B.num); ctx.fillStyle = '#fff'; ctx.fillText(String(Lv.id), B.cx, B.num); }
-        for (let q = 0; q < 3; q++) drawStar(ctx, B.cx + (q - 1) * sr2 * 2.4, B.stars - (q === 1 ? sr2 * 0.3 : 0), sr2, q < starsOf(Lv.id));
-      } else drawPadlock(B.cx, B.mid, 13 * u, null);
-      if (cur) henAt = { x: m.hen.x, y: m.hen.y - sy, r: L.stopR, farm: m };
+      if (!m || L.stops[i].w !== w || m.y - sy - 230 * u > H_ || m.y - sy + 60 * u < vt) continue;
+      const cur = playable(i) && envOpen(w) && i === nx && !(TR && !TR.arrived);
+      Pz.drawLandmark(ctx, L, m, sy, t, calm, 0, cur ? (calm ? 0.75 : 0.6 + 0.3 * Math.sin(t * 2.6)) : 0, DPR);
     }
     if (Pz.drawFront) Pz.drawFront(ctx, L, sy, t, calm, vt, H_); // the Farm's crow perches on the barn's vane: it flies over the landmarks
+  }
+  // the stops (0.8.14, mykee: "do we need to show flags for all the levels?"): one nest per level ON the road, the same in
+  // every world (render/mapscene.js drawStop): won = a golden egg with its number and stars; the level to play = a bigger
+  // nest the hen stands in, a bright number badge; the next locked one = an empty nest and a small padlock; every later
+  // one only a pale stepping stone with a small number
+  let firstLocked = -1; for (let i = 0; i < LEVELS.length; i++) if (!playable(i)) { firstLocked = i; break; }
+  let curAt = null;
+  for (let i = 0; i < LEVELS.length; i++) {
+    const st0 = L.stops[i], x = st0.x, y = st0.y - sy;
+    if (y < vt - 90 * u || y > H_ + 40 * u) continue;
+    const Lv = LEVELS[i], w = st0.w, gated = !envOpen(w), open = playable(i), boss = !!Lv.boss;
+    const state = gated ? 'far' : open && i === nx ? 'cur' : bestStarsOf(Lv.id) > 0 ? 'won' : open && SK.isSkipped(save, Lv.id) ? 'skip' : open ? 'open' : i === firstLocked ? 'next' : 'far';
+    const bx = MS.stopBox(L, state, boss);
+    let x0 = x + bx.x0, x1 = x + bx.x1, y0 = y + bx.y0, y1 = y + bx.y1;
+    if (x1 - x0 < 48) { x0 = x - 24; x1 = x + 24; } // a touch box of at least 48 px each way
+    if (y1 - y0 < 48) { const m2 = (y0 + y1) / 2; y0 = m2 - 24; y1 = m2 + 24; }
+    const tb = ctaOn && wide && x1 > ctaX - 6 * u ? Math.min(tapBot, ctaY - 6 * u) : tapBot;
+    let p = 0;
+    if (state !== 'far' && y0 >= vt + 2 * u && y1 <= tb) { // a stop half under the header or the PLAY bar keeps no tap target
+      ui.button('lv:' + i, '', x0, y0, x1 - x0, y1 - y0, { ghost: true, disabled: !open });
+      p = calm ? 0 : ui.pressAmt('lv:' + i, ui.pressedId === 'lv:' + i);
+    }
+    const o = { w, num: Lv.id, stars: starsOf(Lv.id), boss, DPR, p, part: 'back' };
+    if (state === 'cur') { if (!(TR && !TR.arrived)) MS.drawStopCall(ctx, L, x, y, t, calm, boss); curAt = { x, y, o, boss, i }; }
+    MS.drawStop(ctx, L, x, y, state, o);
   }
   // the boss treasures: a chest beside every boss stop, on the side away from where the hen would stand
   for (let i = 0; i < LEVELS.length; i++) {
     const Lv = LEVELS[i];
     if (!Lv.boss || !E.bossTreasure(Lv.id)) continue;
-    const st0 = L.stops[i], r = L.stopR * 1.2, y = st0.y - sy;
+    const st0 = L.stops[i], r = Math.max(L.stopR * 1.2, 46 * u), y = st0.y - sy; // 0.8.14: clear of the boss's nest and its ring
     if (y < vt - r * 3 || y > H_ + r * 3 || !envOpen(st0.w)) continue;
-    const side = st0.x < A.cx ? -1 : 1, cr = Math.min(r * 0.95, 34 * u);
+    const side = st0.x < A.cx ? -1 : 1, cr = Math.min(L.stopR * 1.14, 34 * u);
     let cx = st0.x + side * (r + cr * 1.25);
     if (cx - cr < A.x + 4 * u || cx + cr > A.x1 - 4 * u) cx = st0.x - side * (r + cr * 1.25); // no room that way: the other side
     const cy = y - r * 0.15, beaten = bossBeaten(Lv.id), opened = E.treasureOpened(save.wallet, Lv.id), state = opened ? 'open' : beaten ? 'ready' : 'locked';
@@ -7759,27 +7736,37 @@ function drawLevels() {
       ui.record(rect, 'btn:tr:boss:' + Lv.id, 'btn:tr:boss:' + Lv.id); ui.buttons.push({ id: 'tr:boss:' + Lv.id, ...rect });
     }
   }
-  // the hen waits beside the next level, on the side with more room
-  if (TR) { // on the way: hopping along the road from the stop just won to the next one, then a burst where it lands
-    const r = L.stopR, hh = r * 2, hop = calm ? 0 : Math.abs(Math.sin(TR.e * Math.PI * 4)) * r * 0.7 * (1 - TR.e * 0.3), dir = L.stops[TR.to].x >= L.stops[TR.from].x ? 1 : -1;
-    const hx = TR.x, hy = TR.y - sy - r * 0.9 - hop;
-    ctx.beginPath(); ctx.ellipse(hx, TR.y - sy + r * 0.2, hh * 0.28 * (1 - hop / (r * 2)), hh * 0.07, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
-    drawHenAnim(ctx, TR.arrived ? 'happy' : 'idle', hx, hy - hh * 0.32, hh, t, { key: 'map', face: dir, calm, shadow: 0 });
+  // the hen (0.8.14): her feet in the level to play's nest, facing the road ahead; after a win she walks the ROAD from the
+  // nest just won to the next one and steps into it (the nest's front rim is drawn over her feet), then a burst
+  const hh = L.stopR * 2; // drawHenAnim: her feet rest at cy + 0.5 h
+  const ahead = (i) => { const a = L.stops[i], n2 = L.stops[i + 1] || null, b2 = L.stops[i - 1] || a; const dx = n2 ? n2.x - a.x : a.x - b2.x; return dx >= 0 ? 1 : -1; };
+  G.mapHen = null;
+  if (TR) {
+    const fa = MS.stopFeet(L, !!LEVELS[TR.from].boss), fb = MS.stopFeet(L, !!LEVELS[TR.to].boss), e = TR.e;
+    const steps = Math.max(3, Math.round(4 * (TR.dur || 1.2) / 1.2));
+    const hop = calm || TR.arrived ? 0 : Math.abs(Math.sin(e * Math.PI * steps)) * hh * 0.2 * (1 - e * 0.4);
+    const dirY = L.stops[TR.to].y < L.stops[TR.from].y ? -1 : 1, dx = L.pathX(TR.y + dirY * 8 * u) - TR.x;
+    if (TR.face == null) TR.face = ahead(TR.from) * (dirY < 0 ? 1 : -1);
+    if (TR.arrived || e > 0.92) TR.face = ahead(TR.to); else if (Math.abs(dx) > 1.5 * u) TR.face = dx > 0 ? 1 : -1;
+    const gy = TR.y - sy + fa + (fb - fa) * e, hx = TR.x; // the ground under her feet
+    if (hop > 0.5) { ctx.beginPath(); ctx.ellipse(hx, gy + 1 * u, hh * 0.26 * (1 - hop / (hh * 0.6)), hh * 0.065, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill(); }
+    drawHenAnim(ctx, TR.arrived ? 'happy' : 'idle', hx, gy - hop - hh * 0.5, hh, t, { key: 'map', face: TR.face, calm, shadow: 0 });
+    G.mapHen = { x: hx, y: gy - hop, to: TR.to };
+    if (curAt && curAt.i === TR.to) MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
     if (TR.arrived) {
       const k = clamp((G.screenT - TR.arrived) / 0.6, 0, 1), b = L.stops[TR.to], by = b.y - sy;
       ctx.save(); ctx.globalAlpha = 1 - k; ctx.lineWidth = 4 * u * (1 - k) + 1; ctx.strokeStyle = '#ffe27a';
-      ctx.beginPath(); ctx.arc(b.x, by, L.stopR * (1 + 1.4 * k), 0, 7); ctx.stroke();
-      for (let q = 0; q < 8; q++) { const an = q * Math.PI / 4 + 0.3, rr = L.stopR * (1.1 + 1.6 * k); drawStar(ctx, b.x + Math.cos(an) * rr, by + Math.sin(an) * rr, 6 * u * (1 - k * 0.5), true); }
+      ctx.beginPath(); ctx.ellipse(b.x, by + 4 * u, L.stopR * (1.3 + 1.4 * k), L.stopR * (0.6 + 0.7 * k), 0, 0, 7); ctx.stroke();
+      for (let q = 0; q < 8; q++) { const an = q * Math.PI / 4 + 0.3, rr = L.stopR * (1.2 + 1.6 * k); drawStar(ctx, b.x + Math.cos(an) * rr, by - hh * 0.3 + Math.sin(an) * rr * 0.8, 6 * u * (1 - k * 0.5), true); }
       ctx.restore();
     }
-  } else if (henAt && henAt.farm) { // The Farm: on the road beside the plaque, facing it (where the trip along the road ends)
-    const r = henAt.r, hh = r * 2;
-    ctx.beginPath(); ctx.ellipse(henAt.x, henAt.y + r * 0.2, hh * 0.28, hh * 0.07, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
-    drawHenAnim(ctx, 'idle', henAt.x, henAt.y - r * 0.9 - hh * 0.32, hh, t, { key: 'map', face: henAt.farm.side, calm, shadow: 0 });
-  } else if (henAt) {
-    const hh = henAt.r * 2, side = henAt.x < A.cx ? 1 : -1, hx = henAt.x + side * (henAt.r + hh * 0.4), hy = henAt.y + henAt.r * 0.2;
-    drawHenAnim(ctx, 'idle', hx, hy - hh * 0.32, hh, t, { key: 'map', face: -side, calm, shadow: 0 });
+  } else if (curAt) {
+    const fy = curAt.y + MS.stopFeet(L, curAt.boss);
+    drawHenAnim(ctx, 'idle', curAt.x, fy - hh * 0.5, hh, t, { key: 'map', face: ahead(curAt.i), calm, shadow: 0 });
+    G.mapHen = { x: curAt.x, y: fy, to: curAt.i };
+    MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
   }
+  if (curAt && !G.mapHen) MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
   // worlds behind their gate: fog, and the gate card at the foot of the world
   const totalStars = bestTotal();
   for (let w = 0; w < L.nw; w++) {
