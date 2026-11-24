@@ -1,5 +1,5 @@
 // The pause page's "Skip level" rule (src/skip.js): node tools/test-skip.mjs
-import { canSkip, applySkip, isSkipped } from '../src/skip.js';
+import { canSkip, applySkip, isSkipped, skipWays } from '../src/skip.js';
 import { defaultWallet } from '../src/economy.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
@@ -39,6 +39,16 @@ const lv = (id, o = {}) => ({ id, count: 50, journey: true, coaching: false, won
   const s = mk({ unlocked: 12 });
   applySkip(s, lv(4));
   ok(s.unlocked === 12 && isSkipped(s, 4), 'skipping an older unwon level keeps the frontier where it is');
+}
+{ // 0.8.14 the fail card: Skip level from the first loss, paid with a ticket the player owns, else a video; coins only while stuck
+  const s = mk();
+  ok(JSON.stringify(skipWays(s, lv(7))) === '["ad"]', 'first loss, no ticket: one video');
+  ok(JSON.stringify(skipWays(s, lv(7), { tickets: 2 })) === '["ticket"]', 'a Skip Ticket owned: the ticket, no video');
+  ok(JSON.stringify(skipWays(s, lv(7), { stuck: true })) === '["ad","coins"]', 'stuck (3 losses): the coin way joins as a second button');
+  ok(JSON.stringify(skipWays(s, lv(7), { stuck: true, tickets: 1 })) === '["ticket","coins"]', 'stuck with a ticket: ticket first, then coins');
+  ok(skipWays(s, lv(50), { stuck: true }).length === 0 && skipWays(s, lv(3, { won: true }), { stuck: true, tickets: 3 }).length === 0, 'level 50 and a level won before: no skip at all, not even for coins');
+  // the fail card ends the same way as the pause page: applySkip
+  const f = mk(); ok(skipWays(f, lv(7)).length && applySkip(f, lv(7)) && f.unlocked === 8 && skipWays(f, lv(7)).length === 0, 'after the skip the level is passed and offers no skip again');
 }
 if (bad) { console.log(bad + ' FAILED'); process.exit(1); }
 console.log('all skip checks pass');

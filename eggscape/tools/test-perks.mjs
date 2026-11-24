@@ -3,7 +3,7 @@
 // than its rule says. Pure sim (no canvas), like tools/test-goals.mjs. A level literal is the scripted vault; where a
 // villain has to touch or carry an egg the egg is put there by hand (a carried egg is out of the physics world, exactly
 // as a thief's or the eagle's hold leaves it).
-import { Sim, DT } from '../src/sim/sim.js';
+import { Sim, DT, REWIND_S } from '../src/sim/sim.js';
 import { Vec2 } from 'planck';
 import { LEVELS } from '../src/data/levels.js';
 import * as E from '../src/economy.js';
@@ -202,6 +202,20 @@ const ids = (evs, type = 'perk') => evs.filter((e) => e.type === type).map((e) =
   const b2 = back.eggs[0];
   b2.crackCD = 0; back.crack(b2, 5, 'impact');
   ok(b2.cracks === 1, 'after a rewind the shrugged crack is not given again');
+}
+
+// ---------------------------------------------------------------- the fail card's Rewind goes back REWIND_S (12 s)
+{
+  const s = new Sim(lvl({ time: 90 }), { mode: 'medium' });
+  run(s, 20);
+  const n = s.snaps.length, span = n ? s.t - s.snaps[0].t : 0;
+  ok(REWIND_S === 12 && n === 26 && span >= REWIND_S, `26 snapshots, one every 0.5 s, cover ${span.toFixed(1)} s (>= ${REWIND_S})`);
+  const t0 = s.t, back = s.rewind(REWIND_S);
+  ok(back && Math.abs(t0 - back.t - REWIND_S) <= 0.5 + 1e-6, `a rewind after 20 s lands ${back ? (t0 - back.t).toFixed(2) : '?'} s back`);
+  const y = new Sim(lvl({ time: 90 }), { mode: 'medium' });
+  run(y, 4);
+  const by = y.rewind(REWIND_S);
+  ok(by && by.t <= 0.5 + 1e-6, 'a run shorter than 12 s goes back to its first snapshot');
 }
 
 // ---------------------------------------------------------------- no perk: the sim is exactly as it was

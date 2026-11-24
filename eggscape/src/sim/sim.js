@@ -21,6 +21,7 @@ import { reachMethods } from './henreach.js'; // the hen runs the basket under a
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 
 export const DT = 1 / 120;
+export const REWIND_S = 12; // the fail card's Rewind goes back this many seconds (0.8.14: 5 s gave too little time to react)
 const FAST_RIM = 9.6; // m/s at a ring's wall: above this (ring speed past 350%) the physics takes half steps
 
 // Impact thresholds: approach speed along the contact normal (m/s).
@@ -767,8 +768,8 @@ export class Sim {
     for (const body of this.kill) this.world.destroyBody(body);
     this.kill.length = 0;
 
-    // snapshots for rewind (every 0.25 s, keep ~6 s)
-    if (this.state === 'play' && Math.floor(this.t * 4) !== Math.floor((this.t - DT) * 4)) {
+    // snapshots for rewind (every 0.5 s, keep 26: 13 s, so a 12 s rewind always has one to land on)
+    if (this.state === 'play' && Math.floor(this.t * 2) !== Math.floor((this.t - DT) * 2)) {
       this.snaps.push(this.snapshot());
       if (this.snaps.length > 26) this.snaps.shift();
     }
@@ -2406,7 +2407,7 @@ export class Sim {
     return false;
   }
 
-  // ---------- rewind ----------
+  // ---------- rewind (REWIND_S back; a run shorter than that goes back to its first snapshot) ----------
   // Snapshots are full world states (rings, burnt/broken segments, thorns, shutters, honey, eggs with
   // their powers and magnet ropes, orbs, bombs, rocks, snake, weather, nest), so a rewind is exact.
   snapshot() {
@@ -2418,7 +2419,7 @@ export class Sim {
   }
 
   // Returns a new Sim holding the world as it was about `seconds` ago; the caller swaps it in.
-  rewind(seconds = 5) {
+  rewind(seconds = REWIND_S) {
     const want = this.t - seconds;
     let snap = this.snaps[0];
     for (const s of this.snaps) if (s.t <= want) snap = s;

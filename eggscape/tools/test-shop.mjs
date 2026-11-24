@@ -169,5 +169,31 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
   ok(E.sanitizeWallet({ dealDay: 3, dealKey: {} }).dealDay === '' && E.sanitizeWallet(b).dealKey === D.key, 'the deal fields survive a save and a bad save');
 }
 
+// ---- the shop mark (0.8.14): on when the coins reach something new, off once the shop showed it, never early
+{
+  const it = (key, kind, price, o = {}) => ({ key, kind, price, owned: false, tried: false, ...o });
+  const items = [it('skin:speckled', 'skin', 120), it('skin:golden', 'skin', 300), it('hen:pirate', 'hen', 300), it('hen:royal', 'hen', 400), it('chick:bomb', 'chick', 450),
+    it('set:x', 'set', 500), it('boost:stone', 'boost', 60), it('kit:rescue', 'kit', 90), it('skin:dino', 'skin', 200, { owned: true })];
+  const S = (coins, o = {}) => ({ stars: { 3: 2 }, wallet: W({ coins }), seen: {}, ...o });
+  let m = DR.shopMark(S(50), { items });
+  ok(!m.on && m.n === 0 && m.pick === null, 'too few coins for anything but boosts: no mark, no pick (boosts and kits never count)');
+  m = DR.shopMark(S(310), { items });
+  ok(m.on && m.n === 3, `310 coins: three things not owned (Speckled, Golden, Pirate), the owned Dino and the boosts not counted (n ${m.n})`);
+  ok(m.pick && (m.pick.key === 'hen:pirate' || m.pick.key === 'skin:golden') && m.pick.price === 300, 'the pick is the dearest affordable egg or outfit: ' + (m.pick && m.pick.key));
+  const tried = items.map((i) => (i.key === 'skin:speckled' ? { ...i, tried: true } : i));
+  ok(DR.shopMark(S(310), { items: tried }).pick.key === 'skin:speckled', 'something worn on a free try comes first');
+  ok(DR.shopMark(S(460), { items: items.filter((i) => i.kind === 'chick' || i.kind === 'boost') }).pick.key === 'chick:bomb', 'no egg or outfit in reach: a reached chick is the pick');
+  const s = S(310); DR.seenShop(s, DR.shopMark(s, { items }));
+  ok(s.seen.shopSawN === 3 && !DR.shopMark(s, { items }).on, 'the shop opened: the mark goes off');
+  s.wallet = W({ coins: 420 });
+  ok(DR.shopMark(s, { items }).on && DR.shopMark(s, { items }).n === 4, 'the coins reach a further item (Royal Hen): it comes back');
+  const early = S(900, { stars: { 1: 3, 2: 3 } });
+  ok(!DR.shopMark(early, { items }).on && DR.shopMark(early, { items }).n > 0, 'never on before level 3 is won (earlyDays)');
+  const bought = S(310, { seen: { shopSawN: 3 } }), fewer = items.map((i) => (i.key === 'hen:pirate' ? { ...i, owned: true } : i));
+  bought.wallet = W({ coins: 10 }); DR.seenShop(bought, DR.shopMark(bought, { items: fewer }));
+  bought.wallet = W({ coins: 310 });
+  ok(DR.shopMark(bought, { items: fewer }).on, 'after a purchase the count seen drops with it, so saving up again lights the mark');
+}
+
 console.log(fails ? `${fails} FAILED` : 'all shop checks passed');
 process.exit(fails ? 1 : 0);

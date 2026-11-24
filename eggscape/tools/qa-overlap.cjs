@@ -69,6 +69,25 @@ const srv = http.createServer((q, r) => {
     await check('info-from-pause', () => { const E = __egg; E.start(46); E.press('go'); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.press('pause'); for (let k = 0; k < 30; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('info'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return o.concat(E.overlaps()); }, 0, false);
     for (const s of [3, 2, 1]) await check(`win${s}`, (s) => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('win', s); for (let k = 0; k < 400; k++) E.frame(1 / 60); return E.overlaps(); }, s, s === 3);
     await check('fail', () => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('fail'); for (let k = 0; k < 120; k++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
+    // 0.8.14: the fail page's rows (stuck with the coin way, a help offer, a Skip Ticket, a level with no skip), the shop
+    // mark (map hand, level card, pause banner, win chip), the ring speed strip (levels 2 to 5, before and after a change)
+    const mkSave = (o) => `(() => { const E = __egg, st = {}; for (let i = 1; i < ${o.lv}; i++) st[i] = 3; ${o.won ? `st[${o.lv}] = 1;` : ''}
+      E.setSave({ unlocked: ${o.lv}, stars: st, wallet: { coins: ${o.coins || 400}, tickets: { ally: 0, skip: ${o.tk || 0} } }, seen: ${JSON.stringify(o.seen || { pickN: 2, rsTried: 1, setOpen: 1, shopHand: 1 })} });
+      const s = E.save; for (let i = 1; i <= 60; i++) s.intro[i] = 1; s.strikeSeen = new Proxy({}, { get: () => 1 }); })()`;
+    const toPlay = `(() => { const E = __egg; for (let k = 0; k < 4 && E.G.screen === 'intro'; k++) { E.press(k % 2 ? 'inext' : 'go'); for (let i = 0; i < 3; i++) E.frame(1 / 60); } if (E.G.screen === 'intro') E.G.screen = 'play'; })()`;
+    for (const [lab, o] of [['stuck', { lv: 12, stuck: 1 }], ['help', { lv: 12, help: 1 }], ['ticket', { lv: 12, tk: 2 }], ['noskip', { lv: 12, won: 1 }], ['streak', { lv: 12, hot: 1 }]]) {
+      await check(`fail-${lab}`, ([sv, tp, o]) => { const E = __egg; eval(sv); E.ads.won(o.lv); if (o.stuck) { E.ads.fail(o.lv); E.ads.fail(o.lv); E.ads.fail(o.lv); } if (o.hot) E.save.dir = { ...(E.save.dir || {}), hotLost: 4, hotAt: Date.now() };
+        E.start(o.lv - 1); for (let k = 0; k < 20; k++) E.frame(1 / 60); eval(tp); E.step(14); E.showResult('fail');
+        if (o.help) E.G.failHelp = { kind: 'trialBoost', id: 'stone', label: 'Free Stone Shell', line: 'One crack shrugged off, on us.', price: 0 };
+        for (let k = 0; k < 120; k++) E.frame(1 / 60); const ov = E.overlaps(); const S = E.G.fscroll; if (S && S.max > 0) { S.y = S.max; S.v = 0; E.frame(1 / 60); return ov.concat(E.overlaps()); } return ov; }, [mkSave(o), toPlay, o], lab === 'stuck');
+    }
+    await check('mark-map', (sv) => { const E = __egg; eval(sv); E.G.toasts = []; E.G.toast = null; E.G.screen = 'title'; E.press('levels'); for (let k = 0; k < 90; k++) E.frame(1 / 60); return E.overlaps(); }, mkSave({ lv: 12, coins: 340, seen: { pickN: 2, rsTried: 1, setOpen: 0, shopSawN: 0 } }), true);
+    await check('mark-home', () => { const E = __egg; E.G.toasts = []; E.G.toast = null; E.G.screen = 'title'; E.G.screenT = 5; for (let k = 0; k < 5; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
+    await check('mark-card', () => { const E = __egg; E.start(11); for (let k = 0; k < 40; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
+    await check('mark-pause', (tp) => { const E = __egg; eval(tp); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.press('pause'); for (let k = 0; k < 30; k++) E.frame(1 / 60); const o = E.overlaps(); const S = E.G.ppage; if (S && S.max > 0) { S.y = S.max; S.v = 0; E.frame(1 / 60); return o.concat(E.overlaps()); } return o; }, toPlay, true);
+    await check('mark-win', () => { const E = __egg; E.save.wallet.coins = 900; E.start(11); E.frame(1 / 60); E.showResult('win', 3); for (let k = 0; k < 400; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
+    for (const lv of [2, 3, 4, 5]) await check(`rs-strip-L${lv}`, (sv) => { const E = __egg; eval(sv); E.start(+sv.match(/unlocked: (\d+)/)[1] - 1); for (let k = 0; k < 40; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('rs:+'); for (let k = 0; k < 10; k++) E.frame(1 / 60); return o.concat(E.overlaps()); }, mkSave({ lv, seen: { pickN: 2 } }), lv === 2);
+    await check('settings-first', (sv) => { const E = __egg; eval(sv); E.G.screen = 'title'; E.press('settings'); for (let k = 0; k < 30; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('set:close'); return o; }, mkSave({ lv: 4, seen: {} }), false);
     for (const e of errors) problems.push(`${w}x${h} PAGE ERROR: ${e}`);
     await p.close();
   }

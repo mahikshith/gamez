@@ -10,7 +10,7 @@
 // (the portal itself runs its between-level breaks through commercialBreak).
 //
 // Rewarded placements (always the player's choice, always a reward):
-//   rewind   rewind 5 s after a fail        double   double the level's coins     coins   free coins (cooldown)
+//   rewind   rewind 12 s after a fail       double   double the level's coins     coins   free coins (cooldown)
 //   ally     a farm friend for this attempt booster  a free booster on the intro  hint    a hint
 //   skip     skip a level you are stuck on  charge   one Chick Charge             gate    open the next world early
 // Stuck help: after STUCK_FAILS fails in a row on one level the fail card offers Skip (ad, or coins) and a free charge.
