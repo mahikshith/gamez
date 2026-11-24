@@ -75,7 +75,7 @@ export const p2Methods = {
     this.p2M = P2_MODE[this.mode] || P2_MODE.medium;
     this.p2 = {
       nova: 0, shock: 0, shockR: -1, dark: 0, clap: 0, laser: 0, shots: 0, aim: -Math.PI / 2, sweep: -1, sweepA: 0, sweepDir: 1,
-      spin: 0, spinMax: 0, spinDir: 1, pep: 0, cloud: null, shrink: 0, iron: 0, decoy: null, tw: 0, twX: 0, twY: 0,
+      spin: 0, spinMax: 0, spinDir: 1, pep: 0, cloud: null, shrink: 0, iron: 0, decoy: null, tw: 0, twX: 0, twY: 0, mag: 0, magR: -1, hum: 0,
       beams: [], fx: {}, lz: {}, pads: [], n: 0, warp: null,
     };
     this.p2d = null; // the decoy's body ({decoy, id, alive, chick, body}); its plain state is p2.decoy
@@ -574,6 +574,12 @@ export const p2Methods = {
     off('iron', 'iron');
     if (P.laser > 0 && ((P.laser -= DT) <= 0 || (P.shots <= 0 && P.sweep < 0 && !P.beams.length))) { P.laser = 0; P.shots = 0; this.emit('powerOff', { power: 'laser' }); }
     if (P.clap > 0) P.clap = Math.max(0, P.clap - DT);
+    // Electromagnet (shock + iron): on / off and a hum while it pulls. Events only (sound, the field's look): nothing reads them
+    {
+      const mag = P.shock > 0 && P.iron > 0 && P.shockR >= 0 ? 1 : 0;
+      if (mag !== (P.mag || 0)) { if (mag) P.magR = P.shockR; P.mag = mag; P.hum = 0; this.emit(mag ? 'emagOn' : 'emagOff', { ring: P.magR }); }
+      if (mag && (P.hum -= DT) <= 0) { P.hum = 0.5; this.emit('emagHum', { ring: P.shockR }); }
+    }
     if (P.cloud && (P.cloud.t -= DT) <= 0) P.cloud = null;
     if (P.tw > 0 && (P.tw -= DT) <= 0) { // the Pepper twister's sneeze: it throws every creature out to the rim, and they flee
       P.tw = 0;
