@@ -12,7 +12,7 @@
 // and caches sprites + gradients at resize(). The caller must have set ctx.setTransform(dpr,0,0,dpr,0,0).
 
 import { BOLT } from './status.js';
-import { freeDeep } from './cvfree.js';
+import { freeDeep, freeCanvas } from './cvfree.js';
 import { PERF } from '../perf.js';
 export const WEATHER_KINDS = ['none', 'thunder', 'quake', 'embers', 'rain', 'snow', 'sandstorm', 'fog', 'ghosts', 'current', 'leaves', 'ash', 'fireflies'];
 
@@ -137,7 +137,7 @@ function ghostSprite() {
   return c;
 }
 function causticTile(size = 160) {
-  const c = mkc(size, size), g = c.getContext('2d'), im = g.createImageData(size, size), d = im.data;
+  const c = mkc(size, size), g = c.getContext('2d', { willReadFrequently: true }), im = g.createImageData(size, size), d = im.data; // pixels are written into it: a plain memory canvas
   const R = mulberry(77);
   const waves = [];
   for (let i = 0; i < 6; i++) waves.push([Math.round(1 + R() * 3) * (R() < 0.5 ? -1 : 1), Math.round(1 + R() * 3) * (R() < 0.5 ? -1 : 1), R() * TAU, 0.8 + R() * 0.4]);
@@ -929,8 +929,15 @@ BUILD.current = (S) => {
       n = Math.round(48 * S.f);
       x = F32(n); y = F32(n); z = F32(n); ph = F32(n); s = F32(n);
       for (let i = 0; i < n; i++) respawn(i, true);
-      S.G.tile = causticTile(160);
-      S.G.pat = new WeakMap();
+      // 2026-11-24: the caustics were a repeating pattern fill (createPattern), the only one in the game, and level 13 is
+      // the first level that draws it; the slowdown on mykee's phone began on the level 13 card in two logs. Not proven
+      // to be the trigger, but nothing else in the game needs that method: the tile is laid out once into a band and
+      // each strip is one drawImage, like every other sprite.
+      const tile = causticTile(160);
+      const band = mkc(Math.ceil((S.w + 320) / 160) * 160, (Math.ceil((S.h * 0.17 + 2) / 160) + 1) * 160), bg = band.getContext('2d');
+      for (let by = 0; by < band.height; by += 160) for (let bx = 0; bx < band.width; bx += 160) bg.drawImage(tile, bx, by);
+      freeCanvas(tile);
+      S.G.band = band;
       S.G.shaft = vgrad(S, 0, S.h * 0.75, [[0, 'rgba(190,245,255,0.55)'], [1, 'rgba(190,245,255,0)']]);
       S.G.fade = [0.9, 0.7, 0.5, 0.3, 0.15];
     },
@@ -959,16 +966,15 @@ BUILD.current = (S) => {
         ctx.restore();
       }
       // caustics: two drifting tiled layers over the upper part of the screen, fading downward in strips
-      let pat = S.G.pat.get(ctx);
-      if (!pat) { pat = ctx.createPattern(S.G.tile, 'repeat'); S.G.pat.set(ctx, pat); }
-      ctx.fillStyle = pat;
-      for (let L = 0; L < 2; L++) {
+      const band = S.G.band;
+      for (let L = 0; band && L < 2; L++) {
         const sc = L ? 1.5 : 1, per = 160 * sc, ox = ((t * (L ? -9 : 12)) % per + per) % per, oy = ((t * (L ? 6 : 4)) % per + per) % per;
         const strips = L ? 1 : 2, baseA = (L ? 0.06 : 0.08) * (0.5 + 0.5 * S.I);
         ctx.save(); ctx.translate(ox, oy); ctx.scale(sc, sc);
         for (let k = 0; k < strips; k++) {
           ctx.globalAlpha = baseA * S.G.fade[k];
-          ctx.fillRect(-160, (h * 0.17 * k - oy) / sc, w / sc + 320, h * 0.17 / sc + 1);
+          const y0 = (h * 0.17 * k - oy) / sc, sy = ((y0 % 160) + 160) % 160, ws = Math.min(w / sc + 320, band.width), hs = Math.min(h * 0.17 / sc + 1, band.height - sy);
+          ctx.drawImage(band, 0, sy, ws, hs, -160, y0, ws, hs); // the band starts on a tile edge, so x = -160 and the row sy line up as the pattern did
         }
         ctx.restore();
       }
