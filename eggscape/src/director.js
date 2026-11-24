@@ -309,3 +309,25 @@ export function noteNudge(save, n, now) {
   if (n.kind === 'afford') D.afford[(n.item.startsWith('chick:') ? 'c:' : 's:') + n.item.split(':')[1]] = 1;
 }
 export { CHICK_PRICES };
+
+// ---- the shop mark (0.8.14, mykee: "users were not aware of the skins inside the shop ... whenever the number of coins
+// are higher ... show a blinking mark, so they will be able to identify that they are eligible for the shop"):
+// a badge on every shop button while the coins reach something new the player has not seen in the shop yet.
+// ctx: { items: [{ key, kind: 'skin' | 'hen' | 'chick' | 'set' | ..., price, owned, tried }] (things sold for coins;
+//   consumables such as boosters, kits, charges and tickets are not passed or are ignored) }
+// -> { on, n (things not owned the coins pay for now), pick: { key, kind, price, why: 'tried' | 'dear' } | null }
+// on: n is more than the player saw the last time the shop was open (seenShop), never in the early days.
+const MARK_KINDS = { skin: 1, hen: 1, chick: 1, set: 1 };
+export function shopMark(save, ctx = {}) {
+  const coins = (save && save.wallet && save.wallet.coins) || 0;
+  const can = (Array.isArray(ctx.items) ? ctx.items : []).filter((i) => i && MARK_KINDS[i.kind] && !i.owned && i.price > 0 && i.price <= coins);
+  const dear = (a, b) => b.price - a.price || String(a.key).localeCompare(String(b.key));
+  const tried = can.filter((i) => i.tried).sort(dear)[0];
+  const look = can.filter((i) => i.kind === 'skin' || i.kind === 'hen').sort(dear)[0];
+  const best = tried || look || can.slice().sort(dear)[0] || null;
+  const pick = best ? { key: best.key, kind: best.kind, price: best.price, why: tried ? 'tried' : 'dear' } : null;
+  const n = can.length, saw = Math.max(0, Number(save && save.seen && save.seen.shopSawN) || 0);
+  return { on: !earlyDays(save) && n > saw, n, pick };
+}
+// the shop was opened (or closed after a purchase): what it showed is seen; the mark waits for the coins to reach more
+export function seenShop(save, mark) { save.seen = { ...(save.seen || {}), shopSawN: Math.max(0, (mark && mark.n) | 0) }; }

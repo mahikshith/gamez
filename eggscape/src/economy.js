@@ -429,12 +429,12 @@ export function equipHenSkin(wallet, id) {
 
 // ---------------------------------------------------------------- shop revamp (2026-11-16): coin items, power chicks, the bank
 // Coin items: an Ally Ticket calls the rooster or goose without an ad, Golden Hour doubles the coins of the next wins,
-// a Skip Ticket skips a level the player is stuck on (the fail card offers it after STUCK_FAILS losses).
+// a Skip Ticket skips a level not won yet (the fail card and the pause page take it before a video; 0.8.14).
 export const MAX_TICKETS = 99;
 export const ITEMS = {
   ally: { id: 'ally', name: 'Ally Ticket', line: 'Call the rooster or the goose this try, no ad needed.', price: 80 },
   goldhour: { id: 'goldhour', name: 'Golden Hour', line: 'Double coins on your next 3 wins.', price: 120, wins: 3 },
-  skip: { id: 'skip', name: 'Skip Ticket', line: 'Skip a level after 3 losses on it.', price: 150 },
+  skip: { id: 'skip', name: 'Skip Ticket', line: 'Skip a level you have not won yet.', price: 150 },
 };
 export const ITEM_ORDER = ['ally', 'goldhour', 'skip'];
 export function itemCount(w, id) {

@@ -698,7 +698,7 @@ export function drawGlassEgg(ctx, cx, cy, h, fill, t = 0) {
 }
 
 // a ticket stub (Ally / Skip) with a little symbol, an hourglass of gold (Golden Hour)
-function drawItemArt(ctx, id, cx, cy, it, t) {
+export function drawItemArt(ctx, id, cx, cy, it, t) {
   ctx.save();
   if (id === 'goldhour') {
     drawCoin(ctx, cx + it * 0.2, cy + it * 0.18, it * 0.16, t);
@@ -1390,7 +1390,7 @@ export function drawStore(ui, ctx, W, H, state) {
     if (R) {
       const to = Math.max(0, Math.min(SC.max, R.off - (R.h < avail * 0.72 ? Math.min(avail * 0.22, avail - R.h - 8 * s) : 8 * s)));
       SC.y = ui.calm ? to : Math.max(0, to - 56 * s); SC.to = ui.calm ? null : to; SC.v = 0; // set straight there, then one soft settle
-      SC.hl = { key: SC.want, t0: t };
+      SC.hl = { key: SC.want, t0: t, dur: SC.hlDur || 1.2 }; // (0.8.14: the shop mark's pick keeps its ring ~3 s)
     } else if (at[SC.want] != null) { SC.y = at[SC.want] - (rows[0] && at[SC.want] ? 4 * s : 0); SC.v = 0; }
     SC.want = null;
   }
@@ -1409,9 +1409,9 @@ export function drawStore(ui, ctx, W, H, state) {
   ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W, vb - vt); ctx.clip();
   for (const R of rows) { const y = y0 + R.off; clipped(y, R.h, () => R.draw(x0, y, cw)); }
   if (hlR && HL) { // the wanted card: a gold ring that pulses twice and lets go (Calm motion: a still ring)
-    const k = (t - HL.t0) / 1.2;
+    const dur = HL.dur || 1.2, k = (t - HL.t0) / dur, n = Math.max(2, Math.round(dur / 0.6)); // n pulses
     if (k >= 0 && k < 1) {
-      const a = ui.calm ? 1 : Math.min(1, (1 - k) * 3), p = ui.calm ? 0 : 0.5 - 0.5 * Math.cos(k * Math.PI * 4), o = (4 + 4 * p) * s;
+      const a = ui.calm ? 1 : Math.min(1, (1 - k) * 3), p = ui.calm ? 0 : 0.5 - 0.5 * Math.cos(k * Math.PI * 2 * n), o = (4 + 4 * p) * s;
       ctx.save(); ctx.globalAlpha = a;
       ui.roundRect(hlR.x - o, hlR.y - o, hlR.w + 2 * o, hlR.h + 2 * o, 20 * s + o); ctx.lineWidth = (5 + 2 * p) * s; ctx.strokeStyle = 'rgba(255,214,60,0.45)'; ctx.stroke();
       ui.roundRect(hlR.x - o, hlR.y - o, hlR.w + 2 * o, hlR.h + 2 * o, 20 * s + o); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#fff3a8'; ctx.stroke();

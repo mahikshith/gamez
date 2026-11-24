@@ -32,7 +32,7 @@ import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
-import { drawStore, drawCoin, drawBoosterPicker, boosterLayout, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, PROMISE } from './ui/store.js';
+import { drawStore, drawCoin, drawBoosterPicker, boosterLayout, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, drawItemArt, PROMISE } from './ui/store.js';
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as SK from './skip.js'; // 2026-11-23: the pause page's Skip level (one rewarded video)
 import { createPurse } from './ui/purse.js'; // 2026-11-23: one coin-gain effect for every place the purse grows
@@ -476,6 +476,7 @@ function setScreen(s) {
   G.offerTried = false; // each end card / home visit / intro may ask the offer engine once
   if (s !== 'title') G.homeIntro = false; // the app-start entrance plays once; coming back to home only fades in
   ui.pressedId = null;
+  if (s === 'fail') G.fscroll = { y: 0, v: 0, max: 0, t: G.t }; // the fail page scrolls only on a short screen
   if (s === 'title' || s === 'levels') { warmNext(); audio.music(MAIN_THEME); } // home and the map play the main theme
   // 2026-11-16 mykee: "you don't have to put New on the i every single time": a kind is new in the first level it is
   // played in only, whether or not the player opens the panel (the tag stays up for the rest of that level)
@@ -944,7 +945,7 @@ function pointerDown(e) {
     const D = G.dscroll; G.pdrag = { pid: e.pointerId, sc: D, y0: y, s0: D.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; D.v = 0; D.to = null;
   }
   if (G.adBusy || modalOpen()) { if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; } return; } // a sheet or popup takes every tap (and an ad wait: only its "Back to game")
-  const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'extras' ? G.escroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'pause' ? (G.ppRectR && x >= G.ppRectR.x ? G.ppageR : G.ppage) : null;
+  const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'extras' ? G.escroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'pause' ? (G.ppRectR && x >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'fail' && G.fscroll && G.fscroll.max > 0 ? G.fscroll : null;
   if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
   if (SC && G.settingsOpen && /^rs:\d+$/.test(id || '')) Object.assign(G.pdrag, { bar: true, x0: x }); // the ring speed bar: a sideways drag slides it, an up/down one scrolls the page
   if (G.screen === 'intro') { // 2026-11-19 level page: the page scrolls up/down, the chick row left/right (the first clear move picks)
@@ -953,6 +954,7 @@ function pointerDown(e) {
     const cy = inR(G.ipRect) && G.ipage && G.ipage.max > 0 ? G.ipage : land && inR(G.ipRectR) && G.ipageR && G.ipageR.max > 0 ? G.ipageR : null;
     if (cx || cy) G.pdrag = { pid: e.pointerId, cand: { x: cx, y: cy }, x0: x, y0: y, s0: 0, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
   }
+  if (G.shopHand) G.shopHand = null; // the shop hand (map) goes on any tap; the tap itself still does its job
   if (G.screen === 'levels' && G.mapTravel && !G.treasure) G.mapTravel = null; // a touch during the trip: the map is the player's now (not while the boss treasure sheet is up: the trip goes on after it)
   if (G.screen === 'levels' && !G.settingsOpen && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; // the world map scrolls by drag; a tap on a stop still presses
   // 0.8.7: a finger put on a list that is still gliding catches it there (it used to keep sliding under the finger
@@ -1014,7 +1016,7 @@ function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
   const pd = G.pdrag;
-  if (pd && pd.pid === e.pointerId && (G.settingsOpen || G.screen === 'practice' || G.screen === 'extras' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store' || G.screen === 'intro' || G.screen === 'pause')) { // 0.8.7: the pause page was missing here, so it never scrolled under a finger (0.8.10: and Settings over the title, mykee: "users are not able to scroll it")
+  if (pd && pd.pid === e.pointerId && (G.settingsOpen || G.screen === 'practice' || G.screen === 'extras' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store' || G.screen === 'intro' || G.screen === 'pause' || G.screen === 'fail')) { // 0.8.7: the pause page was missing here, so it never scrolled under a finger (0.8.10: and Settings over the title, mykee: "users are not able to scroll it")
     if (pd.bar && (pd.scrub || (!pd.moved && Math.abs(x - pd.x0) > 9 * ui.u && Math.abs(x - pd.x0) > Math.abs(y - pd.y0)))) { // the speed bar follows the finger sideways
       if (!pd.scrub) { pd.scrub = pd.moved = true; ui.pressedId = null; }
       const b = ui.buttons.find((q) => /^rs:\d+$/.test(q.id) && x >= q.x && x < q.x + q.w), L = ui.buttons.filter((q) => /^rs:\d+$/.test(q.id));
@@ -1109,7 +1111,7 @@ function pointerUp(e) {
 function wheel(e) {
   if (G.detail && G.dscroll && G.detail === 'iap:' + G.dscroll.key && G.dscroll.max > 0 && !G.got) { e.preventDefault(); G.dscroll.y = clamp(G.dscroll.y + clamp(e.deltaY, -400, 400), 0, G.dscroll.max); G.dscroll.v = 0; return; }
   if (modalOpen()) return;
-  const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'extras' ? G.escroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'levels' ? G.mscroll : G.screen === 'pause' ? (G.ppRectR && e.clientX >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'intro' ? (e.shiftKey && G.car ? G.car : G.ipRectR && ui.A.w > ui.A.h * 1.15 && e.clientX >= G.ipRectR.x ? G.ipageR : G.ipage) : null;
+  const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'extras' ? G.escroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'levels' ? G.mscroll : G.screen === 'pause' ? (G.ppRectR && e.clientX >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'fail' && G.fscroll && G.fscroll.max > 0 ? G.fscroll : G.screen === 'intro' ? (e.shiftKey && G.car ? G.car : G.ipRectR && ui.A.w > ui.A.h * 1.15 && e.clientX >= G.ipRectR.x ? G.ipageR : G.ipage) : null;
   if (SC) { e.preventDefault(); SC.y = clamp(SC.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -400, 400), 0, SC.max); SC.v = 0; return; } // 2026-11-19: the world map scrolls with a mouse wheel too
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   e.preventDefault();
@@ -1282,9 +1284,12 @@ async function press(id) {
       persist();
       break;
     case 'shop':
-    case 'store':
-      openStore('deals');
+    case 'store': { // 0.8.14: with the shop mark on, the shop opens on the thing the coins now reach, with a ring on it
+      const M = shopMarkNow();
+      G.shopHand = null;
+      if (M.on && M.pick) { openStore(null, M.pick.key); G.sscroll.hlDur = 3; } else openStore('deals');
       break;
+    }
     case 'shop:boosts': // the level card's empty booster well: the shop's Boosts row
       openStore('boosters', 'boosts');
       break;
@@ -1482,21 +1487,10 @@ async function press(id) {
     case 'sk:no':
       G.skipAsk = null;
       break;
-    case 'sk:go': {
+    case 'sk:go': // the pause sheet's button: a Skip Ticket if the player owns one, else the video
       G.skipAsk = null;
-      if (G.screen !== 'pause' || !skipNow()) break;
-      const lid = G.level.id, li = G.li;
-      if (!(await rewarded('skip'))) break; // no video, no skip (rewarded() says so in a toast); Premium: at once
-      if (G.screen !== 'pause' || G.li !== li || !SK.applySkip(save, skipLv())) break;
-      ads.won(lid); diag.mark('skip:' + lid); persist();
-      portal.gameplayStop(); releaseAll(); stopFuse();
-      // as Next does after a win: the map, the hen hops to the next stop and its level page opens (a star gate: the map waits there)
-      const n = li + 1;
-      G.world = envOf(n); G.toasts = []; G.toast = null;
-      G.mapTravel = playable(n) ? { from: li, to: n, t0: -1 } : null;
-      setScreen('levels'); // (no toast: on a small map it covers the stops; the hen's hop says it)
+      if (G.screen === 'pause') await skipGo(skipWays()[0]);
       break;
-    }
     case 'resume':
       setScreen('play');
       portal.gameplayStart();
@@ -1539,24 +1533,11 @@ async function press(id) {
       setScreen('levels');
       break;
     }
-    case 'skip:ad': {
-      if (G.screen !== 'fail') break;
-      if (await rewarded('skip')) skipLevel();
+    case 'skip:ad': // the fail card's Skip level (0.8.14: from the first loss): the same skip as the pause page's
+    case 'skip:ticket':
+    case 'skip:coins':
+      if (G.screen === 'fail') await skipGo(id.slice(5));
       break;
-    }
-    case 'skip:ticket': {
-      if (G.screen !== 'fail' || !(G.li >= 0 && ads.stuck(G.level.id))) break;
-      const w = E.useTicket(save.wallet, 'skip');
-      if (w) { save.wallet = w; persist(); skipLevel(); }
-      break;
-    }
-    case 'skip:coins': {
-      if (G.screen !== 'fail') break;
-      if (save.wallet.coins < SKIP_COINS) { needCoins(SKIP_COINS); break; }
-      save.wallet = { ...save.wallet, coins: save.wallet.coins - SKIP_COINS };
-      skipLevel();
-      break;
-    }
     case 'rewind': {
       // a Free rewind booster pays for it; otherwise it is a rewarded ad
       const free = G.freeRewind;
@@ -1686,6 +1667,7 @@ async function press(id) {
       break;
     case 'back':
       G.getMore = null; G.detail = null;
+      if (G.screen === 'store') shopSeen(); // (after a purchase fewer things are in reach: saving up again lights the mark)
       setScreen(G.screen === 'store' ? G.storeFrom || 'title' : G.screen === 'practice' ? 'extras' : 'title');
       break;
     case 'extras': // the Extras menu: Wonder Vaults (bonus) and, in the test build, the Practice vaults
@@ -1871,6 +1853,7 @@ async function rewarded(tag) {
 const storeTabFor = (k) => (!k ? 'deals' : /^(chick|boost|kit|item|charge):|^(boosts|chicks|premium)$/.test(k) || E.BOOSTERS[k] ? 'boosters' : /^(hen|set):/.test(k) ? 'hens' : /^skin:/.test(k) ? 'skins' : 'deals');
 function openStore(tab, want = null) {
   if (G.screen !== 'store') { G.storeFrom = G.screen; G.storeFlash = null; setScreen('store'); }
+  shopSeen(); // the shop mark goes off: what the coins reach is in front of the player now
   G.storeTab = tab || storeTabFor(want);
   G.sscroll = { y: 0, v: 0, max: 0, t: G.t, want };
   G.getMore = null; G.detail = null; G.chickBuy = null; // (the level card's chick sheet used to stay open over the shop)
@@ -2447,7 +2430,31 @@ function onGrant(sku) {
 // before, not the last, not level 1 while the first-run coach teaches; one rewarded video the player picks. It sits
 // quietly on the pause page: no pop-up offers it.
 const skipLv = () => ({ id: G.level ? G.level.id : 0, count: LEVELS.length, journey: G.li >= 0 && LEVELS[G.li] === G.level && !G.demo, coaching: !!G.teach || firstRun(), won: !!G.level && bestStarsOf(G.level.id) > 0 });
-const skipNow = () => !!G.sim && G.sim.state === 'play' && SK.canSkip(save, skipLv());
+// can this level be skipped now: in play (the pause page) or once it is lost (the fail card)
+const skipNow = () => !!G.sim && (G.screen === 'fail' ? G.sim.state !== 'play' : G.sim.state === 'play') && SK.canSkip(save, skipLv());
+// how it can be paid now, in button order (src/skip.js skipWays): 'ticket' | 'ad', then 'coins' while stuck (fail card only)
+const skipWays = () => (skipNow() ? SK.skipWays(save, skipLv(), { stuck: G.screen === 'fail' && G.li >= 0 && ads.stuck(G.level.id), tickets: save.wallet.tickets.skip }) : []);
+// The one skip (0.8.14: the pause sheet and the fail card end the same way): pay (a ticket, a video or coins), then
+// SK.applySkip, and the map, where the hen hops to the next stop and its level page opens (a star gate: the map waits).
+async function skipGo(way) {
+  const from = G.screen, ways = skipWays();
+  if (!ways.includes(way)) return false;
+  const lid = G.level.id, li = G.li, still = () => G.screen === from && G.li === li && skipNow();
+  if (way === 'coins' && save.wallet.coins < SKIP_COINS) { needCoins(SKIP_COINS); return false; }
+  if (way === 'ad' && !(await rewarded('skip'))) return false; // no video, no skip (rewarded() says so in a toast); Premium: at once
+  if (!still()) return false;
+  if (way === 'ticket') { const w = E.useTicket(save.wallet, 'skip'); if (!w) return false; save.wallet = w; }
+  if (way === 'coins') save.wallet = { ...save.wallet, coins: save.wallet.coins - SKIP_COINS };
+  if (!SK.applySkip(save, skipLv())) return false;
+  ads.won(lid); diag.mark('skip:' + lid + ':' + way); persist();
+  portal.gameplayStop(); releaseAll(); stopFuse();
+  // as Next does after a win: the map, the hen hops to the next stop and its level page opens
+  const n = li + 1;
+  G.world = envOf(n); G.toasts = []; G.toast = null; G.skipAsk = null;
+  G.mapTravel = playable(n) ? { from: li, to: n, t0: -1 } : null;
+  setScreen('levels'); // (no toast: on a small map it covers the stops; the hen's hop says it)
+  return true;
+}
 function drawSkipAsk() {
   if (G.screen !== 'pause') { G.skipAsk = null; return; }
   dim(0.55);
@@ -2461,24 +2468,85 @@ function drawSkipAsk() {
 
 // the one coin-gain effect (src/ui/purse.js): every counter draws purse.shown(); every grant calls purse.gain()
 const purse = createPurse({ clock: () => G.t, calm: () => !!save.calm, wallet: () => (save && save.wallet ? save.wallet.coins || 0 : 0), screen: () => G.screen, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k) });
-// a coin counter (the gold shop button on home and the map): the rolling number, a pop when the coins land
-function purseBtn(x, y, w, h, size) {
-  const sc = purse.pop(), cx = x + w / 2, cy = y + h / 2;
-  if (sc !== 1) { ctx.save(); ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.translate(-cx, -cy); }
-  ui.button('shop', String(purse.shown()), x, y, w, h, { kind: 'gold', icon: (c, X, Y, S) => { drawCoin(c, X, Y, S * 0.56, G.t); purse.at({ x: X, y: Y }); }, size });
-  if (sc !== 1) ctx.restore();
+// ---- the shop mark (0.8.14, director.js shopMark): a blinking badge on every shop button while the coins reach
+// something new (an egg, an outfit, a reached chick, a set) the player has not seen in the shop yet
+function markItems() {
+  const w = save.wallet, tr = DR.dirState(save).trials || {}, items = [];
+  for (const id of E.SKIN_ORDER) if (id !== 'classic') items.push({ key: 'skin:' + id, kind: 'skin', price: E.SKINS[id].price, owned: (w.skins || []).includes(id), tried: (tr.skins || []).includes(id) });
+  for (const id of E.HEN_SKIN_ORDER) if (id !== 'classic' && !E.HEN_SKINS[id].premium) items.push({ key: 'hen:' + id, kind: 'hen', price: E.HEN_SKINS[id].price, owned: (w.henSkins || []).includes(id), tried: (tr.hens || []).includes(id) });
+  for (const c of lockedChicks()) items.push({ key: 'chick:' + c.id, kind: 'chick', price: c.price, owned: false, tried: (tr.chicks || []).includes(c.id) });
+  for (const id of E.SET_ORDER) { const S = E.SETS[id]; items.push({ key: 'set:' + id, kind: 'set', price: E.setPrice(w, id), owned: (w.henSkins || []).includes(S.hen) && (w.skins || []).includes(S.egg) }); }
+  return items.filter((i) => storeItem(i.key, { wallet: w }));
 }
-
-// stuck help: skip this level. It opens the next one; the skipped level keeps no stars and can be played any time.
-function skipLevel() {
-  const L = G.level;
-  save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, L.id + 1));
-  save.skipped = { ...(save.skipped || {}), [L.id]: 1 };
-  ads.won(L.id);
-  persist();
-  const n = Math.min(LEVELS.length - 1, G.li + 1);
-  if (!playable(n)) { G.world = envOf(n); setScreen('levels'); return; }
-  startLevel(n);
+const MARK_OFF = { on: false, n: 0, pick: null };
+function shopMarkNow() { // asked by every shop button each frame: worked out again when the purse or what is owned changes
+  if (!save || !save.wallet) return MARK_OFF;
+  const w = save.wallet, sig = `${w.coins}|${(w.skins || []).length}|${(w.henSkins || []).length}|${(w.chicks || []).length}|${save.seen.shopSawN || 0}|${strikeReach()}|${earlyDays() ? 1 : 0}`;
+  if (!G.markC || G.markC.sig !== sig) { let m = MARK_OFF; try { m = DR.shopMark(save, { items: markItems() }); } catch (e) { m = MARK_OFF; } G.markC = { sig, m }; }
+  return G.markC.m;
+}
+// the shop was opened: what it shows now counts as seen (the mark waits for the coins to reach something more)
+function shopSeen() { const m = shopMarkNow(); if ((save.seen.shopSawN || 0) !== m.n) { DR.seenShop(save, m); persist(); } }
+// the mark itself: a red badge with a white "!" (or a count) that pulses 1 -> 1.18 every 1.2 s; still under Calm
+function markBadge(x, y, r, t, label = '!') {
+  const k = save.calm ? 1 : 1 + 0.09 * (1 - Math.cos(((t % 1.2) / 1.2) * Math.PI * 2));
+  ctx.save(); ctx.translate(x, y); ctx.scale(k, k);
+  if (!save.calm) { const a = ((t % 1.2) / 1.2); ctx.globalAlpha = 0.45 * (1 - a); ctx.beginPath(); ctx.arc(0, 0, r * (1 + 0.7 * a), 0, 7); ctx.fillStyle = '#ff6b5a'; ctx.fill(); ctx.globalAlpha = 1; }
+  ctx.beginPath(); ctx.arc(0, r * 0.12, r, 0, 7); ctx.fillStyle = 'rgba(60,8,4,0.35)'; ctx.fill(); // its shadow
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7);
+  const g = ctx.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#ff6a55'); g.addColorStop(1, '#d8251a');
+  ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = Math.max(1.5, r * 0.18); ctx.strokeStyle = '#fff'; ctx.stroke();
+  ui.text(label, 0, r * 0.04, { size: r * (label.length > 1 ? 1.05 : 1.35), align: 'center', color: '#fff', noRecord: true });
+  ctx.restore();
+}
+// a shop thing's picture (the mark's bubble, the win card's chip, the pause page's shop banner): h is its height
+function markArt(key, x, y, h) {
+  const [k, id] = key.split(':');
+  if (k === 'skin') drawSkinPreview(ctx, id, x, y, h * 0.9, G.t);
+  else if (k === 'hen') drawHenSkinPreview(ctx, id, x, y, h, G.t);
+  else if (k === 'chick') drawStrikeChick(ctx, id, x, y + h * 0.08, h * 0.8, G.t, {});
+  else if (k === 'set' && E.SETS[id]) drawHenSkinPreview(ctx, E.SETS[id].hen, x, y, h, G.t);
+}
+const markWhat = (key) => ({ skin: 'egg', hen: 'outfit', chick: 'chick', set: 'set' }[key.split(':')[0]] || 'thing');
+const markName = (key) => { const [k, id] = key.split(':'); return k === 'skin' ? eggName(E.SKINS[id].name) : k === 'hen' ? E.HEN_SKINS[id].name : k === 'chick' ? (STRIKES.find((S) => S.id === id) || {}).name || 'chick' : k === 'set' ? (E.SETS[id] || {}).name || 'set' : ''; };
+// the first time the mark turns on (once ever, save.seen.shopHand): on the map, not during the hen's trip or under a
+// sheet, the teaching hand taps the shop button and a bubble under it shows what the coins reach. Not a modal: the map
+// still works; it goes after ~6 s or on any tap. (a tap on the shop button opens the shop on it, as always)
+const SHOP_HAND_LEN = 6;
+function drawShopHand() {
+  const M = shopMarkNow();
+  if (!G.shopHand) {
+    if (save.seen.shopHand || !M.on || !M.pick || G.mapTravel || G.treasure || modalOpen() || G.settingsOpen || G.screenT < 0.8 || !G.shopBtn || G.shopBtn.t !== G.t) return;
+    G.shopHand = { t0: G.t, key: M.pick.key }; save.seen = { ...save.seen, shopHand: 1 }; persist();
+  }
+  const H = G.shopHand, el = G.t - H.t0, B = G.shopBtn;
+  if (el > SHOP_HAND_LEN || !B || B.t !== G.t || modalOpen() || G.mapTravel) { G.shopHand = null; return; }
+  const u = ui.u, A = ui.A, a = Math.min(1, el / 0.3, (SHOP_HAND_LEN - el) / 0.4);
+  ctx.save(); ctx.globalAlpha = a;
+  // the bubble under the button: the thing's picture and one line, a tail pointing up at the button
+  const txt = `You can get a new ${markWhat(H.key)}!`, ts = 15 * u, ph = 46 * u, bh = 56 * u;
+  const bw = Math.min(A.w - 24 * u, ui.measure(txt, ts) + ph + 34 * u), bx = clamp(B.x + B.w / 2 - bw / 2, A.x + 12 * u, A.x1 - 12 * u - bw), by = B.y + B.h + 14 * u;
+  ui.roundRect(bx, by + 3 * u, bw, bh, 16 * u); ctx.fillStyle = 'rgba(30,14,4,0.35)'; ctx.fill();
+  ui.roundRect(bx, by, bw, bh, 16 * u); ctx.fillStyle = '#fff8e6'; ctx.fill(); ctx.lineWidth = 2.5 * u; ctx.strokeStyle = '#e0a020'; ctx.stroke();
+  const tx = clamp(B.x + B.w / 2, bx + 22 * u, bx + bw - 22 * u);
+  ctx.beginPath(); ctx.moveTo(tx - 9 * u, by + 1); ctx.lineTo(tx, by - 10 * u); ctx.lineTo(tx + 9 * u, by + 1); ctx.closePath(); ctx.fillStyle = '#fff8e6'; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(tx - 9 * u, by); ctx.lineTo(tx, by - 10 * u); ctx.lineTo(tx + 9 * u, by); ctx.stroke();
+  markArt(H.key, bx + 12 * u + ph / 2, by + bh / 2, ph);
+  ui.text(txt, bx + 18 * u + ph, by + bh / 2 + 0.5 * u, { size: ts, color: '#5a2c08', maxW: bw - ph - 28 * u, noRecord: true });
+  ctx.restore();
+  // the hand taps the button (still under Calm: it just points)
+  const per = 1.1, q = save.calm ? 0.5 : (el % per) / per, press = q > 0.4 && q < 0.7, hs = Math.min(B.h * 1.3, 56 * u);
+  teachHand(ctx, B.x + B.w * 0.62, B.y + B.h * (press ? 0.42 : 0.58), hs, press, a);
+}
+// a coin counter (the gold shop button on home and the map): the rolling number, a pop when the coins land
+// 0.8.14: with the shop mark on, a shimmer runs over it and the badge pulses on its top right corner
+function purseBtn(x, y, w, h, size) {
+  const sc = purse.pop(), cx = x + w / 2, cy = y + h / 2, M = shopMarkNow();
+  if (sc !== 1) { ctx.save(); ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.translate(-cx, -cy); }
+  ui.button('shop', String(purse.shown()), x, y, w, h, { kind: 'gold', shimmer: M.on, icon: (c, X, Y, S) => { drawCoin(c, X, Y, S * 0.56, G.t); purse.at({ x: X, y: Y }); }, size });
+  if (M.on) { const r = Math.min(11 * ui.u, h * 0.26); markBadge(Math.min(x + w - r * 0.35, ui.A.x1 - r - 1), Math.max(y + r * 0.2, ui.A.y + r + 1), r, G.t); }
+  if (sc !== 1) ctx.restore();
+  if (M.on) G.shopBtn = { x, y, w, h, t: G.t }; // where the map's one-time hand points
 }
 
 const DIAG_MARK = /^(iap:|deal:|buy:|item:|chick:|charge:|hen:|skin:|kit:|hset:|try:|sample$|bonus$|ad:|go$|retry$|next$|home:chest$|tr:)/;
@@ -4484,7 +4552,7 @@ function render() {
 
   // UI
   if (DEV && G.probe) G.probe('tintEtc');
-  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info' && G.screen !== 'intro' && G.screen !== 'win') drawHUD();
+  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info' && G.screen !== 'intro' && G.screen !== 'win' && G.screen !== 'fail') drawHUD();
   if (DEV && G.probe) G.probe('hud'); // the intro card carries the name, eggs and time (mykee: the name showed twice)
   if (G.screen === 'play') drawFlyers(); // prizes on their way to the HUD
   if (G.screen === 'play') {
@@ -5454,7 +5522,11 @@ function stackCard(title, build, o = {}) {
   };
   let m = measure(u);
   // a narrower card wraps its text into more lines, so one rescale can still be too tall: step down until it fits
-  for (let n = 0; n < 4 && m.h > avail + 0.5 && m.s > u * 0.45; n++) m = measure(Math.max(u * 0.45, m.s * Math.min(0.97, avail / m.h)));
+  // (o.minS: never below this scale; with o.scroll the rest scrolls instead, 0.8.14 the fail page)
+  const minS = Math.max(u * 0.45, o.minS || 0);
+  for (let n = 0; n < 4 && m.h > avail + 0.5 && m.s > minS + 0.001; n++) m = measure(Math.max(minS, m.s * Math.min(0.97, avail / m.h)));
+  const scrolls = !!o.scroll && m.h > avail + 0.5;
+  if (o.scroll && !scrolls) { o.scroll.max = 0; o.scroll.y = 0; }
   // 0.8.10 (mykee: a page that is "empty or half empty"): a full page with room to spare grows its own content
   // instead of leaving a void, up to o.grow (a third bigger by default: enough to fill a tall phone, never comic).
   if (full && !two && m.h < avail * 0.94) {
@@ -5473,6 +5545,18 @@ function stackCard(title, build, o = {}) {
   const h = full ? avail : Math.min(m.h, avail);
   const x = full ? A.x : (o.cx || A.cx) - w / 2;
   const y = full ? top : Math.max(top, (A.y1 + Math.max(G.hudBottom, A.y)) / 2 - h / 2);
+  if (scrolls && !two) { // too tall even at o.minS: the frame fills the room and the blocks scroll inside it (pageScroll)
+    const V = { x, y: y + CARD_HEAD * s - 8 * s, w, h: h - CARD_HEAD * s + 2 * s };
+    if (o.hidden) return { x, y, w, h, s, full, V };
+    ctx.save();
+    if (o.dx || o.dy) ctx.translate(o.dx || 0, o.dy || 0);
+    ui.frame(x, y, w, h, { s, r: full ? 2 * s : 24 * s });
+    pageScroll(blocks, o.scroll, V, x + pad, inner, s, true);
+    const rw = clamp(ui.measure(title, 24 * s) + 56 * s, w * 0.6, w - 14 * s);
+    ui.ribbon(title, x + w / 2, y - 8 * s, rw, 40 * s, { s, color: o.ribbon || '#ee5a36', size: 24 * s, tag: 'card:title' });
+    ctx.restore();
+    return { x, y, w, h, s, full, V };
+  }
   // a full page spreads what is left over: the blocks keep their order, the room goes above and below them
   const slack = full ? Math.max(0, h - m.h) : 0;
   // o.hidden: lay out only (each block's at(x, y, w) learns where it will sit); o.dx / o.dy: slide the card (win card entrance)
@@ -7389,39 +7473,57 @@ function starSparks(cx, cy, r, a, k) {
 // The fail card: the hen on the same stage as the win card (render/cheer.js 'encourage'): sad for a moment, then she
 // shakes it off and cheers you on, so kids are not put off. Landscape: she stands left of the card.
 // Kind and clear: how close you were (eggs home against eggs needed), then one big RETRY.
+// 0.8.14 (mykee: "the problem is it is not full screen ... along with the retry ... an option to skip the level as well
+// ... We need to properly adjust the skip, retry, and everything inside the level card"): a full page like the win page
+// (no HUD over it, paper to the safe edges in portrait; the win card's side stage in landscape). Top to bottom: the
+// reason, the hen, the egg slots, the one help offer, then RETRY (the biggest), Rewind 12s | Rewind coins, and
+// Skip level | Levels (stuck with the coin way: the two skips share the row and Levels gets its own). The room a tall
+// phone gives goes to her stage first; a short screen scrolls the page rather than shrinking a button.
 function drawFail() {
-  dim(0.55);
-  const st = G.sim.stats(), u = ui.u, C = ui.C;
+  const hb = G.hudBottom;
+  G.hudBottom = ui.A.y; // the page starts at the top of the safe area (drawHUD skips 'fail')
+  try { drawFailPage(); } finally { G.hudBottom = hb; }
+}
+const FAIL_BTN = 58; // the rows' buttons (design units): 53 px at 384 px wide, 50 at 360 (never less: o.minS)
+function drawFailPage() {
+  const st = G.sim.stats(), u = ui.u, C = ui.C, A = ui.A;
   const timeout = !!G.sim.timeLimit && G.sim.timeLeft <= 0;
-  const sd = cardSide(), room = (ui.A.y1 - Math.max(G.hudBottom, ui.A.y) - 30 * u) / u - 400, stH = clamp(room, 110, 184);
-  const card = stackCard(timeout ? 'Out of time!' : 'Too many eggs broke', (s) => {
+  const sd = cardSide();
+  dim(sd ? 0.74 : 0.6);
+  if (sd) { ctx.save(); ctx.globalAlpha = 0.6; sunburst(sd.x + sd.w / 2, A.y + A.h * 0.62, Math.min(sd.w * 0.62, A.h * 0.6), 'rgba(200,214,255,0.1)'); ctx.restore(); }
+  const ways = skipWays(), rew = !G.usedRewind && G.sim.canRewind(), hl = rew && G.li >= 0 ? DR.hotLost(save) : 0;
+  const coinR = rew && !G.freeRewind && !ads.premium && G.li >= 0, price = DR.rewindPrice((G.rewindBuys || {})[G.level.id]);
+  const Hp = G.failHelp, BH = FAIL_BTN;
+  const build = (stH) => (s) => {
     const B = [];
-    if (!sd) B.push({ h: stH * s, gap: 0, draw: (x, y, w) => {
-      const box = { x, y, w, h: stH * s };
-      henStage(box, s, false);
-      drawCelebration(ctx, 'encourage', G.screenT, box, { henH: 0.685 * stH * s, calm: save.calm, pw: 0.5 });
-      ui.record(box, 'fail:hen');
-    } });
     // why it failed: an icon and two or three words (the ribbon above says the same)
-    B.push({ h: 30 * s, gap: sd ? 2 * s : 8 * s, draw: (x, y, w) => {
+    B.push({ h: 30 * s, gap: sd ? 2 * s : 4 * s, draw: (x, y, w) => {
       const t = timeout ? 'No time left' : 'Too many eggs lost', tw = ui.measure(t, 19 * s) + 34 * s, x0 = x + w / 2 - tw / 2;
       if (timeout) pictoClock(ctx, x0 + 12 * s, y + 15 * s, 28 * s); else pictoBroken(ctx, x0 + 12 * s, y + 15 * s, 28 * s);
       ui.text(t, x0 + 30 * s, y + 15 * s, { size: 19 * s, color: C.warn, maxW: w - 34 * s, tag: 'fail:cheer' });
     } });
-    // how close: one slot per egg needed, the ones that got home filled in
-    B.push({ h: 62 * s, gap: 6 * s, draw: (x, y, w) => {
-      ui.well(x, y, w, 62 * s, { s });
-      const n = Math.max(1, st.target), sp = Math.min(30 * s, (w - 20 * s) / n), es = Math.min(26 * s, sp * 0.95);
+    if (!sd && stH > 0) B.push({ h: stH * s, gap: 8 * s, draw: (x, y, w) => {
+      const box = { x, y, w, h: stH * s };
+      henStage(box, s, false);
+      drawCelebration(ctx, 'encourage', G.screenT, box, { henH: Math.min(0.685 * stH, 150) * s, calm: save.calm, pw: 0.5 }); // a tall stage gives her air, not a close-up
+      ui.record(box, 'fail:hen');
+    } });
+    // how close: one slot per egg needed, the ones that got home filled in (landscape: the count beside them, one row)
+    const EH = sd ? 44 : 62;
+    B.push({ h: EH * s, gap: 8 * s, draw: (x, y, w) => {
+      ui.well(x, y, w, EH * s, { s });
+      const lab = `${st.saved}/${st.target}`, lw = sd ? ui.measure(lab, 17 * s) + 14 * s : 0;
+      const n = Math.max(1, st.target), sp = Math.min(30 * s, (w - 20 * s - lw) / n), es = Math.min(26 * s, sp * 0.95), mid = x + (w - lw) / 2;
       for (let i = 0; i < n; i++) {
-        const ex = x + w / 2 + (i - (n - 1) / 2) * sp, ey = y + 20 * s;
+        const ex = mid + (i - (n - 1) / 2) * sp, ey = y + (sd ? EH / 2 : 20) * s;
         if (i < st.saved) drawEggIcon(ctx, ex, ey, es, 'saved');
         else drawEggIcon(ctx, ex, ey, es, 'slot');
       }
-      ui.record({ x: x + w / 2 - n * sp / 2, y: y + 7 * s, w: n * sp, h: 26 * s }, 'fail:eggs');
-      ui.text(`${st.saved}/${st.target}`, x + w / 2, y + 47 * s, { size: 17 * s, align: 'center', maxW: w - 16 * s, color: C.ink, tag: 'fail:stat' });
+      ui.record({ x: mid - n * sp / 2, y: y + (sd ? EH / 2 - 13 : 7) * s, w: n * sp, h: 26 * s }, 'fail:eggs');
+      if (sd) ui.text(lab, mid + n * sp / 2 + 10 * s, y + EH / 2 * s, { size: 17 * s, maxW: lw, color: C.ink, tag: 'fail:stat' });
+      else ui.text(lab, x + w / 2, y + 47 * s, { size: 17 * s, align: 'center', maxW: w - 16 * s, color: C.ink, tag: 'fail:stat' });
     } });
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: 6 * s }));
-    const Hp = G.failHelp;
     if (Hp) B.push({ h: 78 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
       const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost', ad = Hp.kind === 'adBoost';
       ui.well(x, y, w, 78 * s, { s, a: free ? '#d8f5c0' : '#ffe9b0', b: free ? '#f0ffe4' : '#fff6dc' });
@@ -7433,35 +7535,49 @@ function drawFail() {
       const ln = wrapText(Hp.line, 12.5 * s, tw).slice(0, 2);
       ln.forEach((l, i) => ui.text(l, tx, y + 48 * s + i * 15 * s, { size: 12.5 * s, color: ui.C.ink2, maxW: tw, tag: 'fail:help' + i }));
       const lab = free ? 'FREE' : ad ? 'Watch' : String(Hp.price);
-      ui.button('help:go', lab, x + w - bw - 8 * s, y + 15 * s, bw, 48 * s, free ? { kind: 'primary', shimmer: true, size: 20 * s } : ad ? { kind: 'ad', ad: true, size: 17 * s } : { kind: save.wallet.coins >= Hp.price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s });
-      ui.record({ x, y, w, h: 78 * s }, 'fail:helpcard');
+      ui.button('help:go', lab, x + w - bw - 8 * s, y + 13 * s, bw, 52 * s, free ? { kind: 'primary', shimmer: true, size: 20 * s } : ad ? { kind: 'ad', ad: true, size: 17 * s } : { kind: save.wallet.coins >= Hp.price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s });
+      ui.record({ x, y, w, h: 78 * s }, 'panel:failhelp'); // (a panel: its own words and button sit on it)
     } });
-    B.push({ h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 25 * s }) });
-    // stuck (3 losses in a row on this level): skip ahead with an ad or coins
-    if (G.li >= 0 && ads.stuck(G.level.id) && G.li < LEVELS.length - 1) B.push({ h: 46 * s, gap: 10 * s, draw: (x, y, w) => {
-      const hw = (w - 8 * s) / 2, rich = save.wallet.coins >= SKIP_COINS, tk = save.wallet.tickets.skip;
-      ui.button('skip:ad', 'Skip level', x, y, hw, 46 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 15 * s } : { kind: 'ad', ad: true, size: 15 * s });
-      if (tk > 0) ui.button('skip:ticket', `Use Skip Ticket (${tk})`, x + hw + 8 * s, y, hw, 46 * s, { kind: 'secondary', size: 14 * s }); // bought in the shop
-      else ui.button('skip:coins', 'Skip ' + SKIP_COINS, x + hw + 8 * s, y, hw, 46 * s, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 15 * s }); // too few coins: the tap opens Get more
-    } });
-    if (!G.usedRewind && G.sim.canRewind()) {
-      // Rewind 12 s: a Free rewind booster, or a video, or coins (dearer each time on this level). It keeps the win streak.
-      const hl = G.li >= 0 ? DR.hotLost(save) : 0;
-      if (hl >= 2) B.push({ h: 26 * s, gap: 8 * s, draw: (x, y, w) => {
+    // row A: RETRY, the whole width, the biggest
+    const RH = sd ? 62 : 68;
+    B.push({ h: RH * s, gap: (sd ? 10 : 14) * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, RH * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 27 * s }) });
+    // row B: Rewind 12 s, a Free rewind booster or a video, beside Rewind for coins (dearer each time on this level). It keeps the win streak.
+    if (rew) {
+      if (hl >= 2) B.push({ h: 26 * s, gap: 10 * s, draw: (x, y, w) => {
         const t = `Rewind keeps your ${hl}-win streak`, tw = ui.measure(t, 15 * s) + 30 * s, x0 = x + w / 2 - tw / 2;
         pictoFlame(ctx, x0 + 11 * s, y + 13 * s, 24 * s);
         ui.text(t, x0 + 26 * s, y + 13 * s, { size: 15 * s, color: C.warn, maxW: w - 30 * s, tag: 'fail:hot' });
       } });
-      const coinR = !G.freeRewind && !ads.premium && G.li >= 0, price = DR.rewindPrice((G.rewindBuys || {})[G.level.id]);
-      B.push({ h: 50 * s, gap: hl >= 2 ? 4 * s : 10 * s, draw: (x, y, w) => {
-        const hw = coinR ? (w - 8 * s) / 2 : w;
-        ui.button('rewind', G.freeRewind ? 'Free rewind' : `Rewind ${REWIND_S}s`, x, y, hw, 50 * s, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: 16.5 * s } : { kind: 'ad', ad: true, size: 16.5 * s });
-        if (coinR) ui.button('rewind:coins', 'Rewind ' + price, x + hw + 8 * s, y, hw, 50 * s, { kind: save.wallet.coins >= price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 16.5 * s });
+      B.push({ h: BH * s, gap: hl >= 2 ? 4 * s : 12 * s, draw: (x, y, w) => {
+        const hw = coinR ? (w - 10 * s) / 2 : w;
+        ui.button('rewind', G.freeRewind ? 'Free rewind' : `Rewind ${REWIND_S}s`, x, y, hw, BH * s, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: 18 * s } : { kind: 'ad', ad: true, size: 18 * s });
+        if (coinR) ui.button('rewind:coins', 'Rewind ' + price, x + hw + 10 * s, y, hw, BH * s, { kind: save.wallet.coins >= price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 18 * s });
       } });
     }
-    B.push({ h: 44 * s, draw: (x, y, w) => ui.button('levels', 'Levels', x + w * 0.2, y, w * 0.6, 44 * s, { kind: 'tertiary', icon: ICON.grid, size: 16 * s }) });
+    // row C: Skip level (a ticket the player owns, else a video) and Levels; stuck: the two skips, Levels under them
+    const skipBtn = (way, x, y, w, h) => {
+      if (way === 'ticket') ui.button('skip:ticket', 'Skip level', x, y, w, h, { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3, size: 18 * s });
+      else if (way === 'ad') ui.button('skip:ad', 'Skip level', x, y, w, h, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 18 * s } : { kind: 'ad', ad: true, size: 18 * s });
+      else ui.button('skip:coins', 'Skip ' + SKIP_COINS, x, y, w, h, { kind: save.wallet.coins >= SKIP_COINS ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 18 * s }); // too few coins: the tap opens Get more
+    };
+    const lvBtn = (x, y, w, h) => ui.button('levels', 'Levels', x, y, w, h, { kind: 'tertiary', icon: ICON.grid, size: 18 * s });
+    const gC = 12 * s;
+    if (ways.length === 2) {
+      B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); skipBtn(ways[1], x + hw + 10 * s, y, hw, BH * s); } });
+      B.push({ h: BH * s, gap: 10 * s, draw: (x, y, w) => lvBtn(x + w * 0.22, y, w * 0.56, BH * s) });
+    } else if (ways.length === 1) B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); lvBtn(x + hw + 10 * s, y, hw, BH * s); } });
+    else B.push({ h: BH * s, gap: gC, draw: (x, y, w) => lvBtn(x + w * 0.22, y, w * 0.56, BH * s) });
     return B;
-  }, { ...(sd ? sd.cardO : {}), ribbon: '#5a82c8' });
+  };
+  // her stage takes what the rest of the page leaves (portrait): 130 to 260 units
+  let stH = 0;
+  if (!sd) {
+    const rest = build(0)(1).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22 + 8;
+    const roomU = (A.y1 - A.y - 30 * u) / u;
+    stH = clamp(roomU - rest - 24, 130, 260);
+  }
+  const title = timeout ? 'Out of time!' : 'Too many eggs broke';
+  const card = stackCard(title, build(stH), { ...(sd ? sd.cardO : { full: true }), ribbon: '#5a82c8', minS: u, scroll: G.fscroll, grow: 1.2 });
   if (sd) {
     const { box, henH } = sideStage(sd, card);
     drawCelebration(ctx, 'encourage', G.screenT, box, { henH, calm: save.calm, pw: 0.5 });
@@ -7851,6 +7967,7 @@ function drawLevels() {
     if (!wide) { const fb = ctx.createLinearGradient(0, ctaY - 30 * u, 0, H_); fb.addColorStop(0, 'rgba(20,10,30,0)'); fb.addColorStop(1, 'rgba(20,10,30,0.5)'); ctx.fillStyle = fb; ctx.fillRect(0, ctaY - 30 * u, W_, H_ - ctaY + 30 * u); }
     ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, ctaX, ctaY, ctaW, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: (wide ? 20 : 23) * u, round: 18 * u });
   }
+  drawShopHand(); // 0.8.14: once, the first time the shop mark turns on
   if (S.max > 0 && !calm) { // a thin scroll thumb
     const th = Math.max(30 * u, vh * vh / L.H), ty2 = vt + clamp(S.y / S.max, 0, 1) * (vh - th - 4 * u);
     ui.roundRect(A.x1 - 5 * u, ty2, 3 * u, th, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
