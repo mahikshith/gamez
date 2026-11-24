@@ -4035,7 +4035,7 @@ function skipCheer() {
     const SH = winShow(r);
     if (revealing(r) && r.t >= SH) { rvTap(r); return; } // a tap during a reward reveal: to its open state, then the next one (or the card)
     // with rewards waiting: first to the stars' end state (all landed, held), the next tap on to the rewards; without: straight to the card, the routine at its final pose
-    const end = revealing(r) ? (r.t < r.starEnd ? r.starEnd : SH) : Math.max(routine(r.cheer).len, SH + WIN_IN);
+    const end = revealing(r) ? (r.t < r.starEnd ? r.starEnd : SH) : Math.max(routine(r.cheer).len, SH + WIN_IN * 0.6 + WIN_COUNT);
     if (r.t < end) { const snd = r.stars && r.t < starAt(r, r.stars - 1); r.t = end; r.shownTotal = r.total; if (snd) { audio.play('star', { intensity: (r.stars - 1) / 2 }); buzz('star'); } }
   } else if (G.screen === 'fail') G.screenT = Math.max(G.screenT, routine('encourage').len);
 }
@@ -4359,8 +4359,8 @@ function update(dt) {
     }
     const R0 = routine(r.cheer), t0 = r.t;
     r.t += dt;
-    // the score counts up from the first star to the end of the routine; each star lands on one of her beats
-    const s0 = R0.stars[0], k = clamp((r.t - s0) / Math.max(0.6, R0.len - 0.3 - s0), 0, 1);
+    // the score (and the coins with it) counts up as the card comes in: the show before it belongs to the stars
+    const k = clamp((r.t - SH - WIN_IN * 0.6) / WIN_COUNT, 0, 1);
     const shown = Math.round(r.total * k);
     if (shown !== r.shownTotal && k < 1 && Math.floor(r.t * 20) !== Math.floor((r.t - dt) * 20)) audio.play('score_tick', { vol: 0.3 });
     r.shownTotal = shown;
@@ -7208,7 +7208,7 @@ const WIN_SHOW = 1.6, WIN_IN = 0.38; // WIN_SHOW: the shortest show (the real on
 // ring, sparks, a bell and a tick; three of three end on a finish (rays sweep, confetti, she jumps). With rewards waiting
 // the row is then held for STAR_HOLD so it can be read, and stays small at the top of the page through the reveals.
 // Win to the first reward: about 3 to 3.4 s with three stars, 1.8 with one. No star lands a second time on the card.
-const STAR_GAP = 0.45, STAR_FLY = 0.36, STAR_HOLD = 0.6;
+const STAR_GAP = 0.45, STAR_FLY = 0.36, STAR_HOLD = 0.6, WIN_COUNT = 0.8; // WIN_COUNT: the card's count-up
 function winShow(r) { // when the show ends (the rewards or the card come); also sets r.star0 (the first landing) and r.starEnd
   if (r.show == null) {
     const s0 = routine(r.cheer).stars[0];
@@ -7833,6 +7833,7 @@ function drawWinStar(r, q, sx, sy, rad, calm, from) {
       const [tx, ty] = CB.arcPt(f.x, f.y, sx, sy, pj * pj, lift, side);
       ctx.globalAlpha = 0.75 - 0.18 * j; CB.glint(ctx, tx, ty, rad * (0.62 - 0.12 * j));
     }
+    ctx.globalAlpha = 1;
     const [x, y] = CB.arcPt(f.x, f.y, sx, sy, p * p, lift, side);
     ctx.save(); ctx.globalAlpha = Math.min(1, p * 4); ctx.translate(x, y); ctx.rotate(-2.8 * (1 - p));
     drawStar(ctx, 0, 0, rad, true, 0.45 + 0.85 * p + 0.45 * Math.sin(p * Math.PI)); ctx.restore();
