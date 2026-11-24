@@ -29,6 +29,9 @@ export const PFI = { line: '#12324a', hi: '#c4ecfb', body: '#8fd0ee', lo: '#4f97
 export const JFI = { line: '#12324a', bell: '#8fd0ee', bellLo: '#4f97c4', bellHi: '#b8e2f4', core: '#d8eef8', arm: '#6fb4dc', tent: '#4f97c4', sting: '#fff17a' };
 export const HERMIT_ART = 1.55; // the hermit is drawn this much bigger than its old 1 px-per-m art (body clearly bigger than an egg)
 export const JELLY_ART = 1.3;
+// the hermit's entrance: HERMIT_ENTER s in all, ending when it starts to walk. Shares of it: the roll, when the pop starts, the pop
+export const HERMIT_ENTER = HERMIT.roll + HERMIT.in;
+const EN = { roll: 0.42, pop: 1 - HERMIT.pop / (HERMIT.roll + HERMIT.in), popT: 0.3 };
 
 // ---------------------------------------------------------------- hermit crab
 // (x, y) = the point on the floor under it, s = px per metre. Local frame: +x = its facing, -y = up (away from the floor).
@@ -45,8 +48,25 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
   ctx.save();
   ctx.translate(x, y);
   ctx.globalAlpha *= o.alpha ?? 1;
-  if (pose === 'in') { const k = back(sstep(u)); ctx.translate(0, (1 - k) * 0.2 * s); ctx.scale(0.4 + 0.6 * k, 0.4 + 0.6 * k); }
   ctx.scale(face, 1);
+  // the entrance (u 0..1 over HERMIT_ENTER s): a plain shell tumbles in along the floor, rocks to a stop, two eyes blink in
+  // its dark mouth, then legs, eyes and claws pop out with a bounce
+  let popK = 1, rollA = 0, peek = 0, trail = 0;
+  if (pose === 'in') {
+    const r = clamp(u / EN.roll, 0, 1), e = 1 - (1 - r) * (1 - r), q = clamp((u - EN.roll) / (EN.pop - EN.roll), 0, 1), pq = clamp((u - EN.pop) / EN.popT, 0, 1);
+    popK = pq <= 0 ? 0 : back(pq, 2.6);
+    rollA = -(1 - e) * TAU * 1.25 + (r >= 1 ? Math.sin(q * TAU * 1.5) * 0.16 * (1 - q) : 0);
+    peek = pq > 0 ? 0 : sstep(q / 0.35);
+    trail = r < 1 ? 1 - r : 0;
+    ctx.globalAlpha *= clamp(r / 0.18, 0, 1);
+    ctx.translate(-(1 - e) * 0.55 * s, -Math.abs(Math.sin(r * Math.PI * 2.5)) * 0.04 * s * (1 - r) - Math.sin(pq * Math.PI) * 0.07 * s);
+    if (trail > 0) { // bubbles it leaves behind as it tumbles
+      ctx.save(); ctx.lineWidth = Math.max(1, lw * 0.5); ctx.strokeStyle = 'rgba(235,250,255,0.85)'; ctx.fillStyle = 'rgba(190,235,255,0.25)';
+      for (let i = 0; i < 5; i++) { const a = (r * 1.6 + i * 0.23) % 1, bx = -(0.3 + i * 0.09 + a * 0.12) * s, by = -(0.08 + a * 0.5 + (i % 2) * 0.1) * s; ctx.globalAlpha = (o.alpha ?? 1) * trail * (1 - a); ctx.beginPath(); ctx.arc(bx, by, (0.02 + 0.012 * (i % 3)) * s, 0, TAU); ctx.fill(); ctx.stroke(); }
+      ctx.restore();
+    }
+  }
+  const popped = (px0, py0, fn) => { if (popK <= 0.02) return; if (popK === 1) { fn(); return; } ctx.save(); ctx.translate(px0, py0); ctx.scale(popK, popK); ctx.translate(-px0, -py0); fn(); ctx.restore(); };
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (part !== 'front') { ctx.fillStyle = 'rgba(0,0,0,0.24)'; ctx.beginPath(); ctx.ellipse(-0.02 * s, 0, (0.44 - 0.16 * fk) * s, 0.035 * s, 0, 0, TAU); ctx.fill(); }
   if (fk > 0) { // the tumble: a little hop as it rolls over its shell, then it rocks on its back, kicking; the same roll back
@@ -71,10 +91,10 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     }
   };
   if (part !== 'front') {
-    legs(false);
+    popped(0.1 * s, -0.16 * s, () => legs(false));
     // the shell: a fat whorled conch, mouth toward the front
     ctx.save();
-    ctx.translate(sh.x, sh.y); ctx.rotate(-0.18 - rear * 0.5 + (carry ? Math.sin(ph) * 0.03 : 0)); ctx.scale(1, 0.8);
+    ctx.translate(sh.x, sh.y); ctx.rotate(-0.18 - rear * 0.5 + (carry ? Math.sin(ph) * 0.03 : 0) + rollA); ctx.scale(1, 0.8);
     const r = sh.r;
     const conch = () => {
       ctx.beginPath();
@@ -99,9 +119,13 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     ctx.beginPath(); ctx.ellipse(r * 0.72, r * 0.25, r * 0.32, r * 0.56, 0.25, 0, TAU);
     fillStroke(ctx, HC.mouth, HC.line, lw);
     ctx.beginPath(); ctx.ellipse(r * 0.72, r * 0.25, r * 0.32, r * 0.56, 0.25, -1.9, 0.2); ctx.lineWidth = lw * 0.9; ctx.strokeStyle = HC.shellHi; ctx.stroke();
+    if (peek > 0) { // somebody is in there: two eyes open in the dark and blink
+      const lid = Math.max(1 - peek, Math.sin(t * 17) > 0.86 ? 1 : 0);
+      for (const ey of [-0.02, 0.36]) { ctx.beginPath(); ctx.ellipse(r * 0.74, r * ey, r * 0.13, r * 0.15 * (1 - lid) + r * 0.012, 0, 0, TAU); ctx.fillStyle = HC.white; ctx.fill(); if (lid < 0.6) { ctx.beginPath(); ctx.arc(r * 0.79, r * ey, r * 0.06, 0, TAU); ctx.fillStyle = HC.eye; ctx.fill(); } }
+    }
     ctx.restore();
   }
-  if (part !== 'back') {
+  if (part !== 'back') popped(0.12 * s, -0.2 * s, () => {
     legs(true);
     const cx = 0.17 * s, cy = -0.2 * s, look = pinch ? 0.7 : 0.45;
     // brow mood: + scowl (inner ends down), - worried; it schemes on the walk, scowls at an egg, is smug with one, frets when flipped
@@ -134,7 +158,7 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     if (oMouth) { ctx.fillStyle = HC.mouth; ctx.fill(); } ctx.lineWidth = lw * 0.8; ctx.strokeStyle = HC.line; ctx.stroke();
     // the great pincer, in front: up and chattering in the telegraph, hugging the egg when it carries one
     claw(ctx, HC, cx + 0.03 * s, cy + 0.07 * s, 0.16 * s, -0.1 - raise * 1.05 + lunge * 0.25, snapK, lw, false);
-  }
+  });
   ctx.restore();
 }
 // a claw: a two-part arm, a round hand, a fixed finger and a moving one. L = the hand's size; far = the small back claw
@@ -282,8 +306,9 @@ const wantOf = (c) => (c.fz > 0 ? { k: 'ice', left: c.fz } : c.stn > 0 || c.zp >
 function hermitFrame(sim, H, t, k) {
   const fl = sim.reefFloor(H.ch), x = fl * Math.cos(H.a), y = fl * Math.sin(H.a);
   const rot = Math.atan2(Math.cos(H.a), -Math.sin(H.a)); // after ctx.rotate(-rot) in the y-down px space, local -y (up) points to the vault centre
-  const pose = H.ph === 'flip' ? 'flip' : H.ph === 'pinch' ? 'pinch' : H.ph === 'carry' ? 'carry' : H.ph === 'in' ? 'in' : H.ph === 'stalk' ? 'stalk' : 'walk';
-  const u = H.dur > 0 ? clamp(1 - H.t / H.dur, 0, 1) : 0;
+  const enter = H.ph === 'in' || H.ph === 'wait';
+  const pose = H.ph === 'flip' ? 'flip' : H.ph === 'pinch' ? 'pinch' : H.ph === 'carry' ? 'carry' : enter ? 'in' : H.ph === 'stalk' ? 'stalk' : 'walk';
+  const u = enter ? clamp(1 - (H.ph === 'wait' ? H.t + HERMIT.in : H.t) / HERMIT_ENTER, 0, 1) : H.dur > 0 ? clamp(1 - H.t / H.dur, 0, 1) : 0;
   // the face flips so it always reads upright on screen (as the thieves do): +x along the floor
   const sx = -Math.sin(H.a) * H.face; // screen x direction of its facing (rough)
   void sx;
@@ -368,7 +393,7 @@ export function drawReefUnder(ctx, sim, t, k, theme) {
       if (J.stn > 0 && !(J.fz > 0)) dizzyStars(ctx, 0, -0.42 * js, 0.2 * js, 0.06 * js, t, { n: 3, size: Math.max(4, js * 0.08) });
     });
   }
-  for (const H of sim.hermits) if (H.ph !== 'wait') drawHermitAt(ctx, sim, H, t, k, H.eid ? 'back' : 'all');
+  for (const H of sim.hermits) if (H.ph !== 'wait' || H.t < HERMIT.roll) drawHermitAt(ctx, sim, H, t, k, H.eid ? 'back' : 'all');
 }
 // after the eggs: a hermit crab's claws over the egg it holds, the King Crab's claws over theirs, the silt cloud
 export function drawReefOver(ctx, sim, t, k) {
@@ -524,6 +549,8 @@ export function drawRiseGuide(ctx, sim, t) {
 export function reefEvent(ev, fx, U) {
   const P = U.popup, A = U.audio, once = U.once;
   switch (ev.type) {
+    case 'hermitRoll': fx.smoke && fx.smoke(ev.x, ev.y, 2, 'rgba(210,240,255,0.35)'); break;
+    case 'hermitPop': A.play('pop', { vol: 0.55, pitch: 1.25 }); fx.sparkle(ev.x, ev.y, 7, '#ffe9a8'); break;
     case 'hermitIn': once('hermit', 'A hermit crab! It tucks eggs in its shell. Bump an egg into it, or turn a gap to it.'); break;
     case 'hermitWarn': A.play('steel_clang', { vol: 0.25, pitch: 1.9 }); break;
     case 'hermitGrab': A.play('pop', { vol: 0.5, pitch: 0.7 }); P(ev.x, ev.y + 0.5, 'Tucked!', { color: '#ffb07a', size: 17, life: 0.9 }); break;

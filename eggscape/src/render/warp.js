@@ -227,9 +227,13 @@ export function warpEvent(ev, fx, api) {
       label(api, ev, ev.x2, ev.y2, 0.36, 'Pulled through!', { color: '#ffb27a', size: 18, life: 1.1 });
       once('warpEgg', 'Careful: the open gate pulls in eggs too, and drops them further in.');
       return true;
-    case 'warpBait':
-      audio.play('twin_hatch', { vol: 0.6 });
-      fx.sparkle(ev.x2, ev.y2, 12, '#ffcf8a');
+    case 'warpBait': // the switch (0.8.15: seen): the decoy pops out of where it stood, a streak crosses the vault, it lands in a flash
+      audio.play('twin_hatch', { vol: 0.6 }); audio.play('portal_enter', { vol: 0.6, pitch: 1.4 }); setTimeout(() => audio.play('portal_exit', { vol: 0.7, pitch: 1.2 }), 110);
+      fx.wave(ev.x, ev.y, 0.8, '#c8b6ff', 0.35, 0.1); fx.sparkle(ev.x, ev.y, 10, '#d8ccff');
+      fx.burst(ev.x, ev.y, 16, (i, a, b) => ({ x: ev.x + (ev.x2 - ev.x) * a, y: ev.y + (ev.y2 - ev.y) * a, vx: (b - 0.5) * 0.9, vy: (b - 0.5) * 0.9, drag: 3, life: 0.5, size: 0.06, color: i % 2 ? '#ffcf8a' : '#d8ccff' }));
+      fx.wave(ev.x2, ev.y2, 1.1, '#ffcf8a', 0.5, 0.14); fx.wave(ev.x2, ev.y2, 0.6, '#ffffff', 0.3, 0.1);
+      fx.sparkle(ev.x2, ev.y2, 16, '#ffcf8a');
+      fx.flash = Math.max(fx.flash || 0, 0.3); fx.flashColor = '#fff1d0';
       return true;
   }
   return false;

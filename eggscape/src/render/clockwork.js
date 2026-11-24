@@ -17,7 +17,10 @@ const PEWTER = { base: '#617089', light: '#97a8c2', dark: '#2e3645' }; // lighte
 const TEALK = { base: '#22b8b0', light: '#7fe6dc', dark: '#0f6660' };
 const LW = (s) => Math.max(1.7, s * 0.024); // a heavy ink outline, so they read at phone scale
 // art scale (the rigs are drawn in metres at 1): the sim's BEETLE.len is 0.62 * BS, JACK.w 0.44 * JS
-const BS = BEETLE.len / 0.62, JS = JACK.w / 0.44, SPS = 1.5; // SPS: the spider's art scale (its rig is drawn in metres at 1)
+const BS = BEETLE.len / 0.62, JS = JACK.w / 0.44, SPS = 1.7; // SPS: the spider's art scale (its rig is drawn in metres at 1)
+// 0.8.15: 1.5 -> 1.7 (it read as a stick figure on a phone). Its body now stands 0.66 m in a 0.89 m channel, so in the level the
+// wind-up key keeps its size and lies back along the abdomen (SP_KEY) instead of standing into the ring above.
+const SP_KEY = { keyK: 1.5 / SPS, keyTilt: -0.8, keyX: -0.07 };
 const JACK_SINK = 0.12; // the jack's box is set into the ring (art units): only the lid stands proud of the floor
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { /* art never breaks the frame */ } ctx.restore(); };
@@ -97,7 +100,9 @@ export function drawSpiderArt(c, s, t, o = {}) {
   c.fillStyle = BRASS.base; c.fill(); c.lineWidth = lw * 0.75; c.strokeStyle = INK; c.stroke();
   c.beginPath(); c.arc(-0.05 * s, 0.01 * s, gr * 0.45, 0, TAU); c.fillStyle = BRASS.light; c.fill(); c.stroke();
   c.beginPath(); c.moveTo(-0.05 * s, 0.01 * s); c.lineTo(-0.05 * s + Math.cos(ga) * gr * 0.9, 0.01 * s + Math.sin(ga) * gr * 0.9); c.lineWidth = lw * 0.6; c.stroke();
-  key(c, -0.05 * s, -0.15 * s, s * 1.8, (o.key || 0) * 1.6, lw);
+  c.save(); c.translate((-0.05 + (o.keyX || 0)) * s, -0.15 * s); c.rotate(o.keyTilt || 0);
+  key(c, 0, 0, s * 1.8 * (o.keyK || 1), (o.key || 0) * 1.6, lw);
+  c.restore();
   c.restore();
   // the head: one round steel dome (the mascot's face) with two big lens eyes, brows, fangs and a mouth; the face acts the
   // state: bored while it waits, scheming as it marches, gritting its teeth as it spins, frets when frozen, spirals when stunned
@@ -247,7 +252,13 @@ export function drawBeetleArt(c, s, t, o = {}) {
 // origin = floor centre of the box, -y up. o: { lid (0 shut .. 1 open), out (0..1 spring), rattle, jam, crank, eye, slack }
 export function drawJackArt(c, s, t, o = {}) {
   const lw = LW(s), TEAL = GUN;
-  const W = 0.44 * s, H = 0.22 * s, rx = o.rattle ? Math.sin(t * 46) * 0.012 * s * o.rattle : 0, ry = o.rattle ? -Math.abs(Math.sin(t * 31)) * 0.02 * s * o.rattle : 0;
+  const W = 0.44 * s, H = 0.22 * s, rx = o.rattle ? Math.sin(t * 46) * 0.02 * s * Math.min(1, o.rattle * 2) : 0, ry = o.rattle ? -Math.abs(Math.sin(t * 31)) * 0.03 * s * Math.min(1, o.rattle * 2) : 0;
+  if (o.rattle > 0.05 && !o.jam && !(o.lid > 0)) { // rattle marks either side of the box
+    const a = Math.min(1, o.rattle * 2.5), f = (t * 5) % 1;
+    c.save(); c.lineCap = 'round'; c.strokeStyle = '#fff4d8'; c.globalAlpha = a * (1 - f * 0.6); c.lineWidth = Math.max(1.4, lw * 0.9);
+    for (const sd of [-1, 1]) for (let i = 0; i < 2; i++) { const x0 = sd * (W / 2 + (0.05 + 0.05 * i + 0.03 * f) * s), y0 = -H * (0.25 + 0.5 * i), L2 = (0.035 - 0.01 * i) * s; c.beginPath(); c.moveTo(x0, y0 - L2); c.quadraticCurveTo(x0 + sd * L2 * 0.7, y0, x0, y0 + L2); c.stroke(); }
+    c.restore();
+  }
   c.lineJoin = 'round'; c.lineCap = 'round';
   const top = -H;
   // the jack on its spring (behind the box front)
@@ -293,13 +304,20 @@ export function drawJackArt(c, s, t, o = {}) {
   c.strokeStyle = BRASS.light; c.lineWidth = lw * 1.1; c.stroke();
   c.beginPath(); c.arc(cx, cy, 0.018 * s, 0, TAU); c.fillStyle = BRASS.base; c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke();
   // shut with an egg near: the lid lifts a crack and two eyes peek out after it (the telegraph that it is about to pop)
-  const peek = !o.jam && !(o.lid > 0) ? clamp01(((o.rattle || 0) - 0.15) / 0.5) : 0;
-  if (peek > 0) {
-    c.beginPath(); c.roundRect(-W * 0.36, top - 0.05 * s * peek, W * 0.72, 0.055 * s * peek + 0.004 * s, 0.01 * s); c.fillStyle = '#0c0a10'; c.fill();
-    if (peek > 0.35) for (const sd of [-1, 1]) { const ex = W * (0.06 + sd * 0.09) + Math.sin(t * 3) * 0.01 * s, ey = top - 0.024 * s * peek; c.beginPath(); c.ellipse(ex, ey, 0.024 * s, 0.017 * s * peek, 0, 0, TAU); c.fillStyle = '#fff4d8'; c.fill(); c.beginPath(); c.arc(ex + 0.008 * s, ey, 0.009 * s * peek, 0, TAU); c.fillStyle = INK; c.fill(); }
+  // 0.8.15: it starts as soon as an egg is rolling its way (JACK.see) and it is big enough to read on a phone: the box
+  // rattles with tick marks, the lid lifts and chatters, two wide eyes follow the egg out of the dark, then the hat's bobble
+  const rt = !o.jam && !(o.lid > 0) ? clamp01(o.rattle || 0) : 0, peek = clamp01(rt / 0.45), lidUp = rt > 0 ? 0.1 + 0.2 * peek + 0.03 * Math.sin(t * 23) * peek : 0;
+  if (rt > 0) {
+    const open = Math.sin(lidUp * 1.65) * W * 0.8, sideX = o.look || 1;
+    c.beginPath(); c.moveTo(-W * 0.44, top + 0.004 * s); c.lineTo(W * 0.4, top + 0.004 * s); c.lineTo(W * 0.36, top - open * 0.95); c.closePath(); c.fillStyle = '#0c0a10'; c.fill(); // the dark under the lifted lid
+    if (peek > 0.3) {
+      const g = clamp01((peek - 0.3) / 0.4), er = 0.05 * s * (0.6 + 0.4 * g);
+      for (const sd of [-1, 1]) { const ex = W * (0.17 + sd * 0.115), ey = top - er * 0.75 * g - 0.004 * s; c.beginPath(); c.ellipse(ex, ey, er, er * (0.55 + 0.45 * g), 0, 0, TAU); c.fillStyle = '#fff4d8'; c.fill(); c.lineWidth = lw * 0.6; c.strokeStyle = INK; c.stroke(); c.beginPath(); c.arc(ex + sideX * er * 0.4, ey + er * 0.1, er * 0.45, 0, TAU); c.fillStyle = INK; c.fill(); }
+    }
+    if (rt > 0.75) { const g = clamp01((rt - 0.75) / 0.2), bx = W * 0.3, by = top - open * 0.55 - 0.03 * s * g; c.beginPath(); c.arc(bx, by, 0.03 * s * g, 0, TAU); c.fillStyle = '#ffd23a'; c.fill(); c.lineWidth = lw * 0.7; c.strokeStyle = INK; c.stroke(); } // the bobble of its hat
   }
   // lid
-  const la = -Math.max(o.lid || 0, peek * 0.22) * 1.65; // just past upright, so it still reads as a lid
+  const la = -Math.max(o.lid || 0, lidUp) * 1.65; // just past upright, so it still reads as a lid
   c.save(); c.translate(-W / 2, top); c.rotate(la);
   cel(c, (c) => { c.roundRect(-0.01 * s, -0.045 * s, W + 0.02 * s, 0.05 * s, 0.015 * s); }, TEALK, lw, false);
   c.restore();
@@ -321,9 +339,15 @@ export function drawClockwork(ctx, sim, t, k) {
   const eggs = sim.aliveEggs().map((e) => e.body.getPosition());
   for (const J of C.jk) {
     const q = sim.cwFloor(J.fi, J.la, 0), up = q.up, st = statusClock(sim, 'cj' + J.id, want(J.ice, J.stun), t);
-    const near = J.ph === 'ready' ? Math.max(0, ...eggs.map((p) => clamp01(1 - (Math.hypot(p.x - q.x, p.y - q.y) - 0.35) / 0.6))) : 0;
+    // the telegraph: from JACK.see away in its own channel (as the sim's 'jackPeek'), full just before the pop
+    let near = 0, look = 1;
+    if (J.ph === 'ready') for (const e of sim.aliveEggs()) {
+      const p = e.body.getPosition(), d = Math.hypot(p.x - q.x, p.y - q.y), same = sim.channelOf(e) === J.fi;
+      const n = same ? clamp01(1 - (d - 0.75) / (JACK.see - 0.75)) : clamp01(1 - (d - 0.35) / 0.6) * 0.5;
+      if (n > near) { near = n; look = (p.x - q.x) * Math.sin(up) - (p.y - q.y) * Math.cos(up) >= 0 ? 1 : -1; }
+    }
     const M = sim.cwMode || 'medium', rel = JACK.reload[M] - JACK.out;
-    const o = J.ph === 'out' ? { lid: 1, out: clamp01((JACK.out - J.t) / 0.08), pop: 1 } : J.ph === 'reload' ? { lid: J.t > 0.25 ? 1 : J.t / 0.25, out: clamp01((J.t - 0.3) / Math.max(0.1, rel - 0.3)), crank: t * 9 } : { lid: 0, out: 0, rattle: near, jam: J.ph === 'jam' };
+    const o = J.ph === 'out' ? { lid: 1, out: clamp01((JACK.out - J.t) / 0.08), pop: 1 } : J.ph === 'reload' ? { lid: J.t > 0.25 ? 1 : J.t / 0.25, out: clamp01((J.t - 0.3) / Math.max(0.1, rel - 0.3)), crank: t * 9 } : { lid: 0, out: 0, rattle: near, look, jam: J.ph === 'jam' };
     if (st && st.k === 'stun') o.eye = 'spiral';
     pxSpace(ctx, q.x, q.y, k, () => { ctx.rotate(-(up - Math.PI / 2)); const z = JS * k; ctx.translate(0, JACK_SINK * z); statusDraw(ctx, { x0: -0.35 * z, y0: -0.9 * z, x1: 0.35 * z, y1: 0.08 * z }, (c) => drawJackArt(c, z, st ? st.hold : t, o), st, { quick: true }); });
   }
@@ -366,6 +390,7 @@ export function drawClockwork(ctx, sim, t, k) {
     const o = { gait, moving: S.ph === 'walk' && !held && !drop, spin: S.ph === 'spin' && !held ? 1 : 0, curl: held || drop ? 1 - (drop ? 0 : 0) : 0, key: gait * 9 + (S.ph === 'spin' && !held ? t * 6 : 0),
       eye: S.stun > 0 ? 'spiral' : S.ph === 'walk' || S.ph === 'spin' ? 'hot' : '' };
     if (drop) o.curl = 0.6;
+    Object.assign(o, SP_KEY);
     pxSpace(ctx, dx, dy, k, () => {
       ctx.rotate(-(up - Math.PI / 2));
       if (S.dir > 0) ctx.scale(-1, 1); // on the outer face, +la runs to its left
@@ -454,6 +479,7 @@ export function cwEvent(ev, fx, U) {
     case 'beetleBump': audio.play('steel_clang', { vol: 0.25, pitch: 1.8 }); break;
     case 'beetleCrush': audio.play('thorn_snap', { vol: 0.6, pitch: 0.9 }); popup(ev.x, ev.y + 0.6, 'Crunch!', { color: '#ffd36b', size: 16, life: 0.8 }); break;
     case 'beetleTip': audio.play('steel_clang', { vol: 0.5 }); popup(ev.x, ev.y + 0.5, 'Tipped over!', { color: '#bff0a0', size: 16, life: 1 }); break;
+    case 'jackPeek': audio.play('gear_whir', { vol: 0.4, pitch: 1.9 }); audio.play('motor_tick', { vol: 0.35, pitch: 0.8 }); break; // the spring creaks
     case 'jackPop': audio.play('egg_bump', { vol: 0.7, pitch: 1.6 }); audio.play('release', { vol: 0.4, pitch: 1.3 }); popup(ev.x, ev.y + 0.9, 'Boing!', { color: '#ffd23a', size: 18, life: 0.8 }); once('cwJack', 'A spring jack! It bounces an egg back up. Time it to launch an egg across a gap. An iron egg jams it shut.', 4.4); break;
     case 'jackJam': audio.play('steel_clang', { vol: 0.7, pitch: 0.8 }); popup(ev.x, ev.y + 0.6, 'Jammed!', { color: '#bff0a0', size: 16, life: 1 }); break;
     case 'jackFree': audio.play('unlock', { vol: 0.35, pitch: 1.4 }); break;

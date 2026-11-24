@@ -619,6 +619,57 @@ function sneezers(sim) {
 }
 function headOf(w) { const o = w.o; if (w.k === 's' || w.k === 'c') return o.pts[0] || null; return Number.isFinite(o.x) ? o : null; }
 
+// a point of a ring (any shape) at ring-local angle la and radius-equivalent rad, in world space (A = the ring's angle)
+function onRing(ring, A, la, rad) { const [x, y] = ringPt(ring, la, rad), c = Math.cos(A), s = Math.sin(A); return [x * c - y * s, x * s + y * c]; }
+// The Electromagnet (shock + iron) in the level, 0.8.15: the live ring PULLS and it shows. Chevrons march onto the ring from
+// both sides all the way round (on = they march, off = they are gone), and every iron egg in reach is tied to it by field
+// lines that tighten and brighten as it is hauled in; where an egg clings, sparks jump. No magnet object is drawn: the ring
+// is the magnet (as the magnet power's two eggs are its poles, render/magnet.js). a = strength 0..1.
+const MAG_SEE = 1.9; // m from the ring an iron egg shows its field lines (the sim pulls inside RING_TH / 2 + 0.55)
+export function drawMagnetPull(ctx, sim, ring, k, t, a) {
+  if (!(a > 0)) return;
+  const A = ring.body.getAngle(), n = Math.max(10, Math.round((TAU * ring.r) / 0.55)), lwc = Math.max(0.03, 1.8 / k);
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // 1) the pull, all round the ring: chevrons close in on it from inside and outside
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < n; i++) {
+      const la = ((i + (side > 0 ? 0.5 : 0)) / n) * TAU;
+      if (!solidLa(ring, la)) continue;
+      for (let j = 0; j < 2; j++) {
+        const u = (t * 1.5 + j * 0.5 + i * 0.37) % 1, d = RING_TH / 2 + 0.06 + (1 - u) * 0.34, w = 0.07 + 0.03 * (1 - u);
+        const [x0, y0] = onRing(ring, A, la - w / ring.r, ring.r + side * (d + 0.07)), [x1, y1] = onRing(ring, A, la, ring.r + side * d), [x2, y2] = onRing(ring, A, la + w / ring.r, ring.r + side * (d + 0.07));
+        ctx.globalAlpha = a * Math.min(1, u * 3) * (0.35 + 0.6 * u);
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2);
+        ctx.strokeStyle = '#0b2a52'; ctx.lineWidth = lwc * 2.2; ctx.stroke();
+        ctx.strokeStyle = side > 0 ? '#8fdcff' : '#ff9a8a'; ctx.lineWidth = lwc; ctx.stroke();
+      }
+    }
+  }
+  // 2) each iron egg in reach: three field lines from the ring to it, dashes running to the ring; arcs where it clings
+  for (const e of sim.aliveEggs()) {
+    if (!e.iron) continue;
+    const p = e.body.getPosition(), la = Math.atan2(p.y, p.x) - A, [cx, cy] = onRing(ring, A, la, ring.r), gap = Math.hypot(p.x - cx, p.y - cy);
+    if (gap > MAG_SEE) continue;
+    const pull = clamp01(1 - (gap - 0.3) / (MAG_SEE - 0.3)), stuck = gap < RING_TH / 2 + 0.38;
+    for (let j = -1; j <= 1; j++) {
+      const [rx, ry] = onRing(ring, A, la + (j * 0.34) / ring.r, ring.r), mx = (rx + p.x) / 2 + (cx - p.x) * 0.0 + (rx - cx) * 0.9, my = (ry + p.y) / 2 + (ry - cy) * 0.9;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.quadraticCurveTo(mx, my, rx, ry);
+      ctx.globalAlpha = a * (0.3 + 0.6 * pull);
+      ctx.setLineDash([]); ctx.strokeStyle = 'rgba(11,42,82,0.8)'; ctx.lineWidth = lwc * 2.4; ctx.stroke();
+      ctx.setLineDash([0.09, 0.08]); ctx.lineDashOffset = -t * (0.5 + 0.9 * pull);
+      ctx.strokeStyle = j ? '#8fdcff' : '#ffffff'; ctx.lineWidth = lwc * 1.15; ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    if (stuck) {
+      const R = rng(Math.floor(t * 18) + e.id * 31);
+      ctx.globalAlpha = a;
+      for (let j = 0; j < 2; j++) { const q = R() * TAU; zig(ctx, cx + (R() - 0.5) * 0.3, cy + (R() - 0.5) * 0.3, p.x + Math.cos(q) * 0.2, p.y + Math.sin(q) * 0.2, 4, 0.07, R); boltStroke(ctx, Math.max(0.03, 1.4 / k), 1); }
+    }
+  }
+  ctx.restore();
+}
+
 // the live ring (shock): a blue glow along its solid wall and bolts crawling round it; a = strength 0..1. Also the level
 // card's Electromagnet stage (howto.js).
 export function drawLiveRing(ctx, ring, k, t, a, seed = 0) {
@@ -631,8 +682,8 @@ export function drawLiveRing(ctx, ring, k, t, a, seed = 0) {
     ctx.beginPath();
     let on = false;
     for (let i = 0; i <= n; i++) {
-      const la = (i / n) * TAU, s = solidLa(ring, la), w = A + la;
-      if (s) { if (!on) ctx.moveTo(ring.r * Math.cos(w), ring.r * Math.sin(w)); else ctx.lineTo(ring.r * Math.cos(w), ring.r * Math.sin(w)); }
+      const la = (i / n) * TAU, s = solidLa(ring, la), [X, Y] = onRing(ring, A, la, ring.r); // 0.8.15: follows square, hex and spiral rings (it drew a circle)
+      if (s) { if (!on) ctx.moveTo(X, Y); else ctx.lineTo(X, Y); }
       on = s;
     }
     ctx.stroke();
@@ -643,7 +694,7 @@ export function drawLiveRing(ctx, ring, k, t, a, seed = 0) {
       const la = R() * TAU, len = 0.35 + R() * 0.45;
       if (!solidLa(ring, la) || !solidLa(ring, la + len / ring.r)) continue;
       ctx.beginPath();
-      for (let q = 0; q <= 6; q++) { const b = A + la + (q / 6) * (len / ring.r), rr = ring.r + (R() - 0.5) * 0.2; q ? ctx.lineTo(rr * Math.cos(b), rr * Math.sin(b)) : ctx.moveTo(rr * Math.cos(b), rr * Math.sin(b)); }
+      for (let q = 0; q <= 6; q++) { const [X, Y] = onRing(ring, A, la + (q / 6) * (len / ring.r), ring.r + (R() - 0.5) * 0.2); q ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); }
       boltStroke(ctx, Math.max(0.03, 1.5 / k), 1);
     }
     ctx.restore();
@@ -739,6 +790,7 @@ export function drawP2Back(ctx, sim, k, t) {
   }
   // the live ring: lightning crawls round it
   if (P.shock > 0 && P.shockR >= 0) drawLiveRing(ctx, sim.rings[P.shockR], k, t, Math.min(1, P.shock / 0.3, (P2.shock.t - P.shock) / 0.2) * (P.shock < 1.5 ? (Math.sin(t * 30) > 0 ? 1 : 0.35) : 1), P.shockR);
+  if (P.shock > 0 && P.shockR >= 0 && P.iron > 0) drawMagnetPull(ctx, sim, sim.rings[P.shockR], k, t, Math.min(1, P.shock / 0.3, P.iron / 0.3, (P2.shock.t - P.shock) / 0.25 + 0.05));
   // the laser cannon in the middle of the vault, turned where it last fired (lights on its belt: shots left). 2026-11-23:
   // a chunky cartoon cannon (was a brass muzzle): the crystal glows while a shot is ready, the barrel kicks back, the pod
   // squashes and the crystal goes white-hot as it fires, then a puff of smoke; it shudders through the sweep.
@@ -972,12 +1024,23 @@ export function drawP2Front(ctx, sim, k, t) {
   // Pepper twister (pepper + spin): the smoke winds into a whirling funnel, then every creature sneezes (render only:
   // the sim has already flung them out to the rim)
   if (PL.tw) {
-    const W = PL.tw, el = sim.t - W.t0;
-    if (el < 0 || el > Math.max(TWIST_T, 0.25 + SNEEZE_T) + 0.1) PL.tw = null;
+    const W = PL.tw, el = sim.t - W.t0, wind = P2.twist.wind, AFTER = 0.85;
+    if (el < 0 || el > Math.max(TWIST_T, wind + AFTER) + 0.1) PL.tw = null;
     else {
       drawTwister(ctx, W.x, W.y, W.r, el / TWIST_T, k, t);
-      const us = (el - 0.25) / SNEEZE_T;
-      if (us > 0 && us < 1) for (const w of W.who) { const h = headOf(w); if (h) drawSneeze(ctx, h.x, h.y, Math.atan2(h.y, h.x), us, k, t, w.sz); }
+      // "ah... ah..." while the sim winds up (P.tw), "CHOO!" on the step it throws them: the spray blows back at the vault's
+      // middle and a streak follows each one from where it stood out to the rim
+      const us = el < wind ? 0.36 * (el / wind) : 0.36 + 0.64 * ((el - wind) / AFTER);
+      for (const w of W.who) {
+        const h = headOf(w);
+        if (!h) continue;
+        if (P.tw > 0) { w.x0 = h.x; w.y0 = h.y; }
+        else if (w.x0 != null && el < wind + 0.3) {
+          const f = 1 - (el - wind) / 0.3, d = Math.hypot(h.x - w.x0, h.y - w.y0);
+          if (d > 0.25) { ctx.save(); ctx.lineCap = 'round'; ctx.globalAlpha = 0.75 * f; ctx.strokeStyle = '#fff6e6'; ctx.lineWidth = w.sz * 0.5 * f; ctx.beginPath(); ctx.moveTo(w.x0 + (h.x - w.x0) * (1 - f) * 0.8, w.y0 + (h.y - w.y0) * (1 - f) * 0.8); ctx.lineTo(h.x, h.y); ctx.stroke(); ctx.restore(); }
+        }
+        if (us < 1) drawSneeze(ctx, h.x, h.y, Math.atan2(-h.y, -h.x), us, k, t, w.sz);
+      }
     }
   }
   drawWarp(ctx, sim, k, t); // the Warp Gate's portals and the armed swirl
@@ -1044,6 +1107,8 @@ export function p2Event(ev, fx, api) {
     case 'p2Hit': {
       const H = HIT[ev.kind];
       if (!H) break;
+      const twist = api.sim && POL.sim === api.sim && POL.tw && api.sim.t - POL.tw.t0 < P2.twist.wind + 0.3; // the twister acts its own "ah... CHOO!"
+      if (twist && (ev.kind === 'pep' || ev.kind === 'spin')) { if (!(api.sim.p2.tw > 0) && ev.kind === 'pep') fx.smoke(ev.x, ev.y, 3, 'rgba(190,120,80,0.6)'); break; }
       if (!strikeQuiet()) popup(ev.x, ev.y + 0.6, H[0], { color: H[1], size: 17, life: 0.9 });
       if (ev.kind === 'ice') { audio.play('glass_crack', { vol: 0.5, pitch: 1.5 }); fx.chips(ev.x, ev.y, '#dff6ff', 6, 1.6); }
       else if (ev.kind === 'zap') { audio.play('glass_crack', { vol: 0.5, pitch: 2.2 }); fx.sparkle(ev.x, ev.y, 8, '#bfe9ff'); }
@@ -1051,6 +1116,25 @@ export function p2Event(ev, fx, api) {
       else if (ev.kind === 'spin') audio.play('wind_gust', { vol: 0.4, pitch: 1.8 });
       break;
     }
+    case 'emagOn': { // the Electromagnet switches on: a clang, a deep buzz, a pulse runs in onto the ring
+      const ring = api.sim && api.sim.rings[ev.ring];
+      audio.play('steel_clang', { vol: 0.7, pitch: 0.6 }); audio.play('thunder', { vol: 0.35, pitch: 0.7 });
+      if (ring) { fx.wave(0, 0, ring.r, '#8fdcff', 0.5, 0.2); fx.wave(0, 0, ring.r, '#ffffff', 0.3, 0.08); }
+      fx.shake = Math.max(fx.shake, 0.2);
+      break;
+    }
+    case 'emagHum': audio.play('gear_whir', { vol: 0.22, pitch: 0.5 }); audio.play('jelly_zap', { vol: 0.12, pitch: 0.6 }); break;
+    case 'emagOff': { // ...and off: it lets go with a clunk, a few sparks fall off the ring
+      const ring = api.sim && api.sim.rings[ev.ring];
+      audio.play('steel_on', { vol: 0.5, pitch: 0.6 }); audio.play('release', { vol: 0.5, pitch: 0.7 });
+      if (ring) for (let i = 0; i < 6; i++) { const q = (i / 6) * TAU + 0.4; fx.sparkle(ring.r * Math.cos(q), ring.r * Math.sin(q), 3, '#bfe9ff'); }
+      break;
+    }
+    case 'p2Sneeze': // the Pepper twister's sneeze: one big blast from the funnel, the camera jolts
+      audio.play('squish', { intensity: 1, pitch: 1.5 }); audio.play('wind_gust', { vol: 0.9, pitch: 1.3 }); audio.play('bubble_pop', { vol: 0.8, pitch: 0.55 });
+      fx.wave(ev.x, ev.y, (api.sim && api.sim.outerR ? api.sim.outerR : 4) * 1.05, '#ffd9b0', 0.45, 0.16);
+      fx.shake = Math.max(fx.shake, 0.4);
+      break;
     case 'p2Fling':
       fx.burst(ev.x, ev.y, 10, (i, a, b) => ({ x: ev.x + (ev.x2 - ev.x) * a, y: ev.y + (ev.y2 - ev.y) * a, vx: (b - 0.5) * 1.5, vy: (b - 0.5) * 1.5, drag: 3, life: 0.45, size: 0.05, color: '#e8fff8' }));
       break;
@@ -1085,7 +1169,7 @@ export function p2Event(ev, fx, api) {
       fx.sparkle(ev.x, ev.y, 10, '#ffcf8a');
       break;
     case 'decoyPop':
-      if (ev.why === 'snake' || ev.why === 'eagle') { audio.play('wood_break', { vol: 0.8 }); fx.chips(ev.x, ev.y, '#d4914c', 12, 2.6); popup(ev.x, ev.y + 0.6, 'Fooled!', { color: '#ffcf8a', size: 22 }); }
+      if (ev.why === 'snake' || ev.why === 'eagle' || ev.why === 'gator' || ev.why === 'turtle') { audio.play('wood_break', { vol: 0.8 }); fx.chips(ev.x, ev.y, '#d4914c', 12, 2.6); popup(ev.x, ev.y + 0.6, 'Fooled!', { color: '#ffcf8a', size: 22 }); }
       else { audio.play('bubble_pop', { pitch: 0.7 }); fx.chips(ev.x, ev.y, '#d4914c', 6, 1.6); }
       if (ev.pepper && ev.why !== 'time') { audio.play('squish', { intensity: 0.8, pitch: 0.5 }); fx.smoke(ev.x, ev.y, 8, 'rgba(170,80,40,0.7)'); }
       break;

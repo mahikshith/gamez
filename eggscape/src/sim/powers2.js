@@ -41,6 +41,7 @@ export const P2 = {
   laser: { t: 10, shots: 3, w: 0.16, sweep: 1.3 },
   spin: { t: 3, w: 1.6 },
   pepper: { flee: 8, cloud: 3, r: 1.7, stink: 12, stinkR: 2.6 },
+  twist: { wind: 0.75, flee: 10 }, // Pepper twister: s the creatures wind up ("ah... ah...") before the sneeze that throws them to the rim; s they flee
   shrink: { t: 8, s: 0.75, crack: 1.25 },
   iron: { t: 7, gap: 0.76, sink: 0.45 },
   decoy: { t: 8, s: 1.5 },
@@ -74,7 +75,7 @@ export const p2Methods = {
     this.p2M = P2_MODE[this.mode] || P2_MODE.medium;
     this.p2 = {
       nova: 0, shock: 0, shockR: -1, dark: 0, clap: 0, laser: 0, shots: 0, aim: -Math.PI / 2, sweep: -1, sweepA: 0, sweepDir: 1,
-      spin: 0, spinMax: 0, spinDir: 1, pep: 0, cloud: null, shrink: 0, iron: 0, decoy: null,
+      spin: 0, spinMax: 0, spinDir: 1, pep: 0, cloud: null, shrink: 0, iron: 0, decoy: null, tw: 0, twX: 0, twY: 0, mag: 0, magR: -1, hum: 0,
       beams: [], fx: {}, lz: {}, pads: [], n: 0, warp: null,
     };
     this.p2d = null; // the decoy's body ({decoy, id, alive, chick, body}); its plain state is p2.decoy
@@ -154,7 +155,7 @@ export const p2Methods = {
         e.body.applyLinearImpulse(Vec2((-q.y / d) * m * P.spinDir, (q.x / d) * m * P.spinDir), q, true);
         e.body.setAngularVelocity(e.body.getAngularVelocity() + 9 * P.spinDir);
       }
-      this.p2All('spin', 1.5);
+      if (!this.p2On('pepper')) this.p2All('spin', 1.5); // with pepper out it is a Pepper twister: the sneeze throws them (p2Combo, p2Step)
     } else if (t === 'pepper') {
       P.pep = dur = P2.pepper.flee * M.up;
       P.cloud = { x: p.x, y: p.y, t: P2.pepper.cloud * M.down, max: P2.pepper.cloud * M.down, r: P2.pepper.r * Math.sqrt(M.down) };
@@ -188,7 +189,12 @@ export const p2Methods = {
       this.emit('p2Combo', { id: C.id, name: C.name, x: p.x, y: p.y });
       if (C.id === 'shatter') this.p2All('out', 8 * this.p2M.up);
       else if (C.id === 'sweep') { P.sweep = 0; P.sweepA = P.aim; P.sweepDir = -P.spinDir; P.shots = 0; } // against the spin: the beam meets every thorn
-      else if (C.id === 'twister') { P.cloud = null; this.p2All('spin', 1.5); this.p2All('pepper', 10 * this.p2M.up); }
+      else if (C.id === 'twister') {
+        // 0.8.15: the order is smoke -> wind-up -> SNEEZE -> thrown to the rim (they used to be flung at once and sneeze at the
+        // rim). The pepper bites now (they stop hunting and start to back off); the fling waits P2.twist.wind s (p2Step).
+        P.cloud = null; P.tw = P2.twist.wind; P.twX = p.x; P.twY = p.y;
+        if (t !== 'pepper') this.p2All('pepper', P2.twist.flee * this.p2M.up);
+      }
       else if (C.id === 'stink' && P.decoy) P.decoy.pepper = 1;
     }
   },
@@ -568,7 +574,19 @@ export const p2Methods = {
     off('iron', 'iron');
     if (P.laser > 0 && ((P.laser -= DT) <= 0 || (P.shots <= 0 && P.sweep < 0 && !P.beams.length))) { P.laser = 0; P.shots = 0; this.emit('powerOff', { power: 'laser' }); }
     if (P.clap > 0) P.clap = Math.max(0, P.clap - DT);
+    // Electromagnet (shock + iron): on / off and a hum while it pulls. Events only (sound, the field's look): nothing reads them
+    {
+      const mag = P.shock > 0 && P.iron > 0 && P.shockR >= 0 ? 1 : 0;
+      if (mag !== (P.mag || 0)) { if (mag) P.magR = P.shockR; P.mag = mag; P.hum = 0; this.emit(mag ? 'emagOn' : 'emagOff', { ring: P.magR }); }
+      if (mag && (P.hum -= DT) <= 0) { P.hum = 0.5; this.emit('emagHum', { ring: P.shockR }); }
+    }
     if (P.cloud && (P.cloud.t -= DT) <= 0) P.cloud = null;
+    if (P.tw > 0 && (P.tw -= DT) <= 0) { // the Pepper twister's sneeze: it throws every creature out to the rim, and they flee
+      P.tw = 0;
+      this.emit('p2Sneeze', { x: P.twX, y: P.twY });
+      this.p2All('spin', 1.5);
+      this.p2All('pepper', (P2.twist.flee - P2.twist.wind) * this.p2M.up);
+    }
     for (const B of P.beams) B.t += DT;
     while (P.beams.length && P.beams[0].t > 0.5) P.beams.shift();
     for (const k in P.fx) if ((P.fx[k].t -= DT) <= 0) delete P.fx[k];

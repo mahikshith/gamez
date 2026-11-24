@@ -3163,7 +3163,9 @@ const EVENT_SFX = {
   frogTongue: ['tongue_lick', { pitch: 0.75 }],
   frogLick: ['tongue_lick', { vol: 0.7, pitch: 0.7 }],
   // hermit crab and the King Crab boss
-  hermitIn: ['crab_snap', { vol: 0.7 }],
+  hermitRoll: ['bubble_on', { vol: 0.45, pitch: 0.8 }], // the entrance: its shell tumbles in, clacks down, the crab pops out
+  hermitIn: ['rock_hit', { vol: 0.3, pitch: 1.6 }],
+  hermitPop: ['crab_snap', { vol: 0.7 }],
   hermitWarn: ['crab_snap', { vol: 0.5, pitch: 1.2 }],
   hermitGrab: ['crab_snap', {}, 'hit'],
   hermitDrop: ['release', { vol: 0.5 }],
