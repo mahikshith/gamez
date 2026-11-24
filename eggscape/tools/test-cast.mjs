@@ -60,7 +60,10 @@ const same = (level, sim, T, pick) => { const s = sim.snapshot(), a = Sim.fromSt
   const evs = run(sim, 2.2), lure = at(evs, 'baitLure'), open = at(evs, 'warpOpen'), bait = at(evs, 'warpBait');
   ok(lure > 0 && open > lure && bait === open, `bait: the turtle goes for the decoy at ${lure.toFixed(2)} s and its snap is swallowed at ${open.toFixed(2)} s, the decoy with it`);
   ok(T.ph === 'warp' && same(L, sim, 3, (x) => [x.turtles, x.gators, x.p2.decoy]), 'bait: a snapshot inside the gate runs the same');
-  run(sim, 1.5);
+  const g = sim.p2.warp.gates.find((x) => x.k === 'in' && x.pull); e.body.setTransform({ x: g.x, y: g.y }, 0);
+  const ev2 = run(sim, 0.3), p = e.body.getPosition();
+  ok(at(ev2, 'warpEgg') > 0 && Number.isFinite(p.x + p.y) && Math.hypot(p.x - g.ex, p.y - g.ey) < 3, `bait: an egg that rolls into the gate comes out by its exit (${Math.hypot(p.x - g.ex, p.y - g.ey).toFixed(1)} m from it)`);
+  run(sim, 1.2);
   ok(Math.abs(T.a - a0) > 0.5 && T.stn > 0 && T.ph === 'crawl', `bait: it comes out ${(Math.abs(T.a - a0) * sim.byFloor(T.ch)).toFixed(1)} m along its floor, dazed`);
 }
 process.exit(bad ? 1 : 0);

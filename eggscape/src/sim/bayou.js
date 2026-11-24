@@ -222,7 +222,8 @@ export const bayouMethods = {
     const J = kind === 'gator' ? this.gJaw(C) : this.tMouth(C), rf = this.byFloor(C.ch) - 0.3, ex = rf * Math.cos(wa), ey = rf * Math.sin(wa);
     C.wa = wa; C.lu = 0;
     this.bySet(C, 'warp', 1.1);
-    this.warpGate('in', J.x, J.y, 0.6, 0, 1.6, { pull: 1 });
+    const gin = this.warpGate('in', J.x, J.y, 0.6, 0, 1.6, { pull: 1 });
+    gin.ex = ex; gin.ey = ey; // an egg the gate pulls in comes out at the exit too
     this.warpGate('out', ex, ey, 0.55, 0.55, 1.1, {});
     this.emit('warpOpen', { x: J.x, y: J.y, r: 0.6, kind: kind === 'gator' ? 'g' : 't' });
     this.warpBait(ex, ey);
