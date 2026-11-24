@@ -7488,7 +7488,7 @@ function drawWinPage() {
   // the card slides in: up from below (portrait), in from the right (landscape)
   const dx = side ? (1 - e) * (ui.w - card.x + 20 * u) : 0, dy = side ? 0 : (1 - e) * (ui.h - card.y + 20 * u);
   // the show's big title under her feet: it fades as the card (which has its own) comes, and the card passes over it
-  const ta = save.calm || (revealing(r) && r.t >= SH) ? 0 : 1 - ss01((r.t - SH + 0.15) / 0.3); // gone under the reward reveals
+  const ta = save.calm || r.rvDone != null || (revealing(r) && r.t >= SH) ? 0 : 1 - ss01((r.t - SH + 0.15) / 0.3); // gone under the reward reveals
   if (ta > 0.01) {
     const ts = Math.min(34 * u, A.w * 0.085), tw = Math.min(A.w - 56 * u, ui.measure(title, ts) + 60 * u), pk = ui.pop(r.t, 0.35);
     ctx.save();
@@ -7658,6 +7658,7 @@ function drawReveal(r, drawStars) {
   // where things go at the claim: the purse (top right, ui/purse.js floats it there), the bag (bottom right)
   const purseAt = { x: A.x1 - 82 * u, y: A.y + 28 * u }, bagS = Math.min(84 * u, S * 0.27), bagAt = { x: A.x1 - 16 * u - bagS * 0.6, y: A.y1 - 14 * u - bagS * 0.6 };
   let bagN = 0; // things on their way to the bag this reveal
+  const late = []; // things in flight to where they live: drawn over the words
   // one thing that jumps out of the hero (j: its turn), lands at (sx, sy), and at the claim flies to dst
   const item = (j, sx, sy, dst, draw) => {
     const t0 = P.pop(j), a = calm ? 1 : clamp((t - t0) / RV_ARC, 0, 1);
@@ -7672,7 +7673,8 @@ function drawReveal(r, drawStars) {
       const h = t - t0 - RV_ARC; sc = a < 1 ? 0.3 + 0.7 * a : 1 + (calm || h > 0.22 ? 0 : 0.24 * Math.sin((h / 0.22) * Math.PI)); rot = (1 - a) * (j % 2 ? 1.6 : -1.6);
       if (!calm && h > 0 && h < 0.3) CB.landFlash(ctx, sx, sy, S * 0.16, h / 0.3);
     }
-    ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sc, sc); draw(); ctx.restore();
+    const put = () => { ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sc, sc); draw(); ctx.restore(); };
+    if (fl > 0) late.push(put); else put();
     return a >= 1 && fl < 0.05 ? 1 : 0; // 1: it stands in the row (its words show)
   };
   if (it.kind === 'treasure') {
@@ -7713,9 +7715,12 @@ function drawReveal(r, drawStars) {
       else {
         const k = calm ? 1 : backK(ha), [x, y] = fl > 0 ? CB.arcPt(cx, heroY, bagAt.x, bagAt.y, fl * fl, S * 0.3, 0) : [cx, heroY + (1 - CB.easeOut(ha)) * S * 0.16];
         const still = T.kind === 'skin' || T.kind === 'boost', sc = k * (1 - 0.72 * fl * fl);
-        ctx.save(); ctx.translate(x, y + (still && !calm ? Math.sin(G.t * 2.6) * S * 0.012 : 0)); ctx.scale(sc, sc);
-        if (still) ctx.rotate(calm ? 0 : Math.sin(G.t * 3) * 0.06);
-        tasteArt(T, 0, 0, S * 0.76, true); ctx.restore();
+        const put = () => {
+          ctx.save(); ctx.translate(x, y + (still && !calm ? Math.sin(G.t * 2.6) * S * 0.012 : 0)); ctx.scale(sc, sc);
+          if (still) ctx.rotate(calm ? 0 : Math.sin(G.t * 3) * 0.06);
+          tasteArt(T, 0, 0, S * 0.76, true); ctx.restore();
+        };
+        if (fl > 0) late.push(put); else put();
         if (fl <= 0 && ha >= 1) CB.sparkleRing(ctx, cx, heroY, S * 0.5, S * 0.43, calm ? 1.3 : G.t, 10, S * 0.05);
       }
     }
@@ -7747,6 +7752,7 @@ function drawReveal(r, drawStars) {
     });
     if (calm || t > P.set - 0.25) tickLine('Free at the start of the next level', cx, cy + 0.68 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
   }
+  for (const f of late) f();
   if (bagN && !calm && t > P.claim - 0.25) { // the bag comes up for what is going into it, bumps as each thing lands, and goes
     const up = Math.min(clamp((t - P.claim + 0.25) / 0.2, 0, 1), clamp((P.end - t) / 0.14, 0, 1));
     let bump = 0;
