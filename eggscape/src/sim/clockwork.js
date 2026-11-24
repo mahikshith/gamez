@@ -56,6 +56,7 @@ export const JACK = {
   reload: m3(2.4, 2.0, 1.8), // s
   jam: m3(16, 12, 10), // s a heavy egg keeps it shut
   out: 0.45, // s the jack stays out after a pop
+  see: 1.9, // m: an egg in its channel this close makes it rattle and peek (the telegraph; render/clockwork.js). The pop itself is unchanged
 };
 const CAT_CW = 256, MASK_CW = 2; // bodies that touch eggs only (sim.js CAT.FROG: the egg mask has it)
 const WEB_FILT = { filterCategoryBits: 1, filterMaskBits: 2 }; // the web catches eggs only
@@ -104,7 +105,7 @@ export const cwMethods = {
     });
     for (const o of listOf(L.jack)) {
       const fi = clamp(o.ch ?? 1, 0, n - 1);
-      this.cw.jk.push({ id: this.cw.jk.length, fi, la: wrap(((o.a ?? -90) * Math.PI) / 180), ph: 'ready', t: 0, ice: 0, stun: 0 });
+      this.cw.jk.push({ id: this.cw.jk.length, fi, la: wrap(((o.a ?? -90) * Math.PI) / 180), ph: 'ready', t: 0, ice: 0, stun: 0, pk: 0 });
     }
   },
   cwAny() { const C = this.cw; return !!C && (C.sp.length || C.bt.length || C.jk.length); },
@@ -311,10 +312,12 @@ export const cwMethods = {
     if ((J.ph === 'reload' || J.ph === 'jam') && J.t <= 0) { if (J.ph === 'jam') this.emit('jackFree', { ...this.cwFloor(J.fi, J.la, 0) }); J.ph = 'ready'; return; }
     if (J.ph !== 'ready' || !live) return;
     const q = this.cwFloor(J.fi, J.la, 0.1);
+    let seen = 0;
     for (const e of this.aliveEggs()) {
       if (e.thf || this.channelOf(e) !== J.fi) continue;
-      const p = e.body.getPosition();
-      if (Math.hypot(p.x - q.x, p.y - q.y) > JACK.reach + 0.2) continue;
+      const p = e.body.getPosition(), d = Math.hypot(p.x - q.x, p.y - q.y);
+      if (d < JACK.see + (J.pk ? 0.3 : 0)) seen = 1;
+      if (d > JACK.reach + 0.2) continue;
       if (e.iron || e.stone > 0 || e.kind === 'ostrich') { J.ph = 'jam'; J.t = JACK.jam[M]; this.emit('jackJam', { x: q.x, y: q.y }); return; }
       // pop: up off the floor and on the way it was rolling (away from the lid when it sat still)
       const v = e.body.getLinearVelocity(), tx = -q.uy, ty = q.ux, along = v.x * tx + v.y * ty;
@@ -326,6 +329,9 @@ export const cwMethods = {
       this.emit('jackPop', { x: q.x, y: q.y, egg: e });
       return;
     }
+    // the telegraph (a flag for the creak; nothing else reads it): an egg is rolling its way
+    if (seen && !J.pk) this.emit('jackPeek', { x: q.x, y: q.y });
+    J.pk = seen;
   },
 
   // ---------- powers (sim/powers2.js p2All): ice = frozen T s, bolt = stunned T s, spin = flung (spider) / tipped (beetle)
