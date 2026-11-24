@@ -7721,7 +7721,7 @@ function drawReveal(r, drawStars) {
         const put = () => {
           ctx.save(); ctx.translate(x, y + (still && !calm ? Math.sin(G.t * 2.6) * S * 0.012 : 0)); ctx.scale(sc, sc);
           if (still) ctx.rotate(calm ? 0 : Math.sin(G.t * 3) * 0.06);
-          tasteArt(T, 0, 0, S * 0.76, true); ctx.restore();
+          tasteArt(T, 0, 0, S * (still ? 0.76 : 0.66), true); ctx.restore(); // a chick's crest and a jumping hen stay clear of the headline
         };
         if (fl > 0) late.push(put); else put();
         if (fl <= 0 && ha >= 1) CB.sparkleRing(ctx, cx, heroY, S * 0.5, S * 0.43, calm ? 1.3 : G.t, 10, S * 0.05);
