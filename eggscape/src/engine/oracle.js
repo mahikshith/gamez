@@ -5,11 +5,23 @@
 // Every prediction carries its reasons, and every one is GRADED: pose() notes it, settle() notes what then happened,
 // so the speed log shows how often each one is right. A prediction never changes odds, prices or a level's difficulty;
 // it only helps choose what is shown and when (engine/conduct.js).
+//
+// It LEARNS on the phone, offline (0.8.15, mykee: "an inbuilt engine that constantly learns from how the user is
+// interacting ... and updates itself in the background offline"). The rules give a first guess p0. Each kind of guess
+// keeps two numbers of its own, a lean and a sharpness (fit.b, fit.a: p1 = sigmoid(a * logit(p0) + b)), and every
+// graded guess moves them one small step toward what this player really did. Both are graded side by side: the rules
+// (base) and the fitted guess (fit, always judged BEFORE it learns from that answer). The fitted guess is only used
+// once it has been graded LEARN.min times and is better than the rules on this phone; the day it stops being better,
+// the rules are back by themselves. Nothing is sent anywhere, and it never touches odds, prices or difficulty.
 import { slot } from './hub.js';
 import * as PU from './pulse.js';
 import * as LE from './ledger.js';
 
 export const ORACLE = { trust: 12, good: 0.2 }; // a prediction may steer once it was graded `trust` times with a Brier score under `good`
+export const LEARN = { min: 8, edge: 0.005, rate: 0.5, rateMin: 0.06, aMin: 0.3, aMax: 2.5, bMax: 2.5 }; // step = rate / sqrt(n + 1), never under rateMin
+const logit = (p) => { const q = Math.max(0.02, Math.min(0.98, p)); return Math.log(q / (1 - q)); };
+const sig = (z) => 1 / (1 + Math.exp(-z));
+const lim = (v, a, b, d) => (Number.isFinite(Number(v)) ? Math.max(a, Math.min(b, Number(v))) : d);
 const clamp = (v, a = 0.02, b = 0.98) => Math.max(a, Math.min(b, v));
 const num = (v) => Math.max(0, Number(v) || 0);
 const KEYS = ['win', 'back', 'video', 'coins', 'pay'];
@@ -17,12 +29,15 @@ const SAFE = new WeakSet();
 export function oraState(save) {
   const cur = slot(save, 'ora');
   if (cur && SAFE.has(cur)) return cur;
-  const o = cur && typeof cur === 'object' ? cur : {}, cal = {}, open = {};
+  const o = cur && typeof cur === 'object' ? cur : {}, cal = {}, open = {}, base = {}, fit = {};
   for (const k of KEYS) {
     const c = (o.cal && o.cal[k]) || {}; cal[k] = { n: Math.floor(num(c.n)), hit: Math.floor(num(c.hit)), sq: num(c.sq) };
-    const q = o.open && o.open[k]; if (q && typeof q === 'object') open[k] = { p: clamp(num(q.p), 0, 1), id: String(q.id || '').slice(0, 24), t: num(q.t) };
+    const q = o.open && o.open[k]; if (q && typeof q === 'object') open[k] = { p: clamp(num(q.p), 0, 1), p0: clamp(num(q.p0 == null ? q.p : q.p0), 0, 1), id: String(q.id || '').slice(0, 24), t: num(q.t) };
+    const b = (o.base && o.base[k]) || {}, f = (o.fit && o.fit[k]) || {};
+    base[k] = { n: Math.floor(num(b.n)), sq: num(b.sq) };
+    fit[k] = { a: lim(f.a, LEARN.aMin, LEARN.aMax, 1), b: lim(f.b, -LEARN.bMax, LEARN.bMax, 0), n: Math.floor(num(f.n)), sq: num(f.sq) };
   }
-  const s = { cal, open };
+  const s = { cal, open, base, fit };
   save.eng.ora = s; SAFE.add(s);
   return s;
 }
@@ -74,6 +89,14 @@ export function predict(save, ctx = {}) {
     if (!payer && num(o.ads) >= 8) { p += 0.02; why.push('watches many videos'); }
     out.pay = { p: clamp(p), why };
   }
+  // what this phone has learned: each rule guess (p0) goes through its own fitted lean and sharpness, used only while
+  // that fit is proven better than the rules here
+  const O = oraState(save);
+  for (const k of KEYS) {
+    const g = out[k], p1 = fitted(O, k, g.p);
+    g.p0 = g.p;
+    if (learned(O, k)) { g.p = clamp(p1); g.fit = true; if (Math.abs(g.p - g.p0) >= 0.03) g.why.push(`learned on this phone: ${g.p > g.p0 ? 'more' : 'less'} likely than the rules say (${Math.round(g.p0 * 100)}%)`); }
+  }
   // the coins he will likely spend over the next ten levels: what he spent over the last ten, never more than he holds and earns
   out.spendNext10 = Math.round(Math.min(num(w.coins) + L.perLevel * 10, L.levels ? L.out / L.levels * 10 : 0));
   out.trySecs = Math.round(F.avgTrySecs);
@@ -81,11 +104,20 @@ export function predict(save, ctx = {}) {
   return out;
 }
 
+// ---- learning
+const fitted = (O, key, p0) => { const f = O.fit[key]; return sig(f.a * logit(p0) + f.b); };
+// is the fitted guess in use for this kind? Only while it has been graded enough and beats the rules on this phone
+export function learned(saveOrState, key) {
+  const O = saveOrState && saveOrState.fit ? saveOrState : oraState(saveOrState), f = O.fit[key], b = O.base[key];
+  return !!f && !!b && f.n >= LEARN.min && b.n >= LEARN.min && f.sq / f.n < b.sq / b.n - LEARN.edge;
+}
 // ---- grading: note a prediction when it is made, and what happened when it is known
+// p: the guess as served, or the whole answer of predict() for that key ({ p, p0 }: p0 is what the rules alone said)
 export function pose(save, key, p, id = '', now = Date.now()) {
   const O = oraState(save);
   if (!KEYS.includes(key)) return;
-  O.open[key] = { p: clamp(num(p), 0, 1), id: String(id).slice(0, 24), t: now };
+  const g = p && typeof p === 'object' ? p : { p, p0: p };
+  O.open[key] = { p: clamp(num(g.p), 0, 1), p0: clamp(num(g.p0 == null ? g.p : g.p0), 0, 1), id: String(id).slice(0, 24), t: now };
 }
 export function settle(save, key, yes, id = null) {
   const O = oraState(save), q = O.open[key];
@@ -93,12 +125,21 @@ export function settle(save, key, yes, id = null) {
   delete O.open[key];
   const c = O.cal[key], y = yes ? 1 : 0;
   c.n += 1; c.hit += (q.p >= 0.5) === !!yes ? 1 : 0; c.sq += (q.p - y) * (q.p - y);
-  return { p: q.p, yes: !!yes };
+  { // the rules and the fit are graded on the same answer; then the fit takes one small step toward it
+    const b = O.base[key], f = O.fit[key], x = logit(q.p0), p1 = sig(f.a * x + f.b), err = y - p1;
+    b.n += 1; b.sq += (q.p0 - y) * (q.p0 - y);
+    f.sq += (p1 - y) * (p1 - y);
+    const step = Math.max(LEARN.rateMin, LEARN.rate / Math.sqrt(f.n + 1));
+    f.b = lim(f.b + step * err, -LEARN.bMax, LEARN.bMax, 0);
+    f.a = lim(f.a + step * err * x * 0.5, LEARN.aMin, LEARN.aMax, 1); // the sharpness moves at half the pace of the lean
+    f.n += 1;
+  }
+  return { p: q.p, p0: q.p0, yes: !!yes };
 }
 export const openOf = (save, key) => oraState(save).open[key] || null;
 // may this prediction steer yet? Only once it has been right often enough on this phone
 export function trusted(save, key) { const c = oraState(save).cal[key]; return !!c && c.n >= ORACLE.trust && c.sq / c.n < ORACLE.good; }
 export function line(save, ctx = {}) {
   const P = predict(save, ctx), O = oraState(save), r = (v) => Math.round(v * 100);
-  return KEYS.map((k) => { const c = O.cal[k]; return `${k} ${r(P[k].p)}%${c.n ? ` (right ${c.hit}/${c.n}, brier ${(c.sq / c.n).toFixed(2)}${trusted(save, k) ? ', trusted' : ''})` : ''}`; }).join(' | ') + ` | spend next 10 lv ~${P.spendNext10} | try ${P.trySecs} s`;
+  return KEYS.map((k) => { const c = O.cal[k], b = O.base[k], f = O.fit[k]; return `${k} ${r(P[k].p)}%${c.n ? ` (right ${c.hit}/${c.n}, brier ${(c.sq / c.n).toFixed(2)}${trusted(save, k) ? ', trusted' : ''}${f.n ? `; rules ${(b.sq / b.n).toFixed(2)} learned ${(f.sq / f.n).toFixed(2)}${learned(O, k) ? ' in use' : ''}, lean ${f.b.toFixed(2)} sharp ${f.a.toFixed(2)}` : ''})` : ''}`; }).join(' | ') + ` | spend next 10 lv ~${P.spendNext10} | try ${P.trySecs} s`;
 }

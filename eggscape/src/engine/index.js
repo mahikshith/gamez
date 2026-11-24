@@ -33,21 +33,21 @@ HUB.add('pulse', {
   },
 });
 HUB.add('oracle', {
-  predict: OR.predict, line: OR.line, trusted: OR.trusted,
+  predict: OR.predict, line: OR.line, trusted: OR.trusted, learned: OR.learned,
   on(type, d) {
     const s = d.save;
     if (type === 'levelStart') {
       // what was offered on the last card and not taken is a "no"
       OR.settle(s, 'video', false); OR.settle(s, 'coins', false);
-      OR.pose(s, 'win', OR.predict(s, d.ctx).win.p, 'L' + d.ctx.levelId, d.now);
+      OR.pose(s, 'win', OR.predict(s, d.ctx).win, 'L' + d.ctx.levelId, d.now);
     } else if (type === 'result') {
       OR.settle(s, 'win', !!d.r.won, 'L' + d.r.id);
       const P = OR.predict(s, { ...d.ctx, levelId: d.r.id, now: d.now });
-      if (d.ctx && d.ctx.videoShown) OR.pose(s, 'video', P.video.p, 'card', d.now);
-      if (d.ctx && d.ctx.coinShown) OR.pose(s, 'coins', P.coins.p, 'card', d.now);
+      if (d.ctx && d.ctx.videoShown) OR.pose(s, 'video', P.video, 'card', d.now);
+      if (d.ctx && d.ctx.coinShown) OR.pose(s, 'coins', P.coins, 'card', d.now);
     } else if (type === 'video') OR.settle(s, 'video', true);
     else if (type === 'spent') OR.settle(s, 'coins', true);
-    else if (type === 'close') OR.pose(s, 'back', OR.predict(s, { ...d.ctx, now: d.now }).back.p, 'day', d.now);
+    else if (type === 'close') OR.pose(s, 'back', OR.predict(s, { ...d.ctx, now: d.now }).back, 'day', d.now);
     else if (type === 'open' && d.fresh) {
       // "comes back" means the next day, not five minutes later: a short pause leaves the prediction open
       const q = OR.openOf(s, 'back');

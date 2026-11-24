@@ -90,6 +90,33 @@ const HOUR = 3600000, DAY = 24 * HOUR, T0 = new Date(2026, 10, 24, 18, 0, 0).get
   ok(/win \d+%/.test(OR.line(s, { levelId: 12, now: T0 })) && /trusted/.test(OR.line(s, { levelId: 12, now: T0 })), 'one line for the speed log: ' + OR.line(s, { levelId: 12, now: T0 }));
   ok(OR.predict({}, {}).win.p > 0 && OR.oraState({ eng: { ora: { cal: 5, open: { win: 'x' } } } }).cal.win.n === 0, 'an empty or broken save still gets an answer');
 }
+{ // the oracle learns on the phone: the rules' guess is corrected by what this player really did, and only while that is better
+  const run = (s, key, p0, yesOf10, n) => { for (let i = 0; i < n; i++) { OR.pose(s, key, { p: OR.predict(s, {}).win.p, p0 }, 'q' + i); OR.settle(s, key, (i % 10) < yesOf10, 'q' + i); } return OR.oraState(s); };
+  const s = mk(), O = run(s, 'win', 0.7, 3, 40), f = O.fit.win, b = O.base.win;
+  const p1 = 1 / (1 + Math.exp(-(f.a * Math.log(0.7 / 0.3) + f.b)));
+  ok(f.n === 40 && b.n === 40 && f.sq / f.n < b.sq / b.n && OR.learned(s, 'win'), `rules say 70%, he wins 3 in 10: after 40 grades the learned guess is better (brier ${(f.sq / f.n).toFixed(3)} against ${(b.sq / b.n).toFixed(3)}) and in use`);
+  ok(Math.abs(p1 - 0.3) < 0.15, `and it now says ${(p1 * 100).toFixed(0)}% where the rules say 70%`);
+  const few = run(mk(), 'win', 0.7, 3, OR.LEARN.min - 1);
+  ok(!OR.learned(few, 'win'), `under ${OR.LEARN.min} grades nothing learned is used`);
+  const s3 = mk(), O3 = run(s3, 'win', 0.7, 7, 60), f3 = O3.fit.win, q3 = 1 / (1 + Math.exp(-(f3.a * Math.log(0.7 / 0.3) + f3.b)));
+  ok(!OR.learned(s3, 'win') || Math.abs(q3 - 0.7) < 0.08, `rules that are already right are left alone (learned ${OR.learned(s3, 'win') ? 'in use' : 'not in use'}, it would say ${(q3 * 100).toFixed(0)}%)`);
+  // inside predict(): the served chance moves, the rules' own chance stays readable, and the reason is said
+  const s4 = mk({ dir: { att: {}, spent: { all: 0 } } }), ctx = { levelId: 5, now: T0 };
+  const before = OR.predict(s4, ctx).win;
+  for (let i = 0; i < 30; i++) { OR.pose(s4, 'win', OR.predict(s4, ctx).win, 'L5'); OR.settle(s4, 'win', false, 'L5'); }
+  const after = OR.predict(s4, ctx).win;
+  ok(!before.fit && before.p === before.p0 && after.fit && after.p0 === before.p0 && after.p < after.p0 - 0.1 && after.why.some((w) => /learned on this phone/.test(w)), `a player who keeps losing where the rules expect wins: ${(after.p0 * 100).toFixed(0)}% by the rules, ${(after.p * 100).toFixed(0)}% learned, with the reason`);
+  const P5 = OR.predict(s4, ctx); ok(['back', 'video', 'coins', 'pay'].every((k) => !P5[k].fit && P5[k].p === P5[k].p0), 'what was learned about one kind of guess changes no other');
+  // the way back: the day the learned guess is no better than the rules, the rules answer again
+  const O4 = OR.oraState(s4); O4.fit.win.sq = O4.base.win.sq + 1;
+  ok(!OR.learned(s4, 'win') && OR.predict(s4, ctx).win.p === before.p0 && !OR.predict(s4, ctx).win.fit, 'when the learned guess stops being better, the rules are back by themselves');
+  // it cannot run away, and a broken save cannot poison it
+  const s6 = mk(), O6 = run(s6, 'pay', 0.02, 10, 600), f6 = O6.fit.pay;
+  ok(f6.a >= OR.LEARN.aMin && f6.a <= OR.LEARN.aMax && Math.abs(f6.b) <= OR.LEARN.bMax && OR.predict(s6, {}).pay.p <= 0.98 && OR.predict(s6, {}).pay.p >= 0.02, `600 grades one way: lean ${f6.b.toFixed(2)} and sharpness ${f6.a.toFixed(2)} stay inside their limits`);
+  const bust = OR.oraState({ eng: { ora: { fit: { win: { a: 'x', b: 1e9, n: -4, sq: NaN } }, base: 7, open: { win: { p: 0.4, id: 'L1', t: 1 } } } } });
+  ok(bust.fit.win.a === 1 && bust.fit.win.b === OR.LEARN.bMax && bust.fit.win.n === 0 && bust.fit.win.sq === 0 && bust.base.win.n === 0 && bust.open.win.p0 === 0.4, 'a broken or older save is read safely (a guess noted before this build is graded as the rules\' own)');
+  ok(/rules \d\.\d\d learned \d\.\d\d in use/.test(OR.line(s, {})), 'the speed log shows rules against learned: ' + OR.line(s, {}).split(' | ')[0]);
+}
 { // the conductor: one thing leads; what is his first, asking last; the Brain's gate holds asks back
   const s = mk({ unlocked: 14, offers: { sessions: 3 } });
   const C = [{ id: 'offer', sys: 'offers', kind: 'money' }, { id: 'meter', sys: 'spin', kind: 'progress', near: 0.67 }, { id: 'chest', sys: 'chest', kind: 'progress', near: 0.9 }, { id: 'spin', sys: 'spin', kind: 'gift' }, { id: 'vid', sys: 'ads', kind: 'video' }];
