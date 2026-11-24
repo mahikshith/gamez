@@ -1860,13 +1860,21 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
 // the shop's Boosts row). state.mark(x, y, r): the caller's pulsing mark, on the video tile and on each owned booster
 // not armed yet. state.s: the card's scale. Fits in (x, y, w, h).
 export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
-  const { wallet, selected = new Set(), lastTapped = null, t = 0, hide = [], ad = null, mark = null } = state, s = state.s || ui.u;
-  const owned = BOOSTER_ORDER.filter((id) => ownedCount(wallet, id) > 0 && !hide.includes(id));
+  const { wallet, selected = new Set(), lastTapped = null, t = 0, hide = [], ad = null, mark = null, first = [], last = [] } = state, s = state.s || ui.u;
+  // (the ones this level has a use for lead, the ones it has no use for come last: a Scarecrow where no villain lives)
+  const rank = (id) => (first.includes(id) ? 0 : last.includes(id) ? 2 : 1);
+  const owned = BOOSTER_ORDER.filter((id) => ownedCount(wallet, id) > 0 && !hide.includes(id)).sort((a, b) => rank(a) - rank(b));
   const toGet = BOOSTER_ORDER.filter((id) => !owned.includes(id) && !hide.includes(id) && BOOSTERS[id] && BOOSTERS[id].price > 0).sort((a, b) => BOOSTERS[a].price - BOOSTERS[b].price);
   const lab = 14.5 * s, labH = 17 * s, c = Math.min(h - labH - 2 * s, 64 * s), gap = 8 * s;
   const all = [...(ad && BOOSTERS[ad] ? [{ id: ad, ad: true }] : []), ...owned.map((id) => ({ id, own: true })), ...toGet.map((id) => ({ id }))];
-  const n = Math.max(1, Math.min(all.length, Math.floor((w + gap) / (c + gap))));
-  const items = all.slice(0, n);
+  // 0.8.15: there are eight boosters now and the row holds six tiles. Every booster owned must be within reach (a
+  // Scarecrow won on the Lucky Spin that cannot be picked is a broken promise), and no tile shrinks: when they do not
+  // all fit, the last tile turns the row to its next page
+  const fit = Math.max(1, Math.floor((w + gap) / (c + gap)));
+  let items = all, more = null;
+  if (all.length > fit && fit > 1) { const per = fit - 1, pages = Math.ceil(all.length / per), pg = (((state.page || 0) % pages) + pages) % pages; items = all.slice(pg * per, pg * per + per); more = { pg, pages }; }
+  else if (all.length > fit) items = all.slice(0, fit);
+  const n = items.length + (more ? 1 : 0);
   // the label: BOOSTERS, or the one just tapped and what it does
   const tapped = lastTapped && BOOSTERS[lastTapped] && ownedCount(wallet, lastTapped) > 0 ? BOOSTERS[lastTapped] : null;
   let str = 'BOOSTERS';
@@ -1906,6 +1914,15 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
       ui.text(String(B.price), cx + c / 2 - pw / 2 + ps * 1.3, py + ps * 0.74, { size: ps, color: afford ? '#ffe27a' : '#d8c8a8', maxW: pw - ps * 1.4, noRecord: true });
     }
   });
+  if (more) { // the row's next page: an arrow, and a dot for each page
+    const cx = x0 + items.length * (c + gap), mx = cx + c / 2, my = ty + c * 0.4, a = c * 0.13;
+    ui.button('strip:more', '', cx, ty, c, c, { kind: 'secondary', round: 14 * s });
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, c * 0.085); ctx.strokeStyle = '#fff';
+    for (const dx of [-a * 0.75, a * 0.75]) { ctx.beginPath(); ctx.moveTo(mx + dx - a * 0.5, my - a); ctx.lineTo(mx + dx + a * 0.5, my); ctx.lineTo(mx + dx - a * 0.5, my + a); ctx.stroke(); }
+    const dr = Math.min(3.2 * s, c * 0.06), dg = dr * 3.2, dx0 = mx - ((more.pages - 1) * dg) / 2, dy = ty + c - 11 * s;
+    for (let i = 0; i < more.pages; i++) { ctx.beginPath(); ctx.arc(dx0 + i * dg, dy, dr, 0, Math.PI * 2); ctx.fillStyle = i === more.pg ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.fill(); }
+    ctx.restore();
+  }
 }
 
 // Art for an offer card (offers.js): a product by sku, or an item: 'charge' (a Chick Charge), 'coins', 'chick:<id>'.

@@ -1,5 +1,5 @@
 // Eggscape: game shell. Screens, input, camera, events -> VFX/SFX/score, HUD.
-import { Sim, DT, LEGACY_ORB, EAGLE_LEN, REWIND_S, isHardLevel } from './sim/sim.js';
+import { Sim, DT, LEGACY_ORB, EAGLE_LEN, REWIND_S, SCARE_S, isHardLevel } from './sim/sim.js';
 import { hintSearch, actSteps } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
 import { curtainFront, vineFront } from './render/v3art.js'; // where a burning thorn curtain's fire has got to
@@ -1809,6 +1809,8 @@ async function press(id) {
       } else if (id && id.startsWith('mode:')) {
         save.mode = id.slice(5);
         persist();
+      } else if (id === 'strip:more') { // the booster row's next page (it starts at the first again on another level)
+        const lid = G.level && G.level.id; G.boostPg = { lid, n: (G.boostPg && G.boostPg.lid === lid ? G.boostPg.n : 0) + 1 }; audio.play('ui_tap');
       } else if (id && id.startsWith('boost:')) {
         const b = id.slice(6);
         if (G.boostSel.has(b)) G.boostSel.delete(b); else G.boostSel.add(b);
@@ -4718,6 +4720,7 @@ function render() {
   blastXf(() => { for (const o of sim.orbs) if (o.alive) flipped(o.x, o.y, (k) => drawOrb(ctx, o.type, 0, 0, 0.2 * k, t, !!save.seen[o.type])); }, 18.3); // a re-spawned orb can outlive the burst: it leaves with the rings
   if (DEV && G.probe) G.probe('mid');
   drawHenAt(sim, k, t);
+  drawScarecrowAt(sim, k, t);
   if (G.screen === 'play' || G.screen === 'intro') { if (sim.water) drawRiseGuide(ctx, sim, t); else W.drawDropGuide(ctx, sim.rings[sim.rings.length - 1], sim.reach ? sim.nestX0 : sim.nest.getPosition().x, sim.nestW, t); } // nest.reach: judged from her home spot (no flicker while she runs)
   for (const r of sim.rocks) if (r.alive) W.drawRock(ctx, r, G.theme);
   for (const b of sim.bombs) if (b.alive) b.spark = W.drawBomb(ctx, b, t);
@@ -4843,6 +4846,38 @@ function flipped(x, y, draw) {
   ctx.restore();
 }
 
+// which boosters this level has a use for (they lead the level card's row) and which it has none for (they come last)
+function boostUse(L) {
+  const foes = villainKinds(L).some((k) => (VILLAIN_INFO[k] || {}).group !== 'hazard'), thorns = (L.rings || []).some((r) => r.thorns && r.thorns.length);
+  return { first: [foes && 'scare', thorns && 'snips'].filter(Boolean), last: [!foes && 'scare', !thorns && 'snips'].filter(Boolean) };
+}
+// The Scarecrow booster in the level (0.8.15, mykee: "one time immunity from villains"): it stands at the nest's other
+// side from the hen for its 20 seconds with the time left on a dial over its hat, and tips over when the time is up.
+function drawScarecrowAt(sim, k, t) {
+  const left = sim.scareT || 0, S = G.scareFx && G.scareFx.run === G.run ? G.scareFx : (G.scareFx = { run: G.run, on: false, t0: t, endT: -9 });
+  if (left > 0) { if (!S.on) { S.on = true; S.t0 = t; } S.endT = t; }
+  const gone = left > 0 ? 0 : t - S.endT;
+  if (!S.on || gone > 1 || k < 20 || !G.henAt) return;
+  const n = sim.nest.getPosition(), H = G.henAt, calm = save.calm, h = H.s * k * 1.12;
+  const pop = calm ? 1 : Math.min(1, (t - S.t0) / 0.32), grow = pop < 1 ? 1 + 0.18 * Math.sin(pop * Math.PI) : 1; // up out of the ground with a small overshoot
+  const fall = calm ? 0 : clamp(gone / 0.45, 0, 1), fade = clamp(1 - (gone - 0.55) / 0.4, 0, 1);
+  ctx.save();
+  ctx.translate(2 * n.x - H.x, H.y); ctx.scale(1 / k, -1 / k);
+  ctx.globalAlpha = fade;
+  ctx.fillStyle = 'rgba(0,0,0,0.24)'; ctx.beginPath(); ctx.ellipse(0, 0, h * 0.3, h * 0.06, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.save(); ctx.rotate(-fall * fall * 1.45); ctx.scale(grow, pop * grow);
+  drawBoosterIcon(ctx, 'scare', 0, -h * 0.5, h, calm ? 0 : t);
+  ctx.restore();
+  if (left > 0) { // the dial: a white disc, a green rim that runs down (orange in the last five seconds), the seconds in it
+    const r = Math.max(11, h * 0.2), cy = -h * 1.16 - r, f = clamp(left / SCARE_S, 0, 1), hot = left <= 5, beat = hot && !calm ? 1 + 0.08 * Math.sin(t * 12) : 1;
+    ctx.save(); ctx.translate(0, cy); ctx.scale(beat * pop, beat * pop);
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fillStyle = '#fffaf0'; ctx.fill(); ctx.lineWidth = Math.max(1.5, r * 0.12); ctx.strokeStyle = '#4a2c10'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.76, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); ctx.lineWidth = r * 0.24; ctx.lineCap = 'round'; ctx.strokeStyle = hot ? '#f08a1c' : '#3aa82c'; ctx.stroke();
+    ctx.font = `600 ${r * 0.92}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = hot ? '#c85a08' : '#3a2410'; ctx.fillText(String(Math.ceil(left)), 0, r * 0.06);
+    ctx.restore();
+  }
+  ctx.restore();
+}
 const HEN_N = { x: 0, y: 0 };
 // The hen sits beside the nest (F16) and reacts: happy on a save, gasp on a crack, cry on a break.
 function drawHenAt(sim, k, t) {
@@ -6665,7 +6700,7 @@ function drawLevelIntro(L, acc) {
   };
   const adOn = showBoost && !G.adBoost && !G.golden;
   const boostState = () => ({ wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t,
-    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: tabMark, s });
+    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: tabMark, s, page: G.boostPg && G.boostPg.lid === L.id ? G.boostPg.n : 0, ...boostUse(L) });
   const bottom = (x, w) => { // draws from the bottom of the safe rect up; returns the top of what it drew
     let y = A.y1 - 6 * s - BTN;
     bigButton(x, y, w);
