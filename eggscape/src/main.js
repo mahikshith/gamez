@@ -1457,8 +1457,9 @@ async function press(id) {
     case 'tr:play': { const T = G.treasure; G.treasure = null; const i = LEVELS.findIndex((Lv) => Lv.id === T.id); if (i >= 0 && playable(i)) startLevel(i); break; }
     case 'chest': {
       const total = bestTotal();
-      const w = E.openChest(save.wallet, E.chestFor(total, save.wallet.chests));
-      if (w) { save.wallet = w; persist(); audio.play('treasure_open'); purse.gain({ src: G.pressAt }); toast('Chest opened! Coins and a booster.', 2.4); }
+      const ch = E.chestFor(total, save.wallet.chests), sk = ch && ch.reward.skin && !E.ownsSkin(save.wallet, ch.reward.skin) ? E.SKINS[ch.reward.skin] : null;
+      const w = E.openChest(save.wallet, ch);
+      if (w) { save.wallet = w; persist(); audio.play('treasure_open'); purse.gain({ src: G.pressAt }); toast(sk ? `Chest opened! The ${sk.name} egg, coins and a booster.` : 'Chest opened! Coins and a booster.', 2.8); }
       break;
     }
     case 'adboost': {
@@ -8159,7 +8160,7 @@ function drawLevels() {
   const bw4 = wide ? 120 * u : 0, rowY = wide ? Y0 + 1 * u : Y0 + 46 * u + 12 * u, rh = 44 * u;
   const midW = wide ? bw4 * 2 + 10 * u : Math.min(A.w - 2 * pad, 340 * u), mx = wide ? chipX - 14 * u - midW : A.cx - midW / 2, half = (midW - 10 * u) / 2;
   purseBtn(mx, rowY, half, rh, 17 * u);
-  if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { kind: chest.ready ? 'primary' : 'off', shimmer: chest.ready, disabled: !chest.ready, dim: 1, iconS: 1.25, icon: (c, x, y, s2) => drawChest(c, x, y, s2, G.t, chest.ready ? 'ready' : 'locked'), size: 15 * u });
+  if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { kind: chest.ready ? 'primary' : 'off', shimmer: chest.ready, disabled: !chest.ready, dim: 1, iconS: 1.25, icon: (c, x, y, s2) => { drawChest(c, x, y, s2, G.t, chest.ready ? 'ready' : 'locked'); if (chest.reward.skin && !E.ownsSkin(save.wallet, chest.reward.skin)) drawSkinPreview(c, chest.reward.skin, x - s2 * 0.55, y - s2 * 0.08, s2 * 0.8, G.t); }, size: 15 * u });
   // the ribbon names the world in the middle of the view
   const midY = S.y + vh * 0.5;
   let wv = 0;

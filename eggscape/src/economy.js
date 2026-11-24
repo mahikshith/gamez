@@ -283,8 +283,11 @@ export function equipSkin(wallet, id) {
 
 // ---------------------------------------------------------------- star chests
 // Every 15 stars unlocks a chest on the level map: some coins plus one booster.
+// 0.8.15: ten chests (150 stars = 50 levels x 3), and every second one holds an egg skin that the map shows ahead of
+// time (research: a visible prize is the reason to replay for three stars). A skin already owned pays half its price.
 export const STARS_PER_CHEST = 15;
-export const CHEST_COUNT = 6; // 90 stars = 30 levels x 3
+export const CHEST_COUNT = 10;
+export const CHEST_SKINS = ['speckled', 'striped', 'bauble', 'candy', 'frosty']; // chests 2, 4, 6, 8, 10
 
 // The next chest to open, given total stars earned and how many chests were opened already
 // (wallet.chests). Returns { index, at, ready, reward: { coins, booster } } or null when all are
@@ -297,7 +300,7 @@ export function chestFor(totalStars, opened) {
     index,
     at,
     ready: (totalStars || 0) >= at,
-    reward: { coins: 30 + 10 * index, booster: CHEST_BOOSTS[index % CHEST_BOOSTS.length] },
+    reward: { coins: 30 + 10 * index, booster: CHEST_BOOSTS[index % CHEST_BOOSTS.length], skin: index % 2 ? CHEST_SKINS[(index - 1) / 2] || null : null },
   };
 }
 
@@ -313,6 +316,8 @@ export function openChest(wallet, chest) {
     if (ownedCount(w, id) < MAX_OWNED) w.owned[id] = ownedCount(w, id) + 1;
     else w.coins += BOOSTERS[id].price;
   }
+  const sk = chest.reward.skin;
+  if (sk && SKINS[sk]) { if (!w.skins.includes(sk)) w.skins = [...w.skins, sk]; else w.coins += Math.round(SKINS[sk].price / 2); }
   w.charges = Math.min(MAX_CHARGES, (w.charges || 0) + 1);
   w.chests = Math.max(w.chests, chest.index + 1);
   return w;
