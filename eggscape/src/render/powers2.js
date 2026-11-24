@@ -972,12 +972,23 @@ export function drawP2Front(ctx, sim, k, t) {
   // Pepper twister (pepper + spin): the smoke winds into a whirling funnel, then every creature sneezes (render only:
   // the sim has already flung them out to the rim)
   if (PL.tw) {
-    const W = PL.tw, el = sim.t - W.t0;
-    if (el < 0 || el > Math.max(TWIST_T, 0.25 + SNEEZE_T) + 0.1) PL.tw = null;
+    const W = PL.tw, el = sim.t - W.t0, wind = P2.twist.wind, AFTER = 0.85;
+    if (el < 0 || el > Math.max(TWIST_T, wind + AFTER) + 0.1) PL.tw = null;
     else {
       drawTwister(ctx, W.x, W.y, W.r, el / TWIST_T, k, t);
-      const us = (el - 0.25) / SNEEZE_T;
-      if (us > 0 && us < 1) for (const w of W.who) { const h = headOf(w); if (h) drawSneeze(ctx, h.x, h.y, Math.atan2(h.y, h.x), us, k, t, w.sz); }
+      // "ah... ah..." while the sim winds up (P.tw), "CHOO!" on the step it throws them: the spray blows back at the vault's
+      // middle and a streak follows each one from where it stood out to the rim
+      const us = el < wind ? 0.36 * (el / wind) : 0.36 + 0.64 * ((el - wind) / AFTER);
+      for (const w of W.who) {
+        const h = headOf(w);
+        if (!h) continue;
+        if (P.tw > 0) { w.x0 = h.x; w.y0 = h.y; }
+        else if (w.x0 != null && el < wind + 0.3) {
+          const f = 1 - (el - wind) / 0.3, d = Math.hypot(h.x - w.x0, h.y - w.y0);
+          if (d > 0.25) { ctx.save(); ctx.lineCap = 'round'; ctx.globalAlpha = 0.75 * f; ctx.strokeStyle = '#fff6e6'; ctx.lineWidth = w.sz * 0.5 * f; ctx.beginPath(); ctx.moveTo(w.x0 + (h.x - w.x0) * (1 - f) * 0.8, w.y0 + (h.y - w.y0) * (1 - f) * 0.8); ctx.lineTo(h.x, h.y); ctx.stroke(); ctx.restore(); }
+        }
+        if (us < 1) drawSneeze(ctx, h.x, h.y, Math.atan2(-h.y, -h.x), us, k, t, w.sz);
+      }
     }
   }
   drawWarp(ctx, sim, k, t); // the Warp Gate's portals and the armed swirl
@@ -1044,6 +1055,8 @@ export function p2Event(ev, fx, api) {
     case 'p2Hit': {
       const H = HIT[ev.kind];
       if (!H) break;
+      const twist = api.sim && POL.sim === api.sim && POL.tw && api.sim.t - POL.tw.t0 < P2.twist.wind + 0.3; // the twister acts its own "ah... CHOO!"
+      if (twist && (ev.kind === 'pep' || ev.kind === 'spin')) { if (!(api.sim.p2.tw > 0) && ev.kind === 'pep') fx.smoke(ev.x, ev.y, 3, 'rgba(190,120,80,0.6)'); break; }
       if (!strikeQuiet()) popup(ev.x, ev.y + 0.6, H[0], { color: H[1], size: 17, life: 0.9 });
       if (ev.kind === 'ice') { audio.play('glass_crack', { vol: 0.5, pitch: 1.5 }); fx.chips(ev.x, ev.y, '#dff6ff', 6, 1.6); }
       else if (ev.kind === 'zap') { audio.play('glass_crack', { vol: 0.5, pitch: 2.2 }); fx.sparkle(ev.x, ev.y, 8, '#bfe9ff'); }
@@ -1051,6 +1064,11 @@ export function p2Event(ev, fx, api) {
       else if (ev.kind === 'spin') audio.play('wind_gust', { vol: 0.4, pitch: 1.8 });
       break;
     }
+    case 'p2Sneeze': // the Pepper twister's sneeze: one big blast from the funnel, the camera jolts
+      audio.play('squish', { intensity: 1, pitch: 1.5 }); audio.play('wind_gust', { vol: 0.9, pitch: 1.3 }); audio.play('bubble_pop', { vol: 0.8, pitch: 0.55 });
+      fx.wave(ev.x, ev.y, (api.sim && api.sim.outerR ? api.sim.outerR : 4) * 1.05, '#ffd9b0', 0.45, 0.16);
+      fx.shake = Math.max(fx.shake, 0.4);
+      break;
     case 'p2Fling':
       fx.burst(ev.x, ev.y, 10, (i, a, b) => ({ x: ev.x + (ev.x2 - ev.x) * a, y: ev.y + (ev.y2 - ev.y) * a, vx: (b - 0.5) * 1.5, vy: (b - 0.5) * 1.5, drag: 3, life: 0.45, size: 0.05, color: '#e8fff8' }));
       break;
