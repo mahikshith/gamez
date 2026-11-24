@@ -3,6 +3,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 0.8.15: one local reminder a day at most (a spin or a chest is waiting). Asked for in the game, after a win. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="Eggscape"
         android:icon="@mipmap/ic_launcher"
@@ -25,6 +27,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 0.8.15: shows the reminder the game planned (Reminders.java). Not exported: only this app's own alarm reaches it. -->
+        <receiver android:name=".Reminders" android:exported="false" />
         <!-- 0.8.12: starts the game again in a fresh process when its drawing has gone slow for good (src/recover.js).
              Its own process, not exported, never in the recent-apps list. -->
         <activity

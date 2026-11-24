@@ -229,6 +229,31 @@ function engClose() {
   const P = ENG.close(save, waitingCtx(), Date.now()), b = appBridge();
   try { if (P && b && typeof b.notifyAt === 'function') b.notifyAt(String(P.at), P.id, P.title, P.text); } catch (_) { /* no shell */ }
 }
+// ---- reminders (app only, 0.8.15): the Herald (engine/herald.js) decides; this is the question and the switch.
+// Asked once, on a good win with a spin near; "No thanks" is final (Settings can turn them on); never for a child profile.
+const remCan = () => { const b = appBridge(); return !!(b && typeof b.notifyAsk === 'function' && typeof b.notifyState === 'function') && !OF.childSafe(save); };
+const remSt = { v: '', t: -1e9 };
+function remPhone() { // "granted" | "ask" | "off": what the phone says; asked of the shell at most every two seconds
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  if (now - remSt.t > 2000) { remSt.t = now; try { remSt.v = String(appBridge().notifyState() || ''); } catch (_) { remSt.v = ''; } }
+  return remSt.v;
+}
+const remOn = () => { const H = ENG.herald.state(save); return H.ok === 1 && !H.off && remPhone() === 'granted'; };
+function remRequest(from) { // Android's own question (13+), or a plain yes where the phone needs none; the answer lands in __eggNotif
+  G.remFrom = from; remSt.t = -1e9;
+  try { appBridge().notifyAsk(); } catch (_) { /* no shell */ }
+}
+if (typeof window !== 'undefined') window.__eggNotif = (ok) => {
+  try {
+    remSt.t = -1e9;
+    ENG.herald.answer(save, !!ok); if (ok) ENG.herald.setOff(save, false);
+    BR.why(save, 'home', 'reminder', ok ? 'reminders allowed' : 'reminders refused on the phone');
+    persist();
+    if (ok) { audio.play('unlock'); toast('Reminders are on. One a day at most.', 2.8); }
+    else if (G.remFrom === 'set') toast('Allow notifications for Eggscape in your phone settings.', 3.4);
+  } catch (_) { /* optional */ }
+  G.remFrom = null;
+};
 function persist() {
   ledger(ledWhy);
   { // the Director counts coins spent (any drop in the purse is a spend: coins only ever leave through a purchase)
@@ -1424,6 +1449,16 @@ async function press(id) {
     case 'age:later':
       G.ageAsk = false; G.ageLater = true; // asked again next launch
       break;
+    case 'rem:yes': G.remAsk = null; remRequest('card'); break;
+    case 'rem:no': // final: the question never comes back by itself (the switch in Settings stays)
+      G.remAsk = null; ENG.herald.answer(save, false); BR.why(save, 'win', 'reminder', 'reminders: no thanks'); persist();
+      break;
+    case 'rem:later': G.remAsk = null; break; // the back key: no answer, another good win may ask again
+    case 'set:remind':
+      if (remOn()) { ENG.herald.setOff(save, true); try { appBridge().notifyCancel(); } catch (_) { /* no shell */ } persist(); }
+      else if (remPhone() === 'granted') { ENG.herald.answer(save, true); ENG.herald.setOff(save, false); persist(); toast('Reminders are on. One a day at most.', 2.8); }
+      else remRequest('set');
+      break;
     case 'pc:0': case 'pc:1': case 'pc:2': {
       const P = G.parent;
       G.parent = null;
@@ -1951,7 +1986,7 @@ const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? {
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
 function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
-function modalOpen() { return !!(G.got || G.getMore || G.detail || G.offer || G.ageAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
+function modalOpen() { return !!(G.got || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
@@ -1966,6 +2001,7 @@ function drawModals() {
     else if (G.offer) drawOffer();
     else if (G.nudge) drawNudge();
     else if (G.ageAsk) drawAgeAsk();
+    else if (G.remAsk) drawRemAsk();
     else if (G.treasure) drawTreasure();
     else if (G.skipAsk) drawSkipAsk();
   } finally { G.hudBottom = hb; }
@@ -2114,6 +2150,10 @@ function offerMoments() {
   } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0 && !(sc === 'win' && revealing(G.result))) { G.offerTried = true; if ((sc === 'fail' && G.failHelp) || earlyDays()) return; } // one help on a fail card, never two
   else if (sc === 'intro' && G.screenT > 0.3 && G.li >= 0) { G.offerTried = true; G.introTip = null; if (earlyDays()) return; } // the intro's gentle chick line
   else return;
+  if (sc === 'win' && G.remDue) { // the reminder question (free, once): it takes this card's one ask
+    G.remDue = false;
+    if (remCan()) { G.remAsk = { ...waitingCtx() }; BR.why(save, 'win', 'reminder', 'asked once, after a good win, with a spin near'); return; }
+  }
   const moment = sc === 'title' || sc === 'levels' ? 'home' : sc;
   const ctx2 = offerCtx();
   if (moment === 'intro') {
@@ -2177,6 +2217,30 @@ function drawNudge() {
       : ui.button('nudge:yes', n.kind === 'welcome' ? 'Collect' : 'See it', x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: 22 * s }) },
     ...(n.kind === 'welcome' ? [] : [{ h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('nudge:no', n.kind === 'keep' ? 'No thanks' : 'Later', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) }]),
   ], { ribbon: n.kind === 'welcome' ? '#3cb043' : '#d89a1c' });
+}
+// the reminder question (0.8.15): the note itself is the picture, as it will look on the phone; two buttons, no clock
+function drawRemAsk() {
+  const R = G.remAsk, text = R.spins > 0 ? 'A free spin is waiting' : R.spinLeft > 0 ? `${R.spinLeft} win${R.spinLeft > 1 ? 's' : ''} to your free spin` : 'Your chest is nearly full';
+  dim(0.55);
+  stackCard('Want a reminder?', (s) => [
+    { h: 96 * s, gap: 6 * s, draw: (x, y, w) => {
+      const bw = Math.min(w, 300 * s), bx = x + (w - bw) / 2, bh = 72 * s, by = y + 12 * s + Math.sin(G.t * 2.2) * 2 * s, d = 44 * s;
+      ctx.save();
+      ctx.shadowColor = 'rgba(40,20,5,0.35)'; ctx.shadowBlur = 14 * s; ctx.shadowOffsetY = 4 * s;
+      ui.roundRect(bx, by, bw, bh, 18 * s); ctx.fillStyle = '#fffdf6'; ctx.fill();
+      ctx.restore();
+      ui.roundRect(bx, by, bw, bh, 18 * s); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(70,40,10,0.35)'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx + 14 * s + d / 2, by + bh / 2, d / 2, 0, 7); ctx.fillStyle = '#e8a020'; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(bx + 14 * s + d / 2, by + bh / 2 + d * 0.03, d * 0.22, d * 0.29, 0, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
+      const tx = bx + 14 * s + d + 12 * s, tw = bw - (tx - bx) - 12 * s;
+      ui.text('Eggscape', tx, by + bh / 2 - 12 * s, { size: 13 * s, color: ui.C.ink2, maxW: tw, tag: 'rem:app' });
+      ui.text(text, tx, by + bh / 2 + 9 * s, { size: 17 * s, color: ui.C.ink, maxW: tw, tag: 'rem:text' });
+      ui.record({ x: bx + 14 * s, y: by + (bh - d) / 2, w: d, h: d }, 'rem:icon');
+    } },
+    lineBlock('One a day at most. Never at night.', 15 * s, { color: ui.C.ink2, tag: 'rem:why', gap: 8 * s }),
+    { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ui.button('rem:yes', 'Yes, tell me', x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: 22 * s }) },
+    { h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rem:no', 'No thanks', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
+  ], { ribbon: '#e8a020' });
 }
 // first launch (app only, behind OF.AGE_GATE): a neutral question, two equal buttons, nothing pre-chosen
 function drawAgeAsk() {
@@ -4171,7 +4235,16 @@ function onWin() {
   }
   G.trialChick = null;
   G.result.prevBest = G.li >= 0 ? save.best[sk(L.id, G.sim.mode)] || 0 : null; // the card's "NEW BEST!" compares with the best before this run
+  // the spin meter (spin.js): a fresh win (first pass, more stars than before, today's first Daily Vault) is one step,
+  // and time in the game is a slower one. Judged before the result is filed, counted after it (level 3 opens the wheel).
+  const freshWin = G.li >= 0 ? G.result.stars > bestStarsOf(L.id) : G.li === -1 && G.result.stars > 0 && save.daily.paid !== today();
   recordResult();
+  if (G.li >= -1) {
+    const got = SP.noteWin(save, freshWin), played = G.sim.t >= 15 && SP.notePlayed(save, today());
+    G.result.spin = { fresh: freshWin && SP.open(save), got: (got ? 1 : 0) + (played ? 1 : 0), ...SP.meter(save) };
+    if (G.li >= 0 && remCan() && ENG.herald.shouldAsk(save, { unlocked: save.unlocked, stars: G.result.stars, ...waitingCtx() })) G.remDue = true;
+    persist();
+  }
   if (G.li >= 0 && L.boss && E.bossTreasure(L.id) && !E.treasureOpened(save.wallet, L.id) && bossBeaten(L.id)) { // the boss treasure opens in the celebration, not on the map
     const w = E.openBossTreasure(save.wallet, L.id);
     if (w) { save.wallet = w; G.result.treasure = E.bossTreasure(L.id); ledWhy = 'treasure'; persist(); ledWhy = 'win'; }
@@ -4210,11 +4283,17 @@ function onFail() {
   buzz('fail');
   if (G.li >= 0 && G.level) ads.fail(G.level.id);
   G.failHelp = null;
+  G.failSpin = null;
   if (G.li >= 0 && G.level) { // the Director: note the loss, then pick the one help card for the fail screen
     const st = G.sim.stats();
     DR.noteResult(save, G.level.id, false, { saved: st.saved }); BR.note(save, 'level');
     { const canRew = !G.usedRewind && G.sim.canRewind(); ENG.result(save, { id: G.level.id, won: false, secs: G.sim.t, near: st.target >= 2 && st.saved === st.target - 1 }, { hard: isHardLevel(G.level), near: st.target >= 2 && st.saved === st.target - 1, videoShown: !ads.premium, coinShown: canRew && !ads.premium, price: DR.rewindPrice((G.rewindBuys || {})[G.level.id]) }); }
     DR.tickTrial(save);
+    { // the spin meter: the third loss in a row on a level banks a cheer-up spin (once per level); time played is a slow step
+      const run = ((save.dir && save.dir.att && save.dir.att[G.level.id]) || {}).streak || 0;
+      const cheer = SP.noteLoss(save, G.level.id, run, today()), played = G.sim.t >= 15 && SP.notePlayed(save, today());
+      G.failSpin = { cheer, got: (cheer ? 1 : 0) + (played ? 1 : 0), ...SP.meter(save) };
+    }
     G.failHelp = earlyDays() ? null : DR.failHelp(save, failCtx(st));
     if (st.target >= 2 && st.saved === st.target - 1) BR.why(save, 'fail', 'soclose', `one egg short on level ${G.level.id}: ${earlyDays() || G.usedRewind || !G.sim.canRewind() ? 'said so, RETRY leads' : 'Rewind leads, RETRY under it'}`);
     persist();
@@ -6928,6 +7007,7 @@ const SI = { // white glyphs for the colored badges, drawn in a box of about S p
   sound: (c, x, y, S) => { c.beginPath(); c.moveTo(x - S * 0.34, y - S * 0.12); c.lineTo(x - S * 0.16, y - S * 0.12); c.lineTo(x + S * 0.04, y - S * 0.3); c.lineTo(x + S * 0.04, y + S * 0.3); c.lineTo(x - S * 0.16, y + S * 0.12); c.lineTo(x - S * 0.34, y + S * 0.12); c.closePath(); c.fill(); c.lineWidth = S * 0.09; c.beginPath(); c.arc(x + S * 0.06, y, S * 0.18, -0.9, 0.9); c.stroke(); c.beginPath(); c.arc(x + S * 0.06, y, S * 0.33, -0.9, 0.9); c.stroke(); },
   note: (c, x, y, S) => { c.beginPath(); c.ellipse(x - S * 0.14, y + S * 0.22, S * 0.15, S * 0.11, -0.4, 0, 7); c.fill(); c.lineWidth = S * 0.1; c.beginPath(); c.moveTo(x - S * 0.02, y + S * 0.2); c.lineTo(x - S * 0.02, y - S * 0.3); c.lineTo(x + S * 0.26, y - S * 0.18); c.stroke(); },
   buzz: (c, x, y, S) => vibeIcon(true)(c, x, y, S * 1.15),
+  bell: (c, x, y, S) => { c.beginPath(); c.moveTo(x - S * 0.32, y + S * 0.2); c.quadraticCurveTo(x - S * 0.22, y + S * 0.08, x - S * 0.22, y - S * 0.06); c.quadraticCurveTo(x - S * 0.22, y - S * 0.34, x, y - S * 0.34); c.quadraticCurveTo(x + S * 0.22, y - S * 0.34, x + S * 0.22, y - S * 0.06); c.quadraticCurveTo(x + S * 0.22, y + S * 0.08, x + S * 0.32, y + S * 0.2); c.closePath(); c.fill(); c.beginPath(); c.arc(x, y + S * 0.28, S * 0.09, 0, 7); c.fill(); c.beginPath(); c.arc(x, y - S * 0.36, S * 0.05, 0, 7); c.fill(); },
   shake: (c, x, y, S) => { c.lineWidth = S * 0.09; const w = S * 0.4, h = S * 0.56; for (const [dx, a] of [[-0.09, 0.45], [0.09, 1]]) { c.globalAlpha = a; ui.roundRect(x + S * dx - w / 2, y - h / 2, w, h, S * 0.08); c.stroke(); } c.globalAlpha = 1; for (const d of [-1, 1]) { c.beginPath(); c.moveTo(x + d * S * 0.4, y - S * 0.14); c.lineTo(x + d * S * 0.4, y + S * 0.14); c.stroke(); } },
   ring: (c, x, y, S) => { c.lineWidth = S * 0.13; c.lineCap = 'round'; c.beginPath(); c.arc(x, y, S * 0.28, -0.3, Math.PI * 1.45); c.stroke(); const ax = x + S * 0.28 * Math.cos(-0.3), ay = y + S * 0.28 * Math.sin(-0.3); c.beginPath(); c.moveTo(ax + S * 0.17, ay - S * 0.02); c.lineTo(ax - S * 0.08, ay - S * 0.2); c.lineTo(ax - S * 0.1, ay + S * 0.1); c.closePath(); c.fill(); },
   flag: (c, x, y, S) => { c.lineWidth = S * 0.1; c.lineCap = 'round'; c.beginPath(); c.moveTo(x - S * 0.22, y + S * 0.34); c.lineTo(x - S * 0.22, y - S * 0.34); c.stroke(); c.beginPath(); c.moveTo(x - S * 0.22, y - S * 0.32); c.lineTo(x + S * 0.32, y - S * 0.14); c.lineTo(x - S * 0.22, y + S * 0.06); c.closePath(); c.fill(); },
@@ -7078,6 +7158,7 @@ function drawSettings() {
   if (portal.showMuteButton) { B.push(setRow(s, 'sfx', 'Sound', 'sound', '#3a80ea', { on: save.sfx })); B.push(setRow(s, 'music', 'Music', 'note', '#9a5ae8', { on: save.music })); }
   if (__APP__ || (typeof navigator !== 'undefined' && navigator.vibrate)) B.push(setRow(s, 'vibe', 'Vibration', 'buzz', '#e8702f', { on: on(save.vibe) }));
   B.push(setRow(s, 'shake', 'Screen shake', 'shake', '#d8453a', { on: on(save.shake) && !save.calm, sub: save.calm ? 'Off while Calm motion is on' : null }));
+  if (remCan()) B.push(setRow(s, 'set:remind', 'Reminders', 'bell', '#e8a020', { on: remOn(), sub: 'One a day at most' })); // app only, never for a child profile
   B.push(setHead('Gameplay', s));
   const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
   const rsFirst = G.setFirst && G.setFirst.seq === G.setSeq ? G.t - G.setFirst.t0 : 99; // the first visit: a soft ring round this row for ~3 s
@@ -8545,7 +8626,7 @@ async function boot() {
     if (G.adBusy) { ads.cancelWait(); return true; } // a pending ad that never reported back: Back returns to the game
     if (modalOpen()) { // a sheet closes first (an offer counts as "No thanks"; the age question waits for next launch)
       if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null;
-      else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.treasure) G.treasure = null;
+      else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.remAsk) press('rem:later'); else if (G.treasure) G.treasure = null;
       return true;
     }
     if (G.settingsOpen) { press('set:close'); return true; } // the Settings page closes first
@@ -8665,6 +8746,7 @@ if (DEV) window.__egg = {
   G, LEVELS, LAB, ui, art: { drawOctopus: devOcto, octoAnim: devOctoAnim, drawJelly: devJelly }, drawVillainPortrait, PORTRAIT_BG, HEN_SKIN_ORDER: E.HEN_SKIN_ORDER, SKIN_ORDER: E.SKIN_ORDER, setEggSkin: (k) => W.setSkin(k),
   get sim() { return G.sim; },
   start: (i, o) => startLevel(i, o),
+  endRun: (won) => (won ? onWin() : onFail()), // the real win and fail paths (the engine, the spin meter, the reminder question), not just the card
   CHICK_DEMOS,
   startFrog(o = {}) { G.demo = FROG_DEMO; startLevel(-2, o); }, // v3.3 frog studio level
   wonder, // WONDER: the bonus world's controller (state, toScreen) for strips and QA

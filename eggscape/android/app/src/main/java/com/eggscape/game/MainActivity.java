@@ -102,6 +102,27 @@ public class MainActivity extends Activity {
             runOnUiThread(new Runnable() { @Override public void run() { shareLogNow(name, text); } });
         }
         /**
+         * 0.8.15 reminders (src/engine/herald.js plans them, Reminders.java keeps the appointment). All local to this
+         * phone. notifyState: "granted" | "ask" (Android 13+: the permission is not given) | "off" (switched off in the
+         * phone's settings). notifyAsk: shows Android's own question (13+); the answer comes back to the page through
+         * window.__eggNotif(true | false). openedFrom: the reminder this launch came from ("" = from the icon), read once.
+         */
+        @JavascriptInterface public void notifyAt(String atMs, String id, String title, String text) {
+            try { Reminders.schedule(MainActivity.this, Long.parseLong(atMs), id, title, text); } catch (Throwable e) { /* optional */ }
+        }
+        @JavascriptInterface public void notifyCancel() { Reminders.cancel(MainActivity.this); }
+        @JavascriptInterface public String notifyState() { return Reminders.state(MainActivity.this); }
+        @JavascriptInterface public void notifyAsk() {
+            runOnUiThread(new Runnable() { @Override public void run() {
+                try {
+                    String st = Reminders.state(MainActivity.this);
+                    if (Build.VERSION.SDK_INT >= 33 && "ask".equals(st)) requestPermissions(new String[] { android.Manifest.permission.POST_NOTIFICATIONS }, REQ_NOTIF);
+                    else tellNotif("granted".equals(st));
+                } catch (Throwable e) { tellNotif(false); }
+            } });
+        }
+        @JavascriptInterface public String openedFrom() { String f = openedFrom; openedFrom = ""; return f == null ? "" : f; }
+        /**
          * 0.8.12, the slow-drawing watchdog (src/recover.js): the page found that the web view no longer draws with the
          * graphics chip and that loading the page again did not cure it. rung 2 ends the page's own process (the game
          * comes back through onRenderProcessGone), rung 3 starts the whole app again (what mykee did by hand). keep is
@@ -287,10 +308,24 @@ public class MainActivity extends Activity {
         }
     }
 
+    // 0.8.15 reminders: which one this launch came from, and Android's answer to the permission question
+    private static final int REQ_NOTIF = 7103;
+    private volatile String openedFrom = "";
+    private void noteOpenedFrom(Intent in) { try { String f = in == null ? null : in.getStringExtra(Reminders.EXTRA_FROM); if (f != null && !f.isEmpty()) { openedFrom = f; in.removeExtra(Reminders.EXTRA_FROM); } } catch (Throwable e) { /* optional */ } }
+    private void tellNotif(final boolean ok) {
+        runOnUiThread(new Runnable() { @Override public void run() { try { if (web != null) web.evaluateJavascript("window.__eggNotif&&window.__eggNotif(" + (ok ? "true" : "false") + ")", null); } catch (Throwable e) { /* page not up */ } } });
+    }
+    @Override protected void onNewIntent(Intent in) { super.onNewIntent(in); setIntent(in); noteOpenedFrom(in); }
+    @Override public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(code, perms, res);
+        if (code == REQ_NOTIF) tellNotif(res != null && res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED);
+    }
+
     @SuppressLint({"SetJavaScriptEnabled", "ClickableViewAccessibility"})
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        noteOpenedFrom(getIntent());
         Window w = getWindow();
         w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (Build.VERSION.SDK_INT >= 28) w.getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
