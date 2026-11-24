@@ -11,7 +11,7 @@ import { drawVenom } from './v3art.js';
 import { statusClock, statusDraw, dizzyStars } from './status.js';
 import { spline, blinkAt } from './castkit.js';
 import { RING_TH, TAU } from '../sim/geom.js';
-import { SAL, BRAIN } from '../sim/salamander.js';
+import { SAL, BRAIN, FACE } from '../sim/salamander.js';
 import { drawGecko15 } from './gecko15.js'; // L15: the frost gecko is a sim crawler too
 import { drawThorn20 } from './crystal20.js'; // L20: Duke Quartz and Spike, the thorn-backs
 import { drawCham26 } from './cham26.js'; // L26: Sly the chameleon
@@ -45,6 +45,8 @@ export const mixA = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1])
 export const rgb = (c, al = 1) => (al >= 1 ? `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})` : `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${al})`);
 export const palOf = (o) => { const r = {}; for (const k in o) r[k] = hex(o[k]); return r; };
 const HOT = palOf({ line: '#6e1c06', lo: '#c2330a', base: '#ff7414', hi: '#ffab2c', top: '#ffd45a', blot: '#3a1108', blotHi: '#6b2610', jaw: '#ffd872', leg: '#ee5f10', legLo: '#a52c08', pad: '#ffc04a', lid: '#e25a0e', eye: '#fff6d2', eyeLo: '#f0c26a', pupil: '#1a0803', mouth: '#4a0b12', throat: '#8a1c1a', tongue: '#ff7684', tooth: '#fff8e2' });
+// the frost salamander (0.8.14): the same animal in glacier blue
+const ICE = palOf({ line: '#12305e', lo: '#1d5fae', base: '#3d9cf0', hi: '#7cc8ff', top: '#d6f2ff', blot: '#102c60', blotHi: '#23529a', jaw: '#d8f0ff', leg: '#2f86dc', legLo: '#184e96', pad: '#bfe6ff', lid: '#2a7fd0', eye: '#f4fbff', eyeLo: '#a8d4f0', pupil: '#03101f', mouth: '#12244a', throat: '#2a4a8a', tongue: '#ff8fa8', tooth: '#ffffff' });
 const ASH = palOf({ line: '#262220', lo: '#45413e', base: '#77726c', hi: '#989189', top: '#bdb7ae', blot: '#2c2927', blotHi: '#4a4643', jaw: '#aaa49b', leg: '#67625d', legLo: '#403c39', pad: '#b5afa6', lid: '#5d5853', eye: '#f3efe2', eyeLo: '#c9c3b4', pupil: '#141210', mouth: '#2e2327', throat: '#57474a', tongue: '#b9979c', tooth: '#eeeae0' });
 const bx = new Float64Array(NS), by = new Float64Array(NS), sx = new Float64Array(NS), sy = new Float64Array(NS), snx = new Float64Array(NS), sny = new Float64Array(NS), sw = new Float64Array(NS);
 const PT = { x: 0, y: 0, a: 0 }, Q = { x: 0, y: 0, nx: 0, ny: 0, w: 0 };
@@ -155,9 +157,9 @@ export function drawLegs(ctx, feet, U, K, lw, G = LEG_G) {
   }
 }
 
-function drawJet(ctx, x, y, a, k, U, t, len) {
+function drawJet(ctx, x, y, a, k, U, t, len, frost) {
   const reach = sstep(k * 1.6), L = len * U * (0.3 + 0.7 * reach), ca = Math.cos(a), sa = Math.sin(a), N = 12;
-  const layers = [['rgba(150,26,6,0.85)', 1.14, 1], ['#ff6a14', 0.92, 0.96], ['#ffc83a', 0.6, 0.86], ['#fff6c8', 0.3, 0.68]];
+  const layers = frost ? [['rgba(30,84,170,0.8)', 1.14, 1], ['#58b2ff', 0.92, 0.96], ['#bfe6ff', 0.6, 0.86], ['#ffffff', 0.3, 0.68]] : [['rgba(150,26,6,0.85)', 1.14, 1], ['#ff6a14', 0.92, 0.96], ['#ffc83a', 0.6, 0.86], ['#fff6c8', 0.3, 0.68]];
   for (let li = 0; li < layers.length; li++) {
     const [col, wk, lk] = layers[li];
     ctx.fillStyle = col; ctx.beginPath();
@@ -172,7 +174,7 @@ function drawJet(ctx, x, y, a, k, U, t, len) {
     ctx.closePath(); ctx.fill();
   }
   const tx = x + ca * L, ty = y + sa * L;
-  ctx.fillStyle = '#ffd860'; ctx.beginPath();
+  ctx.fillStyle = frost ? '#eaf7ff' : '#ffd860'; ctx.beginPath();
   for (let i = 0; i < 6; i++) {
     const f = (((t * 3.1 + i * 0.29) % 1) + 1) % 1, sd = i % 2 ? 1 : -1, d = f * 17 * U * reach, X = tx - sa * sd * d - ca * f * 6 * U, Y = ty + ca * sd * d - sa * f * 6 * U, r = 1.8 * U * (1 - f) * k;
     ctx.moveTo(X + r, Y); ctx.arc(X, Y, Math.max(0.3, r), 0, TAU);
@@ -202,8 +204,9 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   const gait = (opts.gait || 0) / U;
   // palette: heat pushes the skin toward yellow-white, cooling drains it to ash
   const K = {}, heat = clamp((glow - 0.6) / 0.7, 0, 1), flick = 0.5 + 0.5 * Math.sin(t * 2.4);
-  for (const k in HOT) K[k] = cool > 0 ? mixA(HOT[k], ASH[k], cool) : HOT[k];
-  if (heat > 0 && cool < 1) {
+  const BASE = opts.frost ? ICE : HOT;
+  for (const k in BASE) K[k] = cool > 0 ? mixA(BASE[k], ASH[k], cool) : BASE[k];
+  if (heat > 0 && cool < 1 && !opts.frost) {
     const h = heat * (0.75 + 0.25 * flick) * (1 - cool);
     K.base = mixA(K.base, HOT.hi, 0.55 * h); K.hi = mixA(K.hi, HOT.top, 0.6 * h); K.top = mixA(K.top, [255, 246, 200], 0.6 * h); K.lo = mixA(K.lo, HOT.base, 0.4 * h); K.lid = mixA(K.lid, HOT.base, 0.4 * h);
   }
@@ -316,7 +319,7 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   drawLegs(ctx, upFront ? feet.filter((f) => !f.L.front) : feet, U, K, lw);
 
   // ---- body: heat halo, dark belly edge, lit back, flame blotches, wet highlight
-  if (glow > 0.05) { bodyPath(1, 0, 0); ctx.strokeStyle = `rgba(255,110,24,${0.16 * glow})`; ctx.lineWidth = lw + 6 * U; ctx.stroke(); }
+  if (glow > 0.05) { bodyPath(1, 0, 0); ctx.strokeStyle = opts.frost ? `rgba(120,200,255,${0.2 * glow})` : `rgba(255,110,24,${0.16 * glow})`; ctx.lineWidth = lw + 6 * U; ctx.stroke(); }
   bodyPath(1, 0, 0); ctx.fillStyle = rgb(K.lo); ctx.fill();
   ctx.save(); ctx.clip();
   bodyPath(0.84, LX * 3.2 * U, LY * 3.2 * U); ctx.fillStyle = rgb(K.base); ctx.fill();
@@ -353,7 +356,7 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   const ca = Math.cos(ha), sa = Math.sin(ha);
   if (P.fire > 0.01) {
     const mx = hcx + ca * (16 + 6 * P.mouth) * hs, my = hcy + sa * (16 + 6 * P.mouth) * hs;
-    const tip = drawJet(ctx, mx, my, ha, P.fire, U, t, opts.fireLen || 60);
+    const tip = drawJet(ctx, mx, my, ha, P.fire, U, t, opts.fireLen || 60, opts.frost);
     if (opts.out) opts.out.fire = { x: tip.x + x0, y: tip.y + y0 };
   }
   if (hole) { ctx.restore(); drawPit(ctx, hole, U, t, false, opts.dive > 0 && opts.dive < UMAX * U ? 1 : 0); }
@@ -379,7 +382,7 @@ function drawHead(ctx, t, opts, P, K, cool, lw, fu, ha, glow) {
     ctx.save();
     ctx.beginPath(); ctx.ellipse(jx - 0.6, 0, jrx - 2.4, jry - 2.6, 0, 0, TAU);
     const g = ctx.createRadialGradient(4, 0, 2, jx, 0, jrx);
-    g.addColorStop(0, rgb(mixA(K.throat, [255, 170, 60], 0.5 * P.fire + 0.35 * clamp(glow - 0.8, 0, 1)))); g.addColorStop(0.55, rgb(K.throat)); g.addColorStop(1, rgb(K.mouth));
+    g.addColorStop(0, rgb(mixA(K.throat, opts.frost ? [190, 232, 255] : [255, 170, 60], 0.5 * P.fire + 0.35 * clamp(glow - 0.8, 0, 1)))); g.addColorStop(0.55, rgb(K.throat)); g.addColorStop(1, rgb(K.mouth));
     ctx.fillStyle = g; ctx.fill(); ctx.clip();
     // the tongue: fat, pink, it lashes on a hiss
     const tk = P.tongue * (1 - P.dazed), wag = Math.sin(t * 19) * 3.2 * tk, tl = jx + jrx - 7 + 1.5 * tk;
@@ -497,12 +500,13 @@ export function drawSalHeat(ctx, sim, k, t) {
     const T = sim.salTarget(C), ring = sim.rings[T.ri], half = (SAL.hotLen * C.size) / (2 * ring.r), pulse = 0.5 + 0.5 * Math.sin(t * (10 + 14 * warn));
     ctx.save();
     ctx.lineCap = 'round';
-    ctx.strokeStyle = `rgba(255,110,30,${0.25 + 0.35 * warn * pulse})`;
+    const fr = C.kind === 'frost';
+    ctx.strokeStyle = fr ? `rgba(110,190,255,${0.25 + 0.35 * warn * pulse})` : `rgba(255,110,30,${0.25 + 0.35 * warn * pulse})`;
     ctx.lineWidth = RING_TH * (1.6 + 0.8 * warn);
     ctx.beginPath(); ctx.arc(0, 0, ring.r, T.a - half, T.a + half); ctx.stroke();
     ctx.setLineDash([0.12, 0.09]);
     ctx.lineDashOffset = -t * 0.6;
-    ctx.strokeStyle = `rgba(255,${200 - 80 * warn},80,${0.65 + 0.35 * warn})`;
+    ctx.strokeStyle = fr ? `rgba(${200 - 60 * warn},236,255,${0.65 + 0.35 * warn})` : `rgba(255,${200 - 80 * warn},80,${0.65 + 0.35 * warn})`;
     ctx.lineWidth = 0.045;
     for (const dr of [-1, 1]) { ctx.beginPath(); ctx.arc(0, 0, ring.r + dr * (RING_TH / 2 + 0.05), T.a - half, T.a + half); ctx.stroke(); }
     ctx.restore();
@@ -585,6 +589,15 @@ function poseOf(C) {
     case 'dive': return { pose: 'flee' };
     case 'grin': return { pose: 'idle', grin: 1 };
     case 'in': return { pose: 'idle' };
+    case 'coil': return { pose: 'bite', p: 0.8 * u, aimAt: 'egg' }; // (0.8.14) the bite: coil, eyes on the egg
+    case 'chew': { const el = C.dur - C.t; return el < 0.2 ? { pose: 'bite', p: 0.8 + 0.2 * (el / 0.2) } : { pose: 'chew', p: clamp((el - 0.2) / 1.1, 0, 1) }; }
+    case 'miss': { const el = C.dur - C.t; return el < 0.2 ? { pose: 'bite', p: 0.8 + 0.2 * (el / 0.2) } : { pose: 'idle', miss: 1 }; }
+    case 'face': { // fire against frost: square up, breathe at each other, reel in the steam
+      const el = C.dur - C.t;
+      if (el < FACE.jet) return { pose: 'hiss', p: 0.12 + 0.6 * (el / FACE.jet), aimAt: 'face' };
+      if (el < FACE.burst) return { pose: 'breath', p: 0.36 + 0.44 * ((el - FACE.jet) / (FACE.burst - FACE.jet)), aimAt: 'face' };
+      return { pose: 'dazed' };
+    }
     case 'rival': {
       const el = C.dur - C.t;
       if (el < 1.3) return { pose: 'hiss', p: 0.12 + 0.6 * (el / 1.3), aimAt: 'snake' };
@@ -609,7 +622,7 @@ export function drawSalamanders(ctx, sim, t, k) {
     R.t = t;
     const W = poseOf(C);
     // daze: frozen (a frost nova, a frost boss) holds the pose it was caught in, mid-stride; anything else is a stun (lightning also zaps first)
-    const st = statusClock(sim, 'c' + C.id, C.ph === 'daze' ? (C.dk === 'frost' ? { k: 'ice', left: C.t } : { k: 'stun', zap: C.dk === 'bolt', left: C.t }) : null, t);
+    const st = statusClock(sim, 'c' + C.id, C.ph === 'daze' ? (C.dk === 'frost' ? { k: 'ice', left: C.t } : { k: 'stun', zap: C.dk === 'bolt', left: C.t }) : C.ph === 'face' && C.dur - C.t >= FACE.burst ? { k: 'stun', left: C.t } : null, t);
     const frozen = st && st.k === 'ice';
     if (fresh) for (let i = 0; i < 12; i++) R.A.update(0.1, { pose: W.pose, p: W.p, speed: 0 }); // no blend-in on the first frame
     else if (!frozen) R.A.update(dt, { pose: W.pose, p: W.p, speed: 0 });
@@ -621,6 +634,8 @@ export function drawSalamanders(ctx, sim, t, k) {
     // aim the head (and the jet) at the target: the breath's spot on the wall, or the rival snake's head
     let aim = 0, fireLen = 44, tgt = null;
     if (W.aimAt === 'target') { const T = sim.salTarget(C); tgt = { x: T.x * k, y: -T.y * k }; }
+    else if (W.aimAt === 'egg') { const e = sim.eggs.find((x) => x.id === C.bj && x.alive && !x.saved); if (e) { const q = e.body.getPosition(); tgt = { x: q.x * k, y: -q.y * k }; } }
+    else if (W.aimAt === 'face') { const O = sim.sals.find((x) => x.id === C.fid); if (O && O.pts.length) { const a = C.pts[0], b = O.pts[0]; tgt = { x: (a.x + b.x) / 2 * k, y: -(a.y + b.y) / 2 * k }; } }
     else if (W.aimAt === 'snake') { const S = sim.snakes.find((x) => x.id === C.rid) || sim.snakes.find((x) => x.rivalId === C.id && x.rival > 0); if (S && S.pts.length) tgt = { x: S.pts[0].x * k, y: -S.pts[0].y * k }; }
     // the brain's alert: the head snaps round to the egg it just noticed (the "!" is drawn after, over every crawler)
     const al = C.alT > 0 && !tgt ? alertEgg(sim, C) : null;
@@ -642,8 +657,9 @@ export function drawSalamanders(ctx, sim, t, k) {
     const glow = clamp(0.72 + 0.28 * (C.charge || 0) + (C.ph === 'walk' && C.next < 1.2 ? 0.15 * (1 - C.next / 1.2) : 0), 0, 1);
     const alpha = C.ph === 'in' ? sstep(1 - C.t / C.dur) : 1;
     const o = {
-      ...R.A.opts(), gait: C.odo * k, trail: at, id: 50 + C.id, glow, cool: R.cool, aim: R.aim, fireLen, look: { x: R.lookX, y: R.lookY }, out: R.out,
+      ...R.A.opts(), gait: C.odo * k, trail: at, id: 50 + C.id, glow, cool: R.cool, aim: R.aim, fireLen, look: { x: R.lookX, y: R.lookY }, out: R.out, frost: C.kind === 'frost',
     };
+    if (W.miss) o.blend = { ...o.blend, angry: 1, mouth: Math.max(o.blend.mouth, 0.15) }; // it snapped at air: a sour look
     if (W.grin) { o.mouth = 0.32; }
     if (al) { // startled: it rears a little, the cheeks flare and the brows drop, then it settles back into the walk
       const u = 1 - C.alT / BRAIN.alert, f = Math.sin(Math.PI * clamp(u / 0.85, 0, 1));
@@ -665,6 +681,32 @@ export function drawSalamanders(ctx, sim, t, k) {
     ctx.globalAlpha = alpha;
     pxSpace(ctx, 0, 0, k, () => drawSalamander(ctx, P[0].x, P[0].y, s, frozen ? st.hold : t, { ...o, status: st }));
     ctx.restore();
+    // the bite's telegraph: a red ring closes on the egg it is about to snap at (0.8.14)
+    if (C.ph === 'coil') {
+      const e = sim.eggs.find((x) => x.id === C.bj && x.alive && !x.saved), u = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1;
+      if (e) after.push(() => {
+        const q = e.body.getPosition(), r = 0.62 - 0.26 * sstep(u), fr = C.kind === 'frost';
+        ctx.save();
+        ctx.lineWidth = 0.05 + 0.03 * u; ctx.setLineDash([0.16, 0.1]); ctx.lineDashOffset = -t * 1.4;
+        ctx.strokeStyle = fr ? `rgba(120,200,255,${0.55 + 0.45 * u})` : `rgba(255,70,40,${0.55 + 0.45 * u})`;
+        ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, TAU); ctx.stroke();
+        ctx.restore();
+      });
+    }
+    // fire against frost: the two jets meet in a ball of steam between them (drawn once, by the fire one)
+    if (C.ph === 'face' && C.kind !== 'frost') {
+      const O = sim.sals.find((x) => x.id === C.fid), el = C.dur - C.t;
+      if (O && O.pts.length && el > FACE.jet) after.push(() => {
+        const a = C.pts[0], b = O.pts[0], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, g = sstep((el - FACE.jet) / 0.5), end = sstep((el - FACE.burst) / 0.5);
+        pxSpace(ctx, mx, my, k, () => {
+          for (let i = 0; i < 7; i++) {
+            const f = (((t * 0.9 + i * 0.37) % 1) + 1) % 1, an = i * 2.4 + t * 0.6, rr = (0.1 + 0.34 * f + 0.3 * end) * k, x = Math.cos(an) * rr * 0.8, y = Math.sin(an) * rr * 0.6 - f * 0.25 * k - end * 0.2 * k;
+            ctx.fillStyle = `rgba(240,247,255,${0.6 * g * (1 - f * 0.7) * (1 - 0.6 * end)})`;
+            ctx.beginPath(); ctx.arc(x, y, (0.12 + 0.12 * f + 0.1 * end) * k, 0, TAU); ctx.fill();
+          }
+        });
+      });
+    }
     // a face-off: the snake's venom in flight at it
     if (C.ph === 'rival') {
       const el = C.dur - C.t, S = sim.snakes.find((x) => x.id === C.rid);

@@ -8,7 +8,7 @@
 // boss's lava rocks fly from its mouth (boss.js reads salBossPose).
 //
 // It walks a channel (follow-the-leader trail, like the snakes) and climbs through gaps toward the channel of the
-// leading egg. It never eats eggs. It grips both walls: the ring under it (the channel's floor ring, or the ring whose
+// leading egg. Since 0.8.14 it bites: an egg at its snout is eaten (BITE below). It grips both walls: the ring under it (the channel's floor ring, or the ring whose
 // gap it is crossing) carries it round, so turning that ring steers it.
 // Every `every` s it stops (always with all four feet down), telegraphs (coil, pitch up, frill, inhale: WARN x the
 // mode's PRED.warn), then breathes a jet at one wall just ahead of it. That section turns red-hot for HOT_T: an egg
@@ -51,6 +51,20 @@ export const BRAIN = {
   reach: 1.3, chin: 0.2, wall: 0.5, hunt: 1.5, sated: 3, // m breath range ahead (from chin m), m from a wall's centre line, s climb cooldown while hunting,
   // s it walks on after an aimed breath
 };
+// The bite (0.8.14: "salamanders are never ever attacking the eggs"). An egg within BITE.reach m of the snout (and not behind
+// the head): it stops, coils (BITE.coil s x the mode's PRED.warn: head back, jaws wide, eyes on the egg), then snaps.
+//   The egg rolled out of BITE.reach + BITE.keep in time: the jaws clack on air ('miss', BITE.miss s) and it walks on.
+//   Fire salamander: it EATS the egg (break 'sal'), chews BITE.chew s, then is full for BITE.full s.
+//   Frost salamander (kind 'frost'): frost bite, one crack and the egg freezes onto its wall for FROST.freeze s (break 'frostbite').
+//   A stone / rock-skin / feather egg, or a decoy: it bites on rock and reels (daze BITE.ouch s x PRED.back).
+//   A water egg douses the fire one, a flaming egg melts the frost one (salQuell: hiss, out of action SAL.cool s). A chick flaps free.
+// The frost salamander (level.salamander {kind: 'frost'}): the same crawler in blue. Its breath does not heat the wall, it
+//   ices it (sg.ice, the gecko's frictionless floor) for FROST.ice s; fire is to it what water is to the fire one.
+// Face-off (FACE): a fire and a frost salamander meeting head to head in one channel stop, breathe at each other, and the
+//   steam knocks both out: the fire one cools (SAL.cool s), the frost one is dazed FACE.daze s. Neither bites meanwhile.
+export const BITE = { reach: 0.62, keep: 0.22, back: 0.12, coil: 0.85, snap: 0.16, chew: 1.3, miss: 0.55, ouch: 1.8, full: 3.5, cd: 1.2 };
+export const FROST = { ice: 6, freeze: 3.5 };
+export const FACE = { r: 1.25, t: 3.0, jet: 0.9, burst: 2.3, daze: 3.5, cd: 12, back: 0.9 };
 // phases in which a crawler looks about for eggs
 const SENSE = new Set(['walk', 'brake', 'turn', 'warn', 'fire', 'settle', 'rest', 'block', 'lick', 'hip', 'drop', 'gloat']);
 // The frost gecko (species 'gecko': Baron von Brr, the level-15 boss; level.bossFight.gecko {delay, dir}). The same crawler,
@@ -90,6 +104,7 @@ export const salMethods = {
         a: 0, rad: 0, pts: [], odo: 0, car: -1, carA: 0, next: 0, tw: 1, cool: 0, wetCD: 0, back: 0, shove: 0,
         rivalCD: 0, rid: -1, rv: 0, climbCD: 0, climb: null, charge: 0, lavaCD: 0, hold: 0, bph: 0, bk: -1, bsaved: 0, hole: 0,
         ht: -1, htT: BRAIN.quiet, alT: 0, brT: 9, tcd: 0, jet: 0, jk: -1, ut: 0, uA: 0, uR: 0, uD: 1, // the brain (BRAIN)
+        kind: P.kind === 'frost' && !P.gecko && !P.cham && !P.thorn ? 'frost' : '', bj: -1, bcd: 0, ate: 0, fid: -1, fcd: 0, fv: 0, // the bite (BITE), the face-off (FACE)
       });
     });
   },
@@ -171,7 +186,7 @@ export const salMethods = {
     if (C.ph === 'gone' || C.ph === 'warp') return; // v3.4: 'warp' = inside a warp gate (sim/warp.js moves it)
     if (C.ph === 'wait') { if (play && (C.t -= dt) <= 0) this.salEnter(C); return; }
     this.salCarry(C);
-    for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD', 'bored', 'tcd', 'alT']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
+    for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD', 'bored', 'tcd', 'alT', 'bcd', 'fcd']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
     C.brT = Math.min(99, C.brT + dt);
     if (play && C.sp !== 'chameleon') { if (SENSE.has(C.ph)) this.salSense(C, dt); else if (C.ht < 0) C.htT = Math.min(99, C.htT + dt); }
     if (C.sp === 'gecko') { this.geckoOne(C, dt, play); return; }
@@ -183,10 +198,15 @@ export const salMethods = {
       if (C.boss) this.salBossSync(C);
       if (C.cool <= 0 && C.wetCD <= 0 && C.ph !== 'in') this.salWater(C);
       if ((C.ph === 'walk' || C.ph === 'brake' && C.pend === 'warn') && C.rivalCD <= 0) this.salRivalCheck(C);
+      if ((C.ph === 'walk' || C.ph === 'brake' && (C.pend === 'warn' || C.pend === 'coil')) && C.fcd <= 0 && C.cool <= 0) this.salFaceCheck(C);
     }
     switch (C.ph) {
       case 'in': if ((C.t -= dt) <= 0) this.salSet(C, 'walk'); break;
       case 'walk': {
+        if (play && C.cool <= 0 && C.bcd <= 0 && !C.climb) { // an egg at its snout: coil, then snap (BITE)
+          const e = this.salBiteAt(C);
+          if (e) { C.bj = e.id; this.salHalt(C, 'coil', BITE.coil * this.PM.warn); break; }
+        }
         if (play && C.cool <= 0 && !C.boss && C.bored <= 0 && C.brT >= this.PM.salGap && !C.climb && !this.salCrossing(C)) { // an egg by a wall just ahead: breathe at it
           const S = this.salStrikeAt(C);
           if (S) { C.tw = S.w; C.jet = S.jet; C.jk = S.id; this.salHalt(C, 'warn', SAL.warn * this.PM.warn); break; }
@@ -219,6 +239,10 @@ export const salMethods = {
         if ((C.t -= dt) <= 0) { if (C.jet > 0) C.bored = BRAIN.sated; // an aimed breath: it walks on for a while (no camping on one egg)
           C.next = C.jet > 0 ? Math.max(C.next, this.salEvery(C) * 0.5) : this.salEvery(C); C.jet = 0; C.jk = -1; this.salSet(C, 'walk'); }
         break;
+      case 'coil': if ((C.t -= dt) <= 0) this.salSnap(C); break;
+      case 'chew': if ((C.t -= dt) <= 0) { C.bored = BITE.full; C.bcd = BITE.full; C.next = Math.max(C.next, 2); this.salSet(C, 'walk'); } break;
+      case 'miss': if ((C.t -= dt) <= 0) { C.bcd = BITE.cd; this.salSet(C, 'walk'); } break;
+      case 'face': this.salFaceStep(C, dt, play); break;
       case 'hiss': if ((C.t -= dt) <= 0) { C.back = SAL.coolBack * C.size; this.salSet(C, 'retreat'); } break;
       case 'retreat': {
         const d = Math.min(C.back, SAL.backV * dt);
@@ -244,6 +268,7 @@ export const salMethods = {
     C.mv = ph === 'retreat' ? -1 : 1;
     if (ph === 'turn') { C.ut = C.rad <= this.salMid(this.salCh(C)) ? 1 : -1; C.uA = C.a; C.uR = C.rad; C.uD = C.dir; C.climb = null; }
     if (ph === 'warn' && C.jet > 0) this.salAim(C);
+    if (ph === 'coil') { const e = this.salBiteEgg(C), h = C.pts[0], p = e ? e.body.getPosition() : h; this.emit('salCoil', { x: h.x, y: h.y, ex: p.x, ey: p.y, id: C.id, egg: e, frost: C.kind === 'frost' }); }
     if (ph === 'warn') { const T = this.salTarget(C), h = C.pts[0]; this.emit('salWarn', { x: T.x, y: T.y, hx: h.x, hy: h.y, ring: T.ri, id: C.id }); }
   },
   // Stop with all four feet down: a walk runs on (fast) to the next phase of the stride where every foot is planted
@@ -471,12 +496,108 @@ export const salMethods = {
     C.jet = clamp(ahead, 0.35, BRAIN.reach);
   },
 
+  // ---------- the bite (BITE)
+  salBiteEgg(C) { return C.bj >= 0 ? this.eggs.find((x) => x.id === C.bj && x.alive && !x.saved) || null : null; },
+  // m from the snout to an egg, or -1 when it is behind the head
+  salBiteDist(C, e) {
+    const h = C.pts[0], p = e.body.getPosition(), hr = Math.max(0.5, Math.hypot(h.x, h.y));
+    const ahead = wrap(Math.atan2(p.y, p.x) - Math.atan2(h.y, h.x)) * hr * C.dir;
+    return ahead < -BITE.back ? -1 : Math.hypot(p.x - h.x, p.y - h.y);
+  },
+  // an egg it could bite now: the nearest one in reach of the snout (the same eggs the brain hunts; a frozen one is left be)
+  salBiteAt(C) {
+    let best = null, bd = BITE.reach * Math.max(0.9, this.salRank(C));
+    for (const e of this.aliveEggs()) {
+      if (!this.salPreyOK(C, e) || e.icy > 0) continue;
+      const d = this.salBiteDist(C, e);
+      if (d >= 0 && d < bd) { bd = d; best = e; }
+    }
+    return best;
+  },
+  salSnap(C) {
+    const e = this.salBiteEgg(C), h = C.pts[0];
+    const d = e ? this.salBiteDist(C, e) : -1;
+    C.bj = -1;
+    if (!e || d < 0 || d > (BITE.reach + BITE.keep) * Math.max(0.9, this.salRank(C)) || !this.salPreyOK(C, e)) { // it rolled away in time: the jaws clack on air
+      this.salSet(C, 'miss', BITE.miss);
+      this.emit('salSnapMiss', { x: h.x, y: h.y, id: C.id });
+      return;
+    }
+    const p = e.body.getPosition(), frost = C.kind === 'frost';
+    if (frost ? e.fire > 0 : e.water > 0) { this.salQuell(C, p.x, p.y); return; } // a mouthful of water (of fire)
+    if (this.armored(e)) { // rock skin, stone, the feather: it bites on something hard and reels
+      C.bcd = BITE.full; C.next = Math.max(C.next, 2.5);
+      this.salSet(C, 'daze', BITE.ouch * this.PM.back); C.dk = 'ouch';
+      this.emit('salOuch', { x: (p.x + h.x) / 2, y: (p.y + h.y) / 2, id: C.id, egg: e });
+      return;
+    }
+    if (e.chick) { this.chickFlee(e, 'snake'); C.ate++; this.salSet(C, 'chew', BITE.chew * 0.6); this.emit('salEat', { x: p.x, y: p.y, id: C.id, chick: true, frost }); return; }
+    if (frost) { // frost bite: a crack, and the egg freezes onto its wall (Easy: never the breaking crack)
+      const last = this.MD.softThorns && e.cracks >= 2;
+      if (!last) this.crack(e, 0, 'frostbite');
+      if (e.alive) this.iceEgg(e, FROST.freeze);
+      this.salSet(C, 'chew', BITE.chew * 0.6);
+      this.emit('salFrostBite', { x: p.x, y: p.y, hx: h.x, hy: h.y, id: C.id, egg: e, soft: last ? 1 : 0 });
+      return;
+    }
+    this.breakEgg(e, 'sal');
+    if (e.alive) { this.salSet(C, 'miss', BITE.miss); this.emit('salSnapMiss', { x: h.x, y: h.y, id: C.id, guard: 1 }); return; } // the guardian feather held
+    C.ate++;
+    this.salSet(C, 'chew', BITE.chew);
+    this.emit('salEat', { x: p.x, y: p.y, hx: h.x, hy: h.y, id: C.id });
+  },
+  // freeze an egg onto the nearer wall of its channel for T s: it rides that ring, nothing else moves it (the gecko's lick, the frost bite)
+  iceEgg(e, T) {
+    const p = e.body.getPosition(), n = this.rings.length, c = this.channelOf(e), d = Math.hypot(p.x, p.y);
+    let ring = null;
+    for (const ri of [c - 1, c]) if (ri >= 0 && ri < n && (!ring || Math.abs(this.rings[ri].r - d) < Math.abs(ring.r - d))) ring = this.rings[ri];
+    if (!ring) return false;
+    const rb = ring.body, lp = rb.getLocalPoint(p);
+    e.hold = { ri: ring.i, x: lp.x, y: lp.y, a: e.body.getAngle() - rb.getAngle() };
+    e.icy = T;
+    e.body.setLinearVelocity(rb.getLinearVelocityFromWorldPoint(p)); e.body.setAngularVelocity(rb.getAngularVelocity());
+    return true;
+  },
+
+  // ---------- the face-off: fire against frost (FACE)
+  salFaceCheck(C) {
+    if (C.boss || C.sp !== 'sal') return;
+    const hc = this.salCh(C), h = C.pts[0];
+    for (const O of this.sals) {
+      if (O === C || O.sp !== 'sal' || O.boss || (O.kind === 'frost') === (C.kind === 'frost') || !this.salLive(O) || O.fcd > 0 || O.cool > 0) continue;
+      if (!(O.ph === 'walk' || O.ph === 'brake' || O.ph === 'warn' || O.ph === 'coil' || O.ph === 'settle' || O.ph === 'miss')) continue;
+      if (this.salCh(O) !== hc || this.salCrossing(O) || this.salCrossing(C)) continue;
+      const oh = O.pts[0];
+      if (Math.hypot(oh.x - h.x, oh.y - h.y) > FACE.r) continue;
+      for (const X of [C, O]) { this.salRelease(X); X.climb = null; X.bj = -1; X.jet = 0; X.fid = X === C ? O.id : C.id; X.fv = 0; X.next = Math.max(X.next, FACE.t + 1.5); this.salSet(X, 'face', FACE.t); }
+      this.emit('salFace', { x: (h.x + oh.x) / 2, y: (h.y + oh.y) / 2, a: C.id, b: O.id });
+      return;
+    }
+  },
+  salFaceStep(C, dt, play) {
+    const O = this.sals.find((x) => x.id === C.fid), el = C.dur - C.t;
+    if (!play || !O || (O.ph !== 'face' && el < FACE.burst)) { C.fid = -1; C.fcd = FACE.cd * 0.5; this.salSet(C, 'walk'); return; } // the other one was knocked out of it
+    const h = C.pts[0], oh = O.pts[0], mx = (h.x + oh.x) / 2, my = (h.y + oh.y) / 2;
+    if (el < FACE.jet && Math.hypot(oh.x - h.x, oh.y - h.y) < 0.95) this.salBackWalk(C, SAL.backV * 0.5 * dt); // nose to nose, never touching
+    if (el >= FACE.jet && !(C.fv & 1)) { C.fv |= 1; this.emit('salFaceJet', { x: h.x, y: h.y, tx: mx, ty: my, id: C.id, frost: C.kind === 'frost' }); }
+    if (el >= FACE.burst && !(C.fv & 2)) { C.fv |= 2; if (C.kind !== 'frost') this.emit('salFaceBurst', { x: mx, y: my, a: C.id, b: O.id }); }
+    if ((C.t -= dt) > 0) return;
+    C.fid = -1; C.fcd = FACE.cd; C.bcd = Math.max(C.bcd, 2); C.bored = Math.max(C.bored, 2);
+    if (C.kind === 'frost') { this.salSet(C, 'daze', FACE.daze); C.dk = 'melt'; }
+    else { C.cool = SAL.cool; C.wetCD = SAL.cool + SAL.wetCD; C.back = FACE.back * C.size; this.salSet(C, 'retreat'); }
+  },
+
   // ---------- the breath
   salFire(C) {
     const T = this.salTarget(C), ring = this.rings[T.ri], la = T.a - ring.body.getAngle(), half = (SAL.hotLen * C.size) / (2 * ring.r);
     const k = ++this.salBurnN;
     C.brT = 0;
     let n = 0;
+    if (C.kind === 'frost') { // the frost salamander: the section ices over (frictionless), nothing burns
+      ring.segs.forEach((sg) => { if (sg.alive && Math.abs(wrap((sg.a0 + sg.a1) / 2 - la)) <= half) { sg.ice = Math.max(sg.ice || 0, FROST.ice); n++; } });
+      this.emit('salFrost', { x: T.x, y: T.y, ring: ring.i, id: C.id, n });
+      return;
+    }
     ring.segs.forEach((sg, si) => {
       if (!sg.alive || Math.abs(wrap((sg.a0 + sg.a1) / 2 - la)) > half) return;
       if (!(sg.hot > 0)) this.salHot.push({ ri: ring.i, si });
@@ -518,22 +639,23 @@ export const salMethods = {
 
   // ---------- water
   salWater(C) {
-    const h = this.salHead(C);
+    const h = this.salHead(C), frost = C.kind === 'frost'; // water douses the fire one; fire (a flaming egg, a flame orb) melts the frost one
     let wet = null;
-    for (const o of this.orbs) if (o.alive && o.type === 'water' && Math.hypot(o.x - h.x, o.y - h.y) < 0.55 * C.size) { wet = o; break; }
+    for (const o of this.orbs) if (o.alive && (frost ? o.type === 'fire' || o.type === 'fire_black' : o.type === 'water') && Math.hypot(o.x - h.x, o.y - h.y) < 0.55 * C.size) { wet = o; break; }
     if (!wet) for (const e of this.aliveEggs()) {
-      if (!(e.water > 0)) continue;
+      if (!(frost ? e.fire > 0 : e.water > 0)) continue;
       const p = e.body.getPosition();
       if (Math.hypot(p.x - h.x, p.y - h.y) < 0.8 * C.size || C.pts.some((q, i) => i % 4 === 0 && Math.hypot(p.x - q.x, p.y - q.y) < 0.5 * C.size)) { wet = { x: p.x, y: p.y }; break; }
     }
     if (wet) this.salWet(C, wet.x, wet.y);
   },
+  salQuell(C, x, y) { this.salWet(C, x, y); },
   salWet(C, x, y) {
-    this.salRelease(C);
+    this.salRelease(C); C.bj = -1; C.fid = -1;
     C.cool = SAL.cool; C.wetCD = SAL.cool + SAL.wetCD; C.climb = null;
     C.next = Math.max(C.next, 2);
     this.salHalt(C, 'hiss', SAL.hiss);
-    this.emit('salCool', { x, y, hx: C.pts[0].x, hy: C.pts[0].y, id: C.id });
+    this.emit('salCool', { x, y, hx: C.pts[0].x, hy: C.pts[0].y, id: C.id, frost: C.kind === 'frost' });
   },
 
   // ---------- hazards: gust | rock | lava | quake | bolt | ice | flash (glow chick) | dash (dash chick) | water
@@ -550,6 +672,8 @@ export const salMethods = {
       this.emit('salHit', { kind, x: h.x, y: h.y, id: C.id });
       return;
     }
+    if (C.kind === 'frost' && kind === 'water') return; // water is nothing to the frost one; lava melts it
+    if (C.kind === 'frost' && (kind === 'rock' || kind === 'lava')) { if (C.cool <= 0 && C.wetCD <= 0) this.salWet(C, o.x ?? h.x, o.y ?? h.y); return; }
     if (kind === 'rock' || kind === 'lava') { // immune: the lava recharges it, so its next breath comes sooner
       if (C.lavaCD > 0) return;
       C.lavaCD = 1.5; C.charge = 1;
@@ -564,7 +688,7 @@ export const salMethods = {
     if (!T) return;
     if (C.ph === 'daze' && C.t > T * 0.5) return;
     this.salRelease(C);
-    C.climb = null;
+    C.climb = null; C.bj = -1; C.fid = -1;
     C.next = Math.max(C.next, T + 1);
     if (kind === 'dash') C.shove -= C.dir * 0.35; // bonked back along the channel
     this.salHalt(C, 'daze', T);
@@ -589,7 +713,7 @@ export const salMethods = {
   // why: 'frost' (frozen), 'bolt' (zapped), '' (a plain stun: the rooster, a phase change, a spin) - only the art cares
   salDaze(C, T, why = '') {
     if (!this.salLive(C) || C.ph === 'in') return;
-    this.salRelease(C); C.climb = null; C.next = Math.max(C.next, T + 1);
+    this.salRelease(C); C.climb = null; C.bj = -1; C.fid = -1; C.next = Math.max(C.next, T + 1);
     this.salHalt(C, 'daze', T);
     C.dk = why;
   },
@@ -739,16 +863,13 @@ export const salMethods = {
     const p = e.body.getPosition();
     if (Math.hypot(p.x - h.x, p.y - h.y) > GECKO.reach + 0.4) { this.emit('geckoMiss', { x: h.x, y: h.y, id: C.id }); return; }
     if (this.armored(e) || e.chick || e.fire > 0) { this.emit('geckoShrug', { x: p.x, y: p.y, egg: e, id: C.id }); return; } // stone, rock skin, the feather; a flaming egg
-    // frozen onto the nearer wall of its channel: it rides that ring, nothing else moves it
-    const n = this.rings.length, c = this.channelOf(e), d = Math.hypot(p.x, p.y);
-    let ring = null;
-    for (const ri of [c - 1, c]) if (ri >= 0 && ri < n && (!ring || Math.abs(this.rings[ri].r - d) < Math.abs(ring.r - d))) ring = this.rings[ri];
-    if (!ring) return;
-    const rb = ring.body, lp = rb.getLocalPoint(p);
-    e.hold = { ri: ring.i, x: lp.x, y: lp.y, a: e.body.getAngle() - rb.getAngle() };
-    e.icy = GECKO.freeze;
-    e.body.setLinearVelocity(rb.getLinearVelocityFromWorldPoint(p)); e.body.setAngularVelocity(rb.getAngularVelocity());
-    this.emit('geckoLick', { x: p.x, y: p.y, egg: e, id: C.id, hx: h.x, hy: h.y });
+    // 0.8.14: his lick bites. One crack (Easy: never the breaking one), then the egg is frozen onto the nearer wall of its
+    // channel: it rides that ring, nothing else moves it
+    const last = this.MD.softThorns && e.cracks >= 2;
+    if (!last) this.crack(e, 0, 'frostbite');
+    if (!e.alive) return;
+    if (!this.iceEgg(e, GECKO.freeze)) return;
+    this.emit('geckoLick', { x: p.x, y: p.y, egg: e, id: C.id, hx: h.x, hy: h.y, bite: last ? 0 : 1 });
   },
   // icy feet: the floor under him (the wall eggs rest on: the inner one on the upper arc, the outer one below) ices over
   geckoIce(C) {
@@ -786,6 +907,12 @@ export const salMethods = {
       if (!(sg.hot > 0.3) || e.hotK === sg.hotK || Math.abs(d - ring.r) > RING_TH / 2 + 0.45) continue;
       const la = mod(ang - ring.body.getAngle(), TAU), pad = 0.35 / ring.r;
       if ((la > sg.a0 - pad && la < sg.a1 + pad) || (la + TAU > sg.a0 - pad && la + TAU < sg.a1 + pad)) { v = 1; break; }
+    }
+    for (const C of this.sals) { // the bite: coiling at this egg, or its snout close by
+      if (C.sp !== 'sal' || !this.salLive(C) || C.cool > 0 || C.ph === 'daze' || C.ph === 'chew' || C.ph === 'face') continue;
+      if ((C.ph === 'coil' || (C.ph === 'brake' && C.pend === 'coil')) && C.bj === e.id) { v = 1; break; }
+      const h = C.pts[0], d = Math.hypot(p.x - h.x, p.y - h.y);
+      if (C.bcd <= 0 && d < 1.5) v = Math.max(v, d < 0.9 ? 0.9 : 0.6);
     }
     for (const C of this.sals) {
       if (C.ph !== 'warn' && !(C.ph === 'brake' && C.pend === 'warn')) continue;

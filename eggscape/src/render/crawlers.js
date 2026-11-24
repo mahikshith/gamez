@@ -225,6 +225,13 @@ export function poseParams(pose, p) {
       P.frill = 0.22 + 0.6 * up;
       break;
     }
+    case 'bite': { // 0-.8 coil: the forebody pulls back, jaws wide, frill up; .8-1 snap: the head darts down and the jaws shut
+      const c = sstep(p / 0.35), snap = sstep((p - 0.8) / 0.07);
+      P.crouch = 0.6 * Math.sin(Math.PI * clamp(p / 0.25, 0, 1)) + 0.6 * snap * (1 - sstep((p - 0.9) / 0.1));
+      P.rear = 0.9 * c * (1 - snap); P.mouth = c * (1 - snap); P.angry = 1; P.shake = 0.5 * c * (1 - snap); P.frill = 0.22 + 0.78 * c;
+      break;
+    }
+    case 'chew': P.swell = 0.5 + 0.32 * Math.sin(p * Math.PI * 7); P.mouth = 0.1 * Math.max(0, Math.sin(p * Math.PI * 7 + 1.2)); P.crouch = 0.18; P.frill = 0.4; break; // cheeks full, working
     case 'dazed': P.dazed = 1; P.splay = 1; P.tongue = 0.6; P.frill = 0; break;
     case 'cool': P.steam = 1; P.frill = 0; break;
     case 'melt': { // gecko: slumps into a puddle (eyes left floating), then pulls itself back together

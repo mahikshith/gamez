@@ -305,7 +305,7 @@ function drawLickFx(ctx, C, t) {
 }
 // an egg he licked: frozen solid in a block of ice (drawn over the eggs, render/boss.js drawBossOver)
 export function drawGeckoOver(ctx, sim, k, t) {
-  if (!isGecko15(sim)) return;
+  if (!isGecko15(sim) && !(sim.sals || []).some((C) => C.kind === 'frost')) return; // (0.8.14: the frost salamander's bite freezes eggs too)
   for (const e of sim.aliveEggs()) {
     if (!(e.icy > 0)) continue;
     const p = e.body.getPosition(), age = GECKO.freeze - e.icy, grow = sstep(age / 0.28), end = e.icy < 0.6 ? 1 - e.icy / 0.6 : 0;

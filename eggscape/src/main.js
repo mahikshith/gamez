@@ -2498,7 +2498,7 @@ const EV_HURT = {
   thiefGrab: [0.5, 'attack'], thiefPounce: [0.4, 'attack'], chamSnatch: [0.45, 'attack'], chamGulp: [0.5, 'attack'], geckoLick: [0.35, 'attack'],
   frogTongue: [0.35, 'attack'], frogEat: [0.5, 'attack'], frogGulp: [0.45, 'attack'], frogLand: [0.2, 'tick'], octGrab: [0.5, 'attack'], octInk: [0.3, 'attack'],
   hermitGrab: [0.45, 'attack'], gatorSnap: [0.55, 'attack'], jellySting: [0.45, 'attack'], mosqLatch: [0.35, 'attack'], owlGrab: [0.5, 'attack'], owlSlam: [0.6, 'slam'],
-  turtleClamp: [0.45, 'attack'], mvDiveGrab: [0.5, 'attack'], kcSnap: [0.5, 'attack'], salScorch: [0.45, 'attack'], salFire: [0.3, 'attack'], puffSpine: [0.35, 'attack'],
+  turtleClamp: [0.45, 'attack'], mvDiveGrab: [0.5, 'attack'], kcSnap: [0.5, 'attack'], salScorch: [0.45, 'attack'], salFire: [0.3, 'attack'], salEat: [0.6, 'attack'], salFrostBite: [0.45, 'attack'], salCoil: [0.25, 'attack'], puffSpine: [0.35, 'attack'],
   thornSwipe: [0.4, 'attack'], thornThrown: [0.3, 'attack'], ratCuff: [0.3, 'attack'], webCatch: [0.3, 'attack'], spiderFlung: [0.3, 'attack'],
   // hits that land
   icicleHit: [0.45, 'hit'], emberHit: [0.4, 'hit'], lightning: [0.6, 'slam'], quake: [0.7, 'slam'], explode: [0.7, 'slam'], smash: [0.55, 'slam'], scorch: [0.4, 'hit'],
@@ -3117,7 +3117,7 @@ function handleEvents() {
         // a scorch crack: the popup steps aside from the salamander's head, which breathes right there
         let px = ev.x;
         if (ev.why === 'scorch' && sim.sals) { const h = sim.sals.map((C) => C.pts[0]).filter(Boolean).sort((a, b) => Math.hypot(a.x - ev.x, a.y - ev.y) - Math.hypot(b.x - ev.x, b.y - ev.y))[0]; if (h) px += h.x > ev.x ? -0.7 : 0.7; }
-        popup(px, ev.y + 0.55, `Crack ${ev.n || ev.egg.cracks}/3`, { sub: ev.why === 'fall' && v3Fall ? (v3Fall === 'eagle' ? 'dropped by the eagle' : `fell ${v3Fall} rings`) : ev.why === 'scorch' ? 'red-hot wall' : ev.why === 'spike' ? 'grey spikes crack, never break' : '', color: (ev.n || 1) >= 2 ? '#ff7a6a' : '#ffc24a', size: 18, life: 1.1 });
+        popup(px, ev.y + 0.55, `Crack ${ev.n || ev.egg.cracks}/3`, { sub: ev.why === 'fall' && v3Fall ? (v3Fall === 'eagle' ? 'dropped by the eagle' : `fell ${v3Fall} rings`) : ev.why === 'scorch' ? 'red-hot wall' : ev.why === 'frostbite' ? 'frost bite' : ev.why === 'thornback' ? 'rammed by a thorn-back' : ev.why === 'spike' ? 'grey spikes crack, never break' : '', color: (ev.n || 1) >= 2 ? '#ff7a6a' : '#ffc24a', size: 18, life: 1.1 });
         break;
       case 'break': {
         if (ev.why === 'thorn') W.thornBite(G.sim, ev.x, ev.y, G.t); // v3.3: the thorn stabs
@@ -3134,7 +3134,7 @@ function handleEvents() {
         G.hitstop = save.calm ? 0.07 : 0.1;
         camPunch(0.05, ev.x, ev.y);
         hen('cry', 2.2);
-        const why = { thorn: 'Thorn!', thief: 'Stolen!', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', eagle: 'The eagle took it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!', fall: 'Fell too far!', curtain: 'Thorn curtain!', lavarock: 'Lava rock!', icicle: 'Icicle!', heat: 'Too hot!' }[ev.why] || '';
+        const why = { thorn: 'Thorn!', thief: 'Stolen!', ground: 'Missed the nest', lava: 'Into the lava', impact: 'Smashed!', lost: 'Lost', snake: 'The snake got it!', sal: 'Eaten!', frostbite: 'Frost bite!', thornback: 'Rammed!', eagle: 'The eagle took it!', spike: 'Spiked!', ember: 'Burnt!', lightning: 'Zapped!', zap: 'Zapped!', thornball: 'Thorn ball!', blast: 'Blasted!', fall: 'Fell too far!', curtain: 'Thorn curtain!', lavarock: 'Lava rock!', icicle: 'Icicle!', heat: 'Too hot!' }[ev.why] || '';
         if (why && ev.why !== 'fuse') popup(ev.x, ev.y + 0.5, why, { color: '#ff8a7a', size: 20, life: 1.2 });
         break;
       }
@@ -3492,8 +3492,9 @@ function salEvent(ev, fx) {
     case 'spikeUp': audio.play(ev.sk === 'crystal' ? 'glass_crack' : 'rock_hit', { vol: 0.5, pitch: ev.sk === 'crystal' ? 1.4 : 1.6 }); fx.chips(ev.x, ev.y, ev.sk === 'crystal' ? '#d9c8ff' : '#c9a160', 5, 1.4); break;
     case 'thornHip':
       audio.play('egg_bump', { vol: 0.7, pitch: 0.9 });
-      popup(ev.x, ev.y + 0.5, ev.blocked ? 'Blocked!' : 'Shove!', { color: ev.blocked ? '#cfe8ff' : '#ffe1a8', size: 16, life: 0.8 });
-      once('thornHip', 'A hip-check shoves an egg along the channel. It never cracks it by itself.');
+      if (!ev.hurt) popup(ev.x, ev.y + 0.5, ev.blocked ? 'Blocked!' : 'Shove!', { color: ev.blocked ? '#cfe8ff' : '#ffe1a8', size: 16, life: 0.8 }); // (a ram that cracks: the crack popup names it)
+      else { fx.chips(ev.x, ev.y, '#f3e8d2', 5, 1.8); fx.shake = Math.max(fx.shake, 0.18); }
+      once('thornHip', 'A thorn-back rams an egg along the channel and cracks it. Keep your eggs away from his snout.');
       break;
     case 'thornFlip':
       audio.play('rock_hit', { vol: 0.9, pitch: 0.7 }); fx.shake = Math.max(fx.shake, 0.25);
@@ -3539,8 +3540,8 @@ function salEvent(ev, fx) {
     case 'geckoLick':
       fx.sparkle(ev.x, ev.y, 10, '#dff6ff'); // sound: frost_lick (EVENT_SFX)
       fx.chips(ev.x, ev.y, '#d9f3ff', 6, 1.6);
-      popup(ev.x, ev.y + 0.55, 'Licked frozen!', { color: '#bfeaff', size: 18, life: 1.0 });
-      once('geckoLick', 'A frozen egg is stuck, but nothing can crack it until it thaws.');
+      if (!ev.bite) popup(ev.x, ev.y + 0.55, 'Licked frozen!', { color: '#bfeaff', size: 18, life: 1.0 }); // (a frost bite: the crack popup names it)
+      once('geckoLick', 'His lick bites: a crack, and the egg is frozen stuck until it thaws.');
       break;
     case 'eggThaw':
       audio.play('glass_crack', { vol: 0.45, pitch: 1.5 });
@@ -3596,6 +3597,56 @@ function salEvent(ev, fx) {
       break;
     case 'salPuff': // sound: sal_breath (EVENT_SFX)
       fx.burst(ev.x, ev.y, 6, (i, a, b) => ({ x: ev.x, y: ev.y, vx: (ev.tx - ev.x) * (0.8 + a) + (b - 0.5), vy: (ev.ty - ev.y) * (0.8 + a) + (b - 0.5), drag: 3, life: 0.35, size: 0.05, color: '#ffb347' }));
+      break;
+    // ---- 0.8.14: the bite, the frost salamander, fire against frost
+    case 'salCoil':
+      audio.play('sal_call', { vol: 0.75, pitch: ev.frost ? 1.5 : 1.3 });
+      once('salCoil', ev.frost ? 'The frost salamander is about to bite. Roll the egg away!' : 'The salamander is about to eat that egg. Roll it away!');
+      break;
+    case 'salEat':
+      audio.play('squish', { intensity: 0.9, pitch: 0.65 });
+      audio.play('rock_hit', { vol: 0.5, pitch: 1.4 });
+      if (!ev.chick) fx.chips(ev.x, ev.y, '#f3e8d2', 8, 2);
+      fx.shake = Math.max(fx.shake, 0.25);
+      break;
+    case 'salSnapMiss':
+      audio.play('rock_hit', { vol: 0.45, pitch: 1.7 });
+      popup(ev.x, ev.y + 0.6, ev.guard ? 'Feather!' : 'Missed!', { color: '#c9ff9e', size: 18, life: 0.9 });
+      break;
+    case 'salOuch':
+      audio.play('rock_hit', { vol: 0.9, pitch: 0.8 });
+      fx.sparkle(ev.x, ev.y, 8, '#fff2a8');
+      fx.shake = Math.max(fx.shake, 0.2);
+      popup(ev.x, ev.y + 0.6, 'Too hard to bite!', { color: '#fff2a8', size: 18, life: 1.0 });
+      break;
+    case 'salFrostBite':
+      audio.play('frost_lick', { vol: 0.9 });
+      fx.sparkle(ev.x, ev.y, 10, '#dff6ff');
+      fx.chips(ev.x, ev.y, '#d9f3ff', 6, 1.6);
+      if (ev.soft) popup(ev.x, ev.y + 0.55, 'Frozen!', { color: '#bfeaff', size: 18, life: 1.0 });
+      once('salFrostBite', 'A frost bite cracks the egg and freezes it stuck until it thaws.');
+      break;
+    case 'salFrost':
+      audio.play('frost_lick', { vol: 0.7, pitch: 0.8 });
+      fx.sparkle(ev.x, ev.y, 8, '#dff6ff');
+      once('salFrost', 'Frost breath ices the wall. Eggs slide on ice.');
+      break;
+    case 'salFace':
+      audio.play('sal_call', { vol: 0.85, pitch: 1.1 });
+      fx.sparkle(ev.x, ev.y, 10, '#ffe27a');
+      popup(ev.x, ev.y + 0.75, 'Fire vs frost!', { color: '#ffe27a', size: 24, life: 1.3 });
+      once('salFace', 'Fire meets frost! While they fight, neither one touches your eggs.');
+      break;
+    case 'salFaceJet':
+      audio.play(ev.frost ? 'frost_lick' : 'sal_breath', { vol: 0.6 });
+      break;
+    case 'salFaceBurst':
+      audio.play('ember_hiss', { vol: 0.9 });
+      audio.play('splash', { vol: 0.5, pitch: 0.8 });
+      fx.smoke(ev.x, ev.y, 6, 'rgba(236,244,255,0.6)');
+      fx.wave(ev.x, ev.y, 0.9, '#eaf6ff', 0.45, 0.07);
+      fx.shake = Math.max(fx.shake, 0.3);
+      popup(ev.x, ev.y + 0.75, 'Both knocked out!', { color: '#c9ff9e', size: 20, life: 1.3 });
       break;
     case 'salDive':
       audio.play('ember_hiss', { vol: 0.8 });

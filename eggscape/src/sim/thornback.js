@@ -6,7 +6,7 @@
 //   golem attacks (sim/boss.js stomp punch, sim/bossmoves.js cage shards) come from him; a due attack waits while he can't act.
 // level.bossFight.spike {delay, dir}: Spike, his sandy cousin (role 'spike'): 85% size, no boss attacks; on Easy he waits
 //   for the boss's phase 2 as well.
-// Both: crawl in through a gap of the outer ring, hunt the leading egg, never eat or break one.
+// Both: crawl in through a gap of the outer ring, hunt the leading egg. They do not eat eggs; the hip-check cracks one (0.8.14).
 //   Drop: every THORN.every s, when free, he hunches and flicks a spike off his back onto the floor just behind him: a
 //     crystal (Duke) or a thorn (Spike) that stands THORN life s (boss.js SPIKE: the thorn rule; a stone egg or a fast turn
 //     of either channel wall breaks it). At most THORN.max[role] stand at once. A standing spike also blocks the lizards.
@@ -184,7 +184,10 @@ export const thornMethods = {
     const tx = -Math.sin(ea) * s, ty = Math.cos(ea) * s, v = e.body.getLinearVelocity(), vt = v.x * tx + v.y * ty, want = THORN.shoveV * this.vs;
     if (vt < want) e.body.setLinearVelocity(Vec2(v.x + tx * (want - vt), v.y + ty * (want - vt)));
     e.body.setAwake(true);
-    this.emit('thornHip', { x: p.x, y: p.y, egg: e, id: C.id, dir: s, hx: h.x, hy: h.y });
+    // 0.8.14: his thorny hide cracks what he rams (not stone, rock skin or the feather; Easy: never the breaking crack)
+    const hurt = !this.armored(e) && !e.chick && !(this.MD.softThorns && e.cracks >= 2);
+    if (hurt) this.crack(e, 0, 'thornback');
+    this.emit('thornHip', { x: p.x, y: p.y, egg: e, id: C.id, dir: s, hx: h.x, hy: h.y, hurt: hurt ? 1 : 0 });
   },
   // a spike, a wall or a ring thorn on either wall of channel c within da (rad) of world angle a, the way s
   thornSharpAhead(c, a, s, da) {
