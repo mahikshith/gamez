@@ -233,7 +233,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 24, theme: "volcano", name: "Spike Forge", eggs: 3, target: 2, time: 90, spacing: 1, material: "obsidian", lava: {every: 6, delay: 5}, nest: {w: 3}, bonus: {kind: "time", s: 50}, salamander: {delay: 4, every: 6.5, a: 120, ch: 2}, tip: "Forge spikes pump in and out. Count the beat and pass while they are down.", orbs: [{type: "hourglass", ch: 1, a: -59},{type: "water", ch: 3, a: -51},{type: "fire_green", ch: 5, a: 118},{type: "hatch_swoop", ch: 2, a: -61}], seed: 190062, world: 5,
+    id: 24, theme: "volcano", name: "Spike Forge", eggs: 3, target: 2, time: 90, spacing: 1, material: "obsidian", lava: {every: 6, delay: 5}, nest: {w: 3}, bonus: {kind: "time", s: 50}, salamander: [{delay: 4, every: 6.5, a: 120, ch: 2},{delay: 9, every: 7, a: -30, ch: 2, dir: -1, kind: "frost"}], intro: {title: "Fire meets frost", line: "A frost salamander walks in. Its bite freezes an egg. When it meets the fire one they fight, and both are knocked out."}, tip: "Forge spikes pump in and out. Count the beat and pass while they are down.", orbs: [{type: "hourglass", ch: 1, a: -59},{type: "water", ch: 3, a: -51},{type: "fire_green", ch: 5, a: 118},{type: "hatch_swoop", ch: 2, a: -61}], seed: 190062, world: 5,
     rings: [
       {gear: 1, gaps: [{a: -15}], thorns: [{a: -175, n: 1}]},
       {retract: {phase: 2.21, period: 3, on: 0.5}, gaps: [{a: 50, x: 2}], thorns: [{a: 162, n: 2},{a: 158, n: 2},{a: 113, n: 2}], pads: [{a: -86, len: 1.23}]},

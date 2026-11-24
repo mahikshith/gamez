@@ -16,7 +16,7 @@ import { drawVillainPortrait } from './villain-art.js';
 import { drawHand } from './wonder.js';
 import { drawStrikeChick, drawStrikeButton } from './strike.js'; // 0.8.10: the chick scenes show the real HUD badge
 import { drawKindChick } from './chicks.js'; // the bulk chick's own art (L18's card)
-import { actorFor, harmActor, BREATH_AT, CHAM_ORB, BUMP_A } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers)
+import { actorFor, harmActor, BREATH_AT, CHAM_ORB, BUMP_A, BITE_AT, FACE_T } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers)
 import { statusDraw } from './status.js';
 import { beamSparks, scorchStub, drawPepperCloud, drawTwister, drawSneeze, drawDecoyAt, TWIST_T } from './powers2.js'; // 2026-11-20: Practice content in the campaign
 import { paintVortex } from './warp.js';
@@ -50,7 +50,9 @@ const SHOW = {
   frog: P('frog', 'It plugs gaps. A flaming egg scares it off'),
   eagle: P('turn', 'Turn a wall over the egg: the eagle bonks', { fx: 'bonk' }),
   'boss:eagle': P('turn', 'Turn a wall over the egg it dives at', { fx: 'bonk' }),
-  salamander: P('turn', 'Turn its ring: it slides off', { fx: 'bonk' }),
+  salamander: P('turn', 'Turn its ring: it rides away from the egg', { fx: 'bonk' }),
+  frostsal: P('turn', 'Turn its ring away. A fire orb melts it', { fx: 'bonk' }),
+  faceoff: P('faceoff', 'Fire meets frost: both are knocked out', { loop: 5.2 }),
   'boss:salamander': P('dodge', 'Roll eggs off the glowing mark', { haz: 'lava' }),
   spike: P('stone', 'Roll a stone egg into it: it flips over'),
   'boss:golem': P('stone', 'Roll a stone egg into him: he flips'),
@@ -104,19 +106,19 @@ const HARM = {
   jelly: ['sting', 'STING!'], 'boss:blizzard': ['frost', 'FROZEN!'],
   thornorb: ['orb', 'CRACK!'], curse: ['orb', 'FUSE x2!'], popthorns: ['pop', 'CRACK!'],
   puffer: ['block', 'BLOCKED!'], spider: ['block', 'WEBBED!'], vines: ['block', 'BLOCKED!'], turtle: ['block', 'STUCK!'], doors: ['block', 'SHUT!'],
-  current: ['push', 'PUSHED!'], gusts: ['push', 'BLOWN!'], beetle: ['push', 'PUSHED!'], 'boss:golem': ['push', 'BUMP!'], quake: ['push', 'SHAKE!'], rain: ['push', 'SLIDE!'],
+  current: ['push', 'PUSHED!'], gusts: ['push', 'BLOWN!'], beetle: ['push', 'PUSHED!'], 'boss:golem': ['bump', 'CRACK!'], quake: ['push', 'SHAKE!'], rain: ['push', 'SLIDE!'],
   mosquito: ['lift', 'LIFTED!'], gator: ['bite', 'CHOMP!'], jack: ['bounce', 'BOING!'],
   // 2026-11-23 the crawlers (their own rigs act it, howact.js harmActor): the jet heats the wall, the tongue takes an orb, the hip shoves
-  salamander: ['breath', 'CRACK!'], chameleon: ['tongue', 'GULP!'], spike: ['bump', 'BUMP!'],
+  salamander: ['chomp', 'EATEN!'], frostsal: ['frostbite', 'FROZEN!'], chameleon: ['tongue', 'GULP!'], spike: ['bump', 'CRACK!'], // 0.8.14: the salamanders bite, the thorn-back's ram cracks
 };
 export const THREAT = {
   snake: 'Eats eggs', weasel: 'Steals eggs', rats: 'Roll eggs away', octopus: 'Grabs eggs', fish: 'Sweep eggs', frog: 'Plugs gaps',
-  eagle: 'Snatches eggs', salamander: 'Heats walls', spike: 'Bumps eggs', chameleon: 'Steals orbs', hermit: 'Carries eggs',
+  eagle: 'Snatches eggs', salamander: 'Eats eggs', frostsal: 'Bites, freezes', faceoff: 'They fight', spike: 'Rams, cracks', chameleon: 'Steals orbs', hermit: 'Carries eggs',
   puffer: 'Plugs a gap', jelly: 'Stings eggs', gator: 'Bites eggs', turtle: 'Clamps eggs', mosquito: 'Lift eggs up', spider: 'Webs gaps',
   beetle: 'Pushes eggs', jack: 'Flings eggs', icicles: 'Fall on eggs', lava: 'Rocks fall', lightning: 'Zaps eggs', gusts: 'Blow eggs',
   embers: 'Burn eggs', quake: 'Shakes eggs', rain: 'Slippery rings', current: 'Pushes eggs', popthorns: 'Spikes pop up', vines: 'Seal gaps',
   doors: 'Shut gaps', curse: 'Fuse x2', thornorb: 'Cracks eggs',
-  'boss:weasel': 'Steals eggs', 'boss:snake': 'Two snakes', 'boss:blizzard': 'Freezes eggs', 'boss:golem': 'Bumps eggs', 'boss:salamander': 'Spits lava',
+  'boss:weasel': 'Steals eggs', 'boss:snake': 'Two snakes', 'boss:blizzard': 'Bites, freezes', 'boss:golem': 'Rams, cracks', 'boss:salamander': 'Spits lava',
   'boss:eagle': 'Dives for eggs', 'boss:ratking': 'Pounces', 'boss:kingcrab': 'Claws eggs', 'boss:gator': 'Shakes rings', 'boss:owl': 'Swoops at eggs',
 };
 export const threatWords = (kind) => THREAT[kind] || THREAT[String(kind).replace(/^boss:/, '')] || 'Hunts eggs';
@@ -249,6 +251,8 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     if (vFx !== 'flee' && vFx !== 'blast') vA += th; // a frozen or stunned villain rides the ring
     eD = seg(T, 3.3, 3.7); done = seg(T, 3.7, 4.0);
     if (o._carry != null) { th = 0; eD = 0; done = seg(T, hit + 0.9, hit + 1.2); }
+  } else if (m === 'faceoff') { // 0.8.14 fire meets frost over the egg (howact.js faceoff acts it): no ring turn, the egg just lives
+    vAlpha = 0; done = seg(T, FACE_T.out + 0.5, FACE_T.out + 0.9);
   } else if (m === 'stone') {
     stone = T > 0.7; vA = vEnd + 0.05;
     const d = ease(seg(T, 1.3, 2.0)); th = 0.3 * d; eA = 0.48 - 0.5 * d; // turning the ring rolls the stone egg down into it
@@ -530,7 +534,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   }
 
   { // the camera (see the veil above): a step back for a scene with a villain, and a step to the villain's side
-    const zm = o.zoom || (Wd && (hp || ['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.kind === 'spider') ? 0.8 : Wd && plan.move === 'floor' ? 0.86 : 1), pan = SG && SG.pan ? SG.pan * w : !act && plan.kind && vAlpha > 0 && zm !== 1 ? 0.05 * w : 0; // a portrait villain stands on the left
+    const zm = o.zoom || (Wd && (hp || ['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish', 'faceoff'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.kind === 'spider') ? 0.8 : Wd && plan.move === 'floor' ? 0.86 : 1), pan = SG && SG.pan ? SG.pan * w : !act && plan.kind && vAlpha > 0 && zm !== 1 ? 0.05 * w : 0; // a portrait villain stands on the left
     if (zm !== 1 || pan) { ctx.translate(cx + pan, y + h); ctx.scale(zm, zm); ctx.translate(-cx, -(y + h)); }
   }
   // ---- the ring: a thick slab with one gap (the game's own ring when it is given)
@@ -888,6 +892,19 @@ function harmBeat(ctx, plan, T, t, S, set) {
     });
     if (T > 1.2 && T < 1.7) over.push(() => burst(ctx, at(0.34, eggS * 0.5).x, at(0.34, eggS * 0.5).y, eggS * 0.7, 1 - seg(T, 1.2, 1.7), '#fff3c0'));
     say(1.15); lost(1.5, at(0.3, eggS * 0.5));
+  } else if (ty === 'chomp' || ty === 'frostbite') { // 0.8.14 the salamander's bite (its rig acts it): a warning ring closes on the egg, the jaws shut
+    const fr = ty === 'frostbite', u = seg(T, 1.0, BITE_AT);
+    if (T > 1.0 && T < BITE_AT) over.push(() => { ctx.save(); ctx.lineWidth = Math.max(2, eggS * (0.06 + 0.04 * u)); ctx.setLineDash([eggS * 0.22, eggS * 0.14]); ctx.lineDashOffset = -t * eggS * 1.6; ctx.strokeStyle = fr ? `rgba(120,200,255,${0.6 + 0.4 * u})` : `rgba(255,70,40,${0.6 + 0.4 * u})`; ctx.beginPath(); ctx.arc(E0.x, E0.y, eggS * (1.0 - 0.32 * u), 0, TAU); ctx.stroke(); ctx.restore(); });
+    if (T > BITE_AT && T < BITE_AT + 0.45) over.push(() => burst(ctx, E0.x, E0.y, eggS * 0.8, 1 - seg(T, BITE_AT, BITE_AT + 0.45), fr ? '#d9f4ff' : '#fff3c0'));
+    if (fr) { // bitten and frozen: a crack, then a block of ice round it
+      const ice = seg(T, BITE_AT, BITE_AT + 0.25);
+      if (T > BITE_AT) Q.look = { cracks: 1 };
+      over.push(() => { if (ice > 0) { ctx.save(); ctx.globalAlpha *= 0.55 * ice; ctx.fillStyle = '#cdefff'; ctx.strokeStyle = '#7fc7ee'; ctx.lineWidth = Math.max(2, eggS * 0.06); ctx.beginPath(); ctx.ellipse(E0.x, E0.y, eggS * 0.5, eggS * 0.6, 0, 0, TAU); ctx.fill(); ctx.stroke(); ctx.restore(); } });
+      say(BITE_AT + 0.05); lost(BITE_AT + 0.4, { x: E0.x + eggS * 0.62, y: E0.y - eggS * 0.5 });
+    } else { // eaten: the egg is gone
+      if (T > BITE_AT + 0.03) q.eAlpha = 0;
+      say(BITE_AT + 0.05); lost(BITE_AT + 0.35, E0);
+    }
   } else if (ty === 'breath') { // its jet lands on the wall under the egg: that patch glows red-hot (drawSalHeat, as in play) and cracks the egg on it
     const hotOn = T > 1.45, h = hotOn ? Math.max(0, 4 - (T - 1.45)) : 0;
     if (hotOn) under.push(() => {
@@ -904,6 +921,7 @@ function harmBeat(ctx, plan, T, t, S, set) {
     say(1.75);
   } else if (ty === 'bump') { // he walks on into the egg and shoves it along
     Q.gap = 1.1; q.eA = BUMP_A * ease(seg(T, 1.0, 1.9)); q.slideV = 0;
+    if (T > 1.2) Q.look = { cracks: 1 }; // 0.8.14: his thorny hide cracks what he rams
     say(1.2);
   } else if (ty === 'bounce') { // the egg rolls onto its lid and is flung right over the gap
     const jA = -0.22, J = at(jA, vD * 0.18), roll = ease(seg(T, 0.2, 0.8)), fly = seg(T, 0.85, 1.65);

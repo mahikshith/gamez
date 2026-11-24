@@ -641,7 +641,7 @@ export const salMethods = {
   salWater(C) {
     const h = this.salHead(C), frost = C.kind === 'frost'; // water douses the fire one; fire (a flaming egg, a flame orb) melts the frost one
     let wet = null;
-    for (const o of this.orbs) if (o.alive && (frost ? o.type === 'fire' || o.type === 'fire_black' : o.type === 'water') && Math.hypot(o.x - h.x, o.y - h.y) < 0.55 * C.size) { wet = o; break; }
+    for (const o of this.orbs) if (o.alive && (frost ? String(o.type).startsWith('fire') : o.type === 'water') && Math.hypot(o.x - h.x, o.y - h.y) < 0.55 * C.size) { wet = o; break; }
     if (!wet) for (const e of this.aliveEggs()) {
       if (!(frost ? e.fire > 0 : e.water > 0)) continue;
       const p = e.body.getPosition();

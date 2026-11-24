@@ -194,23 +194,21 @@ function rats(ctx, S) {
 
 // ------------------------------------------------------------------ the crawlers (salamander, chameleon, thorn-back)
 // They walk the ring's floor toward the egg. Turn: the ring carries it off and it slips away. A stone egg flips Spike.
-function crawler(species) {
+// 0.8.14 (mykee: "the salamanders are quite small when compared to the eggs"): they are drawn near their size in the vault
+// (snout to hips about a metre, so two eggs long and more with the tail), not at 0.6 m as before.
+const CRAWL_S = { salamander: 1.0, thornback: 1.06, chameleon: 0.9 };
+function crawler(species, X = {}) {
   return (ctx, S) => {
-    const { T, t, m, k } = S, s = 0.6 * k * (species === 'thornback' ? 0.92 : 1), H = hitOf(S), lift = s * 0.2;
-    const stop = -(S.eggS * 0.46 + s * 0.12) / S.floor, start = stop - 0.62;
+    const { T, t, m, k } = S, s = (CRAWL_S[species] || 1) * (X.big || 1) * k, H = hitOf(S), lift = s * 0.16;
+    const stop = -(S.eggS * 0.46 + s * 0.1) / S.floor, start = stop - 0.7;
     const walk = ease(seg(T, 0.2, 1.3));
     let vA = lerp(start, stop, walk), pose = walk < 1 ? 'walk' : 'idle', p = 0, tt = t, status = null, alpha = 1, glue = 0, threat = T < TB;
     let gait = (vA - start) * S.floor;
     let aim = 0, fireLen = 0, target = null;
     if (m === 'harm') { // 2026-11-23 the harm beat (howto.js harmBeat): what this crawler does, acted by its own rig
       threat = true;
-      if (species === 'salamander') { // it stops a body length off and breathes its jet at the wall under the egg (the game's own jet)
-        const st2 = stop - 0.42; vA = lerp(start, st2, walk); gait = (vA - start) * S.floor;
-        if (T > 1.0) {
-          pose = 'breath'; p = T < 1.3 ? 0.42 * seg(T, 1.0, 1.3) : T < 1.9 ? 0.42 + 0.44 * seg(T, 1.3, 1.9) : 0.86 + 0.14 * seg(T, 1.9, 2.3);
-          const hd = S.at(vA, lift), tg = S.at(BREATH_AT, 0), hdg = -vA, want = Math.atan2(tg.y - hd.y, tg.x - hd.x);
-          aim = clamp(Math.atan2(Math.sin(want - hdg), Math.cos(want - hdg)), -1.15, 1.15); fireLen = clamp(Math.hypot(tg.x - hd.x, tg.y - hd.y) / (s / 100) * 0.85, 12, 90);
-        }
+      if (species === 'salamander') { // 0.8.14 the bite: it walks right up to the egg, coils with its jaws wide, and snaps (BITE_AT)
+        if (T > 1.0) { pose = T < BITE_AT + 0.2 ? 'bite' : 'chew'; p = T < BITE_AT ? 0.8 * seg(T, 1.0, BITE_AT) : T < BITE_AT + 0.2 ? 0.8 + 0.2 * seg(T, BITE_AT, BITE_AT + 0.2) : seg(T, BITE_AT + 0.2, BITE_AT + 1.2); }
       } else if (species === 'chameleon') { // it stops short of the orb by the egg and its tongue snatches the orb
         const st2 = stop - 0.34; vA = lerp(start, st2, walk); gait = (vA - start) * S.floor;
         if (T > 1.0) { pose = 'snatch'; p = seg(T, 1.0, 2.0); target = S.at(CHAM_ORB, S.eggS * 0.4); }
@@ -238,13 +236,49 @@ function crawler(species) {
     if (glue > 0) { const q = S.at(vA - (s * 0.9) / S.floor, 0); puddle(ctx, q.x, q.y - 2, s * 0.9, glue); }
     if (H.k === 'blast') { const b = S.at(stop - 0.12, lift); boom(ctx, b.x, b.y, s * 0.6, H.age); }
     ctx.save(); ctx.globalAlpha *= alpha;
-    const o = { heading, curve: -1 / S.floor, trail, gait, pose, p, status, look: { x: 0.6, y: -0.3 }, id: 9300 };
+    const o = { heading, curve: -1 / S.floor, trail, gait, pose, p, status, look: { x: 0.6, y: -0.3 }, id: 9300, skin: X.skin };
     if (aim || fireLen) { o.aim = aim; o.fireLen = fireLen; }
     if (target) o.target = target;
-    if (species === 'salamander') drawSalamander(ctx, head.x, head.y, s, tt, { ...o, glow: 0.8 }); else drawCrawler(ctx, head.x, head.y, s, tt, o, species);
+    if (species === 'salamander') drawSalamander(ctx, head.x, head.y, s, tt, { ...o, glow: 0.8, frost: X.frost }); else drawCrawler(ctx, head.x, head.y, s, tt, o, species);
     ctx.restore();
-    return { threat, bonk: 0, x: head.x, y: head.y - s * 0.6, own: true };
+    return { threat, bonk: 0, x: head.x, y: head.y - s * 0.45, own: true };
   };
+}
+
+// Fire meets frost (0.8.14): the two salamanders close in on the egg from both sides, see each other, breathe, and the
+// steam knocks both out: the fire one cools to grey, the frost one sees stars. The egg between them is fine.
+export const FACE_T = { hiss: 1.25, jet: 2.0, out: 3.0 };
+function faceoff(ctx, S) {
+  const { T, t, k } = S, s = 0.92 * k, lift = s * 0.16, walk = ease(seg(T, 0.2, 1.15)), stop = (S.eggS * 0.62 + s * 0.1) / S.floor, far = stop + 0.6;
+  const mid = S.at(0, S.eggS * 1.35); // where the two jets meet: over the egg
+  const one = (sd, frost) => { // sd -1: comes from the left, +1: from the right
+    const vA = sd * lerp(far, stop, walk), head = S.at(vA, lift), heading = sd < 0 ? -vA : Math.PI - vA;
+    const trail = (d) => S.at(vA + sd * d / S.floor, lift), gait = (far - Math.abs(vA)) * S.floor;
+    let pose = walk < 1 ? 'walk' : 'idle', p = 0, status = null, cool = 0, aim = 0, fireLen = 0;
+    if (T >= FACE_T.hiss) {
+      const want = Math.atan2(mid.y - head.y, mid.x - head.x); aim = clamp(Math.atan2(Math.sin(want - heading), Math.cos(want - heading)), -1.15, 1.15);
+      fireLen = clamp(Math.hypot(mid.x - head.x, mid.y - head.y) / (s / 100) * 0.8, 12, 90);
+      if (T < FACE_T.jet) { pose = 'hiss'; p = 0.12 + 0.6 * seg(T, FACE_T.hiss, FACE_T.jet); }
+      else if (T < FACE_T.out) { pose = 'breath'; p = 0.36 + 0.46 * seg(T, FACE_T.jet, FACE_T.out); }
+      else if (frost) { pose = 'dazed'; aim = 0; fireLen = 0; status = { k: 'stun', age: T - FACE_T.out, left: 9, hold: t, zap: -1, crack: 0, seed: 7 }; }
+      else { pose = 'cool'; cool = seg(T, FACE_T.out, FACE_T.out + 0.4); aim = 0; fireLen = 0; }
+    }
+    const o = { heading, curve: sd < 0 ? -1 / S.floor : 1 / S.floor, trail, gait, pose, p, status, look: { x: 0.7, y: sd < 0 ? -0.3 : 0.3 }, id: frost ? 9311 : 9310, glow: 0.8, frost, cool };
+    if (aim || fireLen) { o.aim = aim; o.fireLen = fireLen; }
+    drawSalamander(ctx, head.x, head.y, s, t, o);
+  };
+  one(-1, 0); one(1, 1);
+  if (T > FACE_T.jet + 0.25) { // the steam where fire meets frost
+    const g = seg(T, FACE_T.jet + 0.25, FACE_T.jet + 0.7), end = seg(T, FACE_T.out, FACE_T.out + 0.9);
+    ctx.save();
+    for (let i = 0; i < 8; i++) {
+      const f = (((t * 0.8 + i * 0.31) % 1) + 1) % 1, an = i * 2.4 + t * 0.5, rr = (0.12 + 0.3 * f + 0.35 * end) * k;
+      ctx.fillStyle = `rgba(242,248,255,${0.62 * g * (1 - f * 0.6) * (1 - end)})`;
+      ctx.beginPath(); ctx.arc(mid.x + Math.cos(an) * rr * 0.8, mid.y + Math.sin(an) * rr * 0.5 - (f * 0.3 + end * 0.3) * k, (0.12 + 0.12 * f + 0.1 * end) * k, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  return { threat: T < FACE_T.out, bonk: 0, x: mid.x, y: mid.y - s * 0.3, own: true };
 }
 
 // Serpent Hollow (2026-11-23, mykee: "a congested head and body"): the boss is two snakes, so two snakes act it, each
@@ -267,9 +301,9 @@ function bossGator(ctx, S) {
 
 // the harm beats' marks (howto.js reads them too): where the salamander's jet lands, where Sly's orb sits, how far the
 // thorn-back shoves the egg
-export const BREATH_AT = 0, CHAM_ORB = -0.22, BUMP_A = 0.5;
-export const harmActor = (kind) => (kind === 'salamander' || kind === 'chameleon' || kind === 'spike' ? ACTORS[kind] : null);
-const CRAWL = () => ({ g0: 0.4, dTh: -0.4, pan: 0.1 }); // the crawlers come along the ring from the left: the camera steps that way
+export const BREATH_AT = 0, CHAM_ORB = -0.22, BUMP_A = 0.36, BITE_AT = 1.75; // BITE_AT: s into the harm beat when the jaws shut
+export const harmActor = (kind) => (kind === 'salamander' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' ? ACTORS[kind] : null);
+const CRAWL = () => ({ g0: 0.4, dTh: -0.4, pan: 0.2 }); // the crawlers come along the ring from the left: the camera steps that way
 export const ACTORS = {
   // pan: the camera steps to the villain's side (a share of the stage's width), so it is whole in the picture
   snake: { draw: snake, stage: () => ({ g0: 0.42, dTh: -0.42, hand: [-0.14, -0.56], pan: -0.1 }), aim: (S) => S.at(S.g0, -(S.band / 2 + 0.3 * S.k)) },
@@ -279,12 +313,15 @@ export const ACTORS = {
   'boss:ratking': { draw: (c, S) => weasel(c, S, 'ratking', { crown: 1 }), stage: () => ({ g0: 0.36, dTh: -0.36, hand: [-0.14, -0.5], pan: -0.2 }), aim: (S) => ({ x: S.at(S.g0, 0).x, y: S.ground - 0.4 * S.k }) },
   'boss:gator': { draw: bossGator, stage: () => ({ g0: 0.4, dTh: -0.4, pan: 0.1 }) },
   salamander: { draw: crawler('salamander'), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
+  frostsal: { draw: crawler('salamander', { frost: 1 }), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
+  faceoff: { draw: faceoff, stage: () => ({ g0: 2.6, dTh: 0, pan: 0 }) },
   chameleon: { draw: crawler('chameleon'), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
   spike: { draw: crawler('thornback'), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
+  'boss:golem': { draw: crawler('thornback', { skin: 'crystal', big: 1.12 }), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) }, // 0.8.14 Duke Quartz in person (he was a round badge)
 };
 // the moves an actor plays; any other plan keeps the portrait
 ACTORS['boss:weasel'] = ACTORS.weasel; // the Weasel Raid's boss is the weasel himself: his whole body, not a head on the ring
-const PLAYS = { 'boss:ratking': ['turn', 'tap', 'rooster'], 'boss:gator': ['drop'], 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'] };
+const PLAYS = { 'boss:ratking': ['turn', 'tap', 'rooster'], 'boss:gator': ['drop'], 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], frostsal: ['turn', 'tap'], faceoff: ['faceoff'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'], 'boss:golem': ['stone'] };
 export function actorFor(plan) {
   const k = plan && plan.kind;
   return k && ACTORS[k] && PLAYS[k].includes(plan.move) ? ACTORS[k] : null;

@@ -76,6 +76,15 @@ const ART = {
     const S = d * 0.4;
     drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9101 });
   },
+  frostsal(ctx, x, y, d, t) {
+    const S = d * 0.4;
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', frost: 1, glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9103 });
+  },
+  faceoff(ctx, x, y, d, t) { // the two of them nose to nose
+    const S = d * 0.26;
+    drawSalamander(ctx, x - d * 0.06, y - d * 0.1, S, t, { heading: 0, curve: -0.2 / S, pose: 'idle', glow: 0.9, look: { x: 1, y: 0 }, id: 9104 });
+    drawSalamander(ctx, x + d * 0.06, y + d * 0.2, S, t + 0.6, { heading: Math.PI, curve: -0.2 / S, pose: 'idle', frost: 1, glow: 0.9, look: { x: -1, y: 0 }, id: 9105 });
+  },
   'boss:salamander'(ctx, x, y, d, t) {
     const S = d * 0.44;
     drawSalamander(ctx, x + 0.78 * S, y + d * 0.08, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 1, look: { x: 0.4, y: 0.5 }, id: 9102 });

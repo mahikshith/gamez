@@ -30,7 +30,7 @@ export const VILLAIN_INFO = {
   },
   'boss:blizzard': {
     group: 'boss', name: 'Baron von Brr',
-    does: 'A frost gecko in the vault: icy feet, and a lick that freezes eggs.',
+    does: 'A frost gecko in the vault: his lick cracks an egg and freezes it.',
     beat: 'Strikes and stone stop him. Each saved egg cancels his wind-up.',
     attacks: {
       gale: 'His wind shoves eggs and turns free rings. Hold a ring; stone eggs stay put.',
@@ -40,7 +40,7 @@ export const VILLAIN_INFO = {
   },
   'boss:golem': {
     group: 'boss', name: 'Duke Quartz',
-    does: 'A crystal thorn-back: drops crystal spikes and hip-checks eggs.',
+    does: 'A crystal thorn-back: drops crystal spikes, and his ram cracks eggs.',
     beat: 'Roll a stone egg into him: he flips over and loses his attack.',
     more: 'He duels his cousin Spike on sight: the loser is down for 5 s.',
     attacks: {
@@ -154,12 +154,22 @@ export const VILLAIN_INFO = {
   },
   salamander: {
     group: 'creature', name: 'Lava salamander',
-    does: 'Breathes fire on the wall ahead: that red-hot patch cracks eggs.',
-    beat: 'Turn the ring it rides to aim the fire at thorns. Water cools it.',
+    does: 'Coils, then snaps: it eats an egg at its snout. Its fire heats walls.',
+    beat: 'Turn its ring to carry it off. A stone egg breaks its bite. Water cools it.',
+  },
+  frostsal: {
+    group: 'creature', name: 'Frost salamander',
+    does: 'Its bite cracks an egg and freezes it solid. Its breath ices a wall.',
+    beat: 'Turn its ring to carry it off. A fire orb or lava melts it for a while.',
+  },
+  faceoff: {
+    group: 'creature', name: 'Fire against frost',
+    does: 'When the two salamanders meet in a channel they fight, not your eggs.',
+    beat: 'Turn their ring to bring them together: both are knocked out.',
   },
   spike: {
     group: 'creature', name: 'Spike the thorn-back',
-    does: 'Drops thorns behind him and hip-checks eggs along the channel.',
+    does: 'Drops thorns behind him and rams eggs: every ram cracks the shell.',
     beat: 'A stone egg flips him. Turn the ring under a thorn fast to shake it.',
     more: 'He duels the Duke on sight. Weaken one first to pick the winner.',
   },
@@ -314,6 +324,13 @@ export function villainKinds(L, sim = null) {
     if (k === 'snake' && boss === 'snake') continue; // the snakes ARE Serpent Hollow
     if (k === 'eagle' && boss === 'eagle') continue; // the level's eagle is the Storm Eagle
     if (k === 'salamander' && boss === 'salamander' && n === 1) continue; // its one salamander is the boss
+    if (k === 'salamander') { // 0.8.14: fire and frost are two kinds, and together they are a third thing to know
+      const fr = listOf(L[k]).filter((S) => S && S.kind === 'frost').length;
+      if (n - fr > 0) set.add('salamander');
+      if (fr) set.add('frostsal');
+      if (fr && n - fr > 0 && !boss) set.add('faceoff');
+      continue;
+    }
     set.add(k);
   }
   if (sim) {
@@ -324,7 +341,8 @@ export function villainKinds(L, sim = null) {
     if (live(sim.octos)) set.add('octopus');
     if (live(sim.schools)) set.add('fish');
     if (live(sim.frogs)) set.add('frog');
-    if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp === 'sal')) set.add('salamander'); // L15's frost gecko and L20's thorn-backs are not salamanders
+    if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp === 'sal' && C.kind !== 'frost')) set.add('salamander'); // L15's frost gecko and L20's thorn-backs are not salamanders
+    if ((sim.sals || []).some((C) => C.sp === 'sal' && C.kind === 'frost')) set.add('frostsal');
     if ((sim.sals || []).some((C) => C.role === 'spike')) set.add('spike');
     if (live(sim.hermits)) set.add('hermit');
     if (live(sim.puffs)) set.add('puffer');

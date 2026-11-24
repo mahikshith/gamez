@@ -228,7 +228,8 @@ export const SPECS = [
     intro: { title: 'Dash chick', chick: 'dash', line: 'The orange orb hatches a dash chick. Tap it once: it shoots along its channel, bonks snakes and the salamander dizzy, and grabs orbs.' }, useTap: true,
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 24, world: 5, theme: 'volcano', name: 'Spike Forge', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 5,
-    nest: { w: 3.0 }, bonus: { kind: 'time' }, lava: { every: 6, delay: 5 }, salamander: { delay: 4, every: 6.5, a: 120, ch: 2 },
+    nest: { w: 3.0 }, bonus: { kind: 'time' }, lava: { every: 6, delay: 5 }, salamander: [{ delay: 4, every: 6.5, a: 120, ch: 2 }, { delay: 9, every: 7, a: -30, ch: 2, dir: -1, kind: 'frost' }], // 0.8.14: fire meets frost in one channel
+    intro: { title: 'Fire meets frost', line: 'A frost salamander walks in. Its bite freezes an egg. When it meets the fire one they fight, and both are knocked out.' },
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'water', ch: 3 }, { type: 'fire_green', ch: 5 }, { type: 'hatch_swoop', ch: 2 }],
     tip: 'Forge spikes pump in and out. Count the beat and pass while they are down.',
     rings: [{ gaps: 1, thorns: 1, gear: true }, { gaps: 1, gapX: [2], thorns: 3, size: [2, 3], retract: { period: 3, on: 0.5 } }, { gaps: 2, thorns: 2, size: [2, 3], curtain: 1, honey: 1 }, { gaps: 2, gapX: [3], thorns: 3, size: [2, 3], retract: { period: 2.6, on: 0.55 } }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
