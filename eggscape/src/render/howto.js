@@ -26,7 +26,7 @@ import { drawFish } from './sea.js';
 import { FISH } from '../sim/sea.js';
 import { drawGator } from './bayou.js';
 import { GATOR } from '../sim/bayou.js';
-import { drawEagle, drawLavaRock, drawMeltHole } from './v3art.js';
+import { drawEagle, drawLavaRock, drawMeltHole, drawIcicle } from './v3art.js';
 import { drawSalHeat } from './salamander.js'; // the game's own red-hot wall (the salamander's harm beat)
 
 const TAU = Math.PI * 2;
@@ -579,6 +579,11 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
         ctx.save(); ctx.globalAlpha *= 1 - sink; drawLavaRock(ctx, mk.x, land + rr * 0.9 * sink, rr * (1 - 0.3 * sink), t, 1); ctx.restore();
         if (haz.boom < 0.3) burst(ctx, mk.x, mk.y - Z * 0.05, Z * 0.22 * (0.5 + haz.boom * 2), 1 - haz.boom / 0.3, '#ff8a3a');
       }
+    }
+    else if (hk === 'icicles') { // 0.8.14: the game's own icicle hangs over the mark, shakes, then drops and shatters
+      const ih = eggS * 1.5, hang = y + ih * 0.5 + 2, land = mk.y - ih * 0.5, f = haz.fall * haz.fall, shake = haz.warn > 0 && haz.fall <= 0 ? Math.sin(T * 38) * eggS * 0.035 * haz.warn : 0;
+      if (haz.boom <= 0) drawIcicle(ctx, mk.x + shake, hang + (land - hang) * f, ih, t);
+      else if (haz.boom < 1) burst(ctx, mk.x, mk.y - Z * 0.05, Z * 0.22 * (0.5 + haz.boom), 1 - haz.boom, '#d9f4ff');
     }
     else if (haz.boom <= 0 || haz.boom < 1) {
       const top = y + Z * 0.2, sy = top + (mk.y - Z * 0.1 - top) * ease(haz.fall);
