@@ -98,9 +98,9 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const s = mk();
   ok(SP.noteLoss(s, 7, 1, 'd1') === false && SP.noteLoss(s, 7, 2, 'd1') === false && SP.banked(s) === 0, 'one or two losses: nothing yet');
   ok(SP.noteLoss(s, 7, 3, 'd1') === true && SP.banked(s) === 1, 'the third loss in a row on a level banks a free spin');
-  ok(SP.noteLoss(s, 7, 4, 'd1') === false && SP.noteLoss(s, 7, 9, 'd2') === false && SP.banked(s) === 1, 'once per level, ever');
+  ok(SP.noteLoss(s, 7, 4, 'd1') === false && SP.noteLoss(s, 7, 9, 'd1') === false && SP.banked(s) === 1, 'once per level');
   ok(SP.noteLoss(s, 8, 3, 'd1') === true && SP.noteLoss(s, 9, 3, 'd1') === false && SP.banked(s) === 2, 'two cheer-up spins a day at most');
-  ok(SP.noteLoss(s, 9, 3, 'd2') === true && SP.banked(s) === 3, 'the next day another level can cheer again');
+  ok(SP.noteLoss(s, 9, 3, 'd2') === true && SP.banked(s) === 3 && SP.noteLoss(s, 7, 3, 'd3') === false, 'the next day another level can cheer again, a cheered level never twice');
   ok(SP.noteLoss(mk({ unlocked: 2 }), 2, 5, 'd1') === false, 'never in the first levels');
   const w = SP.ways(s, 'd2'); ok(w.free && !w.ad && w.coin === null, 'it is a plain free spin: no video, no price');
 }
