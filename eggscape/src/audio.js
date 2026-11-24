@@ -48,6 +48,7 @@ export const SFX_NAMES = [
   'bomb_fuse', 'bomb_explode', 'glass_crack', 'glass_break', 'rock_hit', 'wood_break',
   'splash', 'lava_sizzle', 'thunder', 'wind_gust', 'motor_tick', 'rewind', 'score_tick', 'countdown', 'squish',
   'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up', // the hen's win/fail routines (render/cheer.js)
+  'slot_lever', 'slot_spin', 'slot_tick', 'slot_stop', 'slot_win', // 0.8.15: the Lucky Spin's machine
   'ring_tick', 'egg_land', 'near_miss', 'hud_pop', // game feel: ring detents, weighty landings, a close shave, a prize reaching the HUD
   'power_pickup', 'strike_launch', 'strike_hit', 'crow', // hero beats: an orb taken, Chick Strike, the rooster ally
   'wing_bat', 'decoy_peep', 'goose_honk', 'power_use', // the hen bats the strike chick off her wing, the decoy, the goose ally, a power waking up
@@ -65,9 +66,10 @@ export const MATERIALS = ['wood', 'stone', 'ice', 'mushroom', 'glass', 'metal', 
 
 // Sounds that are interface/feedback, not world events: they bypass the underwater filter.
 const UI_SOUNDS = new Set(['power_pickup', 'hud_pop', 'ui_tap', 'ui_back', 'ui_open', 'combo', 'star', 'level_win', 'level_fail', 'unlock', 'treasure_open', 'score_tick', 'countdown', 'egg_save', 'rewind',
-  'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up']);
+  'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up', 'slot_lever', 'slot_spin', 'slot_tick', 'slot_stop', 'slot_win']);
 // Random pitch spread per sound (fraction). Musical stings stay in tune.
 const PITCH_VAR = {
+  slot_lever: 0.02, slot_spin: 0, slot_tick: 0.03, slot_stop: 0, slot_win: 0,
   ui_tap: 0.015, ring_tick: 0.02, hud_pop: 0, ui_back: 0.01, ui_open: 0.01, score_tick: 0.004, countdown: 0,
   egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, treasure_open: 0, rewind: 0.02, tada: 0, cheer_up: 0, cluck: 0.06,
   power_pickup: 0, strike_launch: 0.02, strike_hit: 0.02, crow: 0.02, egg_crack: 0.03, egg_break: 0.02,
@@ -1881,6 +1883,37 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       tone(v, { t: 0.07, type: 'triangle', f: 3520 * p, a: 0.001, d: 0.06, g: 0.03 });
     },
     // a prize lands in the HUD: a soft rising pop
+    slot_lever(v, o) { // the Lucky Spin's lever: a ratchet going down, a thunk at the bottom, the spring coming back
+      for (let k = 0; k < 4; k++) { nz(v, { t: k * 0.032, a: 0.0004, d: 0.006, g: 0.22, type: 'bandpass', f: 2400 - k * 260, q: 3 }); modal(v, { t: k * 0.032, f: 900 - k * 90, r: [1, 2.4], amps: [1, 0.3], d: 0.02, g: 0.1 }); }
+      knock(v, { t: 0.14, f: 210, f2: 95, d: 0.12, g: 0.38, nf: 1100, n: 0.4 });
+      tone(v, { type: 'triangle', t: 0.15, f: 300, fp: [[0, 300], [0.05, 520], [0.12, 380], [0.2, 440]], a: 0.004, d: 0.22, g: 0.07, vib: [22, 0.03] });
+    },
+    slot_spin(v, o) { // the reels run: a soft whirr that winds up, holds, and sinks as they slow (o.i: how long)
+      const d = 1.4 + 1.8 * o.i;
+      nz(v, { color: 'pink', a: 0.18, hold: d * 0.45, d: d * 0.55, g: 0.17, type: 'bandpass', f: 520, f2: 1500, sw: 0.25, q: 1.6 });
+      tone(v, { type: 'triangle', f: 90, fp: [[0, 90], [0.25, 190], [d * 0.5, 180], [d, 80]], a: 0.2, hold: d * 0.4, d: d * 0.6, g: 0.05, lp: 700 });
+    },
+    slot_tick(v, o) { // a picture passes the row: a light metal detent
+      const p = o.p;
+      nz(v, { a: 0.0003, d: 0.003, g: 0.14, type: 'bandpass', f: 3400 * p, q: 3 });
+      modal(v, { f: 1700 * p, r: [1, 2.9], amps: [1, 0.25], d: 0.018, g: 0.11 });
+    },
+    slot_stop(v, o) { // a reel locks: a firm clunk and a small bell, a step higher for each reel
+      const p = o.pitch;
+      knock(v, { f: 260, f2: 120, d: 0.09, g: 0.42, nf: 1300, n: 0.5 });
+      nz(v, { a: 0.0005, d: 0.012, g: 0.2, type: 'highpass', f: 3000 });
+      bell(v, { t: 0.012, f: 784 * p, d: 0.5, g: 0.12 });
+      send(v, 0.15);
+    },
+    slot_win(v, o) { // three of a kind: a run up a major chord into a held chord, with coins of light (o.i: how big the prize)
+      const p = o.pitch, i = o.i, C5 = 523.25 * p, run = i > 0.7 ? [1, 1.26, 1.5, 2, 2.52, 3, 4] : [1, 1.26, 1.5, 2, 2.52];
+      run.forEach((k, j) => { const t = j * 0.07; chime(v, { t, f: C5 * k, d: 0.35, g: 0.14, o2: 0.4 }); tone(v, { type: 'square', t, f: C5 * k, a: 0.002, d: 0.06, g: 0.025, lp: 2600 }); });
+      const T = run.length * 0.07 + 0.03;
+      for (const k of [2, 2.52, 3, 4]) bell(v, { t: T, f: C5 * k, d: 1.1 + 0.5 * i, g: 0.09 });
+      for (const k of [0.5, 1, 1.5]) tone(v, { type: 'triangle', t: T, f: C5 * k, a: 0.008, hold: 0.15, d: 0.5, g: 0.05, lp: 2800 });
+      pings(v, { t: T + 0.05, dur: 0.6 + 0.6 * i, n: 8 + Math.round(12 * i), fmin: 2800, fmax: 7600, g: 0.035, dmin: 0.03, dmax: 0.09 });
+      send(v, 0.3);
+    },
     hud_pop(v, o) {
       const p = o.p;
       tone(v, { f: 620 * p, f2: 1240 * p, gl: 0.05, a: 0.002, d: 0.09, g: 0.2 });
@@ -2414,7 +2447,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     const h = { stop() { try { stopVoice(v); } catch (e) {} }, duration: v.end - v.t, get playing() { return !v.done && ctx.currentTime < v.end; } };
     lastPlay.set(name, { time: t, v, h, vol: o.vol });
     if (base === 'level_win' || base === 'treasure_open') duckMusic(0.55, 2.2);
-    else if (base === 'level_fail' || base === 'unlock') duckMusic(0.45, 1.4);
+    else if (base === 'level_fail' || base === 'unlock' || base === 'slot_win') duckMusic(0.45, 1.4);
     else if (base === 'bomb_explode' || base === 'thunder') duckMusic(0.3, 1.0);
     else if (HERO.has(base) && o.vol > 0.3) duckMusic(0.25, 0.3);
     if (HERO.has(base) && o.vol > 0.3) heroDuck();

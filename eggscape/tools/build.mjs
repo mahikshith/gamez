@@ -70,6 +70,7 @@ async function bundle(portal, { minify, sourcemap }) {
       __TEST__: JSON.stringify(test),
       __APP__: JSON.stringify(isApp),
       __VERSION__: JSON.stringify(appVersion),
+      __PREVIEW__: JSON.stringify(process.env.EGG_PREVIEW || ''), // EGG_PREVIEW=spin: the build opens on the Lucky Spin with spins to pull (a page to show, nothing is saved)
     },
     logLevel: 'warning',
   });
