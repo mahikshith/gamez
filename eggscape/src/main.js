@@ -218,7 +218,7 @@ const canvas = document.getElementById('game') || Object.assign(document.body.ap
 // shows), and an opaque canvas lets the compositor skip blending it over the page and skip the page background under it
 // (one less full-screen fill a frame, which a phone's graphics chip pays for). desynchronized is NOT used: on some
 // WebViews it draws straight to the screen and tears.
-const ctx = canvas.getContext('2d', { alpha: false });
+let ctx = canvas.getContext('2d', { alpha: false }); // (let: a HUD layer is painted through the same code, on its own canvas: hudLayer)
 const ui = new UI(ctx);
 let W_ = 0, H_ = 0, DPR = 1;
 
@@ -471,6 +471,7 @@ function setScreen(s) {
   G.offerTried = false; // each end card / home visit / intro may ask the offer engine once
   if (s !== 'title') G.homeIntro = false; // the app-start entrance plays once; coming back to home only fades in
   ui.pressedId = null;
+  if (s !== 'play' && s !== 'pause' && s !== 'info') hudLayersFree(); // the HUD's still layers (hudLayer) are for play
   if (s === 'fail') G.fscroll = { y: 0, v: 0, max: 0, t: G.t }; // the fail page scrolls only on a short screen
   if (s === 'title' || s === 'levels') { warmNext(); audio.music(MAIN_THEME); } // home and the map play the main theme
   // 2026-11-16 mykee: "you don't have to put New on the i every single time": a kind is new in the first level it is
@@ -4848,6 +4849,11 @@ function drawBankBtn() {
     ctx.fillText('x' + B.length, bx, by + 0.5 * u); ctx.restore();
   }
 }
+function allyTicket(x, y, bs, tk) {
+  const u = ui.u, tw2 = 30 * u, th2 = 17 * u, tx2 = x + bs - tw2 + 6 * u, ty2 = y + bs - th2 + 2 * u;
+  ui.roundRect(tx2, ty2, tw2, th2, 4 * u); ctx.fillStyle = '#e0412d'; ctx.fill(); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = '#5a110a'; ctx.stroke();
+  ui.text('x' + Math.min(tk, 99), tx2 + tw2 / 2, ty2 + th2 / 2 + 0.5 * u, { size: 12 * u, align: 'center', color: '#fff', maxW: tw2 - 4 * u, noRecord: true });
+}
 // the ally button sits in the zoom strip (bottom left in portrait, bottom of the right column in landscape); the choice opens beside or above it
 function drawAllyBtn() {
   if (!allyShown()) { G.allyOpen = false; return; }
@@ -4860,10 +4866,20 @@ function drawAllyBtn() {
     ui.roundRect(x - 5 * u * p, y - 5 * u * p, bs + 10 * u * p, bs + 10 * u * p, 15 * u + 5 * u * p);
     ctx.lineWidth = 2.5 * u; ctx.strokeStyle = `rgba(255,224,120,${0.7 * (1 - p)})`; ctx.stroke();
   }
-  ui.button('ally', '', x, y, bs, bs, { kind: 'gold', icon: allyIcon, iconS: 1.45, disabled: !can, round: 15 * u });
+  const tk = save.wallet.tickets.ally;
+  const coach = !!(can && !G.allyOpen && !(save.seen && save.seen.rooster) && G.li >= 0);
+  // 0.8.15 speed: the button and its badge stand still (hudLayer) unless it is pressed, coached or open
+  const still = !btnLive('ally') && !coach && !G.allyOpen;
+  const face = () => {
+    ui.button('ally', '', x, y, bs, bs, { kind: 'gold', icon: allyIcon, iconS: 1.45, disabled: !can, round: 15 * u });
+    if (!still) return;
+    if (!free && can && tk > 0) allyTicket(x, y, bs, tk); else if (!free && can) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
+  };
+  G.roosterCoach = coach;
+  if (still) { hudLayer('ally', x + ',' + y + ',' + bs + '|' + (can ? 1 : 0) + (free ? 1 : 0) + '|' + Math.min(tk || 0, 99) + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x - 3 * u, y - 3 * u, bs + 12 * u, bs + 9 * u, face); return; }
+  face();
   // 2026-11-20 (mykee: "we did not show the user how to use Papa Rooster"): the first time he can help, a hand taps his
   // button and a bubble says what he does; that first call is free
-  G.roosterCoach = !!(can && !G.allyOpen && !(save.seen && save.seen.rooster) && G.li >= 0);
   if (G.roosterCoach) {
     const msg = 'Tap Papa Rooster: he chases thieves away!', ts = 15 * u, tw = Math.min(ui.A.w - 24 * u, ui.measure(msg, ts) + 28 * u), th2 = 34 * u;
     const bx = clamp(x + bs / 2 - tw * 0.25, ui.A.x + 10 * u, ui.A.x1 - tw - 10 * u), by = y - th2 - 26 * u;
@@ -4873,12 +4889,8 @@ function drawAllyBtn() {
     const ph = (G.t * 1.1) % 1, press = ph > 0.35 && ph < 0.6;
     if (!save.calm) teachHand(ctx, x + bs * 0.62, y + bs * (press ? 0.3 : 0.42), bs * 0.8, press, 1);
   }
-  const tk = save.wallet.tickets.ally;
-  if (!free && can && tk > 0) { // "Use ticket (N)": a red ticket stub with the count instead of the ad badge
-    const tw2 = 30 * u, th2 = 17 * u, tx2 = x + bs - tw2 + 6 * u, ty2 = y + bs - th2 + 2 * u;
-    ui.roundRect(tx2, ty2, tw2, th2, 4 * u); ctx.fillStyle = '#e0412d'; ctx.fill(); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = '#5a110a'; ctx.stroke();
-    ui.text('x' + Math.min(tk, 99), tx2 + tw2 / 2, ty2 + th2 / 2 + 0.5 * u, { size: 12 * u, align: 'center', color: '#fff', maxW: tw2 - 4 * u, noRecord: true });
-  } else if (!free && can && !G.roosterCoach) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
+  if (!free && can && tk > 0) allyTicket(x, y, bs, tk); // "Use ticket (N)": a red ticket stub with the count instead of the ad badge
+  else if (!free && can && !G.roosterCoach) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
   if (!G.allyOpen) return;
   const cw = 124 * u, ch = 46 * u;
   kinds.forEach((k, i) => {
@@ -4911,15 +4923,136 @@ function hudClock(cx, cy, r, low, frac) {
   ctx.beginPath(); ctx.moveTo(cx - r * 0.3, cy - r * 1.18); ctx.lineTo(cx + r * 0.3, cy - r * 1.18); ctx.stroke();
   ctx.restore();
 }
+// ---- HUD layers (0.8.15 speed pass). A budget phone (vivo I2409, Dimensity 6300) ran every level at 15 to 27 fps with
+// 12 to 45 ms of script work a frame, and shrinking the canvas changed nothing: the time goes into the drawing calls
+// themselves, not the pixels. The HUD was a sixth of them (glass chips, stroked text, gradients, buttons), repainted 60
+// times a second while it changes a few times a level. Now the parts that stand still are painted once onto their own
+// small canvas and copied with one drawImage until something they show changes (the key); what moves every frame (the
+// clock's hand, a score that is popping, a pressed button, the boss bar) is still drawn live over the copy.
+//   hudLayer(slot, key, x, y, w, h, paint) -> what paint returned when the layer was last painted (its layout)
+// paint draws with the usual ctx / ui (both point at the layer's canvas while it runs); the rects and buttons it
+// records are replayed on every frame the copy is used, so taps and the overlap check see the same thing.
+const HL = new Map();
+const HUD_CACHE = { on: true, builds: 0 };
+function hudLayer(slot, key, x, y, w, h, paint) {
+  const m = HUD_CACHE.on && ctx === ui.ctx && ctx.getTransform ? ctx.getTransform() : null;
+  if (!m || Math.abs(m.a - DPR) > 1e-5 || Math.abs(m.d - DPR) > 1e-5 || m.b || m.c || m.e || m.f || ctx.globalAlpha !== 1) return paint(); // not the plain screen transform: draw as before
+  const x0 = Math.max(0, Math.floor(x * DPR)), y0 = Math.max(0, Math.floor(y * DPR));
+  const pw = Math.min(canvas.width, Math.ceil((x + w) * DPR)) - x0, ph = Math.min(canvas.height, Math.ceil((y + h) * DPR)) - y0;
+  if (!(pw > 0 && ph > 0)) return paint();
+  let L = HL.get(slot);
+  if (!L || L.key !== key || L.x0 !== x0 || L.y0 !== y0 || L.pw !== pw || L.ph !== ph || L.dpr !== DPR) {
+    const cv = (L && L.cv) || document.createElement('canvas');
+    if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+    const c = cv.getContext('2d');
+    if (!c) return paint();
+    c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+    c.clearRect(0, 0, pw, ph);
+    c.setTransform(DPR, 0, 0, DPR, -x0, -y0);
+    const main = ctx, r0 = ui.rects.length, b0 = ui.buttons.length;
+    let ret;
+    leakState(main, c);
+    ctx = c; ui.ctx = c;
+    try { ret = paint(); } finally { ctx = main; ui.ctx = main; }
+    L = { cv, key, x0, y0, pw, ph, dpr: DPR, ret, rects: ui.rects.slice(r0), buttons: ui.buttons.slice(b0) };
+    HL.set(slot, L);
+    HUD_CACHE.builds++;
+  } else {
+    for (let i = 0; i < L.rects.length; i++) ui.rects.push(L.rects[i]);
+    for (let i = 0; i < L.buttons.length; i++) ui.buttons.push(L.buttons[i]);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(L.cv, x0, y0);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  leakState(L.cv.getContext('2d'), ctx);
+  return L.ret;
+}
+// Drawing code all over the game leans on what earlier code left set on the context (ui.text leaves round line joins,
+// and the ring arrows are drawn with them): a layer's paint must leave the screen's context as painting there would
+function leakState(from, to) {
+  to.lineJoin = from.lineJoin; to.lineCap = from.lineCap; to.lineWidth = from.lineWidth; to.miterLimit = from.miterLimit;
+  to.textAlign = from.textAlign; to.textBaseline = from.textBaseline;
+  to.fillStyle = from.fillStyle; to.strokeStyle = from.strokeStyle;
+  if (to.font !== from.font) to.font = from.font;
+}
+// the layers give their pixels back when play is left (render/cvfree.js: a dropped canvas keeps its memory for a while)
+function hudLayersFree() { for (const L of HL.values()) freeCanvas(L.cv); HL.clear(); }
+const btnLive = (id) => ui.pressedId === id || !!ui.spring[id]; // a button that is pressed or still springing back is drawn live
+
 function drawHUD() {
   if (G.sideHud) { if (G.screen === 'win' || G.screen === 'fail') return; return drawSideHUD(); } // the result card and the hen take the stage
+  const u = ui.u, sim = G.sim, A = ui.A;
+  ui.calm = save.calm;
+  const st = sim.stats();
+  if (HUDS.lv !== G.run) { HUDS.lv = G.run; HUDS.score = st.score; HUDS.bump = 0; }
+  if (st.score !== HUDS.score) { HUDS.bump = st.score > HUDS.score ? 1 : 0; HUDS.score = st.score; }
+  HUDS.bump *= 0.88;
+  // what moves this frame is left out of the still layer and drawn live over it
+  const P = eggPerk(), perkAge = G.t - (G.perkT ?? -9);
+  const V = { st, pause: btnLive('pause'), bump: HUDS.bump > 0.02 && !save.calm, perk: !!P && perkAge < 0.9 };
+  let tray = '';
+  for (const e of sim.eggs) tray += e.fled ? 'f' : e.saved ? 's' : e.alive ? 'a' + e.cracks : 'b' + e.cracks;
+  const timeTxt = sim.timeLimit ? fmtTime(sim.timeLeft) : '';
+  const key = G.run + '|' + G.li + '|' + G.level.id + '|' + A.x + ',' + A.y + ',' + A.w + ',' + A.h + ',' + W_ + ',' + G.hudBottom + ',' + G.bossBar + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0) + (V.pause ? 1 : 0) + (V.bump ? 1 : 0) + (V.perk ? 1 : 0) + (settingsMarkOn() ? 1 : 0)
+    + '|' + (P ? P.icon : '') + '|' + st.score + '|' + tray + '|' + st.saved + '/' + hudNeed(st) + '|' + (G.goalOk ? G.goalOk.join() : '') + '|' + timeTxt.length + '|' + (sim.bx && sim.bx.boss ? 1 : 0);
+  const Y = hudLayer('top', key, 0, 0, W_, G.hudBottom + 20 * u, () => hudStill(V, timeTxt));
+  // ---- live: what the layer left out
+  const row1 = Y.row1;
+  if (V.pause) { ui.button('pause', '', Y.X0, Y.Y0, Y.bs, Y.bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u }); setMarkAt(Y.X0, Y.Y0, Y.bs, Y.bs, true); }
+  if (V.bump && !Y.noScore) {
+    ctx.save();
+    { const k = 1 + 0.22 * HUDS.bump; ctx.translate(Y.sx, Y.sy); ctx.scale(k, k); ctx.translate(-Y.sx, -Y.sy); }
+    ui.num(String(st.score), Y.sx, Y.sy, { size: Y.sS, align: Y.stk ? 'center' : 'right', tag: 'hud:score' });
+    ctx.restore();
+  }
+  // stall watch: Finish (enough eggs home) or Retry (stuck), centred under the HUD
+  if (G.screen === 'play' && sim.state === 'play' && G.stall && G.stall.run === G.run) {
+    const enough = sim.savedLog.length >= (G.level.target || 1);
+    if ((enough && G.stall.t >= 5) || (!enough && G.stall.t >= 22)) {
+      const fw = Math.min(220 * u, A.w - 2 * Y.pad), fh = 44 * u, fx = A.cx - fw / 2, fy = G.hudBottom + 10 * u;
+      const k = save.calm ? 1 : 1 + 0.03 * Math.sin(G.t * 4);
+      ctx.save(); ctx.translate(A.cx, fy + fh / 2); ctx.scale(k, k); ctx.translate(-A.cx, -(fy + fh / 2));
+      if (enough) ui.button('finish', 'Finish level', fx, fy, fw, fh, { kind: 'primary', shimmer: true, icon: ICON.check, size: 18 * u });
+      else ui.button('retry', 'Stuck? Retry', fx, fy, fw, fh, { kind: 'secondary', icon: ICON.retry, size: 17 * u });
+      ctx.restore();
+    }
+  }
+  if (V.perk) perkChipHud(Y.X0 + Y.bs + 8 * u, row1 - 15 * u, u); // the equipped egg's power, while it pulses
+  if (Y.clk) { // the clock in the title pill: the clock face, the time (red and pulsing in the last 10 s)
+    const low = sim.timeLeft <= 10, cx0 = Y.cx0, clk = Y.clk;
+    ctx.save();
+    fuseSlot(cx0 + clk / 2, row1);
+    if (low && !save.calm) { const k = 1 + 0.06 * Math.sin(G.t * 12), cc = cx0 + clk / 2; ctx.translate(cc, row1); ctx.scale(k, k); ctx.translate(-cc, -row1); }
+    hudClock(cx0 + 8 * u + 11 * u, row1 + 1 * u, 10 * u, low, sim.timeLeft / sim.timeLimit);
+    ui.record({ x: cx0 + 8 * u, y: row1 - 11 * u, w: 22 * u, h: 22 * u }, 'hud:clock', 'hud:time');
+    ui.text(timeTxt, cx0 + 8 * u + 22 * u + 5 * u, row1 + 0.5 * u, { size: Y.timeS * 0.9, color: low ? '#ff9a7a' : '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 3.2 * u, tag: 'hud:time', group: 'hud:time' });
+    ctx.restore();
+  }
+  if (timeTxt && !Y.twoRows) {
+    const tx = Y.trayX + Y.trayPillW + 8 * u, trayY = Y.trayY, timePillW = Y.timePillW, pillH = Y.pillH;
+    const low = sim.timeLeft <= 10;
+    ctx.save();
+    fuseSlot(tx + timePillW / 2, trayY);
+    if (low && !save.calm) { const k = 1 + 0.05 * Math.sin(G.t * 12), cx = tx + timePillW / 2; ctx.translate(cx, trayY); ctx.scale(k, k); ctx.translate(-cx, -trayY); }
+    ui.glass(tx, trayY - pillH / 2, timePillW, pillH, low ? { a: 'rgba(196,52,30,0.95)', b: 'rgba(120,22,10,0.95)', border: 'rgba(255,190,160,0.8)' } : {});
+    hudClock(tx + 8 * u + 11 * u, trayY + 1 * u, 10 * u, low, sim.timeLeft / sim.timeLimit);
+    ui.record({ x: tx + 8 * u, y: trayY - 11 * u, w: 22 * u, h: 22 * u }, 'hud:clock', 'hud:time');
+    ui.text(timeTxt, tx + 8 * u + 22 * u + 5 * u, trayY + 0.5 * u, { size: Y.timeS, color: low ? '#fff2c0' : '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 3.2 * u, tag: 'hud:time', group: 'hud:time' });
+    ctx.restore();
+  }
+  G.infoLow = 0;
+  if (G.bossBar && sim.bx && sim.bx.boss) drawBossBar(ctx, ui, sim, Y.bossX, Y.bossY, Y.bossW, Y.bossH, G.t); // (its iron housing is in the layer)
+  if (G.screen === 'play' && sim.state === 'play') { if (zoomWanted()) drawZoomBtns(); drawAllyBtn(); drawStrikeBtn(); drawBankBtn(); }
+}
+// the HUD's still parts (the scrim, pause, the score chip, the level pill, the egg tray, the boss bar's housing), and
+// the layout the live parts are placed by. V: what is drawn live this frame instead (see drawHUD).
+function hudStill(V, timeTxt) {
   const u = ui.u;
   const sim = G.sim;
   const pal = G.theme.palette;
   const A = ui.A, twoRows = A.w < 760 || A.h > A.w * 1.05;
   const pad = 12 * u, X0 = A.x + pad, Y0 = A.y + pad; // the HUD lives in the safe rect (the scrim still paints edge to edge)
   const bs = 46 * u;
-  ui.calm = save.calm;
   // scrim: the world's plate tint, fading out under the HUD
   const plate = /^rgba\(/.test(pal.plate || '') ? pal.plate : 'rgba(20,14,10,0.55)';
   const al = (a) => plate.replace(/[\d.]+\)$/, a + ')');
@@ -4928,15 +5061,14 @@ function drawHUD() {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W_, G.hudBottom + 12 * u);
   const row1 = Y0 + bs / 2;
-  ui.button('pause', '', X0, Y0, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
-  setMarkAt(X0, Y0, bs, bs, true); // 0.8.14: Settings lives behind pause until it was opened once (a still badge: never a blink during play)
+  if (!V.pause) {
+    ui.button('pause', '', X0, Y0, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
+    setMarkAt(X0, Y0, bs, bs, true); // 0.8.14: Settings lives behind pause until it was opened once (a still badge: never a blink during play)
+  }
   // score chip (right)
-  const st = sim.stats();
+  const st = V.st;
   const scoreTxt = String(st.score);
   const scoreSize = 24 * u, lblS = 11 * u;
-  if (HUDS.lv !== G.run) { HUDS.lv = G.run; HUDS.score = st.score; HUDS.bump = 0; }
-  if (st.score !== HUDS.score) { HUDS.bump = st.score > HUDS.score ? 1 : 0; HUDS.score = st.score; }
-  HUDS.bump *= 0.88;
   const scoreW = Math.max(ui.measure(scoreTxt, scoreSize), ui.measure('000', scoreSize));
   const lblW = ui.measure('SCORE', lblS);
   // two rows (phones): the label sits over the number, so the chip is narrow and the title pill keeps room for the clock
@@ -4944,31 +5076,14 @@ function drawHUD() {
   // level 1 shows only what matters (2026-11-20 first-five ladder): the eggs and pause, no score
   const noScore = G.li === 0 && G.level.id === 1;
   const chipH = stk ? 44 * u : 36 * u, chipW = noScore ? -8 * u : stk ? Math.max(ui.measure('SCORE', 9.5 * u), sW) + 24 * u : 13 * u + lblW + 7 * u + scoreW + 14 * u, chipX = A.x1 - pad - chipW;
+  const sx = stk ? chipX + chipW / 2 : A.x1 - pad - 14 * u, sy = stk ? row1 + 6 * u : row1;
   if (!noScore) {
   ui.glass(chipX, row1 - chipH / 2, chipW, chipH);
   ui.text('SCORE', stk ? chipX + chipW / 2 : chipX + 13 * u, stk ? row1 - 10 * u : row1 + 1 * u, { size: stk ? 9.5 * u : lblS, align: stk ? 'center' : 'left', color: 'rgba(255,232,196,0.85)', tag: 'hud:scoreLabel' });
-  ctx.save();
-  const sx = stk ? chipX + chipW / 2 : A.x1 - pad - 14 * u, sy = stk ? row1 + 6 * u : row1;
-  if (HUDS.bump > 0.02 && !save.calm) { const k = 1 + 0.22 * HUDS.bump; ctx.translate(sx, sy); ctx.scale(k, k); ctx.translate(-sx, -sy); }
-  ui.num(scoreTxt, sx, sy, { size: sS, align: stk ? 'center' : 'right', tag: 'hud:score' });
-  ctx.restore();
+  if (!V.bump) ui.num(scoreTxt, sx, sy, { size: sS, align: stk ? 'center' : 'right', tag: 'hud:score' });
   }
-  // the "i" button (who is in this vault): beside pause in one row, under it when the HUD takes two rows
-  // stall watch: Finish (enough eggs home) or Retry (stuck), centred under the HUD
-  if (G.screen === 'play' && sim.state === 'play' && G.stall && G.stall.run === G.run) {
-    const enough = sim.savedLog.length >= (G.level.target || 1);
-    if ((enough && G.stall.t >= 5) || (!enough && G.stall.t >= 22)) {
-      const fw = Math.min(220 * u, A.w - 2 * pad), fh = 44 * u, fx = A.cx - fw / 2, fy = G.hudBottom + 10 * u;
-      const k = save.calm ? 1 : 1 + 0.03 * Math.sin(G.t * 4);
-      ctx.save(); ctx.translate(A.cx, fy + fh / 2); ctx.scale(k, k); ctx.translate(-A.cx, -(fy + fh / 2));
-      if (enough) ui.button('finish', 'Finish level', fx, fy, fw, fh, { kind: 'primary', shimmer: true, icon: ICON.check, size: 18 * u });
-      else ui.button('retry', 'Stuck? Retry', fx, fy, fw, fh, { kind: 'secondary', icon: ICON.retry, size: 17 * u });
-      ctx.restore();
-    }
-  }
-  const infoOn = false; // 2026-11-19 (mykee): no "i" button in the HUD; who is in the vault is on the pause page
   let leftEdge = X0 + bs + 8 * u;
-  { const pw = perkChipHud(leftEdge, row1 - 15 * u, u); if (pw) leftEdge += pw + 8 * u; } // the equipped egg's power
+  { const pw = V.perk ? 34 * u : perkChipHud(leftEdge, row1 - 15 * u, u); if (pw) leftEdge += pw + 8 * u; } // the equipped egg's power
   const rightEdge = chipX - 8 * u;
   // tray + timer content
   const slots = Math.max(G.level.eggs, sim.eggs.length);
@@ -4984,14 +5099,10 @@ function drawHUD() {
   const pillH = 34 * u;
   const starW = G.li === -1 ? 0 : TRAY_STARS(u);
   const trayPillW = 10 * u + trayW + 9 * u + needW + 13 * u + starW;
-  const timeTxt = sim.timeLimit ? fmtTime(sim.timeLeft) : '';
   const timeS = 21 * u;
   const timeW = timeTxt ? ui.measure(timeTxt.replace(/\d/g, '0'), timeS) : 0;
   const timePillW = timeTxt ? 8 * u + 22 * u + 5 * u + timeW + 13 * u : 0;
   const groupW = trayPillW + (timeTxt && !twoRows ? 8 * u + timePillW : 0); // two rows: the clock rides in the title pill
-  // one-row HUD: the "i" sits beside pause when the level name keeps ~150u of room, else just under pause (left margin)
-  const infoBeside = infoOn && !twoRows && (A.cx - groupW / 2) - (leftEdge + bs + 8 * u) - 12 * u >= 150 * u;
-  if (infoBeside) leftEdge += bs + 8 * u;
   // level badge + name
   const isLv = G.li >= 0, nameS = 17 * u, bd = 26 * u;
   let trayX, trayY, lvlMax, lvlCx = null;
@@ -5005,6 +5116,7 @@ function drawHUD() {
   const boss2 = twoRows && G.bossBar && sim.bx && sim.bx.boss; // two rows: the boss bar shares the second row with the eggs
   trayX = boss2 ? X0 : A.cx - groupW / 2;
   const clk = twoRows && timeTxt ? 10 * u + 22 * u + 5 * u + timeW : 0; // the clock, beside the title (2026-11-19, mykee)
+  let cx0 = 0;
   {
     const inner = lvlMax - (isLv ? 4 * u + bd + 6 * u : 13 * u) - 13 * u - clk;
     const nw = Math.min(ui.measure(G.level.name, nameS), Math.max(20 * u, inner));
@@ -5024,16 +5136,9 @@ function drawHUD() {
       tx = px + 4 * u + bd + 6 * u;
     }
     ui.text(G.level.name, tx, row1 + 0.5 * u, { size: nameS, maxW: nw + 1, color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'hud:level', group: 'hud:level' });
-    if (clk) { // the clock in the title pill: a rule, the clock face, the time (red and pulsing in the last 10 s)
-      const low = sim.timeLeft <= 10, cx0 = tx + nw + 8 * u;
+    if (clk) { // the clock in the title pill: a rule here, the clock face and the time live (drawHUD)
+      cx0 = tx + nw + 8 * u;
       ctx.fillStyle = 'rgba(255,232,196,0.3)'; ctx.fillRect(cx0, row1 - pillH * 0.28, 1.5 * u, pillH * 0.56);
-      ctx.save();
-      fuseSlot(cx0 + clk / 2, row1);
-      if (low && !save.calm) { const k = 1 + 0.06 * Math.sin(G.t * 12), cc = cx0 + clk / 2; ctx.translate(cc, row1); ctx.scale(k, k); ctx.translate(-cc, -row1); }
-      hudClock(cx0 + 8 * u + 11 * u, row1 + 1 * u, 10 * u, low, sim.timeLeft / sim.timeLimit);
-      ui.record({ x: cx0 + 8 * u, y: row1 - 11 * u, w: 22 * u, h: 22 * u }, 'hud:clock', 'hud:time');
-      ui.text(timeTxt, cx0 + 8 * u + 22 * u + 5 * u, row1 + 0.5 * u, { size: timeS * 0.9, color: low ? '#ff9a7a' : '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 3.2 * u, tag: 'hud:time', group: 'hud:time' });
-      ctx.restore();
     }
   }
   // egg tray: every egg of the level, then saved / needed
@@ -5048,24 +5153,7 @@ function drawHUD() {
   ctx.fillRect(ex0 + trayW + 3.5 * u, trayY - pillH * 0.28, 1.5 * u, pillH * 0.56);
   ui.text(needTxt, ex0 + trayW + 9 * u, trayY + 0.5 * u, { size: needS, color: met ? '#b9ff9a' : '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'hud:need' });
   if (starW) drawTrayStars(ex0 + trayW + 9 * u + needW + 6 * u, trayY, u);
-  if (timeTxt && !twoRows) {
-    const tx = trayX + trayPillW + 8 * u;
-    const low = sim.timeLeft <= 10;
-    ctx.save();
-    fuseSlot(tx + timePillW / 2, trayY);
-    if (low && !save.calm) { const k = 1 + 0.05 * Math.sin(G.t * 12), cx = tx + timePillW / 2; ctx.translate(cx, trayY); ctx.scale(k, k); ctx.translate(-cx, -trayY); }
-    ui.glass(tx, trayY - pillH / 2, timePillW, pillH, low ? { a: 'rgba(196,52,30,0.95)', b: 'rgba(120,22,10,0.95)', border: 'rgba(255,190,160,0.8)' } : {});
-    hudClock(tx + 8 * u + 11 * u, trayY + 1 * u, 10 * u, low, sim.timeLeft / sim.timeLimit);
-    ui.record({ x: tx + 8 * u, y: trayY - 11 * u, w: 22 * u, h: 22 * u }, 'hud:clock', 'hud:time');
-    ui.text(timeTxt, tx + 8 * u + 22 * u + 5 * u, trayY + 0.5 * u, { size: timeS, color: low ? '#fff2c0' : '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 3.2 * u, tag: 'hud:time', group: 'hud:time' });
-    ctx.restore();
-  }
-  G.infoLow = 0;
-  if (infoOn) {
-    const ib = twoRows || !infoBeside ? 40 * u : bs, ix = infoBeside ? X0 + bs + 8 * u : X0 + (bs - ib) / 2, iy = infoBeside ? Y0 : twoRows ? Y0 + bs + 12 * u + pillH / 2 - ib / 2 : G.hudBottom + 6 * u; // one-row HUD without room: under the HUD (and under a boss bar)
-    drawInfoBtn(ix, iy, ib);
-    if (!twoRows && !infoBeside) G.infoLow = iy + ib; // under pause, past the HUD: the toast starts below it
-  }
+  const Y = { X0, Y0, bs, pad, row1, twoRows, noScore, sx, sy, sS, stk, clk, cx0, timeS, trayX, trayY, trayPillW, timePillW, pillH, bossX: 0, bossY: 0, bossW: 0, bossH: 0 };
   if (G.bossBar && sim.bx && sim.bx.boss) {
     // iron housing with a warm trim: the boss bar reads as its own piece of kit (two rows: beside the eggs, slimmer)
     const bx = boss2 ? trayX + trayPillW + 10 * u : X0, bh = boss2 ? pillH - 10 * u : G.bossBar - 8 * u, by = boss2 ? trayY - bh / 2 : G.hudBottom - G.bossBar + 2 * u, bw = boss2 ? A.x1 - pad - 2 * u - bx : A.w - 2 * pad, m = 3 * u;
@@ -5076,9 +5164,9 @@ function drawHUD() {
     hg.addColorStop(0, '#7a2a26'); hg.addColorStop(1, '#3a100e');
     ctx.fillStyle = hg; ctx.fill();
     ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(255,206,140,0.75)'; ctx.stroke();
-    drawBossBar(ctx, ui, sim, bx, by, bw, bh, G.t);
+    Y.bossX = bx; Y.bossY = by; Y.bossW = bw; Y.bossH = bh;
   }
-  if (G.screen === 'play' && sim.state === 'play') { if (zoomWanted()) drawZoomBtns(); drawAllyBtn(); drawStrikeBtn(); drawBankBtn(); }
+  return Y;
 }
 
 // the egg count the HUD pill counts toward: level 1 wins with one egg but its stars count all of them (1, 2, all 3 home)
@@ -5230,12 +5318,20 @@ function drawZoomBtns() {
   const { bs, pad, side } = G.zb, P = G.play, u = ui.u, gap = 8 * u;
   const items = [['zoom:in', ICON.zoom(true), ''], ['zoom:out', ICON.zoom(false), '']];
   if (G.zm != null) items.push(['zoom:auto', null, 'auto']);
-  items.forEach(([id, icon, label], i) => {
+  const at = (i) => {
     const x = side ? ui.A.x1 - pad - bs : ui.A.x1 - pad - bs * (i + 1) - gap * i;
     // landscape: centred in the right column, but never up on the Chick Strike button at its top
     const y = side ? Math.max(P.y + (P.h - (bs * 3 + gap * 2)) / 2, strikeShown() ? P.y + bs + gap * 2 : 0) + (bs + gap) * i : G.zb.bot;
+    return [x, y];
+  };
+  const paint = () => items.forEach(([id, icon, label], i) => {
+    const [x, y] = at(i);
     ui.button(id, label, x, y, bs, bs, { kind: 'hud', icon, iconS: 1.3, size: label ? 13 * u : undefined, round: 15 * u });
   });
+  if (items.some(([id]) => btnLive(id))) return paint(); // a pressed button squashes: drawn live
+  // 0.8.15 speed: the buttons stand still, so they are one picture (hudLayer) until one is pressed or the layout moves
+  const [xa, ya] = at(0), [xb, yb] = at(items.length - 1), x0 = Math.min(xa, xb) - 3 * u, y0 = Math.min(ya, yb) - 3 * u;
+  hudLayer('zoom', items.length + '|' + xa + ',' + ya + ',' + xb + ',' + yb + ',' + bs + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x0, y0, Math.max(xa, xb) + bs + 3 * u - x0, Math.max(ya, yb) + bs + 6 * u - y0, paint);
 }
 
 function drawPopups() {
@@ -8602,7 +8698,7 @@ if (DEV) window.__egg = {
   diag, rec: REC,
   howto: { drawHowTo, howToPlan, chickPlan, BASIC: HOWTO_BASIC, ROOSTER: HOWTO_ROOSTER, rooster: (c, x, y, s) => allyIcon(c, x, y, s) },
   stampStats,
-  perf: { bodyCache, ringCache, PERF, STEPS, applySettings: () => { applySettings(save); setDPR(); } },
+  perf: { bodyCache, ringCache, PERF, STEPS, hud: HUD_CACHE, hudLayers: HL, applySettings: () => { applySettings(save); setDPR(); } },
   mapJump(w) { G.world = w; G.mscroll.focus = ''; }, // map shots: show world w
   mapScroll(y) { G.mscroll.y = y; G.mscroll.v = 0; G.mscroll.focus = G.world + ':' + G.mscroll.enter; },
   G, LEVELS, LAB, ui, art: { drawOctopus: devOcto, octoAnim: devOctoAnim, drawJelly: devJelly }, drawVillainPortrait, PORTRAIT_BG, HEN_SKIN_ORDER: E.HEN_SKIN_ORDER, SKIN_ORDER: E.SKIN_ORDER, setEggSkin: (k) => W.setSkin(k),
