@@ -1290,6 +1290,9 @@ async function press(id) {
       if (M.on && M.pick) { openStore(null, M.pick.key); G.sscroll.hlDur = 3; } else openStore('deals');
       break;
     }
+    case 'win:shop': // the win card's "New in shop" chip: the shop, on the thing this win's coins reach
+      if (G.result && G.result.mark) { openStore(null, G.result.mark); G.sscroll.hlDur = 3; }
+      break;
     case 'shop:boosts': // the level card's empty booster well: the shop's Boosts row
       openStore('boosters', 'boosts');
       break;
@@ -2531,12 +2534,12 @@ function drawShopHand() {
   const tx = clamp(B.x + B.w / 2, bx + 22 * u, bx + bw - 22 * u);
   ctx.beginPath(); ctx.moveTo(tx - 9 * u, by + 1); ctx.lineTo(tx, by - 10 * u); ctx.lineTo(tx + 9 * u, by + 1); ctx.closePath(); ctx.fillStyle = '#fff8e6'; ctx.fill();
   ctx.beginPath(); ctx.moveTo(tx - 9 * u, by); ctx.lineTo(tx, by - 10 * u); ctx.lineTo(tx + 9 * u, by); ctx.stroke();
-  markArt(H.key, bx + 12 * u + ph / 2, by + bh / 2, ph);
+  markArt(H.key, bx + 12 * u + ph / 2, by + bh / 2 + 2 * u, ph * 0.86);
   ui.text(txt, bx + 18 * u + ph, by + bh / 2 + 0.5 * u, { size: ts, color: '#5a2c08', maxW: bw - ph - 28 * u, noRecord: true });
   ctx.restore();
   // the hand taps the button (still under Calm: it just points)
   const per = 1.1, q = save.calm ? 0.5 : (el % per) / per, press = q > 0.4 && q < 0.7, hs = Math.min(B.h * 1.3, 56 * u);
-  teachHand(ctx, B.x + B.w * 0.62, B.y + B.h * (press ? 0.42 : 0.58), hs, press, a);
+  teachHand(ctx, B.x + B.w * 0.8, B.y + B.h * (press ? 0.5 : 0.66), hs, press, a); // on the right half: the coin count stays readable
 }
 // a coin counter (the gold shop button on home and the map): the rolling number, a pop when the coins land
 // 0.8.14: with the shop mark on, a shimmer runs over it and the badge pulses on its top right corner
@@ -7159,6 +7162,15 @@ function drawWinPage() {
         ui.text(lab, ix + 20 * s, iy - 10 * s, { size: 12.5 * s, color: C.ink2, maxW: w / 2 - 50 * s, tag: 'win:l' + k2 });
         ui.text(v, ix + 20 * s, iy + 9 * s, { size: 19 * s, color: col, maxW: w / 2 - 50 * s, tag: 'win:v' + k2 });
       });
+    } });
+    // 0.8.14 the shop mark on the win card: this win's coins reach something new in the shop. One small chip under the
+    // coins (its art, "New in shop", an arrow); a tap opens the shop on it. Not in the early days, no price on it.
+    if (r.mark === undefined) { const M = shopMarkNow(); r.mark = !first && M.on && M.pick ? M.pick.key : null; }
+    if (r.mark) B.push({ h: 46 * s, gap: 8 * s, draw: (x, y, w) => {
+      if (!inCard || revealing(r)) return;
+      const cw = Math.min(w, 250 * s), cx = x + (w - cw) / 2, key = r.mark;
+      const Bt = ui.button('win:shop', 'New in shop', cx, y, cw, 46 * s, { kind: 'gold', shimmer: true, size: 17 * s, icon: (c, X, Y, S) => markArt(key, X, Y, S * 0.95), iconS: 1.6 });
+      chevron(cx + cw - 20 * s, Bt.cy, 8 * s, 'r', 1);
     } });
     // the score as one sum (mykee: "egg points, time bonus, the streak: what exactly are those?"):
     // Egg points + Time left x streak = SCORE, then NEW BEST! or the best so far
