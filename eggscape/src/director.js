@@ -80,7 +80,7 @@ export function noteSpend(save, coins, kind) {
 // ---- the win streak (research: Royal Match's win-streak start boosters). Levels won in a row, any level: from 2 in a
 // row the next level starts with free boosters, more as it grows. A loss ends it; a Rewind on the fail card (video or
 // coins) brings it back, so the streak is worth saving. Shown on the level card; from level 6 on.
-export const HOT = [[2, ['stone']], [3, ['stone', 'nest']], [5, ['stone', 'nest', 'sponge']]];
+export const HOT = [[2, ['stone']], [3, ['stone', 'sponge']], [5, ['stone', 'sponge', 'golden']]]; // 0.8.15: no Wide Nest here (nobody could see it); every one of these shows on the board
 export function hotBoosts(save) {
   const D = dirState(save);
   if ((save.unlocked || 1) < 6) return [];

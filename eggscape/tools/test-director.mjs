@@ -85,7 +85,7 @@ const ctx = (o = {}) => ({ levelId: 12, now: T0, nearMiss: false, timeout: false
   DR.noteResult(s, 41, true, {});
   ok(DR.hotBoosts(s).join() === 'stone', 'two in a row: a free Stone shell');
   DR.noteResult(s, 42, true, {});
-  ok(DR.hotBoosts(s).join() === 'stone,nest', 'three in a row: Stone shell + Wide Nest');
+  ok(DR.hotBoosts(s).join() === 'stone,sponge', 'three in a row: Stone shell + Sponge pad');
   DR.noteResult(s, 43, false, {});
   ok(DR.hotBoosts(s).length === 0 && DR.hotLost(s) === 3, 'a loss ends it (and remembers it)');
   DR.keepHot(s);
