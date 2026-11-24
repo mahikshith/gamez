@@ -24,8 +24,9 @@ import { PLACE as THIEVES_PLACE, freeThieves } from './mapthieves.js'; // 0.8.12
 export * as FARM from './mapfarm.js';
 // 0.8.10: the worlds painted as one place, by world index. Each entry: { landmarks (the LMS shapes), paintBand(c, L, E),
 // drawLive(ctx, L, sy, t, calm, vt, vb), drawFront?(...), stop(L, i) (i: 0..4 within the world), drawLandmark(ctx, L, m,
-// sy, t, calm, press, glow, DPR), drawPlaque(ctx, L, m, sy, press) }. main.js draws their stops as landmarks; a world
-// not listed keeps the round stops, the generic band and the walking cast. The next world plugs in here.
+// sy, t, calm, press, glow, DPR), drawPlaque(ctx, L, m, sy, press) }. 0.8.14: the landmarks are scenery; every world's
+// stops are the nests on the road (drawStop below), and drawPlaque is no longer used. A world not listed keeps the
+// generic band and the walking cast. The next world plugs in here.
 export const PLACES = { 0: FARM_PLACE, 3: CAVE_PLACE, 4: VOLCANO_PLACE, 6: THIEVES_PLACE };
 
 const TAU = Math.PI * 2;
