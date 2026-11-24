@@ -40,6 +40,7 @@ import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, f
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
 import * as ENG from './engine/index.js'; // 0.8.15: the background subsystems (Ledger, Pulse, Oracle, Conductor, Herald) behind one safe face
 import * as SP from './spin.js'; // 0.8.15: the Lucky Spin's rules
+import { drawWheel, drawStand, drawLever, drawSliceIcon, drawTicket, drawWheelIcon, releaseWheel, SLICE_COL } from './render/wheel.js'; // and its wheel
 import * as BR from './brain.js'; // 2026-11-23: the Brain, one arbiter over the Director and the offer engine (who is playing, when to ask, what fits)
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
@@ -265,7 +266,7 @@ if (typeof window !== 'undefined') window.__eggNotif = (ok) => {
 // ---- the Tally (engine/tally.js): which buttons and offers were on a page he saw, which he tapped, seconds per screen.
 // Looked at three times a second, never per frame; one count per visit of a page.
 const TAL_IDS = new Set(['double', 'bonus', 'sample', 'chest', 'daily', 'rewind', 'rewind:coins', 'skip:ad', 'skip:ticket', 'skip:coins', 'ad:coins', 'adboost', 'shop', 'store', 'win:shop', 'gm:shop', 'gm:ad', 'tr:shop', 'tr:open',
-  'home:chest', 'home:bank', 'home:premium', 'home:charge', 'home:hen', 'premium', 'set:novideo', 'chip:skip', 'strike', 'ally', 'settings', 'practice', 'extras', 'info', 'retry', 'next', 'restart', 'hint', 'cb:buy', 'pause:skip', 'store:coins', 'set:remind', 'rem:yes', 'calm']);
+  'home:chest', 'home:bank', 'home:premium', 'home:charge', 'home:hen', 'premium', 'set:novideo', 'chip:skip', 'strike', 'ally', 'settings', 'practice', 'extras', 'info', 'retry', 'next', 'restart', 'hint', 'cb:buy', 'pause:skip', 'store:coins', 'set:remind', 'rem:yes', 'calm', 'spin']);
 const TAL_PRE = /^(buy|charge|chick|hen|skin|kit|item|iap|gm:iap|try|boost|hset|spin|stk:buy|stk:pick|tr:boss|lv|tab):/;
 const talCache = new Map();
 function tallyKey(id) {
@@ -1215,6 +1216,7 @@ function keyDown(e) {
     if (G.screen === 'play') press('pause');
     else if (G.screen === 'pause') press('resume');
     else if (k === 'Escape' && (G.screen === 'practice' || G.screen === 'extras')) press('back');
+    else if (k === 'Escape' && G.screen === 'spin') press('spin:back');
     return;
   }
   if (G.screen === 'play' && G.sim) {
@@ -1765,6 +1767,14 @@ async function press(id) {
       portal.gameplayStop();
       setScreen('practice');
       break;
+    case 'spin': openSpin(); break;
+    case 'spin:back': closeSpin(); break;
+    case 'spin:go': case 'spin:lever': await spinGo('free'); break;
+    case 'spin:ad': await spinGo('ad'); break;
+    case 'spin:coin': await spinGo('coin'); break;
+    case 'spin:skip': spinSkip(); break;
+    case 'spin:odds': if (G.spin && G.spin.st === 'idle') G.spin.sheet = true; break;
+    case 'spin:odds:x': if (G.spin) G.spin.sheet = false; break;
     case 'back':
       G.getMore = null; G.detail = null;
       if (G.screen === 'store') shopSeen(); // (after a purchase fewer things are in reach: saving up again lights the mark)
@@ -2506,6 +2516,7 @@ function drawGot() {
   const hw = Math.min(A.w - 30 * u, S * 1.05), hh = S * 0.5;
   pop(0.1, cx, heroY, () => {
     if (R.sku) drawIapBanner(ctx, R.sku, 0, 0, hw, hh, G.t, save.wallet);
+    else if (R.art) spinArt(ctx, R.art, 0, 0, hh * 1.5, G.t); // a wheel prize
     else { const it = storeItem(R.key, storeState()); if (it) it.icon(ctx, 0, 0, hh * 1.1, G.t, 1); }
   });
   if (calm || t > 0.35) ui.text(R.name, cx, heroY + hh * 0.62, { size: Math.min(34 * u, 0.1 * S), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 5 * u, maxW: A.w - 40 * u, tag: 'got:name' });
@@ -2520,9 +2531,9 @@ function drawGot() {
     if (calm || t > t0 + 0.2) { const wr = ui.measure(it.label, ls) > cell - 6 * u, L = wr ? wrapText(it.label, ls * 0.92, cell - 6 * u).slice(0, 2) : [it.label]; L.forEach((ln, q) => ui.text(ln, x, y + cell * 0.36 + ls * 0.7 + q * ls * 1.05, { size: wr ? ls * 0.92 : ls, align: 'center', color: '#fff', stroke: ink, strokeW: 4 * u, maxW: cell - 4 * u, tag: `got:l${j}:${q}` })); }
   });
   // coins fly from the pile into the balance, which rolls up: the one coin-gain effect (purse.gain)
-  if (R.coins0 != null && !R.flown && (calm || t > R.land - 0.6)) { R.flown = true; purse.gain({ from: R.coins0, src: coinAt }); }
+  if (R.coins0 != null && !R.flown && (calm || t > R.land - 0.6)) { R.flown = true; purse.gain({ from: R.coins0, src: coinAt || (R.art === 'coins' ? { x: cx, y: heroY } : null) }); }
   const yEnd = Math.min(A.y1 - 34 * u, top + rowsN * rowH + 16 * u);
-  if (t > R.end - 0.2) tickLine('Added to your bag', cx, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: A.w - 36 * u, tag: 'got:line' });
+  if (t > R.end - 0.2 && R.line !== '') tickLine(R.line || 'Added to your bag', cx, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: A.w - 36 * u, tag: 'got:line' });
   pop(0.06, cx, cy - 0.98 * S, () => { const hs = Math.min(39 * u, 0.12 * S), w = Math.min(A.w - 36 * u, ui.measure('YOU GOT!', hs) + 80 * u); ui.ribbon('YOU GOT!', 0, -hs * 0.85, w, hs * 1.7, { color: '#d89a1c', size: hs, noRecord: true }); });
   ui.buttons.push({ id: 'got:tap', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); // a tap anywhere
 }
@@ -4562,8 +4573,8 @@ function lastEggMoment(sim) {
 }
 
 // ---------------------------------------------------------------- render
-const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1 };
-const SCENE_SCREENS = { title: 1, store: 1, practice: 1, levels: 1 }; // these paint a full themed scene (0.8.10: the map paints its own whole picture too, and the wash, drawn after it, dimmed its header and PLAY); the others keep the game behind and get a wash
+const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1, spin: 1 };
+const SCENE_SCREENS = { title: 1, store: 1, practice: 1, levels: 1, spin: 1 }; // these paint a full themed scene (0.8.10: the map paints its own whole picture too, and the wash, drawn after it, dimmed its header and PLAY); the others keep the game behind and get a wash
 function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
 function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); purse.draw(ctx, ui.u, ui.A, drawCoin, ui); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
 function drawStoreScreen() { // the shop's toast floats over its scrolling list (like a clipped card, it records nothing)
@@ -4582,6 +4593,7 @@ function render() {
     return;
   }
   if (G.screen === 'levels') { drawLevels(); menuFx(); drawToast(); drawModals(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the map covers the screen: no vault drawn under it
+  if (G.screen === 'spin') { drawSpin(); drawToast(); drawModals(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // 0.8.15: the Lucky Spin paints its own room too
   if (G.screen === 'store') { drawStoreScreen(); drawModals(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // 2026-11-19: the shop paints its whole room edge to edge, so no vault is drawn under it (it was, every frame)
   // 2026-11-19 speed (older phones): behind the level page (blurred) and the win page (shaded, once its card is in) the
   // board is a still picture, so it is painted once per visit and reused, instead of drawing the whole vault every
@@ -7915,6 +7927,7 @@ function drawFailPage() {
       if (sd) ui.text(lab, mid + n * sp / 2 + 10 * s, y + EH / 2 * s, { size: 17 * s, maxW: lw, color: C.ink, tag: 'fail:stat' });
       else ui.text(lab, x + w / 2, y + 47 * s, { size: 17 * s, align: 'center', maxW: w - 16 * s, color: C.ink, tag: 'fail:stat' });
     } });
+    if (SP.banked(save) > 0) B.push(spinRowBlock(s, { cheer: !!(G.failSpin && G.failSpin.cheer) })); // 0.8.15: a spin that waits (the cheer-up spin after three losses lands here)
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: 6 * s }));
     if (Hp) B.push({ h: 78 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
       const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost', ad = Hp.kind === 'adBoost';
@@ -8327,10 +8340,15 @@ function drawLevels() {
   ui.text(starTxt, X1 - 12 * u, hy + 0.5 * u, { size: 17 * u, align: 'right', color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'levels:stars', group: 'levels:stars' });
   // shop and the next star chest: their own row on a phone, beside the stars in landscape
   const chest = E.chestFor(totalStars, save.wallet.chests);
-  const bw4 = wide ? 120 * u : 0, rowY = wide ? Y0 + 1 * u : Y0 + 46 * u + 12 * u, rh = 44 * u;
-  const midW = wide ? bw4 * 2 + 10 * u : Math.min(A.w - 2 * pad, 340 * u), mx = wide ? chipX - 14 * u - midW : A.cx - midW / 2, half = (midW - 10 * u) / 2;
+  const spinOn = SP.open(save), nb = spinOn ? 3 : 2; // 0.8.15: the Lucky Spin joins the row once it exists (level 3 won)
+  const bw4 = wide ? (spinOn ? 108 : 120) * u : 0, rowY = wide ? Y0 + 1 * u : Y0 + 46 * u + 12 * u, rh = 44 * u;
+  const midW = wide ? bw4 * nb + 10 * u * (nb - 1) : Math.min(A.w - 2 * pad, (spinOn ? 372 : 340) * u), mx = wide ? chipX - 14 * u - midW : A.cx - midW / 2, half = (midW - 10 * u * (nb - 1)) / nb;
   purseBtn(mx, rowY, half, rh, 17 * u);
   if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { kind: chest.ready ? 'primary' : 'off', shimmer: chest.ready, disabled: !chest.ready, dim: 1, iconS: 1.25, icon: (c, x, y, s2) => { drawChest(c, x, y, s2, G.t, chest.ready ? 'ready' : 'locked'); if (chest.reward.skin && !E.ownsSkin(save.wallet, chest.reward.skin)) drawSkinPreview(c, chest.reward.skin, x - s2 * 0.55, y - s2 * 0.08, s2 * 0.8, G.t); }, size: 15 * u });
+  if (spinOn) { // free spins waiting: green and it says so; none: the meter (wins so far of the three a spin takes)
+    const M = SP.meter(save);
+    ui.button('spin', M.bank ? (M.bank > 1 ? `Spin x${M.bank}` : 'Spin!') : `${M.have}/${M.of}`, mx + 2 * (half + 10 * u), rowY, half, rh, { kind: M.bank ? 'primary' : 'secondary', shimmer: !!M.bank, iconS: 1.2, icon: (c, x, y, s2) => drawWheelIcon(c, x, y + s2 * 0.04, s2 * 0.46, M.bank && !save.calm ? G.t * 0.9 : 0), size: 15 * u });
+  }
   // the ribbon names the world in the middle of the view
   const midY = S.y + vh * 0.5;
   let wv = 0;
@@ -8384,6 +8402,190 @@ function practiceIcon(k, x, y, r, t) {
   } catch (e) { /* a missing drawer keeps the letter */ }
   return false;
 }
+// ---------------------------------------------------------------- the Lucky Spin page (0.8.15)
+// Rules: spin.js (the odds, the three ways to spin, what a slice turns into). Art: render/wheel.js. This page asks
+// spin.js for the result FIRST (it is in the wallet and saved before the wheel moves), then turns the wheel to the
+// slice that was rolled and stops well inside it: no staged near miss, nothing to lose by closing the game mid-spin.
+// The wheel never sells coins: a coin spin with too few coins says so and stops there.
+const TAU = Math.PI * 2;
+const spinSlices = () => { const A = SP.slices(); return SP.wheel(save).map((s, i) => ({ ...s, a0: A[i].a0, a1: A[i].a1 })); };
+const sliceName = (s) => (s.kind === 'coins' ? `${s.n} coins` : s.kind === 'booster' ? (s.n > 1 ? `${s.n} boosters` : '1 booster') : s.kind === 'coupon' ? 'Half-price ticket' : s.kind === 'charge' ? E.CHARGE_ITEM.name : s.kind === 'scare' ? E.BOOSTERS.scare.name : s.kind === 'skip' ? E.ITEMS.skip.name : 'Rare bird');
+const sliceNote = (s) => (s.kind === 'booster' ? 'Any kind' : s.kind === 'coupon' ? `${Math.round((E.COUPON.coins * SP.coinX(save)) / 5) * 5} coins if you hold one` : s.kind === 'scare' ? 'Villains keep away at the start' : s.kind === 'rare' ? 'An outfit or a chick you do not own' : '');
+// the prize's picture: the reveal's hero and the odds sheet's rows share it
+function spinArt(c, art, x, y, s, t) { if (art === 'ticket') drawTicket(c, x, y, s * 0.9); else if (art === 'skip') drawItemArt(c, 'skip', x, y, s, t); else drawPart(c, art, x, y, s, t); }
+function openSpin() {
+  if (!SP.open(save) || G.screen === 'spin') return;
+  G.spin = { from: G.screen, ang: G.spin ? G.spin.ang : -0.4, st: 'idle', flapT: -9, leverT: -9, tickT: -9, buzzT: -9, idx: null, sheet: false, lit: null };
+  G.getMore = null; G.detail = null; G.toasts = []; G.toast = null;
+  setScreen('spin'); audio.play('ui_open');
+}
+function closeSpin() {
+  const S = G.spin;
+  if (S && S.sheet) { S.sheet = false; return; }
+  if (S && S.st !== 'idle') return spinSkip();
+  releaseWheel();
+  setScreen(S && S.from && S.from !== 'spin' ? S.from : 'levels');
+}
+function spinSkip() { const S = G.spin; if (S && S.st === 'spinning') S.t0 = G.t - S.dur; else if (S && S.st === 'stopped') S.tStop = G.t - 9; }
+async function spinGo(how) {
+  const S = G.spin;
+  if (!S || S.st !== 'idle' || S.sheet || G.adBusy || G.screen !== 'spin') return;
+  const day = today(), W = SP.ways(save, day);
+  if (how === 'free' ? !W.free : how === 'ad' ? !W.ad : W.coin == null) return;
+  if (how === 'coin' && save.wallet.coins < W.coin) { S.shortT = G.t; audio.play('ui_back'); return; } // the wheel sells nothing: no "Get more" sheet here
+  if (how === 'ad') { if (!(await rewarded('spin'))) return; if (G.screen !== 'spin' || G.spin !== S || S.st !== 'idle') return; }
+  const snap = (w) => JSON.stringify({ ...E.sanitizeWallet(w), coins: 0 }), w0 = snap(save.wallet), c0 = E.sanitizeWallet(save.wallet).coins;
+  const res = SP.spin(save, how, day);
+  if (!res) return;
+  const P = res.prize, gained = save.wallet.coins - (c0 - res.paid), conv = P.kind !== 'coins' && gained > 0 && snap(save.wallet) === w0; // a full bag paid coins instead
+  ledWhy = 'spin'; BR.why(save, 'spin', res.slice.id, how); persist();
+  if (gained > 0) purse.hold(c0 - res.paid); // the prize coins fly in with the reveal, not before
+  const chick = P.kind === 'chick' ? STRIKES.find((k) => k.id === P.item) : null;
+  const coins = P.kind === 'coins' || conv;
+  S.res = res;
+  S.got = {
+    name: coins ? `${gained} coins` : P.kind === 'booster' ? (P.n > 1 ? `${P.n} x ${P.name}` : P.name) : P.kind === 'hen' ? `${P.name} outfit` : chick ? chick.name : P.name,
+    art: coins ? 'coins' : P.kind === 'booster' ? 'boost:' + P.item : P.kind === 'coupon' ? 'ticket' : P.kind === 'charge' ? 'charge' : P.kind === 'skip' ? 'skip' : P.kind === 'hen' ? 'hen:' + P.item : 'chick:' + P.item,
+    items: !coins && gained > 0 ? [{ art: 'coins', label: '+' + gained }] : [], coins: gained > 0 ? gained : 0,
+    line: conv ? 'Your bag was full: coins instead' : P.kind === 'coins' ? '' : P.kind === 'coupon' ? 'Half off one thing in the shop' : P.kind === 'hen' || P.kind === 'chick' ? 'Yours to keep' : gained > 0 ? 'Bag full: the rest in coins' : 'Added to your bag',
+  };
+  // where the wheel must stop: inside the rolled slice, away from its edges
+  const sl = spinSlices().find((q) => q.id === res.slice.id), m = (sl.a1 - sl.a0) * 0.22, f = sl.a0 + m + Math.random() * (sl.a1 - sl.a0 - 2 * m);
+  const base = ((S.ang % TAU) + TAU) % TAU, tgt = (((-f * TAU) % TAU) + TAU) % TAU;
+  S.a0 = base; S.a1 = base + 5 * TAU + ((tgt - base + TAU) % TAU); S.t0 = G.t; S.dur = 4.8; S.idx = null; S.lit = null; S.leverT = G.t;
+  audio.play('unlock', { pitch: 0.8, vol: 0.7 }); buzz('tap');
+  if (save.calm) { S.ang = S.a1; S.st = 'stopped'; S.tStop = G.t - 9; S.lit = res.slice.id; } else S.st = 'spinning';
+}
+function drawSpin() {
+  const u = ui.u, A = ui.A, S = G.spin, calm = save.calm;
+  if (!S) { setScreen('levels'); return; }
+  ui.calm = calm;
+  if (!themeBack(ctx, ui.skin, W_, H_, H_ * 0.8, true)) { const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#221a52'); bg.addColorStop(0.6, '#3d2560'); bg.addColorStop(1, '#5a2a5e'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); }
+  menuFx();
+  const wide = A.w > A.h * 1.2, P = ui.pageBox(wide ? Infinity : 440 * u), s = P.s, W = SP.ways(save, today()), M = SP.meter(save), SL = spinSlices();
+  const coinW = Math.max(84 * s, ui.measure(String(purse.shown()).replace(/\d/g, '0'), 17 * s) + 56 * s), long = P.w - 2 * (coinW + 24 * s) >= ui.measure('Lucky Spin', 25 * s) + 48 * s; // a narrow phone: the ribbon says Spin whole, not Lucky Sp...
+  ui.pageHeader(P, { back: 'spin:back', title: long ? 'Lucky Spin' : 'Spin', color: '#e8a020', tag: 'spin:title', right: { w: coinW, draw: (bx, by, bw, bh) => purseBtn(bx, by + (bh - 44 * s) / 2, bw, 44 * s, 17 * s) } });
+  // ---- layout: the wheel takes what the controls leave (portrait: over them; landscape: beside them)
+  const top = P.bottom + 8 * u, bot = A.y1 - 12 * u, ctlH = 166 * u;
+  let cx, cy, R, floor, cX, cY, cW, capY = 0;
+  if (wide) {
+    cW = Math.min(340 * u, A.w * 0.42);
+    const lw = A.w - cW - 3 * P.pad;
+    R = Math.min((bot - top) / 2.2, lw / 3.1, 210 * u);
+    cx = A.x + P.pad + lw / 2; cy = top + (bot - top) / 2 + 0.05 * R; floor = Math.min(bot, cy + 1.12 * R);
+    cX = A.x1 - P.pad - cW; cY = top + Math.max(0, (bot - top - ctlH) / 2);
+  } else {
+    cW = Math.min(P.w, 380 * u); cX = A.cx - cW / 2; cY = bot - ctlH;
+    const areaH = cY - 12 * u - top;
+    R = Math.min(areaH / 2.6, P.w / 2 - 2 * u, 210 * u);
+    const capH = areaH - 2.6 * R >= 40 * u ? 34 * u : 0, gy = top + (areaH - 2.6 * R - capH) / 2 + capH;
+    if (capH) capY = gy - capH / 2 + 2 * u;
+    cx = A.cx; cy = gy + 1.12 * R; floor = cy + 1.42 * R;
+  }
+  // ---- the spin itself: wind back a touch, five turns and more, ease out onto the slice
+  if (S.st === 'spinning') {
+    const x = clamp((G.t - S.t0) / S.dur, 0, 1), x1 = (x - 0.05) / 0.95;
+    S.ang = x < 0.05 ? S.a0 - 0.16 * Math.sin((x / 0.05) * Math.PI * 0.5) : S.a0 - 0.16 * (1 - Math.min(1, x1 * 8)) + (S.a1 - S.a0) * (1 - Math.pow(1 - x1, 3.4));
+    if (x >= 1) { S.ang = S.a1; S.st = 'stopped'; S.tStop = G.t; S.lit = S.res.slice.id; audio.play('unlock', { pitch: 1.25 }); buzz('pick'); }
+  }
+  { // a peg passed the flapper: it ticks (the sound and the buzz thin out while the wheel is fast)
+    const p = (((-S.ang / TAU) % 1) + 1) % 1, idx = SL.findIndex((q) => p >= q.a0 && p < q.a1);
+    if (S.idx != null && idx !== S.idx && S.st === 'spinning') {
+      S.flapT = G.t;
+      if (G.t - S.tickT > 0.045) { S.tickT = G.t; audio.play('ring_tick', { vol: 0.5, pitch: 1.35 }); }
+      if (G.t - S.buzzT > 0.14) { S.buzzT = G.t; buzz('tick'); }
+    }
+    S.idx = idx;
+  }
+  if (S.st === 'stopped' && G.t - S.tStop > 0.75 && !G.got) { S.st = 'prize'; startGot(S.got); }
+  else if (S.st === 'prize' && !G.got) { S.st = 'idle'; S.doneT = G.t; }
+  // ---- the scene
+  ctx.save(); ctx.globalAlpha = 0.9; sunburst(cx, cy, R * 2.1, 'rgba(255,214,120,0.09)', 14); ctx.restore();
+  { const g = ctx.createRadialGradient(cx, cy, R * 0.3, cx, cy, R * 1.7); g.addColorStop(0, 'rgba(255,220,130,0.28)'); g.addColorStop(1, 'rgba(255,220,130,0)'); ctx.fillStyle = g; ctx.fillRect(cx - R * 1.7, cy - R * 1.7, R * 3.4, R * 3.4); }
+  if (capY) ui.text('Every spin wins', cx, capY, { size: 19 * u, align: 'center', color: '#ffe8b0', stroke: 'rgba(20,8,30,0.75)', strokeW: 4 * u, maxW: P.w, tag: 'spin:cap' });
+  if (!wide) drawStand(ctx, cx, cy, R, floor);
+  const litK = S.lit ? (S.st === 'idle' ? clamp(1 - (G.t - (S.doneT || 0)) / 2.5, 0, 1) : 1) : 0;
+  drawWheel(ctx, cx, cy, R, S.ang, SL, { dpr: Math.min(DPR, 2), lit: S.lit, litK, flap: clamp(1 - (G.t - S.flapT) / 0.11, 0, 1), t: G.t });
+  ui.record({ x: cx - R * 0.7, y: cy - R * 0.7, w: R * 1.4, h: R * 1.4 }, 'spin:wheel');
+  // the hen beside it, and the lever (a tap on it is the SPIN button's tap)
+  const hh = (wide ? 0.66 : 0.62) * R, hx = wide ? cx - R * 1.3 : cx - R * 0.78;
+  drawHenSkinPreview(ctx, G.henSkinCur || save.wallet.henSkin, hx, floor - hh * 0.5, hh, G.t);
+  const lt = G.t - S.leverT, lk = calm ? 0 : lt < 0.14 ? lt / 0.14 : lt < 0.5 ? 1 : clamp(1 - (lt - 0.5) / 0.45, 0, 1);
+  const lh = 0.36 * R, lx = wide ? cx + R * 1.22 : cx + R * 0.74, ly = floor - lh * 0.34;
+  drawLever(ctx, lx, ly, lh, lk, W.free && S.st === 'idle' && !calm, G.t);
+  const idle = S.st === 'idle';
+  if (idle) ui.buttons.push({ id: 'spin:lever', x: lx - lh * 0.55, y: ly - lh * 1.25, w: lh * 1.5, h: lh * 1.6 });
+  // ---- the controls: how near the next free spin is, the ways to spin now, the odds
+  ctx.save(); if (!idle) ctx.globalAlpha = 0.45;
+  {
+    const x = cX, y = cY, w = cW, my = y + 15 * u, fs = 15.5 * u, off = idle ? {} : { disabled: true, keepFace: true, dim: 0.45 }; // while the wheel turns the buttons rest
+
+    const short = G.t - (S.shortT || -9) < 2.2; // a coin spin he cannot pay: the line says so for a moment (and the button shakes its head)
+    const txt = short ? 'Not enough coins for this spin' : M.bank >= SP.SPIN.bankMax ? 'Your free spins are waiting' : `${M.left} more win${M.left > 1 ? 's' : ''} to a free spin`;
+    const pw = M.of * 22 * u, tw = Math.min(ui.measure(txt, fs), w - pw - 10 * u), x0 = x + w / 2 - (pw + 8 * u + tw) / 2;
+    for (let i = 0; i < M.of; i++) {
+      const px = x0 + 11 * u + i * 22 * u;
+      ctx.beginPath(); ctx.arc(px, my, 8.5 * u, 0, TAU); ctx.fillStyle = i < M.have ? '#fff6c8' : 'rgba(20,8,30,0.45)'; ctx.fill(); ctx.lineWidth = 2 * u; ctx.strokeStyle = i < M.have ? '#3a9a2c' : 'rgba(255,232,176,0.55)'; ctx.stroke();
+      if (i < M.have) pictoCheck(ctx, px, my, 15 * u);
+    }
+    ui.record({ x: x0, y: my - 10 * u, w: pw, h: 20 * u }, 'spin:pips', 'spin:meter');
+    ui.text(txt, x0 + pw + 8 * u, my, { size: fs, color: short ? '#ffb0a0' : '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, maxW: tw, tag: 'spin:meter', group: 'spin:meter' });
+    const by = y + 38 * u, bh = 66 * u, opts = [W.ad && 'ad', W.coin != null && 'coin'].filter(Boolean);
+    if (W.free) ui.button('spin:go', M.bank > 1 ? `SPIN  x${M.bank}` : 'SPIN', x, by, w, bh, { kind: 'primary', shimmer: idle, size: 29 * u, iconS: 1.15, icon: (c, X, Y, S2) => drawWheelIcon(c, X, Y, S2 * 0.5, calm ? 0 : G.t * 0.8), ...off });
+    else if (!opts.length) ui.button('spin:back', 'Win levels to spin again', x, by, w, bh, { kind: 'secondary', size: 19 * u, ...off });
+    else opts.forEach((k, i) => {
+      const bw = (w - 10 * u * (opts.length - 1)) / opts.length, bx = x + i * (bw + 10 * u), rich = W.coin != null && save.wallet.coins >= W.coin;
+      const sh = k === 'coin' && !calm && G.t - (S.shortT || -9) < 0.4 ? Math.sin((G.t - S.shortT) * 40) * 4 * u : 0; // too few coins: the button shakes its head
+      if (k === 'ad') ui.button('spin:ad', ads.premium ? 'Free spin' : 'Spin', bx, by, bw, bh, ads.premium ? { kind: 'secondary', size: 22 * u, icon: (c, X, Y, S2) => drawWheelIcon(c, X, Y, S2 * 0.5, 0), ...off } : { kind: 'ad', ad: true, size: 23 * u, ...off });
+      else ui.button('spin:coin', `Spin ${W.coin}`, bx + sh, by, bw, bh, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 22 * u, ...off });
+    });
+    const ow = Math.min(w, 250 * u);
+    ui.button('spin:odds', 'Prizes and odds', x + w / 2 - ow / 2, by + bh + 14 * u, ow, 46 * u, { kind: 'tertiary', size: 17 * u, ...off });
+  }
+  ctx.restore();
+  if (!idle) { ui.buttons.length = 0; ui.buttons.push({ id: 'spin:skip', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); } // a tap anywhere brings the wheel to its stop at once
+  if (S.sheet) drawSpinOdds(SL);
+}
+// the odds, as the wheel is painted: every slice, what it holds, how often it comes
+function drawSpinOdds(SL) {
+  const u = ui.u, A = ui.A, wide = A.w > A.h * 1.2, cols = wide ? 2 : 1, rowsN = Math.ceil(SL.length / cols);
+  ui.buttons.length = 0; ui.rects.length = 0;
+  ui.buttons.push({ id: 'spin:odds:x', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); // a tap off the card closes it
+  dim(0.72);
+  const w = Math.min(A.w - 20 * u, wide ? 640 * u : 400 * u), headH = 50 * u, footH = 96 * u, rowH = Math.min(42 * u, (A.h - 24 * u - headH - footH) / rowsN), h = headH + rowsN * rowH + footH;
+  const x = A.cx - w / 2, y = A.y + (A.h - h) / 2 + 8 * u;
+  ui.frame(x, y, w, h, { s: u, r: 22 * u });
+  ui.buttons.push({ id: 'spin:odds:card', x, y, w, h }); // (a tap on the card itself does nothing)
+  ui.ribbon('Prizes and odds', A.cx, y - 14 * u, Math.min(w - 30 * u, 300 * u), 44 * u, { color: '#e8a020', size: 21 * u, tag: 'odds:title' });
+  const cw = (w - 24 * u) / cols, ks = Math.min(1, rowH / (42 * u));
+  SL.forEach((sl, i) => {
+    const c = Math.floor(i / rowsN), r = i % rowsN, rx = x + 12 * u + c * cw, ry = y + headH + r * rowH, my = ry + rowH / 2, C = SLICE_COL[sl.id], note = sliceNote(sl);
+    const ch = rowH - 6 * u, chw = 46 * u;
+    ui.roundRect(rx + 4 * u, my - ch / 2, chw, ch, 9 * u); ctx.fillStyle = C[1]; ctx.fill(); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(60,28,6,0.55)'; ctx.stroke();
+    drawSliceIcon(ctx, sl, rx + 4 * u + chw / 2, my, Math.min(ch * 0.92, 36 * u), G.t);
+    const pct = `${Math.round(sl.pct * 10) / 10}%`, pw = ui.measure('22%', 17 * u * ks) + 6 * u, tx = rx + chw + 14 * u, tw = cw - chw - 26 * u - pw;
+    ui.text(sliceName(sl), tx, note ? my - 8 * u * ks : my, { size: 16 * u * ks, color: ui.C.ink, maxW: tw, tag: 'odds:n' + i });
+    if (note) ui.text(note, tx, my + 10 * u * ks, { size: 11.5 * u * ks, color: ui.C.ink2, maxW: tw, tag: 'odds:s' + i });
+    ui.text(pct, rx + cw - 8 * u, my, { size: 17 * u * ks, align: 'right', color: ui.C.ink, tag: 'odds:p' + i });
+  });
+  const fy = y + headH + rowsN * rowH + 6 * u;
+  wrapText('Every spin wins. The odds are the same for everyone and never change.', 12.5 * u, w - 36 * u).slice(0, 2).forEach((l, i) => ui.text(l, A.cx, fy + 9 * u + i * 15 * u, { size: 12.5 * u, align: 'center', color: ui.C.ink2, maxW: w - 30 * u, tag: 'odds:f' + i }));
+  const bw = Math.min(w - 40 * u, 200 * u);
+  ui.button('spin:odds:x', 'OK', A.cx - bw / 2, y + h - 56 * u, bw, 44 * u, { kind: 'primary', size: 20 * u });
+}
+// the wheel's entry on other pages: a row with the little wheel, how many spins wait, and SPIN
+function spinRowBlock(s, o = {}) {
+  return { h: 70 * s, gap: o.gap ?? 10 * s, draw: (x, y, w) => {
+    const n = SP.banked(save), bw = Math.min(124 * s, w * 0.34);
+    ui.well(x, y, w, 70 * s, { s, a: '#ffe9b0', b: '#fff6dc' });
+    drawWheelIcon(ctx, x + 36 * s, y + 37 * s, 23 * s, save.calm ? 0 : G.t * 0.7);
+    const tx = x + 68 * s, tw = x + w - bw - 16 * s - tx;
+    ui.text(o.cheer ? 'A cheer-up spin for you' : n > 1 ? `${n} free spins waiting` : 'A free spin is waiting', tx, y + 35 * s, { size: 16 * s, color: ui.C.ink, maxW: tw, tag: 'spinrow:t' });
+    ui.button('spin', 'SPIN', x + w - bw - 8 * s, y + 10 * s, bw, 50 * s, { kind: 'primary', shimmer: true, size: 21 * s });
+    ui.record({ x, y, w, h: 70 * s }, 'panel:spinrow');
+  } };
+}
+
 function drawPractice() {
   const u = ui.u, A = ui.A, pad = ui.pageBox().pad, S = G.pscroll, vb = A.y1; // the list scrolls down to the bottom of the safe rect
   ui.calm = save.calm;
@@ -8678,6 +8880,7 @@ async function boot() {
       case 'pause': press('resume'); return true;
       case 'info': press('info:close'); return true;
       case 'practice': case 'extras': case 'store': case 'levels': press('back'); return true;
+      case 'spin': press('spin:back'); return true;
       default: return false;
     }
   });
