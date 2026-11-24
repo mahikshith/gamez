@@ -4185,6 +4185,7 @@ function onFail() {
     DR.noteResult(save, G.level.id, false, { saved: st.saved }); BR.note(save, 'level');
     DR.tickTrial(save);
     G.failHelp = earlyDays() ? null : DR.failHelp(save, failCtx(st));
+    if (st.target >= 2 && st.saved === st.target - 1) BR.why(save, 'fail', 'soclose', `one egg short on level ${G.level.id}: ${earlyDays() || G.usedRewind || !G.sim.canRewind() ? 'said so, RETRY leads' : 'Rewind leads, RETRY under it'}`);
     persist();
   }
   G.trialChick = null;
@@ -7721,12 +7722,17 @@ function drawFailPage() {
   const ways = skipWays(), rew = !G.usedRewind && G.sim.canRewind(), hl = rew && G.li >= 0 ? DR.hotLost(save) : 0;
   const coinR = rew && !G.freeRewind && !ads.premium && G.li >= 0, price = DR.rewindPrice((G.rewindBuys || {})[G.level.id]);
   const Hp = G.failHelp, BH = FAIL_BTN;
+  // 0.8.15 "So close": one egg short of the goal is the best moment to offer the way back in (research: the near miss is
+  // where a continue is worth most to the player). The page says so, the missing slot glows, and Rewind leads; RETRY stays
+  // one row under it, green, free. Never in the first levels (nothing is sold there), never a timer.
+  const near = st.target >= 2 && st.saved === st.target - 1, lead = near && rew && !earlyDays();
+  const hotB = (() => { let o = []; if (hl >= 2 && (save.unlocked || 1) >= 6) for (const [n, b] of DR.HOT) if (hl >= n) o = b; return o; })(); // what the streak was worth
   const build = (stH) => (s) => {
     const B = [];
     // why it failed: an icon and two or three words (the ribbon above says the same)
     B.push({ h: 30 * s, gap: sd ? 2 * s : 4 * s, draw: (x, y, w) => {
-      const t = timeout ? 'No time left' : 'Too many eggs lost', tw = ui.measure(t, 19 * s) + 34 * s, x0 = x + w / 2 - tw / 2;
-      if (timeout) pictoClock(ctx, x0 + 12 * s, y + 15 * s, 28 * s); else pictoBroken(ctx, x0 + 12 * s, y + 15 * s, 28 * s);
+      const t = near ? 'Just one egg short' : timeout ? 'No time left' : 'Too many eggs lost', tw = ui.measure(t, 19 * s) + 34 * s, x0 = x + w / 2 - tw / 2;
+      if (near) drawEggIcon(ctx, x0 + 12 * s, y + 15 * s, 24 * s, 'alive'); else if (timeout) pictoClock(ctx, x0 + 12 * s, y + 15 * s, 28 * s); else pictoBroken(ctx, x0 + 12 * s, y + 15 * s, 28 * s);
       ui.text(t, x0 + 30 * s, y + 15 * s, { size: 19 * s, color: C.warn, maxW: w - 34 * s, tag: 'fail:cheer' });
     } });
     if (!sd && stH > 0) B.push({ h: stH * s, gap: 8 * s, draw: (x, y, w) => {
@@ -7744,7 +7750,12 @@ function drawFailPage() {
       for (let i = 0; i < n; i++) {
         const ex = mid + (i - (n - 1) / 2) * sp, ey = y + (sd ? EH / 2 : 20) * s;
         if (i < st.saved) drawEggIcon(ctx, ex, ey, es, 'saved');
-        else drawEggIcon(ctx, ex, ey, es, 'slot');
+        else if (near && i === st.saved) { // the one that was missing: its place glows and the egg that nearly made it fades in and out
+          const p = save.calm ? 0.6 : 0.5 + 0.5 * Math.sin(G.screenT * 4.2);
+          ctx.save(); ctx.globalAlpha = 0.3 + 0.45 * p; ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.ellipse(ex, ey, es * (0.54 + 0.07 * p), es * (0.64 + 0.07 * p), 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+          drawEggIcon(ctx, ex, ey, es, 'slot');
+          ctx.save(); ctx.globalAlpha = 0.25 + 0.4 * p; drawEggIcon(ctx, ex, ey - (save.calm ? 0 : (1 - p) * 3 * s), es * 0.9, 'alive'); ctx.restore();
+        } else drawEggIcon(ctx, ex, ey, es, 'slot');
       }
       ui.record({ x: mid - n * sp / 2, y: y + (sd ? EH / 2 - 13 : 7) * s, w: n * sp, h: 26 * s }, 'fail:eggs');
       if (sd) ui.text(lab, mid + n * sp / 2 + 10 * s, y + EH / 2 * s, { size: 17 * s, maxW: lw, color: C.ink, tag: 'fail:stat' });
@@ -7765,22 +7776,27 @@ function drawFailPage() {
       ui.button('help:go', lab, x + w - bw - 8 * s, y + 13 * s, bw, 52 * s, free ? { kind: 'primary', shimmer: true, size: 20 * s } : ad ? { kind: 'ad', ad: true, size: 17 * s } : { kind: save.wallet.coins >= Hp.price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s });
       ui.record({ x, y, w, h: 78 * s }, 'panel:failhelp'); // (a panel: its own words and button sit on it)
     } });
-    // row A: RETRY, the whole width, the biggest
+    // row A: RETRY, the whole width, the biggest (one egg short with a Rewind to offer: Rewind takes that place, RETRY the row under it)
     const RH = sd ? 62 : 68;
-    B.push({ h: RH * s, gap: (sd ? 10 : 14) * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, RH * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 27 * s }) });
+    const retryRow = () => B.push(lead ? { h: BH * s, gap: 10 * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, BH * s, { kind: 'primary', icon: ICON.retry, size: 22 * s }) }
+      : { h: RH * s, gap: (sd ? 10 : 14) * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, RH * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 27 * s }) });
     // row B: Rewind 12 s, a Free rewind booster or a video, beside Rewind for coins (dearer each time on this level). It keeps the win streak.
-    if (rew) {
-      if (hl >= 2) B.push({ h: 26 * s, gap: 10 * s, draw: (x, y, w) => {
-        const t = `Rewind keeps your ${hl}-win streak`, tw = ui.measure(t, 15 * s) + 30 * s, x0 = x + w / 2 - tw / 2;
+    const rewRows = () => {
+      const h = (lead ? RH : BH) * s, fs = (lead ? 20 : 18) * s;
+      if (hl >= 2) B.push({ h: 26 * s, gap: (lead ? (sd ? 8 : 12) : 10) * s, draw: (x, y, w) => { // the streak, and the boosters it was giving at every start
+        const t = `Rewind keeps your ${hl}-win streak`, iw = hotB.length * 24 * s + (hotB.length ? 6 * s : 0), tm = Math.min(ui.measure(t, 15 * s), w - 30 * s - iw), tw = tm + 30 * s + iw, x0 = x + w / 2 - tw / 2;
         pictoFlame(ctx, x0 + 11 * s, y + 13 * s, 24 * s);
-        ui.text(t, x0 + 26 * s, y + 13 * s, { size: 15 * s, color: C.warn, maxW: w - 30 * s, tag: 'fail:hot' });
+        ui.text(t, x0 + 26 * s, y + 13 * s, { size: 15 * s, color: C.warn, maxW: tm, tag: 'fail:hot' });
+        hotB.forEach((id, i) => drawBoosterIcon(ctx, id, x0 + 26 * s + tm + 18 * s + i * 24 * s, y + 13 * s, 24 * s, G.t));
+        if (hotB.length) ui.record({ x: x0 + 26 * s + tm + 6 * s, y: y + s, w: iw - 6 * s, h: 24 * s }, 'fail:hotb');
       } });
-      B.push({ h: BH * s, gap: hl >= 2 ? 4 * s : 12 * s, draw: (x, y, w) => {
+      B.push({ h, gap: hl >= 2 ? 4 * s : (lead ? (sd ? 10 : 14) : 12) * s, draw: (x, y, w) => {
         const hw = coinR ? (w - 10 * s) / 2 : w;
-        ui.button('rewind', G.freeRewind ? 'Free rewind' : `Rewind ${REWIND_S}s`, x, y, hw, BH * s, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: 18 * s } : { kind: 'ad', ad: true, size: 18 * s });
-        if (coinR) ui.button('rewind:coins', 'Rewind ' + price, x + hw + 10 * s, y, hw, BH * s, { kind: save.wallet.coins >= price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 18 * s });
+        ui.button('rewind', G.freeRewind ? 'Free rewind' : `Rewind ${REWIND_S}s`, x, y, hw, h, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: fs, shimmer: lead } : { kind: 'ad', ad: true, size: fs, shimmer: lead });
+        if (coinR) ui.button('rewind:coins', 'Rewind ' + price, x + hw + 10 * s, y, hw, h, { kind: save.wallet.coins >= price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: fs });
       } });
-    }
+    };
+    if (lead) { rewRows(); retryRow(); } else { retryRow(); if (rew) rewRows(); }
     // row C: Skip level (a ticket the player owns, else a video) and Levels; stuck: the two skips, Levels under them
     const skipBtn = (way, x, y, w, h) => {
       if (way === 'ticket') ui.button('skip:ticket', 'Skip level', x, y, w, h, { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3, size: 18 * s });
@@ -7803,8 +7819,8 @@ function drawFailPage() {
     const roomU = (A.y1 - A.y - 30 * u) / u;
     stH = clamp(roomU - rest - 24, 130, 260);
   }
-  const title = timeout ? 'Out of time!' : 'Too many eggs broke';
-  const card = stackCard(title, build(stH), { ...(sd ? sd.cardO : { full: true }), ribbon: '#5a82c8', minS: u, scroll: G.fscroll, grow: 1.2 });
+  const title = near ? 'So close!' : timeout ? 'Out of time!' : 'Too many eggs broke';
+  const card = stackCard(title, build(stH), { ...(sd ? sd.cardO : { full: true }), ribbon: near ? '#e0882a' : '#5a82c8', minS: u, scroll: G.fscroll, grow: 1.2 });
   if (sd) {
     const { box, henH } = sideStage(sd, card);
     drawCelebration(ctx, 'encourage', G.screenT, box, { henH, calm: save.calm, pw: 0.5 });
