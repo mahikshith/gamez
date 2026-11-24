@@ -26,7 +26,7 @@ import { drawFish } from './sea.js';
 import { FISH } from '../sim/sea.js';
 import { drawGator } from './bayou.js';
 import { GATOR } from '../sim/bayou.js';
-import { drawEagle } from './v3art.js';
+import { drawEagle, drawLavaRock, drawMeltHole } from './v3art.js';
 import { drawSalHeat } from './salamander.js'; // the game's own red-hot wall (the salamander's harm beat)
 
 const TAU = Math.PI * 2;
@@ -564,6 +564,22 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     if (haz.warn > 0) { ctx.save(); ctx.globalAlpha *= haz.warn * (0.55 + 0.45 * Math.sin(T * 14)); ctx.fillStyle = '#ff3a2a'; ctx.beginPath(); ctx.ellipse(mk.x, mk.y - Z * 0.01, Z * 0.13, Z * 0.04, 0, 0, TAU); ctx.fill(); ctx.restore(); }
     const hk = haz.k === 'curse' || haz.k === 'thornorb' ? haz.k : haz.k;
     if (hk === 'curse' || hk === 'thornorb') { drawVillainPortrait(ctx, hk, mk.x, mk.y - Z * 0.09, Z * 0.2, t); }
+    else if (hk === 'lava') { // 0.8.14 (mykee: the Lava rocks card must show lava rocks): the game's own rock, target mark and melt hole
+      const rr = eggS * 0.46, f = ease(haz.fall), top = y - rr * 2, land = mk.y - rr * 0.8, rx = mk.x + (1 - f) * Z * 0.3, ry = top + (land - top) * f;
+      if (haz.warn > 0 && haz.boom <= 0) { // the dashed target ring the game draws while a rock flies in
+        ctx.save(); ctx.beginPath(); ctx.arc(mk.x, mk.y - eggS * 0.2, eggS * (0.8 - 0.25 * haz.fall), 0, TAU); ctx.fillStyle = `rgba(255,90,20,${0.12 + 0.18 * haz.fall})`; ctx.fill();
+        ctx.strokeStyle = `rgba(255,214,90,${0.6 + 0.4 * Math.sin(T * 16)})`; ctx.lineWidth = Math.max(3, eggS * 0.06); ctx.setLineDash([eggS * 0.15, eggS * 0.11]); ctx.stroke(); ctx.restore();
+      }
+      if (haz.boom > 0.45) drawMeltHole(ctx, mk.x, mk.y + band / 2, eggS * 1.7 * ease(seg(haz.boom, 0.45, 0.8)), band, t, 1); // then it melts a hole in the ring
+      if (haz.fall > 0 && haz.boom <= 0) {
+        ctx.save(); ctx.strokeStyle = 'rgba(60,40,35,0.4)'; ctx.lineCap = 'round'; ctx.lineWidth = rr * 0.7; ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Z * 0.07, ry - rr * 2.6); ctx.stroke(); ctx.restore();
+        drawLavaRock(ctx, rx, ry, rr * (0.55 + 0.45 * f), t, 1);
+      } else if (haz.boom > 0 && haz.boom < 0.8) { // it sits glowing on the ring, then sinks into the hole it melts
+        const sink = seg(haz.boom, 0.45, 0.8);
+        ctx.save(); ctx.globalAlpha *= 1 - sink; drawLavaRock(ctx, mk.x, land + rr * 0.9 * sink, rr * (1 - 0.3 * sink), t, 1); ctx.restore();
+        if (haz.boom < 0.3) burst(ctx, mk.x, mk.y - Z * 0.05, Z * 0.22 * (0.5 + haz.boom * 2), 1 - haz.boom / 0.3, '#ff8a3a');
+      }
+    }
     else if (haz.boom <= 0 || haz.boom < 1) {
       const top = y + Z * 0.2, sy = top + (mk.y - Z * 0.1 - top) * ease(haz.fall);
       if (haz.boom <= 0) { ctx.beginPath(); ctx.arc(mk.x, sy, Z * 0.16, 0, TAU); ctx.fillStyle = 'rgba(30,36,52,0.85)'; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#ff6a4a'; ctx.stroke(); drawVillainPortrait(ctx, hk, mk.x, sy, Z * 0.3, t); }
@@ -641,7 +657,12 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
       for (let i = 0; i < 3; i++) { const a0 = eA - 0.1 - i * 0.025, a1 = a0 - 0.18 * slideV, rr2 = floor - eggS * (0.25 + 0.25 * i); ctx.globalAlpha *= 0.9; ctx.beginPath(); for (let j = 0; j <= 8; j++) { const a = a0 + (a1 - a0) * (j / 8); const X = C.x + Math.sin(a) * rr2, Y = C.y + Math.cos(a) * rr2 - eLift; if (j) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); } ctx.stroke(); }
       ctx.restore();
     }
+    // 0.8.14 (mykee: "it does not look like the mice is carrying the eggs"): an egg the rats push really rolls, and rights
+    // itself as it drops
+    const rollA = plan.kind === 'rats' && !done ? ((eA * floor) / (eggS * 0.5)) * 0.55 * (1 - clamp(eD * 2.5, 0, 1)) : 0;
+    if (rollA) { ctx.save(); ctx.translate(ex, ey); ctx.rotate(rollA); ctx.translate(-ex, -ey); }
     if (!(toy && toy.look && toy.look.hide)) drawE(ex, ey, eggS * sq, stone, worry, toy ? toy.look : null); // hide: the toy draws its own actor there (the bulk chick)
+    if (rollA) ctx.restore();
     if (eAlpha < 1) ctx.restore();
     if (miss > 0 && miss < 1) { ctx.save(); ctx.globalAlpha *= Math.min(1, miss * 6) * (1 - seg(miss, 0.8, 1)); cross(ctx, ex - eggS * 0.62, ey + eggS * 0.1, Z * 0.085); ctx.restore(); } // the egg is lost: a red cross (the tick's twin)
   }

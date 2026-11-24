@@ -165,7 +165,7 @@ function weasel(ctx, S, K = 'weasel', X = null) { // K: the rig ('ratking': the 
 const RAT_ROLL = -0.36;
 function rats(ctx, S) {
   const { T, t, m, k } = S, s = RIG.rat.s * k, H = hitOf(S);
-  const eA = S.eA, off = (S.eggS * 0.4 + s * 0.42) / S.floor;
+  const eA = S.eA, off = (S.eggS * 0.5 + s * 0.6) / S.floor; // 0.8.14: his nose and paws ON the egg's shell, not his head behind it
   let phi = eA + off, st = 'push', u = 0, tt = t, odo = Math.abs(eA) * S.floor / k, alpha = 1, rot = 0, lift = 0, glue = 0;
   const o = { face: -1, eye: 'normal' };
   let threat = true;
@@ -186,6 +186,18 @@ function rats(ctx, S) {
   const p = S.at(phi, lift);
   if (glue > 0) puddle(ctx, p.x, p.y, s * 0.55, glue);
   if (H.k === 'blast') { const b = S.at(RAT_ROLL + off, s * 0.25); boom(ctx, b.x, b.y, s * 0.7, H.age); }
+  // 0.8.14: the pack. A second rat trots behind the pusher (rats come in a pack), and dust kicks up while the egg rolls
+  if (st === 'push' || (m === 'turn' && T >= 2.3)) {
+    const phi2 = phi + (s * 1.25) / S.floor, p2 = S.at(phi2, 0), s2 = s * 0.86;
+    ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(p2.x, p2.y); ctx.rotate(-phi2);
+    drawThief(ctx, 0, 0, s2, tt + 0.4, thiefPose('rat', st === 'push' ? 'prowl' : st, tt + 0.4, u, odo + 0.35), { ...o }, 'rat');
+    ctx.restore();
+  }
+  if (st === 'push' && odo > 0.02 && Math.abs(eA) < Math.abs(RAT_ROLL) * 0.98) {
+    ctx.save(); ctx.fillStyle = 'rgba(235,225,205,0.55)';
+    for (let i = 0; i < 3; i++) { const q = (tt * 1.6 + i / 3) % 1, d = S.at(phi + (s * 0.35 + q * s * 0.5) / S.floor, s * (0.05 + 0.2 * q)); ctx.globalAlpha = alpha * 0.6 * (1 - q); ctx.beginPath(); ctx.arc(d.x, d.y, s * (0.06 + 0.1 * q), 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
   ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(p.x, p.y); ctx.rotate(-phi + rot);
   drawThief(ctx, 0, 0, s, tt, thiefPose('rat', st, tt, u, odo), o, 'rat');
   ctx.restore();

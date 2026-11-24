@@ -5632,17 +5632,57 @@ function drawIntro() {
   if (L.intro && !save.intro[L.id] && !worldOpener(L)) {
     dim(0.62);
     // a world's new mechanic gets one screen of its own the first time (C6); a boss also shows its face (I6)
+    // 0.8.14 (mykee, on the "Lava rocks" card: "it just shows the lava salamander. That is quite dumb"): the card plays
+    // the new thing's own scene, big (what it does to an egg, then what to do), and the page is filled
+    const IP = introPlans(L);
     stackCard(L.intro.title, (s, iw) => [
       // (the framed villain portrait card was removed at the owner's request: bosses introduce themselves in the level)
-      ...(L.intro.chick ? [{ h: 104 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 104 * s, s, () => chickIntroArt(L.intro.chick, x, y, w, 104 * s)) }] // v3.2: meet the chick kind
+      ...(IP.length ? [introStage(IP, s, iw)] : L.intro.chick ? [{ h: 104 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 104 * s, s, () => chickIntroArt(L.intro.chick, x, y, w, 104 * s)) }] // v3.2: meet the chick kind
         : L.intro.cw ? [{ h: 100 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 100 * s, s, () => drawCwIntro(ctx, L.intro.cw, x, y, w, 100 * s, G.t)) }] // v4: meet the clockwork creature
         : !L.boss && L.salamander ? [{ h: 96 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 96 * s, s, () => salIntroArt(x, y, w, 96 * s)) }] : []), // v3.2: meet the salamander
       ...wrapText(L.intro.line, 17 * s, iw).slice(0, 4).map((l, i) => lineBlock(l, 17 * s, { tag: 'wintro:' + i, gap: i ? 2 * s : 8 * s })),
       { h: 58 * s, gap: 18 * s, draw: (x, y, w) => ui.button('gotit', 'GOT IT', x, y, w, 58 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 23 * s }) },
-    ], { ribbon: L.boss ? '#c9342c' : acc });
+    ], { ribbon: L.boss ? '#c9342c' : acc, full: IP.length ? true : undefined });
     return;
   }
   drawLevelIntro(L, acc);
+}
+// The scenes a level's "new thing" card plays (0.8.14): each villain or hazard first met on this level, then a toy or a
+// ring floor that is new here. A chick's or a clockwork creature's own card keeps its own art.
+const INTRO_KINDS = { 43: ['turtle'], 44: ['current'] }; // a card about something met a level earlier
+function introPlans(L) {
+  const I = G.introP;
+  if (I && I.id === L.id && I.li === G.li) return I.P;
+  let P = [];
+  if (G.li >= 0 && !L.intro.chick && !L.intro.cw) {
+    const ks = (INTRO_KINDS[L.id] || villainKinds(L).filter((k) => kindFirst(k) === L.id)).filter((k) => !L.boss || /^boss:/.test(k));
+    P = ks.slice(0, 3).map((k) => howToPlan(k, { harm: true }));
+    if (!P.length) {
+      const foeOf = L.salamander ? 'salamander' : L.eagle ? 'eagle' : 'snake';
+      for (const k of levelThings(L)) {
+        if (teachFirst(k) !== L.id) continue;
+        const [kind, id] = k.split(':');
+        if (kind === 'toy') P.push(toyPlan(id, foeOf)); else if (kind === 'floor') P.push(floorPlan(id));
+      }
+      P = P.slice(0, 2);
+    }
+  }
+  G.introP = { id: L.id, li: G.li, P, i: 0, t0: G.t };
+  return P;
+}
+function introStage(P, s, iw) {
+  const stH = Math.min(iw * 0.86, 330 * s), capH = 36 * s, n = P.length;
+  return { h: stH + capH, gap: 4 * s, draw: (x, y, w) => {
+    const I = G.introP;
+    if (!save.calm && n > 1 && G.t - I.t0 >= (P[I.i % n].loop || HOWTO_LOOP)) { I.i = (I.i + 1) % n; I.t0 = G.t; }
+    const plan = P[I.i % n], th = G.theme && G.theme.palette;
+    const ho = { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark };
+    drawHowTo(ctx, plan, x, y, w, stH, G.t - I.t0, ho);
+    ui.roundRect(x, y, w, stH, Math.min(18, stH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
+    ui.record({ x, y, w, h: stH }, 'wintro:stage');
+    const harmNow = plan.kind && !save.calm && (ho._phase === 'harm' || (!plan.harm && ho._pt < 1.6));
+    ui.text(harmNow ? threatWords(plan.kind) : plan.cap, x + w / 2, y + stH + capH / 2 + 1 * s, { size: 18 * s, align: 'center', color: harmNow ? '#b8321e' : '#2d6a1c', maxW: w, tag: 'wintro:cap' });
+  } };
 }
 
 // ---- the level intro: a full-screen page (mykee 2026-11-16: "this needs to be FULL SCREEN, not half the screen")
