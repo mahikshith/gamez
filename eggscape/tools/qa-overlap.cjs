@@ -12,6 +12,8 @@ fs.mkdirSync(out, { recursive: true });
 
 const ALL_SIZES = [[390, 844], [360, 640], [1280, 720], [640, 360], [600, 600], [768, 1024], [1024, 768], [800, 1280], [1280, 800], [1180, 820], [820, 1180]]; // 2026-11-16: tablets too (mykee)
 // QA_SIZES="390x844,1024x768" runs a subset (a full run takes ~20 min)
+// QA_ONLY="spin|leave" runs only the states whose name matches (each of the 0.8.15 states sets up its own save)
+const ONLY = process.env.QA_ONLY ? new RegExp(process.env.QA_ONLY) : null;
 const SIZES = process.env.QA_SIZES ? process.env.QA_SIZES.split(',').map((s) => s.split('x').map(Number)) : ALL_SIZES;
 
 const srv = http.createServer((q, r) => {
@@ -36,6 +38,7 @@ const srv = http.createServer((q, r) => {
     await p.waitForTimeout(800);
     const n = await p.evaluate(() => __egg.LEVELS.length);
     const check = async (label, fn, arg, shoot) => {
+      if (ONLY && !ONLY.test(label)) return;
       const ov = await p.evaluate(fn, arg);
       if (ov.length) problems.push(`${w}x${h} ${label}: ${ov.map((o) => o.join(' x ')).join('; ')}`);
       if (shoot) { const f = path.join(out, `qa-${w}x${h}-${label}.png`); await p.screenshot({ path: f }); shots.push({ f, label: `${w}x${h} ${label}` }); }
@@ -93,6 +96,30 @@ const srv = http.createServer((q, r) => {
     await check('mark-win', () => { const E = __egg; E.save.wallet.coins = 900; E.start(11); E.frame(1 / 60); E.showResult('win', 3); for (let k = 0; k < 400; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
     for (const lv of [2, 3, 4, 5]) await check(`rs-strip-L${lv}`, (sv) => { const E = __egg; eval(sv); E.start(+sv.match(/unlocked: (\d+)/)[1] - 1); for (let k = 0; k < 40; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('rs:+'); for (let k = 0; k < 10; k++) E.frame(1 / 60); return o.concat(E.overlaps()); }, mkSave({ lv, seen: { pickN: 2 } }), lv === 2);
     await check('settings-first', (sv) => { const E = __egg; eval(sv); E.G.screen = 'title'; E.press('settings'); for (let k = 0; k < 30; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('set:close'); return o; }, mkSave({ lv: 4, seen: {} }), false);
+    // 0.8.15: the Lucky Spin (resting, the odds, the ways to pay, a villain row and the Try again after it, a prize),
+    // its rows on the map and the fail page, the leaving card, the reminder question, the booster row's second page,
+    // the Scarecrow in a level, the shop with a half-price ticket
+    const spinSave = (o) => `(() => { const E = __egg, st = {}; for (let i = 1; i < 12; i++) st[i] = 2;
+      E.setSave({ unlocked: 12, stars: st, age: '13+', wallet: { coins: ${o.coins ?? 420}, coupon: ${o.coupon || 0}, owned: ${JSON.stringify(o.owned || {})} }, spin: ${JSON.stringify(o.spin || { wins: 1, bank: 2, n: 5 })}, seen: { pickN: 2, rsTried: 1, setOpen: 1, shopHand: 1 } });
+      const s = E.save; for (let i = 1; i <= 60; i++) s.intro[i] = 1; s.strikeSeen = new Proxy({}, { get: () => 1 }); E.G.toasts = []; E.G.toast = null; E.G.leftAsked = false; E.G.leaveAsk = null; E.G.remAsk = null; })()`;
+    const toSpin = `(() => { const E = __egg; E.G.screen = 'title'; E.press('levels'); for (let k = 0; k < 40; k++) E.frame(1 / 60); E.press('spin'); for (let k = 0; k < 40; k++) E.frame(1 / 60); })()`;
+    await check('spin-map', (sv) => { const E = __egg; eval(sv); E.G.screen = 'title'; E.press('levels'); for (let k = 0; k < 60; k++) E.frame(1 / 60); return E.overlaps(); }, spinSave({}), false);
+    await check('spin-idle', ([sv, ts]) => { const E = __egg; eval(sv); eval(ts); return E.G.screen === 'spin' ? E.overlaps() : [['the spin page', 'did not open']]; }, [spinSave({}), toSpin], true);
+    await check('spin-odds', () => { const E = __egg; E.press('spin:odds'); for (let k = 0; k < 20; k++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
+    await check('spin-pay', ([sv, ts]) => { const E = __egg; eval(sv); eval(ts); const o = E.overlaps(); E.save.wallet.coins = 5; E.press('spin:coin'); for (let k = 0; k < 10; k++) E.frame(1 / 60); return o.concat(E.overlaps()); }, [spinSave({ spin: { wins: 2, bank: 0, n: 5 } }), toSpin], false);
+    await check('spin-villains', ([sv, ts]) => { const E = __egg; eval(sv); eval(ts); const r = Math.random; let n = 0; Math.random = () => (n++ === 0 ? 0.9 : 0.5); E.press('spin:go'); Math.random = r;
+      let o = []; for (let k = 0; k < 330; k++) { E.frame(1 / 60); if (k % 30 === 29) o = o.concat(E.overlaps()); } return o; }, [spinSave({ spin: { wins: 1, bank: 1, n: 5 } }), toSpin], true);
+    await check('spin-tryagain', () => { const E = __egg; for (let k = 0; k < 200; k++) E.frame(1 / 60); const o = E.overlaps(); return E.ui.buttons.some((b) => b.id === 'spin:retry') ? o : o.concat([['Try again', 'is not offered after a villain row']]); }, 0, true);
+    await check('spin-prize', ([sv, ts]) => { const E = __egg; eval(sv); eval(ts); const r = Math.random; let n = 0; Math.random = () => (n++ === 0 ? 0.01 : 0.5); E.press('spin:go'); Math.random = r;
+      let o = []; for (let k = 0; k < 420; k++) { E.frame(1 / 60); if (k % 30 === 29) o = o.concat(E.overlaps()); } E.press('got:tap'); E.frame(1 / 60); E.press('got:tap'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return o.concat(E.overlaps()); }, [spinSave({ coins: 100 }), toSpin], true);
+    await check('spin-failrow', ([sv, tp]) => { const E = __egg; eval(sv); E.start(10); for (let k = 0; k < 20; k++) E.frame(1 / 60); eval(tp); E.step(14); E.showResult('fail'); for (let k = 0; k < 120; k++) E.frame(1 / 60); const o = E.overlaps(); const S = E.G.fscroll; if (S && S.max > 0) { S.y = S.max; S.v = 0; E.frame(1 / 60); return o.concat(E.overlaps()); } return o; }, [spinSave({}), toPlay], true);
+    await check('leave-card', ([sv, tp]) => { const E = __egg; eval(sv); E.start(10); for (let k = 0; k < 20; k++) E.frame(1 / 60); eval(tp); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.press('pause'); for (let k = 0; k < 30; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('levels'); for (let k = 0; k < 30; k++) E.frame(1 / 60);
+      const o2 = E.G.leaveAsk ? E.overlaps() : [['the leaving card', 'did not show with a spin waiting']]; return o.concat(o2); }, [spinSave({}), toPlay], true);
+    await check('reminder-ask', (sv) => { const E = __egg; eval(sv); E.G.screen = 'title'; E.press('levels'); for (let k = 0; k < 30; k++) E.frame(1 / 60); E.G.remAsk = { spins: 1, spinLeft: 0 }; for (let k = 0; k < 30; k++) E.frame(1 / 60); return E.overlaps(); }, spinSave({}), true);
+    await check('boosters-page2', (sv) => { const E = __egg; eval(sv); E.start(11); for (let k = 0; k < 40; k++) E.frame(1 / 60); const has = E.ui.buttons.some((b) => b.id === 'strip:more'); const o = E.overlaps(); E.press('strip:more'); for (let k = 0; k < 10; k++) E.frame(1 / 60);
+      return has ? o.concat(E.overlaps()) : o.concat([['eight boosters owned', 'and no next-page tile on the row']]); }, spinSave({ owned: { stone: 2, golden: 1, time: 1, rewind: 1, sponge: 2, nest: 1, snips: 1, scare: 2 } }), true);
+    await check('scarecrow', (tp) => { const E = __egg; E.press('boost:scare'); eval(tp); for (let k = 0; k < 120; k++) E.frame(1 / 60); const on = E.G.sim && E.G.sim.scareT > 0; const o = E.overlaps(); return on ? o : o.concat([['the Scarecrow', 'was picked and does not stand in the level']]); }, toPlay, true);
+    await check('ticket-shop', (sv) => { const E = __egg; eval(sv); E.G.screen = 'title'; E.press('shop'); for (let k = 0; k < 30; k++) E.frame(1 / 60); let o = E.overlaps(); for (const t of ['tab:skins', 'tab:hens']) { E.press(t); for (let k = 0; k < 30; k++) E.frame(1 / 60); o = o.concat(E.overlaps()); } return o; }, spinSave({ coupon: 1 }), true);
     for (const e of errors) problems.push(`${w}x${h} PAGE ERROR: ${e}`);
     await p.close();
   }
