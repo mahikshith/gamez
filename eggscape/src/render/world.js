@@ -1332,6 +1332,17 @@ export function drawDebris(ctx, d, theme) {
 
 // The fuse: a rope circling the vault that burns down. v4: on a shaped vault (ring = the outer ring) it hugs the shape.
 export const FUSE_TIP = { x: 0, y: 0 }; // where the spark was last drawn (world units): the fuse intro links it to the timer
+const FUSE_LOOP = new WeakMap(); // ring -> { off, p }: the fuse's track round a shaped ring, in the ring's frame
+function fuseLoop(ring, off) {
+  let F = FUSE_LOOP.get(ring);
+  if (!F || F.off !== off) {
+    const p = new Path2D(), n = 252;
+    for (let i = 0; i < n; i++) { const [x, y] = ringPt(ring, (TAU * i) / n, off); if (i) p.lineTo(x, y); else p.moveTo(x, y); }
+    p.closePath();
+    FUSE_LOOP.set(ring, (F = { off, p }));
+  }
+  return F.p;
+}
 export function drawFuse(ctx, R, frac, t, fx, ring) {
   const start = Math.PI / 2;
   const end = start + TAU * frac;
@@ -1348,8 +1359,12 @@ export function drawFuse(ctx, R, frac, t, fx, ring) {
   ctx.lineJoin = 'round';
   ctx.strokeStyle = 'rgba(0,0,0,0.25)';
   ctx.lineWidth = 0.09;
-  path(start, start + TAU);
-  ctx.stroke();
+  // 0.8.15 speed: round a shaped vault the track was ~250 ring points worked out again every frame, and the burnt part
+  // twice more. The whole track is one outline in the ring's own frame, built once per ring and turned with it; the
+  // burnt part is built once a frame and stroked twice (a stroke leaves the path in place).
+  const loop = shaped && typeof Path2D !== 'undefined' ? fuseLoop(ring, off) : null;
+  if (loop) { ctx.rotate(A); ctx.stroke(loop); ctx.rotate(-A); }
+  else { path(start, start + TAU); ctx.stroke(); }
   if (frac > 0) {
     ctx.strokeStyle = frac < 0.2 ? '#ff5a3c' : '#e9d3a1';
     ctx.lineWidth = 0.06;
@@ -1358,7 +1373,6 @@ export function drawFuse(ctx, R, frac, t, fx, ring) {
     ctx.strokeStyle = 'rgba(120,80,30,0.7)';
     ctx.lineWidth = 0.015;
     ctx.setLineDash([0.06, 0.06]);
-    path(start, end);
     ctx.stroke();
     ctx.setLineDash([]);
     const [x, y] = at(end);

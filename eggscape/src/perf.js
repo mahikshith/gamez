@@ -52,6 +52,7 @@ export const PERF = {
   want: -1, // a step change waiting for the start of the next frame
   acc: 0, n: 0, good: 0, warm: 0, slow30: false, work: 0, lift: 0, probes: 0,
   miss: 0, bad: 0, // late frames in the current window; bad windows in a row
+  held30: false, // the last level ended on the 30 fps fallback: play starts there again (see newLevel)
   fails: [0, 0, 0, 0, 0, 0], // per step: how often Auto had to leave it this session (climbing back waits longer)
   pace: 1, pn: 0, pm: 0, // fast screens (72-100 Hz): draw every refresh (1) or every second one (2); frames and missed frames of the pace window
   why: '', // the last decision, for the fps meter / speed test ('gpu' = frames late with little JS work, 'js' = JS work)
@@ -78,6 +79,7 @@ export function applySettings(save) {
   PERF.acc = PERF.n = PERF.good = PERF.warm = PERF.miss = PERF.bad = PERF.work = 0; PERF.want = -1;
   PERF.fails.fill(0);
   PERF.pace = 1; PERF.pn = PERF.pm = 0;
+  PERF.held30 = false;
   PERF.slow30 = false; // 2026-11-19: a settings change starts clean (a learned 30 fps cap used to stick even after picking High)
   refresh(save);
 }
@@ -109,6 +111,10 @@ const LATE = 1.5, BAD = 0.2, CLEAN = 0.03, JS_HEAVY = 0.6;
 // iv: the screen's refresh interval (ms)
 export function tick(save, ms, measuring, work = 0, skip = false, iv = 16.7) {
   if (!measuring) { PERF.acc = PERF.n = PERF.work = PERF.miss = 0; PERF.warm = 0; PERF.pn = PERF.pm = 0; return false; }
+  if (PERF.held30) { // play begins after a level that ended at 30: start there, do not fall to it again (newLevel)
+    PERF.held30 = false;
+    if (save.fps === 'auto' && !PERF.slow30) { PERF.slow30 = true; PERF.lift = 0; PERF.why = 'held'; refresh(save); }
+  }
   if (skip) return false;
   if ((PERF.warm += ms / 1000) < 3) return false; // a screen's first seconds build caches: not a measure of the phone
   if (ms > 120) return false; // one hitch (loading, garbage collection), not a slow phone
@@ -158,11 +164,15 @@ export function tick(save, ms, measuring, work = 0, skip = false, iv = 16.7) {
   } else PERF.good = 0;
   return false;
 }
-// a new level: Auto's 30 fps fallback starts over (a slow stretch in one level, or a skin's first pictures being
-// baked, no longer holds every later level at 30)
+// a new level: its card runs at 60 again
 export function newLevel(save) {
   PERF.lift = 0; PERF.acc = PERF.n = PERF.work = PERF.miss = PERF.bad = 0; PERF.warm = 0;
-  if (PERF.slow30 && save.fps === 'auto') { PERF.slow30 = false; refresh(save); }
+  // 0.8.15 (a budget phone's log: Auto went back to 60 on every level card and fell to 30 about 10 s into play, every
+  // level, so each level began with seconds of stutter): the cap a level ENDED on is remembered for the session. The
+  // level card still runs at 60 (it is light); the first frame of play returns to 30. A phone that only had a slow
+  // stretch gets 60 back the usual way (a few calm seconds with room to spare, see tick), and then the next level
+  // starts at 60 too.
+  if (PERF.slow30 && save.fps === 'auto') { PERF.slow30 = false; PERF.held30 = true; refresh(save); }
 }
 // the waiting step change lands (called at the start of a frame, before drawing)
 // 2026-11-20: a step UP waits for the next level (changing the resolution mid-level is itself a visible hitch, and
