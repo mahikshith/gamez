@@ -1281,7 +1281,7 @@ async function press(id) {
     case 'store': { // 0.8.14: with the shop mark on, the shop opens on the thing the coins now reach, with a ring on it
       const M = shopMarkNow();
       G.shopHand = null;
-      if (M.on && M.pick) { openStore(null, M.pick.key); G.sscroll.hlDur = 3; } else openStore('deals');
+      if (M.pick && (M.on || G.screen === 'pause')) { openStore(null, M.pick.key); G.sscroll.hlDur = 3; } else openStore('deals'); // (the pause page's banner names the pick: it opens on it)
       break;
     }
     case 'win:shop': // the win card's "New in shop" chip: the shop, on the thing this win's coins reach
@@ -2460,7 +2460,8 @@ function drawSkipAsk() {
   stackCard('Skip level?', (s) => [
     lineBlock('Skip to the next level', 19 * s, { color: ui.C.ink, tag: 'sk:what' }),
     lineBlock('Come back for stars any time', 14.5 * s, { color: ui.C.ink2, tag: 'sk:back', gap: 6 * s }),
-    { h: 56 * s, gap: 16 * s, draw: (x, y, w) => ui.button('sk:go', ads.premium ? 'Skip level' : 'Watch to skip', x, y, w, 56 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 20 * s } : { kind: 'ad', ad: true, size: 19 * s }) },
+    { h: 56 * s, gap: 16 * s, draw: (x, y, w) => save.wallet.tickets.skip > 0 ? ui.button('sk:go', 'Use a Skip Ticket', x, y, w, 56 * s, { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3, size: 19 * s }) // 0.8.14: a ticket the player owns comes first
+      : ui.button('sk:go', ads.premium ? 'Skip level' : 'Watch to skip', x, y, w, 56 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 20 * s } : { kind: 'ad', ad: true, size: 19 * s }) },
     { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('sk:no', 'Cancel', x + w * 0.15, y, w * 0.7, 50 * s, { kind: 'tertiary', size: 19 * s }) },
   ], { ribbon: '#7a48e8' });
 }
@@ -6583,15 +6584,64 @@ function bossPortrait(ctx, bossId, x, y, w, h, t) { if (bossId === 'blizzard') r
 // info right there"): a full page like the level page. The goal and clock with the sound toggles, one big Resume, six
 // big tiles in an even 3 x 2 grid (Restart, Levels, Home / Shop, Settings, Practice), the hint, then every villain of
 // this vault as a big card (what it does, how to beat it): the old "i" panel, now right here. It scrolls when long.
-function pauseTiles(items, s, cols = 3) { // items: [id, label, icon, kind]; an even grid (3 across; 6 on a phone on its side)
-  const gap = (cols > 3 ? 8 : 10) * s, th = (cols > 3 ? 54 : 64) * s, lh = 24 * s, rows = Math.ceil(items.length / cols);
-  return { h: rows * (th + lh) + (rows - 1) * gap, gap: 14 * s, draw: (x, y, w) => {
+// 0.8.14 (mykee: "not properly aligned ... not properly shown with definite icons ... a different kind of color coding
+// for this pause menu ... for different buttons"): equal tiles, each its own colour, the icon and the label INSIDE the
+// tile; a short last row is centred. items: [id, label, icon, face (a kind name or a palette), mark?]
+function pauseTiles(items, s, cols = 3) {
+  const gap = 10 * s, th = (cols > 3 ? 66 : 78) * s, rows = Math.ceil(items.length / cols);
+  return { h: rows * th + (rows - 1) * gap, gap: 12 * s, draw: (x, y, w) => {
     const tw = (w - gap * (cols - 1)) / cols;
-    items.forEach(([id, label, icon, kind], i) => {
-      const r = Math.floor(i / cols), c = i % cols, bx = x + c * (tw + gap), by = y + r * (th + lh + gap);
-      ui.button(id, '', bx, by, tw, th, { kind, icon, iconS: 1.45, round: 18 * s });
-      ui.text(label, bx + tw / 2, by + th + 12 * s, { size: (cols > 3 ? 14 : 16) * s, align: 'center', color: '#fff6e0', stroke: 'rgba(40,20,5,0.9)', maxW: tw, tag: 'pause:lbl:' + id });
+    items.forEach(([id, label, icon, face, mark], i) => {
+      const r = Math.floor(i / cols), c = i % cols, inRow = Math.min(cols, items.length - r * cols), off = (w - (inRow * tw + (inRow - 1) * gap)) / 2;
+      const bx = x + off + c * (tw + gap), by = y + r * (th + gap);
+      const B = ui.button(id, '', bx, by, tw, th, { ...(typeof face === 'string' ? { kind: face } : { face }), round: 18 * s });
+      const isz = (cols > 3 ? 28 : 32) * s, ls = (cols > 3 ? 14.5 : 16) * s, cy = B.cy;
+      icon(ctx, bx + tw / 2, cy - ls * 0.62 - 2 * s, isz);
+      ui.text(label, bx + tw / 2, cy + isz * 0.5 + 4 * s, { size: ls, align: 'center', color: '#fff', stroke: 'rgba(30,14,4,0.55)', strokeW: 3 * s, maxW: tw - 10 * s, tag: 'pause:lbl:' + id, group: 'btn:' + id });
+      if (mark) mark(bx, by, tw, th);
     });
+  } };
+}
+// a lamp (the pause page's hint)
+function lampIcon(c, x, y, S) {
+  c.save(); c.lineJoin = 'round';
+  const r = S * 0.3, gy = y - S * 0.08;
+  c.beginPath(); c.arc(x, gy, r, Math.PI * 0.78, Math.PI * 2.22); c.lineTo(x + r * 0.42, gy + r * 1.25); c.lineTo(x - r * 0.42, gy + r * 1.25); c.closePath();
+  c.fillStyle = '#ffe066'; c.fill(); c.lineWidth = Math.max(1.5, S * 0.06); c.strokeStyle = '#7a4a08'; c.stroke();
+  c.fillStyle = '#fff'; c.globalAlpha = 0.7; c.beginPath(); c.ellipse(x - r * 0.35, gy - r * 0.3, r * 0.16, r * 0.3, 0.5, 0, 7); c.fill(); c.globalAlpha = 1;
+  c.fillStyle = '#8a8f9a'; c.fillRect(x - r * 0.45, gy + r * 1.28, r * 0.9, r * 0.22); c.fillRect(x - r * 0.38, gy + r * 1.55, r * 0.76, r * 0.2);
+  c.strokeRect(x - r * 0.45, gy + r * 1.28, r * 0.9, r * 0.22);
+  c.restore();
+}
+// the pause page's SHOP banner: gold, the coin total, three things the player does not own yet (what the coins reach
+// first), the mark when the coins reach something new, and one line when something can be had now. Tap: the shop on it.
+function pauseShop(s) {
+  const H = 96 * s;
+  return { h: H, gap: 12 * s, draw: (x, y, w) => {
+    const M = shopMarkNow(), coins = save.wallet.coins;
+    const B = ui.button('shop', '', x, y, w, H, { kind: 'gold', shimmer: true, shimmerOff: 60, round: 20 * s });
+    const fy = B.cy - (H - 6 * s) / 2, top = fy + 34 * s, grp = 'btn:shop';
+    // three pictures: not owned, the ones the coins reach first (dearest of those), then the nearest ones beyond
+    const own = markItems().filter((i) => !i.owned && (i.kind === 'skin' || i.kind === 'hen'));
+    const can = own.filter((i) => i.price <= coins).sort((a, b) => b.price - a.price), far = own.filter((i) => i.price > coins).sort((a, b) => a.price - b.price);
+    const pics = (M.pick && (M.pick.kind === 'skin' || M.pick.kind === 'hen') ? [own.find((i) => i.key === M.pick.key)] : []).concat(can, far).filter((v, i, a) => v && a.findIndex((q) => q.key === v.key) === i).slice(0, 3);
+    const pw = Math.min(54 * s, (w * 0.46) / 3), px0 = x + w - 12 * s - pics.length * pw;
+    pics.forEach((it, i) => {
+      const cx = px0 + (i + 0.5) * pw;
+      ctx.beginPath(); ctx.arc(cx, top, pw * 0.46, 0, 7); ctx.fillStyle = it.price <= coins ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.28)'; ctx.fill();
+      markArt(it.key, cx, top + 1 * s, pw * 0.82);
+    });
+    ui.record({ x: px0, y: top - pw * 0.46, w: pics.length * pw, h: pw * 0.92 }, 'pause:shoppics', grp);
+    shopIcon(ctx, x + 32 * s, top, 34 * s);
+    ui.text('Shop', x + 56 * s, top - 8 * s, { size: 25 * s, color: '#fff', stroke: '#8a4a04', strokeW: 4 * s, maxW: px0 - x - 66 * s, tag: 'pause:shop', group: grp });
+    ui.text(String(purse.shown()), x + 57 * s, top + 15 * s, { size: 16 * s, color: '#fff8e0', stroke: '#8a4a04', strokeW: 3 * s, maxW: px0 - x - 66 * s, tag: 'pause:coins', group: grp });
+    // one short line when the coins reach something
+    if (M.pick) {
+      const t = `You can get the ${markName(M.pick.key)}`, ly = fy + H - 6 * s - 18 * s;
+      ui.roundRect(x + 10 * s, ly - 12 * s, w - 20 * s, 24 * s, 12 * s); ctx.fillStyle = 'rgba(120,60,0,0.28)'; ctx.fill();
+      ui.text(t, x + w / 2, ly, { size: 14.5 * s, align: 'center', color: '#fff', stroke: 'rgba(90,40,0,0.7)', strokeW: 2.5 * s, maxW: w - 36 * s, tag: 'pause:shopline', group: grp });
+    } else ui.text('New eggs and outfits', x + w / 2, fy + H - 6 * s - 18 * s, { size: 14.5 * s, align: 'center', color: '#fff', stroke: 'rgba(90,40,0,0.7)', strokeW: 2.5 * s, maxW: w - 36 * s, tag: 'pause:shopline', group: grp });
+    if (M.on) markBadge(x + w - 8 * s, y + 6 * s, 12 * s, G.t);
   } };
 }
 // 0.8.7 (mykee: "the info on the pause page should be an animation, not text"): each villain of this level as its
@@ -6644,14 +6694,18 @@ function drawPause() {
       }
     } },
     { h: 66 * s, gap: 14 * s, draw: (x, y, w) => ui.button('resume', 'Resume', x, y, w, 66 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * s, round: 20 * s }) },
+    earlyDays() ? null : pauseShop(s), // 0.8.14: the shop, big and gold, right under Resume (never before level 3 is won)
     pauseTiles([
-      ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, 'secondary'], ['home', 'Home', ICON.home, 'secondary'],
-      ['shop', 'Shop', (c, X, Y, S) => shopIcon(c, X, Y, S), 'gold'], ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad'], ['practice', 'Practice', (c, X, Y, S) => pictoTarget(c, X, Y, S * 0.95), 'orange'],
-    ], s, wide ? 6 : 3),
+      ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, ui.faceOf('#1f9e94')], ['home', 'Home', ICON.home, ui.faceOf('#e0507e')],
+      ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad', (bx, by, bw, bh) => setMarkAt(bx, by, bw, bh)], ['practice', 'Practice', (c, X, Y, S) => pictoTarget(c, X, Y, S * 0.95), 'orange'],
+    ], s, wide ? 5 : 3),
+    // the hint and Skip level: two equal halves, each with its icon and the video mark (Skip only when src/skip.js allows it)
     G.hint ? lineBlock('Hint…', 18 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:hint', gap: 14 * s })
-      : sim.state !== 'play' ? null : { h: 54 * s, gap: 14 * s, draw: (x, y, w) => ui.button('hint', 'Watch for a hint', x, y, w, 54 * s, { kind: 'ad', ad: true, size: 19 * s, round: 18 * s }) },
-    // 2026-11-23 Skip level (mykee): one video the player picks, quietly here and nowhere else (src/skip.js says when)
-    skipNow() ? { h: 48 * s, gap: 10 * s, draw: (x, y, w) => ui.button('pause:skip', 'Skip level', x + w * 0.15, y, w * 0.7, 48 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 18 * s, round: 16 * s } : { kind: 'ad', ad: true, size: 18 * s, round: 16 * s }) } : null,
+      : sim.state !== 'play' && !skipNow() ? null : { h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
+        const sk = skipNow(), hn = sim.state === 'play', hw = sk && hn ? (w - 10 * s) / 2 : w, tk = save.wallet.tickets.skip > 0;
+        if (hn) ui.button('hint', 'Hint', x, y, hw, 58 * s, { kind: 'ad', ad: !ads.premium, icon: lampIcon, iconS: 1.25, size: 19 * s, round: 18 * s });
+        if (sk) ui.button('pause:skip', 'Skip level', x + (hn ? hw + 10 * s : 0), y, hw, 58 * s, { ...(tk ? { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t) } : { face: ui.faceOf('#5a6ee0'), ad: !ads.premium, icon: ICON.next }), iconS: 1.15, size: 19 * s, round: 18 * s });
+      } },
     // the three stars of this level and how each stands right now
     G.li >= 0 && G.goals && sim.state === 'play' ? { h: 3 * 32 * s + 12 * s, gap: 14 * s, draw: (x, y, w) => {
       ui.well(x, y, w, 3 * 32 * s + 12 * s, { s, a: '#f3e2bd', b: '#fbf0d6' });
