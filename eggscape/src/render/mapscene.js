@@ -8,6 +8,7 @@
 // only the creatures, smoke, bubbles and sparkles are drawn live, and only for the bands on screen (battery).
 import { PERF } from '../perf.js'; // 2026-11-19 Low graphics: the cast is painted 12x a second, not every frame
 import { freeCanvas } from './cvfree.js';
+import { drawStar, drawLock, FONT } from '../ui/ui.js';
 import { drawMapAmb } from './mapamb.js';
 import { drawVillainPortrait } from './villain-art.js';
 import { drawRooster, roosterPose, drawGoose, goosePose } from './allies.js';
@@ -23,8 +24,9 @@ import { PLACE as THIEVES_PLACE, freeThieves } from './mapthieves.js'; // 0.8.12
 export * as FARM from './mapfarm.js';
 // 0.8.10: the worlds painted as one place, by world index. Each entry: { landmarks (the LMS shapes), paintBand(c, L, E),
 // drawLive(ctx, L, sy, t, calm, vt, vb), drawFront?(...), stop(L, i) (i: 0..4 within the world), drawLandmark(ctx, L, m,
-// sy, t, calm, press, glow, DPR), drawPlaque(ctx, L, m, sy, press) }. main.js draws their stops as landmarks; a world
-// not listed keeps the round stops, the generic band and the walking cast. The next world plugs in here.
+// sy, t, calm, press, glow, DPR), drawPlaque(ctx, L, m, sy, press) }. 0.8.14: the landmarks are scenery; every world's
+// stops are the nests on the road (drawStop below), and drawPlaque is no longer used. A world not listed keeps the
+// generic band and the walking cast. The next world plugs in here.
 export const PLACES = { 0: FARM_PLACE, 3: CAVE_PLACE, 4: VOLCANO_PLACE, 6: THIEVES_PLACE };
 
 const TAU = Math.PI * 2;
@@ -746,7 +748,7 @@ export function mapRelease(keepWorld = -1) {
   for (const [w, e] of cache) if (w !== keepWorld) { freeCanvas(e.canvas); cache.delete(w); }
   for (const [w, e] of CASTC) { freeCanvas(e.cv); CASTC.delete(w); }
   freeLandmarks(keepWorld, PER);
-  freeThieves(); freeSalamanders(); // 0.8.12: the Vault's thieves and the Volcano's salamanders are stamped from small pictures
+  freeThieves(); freeSalamanders(); freeStops(); // 0.8.12: the Vault's thieves and the Volcano's salamanders are stamped from small pictures
 }
 // 2026-11-19 Low graphics: a band's creatures are painted onto their own canvas 12 times a second (bands take turns)
 // and that picture is stamped every frame, so scrolling stays smooth while the cast still moves
@@ -795,3 +797,168 @@ export function drawFog(ctx, L, w, sy, t, calm) {
   ctx.restore();
 }
 
+
+// ------------------------------------------------------------------ the stops: nests on the road (0.8.14)
+// mykee 2026-11-24: "do we need to show flags for all the levels? ... the hen is not landing on the corresponding level".
+// Every world now marks its levels the same way, ON the road at the stop: a won level is a straw nest with a golden egg
+// that carries the number and its stars; the level to play is a bigger nest the hen stands in, a bright number badge in
+// front; the next locked level an empty nest with one small padlock; every level after that only a pale stepping stone
+// with a tiny number. A boss level's nest is bigger and its egg wears a crown. Each look is painted once into its own small
+// picture (per level, per state) and stamped; only the ring and glow round the level to play are drawn live.
+// states: 'won' | 'cur' | 'open' (playable, not the next one) | 'skip' (skipped: passed without stars) | 'next' (the
+// next locked level) | 'far' (any later locked level)
+// per-world straw: fill, shade, light, ink, bowl (the hollow), and the stepping stone's face and edge
+const NEST_TINT = [
+  { s: '#e9bd62', lo: '#b07a32', hi: '#fbe2a0', ink: '#6a4418', bowl: '#8a5a24', st: '#f4ead2', stE: '#a8834e' }, // farm
+  { s: '#c99652', lo: '#7e5226', hi: '#e8c486', ink: '#47290e', bowl: '#5e3a18', st: '#e6dcc0', stE: '#6e4a26' }, // woods
+  { s: '#e2c890', lo: '#a2865a', hi: '#fff4da', ink: '#5a4426', bowl: '#7e6440', st: '#ffffff', stE: '#7aa6c8' }, // frozen
+  { s: '#d4ad70', lo: '#8e6a3a', hi: '#f2dcaa', ink: '#3a2614', bowl: '#5c4024', st: '#d8ccf2', stE: '#4a3a86' }, // caves
+  { s: '#c99252', lo: '#7a4c22', hi: '#f0c482', ink: '#2a140a', bowl: '#4e2c14', st: '#8a7066', stE: '#2a1610' }, // volcano
+  { s: '#d0bc90', lo: '#8c7a58', hi: '#f2e6c6', ink: '#463a26', bowl: '#6a5a3e', st: '#eef2f8', stE: '#5a667a' }, // storm
+  { s: '#dcae52', lo: '#966822', hi: '#f8dc90', ink: '#48290a', bowl: '#6a4614', st: '#e8d6b0', stE: '#6a1a24' }, // vault
+  { s: '#dcc48e', lo: '#9e8654', hi: '#f8ecc4', ink: '#4e3c1c', bowl: '#77623a', st: '#fff6dc', stE: '#a88a4e' }, // reef
+  { s: '#b49a56', lo: '#6c5a2c', hi: '#dcc88a', ink: '#33260e', bowl: '#55441e', st: '#d8c8a0', stE: '#4e3418' }, // bayou
+  { s: '#cfc096', lo: '#8c7c5a', hi: '#f0e6c6', ink: '#3a3226', bowl: '#665a40', st: '#e6ecf6', stE: '#5a6880' }, // lab
+];
+// sizes in units (x u): the nest's half width; the hen's height in the level-to-play nest is 2 * L.stopR
+const NEST_RX = { won: 29, cur: 37, open: 27, skip: 27, next: 26, far: 15 };
+export function stopTint(w) { return NEST_TINT[w] || NEST_TINT[0]; }
+// the touch box round a stop's centre (x u offsets; main.js keeps it at least 48 px each way)
+export function stopBox(L, st, boss) {
+  const u = L.u, b = boss ? 1.14 : 1, rx = NEST_RX[st] * b;
+  if (st === 'cur') return { x0: -rx * u, x1: rx * u, y0: -L.stopR * 1.9, y1: 30 * u * b };
+  if (st === 'won') return { x0: -rx * u, x1: rx * u, y0: -58 * u * b, y1: 16 * u };
+  if (st === 'far') return { x0: -24 * u, x1: 24 * u, y0: -24 * u, y1: 24 * u };
+  return { x0: -rx * u, x1: rx * u, y0: -36 * u * b, y1: 18 * u };
+}
+const SPRS = new Map(); // key -> { cv, ox, oy, w, h }
+export function freeStops() { for (const e of SPRS.values()) freeCanvas(e.cv); SPRS.clear(); }
+let FONTOK = 0;
+function stopFont() { if (FONTOK) return 1; try { if (typeof document !== 'undefined' && document.fonts && document.fonts.check('600 16px Fredoka')) FONTOK = 1; } catch (_) { FONTOK = 1; } return FONTOK; }
+// a straw nest seen from the front and above: shadow, the woven body, the hollow, straws over the rim. part 'back' is
+// the whole nest; 'front' only its front rim (drawn after the hen so her feet sit in the straw)
+function strawNest(c, rx, ry, T, part, seed) {
+  const bowlY = -ry * 0.1, brx = rx * 0.7, bry = ry * 0.62;
+  const body = () => { c.beginPath(); c.ellipse(0, 0, rx, ry, 0, Math.PI, TAU); c.bezierCurveTo(rx * 1.02, ry * 0.7, rx * 0.7, ry * 1.32, 0, ry * 1.34); c.bezierCurveTo(-rx * 0.7, ry * 1.32, -rx * 1.02, ry * 0.7, -rx, 0); c.closePath(); };
+  c.save();
+  if (part === 'front') { c.beginPath(); c.rect(-rx * 1.3, bowlY, rx * 2.6, ry * 3); c.ellipse(0, bowlY, brx, bry, 0, 0, TAU, true); c.clip('evenodd'); }
+  if (part !== 'front') { c.beginPath(); c.ellipse(0, ry * 1.1, rx * 1.12, ry * 0.62, 0, 0, TAU); c.fillStyle = 'rgba(20,10,0,0.28)'; c.fill(); }
+  body(); c.fillStyle = lg(c, 0, -ry, 0, ry * 1.34, [T.hi, T.s, T.lo]); c.fill();
+  c.lineWidth = Math.max(1, rx * 0.06); c.strokeStyle = T.ink; c.stroke();
+  // the hollow
+  if (part !== 'front') { c.beginPath(); c.ellipse(0, bowlY, brx, bry, 0, 0, TAU); c.fillStyle = lg(c, 0, bowlY - bry, 0, bowlY + bry, [T.ink, T.bowl]); c.fill(); }
+  // woven straws: short arcs round the body, light over dark
+  const R = rng(seed);
+  c.lineCap = 'round';
+  for (let i = 0; i < 26; i++) {
+    const a0 = R() * TAU, a1 = a0 + 0.5 + R() * 0.7, k = 0.78 + R() * 0.3, yy = R() * ry * 0.7;
+    c.beginPath(); c.ellipse(0, yy * 0.6, rx * k, ry * (0.7 + R() * 0.3), 0, a0, a1);
+    c.strokeStyle = i % 3 === 0 ? T.lo : i % 3 === 1 ? T.hi : T.s; c.lineWidth = Math.max(1, rx * (0.05 + R() * 0.03)); c.stroke();
+  }
+  // a few loose straws sticking out of the rim
+  for (let i = 0; i < 7; i++) { const a = Math.PI + R() * Math.PI, x = Math.cos(a) * rx * 0.96, y = Math.sin(a) * ry * 0.96, l = rx * (0.14 + R() * 0.12), d = (R() - 0.5) * 1.2 + (x < 0 ? -0.6 : 0.6); c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a + d) * l, y + Math.sin(a + d) * l * 0.7); c.strokeStyle = T.hi; c.lineWidth = Math.max(1, rx * 0.045); c.stroke(); }
+  c.restore();
+  return { bowlY, brx, bry };
+}
+function eggShape(c, x, yb, w, h) { // an egg standing on (x, yb), w wide, h tall: a round lower half, a taller narrower dome
+  const ym = yb - h * 0.42, rx = w / 2;
+  c.beginPath(); c.ellipse(x, ym, rx, h * 0.42, 0, 0, Math.PI); c.ellipse(x, ym, rx, h * 0.58, 0, Math.PI, TAU); c.closePath();
+}
+function goldEgg(c, x, yb, w, h, u) {
+  eggShape(c, x, yb, w, h);
+  const g = c.createRadialGradient(x - w * 0.18, yb - h * 0.66, w * 0.05, x, yb - h * 0.4, h * 0.75); g.addColorStop(0, '#fff8d0'); g.addColorStop(0.35, '#ffd650'); g.addColorStop(0.8, '#e89a18'); g.addColorStop(1, '#b86c08');
+  c.fillStyle = g; c.fill(); c.lineWidth = Math.max(1.2, 1.8 * u); c.strokeStyle = '#7a4204'; c.stroke();
+  c.beginPath(); c.ellipse(x - w * 0.2, yb - h * 0.7, w * 0.09, h * 0.13, -0.4, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.75)'; c.fill();
+}
+function crownMark(c, x, y, s) { // a small gold crown, its base on y
+  c.save(); c.translate(x, y); c.lineJoin = 'round';
+  c.beginPath(); c.moveTo(-s, 0); c.lineTo(-s * 1.08, -s * 0.95); c.lineTo(-s * 0.48, -s * 0.48); c.lineTo(0, -s * 1.2); c.lineTo(s * 0.48, -s * 0.48); c.lineTo(s * 1.08, -s * 0.95); c.lineTo(s, 0); c.closePath();
+  c.lineWidth = s * 0.34; c.strokeStyle = '#4a1a04'; c.stroke(); c.fillStyle = lg(c, 0, -s * 1.2, 0, 0, ['#fff0a0', '#f2a516']); c.fill();
+  blobAt(c, 0, -s * 0.38, s * 0.18, '#e8402e'); c.restore();
+}
+function numText(c, str, x, y, size, fill, ink, wgt = 600) {
+  c.font = `${wgt} ${Math.round(size)}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.lineJoin = 'round'; c.lineWidth = Math.max(2.5, size * 0.24); c.strokeStyle = ink; c.strokeText(str, x, y); c.fillStyle = fill; c.fillText(str, x, y);
+}
+// paint one stop's picture (origin = the stop's centre on the road); returns nothing
+function paintStop(c, u, st, part, o) {
+  const T = stopTint(o.w), boss = !!o.boss, b = boss ? 1.14 : 1, num = String(o.num), seed = 11 + o.num * 7;
+  if (st === 'far') { // a pale stepping stone, flush with the road, and a small number
+    const rx = 15 * u * b, ry = 7 * u * b;
+    c.beginPath(); c.ellipse(0, 1.6 * u, rx, ry, 0, 0, TAU); c.fillStyle = 'rgba(20,10,0,0.25)'; c.fill();
+    c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, TAU); c.fillStyle = T.st; c.globalAlpha = 0.85; c.fill(); c.globalAlpha = 1; c.lineWidth = 1.4 * u; c.strokeStyle = T.stE; c.stroke();
+    numText(c, num, 0, -0.2 * u, 11.5 * u, T.stE, 'rgba(255,255,255,0.7)');
+    if (boss) crownMark(c, 0, -ry - 1 * u, 4.2 * u);
+    return;
+  }
+  const rx = NEST_RX[st] * u * b, ry = rx * 0.4;
+  if (st === 'cur') {
+    if (part !== 'front') strawNest(c, rx, ry, T, 'back', seed);
+    if (part !== 'back') {
+      strawNest(c, rx, ry, T, 'front', seed);
+      const br = 14.5 * u * b, by = ry * 1.12;
+      c.beginPath(); c.arc(0, by + 1.5 * u, br + 2 * u, 0, TAU); c.fillStyle = 'rgba(30,12,0,0.35)'; c.fill();
+      c.beginPath(); c.arc(0, by, br + 2.2 * u, 0, TAU); c.fillStyle = '#fff6dc'; c.fill();
+      c.beginPath(); c.arc(0, by, br, 0, TAU); c.fillStyle = lg(c, 0, by - br, 0, by + br, boss ? ['#f0587a', '#a01a44'] : ['#ffb43a', '#e8641a']); c.fill();
+      numText(c, num, 0, by + 0.5 * u, (num.length > 1 ? 17 : 19) * u, '#ffffff', boss ? '#4a0a1e' : '#6a2a04');
+      if (boss) crownMark(c, 0, by - br - 0.5 * u, 6.5 * u);
+    }
+    return;
+  }
+  const nb = strawNest(c, rx, ry, T, 'back', seed);
+  if (st === 'won') {
+    const ew = 30 * u * b, eh = 38 * u * b, yb = nb.bowlY + nb.bry * 1.05;
+    goldEgg(c, 0, yb, ew, eh, u);
+    strawNest(c, rx, ry, T, 'front', seed); // the front rim over the egg's foot
+    numText(c, num, 0, yb - eh * 0.44, (num.length > 1 ? 17 : 19.5) * u, '#ffffff', '#6a3604');
+    const top = yb - eh;
+    if (boss) crownMark(c, 0, top + 3 * u, 7 * u);
+    const sr = 6.6 * u, ay = top - (boss ? 10 : 4) * u; // the stars in a small arc over the egg
+    for (let q = 0; q < 3; q++) { const a = (q - 1) * 0.62; drawStar(c, Math.sin(a) * 15 * u, ay - Math.cos(a) * 6 * u, sr * (q === 1 ? 1.12 : 1), q < o.stars); }
+    return;
+  }
+  // an empty nest: the number in its hollow
+  const ink = st === 'next' ? 'rgba(40,20,4,0.9)' : T.ink;
+  numText(c, num, 0, nb.bowlY + 0.5 * u, (num.length > 1 ? 14.5 : 16) * u, st === 'next' ? 'rgba(255,248,230,0.92)' : '#ffffff', ink);
+  if (boss) crownMark(c, 0, -ry - 1 * u, 6 * u);
+  if (st === 'next') drawLock(c, rx * 0.78, ry * 0.7, 6.2 * u, {});
+  if (st === 'skip') { // passed with a skip: a small grey-blue tag with two chevrons
+    const x = rx * 0.8, y = ry * 0.75, r = 7.5 * u;
+    c.beginPath(); c.arc(x, y, r + 1.5 * u, 0, TAU); c.fillStyle = '#fff6dc'; c.fill(); c.beginPath(); c.arc(x, y, r, 0, TAU); c.fillStyle = '#5a7ab0'; c.fill();
+    c.fillStyle = '#ffffff'; for (const dx of [-2.6, 1.6]) { c.beginPath(); c.moveTo(x + (dx - 2) * u, y - 3.6 * u); c.lineTo(x + (dx + 2.2) * u, y); c.lineTo(x + (dx - 2) * u, y + 3.6 * u); c.closePath(); c.fill(); }
+  }
+}
+// draw stop `o.num` (o: { w, num, stars, boss, DPR, part: 'back' | 'front' | 'all', p: press 0..1 }) centred on (x, y)
+export function drawStop(ctx, L, x, y, st, o) {
+  const u = L.u, DPR = o.DPR || 1, part = st === 'cur' ? o.part || 'all' : 'all';
+  const key = `${st}|${part}|${o.num}|${o.stars | 0}|${o.boss ? 1 : 0}|${o.w}|${u.toFixed(3)}|${DPR}|${stopFont()}`;
+  let e = SPRS.get(key);
+  if (!e) {
+    if (typeof document === 'undefined') return;
+    const ox = 60 * u, oy = 84 * u, w = 120 * u, h = 124 * u;
+    const cv = document.createElement('canvas'); cv.width = Math.ceil(w * DPR); cv.height = Math.ceil(h * DPR);
+    const c = cv.getContext('2d'); c.setTransform(DPR, 0, 0, DPR, ox * DPR, oy * DPR);
+    try { paintStop(c, u, st, part, o); } catch (_) { /* a stop never breaks the map */ }
+    e = { cv, ox, oy, w, h };
+    SPRS.set(key, e);
+    if (SPRS.size > 40) { const k0 = SPRS.keys().next().value; freeCanvas(SPRS.get(k0).cv); SPRS.delete(k0); }
+  } else { SPRS.delete(key); SPRS.set(key, e); } // LRU touch
+  const p = o.p || 0;
+  if (p) { ctx.save(); ctx.translate(x, y + 10 * u); ctx.scale(1 + 0.05 * p, 1 - 0.07 * p); ctx.translate(-x, -y - 10 * u); }
+  ctx.drawImage(e.cv, x - e.ox, y - e.oy, e.w, e.h);
+  if (p) ctx.restore();
+}
+// the level to play: a soft glow on the ground and a ring that swells and fades (both cheap: a stamped glow, one stroke)
+let GLOW = null;
+export function drawStopCall(ctx, L, x, y, t, calm, boss) {
+  const u = L.u, rx = NEST_RX.cur * u * (boss ? 1.14 : 1), ry = rx * 0.4;
+  if (!GLOW && typeof document !== 'undefined') { GLOW = document.createElement('canvas'); GLOW.width = GLOW.height = 64; const g = GLOW.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,236,150,0.9)'); gr.addColorStop(0.5, 'rgba(255,214,90,0.45)'); gr.addColorStop(1, 'rgba(255,214,90,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }
+  const k = calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3.2);
+  if (GLOW) { ctx.globalAlpha = 0.55 + 0.3 * k; ctx.drawImage(GLOW, x - rx * 1.7, y + ry * 0.3 - ry * 2.6, rx * 3.4, ry * 5.2); ctx.globalAlpha = 1; }
+  ctx.lineWidth = 3 * u; ctx.strokeStyle = '#fff4c0';
+  if (calm) { ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.ellipse(x, y + ry * 0.4, rx * 1.3, ry * 1.6, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; return; }
+  for (let q = 0; q < 2; q++) { const f = (t * 0.7 + q * 0.5) % 1; ctx.globalAlpha = 0.75 * (1 - f); ctx.beginPath(); ctx.ellipse(x, y + ry * 0.4, rx * (1.08 + 0.55 * f), ry * (1.4 + 0.7 * f), 0, 0, TAU); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+}
+// where the hen's feet rest in the level-to-play nest: y below the stop's centre (px)
+export function stopFeet(L, boss) { const ry = NEST_RX.cur * L.u * (boss ? 1.14 : 1) * 0.4; return -ry * 0.1 + ry * 0.62 * 0.85; }
