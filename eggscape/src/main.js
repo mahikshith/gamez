@@ -5793,7 +5793,7 @@ function stackCard(title, build, o = {}) {
   const colH = (L, s) => L.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
   const measure = (s) => {
     if (two) {
-      const w = Math.min(A.w - 32 * u, 780 * s), cw = (w - 48 * s - 28 * s) / 2;
+      const w = Math.min(o.maxW || A.w - 32 * u, 780 * s), cw = (w - 48 * s - 28 * s) / 2;
       const blocks = build(s, cw), hl = colH(blocks.filter((b) => !b.right), s), hr = colH(blocks.filter((b) => b.right), s);
       return { s, w, blocks, cw, hl, hr, h: CARD_HEAD * s + Math.max(hl, hr) + 22 * s };
     }
@@ -5803,7 +5803,7 @@ function stackCard(title, build, o = {}) {
     const h = CARD_HEAD * s + colH(blocks, s) + 22 * s;
     return { s, w, blocks, h, inner };
   };
-  let m = measure(u);
+  let m = measure(two && o.maxW ? Math.min(u, o.maxW / 740) : u); // two columns in a limited width: each keeps its reading width
   // a narrower card wraps its text into more lines, so one rescale can still be too tall: step down until it fits
   // (o.minS: never below this scale; with o.scroll the rest scrolls instead, 0.8.14 the fail page)
   const minS = Math.max(u * 0.45, o.minS || 0);
@@ -5849,6 +5849,15 @@ function stackCard(title, build, o = {}) {
   const loose = (b) => (b.gap ?? 10 * s) >= 6 * s, nLoose = blocks.filter(loose).length;
   const air = nLoose ? Math.min(slack / (nLoose + 1), 26 * s) : 0;
   const top0 = Math.max(0, slack - air * nLoose) * 0.42;
+  if (o.hidden && two) { // the same two columns as drawn below, only the targets
+    const maxC = Math.max(m.hl, m.hr);
+    for (const [R, ch] of [[false, m.hl], [true, m.hr]]) {
+      let cy = y + CARD_HEAD * s + (maxC - ch) / 2;
+      const cx = x + 24 * s + (R ? m.cw + 28 * s : 0);
+      for (const b of blocks) { if (!!b.right !== R) continue; cy += b.gap ?? 10 * s; if (b.at) b.at(cx, cy, m.cw); cy += b.h; }
+    }
+    return { x, y, w, h, s, full, two };
+  }
   if (o.hidden) {
     let cy = y + CARD_HEAD * s + top0;
     for (const b of blocks) { cy += (b.gap ?? 10 * s) + (loose(b) ? air : 0); if (b.at) b.at(x + pad, cy, inner); cy += b.h; }
@@ -7462,7 +7471,7 @@ function cardSide() {
 // her side stage: she stands on the card's bottom line, as tall as the room allows
 function sideStage(sd, card) {
   const u = ui.u, top = Math.max(G.hudBottom, ui.A.y) + 6 * u, box = { x: sd.x, y: top, w: sd.w, h: card.y + card.h - 10 * u - top };
-  return { box, henH: Math.min(box.w * 0.48, box.h * 0.6) };
+  return { box, henH: Math.min(box.w * (sd.big ? 0.6 : 0.48), box.h * 0.6) }; // sd.big: a narrow patch beside a two-column card, she fills more of it
 }
 // the show's layout: the hen big in the middle, room above her for her biggest jump, the stars, the title below
 function bigStage(side) {
@@ -7547,7 +7556,8 @@ function drawWinPage() {
     ctx.restore();
     winFeathers(0.35 + 0.5 * e);
   }
-  const sd = cardSide(), side = !!sd, cardO = sd ? sd.cardO : {};
+  let sd = cardSide(), cardO = sd ? sd.cardO : {};
+  const side = !!sd;
   const pw = routinePower(r.stars), calm = save.calm, seed = G.level.id || 0;
   // the stage takes the room the rest of the card leaves (a tall phone: the full 184 units; a squat screen: less)
   const A = ui.A, room = (A.y1 - Math.max(G.hudBottom, A.y) - 30 * u) / u - 650, stH = clamp(room, 120, 200);
@@ -7635,7 +7645,7 @@ function drawWinPage() {
     if (r.timeBonus) terms.push(['+'], ['clock', fmt(r.timeBonus), 'Time left']);
     if (r.streakMult > 1) terms.push(['x'], ['flame', 'x' + r.streakMult, '3-star streak']);
     const best = r.prevBest != null ? (r.total > r.prevBest ? 'new' : r.prevBest) : null, SH = (best != null ? 124 : 104) * s;
-    if (!first) B.push({ h: SH, gap: 8 * s, draw: (x, y, w) => {
+    if (!first) B.push({ h: SH, gap: 8 * s, right: true, draw: (x, y, w) => {
       ui.well(x, y, w, SH, { s, a: '#f3e2bd', b: '#fbf0d6' });
       const ops = terms.filter((q) => q.length === 1).length, nt = terms.length - ops, ow = 16 * s, tw = (w - 12 * s - ops * ow) / nt;
       let tx = x + 6 * s;
@@ -7650,13 +7660,14 @@ function drawWinPage() {
       ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x + 12 * s, y + 60 * s, w - 24 * s, 1.5 * s); // the line under a sum
       ui.text('=', x + 22 * s, y + 82 * s, { size: 24 * s, align: 'center', color: C.ink2, tag: 'win:eq' });
       ui.text('SCORE', x + 42 * s, y + 82 * s, { size: 14 * s, color: C.ink2, tag: 'win:scorelab' });
-      ui.num(fmt(r.shownTotal), x + w / 2, y + 82 * s, { size: 32 * s, align: 'center', maxW: w - 196 * s, tag: 'win:total' }); // 0.8.14: the total and the best under it stand on the card's centre line (they sat 24 units right of it)
+      const labR = x + 42 * s + ui.measure('SCORE', 14 * s) + 10 * s, totW = Math.min(ui.measure(fmt(r.total), 32 * s) * 1.12, w - 196 * s); // a narrow column: the total keeps clear of its label
+      ui.num(fmt(r.shownTotal), Math.max(x + w / 2, labR + totW / 2), y + 82 * s, { size: 32 * s, align: 'center', maxW: w - 196 * s, tag: 'win:total' }); // 0.8.14: the total and the best under it stand on the card's centre line (they sat 24 units right of it)
       if (best === 'new') { if (r.shownTotal >= r.total) { const bw = 120 * s; ui.ribbon('NEW BEST!', x + w / 2, y + 101 * s, bw, 22 * s, { s, color: '#3eaa2a', size: 14 * s, noRecord: true }); ui.record({ x: x + w / 2 - bw / 2, y: y + 101 * s, w: bw, h: 22 * s }, 'win:best'); } }
       else if (best != null) ui.text(`Best ${fmt(best)}`, x + w / 2, y + 111 * s, { size: 14 * s, align: 'center', color: C.ink2, tag: 'win:best' });
     } });
     // what this win unlocked, shown in the reveals: each a row with its art and a green tick
     const rowWell = (x, y, w, h, a, b) => ui.well(x, y, w, h, { s, a, b });
-    if (r.treasure) B.push({ h: 60 * s, gap: 6 * s, draw: (x, y, w) => { // the boss treasure, opened: the chest and what it gave
+    if (r.treasure) B.push({ h: 60 * s, gap: 6 * s, right: true, draw: (x, y, w) => { // the boss treasure, opened: the chest and what it gave
       if (!inCard) return;
       rowWell(x, y, w, 60 * s, '#ffe9b0', '#fff6dc');
       drawChest(ctx, x + 34 * s, y + 32 * s, 46 * s, G.t, 'open');
@@ -7665,7 +7676,7 @@ function drawWinPage() {
       const its = treasureItems(r.treasure), iw = Math.min(46 * s, (w * 0.5) / 3);
       its.forEach(([k2, n], j) => { const ix = x + w - 8 * s - (2.5 - j) * iw; rewardIcon(k2, r.treasure, ix, y + 23 * s, 26 * s); ui.text(n, ix, y + 47 * s, { size: 13 * s, align: 'center', color: C.ink, maxW: iw - 2 * s, tag: 'win:tri' + j }); });
     } });
-    if (r.gift) B.push({ h: 64 * s, gap: 6 * s, draw: (x, y, w) => { // the taste: a store item, already on, for the next levels
+    if (r.gift) B.push({ h: 64 * s, gap: 6 * s, right: true, draw: (x, y, w) => { // the taste: a store item, already on, for the next levels
       if (!inCard) return;
       const T = r.gift;
       rowWell(x, y, w, 64 * s, '#ffe9b0', '#fff6dc');
@@ -7676,7 +7687,7 @@ function drawWinPage() {
       ui.text(`Free try: ${tasteName(T)}`, x + 66 * s, y + 21 * s, { size: 16 * s, color: C.ink, maxW: bx - x - 72 * s, tag: 'win:gift' });
       tickLine(T.kind === 'boost' ? '+1 in your bag' : `On for the next ${DR.DIR.skinLevels} levels`, x + 66 * s, y + 44 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: bx - x - 72 * s, tag: 'win:gift2' });
     } });
-    if (r.hot >= 2) B.push({ h: 56 * s, gap: 6 * s, draw: (x, y, w) => { // the win streak, and the boosters it brings to the next level
+    if (r.hot >= 2) B.push({ h: 56 * s, gap: 6 * s, right: true, draw: (x, y, w) => { // the win streak, and the boosters it brings to the next level
       if (!inCard) return;
       const hb = r.hotB || [];
       rowWell(x, y, w, 56 * s, '#ffe0cc', '#fff3ea');
@@ -7688,17 +7699,17 @@ function drawWinPage() {
     } });
     // 0.8.15, the Conductor on the win card: what this win brought nearer. A banked spin gets its row and its SPIN button
     // (it leads, so NEXT rests); otherwise one quiet line, the spin meter's ticks or the stars to the next chest
-    if (WL && WL.lead && WL.lead.id === 'spin') B.push({ ...spinRowBlock(s, { gap: 8 * s }), draw: ((d) => (x, y, w) => { if (inCard) d(x, y, w); })(spinRowBlock(s).draw) });
-    else if (WL && WL.order.find((c) => c.kind === 'progress')) { const c = WL.order.find((q) => q.kind === 'progress'); B.push({ h: 26 * s, gap: 8 * s, draw: (x, y, w) => { if (inCard) leadLine(c, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'win:near' }); } }); }
+    if (WL && WL.lead && WL.lead.id === 'spin') B.push({ ...spinRowBlock(s, { gap: 8 * s }), right: true, draw: ((d) => (x, y, w) => { if (inCard) d(x, y, w); })(spinRowBlock(s).draw) });
+    else if (WL && WL.order.find((c) => c.kind === 'progress')) { const c = WL.order.find((q) => q.kind === 'progress'); B.push({ h: 26 * s, gap: 8 * s, right: true, draw: (x, y, w) => { if (inCard) leadLine(c, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'win:near' }); } }); }
     const last = G.li < 0 || G.li === LEVELS.length - 1, nextLeads = !(WL && WL.lead && WL.lead.id === 'spin');
-    B.push({ h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
+    B.push({ h: 58 * s, gap: 12 * s, right: true, draw: (x, y, w) => {
       if (!inCard) return;
       if (first) { ui.button('next', 'NEXT', x, y, w, 58 * s, { kind: 'primary', shimmer: true, icon: ICON.next, size: 26 * s }); return; }
       const rw = w * 0.36;
       ui.button('restart', 'Retry', x, y, rw, 58 * s, { kind: 'secondary', icon: ICON.retry, size: 19 * s });
       ui.button('next', last ? 'ALL LEVELS' : 'NEXT', x + rw + 10 * s, y, w - rw - 10 * s, 58 * s, { kind: 'primary', shimmer: nextLeads, icon: ICON.next, size: 24 * s });
     } });
-    if (!earlyDays()) B.push({ h: 48 * s, draw: (x, y, w) => { // nothing advertised before L3 is won (the Double coins video too)
+    if (!earlyDays()) B.push({ h: 48 * s, right: true, draw: (x, y, w) => { // nothing advertised before L3 is won (the Double coins video too)
       if (!inCard) return;
       if (r.chest && !G.doubled) { // the Bonus chest: one video, the chest, its coins and its boost shown as art on the button
         const bw = w, bx = x, ch = r.chest, B2 = ui.button('bonus', '', bx, y, bw, 48 * s, { kind: 'ad', shimmer: true });
@@ -7715,7 +7726,18 @@ function drawWinPage() {
     return B;
   };
   const RIB = '#f0542e';
-  const card = stackCard(title, build, { ...cardO, hidden: true }); // lay out first: her flight needs the targets
+  let card = stackCard(title, build, { ...cardO, hidden: true }); // lay out first: her flight needs the targets
+  // 0.8.15 a short wide screen (a phone on its side, a browser window): one column there shrank to small print and
+  // tiny buttons. The card opens into two columns (the stars and their goals; the score, the rewards and the buttons),
+  // her patch keeps at least 200 units beside it
+  if (side && card.s < 0.8 * u && G.li !== 0) {
+    const maxW = A.w - 248 * u, c2 = maxW >= 360 * u ? stackCard(title, build, { hidden: true, twoCol: true, maxW }) : null;
+    if (c2 && c2.s > card.s * 1.15) {
+      const sw = Math.min(A.w - c2.w - 48 * u, Math.max(c2.w * 0.6, 300 * u)), left = A.x + (A.w - (sw + 16 * u + c2.w)) / 2;
+      sd = { x: left, w: sw, big: true }; cardO = { cx: left + sw + 16 * u + c2.w / 2, maxW, twoCol: true };
+      card = stackCard(title, build, { ...cardO, hidden: true });
+    }
+  }
   if (side) { const ss = sideStage(sd, card); T.box = ss.box; T.henH = ss.henH; T.clip = ss.box; }
   // the card slides in: up from below (portrait), in from the right (landscape)
   const dx = side ? (1 - e) * (ui.w - card.x + 20 * u) : 0, dy = side ? 0 : (1 - e) * (ui.h - card.y + 20 * u);
@@ -8868,10 +8890,11 @@ function spinBack() { if (!themeBack(ctx, ui.skin, W_, H_, H_ * 0.8, true)) { co
 // A full page with the page header every other page has (mykee, 13:34: "use full screen and clear ui layouts rather
 // than half congested things"): the rows share the whole height, two short lines under them, one OK as wide as the page
 function drawSpinOdds(SL) {
-  const u = ui.u, A = ui.A, wide = A.w > A.h * 1.2, cols = wide ? 2 : 1, rowsN = Math.ceil(SL.length / cols);
+  // two columns on a wide screen, and on a squat one (a square fold-out, 600x600) where twelve rows in one column would crush
+  const u = ui.u, A = ui.A, wide = A.w > A.h * 1.2, cols = wide || A.h < 560 * u ? 2 : 1, rowsN = Math.ceil(SL.length / cols);
   ui.buttons.length = 0; ui.rects.length = 0;
   spinBack();
-  const P = ui.pageBox(wide ? Infinity : 440 * u), s = P.s, long = P.w - 2 * (P.h + 24 * s) >= ui.measure('Prizes and odds', 25 * s) + 48 * s;
+  const P = ui.pageBox(cols === 2 ? Infinity : 440 * u), s = P.s, long = P.w - 2 * (P.h + 24 * s) >= ui.measure('Prizes and odds', 25 * s) + 48 * s;
   ui.pageHeader(P, { back: 'spin:odds:x', title: long ? 'Prizes and odds' : 'Prizes', color: '#e8a020', tag: 'odds:title' });
   const foot = wide ? ['After villains, the next pull always wins. Same odds for everyone, and they never change.'] : ['After villains, the next pull always wins.', 'Same odds for everyone. They never change.'];
   const top = P.bottom + 10 * u, bot = A.y1 - 10 * u, btnH = (wide ? 48 : 56) * u, fs = 14 * u, footH = foot.length * 20 * u + 8 * u, g = 10 * u;
@@ -8885,8 +8908,9 @@ function drawSpinOdds(SL) {
     ui.roundRect(rx + 4 * u, my - ch / 2, chw, ch, 9 * u); ctx.fillStyle = C[1]; ctx.fill(); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(60,28,6,0.55)'; ctx.stroke();
     drawSliceIcon(ctx, sl, rx + 4 * u + chw / 2, my, Math.min(ch * 0.92, chw * 0.8), G.t);
     const pct = `${+sl.pct.toFixed(2)}%`, pw = ui.measure('12.75%', 17 * u * ks) + 6 * u, tx = rx + chw + 14 * u, tw = cw - chw - 26 * u - pw;
-    ui.text(sliceName(sl), tx, note ? my - 8 * u * ks : my, { size: 16 * u * ks, color: ui.C.ink, maxW: tw, tag: 'odds:n' + i });
-    if (note) ui.text(note, tx, my + 10 * u * ks, { size: 11.5 * u * ks, color: ui.C.ink2, maxW: tw, tag: 'odds:s' + i });
+    const fit = (str, size) => size * clamp(tw / ui.measure(str, size), 0.76, 1); // a narrow column: smaller print before a cut-off word
+    ui.text(sliceName(sl), tx, note ? my - 8 * u * ks : my, { size: fit(sliceName(sl), 16 * u * ks), color: ui.C.ink, maxW: tw, tag: 'odds:n' + i });
+    if (note) ui.text(note, tx, my + 10 * u * ks, { size: fit(note, 11.5 * u * ks), color: ui.C.ink2, maxW: tw, tag: 'odds:s' + i });
     ui.text(pct, rx + cw - 8 * u, my, { size: 17 * u * ks, align: 'right', color: ui.C.ink, tag: 'odds:p' + i });
     if (r > 0) { ctx.fillStyle = 'rgba(90,50,14,0.12)'; ctx.fillRect(rx + 4 * u, my - rowH / 2 - 0.5 * u, cw - 8 * u, 1 * u); } // a hairline between rows
   });
@@ -8949,7 +8973,9 @@ function spinRowBlock(s, o = {}) {
     ui.well(x, y, w, 70 * s, { s, a: '#ffe9b0', b: '#fff6dc' });
     drawSlotIcon(ctx, x + 36 * s, y + 36 * s, 22 * s, save.calm ? 0 : G.t);
     const tx = x + 68 * s, tw = x + w - bw - 16 * s - tx;
-    ui.text(o.cheer ? 'A cheer-up spin for you' : n > 1 ? `${n} free spins waiting` : 'A free spin is waiting', tx, y + 35 * s, { size: 16 * s, color: ui.C.ink, maxW: tw, tag: 'spinrow:t' });
+    const long = o.cheer ? 'A cheer-up spin for you' : n > 1 ? `${n} free spins waiting` : 'A free spin is waiting';
+    const say = ui.measure(long, 16 * s) <= tw ? long : o.cheer ? 'Cheer-up spin' : n > 1 ? `${n} free spins` : 'Free spin waiting'; // a narrow column: the short wording, never cut off
+    ui.text(say, tx, y + 35 * s, { size: 16 * s, color: ui.C.ink, maxW: tw, tag: 'spinrow:t' });
     ui.button('spin', 'SPIN', x + w - bw - 8 * s, y + 10 * s, bw, 50 * s, { kind: 'primary', shimmer: o.quiet ? false : true, size: 21 * s });
     ui.record({ x, y, w, h: 70 * s }, 'panel:spinrow');
   } };
