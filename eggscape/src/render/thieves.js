@@ -597,7 +597,107 @@ export function drawThiefDens(ctx, sim, t, k, over = false) {
     });
   }
 }
+// 0.8.15 (mykee: "redesign the weasel den, make it cool"): a proposal, shown to him as a picture first and drawn only
+// while window.__denV2 is set. The weasel lives in a hollow tree stump: flared roots on the ring, a snapped top, a
+// plank-framed door with a lantern that swings and lights the loot inside, a bent stovepipe that puffs, toadstools
+// at a root and a crooked KEEP OUT board with his paw print. Same doorway and the same place for stolen eggs.
+const denV2 = () => typeof window !== 'undefined' && !!window.__denV2;
+const stumpPath = (ctx, W, H) => {
+  ctx.beginPath(); ctx.moveTo(-W * 1.14, 3);
+  ctx.quadraticCurveTo(-W * 0.84, -H * 0.06, -W * 0.8, -H * 0.42); ctx.lineTo(-W * 0.76, -H * 0.9);
+  ctx.quadraticCurveTo(-W * 0.3, -H * 1.07, W * 0.18, -H * 0.97);
+  ctx.lineTo(W * 0.36, -H * 1.24); ctx.lineTo(W * 0.5, -H * 0.97); ctx.lineTo(W * 0.64, -H * 1.12); ctx.lineTo(W * 0.77, -H * 0.84);
+  ctx.lineTo(W * 0.8, -H * 0.42); ctx.quadraticCurveTo(W * 0.84, -H * 0.06, W * 1.14, 3); ctx.closePath();
+};
+function drawStump(ctx, T, t, k) {
+  const D = DEN_LOOK.weasel, w = D.w * k, h = D.h * k, W = D.W * k, H = D.H * k, lw = Math.max(1.2, 0.035 * k), R = (i) => hash(T.id * 31 + i);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.fillStyle = 'rgba(10,6,4,0.32)'; ctx.beginPath(); ctx.ellipse(0, 1, W * 1.2, Math.max(2, H * 0.1), 0, 0, TAU); ctx.fill();
+  stumpPath(ctx, W, H);
+  const g = ctx.createLinearGradient(-W, 0, W, 0); g.addColorStop(0, '#a8744a'); g.addColorStop(0.45, '#7e5230'); g.addColorStop(1, '#4a2a14');
+  ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = lw * 1.4; ctx.strokeStyle = '#2a1608'; ctx.stroke();
+  ctx.save(); ctx.clip();
+  // bark: long grooves that lean with the roots, a knot, and the pale cut wood of the top with its rings
+  ctx.strokeStyle = 'rgba(40,20,8,0.42)'; ctx.lineWidth = lw * 0.9;
+  for (let i = 0; i < 7; i++) { const x = (-0.72 + i * 0.24) * W, lean = (x / W) * W * 0.16; ctx.beginPath(); ctx.moveTo(x, -H * (0.86 - R(i) * 0.12)); ctx.bezierCurveTo(x + R(i + 5) * 3, -H * 0.6, x - R(i + 9) * 3, -H * 0.35, x + lean, 2); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(255,226,180,0.3)'; ctx.lineWidth = lw * 1.8; ctx.beginPath(); ctx.moveTo(-W * 0.98, -1); ctx.quadraticCurveTo(-W * 0.74, -H * 0.1, -W * 0.7, -H * 0.86); ctx.stroke();
+  ctx.fillStyle = '#e2c08a'; ctx.beginPath(); ctx.ellipse(-W * 0.28, -H * 0.97, W * 0.5, H * 0.1, -0.05, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(122,82,40,0.7)'; ctx.lineWidth = lw * 0.6; for (const q of [0.34, 0.18]) { ctx.beginPath(); ctx.ellipse(-W * 0.28, -H * 0.97, W * q, H * q * 0.2, -0.05, 0, TAU); ctx.stroke(); }
+  ctx.restore();
+  // the doorway: dark, with the lantern's warm light falling in from the upper right
+  const door = () => { ctx.beginPath(); ctx.moveTo(-w, 3); ctx.lineTo(-w, -h * 0.45); ctx.bezierCurveTo(-w, -h * 1.33, w, -h * 1.33, w, -h * 0.45); ctx.lineTo(w, 3); ctx.closePath(); };
+  door(); const dg = ctx.createLinearGradient(0, -h * 1.1, 0, 3); dg.addColorStop(0, '#080402'); dg.addColorStop(0.7, '#1e1008'); dg.addColorStop(1, '#3c2412'); ctx.fillStyle = dg; ctx.fill();
+  ctx.save(); door(); ctx.clip();
+  const fl = 0.8 + 0.2 * Math.sin(t * 7 + T.id) * Math.sin(t * 2.3), lg = ctx.createRadialGradient(w * 0.55, -h * 0.9, 1, w * 0.4, -h * 0.6, w * 1.5); lg.addColorStop(0, `rgba(255,190,90,${0.5 * fl})`); lg.addColorStop(1, 'rgba(255,170,70,0)');
+  ctx.fillStyle = lg; ctx.fillRect(-w, -h * 1.2, w * 2, h * 1.3);
+  // his loot at the back: a coin, a silver spoon, a red button
+  ctx.fillStyle = '#ffcf3a'; ctx.beginPath(); ctx.ellipse(-w * 0.5, -h * 0.3, 0.07 * k, 0.05 * k, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = '#d8dde6'; ctx.lineWidth = Math.max(1.2, 0.03 * k); ctx.beginPath(); ctx.moveTo(w * 0.15, -h * 0.2); ctx.lineTo(w * 0.55, -h * 0.52); ctx.stroke(); ctx.fillStyle = '#d8dde6'; ctx.beginPath(); ctx.ellipse(w * 0.6, -h * 0.57, 0.05 * k, 0.035 * k, -0.7, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#e04a3a'; ctx.beginPath(); ctx.arc(-w * 0.12, -h * 0.24, 0.04 * k, 0, TAU); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = '#d6aa3c'; ctx.lineWidth = Math.max(1, 0.022 * k);
+  for (let i = 0; i < 12; i++) { const x = (-0.9 + (i / 11) * 1.8) * w * 0.9, an = (R(i + 100) - 0.5) * 2.2, l = (0.08 + R(i + 110) * 0.08) * k; ctx.beginPath(); ctx.moveTo(x, -h * 0.12); ctx.lineTo(x + Math.cos(an) * l, -h * 0.12 - Math.abs(Math.sin(an)) * l * 0.5); ctx.stroke(); }
+  if (T.ph === 'hide' || T.ph === 'wait') {
+    const bl = Math.sin(t * 0.8 + T.id) > 0.92 ? 0.2 : 1, er = Math.max(1.4, 0.045 * k);
+    ctx.fillStyle = '#ffe23a'; for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * w * 0.24 - w * 0.1, -h * 0.66, er, er * bl, 0, 0, TAU); ctx.fill(); }
+  }
+}
+function drawStumpOver(ctx, T, t, k, live) {
+  const D = DEN_LOOK.weasel, w = D.w * k, h = D.h * k, W = D.W * k, H = D.H * k, lw = Math.max(1.2, 0.035 * k), LINE = '#2a1608';
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const door = () => { ctx.beginPath(); ctx.moveTo(-w, 3); ctx.lineTo(-w, -h * 0.45); ctx.bezierCurveTo(-w, -h * 1.33, w, -h * 1.33, w, -h * 0.45); ctx.lineTo(w, 3); ctx.closePath(); };
+  if (T.stash.length) { door(); const sg = ctx.createLinearGradient(0, -h * 1.1, 0, 3); sg.addColorStop(0, 'rgba(8,4,2,0.55)'); sg.addColorStop(0.55, 'rgba(8,4,2,0.25)'); sg.addColorStop(1, 'rgba(8,4,2,0.06)'); ctx.fillStyle = sg; ctx.fill(); }
+  // the door frame: a thick arch of planks, nailed
+  const arch = () => { ctx.beginPath(); ctx.moveTo(-w, 1); ctx.lineTo(-w, -h * 0.45); ctx.bezierCurveTo(-w, -h * 1.33, w, -h * 1.33, w, -h * 0.45); ctx.lineTo(w, 1); };
+  ctx.lineCap = 'butt'; arch(); ctx.lineWidth = lw * 4.2; ctx.strokeStyle = LINE; ctx.stroke(); arch(); ctx.lineWidth = lw * 2.6; ctx.strokeStyle = '#c99454'; ctx.stroke(); ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(70,38,14,0.7)'; ctx.lineWidth = lw * 0.7;
+  for (let i = 1; i < 7; i++) { const u = i / 7, ang = Math.PI - u * Math.PI, cx = Math.cos(ang) * w, cy = -h * 0.45 - Math.sin(ang) * h * 0.66, nx = Math.cos(ang), ny = -Math.sin(ang); ctx.beginPath(); ctx.moveTo(cx - nx * lw * 1.3, cy - ny * lw * 1.3); ctx.lineTo(cx + nx * lw * 1.3, cy + ny * lw * 1.3); ctx.stroke(); }
+  // the stovepipe on the cut top, and its puffs
+  { const px = -W * 0.5, py = -H * 0.98, pw = 0.11 * k, ph = 0.3 * k;
+    ctx.fillStyle = '#6c7480'; ctx.strokeStyle = '#22262e'; ctx.lineWidth = lw; ctx.beginPath(); ctx.rect(px - pw / 2, py - ph, pw, ph); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.rect(px - pw * 0.85, py - ph - pw * 0.4, pw * 1.7, pw * 0.42); ctx.fillStyle = '#8a929e'; ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillRect(px - pw * 0.32, py - ph + 1, pw * 0.2, ph - 2);
+    for (let i = 0; i < 3; i++) { const u = ((t * 0.32 + i / 3 + T.id * 0.13) % 1 + 1) % 1, r = (0.05 + 0.09 * u) * k; ctx.beginPath(); ctx.arc(px + Math.sin(u * 5 + i) * 0.07 * k + u * 0.12 * k, py - ph - pw * 0.5 - u * 0.5 * k, r, 0, TAU); ctx.fillStyle = `rgba(236,232,224,${0.5 * (1 - u)})`; ctx.fill(); } }
+  // toadstools at the left root
+  for (const [mx, ms] of [[-W * 1.02, 1], [-W * 0.84, 0.7]]) { const r = 0.085 * k * ms; ctx.fillStyle = '#f2e6cc'; ctx.fillRect(mx - r * 0.22, -r * 1.1, r * 0.44, r * 1.2); ctx.beginPath(); ctx.ellipse(mx, -r * 1.1, r, r * 0.66, 0, Math.PI, TAU); ctx.closePath(); ctx.fillStyle = '#e2402e'; ctx.fill(); ctx.lineWidth = lw * 0.7; ctx.strokeStyle = LINE; ctx.stroke(); ctx.fillStyle = '#fff'; for (const d of [-0.45, 0.1, 0.5]) { ctx.beginPath(); ctx.arc(mx + d * r, -r * 1.34 + Math.abs(d) * r * 0.2, r * 0.12, 0, TAU); ctx.fill(); } }
+  // a crooked board on a stake at the right root: his paw print, crossed out (keep out)
+  { ctx.save(); ctx.translate(W * 1.0, -H * 0.5); ctx.rotate(0.14); const bw = 0.21 * k, bh = 0.15 * k;
+    ctx.fillStyle = '#8a5a2c'; ctx.strokeStyle = LINE; ctx.lineWidth = lw * 0.8; ctx.fillRect(-0.02 * k, 0, 0.04 * k, H * 0.52); ctx.strokeRect(-0.02 * k, 0, 0.04 * k, H * 0.52);
+    ctx.beginPath(); ctx.rect(-bw, -bh, bw * 2, bh * 2); ctx.fillStyle = '#e8c890'; ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#4a2a10'; ctx.beginPath(); ctx.ellipse(0, bh * 0.25, bw * 0.34, bh * 0.36, 0, 0, TAU); ctx.fill(); for (const d of [-0.5, 0, 0.5]) { ctx.beginPath(); ctx.arc(d * bw * 0.8, -bh * 0.4 + Math.abs(d) * bh * 0.3, bh * 0.2, 0, TAU); ctx.fill(); }
+    ctx.strokeStyle = '#d8301e'; ctx.lineWidth = lw * 1.3; ctx.beginPath(); ctx.moveTo(-bw * 0.8, -bh * 0.8); ctx.lineTo(bw * 0.8, bh * 0.8); ctx.stroke();
+    ctx.restore(); }
+  // the lantern on a peg over the door's right shoulder: it swings, and glows redder while eggs are inside
+  { const hot = T.stash.length > 0, sw = Math.sin(t * 2.1 + T.id) * 0.16, ax = w * 0.86, ay = -h * 1.12, L = 0.2 * k, lr = 0.085 * k;
+    ctx.strokeStyle = LINE; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(ax - 0.06 * k, ay); ctx.lineTo(ax + 0.1 * k, ay); ctx.stroke();
+    ctx.save(); ctx.translate(ax + 0.06 * k, ay); ctx.rotate(sw);
+    ctx.lineWidth = lw * 0.7; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, L - lr); ctx.stroke();
+    const fl = 0.75 + 0.25 * Math.sin(t * 9 + T.id * 3) * Math.sin(t * 3.1), halo = ctx.createRadialGradient(0, L, 1, 0, L, lr * 4.2); halo.addColorStop(0, hot ? `rgba(255,120,70,${0.5 * fl})` : `rgba(255,214,110,${0.46 * fl})`); halo.addColorStop(1, 'rgba(255,200,90,0)');
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, L, lr * 4.2, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.rect(-lr * 0.8, L - lr, lr * 1.6, lr * 2); ctx.fillStyle = hot ? '#ff9a5a' : '#ffe28a'; ctx.fill(); ctx.lineWidth = lw * 0.8; ctx.strokeStyle = LINE; ctx.stroke();
+    ctx.fillStyle = '#3a3026'; ctx.fillRect(-lr * 1.0, L - lr * 1.35, lr * 2, lr * 0.4); ctx.fillRect(-lr * 1.0, L + lr * 0.95, lr * 2, lr * 0.3);
+    ctx.fillStyle = '#fff8d8'; ctx.beginPath(); ctx.ellipse(0, L + lr * 0.15, lr * 0.3, lr * 0.5 * fl, 0, 0, TAU); ctx.fill();
+    ctx.restore(); }
+  // whose home this is: his face on a round plaque over the door
+  { const pr = 0.15 * k, py = -H * 0.98 - pr * 0.35;
+    ctx.beginPath(); ctx.arc(0, py, pr, 0, TAU); ctx.fillStyle = '#f2dfb4'; ctx.fill(); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = LINE; ctx.stroke();
+    ctx.save(); ctx.beginPath(); ctx.arc(0, py, pr * 0.9, 0, TAU); ctx.clip(); ctx.translate(0, py); drawThiefEmblem(ctx, 'weasel', pr * 0.8, t); ctx.restore(); }
+  const n = T.stash.length;
+  if (n && live) {
+    const ay = -H - 0.38 * k, ar = Math.max(5, 0.1 * k), pu = 0.6 + 0.4 * Math.sin(t * 6);
+    ctx.fillStyle = `rgba(230,50,40,${0.7 + 0.3 * pu})`; ctx.beginPath(); ctx.arc(0, ay, ar, 0, TAU); ctx.fill(); ctx.lineWidth = Math.max(1, ar * 0.18); ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.fillRect(-ar * 0.11, ay - ar * 0.55, ar * 0.22, ar * 0.62); ctx.beginPath(); ctx.arc(0, ay + ar * 0.42, ar * 0.13, 0, TAU); ctx.fill();
+  }
+}
+// dev studio: one den upright on its own, for a before/after picture (v2: the proposed look)
+export function drawDenAlone(ctx, t, k, o = {}) {
+  const T = { id: 1, kind: o.kind || 'weasel', ph: o.ph || 'wait', stash: o.stash ? [1] : [] }, was = typeof window !== 'undefined' ? window.__denV2 : 0;
+  if (typeof window !== 'undefined') window.__denV2 = !!o.v2;
+  ctx.save(); drawDen(ctx, T, t, k); ctx.restore(); if (o.between) o.between(); ctx.save(); drawDenOver(ctx, T, t, k, true); ctx.restore();
+  if (typeof window !== 'undefined') window.__denV2 = was;
+}
 function drawDen(ctx, T, t, k) {
+  if (T.kind !== 'ratking' && T.kind !== 'rat' && denV2()) return drawStump(ctx, T, t, k);
   const kind = T.kind === 'ratking' ? 'ratking' : T.kind === 'rat' ? 'rat' : 'weasel', D = DEN_LOOK[kind];
   const w = D.w * k, h = D.h * k, W = D.W * k, H = D.H * k, lw = Math.max(1.2, 0.035 * k), R = (i) => hash(T.id * 31 + i);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
@@ -644,6 +744,7 @@ function drawDen(ctx, T, t, k) {
 }
 // over the eggs: shade inside the doorway (a stolen egg lies IN the dark), then the rim, the plaque and the alert
 function drawDenOver(ctx, T, t, k, live) {
+  if (T.kind !== 'ratking' && T.kind !== 'rat' && denV2()) return drawStumpOver(ctx, T, t, k, live);
   const kind = T.kind === 'ratking' ? 'ratking' : T.kind === 'rat' ? 'rat' : 'weasel', D = DEN_LOOK[kind];
   const w = D.w * k, h = D.h * k, W = D.W * k, H = D.H * k, lw = Math.max(1.2, 0.035 * k), R = (i) => hash(T.id * 31 + i);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';

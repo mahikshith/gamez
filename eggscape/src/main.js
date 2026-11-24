@@ -63,7 +63,7 @@ import { drawJelly as devJelly } from './render/reef.js';
 import { REEF_DEMOS } from './data/reef-demos.js'; // world 8 studio levels (dev)
 import { drawSeaUnder, drawSeaOver, seaEvent, seaAnim } from './render/sea.js'; // v3.3 octopus and fish
 import { drawReefUnder, drawReefOver, reefEvent, drawSurface, drawBoat, boatSeat, drawRiseGuide } from './render/reef.js'; // world 8 Coral Reef (underwater)
-import { drawThiefDens, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
+import { drawDenAlone, drawThiefDens, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
 import { RIG as THIEF_RIG } from './sim/thieves.js';
 import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
 import { LAB_DEMOS } from './data/lab-demos.js'; // v4 Shape Lab studio levels: the clockwork cast and the owl
@@ -1781,7 +1781,7 @@ async function press(id) {
     case 'spin:coin': await spinGo('coin'); break;
     case 'spin:skip': spinSkip(); break;
     case 'spin:odds': if (G.spin && G.spin.st === 'idle') G.spin.sheet = true; break;
-    case 'spin:odds:x': if (G.spin) G.spin.sheet = false; break;
+    case 'spin:odds:x': case 'spin:odds:ok': if (G.spin) G.spin.sheet = false; break;
     case 'back':
       G.getMore = null; G.detail = null;
       if (G.screen === 'store') shopSeen(); // (after a purchase fewer things are in reach: saving up again lights the mark)
@@ -8485,7 +8485,7 @@ function openSpin() {
   if (!SP.open(save) || G.screen === 'spin') return;
   const b1 = spinBoost();
   G.spin = { from: G.screen, reels: G.spin && G.spin.reels ? G.spin.reels.map((p) => Math.round(p)) : [0, 1, 2], run: null, st: 'idle', leverT: -9, tickT: -9, buzzT: -9, sheet: false, lit: false,
-    cast: { who: spinVillain(), item: b1, item2: spinBoost(), chick: spinChick() }, hx: 0.3, hv: 0, henN: 0, stops: 0, miss: false, missT: -99 };
+    cast: { who: spinVillain(), item: b1, item2: spinBoost(), chick: spinChick() }, hx: 0.5, hv: 0, henN: 0, stops: 0, miss: false, missT: -99 };
   resetHen('spin');
   G.getMore = null; G.detail = null; G.toasts = []; G.toast = null;
   setScreen('spin'); audio.play('ui_open');
@@ -8554,25 +8554,44 @@ function drawSpin() {
   const u = ui.u, A = ui.A, S = G.spin, calm = save.calm;
   if (!S) { setScreen('levels'); return; }
   ui.calm = calm;
-  if (!themeBack(ctx, ui.skin, W_, H_, H_ * 0.8, true)) { const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#221a52'); bg.addColorStop(0.6, '#3d2560'); bg.addColorStop(1, '#5a2a5e'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); }
+  spinBack();
   menuFx();
   const wide = A.w > A.h * 1.2, P = ui.pageBox(wide ? Infinity : 440 * u), s = P.s, hold = S.st !== 'idle' && S.shown, W = hold ? S.shown.W : SP.ways(save, today()), M = hold ? S.shown.M : SP.meter(save), SL = spinReels(S.cast);
   const coinW = Math.max(84 * s, ui.measure(String(purse.shown()).replace(/\d/g, '0'), 17 * s) + 56 * s), long = P.w - 2 * (coinW + 24 * s) >= ui.measure('Lucky Spin', 25 * s) + 48 * s; // a narrow phone: the ribbon says Spin whole, not Lucky Sp...
   ui.pageHeader(P, { back: 'spin:back', title: long ? 'Lucky Spin' : 'Spin', color: '#e8a020', tag: 'spin:title', right: { w: coinW, draw: (bx, by, bw, bh) => purseBtn(bx, by + (bh - 44 * s) / 2, bw, 44 * s, 17 * s) } });
-  // ---- layout: the machine takes what the controls leave (portrait: over them; landscape: beside them); the hen stands on its roof
-  const top = P.bottom + 8 * u, bot = A.y1 - 12 * u, ctlH = 166 * u;
-  let mx, my, mw, mh, hh, cX, cY, cW;
+  // ---- layout (mykee, 13:29: "dont add the pics or images on top of the slot machine and so does the text ... u are
+  // pushing ui buttons to the very bottom"): nothing stands on the machine. Portrait: the machine, the floor in front of
+  // it where the hen walks, then the controls right under her, and what is left over goes below them. Landscape: the
+  // hen's patch of floor, the machine, the controls beside them.
+  const top = P.bottom + 6 * u, bot = A.y1 - 10 * u, bh = (wide ? 66 : 72) * u, ctlH = 36 * u + bh + 12 * u + 48 * u;
+  let mx, my, mw, mh, hh, cX, cY, cW, floorY, henX, beside = false;
   if (wide) {
     cW = Math.min(340 * u, A.w * 0.42);
     const lw = A.w - cW - 3 * P.pad, areaH = bot - top;
-    mw = Math.min(areaH / 1.04, lw / 1.2, 400 * u); mh = mw * 0.74; hh = mw * 0.3;
-    mx = A.x + P.pad + (lw - mw * 1.12) / 2; my = top + (areaH - (hh * 0.86 + mh * 1.04)) / 2 + hh * 0.86;
+    // a phone on its side: the hen beside the machine. A tablet on its side has the height for the portrait stack (the
+    // hen on the floor under a taller machine), and that makes the machine a good deal bigger: take whichever is bigger
+    const mwA = Math.min(areaH / 0.83, lw / 1.56, 420 * u), mwB = Math.min(areaH / 1.2, lw / 1.1, 460 * u);
+    if (mwB > mwA) {
+      mw = mwB; mh = mw * clamp((areaH - mw * 0.34 - 12 * u) / (mw * 1.05), 0.78, 1.12); hh = clamp(areaH - mh * 1.05 - 12 * u, mw * 0.3, mw * 0.4);
+      const gap = Math.max(0, (areaH - mh * 1.05 - hh) / 3);
+      mx = A.x + P.pad + (lw - mw * 1.091) / 2; my = top + gap; floorY = my + mh * 1.05 + gap + hh; henX = (hx) => mx + mw * hx;
+    } else {
+      beside = true; mw = mwA; mh = mw * 0.78; hh = mw * 0.32;
+      const gx = A.x + P.pad + (lw - mw * 1.54) / 2;
+      mx = gx + mw * 0.45; my = top + (areaH - mh * 1.04) / 2; floorY = my + mh * 1.02;
+      henX = (hx) => gx + mw * 0.19 + (hx - 0.5) * mw * 0.1;
+    }
     cX = A.x1 - P.pad - cW; cY = top + Math.max(0, (areaH - ctlH) / 2);
   } else {
-    cW = Math.min(P.w, 380 * u); cX = A.cx - cW / 2; cY = bot - ctlH;
-    const areaH = cY - 12 * u - top;
-    mw = Math.min(areaH / 1.46, P.w / 1.19, 380 * u); mh = mw * 1.1; hh = mw * 0.36;
-    mx = A.cx - (mw * 1.15) / 2; my = top + (areaH - (hh * 0.86 + mh * 1.04)) / 2 + hh * 0.86;
+    // the full screen (mykee, 13:34: "use full screen and clear ui layouts"): the machine as wide as the page allows,
+    // and what height is left over is shared out as four even gaps, never left as one empty band
+    const areaH = bot - top - ctlH;
+    mw = Math.min((areaH - 24 * u) / 1.5, (A.w / 2 - 6 * u) / 0.571, 440 * u); mh = mw * 1.12; hh = clamp(areaH - mh * 1.05 - 24 * u, mw * 0.32, mw * 0.42);
+    const gap = Math.max(4 * u, (areaH - mh * 1.05 - hh) / 4);
+    // the cabinet a touch left of the middle (its lever stands out on the right); the buttons start at its left edge and
+    // end as far from the other side
+    mx = A.cx - mw * 0.52; cW = mw * 1.04; cX = mx; my = top + gap; floorY = my + mh * 1.05 + gap + hh; cY = floorY + gap;
+    henX = (hx) => mx + mw * hx;
   }
   // ---- the reels: each runs up to speed, runs on, and settles onto its picture with a small bounce
   const n = SL.length, speed = [0, 0, 0];
@@ -8608,24 +8627,27 @@ function drawSpin() {
   const lt = G.t - S.leverT, lk = calm ? 0 : lt < 0.13 ? lt / 0.13 : lt < 0.42 ? 1 : clamp(1 - (lt - 0.42) / 0.5, 0, 1) * (1 + 0.12 * Math.sin((lt - 0.42) * 22) * clamp(1 - (lt - 0.42) / 0.5, 0, 1));
   { const jt = G.t - Math.max(S.joltT || -9, S.leverT + 0.13); if (!calm && jt >= 0 && jt < 0.22) my += Math.sin(jt * 60) * 2.2 * u * (1 - jt / 0.22); } // a reel locking, the lever hitting bottom: the cabinet shudders
   const stolen = S.st === 'stolen', sT = G.t - S.tStop, badK = stolen ? clamp(sT / 0.2, 0, 1) : S.miss && idle ? clamp(1 - (G.t - (S.doneT || 0)) / 0.6, 0, 1) : 0;
-  // the villain climbs up from behind the roof at its left end (drawn before the machine, so the sign hides its feet)
+  // the machine first, then the floor show in front of it
+  const GM = drawSlot(ctx, mx, my, mw, mh, SL, S.reels, { dpr: Math.min(DPR, 2), t: G.t, calm, lit: litK, bad: badK, winT: S.st === 'stopped' || S.st === 'prize' ? G.t - S.tStop : 9, speed, lever: clamp(lk, 0, 1.1), ready: (W.free || W.retry === 'free') && idle });
+  // the villain slides in along the floor from the side the hen is not on (landscape: over her patch of floor),
+  // laughs with its own voice, and slides out again
   if (stolen && !calm) {
-    const up = sT < 0.45 ? 0 : sT < 2.3 ? Math.min(1, (sT - 0.45) / 0.22) : Math.max(0, 1 - (sT - 2.3) / 0.25), back = up < 1 && sT < 1 ? 1 + 0.25 * Math.sin(up * Math.PI) : 1; // up with a small overshoot, a laugh, down again
-    const d = hh * 0.86, vx = mx + mw * (S.vSide > 0 ? 0.77 : 0.23), vy = my + d * 0.55 - d * 0.98 * up * back, laugh = sT > 0.7 && sT < 2.3 ? Math.abs(Math.sin((sT - 0.7) * 13)) * d * 0.06 : 0;
-    if (up > 0) { ctx.save(); ctx.beginPath(); ctx.rect(mx - mw, my - d * 2, mw * 3, d * 2 + 2 * u); ctx.clip(); ctx.translate(vx, vy - laugh); ctx.rotate(-0.1 * (S.vSide > 0 ? -1 : 1) + Math.sin(sT * 13) * 0.06 * (laugh > 0 ? 1 : 0)); drawVillainCard(ctx, S.cast.who, 0, 0, d, G.t); ctx.restore(); }
+    const up = sT < 0.45 ? 0 : sT < 2.3 ? Math.min(1, (sT - 0.45) / 0.22) : Math.max(0, 1 - (sT - 2.3) / 0.25), back = up < 1 && sT < 1 ? 1 + 0.12 * Math.sin(up * Math.PI) : 1; // in with a small overshoot, a laugh, out again
+    const d = hh * 0.86, side = wide ? -1 : S.vSide, x1 = beside ? henX(0.5) : mx + mw * (side > 0 ? 0.84 : 0.16), x0 = side > 0 ? A.x1 + d : A.x - d, vy = beside ? floorY - hh - d * 0.56 : floorY - d * 0.52, laugh = sT > 0.7 && sT < 2.3 ? Math.abs(Math.sin((sT - 0.7) * 13)) * d * 0.06 : 0;
+    if (up > 0) { ctx.save(); ctx.translate(x0 + (x1 - x0) * up * back, vy - laugh); ctx.rotate(0.08 * side + Math.sin(sT * 13) * 0.06 * (laugh > 0 ? 1 : 0)); drawVillainCard(ctx, S.cast.who, 0, 0, d, G.t); ctx.restore(); }
   }
-  // the hen on the roof: she walks along with the reels, frets while they run, hops for each prize that locks, dances
-  // for the row; a villain makes her gasp, and when it climbs up she turns to it and cries
+  // the hen on the floor in front of the machine: she walks along with the reels, frets while they run, hops for each
+  // prize that locks, dances for the row; a villain makes her gasp, and when it comes in she turns to it and cries
   {
     const spinning = S.st === 'spinning', since = G.t - S.leverT;
-    const tx = spinning ? 0.24 + 0.48 * clamp((since - 0.3) / 2.5, 0, 1) : S.st === 'stopped' || S.st === 'prize' ? 0.72 : stolen ? (S.vSide > 0 ? 0.36 : 0.66) : G.t - S.missT < 5 ? (S.vSide > 0 ? 0.4 : 0.6) : 0.3;
-    const dtH = calm ? 0 : clamp(G.t - (S.henT || G.t), 0, 0.05), want = clamp((tx - S.hx) * 6, -0.2, 0.2); // roof-widths a second: a trot, never a slide
-    S.hv += (want - S.hv) * (1 - Math.exp(-dtH * 10)); S.hx = calm ? tx : clamp(S.hx + S.hv * dtH, 0.2, 0.76); S.henT = G.t;
+    const tx = spinning ? [0.2, 0.5, 0.8][Math.min(2, S.stops)] : stolen ? (S.vSide > 0 && !wide ? 0.34 : 0.66) : idle && G.t - S.missT < 5 ? (S.vSide > 0 && !wide ? 0.42 : 0.58) : 0.5; // she trots to stand under the reel that locks next
+    const dtH = calm ? 0 : clamp(G.t - (S.henT || G.t), 0, 0.05), want = clamp((tx - S.hx) * 6, -0.34, 0.34); // machine-widths a second: a trot, never a slide
+    S.hv += (want - S.hv) * (1 - Math.exp(-dtH * 10)); S.hx = calm ? tx : clamp(S.hx + S.hv * dtH, 0.16, 0.84); S.henT = G.t;
     const mood = spinning ? (S.miss && S.stops > 0 ? 'gasp' : S.stops > 0 ? 'happy' : 'worried') : S.st === 'stopped' || S.st === 'prize' ? (S.big >= 1 ? 'dance' : 'happy') : stolen ? (sT < 0.45 ? 'gasp' : 'cry') : G.t - S.missT < 5 ? 'sad' : G.t - (S.doneT || -9) < 1.2 && !S.miss ? 'happy' : 'idle';
-    const drift = calm ? 0 : (S.hv * mw) / (hh / 100);
-    drawHenAnim(ctx, mood, mx + mw * S.hx, my - hh * 0.5 + 2 * u, hh, G.t, { key: 'spin', face: stolen || (idle && G.t - S.missT < 5) ? (S.vSide > 0 ? 1 : -1) : 1, n: S.henN, drift, calm, shadow: 0, danger: spinning && !S.stops ? 0.5 : 0 });
+    const drift = calm ? 0 : (S.hv * mw * (beside ? 0.1 : 1)) / (hh / 100), hxp = henX(S.hx);
+    ui.record({ x: hxp - hh * 0.4, y: floorY - hh * 0.9, w: hh * 0.8, h: hh * 0.9 }, 'spin:hen');
+    drawHenAnim(ctx, mood, hxp, floorY - hh * 0.5, hh, G.t, { key: 'spin', face: beside ? 1 : stolen || (idle && G.t - S.missT < 5) ? (S.vSide > 0 && !wide ? 1 : -1) : 1, n: S.henN, drift, calm, danger: spinning && !S.stops ? 0.5 : 0 });
   }
-  const GM = drawSlot(ctx, mx, my, mw, mh, SL, S.reels, { dpr: Math.min(DPR, 2), t: G.t, calm, lit: litK, bad: badK, winT: S.st === 'stopped' || S.st === 'prize' ? G.t - S.tStop : 9, speed, lever: clamp(lk, 0, 1.1), ready: (W.free || W.retry === 'free') && idle, cap: '3 OF A KIND WINS' });
   ui.record({ x: mx, y: GM.bodyY, w: mw, h: GM.bodyH }, 'spin:machine');
   if (idle) ui.buttons.push({ id: 'spin:lever', x: GM.lever.x - GM.lever.h * 0.35, y: GM.lever.y - GM.lever.h * 1.3, w: GM.lever.h * 0.95, h: GM.lever.h * 2.3 }); // a tap on the lever is the SPIN button's tap
   // ---- the controls: how near the next free spin is, the ways to spin now, the odds
@@ -8643,49 +8665,53 @@ function drawSpin() {
     }
     ui.record({ x: x0, y: my - 10 * u, w: pw, h: 20 * u }, 'spin:pips', 'spin:meter');
     ui.text(txt, x0 + pw + 8 * u, my, { size: fs, color: short ? '#ffb0a0' : '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, maxW: tw, tag: 'spin:meter', group: 'spin:meter' });
-    const by = y + 38 * u, bh = 66 * u, opts = [W.retry ? 'retry' : W.ad && 'ad', W.coin != null && 'coin'].filter(Boolean);
+    const by = y + 36 * u, opts = [W.retry ? 'retry' : W.ad && 'ad', W.coin != null && 'coin'].filter(Boolean);
     if (W.free) ui.button('spin:go', M.bank > 1 ? `SPIN  x${M.bank}` : 'SPIN', x, by, w, bh, { kind: 'primary', shimmer: idle, size: 29 * u, iconS: 1.15, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, calm ? 0 : G.t), ...off });
     else if (!opts.length) ui.button('spin:back', 'Win levels to spin again', x, by, w, bh, { kind: 'secondary', size: 19 * u, ...off });
     else opts.forEach((k, i) => {
       const bw = (w - 10 * u * (opts.length - 1)) / opts.length, bx = x + i * (bw + 10 * u), rich = W.coin != null && save.wallet.coins >= W.coin;
       const sh = k === 'coin' && !calm && G.t - (S.shortT || -9) < 0.4 ? Math.sin((G.t - S.shortT) * 40) * 4 * u : 0; // too few coins: the button shakes its head
-      if (k === 'retry') ui.button('spin:retry', 'Try again', bx, by, bw, bh, W.retry === 'free' || ads.premium ? { kind: 'primary', shimmer: idle, size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, shimmer: idle, size: 21 * u, ...off });
-      else if (k === 'ad') ui.button('spin:ad', ads.premium ? 'Free spin' : 'Spin', bx, by, bw, bh, ads.premium ? { kind: 'secondary', size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, size: 23 * u, ...off });
+      if (k === 'retry') ui.button('spin:retry', 'Try again', bx, by, bw, bh, W.retry === 'free' || ads.premium ? { kind: 'primary', shimmer: idle, size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, shimmer: idle, size: 22 * u, ...off });
+      else if (k === 'ad') ui.button('spin:ad', ads.premium ? 'Free spin' : 'Spin', bx, by, bw, bh, ads.premium ? { kind: 'secondary', size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, size: 22 * u, ...off });
       else ui.button('spin:coin', `Spin ${W.coin}`, bx + sh, by, bw, bh, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 22 * u, ...off });
     });
-    const ow = Math.min(w, 250 * u);
-    ui.button('spin:odds', 'Prizes and odds', x + w / 2 - ow / 2, by + bh + 14 * u, ow, 46 * u, { kind: 'tertiary', size: 17 * u, ...off });
+    ui.button('spin:odds', 'Prizes and odds', x, by + bh + 12 * u, w, 48 * u, { kind: 'tertiary', size: 17 * u, ...off });
   }
   ctx.restore();
   if (!idle) { ui.buttons.length = 0; ui.buttons.push({ id: 'spin:skip', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); } // a tap anywhere brings the reels to their stop at once
   if (S.sheet) drawSpinOdds(spinSlices().map((sl) => (sl.kind === 'villain' ? { ...sl, who: S.cast.who } : sl)));
 }
 // the odds: every prize on the reels, what it is, how often it comes
+function spinBack() { if (!themeBack(ctx, ui.skin, W_, H_, H_ * 0.8, true)) { const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#221a52'); bg.addColorStop(0.6, '#3d2560'); bg.addColorStop(1, '#5a2a5e'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); } }
+// A full page with the page header every other page has (mykee, 13:34: "use full screen and clear ui layouts rather
+// than half congested things"): the rows share the whole height, two short lines under them, one OK as wide as the page
 function drawSpinOdds(SL) {
   const u = ui.u, A = ui.A, wide = A.w > A.h * 1.2, cols = wide ? 2 : 1, rowsN = Math.ceil(SL.length / cols);
   ui.buttons.length = 0; ui.rects.length = 0;
-  ui.buttons.push({ id: 'spin:odds:x', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); // a tap off the card closes it
-  dim(0.72);
-  const w = Math.min(A.w - 20 * u, wide ? 640 * u : 400 * u), headH = 50 * u, foot = ['After villains the next pull always wins, and coins you paid come back.', 'A cheer-up spin and a Try again always win.', 'The odds are the same for everyone and never change.'].flatMap((l) => wrapText(l, 12.5 * u, w - 36 * u)), footH = 66 * u + foot.length * 15 * u, rowH = Math.min(42 * u, (A.h - 24 * u - headH - footH) / rowsN), h = headH + rowsN * rowH + footH;
-  const x = A.cx - w / 2, y = A.y + (A.h - h) / 2 + 8 * u;
-  ui.frame(x, y, w, h, { s: u, r: 22 * u });
-  ui.buttons.push({ id: 'spin:odds:card', x, y, w, h }); // (a tap on the card itself does nothing)
-  ui.ribbon('Prizes and odds', A.cx, y - 14 * u, Math.min(w - 30 * u, 300 * u), 44 * u, { color: '#e8a020', size: 21 * u, tag: 'odds:title' });
-  const cw = (w - 24 * u) / cols, ks = Math.min(1, rowH / (42 * u));
+  spinBack();
+  const P = ui.pageBox(wide ? Infinity : 440 * u), s = P.s, long = P.w - 2 * (P.h + 24 * s) >= ui.measure('Prizes and odds', 25 * s) + 48 * s;
+  ui.pageHeader(P, { back: 'spin:odds:x', title: long ? 'Prizes and odds' : 'Prizes', color: '#e8a020', tag: 'odds:title' });
+  const foot = wide ? ['After villains, the next pull always wins. Same odds for everyone, and they never change.'] : ['After villains, the next pull always wins.', 'Same odds for everyone. They never change.'];
+  const top = P.bottom + 10 * u, bot = A.y1 - 10 * u, btnH = (wide ? 48 : 56) * u, fs = 14 * u, footH = foot.length * 20 * u + 8 * u, g = 10 * u;
+  const rowH = Math.min(58 * u, (bot - top - btnH - footH - 2 * g - 16 * u) / rowsN), panelH = rowsN * rowH + 16 * u, used = panelH + g + footH + g + btnH;
+  const x = P.x, w = P.w, y = top + Math.max(0, (bot - top - used) * 0.4);
+  ui.frame(x, y, w, panelH, { s: u, r: 22 * u });
+  const cw = (w - 24 * u) / cols, ks = clamp(rowH / (46 * u), 0.7, 1.12);
   SL.forEach((sl, i) => {
-    const c = Math.floor(i / rowsN), r = i % rowsN, rx = x + 12 * u + c * cw, ry = y + headH + r * rowH, my = ry + rowH / 2, C = SLICE_COL[sl.id], note = sliceNote(sl);
-    const ch = rowH - 6 * u, chw = 46 * u;
+    const c = Math.floor(i / rowsN), r = i % rowsN, rx = x + 12 * u + c * cw, my = y + 8 * u + r * rowH + rowH / 2, C = SLICE_COL[sl.id], note = sliceNote(sl);
+    const ch = rowH - 8 * u, chw = Math.max(46 * u, ch * 1.1);
     ui.roundRect(rx + 4 * u, my - ch / 2, chw, ch, 9 * u); ctx.fillStyle = C[1]; ctx.fill(); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = 'rgba(60,28,6,0.55)'; ctx.stroke();
-    drawSliceIcon(ctx, sl, rx + 4 * u + chw / 2, my, Math.min(ch * 0.92, 36 * u), G.t);
+    drawSliceIcon(ctx, sl, rx + 4 * u + chw / 2, my, Math.min(ch * 0.92, chw * 0.8), G.t);
     const pct = `${+sl.pct.toFixed(2)}%`, pw = ui.measure('12.75%', 17 * u * ks) + 6 * u, tx = rx + chw + 14 * u, tw = cw - chw - 26 * u - pw;
     ui.text(sliceName(sl), tx, note ? my - 8 * u * ks : my, { size: 16 * u * ks, color: ui.C.ink, maxW: tw, tag: 'odds:n' + i });
     if (note) ui.text(note, tx, my + 10 * u * ks, { size: 11.5 * u * ks, color: ui.C.ink2, maxW: tw, tag: 'odds:s' + i });
     ui.text(pct, rx + cw - 8 * u, my, { size: 17 * u * ks, align: 'right', color: ui.C.ink, tag: 'odds:p' + i });
+    if (r > 0) { ctx.fillStyle = 'rgba(90,50,14,0.12)'; ctx.fillRect(rx + 4 * u, my - rowH / 2 - 0.5 * u, cw - 8 * u, 1 * u); } // a hairline between rows
   });
-  const fy = y + headH + rowsN * rowH + 6 * u;
-  foot.forEach((l, i) => ui.text(l, A.cx, fy + 9 * u + i * 15 * u, { size: 12.5 * u, align: 'center', color: ui.C.ink2, maxW: w - 30 * u, tag: 'odds:f' + i }));
-  const bw = Math.min(w - 40 * u, 200 * u);
-  ui.button('spin:odds:x', 'OK', A.cx - bw / 2, y + h - 56 * u, bw, 44 * u, { kind: 'primary', size: 20 * u });
+  const fy = y + panelH + g;
+  foot.forEach((l, i) => ui.text(l, A.cx, fy + 14 * u + i * 20 * u, { size: fs, align: 'center', color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, maxW: w - 8 * u, tag: 'odds:f' + i }));
+  const okW = Math.min(w, 380 * u);
+  ui.button('spin:odds:ok', 'OK', A.cx - okW / 2, fy + footH + g, okW, btnH, { kind: 'primary', size: 22 * u });
 }
 // ---- the Conductor on a page (0.8.15, engine/conduct.js): what waits for the player and what he is closest to; ONE of
 // them leads a page. Asked once per visit of a page (and again when what it is made from changes), never per frame.
@@ -9163,7 +9189,7 @@ if (DEV) window.__egg = {
   POWER_DEMOS,
   THIEF_DEMOS,
   bayouArt: { drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem }, // v3.7 Gator Bayou strips
-  thiefArt: { drawThief, thiefPose, thiefBlend, RIG: THIEF_RIG, drawThiefCard, drawThiefEmblem, drawBossCard }, // v3.6 thief strips
+  thiefArt: { drawThief, thiefPose, thiefBlend, RIG: THIEF_RIG, drawThiefCard, drawThiefEmblem, drawBossCard, drawDenAlone }, // v3.6 thief strips
   press,
   strike(id) { if (!G.sim || !G.sim.stk) return null; if (id) G.sim.stkEquip(id); return fireStrike(true); }, // Chick Strike: fill the meter and fire
   strikeArt: { drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick },

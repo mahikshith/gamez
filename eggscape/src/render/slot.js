@@ -121,46 +121,53 @@ function symbol(sl, c, dpr) {
 const rr = (ctx, x, y, w, h, r) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); };
 // Where things are on a machine drawn into the box (x, y, w, h): the roof (the hen stands on it), the windows, the lever.
 export function slotGeom(x, y, w, h) {
-  const mqH = h * 0.2, bodyY = y + mqH * 0.72, bodyH = y + h - bodyY;
-  const px = x + w * 0.07, pw = w * 0.86, py = bodyY + bodyH * 0.12, ph = bodyH * 0.58, ip = pw * 0.035, g = pw * 0.03;
-  const cw = (pw - 2 * ip - 2 * g) / 3, wh = ph - 2 * ip;
-  return { mqH, bodyY, bodyH, px, py, pw, ph, cw, wh, wy: py + ip, wx: [0, 1, 2].map((i) => px + ip + i * (cw + g)), cell: Math.min(cw, wh * 0.8),
-    roofY: y, lever: { x: x + w * 1.035, y: bodyY + bodyH * 0.5, h: bodyH * 0.42 }, right: x + w * 1.035 + bodyH * 0.42 * 0.36 };
+  // mykee, 13:32: "make it bigger ... make sure the images or rollable images dont overshoot the slots". The reel panel
+  // takes nine tenths of the cabinet, and each window shows ONE whole picture at rest: its neighbours on the reel sit a
+  // full pitch away, outside the window, so nothing is ever cut by a window's edge unless the reel is turning.
+  const mqH = h * 0.25, bodyY = y + mqH * 0.74, bodyH = y + h - bodyY;
+  const px = x + w * 0.05, pw = w * 0.9, py = bodyY + bodyH * 0.13, ph = bodyH * 0.56, ip = pw * 0.028, g = pw * 0.022;
+  const cw = (pw - 2 * ip - 2 * g) / 3, wh = ph - 2 * ip, cell = Math.min(cw * 0.92, wh * 0.86), lh = bodyH * 0.36;
+  return { mqH, bodyY, bodyH, px, py, pw, ph, cw, wh, wy: py + ip, wx: [0, 1, 2].map((i) => px + ip + i * (cw + g)), cell, pitch: wh / 2 + cell * 0.62,
+    roofY: y, lever: { x: x + w * 0.985, y: bodyY + bodyH * 0.52, h: lh }, right: x + w * 0.985 + lh * 0.32 };
 }
-// The whole machine. slices: spin.js wheel() -> [{ id, kind, n }]. reels: [pos, pos, pos] (how far each reel has run, in
-// pictures; a whole number rests on a picture). o: { dpr, t, calm, lit 0..1 (the row just won), speed: [..] pictures a
-// second (a fast reel is drawn smeared), lever 0..1, ready (the knob breathes), cap: the words on the roof sign,
-// bad 0..1 (the row is three villains: the lamps go red, the windows darken, the villains shake with laughter) }
+// the roof sign carries no words (mykee, 13:29 and 13:30: "dont add any text, just add cool graphics"): a golden egg
+// with wings in a dark red plate, and stars running out from it to both ends, lit one after another
+function star5(ctx, cx, cy, r) { ctx.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5, q = i % 2 ? r * 0.46 : r; ctx.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); } ctx.closePath(); }
+function drawCrest(ctx, x, y, w, G, o, lw) {
+  const t = o.t || 0, bad = o.bad || 0, lit = bad > 0 ? 0 : o.lit || 0, vh = G.mqH * 0.74, mx = x + w * 0.1, mw = w * 0.8, cx = x + w / 2;
+  const g = ctx.createLinearGradient(0, y, 0, y + G.mqH); g.addColorStop(0, '#ffe27a'); g.addColorStop(1, '#f0a01c');
+  rr(ctx, mx, y, mw, G.mqH, [G.mqH * 0.5, G.mqH * 0.5, 0, 0]); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = lw * 1.3; ctx.strokeStyle = '#6a3c06'; ctx.stroke();
+  const ih = vh * 0.66, iy = y + vh * 0.19, ix = mx + vh * 0.28, iw = mw - vh * 0.56, cy = iy + ih / 2;
+  const pg = ctx.createLinearGradient(0, iy, 0, iy + ih); pg.addColorStop(0, bad > 0 ? '#4a0c1c' : '#8e1c10'); pg.addColorStop(1, bad > 0 ? '#2a0612' : '#5c0e08');
+  rr(ctx, ix, iy, iw, ih, ih * 0.5); ctx.fillStyle = pg; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = '#6a3c06'; ctx.stroke();
+  ctx.save(); rr(ctx, ix, iy, iw, ih, ih * 0.5); ctx.clip(); ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(ix, iy, iw, ih * 0.36); ctx.restore();
+  // the stars: four a side, smaller toward the ends; a light runs out from the egg (all of them flash for a row)
+  const N = 3, step = Math.floor(t * 4) % (N + 2);
+  for (const d of [-1, 1]) for (let i = 0; i < N; i++) {
+    const sx = cx + d * (iw * 0.25 + i * iw * 0.095), r = ih * (0.31 - i * 0.045), on = o.calm ? i % 2 === 0 : bad > 0 ? Math.floor(t * 3.2) % 2 === 0 : lit > 0 ? Math.floor(t * 9 + i) % 2 === 0 : step === i || step === i + 1;
+    if (on) { ctx.beginPath(); ctx.arc(sx, cy, r * 1.5, 0, TAU); ctx.fillStyle = bad > 0 ? 'rgba(255,80,50,0.22)' : 'rgba(255,240,150,0.22)'; ctx.fill(); }
+    star5(ctx, sx, cy + r * 0.06, r); ctx.fillStyle = bad > 0 ? (on ? '#ff5a3c' : '#6a1a14') : on ? '#fff3a8' : '#e09a14'; ctx.fill(); ctx.lineWidth = Math.max(1, lw * 0.7); ctx.strokeStyle = '#4a1606'; ctx.stroke();
+  }
+  // the golden egg, its two wings beating slowly, a glint
+  const er = ih * 0.4, flap = o.calm ? 0 : Math.sin(t * (lit > 0 ? 14 : 3.2)) * 0.22;
+  for (const d of [-1, 1]) {
+    ctx.save(); ctx.translate(cx + d * er * 0.5, cy - er * 0.05); ctx.scale(d, 1); ctx.rotate(-0.42 - flap);
+    for (let f = 2; f >= 0; f--) { ctx.save(); ctx.rotate(f * 0.44); ctx.beginPath(); ctx.ellipse(er * (0.95 - f * 0.14), 0, er * (0.9 - f * 0.16), er * 0.3, 0, 0, TAU); ctx.fillStyle = f % 2 ? '#fff0d0' : '#ffffff'; ctx.fill(); ctx.lineWidth = Math.max(1, lw * 0.6); ctx.strokeStyle = '#4a1606'; ctx.stroke(); ctx.restore(); }
+    ctx.restore();
+  }
+  if (lit > 0) { ctx.beginPath(); ctx.arc(cx, cy, er * 1.9, 0, TAU); ctx.fillStyle = `rgba(255,240,150,${0.3 * lit})`; ctx.fill(); }
+  const eg = ctx.createRadialGradient(cx - er * 0.25, cy - er * 0.4, er * 0.1, cx, cy, er * 1.2); eg.addColorStop(0, '#fff8c8'); eg.addColorStop(0.55, '#ffd040'); eg.addColorStop(1, '#e8920c');
+  ctx.beginPath(); ctx.moveTo(cx, cy - er * 1.12); ctx.bezierCurveTo(cx + er * 0.86, cy - er * 1.0, cx + er * 1.0, cy + er * 1.05, cx, cy + er * 1.05); ctx.bezierCurveTo(cx - er * 1.0, cy + er * 1.05, cx - er * 0.86, cy - er * 1.0, cx, cy - er * 1.12); ctx.closePath();
+  ctx.fillStyle = eg; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = '#6a3c06'; ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(cx - er * 0.3, cy - er * 0.45, er * 0.16, er * 0.3, 0.5, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fill();
+}
 export function drawSlot(ctx, x, y, w, h, slices, reels, o = {}) {
   const G = slotGeom(x, y, w, h), t = o.t || 0, bad = o.bad || 0, lit = bad > 0 ? 0 : o.lit || 0, n = slices.length, lw = Math.max(1.5, w * 0.012), OUT = '#5a1206';
   ctx.save(); ctx.lineJoin = 'round';
   // the shadow on the floor, and two feet
   ctx.beginPath(); ctx.ellipse(x + w / 2, y + h + h * 0.012, w * 0.56, h * 0.045, 0, 0, TAU); ctx.fillStyle = 'rgba(20,6,30,0.34)'; ctx.fill();
   for (const fx of [x + w * 0.16, x + w * 0.84]) { rr(ctx, fx - w * 0.07, y + h - h * 0.02, w * 0.14, h * 0.045, h * 0.015); ctx.fillStyle = '#3a1c0c'; ctx.fill(); }
-  // the lever, behind the cabinet's edge: a brass socket on the side, a steel arm, a red knob
-  {
-    // (pulled, it swings toward the player and down: seen from the front the arm shortens, passes the socket and
-    // points down, and the knob grows a little as it comes nearer; it never leaves the screen's edge)
-    const L = G.lever, k = o.lever || 0, th = k * 2.0, ty = -L.h * Math.cos(th), tx = L.h * 0.2 * (1 - 0.5 * Math.sin(th)), near = 1 + 0.22 * Math.sin(Math.min(Math.PI, th));
-    rr(ctx, x + w - w * 0.01, L.y - L.h * 0.16, w * 0.07, L.h * 0.32, L.h * 0.08); ctx.fillStyle = '#c8860e'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = '#6a3c06'; ctx.stroke();
-    ctx.save(); ctx.translate(L.x, L.y);
-    ctx.lineCap = 'round'; ctx.lineWidth = L.h * 0.14; ctx.strokeStyle = '#3a2a22'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(tx, ty); ctx.stroke();
-    ctx.lineWidth = L.h * 0.08; ctx.strokeStyle = '#e8e2d2'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(tx, ty); ctx.stroke();
-    const kr = L.h * 0.23 * near * (o.ready && !o.calm ? 1 + 0.07 * Math.sin(t * 5) : 1), kg = ctx.createRadialGradient(tx - kr * 0.3, ty - kr * 0.3, kr * 0.1, tx, ty, kr); kg.addColorStop(0, '#ffa890'); kg.addColorStop(1, '#d8341c');
-    ctx.beginPath(); ctx.arc(tx, ty, kr, 0, TAU); ctx.fillStyle = kg; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = OUT; ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(tx - kr * 0.32, ty - kr * 0.36, kr * 0.22, kr * 0.14, -0.6, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
-    ctx.restore();
-    ctx.beginPath(); ctx.arc(L.x, L.y, L.h * 0.13, 0, TAU); ctx.fillStyle = '#ffd86a'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = '#6a3c06'; ctx.stroke();
-  }
-  // the roof sign: gold, with the promise on it
-  {
-    const mx = x + w * 0.1, mw = w * 0.8, g = ctx.createLinearGradient(0, y, 0, y + G.mqH); g.addColorStop(0, '#ffe27a'); g.addColorStop(1, '#f0a01c');
-    rr(ctx, mx, y, mw, G.mqH, [G.mqH * 0.5, G.mqH * 0.5, 0, 0]); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = lw * 1.3; ctx.strokeStyle = '#6a3c06'; ctx.stroke();
-    if (o.cap) {
-      let fs = G.mqH * 0.36; ctx.font = `600 ${fs}px ${FONT}`; const tw = ctx.measureText(o.cap).width; if (tw > mw * 0.84) { fs *= (mw * 0.84) / tw; ctx.font = `600 ${fs}px ${FONT}`; }
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = fs * 0.22; ctx.strokeStyle = 'rgba(255,250,220,0.9)'; ctx.strokeText(o.cap, x + w / 2, y + G.mqH * 0.4); ctx.fillStyle = '#6a2c06'; ctx.fillText(o.cap, x + w / 2, y + G.mqH * 0.4);
-    }
-  }
+  drawCrest(ctx, x, y, w, G, o, lw);
   // the cabinet: barn red, a lighter band across the top, a gold strip at the foot
   {
     const g = ctx.createLinearGradient(0, G.bodyY, 0, y + h); g.addColorStop(0, '#f0604a'); g.addColorStop(0.5, '#d8402c'); g.addColorStop(1, '#a82a1a');
@@ -170,6 +177,22 @@ export function drawSlot(ctx, x, y, w, h, slices, reels, o = {}) {
     { const sg = ctx.createLinearGradient(x, 0, x + w, 0); sg.addColorStop(0, 'rgba(255,255,255,0.2)'); sg.addColorStop(0.1, 'rgba(255,255,255,0)'); sg.addColorStop(0.86, 'rgba(60,0,0,0)'); sg.addColorStop(1, 'rgba(60,0,0,0.3)'); ctx.fillStyle = sg; ctx.fillRect(x, G.bodyY, w, G.bodyH); } // a round-shouldered box: light on its left edge, shade on its right
     ctx.fillStyle = '#ffc83a'; ctx.fillRect(x, y + h - G.bodyH * 0.055, w, G.bodyH * 0.055); ctx.fillStyle = 'rgba(90,18,6,0.5)'; ctx.fillRect(x, y + h - G.bodyH * 0.055 - lw, w, lw);
     ctx.restore();
+  }
+  // the lever, on the cabinet's right edge (in front of it, so the machine stays near the middle of the page): a brass
+  // socket, a steel arm, a red knob
+  {
+    // (pulled, it swings toward the player and down: seen from the front the arm shortens, passes the socket and
+    // points down, and the knob grows a little as it comes nearer; it never leaves the screen's edge)
+    const L = G.lever, k = o.lever || 0, th = k * 2.0, ty = -L.h * Math.cos(th), tx = L.h * 0.12 * (1 - 0.5 * Math.sin(th)), near = 1 + 0.22 * Math.sin(Math.min(Math.PI, th));
+    rr(ctx, L.x - w * 0.024, L.y - L.h * 0.17, w * 0.048, L.h * 0.34, w * 0.016); ctx.fillStyle = '#c8860e'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = '#6a3c06'; ctx.stroke();
+    ctx.save(); ctx.translate(L.x, L.y);
+    ctx.lineCap = 'round'; ctx.lineWidth = L.h * 0.14; ctx.strokeStyle = '#3a2a22'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(tx, ty); ctx.stroke();
+    ctx.lineWidth = L.h * 0.08; ctx.strokeStyle = '#e8e2d2'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(tx, ty); ctx.stroke();
+    const kr = L.h * 0.2 * near * (o.ready && !o.calm ? 1 + 0.07 * Math.sin(t * 5) : 1), kg = ctx.createRadialGradient(tx - kr * 0.3, ty - kr * 0.3, kr * 0.1, tx, ty, kr); kg.addColorStop(0, '#ffa890'); kg.addColorStop(1, '#d8341c');
+    ctx.beginPath(); ctx.arc(tx, ty, kr, 0, TAU); ctx.fillStyle = kg; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = OUT; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(tx - kr * 0.32, ty - kr * 0.36, kr * 0.22, kr * 0.14, -0.6, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(L.x, L.y, L.h * 0.13, 0, TAU); ctx.fillStyle = '#ffd86a'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = '#6a3c06'; ctx.stroke();
   }
   // a row of lamps over the reels: they wander at rest and all dance when a row has come in
   {
@@ -189,10 +212,10 @@ export function drawSlot(ctx, x, y, w, h, slices, reels, o = {}) {
     const bg = ctx.createLinearGradient(wx, 0, wx + G.cw, 0); bg.addColorStop(0, '#f2e4c2'); bg.addColorStop(0.5, '#fffaf0'); bg.addColorStop(1, '#f2e4c2'); ctx.fillStyle = bg; ctx.fillRect(wx, G.wy, G.cw, G.wh);
     if (bad > 0) { ctx.fillStyle = `rgba(40,8,30,${0.62 * bad})`; ctx.fillRect(wx, G.wy, G.cw, G.wh); } // the lights go down behind the villains
     for (let k = k0 - 2; k <= k0 + 2; k++) { // as the reel runs on, its pictures come down through the window
-      const sy = cy + (pos - k) * c * 1.12; if (sy < G.wy - c || sy > G.wy + G.wh + c) continue;
+      const sy = cy + (pos - k) * G.pitch; if (sy < G.wy - c || sy > G.wy + G.wh + c) continue;
       const cv = symbol(slices[stripAt(r, k, n)], c, dpr);
       if (bad > 0 && k === k0) { // the villain in the row shakes with laughter, a little bigger; its neighbours fade
-        const j = o.calm ? 0 : Math.sin(t * 26 + r * 2) * c * 0.025 * bad, z = c * (1 + 0.1 * bad);
+        const j = o.calm ? 0 : Math.sin(t * 26 + r * 2) * c * 0.012 * bad, z = c * (1 + 0.05 * bad);
         ctx.drawImage(cv, wx + (G.cw - z) / 2 + j, sy - z / 2 - Math.abs(j) * 0.8, z, z); continue;
       }
       if (bad > 0) ctx.globalAlpha = 1 - 0.75 * bad;
