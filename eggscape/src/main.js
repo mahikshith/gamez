@@ -5855,7 +5855,7 @@ function pickHand(tiles, T, V, s) { // tiles: [{ id, locked, x, y, w, h }] as dr
   if (!ok.length) return;
   const per = pickAsked() < 4 ? 1.0 : 1.6, ph = save.calm ? 0.5 : (G.t % per) / per, q = ok[save.calm ? 0 : Math.floor(G.t / per) % ok.length];
   const press = ph > 0.42 && ph < 0.72, lift = press ? 0 : Math.min(1, Math.abs(ph - 0.57) * 3.2);
-  const hx = q.x + q.w * 0.56, hy = q.y + q.h * 0.34, hs = Math.min(q.w * 0.62, 92 * s);
+  const hx = q.x + q.w * 0.5, hy = q.y + q.h * 0.9, hs = Math.min(q.w * 0.62, 92 * s); // 0.8.14: it taps the card's bottom edge, so the chick, its name and its power stay readable
   teachHand(ctx, hx + lift * hs * 0.1, hy + lift * hs * 0.16, hs, press, 1);
 }
 // one chick card. sel: 0..1 eased selection (lift, grow, bright border, glow, check); dim: another card is chosen
@@ -6378,6 +6378,7 @@ function drawLevelIntro(L, acc) {
       R.y = Math.max(0, items.findIndex((it) => it.S.id === T.id)) * D.step;
     } }
   const carCenter = () => (nI ? clamp(Math.round(R.y / Math.max(1, R.step || 1)), 0, nI - 1) : 0);
+  let handLater = null;
   const carBlock = (w0) => { const D = carDims(w0); return { h: D.ch + 38 * s, gap: gp, draw: (x, y, w) => {
     const { cw, ch, step } = D, rowH = D.ch + 38 * s;
     if (G.introPick && G.introPick.t !== R.pt) { R.pt = G.introPick.t; const k = items.findIndex((it) => it.S.id === G.introPick.id); if (k >= 0) { R.v = 0; R.to = k * step; } } // a tapped chick glides to the middle
@@ -6408,9 +6409,9 @@ function drawLevelIntro(L, acc) {
       ui.record(rect, 'btn:' + bid, 'btn:' + bid); ui.buttons.push({ id: bid, ...rect });
       tl.push({ id: S.id, locked: !!LK, ...rect });
     });
-    pickHand(tl, T, V, s);
     ctx.restore();
     clipRecorded(r0, b0, V);
+    handLater = () => pickHand(tl, T, V, s); // drawn last, over the row and the stage under it: the hand taps the card's bottom edge
     if (nI > 1) { // where you are: a dot per chick (the middle one bright), arrows at the ends of the row
       for (let p = 0; p < nI; p++) { ctx.beginPath(); ctx.arc(x + w / 2 + (p - (nI - 1) / 2) * 13 * s, y + rowH - 6 * s, (p === ci ? 4 : 3) * s, 0, 7); ctx.fillStyle = p === ci ? '#c9842a' : 'rgba(120,80,30,0.3)'; ctx.fill(); }
     }
@@ -6570,6 +6571,7 @@ function drawLevelIntro(L, acc) {
     if (RB.length) RB[0] = { ...RB[0], gap: RB[0].gap - gp };
     column(RB, pr, G.ipRectR, rx, rw);
   }
+  if (handLater) handLater();
   ctx.restore();
 }
 // the level card's perks row (0.8.14: off the stage, mykee: "there shouldn't be overlapping text"). Each chip is 34 units

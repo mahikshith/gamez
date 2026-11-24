@@ -333,7 +333,7 @@ export const ACTORS = {
 };
 // the moves an actor plays; any other plan keeps the portrait
 ACTORS['boss:weasel'] = ACTORS.weasel; // the Weasel Raid's boss is the weasel himself: his whole body, not a head on the ring
-const PLAYS = { 'boss:ratking': ['turn', 'tap', 'rooster'], 'boss:gator': ['drop'], 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], frostsal: ['turn', 'tap'], faceoff: ['faceoff'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'], 'boss:golem': ['stone'] };
+const PLAYS = { 'boss:ratking': ['turn', 'tap', 'rooster'], 'boss:gator': ['drop'], 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], frostsal: ['turn', 'tap'], faceoff: ['faceoff'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'], 'boss:golem': ['stone', 'tap'] };
 export function actorFor(plan) {
   const k = plan && plan.kind;
   return k && ACTORS[k] && PLAYS[k].includes(plan.move) ? ACTORS[k] : null;
