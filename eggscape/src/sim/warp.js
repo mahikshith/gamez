@@ -75,6 +75,7 @@ export const warpMethods = {
     else if (kind === 'oct') ok = this.warpOcto(W, X, info);
     else if (kind === 'boss') ok = this.warpBoss(W, X);
     else if (kind === 'thief') ok = this.warpThief(W, X); // v3.6 (sim/thieves.js): swallowed as it springs, spat out across its run
+    else if (kind === 'gator' || kind === 'turtle') ok = this.bayouWarp ? this.bayouWarp(W, kind, X) : false; // world 9 (sim/bayou.js), 0.8.15
     else if (this.reefWarp) ok = this.reefWarp(W, kind, X); // world 8 (sim/reef.js, sim/kingcrab.js): the hermit crab, a King Crab claw
     if (!ok) return false;
     W.n++;

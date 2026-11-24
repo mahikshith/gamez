@@ -64,7 +64,7 @@ export const bayouMethods = {
       const G = {
         id: i, boss: P.boss ? 1 : 0, s, ch, a: 0, face: P.face === -1 ? -1 : 1, ph: P.call ? 'hid' : 'log', t: 0, dur: 0,
         next: P.delay ?? 2, eid: 0, frz: 0, frzMax: 0, stn: 0, stnMax: 0, zap: 0, dz: 0, dzMax: 0, hp: P.boss ? F.hp || BOSSG.hp : 0, hpMax: P.boss ? F.hp || BOSSG.hp : 0,
-        hitCD: 0, roll: 0, flinch: 0, bump: 0, call: P.call ? 1 : 0, sneeze: 0, x: 0, y: 0,
+        hitCD: 0, roll: 0, flinch: 0, bump: 0, call: P.call ? 1 : 0, sneeze: 0, x: 0, y: 0, lu: 0, wa: 0,
       };
       G.a = this.byKeep(deg(P.a ?? -90), ch, this.gLen(G));
       this.gators.push(G);
@@ -75,7 +75,7 @@ export const bayouMethods = {
     });
     list(L.turtle).forEach((P, i) => {
       const ch = clamp(P.ch ?? n - 1, 0, n - 1);
-      const T = { id: i, ch, a: this.byKeep(deg(P.a ?? -90), ch, TURTLE.L), face: P.face === -1 ? -1 : 1, ph: 'crawl', t: 0, dur: 0, next: P.delay ?? 2, eid: 0, hold: 0, frz: 0, frzMax: 0, stn: 0, stnMax: 0, zap: 0, x: 0, y: 0 };
+      const T = { id: i, ch, a: this.byKeep(deg(P.a ?? -90), ch, TURTLE.L), face: P.face === -1 ? -1 : 1, ph: 'crawl', t: 0, dur: 0, next: P.delay ?? 2, eid: 0, hold: 0, frz: 0, frzMax: 0, stn: 0, stnMax: 0, zap: 0, x: 0, y: 0, lu: 0, wa: 0 };
       this.turtles.push(T);
       const b = this.world.createBody({ type: 'kinematic', position: Vec2(0, -60) });
       b.createFixture({ shape: new Polygon(this.byPoly(ch, TURTLE.L, TURTLE.h, 0.8).map((p) => Vec2(p[0], p[1]))), friction: 0.7, restitution: 0.1, filterCategoryBits: CAT_BY, filterMaskBits: MASK_BY, userData: { kind: 'bayou', w: 't', idx: i } });
@@ -189,6 +189,12 @@ export const bayouMethods = {
   byNear(C, chs, far) {
     let best = null, bd = far;
     const rf = this.byFloor(C.ch);
+    // 0.8.15: the decoy first (the level 44 card always said it pulls them off the real eggs; only the swarm went for it)
+    const D = this.p2Lure && this.p2Lure();
+    if (D && chs.includes(this.channelOf(D))) {
+      const p = D.body.getPosition(), a = Math.atan2(p.y, p.x), d = Math.abs(wrap(a - C.a)) * rf;
+      if (Math.sin(a) <= -0.2 && d < far * 1.5) return { e: D, a, d, decoy: 1 };
+    }
     for (const e of this.aliveEggs()) {
       if (!this.byFree(e) || !chs.includes(this.channelOf(e))) continue;
       const p = e.body.getPosition(), a = Math.atan2(p.y, p.x);
@@ -197,6 +203,35 @@ export const bayouMethods = {
       if (d < bd) { bd = d; best = { e, a, d }; }
     }
     return best;
+  },
+
+  // ---------- the decoy and the Warp Gate (0.8.15: Bait and switch works in the bayou; it used to fire its banner and do nothing,
+  // because no bayou creature ever met the gate). C.lu: it is after the decoy (the hearts; one 'baitLure' as it turns to it).
+  byLure(C, tg) {
+    const on = tg && tg.decoy ? 1 : 0;
+    if (on && !C.lu) this.emit('baitLure', { x: C.x, y: C.y, id: C.id, w: C.hp != null ? 'g' : 't' });
+    C.lu = on;
+  },
+  // sim/warp.js warpStrike: a gator's or a turtle's snap goes into the gate. It comes out on the far side of its stretch of
+  // floor, dazed, and the decoy (if one is out) goes through with it: warpBait.
+  bayouWarp(W, kind, C) {
+    if (kind !== 'gator' && kind !== 'turtle') return false;
+    const len = kind === 'gator' ? this.gLen(C) : TURTLE.L, off = wrap(C.a + Math.PI / 2), side = off >= 0 ? -1 : 1;
+    const wa = this.byKeep(-Math.PI / 2 + side * Math.max(Math.abs(off), 0.5), C.ch, len);
+    if (Math.abs(wrap(wa - C.a)) * this.byFloor(C.ch) < 1.2) return false; // no room to send it anywhere: the gate stays armed
+    const J = kind === 'gator' ? this.gJaw(C) : this.tMouth(C), rf = this.byFloor(C.ch) - 0.3, ex = rf * Math.cos(wa), ey = rf * Math.sin(wa);
+    C.wa = wa; C.lu = 0;
+    this.bySet(C, 'warp', 1.1);
+    this.warpGate('in', J.x, J.y, 0.6, 0, 1.6, { pull: 1 });
+    this.warpGate('out', ex, ey, 0.55, 0.55, 1.1, {});
+    this.emit('warpOpen', { x: J.x, y: J.y, r: 0.6, kind: kind === 'gator' ? 'g' : 't' });
+    this.warpBait(ex, ey);
+    return true;
+  },
+  byWarpStep(C, dt) {
+    const half = C.dur / 2;
+    if (C.t >= half && C.t - dt < half) { C.a = C.wa; const F = this.byFrame(C); this.emit('warpOut', { x: F.x + F.nx * 0.3, y: F.y + F.ny * 0.3, kind: C.hp != null ? 'g' : 't' }); }
+    if (C.t >= C.dur) { const T = 3 * (this.p2M?.up || 1); this.bySet(C, C.hp != null ? 'log' : 'crawl'); C.stn = C.stnMax = Math.max(C.stn, T); C.next = Math.max(C.next, 1); }
   },
 
   // ---------- the gator
@@ -212,11 +247,13 @@ export const bayouMethods = {
     if (G.ph === 'in') { if (G.t >= G.dur) this.bySet(G, 'log'); return; }
     if (G.ph === 'beaten') { if (G.t >= G.dur) { this.bySet(G, 'gone'); this.emit('gatorGone', { x: G.x, y: G.y, id: G.id }); } return; }
     if (!play) { if (G.boss && this.state === 'won') this.bySet(G, 'beaten', 1.8); else if (G.ph !== 'log') this.bySet(G, 'log'); return; }
+    if (G.ph === 'warp') { this.byWarpStep(G, dt); return; }
     if (held) { if (G.ph === 'warn' || G.ph === 'snap') this.bySet(G, 'log'); return; }
     const len = this.gLen(G);
     switch (G.ph) {
       case 'log': case 'stalk': {
         const tg = this.byNear(G, [G.ch - 1, G.ch], GATOR.wake * Math.sqrt(G.s));
+        this.byLure(G, tg);
         if (!tg) { if (G.ph !== 'log') this.bySet(G, 'log'); break; }
         if (G.ph === 'log' && G.next > 0.6) break; // still dozing
         if (G.ph !== 'stalk') this.bySet(G, 'stalk');
@@ -227,7 +264,7 @@ export const bayouMethods = {
         if (G.next <= 0 && this.gPrey(G, GATOR.jawR * Math.sqrt(G.s))) { this.bySet(G, 'warn', GATOR.warn[M] * (G.boss ? 1.1 : 1)); this.emit('gatorWarn', { x: G.x, y: G.y, id: G.id, boss: G.boss, ...this.gJaw(G) }); }
         break;
       }
-      case 'warn': if (G.t >= G.dur) this.gSnap(G); break;
+      case 'warn': if (G.t >= G.dur) { if (!G.boss && this.warpStrike && this.warpStrike('gator', G)) break; this.gSnap(G); } break; // 0.8.15: a warp gate takes the snap
       case 'after': if (G.t >= G.dur) { this.bySet(G, 'log'); G.next = GATOR.next[M]; } break;
       case 'flee': {
         this.byMv(G, G.fd || -G.face, GATOR.flee, dt, len);
@@ -343,10 +380,12 @@ export const bayouMethods = {
     const held = this.byTimers(T, dt);
     if (T.eid) this.tPin(T, dt);
     if (!play) { if (T.eid) this.tLet(T, 'end'); return; }
+    if (T.ph === 'warp') { this.byWarpStep(T, dt); return; }
     if (held) return;
     switch (T.ph) {
       case 'crawl': {
         const tg = this.byNear(T, [T.ch], TURTLE.wake);
+        this.byLure(T, tg);
         if (!tg || T.next > 0) break;
         const side = Math.sign(wrap(tg.a - T.a)) || T.face;
         if (side !== T.face && tg.d > 0.3) T.face = side;
@@ -357,7 +396,12 @@ export const bayouMethods = {
       }
       case 'warn': {
         if (T.t < T.dur) break;
+        if (this.warpStrike && this.warpStrike('turtle', T)) break; // 0.8.15: a warp gate takes the snap
         const m = this.tMouth(T);
+        { // the decoy in its beak: wood! It pops and the turtle reels (as the gator does)
+          const D = this.p2Lure && this.p2Lure();
+          if (D) { const p = D.body.getPosition(); if (Math.hypot(p.x - m.x, p.y - m.y) < TURTLE.grab + 0.15) { this.p2Pop('turtle'); T.stn = T.stnMax = 2; this.bySet(T, 'crawl'); T.next = 1; this.emit('turtleMiss', { ...m, id: T.id, decoy: 1 }); break; } }
+        }
         let best = null, bd = TURTLE.grab;
         for (const e of this.aliveEggs()) { if (!this.byFree(e)) continue; const p = e.body.getPosition(), d = Math.hypot(p.x - m.x, p.y - m.y); if (d < bd) { bd = d; best = e; } }
         if (!best) { this.bySet(T, 'crawl'); T.next = 1; this.emit('turtleMiss', { ...m, id: T.id }); break; }

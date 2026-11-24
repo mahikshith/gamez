@@ -389,6 +389,27 @@ const want = (C) => (C.frz > 0 ? { k: 'ice', left: C.frz } : C.stn > 0 || C.zap 
 // regular gators and babies are drawn this much bigger than their sim body (the collider, jaw point and reach are unchanged);
 // Grandpa Gator already fills his channel.
 const GATOR_DRAW = 1.22;
+// 0.8.15 Bait and switch in the level: a creature that is after the decoy (C.lu) is smitten. Hearts rise off its head, a drop
+// of drool hangs from its jaw. World space, (x, y) = over its head.
+function luredHearts(ctx, x, y, k, t, seed) {
+  ctx.save();
+  for (let i = 0; i < 3; i++) {
+    const u = (t * 0.7 + i / 3 + seed * 0.21) % 1, hx = x + Math.sin(u * 5 + i * 2) * 0.12, hy = y + 0.1 + u * 0.55, r = Math.max(4.5 / k, 0.085) * (0.6 + 0.6 * Math.min(1, u * 4));
+    ctx.globalAlpha = Math.min(1, u * 5) * (1 - Math.max(0, (u - 0.7) / 0.3));
+    ctx.beginPath(); ctx.moveTo(hx, hy - r * 0.9); ctx.bezierCurveTo(hx - r * 1.6, hy + r * 0.2, hx - r * 0.7, hy + r * 1.3, hx, hy + r * 0.45); ctx.bezierCurveTo(hx + r * 0.7, hy + r * 1.3, hx + r * 1.6, hy + r * 0.2, hx, hy - r * 0.9); ctx.closePath();
+    ctx.fillStyle = '#ff5c8a'; ctx.fill(); ctx.strokeStyle = '#5a0f2a'; ctx.lineWidth = Math.max(1.2 / k, 0.02); ctx.stroke();
+    ctx.beginPath(); ctx.arc(hx - r * 0.45, hy + r * 0.5, r * 0.2, 0, TAU); ctx.fillStyle = '#ffd0de'; ctx.fill();
+  }
+  ctx.restore();
+}
+function drool(ctx, x, y, k, t) {
+  const u = (t * 0.9) % 1, s = Math.max(3.2 / k, 0.06) * (0.6 + 0.5 * Math.min(1, u * 2)), dy = -u * u * 0.28;
+  ctx.save(); ctx.globalAlpha = 1 - Math.max(0, (u - 0.75) / 0.25);
+  ctx.beginPath(); ctx.moveTo(x, y + dy + s * 1.5); ctx.quadraticCurveTo(x + s, y + dy, x, y + dy - s * 0.6); ctx.quadraticCurveTo(x - s, y + dy, x, y + dy + s * 1.5);
+  ctx.fillStyle = '#bfe8ff'; ctx.fill(); ctx.strokeStyle = '#1d5d8a'; ctx.lineWidth = Math.max(1 / k, 0.015); ctx.stroke(); ctx.restore();
+}
+// swallowed by a Warp Gate (ph 'warp'): it spins small into the gate, and grows out of the exit on the far side
+const warpK = (C) => (C.ph === 'warp' ? Math.max(0.02, Math.abs(1 - (2 * C.t) / Math.max(0.01, C.dur))) : 1);
 // 0.8.15: so is the snapping turtle (it measured 2.7 egg heights long but only 0.84 high: a sliver on a phone). It grows about
 // a point 0.3 L ahead of its feet, so its beak still closes on the egg the sim holds at 0.62 L and its tail takes the rest.
 const TURTLE_DRAW = 1.25, TURTLE_PIV = 0.3;
@@ -417,8 +438,10 @@ export function drawBayou(ctx, sim, t, k) {
     const o = { jaw, eye, tail, boss: G.boss, baby: G.call && !G.boss, gait: (A.g / 9 / (0.121 * GATOR.L * G.s)) * TAU, walk: clamp(A.sp / 0.07, 0, 1), chomp: G.ph === 'after' ? clamp(1 - G.t / 0.32, 0, 1) : 0, bend: rf * k, roll: G.roll > 0 ? 1 - G.roll / 0.9 : 0, sneeze: G.sneeze > 0 ? G.sneeze / 0.8 : 0, stars: G.ph === 'dizzy' || stun ? 1 : 0, alpha, id: G.id, look: 0.35, noZ: !!st };
     // the telegraph: a red bite mark over the jaws while they open at an egg
     if (G.ph === 'warn') biteMark(ctx, sim.gJaw(G), t, k, ss(0, 1, G.t / G.dur), G.s);
+    if (G.lu && G.ph !== 'warp' && !st) { const J = sim.gJaw(G), F = sim.byFrame(G); luredHearts(ctx, J.x + F.nx * 0.25 - F.tx * G.face * 0.25, J.y + F.ny * 0.25 - F.ty * G.face * 0.25, k, t, G.id); drool(ctx, J.x + F.tx * G.face * 0.1 - F.nx * 0.2, J.y + F.ty * G.face * 0.1 - F.ny * 0.2, k, t + G.id); o.look = 0.9; if (o.eye !== 'spiral') o.eye = 'open'; if (!o.jaw) o.jaw = 0.18 + 0.05 * Math.sin(t * 5); }
     frame(ctx, G, rf + sink, k, () => {
       ctx.scale(A.f >= 0 ? 1 : -1, 1);
+      if (G.ph === 'warp') { const w = warpK(G); ctx.translate(0, -0.3 * k * (1 - w)); ctx.rotate((1 - w) * 5 * (G.t < G.dur / 2 ? 1 : -1)); ctx.scale(w, w); }
       if (Math.abs(A.f) < 0.999) ctx.scale(Math.max(0.15, Math.abs(A.f)), 1);
       const S = len * (G.boss ? 1 : GATOR_DRAW), box = { x0: -S * 0.66, y0: -S * 0.7, x1: S * 0.76, y1: S * 0.1 }; // drawn bigger than the collider, about its feet
       statusDraw(ctx, box, (c) => drawGator(c, S, st ? st.hold : t, o), st, { off: Math.max(1.1, S * 0.012), crys: Math.max(1, S / 90) });
@@ -436,8 +459,10 @@ export function drawBayou(ctx, sim, t, k) {
       A.mo = A.mo == null ? o.mouth : A.mo + (o.mouth - A.mo) * (1 - Math.exp(-dtt * 16));
       o.head = A.hd; o.mouth = A.mo;
     }
+    if (T.lu && T.ph !== 'warp' && !st) { const m = sim.tMouth(T), F = sim.byFrame(T); luredHearts(ctx, m.x + F.nx * 0.3 - F.tx * T.face * 0.15, m.y + F.ny * 0.3 - F.ty * T.face * 0.15, k, t, 5 + T.id); drool(ctx, m.x - F.nx * 0.1, m.y - F.ny * 0.1, k, t + T.id); o.lookX = 0.9; if (T.ph === 'crawl') { o.head = Math.max(o.head, 0.45); o.mouth = Math.max(o.mouth, 0.25); } }
     frame(ctx, T, rf, k, () => {
       ctx.scale(A.f >= 0 ? 1 : -1, 1);
+      if (T.ph === 'warp') { const w = warpK(T); ctx.translate(0, -0.25 * k * (1 - w)); ctx.rotate((1 - w) * 5 * (T.t < T.dur / 2 ? 1 : -1)); ctx.scale(w, w); }
       turtleBig(ctx, L);
       const box = { x0: -L * 0.62, y0: -L * 0.5, x1: L * 0.7, y1: L * 0.1 };
       statusDraw(ctx, box, (c) => drawTurtle(c, L, st ? st.hold : t, o), st, { off: Math.max(1, L * 0.02), crys: Math.max(1, L / 60) });
@@ -498,6 +523,7 @@ function liftMark(ctx, R, t) {
 export function bayouEvent(ev, fx, api) {
   const { popup, audio, once } = api;
   switch (ev.type) {
+    case 'baitLure': audio.play('tongue_lick', { vol: 0.45, pitch: 1.3 }); audio.play('cheer_up', { vol: 0.3, pitch: 1.5 }); fx.sparkle(ev.x, ev.y + 0.4, 5, '#ff9ab8'); break; // it has seen the decoy: smitten
     case 'gatorWarn': audio.play('squish', { vol: 0.7, pitch: 0.45 }); once('gator', 'A gator! Its jaws open under a gap: turn that gap away.'); break;
     case 'gatorSnap':
       audio.play('steel_clang', { vol: ev.hit ? 0.8 : 0.5, pitch: ev.boss ? 0.4 : 0.7 });

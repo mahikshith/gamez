@@ -1169,7 +1169,7 @@ export function p2Event(ev, fx, api) {
       fx.sparkle(ev.x, ev.y, 10, '#ffcf8a');
       break;
     case 'decoyPop':
-      if (ev.why === 'snake' || ev.why === 'eagle') { audio.play('wood_break', { vol: 0.8 }); fx.chips(ev.x, ev.y, '#d4914c', 12, 2.6); popup(ev.x, ev.y + 0.6, 'Fooled!', { color: '#ffcf8a', size: 22 }); }
+      if (ev.why === 'snake' || ev.why === 'eagle' || ev.why === 'gator' || ev.why === 'turtle') { audio.play('wood_break', { vol: 0.8 }); fx.chips(ev.x, ev.y, '#d4914c', 12, 2.6); popup(ev.x, ev.y + 0.6, 'Fooled!', { color: '#ffcf8a', size: 22 }); }
       else { audio.play('bubble_pop', { pitch: 0.7 }); fx.chips(ev.x, ev.y, '#d4914c', 6, 1.6); }
       if (ev.pepper && ev.why !== 'time') { audio.play('squish', { intensity: 0.8, pitch: 0.5 }); fx.smoke(ev.x, ev.y, 8, 'rgba(170,80,40,0.7)'); }
       break;
