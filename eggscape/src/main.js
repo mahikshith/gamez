@@ -7557,6 +7557,7 @@ function drawWinPage() {
   const fxBig = { cx: BIG.box.x + BIG.box.w / 2, gy: BIG.box.y + BIG.box.h - BIG.henH * 0.05, S: BIG.henH / 100, clip: BIG.full, until: SH + WIN_IN };
   const T = {}; // where her stage and the stars sit on the card: the targets of her flight
   const cnt = r.total ? clamp(r.shownTotal / r.total, 0, 1) : 1; // the coins count up with the score
+  const WL = G.li >= 0 && !earlyDays() && SP.open(save) ? pageLead('win') : null; // (nothing is pointed at in the first levels)
   const build = (s) => {
     const B = [];
     const starRow = { h: (compact ? rowH : 74) * s, gap: 0,
@@ -7683,14 +7684,17 @@ function drawWinPage() {
       if (hb.length) tickLine('Free next level', x + 50 * s, y + 39 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: ax - x - 56 * s, tag: 'win:hot2' });
       hb.forEach((b, j) => drawBoosterIcon(ctx, b, ax + (j + 0.5) * iw, y + 28 * s, 30 * s, G.t));
     } });
-    // Retry on the left, Next on the right (mykee 2026-11-19); their space is always reserved
-    const last = G.li < 0 || G.li === LEVELS.length - 1;
+    // 0.8.15, the Conductor on the win card: what this win brought nearer. A banked spin gets its row and its SPIN button
+    // (it leads, so NEXT rests); otherwise one quiet line, the spin meter's ticks or the stars to the next chest
+    if (WL && WL.lead && WL.lead.id === 'spin') B.push({ ...spinRowBlock(s, { gap: 8 * s }), draw: ((d) => (x, y, w) => { if (inCard) d(x, y, w); })(spinRowBlock(s).draw) });
+    else if (WL && WL.order.find((c) => c.kind === 'progress')) { const c = WL.order.find((q) => q.kind === 'progress'); B.push({ h: 26 * s, gap: 8 * s, draw: (x, y, w) => { if (inCard) leadLine(c, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'win:near' }); } }); }
+    const last = G.li < 0 || G.li === LEVELS.length - 1, nextLeads = !(WL && WL.lead && WL.lead.id === 'spin');
     B.push({ h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
       if (!inCard) return;
       if (first) { ui.button('next', 'NEXT', x, y, w, 58 * s, { kind: 'primary', shimmer: true, icon: ICON.next, size: 26 * s }); return; }
       const rw = w * 0.36;
       ui.button('restart', 'Retry', x, y, rw, 58 * s, { kind: 'secondary', icon: ICON.retry, size: 19 * s });
-      ui.button('next', last ? 'ALL LEVELS' : 'NEXT', x + rw + 10 * s, y, w - rw - 10 * s, 58 * s, { kind: 'primary', shimmer: true, icon: ICON.next, size: 24 * s });
+      ui.button('next', last ? 'ALL LEVELS' : 'NEXT', x + rw + 10 * s, y, w - rw - 10 * s, 58 * s, { kind: 'primary', shimmer: nextLeads, icon: ICON.next, size: 24 * s });
     } });
     if (!earlyDays()) B.push({ h: 48 * s, draw: (x, y, w) => { // nothing advertised before L3 is won (the Double coins video too)
       if (!inCard) return;
