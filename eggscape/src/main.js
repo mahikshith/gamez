@@ -82,6 +82,7 @@ import { STRIKES, STRIKE, STRIKE_FROM, EGG_STRIKES } from './data/strikes.js';
 import { drawHand as teachHand } from './render/wonder.js'; // the teaching hand (Papa Rooster's first call)
 import { stampStats, stampSweep } from './render/stamp.js';
 import { cvStats, freeCanvas } from './render/cvfree.js';
+import * as CB from './render/celebrate.js'; // 0.8.15 the celebration kit: rays, bursts, confetti, arcs, the gift box, the bag
 import { REC, recInit, recWindow, recProbe, recDue, recPre, recGo, recIll } from './recover.js';
 import { drawHowTo, howToPlan, chickPlan, toyPlan, floorPlan, chickTeach, threatWords, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
@@ -4030,10 +4031,12 @@ function hen(mood, t) {
 // skip the hen's win / fail routine to its final pose (a tap off the buttons, Enter, or reduced motion)
 function skipCheer() {
   const r = G.result;
-  if (G.screen === 'win' && r && revealing(r) && r.t >= WIN_SHOW) { r.rv.i++; r.rv.t = 0; return; } // a tap during a reward reveal: the next one (or the card)
   if (G.screen === 'win' && r) {
-    const end = revealing(r) ? WIN_SHOW : Math.max(routine(r.cheer).len, WIN_SHOW + WIN_IN); // straight to the card (or to the rewards first), the routine at its final pose
-    if (r.t < end) { r.t = end; r.shownTotal = r.total; if (r.stars) { audio.play('star', { intensity: (r.stars - 1) / 2 }); buzz('star'); } }
+    const SH = winShow(r);
+    if (revealing(r) && r.t >= SH) { rvTap(r); return; } // a tap during a reward reveal: to its open state, then the next one (or the card)
+    // with rewards waiting: first to the stars' end state (all landed, held), the next tap on to the rewards; without: straight to the card, the routine at its final pose
+    const end = revealing(r) ? (r.t < r.starEnd ? r.starEnd : SH) : Math.max(routine(r.cheer).len, SH + WIN_IN);
+    if (r.t < end) { const snd = r.stars && r.t < starAt(r, r.stars - 1); r.t = end; r.shownTotal = r.total; if (snd) { audio.play('star', { intensity: (r.stars - 1) / 2 }); buzz('star'); } }
   } else if (G.screen === 'fail') G.screenT = Math.max(G.screenT, routine('encourage').len);
 }
 
@@ -4343,14 +4346,15 @@ function update(dt) {
   if (G.toast && (!G.toast.tip || G.screen === 'play') && !fuseIntroOn()) { G.toast.life -= dt; if (G.toast.life <= 0) G.toast = null; } // a villain tip's clock stops while the game is paused
   if (!G.toast && G.toasts.length) G.toast = { ...G.toasts.shift(), t0: G.t };
   if (G.result && G.screen === 'win') {
-    const r = G.result, RV = r.rv;
-    if (save.calm && !(revealing(r) && r.t >= WIN_SHOW)) skipCheer(); // reduced motion: straight to the card and her final pose (each reward still shows for a second)
-    if (revealing(r) && r.t >= WIN_SHOW) { // the reward reveals hold the show's clock: the card waits behind them
-      r.t = WIN_SHOW;
-      const it = RV.list[RV.i], cue = save.calm ? 0 : REVEAL_CUE[it.kind], t1 = RV.t + dt;
-      if (RV.t <= cue && t1 > cue || (cue === 0 && RV.t === 0)) { audio.play(...REVEAL_SND[it.kind]); buzz('win'); }
-      RV.t = t1;
-      if (RV.t >= (save.calm ? 1 : REVEAL_LEN)) { RV.i++; RV.t = 0; }
+    const r = G.result, RV = r.rv, SH = winShow(r);
+    if (save.calm && !(revealing(r) && r.t >= SH)) skipCheer(); // reduced motion: straight to the card and her final pose (each reward still shows for a second)
+    if (revealing(r) && r.t >= SH) { // the reward reveals hold the show's clock: the card waits behind them
+      r.t = SH;
+      const it = RV.list[RV.i], P = rvPlan(r, it), a = RV.t, b = RV.t + dt;
+      if (save.calm) { if (a === 0) { audio.play(...REVEAL_SND[it.kind]); buzz('win'); rvClaim(r, it); } RV.t = b; if (b >= 1) rvNext(r); return; }
+      for (const [at, fn] of P.cues) if (a <= at && b > at) fn(); // its sounds and ticks, each on its beat
+      RV.t = b;
+      if (RV.t >= P.end) rvNext(r);
       return;
     }
     const R0 = routine(r.cheer), t0 = r.t;
@@ -4360,7 +4364,8 @@ function update(dt) {
     const shown = Math.round(r.total * k);
     if (shown !== r.shownTotal && k < 1 && Math.floor(r.t * 20) !== Math.floor((r.t - dt) * 20)) audio.play('score_tick', { vol: 0.3 });
     r.shownTotal = shown;
-    for (let s = 0; s < r.stars; s++) if (r.t >= R0.stars[s] && t0 < R0.stars[s]) { audio.play('star', { intensity: s / 2 }); buzz('star'); }
+    for (let s = 0; s < r.stars; s++) if (r.t >= starAt(r, s) && t0 < starAt(r, s)) { audio.play('star', { intensity: s / 2 }); buzz('star'); } // each star lands: its bell and a tick
+    if (r.stars === 3) { const f = starAt(r, 2) + 0.06; if (r.t >= f && t0 < f) { audio.play('confetti'); buzz('win'); } } // three of three: the finish
     for (const [, name, o] of routineCues(r.cheer, t0, r.t)) audio.play(name, o);
   }
   if (G.screen === 'fail' && !save.calm) for (const [, name, o] of routineCues('encourage', G.screenT - dt, G.screenT)) audio.play(name, o);
@@ -7197,8 +7202,24 @@ function drawInfo() {
 // 2) The card (WIN_SHOW .. + WIN_IN): she shrinks and flies up into her stage on the card while the card slides in (up from
 //    below; in landscape in from the right while she settles on the left). The same routine carries on at card size.
 // The buttons come with the card (~2 s), in space that is always reserved; a tap anywhere skips straight to the card.
-const WIN_SHOW = 1.6, WIN_IN = 0.38;
-const winIn = (r) => (revealing(r) ? 0 : save.calm ? 1 : clamp((r.t - WIN_SHOW) / WIN_IN, 0, 1));
+const WIN_SHOW = 1.6, WIN_IN = 0.38; // WIN_SHOW: the shortest show (the real one waits for the stars: winShow)
+// 0.8.15 (mykee: "the screen spends very less time on the stars and immediately showing gifts"): the stars have their own
+// beat. Over the end of her cheer each earned star flies up from her into its big socket, STAR_GAP apart, with a squash, a
+// ring, sparks, a bell and a tick; three of three end on a finish (rays sweep, confetti, she jumps). With rewards waiting
+// the row is then held for STAR_HOLD so it can be read, and stays small at the top of the page through the reveals.
+// Win to the first reward: about 3 to 3.4 s with three stars, 1.8 with one. No star lands a second time on the card.
+const STAR_GAP = 0.45, STAR_FLY = 0.36, STAR_HOLD = 0.6;
+function winShow(r) { // when the show ends (the rewards or the card come); also sets r.star0 (the first landing) and r.starEnd
+  if (r.show == null) {
+    const s0 = routine(r.cheer).stars[0];
+    r.star0 = clamp(s0 != null ? s0 : 0.95, 0.85, 1.4); // the first star lands on her first star beat
+    r.starEnd = (r.stars ? r.star0 + STAR_GAP * (r.stars - 1) : 0.6) + (r.stars === 3 ? 0.5 : 0.2);
+    r.show = Math.max(WIN_SHOW, r.starEnd + (r.rv && r.rv.list.length ? STAR_HOLD : 0.25));
+  }
+  return r.show;
+}
+const starAt = (r, q) => { winShow(r); return r.star0 + STAR_GAP * q; }; // when star q lands
+const winIn = (r) => (revealing(r) ? 0 : save.calm ? 1 : clamp((r.t - winShow(r)) / WIN_IN, 0, 1));
 // what this win unlocked, shown one by one between her show and the card (onWin builds r.rv.list); a tap skips to the next
 const revealing = (r) => !!(r && r.rv && r.rv.i < r.rv.list.length);
 const ss01 = (x) => { const k = clamp(x, 0, 1); return k * k * (3 - 2 * k); };
@@ -7225,9 +7246,9 @@ function bigStage(side) {
     return { box, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: sx + (k - 1) * R * 2.6, y: y + hh * 0.75 - (k === 1 ? R * 0.35 : 0) })), titleY: y + hh * 1.45 + band * 0.5, titleX: A.x + A.w * 0.4, full: { x: 0, y: top, w: ui.w, h: avail } };
   }
   // 2026-11-15: she was a full-screen close-up ("hen just comes up to the screen"): now a stage-sized figure with room around her
-  const R = Math.min(A.w * 0.085, avail * 0.065), hh = Math.min(A.h * 0.3, A.w * 0.5, (avail - 2.8 * R - band) / 1.5); // wings spread she is ~1.2x as wide as tall
+  const R = Math.min(A.w * 0.1, avail * 0.07), hh = Math.min(A.h * 0.3, A.w * 0.5, (avail - 2.8 * R - band) / 1.5); // wings spread she is ~1.2x as wide as tall
   const y0 = top + (avail - (2.8 * R + 1.5 * hh + band)) / 2, by = y0 + 2.8 * R;
-  return { box: { x: A.x, y: by, w: A.w, h: 1.5 * hh }, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: A.cx + (k - 1) * R * 2.7, y: y0 + 1.5 * R - (k === 1 ? R * 0.35 : 0) })), titleY: by + 1.5 * hh + band * 0.45, titleX: A.cx, full: { x: 0, y: top, w: ui.w, h: avail } };
+  return { box: { x: A.x, y: by, w: A.w, h: 1.5 * hh }, henH: hh, R, stars: [0, 1, 2].map((k) => ({ x: A.cx + (k - 1) * R * 2.55, y: y0 + 1.5 * R - (k === 1 ? R * 0.35 : 0) })), titleY: by + 1.5 * hh + band * 0.45, titleX: A.cx, full: { x: 0, y: top, w: ui.w, h: avail } };
 }
 
 // slow rays behind a celebration (still when reduced motion is on); clip first if they must stay in a box
@@ -7286,9 +7307,9 @@ function winFeathers(alpha) {
   ctx.restore();
 }
 function drawWinPage() {
-  const r = G.result, R0 = routine(r.cheer), u = ui.u, k = winIn(r), e = k * k * (3 - 2 * k), inCard = k >= 1;
+  const r = G.result, u = ui.u, SH = winShow(r), k = winIn(r), e = k * k * (3 - 2 * k), inCard = k >= 1;
   const C = ui.C;
-  if (!G.frzActive) { dim(0.62 + 0.18 * e); if (k >= 1 && r.t > WIN_SHOW + WIN_IN + 0.9) captureBack(); } // the board sinks under the page as the card comes; once still, it is kept
+  if (!G.frzActive) { dim(0.62 + 0.18 * e); if (k >= 1 && r.t > SH + WIN_IN + 0.9) captureBack(); } // the board sinks under the page as the card comes; once still, it is kept
   { // rays over the whole page, then the drifting feathers (still under reduced motion)
     const A = ui.A;
     ctx.save(); ctx.globalAlpha = 0.5 + 0.5 * e;
@@ -7307,7 +7328,7 @@ function drawWinPage() {
   const title = G.level.boss && G.li >= 0 ? 'Boss beaten!' : r.stars === 3 ? 'Perfect clutch!' : r.stars === 2 ? 'Great job!' : 'Vault cracked!';
   const BIG = bigStage(side);
   // confetti fired during the show keeps the show's geometry (full screen), so it does not jump when she flies to the card
-  const fxBig = { cx: BIG.box.x + BIG.box.w / 2, gy: BIG.box.y + BIG.box.h - BIG.henH * 0.05, S: BIG.henH / 100, clip: BIG.full, until: WIN_SHOW + WIN_IN };
+  const fxBig = { cx: BIG.box.x + BIG.box.w / 2, gy: BIG.box.y + BIG.box.h - BIG.henH * 0.05, S: BIG.henH / 100, clip: BIG.full, until: SH + WIN_IN };
   const T = {}; // where her stage and the stars sit on the card: the targets of her flight
   const cnt = r.total ? clamp(r.shownTotal / r.total, 0, 1) : 1; // the coins count up with the score
   const build = (s) => {
@@ -7322,7 +7343,7 @@ function drawWinPage() {
       draw: () => {
         if (inCard) {
           if (compact) drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, clip: T.clip, fxBig });
-          T.stars.forEach((p, q) => drawWinStar(r, R0, q, p.x, p.y, T.R, calm));
+          T.stars.forEach((p, q) => drawWinStar(r, q, p.x, p.y, T.R, calm)); // landed in the show: here they simply are
         } else T.stars.forEach((p) => drawStar(ctx, p.x, p.y, T.R, false, 1, true)); // the sockets wait on the card for the flying stars
         if (compact) ui.record(T.box, 'win:hen');
         ui.record(T.row, 'win:stars');
@@ -7467,7 +7488,7 @@ function drawWinPage() {
   // the card slides in: up from below (portrait), in from the right (landscape)
   const dx = side ? (1 - e) * (ui.w - card.x + 20 * u) : 0, dy = side ? 0 : (1 - e) * (ui.h - card.y + 20 * u);
   // the show's big title under her feet: it fades as the card (which has its own) comes, and the card passes over it
-  const ta = save.calm || (revealing(r) && r.t >= WIN_SHOW) ? 0 : 1 - ss01((r.t - WIN_SHOW + 0.15) / 0.3); // gone under the reward reveals
+  const ta = save.calm || (revealing(r) && r.t >= SH) ? 0 : 1 - ss01((r.t - SH + 0.15) / 0.3); // gone under the reward reveals
   if (ta > 0.01) {
     const ts = Math.min(34 * u, A.w * 0.085), tw = Math.min(A.w - 56 * u, ui.measure(title, ts) + 60 * u), pk = ui.pop(r.t, 0.35);
     ctx.save();
@@ -7487,26 +7508,103 @@ function drawWinPage() {
     drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, fxBig });
     ui.record({ x: T.box.x + T.box.w / 2 - T.henH * 0.6, y: T.box.y + T.box.h - T.henH * 1.5, w: T.henH * 1.2, h: T.henH * 1.5 }, 'win:hen');
   }
-  if (inCard) return;
+  if (inCard) { winFinish(r, BIG, calm); return; }
   // the show, and her flight into the card: everything eases from the big layout to its card spot (which slides with the card)
   const tdx = side ? 0 : dx, tdy = side ? 0 : dy; // in landscape her stage does not slide, only the card
   const L = (a, b2) => a + (b2 - a) * e;
-  const box = { x: L(BIG.box.x, T.box.x + tdx), y: L(BIG.box.y, T.box.y + tdy) - Math.sin(e * Math.PI) * ui.h * 0.05, w: L(BIG.box.w, T.box.w), h: L(BIG.box.h, T.box.h) };
+  const fq = r.stars === 3 && !calm ? (r.t - starAt(r, 2) - 0.06) / 0.42 : -1, hop = fq > 0 && fq < 1 ? Math.sin(fq * Math.PI) * BIG.henH * 0.16 * (1 - e) : 0; // three of three: she jumps with the finish
+  const box = { x: L(BIG.box.x, T.box.x + tdx), y: L(BIG.box.y, T.box.y + tdy) - Math.sin(e * Math.PI) * ui.h * 0.05 - hop, w: L(BIG.box.w, T.box.w), h: L(BIG.box.h, T.box.h) };
   if (k <= 0 && !calm) { // the show: rays turn behind her
     ctx.save(); ctx.globalAlpha = Math.min(1, r.t * 3);
     sunburst(BIG.box.x + BIG.box.w / 2, BIG.box.y + BIG.box.h - BIG.henH * 0.55, Math.max(ui.w, ui.h) * 0.75, 'rgba(255,236,170,0.1)', 14);
     ctx.restore();
   }
-  drawCelebration(ctx, r.cheer, r.t, box, { pw, calm, henH: L(BIG.henH, T.henH), seed, clip: BIG.full, fxBig });
-  BIG.stars.forEach((p, q) => drawWinStar(r, R0, q, L(p.x, T.stars[q].x + dx), L(p.y, T.stars[q].y + dy), L(BIG.R, T.R), calm));
-  if (revealing(r) && r.t >= WIN_SHOW) drawReveal(r);
+  const henH = L(BIG.henH, T.henH);
+  drawCelebration(ctx, r.cheer, r.t, box, { pw, calm, henH, seed, clip: BIG.full, fxBig });
+  // the stars: big over her in the show; small at the top of the page through the reward reveals; then into the card
+  const rvOn = revealing(r) && r.t >= SH, MINI = rvOn || r.rvDone != null ? miniStars() : null;
+  const m = !MINI ? 0 : rvOn && !calm && r.rv.i === 0 ? ss01(r.rv.t / 0.4) : 1, from = { x: box.x + box.w / 2, y: box.y + box.h - henH * 0.62 };
+  const stars = () => BIG.stars.forEach((p, q) => {
+    const x0 = m ? lerp(p.x, MINI.stars[q].x, m) : p.x, y0 = m ? lerp(p.y, MINI.stars[q].y, m) : p.y, R0 = m ? lerp(BIG.R, MINI.R, m) : BIG.R;
+    drawWinStar(r, q, L(x0, T.stars[q].x + dx), L(y0, T.stars[q].y + dy), L(R0, T.R), calm, from);
+  });
+  if (rvOn) { drawReveal(r, stars); return; }
+  if (r.rvDone != null && !calm) { const q = (G.t - r.rvDone) / 0.3; if (q < 1) dim(0.84 * (1 - q)); } // the reveals' shade lifts as the card comes
+  winFinish(r, BIG, calm);
+  stars();
+}
+// three stars of three: rays sweep out from the row and confetti is thrown over the page (it goes on falling over the card)
+function winFinish(r, BIG, calm) {
+  if (calm || r.stars !== 3 || r.rvDone != null) return;
+  const t = r.t - starAt(r, 2) - 0.06, c = BIG.stars[1], R = BIG.R;
+  if (t <= 0 || t > 2) return;
+  if (t < 0.7) { const a = t / 0.7; ctx.save(); ctx.globalAlpha = (1 - a) * 0.9; CB.rays(ctx, c.x, c.y + R * 0.4, R * (3 + 8 * CB.easeOut(a)), a * 0.8, 'rgba(255,240,170,0.45)', 14, 0.4); ctx.restore(); }
+  CB.confetti(ctx, c.x, c.y, t, { n: 56, speed: R * 24, g: R * 20, life: 2, seed: 3, size: Math.max(6, R * 0.26), spread: Math.PI * 1.5 });
 }
 
 // 0.8.9 (mykee: "treasures and freebies need to be shown in the celebration... unlocked right after it, not on the map"):
-// after her show, one big reveal per thing this win unlocked (the boss treasure, a free skin try, the win streak's free
-// boosters), ~1.8 s each, over the dimmed show; a tap skips to the next. Reduced motion: each one a still for 1 s.
-const REVEAL_LEN = 1.8, REVEAL_CUE = { treasure: 0.6, gift: 0.12, hot: 0.12 };
+// after her show, one big reveal per thing this win unlocked (the boss treasure, a free try, the win streak's free boosters).
+// 0.8.15 (mykee: "a proper cool celebratory animation on the gifts and unlockables"): each reveal is an event in four
+// beats, built from one kit (render/celebrate.js):
+//   arrival (0 .. land): the page dims deeper, rays turn, the hero (chest, gift box, flame) drops in and bounces;
+//   anticipation (.. open): it shakes and glows harder (the chest's lid rattles over a line of light, the box wobbles,
+//     the flame swells while its count runs up);
+//   the open: a burst of light and confetti; what is inside jumps out one by one in an arc and lands in a row, each with
+//     a pop and a tick, the coins' count rolling up (a free try: the character itself rises out of the box into a
+//     spotlight with a ring of sparkles and a name ribbon);
+//   the claim (after a hold): the coins fly to the purse, boosters and charges to the bag (bottom right), each with a
+//     landing flash; then the next reveal or the card.
+// About 2.6 to 3 s each untouched. A tap jumps to the open state (everything out, landed), the next tap moves on.
+// Reduced motion: each one a still of its open state for 1 s.
+const RV_ARC = 0.38, RV_FLY = 0.42; // s: a thing's jump out of the hero, and its flight to where it lives
 const REVEAL_SND = { treasure: ['treasure_open'], gift: ['unlock'], hot: ['combo', { intensity: 1 }] }; // 2026-11-23: the treasure's own music, not the win sting again
+// one reveal's clock (s) and its sounds, worked out once
+function rvPlan(r, it) {
+  if (it.P) return it.P;
+  const kind = it.kind, n = kind === 'treasure' ? 3 : kind === 'hot' ? r.hotB.length : 1, fly = kind !== 'gift' || r.gift.kind === 'boost';
+  const land = 0.3, open = 0.9, pop = (j) => open + 0.1 + 0.13 * j, set = pop(n - 1) + RV_ARC + 0.1;
+  const claim = set + (kind === 'gift' ? 0.9 : 0.6), end = fly ? claim + 0.07 * (n - 1) + RV_FLY + 0.3 : claim + 0.15;
+  const cues = [[open, () => { audio.play(...REVEAL_SND[kind]); audio.play('confetti'); buzz(kind === 'treasure' ? 'treasure' : 'win'); }]];
+  if (kind === 'hot') { const c = Math.min(8, r.hot - 1); for (let q = 1; q <= c; q++) cues.push([land + 0.1 + (q / c) * (open - land - 0.15), () => audio.play('score_tick', { vol: 0.4, pitch: 1 + 0.1 * q })]); } // the count runs up
+  else {
+    cues.push([0, () => audio.play('flap', { vol: 0.5 })], [land, () => { audio.play('egg_land', { vol: 0.8 }); buzz('tick'); }]);
+    for (const q of [0.48, 0.62, 0.76]) cues.push([q, () => { audio.play('ring_tick', { vol: 0.7 }); buzz('tick'); }]); // the rattle
+  }
+  for (let j = 0; j < n; j++) cues.push([pop(j) + RV_ARC, () => { audio.play('hud_pop', { vol: 0.7, pitch: 1 + 0.12 * j }); buzz('tick'); }]); // each thing lands in the row
+  if (kind === 'treasure') for (let q = 1; q < 7; q++) cues.push([pop(0) + RV_ARC + 0.07 * q, () => audio.play('score_tick', { vol: 0.3, pitch: 1 + 0.1 * q })]); // the coins count up
+  cues.push([claim, () => rvClaim(r, it)]);
+  if (fly) for (let j = kind === 'treasure' ? 1 : 0; j < n; j++) cues.push([claim + 0.07 * j + RV_FLY, () => { audio.play('hud_pop', { vol: 0.45, pitch: 1.3 }); buzz('tick'); }]); // into the bag (the purse has its own landing)
+  return (it.P = { land, open, pop, set, claim, end, n, fly, cues });
+}
+// the treasure's coins go into the purse (once): the one coin-gain effect, from where the coins stand in the row
+function rvClaim(r, it) {
+  if (it.kind !== 'treasure' || r.trFlown || r.purse0 == null) return;
+  r.trFlown = true; purse.gain({ from: r.purse0, to: r.purse0 + r.treasure.coins, src: it.src }); // (the win's own coins follow on the card)
+}
+function rvNext(r) {
+  const RV = r.rv;
+  rvClaim(r, RV.list[RV.i]);
+  RV.i++; RV.t = 0;
+  if (!revealing(r)) { r.rvDone = G.t; CB.releaseCelebrate(); }
+}
+// a tap: to the open state (all of it out and landed), then on
+function rvTap(r) {
+  const RV = r.rv, it = RV.list[RV.i], P = rvPlan(r, it);
+  if (save.calm || RV.t >= P.set) { rvNext(r); return; }
+  if (RV.t < P.open) { audio.play(...REVEAL_SND[it.kind]); buzz('win'); }
+  RV.t = P.set;
+}
+// the reveals' layout (the hero in the upper middle, a row under it, the headline ribbon on top)
+function rvGeom() {
+  const A = ui.A, u = ui.u, S = Math.min(A.w * 0.9, A.h * 0.46, 420 * u), cy = A.y + A.h * 0.52;
+  return { S, cx: A.cx, cy, heroY: cy - 0.3 * S, rowY: cy + 0.27 * S, hy: cy - 0.98 * S, hs: Math.min(39 * u, 0.12 * S) };
+}
+// where the stars wait through the reveals: a small row above the headline (no room there: the top left corner)
+function miniStars() {
+  const A = ui.A, u = ui.u, g = rvGeom(), R = Math.min(20 * u, A.w * 0.052), top = g.hy - g.hs * 0.85 - A.y, mid = top >= 2 * R + 12 * u;
+  const x0 = mid ? A.cx : A.x + 14 * u + 3.3 * R, y = mid ? A.y + top / 2 : A.y + 12 * u + R;
+  return { R, stars: [0, 1, 2].map((q) => ({ x: x0 + (q - 1) * 2.3 * R, y: y - (mid && q === 1 ? R * 0.3 : 0) })) };
+}
 const eggName = (n) => n.replace(/ Egg$/, '') + ' Egg'; // the skins' names: "Robo Egg" and "Galaxy" alike
 const backK = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2); // a pop that overshoots
 // what a boss treasure holds, as [art, count, label] (the reveal and the card's row)
@@ -7534,71 +7632,134 @@ function tasteArt(T, x, y, h, live) {
   else drawBoosterIcon(ctx, T.id, x, y, h * 0.82, G.t);
 }
 // 0.8.9 TASTE: every reveal is big and sits in the middle of the page (mykee: "never small visuals")
-function drawReveal(r) {
-  const RV = r.rv, it = RV.list[RV.i], calm = save.calm, A = ui.A, u = ui.u, ink = 'rgba(60,28,6,0.9)';
-  const t = calm ? 1.35 : RV.t, fin = calm ? 1 : clamp(RV.t / 0.18, 0, 1);
+function drawReveal(r, drawStars) {
+  const RV = r.rv, it = RV.list[RV.i], calm = save.calm, A = ui.A, u = ui.u, ink = 'rgba(60,28,6,0.9)', P = rvPlan(r, it);
+  const t = calm ? P.set + 0.3 : RV.t, fin = calm ? 1 : clamp(RV.t / 0.18, 0, 1);
   dim(0.84 * (RV.i ? 1 : fin)); // the show sinks under the first one (deep: the prize alone on the page)
-  const S = Math.min(A.w * 0.9, A.h * 0.46, 420 * u), cx = A.cx, cy = A.y + A.h * 0.52;
-  const heroY = cy - 0.3 * S, rowY = cy + 0.27 * S, ls = Math.max(17 * u, Math.min(27 * u, 0.085 * S));
-  ctx.save(); ctx.globalAlpha = fin; // rays and a warm glow behind the prize
-  sunburst(cx, heroY, S * 1.25, 'rgba(255,226,140,0.17)', 14);
-  const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.75); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
-  ctx.fillStyle = g; ctx.fillRect(cx - S, heroY - S, 2 * S, 2 * S);
+  const { S, cx, cy, heroY, rowY, hy, hs } = rvGeom(), ls = Math.max(17 * u, Math.min(27 * u, 0.085 * S));
+  const opened = t >= P.open, oa = t - P.open; // oa: seconds since it opened
+  const ant = calm || opened ? 0 : clamp((t - P.land - 0.12) / (P.open - P.land - 0.12), 0, 1); // the anticipation builds
+  ctx.save(); ctx.globalAlpha = fin; // rays and a warm glow behind the prize (the glow beats harder before it opens)
+  CB.rays(ctx, cx, heroY, S * 1.25, calm ? 0.13 : G.t * 0.12, 'rgba(255,226,140,0.17)', 14);
+  if (!calm && !PERF.low) CB.rays(ctx, cx, heroY, S * 0.85, -G.t * 0.2, 'rgba(255,244,200,0.09)', 9, 0.32);
+  CB.glow(ctx, cx, heroY, S * (0.75 + 0.1 * ant * Math.abs(Math.sin(t * 16))), 0.5 + 0.35 * ant);
   ctx.restore();
-  const head = it.kind === 'treasure' ? 'BOSS TREASURE!' : it.kind === 'gift' ? 'FREE TRY!' : `${r.hot} WINS IN A ROW!`;
-  const headline = () => { // the headline: a ribbon that pops in (drawn last: a jumping hen or a chick's fuse goes under it)
-    const hs = Math.min(39 * u, 0.12 * S), hw = Math.min(A.w - 36 * u, ui.measure(head, hs) + 80 * u), pk = calm ? 1 : backK(t / 0.3), hy = cy - 0.98 * S;
-    ctx.save(); ctx.translate(cx, hy); ctx.scale(pk, pk); ctx.translate(-cx, -hy);
-    ui.ribbon(head, cx, hy - hs * 0.85, hw, hs * 1.7, { color: it.kind === 'hot' ? '#e4572a' : it.kind === 'gift' ? '#2f8fd8' : '#d89a1c', size: hs, noRecord: true });
-    ctx.restore();
+  if (drawStars) drawStars(); // the win's stars, small on top: never lost
+  // the hero's arrival: it falls in, lands with a squash and a small bounce, then shakes harder and harder
+  const lp = calm ? 1 : clamp(t / P.land, 0, 1), bq = calm ? 1 : clamp((t - P.land) / 0.24, 0, 1);
+  const off = lp < 1 ? -(heroY - A.y + S * 0.7) * (1 - lp * lp) : -S * 0.06 * Math.sin(bq * Math.PI), sq = lp >= 1 && bq < 0.45 ? 1 - 0.16 * Math.sin((bq / 0.45) * Math.PI) : 1;
+  const shake = ant ? Math.sin(t * 58) * 0.085 * ant : 0;
+  const hero = (fy, draw) => { ctx.save(); ctx.translate(cx, fy + off); ctx.rotate(shake); ctx.scale(1 / sq, sq); ctx.translate(-cx, -fy); draw(); ctx.restore(); };
+  const fx = (col) => { // the open: light, then confetti over everything but the words
+    if (calm || !opened) return;
+    CB.burst(ctx, cx, heroY, S * 0.72, oa / 0.6, col);
+    CB.confetti(ctx, cx, heroY, oa, { n: 46, speed: S * 1.9, g: S * 1.5, life: 1.9, seed: RV.i + 5, size: Math.max(6, S * 0.026) });
   };
-  const pop = (t0, x, y, sc, draw) => { const k = calm ? 1 : backK((t - t0) / 0.32); if (k <= 0.01) return; ctx.save(); ctx.translate(x, y); ctx.scale(k * sc, k * sc); draw(); ctx.restore(); };
+  // where things go at the claim: the purse (top right, ui/purse.js floats it there), the bag (bottom right)
+  const purseAt = { x: A.x1 - 82 * u, y: A.y + 28 * u }, bagS = Math.min(84 * u, S * 0.27), bagAt = { x: A.x1 - 16 * u - bagS * 0.6, y: A.y1 - 14 * u - bagS * 0.6 };
+  let bagN = 0; // things on their way to the bag this reveal
+  // one thing that jumps out of the hero (j: its turn), lands at (sx, sy), and at the claim flies to dst
+  const item = (j, sx, sy, dst, draw) => {
+    const t0 = P.pop(j), a = calm ? 1 : clamp((t - t0) / RV_ARC, 0, 1);
+    if (a <= 0) return 0;
+    const f0 = P.claim + 0.07 * j, fl = calm || !P.fly ? 0 : clamp((t - f0) / RV_FLY, 0, 1);
+    if (dst === bagAt) bagN++;
+    if (fl >= 1) { CB.landFlash(ctx, dst.x, dst.y, 26 * u, (t - f0 - RV_FLY) / 0.3); return 2; }
+    let x, y, sc, rot = 0;
+    if (fl > 0) { const e = fl * fl; [x, y] = CB.arcPt(sx, sy, dst.x, dst.y, e, dst === bagAt ? S * 0.32 : S * 0.05, dst === bagAt ? 0 : -S * 0.3); sc = 1 - 0.62 * e; rot = (dst === bagAt ? 1 : -1) * e * 1.2; }
+    else {
+      [x, y] = CB.arcPt(cx, heroY, sx, sy, a, S * 0.46, 0);
+      const h = t - t0 - RV_ARC; sc = a < 1 ? 0.3 + 0.7 * a : 1 + (calm || h > 0.22 ? 0 : 0.24 * Math.sin((h / 0.22) * Math.PI)); rot = (1 - a) * (j % 2 ? 1.6 : -1.6);
+      if (!calm && h > 0 && h < 0.3) CB.landFlash(ctx, sx, sy, S * 0.16, h / 0.3);
+    }
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sc, sc); draw(); ctx.restore();
+    return a >= 1 && fl < 0.05 ? 1 : 0; // 1: it stands in the row (its words show)
+  };
   if (it.kind === 'treasure') {
-    const R = r.treasure, open = t >= 0.6, items = treasureItems(R), cs = S * 0.8;
-    const p = clamp(t / 0.35, 0, 1), drop = calm ? 0 : -S * 1.1 * (1 - p) * (1 - p); // it drops in, lands, shakes, bursts open
-    const shake = !calm && t > 0.35 && t < 0.6 ? Math.sin(t * 70) * 0.1 * (t - 0.3) / 0.3 : 0, sq = !calm && t > 0.35 && t < 0.45 ? 1 - 0.12 * Math.sin((t - 0.35) / 0.1 * Math.PI) : 1;
-    if (open && !calm && t < 1) { const a = (t - 0.6) / 0.4; ctx.save(); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 10 * u * (1 - a); ctx.beginPath(); ctx.arc(cx, heroY, S * (0.25 + 0.6 * a), 0, 7); ctx.stroke(); sunburst(cx, heroY, S * (0.45 + 0.7 * a), `rgba(255,250,210,${0.5 * (1 - a)})`, 10); ctx.restore(); }
-    ctx.save(); ctx.translate(cx, heroY + drop + cs * 0.36); ctx.rotate(shake); ctx.scale(1 / sq, sq); ctx.translate(-cx, -(heroY + cs * 0.36));
-    drawChest(ctx, cx, heroY, cs, G.t, open ? 'open' : 'ready');
-    ctx.restore();
-    // what was inside pops out of the chest into a row, then flies off to the bag (top right)
-    const sp = Math.min(S * 0.38, (A.w - 30 * u) / 3), isz = S * 0.3, ns = Math.max(20 * u, isz * 0.34);
-    items.forEach(([k, n, lab], j) => {
-      const t0 = 0.68 + 0.1 * j, sx = cx + (j - 1) * sp, a = calm ? 1 : clamp((t - t0) / 0.3, 0, 1);
-      if (a <= 0) return;
-      const fl = calm ? 0 : ss01((t - 1.5 - 0.04 * j) / 0.28), bx = A.x + A.w - 34 * u, by = A.y + 30 * u;
-      const x = lerp(lerp(cx, sx, a), bx, fl), y = lerp(lerp(heroY, rowY, a) - Math.sin(a * Math.PI) * S * 0.25, by, fl), sc = (calm ? 1 : backK(a)) * (1 - 0.7 * fl);
-      ctx.save(); ctx.globalAlpha = 1 - fl * fl;
-      ctx.translate(x, y); ctx.scale(sc, sc); rewardIcon(k, R, 0, 0, isz); ctx.restore();
-      if (fl < 0.05 && a >= 1) {
-        ui.text(n, sx, rowY + isz * 0.7, { size: ns, align: 'center', color: '#fff6c8', stroke: ink, strokeW: 4.5 * u, tag: 'rv:n' + j });
-        ui.text(lab, sx, rowY + isz * 0.7 + ns, { size: Math.min(ls * 0.82, (sp - 10 * u) * 20 / ui.measure(lab, 20)), align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:l' + j });
+    const R = r.treasure, items = treasureItems(R), cs = S * 0.8;
+    hero(heroY + cs * 0.4, () => {
+      if (!opened) { // closed: its lid rattles over a line of light
+        drawChest(ctx, cx, heroY, cs, 0, 'ready');
+        CB.chestLid(ctx, cx, heroY, cs, ant * 0.055 * (0.5 + 0.5 * Math.sin(t * 44)), ant * 0.045 * Math.sin(t * 31));
+      } else { // it springs open
+        const j = calm || oa > 0.26 ? 0 : Math.sin((oa / 0.26) * Math.PI) * 0.2;
+        ctx.translate(cx, heroY + cs * 0.4); ctx.scale(1 - j * 0.5, 1 + j); ctx.translate(-cx, -(heroY + cs * 0.4));
+        drawChest(ctx, cx, heroY, cs, G.t, 'open');
       }
     });
-    if (t > 1.05) tickLine('Added to your bag', cx, cy + 0.74 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
-    if (!r.trFlown && r.purse0 != null && (calm || t >= 1.5)) { r.trFlown = true; purse.gain({ from: r.purse0, to: r.purse0 + R.coins, src: { x: cx - sp, y: rowY } }); } // its coins into the purse (the win's own follow on the card)
-  } else if (it.kind === 'gift') { // a taste: the item itself, alive, its name, where it lives, and what it does now
-    const T = r.gift;
-    pop(0, cx, heroY, 1, () => { if (T.kind === 'skin' || T.kind === 'boost') ctx.rotate(calm ? 0 : Math.sin(G.t * 3) * 0.06); tasteArt(T, 0, 0, S * 0.76, true); });
-    if (calm || t > 0.3) ui.text(tasteName(T), cx, cy + 0.2 * S, { size: Math.min(44 * u, 0.14 * S), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 6 * u, maxW: A.w - 40 * u, tag: 'rv:name' });
-    if (calm || t > 0.45) { // "From the shop", with the shop's own icon: where it lives
-      const fs = ls * 0.85, fw = ui.measure('From the shop', fs) + fs * 1.7, fx = cx - fw / 2;
-      shopIcon(ctx, fx + fs * 0.7, cy + 0.36 * S, fs * 1.9);
-      ui.text('From the shop', fx + fs * 1.7, cy + 0.36 * S, { size: fs, color: '#ffe9b0', stroke: ink, tag: 'rv:shop' });
+    fx('#fff3b0');
+    // what was inside jumps out of the chest into a row; at the claim the coins fly to the purse, the rest to the bag
+    const sp = Math.min(S * 0.38, (A.w - 30 * u) / 3), isz = S * 0.3, ns = Math.max(20 * u, isz * 0.34);
+    it.src = { x: cx - sp, y: rowY };
+    items.forEach(([k, n, lab], j) => {
+      const sx = cx + (j - 1) * sp;
+      if (item(j, sx, rowY, k === 'coin' ? purseAt : bagAt, () => rewardIcon(k, R, 0, 0, isz)) !== 1) return;
+      const num = k === 'coin' && !calm ? '+' + CB.rollTo(R.coins, (t - P.pop(j) - RV_ARC) / 0.5) : n; // the coins count up
+      ui.text(num, sx, rowY + isz * 0.7, { size: ns, align: 'center', color: '#fff6c8', stroke: ink, strokeW: 4.5 * u, tag: 'rv:n' + j });
+      ui.text(lab, sx, rowY + isz * 0.7 + ns, { size: Math.min(ls * 0.82, (sp - 10 * u) * 20 / ui.measure(lab, 20)), align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:l' + j });
+    });
+    if (t > P.set - 0.25) tickLine('Added to your bag', cx, cy + 0.74 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
+  } else if (it.kind === 'gift') { // a taste: it comes in a gift box; out of it rises the item itself, alive, in a spotlight
+    const T = r.gift, bs = S * 0.6, by = heroY + S * 0.08, ha = calm ? 1 : clamp(oa / 0.42, 0, 1);
+    if (opened) CB.spotlight(ctx, cx, 0, heroY + S * 0.39, S * 0.1, S * 0.5, ha);
+    if (!calm && oa < 0.7) hero(by + bs * 0.4, () => CB.giftBox(ctx, cx, by, bs, opened
+      ? { lidX: oa * S * 0.55, lidY: -(2.8 * oa - 1.7 * oa * oa) * S, lidRot: oa * 7, lidA: 1 - oa / 0.7, bodyA: 1 - clamp((oa - 0.1) / 0.3, 0, 1) } // the lid flies off, the box fades under what was in it
+      : { lidY: -ant * bs * 0.05 * (0.5 + 0.5 * Math.sin(t * 44)), lidRot: ant * 0.07 * Math.sin(t * 31) }));
+    fx('#e8f6ff');
+    if (opened) {
+      const fl = calm || !P.fly ? 0 : clamp((t - P.claim) / RV_FLY, 0, 1); // a booster leaves for the bag; a chick, a skin, an outfit stays (it is on)
+      if (P.fly) bagN++;
+      if (fl >= 1) CB.landFlash(ctx, bagAt.x, bagAt.y, 26 * u, (t - P.claim - RV_FLY) / 0.3);
+      else {
+        const k = calm ? 1 : backK(ha), [x, y] = fl > 0 ? CB.arcPt(cx, heroY, bagAt.x, bagAt.y, fl * fl, S * 0.3, 0) : [cx, heroY + (1 - CB.easeOut(ha)) * S * 0.16];
+        const still = T.kind === 'skin' || T.kind === 'boost', sc = k * (1 - 0.72 * fl * fl);
+        ctx.save(); ctx.translate(x, y + (still && !calm ? Math.sin(G.t * 2.6) * S * 0.012 : 0)); ctx.scale(sc, sc);
+        if (still) ctx.rotate(calm ? 0 : Math.sin(G.t * 3) * 0.06);
+        tasteArt(T, 0, 0, S * 0.76, true); ctx.restore();
+        if (fl <= 0 && ha >= 1) CB.sparkleRing(ctx, cx, heroY, S * 0.5, S * 0.43, calm ? 1.3 : G.t, 10, S * 0.05);
+      }
     }
-    if (calm || t > 0.6) tickLine(tasteLine(T), cx, cy + 0.6 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
-  } else { // the win streak: a flame with the count, and the boosters the next level starts with
-    pop(0, cx, heroY - S * 0.04, 1, () => { streakFlame(ctx, 'hot:rv', 0, 0, S * 0.66, r.hot, G.t, calm); });
-    if (calm || t > 0.15) ui.num(String(r.hot), cx, heroY + S * 0.1, { size: S * 0.26, align: 'center', tag: 'rv:count' });
+    if (calm || oa > 0.32) { // its name, on a ribbon that pops in
+      const ns = Math.min(34 * u, 0.105 * S), nm = tasteName(T), rh = ns * 1.6, rw = Math.min(A.w - 40 * u, ui.measure(nm, ns) + 70 * u), ny = cy + 0.2 * S, pk = calm ? 1 : backK((oa - 0.32) / 0.3);
+      ctx.save(); ctx.translate(cx, ny); ctx.scale(pk, pk); ctx.translate(-cx, -ny);
+      ui.ribbon(nm, cx, ny - rh * 0.55, rw, rh, { color: '#d89a1c', size: ns, noRecord: true });
+      ctx.restore();
+      ui.record({ x: cx - rw / 2, y: ny - rh * 0.55, w: rw, h: rh * 1.2 }, 'rv:name');
+    }
+    if (calm || oa > 0.5) { // "From the shop", with the shop's own icon: where it lives
+      const fs = ls * 0.85, fw = ui.measure('From the shop', fs) + fs * 1.7, fxx = cx - fw / 2;
+      shopIcon(ctx, fxx + fs * 0.7, cy + 0.38 * S, fs * 1.9);
+      ui.text('From the shop', fxx + fs * 1.7, cy + 0.38 * S, { size: fs, color: '#ffe9b0', stroke: ink, tag: 'rv:shop' });
+    }
+    if (calm || oa > 0.65) tickLine(tasteLine(T), cx, cy + 0.6 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
+  } else { // the win streak: the flame catches and swells while its count runs up, then throws out the boosters the next level starts with
+    const ig = calm ? 1 : backK(t / 0.32), cnt = calm || opened ? r.hot : Math.max(1, Math.round(1 + (r.hot - 1) * ant));
+    const sw = calm ? 1 : opened ? 1 + (oa < 0.3 ? 0.28 * Math.sin((oa / 0.3) * Math.PI) : 0) : 1 + 0.14 * ant + 0.03 * ant * Math.sin(t * 38);
+    ctx.save(); ctx.translate(cx, heroY - S * 0.04); ctx.rotate(shake * 0.35); ctx.scale(ig * sw, ig * sw);
+    streakFlame(ctx, 'hot:rv', 0, 0, S * 0.66, Math.max(2, cnt), G.t, calm);
+    ctx.restore();
+    if (calm || t > 0.15) { const ny = heroY + S * 0.1; ctx.save(); ctx.translate(cx, ny); ctx.scale(sw, sw); ctx.translate(-cx, -ny); ui.num(String(cnt), cx, ny, { size: S * 0.26, align: 'center', tag: 'rv:count' }); ctx.restore(); }
+    fx('#ffd9a0');
     const B = r.hotB, sp = Math.min(S * 0.42, (A.w - 30 * u) / B.length), isz = S * 0.36;
     B.forEach((b, j) => {
       const bx = cx + (j - (B.length - 1) / 2) * sp;
-      pop(0.4 + 0.12 * j, bx, rowY, 1, () => drawBoosterIcon(ctx, b, 0, 0, isz, G.t));
-      if (calm || t > 0.6 + 0.12 * j) ui.text((E.BOOSTERS[b] || {}).name || b, bx, rowY + isz * 0.68, { size: ls * 0.85, align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:b' + j });
+      if (item(j, bx, rowY, bagAt, () => drawBoosterIcon(ctx, b, 0, 0, isz, G.t)) === 1) ui.text((E.BOOSTERS[b] || {}).name || b, bx, rowY + isz * 0.68, { size: ls * 0.85, align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:b' + j });
     });
-    if (calm || t > 0.9) tickLine('Free at the start of the next level', cx, cy + 0.68 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
+    if (calm || t > P.set - 0.25) tickLine('Free at the start of the next level', cx, cy + 0.68 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
   }
-  headline();
+  if (bagN && !calm && t > P.claim - 0.25) { // the bag comes up for what is going into it, bumps as each thing lands, and goes
+    const up = Math.min(clamp((t - P.claim + 0.25) / 0.2, 0, 1), clamp((P.end - t) / 0.14, 0, 1));
+    let bump = 0;
+    for (let j = 0; j < P.n; j++) { const h = (t - P.claim - 0.07 * j - RV_FLY) / 0.2; if (h > 0 && h < 1) bump = Math.max(bump, Math.sin(h * Math.PI)); }
+    CB.bag(ctx, bagAt.x, bagAt.y + (1 - CB.easeOut(up)) * bagS * 1.6, bagS, bump);
+  }
+  { // the headline: a ribbon that pops in (drawn last: a jumping hen or a chick's fuse goes under it)
+    const head = it.kind === 'treasure' ? 'BOSS TREASURE!' : it.kind === 'gift' ? 'FREE TRY!' : `${r.hot} WINS IN A ROW!`;
+    const hw = Math.min(A.w - 36 * u, ui.measure(head, hs) + 80 * u), pk = calm ? 1 : backK(t / 0.3);
+    ctx.save(); ctx.translate(cx, hy); ctx.scale(pk, pk); ctx.translate(-cx, -hy);
+    ui.ribbon(head, cx, hy - hs * 0.85, hw, hs * 1.7, { color: it.kind === 'hot' ? '#e4572a' : it.kind === 'gift' ? '#2f8fd8' : '#d89a1c', size: hs, noRecord: true });
+    ctx.restore();
+  }
   if (RV.list.length > 1) RV.list.forEach((q, j) => { ctx.beginPath(); ctx.arc(cx + (j - (RV.list.length - 1) / 2) * 18 * u, Math.min(A.y1 - 22 * u, cy + 0.9 * S), (j === RV.i ? 6 : 4) * u, 0, 7); ctx.fillStyle = j === RV.i ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.fill(); });
 }
 
@@ -7651,41 +7812,40 @@ function drawWinCoins(r, ix, iy, cw, s, cnt, inCard) {
   ui.record({ x: sx - 15 * s, y: sy - 9 * s, w: 30 * s, h: 19 * s }, 'win:x2'); // its resting place (the overlap check)
 }
 
-// One result star. It stamps into its socket: falls in big and tilted, hits on its beat (R0.stars[q]) with a squash and
-// a shock ring, then springs back to size while sparks fly.
-const STAR_FALL = 0.2;
-function drawWinStar(r, R0, q, sx, sy, rad, calm) {
+// One result star. In the show it flies up from the hen (from) along an arc with a tail of glints, growing and spinning,
+// and lands in its socket on its beat (starAt) with a squash, a flash, a ring and sparks, then springs back to size.
+// On the card (no from) it has landed long ago and is simply there.
+function drawWinStar(r, q, sx, sy, rad, calm, from) {
   drawStar(ctx, sx, sy, rad, false, 1, true);
-  const v = r.t - R0.stars[q] + STAR_FALL;
+  const v = r.t - starAt(r, q) + STAR_FLY;
   if (q >= r.stars || v < 0) return;
-  let sc, rot = 0, al = 1, lift = 0;
-  if (v < STAR_FALL) { const p = v / STAR_FALL; sc = 2.3 - 1.55 * p * p; rot = -0.9 * (1 - p); al = Math.min(1, p * 2.5); lift = rad * 1.4 * (1 - p * p); }
-  else { const w = Math.min(1, (v - STAR_FALL) / 0.42); sc = 1 - 0.25 * Math.cos(w * Math.PI * 2.5) * (1 - w) * (1 - w); }
-  ctx.save(); ctx.globalAlpha = al; ctx.translate(sx, sy - lift); ctx.rotate(rot);
-  drawStar(ctx, 0, 0, rad, true, Math.max(0.01, sc)); ctx.restore();
-  const h = v - STAR_FALL;
-  if (h >= 0 && h < 0.5 && !calm) {
+  if (v < STAR_FLY && !calm) { // in flight
+    const p = v / STAR_FLY, f = from || { x: sx, y: sy + rad * 5 }, side = (q - 1) * rad * 2.4, lift = rad * 3;
+    for (let j = 3; j >= 1; j--) { // its tail
+      const pj = p - j * 0.1;
+      if (pj <= 0) continue;
+      const [tx, ty] = CB.arcPt(f.x, f.y, sx, sy, pj * pj, lift, side);
+      ctx.globalAlpha = 0.75 - 0.18 * j; CB.glint(ctx, tx, ty, rad * (0.62 - 0.12 * j));
+    }
+    const [x, y] = CB.arcPt(f.x, f.y, sx, sy, p * p, lift, side);
+    ctx.save(); ctx.globalAlpha = Math.min(1, p * 4); ctx.translate(x, y); ctx.rotate(-2.8 * (1 - p));
+    drawStar(ctx, 0, 0, rad, true, 0.45 + 0.85 * p + 0.45 * Math.sin(p * Math.PI)); ctx.restore();
+    return;
+  }
+  const h = v - STAR_FLY;
+  let kx = 1, ky = 1;
+  if (!calm && h < 0.52) { // the hit: flat and wide, then a spring back to size
+    if (h < 0.08) { const p = h / 0.08; kx = 1.3 + 0.1 * p; ky = 1.3 - 0.6 * p; }
+    else { const w = (h - 0.08) / 0.44, o = Math.cos(w * Math.PI * 2.5) * (1 - w) * (1 - w); kx = 1 + 0.4 * o; ky = 1 - 0.3 * o; }
+  }
+  ctx.save(); ctx.translate(sx, sy + rad * (1 - ky) * 0.5); ctx.scale(kx, ky);
+  drawStar(ctx, 0, 0, rad, true, 1); ctx.restore();
+  if (h < 0.5 && !calm) {
     const a = h / 0.5;
-    ctx.save();
-    ctx.globalAlpha = (1 - a) * 0.8; ctx.lineWidth = rad * 0.22 * (1 - a) + 1; ctx.strokeStyle = '#fff3b0';
-    ctx.beginPath(); ctx.arc(sx, sy, rad * (1 + 1.3 * Math.sqrt(a)), 0, 7); ctx.stroke();
-    ctx.restore();
-    starSparks(sx, sy, rad, a, q);
+    if (h < 0.14) { ctx.save(); ctx.globalAlpha = 0.6 * (1 - h / 0.14); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, rad * (1 + 2.2 * h / 0.14), 0, 7); ctx.fill(); ctx.restore(); }
+    CB.landFlash(ctx, sx, sy, rad * 2, a);
+    CB.sparks(ctx, sx, sy, rad, a, PERF.low ? 6 : 10, q);
   }
-}
-
-// a ring of small diamonds bursting from a star as it lands (palette colours, no glow)
-function starSparks(cx, cy, r, a, k) {
-  ctx.save();
-  ctx.globalAlpha = 1 - a;
-  const col = ['#ffd23f', '#ff7a9a', '#46b83d', '#5a8dee', '#e57d12', '#ffffff', '#ffd23f', '#ff7a9a'];
-  for (let i = 0; i < 8; i++) {
-    const q = (i / 8) * Math.PI * 2 + k, d = r * (1 + (1.1 + 0.3 * (i % 2)) * Math.sqrt(a)), sz = r * 0.19 * (1 - a * 0.6);
-    ctx.save(); ctx.translate(cx + Math.cos(q) * d, cy + Math.sin(q) * d + r * 0.5 * a * a); ctx.rotate(q + a * 3);
-    ctx.fillStyle = col[i]; ctx.beginPath(); ctx.moveTo(0, -sz); ctx.lineTo(sz * 0.6, 0); ctx.lineTo(0, sz); ctx.lineTo(-sz * 0.6, 0); ctx.closePath(); ctx.fill();
-    ctx.restore();
-  }
-  ctx.restore();
 }
 
 // The fail card: the hen on the same stage as the win card (render/cheer.js 'encourage'): sad for a moment, then she
