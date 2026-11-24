@@ -5748,64 +5748,6 @@ function chickCard(S, x, y, w, h, s, o) {
   ctx.restore();
 }
 
-// the picker block: cards in a grid (one row when they fit), or one wide card for a lone chick
-function pickerBlocks(s, iw, minW) {
-  const T = introChicks(), locked = lockedChicks(); // locked: chicks to unlock for coins (shop)
-  if (!T.open.length && locked.length) T.id = null;
-  if (!T.open.length && !locked.length) { // chicks only work on villains: on a level without any, they rest (and say so, no picker to anticipate)
-    const rest = strikesOpen().length && !(G.li >= 0 && G.level.id < STRIKE_FROM);
-    return { blocks: rest ? [lineBlock('No villains: chicks rest', 14.5 * s, { color: '#fff0d4', stroke: 'rgba(40,20,5,0.8)', tag: 'intro:rest', gap: 0 })] : [], T };
-  }
-  const items = [...T.open.map((S) => ({ S })), ...locked.map((c) => ({ S: STRIKE[c.id], locked: c }))];
-  const n = items.length, gap = 10 * s, acc = G.introAcc;
-  const maxCols = Math.max(1, Math.floor((iw + gap) / (minW + gap)));
-  const rows = Math.ceil(n / maxCols), cols = Math.ceil(n / rows);
-  const cw = Math.min(n === 1 ? 360 * s : 150 * s, (iw - (cols - 1) * gap) / cols);
-  const ls = Math.max(10, Math.min(12.5 * s, cw / 9.5));
-  const lines = items.map(({ S }) => wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s).slice(0, 2));
-  // the name is the bigger line (1.2x the power text); a narrow card breaks it in two ("Thunder / Chick") rather than shrinking it
-  const nm = (S) => ui.measure(S.name, 100) / 100, nw = cw - 14 * s;
-  let ns = ls * 1.2; const two = items.some(({ S }) => nm(S) * ns > nw);
-  if (two) ns = Math.min(ns, nw / Math.max(...items.flatMap(({ S }) => S.name.split(' ').map((w) => ui.measure(w, 100) / 100))));
-  const nl = Math.max(...lines.map((l) => l.length)), textH = ns * 1.15 * (two ? 2 : 1) + 4 * s + nl * ls * 1.2 + ls * 0.6 + 4 * s;
-  const ch = n === 1 ? 118 * s : Math.min(rows > 1 ? 170 * s : 300 * s, 64 * s + textH + (rows > 1 ? 0 : 38 * s));
-  const B = [];
-  const hint = T.need ? (pickAsked() < 60 ? 'Tap a chick first' : 'Pick a chick to help you') : T.choice ? 'Your chick' : T.id ? 'Your chick' : 'Tap to take along';
-  B.push({ h: 24 * s, gap: 0, draw: (x, y, w) => {
-    const pu = T.need && !save.calm ? 1 + 0.04 * Math.sin(G.t * 4) : 1;
-    ctx.save(); ctx.translate(x + w / 2, y + 12 * s); ctx.scale(pu, pu); ctx.translate(-(x + w / 2), -(y + 12 * s));
-    ui.text(hint, x + w / 2, y + 12 * s, { size: 18 * s, align: 'center', maxW: w, color: T.need ? '#ffe27a' : '#fff6e0', stroke: 'rgba(40,20,5,0.85)', tag: 'intro:pickhint' });
-    ctx.restore();
-  } });
-  B.push({ h: rows * ch + (rows - 1) * gap + 22 * s, gap: 10 * s, draw: (x, y, w) => {
-    y += 16 * s; // room for a lifted card
-    const tiles = [];
-    items.forEach(({ S, locked: LK }, i) => {
-      const r = Math.floor(i / cols), inRow = r === rows - 1 ? n - r * cols : cols, c = i - r * cols;
-      const rx = x + w / 2 - (inRow * cw + (inRow - 1) * gap) / 2 + c * (cw + gap), ry = y + r * (ch + gap);
-      const A = (G.cardSel || (G.cardSel = {})), want = S.id === T.id ? 1 : 0, st = A[S.id] || (A[S.id] = { v: want, t: G.t });
-      const dt = Math.min(0.05, Math.max(0, G.t - st.t)); st.t = G.t; st.v += (want - st.v) * Math.min(1, dt * 14);
-      const pk = G.introPick && G.introPick.id === S.id ? G.introPick : null, bt = pk ? G.t - pk.t : 9;
-      chickCard(S, rx, ry, cw, ch, s, { sel: st.v, dim: !!T.id && S.id !== T.id && T.choice, locked: LK, tipGlow: !!(LK && G.introTip && G.introTip.id === S.id), need: T.need, i, acc, wide: n === 1, lines: lines[i], ls, ns, two, textH,
-        ...pickJump(bt, !!LK, T) });
-      const rect = { x: rx, y: ry, w: cw, h: ch };
-      const bid = LK ? 'stk:buy:' + S.id : 'stk:pick:' + S.id;
-      ui.record(rect, 'btn:' + bid, 'btn:' + bid);
-      ui.buttons.push({ id: bid, ...rect });
-      tiles.push({ id: S.id, locked: !!LK, ...rect });
-    });
-    pickHand(tiles, T, { x, y, w, h: rows * (ch + gap) }, s);
-  } });
-  if (G.introTip && locked.some((c) => c.id === G.introTip.id) && !T.id) B.push(lineBlock(shortTip(G.introTip.line) || G.introTip.line, 13.5 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.85)', tag: 'intro:offer', gap: 2 * s }));
-  const S = T.id ? STRIKE[T.id] : null;
-  if (S && T.choice) B.push({ h: 20 * s, gap: 2 * s, draw: (x, y, w) => { // the downside: a warning sign and a few words
-    const tw = Math.min(w, ui.measure((POWER_WORDS[S.id] || ['', ''])[1], 14 * s) + 28 * s), x0 = x + w / 2 - tw / 2;
-    pictoWarn(ctx, x0 + 9 * s, y + 10 * s, 18 * s);
-    ui.text((POWER_WORDS[S.id] || ['', ''])[1], x0 + 22 * s, y + 10 * s, { size: 14 * s, color: '#ffb48a', stroke: 'rgba(40,20,5,0.8)', maxW: w - 24 * s, tag: 'intro:stkdn' });
-  } });
-  return { blocks: B, T };
-}
-
 // ---- the level page (rebuilt 2026-11-19 after mykee: "villains too small", "chick cards too small", "letters too small",
 // "we are not showing how many coins they have", "make it a scrollable menu to pick the chick").
 // One page that scrolls up and down: title, the goal, how to earn each star, every villain as a big animated portrait
@@ -5849,31 +5791,6 @@ const pageSection = (str, s, tag) => ({ h: 26 * s, gap: 18 * s, draw: (x, y, w) 
   ui.text(str, x + w / 2, y + 13 * s, { size: ts, align: 'center', maxW: w, color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', tag: 'intro:sec:' + tag });
 } });
 const lvLaser = () => ((G.level && G.level.orbs) || []).some((o) => o.type === 'laser'); // v0.8.9: the laser cannon hits villains too
-// every villain: a big living portrait, its name, what it does and how to beat it (no tapping needed to read it)
-function foeCard(k, i, s, iw) {
-  const C = ui.C;
-  const I = VILLAIN_INFO[k] || { name: k, does: '', group: 'creature' }, P = 96 * s, tx0 = P + 26 * s, tw = iw - tx0 - 14 * s;
-  const ds = 15.5 * s, bs = 15 * s, dl = wrapText(I.does || '', ds, tw).slice(0, 2), bl = I.beat ? wrapText('Beat it: ' + I.beat, bs, tw).slice(0, 2) : [];
-  if (I.group !== 'hazard' && lvLaser()) bl.push(I.group === 'boss' ? 'Laser: it flinches.' : 'Laser: stuns it.'); // v0.8.9: the beam hits villains too
-  const th = 12 * s + 26 * s + dl.length * ds * 1.25 + (bl.length ? 5 * s + bl.length * bs * 1.25 : 0) + 10 * s, h = Math.max(P + 18 * s, th);
-  return { h, gap: i ? 10 * s : 8 * s, draw: (x, y, w) => {
-    const grp = 'intro:foe' + i;
-    ui.well(x, y, w, h, { s, a: '#f3e2bd', b: '#fbf0d6' });
-    const bg = PORTRAIT_BG[I.group] || PORTRAIT_BG.creature, px = x + 11 * s, py = y + (h - P) / 2;
-    ui.well(px, py, P, P, { s, r: 14 * s, a: bg[0], b: bg[1], border: 'rgba(40,24,10,0.7)', shade: 'rgba(0,0,10,0.45)', paint: () => drawVillainPortrait(ctx, k, px + P / 2, py + P / 2, P, G.t) });
-    ui.record({ x: px, y: py, w: P, h: P }, grp + ':art', grp);
-    let ty = y + 12 * s + 13 * s;
-    const nm = ui.text(I.name, x + tx0, ty, { size: 20 * s, color: I.group === 'boss' ? '#b3301c' : '#5a2f0e', maxW: tw, tag: grp + ':name', group: grp });
-    if (I.group === 'boss' && nm.x + nm.w + 56 * s < x + w - 10 * s) { // a red BOSS tag after a boss's name
-      const ts = 11 * s, tg = ui.measure('BOSS', ts) + 12 * s, gx = nm.x + nm.w + 8 * s;
-      ui.roundRect(gx, ty - ts * 0.8, tg, ts * 1.6, ts * 0.8); ctx.fillStyle = '#c9342c'; ctx.fill();
-      ui.text('BOSS', gx + tg / 2, ty, { size: ts, align: 'center', color: '#fff', noRecord: true });
-    }
-    ty += 13 * s + ds * 0.72;
-    dl.forEach((l) => { ui.text(l, x + tx0, ty, { size: ds, color: C.ink, maxW: tw, tag: grp + ':d' + l.slice(0, 10), group: grp }); ty += ds * 1.25; });
-    if (bl.length) { ty += 5 * s; bl.forEach((l) => { ui.text(l, x + tx0, ty, { size: bs, color: '#2d7a1c', maxW: tw, tag: grp + ':b' + l.slice(0, 10), group: grp }); ty += bs * 1.25; }); }
-  } };
-}
 const CHEV = {}; let CHEV_N = 0; // the scroll arrows on screen: id -> its scroller and view height
 const pageColH = (B, s) => B.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
 // a scrolling column of blocks inside V (screen coordinates; the scroll is applied to y, so recorded rects are real)
@@ -6529,8 +6446,6 @@ function hotBadge(x, y, maxW, s, dry) {
   ui.record({ x, y, w, h: 34 * s }, 'intro:hot');
   return w;
 }
-// the level page has a Chicks step when this level lets a chick come along (owned or still locked)
-function introHasChicks() { const T = introChicks(); return !!(T && ((T.open && T.open.length) || T.need)) || (G.li >= 0 && G.level.id >= STRIKE_FROM && lockedChicks().length > 0); }
 const tintHex = (c) => c.length === 7 ? ui.tint(c, 0.35) : c; // the accent, a step brighter for borders and glow
 
 // v3.2: the lava salamander on its intro card, idling (code-drawn, the in-game art)
