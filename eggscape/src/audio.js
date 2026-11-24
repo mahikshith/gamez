@@ -48,7 +48,7 @@ export const SFX_NAMES = [
   'bomb_fuse', 'bomb_explode', 'glass_crack', 'glass_break', 'rock_hit', 'wood_break',
   'splash', 'lava_sizzle', 'thunder', 'wind_gust', 'motor_tick', 'rewind', 'score_tick', 'countdown', 'squish',
   'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up', // the hen's win/fail routines (render/cheer.js)
-  'slot_lever', 'slot_spin', 'slot_tick', 'slot_stop', 'slot_win', // 0.8.15: the Lucky Spin's machine
+  'slot_lever', 'slot_spin', 'slot_tick', 'slot_stop', 'slot_win', 'slot_miss', // 0.8.15: the Lucky Spin's machine
   'ring_tick', 'egg_land', 'near_miss', 'hud_pop', // game feel: ring detents, weighty landings, a close shave, a prize reaching the HUD
   'power_pickup', 'strike_launch', 'strike_hit', 'crow', // hero beats: an orb taken, Chick Strike, the rooster ally
   'wing_bat', 'decoy_peep', 'goose_honk', 'power_use', // the hen bats the strike chick off her wing, the decoy, the goose ally, a power waking up
@@ -66,10 +66,10 @@ export const MATERIALS = ['wood', 'stone', 'ice', 'mushroom', 'glass', 'metal', 
 
 // Sounds that are interface/feedback, not world events: they bypass the underwater filter.
 const UI_SOUNDS = new Set(['power_pickup', 'hud_pop', 'ui_tap', 'ui_back', 'ui_open', 'combo', 'star', 'level_win', 'level_fail', 'unlock', 'treasure_open', 'score_tick', 'countdown', 'egg_save', 'rewind',
-  'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up', 'slot_lever', 'slot_spin', 'slot_tick', 'slot_stop', 'slot_win']);
+  'hen_hop', 'hen_land', 'flap', 'cluck', 'confetti', 'tada', 'cheer_up', 'slot_lever', 'slot_spin', 'slot_tick', 'slot_stop', 'slot_win', 'slot_miss']);
 // Random pitch spread per sound (fraction). Musical stings stay in tune.
 const PITCH_VAR = {
-  slot_lever: 0.02, slot_spin: 0, slot_tick: 0.03, slot_stop: 0, slot_win: 0,
+  slot_lever: 0.02, slot_spin: 0, slot_tick: 0.03, slot_stop: 0, slot_win: 0, slot_miss: 0,
   ui_tap: 0.015, ring_tick: 0.02, hud_pop: 0, ui_back: 0.01, ui_open: 0.01, score_tick: 0.004, countdown: 0,
   egg_save: 0, combo: 0, star: 0, level_win: 0, level_fail: 0, unlock: 0, treasure_open: 0, rewind: 0.02, tada: 0, cheer_up: 0, cluck: 0.06,
   power_pickup: 0, strike_launch: 0.02, strike_hit: 0.02, crow: 0.02, egg_crack: 0.03, egg_break: 0.02,
@@ -1913,6 +1913,15 @@ export function createAudioEngine(externalCtx = null, options = {}) {
       for (const k of [0.5, 1, 1.5]) tone(v, { type: 'triangle', t: T, f: C5 * k, a: 0.008, hold: 0.15, d: 0.5, g: 0.05, lp: 2800 });
       pings(v, { t: T + 0.05, dur: 0.6 + 0.6 * i, n: 8 + Math.round(12 * i), fmin: 2800, fmax: 7600, g: 0.035, dmin: 0.03, dmax: 0.09 });
       send(v, 0.3);
+    },
+    slot_miss(v, o) { // three villains: the machine sags, three notes stepping down and a long sliding last one, a dull thump
+      const p = o.pitch, G4 = 392 * p, steps = [1, 0.944, 0.891];
+      steps.forEach((k, j) => { const t = j * 0.19; tone(v, { type: 'sawtooth', t, f: G4 * k, a: 0.012, hold: 0.07, d: 0.1, g: 0.075, lp: 1500 }); tone(v, { type: 'triangle', t, f: G4 * k * 0.5, a: 0.012, hold: 0.07, d: 0.1, g: 0.09 }); });
+      const T = steps.length * 0.19;
+      tone(v, { type: 'sawtooth', t: T, f: G4 * 0.84, f2: G4 * 0.56, gl: 0.6, a: 0.015, hold: 0.25, d: 0.4, g: 0.08, lp: 1200 });
+      tone(v, { type: 'triangle', t: T, f: G4 * 0.42, f2: G4 * 0.28, gl: 0.6, a: 0.015, hold: 0.25, d: 0.4, g: 0.1 });
+      knock(v, { t: T + 0.02, f: 150, f2: 70, d: 0.16, g: 0.3, nf: 500, n: 0.3 });
+      send(v, 0.18);
     },
     hud_pop(v, o) {
       const p = o.p;

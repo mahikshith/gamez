@@ -64,6 +64,14 @@ Status: FIXED (changed in the build named), OPEN (needs a decision or real data)
 | 11 | The heaviest video watcher sees about 90 videos in a month. At an assumed 10 dollars per thousand that is under one dollar. A payer who buys Unlock Everything is worth six times that. | Assumption (prices of ads) | KEPT as a sober number, not a forecast. |
 | 12 | 120,000 random actions by the clickers and 5,400 simulated lives broke no rule: no purse under zero, no bag over its size, never two reminders in a day, none at night or without permission, no paid offer before level 3 is won, no subsystem down, every save writable. | Rule | KEPT as a test: `tools/test-players.mjs`. |
 
+### 2026-11-24, build 0.8.15, the Lucky Spin can lose (mykee: "every spin doesn't win")
+
+| # | What was seen | Rule or assumption | Status |
+| --- | --- | --- | --- |
+| 13 | Three villains take one pull in four, never twice in a row, so one pull in five in the long run (20.3 of 102 pulls for the heaviest spinner). A pull paid with coins gets its coins back, a pull paid with a video tries again free, a free pull can try again by a chosen video, and a Try again always wins. Nobody in 5,400 lives or 80,000 random actions paid for nothing or met the villains twice in a row. | Rule | KEPT as tests: `tools/test-spin.mjs`, and the simulator reports "villain rows / tried again". |
+| 14 | About half of the villain rows are tried again by a video (9 of 20 for the child, 1 of 10 for the video hater). That is one extra chosen video every three or four play days for a middling player. | Assumption (who watches videos) | OPEN: real logs carry `spin:retry` shown against taken. |
+| 15 | The villains cut the free boosters from spins by a fifth; the three coin prizes were raised by a quarter (20, 40, 100) so the coins from spins stay where they were and the economy lanes in `tools/test-loop.mjs` still hold. The strong player's unused pile did not move (22): the villains do not fix finding 4. | Rule | KEPT. Finding 4 stays OPEN. |
+
 ## What real logs have said
 
 Nothing yet: no speed log from build 0.8.15 or later has been filed. From 0.8.15 on the log carries, as counts only:

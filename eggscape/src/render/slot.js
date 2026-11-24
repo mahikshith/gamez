@@ -1,17 +1,22 @@
 // The Lucky Spin's machine (0.8.15, mykee: "a three column turning slot machine like Jetpack Joyride uses, not this
 // circular spin"). A red fairground cabinet with three reels, a lever at its side and the hen on its roof.
 // Nothing here decides anything: main.js asks spin.js for the prize first (it is in the wallet and saved before a reel
-// moves) and this file only turns the three reels onto that prize's picture. Every pull ends on three of a kind,
-// because every spin wins: there is no losing row, so there is no "two the same and the third just past" either.
+// moves) and this file only turns the three reels onto that result's picture. Every pull ends on three of a kind:
+// three of a prize win it, three villains take it (mykee, 12:41: "every spin doesn't win"). A mixed row is never
+// shown, so there is no "two the same and the third just past" to tease anyone into another pull.
+// The pictures are the game's own cast (mykee: "character pictures for powerups and villains"): the booster that is
+// really being won, the player's own power chick for a Chick Charge, a villain he has already met.
 //
 // Each prize picture is painted once into a small picture of its own and the reels draw those (three reels of live
 // icons every frame would cost an old phone its frame rate); releaseSlot() gives them back when the page is left.
 import { FONT } from '../ui/ui.js';
 import { drawCoin, drawBoosterIcon, drawSkinPreview, drawItemArt, drawPart } from '../ui/store.js';
+import { drawStrikeToken } from './strike.js';
+import { drawVillainPortrait } from './villain-art.js';
 import { freeCanvas } from './cvfree.js';
 
 const TAU = Math.PI * 2;
-export const SLICE_COL = { c1: ['#ffe27a', '#ffc21f'], b1: ['#8fd6ff', '#3fa4ea'], cp: ['#b99bff', '#7a48e8'], c2: ['#ffd070', '#ffa51f'], ch: ['#8ff0e0', '#22b8a8'], sh: ['#c8ec80', '#7cba2c'], b2: ['#7fb4ff', '#2f74dc'], c3: ['#ffb070', '#f47a1a'], sk: ['#ff9db0', '#e8486a'], rare: ['#7a5ad0', '#33206e'] };
+export const SLICE_COL = { c1: ['#ffe27a', '#ffc21f'], b1: ['#8fd6ff', '#3fa4ea'], cp: ['#b99bff', '#7a48e8'], c2: ['#ffd070', '#ffa51f'], ch: ['#8ff0e0', '#22b8a8'], sh: ['#c8ec80', '#7cba2c'], b2: ['#7fb4ff', '#2f74dc'], c3: ['#ffb070', '#f47a1a'], sk: ['#ff9db0', '#e8486a'], rare: ['#7a5ad0', '#33206e'], vil: ['#6a3a52', '#2a1226'] };
 const WOOD = ['#b9793a', '#8a5426', '#4a2a10'];
 
 // ---- the prize pictures (also used by the odds sheet and the prize reveal)
@@ -49,17 +54,37 @@ function sparkle(ctx, x, y, r, a = 1) {
   ctx.beginPath(); ctx.moveTo(x, y - r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.quadraticCurveTo(x, y, x, y + r); ctx.quadraticCurveTo(x, y, x - r, y); ctx.quadraticCurveTo(x, y, x, y - r); ctx.fill();
   ctx.restore();
 }
-// the picture of one slice's prize, about s across. sl: { id, kind, n }
+// a villain's card: a dark plate (night purple, a blood-red rim) with the creature on it, so a villain reads as "not a
+// prize" on a running reel before anyone can tell which creature it is
+const CARD_ZOOM = { weasel: 1.3, salamander: 1.35, chameleon: 1.25, rats: 1.25, gator: 1.2, hermit: 1.2, eagle: 1.15, spider: 1.1, frog: 1.1 }; // the long, low creatures are small in their portrait box
+export function drawVillainCard(ctx, who, cx, cy, s, t = 0) {
+  const r = s * 0.47;
+  ctx.save();
+  rr(ctx, cx - r, cy - r, r * 2, r * 2, r * 0.34);
+  const g = ctx.createLinearGradient(0, cy - r, 0, cy + r); g.addColorStop(0, '#6e3460'); g.addColorStop(1, '#22102a'); ctx.fillStyle = g; ctx.fill();
+  ctx.save(); ctx.clip();
+  const gl = ctx.createRadialGradient(cx, cy + r * 0.1, r * 0.1, cx, cy, r * 1.2); gl.addColorStop(0, 'rgba(255,130,96,0.6)'); gl.addColorStop(1, 'rgba(255,90,60,0)'); ctx.fillStyle = gl; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  drawVillainPortrait(ctx, who || 'weasel', cx, cy, r * 2.05 * (CARD_ZOOM[who] || 1), t);
+  ctx.restore();
+  rr(ctx, cx - r, cy - r, r * 2, r * 2, r * 0.34); ctx.lineWidth = Math.max(1.5, s * 0.05); ctx.strokeStyle = '#e8402c'; ctx.stroke();
+  rr(ctx, cx - r, cy - r, r * 2, r * 2, r * 0.34); ctx.lineWidth = Math.max(0.8, s * 0.018); ctx.strokeStyle = '#3a0a10'; ctx.stroke();
+  ctx.restore();
+}
+// the picture of one row's prize, about s across. sl: { id, kind, n } and, when the caller knows them, the cast:
+// item (which booster), chick (whose Chick Charge), who (which villain)
 export function drawSliceIcon(ctx, sl, cx, cy, s, t = 0) {
-  if (sl.kind === 'coins') {
+  if (sl.kind === 'villain') drawVillainCard(ctx, sl.who, cx, cy, s, t);
+  else if (sl.kind === 'coins') {
     if (sl.id === 'c1') drawCoin(ctx, cx, cy, s * 0.36, t);
     else if (sl.id === 'c2') { drawCoin(ctx, cx - s * 0.16, cy + s * 0.05, s * 0.3, t); drawCoin(ctx, cx + s * 0.16, cy - s * 0.03, s * 0.32, t); }
     else drawPart(ctx, 'coins', cx, cy, s * 1.05, t);
+  } else if (sl.kind === 'booster' && sl.item) { // the booster itself, big (two of it for the double)
+    if (sl.n > 1) { drawBoosterIcon(ctx, sl.item, cx - s * 0.15, cy - s * 0.04, s * 0.7, t); drawBoosterIcon(ctx, sl.item, cx + s * 0.15, cy + s * 0.04, s * 0.74, t); } else drawBoosterIcon(ctx, sl.item, cx, cy, s * 0.92, t);
   } else if (sl.kind === 'booster') {
     if (sl.n > 1) { drawBoosterIcon(ctx, 'stone', cx - s * 0.17, cy + s * 0.02, s * 0.62, t); drawBoosterIcon(ctx, 'golden', cx + s * 0.17, cy - s * 0.02, s * 0.66, t); } else drawBoosterIcon(ctx, 'time', cx, cy, s * 0.8, t);
     qMark(ctx, cx + s * 0.34, cy - s * 0.3, s * 0.17);
   } else if (sl.kind === 'coupon') drawTicket(ctx, cx, cy, s * 1.05);
-  else if (sl.kind === 'charge') drawPart(ctx, 'charge', cx, cy, s * 1.1, t);
+  else if (sl.kind === 'charge') drawStrikeToken(ctx, sl.chick || 'freeze', cx, cy, s * 0.4, t, true);
   else if (sl.kind === 'scare') drawBoosterIcon(ctx, 'scare', cx, cy, s * 0.9, t);
   else if (sl.kind === 'skip') drawItemArt(ctx, 'skip', cx, cy, s * 1.1, t);
   else { // the rare bird: a golden egg that shines, with a "?"
@@ -78,14 +103,14 @@ export function stripPos(reel, idx, n) { for (let k = 0; k < n; k++) if (stripAt
 const SYM = new Map(); // key -> canvas
 export function releaseSlot() { for (const cv of SYM.values()) freeCanvas(cv); SYM.clear(); }
 function symbol(sl, c, dpr) {
-  const key = `${sl.id}:${sl.n}|${Math.round(c * dpr)}`;
+  const key = `${sl.id}:${sl.n}:${sl.item || sl.chick || sl.who || ''}|${Math.round(c * dpr)}`;
   let cv = SYM.get(key);
   if (cv) return cv;
-  if (SYM.size > 40) releaseSlot(); // a resize: the old sizes go
+  if (SYM.size > 60) releaseSlot(); // a resize, or many pulls with a new cast: the old pictures go
   const px = Math.ceil(c * dpr); cv = document.createElement('canvas'); cv.width = px; cv.height = px;
   const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const label = sl.kind === 'coins' ? String(sl.n) : sl.n > 1 ? 'x' + sl.n : '';
-  drawSliceIcon(g, sl, c / 2, label ? c * 0.4 : c / 2, label ? c * 0.7 : c * 0.84, 0);
+  drawSliceIcon(g, sl, c / 2, label ? c * 0.4 : c / 2, label ? c * 0.7 : sl.kind === 'villain' ? c * 0.98 : c * 0.84, 0);
   if (label) {
     const fs = c * 0.27; g.font = `600 ${fs}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
     g.lineWidth = fs * 0.3; g.strokeStyle = '#5a2a06'; g.strokeText(label, c / 2, c * 0.82); g.fillStyle = '#fff6c8'; g.fillText(label, c / 2, c * 0.82);
@@ -104,9 +129,10 @@ export function slotGeom(x, y, w, h) {
 }
 // The whole machine. slices: spin.js wheel() -> [{ id, kind, n }]. reels: [pos, pos, pos] (how far each reel has run, in
 // pictures; a whole number rests on a picture). o: { dpr, t, calm, lit 0..1 (the row just won), speed: [..] pictures a
-// second (a fast reel is drawn smeared), lever 0..1, ready (the knob breathes), cap: the words on the roof sign }
+// second (a fast reel is drawn smeared), lever 0..1, ready (the knob breathes), cap: the words on the roof sign,
+// bad 0..1 (the row is three villains: the lamps go red, the windows darken, the villains shake with laughter) }
 export function drawSlot(ctx, x, y, w, h, slices, reels, o = {}) {
-  const G = slotGeom(x, y, w, h), t = o.t || 0, lit = o.lit || 0, n = slices.length, lw = Math.max(1.5, w * 0.012), OUT = '#5a1206';
+  const G = slotGeom(x, y, w, h), t = o.t || 0, bad = o.bad || 0, lit = bad > 0 ? 0 : o.lit || 0, n = slices.length, lw = Math.max(1.5, w * 0.012), OUT = '#5a1206';
   ctx.save(); ctx.lineJoin = 'round';
   // the shadow on the floor, and two feet
   ctx.beginPath(); ctx.ellipse(x + w / 2, y + h + h * 0.012, w * 0.56, h * 0.045, 0, 0, TAU); ctx.fillStyle = 'rgba(20,6,30,0.34)'; ctx.fill();
@@ -149,9 +175,9 @@ export function drawSlot(ctx, x, y, w, h, slices, reels, o = {}) {
   {
     const nb = 9, by = G.bodyY + G.bodyH * 0.063, br = Math.min(w * 0.017, G.bodyH * 0.03);
     for (let i = 0; i < nb; i++) {
-      const bx = G.px + G.pw * ((i + 0.5) / nb), on = o.calm ? i % 2 === 0 : lit > 0 ? Math.floor(t * 9 + i) % 2 === 0 : Math.floor(t * 2.2 + i * 0.5) % 3 === 0;
-      ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fillStyle = on ? '#fff3a8' : '#c8781a'; ctx.fill(); ctx.lineWidth = Math.max(1, lw * 0.7); ctx.strokeStyle = '#6a3c06'; ctx.stroke();
-      if (on) { ctx.beginPath(); ctx.arc(bx, by, br * 2.1, 0, TAU); ctx.fillStyle = 'rgba(255,240,150,0.22)'; ctx.fill(); }
+      const bx = G.px + G.pw * ((i + 0.5) / nb), on = o.calm ? i % 2 === 0 : bad > 0 ? Math.floor(t * 3.2) % 2 === 0 : lit > 0 ? Math.floor(t * 9 + i) % 2 === 0 : Math.floor(t * 2.2 + i * 0.5) % 3 === 0;
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fillStyle = bad > 0 ? (on ? '#ff5a3c' : '#5a1408') : on ? '#fff3a8' : '#c8781a'; ctx.fill(); ctx.lineWidth = Math.max(1, lw * 0.7); ctx.strokeStyle = '#6a3c06'; ctx.stroke();
+      if (on) { ctx.beginPath(); ctx.arc(bx, by, br * 2.1, 0, TAU); ctx.fillStyle = bad > 0 ? 'rgba(255,80,50,0.25)' : 'rgba(255,240,150,0.22)'; ctx.fill(); }
     }
   }
   // the reel panel and its three windows
@@ -161,9 +187,15 @@ export function drawSlot(ctx, x, y, w, h, slices, reels, o = {}) {
     const wx = G.wx[r], pos = reels[r] || 0, sp = Math.abs((o.speed && o.speed[r]) || 0), k0 = Math.round(pos);
     ctx.save(); rr(ctx, wx, G.wy, G.cw, G.wh, G.cw * 0.1); ctx.clip();
     const bg = ctx.createLinearGradient(wx, 0, wx + G.cw, 0); bg.addColorStop(0, '#f2e4c2'); bg.addColorStop(0.5, '#fffaf0'); bg.addColorStop(1, '#f2e4c2'); ctx.fillStyle = bg; ctx.fillRect(wx, G.wy, G.cw, G.wh);
+    if (bad > 0) { ctx.fillStyle = `rgba(40,8,30,${0.62 * bad})`; ctx.fillRect(wx, G.wy, G.cw, G.wh); } // the lights go down behind the villains
     for (let k = k0 - 2; k <= k0 + 2; k++) { // as the reel runs on, its pictures come down through the window
       const sy = cy + (pos - k) * c * 1.12; if (sy < G.wy - c || sy > G.wy + G.wh + c) continue;
       const cv = symbol(slices[stripAt(r, k, n)], c, dpr);
+      if (bad > 0 && k === k0) { // the villain in the row shakes with laughter, a little bigger; its neighbours fade
+        const j = o.calm ? 0 : Math.sin(t * 26 + r * 2) * c * 0.025 * bad, z = c * (1 + 0.1 * bad);
+        ctx.drawImage(cv, wx + (G.cw - z) / 2 + j, sy - z / 2 - Math.abs(j) * 0.8, z, z); continue;
+      }
+      if (bad > 0) ctx.globalAlpha = 1 - 0.75 * bad;
       if (sp > 7 && !o.calm) { ctx.globalAlpha = 0.3; ctx.drawImage(cv, wx + (G.cw - c) / 2, sy - c / 2 - c * 0.2, c, c); ctx.drawImage(cv, wx + (G.cw - c) / 2, sy - c / 2 + c * 0.2, c, c); ctx.globalAlpha = 0.75; }
       ctx.drawImage(cv, wx + (G.cw - c) / 2, sy - c / 2, c, c); ctx.globalAlpha = 1;
     }
@@ -171,7 +203,7 @@ export function drawSlot(ctx, x, y, w, h, slices, reels, o = {}) {
     ctx.fillStyle = sh; ctx.fillRect(wx, G.wy, G.cw, G.wh);
     if (lit > 0) { ctx.fillStyle = `rgba(255,236,150,${(0.16 + 0.14 * Math.sin(t * 9)) * lit})`; ctx.fillRect(wx, G.wy, G.cw, G.wh); }
     ctx.restore();
-    rr(ctx, wx, G.wy, G.cw, G.wh, G.cw * 0.1); ctx.lineWidth = lw * (1 + lit); ctx.strokeStyle = lit > 0 ? `rgba(255,${Math.round(200 + 40 * lit)},90,1)` : '#8a5200'; ctx.stroke();
+    rr(ctx, wx, G.wy, G.cw, G.wh, G.cw * 0.1); ctx.lineWidth = lw * (1 + lit + bad * 0.6); ctx.strokeStyle = bad > 0 ? '#e8402c' : lit > 0 ? `rgba(255,${Math.round(200 + 40 * lit)},90,1)` : '#8a5200'; ctx.stroke();
   }
   if (lit > 0) { // three of a kind: a line of light through the row, and sparks thrown out from it
     const a = (0.55 + 0.25 * Math.sin(t * 11)) * lit, g = ctx.createLinearGradient(0, cy - c * 0.12, 0, cy + c * 0.12); g.addColorStop(0, 'rgba(255,240,160,0)'); g.addColorStop(0.5, `rgba(255,246,190,${a})`); g.addColorStop(1, 'rgba(255,240,160,0)');
@@ -180,7 +212,7 @@ export function drawSlot(ctx, x, y, w, h, slices, reels, o = {}) {
     if (wt < 0.9 && !o.calm) for (let i = 0; i < 14; i++) { const an = (i / 14) * TAU + 0.4, d = w * (0.18 + (0.34 + 0.22 * ((i * 7) % 5) / 4) * (1 - Math.pow(1 - wt / 0.9, 2))); sparkle(ctx, x + w / 2 + Math.cos(an) * d * 1.15, cy + Math.sin(an) * d * 0.8, w * (0.035 + 0.012 * (i % 3)), 1 - wt / 0.9); }
   }
   // the row that counts: a gold marker at each end
-  for (const d of [-1, 1]) { const ax = d < 0 ? G.px : G.px + G.pw, s = G.pw * 0.035; ctx.beginPath(); ctx.moveTo(ax - d * s * 0.5, cy - s); ctx.lineTo(ax + d * s * 1.0, cy); ctx.lineTo(ax - d * s * 0.5, cy + s); ctx.closePath(); ctx.fillStyle = lit > 0 ? '#fff3a8' : '#ffc83a'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = '#6a3c06'; ctx.stroke(); }
+  for (const d of [-1, 1]) { const ax = d < 0 ? G.px : G.px + G.pw, s = G.pw * 0.035; ctx.beginPath(); ctx.moveTo(ax - d * s * 0.5, cy - s); ctx.lineTo(ax + d * s * 1.0, cy); ctx.lineTo(ax - d * s * 0.5, cy + s); ctx.closePath(); ctx.fillStyle = bad > 0 ? '#ff5a3c' : lit > 0 ? '#fff3a8' : '#ffc83a'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = '#6a3c06'; ctx.stroke(); }
   // under the reels: the prize tray
   {
     const ty = G.py + G.ph + G.bodyH * 0.06, th = G.bodyH * 0.115, tw = w * 0.5;

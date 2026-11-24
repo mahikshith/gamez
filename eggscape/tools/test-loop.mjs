@@ -23,7 +23,7 @@ for (const L of LEVELS.slice(0, 50)) {
 for (let i = 0; i < Math.min(E.CHEST_COUNT, Math.floor(stars / E.STARS_PER_CHEST)); i++) { const C = E.chestFor(999, i); add('star chests', C.reward.coins, price(C.reward.booster), C.reward.skin ? E.SKINS[C.reward.skin].price : 0); }
 let spins = 0;
 { // the wheel: one spin per SPIN.every fresh wins from level SPIN.from on, at the tier of that point of the game
-  const save = { unlocked: 1, wallet: E.defaultWallet() }, W = (s) => s.w / 100;
+  const save = { unlocked: 1, wallet: E.defaultWallet() }, W = (s) => (s.w / 100) * SP.hitRate(); // the villains take one free pull in five in the long run
   for (let lv = SP.SPIN.from; lv <= 50; lv++) {
     save.unlocked = lv + 1;
     if ((lv - SP.SPIN.from + 1) % SP.SPIN.every) continue;

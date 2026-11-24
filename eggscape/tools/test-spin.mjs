@@ -7,15 +7,16 @@ const mk = (o = {}) => ({ unlocked: 8, wallet: { ...defaultWallet(), coins: 500 
 const seq = (...v) => { let i = 0; return () => v[Math.min(i++, v.length - 1)]; };
 const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 
-{ // honest odds: the weights add up to 100, every slice pays, the wheel's arcs are the odds
+{ // honest odds: the shown odds add up to 100 with the villains' row in them, every prize row pays
   const O = SP.odds(), sum = O.reduce((a, o) => a + o.pct, 0);
-  ok(Math.abs(sum - 100) < 1e-9, 'the odds add up to 100%');
-  ok(SP.TABLE.every((s) => s.w > 0 && s.n > 0), 'no losing slice: every slice pays something');
+  ok(Math.abs(sum - 100) < 1e-9, 'the odds shown add up to 100%');
+  ok(O[O.length - 1].kind === 'villain' && O[O.length - 1].pct === SP.SPIN.miss && O.filter((o) => o.kind === 'villain').length === 1, 'the villains have a row of their own on the odds sheet: 25%');
+  ok(SP.TABLE.every((s) => s.w > 0 && s.n > 0), 'every prize row pays something');
   const A = SP.slices();
   ok(A.every((a, i) => Math.abs(a.a1 - a.a0 - SP.TABLE[i].w / 100) < 1e-9) && Math.abs(A[A.length - 1].a1 - 1) < 1e-9, 'a slice is as wide as its odds (the wheel shows the truth)');
   const n = 200000, hit = {}, r = lcg(7);
   for (let i = 0; i < n; i++) { const s = SP.roll(r); hit[s.id] = (hit[s.id] || 0) + 1; }
-  ok(SP.TABLE.every((s) => Math.abs((hit[s.id] || 0) / n - s.w / 100) < 0.006), '200,000 rolls land on each slice at its stated odds');
+  ok(SP.TABLE.every((s) => Math.abs((hit[s.id] || 0) / n - s.w / 100) < 0.006), '200,000 rolls land on each prize at its weight');
 }
 { // the roll does not look at the player
   const rich = mk({ wallet: { ...defaultWallet(), coins: 99999, payer: true, spend: 50 } }), poor = mk({ wallet: defaultWallet() });
@@ -42,11 +43,12 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   let W = SP.ways(s, 'd1');
   ok(W.free && !W.ad && W.coin === null, 'a banked spin: only the free spin is offered (no ad, no price)');
   ok(SP.spin(s, 'ad', 'd1') === null && SP.spin(s, 'coin', 'd1') === null, 'and the other ways are refused while it waits');
-  const r1 = SP.spin(s, 'free', 'd1', seq(0));
+  const r1 = SP.spin(s, 'free', 'd1', seq(0.99, 0));
   ok(r1 && r1.how === 'free' && r1.paid === 0 && SP.banked(s) === 0, 'the free spin is used');
+  ok(!r1.miss && r1.prize, 'a player\'s very first pull always wins, whatever the draw');
   W = SP.ways(s, 'd1');
   ok(!W.free && W.ad && W.coin === 80, 'then: a video spin, or 80 coins');
-  const c0 = s.wallet.coins, r2 = SP.spin(s, 'coin', 'd1', seq(0.99, 0));
+  const c0 = s.wallet.coins, r2 = SP.spin(s, 'coin', 'd1', seq(0.5, 0));
   ok(r2 && r2.paid === 80 && SP.ways(s, 'd1').coin === 110, 'a coin spin costs 80, the next 110');
   SP.spin(s, 'coin', 'd1', seq(0)); ok(SP.ways(s, 'd1').coin === 150, 'then 150');
   SP.spin(s, 'coin', 'd1', seq(0)); ok(SP.ways(s, 'd1').coin === null && SP.spin(s, 'coin', 'd1') === null, 'three coin spins a day, then no more (nobody can pour a purse into it)');
@@ -58,8 +60,8 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 { // prizes land in the wallet; a full stack pays coins; the rare bird is something not owned
   const s = mk(); for (let i = 0; i < 3; i++) SP.noteWin(s);
-  const r = SP.spin(s, 'free', 'd1', seq(0)); // the first slice: 15 coins
-  ok(r.prize.kind === 'coins' && s.wallet.coins === 515, 'coins: +15');
+  const r = SP.spin(s, 'free', 'd1', seq(0)); // the first prize: 20 coins
+  ok(r.prize.kind === 'coins' && s.wallet.coins === 520, 'coins: +20');
   const w = SP.grant(defaultWallet(), { kind: 'booster', item: 'stone', n: 2 }); ok(ownedCount(w, 'stone') === 2, 'boosters: +2 Stone shell');
   const full = { ...defaultWallet(), owned: { stone: GIFT_MAX } }, wf = SP.grant(full, { kind: 'booster', item: 'stone', n: 1 });
   ok(ownedCount(wf, 'stone') === GIFT_MAX && wf.coins === 20, 'a gift into a full stack pays half its price in coins (never an empty spin, never a flood)');
@@ -73,8 +75,8 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 { // the economy: a coin spin is a sink on average
   const m = SP.meanWorth(defaultWallet());
   console.log('     mean worth of a spin: ' + m.toFixed(1) + ' coins');
-  ok(m < SP.SPIN.coin[0], 'the mean worth of a spin is under the first coin price');
-  ok(m > 25, 'and it is a real gift when it is free');
+  ok(m < SP.SPIN.coin[0], 'the mean worth of a winning pull is under the first coin price');
+  ok(m * SP.hitRate() > 25, 'and a free pull is a real gift even with the villains counted (' + (m * SP.hitRate()).toFixed(1) + ')');
 }
 { // the engine: time in the game moves the meter, the wheel grows with the world reached, the odds never move
   const s = mk();
@@ -86,11 +88,11 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   ok(SP.banked(s) === 1, 'the next day the third step opens the spin');
   ok(SP.tier(mk({ unlocked: 5 })) === 0 && SP.tier(mk({ unlocked: 11 })) === 1 && SP.tier(mk({ unlocked: 30 })) === 2 && SP.tier(mk({ unlocked: 45 })) === 3, 'the wheel has four sizes: worlds 1-2, 3-5, 6-8, 9-10');
   const w0 = SP.wheel(mk({ unlocked: 5 })), w3 = SP.wheel(mk({ unlocked: 45 }));
-  ok(w0.find((o) => o.id === 'c1').n === 15 && w3.find((o) => o.id === 'c1').n === 40 && w3.find((o) => o.id === 'c3').n === 200, 'coin slices grow with the world: 15 -> 40, 80 -> 200');
+  ok(w0.find((o) => o.id === 'c1').n === 20 && w3.find((o) => o.id === 'c1').n === 50 && w3.find((o) => o.id === 'c3').n === 250, 'coin prizes grow with the world: 20 -> 50, 100 -> 250');
   ok(w0.every((o, i) => o.pct === w3[i].pct), 'the odds are the same at every size');
   const late = mk({ unlocked: 45 }); for (let i = 0; i < 3; i++) SP.noteWin(late);
   const c0 = late.wallet.coins, r = SP.spin(late, 'free', 'd1', seq(0));
-  ok(r.prize.n === 40 && late.wallet.coins === c0 + 40, 'and the prize paid is the amount the wheel showed');
+  ok(r.prize.n === 50 && late.wallet.coins === c0 + 50, 'and the prize paid is the amount the wheel showed');
   ok([5, 11, 30, 45].every((u) => { const sv = mk({ unlocked: u }); return SP.meanWorth(defaultWallet(), SP.coinX(sv)) < SP.ways(sv, 'd9').coin; }), 'at every size the first coin spin costs more than a spin is worth on average');
   ok(SP.ways(mk({ unlocked: 45 }), 'd9').coin === 200, 'the coin price grows with the wheel (80 -> 200 in the last worlds)');
 }
@@ -103,6 +105,43 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   ok(SP.noteLoss(s, 9, 3, 'd2') === true && SP.banked(s) === 3 && SP.noteLoss(s, 7, 3, 'd3') === false, 'the next day another level can cheer again, a cheered level never twice');
   ok(SP.noteLoss(mk({ unlocked: 2 }), 2, 5, 'd1') === false, 'never in the first levels');
   const w = SP.ways(s, 'd2'); ok(w.free && !w.ad && w.coin === null, 'it is a plain free spin: no video, no price');
+}
+{ // the villains: one pull in four, never twice in a row, nobody pays for nothing, a Try again always wins
+  const fresh = (bank = 0) => { const s = mk(); s.spin = { n: 5, bank }; return s; };
+  let s = fresh(1);
+  const c0 = s.wallet.coins, m = SP.spin(s, 'free', 'd1', seq(0.76, 0));
+  ok(m && m.miss && m.prize === null && m.slice.kind === 'villain' && s.wallet.coins === c0 && SP.banked(s) === 0, 'a draw in the top quarter: three villains, no prize, the banked spin is used');
+  let W = SP.ways(s, 'd1');
+  ok(W.retry === 'ad' && W.sure, 'after a free pull the villains took: Try again by a chosen video, and the next pull cannot lose');
+  const t = SP.spin(s, 'retry', 'd1', seq(0.99, 0));
+  ok(t && !t.miss && t.prize && SP.ways(s, 'd1').retry === null && SP.state(s).t.ad === 0, 'the Try again wins whatever the draw, is used up, and is not one of the day\'s three video spins');
+  ok(SP.spin(s, 'retry', 'd1') === null, 'there is no second Try again without a new villain row');
+  s = fresh(0);
+  const a = SP.spin(s, 'ad', 'd1', seq(0.9));
+  ok(a.miss && SP.ways(s, 'd1').retry === 'free', 'a video pull the villains took tries again free: nobody watches two videos for one prize');
+  ok(!SP.spin(s, 'retry', 'd1', seq(0.99, 0)).miss, 'and that pull wins');
+  s = fresh(0);
+  const p0 = s.wallet.coins, c = SP.spin(s, 'coin', 'd1', seq(0.8));
+  ok(c.miss && c.paid === 0 && s.wallet.coins === p0 && SP.ways(s, 'd1').coin === 80 && SP.ways(s, 'd1').retry === null, 'a coin pull the villains took costs nothing: the coins stay, the price does not climb');
+  const c2 = SP.spin(s, 'coin', 'd1', seq(0.99, 0));
+  ok(!c2.miss && c2.paid === 80 && s.wallet.coins >= p0 - 80, 'the next pull wins whatever the draw (never twice in a row)');
+  s = fresh(3);
+  ok(SP.spin(s, 'free', 'd1', seq(0.9)).miss && SP.ways(s, 'd1').retry === null && !SP.spin(s, 'free', 'd1', seq(0.9, 0)).miss, 'with spins still banked there is no video offer: the next free pull is the sure one');
+  s = fresh(0); s.spin.t = { day: 'd1', retry: 3 }; s.spin.bank = 1;
+  SP.spin(s, 'free', 'd1', seq(0.9));
+  ok(SP.ways(s, 'd1').retry === null && SP.ways(s, 'd1').sure, 'three Try agains a day; after that the next pull is still the sure one');
+  s = fresh(0); SP.noteLoss(s, 7, 3, 'd1');
+  ok(SP.ways(s, 'd1').sure && !SP.spin(s, 'free', 'd1', seq(0.99, 0)).miss, 'a cheer-up spin always wins');
+  // the long run, by the rules alone: banked pulls only, no Try again
+  s = fresh(0); const r = lcg(11); let miss = 0, two = 0, last = false; const n = 60000, hit = {};
+  for (let i = 0; i < n; i++) { s.spin.bank = 1; const q = SP.spin(s, 'free', 'd1', r); if (q.miss) { miss++; if (last) two++; } else hit[q.slice.id] = (hit[q.slice.id] || 0) + 1; last = q.miss; s.wallet.coins = 500; }
+  ok(two === 0, '60,000 pulls: the villains never came twice in a row');
+  ok(Math.abs(miss / n - (1 - SP.hitRate())) < 0.006 && Math.abs(SP.hitRate() - 0.8) < 1e-9, `and they took ${(miss / n * 100).toFixed(1)}% of all pulls (1 in 5 in the long run, as hitRate() says)`);
+  ok(SP.TABLE.every((t2) => Math.abs((hit[t2.id] || 0) / (n - miss) - t2.w / 100) < 0.008), 'among the winning pulls every prize comes at its weight');
+  const rich = fresh(0), poor = fresh(0); rich.wallet = { ...defaultWallet(), coins: 99999, payer: true, spend: 50 }; poor.wallet = { ...defaultWallet(), coins: 0 };
+  let same = true; const ra = lcg(5), rb = lcg(5);
+  for (let i = 0; i < 400; i++) { rich.spin.bank = 1; poor.spin.bank = 1; const x = SP.spin(rich, 'free', 'd1', ra), y = SP.spin(poor, 'free', 'd1', rb); if (x.miss !== y.miss) same = false; }
+  ok(same, 'a rich payer and an empty purse meet the villains on exactly the same draws');
 }
 { // unsafe saves
   const s = { unlocked: 9, wallet: defaultWallet(), spin: { wins: 'x', bank: 99, t: null } };
