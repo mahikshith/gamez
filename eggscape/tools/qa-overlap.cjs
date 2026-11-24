@@ -57,6 +57,11 @@ const srv = http.createServer((q, r) => {
     for (let i = 0; i < n; i++) {
       const shoot = i === 0 || i === n - 1 || i === 12;
       await check(`L${i + 1}-intro`, (i) => { const E = __egg; E.start(i); for (let k = 0; k < 40; k++) E.frame(1 / 60); return E.overlaps(); }, i, shoot);
+      // 0.8.14: the level card's Chicks tab, with the chick in the middle of the carousel and, at the row's end, a locked one
+      if (await p.evaluate(() => __egg.ui.buttons.some((b) => b.id === 'itab:chicks'))) {
+        await check(`L${i + 1}-intro-chicks`, () => { const E = __egg; E.press('itab:chicks'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return E.overlaps(); }, 0, shoot);
+        await check(`L${i + 1}-intro-chicks-end`, () => { const E = __egg, R = E.G.car; if (R) { R.to = null; R.v = 0; R.y = R.max; } for (let k = 0; k < 20; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('itab:level'); for (let k = 0; k < 5; k++) E.frame(1 / 60); return o; }, 0, false);
+      }
       if (await p.evaluate((i) => !!__egg.LEVELS[i].intro, i)) await check(`L${i + 1}-intro-after`, () => { const E = __egg; E.press('gotit'); for (let k = 0; k < 10; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
       await check(`L${i + 1}-play`, (i) => { const E = __egg; E.press('go'); for (let k = 0; k < 90; k++) E.frame(1 / 60); return E.overlaps(); }, i, shoot);
     }
