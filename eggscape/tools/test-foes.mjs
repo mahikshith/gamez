@@ -4,7 +4,7 @@
 // it round (a U-turn) within about 1 s, then gets breathed at; an egg one channel away sends it to the gap and through;
 // with no egg near it keeps the idle rhythm (every x PRED.sal); a snapshot taken mid-hunt and mid-turn resumes exactly.
 import { Sim, DT, PRED } from '../src/sim/sim.js';
-import { SAL, BRAIN, GECKO } from '../src/sim/salamander.js';
+import { SAL, BRAIN, GECKO, BITE, FACE } from '../src/sim/salamander.js';
 import { THORN } from '../src/sim/thornback.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
@@ -25,8 +25,8 @@ function putEgg(sim, ch, a) {
   return e;
 }
 // lay the salamander down along channel ch with its snout at angle a (deg), walking dir (+1 ccw)
-function putSal(sim, ch, a, dir) {
-  const C = sim.sals[0], r = sim.salMid(ch), m = Math.ceil(sim.salBodyLen(C) / SAL.trail) + 2;
+function putSal(sim, ch, a, dir, C = sim.sals[0]) {
+  const r = sim.salMid(ch), m = Math.ceil(sim.salBodyLen(C) / SAL.trail) + 2;
   C.dir = dir; C.rad = r; C.a = deg(a); C.pts = [];
   for (let i = 0; i < m; i++) C.pts.push(sim.salPt({}, C.a - dir * (i * SAL.trail) / r, r));
   C.ph = 'walk'; C.t = C.dur = 0; C.car = -1; C.climb = null; C.climbCD = 0; C.ht = -1; C.htT = BRAIN.quiet; C.tcd = 0; C.next = 30; C.brT = 9;
@@ -130,6 +130,49 @@ for (const sp of ['gecko', 'thornback']) {
     ok(strip(a) === strip(b), `${name}: two restores run the same`);
     const c = Sim.fromState(sim.level, S);
     ok(keys.every((k) => c.sals[0][k] === S.sal.sals[0][k]), `${name}: restored fields equal the snapshot`);
+  }
+}
+// 7. 0.8.14 the bite (BITE): an egg at its snout is coiled at, then eaten; rolled away in time, the jaws miss; a stone
+// egg breaks the bite; the frost salamander's bite cracks and freezes; fire and frost in one channel face off
+{
+  const near = (sim, C) => putEgg(sim, 2, -90 + C.dir * 14); // just ahead of the snout at -90
+  { // eaten
+    const sim = fresh(); const C = putSal(sim, 2, -90, 1), egg = near(sim, C);
+    const evs = run(sim, 6), coil = first(evs, 'salCoil'), eat = first(evs, 'salEat');
+    ok(coil < 3 && eat > coil && eat < 5, `bite: coil at ${coil.toFixed(2)} s, eaten at ${eat.toFixed(2)} s`);
+    ok(!egg.alive, 'bite: the egg is gone');
+    ok(eat - coil >= BITE.coil * 0.6, `bite: a fair warning (${(eat - coil).toFixed(2)} s between the coil and the snap)`);
+  }
+  { // rolled away during the coil: a miss, the egg lives
+    const sim = fresh(); const C = putSal(sim, 2, -90, 1), egg = near(sim, C);
+    let moved = false;
+    const evs = run(sim, 6, () => { if (!moved && C.ph === 'coil') { moved = true; putEgg(sim, 2, 90); } });
+    ok(moved && first(evs, 'salSnapMiss') < 5 && egg.alive, 'bite: an egg rolled away in time is missed');
+  }
+  { // a stone egg: it reels
+    const sim = fresh(); const C = putSal(sim, 2, -90, 1), egg = near(sim, C);
+    egg.stone = 30; egg.armor = 30; egg.rock = 30;
+    const evs = run(sim, 6);
+    ok(sim.armored(egg) ? first(evs, 'salOuch') < 5 && egg.alive : true, 'bite: a stone egg breaks the bite');
+  }
+  { // frost: a crack and an ice block, not a kill
+    const L = level(); L.salamander = { ...L.salamander, kind: 'frost' };
+    const sim = new Sim(L, { mode: 'medium' }); for (let i = 0; i < 1.5 / DT; i++) { sim.step(); sim.events.length = 0; }
+    const C = putSal(sim, 2, -90, 1), egg = near(sim, C);
+    const evs = run(sim, 6), fb = first(evs, 'salFrostBite');
+    ok(C.kind === 'frost' && fb < 5 && egg.alive && egg.cracks === 1, `frost bite at ${fb.toFixed(2)} s: one crack, the egg lives`);
+    ok(!!egg.hold, 'frost bite: the egg is frozen to its wall');
+  }
+  { // fire meets frost
+    const L = level(); L.eggs = 1; L.salamander = [{ delay: 0.3, every: 6, a: 90, ch: 2 }, { delay: 0.3, every: 6, a: -90, ch: 2, dir: -1, kind: 'frost' }];
+    const sim = new Sim(L, { mode: 'medium' }); for (let i = 0; i < 1.5 / DT; i++) { sim.step(); sim.events.length = 0; }
+    putSal(sim, 2, -110, 1, sim.sals[0]); putSal(sim, 2, -70, -1, sim.sals[1]); // nose to nose, 40 degrees apart
+    const evs = run(sim, 12), f = first(evs, 'salFace'), b = first(evs, 'salFaceBurst');
+    ok(f < 6 && b > f && b - f < FACE.t + 0.5, `face-off: they meet at ${f.toFixed(2)} s, the burst ${(b - f).toFixed(2)} s later`);
+    const snap = sim.snapshot(), a2 = Sim.fromState(sim.level, snap), b2 = Sim.fromState(sim.level, snap);
+    for (let i = 0; i < 3 / DT; i++) { a2.step(); b2.step(); }
+    const strip = (s) => JSON.stringify(s.sals, (k, v) => (typeof v === 'number' ? +v.toFixed(9) : v));
+    ok(strip(a2) === strip(b2), 'face-off: two restores run the same');
   }
 }
 process.exit(bad ? 1 : 0);
