@@ -6173,7 +6173,7 @@ function drawLevelIntro(L, acc) {
 
   // ---- the Level tab's pieces
   const perks = perkItems(s);
-  const perkRows = (w) => { const rows = []; let cur = []; let cw = 0; for (const p of perks) { if (cur.length && cw + gp + p.w > w) { rows.push(cur); cur = []; cw = 0; } cw += (cur.length ? gp : 0) + Math.min(p.w, w); cur.push(p); } if (cur.length) rows.push(cur); return rows; };
+  const perkRows = (w) => { const rows = []; for (const p of [...perks].sort((a, b) => b.w - a.w)) { const r = rows.find((q) => q.reduce((a, o) => a + o.w + gp, 0) + p.w <= w); if (r) r.push(p); else rows.push([p]); } return rows; }; // the fewest rows: widest first, each into the first row it fits
   const perkBlock = (w) => { const R = perkRows(w); return !R.length ? null : { h: R.length * 34 * s + (R.length - 1) * 6 * s, gap: gp, draw: (x, y, ww) => {
     R.forEach((row, r) => { const tw = row.reduce((a, p) => a + Math.min(p.w, ww), 0) + (row.length - 1) * gp; let cx = x + (ww - tw) / 2; for (const p of row) { p.draw(cx, y + r * 40 * s, Math.min(p.w, ww)); cx += Math.min(p.w, ww) + gp; } });
   } }; };

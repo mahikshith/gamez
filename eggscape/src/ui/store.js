@@ -1814,18 +1814,20 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
       ui.button('adboost', '', cx, ty, c, c, { kind: 'ad', round: 14 * s });
       drawBoosterIcon(ctx, id, cx + c / 2, ty + c * 0.38, c * 0.5, t);
       const bh = c * 0.26, bw = bh * 1.38; drawAdBadge(ctx, cx + c / 2 - bw / 2, ty + c * 0.76, bw, bh);
-      if (mark) mark(cx + 3 * s, ty + 3 * s, 9 * s);
+      if (mark) mark(cx + c - 9 * s, ty + 9 * s, 7.5 * s); // (inside the tile's corner: clear of its neighbours and the label)
     } else if (it.own) {
       ui.button('boost:' + id, '', cx, ty, c, c, { kind: on ? 'primary' : 'tertiary', round: 14 * s });
-      drawBoosterIcon(ctx, id, cx + c * 0.48, ty + c * 0.46, c * 0.6, t);
-      const br = Math.min(c * 0.2, 11 * s), bcx = cx + c - br * 0.6, bcy = ty + br * 0.6;
-      ctx.beginPath(); ctx.arc(bcx, bcy, br, 0, Math.PI * 2); ctx.fillStyle = '#e8402e'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke();
-      ui.text(String(ownedCount(wallet, id)), bcx, bcy, { size: br * 1.2, align: 'center', maxW: br * 1.6, color: '#fff', noRecord: true });
-      if (on) { // armed: a white check, bottom right
-        const kx = cx + c * 0.76, ky = ty + c * 0.72, ks = c * 0.1;
-        ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(2, c * 0.07); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.beginPath(); ctx.moveTo(kx - ks, ky); ctx.lineTo(kx - ks * 0.25, ky + ks * 0.8); ctx.lineTo(kx + ks * 1.1, ky - ks * 0.8); ctx.stroke(); ctx.restore();
-      } else if (mark) mark(cx + 3 * s, ty + 3 * s, 9 * s);
+      drawBoosterIcon(ctx, id, cx + c / 2, ty + c * 0.38, c * 0.5, t);
+      // how many you have, on a chip where the others show their price
+      const ps = Math.min(c * 0.22, 14 * s), str = '\u00d7' + ownedCount(wallet, id), pw = Math.min(c - 6 * s, ui.measure(str, ps) + ps * 1.2), py = ty + c - ps * 1.45 - 6 * s;
+      ui.roundRect(cx + c / 2 - pw / 2, py, pw, ps * 1.45, ps * 0.72); ctx.fillStyle = on ? 'rgba(20,70,10,0.75)' : 'rgba(42,26,10,0.88)'; ctx.fill();
+      ui.text(str, cx + c / 2, py + ps * 0.74, { size: ps, align: 'center', color: '#fff', maxW: pw - ps * 0.6, noRecord: true });
+      if (on) { // armed for this level: a white disc with a green check in the corner
+        const kx = cx + c - 9 * s, ky = ty + 9 * s, kr = 7.5 * s;
+        ctx.save(); ctx.beginPath(); ctx.arc(kx, ky, kr, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+        ctx.strokeStyle = '#2f8a1c'; ctx.lineWidth = kr * 0.32; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(kx - kr * 0.45, ky); ctx.lineTo(kx - kr * 0.1, ky + kr * 0.38); ctx.lineTo(kx + kr * 0.5, ky - kr * 0.35); ctx.stroke(); ctx.restore();
+      } else if (mark) mark(cx + c - 9 * s, ty + 9 * s, 7.5 * s);
     } else {
       const afford = ((wallet && wallet.coins) || 0) >= B.price;
       ui.button('shop:boosts', '', cx, ty, c, c, { kind: 'tertiary', round: 14 * s });
