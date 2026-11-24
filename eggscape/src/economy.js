@@ -167,6 +167,7 @@ export function ownedCount(wallet, id) {
 //   stars   5 per star                                  (0..15)
 //   perfect +5 for a perfect clutch                     (0 or 5)
 // Win examples: 1 star ~15-17, 2 stars ~22, 3 stars perfect ~32-36.
+export const HARD_PAY = 1.5;
 export function levelCoins(result) {
   const r = result || {}, k = PLATFORM.web ? WEB.winMult : 1; // the web pays double: play is the only way to coins there
   const stars = Math.max(0, Math.min(3, Math.floor(r.stars || 0)));
@@ -174,7 +175,8 @@ export function levelCoins(result) {
   const base = (4 + 2 * saved) * k;
   const starCoins = 5 * stars * k;
   const perfect = r.perfect && stars > 0 ? 5 * k : 0;
-  return { base, stars: starCoins, perfect, total: base + starCoins + perfect };
+  const sum = base + starCoins + perfect, hard = r.hard && stars > 0 ? Math.round(sum * (HARD_PAY - 1)) : 0; // a level marked hard pays half as much again
+  return { base, stars: starCoins, perfect, hard, total: sum + hard };
 }
 
 export function addCoins(wallet, n) {

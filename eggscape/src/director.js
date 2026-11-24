@@ -59,6 +59,11 @@ export function dirState(save) {
 }
 
 // ---- what happened
+// every level played, as "id:tries/wins" (the speed log carries it: real first-try win rates, on the phone only)
+export function triesLine(save) {
+  const A = dirState(save).att || {};
+  return Object.keys(A).map(Number).filter((k) => k > 0).sort((x, y) => x - y).map((k) => `${k}:${A[k].tries | 0}/${A[k].wins | 0}`).join(' ');
+}
 export function noteResult(save, levelId, won, info = {}) {
   const D = dirState(save);
   const a = D.att[levelId] || { tries: 0, wins: 0, streak: 0, best: 0, help: 0 };

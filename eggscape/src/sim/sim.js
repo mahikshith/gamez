@@ -118,6 +118,14 @@ export const MODES = {
   hard: { fuse: 0.8, nest: 1.3, nestW: 0, crack: 0.85, meteor: true, softThorns: false },
 };
 
+// The hard levels (0.8.15): one in each world from the second on, the level before the boss. Its fuse burns faster on
+// Medium and Hard, for everyone alike. It pays half as many coins again (economy.js levelCoins) and says so on its
+// card and on the map. Easy is left alone. tools/planner-modes.mjs must still win each of them (the list lives here,
+// not in the generated level data, so the levels themselves are untouched).
+export const HARD_IDS = [9, 14, 19, 24, 29, 34, 39, 44, 49];
+export const HARD_LEVEL = { easy: 1, medium: 0.8, hard: 0.9 };
+export const isHardLevel = (level) => !!level && HARD_IDS.includes(level.id);
+
 // ---------- predators (v3): mode scaling (G10). snake = speed x, venom/warn = telegraph time x
 export const PRED = {
   easy: { snake: 1.4, venom: 1.3, warn: 1.35 },
@@ -202,7 +210,7 @@ export class Sim {
     // start boosters (store): opts.stone, opts.time (+15 s), opts.sponge (pad under the first drop), opts.nest (a wider
     // basket), opts.snips (every start thorn snipped: sim/strike.js)
     // egg skin powers (sim/perks.js): opts.perk = the skin worn in play; Sweet Seconds (Candy Cane) adds 5 s
-    this.timeLimit = level.time ? Math.round(level.time * this.MD.fuse) + (opts.time ? 15 : 0) + (opts.perk === 'candy' ? PERK.sweet : 0) : 0;
+    this.timeLimit = level.time ? Math.round(level.time * this.MD.fuse * (isHardLevel(level) ? HARD_LEVEL[this.mode] || 1 : 1)) + (opts.time ? 15 : 0) + (opts.perk === 'candy' ? PERK.sweet : 0) : 0;
     this.orbs = [];
     this.embers = [];
     this.snakes = []; // predators (v3): see buildPredators

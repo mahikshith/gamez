@@ -1,5 +1,5 @@
 // Eggscape: game shell. Screens, input, camera, events -> VFX/SFX/score, HUD.
-import { Sim, DT, LEGACY_ORB, EAGLE_LEN, REWIND_S } from './sim/sim.js';
+import { Sim, DT, LEGACY_ORB, EAGLE_LEN, REWIND_S, isHardLevel } from './sim/sim.js';
 import { hintSearch, actSteps } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
 import { curtainFront, vineFront } from './render/v3art.js'; // where a burning thorn curtain's fire has got to
@@ -1613,7 +1613,7 @@ async function press(id) {
       save.showFps = !save.showFps; persist();
       break;
     case 'set:log': { // hand the speed log to the share sheet (app) or save it as a file (web)
-      diag.note({ brain: BR.trace(save), who: BR.model(save) }); // the Brain's last decisions travel with the speed log
+      diag.note({ brain: BR.trace(save), who: BR.model(save), tries: DR.triesLine(save), mode: save.mode }); // the Brain's last decisions travel with the speed log; 0.8.15: tries and wins per level (how hard the game really is)
       const how = diag.share();
       toast(how === 'download' ? 'Speed log saved to your downloads' : how ? 'Pick where to send the speed log' : 'Could not share the log here', 2.6);
       break;
@@ -4083,7 +4083,7 @@ function computeResult() {
   // coins (F7) and the bonus objective (C3): bonus coins are paid the first time it is met, per mode
   const bonus = !!L.bonus && sim.bonusMet();
   const bonusCoins = bonus && !save.bonus[sk(L.id, sim.mode)] && G.li >= 0 ? BONUS_COINS : 0;
-  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id }).total + bonusCoins;
+  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id, hard: isHardLevel(L) && G.li >= 0 }).total + bonusCoins;
   if (G.li < 0) coins = G.li === -1 && stars && save.daily.paid !== today() ? coins + DAILY_COINS : 0; // the Daily Vault pays once a day; a lab vault pays nothing
   const cracked = sim.savedLog.filter((q) => q.cracks > 0).length, used = sim.timeLimit ? Math.max(0, sim.timeLimit - Math.max(0, sim.timeLeft)) : sim.t;
   return { broken: st.broken, cracked, used, stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus && !goals.some((g) => g.kind === L.bonus.kind), // a bonus that is a star goal is not listed twice
@@ -6181,6 +6181,7 @@ function drawLevelIntro(L, acc) {
   const kinds = G.li >= 0 && G.infoKinds ? G.infoKinds.filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 8) : [];
   const label = G.li === -2 ? 'Lab' : G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`;
   const world = wo ? (WORLDS[envOf(G.li)] || L.intro.title) : WORLDS[envOf(G.li)] || '';
+  const hardLv = isHardLevel(L) && G.li >= 0 && save.mode !== 'easy'; // 0.8.15: the level before each boss (sim.js HARD_LEVEL)
   const INK = 'rgba(40,20,5,0.9)';
   const pg = G.ipage || (G.ipage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
   if (pg.lid !== L.id + ':' + G.li) { pg.lid = L.id + ':' + G.li; pg.y = 0; pg.v = 0; G.itab = 'level'; }
@@ -6245,14 +6246,21 @@ function drawLevelIntro(L, acc) {
     if (cbw) purseBtn(x + w - cbw, y, cbw, HDR, 21 * s); // the coins roll and pop like every other counter (ui/purse.js)
     const tail = 16 * s, side = Math.max(HDR, cbw) + 8 * s + tail, rwMax = Math.max(90 * s, w - 2 * side);
     const rw = Math.min(rwMax, Math.max(150 * s, ui.measure(label, 25 * s) + 48 * s));
-    ui.ribbon(label, x + w / 2, y + 2 * s, rw, HDR - 6 * s, { s, color: acc, size: 25 * s, tag: 'intro:level' });
+    ui.ribbon(label, x + w / 2, y + 2 * s, rw, HDR - 6 * s, { s, color: hardLv ? '#d8342a' : acc, size: 25 * s, tag: 'intro:level' });
     return { ribL: x + w / 2 - rw / 2 - tail };
   };
   // the level's name (big) and its world (small): one compact block
   const nameH = 31 * s + (world ? 18 * s : 0);
   const nameBlock = (x, y, w) => {
     ui.text(L.name, x + w / 2, y + 15 * s, { size: 27 * s, align: 'center', maxW: w, color: '#fff', stroke: INK, shadow: 'rgba(0,0,0,0.35)', tag: 'intro:name' });
-    if (world) ui.text(world, x + w / 2, y + 31 * s + 9 * s, { size: 15 * s, align: 'center', maxW: w, color: '#ffe27a', stroke: INK, tag: 'intro:world' });
+    if (world && !hardLv) ui.text(world, x + w / 2, y + 31 * s + 9 * s, { size: 15 * s, align: 'center', maxW: w, color: '#ffe27a', stroke: INK, tag: 'intro:world' });
+    else if (world) { // a hard level: a red pill "Hard level" and what it pays, where the world's name sits
+      const a = 'Hard level', b = '+50%', fs = 15 * s, aw = ui.measure(a, fs), bw2 = ui.measure(b, fs), cr = 8 * s, pw = aw + 20 * s, tw = pw + 8 * s + cr * 2 + 4 * s + bw2, px = x + (w - tw) / 2, cy = y + 31 * s + 9 * s;
+      ui.roundRect(px, cy - 11 * s, pw, 22 * s, 11 * s); ctx.fillStyle = '#d8342a'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(60,10,4,0.85)'; ctx.stroke();
+      ui.text(a, px + pw / 2, cy, { size: fs, align: 'center', color: '#fff', tag: 'intro:world' });
+      drawCoin(ctx, px + pw + 8 * s + cr, cy, cr, 0);
+      ui.text(b, px + pw + 8 * s + cr * 2 + 4 * s, cy, { size: fs, color: '#ffe27a', stroke: INK, tag: 'intro:hardpay' });
+    }
   };
   // a cream sheet rising from the bottom edge: everything below the title sits on it (no card floating on the dark)
   const sheet = (x, y, w) => {
@@ -8042,7 +8050,7 @@ function drawLevels() {
       ui.button('lv:' + i, '', x0, y0, x1 - x0, y1 - y0, { ghost: true, disabled: !open });
       p = calm ? 0 : ui.pressAmt('lv:' + i, ui.pressedId === 'lv:' + i);
     }
-    const o = { w, num: Lv.id, stars: starsOf(Lv.id), boss, DPR, p, part: 'back' };
+    const o = { w, num: Lv.id, stars: starsOf(Lv.id), boss, DPR, p, part: 'back', hard: isHardLevel(Lv) && save.mode !== 'easy' };
     if (state === 'cur') { if (!(TR && !TR.arrived)) MS.drawStopCall(ctx, L, x, y, t, calm, boss); curAt = { x, y, o, boss, i }; }
     MS.drawStop(ctx, L, x, y, state, o);
   }

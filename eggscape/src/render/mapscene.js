@@ -881,7 +881,23 @@ function numText(c, str, x, y, size, fill, ink, wgt = 600) {
   c.lineJoin = 'round'; c.lineWidth = Math.max(2.5, size * 0.24); c.strokeStyle = ink; c.strokeText(str, x, y); c.fillStyle = fill; c.fillText(str, x, y);
 }
 // paint one stop's picture (origin = the stop's centre on the road); returns nothing
+// a hard level (sim.js HARD_IDS): a small red badge with three white thorns at the stop's left foot
+function hardMark(c, x, y, r) {
+  c.save(); c.translate(x, y); c.lineJoin = 'round';
+  c.beginPath(); c.arc(0, 0, r + r * 0.2, 0, TAU); c.fillStyle = '#fff6dc'; c.fill();
+  c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fillStyle = lg(c, 0, -r, 0, r, ['#f2553a', '#b8201a']); c.fill();
+  c.fillStyle = '#ffffff';
+  for (const [dx, h] of [[-0.42, 0.62], [0, 0.95], [0.42, 0.62]]) { c.beginPath(); c.moveTo((dx - 0.24) * r, r * 0.42); c.lineTo(dx * r, r * 0.42 - h * r); c.lineTo((dx + 0.24) * r, r * 0.42); c.closePath(); c.fill(); }
+  c.restore();
+}
 function paintStop(c, u, st, part, o) {
+  paintStop0(c, u, st, part, o);
+  if (!o.hard || (st === 'cur' && part === 'back')) return;
+  const b = o.boss ? 1.14 : 1;
+  if (st === 'far') hardMark(c, -17 * u * b, -5 * u, 4.6 * u);
+  else { const rx = NEST_RX[st] * u * b; hardMark(c, -rx * 0.8, rx * 0.4 * 0.75, 7.5 * u); }
+}
+function paintStop0(c, u, st, part, o) {
   const T = stopTint(o.w), boss = !!o.boss, b = boss ? 1.14 : 1, num = String(o.num), seed = 11 + o.num * 7;
   if (st === 'far') { // a pale stepping stone, flush with the road, and a small number
     const rx = 15 * u * b, ry = 7 * u * b;
@@ -931,7 +947,7 @@ function paintStop(c, u, st, part, o) {
 // draw stop `o.num` (o: { w, num, stars, boss, DPR, part: 'back' | 'front' | 'all', p: press 0..1 }) centred on (x, y)
 export function drawStop(ctx, L, x, y, st, o) {
   const u = L.u, DPR = o.DPR || 1, part = st === 'cur' ? o.part || 'all' : 'all';
-  const key = `${st}|${part}|${o.num}|${o.stars | 0}|${o.boss ? 1 : 0}|${o.w}|${u.toFixed(3)}|${DPR}|${stopFont()}`;
+  const key = `${st}|${part}|${o.num}|${o.stars | 0}|${o.boss ? 1 : 0}${o.hard ? 'h' : ''}|${o.w}|${u.toFixed(3)}|${DPR}|${stopFont()}`;
   let e = SPRS.get(key);
   if (!e) {
     if (typeof document === 'undefined') return;
