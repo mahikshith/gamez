@@ -38,6 +38,8 @@ import * as SK from './skip.js'; // 2026-11-23: the pause page's Skip level (one
 import { createPurse } from './ui/purse.js'; // 2026-11-23: one coin-gain effect for every place the purse grows
 import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, freebies, trials, home nudges)
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
+import * as ENG from './engine/index.js'; // 0.8.15: the background subsystems (Ledger, Pulse, Oracle, Conductor, Herald) behind one safe face
+import * as SP from './spin.js'; // 0.8.15: the Lucky Spin's rules
 import * as BR from './brain.js'; // 2026-11-23: the Brain, one arbiter over the Director and the offer engine (who is playing, when to ask, what fits)
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
@@ -148,6 +150,7 @@ function loadSave(s) {
   if (!MODE_LIST.includes(save.mode)) save.mode = 'medium';
   for (const [o, n] of Object.entries(LEGACY_ORB)) if (save.seen[o]) save.seen[n] = 1; // v1 discoveries
   ads.rebind(save);
+  ENG.boot(save); // the Ledger looks at this purse without filing anything
 }
 // visual-only weather per theme; levels with a physics `weather` field use that instead
 const THEME_WEATHER = { farm: 'leaves', coop: 'leaves', hayfield: 'leaves', pond: 'leaves', windmill: 'leaves', redbarn: 'leaves', orchard: 'leaves', bramble: 'leaves', mushroom: 'fireflies', frozen: 'snow', blizzard: 'snow', dunes: 'sandstorm', haunted: 'ghosts', dragon: 'ash' };
@@ -203,7 +206,31 @@ function strikeFor(L, i) {
   return sel && open.some((S) => S.id === sel) ? sel : null;
 }
 let lastCoins = null;
+// the Ledger files every change of the purse under a reason: the press that caused it, or the one named by the code (win, treasure, taste)
+let ledWhy = 'other';
+const ledWhyOf = (id) => (/^(buy|item|chick|charge|hen|skin|kit|set|gate|cb):/.test(id) || id === 'deal' ? 'shop' : /^rewind/.test(id) ? 'rewind' : /^skip/.test(id) ? 'skip' : /^spin/.test(id) ? 'spin' : id === 'chest' ? 'chest' : id === 'tr:open' ? 'treasure' : id === 'home:chest' ? 'daily' : id === 'ad:coins' || id === 'double' ? 'video' : /^(nudge|sample|help|of)(:|$)/.test(id) ? 'gift' : id === 'go' || id === 'ally' || id === 'strike' || id === 'bank' ? 'use' : 'other');
+const ledger = (why) => ENG.sync(save, why, today());
+// what is waiting for the player's next visit: the Herald's reasons for a reminder, the Oracle's "something is waiting"
+function waitingCtx() {
+  const total = bestTotal(), ch = E.chestFor(total, save.wallet.chests), on = SP.open(save), spins = on ? SP.banked(save) : 0, left = on ? SP.left(save) : 0;
+  return { spins, spinLeft: spins ? 0 : left, starsToChest: ch && !ch.ready ? ch.at - total : 0, chestSkin: !!(ch && ch.reward.skin && !E.ownsSkin(save.wallet, ch.reward.skin)), daily: true, child: OF.childSafe(save), waiting: spins > 0 || left === 1 };
+}
+const appBridge = () => { try { return typeof window !== 'undefined' && window.EggApp ? window.EggApp : null; } catch (_) { return null; } };
+// the game came to the front: a session starts or goes on; a reminder that was pending is cancelled and graded
+function engOpen() {
+  const b = appBridge(); let from = '';
+  try { if (b && typeof b.openedFrom === 'function') from = String(b.openedFrom() || ''); } catch (_) { /* no shell */ }
+  const R = ENG.open(save, Date.now(), from);
+  try { if (b && typeof b.notifyCancel === 'function') b.notifyCancel(); } catch (_) { /* no shell */ }
+  if (R && R.reminder && R.reminder.fired) diag.note({ reminder: R.reminder });
+}
+// the game went to the background: the Oracle notes its guess for "comes back", the Herald plans one reminder (app only)
+function engClose() {
+  const P = ENG.close(save, waitingCtx(), Date.now()), b = appBridge();
+  try { if (P && b && typeof b.notifyAt === 'function') b.notifyAt(String(P.at), P.id, P.title, P.text); } catch (_) { /* no shell */ }
+}
 function persist() {
+  ledger(ledWhy);
   { // the Director counts coins spent (any drop in the purse is a spend: coins only ever leave through a purchase)
     const c = save.wallet ? save.wallet.coins || 0 : 0;
     if (lastCoins != null && c < lastCoins) DR.noteSpend(save, lastCoins - c, G.screen || 'any');
@@ -1162,6 +1189,7 @@ function keyboardTurn(dt) {
 // ---------------------------------------------------------------- buttons
 async function press(id) {
   if (DIAG_MARK.test(id)) diag.mark(id); // the speed log: a hitch right after one of these names it
+  ledger(ledWhy); ledWhy = ledWhyOf(id); // what changed before this press is filed under the last reason; what this press changes, under its own
   { const b = ui.buttons.find((q) => q.id === id); if (b && b.w < ui.w * 1.5) G.pressAt = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; } // coins a press brings fly from its button (purse.gain)
   audio.play(id === 'pause' || id === 'levels' || id === 'practice' ? 'ui_back' : 'ui_tap');
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
@@ -1253,6 +1281,7 @@ async function press(id) {
         if (hot.length) toast(`Win streak ${DR.hotCount(save)}: free ${hot.map((b) => E.BOOSTERS[b].name).join(' + ')}!`, 3);
         break;
       }
+      if (G.li >= 0 && G.level) ENG.levelStart(save, { levelId: G.level.id, hard: isHardLevel(G.level) }); // the Oracle notes its guess for this try
       setScreen('play');
       portal.gameplayStart();
       audio.musicIntro(); // the world's short intro sting, then its loop
@@ -1614,7 +1643,7 @@ async function press(id) {
       save.showFps = !save.showFps; persist();
       break;
     case 'set:log': { // hand the speed log to the share sheet (app) or save it as a file (web)
-      diag.note({ brain: BR.trace(save), who: BR.model(save), tries: DR.triesLine(save), mode: save.mode }); // the Brain's last decisions travel with the speed log; 0.8.15: tries and wins per level (how hard the game really is)
+      diag.note({ brain: BR.trace(save), who: BR.model(save), tries: DR.triesLine(save), mode: save.mode, eng: ENG.lines(save, { levelId: save.unlocked || 1 }), spin: save.spin || null }); // the Brain's last decisions travel with the speed log; 0.8.15: tries and wins per level (how hard the game really is)
       const how = diag.share();
       toast(how === 'download' ? 'Speed log saved to your downloads' : how ? 'Pick where to send the speed log' : 'Could not share the log here', 2.6);
       break;
@@ -1837,7 +1866,7 @@ async function rewarded(tag) {
   try { ok = await ads.rewarded(tag); } catch (_) { ok = false; }
   G.adBusy = false; diag.mark('ad:end:' + (ok ? 'ok' : 'no'));
   if (ok && !ads.premium) {
-    const now = Date.now(); OF.noteRewarded(save, now); BR.note(save, 'video');
+    const now = Date.now(); OF.noteRewarded(save, now); BR.note(save, 'video'); ENG.video(save);
     if (OF.skipChip(save, now, ads.moneyShop)) { OF.markChip(save, now); G.skipChip = { t0: G.t }; } // once a day, after the 3rd video of the day
     persist();
   } // the offer engine counts watched ads
@@ -4128,11 +4157,12 @@ function onWin() {
     G.result.coins = E.perkCoins(eggPerkId(), pre, G.sim.savedLog.length);
     G.result.perkCoins = G.result.coins - pre; G.result.perkGold = !!(pk && pk.id === 'golden');
     const P = E.payWin(save.wallet, G.result.coins, ads.moneyShop);
-    save.wallet = P.wallet; G.result.coins = P.coins; G.result.goldHour = P.doubled;
+    ledger(ledWhy); save.wallet = P.wallet; G.result.coins = P.coins; G.result.goldHour = P.doubled; ledger('win'); ledWhy = 'win';
   }
   if (G.result.bonus) save.bonus[sk(G.level.id, G.sim.mode)] = 1;
   if (G.li >= 0 && G.level) { // the Director: the result, a skin trial running down, and now and then a new one as a gift
     DR.noteResult(save, G.level.id, true, { saved: G.sim.savedLog.length }); BR.note(save, 'level');
+    ENG.result(save, { id: G.level.id, won: true, secs: G.sim.t, near: false }, { hard: isHardLevel(G.level), videoShown: !ads.premium && !earlyDays(), coinShown: false });
     DR.tickTrial(save);
     G.result.hot = DR.hotCount(save);
     // 2026-11-20 shop 2.0 (no interstitials in the app): when an ad break would have been due, the win card offers a
@@ -4144,7 +4174,7 @@ function onWin() {
   recordResult();
   if (G.li >= 0 && L.boss && E.bossTreasure(L.id) && !E.treasureOpened(save.wallet, L.id) && bossBeaten(L.id)) { // the boss treasure opens in the celebration, not on the map
     const w = E.openBossTreasure(save.wallet, L.id);
-    if (w) { save.wallet = w; G.result.treasure = E.bossTreasure(L.id); persist(); }
+    if (w) { save.wallet = w; G.result.treasure = E.bossTreasure(L.id); ledWhy = 'treasure'; persist(); ledWhy = 'win'; }
   }
   if (G.li >= 0) { // a taste (Director): a free try of a store item, after recordResult so a chick this win unlocks anyway is not "tasted"
     const nextOk = G.li + 1 < LEVELS.length && L.id + 1 >= STRIKE_FROM;
@@ -4152,7 +4182,7 @@ function onWin() {
     const T = DR.winTaste(save, { levelId: L.id, boss: !!L.boss, chicks });
     if (T) {
       DR.startTaste(save, T, Date.now());
-      if (T.kind === 'boost') save.wallet = E.tasteBooster(save.wallet, T.id);
+      if (T.kind === 'boost') { save.wallet = E.tasteBooster(save.wallet, T.id); ledger('gift'); }
       if (T.kind === 'chick') G.stkSel = { lid: L.id + 1, id: T.id }; // picked for the next level by itself
       G.result.gift = T; persist();
     }
@@ -4183,6 +4213,7 @@ function onFail() {
   if (G.li >= 0 && G.level) { // the Director: note the loss, then pick the one help card for the fail screen
     const st = G.sim.stats();
     DR.noteResult(save, G.level.id, false, { saved: st.saved }); BR.note(save, 'level');
+    { const canRew = !G.usedRewind && G.sim.canRewind(); ENG.result(save, { id: G.level.id, won: false, secs: G.sim.t, near: st.target >= 2 && st.saved === st.target - 1 }, { hard: isHardLevel(G.level), near: st.target >= 2 && st.saved === st.target - 1, videoShown: !ads.premium, coinShown: canRew && !ads.premium, price: DR.rewindPrice((G.rewindBuys || {})[G.level.id]) }); }
     DR.tickTrial(save);
     G.failHelp = earlyDays() ? null : DR.failHelp(save, failCtx(st));
     if (st.target >= 2 && st.saved === st.target - 1) BR.why(save, 'fail', 'soclose', `one egg short on level ${G.level.id}: ${earlyDays() || G.usedRewind || !G.sim.canRewind() ? 'said so, RETRY leads' : 'Rewind leads, RETRY under it'}`);
@@ -8505,7 +8536,8 @@ async function boot() {
   window.addEventListener('keyup', keyUp);
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { clearKeys(); if (G.screen === 'play') press('pause'); DR.noteSeen(save, Date.now()); persist(); } // the Director: when the app was last open (welcome-back gift)
+    if (document.hidden) { clearKeys(); if (G.screen === 'play') press('pause'); DR.noteSeen(save, Date.now()); engClose(); persist(); } // the Director: when the app was last open (welcome-back gift)
+    else engOpen();
     audioHold('hidden', document.hidden);
   });
   window.addEventListener('blur', clearKeys);
@@ -8600,7 +8632,7 @@ async function boot() {
     persist();
   }
   ads.attach(save, persist, onGrant);
-  OF.startSession(save, Date.now()); if (!DR.dirState(save).lastSeen) DR.noteSeen(save, Date.now()); persist();
+  OF.startSession(save, Date.now()); if (!DR.dirState(save).lastSeen) DR.noteSeen(save, Date.now()); engOpen(); persist();
   if (OF.childSafe(save) && ads.moneyShop) ads.setChildSafe(true); // the shell also remembers it; this keeps both in step
   applyAudioSettings();
   // title runs over the live next level. A brand-new player meets the title (the logo moment, one big PLAY), and PLAY goes
