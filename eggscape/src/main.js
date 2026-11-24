@@ -7597,12 +7597,15 @@ function rvTap(r) {
 // the reveals' layout (the hero in the upper middle, a row under it, the headline ribbon on top)
 function rvGeom() {
   const A = ui.A, u = ui.u, S = Math.min(A.w * 0.9, A.h * 0.46, 420 * u), cy = A.y + A.h * 0.52;
-  return { S, cx: A.cx, cy, heroY: cy - 0.3 * S, rowY: cy + 0.27 * S, hy: cy - 0.98 * S, hs: Math.min(39 * u, 0.12 * S) };
+  const ls = Math.max(17 * u, Math.min(27 * u, 0.085 * S)); // the lines of words
+  // room: the free height under the last line of words (the bag and, on a short screen, the stars live there); a wide screen has the corners free anyway
+  return { S, cx: A.cx, cy, heroY: cy - 0.3 * S, rowY: cy + 0.27 * S, hy: cy - 0.98 * S, hs: Math.min(39 * u, 0.12 * S), ls, room: A.w > A.h * 1.15 ? 1e4 : A.y1 - 8 * u - (cy + 0.74 * S + ls * 0.8) };
 }
-// where the stars wait through the reveals: a small row above the headline (no room there: the top left corner)
+// where the stars wait through the reveals: a small row above the headline (no room there: the bottom left corner,
+// across from the bag, under the last line of words)
 function miniStars() {
-  const A = ui.A, u = ui.u, g = rvGeom(), R = Math.min(20 * u, A.w * 0.052), top = g.hy - g.hs * 0.85 - A.y, mid = top >= 2 * R + 12 * u;
-  const x0 = mid ? A.cx : A.x + 14 * u + 3.3 * R, y = mid ? A.y + top / 2 : A.y + 12 * u + R;
+  const A = ui.A, u = ui.u, g = rvGeom(), R1 = Math.min(20 * u, A.w * 0.052), top = g.hy - g.hs * 0.85 - A.y, mid = top >= 2 * R1 + 12 * u, R = mid ? R1 : Math.min(R1, g.room / 2.3);
+  const x0 = mid ? A.cx : A.x + 14 * u + 3.3 * R, y = mid ? A.y + top / 2 : A.y1 - 8 * u - R * 1.1;
   return { R, stars: [0, 1, 2].map((q) => ({ x: x0 + (q - 1) * 2.3 * R, y: y - (mid && q === 1 ? R * 0.3 : 0) })) };
 }
 const eggName = (n) => n.replace(/ Egg$/, '') + ' Egg'; // the skins' names: "Robo Egg" and "Galaxy" alike
@@ -7636,7 +7639,7 @@ function drawReveal(r, drawStars) {
   const RV = r.rv, it = RV.list[RV.i], calm = save.calm, A = ui.A, u = ui.u, ink = 'rgba(60,28,6,0.9)', P = rvPlan(r, it);
   const t = calm ? P.set + 0.3 : RV.t, fin = calm ? 1 : clamp(RV.t / 0.18, 0, 1);
   dim(0.84 * (RV.i ? 1 : fin)); // the show sinks under the first one (deep: the prize alone on the page)
-  const { S, cx, cy, heroY, rowY, hy, hs } = rvGeom(), ls = Math.max(17 * u, Math.min(27 * u, 0.085 * S));
+  const { S, cx, cy, heroY, rowY, hy, hs, ls, room } = rvGeom();
   const opened = t >= P.open, oa = t - P.open; // oa: seconds since it opened
   const ant = calm || opened ? 0 : clamp((t - P.land - 0.12) / (P.open - P.land - 0.12), 0, 1); // the anticipation builds
   ctx.save(); ctx.globalAlpha = fin; // rays and a warm glow behind the prize (the glow beats harder before it opens)
@@ -7656,7 +7659,7 @@ function drawReveal(r, drawStars) {
     CB.confetti(ctx, cx, heroY, oa, { n: 46, speed: S * 1.9, g: S * 1.5, life: 1.9, seed: RV.i + 5, size: Math.max(6, S * 0.026) });
   };
   // where things go at the claim: the purse (top right, ui/purse.js floats it there), the bag (bottom right)
-  const purseAt = { x: A.x1 - 82 * u, y: A.y + 28 * u }, bagS = Math.min(84 * u, S * 0.27), bagAt = { x: A.x1 - 16 * u - bagS * 0.6, y: A.y1 - 14 * u - bagS * 0.6 };
+  const purseAt = { x: A.x1 - 82 * u, y: A.y + 28 * u }, bagS = Math.min(84 * u, S * 0.27, room * 0.92), bagAt = { x: A.x1 - 16 * u - bagS * 0.6, y: A.y1 - 8 * u - bagS * 0.56 }; // the bag keeps clear of the last line of words
   let bagN = 0; // things on their way to the bag this reveal
   const late = []; // things in flight to where they live: drawn over the words
   // one thing that jumps out of the hero (j: its turn), lands at (sx, sy), and at the claim flies to dst
