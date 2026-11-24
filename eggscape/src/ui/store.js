@@ -1786,6 +1786,59 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
   ui.text(str, x + w / 2, lineCy, { size: lineSize, align: 'center', maxW: w, color: tapped ? C.ink : C.ink2, tag: owned.length ? 'picker:line' : 'picker:hint' });
 }
 
+// 0.8.14 (mykee: "I have never ever seen the boosters ... they are hiding right below the chicks pane"): the level card's
+// boosters strip, pinned right above its big button on both tabs. A small BOOSTERS label, then one row of square tiles:
+// the free video booster first (state.ad: its booster id), the boosters you own (count on the corner; a tap arms one for
+// this level, the same 'boost:<id>' as the picker), then the cheapest ones to get with their coin price (a tap opens
+// the shop's Boosts row). state.mark(x, y, r): the caller's pulsing mark, on the video tile and on each owned booster
+// not armed yet. state.s: the card's scale. Fits in (x, y, w, h).
+export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
+  const { wallet, selected = new Set(), lastTapped = null, t = 0, hide = [], ad = null, mark = null } = state, s = state.s || ui.u;
+  const owned = BOOSTER_ORDER.filter((id) => ownedCount(wallet, id) > 0 && !hide.includes(id));
+  const toGet = BOOSTER_ORDER.filter((id) => !owned.includes(id) && !hide.includes(id) && BOOSTERS[id] && BOOSTERS[id].price > 0).sort((a, b) => BOOSTERS[a].price - BOOSTERS[b].price);
+  const lab = 14.5 * s, labH = 17 * s, c = Math.min(h - labH - 2 * s, 64 * s), gap = 8 * s;
+  const all = [...(ad && BOOSTERS[ad] ? [{ id: ad, ad: true }] : []), ...owned.map((id) => ({ id, own: true })), ...toGet.map((id) => ({ id }))];
+  const n = Math.max(1, Math.min(all.length, Math.floor((w + gap) / (c + gap))));
+  const items = all.slice(0, n);
+  // the label: BOOSTERS, or the one just tapped and what it does
+  const tapped = lastTapped && BOOSTERS[lastTapped] && ownedCount(wallet, lastTapped) > 0 ? BOOSTERS[lastTapped] : null;
+  let str = 'BOOSTERS';
+  if (tapped) { const full = `${tapped.name}: ${tapped.line}`; str = ui.measure(full, lab) <= w ? full : tapped.name; }
+  const lw = Math.min(w, ui.measure(str, lab));
+  if (!tapped && lw < w - 40 * s) { const ly = y + labH / 2, sw = (w - lw) / 2 - 12 * s; ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x, ly, sw, 1.5 * s); ctx.fillRect(x + w - sw, ly, sw, 1.5 * s); }
+  ui.text(str, x + w / 2, y + labH / 2, { size: lab, align: 'center', maxW: w, color: tapped ? C.ink : '#9a5a1c', tag: 'strip:label' });
+  const ty = y + labH + 2 * s, tw = n * c + (n - 1) * gap, x0 = x + w / 2 - tw / 2;
+  items.forEach((it, i) => {
+    const cx = x0 + i * (c + gap), id = it.id, B = BOOSTERS[id], on = it.own && selected.has(id);
+    if (it.ad) {
+      ui.button('adboost', '', cx, ty, c, c, { kind: 'ad', round: 14 * s });
+      drawBoosterIcon(ctx, id, cx + c / 2, ty + c * 0.38, c * 0.5, t);
+      const bh = c * 0.26, bw = bh * 1.38; drawAdBadge(ctx, cx + c / 2 - bw / 2, ty + c * 0.76, bw, bh);
+      if (mark) mark(cx + 3 * s, ty + 3 * s, 9 * s);
+    } else if (it.own) {
+      ui.button('boost:' + id, '', cx, ty, c, c, { kind: on ? 'primary' : 'tertiary', round: 14 * s });
+      drawBoosterIcon(ctx, id, cx + c * 0.48, ty + c * 0.46, c * 0.6, t);
+      const br = Math.min(c * 0.2, 11 * s), bcx = cx + c - br * 0.6, bcy = ty + br * 0.6;
+      ctx.beginPath(); ctx.arc(bcx, bcy, br, 0, Math.PI * 2); ctx.fillStyle = '#e8402e'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke();
+      ui.text(String(ownedCount(wallet, id)), bcx, bcy, { size: br * 1.2, align: 'center', maxW: br * 1.6, color: '#fff', noRecord: true });
+      if (on) { // armed: a white check, bottom right
+        const kx = cx + c * 0.76, ky = ty + c * 0.72, ks = c * 0.1;
+        ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(2, c * 0.07); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(kx - ks, ky); ctx.lineTo(kx - ks * 0.25, ky + ks * 0.8); ctx.lineTo(kx + ks * 1.1, ky - ks * 0.8); ctx.stroke(); ctx.restore();
+      } else if (mark) mark(cx + 3 * s, ty + 3 * s, 9 * s);
+    } else {
+      const afford = ((wallet && wallet.coins) || 0) >= B.price;
+      ui.button('shop:boosts', '', cx, ty, c, c, { kind: 'tertiary', round: 14 * s });
+      drawBoosterIcon(ctx, id, cx + c / 2, ty + c * 0.38, c * 0.5, t);
+      const ps = Math.min(c * 0.22, 14 * s), pw = Math.min(c - 6 * s, ui.measure(String(B.price), ps) + ps * 2), py = ty + c - ps * 1.45 - 6 * s;
+      ui.roundRect(cx + c / 2 - pw / 2, py, pw, ps * 1.45, ps * 0.72);
+      ctx.fillStyle = afford ? 'rgba(42,26,10,0.88)' : 'rgba(42,26,10,0.6)'; ctx.fill();
+      drawCoin(ctx, cx + c / 2 - pw / 2 + ps * 0.72, py + ps * 0.72, ps * 0.5, t);
+      ui.text(String(B.price), cx + c / 2 - pw / 2 + ps * 1.3, py + ps * 0.74, { size: ps, color: afford ? '#ffe27a' : '#d8c8a8', maxW: pw - ps * 1.4, noRecord: true });
+    }
+  });
+}
+
 // Art for an offer card (offers.js): a product by sku, or an item: 'charge' (a Chick Charge), 'coins', 'chick:<id>'.
 export function drawOfferArt(ctx, key, cx, cy, it, t, wallet) {
   if (IAP[key]) return drawIapArt(ctx, key, cx, cy, it, t, wallet);

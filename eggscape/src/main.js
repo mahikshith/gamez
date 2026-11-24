@@ -32,7 +32,7 @@ import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
-import { drawStore, drawCoin, drawBoosterPicker, boosterLayout, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, PROMISE } from './ui/store.js';
+import { drawStore, drawCoin, drawBoosterStrip, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, PROMISE } from './ui/store.js';
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as SK from './skip.js'; // 2026-11-23: the pause page's Skip level (one rewarded video)
 import { createPurse } from './ui/purse.js'; // 2026-11-23: one coin-gain effect for every place the purse grows
@@ -1227,8 +1227,7 @@ async function press(id) {
         const A = G.pickAsk && G.pickAsk.lid === G.level.id ? G.pickAsk : (G.pickAsk = { lid: G.level.id, n: 0, t: 0 });
         A.n++; A.t = G.t;
         if (A.n < 3) {
-          if (ui.A.w > ui.A.h * 1.15) { if (G.ipageR && G.ipAnchorR && G.ipAnchorR.chick != null) G.ipageR.to = G.ipAnchorR.chick; }
-          else { G.itab = 'chicks'; if (G.ipage) { G.ipage.y = 0; G.ipage.v = 0; G.ipage.to = null; } } // portrait: the Chicks tab
+          G.itab = 'chicks'; if (G.ipage) { G.ipage.y = 0; G.ipage.v = 0; G.ipage.to = null; } // the Chicks tab (0.8.14: on a phone on its side too)
           audio.play('cluck', { pitch: 0.8, vol: 0.5 });
           toast('Tap a chick first', 2.4); break;
         }
@@ -6026,8 +6025,49 @@ function teachChip(key) {
   };
   return { key, name, art };
 }
+// ---- the level card, 0.8.14 (mykee 2026-11-24, on his phone: "the salamanders are quite small", "I have never ever seen
+// the boosters", "the title is not centered, and the coins are not properly aligned", "highlight that in the green
+// color", "there shouldn't be overlapping text", "make it full screen"; and look at how Candy Crush and Angry Birds do
+// it: one header line, big art, one big button, a centred grid with equal margins).
+// One page over the whole safe rect, top to bottom: a header line (back, the level ribbon, the coins) with the level's
+// name and world under it; a cream sheet that rises from the bottom edge holding the tabs (Level | Chicks), the tab's
+// content, the boosters strip and the big button, both pinned at the bottom. The Level tab: the goal, a big stage with
+// nothing drawn on it, its caption under it, the tiles of what is on the level (the one playing in green), the reminder
+// chips and the stars. The Chicks tab: the carousel, and a big stage playing the power of the chick in its middle
+// (locked ones too, with their way in under it). A phone on its side: the stage on the left, the rest on the right.
+// Only when a small screen cannot hold it all does the middle scroll; the stage, the tiles and the button stay in view.
+const tabPulse = () => (save.calm ? 1 : 1 + 0.09 * (1 - Math.cos((G.t / 1.2) * Math.PI * 2))); // 1 -> 1.18 -> 1, every 1.2 s
+// a round mark on whatever needs the player (a tab, a booster to take, the free video): red, white rim, a "!", pulsing
+function tabMark(x, y, r) {
+  const k = tabPulse(), R = r * k;
+  ctx.save();
+  if (!save.calm && !PERF.low) { ctx.beginPath(); ctx.arc(x, y, R * 1.45, 0, 7); ctx.fillStyle = `rgba(255,70,40,${(0.32 * (k - 1) / 0.18).toFixed(3)})`; ctx.fill(); }
+  ctx.beginPath(); ctx.arc(x, y, R, 0, 7); ctx.fillStyle = '#e8402a'; ctx.fill(); ctx.lineWidth = Math.max(1.5, R * 0.2); ctx.strokeStyle = '#fff'; ctx.stroke();
+  ctx.fillStyle = '#fff'; ui.roundRect(x - R * 0.13, y - R * 0.58, R * 0.26, R * 0.72, R * 0.13); ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y + R * 0.42, R * 0.15, 0, 7); ctx.fill();
+  ctx.restore();
+}
+// the ring speed strip (levels 2 to 5) is drawn by its own helper; until it lands here it takes no room
+const ringSpeedStrip = () => 0; // STUB, replaced at merge
+// its height, measured once per level by drawing it where nothing shows (it may record buttons: those are taken back)
+function ringStripH(x, w, s) {
+  const key = (G.level && G.level.id) + ':' + G.li + ':' + Math.round(w) + ':' + s.toFixed(3);
+  if (G.rsMeas && G.rsMeas.key === key) return G.rsMeas.h;
+  const r0 = ui.rects.length, b0 = ui.buttons.length;
+  ctx.save(); ctx.globalAlpha = 0; let h = 0;
+  try { h = +ringSpeedStrip(x, -9999, w, s) || 0; } catch (e) { h = 0; }
+  ctx.restore();
+  ui.rects.length = r0; ui.buttons.length = b0;
+  G.rsMeas = { key, h };
+  return h;
+}
+// the chips that used to sit on the stage (the win streak, a free try, the egg's power): measured, then drawn in a row
+function perkItems(s) {
+  const out = [], H = 34 * s;
+  for (const f of [hotBadge, tryChip, perkChipCard]) { const w = f(0, 0, 9999, s, true); if (w > 0) out.push({ w, h: H, draw: (x, y, maxW) => f(x, y, maxW, s, false) }); }
+  return out;
+}
 function drawLevelIntro(L, acc) {
-  const section = pageSection, foeRow = foeCard, colH = pageColH, scrollCol = pageScroll;
   ui.calm = save.calm;
   introBackdrop();
   const u = ui.u, A = ui.A, C = ui.C, wo = worldOpener(L);
@@ -6035,174 +6075,23 @@ function drawLevelIntro(L, acc) {
   G.introAcc = tintHex(/^#[0-9a-f]{6}$/i.test((ui.skin && ui.skin.ribbon) || '') ? ui.skin.ribbon : acc);
   const kinds = G.li >= 0 && G.infoKinds ? G.infoKinds.filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 8) : [];
   const label = G.li === -2 ? 'Lab' : G.li < 0 ? `Daily Vault ${today().slice(5)}` : `Level ${L.id}`;
+  const world = wo ? (WORLDS[envOf(G.li)] || L.intro.title) : WORLDS[envOf(G.li)] || '';
   const INK = 'rgba(40,20,5,0.9)';
-  // slim: the Chicks step keeps only the level ribbon (the name and world were read on the Level tab), so the power's
-  // cartoon and the chicks to pick from fit the screen together
-  const head = (s, slim) => slim ? [{ h: 44 * s, gap: 0, draw: (x, y, w) => ui.ribbon(label, x + w / 2, y, clamp(ui.measure(label, 28 * s) + 74 * s, 160 * s, w), 44 * s, { s, color: acc, size: 28 * s, tag: 'intro:level' }) }] : [
-    { h: 44 * s, gap: 0, draw: (x, y, w) => ui.ribbon(label, x + w / 2, y, clamp(ui.measure(label, 28 * s) + 74 * s, 160 * s, w), 44 * s, { s, color: acc, size: 28 * s, tag: 'intro:level' }) },
-    { h: 42 * s, gap: 8 * s, draw: (x, y, w) => ui.text(L.name, x + w / 2, y + 22 * s, { size: 34 * s, align: 'center', maxW: w, color: '#fff', stroke: INK, shadow: 'rgba(0,0,0,0.35)', tag: 'intro:name' }) },
-    ...(wo || WORLDS[envOf(G.li)] ? [lineBlock(wo ? (WORLDS[envOf(G.li)] || L.intro.title) : WORLDS[envOf(G.li)], 17 * s, { color: '#ffe27a', stroke: INK, tag: 'intro:world', gap: 2 * s })] : []),
-  ];
-  // the goal card (2026-11-19, mykee: "too much verbosity"): eggs and the clock on top, the three stars as a short strip
-  // under them (mirrors computeResult: 1 enough eggs home, 2 none lost, 3 none cracked), the bonus goal last
-  const goal = (s) => {
-    const bon = G.li >= 0 && L.bonus ? BONUS_TEXT(L.bonus, G.sim.MD.fuse) : '', stars = G.li >= 0;
-    const H = 84 * s + (stars ? 70 * s : 0) + (bon ? 34 * s : 0) + 4 * s;
-    return [{ h: H, gap: 14 * s, draw: (x, y, w) => {
-      ui.well(x, y, w, H, { s, a: '#f3e2bd', b: '#fbf0d6' });
-      const n = L.eggs, tl = G.sim && G.sim.timeLimit, sp = Math.min(44 * s, (w * 0.55) / n), es = Math.min(38 * s, sp * 0.95);
-      const gx = tl ? x + w * 0.36 : x + w / 2, ey = y + 34 * s;
-      for (let i = 0; i < n; i++) { ctx.globalAlpha = i < L.target ? 1 : 0.38; drawEggIcon(ctx, gx + (i - (n - 1) / 2) * sp, ey, es, 'alive'); }
-      ctx.globalAlpha = 1;
-      ui.record({ x: gx - n * sp / 2, y: ey - 20 * s, w: n * sp, h: 40 * s }, 'intro:eggs');
-      const need = L.target === L.eggs ? `Bring all ${n} eggs home` : `Bring ${L.target} of ${n} eggs home`;
-      ui.text(need, gx, y + 68 * s, { size: 16 * s, align: 'center', color: C.ink, maxW: tl ? w * 0.64 : w - 24 * s, tag: 'intro:need' });
-      if (tl) { // the clock and its seconds
-        const cx = x + w * 0.83;
-        ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x + w * 0.68, y + 14 * s, 1.5 * s, 56 * s);
-        pictoClock(ctx, cx, y + 32 * s, 32 * s);
-        ui.text(`${Math.round(tl)} s`, cx, y + 68 * s, { size: 19 * s, align: 'center', color: C.warn, tag: 'intro:time', maxW: w * 0.3 });
-      }
-      let yy = y + 84 * s;
-      if (stars) {
-        ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x + 12 * s, yy, w - 24 * s, 1.5 * s);
-        const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0)).map((g) => g.short), cw3 = (w - 16 * s) / 3, sr = 9.5 * s;
-        for (let i = 0; i < 3; i++) {
-          const cx = x + 8 * s + cw3 * (i + 0.5);
-          if (i) { ctx.fillStyle = 'rgba(122,80,40,0.14)'; ctx.fillRect(cx - cw3 / 2, yy + 10 * s, 1.2 * s, 50 * s); }
-          for (let j = 0; j < 3; j++) drawStar(ctx, cx + (j - 1) * sr * 2.15, yy + 22 * s, sr, j <= i);
-          ui.text(lab[i], cx, yy + 50 * s, { size: 16 * s, align: 'center', color: C.ink, maxW: cw3 - 8 * s, tag: 'intro:star' + i });
-        }
-        yy += 70 * s;
-      }
-      if (bon) {
-        ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x + 12 * s, yy, w - 24 * s, 1.5 * s);
-        const str = 'Bonus: ' + bon, tw = Math.min(w - 40 * s, ui.measure(str, 15.5 * s)) + 30 * s, x0 = x + w / 2 - tw / 2;
-        pictoTarget(ctx, x0 + 11 * s, yy + 17 * s, 22 * s); ui.text(str, x0 + 28 * s, yy + 17 * s, { size: 15.5 * s, color: '#1f5fa8', maxW: w - 44 * s, tag: 'intro:bonus' });
-      }
-    } },
-    ...(G.li === -1 ? [lineBlock(dailyBest() ? `Today's best: ${dailyBest()}` : `First win today: +${DAILY_COINS} coins`, 16 * s, { color: '#9bd8ff', stroke: 'rgba(10,20,40,0.8)', tag: 'intro:daily', gap: 10 * s })] : []),
-    ];
-  };
-  const foes = (s, iw) => !kinds.length ? [] : [section(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'foes'), ...kinds.map((k, i) => foeRow(k, i, s, iw))];
-  // the chicks: big cards in a row that swipes sideways, and the picked chick's power in words under it
-  const chicks = (s, iw) => {
-    const T = introChicks(), locked = lockedChicks();
-    if (!T.open.length && locked.length) T.id = null;
-    if (!T.open.length && !locked.length) {
-      // 2026-11-23 (mykee: no empty or "none" sections): with no chick to take along the tab is the boosters' alone, and
-      // they take the whole page (the old "No villains here: your chicks rest" line is gone)
-      return { T, blocks: [] };
-    }
-    const items = [...T.open.map((S) => ({ S })), ...locked.map((c) => ({ S: STRIKE[c.id], locked: c }))];
-    const n = items.length, gap = 12 * s, one = n === 1;
-    const demo = !!T.id && !land; // the picked chick's power plays above the row (portrait)
-    const cw = one ? Math.min(iw, 380 * s) : Math.min(164 * s, (iw - 2 * gap) / 2.35), ch = one ? 136 * s : cw * (demo ? 1.16 : 1.3);
-    const ns = Math.min(18 * s, cw / 8.2), ls = Math.min(15 * s, cw / 10);
-    const lines = items.map(({ S }) => wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s - ls * 2.2).slice(0, 2));
-    const nw = cw - 14 * s, two = items.some(({ S }) => ui.measure(S.name, ns) > nw);
-    const nl = Math.max(...lines.map((l) => l.length)), textH = ns * 1.15 * (two ? 2 : 1) + 6 * s + nl * ls * 1.2 + ls * 0.6 + 6 * s;
-    const B = [{ ...section(T.need ? (pickAsked() < 60 ? 'TAP A CHICK FIRST' : 'PICK A CHICK TO HELP YOU') : 'YOUR CHICK', s, 'chick'), anchor: 'chick' }];
-    if (!one && !demo) B.push(lineBlock('Swipe for more. Tap one to take it.', 14 * s, { color: '#fff0d4', stroke: INK, tag: 'intro:swipe', gap: 2 * s }));
-    const rowH = ch + 30 * s;
-    B.push({ h: rowH, gap: 4 * s, draw: (x, y, w) => {
-      const R = G.car || (G.car = { y: 0, v: 0, max: 0, t: G.t, lid: null });
-      const total = n * cw + (n - 1) * gap, pad = 6 * s;
-      R.max = Math.max(0, total - w + 2 * pad);
-      if (R.lid !== L.id + ':' + G.li) { // a new level: the picked chick starts in view
-        R.lid = L.id + ':' + G.li; R.v = 0;
-        const si = Math.max(0, items.findIndex((it) => it.S.id === T.id));
-        R.y = clamp(si * (cw + gap) - (w - cw) / 2, 0, R.max);
-      }
-      glide(R);
-      const off = total <= w ? (w - total) / 2 : pad - R.y, V = { x, y, w, h: rowH };
-      G.carRect = V;
-      const r0 = ui.rects.length, b0 = ui.buttons.length;
-      ctx.save(); ctx.beginPath(); ctx.rect(x - 4 * s, y, w + 8 * s, rowH); ctx.clip();
-      const cy = y + 18 * s, tiles = [];
-      items.forEach(({ S, locked: LK }, i) => {
-        const rx = x + off + i * (cw + gap);
-        if (rx + cw < x - 10 * s || rx > x + w + 10 * s) return;
-        const Asel = (G.cardSel || (G.cardSel = {})), want = S.id === T.id ? 1 : 0, st = Asel[S.id] || (Asel[S.id] = { v: want, t: G.t });
-        const dt = Math.min(0.05, Math.max(0, G.t - st.t)); st.t = G.t; st.v += (want - st.v) * Math.min(1, dt * 14);
-        const pk = G.introPick && G.introPick.id === S.id ? G.introPick : null, bt = pk ? G.t - pk.t : 9;
-        chickCard(S, rx, cy, cw, ch, s, { sel: st.v, dim: !!T.id && S.id !== T.id && T.choice, locked: LK, tipGlow: !!(LK && G.introTip && G.introTip.id === S.id), need: T.need, i, acc: G.introAcc, wide: one, lines: lines[i], ls, ns, two, textH,
-          ...pickJump(bt, !!LK, T) });
-        const rect = { x: rx, y: cy, w: cw, h: ch }, bid = LK ? 'stk:buy:' + S.id : 'stk:pick:' + S.id;
-        ui.record(rect, 'btn:' + bid, 'btn:' + bid); ui.buttons.push({ id: bid, ...rect });
-        tiles.push({ id: S.id, locked: !!LK, ...rect });
-      });
-      pickHand(tiles, T, V, s);
-      ctx.restore();
-      clipRecorded(r0, b0, V);
-      if (R.max > 0) { // arrows where there is more, and a row of dots for where you are
-        const ay = cy + ch / 2, az = 15 * s;
-        if (R.y > 2) chevron(x + az * 0.6, ay, az, 'l');
-        if (R.y < R.max - 2) chevron(x + w - az * 0.6, ay, az, 'r', 0.9 + (save.calm ? 0 : 0.1 * Math.sin(G.t * 4)));
-        const pages = Math.min(n, Math.ceil(total / (cw + gap) - w / (cw + gap)) + 1), cur = Math.round(clamp(R.y / R.max, 0, 1) * (pages - 1));
-        for (let p = 0; p < pages; p++) { ctx.beginPath(); ctx.arc(x + w / 2 + (p - (pages - 1) / 2) * 14 * s, y + rowH - 5 * s, (p === cur ? 4 : 3) * s, 0, 7); ctx.fillStyle = p === cur ? '#ffe27a' : 'rgba(255,240,210,0.4)'; ctx.fill(); }
-      }
-    } });
-    // the chosen chick in words: what it does and what it costs you
-    // 0.8.10 (mykee: "the power-up page is empty or half empty"): with no chick picked yet the page still shows a power
-    // at work, that of the first chick in the row, under a line saying it is only a look
-    const prev = !T.id && T.open.length ? T.open[0] : null;
-    const S = T.id ? STRIKE[T.id] : prev, tipL = !S && G.introTip && locked.some((c) => c.id === G.introTip.id) ? (shortTip(G.introTip.line) || G.introTip.line) : '';
-    if (S) {
-      // 2026-11-20 (show, don't tell): the picked chick's power as a moving cartoon, then its upside and downside
-      const ul = wrapText(S.up || (POWER_WORDS[S.id] || [''])[0], 16 * s, iw - 30 * s).slice(0, 2), dl = wrapText('Downside: ' + (S.down || (POWER_WORDS[S.id] || ['', ''])[1]), 15 * s, iw - 30 * s).slice(0, 2);
-      const over = 12 * s + 10 * s + ul.length * 20 * s + 4 * s + dl.length * 19 * s + 8 * s + (demo ? 0 : 24 * s);
-      // the stage takes the room the page has left (so nothing is cut off at PLAY), within a sensible size
-      const stH = demo && G.ipAvail > 0 ? clamp(G.ipAvail - colH(B, s) - over - 22 * s, 150 * s, Math.min((iw - 24 * s) * 0.9, 300 * s)) : Math.min((iw - 24 * s) * 0.64, 250 * s);
-      const h = over + stH;
-      B.push({ h, gap: 8 * s, draw: (x, y, w) => {
-        ui.well(x, y, w, h, { s, a: '#f3e2bd', b: '#fbf0d6' });
-        let yy = y + 12 * s;
-        if (!demo) { yy += 11 * s; ui.text(S.name, x + w / 2, yy, { size: 19 * s, align: 'center', color: S.col ? ui.tint(S.col[1], -0.3) : C.ink, maxW: w - 24 * s, tag: 'intro:pickname' }); yy += 15 * s; }
-        const Hc = G.howC || (G.howC = { id: null, t0: G.t });
-        if (Hc.id !== S.id) { Hc.id = S.id; Hc.t0 = G.t; }
-        const foe = kinds.find((k) => !/^(icicles|lava|lightning|embers|quake|rain|current|gusts|popthorns|vines|doors|curse|thornorb)$/.test(k)) || 'snake', th = G.theme && G.theme.palette;
-        drawHowTo(ctx, chickPlan(S.id, '', foe.replace(/^boss:/, '') in VILLAIN_INFO ? foe.replace(/^boss:/, '') : foe), x + 12 * s, yy, w - 24 * s, stH, G.t - Hc.t0, { world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark });
-        ui.roundRect(x + 12 * s, yy, w - 24 * s, stH, Math.min(18, stH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
-        ui.record({ x: x + 12 * s, y: yy, w: w - 24 * s, h: stH }, 'intro:chickstage');
-        yy += stH + 10 * s + 9 * s;
-        ul.forEach((l, i) => { ui.text(l, x + w / 2, yy, { size: 16 * s, align: 'center', color: C.ink, maxW: w - 24 * s, tag: 'intro:pickup' + i }); yy += 20 * s; });
-        yy += 4 * s;
-        dl.forEach((l, i) => { ui.text(l, x + w / 2, yy, { size: 15 * s, align: 'center', color: C.warn, maxW: w - 24 * s, tag: 'intro:pickdn' + i }); yy += 19 * s; });
-      } });
-      // 0.8.7 (mykee: the power's cartoon was cut off at the fold; "make it full screen, guide the user"): the picked
-      // chick's power plays FIRST, on this level's own villain, and the row of chicks to pick from sits under it
-      if (demo) B.splice(1, 0, B.pop());
-    } else if (tipL) B.push(lineBlock(tipL, 15 * s, { color: '#ffe27a', stroke: INK, tag: 'intro:offer', gap: 6 * s }));
-    return { T, blocks: B };
-  };
-  // 2026-11-23 (mykee: "we don't show it as an empty kind of a thing ... it should be dynamic"): the booster well takes the
-  // room the page has left. Alone on its tab (a level with no chicks yet) it fills the page with a grid of big named tiles
-  // instead of one thin row over an empty screen; under the chicks it is one row whose tiles grow to fill it.
-  const boost = (s, room = 0) => {
-    if (!save.wallet) return [];
-    const hd = section('BOOSTERS', s, 'boost'), r0 = room - hd.h - 6 * s - 8 * s - 26 * s, rows = r0 >= 250 * s ? 4 : r0 >= 170 * s ? 2 : 1;
-    const st = { wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t, rows };
-    const iw0 = Math.min(A.w - 2 * pad, 520 * s) - 12 * s, wH = rows > 1 ? Math.min(clamp(r0, 76 * s, 560 * s), boosterLayout(ui, iw0, clamp(r0, 76 * s, 560 * s) - 8 * s, st).used + 8 * s) : 96 * s; // (the well hugs its tiles; one row: tiles big enough to read)
-    return [hd, { h: wH, gap: 8 * s, draw: (x, y, w) => {
-      ui.well(x, y, w, wH, { s, a: '#dcbb84', b: '#e9d2a2' });
-      drawBoosterPicker(ui, ctx, x + 6 * s, y + 4 * s, w - 12 * s, wH - 8 * s, st);
-    } }];
-  };
-  // the Level tab's NEXT (PLAY when the level has no chick step), pinned under the card's scroll area (2026-11-23)
-  const nextPin = (s) => ({ h: 62 * s, gap: 0, draw: (x, y, w) => { const toCh = introHasChicks(); ui.button(toCh ? 'inext' : 'go', toCh ? 'NEXT' : 'PLAY', x, y, w, 62 * s, { kind: 'primary', shimmer: true, icon: toCh ? ICON.next : ICON.play, size: 28 * s }); } });
-  const play = (s, w0, need) => ({ h: 66 * s, gap: 0, draw: (x, y, w) => ui.button('go', need ? 'PICK A CHICK' : 'PLAY', x + (w - w0) / 2, y, w0, 66 * s, need ? { kind: 'off', size: 24 * s } : { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * s }) }); // need: the button says what is missing (it still takes the tap and nudges)
-  const links = (s) => ({ h: 50 * s, gap: 10 * s, draw: (x, y, w) => {
-    const ad = !G.adBoost && !G.golden && !earlyDays(), bw = ad ? w * 0.4 : w * 0.5, gp = 10 * s, aw = w - bw - gp, tw = ad ? w : bw, x0 = x + (w - tw) / 2;
-    ui.button(G.li === -1 ? 'back' : 'levels', G.li === -1 ? 'Menu' : 'Levels', x0, y, bw, 50 * s, { kind: 'tertiary', icon: ICON.grid, size: 17 * s });
-    if (ad) ui.button('adboost', 'Free booster', x0 + bw + gp, y, aw, 50 * s, { kind: 'ad', ad: true, size: 17 * s });
-  } });
+  const pg = G.ipage || (G.ipage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
+  if (pg.lid !== L.id + ':' + G.li) { pg.lid = L.id + ':' + G.li; pg.y = 0; pg.v = 0; G.itab = 'level'; }
+  const T = introChicks(), locked = lockedChicks();
+  if (!T.open.length && locked.length) T.id = null;
+  const items = [...T.open.map((S) => ({ S })), ...locked.map((c) => ({ S: STRIKE[c.id], locked: c }))];
+  const hasCh = items.length > 0, lvTab = !hasCh || G.itab !== 'chicks';
+  const early = earlyDays(), showBoost = !!save.wallet && !early;
+  const s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, gp = 6 * s;
+  const th = G.theme && G.theme.palette;
+  const iwP = Math.min(A.w - 2 * pad, 520 * s), W0 = Math.min(A.w - 2 * pad, 1180 * s), gap2 = 20 * s; // portrait: one column; on its side: two
+  const lwL = Math.min((W0 - gap2) * 0.52, 640 * s), rwL = W0 - gap2 - lwL;
+  const howOpts = (extra) => ({ rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark, ...extra });
+  const stageFrame = (x, y, w, h) => { ui.roundRect(x, y, w, h, Math.min(18 * s, h * 0.08)); ctx.lineWidth = 3 * s; ctx.strokeStyle = 'rgba(90,50,16,0.6)'; ctx.stroke(); };
 
-  // the how-to card (2026-11-20, mykee's friend: "nobody reads the instructions"): a short looping cartoon of the move
-  // that beats each villain (or, with no villain, of the basic move), one short line under it, the goal and the stars,
-  // and PLAY right inside the card. Several villains take turns (tap the stage for the next one).
-  // 0.8.10: the scenes come from what the level holds (levelThings): the fixed entries below, then each thing this level is
-  // the first to have, then the villains (new ones first); at most three scenes, the rest as reminder chips under the stage
+  // ---- what the level teaches (0.8.10 / 2026-11-23): the scenes, the tiles under the stage, the reminder chips
   const howTeach = () => {
     if (G.howT && G.howT.lid === pg.lid) return G.howT;
     const toys = G.li >= 0 ? { 2: ['flame'], 3: ['twin', 'curtain'], 4: ['portal', 'glow'], 18: ['bulk'], 22: ['warp'], 27: ['warp'], 43: ['bait'], 44: ['sweep', 'twister'], 47: ['magnet'] }[L.id] || [] : []; // the first-five ladder: each level's new toy, first (2026-11-20: and the Practice content placed in L22-L47)
@@ -6234,206 +6123,384 @@ function drawLevelIntro(L, acc) {
     const shown = new Set(P.filter((p) => p.move === 'floor').map((p) => 'floor:' + p.surf).concat(P.filter((p) => p.move === 'toy').map((p) => 'toy:' + p.toy), P.some((p) => p.teach) ? ['chick'] : []));
     const chips = things.filter((k) => !shown.has(k) && !acted.includes(k) && !k.startsWith('mix:') && (k !== 'chick' || chickOn)).map((k) => ({ ...teachChip(k), fresh: teachFirst(k) === L.id }));
     chips.sort((a, b) => b.fresh - a.fresh); // the new ones first
-    const tiles = P.map((p, i) => { const T = howTile(p); return T && { ...T, i, fresh: auto.includes(i) && !!(p.kind ? newK(p.kind) : p.move !== 'rooster') }; }).filter(Boolean);
+    const tiles = P.map((p, i) => { const Ti = howTile(p); return Ti && { ...Ti, i, fresh: auto.includes(i) && !!(p.kind ? newK(p.kind) : p.move !== 'rooster') }; }).filter(Boolean);
     return (G.howT = { lid: pg.lid, plans: P, chips, auto, tiles: tiles.length > 1 ? tiles : [] }); // one scene alone needs no tiles: its stage and caption already say it all
   };
-  const howPlans = () => howTeach().plans;
-  const howCard = (s, iw, availH, withPlay, need) => {
-    const plans = howPlans(), n = plans.length, pd = 12 * s, chips = howTeach().chips, HT = howTeach(), tiles = HT.tiles, auto = HT.auto;
-    const goalH = 54 * s, capH = 34 * s, dotsH = n > 1 ? 18 * s : 0, playH = withPlay ? 76 * s : 0, starH = G.li >= 0 ? 52 * s : 0, chipH = chips.length ? 38 * s : 0;
-    const fixed = pd * 2 + goalH + capH + dotsH + playH + chipH + 6 * s;
-    // the threat tiles (2026-11-23) take the place of the dots; the stage keeps the size it had (a longer card scrolls)
-    const tn = tiles.length, tCols = Math.min(tn, 4), tRows = tn ? Math.ceil(tn / tCols) : 0, tGap = 6 * s, tileH = (tn <= 2 ? 72 : 64) * s, tilesH = tn ? tRows * tileH + (tRows - 1) * tGap + 10 * s : 0;
-    let stageH = Math.min((iw - 2 * pd) * 0.6, 260 * s), stars = starH > 0;
-    if (availH && fixed + starH + stageH < availH) stageH = Math.min((iw - 2 * pd) * 1.02, 390 * s, availH - fixed - starH); // a tall phone: a bigger stage
-    if (availH && fixed + starH + stageH > availH) {
-      const room = availH - fixed - starH;
-      if (room >= 140 * s) stageH = room; else { stars = false; stageH = clamp(availH - fixed, 120 * s, stageH); }
-    }
-    const H = fixed + stageH + (stars ? starH : 0) + (tn ? tilesH - dotsH : 0), goalsFirst = !!(availH && stars && H + 24 * s > availH + 34 * s); // (the scroll column adds 24 px; availH is its height less 34 px)
-    return [{ h: H, gap: 4 * s, draw: (x, y, w) => {
-      ui.well(x, y, w, H, { s, a: '#f3e2bd', b: '#fbf0d6' });
-      // the goal: eggs to bring home and the clock, one row
-      const nE = L.eggs, tl = G.sim && G.sim.timeLimit, sp = Math.min(34 * s, (w * 0.3) / nE), es = Math.min(30 * s, sp * 0.95);
-      let gx = x + pd + 6 * s + es / 2;
-      for (let i = 0; i < nE; i++) { ctx.globalAlpha = i < L.target ? 1 : 0.38; drawEggIcon(ctx, gx + i * sp, y + pd + goalH / 2, es, 'alive'); }
-      ctx.globalAlpha = 1;
-      const need2 = L.target === L.eggs ? `Bring all ${nE} home` : `Bring ${L.target} of ${nE} home`, tx = gx + nE * sp - sp / 2 + 10 * s;
-      ui.text(need2, tx, y + pd + goalH / 2, { size: 18 * s, color: C.ink, maxW: x + w - pd - tx - (tl ? 86 * s : 0), tag: 'intro:need' });
-      if (tl) { const cx2 = x + w - pd - 70 * s; pictoClock(ctx, cx2, y + pd + goalH / 2, 26 * s); ui.text(`${Math.round(tl)} s`, cx2 + 18 * s, y + pd + goalH / 2, { size: 19 * s, color: C.warn, tag: 'intro:time', maxW: 56 * s }); }
-      // the stage
-      const Hw = G.how || (G.how = { i: 0, t0: G.t, lid: null });
-      if (Hw.lid !== pg.lid) { Hw.lid = pg.lid; Hw.i = auto[0] || 0; Hw.t0 = G.t; } // the new one first (L31: the gate doors)
-      if (!save.calm && n > 1 && G.t - Hw.t0 >= (plans[Hw.i % n].loop || HOWTO_LOOP)) { const at = auto.indexOf(Hw.i % n); Hw.i = at < 0 ? auto[0] : auto[(at + 1) % auto.length]; Hw.t0 = G.t; } // the new ones take turns; a tapped reminder plays once (the ice scene plays twice as long: too late, then early)
-      const plan = plans[Hw.i % n], th = G.theme && G.theme.palette, sx = x + pd, sy2 = y + pd + goalH, sw = w - 2 * pd;
-      const ho = { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark };
-      drawHowTo(ctx, plan, sx, sy2, sw, stageH, G.t - Hw.t0, ho);
-      ui.roundRect(sx, sy2, sw, stageH, Math.min(18, stageH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
-      ui.record({ x: sx, y: sy2, w: sw, h: stageH }, 'intro:stage');
-      hotBadge(sx + 8 * s, sy2 + stageH - 8 * s, s); // bottom left, clear of the villain and the egg
-      tryChip(sx + 8 * s, sy2 + 8 * s, sw * 0.68, s); // top left: a free try running
-      perkChipCard(sx + sw - 8 * s, sy2 + stageH - 8 * s, sw * 0.62, s); // bottom right: the equipped egg's power
-      if (n > 1) { ui.buttons.push({ id: 'how:next', x: sx, y: sy2, w: sw, h: stageH }); }
-      // a name tag on the stage: who this is (BOSS in red)
-      if (plan.teach) { // the power chick's first level: its name in the chick's own colour
-        const S = STRIKE[plan.power] || {}, nm = 'New: ' + (S.name || 'Chick'), ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
-        ui.roundRect(sx + sw - 8 * s - tw, sy2 + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = 'rgba(46,120,40,0.9)'; ctx.fill();
-        ui.text(nm, sx + sw - 8 * s - tw / 2, sy2 + 21 * s, { size: ts, align: 'center', color: '#fff', maxW: tw - 12 * s, noRecord: true });
-      } else if (plan.kind && plan.move !== 'rooster') {
-        const I = VILLAIN_INFO[plan.kind] || { name: plan.kind }, nm = I.name, ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
-        ui.roundRect(sx + sw - 8 * s - tw, sy2 + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = I.group === 'boss' ? 'rgba(160,30,40,0.9)' : 'rgba(30,24,40,0.72)'; ctx.fill();
-        ui.text(nm, sx + sw - 8 * s - tw / 2, sy2 + 21 * s, { size: ts, align: 'center', color: '#fff', maxW: tw - 12 * s, noRecord: true });
-      } else if (plan.move === 'toy' || plan.move === 'floor') { // the first-five ladder: the level's new toy (0.8.10: and a new ring floor; a toy shown again has no "New")
-        const nm = (plan.again ? '' : 'New: ') + plan.name, ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
-        ui.roundRect(sx + sw - 8 * s - tw, sy2 + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = 'rgba(46,120,40,0.9)'; ctx.fill();
-        ui.text(nm, sx + sw - 8 * s - tw / 2, sy2 + 21 * s, { size: ts, align: 'center', color: '#fff', maxW: tw - 12 * s, noRecord: true });
-      } else if (plan.move === 'rooster') {
-        const nm = 'Papa Rooster helps', ts = 15 * s, tw = ui.measure(nm, ts) + 22 * s;
-        ui.roundRect(sx + sw - 8 * s - tw, sy2 + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = 'rgba(200,60,30,0.9)'; ctx.fill();
-        ui.text(nm, sx + sw - 8 * s - tw / 2, sy2 + 21 * s, { size: ts, align: 'center', color: '#fff', noRecord: true });
-      }
-      let yy = sy2 + stageH;
-      // under the stage: what it does while the harm plays (red), then what to do (green)
-      const harmNow = plan.kind && plan.move !== 'rooster' && !save.calm && (ho._phase === 'harm' || (!plan.harm && ho._pt < 1.6));
-      ui.text(harmNow ? threatWords(plan.kind) : plan.cap, x + w / 2, yy + capH / 2 + 1 * s, { size: 17.5 * s, align: 'center', color: harmNow ? '#b8321e' : '#2d6a1c', maxW: w - 2 * pd, tag: 'intro:cap' });
-      yy += capH;
-      const rowTiles = () => {
-      if (tn) { // every threat (and new thing) of the level: its art and two or three words; the one playing is lit; a tap replays it
-        const cw = (w - 2 * pd - (tCols - 1) * tGap) / tCols, fs = 14 * s;
-        tiles.forEach((T, k) => {
-          const c = k % tCols, r = Math.floor(k / tCols), inRow = Math.min(tCols, tn - r * tCols), rx = x + pd + c * (cw + tGap) + ((tCols - inRow) * (cw + tGap)) / 2, ry = yy + 4 * s + r * (tileH + tGap), on = T.i === Hw.i % n;
-          ui.roundRect(rx, ry, cw, tileH, 12 * s); ctx.fillStyle = on ? 'rgba(255,214,110,0.55)' : 'rgba(122,80,40,0.10)'; ctx.fill();
-          ctx.lineWidth = (on ? 2.5 : 1.5) * s; ctx.strokeStyle = on ? '#c9842a' : T.boss ? 'rgba(160,30,40,0.55)' : 'rgba(122,80,40,0.35)'; ctx.stroke();
-          const ar = Math.min(tileH * 0.29, cw * 0.24);
-          ctx.save(); ctx.beginPath(); ctx.rect(rx + 2 * s, ry + 2 * s, cw - 4 * s, tileH - fs - 8 * s); ctx.clip(); T.art(ctx, rx + cw / 2, ry + 4 * s + ar * 1.05, ar); ctx.restore();
-          ui.text(T.name, rx + cw / 2, ry + tileH - fs * 0.5 - 6 * s, { size: fs, align: 'center', color: T.boss ? '#a01e28' : C.ink, maxW: cw - 8 * s, tag: 'intro:tile' + k });
-          if (T.fresh && tn > 1) { ctx.beginPath(); ctx.arc(rx + cw - 9 * s, ry + 9 * s, 5 * s, 0, 7); ctx.fillStyle = '#3cb043'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); } // a green dot: new on this card
-          ui.buttons.push({ id: 'how:pick:' + T.i, x: rx, y: ry, w: cw, h: tileH });
-        });
-        yy += tilesH;
-      } else if (n > 1) { for (let q = 0; q < n; q++) { ctx.beginPath(); ctx.arc(x + w / 2 + (q - (n - 1) / 2) * 16 * s, yy + 6 * s, (q === Hw.i % n ? 5 : 3.5) * s, 0, 7); ctx.fillStyle = q === Hw.i % n ? '#c9842a' : 'rgba(120,80,30,0.35)'; ctx.fill(); } yy += dotsH; }
-      };
-      const rowChips = () => {
-      if (chips.length) { // 0.8.10: what this level also holds, taught on an earlier card: one row of small chips (those that fit)
-        const ch = 30 * s, fs = 13.5 * s, gp = 6 * s, room = w - 2 * pd, ws = chips.map((c) => ch + ui.measure(c.name, fs) + 10 * s);
-        let k = 0, tot = 0; while (k < chips.length && tot + ws[k] + (k ? gp : 0) <= room) { tot += ws[k] + (k ? gp : 0); k++; }
-        let cx4 = x + (w - tot) / 2; const cy4 = yy + 4 * s;
-        for (let i = 0; i < k; i++) {
-          const c = chips[i];
-          ui.roundRect(cx4, cy4, ws[i], ch, ch / 2); ctx.fillStyle = c.fresh ? 'rgba(46,120,40,0.16)' : 'rgba(122,80,40,0.12)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = c.fresh ? 'rgba(46,120,40,0.7)' : 'rgba(122,80,40,0.4)'; ctx.stroke();
-          c.art(ctx, cx4 + ch / 2 + 1 * s, cy4 + ch / 2, ch * 0.36);
-          ui.text(c.name, cx4 + ch + 2 * s, cy4 + ch / 2 + 0.5 * s, { size: fs, color: c.fresh ? '#2d6a1c' : C.ink, maxW: ws[i] - ch - 6 * s, tag: 'intro:chip' + i });
-          cx4 += ws[i] + gp;
-        }
-        yy += chipH;
-      }
-      };
-      const rowStars = () => {
-      if (stars) { // the three stars, short
-        ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x + pd, yy, w - 2 * pd, 1.5 * s);
-        const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0)).map((g) => g.short), cw3 = (w - 2 * pd) / 3, sr = 12 * s;
-        for (let i = 0; i < 3; i++) {
-          const cx3 = x + pd + cw3 * (i + 0.5);
-          if (i) { ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(cx3 - cw3 / 2, yy + 8 * s, 1.2 * s, starH - 14 * s); }
-          drawStar(ctx, cx3, yy + 17 * s, sr, true); // one star for each goal
-          ui.text(lab[i], cx3, yy + 38 * s, { size: 14.5 * s, align: 'center', color: C.ink, maxW: cw3 - 6 * s, tag: 'intro:star' + i });
-        }
-        yy += starH;
-      }
-      };
-      // 2026-11-23 (coordinator: the goals seen without scrolling where possible): a card that scrolls puts the star
-      // goals right under the caption, the tiles and chips after them; a card that fits keeps the old order
-      if (goalsFirst) { rowStars(); rowTiles(); rowChips(); } else { rowTiles(); rowChips(); rowStars(); }
-      // 0.8.7 (mykee: "rather than PLAY, show NEXT, then the chick picks"): with chicks to choose from, the Level tab leads
-      // on to the Chicks tab, and PLAY waits there; a level with no chicks yet plays straight away
-      // 2026-11-23 (coordinator): NEXT / PLAY is no longer inside the card but pinned under it (nextPin), always whole in view
-    } }];
+  const HT = howTeach(), plans = HT.plans, nP = plans.length, auto = HT.auto;
+  const Hw = G.how || (G.how = { i: 0, t0: G.t, lid: null });
+  if (Hw.lid !== pg.lid) { Hw.lid = pg.lid; Hw.i = auto[0] || 0; Hw.t0 = G.t; } // the new one first (L31: the gate doors)
+  if (!save.calm && nP > 1 && G.t - Hw.t0 >= (plans[Hw.i % nP].loop || HOWTO_LOOP)) { const at = auto.indexOf(Hw.i % nP); Hw.i = at < 0 ? auto[0] : auto[(at + 1) % auto.length]; Hw.t0 = G.t; } // the new ones take turns; a tapped reminder plays once
+  const plan = plans[Hw.i % nP];
+
+  // ---- the header: back on the left, the level ribbon in the middle, the coins on the right, one centre line
+  const HDR = 44 * s;
+  const header = (x, y, w) => {
+    ui.button(G.li === -1 ? 'back' : 'levels', '', x, y, HDR, HDR, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: HDR / 2 });
+    const cbw = early ? 0 : Math.max(96 * s, ui.measure(String(save.wallet.coins), 18 * s) + 60 * s);
+    if (cbw) purseBtn(x + w - cbw, y, cbw, HDR, 18 * s); // the coins roll and pop like every other counter (ui/purse.js)
+    const tail = 16 * s, side = Math.max(HDR, cbw) + 8 * s + tail, rwMax = Math.max(90 * s, w - 2 * side);
+    const rw = Math.min(rwMax, Math.max(150 * s, ui.measure(label, 25 * s) + 48 * s));
+    ui.ribbon(label, x + w / 2, y + 2 * s, rw, HDR - 6 * s, { s, color: acc, size: 25 * s, tag: 'intro:level' });
+    return { ribL: x + w / 2 - rw / 2 - tail };
   };
-  // two quick tabs under the title (portrait): Level (the goal, stars, villains) and Chicks (the helper chick, boosters)
-  const tabs = (s, P) => ({ h: 52 * s, gap: 10 * s, draw: (x, y, w) => {
-    const T = P.T, hasCh = T.open.length || lockedChicks().length, cur = G.itab === 'chicks' ? 'chicks' : 'level';
-    ui.roundRect(x, y, w, 52 * s, 26 * s); ctx.fillStyle = 'rgba(24,13,5,0.62)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(255,226,122,0.4)'; ctx.stroke();
-    const sw = (w - 10 * s) / 2;
-    [['level', 'Level', (c, X, Y, S) => pictoTarget(c, X, Y, S * 0.9)], ['chicks', hasCh ? 'Chicks' : 'Boosters', T.id ? (c, X, Y, S) => pictoPower(c, T.id, X, Y, S * 1.05, G.t) : null]].forEach(([id, lab, icon], i) => {
-      const on = cur === id, bx = x + 5 * s + i * sw;
-      ui.button('itab:' + id, lab, bx, y + 5 * s, sw, 42 * s, { kind: on ? 'gold' : 'tertiary', size: 19 * s, icon: icon || undefined });
-      if (id === 'chicks' && T.need && !on) { // a first-timer still has to pick: a pulsing dot on the tab
-        const pr = 9 * s * (save.calm ? 1 : 1 + 0.12 * Math.sin(G.t * 5)), dx = bx + sw - 10 * s, dy = y + 9 * s;
-        ctx.beginPath(); ctx.arc(dx, dy, pr, 0, 7); ctx.fillStyle = '#e8402a'; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = '#fff'; ctx.stroke();
-        ui.text('!', dx, dy + 0.5 * s, { size: 13 * s, align: 'center', color: '#fff', noRecord: true });
+  // the level's name (big) and its world (small): one compact block
+  const nameH = 31 * s + (world ? 18 * s : 0);
+  const nameBlock = (x, y, w) => {
+    ui.text(L.name, x + w / 2, y + 15 * s, { size: 27 * s, align: 'center', maxW: w, color: '#fff', stroke: INK, shadow: 'rgba(0,0,0,0.35)', tag: 'intro:name' });
+    if (world) ui.text(world, x + w / 2, y + 31 * s + 9 * s, { size: 15 * s, align: 'center', maxW: w, color: '#ffe27a', stroke: INK, tag: 'intro:world' });
+  };
+  // a cream sheet rising from the bottom edge: everything below the title sits on it (no card floating on the dark)
+  const sheet = (x, y, w) => {
+    const full = x <= A.x + 1 && x + w >= A.x1 - 1;
+    const sx = full ? -8 * s : x, sw = full ? W_ + 16 * s : w;
+    ui.frame(sx, y, sw, H_ - y + 40 * s, { s, r: 26 * s, shadow: false, plain: true });
+  };
+
+  // ---- the tabs, with a pulsing mark on the one that needs the player
+  const TABH = 42 * s;
+  const newChick = T.open.some((S) => !S.premium && S.unlock === L.id && G.li >= 0);
+  const chickMark = T.need || newChick || (!early && locked.some((c) => c.canAfford));
+  const tabs = (x, y, w) => {
+    const cur = lvTab ? 'level' : 'chicks';
+    ui.roundRect(x, y, w, TABH, TABH / 2); ctx.fillStyle = 'rgba(110,64,22,0.2)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(110,64,22,0.35)'; ctx.stroke();
+    const sw = (w - 8 * s) / 2;
+    [['level', 'Level', (c, X, Y, S) => pictoTarget(c, X, Y, S * 0.9)], ['chicks', 'Chicks', T.id ? (c, X, Y, S) => pictoPower(c, T.id, X, Y, S * 1.05, G.t) : null]].forEach(([id, lab, icon], i) => {
+      const on = cur === id, bx = x + 4 * s + i * sw;
+      ui.button('itab:' + id, lab, bx, y + 4 * s, sw, TABH - 8 * s, { kind: on ? 'gold' : 'tertiary', size: 19 * s, icon: icon || undefined, round: (TABH - 8 * s) / 2 });
+      if (id === 'chicks' && chickMark && !on) tabMark(bx + sw - 16 * s, y + TABH / 2 - 1 * s, 10 * s);
+    });
+  };
+
+  // ---- the Level tab's pieces
+  const perks = perkItems(s);
+  const perkRows = (w) => { const rows = []; let cur = []; let cw = 0; for (const p of perks) { if (cur.length && cw + gp + p.w > w) { rows.push(cur); cur = []; cw = 0; } cw += (cur.length ? gp : 0) + Math.min(p.w, w); cur.push(p); } if (cur.length) rows.push(cur); return rows; };
+  const perkBlock = (w) => { const R = perkRows(w); return !R.length ? null : { h: R.length * 34 * s + (R.length - 1) * 6 * s, gap: gp, draw: (x, y, ww) => {
+    R.forEach((row, r) => { const tw = row.reduce((a, p) => a + Math.min(p.w, ww), 0) + (row.length - 1) * gp; let cx = x + (ww - tw) / 2; for (const p of row) { p.draw(cx, y + r * 40 * s, Math.min(p.w, ww)); cx += Math.min(p.w, ww) + gp; } });
+  } }; };
+  const goalRow = { h: 30 * s, gap: gp, draw: (x, y, w) => {
+    const nE = L.eggs, tl = G.sim && G.sim.timeLimit, es = 24 * s, sp = 26 * s, fs = 18 * s, cy = y + 15 * s;
+    const need = L.target === L.eggs ? `Bring all ${nE} home` : `Bring ${L.target} of ${nE} home`, ts = tl ? `${Math.round(tl)} s` : '';
+    const nw = ui.measure(need, fs), tw = tl ? 26 * s + 6 * s + ui.measure(ts, fs) : 0, eggsW = nE * sp;
+    const total = eggsW + 10 * s + nw + (tl ? 22 * s + tw : 0), sc = Math.min(1, w / total);
+    let gx = x + w / 2 - (total * sc) / 2;
+    for (let i = 0; i < nE; i++) { ctx.globalAlpha = i < L.target ? 1 : 0.38; drawEggIcon(ctx, gx + sp * sc * (i + 0.5), cy, es * sc, 'alive'); }
+    ctx.globalAlpha = 1;
+    ui.record({ x: gx, y: cy - es * sc / 2, w: eggsW * sc, h: es * sc }, 'intro:eggs');
+    gx += (eggsW + 10 * s) * sc;
+    ui.text(need, gx, cy, { size: fs * sc, color: C.ink, maxW: nw * sc + 1, tag: 'intro:need' });
+    if (tl) { gx += (nw + 22 * s) * sc; pictoClock(ctx, gx + 13 * s * sc, cy, 24 * s * sc); ui.text(ts, gx + 32 * s * sc, cy, { size: fs * sc, color: C.warn, tag: 'intro:time' }); }
+  } };
+  // the caption under the stage: who or what it is (bold) and what to do (green); red while the harm plays
+  const capOf = (p) => {
+    if (!p) return { name: '', line: '' };
+    if (p.teach) return { name: 'New: ' + ((STRIKE[p.power] || {}).name || 'Chick'), line: p.cap };
+    if (p.move === 'rooster') return { name: 'Papa Rooster helps', line: p.cap, col: '#b8401e' };
+    if (p.kind) { const I = VILLAIN_INFO[p.kind] || { name: p.kind }; return { name: I.name, line: p.cap, harm: threatWords(p.kind), col: I.group === 'boss' ? '#b3301c' : null }; }
+    if (p.move === 'toy' || p.move === 'floor') return { name: (p.again ? '' : 'New: ') + p.name, line: p.cap, col: p.again ? null : '#2d7a1c' };
+    return { name: p.name || '', line: p.cap || '' };
+  };
+  const capFs = 17 * s, nameFs = 19 * s;
+  const capLines = (w) => Math.min(2, Math.max(1, ...plans.map((p) => { const c = capOf(p); return Math.max(wrapText(c.line || '', capFs, w - 8 * s).length, c.harm ? wrapText(c.harm, capFs, w - 8 * s).length : 1); })));
+  const capBlock = (w) => { const nl = capLines(w), named = plans.some((p) => capOf(p).name); return { h: (named ? nameFs * 1.3 : 0) + nl * capFs * 1.22 + 2 * s, gap: 6 * s, draw: (x, y, ww) => {
+    const c = capOf(plan), ho = G.howO || {};
+    const harmNow = c.harm && !save.calm && (ho._phase === 'harm' || (!plan.harm && ho._pt < 1.6));
+    let yy = y;
+    if (named) { if (c.name) ui.text(c.name, x + ww / 2, yy + nameFs * 0.62, { size: nameFs, align: 'center', maxW: ww, color: c.col || C.ink, tag: 'intro:capname' }); yy += nameFs * 1.3; }
+    const lines = wrapText(harmNow ? c.harm : c.line || '', capFs, ww - 8 * s).slice(0, nl);
+    lines.forEach((l, i) => ui.text(l, x + ww / 2, yy + capFs * 0.62 + i * capFs * 1.22, { size: capFs, align: 'center', maxW: ww, color: harmNow ? '#b8321e' : '#2d6a1c', tag: 'intro:cap' + i }));
+  } }; };
+  const levelStage = (h) => ({ h, gap: gp, draw: (x, y, w) => {
+    const ho = howOpts(); G.howO = ho;
+    drawHowTo(ctx, plan, x, y, w, h, G.t - Hw.t0, ho);
+    stageFrame(x, y, w, h);
+    ui.record({ x, y, w, h }, 'intro:stage');
+    if (nP > 1) ui.buttons.push({ id: 'how:next', x, y, w, h });
+  } });
+  // the tiles of what is on this level: one even grid; the one playing is green with a play mark; a tap plays it again
+  const tiles = HT.tiles, tn = tiles.length, tCols = Math.min(tn, 4), tRows = tn ? Math.ceil(tn / tCols) : 0, tileH = 58 * s, tGap = 8 * s;
+  const tileBlock = !tn ? (nP > 1 ? { h: 14 * s, gap: gp, draw: (x, y, w) => { for (let q = 0; q < nP; q++) { ctx.beginPath(); ctx.arc(x + w / 2 + (q - (nP - 1) / 2) * 16 * s, y + 7 * s, (q === Hw.i % nP ? 5 : 3.5) * s, 0, 7); ctx.fillStyle = q === Hw.i % nP ? '#3cb043' : 'rgba(120,80,30,0.35)'; ctx.fill(); } } } : null)
+    : { h: tRows * tileH + (tRows - 1) * tGap, gap: gp, draw: (x, y, w) => {
+      const cw = (w - (tCols - 1) * tGap) / tCols, fs = 14 * s;
+      tiles.forEach((Ti, k) => {
+        const c = k % tCols, r = Math.floor(k / tCols), inRow = Math.min(tCols, tn - r * tCols), rx = x + c * (cw + tGap) + ((tCols - inRow) * (cw + tGap)) / 2, ry = y + r * (tileH + tGap), on = Ti.i === Hw.i % nP;
+        ui.roundRect(rx, ry, cw, tileH, 12 * s); ctx.fillStyle = on ? '#5cbf3a' : 'rgba(122,80,40,0.10)'; ctx.fill();
+        if (on) { const g = ctx.createLinearGradient(0, ry, 0, ry + tileH); g.addColorStop(0, 'rgba(255,255,255,0.28)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fill(); }
+        ctx.lineWidth = (on ? 3 : 1.5) * s; ctx.strokeStyle = on ? '#2f7a1c' : Ti.boss ? 'rgba(160,30,40,0.55)' : 'rgba(122,80,40,0.35)'; ctx.stroke();
+        const ar = Math.min(tileH * 0.27, cw * 0.24);
+        ctx.save(); ctx.beginPath(); ctx.rect(rx + 2 * s, ry + 2 * s, cw - 4 * s, tileH - fs - 8 * s); ctx.clip(); Ti.art(ctx, rx + cw / 2, ry + 4 * s + ar * 1.05, ar); ctx.restore();
+        ui.text(Ti.name, rx + cw / 2, ry + tileH - fs * 0.5 - 6 * s, { size: fs, align: 'center', color: on ? '#fff' : Ti.boss ? '#a01e28' : C.ink, stroke: on ? '#2a6a18' : null, strokeW: 3 * s, maxW: cw - 8 * s, tag: 'intro:tile' + k });
+        if (on) { // the "playing" mark: a white disc with a green play triangle, top left
+          const mx = rx + 11 * s, my = ry + 11 * s, mr = 7.5 * s;
+          ctx.beginPath(); ctx.arc(mx, my, mr, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
+          ctx.beginPath(); ctx.moveTo(mx - mr * 0.3, my - mr * 0.45); ctx.lineTo(mx + mr * 0.5, my); ctx.lineTo(mx - mr * 0.3, my + mr * 0.45); ctx.closePath(); ctx.fillStyle = '#2f7a1c'; ctx.fill();
+        }
+        if (Ti.fresh && !on) { ctx.beginPath(); ctx.arc(rx + cw - 9 * s, ry + 9 * s, 5 * s, 0, 7); ctx.fillStyle = '#ff9f1c'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); } // new on this card
+        ui.buttons.push({ id: 'how:pick:' + Ti.i, x: rx, y: ry, w: cw, h: tileH });
+      });
+    } };
+  // the reminder chips (what this level also holds, taught on an earlier card): every one whole, wrapped to more rows
+  const chips = HT.chips, chH = 28 * s, chFs = 14 * s;
+  const chipRows = (w) => { const ws = chips.map((c) => Math.min(w, chH + ui.measure(c.name, chFs) + 12 * s)), R = []; let cur = [], cw = 0; ws.forEach((cw0, i) => { if (cur.length && cw + gp * 0.75 + cw0 > w) { R.push(cur); cur = []; cw = 0; } cw += (cur.length ? gp * 0.75 : 0) + cw0; cur.push(i); }); if (cur.length) R.push(cur); return { R, ws }; };
+  const chipBlock = (w) => { if (!chips.length) return null; const { R, ws } = chipRows(w); return { h: R.length * chH + (R.length - 1) * 6 * s, gap: gp, draw: (x, y, ww) => {
+    R.forEach((row, r) => {
+      const tw = row.reduce((a, i) => a + ws[i], 0) + (row.length - 1) * gp * 0.75; let cx = x + (ww - tw) / 2; const cy = y + r * (chH + 6 * s);
+      for (const i of row) {
+        const c = chips[i];
+        ui.roundRect(cx, cy, ws[i], chH, chH / 2); ctx.fillStyle = c.fresh ? 'rgba(46,120,40,0.16)' : 'rgba(122,80,40,0.12)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = c.fresh ? 'rgba(46,120,40,0.7)' : 'rgba(122,80,40,0.4)'; ctx.stroke();
+        c.art(ctx, cx + chH / 2 + 1 * s, cy + chH / 2, chH * 0.36);
+        ui.text(c.name, cx + chH + 2 * s, cy + chH / 2 + 0.5 * s, { size: chFs, color: c.fresh ? '#2d6a1c' : C.ink, maxW: ws[i] - chH - 8 * s, tag: 'intro:chip' + i });
+        cx += ws[i] + gp * 0.75;
       }
     });
+  } }; };
+  // the three star goals, one compact row
+  const starBlock = G.li >= 0 ? { h: 30 * s, gap: gp, draw: (x, y, w) => {
+    const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0)).map((g) => g.short), cw3 = w / 3, sr = 10.5 * s, fs = 15 * s;
+    ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x, y, w, 1.5 * s);
+    for (let i = 0; i < 3; i++) {
+      const tw = Math.min(ui.measure(lab[i], fs), cw3 - sr * 2 - 12 * s), gx = x + cw3 * i + (cw3 - (sr * 2 + 5 * s + tw)) / 2, cy = y + 17 * s;
+      if (i) { ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(x + cw3 * i, y + 7 * s, 1.2 * s, 20 * s); }
+      drawStar(ctx, gx + sr, cy, sr, true);
+      ui.text(lab[i], gx + sr * 2 + 5 * s, cy, { size: fs, color: C.ink, maxW: tw + 1, tag: 'intro:star' + i });
+    }
+  } } : null;
+
+  // ---- the Chicks tab's pieces: the carousel (snaps a chick to its middle) and that chick's power on a big stage
+  const nI = items.length;
+  const R = G.car || (G.car = { y: 0, v: 0, max: 0, t: G.t, lid: null });
+  const carDims = (w) => { const cw = clamp(w / (land ? 4.2 : 3.1), (land ? 88 : 100) * s, 120 * s), gap = 12 * s; return { cw, ch: Math.round(cw * 1.1), gap, step: cw + gap }; };
+  { const D = carDims(land ? rwL : iwP); R.step = D.step; R.max = Math.max(0, (nI - 1) * D.step);
+    if (R.lid !== L.id + ':' + G.li) { // a new level: the picked chick starts in the middle
+      R.lid = L.id + ':' + G.li; R.v = 0; R.to = null; R.pt = G.introPick ? G.introPick.t : 0;
+      R.y = Math.max(0, items.findIndex((it) => it.S.id === T.id)) * D.step;
+    } }
+  const carCenter = () => (nI ? clamp(Math.round(R.y / Math.max(1, R.step || 1)), 0, nI - 1) : 0);
+  const carBlock = (w0) => { const D = carDims(w0); return { h: D.ch + 38 * s, gap: gp, draw: (x, y, w) => {
+    const { cw, ch, step } = D, rowH = D.ch + 38 * s;
+    if (G.introPick && G.introPick.t !== R.pt) { R.pt = G.introPick.t; const k = items.findIndex((it) => it.S.id === G.introPick.id); if (k >= 0) { R.v = 0; R.to = k * step; } } // a tapped chick glides to the middle
+    glide(R);
+    if (!(G.pdrag && (G.pdrag.sc === R || (G.pdrag.cand && G.pdrag.cand.x === R))) && R.to == null && Math.abs(R.v) < 260) { // snap: a chick always ends in the middle
+      const k = clamp(Math.round(R.y / step), 0, nI - 1);
+      if (Math.abs(R.y - k * step) > 0.5) { R.v = 0; R.to = k * step; } else R.y = k * step;
+    }
+    const off = (w - cw) / 2 - R.y, V = { x, y, w, h: rowH }, ci = carCenter();
+    G.carRect = V;
+    const r0 = ui.rects.length, b0 = ui.buttons.length;
+    ctx.save(); ctx.beginPath(); ctx.rect(x - 4 * s, y, w + 8 * s, rowH); ctx.clip();
+    const cy = y + 22 * s, tl = []; // (room above for a lifted card and its check)
+    const ns = Math.min(17 * s, cw / 7.8), ls = Math.min(13.5 * s, cw / 9.6);
+    const lines = items.map(({ S }) => wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s - ls * 2.2).slice(0, 1));
+    const two = items.some(({ S }) => ui.measure(S.name, ns) > cw - 14 * s), textH = ns * 1.15 * (two ? 2 : 1) + 6 * s + ls * 1.2 + ls * 0.6 + 6 * s;
+    items.forEach(({ S, locked: LK }, i) => {
+      const rx = x + off + i * step;
+      if (rx + cw < x - 10 * s || rx > x + w + 10 * s) return;
+      const Asel = (G.cardSel || (G.cardSel = {})), want = S.id === T.id ? 1 : 0, st = Asel[S.id] || (Asel[S.id] = { v: want, t: G.t });
+      const dt = Math.min(0.05, Math.max(0, G.t - st.t)); st.t = G.t; st.v += (want - st.v) * Math.min(1, dt * 14);
+      const pk = G.introPick && G.introPick.id === S.id ? G.introPick : null, bt = pk ? G.t - pk.t : 9;
+      const far = Math.min(1, Math.abs(rx + cw / 2 - (x + w / 2)) / step); // the side cards step back a little
+      ctx.save(); ctx.globalAlpha *= 1 - 0.25 * far;
+      chickCard(S, rx, cy, cw, ch, s, { sel: st.v, dim: false, locked: LK, tipGlow: !!(LK && G.introTip && G.introTip.id === S.id), need: T.need, i, acc: G.introAcc, wide: false, lines: lines[i], ls, ns, two, textH, ...pickJump(bt, !!LK, T) });
+      ctx.restore();
+      const rect = { x: rx, y: cy, w: cw, h: ch }, bid = LK ? 'stk:buy:' + S.id : 'stk:pick:' + S.id;
+      ui.record(rect, 'btn:' + bid, 'btn:' + bid); ui.buttons.push({ id: bid, ...rect });
+      tl.push({ id: S.id, locked: !!LK, ...rect });
+    });
+    pickHand(tl, T, V, s);
+    ctx.restore();
+    clipRecorded(r0, b0, V);
+    if (nI > 1) { // where you are: a dot per chick (the middle one bright), arrows at the ends of the row
+      for (let p = 0; p < nI; p++) { ctx.beginPath(); ctx.arc(x + w / 2 + (p - (nI - 1) / 2) * 13 * s, y + rowH - 6 * s, (p === ci ? 4 : 3) * s, 0, 7); ctx.fillStyle = p === ci ? '#c9842a' : 'rgba(120,80,30,0.3)'; ctx.fill(); }
+    }
+  } }; };
+  // the chick in the middle: its power playing (locked ones too), its name, upside and downside, and its way in
+  const cS = nI ? items[carCenter()] : null;
+  const chickStage = (h) => ({ h, gap: gp, draw: (x, y, w) => {
+    if (!cS) return;
+    const S = cS.S, Hc = G.howC || (G.howC = { id: null, t0: G.t });
+    if (Hc.id !== S.id) { Hc.id = S.id; Hc.t0 = G.t; }
+    const foe = kinds.find((k) => !/^(icicles|lava|lightning|embers|quake|rain|current|gusts|popthorns|vines|doors|curse|thornorb)$/.test(k)) || 'snake', fk = foe.replace(/^boss:/, '');
+    drawHowTo(ctx, chickPlan(S.id, '', fk in VILLAIN_INFO ? fk : foe), x, y, w, h, G.t - Hc.t0, howOpts());
+    stageFrame(x, y, w, h);
+    ui.record({ x, y, w, h }, 'intro:chickstage');
+    if (cS.locked) { // a small lock ribbon across the top left corner (part of the stage's picture, no words to read)
+      ctx.save(); ui.roundRect(x, y, w, h, Math.min(18 * s, h * 0.08)); ctx.clip();
+      ctx.translate(x + 30 * s, y + 30 * s); ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = '#25355c'; ctx.fillRect(-70 * s, -13 * s, 140 * s, 26 * s); ctx.fillStyle = 'rgba(255,226,122,0.9)'; ctx.fillRect(-70 * s, -13 * s, 140 * s, 2 * s); ctx.fillRect(-70 * s, 11 * s, 140 * s, 2 * s);
+      ctx.rotate(Math.PI / 4); const lz = 15 * s;
+      ctx.strokeStyle = '#ffe27a'; ctx.lineWidth = lz * 0.16; ctx.beginPath(); ctx.arc(0, -lz * 0.12, lz * 0.26, Math.PI, 0); ctx.stroke();
+      ctx.fillStyle = '#ffd24a'; ui.roundRect(-lz * 0.4, -lz * 0.14, lz * 0.8, lz * 0.6, lz * 0.1); ctx.fill();
+      ctx.restore();
+    }
   } });
-  const s = u * clamp(A.w / (390 * u), 0.82, 1);
-  const pad = 16 * u;
-  const pg = G.ipage || (G.ipage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
-  if (pg.lid !== L.id + ':' + G.li) { pg.lid = L.id + ':' + G.li; pg.y = 0; pg.v = 0; G.itab = 'level'; }
+  const chFsN = 20 * s, chFsU = 16 * s, chFsD = 15 * s, wayH = 42 * s;
+  // one upside line and one downside line (the longer wordings step down to a shorter one, never cut or wrapped)
+  const oneLine = (alts, fs, w) => alts.find((q) => q && ui.measure(q, fs) <= w) || alts[alts.length - 1];
+  const upOf = (S, w) => oneLine([S.up, shortTip(S.up), (POWER_WORDS[S.id] || [''])[0]], chFsU, w);
+  const dnOf = (S, w) => oneLine([S.down && 'Downside: ' + S.down, S.down && 'Downside: ' + shortTip(S.down), 'Downside: ' + (POWER_WORDS[S.id] || ['', ''])[1]], chFsD, w);
+  const chickCap = (w) => {
+    return { h: chFsN * 1.3 + chFsU * 1.22 + 3 * s + chFsD * 1.22 + 6 * s + wayH, gap: 6 * s, draw: (x, y, ww) => {
+      if (!cS) return;
+      const S = cS.S, LK = cS.locked;
+      let yy = y;
+      ui.text(S.name, x + ww / 2, yy + chFsN * 0.62, { size: chFsN, align: 'center', maxW: ww, color: S.col ? ui.tint(S.col[1], -0.3) : C.ink, tag: 'intro:pickname' }); yy += chFsN * 1.3;
+      ui.text(upOf(S, ww - 8 * s), x + ww / 2, yy + chFsU * 0.62, { size: chFsU, align: 'center', maxW: ww, color: C.ink, tag: 'intro:pickup' }); yy += chFsU * 1.22 + 3 * s;
+      ui.text(dnOf(S, ww - 8 * s), x + ww / 2, yy + chFsD * 0.62, { size: chFsD, align: 'center', maxW: ww, color: C.warn, tag: 'intro:pickdn' });
+      const wy = y + chFsN * 1.3 + chFsU * 1.22 + 3 * s + chFsD * 1.22 + 6 * s, cy = wy + wayH / 2;
+      if (LK) { // its way in: free at a later level (or a premium one), and unlocking it now for coins (the same sheet as today)
+        const tip = G.introTip && G.introTip.id === S.id ? shortTip(G.introTip.line) || G.introTip.line : '';
+        const free = tip || (S.premium ? 'A premium chick' : `Free at level ${S.unlock}`), buy = !early;
+        const bw = buy ? Math.min(ww * 0.5, ui.measure(`Unlock ${LK.price}`, 18 * s) + 64 * s) : 0, fw = ww - bw - (buy ? 10 * s : 0);
+        const fl = wrapText(free, 15 * s, fw - 30 * s).slice(0, 2), fx = x + (buy ? 0 : (ww - Math.min(fw, ui.measure(fl[0] || '', 15 * s) + 28 * s)) / 2);
+        // a small padlock, then the words
+        const lz = 18 * s, lx = fx + lz * 0.55; ctx.strokeStyle = '#7a5a30'; ctx.lineWidth = lz * 0.14; ctx.beginPath(); ctx.arc(lx, cy - lz * 0.12, lz * 0.24, Math.PI, 0); ctx.stroke(); ctx.fillStyle = '#9a7038'; ui.roundRect(lx - lz * 0.36, cy - lz * 0.14, lz * 0.72, lz * 0.56, lz * 0.1); ctx.fill();
+        fl.forEach((l, i) => ui.text(l, fx + lz * 1.25, cy + (i - (fl.length - 1) / 2) * 17 * s, { size: 15 * s, color: tip ? '#1f5fa8' : C.ink2, maxW: fw - lz * 1.3, tag: 'intro:way' + i }));
+        if (buy) ui.button('stk:buy:' + S.id, `Unlock ${LK.price}`, x + ww - bw, wy, bw, wayH, { kind: LK.canAfford ? 'primary' : 'secondary', icon: (c, X, Y, Z) => drawCoin(c, X, Y, Z * 0.5, G.t), size: 18 * s });
+      } else if (S.id === T.id) { // the one coming along: a green pill with a check
+        const str = 'Your chick for this level', pw = Math.min(ww, ui.measure(str, 16 * s) + 50 * s), px = x + ww / 2 - pw / 2, ph = 34 * s, py = cy - ph / 2;
+        ui.roundRect(px, py, pw, ph, ph / 2); ctx.fillStyle = '#4cae2e'; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = '#2f7a1c'; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px + 14 * s, py + ph * 0.52); ctx.lineTo(px + 20 * s, py + ph * 0.72); ctx.lineTo(px + 31 * s, py + ph * 0.3); ctx.lineWidth = 3.5 * s; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#fff'; ctx.stroke();
+        ui.text(str, px + 38 * s, cy, { size: 16 * s, color: '#fff', maxW: pw - 46 * s, tag: 'intro:yours' });
+      } else { // one to take: say how (the tile is the button; the hand shows it while a pick is owed)
+        const str = T.need ? 'Tap its card to take it along' : 'Tap its card to take it instead';
+        ui.text(str, x + ww / 2, cy, { size: 16 * s, align: 'center', maxW: ww, color: T.need ? '#b8401e' : C.ink2, tag: 'intro:taketip' });
+      }
+    } };
+  };
+
+  // ---- the bottom: the big button, the boosters strip right above it, and the ring speed strip above that
+  const BTN = 56 * s, STRIP = 68 * s;
+  const bigButton = (x, y, w) => {
+    if (lvTab) ui.button(hasCh ? 'inext' : 'go', hasCh ? 'NEXT' : 'PLAY', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: hasCh ? ICON.next : ICON.play, size: 27 * s });
+    else ui.button('go', T.need ? 'PICK A CHICK' : 'PLAY', x, y, w, BTN, T.need ? { kind: 'off', size: 24 * s } : { kind: 'primary', shimmer: true, icon: ICON.play, size: 27 * s }); // need: the button says what is missing (it still takes the tap and nudges)
+  };
+  const adOn = showBoost && !G.adBoost && !G.golden;
+  const boostState = () => ({ wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t,
+    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: tabMark, s });
+  const bottom = (x, w) => { // draws from the bottom of the safe rect up; returns the top of what it drew
+    let y = A.y1 - 6 * s - BTN;
+    bigButton(x, y, w);
+    if (showBoost) { y -= gp + STRIP; drawBoosterStrip(ui, ctx, x, y, w, STRIP, boostState()); }
+    const rh = ringStripH(x, w, s);
+    if (rh > 0) { y -= gp + rh; ringSpeedStrip(x, y, w, s); }
+    return y;
+  };
+
+  // fits blocks and one stretchy stage into the height V.h: the stage takes what is left (within lo..hi); any room
+  // beyond hi is shared out as air between the blocks; below lo the column scrolls (pageScroll adds 6 + 18 px)
+  const fitCol = (pre, mk, post, Vh, lo, hi) => {
+    const fixed = pageColH([...pre, ...post], s) + 6 * s + gp;
+    let h = clamp(Vh - fixed, lo, hi);
+    const left = Vh - fixed - h, B = [...pre, mk(h), ...post].filter(Boolean);
+    if (left > 4 * s) { const n = B.length + 1, add = Math.min(left / n, 22 * s); for (const b of B) b.gap = (b.gap ?? 10 * s) + add; }
+    return B;
+  };
+
+  const column = (B, S, V, x, w) => {
+    if (pageColH(B, s) + 6 * s > V.h + 0.5) { pageScroll(B, S, V, x, w, s, true); return; }
+    S.y = 0; S.v = 0; S.max = 0; G.ipAnchor = {};
+    let y = V.y; for (const b of B) { y += b.gap ?? 10 * s; b.draw(x, y, w); y += b.h; }
+  };
   const k = ui.pop(G.screenT, 0.32);
   ctx.save();
   if (k !== 1) { ctx.translate(A.cx, A.cy); ctx.scale(k, k); ctx.translate(-A.cx, -A.cy); }
-  // the coin balance, top right: tap it to open the shop
-  const topH = 46 * s, cbw = Math.max(104 * s, ui.measure(String(save.wallet.coins), 19 * s) + 62 * s);
-  if (!earlyDays()) purseBtn(A.x1 - pad - cbw, A.y + 8 * u, cbw, topH - 4 * s, 19 * s); // the level card's coins roll and pop like every other counter (ui/purse.js)
-  const P = chicks(s, land ? Math.min(A.w * 0.5, 600 * s) : Math.min(A.w - 2 * pad, 520 * s));
-  if (land) {
-    const rw = Math.min(A.w * 0.5 - pad * 1.5, 600 * s), lw = Math.min(A.w - rw - pad * 3, 520 * s), lx = A.x + pad + (A.w - 3 * pad - lw - rw) / 2, rx = lx + lw + pad;
-    const left = [...head(s), ...howCard(s, lw, 0, false, P.T.need)];
-    const bot = [play(s, Math.min(rw, 380 * s), P.T.need), links(s)], hb = colH(bot, s);
-    const y0 = A.y + topH + 10 * u, y1 = A.y1 - 10 * u;
-    G.ipRect = { x: A.x, y: A.y + 6 * u, w: lx + lw + pad / 2 - A.x, h: y1 - A.y - 6 * u }; // the coin chip sits over the right column only
-    scrollCol(left, pg, G.ipRect, lx, lw, s);
-    // the right column scrolls on its own (a phone on its side is short), PLAY and Levels pinned under it
-    const pr = G.ipageR || (G.ipageR = { y: 0, v: 0, max: 0, t: G.t, lid: null });
-    if (pr.lid !== pg.lid) { pr.lid = pg.lid; pr.y = 0; pr.v = 0; }
-    G.ipRectR = { x: rx - pad / 2, y: y0, w: A.x1 - (rx - pad / 2), h: y1 - hb - 6 * s - y0 };
-    const anchors = G.ipAnchor; // the PLAY nudge scrolls the right column to the chick row
-    scrollCol([...P.blocks, ...(earlyDays() ? [] : boost(s))], pr, G.ipRectR, rx, rw, s);
-    G.ipAnchorR = G.ipAnchor; G.ipAnchor = anchors;
-    let by = y1 - hb; for (const b of bot) { by += b.gap ?? 10 * s; b.draw(rx, by, rw); by += b.h; }
+  if (!land) {
+    const iw = iwP, x0 = A.cx - iw / 2;
+    let y = A.y + 4 * s;
+    header(x0, y, iw); y += HDR + 3 * s;
+    nameBlock(x0, y, iw); y += nameH + 6 * s;
+    sheet(Math.max(A.x, x0 - pad), y, Math.min(A.w, iw + 2 * pad));
+    y += 10 * s;
+    if (hasCh) { tabs(x0, y, iw); y += TABH + 2 * s; }
+    const yb = bottom(x0, iw) - 4 * s;
+    const V = { x: A.x, y, w: A.w, h: yb - y };
+    G.ipRect = V; G.ipRectR = null;
+    const pre = [], post = [];
+    let B;
+    if (lvTab) {
+      const pk = perkBlock(iw); if (pk) pre.push(pk);
+      pre.push(goalRow);
+      post.push(capBlock(iw), ...[tileBlock, chipBlock(iw), starBlock].filter(Boolean));
+      B = fitCol(pre, levelStage, post, V.h, Math.min(165 * s, iw * 0.5), Math.min(iw * 0.95, 560 * s));
+    } else {
+      pre.push(carBlock(iw)); post.push(chickCap(iw));
+      B = fitCol(pre, chickStage, post, V.h, Math.min(150 * s, iw * 0.45), Math.min(iw * 0.85, 520 * s));
+    }
+    if (B.length) B[0] = { ...B[0], gap: B[0].gap - gp };
+    column(B, pg, V, x0, iw);
   } else {
-    const noTabs = earlyDays() && !(P.T.open.length || lockedChicks().length); // early days: no Boosters tab, the Level page only
-    const iw = Math.min(A.w - 2 * pad, 520 * s), x0 = A.cx - iw / 2, lvTab = noTabs || G.itab !== 'chicks';
-    // 2026-11-20: on the Level tab PLAY sat inside the how-to card; 2026-11-23: it is pinned right under the card instead
-    const bot = lvTab ? [nextPin(s), links(s)] : [play(s, iw, P.T.need), links(s)], hb = colH(bot, s) + 8 * s; // NEXT pinned under the card (2026-11-23)
-    // the title and the two tabs stay put; the tab's content scrolls under them
-    let hy = A.y + topH - 2 * s;
-    for (const b of [...head(s, !lvTab), ...(noTabs ? [] : [tabs(s, P)])]) { hy += b.gap ?? 10 * s; b.draw(x0, hy, iw); hy += b.h; }
-    const y0 = hy + 4 * s, y1 = A.y1 - hb - 8 * u;
-    G.ipAvail = lvTab ? 0 : y1 - y0; // the room the Chicks step has (read by chicks() on the next frame)
-    G.ipRect = { x: A.x, y: y0, w: A.w, h: y1 - y0 };
-    const body = !lvTab ? [...P.blocks, ...boost(s, P.T.open.length || lockedChicks().length ? 0 : y1 - y0 - colH(P.blocks, s) - 6 * s)] : [...howCard(s, iw, y1 - y0 - 34 * s, false, P.T.need)];
-    if (body.length) body[0] = { ...body[0], gap: 6 * s };
-    scrollCol(body, pg, G.ipRect, x0, iw, s, true);
-    let by = y1 + 8 * u; for (const b of bot) { by += b.gap ?? 10 * s; b.draw(x0, by, iw); by += b.h; }
+    // a phone on its side: the header across the top; the stage and its caption on the left; the tabs, the tab's
+    // tiles or the carousel, the boosters strip and the big button on the right
+    const x0 = A.cx - W0 / 2, lw = lwL, rw = rwL, lx = x0, rx = x0 + lw + gap2;
+    let y = A.y + 6 * s;
+    const hd = header(x0, y, W0);
+    // the level's name and world ride in the header line, over the left column, when they fit between back and the ribbon
+    const ncx = lx + lw / 2, nMax = 2 * Math.min(ncx - (x0 + HDR + 10 * s), hd.ribL - 10 * s - ncx);
+    const nameUp = nMax > 0 && ui.measure(L.name, 22 * s) <= nMax && ui.measure(world, 13 * s) <= nMax;
+    if (nameUp) {
+      ui.text(L.name, ncx, y + (world ? 13 : 22) * s, { size: 22 * s, align: 'center', maxW: nMax, color: '#fff', stroke: INK, shadow: 'rgba(0,0,0,0.35)', tag: 'intro:name' });
+      if (world) ui.text(world, ncx, y + 35 * s, { size: 13 * s, align: 'center', maxW: nMax, color: '#ffe27a', stroke: INK, tag: 'intro:world' });
+    }
+    y += HDR + 8 * s;
+    sheet(A.w <= W0 + 2 * pad + 1 ? A.x : x0 - pad, y, A.w <= W0 + 2 * pad + 1 ? A.w : W0 + 2 * pad);
+    y += 12 * s;
+    // left: the name, then the stage (the level's scene, or the middle chick's power) and its caption
+    const V = { x: A.x, y, w: lx + lw + gap2 / 2 - A.x, h: A.y1 - 6 * s - y };
+    G.ipRect = V;
+    const nmB = { h: nameH, gap: 0, draw: (x, yy, w) => { // the name on the cream: brown ink
+      ui.text(L.name, x + w / 2, yy + 15 * s, { size: 25 * s, align: 'center', maxW: w, color: C.ink, tag: 'intro:name' });
+      if (world) ui.text(world, x + w / 2, yy + 31 * s + 9 * s, { size: 15 * s, align: 'center', maxW: w, color: '#b0700a', tag: 'intro:world' });
+    } };
+    const top = nameUp ? [] : [nmB];
+    const B = lvTab ? fitCol([...top, goalRow], levelStage, [capBlock(lw), starBlock].filter(Boolean), V.h, 150 * s, lw * 0.75) : fitCol(top, chickStage, [chickCap(lw)], V.h, 130 * s, lw * 0.75);
+    B[0] = { ...B[0], gap: 0 };
+    column(B, pg, V, lx, lw);
+    // right: the tabs on top, the boosters and the big button at the bottom, the tab's content between (it scrolls when short)
+    let ry = y;
+    if (hasCh) { tabs(rx, ry, rw); ry += TABH + 4 * s; }
+    const yb = bottom(rx, rw) - 4 * s;
+    const pr = G.ipageR || (G.ipageR = { y: 0, v: 0, max: 0, t: G.t, lid: null });
+    if (pr.lid !== pg.lid + ':' + (lvTab ? 0 : 1)) { pr.lid = pg.lid + ':' + (lvTab ? 0 : 1); pr.y = 0; pr.v = 0; }
+    G.ipRectR = { x: rx - gap2 / 2, y: ry, w: A.x1 - (rx - gap2 / 2), h: yb - ry };
+    const RB = (lvTab ? [perkBlock(rw), tileBlock, chipBlock(rw)] : [carBlock(rw)]).filter(Boolean);
+    const room = G.ipRectR.h - pageColH(RB, s) - 6 * s;
+    if (room > 0 && RB.length) { const add = Math.min(room / (RB.length + 1), 20 * s); RB.forEach((b, i) => { RB[i] = { ...b, gap: (b.gap ?? 10 * s) + add }; }); }
+    if (RB.length) RB[0] = { ...RB[0], gap: RB[0].gap - gp };
+    column(RB, pr, G.ipRectR, rx, rw);
   }
   ctx.restore();
 }
-// a taste running (egg skin, hen outfit or chick on free try) on the level card: its art, its name, the levels left
-function tryChip(x, y, maxW, s) {
-  if (G.li < 0) return;
+// the level card's perks row (0.8.14: off the stage, mykee: "there shouldn't be overlapping text"). Each chip is 34 units
+// tall, drawn from its top-left corner within maxW; dry: only measure. Each returns its width (0: nothing to show).
+// a taste running (egg skin, hen outfit or chick on free try): its art, its name, the levels left
+function tryChip(x, y, maxW, s, dry) {
+  if (G.li < 0) return 0;
   const R = DR.trials(save), k = R.skin ? 'skin' : R.hen ? 'hen' : R.chick ? 'chick' : null;
-  if (!k) return;
+  if (!k) return 0;
   const q = R[k], T = { kind: k, id: q.id, name: k === 'skin' ? (E.SKINS[q.id] || {}).name || q.id : k === 'hen' ? (E.HEN_SKINS[q.id] || {}).name || q.id : (STRIKE[q.id] || {}).name || q.id };
-  const h = 34 * s, fs = 13.5 * s, lv = `${q.left} ${q.left === 1 ? 'level' : 'levels'} left`;
-  let str = `Free try: ${tasteName(T)}, ${lv}`;
-  for (const alt of [`Free try: ${tasteName(T)}, ${q.left} ${q.left === 1 ? 'level' : 'levels'}`, `${tasteName(T)}: free, ${q.left} ${q.left === 1 ? 'level' : 'levels'}`]) if (h + ui.measure(str, fs) + 14 * s > maxW) str = alt; // a long name: a shorter form, never cut
-  const w = Math.min(maxW, h + ui.measure(str, fs) + 12 * s);
-  ui.roundRect(x, y, w, h, h / 2); ctx.fillStyle = 'rgba(30,70,130,0.88)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(200,230,255,0.9)'; ctx.stroke();
+  const h = 34 * s, fs = 14 * s, lv = `${q.left} ${q.left === 1 ? 'level' : 'levels'}`;
+  let str = `Free try: ${tasteName(T)}, ${lv} left`;
+  for (const alt of [`Free try: ${tasteName(T)}, ${lv}`, `${tasteName(T)}: free, ${lv}`]) if (h + ui.measure(str, fs) + 14 * s > maxW) str = alt; // a long name: a shorter form, never cut
+  const w = Math.min(maxW, h + ui.measure(str, fs) + 14 * s);
+  if (dry) return w;
+  ui.roundRect(x, y, w, h, h / 2); ctx.fillStyle = 'rgba(30,70,130,0.92)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(200,230,255,0.9)'; ctx.stroke();
   tasteArt(T, x + h / 2 + 2 * s, y + h / 2, h * 0.8, false);
   ui.text(str, x + h + 4 * s, y + h / 2, { size: fs, color: '#fff', maxW: w - h - 12 * s, noRecord: true });
   ui.record({ x, y, w, h }, 'intro:try');
+  return w;
 }
-// the equipped egg's power on the level card: its icon and at most four words (x, y = the chip's right edge and bottom)
-function perkChipCard(x, y, maxW, s) {
+// the equipped egg's power: its icon and at most four words
+function perkChipCard(x, y, maxW, s, dry) {
   const P = eggPerk();
-  if (!P) return;
-  const h = 30 * s, fs = 13 * s, str = P.line;
-  const w = Math.min(maxW, h + ui.measure(str, fs) + 12 * s), x0 = x - w, y0 = y - h;
-  ui.roundRect(x0, y0, w, h, h / 2); ctx.fillStyle = 'rgba(70,40,110,0.88)'; ctx.fill();
+  if (!P) return 0;
+  const h = 34 * s, fs = 14 * s, str = P.line;
+  const w = Math.min(maxW, h + ui.measure(str, fs) + 14 * s);
+  if (dry) return w;
+  ui.roundRect(x, y, w, h, h / 2); ctx.fillStyle = 'rgba(70,40,110,0.92)'; ctx.fill();
   ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(226,206,255,0.9)'; ctx.stroke();
-  pictoPerk(ctx, P.icon, x0 + h / 2 + 2 * s, y0 + h / 2, h * 0.76, G.t);
-  ui.text(str, x0 + h + 2 * s, y0 + h / 2, { size: fs, color: '#fff', maxW: w - h - 10 * s, noRecord: true });
-  ui.record({ x: x0, y: y0, w, h }, 'intro:perk');
+  pictoPerk(ctx, P.icon, x + h / 2 + 2 * s, y + h / 2, h * 0.76, G.t);
+  ui.text(str, x + h + 2 * s, y + h / 2, { size: fs, color: '#fff', maxW: w - h - 10 * s, noRecord: true });
+  ui.record({ x, y, w, h }, 'intro:perk');
+  return w;
 }
 // Midas (the Golden egg's power): three little gold glints breathing over the coins on the win card
 function goldGlints(x, y, s) {
@@ -6444,20 +6511,21 @@ function goldGlints(x, y, s) {
   }
   ctx.restore();
 }
-// the win streak on the level card: a flame with the count and the free boosters it brings to this level
-function hotBadge(x, y, s) {
+// the win streak: a flame with the count and the free boosters it brings to this level
+function hotBadge(x, y, maxW, s, dry) {
   const hb = G.li >= 0 ? DR.hotBoosts(save) : [];
-  if (!hb.length) return;
-  const n = `${DR.hotCount(save)} wins`, ih = 30 * s, nw = ui.measure(n, 16 * s), fw = ui.measure('Free', 15 * s) + 8 * s, w = 12 * s + 24 * s + nw + 8 * s + fw + hb.length * (ih + 2 * s) + 6 * s;
-  y -= ih + 8 * s; // (y is the badge's bottom)
-  const p = save.calm ? 0 : 0.5 + 0.5 * Math.sin(G.t * 3);
-  ui.roundRect(x, y, w, ih + 8 * s, (ih + 8 * s) / 2); ctx.fillStyle = 'rgba(150,40,10,0.9)'; ctx.fill();
+  if (!hb.length) return 0;
+  const n = `${DR.hotCount(save)} wins`, ih = 26 * s, nw = ui.measure(n, 15 * s), fw = ui.measure('Free', 14 * s) + 8 * s, w = 12 * s + 22 * s + nw + 8 * s + fw + hb.length * (ih + 2 * s) + 8 * s;
+  if (dry) return w;
+  const p = save.calm ? 0 : 0.5 + 0.5 * Math.sin(G.t * 3), cy = y + 17 * s;
+  ui.roundRect(x, y, w, 34 * s, 17 * s); ctx.fillStyle = 'rgba(150,40,10,0.92)'; ctx.fill();
   ctx.lineWidth = 2 * s; ctx.strokeStyle = `rgba(255,${200 + 40 * p | 0},120,0.9)`; ctx.stroke();
-  streakFlame(ctx, 'hot:card', x + 6 * s + 12 * s, y + 4 * s + ih / 2 + 1 * s, 28 * s, DR.hotCount(save), G.t, save.calm);
-  ui.text(n, x + 32 * s, y + 4 * s + ih / 2, { size: 16 * s, color: '#fff', noRecord: true });
-  ui.text('Free', x + 32 * s + nw + 8 * s, y + 4 * s + ih / 2, { size: 15 * s, color: '#ffe066', noRecord: true }); // the boosters cost nothing: say so
-  hb.forEach((b, i) => drawBoosterIcon(ctx, b, x + 32 * s + nw + 8 * s + fw + i * (ih + 2 * s) + ih / 2, y + 4 * s + ih / 2, ih * 0.92, G.t));
-  ui.record({ x, y, w, h: ih + 8 * s }, 'intro:hot');
+  streakFlame(ctx, 'hot:card', x + 6 * s + 11 * s, cy + 1 * s, 25 * s, DR.hotCount(save), G.t, save.calm);
+  ui.text(n, x + 30 * s, cy, { size: 15 * s, color: '#fff', noRecord: true });
+  ui.text('Free', x + 30 * s + nw + 8 * s, cy, { size: 14 * s, color: '#ffe066', noRecord: true }); // the boosters cost nothing: say so
+  hb.forEach((b, i) => drawBoosterIcon(ctx, b, x + 30 * s + nw + 8 * s + fw + i * (ih + 2 * s) + ih / 2, cy, ih * 0.92, G.t));
+  ui.record({ x, y, w, h: 34 * s }, 'intro:hot');
+  return w;
 }
 // the level page has a Chicks step when this level lets a chick come along (owned or still locked)
 function introHasChicks() { const T = introChicks(); return !!(T && ((T.open && T.open.length) || T.need)) || (G.li >= 0 && G.level.id >= STRIKE_FROM && lockedChicks().length > 0); }
