@@ -389,6 +389,10 @@ const want = (C) => (C.frz > 0 ? { k: 'ice', left: C.frz } : C.stn > 0 || C.zap 
 // regular gators and babies are drawn this much bigger than their sim body (the collider, jaw point and reach are unchanged);
 // Grandpa Gator already fills his channel.
 const GATOR_DRAW = 1.22;
+// 0.8.15: so is the snapping turtle (it measured 2.7 egg heights long but only 0.84 high: a sliver on a phone). It grows about
+// a point 0.3 L ahead of its feet, so its beak still closes on the egg the sim holds at 0.62 L and its tail takes the rest.
+const TURTLE_DRAW = 1.25, TURTLE_PIV = 0.3;
+const turtleBig = (ctx, L) => { ctx.translate(TURTLE_PIV * L, 0); ctx.scale(TURTLE_DRAW, TURTLE_DRAW); ctx.translate(-TURTLE_PIV * L, 0); };
 export function drawBayou(ctx, sim, t, k) {
   if (!sim.gators) return;
   const B = sim.bx && sim.bx.boss;
@@ -434,6 +438,7 @@ export function drawBayou(ctx, sim, t, k) {
     }
     frame(ctx, T, rf, k, () => {
       ctx.scale(A.f >= 0 ? 1 : -1, 1);
+      turtleBig(ctx, L);
       const box = { x0: -L * 0.62, y0: -L * 0.5, x1: L * 0.7, y1: L * 0.1 };
       statusDraw(ctx, box, (c) => drawTurtle(c, L, st ? st.hold : t, o), st, { off: Math.max(1, L * 0.02), crys: Math.max(1, L / 60) });
     });
@@ -447,6 +452,7 @@ export function drawBayouOver(ctx, sim, t, k) {
     const rf = sim.byFloor(T.ch), A = ANIM.get('t' + T.id), L = TURTLE.L * k;
     frame(ctx, T, rf, k, () => {
       ctx.scale(A && A.f < 0 ? -1 : 1, 1);
+      turtleBig(ctx, L);
       ctx.save(); ctx.beginPath(); ctx.rect(L * 0.35, -L * 0.4, L * 0.4, L * 0.4); ctx.clip();
       drawTurtle(ctx, L, t, { head: A && A.hd != null ? A.hd : 0.75, mouth: A && A.mo != null ? A.mo : 0, glare: 1 });
       ctx.restore();

@@ -17,7 +17,10 @@ const PEWTER = { base: '#617089', light: '#97a8c2', dark: '#2e3645' }; // lighte
 const TEALK = { base: '#22b8b0', light: '#7fe6dc', dark: '#0f6660' };
 const LW = (s) => Math.max(1.7, s * 0.024); // a heavy ink outline, so they read at phone scale
 // art scale (the rigs are drawn in metres at 1): the sim's BEETLE.len is 0.62 * BS, JACK.w 0.44 * JS
-const BS = BEETLE.len / 0.62, JS = JACK.w / 0.44, SPS = 1.5; // SPS: the spider's art scale (its rig is drawn in metres at 1)
+const BS = BEETLE.len / 0.62, JS = JACK.w / 0.44, SPS = 1.7; // SPS: the spider's art scale (its rig is drawn in metres at 1)
+// 0.8.15: 1.5 -> 1.7 (it read as a stick figure on a phone). Its body now stands 0.66 m in a 0.89 m channel, so in the level the
+// wind-up key keeps its size and lies back along the abdomen (SP_KEY) instead of standing into the ring above.
+const SP_KEY = { keyK: 1.5 / SPS, keyTilt: -0.8, keyX: -0.07 };
 const JACK_SINK = 0.12; // the jack's box is set into the ring (art units): only the lid stands proud of the floor
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { /* art never breaks the frame */ } ctx.restore(); };
@@ -97,7 +100,9 @@ export function drawSpiderArt(c, s, t, o = {}) {
   c.fillStyle = BRASS.base; c.fill(); c.lineWidth = lw * 0.75; c.strokeStyle = INK; c.stroke();
   c.beginPath(); c.arc(-0.05 * s, 0.01 * s, gr * 0.45, 0, TAU); c.fillStyle = BRASS.light; c.fill(); c.stroke();
   c.beginPath(); c.moveTo(-0.05 * s, 0.01 * s); c.lineTo(-0.05 * s + Math.cos(ga) * gr * 0.9, 0.01 * s + Math.sin(ga) * gr * 0.9); c.lineWidth = lw * 0.6; c.stroke();
-  key(c, -0.05 * s, -0.15 * s, s * 1.8, (o.key || 0) * 1.6, lw);
+  c.save(); c.translate((-0.05 + (o.keyX || 0)) * s, -0.15 * s); c.rotate(o.keyTilt || 0);
+  key(c, 0, 0, s * 1.8 * (o.keyK || 1), (o.key || 0) * 1.6, lw);
+  c.restore();
   c.restore();
   // the head: one round steel dome (the mascot's face) with two big lens eyes, brows, fangs and a mouth; the face acts the
   // state: bored while it waits, scheming as it marches, gritting its teeth as it spins, frets when frozen, spirals when stunned
@@ -366,6 +371,7 @@ export function drawClockwork(ctx, sim, t, k) {
     const o = { gait, moving: S.ph === 'walk' && !held && !drop, spin: S.ph === 'spin' && !held ? 1 : 0, curl: held || drop ? 1 - (drop ? 0 : 0) : 0, key: gait * 9 + (S.ph === 'spin' && !held ? t * 6 : 0),
       eye: S.stun > 0 ? 'spiral' : S.ph === 'walk' || S.ph === 'spin' ? 'hot' : '' };
     if (drop) o.curl = 0.6;
+    Object.assign(o, SP_KEY);
     pxSpace(ctx, dx, dy, k, () => {
       ctx.rotate(-(up - Math.PI / 2));
       if (S.dir > 0) ctx.scale(-1, 1); // on the outer face, +la runs to its left
