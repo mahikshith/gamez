@@ -145,6 +145,7 @@ const HOUR = 3600000, DAY = 24 * HOUR, T0 = new Date(2026, 10, 24, 18, 0, 0).get
   const young = mk({ unlocked: 3 }), R2 = CO.lead(young, 'win', C, { now: T0 });
   ok(R2.order.every((c) => c.kind !== 'money' && c.kind !== 'video') && R2.held.length === 2 && R2.lead.id === 'spin', 'in the first levels nothing is asked: ' + R2.why);
   ok(CO.lead(young, 'spin', C, { now: T0, walked: true }).order.length === 5, 'on a page the player opened himself the asks are shown');
+  { const two = [{ id: 'gift', kind: 'gift', near: 1 }, { id: 'back', kind: 'rescue', near: 0.5 }]; ok(CO.lead(s, 'fail', two, { now: T0, quiet: true }).lead.id === 'back' && CO.lead(s, 'pause', two, { now: T0, quiet: true }).lead.id === 'gift', 'after a loss the way back in leads; anywhere else what is already his leads'); }
   ok(CO.lead(s, 'win', [], { now: T0 }).lead === null && CO.lead(s, 'win', [{ id: 'x', kind: 'nonsense' }, null], { now: T0 }).lead === null, 'nothing to show is an answer too');
   ok((s.brain.log || []).some((l) => l.m === 'win' && l.pick === 'spin'), 'the choice is written to the decision log');
   // coins before video only when the Oracle has earned trust on both and coins clearly lead

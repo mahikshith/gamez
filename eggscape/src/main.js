@@ -267,7 +267,7 @@ if (typeof window !== 'undefined') window.__eggNotif = (ok) => {
 // ---- the Tally (engine/tally.js): which buttons and offers were on a page he saw, which he tapped, seconds per screen.
 // Looked at three times a second, never per frame; one count per visit of a page.
 const TAL_IDS = new Set(['double', 'bonus', 'sample', 'chest', 'daily', 'rewind', 'rewind:coins', 'skip:ad', 'skip:ticket', 'skip:coins', 'ad:coins', 'adboost', 'shop', 'store', 'win:shop', 'gm:shop', 'gm:ad', 'tr:shop', 'tr:open',
-  'home:chest', 'home:bank', 'home:premium', 'home:charge', 'home:hen', 'premium', 'set:novideo', 'chip:skip', 'strike', 'ally', 'settings', 'practice', 'extras', 'info', 'retry', 'next', 'restart', 'hint', 'cb:buy', 'pause:skip', 'store:coins', 'set:remind', 'rem:yes', 'calm', 'spin']);
+  'home:chest', 'home:bank', 'home:premium', 'home:charge', 'home:hen', 'premium', 'set:novideo', 'chip:skip', 'strike', 'ally', 'settings', 'practice', 'extras', 'info', 'retry', 'next', 'restart', 'hint', 'cb:buy', 'pause:skip', 'store:coins', 'set:remind', 'rem:yes', 'calm', 'spin', 'leave:stay', 'leave:go']);
 const TAL_PRE = /^(buy|charge|chick|hen|skin|kit|item|iap|gm:iap|try|boost|hset|spin|stk:buy|stk:pick|tr:boss|lv|tab):/;
 const talCache = new Map();
 function tallyKey(id) {
@@ -1209,7 +1209,7 @@ function keyDown(e) {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
+  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
@@ -1302,7 +1302,10 @@ async function press(id) {
       setScreen('levels');
       break;
     }
+    case 'leave:stay': G.leaveAsk = null; if (G.screen === 'pause') await press('resume'); break;
+    case 'leave:go': { const to = G.leaveAsk && G.leaveAsk.to; G.leaveAsk = null; if (to) await press(to); break; }
     case 'levels':
+      if (leaveAsk('levels')) break;
       portal.gameplayStop();
       if (G.screen !== 'title' && G.demo && G.level === G.demo) { setScreen('practice'); break; } // a practice vault goes back to the Practice screen, where it was opened
       G.world = clamp(envOf(nextIdx()), 0, Math.ceil(LEVELS.length / PER_ENV) - 1);
@@ -1385,6 +1388,7 @@ async function press(id) {
       openStore('boosters', 'boosts');
       break;
     case 'home': // back to the title from the shop or the pause card (the level in progress is left)
+      if (leaveAsk('home')) break;
       goHome();
       break;
     case 'store:coins': // the balance's "+": the coin packs on Deals
@@ -2035,7 +2039,7 @@ const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? {
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
 function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
-function modalOpen() { return !!(G.got || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
+function modalOpen() { return !!(G.got || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
@@ -2051,6 +2055,7 @@ function drawModals() {
     else if (G.nudge) drawNudge();
     else if (G.ageAsk) drawAgeAsk();
     else if (G.remAsk) drawRemAsk();
+    else if (G.leaveAsk) drawLeaveAsk();
     else if (G.treasure) drawTreasure();
     else if (G.skipAsk) drawSkipAsk();
   } finally { G.hudBottom = hb; }
@@ -6951,6 +6956,7 @@ function drawPause() {
       }
     } },
     { h: 66 * s, gap: 14 * s, draw: (x, y, w) => ui.button('resume', 'Resume', x, y, w, 66 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * s, round: 20 * s }) },
+    (() => { const c = G.li >= 0 && !earlyDays() ? pageLead('pause').lead : null; return c ? leadBlock(c, s, { gap: 12 * s, tag: 'pause:lead', quiet: true }) : null; })(), // 0.8.15: what waits for him or what he is closest to (the Conductor's one thing)
     earlyDays() ? null : pauseShop(s), // 0.8.14: the shop, big and gold, right under Resume (never before level 3 is won)
     pauseTiles([
       ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, ui.faceOf('#1f9e94')], ['home', 'Home', ICON.home, ui.faceOf('#e0507e')],
@@ -7889,11 +7895,16 @@ function drawFailPage() {
   if (sd) { ctx.save(); ctx.globalAlpha = 0.6; sunburst(sd.x + sd.w / 2, A.y + A.h * 0.62, Math.min(sd.w * 0.62, A.h * 0.6), 'rgba(200,214,255,0.1)'); ctx.restore(); }
   const ways = skipWays(), rew = !G.usedRewind && G.sim.canRewind(), hl = rew && G.li >= 0 ? DR.hotLost(save) : 0;
   const coinR = rew && !G.freeRewind && !ads.premium && G.li >= 0, price = DR.rewindPrice((G.rewindBuys || {})[G.level.id]);
-  const Hp = G.failHelp, BH = FAIL_BTN;
+  const Hp0 = G.failHelp, BH = FAIL_BTN;
   // 0.8.15 "So close": one egg short of the goal is the best moment to offer the way back in (research: the near miss is
   // where a continue is worth most to the player). The page says so, the missing slot glows, and Rewind leads; RETRY stays
   // one row under it, green, free. Never in the first levels (nothing is sold there), never a timer.
   const near = st.target >= 2 && st.saved === st.target - 1, lead = near && rew && !earlyDays();
+  // 0.8.15 the Conductor: the way back in, a gift that waits, the Director's help and the meter are candidates; one
+  // leads (it alone shimmers), an ask the Brain holds back is not shown, and with nothing else a line says what is near
+  const cheer = !!(G.failSpin && G.failSpin.cheer), hk = Hp0 ? (Hp0.kind === 'trialChick' || Hp0.kind === 'trialBoost' ? 'rescue' : Hp0.kind === 'adBoost' ? 'video' : 'coins') : null;
+  const FL = G.li >= 0 ? pageLead('fail', [lead ? { id: 'rewind', sys: 'rewind', kind: 'rescue', near: st.saved / st.target } : null, Hp0 ? { id: 'help', sys: 'director', kind: hk, near: 0.9, price: Hp0.price } : null, ...nearThings().map((c) => (c.id === 'spin' && cheer ? { ...c, kind: 'rescue' } : c))].filter(Boolean)) : { lead: null, order: [], held: [] };
+  const top = FL.lead ? FL.lead.id : null, Hp = Hp0 && !FL.held.some((h) => h.id === 'help') ? Hp0 : null, prog = !Hp && !SP.banked(save) ? FL.order.find((c) => c.kind === 'progress') : null;
   const hotB = (() => { let o = []; if (hl >= 2 && (save.unlocked || 1) >= 6) for (const [n, b] of DR.HOT) if (hl >= n) o = b; return o; })(); // what the streak was worth
   const build = (stH) => (s) => {
     const B = [];
@@ -7929,7 +7940,8 @@ function drawFailPage() {
       if (sd) ui.text(lab, mid + n * sp / 2 + 10 * s, y + EH / 2 * s, { size: 17 * s, maxW: lw, color: C.ink, tag: 'fail:stat' });
       else ui.text(lab, x + w / 2, y + 47 * s, { size: 17 * s, align: 'center', maxW: w - 16 * s, color: C.ink, tag: 'fail:stat' });
     } });
-    if (SP.banked(save) > 0) B.push(spinRowBlock(s, { cheer: !!(G.failSpin && G.failSpin.cheer) })); // 0.8.15: a spin that waits (the cheer-up spin after three losses lands here)
+    if (SP.banked(save) > 0) B.push(spinRowBlock(s, { cheer, quiet: top !== 'spin' })); // 0.8.15: a spin that waits (the cheer-up spin after three losses lands here)
+    else if (prog) B.push({ h: 26 * s, gap: 4 * s, draw: (x, y, w) => leadLine(prog, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'fail:near' }) });
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: 6 * s }));
     if (Hp) B.push({ h: 78 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
       const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost', ad = Hp.kind === 'adBoost';
@@ -7942,13 +7954,13 @@ function drawFailPage() {
       const ln = wrapText(Hp.line, 12.5 * s, tw).slice(0, 2);
       ln.forEach((l, i) => ui.text(l, tx, y + 48 * s + i * 15 * s, { size: 12.5 * s, color: ui.C.ink2, maxW: tw, tag: 'fail:help' + i }));
       const lab = free ? 'FREE' : ad ? 'Watch' : String(Hp.price);
-      ui.button('help:go', lab, x + w - bw - 8 * s, y + 13 * s, bw, 52 * s, free ? { kind: 'primary', shimmer: true, size: 20 * s } : ad ? { kind: 'ad', ad: true, size: 17 * s } : { kind: save.wallet.coins >= Hp.price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s });
+      ui.button('help:go', lab, x + w - bw - 8 * s, y + 13 * s, bw, 52 * s, free ? { kind: 'primary', shimmer: top === 'help', size: 20 * s } : ad ? { kind: 'ad', ad: true, size: 17 * s } : { kind: save.wallet.coins >= Hp.price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s });
       ui.record({ x, y, w, h: 78 * s }, 'panel:failhelp'); // (a panel: its own words and button sit on it)
     } });
     // row A: RETRY, the whole width, the biggest (one egg short with a Rewind to offer: Rewind takes that place, RETRY the row under it)
     const RH = sd ? 62 : 68;
     const retryRow = () => B.push(lead ? { h: BH * s, gap: 10 * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, BH * s, { kind: 'primary', icon: ICON.retry, size: 22 * s }) }
-      : { h: RH * s, gap: (sd ? 10 : 14) * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, RH * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 27 * s }) });
+      : { h: RH * s, gap: (sd ? 10 : 14) * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, RH * s, { kind: 'primary', shimmer: top !== 'spin' && top !== 'help', icon: ICON.retry, size: 27 * s }) });
     // row B: Rewind 12 s, a Free rewind booster or a video, beside Rewind for coins (dearer each time on this level). It keeps the win streak.
     const rewRows = () => {
       const h = (lead ? RH : BH) * s, fs = (lead ? 20 : 18) * s;
@@ -7961,7 +7973,7 @@ function drawFailPage() {
       } });
       B.push({ h, gap: hl >= 2 ? 4 * s : (lead ? (sd ? 10 : 14) : 12) * s, draw: (x, y, w) => {
         const hw = coinR ? (w - 10 * s) / 2 : w;
-        ui.button('rewind', G.freeRewind ? 'Free rewind' : `Rewind ${REWIND_S}s`, x, y, hw, h, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: fs, shimmer: lead } : { kind: 'ad', ad: true, size: fs, shimmer: lead });
+        ui.button('rewind', G.freeRewind ? 'Free rewind' : `Rewind ${REWIND_S}s`, x, y, hw, h, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: fs, shimmer: lead && top === 'rewind' } : { kind: 'ad', ad: true, size: fs, shimmer: lead && top === 'rewind' });
         if (coinR) ui.button('rewind:coins', 'Rewind ' + price, x + hw + 10 * s, y, hw, h, { kind: save.wallet.coins >= price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: fs });
       } });
     };
@@ -8571,6 +8583,53 @@ function drawSpinOdds(SL) {
   const bw = Math.min(w - 40 * u, 200 * u);
   ui.button('spin:odds:x', 'OK', A.cx - bw / 2, y + h - 56 * u, bw, 44 * u, { kind: 'primary', size: 20 * u });
 }
+// ---- the Conductor on a page (0.8.15, engine/conduct.js): what waits for the player and what he is closest to; ONE of
+// them leads a page. Asked once per visit of a page (and again when what it is made from changes), never per frame.
+function nearThings() {
+  const out = [];
+  if (SP.open(save)) { const M = SP.meter(save); if (M.bank > 0) out.push({ id: 'spin', sys: 'spin', kind: 'gift', near: 1, n: M.bank }); if (M.bank < SP.SPIN.bankMax) out.push({ id: 'meter', sys: 'spin', kind: 'progress', near: M.have / M.of, left: M.left, have: M.have, of: M.of }); }
+  const ts = bestTotal(), ch = E.chestFor(ts, save.wallet.chests);
+  if (ch) out.push(ch.ready ? { id: 'chest', sys: 'chest', kind: 'gift', near: 1 } : { id: 'stars', sys: 'chest', kind: 'progress', near: clamp(1 - (ch.at - ts) / E.STARS_PER_CHEST, 0, 1), left: ch.at - ts });
+  return out;
+}
+function pageLead(moment, cands = nearThings()) {
+  const key = `${G.scrSeq}|${moment}|${cands.map((c) => c.id + c.kind[0] + Math.round((c.near || 0) * 100)).join(',')}`;
+  if (!G.leadC || G.leadC.key !== key) G.leadC = { key, L: ENG.lead(save, moment, cands, { levelId: G.level && G.level.id }) };
+  return G.leadC.L;
+}
+const leadWords = (c) => (c.id === 'spin' ? (c.n > 1 ? `${c.n} free spins are waiting` : 'A free spin is waiting') : c.id === 'chest' ? 'A star chest is ready on the map' : c.id === 'meter' ? `${c.left} more win${c.left > 1 ? 's' : ''} to a free spin` : `${c.left} more star${c.left > 1 ? 's' : ''} to the next chest`);
+// one line for it: its small picture (the spin meter's ticks, a star, the chest, the machine) and the words
+function leadLine(c, cx, y, s, o = {}) {
+  const txt = leadWords(c), fs = (o.size || 16) * s, iw = c.id === 'meter' ? c.of * 20 * s : 26 * s, tw = Math.min(ui.measure(txt, fs), (o.maxW || 1e4) - iw - 8 * s), x0 = cx - (iw + 8 * s + tw) / 2, light = !o.ink;
+  if (c.id === 'meter') for (let i = 0; i < c.of; i++) {
+    const px = x0 + 10 * s + i * 20 * s;
+    ctx.beginPath(); ctx.arc(px, y, 8 * s, 0, TAU); ctx.fillStyle = i < c.have ? '#fff6c8' : light ? 'rgba(20,8,30,0.45)' : 'rgba(122,80,40,0.16)'; ctx.fill(); ctx.lineWidth = 1.8 * s; ctx.strokeStyle = i < c.have ? '#3a9a2c' : light ? 'rgba(255,232,176,0.55)' : 'rgba(122,80,40,0.45)'; ctx.stroke();
+    if (i < c.have) pictoCheck(ctx, px, y, 14 * s);
+  } else if (c.id === 'stars') drawStar(ctx, x0 + 13 * s, y, 11 * s, true);
+  else if (c.id === 'chest') drawChest(ctx, x0 + 13 * s, y, 24 * s, G.t, 'ready');
+  else drawSlotIcon(ctx, x0 + 13 * s, y, 11 * s, save.calm ? 0 : G.t);
+  ui.record({ x: x0, y: y - 11 * s, w: iw, h: 22 * s }, (o.tag || 'lead') + ':pic', o.tag || 'lead');
+  ui.text(txt, x0 + iw + 8 * s, y, { size: fs, color: o.ink || '#ffe8b0', stroke: light ? 'rgba(20,8,30,0.75)' : undefined, strokeW: light ? 3 * s : undefined, maxW: tw, tag: o.tag || 'lead', group: o.tag || 'lead' });
+}
+const leadBlock = (c, s, o = {}) => (c.id === 'spin' ? spinRowBlock(s, o) : { h: 28 * s, gap: o.gap ?? 10 * s, draw: (x, y, w) => leadLine(c, x + w / 2, y + 14 * s, s, { ...o, maxW: w }) });
+// Leaving a level that is being played, with something close: one card, once a session, no clock on it. "Keep playing"
+// goes back to the level, "Leave" leaves. (mykee: "anticipatory unlock ... when they quit, remind them")
+function leaveAsk(to) {
+  if (G.leftAsked || G.screen !== 'pause' || G.li < 0 || !G.sim || G.sim.state !== 'play' || earlyDays()) return false;
+  const L = pageLead('leaving'), c = L.lead;
+  if (!c || !(c.kind === 'gift' || (c.near || 0) >= 0.5)) return false;
+  G.leftAsked = true; G.leaveAsk = { to, c, t0: G.t };
+  return true;
+}
+function drawLeaveAsk() {
+  const R = G.leaveAsk;
+  dim(0.55);
+  stackCard('So close', (s) => [
+    { h: 54 * s, gap: 10 * s, draw: (x, y, w) => { ui.well(x, y, w, 54 * s, { s, a: '#ffe9b0', b: '#fff6dc' }); leadLine(R.c, x + w / 2, y + 27 * s, s, { size: 17, ink: ui.C.ink, maxW: w - 20 * s, tag: 'leave:t' }); ui.record({ x, y, w, h: 54 * s }, 'panel:leave'); } },
+    { h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('leave:stay', 'Keep playing', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 23 * s }) },
+    { h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('leave:go', 'Leave', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
+  ], { ribbon: '#e8a020' });
+}
 // the machine's entry on other pages: a row with its small picture, how many spins wait, and SPIN
 function spinRowBlock(s, o = {}) {
   return { h: 70 * s, gap: o.gap ?? 10 * s, draw: (x, y, w) => {
@@ -8579,7 +8638,7 @@ function spinRowBlock(s, o = {}) {
     drawSlotIcon(ctx, x + 36 * s, y + 36 * s, 22 * s, save.calm ? 0 : G.t);
     const tx = x + 68 * s, tw = x + w - bw - 16 * s - tx;
     ui.text(o.cheer ? 'A cheer-up spin for you' : n > 1 ? `${n} free spins waiting` : 'A free spin is waiting', tx, y + 35 * s, { size: 16 * s, color: ui.C.ink, maxW: tw, tag: 'spinrow:t' });
-    ui.button('spin', 'SPIN', x + w - bw - 8 * s, y + 10 * s, bw, 50 * s, { kind: 'primary', shimmer: true, size: 21 * s });
+    ui.button('spin', 'SPIN', x + w - bw - 8 * s, y + 10 * s, bw, 50 * s, { kind: 'primary', shimmer: o.quiet ? false : true, size: 21 * s });
     ui.record({ x, y, w, h: 70 * s }, 'panel:spinrow');
   } };
 }
@@ -8869,7 +8928,7 @@ async function boot() {
     if (G.adBusy) { ads.cancelWait(); return true; } // a pending ad that never reported back: Back returns to the game
     if (modalOpen()) { // a sheet closes first (an offer counts as "No thanks"; the age question waits for next launch)
       if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null;
-      else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.remAsk) press('rem:later'); else if (G.treasure) G.treasure = null;
+      else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.remAsk) press('rem:later'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null;
       return true;
     }
     if (G.settingsOpen) { press('set:close'); return true; } // the Settings page closes first

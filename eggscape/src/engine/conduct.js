@@ -26,7 +26,8 @@ export function lead(save, moment, cands, ctx = {}) {
     else ok.push(c);
   }
   const P = ctx.predict || OR.predict(save, ctx), swap = OR.trusted(save, 'video') && OR.trusted(save, 'coins') && P.coins.p > P.video.p + 0.1;
-  const rank = (c) => (swap && c.kind === 'video' ? RANK.coins : swap && c.kind === 'coins' ? RANK.video : RANK[c.kind]);
+  // after a loss the way back in comes before a gift that can wait (the player's mind is on the level)
+  const rank = (c) => (moment === 'fail' && c.kind === 'rescue' ? -1 : swap && c.kind === 'video' ? RANK.coins : swap && c.kind === 'coins' ? RANK.video : RANK[c.kind]);
   ok.sort((a, b) => rank(a) - rank(b) || (b.near || 0) - (a.near || 0));
   const first = ok[0] || null;
   const why = first ? `${first.kind}${first.near != null ? ' ' + Math.round(first.near * 100) + '%' : ''} leads of ${ok.length}${held.length ? `; held ${held.map((h) => h.id).join(' ')} (${held[0].why})` : ''}${swap ? '; coins before video (Oracle)' : ''}` : held.length ? `nothing: ${held[0].why}` : 'nothing to show';
