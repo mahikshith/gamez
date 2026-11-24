@@ -69,7 +69,7 @@ Each theme = own background art, ambient particles, ring material, palette, musi
 - Star streak: consecutive 3-star levels raise a score multiplier (x1.2, x1.5, x2). Total score = leaderboard value.
 
 ## Ads (core rule: an ad is always a reward)
-- Fail: "Rewind 5 s" (ad) restores the exact physics state from 5 s ago, streak kept. Or plain Retry.
+- Fail: "Rewind 12 s" (ad) restores the exact physics state from 12 s ago, streak kept. Or plain Retry.
 - Level start (optional): "Golden shell" (ad) = one egg starts unbreakable for the first fall.
 - Level end: "Double score" (ad).
 - Interstitials only on level transitions, portal-controlled frequency. Never mid-level.

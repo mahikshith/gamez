@@ -35,7 +35,7 @@ export const BOOSTERS = {
   rewind: {
     id: 'rewind',
     name: 'Free rewind',
-    line: 'Rewind 5 seconds once, for free.',
+    line: 'Rewind 12 seconds once, for free.',
     price: 70,
     sku: 'booster_rewind',
   },

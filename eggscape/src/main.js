@@ -1,5 +1,5 @@
 // Eggscape: game shell. Screens, input, camera, events -> VFX/SFX/score, HUD.
-import { Sim, DT, LEGACY_ORB, EAGLE_LEN } from './sim/sim.js';
+import { Sim, DT, LEGACY_ORB, EAGLE_LEN, REWIND_S } from './sim/sim.js';
 import { hintSearch, actSteps } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
 import { curtainFront, vineFront } from './render/v3art.js'; // where a burning thorn curtain's fire has got to
@@ -1562,7 +1562,7 @@ async function press(id) {
       const free = G.freeRewind;
       const ok = free || await rewarded('rewind');
       if (free) G.freeRewind = false;
-      const back = ok && G.sim.rewind(5);
+      const back = ok && G.sim.rewind(REWIND_S);
       if (back) rewound(back);
       break;
     }
@@ -1570,7 +1570,7 @@ async function press(id) {
       if (G.screen !== 'fail' || G.usedRewind || !G.sim.canRewind()) break;
       const lid = G.level.id, price = DR.rewindPrice((G.rewindBuys || {})[lid]);
       if (save.wallet.coins < price) { needCoins(price); break; }
-      const back = G.sim.rewind(5);
+      const back = G.sim.rewind(REWIND_S);
       if (!back) break;
       save.wallet = { ...save.wallet, coins: save.wallet.coins - price };
       G.rewindBuys = { ...(G.rewindBuys || {}), [lid]: ((G.rewindBuys || {})[lid] || 0) + 1 };
@@ -1819,7 +1819,7 @@ function releaseAll() {
   G.held.clear();
 }
 
-// back 5 seconds into the level from the fail card (a video, coins or a Free rewind): the run and the win streak go on
+// back 12 seconds into the level from the fail card (a video, coins or a Free rewind): the run and the win streak go on
 function rewound(back) {
   releaseAll();
   stopFuse();
@@ -1835,7 +1835,7 @@ function rewound(back) {
   setScreen('play');
   portal.gameplayStart();
   audio.play('rewind');
-  toast('Rewound 5 seconds. Streak kept!', 2.4);
+  toast(`Rewound ${REWIND_S} seconds. Streak kept!`, 2.4);
 }
 
 async function breakThen(fn, info = {}) {
@@ -7445,7 +7445,7 @@ function drawFail() {
       else ui.button('skip:coins', 'Skip ' + SKIP_COINS, x + hw + 8 * s, y, hw, 46 * s, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 15 * s }); // too few coins: the tap opens Get more
     } });
     if (!G.usedRewind && G.sim.canRewind()) {
-      // Rewind 5 s: a Free rewind booster, or a video, or coins (dearer each time on this level). It keeps the win streak.
+      // Rewind 12 s: a Free rewind booster, or a video, or coins (dearer each time on this level). It keeps the win streak.
       const hl = G.li >= 0 ? DR.hotLost(save) : 0;
       if (hl >= 2) B.push({ h: 26 * s, gap: 8 * s, draw: (x, y, w) => {
         const t = `Rewind keeps your ${hl}-win streak`, tw = ui.measure(t, 15 * s) + 30 * s, x0 = x + w / 2 - tw / 2;
@@ -7455,7 +7455,7 @@ function drawFail() {
       const coinR = !G.freeRewind && !ads.premium && G.li >= 0, price = DR.rewindPrice((G.rewindBuys || {})[G.level.id]);
       B.push({ h: 50 * s, gap: hl >= 2 ? 4 * s : 10 * s, draw: (x, y, w) => {
         const hw = coinR ? (w - 8 * s) / 2 : w;
-        ui.button('rewind', G.freeRewind ? 'Free rewind' : 'Rewind 5s', x, y, hw, 50 * s, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: 16.5 * s } : { kind: 'ad', ad: true, size: 16.5 * s });
+        ui.button('rewind', G.freeRewind ? 'Free rewind' : `Rewind ${REWIND_S}s`, x, y, hw, 50 * s, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: 16.5 * s } : { kind: 'ad', ad: true, size: 16.5 * s });
         if (coinR) ui.button('rewind:coins', 'Rewind ' + price, x + hw + 8 * s, y, hw, 50 * s, { kind: save.wallet.coins >= price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 16.5 * s });
       } });
     }
