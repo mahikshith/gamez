@@ -2655,7 +2655,7 @@ function drawSkipAsk() {
     lineBlock('Come back for stars any time', 14.5 * s, { color: ui.C.ink2, tag: 'sk:back', gap: 6 * s }),
     { h: 56 * s, gap: 16 * s, draw: (x, y, w) => save.wallet.tickets.skip > 0 ? ui.button('sk:go', 'Use a Skip Ticket', x, y, w, 56 * s, { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3, size: 19 * s }) // 0.8.14: a ticket the player owns comes first
       : ui.button('sk:go', ads.premium ? 'Skip level' : 'Watch to skip', x, y, w, 56 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 20 * s } : { kind: 'ad', ad: true, size: 19 * s }) },
-    { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('sk:no', 'Cancel', x + w * 0.15, y, w * 0.7, 50 * s, { kind: 'tertiary', size: 19 * s }) },
+    { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('sk:no', 'Cancel', x, y, w, 50 * s, { kind: 'tertiary', size: 19 * s }) },
   ], { ribbon: '#7a48e8' });
 }
 
