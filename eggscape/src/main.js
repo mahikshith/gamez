@@ -7029,10 +7029,10 @@ function bossPortrait(ctx, bossId, x, y, w, h, t) { if (bossId === 'blizzard') r
 function pauseTiles(items, s, cols = 3) {
   const gap = 10 * s, th = (cols > 3 ? 66 : 78) * s, rows = Math.ceil(items.length / cols);
   return { h: rows * th + (rows - 1) * gap, gap: 12 * s, draw: (x, y, w) => {
-    const tw = (w - gap * (cols - 1)) / cols;
     items.forEach(([id, label, icon, face, mark], i) => {
-      const r = Math.floor(i / cols), c = i % cols, inRow = Math.min(cols, items.length - r * cols), off = (w - (inRow * tw + (inRow - 1) * gap)) / 2;
-      const bx = x + off + c * (tw + gap), by = y + r * (th + gap);
+      // 0.8.16: a short last row spans the column too (same left and right edges as the row above)
+      const r = Math.floor(i / cols), c = i % cols, inRow = Math.min(cols, items.length - r * cols), tw = (w - gap * (inRow - 1)) / inRow;
+      const bx = x + c * (tw + gap), by = y + r * (th + gap);
       const B = ui.button(id, '', bx, by, tw, th, { ...(typeof face === 'string' ? { kind: face } : { face }), round: 18 * s });
       const isz = (cols > 3 ? 28 : 32) * s, ls = (cols > 3 ? 14.5 : 16) * s, cy = B.cy;
       icon(ctx, bx + tw / 2, cy - ls * 0.62 - 2 * s, isz);
