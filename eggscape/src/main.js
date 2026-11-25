@@ -2395,14 +2395,17 @@ function drawDetail() {
   const dk = G.detail.slice(0, G.detail.indexOf(':')), di = G.detail.slice(G.detail.indexOf(':') + 1);
   const tryK = (dk === 'skin' || dk === 'hen') && !it.owned && (it.trying || DR.canTry(save, dk, di, false)) ? [dk, di] : null;
   dim(0.55);
-  stackCard(it.name, (s, iw) => {
-    const C = ui.C, B = it.btn, lines = wrapText(it.line, 16.5 * s, iw).slice(0, 4);
+  // 0.8.16 (mykee: full screen, bigger art before more text): on a phone the item's stage takes the height the rest of
+  // the sheet leaves (the fail page's rule for the hen's stage) and runs the column's whole width, so a tall screen
+  // shows a big egg or hen instead of a small picture and bands of paper. artH: the stage's height in units.
+  const build = (artH) => (s, iw) => {
+    const C = ui.C, B = it.btn, lines = wrapText(it.line, 16.5 * s, iw).slice(0, 4), AH = artH * s;
     return [
-      { h: 140 * s, gap: 4 * s, draw: (x, y, w) => {
-        const aw = Math.min(w, 170 * s);
-        ui.well(x + (w - aw) / 2, y, aw, 140 * s, { s, a: '#cfe9fb', b: '#eaf6ff' });
-        it.icon(ctx, x + w / 2, y + 70 * s, 128 * s, G.t, it.flash < 0.6 ? 1 + 0.2 * Math.sin((it.flash / 0.6) * Math.PI) : 1);
-        ui.record({ x: x + (w - aw) / 2, y, w: aw, h: 140 * s }, 'dt:art');
+      { h: AH, gap: 4 * s, draw: (x, y, w) => {
+        const aw = artH > 140 ? w : Math.min(w, 170 * s);
+        ui.well(x + (w - aw) / 2, y, aw, AH, { s, a: '#cfe9fb', b: '#eaf6ff' });
+        it.icon(ctx, x + w / 2, y + AH / 2, Math.min(AH * 0.9, aw * 0.8), G.t, it.flash < 0.6 ? 1 + 0.2 * Math.sin((it.flash / 0.6) * Math.PI) : 1);
+        ui.record({ x: x + (w - aw) / 2, y, w: aw, h: AH }, 'dt:art');
       } },
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'dt:line' + i, gap: i ? 2 * s : 10 * s })),
       ...(it.perk ? [perkRow(it.perk, s, 10 * s)] : []), // an egg skin's power: the icon, its name and four words
@@ -2420,7 +2423,14 @@ function drawDetail() {
         : ui.button('try:' + tryK.join(':'), 'Try it free', x, y, w, 50 * s, { kind: 'secondary', size: 20 * s }) }] : []),
       { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('dt:close', 'Close', x, y, w, 50 * s, { kind: 'tertiary', size: 20 * s }) },
     ];
-  }, { ribbon: '#7a48e8' });
+  };
+  let artH = 140;
+  const A = ui.A, u = ui.u;
+  if (cardFull({}, A)) {
+    const rest = build(0)(1, 372).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22;
+    artH = clamp((A.y1 - A.y - 30 * u) / u - rest - 40, 140, 300);
+  }
+  stackCard(it.name, build(artH), { ribbon: '#7a48e8', grow: 1.2 });
 }
 // an egg skin's power on its sheet: the icon in a cell, then "Name: four words"
 const perkRow = (P, s, gap) => ({ h: 44 * s, gap, draw: (x, y, w) => {
