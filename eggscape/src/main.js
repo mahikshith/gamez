@@ -2123,10 +2123,10 @@ function drawTreasure() {
   // screen that room was too small: its button fell off the bottom)
   const hb = G.hudBottom, T = G.treasure;
   // 0.8.17: a beaten treasure's page has the purse (and then the bag) on it, top right: on a phone held upright the card starts under them
-  if (bossBeaten(T.id) && !land.active() && !E.treasureOpened(save.wallet, T.id)) land.start({ wait: true, from: save.wallet.coins, to: save.wallet.coins });
-  G.hudBottom = ui.A.y + (land.active() && ui.A.h > ui.A.w ? 70 * ui.u : 0);
+  if (bossBeaten(T.id) && !T.land && !E.treasureOpened(save.wallet, T.id)) { T.land = 1; land.start({ wait: true, from: save.wallet.coins, to: save.wallet.coins }); }
+  G.hudBottom = ui.A.y + (T.land && ui.A.h > ui.A.w ? 70 * ui.u : 0);
   try { drawTreasurePage(); } finally { G.hudBottom = hb; }
-  if (G.treasure && land.active()) landDraw(); // 0.8.17: its coins land in the purse chip on the page, its booster and charges in the bag
+  if (G.treasure && G.treasure.land && land.active()) landDraw(); // 0.8.17: its coins land in the purse chip on the page, its booster and charges in the bag
 }
 function drawTreasurePage() {
   const T = G.treasure, R = E.bossTreasure(T.id);
@@ -8424,6 +8424,7 @@ function drawWinCoins(r, ix, iy, cw, s, cnt, inCard) {
       for (let i = 0; i < 9; i++) { const a = i * 0.698 + 0.2, rr = (14 + 46 * q) * s; drawCoin(ctx, vx + Math.cos(a) * rr, vy + Math.sin(a) * rr - 14 * s * Math.sin(q * Math.PI), 6 * s * (1 - 0.5 * q), G.t + i); }
       ctx.restore();
     }
+    CB.confetti(ctx, vx, vy, t - R1, { n: 26, speed: 260 * s, g: 420 * s, life: 1.4, seed: 7, size: 6 * s }); // 0.8.17 (mykee: "make it like a celebration"): the video's doubling goes off
   }
   // the x2 stamp: falls in big and tilted, lands beside the first count with a squash and a shock ring, and stays
   const cx0 = ix - 24 * s, sx = Math.min(cx0 + cw - 22 * s, tx + vw + 24 * s), sy = vy + 1 * s, p = ST ? clamp(t / ST, 0, 1) : 1;
