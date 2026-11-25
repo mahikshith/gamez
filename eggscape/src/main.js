@@ -2135,7 +2135,7 @@ function drawTreasure() {
     } });
     if (chick) { // the chick that joins next: its art, what it does, from which level
       const ul = wrapText(chick.up, 15 * s, iw - 120 * s).slice(0, 3), CH = Math.max(104 * s, 30 * s + 22 * s + ul.length * 19 * s + 10 * s);
-      B.push({ h: CH, gap: 10 * s, draw: (x, y, w2) => {
+      B.push({ right: true, h: CH, gap: 10 * s, draw: (x, y, w2) => {
         ui.well(x, y, w2, CH, { s, a: '#e3f2ff', b: '#f4faff' });
         const aw = 96 * s; artStage(x + 8 * s, y + (CH - aw) / 2, aw, aw, s, () => drawStrikeStage(ctx, chick.id, x + 8 * s, y + (CH - aw) / 2 + 4 * s, aw, aw - 8 * s, G.t));
         const tx = x + aw + 20 * s, tw = w2 - aw - 30 * s;
@@ -2147,7 +2147,7 @@ function drawTreasure() {
     }
     if (nk.length) { // the next world's new villains, big enough to recognise
       const P = Math.min(pMax * s, (iw - (nk.length - 1) * 10 * s) / nk.length), NH = 30 * s + P + 38 * s;
-      B.push({ h: NH, gap: 10 * s, draw: (x, y, w2) => {
+      B.push({ right: true, h: NH, gap: 10 * s, draw: (x, y, w2) => {
         ui.text(`COMING UP IN ${(WORLDS[w] || 'the next world').toUpperCase()}`, x + w2 / 2, y + 12 * s, { size: 13.5 * s, align: 'center', color: ui.C.ink2, maxW: w2, tag: 'tr:nexthead' });
         const x0 = x + w2 / 2 - (nk.length * P + (nk.length - 1) * 10 * s) / 2;
         nk.forEach((k, i) => {
@@ -2157,12 +2157,12 @@ function drawTreasure() {
         });
       } });
     }
-    B.push({ h: 58 * s, gap: 14 * s, draw: (x, y, w2) => {
+    B.push({ right: true, h: 58 * s, gap: 14 * s, draw: (x, y, w2) => {
       if (beaten && !opened) ui.button('tr:open', 'OPEN', x, y, w2, 58 * s, { kind: 'gold', shimmer: true, size: 24 * s });
       else if (!beaten && Lb && playable(LEVELS.indexOf(Lb))) { const hw = (w2 - 10 * s) / 2; ui.button('tr:close', 'Close', x, y, hw, 58 * s, { kind: 'tertiary', size: 19 * s }); ui.button('tr:play', `Play Level ${T.id}`, x + hw + 10 * s, y, hw, 58 * s, { kind: 'primary', icon: ICON.play, size: 18 * s }); }
       else ui.button('tr:close', opened ? 'Great!' : 'Close', x, y, w2, 58 * s, { kind: 'primary', size: 22 * s });
     } });
-    if (!chick && w >= 7 && opened) B.push({ h: 44 * s, gap: 8 * s, draw: (x, y, w2) => ui.button('tr:shop', 'See premium chicks', x, y, w2, 44 * s, { kind: 'secondary', size: 16 * s }) });
+    if (!chick && w >= 7 && opened) B.push({ right: true, h: 44 * s, gap: 8 * s, draw: (x, y, w2) => ui.button('tr:shop', 'See premium chicks', x, y, w2, 44 * s, { kind: 'secondary', size: 16 * s }) });
     return B;
   };
   let chH = 118, pMax = 64;
@@ -2173,7 +2173,7 @@ function drawTreasure() {
     if (nk.length) { const d = Math.min(extra, (iw1 - (nk.length - 1) * 10) / nk.length - 64, 30); pMax += Math.max(0, d); extra -= Math.max(0, d); }
     chH = Math.min(118 + extra, 190);
   }
-  stackCard(title, build(chH, pMax), { ribbon: '#d89a1c', grow: 1.15 });
+  stackCard(title, build(chH, pMax), { ribbon: '#d89a1c', grow: 1.15, twoCol: true }); // 0.8.16: landscape opens into two columns (the whole card used to shrink to 0.58)
 }
 // ---- the offer engine's moments (offers.js): the end card after its first second, home on arrival, the intro (a line)
 function offerCtx() {
@@ -2423,7 +2423,7 @@ function drawDetail() {
         ui.record({ x: x + (w - aw) / 2, y, w: aw, h: AH }, 'dt:art');
       } },
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'dt:line' + i, gap: i ? 2 * s : 10 * s })),
-      ...(it.perk ? [perkRow(it.perk, s, 10 * s)] : []), // an egg skin's power: the icon, its name and four words
+      ...(it.perk ? [{ ...perkRow(it.perk, s, 10 * s), right: true }] : []), // an egg skin's power: the icon, its name and four words
       ...(it.parts || []).map((P, i) => partRow(P, s, 'dt:part' + i, i ? 2 * s : 10 * s)), // a kit or a set: what is inside, one row each
       ...(it.sub && it.sub.strike ? [{ h: 24 * s, gap: 6 * s, draw: (x, y, w) => { // a half-price ticket in hand: the old price struck through, and what the ticket does
         const was = it.sub.text, tail = '  Half price with your ticket', fs = 15 * s, ww = ui.measure(was, fs), tw2 = ui.measure(tail, fs), x0 = x + (w - ww - tw2) / 2, cy = y + 12 * s;
@@ -2431,12 +2431,12 @@ function drawDetail() {
         ctx.save(); ctx.strokeStyle = '#e8402e'; ctx.lineWidth = 2.4 * s; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0 - 2 * s, cy + fs * 0.18); ctx.lineTo(x0 + ww + 2 * s, cy - fs * 0.18); ctx.stroke(); ctx.restore();
         ui.text(tail, x0 + ww, cy, { size: fs, color: '#7a48e8', maxW: w - ww, tag: 'dt:sub' });
       } }] : it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 5 * s })] /* 0.8.16: stays with the words above it when the page shares out its air */ : []),
-      { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x, y, w, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
-      ...(tryK && it.perk && !it.trying ? [lineBlock('The power comes with it.', 14 * s, { color: C.ink2, tag: 'dt:perkfree', gap: 8 * s })] : []),
-      ...(tryK ? [{ h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
+      { right: true, h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x, y, w, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
+      ...(tryK && it.perk && !it.trying ? [{ ...lineBlock('The power comes with it.', 14 * s, { color: C.ink2, tag: 'dt:perkfree', gap: 8 * s }), right: true }] : []),
+      ...(tryK ? [{ right: true, h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
         ? ui.button('try:on', `Trying: ${DR.trials(save)[tryK[0]].left} level${DR.trials(save)[tryK[0]].left > 1 ? 's' : ''} left`, x, y, w, 50 * s, { kind: 'secondary', disabled: true, keepFace: true, dim: 1, size: 18 * s })
         : ui.button('try:' + tryK.join(':'), 'Try it free', x, y, w, 50 * s, { kind: 'secondary', size: 20 * s }) }] : []),
-      { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('dt:close', 'Close', x, y, w, 50 * s, { kind: 'tertiary', size: 20 * s }) },
+      { right: true, h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('dt:close', 'Close', x, y, w, 50 * s, { kind: 'tertiary', size: 20 * s }) },
     ];
   };
   let artH = 140;
@@ -2445,7 +2445,7 @@ function drawDetail() {
     const rest = build(0)(1, fullInner(A, u) / u).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22;
     artH = clamp((A.y1 - A.y - 30 * u) / u - rest - 40, 140, 380); // (up to a square stage)
   }
-  stackCard(it.name, build(artH), { ribbon: '#7a48e8', grow: 1.2 });
+  stackCard(it.name, build(artH), { ribbon: '#7a48e8', grow: 1.2, twoCol: true }); // 0.8.16: landscape: the picture and its words left, the power and the buttons right
 }
 // an egg skin's power on its sheet: the icon in a cell, then "Name: four words"
 const perkRow = (P, s, gap) => ({ h: 44 * s, gap, draw: (x, y, w) => {
