@@ -2438,7 +2438,7 @@ function drawDetail() {
   let artH = 140;
   const A = ui.A, u = ui.u;
   if (cardFull({}, A)) {
-    const rest = build(0)(1, 372).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22;
+    const rest = build(0)(1, fullInner(A, u) / u).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22;
     artH = clamp((A.y1 - A.y - 30 * u) / u - rest - 40, 140, 300);
   }
   stackCard(it.name, build(artH), { ribbon: '#7a48e8', grow: 1.2 });
