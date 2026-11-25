@@ -30,9 +30,10 @@
 // streak (main.js asks frustration() before an interstitial); every level stays free to beat; one price for everyone;
 // no timers. A payer is never shown ads-for-help first (coins and owned boosts first).
 import { BOOSTERS, SKINS, SKIN_ORDER, CHICK_PRICES, HEN_SKINS } from './economy.js';
+import { now as gameNow } from './clock.js'; // 0.8.17: a day that never goes back (moving the phone's date repeats nothing)
 
 const DAY = 864e5;
-const dayKey = (now) => { const d = new Date(now); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+const dayKey = (now) => { const d = new Date(gameNow(now)); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 export const DIR = { trialsPerDay: 2, skinEvery: [5, 8], tasteEvery: [4, 6], skinLevels: 3, welcomeDays: 2, welcomeCoins: 60 };
 
 export function dirState(save) {

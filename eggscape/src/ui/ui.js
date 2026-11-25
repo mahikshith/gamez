@@ -443,6 +443,8 @@ export class UI {
       ctx.translate(-cx, -by);
     }
     if (o.disabled) ctx.globalAlpha *= o.dim ?? (o.keepFace ? 1 : 0.82);
+    const adOff = !!o.ad && AD_OFF && !o.disabled; // 0.8.17: no video can be shown now: the same button, dimmed, its badge a no-signal mark
+    if (adOff) { ctx.globalAlpha *= 0.62; o = { ...o, shimmer: false }; }
     if (!o.ghost) {
     // contact shadow
     if (!o.flat) { this.roundRect(x - 0.5 * u, y + lip + 2.5 * u, w + u, fh, rad); ctx.fillStyle = 'rgba(16,6,0,0.22)'; ctx.fill(); }
@@ -584,8 +586,29 @@ export class UI {
   pop(t, dur = 0.3) { return this.calm || t >= dur ? 1 : 0.86 + 0.14 * backOut(t / dur); }
 }
 
+// 0.8.17: while no video can be shown (offline, no ad loaded, the iPhone shell without ads) main.js says so once a frame
+// and every film badge turns into a no-signal mark (the buttons that carry one dim too); a tap says how to get it
+let AD_OFF = false;
+export function setAdOff(v) { AD_OFF = !!v; }
+export const adOff = () => AD_OFF;
+// the no-signal mark: the badge's tile in grey, the wifi fan crossed out (same size and place as the film badge)
+export function drawNoSignal(ctx, x, cy, w, h) {
+  ctx.save();
+  const y = cy - h / 2, r = h * 0.28;
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  ctx.fillStyle = '#ece8f2'; ctx.fill();
+  const fx = x + w / 2, fy = y + h * 0.8, R = h * 0.62;
+  ctx.strokeStyle = '#7d7590'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, h * 0.11);
+  for (const k of [1, 0.66]) { ctx.beginPath(); ctx.arc(fx, fy, R * k, -Math.PI * 0.78, -Math.PI * 0.22); ctx.stroke(); }
+  ctx.fillStyle = '#7d7590'; ctx.beginPath(); ctx.arc(fx, fy - h * 0.04, h * 0.09, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#e8402e'; ctx.lineWidth = Math.max(1.2, h * 0.12);
+  ctx.beginPath(); ctx.moveTo(x + w * 0.24, y + h * 0.18); ctx.lineTo(x + w * 0.76, y + h * 0.84); ctx.stroke();
+  ctx.restore();
+}
+
 // "Watch a video" badge: a white film tile with a red play triangle. Every rewarded-ad button carries it.
 export function drawAdBadge(ctx, x, cy, w, h) {
+  if (AD_OFF) { drawNoSignal(ctx, x, cy, w, h); return; }
   ctx.save();
   const y = cy - h / 2, r = h * 0.28;
   const rr = (dx, dy) => {

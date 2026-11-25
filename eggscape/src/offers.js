@@ -20,6 +20,7 @@
 // to the cheaper offer. No timers and no countdowns anywhere: an offer is the same price for everyone, every time.
 // Web portals sell nothing: there only the rewarded suggestions (charge_ad, coins_ad) can come up.
 import { IAP, iapAvailable, BANK_OPEN } from './economy.js';
+import { now as gameNow } from './clock.js'; // 0.8.17: a day that never goes back (moving the phone's date repeats nothing)
 
 // The first-launch age question and the child-safe mode behind it (no offer popups, a parent check before any
 // real-money purchase, child-directed ad requests). One switch, in case the owner picks another audience.
@@ -31,7 +32,7 @@ export const AGE_GATE = false;
 // the fail screen are not popups and do not count
 export const CAPS = { perSession: 2, perDay: 3, gapMin: 20, fromLevel: 9, silenceAfter: 3, silenceDays: 14 };
 const DAY = 864e5, MIN = 6e4;
-const dayKey = (now) => { const d = new Date(now); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+const dayKey = (now) => { const d = new Date(gameNow(now)); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 
 const TEXT = {
   starter_nest: { title: 'Starter Nest', line: 'A small start: 600 coins, 3 Chick Charges, 2 of every boost and the Cocoa Hen. Only once.' },
