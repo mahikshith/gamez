@@ -8391,8 +8391,10 @@ function drawTitle() {
   const fade = !intro && !G.homeIntro && G.screenT < 0.2 && G.t > 1; // returning from a level or the map: a short fade, not the entrance
   if (fade) ctx.globalAlpha = 0.25 + G.screenT / 0.2 * 0.75;
   const A = ui.A, cx = A.cx; // the meadow paints edge to edge; the logo and the buttons sit in the safe rect
-  const bw = Math.min(310 * u, A.w - 44 * u);
   const wide = A.w > A.h * 1.15;
+  // 0.8.16 (mykee: "it's not full screen"): in portrait the buttons stand on the page column (ui.pageBox: the level
+  // card's and the shop's edges); landscape keeps its two columns
+  const bw = wide ? Math.min(310 * u, A.w - 44 * u) : ui.pageBox(440 * u).w;
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
   // landscape: two balanced columns, logo + vault on the left, the buttons on the right, the meadow low across both
   const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? A.x + A.w * 0.73 : cx;
@@ -8465,14 +8467,17 @@ function drawTitle() {
     ctx.restore();
   });
   if (fr) { if (fade) ctx.globalAlpha = 1; return; } // first launch: PLAY alone (Levels, Daily, Shop, Extras and the bank come with the first win)
-  const tw = (bw - 16 * u) / 3, ry = by + ph + 8 * u, rh = 54 * u, /* 0.8.14: one gutter, 8 units, across and down the block */ paid = save.daily.paid === today();
+  const ry = by + ph + 8 * u, rh = 54 * u;
+  const bankEh = Math.min(rh * 0.8, 44 * u), bankEw = bankEh * 0.78, bankOn = save.wallet.bank > 0 && ads.moneyShop;
+  const bankIn = bankOn && bx + bw / 2 + 8 * u + bankEw > A.x1 - 2 * u; // 0.8.16: no room beside the row: the egg ends the row, on the column's right edge
+  const tw = (bw - 16 * u - (bankIn ? bankEw + 8 * u : 0)) / 3, /* 0.8.14: one gutter, 8 units, across and down the block */ paid = save.daily.paid === today();
   pop(0.33, bx - bw / 2 + tw / 2, ry + rh / 2, () => ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u }));
   pop(0.4, bx - bw / 2 + tw * 1.5 + 8 * u, ry + rh / 2, () => ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u }));
   pop(0.47, bx - bw / 2 + tw * 2.5 + 16 * u, ry + rh / 2, () => purseBtn(bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, 18 * u));
   // the Golden Egg Bank: a small glass egg beside the coins, filling as wins drop coins in (tap: its card in the shop)
-  if (save.wallet.bank > 0 && ads.moneyShop) {
-    const eh = Math.min(rh * 0.8, 44 * u), ew = eh * 0.78, ex = bx + bw / 2 + 8 * u + ew / 2, ey = ry + rh / 2 - 2 * u;
-    if (ex + ew / 2 <= A.x1 - 2 * u) {
+  if (bankOn) {
+    const eh = bankEh, ew = bankEw, ex = bx + bw / 2 + (bankIn ? -ew / 2 : 8 * u + ew / 2), ey = ry + rh / 2 - 2 * u;
+    {
       pop(0.5, ex, ey, () => drawGlassEgg(ctx, ex, ey, eh, save.wallet.bank / E.BANK_CAP, G.t));
       ui.record({ x: ex - ew / 2, y: ey - eh / 2, w: ew, h: eh }, 'title:bank');
       homeHit('home:bank', ex - ew / 2 - 4 * u, ey - eh / 2 - 4 * u, ew + 8 * u, eh + 8 * u);
