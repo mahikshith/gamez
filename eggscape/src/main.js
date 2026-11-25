@@ -8347,9 +8347,9 @@ function drawFailPage() {
     const gC = 12 * s;
     if (ways.length === 2) {
       B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); skipBtn(ways[1], x + hw + 10 * s, y, hw, BH * s); } });
-      B.push({ h: BH * s, gap: 10 * s, draw: (x, y, w) => lvBtn(x + w * 0.22, y, w * 0.56, BH * s) });
+      B.push({ h: BH * s, gap: 10 * s, draw: (x, y, w) => lvBtn(x, y, w, BH * s) });
     } else if (ways.length === 1) B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); lvBtn(x + hw + 10 * s, y, hw, BH * s); } });
-    else B.push({ h: BH * s, gap: gC, draw: (x, y, w) => lvBtn(x + w * 0.22, y, w * 0.56, BH * s) });
+    else B.push({ h: BH * s, gap: gC, draw: (x, y, w) => lvBtn(x, y, w, BH * s) });
     return B;
   };
   // her stage takes what the rest of the page leaves (portrait): 130 to 260 units
