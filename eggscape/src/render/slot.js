@@ -240,9 +240,14 @@ export function drawSlot(ctx, x, y, w, h, slices, reels, o = {}) {
       const y1 = cy + G.R * Math.sin(a1), y2 = cy + G.R * Math.sin(a2), cv = symbol(slices[stripAt(r, k, n)], c, dpr), v1 = (a1 - (th - G.al)) / (2 * G.al), v2 = (a2 - (th - G.al)) / (2 * G.al);
       const far = 1 - Math.cos(th), nar = c * 0.05 * far; // further round the drum: a touch narrower, and darker
       ctx.globalAlpha = a;
-      if (bad > 0 && k === k0 && !off) { // the villain in the row shakes with laughter, a little bigger; its neighbours fade
-        const j = o.calm ? 0 : Math.sin(t * 26 + r * 2) * c * 0.012 * bad, z = c * (1 + 0.05 * bad);
-        ctx.drawImage(cv, wx + (G.cw - z) / 2 + j, (y1 + y2) / 2 - z / 2 - Math.abs(j) * 0.8, z, z); ctx.globalAlpha = 1; return;
+      if (bad > 0 && k === k0 && !off) { // the villain in the row cackles in place: it bobs and squashes with each laugh, a little bigger; its neighbours fade
+        const lg = o.calm ? 0 : Math.abs(Math.sin(t * 12 + r * 1.1)) * bad, j = o.calm ? 0 : Math.sin(t * 26 + r * 2) * c * 0.012 * bad, z = c * (1 + 0.07 * bad), zy = z * (1 - 0.07 * lg), zx = z * (1 + 0.04 * lg);
+        const cxT = wx + G.cw / 2 + j, cyT = (y1 + y2) / 2 - lg * c * 0.05 + (z - zy) / 2;
+        ctx.drawImage(cv, cxT - zx / 2, cyT - zy / 2, zx, zy);
+        // 0.8.17: and the three tiles flash red (Calm: a steady red)
+        ctx.globalAlpha = (o.calm ? 0.2 : 0.1 + 0.24 * (0.5 + 0.5 * Math.sin(t * 15))) * bad; ctx.fillStyle = '#ff3a24';
+        rr(ctx, cxT - zx / 2 + c * 0.03, cyT - zy / 2 + c * 0.03, zx - c * 0.06, zy - c * 0.06, c * 0.15); ctx.fill();
+        ctx.globalAlpha = 1; return;
       }
       if (bad > 0) ctx.globalAlpha = a * (1 - 0.6 * bad);
       ctx.drawImage(cv, 0, v1 * cv.height, cv.width, (v2 - v1) * cv.height, tx + nar, y1, c - 2 * nar, y2 - y1);

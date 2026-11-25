@@ -383,7 +383,7 @@ export class UI {
   pageHeader(P, o = {}) {
     const { s, x, y, w, h } = P, g = 8 * s, tail = 16 * s;
     const rightW = o.right ? o.right.w : 0;
-    const tw0 = this.measure(o.title, 25 * s), need = tw0 + 48 * s, want = Math.max(150 * s, need);
+    const tw0 = o.title ? this.measure(o.title, 25 * s) : 0, need = tw0 + 48 * s, want = Math.max(150 * s, need);
     const room = (leftW) => w - 2 * (Math.max(leftW, rightW) + g + tail); // centred on the column
     const span = (leftW) => w - leftW - rightW - 2 * (g + tail); // between the left buttons and the right slot
     // the second left button stays while it costs the title nothing (the right slot is as wide anyway and the title is
@@ -393,6 +393,7 @@ export class UI {
     this.button(o.back || 'back', '', x, y, h, h, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: h / 2 });
     if (two) this.button(o.left2.id, '', x + h + g, y, h, h, { kind: 'hud', icon: o.left2.icon, iconS: 1.25, round: h / 2 });
     if (o.right) o.right.draw(x + w - rightW, y, rightW, h);
+    if (o.title == null) return { two, ribL: x + w / 2, ribR: x + w / 2 }; // (no title for a moment: the Lucky Spin's bag chip stands there while a prize lands in it)
     // 0.8.16 (a five-digit purse cut the shop's title to "Sh..."): the title is always whole. Centred on the column
     // while it fits there; else it takes the room between the buttons and the right slot (off centre); and if even
     // that is short its letters shrink to fit. Never an ellipsis.
