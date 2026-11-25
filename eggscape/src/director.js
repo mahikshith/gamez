@@ -295,7 +295,7 @@ export function homeNudge(save, ctx) {
   const D = dirState(save), now = ctx.now || Date.now(), coins = (save.wallet && save.wallet.coins) || 0;
   if (D.keepAsk) return { kind: 'keep', what: 'skin', id: D.keepAsk, name: SKINS[D.keepAsk].name, price: SKINS[D.keepAsk].price };
   if (D.keepAskHen) return { kind: 'keep', what: 'hen', id: D.keepAskHen, name: HEN_SKINS[D.keepAskHen].name, price: HEN_SKINS[D.keepAskHen].price };
-  if (D.lastSeen && now - D.lastSeen >= DIR.welcomeDays * DAY && now - D.welcomeAt >= DIR.welcomeDays * DAY && (save.unlocked || 1) >= 3) return { kind: 'welcome', coins: DIR.welcomeCoins };
+  if (welcomeDue(save, now)) return { kind: 'welcome', coins: welcomeCoins(now - D.lastSeen) };
   // the first time the coins reach a locked chick (the strongest pull) or a skin: say so once
   // 0.8.7: and at most one of these a day. A player sitting on a pile of coins used to get one on every visit to the
   // map, a new item each time, until every affordable item had been named: a popup in the way of playing.
@@ -307,6 +307,11 @@ export function homeNudge(save, ctx) {
   if (sk) return { kind: 'afford', item: 'skin:' + sk, name: SKINS[sk].name, price: SKINS[sk].price };
   return null;
 }
+// 0.8.17: the welcome-back gift grows with the days away (the Herald's notes on day 3, 7, 14 and 30 say what it is by
+// then, and it is given on return): a gift, never an ask, so it does not wait for the Brain's gate
+export const WELCOME = [[29.5, 200], [13.5, 150], [6.5, 100], [0, DIR.welcomeCoins]]; // [days away, coins]: a note on day 7, 14 or 30 promises no more than a return at that moment gets
+export function welcomeCoins(awayMs) { const d = (Number(awayMs) || 0) / DAY; return (WELCOME.find(([k]) => d >= k) || WELCOME[WELCOME.length - 1])[1]; }
+export function welcomeDue(save, now = Date.now()) { const D = dirState(save); return !!D.lastSeen && now - D.lastSeen >= DIR.welcomeDays * DAY && now - D.welcomeAt >= DIR.welcomeDays * DAY && (save.unlocked || 1) >= 3; }
 export function noteNudge(save, n, now) {
   const D = dirState(save);
   if (n.kind === 'welcome') D.welcomeAt = now;
