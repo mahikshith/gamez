@@ -12,6 +12,25 @@ What the iPhone app does today:
 - No purchases, ads or reminders yet. The app runs the web version's rules: the shop sells for coins only, and a
   bonus "video" pays out after a short wait.
 
+## The quick way: the ready-made app file (Windows or Mac, no build)
+
+GitHub builds the iPhone app file for you. You only sign and install it.
+
+1. Open the latest green "iOS build check" run: https://github.com/mahikshith/gamez/actions/workflows/ios-build.yml
+   Under **Artifacts**, download `eggscape-ios-...-unsigned-ipa`. Unzip it. Inside is `Eggscape-<version>-unsigned.ipa`.
+2. On the computer install iTunes and iCloud from Apple's website (on Windows: the versions from apple.com, not the
+   Microsoft Store ones), then install [Sideloadly](https://sideloadly.io).
+3. Plug in the iPhone, unlock it, tap Trust.
+4. Open Sideloadly. Drag the `.ipa` in, type your Apple ID, press Start, and enter the 2FA code. A free Apple ID works.
+   A spare Apple ID is the careful choice, because the password goes through a third-party tool to Apple.
+5. On the iPhone do part 3 below (Developer Mode, trust your Apple ID). Then tap Eggscape.
+
+With a free Apple ID the app stops opening after 7 days. Repeat step 4 with the same file; your progress stays.
+I have not been able to test this install myself: the file is built and checked on GitHub, the install runs on your
+computer.
+
+The rest of this page is the other way: building it yourself with xtool.
+
 ## 1. Set up your computer (once)
 
 Pick the part for your computer: A (Windows), B (Mac) or C (Linux).
