@@ -120,13 +120,12 @@ export function life(P, seed, days = 30, watch = null) {
   const waiting = () => { const tot = totalStars(save), ch = E.chestFor(tot, save.wallet.chests), on = SP.open(save), spins = on ? SP.banked(save) : 0, left = on ? SP.left(save) : 0; return { spins, spinLeft: spins ? 0 : left, starsToChest: ch && !ch.ready ? ch.at - tot : 0, chestSkin: !!(ch && ch.reward.skin && !E.ownsSkin(save.wallet, ch.reward.skin)), daily: true, child: false, waiting: spins > 0 || left === 1 }; };
   const spinAll = (now) => { // every banked spin, then the video spin, then perhaps one for coins
     const day = dayKey(now);
-    // (the villains take some pulls: a free pull they took can be tried again by a video, a video pull tries again free)
-    const got = (r) => { if (r.miss) { S.spins.miss++; again(); } else if (r.prize.kind === 'coupon') S.coupons++; sync('spin', now); };
-    const again = () => { const w = SP.ways(save, day).retry; if (!w || (w === 'ad' && !wantsVideo(now))) return; if (w === 'ad') video(now); const r = SP.spin(save, 'retry', day, R); if (r) { S.spins.retry++; if (r.miss) fail('a Try again met the villains'); else if (r.prize.kind === 'coupon') S.coupons++; } };
+    // (the villains take some pulls; since 0.8.16 a lost pull is lost: its coins or its video are spent)
+    const got = (r) => { if (r.miss) S.spins.miss++; else if (r.prize.kind === 'coupon') S.coupons++; sync('spin', now); };
     while (SP.ways(save, day).free) { const r = SP.spin(save, 'free', day, R); if (!r) break; S.spins.free++; got(r); }
     while (SP.ways(save, day).ad && wantsVideo(now)) { video(now); const r = SP.spin(save, 'ad', day, R); if (!r) break; S.spins.ad++; got(r); }
     const c = SP.ways(save, day).coin;
-    if (c != null && save.wallet.coins >= c + 60 && yes(P.wheel)) { const c0 = save.wallet.coins, r = SP.spin(save, 'coin', day, R); if (r) { S.spins.coin++; if (r.miss && save.wallet.coins !== c0) fail('a coin pull the villains took cost coins'); got(r); } }
+    if (c != null && save.wallet.coins >= c + 60 && yes(P.wheel)) { const c0 = save.wallet.coins, r = SP.spin(save, 'coin', day, R); if (r) { S.spins.coin++; if (save.wallet.coins > c0 - c && r.miss) fail('a coin pull the villains took was not paid for'); got(r); } }
   };
   const shop = (now) => { // the best thing the purse reaches (the Conductor's suggestion), bought by those who buy such things
     const items = E.unlockables(save.wallet).map((u) => ({ key: u.kind + ':' + u.id, kind: u.kind, id: u.id, price: E.unlockPrice(save.wallet, u.price).price }));
@@ -340,7 +339,7 @@ export function clickers({ n = 200, steps = 400, seed = 1 } = {}) {
       () => w(E.openDailyChest(save.wallet, day())),
       () => { const ch = E.chestFor(totalStars(save), save.wallet.chests); if (ch && ch.ready) w(E.openChest(save.wallet, ch)); },
       () => { const b = pick(E.BOSS_TREASURE_IDS); if ((save.stars[b] || 0) > 0) w(E.openBossTreasure(save.wallet, b)); },
-      () => { const b = save.spin && save.spin.miss, r = SP.spin(save, pick(['free', 'ad', 'coin', 'retry']), day(), R); if (r && r.miss && b) note('the villains came twice in a row'); },
+      () => { const b = save.spin && save.spin.miss >= SP.SPIN.missRow, r = SP.spin(save, pick(['free', 'ad', 'coin', 'retry']), day(), R); if (r && r.miss && b) note('the villains came three times in a row'); },
       () => { const c = E.freeCoinsNext(save.adDay, day()); if (c > 0) { w(E.addCoins(save.wallet, c)); save.adDay = E.noteFreeCoins(save.adDay, day()); OF.noteRewarded(save, now); ENG.video(save); if (coinsVideoToday.day !== day()) coinsVideoToday = { day: day(), n: 0 }; coinsVideoToday.n += c; } },
       () => { const o = OF.evaluate(save, pick(['home', 'win', 'fail', 'shop']), { now, money: true, levelId: save.unlocked, fails: Math.floor(R() * 5), prevFails: Math.floor(R() * 4), adReady: true }); if (o && o.sku && R() < 0.3) w(E.grantIap(save.wallet, o.sku, 't' + i + '-' + acts, now).wallet); else if (o) OF.markShown(save, o, now, save.unlocked); },
       () => { if (!allowed && ENG.herald.shouldAsk(save, { unlocked: save.unlocked, stars: 3, spins: SP.banked(save), spinLeft: SP.left(save) })) { allowed = R() < 0.7; ENG.herald.answer(save, allowed, now); } },

@@ -23,7 +23,7 @@ for (const L of LEVELS.slice(0, 50)) {
 for (let i = 0; i < Math.min(E.CHEST_COUNT, Math.floor(stars / E.STARS_PER_CHEST)); i++) { const C = E.chestFor(999, i); add('star chests', C.reward.coins, price(C.reward.booster), C.reward.skin ? E.SKINS[C.reward.skin].price : 0); }
 let spins = 0;
 { // the wheel: one spin per SPIN.every fresh wins from level SPIN.from on, at the tier of that point of the game
-  const save = { unlocked: 1, wallet: E.defaultWallet() }, W = (s) => (s.w / 100) * SP.hitRate(); // the villains take one free pull in five in the long run
+  const save = { unlocked: 1, wallet: E.defaultWallet() }, W = (s) => (s.w / 100) * SP.hitRate(); // the villains take about four free pulls in ten in the long run
   for (let lv = SP.SPIN.from; lv <= 50; lv++) {
     save.unlocked = lv + 1;
     if ((lv - SP.SPIN.from + 1) % SP.SPIN.every) continue;
@@ -49,7 +49,7 @@ ok(src['boss treasures'].coins / coins <= 0.6, `boss treasures are ${Math.round(
 ok(src.wins.coins / coins >= 0.2, `plain wins are ${Math.round(src.wins.coins / coins * 100)}% of the coins (at least 20%; it was 18%)`);
 ok(src.wins.coins / 50 >= 20 && src.wins.coins / 50 <= 35, `a two-star win pays about ${Math.round(src.wins.coins / 50)} coins: a booster is two or three wins away`);
 // every recurring sink is dearer than the faucet that could feed it for free in one step
-ok(SP.meanWorth(E.defaultWallet(), 1) < SP.SPIN.coin[0], `a coin spin costs more (${SP.SPIN.coin[0]}) than it pays on average (${SP.meanWorth(E.defaultWallet(), 1).toFixed(1)})`);
+ok(SP.meanWorth(E.defaultWallet(), 1) * SP.hitRate() < SP.SPIN.coin[0] * 0.75, `a coin spin costs more (${SP.SPIN.coin[0]}) than it pays on average with the villains counted (${(SP.meanWorth(E.defaultWallet(), 1) * SP.hitRate()).toFixed(1)}): the machine is a place to spend`);
 ok(E.BOOSTER_ORDER.every((b) => E.giftCoins(b) < price(b)), 'a gift into a full bag pays less than the booster costs');
 ok(E.GIFT_MAX < E.MAX_OWNED, 'the bag takes more bought boosters than free ones');
 const day = E.AD_REWARDS.freeCoins.ladder.reduce((a, b) => a + b, 0);

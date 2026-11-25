@@ -73,6 +73,14 @@ Status: FIXED (changed in the build named), OPEN (needs a decision or real data)
 | 14 | About half of the villain rows are tried again by a video (9 of 20 for the child, 1 of 10 for the video hater). That is one extra chosen video every three or four play days for a middling player. | Assumption (who watches videos) | OPEN: real logs carry `spin:retry` shown against taken. |
 | 15 | The villains cut the free boosters from spins by a fifth; the three coin prizes were raised by a quarter (20, 40, 100) so the coins from spins stay where they were and the economy lanes in `tools/test-loop.mjs` still hold. The strong player's unused pile did not move (22): the villains do not fix finding 4. | Rule | KEPT. Finding 4 stays OPEN. |
 
+### 2026-11-25, build 0.8.16, a lost pull is lost (mykee after playing 0.8.15: "for every turn users were able to get a reward ... it shouldn't be like that")
+
+| # | What was seen | Rule or assumption | Status |
+| --- | --- | --- | --- |
+| 16 | In 0.8.15 every pull ended in a prize: a coin pull the villains took was refunded and a video pull got a free Try again (finding 13). Nothing was ever spent at the machine, so it was a second purse, not a place to spend. | Rule (my design fault) | FIXED 0.8.16: the villains take 45 pulls in 100, never three times in a row (about 4 in 10 in the long run); the coins or the video of a lost pull are spent; no Try again. First pull ever and the cheer-up spin still always win. Odds on the page, the same for everyone. |
+| 17 | With the new rules a pull is worth about 50 coins against a first price of 80 (62%), so a coin spin is a real sink. Players who like the wheel now spend 63% of what they earn against 42% for those who do not (it was level before). Coin prizes went up to 30, 60 and 150 so a win feels like one and the lanes in `tools/test-loop.mjs` hold (boss treasures 59% of coins). | Rule | OPEN: watch in real logs how many coin and video spins follow a villain row (the row is `spin` in the buttons-shown-vs-taken tally). |
+| 18 | Risk named to mykee: a slot machine where paid pulls can lose nothing back is closer to what store rating forms call simulated gambling than 0.8.15 was. | Outside rule (store ratings) | OPEN: his call; the odds page and the daily caps (3 video, 3 coin pulls) stay. |
+
 ## What real logs have said
 
 Nothing yet: no speed log from build 0.8.15 or later has been filed. From 0.8.15 on the log carries, as counts only:

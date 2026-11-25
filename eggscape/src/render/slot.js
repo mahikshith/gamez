@@ -100,6 +100,7 @@ export function drawSliceIcon(ctx, sl, cx, cy, s, t = 0) {
 const STEP = [1, 3, 7];
 export const stripAt = (reel, k, n) => ((((k % n) + n) % n) * STEP[reel]) % n; // the prize index at place k of a reel
 export function stripPos(reel, idx, n) { for (let k = 0; k < n; k++) if (stripAt(reel, k, n) === idx) return k; return 0; } // where a prize sits on a reel
+const rr = (ctx, x, y, w, h, r) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); };
 const SYM = new Map(); // key -> canvas
 export function releaseSlot() { for (const cv of SYM.values()) freeCanvas(cv); SYM.clear(); }
 function symbol(sl, c, dpr) {
@@ -109,25 +110,39 @@ function symbol(sl, c, dpr) {
   if (SYM.size > 60) releaseSlot(); // a resize, or many pulls with a new cast: the old pictures go
   const px = Math.ceil(c * dpr); cv = document.createElement('canvas'); cv.width = px; cv.height = px;
   const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // 0.8.16 (mykee: "there is no proper horizontal or vertical line to those turnables ... it should be properly
+  // outlined"): every picture rides on its own tile, a cream card with a brown outline and a lit top edge (the
+  // villains' tile is night purple). The tiles are what the reel is made of: the gaps between them are its lines.
+  const vil = sl.kind === 'villain', m = c * 0.03, tr = c * 0.16, tl = Math.max(1.5, c * 0.035);
+  const fg = g.createLinearGradient(0, m, 0, c - m);
+  if (vil) { fg.addColorStop(0, '#5a3a8a'); fg.addColorStop(1, '#2c1a52'); } else { fg.addColorStop(0, '#fffdf4'); fg.addColorStop(0.55, '#fff3d6'); fg.addColorStop(1, '#f3dcae'); }
+  rr(g, m, m, c - 2 * m, c - 2 * m, tr); g.fillStyle = fg; g.fill();
+  g.save(); rr(g, m, m, c - 2 * m, c - 2 * m, tr); g.clip();
+  g.fillStyle = vil ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.7)'; g.fillRect(0, m, c, c * 0.07); // the lit top edge
+  g.fillStyle = vil ? 'rgba(10,0,30,0.3)' : 'rgba(150,96,30,0.2)'; g.fillRect(0, c - m - c * 0.07, c, c * 0.07); // and the shaded foot
+  g.restore();
+  rr(g, m + tl / 2, m + tl / 2, c - 2 * m - tl, c - 2 * m - tl, tr - tl / 2); g.lineWidth = tl; g.strokeStyle = vil ? '#14062e' : '#7a4a10'; g.stroke();
   const label = sl.kind === 'coins' ? String(sl.n) : sl.n > 1 ? 'x' + sl.n : '';
-  drawSliceIcon(g, sl, c / 2, label ? c * 0.4 : c / 2, label ? c * 0.7 : sl.kind === 'villain' ? c * 0.98 : c * 0.84, 0);
+  drawSliceIcon(g, sl, c / 2, label ? c * 0.41 : c / 2, label ? c * 0.6 : vil ? c * 0.84 : c * 0.74, 0);
   if (label) {
-    const fs = c * 0.27; g.font = `600 ${fs}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
-    g.lineWidth = fs * 0.3; g.strokeStyle = '#5a2a06'; g.strokeText(label, c / 2, c * 0.82); g.fillStyle = '#fff6c8'; g.fillText(label, c / 2, c * 0.82);
+    const fs = c * 0.25; g.font = `600 ${fs}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = fs * 0.3; g.strokeStyle = '#5a2a06'; g.strokeText(label, c / 2, c * 0.79); g.fillStyle = '#fff6c8'; g.fillText(label, c / 2, c * 0.79);
   }
   SYM.set(key, cv);
   return cv;
 }
-const rr = (ctx, x, y, w, h, r) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); };
 // Where things are on a machine drawn into the box (x, y, w, h): the roof (the hen stands on it), the windows, the lever.
 export function slotGeom(x, y, w, h) {
   // mykee, 13:32: "make it bigger ... make sure the images or rollable images dont overshoot the slots". The reel panel
-  // takes nine tenths of the cabinet, and each window shows ONE whole picture at rest: its neighbours on the reel sit a
-  // full pitch away, outside the window, so nothing is ever cut by a window's edge unless the reel is turning.
+  // takes nine tenths of the cabinet. 0.8.16: each window looks onto a DRUM (0.8.15 showed one picture on a blank white
+  // panel; mykee: "no proper lines ... properly outlined ... properly animated"). The tile in the row that counts faces
+  // the player at full size; the tiles before and after it lie on the drum's curve above and below, foreshortened and
+  // in shade, and whole inside the window at rest (they end just short of the drum's horizon, so no edge cuts them).
   const mqH = h * 0.25, bodyY = y + mqH * 0.74, bodyH = y + h - bodyY;
-  const px = x + w * 0.05, pw = w * 0.9, py = bodyY + bodyH * 0.13, ph = bodyH * 0.56, ip = pw * 0.028, g = pw * 0.022;
-  const cw = (pw - 2 * ip - 2 * g) / 3, wh = ph - 2 * ip, cell = Math.min(cw * 0.92, wh * 0.86), lh = bodyH * 0.36;
-  return { mqH, bodyY, bodyH, px, py, pw, ph, cw, wh, wy: py + ip, wx: [0, 1, 2].map((i) => px + ip + i * (cw + g)), cell, pitch: wh / 2 + cell * 0.62,
+  const px = x + w * 0.05, pw = w * 0.9, py = bodyY + bodyH * 0.12, ph = bodyH * 0.6, ip = pw * 0.028, g = pw * 0.022;
+  const cw = (pw - 2 * ip - 2 * g) / 3, wh = ph - 2 * ip, lh = bodyH * 0.36;
+  const R = wh * 0.49, cell = Math.min(cw * 0.9, wh * 0.455), al = Math.asin(cell / (2 * R)), dl = 2 * al + 0.07; // the drum's radius, a tile's half angle, the angle from tile to tile
+  return { mqH, bodyY, bodyH, px, py, pw, ph, cw, wh, wy: py + ip, wx: [0, 1, 2].map((i) => px + ip + i * (cw + g)), cell, R, al, dl,
     roofY: y, lever: { x: x + w * 0.985, y: bodyY + bodyH * 0.52, h: lh }, right: x + w * 0.985 + lh * 0.32 };
 }
 // the roof sign carries no words (mykee, 13:29 and 13:30: "dont add any text, just add cool graphics"): a golden egg
@@ -205,28 +220,58 @@ export function drawSlot(ctx, x, y, w, h, slices, reels, o = {}) {
   }
   // the reel panel and its three windows
   rr(ctx, G.px, G.py, G.pw, G.ph, G.pw * 0.04); ctx.fillStyle = '#3a1408'; ctx.fill(); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = '#ffc83a'; ctx.stroke();
-  const c = G.cell, dpr = o.dpr || 1, cy = G.wy + G.wh / 2;
+  const c = G.cell, dpr = o.dpr || 1, cy = G.wy + G.wh / 2, H = Math.PI / 2;
   for (let r = 0; r < 3; r++) {
-    const wx = G.wx[r], pos = reels[r] || 0, sp = Math.abs((o.speed && o.speed[r]) || 0), k0 = Math.round(pos);
+    const wx = G.wx[r], pos = reels[r] || 0, sp = Math.abs((o.speed && o.speed[r]) || 0), k0 = Math.round(pos), tx = wx + (G.cw - c) / 2, fast = sp > 7 && !o.calm;
     ctx.save(); rr(ctx, wx, G.wy, G.cw, G.wh, G.cw * 0.1); ctx.clip();
-    const bg = ctx.createLinearGradient(wx, 0, wx + G.cw, 0); bg.addColorStop(0, '#f2e4c2'); bg.addColorStop(0.5, '#fffaf0'); bg.addColorStop(1, '#f2e4c2'); ctx.fillStyle = bg; ctx.fillRect(wx, G.wy, G.cw, G.wh);
+    // the band the tiles ride on: worn wood, a rail down each side, and the grain that runs with the turn
+    const bg = ctx.createLinearGradient(wx, 0, wx + G.cw, 0); bg.addColorStop(0, '#8a5a26'); bg.addColorStop(0.08, '#b98a48'); bg.addColorStop(0.5, '#caa05e'); bg.addColorStop(0.92, '#b98a48'); bg.addColorStop(1, '#8a5a26');
+    ctx.fillStyle = bg; ctx.fillRect(wx, G.wy, G.cw, G.wh);
+    for (const d of [0.045, 0.955]) { ctx.fillStyle = 'rgba(70,36,8,0.55)'; ctx.fillRect(wx + G.cw * d - lw * 0.4, G.wy, lw * 0.8, G.wh); }
     if (bad > 0) { ctx.fillStyle = `rgba(40,8,30,${0.62 * bad})`; ctx.fillRect(wx, G.wy, G.cw, G.wh); } // the lights go down behind the villains
-    for (let k = k0 - 2; k <= k0 + 2; k++) { // as the reel runs on, its pictures come down through the window
-      const sy = cy + (pos - k) * G.pitch; if (sy < G.wy - c || sy > G.wy + G.wh + c) continue;
-      const cv = symbol(slices[stripAt(r, k, n)], c, dpr);
-      if (bad > 0 && k === k0) { // the villain in the row shakes with laughter, a little bigger; its neighbours fade
-        const j = o.calm ? 0 : Math.sin(t * 26 + r * 2) * c * 0.012 * bad, z = c * (1 + 0.05 * bad);
-        ctx.drawImage(cv, wx + (G.cw - z) / 2 + j, sy - z / 2 - Math.abs(j) * 0.8, z, z); continue;
-      }
-      if (bad > 0) ctx.globalAlpha = 1 - 0.75 * bad;
-      if (sp > 7 && !o.calm) { ctx.globalAlpha = 0.3; ctx.drawImage(cv, wx + (G.cw - c) / 2, sy - c / 2 - c * 0.2, c, c); ctx.drawImage(cv, wx + (G.cw - c) / 2, sy - c / 2 + c * 0.2, c, c); ctx.globalAlpha = 0.75; }
-      ctx.drawImage(cv, wx + (G.cw - c) / 2, sy - c / 2, c, c); ctx.globalAlpha = 1;
+    // the rails' studs turn with the drum: a row of dots that runs down each side (what makes a slow turn readable)
+    for (let k = Math.floor(pos * 2) - 4; k <= Math.floor(pos * 2) + 4; k++) {
+      const th = (pos - k / 2 - 0.25) * G.dl; if (Math.abs(th) >= H) continue;
+      const sy = cy + G.R * Math.sin(th), sr = Math.max(0.8, c * 0.022) * Math.cos(th);
+      for (const d of [0.045, 0.955]) { ctx.beginPath(); ctx.ellipse(wx + G.cw * d, sy, c * 0.022, sr, 0, 0, TAU); ctx.fillStyle = 'rgba(255,226,150,0.75)'; ctx.fill(); }
     }
-    const sh = ctx.createLinearGradient(0, G.wy, 0, G.wy + G.wh); sh.addColorStop(0, 'rgba(60,24,6,0.6)'); sh.addColorStop(0.24, 'rgba(60,24,6,0)'); sh.addColorStop(0.76, 'rgba(60,24,6,0)'); sh.addColorStop(1, 'rgba(60,24,6,0.6)');
+    const tile = (k, off, a) => { // one tile on the drum: th is its angle off the row that counts; it is drawn between its two edges' heights
+      const th = (pos - k + off) * G.dl, a1 = Math.max(-H, th - G.al), a2 = Math.min(H, th + G.al); if (a2 - a1 < 0.02) return;
+      const y1 = cy + G.R * Math.sin(a1), y2 = cy + G.R * Math.sin(a2), cv = symbol(slices[stripAt(r, k, n)], c, dpr), v1 = (a1 - (th - G.al)) / (2 * G.al), v2 = (a2 - (th - G.al)) / (2 * G.al);
+      const far = 1 - Math.cos(th), nar = c * 0.05 * far; // further round the drum: a touch narrower, and darker
+      ctx.globalAlpha = a;
+      if (bad > 0 && k === k0 && !off) { // the villain in the row shakes with laughter, a little bigger; its neighbours fade
+        const j = o.calm ? 0 : Math.sin(t * 26 + r * 2) * c * 0.012 * bad, z = c * (1 + 0.05 * bad);
+        ctx.drawImage(cv, wx + (G.cw - z) / 2 + j, (y1 + y2) / 2 - z / 2 - Math.abs(j) * 0.8, z, z); ctx.globalAlpha = 1; return;
+      }
+      if (bad > 0) ctx.globalAlpha = a * (1 - 0.6 * bad);
+      ctx.drawImage(cv, 0, v1 * cv.height, cv.width, (v2 - v1) * cv.height, tx + nar, y1, c - 2 * nar, y2 - y1);
+      if (far > 0.02) { ctx.globalAlpha = Math.min(0.6, far * 0.75); ctx.fillStyle = '#3a1c08'; rr(ctx, tx + nar, y1, c - 2 * nar, y2 - y1, Math.max(0, Math.min((y2 - y1) / 2, c * 0.12 * Math.cos(th)))); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    };
+    for (let k = k0 - 3; k <= k0 + 3; k++) { // as the reel runs on, its tiles come down over the drum
+      if (fast) { tile(k, -0.16, 0.28); tile(k, 0.16, 0.28); tile(k, 0, 0.8); } else tile(k, 0, 1);
+    }
+    if (fast) { // at full speed the tiles smear: streaks run the way the drum turns
+      const a = Math.min(0.5, (sp - 7) / 24);
+      for (let i = 0; i < 5; i++) { const sx = wx + G.cw * (0.16 + 0.17 * i), g2 = ctx.createLinearGradient(0, G.wy, 0, G.wy + G.wh); g2.addColorStop(0, 'rgba(255,250,230,0)'); g2.addColorStop(0.5, `rgba(255,250,230,${a * (i % 2 ? 0.5 : 0.8)})`); g2.addColorStop(1, 'rgba(255,250,230,0)'); ctx.fillStyle = g2; ctx.fillRect(sx, G.wy, G.cw * 0.035, G.wh); }
+    }
+    // the drum's roundness: deep shade toward its top and bottom, a band of light across its front, glass over it
+    const sh = ctx.createLinearGradient(0, G.wy, 0, G.wy + G.wh); sh.addColorStop(0, 'rgba(40,14,4,0.78)'); sh.addColorStop(0.2, 'rgba(40,14,4,0.16)'); sh.addColorStop(0.36, 'rgba(40,14,4,0)'); sh.addColorStop(0.64, 'rgba(40,14,4,0)'); sh.addColorStop(0.8, 'rgba(40,14,4,0.16)'); sh.addColorStop(1, 'rgba(40,14,4,0.78)');
     ctx.fillStyle = sh; ctx.fillRect(wx, G.wy, G.cw, G.wh);
+    ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.beginPath(); ctx.moveTo(wx, G.wy); ctx.lineTo(wx + G.cw * 0.62, G.wy); ctx.lineTo(wx + G.cw * 0.3, G.wy + G.wh * 0.3); ctx.lineTo(wx, G.wy + G.wh * 0.3); ctx.closePath(); ctx.fill(); // the glass
     if (lit > 0) { ctx.fillStyle = `rgba(255,236,150,${(0.16 + 0.14 * Math.sin(t * 9)) * lit})`; ctx.fillRect(wx, G.wy, G.cw, G.wh); }
     ctx.restore();
-    rr(ctx, wx, G.wy, G.cw, G.wh, G.cw * 0.1); ctx.lineWidth = lw * (1 + lit + bad * 0.6); ctx.strokeStyle = bad > 0 ? '#e8402c' : lit > 0 ? `rgba(255,${Math.round(200 + 40 * lit)},90,1)` : '#8a5200'; ctx.stroke();
+    // the window's frame: a dark inner lip, then brass
+    rr(ctx, wx, G.wy, G.cw, G.wh, G.cw * 0.1); ctx.lineWidth = lw * 2.4; ctx.strokeStyle = '#3a1408'; ctx.stroke();
+    rr(ctx, wx, G.wy, G.cw, G.wh, G.cw * 0.1); ctx.lineWidth = lw * (1 + lit + bad * 0.6); ctx.strokeStyle = bad > 0 ? '#e8402c' : lit > 0 ? `rgba(255,${Math.round(200 + 40 * lit)},90,1)` : '#e8a82a'; ctx.stroke();
+    // the row that counts: a gold bracket round the tile that faces the player (it glows for a row, turns red for villains)
+    {
+      const z = c * 1.06, bx = wx + (G.cw - z) / 2, by = cy - z / 2, q = z * 0.24, col = bad > 0 ? '#ff5a3c' : lit > 0 ? '#fff3a8' : '#ffd24a';
+      ctx.lineCap = 'round'; ctx.lineWidth = lw * 1.5 + 2; ctx.strokeStyle = 'rgba(60,24,4,0.7)';
+      const corners = () => { ctx.beginPath(); for (const [sx, sy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) { const X = bx + sx * z, Y = by + sy * z, dx = sx ? -1 : 1, dy = sy ? -1 : 1; ctx.moveTo(X + dx * q, Y); ctx.lineTo(X + dx * z * 0.08, Y); ctx.quadraticCurveTo(X, Y, X, Y + dy * z * 0.08); ctx.lineTo(X, Y + dy * q); } ctx.stroke(); };
+      corners(); ctx.lineWidth = lw * 1.5; ctx.strokeStyle = col; corners(); ctx.lineCap = 'butt';
+    }
   }
   if (lit > 0) { // three of a kind: a line of light through the row, and sparks thrown out from it
     const a = (0.55 + 0.25 * Math.sin(t * 11)) * lit, g = ctx.createLinearGradient(0, cy - c * 0.12, 0, cy + c * 0.12); g.addColorStop(0, 'rgba(255,240,160,0)'); g.addColorStop(0.5, `rgba(255,246,190,${a})`); g.addColorStop(1, 'rgba(255,240,160,0)');

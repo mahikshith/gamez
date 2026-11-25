@@ -5,11 +5,13 @@
 //   - not every pull wins (mykee, 12:41: "remove every spin wins, because every spin doesn't win"): on SPIN.miss
 //     pulls in a hundred three villains come up and take the prize. It is a row of its own with its own stated odds,
 //     never a staged near miss ("two the same and the third just past" is never shown);
-//   - the villains never win twice in a row (the pull after a villain row always wins), a player's very first pull
-//     always wins, and a cheer-up spin always wins (a gift to a player who is down must not be taken away);
-//   - nobody pays for nothing: a pull paid with coins that meets the villains gets its coins back; a pull paid with a
-//     video gets its "Try again" free; a free pull can try again by a chosen video (SPIN.retryPerDay a day), and a
-//     Try again always wins;
+//   - a lost pull is lost (0.8.16, mykee after playing 0.8.15: "for every turn users were able to get a reward ... it
+//     shouldn't be like that ... the entire game will revolve around rotating the slot machine"). 0.8.15 gave the coins
+//     back on a villain row and a free Try again after a video, so every pull ended in a prize and nothing was ever
+//     spent. Now the coins or the video of a lost pull are spent, there is no Try again, and the villains come on 45
+//     pulls in a hundred instead of 25: the machine is a place to spend, with its odds on the page beside the buttons;
+//   - the villains never come more than SPIN.missRow times in a row (the pull after that always wins), a player's
+//     very first pull always wins, and a cheer-up spin always wins (a gift to a player who is down is not taken away);
 //   - the odds are fixed, the same for every player, and shown (odds(): the villains' row and every prize);
 //   - a roll is one uniform draw; nothing about the player (purse, spend, mood) changes it;
 //   - no timer anywhere: a spin never expires.
@@ -35,23 +37,23 @@
 //     show it so that they feel great"): the third loss in a row on a level banks one free spin, once per level, at
 //     most SPIN.cheerMax a day. A gift, not a sale: nothing is asked for it.
 //
-// save.spin = { wins, bank, sure (banked spins that are cheer-up spins), miss (the last pull met the villains),
-//   again (0 | 1 = a Try again by video is open | 2 = a free one), t: { day, ad, coin, played, steps, cheer, retry },
+// save.spin = { wins, bank, sure (banked spins that are cheer-up spins), miss (villain rows in a row just now),
+//   again (unused since 0.8.16, kept 0), t: { day, ad, coin, played, steps, cheer, retry },
 //   n, cheered: [levelId, ...] }   (state() makes any save safe)
 import { BOOSTERS, BOOSTER_ORDER, HEN_SKINS, HEN_SKIN_ORDER, CHICK_IDS, CHICK_PRICES, ITEMS, CHARGE_ITEM, GIFT_MAX, MAX_CHARGES, MAX_TICKETS, COUPON, couponHeld, unlockables, giftBooster, sanitizeWallet, ownedCount, ownsHenSkin, ownsChick } from './economy.js';
 
-export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [80, 110, 150], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [11, 26, 41], tierX: [1, 1.5, 2, 2.5], cheerAt: 3, cheerMax: 2, miss: 25, retryPerDay: 3 };
+export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [80, 110, 150], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [11, 26, 41], tierX: [1, 1.5, 2, 2.5], cheerAt: 3, cheerMax: 2, miss: 45, missRow: 2 };
 
 // The prizes. w = weight = the odds in percent of a pull that wins (they add up to 100).
 export const TABLE = [
-  { id: 'c1', kind: 'coins', n: 20, w: 22 },
+  { id: 'c1', kind: 'coins', n: 30, w: 22 },
   { id: 'b1', kind: 'booster', n: 1, w: 17 },
   { id: 'cp', kind: 'coupon', n: 1, w: 8 }, // 0.8.15: a half-price ticket for one thing to own (economy.js COUPON)
-  { id: 'c2', kind: 'coins', n: 40, w: 16 },
+  { id: 'c2', kind: 'coins', n: 60, w: 16 },
   { id: 'ch', kind: 'charge', n: 1, w: 12 },
   { id: 'sh', kind: 'scare', n: 1, w: 6 }, // 0.8.15: a Scarecrow (villains keep away at the start of one level)
   { id: 'b2', kind: 'booster', n: 2, w: 7 },
-  { id: 'c3', kind: 'coins', n: 100, w: 5 },
+  { id: 'c3', kind: 'coins', n: 150, w: 5 },
   { id: 'sk', kind: 'skip', n: 1, w: 4 },
   { id: 'rare', kind: 'rare', n: 1, w: 3 },
 ];
@@ -60,8 +62,8 @@ const TOTAL = TABLE.reduce((a, s) => a + s.w, 0);
 export const VILLAIN = { id: 'vil', kind: 'villain', n: 0 };
 const MISS = SPIN.miss / 100;
 // of all pulls in the long run, the share that win: the villains come on MISS of the pulls that may lose, and never
-// twice in a row, so 1 / (1 + MISS) = 0.8 at 25
-export const hitRate = () => 1 / (1 + MISS);
+// more than SPIN.missRow times in a row, so 1 / (1 + MISS + MISS^2) = 0.605 at 45 and 2 (six pulls in ten win)
+export const hitRate = () => { let n = 0; for (let k = 0; k <= SPIN.missRow; k++) n += MISS ** k; return 1 / n; };
 // the odds of one pull as shown to the player: every prize, then the villains: [{ id, kind, n, pct }] (they add up to 100)
 export const odds = () => [...TABLE.map((s) => ({ id: s.id, kind: s.kind, n: s.n, pct: ((s.w * 100) / TOTAL) * (1 - MISS) })), { ...VILLAIN, pct: SPIN.miss }];
 // the wheel as drawn for this save: [{ id, kind, n (coins already x tier), pct }]
@@ -74,7 +76,7 @@ export function state(save) {
   const s = save.spin && typeof save.spin === 'object' ? save.spin : {};
   const v = s.t && typeof s.t === 'object' ? s.t : {};
   const bank = int(s.bank, SPIN.bankMax);
-  return (save.spin = { wins: int(s.wins, SPIN.every - 1), bank, sure: int(s.sure, bank), miss: s.miss ? 1 : 0, again: int(s.again, 2), t: { day: typeof v.day === 'string' ? v.day : '', ad: int(v.ad, 99), coin: int(v.coin, 99), played: int(v.played, 999), steps: int(v.steps, 99), cheer: int(v.cheer, 99), retry: int(v.retry, 99) }, n: int(s.n, 1e9), cheered: Array.isArray(s.cheered) ? s.cheered.filter((x) => Number.isFinite(x)).slice(-80) : [] });
+  return (save.spin = { wins: int(s.wins, SPIN.every - 1), bank, sure: int(s.sure, bank), miss: int(s.miss === true ? 1 : s.miss, SPIN.missRow), again: 0, t: { day: typeof v.day === 'string' ? v.day : '', ad: int(v.ad, 99), coin: int(v.coin, 99), played: int(v.played, 999), steps: int(v.steps, 99), cheer: int(v.cheer, 99), retry: int(v.retry, 99) }, n: int(s.n, 1e9), cheered: Array.isArray(s.cheered) ? s.cheered.filter((x) => Number.isFinite(x)).slice(-80) : [] });
 }
 // the wheel exists for this player (nothing is offered in the first levels)
 export const open = (save) => (save.unlocked || 1) > SPIN.from;
@@ -114,15 +116,14 @@ export function noteWin(save, fresh = true) {
 }
 // ---- the ways to spin right now (dayStr: the game's own day key; the video and coin counts start again each day).
 // free: a banked spin. ad: a chosen video, only with nothing banked. coin: the price of the next coin spin today
-// (null once today's ladder is used up, or while a free spin waits). retry: after a villain row with nothing banked,
-// 'free' (the lost pull was paid with a video) or 'ad' (it was a free one: a chosen video, SPIN.retryPerDay a day),
-// else null. sure: the next pull cannot meet the villains (after a villain row, the first pull ever, a cheer-up spin).
+// (null once today's ladder is used up, or while a free spin waits). retry: always null since 0.8.16 (a lost pull is
+// lost). sure: the next pull cannot meet the villains (after SPIN.missRow villain rows in a row, the first pull ever, a
+// cheer-up spin).
 function today(save, dayStr) { const S = state(save); if (dayStr && S.t.day !== dayStr) S.t = { day: dayStr, ad: 0, coin: 0, played: 0, steps: 0, cheer: 0, retry: 0 }; return S; }
 export function ways(save, dayStr) {
   const S = today(save, dayStr), on = open(save);
   const coin = S.t.coin < SPIN.coin.length ? Math.round((SPIN.coin[S.t.coin] * coinX(save)) / 10) * 10 : null; // the price grows with the wheel
-  const retry = on && !S.bank && S.again ? (S.again === 2 ? 'free' : S.t.retry < SPIN.retryPerDay ? 'ad' : null) : null;
-  return { free: on && S.bank > 0, ad: on && !S.bank && S.t.ad < SPIN.adPerDay, coin: on && !S.bank ? coin : null, adLeft: Math.max(0, SPIN.adPerDay - S.t.ad), retry, sure: on && !!(S.miss || !S.n || (S.bank > 0 && S.sure > 0)) };
+  return { free: on && S.bank > 0, ad: on && !S.bank && S.t.ad < SPIN.adPerDay, coin: on && !S.bank ? coin : null, adLeft: Math.max(0, SPIN.adPerDay - S.t.ad), retry: null, sure: on && !!(S.miss >= SPIN.missRow || !S.n || (S.bank > 0 && S.sure > 0)) };
 }
 
 // one uniform draw over the prizes' weights: rand() in [0, 1). Returns the prize's row.
@@ -168,32 +169,27 @@ export function grant(wallet, P) {
   return w;
 }
 
-// ---- spin once. how: 'free' | 'ad' | 'coin' | 'retry'. (For 'ad', and for a 'retry' that ways() calls 'ad', the
-// caller has already shown the chosen video.)
+// ---- spin once. how: 'free' | 'ad' | 'coin'. (For 'ad' the caller has already shown the chosen video.)
 // -> null when that way is not open, else { prize, slice, how, paid, miss } with save.wallet and save.spin updated.
 // One draw decides: the top SPIN.miss hundredths of it are the villains' row (when this pull may lose at all), the
-// rest is spread over the prizes by their weights. On a villain row prize is null and nothing was paid.
+// rest is spread over the prizes by their weights. On a villain row prize is null; what the pull cost is spent.
 export function spin(save, how, dayStr, rand = Math.random) {
   const W = ways(save, dayStr), S = state(save);
-  if (how === 'free' ? !W.free : how === 'ad' ? !W.ad : how === 'retry' ? !W.retry : how !== 'coin' || W.coin == null || sanitizeWallet(save.wallet).coins < W.coin) return null;
-  const sure = how === 'retry' || W.sure, x = Math.min(0.999999, Math.max(0, rand()));
-  if (how === 'free') { const cheer = S.sure > 0 && !S.miss && S.n > 0; S.bank--; S.sure = Math.max(0, Math.min(S.bank, S.sure - (cheer ? 1 : 0))); } // a cheer-up spin is used first, and only when nothing else makes this pull safe
-  else if (how === 'ad') S.t.ad++;
-  else if (how === 'retry' && W.retry === 'ad') S.t.retry++;
-  S.n++;
-  if (!sure && x >= 1 - MISS) { // the villains: no prize. Coins are not taken; a video pull tries again free; a free pull by a video
-    S.miss = 1; S.again = how === 'ad' ? 2 : how === 'free' ? 1 : 0;
-    return { prize: null, slice: VILLAIN, how, paid: 0, miss: true };
-  }
+  if (how === 'free' ? !W.free : how === 'ad' ? !W.ad : how !== 'coin' || W.coin == null || sanitizeWallet(save.wallet).coins < W.coin) return null;
+  const sure = W.sure, x = Math.min(0.999999, Math.max(0, rand()));
   let paid = 0;
-  if (how === 'coin') { paid = W.coin; save.wallet = sanitizeWallet(save.wallet); save.wallet.coins -= paid; S.t.coin++; }
-  S.miss = 0; S.again = 0;
+  if (how === 'free') { const cheer = S.sure > 0 && S.miss < SPIN.missRow && S.n > 0; S.bank--; S.sure = Math.max(0, Math.min(S.bank, S.sure - (cheer ? 1 : 0))); } // a cheer-up spin is used first, and only when nothing else makes this pull safe
+  else if (how === 'ad') S.t.ad++;
+  else { paid = W.coin; save.wallet = sanitizeWallet(save.wallet); save.wallet.coins -= paid; S.t.coin++; } // the price is paid whatever comes up
+  S.n++; S.again = 0;
+  if (!sure && x >= 1 - MISS) { S.miss++; return { prize: null, slice: VILLAIN, how, paid, miss: true }; } // the villains: no prize
+  S.miss = 0;
   const slice = roll(() => (sure ? x : x / (1 - MISS))), prize = prizeFor(slice, save.wallet, rand, coinX(save));
   save.wallet = grant(save.wallet, prize);
   return { prize, slice, how, paid, miss: false };
 }
-// the mean worth of one WINNING pull in coins (a free pull is worth this x hitRate(); boosters at shop price, the rare bird at the mean of what is left): the test
-// holds it under the first coin price, so a coin spin is a sink on average
+// the mean worth of one WINNING pull in coins (any pull is worth this x hitRate(); boosters at shop price, the rare bird at the mean of what is left): the test
+// holds a pull's worth under the first coin price, so a coin spin is a sink on average
 export function meanWorth(wallet, x = 1) {
   let v = 0;
   for (const s of TABLE) {

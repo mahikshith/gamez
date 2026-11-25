@@ -1790,7 +1790,7 @@ async function press(id) {
       break;
     case 'spin': openSpin(); break;
     case 'spin:back': closeSpin(); break;
-    case 'spin:go': case 'spin:lever': await spinGo(SP.ways(save, today()).retry === 'free' ? 'retry' : 'free'); break; // (the lever also pulls a Try again that costs nothing; one that takes a video is asked for by its own button)
+    case 'spin:go': case 'spin:lever': await spinGo('free'); break; // (the lever also pulls a Try again that costs nothing; one that takes a video is asked for by its own button)
     case 'spin:ad': await spinGo('ad'); break;
     case 'spin:retry': await spinGo('retry'); break;
     case 'spin:coin': await spinGo('coin'); break;
@@ -2546,7 +2546,10 @@ function drawGot() {
   });
   if (calm || t > 0.35) ui.text(R.name, cx, heroY + hh * 0.62, { size: Math.min(34 * u, 0.1 * S), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 5 * u, maxW: A.w - 40 * u, tag: 'got:name' });
   // what was inside: one by one into a grid (up to 4 a row)
-  const n = R.items.length, per = Math.max(1, Math.min(4, n)), rowsN = Math.ceil(n / per), cell = Math.min(S * 0.27, (A.w - 30 * u) / per), top = heroY + hh * 0.62 + 0.13 * S;
+  // what it does, in one or two lines under its name (R.what: a booster's, a chick's, a ticket's own line)
+  const ws = Math.min(20 * u, 0.062 * S), WL = R.what ? wrapText(R.what, ws, Math.min(A.w - 48 * u, 380 * u)).slice(0, 3) : [], whatH = WL.length ? WL.length * ws * 1.3 + 0.03 * S : 0;
+  if (WL.length && (calm || t > 0.5)) WL.forEach((ln, q) => ui.text(ln, cx, heroY + hh * 0.62 + 0.1 * S + q * ws * 1.3, { size: ws, align: 'center', color: '#ffffff', stroke: ink, strokeW: 4 * u, maxW: A.w - 40 * u, tag: 'got:what' + q }));
+  const n = R.items.length, per = Math.max(1, Math.min(4, n)), rowsN = Math.ceil(n / per), cell = Math.min(S * 0.27, (A.w - 30 * u) / per), top = heroY + hh * 0.62 + 0.13 * S + whatH;
   const ls = Math.max(13 * u, Math.min(18 * u, cell * 0.16)), rowH = cell * 0.78 + ls * 2.6;
   let coinAt = null;
   R.items.forEach((it, j) => {
@@ -8790,7 +8793,7 @@ const spinBoost = () => { const all = E.BOOSTER_ORDER.filter((b) => b !== 'scare
 const spinReels = (C) => spinSlices().map((sl) => (sl.kind === 'villain' ? { ...sl, who: C.who } : sl.kind === 'booster' ? { ...sl, item: sl.id === 'b2' ? C.item2 : C.item } : sl.kind === 'charge' ? { ...sl, chick: C.chick } : sl));
 const villainName = (k) => `The ${(VILLAIN_INFO[k] || {}).name || "villain"}`;
 const sliceName = (s) => (s.kind === 'villain' ? 'Three villains' : s.kind === 'coins' ? `${s.n} coins` : s.kind === 'booster' ? (s.n > 1 ? `${s.n} boosters` : '1 booster') : s.kind === 'coupon' ? 'Half-price ticket' : s.kind === 'charge' ? E.CHARGE_ITEM.name : s.kind === 'scare' ? E.BOOSTERS.scare.name : s.kind === 'skip' ? E.ITEMS.skip.name : 'Rare bird');
-const sliceNote = (s) => (s.kind === 'villain' ? 'No prize. Never twice in a row' : s.kind === 'booster' ? 'Any kind' : s.kind === 'coupon' ? `${Math.round((E.COUPON.coins * SP.coinX(save)) / 5) * 5} coins if you hold one` : s.kind === 'scare' ? 'Villains keep away at the start' : s.kind === 'rare' ? 'An outfit or a chick you do not own' : '');
+const sliceNote = (s) => (s.kind === 'villain' ? 'No prize. Never three times in a row' : s.kind === 'booster' ? 'Any kind' : s.kind === 'coupon' ? `${Math.round((E.COUPON.coins * SP.coinX(save)) / 5) * 5} coins if you hold one` : s.kind === 'scare' ? 'Villains keep away at the start' : s.kind === 'rare' ? 'An outfit or a chick you do not own' : '');
 // the prize's picture: the reveal's hero and the odds sheet's rows share it
 function spinArt(c, art, x, y, s, t) { if (art === 'chest') drawChest(c, x, y + s * 0.06, s * 0.62, t, 'open'); else if (art === 'ticket') drawTicket(c, x, y, s * 0.9); else if (art === 'skip') drawItemArt(c, 'skip', x, y, s, t); else drawPart(c, art, x, y, s, t); }
 const REEL_T = [1.9, 2.55, 3.3]; // seconds each reel runs: left, middle, right (the last one keeps you waiting)
@@ -8860,6 +8863,8 @@ function spinPrize(S, res, how, w0, c0) {
     art: coins ? 'coins' : P.kind === 'booster' ? 'boost:' + P.item : P.kind === 'coupon' ? 'ticket' : P.kind === 'charge' ? 'charge' : P.kind === 'skip' ? 'skip' : P.kind === 'hen' ? 'hen:' + P.item : 'chick:' + P.item,
     items: !coins && gained > 0 ? [{ art: 'coins', label: '+' + gained }] : [], coins: gained > 0 ? gained : 0, quiet: true,
     lineCoin: / more coins /.test(reach),
+    // 0.8.16 (mykee: "if the user gets any power up from the reward machine, they should know what exactly it does")
+    what: coins ? '' : P.kind === 'booster' ? E.BOOSTERS[P.item].line : chick ? chick.up : P.kind === 'charge' ? E.CHARGE_ITEM.line : P.kind === 'skip' ? E.ITEMS.skip.line : '',
     line: conv ? 'Your bag was full: coins instead' : P.kind === 'coins' ? reach : P.kind === 'coupon' ? 'Half off one thing in the shop' : P.kind === 'hen' || P.kind === 'chick' ? 'Yours to keep' : gained > 0 ? 'Bag full: the rest in coins' : 'Added to your bag',
   };
 }
@@ -8968,8 +8973,8 @@ function drawSpin() {
   {
     const x = cX, y = cY, w = cW, my = y + 15 * u, fs = 15.5 * u, off = idle ? {} : { disabled: true, keepFace: true, dim: 0.45 }; // while the reels run the buttons rest
     const short = G.t - (S.shortT || -9) < 2.2; // a coin spin he cannot pay: the line says so for a moment (and the button shakes its head)
-    const lost = S.miss && W.sure && idle; // the villains took the last pull: say what that means for the next one
-    const txt = short ? 'Not enough coins for this spin' : lost ? (S.missHow === 'coin' ? 'Your coins are back. Next pull wins!' : `${villainName(S.cast.who)} got it! Next pull wins`) : M.bank >= SP.SPIN.bankMax ? 'Your free spins are waiting' : `${M.left} more win${M.left > 1 ? 's' : ''} to a free spin`;
+    const lost = S.miss && idle && (W.sure || G.t - S.missT < 6); // the villains took the last pull (0.8.16: it is lost; after two in a row the next one wins)
+    const txt = short ? 'Not enough coins for this spin' : lost ? (W.sure ? `${villainName(S.cast.who)} got it! Next pull wins` : `${villainName(S.cast.who)} got it!`) : M.bank >= SP.SPIN.bankMax ? 'Your free spins are waiting' : `${M.left} more win${M.left > 1 ? 's' : ''} to a free spin`;
     const pw = M.of * 22 * u, tw = Math.min(ui.measure(txt, fs), w - pw - 10 * u), x0 = x + w / 2 - (pw + 8 * u + tw) / 2;
     for (let i = 0; i < M.of; i++) {
       const px = x0 + 11 * u + i * 22 * u;
@@ -8978,7 +8983,7 @@ function drawSpin() {
     }
     ui.record({ x: x0, y: my - 10 * u, w: pw, h: 20 * u }, 'spin:pips', 'spin:meter');
     ui.text(txt, x0 + pw + 8 * u, my, { size: fs, color: short ? '#ffb0a0' : '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, maxW: tw, tag: 'spin:meter', group: 'spin:meter' });
-    const by = y + 36 * u, opts = [W.retry ? 'retry' : W.ad && 'ad', W.coin != null && 'coin'].filter(Boolean);
+    const by = y + 36 * u, opts = [W.ad && 'ad', W.coin != null && 'coin'].filter(Boolean);
     if (W.free) ui.button('spin:go', M.bank > 1 ? `SPIN  x${M.bank}` : 'SPIN', x, by, w, bh, { kind: 'primary', shimmer: idle, size: 29 * u, iconS: 1.15, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, calm ? 0 : G.t), ...off });
     else if (!opts.length) ui.button('spin:back', 'Win levels to spin again', x, by, w, bh, { kind: 'secondary', size: 19 * u, ...off });
     else opts.forEach((k, i) => {
@@ -9005,7 +9010,7 @@ function drawSpinOdds(SL) {
   spinBack();
   const P = ui.pageBox(cols === 2 ? Infinity : 440 * u), s = P.s, long = P.w - 2 * (P.h + 24 * s) >= ui.measure('Prizes and odds', 25 * s) + 48 * s;
   ui.pageHeader(P, { back: 'spin:odds:x', title: long ? 'Prizes and odds' : 'Prizes', color: '#e8a020', tag: 'odds:title' });
-  const foot = wide ? ['After villains, the next pull always wins. Same odds for everyone, and they never change.'] : ['After villains, the next pull always wins.', 'Same odds for everyone. They never change.'];
+  const foot = wide ? ['Villains never come three times in a row. Same odds for everyone, and they never change.'] : ['Villains never come three times in a row.', 'Same odds for everyone. They never change.'];
   const top = P.bottom + 10 * u, bot = A.y1 - 10 * u, btnH = (wide ? 48 : 56) * u, fs = 14 * u, footH = foot.length * 20 * u + 8 * u, g = 10 * u;
   const rowH = Math.min(58 * u, (bot - top - btnH - footH - 2 * g - 16 * u) / rowsN), panelH = rowsN * rowH + 16 * u, used = panelH + g + footH + g + btnH;
   const x = P.x, w = P.w, y = top + Math.max(0, (bot - top - used) * 0.4);

@@ -48,8 +48,8 @@ const SIMS = readdirSync(new URL('../src/sim/', import.meta.url)).filter((f) => 
   const save = { unlocked: 9, wallet: { ...E.defaultWallet(), coins: 500 }, spin: { n: 5, bank: 1 } };
   const ways = new Set(); let W = SP.ways(save, 'd'); if (W.free) ways.add('free');
   SP.spin(save, 'free', 'd', () => 0.9); W = SP.ways(save, 'd'); if (W.retry) ways.add('retry'); if (W.ad) ways.add('ad'); if (W.coin != null) ways.add('coin');
-  ok(ways.size === 4, 'the rules open four ways to spin: free, video, coins, Try again');
-  for (const [way, id] of [['free', 'spin:go'], ['ad', 'spin:ad'], ['coin', 'spin:coin'], ['retry', 'spin:retry']]) ok(MAIN.includes(`ui.button('${id}'`) && MAIN.includes(`case '${id}'`), `${way}: a button on the page and a handler behind it`);
+  ok(ways.size === 3, 'the rules open three ways to spin: free, video, coins (no Try again: a lost pull is lost)');
+  for (const [way, id] of [['free', 'spin:go'], ['ad', 'spin:ad'], ['coin', 'spin:coin']]) ok(MAIN.includes(`ui.button('${id}'`) && MAIN.includes(`case '${id}'`), `${way}: a button on the page and a handler behind it`);
 }
 { // the villains on the reels: each has a portrait and a voice that exists
   const m = MAIN.match(/const SPIN_VILLAINS = \{([^}]*)\}/), list = m ? [...m[1].matchAll(/(\w+): '(\w+)'/g)].map((x) => [x[1], x[2]]) : [];
