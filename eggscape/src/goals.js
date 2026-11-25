@@ -39,14 +39,16 @@ export function levelGoals(L, fuse = 1, campaign = true, mode = 'medium') {
   if (g2.kind === g3.kind) g2 = all;
   return [home, g2, g3];
 }
-// Easy: [the target home, every egg (flawless when every egg is the target), every egg AND the bonus goal]. Levels 1-3
+// Easy: [the target home, every egg (flawless where Medium asks for no cracks or every egg is the target), every egg AND the bonus goal]. Levels 1-3
 // (they teach, and have no bonus goal) and any level without one keep the Medium goals.
 export const EASY_FROM = 4;
 function easyGoals(L, fuse) {
   const n = L.eggs || 1, t = L.target || 1, b = bonusGoal(L, fuse);
   if ((L.id || 0) < EASY_FROM || !b) return null;
   const home = { kind: 'home', n: t, short: t === n ? `All ${n} home` : `${t} of ${n} home`, long: t === n ? `All ${n} eggs home` : `${t} of ${n} eggs home` };
-  const every = t === n ? { kind: 'perfect', short: 'Flawless', long: 'No egg lost or cracked' } : { kind: 'all', short: 'Lose none', long: 'Lose no eggs' };
+  // every egg; and never less than Medium's second star asks: where that is "No cracks", every egg AND no cracks
+  const m2 = levelGoals(L, fuse, true, 'medium')[1].kind;
+  const every = t === n || m2 !== 'all' ? { kind: 'perfect', short: 'Flawless', long: 'No egg lost or cracked' } : { kind: 'all', short: 'Lose none', long: 'Lose no eggs' };
   // (the card's row reads star by star: "Lose none", then "+ Under 96 s" on top of it; the win page says it whole)
   return [home, every, { kind: 'both', a: every, b, short: `+ ${b.short}`, long: `${every.long} and ${b.long.charAt(0).toLowerCase()}${b.long.slice(1)}` }];
 }
