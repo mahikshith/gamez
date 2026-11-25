@@ -6871,7 +6871,7 @@ function drawLevelIntro(L, acc) {
     const fixed = pageColH([...pre, ...post], s) + 6 * s + gp;
     let h = clamp(Vh - fixed, lo, hi);
     const left = Vh - fixed - h, B = [...pre, mk(h), ...post].filter(Boolean);
-    if (left > 0.5 * s) { const n = B.length + 1, add = Math.min(left / n, 22 * s); for (const b of B) b.gap = (b.gap ?? 10 * s) + add; }
+    if (left > 0.5 * s) { const n = B.length + 1, add = Math.min(left / n, 40 * s); for (const b of B) b.gap = (b.gap ?? 10 * s) + add; }
     return B;
   };
 
@@ -6900,7 +6900,7 @@ function drawLevelIntro(L, acc) {
       const pk = perkBlock(iw); if (pk) pre.push(pk);
       pre.push(goalRow);
       post.push(capBlock(iw), ...[tileBlock(iw), chipBlock(iw), starBlock].filter(Boolean));
-      B = fitCol(pre, levelStage, post, V.h, Math.min(165 * s, iw * 0.5), Math.min(iw * 0.95, 560 * s));
+      B = fitCol(pre, levelStage, post, V.h, Math.min(165 * s, iw * 0.5), Math.min(iw * 1.1, 560 * s)); // (0.8.16: a page with little else grows its picture, nearly square, as the level's own card does)
     } else {
       pre.push(carBlock(iw)); post.push(chickCap(iw));
       B = fitCol(pre, chickStage, post, V.h, Math.min(150 * s, iw * 0.45), Math.min(iw * 0.95, 560 * s));
