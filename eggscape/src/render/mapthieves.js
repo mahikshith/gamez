@@ -542,22 +542,22 @@ function clockLife(ctx, X, Yy, d, f, T, calm, t) {
   ctx.fillStyle = P.brass; ctx.beginPath(); ctx.arc(bx, by, 5 * d, 0, TAU); ctx.fill(); ctx.strokeStyle = P.goldInk; ctx.lineWidth = 0.8 * d; ctx.stroke();
   ctx.fillStyle = P.brassHi; ctx.beginPath(); ctx.arc(bx - 1.5 * d, by - 1.5 * d, 1.6 * d, 0, TAU); ctx.fill();
 }
-// the snake in the pit: it rises out of the dark, sways, looks one way then the other (its head turns to face where
-// it looks), tastes the air, sinks back down
+// the snake in the pit (0.8.17, mykee: "a snake coming out of a portal ... it is a half snake"): the whole animal. Its
+// body lies across the pit's mouth past the ladder's foot, loops over the kerb and down onto the floor in front, where its
+// tail curls and flicks; its front half rears up out of the pit, sways, looks one way then the other (its head turns to
+// face where it looks), blinks and tastes the air (snake.js: the game's own snake), and settles a little, never gone
 function pitSnake(ctx, X, Yy, d, f, T, calm) {
   const C = 9, k = calm ? 3 : fract(T / C) * C;
-  const up = calm ? 0.8 : ss((k - 0.4) / 1.2) * (1 - ss((k - 7.2) / 1.2));
-  if (up <= 0.02) return;
-  const look = calm ? 0.5 : k < 3.6 ? 1 : k < 4.2 ? 1 - 2 * ss((k - 3.6) / 0.6) : -1; // right, turn, left
-  const sway = calm ? 0 : Math.sin(T * 1.6) * 5;
-  const bx = PIT.x + 6, by = PIT.y + 4, H = 58 * up, pts = [];
-  const hx = bx + sway * up + look * 10, hy = by - H;
-  for (let q = 0; q <= 14; q++) { const v = q / 14, yy = lerp(hy, by + 4, v), xx = lerp(hx, bx, v) + Math.sin(v * 5.5 - T * 2.4) * 5 * (1 - v * 0.4) * up; pts.push({ x: X(xx), y: Yy(yy) }); }
-  // the head end bends to point where it looks: the first two points lead out sideways
-  pts.unshift({ x: X(hx + look * 9), y: Yy(hy + 2) });
-  drawSnake(ctx, pts, 4.2 * d, T, { skin: 'violet', wave: 0 });
-  const fl = calm ? 0 : Math.max(0, Math.sin(T * 5)) * (k > 2 && k < 6 ? 1 : 0); // the tongue
-  if (fl > 0.3) { const tx = X(hx + look * 9) + look * f * 6 * d, ty = Yy(hy + 2); ctx.strokeStyle = '#e0405a'; ctx.lineWidth = 1 * d; ctx.beginPath(); ctx.moveTo(X(hx + look * 9), ty); ctx.lineTo(tx, ty); ctx.lineTo(tx + look * f * 2 * d, ty - 1.5 * d); ctx.moveTo(tx, ty); ctx.lineTo(tx + look * f * 2 * d, ty + 1.5 * d); ctx.stroke(); }
+  const up = calm ? 0.75 : 0.3 + 0.7 * ss((k - 0.3) / 1.4) * (1 - ss((k - 7.3) / 1.4));
+  const look = calm ? 0.5 : k < 3.6 ? 1 : k < 4.2 ? 1 - 2 * ss((k - 3.6) / 0.6) : k < 6.8 ? -1 : -1 + 2 * ss((k - 6.8) / 0.8); // right, turn, left, back
+  const sway = calm ? 0 : Math.sin(T * 1.6) * 5 * up;
+  const nx = PIT.x + 10, ny = PIT.y + 4, H = 20 + 38 * up; // the neck's foot in the pit's mouth
+  const hx = nx + sway + look * 8, hy = ny - H, pts = [{ x: hx + look * 9, y: hy + 2 }]; // the head end leads out the way it looks
+  for (let q = 0; q <= 8; q++) { const v = q / 8; pts.push({ x: lerp(hx, nx, v) + (calm ? 0 : Math.sin(v * 3.2 - T * 2.4) * 3 * (1 - v) * up), y: lerp(hy, ny, v) }); }
+  const wig = (i) => (calm ? 0 : Math.sin(T * 1.7 + i * 0.9) * 1.5), tail = calm ? 0 : Math.sin(T * 3.1) * Math.max(0, Math.sin(T * 0.7)) * 4;
+  const body = [[20, -18], [32, -16], [42, -10], [46, -2], [41, 5], [28, 8], [13, 8], [0, 5], [-8, 0 + tail * 0.3], [-10 + tail * 0.5, -6 + tail]];
+  body.forEach(([bx, by], i) => pts.push({ x: bx + (i > 3 ? wig(i) * 0.5 : 0), y: by + (i > 3 ? wig(i + 2) * 0.35 : 0) }));
+  drawSnake(ctx, pts.map((p) => ({ x: X(p.x), y: Yy(p.y) })), 4 * d, calm ? 1 : T, { skin: 'violet', wave: 0 }); // (calm: a still face, eyes open)
 }
 // soft glow sprites, one per colour, made once (no gradients per frame)
 const GLOW = new Map();

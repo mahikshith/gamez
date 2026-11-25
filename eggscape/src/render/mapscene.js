@@ -789,9 +789,11 @@ function veilStrip() {
   g.fillStyle = gr; g.fillRect(0, 0, 2, 128);
   return VEIL;
 }
-export function drawFog(ctx, L, w, sy, t, calm) {
-  const u = L.u, top = L.bandTop(w) - sy, h = L.BH, v = veilStrip();
-  ctx.save();
+// lift 0..1 (0.8.17, the world opening): the fog rolls away upward and thins out
+export function drawFog(ctx, L, w, sy, t, calm, lift = 0) {
+  const u = L.u, h = L.BH, top = L.bandTop(w) - sy - (calm ? 0 : lift * h * 0.6), v = veilStrip();
+  if (lift >= 1) return;
+  ctx.save(); ctx.globalAlpha *= 1 - lift;
   ctx.fillStyle = 'rgba(232,238,248,0.14)'; ctx.fillRect(0, top, L.W, h * 0.45); // the far part of the world: only a haze
   if (v) { const vh = (h * 0.55) / 0.84; ctx.drawImage(v, 0, 0, 2, 128, 0, top + h * 0.45, L.W, vh); } // thickening down to the world's foot, fading out just past it
   ctx.restore();
@@ -820,16 +822,36 @@ const NEST_TINT = [
   { s: '#b49a56', lo: '#6c5a2c', hi: '#dcc88a', ink: '#33260e', bowl: '#55441e', st: '#d8c8a0', stE: '#4e3418' }, // bayou
   { s: '#cfc096', lo: '#8c7c5a', hi: '#f0e6c6', ink: '#3a3226', bowl: '#665a40', st: '#e6ecf6', stE: '#5a6880' }, // lab
 ];
-// sizes in units (x u): the nest's half width; the hen's height in the level-to-play nest is 2 * L.stopR
-const NEST_RX = { won: 29, cur: 37, open: 27, skip: 27, next: 26, far: 15 };
+// sizes in units (x u). 0.8.17 (mykee: "the levels you're showing are too small ... the previous build was displaying quite
+// good ... rather than making them smaller and adding the numbers on the map itself"): every stop is one marker family
+// again, about the size of 0.8.12's discs. A locked level is a stone disc in the world's tint, its number in bold outlined
+// digits and a padlock on its lower right. A won level keeps its nest and golden egg; its number rides on a round badge at
+// the nest's front and its stars sit on a dark plate under the badge (bright gold with a dark outline, empty ones dark
+// sockets, so they never melt into a yellow road). The level to play is the hen in a bigger nest with a bigger badge.
+const NEST_RX = { won: 29, cur: 37, skip: 29 }; // a nest's half width; the hen's height in the level-to-play nest is 2 * L.stopR
+const DISC_R = 24, BOSS_K = 1.22; // a disc's radius; a boss stop is this much bigger (and wears a crown)
+const BADGE_R = { won: 13.5, skip: 13.5, cur: 16.5 };
+const isNest = (st) => !!NEST_RX[st];
 export function stopTint(w) { return NEST_TINT[w] || NEST_TINT[0]; }
-// the touch box round a stop's centre (x u offsets; main.js keeps it at least 48 px each way)
+const hexRGB = (h) => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const mixHex = (a, b, k) => { const A = hexRGB(a), B = hexRGB(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * k).toString(16).padStart(2, '0')).join(''); };
+const LOOKS = new Map();
+function stopLook(w) { // a world's marker colours: its accent (badges, open discs) and its stone (locked discs)
+  let o = LOOKS.get(w); if (o) return o;
+  const acc = (WORLD_LOOK[w] || WORLD_LOOK[0]).accent, stone = mixHex('#a2a6ae', acc, 0.16);
+  o = { accHi: mixHex(acc, '#ffffff', 0.4), acc, accLo: mixHex(acc, '#000000', 0.32), accInk: mixHex(acc, '#000000', 0.66),
+    stHi: mixHex(stone, '#ffffff', 0.45), st: stone, stLo: mixHex(stone, '#000000', 0.3), stInk: mixHex(stone, '#000000', 0.68) };
+  LOOKS.set(w, o); return o;
+}
+const BOSS_LOOK = { accHi: '#ff8aa4', acc: '#d82a5a', accLo: '#8e1238', accInk: '#40061a' };
+const SKIP_LOOK = { accHi: '#a8c0e8', acc: '#5a7ab0', accLo: '#3a5488', accInk: '#16264a' };
+// the touch box round a stop's centre (main.js keeps it at least 48 px each way)
 export function stopBox(L, st, boss) {
-  const u = L.u, b = boss ? 1.14 : 1, rx = NEST_RX[st] * b;
-  if (st === 'cur') return { x0: -rx * u, x1: rx * u, y0: -L.stopR * 1.9, y1: 30 * u * b };
-  if (st === 'won') return { x0: -rx * u, x1: rx * u, y0: -58 * u * b, y1: 16 * u };
-  if (st === 'far') return { x0: -24 * u, x1: 24 * u, y0: -24 * u, y1: 24 * u };
-  return { x0: -rx * u, x1: rx * u, y0: -36 * u * b, y1: 18 * u };
+  const u = L.u, b = boss ? BOSS_K : 1;
+  if (st === 'cur') { const d = nestDims(L, st, boss); return { x0: -d.rx, x1: d.rx, y0: -L.stopR * 1.9, y1: d.by + d.br + 3 * u }; }
+  if (isNest(st)) { const d = nestDims(L, st, boss); return { x0: -d.rx, x1: d.rx, y0: -34 * u * b, y1: d.by + d.br + 13 * u }; }
+  const r = DISC_R * u * b;
+  return { x0: -r - 2 * u, x1: r + 2 * u, y0: -r - (boss ? 9 : 2) * u, y1: r + 3 * u };
 }
 const SPRS = new Map(); // key -> { cv, ox, oy, w, h }
 export function freeStops() { for (const e of SPRS.values()) freeCanvas(e.cv); SPRS.clear(); }
@@ -878,96 +900,167 @@ function crownMark(c, x, y, s) { // a small gold crown, its base on y
 }
 function numText(c, str, x, y, size, fill, ink, wgt = 600) {
   c.font = `${wgt} ${Math.round(size)}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.lineJoin = 'round'; c.lineWidth = Math.max(2.5, size * 0.24); c.strokeStyle = ink; c.strokeText(str, x, y); c.fillStyle = fill; c.fillText(str, x, y);
+  c.lineJoin = 'round'; c.lineWidth = Math.max(2.5, size * 0.26); c.strokeStyle = ink; c.strokeText(str, x, y); c.fillStyle = fill; c.fillText(str, x, y);
 }
-// paint one stop's picture (origin = the stop's centre on the road); returns nothing
-// a hard level (sim.js HARD_IDS): a small red badge with three white thorns at the stop's left foot
+// a hard level (sim.js HARD_IDS): a small red badge with three white thorns
 function hardMark(c, x, y, r) {
   c.save(); c.translate(x, y); c.lineJoin = 'round';
-  c.beginPath(); c.arc(0, 0, r + r * 0.2, 0, TAU); c.fillStyle = '#fff6dc'; c.fill();
+  c.beginPath(); c.arc(0, 0, r * 1.36, 0, TAU); c.fillStyle = '#2a1606'; c.fill();
+  c.beginPath(); c.arc(0, 0, r * 1.2, 0, TAU); c.fillStyle = '#fff6dc'; c.fill();
   c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fillStyle = lg(c, 0, -r, 0, r, ['#f2553a', '#b8201a']); c.fill();
   c.fillStyle = '#ffffff';
   for (const [dx, h] of [[-0.42, 0.62], [0, 0.95], [0.42, 0.62]]) { c.beginPath(); c.moveTo((dx - 0.24) * r, r * 0.42); c.lineTo(dx * r, r * 0.42 - h * r); c.lineTo((dx + 0.24) * r, r * 0.42); c.closePath(); c.fill(); }
   c.restore();
 }
+function rrect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+function starPath(c, x, y, r) { c.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.5 : r; c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } c.closePath(); }
+// a star on a marker: bright gold with a dark outline and a white glint; an empty one is a dark socket
+export function brightStar(c, x, y, r, on) {
+  c.save(); c.lineJoin = 'round';
+  starPath(c, x, y, r);
+  if (!on) { c.fillStyle = 'rgba(0,0,0,0.55)'; c.fill(); c.lineWidth = Math.max(1, r * 0.16); c.strokeStyle = 'rgba(255,236,190,0.3)'; c.stroke(); c.restore(); return; }
+  c.lineWidth = r * 0.44; c.strokeStyle = '#3a1800'; c.stroke();
+  c.fillStyle = lg(c, x, y - r, x, y + r * 0.8, ['#fffbd2', '#ffd92e', '#ffa20c']); c.fill();
+  c.beginPath(); c.ellipse(x - r * 0.26, y - r * 0.3, r * 0.2, r * 0.12, -0.6, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.95)'; c.fill();
+  c.restore();
+}
+// the number badge: a dark outline, a cream ring, the colour, a glint, the number in white
+function badge(c, x, y, r, K, num, u) {
+  c.beginPath(); c.arc(x, y + 1.8 * u, r + 2.6 * u, 0, TAU); c.fillStyle = 'rgba(20,8,0,0.35)'; c.fill();
+  c.beginPath(); c.arc(x, y, r + 2.6 * u, 0, TAU); c.fillStyle = '#2a1606'; c.fill();
+  c.beginPath(); c.arc(x, y, r + 1.3 * u, 0, TAU); c.fillStyle = '#fff6dc'; c.fill();
+  c.beginPath(); c.arc(x, y, r, 0, TAU); c.fillStyle = lg(c, x, y - r, x, y + r, [K.accHi, K.acc, K.accLo]); c.fill();
+  c.beginPath(); c.ellipse(x, y - r * 0.52, r * 0.6, r * 0.28, 0, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.3)'; c.fill();
+  numText(c, num, x, y + 0.6 * u, r * (num.length > 1 ? 1.16 : 1.32), '#ffffff', K.accInk);
+}
+// the dark plate under a won badge with the level's stars (or, skipped, two chevrons); y is its top
+function starPlate(c, x, y, n, u, skip) {
+  const w = 52 * u, h = 16 * u;
+  rrect(c, x - w / 2, y, w, h, h / 2); c.fillStyle = 'rgba(30,16,6,0.9)'; c.fill(); c.lineWidth = 1.2 * u; c.strokeStyle = 'rgba(255,232,170,0.6)'; c.stroke();
+  if (skip) { c.fillStyle = '#c8d8f4'; for (const dx of [-5, 3]) { c.beginPath(); c.moveTo(x + (dx - 3) * u, y + 3.5 * u); c.lineTo(x + (dx + 3) * u, y + h / 2); c.lineTo(x + (dx - 3) * u, y + h - 3.5 * u); c.closePath(); c.fill(); } return; }
+  for (let q = 0; q < 3; q++) brightStar(c, x + (q - 1) * 15.5 * u, y + h / 2 + 0.4 * u, 6.6 * u, q < n);
+}
+// a padlock (s: its half width). part: 'all' | 'shackle' | 'left' | 'right' (the body's halves, split along a crack);
+// o: { rot, a (alpha), crack 0..1 }
+function padlock(c, x, y, s, o = {}) {
+  const part = o.part || 'all', ink = '#3a2410';
+  c.save(); c.translate(x, y); if (o.rot) c.rotate(o.rot); if (o.a != null) c.globalAlpha *= clamp(o.a, 0, 1);
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  if (part === 'all' || part === 'shackle') for (const [lw, col] of [[s * 0.62, ink], [s * 0.34, '#e8eef4']]) { c.lineWidth = lw; c.strokeStyle = col; c.beginPath(); c.moveTo(-s * 0.55, -s * 0.1); c.lineTo(-s * 0.55, -s * 0.55); c.arc(0, -s * 0.55, s * 0.55, Math.PI, 0); c.lineTo(s * 0.55, -s * 0.1); c.stroke(); }
+  if (part !== 'shackle') {
+    const crack = [[0.1, -0.2], [-0.12, 0.25], [0.12, 0.62], [-0.06, 0.98], [0.04, 1.3]];
+    c.save();
+    if (part === 'left' || part === 'right') { const sg = part === 'left' ? -1 : 1; c.beginPath(); crack.forEach(([px, py], i) => (i ? c.lineTo(px * s, py * s) : c.moveTo(px * s, py * s))); c.lineTo(sg * 1.3 * s, 1.3 * s); c.lineTo(sg * 1.3 * s, -0.3 * s); c.closePath(); c.clip(); }
+    rrect(c, -s, -s * 0.2, s * 2, s * 1.5, s * 0.34); c.fillStyle = lg(c, 0, -s * 0.2, 0, s * 1.3, ['#ffe486', '#f5b22a', '#d8800a']); c.fill();
+    c.lineWidth = s * 0.17; c.strokeStyle = ink; c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.65)'; c.lineWidth = s * 0.12; c.beginPath(); c.moveTo(-s * 0.62, 0); c.lineTo(s * 0.3, 0); c.stroke();
+    c.fillStyle = ink; c.beginPath(); c.arc(0, s * 0.42, s * 0.22, 0, TAU); c.fill();
+    c.beginPath(); c.moveTo(-s * 0.1, s * 0.5); c.lineTo(s * 0.1, s * 0.5); c.lineTo(s * 0.16, s * 0.98); c.lineTo(-s * 0.16, s * 0.98); c.closePath(); c.fill();
+    if (o.crack > 0) { c.globalAlpha *= clamp(o.crack, 0, 1); c.beginPath(); crack.forEach(([px, py], i) => (i ? c.lineTo(px * s, py * s) : c.moveTo(px * s, py * s))); c.strokeStyle = ink; c.lineWidth = s * 0.16; c.stroke(); c.strokeStyle = '#fff6c8'; c.lineWidth = s * 0.06; c.stroke(); }
+    c.restore();
+  }
+  c.restore();
+}
+// a padlock breaking away: shakes (s < 0.32), cracks, the shackle pops off spinning, the two halves fall apart and fade,
+// gold sparks fly. s: seconds since it started; k: size; calm: it only fades
+function lockBreak(ctx, x, y, ls, s, calm, u) {
+  if (s < 0) { padlock(ctx, x, y, ls); return; }
+  if (calm) { if (s < 0.4) padlock(ctx, x, y, ls, { a: 1 - s / 0.4 }); return; }
+  const POP = 0.32;
+  if (s < POP) { const k = s / POP, rot = Math.sin(s * 52) * 0.32 * k, dx = Math.sin(s * 63) * ls * 0.14 * k; padlock(ctx, x + dx, y, ls, { rot, crack: ss((s - 0.16) / 0.12) }); return; }
+  const q = s - POP, a = 1 - ss((q - 0.2) / 0.3), sc = ls / 8;
+  if (a > 0.01) {
+    padlock(ctx, x + q * 46 * u * sc, y - (q * 120 - q * q * 330) * u * sc, ls, { part: 'shackle', rot: q * 10, a });
+    padlock(ctx, x - q * 26 * u * sc, y + q * q * 260 * u * sc, ls, { part: 'left', rot: -q * 3.2, a, crack: 1 });
+    padlock(ctx, x + q * 30 * u * sc, y + q * q * 300 * u * sc, ls, { part: 'right', rot: q * 3.6, a, crack: 1 });
+  }
+  if (q < 0.55) { // sparks
+    const f = q / 0.55, e = 1 - (1 - f) * (1 - f);
+    ctx.save(); ctx.globalAlpha = 1 - f;
+    for (let i = 0; i < 9; i++) { const an = (i / 9) * TAU + 0.35, d = ls * (0.8 + e * 3.4) * (i % 2 ? 1 : 0.8); brightStar(ctx, x + Math.cos(an) * d, y + ls * 0.4 + Math.sin(an) * d * 0.85, ls * 0.34 * (1 - f * 0.5), true); }
+    ctx.restore();
+  }
+}
+// a locked stop: a stone disc on the road, the world's tint in the stone; an open (playable, not yet played) one: the same
+// disc in the world's colour
+function disc(c, r, K, num, u, open) {
+  c.beginPath(); c.ellipse(0, r * 0.82, r * 0.98, r * 0.3, 0, 0, TAU); c.fillStyle = 'rgba(20,10,0,0.3)'; c.fill();
+  c.beginPath(); c.arc(0, 0.9 * u, r + 2.2 * u, 0, TAU); c.fillStyle = open ? '#2a1606' : K.stInk; c.fill();
+  c.beginPath(); c.arc(0, 1.6 * u, r, 0, TAU); c.fillStyle = open ? K.accLo : K.stLo; c.fill(); // its edge, seen a little from above
+  c.beginPath(); c.arc(0, -0.8 * u, r - 0.6 * u, 0, TAU); c.fillStyle = lg(c, 0, -r, 0, r, open ? [K.accHi, K.acc] : [K.stHi, K.st]); c.fill();
+  c.beginPath(); c.arc(0, -0.8 * u, r * 0.8, 0, TAU); c.lineWidth = 1.3 * u; c.strokeStyle = 'rgba(255,255,255,0.32)'; c.stroke();
+  c.beginPath(); c.ellipse(-r * 0.3, -r * 0.55, r * 0.32, r * 0.14, -0.5, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.35)'; c.fill();
+  numText(c, num, 0, -0.4 * u, r * (num.length > 1 ? 0.86 : 0.96), '#ffffff', open ? K.accInk : K.stInk);
+}
+// paint one stop's picture (origin = the stop's centre on the road). part: 'back' (a nest's body, hollow and egg) |
+// 'front' (its front rim, badge, plate and marks: drawn after the hen when she sits in it) | 'all'
 function paintStop(c, u, st, part, o) {
-  paintStop0(c, u, st, part, o);
-  if (!o.hard || (st === 'cur' && part === 'back')) return;
-  const b = o.boss ? 1.14 : 1;
-  if (st === 'far') hardMark(c, -17 * u * b, -5 * u, 4.6 * u);
-  else { const rx = NEST_RX[st] * u * b; hardMark(c, -rx * 0.8, rx * 0.4 * 0.75, 7.5 * u); }
+  const K = stopLook(o.w), boss = !!o.boss, b = boss ? BOSS_K : 1, num = String(o.num);
+  if (!isNest(st)) {
+    const r = DISC_R * u * b, open = st === 'open';
+    disc(c, r, boss && open ? BOSS_LOOK : K, num, u, open);
+    if (boss) crownMark(c, 0, -r - 0.5 * u, 7.5 * u);
+    if (!open && !o.noLock) padlock(c, r * 0.64, r * 0.5, 7.6 * u * b);
+    if (o.hard) hardMark(c, -r * 0.7, r * 0.56, 6.6 * u);
+    return;
+  }
+  const T = stopTint(o.w), seed = 11 + o.num * 7, d = nestD(u, st, boss);
+  if (part !== 'front') {
+    const nb = strawNest(c, d.rx, d.ry, T, 'back', seed);
+    if (st === 'won') { const ew = 27 * u * b, eh = 34 * u * b, yb = nb.bowlY + nb.bry * 1.05; goldEgg(c, 0, yb, ew, eh, u); if (boss) crownMark(c, 0, yb - eh + 3 * u, 7 * u); }
+  }
+  if (part === 'back') return;
+  strawNest(c, d.rx, d.ry, T, 'front', seed);
+  if (st !== 'cur') starPlate(c, 0, d.by + d.br - 2.5 * u, o.stars | 0, u, st === 'skip');
+  badge(c, 0, d.by, d.br, st === 'skip' ? SKIP_LOOK : boss ? BOSS_LOOK : K, num, u);
+  if (boss && st === 'cur') crownMark(c, 0, d.by - d.br - 1.5 * u, 6.5 * u);
+  if (o.hard) hardMark(c, -d.rx * 0.86, d.ry * 0.5, 6.6 * u);
 }
-function paintStop0(c, u, st, part, o) {
-  const T = stopTint(o.w), boss = !!o.boss, b = boss ? 1.14 : 1, num = String(o.num), seed = 11 + o.num * 7;
-  if (st === 'far') { // a pale stepping stone, flush with the road, and a small number
-    const rx = 15 * u * b, ry = 7 * u * b;
-    c.beginPath(); c.ellipse(0, 1.6 * u, rx, ry, 0, 0, TAU); c.fillStyle = 'rgba(20,10,0,0.25)'; c.fill();
-    c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, TAU); c.fillStyle = T.st; c.globalAlpha = 0.85; c.fill(); c.globalAlpha = 1; c.lineWidth = 1.4 * u; c.strokeStyle = T.stE; c.stroke();
-    numText(c, num, 0, -0.2 * u, 11.5 * u, T.stE, 'rgba(255,255,255,0.7)');
-    if (boss) crownMark(c, 0, -ry - 1 * u, 4.2 * u);
-    return;
-  }
-  const rx = NEST_RX[st] * u * b, ry = rx * 0.4;
-  if (st === 'cur') {
-    if (part !== 'front') strawNest(c, rx, ry, T, 'back', seed);
-    if (part !== 'back') {
-      strawNest(c, rx, ry, T, 'front', seed);
-      const br = 14.5 * u * b, by = ry * 1.12;
-      c.beginPath(); c.arc(0, by + 1.5 * u, br + 2 * u, 0, TAU); c.fillStyle = 'rgba(30,12,0,0.35)'; c.fill();
-      c.beginPath(); c.arc(0, by, br + 2.2 * u, 0, TAU); c.fillStyle = '#fff6dc'; c.fill();
-      c.beginPath(); c.arc(0, by, br, 0, TAU); c.fillStyle = lg(c, 0, by - br, 0, by + br, boss ? ['#f0587a', '#a01a44'] : ['#ffb43a', '#e8641a']); c.fill();
-      numText(c, num, 0, by + 0.5 * u, (num.length > 1 ? 17 : 19) * u, '#ffffff', boss ? '#4a0a1e' : '#6a2a04');
-      if (boss) crownMark(c, 0, by - br - 0.5 * u, 6.5 * u);
-    }
-    return;
-  }
-  const nb = strawNest(c, rx, ry, T, 'back', seed);
-  if (st === 'won') {
-    const ew = 30 * u * b, eh = 38 * u * b, yb = nb.bowlY + nb.bry * 1.05;
-    goldEgg(c, 0, yb, ew, eh, u);
-    strawNest(c, rx, ry, T, 'front', seed); // the front rim over the egg's foot
-    numText(c, num, 0, yb - eh * 0.44, (num.length > 1 ? 17 : 19.5) * u, '#ffffff', '#6a3604');
-    const top = yb - eh;
-    if (boss) crownMark(c, 0, top + 3 * u, 7 * u);
-    const sr = 6.6 * u, ay = top - (boss ? 10 : 4) * u; // the stars in a small arc over the egg
-    for (let q = 0; q < 3; q++) { const a = (q - 1) * 0.62; drawStar(c, Math.sin(a) * 15 * u, ay - Math.cos(a) * 6 * u, sr * (q === 1 ? 1.12 : 1), q < o.stars); }
-    return;
-  }
-  // an empty nest: the number in its hollow
-  const ink = st === 'next' ? 'rgba(40,20,4,0.9)' : T.ink;
-  numText(c, num, 0, nb.bowlY + 0.5 * u, (num.length > 1 ? 14.5 : 16) * u, st === 'next' ? 'rgba(255,248,230,0.92)' : '#ffffff', ink);
-  if (boss) crownMark(c, 0, -ry - 1 * u, 6 * u);
-  if (st === 'next') drawLock(c, rx * 0.78, ry * 0.7, 6.2 * u, {});
-  if (st === 'skip') { // passed with a skip: a small grey-blue tag with two chevrons
-    const x = rx * 0.8, y = ry * 0.75, r = 7.5 * u;
-    c.beginPath(); c.arc(x, y, r + 1.5 * u, 0, TAU); c.fillStyle = '#fff6dc'; c.fill(); c.beginPath(); c.arc(x, y, r, 0, TAU); c.fillStyle = '#5a7ab0'; c.fill();
-    c.fillStyle = '#ffffff'; for (const dx of [-2.6, 1.6]) { c.beginPath(); c.moveTo(x + (dx - 2) * u, y - 3.6 * u); c.lineTo(x + (dx + 2.2) * u, y); c.lineTo(x + (dx - 2) * u, y + 3.6 * u); c.closePath(); c.fill(); }
-  }
-}
-// draw stop `o.num` (o: { w, num, stars, boss, DPR, part: 'back' | 'front' | 'all', p: press 0..1 }) centred on (x, y)
+// draw stop `o.num` (o: { w, num, stars, boss, hard, DPR, part: 'back' | 'front' | 'all', p: press 0..1, noLock }) centred on (x, y)
 export function drawStop(ctx, L, x, y, st, o) {
-  const u = L.u, DPR = o.DPR || 1, part = st === 'cur' ? o.part || 'all' : 'all';
-  const key = `${st}|${part}|${o.num}|${o.stars | 0}|${o.boss ? 1 : 0}${o.hard ? 'h' : ''}|${o.w}|${u.toFixed(3)}|${DPR}|${stopFont()}`;
+  const u = L.u, DPR = o.DPR || 1, part = isNest(st) ? o.part || 'all' : 'all';
+  const key = `${st}|${part}|${o.num}|${o.stars | 0}|${o.boss ? 1 : 0}${o.hard ? 'h' : ''}${o.noLock ? 'n' : ''}|${o.w}|${u.toFixed(3)}|${DPR}|${stopFont()}`;
   let e = SPRS.get(key);
   if (!e) {
     if (typeof document === 'undefined') return;
-    const ox = 60 * u, oy = 84 * u, w = 120 * u, h = 124 * u;
+    const ox = 60 * u, oy = 84 * u, w = 120 * u, h = 136 * u;
     const cv = document.createElement('canvas'); cv.width = Math.ceil(w * DPR); cv.height = Math.ceil(h * DPR);
     const c = cv.getContext('2d'); c.setTransform(DPR, 0, 0, DPR, ox * DPR, oy * DPR);
-    try { paintStop(c, u, st, part, o); } catch (_) { /* a stop never breaks the map */ }
+    try { if (part === 'all' && isNest(st)) { paintStop(c, u, st, 'back', o); paintStop(c, u, st, 'front', o); } else paintStop(c, u, st, part, o); } catch (_) { /* a stop never breaks the map */ }
     e = { cv, ox, oy, w, h };
     SPRS.set(key, e);
-    if (SPRS.size > 40) { const k0 = SPRS.keys().next().value; freeCanvas(SPRS.get(k0).cv); SPRS.delete(k0); }
+    if (SPRS.size > 48) { const k0 = SPRS.keys().next().value; freeCanvas(SPRS.get(k0).cv); SPRS.delete(k0); }
   } else { SPRS.delete(key); SPRS.set(key, e); } // LRU touch
   const p = o.p || 0;
   if (p) { ctx.save(); ctx.translate(x, y + 10 * u); ctx.scale(1 + 0.05 * p, 1 - 0.07 * p); ctx.translate(-x, -y - 10 * u); }
   ctx.drawImage(e.cv, x - e.ox, y - e.oy, e.w, e.h);
   if (p) ctx.restore();
 }
+const backOut = (k) => { const c1 = 1.9, c3 = c1 + 1, q = k - 1; return 1 + c3 * q * q * q + c1 * q * q; };
+// 0.8.17 (mykee: "show the user that the lock icon completely breaks away"): a level opening as the hen sets off for it.
+// s: seconds since it began (about 0.95 s): the padlock shakes, cracks and breaks away (lockBreak), then the stone disc
+// gives way to the level-to-play nest and badge with a small bounce. Calm: the lock fades, the marker cross-fades.
+export const UNLOCK_T = 0.95;
+export function drawUnlock(ctx, L, x, y, o, s, calm) {
+  const u = L.u, b = o.boss ? BOSS_K : 1, r = DISC_R * u * b, T0 = 0.48;
+  const fade = ss((s - T0) / 0.3);
+  if (fade < 1) {
+    ctx.save(); ctx.globalAlpha *= 1 - fade;
+    if (!calm && fade > 0) { const sc = 1 - 0.3 * fade; ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y); }
+    drawStop(ctx, L, x, y, 'next', { ...o, noLock: 1 }); ctx.restore();
+  }
+  if (s > T0) {
+    const k = clamp((s - T0) / (UNLOCK_T - T0), 0, 1), sc = calm ? 1 : 0.5 + 0.5 * backOut(k);
+    ctx.save(); ctx.globalAlpha *= calm ? k : ss(k * 3);
+    if (sc !== 1) { ctx.translate(x, y + 12 * u); ctx.scale(sc, sc); ctx.translate(-x, -y - 12 * u); }
+    drawStop(ctx, L, x, y, 'cur', { ...o, part: 'all' }); ctx.restore();
+  }
+  lockBreak(ctx, x + r * 0.64, y + r * 0.5, 7.6 * u * b, s, calm, u);
+}
 // the level to play: a soft glow on the ground and a ring that swells and fades (both cheap: a stamped glow, one stroke)
 let GLOW = null;
 export function drawStopCall(ctx, L, x, y, t, calm, boss) {
-  const u = L.u, rx = NEST_RX.cur * u * (boss ? 1.14 : 1), ry = rx * 0.4;
+  const u = L.u, rx = NEST_RX.cur * u * (boss ? BOSS_K : 1), ry = rx * 0.4;
   if (!GLOW && typeof document !== 'undefined') { GLOW = document.createElement('canvas'); GLOW.width = GLOW.height = 64; const g = GLOW.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,236,150,0.9)'); gr.addColorStop(0.5, 'rgba(255,214,90,0.45)'); gr.addColorStop(1, 'rgba(255,214,90,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }
   const k = calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3.2);
   if (GLOW) { ctx.globalAlpha = 0.55 + 0.3 * k; ctx.drawImage(GLOW, x - rx * 1.7, y + ry * 0.3 - ry * 2.6, rx * 3.4, ry * 5.2); ctx.globalAlpha = 1; }
@@ -976,22 +1069,118 @@ export function drawStopCall(ctx, L, x, y, t, calm, boss) {
   for (let q = 0; q < 2; q++) { const f = (t * 0.7 + q * 0.5) % 1; ctx.globalAlpha = 0.75 * (1 - f); ctx.beginPath(); ctx.ellipse(x, y + ry * 0.4, rx * (1.08 + 0.55 * f), ry * (1.4 + 0.7 * f), 0, 0, TAU); ctx.stroke(); }
   ctx.globalAlpha = 1;
 }
-// where the hen's feet rest in the level-to-play nest: y below the stop's centre (px)
-export function stopFeet(L, boss) { const ry = NEST_RX.cur * L.u * (boss ? 1.14 : 1) * 0.4; return -ry * 0.1 + ry * 0.62 * 0.85; }
-// 0.8.16 (mykee: "the hen doesn't sit in the nest, they are coinciding or overlapping"): she sat ON the hollow, her body
-// above it and the dark hollow showing in front of her. Now she sits IN it: her body sinks until the nest's near lip crosses
-// it SEAT_Y units down her 100-unit height (drawHenAnim: her feet at 48), and nestClip hides whatever of her is inside the
-// nest (below the lip, behind the front rim): no feet poking out under it, no rim painted over her face.
+// a nest's measures (px): half width and height, the hollow, the badge's centre and radius
+function nestD(u, st, boss) { const b = boss ? BOSS_K : 1, rx = NEST_RX[st] * u * b, ry = rx * 0.4; return { rx, ry, bowlY: -ry * 0.1, brx: rx * 0.7, bry: ry * 0.62, by: ry * 1.12, br: (BADGE_R[st] + (boss ? 1.5 : 0)) * u }; }
+const nestDims = (L, st, boss) => nestD(L.u, st, boss);
+// where the hen's feet rest on a stop: y below the stop's centre (px)
+export function stopFeet(L, boss) { const ry = NEST_RX.cur * L.u * (boss ? BOSS_K : 1) * 0.4; return -ry * 0.1 + ry * 0.62 * 0.85; }
+// 0.8.16 (mykee: "the hen doesn't sit in the nest, they are coinciding or overlapping"): she sits IN it: her body sinks
+// until the nest's near lip crosses it SEAT_Y units down her 100-unit height (drawHenAnim: her feet at 48). 0.8.17: the
+// nest's front rim and badge are drawn over her (main.js: the stop's 'front' part), so nothing of the nest shows through
+// her; nestClip only hides what of her would poke out under the nest's bottom.
 const SEAT_Y = 27;
-const nestDims = (L, st, boss) => { const rx = NEST_RX[st] * L.u * (boss ? 1.14 : 1), ry = rx * 0.4; return { rx, ry, bowlY: -ry * 0.1, brx: rx * 0.7, bry: ry * 0.62 }; };
-// her feet below the stop's centre (px) sitting in nest `st` (hh = her height in px); on a bare stepping stone she stands
-export function nestSeat(L, st, boss, hh) { if (!NEST_RX[st] || st === 'far') return 0; const d = nestDims(L, st, boss); return d.bowlY + d.bry + ((48 - SEAT_Y) * hh) / 100; }
-// clip to everything but the inside of the nest at (x, y): the box under the hollow's middle line, less the hollow's near half
+export function nestSeat(L, st, boss, hh) { if (!isNest(st)) return 0; const d = nestDims(L, st, boss); return d.bowlY + d.bry + ((48 - SEAT_Y) * hh) / 100; }
 export function nestClip(ctx, L, x, y, st, boss) {
-  if (!NEST_RX[st] || st === 'far') return;
-  const d = nestDims(L, st, boss), cy = y + d.bowlY;
+  if (!isNest(st)) return;
+  const d = nestDims(L, st, boss), rx = d.rx * 1.02, ry = d.ry;
   ctx.beginPath(); ctx.rect(-1e5, -1e5, 2e5, 2e5);
-  ctx.rect(x - d.rx * 1.3, cy, d.rx * 2.6, d.ry * 3);
-  ctx.moveTo(x + d.brx, cy); ctx.ellipse(x, cy, d.brx, d.bry, 0, 0, Math.PI); ctx.closePath();
+  ctx.moveTo(x + rx, y); ctx.bezierCurveTo(x + rx, y + ry * 0.7, x + rx * 0.7, y + ry * 1.32, x, y + ry * 1.34); ctx.bezierCurveTo(x - rx * 0.7, y + ry * 1.32, x - rx, y + ry * 0.7, x - rx, y);
+  ctx.lineTo(x - rx, y + ry * 8); ctx.lineTo(x + rx, y + ry * 8); ctx.closePath();
   ctx.clip('evenodd');
+}
+
+// ------------------------------------------------------------------ a world's gate (0.8.17)
+// mykee: "we could have shown it to the user without the help of a pop-up". A world behind its star gate shows a wooden
+// gate across the road at its foot (where its sign stands once it is open): two posts and a beam, two plank doors, a big
+// padlock on the seam, and one board hanging from the post arm with a star, have / need and a thin bar. main.js hangs the
+// coin button under the board (the first locked world only) and runs the opening (o.s).
+export function gateSpot(L, w) {
+  if (L._gates && L._gates[w]) return L._gates[w];
+  const u = L.u, A = L.A, y = L.bandTop(w) + L.BH * 0.955, x = L.pathX(y);
+  const slope = (L.pathX(y - 4) - L.pathX(y + 4)) / 8, half = (L.roadW / 2) * Math.sqrt(1 + slope * slope) + 5 * u;
+  const bw = 132 * u, bh = 54 * u, pw = 9 * u, pref = x < L.cx ? 1 : -1;
+  // keep the board and its button clear of the world's first stop, the stop below the gate (the hen may sit there) and
+  // that stop's boss chest: the roomier side first, then the other, then a little lower
+  const st = L.stops, s0 = st.find((q) => q.w === w), s1 = [...st].reverse().find((q) => q.w === w - 1), keep = [];
+  if (s0) { const r = (DISC_R * BOSS_K + 4) * u; keep.push({ x0: s0.x - r, x1: s0.x + r, y0: s0.y - r - 10 * u, y1: s0.y + r + 4 * u }); }
+  if (s1) {
+    keep.push({ x0: s1.x - 44 * u, x1: s1.x + 44 * u, y0: s1.y - 64 * u, y1: s1.y + 46 * u });
+    const r = Math.max(L.stopR * 1.2, 46 * u), cr = Math.min(L.stopR * 1.14, 34 * u); let sd = s1.x < A.cx ? -1 : 1, cx = s1.x + sd * (r + cr * 1.25);
+    if (cx - cr < A.x + 4 * u || cx + cr > A.x1 - 4 * u) cx = s1.x - sd * (r + cr * 1.25);
+    const cy = s1.y - r * 0.15; keep.push({ x0: cx - cr * 1.1, x1: cx + cr * 1.1, y0: cy - cr * 1.1, y1: cy + cr * 1.3 });
+  }
+  const make = (side, dy) => {
+    const postX = x + side * (half + pw / 2), bx = clamp(side > 0 ? postX + 16 * u : postX - 16 * u - bw, A.x + 6 * u, A.x1 - 6 * u - bw);
+    const board = { x: bx, y: y - 50 * u + dy, w: bw, h: bh }, btn = { x: bx + 6 * u, y: board.y + bh + 12 * u, w: bw - 12 * u, h: 38 * u };
+    const box = { x0: Math.min(postX, bx) - 3 * u, x1: Math.max(postX, bx + bw) + 3 * u, y0: board.y - 14 * u, y1: btn.y + btn.h + 3 * u };
+    return { x, y, half, side, pw, postX, board, btn, box, hit: keep.some((k) => box.x0 < k.x1 && box.x1 > k.x0 && box.y0 < k.y1 && box.y1 > k.y0) };
+  };
+  let g = null;
+  for (const [sd, dy] of [[pref, 0], [pref, 12], [-pref, 0], [-pref, 12], [pref, 24], [-pref, 24], [pref, 36], [-pref, 36]]) { const c = make(sd, dy * u); if (!c.hit) { g = c; break; } }
+  if (!g) g = make(pref, 0);
+  (L._gates || (L._gates = {}))[w] = g;
+  return g;
+}
+function woodRect(c, x, y, w, h, r, u, hi = '#d9ab68', lo = '#9a6a32') { rrect(c, x, y, w, h, r); c.fillStyle = lg(c, x, y, x, y + h, [hi, lo]); c.fill(); c.lineWidth = 2.4 * u; c.strokeStyle = '#4a2c10'; c.stroke(); }
+// o: { have, need, s (seconds into the opening, or < 0 shut), calm, coin (the coin button hangs under the board) }
+export function drawGate(ctx, L, w, sy, o) {
+  const u = L.u, g = gateSpot(L, w), y = g.y - sy, x = g.x, s = o.s == null ? -1 : o.s, calm = !!o.calm;
+  const fadeAll = s < 0 ? 1 : 1 - ss((s - 1.05) / 0.3);
+  if (fadeAll <= 0.01) return g;
+  const c = ctx; c.save(); c.globalAlpha *= fadeAll; c.lineJoin = 'round'; c.lineCap = 'round';
+  const half = g.half, pw = g.pw, ph = 58 * u, top = y - ph;
+  const open = s < 0 ? 0 : ss((s - 0.38) / 0.5); // the doors swing open
+  // the doors: plank leaves hinged on the posts, meeting on the road's middle; opening, each turns in to its post
+  for (const sd of [-1, 1]) {
+    const hx = x + sd * half, f = Math.cos(open * 1.45), fx = hx - sd * half * f, grow = open * 7 * u, y0 = y - 40 * u, y1 = y - 3 * u;
+    c.beginPath(); c.moveTo(hx, y0); c.lineTo(fx, y0 - grow * 0.5); c.lineTo(fx, y1 + grow * 0.5); c.lineTo(hx, y1); c.closePath();
+    c.fillStyle = lg(c, hx, 0, fx, 0, open > 0.05 ? ['#b07c40', mixHex('#c9945a', '#5a3a1a', open * 0.6)] : ['#c9945a', '#b07c40']); c.fill();
+    c.lineWidth = 2.2 * u; c.strokeStyle = '#4a2c10'; c.stroke();
+    if (f > 0.15) { // planks and the Z brace
+      c.lineWidth = 1.2 * u; c.strokeStyle = 'rgba(74,44,16,0.6)';
+      for (let k = 1; k < 3; k++) { const px = lerp(hx, fx, k / 3); c.beginPath(); c.moveTo(px, y0 - grow * 0.5 * k / 3); c.lineTo(px, y1 + grow * 0.5 * k / 3); c.stroke(); }
+      c.lineWidth = 3.2 * u; c.strokeStyle = '#8a5a26';
+      c.beginPath(); c.moveTo(hx, y0 + 6 * u); c.lineTo(fx, y0 + 6 * u); c.moveTo(hx, y1 - 6 * u); c.lineTo(fx, y1 - 6 * u); c.moveTo(hx, y1 - 6 * u); c.lineTo(fx, y0 + 6 * u); c.stroke();
+    }
+  }
+  // the posts and the beam
+  for (const sd of [-1, 1]) {
+    const px = x + sd * (half + pw / 2);
+    c.beginPath(); c.ellipse(px, y + 2 * u, pw * 1.1, 3 * u, 0, 0, TAU); c.fillStyle = 'rgba(20,10,0,0.3)'; c.fill();
+    woodRect(c, px - pw / 2, top, pw, ph + 3 * u, 2.5 * u, u, '#b98a4e', '#7a5226');
+    c.beginPath(); c.moveTo(px - pw * 0.8, top + 1 * u); c.lineTo(px, top - 7 * u); c.lineTo(px + pw * 0.8, top + 1 * u); c.closePath(); c.fillStyle = '#c0503a'; c.fill(); c.lineWidth = 2 * u; c.strokeStyle = '#4a2c10'; c.stroke();
+  }
+  woodRect(c, x - half - pw * 0.2, top + 6 * u, 2 * half + pw * 0.4, 7 * u, 2 * u, u, '#c9945a', '#946234');
+  // the board hanging from an arm off the post on its side (it falls away as the gate opens)
+  const B = { ...g.board, y: g.board.y - sy }, bs = s < 0 ? -1 : s - 0.3, bA = bs < 0 ? 1 : 1 - ss(bs / 0.35);
+  if (bA > 0.01) {
+    c.save(); c.globalAlpha *= bA;
+    const armY = B.y - 9 * u, ax = g.postX, bx0 = B.x + B.w * 0.18, bx1 = B.x + B.w * 0.82;
+    woodRect(c, Math.min(ax, B.x + 6 * u) - 2 * u, armY - 3.5 * u, Math.abs(Math.max(ax, B.x + B.w - 6 * u) - Math.min(ax, B.x + 6 * u)) + 4 * u, 7 * u, 2 * u, u, '#b98a4e', '#7a5226');
+    const drop = bs > 0 && !calm ? bs * bs * 260 * u : 0, rot = bs > 0 && !calm ? bs * 0.9 * g.side : 0;
+    if (drop === 0) { c.strokeStyle = '#5a3a1a'; c.lineWidth = 1.6 * u; for (const rx of [bx0, bx1]) { c.beginPath(); c.moveTo(rx, armY + 2 * u); c.lineTo(rx, B.y + 3 * u); c.stroke(); } }
+    c.translate(B.x + B.w / 2, B.y + B.h / 2 + drop); c.rotate(rot);
+    const X0 = -B.w / 2, Y0 = -B.h / 2;
+    c.beginPath(); c.ellipse(0, B.h / 2 + 4 * u, B.w * 0.42, 4 * u, 0, 0, TAU); c.fillStyle = 'rgba(20,10,0,0.18)'; if (drop === 0) c.fill();
+    woodRect(c, X0, Y0, B.w, B.h, 9 * u, u);
+    c.fillStyle = 'rgba(255,240,200,0.35)'; c.fillRect(X0 + 8 * u, Y0 + 4 * u, B.w - 16 * u, 2 * u);
+    for (const nx of [X0 + 8 * u, -X0 - 8 * u]) blobAt(c, nx, Y0 + 9 * u, 2 * u, '#5a3a1a');
+    // a star, have / need, a thin bar
+    const txt = `${o.have} / ${o.need}`, fs = 21 * u;
+    c.font = `600 ${Math.round(fs)}px ${FONT}`; c.textAlign = 'left'; c.textBaseline = 'middle';
+    const tw = c.measureText(txt).width, sr = 11 * u, gx = -(sr * 2 + 6 * u + tw) / 2, ty = Y0 + 21 * u;
+    brightStar(c, gx + sr, ty, sr, true);
+    c.lineWidth = 4 * u; c.strokeStyle = 'rgba(255,244,214,0.9)'; c.strokeText(txt, gx + sr * 2 + 6 * u, ty + 0.5 * u); c.fillStyle = '#3a2008'; c.fillText(txt, gx + sr * 2 + 6 * u, ty + 0.5 * u);
+    const bw2 = B.w - 30 * u, by2 = Y0 + B.h - 15 * u, fr = clamp(o.have / Math.max(1, o.need), 0, 1);
+    rrect(c, -bw2 / 2, by2, bw2, 7 * u, 3.5 * u); c.fillStyle = 'rgba(58,32,8,0.45)'; c.fill();
+    if (fr > 0) { rrect(c, -bw2 / 2, by2, Math.max(7 * u, bw2 * fr), 7 * u, 3.5 * u); c.fillStyle = lg(c, 0, by2, 0, by2 + 7 * u, ['#ffe27a', '#f0a018']); c.fill(); }
+    rrect(c, -bw2 / 2, by2, bw2, 7 * u, 3.5 * u); c.lineWidth = 1.2 * u; c.strokeStyle = 'rgba(58,32,8,0.7)'; c.stroke();
+    if (o.coin && s < 0) { c.strokeStyle = '#5a3a1a'; c.lineWidth = 1.6 * u; for (const rx of [-B.w / 2 + 24 * u, B.w / 2 - 24 * u]) { c.beginPath(); c.moveTo(rx, B.h / 2 - 1 * u); c.lineTo(rx, B.h / 2 + 13 * u); c.stroke(); } }
+    c.restore();
+  }
+  // the hasp and the big padlock on the seam
+  if (open < 0.2) { c.save(); c.globalAlpha *= 1 - open * 5; rrect(c, x - 9 * u, y - 27 * u, 18 * u, 7 * u, 2 * u); c.fillStyle = '#5a5e66'; c.fill(); c.lineWidth = 1.4 * u; c.strokeStyle = '#22242a'; c.stroke(); c.restore(); }
+  lockBreak(c, x, y - 19 * u, 12.5 * u, s, calm, u);
+  c.restore();
+  return g;
 }

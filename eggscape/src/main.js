@@ -1433,10 +1433,11 @@ async function press(id) {
     case 'gate:0': case 'gate:1': case 'gate:2': case 'gate:3': case 'gate:4': case 'gate:5': case 'gate:6': case 'gate:7': case 'gate:8': case 'gate:9': {
       const k = +id.slice(5), price = GATE_COINS(k);
       if (envOpen(k)) break;
+      { let f = -1; for (let q = 0; q < WORLDS.length; q++) if (!envOpen(q)) { f = q; break; } if (k !== f) break; } // 0.8.17: only the first shut world opens for coins
       if (save.wallet.coins < price) { needCoins(price); break; }
       save.wallet = { ...save.wallet, coins: save.wallet.coins - price };
       save.gates = { ...(save.gates || {}), [k]: 1 };
-      persist(); audio.play('unlock'); toast(`${WORLDS[k] || 'World'} is open!`, 2.4);
+      persist(); // 0.8.17: the map opens its gate on screen (padlock, gate, fog, sign) with its own sounds, no toast
       break;
     }
     case 'tab:deals':
@@ -8683,11 +8684,43 @@ function drawLevels() {
   ui.calm = save.calm;
   const L = mapLayoutNow(), vt = levelPageTop(), vb = A.y1, vh = vb - vt;
   S.max = Math.max(0, L.H - vh);
-  if (G.screenT < S.seenT || S.focus !== G.world + ':' + S.enter) { mapFocusWorld(G.world); S.focus = G.world + ':' + S.enter; } // just opened: show where the player is
+  let fresh = false;
+  if (G.screenT < S.seenT || S.focus !== G.world + ':' + S.enter) { mapFocusWorld(G.world); S.focus = G.world + ':' + S.enter; fresh = true; } // just opened: show where the player is
   S.seenT = G.screenT;
+  const dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
+  const camTo = (y, f, snap) => { const want = clamp(y - vh * f, 0, S.max); S.y = snap ? want : S.y + (want - S.y) * Math.min(1, dt * 6); S.v = 0; return Math.abs(want - S.y) < 3; }; // the camera glides there
   // the trip to the next stop after a win (2026-11-20): the camera follows the hen hopping along, a burst on arrival,
   // then the level page opens by itself
   const TR = G.mapTravel && L.stops[G.mapTravel.from] && L.stops[G.mapTravel.to] ? G.mapTravel : null;
+  // 0.8.17 (mykee: "show the user that the lock icon completely breaks away"; "we could have shown it without a pop-up"):
+  // what the map has shown open so far this session. A level newer than that breaks its padlock as the hen sets off for
+  // it; a world newer than that opens its gate on screen (the padlock breaks, the gate swings open, the fog rolls away,
+  // the sign drops in), then the hen walks in
+  const topPlay = () => { for (let i = LEVELS.length - 1; i >= 0; i--) if (playable(i)) return i; return -1; };
+  let oMask = 0; for (let w = 0; w < L.nw; w++) if (envOpen(w)) oMask |= 1 << w;
+  if (!G.mapSeen || G.mapSeen.sv !== save) { // (a save loaded afresh starts what was seen afresh)
+    const sn = G.mapSeen = { top: topPlay(), w: oMask, sv: save }; G.mapGate = null;
+    if (TR && TR.to === sn.top && !bestStarsOf(LEVELS[TR.to].id)) { // the first map of the session is this trip: its level (and world) just opened
+      sn.top = TR.to - 1; const w2 = envOf(TR.to);
+      if (w2 !== envOf(TR.from) && !LEVELS.some((l, i) => envOf(i) === w2 && bestStarsOf(l.id) > 0)) sn.w &= ~(1 << w2);
+    }
+  }
+  const SN = G.mapSeen;
+  SN.w &= oMask;
+  if (!G.mapGate) for (let w = 0; w < L.nw; w++) if ((oMask >> w) & 1 && !((SN.w >> w) & 1)) { G.mapGate = { w, t0: null }; break; }
+  const GA = G.mapGate, GATE_T = 1.45;
+  if (GA) {
+    if (camTo(MS.gateSpot(L, GA.w).y - 30 * u, 0.5, fresh) && GA.t0 == null) GA.t0 = G.t; // the gate on screen first, then it opens
+    const gs = GA.t0 == null ? -1 : G.t - GA.t0;
+    if (gs >= 0.32 && !GA.snd) { GA.snd = 1; audio.play('unlock', { pitch: 0.85 }); buzz('tap'); }
+    if (gs >= 1.2 && !GA.snd2) { GA.snd2 = 1; audio.play('tada'); }
+    if (gs >= GATE_T) {
+      SN.w |= 1 << GA.w; G.mapGate = null;
+      const tp = topPlay(); // opened for coins (or by stars from a replay): the hen walks in from the stop before it
+      if (!G.mapTravel && tp > SN.top && tp === nextIdx() && tp > 0 && envOf(tp) === GA.w && (bestStarsOf(LEVELS[tp - 1].id) > 0 || SK.isSkipped(save, LEVELS[tp - 1].id))) G.mapTravel = { from: tp - 1, to: tp, t0: -1 };
+    }
+  } else if (!TR) SN.top = Math.max(SN.top, topPlay());
+  const gateHold = !!(TR && G.mapGate); // a world opening first, then the trip
   // a boss was just beaten and its treasure is still shut: the chest opens first, then the hen walks on (2026-11-20:
   // the win chain walked straight past it to the next level, so most players never saw their boss reward)
   if (TR && !TR.tr) {
@@ -8695,18 +8728,23 @@ function drawLevels() {
     const due = treasureDue(TR.from);
     if (due) G.treasure = { id: due, t: G.t, openedAt: null };
   }
-  if (TR && G.treasure) { const a = L.stops[TR.from]; TR.t0 = -1; TR.x = a.x; TR.y = a.y; TR.p = 0; TR.e = 0; TR.dur = 1.2; } // the trip waits for the treasure sheet
+  if (TR && TR.unl == null) TR.unl = TR.to > SN.top && !allOpen() ? 1 : 0;
+  const UNL0 = 0.2, TRIP0 = TR && TR.unl ? 0.8 : 0.5; // the padlock breaks from 0.2 s; she sets off once it is gone
+  if (TR && (G.treasure || gateHold)) { const a = L.stops[TR.from]; TR.t0 = -1; TR.x = a.x; TR.y = a.y; TR.p = 0; TR.e = 0; TR.dur = 1.2; } // the trip waits for the treasure sheet (and the gate)
   else if (TR) {
     if (TR.t0 < 0) TR.t0 = G.screenT;
     // 0.8.14: she walks the ROAD (the road is the curve x = pathX(y) through every stop), not a straight line over the
     // scenery; a longer stretch (a world's last stop to the next world's first) takes a little longer
-    const a = L.stops[TR.from], b = L.stops[TR.to], dur = 1.2 * clamp(Math.abs(b.y - a.y) / (L.BH * 0.175), 1, 1.8), p = clamp((G.screenT - TR.t0 - 0.5) / dur, 0, 1), e = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p);
+    const a = L.stops[TR.from], b = L.stops[TR.to], dur = 1.2 * clamp(Math.abs(b.y - a.y) / (L.BH * 0.175), 1, 1.8), p = clamp((G.screenT - TR.t0 - TRIP0) / dur, 0, 1), e = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p);
     TR.y = a.y + (b.y - a.y) * e; TR.x = L.pathX(TR.y); TR.p = p; TR.e = e; TR.dur = dur;
-    mapFocusY(TR.y, 0.55);
-    if (p >= 1 && !TR.arrived) { TR.arrived = G.screenT; audio.play('unlock', { pitch: 1.15 }); buzz('tap'); }
+    camTo((TR.y + b.y) / 2, 0.55, fresh); // both stops in view: the padlock breaking ahead and the hen
+    if (TR.unl && !TR.snd && G.screenT - TR.t0 - UNL0 >= 0.32) { TR.snd = 1; audio.play('unlock'); buzz('tap'); }
+    if (p >= 1 && !TR.arrived) { TR.arrived = G.screenT; audio.play(TR.unl ? 'hen_land' : 'unlock', TR.unl ? {} : { pitch: 1.15 }); if (!TR.unl) buzz('tap'); }
     if (TR.arrived && G.screenT - TR.arrived > 0.6) { G.mapTravel = null; if (playable(TR.to)) press('lv:' + TR.to); }
   }
-  const dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
+  const ulS = TR && TR.unl ? (TR.t0 < 0 ? -1 : G.screenT - TR.t0 - UNL0) : null; // the padlock break on the stop she goes to (s)
+  // her nest while she climbs out of one and settles into the next (0.8.17: the nest's front is drawn over her then)
+  const inA = TR ? 1 - ss01(TR.e / 0.12) : 0, inB = TR ? ss01((TR.e - 0.88) / 0.12) : 0;
   glideDt(S, dt);
   const sy = snapPx(S.y - vt, DPR); // map y -> screen y is (y - sy); whole device pixels, so the painted land stays crisp
   const t = G.t, calm = save.calm;
@@ -8718,7 +8756,7 @@ function drawLevels() {
   MS.drawRoad(ctx, L, sy, vt, H_, doneTo);
   if (ui.skin && ui.skin.pack && ui.skin.pack.bg) drawRoadDress(ctx, L, sy, vt, H_, t, ui.skin.pack.bg, calm);
   MS.drawCast(ctx, L, sy, vt, H_, t, calm, DPR);
-  const wide = mapWide(), ctaOn = playable(nx) && envOpen(envOf(nx));
+  const wide = mapWide(), gateW = G.mapGate ? G.mapGate.w : -1, ctaOn = playable(nx) && envOpen(envOf(nx)) && envOf(nx) !== gateW; // (not while its world's gate opens)
   const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 440) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - (wide ? 4 : 20) * u; // 0.8.16: on the page column, clear of the bottom edge
   const tapBot = ctaOn && !wide ? ctaY - 6 * u : vb; // stops under the PLAY bar keep no tap target
   G.mapView = { vt, vb: tapBot, cta: ctaOn ? { x: ctaX, y: ctaY, w: ctaW, h: ctaH } : null }; // QA: the part of the map that shows
@@ -8737,17 +8775,16 @@ function drawLevels() {
     }
     if (Pz.drawFront) Pz.drawFront(ctx, L, sy, t, calm, vt, H_); // the Farm's crow perches on the barn's vane: it flies over the landmarks
   }
-  // the stops (0.8.14, mykee: "do we need to show flags for all the levels?"): one nest per level ON the road, the same in
-  // every world (render/mapscene.js drawStop): won = a golden egg with its number and stars; the level to play = a bigger
-  // nest the hen stands in, a bright number badge; the next locked one = an empty nest and a small padlock; every later
-  // one only a pale stepping stone with a small number
-  let firstLocked = -1; for (let i = 0; i < LEVELS.length; i++) if (!playable(i)) { firstLocked = i; break; }
-  let curAt = null;
+  // the stops (0.8.14, mykee: "do we need to show flags for all the levels?"): one marker per level ON the road, the same
+  // in every world (render/mapscene.js drawStop). 0.8.17 (mykee: "they are too small ... the previous build was displaying
+  // quite good"): a locked level is a big stone disc with its number and a padlock; a won one its nest and golden egg, the
+  // number on a badge at the front and the stars on a dark plate; the level to play the hen in her nest, a bigger badge
+  let curAt = null, fromAt = null;
   for (let i = 0; i < LEVELS.length; i++) {
     const st0 = L.stops[i], x = st0.x, y = st0.y - sy;
-    if (y < vt - 90 * u || y > H_ + 40 * u) continue;
-    const Lv = LEVELS[i], w = st0.w, gated = !envOpen(w), open = playable(i), boss = !!Lv.boss;
-    const state = gated ? 'far' : open && i === nx ? 'cur' : bestStarsOf(Lv.id) > 0 ? 'won' : open && SK.isSkipped(save, Lv.id) ? 'skip' : open ? 'open' : i === firstLocked ? 'next' : 'far';
+    if (y < vt - 90 * u || y > H_ + 60 * u) continue;
+    const Lv = LEVELS[i], w = st0.w, gated = !envOpen(w) || w === gateW, open = playable(i), boss = !!Lv.boss;
+    const state = gated ? 'far' : open && i === nx ? 'cur' : bestStarsOf(Lv.id) > 0 ? 'won' : open && SK.isSkipped(save, Lv.id) ? 'skip' : open ? 'open' : 'far';
     const bx = MS.stopBox(L, state, boss);
     let x0 = x + bx.x0, x1 = x + bx.x1, y0 = y + bx.y0, y1 = y + bx.y1;
     if (x1 - x0 < 48) { x0 = x - 24; x1 = x + 24; } // a touch box of at least 48 px each way
@@ -8758,9 +8795,15 @@ function drawLevels() {
       ui.button('lv:' + i, '', x0, y0, x1 - x0, y1 - y0, { ghost: true, disabled: !open });
       p = calm ? 0 : ui.pressAmt('lv:' + i, ui.pressedId === 'lv:' + i);
     }
-    const o = { w, num: Lv.id, stars: starsOf(Lv.id), boss, DPR, p, part: 'back', hard: isHardLevel(Lv) && save.mode !== 'easy' };
+    // the nest the hen sits in is drawn in two passes, its front (rim, badge, plate) over her
+    const henIn = TR ? (i === TR.from && inA > 0) || (i === TR.to && inB > 0) : state === 'cur';
+    const o = { w, num: Lv.id, stars: starsOf(Lv.id), boss, DPR, p, part: henIn ? 'back' : 'all', hard: isHardLevel(Lv) && save.mode !== 'easy' };
+    if (TR && i === TR.from) { TR.fromSt = state; fromAt = { x, y, o }; } // the nest she climbs out of
+    if (TR && i === TR.to && ulS != null && ulS < MS.UNLOCK_T && state === 'cur') { // its padlock breaks away, then it turns into her nest
+      if (ulS < 0) MS.drawStop(ctx, L, x, y, 'next', o); else MS.drawUnlock(ctx, L, x, y, o, ulS, calm);
+      continue;
+    }
     if (state === 'cur') { if (!(TR && !TR.arrived)) MS.drawStopCall(ctx, L, x, y, t, calm, boss); curAt = { x, y, o, boss, i }; }
-    if (TR && i === TR.from) TR.fromSt = state; // the nest she climbs out of
     MS.drawStop(ctx, L, x, y, state, o);
   }
   // the boss treasures: a chest beside every boss stop, on the side away from where the hen would stand
@@ -8794,7 +8837,7 @@ function drawLevels() {
   G.mapHen = null;
   if (TR) {
     const bA = !!LEVELS[TR.from].boss, bB = !!LEVELS[TR.to].boss, fa = MS.stopFeet(L, bA), fb = MS.stopFeet(L, bB), e = TR.e;
-    const sA = TR.fromSt || 'won', inA = 1 - ss01(e / 0.12), inB = ss01((e - 0.88) / 0.12); // 0.8.16: she climbs out of the nest she sat in and settles into the next one
+    const sA = TR.fromSt || 'won'; // 0.8.16: she climbs out of the nest she sat in and settles into the next one
     const steps = Math.max(3, Math.round(4 * (TR.dur || 1.2) / 1.2));
     const hop = calm || TR.arrived ? 0 : Math.abs(Math.sin(e * Math.PI * steps)) * hh * 0.2 * (1 - e * 0.4);
     const dirY = L.stops[TR.to].y < L.stops[TR.from].y ? -1 : 1, dx = L.pathX(TR.y + dirY * 8 * u) - TR.x;
@@ -8802,12 +8845,16 @@ function drawLevels() {
     if (TR.arrived || e > 0.92) TR.face = ahead(TR.to); else if (Math.abs(dx) > 1.5 * u) TR.face = dx > 0 ? 1 : -1;
     const gy = TR.y - sy + fa + (fb - fa) * e + inA * (MS.nestSeat(L, sA, bA, hh) - fa) + inB * (MS.nestSeat(L, 'cur', bB, hh) - fb), hx = TR.x; // the ground under her feet (in a nest: down in the straw)
     if (hop > 0.5) { ctx.beginPath(); ctx.ellipse(hx, gy + 1 * u, hh * 0.26 * (1 - hop / (hh * 0.6)), hh * 0.065, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill(); }
-    const na = e < 0.5 ? L.stops[TR.from] : L.stops[TR.to];
-    ctx.save(); MS.nestClip(ctx, L, na.x, na.y - sy, e < 0.5 ? sA : 'cur', e < 0.5 ? bA : bB);
+    // 0.8.17 (mykee: "the hen and the nest are coinciding ... I could see the hen background"): she is drawn whole and
+    // opaque over every stop; only in a nest is anything of her hidden (what pokes out under it), and that nest's front
+    // is drawn over her. On the road between, nothing clips her.
+    const na = L.stops[inA > 0 ? TR.from : TR.to];
+    ctx.save(); if (inA > 0) MS.nestClip(ctx, L, na.x, na.y - sy, sA, bA); else if (inB > 0) MS.nestClip(ctx, L, na.x, na.y - sy, 'cur', bB);
     drawHenAnim(ctx, TR.arrived ? 'happy' : 'idle', hx, gy - hop - hh * 0.5, hh, t, { key: 'map', face: TR.face, calm, shadow: 0 });
     ctx.restore();
     G.mapHen = { x: hx, y: gy - hop, to: TR.to };
-    if (curAt && curAt.i === TR.to) MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
+    if (inA > 0 && fromAt) MS.drawStop(ctx, L, fromAt.x, fromAt.y, sA, { ...fromAt.o, part: 'front' });
+    if (inB > 0 && curAt && curAt.i === TR.to) MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
     if (TR.arrived) {
       const k = clamp((G.screenT - TR.arrived) / 0.6, 0, 1), b = L.stops[TR.to], by = b.y - sy;
       ctx.save(); ctx.globalAlpha = 1 - k; ctx.lineWidth = 4 * u * (1 - k) + 1; ctx.strokeStyle = '#ffe27a';
@@ -8823,37 +8870,44 @@ function drawLevels() {
     G.mapHen = { x: curAt.x, y: fy, to: curAt.i };
     MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
   }
-  if (curAt && !G.mapHen) MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
-  // worlds behind their gate: fog, and the gate card at the foot of the world
+  // worlds behind their gate: fog, and the gate across the road at the world's foot (0.8.17: no card over the map)
   const totalStars = bestTotal();
+  let firstShut = -1; for (let w = 0; w < L.nw; w++) if (!envOpen(w)) { firstShut = w; break; }
   for (let w = 0; w < L.nw; w++) {
     const top = L.bandTop(w) - sy, bot = top + L.BH;
-    if (bot < vt - 40 * u || top > H_) continue;
-    const locked = !envOpen(w);
-    if (locked) MS.drawFog(ctx, L, w, sy, t, calm);
-    // the world sign at its foot: number and name on a wooden board
-    const sp = MS.signSpot(L, w), syy = sp.y - sy, name = WORLDS[w] || '', ns = 15 * u;
-    if (!locked && syy > vt - 30 * u && syy < H_ + 30 * u) {
+    if (bot < vt - 40 * u || top > H_ + 80 * u) continue;
+    const opening = w === gateW, gs = opening && G.mapGate.t0 != null ? G.t - G.mapGate.t0 : -1, locked = !envOpen(w) || opening;
+    if (locked) MS.drawFog(ctx, L, w, sy, t, calm, gs < 0 ? 0 : ss01((gs - 0.45) / 0.95)); // opening: the fog rolls away upward
+    // the world sign at its foot: number and name on a wooden board (opening: it drops in once the gate has swung open)
+    const sp = MS.signSpot(L, w), name = WORLDS[w] || '', ns = 15 * u, sk = opening ? clamp((gs - 0.85) / 0.5, 0, 1) : locked ? 0 : 1;
+    const syy = sp.y - sy - (calm ? 0 : (1 - sk) * (1 - sk) * 60 * u);
+    if ((!locked || sk > 0) && syy > vt - 30 * u && syy < H_ + 30 * u) {
+      ctx.save(); if (sk < 1) ctx.globalAlpha = ss01(sk * 2.5);
       const tw = ui.measure(name, ns), bw2 = tw + 52 * u, bh2 = 30 * u, bx2 = clamp(L.pathX(sp.y) + (L.pathX(sp.y) < A.cx ? 1 : -1) * (bw2 / 2 + L.roadW), A.x + bw2 / 2 + 6 * u, A.x1 - bw2 / 2 - 6 * u);
       ctx.fillStyle = '#5a3a1a'; ctx.fillRect(bx2 - bw2 * 0.3, syy - 4 * u, 5 * u, 22 * u); ctx.fillRect(bx2 + bw2 * 0.3 - 5 * u, syy - 4 * u, 5 * u, 22 * u);
       ui.roundRect(bx2 - bw2 / 2, syy - bh2, bw2, bh2, 8 * u); ctx.fillStyle = '#c99a5a'; ctx.fill(); ctx.lineWidth = 3 * u; ctx.strokeStyle = '#5a3a1a'; ctx.stroke();
       ctx.beginPath(); ctx.arc(bx2 - bw2 / 2 + 15 * u, syy - bh2 / 2, 10 * u, 0, 7); ctx.fillStyle = MS.WORLD_LOOK[w].accent; ctx.fill();
       ctx.font = `600 ${Math.round(12 * u)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(String(w + 1), bx2 - bw2 / 2 + 15 * u, syy - bh2 / 2 + 0.5 * u);
       ctx.font = `600 ${Math.round(ns)}px ${FONT}`; ctx.fillStyle = '#3a2008'; ctx.fillText(name, bx2 + 12 * u, syy - bh2 / 2 + 0.5 * u);
+      ctx.restore();
     }
-    if (locked) {
-      const need = envNeed(w), price = GATE_COINS(w), rich = save.wallet.coins >= price;
-      const cw = Math.min(A.w - 2 * pad, 330 * u), ch = 176 * u, cx0 = A.cx - cw / 2, cy0 = L.bandTop(w) + L.BH * 0.86 - ch - sy;
-      if (cy0 + ch < vt || cy0 > vb) continue;
-      const full = cy0 >= vt && cy0 + ch <= vb, n0 = ui.rects.length, b0 = ui.buttons.length;
-      ui.frame(cx0, cy0, cw, ch, { s: u, r: 18 * u, fw: 5 * u, lip: 4 * u, record: full, tag: 'levels:gatecard' + w });
-      ui.text(`World ${w + 1}: ${WORLDS[w]}`, A.cx, cy0 + 26 * u, { size: 17 * u, align: 'center', color: '#8a6238', maxW: cw - 24 * u, tag: 'levels:gatename' + w, noRecord: !full });
-      drawPadlock(A.cx - ui.measure(`Collect ${need} stars to open`, 17 * u) / 2 - 16 * u, cy0 + 58 * u, 11 * u, null);
-      ui.text(`Collect ${need} stars to open`, A.cx + 8 * u, cy0 + 58 * u, { size: 17 * u, align: 'center', color: ui.C.ink, maxW: cw - 60 * u, tag: 'levels:gate' + w, noRecord: !full });
-      drawStar(ctx, A.cx - ui.measure(`You have ${totalStars}`, 15 * u) / 2 - 12 * u, cy0 + 86 * u, 7 * u, true);
-      ui.text(`You have ${totalStars}`, A.cx + 4 * u, cy0 + 86 * u, { size: 15 * u, align: 'center', color: '#8a6238', tag: 'levels:gatehave' + w, noRecord: !full });
-      ui.button('gate:' + w, `Open now  ${price}`, cx0 + 18 * u, cy0 + 112 * u, cw - 36 * u, 46 * u, { kind: rich ? 'gold' : 'off', disabled: !rich, dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 17 * u });
+    if (!locked) continue;
+    // the gate: a star, have / need and a thin bar on its board, no sentence. Only the first shut world may be opened with
+    // coins (0.8.17): its coin button hangs under the board (not before level 3 is won); farther worlds show the board only
+    const coin = w === firstShut && gs < 0 && !earlyDays(), g = MS.drawGate(ctx, L, w, sy, { have: totalStars, need: envNeed(w), s: gs, calm, coin });
+    const Bd = g.board, by0 = Bd.y - sy;
+    if (gs < 0 && by0 >= vt + 2 * u && by0 + Bd.h <= tapBot) ui.record({ x: Bd.x, y: by0, w: Bd.w, h: Bd.h }, 'levels:gateboard' + w, 'levels:gateboard' + w);
+    if (coin) {
+      const price = GATE_COINS(w), rich = save.wallet.coins >= price, Bt = g.btn, bty = Bt.y - sy;
+      if (bty + Bt.h < vt || bty > H_) continue;
+      const full = bty >= vt + 2 * u && bty + Bt.h <= tapBot, n0 = ui.rects.length, b0 = ui.buttons.length;
+      const r = ui.button('gate:' + w, '', Bt.x, bty, Bt.w, Bt.h, { kind: rich ? 'gold' : 'off', disabled: !rich, dim: 1 });
       if (!full) { ui.rects.length = n0; ui.buttons.length = b0; }
+      const fs = 18 * u, ow = ui.measure('Open', fs), pw = ui.measure(String(price), fs), cr = 9 * u, tot = ow + 9 * u + cr * 2 + 5 * u + pw, lx = Bt.x + Bt.w / 2 - tot / 2;
+      const tc = { size: fs, color: '#fff', stroke: rich ? '#6b3d04' : 'rgba(40,40,48,0.8)', strokeW: 3 * u, noRecord: true };
+      ui.text('Open', lx, r.cy + 0.5 * u, tc);
+      drawCoin(ctx, lx + ow + 9 * u + cr, r.cy, cr, rich && !calm ? G.t : 0);
+      ui.text(String(price), lx + ow + 9 * u + cr * 2 + 5 * u, r.cy + 0.5 * u, tc);
     }
   }
   ctx.restore();
