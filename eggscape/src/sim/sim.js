@@ -19,6 +19,7 @@ import { stkMethods } from './strike.js'; // Chick Strike powers
 import { perkMethods, PERK } from './perks.js'; // 0.8.10 egg skin powers
 import { reachMethods } from './henreach.js'; // the hen runs the basket under an egg (nest.reach)
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
+import { WORLD_N, hardOf } from '../road.js'; // 0.8.17: sixty levels, six a world
 
 export const DT = 1 / 120;
 export const REWIND_S = 12; // the fail card's Rewind goes back this many seconds (0.8.14: 5 s gave too little time to react)
@@ -123,7 +124,7 @@ export const MODES = {
 // card and on the map. Easy is left alone. tools/planner-modes.mjs must still win each of them (the list lives here,
 // not in the generated level data, so the levels themselves are untouched).
 export const SCARE_S = 20; // the Scarecrow booster stands this long
-export const HARD_IDS = [9, 14, 19, 24, 29, 34, 39, 44, 49];
+export const HARD_IDS = Array.from({ length: WORLD_N - 1 }, (_, k) => hardOf(k + 1)); // 0.8.17: 11, 17 .. 59 (road.js: six a world)
 export const HARD_LEVEL = { easy: 1, medium: 0.8, hard: 0.9 };
 export const isHardLevel = (level) => !!level && HARD_IDS.includes(level.id);
 
