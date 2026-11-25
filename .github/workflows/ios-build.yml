@@ -63,7 +63,7 @@ jobs:
           path: eggscape/ios/ipa/*.ipa
           retention-days: 30
       # the app really running: the dev page in the same shell, on a simulated iPhone, playing by itself
-      # (ios/ci/smoke.js: title, level card, a level by the bot, the win page, the map), a screenshot every 5 s
+      # (ios/ci/smoke.js: title, map, level card, a level in play, the win page, the Lucky Spin), a screenshot every few seconds
       - name: Run it on a simulated iPhone
         working-directory: eggscape
         run: |
@@ -78,7 +78,7 @@ jobs:
           xcrun simctl install "$DEV" xtool/Eggscape.app
           mkdir -p shots
           SIMCTL_CHILD_EGG_TEST_SCRIPT="$(cat ci/smoke.js)" xcrun simctl launch "$DEV" com.eggscape.game
-          for i in $(seq -w 1 40); do sleep 5; xcrun simctl io "$DEV" screenshot --type=jpeg "shots/shot-$i.jpg" >/dev/null 2>&1 || true; done
+          for i in $(seq -w 1 30); do sleep 4; xcrun simctl io "$DEV" screenshot --type=jpeg "shots/shot-$i.jpg" >/dev/null 2>&1 || true; done
           ls -l shots | head -50
       - uses: actions/upload-artifact@v4
         if: always()
