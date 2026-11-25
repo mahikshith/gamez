@@ -47,7 +47,8 @@ function easyGoals(L, fuse) {
   if ((L.id || 0) < EASY_FROM || !b) return null;
   const home = { kind: 'home', n: t, short: t === n ? `All ${n} home` : `${t} of ${n} home`, long: t === n ? `All ${n} eggs home` : `${t} of ${n} eggs home` };
   const every = t === n ? { kind: 'perfect', short: 'Flawless', long: 'No egg lost or cracked' } : { kind: 'all', short: 'Lose none', long: 'Lose no eggs' };
-  return [home, every, { kind: 'both', a: every, b, short: `${every.short} + ${b.short.replace(/ max$/, '')}`, long: `${every.long} and ${b.long.charAt(0).toLowerCase()}${b.long.slice(1)}` }];
+  // (the card's row reads star by star: "Lose none", then "+ Under 96 s" on top of it; the win page says it whole)
+  return [home, every, { kind: 'both', a: every, b, short: `+ ${b.short}`, long: `${every.long} and ${b.long.charAt(0).toLowerCase()}${b.long.slice(1)}` }];
 }
 function bonusGoal(L, fuse) {
   const B = L.bonus;

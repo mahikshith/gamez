@@ -2855,10 +2855,10 @@ function dareChip(x, y, maxW, s, dry) {
   ctx.restore();
   const cy = y + h / 2;
   pictoFlame(ctx, x + 16 * s, cy, 24 * s);
-  ui.text(lab, x + 30 * s, cy, { size: fs, color: '#fff', maxW: lw + 1, tag: 'intro:dare' });
+  ui.text(lab, x + 30 * s, cy, { size: fs, color: '#fff', maxW: lw + 1, noRecord: true });
   const px = x + 30 * s + lw + 10 * s;
   drawCoin(ctx, px + cr, cy, cr, 0);
-  ui.text(pay, px + cr * 2 + 4 * s, cy, { size: fs, color: '#ffe066', tag: 'intro:darepay' });
+  ui.text(pay, px + cr * 2 + 4 * s, cy, { size: fs, color: '#ffe066', noRecord: true });
   if (on) { const tx = x + w - 20 * s; ctx.beginPath(); ctx.arc(tx, cy, 10 * s, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); pictoCheck(ctx, tx, cy, 15 * s, '#2f9e1c'); }
   ui.record({ x, y, w, h }, 'intro:darechip');
   ui.buttons.push({ id: 'dare:chip', x, y, w, h });
