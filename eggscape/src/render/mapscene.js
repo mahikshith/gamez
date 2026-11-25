@@ -1109,15 +1109,23 @@ export function gateSpot(L, w) {
     if (cx - cr < A.x + 4 * u || cx + cr > A.x1 - 4 * u) cx = s1.x - sd * (r + cr * 1.25);
     const cy = s1.y - r * 0.15; keep.push({ x0: cx - cr * 1.1, x1: cx + cr * 1.1, y0: cy - cr * 1.1, y1: cy + cr * 1.3 });
   }
+  const gate = { x0: x - half - pw, x1: x + half + pw, y0: y - 50 * u, y1: y + 4 * u };
   const make = (side, dy) => {
     const postX = x + side * (half + pw / 2), bx = clamp(side > 0 ? postX + 16 * u : postX - 16 * u - bw, A.x + 6 * u, A.x1 - 6 * u - bw);
     const board = { x: bx, y: y - 44 * u + dy, w: bw, h: bh }, btn = { x: bx + 6 * u, y: board.y + bh + 12 * u, w: bw - 12 * u, h: 38 * u };
     const box = { x0: Math.min(postX, bx) - 3 * u, x1: Math.max(postX, bx + bw) + 3 * u, y0: board.y - 14 * u, y1: btn.y + btn.h + 3 * u };
-    return { x, y, half, side, pw, postX, board, btn, box, hit: keep.some((k) => box.x0 < k.x1 && box.x1 > k.x0 && box.y0 < k.y1 && box.y1 > k.y0) };
+    let hit = 0;
+    for (const k of keep) hit += Math.max(0, Math.min(box.x1, k.x1) - Math.max(box.x0, k.x0)) * Math.max(0, Math.min(box.y1, k.y1) - Math.max(box.y0, k.y0));
+    for (const r of [board, btn]) hit += 4 * Math.max(0, Math.min(r.x + r.w, gate.x1) - Math.max(r.x, gate.x0)) * Math.max(0, Math.min(r.y + r.h, gate.y1) - Math.max(r.y, gate.y0)); // never over the gate itself
+    return { x, y, half, side, pw, postX, board, btn, box, hit };
   };
-  let g = null;
-  for (const [sd, dy] of [[pref, 0], [pref, 12], [-pref, 0], [-pref, 12], [pref, 24], [-pref, 24], [pref, 36], [-pref, 36]]) { const c = make(sd, dy * u); if (!c.hit) { g = c; break; } }
-  if (!g) g = make(pref, 0);
+  let g = null, best = null;
+  for (const [sd, dy] of [[pref, 0], [pref, 12], [-pref, 0], [-pref, 12], [pref, 24], [-pref, 24], [pref, 36], [-pref, 36], [pref, -12], [-pref, -12], [pref, 48], [-pref, 48]]) {
+    const c = make(sd, dy * u);
+    if (!c.hit) { g = c; break; }
+    if (!best || c.hit < best.hit) best = c;
+  }
+  if (!g) g = best; // nothing clear (a short landscape band): the least covered spot
   (L._gates || (L._gates = {}))[w] = g;
   return g;
 }
