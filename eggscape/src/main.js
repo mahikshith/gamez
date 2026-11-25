@@ -41,6 +41,7 @@ import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, f
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
 import * as ENG from './engine/index.js'; // 0.8.15: the background subsystems (Ledger, Pulse, Oracle, Conductor, Herald) behind one safe face
 import * as SP from './spin.js'; // 0.8.15: the Lucky Spin's rules
+import * as MINT from './engine/mint.js'; // 0.8.17: the coin loop's one table (world gates in order, replays, the online share, the win-video pot)
 import { drawSlot, slotGeom, stripPos, drawSliceIcon, drawTicket, drawSlotIcon, drawVillainCard, releaseSlot, SLICE_COL } from './render/slot.js'; // and its machine: three reels and a lever
 import * as CK from './clock.js'; // 0.8.17: the game's day only moves forward (the phone's date cannot repeat daily things)
 import * as GD from './guard.js'; // 0.8.17: a refunded one-time purchase is taken back (the store's own record)
@@ -136,9 +137,14 @@ const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0);
 // level 1 with the teaching hand (no map, no level card). Any win, or a level unlocked, and home is the full home.
 const firstRun = () => !TEST && !allOpen() && bestTotal() === 0 && (save.unlocked || 1) <= 1;
 const envOf = (i) => Math.floor(i / PER_ENV);
-const envNeed = (k) => (TEST ? 0 : GATE * k);
-// a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all
-const GATE_COINS = (k) => 80 + 40 * k;
+const envNeed = (k) => (TEST ? 0 : MINT.worldNeed(k, PER_ENV)); // 0.8.17: GATE (7) stars a world of five, scaled by PER_ENV
+// a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all.
+// 0.8.17 (mykee: "users cannot unlock a far distant world without unlocking the previous one"; the Mint): only the next
+// world, once the one before is open and its boss is won or skipped, for the stars it is missing (MINT.gatePrice: 75 a
+// star, at least 150; nothing at the star target). It was a flat 80 + 40 a world, any world, from the first one.
+const GATE_COINS = (k) => MINT.gatePrice(k, bestTotal(), PER_ENV);
+// world k's boss (or its last level) is won or skipped: the next world may open
+const envBoss = (k) => { const Lw = LEVELS.slice(k * PER_ENV, (k + 1) * PER_ENV), b = Lw.find((L) => L.boss) || Lw[Lw.length - 1]; return !!b && (bestStarsOf(b.id) > 0 || SK.isSkipped(save, b.id)); };
 // Settings (2026-11-15): how fast the rings follow a finger, 0.6x .. 2x of the designed speed
 const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5]; // 2026-11-16 mykee: experienced players want even faster (300%; no extra tunnelling seen in a 3x wall-crossing check)
 const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed : RING_SPEED_DEFAULT);
@@ -146,7 +152,16 @@ const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed
 // in a store build the taps do nothing and an old save.tester flag is ignored (it opened the $2.99 unlock for free)
 const TESTER_OK = DEV || TEST || (typeof __UNLOCKED__ !== 'undefined' && !!__UNLOCKED__); /* global __UNLOCKED__ */
 const allOpen = () => TEST || (TESTER_OK && !!save.tester) || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($2.99) opens every level
-const envOpen = (k) => allOpen() || bestTotal() >= envNeed(k) || !!(save.gates && save.gates[k]);
+// open: the world before is open and its boss passed (MINT.worldReady), and the stars are there or the gate was bought
+function envOpen(k) {
+  if (allOpen()) return true;
+  const st = bestTotal();
+  for (let j = 0; j <= k; j++) if (!MINT.worldReady(j, () => true, envBoss) || !(st >= envNeed(j) || !!(save.gates && save.gates[j]))) return false;
+  return true;
+}
+// 0.8.17: world k may be opened now (by stars or for coins): the world before is open and its boss passed. The map's gate
+// shows its coin button only then (GATE_COINS(k) is 0 when the stars are already there: it opens by itself)
+const envReady = (k) => !envOpen(k) && MINT.worldReady(k, envOpen, envBoss);
 const playable = (i) => i >= 0 && i < LEVELS.length && (allOpen() || (i < save.unlocked && envOpen(envOf(i))));
 // the level the Play button means: the first one not yet cleared (in the order of the map), else the frontier.
 // 2026-11-15: it was save.unlocked - 1, which an everything-unlocked build set to 50 ("PLAY Level 50" on every launch)
@@ -188,7 +203,7 @@ const BONUS_TEXT = (b, fuse = 1) => ({ turns: `${b.n} turns or fewer`, prize: 'S
 const BONUS_COINS = 15;
 const AD_BOOST = ['golden', 'time', 'stone', 'sponge']; // the intro card's free booster, by level
 // Daily Vault (C7): one pre-validated layout per day, the same for everyone; level index -1
-const DAILY_COINS = 40;
+const DAILY_COINS = MINT.FAUCETS.dailyVault.coins; // 0.8.17 the Mint: 15 (was 40)
 // 0.8.17: the game's own day (src/clock.js): it only moves forward, so moving the phone's date back and forth no longer
 // repeats the chest, the samples, the spins and the freebies (same 'YYYY-MM-DD' key as before)
 const today = () => CK.today();
@@ -1446,10 +1461,10 @@ async function press(id) {
       break;
     }
     case 'gate:0': case 'gate:1': case 'gate:2': case 'gate:3': case 'gate:4': case 'gate:5': case 'gate:6': case 'gate:7': case 'gate:8': case 'gate:9': {
-      const k = +id.slice(5), price = GATE_COINS(k);
-      if (envOpen(k)) break;
-      { let f = -1; for (let q = 0; q < WORLDS.length; q++) if (!envOpen(q)) { f = q; break; } if (k !== f) break; } // 0.8.17: only the first shut world opens for coins
-      if (save.wallet.coins < price) { needCoins(price); break; }
+      const k = +id.slice(5), B = MINT.gateBuy(k, { stars: bestTotal(), perEnv: PER_ENV, coins: save.wallet.coins, open: envOpen, bossPassed: envBoss }), price = B.price;
+      if (B.why === 'open') break;
+      if (B.why === 'order') { audio.play('ui_back'); toast(envOpen(k - 1) ? `Beat the boss of ${WORLDS[k - 1] || 'the world before'} first` : `Open ${WORLDS[k - 1] || 'the world before'} first`, 2.4); break; } // nothing is taken
+      if (!B.ok) { needCoins(price); break; }
       save.wallet = { ...save.wallet, coins: save.wallet.coins - price };
       save.gates = { ...(save.gates || {}), [k]: 1 };
       persist(); // 0.8.17: the map opens its gate on screen (padlock, gate, fog, sign) with its own sounds, no toast
@@ -1728,7 +1743,7 @@ async function press(id) {
       const src = G.pressAt;
       if (!(await rewarded('bonus'))) break; // Premium: granted at once, no video (ads.rewarded)
       const R = E.bonusChest(G.level.id), first = !G.result.purseGo;
-      save.wallet = E.openBonusChest(save.wallet, G.level.id); G.doubled = true; G.result.chestOpen = true;
+      save.wallet = E.openBonusChest(save.wallet, G.level.id); G.doubled = true; G.result.chestOpen = true; save.mint = MINT.winVideoTake(save.mint, today(), R.coins);
       recordResult(); persist();
       G.result.purseGo = true; void src; // (the win's own coins land with these, if their roll had not run yet)
       audio.play('treasure_open'); portal.happy();
@@ -1736,13 +1751,13 @@ async function press(id) {
       break;
     }
     case 'double': {
-      if (G.doubled) break;
+      if (G.doubled || (G.result && G.result.dblOk === false)) break;
       const dk = G.result && G.level ? (G.result.waitKey = G.result.waitKey || `double:${G.level.id}:${Date.now()}`) : '';
       const ok = await rewarded('double', dk && G.result.coins > 0 ? { kind: 'coins', n: G.result.coins, key: dk } : null);
       if (ok && dk) save.waiting = { ...WT.clean(save.waiting), list: waitingList().filter((it) => it.key !== dk) }; // doubled after all: nothing waits for it
       if (ok && G.result) {
         const r = G.result, a = r.coins || 0, first = !r.purseGo;
-        G.doubled = true;
+        G.doubled = true; save.mint = MINT.winVideoTake(save.mint, today(), a); // the Mint's win-video pot
         r.total *= 2;
         r.shownTotal = r.total;
         save.wallet = E.addCoins(save.wallet, a);
@@ -4796,7 +4811,8 @@ function computeResult() {
   // coins (F7) and the bonus objective (C3): bonus coins are paid the first time it is met, per mode
   const bonus = !!L.bonus && sim.bonusMet();
   const bonusCoins = bonus && !save.bonus[sk(L.id, sim.mode)] && G.li >= 0 ? BONUS_COINS : 0;
-  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id, hard: isHardLevel(L) && G.li >= 0 }).total + bonusCoins;
+  // 0.8.17 the Mint: a level won again without a new star pays its replay share (40%)
+  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id, hard: isHardLevel(L) && G.li >= 0, fresh: G.li >= 0 ? stars > bestStarsOf(L.id) : true }).total + bonusCoins;
   if (G.li < 0) coins = G.li === -1 && stars && save.daily.paid !== today() ? coins + DAILY_COINS : 0; // the Daily Vault pays once a day; a lab vault pays nothing
   const cracked = sim.savedLog.filter((q) => q.cracks > 0).length, used = sim.timeLimit ? Math.max(0, sim.timeLimit - Math.max(0, sim.timeLeft)) : sim.t;
   return { broken: st.broken, cracked, used, stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus && !goals.some((g) => g.kind === L.bonus.kind), // a bonus that is a star goal is not listed twice
@@ -4839,8 +4855,13 @@ function onWin() {
     const pre = G.result.coins, pk = eggPerk();
     G.result.coins = E.perkCoins(eggPerkId(), pre, G.sim.savedLog.length);
     G.result.perkCoins = G.result.coins - pre; G.result.perkGold = !!(pk && pk.id === 'golden');
+    // 0.8.17 the Mint's online share, its own line on the win page; offline the line is simply absent (never blocks play)
+    G.result.online = MINT.onlineBonus(pre, MINT.isOnline({ web: !ads.moneyShop, nav: typeof navigator !== 'undefined' ? navigator : null, bridge: typeof window !== 'undefined' ? window.EggApp : null }));
+    G.result.coins += G.result.online;
     const P = E.payWin(save.wallet, G.result.coins, ads.moneyShop);
     ledger(ledWhy); save.wallet = P.wallet; G.result.coins = P.coins; G.result.goldHour = P.doubled; ledger('win'); ledWhy = 'win';
+    // 0.8.17: the win page's videos share the Mint's pot a day (Double coins, the Bonus chest's coins): offered only while it holds them
+    G.result.dblOk = MINT.winVideoOk(save.mint, today(), G.result.coins);
   }
   if (G.result.bonus) save.bonus[sk(G.level.id, G.sim.mode)] = 1;
   if (G.li >= 0 && G.level) { // the Director: the result, a skin trial running down, and now and then a new one as a gift
@@ -4850,7 +4871,7 @@ function onWin() {
     G.result.hot = DR.hotCount(save);
     // 2026-11-20 shop 2.0 (no interstitials in the app): when an ad break would have been due, the win card offers a
     // Bonus chest video instead of Double coins. Never on a losing streak.
-    if (!earlyDays() && ads.bonusDue({ levelId: G.level.id, frustrated: DR.frustration(save, G.level.id) >= 0.5 })) { ads.noteBonus(); G.result.chest = E.bonusChest(G.level.id); }
+    if (!earlyDays() && MINT.winVideoOk(save.mint, today(), E.BONUS_CHEST.coins) && ads.bonusDue({ levelId: G.level.id, frustrated: DR.frustration(save, G.level.id) >= 0.5 })) { ads.noteBonus(); G.result.chest = E.bonusChest(G.level.id); }
   }
   G.trialChick = null;
   G.result.prevBest = G.li >= 0 ? save.best[sk(L.id, G.sim.mode)] || 0 : null; // the card's "NEW BEST!" compares with the best before this run
@@ -8388,7 +8409,7 @@ function drawWinPage() {
     const terms = [['egg', fmt(r.eggScore), 'Egg points']];
     if (r.timeBonus) terms.push(['+'], ['clock', fmt(r.timeBonus), 'Time left']);
     if (r.streakMult > 1) terms.push(['x'], ['flame', 'x' + r.streakMult, '3-star streak']);
-    const best = r.prevBest != null ? (r.total > r.prevBest ? 'new' : r.prevBest) : null, SH = (best != null ? 126 : 108) * s;
+    const best = r.prevBest != null ? (r.total > r.prevBest ? 'new' : r.prevBest) : null, SH = ((best != null ? 126 : 108) + (r.online ? 16 : 0)) * s; // 0.8.17: the online line's room
     if (!first) B.push({ h: SH, gap: 8 * s, draw: (x, y, w) => {
       ui.well(x, y, w, SH, { s, a: '#f3e2bd', b: '#fbf0d6' });
       const ops = terms.filter((q) => q.length === 1).length, nt = terms.length - ops, ow = 16 * s, tw = (w - 12 * s - ops * ow) / nt;
@@ -8410,7 +8431,7 @@ function drawWinPage() {
       if (best === 'new') { if (r.shownTotal >= r.total) { const bw = Math.min(120 * s, LW - 20 * s), bx = Math.max(x + 10 * s + bw / 2, Math.min(tcx, x + LW - 10 * s - bw / 2)); ui.ribbon('NEW BEST!', bx, y + 102 * s, bw, 21 * s, { s, color: '#3eaa2a', size: 13.5 * s, noRecord: true }); ui.record({ x: bx - bw / 2, y: y + 102 * s, w: bw, h: 21 * s }, 'win:best'); } }
       else if (best != null) ui.text('Best ' + fmt(best), tcx, y + 111 * s, { size: 14 * s, align: 'center', color: C.ink2, maxW: totW + 40 * s, tag: 'win:best' });
       ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x + LW, y + 70 * s, 1.5 * s, SH - 80 * s); // the fold
-      const ix = x + LW + 28 * s, iy = y + 62 * s + (SH - 62 * s) / 2 - 1 * s;
+      const ix = x + LW + 28 * s, iy = y + 62 * s + (SH - 62 * s) / 2 - 1 * s - (r.online ? 8 * s : 0); // (the online line sits under them)
       drawCoin(ctx, ix, iy, 13 * s, G.t);
       if (r.perkGold && !save.calm) goldGlints(ix, iy, s); // Midas (the Golden egg): the count-up shimmers
       drawWinCoins(r, ix, iy, w - LW - 4 * s, s, cnt, inCard); // the count-up, its roll into the purse, and the doubling moment
@@ -8474,7 +8495,7 @@ function drawWinPage() {
       ui.button('restart', 'Retry', x, y, rw, 58 * s, { kind: 'secondary', icon: ICON.retry, size: 19 * s });
       ui.button('next', last ? 'ALL LEVELS' : 'NEXT', x + rw + 10 * s, y, w - rw - 10 * s, 58 * s, { kind: 'primary', shimmer: nextLeads, icon: ICON.next, size: 24 * s });
     } });
-    if (!earlyDays()) B.push({ h: 48 * s, right: true, draw: (x, y, w) => { // nothing advertised before L3 is won (the Double coins video too)
+    if (!earlyDays() && (r.chest || r.dblOk !== false || G.doubled)) B.push({ h: 48 * s, right: true, draw: (x, y, w) => { // nothing advertised before L3 is won (the Double coins video too); 0.8.17: none once the day's win-video pot is spent
       if (!inCard) return;
       if (r.chest && !G.doubled) { // the Bonus chest: one video, the chest, its coins and its boost shown as art on the button
         const bw = w, bx = x, ch = r.chest, B2 = ui.button('bonus', '', bx, y, bw, 48 * s, { kind: 'ad', shimmer: true });
@@ -8831,6 +8852,7 @@ function drawWinCoins(r, ix, iy, cw, s, cnt, inCard) {
     r.purseGo = true;
     purse.gain({ from: r.purse0 + (r.trFlown && r.treasure ? r.treasure.coins : 0), src: r.coinAt });
   }
+  if (r.online) winOnlineLine(r, ix, iy, cw, s, cnt);
   if (!D) {
     ui.text('Coins', tx, iy - 10 * s, { size: 12.5 * s, color: C.ink2, maxW, tag: 'win:lcoin' });
     ui.text('+' + Math.round((r.coins || 0) * cnt), tx, iy + 9 * s, { size: 19 * s, color: col, maxW, tag: 'win:vcoin' });
@@ -8866,6 +8888,21 @@ function drawWinCoins(r, ix, iy, cw, s, cnt, inCard) {
   ui.text('x2', 0, 0, { size: 22 * s, align: 'center', color: '#ff5a1f', stroke: '#fffaf0', strokeW: 4.5 * s, noRecord: true });
   ctx.restore();
   ui.record({ x: sx - 15 * s, y: sy - 9 * s, w: 30 * s, h: 19 * s }, 'win:x2'); // its resting place (the overlap check)
+}
+
+// 0.8.17 the Mint's online share (mykee: offline players see no videos, so "the engine provides less coins"): its own
+// line under the coins, a small signal mark and "Online bonus +N". It pops in with a soft tick once the count-up has
+// finished (an eased overshoot; Calm: it is simply there). Offline the line is absent.
+function winOnlineLine(r, ix, iy, cw, s, cnt) {
+  const calm = save.calm, x0 = ix - 13 * s, y0 = iy + 28 * s, maxW = cw - 26 * s, txt = `Online bonus +${r.online}`;
+  if (cnt < 1 && !calm) return; // it comes when the count-up is done
+  if (r.onT == null) { r.onT = G.t; if (!calm) audio.play('hud_pop', { vol: 0.5 }); }
+  const p = calm ? 1 : clamp((G.t - r.onT) / 0.35, 0, 1), c1 = 1.70158, q = p - 1, e = 1 + (c1 + 1) * q * q * q + c1 * q * q; // ease-out-back
+  const sz = 12 * s, bw = 13 * s;
+  ctx.save(); ctx.globalAlpha = Math.min(1, p * 3); ctx.translate(x0, y0); ctx.scale(e, e); ctx.translate(-x0, -y0);
+  for (let i = 0; i < 3; i++) { const h = (4 + 3 * i) * s; ui.roundRect(x0 + i * 4.4 * s, y0 + 5 * s - h, 3 * s, h, 1.2 * s); ctx.fillStyle = '#2d9a3a'; ctx.fill(); } // the signal mark
+  ui.text(txt, x0 + bw + 4 * s, y0, { size: sz, color: '#2d7a1c', maxW: maxW - bw - 4 * s, tag: 'win:online', noRecord: p < 1 });
+  ctx.restore();
 }
 
 // One result star. In the show it flies up from the hen (from) along an arc with a tail of glints, growing and spinning,

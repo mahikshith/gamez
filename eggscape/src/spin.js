@@ -40,20 +40,21 @@
 // save.spin = { wins, bank, sure (banked spins that are cheer-up spins), miss (villain rows in a row just now),
 //   again (unused since 0.8.16, kept 0), t: { day, ad, coin, played, steps, cheer, retry },
 //   n, cheered: [levelId, ...] }   (state() makes any save safe)
-import { BOOSTERS, BOOSTER_ORDER, HEN_SKINS, HEN_SKIN_ORDER, CHICK_IDS, CHICK_PRICES, ITEMS, CHARGE_ITEM, GIFT_MAX, MAX_CHARGES, MAX_TICKETS, COUPON, couponHeld, unlockables, giftBooster, sanitizeWallet, ownedCount, ownsHenSkin, ownsChick } from './economy.js';
+import { FAUCETS } from './engine/mint.js'; // 0.8.17: the coin prizes and the wheel's sizes live in the Mint
+import { BOOSTERS, BOOSTER_ORDER, HEN_SKINS, HEN_SKIN_ORDER, CHICK_IDS, CHICK_PRICES, ITEMS, CHARGE_ITEM, GIFT_MAX, GIFT_FULL, MAX_CHARGES, MAX_TICKETS, COUPON, couponHeld, unlockables, giftBooster, sanitizeWallet, ownedCount, ownsHenSkin, ownsChick } from './economy.js';
 
-export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [80, 110, 150], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [11, 26, 41], tierX: [1, 1.5, 2, 2.5], cheerAt: 3, cheerMax: 2, miss: 45, missRow: 2 };
+export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [80, 110, 150], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [11, 26, 41], tierX: FAUCETS.spin.tierX.slice(), cheerAt: 3, cheerMax: 2, miss: 45, missRow: 2 };
 
 // The prizes. w = weight = the odds in percent of a pull that wins (they add up to 100).
 export const TABLE = [
-  { id: 'c1', kind: 'coins', n: 30, w: 22 },
+  { id: 'c1', kind: 'coins', n: FAUCETS.spin.coins[0], w: 22 }, // 0.8.17 the Mint: 20 / 40 / 100 (were 30 / 60 / 150)
   { id: 'b1', kind: 'booster', n: 1, w: 17 },
   { id: 'cp', kind: 'coupon', n: 1, w: 8 }, // 0.8.15: a half-price ticket for one thing to own (economy.js COUPON)
-  { id: 'c2', kind: 'coins', n: 60, w: 16 },
+  { id: 'c2', kind: 'coins', n: FAUCETS.spin.coins[1], w: 16 },
   { id: 'ch', kind: 'charge', n: 1, w: 12 },
   { id: 'sh', kind: 'scare', n: 1, w: 6 }, // 0.8.15: a Scarecrow (villains keep away at the start of one level)
   { id: 'b2', kind: 'booster', n: 2, w: 7 },
-  { id: 'c3', kind: 'coins', n: 150, w: 5 },
+  { id: 'c3', kind: 'coins', n: FAUCETS.spin.coins[2], w: 5 },
   { id: 'sk', kind: 'skip', n: 1, w: 4 },
   { id: 'rare', kind: 'rare', n: 1, w: 3 },
 ];
@@ -160,9 +161,9 @@ export function prizeFor(slice, wallet, rand = Math.random, x = 1) {
 export function grant(wallet, P) {
   const w = sanitizeWallet(wallet);
   if (P.kind === 'coins') w.coins += P.n;
-  else if (P.kind === 'booster') return giftBooster(w, P.item, P.n); // a full stack pays half the price in coins, so a winning pull is never empty
+  else if (P.kind === 'booster') return giftBooster(w, P.item, P.n); // a full stack pays the Mint's gift share in coins (a quarter), so a winning pull is never empty
   else if (P.kind === 'coupon') w.coupon = 1;
-  else if (P.kind === 'charge') { const n = Math.min(P.n, MAX_CHARGES - w.charges); w.charges += n; w.coins += (P.n - n) * CHARGE_ITEM.price; }
+  else if (P.kind === 'charge') { const n = Math.min(P.n, MAX_CHARGES - w.charges); w.charges += n; w.coins += Math.round(((P.n - n) * CHARGE_ITEM.price * GIFT_FULL) / 5) * 5; } // 0.8.17: a full sack pays the Mint's gift share
   else if (P.kind === 'skip') { if (w.tickets.skip < MAX_TICKETS) w.tickets = { ...w.tickets, skip: w.tickets.skip + 1 }; else w.coins += ITEMS.skip.price; }
   else if (P.kind === 'hen') { if (!ownsHenSkin(w, P.item)) w.henSkins = [...w.henSkins, P.item]; else w.coins += P.worth; }
   else if (P.kind === 'chick') { if (!ownsChick(w, P.item)) w.chicks = [...w.chicks, P.item]; else w.coins += P.worth; }

@@ -1,76 +1,82 @@
-2026-11-25 at 529b9d0 (0.8.16: villains 45 in 100 (never three in a row), a lost pull costs its coins or video, no Try again; coin prizes 30/60/150)
+2026-11-25 at 361759a (0.8.17 coin engine)
 
 EIGHT KINDS OF PLAYERS: 300 of each, 30 days, seed 1. Difficulty: guessed (no real logs yet).
 Rows marked * follow from what was assumed about people; the others from the game's own rules.
 
                                         child     commuter      quitter      grinder   videoLover   videoHater        payer    weekender
-* playing on day 1 / 7 / 30 %        87/56/28     89/54/27      74/27/6     94/81/67     92/55/34     88/62/35     90/66/40     92/73/52
-* most left at                        L50 40%      L50 17%       L9 22%      L50 25%      L50 30%      L50 35%      L50 36%      L50 27%
+* playing on day 1 / 7 / 30 %        91/51/24     86/52/26      67/21/4     95/83/64     91/61/35     89/58/30     93/71/48     92/75/55
+* most left at                        L50 44%      L50 17%       L9 18%      L50 30%      L50 35%      L50 41%      L50 29%      L50 25%
 level reached day 7 / 30                50/50        41/50        28/50        50/50        50/50        50/50        50/50        50/50
-finished all 50 %                          67           42            7           90           62           69           76           79
-tries, win rate                      352, 49%     106, 70%      36, 72%     131, 80%     229, 65%     184, 71%     262, 66%     245, 64%
-worst losing run (median)                   8            3            2            3            5            4            4            5
-tries stuck with no help %                6.2          0.2          0.2          0.0          2.2          1.2          1.4          2.4
-free help from the Director              15.7          3.3          1.5          0.1          6.9          3.9          5.5          5.0
+finished all 50 %                          67           42            4           92           68           69           77           80
+tries, win rate                      324, 48%     102, 70%      30, 73%     132, 80%     238, 64%     178, 71%     269, 66%     242, 65%
+worst losing run (median)                   7            3            2            3            5            4            5            5
+tries stuck with no help %                6.4          0.2          0.1          0.0          2.1          1.8          1.3          2.6
+free help from the Director              15.0          2.8          1.0          0.1          6.9          3.7          5.1          4.9
 -- coins
-coins in / out                    11466/11165    6424/3330     2116/186    9764/7457   11041/9832    8530/7953  14713/12891   10406/6882
-spent of earned %                          92           44            8           74           77           84           84           59
-purse at the end (median)                 115         2636         1119         1948          981          269         3908         3338
-boosters given/bought/used           64/32/77      46/1/25       21/0/7      55/0/11      61/7/48      51/7/40     60/10/64      58/9/46
-boosters left unused                      0.5          6.0          4.3         20.6          3.9          5.2          6.6          3.5
-things to own bought                      9.2          1.5          0.0         10.1          6.1          5.0          8.7          3.0
-spins free / video / coins           41/35/23     25/17/10        9/4/1      31/19/8     36/36/27      33/3/20     38/40/35     32/16/15
-villain rows / tried again           34.9/0.0     20.2/0.0      5.0/0.0     22.7/0.0     37.1/0.0     21.0/0.0     42.9/0.0     23.1/0.0
+coins in / out                      4441/4355    2806/2034      916/149    4655/4509    4817/4574    3811/3844    5755/7475    4557/4198
+spent of earned %                          95           60           13           94           89           95          124           84
+purse at the end (median)                  40          650          556          142          137          130          819          209
+boosters given/bought/used           70/23/72      47/1/25       19/0/6      56/0/12      71/6/55      51/6/37      71/9/72      61/8/46
+boosters left unused                      0.5          6.4          4.7         20.5          3.6          5.2          7.4          3.6
+things to own bought                      4.1          1.4          0.1          6.3          4.6          2.9          6.4          2.6
+world gates bought (coins)            0.0 (0)      0.0 (0)      0.0 (0)      0.0 (0)      0.0 (0)      0.0 (0)      0.0 (0)      0.0 (0)
+tries turned back by a gate               0.0          0.0          0.0          0.0          0.0          0.0          0.0          0.0
+wins with no new star (40%)              76.5         14.2          0.3         17.6         65.6         44.5         85.8         71.6
+videos+spins+gifts a day, most        108/217       78/164       53/127       85/159      117/225       25/361      129/463      100/245
+spins free / video / coins           40/30/13      24/15/9        8/3/1      31/17/8     37/37/21      32/2/15     39/43/30     32/16/13
+villain rows / tried again           28.6/0.0     18.1/0.0      4.1/0.0     21.2/0.0     35.5/0.0     18.0/0.0     43.2/0.0     22.3/0.0
 -- videos and money
-videos in all / a play day           98 / 8.3     31 / 3.3      8 / 1.9     23 / 1.9     93 / 7.8      0 / 0.0      9 / 1.4     40 / 7.0
-offer cards, most in a session        11.0, 2       6.2, 1       2.3, 1       5.3, 2       9.5, 1       6.8, 1       7.3, 1       9.9, 2
-paid offers a session                    0.51         0.29         0.31         0.23         0.42         0.32         0.21         0.52
-* paid anything / Unlock Ev. %          0 / 0       12 / 5        0 / 0      27 / 12        0 / 0       29 / 9      99 / 84      17 / 10
-* dollars a player in 30 days            0.98         0.52         0.08         0.75         0.93         0.59         5.63         0.84
+videos in all / a play day           74 / 6.4     24 / 2.6      6 / 1.6     17 / 1.3     75 / 5.4      0 / 0.0      7 / 1.0     29 / 4.7
+offer cards, most in a session        10.7, 2       5.9, 1       1.9, 1       5.4, 2       9.8, 1       6.6, 1       7.1, 1       9.8, 2
+paid offers a session                    0.52         0.28         0.30         0.22         0.39         0.34         0.19         0.50
+* paid anything / Unlock Ev. %          0 / 0        9 / 5        0 / 0       23 / 9        0 / 0       28 / 7      99 / 83      20 / 11
+* dollars a player in 30 days            0.74         0.44         0.06         0.60         0.75         0.51         5.90         0.74
 -- reminders
-asked % (on day)                      100 (0)      100 (0)      100 (0)      100 (0)      100 (0)      100 (0)      100 (0)      100 (0)
-* allowed %                                50           57           26           60           63           39           59           55
-notes shown / opened from           2.2 / 0.1    2.7 / 0.3    2.8 / 0.1    1.1 / 0.1    2.1 / 0.2    2.3 / 0.2    2.1 / 0.2    5.2 / 1.6
-notes after he left for good              2.6          2.5          2.0          2.9          2.6          2.7          2.7          2.6
+asked % (on day)                      100 (0)      100 (0)       99 (0)      100 (0)      100 (0)      100 (0)      100 (0)      100 (0)
+* allowed %                                52           57           26           55           61           40           58           50
+notes shown / opened from           2.4 / 0.1    2.7 / 0.3    2.6 / 0.1    1.1 / 0.1    2.3 / 0.2    2.3 / 0.2    1.9 / 0.3    4.8 / 1.4
+notes after he left for good              2.7          2.6          2.0          2.6          2.5          2.4          2.5          2.4
 -- the Oracle on the phone: graded 8+ times % | error by rules > learned | learned in use % | trusted %
-  win                           100|0.27>0.25|97|10100|0.23>0.22|65|53100|0.23>0.22|49|25100|0.19>0.18|92|100100|0.24>0.23|81|45100|0.22>0.21|76|83100|0.24>0.23|89|57100|0.25>0.23|90|55
-  back                          64|0.19>0.12|64|560|0.22>0.16|60|1615|0.25>0.25|5|286|0.13>0.08|86|2363|0.18>0.13|63|1968|0.19>0.14|68|2673|0.18>0.13|73|2564|0.30>0.24|64|0
-  video                         100|0.15>0.15|6|9799|0.21>0.21|3|7762|0.19>0.19|5|52100|0.14>0.14|1|100100|0.21>0.21|2|92100|0.01>0.01|35|97100|0.14>0.14|7|96100|0.12>0.12|5|99
-  coins                         78|0.22>0.22|26|5543|0.19>0.15|37|515|0.14>0.10|14|145|0.16>0.09|45|064|0.22>0.18|58|2660|0.22>0.20|28|239|0.21>0.17|8|175|0.21>0.18|62|33
+  win                           100|0.26>0.25|95|14100|0.23>0.22|69|5099|0.23>0.22|48|27100|0.19>0.17|92|100100|0.24>0.23|84|37100|0.22>0.21|76|83100|0.24>0.23|90|60100|0.24>0.23|92|60
+  back                          63|0.20>0.13|63|459|0.22>0.16|59|1711|0.26>0.25|4|189|0.13>0.08|89|2168|0.18>0.13|68|1966|0.20>0.15|65|2175|0.16>0.12|75|2366|0.30>0.23|66|0
+  video                         100|0.11>0.11|13|9699|0.19>0.19|6|7860|0.16>0.16|10|49100|0.10>0.10|1|98100|0.14>0.14|16|91100|0.01>0.01|37|96100|0.11>0.11|12|96100|0.09>0.08|10|99
+  coins                         85|0.18>0.18|24|6042|0.19>0.14|37|510|0.14>0.10|9|048|0.16>0.10|47|069|0.20>0.16|65|3058|0.18>0.17|28|3310|0.19>0.14|9|176|0.20>0.16|65|32
+-- owning everything (11310 coins of things to own; never leaving, never paying, buying all he can after every session)
+all owned on day (first)              >90 (-)      >90 (-)      >90 (-)      >90 (-)      >90 (-)      >90 (-)      >90 (-)      >90 (-)
+owned on day 30 %                          23           39           29           40           38           22           25           30
 
 What stands out:
-  - child: 6.2% of his tries are on a level that beat him three times, with no booster, no free help and no streak
-  - child: a paid offer card in 51% of sessions (charge_ad 3.1, starter_nest 2.6, skip_videos 2.4, eggscape_premium 1.6)
-  - child: 67% finish all 50 levels inside the month, and then 13% of their days bring nothing new
-  - commuter: 42% finish all 50 levels inside the month, and then 4% of their days bring nothing new
-  - quitter: spends only 8% of the coins earned (purse at the end 1119): coins pile up with nothing he wants
-  - grinder: ends with 20.6 boosters unused: gifts arrive faster than he uses them
-  - grinder: 90% finish all 50 levels inside the month, and then 71% of their days bring nothing new
-  - videoLover: a paid offer card in 42% of sessions (skip_videos 2.4, starter_nest 2.4, charge_ad 2.3, eggscape_premium 1.6)
-  - videoLover: 62% finish all 50 levels inside the month, and then 13% of their days bring nothing new
-  - videoHater: 69% finish all 50 levels inside the month, and then 20% of their days bring nothing new
-  - payer: 76% finish all 50 levels inside the month, and then 19% of their days bring nothing new
-  - weekender: a paid offer card in 52% of sessions (starter_nest 2.7, skip_videos 2.4, charge_ad 2.2, eggscape_premium 1.7)
-  - weekender: 79% finish all 50 levels inside the month, and then 18% of their days bring nothing new
+  - child: 6.4% of his tries are on a level that beat him three times, with no booster, no free help and no streak
+  - child: a paid offer card in 52% of sessions (charge_ad 3.0, starter_nest 2.7, skip_videos 2.2, eggscape_premium 1.6)
+  - child: 67% finish all 50 levels inside the month, and then 12% of their days bring nothing new
+  - commuter: 42% finish all 50 levels inside the month, and then 3% of their days bring nothing new
+  - quitter: spends only 13% of the coins earned (purse at the end 556): coins pile up with nothing he wants
+  - quitter: "comes back" is graded 8 times for only 11%: most leave before the phone can learn it
+  - grinder: ends with 20.5 boosters unused: gifts arrive faster than he uses them
+  - grinder: 92% finish all 50 levels inside the month, and then 72% of their days bring nothing new
+  - videoLover: 68% finish all 50 levels inside the month, and then 14% of their days bring nothing new
+  - videoHater: 69% finish all 50 levels inside the month, and then 17% of their days bring nothing new
+  - payer: 77% finish all 50 levels inside the month, and then 23% of their days bring nothing new
+  - weekender: a paid offer card in 50% of sessions (starter_nest 2.7, skip_videos 2.3, charge_ad 2.3, eggscape_premium 1.6)
+  - weekender: 80% finish all 50 levels inside the month, and then 20% of their days bring nothing new
 
 A CROWD: 2000 players, every trait drawn at random. For each trait: the lowest third against the highest third.
 Only pairs that differ clearly are listed (a fifth or more).
-  skill     finished all 50 % 37 > 65 | boosters left unused 4.2 > 15 | tries stuck, no help % 2.8 > 0.0 | paid anything % 5.4 > 3.9 | things to own bought 2.3 > 2.9
-  mins      finished all 50 % 40 > 61 | tries stuck, no help % 0.6 > 2.1 | videos a play day 4.3 > 5.7 | paid anything % 3.3 > 5.0
-  sess      finished all 50 % 42 > 61 | tries stuck, no help % 0.7 > 1.8 | videos a play day 4.4 > 5.7 | things to own bought 1.7 > 3.4
-  patience  finished all 50 % 47 > 59 | tries stuck, no help % 0.8 > 1.9
-  quit      left by day 7 % 32 > 73 | finished all 50 % 69 > 35 | spent of earned % 61 > 47 | tries stuck, no help % 2.1 > 0.7 | videos a play day 4.6 > 5.7 | things to own bought 3.8 > 1.5
-  video     boosters left unused 7.7 > 9.9 | videos a play day 2.8 > 7.0 | paid anything % 5.4 > 3.5
-  coin      tries stuck, no help % 1.8 > 0.9
-  boost     boosters left unused 12 > 5.8 | tries stuck, no help % 0.8 > 1.9
-  cosmetic  spent of earned % 42 > 64 | paid anything % 3.8 > 5.0 | things to own bought 0.9 > 4.3
-  shop      spent of earned % 43 > 64 | things to own bought 1.1 > 4.1
-  wheel     spent of earned % 42 > 63
+  skill     finished all 50 % 39 > 63 | boosters left unused 4.3 > 15 | tries stuck, no help % 3.0 > 0.0 | videos a play day 4.2 > 2.8 | paid anything % 5.0 > 3.8
+  mins      level on day 30 35 > 44 | finished all 50 % 40 > 63 | tries stuck, no help % 0.6 > 2.4 | paid anything % 3.3 > 4.8
+  sess      finished all 50 % 42 > 61 | tries stuck, no help % 0.8 > 1.9 | videos a play day 2.9 > 4.1 | things to own bought 1.3 > 2.3
+  patience  finished all 50 % 43 > 59 | tries stuck, no help % 0.8 > 2.0
+  quit      left by day 7 % 33 > 71 | finished all 50 % 68 > 38 | tries stuck, no help % 2.1 > 0.7 | paid anything % 5.4 > 4.1 | things to own bought 2.6 > 1.3
+  video     boosters left unused 8.0 > 10 | tries stuck, no help % 1.7 > 1.2 | videos a play day 2.1 > 4.7 | paid anything % 5.0 > 3.9
+  coin      tries stuck, no help % 1.8 > 1.1 | paid anything % 4.8 > 3.8
+  boost     boosters left unused 12 > 5.8 | tries stuck, no help % 0.7 > 2.0 | paid anything % 3.8 > 4.8
+  cosmetic  spent of earned % 60 > 77 | paid anything % 3.8 > 5.0 | things to own bought 0.8 > 2.8
+  shop      spent of earned % 59 > 78 | paid anything % 5.9 > 4.5 | things to own bought 0.8 > 2.9
+  wheel     spent of earned % 57 > 78
   pay       paid anything % 0.0 > 14
-  notif     paid anything % 5.7 > 4.1
-  tap       paid anything % 4.1 > 5.1
-  the whole crowd: left by day 7 % 53 | level on day 30 40 | finished all 50 % 52 | spent of earned % 54 | boosters left unused 8.9 | tries stuck, no help % 1.3 | videos a play day 5.1 | offer cards a session 0.5 | paid anything % 4.7 | things to own bought 2.6
+  notif     paid anything % 5.1 > 4.1
+  the whole crowd: left by day 7 % 53 | level on day 30 40 | finished all 50 % 52 | spent of earned % 70 | boosters left unused 9.0 | tries stuck, no help % 1.4 | videos a play day 3.6 | offer cards a session 0.5 | paid anything % 4.6 | things to own bought 1.9
 
 RANDOM CLICKERS: 200 of them, 80000 things done in any order. Rules broken: none
 
-(41 s)
+(120 s)

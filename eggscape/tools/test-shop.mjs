@@ -90,16 +90,16 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
   const days = new Set(['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23', '2026-11-24', '2026-11-25'].map((d) => E.sampleFor(all, d).id));
   ok(days.size > 1, 'the free boost rotates by date');
   const maxed = E.claimSample(W({ coins: 0, sampled: E.BOOSTER_ORDER.slice(), owned: Object.fromEntries(E.BOOSTER_ORDER.map((b) => [b, E.MAX_OWNED])) }), d1);
-  ok(maxed && maxed.coins === E.giftCoins(v.id) && E.giftCoins(v.id) * 2 === E.BOOSTERS[v.id].price, 'a free boost into a full stack pays half its coin price (0.8.15)');
+  ok(maxed && maxed.coins === E.giftCoins(v.id) && E.giftCoins(v.id) === Math.round((E.BOOSTERS[v.id].price * E.GIFT_FULL) / 5) * 5 && E.GIFT_FULL === 0.25, 'a free boost into a full stack pays a quarter of its coin price (0.8.17 the Mint; it was half)');
   ok(E.sanitizeWallet({ sampled: ['stone', 'nope', 'stone'], sampleDay: 3 }).sampled.join() === 'stone', 'sanitize: sampled kept clean');
 }
 
 // ---- the bonus chest
 {
   const a = E.bonusChest(14), b = E.bonusChest(14);
-  ok(a.coins === 40 && a.booster === b.booster && E.BOOSTERS[a.booster], 'bonus chest: 40 coins and a boost picked by the level id');
+  ok(a.coins === 30 && a.booster === b.booster && E.BOOSTERS[a.booster], 'bonus chest: 30 coins (0.8.17 the Mint; it was 40) and a boost picked by the level id');
   const w = E.openBonusChest(W({ coins: 5 }), 14);
-  ok(w.coins === 45 && E.ownedCount(w, a.booster) === 1, 'opened: coins and the boost paid');
+  ok(w.coins === 35 && E.ownedCount(w, a.booster) === 1, 'opened: coins and the boost paid');
   globalThis.location = { search: '?shop=app' }; globalThis.__DEV__ = true; // the dev build's app-shop preview: real money shown
   const { ads, INTER } = await import('../src/ads.js');
   ok(ads.moneyShop && INTER.on === false, 'no interstitials in the app');
