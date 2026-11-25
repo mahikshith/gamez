@@ -8426,8 +8426,12 @@ function drawTitle() {
   sg.addColorStop(0, 'rgba(30,14,4,0)'); sg.addColorStop(1, 'rgba(30,14,4,0.5)');
   ctx.fillStyle = sg; ctx.fillRect(0, ground + 20 * u, W_, H_ - ground - 20 * u);
   menuFx(); // the skin's falling effect: over the scene, under the logo and buttons
-  const logoS = Math.min(66 * u, (wide ? A.w * 0.5 : A.w) / 7.3, A.h / 6);
-  const ty = A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
+  // 0.8.16 (mykee: "look at the home page, especially the title and the unlock button"): on a tall phone the title
+  // spans the page column, the buttons' own edges, and stands clear under the Settings button; nothing shares its
+  // row any more (Unlock all moved down into the button block). Shorter screens keep the title between the corners.
+  const tall = !wide && A.h >= A.w * 1.9;
+  const logoS = tall ? bw / 5.02 : Math.min(66 * u, (wide ? A.w * 0.5 : A.w) / 7.3, A.h / 6);
+  const ty = tall ? A.y + 56 * u + logoS * 0.57 : A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
   const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, intro ? T * 1.7 : 9, FONT, ui.skin && ui.skin.pack ? (c, ch, i, sz, n) => logoDress(ui.skin, c, ch, i, sz, n) : null); // intro: the letters drop in a quicker cascade
   ui.record(logo, 'title:logo');
   const subY = ty + logoS * 0.5 + 18 * u;
@@ -8469,14 +8473,10 @@ function drawTitle() {
   }
   pop(0.05, vx, vy, () => drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm), 0.5); // the toy vault and the meadow friends settle in
   pop(0.2, A.x + 30 * u, A.y + 30 * u, () => { ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }); setMarkAt(A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u); }); // 0.8.14: the Settings mark
-  // remove ads / buy the game (app, until bought): a small gold pill in the top corner
-  if (fr) { /* first launch: nothing sold */ } else if (ads.canBuyPremium) {
-    const ps = 14 * u, pw2 = ui.measure('Unlock all', ps) + 44 * u, py2 = A.y + 10 * u;
-    pop(0.3, A.x1 - pw2 / 2 - 10 * u, py2 + 17 * u, () => ui.button('home:premium', 'Unlock all', A.x1 - pw2 - 10 * u, py2, pw2, 34 * u, { kind: 'gold', size: ps, icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) }));
-  } else if (ads.premium && save.wallet.premDay !== today() && save.wallet.charges < E.MAX_CHARGES) { // Premium: a free Chick Charge every day
-    const ps = 14 * u, lbl = 'Free charge', pw2 = ui.measure(lbl, ps) + 50 * u, py2 = A.y + 10 * u;
-    pop(0.3, A.x1 - pw2 / 2 - 10 * u, py2 + 17 * u, () => ui.button('home:charge', lbl, A.x1 - pw2 - 10 * u, py2, pw2, 34 * u, { kind: 'primary', shimmer: true, size: ps, icon: (c, x, y, sz) => drawStrikeToken(c, 'freeze', x, y, sz * 0.42, G.t, true) }));
-  }
+  // remove ads / buy the game (app, until bought), or Premium's free Chick Charge of the day: 0.8.16, a button of the
+  // block, beside Extras (same height, same size of words, the column's right edge), no longer a pill over the title
+  const side = fr ? null : ads.canBuyPremium ? { id: 'home:premium', label: 'Unlock all', o: { kind: 'gold', icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) } }
+    : ads.premium && save.wallet.premDay !== today() && save.wallet.charges < E.MAX_CHARGES ? { id: 'home:charge', label: 'Free charge', o: { kind: 'primary', shimmer: true, icon: (c, x, y, sz) => drawStrikeToken(c, 'freeze', x, y, sz * 0.42, G.t, true) } } : null;
   // PLAY breathes
   const ph = (fr ? 84 : 70) * u, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
   pop(0.25, bx, by + ph / 2, () => {
@@ -8504,7 +8504,9 @@ function drawTitle() {
   }
   // (2026-11-16 research: no top casual game puts a difficulty switch on home; it lives in Settings)
   // Extras: as wide as Play, 52 u tall, with the Extras page's little planet and egg
-  pop(0.54, bx, ry + rh + 8 * u + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ry + rh + 8 * u, bw, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: 1.8, size: 20 * u, round: 17 * u }));
+  const ey = ry + rh + 8 * u, ew = side ? (bw - 8 * u) / 2 : bw, es = side ? 18 * u : 20 * u;
+  pop(0.54, bx - bw / 2 + ew / 2, ey + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ey, ew, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: side ? 1.5 : 1.8, size: es, round: 17 * u }));
+  if (side) pop(0.6, bx + bw / 2 - ew / 2, ey + 26 * u, () => ui.button(side.id, side.label, bx + bw / 2 - ew, ey, ew, 52 * u, { ...side.o, size: es, round: 17 * u }));
   if (fade) ctx.globalAlpha = 1;
 }
 
