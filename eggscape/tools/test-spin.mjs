@@ -86,15 +86,15 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   ok(SP.left(s) === 1 && SP.banked(s) === 0, 'at most two such steps a day (playing all day cannot farm spins)');
   for (let i = 0; i < 4; i++) SP.notePlayed(s, 'd2');
   ok(SP.banked(s) === 1, 'the next day the third step opens the spin');
-  ok(SP.tier(mk({ unlocked: 5 })) === 0 && SP.tier(mk({ unlocked: 11 })) === 1 && SP.tier(mk({ unlocked: 30 })) === 2 && SP.tier(mk({ unlocked: 45 })) === 3, 'the wheel has four sizes: worlds 1-2, 3-5, 6-8, 9-10');
-  const w0 = SP.wheel(mk({ unlocked: 5 })), w3 = SP.wheel(mk({ unlocked: 45 }));
+  ok(SP.tier(mk({ unlocked: 5 })) === 0 && SP.tier(mk({ unlocked: 13 })) === 1 && SP.tier(mk({ unlocked: 36 })) === 2 && SP.tier(mk({ unlocked: 54 })) === 3, 'the wheel has four sizes: worlds 1-2, 3-5, 6-8, 9-10');
+  const w0 = SP.wheel(mk({ unlocked: 5 })), w3 = SP.wheel(mk({ unlocked: 54 }));
   ok(w0.find((o) => o.id === 'c1').n === 30 && w3.find((o) => o.id === 'c1').n === 75 && w3.find((o) => o.id === 'c3').n === 375, 'coin prizes grow with the world: 30 -> 75, 150 -> 375');
   ok(w0.every((o, i) => o.pct === w3[i].pct), 'the odds are the same at every size');
-  const late = mk({ unlocked: 45 }); for (let i = 0; i < 3; i++) SP.noteWin(late);
+  const late = mk({ unlocked: 54 }); for (let i = 0; i < 3; i++) SP.noteWin(late);
   const c0 = late.wallet.coins, r = SP.spin(late, 'free', 'd1', seq(0));
   ok(r.prize.n === 75 && late.wallet.coins === c0 + 75, 'and the prize paid is the amount the wheel showed');
-  ok([5, 11, 30, 45].every((u) => { const sv = mk({ unlocked: u }); return SP.meanWorth(defaultWallet(), SP.coinX(sv)) * SP.hitRate() < SP.ways(sv, 'd9').coin; }), 'at every size the first coin spin costs more than a spin is worth on average');
-  ok(SP.ways(mk({ unlocked: 45 }), 'd9').coin === 200, 'the coin price grows with the wheel (80 -> 200 in the last worlds)');
+  ok([5, 13, 36, 54].every((u) => { const sv = mk({ unlocked: u }); return SP.meanWorth(defaultWallet(), SP.coinX(sv)) * SP.hitRate() < SP.ways(sv, 'd9').coin; }), 'at every size the first coin spin costs more than a spin is worth on average');
+  ok(SP.ways(mk({ unlocked: 54 }), 'd9').coin === 200, 'the coin price grows with the wheel (80 -> 200 in the last worlds)');
 }
 { // the cheer-up spin: the third loss in a row on a level, once per level, two a day
   const s = mk();

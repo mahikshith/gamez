@@ -15,28 +15,28 @@ const app = { money: true };
   ok(s.offers.seed === 0 && s.offers.sessions === 1, 'A/B arm set once, first session counted');
   OF.startSession(s, T0 + DAY, () => 0.9);
   ok(s.offers.seed === 0, 'the arm never changes');
-  s.unlocked = 8;
-  ok(OF.evaluate(s, 'home', { ...app, now: T0 + DAY }) === null, 'nothing before level 9');
-  s.unlocked = 12;
-  const first = mk({ unlocked: 9 }); OF.startSession(first, T0);
+  s.unlocked = 9;
+  ok(OF.evaluate(s, 'home', { ...app, now: T0 + DAY }) === null, 'nothing before level 10');
+  s.unlocked = 14;
+  const first = mk({ unlocked: 10 }); OF.startSession(first, T0);
   ok(OF.evaluate(first, 'win', { ...app, now: T0 }) === null, 'nothing in the first session');
   const o = OF.evaluate(s, 'win', { ...app, now: T0 + DAY });
-  ok(id(o) === 'starter_nest' && o.sku === 'starter_nest', 'level 12, second session: Starter Nest');
+  ok(id(o) === 'starter_nest' && o.sku === 'starter_nest', 'level 14, second session: Starter Nest');
   ok(OF.evaluate(s, 'play', { ...app, now: T0 + DAY }) === null, 'never during play');
   ok(OF.evaluate(s, 'win', { money: false, now: T0 + DAY }) === null, 'web: no purchase offers');
   // shown 3 times (three sessions) then never again
   let t = T0 + DAY;
   for (let k = 0; k < 3; k++) { const q = OF.evaluate(s, 'home', { ...app, now: t }); ok(id(q) === 'starter_nest', `starter shown #${k + 1}`); OF.markShown(s, q, t); t += DAY / 2; OF.startSession(s, t); }
   ok(id(OF.evaluate(s, 'home', { ...app, now: t })) !== 'starter_nest', 'starter at most 3 times');
-  const late = mk({ unlocked: 12 }); OF.startSession(late, T0); OF.startSession(late, T0 + 8 * DAY);
+  const late = mk({ unlocked: 14 }); OF.startSession(late, T0); OF.startSession(late, T0 + 8 * DAY);
   ok(id(OF.evaluate(late, 'home', { ...app, now: T0 + 8 * DAY })) !== 'starter_nest', 'starter only in the first 7 days');
-  const bought = mk({ unlocked: 12, wallet: { starter: true } }); OF.startSession(bought, T0); OF.startSession(bought, T0 + HOUR);
+  const bought = mk({ unlocked: 14, wallet: { starter: true } }); OF.startSession(bought, T0); OF.startSession(bought, T0 + HOUR);
   ok(id(OF.evaluate(bought, 'home', { ...app, now: T0 + HOUR })) !== 'starter_nest', 'never after bought');
 }
 
 // ---- stuck player
 {
-  const s = mk({ unlocked: 12 }); OF.startSession(s, T0); OF.startSession(s, T0 + DAY);
+  const s = mk({ unlocked: 14 }); OF.startSession(s, T0); OF.startSession(s, T0 + DAY);
   s.offers.firstDay = T0 - 30 * DAY; // past the starter window
   const now = T0 + DAY;
   ok(OF.evaluate(s, 'fail', { ...app, now, levelId: 12, fails: 2 }) === null, 'two fails: nothing');
@@ -50,7 +50,7 @@ const app = { money: true };
   ok(id(b) === 'bundle_helper', 'ad declined on this level: Helper Bundle next');
   OF.markShown(s, b, now + 2 * HOUR, 12); OF.startSession(s, now + 4 * HOUR);
   ok(id(OF.evaluate(s, 'fail', { ...app, now: now + 4 * HOUR, levelId: 12, fails: 5 })) !== 'bundle_helper', 'Helper Bundle once per level');
-  const web = mk({ unlocked: 12 }); OF.startSession(web, T0); OF.startSession(web, T0 + DAY);
+  const web = mk({ unlocked: 14 }); OF.startSession(web, T0); OF.startSession(web, T0 + DAY);
   ok(id(OF.evaluate(web, 'fail', { money: false, now: T0 + DAY, levelId: 7, fails: 3 })) === 'charge_ad', 'web: the free-charge ad still comes');
   // a level won after losing it twice, with a full bank
   const w = mk({ unlocked: 14, wallet: { bank: 650 } }); OF.startSession(w, T0); OF.startSession(w, T0 + DAY); w.offers.firstDay = T0 - 30 * DAY;
@@ -72,18 +72,18 @@ const app = { money: true };
   const owner = mk({ unlocked: 25, wallet: { noAds: true, payer: true, lastBuyAt: T0 - 9 * DAY, starter: true, collector: true } }); OF.startSession(owner, T0); OF.startSession(owner, T0 + HOUR);
   ok(OF.evaluate(owner, 'home', { ...app, now: T0 + HOUR }) === null, 'owns The Whole Coop: nothing more to offer');
   ok(!('no_ads' in E.IAP) && !('bundle_flock' in E.IAP), 'No Ads and the Flock Bundle are gone');
-  const prem = mk({ unlocked: 12 }); OF.startSession(prem, T0); prem.offers.firstDay = T0 - 30 * DAY; prem.offers.days = ['a', 'b']; OF.startSession(prem, T0 + HOUR);
+  const prem = mk({ unlocked: 14 }); OF.startSession(prem, T0); prem.offers.firstDay = T0 - 30 * DAY; prem.offers.days = ['a', 'b']; OF.startSession(prem, T0 + HOUR);
   ok(id(OF.evaluate(prem, 'home', { ...app, now: T0 + HOUR })) === 'eggscape_premium', 'level 12+, 3 play days: Unlock Everything');
   OF.markShown(prem, { id: 'eggscape_premium' }, T0 + HOUR); OF.startSession(prem, T0 + 3 * DAY);
   ok(id(OF.evaluate(prem, 'home', { ...app, now: T0 + 3 * DAY })) !== 'eggscape_premium', 'Unlock Everything every 7 days at most');
-  const early = mk({ unlocked: 11 }); OF.startSession(early, T0); early.offers.firstDay = T0 - 30 * DAY; early.offers.days = ['a', 'b']; OF.startSession(early, T0 + HOUR);
+  const early = mk({ unlocked: 13 }); OF.startSession(early, T0); early.offers.firstDay = T0 - 30 * DAY; early.offers.days = ['a', 'b']; OF.startSession(early, T0 + HOUR);
   ok(id(OF.evaluate(early, 'home', { ...app, now: T0 + HOUR })) !== 'eggscape_premium', 'not before level 12');
   ok(!/no ads/i.test(OF.evaluate(prem, 'shop', { ...app, now: T0 + 8 * DAY }).line || ''), 'its line does not lead with "no ads"');
 }
 
 // ---- caps
 {
-  const s = mk({ unlocked: 12 }); OF.startSession(s, T0); OF.startSession(s, T0 + HOUR);
+  const s = mk({ unlocked: 14 }); OF.startSession(s, T0); OF.startSession(s, T0 + HOUR);
   let now = T0 + HOUR;
   const a = OF.evaluate(s, 'home', { ...app, now }); OF.markShown(s, a, now);
   OF.startSession(s, now + 10 * 6e4);
@@ -95,14 +95,14 @@ const app = { money: true };
   OF.startSession(s, now + 140 * 6e4);
   ok(OF.blocked(s, now + 140 * 6e4, 'home') === 'day', 'three popups a day at most');
   // three dismissals silence an offer for 14 days
-  const d = mk({ unlocked: 12 }); OF.startSession(d, T0);
+  const d = mk({ unlocked: 14 }); OF.startSession(d, T0);
   now = T0;
   for (let k = 0; k < 3; k++) { now += DAY; OF.startSession(d, now); d.offers.days = d.offers.days.slice(0, 2); /* keep Unlock Everything (3 play days) out of this one */ const q = OF.evaluate(d, 'home', { ...app, now }); ok(id(q) === 'starter_nest', `starter offered, dismissal ${k + 1}`); OF.markShown(d, q, now); OF.markDismissed(d, q, now); }
   d.offers.shown.starter_nest = []; // make the show-count rule not the reason
   now += DAY; OF.startSession(d, now);
   ok(id(OF.evaluate(d, 'home', { ...app, now })) !== 'starter_nest', 'three "No thanks": silent for 14 days');
   // child-safe: no popups at all
-  const kid = mk({ unlocked: 9, age: 'u13' }); OF.startSession(kid, T0); OF.startSession(kid, T0 + HOUR);
+  const kid = mk({ unlocked: 10, age: 'u13' }); OF.startSession(kid, T0); OF.startSession(kid, T0 + HOUR);
   if (OF.AGE_GATE) ok(OF.evaluate(kid, 'home', { ...app, now: T0 + HOUR }) === null && OF.blocked(kid, T0, 'home') === 'child', 'u13: no offers');
   else ok(OF.blocked(kid, T0, 'home') !== 'child', 'age gate off (2026-11-19): an old u13 answer no longer blocks offers');
   ok(OF.childSafe(kid) === OF.AGE_GATE, 'child-safe follows AGE_GATE');
@@ -110,10 +110,10 @@ const app = { money: true };
   const q = OF.parentQuestion(() => 0.5);
   ok(q.choices.length === 3 && q.choices.includes(q.answer) && new Set(q.choices).size === 3, 'parent check: three different choices, one right');
   // tie goes to the cheaper offer; the shop pick ignores popup caps
-  const shop = mk({ unlocked: 9 }); OF.startSession(shop, T0);
+  const shop = mk({ unlocked: 10 }); OF.startSession(shop, T0);
   ok(id(OF.evaluate(shop, 'shop', { ...app, now: T0 })) === 'starter_nest', 'shop featured pick needs no popup budget');
   // intro: a locked chick the player can afford, as a line
-  const intro = mk({ unlocked: 9, wallet: { coins: 500 } }); OF.startSession(intro, T0); OF.startSession(intro, T0 + HOUR);
+  const intro = mk({ unlocked: 10, wallet: { coins: 500 } }); OF.startSession(intro, T0); OF.startSession(intro, T0 + HOUR);
   const tip = OF.evaluate(intro, 'intro', { ...app, now: T0 + HOUR, chick: { id: 'thunder', name: 'Thunder Chick', price: 400 } });
   ok(id(tip) === 'chick_tip' && tip.gentle && /400 coins/.test(tip.line), 'intro: affordable locked chick suggested');
   ok(OF.evaluate(intro, 'intro', { ...app, now: T0 + HOUR, chick: { id: 'glue', name: 'Sticky Chick', price: 600 } }) === null, 'intro: not when too expensive');
@@ -122,7 +122,7 @@ const app = { money: true };
 // ---- too many videos: "Skip the videos"
 {
   const NOW = T0 + 2 * DAY + HOUR;
-  const mkv = (o = {}) => { const s = mk({ unlocked: 9, ...o, wallet: { starter: true, ...(o.wallet || {}) } }); OF.startSession(s, T0); OF.startSession(s, T0 + HOUR); return s; };
+  const mkv = (o = {}) => { const s = mk({ unlocked: 10, ...o, wallet: { starter: true, ...(o.wallet || {}) } }); OF.startSession(s, T0); OF.startSession(s, T0 + HOUR); return s; };
   const watch = (s, n, t = NOW) => { for (let k = 0; k < n; k++) OF.noteRewarded(s, t); };
   const s = mkv(); watch(s, 2);
   ok(id(OF.evaluate(s, 'home', { ...app, now: NOW })) !== 'skip_videos', '2 videos today, 2 in all: nothing');
