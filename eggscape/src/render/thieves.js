@@ -586,17 +586,62 @@ const DEN_LOOK = {
   ratking: { w: 0.66, h: 0.6, W: 1.1, H: 0.98, a: '#9a96a8', b: '#4c4858', rim: '#d8cfb6', line: '#26222e' },
   rat: { w: 0.5, h: 0.52, W: 0.8, H: 0.8, a: '#b07a44', b: '#6e4422', rim: '#3a220e', line: '#2a1606' },
 };
-export function drawThiefDens(ctx, sim, t, k, over = false) {
+// over: false = the den itself; true = what goes over the eggs. 0.8.16 (mykee: "weasel is overlapping with the den, it can
+// go through the den transparently"): the stump is a solid thing with a hole in its front. 'in' (after the den): what is
+// INSIDE it, seen only through the doorway (a thief going in or coming out, the stolen eggs), then the stump's front (shade,
+// door frame, lantern, sign...), all before the thieves and the loose eggs, so a thief outside is always IN FRONT of the
+// stump; over then only adds the red alert. egg(e) draws one egg (main.js).
+export function drawThiefDens(ctx, sim, t, k, over = false, egg = null) {
+  if (over === 'in') { for (const T of sim.thieves || []) denTrack(sim, T, t); }
   for (const T of sim.thieves || []) {
     if (T.home >= 0) continue; // it shares its boss's den
     if (T.kind === 'rat' && sim.thieves.some((o) => o.kind === 'rat' && o.home < 0 && o.id < T.id && o.denA === T.denA && o.run === T.run)) continue; // a pair shares one hole
-    const ring = sim.rings[T.run], a = ring.body.getAngle() + T.denA, rf = ring.r - 0.08;
+    const stump = isStump(T);
+    if (over === 'in' && !stump) continue;
+    const ring = sim.rings[T.run], a = ring.body.getAngle() + T.denA, rf = ring.r - 0.08, live = sim.state === 'play';
+    if (over === 'in') { // inside: the thieves in its doorway, the stashed eggs, then the stump's front over them
+      for (const q of sim.thieves) if ((q === T || q.home === T.id) && denMove(sim, q, t)?.z != null) drawOne(ctx, sim, q, t, k, false);
+      if (egg) for (const id of T.stash) { const e = sim.eggs.find((q) => q.id === id); if (e && e.alive && e.body) egg(e); }
+    }
     pxAt(ctx, rf * Math.cos(a), rf * Math.sin(a), k, () => {
       ctx.rotate(Math.atan2(-Math.cos(a), -Math.sin(a)));
-      if (over) drawDenOver(ctx, T, t, k, sim.state === 'play'); else drawDen(ctx, T, t, k);
+      if (over === 'in') drawStumpOver(ctx, T, t, k, false);
+      else if (over && stump) drawStumpAlert(ctx, T, t, k, live);
+      else if (over) drawDenOver(ctx, T, t, k, live); else drawDen(ctx, T, t, k);
     });
   }
 }
+// a stashed egg of a stump den is drawn inside it (drawThiefDens 'in'): main.js leaves it out of the egg pass
+export function eggInDen(sim, e) {
+  if (e.thf !== 2) return false;
+  for (const T of sim.thieves || []) if (T.home < 0 && isStump(T) && T.stash.includes(e.id)) return true;
+  return false;
+}
+const isStump = (O) => O.kind !== 'ratking' && O.kind !== 'rat' && denV2();
+const denOwner = (sim, T) => (T.home >= 0 ? sim.thieves[T.home] : T);
+// going in and coming out of the stump: z = how deep inside (0 at the doorway .. 1 out of sight), drawn small, dark and only
+// through the hole; a = lined up with the door from outside (1 on the threshold): a little smaller (one step further back),
+// its body centred on the doorway, still in front. 'in': it walks out of the dark (z 1 -> 0, then a 1 -> 0 with a bounce);
+// 'home': it lines up as it gets close, then 'hide' walks it in (z 0 -> 1). A dive down the tunnel from elsewhere (the
+// boss's pop) is no walk-in: it just goes.
+const DEN_IN = 0.5, DEN_NEAR = 0.75, BODY_MID = { weasel: 0.225, rat: 0.145, ratking: 0.28 }; // s to walk in; m from the door it lines up; m from its feet to the middle of its body
+function denTrack(sim, T, t) { // per frame, every thief: when a walk home ends in 'hide', start the walk-in
+  const D = DM[T.id] || (DM[T.id] = { pose: null, fz: 0, thawT: -9 });
+  if (T.ph === 'hide' && D.ph !== 'hide') { D.hideT = t; D.hideIn = D.ph === 'home' && D.near ? 1 : 0; }
+  if (T.ph === 'home') { const O = denOwner(sim, T), d = sim.thDenPt(T); D.near = T.ch === O.run && Math.abs(wrap(d.a - T.a)) * T.r < 0.6; }
+  D.ph = T.ph;
+}
+function denMove(sim, T, t) {
+  if (T.ph !== 'in' && T.ph !== 'hide' && T.ph !== 'home') return null;
+  const O = denOwner(sim, T);
+  if (!O || !isStump(O)) return null;
+  if (T.ph === 'in') { const u = T.dur > 0 ? clamp(1 - T.t / T.dur, 0, 1) : 1; return u < 0.5 ? { z: 1 - u / 0.5, walk: 1 } : { a: 1 - ss(0.5, 1, u), bounce: (u - 0.5) / 0.5, walk: 1 }; }
+  if (T.ph === 'hide') { const D = DM[T.id], e = D && D.hideIn ? t - D.hideT : 9; return e >= 0 && e < DEN_IN ? { z: e / DEN_IN, walk: 1 } : null; }
+  if (T.ch !== O.run) return null;
+  const d = sim.thDenPt(T), dist = Math.abs(wrap(d.a - T.a)) * T.r;
+  return dist < DEN_NEAR ? { a: ss(DEN_NEAR, 0.05, dist) } : null;
+}
+const denScale = (m) => (m.z != null ? 0.8 - 0.42 * m.z : m.bounce != null ? 0.8 + 0.2 * easeBack(m.bounce) : 1 - 0.2 * m.a);
 // 0.8.15 (mykee: "redesign the weasel den, make it cool"): shown to him as a picture first, then made the den. The weasel lives in a hollow tree stump: flared roots on the ring, a snapped top, a
 // plank-framed door with a lantern that swings and lights the loot inside, a bent stovepipe that puffs, toadstools
 // at a root and a crooked KEEP OUT board with his paw print. Same doorway and the same place for stolen eggs.
@@ -636,11 +681,13 @@ function drawStump(ctx, T, t, k) {
   ctx.restore();
   ctx.strokeStyle = '#d6aa3c'; ctx.lineWidth = Math.max(1, 0.022 * k);
   for (let i = 0; i < 12; i++) { const x = (-0.9 + (i / 11) * 1.8) * w * 0.9, an = (R(i + 100) - 0.5) * 2.2, l = (0.08 + R(i + 110) * 0.08) * k; ctx.beginPath(); ctx.moveTo(x, -h * 0.12); ctx.lineTo(x + Math.cos(an) * l, -h * 0.12 - Math.abs(Math.sin(an)) * l * 0.5); ctx.stroke(); }
-  if (T.ph === 'hide' || T.ph === 'wait') {
-    const bl = Math.sin(t * 0.8 + T.id) > 0.92 ? 0.2 : 1, er = Math.max(1.4, 0.045 * k);
+  const M = DM[T.id], seen = T.ph === 'hide' && M && M.hideIn ? ss(DEN_IN, DEN_IN + 0.3, t - M.hideT) : 1; // walked in: its eyes come on once it is out of sight
+  if ((T.ph === 'hide' || T.ph === 'wait') && seen > 0) {
+    const bl = (Math.sin(t * 0.8 + T.id) > 0.92 ? 0.2 : 1) * seen, er = Math.max(1.4, 0.045 * k);
     ctx.fillStyle = '#ffe23a'; for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * w * 0.24 - w * 0.1, -h * 0.66, er, er * bl, 0, 0, TAU); ctx.fill(); }
   }
 }
+const stumpDoor = (ctx, w, h) => { ctx.beginPath(); ctx.moveTo(-w, 3); ctx.lineTo(-w, -h * 0.45); ctx.bezierCurveTo(-w, -h * 1.33, w, -h * 1.33, w, -h * 0.45); ctx.lineTo(w, 3); ctx.closePath(); };
 function drawStumpOver(ctx, T, t, k, live) {
   const D = DEN_LOOK.weasel, w = D.w * k, h = D.h * k, W = D.W * k, H = D.H * k, lw = Math.max(1.2, 0.035 * k), LINE = '#2a1608';
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
@@ -681,8 +728,11 @@ function drawStumpOver(ctx, T, t, k, live) {
   { const pr = 0.15 * k, py = -H * 0.98 - pr * 0.35;
     ctx.beginPath(); ctx.arc(0, py, pr, 0, TAU); ctx.fillStyle = '#f2dfb4'; ctx.fill(); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = LINE; ctx.stroke();
     ctx.save(); ctx.beginPath(); ctx.arc(0, py, pr * 0.9, 0, TAU); ctx.clip(); ctx.translate(0, py); drawThiefEmblem(ctx, 'weasel', pr * 0.8, t); ctx.restore(); }
-  const n = T.stash.length;
-  if (n && live) {
+  drawStumpAlert(ctx, T, t, k, live);
+}
+function drawStumpAlert(ctx, T, t, k, live) { // eggs inside: the pulsing red alert over the roof, over everything
+  const H = DEN_LOOK.weasel.H * k;
+  if (T.stash.length && live) {
     const ay = -H - 0.38 * k, ar = Math.max(5, 0.1 * k), pu = 0.6 + 0.4 * Math.sin(t * 6);
     ctx.fillStyle = `rgba(230,50,40,${0.7 + 0.3 * pu})`; ctx.beginPath(); ctx.arc(0, ay, ar, 0, TAU); ctx.fill(); ctx.lineWidth = Math.max(1, ar * 0.18); ctx.strokeStyle = '#fff'; ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.fillRect(-ar * 0.11, ay - ar * 0.55, ar * 0.22, ar * 0.62); ctx.beginPath(); ctx.arc(0, ay + ar * 0.42, ar * 0.13, 0, TAU); ctx.fill();
@@ -793,6 +843,7 @@ function crown(ctx, x, y, s, lw) {
 export function drawThieves(ctx, sim, t, k) {
   for (const T of sim.thieves || []) {
     if (T.ph === 'wait' || T.ph === 'gone' || T.ph === 'hide') continue;
+    if (denMove(sim, T, t)?.z != null) continue; // inside its stump: drawn in the doorway (drawThiefDens 'in')
     if (T.ph === 'crouch') telegraph(ctx, sim, T, t, k);
     if (T.ph === 'brace') rollMark(ctx, sim, T, t, k);
     if (T.ph === 'sqBall') { if (T.sqLead) drawBall(ctx, sim, T, t, k); continue; } // the two rats are one dust ball
@@ -817,6 +868,9 @@ function drawOne(ctx, sim, T, t, k, head) {
   const L = lookOf(T), frozen = T.frozen > 0, s = RIG[T.kind].s * k;
   const hop = head ? D.hop || 0 : (D.hop = hopOver(sim, T));
   if (hop > 0.05) { L.st = 'leap'; L.u = 0.5 - 0.35 * Math.sign(D.hopD || 0); }
+  const dm = head ? null : denMove(sim, T, t); // going in or out of its stump
+  let odo = T.odo;
+  if (dm && dm.walk) { L.st = 'prowl'; odo = t * 0.9; D.carT = -9; } // it walks in / out of the dark
   let pose;
   if (head) pose = D.pose;
   else {
@@ -826,8 +880,8 @@ function drawOne(ctx, sim, T, t, k, head) {
       const moved = D.pa != null && Math.abs(Math.atan2(Math.sin(T.a - D.pa), Math.cos(T.a - D.pa))) > 1e-4, still = D.po != null && Math.abs(T.odo - D.po) < 1e-5;
       if (moved && still) D.carT = t;
       D.pa = T.a; D.po = T.odo;
-      if ((L.st === 'prowl' || L.st === 'stalk') && t - (D.carT ?? -9) < 0.12) L.st = 'idle';
-      pose = thiefBlend('t' + T.id, thiefPose(T.kind, L.st, t, L.u, T.odo), t, T.ph === 'leap' || T.ph === 'trapped' || T.ph === 'sqThrow' || T.ph === 'tumble' ? 22 : 9);
+      if ((L.st === 'prowl' || L.st === 'stalk') && t - (D.carT ?? -9) < 0.12 && !(dm && dm.walk)) L.st = 'idle';
+      pose = thiefBlend('t' + T.id, thiefPose(T.kind, L.st, t, L.u, odo), t, T.ph === 'leap' || T.ph === 'trapped' || T.ph === 'sqThrow' || T.ph === 'tumble' ? 22 : 9);
       if (T.cuff > 0) pose = cuffPose(pose, T);
       if (T.kind === 'weasel') pose = voiceBeats(T, pose, L);
       D.pose = { ...pose };
@@ -838,10 +892,11 @@ function drawOne(ctx, sim, T, t, k, head) {
   const o = { ...L.o, face: T.face, frozen: frozen ? T.frozen : 0, crown: T.kind === 'ratking', cape: T.kind === 'ratking' };
   if (frozen) { o.eye = o.eye === 'spiral' ? 'normal' : o.eye; o.stars = 0; o.sweat = 0; o.zap = 0; }
   if (head) { o.only = 'head'; o.stars = 0; o.sweat = 0; o.zap = 0; }
-  let alpha = T.ph === 'flee' ? T.alpha : 1, pop = T.ph === 'in' ? 0.35 + 0.65 * easeBack(clamp(1 - T.t / Math.max(0.01, T.dur), 0, 1)) : 1;
+  let alpha = T.ph === 'flee' ? T.alpha : 1, pop = T.ph === 'in' && !dm ? 0.35 + 0.65 * easeBack(clamp(1 - T.t / Math.max(0.01, T.dur), 0, 1)) : 1;
   if (T.ph === 'warp') { const w = T.warp / 1.1; pop = w < 0.5 ? 1 - ss(0, 0.5, w) * 0.95 : 0.05 + 0.95 * ss(0.5, 1, w); alpha *= w < 0.5 ? 1 - 0.6 * ss(0.3, 0.5, w) : 0.4 + 0.6 * ss(0.5, 0.8, w); }
   const fl = !head ? flight(T) : null; // thrown out of a squabble or cuffed by the King: an arc, a back flip, a bounce
-  frameAt(ctx, T, k, () => {
+  const place = dm ? (f) => denPlace(ctx, sim, T, k, dm, f) : (f) => frameAt(ctx, T, k, f);
+  place(() => {
     ctx.globalAlpha *= alpha;
     const pitch = leapPitch(sim, T), shake = !head && t - D.thawT < 0.5 ? Math.sin(t * 60) * 0.12 * (1 - (t - D.thawT) / 0.5) : 0, spin = T.ph === 'warp' ? (T.warp / 1.1) * 9 : 0;
     const mid = -RIG[T.kind].bodyY * k;
@@ -851,6 +906,28 @@ function drawOne(ctx, sim, T, t, k, head) {
     drawThief(ctx, 0, 0, s, t, pose, o, T.kind);
     if (T.cuff > 0 && !head) cuffSmear(ctx, T, s);
     if (!head && t - D.thawT < 0.6) thawShards(ctx, k, (t - D.thawT) / 0.6, mid);
+  });
+}
+// where a thief going in or out of its stump is drawn (denMove): outside, in its own frame, a step back and its body slid onto
+// the doorway's middle; inside, in the den's frame, clipped to the doorway, deeper = smaller, higher, darker, then gone
+function denPlace(ctx, sim, T, k, m, f) {
+  const sc = denScale(m), mid = BODY_MID[T.kind] || 0.2;
+  if (m.z == null) {
+    frameAt(ctx, T, k, () => {
+      const d = sim.thDenPt(T), doorX = wrap(d.a - T.a) * T.r * k;
+      ctx.translate(m.a * (doorX - T.face * mid * sc * k), 0); ctx.scale(sc, sc); f();
+    });
+    return;
+  }
+  const O = denOwner(sim, T), ring = sim.rings[O.run], a = ring.body.getAngle() + O.denA, rf = ring.r - 0.08, w = DEN_LOOK.weasel.w * k, h = DEN_LOOK.weasel.h * k;
+  pxAt(ctx, rf * Math.cos(a), rf * Math.sin(a), k, () => {
+    ctx.rotate(Math.atan2(-Math.cos(a), -Math.sin(a)));
+    stumpDoor(ctx, w, h); ctx.clip();
+    ctx.save(); ctx.globalAlpha *= 1 - ss(0.7, 1, m.z);
+    ctx.translate(-T.face * mid * sc * k, -0.1 * m.z * k); ctx.scale(sc, sc); f();
+    ctx.restore();
+    const g = ctx.createLinearGradient(0, -h * 1.1, 0, 3); g.addColorStop(0, `rgba(8,4,2,${0.75 * m.z})`); g.addColorStop(1, `rgba(8,4,2,${0.45 * m.z})`); // the dark of the hollow closes over it
+    stumpDoor(ctx, w, h); ctx.fillStyle = g; ctx.fill();
   });
 }
 // the weasel acts its voice (main.js plays it on the same sim tick the phase starts; audio.js sets the beats): two sniffs

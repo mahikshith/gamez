@@ -63,7 +63,7 @@ import { drawJelly as devJelly } from './render/reef.js';
 import { REEF_DEMOS } from './data/reef-demos.js'; // world 8 studio levels (dev)
 import { drawSeaUnder, drawSeaOver, seaEvent, seaAnim } from './render/sea.js'; // v3.3 octopus and fish
 import { drawReefUnder, drawReefOver, reefEvent, drawSurface, drawBoat, boatSeat, drawRiseGuide } from './render/reef.js'; // world 8 Coral Reef (underwater)
-import { drawDenAlone, drawThiefDens, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
+import { drawDenAlone, drawThiefDens, eggInDen, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
 import { RIG as THIEF_RIG } from './sim/thieves.js';
 import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
 import { LAB_DEMOS } from './data/lab-demos.js'; // v4 Shape Lab studio levels: the clockwork cast and the owl
@@ -4750,6 +4750,7 @@ function render() {
   const SL = (types, fn) => blastXf(() => SL0(types, fn), types.length * 1.7 + types[0].length); // the crow wave makes a creature flinch as it passes // Chick Strike: a struck villain's layer is drawn through its reaction
   SL(['bx'], (c) => drawBossActor(c, sim, k, t));
   blastXf(() => drawThiefDens(ctx, sim, t, k), 2.2); // v3.6: the weasel's den and the rats' hole in the floor ring
+  blastXf(() => drawThiefDens(ctx, sim, t, k, 'in', (e) => drawEggFelt(e, t, k)), 2.2); // 0.8.16: inside the weasel's stump (a thief in its doorway, the stolen eggs), then its front: a thief outside is in front of it
   blastXf(() => { for (const ring of sim.rings) if (ring.gearOut) W.drawGearCog(ctx, ring, ring.gearOut, t); }, 17.1); // the idler cogs go with the rings
   // gear trains: while the player turns one ring, the rings it drives show which way they go; the first time
   // ever, a label says so
@@ -4788,13 +4789,13 @@ function render() {
   blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
   SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
   if (DEV && G.probe) G.probe('creatures');
-  for (const e of sim.aliveEggs()) if (!overNest(sim, e)) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
+  for (const e of sim.aliveEggs()) if (!overNest(sim, e) && !eggInDen(sim, e)) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
   drawChickFX(ctx, sim, t, k);
   drawMagnetField(ctx, sim, t, k, save.calm); // v3.1 magnet; 2026-11-20: over the eggs (the two poles, the field lines, the pull)
   blastXf(() => { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); }, 10.4); // v3.3: the arms wrapped over a held egg
   blastXf(() => drawReefOver(ctx, sim, t, k), 8.2); // world 8: claws over a held egg, the silt cloud
   if (sim.water) drawBoat(ctx, sim, t, k); // world 8: the boat on the surface, over the hen's legs
-  blastXf(() => drawThiefDens(ctx, sim, t, k, true), 2.2); // 2026-11-19: the den's rim and shade over a stolen egg (it lies inside)
+  blastXf(() => drawThiefDens(ctx, sim, t, k, true), 2.2); // 2026-11-19: the den's rim and shade over a stolen egg (it lies inside); the stump's red alert
   blastXf(() => drawThievesOver(ctx, sim, t, k), 9.1); // v3.6: the weasel's jaws over a held egg, the trap ring
   SL(['mosq'], (c) => drawBayouOver(c, sim, t, k)); // v3.7: a turtle's beak round its egg, mosquito swarms
   SL(['snake'], (c) => W.drawSnakes(c, sim, t, k)); // predators (v3)
