@@ -6627,10 +6627,12 @@ function drawLevelIntro(L, acc) {
     ui.button(G.li === -1 ? 'back' : 'levels', '', x, y, HDR, HDR, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: HDR / 2 });
     const cbw = early ? 0 : Math.max(104 * s, ui.measure(String(save.wallet.coins), 21 * s) + 64 * s);
     if (cbw) purseBtn(x + w - cbw, y, cbw, HDR, 21 * s); // the coins roll and pop like every other counter (ui/purse.js)
-    const tail = 16 * s, side = Math.max(HDR, cbw) + 8 * s + tail, rwMax = Math.max(90 * s, w - 2 * side);
-    const rw = Math.min(rwMax, Math.max(150 * s, ui.measure(label, 25 * s) + 48 * s));
-    ui.ribbon(label, x + w / 2, y + 2 * s, rw, HDR - 6 * s, { s, color: hardLv ? '#d8342a' : acc, size: 25 * s, tag: 'intro:level' });
-    return { ribL: x + w / 2 - rw / 2 - tail };
+    // 0.8.16: the ribbon's words are always whole ("Daily Va..." beside a big purse): centred when that fits, else
+    // moved into the room between the back button and the purse, then smaller letters; never an ellipsis
+    const tail = 16 * s, L0 = x + HDR + 8 * s + tail, R0 = x + w - (cbw ? cbw + 8 * s : HDR + 8 * s) - tail, lw = ui.measure(label, 25 * s);
+    const rw = Math.min(R0 - L0, Math.max(150 * s, lw + 48 * s)), rcx = clamp(x + w / 2, L0 + rw / 2, R0 - rw / 2);
+    ui.ribbon(label, rcx, y + 2 * s, rw, HDR - 6 * s, { s, color: hardLv ? '#d8342a' : acc, size: Math.min(25 * s, (25 * s * (rw - 40 * s)) / Math.max(1, lw)), tag: 'intro:level' });
+    return { ribL: rcx - rw / 2 - tail };
   };
   // the level's name (big) and its world (small): one compact block
   const nameH = 31 * s + (world ? 18 * s : 0);
