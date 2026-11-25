@@ -10,6 +10,7 @@
 //   const purse = createPurse({ clock, calm, wallet, screen, sound, buzz });
 //   purse.gain({ src: { x, y }, from?, to?, delay? })   // after the wallet changed
 //   purse.hold(v)          // show v (a total not yet "paid in" on screen) until a gain takes it on, or the screen changes
+//   purse.release()        // drop a held total (a landing on a reward page is over: the counters show the purse)
 //   purse.shown()          // the number every counter draws
 //   purse.at({ x, y })     // a counter on screen says where its coin sits this frame (the flight's target)
 //   purse.pop()            // the counter's scale this frame (1 = still)
@@ -56,6 +57,7 @@ export function createPurse(env) {
       return true;
     },
     hold(v) { check(); if (!P) H = { v: Math.max(0, Math.round(v)), scr: env.screen() }; },
+    release() { H = null; }, // (0.8.17 ui/landing.js: a reward page held the counters while its coins landed)
     settle,
     active() { check(); return !!P; },
     held() { check(); return P || H ? shownAt(now()) : null; },

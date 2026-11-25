@@ -36,6 +36,7 @@ import { drawStore, drawCoin, drawBoosterStrip, drawChest, drawGlassEgg, storeIt
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as SK from './skip.js'; // 2026-11-23: the pause page's Skip level (one rewarded video)
 import { createPurse } from './ui/purse.js'; // 2026-11-23: one coin-gain effect for every place the purse grows
+import { createLanding, createPrizePop } from './ui/landing.js'; // 0.8.17: every reward lands on its page (the purse and the bag), every video says what it gave
 import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, freebies, trials, home nudges)
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
 import * as ENG from './engine/index.js'; // 0.8.15: the background subsystems (Ledger, Pulse, Oracle, Conductor, Herald) behind one safe face
@@ -1270,6 +1271,8 @@ async function press(id) {
   ledger(ledWhy); ledWhy = ledWhyOf(id); // what changed before this press is filed under the last reason; what this press changes, under its own
   { const b = ui.buttons.find((q) => q.id === id); if (b && b.w < ui.w * 1.5) G.pressAt = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; } // coins a press brings fly from its button (purse.gain)
   audio.play(id === 'pause' || id === 'levels' || id === 'practice' ? 'ui_back' : 'ui_tap');
+  prizePop.skip(); // a video's little celebration goes on its way at a tap (0.8.17)
+  if (G.screen === 'intro' && G.level && G.li >= 0 && /^(boost:|adboost$|shop:boosts$|strip:more$)/.test(id) && !(save.seen || {})['strip:' + G.level.id]) { save.seen = { ...save.seen, ['strip:' + G.level.id]: 1 }; persist(); } // the booster strip was touched: its call for attention rests on this level for good
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
   switch (id) {
     case 'ad:back': ads.cancelWait(); break; // an ad that never said it closed: back to the game (no reward)
@@ -1290,7 +1293,7 @@ async function press(id) {
       }
       if (!allyFree() && !G.allyAd) {
         const ok = await rewarded('ally');
-        if (ok) G.allyAd = true;
+        if (ok) { G.allyAd = true; popPrize('Farm friend', (c, x, y, S, t) => drawPart(c, 'ally', x, y, S, t), 'btn:ally', 0.3); } // (the friends' menu opens on the ally button it flies to)
         if (G.screen === 'play') portal.gameplayStart();
         if (!ok) break;
       }
@@ -1417,9 +1420,11 @@ async function press(id) {
       const w = E.openDailyChest(save.wallet, today());
       if (!w) { toast('Come back tomorrow for another chest.', 2.2); break; }
       const R = E.dailyChest(today()), src = G.pressAt;
-      save.wallet = w; persist(); audio.play('treasure_open'); purse.gain({ src }); // the chest's own cue, then its coins fly into the purse
+      save.wallet = w; persist(); audio.play('treasure_open'); void src;
       if (G.screen === 'store') G.storeFlash = { id: 'free:daily', t0: G.t }; // the shop's FREE TODAY tile
-      toast(`Treasure! +${R.coins} coins, +${R.charges} Chick Charge${R.charges > 1 ? 's' : ''}`, 3);
+      // 0.8.17: a YOU GOT! of its own (it was a toast while the coins flew to a purse at the bottom of home): the open
+      // chest, the coins landing in the purse chip on the page, the charges in the bag chip
+      startGot({ name: 'Daily chest', art: 'chest', quiet: true, coins: R.coins, items: [{ art: 'coins', label: '+' + R.coins }, { art: 'charge', label: `+${R.charges} Chick Charge${R.charges > 1 ? 's' : ''}` }] });
       break;
     }
     case 'home:premium':
@@ -1468,7 +1473,8 @@ async function press(id) {
       } else if (n.kind === 'welcome') {
         const b = E.BOOSTER_ORDER[Math.floor(Math.random() * 5)];
         save.wallet = { ...save.wallet, coins: save.wallet.coins + n.coins, owned: { ...(save.wallet.owned || {}), [b]: ((save.wallet.owned || {})[b] || 0) + 1 } };
-        G.nudge = null; persist(); audio.play('level_win'); purse.gain({ src: G.pressAt }); toast(`+${n.coins} coins and a free ${E.BOOSTERS[b].name}!`, 2.8);
+        G.nudge = null; persist(); audio.play('level_win');
+        startGot({ name: 'Welcome back!', art: 'coins', quiet: true, coins: n.coins, items: [{ art: 'coins', label: '+' + n.coins }, { art: 'boost:' + b, label: E.BOOSTERS[b].name }] }); // 0.8.17: shown, not a toast
       } else if (n.kind === 'afford') {
         G.nudge = null; persist();
         openStoreOn(n.item); // straight onto that chick or egg, with a ring on it
@@ -1494,7 +1500,7 @@ async function press(id) {
       if (O.item === 'coins') { await press('ad:coins'); break; }
       if (await rewarded('charge')) {
         save.wallet = { ...save.wallet, charges: Math.min(E.MAX_CHARGES, save.wallet.charges + 1) };
-        persist(); audio.play('unlock'); toast('A Chick Charge is in your bag. Send your chick any time!', 2.8);
+        persist(); startGot({ name: 'Chick Charge', art: 'charge', what: 'Send your chick any time', items: [{ art: 'charge', label: '+1' }] }); // 0.8.17: it lands in the bag chip
       } else { OF.markDismissed(save, O, Date.now(), O.lv); BR.note(save, 'no', { id: O.id }); BR.note(save, 'videoNo'); persist(); } // no ad: counts as declined (the helper may follow later)
       break;
     }
@@ -1545,14 +1551,14 @@ async function press(id) {
       if (adCd() > 0) break;
       const pay = adCoins(), src = G.pressAt, ok = await rewarded('coins');
       if (ok) {
-        save.wallet = E.addCoins(save.wallet, pay);
-        purse.gain({ src }); // the coins fly from the button into the purse, which rolls up
+        save.wallet = E.addCoins(save.wallet, pay); void src;
+        startGot({ name: 'Free coins', art: 'coins', quiet: true, coins: pay, items: [{ art: 'coins', label: '+' + pay }] }); // 0.8.17: a YOU GOT! with the purse on it: the video's coins land in front of the player
         save.adClaim = Date.now();
         save.adDay = E.noteFreeCoins(save.adDay, today());
         G.storeFlash = { id: 'ad', t0: G.t };
         persist();
         audio.play('combo', { intensity: 0.5 });
-        if (G.getMore && save.wallet.coins >= G.getMore.price) { G.getMore = null; toast('Now you have enough coins!', 2.2); }
+        if (G.getMore && save.wallet.coins >= G.getMore.price) G.getMore = null; // (the purse on the YOU GOT! says it)
       }
       break;
     }
@@ -1565,17 +1571,22 @@ async function press(id) {
       if (ok && G.sim && G.sim.state === 'play') {
         const out = {};
         G.hint = { out, gen: hintSearch(Sim, G.level, G.sim.fullState(), { mode: G.sim.mode, ...G.boost }, out) };
+        popPrize('Hint', (c, x, y, S) => lampIcon(c, x, y, S), null, 0.2); // then the hint shows on the board
       }
       break;
     }
-    case 'tr:close': G.treasure = null; break;
+    case 'tr:close': if (land.busy()) { land.finish(); break; } G.treasure = null; land.clear(); break; // (a tap while the coins fly lands them all; the next closes)
     case 'tr:open': { // the boss treasure: paid once, then the sheet shows what came out
       const T = G.treasure, w = T && bossBeaten(T.id) ? E.openBossTreasure(save.wallet, T.id) : null;
-      if (w) { const src = G.pressAt; save.wallet = w; persist(); audio.play('treasure_open'); buzz('treasure'); T.openedAt = G.t; purse.gain({ src, delay: 0.35 }); } // its own cue (not the win sting); the coins follow the lid
+      if (w) { // its own cue (not the win sting); the coins follow the lid into the purse chip on the page, the booster and the charges into the bag chip (0.8.17)
+        const c0 = save.wallet.coins, R = E.bossTreasure(T.id), at = (i) => { const q = ui.rects.find((r) => r.tag === 'tr:itemart' + i); return q ? { x: q.x + q.w / 2, y: q.y + q.h / 2 } : G.pressAt; };
+        save.wallet = w; persist(); audio.play('treasure_open'); buzz('treasure'); T.openedAt = G.t;
+        land.start({ from: c0, to: w.coins, src: at(0), delay: 0.35, items: [{ art: 'boost:' + R.booster, src: at(1), ...landWhere('boost:' + R.booster) }, { art: 'charge', src: at(2), ...landWhere('charge') }] });
+      }
       break;
     }
-    case 'tr:shop': G.treasure = null; openStore('boosters', 'premium'); break; // "See premium chicks": their row
-    case 'tr:play': { const T = G.treasure; G.treasure = null; const i = LEVELS.findIndex((Lv) => Lv.id === T.id); if (i >= 0 && playable(i)) startLevel(i); break; }
+    case 'tr:shop': G.treasure = null; land.clear(); openStore('boosters', 'premium'); break; // "See premium chicks": their row
+    case 'tr:play': { const T = G.treasure; G.treasure = null; land.clear(); const i = LEVELS.findIndex((Lv) => Lv.id === T.id); if (i >= 0 && playable(i)) startLevel(i); break; }
     case 'chest': {
       const total = bestTotal();
       const ch = E.chestFor(total, save.wallet.chests), sk = ch && ch.reward.skin && !E.ownsSkin(save.wallet, ch.reward.skin) ? E.SKINS[ch.reward.skin] : null;
@@ -1596,7 +1607,7 @@ async function press(id) {
       if (ok) {
         if (b === 'golden') startLevel(G.li, { golden: true, adBoost: b });
         else startLevel(G.li, { boost: { [b]: true }, adBoost: b });
-        toast(`Free booster: ${E.BOOSTERS[b].name}. ${E.BOOSTERS[b].line}`, 3.4);
+        popPrize(E.BOOSTERS[b].name, (c, x, y, S, t) => drawBoosterIcon(c, b, x, y, S, t), ['btn:go', 'btn:inext'], 0.5); // 0.8.17: it pops, then flies onto PLAY (it comes along into the level)
       }
       break;
     }
@@ -1688,8 +1699,8 @@ async function press(id) {
       if (S.done || (S.video && !(await rewarded('sample')))) break;
       const w = E.claimSample(save.wallet, today());
       if (!w) break;
-      save.wallet = w; persist(); G.storeFlash = { id: 'free:sample', t0: G.t }; audio.play('unlock');
-      toast(`Free ${E.BOOSTERS[S.id].name}! ${E.BOOSTERS[S.id].line}`, 3);
+      save.wallet = w; persist(); G.storeFlash = { id: 'free:sample', t0: G.t };
+      startGot({ name: E.BOOSTERS[S.id].name, art: 'boost:' + S.id, what: E.BOOSTERS[S.id].line, items: [{ art: 'boost:' + S.id, label: '+1' }] }); // 0.8.17: into the bag chip, with how many
       break;
     }
     case 'bonus': { // the win card's Bonus chest (when an ad break would have been due): 40 coins and a boost for a video
@@ -1699,9 +1710,9 @@ async function press(id) {
       const R = E.bonusChest(G.level.id), first = !G.result.purseGo;
       save.wallet = E.openBonusChest(save.wallet, G.level.id); G.doubled = true; G.result.chestOpen = true;
       recordResult(); persist();
-      G.result.purseGo = true; purse.gain({ from: first ? G.result.purse0 : undefined, src }); // the win's own coins too, if their roll had not run yet
+      G.result.purseGo = true; void src; // (the win's own coins land with these, if their roll had not run yet)
       audio.play('treasure_open'); portal.happy();
-      toast(`+${R.coins} coins and a ${E.BOOSTERS[R.booster].name}!`, 2.6);
+      startGot({ name: 'Bonus chest', art: 'chest', quiet: true, coins: R.coins, coins0: first && G.result.purse0 != null ? G.result.purse0 : undefined, items: [{ art: 'coins', label: '+' + R.coins }, { art: 'boost:' + R.booster, label: E.BOOSTERS[R.booster].name }] }); // 0.8.17
       break;
     }
     case 'double': {
@@ -1870,10 +1881,11 @@ async function press(id) {
         const w = E.ownsSkin(save.wallet, k) ? E.equipSkin(save.wallet, k) : E.buySkin(save.wallet, k);
         if (w) { save.wallet = w; DR.endTrial(save, 'skin'); persist(); W.setSkin(w.skin); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
         else if (E.SKINS[k] && save.wallet.coins < upPrice(E.SKINS[k].price)) needCoins(upPrice(E.SKINS[k].price));
-      } else if (id === 'got:tap') { // the purchase reveal: a tap skips to its end, the next closes it
-        const R = G.got;
+      } else if (id === 'got:tap') { // the purchase reveal: a tap skips to its end (every coin landed at once), the next closes it
+        const R = G.got, busy = land.busy();
+        if (busy) land.finish();
         if (R && !save.calm && G.t - R.t0 < R.end) { R.t0 = G.t - R.end; R.popped = R.items.length; if (R.coins0 != null) R.landed = true; }
-        else G.got = null;
+        else if (!busy) { G.got = null; land.clear(); }
       } else if (id === 'deal:buy') { // TODAY'S DEAL (coins, once a day)
         const D = E.dailyDeal(save.wallet, today()), w = D && !D.done ? E.buyDeal(save.wallet, today()) : null;
         if (w) {
@@ -1956,7 +1968,7 @@ function rewound(back) {
   setScreen('play');
   portal.gameplayStart();
   audio.play('rewind');
-  toast(`Rewound ${REWIND_S} seconds. Streak kept!`, 2.4);
+  popPrize(`Back ${REWIND_S} seconds`, (c, x, y, S) => rewindArt(c, x, y, S), 'hud:clock', 0.7); // 0.8.17: it flies onto the clock
 }
 
 async function breakThen(fn, info = {}) {
@@ -1981,7 +1993,10 @@ async function rewarded(tag) {
     if (OF.skipChip(save, now, ads.moneyShop)) { OF.markChip(save, now); G.skipChip = { t0: G.t }; } // once a day, after the 3rd video of the day
     persist();
   } // the offer engine counts watched ads
-  if (!ok) toast('No ad available right now. Try again in a moment.', 2.4);
+  // 0.8.17 (mykee: "right after the reward ads we are not actually showing the user whether they got the reward or not"):
+  // every caller shows what the video gave (a YOU GOT! with the purse and the bag, or the prize popping to where it is
+  // used); a video closed early, or none to show, says so: the sad hen and one line, never silence
+  if (!ok) prizePop.start({ sad: true, name: 'No reward this time' });
   return ok;
 }
 // ---------------------------------------------------------------- shop (2026-11-16 revamp)
@@ -2106,9 +2121,12 @@ function newKindsFor(w) { // villains that first appear in world w (levels 5w+1 
 function drawTreasure() {
   // 0.8.16: the treasure is a page of its own over the dimmed map (it hung under the map's header, and on a squat
   // screen that room was too small: its button fell off the bottom)
-  const hb = G.hudBottom;
-  G.hudBottom = ui.A.y;
+  const hb = G.hudBottom, T = G.treasure;
+  // 0.8.17: a beaten treasure's page has the purse (and then the bag) on it, top right: on a phone held upright the card starts under them
+  if (bossBeaten(T.id) && !land.active() && !E.treasureOpened(save.wallet, T.id)) land.start({ wait: true, from: save.wallet.coins, to: save.wallet.coins });
+  G.hudBottom = ui.A.y + (land.active() && ui.A.h > ui.A.w ? 70 * ui.u : 0);
   try { drawTreasurePage(); } finally { G.hudBottom = hb; }
+  if (G.treasure && land.active()) landDraw(); // 0.8.17: its coins land in the purse chip on the page, its booster and charges in the bag
 }
 function drawTreasurePage() {
   const T = G.treasure, R = E.bossTreasure(T.id);
@@ -2227,7 +2245,7 @@ async function takeHelp() {
     save.wallet = { ...save.wallet, coins: save.wallet.coins - H.price }; persist();
     G.failHelp = null; boostRun(H.id);
   } else if (H.kind === 'adBoost') {
-    if (await rewarded('booster')) { G.failHelp = null; boostRun(H.id); toast(`${E.BOOSTERS[H.id].name}: ${E.BOOSTERS[H.id].line}`, 3); }
+    if (await rewarded('booster')) { G.failHelp = null; boostRun(H.id); popPrize(E.BOOSTERS[H.id].name, (c, x, y, S, t) => drawBoosterIcon(c, H.id, x, y, S, t), null, 0.5); } // 0.8.17: it pops over the level it starts
   }
 }
 // home: the Director's one nudge (keep a trial skin, welcome back, you can afford a chick or skin)
@@ -2553,7 +2571,8 @@ function gotItems(rows) {
 }
 function startGot(o) { // o: { name, sku?, key?, items: [{ art, label }], coins? (coins paid in, they fly) }
   const n = o.items.length;
-  G.got = { t0: G.t, popped: 0, landed: false, ...o, end: 0.6 + 0.14 * n + 0.75, land: 0.6 + 0.14 * n + 0.6, coins0: o.coins > 0 ? Math.max(0, save.wallet.coins - o.coins) : null };
+  G.got = { t0: G.t, popped: 0, landed: false, ...o, end: 0.6 + 0.14 * n + 0.75, land: 0.6 + 0.14 * n + 0.6, coins0: o.coins0 ?? (o.coins > 0 ? Math.max(0, save.wallet.coins - o.coins) : null) }; // (o.coins0: the purse before, when more than these coins are still to land)
+  land.clear(); // (0.8.17: its purse and bag chips are on the page from its first frame: drawGot starts the landing)
   G.detail = null;
   if (!o.quiet) { audio.play('tada'); buzz('treasure'); } // (the Lucky Spin's machine has played its own fanfare)
 }
@@ -2570,15 +2589,28 @@ function drawGot() {
     if (!R.landed && R.coins0 != null && t >= R.land) R.landed = true; // (the purse's own landing sounds and buzzes)
   }
   dim(0.84 * clamp(t / 0.18, 0, 1));
-  const S = Math.min(A.w * 0.9, A.h * 0.46, 420 * u), cx = A.cx, cy = A.y + A.h * 0.5, heroY = cy - 0.42 * S;
+  // 0.8.17: on a phone held upright the top row belongs to the purse and the bag (ui/landing.js): the page starts under it
+  // and the whole picture (headline to the last row) stands in the middle of the room left: even gaps above and below
+  const top = A.h > A.w ? 62 * u : 0, S = Math.min(A.w * 0.9, (A.h - top) * 0.46, 420 * u), cx = A.cx, hh = S * 0.5, hs = Math.min(39 * u, 0.12 * S);
+  const ws = Math.min(20 * u, 0.062 * S), WL = R.what ? wrapText(R.what, ws, Math.min(A.w - 48 * u, 380 * u)).slice(0, 3) : [], whatH = WL.length ? WL.length * ws * 1.3 + 0.03 * S : 0;
+  const n = R.items.length, per = Math.max(1, Math.min(4, n)), rowsN = Math.ceil(n / per), cell = Math.min(S * 0.27, (A.w - 30 * u) / per);
+  const ls = Math.max(13 * u, Math.min(18 * u, cell * 0.16)), rowH = cell * 0.78 + ls * 2.6;
+  const willBag = R.items.some((it) => landWhere(it.art)), lineOn = R.line ? !(willBag && R.line === 'Added to your bag') : R.line !== '' && !willBag && R.coins0 == null; // (0.8.17: the purse and the bag chips show it)
+  const above = 0.98 * S + hs * 0.85, below = 0.02 * S + whatH + rowsN * rowH + (lineOn ? 40 * u : 0), mid = A.y + top + (A.h - top) / 2;
+  const cy = Math.max(A.y + top + above + 4 * u, Math.min(mid + (above - below) / 2, A.y1 - below - 8 * u)), heroY = cy - 0.42 * S;
   ctx.save(); ctx.globalAlpha = clamp(t / 0.18, 0, 1);
   sunburst(cx, heroY, S * 1.3, 'rgba(255,226,140,0.17)', 14);
   const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.75); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
   ctx.fillStyle = g; ctx.fillRect(cx - S, heroY - S, 2 * S, 2 * S);
   ctx.restore();
   const pop = (t0, x, y, draw) => { const k = calm ? 1 : backK((t - t0) / 0.32); if (k <= 0.01) return; ctx.save(); ctx.translate(x, y); ctx.scale(k, k); draw(); ctx.restore(); };
+  if (!calm) { // 0.8.17 (mykee: "make it like a celebration"): a burst of light and confetti as the prize pops, as big as the prize
+    const wt = clamp(((R.coins || 0) + 40 * R.items.length) / 300, 0.15, 1);
+    if (t > 0.18 && t < 0.78) { ctx.save(); ctx.globalAlpha = 0.6; CB.burst(ctx, cx, heroY, S * (0.38 + 0.25 * wt), (t - 0.18) / 0.6); ctx.restore(); }
+    CB.confetti(ctx, cx, heroY, t - 0.1, { n: Math.round(18 + 34 * wt), speed: S * (1.4 + 0.6 * wt), g: S * 1.5, life: 1.9, seed: 3, size: Math.max(6, S * 0.024) });
+  }
   // the prize: the bundle's banner art, or the item itself
-  const hw = Math.min(A.w - 30 * u, S * 1.05), hh = S * 0.5;
+  const hw = Math.min(A.w - 30 * u, S * 1.05);
   pop(0.1, cx, heroY, () => {
     if (R.sku) drawIapBanner(ctx, R.sku, 0, 0, hw, hh, G.t, save.wallet);
     else if (R.art) spinArt(ctx, R.art, 0, 0, hh * 1.5, G.t); // a wheel prize
@@ -2587,22 +2619,29 @@ function drawGot() {
   if (calm || t > 0.35) ui.text(R.name, cx, heroY + hh * 0.62, { size: Math.min(34 * u, 0.1 * S), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 5 * u, maxW: A.w - 40 * u, tag: 'got:name' });
   // what was inside: one by one into a grid (up to 4 a row)
   // what it does, in one or two lines under its name (R.what: a booster's, a chick's, a ticket's own line)
-  const ws = Math.min(20 * u, 0.062 * S), WL = R.what ? wrapText(R.what, ws, Math.min(A.w - 48 * u, 380 * u)).slice(0, 3) : [], whatH = WL.length ? WL.length * ws * 1.3 + 0.03 * S : 0;
   if (WL.length && (calm || t > 0.5)) WL.forEach((ln, q) => ui.text(ln, cx, heroY + hh * 0.62 + 0.1 * S + q * ws * 1.3, { size: ws, align: 'center', color: '#ffffff', stroke: ink, strokeW: 4 * u, maxW: A.w - 40 * u, tag: 'got:what' + q }));
-  const n = R.items.length, per = Math.max(1, Math.min(4, n)), rowsN = Math.ceil(n / per), cell = Math.min(S * 0.27, (A.w - 30 * u) / per), top = heroY + hh * 0.62 + 0.13 * S + whatH;
-  const ls = Math.max(13 * u, Math.min(18 * u, cell * 0.16)), rowH = cell * 0.78 + ls * 2.6;
+  const rowTop = heroY + hh * 0.62 + 0.13 * S + whatH;
   let coinAt = null;
+  const at = [];
   R.items.forEach((it, j) => {
-    const r = Math.floor(j / per), inRow = Math.min(per, n - r * per), k = j - r * per, x = cx + (k - (inRow - 1) / 2) * cell, y = top + r * rowH + cell * 0.32, t0 = 0.6 + 0.14 * j;
+    const r = Math.floor(j / per), inRow = Math.min(per, n - r * per), k = j - r * per, x = cx + (k - (inRow - 1) / 2) * cell, y = rowTop + r * rowH + cell * 0.32, t0 = 0.6 + 0.14 * j;
+    at[j] = { x, y };
     if (it.art === 'coins' && !coinAt) coinAt = { x, y };
     pop(t0, x, y, () => drawPart(ctx, it.art, 0, 0, cell * 0.72, G.t));
     if (calm || t > t0 + 0.2) { const wr = ui.measure(it.label, ls) > cell - 6 * u, L = wr ? wrapText(it.label, ls * 0.92, cell - 6 * u).slice(0, 2) : [it.label]; L.forEach((ln, q) => ui.text(ln, x, y + cell * 0.36 + ls * 0.7 + q * ls * 1.05, { size: wr ? ls * 0.92 : ls, align: 'center', color: '#fff', stroke: ink, strokeW: 4 * u, maxW: cell - 4 * u, tag: `got:l${j}:${q}` })); }
   });
-  // coins fly from the pile into the balance, which rolls up: the one coin-gain effect (purse.gain)
-  if (R.coins0 != null && !R.flown && (calm || t > R.land - 0.6)) { R.flown = true; purse.gain({ from: R.coins0, src: coinAt || (R.art === 'coins' ? { x: cx, y: heroY } : null) }); }
-  const yEnd = Math.min(A.y1 - 34 * u, top + rowsN * rowH + 16 * u);
-  if (t > R.end - 0.2 && R.line !== '') tickLine(R.line || 'Added to your bag', cx, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: A.w - 36 * u, tag: 'got:line', coin: !!R.lineCoin });
+  // 0.8.17 the landing (ui/landing.js): the purse chip on the page with the count before, the coins flying from the pile
+  // into it as the row fills, the boosters and charges into the bag chip beside it (eggs and outfits: the shop's)
+  if (!R.flown) {
+    R.flown = true;
+    const its = [];
+    R.items.forEach((it, j) => { const wh = landWhere(it.art); if (wh) its.push({ art: it.art, src: at[j], ...wh }); });
+    if (R.coins0 != null || its.length) land.start({ from: R.coins0 ?? save.wallet.coins, to: save.wallet.coins, src: coinAt || { x: cx, y: heroY }, items: its, delay: calm ? 0 : Math.max(0, R.land - 0.6 - t) });
+  }
+  const yEnd = Math.min(A.y1 - 34 * u, rowTop + rowsN * rowH + 16 * u);
+  if (t > R.end - 0.2 && lineOn) tickLine(R.line || 'Added to your bag', cx, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: A.w - 36 * u, tag: 'got:line', coin: !!R.lineCoin });
   pop(0.06, cx, cy - 0.98 * S, () => { const hs = Math.min(39 * u, 0.12 * S), w = Math.min(A.w - 36 * u, ui.measure('YOU GOT!', hs) + 80 * u); ui.ribbon('YOU GOT!', 0, -hs * 0.85, w, hs * 1.7, { color: '#d89a1c', size: hs, noRecord: true }); });
+  landDraw(); // over everything on the page: the purse, the bag and what flies into them
   ui.buttons.push({ id: 'got:tap', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); // a tap anywhere
 }
 
@@ -2655,7 +2694,7 @@ async function skipGo(way) {
   if (!ways.includes(way)) return false;
   const lid = G.level.id, li = G.li, still = () => G.screen === from && G.li === li && skipNow();
   if (way === 'coins' && save.wallet.coins < SKIP_COINS) { needCoins(SKIP_COINS); return false; }
-  if (way === 'ad' && !(await rewarded('skip'))) return false; // no video, no skip (rewarded() says so in a toast); Premium: at once
+  if (way === 'ad' && !(await rewarded('skip'))) return false; // no video, no skip (rewarded() says so: the sad hen); Premium: at once
   if (!still()) return false;
   if (way === 'ticket') { const w = E.useTicket(save.wallet, 'skip'); if (!w) return false; save.wallet = w; }
   if (way === 'coins') save.wallet = { ...save.wallet, coins: save.wallet.coins - SKIP_COINS };
@@ -2667,6 +2706,7 @@ async function skipGo(way) {
   G.world = envOf(n); G.toasts = []; G.toast = null; G.skipAsk = null;
   G.mapTravel = playable(n) ? { from: li, to: n, t0: -1 } : null;
   setScreen('levels'); // (no toast: on a small map it covers the stops; the hen's hop says it)
+  if (way === 'ad') popPrize('Level skipped', (c, x, y, S, t) => drawItemArt(c, 'skip', x, y, S, t), null, 0.8); // 0.8.17: what the video gave, then the hop
   return true;
 }
 function drawSkipAsk() {
@@ -2683,6 +2723,36 @@ function drawSkipAsk() {
 
 // the one coin-gain effect (src/ui/purse.js): every counter draws purse.shown(); every grant calls purse.gain()
 const purse = createPurse({ clock: () => G.t, calm: () => !!save.calm, wallet: () => (save && save.wallet ? save.wallet.coins || 0 : 0), screen: () => G.screen, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k) });
+// 0.8.17 (ui/landing.js): a reward page's own purse and bag chips, and the prize pop after a video. land.start / land.draw
+// are what any reward page calls (the Lucky Spin too); landItems turns a page's "what was inside" into things that fly.
+const land = createLanding({ clock: () => G.t, calm: () => !!save.calm, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k), hold: (v) => purse.hold(v), release: () => purse.release() });
+const prizePop = createPrizePop({ clock: () => G.t, calm: () => !!save.calm, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k) });
+const LAND_KIT = { ui: null, coin: (c, x, y, r, t) => drawCoin(c, x, y, r, t), art: (c, a, x, y, s, t) => drawPart(c, a, x, y, s, t), bag: (c, x, y, s, b) => CB.bag(c, x, y, s, b), shop: (c, x, y, s) => shopIcon(c, x, y, s),
+  sadHen: (c, x, y, h, t) => drawHenAnim(c, 'sad', x, y, h, t, { key: 'pop', face: 1, n: 0, calm: save.calm, shadow: 0 }),
+  hen: (c, x, y, h, t) => drawHenAnim(c, 'happy', x, y, h, t, { key: 'popHappy', face: 1, n: Math.floor(t / 1.7), calm: save.calm, shadow: 0 }), dim: (a) => dim(a) };
+const landDraw = () => { LAND_KIT.ui = ui; land.draw(ctx, ui.u, ui.A, LAND_KIT); };
+// where a prize lives: coins to the purse; boosters, charges and tickets to the bag (with how many there are now); eggs,
+// outfits and chicks to the shop; a bundle's summary pictures ("All levels", "No videos") stay on the page
+function landWhere(art) {
+  const w = save.wallet;
+  if (art.startsWith('boost:')) return { dest: 'bag', n: E.ownedCount(w, art.slice(6)) };
+  if (art === 'charge') return { dest: 'bag', n: w.charges };
+  if (art === 'ally') return { dest: 'bag', n: (w.tickets || {}).ally || 0 };
+  if (/^(egg|hen|chick):/.test(art)) return { dest: 'shop' };
+  return null;
+}
+// a video's prize: a small celebration, the prize big with its name, then flown to where it is used (to: a recorded
+// rect's tag, or a point; w: its weight 0..1, the size of the party). Over a running level it keeps to the top third.
+function popPrize(name, art, to = null, w = 0.4) {
+  const at = () => { if (!to) return null; if (typeof to === 'object' && !Array.isArray(to)) return to; const r = ui.rects.find((q) => [].concat(to).includes(q.tag)); return r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : null; };
+  prizePop.start({ name, art, to: at, w, live: G.screen === 'play' });
+}
+function rewindArt(c, x, y, S) { // the rewind's prize: a blue disc with the rewind arrows
+  const r = S * 0.42, g = c.createLinearGradient(0, y - r, 0, y + r); g.addColorStop(0, '#8fd0ff'); g.addColorStop(1, '#2f7fd8');
+  c.save(); c.beginPath(); c.arc(x, y, r, 0, 7); c.fillStyle = g; c.fill(); c.lineWidth = S * 0.05; c.strokeStyle = '#123c6e'; c.stroke();
+  c.beginPath(); c.arc(x - r * 0.25, y - r * 0.35, r * 0.35, 0, 7); c.fillStyle = 'rgba(255,255,255,0.3)'; c.fill(); c.restore();
+  ICON.rewind(c, x, y, S * 0.6);
+}
 // ---- the shop mark (0.8.14, director.js shopMark): a blinking badge on every shop button while the coins reach
 // something new (an egg, an outfit, a reached chick, a set) the player has not seen in the shop yet
 function markItems() {
@@ -4588,7 +4658,7 @@ function update(dt) {
       if (save.calm) { if (a === 0) { audio.play(...REVEAL_SND[it.kind]); buzz('win'); rvClaim(r, it); } RV.t = b; if (b >= 1) rvNext(r); return; }
       for (const [at, fn] of P.cues) if (a <= at && b > at) fn(); // its sounds and ticks, each on its beat
       RV.t = b;
-      if (RV.t >= P.end) rvNext(r);
+      if (RV.t >= P.end && !land.busy()) rvNext(r); // (it waits for the coins to land in the purse on the page)
       return;
     }
     const R0 = routine(r.cheer), t0 = r.t;
@@ -4650,7 +4720,7 @@ function lastEggMoment(sim) {
 const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1, spin: 1 };
 const SCENE_SCREENS = { title: 1, store: 1, practice: 1, levels: 1, spin: 1 }; // these paint a full themed scene (0.8.10: the map paints its own whole picture too, and the wash, drawn after it, dimmed its header and PLAY); the others keep the game behind and get a wash
 function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
-function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); purse.draw(ctx, ui.u, ui.A, drawCoin, ui); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
+function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); purse.draw(ctx, ui.u, ui.A, drawCoin, ui); LAND_KIT.ui = ui; prizePop.draw(ctx, ui.u, ui.A, LAND_KIT); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
 function drawStoreScreen() { // the shop's toast floats over its scrolling list (like a clipped card, it records nothing)
   drawStore(ui, ctx, W_, H_, { ...storeState(), area: ui.A, adReady: adCd() === 0, adCooldownLeft: adCd(), adCoins: adCoins(), tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), featured: storeFeatured() }); { const ci = ui.rects.find((r) => r.tag === 'store:coinicon'); if (ci) purse.at({ x: ci.x + ci.w / 2, y: ci.y + ci.h / 2 }); } const n0 = ui.rects.length; drawToast(); ui.rects.length = n0; menuFx(); /* the shop paints its own backdrop: the effect drifts over it */
 }
@@ -6903,7 +6973,12 @@ function drawLevelIntro(L, acc) {
   };
   const adOn = showBoost && !G.adBoost && !G.golden;
   const boostState = () => ({ wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t,
-    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: tabMark, s, page: G.boostPg && G.boostPg.lid === L.id ? G.boostPg.n : 0, ...boostUse(L), teach: boostTeach(L) });
+    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: null, attn: stripAttn(L), s, page: G.boostPg && G.boostPg.lid === L.id ? G.boostPg.n : 0, ...boostUse(L), teach: boostTeach(L) });
+  // 0.8.17 (mykee: "an even more blinking effect so that the user will be able to point it out"): the strip blinks its rim
+  // twice every 2.4 s and a shine runs over it (ui/store.js stripAttn), with a tapping hand on the first three level
+  // cards of a session; once the player has touched the strip on this level it rests there for good. Calm: a steady rim.
+  if (G.stripLid !== pg.lid) { G.stripLid = pg.lid; G.stripVisits = (G.stripVisits || 0) + (showBoost ? 1 : 0); }
+  const stripAttn = (Lv) => (G.li < 0 || (save.seen || {})['strip:' + Lv.id] ? null : { calm: !!save.calm, pointer: G.stripVisits <= 3 ? (px, py, c, t) => { const q = save.calm ? 0.5 : (t % 1.1) / 1.1, down = q > 0.45 && q < 0.7; teachHand(ctx, px, py + (save.calm ? 0 : -Math.abs(Math.sin(q * Math.PI)) * c * 0.14), Math.min(c * 0.62, 40 * s), down, 1); } : null });
   const bottom = (x, w) => { // draws from the bottom of the safe rect up; returns the top of what it drew
     let y = A.y1 - 6 * s - BTN;
     bigButton(x, y, w);
@@ -8093,36 +8168,54 @@ function rvPlan(r, it) {
   if (fly) for (let j = kind === 'treasure' ? 1 : 0; j < n; j++) cues.push([claim + 0.07 * j + RV_FLY, () => { audio.play('hud_pop', { vol: 0.45, pitch: 1.3 }); buzz('tick'); }]); // into the bag (the purse has its own landing)
   return (it.P = { land, open, pop, set, claim, end, n, fly, cues });
 }
-// the treasure's coins go into the purse (once): the one coin-gain effect, from where the coins stand in the row
+// 0.8.17 the reveal's landing (ui/landing.js): from its first frame the purse chip (the count before) and the bag chip
+// stand top right on the page; at the claim the treasure's coins fly from the row into the purse, its booster and charges
+// (or a free try's booster) into the bag, which then shows them with how many there are now
+function rvLand(r, it) {
+  if (it.landOn || !(it.kind === 'treasure' || (it.kind === 'gift' && r.gift.kind === 'boost'))) return;
+  it.landOn = true;
+  const g = rvGeom(), A = ui.A, u = ui.u, p0 = (r.purse0 ?? save.wallet.coins) + (r.trFlown && it.kind !== 'treasure' && r.treasure ? r.treasure.coins : 0);
+  if (it.kind === 'treasure') {
+    const R = r.treasure, sp = Math.min(g.S * 0.38, (A.w - 30 * u) / 3), isz = g.S * 0.3, at = (j) => ({ x: g.cx + (j - 1) * sp, y: g.rowY });
+    land.start({ wait: true, from: p0, to: p0 + R.coins, src: at(0), items: [
+      { art: 'boost:' + R.booster, src: at(1), size: isz / 0.82, ...landWhere('boost:' + R.booster) },
+      { art: 'charge', src: at(2), size: isz, draw: (c, x, y, S) => pictoPower(c, 'thunder', x, y, S * 0.95, G.t), dest: 'bag', n: save.wallet.charges }] });
+  } else land.start({ wait: true, from: p0, to: p0, items: [{ art: 'boost:' + r.gift.id, src: { x: g.cx, y: g.heroY }, size: g.S * 0.76, ...landWhere('boost:' + r.gift.id) }] });
+}
+// the claim: what is in the row sets off for the purse and the bag (once)
 function rvClaim(r, it) {
-  if (it.kind !== 'treasure' || r.trFlown || r.purse0 == null) return;
-  r.trFlown = true; purse.gain({ from: r.purse0, to: r.purse0 + r.treasure.coins, src: it.src }); // (the win's own coins follow on the card)
+  rvLand(r, it);
+  if (it.landOn && !it.claimed) { it.claimed = true; land.go(); }
+  if (it.kind === 'treasure' && !r.trFlown && r.purse0 != null) r.trFlown = true; // (the win's own coins follow on the card)
 }
 function rvNext(r) {
   const RV = r.rv;
   rvClaim(r, RV.list[RV.i]);
+  land.finish(); land.clear(); // (a tap while it flew: all of it landed at once, nothing lost)
   RV.i++; RV.t = 0;
   if (!revealing(r)) { r.rvDone = G.t; CB.releaseCelebrate(); }
 }
 // a tap: to the open state (all of it out and landed), then on
 function rvTap(r) {
   const RV = r.rv, it = RV.list[RV.i], P = rvPlan(r, it);
+  if (it.claimed && land.busy()) { land.finish(); return; } // coins in the air: the first tap lands them all, the next moves on
   if (save.calm || RV.t >= P.set) { rvNext(r); return; }
   if (RV.t < P.open) { audio.play(...REVEAL_SND[it.kind]); buzz('win'); }
   RV.t = P.set;
 }
 // the reveals' layout (the hero in the upper middle, a row under it, the headline ribbon on top)
 function rvGeom() {
-  const A = ui.A, u = ui.u, S = Math.min(A.w * 0.9, A.h * 0.46, 420 * u), cy = A.y + A.h * 0.52;
+  // 0.8.17: on a phone held upright the top row is the purse's and the bag's (ui/landing.js): the reveal starts under it
+  const A = ui.A, u = ui.u, top = A.h > A.w ? 62 * ui.u : 0, S = Math.min(A.w * 0.9, (A.h - top) * 0.46, 420 * u), cy = A.y + top + (A.h - top) * 0.52;
   const ls = Math.max(17 * u, Math.min(27 * u, 0.085 * S)); // the lines of words
   // room: the free height under the last line of words (the bag and, on a short screen, the stars live there); a wide screen has the corners free anyway
-  return { S, cx: A.cx, cy, heroY: cy - 0.3 * S, rowY: cy + 0.27 * S, hy: cy - 0.98 * S, hs: Math.min(39 * u, 0.12 * S), ls, room: A.w > A.h * 1.15 ? 1e4 : A.y1 - 8 * u - (cy + 0.74 * S + ls * 0.8) };
+  return { S, cx: A.cx, cy, top, heroY: cy - 0.3 * S, rowY: cy + 0.27 * S, hy: cy - 0.98 * S, hs: Math.min(39 * u, 0.12 * S), ls, room: A.w > A.h * 1.15 ? 1e4 : A.y1 - 8 * u - (cy + 0.74 * S + ls * 0.8) };
 }
 // where the stars wait through the reveals: a small row above the headline (no room there: the bottom left corner,
 // across from the bag, under the last line of words)
 function miniStars() {
-  const A = ui.A, u = ui.u, g = rvGeom(), R1 = Math.min(20 * u, A.w * 0.052), top = g.hy - g.hs * 0.85 - A.y, mid = top >= 2 * R1 + 12 * u, R = mid ? R1 : Math.min(R1, g.room / 2.3);
-  const x0 = mid ? A.cx : A.x + 14 * u + 3.3 * R, y = mid ? A.y + top / 2 : A.y1 - 8 * u - R * 1.1;
+  const A = ui.A, u = ui.u, g = rvGeom(), R1 = Math.min(20 * u, A.w * 0.052), top = g.hy - g.hs * 0.85 - A.y - g.top, mid = top >= 2 * R1 + 12 * u, R = mid ? R1 : Math.min(R1, g.room / 2.3);
+  const x0 = mid ? A.cx : A.x + 14 * u + 3.3 * R, y = mid ? A.y + g.top + top / 2 : A.y1 - 8 * u - R * 1.1; // (under the purse's row)
   return { R, stars: [0, 1, 2].map((q) => ({ x: x0 + (q - 1) * 2.3 * R, y: y - (mid && q === 1 ? R * 0.3 : 0) })) };
 }
 const eggName = (n) => n.replace(/ Egg$/, '') + ' Egg'; // the skins' names: "Robo Egg" and "Galaxy" alike
@@ -8179,12 +8272,15 @@ function drawReveal(r, drawStars) {
   const purseAt = { x: A.x1 - 82 * u, y: A.y + 28 * u }, bagS = Math.min(84 * u, S * 0.27, room * 0.92), bagAt = { x: A.x1 - 16 * u - bagS * 0.6, y: A.y1 - 8 * u - bagS * 0.56 }; // the bag keeps clear of the last line of words
   let bagN = 0; // things on their way to the bag this reveal
   const late = []; // things in flight to where they live: drawn over the words
+  rvLand(r, it); // the purse and bag chips, on the page from its first frame (ui/landing.js flies the treasure and a free booster)
+  const byLand = !!it.landOn;
   // one thing that jumps out of the hero (j: its turn), lands at (sx, sy), and at the claim flies to dst
   const item = (j, sx, sy, dst, draw) => {
     const t0 = P.pop(j), a = calm ? 1 : clamp((t - t0) / RV_ARC, 0, 1);
     if (a <= 0) return 0;
-    const f0 = P.claim + 0.07 * j, fl = calm || !P.fly ? 0 : clamp((t - f0) / RV_FLY, 0, 1);
-    if (dst === bagAt) bagN++;
+    const f0 = byLand ? P.claim + (j ? 0.1 + 0.14 * (j - 1) : 0) : P.claim + 0.07 * j, fl = calm || !P.fly ? 0 : clamp((t - f0) / RV_FLY, 0, 1);
+    if (byLand && fl > 0) return 2; // the landing flies it from here
+    if (dst === bagAt && !byLand) bagN++;
     if (fl >= 1) { CB.landFlash(ctx, dst.x, dst.y, 26 * u, (t - f0 - RV_FLY) / 0.3); return 2; }
     let x, y, sc, rot = 0;
     if (fl > 0) { const e = fl * fl; [x, y] = CB.arcPt(sx, sy, dst.x, dst.y, e, dst === bagAt ? S * 0.32 : S * 0.05, dst === bagAt ? 0 : -S * 0.3); sc = 1 - 0.62 * e; rot = (dst === bagAt ? 1 : -1) * e * 1.2; }
@@ -8220,7 +8316,7 @@ function drawReveal(r, drawStars) {
       ui.text(num, sx, rowY + isz * 0.7, { size: ns, align: 'center', color: '#fff6c8', stroke: ink, strokeW: 4.5 * u, tag: 'rv:n' + j });
       ui.text(lab, sx, rowY + isz * 0.7 + ns, { size: Math.min(ls * 0.82, (sp - 10 * u) * 20 / ui.measure(lab, 20)), align: 'center', color: '#fff', stroke: ink, maxW: sp - 6 * u, tag: 'rv:l' + j });
     });
-    if (t > P.set - 0.25) tickLine('Added to your bag', cx, cy + 0.74 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' });
+    if (t > P.set - 0.25 && !byLand) tickLine('Added to your bag', cx, cy + 0.74 * S, ls, { stroke: ink, fit: A.w - 36 * u, tag: 'rv:line' }); // (0.8.17: the bag chip shows it)
   } else if (it.kind === 'gift') { // a taste: it comes in a gift box; out of it rises the item itself, alive, in a spotlight
     const T = r.gift, bs = S * 0.6, by = heroY + S * 0.08, ha = calm ? 1 : clamp(oa / 0.42, 0, 1);
     if (opened) CB.spotlight(ctx, cx, 0, heroY + S * 0.39, S * 0.1, S * 0.5, ha);
@@ -8230,8 +8326,9 @@ function drawReveal(r, drawStars) {
     fx('#e8f6ff');
     if (opened) {
       const fl = calm || !P.fly ? 0 : clamp((t - P.claim) / RV_FLY, 0, 1); // a booster leaves for the bag; a chick, a skin, an outfit stays (it is on)
-      if (P.fly) bagN++;
-      if (fl >= 1) CB.landFlash(ctx, bagAt.x, bagAt.y, 26 * u, (t - P.claim - RV_FLY) / 0.3);
+      if (P.fly && !byLand) bagN++;
+      if (byLand && fl > 0) { /* the landing flies it to the bag chip */ }
+      else if (fl >= 1) CB.landFlash(ctx, bagAt.x, bagAt.y, 26 * u, (t - P.claim - RV_FLY) / 0.3);
       else {
         const k = calm ? 1 : backK(ha), [x, y] = fl > 0 ? CB.arcPt(cx, heroY, bagAt.x, bagAt.y, fl * fl, S * 0.3, 0) : [cx, heroY + (1 - CB.easeOut(ha)) * S * 0.16];
         const still = T.kind === 'skin' || T.kind === 'boost', sc = k * (1 - 0.72 * fl * fl);
@@ -8287,6 +8384,7 @@ function drawReveal(r, drawStars) {
     ctx.restore();
   }
   if (RV.list.length > 1) RV.list.forEach((q, j) => { ctx.beginPath(); ctx.arc(cx + (j - (RV.list.length - 1) / 2) * 18 * u, Math.min(A.y1 - 22 * u, cy + 0.9 * S), (j === RV.i ? 6 : 4) * u, 0, 7); ctx.fillStyle = j === RV.i ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.fill(); });
+  if (byLand) landDraw(); // the purse and the bag, over the reveal
 }
 
 // 2026-11-23 the win card's coins (mykee: "when the ad is finished ... show the coins double kind of a thing, the
@@ -9699,6 +9797,7 @@ if (DEV) window.__egg = {
   seaAnim, // v3.3: the octopus's and fishes' render state (QA strips)
   handle: () => handleEvents(),
   purse, // the coin-gain effect (QA strips: purse.state)
+  land, prizePop, // 0.8.17 the reward landing and the prize pop (QA strips: land.state, prizePop.state)
   overlaps: () => G.overlaps,
   // the "i" panel (tools/info-check.cjs, qa-overlap): the table, the kind finder, the portraits, and an opener for any screen
   VILLAIN_INFO, villainKinds, bossAttacks, villainArt: drawVillainPortrait,
