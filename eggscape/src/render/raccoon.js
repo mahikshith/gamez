@@ -75,12 +75,12 @@ export function raccoonPose(state, t, u = 0, opt = {}) {
     }
     case 'grab': { // yanks the egg home, squashes round it, then bounces with it, cheek to shell
       const k = ss(0, 0.28, u), hug = back(ss(0.24, 0.42, u)), gl = ss(0.42, 0.55, u), h = Math.abs(Math.sin(t * 7.5)) * gl;
-      const p = P({ by: 36 - 5 * Math.sin(ss(0.2, 0.45, u) * Math.PI) + 5 * h, dx: 10 * (1 - k), rot: lerp(0.34, -0.1, k) + 0.05 * Math.sin(t * 7.5) * gl, sq: 0.1 * Math.sin(ss(0.2, 0.45, u) * Math.PI) - 0.05 * h, hx: 6, hy: -42, hr: lerp(-0.3, 0.3, hug), look: 0.8, looky: 0.6,
+      const p = P({ by: 36 - 5 * Math.sin(ss(0.2, 0.45, u) * Math.PI) + 5 * h, dx: 10 * (1 - k), rot: lerp(0.34, -0.1, k) + 0.05 * Math.sin(t * 7.5) * gl, sq: 0.1 * Math.sin(ss(0.2, 0.45, u) * Math.PI) - 0.05 * h, hx: 3, hy: -43, hr: lerp(-0.3, 0.08, hug), look: 0.8, looky: 0.6,
         lid: 0.15, happy: gl, smile: 1, jaw: 0.25 + 0.4 * gl, teeth: gl, brow: 0.1, ear: -0.2 * gl, tail: 0.35, tc: 1.0, tw: Math.sin(t * 15) * (0.2 + 0.7 * gl), egg: 1, sky: -9 - 4 * h, a1x: 30, a1y: -9 });
       fin(p, { f0: [-9, -3 - 5 * h], f1: [11, -3 - 5 * h] });
       const far = fin({ ...p, rot: 0.34, dx: 10 }, { e: to }); // where the egg was
-      p.ex = lerp(far.ex, 23, k); p.ey = lerp(far.ey, 0, k) - 4 * Math.sin(k * Math.PI);
-      p.a0x = p.ex + lerp(-2, 9, hug); p.a0y = p.ey + lerp(4, 13, hug); p.a1x = p.ex + 10; p.a1y = p.ey - 12 * hug;
+      p.ex = lerp(far.ex, 30, k); p.ey = lerp(far.ey, 1, k) - 4 * Math.sin(k * Math.PI);
+      p.a0x = p.ex + lerp(-2, -1, hug); p.a0y = p.ey + lerp(4, 23, hug); p.a1x = p.ex + lerp(10, 15, hug); p.a1y = p.ey - 9 * hug;
       return p;
     }
     case 'pinched': { // the jolt: rigid, eyes popping, fur on end, the paw still caught; then free and hopping on one foot
@@ -103,11 +103,11 @@ export function raccoonPose(state, t, u = 0, opt = {}) {
     }
     case 'whistle': { // a big breath (chest up, head back), two fingers in, then he doubles forward and blows, cheeks out
       const inn = ss(0, 0.2, u) * (1 - ss(0.24, 0.32, u)), bl = back(ss(0.26, 0.36, u)) * (1 - ss(0.8, 0.92, u)), pant = ss(0.88, 1, u), sh = Math.sin(t * 45) * 0.6 * clamp(bl, 0, 1);
-      const p = P({ by: 36 + 2 * inn - 2 * bl, dx: sh, rot: -0.2 * inn + 0.22 * bl, sq: -0.08 * inn + 0.05 * bl + 0.03 * pant * Math.sin(t * 9), hx: 5 + 3 * bl, hy: -42 - 2 * inn, hr: -0.3 * inn + 0.12 * bl, cheek: clamp(bl, 0, 1.1), squeeze: bl > 0.5 ? 1 : 0, pucker: ss(0.1, 0.25, u) * (1 - pant), lid: 0.2, brow: 0.6,
+      const p = P({ by: 36 + 2 * inn - 1 * bl, dx: sh, rot: -0.2 * inn - 0.05 * bl, sq: -0.08 * inn + 0.04 * bl + 0.03 * pant * Math.sin(t * 9), hx: 5 + 1 * bl, hy: -42 - 2 * inn, hr: -0.3 * inn - 0.26 * bl, cheek: clamp(bl, 0, 1.1), squeeze: bl > 0.5 ? 1 : 0, pucker: ss(0.1, 0.25, u) * (1 - pant), lid: 0.2, brow: 0.6,
         look: 0.8, ear: 0.6 * bl, tail: 0.15 + 1.0 * bl, tc: 1.0 - 0.7 * bl, puff: 0.5 * bl, note: clamp(bl, 0, 1), hand: 2 * (1 - pant), jaw: 0.5 * pant, tongue: pant, ta: 1.2, a1x: 24, a1y: 3, smile: 0.3 });
       fin(p, { f0: [-10, -3], f1: [13, -3] });
       const k = ss(0.05, 0.22, u) * (1 - pant); // the paw to the mouth
-      p.a0x = lerp(-15, p.hx + 20, k); p.a0y = lerp(10, p.hy + 16, k);
+      const hc = Math.cos(p.hr), hs = Math.sin(p.hr); p.a0x = lerp(-15, p.hx + 3 * hc - 27 * hs, k); p.a0y = lerp(10, p.hy + 3 * hs + 27 * hc, k);
       return p;
     }
     case 'laugh': { // head thrown back, pointing, the other paw on a shaking belly, one foot stamping
