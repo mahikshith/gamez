@@ -7680,6 +7680,85 @@ function winFeathers(alpha) {
   }
   ctx.restore();
 }
+// ---- 0.8.16 the win page's tiles
+// one of two or three rewards side by side: its art on top, its name, a ticked line (each was shown big in its reveal)
+function winLootTile(r, kind, x, y, w, h, s) {
+  const C = ui.C, cx = x + w / 2, hot = kind === 'hot', l1 = y + 65 * s, l2 = y + 83 * s, tw = w - 12 * s;
+  ui.well(x, y, w, h, { s, a: hot ? '#ffe0cc' : '#ffe9b0', b: hot ? '#fff3ea' : '#fff6dc' });
+  const line2 = (str, tag) => tickLine(str, cx, l2, 12.5 * s, { color: '#2d7a1c', fit: tw, tag });
+  if (kind === 'treasure') { // the open chest (when the tile is wide enough for it) and its three things with their counts
+    const its = treasureItems(r.treasure), chest = w >= 168 * s, x0 = x + (chest ? 50 * s : 4 * s), iw = Math.min(46 * s, (x + w - 4 * s - x0) / 3), xi = x0 + (x + w - 4 * s - x0 - 3 * iw) / 2;
+    if (chest) drawChest(ctx, x + 28 * s, y + 30 * s, 42 * s, G.t, 'open');
+    its.forEach(([k2, n], j) => { const ix = xi + (j + 0.5) * iw; rewardIcon(k2, r.treasure, ix, y + 21 * s, 26 * s); ui.text(n, ix, y + 43 * s, { size: 13 * s, align: 'center', color: C.ink, maxW: iw - 2 * s, tag: 'win:tri' + j }); });
+    ui.text('Boss treasure', cx, l1, { size: 14.5 * s, align: 'center', color: C.ink, maxW: tw, tag: 'win:tr' });
+    line2('In your bag', 'win:tr2');
+  } else if (kind === 'gift') { // the free try: the thing itself
+    const T = r.gift;
+    tasteArt(T, cx, y + 29 * s, (T.kind === 'hen' ? 50 : T.kind === 'boost' ? 64 : 46) * s, false); // (a booster's icon draws small for its size)
+    ui.text(tasteName(T), cx, l1, { size: 14.5 * s, align: 'center', color: C.ink, maxW: tw, tag: 'win:gift' });
+    line2(T.kind === 'boost' ? '+1 in your bag' : `Free for ${DR.DIR.skinLevels} levels`, 'win:gift2');
+  } else { // the win streak: its flame, and the boosters it brings to the next level
+    const hb = r.hotB || [], iw = Math.min(30 * s, (w - 56 * s) / Math.max(1, hb.length)), gw = 40 * s + hb.length * iw, fx = cx - gw / 2 + 20 * s;
+    streakFlame(ctx, 'hot:win', fx, y + 30 * s, 38 * s, r.hot, G.t, save.calm);
+    hb.forEach((b, j) => drawBoosterIcon(ctx, b, fx + 20 * s + (j + 0.5) * iw, y + 29 * s, Math.min(30 * s, iw * 1.05), G.t));
+    ui.text(`${r.hot} wins in a row`, cx, hb.length ? l1 : y + 72 * s, { size: 14.5 * s, align: 'center', color: C.ink, maxW: tw, tag: 'win:hot' });
+    if (hb.length) line2('Free next level', 'win:hot2');
+  }
+}
+// the SHOP, big: a gold tile with the thing the coins reach (or the nearest one beyond them) on a bright disc, the
+// purse's count (the win's coins fly here), and the blinking mark on its corner while there is something new
+function winShopTile(r, x, y, w, h, s) {
+  const M = shopMarkNow(), coins = save.wallet.coins, id = r.mark ? 'win:shop' : 'shop', grp = 'btn:' + id;
+  const sig = `${coins}|${(save.wallet.skins || []).length}|${(save.wallet.henSkins || []).length}`;
+  if (!r.shopT || r.shopT.sig !== sig) { // its pictures: the marked thing, then what the coins reach (dearest first), then the nearest beyond
+    const own = markItems().filter((i) => !i.owned && (i.kind === 'skin' || i.kind === 'hen'));
+    const can = own.filter((i) => i.price <= coins).sort((a, b) => b.price - a.price), far = own.filter((i) => i.price > coins).sort((a, b) => a.price - b.price);
+    const lead = r.mark ? [{ key: r.mark, price: 0 }] : [];
+    r.shopT = { sig, pics: lead.concat(can, far).filter((v, i, a) => a.findIndex((q) => q.key === v.key) === i).slice(0, 3) };
+  }
+  const pics = r.shopT.pics, B = ui.button(id, '', x, y, w, h, { kind: 'gold', shimmer: !!r.mark, shimmerOff: 60, round: 18 * s });
+  const cy = B.cy, R = Math.min(33 * s, h * 0.37), dx = x + 14 * s + R;
+  const disc = (px, rr, lit) => { ctx.beginPath(); ctx.arc(px, cy, rr, 0, 7); ctx.fillStyle = lit ? 'rgba(255,255,255,0.62)' : 'rgba(255,255,255,0.3)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(122,62,4,0.35)'; ctx.stroke(); };
+  disc(dx, R, true);
+  if (pics[0]) markArt(pics[0].key, dx, cy + 1 * s, R * 1.62); else shopIcon(ctx, dx, cy, R * 1.3);
+  ui.record({ x: dx - R, y: cy - R, w: 2 * R, h: 2 * R }, 'win:shoppic', grp);
+  // a lone tile (no spin beside it) is wide: two more pictures stand at its right end
+  const more = w > 300 * s ? pics.slice(1) : [], r2 = R * 0.8, mx = x + w - 14 * s - more.length * (2 * r2 + 6 * s);
+  more.forEach((it, i) => { const px = mx + r2 + i * (2 * r2 + 6 * s); disc(px, r2, it.price <= coins); markArt(it.key, px, cy + 1 * s, r2 * 1.62); });
+  const tx = dx + R + 12 * s, tw = (more.length ? mx : x + w) - 10 * s - tx, sc = purse.pop();
+  ui.text('Shop', tx, cy - 13 * s, { size: 25 * s, color: '#fff', stroke: '#8a4a04', strokeW: 4 * s, maxW: tw, tag: 'win:shopt', group: grp });
+  const py = cy + 16 * s, px = tx + 10 * s;
+  ctx.save(); if (sc !== 1) { ctx.translate(px, py); ctx.scale(sc, sc); ctx.translate(-px, -py); }
+  drawCoin(ctx, px, py, 10 * s, G.t); purse.at({ x: px, y: py });
+  ui.text(String(purse.shown()), px + 15 * s, py + 0.5 * s, { size: 17 * s, color: '#fff8e0', stroke: '#8a4a04', strokeW: 3 * s, maxW: tw - 25 * s, tag: 'win:shopc', group: grp });
+  ctx.restore();
+  if (M.on || r.mark) { const br = 11 * s; markBadge(x + w - br * 0.9, y + br * 0.7, br, G.t); }
+}
+// the LUCKY SPIN beside it: a spin waits = an orange tile with the machine, SPIN and how many; none waits = a quiet
+// tile with the wins still to go (a tap opens the machine all the same: coins and videos turn it too)
+function winSpinTile(x, y, w, h, s, leads) {
+  const C = ui.C, M = SP.meter(save), n = M.bank, on = n > 0, grp = 'btn:spin';
+  const B = ui.button('spin', '', x, y, w, h, { kind: on ? 'orange' : 'tertiary', shimmer: leads, round: 18 * s });
+  const cy = B.cy, R = Math.min(33 * s, h * 0.37), dx = x + 14 * s + R, tx = dx + R + 12 * s, tw = x + w - 10 * s - tx;
+  ctx.beginPath(); ctx.arc(dx, cy, R, 0, 7); ctx.fillStyle = on ? 'rgba(255,255,255,0.62)' : 'rgba(122,80,40,0.13)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = on ? 'rgba(122,40,4,0.35)' : 'rgba(122,80,40,0.3)'; ctx.stroke();
+  drawSlotIcon(ctx, dx - R * 0.06, cy, R * 0.74, save.calm ? 0 : G.t);
+  ui.record({ x: dx - R, y: cy - R, w: 2 * R, h: 2 * R }, 'win:spinpic', grp);
+  if (on) {
+    ui.text('SPIN', tx, cy - 13 * s, { size: 25 * s, color: '#fff', stroke: '#692b04', strokeW: 4 * s, maxW: tw, tag: 'win:spint', group: grp });
+    const sub = n > 1 ? `${n} free spins` : 'Free spin';
+    ui.text(sub, tx, cy + 16 * s, { size: Math.min(16 * s, (tw * 16) / ui.measure(sub, 16)), color: '#fff8e0', stroke: '#692b04', strokeW: 3 * s, maxW: tw, tag: 'win:spinc', group: grp });
+    const br = 11 * s; markBadge(x + w - br * 0.9, y + br * 0.7, br, G.t, String(n), !leads);
+    return;
+  }
+  ui.text('Lucky Spin', tx, cy - 22 * s, { size: Math.min(18 * s, (tw * 18) / ui.measure('Lucky Spin', 18)), color: C.ink, maxW: tw, tag: 'win:spint', group: grp }); // shrinks whole, never cut
+  for (let i = 0; i < M.of; i++) { // the wins that fill it
+    const px = tx + 9 * s + i * 21 * s, got = i < M.have;
+    ctx.beginPath(); ctx.arc(px, cy + 1 * s, 8 * s, 0, TAU); ctx.fillStyle = got ? '#fff6c8' : 'rgba(122,80,40,0.16)'; ctx.fill(); ctx.lineWidth = 1.8 * s; ctx.strokeStyle = got ? '#3a9a2c' : 'rgba(122,80,40,0.45)'; ctx.stroke();
+    if (got) pictoCheck(ctx, px, cy + 1 * s, 14 * s);
+  }
+  ui.record({ x: tx, y: cy - 8 * s, w: M.of * 21 * s, h: 18 * s }, 'win:spinpips', grp);
+  ui.text(`${M.left} more win${M.left > 1 ? 's' : ''}`, tx, cy + 23 * s, { size: 13.5 * s, color: C.ink2, maxW: tw, tag: 'win:spinc', group: grp });
+}
 function drawWinPage() {
   const r = G.result, u = ui.u, SH = winShow(r), k = winIn(r), e = k * k * (3 - 2 * k), inCard = k >= 1;
   const C = ui.C;
@@ -7697,9 +7776,11 @@ function drawWinPage() {
   const side = !!sd;
   const pw = routinePower(r.stars), calm = save.calm, seed = G.level.id || 0;
   // the stage takes the room the rest of the card leaves (a tall phone: the full 184 units; a squat screen: less)
-  const A = ui.A, room = (A.y1 - Math.max(G.hudBottom, A.y) - 30 * u) / u - 650, stH = clamp(room, 120, 200);
-  // a squat screen with no room beside the card either (600x600): she shares the star row, left of the stars
-  const compact = !side && room < 50, rowH = compact ? 100 : 58; // only a really squat screen (600x600) puts her beside the stars
+  // 0.8.16: measured from what this win really shows (it was a fixed guess, so a boss win with a treasure, a free try
+  // and a spin ran over and the whole page was shrunk to fit: narrow, crowded and small)
+  const A = ui.A, rowH = 100;
+  let stH = 0, compact = false; // set below, once the rest is known
+  // (compact: no room for her stage and none beside the card either: she shares the star row, left of the stars)
   const title = G.level.boss && G.li >= 0 ? 'Boss beaten!' : r.stars === 3 ? 'Perfect clutch!' : r.stars === 2 ? 'Great job!' : 'Vault cracked!';
   const BIG = bigStage(side);
   // confetti fired during the show keeps the show's geometry (full screen), so it does not jump when she flies to the card
@@ -7730,17 +7811,26 @@ function drawWinPage() {
       draw: () => { henStage(T.box, s, true); if (inCard) drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, clip: T.clip, fxBig }); ui.record(T.box, 'win:hen'); } });
     // level 1 (2026-11-20 first-five ladder): the stars, the hen and one big NEXT; nothing else to read or tap
     const first = G.li === 0 && G.level.id === 1;
-    // how you did: each star's goal, ticked or crossed, with what happened (why it is 1 or 2 stars)
+    // how you did: each star's goal, ticked or crossed, with what happened (why it is 1 or 2 stars); the level's
+    // bonus goal, when it has one, is a fourth line with a target instead of a star
     const goals = (r.goals || []).map((g) => [g.long, g.ok, g.res]);
-    const gh = 40 * s, GH = 30 * s + 3 * gh + 6 * s;
+    const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+    if (r.hasBonus) goals.push(['Bonus goal', !!r.bonus, r.bonus ? 'Done' : 'Missed', 'target']);
+    const gh = 40 * s, GH = 30 * s + goals.length * gh + 6 * s;
     if (!first) B.push({ h: GH, gap: 10 * s, draw: (x, y, w) => {
       ui.well(x, y, w, GH, { s, a: '#f3e2bd', b: '#fbf0d6' });
-      ui.text('HOW YOU DID', x + w / 2, y + 16 * s, { size: 14 * s, align: 'center', color: C.ink2, tag: 'win:howhead' });
+      // the heading, and on its right your time (0.8.16: the time's own panel is gone)
+      if (r.used != null) {
+        ui.text('HOW YOU DID', x + 14 * s, y + 17 * s, { size: 14 * s, color: C.ink2, tag: 'win:howhead' });
+        const tt = mmss(r.used), tw = ui.measure(tt, 15 * s);
+        pictoClock(ctx, x + w - 22 * s - tw, y + 17 * s, 17 * s);
+        ui.text(tt, x + w - 12 * s, y + 17 * s, { size: 15 * s, align: 'right', color: C.ink, tag: 'win:vclock' });
+      } else ui.text('HOW YOU DID', x + w / 2, y + 16 * s, { size: 14 * s, align: 'center', color: C.ink2, tag: 'win:howhead' });
       const sr = 7.5 * s, gx = x + 12 * s;
-      goals.forEach(([txt, ok, res], i) => {
+      goals.forEach(([txt, ok, res, pic], i) => {
         const ry = y + 30 * s + i * gh + gh / 2;
         if (i) { ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(x + 10 * s, ry - gh / 2, w - 20 * s, 1.2 * s); }
-        drawStar(ctx, gx + sr * 1.6, ry, sr * 1.7, ok); // one star, one goal
+        if (pic) pictoTarget(ctx, gx + sr * 1.6, ry, 24 * s); else drawStar(ctx, gx + sr * 1.6, ry, sr * 1.7, ok); // one star, one goal
         const ix = x + w - 22 * s;
         (ok ? pictoCheck : pictoCross)(ctx, ix, ry, 24 * s);
         const rw = ui.measure(res, 14.5 * s), tx = gx + sr * 3.6 + 8 * s, rx = ix - 18 * s;
@@ -7748,41 +7838,16 @@ function drawWinPage() {
         ui.text(txt, tx, ry, { size: 16 * s, color: ok ? C.ink : 'rgba(80,50,25,0.75)', maxW: rx - Math.min(rw, w * 0.36) - 10 * s - tx, tag: 'win:goal' + i });
       });
     } });
-    // the cells: your time, coins (+ the bonus goal)
-    const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
-    const cells = [];
-    if (r.used != null) cells.push(['clock', 'Your time', mmss(r.used), C.ink]);
-    cells.push(['coin', 'Coins', '+' + Math.round((r.coins || 0) * cnt), '#a85f00']);
-    if (r.hasBonus) cells.push(['target', 'Bonus goal', r.bonus ? 'Done' : 'Missed', r.bonus ? C.good : C.bad]);
-    const ch = 48 * s, nr = Math.ceil(cells.length / 2), CH = nr * ch + 10 * s;
-    if (!first) B.push({ h: CH, gap: 8 * s, draw: (x, y, w) => {
-      ui.well(x, y, w, CH, { s });
-      cells.forEach(([k2, lab, v, col], i) => {
-        const cx = x + (i % 2) * w / 2, cy = y + 5 * s + ch * Math.floor(i / 2), ix = cx + 24 * s, iy = cy + ch / 2;
-        if (k2 === 'clock') pictoClock(ctx, ix, iy, 26 * s); else if (k2 === 'target') pictoTarget(ctx, ix, iy, 26 * s); else drawCoin(ctx, ix, iy, 12 * s, G.t);
-        if (k2 === 'coin' && r.perkGold && !save.calm) goldGlints(ix, iy, s); // Midas (the Golden egg): the count-up shimmers
-        if (k2 === 'coin') { drawWinCoins(r, ix, iy, w / 2, s, cnt, inCard); return; } // the count-up, its roll into the purse, and the doubling moment
-        ui.text(lab, ix + 20 * s, iy - 10 * s, { size: 12.5 * s, color: C.ink2, maxW: w / 2 - 50 * s, tag: 'win:l' + k2 });
-        ui.text(v, ix + 20 * s, iy + 9 * s, { size: 19 * s, color: col, maxW: w / 2 - 50 * s, tag: 'win:v' + k2 });
-      });
-    } });
-    // 0.8.14 the shop mark on the win card: this win's coins reach something new in the shop. One small chip under the
-    // coins (its art, "New in shop", an arrow); a tap opens the shop on it. Not in the early days, no price on it.
-    if (r.mark === undefined) { const M = shopMarkNow(); r.mark = !first && M.on && M.pick ? M.pick.key : null; }
-    if (r.mark) B.push({ h: 46 * s, gap: 8 * s, draw: (x, y, w) => {
-      if (!inCard || revealing(r)) return;
-      const cw = Math.min(w, 250 * s), cx = x + (w - cw) / 2, key = r.mark;
-      const Bt = ui.button('win:shop', 'New in shop', cx, y, cw, 46 * s, { kind: 'gold', shimmer: true, size: 17 * s, icon: (c, X, Y, S) => markArt(key, X, Y, S * 0.95), iconS: 1.6 });
-      chevron(cx + cw - 20 * s, Bt.cy, 8 * s, 'r', 1);
-    } });
-    // the score as one sum (mykee: "egg points, time bonus, the streak: what exactly are those?"):
-    // Egg points + Time left x streak = SCORE, then NEW BEST! or the best so far
+    // 0.8.16 what the win paid, in ONE panel (it was three: a time and coins panel, a "New in shop" bar, the score):
+    // the score as a sum (mykee: "egg points, time bonus, the streak: what exactly are those?") Egg points + Time left
+    // x streak; under its line the total with NEW BEST! or the best so far, and beside that the coins, counting up and
+    // rolling into the purse
     const fmt = (n) => Math.round(n).toLocaleString('en-US');
     const terms = [['egg', fmt(r.eggScore), 'Egg points']];
     if (r.timeBonus) terms.push(['+'], ['clock', fmt(r.timeBonus), 'Time left']);
     if (r.streakMult > 1) terms.push(['x'], ['flame', 'x' + r.streakMult, '3-star streak']);
-    const best = r.prevBest != null ? (r.total > r.prevBest ? 'new' : r.prevBest) : null, SH = (best != null ? 124 : 104) * s;
-    if (!first) B.push({ h: SH, gap: 8 * s, right: true, draw: (x, y, w) => {
+    const best = r.prevBest != null ? (r.total > r.prevBest ? 'new' : r.prevBest) : null, SH = (best != null ? 126 : 108) * s;
+    if (!first) B.push({ h: SH, gap: 8 * s, draw: (x, y, w) => {
       ui.well(x, y, w, SH, { s, a: '#f3e2bd', b: '#fbf0d6' });
       const ops = terms.filter((q) => q.length === 1).length, nt = terms.length - ops, ow = 16 * s, tw = (w - 12 * s - ops * ow) / nt;
       let tx = x + 6 * s;
@@ -7795,16 +7860,29 @@ function drawWinPage() {
         tx += tw;
       });
       ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x + 12 * s, y + 60 * s, w - 24 * s, 1.5 * s); // the line under a sum
-      ui.text('=', x + 22 * s, y + 82 * s, { size: 24 * s, align: 'center', color: C.ink2, tag: 'win:eq' });
-      ui.text('SCORE', x + 42 * s, y + 82 * s, { size: 14 * s, color: C.ink2, tag: 'win:scorelab' });
-      const labR = x + 42 * s + ui.measure('SCORE', 14 * s) + 10 * s, totW = Math.min(ui.measure(fmt(r.total), 32 * s) * 1.12, w - 196 * s); // a narrow column: the total keeps clear of its label
-      ui.num(fmt(r.shownTotal), Math.max(x + w / 2, labR + totW / 2), y + 82 * s, { size: 32 * s, align: 'center', maxW: w - 196 * s, tag: 'win:total' }); // 0.8.14: the total and the best under it stand on the card's centre line (they sat 24 units right of it)
-      if (best === 'new') { if (r.shownTotal >= r.total) { const bw = 120 * s; ui.ribbon('NEW BEST!', x + w / 2, y + 101 * s, bw, 22 * s, { s, color: '#3eaa2a', size: 14 * s, noRecord: true }); ui.record({ x: x + w / 2 - bw / 2, y: y + 101 * s, w: bw, h: 22 * s }, 'win:best'); } }
-      else if (best != null) ui.text(`Best ${fmt(best)}`, x + w / 2, y + 111 * s, { size: 14 * s, align: 'center', color: C.ink2, tag: 'win:best' });
+      const LW = w * 0.62, ry = y + (best != null ? 82 : 84) * s; // left of the fold: the total; right of it: the coins
+      ui.text('=', x + 20 * s, ry, { size: 24 * s, align: 'center', color: C.ink2, tag: 'win:eq' });
+      ui.text('SCORE', x + 36 * s, ry, { size: 14 * s, color: C.ink2, tag: 'win:scorelab' });
+      const labR = x + 36 * s + ui.measure('SCORE', 14 * s) + 8 * s, totW = x + LW - 8 * s - labR, tcx = labR + totW / 2; // the total keeps clear of its label
+      ui.num(fmt(r.shownTotal), tcx, ry, { size: 32 * s, align: 'center', maxW: totW, tag: 'win:total' });
+      if (best === 'new') { if (r.shownTotal >= r.total) { const bw = Math.min(120 * s, LW - 20 * s), bx = Math.max(x + 10 * s + bw / 2, Math.min(tcx, x + LW - 10 * s - bw / 2)); ui.ribbon('NEW BEST!', bx, y + 102 * s, bw, 21 * s, { s, color: '#3eaa2a', size: 13.5 * s, noRecord: true }); ui.record({ x: bx - bw / 2, y: y + 102 * s, w: bw, h: 21 * s }, 'win:best'); } }
+      else if (best != null) ui.text('Best ' + fmt(best), tcx, y + 111 * s, { size: 14 * s, align: 'center', color: C.ink2, maxW: totW + 40 * s, tag: 'win:best' });
+      ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x + LW, y + 70 * s, 1.5 * s, SH - 80 * s); // the fold
+      const ix = x + LW + 28 * s, iy = y + 62 * s + (SH - 62 * s) / 2 - 1 * s;
+      drawCoin(ctx, ix, iy, 13 * s, G.t);
+      if (r.perkGold && !save.calm) goldGlints(ix, iy, s); // Midas (the Golden egg): the count-up shimmers
+      drawWinCoins(r, ix, iy, w - LW - 4 * s, s, cnt, inCard); // the count-up, its roll into the purse, and the doubling moment
     } });
-    // what this win unlocked, shown in the reveals: each a row with its art and a green tick
+    // what this win unlocked. Each was shown big in its reveal a moment ago, so here it is a keepsake: one alone keeps
+    // its row; two or three stand side by side as tiles (0.8.16: three full rows made the page too tall)
     const rowWell = (x, y, w, h, a, b) => ui.well(x, y, w, h, { s, a, b });
-    if (r.treasure) B.push({ h: 60 * s, gap: 6 * s, right: true, draw: (x, y, w) => { // the boss treasure, opened: the chest and what it gave
+    const loot = [r.treasure && 'treasure', r.gift && 'gift', r.hot >= 2 && 'hot'].filter(Boolean);
+    if (loot.length > 1) B.push({ h: 96 * s, gap: 8 * s, right: true, draw: (x, y, w) => {
+      if (!inCard) return;
+      const g = 8 * s, tw = (w - g * (loot.length - 1)) / loot.length;
+      loot.forEach((k2, i) => winLootTile(r, k2, x + i * (tw + g), y, tw, 96 * s, s));
+    } });
+    else if (r.treasure) B.push({ h: 60 * s, gap: 8 * s, right: true, draw: (x, y, w) => { // the boss treasure, opened: the chest and what it gave
       if (!inCard) return;
       rowWell(x, y, w, 60 * s, '#ffe9b0', '#fff6dc');
       drawChest(ctx, x + 34 * s, y + 32 * s, 46 * s, G.t, 'open');
@@ -7813,7 +7891,7 @@ function drawWinPage() {
       const its = treasureItems(r.treasure), iw = Math.min(46 * s, (w * 0.5) / 3);
       its.forEach(([k2, n], j) => { const ix = x + w - 8 * s - (2.5 - j) * iw; rewardIcon(k2, r.treasure, ix, y + 23 * s, 26 * s); ui.text(n, ix, y + 47 * s, { size: 13 * s, align: 'center', color: C.ink, maxW: iw - 2 * s, tag: 'win:tri' + j }); });
     } });
-    if (r.gift) B.push({ h: 64 * s, gap: 6 * s, right: true, draw: (x, y, w) => { // the taste: a store item, already on, for the next levels
+    else if (r.gift) B.push({ h: 64 * s, gap: 8 * s, right: true, draw: (x, y, w) => { // the taste: a store item, already on, for the next levels
       if (!inCard) return;
       const T = r.gift;
       rowWell(x, y, w, 64 * s, '#ffe9b0', '#fff6dc');
@@ -7821,24 +7899,32 @@ function drawWinPage() {
       const tag = T.kind === 'boost' ? 'Added' : 'Equipped', bw = Math.max(72 * s, ui.measure(tag, 14 * s) + 22 * s), bx = x + w - bw - 8 * s; // the tag on the right
       ui.roundRect(bx, y + 19 * s, bw, 26 * s, 13 * s); ctx.fillStyle = '#3eaa2a'; ctx.fill();
       ui.text(tag, bx + bw / 2, y + 32 * s, { size: 14 * s, align: 'center', color: '#fff', maxW: bw - 10 * s, tag: 'win:equip' });
-      ui.text(`Free try: ${tasteName(T)}`, x + 66 * s, y + 21 * s, { size: 16 * s, color: C.ink, maxW: bx - x - 72 * s, tag: 'win:gift' });
-      tickLine(T.kind === 'boost' ? '+1 in your bag' : `On for the next ${DR.DIR.skinLevels} levels`, x + 66 * s, y + 44 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: bx - x - 72 * s, tag: 'win:gift2' });
+      ui.text('Free try: ' + tasteName(T), x + 66 * s, y + 21 * s, { size: 16 * s, color: C.ink, maxW: bx - x - 72 * s, tag: 'win:gift' });
+      tickLine(T.kind === 'boost' ? '+1 in your bag' : 'On for the next ' + DR.DIR.skinLevels + ' levels', x + 66 * s, y + 44 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: bx - x - 72 * s, tag: 'win:gift2' });
     } });
-    if (r.hot >= 2) B.push({ h: 56 * s, gap: 6 * s, right: true, draw: (x, y, w) => { // the win streak, and the boosters it brings to the next level
+    else if (r.hot >= 2) B.push({ h: 56 * s, gap: 8 * s, right: true, draw: (x, y, w) => { // the win streak, and the boosters it brings to the next level
       if (!inCard) return;
       const hb = r.hotB || [];
       rowWell(x, y, w, 56 * s, '#ffe0cc', '#fff3ea');
       streakFlame(ctx, 'hot:win', x + 26 * s, y + 29 * s, 38 * s, r.hot, G.t, save.calm);
       const iw = 34 * s, ax = x + w - 8 * s - hb.length * iw;
-      ui.text(`${r.hot} wins in a row`, x + 50 * s, y + (hb.length ? 18 : 28) * s, { size: 15.5 * s, color: C.ink, maxW: ax - x - 56 * s, tag: 'win:hot' });
+      ui.text(r.hot + ' wins in a row', x + 50 * s, y + (hb.length ? 18 : 28) * s, { size: 15.5 * s, color: C.ink, maxW: ax - x - 56 * s, tag: 'win:hot' });
       if (hb.length) tickLine('Free next level', x + 50 * s, y + 39 * s, 13 * s, { align: 'left', color: '#2d7a1c', maxW: ax - x - 56 * s, tag: 'win:hot2' });
       hb.forEach((b, j) => drawBoosterIcon(ctx, b, ax + (j + 0.5) * iw, y + 28 * s, 30 * s, G.t));
     } });
-    // 0.8.15, the Conductor on the win card: what this win brought nearer. A banked spin gets its row and its SPIN button
-    // (it leads, so NEXT rests); otherwise one quiet line, the spin meter's ticks or the stars to the next chest
-    if (WL && WL.lead && WL.lead.id === 'spin') B.push({ ...spinRowBlock(s, { gap: 8 * s }), right: true, draw: ((d) => (x, y, w) => { if (inCard) d(x, y, w); })(spinRowBlock(s).draw) });
-    else if (WL && WL.order.find((c) => c.kind === 'progress')) { const c = WL.order.find((q) => q.kind === 'progress'); B.push({ h: 26 * s, gap: 8 * s, right: true, draw: (x, y, w) => { if (inCard) leadLine(c, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'win:near' }); } }); }
-    const last = G.li < 0 || G.li === LEVELS.length - 1, nextLeads = !(WL && WL.lead && WL.lead.id === 'spin');
+    // 0.8.16 (mykee: "the shop icon should be highlighted, a bigger kind of thing. Right now we added a horizontal
+    // bar"): the two places this win's coins can go stand as two big tiles above the buttons: the SHOP (gold, the thing
+    // the coins reach pictured on it, the purse's count, the blinking mark) and the LUCKY SPIN (orange with its count
+    // when a spin waits; quiet with the wins still to go when none does). Not in the early days, not in Practice.
+    if (r.mark === undefined) { const M = shopMarkNow(); r.mark = !first && M.on && M.pick ? M.pick.key : null; }
+    const spinLeads = !!(WL && WL.lead && WL.lead.id === 'spin');
+    if (!first && !earlyDays() && G.li >= 0) B.push({ h: 92 * s, gap: 10 * s, right: true, draw: (x, y, w) => {
+      if (!inCard || revealing(r)) return;
+      const g = 10 * s, tw = WL ? (w - g) / 2 : w;
+      winShopTile(r, x, y, tw, 92 * s, s);
+      if (WL) winSpinTile(x + tw + g, y, tw, 92 * s, s, spinLeads);
+    } });
+    const last = G.li < 0 || G.li === LEVELS.length - 1, nextLeads = !spinLeads;
     B.push({ h: 58 * s, gap: 12 * s, right: true, draw: (x, y, w) => {
       if (!inCard) return;
       if (first) { ui.button('next', 'NEXT', x, y, w, 58 * s, { kind: 'primary', shimmer: true, icon: ICON.next, size: 26 * s }); return; }
@@ -7863,6 +7949,10 @@ function drawWinPage() {
     return B;
   };
   const RIB = '#f0542e';
+  { // her stage takes what the rest leaves; under 100 units she moves beside the stars
+    const fixed = build(1).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0), room = (A.y1 - Math.max(G.hudBottom, A.y) - 30 * u) / u - CARD_HEAD - 22 - fixed;
+    compact = !side && room < 78; stH = clamp(room, 78, 230);
+  }
   let card = stackCard(title, build, { ...cardO, hidden: true }); // lay out first: her flight needs the targets
   // 0.8.15 a short wide screen (a phone on its side, a browser window): one column there shrank to small print and
   // tiny buttons. The card opens into two columns (the stars and their goals; the score, the rewards and the buttons),
