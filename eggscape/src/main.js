@@ -82,7 +82,9 @@ import { pictoCheck, pictoCross, pictoWarn, pictoClock, pictoFlame, pictoGem, pi
 import { drawStrikeWorld, strikeEvent, drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick, strikeSeat } from './render/strike.js';
 import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' crown // Chick Strike powers
 import { STRIKES, STRIKE, STRIKE_FROM, EGG_STRIKES } from './data/strikes.js';
-import { drawHand as teachHand } from './render/wonder.js'; // the teaching hand (Papa Rooster's first call)
+import { focusAsk, focusStart, focusEnd, focusY, focusTrip, focusLook, focusDraw, focusUseHand, tabForKey } from './ui/focus.js'; // 0.8.16: scroll to the thing and point at it
+import { drawHand as teachHand } from './render/wonder.js';
+focusUseHand(teachHand); // the teaching hand (Papa Rooster's first call)
 import { stampStats, stampSweep } from './render/stamp.js';
 import { cvStats, freeCanvas } from './render/cvfree.js';
 import * as CB from './render/celebrate.js'; // 0.8.15 the celebration kit: rays, bursts, confetti, arcs, the gift box, the bag
@@ -1036,6 +1038,7 @@ function pointerDown(e) {
   onFirstInput();
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
+  focusEnd(G.sscroll); focusEnd(G.setpage); // any touch: the ring and the hand let go
   if (!G.adBusy && G.detail && !G.got && G.dscroll && G.detail === 'iap:' + G.dscroll.key && G.dscroll.max > 0 && G.dlRect && x >= G.dlRect.x && x <= G.dlRect.x + G.dlRect.w && y >= G.dlRect.y && y <= G.dlRect.y + G.dlRect.h) { // the bundle sheet's list scrolls under a finger
     const D = G.dscroll; G.pdrag = { pid: e.pointerId, sc: D, y0: y, s0: D.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; D.v = 0; D.to = null;
   }
@@ -1387,11 +1390,11 @@ async function press(id) {
     case 'store': { // 0.8.14: with the shop mark on, the shop opens on the thing the coins now reach, with a ring on it
       const M = shopMarkNow();
       G.shopHand = null;
-      if (M.pick && (M.on || G.screen === 'pause')) { openStore(null, M.pick.key); G.sscroll.hlDur = 3; } else openStore('deals'); // (the pause page's banner names the pick: it opens on it)
+      if (M.pick && (M.on || G.screen === 'pause')) openStoreOn(M.pick.key); else openStore('deals'); // (the pause page's banner names the pick: it opens on it)
       break;
     }
     case 'win:shop': // the win card's "New in shop" chip: the shop, on the thing this win's coins reach
-      if (G.result && G.result.mark) { openStore(null, G.result.mark); G.sscroll.hlDur = 3; }
+      if (G.result && G.result.mark) openStoreOn(G.result.mark);
       break;
     case 'shop:boosts': // the level card's empty booster well: the shop's Boosts row
       openStore('boosters', 'boosts');
@@ -1468,7 +1471,7 @@ async function press(id) {
         G.nudge = null; persist(); audio.play('level_win'); purse.gain({ src: G.pressAt }); toast(`+${n.coins} coins and a free ${E.BOOSTERS[b].name}!`, 2.8);
       } else if (n.kind === 'afford') {
         G.nudge = null; persist();
-        openStore(null, n.item); // straight onto that chick or egg, with a ring on it
+        openStoreOn(n.item); // straight onto that chick or egg, with a ring on it
       }
       break;
     }
@@ -1724,7 +1727,7 @@ async function press(id) {
     }
     case 'settings':
       G.settingsOpen = true; G.setSeq = (G.setSeq || 0) + 1;
-      if (!save.seen.setOpen) { save.seen = { ...save.seen, setOpen: 1 }; G.setFirst = { seq: G.setSeq, t0: G.t }; persist(); } // the first visit: the ring speed row draws the eye
+      if (!save.seen.setOpen) { save.seen = { ...save.seen, setOpen: 1 }; G.setFirst = { seq: G.setSeq }; persist(); } // the first visit: the ring speed row draws the eye
       break;
     case 'set:close':
       G.settingsOpen = false;
@@ -1984,15 +1987,18 @@ async function rewarded(tag) {
 // was opened from (title, intro, fail card, pause)
 // want: a row ('coins', 'boosts', 'premium') or one card ('chick:frost', 'skin:dino', 'iap:coins_s'); the shop opens
 // on its tab, scrolled so that card sits whole near the top, with a ring on it (ui/store.js). No tab: the card's own.
-const storeTabFor = (k) => (!k ? 'deals' : /^(chick|boost|kit|item|charge):|^(boosts|chicks|premium)$/.test(k) || E.BOOSTERS[k] ? 'boosters' : /^(hen|set):/.test(k) ? 'hens' : /^skin:/.test(k) ? 'skins' : 'deals');
-function openStore(tab, want = null) {
+const storeTabFor = (k) => tabForKey(k, (b) => !!E.BOOSTERS[b]);
+function openStore(tab, want = null, point = false) { // point: the thing gets the ring and the tapping hand for ~4 s (openStoreOn)
   if (G.screen !== 'store') { G.storeFrom = G.screen; G.storeFlash = null; setScreen('store'); }
   shopSeen(); // the shop mark goes off: what the coins reach is in front of the player now
   G.storeTab = tab || storeTabFor(want);
   G.sscroll = { y: 0, v: 0, max: 0, t: G.t, want };
+  if (point && want) focusAsk(G.sscroll, want);
   G.getMore = null; G.detail = null; G.chickBuy = null; // (the level card's chick sheet used to stay open over the shop)
   G.toasts = []; G.toast = null; // the level's tips do not follow into the shop
 }
+// 0.8.16: every marked way into the shop lands ON the thing: its tab, scrolled to it, a ring round it, the hand on its price
+const openStoreOn = (key) => openStore(null, key, true);
 function goHome() {
   portal.gameplayStop(); releaseAll();
   G.getMore = null; G.detail = null; G.settingsOpen = false;
@@ -7337,14 +7343,6 @@ function ringSpeedCtl(x, y, w, s, k, h = 46 * s) {
   ui.record({ x: tx, y: y + (h - bh) / 2, w: tw, h: bh }, 'set:rsbar');
 }
 // a soft gold ring round a row that should draw the eye (t: seconds since it began, it lets go after dur; Calm: still)
-function pulseRing(x, y, w, h, r, s, t, dur) {
-  const k = t / dur; if (k < 0 || k >= 1) return;
-  const a = save.calm ? 1 : Math.min(1, (1 - k) * 3), p = save.calm ? 0 : 0.5 - 0.5 * Math.cos(k * Math.PI * 2 * Math.max(2, Math.round(dur / 0.6))), o = (3 + 4 * p) * s;
-  ctx.save(); ctx.globalAlpha = a;
-  ui.roundRect(x - o, y - o, w + 2 * o, h + 2 * o, r + o); ctx.lineWidth = (5 + 2 * p) * s; ctx.strokeStyle = 'rgba(255,214,60,0.5)'; ctx.stroke();
-  ui.roundRect(x - o, y - o, w + 2 * o, h + 2 * o, r + o); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#fff3a8'; ctx.stroke();
-  ctx.restore();
-}
 // ---- 0.8.14 (mykee: "users have never tried increasing the settings or the ring speed ... In the initial first 5 levels
 // itself, we should show these controls"): the ring speed strip on the level card of levels 2 to 5, until the player
 // has changed the speed once (save.seen.rsTried) or has won level 5. It is the real control: a small ring turning at
@@ -7398,7 +7396,7 @@ function drawSettings() {
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); // a full page: nothing of the game shows behind it
   const cw = Math.min(A.w - 2 * pad, 560 * s), x0 = A.cx - cw / 2;
   const pg = G.setpage || (G.setpage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
-  if (pg.lid !== G.setSeq) { pg.lid = G.setSeq; pg.y = 0; pg.v = 0; }
+  if (pg.lid !== G.setSeq) { pg.lid = G.setSeq; pg.y = 0; pg.v = 0; pg.to = null; pg.hl = null; if (G.setFirst && G.setFirst.seq === G.setSeq) { focusStart(pg, 'rs', G.t + 0.15, undefined, false); G.setRsAt = true; } } // the marked way in: the ring speed row
   // header: back, the ribbon, and (landscape) Done
   // (0.8.14: the one page header, ui.pageHeader; back sits on the rows' left edge, Done on their right edge)
   const P = ui.pageBox(560 * s), hy = P.y, hh = P.h;
@@ -7418,11 +7416,11 @@ function drawSettings() {
   if (remCan()) B.push(setRow(s, 'set:remind', 'Reminders', 'bell', '#e8a020', { on: remOn(), sub: 'One a day at most' })); // app only, never for a child profile
   B.push(setHead('Gameplay', s));
   const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
-  const rsFirst = G.setFirst && G.setFirst.seq === G.setSeq ? G.t - G.setFirst.t0 : 99; // the first visit: a soft ring round this row for ~3 s
+  const rsLook = focusLook(pg.hl, G.t, save.calm); // the first visit (the Settings mark): the ring round this row ~4 s or until a touch
+  if (pg.hl && !rsLook && G.t - pg.hl.t0 >= 0) pg.hl = null;
   const rsCard = setCard(s, 'Ring speed', 'ring', '#2fa84f', rsLabel(sp), 46 * s, (x, y, w) => ringSpeedCtl(x, y, w, s, k));
-  const rsB = rsFirst < 3.2 ? { ...rsCard, draw: (x, y, w) => { rsCard.draw(x, y, w); pulseRing(x, y, w, rsCard.h, 16 * s, s, rsFirst, 3); } } : rsCard;
+  const rsB = rsLook ? { ...rsCard, draw: (x, y, w) => { rsCard.draw(x, y, w); focusDraw(ctx, ui, rsLook, { x, y, w, h: rsCard.h }, 16 * s, s); } } : rsCard;
   B.push(rsB);
-  if (rsFirst < 0.1 && pg.y === 0) G.setRsAt = true; // scroll so the row is in view (below)
   B.push(setCard(s, 'Difficulty', 'flag', '#e0a21c', null, 42 * s, (x, y, w) => modeRow(x, y, w, 42 * s, s)));
   B.push(setHead('Display', s));
   const gl = save.gfx === 'auto' ? `Auto picked ${TIER_NAME[PERF.tier]} for this phone` : save.gfx === 'high' ? 'Sharpest picture, every effect' : save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
@@ -7439,7 +7437,7 @@ function drawSettings() {
   G.setRect = V;
   if (G.setRsAt) { // the first visit: the ring speed row in view (on a short screen the page starts scrolled to it)
     G.setRsAt = false; let yy = 0; for (const b of B) { yy += b.gap ?? 10 * s; if (b === rsB) break; yy += b.h; }
-    const H = pageColH(B, s) + 18 * s; pg.y = clamp(yy + rsCard.h - V.h + 20 * s, 0, Math.max(0, H - V.h)); pg.v = 0;
+    const H = pageColH(B, s) + 18 * s; focusTrip(pg, focusY(yy, rsCard.h, V.h, Math.max(0, H - V.h), s), save.calm); // scrolled to (about 0.4 s), the row in the upper middle
   }
   pageScroll(B, pg, V, x0, cw, s, true);
 }

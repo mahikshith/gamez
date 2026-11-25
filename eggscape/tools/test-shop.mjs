@@ -195,5 +195,39 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
   ok(DR.shopMark(bought, { items: fewer }).on, 'after a purchase the count seen drops with it, so saving up again lights the mark');
 }
 
+// 0.8.16: a marked shop button lands on the thing (ui/focus.js): which tab, where the list scrolls, how long it shows
+{
+  const FX = await import('../src/ui/focus.js');
+  const isB = (k) => k === 'stone';
+  ok(FX.tabForKey('skin:gold') === 'skins' && FX.tabForKey('hen:farmer') === 'hens' && FX.tabForKey('set:winter') === 'hens', 'an egg skin opens Eggs, an outfit and a set open Hens');
+  ok(FX.tabForKey('chick:thunder') === 'boosters' && FX.tabForKey('stone', isB) === 'boosters' && FX.tabForKey('iap:coins_s') === 'deals' && FX.tabForKey(null) === 'deals', 'a chick and a booster open Power-ups, the rest the first tab');
+  // the row sits in the upper middle: 22% down a 600 px list, never past either end, a tall row just under the top
+  ok(FX.focusY(1000, 150, 600, 2000) === 1000 - 132, 'a row far down lands 22% from the top of the list');
+  ok(FX.focusY(40, 150, 600, 2000) === 0 && FX.focusY(1990, 150, 600, 1500) === 1500 && FX.focusY(300, 150, 600, 0) === 0, 'the first rows, the last rows and a list that does not scroll stay inside the ends');
+  ok(FX.focusY(1000, 500, 600, 2000) === 992, 'a row nearly as tall as the list starts just under the top');
+  for (const [off, h] of [[0, 150], [700, 150], [1400, 150], [1850, 150]]) { const y = FX.focusY(off, h, 600, 1400); ok(off - y >= 0 && off + h - y <= 600, `the row at ${off} is whole in the list`); }
+  // the trip: eased from where the list stands (scroll.js), about 0.4 s; Calm motion goes straight there
+  const { glideStep } = await import('../src/scroll.js');
+  const S = { y: 0, v: 0, max: 2000 }; FX.focusTrip(S, 868, false);
+  ok(S.y === 0 && S.to === 868, 'the trip starts where the list stands, not at the thing');
+  for (let i = 0; i < 24; i++) glideStep(S, 1 / 60, 110);
+  ok(S.y > 868 * 0.95 && S.y <= 868, 'after 0.4 s the list is (nearly) there: ' + S.y.toFixed(0));
+  for (let i = 0; i < 60; i++) glideStep(S, 1 / 60, 110);
+  ok(S.y === 868 && S.to == null, 'and it settles exactly on it');
+  const C = { y: 0, v: 0, max: 2000 }; FX.focusTrip(C, 868, true);
+  ok(C.y === 868 && C.to == null, 'Calm motion: no trip');
+  // the ring and the hand: about 4 s, a steady ring under Calm, gone at a touch
+  const F = FX.focusStart(S, 'skin:gold', 10);
+  ok(FX.FOCUS_LEN === 4 && FX.focusLook(F, 10.6) && FX.focusLook(F, 12).point && FX.focusLook(F, 13.9) && FX.focusLook(F, 14.01) === null, 'it shows for 4 s');
+  const ps = [0.1, 0.3, 0.5, 0.7].map((d) => FX.focusLook(F, 11 + d).p);
+  ok(Math.max(...ps) - Math.min(...ps) > 0.3, 'the ring pulses');
+  const cl = [0.1, 0.3, 0.5, 3.9].map((d) => FX.focusLook(F, 10 + d, true));
+  ok(cl.every((q) => q.a === 1 && q.p === 0 && q.bob === 0 && !q.press), 'Calm motion: a steady ring and a still hand');
+  S.to = 500; FX.focusEnd(S);
+  ok(S.hl === null && S.to === null, 'a touch lets go of it, and of a trip under way');
+  const A = FX.focusAsk({ y: 0, v: 0, max: 0 }, 'hen:farmer');
+  ok(A.want === 'hen:farmer' && A.point === true && A.hlDur === 4, 'asking for a thing: the list lands on it the next time it is laid out');
+}
+
 console.log(fails ? `${fails} FAILED` : 'all shop checks passed');
 process.exit(fails ? 1 : 0);
