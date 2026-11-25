@@ -6932,15 +6932,16 @@ function drawLevelIntro(L, acc) {
   const oneLine = (alts, fs, w) => alts.find((q) => q && ui.measure(q, fs) <= w) || alts[alts.length - 1];
   const upOf = (S, w) => oneLine([S.up, shortTip(S.up), (POWER_WORDS[S.id] || [''])[0]], chFsU, w);
   const dnOf = (S, w) => oneLine([S.down && 'Downside: ' + S.down, S.down && 'Downside: ' + shortTip(S.down), 'Downside: ' + (POWER_WORDS[S.id] || ['', ''])[1]], chFsD, w);
-  const chickCap = (w) => {
-    return { h: chFsN * 1.2 + chFsU * 1.22 + 3 * s + chFsD * 1.22 + 5 * s + wayH, gap: 6 * s, draw: (x, y, ww) => {
+  // 0.8.17: the name, its one line and its way in; the downside line only when the column has room to spare (dn)
+  const chickCap = (w, dn = true) => {
+    return { h: chFsN * 1.2 + chFsU * 1.22 + 3 * s + (dn ? chFsD * 1.22 : 0) + 5 * s + wayH, gap: 6 * s, draw: (x, y, ww) => {
       if (!cS) return;
       const S = cS.S, LK = cS.locked;
       let yy = y;
       ui.text(S.name, x + ww / 2, yy + chFsN * 0.62, { size: chFsN, align: 'center', maxW: ww, color: S.col ? ui.tint(S.col[1], -0.3) : C.ink, tag: 'intro:pickname' }); yy += chFsN * 1.2;
       ui.text(upOf(S, ww - 8 * s), x + ww / 2, yy + chFsU * 0.62, { size: chFsU, align: 'center', maxW: ww, color: C.ink, tag: 'intro:pickup' }); yy += chFsU * 1.22 + 3 * s;
-      ui.text(dnOf(S, ww - 8 * s), x + ww / 2, yy + chFsD * 0.62, { size: chFsD, align: 'center', maxW: ww, color: C.warn, tag: 'intro:pickdn' });
-      const wy = y + chFsN * 1.2 + chFsU * 1.22 + 3 * s + chFsD * 1.22 + 5 * s, cy = wy + wayH / 2;
+      if (dn) ui.text(dnOf(S, ww - 8 * s), x + ww / 2, yy + chFsD * 0.62, { size: chFsD, align: 'center', maxW: ww, color: C.warn, tag: 'intro:pickdn' });
+      const wy = y + chFsN * 1.2 + chFsU * 1.22 + 3 * s + (dn ? chFsD * 1.22 : 0) + 5 * s, cy = wy + wayH / 2;
       if (LK) { // its way in: free at a later level (or a premium one), and unlocking it now for coins (the same sheet as today)
         const tip = G.introTip && G.introTip.id === S.id ? shortTip(G.introTip.line) || G.introTip.line : '';
         const free = tip || (S.premium ? 'A premium chick' : `Free at level ${S.unlock}`), buy = !early;
@@ -7025,8 +7026,12 @@ function drawLevelIntro(L, acc) {
       post.push(capBlock(iw), ...[tileBlock(iw), chipBlock(iw), starBlock].filter(Boolean));
       B = fitCol(pre, levelStage, post, V.h, Math.min(165 * s, iw * 0.5), Math.min(iw * 1.1, 560 * s)); // (0.8.16: a page with little else grows its picture, nearly square, as the level's own card does)
     } else {
-      pre.push(carBlock(iw)); post.push(chickCap(iw));
-      B = fitCol(pre, chickStage, post, V.h, Math.min(150 * s, iw * 0.45), Math.min(iw * 0.95, 560 * s));
+      // 0.8.17 (mykee: the chick row where the thumb is): the demo on top, as big as the column allows, then the chosen chick's
+      // name and line, then the row of chicks in the lower third just above the boosters and the main button
+      const hiS = Math.min(iw * 0.95, 560 * s), loS = Math.min(150 * s, iw * 0.45), carB = carBlock(iw);
+      const dnOn = V.h - (pageColH([chickCap(iw, true), carB], s) + 6 * s + gp) >= Math.min(hiS, iw * 0.8); // the downside line rides along when the stage still gets (nearly) its full size
+      post.push(chickCap(iw, dnOn), carB);
+      B = fitCol(pre, chickStage, post, V.h, loS, hiS);
     }
     if (B.length) B[0] = { ...B[0], gap: B[0].gap - gp };
     column(B, pg, V, x0, iw);
@@ -7066,7 +7071,8 @@ function drawLevelIntro(L, acc) {
     G.ipRectR = { x: rx - gap2 / 2, y: ry, w: A.x1 - (rx - gap2 / 2), h: yb - ry };
     const RB = (lvTab ? [perkBlock(rw), tileBlock(rw), chipBlock(rw)] : [carBlock(rw)]).filter(Boolean);
     const room = G.ipRectR.h - pageColH(RB, s) - 6 * s;
-    if (room > 0 && RB.length) { const add = Math.min(room / (RB.length + 1), 20 * s); RB.forEach((b, i) => { RB[i] = { ...b, gap: (b.gap ?? 10 * s) + add }; }); }
+    if (room > 0 && RB.length && lvTab) { const add = Math.min(room / (RB.length + 1), 20 * s); RB.forEach((b, i) => { RB[i] = { ...b, gap: (b.gap ?? 10 * s) + add }; }); }
+    else if (room > 0 && RB.length) RB[0] = { ...RB[0], gap: (RB[0].gap ?? 10 * s) + room }; // the chick row rides low, just above the boosters (0.8.17: the thumb)
     if (RB.length) RB[0] = { ...RB[0], gap: RB[0].gap - gp };
     column(RB, pr, G.ipRectR, rx, rw);
   }

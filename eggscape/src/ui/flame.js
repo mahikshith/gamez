@@ -24,7 +24,7 @@ export function streakFlame(c, key, x, y, s, n, t, calm = false) {
   const hE = s * 0.63 * (1 + 0.17 * heat), m = hE / EGG_H; // the egg's height in pixels, and metres to pixels for the particles
   if (!calm) { // what the fire egg throws every frame (main.js: two flameAt a frame), a little less when the streak is short
     F.fx.update(dt); F.acc += dt * (26 + 30 * heat);
-    while (F.acc >= 1) { F.acc -= 1; const a = (Math.random() - 0.5) * 0.26; F.fx.flameAt(a, 0.12 + Math.random() * 0.06, 0.8 + 0.3 * heat); F.fx.flameAt(a * 0.6, 0.02, 0.6); }
+    while (F.acc >= 1) { F.acc -= 1; const a = (Math.random() - 0.5) * 0.12; F.fx.flameAt(a, 0.12 + Math.random() * 0.06, 0.8 + 0.3 * heat); F.fx.flameAt(a * 0.6, 0.06, 0.6); }
   }
   const br = 0.5 + 0.5 * Math.sin(T * 2.4); // the glow breathes
   c.save(); c.translate(x, y);
