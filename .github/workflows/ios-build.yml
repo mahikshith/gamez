@@ -1,0 +1,45 @@
+# Proves the Eggscape iPhone shell (eggscape/ios, an xtool SwiftPM app) still compiles: builds the game page for iOS,
+# then compiles the package for the iOS Simulator with xcodebuild (no signing). Manual only: macOS minutes cost money.
+# Installing on a real iPhone is done with xtool on a computer: eggscape/docs/ios-test.md.
+name: iOS build check
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-build
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Build the game page for iOS
+        working-directory: eggscape
+        run: |
+          npm ci
+          node tools/build.mjs --target ios
+          ls -l ios/Resources/game
+      - name: Compile for the iOS Simulator (no signing)
+        working-directory: eggscape/ios
+        run: |
+          xcodebuild -version
+          set -o pipefail
+          xcodebuild build \
+            -scheme Eggscape \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO
+      # best effort: the same .app xtool makes for a phone (resources, Info.plist, icon), built for the Simulator
+      - name: Package the app with xtool (Simulator, unsigned)
+        continue-on-error: true
+        working-directory: eggscape/ios
+        run: |
+          brew install xtool-org/tap/xtool
+          xtool dev build --triple "$(uname -m)-apple-ios-simulator"
+          ls -l xtool/Eggscape.app xtool/Eggscape.app/game
+          plutil -p xtool/Eggscape.app/Info.plist
