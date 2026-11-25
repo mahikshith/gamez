@@ -26,7 +26,7 @@ export const FAUCETS = {
   online: { share: 0.2, ceiling: 'per win', why: 'offline play earns less (no videos), so online play is paid a little more, openly' },
   bossTreasure: { base: 40, step: 8, ceiling: 'once per boss', why: 'the big moment of each world; it was 120 + 40 a world, a third of all coins' },
   starChest: { base: 10, step: 5, ceiling: 'once per 15 stars', why: 'stars are the reason to replay; the chest skins are the prize, not the coins' },
-  dailyChest: { coins: [10, 10, 15, 10, 20, 10, 25], ceiling: 'once a day', why: 'a reason to come back, never a wage' },
+  dailyChest: { coins: [8, 8, 10, 8, 15, 8, 20], ceiling: 'once a day', why: 'a reason to come back, never a wage' },
   freeCoins: { ladder: [20, 15, 10, 5], cooldownSec: 180, ceiling: 'four videos a day, 50 coins', why: 'a chosen video is worth a little, never a living' },
   // the win page's videos: Double coins and the Bonus chest's coins share one pot a day. Once it is spent, the win page
   // offers neither until tomorrow (the video was a chosen reward, so nothing is cut short after it is offered).
