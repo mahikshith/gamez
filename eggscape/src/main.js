@@ -8862,7 +8862,10 @@ function drawLevels() {
     if (!locked) continue;
     // the gate: a star, have / need and a thin bar on its board, no sentence. Only the first shut world may be opened with
     // coins (0.8.17): its coin button hangs under the board (not before level 3 is won); farther worlds show the board only
-    const coin = w === firstShut && gs < 0 && !earlyDays(), g = MS.drawGate(ctx, L, w, sy, { have: totalStars, need: envNeed(w), s: gs, calm, coin });
+    // coins open a world only when it may open right now (envReady on the coin branch: the world before is open and its boss
+    // won or skipped; until that merges, the same rule inline) and stars alone do not already open it (price 0)
+    const bi = Math.min(LEVELS.length, w * PER_ENV) - 1, ready = typeof envReady === 'function' ? envReady(w) : w === firstShut && bi >= 0 && (bestStarsOf(LEVELS[bi].id) > 0 || SK.isSkipped(save, LEVELS[bi].id));
+    const coin = ready && GATE_COINS(w) > 0 && gs < 0 && !earlyDays(), g = MS.drawGate(ctx, L, w, sy, { have: totalStars, need: envNeed(w), s: gs, calm, coin });
     const Bd = g.board, by0 = Bd.y - sy;
     if (gs < 0 && by0 >= vt + 2 * u && by0 + Bd.h <= tapBot) ui.record({ x: Bd.x, y: by0, w: Bd.w, h: Bd.h }, 'levels:gateboard' + w, 'levels:gateboard' + w);
     if (coin) {
