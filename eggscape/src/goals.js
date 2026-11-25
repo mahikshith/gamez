@@ -14,7 +14,12 @@ const PER_WORLD = 5;
 
 // -> [g1, g2, g3]; g = { kind, n?, s?, short (the level card, a few words), long (the win card's row) }
 // fuse: the mode's time factor (sim.MD.fuse); level < 0 or no level data: the plain trio
-export function levelGoals(L, fuse = 1, campaign = true) {
+// mode 'easy' (0.8.17, mykee: "they could beat the level in easy mode, but the goals need to be high-target goals in order
+// to earn 3 stars"): the level is passed as on Medium (the first star: the target home), but the second star asks for
+// every egg (and no cracks where every egg is already the target), and the third for that AND the level's bonus goal.
+// The card and the win page show these goals as they are; no banner says why. Medium and Hard are unchanged.
+export function levelGoals(L, fuse = 1, campaign = true, mode = 'medium') {
+  if (mode === 'easy' && campaign) { const g = easyGoals(L, fuse); if (g) return g; }
   const n = L.eggs || 1, t = L.target || 1;
   const home = { kind: 'home', n: t, short: t === n ? `All ${n} home` : `${t} of ${n} home`, long: t === n ? `All ${n} eggs home` : `${t} of ${n} eggs home` };
   const all = { kind: 'all', short: 'Lose none', long: 'Lose no eggs' };
@@ -33,6 +38,16 @@ export function levelGoals(L, fuse = 1, campaign = true) {
   let g2 = t === n ? clean : world >= 6 ? perfect : slot % 2 ? clean : all;
   if (g2.kind === g3.kind) g2 = all;
   return [home, g2, g3];
+}
+// Easy: [the target home, every egg (flawless when every egg is the target), every egg AND the bonus goal]. Levels 1-3
+// (they teach, and have no bonus goal) and any level without one keep the Medium goals.
+export const EASY_FROM = 4;
+function easyGoals(L, fuse) {
+  const n = L.eggs || 1, t = L.target || 1, b = bonusGoal(L, fuse);
+  if ((L.id || 0) < EASY_FROM || !b) return null;
+  const home = { kind: 'home', n: t, short: t === n ? `All ${n} home` : `${t} of ${n} home`, long: t === n ? `All ${n} eggs home` : `${t} of ${n} eggs home` };
+  const every = t === n ? { kind: 'perfect', short: 'Flawless', long: 'No egg lost or cracked' } : { kind: 'all', short: 'Lose none', long: 'Lose no eggs' };
+  return [home, every, { kind: 'both', a: every, b, short: `${every.short} + ${b.short.replace(/ max$/, '')}`, long: `${every.long} and ${b.long.charAt(0).toLowerCase()}${b.long.slice(1)}` }];
 }
 function bonusGoal(L, fuse) {
   const B = L.bonus;
@@ -71,6 +86,7 @@ export function judge(g, F) {
     case 'time': return F.used > g.s ? 'lost' : done ? 'met' : 'open';
     case 'prize': return F.prizeHome ? 'met' : F.prizeGone || done ? 'lost' : 'open';
     case 'orbs': return F.orbsAll > 0 && F.orbs >= F.orbsAll ? (done ? 'met' : 'open') : done ? 'lost' : 'open';
+    case 'both': { const a = judge(g.a, F), b = judge(g.b, F); return a === 'lost' || b === 'lost' ? 'lost' : a === 'met' && b === 'met' ? 'met' : 'open'; } // Easy's third star: two goals at once
     default: return 'open';
   }
 }
@@ -91,10 +107,12 @@ export function outcome(g, F, ok) {
     case 'time': return `${Math.round(F.used)} s`;
     case 'prize': return ok ? 'It is home' : 'It was lost';
     case 'orbs': return `${F.orbs} of ${F.orbsAll}`;
+    case 'both': { const a = judge(g.a, F) === 'met'; return !a ? outcome(g.a, F, false) : outcome(g.b, F, judge(g.b, F) === 'met'); } // what kept the star, else the bonus's own words
     default: return '';
   }
 }
 // during play: a goal just slipped away; a short line for the toast
 export function lostLine(g) {
+  if (g.kind === 'both') return lostLine(g.a) || lostLine(g.b);
   return ({ all: 'An egg was lost', clean: 'An egg cracked', perfect: 'An egg was lost or cracked', turns: `More than ${g.n} turns`, time: `Past ${g.s} s`, prize: 'The speckled egg was lost' })[g.kind] || '';
 }

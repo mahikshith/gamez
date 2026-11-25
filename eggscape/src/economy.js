@@ -192,6 +192,7 @@ export function ownedCount(wallet, id) {
 //   perfect +5 for a perfect clutch                     (0 or 5)
 // Win examples: 1 star ~19-22, 2 stars ~24-27, 3 stars perfect ~37-46.
 export const HARD_PAY = 1.5;
+export const EASY_PAY = 0.7; // MINT: an Easy win's share of the coins (the mint table's figure once src/engine/mint.js lands)
 export function levelCoins(result) {
   const r = result || {}, k = PLATFORM.web ? WEB.winMult : 1; // the web pays double: play is the only way to coins there
   const stars = Math.max(0, Math.min(3, Math.floor(r.stars || 0)));
@@ -199,8 +200,10 @@ export function levelCoins(result) {
   const base = (8 + 3 * saved) * k; // 0.8.15: was 4 + 2 a saved egg; the purse now moves between bosses
   const starCoins = 5 * stars * k;
   const perfect = r.perfect && stars > 0 ? 5 * k : 0;
-  const sum = base + starCoins + perfect, hard = r.hard && stars > 0 ? Math.round(sum * (HARD_PAY - 1)) : 0; // a level marked hard pays half as much again
-  return { base, stars: starCoins, perfect, hard, total: sum + hard };
+  const sum = base + starCoins + perfect, hard = r.hard && !r.easy && stars > 0 ? Math.round(sum * (HARD_PAY - 1)) : 0; // a level marked hard pays half as much again
+  // 0.8.17: a win on Easy (r.easy) pays EASY_PAY of it and no hard-level half again (its fuse is not faster there)
+  const total = r.easy ? Math.max(1, Math.round((sum + hard) * EASY_PAY)) : sum + hard;
+  return { base, stars: starCoins, perfect, hard, total };
 }
 
 export function addCoins(wallet, n) {

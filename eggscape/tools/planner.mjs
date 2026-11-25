@@ -72,7 +72,9 @@ export function solve(level, opts = {}) {
   // special eggs (ostrich, quail, duck) must make it, not just the target count
   const sp = sim.eggs.filter((e) => e.kind);
   const special = { saved: sp.filter((e) => e.saved).length, total: sp.length };
-  return { id: level.id, special, state: sim.state, t: +sim.t.toFixed(1), left: +sim.timeLeft.toFixed(1), moves: plan.length, turns: sim.turns, taps: plan.filter((a) => a.tap).length, combos: sim.p2?.n || 0, plan, ...st }; // combos: v3.4 power combos fired on the way
+  const out = { id: level.id, special, state: sim.state, t: +sim.t.toFixed(1), left: +sim.timeLeft.toFixed(1), moves: plan.length, turns: sim.turns, taps: plan.filter((a) => a.tap).length, combos: sim.p2?.n || 0, plan, ...st }; // combos: v3.4 power combos fired on the way
+  if (opts.sim) out.sim = sim; // the finished world (tools/planner-easy.mjs scores it against the star goals)
+  return out;
 }
 
 // The exploit check (F15): turn every ring so a gap sits at the bottom, all at once, and wait.

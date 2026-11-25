@@ -8,6 +8,7 @@
 //   Conduct  one thing leads at each moment        src/engine/conduct.js   (asks the Brain's gate, src/brain.js)
 //   Herald   one local reminder                    src/engine/herald.js
 //   Tally    what was shown and what was taken     src/engine/tally.js
+//   Pacer    help, skips and dares fit to the player (never the play itself)   src/engine/pacer.js
 // The Director (help on a hard level), the Spin (wheel rules), the shop and the offers keep their own modules; the
 // Conductor is where they meet.
 import * as HUB from './hub.js';
@@ -17,6 +18,7 @@ import * as OR from './oracle.js';
 import * as CO from './conduct.js';
 import * as HE from './herald.js';
 import * as TA from './tally.js';
+import * as PA from './pacer.js';
 
 const HOUR = 3600000;
 HUB.add('ledger', {
@@ -69,6 +71,12 @@ HUB.add('tally', {
     else if (type === 'close') TA.leave(d.save, d.ctx && d.ctx.screen, d.ctx && d.ctx.level, d.ctx && d.ctx.lastWon, d.now);
   },
 });
+HUB.add('pacer', {
+  read: PA.read, failPlan: PA.failPlan, asked: PA.asked, declined: PA.declined, retryGift: PA.retryGift, gave: PA.gave, losses: PA.losses,
+  restart: PA.restart, result: PA.result, card: PA.card, cards: PA.cards, dareFor: PA.dareFor, dareTake: PA.dareTake, dareStart: PA.dareStart,
+  dareMet: PA.dareMet, dareCoins: PA.dareCoins, dared: PA.dared, marks: PA.marks, line: PA.line, trace: PA.trace,
+  on(type, d) { if (type === 'open' && d.fresh) PA.session(d.save); },
+});
 
 // ---- the game's side
 // a save was loaded or swapped: look at the purse without filing anything
@@ -116,6 +124,29 @@ export const tally = {
   screen: (save, name, secs, level) => HUB.ask('tally', 'screen', [save, name, secs, level]),
   table: (save) => HUB.ask('tally', 'table', [save], null),
 };
+// the Pacer (src/engine/pacer.js): every answer falls back to the plain game (no pop-up, no dare, no gift, no mark)
+const NO_PLAN = { ask: false, hint: false, scare: false, why: 'pacer off' };
+export const pacer = {
+  read: (save, ctx = {}) => HUB.ask('pacer', 'read', [save, ctx], null),
+  failPlan: (save, ctx = {}) => HUB.ask('pacer', 'failPlan', [save, ctx], NO_PLAN),
+  asked: (save, id) => HUB.ask('pacer', 'asked', [save, id]),
+  declined: (save, id) => HUB.ask('pacer', 'declined', [save, id]),
+  retryGift: (save, id) => !!HUB.ask('pacer', 'retryGift', [save, id], false),
+  gave: (save, id, kind) => HUB.ask('pacer', 'gave', [save, id, kind]),
+  losses: (save, id) => HUB.ask('pacer', 'losses', [save, id], 0),
+  restart: (save, id, info) => !!HUB.ask('pacer', 'restart', [save, id, info], false),
+  result: (save, r) => HUB.ask('pacer', 'result', [save, r]),
+  card: (save, secs) => HUB.ask('pacer', 'card', [save, secs]),
+  cards: (save) => HUB.ask('pacer', 'cards', [save], 'all'),
+  dareFor: (save, ctx = {}) => HUB.ask('pacer', 'dareFor', [save, ctx], null),
+  dareTake: (save, id, took) => HUB.ask('pacer', 'dareTake', [save, id, took]),
+  dareStart: (save, id) => HUB.ask('pacer', 'dareStart', [save, id], null),
+  dareMet: (d, F) => !!HUB.ask('pacer', 'dareMet', [d, F], false),
+  dareCoins: (coins) => HUB.ask('pacer', 'dareCoins', [coins], 0),
+  dared: (save, id) => !!HUB.ask('pacer', 'dared', [save, id], false),
+  marks: (save, ctx = {}) => HUB.ask('pacer', 'marks', [save, ctx], []),
+  trace: (save) => HUB.ask('pacer', 'trace', [save], []),
+};
 // the speed log's lines: one per subsystem, and who is up
 export function lines(save, ctx = {}) {
   return {
@@ -125,6 +156,7 @@ export function lines(save, ctx = {}) {
     oracle: HUB.ask('oracle', 'line', [save, ctx], 'off'),
     herald: HUB.ask('herald', 'line', [save], 'off'),
     tally: HUB.ask('tally', 'line', [save], 'off'),
+    pacer: HUB.ask('pacer', 'line', [save], 'off'),
   };
 }
 export { HUB };
