@@ -251,6 +251,10 @@ extension GameViewController: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         lastSafe = ""
         pushSafe()
+        #if DEBUG
+        // the simulator smoke run (ios/ci/smoke.js): a test build runs the script its launch environment carries
+        if let js = ProcessInfo.processInfo.environment["EGG_TEST_SCRIPT"], !js.isEmpty { run(js) }
+        #endif
     }
 
     /// iOS ended the page's process (out of memory, or a crash): a fresh web view starts the game again from its save,

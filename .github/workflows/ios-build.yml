@@ -39,12 +39,34 @@ jobs:
             -derivedDataPath build \
             -skipPackagePluginValidation -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO
-      # best effort: the same .app xtool makes for a phone (resources, Info.plist, icon), built for the Simulator
+      # the same .app xtool makes for a phone (resources, Info.plist, icon), built for the Simulator
       - name: Package the app with xtool (Simulator, unsigned)
-        continue-on-error: true
         working-directory: eggscape/ios
         run: |
           brew install xtool-org/tap/xtool
           xtool dev build --triple "$(uname -m)-apple-ios-simulator"
           ls -l xtool/Eggscape.app xtool/Eggscape.app/game
           plutil -p xtool/Eggscape.app/Info.plist
+      # the app really running: the dev page in the same shell, on a simulated iPhone, playing by itself
+      # (ios/ci/smoke.js: title, level card, a level by the bot, the win page, the map), a screenshot every 5 s
+      - name: Run it on a simulated iPhone
+        working-directory: eggscape
+        run: |
+          node tools/build.mjs --target web --dev
+          cp dist/dev/index.html ios/Resources/game/index.html
+          cd ios
+          xtool dev build --triple "$(uname -m)-apple-ios-simulator"
+          DEV=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; c=[x for k,v in sorted(d.items()) if 'iOS' in k for x in v if x['name'].startswith('iPhone') and 'SE' not in x['name']]; print(c[-1]['udid'], c[-1]['name'], file=sys.stderr); print(c[-1]['udid'])")
+          xcrun simctl boot "$DEV"
+          xcrun simctl bootstatus "$DEV" -b
+          xcrun simctl install "$DEV" xtool/Eggscape.app
+          mkdir -p shots
+          SIMCTL_CHILD_EGG_TEST_SCRIPT="$(cat ci/smoke.js)" xcrun simctl launch "$DEV" com.eggscape.game
+          for i in $(seq -w 1 40); do sleep 5; xcrun simctl io "$DEV" screenshot --type=jpeg "shots/shot-$i.jpg" >/dev/null 2>&1 || true; done
+          ls -l shots | head -50
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-simulator-shots
+          path: eggscape/ios/shots
+          retention-days: 14
