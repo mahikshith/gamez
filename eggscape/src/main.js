@@ -1833,6 +1833,8 @@ async function press(id) {
         const b = id.slice(6);
         if (G.boostSel.has(b)) G.boostSel.delete(b); else { G.boostSel.add(b); if (!(save.seen || {})['bu:' + b]) { save.seen = { ...(save.seen || {}), ['bu:' + b]: 1 }; persist(); } }
         G.boostLast = b;
+      } else if (id === 'car:prev' || id === 'car:next') { // the chick picker's arrows: one chick back / on (the row glides, the stage plays it)
+        const R = G.car; if (R && R.step) { const k = clamp(Math.round((R.to != null ? R.to : R.y) / R.step) + (id === 'car:next' ? 1 : -1), 0, Math.round(R.max / R.step)); R.v = 0; R.to = k * R.step; audio.play('ui_tap'); }
       } else if (id === 'inext') { await press('itab:chicks');
       } else if (id && id.startsWith('itab:')) { // the level page's tabs
         if (G.itab !== id.slice(5)) { G.itab = id.slice(5); if (G.ipage) { G.ipage.y = 0; G.ipage.v = 0; G.ipage.to = null; } }
@@ -6240,7 +6242,8 @@ function pickHand(tiles, T, V, s) { // tiles: [{ id, locked, x, y, w, h }] as dr
 function chickCard(S, x, y, w, h, s, o) {
   const sel = o.sel, pulse = o.need && !save.calm ? 1 + 0.018 * Math.sin(G.t * 4 + o.i * 0.9) : 1;
   const bn = o.bounce ? 1 + 0.07 * o.bounce * Math.sin(o.bt * 24) : 1;
-  const k = (1 + 0.08 * sel) * pulse * bn, cx = x + w / 2, cy = y + h / 2 - 7 * s * sel;
+  const foc = o.foc == null ? sel : o.foc; // foc: 0..1, the one playing on the stage (bigger, raised); sel: the one coming along (border, tick)
+  const k = (1 + 0.06 * foc) * pulse * bn, cx = x + w / 2, cy = y + h / 2 - 4 * s * foc;
   const ac = o.acc, r = 16 * s;
   ctx.save();
   ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-w / 2, -h / 2);
@@ -6269,7 +6272,7 @@ function chickCard(S, x, y, w, h, s, o) {
     const bz = Math.min(ah * 0.5, w * 0.36);
     if (o.locked) { ui.roundRect(pad + 1.5 * s, pad + 3.5 * s, w - 2 * pad - 3 * s, ah - 7 * s, 12 * s); ctx.fillStyle = 'rgba(10,14,30,0.38)'; ctx.fill(); }
     if (o.locked) { // a padlock on the art, and the coin price on a chip: green when affordable, grey when not
-      const lz = bz * 0.7, lx = pad + lz * 0.65, ly = pad + lz * 0.65;
+      const lz = bz * 0.7, lx = o.lockR ? w - pad - lz * 0.65 : pad + lz * 0.65, ly = pad + lz * 0.65; // (lockR: the picker row keeps its left corner for the row's arrow)
       ctx.beginPath(); ctx.arc(lx, ly, lz * 0.62, 0, 7); ctx.fillStyle = '#25355c'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke();
       ctx.strokeStyle = '#ffe27a'; ctx.lineWidth = lz * 0.12; ctx.beginPath(); ctx.arc(lx, ly - lz * 0.12, lz * 0.2, Math.PI, 0); ctx.stroke();
       ctx.fillStyle = '#ffd24a'; ui.roundRect(lx - lz * 0.3, ly - lz * 0.12, lz * 0.6, lz * 0.42, lz * 0.08); ctx.fill();
@@ -6296,8 +6299,9 @@ function chickCard(S, x, y, w, h, s, o) {
   }
   if (S.premium) { // a premium chick: a gold inner rim and the crown on the card's top-left corner
     ctx.save(); ui.roundRect(3 * s, 3 * s, w - 6 * s, h - 6 * s, r - 3 * s); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#ffc928'; ctx.stroke(); ctx.restore();
-    drawPremiumBadge(ctx, 6 * s + 10 * s, 4 * s, 11 * s, G.t);
+    drawPremiumBadge(ctx, o.lockR != null ? w / 2 : 16 * s, 4 * s, 11 * s, G.t); // (the picker row: over the middle, clear of the row's arrows and the tick)
   }
+  if (foc > 0.02 && sel < 0.98) { ctx.save(); ctx.globalAlpha *= foc * (1 - sel); ui.roundRect(0, 0, w, h, r); ctx.lineWidth = 3.5 * s; ctx.strokeStyle = '#fff3cf'; ctx.stroke(); ui.roundRect(-1.75 * s, -1.75 * s, w + 3.5 * s, h + 3.5 * s, r + 1.75 * s); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.75)'; ctx.stroke(); ctx.restore(); } // in focus, not (yet) the chosen one: a pale rim
   if (sel > 0.02) { // thick bright border + the check badge
     ctx.save(); ctx.globalAlpha *= sel; ctx.lineJoin = 'round';
     ui.roundRect(0, 0, w, h, r); ctx.lineWidth = 5 * s; ctx.strokeStyle = ac; ctx.stroke();
@@ -6757,52 +6761,69 @@ function drawLevelIntro(L, acc) {
   // ---- the Chicks tab's pieces: the carousel (snaps a chick to its middle) and that chick's power on a big stage
   const nI = items.length;
   const R = G.car || (G.car = { y: 0, v: 0, max: 0, t: G.t, lid: null });
-  const carDims = (w) => { const cw = clamp(w / (land ? 4.2 : 3.1), (land ? 88 : 100) * s, 120 * s), gap = 12 * s; return { cw, ch: Math.round(cw * 1.1), gap, step: cw + gap }; };
+  // 0.8.16 (mykee: "they are not center aligned ... a lot of empty space ... no left hand or right hand options"):
+  // whole tiles across the row's full width (three; four on a phone on its side), never a cut one, never a blank side.
+  // R.y is the chick in focus (the one the stage plays), in steps; the row shows the window around it: at the list's
+  // start the focus is the left tile, at its end the right one. A round arrow at each end steps one chick.
+  const NV = land ? 4 : 3;
+  const carDims = (w) => { const gap = 10 * s, cw = (w - (NV - 1) * gap) / NV; return { cw, ch: Math.round(cw * (land ? 1.1 : 1.06)), gap, step: cw + gap }; };
   { const D = carDims(land ? rwL : iwP); R.step = D.step; R.max = Math.max(0, (nI - 1) * D.step);
-    if (R.lid !== L.id + ':' + G.li) { // a new level: the picked chick starts in the middle
-      R.lid = L.id + ':' + G.li; R.v = 0; R.to = null; R.pt = G.introPick ? G.introPick.t : 0;
+    if (R.lid !== L.id + ':' + G.li) { // a new level: the picked chick is the one in focus
+      R.lid = L.id + ':' + G.li; R.v = 0; R.to = null; R.pt = G.introPick ? G.introPick.t : 0; R.cb = G.chickBuy || null;
       R.y = Math.max(0, items.findIndex((it) => it.S.id === T.id)) * D.step;
     } }
   const carCenter = () => (nI ? clamp(Math.round(R.y / Math.max(1, R.step || 1)), 0, nI - 1) : 0);
   let handLater = null;
-  const carBlock = (w0) => { const D = carDims(w0); return { h: D.ch + 38 * s, gap: gp, draw: (x, y, w) => {
-    const { cw, ch, step } = D, rowH = D.ch + 38 * s;
-    if (G.introPick && G.introPick.t !== R.pt) { R.pt = G.introPick.t; const k = items.findIndex((it) => it.S.id === G.introPick.id); if (k >= 0) { R.v = 0; R.to = k * step; } } // a tapped chick glides to the middle
+  const CTOP = 16 * s, CBOT = 16 * s; // room above for the raised tile and its tick; below for the dots
+  const carBlock = (w0) => { const D = carDims(w0); return { h: D.ch + CTOP + CBOT, gap: gp, draw: (x, y, w) => {
+    const { cw, ch, step, gap } = D, rowH = D.ch + CTOP + CBOT;
+    if (G.introPick && G.introPick.t !== R.pt) { R.pt = G.introPick.t; const k = items.findIndex((it) => it.S.id === G.introPick.id); if (k >= 0) { R.v = 0; R.to = k * step; } } // a tapped chick takes the focus
+    if ((G.chickBuy || null) !== R.cb) { R.cb = G.chickBuy || null; const k = items.findIndex((it) => it.S.id === R.cb); if (k >= 0) { R.v = 0; R.to = k * step; } } // so does a locked one
     glide(R);
-    if (!(G.pdrag && (G.pdrag.sc === R || (G.pdrag.cand && G.pdrag.cand.x === R))) && R.to == null && Math.abs(R.v) < 260) { // snap: a chick always ends in the middle
+    if (!(G.pdrag && (G.pdrag.sc === R || (G.pdrag.cand && G.pdrag.cand.x === R))) && R.to == null && Math.abs(R.v) < 260) { // snap: always a whole chick
       const k = clamp(Math.round(R.y / step), 0, nI - 1);
       if (Math.abs(R.y - k * step) > 0.5) { R.v = 0; R.to = k * step; } else R.y = k * step;
     }
-    const off = (w - cw) / 2 - R.y, V = { x, y, w, h: rowH }, ci = carCenter();
+    const nv = Math.min(nI, NV), rowW = nv * step - gap, wy = clamp(R.y - Math.floor((NV - 1) / 2) * step, 0, Math.max(0, (nI - NV) * step));
+    const off = (w - rowW) / 2 - wy, V = { x, y, w, h: rowH }, ci = carCenter();
     G.carRect = V;
     const r0 = ui.rects.length, b0 = ui.buttons.length;
-    ctx.save(); ctx.beginPath(); ctx.rect(x - 4 * s, y, w + 8 * s, rowH); ctx.clip();
-    const cy = y + 22 * s, tl = []; // (room above for a lifted card and its check)
-    const ns = Math.min(17 * s, cw / 7.8), ls = Math.min(13.5 * s, cw / 9.6);
+    const cy = y + CTOP, tl = [];
+    const ns = Math.min(17 * s, cw / 7.2), ls = Math.min(13.5 * s, cw / 9);
     const lines = items.map(({ S }) => wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s - ls * 2.2).slice(0, 1));
     const two = items.some(({ S }) => ui.measure(S.name, ns) > cw - 14 * s), textH = ns * 1.15 * (two ? 2 : 1) + 6 * s + ls * 1.2 + ls * 0.6 + 6 * s;
-    items.forEach(({ S, locked: LK }, i) => {
-      const rx = x + off + i * step;
-      if (rx + cw < x - 10 * s || rx > x + w + 10 * s) return;
-      const Asel = (G.cardSel || (G.cardSel = {})), want = S.id === T.id ? 1 : 0, st = Asel[S.id] || (Asel[S.id] = { v: want, t: G.t });
-      const dt = Math.min(0.05, Math.max(0, G.t - st.t)); st.t = G.t; st.v += (want - st.v) * Math.min(1, dt * 14);
+    // the arrows (the game's round back button): the left one from the second chick on, the right one until the last
+    const az = 44 * s, ay = cy + 7 * s + (ch - 14 * s - textH) / 2 - az / 2, aL = nI > 1 && ci > 0 ? x - az * 0.37 : null, aR = nI > 1 && ci < nI - 1 ? x + w - az * 0.63 : null;
+    ctx.save(); ctx.beginPath(); ctx.rect(x - 8 * s, y, w + 16 * s, rowH); ctx.clip();
+    const Asel = (G.cardSel || (G.cardSel = {})), Afoc = (G.cardFoc || (G.cardFoc = {}));
+    const ease = (M, id, want) => { const st = M[id] || (M[id] = { v: want, t: G.t }); const dt = Math.min(0.05, Math.max(0, G.t - st.t)); st.t = G.t; st.v += (want - st.v) * Math.min(1, dt * 14); return st.v; };
+    const paint = (i) => {
+      const { S, locked: LK } = items[i], rx = x + off + i * step;
+      if (rx + cw < x - 12 * s || rx > x + w + 12 * s) return;
+      const sel = ease(Asel, S.id, S.id === T.id ? 1 : 0), foc = ease(Afoc, S.id, i === ci ? 1 : 0);
       const pk = G.introPick && G.introPick.id === S.id ? G.introPick : null, bt = pk ? G.t - pk.t : 9;
-      const far = Math.min(1, Math.abs(rx + cw / 2 - (x + w / 2)) / step); // the side cards step back a little
-      ctx.save(); ctx.globalAlpha *= 1 - 0.25 * far;
-      chickCard(S, rx, cy, cw, ch, s, { sel: st.v, dim: false, locked: LK, tipGlow: !!(LK && G.introTip && G.introTip.id === S.id), need: T.need, i, acc: G.introAcc, wide: false, lines: lines[i], ls, ns, two, textH, ...pickJump(bt, !!LK, T) });
+      ctx.save(); ctx.globalAlpha *= 1 - (T.need ? 0.1 : 0.22) * (1 - foc); // the others step back a little
+      chickCard(S, rx, cy, cw, ch, s, { sel, foc, lockR: rx + cw / 2 < x + w / 2 - 1, dim: false, locked: LK, tipGlow: !!(LK && G.introTip && G.introTip.id === S.id), need: T.need, i, acc: G.introAcc, wide: false, lines: lines[i], ls, ns, two, textH, ...pickJump(bt, !!LK, T) });
       ctx.restore();
-      const rect = { x: rx, y: cy, w: cw, h: ch }, bid = LK ? 'stk:buy:' + S.id : 'stk:pick:' + S.id;
+      // (the tile's own tap area stops where an arrow sits over it)
+      const x0 = Math.max(rx, aL != null ? aL + az + 2 * s : -1e9), x1 = Math.min(rx + cw, aR != null ? aR - 2 * s : 1e9);
+      if (x1 - x0 < 12 * s) return;
+      const rect = { x: x0, y: cy, w: x1 - x0, h: ch }, bid = LK ? 'stk:buy:' + S.id : 'stk:pick:' + S.id;
       ui.record(rect, 'btn:' + bid, 'btn:' + bid); ui.buttons.push({ id: bid, ...rect });
-      tl.push({ id: S.id, locked: !!LK, ...rect });
-    });
+      tl.push({ id: S.id, locked: !!LK, x: rx, y: cy, w: cw, h: ch });
+    };
+    for (let i = 0; i < nI; i++) if (i !== ci) paint(i);
+    if (nI) paint(ci); // the one in focus last: it is raised over its neighbours
     ctx.restore();
     clipRecorded(r0, b0, V);
+    if (aL != null) ui.button('car:prev', '', aL, ay, az, az, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: az / 2 });
+    if (aR != null) ui.button('car:next', '', aR, ay, az, az, { kind: 'hud', icon: ICON.right, iconS: 1.3, round: az / 2 });
     handLater = () => pickHand(tl, T, V, s); // drawn last, over the row and the stage under it: the hand taps the card's bottom edge
-    if (nI > 1) { // where you are: a dot per chick (the middle one bright), arrows at the ends of the row
+    if (nI > 1) { // where you are: a dot per chick (the one in focus bright)
       for (let p = 0; p < nI; p++) { ctx.beginPath(); ctx.arc(x + w / 2 + (p - (nI - 1) / 2) * 13 * s, y + rowH - 6 * s, (p === ci ? 4 : 3) * s, 0, 7); ctx.fillStyle = p === ci ? '#c9842a' : 'rgba(120,80,30,0.3)'; ctx.fill(); }
     }
   } }; };
-  // the chick in the middle: its power playing (locked ones too), its name, upside and downside, and its way in
+  // the chick in focus: its power playing (locked ones too), its name, upside and downside, and its way in
   const cS = nI ? items[carCenter()] : null;
   const chickStage = (h) => ({ h, gap: gp, draw: (x, y, w) => {
     if (!cS) return;
@@ -6822,20 +6843,20 @@ function drawLevelIntro(L, acc) {
       ctx.restore();
     }
   } });
-  const chFsN = 20 * s, chFsU = 16 * s, chFsD = 15 * s, wayH = 42 * s;
+  const chFsN = 20 * s, chFsU = 16 * s, chFsD = 15 * s, wayH = 38 * s;
   // one upside line and one downside line (the longer wordings step down to a shorter one, never cut or wrapped)
   const oneLine = (alts, fs, w) => alts.find((q) => q && ui.measure(q, fs) <= w) || alts[alts.length - 1];
   const upOf = (S, w) => oneLine([S.up, shortTip(S.up), (POWER_WORDS[S.id] || [''])[0]], chFsU, w);
   const dnOf = (S, w) => oneLine([S.down && 'Downside: ' + S.down, S.down && 'Downside: ' + shortTip(S.down), 'Downside: ' + (POWER_WORDS[S.id] || ['', ''])[1]], chFsD, w);
   const chickCap = (w) => {
-    return { h: chFsN * 1.3 + chFsU * 1.22 + 3 * s + chFsD * 1.22 + 6 * s + wayH, gap: 6 * s, draw: (x, y, ww) => {
+    return { h: chFsN * 1.2 + chFsU * 1.22 + 3 * s + chFsD * 1.22 + 5 * s + wayH, gap: 6 * s, draw: (x, y, ww) => {
       if (!cS) return;
       const S = cS.S, LK = cS.locked;
       let yy = y;
-      ui.text(S.name, x + ww / 2, yy + chFsN * 0.62, { size: chFsN, align: 'center', maxW: ww, color: S.col ? ui.tint(S.col[1], -0.3) : C.ink, tag: 'intro:pickname' }); yy += chFsN * 1.3;
+      ui.text(S.name, x + ww / 2, yy + chFsN * 0.62, { size: chFsN, align: 'center', maxW: ww, color: S.col ? ui.tint(S.col[1], -0.3) : C.ink, tag: 'intro:pickname' }); yy += chFsN * 1.2;
       ui.text(upOf(S, ww - 8 * s), x + ww / 2, yy + chFsU * 0.62, { size: chFsU, align: 'center', maxW: ww, color: C.ink, tag: 'intro:pickup' }); yy += chFsU * 1.22 + 3 * s;
       ui.text(dnOf(S, ww - 8 * s), x + ww / 2, yy + chFsD * 0.62, { size: chFsD, align: 'center', maxW: ww, color: C.warn, tag: 'intro:pickdn' });
-      const wy = y + chFsN * 1.3 + chFsU * 1.22 + 3 * s + chFsD * 1.22 + 6 * s, cy = wy + wayH / 2;
+      const wy = y + chFsN * 1.2 + chFsU * 1.22 + 3 * s + chFsD * 1.22 + 5 * s, cy = wy + wayH / 2;
       if (LK) { // its way in: free at a later level (or a premium one), and unlocking it now for coins (the same sheet as today)
         const tip = G.introTip && G.introTip.id === S.id ? shortTip(G.introTip.line) || G.introTip.line : '';
         const free = tip || (S.premium ? 'A premium chick' : `Free at level ${S.unlock}`), buy = !early;
@@ -6858,7 +6879,10 @@ function drawLevelIntro(L, acc) {
   };
 
   // ---- the bottom: the big button, the boosters strip right above it, and the ring speed strip above that
-  const BTN = 56 * s, STRIP = 68 * s;
+  // 0.8.16: the booster tiles run from PLAY's left edge to its right one. On a tall phone six fill the width; on a
+  // short one they keep their size and the room between them grows (drawBoosterStrip spreads a full row)
+  const BTN = 56 * s, BC0 = 49 * s, bcFull = Math.min((iwP - 5 * 8 * s) / 6, 72 * s);
+  const STRIP = 19 * s + (land ? BC0 : Math.max(BC0, BC0 + (bcFull - BC0) * clamp((A.h / s - 640) / 160, 0, 1)));
   const bigButton = (x, y, w) => {
     if (lvTab) ui.button(hasCh ? 'inext' : 'go', hasCh ? 'NEXT' : 'PLAY', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: hasCh ? ICON.next : ICON.play, size: 27 * s });
     else ui.button('go', T.need ? 'PICK A CHICK' : 'PLAY', x, y, w, BTN, T.need ? { kind: 'off', size: 24 * s } : { kind: 'primary', shimmer: true, icon: ICON.play, size: 27 * s }); // need: the button says what is missing (it still takes the tap and nudges)
@@ -6881,7 +6905,7 @@ function drawLevelIntro(L, acc) {
     const fixed = pageColH([...pre, ...post], s) + 6 * s + gp;
     let h = clamp(Vh - fixed, lo, hi);
     const left = Vh - fixed - h, B = [...pre, mk(h), ...post].filter(Boolean);
-    if (left > 4 * s) { const n = B.length + 1, add = Math.min(left / n, 22 * s); for (const b of B) b.gap = (b.gap ?? 10 * s) + add; }
+    if (left > 0.5 * s) { const n = B.length + 1, add = Math.min(left / n, 40 * s); for (const b of B) b.gap = (b.gap ?? 10 * s) + add; }
     return B;
   };
 
@@ -6901,7 +6925,7 @@ function drawLevelIntro(L, acc) {
     sheet(Math.max(A.x, x0 - pad), y, Math.min(A.w, iw + 2 * pad));
     y += 10 * s;
     if (hasCh) { tabs(x0, y, iw); y += TABH + 2 * s; }
-    const yb = bottom(x0, iw) - 4 * s;
+    const yb = bottom(x0, iw);
     const V = { x: A.x, y, w: A.w, h: yb - y };
     G.ipRect = V; G.ipRectR = null;
     const pre = [], post = [];
@@ -6910,10 +6934,10 @@ function drawLevelIntro(L, acc) {
       const pk = perkBlock(iw); if (pk) pre.push(pk);
       pre.push(goalRow);
       post.push(capBlock(iw), ...[tileBlock(iw), chipBlock(iw), starBlock].filter(Boolean));
-      B = fitCol(pre, levelStage, post, V.h, Math.min(165 * s, iw * 0.5), Math.min(iw * 0.95, 560 * s));
+      B = fitCol(pre, levelStage, post, V.h, Math.min(165 * s, iw * 0.5), Math.min(iw * 1.1, 560 * s)); // (0.8.16: a page with little else grows its picture, nearly square, as the level's own card does)
     } else {
       pre.push(carBlock(iw)); post.push(chickCap(iw));
-      B = fitCol(pre, chickStage, post, V.h, Math.min(150 * s, iw * 0.45), Math.min(iw * 0.85, 520 * s));
+      B = fitCol(pre, chickStage, post, V.h, Math.min(150 * s, iw * 0.45), Math.min(iw * 0.95, 560 * s));
     }
     if (B.length) B[0] = { ...B[0], gap: B[0].gap - gp };
     column(B, pg, V, x0, iw);

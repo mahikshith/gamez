@@ -63,6 +63,9 @@ const srv = http.createServer((q, r) => {
       // 0.8.14: the level card's Chicks tab, with the chick in the middle of the carousel and, at the row's end, a locked one
       if (await p.evaluate(() => __egg.ui.buttons.some((b) => b.id === 'itab:chicks'))) {
         await check(`L${i + 1}-intro-chicks`, () => { const E = __egg; E.press('itab:chicks'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return E.overlaps(); }, 0, shoot);
+        // 0.8.16: the picker's arrows: two chicks on (both arrows over the row's ends), and they must have moved the focus
+        await check(`L${i + 1}-intro-chicks-mid`, () => { const E = __egg, R = E.G.car, y0 = R ? R.y : 0, many = R && R.max > 2.5 * R.step; if (!many) return []; E.press('car:next'); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.press('car:next'); for (let k = 0; k < 30; k++) E.frame(1 / 60);
+          const o = E.overlaps(), has = ['car:prev', 'car:next'].every((id) => E.ui.buttons.some((b) => b.id === id)); return Math.abs(R.y - y0 - 2 * R.step) < 1 && has ? o : o.concat([['picker arrows', 'did not step two chicks or are missing']]); }, 0, i === 12);
         await check(`L${i + 1}-intro-chicks-end`, () => { const E = __egg, R = E.G.car; if (R) { R.to = null; R.v = 0; R.y = R.max; } for (let k = 0; k < 20; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('itab:level'); for (let k = 0; k < 5; k++) E.frame(1 / 60); return o; }, 0, false);
       }
       if (await p.evaluate((i) => !!__egg.LEVELS[i].intro, i)) await check(`L${i + 1}-intro-after`, () => { const E = __egg; E.press('gotit'); for (let k = 0; k < 10; k++) E.frame(1 / 60); return E.overlaps(); }, 0, false);
