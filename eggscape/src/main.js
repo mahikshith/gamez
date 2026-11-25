@@ -2430,7 +2430,7 @@ function drawDetail() {
         ui.text(was, x0, cy, { size: fs, color: it.sub.color, tag: 'dt:was' });
         ctx.save(); ctx.strokeStyle = '#e8402e'; ctx.lineWidth = 2.4 * s; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0 - 2 * s, cy + fs * 0.18); ctx.lineTo(x0 + ww + 2 * s, cy - fs * 0.18); ctx.stroke(); ctx.restore();
         ui.text(tail, x0 + ww, cy, { size: fs, color: '#7a48e8', maxW: w - ww, tag: 'dt:sub' });
-      } }] : it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 6 * s })] : []),
+      } }] : it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 5 * s })] /* 0.8.16: stays with the words above it when the page shares out its air */ : []),
       { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x, y, w, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
       ...(tryK && it.perk && !it.trying ? [lineBlock('The power comes with it.', 14 * s, { color: C.ink2, tag: 'dt:perkfree', gap: 8 * s })] : []),
       ...(tryK ? [{ h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
@@ -2443,7 +2443,7 @@ function drawDetail() {
   const A = ui.A, u = ui.u;
   if (cardFull({}, A)) {
     const rest = build(0)(1, fullInner(A, u) / u).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22;
-    artH = clamp((A.y1 - A.y - 30 * u) / u - rest - 40, 140, 300);
+    artH = clamp((A.y1 - A.y - 30 * u) / u - rest - 40, 140, 380); // (up to a square stage)
   }
   stackCard(it.name, build(artH), { ribbon: '#7a48e8', grow: 1.2 });
 }
