@@ -1,5 +1,8 @@
-// Eggscape build: node tools/build.mjs [--target all|web|poki|crazygames|gamedistribution|youtube|app] [--dev] [--entry path]
+// Eggscape build: node tools/build.mjs [--target all|web|poki|crazygames|gamedistribution|youtube|app|ios] [--dev] [--entry path]
 // --target app: Android WebView shell (portal 'web', real progression, own save key, __APP__ true). Never part of 'all'.
+// --target ios: the iPhone shell (eggscape/ios, built with xtool). The web profile as it is (purchases and ads are not
+// wired on iOS yet, so the game must see no money shop): __APP__ false; the shell sets window.EGG_APP and window.EggApp
+// itself. The page is also copied to ios/Resources/game/, which xtool bundles into the app. Never part of 'all'.
 import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, existsSync, statSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
@@ -11,13 +14,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // the version shown in Settings: the Android versionName (the APK's), else package.json
 const appVersion = (() => { try { const m = /versionName\s+'([^']+)'/.exec(readFileSync(join(ROOT, 'android/app/build.gradle'), 'utf8')); if (m) return m[1]; } catch (_) { /* no android shell */ } try { return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version; } catch (_) { return ''; } })();
 const TARGETS = ['web', 'poki', 'crazygames', 'gamedistribution', 'youtube'];
-const ALL_TARGETS = [...TARGETS, 'app'];
+const ALL_TARGETS = [...TARGETS, 'app', 'ios'];
 const MAX_HTML = 5 * 1024 * 1024;
 const MAX_GZIP = 2 * 1024 * 1024;
 
 const HEAD = {
   web: '',
   app: '',
+  ios: '',
   // poki/crazygames tags are async so a slow/blackholed SDK host can never block page load; the adapter waits for the global.
   poki: '<script async id="poki-sdk" onerror="window.__sdkFail=1" src="https://game-cdn.poki.com/scripts/v2/poki-sdk.js"></script>',
   crazygames: '<script async id="cg-sdk" onerror="window.__sdkFail=1" src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>',
@@ -51,7 +55,7 @@ const fmt = (n) => (n / 1024).toFixed(1).padStart(8) + ' KB';
 
 async function bundle(portal, { minify, sourcemap }) {
   const isApp = portal === 'app';
-  if (isApp) portal = 'web';
+  if (isApp || portal === 'ios') portal = 'web';
   const res = await build({
     entryPoints: [entry],
     bundle: true,
@@ -120,7 +124,14 @@ async function buildOne(label, portal, { minify, sourcemap, zip }) {
 const rows = [];
 const list = test ? [] : targetArg === 'all' ? TARGETS : [targetArg];
 mkdirSync(join(ROOT, 'dist'), { recursive: true });
-for (const t of list) rows.push(await buildOne(t, t, { minify: !dev, sourcemap: false, zip: t !== 'app' }));
+for (const t of list) rows.push(await buildOne(t, t, { minify: !dev, sourcemap: false, zip: t !== 'app' && t !== 'ios' }));
+if (list.includes('ios')) { // the page xtool bundles (ios/xtool.yml resources); generated, not committed (ios/.gitignore)
+  const out = join(ROOT, 'ios/Resources/game');
+  rmSync(out, { recursive: true, force: true });
+  mkdirSync(out, { recursive: true });
+  for (const f of ['index.html', 'CREDITS.txt', 'LICENSE-font.txt']) if (existsSync(join(ROOT, 'dist/ios', f))) copyFileSync(join(ROOT, 'dist/ios', f), join(out, f));
+  console.log('copied dist/ios -> ios/Resources/game');
+}
 if (test) rows.push(await buildOne('test', 'web', { minify: true, sourcemap: false, zip: false }));
 if (dev) rows.push(await buildOne('dev', 'web', { minify: false, sourcemap: true, zip: false }));
 
