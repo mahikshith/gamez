@@ -10,6 +10,7 @@
 //   A coin button the player cannot afford stays tappable (off face): the game answers with its "Get more" sheet.
 //   picker: 'boost:<boosterId>', 'shop'
 import { glideStep, snapPx } from '../scroll.js';
+import { focusY, focusTrip, focusLook, focusDraw, focusHand } from './focus.js'; // 0.8.16: the one "scroll to it and point at it"
 import { drawEggSkinArt } from '../render/eggskins.js';
 import { pictoPerk } from './picto.js'; // an egg skin's power as one glyph
 import { ICON, C, tint, drawAdBadge } from './ui.js';
@@ -1216,6 +1217,7 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
     ui.text(String(item.count), bx, by + 0.5 * s, { size: 13 * s, align: 'center', maxW: br * 1.7, color: '#fff', tag: 'store:count:' + item.key, group: 'store:tart:' + item.key });
   }
   if (!(item.tap && B.disabled)) ui.buttons.push({ id: item.tap || 'tile:' + item.key, x, y, w, h });
+  return { x: cx0, y: cy0, w: cwid, h: chipH }; // the chip: where the pointer of a wanted tile taps (ui/focus.js)
 }
 
 // one item by its key (the detail sheet asks for it): 'stone', 'item:ally', 'charge:chick3', 'chick:thunder', 'hen:elf',
@@ -1336,7 +1338,7 @@ export function drawStore(ui, ctx, W, H, state) {
   const add = (h, draw, key, before = gap) => rows.push({ h, draw, key, before });
   // 0.8.10 (mykee: the shop must open ON the item the player tapped): which row holds each card, and where each was drawn
   const SC0 = state.scroll || {}, rowOf = {}, HL = SC0.hl, hit = (key) => { rowOf[key] = rows.length; };
-  let hlR = null; const mark = (key, x, y, w, h) => { if (HL && HL.key === key) hlR = { x, y, w, h }; };
+  let hlR = null; const mark = (key, x, y, w, h, chip) => { if (HL && HL.key === key) hlR = { x, y, w, h, chip }; }; // chip: its price button (the hand points there)
   const head = (title, key) => { add(D.headH * s, (x, y, w) => {
     const sz = 12.5 * s, tw2 = ui.measure(title.toUpperCase(), sz), cx = x + w / 2, cy = y + D.headH * s / 2;
     ctx.fillStyle = 'rgba(255,236,200,0.28)';
@@ -1360,7 +1362,7 @@ export function drawStore(ui, ctx, W, H, state) {
     for (let i = 0; i < items.length; i += tn) {
       const R = items.slice(i, i + tn);
       R.forEach((it) => hit(it.key));
-      add(th, (x, y, w) => { const x1 = x + (w - (R.length * tw + (R.length - 1) * gap)) / 2; R.forEach((it, j) => { drawTile(ui, ctx, it, x1 + j * (tw + gap), y, tw, th, s, t); mark(it.key, x1 + j * (tw + gap), y, tw, th); }); }, i ? null : key, rows.length && rows[rows.length - 1].head ? 6 * s : gap);
+      add(th, (x, y, w) => { const x1 = x + (w - (R.length * tw + (R.length - 1) * gap)) / 2; R.forEach((it, j) => { const chip = drawTile(ui, ctx, it, x1 + j * (tw + gap), y, tw, th, s, t); mark(it.key, x1 + j * (tw + gap), y, tw, th, chip); }); }, i ? null : key, rows.length && rows[rows.length - 1].head ? 6 * s : gap);
     }
   };
 
@@ -1455,9 +1457,10 @@ export function drawStore(ui, ctx, W, H, state) {
   if (SC.want) { // a section ('coins', 'bank', 'premium'...) lands at the top; a card ('chick:frost', 'iap:coins_s') a little under it, whole, and gets a ring
     const ri = rowOf[SC.want], R = ri != null ? rows[ri] : null;
     if (R) {
-      const to = Math.max(0, Math.min(SC.max, R.off - (R.h < avail * 0.72 ? Math.min(avail * 0.22, avail - R.h - 8 * s) : 8 * s)));
-      SC.y = ui.calm ? to : Math.max(0, to - 56 * s); SC.to = ui.calm ? null : to; SC.v = 0; // set straight there, then one soft settle
-      SC.hl = { key: SC.want, t0: t, dur: SC.hlDur || 1.2 }; // (0.8.14: the shop mark's pick keeps its ring ~3 s)
+      const to = focusY(R.off, R.h, avail, SC.max, s);
+      if (!SC.point && !ui.calm) SC.y = Math.max(0, to - 56 * s); // a plain jump (a row, a card): set close, then one soft settle
+      focusTrip(SC, to, ui.calm); // 0.8.16: the mark's pick is scrolled to from where the list stands (about 0.4 s), not jumped to
+      SC.hl = { key: SC.want, t0: t, dur: SC.hlDur || 1.2, point: !!SC.point }; // the ring (and the hand) stay ~4 s or until a touch
     } else if (at[SC.want] != null) { SC.y = at[SC.want] - (rows[0] && at[SC.want] ? 4 * s : 0); SC.v = 0; }
     SC.want = null;
   }
@@ -1475,17 +1478,13 @@ export function drawStore(ui, ctx, W, H, state) {
   const x0 = OX + AW / 2 - cw / 2;
   ctx.save(); ctx.beginPath(); ctx.rect(0, vt, W, vb - vt); ctx.clip();
   for (const R of rows) { const y = y0 + R.off; clipped(y, R.h, () => R.draw(x0, y, cw)); }
-  if (hlR && HL) { // the wanted card: a gold ring that pulses twice and lets go (Calm motion: a still ring)
-    const dur = HL.dur || 1.2, k = (t - HL.t0) / dur, n = Math.max(2, Math.round(dur / 0.6)); // n pulses
-    if (k >= 0 && k < 1) {
-      const a = ui.calm ? 1 : Math.min(1, (1 - k) * 3), p = ui.calm ? 0 : 0.5 - 0.5 * Math.cos(k * Math.PI * 2 * n), o = (4 + 4 * p) * s;
-      ctx.save(); ctx.globalAlpha = a;
-      ui.roundRect(hlR.x - o, hlR.y - o, hlR.w + 2 * o, hlR.h + 2 * o, 20 * s + o); ctx.lineWidth = (5 + 2 * p) * s; ctx.strokeStyle = 'rgba(255,214,60,0.45)'; ctx.stroke();
-      ui.roundRect(hlR.x - o, hlR.y - o, hlR.w + 2 * o, hlR.h + 2 * o, 20 * s + o); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#fff3a8'; ctx.stroke();
-      ctx.restore();
-    } else if (k >= 1) SC.hl = null;
-  }
+  // the wanted card: a pulsing gold ring (Calm motion: a still one), ui/focus.js
+  const look = HL ? focusLook(HL, t, ui.calm) : null;
+  if (HL && !look && t - HL.t0 >= 0) SC.hl = null;
+  if (hlR && look) focusDraw(ctx, ui, look, hlR, 20 * s, s);
   ctx.restore();
+  // the hand taps the card's price chip from below it (never over the art or the price); only while the chip is in the list
+  if (hlR && look && look.point && hlR.chip && hlR.chip.y > vt && hlR.chip.y + hlR.chip.h < vb) focusHand(ctx, look, { x: hlR.chip.x + hlR.chip.w * 0.82, y: hlR.chip.y + hlR.chip.h * 0.7, side: hlR.chip.x + hlR.chip.w - 1 * s }, s, { y: vt, h: vb - vt });
   if (SC.max > 0 && !ui.calm) { // a thin scroll thumb
     const th = Math.max(30 * s, (vb - vt) * (vb - vt) / (SC.max + vb - vt)), ty = vt + Math.max(0, Math.min(1, SC.y / SC.max)) * (vb - vt - th - 4 * s);
     ui.roundRect(OX + AW - 5 * s, ty, 3 * s, th, 1.5 * s); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
