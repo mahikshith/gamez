@@ -10,7 +10,7 @@
 //   egg_bank      won a level lost 2+ times before, and the bank holds 600+ (every 3 days)
 //   premium       level 12+ and 3+ distinct play days (every 7 days)
 //   skip_videos   non-payer of Unlock Everything who watched 3+ videos today or 8+ in all, at a win or home (every 3 days):
-//                 'Skip the videos' leads to the Unlock Everything sheet; outranks the generic premium rule, no level 12 / play-day need
+//                 'Rewards without waiting' (the old 'Skip the videos') leads to the Unlock Everything sheet; outranks the generic premium rule, no level 12 / play-day need
 //   collector     owns Premium or paid before, last purchase 7+ days old (every 14 days)
 //   (2026-11-20 shop 2.0: No Ads and the Flock Bundle are gone; Unlock Everything is $2.99 and comes earlier)
 //   chick_tip     intro: a locked power chick the player can afford right now (a line on the card, daily at most)
@@ -37,8 +37,8 @@ const TEXT = {
   starter_nest: { title: 'Starter Nest', line: 'A small start: 600 coins, 3 Chick Charges, 2 of every boost and the Cocoa Hen. Only once.' },
   bundle_helper: { title: 'Helper Bundle', line: 'Stuck here? 800 coins, 5 Chick Charges, 3 Ally Tickets and 2 of every boost.' },
   egg_bank: { title: 'Your Golden Egg Bank is full', line: 'Crack it open and take every coin inside.' },
-  skip_videos: { title: 'Skip the videos', line: 'Unlock Everything gives every video reward at once. One payment, yours for good.' },
-  eggscape_premium: { title: 'Unlock Everything', line: 'One payment and the game is yours: every bonus without a video, every level open, all six power chicks and the Golden Hen.' },
+  skip_videos: { title: 'Rewards without waiting', line: 'Unlock Everything gives every reward at once. One payment, yours for good.' }, // 0.8.17: the benefit first
+  eggscape_premium: { title: 'Unlock Everything', line: 'One payment and the game is yours: every bonus at once, every level open, all six power chicks and the Golden Hen.' },
   eggscape_collector: { title: 'The Whole Coop', line: 'Every hen outfit, every egg, the three premium chicks and 3000 coins. Forever.' },
   charge_ad: { title: 'A free Chick Charge', line: 'Watch a short video and your power chick is ready at once next try.' },
   coins_ad: { title: 'Free coins', line: 'Watch a short video for 25 coins.' },

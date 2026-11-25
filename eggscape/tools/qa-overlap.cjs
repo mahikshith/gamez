@@ -142,7 +142,18 @@ const srv = http.createServer((q, r) => {
     await check('land-reveal', ([sv, rn]) => { const E = __egg; eval(sv); E.start(10); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.showResult('win', 3, null, 0, { treasure: { id: 10, coins: 150, booster: 'stone', charges: 2 }, gift: { kind: 'boost', id: 'stone', name: 'Stone Shell' }, hot: 0, hotB: [] }); return eval(rn); }, [spinSave({}), runs(560)], true);
     await check('pop-booster', async ([sv, rn]) => { const E = __egg; eval(sv); const r0 = E.ads.rewarded; E.ads.rewarded = async () => true; E.start(11); for (let k = 0; k < 40; k++) E.frame(1 / 60); await E.press('adboost'); E.ads.rewarded = r0; return E.prizePop.active() ? eval(rn) : [['the free booster video', 'showed nothing']]; }, [spinSave({}), runs(80)], true);
     await check('pop-sad', async ([sv, rn]) => { const E = __egg; eval(sv); const r0 = E.ads.rewarded; E.ads.rewarded = async () => false; E.start(11); for (let k = 0; k < 40; k++) E.frame(1 / 60); await E.press('adboost'); E.ads.rewarded = r0; return E.prizePop.state && E.prizePop.state.sad ? eval(rn) : [['a closed video', 'said nothing']]; }, [spinSave({}), runs(60)], true);
-    await check('strip-attn', (sv) => { const E = __egg; eval(sv); E.G.stripVisits = 0; E.start(11); let o = []; for (let k = 0; k < 150; k++) { E.frame(1 / 60); if (k % 25 === 24) o = o.concat(E.overlaps()); } return o; }, spinSave({ owned: { stone: 2 } }), true);
+    // 0.8.17: every pay page (the stage, the perk tiles or the amount, the buy button and its sticker), a tile's detail
+    // in place, the unlock party (the show, then its end with PLAY after the coins' reveal), Get more's pack row, and a
+    // chick sheet the purse cannot pay (the covering pack inline)
+    for (const sku of ['eggscape_premium', 'starter_nest', 'eggscape_collector', 'bundle_helper', 'egg_bank', 'coins_250', 'coins_3300']) {
+      await check(`iap-page-${sku}`, ([sv, sku]) => { const E = __egg; eval(sv); E.save.wallet.bank = 900; E.G.screen = 'title'; E.press('shop'); for (let k = 0; k < 10; k++) E.frame(1 / 60); E.G.detail = 'iap:' + sku; for (let k = 0; k < 50; k++) E.frame(1 / 60);
+        const o = E.overlaps(), has = E.ui.buttons.some((b) => b.id === 'iap:' + sku); E.press('pay:tip:0'); E.frame(1 / 60); const o2 = o.concat(E.overlaps()); E.G.detail = null; return has ? o2 : o2.concat([['pay page', 'no buy button']]); }, [spinSave({}), sku], sku === 'eggscape_premium' || sku === 'coins_250');
+    }
+    await check('iap-party-show', (sv) => { const E = __egg; eval(sv); E.G.screen = 'title'; E.press('shop'); for (let k = 0; k < 10; k++) E.frame(1 / 60); E.G.detail = 'iap:eggscape_premium'; E.frame(1 / 60); window.__eggGrant('eggscape_premium', 'qa' + Math.random());
+      let o = []; for (let k = 0; k < 150; k++) { E.frame(1 / 60); if (k % 30 === 29) o = o.concat(E.overlaps()); } return E.G.party ? o : o.concat([['the unlock party', 'did not start']]); }, spinSave({}), true);
+    await check('iap-party-end', () => { const E = __egg; for (let k = 0; k < 120; k++) E.frame(1 / 60); E.press('got:tap'); E.frame(1 / 60); E.press('got:tap'); for (let k = 0; k < 40; k++) E.frame(1 / 60);
+      const o = E.overlaps(), has = E.ui.buttons.some((b) => b.id === 'party:play'); E.G.party = null; E.G.got = null; return has ? o : o.concat([['the unlock party', 'no PLAY at its end']]); }, 0, true);
+    await check('chickbuy-short', (sv) => { const E = __egg; eval(sv); Object.defineProperty(E.ads, 'moneyShop', { get: () => true, configurable: true }); E.start(11); for (let k = 0; k < 40; k++) E.frame(1 / 60); E.G.chickBuy = 'decoy'; for (let k = 0; k < 30; k++) E.frame(1 / 60); const o = E.overlaps(); E.G.chickBuy = null; Object.defineProperty(E.ads, 'moneyShop', { get: () => false, configurable: true }); return o; }, spinSave({ coins: 120 }), true);
     for (const e of errors) problems.push(`${w}x${h} PAGE ERROR: ${e}`);
     await p.close();
   }

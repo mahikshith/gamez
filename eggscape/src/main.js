@@ -32,7 +32,7 @@ import { ALLY_DEMOS } from './data/ally-demos.js';
 import { createWeather } from './render/weather.js';
 import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
-import { drawStore, drawCoin, drawBoosterStrip, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, drawItemArt, PROMISE } from './ui/store.js';
+import { drawStore, drawCoin, drawBoosterStrip, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, drawItemArt, PROMISE, valueBadge } from './ui/store.js';
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as SK from './skip.js'; // 2026-11-23: the pause page's Skip level (one rewarded video)
 import { createPurse } from './ui/purse.js'; // 2026-11-23: one coin-gain effect for every place the purse grows
@@ -1222,7 +1222,7 @@ function keyDown(e) {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
+  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close'); else if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
@@ -1427,8 +1427,8 @@ async function press(id) {
       startGot({ name: 'Daily chest', art: 'chest', quiet: true, coins: R.coins, items: [{ art: 'coins', label: '+' + R.coins }, { art: 'charge', label: `+${R.charges} Chick Charge${R.charges > 1 ? 's' : ''}` }] });
       break;
     }
-    case 'home:premium':
-      openStore('deals', 'iap:' + PREMIUM_SKU);
+    case 'home:premium': // 0.8.17: straight onto the Unlock Everything page (it was the shop, then its card, then the page)
+      openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true;
       break;
     case 'home:charge': { // Premium's free Chick Charge of the day
       const w = E.claimPremiumCharge(save.wallet, today());
@@ -1458,7 +1458,8 @@ async function press(id) {
     case 'gm:close':
       G.getMore = null;
       break;
-    case 'dt:close':
+    case 'dt:close': // a pay page opened from outside the shop (Home, Settings, an offer) goes back where the player was
+      if (G.payBack && G.detail && G.detail.startsWith('iap:')) { G.detail = null; G.payBack = false; await press('back'); break; }
       G.detail = null;
       break;
     case 'help:go': await takeHelp(); break;
@@ -1469,7 +1470,8 @@ async function press(id) {
       if (n.kind === 'keep') {
         const hen = n.what === 'hen', w = hen ? E.buyHenSkin(save.wallet, n.id) : E.buySkin(save.wallet, n.id);
         if (!w) { needCoins(n.price); break; }
-        save.wallet = w; DR.clearKeepAsk(save, n.what); if (!hen) W.setSkin(w.skin); G.nudge = null; persist(); audio.play('unlock'); toast(hen ? `The ${n.name} is yours!` : `The ${n.name} Egg is yours!`, 2.4);
+        save.wallet = w; DR.clearKeepAsk(save, n.what); if (!hen) W.setSkin(w.skin); G.nudge = null; persist();
+        startGot({ name: hen ? n.name : n.name + ' egg', key: (hen ? 'hen:' : 'skin:') + n.id, items: [], line: hen ? 'Your hen wears it now' : 'On your eggs now' }); // 0.8.17: the reveal, worn
       } else if (n.kind === 'welcome') {
         const b = E.BOOSTER_ORDER[Math.floor(Math.random() * 5)];
         save.wallet = { ...save.wallet, coins: save.wallet.coins + n.coins, owned: { ...(save.wallet.owned || {}), [b]: ((save.wallet.owned || {})[b] || 0) + 1 } };
@@ -1489,7 +1491,7 @@ async function press(id) {
       const O = G.offer;
       G.offer = null;
       if (O) BR.note(save, 'yes', { id: O.id });
-      if (O && O.id === 'skip_videos') { openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; } // a look at what it gives, never a payment from the card
+      if (O && O.id === 'skip_videos') { openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true; } // a look at what it gives, never a payment from the card
       else if (O && O.sku) await buyIap(O.sku);
       break;
     }
@@ -1765,7 +1767,7 @@ async function press(id) {
       applySettings(save); persist();
       break;
     case 'set:novideo': case 'chip:skip': // the "what you get" sheet of Unlock Everything: the shop opens on it, nothing is charged
-      G.skipChip = null; G.settingsOpen = false; openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU;
+      G.skipChip = null; G.settingsOpen = false; openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true;
       break;
     case 'set:restore':
       ads.restore(); toast('Checking your purchases...', 2);
@@ -1849,8 +1851,18 @@ async function press(id) {
       } else if (id === 'inext') { await press('itab:chicks');
       } else if (id && id.startsWith('itab:')) { // the level page's tabs
         if (G.itab !== id.slice(5)) { G.itab = id.slice(5); if (G.ipage) { G.ipage.y = 0; G.ipage.v = 0; G.ipage.to = null; } }
+      } else if (id === 'party:tap') { // the unlock party: a tap skips to the coins
+        const R = G.party; if (R && R.phase === 'show') { R.t0 = G.t - partyEnd(R.sku === PREMIUM_SKU ? E.bundleParts(R.sku).chicks.length : 0); R.cues = 99; R.arrived = true; }
+      } else if (id === 'party:close') { G.party = null;
+      } else if (id === 'party:play') { // PLAY: the map, the hen at the next level (home's PLAY)
+        G.party = null; G.detail = null; G.getMore = null; await press('play');
+      } else if (id && id.startsWith('pay:tip:')) { // a perk tile on a pay page: its one-line detail in place (a second tap puts the words back)
+        const i = +id.slice(8), sku = G.detail && G.detail.slice(4);
+        G.payTip = G.payTip && G.payTip.sku === sku && G.payTip.i === i && G.t - G.payTip.t0 < 4 ? null : { sku, i, t0: G.t };
+        audio.play('ui_tap');
       } else if (id && id.startsWith('tile:')) { // a shop tile: its detail sheet
         const k = id.slice(5);
+        G.payBack = false;
         if (k.startsWith('go:')) await press('tab:' + k.slice(3)); // the web shop's "Spend your coins" tiles: a tab
         else G.detail = k;
       } else if (id && (id.startsWith('iap:') || id.startsWith('feat:') || id.startsWith('gm:iap:'))) {
@@ -1865,7 +1877,7 @@ async function press(id) {
         else if (E.ITEMS[k] && save.wallet.coins < E.ITEMS[k].price) needCoins(E.ITEMS[k].price);
       } else if (id && id.startsWith('chick:')) {
         const k = id.slice(6), w = E.buyChick(save.wallet, k);
-        if (w) { save.wallet = w; persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); toast(`${(STRIKES.find((S) => S.id === k) || {}).name || 'Power chick'} is yours!`, 2.4); }
+        if (w) { save.wallet = w; persist(); G.storeFlash = { id, t0: G.t }; const S = STRIKE[k] || {}; startGot({ name: S.name || 'Power chick', key: id, items: [], what: S.up, line: 'Yours for every level' }); } // 0.8.17: the reveal, not a toast
         else if (E.CHICK_PRICES[k] && save.wallet.coins < upPrice(E.CHICK_PRICES[k])) needCoins(upPrice(E.CHICK_PRICES[k]));
       } else if (id && id.startsWith('charge:')) {
         const w = E.buyCharges(save.wallet, id.slice(7)), P = E.CHARGE_PACKS.find((q) => q.id === id.slice(7));
@@ -1873,13 +1885,13 @@ async function press(id) {
         else if (P && save.wallet.coins < P.price) needCoins(P.price);
       } else if (id && id.startsWith('hen:')) {
         const k = id.slice(4);
-        const w = E.ownsHenSkin(save.wallet, k) ? E.equipHenSkin(save.wallet, k) : E.buyHenSkin(save.wallet, k);
-        if (w) { save.wallet = w; DR.endTrial(save, 'hen'); persist(); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); } // a chosen look ends a trial
+        const had = E.ownsHenSkin(save.wallet, k), w = had ? E.equipHenSkin(save.wallet, k) : E.buyHenSkin(save.wallet, k);
+        if (w) { save.wallet = w; DR.endTrial(save, 'hen'); persist(); G.storeFlash = { id, t0: G.t }; if (had) audio.play('unlock'); else startGot({ name: E.HEN_SKINS[k].name, key: id, items: [], line: 'Your hen wears it now' }); } // a chosen look ends a trial; 0.8.17: a new outfit gets the reveal, worn
         else if (E.HEN_SKINS[k] && save.wallet.coins < upPrice(E.HEN_SKINS[k].price)) needCoins(upPrice(E.HEN_SKINS[k].price));
       } else if (id && id.startsWith('skin:')) {
         const k = id.slice(5);
-        const w = E.ownsSkin(save.wallet, k) ? E.equipSkin(save.wallet, k) : E.buySkin(save.wallet, k);
-        if (w) { save.wallet = w; DR.endTrial(save, 'skin'); persist(); W.setSkin(w.skin); G.storeFlash = { id, t0: G.t }; audio.play('unlock'); }
+        const had = E.ownsSkin(save.wallet, k), w = had ? E.equipSkin(save.wallet, k) : E.buySkin(save.wallet, k);
+        if (w) { save.wallet = w; DR.endTrial(save, 'skin'); persist(); W.setSkin(w.skin); G.storeFlash = { id, t0: G.t }; if (had) audio.play('unlock'); else startGot({ name: E.SKINS[k].name + ' egg', key: id, items: [], line: 'On your eggs now' }); } // 0.8.17: a new egg gets the reveal, worn
         else if (E.SKINS[k] && save.wallet.coins < upPrice(E.SKINS[k].price)) needCoins(upPrice(E.SKINS[k].price));
       } else if (id === 'got:tap') { // the purchase reveal: a tap skips to its end (every coin landed at once), the next closes it
         const R = G.got, busy = land.busy();
@@ -2038,7 +2050,9 @@ async function buyIap(sku, checked = false) {
   const r = await ads.purchase(sku);
   if (r === 'pending') toast('Payment pending: it arrives as soon as it clears.', 3.2);
   else if (r === 'web') toast('Purchases work in the app', 2.4);
-  else if (r !== true) toast('Purchase not completed.', 2.2);
+  else if (r !== true) { // cancelled or failed: back where the player was, one calm line (on the pay page itself when it is open)
+    if (G.detail === 'iap:' + sku) G.payNote = { sku, t0: G.t }; else toast('No payment was made', 2.2);
+  }
 }
 // the featured card on Deals: the offer engine's pick, else the Starter Nest while it is for sale, else Premium
 function storeFeatured() {
@@ -2080,14 +2094,15 @@ const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? {
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
 function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
-function modalOpen() { return !!(G.got || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
+function modalOpen() { return !!(G.got || G.party || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
   const hb = G.hudBottom;
   if (G.screen === 'store' || G.screen === 'title') G.hudBottom = 0; // no HUD under these
   try {
-    if (G.got) drawGot();
+    if (G.got) { if (G.party) drawParty(true); drawGot(); } // the coins' reveal runs over the unlock party's stage
+    else if (G.party) drawParty();
     else if (G.parent) drawParentCheck();
     else if (G.getMore) drawGetMore();
     else if (G.chickBuy) drawChickBuy();
@@ -2414,10 +2429,10 @@ function buyChickForLevel(id) {
   if (!O || O.owned) return false;
   const w = E.buyChick(save.wallet, id);
   if (!w) { needCoins(O.price); return false; }
-  save.wallet = w; persist(); audio.play('unlock');
+  save.wallet = w; persist();
   if (G.level) { G.stkSel = { lid: G.level.id, id }; G.sim.stkEquip(strikeFor(G.level, G.li)); }
   G.introTip = null;
-  toast(`${STRIKE[id].name} is yours!`, 2.4);
+  startGot({ name: STRIKE[id].name, key: 'chick:' + id, items: [], what: STRIKE[id].up, line: 'Picked for this level' }); // 0.8.17: the reveal (it was a toast), the chick already picked
   return true;
 }
 function drawChickBuy() {
@@ -2430,6 +2445,7 @@ function drawChickBuy() {
     lineBlock(S.premium ? 'Premium chick: yours for good, in every level with villains.' : `Free at level ${S.unlock}, or yours now for every level.`, 13.5 * s, { color: S.premium ? '#b0700a' : ui.C.ink2, tag: 'cb:free', gap: 6 * s }),
     ...(S.premium ? wrapText('Downside: ' + S.down, 13.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 13.5 * s, { color: ui.C.warn, tag: 'cb:dn' + i, gap: i ? 2 * s : 4 * s })) : []),
     { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button('cb:buy', `Unlock ${O.price}`, x, y, w, 56 * s, { kind: O.canAfford ? 'primary' : 'off', shimmer: O.canAfford, icon: (c, X, Y, Z) => drawCoin(c, X, Y, Z * 0.5, G.t), size: 21 * s }) },
+    ...(!O.canAfford && ads.moneyShop ? [packRow(E.packFor(O.price - save.wallet.coins), s, 'cb')] : []), // 0.8.17: short of coins, the pack that covers it right here (one tap fewer than Get more)
     { h: 48 * s, gap: 10 * s, draw: (x, y, w) => ui.button('cb:close', 'Not now', x, y, w, 48 * s, { kind: 'tertiary', size: 19 * s }) },
   ], { ribbon: S.premium ? '#b8860b' : '#f0a01c' });
 }
@@ -2494,77 +2510,353 @@ const partRow = (P, s, tag, gap, o = {}) => ({ h: 40 * s, gap, draw: (x, y, w) =
   drawPart(ctx, P.art, x + 20 * s, y + 20 * s, 34 * s, G.t);
   ui.text(P.text, x + 48 * s, y + 20 * s, { size: 16 * s, maxW: w - 52 * s, color: ui.C.ink, tag, noRecord: o.noRecord });
 } });
-// 0.8.9 the bundle sheet ("what you get"), G.detail 'iap:<sku>': the banner art big, a plain promise, one row per part
-// (the outfits, eggs and chicks one by one in a small grid; a long list scrolls inside the sheet with the game's one
-// scroll feel), the honest value line, "One-time purchase", the price button (the only thing here that pays) and Not now
-const SHEET_CELL = { w: 72, h: 76 };
-function drawIapSheet(sku) {
-  const P = E.IAP[sku], can = E.iapAvailable(save.wallet, sku), rows = iapRows(sku, LEVELS.length), price = ads.price(sku);
-  if (!G.dscroll || G.dscroll.key !== sku) G.dscroll = { y: 0, v: 0, max: 0, t: G.t, key: sku };
-  const DS = G.dscroll, longList = rows.length > 2 || rows.some((R) => R.grid);
-  dim(0.55);
-  stackCard(P.name, (s, iw) => {
-    const C = ui.C, rowH = 40 * s, cw = SHEET_CELL.w * s, chh = SHEET_CELL.h * s, per = Math.max(3, Math.floor((iw - 12 * s) / cw));
-    let ch = 0;
-    for (const R of rows) { ch += rowH; if (R.grid) ch += Math.ceil(R.grid.length / per) * chh + 4 * s; }
-    const vl = wrapText(iapValueLine(sku, price), 14.5 * s, iw).filter(Boolean).slice(0, 2), once = P.type === 'once', artH = 112 * s;
-    const fixed = (CARD_HEAD + 22) * s + artH + 4 * s + (PROMISE[sku] ? 24 * s : 0) + 10 * s + vl.length * 18.5 * s + (vl.length ? 8 * s : 0) + (once ? 21 * s : 0) + 68 * s + 54 * s;
-    const avail = ui.A.y1 - Math.max(G.hudBottom, ui.A.y) - 30 * ui.u, two = longList && ui.A.w > ui.A.h * 1.15; // landscape: a long list is the right column
-    const listH = Math.min(ch, Math.max(110 * s, two ? avail - (CARD_HEAD + 22 + 10) * s : avail - fixed));
-    return [
-      { h: artH, gap: 4 * s, draw: (x, y, w) => {
-        ui.well(x, y, w, artH, { s, r: 13 * s, a: '#ffe9a8', b: '#fff7d8', shade: 'rgba(20,70,130,0.2)', border: 'rgba(60,90,130,0.45)' });
-        if (!save.calm) { ctx.save(); ui.roundRect(x, y, w, artH, 13 * s); ctx.clip(); sunburst(x + w / 2, y + artH * 0.6, w, 'rgba(255,255,255,0.35)', 10); ctx.restore(); }
-        drawIapBanner(ctx, sku, x + w / 2, y + artH / 2, w, artH, G.t, save.wallet);
-        ui.record({ x, y, w, h: artH }, 'dt:art');
-      } },
-      PROMISE[sku] && lineBlock(PROMISE[sku], 14.5 * s, { color: C.ink2, tag: 'dt:promise', gap: 6 * s }),
-      { h: listH, gap: 10 * s, right: two, draw: (x, y, w) => {
-        const dt = clamp(G.t - (DS.t || G.t), 0, 0.1), lim = scrollLim(); DS.t = G.t; DS.max = Math.max(0, ch - listH);
-        if (!(G.pdrag && G.pdrag.sc === DS && G.pdrag.moved)) glideStep(DS, dt, lim);
-        DS.y = clamp(DS.y, -lim, DS.max + lim);
-        G.dlRect = { x, y, w, h: listH };
-        ctx.save(); ui.roundRect(x, y, w, listH, 12 * s); ctx.fillStyle = 'rgba(122,80,40,0.08)'; ctx.fill(); ctx.clip();
-        const x0 = x; x += 6 * s; w -= 12 * s; // (0.8.14: the panel stands on the sheet's column, its rows 6 units inside it; it used to overhang the art and the buttons)
-        const vis = (yy, hh) => yy >= y - 0.5 && yy + hh <= y + listH + 0.5, seen = (yy, hh) => yy + hh > y && yy < y + listH;
-        let cy = y - snapPx(DS.y, window.devicePixelRatio || 1);
-        rows.forEach((R, i) => {
-          if (seen(cy, rowH)) partRow(R, s, 'dt:row' + i, 0, { noRecord: !vis(cy, rowH) }).draw(x, cy, w);
-          cy += rowH;
-          if (!R.grid) return;
-          const x1 = x + (w - per * cw) / 2;
-          R.grid.forEach((g, j) => {
-            const gx = x1 + (j % per) * cw, gy = cy + Math.floor(j / per) * chh;
-            if (!seen(gy, chh)) return;
-            ui.roundRect(gx + 3 * s, gy + 2 * s, cw - 6 * s, chh - 4 * s, 10 * s); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
-            drawPart(ctx, g.art, gx + cw / 2, gy + 25 * s, 40 * s, G.t);
-            const nm = ui.measure(g.name, 11 * s) > cw - 10 * s ? wrapText(g.name, 10.5 * s, cw - 10 * s).slice(0, 2) : [g.name], ns = nm.length > 1 ? 10.5 * s : 11 * s; // a long name on two lines, never "Crystal Mi..."
-            nm.forEach((ln, q) => ui.text(ln, gx + cw / 2, gy + chh - 12 * s - (nm.length - 1 - q) * ns * 1.08, { size: ns, align: 'center', maxW: cw - 8 * s, color: C.ink2, tag: `dt:g${i}:${j}:${q}`, noRecord: !vis(gy, chh) }));
-          });
-          cy += Math.ceil(R.grid.length / per) * chh + 4 * s;
-        });
-        ctx.restore();
-        if (DS.max > 0) { // a thin thumb, and a soft fade where more is below
-          const th = Math.max(24 * s, listH * listH / (DS.max + listH)), ty = y + clamp(DS.y / DS.max, 0, 1) * (listH - th);
-          ui.roundRect(x + w + 1.5 * s, ty, 3 * s, th, 1.5 * s); ctx.fillStyle = 'rgba(122,80,40,0.45)'; ctx.fill();
-          if (DS.y < DS.max - 2) { const g = ctx.createLinearGradient(0, y + listH - 22 * s, 0, y + listH); g.addColorStop(0, 'rgba(255,244,222,0)'); g.addColorStop(1, 'rgba(255,244,222,0.95)'); ctx.fillStyle = g; ctx.fillRect(x0, y + listH - 22 * s, w + 8 * s, 22 * s); }
-        }
-      } },
-      ...vl.map((l, i) => lineBlock(l, 14.5 * s, { color: C.good, tag: 'dt:value' + i, gap: i ? 2 * s : 8 * s })),
-      once && lineBlock('One-time purchase', 14 * s, { color: C.ink2, tag: 'dt:once', gap: 4 * s }),
-      { h: 56 * s, gap: 12 * s, draw: (x, y, w) => (can
-        ? ui.button('iap:' + sku, price, x, y, w, 56 * s, { kind: sku === PREMIUM_SKU ? 'gold' : 'primary', size: 23 * s, shimmer: !save.calm })
-        : ui.button('dt:owned', 'Yours', x, y, w, 56 * s, { kind: 'tertiary', disabled: true, keepFace: true, dim: 1, icon: ICON.check, size: 19 * s })) },
-      { h: 46 * s, gap: 8 * s, draw: (x, y, w) => ui.button('dt:close', 'Not now', x, y, w, 46 * s, { kind: 'tertiary', size: 18 * s }) },
-    ].filter(Boolean);
-  }, { ribbon: '#7a48e8', twoCol: longList });
+// 0.8.17 THE PAY PAGE (mykee: "Do you really think the user will find it attractive and pay for something this sloppy?
+// ... make it seamless, make it really cool"), G.detail 'iap:<sku>': a page of its own over the shop, one layout for
+// every real-money product. A warm stage with slow rays shows what is bought (Unlock Everything: the Golden Hen on her
+// coins, the golden egg, the six power chicks in an arc round her, each in its own idle: the chicks ARE the list of
+// chicks); under it equal perk tiles, picture first and at most three words (a tap shows the one-line detail in place),
+// or for coins the one amount; then one big buy button with the price in it and the value sticker on its corner, a quiet
+// "One-time purchase" and a text "Not now". The round close button sits top left. Leftover height is shared as even
+// gaps; landscape puts the stage left and the rest right. Calm: the rays and the cast stand still, nothing pops in.
+const PAY = { key: null, t0: 0 }; // the page's own clock: its entrance plays once per opening
+const payNum = (v) => v.toLocaleString('en-US');
+const strikeName = (id) => (STRIKE[id] || {}).name || id;
+// the perk tiles: [{ art, label (three words at most), line (the detail a tap shows) }]; [] for coins and the bank
+function payTiles(sku) {
+  const P = E.IAP[sku], B = E.bundleParts(sku), n = LEVELS.length;
+  if (!P || !B || P.bank || E.COIN_PACKS.includes(sku)) return [];
+  const chicks = B.chicks.map((id) => strikeName(id).replace(/ Chick$/, '')).join(', '); // (short: it fits its tile)
+  if (sku === PREMIUM_SKU) return [
+    { art: 'levels', label: `All ${n} levels`, line: `Every one of the ${n} levels open now` },
+    { art: 'chicks', label: `${B.chicks.length} power chicks`, line: chicks },
+    { art: 'coins', label: `${payNum(B.coins)} coins`, line: 'Straight into your purse' },
+    { art: 'goldset', label: 'Golden Hen + egg', line: 'The Golden Hen outfit and the golden egg' },
+    { art: 'daily', label: 'Free charge daily', line: 'A free Chick Charge every day' },
+    { art: 'bonus', label: 'Every bonus instantly', line: 'Every bonus is yours at once' }, // 0.8.17 (mykee): no word about videos where people pay
+  ];
+  const T = [];
+  if (B.coins) T.push({ art: 'coins', label: `${payNum(B.coins)} coins`, line: 'Straight into your purse' });
+  if (B.premium) T.push({ art: 'levels', label: 'Everything unlocked', line: `All ${n} levels open, every bonus at once` });
+  if (B.hens.length > 1) T.push({ art: 'hens', label: `${B.hens.length} hen outfits`, line: 'Every outfit in the shop' });
+  else if (B.hens.length) T.push({ art: 'hen:' + B.hens[0], label: E.HEN_SKINS[B.hens[0]].name, line: 'A new outfit for your hen' });
+  if (B.eggs.length > 1) T.push({ art: 'eggs', label: `${B.eggs.length} egg skins`, line: 'Every egg in the shop, each with its power' });
+  if (B.chicks.length) T.push({ art: 'chicks', label: `${B.chicks.length} power chicks`, line: chicks });
+  if (B.charges) T.push({ art: 'charge', label: `${B.charges} Chick Charges`, line: 'Send a chick at the villains' });
+  if (B.boosts) T.push({ art: 'boosts', label: `${B.boosts * E.BOOSTER_ORDER.length} boosts`, line: `${B.boosts} of every boost` });
+  if (B.ally) T.push({ art: 'ally', label: `${B.ally} Ally Tickets`, line: 'Call a farm friend into a level' });
+  if (B.daily) T.push({ art: 'daily', label: 'Free charge daily', line: 'A free Chick Charge every day' });
+  return T;
 }
+const PAY_VERB = { eggscape_premium: 'Unlock all', eggscape_collector: 'Get it all', egg_bank: 'Crack it' };
+const payHero = (sku) => sku === PREMIUM_SKU || sku === 'eggscape_collector';
+// a picture on a tile: the store's part art, plus the Golden Hen with her egg
+function payArt(art, cx, cy, c, t) {
+  if (art === 'goldset') { drawHenSkinPreview(ctx, 'golden', cx - c * 0.12, cy + c * 0.02, c * 0.86, t); drawSkinPreview(ctx, 'golden', cx + c * 0.3, cy + c * 0.16, c * 0.4, t); return; }
+  drawPart(ctx, art, cx, cy, c, t);
+}
+// a mound of coins standing on by (its foot), w wide, rows high (the widest row at the bottom). Returns its height.
+function coinHeap(cx, by, w, rows, t) {
+  const r = w / ((rows + 2) * 1.45);
+  for (let k = 0; k < rows; k++) {
+    const n = rows + 2 - k, yy = by - r - k * r * 0.8;
+    for (let i = 0; i < n; i++) drawCoin(ctx, cx + (i - (n - 1) / 2) * r * 1.45 + (k % 2 ? r * 0.1 : 0), yy, r, t + i * 0.7 + k * 1.3);
+  }
+  return r * 2 + (rows - 1) * r * 0.8;
+}
+// a sparkle that twinkles at a hashed spot of the stage (still when calm)
+function payTwinkles(x, y, w, h, t, n, calm) {
+  for (let i = 0; i < n; i++) {
+    const hx = (Math.sin(i * 91.7 + 3.1) * 43758.5) % 1, hy = (Math.sin(i * 47.3 + 1.7) * 24634.6) % 1;
+    const tw = calm ? 0.8 : Math.max(0, Math.sin(t * (1.3 + (i % 3) * 0.4) + i * 2.1));
+    CB.glint(ctx, x + Math.abs(hx) * w, y + Math.abs(hy) * h * 0.7, (5 + (i % 3) * 2.5) * ui.u * tw, i % 3 ? '#fff6c8' : '#ffffff');
+  }
+}
+// one power chick in its own idle (i picks it: a hop, a flap, a head tilt, a look round, a wobble, a stretch)
+function chickIdle(id, i, x, y, sz, t, calm, flip) {
+  const o = { flip, shadow: false }, ph = t + i * 1.37;
+  let dy = 0;
+  if (!calm) switch (i % 6) {
+    case 0: { const k = Math.max(0, Math.sin(ph * 3.1)); dy = -k * sz * 0.16; o.squash = k < 0.2 ? 0.18 * (1 - k / 0.2) : 0; break; }
+    case 1: o.wing = Math.sin(ph * 0.9) > 0.35 ? Math.abs(Math.sin(ph * 8)) : 0; break;
+    case 2: o.rot = Math.sin(ph * 1.6) * 0.13; o.look = { x: Math.sin(ph * 0.8), y: 0.2 }; break;
+    case 3: o.look = { x: Math.sin(ph * 1.1) > 0 ? 1 : -0.6, y: Math.cos(ph * 0.7) * 0.4 }; break;
+    case 4: o.squash = Math.sin(ph * 4.2) * 0.12; break;
+    default: { const k = Math.max(0, Math.sin(ph * 2.2)); dy = -k * k * sz * 0.1; o.stretch = k * 0.1; o.wing = k > 0.85 ? 1 : 0; }
+  }
+  ctx.save(); ctx.fillStyle = 'rgba(70,30,0,0.22)'; ctx.beginPath(); ctx.ellipse(x, y + sz * 0.57, sz * 0.38 * (1 + dy / sz), sz * 0.07, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  drawStrikeChick(ctx, id, x, y + dy, sz, calm ? 1.3 + i : t, o);
+}
+// the hen in an outfit, alive (her own idle and cheers), then the player's own outfit back
+function henAs(skin, mood, x, y, h, o = {}) {
+  setHenSkin(skin);
+  try { drawHenAnim(ctx, mood, x, y, h, G.t, { calm: save.calm, shadow: 0, ...o }); } finally { setHenSkin(G.henSkinCur || 'classic'); }
+}
+// where the stage's chicks stand: an arc round the middle, half each side, the outer ones further up (a group photo)
+function payChickSpots(n, cx, floor, w, h) {
+  const L = Math.ceil(n / 2), out = [];
+  for (let i = 0; i < n; i++) {
+    const left = i < L, j = left ? i : i - L, m = left ? L : n - L, k = m > 1 ? j / (m - 1) : 0;
+    out.push({ x: cx + (left ? -1 : 1) * w * (0.22 + 0.185 * k), y: floor - h * (0.02 + 0.13 * k * k + 0.09 * k), back: k > 0.5, flip: !left });
+  }
+  return out;
+}
+// the stage: a warm window with slow rays and sparkles, and the product's own cast. o: { age (s since the page opened;
+// the cast pops in), henDX (the hen's walk-in offset), henMood, chickK (i => 0..1 pop), lockA (i => lock state or null) }
+function payStage(sku, x, y, w, h, s, o = {}) {
+  const calm = save.calm, t = G.t, P = E.IAP[sku], cx = x + w / 2, age = calm ? 9 : o.age ?? 9;
+  ctx.save();
+  ui.roundRect(x, y, w, h, 22 * s);
+  const g = ctx.createRadialGradient(cx, y + h * 0.55, 0, cx, y + h * 0.55, Math.max(w, h) * 0.75);
+  g.addColorStop(0, '#fff3c2'); g.addColorStop(0.45, '#ffd36a'); g.addColorStop(1, '#e98a1e');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.clip();
+  CB.rays(ctx, cx, y + h * 0.5, Math.hypot(w, h) * 0.7, calm ? 0.2 : t * 0.1, 'rgba(255,255,255,0.22)', 14, 0.5);
+  CB.glow(ctx, cx, y + h * 0.5, Math.min(w, h) * 0.55, 0.65);
+  const floor = y + h * 0.9;
+  ctx.fillStyle = 'rgba(160,80,10,0.18)'; ctx.beginPath(); ctx.ellipse(cx, floor + h * 0.02, w * 0.48, h * 0.09, 0, 0, Math.PI * 2); ctx.fill();
+  payTwinkles(x, y, w, h, t, 9, calm);
+  const pop = (d, px, py, draw) => { const k = calm ? 1 : backK((age - d) / 0.36); if (k <= 0.01) return; ctx.save(); ctx.translate(px, py); ctx.scale(k, k); ctx.translate(-px, -py); draw(); ctx.restore(); };
+  const H = Math.min(h * 0.56, w * (o.big ? 0.5 : 0.44)); // (the party's taller stage takes a bigger cast)
+  if (sku === 'eggscape_collector') { // The Whole Coop: three hens in their best outfits on a wide heap, a row of eggs in front
+    const Hc = H * 0.88;
+    pop(0.04, cx, floor, () => {
+      const hh = coinHeap(cx, floor, Math.min(w * 0.62, Hc * 1.5), 2, t);
+      henAs('pirate', 'idle', cx - Hc * 0.66, floor - hh * 0.62 - Hc * 0.36, Hc * 0.76, { key: 'payA', face: 1, phase: 0.4 });
+      henAs('santa', 'idle', cx + Hc * 0.66, floor - hh * 0.62 - Hc * 0.36, Hc * 0.76, { key: 'payB', face: -1, phase: 0.9 });
+      henAs('golden', o.henMood || 'idle', cx + (o.henDX || 0), floor - hh * 0.78 - Hc * 0.45, Hc, { key: 'pay', face: 1, n: o.henN || 0, look: o.henLook });
+    });
+    const eggs = ['galaxy', 'thunder', 'lava', 'pearl', 'robot'], es = Math.min(H * 0.3, w * 0.12);
+    eggs.forEach((e, i) => pop(0.16 + 0.05 * i, cx + (i - 2) * es * 1.05, floor + es * 0.05 - (i % 2) * es * 0.12, () => drawSkinPreview(ctx, e, cx + (i - 2) * es * 1.05, floor + es * 0.05 - (i % 2) * es * 0.12, es, t + i)));
+  } else if (sku === PREMIUM_SKU) {
+    const ids = E.bundleParts(sku).chicks, cs = Math.min(H * 0.42, w * (ids.length > 6 ? 0.11 : 0.14)), spots = payChickSpots(ids.length, cx, floor - cs * 0.55, w, h);
+    const chick = (i) => { const p = spots[i], k = o.chickK ? o.chickK(i) : 1, L = o.lockA ? o.lockA(i) : null;
+      if (L != null) { // a padlock stands where the chick will be; it shakes, then bursts open
+        const a = clamp(L, 0, 1), sh = a < 0.5 && !calm ? Math.sin(G.t * 60) * 0.12 * (a / 0.5) : 0;
+        if (a < 0.55) { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(sh); ctx.globalAlpha *= a < 0.45 ? 1 : 1 - (a - 0.45) / 0.1; drawPadlock(0, 0, cs * 0.5 * (1 + Math.max(0, a - 0.4) * 1.5), null); ctx.restore(); }
+        if (a > 0.45) { CB.burst(ctx, p.x, p.y, cs * 0.9, (a - 0.45) / 0.55); CB.sparks(ctx, p.x, p.y, cs * 0.4, (a - 0.45) / 0.55, 8, i); }
+      }
+      if (k > 0.01) { ctx.save(); ctx.translate(p.x, p.y); ctx.scale(k, k); ctx.translate(-p.x, -p.y); chickIdle(ids[i], i, p.x, p.y, cs * (p.back ? 0.9 : 1), t, calm, p.flip); ctx.restore(); }
+    };
+    const order = spots.map((p, i) => i).sort((a, b) => spots[a].y - spots[b].y);
+    const back = order.filter((i) => spots[i].back), front = order.filter((i) => !spots[i].back);
+    back.forEach((i) => pop(0.2 + 0.05 * i, spots[i].x, spots[i].y, () => chick(i)));
+    const hx = cx + (o.henDX || 0);
+    pop(0.04, cx, floor, () => {
+      const hh = coinHeap(cx, floor, H * 1.05, 3, t);
+      henAs('golden', o.henMood || 'idle', hx - H * 0.04, floor - hh * 0.78 - H * 0.45, H, { key: 'pay', face: 1, n: o.henN || 0, look: o.henLook });
+      drawSkinPreview(ctx, 'golden', cx + H * 0.42, floor - hh * 0.5 - H * 0.13, H * 0.34, t);
+    });
+    front.forEach((i) => pop(0.12 + 0.05 * i, spots[i].x, spots[i].y, () => chick(i)));
+  } else if (sku === 'starter_nest' || sku === 'bundle_helper') {
+    pop(0.04, cx, floor, () => {
+      const hh = coinHeap(cx, floor, H * 0.95, 3, t);
+      if (sku === 'starter_nest') henAs(P.hen || 'cocoa', 'idle', cx, floor - hh * 0.78 - H * 0.45, H, { key: 'pay', face: 1 });
+      else { chickIdle('freeze', 0, cx - H * 0.27, floor - hh * 0.8 - H * 0.24, H * 0.46, t, calm, false); chickIdle('thunder', 3, cx + H * 0.29, floor - hh * 0.8 - H * 0.22, H * 0.44, t, calm, true); }
+    });
+    const side = H * 0.42, bx = Math.min(w * 0.36, H * 1.05);
+    pop(0.16, cx - bx, floor - side * 0.5, () => { drawBoosterIcon(ctx, 'stone', cx - bx - side * 0.16, floor - side * 0.42, side * 0.8, t); drawBoosterIcon(ctx, 'golden', cx - bx + side * 0.34, floor - side * 0.36, side * 0.72, t + 1); });
+    pop(0.22, cx + bx, floor - side * 0.5, () => {
+      if (sku === 'bundle_helper') drawItemArt(ctx, 'ally', cx + bx, floor - side * 0.55, side * 1.25, t);
+      else drawStrikeToken(ctx, 'freeze', cx + bx, floor - side * 0.55, side * 0.42, t, true);
+    });
+  } else if (P.bank) {
+    const b = save.wallet.bank || 0;
+    pop(0.04, cx, floor - h * 0.4, () => drawGlassEgg(ctx, cx, floor - h * 0.42, Math.min(h * 0.74, w * 0.55), Math.min(1, b / E.BANK_CAP), t));
+  } else { // a coin pack: its pile, bigger the bigger the pack
+    const k = E.COIN_PACKS.indexOf(sku);
+    pop(0.04, cx, floor, () => coinHeap(cx, floor, Math.min(w * (0.6 + 0.07 * k), h * (0.8 + 0.08 * k)), 3 + k, t));
+  }
+  ctx.restore();
+  ctx.save(); ui.roundRect(x, y, w, h, 22 * s); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#ffe9a0'; ctx.stroke(); ui.roundRect(x - 2 * s, y - 2 * s, w + 4 * s, h + 4 * s, 24 * s); ctx.lineWidth = 2 * s; ctx.strokeStyle = 'rgba(60,20,0,0.6)'; ctx.stroke(); ctx.restore();
+  if (!o.noRecord) ui.record({ x, y, w, h }, 'pay:stage');
+}
+// a round close glyph (white X with a dark edge) for the page's top-left button
+const xIcon = (c, X, Y, S) => { c.save(); c.lineCap = 'round'; for (const [col, lw] of [['rgba(20,8,0,0.6)', S * 0.26], ['#fff', S * 0.16]]) { c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); c.moveTo(X - S * 0.22, Y - S * 0.22); c.lineTo(X + S * 0.22, Y + S * 0.22); c.moveTo(X + S * 0.22, Y - S * 0.22); c.lineTo(X - S * 0.22, Y + S * 0.22); c.stroke(); } c.restore(); };
+// one perk tile: the picture first, then its three words (tapped: the one-line detail in their place)
+function payTile(T, i, x, y, w, h, s, t, tip) {
+  const tag = 'pay:tile:' + i, across = w > h * 1.45;
+  ui.roundRect(x, y + 3 * s, w, h, 14 * s); ctx.fillStyle = 'rgba(16,4,34,0.4)'; ctx.fill();
+  ui.roundRect(x, y, w, h, 14 * s);
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, tip ? '#fff3c4' : '#fffaf0'); g.addColorStop(1, tip ? '#ffd97a' : '#f5deb0');
+  ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = '#e7b04a'; ctx.stroke();
+  ui.record({ x, y, w, h }, tag, tag);
+  ui.buttons.push({ id: 'pay:tip:' + i, x, y, w, h });
+  const str = tip ? T.line : T.label, nMax = tip ? (across ? 4 : 3) : 2;
+  let fs = tip ? (across ? 14 * s : 12.5 * s) : across ? 18 * s : 15.5 * s;
+  const fitL = (mw) => { let L = wrapText(str, fs, mw); while (L.length > nMax && fs > 10.5 * s) { fs *= 0.93; L = wrapText(str, fs, mw); } return L.slice(0, nMax); };
+  if (across) {
+    const c = Math.min(h * 0.8, w * 0.36), tx = x + 12 * s + c, tw = x + w - 8 * s - tx, L = fitL(tw);
+    payArt(T.art, x + 6 * s + c / 2, y + h / 2, c, t);
+    L.forEach((l, q) => ui.text(l, tx + tw / 2, y + h / 2 + (q - (L.length - 1) / 2) * fs * 1.15, { size: fs, align: 'center', maxW: tw, color: ui.C.ink, tag: `${tag}:l${q}`, group: tag }));
+  } else {
+    const L = fitL(w - 10 * s), th = L.length * fs * 1.12, c = Math.min(w * 0.62, h - th - 14 * s);
+    payArt(T.art, x + w / 2, y + 6 * s + c / 2, c, t);
+    const ty = y + h - 7 * s - th + fs * 0.56;
+    L.forEach((l, q) => ui.text(l, x + w / 2, ty + q * fs * 1.12, { size: fs, align: 'center', maxW: w - 8 * s, color: ui.C.ink, tag: `${tag}:l${q}`, group: tag }));
+  }
+}
+// the buy button: big, the verb and the price in a white tag, a shine sweep, the value sticker on its corner
+function payBuy(sku, x, y, w, h, s, can, price) {
+  const id = 'iap:' + sku, hero = payHero(sku);
+  if (!can) { ui.button('dt:owned', E.IAP[sku].bank ? `Opens at ${E.BANK_OPEN}` : 'Yours', x, y, w, h, { kind: 'tertiary', disabled: true, keepFace: true, dim: 1, icon: E.IAP[sku].bank ? null : ICON.check, size: 21 * s }); return; }
+  const b = ui.button(id, '', x, y, w, h, { kind: hero ? 'gold' : 'primary', shimmer: !save.calm });
+  const line = hero ? '#6b3d04' : '#134f0f', verb = PAY_VERB[sku] || (E.COIN_PACKS.includes(sku) ? 'Buy' : 'Get it');
+  let ls = 26 * s, ps = 22 * s;
+  const fit = () => ui.measure(verb, ls) + 14 * s + ui.measure(price, ps) + 26 * s;
+  while (fit() > w - 34 * s && ls > 15 * s) { ls *= 0.94; ps *= 0.94; }
+  const pw = ui.measure(price, ps) + 26 * s, ph = ps * 1.5, x0 = x + w / 2 - fit() / 2;
+  ui.text(verb, x0, b.cy, { size: ls, color: '#fff', stroke: line, strokeW: Math.max(2 * s, ls * 0.15), shadow: line, shadowD: ls * 0.07, noRecord: true });
+  const px = x0 + ui.measure(verb, ls) + 14 * s;
+  ui.roundRect(px, b.cy - ph / 2, pw, ph, ph / 2); ctx.fillStyle = '#fffaea'; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = line; ctx.stroke();
+  ui.text(price, px + pw / 2, b.cy + 0.5 * s, { size: ps, align: 'center', color: hero ? '#8a4a00' : '#1f6a17', noRecord: true });
+  const r = Math.min(31 * s, h * 0.5);
+  valueBadge(ui, ctx, E.bundleTimes(sku), x + w - r * 0.7, y - r * 0.12, r, s, G.t, 'pay:value', 'btn:' + id); // the same numbers as the value line used to
+}
+// (the name stays: every way in, the shop's cards, Home's Unlock all, Settings and the offers, opens it)
+function drawIapSheet(sku) {
+  const P = E.IAP[sku], can = E.iapAvailable(save.wallet, sku), price = ads.price(sku), calm = save.calm, A = ui.A;
+  if (PAY.key !== sku || G.t < PAY.t0) { PAY.key = sku; PAY.t0 = G.t; G.payTip = null; if (!calm) audio.play('ui_open'); }
+  ui.calm = calm;
+  const age = calm ? 9 : G.t - PAY.t0, tiles = payTiles(sku), once = P.type === 'once';
+  // the page: a deep purple ground with a warm glow where the stage stands
+  ctx.save();
+  const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#41206e'); bg.addColorStop(1, '#1c0b34');
+  ctx.globalAlpha = calm ? 1 : clamp(age / 0.18, 0, 1);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_);
+  ctx.restore();
+  const Pb = ui.pageBox(), s = Pb.s, X = Pb.x, W = Pb.w, wide = A.w > A.h * 1.15;
+  // the header: the round close button, the name on its ribbon
+  ui.button('dt:close', '', X, Pb.y, Pb.h, Pb.h, { kind: 'hud', icon: xIcon, iconS: 1.15, round: Pb.h / 2 });
+  const rw = Math.min(ui.measure(P.name, 25 * s) + 56 * s, W - 2 * (Pb.h + 26 * s));
+  ui.ribbon(P.name, A.cx, Pb.y + 2 * s, rw, Pb.h - 6 * s, { s, color: payHero(sku) ? '#d89a1c' : '#8a5ad8', size: Math.min(25 * s, 25 * s * (rw - 30 * s) / ui.measure(P.name, 25 * s)), tag: 'card:title' });
+  const top = Pb.bottom, bottom = A.y1 - 10 * s;
+  const note = G.payNote && G.payNote.sku === sku && G.t - G.payNote.t0 < 4 ? 'No payment was made' : once && can ? 'One-time purchase' : '';
+  const btnH = 70 * s, noteH = note ? 22 * s : 0, notH = 46 * s, amt = !tiles.length;
+  const amountStr = P.bank ? payNum(save.wallet.bank || 0) : amt ? payNum(P.coins || 0) : '';
+  const gT = 10 * s;
+  // the column(s): portrait stacks stage, tiles, button; landscape puts the stage left and the rest right
+  const RX = wide ? X + W - Math.min(440 * s, (W - 18 * s) / 2) : X, RW = wide ? X + W - RX : W;
+  const cols = wide ? (tiles.length === 4 ? 4 : 3) : tiles.length === 4 ? 2 : 3, rows = tiles.length ? Math.ceil(tiles.length / cols) : 0, tw = (RW - (cols - 1) * gT) / cols;
+  const fixedB = btnH + (noteH ? 8 * s + noteH : 0) + 4 * s + notH; // the button, its quiet line, Not now
+  const minG = [12 * s, 14 * s, 30 * s, 6 * s]; // header-stage, stage-tiles, tiles-button (the sticker's room), Not now-bottom
+  let th = tiles.length ? clamp(tw * (cols === 2 ? 0.5 : 0.82), 76 * s, 118 * s) : 0;
+  const amtH = amt ? 70 * s : 0;
+  let stage, Y0, gaps;
+  if (!wide) {
+    const block = () => (rows ? rows * th + (rows - 1) * gT : amtH);
+    let room = bottom - top - fixedB - block() - minG.reduce((a, b) => a + b, 0);
+    if (room < 170 * s && rows) { th = Math.max(64 * s, th - (170 * s - room) / rows); room = bottom - top - fixedB - block() - minG.reduce((a, b) => a + b, 0); }
+    const sh = clamp(room, 120 * s, Math.min(W * 1.02, 470 * s)), extra = Math.max(0, room - sh) / 4;
+    gaps = minG.map((g) => g + extra);
+    stage = { x: X, y: top + gaps[0], w: W, h: sh };
+    Y0 = stage.y + sh + gaps[1];
+  } else {
+    stage = { x: X, y: top + 12 * s, w: RX - X - 18 * s, h: bottom - top - 12 * s };
+    const blockMax = bottom - top - fixedB - 12 * s - 30 * s - 6 * s;
+    if (rows) th = clamp((blockMax - (rows - 1) * gT) / rows, 60 * s, Math.min(tw * 0.95, 118 * s));
+    const used = (rows ? rows * th + (rows - 1) * gT : amtH) + 30 * s + fixedB, free = Math.max(0, bottom - top - 12 * s - used);
+    gaps = [0, 0, 30 * s + Math.min(free * 0.2, 20 * s), 0]; // a little more air above the button, the rest above and below
+    Y0 = top + 12 * s + (free - (gaps[2] - 30 * s)) / 2;
+  }
+  payStage(sku, stage.x, stage.y, stage.w, stage.h, s, { age });
+  let y = Y0;
+  const popIn = (d, cx, cy, draw) => { const k = calm ? 1 : backK((age - d) / 0.34); if (k <= 0.01) return; ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); draw(); ctx.restore(); };
+  if (rows) {
+    const tip = G.payTip && G.payTip.sku === sku && G.t - G.payTip.t0 < 4 ? G.payTip.i : -1;
+    tiles.forEach((T, i) => {
+      const r = Math.floor(i / cols), k = i % cols, inRow = Math.min(cols, tiles.length - r * cols), x0 = RX + (RW - (inRow * tw + (inRow - 1) * gT)) / 2 + k * (tw + gT), y0 = y + r * (th + gT);
+      popIn(0.22 + 0.045 * i, x0 + tw / 2, y0 + th / 2, () => payTile(T, i, x0, y0, tw, th, s, G.t, i === tip));
+    });
+    y += rows * th + (rows - 1) * gT;
+  } else { // one clear amount: the coin and the number
+    const ns = 52 * s, nw = ui.measure(amountStr, ns), cw = ui.measure('coins', 24 * s), total = 48 * s + 12 * s + nw + 10 * s + cw, x0 = RX + RW / 2 - total / 2, cy = y + amtH / 2;
+    popIn(0.2, RX + RW / 2, cy, () => {
+      drawCoin(ctx, x0 + 24 * s, cy, 23 * s, G.t);
+      ui.num(amountStr, x0 + 60 * s, cy, { size: ns, tag: 'pay:amt', maxW: RW - 140 * s });
+      ui.text('coins', x0 + 70 * s + nw, cy + 6 * s, { size: 24 * s, color: '#ffe9b0', tag: 'pay:unit' });
+    });
+    y += amtH;
+  }
+  y += gaps[2];
+  popIn(0.36, RX + RW / 2, y + btnH / 2, () => payBuy(sku, RX, y, RW, btnH, s, can, price));
+  y += btnH;
+  if (noteH) { y += 8 * s; ui.text(note, RX + RW / 2, y + noteH / 2, { size: 15 * s, align: 'center', color: 'rgba(255,236,206,0.78)', maxW: RW, tag: 'pay:once' }); y += noteH; }
+  y += 4 * s;
+  ui.button('dt:close', 'Not now', RX, y, RW, notH, { ghost: true, textColor: 'rgba(255,240,220,0.92)', size: 19 * s });
+}
+
+// 0.8.17 THE UNLOCK PARTY (mykee: "Even unlocking things could be as celebratory as possible"): Unlock Everything or The
+// Whole Coop bought, a full-screen moment built from what was bought. Confetti; the Golden Hen struts in onto her coins;
+// a padlock stands where each power chick will be, shakes and bursts, and the chick pops out with its own sound; then the
+// coins: the shared "YOU GOT!" reveal (gotIap, drawGot) flies them into the purse over this stage; and when that closes
+// the stage stays, everyone in place, over one big PLAY. A tap skips to the coins. Calm: the still picture, no confetti,
+// nothing walks or breaks; the reveal comes at once.
+// G.party = { sku, t0, phase: 'show' | 'got' (drawGot runs over it) | 'end', cues, tE }
+const PARTY = { in: 0.95, ch0: 1.2, gap: 0.28 };
+const CHICK_SND = { freeze: 'frost_lick', thunder: 'thunder', bomb: 'bomb_fuse', decoy: 'decoy_peep', tornado: 'wind_gust', glue: 'squish', phoenix: 'fire_ignite', tock: 'motor_tick', bubble: 'bubble_pop' };
+function startParty(sku) {
+  G.party = { sku, t0: G.t, phase: 'show', cues: 0, arrived: false };
+  G.detail = null; G.parent = null; G.payBack = false;
+  const P = E.IAP[sku]; if (P && P.coins) purse.hold(Math.max(0, save.wallet.coins - P.coins)); // the purse shows the old total until the reveal flies the coins in
+  if (save.calm) { G.party.phase = 'got'; gotIap(sku); return; }
+  audio.play('tada'); buzz('treasure');
+}
+const partyEnd = (n) => PARTY.ch0 + PARTY.gap * n + 0.55; // the coins' beat
+function drawParty(under) {
+  const R = G.party, calm = save.calm, A = ui.A, u = ui.u, P = E.IAP[R.sku];
+  if (!P) { G.party = null; return; }
+  const ids = R.sku === PREMIUM_SKU ? E.bundleParts(R.sku).chicks : [], n = ids.length; // (the Coop's stage shows its hens and eggs)
+  if (!under && R.phase === 'got' && !G.got) { R.phase = 'end'; R.tE = G.t; }
+  const t = R.phase === 'show' ? G.t - R.t0 : 99, show = R.phase === 'show';
+  if (show && !calm) { // the cues: the hen arrives, each padlock bursts with its chick's own sound, then the coins
+    if (!R.arrived && t >= PARTY.in) { R.arrived = true; audio.play('flap', { vol: 0.6 }); audio.play('cluck', { vol: 0.8 }); }
+    while (R.cues < n && t >= PARTY.ch0 + PARTY.gap * R.cues) { const id = ids[R.cues]; audio.play('glass_break', { vol: 0.35, pitch: 1.5 }); audio.play(CHICK_SND[id] || 'decoy_peep', { vol: 0.45 }); R.cues++; buzz('tap'); }
+    if (t >= partyEnd(n)) { R.phase = 'got'; gotIap(R.sku); }
+  }
+  ctx.save();
+  const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#41206e'); bg.addColorStop(1, '#1c0b34');
+  ctx.globalAlpha = calm || !show ? 1 : clamp(t / 0.2, 0, 1);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_);
+  ctx.restore();
+  const Pb = ui.pageBox(), s = Pb.s, X = Pb.x, W = Pb.w, wide = A.w > A.h * 1.15;
+  const title = R.sku === PREMIUM_SKU ? 'Everything unlocked!' : 'The whole coop is yours!';
+  const coinW = Math.max(84 * s, ui.measure(String(purse.shown()).replace(/\d/g, '0'), 19 * s) + 56 * s);
+  const rw = Math.min(ui.measure(title, 25 * s) + 56 * s, W - 2 * (Math.max(Pb.h, coinW) + 22 * s));
+  const playH = 72 * s, top = Pb.bottom + 12 * s, bottom = A.y1 - 12 * s;
+  // the stage: as big as the page allows above the PLAY button (landscape: a wide window, PLAY under it)
+  const sw = wide ? Math.min(W, (bottom - top - playH - 18 * s) * 1.9) : W, sh = Math.min(wide ? bottom - top - playH - 18 * s : sw * 1.5, bottom - top - playH - 40 * s);
+  const gapE = Math.max(0, bottom - top - sh - playH) / 3, sx = A.cx - sw / 2, sy = top + gapE;
+  const lockA = (i) => { const tb = PARTY.ch0 + PARTY.gap * i; if (!show || t < 0.3 + 0.05 * i) return null; const a = (t - (tb - 0.22)) / 0.5; return a >= 1 ? null : Math.max(0, a); };
+  const chickK = (i) => (show ? (calm ? 1 : backK((t - (PARTY.ch0 + PARTY.gap * i)) / 0.34)) : 1);
+  const walk = show && !calm ? smooth01(t / PARTY.in) : 1;
+  payStage(R.sku, sx, sy, sw, sh, s, { age: 9, henDX: -(1 - walk) * (sw * 0.5 + A.w * 0.35), henLook: walk < 1 ? 1 : undefined, henMood: show && t < PARTY.in ? 'idle' : 'happy', henN: show ? (R.arrived ? 1 : 0) : 2 + Math.floor(G.t / 2.4), chickK, lockA, noRecord: under, big: !wide });
+  if (!calm && show) { // confetti: a burst from the top, a second as the last chick lands
+    CB.confetti(ctx, A.cx, A.y + A.h * 0.12, t - 0.05, { n: 70, speed: A.h * 0.9, g: A.h * 0.9, life: 2.6, seed: 7, size: Math.max(6, 8 * u), spread: Math.PI * 1.3, dir: Math.PI / 2 });
+    CB.confetti(ctx, A.cx, sy + sh * 0.45, t - (PARTY.ch0 + PARTY.gap * (n - 1)), { n: 50, speed: sh * 1.6, g: sh * 1.4, life: 2.2, seed: 11, size: Math.max(6, 7 * u) });
+  }
+  ui.ribbon(title, A.cx, Pb.y + 2 * s, rw, Pb.h - 6 * s, { s, color: '#d89a1c', size: Math.min(25 * s, 25 * s * (rw - 30 * s) / ui.measure(title, 25 * s)), tag: 'card:title', noRecord: under });
+  { // the purse, top right: the coins bought fly into it and it counts up (src/ui/purse.js)
+    const cx0 = X + W - coinW, ch = Pb.h - 8 * s, cy0 = Pb.y + 4 * s, k = purse.pop();
+    ctx.save(); ctx.translate(cx0 + coinW / 2, cy0 + ch / 2); ctx.scale(k, k); ctx.translate(-(cx0 + coinW / 2), -(cy0 + ch / 2));
+    ui.glass(cx0, cy0, coinW, ch, { r: ch / 2, a: 'rgba(58,36,20,0.94)', b: 'rgba(28,16,8,0.94)', border: 'rgba(255,224,160,0.6)' });
+    drawCoin(ctx, cx0 + ch / 2 + 2 * s, cy0 + ch / 2, ch * 0.34, G.t); purse.at({ x: cx0 + ch / 2 + 2 * s, y: cy0 + ch / 2 });
+    ui.text(String(purse.shown()), cx0 + ch + 6 * s, cy0 + ch / 2 + 0.5 * s, { size: 19 * s, color: '#fff8e0', stroke: '#8a4a04', strokeW: 3 * s, maxW: coinW - ch - 14 * s, tag: 'party:coins', noRecord: under });
+    ctx.restore();
+  }
+  if (under) return;
+  if (show) { ui.buttons.push({ id: 'party:tap', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); return; } // a tap anywhere: on to the coins
+  if (R.phase !== 'end') return;
+  ui.button('party:close', '', X, Pb.y, Pb.h, Pb.h, { kind: 'hud', icon: xIcon, iconS: 1.15, round: Pb.h / 2 });
+  const k = calm ? 1 : backK((G.t - R.tE) / 0.4), py = sy + sh + gapE, pw = wide ? Math.min(W, 460 * s) : W;
+  if (k > 0.01) { ctx.save(); ctx.translate(A.cx, py + playH / 2); ctx.scale(k, k); ctx.translate(-A.cx, -(py + playH / 2)); ui.button('party:play', 'PLAY', A.cx - pw / 2, py, pw, playH, { kind: 'primary', icon: ICON.play, shimmer: !calm, size: 30 * s }); ctx.restore(); }
+}
+const smooth01 = (k) => { const x = clamp(k, 0, 1); return x * x * (3 - 2 * x); };
 
 // 0.8.9 JACKPOT (mykee: "they should feel like they are hitting a jackpot"): a bundle, a coin pack, a kit, a set or the
 // daily deal landing in the wallet plays "YOU GOT!": rays, the prize big, what was inside popping out one by one with
 // its count, coins flying to the balance (which waits for them), a sound and a buzz. A tap skips to the end, the next
 // closes it. Calm motion: the still end picture, nothing flies. Single coin tiles keep their quick flash.
-const GOT_SHORT = { novideo: 'No videos', levels: 'All levels', daily: '+1 charge a day' };
+const GOT_SHORT = { bonus: 'Every bonus', novideo: 'No videos', levels: 'All levels', daily: '+1 charge a day' };
 function gotItems(rows) {
   const short = (t) => t.replace(/^\d+ of every boost \((\d+) in all\)$/, '$1 boosts').replace(' hen outfits', ' outfits').replace(' egg skins', ' eggs').replace(' power chicks', ' chicks').replace(' Chick Charges', ' charges').replace(' Ally Tickets', ' tickets').replace(/ outfit$/, '');
   return rows.map((R) => ({ art: R.art, label: GOT_SHORT[R.art] || (/^\d/.test(R.text) ? '+' + short(R.text) : short(R.text)) })).slice(0, 8);
@@ -2645,22 +2937,25 @@ function drawGot() {
   ui.buttons.push({ id: 'got:tap', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); // a tap anywhere
 }
 
+// the cheapest coin pack that covers a gap, as one row: the pile, the amount, its price (one tap to the store's sheet)
+const packRow = (sku, s, tg) => ({ h: 66 * s, gap: 12 * s, draw: (x, y, w) => {
+  const P = E.IAP[sku];
+  ui.well(x, y, w, 66 * s, { s });
+  for (const [dx, dy] of [[-9, 6], [9, 6], [0, -6]]) drawCoin(ctx, x + 36 * s + dx * s, y + 33 * s + dy * s, 12 * s, G.t + dx);
+  ui.record({ x: x + 12 * s, y: y + 15 * s, w: 48 * s, h: 36 * s }, tg + ':pile');
+  const bw = Math.max(96 * s, ui.measure(ads.price(sku), 18 * s) + 30 * s);
+  ui.num(P.coins.toLocaleString('en-US'), x + 70 * s, y + 24 * s, { size: 22 * s, tag: tg + ':amt', maxW: w - bw - 90 * s });
+  ui.text('coins', x + 70 * s, y + 47 * s, { size: 14 * s, color: ui.C.ink2, tag: tg + ':unit', maxW: w - bw - 90 * s });
+  ui.button('gm:iap:' + sku, ads.price(sku), x + w - bw - 9 * s, y + 11 * s, bw, 44 * s, { kind: 'primary', size: 18 * s, shimmer: !save.calm });
+} });
 function drawGetMore() {
   const M = G.getMore;
   dim(0.55);
   stackCard('Get more coins', (s) => {
-    const C = ui.C, P = E.IAP[M.sku], cd = adCd();
+    const C = ui.C, cd = adCd();
     return [
       lineBlock(`You need ${M.short} more coin${M.short > 1 ? 's' : ''}.`, 18 * s, { color: C.ink, tag: 'gm:need' }),
-      ads.moneyShop && { h: 66 * s, gap: 12 * s, draw: (x, y, w) => { // the cheapest pack that covers it
-        ui.well(x, y, w, 66 * s, { s });
-        for (const [dx, dy] of [[-9, 6], [9, 6], [0, -6]]) drawCoin(ctx, x + 36 * s + dx * s, y + 33 * s + dy * s, 12 * s, G.t + dx);
-        ui.record({ x: x + 12 * s, y: y + 15 * s, w: 48 * s, h: 36 * s }, 'gm:pile');
-        const bw = Math.max(96 * s, ui.measure(ads.price(M.sku), 18 * s) + 30 * s);
-        ui.num(P.coins.toLocaleString('en-US'), x + 70 * s, y + 24 * s, { size: 22 * s, tag: 'gm:amt', maxW: w - bw - 90 * s });
-        ui.text('coins', x + 70 * s, y + 47 * s, { size: 14 * s, color: C.ink2, tag: 'gm:unit', maxW: w - bw - 90 * s });
-        ui.button('gm:iap:' + M.sku, ads.price(M.sku), x + w - bw - 9 * s, y + 11 * s, bw, 44 * s, { kind: 'primary', size: 18 * s });
-      } },
+      ads.moneyShop && packRow(M.sku, s, 'gm'), // the cheapest pack that covers it, first
       { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('gm:ad', cd > 3600 ? 'More free coins tomorrow' : cd > 0 ? `Free coins in ${fmtTime(cd)}` : `Watch an ad: +${adCoins()} coins`, x, y, w, 50 * s, { kind: 'ad', ad: cd <= 0, disabled: cd > 0, shimmer: cd <= 0, size: 16.5 * s }) },
       // the web has no coin packs: the second way to coins there is the Free tab (the daily gift, the free sample), and wins
       !ads.moneyShop && lineBlock('Every win pays coins too.', 14.5 * s, { color: C.ink2, tag: 'gm:win', gap: 8 * s }),
@@ -2674,7 +2969,11 @@ function onGrant(sku) {
   BR.note(save, 'buy', { money: true }); // the Brain rests after a purchase: no paid offer for a day
   G.storeFlash = { id: 'iap:' + sku, t0: G.t };
   if (G.getMore && save.wallet.coins >= G.getMore.price) G.getMore = null;
-  if (P && G.screen !== 'play') { G.detail = null; G.parent = null; gotIap(sku); return; } // 0.8.9: the "YOU GOT!" reveal (not over a running level)
+  if (P && G.screen !== 'play') { // 0.8.9: the "YOU GOT!" reveal (not over a running level); 0.8.17: the unlock party first
+    G.detail = null; G.parent = null;
+    if (P.premium && !G.got && !G.party) startParty(sku); else gotIap(sku);
+    return;
+  }
   audio.play('unlock');
   toast(`Thank you! ${P ? P.name : 'Your purchase'} is yours.`, 3);
 }
