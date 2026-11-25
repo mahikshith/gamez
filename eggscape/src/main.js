@@ -2104,12 +2104,19 @@ function newKindsFor(w) { // villains that first appear in world w (levels 5w+1 
   return out;
 }
 function drawTreasure() {
+  // 0.8.16: the treasure is a page of its own over the dimmed map (it hung under the map's header, and on a squat
+  // screen that room was too small: its button fell off the bottom)
+  const hb = G.hudBottom;
+  G.hudBottom = ui.A.y;
+  try { drawTreasurePage(); } finally { G.hudBottom = hb; }
+}
+function drawTreasurePage() {
   const T = G.treasure, R = E.bossTreasure(T.id);
   if (!R) { G.treasure = null; return; }
   const Lb = LEVELS.find((Lv) => Lv.id === T.id), beaten = bossBeaten(T.id), opened = E.treasureOpened(save.wallet, T.id);
   const w = T.id / 5, chick = STRIKES.find((S) => S.unlock === T.id + 1), nk = w < WORLDS.length ? newKindsFor(w).slice(0, 4) : [];
   const bossName = (VILLAIN_INFO['boss:' + (Lb && Lb.boss)] || {}).name || (Lb ? Lb.name : 'the boss');
-  dim(0.66);
+  dim(0.78);
   const fresh = T.openedAt != null ? G.t - T.openedAt : 9;
   const title = opened ? (fresh < 9 ? 'Treasure collected!' : 'Boss treasure') : beaten ? 'Boss treasure!' : 'Boss treasure';
   // 0.8.16 (mykee: full screen, bigger art): the room a tall phone leaves goes to the pictures, first the coming
