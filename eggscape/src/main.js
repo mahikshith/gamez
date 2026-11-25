@@ -2882,10 +2882,11 @@ function pacerStopMark(id, x, y, r, t, calm) {
     pictoFlame(ctx, fx, fy, 15 * u);
   }
   if (G.pmarks.ids.includes(id)) { // "+1 star here": a star that twinkles over the stop (steady under Calm)
-    const sx = x + R * 0.95, sy = y - R * 0.75, p = calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3.2 + id), rr = (9 + 2 * p) * u;
+    const tw = ui.measure('+1', 13 * u) + 14 * u, side = x + R * 0.95 + tw + 11 * u > ui.A.x1 - 4 * u ? -1 : 1; // the side with room (never off the screen's edge)
+    const sx = x + side * R * 0.95 - (side < 0 ? tw : 0), sy = y - R * 0.75, p = calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3.2 + id), rr = (9 + 2 * p) * u;
     ctx.save(); ctx.globalAlpha = 0.35 + 0.35 * p; ctx.beginPath(); ctx.arc(sx, sy, rr * 1.9, 0, 7); ctx.fillStyle = '#fff3a0'; ctx.fill(); ctx.restore();
     drawStar(ctx, sx, sy, rr, true);
-    ui.text('+1', sx + rr + 3 * u, sy + 1 * u, { size: 13 * u, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'map:plus' + id });
+    ui.text('+1', sx + rr + 3 * u, sy + 1 * u, { size: 13 * u, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'map:plus' + id, noRecord: sy - 12 * u < levelPageTop() || sy + 12 * u > ui.A.y1 }); // (half under the header: not a thing to read)
   }
 }
 // "Stuck? Skip this one" (the Pacer, after the third loss in a row): over the fail page before its buttons, the hen
@@ -4692,7 +4693,7 @@ function onFail() {
       const cheer = SP.noteLoss(save, G.level.id, run, today()), played = G.sim.t >= 15 && SP.notePlayed(save, today());
       G.failSpin = { cheer, got: (cheer ? 1 : 0) + (played ? 1 : 0), ...SP.meter(save) };
     }
-    G.failHelp = earlyDays() ? null : DR.failHelp(save, failCtx(st));
+    G.failHelp = earlyDays() ? null : DR.failHelp(save, { ...failCtx(st), struggling: !!(save.adapt !== false && (ENG.pacer.read(save, { levelId: G.level.id }) || {}).struggling) });
     pacerFail(); // the Pacer: the skip pop-up, a free hint, a free Scarecrow at a boss
     if (st.target >= 2 && st.saved === st.target - 1) BR.why(save, 'fail', 'soclose', `one egg short on level ${G.level.id}: ${earlyDays() || G.usedRewind || !G.sim.canRewind() ? 'said so, RETRY leads' : 'Rewind leads, RETRY under it'}`);
     persist();
