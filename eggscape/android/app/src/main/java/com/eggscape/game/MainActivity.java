@@ -103,14 +103,14 @@ public class MainActivity extends Activity {
         }
         /**
          * 0.8.15 reminders (src/engine/herald.js plans them, Reminders.java keeps the appointment). All local to this
-         * phone. notifyState: "granted" | "ask" (Android 13+: the permission is not given) | "off" (switched off in the
-         * phone's settings). notifyAsk: shows Android's own question (13+); the answer comes back to the page through
+         * phone. notifyState: "granted" | "ask" (Android 13+: the permission is not given) | "never" (13+: refused, and
+         * Android will not ask again) | "off" (switched off in the phone's settings). notifyAsk: shows Android's own question (13+); the answer comes back to the page through
          * window.__eggNotif(true | false). openedFrom: the reminder this launch came from ("" = from the icon), read once.
          */
         @JavascriptInterface public void notifyAt(String atMs, String id, String title, String text) {
             try { Reminders.schedule(MainActivity.this, 0, Long.parseLong(atMs), id, title, text); } catch (Throwable e) { /* optional */ }
         }
-        /** the later notes of a long absence: slot 1 and 2 (herald.js). Opening the game cancels all of them. */
+        /** the rest of the series: slots 1 to 5 (herald.js HERALD.series). Opening the game cancels all of them. */
         @JavascriptInterface public void notifyMore(String slot, String atMs, String id, String title, String text) {
             try { Reminders.schedule(MainActivity.this, Integer.parseInt(slot), Long.parseLong(atMs), id, title, text); } catch (Throwable e) { /* optional */ }
         }
@@ -120,12 +120,18 @@ public class MainActivity extends Activity {
             runOnUiThread(new Runnable() { @Override public void run() {
                 try {
                     String st = Reminders.state(MainActivity.this);
-                    if (Build.VERSION.SDK_INT >= 33 && "ask".equals(st)) requestPermissions(new String[] { android.Manifest.permission.POST_NOTIFICATIONS }, REQ_NOTIF);
+                    if (Build.VERSION.SDK_INT >= 33 && "ask".equals(st)) { Reminders.noteAsked(MainActivity.this); requestPermissions(new String[] { android.Manifest.permission.POST_NOTIFICATIONS }, REQ_NOTIF); }
                     else tellNotif("granted".equals(st));
                 } catch (Throwable e) { tellNotif(false); }
             } });
         }
         @JavascriptInterface public String openedFrom() { String f = openedFrom; openedFrom = ""; return f == null ? "" : f; }
+        /** 0.8.17: the phone's side for the Settings row and the speed log (JSON: perm, chan, battery, strict, maker, plan, firedAt, openAt ...) */
+        @JavascriptInterface public String notifyInfo() { return Reminders.info(MainActivity.this); }
+        /** 0.8.17: a real note in about `secs` seconds, through the alarm, the receiver and the channel (Settings, "Send a test") */
+        @JavascriptInterface public void notifyTest(String secs) { try { Reminders.test(MainActivity.this, Integer.parseInt(secs)); } catch (Throwable e) { /* optional */ } }
+        /** 0.8.17: "app" = this app's notification settings, "battery" = the battery optimisation list */
+        @JavascriptInterface public void notifySettings(final String which) { runOnUiThread(() -> Reminders.openSettings(MainActivity.this, which)); }
         /**
          * 0.8.12, the slow-drawing watchdog (src/recover.js): the page found that the web view no longer draws with the
          * graphics chip and that loading the page again did not cure it. rung 2 ends the page's own process (the game
@@ -315,7 +321,7 @@ public class MainActivity extends Activity {
     // 0.8.15 reminders: which one this launch came from, and Android's answer to the permission question
     private static final int REQ_NOTIF = 7103;
     private volatile String openedFrom = "";
-    private void noteOpenedFrom(Intent in) { try { String f = in == null ? null : in.getStringExtra(Reminders.EXTRA_FROM); if (f != null && !f.isEmpty()) { openedFrom = f; in.removeExtra(Reminders.EXTRA_FROM); } } catch (Throwable e) { /* optional */ } }
+    private void noteOpenedFrom(Intent in) { try { String f = in == null ? null : in.getStringExtra(Reminders.EXTRA_FROM); if (f != null && !f.isEmpty()) { openedFrom = f; in.removeExtra(Reminders.EXTRA_FROM); Reminders.noteOpened(this, f); } } catch (Throwable e) { /* optional */ } }
     private void tellNotif(final boolean ok) {
         runOnUiThread(new Runnable() { @Override public void run() { try { if (web != null) web.evaluateJavascript("window.__eggNotif&&window.__eggNotif(" + (ok ? "true" : "false") + ")", null); } catch (Throwable e) { /* page not up */ } } });
     }
