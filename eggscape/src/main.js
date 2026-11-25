@@ -2118,15 +2118,19 @@ function drawTreasure() {
     B.push(lineBlock(beaten ? (opened ? 'You opened this treasure.' : `You beat ${bossName}. It is yours!`) : `Beat ${bossName} (Level ${T.id}) to open it.`, 16.5 * s, { tag: 'tr:status', gap: 4 * s, color: beaten ? ui.C.ink : ui.C.ink2 }));
     // what is inside: coins, a booster, Chick Charges
     const items = [['coin', `${R.coins} coins`], ['boost', `${(E.BOOSTERS[R.booster] || {}).name || 'Booster'} booster`], ['charge', `${R.charges} Chick Charges`]];
-    const ih = 36 * s, IH = 26 * s + items.length * ih + 6 * s;
+    // 0.8.16 (design critique: three short rows left half the well empty): the prizes stand side by side, each a big
+    // picture with its words under it, across the column's whole width
+    const cw3 = (iw - 16 * s) / items.length, wr = items.map(([, txt]) => wrapText(txt, 15 * s, cw3 - 8 * s).slice(0, 2)), nl = Math.max(...wr.map((l) => l.length));
+    const IH = 26 * s + 50 * s + nl * 18 * s + 12 * s;
     B.push({ h: IH, gap: 10 * s, draw: (x, y, w2) => {
       ui.well(x, y, w2, IH, { s, a: '#f3e2bd', b: '#fbf0d6' });
       ui.text(opened ? 'YOU GOT' : 'INSIDE', x + w2 / 2, y + 14 * s, { size: 13.5 * s, align: 'center', color: ui.C.ink2, tag: 'tr:inhead' });
-      items.forEach(([k, txt], i) => {
-        const ry = y + 26 * s + i * ih + ih / 2, ix = x + 30 * s;
-        if (k === 'coin') drawCoin(ctx, ix, ry, 12 * s, G.t); else if (k === 'boost') drawBoosterIcon(ctx, R.booster, ix, ry, 30 * s, G.t); else pictoPower(ctx, 'thunder', ix, ry, 28 * s, G.t);
-        ui.text(txt, ix + 24 * s, ry, { size: 17 * s, color: ui.C.ink, maxW: w2 - 70 * s, tag: 'tr:item' + i });
-        if (opened) pictoCheck(ctx, x + w2 - 22 * s, ry, 22 * s);
+      items.forEach(([k], i) => {
+        const ix = x + 8 * s + cw3 * (i + 0.5), iy = y + 26 * s + 25 * s;
+        if (k === 'coin') drawCoin(ctx, ix, iy, 19 * s, G.t); else if (k === 'boost') drawBoosterIcon(ctx, R.booster, ix, iy, 48 * s, G.t); else pictoPower(ctx, 'thunder', ix, iy, 44 * s, G.t);
+        ui.record({ x: ix - 22 * s, y: iy - 22 * s, w: 44 * s, h: 44 * s }, 'tr:itemart' + i);
+        wr[i].forEach((l, j) => ui.text(l, ix, iy + 25 * s + 11 * s + j * 18 * s, { size: 15 * s, align: 'center', color: ui.C.ink, maxW: cw3 - 6 * s, tag: 'tr:item' + i + ':' + j }));
+        if (opened) pictoCheck(ctx, ix + 22 * s, iy - 16 * s, 20 * s);
       });
     } });
     if (chick) { // the chick that joins next: its art, what it does, from which level
