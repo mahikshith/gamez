@@ -8588,7 +8588,7 @@ function drawLevels() {
   if (ui.skin && ui.skin.pack && ui.skin.pack.bg) drawRoadDress(ctx, L, sy, vt, H_, t, ui.skin.pack.bg, calm);
   MS.drawCast(ctx, L, sy, vt, H_, t, calm, DPR);
   const wide = mapWide(), ctaOn = playable(nx) && envOpen(envOf(nx));
-  const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 320) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - 4 * u;
+  const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 440) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - (wide ? 4 : 20) * u; // 0.8.16: on the page column, clear of the bottom edge
   const tapBot = ctaOn && !wide ? ctaY - 6 * u : vb; // stops under the PLAY bar keep no tap target
   G.mapView = { vt, vb: tapBot, cta: ctaOn ? { x: ctaX, y: ctaY, w: ctaW, h: ctaH } : null }; // QA: the part of the map that shows
   // a place's landmarks (0.8.7 the Farm, 0.8.10 the Crystal Caves, 0.8.12 the Volcano and the Vault): scenery beside the
@@ -8735,7 +8735,7 @@ function drawLevels() {
   const chest = E.chestFor(totalStars, save.wallet.chests);
   const spinOn = SP.open(save), nb = spinOn ? 3 : 2; // 0.8.15: the Lucky Spin joins the row once it exists (level 3 won)
   const bw4 = wide ? (spinOn ? 108 : 120) * u : 0, rowY = wide ? Y0 + 1 * u : Y0 + 46 * u + 12 * u, rh = 44 * u;
-  const midW = wide ? bw4 * nb + 10 * u * (nb - 1) : Math.min(A.w - 2 * pad, (spinOn ? 372 : 340) * u), mx = wide ? chipX - 14 * u - midW : A.cx - midW / 2, half = (midW - 10 * u * (nb - 1)) / nb;
+  const midW = wide ? bw4 * nb + 10 * u * (nb - 1) : Math.min(A.w - 2 * pad, 440 * u), mx = wide ? chipX - 14 * u - midW : A.cx - midW / 2, half = (midW - 10 * u * (nb - 1)) / nb;
   purseBtn(mx, rowY, half, rh, 17 * u);
   if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { kind: chest.ready ? 'primary' : 'off', shimmer: chest.ready, disabled: !chest.ready, dim: 1, iconS: 1.25, icon: (c, x, y, s2) => { drawChest(c, x, y, s2, G.t, chest.ready ? 'ready' : 'locked'); if (chest.reward.skin && !E.ownsSkin(save.wallet, chest.reward.skin)) drawSkinPreview(c, chest.reward.skin, x - s2 * 0.55, y - s2 * 0.08, s2 * 0.8, G.t); }, size: 15 * u });
   if (spinOn) { // free spins waiting: green and it says so; none: the meter (wins so far of the three a spin takes)
@@ -8752,7 +8752,7 @@ function drawLevels() {
   ui.ribbon(wname, (titleL + titleR) / 2, hy - 18 * u, rbw, 36 * u, { color: MS.WORLD_LOOK[wv].accent, size: 20 * u, tag: 'levels:title' });
   // how far along: a thin bar of the whole journey and the levels still to play
   const cleared = LEVELS.reduce((a, Lv) => a + (bestStarsOf(Lv.id) > 0 ? 1 : 0), 0), left = LEVELS.length - cleared;
-  const py = wide ? Y0 + 46 * u + 12 * u : rowY + rh + 10 * u + 10 * u, pw = Math.min(A.w - 2 * pad, 340 * u), px0 = A.cx - pw / 2;
+  const py = wide ? Y0 + 46 * u + 12 * u : rowY + rh + 10 * u + 10 * u, pw = Math.min(A.w - 2 * pad, (wide ? 340 : 440) * u), px0 = A.cx - pw / 2;
   const lt = left ? `${left} level${left === 1 ? '' : 's'} to go` : 'Every level cleared!', ltw = ui.measure(lt, 13 * u), bw3 = pw - ltw - 12 * u;
   ui.roundRect(px0, py - 4 * u, bw3, 8 * u, 4 * u); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
   if (cleared) { ui.roundRect(px0, py - 4 * u, Math.max(8 * u, bw3 * cleared / LEVELS.length), 8 * u, 4 * u); ctx.fillStyle = '#f6c454'; ctx.fill(); }
