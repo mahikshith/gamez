@@ -2104,14 +2104,16 @@ function drawTreasure() {
   dim(0.66);
   const fresh = T.openedAt != null ? G.t - T.openedAt : 9;
   const title = opened ? (fresh < 9 ? 'Treasure collected!' : 'Boss treasure') : beaten ? 'Boss treasure!' : 'Boss treasure';
-  stackCard(title, (s, iw) => {
-    const B = [];
-    B.push({ h: 118 * s, gap: 2 * s, draw: (x, y, w2) => { // the chest: locked, glowing, or open with its prizes flying out
-      const cx = x + w2 / 2, cy = y + 64 * s;
+  // 0.8.16 (mykee: full screen, bigger art): the room a tall phone leaves goes to the pictures, first the coming
+  // villains (up to the column's width), then the chest. chH: the chest block's height in units; pMax: a portrait's side.
+  const build = (chH, pMax) => (s, iw) => {
+    const B = [], ck = chH / 118;
+    B.push({ h: chH * s, gap: 2 * s, draw: (x, y, w2) => { // the chest: locked, glowing, or open with its prizes flying out
+      const cx = x + w2 / 2, cy = y + 64 * ck * s;
       if (opened && fresh < 1.4 && !save.calm) { const a = fresh / 1.4; sunburst(cx, cy, 120 * s * (0.6 + a), `rgba(255,226,120,${0.35 * (1 - a)})`, 14); }
-      drawChest(ctx, cx, cy, 92 * s, G.t, opened ? 'open' : beaten ? 'ready' : 'locked');
-      if (!beaten) drawPadlock(cx, cy + 14 * s, 13 * s, null);
-      ui.record({ x: cx - 50 * s, y, w: 100 * s, h: 112 * s }, 'tr:art');
+      drawChest(ctx, cx, cy, 92 * ck * s, G.t, opened ? 'open' : beaten ? 'ready' : 'locked');
+      if (!beaten) drawPadlock(cx, cy + 14 * ck * s, 13 * ck * s, null);
+      ui.record({ x: cx - 50 * ck * s, y, w: 100 * ck * s, h: 112 * ck * s }, 'tr:art');
     } });
     B.push(lineBlock(beaten ? (opened ? 'You opened this treasure.' : `You beat ${bossName}. It is yours!`) : `Beat ${bossName} (Level ${T.id}) to open it.`, 16.5 * s, { tag: 'tr:status', gap: 4 * s, color: beaten ? ui.C.ink : ui.C.ink2 }));
     // what is inside: coins, a booster, Chick Charges
@@ -2140,7 +2142,7 @@ function drawTreasure() {
       } });
     }
     if (nk.length) { // the next world's new villains, big enough to recognise
-      const P = Math.min(64 * s, (iw - (nk.length - 1) * 10 * s) / nk.length), NH = 30 * s + P + 38 * s;
+      const P = Math.min(pMax * s, (iw - (nk.length - 1) * 10 * s) / nk.length), NH = 30 * s + P + 38 * s;
       B.push({ h: NH, gap: 10 * s, draw: (x, y, w2) => {
         ui.text(`COMING UP IN ${(WORLDS[w] || 'the next world').toUpperCase()}`, x + w2 / 2, y + 12 * s, { size: 13.5 * s, align: 'center', color: ui.C.ink2, maxW: w2, tag: 'tr:nexthead' });
         const x0 = x + w2 / 2 - (nk.length * P + (nk.length - 1) * 10 * s) / 2;
@@ -2156,9 +2158,18 @@ function drawTreasure() {
       else if (!beaten && Lb && playable(LEVELS.indexOf(Lb))) { const hw = (w2 - 10 * s) / 2; ui.button('tr:close', 'Close', x, y, hw, 58 * s, { kind: 'tertiary', size: 19 * s }); ui.button('tr:play', `Play Level ${T.id}`, x + hw + 10 * s, y, hw, 58 * s, { kind: 'primary', icon: ICON.play, size: 18 * s }); }
       else ui.button('tr:close', opened ? 'Great!' : 'Close', x, y, w2, 58 * s, { kind: 'primary', size: 22 * s });
     } });
-    if (!chick && w >= 7 && opened) B.push({ h: 44 * s, gap: 8 * s, draw: (x, y, w2) => ui.button('tr:shop', 'See premium chicks', x + w2 * 0.15, y, w2 * 0.7, 44 * s, { kind: 'secondary', size: 16 * s }) });
+    if (!chick && w >= 7 && opened) B.push({ h: 44 * s, gap: 8 * s, draw: (x, y, w2) => ui.button('tr:shop', 'See premium chicks', x, y, w2, 44 * s, { kind: 'secondary', size: 16 * s }) });
     return B;
-  }, { ribbon: '#d89a1c' });
+  };
+  let chH = 118, pMax = 64;
+  const A = ui.A, u = ui.u;
+  if (cardFull({}, A)) {
+    const iw1 = fullInner(A, u) / u, rest = build(118, 64)(1, iw1).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22;
+    let extra = Math.max(0, (A.y1 - Math.max(G.hudBottom, A.y) - 30 * u) / u - rest - 30);
+    if (nk.length) { const d = Math.min(extra, (iw1 - (nk.length - 1) * 10) / nk.length - 64, 30); pMax += Math.max(0, d); extra -= Math.max(0, d); }
+    chH = Math.min(118 + extra, 190);
+  }
+  stackCard(title, build(chH, pMax), { ribbon: '#d89a1c', grow: 1.15 });
 }
 // ---- the offer engine's moments (offers.js): the end card after its first second, home on arrival, the intro (a line)
 function offerCtx() {
