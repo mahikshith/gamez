@@ -22,6 +22,7 @@
 // Payers (any purchase) and No Ads owners get no interstitials; rewarded ads stay their choice.
 import portal from './sdk/portal.js';
 import { IAP, grantIap, usdHint } from './economy.js';
+import * as GD from './guard.js'; // 0.8.17: refunds take the unlock back (the store's own record decides)
 
 /* global __APP__, __DEV__ */
 const APP = typeof __APP__ !== 'undefined' && __APP__;
@@ -39,7 +40,7 @@ export const SKIP_COINS = 150;
 export const INTER = { on: false, from: 8, gapS: 240, levels: 3 };
 
 const st = { busy: false, lastInter: 0, sinceInter: 0, prices: {}, fails: {}, seq: 0, pending: new Map(), adWait: new Set(), childSafe: false };
-let save = null, persist = () => {}, onGrant = () => {};
+let save = null, persist = () => {}, onGrant = () => {}, onRevoke = () => {};
 
 // the Android shell answers through these globals: window.__eggAd(id, ok), window.__eggBuy(id, ok, state),
 // window.__eggGrant(sku, token) -> true once the grant is saved, window.__eggPrice(sku, price)
@@ -50,8 +51,9 @@ function bridge() { try { return APP && typeof window !== 'undefined' && window.
 // comes back, its coins and boosts are not paid twice (the token list went with the old save)
 function grant(sku, token, again) {
   if (!save || !save.wallet || !IAP[sku]) return false;
-  const r = grantIap(save.wallet, sku, again === true && IAP[sku].type === 'once' ? '' : token, Date.now());
-  save.wallet = r.wallet;
+  const before = save.wallet, r = grantIap(before, sku, again === true && IAP[sku].type === 'once' ? '' : token, Date.now());
+  const g = GD.onGrant(save.guard, sku, token, before, r.wallet, r.granted, Date.now()); // remembered with its token (src/guard.js)
+  save.wallet = g.wallet; save.guard = g.guard;
   persist();
   if (r.granted) { try { onGrant(sku); } catch (_) { /* the game's thank-you is cosmetic */ } }
   return true;
@@ -63,6 +65,30 @@ if (typeof window !== 'undefined') {
   // older shells only report Premium ownership (no token): the entitlement is applied, nothing is paid twice
   window.__eggOwned = (sku, on) => { if (on && sku === PREMIUM_SKU) grant(PREMIUM_SKU, ''); };
   window.__eggPrice = (sku, price) => { if (IAP[sku] && price) st.prices[sku] = String(price); };
+  // 0.8.17: the one-time products the store lists for this account, after a SUCCESSFUL query only (Monetization.java
+  // restore). A purchase it stops listing is taken back after two such checks an hour apart (src/guard.js).
+  window.__eggStore = (json) => {
+    if (!save || !save.wallet) return false;
+    let owned = null;
+    try { owned = JSON.parse(String(json)); } catch (_) { return false; }
+    if (!Array.isArray(owned) || !online()) return false; // a phone that is offline may answer from a cache: not counted
+    const r = GD.check(save.guard, save.wallet, owned, Date.now());
+    save.guard = r.guard; save.wallet = r.wallet;
+    persist();
+    if (r.revoked.length) { try { onRevoke(r.revoked); } catch (_) { /* the game's line is cosmetic */ } }
+    return true;
+  };
+}
+const online = () => { try { return typeof navigator === 'undefined' || navigator.onLine !== false; } catch (_) { return true; } };
+// 0.8.17 the iPhone shell (window.EGG_APP, no __APP__) has no ad SDK yet: its videos are unavailable, never free
+const iosShell = () => { try { return !APP && typeof window !== 'undefined' && window.EGG_APP === true && !(window.EggApp && typeof window.EggApp.showRewarded === 'function'); } catch (_) { return false; } };
+// is a rewarded ad loaded (Android: Monetization.adReady), asked at most once a second
+const rdy = { t: -1e9, v: true };
+function adLoaded(b) {
+  if (typeof b.adReady !== 'function') return true; // an older shell: it cannot tell
+  const now = Date.now();
+  if (now - rdy.t > 1000) { rdy.t = now; try { rdy.v = b.adReady() !== false; } catch (_) { rdy.v = true; } }
+  return rdy.v;
 }
 function callNative(fn, ...args) {
   const b = bridge();
@@ -86,6 +112,19 @@ export const ads = {
     if (b && typeof b.restorePurchases === 'function') { try { b.restorePurchases(); } catch (_) { /* optional */ } }
   },
   rebind(s) { save = s; },
+  // the game's calm line when a refunded purchase was taken back (skus)
+  onRevoke(fn) { onRevoke = fn || onRevoke; },
+  // 0.8.17: can a video be shown right now? Offline, no ad loaded, or the iPhone shell (no ads wired): no. Unlock
+  // Everything owners need no video. Every video button shows its offline state when this is false.
+  get videoOk() {
+    if (this.premium) return true;
+    if (!online() || iosShell()) return false;
+    const b = bridge();
+    if (b) return typeof b.showRewarded === 'function' && adLoaded(b);
+    return true;
+  },
+  // why not: 'offline' (no connection, or no ads on this phone yet) or 'wait' (online, the video is still loading)
+  get videoWhy() { return this.videoOk ? '' : !online() || iosShell() ? 'offline' : 'wait'; },
   get premium() { return !!(save && save.wallet && save.wallet.noAds); },
   get canBuyPremium() { return this.canBuy && !this.premium; },
   get premiumPrice() { return this.price(PREMIUM_SKU); },
@@ -117,7 +156,7 @@ export const ads = {
   // a rewarded placement: resolves true when the reward is earned. Premium players get it without an ad.
   async rewarded(tag) {
     if (this.premium) return true;
-    if (st.busy) return false;
+    if (st.busy || !this.videoOk) return false; // no free reward in place of a video (the iPhone shell used to pay after 1.2 s)
     st.busy = true;
     let ok = false;
     try {

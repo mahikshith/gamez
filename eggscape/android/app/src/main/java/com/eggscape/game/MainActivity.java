@@ -93,6 +93,10 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void showInterstitial(String id) { if (money != null) money.showInterstitial(id); }
         @JavascriptInterface public void buy(String sku, String id) { if (money != null) money.buy(sku, id); }
         @JavascriptInterface public void restorePurchases() { if (money != null) money.restore(); }
+        /** 0.8.17: a rewarded ad is loaded (the page shows video buttons offline-style while not) */
+        @JavascriptInterface public boolean adReady() { return money != null && money.adReady(); }
+        /** 0.8.17: ms since the phone started (the date setting cannot change it): src/clock.js checks long date jumps */
+        @JavascriptInterface public String uptime() { return String.valueOf(android.os.SystemClock.elapsedRealtime()); }
         /** the age question answered "Under 13": child-directed ad requests (remembered by the shell) */
         @JavascriptInterface public void setChildSafe(boolean on) { if (money != null) money.setChildSafe(on); }
         /** the speed log (src/diag.js): what Android knows about this phone right now, as JSON; full adds the parts that never change */

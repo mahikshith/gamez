@@ -42,6 +42,9 @@ import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age ques
 import * as ENG from './engine/index.js'; // 0.8.15: the background subsystems (Ledger, Pulse, Oracle, Conductor, Herald) behind one safe face
 import * as SP from './spin.js'; // 0.8.15: the Lucky Spin's rules
 import { drawSlot, slotGeom, stripPos, drawSliceIcon, drawTicket, drawSlotIcon, drawVillainCard, releaseSlot, SLICE_COL } from './render/slot.js'; // and its machine: three reels and a lever
+import * as CK from './clock.js'; // 0.8.17: the game's day only moves forward (the phone's date cannot repeat daily things)
+import * as GD from './guard.js'; // 0.8.17: a refunded one-time purchase is taken back (the store's own record)
+import * as WT from './waiting.js'; // 0.8.17: video rewards met offline wait for a connection
 import * as BR from './brain.js'; // 2026-11-23: the Brain, one arbiter over the Director and the offer engine (who is playing, when to ask, what fits)
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
@@ -139,7 +142,10 @@ const GATE_COINS = (k) => 80 + 40 * k;
 // Settings (2026-11-15): how fast the rings follow a finger, 0.6x .. 2x of the designed speed
 const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5]; // 2026-11-16 mykee: experienced players want even faster (300%; no extra tunnelling seen in a 3x wall-crossing check)
 const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed : RING_SPEED_DEFAULT);
-const allOpen = () => TEST || !!save.tester || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($2.99) opens every level
+// 0.8.17: the hidden tester switch (7 taps on the logo) works only in dev builds and the separate unlocked test builds;
+// in a store build the taps do nothing and an old save.tester flag is ignored (it opened the $2.99 unlock for free)
+const TESTER_OK = DEV || TEST || (typeof __UNLOCKED__ !== 'undefined' && !!__UNLOCKED__); /* global __UNLOCKED__ */
+const allOpen = () => TEST || (TESTER_OK && !!save.tester) || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($2.99) opens every level
 const envOpen = (k) => allOpen() || bestTotal() >= envNeed(k) || !!(save.gates && save.gates[k]);
 const playable = (i) => i >= 0 && i < LEVELS.length && (allOpen() || (i < save.unlocked && envOpen(envOf(i))));
 // the level the Play button means: the first one not yet cleared (in the order of the map), else the frontier.
@@ -153,6 +159,7 @@ function loadSave(s) {
   save = { ...defaultSave(), ...s };
   if (s.rsDef !== 2) { save.rsDef = 2; if (!(+s.ringSpeed) || +s.ringSpeed === 1) save.ringSpeed = RING_SPEED_DEFAULT; }
   save.wallet = E.sanitizeWallet(save.wallet);
+  CK.bind(save, () => { const b = appBridge(); return b && typeof b.uptime === 'function' ? Number(b.uptime()) : undefined; }); // the game's day (save.clock)
   if (!MODE_LIST.includes(save.mode)) save.mode = 'medium';
   for (const [o, n] of Object.entries(LEGACY_ORB)) if (save.seen[o]) save.seen[n] = 1; // v1 discoveries
   ads.rebind(save);
@@ -182,7 +189,9 @@ const BONUS_COINS = 15;
 const AD_BOOST = ['golden', 'time', 'stone', 'sponge']; // the intro card's free booster, by level
 // Daily Vault (C7): one pre-validated layout per day, the same for everyone; level index -1
 const DAILY_COINS = 40;
-const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// 0.8.17: the game's own day (src/clock.js): it only moves forward, so moving the phone's date back and forth no longer
+// repeats the chest, the samples, the spins and the freebies (same 'YYYY-MM-DD' key as before)
+const today = () => CK.today();
 // the free-coins video: what it pays now (a little less each time, six a day), and seconds until the next one
 const adCoins = () => E.freeCoinsNext(save.adDay, today());
 function adCd() {
@@ -1067,7 +1076,7 @@ function pointerDown(e) {
   if (G.screen === 'title') {
     // hidden tester switch: tap the logo 7 times within 3 s to open (or lock again) every level and world
     const LR = ui.rects.find((r) => r.tag === 'title:logo');
-    if (LR && x >= LR.x && x <= LR.x + LR.w && y >= LR.y && y <= LR.y + LR.h) {
+    if (TESTER_OK && LR && x >= LR.x && x <= LR.x + LR.w && y >= LR.y && y <= LR.y + LR.h) {
       G.logoTaps = (G.logoTaps || []).filter((q) => G.t - q < 3); G.logoTaps.push(G.t);
       if (G.logoTaps.length >= 7) { G.logoTaps = []; save.tester = !save.tester; persist(); toast(save.tester ? 'Tester mode: every level open' : 'Tester mode off', 2.4); }
     }
@@ -2677,6 +2686,13 @@ function onGrant(sku) {
   if (P && G.screen !== 'play') { G.detail = null; G.parent = null; gotIap(sku); return; } // 0.8.9: the "YOU GOT!" reveal (not over a running level)
   audio.play('unlock');
   toast(`Thank you! ${P ? P.name : 'Your purchase'} is yours.`, 3);
+}
+// 0.8.17 a refunded one-time purchase was taken back (src/guard.js): one calm line, once; the shop offers it again
+function guardNote() {
+  const r = GD.takeNote(save.guard);
+  if (!r.line) return;
+  save.guard = r.guard; G.featAt = null; persist();
+  toast(r.line, 4.5);
 }
 
 // 2026-11-23 the pause page's Skip level (src/skip.js holds the rule): a real journey level, not won, not skipped
@@ -9733,6 +9749,7 @@ async function boot() {
     persist();
   }
   ads.attach(save, persist, onGrant);
+  ads.onRevoke(guardNote); guardNote(); // 0.8.17: a refund taken back says so once (also one noted before a restart)
   OF.startSession(save, Date.now()); if (!DR.dirState(save).lastSeen) DR.noteSeen(save, Date.now()); engOpen(); persist();
   if (OF.childSafe(save) && ads.moneyShop) ads.setChildSafe(true); // the shell also remembers it; this keeps both in step
   applyAudioSettings();
