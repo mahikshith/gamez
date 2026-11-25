@@ -2507,7 +2507,7 @@ const strikeName = (id) => (STRIKE[id] || {}).name || id;
 function payTiles(sku) {
   const P = E.IAP[sku], B = E.bundleParts(sku), n = LEVELS.length;
   if (!P || !B || P.bank || E.COIN_PACKS.includes(sku)) return [];
-  const chicks = B.chicks.map(strikeName).join(', ');
+  const chicks = B.chicks.map((id) => strikeName(id).replace(/ Chick$/, '')).join(', '); // (short: it fits its tile)
   if (sku === PREMIUM_SKU) return [
     { art: 'levels', label: `All ${n} levels`, line: `Every one of the ${n} levels open now` },
     { art: 'chicks', label: `${B.chicks.length} power chicks`, line: chicks },
@@ -2598,7 +2598,7 @@ function payStage(sku, x, y, w, h, s, o = {}) {
   ctx.fillStyle = 'rgba(160,80,10,0.18)'; ctx.beginPath(); ctx.ellipse(cx, floor + h * 0.02, w * 0.48, h * 0.09, 0, 0, Math.PI * 2); ctx.fill();
   payTwinkles(x, y, w, h, t, 9, calm);
   const pop = (d, px, py, draw) => { const k = calm ? 1 : backK((age - d) / 0.36); if (k <= 0.01) return; ctx.save(); ctx.translate(px, py); ctx.scale(k, k); ctx.translate(-px, -py); draw(); ctx.restore(); };
-  const H = Math.min(h * 0.56, w * 0.44);
+  const H = Math.min(h * 0.56, w * (o.big ? 0.5 : 0.44)); // (the party's taller stage takes a bigger cast)
   if (sku === 'eggscape_collector') { // The Whole Coop: three hens in their best outfits on a wide heap, a row of eggs in front
     const Hc = H * 0.88;
     pop(0.04, cx, floor, () => {
@@ -2779,6 +2779,7 @@ const CHICK_SND = { freeze: 'frost_lick', thunder: 'thunder', bomb: 'bomb_fuse',
 function startParty(sku) {
   G.party = { sku, t0: G.t, phase: 'show', cues: 0, arrived: false };
   G.detail = null; G.parent = null; G.payBack = false;
+  const P = E.IAP[sku]; if (P && P.coins) purse.hold(Math.max(0, save.wallet.coins - P.coins)); // the purse shows the old total until the reveal flies the coins in
   if (save.calm) { G.party.phase = 'got'; gotIap(sku); return; }
   audio.play('tada'); buzz('treasure');
 }
@@ -2810,7 +2811,7 @@ function drawParty(under) {
   const lockA = (i) => { const tb = PARTY.ch0 + PARTY.gap * i; if (!show || t < 0.3 + 0.05 * i) return null; const a = (t - (tb - 0.22)) / 0.5; return a >= 1 ? null : Math.max(0, a); };
   const chickK = (i) => (show ? (calm ? 1 : backK((t - (PARTY.ch0 + PARTY.gap * i)) / 0.34)) : 1);
   const walk = show && !calm ? smooth01(t / PARTY.in) : 1;
-  payStage(R.sku, sx, sy, sw, sh, s, { age: 9, henDX: -(1 - walk) * (sw * 0.5 + A.w * 0.35), henLook: walk < 1 ? 1 : undefined, henMood: show && t < PARTY.in ? 'idle' : 'happy', henN: show ? (R.arrived ? 1 : 0) : 2 + Math.floor(G.t / 2.4), chickK, lockA, noRecord: under });
+  payStage(R.sku, sx, sy, sw, sh, s, { age: 9, henDX: -(1 - walk) * (sw * 0.5 + A.w * 0.35), henLook: walk < 1 ? 1 : undefined, henMood: show && t < PARTY.in ? 'idle' : 'happy', henN: show ? (R.arrived ? 1 : 0) : 2 + Math.floor(G.t / 2.4), chickK, lockA, noRecord: under, big: !wide });
   if (!calm && show) { // confetti: a burst from the top, a second as the last chick lands
     CB.confetti(ctx, A.cx, A.y + A.h * 0.12, t - 0.05, { n: 70, speed: A.h * 0.9, g: A.h * 0.9, life: 2.6, seed: 7, size: Math.max(6, 8 * u), spread: Math.PI * 1.3, dir: Math.PI / 2 });
     CB.confetti(ctx, A.cx, sy + sh * 0.45, t - (PARTY.ch0 + PARTY.gap * (n - 1)), { n: 50, speed: sh * 1.6, g: sh * 1.4, life: 2.2, seed: 11, size: Math.max(6, 7 * u) });
