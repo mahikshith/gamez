@@ -5912,6 +5912,7 @@ function cardFull(o, A) {
   if (o.full === false || o.twoCol && A.w > A.h * 1.15) return false;
   return A.h > A.w * 1.15; // portrait: the page is the screen
 }
+const fullInner = (A, s) => Math.min(A.w - 32 * ui.u, Math.max(372 * s, 440 * ui.u));
 function stackCard(title, build, o = {}) {
   const u = ui.u;
   ui.calm = save.calm;
@@ -5923,7 +5924,6 @@ function stackCard(title, build, o = {}) {
   const colH = (L, s) => L.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
   const measure = (s) => {
     if (two) {
-const fullInner = (A, s) => Math.min(A.w - 32 * ui.u, Math.max(372 * s, 440 * ui.u));
       const w = Math.min(o.maxW || A.w - 32 * u, 780 * s), cw = (w - 48 * s - 28 * s) / 2;
       const blocks = build(s, cw), hl = colH(blocks.filter((b) => !b.right), s), hr = colH(blocks.filter((b) => b.right), s);
       return { s, w, blocks, cw, hl, hr, h: CARD_HEAD * s + Math.max(hl, hr) + 22 * s };
