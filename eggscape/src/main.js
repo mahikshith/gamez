@@ -215,55 +215,112 @@ let lastCoins = null;
 let ledWhy = 'other';
 const ledWhyOf = (id) => (/^(buy|item|chick|charge|hen|skin|kit|set|gate|cb):/.test(id) || id === 'deal' ? 'shop' : /^rewind/.test(id) ? 'rewind' : /^skip/.test(id) ? 'skip' : /^spin/.test(id) ? 'spin' : id === 'chest' ? 'chest' : id === 'tr:open' ? 'treasure' : id === 'home:chest' ? 'daily' : id === 'ad:coins' || id === 'double' ? 'video' : /^(nudge|sample|help|of)(:|$)/.test(id) ? 'gift' : id === 'go' || id === 'ally' || id === 'strike' || id === 'bank' ? 'use' : 'other');
 const ledger = (why) => ENG.sync(save, why, today());
-// what is waiting for the player's next visit: the Herald's reasons for a reminder, the Oracle's "something is waiting"
+// what is waiting for the player's next visit: what each note of the Herald's catalogue needs to be true (herald.js
+// CATALOGUE), and the Oracle's "something is waiting"
 function waitingCtx() {
-  const total = bestTotal(), ch = E.chestFor(total, save.wallet.chests), on = SP.open(save), spins = on ? SP.banked(save) : 0, left = on ? SP.left(save) : 0;
-  return { spins, spinLeft: spins ? 0 : left, starsToChest: ch && !ch.ready ? ch.at - total : 0, chestSkin: !!(ch && ch.reward.skin && !E.ownsSkin(save.wallet, ch.reward.skin)), daily: true, child: OF.childSafe(save), waiting: spins > 0 || left === 1 };
+  const total = bestTotal(), ch = E.chestFor(total, save.wallet.chests), on = SP.open(save), spins = on ? SP.banked(save) : 0, left = on ? SP.left(save) : 0, w = save.wallet;
+  let wk = -1; for (let k = 1; k < WORLDS.length && k * PER_ENV < LEVELS.length; k++) if (!envOpen(k)) { wk = k; break; } // the next world still behind its star gate
+  const nx = LEVELS[nextIdx()], won = (id) => bestStarsOf(id) > 0, att = save.dir && save.dir.att && nx ? save.dir.att[nx.id] : null;
+  const bag = Object.keys(w.owned || {}).filter((b) => w.owned[b] > 0 && E.BOOSTERS[b]), stuck = nx && !won(nx.id) && att && att.streak >= 3 ? nx.id : 0;
+  const adDay = save.adDay && save.adDay.n > 0 ? save.adDay.day : '';
+  return { spins, spinLeft: spins ? 0 : left, starsToChest: ch && !ch.ready ? ch.at - total : 0, chestSkin: !!(ch && ch.reward.skin && !E.ownsSkin(w, ch.reward.skin)), daily: true, child: OF.childSafe(save), waiting: spins > 0 || left === 1,
+    chestDay: w.daily || '', dailyOn: true, videosOn: !!ads.moneyShop && !ads.premium, videoDay: adDay, premium: !!ads.premium, charges: w.charges || 0, chargeMax: E.MAX_CHARGES, premDay: w.premDay || '',
+    starsToWorld: wk > 0 ? Math.max(0, envNeed(wk) - total) : 0, nextWorld: wk > 0 ? WORLDS[wk] : '', nextBoss: nx && nx.boss && !won(nx.id) && playable(nextIdx()) ? nx.id : 0, quest: '', flame: DR.hotCount(save),
+    stuck, stuckBoost: stuck && bag.length ? E.BOOSTERS[bag[0]].name : '', unlocked: save.unlocked || 1, allDone: LEVELS.every((L) => won(L.id)), newContent: false, giftOk: !earlyDays() };
 }
 // what a skin, an outfit or a chick costs him right now: half while a half-price ticket is held (economy.js COUPON)
 const upPrice = (list) => E.unlockPrice(save.wallet, list).price;
 const appBridge = () => { try { return typeof window !== 'undefined' && window.EggApp ? window.EggApp : null; } catch (_) { return null; } };
-// the game came to the front: a session starts or goes on; a reminder that was pending is cancelled and graded
+// the game came to the front: a session starts or goes on; the notes that were pending are cancelled and graded
 function engOpen() {
   const b = appBridge(); let from = '';
   try { if (b && typeof b.openedFrom === 'function') from = String(b.openedFrom() || ''); } catch (_) { /* no shell */ }
   const R = ENG.open(save, Date.now(), from);
   try { if (b && typeof b.notifyCancel === 'function') b.notifyCancel(); } catch (_) { /* no shell */ }
+  remSt.t = -1e9; remInf.t = -1e9; // the phone's settings may have changed while he was away
   if (R && R.reminder && R.reminder.fired) diag.note({ reminder: R.reminder });
+  if (R && R.awayH >= 20) G.offerTried = false; // a day or more away: the home's one card (the welcome-back gift) may show again
+  if (from === 'test') { G.remLand = null; toast('The test note arrived. Reminders work on this phone!', 3.2); audio.play('unlock'); }
+  else if (R && R.reminder && R.reminder.hit && R.reminder.land) G.remLand = { to: R.reminder.land, t: G.t }; // the tap lands on what the note spoke of
+  if (G.remFrom === 'sys' && remPhone() === 'granted') { ENG.herald.answer(save, true); G.remFrom = null; G.remAsk = null; persist(); audio.play('unlock'); toast('Reminders are on. One a day at most.', 2.8); } // back from the phone's settings with them allowed
 }
-// the game went to the background: the Oracle notes its guess for "comes back", the Herald plans one reminder (app only)
+// the game went to the background: the Oracle notes its guess for "comes back", the Herald plans its series (app only)
 function engClose(screen = G.screen) {
   tallyFlush();
   const P = ENG.close(save, { ...waitingCtx(), unlocked: save.unlocked || 1, screen, level: G.level && G.li >= 0 ? G.level.id : 0, lastWon: G.screen === 'win' }, Date.now()), b = appBridge();
   try {
     if (P && b && typeof b.notifyAt === 'function') {
+      if (typeof b.notifyCancel === 'function') b.notifyCancel(); // a fresh series, never one left over
       b.notifyAt(String(P.at), P.id, P.title, P.text);
-      if (typeof b.notifyMore === 'function') (P.more || []).forEach((m, i) => b.notifyMore(String(i + 1), String(m.at), m.id, m.title, m.text)); // the two later notes of a long absence; all are cancelled on opening
+      if (typeof b.notifyMore === 'function') (P.more || []).forEach((m, i) => b.notifyMore(String(i + 1), String(m.at), m.id, m.title, m.text)); // the rest of the series; all are cancelled on opening
     }
   } catch (_) { /* no shell */ }
 }
-// ---- reminders (app only, 0.8.15): the Herald (engine/herald.js) decides; this is the question and the switch.
-// Asked once, on a good win with a spin near; "No thanks" is final (Settings can turn them on); never for a child profile.
+// where a tap on a note lands (herald.js CATALOGUE land): the spin page, the coop's chest, the map's star chest, the level
+function remLanding() {
+  const L = G.remLand;
+  if (!L || modalOpen() || G.settingsOpen || G.adBusy || !['title', 'levels'].includes(G.screen) || G.t - L.t < 0.4) return;
+  G.remLand = null;
+  if (L.to === 'spin' && SP.open(save)) openSpin();
+  else if ((L.to === 'level' || L.to === 'map' || L.to === 'chest' || L.to === 'quest') && G.screen !== 'levels') press('levels');
+  else if ((L.to === 'daily' || L.to === 'charge' || L.to === 'home' || L.to === 'coins') && G.screen !== 'title') setScreen('title');
+}
+// ---- reminders (app only): the Herald (engine/herald.js) decides; this is the question, the bell chip and the switch.
+// 0.8.17 (mykee: "even if the user skips or says not now, when they come back we should always show it"): while they are
+// off, a small bell with a slash on the home and the map opens the question; the question itself comes back at happy
+// moments (a boss win, a spin banked, a welcome back), once per three days of play at most, never after a loss.
 const remCan = () => { const b = appBridge(); return !!(b && typeof b.notifyAsk === 'function' && typeof b.notifyState === 'function') && !OF.childSafe(save); };
-const remSt = { v: '', t: -1e9 };
-function remPhone() { // "granted" | "ask" | "off": what the phone says; asked of the shell at most every two seconds
+const remSt = { v: '', t: -1e9 }, remInf = { v: {}, t: -1e9 };
+function remPhone() { // "granted" | "ask" | "never" (Android will not ask again) | "off": what the phone says; asked of the shell at most every two seconds
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
   if (now - remSt.t > 2000) { remSt.t = now; try { remSt.v = String(appBridge().notifyState() || ''); } catch (_) { remSt.v = ''; } }
   return remSt.v;
 }
+function remInfo() { // the phone's side (Reminders.java info): channel, battery saver, the planned notes, the last fired and opened
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  if (now - remInf.t > 2000) { remInf.t = now; try { const b = appBridge(); remInf.v = b && typeof b.notifyInfo === 'function' ? JSON.parse(String(b.notifyInfo() || '{}')) || {} : {}; } catch (_) { remInf.v = {}; } }
+  return remInf.v;
+}
 const remOn = () => { const H = ENG.herald.state(save); return H.ok === 1 && !H.off && remPhone() === 'granted'; };
-function remRequest(from) { // Android's own question (13+), or a plain yes where the phone needs none; the answer lands in __eggNotif
+const remSys = () => ['never', 'off'].includes(remPhone()); // only the phone's own settings can turn them on now
+const remChipOn = () => remCan() && !remOn() && !earlyDays();
+function remRequest(from) { // Android's own question (13+), a plain yes where the phone needs none, or the phone's settings page when Android will not ask
   G.remFrom = from; remSt.t = -1e9;
+  if (remSys()) { G.remFrom = 'sys'; try { appBridge().notifySettings('app'); } catch (_) { /* no shell */ } return; }
   try { appBridge().notifyAsk(); } catch (_) { /* no shell */ }
 }
+function remTest() { // Settings: a real note through the real path in about ten seconds
+  const b = appBridge();
+  if (remPhone() !== 'granted') { remRequest('test'); return; }
+  try { if (b && typeof b.notifyTest === 'function') { b.notifyTest('10'); toast('A test note comes in about 10 seconds. You can leave the game.', 3.4); audio.play('ui_open'); } else toast('Update the app to send a test note.', 2.8); } catch (_) { /* no shell */ }
+}
+// the speed log's notif line: permission, channel, battery saver, planned times, last fired, last opened from
+function remLine() {
+  const I = remInfo(), t = (ms) => (ms ? new Date(ms).toISOString().slice(5, 16).replace('T', ' ') : '-');
+  return `perm ${remPhone() || '?'}, chan ${I.chan || '?'}, battery ${I.battery || '?'}${I.strict ? ' (strict maker ' + I.maker + ')' : ''}, sdk ${I.sdk || '?'}, planned ${(I.plan || []).map((q) => q.id + '@' + t(q.at)).join(' ') || '-'}, fired ${I.firedId || '-'} ${t(I.firedAt)}, opened ${I.openId || '-'} ${t(I.openAt)}, replanned ${I.replanN || 0} ${t(I.replanAt)}; herald ${ENG.lines(save).herald}`;
+}
+// may the question show at this happy moment? moment: 'boss' | 'spin' | 'welcome' | 'chip'
+function remAskOk(moment) {
+  if (!remCan()) return false;
+  const P = save.eng && save.eng.pulse, S = P && P.sess && P.sess[P.sess.length - 1];
+  return ENG.herald.askNow(save, { moment, on: remOn(), child: OF.childSafe(save), won3: !earlyDays(), won5: bestStarsOf(5) > 0, sess: S ? S.t : 0, days: (P && P.days) || [] });
+}
+function remAskShow(moment) {
+  const P = save.eng && save.eng.pulse, S = P && P.sess && P.sess[P.sess.length - 1];
+  ENG.herald.noteAsk(save, { sess: S ? S.t : 0 });
+  G.remAsk = { ...waitingCtx(), moment, t0: G.t }; audio.play('ui_open');
+  BR.why(save, moment === 'chip' ? 'home' : moment === 'welcome' ? 'home' : 'win', 'reminder', `the reminder question (${moment})`); persist();
+}
 if (typeof window !== 'undefined') window.__eggNotif = (ok) => {
+  const from = G.remFrom;
   try {
     remSt.t = -1e9;
-    ENG.herald.answer(save, !!ok); if (ok) ENG.herald.setOff(save, false);
-    BR.why(save, 'home', 'reminder', ok ? 'reminders allowed' : 'reminders refused on the phone');
+    ENG.herald.answer(save, !!ok);
+    BR.why(save, 'home', 'reminder', ok ? 'reminders allowed' : 'reminders not allowed on the phone (the bell stays)');
     persist();
-    if (ok) { audio.play('unlock'); toast('Reminders are on. One a day at most.', 2.8); }
-    else if (G.remFrom === 'set') toast('Allow notifications for Eggscape in your phone settings.', 3.4);
+    if (ok && from === 'test') remTest();
+    else if (ok) { audio.play('unlock'); toast('Reminders are on. One a day at most.', 2.8); }
+    else if (from === 'set' || from === 'test') toast('Allow notifications for Eggscape in your phone settings.', 3.4);
   } catch (_) { /* optional */ }
   G.remFrom = null;
 };
@@ -1468,7 +1525,7 @@ async function press(id) {
       } else if (n.kind === 'welcome') {
         const b = E.BOOSTER_ORDER[Math.floor(Math.random() * 5)];
         save.wallet = { ...save.wallet, coins: save.wallet.coins + n.coins, owned: { ...(save.wallet.owned || {}), [b]: ((save.wallet.owned || {})[b] || 0) + 1 } };
-        G.nudge = null; persist(); audio.play('level_win'); purse.gain({ src: G.pressAt }); toast(`+${n.coins} coins and a free ${E.BOOSTERS[b].name}!`, 2.8);
+        G.nudge = null; persist(); audio.play('level_win'); purse.gain({ src: G.pressAt }); toast(`+${n.coins} coins and a free ${E.BOOSTERS[b].name}!`, 2.8); G.remWelcome = G.t + 3.2; // then, at this happy moment, perhaps the reminder question
       } else if (n.kind === 'afford') {
         G.nudge = null; persist();
         openStoreOn(n.item); // straight onto that chick or egg, with a ring on it
@@ -1506,14 +1563,17 @@ async function press(id) {
     case 'age:later':
       G.ageAsk = false; G.ageLater = true; // asked again next launch
       break;
-    case 'rem:yes': G.remAsk = null; remRequest('card'); break;
-    case 'rem:no': // final: the question never comes back by itself (the switch in Settings stays)
-      G.remAsk = null; ENG.herald.answer(save, false); BR.why(save, 'win', 'reminder', 'reminders: no thanks'); persist();
+    case 'rem:yes': G.remAsk = null; remRequest('card'); break; // (Android's question, or the phone's settings page when it will not ask)
+    case 'rem:no': // "Not now": the bell stays on the home and the map, and the question comes back at a happy moment in three days of play
+      G.remAsk = null; ENG.herald.answer(save, false); BR.why(save, 'win', 'reminder', 'reminders: not now'); persist();
       break;
-    case 'rem:later': G.remAsk = null; break; // the back key: no answer, another good win may ask again
+    case 'rem:later': G.remAsk = null; break; // the back key: the same as "Not now", without an answer
+    case 'rem:chip': if (remChipOn()) remAskShow('chip'); break; // the bell with a slash: the question, whenever he wants it
+    case 'set:remtest': remTest(); break;
+    case 'set:remsys': try { appBridge().notifySettings(remSys() ? 'app' : 'battery'); } catch (_) { /* no shell */ } G.remFrom = remSys() ? 'sys' : null; break;
     case 'set:remind':
       if (remOn()) { ENG.herald.setOff(save, true); try { appBridge().notifyCancel(); } catch (_) { /* no shell */ } persist(); }
-      else if (remPhone() === 'granted') { ENG.herald.answer(save, true); ENG.herald.setOff(save, false); persist(); toast('Reminders are on. One a day at most.', 2.8); }
+      else if (remPhone() === 'granted') { ENG.herald.answer(save, true); ENG.herald.setOff(save, false); persist(); audio.play('unlock'); toast('Reminders are on. One a day at most.', 2.8); }
       else remRequest('set');
       break;
     case 'pc:0': case 'pc:1': case 'pc:2': {
@@ -1741,7 +1801,7 @@ async function press(id) {
       save.showFps = !save.showFps; persist();
       break;
     case 'set:log': { // hand the speed log to the share sheet (app) or save it as a file (web)
-      diag.note({ brain: BR.trace(save), who: BR.model(save), tries: DR.triesLine(save), mode: save.mode, eng: ENG.lines(save, { levelId: save.unlocked || 1 }), tal: ENG.tally.table(save), first: (save.eng && save.eng.pulse && save.eng.pulse.first) || 0, spin: save.spin || null }); // the Brain's last decisions travel with the speed log; 0.8.15: tries and wins per level (how hard the game really is)
+      diag.note({ brain: BR.trace(save), who: BR.model(save), tries: DR.triesLine(save), mode: save.mode, eng: ENG.lines(save, { levelId: save.unlocked || 1 }), notif: remCan() ? remLine() : 'web', tal: ENG.tally.table(save), first: (save.eng && save.eng.pulse && save.eng.pulse.first) || 0, spin: save.spin || null }); // the Brain's last decisions travel with the speed log; 0.8.15: tries and wins per level (how hard the game really is)
       const how = diag.share();
       toast(how === 'download' ? 'Speed log saved to your downloads' : how ? 'Pick where to send the speed log' : 'Could not share the log here', 2.6);
       break;
@@ -2242,6 +2302,8 @@ function homeNudge(now) {
   return true;
 }
 function offerMoments() {
+  remLanding(); // a note was tapped: open what it spoke of
+  if (G.remWelcome && !modalOpen() && !G.settingsOpen && !G.adBusy && G.t > G.remWelcome) { G.remWelcome = 0; if (['title', 'levels'].includes(G.screen) && remAskOk('welcome')) { remAskShow('welcome'); return; } } // after the welcome-back gift
   if (G.offerTried || modalOpen() || G.settingsOpen || G.adBusy) return;
   const sc = G.screen;
   if ((sc === 'title' || (sc === 'levels' && !G.mapTravel && !G.treasure)) && G.screenT > 1.4) { // home, or the map (the app opens on it now)
@@ -2252,9 +2314,9 @@ function offerMoments() {
   } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0 && !(sc === 'win' && revealing(G.result))) { G.offerTried = true; if ((sc === 'fail' && G.failHelp) || earlyDays()) return; } // one help on a fail card, never two
   else if (sc === 'intro' && G.screenT > 0.3 && G.li >= 0) { G.offerTried = true; G.introTip = null; if (earlyDays()) return; } // the intro's gentle chick line
   else return;
-  if (sc === 'win' && G.remDue) { // the reminder question (free, once): it takes this card's one ask
-    G.remDue = false;
-    if (remCan()) { G.remAsk = { ...waitingCtx() }; BR.why(save, 'win', 'reminder', 'asked once, after a good win, with a spin near'); return; }
+  if (sc === 'win' && G.remDue) { // the reminder question (free): it takes this card's one ask
+    const mo = G.remDue; G.remDue = null;
+    if (remAskOk(mo)) { remAskShow(mo); return; }
   }
   const moment = sc === 'title' || sc === 'levels' ? 'home' : sc;
   const ctx2 = offerCtx();
@@ -2320,28 +2382,42 @@ function drawNudge() {
     ...(n.kind === 'welcome' ? [] : [{ h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('nudge:no', n.kind === 'keep' ? 'No thanks' : 'Later', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) }]),
   ], { ribbon: n.kind === 'welcome' ? '#3cb043' : '#d89a1c' });
 }
-// the reminder question (0.8.15): the note itself is the picture, as it will look on the phone; two buttons, no clock
+// the reminder question (0.8.15; 0.8.17 worded around the real thing waiting): the note itself is the picture, as it
+// will look on the phone, saying what is really coming; the button names it ("Tell me when my spin is ready"). When
+// Android will no longer ask (refused before) or the phone has them switched off, the button opens the phone's own page.
+function remPreview(R) {
+  if (R.spins > 0) return ['Your Lucky Spin is ready', 'spin'];
+  if (R.spinLeft > 0) return [R.spinLeft === 1 ? 'One win to your Lucky Spin' : `${R.spinLeft} wins to your Lucky Spin`, 'spin'];
+  if (R.starsToChest === 1) return ['One star to your next chest', 'chest'];
+  if (R.flame >= 2) return [`Your ${R.flame}-win flame is still burning`, 'flame'];
+  return ['A fresh chest landed in the coop', 'chest'];
+}
 function drawRemAsk() {
-  const R = G.remAsk, text = R.spins > 0 ? 'A free spin is waiting' : R.spinLeft > 0 ? `${R.spinLeft} win${R.spinLeft > 1 ? 's' : ''} to your free spin` : 'Your chest is nearly full';
+  const R = G.remAsk, [text, what] = remPreview(R), sys = remSys(), calm = save.calm;
+  const yes = sys ? 'Turn on in phone settings' : what === 'spin' ? 'Tell me when my spin is ready' : what === 'flame' ? 'Tell me before it goes out' : 'Tell me when my chest is ready';
+  // the note slides down into place (eased) and gives a little ring; Calm: it simply sits there
+  const k = calm ? 1 : clamp((G.t - (R.t0 ?? G.t - 1)) / 0.55, 0, 1), e = 1 - Math.pow(1 - k, 3), ring = calm ? 0 : Math.max(0, 1 - Math.abs(G.t - (R.t0 ?? -9) - 0.7) / 0.35);
   dim(0.55);
-  stackCard('Want a reminder?', (s) => [
+  stackCard('Want a reminder?', (s, iw) => [
     { h: 96 * s, gap: 6 * s, draw: (x, y, w) => {
-      const bw = Math.min(w, 300 * s), bx = x + (w - bw) / 2, bh = 72 * s, by = y + 12 * s + Math.sin(G.t * 2.2) * 2 * s, d = 44 * s;
-      ctx.save();
+      const bw = Math.min(w, 320 * s), bx = x + (w - bw) / 2, bh = 72 * s, by = y + 12 * s - (1 - e) * 22 * s + (calm ? 0 : Math.sin(G.t * 2.2) * 2 * s * k), d = 44 * s;
+      ctx.save(); ctx.globalAlpha *= 0.25 + 0.75 * e;
       ctx.shadowColor = 'rgba(40,20,5,0.35)'; ctx.shadowBlur = 14 * s; ctx.shadowOffsetY = 4 * s;
       ui.roundRect(bx, by, bw, bh, 18 * s); ctx.fillStyle = '#fffdf6'; ctx.fill();
       ctx.restore();
       ui.roundRect(bx, by, bw, bh, 18 * s); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(70,40,10,0.35)'; ctx.stroke();
-      ctx.beginPath(); ctx.arc(bx + 14 * s + d / 2, by + bh / 2, d / 2, 0, 7); ctx.fillStyle = '#e8a020'; ctx.fill();
-      ctx.beginPath(); ctx.ellipse(bx + 14 * s + d / 2, by + bh / 2 + d * 0.03, d * 0.22, d * 0.29, 0, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
-      const tx = bx + 14 * s + d + 12 * s, tw = bw - (tx - bx) - 12 * s;
+      const ix = bx + 14 * s + d / 2, iy = by + bh / 2;
+      ctx.beginPath(); ctx.arc(ix, iy, d / 2, 0, 7); ctx.fillStyle = '#e8a020'; ctx.fill();
+      ctx.save(); ctx.translate(ix, iy - d * 0.3); ctx.rotate(Math.sin(G.t * 26) * 0.32 * ring); ctx.translate(-ix, -(iy - d * 0.3)); // the bell rings once as the note lands
+      ctx.fillStyle = '#fff'; SI.bell(ctx, ix, iy, d * 0.78); ctx.restore();
+      const tx = bx + 14 * s + d + 12 * s, tw = bw - (tx - bx) - 12 * s, ts = Math.min(17 * s, tw * 17 / Math.max(1, ui.measure(text, 17)));
       ui.text('Eggscape', tx, by + bh / 2 - 12 * s, { size: 13 * s, color: ui.C.ink2, maxW: tw, tag: 'rem:app' });
-      ui.text(text, tx, by + bh / 2 + 9 * s, { size: 17 * s, color: ui.C.ink, maxW: tw, tag: 'rem:text' });
+      ui.text(text, tx, by + bh / 2 + 9 * s, { size: ts, color: ui.C.ink, maxW: tw, tag: 'rem:text' });
       ui.record({ x: bx + 14 * s, y: by + (bh - d) / 2, w: d, h: d }, 'rem:icon');
     } },
-    lineBlock('One a day at most. Never at night.', 15 * s, { color: ui.C.ink2, tag: 'rem:why', gap: 8 * s }),
-    { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ui.button('rem:yes', 'Yes, tell me', x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: 22 * s }) },
-    { h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rem:no', 'No thanks', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
+    lineBlock(sys ? 'Notifications are off for Eggscape on this phone.' : 'One a day at most. Never at night.', 15 * s, { color: ui.C.ink2, tag: 'rem:why', gap: 8 * s }),
+    { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ui.button('rem:yes', yes, x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: Math.min(22 * s, (w - 28 * s) * 22 / Math.max(1, ui.measure(yes, 22))) }) },
+    { h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rem:no', 'Not now', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
   ], { ribbon: '#e8a020' });
 }
 // first launch (app only, behind OF.AGE_GATE): a neutral question, two equal buttons, nothing pre-chosen
@@ -4367,7 +4443,7 @@ function onWin() {
   if (G.li >= -1) {
     const got = SP.noteWin(save, freshWin), played = G.sim.t >= 15 && SP.notePlayed(save, today());
     G.result.spin = { fresh: freshWin && SP.open(save), got: (got ? 1 : 0) + (played ? 1 : 0), ...SP.meter(save) };
-    if (G.li >= 0 && remCan() && ENG.herald.shouldAsk(save, { unlocked: save.unlocked, stars: G.result.stars, ...waitingCtx() })) G.remDue = true;
+    if (G.li >= 0) { const mo = L.boss ? 'boss' : G.result.spin.got ? 'spin' : ''; G.remDue = mo && remAskOk(mo) ? mo : null; } // 0.8.17: the reminder question at a happy moment (a boss beaten, a spin banked)
     persist();
   }
   if (G.li >= 0 && L.boss && E.bossTreasure(L.id) && !E.treasureOpened(save.wallet, L.id) && bossBeaten(L.id)) { // the boss treasure opens in the celebration, not on the map
@@ -7301,6 +7377,41 @@ const vibeIcon = (on) => (c, x, y, S) => {
   c.restore();
 };
 
+// 0.8.17: the bell with a slash (reminders are off): a quiet round chip on the home and the map's header, never over
+// play. A tap opens the reminder question. A gold dot when something is waiting right now that a note would have told
+// him about (a spin banked, today's chest); it swings a little now and then (Calm: still).
+function drawRemChip(x, y, d) {
+  const dot = ENG.herald.waiting(save, waitingCtx()), sw = save.calm || !dot ? 0 : Math.sin(G.t * 18) * 0.22 * Math.max(0, 1 - ((G.t % 6) / 0.6));
+  ui.button('rem:chip', '', x, y, d, d, { kind: 'hud', round: d / 2, icon: (c, X, Y, S) => {
+    c.save(); c.fillStyle = '#fff4dc'; c.translate(X, Y - S * 0.3); c.rotate(sw); c.translate(-X, -(Y - S * 0.3)); SI.bell(c, X, Y + S * 0.04, S * 1.2); c.restore();
+    c.save(); c.lineCap = 'round'; c.strokeStyle = 'rgba(40,20,5,0.75)'; c.lineWidth = S * 0.2; c.beginPath(); c.moveTo(X - S * 0.36, Y - S * 0.36); c.lineTo(X + S * 0.36, Y + S * 0.36); c.stroke();
+    c.strokeStyle = '#ff8a6a'; c.lineWidth = S * 0.1; c.stroke(); c.restore();
+  }, iconS: 1.55 });
+  if (dot) { const r = d * 0.13, cx = x + d * 0.84, cy = y + d * 0.16; ctx.beginPath(); ctx.arc(cx, cy, r + 1.5, 0, 7); ctx.fillStyle = 'rgba(40,20,5,0.6)'; ctx.fill(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = '#ffd23a'; ctx.fill(); }
+}
+// Settings, the Reminders card (app only): the switch, the state in plain words, a test note, and the phone's own page
+// when the phone is in the way (blocked there, or a battery saver known to stop alarms)
+function remCard(s) {
+  const I = remInfo(), on = remOn(), ph = remPhone(), H = ENG.herald.state(save);
+  const fix = remSys() ? 'app' : I.strict && I.battery === 'saver' && on ? 'battery' : '';
+  const st = remSys() ? 'Blocked in the phone\u2019s settings' : !on ? 'Off' : fix === 'battery' ? 'On \u00b7 the battery saver may stop them' : 'On \u00b7 one a day at most, never at night';
+  const hh = 66 * s, bh = 44 * s, h = hh + bh + 12 * s;
+  return { h, gap: 8 * s, draw: (x, y, w) => {
+    ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+    const d = 42 * s, bx = x + 12 * s, by = y + (hh - d) / 2, sw = 58 * s, sh = 32 * s, tx = bx + d + 12 * s, tw = w - (tx - x) - sw - 22 * s;
+    setBadge('bell', on ? '#e8a020' : '#a98f73', bx, by, d);
+    ui.text('Reminders', tx, y + hh / 2 - 9 * s, { size: 19 * s, color: ui.C.ink, maxW: tw, tag: 'set:l:set:remind' });
+    ui.text(st, tx, y + hh / 2 + 13 * s, { size: 13 * s, color: fix ? '#b0421c' : ui.C.ink2, maxW: tw, tag: 'set:s:set:remind' });
+    setSwitch(x + w - sw - 12 * s, y + (hh - sh) / 2, sw, sh, on);
+    ui.buttons.push({ id: 'set:remind', x, y, w, h: hh });
+    const ry = y + hh, iw = w - 24 * s, half = (iw - 10 * s) / 2;
+    if (fix) {
+      ui.button('set:remtest', 'Send a test', x + 12 * s, ry, half, bh, { kind: 'secondary', size: Math.min(16 * s, half * 16 / (ui.measure('Send a test', 16) + 24)), icon: (c, X, Y, S) => { c.save(); c.fillStyle = '#fff'; SI.bell(c, X, Y, S); c.restore(); } });
+      ui.button('set:remsys', fix === 'battery' ? 'Battery' : 'Phone settings', x + 12 * s + half + 10 * s, ry, half, bh, { kind: 'orange', size: Math.min(16 * s, half * 16 / (ui.measure('Phone settings', 16) + 24)), icon: (c, X, Y, S) => settingsIcon(c, X, Y, S * 1.05, '#fff4dc') });
+    } else ui.button('set:remtest', 'Send a test in 10 seconds', x + 12 * s, ry, iw, bh, { kind: 'secondary', size: Math.min(16 * s, (iw - 60 * s) * 16 / ui.measure('Send a test in 10 seconds', 16)), icon: (c, X, Y, S) => { c.save(); c.fillStyle = '#fff'; SI.bell(c, X, Y, S); c.restore(); } });
+  } };
+}
+
 // Settings (2026-11-15, mykee; 0.8.9: a full page with an icon on every row, "not half page"): the pause page's kit
 // (header ribbon, one scrolling column, a big Done pinned below). Opens over the home or the pause page; only its own
 // buttons take taps while it shows. Three sections: Sound and feel, Gameplay, Display.
@@ -7447,11 +7558,11 @@ function drawSettings() {
   }
   const vt = hy + hh + 8 * s, V = { x: A.x, y: vt, w: A.w, h: Math.max(60, vb - vt) };
   const B = [], on = (v) => v !== false;
+  if (remCan()) { B.push(setHead('Notifications', s)); B.push(remCard(s)); } // 0.8.17: first, so it is in the first screenful (app only, never for a child profile)
   B.push(setHead('Sound and feel', s));
   if (portal.showMuteButton) { B.push(setRow(s, 'sfx', 'Sound', 'sound', '#3a80ea', { on: save.sfx })); B.push(setRow(s, 'music', 'Music', 'note', '#9a5ae8', { on: save.music })); }
   if (__APP__ || (typeof navigator !== 'undefined' && navigator.vibrate)) B.push(setRow(s, 'vibe', 'Vibration', 'buzz', '#e8702f', { on: on(save.vibe) }));
   B.push(setRow(s, 'shake', 'Screen shake', 'shake', '#d8453a', { on: on(save.shake) && !save.calm, sub: save.calm ? 'Off while Calm motion is on' : null }));
-  if (remCan()) B.push(setRow(s, 'set:remind', 'Reminders', 'bell', '#e8a020', { on: remOn(), sub: 'One a day at most' })); // app only, never for a child profile
   B.push(setHead('Gameplay', s));
   const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
   const rsLook = focusLook(pg.hl, G.t, save.calm); // the first visit (the Settings mark): the ring round this row ~4 s or until a touch
@@ -8598,6 +8709,7 @@ function drawTitle() {
   }
   pop(0.05, vx, vy, () => drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm), 0.5); // the toy vault and the meadow friends settle in
   pop(0.2, A.x + 30 * u, A.y + 30 * u, () => { ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }); setMarkAt(A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u); }); // 0.8.14: the Settings mark
+  if (remChipOn()) pop(0.3, A.x1 - 30 * u, A.y + 30 * u, () => drawRemChip(A.x1 - 50 * u, A.y + 10 * u, 40 * u)); // 0.8.17: reminders are off: the bell with a slash, in the other top corner
   // remove ads / buy the game (app, until bought), or Premium's free Chick Charge of the day: 0.8.16, a button of the
   // block, beside Extras (same height, same size of words, the column's right edge), no longer a pill over the title
   const side = fr ? null : ads.canBuyPremium ? { id: 'home:premium', label: 'Unlock all', o: { kind: 'gold', icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) } }
@@ -8863,6 +8975,7 @@ function drawLevels() {
   ctx.fillStyle = hb; ctx.fillRect(0, 0, W_, vt + 10 * u);
   const X0 = A.x + pad, X1 = A.x1 - pad, Y0 = A.y + pad, hy = Y0 + 23 * u;
   ui.button('back', '', X0, Y0, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
+  const remB = remChipOn() ? 46 * u + 8 * u : 0; if (remB) drawRemChip(X0 + 54 * u, Y0, 46 * u); // 0.8.17: reminders are off: the bell with a slash, beside back
   const starTxt = `${totalStars} / ${LEVELS.length * 3}`, stw = ui.measure(starTxt, 17 * u);
   const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = X1 - chipW;
   ui.glass(chipX, hy - 18 * u, chipW, 36 * u);
@@ -8885,7 +8998,7 @@ function drawLevels() {
   let wv = 0;
   for (let w = L.nw - 1; w >= 0; w--) if (midY >= L.bandTop(w) - L.BH * 0.02) { wv = w; break; }
   for (let w = 0; w < L.nw; w++) if (midY >= L.bandTop(w)) { wv = w; break; }
-  const titleL = X0 + 46 * u + 18 * u, titleR = (wide ? mx : chipX) - 18 * u, wname = WORLDS[wv] || 'Levels';
+  const titleL = X0 + 46 * u + remB + 18 * u, titleR = (wide ? mx : chipX) - 18 * u, wname = WORLDS[wv] || 'Levels';
   const rbw = clamp(ui.measure(wname, 20 * u) + 36 * u, Math.min(120 * u, titleR - titleL), titleR - titleL);
   ui.ribbon(wname, (titleL + titleR) / 2, hy - 18 * u, rbw, 36 * u, { color: MS.WORLD_LOOK[wv].accent, size: 20 * u, tag: 'levels:title' });
   // how far along: a thin bar of the whole journey and the levels still to play

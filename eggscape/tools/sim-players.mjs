@@ -50,7 +50,12 @@ export const WORLD = {
   leaveAfterLosses: 1.8, // the last session ended on a losing run
   leaveAfterWin: 0.8, // it ended on a win
   somethingWaits: 0.9, // a banked spin or a nearly full meter was left behind
-  reminder: 0.9, // reminders are allowed
+  reminder: 0.9, // a note reached him since he last played: the chance to stop for good that day is this much
+  // 0.8.17: what a note does (assumed, not measured; replace with real numbers when speed logs carry the notif line):
+  // on a day he would not have played, a note that shows that day brings him in with his `tap`; after he stopped for
+  // good, a note still brings him back with `tap` x lapsedBack (he had forgotten, not decided)
+  lapsedBack: 0.35,
+  askAgain: 0.6, // each later "Want a reminder?" card is said yes to this much less often than the one before
   cheerSpin: 0.7, // the cheer-up spin came during that losing run
   usdPerVideo: 0.01, // a rewarded video at a 10 dollar eCPM
   videoTire: 0.82, // each video already watched today makes the next "yes" this much less likely
@@ -81,12 +86,12 @@ const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${Stri
 const stock = (w) => Object.values(w.owned || {}).reduce((a, b) => a + b, 0);
 const totalStars = (save) => LEVELS.reduce((a, L) => a + (save.stars[L.id] || 0), 0);
 
-export function life(P, seed, days = 30, watch = null) {
+export function life(P, seed, days = 30, watch = null, opt = {}) {
   const R = rng(seed), yes = (p) => R() < p;
   const save = { unlocked: 1, stars: {}, best: {}, wallet: E.defaultWallet(), streak: 0, daily: {}, adDay: null };
   const S = { // what happened, for the report
     daysPlayed: 0, sessions: 0, cards: 0, cardsMax: 0, buys: {}, tries: 0, wins: 0, videos: 0, usd: 0, moneyAsks: 0, moneyAskEarly: 0, spins: { free: 0, ad: 0, coin: 0, miss: 0, retry: 0 }, bought: 0, used: 0, rewinds: 0, skips: 0, unlocks: 0, coupons: 0, starved: 0, freeHelp: 0, asks: {},
-    notes: 0, notesGone: 0, notesSameDay: 0, notesTapped: 0, askedDay: -1, allowed: false, quitDay: -1, quitAt: 0, levelAt: {}, doneDay: -1, idleDays: 0, maxStock: 0, maxPurse: 0, stuckMax: 0, down: '', bad: [],
+    notes: 0, notesGone: 0, notesSameDay: 0, notesTapped: 0, notesPulled: 0, lapsedBack: 0, noteIds: {}, remAsks: 0, askedDay: -1, allowed: false, quitDay: -1, quitAt: 0, levelAt: {}, doneDay: -1, idleDays: 0, maxStock: 0, maxPurse: 0, stuckMax: 0, down: '', bad: [],
   };
   const fail = (m) => { if (S.bad.length < 5) S.bad.push(m); };
   ENG.boot(save);
@@ -117,7 +122,23 @@ export function life(P, seed, days = 30, watch = null) {
       sync('video', now);
     } else { OF.markDismissed(save, o, now, ctx.levelId); BR.note(save, 'no', { id: o.id }, now); BR.note(save, 'videoNo', {}, now); }
   };
-  const waiting = () => { const tot = totalStars(save), ch = E.chestFor(tot, save.wallet.chests), on = SP.open(save), spins = on ? SP.banked(save) : 0, left = on ? SP.left(save) : 0; return { spins, spinLeft: spins ? 0 : left, starsToChest: ch && !ch.ready ? ch.at - tot : 0, chestSkin: !!(ch && ch.reward.skin && !E.ownsSkin(save.wallet, ch.reward.skin)), daily: true, child: false, waiting: spins > 0 || left === 1 }; };
+  // what is waiting (as main.js waitingCtx: what each note of the Herald's catalogue needs to be true)
+  const waiting = () => { const tot = totalStars(save), ch = E.chestFor(tot, save.wallet.chests), on = SP.open(save), spins = on ? SP.banked(save) : 0, left = on ? SP.left(save) : 0, w = save.wallet, lv = save.unlocked;
+    const att = (save.dir && save.dir.att && save.dir.att[lv]) || {}, bag = Object.keys(w.owned || {}).filter((b) => w.owned[b] > 0), wk = Math.floor((lv - 1) / 5) + 1, need = 7 * wk - tot, stuck = att.streak >= 3 && !save.stars[lv] ? lv : 0;
+    return { spins, spinLeft: spins ? 0 : left, starsToChest: ch && !ch.ready ? ch.at - tot : 0, chestSkin: !!(ch && ch.reward.skin && !E.ownsSkin(w, ch.reward.skin)), daily: true, child: false, waiting: spins > 0 || left === 1,
+      chestDay: w.daily || '', dailyOn: true, videosOn: !premium, videoDay: save.adDay && save.adDay.n > 0 ? save.adDay.day : '', premium, charges: w.charges || 0, chargeMax: E.MAX_CHARGES, premDay: w.premDay || '',
+      starsToWorld: wk < 10 && need > 0 ? need : 0, nextWorld: wk < 10 ? 'World ' + (wk + 1) : '', nextBoss: lv % 5 === 0 && !save.stars[lv] ? lv : 0, flame: DR.hotCount(save), stuck, stuckBoost: stuck && bag.length ? bag[0] : '', unlocked: lv, allDone: lv >= LEVELS.length && !!save.stars[LEVELS.length], newContent: false, giftOk: !DR.earlyDays(save) }; };
+  // the reminder question at a happy moment (main.js remAskOk): the new rules, or (opt.before) 0.8.15's: once, on a good win with a spin near
+  const ask = (moment, stars, d, now) => {
+    if (S.allowed) return;
+    const P2 = save.eng && save.eng.pulse, Ss = P2 && P2.sess && P2.sess[P2.sess.length - 1];
+    const can = opt.before ? S.askedDay < 0 && ENG.herald.shouldAsk(save, { unlocked: save.unlocked, stars, ...waiting() })
+      : ENG.herald.askNow(save, { moment, on: false, child: false, won3: !DR.earlyDays(save), won5: (save.stars[5] || 0) > 0, sess: Ss ? Ss.t : 0, days: (P2 && P2.days) || [] }, now);
+    if (!can) return;
+    if (!opt.before) ENG.herald.noteAsk(save, { sess: Ss ? Ss.t : 0 }, now);
+    if (S.askedDay < 0) S.askedDay = d;
+    S.remAsks++; S.allowed = yes(P.notif * WORLD.askAgain ** (S.remAsks - 1)); ENG.herald.answer(save, S.allowed, now);
+  };
   const spinAll = (now) => { // every banked spin, then the video spin, then perhaps one for coins
     const day = dayKey(now);
     // (the villains take some pulls; since 0.8.16 a lost pull is lost: its coins or its video are spent)
@@ -135,30 +156,43 @@ export function life(P, seed, days = 30, watch = null) {
     if (w) { save.wallet = w; S.unlocks++; sync('shop', now); }
   };
 
-  for (let d = 0; d < days && alive; d++) {
+  let noted = false; // a note showed since he last played
+  for (let d = 0; d < days; d++) {
     const dow = (1 + d) % 7, weekend = dow === 6 || dow === 0; // day 0 is a Monday
-    if (d > 0) { // does he stop for good? (the assumed part: WORLD's leave numbers)
+    const note = plan ? [plan, ...(plan.more || [])].find((q) => dayKey(q.at) === dayKey(T0 + d * DAY)) : null; // a note that shows today
+    if (note) noted = true;
+    let pulled = null; // the note he opened the game from today
+    if (!alive) { // he stopped; a note may still bring him back (he had forgotten): the assumed part
+      if (note && yes(P.tap * WORLD.lapsedBack)) { alive = true; S.lapsedBack++; S.quitDay = -1; pulled = note; } else { if ([1, 3, 7].includes(d)) S.levelAt[d] = null; continue; }
+    } else if (d > 0) { // does he stop for good? (the assumed part: WORLD's leave numbers)
       let h = P.quit / (1 + d / 3);
       h *= lastEnd === 'lost' ? WORLD.leaveAfterLosses * (cheered ? WORLD.cheerSpin : 1) : lastEnd === 'won' ? WORLD.leaveAfterWin : 1;
       if (waiting().waiting) h *= WORLD.somethingWaits;
-      if (S.allowed) h *= WORLD.reminder;
-      if (yes(Math.min(0.95, h))) { alive = false; S.quitDay = d; S.quitAt = save.unlocked; break; }
-      if (!yes(P.days[weekend ? 1 : 0])) { if ([1, 3, 7].includes(d)) S.levelAt[d] = save.unlocked; continue; }
+      if (noted) h *= WORLD.reminder;
+      if (yes(Math.min(0.95, h))) { alive = false; S.quitDay = d; S.quitAt = save.unlocked; if ([1, 3, 7].includes(d)) S.levelAt[d] = null; continue; }
+      if (!yes(P.days[weekend ? 1 : 0])) {
+        if (note && yes(P.tap)) { pulled = note; S.notesPulled++; } // he would not have played today: the note brought him
+        else { if ([1, 3, 7].includes(d)) S.levelAt[d] = save.unlocked; continue; }
+      }
     }
+    noted = false;
     S.daysPlayed++;
     let newToday = false;
     for (let s = 0; s < P.sess; s++) {
       let now = T0 + d * DAY + (s === 0 ? 8 : s === 1 ? 18 : 21) * HOUR + Math.floor(R() * 40) * 60000;
+      if (pulled && s === 0) now = Math.max(now, pulled.at + Math.floor(R() * 30) * 60000); // he opens it from the note
       // a reminder planned on the last leaving: it showed if its time has passed; some open the game from it
       let from = '';
       for (const q of plan ? [plan, ...(plan.more || [])] : []) if (now >= q.at) {
-        S.notes++; const nd = dayKey(q.at), hr = new Date(q.at).getHours();
+        S.notes++; S.noteIds[q.id] = (S.noteIds[q.id] || 0) + 1; const nd = dayKey(q.at), hr = new Date(q.at).getHours();
+        if (opt.check && !opt.before) { const e = HE.entry(q.id); if (!e) fail('a note not in the catalogue: ' + q.id); }
         if (nd === lastNoteDay) { S.notesSameDay++; fail('two reminders on ' + nd); } lastNoteDay = nd;
         if (hr >= HE.HERALD.quietFrom || hr < HE.HERALD.quietTo) fail('a reminder in the quiet hours: ' + hr);
-        if (!from && yes(P.tap)) { from = q.id; S.notesTapped++; }
+        if (!from && (pulled ? q === pulled : yes(P.tap))) { from = q.id; S.notesTapped++; }
       }
       plan = null;
       ENG.open(save, now, from); OF.startSession(save, now, R); S.sessions++;
+      if (DR.welcomeDue(save, now)) { const c = DR.welcomeCoins(now - DR.dirState(save).lastSeen); DR.noteNudge(save, { kind: 'welcome' }, now); save.wallet = E.addCoins(save.wallet, c); sync('gift', now); ask('welcome', 0, d, now); } // the welcome-back gift (main.js nudge:yes), then perhaps the question
       { const w = E.openDailyChest(save.wallet, dayKey(now)); if (w) { save.wallet = w; sync('daily', now); } }
       const end = now + P.mins * 60000; let run = 0; cheered = false; lastEnd = ''; cardsNow = 0;
       offer('home', now, { levelId: save.unlocked });
@@ -198,13 +232,12 @@ export function life(P, seed, days = 30, watch = null) {
           DR.tickTrial(save);
           if (stars > old) { save.stars[id] = stars; newToday = true; }
           save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, id + 1));
-          SP.noteWin(save, stars > old); if (secs >= 15) SP.notePlayed(save, dayKey(now));
+          let spinGot = SP.noteWin(save, stars > old); if (secs >= 15 && SP.notePlayed(save, dayKey(now))) spinGot = true;
+          if (id % 5 === 0 && stars > old) ask('boss', stars, d, now); else if (spinGot) ask('spin', stars, d, now);
           if (!early && wantsVideo(now)) { video(now); save.wallet = E.addCoins(save.wallet, pay.coins); sync('video', now); } // double coins
           if (id % 5 === 0 && E.bossTreasure(id) && !E.treasureOpened(save.wallet, id)) { const w = E.openBossTreasure(save.wallet, id); if (w) { save.wallet = w; sync('treasure', now); } }
           { const T = DR.winTaste(save, { levelId: id, boss: id % 5 === 0, chicks: [], rand: R }); if (T) { DR.startTaste(save, T, now, R); if (T.kind === 'boost') { save.wallet = E.tasteBooster(save.wallet, T.id); sync('gift', now); } } }
           for (let ch = E.chestFor(totalStars(save), save.wallet.chests); ch && ch.ready; ch = E.chestFor(totalStars(save), save.wallet.chests)) { const w = E.openChest(save.wallet, ch); if (!w) break; save.wallet = w; sync('chest', now); }
-          // the reminder question, once, on a good win with a spin near
-          if (S.askedDay < 0 && ENG.herald.shouldAsk(save, { unlocked: save.unlocked, stars, ...waiting() })) { S.askedDay = d; S.allowed = yes(P.notif); ENG.herald.answer(save, S.allowed, now); }
           offer('win', now, { levelId: id, prevFails: att.streak });
           spinAll(now);
         } else {
@@ -233,6 +266,7 @@ export function life(P, seed, days = 30, watch = null) {
       if (cardsNow > OF.CAPS.perSession) fail(`${cardsNow} offer cards in one session`);
       if (yes(P.shop)) shop(now);
       if (watch) watch(save, d, now);
+      DR.noteSeen(save, now);
       plan = ENG.close(save, { ...waiting(), unlocked: save.unlocked, screen: lastEnd === 'won' ? 'win' : 'fail', level: save.unlocked, lastWon: lastEnd === 'won' }, now);
       if (plan && plan.at - now < HE.HERALD.minAheadH * HOUR) fail('a reminder planned too soon after leaving');
       if (plan && !S.allowed) fail('a reminder was planned without permission');
@@ -240,7 +274,7 @@ export function life(P, seed, days = 30, watch = null) {
     if (!newToday) S.idleDays++;
     if ([1, 3, 7].includes(d)) S.levelAt[d] = save.unlocked;
   }
-  if (plan && !alive) { S.notes += 1 + (plan.more || []).length; S.notesGone = 1 + (plan.more || []).length; } // what still reaches a player who left: then nothing more, ever
+  if (plan && !alive) { const n = [plan, ...(plan.more || [])].filter((q) => q.at < T0 + days * DAY).length; S.notes += n; S.notesGone = n; } // what still reaches a player who left: then nothing more, ever
   S.levelAt[days] = save.unlocked;
   for (const d of [1, 3, 7]) if (S.levelAt[d] == null) S.levelAt[d] = S.quitDay >= 0 && S.quitDay <= d ? null : save.unlocked;
   // what the engine saw
@@ -259,11 +293,11 @@ export function life(P, seed, days = 30, watch = null) {
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const med = (a) => { if (!a.length) return 0; const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
 const pct = (a, f) => (a.length ? Math.round((a.filter(f).length * 100) / a.length) : 0);
-export function town({ n = 300, days = 30, seed = 1, only = null } = {}) {
+export function town({ n = 300, days = 30, seed = 1, only = null, opt = {} } = {}) {
   const out = {};
   for (const [name, P] of Object.entries(PERSONAS)) {
     if (only && name !== only) continue;
-    const L = []; for (let i = 0; i < n; i++) L.push(life(P, seed * 100003 + i * 7919 + name.length * 31 + name.charCodeAt(0), days));
+    const L = []; for (let i = 0; i < n; i++) L.push(life(P, seed * 100003 + i * 7919 + name.length * 31 + name.charCodeAt(0), days, null, opt));
     const alive = (d) => (s) => s.quitDay < 0 || s.quitDay > d, quitAt = {}; for (const s of L) if (s.quitDay >= 0) quitAt[s.quitAt] = (quitAt[s.quitAt] || 0) + 1;
     const ora = (k, f) => L.map((s) => s.oracle[k]).filter((o) => o.n >= OR.LEARN.min && o.rules != null).map(f);
     out[name] = {
@@ -276,6 +310,7 @@ export function town({ n = 300, days = 30, seed = 1, only = null } = {}) {
       unlocks: mean(L.map((s) => s.unlocks)), coupons: mean(L.map((s) => s.coupons)), spinsFree: mean(L.map((s) => s.spins.free)), spinsAd: mean(L.map((s) => s.spins.ad)), spinsCoin: mean(L.map((s) => s.spins.coin)), spinsMiss: mean(L.map((s) => s.spins.miss)), spinsRetry: mean(L.map((s) => s.spins.retry)),
       videos: mean(L.map((s) => s.videos)), videosDay: mean(L.map((s) => (s.daysPlayed ? s.videos / s.daysPlayed : 0))), usd: mean(L.map((s) => s.usd)), premium: pct(L, (s) => s.premium), paid: pct(L, (s) => Object.keys(s.buys).length > 0),
       moneyAsks: mean(L.map((s) => s.moneyAsks)), asksPerSession: mean(L.map((s) => (s.sessions ? s.moneyAsks / s.sessions : 0))), askTop: (() => { const A = {}; for (const s of L) for (const [k, v] of Object.entries(s.asks)) A[k] = (A[k] || 0) + v; return Object.entries(A).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k} ${(v / n).toFixed(1)}`).join(', '); })(), cards: mean(L.map((s) => s.cards)), cardsMax: Math.max(...L.map((s) => s.cardsMax)),
+      remAsks: mean(L.map((s) => s.remAsks)), pulled: mean(L.filter((s) => s.allowed).map((s) => s.notesPulled)), lapsedBack: pct(L, (s) => s.lapsedBack > 0), noteIds: (() => { const A = {}; for (const s of L) for (const [k, v] of Object.entries(s.noteIds)) A[k] = (A[k] || 0) + v; return Object.fromEntries(Object.entries(A).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, +(v / n).toFixed(2)])); })(),
       asked: pct(L, (s) => s.askedDay >= 0), askedDay: med(L.filter((s) => s.askedDay >= 0).map((s) => s.askedDay)), allowed: pct(L, (s) => s.allowed), notes: mean(L.filter((s) => s.allowed).map((s) => s.notes)), notesGone: mean(L.filter((s) => s.allowed && s.quitDay >= 0).map((s) => s.notesGone)), tapped: mean(L.filter((s) => s.allowed).map((s) => s.notesTapped)),
       idle: mean(L.map((s) => (s.daysPlayed ? s.idleDays / s.daysPlayed : 0))),
       oracle: Object.fromEntries(['win', 'back', 'video', 'coins'].map((k) => [k, { graded: pct(L, (s) => s.oracle[k].n >= OR.LEARN.min), n: med(L.map((s) => s.oracle[k].n)), rules: mean(ora(k, (o) => o.rules)), fit: mean(ora(k, (o) => o.fit)), learned: pct(L, (s) => s.oracle[k].learned), trusted: pct(L, (s) => s.oracle[k].trusted) }])),
@@ -396,7 +431,10 @@ if (isMain) {
   const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; }, has = (k) => process.argv.includes('--' + k);
   const n = Number(arg('n', 300)), days = Number(arg('days', 30)), seed = Number(arg('seed', 1)), only = arg('only', null);
   const out = [], say = (l = '') => { out.push(l); };
-  const t0 = Date.now(), T = town({ n, days, seed, only });
+  // --herald <file>: another Herald (a module with the same exports) for a before/after comparison; --before: its ask rule (once, on a good win)
+  const alt = arg('herald', null);
+  if (alt) { const H2 = await import(new URL(alt, 'file://' + process.cwd() + '/').href); ENG.HUB.add('herald', { plan: H2.plan, opened: H2.opened, shouldAsk: H2.shouldAsk, answer: H2.answer, setOff: H2.setOff, line: H2.line, state: (sv) => { const H = H2.herState(sv); return { ok: H.ok, off: H.off, ignored: H.ignored }; } }); }
+  const t0 = Date.now(), T = town({ n, days, seed, only, opt: { before: has('before') } });
   if (has('json')) { console.log(JSON.stringify(T, null, 1)); process.exit(0); }
   const names = Object.keys(T), col = (v) => String(v).padStart(13), row = (label, f) => say(label.padEnd(32) + names.map((k) => col(f(T[k]))).join(''));
   const real = Object.values(REAL).filter((r) => r[0] >= WORLD.realMin).length;
@@ -427,9 +465,11 @@ if (isMain) {
   row('* paid anything / Unlock Ev. %', (r) => `${r.paid} / ${r.premium}`);
   row('* dollars a player in 30 days', (r) => r.usd.toFixed(2));
   say('-- reminders');
-  row('asked % (on day)', (r) => `${r.asked} (${r.askedDay})`);
+  row('asked % (on day), cards a player', (r) => `${r.asked} (${r.askedDay}) ${r.remAsks.toFixed(1)}`);
   row('* allowed %', (r) => r.allowed);
   row('notes shown / opened from', (r) => `${r.notes.toFixed(1)} / ${r.tapped.toFixed(1)}`);
+  row('* days a note brought him in', (r) => r.pulled.toFixed(1));
+  row('* back after stopping, by a note %', (r) => r.lapsedBack);
   row('notes after he left for good', (r) => r.notesGone.toFixed(1));
   say('-- the Oracle on the phone: graded 8+ times % | error by rules > learned | learned in use % | trusted %');
   for (const k of ['win', 'back', 'video', 'coins']) row('  ' + k, (r) => { const o = r.oracle[k]; return `${o.graded}|${o.graded ? o.rules.toFixed(2) + '>' + o.fit.toFixed(2) : '-'}|${o.learned}|${o.trusted}`; });
