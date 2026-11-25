@@ -8867,7 +8867,7 @@ function drawLevels() {
     if (gs < 0 && by0 >= vt + 2 * u && by0 + Bd.h <= tapBot) ui.record({ x: Bd.x, y: by0, w: Bd.w, h: Bd.h }, 'levels:gateboard' + w, 'levels:gateboard' + w);
     if (coin) {
       const price = GATE_COINS(w), rich = save.wallet.coins >= price, Bt = g.btn, bty = Bt.y - sy;
-      if (bty + Bt.h < vt || bty > H_) continue;
+      if (bty + Bt.h < vt || bty > H_ || (ctaOn && wide && Bt.x + Bt.w > ctaX - 6 * u && bty + Bt.h > ctaY - 6 * u)) continue; // (never under PLAY in the corner)
       const full = bty >= vt + 2 * u && bty + Bt.h <= tapBot, n0 = ui.rects.length, b0 = ui.buttons.length;
       const r = ui.button('gate:' + w, '', Bt.x, bty, Bt.w, Bt.h, { kind: rich ? 'gold' : 'off', disabled: !rich, dim: 1 });
       if (!full) { ui.rects.length = n0; ui.buttons.length = b0; }

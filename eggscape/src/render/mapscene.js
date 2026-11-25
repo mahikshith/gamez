@@ -1098,7 +1098,7 @@ export function gateSpot(L, w) {
   if (L._gates && L._gates[w]) return L._gates[w];
   const u = L.u, A = L.A, y = L.bandTop(w) + L.BH * GATE_FY, x = L.pathX(y);
   const slope = (L.pathX(y - 4) - L.pathX(y + 4)) / 8, half = (L.roadW / 2) * Math.sqrt(1 + slope * slope) + 5 * u;
-  const bw = 132 * u, bh = 54 * u, pw = 9 * u, pref = x < L.cx ? 1 : -1;
+  const bw = 132 * u, bh = 54 * u, pw = 9 * u, pref = A.w > A.h * 1.25 ? -1 : x < L.cx ? 1 : -1; // (landscape: left of the road, clear of PLAY in the corner)
   // keep the board and its button clear of the world's first stop, the stop below the gate (the hen may sit there) and
   // that stop's boss chest: the roomier side first, then the other, then a little lower
   const st = L.stops, s0 = st.find((q) => q.w === w), s1 = [...st].reverse().find((q) => q.w === w - 1), keep = [];
