@@ -29,7 +29,8 @@ export const AGE_GATE = false;
 
 // 2026-11-20 (mykee: monetise properly, keep the fun): 2 a session, 3 a day, 20 min apart; the Director's help cards on
 // the fail screen are not popups and do not count
-export const CAPS = { perSession: 2, perDay: 3, gapMin: 20, fromLevel: 9, silenceAfter: 3, silenceDays: 14 };
+// 0.8.17 (sixty levels): the level numbers here moved with the road (fromLevel 9 -> 10, level 12 -> 14: the same progress)
+export const CAPS = { perSession: 2, perDay: 3, gapMin: 20, fromLevel: 10, silenceAfter: 3, silenceDays: 14 };
 const DAY = 864e5, MIN = 6e4;
 const dayKey = (now) => { const d = new Date(now); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 
@@ -138,7 +139,7 @@ export function evaluate(save, moment, ctx = {}) {
   const sku = (id, fit, value) => { if (money && iapAvailable(w, id)) C.push({ id, sku: id, fit, value, usd: IAP[id].usd, ...TEXT[id] }); };
   const end = moment === 'win' || moment === 'fail', calm = end || moment === 'home';
   // starter nest: only after the first two bosses (2026-11-20, mykee: the $1.99 popup came far too early)
-  if ((calm || shop) && !payer && !w.starter && (shop || unlocked >= 12) && (shop || shownCount(o, 'starter_nest') < 3) && now - (o.firstDay || now) < 7 * DAY) sku('starter_nest', 1 + (short ? 0.2 : 0), 3);
+  if ((calm || shop) && !payer && !w.starter && (shop || unlocked >= 14) && (shop || shownCount(o, 'starter_nest') < 3) && now - (o.firstDay || now) < 7 * DAY) sku('starter_nest', 1 + (short ? 0.2 : 0), 3);
   // stuck: a free charge for an ad first; the helper bundle only after that ad was declined on this level
   if (moment === 'fail' && (ctx.fails || 0) >= 3 && lv != null) {
     if (!o.lvAd[lv]) C.push({ id: 'charge_ad', item: 'charge', fit: 1 + (ctx.nearMiss ? 0.2 : 0), value: 1, usd: 0, ...TEXT.charge_ad });
@@ -147,7 +148,7 @@ export function evaluate(save, moment, ctx = {}) {
   if ((moment === 'win' || shop) && (shop || (ctx.prevFails || 0) >= 2) && (w.bank || 0) >= BANK_OPEN && (shop || every(o, 'egg_bank', now, 3))) sku('egg_bank', 0.9, 1.5);
   // too many videos: a calm moment only, never the shop card; the button opens the bundle's sheet, it never pays
   if ((moment === 'win' || moment === 'home') && money && !w.noAds && iapAvailable(w, 'eggscape_premium') && (adsToday(save, now) >= VIDEOS.today || o.ads >= VIDEOS.all) && every(o, 'skip_videos', now, 3)) C.push({ id: 'skip_videos', sku: 'eggscape_premium', fit: 1, value: 2.5, usd: IAP.eggscape_premium.usd, ...TEXT.skip_videos });
-  if ((calm || shop) && unlocked >= 12 && o.days.length >= 3 && (shop || every(o, 'eggscape_premium', now, 7))) sku('eggscape_premium', 0.7, 2.5);
+  if ((calm || shop) && unlocked >= 14 && o.days.length >= 3 && (shop || every(o, 'eggscape_premium', now, 7))) sku('eggscape_premium', 0.7, 2.5);
   if ((calm || shop) && (payer || w.noAds) && now - (w.lastBuyAt || 0) >= 7 * DAY && (shop || every(o, 'eggscape_collector', now, 14))) sku('eggscape_collector', 0.8, 2);
   if (moment === 'intro' && ctx.chick && (w.coins || 0) >= ctx.chick.price && every(o, 'chick_tip', now, 1)) {
     C.push({ id: 'chick_tip', item: 'chick:' + ctx.chick.id, gentle: true, fit: 0.5, value: 1, usd: 0, title: ctx.chick.name, line: `Unlock ${ctx.chick.name} now for ${ctx.chick.price} coins` });

@@ -107,19 +107,22 @@ export function farmPlan(L) {
 }
 // 0.8.10: the landmark planner is shared by every world painted as a place (mapcave.js uses it too): world w's five
 // stops, each landmark S (the LMS shape above) placed off the road beside its plaque, clear of the sign above.
-export function planStops(L, w, LMSw) {
-  const u = L.u, A = L.A, top = L.bandTop(w), lms = [], i0 = w * 5, n = Math.max(0, Math.min(5, L.stops.length - i0));
+// 0.8.17 (six stops a world): slots[i] = the stop (0 .. L.per - 1 in the world) landmark i stands by. The Farm's five stand
+// by its first five; in the other worlds the new level is the fourth, so their landmarks keep the old five (SLOTS_4TH).
+export const SLOTS_4TH = [0, 1, 2, 4, 5];
+export function planStops(L, w, LMSw, slots = LMSw.map((_, i) => i)) {
+  const u = L.u, A = L.A, top = L.bandTop(w), lms = [], i0 = w * (L.per || 5), n = LMSw.filter((_, i) => i0 + slots[i] < L.stops.length).length;
   // the plaques first (they only depend on the stops): on a post at the road side, beside the stop
   const plq = [];
   for (let i = 0; i < n; i++) {
-    const st = L.stops[i0 + i], s = LMSw[i].pref, py = st.y + 54 * u, px = roadEdge(L, py - (PLQ.post + PLQ.h) * u, py, s) + s * (3 + PLQ.w / 2) * u;
+    const st = L.stops[i0 + slots[i]], s = LMSw[i].pref, py = st.y + 54 * u, px = roadEdge(L, py - (PLQ.post + PLQ.h) * u, py, s) + s * (3 + PLQ.w / 2) * u;
     plq.push({ x: px, y: py, board: { x: px - (PLQ.w / 2) * u, y: py - (PLQ.post + PLQ.h) * u, w: PLQ.w * u, h: PLQ.h * u } });
   }
   const sign2 = L.nw > w + 1 ? signBox(L, w + 1) : null;
   const hitsPlaque = (i, x0, x1, y0, y1) => plq.some((q, j) => j !== i && x0 < q.board.x + q.board.w && x1 > q.board.x && y0 < q.y && y1 > q.board.y);
   const hitsRoad = (x0, x1, y0, y1) => { for (let y = y0; y <= y1 + 0.1; y += 4) { const x = L.pathX(y); if (x + L.roadW * 0.5 > x0 && x - L.roadW * 0.5 < x1) return true; } return false; };
   for (let i = 0; i < n; i++) {
-    const S = LMSw[i], st = L.stops[i0 + i];
+    const S = LMSw[i], st = L.stops[i0 + slots[i]];
     let best = null;
     for (const s of [S.pref, -S.pref]) {
       for (const [sc, ddy] of S.tries || [[1, 0], [1, 14], [0.92, 14], [0.92, 28], [0.85, 30], [0.85, 44]]) { // S.tries: a landmark's own list of sizes and drops
@@ -149,7 +152,7 @@ export function planStops(L, w, LMSw) {
     // the plaque is part of the button when it touches the landmark; else the button is the landmark alone (the plaque is drawn)
     if (pb.x < tx1 + 30 * u && pb.x + pb.w > tx0 - 30 * u) { tx0 = Math.min(tx0, pb.x); tx1 = Math.max(tx1, pb.x + pb.w); ty0 = Math.min(ty0, pb.y); ty1 = Math.max(ty1, py + 2 * u); }
     tx0 = Math.max(tx0, A.x); tx1 = Math.min(tx1, A.x1);
-    lms.push({ i, gi: i0 + i, S, kind: S.kind, x: best.x, y: best.y, d, side: s, flip: best.flip, plaque: { x: px, y: py, board: pb }, tap: { x0: tx0, y0: ty0, x1: tx1, y1: ty1 }, hen: { x: st.x - s * 6 * u, y: st.y, face: s } });
+    lms.push({ i, gi: i0 + slots[i], S, kind: S.kind, x: best.x, y: best.y, d, side: s, flip: best.flip, plaque: { x: px, y: py, board: pb }, tap: { x0: tx0, y0: ty0, x1: tx1, y1: ty1 }, hen: { x: st.x - s * 6 * u, y: st.y, face: s } });
   }
   // touch boxes never overlap: the nearer (lower) landmark gives up the top of its box where the one above sits
   for (let i = 0; i < lms.length; i++) for (let j = i + 1; j < lms.length; j++) {

@@ -10,7 +10,8 @@
 // A star is its goal: the three are judged on their own, so a run can earn the 3rd without the 2nd.
 // Pure data in, data out: main.js draws them (level card, HUD stars, win card) and asks which are met.
 
-const PER_WORLD = 5;
+import { PER_ENV } from './road.js';
+const PER_WORLD = PER_ENV; // 0.8.17: six a world
 
 // -> [g1, g2, g3]; g = { kind, n?, s?, short (the level card, a few words), long (the win card's row) }
 // fuse: the mode's time factor (sim.MD.fuse); level < 0 or no level data: the plain trio

@@ -14,7 +14,7 @@
 //                     bubbles popping, three salamanders on their rounds; glows are cached sprites, no shadowBlur
 //   drawVolcanoFront  over the landmarks: the crater's smoke, its eruptions and the drifting embers (mapamb.js)
 // Reduced motion (calm): everything holds still.
-import { planStops, drawLandmarkBody, drawFarmPlaque, signBox, lmArt } from './mapfarm.js';
+import { planStops, SLOTS_4TH, drawLandmarkBody, drawFarmPlaque, signBox, lmArt } from './mapfarm.js';
 import { drawCrawler } from './crawlers.js';
 import { freeCanvas } from './cvfree.js';
 import { drawMapAmb } from './mapamb.js';
@@ -125,7 +125,7 @@ const hitAny = (boxes, b) => boxes.some((q) => b.x0 < q.x1 && b.x1 > q.x0 && b.y
 
 export function volcanoPlan(L) {
   if (L._volc) return L._volc;
-  const plan = planStops(L, WI, LMS), u = L.u, A = L.A, top = plan.top, BH = L.BH, st = (k) => L.stops[WI * 5 + k];
+  const plan = planStops(L, WI, LMS, SLOTS_4TH), u = L.u, A = L.A, top = plan.top, BH = L.BH, st = (k) => L.stops[WI * L.per + SLOTS_4TH[k]]; // k: the old five
   if (plan.lms.length < 5) { plan.props = []; plan.river = null; return (L._volc = plan); }
   const boxes = plan.lms.map((m) => lmArt(m)).concat(plan.lms.map((m) => { const b = m.plaque.board; return { x0: b.x - 4 * u, x1: b.x + b.w + 4 * u, y0: b.y, y1: m.plaque.y + 6 * u }; }));
   const sign = signBox(L, WI), sign2 = signBox(L, WI + 1);
