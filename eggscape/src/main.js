@@ -8707,17 +8707,21 @@ function drawLevels() {
   }
   const SN = G.mapSeen;
   SN.w &= oMask;
-  if (!G.mapGate) for (let w = 0; w < L.nw; w++) if ((oMask >> w) & 1 && !((SN.w >> w) & 1)) { G.mapGate = { w, t0: null }; break; }
+  if (!G.mapGate) for (let w = 0; w < L.nw; w++) if ((oMask >> w) & 1 && !((SN.w >> w) & 1)) {
+    G.mapGate = { w, t0: null };
+    const tp = topPlay(); // opened for coins (or by stars from a replay): once it is open the hen walks in from the stop before it
+    if (!G.mapTravel && tp > SN.top && tp === nextIdx() && tp > 0 && envOf(tp) === w && (bestStarsOf(LEVELS[tp - 1].id) > 0 || SK.isSkipped(save, LEVELS[tp - 1].id))) G.mapTravel = { from: tp - 1, to: tp, t0: -1 };
+    break;
+  }
   const GA = G.mapGate, GATE_T = 1.45;
   if (GA) {
-    if (camTo(MS.gateSpot(L, GA.w).y - 30 * u, 0.5, fresh) && GA.t0 == null) GA.t0 = G.t; // the gate on screen first, then it opens
+    camTo(MS.gateSpot(L, GA.w).y - 30 * u, 0.5, fresh);
+    if (GA.t0 == null && Math.abs(S.y - clamp(MS.gateSpot(L, GA.w).y - 30 * u - vh * 0.5, 0, S.max)) < 40 * u) GA.t0 = G.t; // the gate on screen first, then it opens
     const gs = GA.t0 == null ? -1 : G.t - GA.t0;
     if (gs >= 0.32 && !GA.snd) { GA.snd = 1; audio.play('unlock', { pitch: 0.85 }); buzz('tap'); }
     if (gs >= 1.2 && !GA.snd2) { GA.snd2 = 1; audio.play('tada'); }
     if (gs >= GATE_T) {
       SN.w |= 1 << GA.w; G.mapGate = null;
-      const tp = topPlay(); // opened for coins (or by stars from a replay): the hen walks in from the stop before it
-      if (!G.mapTravel && tp > SN.top && tp === nextIdx() && tp > 0 && envOf(tp) === GA.w && (bestStarsOf(LEVELS[tp - 1].id) > 0 || SK.isSkipped(save, LEVELS[tp - 1].id))) G.mapTravel = { from: tp - 1, to: tp, t0: -1 };
     }
   } else if (!TR) SN.top = Math.max(SN.top, topPlay());
   const gateHold = !!(TR && G.mapGate); // a world opening first, then the trip
@@ -8834,42 +8838,6 @@ function drawLevels() {
   // nest just won to the next one and steps into it (the nest's front rim is drawn over her feet), then a burst
   const hh = L.stopR * 2; // drawHenAnim: her feet rest at cy + 0.5 h
   const ahead = (i) => { const a = L.stops[i], n2 = L.stops[i + 1] || null, b2 = L.stops[i - 1] || a; const dx = n2 ? n2.x - a.x : a.x - b2.x; return dx >= 0 ? 1 : -1; };
-  G.mapHen = null;
-  if (TR) {
-    const bA = !!LEVELS[TR.from].boss, bB = !!LEVELS[TR.to].boss, fa = MS.stopFeet(L, bA), fb = MS.stopFeet(L, bB), e = TR.e;
-    const sA = TR.fromSt || 'won'; // 0.8.16: she climbs out of the nest she sat in and settles into the next one
-    const steps = Math.max(3, Math.round(4 * (TR.dur || 1.2) / 1.2));
-    const hop = calm || TR.arrived ? 0 : Math.abs(Math.sin(e * Math.PI * steps)) * hh * 0.2 * (1 - e * 0.4);
-    const dirY = L.stops[TR.to].y < L.stops[TR.from].y ? -1 : 1, dx = L.pathX(TR.y + dirY * 8 * u) - TR.x;
-    if (TR.face == null) TR.face = ahead(TR.from) * (dirY < 0 ? 1 : -1);
-    if (TR.arrived || e > 0.92) TR.face = ahead(TR.to); else if (Math.abs(dx) > 1.5 * u) TR.face = dx > 0 ? 1 : -1;
-    const gy = TR.y - sy + fa + (fb - fa) * e + inA * (MS.nestSeat(L, sA, bA, hh) - fa) + inB * (MS.nestSeat(L, 'cur', bB, hh) - fb), hx = TR.x; // the ground under her feet (in a nest: down in the straw)
-    if (hop > 0.5) { ctx.beginPath(); ctx.ellipse(hx, gy + 1 * u, hh * 0.26 * (1 - hop / (hh * 0.6)), hh * 0.065, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill(); }
-    // 0.8.17 (mykee: "the hen and the nest are coinciding ... I could see the hen background"): she is drawn whole and
-    // opaque over every stop; only in a nest is anything of her hidden (what pokes out under it), and that nest's front
-    // is drawn over her. On the road between, nothing clips her.
-    const na = L.stops[inA > 0 ? TR.from : TR.to];
-    ctx.save(); if (inA > 0) MS.nestClip(ctx, L, na.x, na.y - sy, sA, bA); else if (inB > 0) MS.nestClip(ctx, L, na.x, na.y - sy, 'cur', bB);
-    drawHenAnim(ctx, TR.arrived ? 'happy' : 'idle', hx, gy - hop - hh * 0.5, hh, t, { key: 'map', face: TR.face, calm, shadow: 0 });
-    ctx.restore();
-    G.mapHen = { x: hx, y: gy - hop, to: TR.to };
-    if (inA > 0 && fromAt) MS.drawStop(ctx, L, fromAt.x, fromAt.y, sA, { ...fromAt.o, part: 'front' });
-    if (inB > 0 && curAt && curAt.i === TR.to) MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
-    if (TR.arrived) {
-      const k = clamp((G.screenT - TR.arrived) / 0.6, 0, 1), b = L.stops[TR.to], by = b.y - sy;
-      ctx.save(); ctx.globalAlpha = 1 - k; ctx.lineWidth = 4 * u * (1 - k) + 1; ctx.strokeStyle = '#ffe27a';
-      ctx.beginPath(); ctx.ellipse(b.x, by + 4 * u, L.stopR * (1.3 + 1.4 * k), L.stopR * (0.6 + 0.7 * k), 0, 0, 7); ctx.stroke();
-      for (let q = 0; q < 8; q++) { const an = q * Math.PI / 4 + 0.3, rr = L.stopR * (1.2 + 1.6 * k); drawStar(ctx, b.x + Math.cos(an) * rr, by - hh * 0.3 + Math.sin(an) * rr * 0.8, 6 * u * (1 - k * 0.5), true); }
-      ctx.restore();
-    }
-  } else if (curAt) {
-    const fy = curAt.y + MS.nestSeat(L, 'cur', curAt.boss, hh); // 0.8.16: sitting IN the nest, her lower half in the straw
-    ctx.save(); MS.nestClip(ctx, L, curAt.x, curAt.y, 'cur', curAt.boss);
-    drawHenAnim(ctx, 'idle', curAt.x, fy - hh * 0.5, hh, t, { key: 'map', face: ahead(curAt.i), calm, shadow: 0 });
-    ctx.restore();
-    G.mapHen = { x: curAt.x, y: fy, to: curAt.i };
-    MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
-  }
   // worlds behind their gate: fog, and the gate across the road at the world's foot (0.8.17: no card over the map)
   const totalStars = bestTotal();
   let firstShut = -1; for (let w = 0; w < L.nw; w++) if (!envOpen(w)) { firstShut = w; break; }
@@ -8909,6 +8877,43 @@ function drawLevels() {
       drawCoin(ctx, lx + ow + 9 * u + cr, r.cy, cr, rich && !calm ? G.t : 0);
       ui.text(String(price), lx + ow + 9 * u + cr * 2 + 5 * u, r.cy + 0.5 * u, tc);
     }
+  }
+  // 0.8.17: the hen last, over every stop, sign and gate (she walked behind a world's sign)
+  G.mapHen = null;
+  if (TR) {
+    const bA = !!LEVELS[TR.from].boss, bB = !!LEVELS[TR.to].boss, fa = MS.stopFeet(L, bA), fb = MS.stopFeet(L, bB), e = TR.e;
+    const sA = TR.fromSt || 'won'; // 0.8.16: she climbs out of the nest she sat in and settles into the next one
+    const steps = Math.max(3, Math.round(4 * (TR.dur || 1.2) / 1.2));
+    const hop = calm || TR.arrived ? 0 : Math.abs(Math.sin(e * Math.PI * steps)) * hh * 0.2 * (1 - e * 0.4);
+    const dirY = L.stops[TR.to].y < L.stops[TR.from].y ? -1 : 1, dx = L.pathX(TR.y + dirY * 8 * u) - TR.x;
+    if (TR.face == null) TR.face = ahead(TR.from) * (dirY < 0 ? 1 : -1);
+    if (TR.arrived || e > 0.92) TR.face = ahead(TR.to); else if (Math.abs(dx) > 1.5 * u) TR.face = dx > 0 ? 1 : -1;
+    const gy = TR.y - sy + fa + (fb - fa) * e + inA * (MS.nestSeat(L, sA, bA, hh) - fa) + inB * (MS.nestSeat(L, 'cur', bB, hh) - fb), hx = TR.x; // the ground under her feet (in a nest: down in the straw)
+    if (hop > 0.5) { ctx.beginPath(); ctx.ellipse(hx, gy + 1 * u, hh * 0.26 * (1 - hop / (hh * 0.6)), hh * 0.065, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill(); }
+    // 0.8.17 (mykee: "the hen and the nest are coinciding ... I could see the hen background"): she is drawn whole and
+    // opaque over every stop; only in a nest is anything of her hidden (what pokes out under it), and that nest's front
+    // is drawn over her. On the road between, nothing clips her.
+    const na = L.stops[inA > 0 ? TR.from : TR.to];
+    ctx.save(); if (inA > 0) MS.nestClip(ctx, L, na.x, na.y - sy, sA, bA); else if (inB > 0) MS.nestClip(ctx, L, na.x, na.y - sy, 'cur', bB);
+    drawHenAnim(ctx, TR.arrived ? 'happy' : 'idle', hx, gy - hop - hh * 0.5, hh, t, { key: 'map', face: TR.face, calm, shadow: 0 });
+    ctx.restore();
+    G.mapHen = { x: hx, y: gy - hop, to: TR.to };
+    if (inA > 0 && fromAt) MS.drawStop(ctx, L, fromAt.x, fromAt.y, sA, { ...fromAt.o, part: 'front' });
+    if (inB > 0 && curAt && curAt.i === TR.to) MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
+    if (TR.arrived) {
+      const k = clamp((G.screenT - TR.arrived) / 0.6, 0, 1), b = L.stops[TR.to], by = b.y - sy;
+      ctx.save(); ctx.globalAlpha = 1 - k; ctx.lineWidth = 4 * u * (1 - k) + 1; ctx.strokeStyle = '#ffe27a';
+      ctx.beginPath(); ctx.ellipse(b.x, by + 4 * u, L.stopR * (1.3 + 1.4 * k), L.stopR * (0.6 + 0.7 * k), 0, 0, 7); ctx.stroke();
+      for (let q = 0; q < 8; q++) { const an = q * Math.PI / 4 + 0.3, rr = L.stopR * (1.2 + 1.6 * k); drawStar(ctx, b.x + Math.cos(an) * rr, by - hh * 0.3 + Math.sin(an) * rr * 0.8, 6 * u * (1 - k * 0.5), true); }
+      ctx.restore();
+    }
+  } else if (curAt) {
+    const fy = curAt.y + MS.nestSeat(L, 'cur', curAt.boss, hh); // 0.8.16: sitting IN the nest, her lower half in the straw
+    ctx.save(); MS.nestClip(ctx, L, curAt.x, curAt.y, 'cur', curAt.boss);
+    drawHenAnim(ctx, 'idle', curAt.x, fy - hh * 0.5, hh, t, { key: 'map', face: ahead(curAt.i), calm, shadow: 0 });
+    ctx.restore();
+    G.mapHen = { x: curAt.x, y: fy, to: curAt.i };
+    MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
   }
   ctx.restore();
   // the fixed header: a soft band so the map slides under it

@@ -261,7 +261,7 @@ const CAST = [
 // is left out rather than drawn over something else. Boxes: x +- half, foot y, height h.
 const TALL = { barn: 0.8, tree: 1.05, pine: 1.25, hay: 0.7, windmill: 1.2, fence: 0.75, mushroom: 0.9, bush: 0.45, lake: 0.75, snowman: 1.05, crystal: 1, stalag: 1, volcano: 0.95, rock: 0.55, lava: 0.6, peak: 1, vault: 0.95, coins: 0.35, crate: 0.6, coral: 1, weed: 0.95, cypress: 1.25, swamp: 0.55, beaker: 0.75, gearS: 1,
   henNest: 1.15, rooster: 1.05, goose: 0.8, weaselHay: 0.75, chicks: 0.4, snakeBranch: 1.75, snake: 0.4, butterflies: 0.8, gecko: 0.9, skater: 0.5, snowfall: 1.6, rats: 0.6, spike: 0.75, sparkle: 0.9, salamander: 0.85, embers: 1.2, smoke: 1.8, eagle: 1.3, chameleon: 0.85, bolt: 1.9, weasel: 0.75, puffer: 1, fish: 0.9, hermit: 0.75, jelly: 1.1, bubbles: 1.6, gator: 0.75, turtle: 0.65, frog: 0.75, mosquito: 1, spider: 1.45, beetle: 0.6, jack: 0.85, gearLive: 0.85 };
-const WIDE = { barn: 0.55, windmill: 0.6, fence: 0.62, lake: 1.15, lava: 0.95, volcano: 0.78, peak: 0.62, swamp: 1.05, snakeBranch: 0.85, chicks: 0.7, henNest: 0.55, rats: 0.55, weasel: 0.6, fish: 0.6, gator: 0.8, eagle: 0.8, snake: 0.7 };
+const WIDE = { spider: 0.55, barn: 0.55, windmill: 0.6, fence: 0.62, lake: 1.15, lava: 0.95, volcano: 0.78, peak: 0.62, swamp: 1.05, snakeBranch: 0.85, chicks: 0.7, henNest: 0.55, rats: 0.55, weasel: 0.6, fish: 0.6, gator: 0.8, eagle: 0.8, snake: 0.7 };
 const AIRY = { eagle: 1, snowfall: 1, sparkle: 1, embers: 1, smoke: 1, butterflies: 1, bubbles: 1, bolt: 1 }; // effects: may sit over other things
 function bandLayout(L, w) {
   L._bl = L._bl || {};
@@ -284,6 +284,7 @@ function bandLayout(L, w) {
           if (!p.fit) continue;
           const b = { x0: p.x - half, x1: p.x + half, y0: p.y - h, y1: p.y };
           if (b.y0 < L.bandTop(w) - 40 * u) continue;
+          if (kind2 === 'cast' && !airy && (b.x0 < L.A.x - 2 * u || b.x1 > L.A.x1 + 2 * u)) continue; // 0.8.17: a creature whole on the screen, never cut by its edge
           if (!airy && boxes.some((q) => b.x0 < q.x1 + 4 * u && b.x1 > q.x0 - 4 * u && b.y0 < q.y1 + 2 * u && b.y1 > q.y0 - 2 * u)) continue;
           got = { x: p.x, y: p.y, s, side: p.side, box: b }; break;
         }
@@ -795,20 +796,18 @@ export function drawFog(ctx, L, w, sy, t, calm, lift = 0) {
   if (lift >= 1) return;
   ctx.save(); ctx.globalAlpha *= 1 - lift;
   ctx.fillStyle = 'rgba(232,238,248,0.14)'; ctx.fillRect(0, top, L.W, h * 0.45); // the far part of the world: only a haze
-  if (v) { const vh = (h * 0.55) / 0.84; ctx.drawImage(v, 0, 0, 2, 128, 0, top + h * 0.45, L.W, vh); } // thickening down to the world's foot, fading out just past it
+  if (v) { const vh = (h * (GATE_FY - 0.45)) / 0.84; ctx.drawImage(v, 0, 0, 2, 128, 0, top + h * 0.45, L.W, vh); } // thickening down to the world's gate at its foot, fading out just past it
   ctx.restore();
 }
 
 
 // ------------------------------------------------------------------ the stops: nests on the road (0.8.14)
 // mykee 2026-11-24: "do we need to show flags for all the levels? ... the hen is not landing on the corresponding level".
-// Every world now marks its levels the same way, ON the road at the stop: a won level is a straw nest with a golden egg
-// that carries the number and its stars; the level to play is a bigger nest the hen stands in, a bright number badge in
-// front; the next locked level an empty nest with one small padlock; every level after that only a pale stepping stone
-// with a tiny number. A boss level's nest is bigger and its egg wears a crown. Each look is painted once into its own small
-// picture (per level, per state) and stamped; only the ring and glow round the level to play are drawn live.
-// states: 'won' | 'cur' | 'open' (playable, not the next one) | 'skip' (skipped: passed without stars) | 'next' (the
-// next locked level) | 'far' (any later locked level)
+// Every world marks its levels the same way, ON the road at the stop (0.8.17 sizes and looks below). Each look is painted
+// once into its own small picture (per level, per state, per part) and stamped; only the ring and glow round the level to
+// play, a padlock breaking and a gate opening are drawn live.
+// states: 'won' | 'cur' | 'open' (playable, not the next one) | 'skip' (skipped: passed without stars) | 'next' / 'far'
+// (locked: the same stone disc)
 // per-world straw: fill, shade, light, ink, bowl (the hollow), and the stepping stone's face and edge
 const NEST_TINT = [
   { s: '#e9bd62', lo: '#b07a32', hi: '#fbe2a0', ink: '#6a4418', bowl: '#8a5a24', st: '#f4ead2', stE: '#a8834e' }, // farm
@@ -1043,7 +1042,7 @@ const backOut = (k) => { const c1 = 1.9, c3 = c1 + 1, q = k - 1; return 1 + c3 *
 export const UNLOCK_T = 0.95;
 export function drawUnlock(ctx, L, x, y, o, s, calm) {
   const u = L.u, b = o.boss ? BOSS_K : 1, r = DISC_R * u * b, T0 = 0.48;
-  const fade = ss((s - T0) / 0.3);
+  const fade = ss((s - T0) / (calm ? 0.2 : 0.3)); // (calm: one gives way before the other comes, no double picture)
   if (fade < 1) {
     ctx.save(); ctx.globalAlpha *= 1 - fade;
     if (!calm && fade > 0) { const sc = 1 - 0.3 * fade; ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y); }
@@ -1051,7 +1050,7 @@ export function drawUnlock(ctx, L, x, y, o, s, calm) {
   }
   if (s > T0) {
     const k = clamp((s - T0) / (UNLOCK_T - T0), 0, 1), sc = calm ? 1 : 0.5 + 0.5 * backOut(k);
-    ctx.save(); ctx.globalAlpha *= calm ? k : ss(k * 3);
+    ctx.save(); ctx.globalAlpha *= calm ? ss((s - T0 - 0.2) / 0.25) : ss(k * 3);
     if (sc !== 1) { ctx.translate(x, y + 12 * u); ctx.scale(sc, sc); ctx.translate(-x, -y - 12 * u); }
     drawStop(ctx, L, x, y, 'cur', { ...o, part: 'all' }); ctx.restore();
   }
@@ -1094,9 +1093,10 @@ export function nestClip(ctx, L, x, y, st, boss) {
 // gate across the road at its foot (where its sign stands once it is open): two posts and a beam, two plank doors, a big
 // padlock on the seam, and one board hanging from the post arm with a star, have / need and a thin bar. main.js hangs the
 // coin button under the board (the first locked world only) and runs the opening (o.s).
+const GATE_FY = 0.972; // the gate's foot in its band: midway between the world's first stop and the stop below it
 export function gateSpot(L, w) {
   if (L._gates && L._gates[w]) return L._gates[w];
-  const u = L.u, A = L.A, y = L.bandTop(w) + L.BH * 0.955, x = L.pathX(y);
+  const u = L.u, A = L.A, y = L.bandTop(w) + L.BH * GATE_FY, x = L.pathX(y);
   const slope = (L.pathX(y - 4) - L.pathX(y + 4)) / 8, half = (L.roadW / 2) * Math.sqrt(1 + slope * slope) + 5 * u;
   const bw = 132 * u, bh = 54 * u, pw = 9 * u, pref = x < L.cx ? 1 : -1;
   // keep the board and its button clear of the world's first stop, the stop below the gate (the hen may sit there) and
@@ -1111,7 +1111,7 @@ export function gateSpot(L, w) {
   }
   const make = (side, dy) => {
     const postX = x + side * (half + pw / 2), bx = clamp(side > 0 ? postX + 16 * u : postX - 16 * u - bw, A.x + 6 * u, A.x1 - 6 * u - bw);
-    const board = { x: bx, y: y - 50 * u + dy, w: bw, h: bh }, btn = { x: bx + 6 * u, y: board.y + bh + 12 * u, w: bw - 12 * u, h: 38 * u };
+    const board = { x: bx, y: y - 44 * u + dy, w: bw, h: bh }, btn = { x: bx + 6 * u, y: board.y + bh + 12 * u, w: bw - 12 * u, h: 38 * u };
     const box = { x0: Math.min(postX, bx) - 3 * u, x1: Math.max(postX, bx + bw) + 3 * u, y0: board.y - 14 * u, y1: btn.y + btn.h + 3 * u };
     return { x, y, half, side, pw, postX, board, btn, box, hit: keep.some((k) => box.x0 < k.x1 && box.x1 > k.x0 && box.y0 < k.y1 && box.y1 > k.y0) };
   };
@@ -1128,11 +1128,11 @@ export function drawGate(ctx, L, w, sy, o) {
   const fadeAll = s < 0 ? 1 : 1 - ss((s - 1.05) / 0.3);
   if (fadeAll <= 0.01) return g;
   const c = ctx; c.save(); c.globalAlpha *= fadeAll; c.lineJoin = 'round'; c.lineCap = 'round';
-  const half = g.half, pw = g.pw, ph = 58 * u, top = y - ph;
+  const half = g.half, pw = g.pw, ph = 48 * u, top = y - ph;
   const open = s < 0 ? 0 : ss((s - 0.38) / 0.5); // the doors swing open
   // the doors: plank leaves hinged on the posts, meeting on the road's middle; opening, each turns in to its post
   for (const sd of [-1, 1]) {
-    const hx = x + sd * half, f = Math.cos(open * 1.45), fx = hx - sd * half * f, grow = open * 7 * u, y0 = y - 40 * u, y1 = y - 3 * u;
+    const hx = x + sd * half, f = Math.cos(open * 1.45), fx = hx - sd * half * f, grow = open * 7 * u, y0 = y - 35 * u, y1 = y - 3 * u;
     c.beginPath(); c.moveTo(hx, y0); c.lineTo(fx, y0 - grow * 0.5); c.lineTo(fx, y1 + grow * 0.5); c.lineTo(hx, y1); c.closePath();
     c.fillStyle = lg(c, hx, 0, fx, 0, open > 0.05 ? ['#b07c40', mixHex('#c9945a', '#5a3a1a', open * 0.6)] : ['#c9945a', '#b07c40']); c.fill();
     c.lineWidth = 2.2 * u; c.strokeStyle = '#4a2c10'; c.stroke();
