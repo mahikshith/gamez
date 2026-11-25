@@ -47,6 +47,21 @@ jobs:
           xtool dev build --triple "$(uname -m)-apple-ios-simulator"
           ls -l xtool/Eggscape.app xtool/Eggscape.app/game
           plutil -p xtool/Eggscape.app/Info.plist
+      # the app for a real iPhone as an unsigned .ipa (release build). It cannot be installed as it is: Sideloadly or
+      # AltStore on a computer signs it with a free Apple ID and installs it over USB (eggscape/docs/ios-test.md)
+      - name: Build the iPhone .ipa (unsigned)
+        working-directory: eggscape/ios
+        run: |
+          xtool dev build --ipa --configuration release
+          V=$(grep -m1 versionName ../android/app/build.gradle | sed "s/.*'\(.*\)'.*/\1/")
+          mkdir -p ipa && mv xtool/Eggscape.ipa "ipa/Eggscape-$V-unsigned.ipa"
+          ls -l ipa
+          echo "EGG_VERSION=$V" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eggscape-ios-${{ env.EGG_VERSION }}-unsigned-ipa-run${{ github.run_number }}
+          path: eggscape/ios/ipa/*.ipa
+          retention-days: 30
       # the app really running: the dev page in the same shell, on a simulated iPhone, playing by itself
       # (ios/ci/smoke.js: title, level card, a level by the bot, the win page, the map), a screenshot every 5 s
       - name: Run it on a simulated iPhone
@@ -55,6 +70,7 @@ jobs:
           node tools/build.mjs --target web --dev
           cp dist/dev/index.html ios/Resources/game/index.html
           cd ios
+          rm -rf xtool
           xtool dev build --triple "$(uname -m)-apple-ios-simulator"
           DEV=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; c=[x for k,v in sorted(d.items()) if 'iOS' in k for x in v if x['name'].startswith('iPhone') and 'SE' not in x['name']]; print(c[-1]['udid'], c[-1]['name'], file=sys.stderr); print(c[-1]['udid'])")
           xcrun simctl boot "$DEV"
