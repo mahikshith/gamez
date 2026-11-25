@@ -2126,20 +2126,24 @@ function drawTreasure() {
     B.push(lineBlock(beaten ? (opened ? 'You opened this treasure.' : `You beat ${bossName}. It is yours!`) : `Beat ${bossName} (Level ${T.id}) to open it.`, 16.5 * s, { tag: 'tr:status', gap: 4 * s, color: beaten ? ui.C.ink : ui.C.ink2 }));
     // what is inside: coins, a booster, Chick Charges
     const items = [['coin', `${R.coins} coins`], ['boost', `${(E.BOOSTERS[R.booster] || {}).name || 'Booster'} booster`], ['charge', `${R.charges} Chick Charges`]];
-    const ih = 36 * s, IH = 26 * s + items.length * ih + 6 * s;
+    // 0.8.16 (design critique: three short rows left half the well empty): the prizes stand side by side, each a big
+    // picture with its words under it, across the column's whole width
+    const cw3 = (iw - 16 * s) / items.length, wr = items.map(([, txt]) => wrapText(txt, 15 * s, cw3 - 8 * s).slice(0, 2)), nl = Math.max(...wr.map((l) => l.length));
+    const IH = 26 * s + 50 * s + nl * 18 * s + 12 * s;
     B.push({ h: IH, gap: 10 * s, draw: (x, y, w2) => {
       ui.well(x, y, w2, IH, { s, a: '#f3e2bd', b: '#fbf0d6' });
       ui.text(opened ? 'YOU GOT' : 'INSIDE', x + w2 / 2, y + 14 * s, { size: 13.5 * s, align: 'center', color: ui.C.ink2, tag: 'tr:inhead' });
-      items.forEach(([k, txt], i) => {
-        const ry = y + 26 * s + i * ih + ih / 2, ix = x + 30 * s;
-        if (k === 'coin') drawCoin(ctx, ix, ry, 12 * s, G.t); else if (k === 'boost') drawBoosterIcon(ctx, R.booster, ix, ry, 30 * s, G.t); else pictoPower(ctx, 'thunder', ix, ry, 28 * s, G.t);
-        ui.text(txt, ix + 24 * s, ry, { size: 17 * s, color: ui.C.ink, maxW: w2 - 70 * s, tag: 'tr:item' + i });
-        if (opened) pictoCheck(ctx, x + w2 - 22 * s, ry, 22 * s);
+      items.forEach(([k], i) => {
+        const ix = x + 8 * s + cw3 * (i + 0.5), iy = y + 26 * s + 25 * s;
+        if (k === 'coin') drawCoin(ctx, ix, iy, 19 * s, G.t); else if (k === 'boost') drawBoosterIcon(ctx, R.booster, ix, iy, 48 * s, G.t); else pictoPower(ctx, 'thunder', ix, iy, 44 * s, G.t);
+        ui.record({ x: ix - 22 * s, y: iy - 22 * s, w: 44 * s, h: 44 * s }, 'tr:itemart' + i);
+        wr[i].forEach((l, j) => ui.text(l, ix, iy + 25 * s + 11 * s + j * 18 * s, { size: 15 * s, align: 'center', color: ui.C.ink, maxW: cw3 - 6 * s, tag: 'tr:item' + i + ':' + j }));
+        if (opened) pictoCheck(ctx, ix + 22 * s, iy - 16 * s, 20 * s);
       });
     } });
     if (chick) { // the chick that joins next: its art, what it does, from which level
       const ul = wrapText(chick.up, 15 * s, iw - 120 * s).slice(0, 3), CH = Math.max(104 * s, 30 * s + 22 * s + ul.length * 19 * s + 10 * s);
-      B.push({ h: CH, gap: 10 * s, draw: (x, y, w2) => {
+      B.push({ right: true, h: CH, gap: 10 * s, draw: (x, y, w2) => {
         ui.well(x, y, w2, CH, { s, a: '#e3f2ff', b: '#f4faff' });
         const aw = 96 * s; artStage(x + 8 * s, y + (CH - aw) / 2, aw, aw, s, () => drawStrikeStage(ctx, chick.id, x + 8 * s, y + (CH - aw) / 2 + 4 * s, aw, aw - 8 * s, G.t));
         const tx = x + aw + 20 * s, tw = w2 - aw - 30 * s;
@@ -2151,7 +2155,7 @@ function drawTreasure() {
     }
     if (nk.length) { // the next world's new villains, big enough to recognise
       const P = Math.min(pMax * s, (iw - (nk.length - 1) * 10 * s) / nk.length), NH = 30 * s + P + 38 * s;
-      B.push({ h: NH, gap: 10 * s, draw: (x, y, w2) => {
+      B.push({ right: true, h: NH, gap: 10 * s, draw: (x, y, w2) => {
         ui.text(`COMING UP IN ${(WORLDS[w] || 'the next world').toUpperCase()}`, x + w2 / 2, y + 12 * s, { size: 13.5 * s, align: 'center', color: ui.C.ink2, maxW: w2, tag: 'tr:nexthead' });
         const x0 = x + w2 / 2 - (nk.length * P + (nk.length - 1) * 10 * s) / 2;
         nk.forEach((k, i) => {
@@ -2161,12 +2165,12 @@ function drawTreasure() {
         });
       } });
     }
-    B.push({ h: 58 * s, gap: 14 * s, draw: (x, y, w2) => {
+    B.push({ right: true, h: 58 * s, gap: 14 * s, draw: (x, y, w2) => {
       if (beaten && !opened) ui.button('tr:open', 'OPEN', x, y, w2, 58 * s, { kind: 'gold', shimmer: true, size: 24 * s });
       else if (!beaten && Lb && playable(LEVELS.indexOf(Lb))) { const hw = (w2 - 10 * s) / 2; ui.button('tr:close', 'Close', x, y, hw, 58 * s, { kind: 'tertiary', size: 19 * s }); ui.button('tr:play', `Play Level ${T.id}`, x + hw + 10 * s, y, hw, 58 * s, { kind: 'primary', icon: ICON.play, size: 18 * s }); }
       else ui.button('tr:close', opened ? 'Great!' : 'Close', x, y, w2, 58 * s, { kind: 'primary', size: 22 * s });
     } });
-    if (!chick && w >= 7 && opened) B.push({ h: 44 * s, gap: 8 * s, draw: (x, y, w2) => ui.button('tr:shop', 'See premium chicks', x, y, w2, 44 * s, { kind: 'secondary', size: 16 * s }) });
+    if (!chick && w >= 7 && opened) B.push({ right: true, h: 44 * s, gap: 8 * s, draw: (x, y, w2) => ui.button('tr:shop', 'See premium chicks', x, y, w2, 44 * s, { kind: 'secondary', size: 16 * s }) });
     return B;
   };
   let chH = 118, pMax = 64;
@@ -2177,7 +2181,7 @@ function drawTreasure() {
     if (nk.length) { const d = Math.min(extra, (iw1 - (nk.length - 1) * 10) / nk.length - 64, 30); pMax += Math.max(0, d); extra -= Math.max(0, d); }
     chH = Math.min(118 + extra, 190);
   }
-  stackCard(title, build(chH, pMax), { ribbon: '#d89a1c', grow: 1.15 });
+  stackCard(title, build(chH, pMax), { ribbon: '#d89a1c', grow: 1.15, twoCol: true }); // 0.8.16: landscape opens into two columns (the whole card used to shrink to 0.58)
 }
 // ---- the offer engine's moments (offers.js): the end card after its first second, home on arrival, the intro (a line)
 function offerCtx() {
@@ -2427,29 +2431,29 @@ function drawDetail() {
         ui.record({ x: x + (w - aw) / 2, y, w: aw, h: AH }, 'dt:art');
       } },
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'dt:line' + i, gap: i ? 2 * s : 10 * s })),
-      ...(it.perk ? [perkRow(it.perk, s, 10 * s)] : []), // an egg skin's power: the icon, its name and four words
+      ...(it.perk ? [{ ...perkRow(it.perk, s, 10 * s), right: true }] : []), // an egg skin's power: the icon, its name and four words
       ...(it.parts || []).map((P, i) => partRow(P, s, 'dt:part' + i, i ? 2 * s : 10 * s)), // a kit or a set: what is inside, one row each
       ...(it.sub && it.sub.strike ? [{ h: 24 * s, gap: 6 * s, draw: (x, y, w) => { // a half-price ticket in hand: the old price struck through, and what the ticket does
         const was = it.sub.text, tail = '  Half price with your ticket', fs = 15 * s, ww = ui.measure(was, fs), tw2 = ui.measure(tail, fs), x0 = x + (w - ww - tw2) / 2, cy = y + 12 * s;
         ui.text(was, x0, cy, { size: fs, color: it.sub.color, tag: 'dt:was' });
         ctx.save(); ctx.strokeStyle = '#e8402e'; ctx.lineWidth = 2.4 * s; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0 - 2 * s, cy + fs * 0.18); ctx.lineTo(x0 + ww + 2 * s, cy - fs * 0.18); ctx.stroke(); ctx.restore();
         ui.text(tail, x0 + ww, cy, { size: fs, color: '#7a48e8', maxW: w - ww, tag: 'dt:sub' });
-      } }] : it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 6 * s })] : []),
-      { h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x, y, w, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
-      ...(tryK && it.perk && !it.trying ? [lineBlock('The power comes with it.', 14 * s, { color: C.ink2, tag: 'dt:perkfree', gap: 8 * s })] : []),
-      ...(tryK ? [{ h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
+      } }] : it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 5 * s })] /* 0.8.16: stays with the words above it when the page shares out its air */ : []),
+      { right: true, h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x, y, w, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
+      ...(tryK && it.perk && !it.trying ? [{ ...lineBlock('The power comes with it.', 14 * s, { color: C.ink2, tag: 'dt:perkfree', gap: 8 * s }), right: true }] : []),
+      ...(tryK ? [{ right: true, h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
         ? ui.button('try:on', `Trying: ${DR.trials(save)[tryK[0]].left} level${DR.trials(save)[tryK[0]].left > 1 ? 's' : ''} left`, x, y, w, 50 * s, { kind: 'secondary', disabled: true, keepFace: true, dim: 1, size: 18 * s })
         : ui.button('try:' + tryK.join(':'), 'Try it free', x, y, w, 50 * s, { kind: 'secondary', size: 20 * s }) }] : []),
-      { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('dt:close', 'Close', x, y, w, 50 * s, { kind: 'tertiary', size: 20 * s }) },
+      { right: true, h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('dt:close', 'Close', x, y, w, 50 * s, { kind: 'tertiary', size: 20 * s }) },
     ];
   };
   let artH = 140;
   const A = ui.A, u = ui.u;
   if (cardFull({}, A)) {
     const rest = build(0)(1, fullInner(A, u) / u).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22;
-    artH = clamp((A.y1 - A.y - 30 * u) / u - rest - 40, 140, 300);
+    artH = clamp((A.y1 - A.y - 30 * u) / u - rest - 40, 140, 380); // (up to a square stage)
   }
-  stackCard(it.name, build(artH), { ribbon: '#7a48e8', grow: 1.2 });
+  stackCard(it.name, build(artH), { ribbon: '#7a48e8', grow: 1.2, twoCol: true }); // 0.8.16: landscape: the picture and its words left, the power and the buttons right
 }
 // an egg skin's power on its sheet: the icon in a cell, then "Name: four words"
 const perkRow = (P, s, gap) => ({ h: 44 * s, gap, draw: (x, y, w) => {
@@ -8538,8 +8542,12 @@ function drawTitle() {
   sg.addColorStop(0, 'rgba(30,14,4,0)'); sg.addColorStop(1, 'rgba(30,14,4,0.5)');
   ctx.fillStyle = sg; ctx.fillRect(0, ground + 20 * u, W_, H_ - ground - 20 * u);
   menuFx(); // the skin's falling effect: over the scene, under the logo and buttons
-  const logoS = Math.min(66 * u, (wide ? A.w * 0.5 : A.w) / 7.3, A.h / 6);
-  const ty = A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
+  // 0.8.16 (mykee: "look at the home page, especially the title and the unlock button"): on a tall phone the title
+  // spans the page column, the buttons' own edges, and stands clear under the Settings button; nothing shares its
+  // row any more (Unlock all moved down into the button block). Shorter screens keep the title between the corners.
+  const tall = !wide && A.h >= A.w * 1.9;
+  const logoS = tall ? bw / 5.02 : Math.min(66 * u, (wide ? A.w * 0.5 : A.w) / 7.3, A.h / 6);
+  const ty = tall ? A.y + 56 * u + logoS * 0.57 : A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
   const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, intro ? T * 1.7 : 9, FONT, ui.skin && ui.skin.pack ? (c, ch, i, sz, n) => logoDress(ui.skin, c, ch, i, sz, n) : null); // intro: the letters drop in a quicker cascade
   ui.record(logo, 'title:logo');
   const subY = ty + logoS * 0.5 + 18 * u;
@@ -8581,14 +8589,10 @@ function drawTitle() {
   }
   pop(0.05, vx, vy, () => drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm), 0.5); // the toy vault and the meadow friends settle in
   pop(0.2, A.x + 30 * u, A.y + 30 * u, () => { ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }); setMarkAt(A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u); }); // 0.8.14: the Settings mark
-  // remove ads / buy the game (app, until bought): a small gold pill in the top corner
-  if (fr) { /* first launch: nothing sold */ } else if (ads.canBuyPremium) {
-    const ps = 14 * u, pw2 = ui.measure('Unlock all', ps) + 44 * u, py2 = A.y + 10 * u;
-    pop(0.3, A.x1 - pw2 / 2 - 10 * u, py2 + 17 * u, () => ui.button('home:premium', 'Unlock all', A.x1 - pw2 - 10 * u, py2, pw2, 34 * u, { kind: 'gold', size: ps, icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) }));
-  } else if (ads.premium && save.wallet.premDay !== today() && save.wallet.charges < E.MAX_CHARGES) { // Premium: a free Chick Charge every day
-    const ps = 14 * u, lbl = 'Free charge', pw2 = ui.measure(lbl, ps) + 50 * u, py2 = A.y + 10 * u;
-    pop(0.3, A.x1 - pw2 / 2 - 10 * u, py2 + 17 * u, () => ui.button('home:charge', lbl, A.x1 - pw2 - 10 * u, py2, pw2, 34 * u, { kind: 'primary', shimmer: true, size: ps, icon: (c, x, y, sz) => drawStrikeToken(c, 'freeze', x, y, sz * 0.42, G.t, true) }));
-  }
+  // remove ads / buy the game (app, until bought), or Premium's free Chick Charge of the day: 0.8.16, a button of the
+  // block, beside Extras (same height, same size of words, the column's right edge), no longer a pill over the title
+  const side = fr ? null : ads.canBuyPremium ? { id: 'home:premium', label: 'Unlock all', o: { kind: 'gold', icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) } }
+    : ads.premium && save.wallet.premDay !== today() && save.wallet.charges < E.MAX_CHARGES ? { id: 'home:charge', label: 'Free charge', o: { kind: 'primary', shimmer: true, icon: (c, x, y, sz) => drawStrikeToken(c, 'freeze', x, y, sz * 0.42, G.t, true) } } : null;
   // PLAY breathes
   const ph = (fr ? 84 : 70) * u, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
   pop(0.25, bx, by + ph / 2, () => {
@@ -8616,7 +8620,9 @@ function drawTitle() {
   }
   // (2026-11-16 research: no top casual game puts a difficulty switch on home; it lives in Settings)
   // Extras: as wide as Play, 52 u tall, with the Extras page's little planet and egg
-  pop(0.54, bx, ry + rh + 8 * u + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ry + rh + 8 * u, bw, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: 1.8, size: 20 * u, round: 17 * u }));
+  const ey = ry + rh + 8 * u, ew = side ? (bw - 8 * u) / 2 : bw, es = side ? 18 * u : 20 * u;
+  pop(0.54, bx - bw / 2 + ew / 2, ey + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ey, ew, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: side ? 1.5 : 1.8, size: es, round: 17 * u }));
+  if (side) pop(0.6, bx + bw / 2 - ew / 2, ey + 26 * u, () => ui.button(side.id, side.label, bx + bw / 2 - ew, ey, ew, 52 * u, { ...side.o, size: es, round: 17 * u }));
   if (fade) ctx.globalAlpha = 1;
 }
 
