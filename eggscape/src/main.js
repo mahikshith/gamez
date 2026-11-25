@@ -5912,12 +5912,16 @@ function stackCard(title, build, o = {}) {
   const colH = (L, s) => L.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
   const measure = (s) => {
     if (two) {
+const fullInner = (A, s) => Math.min(A.w - 32 * ui.u, Math.max(372 * s, 440 * ui.u));
       const w = Math.min(o.maxW || A.w - 32 * u, 780 * s), cw = (w - 48 * s - 28 * s) / 2;
       const blocks = build(s, cw), hl = colH(blocks.filter((b) => !b.right), s), hr = colH(blocks.filter((b) => b.right), s);
       return { s, w, blocks, cw, hl, hr, h: CARD_HEAD * s + Math.max(hl, hr) + 22 * s };
     }
     const w = full ? A.w : Math.min(o.maxW || A.w - 32 * u, 420 * s);
-    const inner = full ? Math.min(w - 32 * s, 420 * s - 48 * s) : w - 48 * s; // the content column, centred on a full page
+    // the content column, centred on a full page. 0.8.16 (mykee: "it's not full screen"): it is the page column of the
+    // shop, Settings and the level card (ui.pageBox: 16 units from each edge), not a card's width that scales with s,
+    // so a page that could not grow (s = u) is as wide as one that did
+    const inner = full ? fullInner(A, s) : w - 48 * s;
     const blocks = build(s, inner);
     const h = CARD_HEAD * s + colH(blocks, s) + 22 * s;
     return { s, w, blocks, h, inner };
