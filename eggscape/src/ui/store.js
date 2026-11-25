@@ -1866,6 +1866,11 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
 // this level, the same 'boost:<id>' as the picker), then the cheapest ones to get with their coin price (a tap opens
 // the shop's Boosts row). state.mark(x, y, r): the caller's pulsing mark, on the video tile and on each owned booster
 // not armed yet. state.s: the card's scale. Fits in (x, y, w, h).
+// 0.8.17 (mykee: "right now it has a heartbeat effect, but we might want an even more blinking effect so that the user
+// will be able to point it out"): state.attn { calm, pointer(x, y, size, t) } replaces the pulsing marks with one effect
+// on the whole row: a bright gold rim that blinks twice and rests (a 2.4 s loop), a shine that sweeps across the tiles
+// after the blinks, and (attn.pointer, the caller's first visits of a session) a small tapping hand on the first tile.
+// Calm: the rim stays bright and still, no sweep. The caller stops it for good on a level once the strip was touched.
 export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   const { wallet, selected = new Set(), lastTapped = null, t = 0, hide = [], ad = null, mark = null, first = [], last = [], teach = null } = state, s = state.s || ui.u;
   // (the ones this level has a use for lead, the ones it has no use for come last: a Scarecrow where no villain lives)
@@ -1923,6 +1928,7 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
       ui.text(String(B.price), cx + c / 2 - pw / 2 + ps * 1.3, py + ps * 0.74, { size: ps, color: afford ? '#ffe27a' : '#d8c8a8', maxW: pw - ps * 1.4, noRecord: true });
     }
   });
+  if (state.attn && items.length) stripAttn(ui, ctx, x0, ty, tw, c, jg, n, t, s, state.attn);
   if (more) { // the row's next page: an arrow, and a dot for each page
     const cx = x0 + items.length * (c + jg), mx = cx + c / 2, my = ty + c * 0.4, a = c * 0.13;
     ui.button('strip:more', '', cx, ty, c, c, { kind: 'secondary', round: 14 * s });
@@ -1932,6 +1938,35 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
     for (let i = 0; i < more.pages; i++) { ctx.beginPath(); ctx.arc(dx0 + i * dg, dy, dr, 0, Math.PI * 2); ctx.fillStyle = i === more.pg ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.fill(); }
     ctx.restore();
   }
+}
+
+// the strip's call for attention (see drawBoosterStrip): the rim, the sweep, the hand
+function stripAttn(ui, ctx, x0, ty, tw, c, jg, n, t, s, A) {
+  const P = 2.4, p = ((t % P) + P) % P, blip = (q) => (q > 0 && q < 1 ? Math.sin(q * Math.PI) : 0);
+  const k = A.calm ? 1 : Math.max(blip(p / 0.3), blip((p - 0.4) / 0.3)); // two quick blinks, then it rests
+  const rx = x0 - 4 * s, ry = ty - 4 * s, rw = tw + 8 * s, rh = c + 8 * s, rr = 18 * s;
+  ctx.save();
+  if (k > 0.02 && !A.calm) { // the halo of a blink: warm orange light round the row
+    ui.roundRect(rx - 3 * s, ry - 3 * s, rw + 6 * s, rh + 6 * s, rr + 3 * s); ctx.lineWidth = 12 * s; ctx.strokeStyle = `rgba(255,150,0,${(0.38 * k).toFixed(3)})`; ctx.stroke();
+  }
+  ui.roundRect(rx, ry, rw, rh, rr); ctx.lineWidth = (3.5 + 2 * k) * s; // the rim: deep gold at rest, white-hot as it blinks
+  ctx.strokeStyle = A.calm ? '#ffa814' : `rgb(255,${Math.round(168 + 82 * k)},${Math.round(20 + 190 * k)})`; ctx.stroke();
+  ctx.restore();
+  if (!A.calm) { // after the blinks a shine runs across the tiles, left to right
+    const q = (p - 0.85) / 0.75;
+    if (q > 0 && q < 1) {
+      const e = q * q * (3 - 2 * q), sx = x0 - c + (tw + 2 * c) * e;
+      for (let i = 0; i < n; i++) { // each tile's face in turn (the gaps between them stay the card's)
+        const tx = x0 + i * (c + jg);
+        if (sx + c * 0.8 < tx || sx > tx + c) continue;
+        ctx.save(); ui.roundRect(tx, ty, c, c - 4 * s, 14 * s); ctx.clip();
+        ctx.fillStyle = `rgba(255,255,255,${(0.75 * Math.sin(q * Math.PI)).toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(sx, ty + c); ctx.lineTo(sx + c * 0.45, ty); ctx.lineTo(sx + c * 0.8, ty); ctx.lineTo(sx + c * 0.35, ty + c); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+  if (A.pointer) A.pointer(x0 + c * 0.7, ty + c * 0.5, c, t);
 }
 
 // Art for an offer card (offers.js): a product by sku, or an item: 'charge' (a Chick Charge), 'coins', 'chick:<id>'.
