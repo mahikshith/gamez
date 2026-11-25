@@ -978,3 +978,20 @@ export function drawStopCall(ctx, L, x, y, t, calm, boss) {
 }
 // where the hen's feet rest in the level-to-play nest: y below the stop's centre (px)
 export function stopFeet(L, boss) { const ry = NEST_RX.cur * L.u * (boss ? 1.14 : 1) * 0.4; return -ry * 0.1 + ry * 0.62 * 0.85; }
+// 0.8.16 (mykee: "the hen doesn't sit in the nest, they are coinciding or overlapping"): she sat ON the hollow, her body
+// above it and the dark hollow showing in front of her. Now she sits IN it: her body sinks until the nest's near lip crosses
+// it SEAT_Y units down her 100-unit height (drawHenAnim: her feet at 48), and nestClip hides whatever of her is inside the
+// nest (below the lip, behind the front rim): no feet poking out under it, no rim painted over her face.
+const SEAT_Y = 27;
+const nestDims = (L, st, boss) => { const rx = NEST_RX[st] * L.u * (boss ? 1.14 : 1), ry = rx * 0.4; return { rx, ry, bowlY: -ry * 0.1, brx: rx * 0.7, bry: ry * 0.62 }; };
+// her feet below the stop's centre (px) sitting in nest `st` (hh = her height in px); on a bare stepping stone she stands
+export function nestSeat(L, st, boss, hh) { if (!NEST_RX[st] || st === 'far') return 0; const d = nestDims(L, st, boss); return d.bowlY + d.bry + ((48 - SEAT_Y) * hh) / 100; }
+// clip to everything but the inside of the nest at (x, y): the box under the hollow's middle line, less the hollow's near half
+export function nestClip(ctx, L, x, y, st, boss) {
+  if (!NEST_RX[st] || st === 'far') return;
+  const d = nestDims(L, st, boss), cy = y + d.bowlY;
+  ctx.beginPath(); ctx.rect(-1e5, -1e5, 2e5, 2e5);
+  ctx.rect(x - d.rx * 1.3, cy, d.rx * 2.6, d.ry * 3);
+  ctx.moveTo(x + d.brx, cy); ctx.ellipse(x, cy, d.brx, d.bry, 0, 0, Math.PI); ctx.closePath();
+  ctx.clip('evenodd');
+}

@@ -63,7 +63,7 @@ import { drawJelly as devJelly } from './render/reef.js';
 import { REEF_DEMOS } from './data/reef-demos.js'; // world 8 studio levels (dev)
 import { drawSeaUnder, drawSeaOver, seaEvent, seaAnim } from './render/sea.js'; // v3.3 octopus and fish
 import { drawReefUnder, drawReefOver, reefEvent, drawSurface, drawBoat, boatSeat, drawRiseGuide } from './render/reef.js'; // world 8 Coral Reef (underwater)
-import { drawDenAlone, drawThiefDens, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
+import { drawDenAlone, drawThiefDens, eggInDen, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
 import { RIG as THIEF_RIG } from './sim/thieves.js';
 import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
 import { LAB_DEMOS } from './data/lab-demos.js'; // v4 Shape Lab studio levels: the clockwork cast and the owl
@@ -4752,6 +4752,7 @@ function render() {
   const SL = (types, fn) => blastXf(() => SL0(types, fn), types.length * 1.7 + types[0].length); // the crow wave makes a creature flinch as it passes // Chick Strike: a struck villain's layer is drawn through its reaction
   SL(['bx'], (c) => drawBossActor(c, sim, k, t));
   blastXf(() => drawThiefDens(ctx, sim, t, k), 2.2); // v3.6: the weasel's den and the rats' hole in the floor ring
+  blastXf(() => drawThiefDens(ctx, sim, t, k, 'in', (e) => drawEggFelt(e, t, k)), 2.2); // 0.8.16: inside the weasel's stump (a thief in its doorway, the stolen eggs), then its front: a thief outside is in front of it
   blastXf(() => { for (const ring of sim.rings) if (ring.gearOut) W.drawGearCog(ctx, ring, ring.gearOut, t); }, 17.1); // the idler cogs go with the rings
   // gear trains: while the player turns one ring, the rings it drives show which way they go; the first time
   // ever, a label says so
@@ -4790,13 +4791,13 @@ function render() {
   blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
   SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
   if (DEV && G.probe) G.probe('creatures');
-  for (const e of sim.aliveEggs()) if (!overNest(sim, e)) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
+  for (const e of sim.aliveEggs()) if (!overNest(sim, e) && !eggInDen(sim, e)) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
   drawChickFX(ctx, sim, t, k);
   drawMagnetField(ctx, sim, t, k, save.calm); // v3.1 magnet; 2026-11-20: over the eggs (the two poles, the field lines, the pull)
   blastXf(() => { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); }, 10.4); // v3.3: the arms wrapped over a held egg
   blastXf(() => drawReefOver(ctx, sim, t, k), 8.2); // world 8: claws over a held egg, the silt cloud
   if (sim.water) drawBoat(ctx, sim, t, k); // world 8: the boat on the surface, over the hen's legs
-  blastXf(() => drawThiefDens(ctx, sim, t, k, true), 2.2); // 2026-11-19: the den's rim and shade over a stolen egg (it lies inside)
+  blastXf(() => drawThiefDens(ctx, sim, t, k, true), 2.2); // 2026-11-19: the den's rim and shade over a stolen egg (it lies inside); the stump's red alert
   blastXf(() => drawThievesOver(ctx, sim, t, k), 9.1); // v3.6: the weasel's jaws over a held egg, the trap ring
   SL(['mosq'], (c) => drawBayouOver(c, sim, t, k)); // v3.7: a turtle's beak round its egg, mosquito swarms
   SL(['snake'], (c) => W.drawSnakes(c, sim, t, k)); // predators (v3)
@@ -8744,6 +8745,7 @@ function drawLevels() {
     }
     const o = { w, num: Lv.id, stars: starsOf(Lv.id), boss, DPR, p, part: 'back', hard: isHardLevel(Lv) && save.mode !== 'easy' };
     if (state === 'cur') { if (!(TR && !TR.arrived)) MS.drawStopCall(ctx, L, x, y, t, calm, boss); curAt = { x, y, o, boss, i }; }
+    if (TR && i === TR.from) TR.fromSt = state; // the nest she climbs out of
     MS.drawStop(ctx, L, x, y, state, o);
   }
   // the boss treasures: a chest beside every boss stop, on the side away from where the hen would stand
@@ -8776,15 +8778,19 @@ function drawLevels() {
   const ahead = (i) => { const a = L.stops[i], n2 = L.stops[i + 1] || null, b2 = L.stops[i - 1] || a; const dx = n2 ? n2.x - a.x : a.x - b2.x; return dx >= 0 ? 1 : -1; };
   G.mapHen = null;
   if (TR) {
-    const fa = MS.stopFeet(L, !!LEVELS[TR.from].boss), fb = MS.stopFeet(L, !!LEVELS[TR.to].boss), e = TR.e;
+    const bA = !!LEVELS[TR.from].boss, bB = !!LEVELS[TR.to].boss, fa = MS.stopFeet(L, bA), fb = MS.stopFeet(L, bB), e = TR.e;
+    const sA = TR.fromSt || 'won', inA = 1 - ss01(e / 0.12), inB = ss01((e - 0.88) / 0.12); // 0.8.16: she climbs out of the nest she sat in and settles into the next one
     const steps = Math.max(3, Math.round(4 * (TR.dur || 1.2) / 1.2));
     const hop = calm || TR.arrived ? 0 : Math.abs(Math.sin(e * Math.PI * steps)) * hh * 0.2 * (1 - e * 0.4);
     const dirY = L.stops[TR.to].y < L.stops[TR.from].y ? -1 : 1, dx = L.pathX(TR.y + dirY * 8 * u) - TR.x;
     if (TR.face == null) TR.face = ahead(TR.from) * (dirY < 0 ? 1 : -1);
     if (TR.arrived || e > 0.92) TR.face = ahead(TR.to); else if (Math.abs(dx) > 1.5 * u) TR.face = dx > 0 ? 1 : -1;
-    const gy = TR.y - sy + fa + (fb - fa) * e, hx = TR.x; // the ground under her feet
+    const gy = TR.y - sy + fa + (fb - fa) * e + inA * (MS.nestSeat(L, sA, bA, hh) - fa) + inB * (MS.nestSeat(L, 'cur', bB, hh) - fb), hx = TR.x; // the ground under her feet (in a nest: down in the straw)
     if (hop > 0.5) { ctx.beginPath(); ctx.ellipse(hx, gy + 1 * u, hh * 0.26 * (1 - hop / (hh * 0.6)), hh * 0.065, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill(); }
+    const na = e < 0.5 ? L.stops[TR.from] : L.stops[TR.to];
+    ctx.save(); MS.nestClip(ctx, L, na.x, na.y - sy, e < 0.5 ? sA : 'cur', e < 0.5 ? bA : bB);
     drawHenAnim(ctx, TR.arrived ? 'happy' : 'idle', hx, gy - hop - hh * 0.5, hh, t, { key: 'map', face: TR.face, calm, shadow: 0 });
+    ctx.restore();
     G.mapHen = { x: hx, y: gy - hop, to: TR.to };
     if (curAt && curAt.i === TR.to) MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
     if (TR.arrived) {
@@ -8795,8 +8801,10 @@ function drawLevels() {
       ctx.restore();
     }
   } else if (curAt) {
-    const fy = curAt.y + MS.stopFeet(L, curAt.boss);
+    const fy = curAt.y + MS.nestSeat(L, 'cur', curAt.boss, hh); // 0.8.16: sitting IN the nest, her lower half in the straw
+    ctx.save(); MS.nestClip(ctx, L, curAt.x, curAt.y, 'cur', curAt.boss);
     drawHenAnim(ctx, 'idle', curAt.x, fy - hh * 0.5, hh, t, { key: 'map', face: ahead(curAt.i), calm, shadow: 0 });
+    ctx.restore();
     G.mapHen = { x: curAt.x, y: fy, to: curAt.i };
     MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
   }
