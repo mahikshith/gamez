@@ -60,11 +60,12 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 { // prizes land in the wallet; a full stack pays coins; the rare bird is something not owned
   const s = mk(); for (let i = 0; i < 3; i++) SP.noteWin(s);
-  const r = SP.spin(s, 'free', 'd1', seq(0)); // the first prize: 30 coins
-  ok(r.prize.kind === 'coins' && s.wallet.coins === 530, 'coins: +30');
+  const r = SP.spin(s, 'free', 'd1', seq(0)); // the first prize: 10 coins (0.8.17 the Mint; it was 30)
+  ok(r.prize.kind === 'coins' && s.wallet.coins === 510, 'coins: +10');
   const w = SP.grant(defaultWallet(), { kind: 'booster', item: 'stone', n: 2 }); ok(ownedCount(w, 'stone') === 2, 'boosters: +2 Stone shell');
   const full = { ...defaultWallet(), owned: { stone: GIFT_MAX } }, wf = SP.grant(full, { kind: 'booster', item: 'stone', n: 1 });
-  ok(ownedCount(wf, 'stone') === GIFT_MAX && wf.coins === 20, 'a gift into a full stack pays half its price in coins (never an empty spin, never a flood)');
+  ok(ownedCount(wf, 'stone') === GIFT_MAX && wf.coins === 10, 'a gift into a full stack pays a quarter of its price in coins (never an empty spin, never a flood; 0.8.17 the Mint, it was half)');
+  const fc = SP.grant({ ...defaultWallet(), charges: 30 }, { kind: 'charge', n: 1 }); ok(fc.charges === 30 && fc.coins === 10, 'a Chick Charge into a full sack pays a quarter of its price too (it was its whole price)');
   ok(SP.grant(defaultWallet(), { kind: 'charge', n: 1 }).charges === 1 && SP.grant(defaultWallet(), { kind: 'skip', n: 1 }).tickets.skip === 1, 'a Chick Charge and a Skip Ticket land');
   const rare = SP.TABLE.find((t) => t.kind === 'rare'), P = SP.prizeFor(rare, defaultWallet(), seq(0));
   ok((P.kind === 'hen' && !HEN_SKINS[P.item].premium) || P.kind === 'chick', 'the rare slice gives a hen outfit or a chick, never a real-money one');
@@ -88,13 +89,13 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   ok(SP.banked(s) === 1, 'the next day the third step opens the spin');
   ok(SP.tier(mk({ unlocked: 5 })) === 0 && SP.tier(mk({ unlocked: 11 })) === 1 && SP.tier(mk({ unlocked: 30 })) === 2 && SP.tier(mk({ unlocked: 45 })) === 3, 'the wheel has four sizes: worlds 1-2, 3-5, 6-8, 9-10');
   const w0 = SP.wheel(mk({ unlocked: 5 })), w3 = SP.wheel(mk({ unlocked: 45 }));
-  ok(w0.find((o) => o.id === 'c1').n === 30 && w3.find((o) => o.id === 'c1').n === 75 && w3.find((o) => o.id === 'c3').n === 375, 'coin prizes grow with the world: 30 -> 75, 150 -> 375');
+  ok(w0.find((o) => o.id === 'c1').n === 10 && w3.find((o) => o.id === 'c1').n === 15 && w3.find((o) => o.id === 'c3').n === 65, 'coin prizes grow with the world: 10 -> 15, 50 -> 65 (0.8.17 the Mint; they were 30 -> 75, 150 -> 375)');
   ok(w0.every((o, i) => o.pct === w3[i].pct), 'the odds are the same at every size');
   const late = mk({ unlocked: 45 }); for (let i = 0; i < 3; i++) SP.noteWin(late);
   const c0 = late.wallet.coins, r = SP.spin(late, 'free', 'd1', seq(0));
-  ok(r.prize.n === 75 && late.wallet.coins === c0 + 75, 'and the prize paid is the amount the wheel showed');
+  ok(r.prize.n === 15 && late.wallet.coins === c0 + 15, 'and the prize paid is the amount the wheel showed');
   ok([5, 11, 30, 45].every((u) => { const sv = mk({ unlocked: u }); return SP.meanWorth(defaultWallet(), SP.coinX(sv)) * SP.hitRate() < SP.ways(sv, 'd9').coin; }), 'at every size the first coin spin costs more than a spin is worth on average');
-  ok(SP.ways(mk({ unlocked: 45 }), 'd9').coin === 200, 'the coin price grows with the wheel (80 -> 200 in the last worlds)');
+  ok(SP.ways(mk({ unlocked: 45 }), 'd9').coin === 100, 'the coin price grows with the wheel (80 -> 100 in the last worlds; 0.8.17 the wheel grows less)');
 }
 { // the cheer-up spin: the third loss in a row on a level, once per level, two a day
   const s = mk();
@@ -152,7 +153,7 @@ const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const w1 = SP.grant(w0, P);
   ok(w1.coupon === 1 && w1.coins === 500, 'it is held in the purse and adds no coins');
   const P2 = SP.prizeFor(cp, w1, () => 0, 1.5);
-  ok(P2.kind === 'coins' && P2.n === 60 && P2.instead === 'coupon', 'a second ticket while one is held pays coins instead (40 x the tier), as the odds sheet says');
+  ok(P2.kind === 'coins' && P2.n === 30 && P2.instead === 'coupon', 'a second ticket while one is held pays coins instead (20 x the tier; 0.8.17 the Mint, it was 40), as the odds sheet says');
   const U = unlockPrice(w1, SKINS.dino.price), U0 = unlockPrice(w0, SKINS.dino.price);
   ok(U.price === 100 && U.was === 200 && U.coupon && U0.price === 200 && !U0.coupon, 'with a ticket the Dino egg costs 100, crossed out 200; without one 200');
   const poor = { ...w1, coins: 110 };

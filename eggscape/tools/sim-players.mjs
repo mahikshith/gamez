@@ -19,6 +19,7 @@ import * as OF from '../src/offers.js';
 import * as OR from '../src/engine/oracle.js';
 import * as HE from '../src/engine/herald.js';
 import * as ENG from '../src/engine/index.js';
+import * as MINT from '../src/engine/mint.js';
 import { LEVELS } from '../src/data/levels.js';
 import { HARD_IDS } from '../src/sim/sim.js';
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
@@ -55,7 +56,11 @@ export const WORLD = {
   usdPerVideo: 0.01, // a rewarded video at a 10 dollar eCPM
   videoTire: 0.82, // each video already watched today makes the next "yes" this much less likely
   dailyFrom: 6, dailyDiff: 0.4, // the Daily Vault: one fresh level a day from here on, of middling difficulty
+  online: 0.85, // 0.8.17: share of sessions played online (offline: no videos, no online share of a win)
+  gateBuy: 0.5, // a shut world gate he can pay for: bought at least this often (or as often as he spends coins on help)
 };
+// 0.8.17 the world gates (main.js envOpen / GATE_COINS, the Mint's rules): levels per world, counted from the levels
+export const PER_ENV = LEVELS.filter((l) => l.world === LEVELS[0].world).length;
 // skill 0..1; days: chance to play on a living day [weekday, weekend]; sess: sessions on such a day; mins: minutes each;
 // patience: losses in a row on one level before the session ends; quit: base chance a day to stop for good;
 // video: yes to an offered video; coin: spends coins on help when stuck; boost: uses a booster he holds on a level he lost;
@@ -80,20 +85,34 @@ const sig = (z) => 1 / (1 + Math.exp(-z));
 const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const stock = (w) => Object.values(w.owned || {}).reduce((a, b) => a + b, 0);
 const totalStars = (save) => LEVELS.reduce((a, L) => a + (save.stars[L.id] || 0), 0);
+// the same rule as main.js: world k is open when every world up to it is ready (the one before open, its boss passed)
+// and has its stars or its bought gate
+const envBoss = (save, k) => { const Lw = LEVELS.slice(k * PER_ENV, (k + 1) * PER_ENV), b = Lw.find((L) => L.boss) || Lw[Lw.length - 1]; return !!b && ((save.stars[b.id] || 0) > 0 || !!(save.skipped && save.skipped[b.id])); };
+export function envOpen(save, k) {
+  if (save.wallet.noAds) return true; // Unlock Everything opens every level
+  const st = totalStars(save);
+  for (let j = 0; j <= k; j++) if (!MINT.worldReady(j, () => true, (i) => envBoss(save, i)) || !(st >= MINT.worldNeed(j, PER_ENV) || !!(save.gates && save.gates[j]))) return false;
+  return true;
+}
 
 export function life(P, seed, days = 30, watch = null) {
   const R = rng(seed), yes = (p) => R() < p;
-  const save = { unlocked: 1, stars: {}, best: {}, wallet: E.defaultWallet(), streak: 0, daily: {}, adDay: null };
+  const save = { unlocked: 1, stars: {}, best: {}, wallet: E.defaultWallet(), streak: 0, daily: {}, adDay: null, gates: {}, skipped: {}, mint: null };
   const S = { // what happened, for the report
     daysPlayed: 0, sessions: 0, cards: 0, cardsMax: 0, buys: {}, tries: 0, wins: 0, videos: 0, usd: 0, moneyAsks: 0, moneyAskEarly: 0, spins: { free: 0, ad: 0, coin: 0, miss: 0, retry: 0 }, bought: 0, used: 0, rewinds: 0, skips: 0, unlocks: 0, coupons: 0, starved: 0, freeHelp: 0, asks: {},
+    gates: 0, gateCoins: 0, gatesStars: 0, replays: 0, replayCoins: 0, online: 0, dbl: 0, dblCoins: 0, chests: 0, dayMax: 0, gatedBy: 0,
     notes: 0, notesGone: 0, notesSameDay: 0, notesTapped: 0, askedDay: -1, allowed: false, quitDay: -1, quitAt: 0, levelAt: {}, doneDay: -1, idleDays: 0, maxStock: 0, maxPurse: 0, stuckMax: 0, down: '', bad: [],
   };
   const fail = (m) => { if (S.bad.length < 5) S.bad.push(m); };
   ENG.boot(save);
-  let alive = true, lastEnd = '', cheered = false, plan = null, lastNoteDay = '', premium = false, cardsNow = 0, pending = { id: 0, n: 0 };
-  const sync = (why, now) => ENG.sync(save, why, dayKey(now), now);
-  const video = (now) => { if (premium) return; S.videos++; S.usd += WORLD.usdPerVideo; OF.noteRewarded(save, now); ENG.video(save); };
-  const wantsVideo = (now) => premium || yes(P.video * WORLD.videoTire ** OF.adsToday(save, now)); // Unlock Everything gives the reward without one
+  let alive = true, lastEnd = '', cheered = false, plan = null, lastNoteDay = '', premium = false, cardsNow = 0, pending = { id: 0, n: 0 }, online = true, bonusWins = 0, bonusAt = 0, dayIn = { day: '', n: 0 };
+  // coins from videos, video spins and daily gifts in one day (the Mint's DAY ceiling). Banked free spins are counted
+  // apart (freeSpins): most come from fresh wins, one for every three new levels, so they are paid by progress, not by the day
+  const dayAdd = (now, n, why) => { const k = dayKey(now); if (dayIn.day !== k) dayIn = { day: k, n: 0, by: {} }; dayIn.by[why] = (dayIn.by[why] || 0) + Math.max(0, n); if (why !== 'freeSpins') dayIn.n += Math.max(0, n); if (dayIn.n > S.dayMax) { S.dayMax = dayIn.n; S.dayTop = { ...dayIn.by }; } S.freeSpinMax = Math.max(S.freeSpinMax || 0, dayIn.by.freeSpins || 0); };
+  let lastC = 0; S.src = {}; S.spinBy = {}; // coins in by where they came from (the report's faucet table)
+  const sync = (why, now) => { const dc = save.wallet.coins - lastC; if (dc > 0) S.src[why] = (S.src[why] || 0) + dc; lastC = save.wallet.coins; return ENG.sync(save, why, dayKey(now), now); };
+  const video = (now) => { if (premium) return; if (!online) fail('a video offline'); S.videos++; S.usd += WORLD.usdPerVideo; OF.noteRewarded(save, now); ENG.video(save); };
+  const wantsVideo = (now) => premium || (online && yes(P.video * WORLD.videoTire ** OF.adsToday(save, now))); // Unlock Everything gives the reward without one; offline: no videos
   // an offer card at a calm moment: the offer engine picks (its caps included), the Brain's gate allows, as in main.js offerMoments
   const offer = (moment, now, ctx) => {
     if (DR.earlyDays(save)) { if (BR.gate(save, moment, { now, levelId: ctx.levelId }).money) S.moneyAskEarly++; return; }
@@ -112,7 +131,7 @@ export function life(P, seed, days = 30, watch = null) {
       } else { OF.markDismissed(save, o, now, ctx.levelId); BR.note(save, 'no', { id: o.id }, now); }
     } else if (wantsVideo(now)) { // a free thing for a video: a Chick Charge, or coins
       video(now); BR.note(save, 'yes', { id: o.id }, now);
-      if (o.item === 'coins') { const c = E.freeCoinsNext(save.adDay, dayKey(now)); save.wallet = E.addCoins(save.wallet, c); save.adDay = E.noteFreeCoins(save.adDay, dayKey(now)); }
+      if (o.item === 'coins') { const c = E.freeCoinsNext(save.adDay, dayKey(now)); save.wallet = E.addCoins(save.wallet, c); save.adDay = E.noteFreeCoins(save.adDay, dayKey(now)); dayAdd(now, c, 'freeCoins'); }
       else save.wallet = { ...save.wallet, charges: Math.min(E.MAX_CHARGES, (save.wallet.charges || 0) + 1) };
       sync('video', now);
     } else { OF.markDismissed(save, o, now, ctx.levelId); BR.note(save, 'no', { id: o.id }, now); BR.note(save, 'videoNo', {}, now); }
@@ -121,9 +140,12 @@ export function life(P, seed, days = 30, watch = null) {
   const spinAll = (now) => { // every banked spin, then the video spin, then perhaps one for coins
     const day = dayKey(now);
     // (the villains take some pulls; since 0.8.16 a lost pull is lost: its coins or its video are spent)
-    const got = (r) => { if (r.miss) S.spins.miss++; else if (r.prize.kind === 'coupon') S.coupons++; sync('spin', now); };
+    const got = (r) => { if (r.miss) S.spins.miss++; else { if (r.prize.kind === 'coupon') S.coupons++; const k = r.prize.id + (r.prize.instead ? '>coins' : ''); S.spinBy[k] = (S.spinBy[k] || 0) + Math.max(0, save.wallet.coins - lastC + (r.paid || 0)); } sync('spin', now); };
+    let c0 = save.wallet.coins;
     while (SP.ways(save, day).free) { const r = SP.spin(save, 'free', day, R); if (!r) break; S.spins.free++; got(r); }
+    dayAdd(now, save.wallet.coins - c0, 'freeSpins'); c0 = save.wallet.coins;
     while (SP.ways(save, day).ad && wantsVideo(now)) { video(now); const r = SP.spin(save, 'ad', day, R); if (!r) break; S.spins.ad++; got(r); }
+    dayAdd(now, save.wallet.coins - c0, 'videoSpins');
     const c = SP.ways(save, day).coin;
     if (c != null && save.wallet.coins >= c + 60 && yes(P.wheel)) { const c0 = save.wallet.coins, r = SP.spin(save, 'coin', day, R); if (r) { S.spins.coin++; if (save.wallet.coins > c0 - c && r.miss) fail('a coin pull the villains took was not paid for'); got(r); } }
   };
@@ -159,18 +181,28 @@ export function life(P, seed, days = 30, watch = null) {
       }
       plan = null;
       ENG.open(save, now, from); OF.startSession(save, now, R); S.sessions++;
-      { const w = E.openDailyChest(save.wallet, dayKey(now)); if (w) { save.wallet = w; sync('daily', now); } }
+      online = yes(WORLD.online); if (online) S.online++;
+      { const w = E.openDailyChest(save.wallet, dayKey(now)); if (w) { dayAdd(now, w.coins - save.wallet.coins, 'dailyChest'); save.wallet = w; sync('daily', now); } }
       const end = now + P.mins * 60000; let run = 0; cheered = false; lastEnd = ''; cardsNow = 0;
       offer('home', now, { levelId: save.unlocked });
       if (save.unlocked >= WORLD.dailyFrom && save.daily.paid !== dayKey(now)) { // the Daily Vault: one fresh run a day
         now += 80000; S.tries++;
-        if (yes(sig(WORLD.steep * (P.skill - WORLD.dailyDiff)))) { S.wins++; save.daily = { day: dayKey(now), paid: dayKey(now) }; save.wallet = E.payWin(save.wallet, E.levelCoins({ stars: 2, saved: 2, eggs: 3 }).total, true).wallet; sync('win', now); SP.noteWin(save, true); SP.notePlayed(save, dayKey(now)); spinAll(now); }
+        if (yes(sig(WORLD.steep * (P.skill - WORLD.dailyDiff)))) { S.wins++; save.daily = { day: dayKey(now), paid: dayKey(now) }; const vc = E.levelCoins({ stars: 2, saved: 2, eggs: 3 }).total + MINT.FAUCETS.dailyVault.coins; save.wallet = E.payWin(save.wallet, vc + MINT.onlineBonus(vc, online), true).wallet; sync('vault', now); SP.noteWin(save, true); SP.notePlayed(save, dayKey(now)); spinAll(now); }
       }
       while (now < end) {
         // which level: the next one, or (those who chase stars) an old one with stars missing; after level 50 only old ones are left
         const done = save.unlocked >= LEVELS.length && (save.stars[LEVELS.length] || 0) > 0;
         let L = LEVELS[Math.min(LEVELS.length, save.unlocked) - 1];
         if (done || yes(P.stars)) { const old = LEVELS.filter((l) => l.id < save.unlocked + (done ? 1 : 0) && (save.stars[l.id] || 0) < 3); if (old.length) L = old[Math.floor(R() * old.length)]; else if (done) break; }
+        if (!done && L.id === Math.min(LEVELS.length, save.unlocked)) { // 0.8.17 the world gate: shut, he pays for the stars it misses (when he can and will), else replays for stars
+          const k = Math.floor((L.id - 1) / PER_ENV);
+          if (!envOpen(save, k)) {
+            const B = MINT.gateBuy(k, { stars: totalStars(save), perEnv: PER_ENV, coins: save.wallet.coins, open: (j) => envOpen(save, j), bossPassed: (j) => envBoss(save, j) });
+            if (B.why === 'order') fail('a gate in front of a world whose boss was not passed');
+            if (B.ok && yes(Math.max(WORLD.gateBuy, P.coin))) { save.wallet = { ...save.wallet, coins: save.wallet.coins - B.price }; save.gates = { ...save.gates, [k]: 1 }; S.gates++; S.gateCoins += B.price; sync('shop', now); }
+            else { const old = LEVELS.filter((l) => l.id < L.id && (save.stars[l.id] || 0) < 3); S.gatedBy++; if (old.length) L = old[Math.floor(R() * old.length)]; else break; }
+          }
+        }
         if (done && S.doneDay < 0) S.doneDay = d;
         const id = L.id, hard = HARD_IDS.includes(id), att = (save.dir && save.dir.att && save.dir.att[id]) || { tries: 0, streak: 0 };
         // help before the try: a booster he holds (on a level that already beat him, or a hard one), bought if he is stuck and buys
@@ -190,8 +222,10 @@ export function life(P, seed, days = 30, watch = null) {
         if (won) {
           S.wins++; run = 0; lastEnd = 'won';
           const pw = sig(WORLD.steep * (P.skill - WORLD.diff(id)) + help), stars = yes(pw * pw) ? 3 : yes(0.75) ? 2 : 1, old = save.stars[id] || 0;
-          const c = E.levelCoins({ stars, saved: L.target || 1, eggs: 3, perfect: stars === 3 && yes(0.5), hard });
-          const pay = E.payWin(save.wallet, c.total, true); save.wallet = pay.wallet; sync('win', now);
+          bonusWins++;
+          const c = E.levelCoins({ stars, saved: L.target || 1, eggs: 3, perfect: stars === 3 && yes(0.5), hard, fresh: stars > old }), cOn = c.total + MINT.onlineBonus(c.total, online);
+          if (stars <= old) { S.replays++; S.replayCoins += c.total; }
+          const pay = E.payWin(save.wallet, cOn, true); save.wallet = pay.wallet; sync(stars > old ? 'win' : 'replay', now);
           DR.noteResult(save, id, true, { saved: L.target || 1 }); BR.note(save, 'level', {}, now);
           const vShown = !premium && !early;
           ENG.result(save, { id, won: true, secs, near: false }, { hard, videoShown: vShown, coinShown: false }, now);
@@ -199,7 +233,16 @@ export function life(P, seed, days = 30, watch = null) {
           if (stars > old) { save.stars[id] = stars; newToday = true; }
           save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, id + 1));
           SP.noteWin(save, stars > old); if (secs >= 15) SP.notePlayed(save, dayKey(now));
-          if (!early && wantsVideo(now)) { video(now); save.wallet = E.addCoins(save.wallet, pay.coins); sync('video', now); } // double coins
+          // the win page's one video (0.8.17: inside the Mint's win-video pot a day): the Bonus chest when an ad break would
+          // have been due (ads.js bonusDue: from level 8, three wins and four minutes apart), else Double coins
+          const day = dayKey(now), chest = id >= 8 && bonusWins >= 3 && now - bonusAt >= 240000 && MINT.winVideoOk(save.mint, day, E.BONUS_CHEST.coins);
+          if (chest) { bonusWins = 0; bonusAt = now; }
+          if (!early && (chest || MINT.winVideoOk(save.mint, day, pay.coins)) && wantsVideo(now)) {
+            video(now);
+            if (chest) { save.wallet = E.openBonusChest(save.wallet, id); save.mint = MINT.winVideoTake(save.mint, day, E.BONUS_CHEST.coins); S.chests++; dayAdd(now, E.BONUS_CHEST.coins, 'winVideo'); }
+            else { save.wallet = E.addCoins(save.wallet, pay.coins); save.mint = MINT.winVideoTake(save.mint, day, pay.coins); S.dbl++; S.dblCoins += pay.coins; dayAdd(now, pay.coins, 'winVideo'); }
+            sync('video', now);
+          }
           if (id % 5 === 0 && E.bossTreasure(id) && !E.treasureOpened(save.wallet, id)) { const w = E.openBossTreasure(save.wallet, id); if (w) { save.wallet = w; sync('treasure', now); } }
           { const T = DR.winTaste(save, { levelId: id, boss: id % 5 === 0, chicks: [], rand: R }); if (T) { DR.startTaste(save, T, now, R); if (T.kind === 'boost') { save.wallet = E.tasteBooster(save.wallet, T.id); sync('gift', now); } } }
           for (let ch = E.chestFor(totalStars(save), save.wallet.chests); ch && ch.ready; ch = E.chestFor(totalStars(save), save.wallet.chests)) { const w = E.openChest(save.wallet, ch); if (!w) break; save.wallet = w; sync('chest', now); }
@@ -215,7 +258,7 @@ export function life(P, seed, days = 30, watch = null) {
           const streak = ((save.dir && save.dir.att && save.dir.att[id]) || {}).streak || 0;
           if (SP.noteLoss(save, id, streak, dayKey(now))) { cheered = true; spinAll(now); }
           if (secs >= 15) SP.notePlayed(save, dayKey(now));
-          if (streak >= P.patience + 2 && E.itemCount(save.wallet, 'skip') > 0) { const w = E.useTicket(save.wallet, 'skip'); if (w) { save.wallet = w; save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, id + 1)); S.skips++; sync('skip', now); run = 0; } }
+          if (streak >= P.patience + 2 && E.itemCount(save.wallet, 'skip') > 0) { const w = E.useTicket(save.wallet, 'skip'); if (w) { save.wallet = w; if (!save.stars[id]) save.skipped = { ...save.skipped, [id]: 1 }; save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, id + 1)); S.skips++; sync('skip', now); run = 0; } }
           if (!early) { // the fail page's one help (the Director): a free try of the fitting booster, or that booster for coins or a video
             const H = DR.failHelp(save, { levelId: id, now, nearMiss: near, timeout: yes(0.3), villains: id >= 6, thorns: false, owned: save.wallet.owned || {}, adReady: true });
             if (H && H.kind === 'trialBoost') { DR.noteTrial(save, id, H, now); pending = { id, n: 1 }; S.freeHelp++; }
@@ -232,7 +275,7 @@ export function life(P, seed, days = 30, watch = null) {
       S.cardsMax = Math.max(S.cardsMax, cardsNow);
       if (cardsNow > OF.CAPS.perSession) fail(`${cardsNow} offer cards in one session`);
       if (yes(P.shop)) shop(now);
-      if (watch) watch(save, d, now);
+      if (watch) { watch(save, d, now, S); sync('other', now); }
       plan = ENG.close(save, { ...waiting(), unlocked: save.unlocked, screen: lastEnd === 'won' ? 'win' : 'fail', level: save.unlocked, lastWon: lastEnd === 'won' }, now);
       if (plan && plan.at - now < HE.HERALD.minAheadH * HOUR) fail('a reminder planned too soon after leaving');
       if (plan && !S.allowed) fail('a reminder was planned without permission');
@@ -273,6 +316,7 @@ export function town({ n = 300, days = 30, seed = 1, only = null } = {}) {
       tries: mean(L.map((s) => s.tries)), winRate: mean(L.map((s) => (s.tries ? s.wins / s.tries : 0))), stuckMax: med(L.map((s) => s.stuckMax)),
       coinsIn: mean(L.map((s) => s.in)), coinsOut: mean(L.map((s) => s.out)), sink: mean(L.map((s) => (s.in ? s.out / s.in : 0))), purse: med(L.map((s) => s.purse)), maxPurse: med(L.map((s) => s.maxPurse)),
       gifts: mean(L.map((s) => s.gifts)), bought: mean(L.map((s) => s.bought)), used: mean(L.map((s) => s.used)), stock: mean(L.map((s) => s.stock)), starved: mean(L.map((s) => (s.tries ? (s.starved * 100) / s.tries : 0))), freeHelp: mean(L.map((s) => s.freeHelp)),
+      gates: mean(L.map((s) => s.gates)), gateCoins: mean(L.map((s) => s.gateCoins)), gatedBy: mean(L.map((s) => s.gatedBy)), replays: mean(L.map((s) => s.replays)), dbl: mean(L.map((s) => s.dbl)), src: (() => { const A = {}; for (const s of L) for (const [k, v] of Object.entries(s.src || {})) A[k] = (A[k] || 0) + v / L.length; return A; })(), dayMax: Math.max(...L.map((s) => s.dayMax)), dayMed: med(L.map((s) => s.dayMax)),
       unlocks: mean(L.map((s) => s.unlocks)), coupons: mean(L.map((s) => s.coupons)), spinsFree: mean(L.map((s) => s.spins.free)), spinsAd: mean(L.map((s) => s.spins.ad)), spinsCoin: mean(L.map((s) => s.spins.coin)), spinsMiss: mean(L.map((s) => s.spins.miss)), spinsRetry: mean(L.map((s) => s.spins.retry)),
       videos: mean(L.map((s) => s.videos)), videosDay: mean(L.map((s) => (s.daysPlayed ? s.videos / s.daysPlayed : 0))), usd: mean(L.map((s) => s.usd)), premium: pct(L, (s) => s.premium), paid: pct(L, (s) => Object.keys(s.buys).length > 0),
       moneyAsks: mean(L.map((s) => s.moneyAsks)), asksPerSession: mean(L.map((s) => (s.sessions ? s.moneyAsks / s.sessions : 0))), askTop: (() => { const A = {}; for (const s of L) for (const [k, v] of Object.entries(s.asks)) A[k] = (A[k] || 0) + v; return Object.entries(A).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k} ${(v / n).toFixed(1)}`).join(', '); })(), cards: mean(L.map((s) => s.cards)), cardsMax: Math.max(...L.map((s) => s.cardsMax)),
@@ -282,6 +326,74 @@ export function town({ n = 300, days = 30, seed = 1, only = null } = {}) {
       bad: L.flatMap((s) => s.bad),
     };
   }
+  return out;
+}
+
+// ---------------------------------------------------------------- owning everything (0.8.17, the Mint's targets)
+// Each kind of player, never leaving and never paying, buys after every session every thing to own his purse reaches,
+// cheapest first: the most anyone of his habits can own. The coin catalogue: egg skins, hen outfits and the premium
+// chicks (the six level chicks come free with their level). -> { kind: { day (median day all owned, 999: not inside
+// `days`), first (the earliest), at30 (share of the catalogue's coins owned on day 30), level30 } }
+export const catalogue = (w) => E.unlockables(w || {}).filter((u) => u.kind !== 'chick' || E.PREMIUM_CHICKS[u.id]);
+export const CATALOGUE = catalogue({}).reduce((a, u) => a + u.price, 0);
+function buyAll(save) {
+  for (;;) {
+    const U = catalogue(save.wallet).sort((a, b) => a.price - b.price);
+    const u = U[0], w = u && (u.kind === 'skin' ? E.buySkin(save.wallet, u.id) : u.kind === 'hen' ? E.buyHenSkin(save.wallet, u.id) : E.buyChick(save.wallet, u.id));
+    if (!w) return; save.wallet = w;
+  }
+}
+export function owning({ n = 40, days = 90, seed = 1, only = null } = {}) {
+  const out = {}, owned = (save) => CATALOGUE - catalogue(save.wallet).reduce((a, u) => a + u.price, 0);
+  for (const [name, P0] of Object.entries(PERSONAS)) {
+    if (only && name !== only) continue;
+    const P = { ...P0, quit: 0, pay: 0 }, all = [], at30 = [], lv30 = [];
+    for (let i = 0; i < n; i++) {
+      let done = 999, w30 = 0, l30 = 0;
+      life(P, seed * 7001 + i * 7919 + name.length * 31, days, (save, d) => { buyAll(save); if (d < 30) { w30 = owned(save); l30 = save.unlocked; } if (done === 999 && owned(save) >= CATALOGUE) done = d + 1; });
+      all.push(done); at30.push(w30 / CATALOGUE); lv30.push(l30);
+    }
+    out[name] = { day: med(all), first: Math.min(...all), at30: mean(at30), level30: med(lv30) };
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- the purse along the way (0.8.17, the Mint's targets)
+// A player who wins every level at the first try with two stars, `perDay` levels a day, online, and spends nothing.
+// all: he also takes every free thing: each day's free-coins videos, the win page's video on every win (the Bonus chest
+// when it is due, else Double coins, while the day's pot holds it), every video spin, and the Daily Vault (won) from
+// its level. Without `all`: no video at all (the daily chest, the free spins, chests and treasures only).
+// -> { [level]: coins held after it } for the levels in `at` (the mean over `seeds` draws of the wheel)
+export function purse({ all = false, perDay = 6, seeds = 200, at = [5, 10, 12, 20, 30, LEVELS.length] } = {}) {
+  const out = Object.fromEntries(at.map((l) => [l, 0]));
+  for (let sd = 0; sd < seeds; sd++) {
+    const R = rng(sd * 7919 + 17), save = { unlocked: 1, stars: {}, wallet: E.defaultWallet(), adDay: null, mint: null };
+    let wins = 0, day = '';
+    for (let i = 0; i < LEVELS.length; i++) {
+      const L = LEVELS[i];
+      if (i % perDay === 0) {
+        day = dayKey(T0 + (i / perDay) * DAY);
+        const w = E.openDailyChest(save.wallet, day); if (w) save.wallet = w;
+        if (all) {
+          for (let c = E.freeCoinsNext(save.adDay, day); c > 0; c = E.freeCoinsNext(save.adDay, day)) { save.wallet = E.addCoins(save.wallet, c); save.adDay = E.noteFreeCoins(save.adDay, day); }
+          if (L.id > WORLD.dailyFrom) { const vc = E.levelCoins({ stars: 2, saved: 2, eggs: 3 }).total + MINT.FAUCETS.dailyVault.coins; save.wallet = E.payWin(save.wallet, vc + MINT.onlineBonus(vc), true).wallet; SP.noteWin(save, true); }
+        }
+      }
+      const c = E.levelCoins({ stars: 2, saved: L.target || 1, eggs: 3, hard: HARD_IDS.includes(L.id) }).total, p = E.payWin(save.wallet, c + MINT.onlineBonus(c), true);
+      save.wallet = p.wallet; save.stars[L.id] = 2; save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, L.id + 1)); wins++;
+      SP.noteWin(save, true); SP.notePlayed(save, day);
+      if (all && !DR.earlyDays(save)) {
+        if (L.id >= 8 && wins % 3 === 0 && MINT.winVideoOk(save.mint, day, E.BONUS_CHEST.coins)) { save.wallet = E.openBonusChest(save.wallet, L.id); save.mint = MINT.winVideoTake(save.mint, day, E.BONUS_CHEST.coins); }
+        else if (MINT.winVideoOk(save.mint, day, p.coins)) { save.wallet = E.addCoins(save.wallet, p.coins); save.mint = MINT.winVideoTake(save.mint, day, p.coins); }
+      }
+      if (E.bossTreasure(L.id)) save.wallet = E.openBossTreasure(save.wallet, L.id) || save.wallet;
+      for (let ch = E.chestFor(totalStars(save), save.wallet.chests); ch && ch.ready; ch = E.chestFor(totalStars(save), save.wallet.chests)) save.wallet = E.openChest(save.wallet, ch);
+      while (SP.ways(save, day).free) SP.spin(save, 'free', day, R);
+      if (all) while (SP.ways(save, day).ad) SP.spin(save, 'ad', day, R);
+      if (out[L.id] != null) out[L.id] += save.wallet.coins / seeds;
+    }
+  }
+  for (const k of Object.keys(out)) out[k] = Math.round(out[k]);
   return out;
 }
 
@@ -418,6 +530,10 @@ if (isMain) {
   row('boosters given/bought/used', (r) => `${r.gifts.toFixed(0)}/${r.bought.toFixed(0)}/${r.used.toFixed(0)}`);
   row('boosters left unused', (r) => r.stock.toFixed(1));
   row('things to own bought', (r) => r.unlocks.toFixed(1));
+  row('world gates bought (coins)', (r) => `${r.gates.toFixed(1)} (${Math.round(r.gateCoins)})`);
+  row('tries turned back by a gate', (r) => r.gatedBy.toFixed(1));
+  row('wins with no new star (40%)', (r) => r.replays.toFixed(1));
+  row('videos+spins+gifts a day, most', (r) => `${r.dayMed}/${r.dayMax}`);
   row('spins free / video / coins', (r) => `${r.spinsFree.toFixed(0)}/${r.spinsAd.toFixed(0)}/${r.spinsCoin.toFixed(0)}`);
   row('villain rows / tried again', (r) => `${r.spinsMiss.toFixed(1)}/${r.spinsRetry.toFixed(1)}`);
   say('-- videos and money');
@@ -433,6 +549,13 @@ if (isMain) {
   row('notes after he left for good', (r) => r.notesGone.toFixed(1));
   say('-- the Oracle on the phone: graded 8+ times % | error by rules > learned | learned in use % | trusted %');
   for (const k of ['win', 'back', 'video', 'coins']) row('  ' + k, (r) => { const o = r.oracle[k]; return `${o.graded}|${o.graded ? o.rules.toFixed(2) + '>' + o.fit.toFixed(2) : '-'}|${o.learned}|${o.trusted}`; });
+  let OW = null;
+  if (!has('quick')) {
+    OW = owning({ n: Number(arg('own', 40)), days: 90, seed, only });
+    say(`-- owning everything (${Math.round(CATALOGUE)} coins of things to own; never leaving, never paying, buying all he can after every session)`);
+    say('all owned on day (first)'.padEnd(32) + names.map((k) => col(OW[k] ? `${OW[k].day > 90 ? '>90' : OW[k].day} (${OW[k].first > 90 ? '-' : OW[k].first})` : '-')).join(''));
+    say('owned on day 30 %'.padEnd(32) + names.map((k) => col(OW[k] ? Math.round(OW[k].at30 * 100) : '-')).join(''));
+  }
   const F = findings(T);
   say('\nWhat stands out:'); for (const f of F.length ? F : ['nothing']) say('  - ' + f);
   let C = null, K = null;
@@ -453,8 +576,8 @@ if (isMain) {
     let commit = ''; try { commit = execSync('git rev-parse --short HEAD', { cwd: HOME, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (_) { /* no git */ }
     const day = new Date().toISOString().slice(0, 10), note = arg('note', '');
     writeFileSync(join(HOME, 'latest.txt'), `${day} at ${commit || '?'}${note ? ' (' + note + ')' : ''}\n\n` + out.join('\n') + '\n');
-    const key = (r) => ({ d7: r.d7, lv7: r.level7, done: r.finished, sink: Math.round(r.sink * 100), stock: +r.stock.toFixed(1), stuck: +r.starved.toFixed(1), vid: +r.videosDay.toFixed(1), cards: +r.asksPerSession.toFixed(2), own: +r.unlocks.toFixed(1), notes: +r.notes.toFixed(1) });
-    appendFileSync(join(HOME, 'history.jsonl'), JSON.stringify({ day, commit, note, n, days, seed, real, broken, kinds: Object.fromEntries(names.map((k) => [k, key(T[k])])), crowd: C ? Object.fromEntries(Object.entries(C.all).map(([k, v]) => [k, +v.toFixed(1)])) : null }) + '\n');
+    const key = (r, k) => ({ ownDay: OW && OW[k] ? OW[k].day : null, own30: OW && OW[k] ? Math.round(OW[k].at30 * 100) : null, gates: +r.gates.toFixed(1), d7: r.d7, lv7: r.level7, done: r.finished, sink: Math.round(r.sink * 100), stock: +r.stock.toFixed(1), stuck: +r.starved.toFixed(1), vid: +r.videosDay.toFixed(1), cards: +r.asksPerSession.toFixed(2), own: +r.unlocks.toFixed(1), notes: +r.notes.toFixed(1) });
+    appendFileSync(join(HOME, 'history.jsonl'), JSON.stringify({ day, commit, note, n, days, seed, real, broken, kinds: Object.fromEntries(names.map((k) => [k, key(T[k], k)])), crowd: C ? Object.fromEntries(Object.entries(C.all).map(([k, v]) => [k, +v.toFixed(1)])) : null }) + '\n');
     console.log(`\nsaved: players/latest.txt, and one line added to players/history.jsonl`);
   }
   process.exit(broken ? 1 : 0);
