@@ -2104,14 +2104,16 @@ function drawTreasure() {
   dim(0.66);
   const fresh = T.openedAt != null ? G.t - T.openedAt : 9;
   const title = opened ? (fresh < 9 ? 'Treasure collected!' : 'Boss treasure') : beaten ? 'Boss treasure!' : 'Boss treasure';
-  stackCard(title, (s, iw) => {
-    const B = [];
-    B.push({ h: 118 * s, gap: 2 * s, draw: (x, y, w2) => { // the chest: locked, glowing, or open with its prizes flying out
-      const cx = x + w2 / 2, cy = y + 64 * s;
+  // 0.8.16 (mykee: full screen, bigger art): the room a tall phone leaves goes to the pictures, first the coming
+  // villains (up to the column's width), then the chest. chH: the chest block's height in units; pMax: a portrait's side.
+  const build = (chH, pMax) => (s, iw) => {
+    const B = [], ck = chH / 118;
+    B.push({ h: chH * s, gap: 2 * s, draw: (x, y, w2) => { // the chest: locked, glowing, or open with its prizes flying out
+      const cx = x + w2 / 2, cy = y + 64 * ck * s;
       if (opened && fresh < 1.4 && !save.calm) { const a = fresh / 1.4; sunburst(cx, cy, 120 * s * (0.6 + a), `rgba(255,226,120,${0.35 * (1 - a)})`, 14); }
-      drawChest(ctx, cx, cy, 92 * s, G.t, opened ? 'open' : beaten ? 'ready' : 'locked');
-      if (!beaten) drawPadlock(cx, cy + 14 * s, 13 * s, null);
-      ui.record({ x: cx - 50 * s, y, w: 100 * s, h: 112 * s }, 'tr:art');
+      drawChest(ctx, cx, cy, 92 * ck * s, G.t, opened ? 'open' : beaten ? 'ready' : 'locked');
+      if (!beaten) drawPadlock(cx, cy + 14 * ck * s, 13 * ck * s, null);
+      ui.record({ x: cx - 50 * ck * s, y, w: 100 * ck * s, h: 112 * ck * s }, 'tr:art');
     } });
     B.push(lineBlock(beaten ? (opened ? 'You opened this treasure.' : `You beat ${bossName}. It is yours!`) : `Beat ${bossName} (Level ${T.id}) to open it.`, 16.5 * s, { tag: 'tr:status', gap: 4 * s, color: beaten ? ui.C.ink : ui.C.ink2 }));
     // what is inside: coins, a booster, Chick Charges
@@ -2140,7 +2142,7 @@ function drawTreasure() {
       } });
     }
     if (nk.length) { // the next world's new villains, big enough to recognise
-      const P = Math.min(64 * s, (iw - (nk.length - 1) * 10 * s) / nk.length), NH = 30 * s + P + 38 * s;
+      const P = Math.min(pMax * s, (iw - (nk.length - 1) * 10 * s) / nk.length), NH = 30 * s + P + 38 * s;
       B.push({ h: NH, gap: 10 * s, draw: (x, y, w2) => {
         ui.text(`COMING UP IN ${(WORLDS[w] || 'the next world').toUpperCase()}`, x + w2 / 2, y + 12 * s, { size: 13.5 * s, align: 'center', color: ui.C.ink2, maxW: w2, tag: 'tr:nexthead' });
         const x0 = x + w2 / 2 - (nk.length * P + (nk.length - 1) * 10 * s) / 2;
@@ -2156,9 +2158,18 @@ function drawTreasure() {
       else if (!beaten && Lb && playable(LEVELS.indexOf(Lb))) { const hw = (w2 - 10 * s) / 2; ui.button('tr:close', 'Close', x, y, hw, 58 * s, { kind: 'tertiary', size: 19 * s }); ui.button('tr:play', `Play Level ${T.id}`, x + hw + 10 * s, y, hw, 58 * s, { kind: 'primary', icon: ICON.play, size: 18 * s }); }
       else ui.button('tr:close', opened ? 'Great!' : 'Close', x, y, w2, 58 * s, { kind: 'primary', size: 22 * s });
     } });
-    if (!chick && w >= 7 && opened) B.push({ h: 44 * s, gap: 8 * s, draw: (x, y, w2) => ui.button('tr:shop', 'See premium chicks', x + w2 * 0.15, y, w2 * 0.7, 44 * s, { kind: 'secondary', size: 16 * s }) });
+    if (!chick && w >= 7 && opened) B.push({ h: 44 * s, gap: 8 * s, draw: (x, y, w2) => ui.button('tr:shop', 'See premium chicks', x, y, w2, 44 * s, { kind: 'secondary', size: 16 * s }) });
     return B;
-  }, { ribbon: '#d89a1c' });
+  };
+  let chH = 118, pMax = 64;
+  const A = ui.A, u = ui.u;
+  if (cardFull({}, A)) {
+    const iw1 = fullInner(A, u) / u, rest = build(118, 64)(1, iw1).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22;
+    let extra = Math.max(0, (A.y1 - Math.max(G.hudBottom, A.y) - 30 * u) / u - rest - 30);
+    if (nk.length) { const d = Math.min(extra, (iw1 - (nk.length - 1) * 10) / nk.length - 64, 30); pMax += Math.max(0, d); extra -= Math.max(0, d); }
+    chH = Math.min(118 + extra, 190);
+  }
+  stackCard(title, build(chH, pMax), { ribbon: '#d89a1c', grow: 1.15 });
 }
 // ---- the offer engine's moments (offers.js): the end card after its first second, home on arrival, the intro (a line)
 function offerCtx() {
@@ -2395,14 +2406,17 @@ function drawDetail() {
   const dk = G.detail.slice(0, G.detail.indexOf(':')), di = G.detail.slice(G.detail.indexOf(':') + 1);
   const tryK = (dk === 'skin' || dk === 'hen') && !it.owned && (it.trying || DR.canTry(save, dk, di, false)) ? [dk, di] : null;
   dim(0.55);
-  stackCard(it.name, (s, iw) => {
-    const C = ui.C, B = it.btn, lines = wrapText(it.line, 16.5 * s, iw).slice(0, 4);
+  // 0.8.16 (mykee: full screen, bigger art before more text): on a phone the item's stage takes the height the rest of
+  // the sheet leaves (the fail page's rule for the hen's stage) and runs the column's whole width, so a tall screen
+  // shows a big egg or hen instead of a small picture and bands of paper. artH: the stage's height in units.
+  const build = (artH) => (s, iw) => {
+    const C = ui.C, B = it.btn, lines = wrapText(it.line, 16.5 * s, iw).slice(0, 4), AH = artH * s;
     return [
-      { h: 140 * s, gap: 4 * s, draw: (x, y, w) => {
-        const aw = Math.min(w, 170 * s);
-        ui.well(x + (w - aw) / 2, y, aw, 140 * s, { s, a: '#cfe9fb', b: '#eaf6ff' });
-        it.icon(ctx, x + w / 2, y + 70 * s, 128 * s, G.t, it.flash < 0.6 ? 1 + 0.2 * Math.sin((it.flash / 0.6) * Math.PI) : 1);
-        ui.record({ x: x + (w - aw) / 2, y, w: aw, h: 140 * s }, 'dt:art');
+      { h: AH, gap: 4 * s, draw: (x, y, w) => {
+        const aw = artH > 140 ? w : Math.min(w, 170 * s);
+        ui.well(x + (w - aw) / 2, y, aw, AH, { s, a: '#cfe9fb', b: '#eaf6ff' });
+        it.icon(ctx, x + w / 2, y + AH / 2, Math.min(AH * 0.9, aw * 0.8), G.t, it.flash < 0.6 ? 1 + 0.2 * Math.sin((it.flash / 0.6) * Math.PI) : 1);
+        ui.record({ x: x + (w - aw) / 2, y, w: aw, h: AH }, 'dt:art');
       } },
       ...lines.map((l, i) => lineBlock(l, 16.5 * s, { color: C.ink, tag: 'dt:line' + i, gap: i ? 2 * s : 10 * s })),
       ...(it.perk ? [perkRow(it.perk, s, 10 * s)] : []), // an egg skin's power: the icon, its name and four words
@@ -2420,7 +2434,14 @@ function drawDetail() {
         : ui.button('try:' + tryK.join(':'), 'Try it free', x, y, w, 50 * s, { kind: 'secondary', size: 20 * s }) }] : []),
       { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('dt:close', 'Close', x, y, w, 50 * s, { kind: 'tertiary', size: 20 * s }) },
     ];
-  }, { ribbon: '#7a48e8' });
+  };
+  let artH = 140;
+  const A = ui.A, u = ui.u;
+  if (cardFull({}, A)) {
+    const rest = build(0)(1, fullInner(A, u) / u).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22;
+    artH = clamp((A.y1 - A.y - 30 * u) / u - rest - 40, 140, 300);
+  }
+  stackCard(it.name, build(artH), { ribbon: '#7a48e8', grow: 1.2 });
 }
 // an egg skin's power on its sheet: the icon in a cell, then "Name: four words"
 const perkRow = (P, s, gap) => ({ h: 44 * s, gap, draw: (x, y, w) => {
@@ -2637,7 +2658,7 @@ function drawSkipAsk() {
     lineBlock('Come back for stars any time', 14.5 * s, { color: ui.C.ink2, tag: 'sk:back', gap: 6 * s }),
     { h: 56 * s, gap: 16 * s, draw: (x, y, w) => save.wallet.tickets.skip > 0 ? ui.button('sk:go', 'Use a Skip Ticket', x, y, w, 56 * s, { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3, size: 19 * s }) // 0.8.14: a ticket the player owns comes first
       : ui.button('sk:go', ads.premium ? 'Skip level' : 'Watch to skip', x, y, w, 56 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 20 * s } : { kind: 'ad', ad: true, size: 19 * s }) },
-    { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('sk:no', 'Cancel', x + w * 0.15, y, w * 0.7, 50 * s, { kind: 'tertiary', size: 19 * s }) },
+    { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('sk:no', 'Cancel', x, y, w, 50 * s, { kind: 'tertiary', size: 19 * s }) },
   ], { ribbon: '#7a48e8' });
 }
 
@@ -5894,6 +5915,7 @@ function cardFull(o, A) {
   if (o.full === false || o.twoCol && A.w > A.h * 1.15) return false;
   return A.h > A.w * 1.15; // portrait: the page is the screen
 }
+const fullInner = (A, s) => Math.min(A.w - 32 * ui.u, Math.max(372 * s, 440 * ui.u));
 function stackCard(title, build, o = {}) {
   const u = ui.u;
   ui.calm = save.calm;
@@ -5910,7 +5932,10 @@ function stackCard(title, build, o = {}) {
       return { s, w, blocks, cw, hl, hr, h: CARD_HEAD * s + Math.max(hl, hr) + 22 * s };
     }
     const w = full ? A.w : Math.min(o.maxW || A.w - 32 * u, 420 * s);
-    const inner = full ? Math.min(w - 32 * s, 420 * s - 48 * s) : w - 48 * s; // the content column, centred on a full page
+    // the content column, centred on a full page. 0.8.16 (mykee: "it's not full screen"): it is the page column of the
+    // shop, Settings and the level card (ui.pageBox: 16 units from each edge), not a card's width that scales with s,
+    // so a page that could not grow (s = u) is as wide as one that did
+    const inner = full ? fullInner(A, s) : w - 48 * s;
     const blocks = build(s, inner);
     const h = CARD_HEAD * s + colH(blocks, s) + 22 * s;
     return { s, w, blocks, h, inner };
@@ -7022,10 +7047,10 @@ function bossPortrait(ctx, bossId, x, y, w, h, t) { if (bossId === 'blizzard') r
 function pauseTiles(items, s, cols = 3) {
   const gap = 10 * s, th = (cols > 3 ? 66 : 78) * s, rows = Math.ceil(items.length / cols);
   return { h: rows * th + (rows - 1) * gap, gap: 12 * s, draw: (x, y, w) => {
-    const tw = (w - gap * (cols - 1)) / cols;
     items.forEach(([id, label, icon, face, mark], i) => {
-      const r = Math.floor(i / cols), c = i % cols, inRow = Math.min(cols, items.length - r * cols), off = (w - (inRow * tw + (inRow - 1) * gap)) / 2;
-      const bx = x + off + c * (tw + gap), by = y + r * (th + gap);
+      // 0.8.16: a short last row spans the column too (same left and right edges as the row above)
+      const r = Math.floor(i / cols), c = i % cols, inRow = Math.min(cols, items.length - r * cols), tw = (w - gap * (inRow - 1)) / inRow;
+      const bx = x + c * (tw + gap), by = y + r * (th + gap);
       const B = ui.button(id, '', bx, by, tw, th, { ...(typeof face === 'string' ? { kind: face } : { face }), round: 18 * s });
       const isz = (cols > 3 ? 28 : 32) * s, ls = (cols > 3 ? 14.5 : 16) * s, cy = B.cy;
       icon(ctx, bx + tw / 2, cy - ls * 0.62 - 2 * s, isz);
@@ -8340,9 +8365,9 @@ function drawFailPage() {
     const gC = 12 * s;
     if (ways.length === 2) {
       B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); skipBtn(ways[1], x + hw + 10 * s, y, hw, BH * s); } });
-      B.push({ h: BH * s, gap: 10 * s, draw: (x, y, w) => lvBtn(x + w * 0.22, y, w * 0.56, BH * s) });
+      B.push({ h: BH * s, gap: 10 * s, draw: (x, y, w) => lvBtn(x, y, w, BH * s) });
     } else if (ways.length === 1) B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); lvBtn(x + hw + 10 * s, y, hw, BH * s); } });
-    else B.push({ h: BH * s, gap: gC, draw: (x, y, w) => lvBtn(x + w * 0.22, y, w * 0.56, BH * s) });
+    else B.push({ h: BH * s, gap: gC, draw: (x, y, w) => lvBtn(x, y, w, BH * s) });
     return B;
   };
   // her stage takes what the rest of the page leaves (portrait): 130 to 260 units
@@ -8384,8 +8409,10 @@ function drawTitle() {
   const fade = !intro && !G.homeIntro && G.screenT < 0.2 && G.t > 1; // returning from a level or the map: a short fade, not the entrance
   if (fade) ctx.globalAlpha = 0.25 + G.screenT / 0.2 * 0.75;
   const A = ui.A, cx = A.cx; // the meadow paints edge to edge; the logo and the buttons sit in the safe rect
-  const bw = Math.min(310 * u, A.w - 44 * u);
   const wide = A.w > A.h * 1.15;
+  // 0.8.16 (mykee: "it's not full screen"): in portrait the buttons stand on the page column (ui.pageBox: the level
+  // card's and the shop's edges); landscape keeps its two columns
+  const bw = wide ? Math.min(310 * u, A.w - 44 * u) : ui.pageBox(440 * u).w;
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
   // landscape: two balanced columns, logo + vault on the left, the buttons on the right, the meadow low across both
   const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? A.x + A.w * 0.73 : cx;
@@ -8458,14 +8485,17 @@ function drawTitle() {
     ctx.restore();
   });
   if (fr) { if (fade) ctx.globalAlpha = 1; return; } // first launch: PLAY alone (Levels, Daily, Shop, Extras and the bank come with the first win)
-  const tw = (bw - 16 * u) / 3, ry = by + ph + 8 * u, rh = 54 * u, /* 0.8.14: one gutter, 8 units, across and down the block */ paid = save.daily.paid === today();
+  const ry = by + ph + 8 * u, rh = 54 * u;
+  const bankEh = Math.min(rh * 0.8, 44 * u), bankEw = bankEh * 0.78, bankOn = save.wallet.bank > 0 && ads.moneyShop;
+  const bankIn = bankOn && bx + bw / 2 + 8 * u + bankEw > A.x1 - 2 * u; // 0.8.16: no room beside the row: the egg ends the row, on the column's right edge
+  const tw = (bw - 16 * u - (bankIn ? bankEw + 8 * u : 0)) / 3, /* 0.8.14: one gutter, 8 units, across and down the block */ paid = save.daily.paid === today();
   pop(0.33, bx - bw / 2 + tw / 2, ry + rh / 2, () => ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u }));
   pop(0.4, bx - bw / 2 + tw * 1.5 + 8 * u, ry + rh / 2, () => ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u }));
   pop(0.47, bx - bw / 2 + tw * 2.5 + 16 * u, ry + rh / 2, () => purseBtn(bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, 18 * u));
   // the Golden Egg Bank: a small glass egg beside the coins, filling as wins drop coins in (tap: its card in the shop)
-  if (save.wallet.bank > 0 && ads.moneyShop) {
-    const eh = Math.min(rh * 0.8, 44 * u), ew = eh * 0.78, ex = bx + bw / 2 + 8 * u + ew / 2, ey = ry + rh / 2 - 2 * u;
-    if (ex + ew / 2 <= A.x1 - 2 * u) {
+  if (bankOn) {
+    const eh = bankEh, ew = bankEw, ex = bx + bw / 2 + (bankIn ? -ew / 2 : 8 * u + ew / 2), ey = ry + rh / 2 - 2 * u;
+    {
       pop(0.5, ex, ey, () => drawGlassEgg(ctx, ex, ey, eh, save.wallet.bank / E.BANK_CAP, G.t));
       ui.record({ x: ex - ew / 2, y: ey - eh / 2, w: ew, h: eh }, 'title:bank');
       homeHit('home:bank', ex - ew / 2 - 4 * u, ey - eh / 2 - 4 * u, ew + 8 * u, eh + 8 * u);
@@ -8561,7 +8591,7 @@ function drawLevels() {
   if (ui.skin && ui.skin.pack && ui.skin.pack.bg) drawRoadDress(ctx, L, sy, vt, H_, t, ui.skin.pack.bg, calm);
   MS.drawCast(ctx, L, sy, vt, H_, t, calm, DPR);
   const wide = mapWide(), ctaOn = playable(nx) && envOpen(envOf(nx));
-  const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 320) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - 4 * u;
+  const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 440) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - (wide ? 4 : 20) * u; // 0.8.16: on the page column, clear of the bottom edge
   const tapBot = ctaOn && !wide ? ctaY - 6 * u : vb; // stops under the PLAY bar keep no tap target
   G.mapView = { vt, vb: tapBot, cta: ctaOn ? { x: ctaX, y: ctaY, w: ctaW, h: ctaH } : null }; // QA: the part of the map that shows
   // a place's landmarks (0.8.7 the Farm, 0.8.10 the Crystal Caves, 0.8.12 the Volcano and the Vault): scenery beside the
@@ -8708,7 +8738,7 @@ function drawLevels() {
   const chest = E.chestFor(totalStars, save.wallet.chests);
   const spinOn = SP.open(save), nb = spinOn ? 3 : 2; // 0.8.15: the Lucky Spin joins the row once it exists (level 3 won)
   const bw4 = wide ? (spinOn ? 108 : 120) * u : 0, rowY = wide ? Y0 + 1 * u : Y0 + 46 * u + 12 * u, rh = 44 * u;
-  const midW = wide ? bw4 * nb + 10 * u * (nb - 1) : Math.min(A.w - 2 * pad, (spinOn ? 372 : 340) * u), mx = wide ? chipX - 14 * u - midW : A.cx - midW / 2, half = (midW - 10 * u * (nb - 1)) / nb;
+  const midW = wide ? bw4 * nb + 10 * u * (nb - 1) : Math.min(A.w - 2 * pad, 440 * u), mx = wide ? chipX - 14 * u - midW : A.cx - midW / 2, half = (midW - 10 * u * (nb - 1)) / nb;
   purseBtn(mx, rowY, half, rh, 17 * u);
   if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { kind: chest.ready ? 'primary' : 'off', shimmer: chest.ready, disabled: !chest.ready, dim: 1, iconS: 1.25, icon: (c, x, y, s2) => { drawChest(c, x, y, s2, G.t, chest.ready ? 'ready' : 'locked'); if (chest.reward.skin && !E.ownsSkin(save.wallet, chest.reward.skin)) drawSkinPreview(c, chest.reward.skin, x - s2 * 0.55, y - s2 * 0.08, s2 * 0.8, G.t); }, size: 15 * u });
   if (spinOn) { // free spins waiting: green and it says so; none: the meter (wins so far of the three a spin takes)
@@ -8725,7 +8755,7 @@ function drawLevels() {
   ui.ribbon(wname, (titleL + titleR) / 2, hy - 18 * u, rbw, 36 * u, { color: MS.WORLD_LOOK[wv].accent, size: 20 * u, tag: 'levels:title' });
   // how far along: a thin bar of the whole journey and the levels still to play
   const cleared = LEVELS.reduce((a, Lv) => a + (bestStarsOf(Lv.id) > 0 ? 1 : 0), 0), left = LEVELS.length - cleared;
-  const py = wide ? Y0 + 46 * u + 12 * u : rowY + rh + 10 * u + 10 * u, pw = Math.min(A.w - 2 * pad, 340 * u), px0 = A.cx - pw / 2;
+  const py = wide ? Y0 + 46 * u + 12 * u : rowY + rh + 10 * u + 10 * u, pw = Math.min(A.w - 2 * pad, (wide ? 340 : 440) * u), px0 = A.cx - pw / 2;
   const lt = left ? `${left} level${left === 1 ? '' : 's'} to go` : 'Every level cleared!', ltw = ui.measure(lt, 13 * u), bw3 = pw - ltw - 12 * u;
   ui.roundRect(px0, py - 4 * u, bw3, 8 * u, 4 * u); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
   if (cleared) { ui.roundRect(px0, py - 4 * u, Math.max(8 * u, bw3 * cleared / LEVELS.length), 8 * u, 4 * u); ctx.fillStyle = '#f6c454'; ctx.fill(); }

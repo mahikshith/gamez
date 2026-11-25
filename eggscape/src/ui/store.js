@@ -1153,6 +1153,7 @@ const TILE_HUES = ['#7fc3ff', '#ff9f8a', '#9be37a', '#ffd36a', '#c7a0ff', '#7fe0
 const BOOST_HUE = { stone: '#aab4be', golden: '#ffd24a', time: '#ff9f5a', rewind: '#7fb3ff', sponge: '#f2e06a', nest: '#e0b878', snips: '#9fdc8a' };
 const ITEM_HUE = { ally: '#ff8a72', goldhour: '#ffc74a', skip: '#8ac4ff' };
 
+const perkFit = (ui, line, room, s) => fitWrap(ui, line, room, 2, 10.5 * s, 8.5 * s);
 function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   // item.tap: the tile acts at once (the FREE TODAY row) instead of opening the detail sheet; item.trying: worn on trial
   const lip = 5 * s, fh = h - lip, r = 18 * s, col = item.hue || '#7fc3ff', B = item.trying ? { label: 'Trying', kind: 'secondary' } : item.btn;
@@ -1165,7 +1166,7 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   const on = B.keepFace && B.label === 'Equipped';
   ctx.lineWidth = (on ? 4 : 2.5) * s; ctx.strokeStyle = on ? '#ffc83a' : tint(col, -0.5); ctx.stroke();
   // a soft light behind the art
-  const pkH = item.perk ? 21 * s : 0; // an egg skin's power: its own pill under the name
+  const pkH = item.pkH != null ? item.pkH * s : item.perk ? 21 * s : 0; // an egg skin's power: its own pill under the name (item.pkH: the grid's one pill room, 0.8.16)
   const chipH = 26 * s, nameS = 13 * s, top = item.why ? 30 * s : item.badgeCol ? 18 * s : 0, ah = fh - chipH - nameS * 1.3 - 16 * s - top - pkH, acx = x + w / 2, acy = y + 6 * s + top + ah / 2; // a Save pill gets its own room above the art
   const lg = ctx.createRadialGradient(acx, acy, 0, acx, acy, Math.min(w, ah) * 0.55); lg.addColorStop(0, 'rgba(255,255,255,0.75)'); lg.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = lg; ctx.fillRect(x, y, w, ah + 12 * s);
@@ -1175,12 +1176,14 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   const nm = item.short || item.name, nmw = ui.measure(nm, nameS), nmMax = w - 7 * s; // (0.8.14: "Snowy Owl Look" keeps the size of its neighbours; only a longer name still shrinks) shrink a long name to fit whole ("Snowy Owl Look" at 360 px) rather than cut it
   ui.text(nm, x + w / 2, y + 6 * s + top + ah + 4 * s + nameS * 0.6, { size: nmw > nmMax ? Math.floor(nameS * nmMax / nmw * 0.97) : nameS, align: 'center', maxW: nmMax, color: tint(col, -0.72), tag: 'store:tname:' + item.key });
   if (item.perk) { // the egg skin's power: its icon and at most four words
-    const py = y + 6 * s + top + ah + 4 * s + nameS * 1.3, ph = 19 * s, room = w - 8 * s - ph - 10 * s;
-    const fs = Math.max(7 * s, Math.min(10.5 * s, (10.5 * s * room) / Math.max(1, ui.measure(item.perk.line, 10.5 * s)))); // the whole line fits, however small the tile
-    const pw2 = Math.min(w - 8 * s, ph + ui.measure(item.perk.line, fs) + 10 * s), px2 = x + (w - pw2) / 2;
-    ui.roundRect(px2, py, pw2, ph, ph / 2); ctx.fillStyle = 'rgba(70,40,110,0.9)'; ctx.fill();
-    pictoPerk(ctx, item.perk.icon, px2 + ph / 2 + 1 * s, py + ph / 2, ph * 0.76, t);
-    ui.text(item.perk.line, px2 + ph + 1 * s, py + ph / 2, { size: fs, color: '#fff', maxW: pw2 - ph - 8 * s, tag: 'store:perk:' + item.key, group: 'store:tart:' + item.key });
+    // 0.8.16 (mykee: "maintain font consistency"): every power is written at one size; a line too long for the tile
+    // takes a second line instead of shrinking (it used to go down to 7 units, a different size on every tile)
+    const ic = 19 * s, room = w - 8 * s - ic - 10 * s, F = perkFit(ui, item.perk.line, room, s), lh = F.size * 1.12;
+    const ph = Math.max(ic, F.lines.length * lh + 6 * s), slot = Math.max(ph, pkH - 2 * s), py = y + 6 * s + top + ah + 4 * s + nameS * 1.3 + (slot - ph) / 2;
+    const pw2 = Math.min(w - 8 * s, ic + Math.max(...F.lines.map((l) => ui.measure(l, F.size))) + 10 * s), px2 = x + (w - pw2) / 2;
+    ui.roundRect(px2, py, pw2, ph, Math.min(ph / 2, 11 * s)); ctx.fillStyle = 'rgba(70,40,110,0.9)'; ctx.fill();
+    pictoPerk(ctx, item.perk.icon, px2 + ic / 2 + 1 * s, py + ph / 2, ic * 0.76, t);
+    F.lines.forEach((ln, i) => ui.text(ln, px2 + ic + 1 * s, py + ph / 2 + (i - (F.lines.length - 1) / 2) * lh, { size: F.size, color: '#fff', maxW: pw2 - ic - 8 * s, tag: 'store:perk:' + item.key + (i ? ':' + i : ''), group: 'store:tart:' + item.key }));
   }
   if (item.why) { // FOR YOU: why this one, on a small ribbon across the top of the tile
     const F = fitWrap(ui, item.why, w - 26 * s, 2, 11.5 * s, 9.5 * s), lh = F.size * 1.12, rh = Math.max(18 * s, F.lines.length * lh + 5 * s), ry = y + 6 * s;
@@ -1355,8 +1358,13 @@ export function drawStore(ui, ctx, W, H, state) {
   // icon tiles: 3 to a row upright, 5-6 on a wide screen; a short last row is centred
   const tn = cols === 1 ? 3 : Math.max(4, Math.min(6, Math.floor((cw + gap) / (138 * s + gap))));
   const tiles = (items, key, n = tn) => {
-    const tn = n, tw = (cw - (tn - 1) * gap) / tn, th = Math.round(Math.min(tw * (cols === 1 ? 1.22 : 1.12), 200 * s));
+    const tn = n, tw = (cw - (tn - 1) * gap) / tn;
+    // 0.8.16: a power that needs two lines at the one size: every tile of this grid gets the taller pill room, and the
+    // tiles grow by as much, so no egg is drawn smaller for it
+    const pk2 = items.some((it) => it.perk && perkFit(ui, it.perk.line, tw - 8 * s - 19 * s - 10 * s, s).lines.length > 1), pkU = pk2 ? 32 : 21;
+    const th = Math.round(Math.min(tw * (cols === 1 ? 1.22 : 1.12), 200 * s) + (pk2 ? 11 * s : 0));
     items.forEach(tileLook);
+    items.forEach((it) => { it.pkH = it.perk ? pkU : pk2 ? 0 : null; });
     for (let i = 0; i < items.length; i += tn) {
       const R = items.slice(i, i + tn);
       R.forEach((it) => hit(it.key));
