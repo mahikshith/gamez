@@ -92,4 +92,4 @@ Windows instead of usbipd).
 - With a free Apple ID the app stops opening after 7 days. Plug in and run `xtool dev` again. Your progress stays.
 - A free Apple ID can have 3 such apps on a phone at a time.
 - On a Mac you can also try it without a phone: `xtool dev run --simulator`.
-- GitHub Actions has a manual "iOS build check" workflow. It proves the app still compiles. It does not install anything.
+- GitHub Actions has an "iOS build check" workflow. It runs when the iPhone app changes and proves it still compiles. It does not install anything.

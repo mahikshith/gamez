@@ -1,9 +1,14 @@
 # Proves the Eggscape iPhone shell (eggscape/ios, an xtool SwiftPM app) still compiles: builds the game page for iOS,
-# then compiles the package for the iOS Simulator with xcodebuild (no signing). Manual only: macOS minutes cost money.
+# then compiles the package for the iOS Simulator with xcodebuild (no signing). Runs by hand, and by itself only when the
+# iPhone shell or this file changes (the repository is public, so macOS minutes are free; keep it narrow all the same).
 # Installing on a real iPhone is done with xtool on a computer: eggscape/docs/ios-test.md.
 name: iOS build check
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'eggscape/ios/**'
+      - '.github/workflows/ios-build.yml'
 permissions:
   contents: read
 concurrency:
