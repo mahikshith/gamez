@@ -1870,7 +1870,7 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   // 0.8.15: there are eight boosters now and the row holds six tiles. Every booster owned must be within reach (a
   // Scarecrow won on the Lucky Spin that cannot be picked is a broken promise), and no tile shrinks: when they do not
   // all fit, the last tile turns the row to its next page
-  const fit = Math.max(1, Math.floor((w + gap) / (c + gap)));
+  const fit = Math.max(1, Math.floor((w + gap) / (c + gap) + 0.001));
   const { items, more } = pageOf(all, fit, state.page || 0);
   const n = items.length + (more ? 1 : 0);
   // the label: BOOSTERS, or the one just tapped and what it does
@@ -1882,9 +1882,10 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   const lw = Math.min(w, ui.measure(str, lab));
   if (!tapped && lw < w - 40 * s) { const ly = y + labH / 2, sw = (w - lw) / 2 - 12 * s; ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x, ly, sw, 1.5 * s); ctx.fillRect(x + w - sw, ly, sw, 1.5 * s); }
   ui.text(str, x + w / 2, y + labH / 2, { size: lab, align: 'center', maxW: w, color: tapped ? C.ink : '#9a5a1c', tag: 'strip:label' });
-  const ty = y + labH + 2 * s, tw = n * c + (n - 1) * gap, x0 = x + w / 2 - tw / 2;
+  // 0.8.16: a full row runs edge to edge (the same left and right edges as the button under it): the room is shared between the tiles
+  const jg = n === fit && n > 1 ? (w - n * c) / (n - 1) : gap, ty = y + labH + 2 * s, tw = n * c + (n - 1) * jg, x0 = x + w / 2 - tw / 2;
   items.forEach((it, i) => {
-    const cx = x0 + i * (c + gap), id = it.id, B = BOOSTERS[id], on = it.own && selected.has(id);
+    const cx = x0 + i * (c + jg), id = it.id, B = BOOSTERS[id], on = it.own && selected.has(id);
     if (it.ad) {
       ui.button('adboost', '', cx, ty, c, c, { kind: 'ad', round: 14 * s });
       drawBoosterIcon(ctx, id, cx + c / 2, ty + c * 0.38, c * 0.5, t);
@@ -1916,7 +1917,7 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
     }
   });
   if (more) { // the row's next page: an arrow, and a dot for each page
-    const cx = x0 + items.length * (c + gap), mx = cx + c / 2, my = ty + c * 0.4, a = c * 0.13;
+    const cx = x0 + items.length * (c + jg), mx = cx + c / 2, my = ty + c * 0.4, a = c * 0.13;
     ui.button('strip:more', '', cx, ty, c, c, { kind: 'secondary', round: 14 * s });
     ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, c * 0.085); ctx.strokeStyle = '#fff';
     for (const dx of [-a * 0.75, a * 0.75]) { ctx.beginPath(); ctx.moveTo(mx + dx - a * 0.5, my - a); ctx.lineTo(mx + dx + a * 0.5, my); ctx.lineTo(mx + dx - a * 0.5, my + a); ctx.stroke(); }
