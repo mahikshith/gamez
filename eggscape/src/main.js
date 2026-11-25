@@ -18,7 +18,7 @@ import { FX } from './render/fx.js';
 import * as W from './render/world.js';
 import { themeBack, themeWash, themeTick, logoDress } from './ui/theme.js';
 import { menuFxBack, menuFxFront, menuFxStats } from './ui/menufx.js'; // the skin's living effect over the menus
-import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge } from './ui/ui.js';
+import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge, setAdOff } from './ui/ui.js';
 import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
 import { drawSnake } from './render/characters.js';
 import * as MS from './render/mapscene.js'; // the world map: land, road, scenery and cast
@@ -1231,7 +1231,7 @@ function keyDown(e) {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
+  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
@@ -1283,6 +1283,7 @@ async function press(id) {
   prizePop.skip(); // a video's little celebration goes on its way at a tap (0.8.17)
   if (G.screen === 'intro' && G.level && G.li >= 0 && /^(boost:|adboost$|shop:boosts$|strip:more$)/.test(id) && !(save.seen || {})['strip:' + G.level.id]) { save.seen = { ...save.seen, ['strip:' + G.level.id]: 1 }; persist(); } // the booster strip was touched: its call for attention rests on this level for good
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
+  if (id.startsWith('wait:go:')) { await waitClaim(id.slice(8)); return; } // 0.8.17: one waiting reward, one video
   switch (id) {
     case 'ad:back': ads.cancelWait(); break; // an ad that never said it closed: back to the game (no reward)
     case 'zoom:in': setZoom((G.zm || 0) + 0.34); break;
@@ -1467,6 +1468,12 @@ async function press(id) {
     case 'gm:close':
       G.getMore = null;
       break;
+    case 'wait:open': // 0.8.17: the gift mark (map, home): the rewards that waited for a connection
+      G.waitList = { t0: G.t }; audio.play('hud_pop', { vol: 0.8 });
+      break;
+    case 'wait:close':
+      G.waitList = null;
+      break;
     case 'dt:close':
       G.detail = null;
       break;
@@ -1558,7 +1565,8 @@ async function press(id) {
       break;
     case 'ad:coins': {
       if (adCd() > 0) break;
-      const pay = adCoins(), src = G.pressAt, ok = await rewarded('coins');
+      const fd = save.adDay && save.adDay.day === today() ? save.adDay.n | 0 : 0;
+      const pay = adCoins(), src = G.pressAt, ok = await rewarded('coins', { kind: 'coins', n: pay, key: `free:${today()}:${fd}`, kept: () => { save.adClaim = Date.now(); save.adDay = E.noteFreeCoins(save.adDay, today()); } });
       if (ok) {
         save.wallet = E.addCoins(save.wallet, pay); void src;
         startGot({ name: 'Free coins', art: 'coins', quiet: true, coins: pay, items: [{ art: 'coins', label: '+' + pay }] }); // 0.8.17: a YOU GOT! with the purse on it: the video's coins land in front of the player
@@ -1726,7 +1734,9 @@ async function press(id) {
     }
     case 'double': {
       if (G.doubled) break;
-      const ok = await rewarded('double');
+      const dk = G.result && G.level ? (G.result.waitKey = G.result.waitKey || `double:${G.level.id}:${Date.now()}`) : '';
+      const ok = await rewarded('double', dk && G.result.coins > 0 ? { kind: 'coins', n: G.result.coins, key: dk } : null);
+      if (ok && dk) save.waiting = { ...WT.clean(save.waiting), list: waitingList().filter((it) => it.key !== dk) }; // doubled after all: nothing waits for it
       if (ok && G.result) {
         const r = G.result, a = r.coins || 0, first = !r.purseGo;
         G.doubled = true;
@@ -1989,8 +1999,11 @@ async function breakThen(fn, info = {}) {
   fn();
 }
 
-async function rewarded(tag) {
+// keepIt: a reward tied to a moment that will pass ({ kind: 'coins' | 'spin', n, key, kept() }): met with no video to
+// show, it waits for a connection (src/waiting.js) and kept() uses the moment up
+async function rewarded(tag, keepIt = null) {
   if (G.adBusy) return false;
+  if (!ads.videoOk) { videoOff(keepIt); return false; } // 0.8.17: never a free reward in place of a video, never a failing one
   G.adBusy = true; G.adVis = 0;
   portal.gameplayStop();
   let ok = false;
@@ -2007,6 +2020,43 @@ async function rewarded(tag) {
   // used); a video closed early, or none to show, says so: the sad hen and one line, never silence
   if (!ok) prizePop.start({ sad: true, name: 'No reward this time' });
   return ok;
+}
+// 0.8.17 (mykee: "when the user is offline there is no way to display those ads"): a video button tapped while none can
+// be shown says how to get it, in one line; a reward whose moment will pass waits (at most 3, src/waiting.js)
+function videoOff(keepIt) {
+  if (keepIt && !earlyDays()) {
+    const S = WT.clean(save.waiting), list = WT.keep(S.list, keepIt, Date.now(), { early: earlyDays() });
+    if (list.some((it) => it.key === keepIt.key) && !S.list.some((it) => it.key === keepIt.key)) {
+      save.waiting = { ...S, list };
+      try { if (keepIt.kept) keepIt.kept(); } catch (_) { /* the moment's own bookkeeping */ }
+      persist();
+    }
+  }
+  prizePop.start({ sad: true, name: ads.videoWhy === 'offline' ? 'Connect to get this reward' : 'No video right now' }); // the one line, over every page
+}
+const waitingList = () => WT.clean(save.waiting).list;
+// the gift mark shows once a video can be shown again (and never before level 3 is won)
+const waitShown = () => waitingList().length > 0 && ads.videoOk && !earlyDays();
+// claim one waiting reward: one video, then the normal reward moment (the YOU GOT! with its purse, or the Lucky Spin)
+async function waitClaim(id) {
+  const it0 = waitingList().find((x) => x.id === id);
+  if (!it0 || (it0.kind === 'coins' && WT.room(save.waiting, today()) < it0.n)) return;
+  if (!(await rewarded('wait'))) return;
+  const r = WT.claim(save.waiting, id, today());
+  if (!r.item) return;
+  save.waiting = r.state;
+  if (!r.state.list.length) G.waitList = null;
+  if (r.item.kind === 'coins') {
+    save.wallet = E.addCoins(save.wallet, r.item.n);
+    startGot({ name: 'Free coins', art: 'coins', quiet: true, coins: r.item.n, items: [{ art: 'coins', label: '+' + r.item.n }] });
+    audio.play('combo', { intensity: 0.5 });
+  } else {
+    const P = SP.state(save);
+    P.bank = Math.min(SP.SPIN.bankMax, P.bank + r.item.n);
+    G.waitList = null;
+    if (SP.open(save)) openSpin(); // the spin waits on the machine: he pulls it himself
+  }
+  persist();
 }
 // ---------------------------------------------------------------- shop (2026-11-16 revamp)
 // the shop opens on a tab (and optionally scrolled to a section: 'coins' | 'bank'); Back returns to the exact screen it
@@ -2089,7 +2139,7 @@ const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? {
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
 function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
-function modalOpen() { return !!(G.got || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
+function modalOpen() { return !!(G.got || G.waitList || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
@@ -2098,6 +2148,7 @@ function drawModals() {
   try {
     if (G.got) drawGot();
     else if (G.parent) drawParentCheck();
+    else if (G.waitList) drawWaitList();
     else if (G.getMore) drawGetMore();
     else if (G.chickBuy) drawChickBuy();
     else if (G.detail) drawDetail();
@@ -2652,6 +2703,63 @@ function drawGot() {
   pop(0.06, cx, cy - 0.98 * S, () => { const hs = Math.min(39 * u, 0.12 * S), w = Math.min(A.w - 36 * u, ui.measure('YOU GOT!', hs) + 80 * u); ui.ribbon('YOU GOT!', 0, -hs * 0.85, w, hs * 1.7, { color: '#d89a1c', size: hs, noRecord: true }); });
   landDraw(); // over everything on the page: the purse, the bag and what flies into them
   ui.buttons.push({ id: 'got:tap', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); // a tap anywhere
+}
+
+// 0.8.17 a gift box (the rewards that waited for a connection): a red box, a gold ribbon and bow; S: its width.
+// t: the bow's little wiggle (0 in Calm)
+function drawGift(c, x, y, S, t = 0) {
+  const w = S, h = S * 0.62, lidH = S * 0.24, lx = x - w / 2, by = y - h * 0.2, rr = S * 0.08, ink = '#5a1608';
+  c.save(); c.lineJoin = 'round'; c.lineWidth = Math.max(1.5, S * 0.045);
+  c.fillStyle = 'rgba(40,20,4,0.22)'; c.beginPath(); c.ellipse(x, by + h + S * 0.03, w * 0.55, S * 0.07, 0, 0, Math.PI * 2); c.fill();
+  const box = (x0, y0, bw, bh, a, b) => { ui.roundRect(x0, y0, bw, bh, rr); const g = c.createLinearGradient(0, y0, 0, y0 + bh); g.addColorStop(0, a); g.addColorStop(1, b); c.fillStyle = g; c.fill(); c.strokeStyle = ink; c.stroke(); };
+  box(lx + w * 0.05, by, w * 0.9, h, '#f05a3c', '#c8301e'); // the box
+  c.fillStyle = '#ffd34a'; c.fillRect(x - S * 0.08, by + c.lineWidth / 2, S * 0.16, h - c.lineWidth); // the ribbon down
+  const wig = t ? Math.sin(t * 4) * 0.08 : 0;
+  c.save(); c.translate(x, by - lidH * 0.2); c.rotate(wig * 0.25);
+  box(-w / 2, -lidH * 0.8, w, lidH, '#ff7a54', '#e0412a'); // the lid
+  c.fillStyle = '#ffd34a'; c.fillRect(-S * 0.08, -lidH * 0.8 + c.lineWidth / 2, S * 0.16, lidH - c.lineWidth);
+  for (const sx of [-1, 1]) { // the bow: two loops
+    c.save(); c.rotate(sx * (0.5 + wig)); c.beginPath(); c.ellipse(sx * S * 0.13, -lidH * 0.8 - S * 0.07, S * 0.15, S * 0.085, 0, 0, Math.PI * 2);
+    c.fillStyle = '#ffd34a'; c.fill(); c.strokeStyle = '#8a5a06'; c.stroke(); c.restore();
+  }
+  c.beginPath(); c.arc(0, -lidH * 0.8 - S * 0.02, S * 0.065, 0, Math.PI * 2); c.fillStyle = '#ffe680'; c.fill(); c.strokeStyle = '#8a5a06'; c.stroke();
+  c.restore();
+  c.fillStyle = 'rgba(255,255,255,0.28)'; c.fillRect(lx + w * 0.12, by + h * 0.12, w * 0.08, h * 0.6); // a glint
+  c.restore();
+}
+// the gift mark on the map: a purple pill under the header's right edge, "N rewards waiting", the gift bobbing on it
+function waitMark(xr, y, h) {
+  if (!waitShown()) { G.waitMarkT = null; return; }
+  const u = ui.u, n = waitingList().length, label = `${n} reward${n > 1 ? 's' : ''} waiting`, size = 16 * u, w = ui.measure(label, size) + h * 1.1 + 34 * u;
+  const T0 = G.waitMarkT ?? (G.waitMarkT = G.t), k = save.calm ? 1 : backK(Math.min(1, (G.t - T0) / 0.35)); // it pops in once
+  ctx.save(); ctx.translate(xr - w / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-(xr - w / 2), -(y + h / 2));
+  ui.button('wait:open', label, xr - w, y, w, h, { kind: 'ad', shimmer: true, size, round: h * 0.42, iconS: 1.35, icon: (c, X, Y, S) => drawGift(c, X, Y + (save.calm ? 0 : Math.sin(G.t * 2.4) * 1.5 * u) + S * 0.08, S * 0.95, save.calm ? 0 : G.t) });
+  ctx.restore();
+}
+// the page of waiting rewards: each one, what it pays, and one video to claim it (the gift mark opens it)
+function drawWaitList() {
+  const L = waitingList();
+  if (!L.length) { G.waitList = null; return; }
+  dim(0.55);
+  stackCard('Rewards waiting', (s) => {
+    const C = ui.C, day = today();
+    return [
+      ...L.map((it, i) => ({ h: 76 * s, gap: i ? 10 * s : 14 * s, draw: (x, y, w) => {
+        ui.well(x, y, w, 76 * s, { s });
+        const ax = x + 42 * s, ay = y + 38 * s, bw = 128 * s;
+        if (it.kind === 'coins') for (const [dx, dy] of [[-10, 7], [10, 7], [0, -7]]) drawCoin(ctx, ax + dx * s, ay + dy * s, 14 * s, G.t + dx);
+        else drawSlotIcon(ctx, ax, ay, 24 * s, save.calm ? 0 : G.t);
+        ui.record({ x: x + 12 * s, y: y + 12 * s, w: 60 * s, h: 52 * s }, 'wl:art' + i);
+        if (it.kind === 'coins') {
+          ui.num('+' + it.n, x + 84 * s, y + 28 * s, { size: 24 * s, tag: 'wl:n' + i, maxW: w - bw - 104 * s });
+          ui.text('coins', x + 84 * s, y + 54 * s, { size: 14 * s, color: C.ink2, tag: 'wl:u' + i, maxW: w - bw - 104 * s });
+        } else ui.text('Lucky Spin', x + 84 * s, y + 38 * s, { size: 19 * s, color: C.ink, tag: 'wl:n' + i, maxW: w - bw - 104 * s });
+        const full = it.kind === 'coins' && WT.room(save.waiting, day) < it.n; // over today's ceiling: it waits for tomorrow
+        ui.button('wait:go:' + it.id, full ? 'Tomorrow' : 'Watch', x + w - bw - 10 * s, y + 13 * s, bw, 50 * s, full ? { kind: 'off', disabled: true, size: 17 * s } : { kind: 'ad', ad: true, shimmer: i === 0, size: 19 * s });
+      } })),
+      { h: 52 * s, gap: 16 * s, draw: (x, y, w) => ui.button('wait:close', 'Close', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
+    ];
+  }, { ribbon: '#7a48e8', full: false });
 }
 
 function drawGetMore() {
@@ -4746,6 +4854,7 @@ function render() {
   setSceneCalm(save.calm); // and the farm scenes' live touches (src/render/farmscene.js)
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ui.begin();
+  setAdOff(!ads.videoOk); // 0.8.17: offline (or no video loaded): every video button shows its offline state
   if (G.screen === 'wonder' || (G.screen === 'info' && G.infoFrom === 'wonder')) { wonder.render(); if (G.screen === 'info') drawInfo(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // WONDER (the "i" panel can sit over a Wonder Vault)
   if (!G.sim) {
     ctx.fillStyle = '#1b1410';
@@ -8712,6 +8821,17 @@ function drawTitle() {
     homeHit('home:chest', chx - cs * 0.6, chy - cs * 0.62 - tagS, cs * 1.2, cs * 1.1 + tagS);
   }
   pop(0.05, vx, vy, () => drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm), 0.5); // the toy vault and the meadow friends settle in
+  if (!fr && waitShown()) { // 0.8.17: rewards that waited for a connection: a gift on the meadow (over the egg friends), its tag says how many
+    const n = waitingList().length, tagS = 13 * u, gS = Math.min(cs * 0.9, 54 * u), gx = wide ? A.x + A.w * 0.43 : A.x + A.w * 0.44, gy = ground - gS * 0.42;
+    const tagT = `${n} reward${n > 1 ? 's' : ''} waiting`, tgw = ui.measure(tagT, tagS) + 16 * u, ty0 = gy - gS * 0.62 - tagS * 1.25;
+    const T0 = G.waitMarkT ?? (G.waitMarkT = G.t), k = save.calm ? 1 : backK(Math.min(1, (G.t - T0) / 0.35));
+    ctx.save(); ctx.translate(gx, ground); ctx.scale(k, k); ctx.translate(-gx, -ground);
+    drawGift(ctx, gx, gy + (save.calm ? 0 : Math.abs(Math.sin(G.t * 2.2)) * -3 * u), gS, save.calm ? 0 : G.t);
+    ui.roundRect(gx - tgw / 2, ty0, tgw, tagS * 1.6, tagS * 0.8); ctx.fillStyle = '#7a48e8'; ctx.fill();
+    ui.text(tagT, gx, ty0 + tagS * 0.8, { size: tagS, align: 'center', color: '#fff', tag: 'title:waittag' });
+    ctx.restore();
+    homeHit('wait:open', gx - Math.max(gS * 0.6, tgw / 2), ty0, Math.max(gS * 1.2, tgw), ground - ty0);
+  }
   pop(0.2, A.x + 30 * u, A.y + 30 * u, () => { ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }); setMarkAt(A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u); }); // 0.8.14: the Settings mark
   // remove ads / buy the game (app, until bought), or Premium's free Chick Charge of the day: 0.8.16, a button of the
   // block, beside Extras (same height, same size of words, the column's right edge), no longer a pill over the title
@@ -9015,6 +9135,7 @@ function drawLevels() {
     if (!wide) { const fb = ctx.createLinearGradient(0, ctaY - 30 * u, 0, H_); fb.addColorStop(0, 'rgba(20,10,30,0)'); fb.addColorStop(1, 'rgba(20,10,30,0.5)'); ctx.fillStyle = fb; ctx.fillRect(0, ctaY - 30 * u, W_, H_ - ctaY + 30 * u); }
     ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, ctaX, ctaY, ctaW, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: (wide ? 20 : 23) * u, round: 18 * u });
   }
+  waitMark(X1, (ctaOn ? ctaY - 12 * u : vb - 16 * u) - 46 * u, 46 * u); // 0.8.17: rewards that waited for a connection, over PLAY's right end
   drawShopHand(); // 0.8.14: once, the first time the shop mark turns on
   if (S.max > 0 && !calm) { // a thin scroll thumb
     const th = Math.max(30 * u, vh * vh / L.H), ty2 = vt + clamp(S.y / S.max, 0, 1) * (vh - th - 4 * u);
@@ -9100,7 +9221,8 @@ async function spinGo(how) {
   const day = today(), W = SP.ways(save, day);
   if (how === 'free' ? !W.free : how === 'ad' ? !W.ad : how === 'retry' ? !W.retry : W.coin == null) return;
   if (how === 'coin' && save.wallet.coins < W.coin) { S.shortT = G.t; audio.play('ui_back'); return; } // the machine sells nothing: no "Get more" sheet here
-  if (how === 'ad' || (how === 'retry' && W.retry === 'ad')) { if (!(await rewarded('spin'))) return; if (G.screen !== 'spin' || G.spin !== S || S.st !== 'idle') return; }
+  const SPk = how === 'ad' ? { kind: 'spin', n: 1, key: `spin:${day}:${SP.state(save).t.ad}`, kept: () => { SP.state(save).t.ad++; } } : null; // 0.8.17: offline, the video spin waits
+  if (how === 'ad' || (how === 'retry' && W.retry === 'ad')) { if (!(await rewarded('spin', SPk))) return; if (G.screen !== 'spin' || G.spin !== S || S.st !== 'idle') return; }
   const snap = (w) => JSON.stringify({ ...E.sanitizeWallet(w), coins: 0 }), w0 = snap(save.wallet), c0 = E.sanitizeWallet(save.wallet).coins, M0 = SP.meter(save);
   const res = SP.spin(save, how, day);
   if (!res) return;
@@ -9659,7 +9781,7 @@ async function boot() {
   installApp(() => { // Android back button (see app.js): consume it where the game has a natural "back"
     if (G.adBusy) { ads.cancelWait(); return true; } // a pending ad that never reported back: Back returns to the game
     if (modalOpen()) { // a sheet closes first (an offer counts as "No thanks"; the age question waits for next launch)
-      if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null;
+      if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null;
       else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.remAsk) press('rem:later'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null;
       return true;
     }

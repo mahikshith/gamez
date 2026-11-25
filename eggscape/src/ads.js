@@ -123,8 +123,8 @@ export const ads = {
     if (b) return typeof b.showRewarded === 'function' && adLoaded(b);
     return true;
   },
-  // why not: 'offline' (no connection, or no ads on this phone yet) or 'wait' (online, the video is still loading)
-  get videoWhy() { return this.videoOk ? '' : !online() || iosShell() ? 'offline' : 'wait'; },
+  // why not: 'offline' (no connection) or 'none' (online, but no video loaded, or no ads on this phone yet: the iPhone)
+  get videoWhy() { return this.videoOk ? '' : !online() ? 'offline' : 'none'; },
   get premium() { return !!(save && save.wallet && save.wallet.noAds); },
   get canBuyPremium() { return this.canBuy && !this.premium; },
   get premiumPrice() { return this.price(PREMIUM_SKU); },
