@@ -834,7 +834,7 @@ function partsOf(sku) {
   const out = [], hens = B.hens.length > 2 ? [{ art: 'hens', n: 'x' + B.hens.length, word: 'outfits' }] : B.hens.map((h) => ({ art: 'hen:' + h, n: '', word: 'outfit' }));
   const eggs = B.eggs.length > 1 ? [{ art: 'eggs', n: 'x' + B.eggs.length, word: 'eggs' }] : B.eggs.map((e) => ({ art: 'egg:' + e, n: '', word: 'egg' }));
   const chicks = B.chicks.length ? [{ art: B.chicks.length > CHICK_IDS.length ? 'chicks9' : 'chicks', n: 'x' + B.chicks.length, word: 'chicks' }] : [];
-  const perks = B.premium ? [{ art: 'novideo', n: '', word: 'no videos' }, { art: 'levels', n: '', word: 'all levels' }] : [];
+  const perks = B.premium ? [{ art: 'bonus', n: '', word: 'every bonus' }, { art: 'levels', n: '', word: 'all levels' }] : []; // 0.8.17 (mykee): no word about videos on what is paid for
   const coins = B.coins ? [{ art: 'coins', n: fmtNum(B.coins), word: 'coins' }] : [];
   if (B.hens.length > 2) out.push(...hens, ...eggs, ...chicks, ...coins, ...perks); // the coop: the wardrobe first
   else if (B.premium) out.push(...perks, ...chicks, ...hens, ...eggs, ...coins);
@@ -863,6 +863,19 @@ export function drawPart(ctx, art, cx, cy, c, t) {
   if (art === 'hens') { drawHenSkinPreview(ctx, 'pirate', cx - c * 0.2, cy + c * 0.02, c * 0.66, t); drawHenSkinPreview(ctx, 'royal', cx + c * 0.12, cy + c * 0.04, c * 0.72, t + 1); return; }
   if (art.startsWith('egg:')) return drawSkinPreview(ctx, art.slice(4), cx, cy, c * 0.72, t);
   if (art === 'eggs') { drawSkinPreview(ctx, 'galaxy', cx - c * 0.18, cy + c * 0.04, c * 0.54, t); drawSkinPreview(ctx, 'lava', cx + c * 0.18, cy + c * 0.04, c * 0.54, t); drawSkinPreview(ctx, 'golden', cx, cy - c * 0.06, c * 0.6, t); return; }
+  if (art === 'bonus') { // 0.8.17 every bonus, instantly: a gift box with a lightning bolt on it
+    const w = c * 0.6, h = c * 0.46, x = cx - w / 2, y = cy - h / 2 + c * 0.08;
+    ctx.save(); ctx.lineJoin = 'round'; ctx.lineWidth = c * 0.035; ctx.strokeStyle = '#6a1a10';
+    ctx.fillStyle = '#e8402e'; ctx.beginPath(); ctx.rect(x, y, w, h); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ff6a50'; ctx.beginPath(); ctx.rect(x - c * 0.04, y - c * 0.12, w + c * 0.08, c * 0.14); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(cx - c * 0.05, y - c * 0.12, c * 0.1, h + c * 0.12);
+    for (const d of [-1, 1]) { ctx.beginPath(); ctx.ellipse(cx + d * c * 0.11, y - c * 0.17, c * 0.11, c * 0.065, d * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle = '#fff6b0'; ctx.strokeStyle = '#8a5200'; ctx.lineWidth = c * 0.03; ctx.beginPath(); // the bolt, in front
+    const bx = cx + c * 0.2, by = cy + c * 0.06;
+    ctx.moveTo(bx + c * 0.06, by - c * 0.24); ctx.lineTo(bx - c * 0.1, by + c * 0.03); ctx.lineTo(bx, by + c * 0.03); ctx.lineTo(bx - c * 0.06, by + c * 0.26); ctx.lineTo(bx + c * 0.12, by - c * 0.04); ctx.lineTo(bx + c * 0.02, by - c * 0.04); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    return;
+  }
   if (art === 'novideo') { // a video tile struck through: the bonuses come without one
     const w = c * 0.62, h = w * 0.72;
     drawAdBadge(ctx, cx - w / 2, cy, w, h);
@@ -927,7 +940,7 @@ function drawStrip(ui, ctx, parts, x, y, w, maxH, s, t, key) {
 }
 
 // the value badge: a gold starburst with the computed "6x" over "value"
-function valueBadge(ui, ctx, times, cx, cy, r, s, t, tag, group) {
+export function valueBadge(ui, ctx, times, cx, cy, r, s, t, tag, group) {
   if (!(times >= 2)) return;
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(ui.calm ? 0 : Math.sin(t * 1.3) * 0.05);
   ctx.beginPath();
@@ -982,7 +995,7 @@ export function iapRows(sku, levels = 50) {
   if (B.charges) out.push({ art: 'charge', text: B.charges + ' Chick Charges' });
   if (B.boosts) out.push({ art: 'boosts', text: `${B.boosts} of every boost (${B.boosts * BOOSTER_ORDER.length} in all)` });
   if (B.ally) out.push({ art: 'ally', text: B.ally + ' Ally Tickets' });
-  if (B.premium) out.push({ art: 'novideo', text: 'No videos: every video reward at once' }, { art: 'levels', text: `All ${levels} levels open` });
+  if (B.premium) out.push({ art: 'bonus', text: 'Every bonus, instantly' }, { art: 'levels', text: `All ${levels} levels open` });
   if (B.daily) out.push({ art: 'daily', text: `${B.daily} free Chick Charge every day` });
   return out;
 }
@@ -994,7 +1007,7 @@ export function iapValueLine(sku, price) {
 export const drawIapBanner = (ctx, sku, cx, cy, bw, bh, t, wallet) => drawBanner(ctx, sku, cx, cy, bw, bh, t, wallet);
 
 // one plain promise under a bundle's name (0.8.9: what it is for, in words a child reads)
-export const PROMISE = { starter_nest: 'A head start: coins, an outfit and boosts', eggscape_premium: 'Every level open and no videos, for good', eggscape_collector: 'Every outfit, every egg, every chick', bundle_helper: 'Coins, charges and boosts for a tricky level' };
+export const PROMISE = { starter_nest: 'A head start: coins, an outfit and boosts', eggscape_premium: 'Everything. Forever.', eggscape_collector: 'Every outfit, every egg, every chick', bundle_helper: 'Coins, charges and boosts for a tricky level' };
 // a bundle as a tall card: the art across the top (tag pill left, value badge right), the name, the strip, the price.
 // hero: the gold frame and the bigger art (Unlock Everything)
 function drawBundleTall(ui, ctx, sku, x, y, w, h, s, t, st, o = {}) {
