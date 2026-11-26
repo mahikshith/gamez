@@ -1159,7 +1159,7 @@ function pointerDown(e) {
   if (G.adBusy || modalOpen()) { if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; } return; } // a sheet or popup takes every tap (and an ad wait: only its "Back to game")
   const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'extras' ? G.escroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'pause' ? (G.ppRectR && x >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'fail' && G.fscroll && G.fscroll.max > 0 ? G.fscroll : null;
   if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
-  if (SC && G.settingsOpen && /^rs:\d+$/.test(id || '')) Object.assign(G.pdrag, { bar: true, x0: x }); // the ring speed bar: a sideways drag slides it, an up/down one scrolls the page
+  if (SC && (G.settingsOpen || G.screen === 'pause') && /^rs:\d+$/.test(id || '')) Object.assign(G.pdrag, { bar: true, x0: x }); // the ring speed bar (Settings, the pause page): a sideways drag slides it, an up/down one scrolls the page
   if (G.screen === 'intro') { // 2026-11-19 level page: the page scrolls up/down, the chick row left/right (the first clear move picks)
     const inR = (R) => R && x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h;
     const land = ui.A.w > ui.A.h * 1.15, cx = inR(G.carRect) && G.car && G.car.max > 0 ? G.car : null;
@@ -1959,6 +1959,7 @@ async function press(id) {
       break;
     case 'practice': // the Practice screen: every studio vault as a tile (also reachable from the pause card)
       portal.gameplayStop();
+      G.pracFrom = G.screen === 'pause' && G.sim && G.sim.state === 'play' ? G.sim : null; // 0.8.17: Back from there returns to this paused level
       setScreen('practice');
       break;
     case 'spin': openSpin(); break;
@@ -1973,6 +1974,7 @@ async function press(id) {
     case 'back':
       G.getMore = null; G.detail = null;
       if (G.screen === 'store') shopSeen(); // (after a purchase fewer things are in reach: saving up again lights the mark)
+      if (G.screen === 'practice' && G.pracFrom && G.pracFrom === G.sim && G.sim.state === 'play' && G.li >= 0) { G.pracFrom = null; setScreen('pause'); break; } // opened from the pause page: back to that level, paused
       setScreen(G.screen === 'store' ? G.storeFrom || 'title' : G.screen === 'practice' ? 'extras' : 'title');
       break;
     case 'extras': // the Extras menu: Wonder Vaults (bonus) and, in the test build, the Practice vaults
@@ -7984,36 +7986,31 @@ function lampIcon(c, x, y, S) {
   c.strokeRect(x - r * 0.45, gy + r * 1.28, r * 0.9, r * 0.22);
   c.restore();
 }
-// the pause page's SHOP banner: gold, the coin total, three things the player does not own yet (what the coins reach
-// first), the mark when the coins reach something new, and one line when something can be had now. Tap: the shop on it.
-function pauseShop(s) {
-  const H = 96 * s;
-  return { h: H, gap: 12 * s, draw: (x, y, w) => {
-    const M = shopMarkNow(), coins = save.wallet.coins;
-    const B = ui.button('shop', '', x, y, w, H, { kind: 'gold', shimmer: true, shimmerOff: 60, round: 20 * s });
-    const fy = B.cy - (H - 6 * s) / 2, top = fy + 34 * s, grp = 'btn:shop';
-    // three pictures: not owned, the ones the coins reach first (dearest of those), then the nearest ones beyond
-    const own = markItems().filter((i) => !i.owned && (i.kind === 'skin' || i.kind === 'hen'));
-    const can = own.filter((i) => i.price <= coins).sort((a, b) => b.price - a.price), far = own.filter((i) => i.price > coins).sort((a, b) => a.price - b.price);
-    const pics = (M.pick && (M.pick.kind === 'skin' || M.pick.kind === 'hen') ? [own.find((i) => i.key === M.pick.key)] : []).concat(can, far).filter((v, i, a) => v && a.findIndex((q) => q.key === v.key) === i).slice(0, 3);
-    const pw = Math.min(54 * s, (w * 0.46) / 3), px0 = x + w - 12 * s - pics.length * pw;
-    pics.forEach((it, i) => {
-      const cx = px0 + (i + 0.5) * pw;
-      ctx.beginPath(); ctx.arc(cx, top, pw * 0.46, 0, 7); ctx.fillStyle = it.price <= coins ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.28)'; ctx.fill();
-      markArt(it.key, cx, top + 1 * s, pw * 0.82);
-    });
-    ui.record({ x: px0, y: top - pw * 0.46, w: pics.length * pw, h: pw * 0.92 }, 'pause:shoppics', grp);
-    shopIcon(ctx, x + 32 * s, top, 34 * s);
-    ui.text('Shop', x + 56 * s, top - 8 * s, { size: 25 * s, color: '#fff', stroke: '#8a4a04', strokeW: 4 * s, maxW: px0 - x - 66 * s, tag: 'pause:shop', group: grp });
-    ui.text(String(purse.shown()), x + 57 * s, top + 15 * s, { size: 16 * s, color: '#fff8e0', stroke: '#8a4a04', strokeW: 3 * s, maxW: px0 - x - 66 * s, tag: 'pause:coins', group: grp });
-    // one short line when the coins reach something
-    if (M.pick) {
-      const t = `You can get the ${markName(M.pick.key)}`, ly = fy + H - 6 * s - 18 * s;
-      ui.roundRect(x + 10 * s, ly - 12 * s, w - 20 * s, 24 * s, 12 * s); ctx.fillStyle = 'rgba(120,60,0,0.28)'; ctx.fill();
-      ui.text(t, x + w / 2, ly, { size: 14.5 * s, align: 'center', color: '#fff', stroke: 'rgba(90,40,0,0.7)', strokeW: 2.5 * s, maxW: w - 36 * s, tag: 'pause:shopline', group: grp });
-    } else ui.text('New eggs and outfits', x + w / 2, fy + H - 6 * s - 18 * s, { size: 14.5 * s, align: 'center', color: '#fff', stroke: 'rgba(90,40,0,0.7)', strokeW: 2.5 * s, maxW: w - 36 * s, tag: 'pause:shopline', group: grp });
-    if (M.on) markBadge(x + w - 8 * s, y + 6 * s, 12 * s, G.t);
-  } };
+// the pause page's tiles: Restart, Levels, Home / Settings, Practice and (0.8.17, once level 3 is won) the Shop, gold,
+// with its mark when the coins reach something new; a tap opens the shop on that thing, and Back comes to this page again
+function pauseTileItems() {
+  const T = [
+    ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, ui.faceOf('#1f9e94')], ['home', 'Home', ICON.home, ui.faceOf('#e0507e')],
+    ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad', (bx, by, bw, bh) => setMarkAt(bx, by, bw, bh)], ['practice', 'Practice', (c, X, Y, S) => pictoTarget(c, X, Y, S * 0.95), 'orange'],
+  ];
+  if (!earlyDays()) T.push(['shop', 'Shop', (c, X, Y, S) => shopIcon(c, X, Y, S * 1.1), 'gold', (bx, by, bw) => { if (shopMarkNow().on) markBadge(bx + bw - 8 * ui.u, by + 6 * ui.u, 12 * ui.u, G.t); }]);
+  return T;
+}
+// the pause page's ring speed row (0.8.17): the level card's little ring turning at the chosen speed, then the same
+// - / bars / + as Settings (press ids rs:-, rs:+, rs:<i>; a sideways drag slides the bars). It applies at once.
+function pauseRingRow(x, y, w, s, h) {
+  const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
+  ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+  const rr = Math.min(16 * s, h * 0.3), rcx = x + 12 * s + rr + 2 * s, rcy = y + h / 2, dt = clamp(G.t - (G.rsT ?? G.t), 0, 0.1), ang = save.calm ? 0.6 : (G.rsAng = (G.rsAng || 0) + dt * 1.6 * sp);
+  G.rsT = G.t;
+  ctx.save(); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(rcx, rcy, rr, ang + 0.55, ang + Math.PI * 2 - 0.55); ctx.lineWidth = 7 * s; ctx.strokeStyle = '#6b3f17'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(rcx, rcy, rr, ang + 0.55, ang + Math.PI * 2 - 0.55); ctx.lineWidth = 4 * s; ctx.strokeStyle = '#d99a4e'; ctx.stroke();
+  drawEggIcon(ctx, rcx, rcy, 14 * s, 'alive');
+  ctx.restore();
+  ui.record({ x: rcx - rr - 4 * s, y: rcy - rr - 4 * s, w: 2 * rr + 8 * s, h: 2 * rr + 8 * s }, 'pause:rsring');
+  const cx = rcx + rr + 12 * s, ch = h - 12 * s;
+  ringSpeedCtl(cx, y + 6 * s, x + w - 8 * s - cx, s, k, ch);
 }
 // 0.8.7 (mykee: "the info on the pause page should be an animation, not text"): each villain of this level as its
 // own little cartoon (the level card's stage: the villain's game rig, the move that beats it), one line under it
@@ -8050,7 +8047,7 @@ function drawPause() {
   const tb = portal.showMuteButton, wide = A.w > A.h * 1.15;
   const blocks = [
     { h: 46 * s, gap: 0, draw: (x, y, w) => ui.ribbon('Paused', x + w / 2, y, clamp(ui.measure('Paused', 28 * s) + 80 * s, 170 * s, w), 46 * s, { s, color: '#3a80ea', size: 28 * s, tag: 'pause:title' }) },
-    { h: 30 * s, gap: 6 * s, draw: (x, y, w) => ui.text(G.li >= 0 ? `Level ${L.id} · ${L.name}` : L.name, x + w / 2, y + 15 * s, { size: 20 * s, align: 'center', maxW: w, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:name' }) },
+    { h: 30 * s, gap: 6 * s, tight: true, draw: (x, y, w) => ui.text(G.li >= 0 ? `Level ${L.id} · ${L.name}` : L.name, x + w / 2, y + 15 * s, { size: 20 * s, align: 'center', maxW: w, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:name' }) },
     // the goal and the clock, and the sound and music toggles
     { h: 56 * s, gap: 12 * s, draw: (x, y, w) => {
       const bw = tb ? 2 * 48 * s + 8 * s : 0, gw = w - bw - (tb ? 10 * s : 0);
@@ -8064,13 +8061,7 @@ function drawPause() {
         ui.button('music', '', x + w - 48 * s, y + 4 * s, 48 * s, 48 * s, { kind: save.music ? 'tertiary' : 'off', icon: ICON.note(save.music), iconS: 1.2, round: 14 * s });
       }
     } },
-    { h: 66 * s, gap: 14 * s, draw: (x, y, w) => ui.button('resume', 'Resume', x, y, w, 66 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * s, round: 20 * s }) },
     (() => { const c = G.li >= 0 && !earlyDays() ? pageLead('pause').lead : null; return c ? leadBlock(c, s, { gap: 12 * s, tag: 'pause:lead', quiet: true }) : null; })(), // 0.8.15: what waits for him or what he is closest to (the Conductor's one thing)
-    earlyDays() ? null : pauseShop(s), // 0.8.14: the shop, big and gold, right under Resume (never before level 3 is won)
-    pauseTiles([
-      ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, ui.faceOf('#1f9e94')], ['home', 'Home', ICON.home, ui.faceOf('#e0507e')],
-      ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad', (bx, by, bw, bh) => setMarkAt(bx, by, bw, bh)], ['practice', 'Practice', (c, X, Y, S) => pictoTarget(c, X, Y, S * 0.95), 'orange'],
-    ], s, wide ? 5 : 3),
     // the hint and Skip level: two equal halves, each with its icon and the video mark (Skip only when src/skip.js allows it)
     G.hint ? lineBlock('Hint…', 18 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:hint', gap: 14 * s })
       : sim.state !== 'play' && !skipNow() ? null : { h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
@@ -8092,19 +8083,39 @@ function drawPause() {
     } } : null,
     ...(kinds.length ? [pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeStage(kd, i, s, iw))] : []),
   ].filter(Boolean);
+  // 0.8.17 (mykee: "Resume button should be below, right where the thumb is"; "scroll speed button should be present in
+  // the game itself and shop button too"): the controls stand in one block at the bottom, in thumb reach: the tiles
+  // (Restart, Levels, Home / Settings, Practice, Shop), the ring speed row (live: the level runs at it on Resume) and
+  // Resume, full width, where PLAY sits on the level card. What the level is (goal, stars, villains) scrolls above them.
+  // A phone on its side keeps the tiles in the left column's list; Resume and the ring speed row stand under it.
+  const BTN = 56 * s, RH = 56 * s, gB = 10 * s;
+  const TI = pauseTileItems(), tiles = pauseTiles(TI, s, wide ? TI.length : 3); // (on its side: one row)
   const land = A.w > A.h * 1.15 && kinds.length;
+  const foot = (x, w, tl) => { // draws from the bottom of the safe rect up; returns the top of what it drew
+    let y = A.y1 - 6 * s - BTN;
+    ui.button('resume', 'Resume', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: ICON.play, size: 27 * s });
+    y -= gB + RH; pauseRingRow(x, y, w, s, RH);
+    if (tl) { y -= gB + tl.h; tl.draw(x, y, w); }
+    return y;
+  };
+  // a short list: the room it leaves is shared out as air between its blocks (never one empty band)
+  const air = (B, Vh) => { const H = pageColH(B, s) + 18 * s; if (H < Vh) { const n = B.filter((b) => !b.tight).length, add = Math.min((Vh - H) / (n + 1), 40 * s); for (const b of B) if (!b.tight) b.gap = (b.gap ?? 10 * s) + add; } return B; }; // (the level's name stays under its ribbon)
   if (land) { // a phone on its side: the controls on the left, the villains scroll on their own on the right
     const lw = Math.min((A.w - 3 * pad) * 0.5, 460 * s), rw = Math.min(A.w - 3 * pad - lw, 520 * s), lx = A.cx - (lw + rw + pad) / 2, rx = lx + lw + pad;
     const nf = 2 + kinds.length; // the section heading, then the villain cards
-    G.ppRect = { x: A.x, y: A.y + 6 * u, w: rx - pad / 2 - A.x, h: A.h - 12 * u };
-    pageScroll(blocks.slice(0, blocks.length - nf + 1), pg, G.ppRect, lx, lw, s);
+    const top = foot(lx, lw, null);
+    G.ppRect = { x: A.x, y: A.y + 6 * u, w: rx - pad / 2 - A.x, h: top - 8 * s - (A.y + 6 * u) };
+    const L0 = blocks.slice(0, blocks.length - nf + 1); L0.splice(Math.min(3, L0.length), 0, tiles);
+    pageScroll(air(L0, G.ppRect.h), pg, G.ppRect, lx, lw, s);
     const pr = G.ppageR || (G.ppageR = { y: 0, v: 0, max: 0, t: G.t, lid: null });
     if (pr.lid !== pg.lid) { pr.lid = pg.lid; pr.y = 0; pr.v = 0; }
     G.ppRectR = { x: rx - pad / 2, y: A.y + 6 * u, w: A.x1 - (rx - pad / 2), h: A.h - 12 * u };
     pageScroll([pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeStage(kd, i, s, rw))], pr, G.ppRectR, rx, rw, s);
   } else {
-    G.ppRect = { x: A.x, y: A.y + 6 * u, w: A.w, h: A.h - 12 * u }; G.ppRectR = null;
-    pageScroll(blocks, pg, G.ppRect, x0, iw, s);
+    const top = foot(x0, iw, wide ? null : tiles);
+    G.ppRect = { x: A.x, y: A.y + 6 * u, w: A.w, h: top - 8 * s - (A.y + 6 * u) }; G.ppRectR = null;
+    if (wide) blocks.splice(Math.min(3, blocks.length), 0, tiles);
+    pageScroll(air(blocks, G.ppRect.h), pg, G.ppRect, x0, iw, s);
   }
   ctx.restore();
 }
