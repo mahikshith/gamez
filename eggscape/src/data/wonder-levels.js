@@ -186,7 +186,7 @@ export const WONDER_LEVELS = [
       { gaps: [{ a: 170 }], thorns: [{ a: -50, n: 2 }] },
       { gaps: [{ a: 160, len: 0.9, shut: { period: 4, open: 0.4, phase: 0 } }], thorns: [{ a: -140, n: 2 }, { a: 120, n: 1 }], pads: [{ a: -90, len: 1.2 }] },
     ],
-    solve: [[0, 3, 120, 5], [0, 2, 120, 0.3], ['wait', 2], [0, 0, -240, 1], ['wait', 30]],
+    solve: [['beat', 0, 4, 0], [0, 3, 120, 5], [0, 2, 120, 0.3], ['wait', 2], [0, 0, -240, 1], ['wait', 30]], // starts on the door's beat
     fails: [[['wait', 20]], [[0, 3, -110], [0, 2, -100], ['wait', 2], [0, 0, -120], ['wait', 30]], [[0, 3, 120], [0, 2, 120], ['wait', 2], [0, 0, 120], ['wait', 30]]], // idle; the first vault's turns; the 0.8.17 clear
   },
 ];
