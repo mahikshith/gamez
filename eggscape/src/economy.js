@@ -8,12 +8,14 @@
 // Google Play later: each booster carries a `sku` id. Real-money coin packs would be added as
 // new products that call addCoins(); buy() / useBooster() stay the only spend paths.
 
+import { FAUCETS, winParts, treasureCoins, chestCoins } from './engine/mint.js'; // 0.8.17: the coin loop's one table
+
 export const MAX_OWNED = 9;
 // 0.8.15 (the coin loop measured: more than one free booster or charge a level arrived and none was needed, so none was
 // ever bought). Free gifts fill a stack only up to GIFT_MAX; past that a gift pays GIFT_FULL of its price in coins.
 // Buying is still open up to MAX_OWNED: the bag has room for what the player chooses to pay for.
 export const GIFT_MAX = 3;
-export const GIFT_FULL = 0.5;
+export const GIFT_FULL = FAUCETS.giftFull.share; // 0.8.17 the Mint: a quarter (was half)
 
 export const BOOSTERS = {
   stone: {
@@ -107,8 +109,9 @@ export function setPlatform(web) {
 export const AD_REWARDS = {
   doubleCoins: 'Double the coins from this level',
   // 2026-11-20 (research: CrazyGames caps currency videos at ~5 a day with shrinking rewards): the free-coins video pays
-  // a little less each time, six a day, a few minutes apart, so coins keep their worth and the shop keeps its pull
-  freeCoins: { coins: 40, ladder: [40, 30, 25, 20, 20, 15], cooldownSec: 180 },
+  // a little less each time, four a day since 0.8.17 (the Mint), a few minutes apart, so coins keep their worth and the shop keeps its pull
+  // 0.8.17 (the Mint): four a day, 70 coins (was six, 150)
+  freeCoins: { coins: FAUCETS.freeCoins.ladder[0], ladder: FAUCETS.freeCoins.ladder.slice(), cooldownSec: FAUCETS.freeCoins.cooldownSec },
 };
 // the coins the next free-coins video pays today (0: done for today). adDay: { day, n } in the save
 export function freeCoinsNext(adDay, day) {
@@ -185,25 +188,19 @@ export function ownedCount(wallet, id) {
   return (wallet && wallet.owned && wallet.owned[id]) || 0;
 }
 
-// Coins for finishing a level. result: { stars 0..3, saved, eggs, perfect, levelId }.
-// A loss still pays a small consolation so a bad run never feels wasted.
-//   base    8 for showing up, +3 per saved egg          (8..~26)
-//   stars   5 per star                                  (0..15)
-//   perfect +5 for a perfect clutch                     (0 or 5)
-// Win examples: 1 star ~19-22, 2 stars ~24-27, 3 stars perfect ~37-46.
-export const HARD_PAY = 1.5;
-export const EASY_PAY = 0.7; // MINT: an Easy win's share of the coins (the mint table's figure once src/engine/mint.js lands)
+// Coins for finishing a level. result: { stars 0..3, saved, eggs, perfect, levelId, hard, fresh }.
+// 0.8.17 the amounts live in the Mint (engine/mint.js FAUCETS.win), paid OFFLINE; online play adds the Mint's online
+// share on top (main.js onWin, its own line on the win page), so an online win pays what a win paid before:
+//   base    8 for showing up, +2 per saved egg          (8..~20)
+//   stars   4 per star                                  (0..12)
+//   perfect +4 for a perfect clutch                     (0 or 4)
+//   hard    a level marked hard pays half as much again
+//   replay  fresh === false (no new star): only the Mint's replay share (40%) is paid
+//   easy    a win on Easy (r.easy) pays the Mint's Easy share (FAUCETS.easy, 70%) and no hard-level half again
+// Win examples offline: 1 star ~14, 2 stars ~20, 3 stars perfect ~30 (online ~17, ~24, ~36).
+export const HARD_PAY = FAUCETS.win.hard;
 export function levelCoins(result) {
-  const r = result || {}, k = PLATFORM.web ? WEB.winMult : 1; // the web pays double: play is the only way to coins there
-  const stars = Math.max(0, Math.min(3, Math.floor(r.stars || 0)));
-  const saved = Math.max(0, Math.min(r.eggs > 0 ? r.eggs : 6, Math.floor(r.saved || 0)));
-  const base = (8 + 3 * saved) * k; // 0.8.15: was 4 + 2 a saved egg; the purse now moves between bosses
-  const starCoins = 5 * stars * k;
-  const perfect = r.perfect && stars > 0 ? 5 * k : 0;
-  const sum = base + starCoins + perfect, hard = r.hard && !r.easy && stars > 0 ? Math.round(sum * (HARD_PAY - 1)) : 0; // a level marked hard pays half as much again
-  // 0.8.17: a win on Easy (r.easy) pays EASY_PAY of it and no hard-level half again (its fuse is not faster there)
-  const total = r.easy ? Math.max(1, Math.round((sum + hard) * EASY_PAY)) : sum + hard;
-  return { base, stars: starCoins, perfect, hard, total };
+  return winParts(result || {}, PLATFORM.web ? WEB.winMult : 1); // the web pays double: play is the only way to coins there
 }
 
 export function addCoins(wallet, n) {
@@ -314,7 +311,7 @@ export function equipSkin(wallet, id) {
 // skin, a hen outfit, a power chick) at half its coin price, the player's choice: it is used by the first of them he
 // buys. One held at a time, it never runs out and there is no clock on it. The shop shows the old price crossed out on
 // everything it fits while he holds it. It is the one prize that makes coins leave the purse instead of adding to it.
-export const COUPON = { off: 0.5, max: 1, coins: 40 }; // coins: what a second ticket pays while one is held (x the wheel's tier)
+export const COUPON = { off: 0.5, max: 1, coins: FAUCETS.spin.coupon }; // coins: what a second ticket pays while one is held (x the wheel's tier; 0.8.17 the Mint: 20, was 40)
 export const couponHeld = (wallet) => (wallet && Number(wallet.coupon) > 0 ? 1 : 0);
 // the coin price of a thing to own for this wallet: { price, was, coupon } (was = the list price; coupon: the ticket applies)
 export function unlockPrice(wallet, list) {
@@ -349,7 +346,7 @@ export function chestFor(totalStars, opened) {
     index,
     at,
     ready: (totalStars || 0) >= at,
-    reward: { coins: 30 + 10 * index, booster: CHEST_BOOSTS[index % CHEST_BOOSTS.length], skin: index % 2 ? CHEST_SKINS[(index - 1) / 2] || null : null },
+    reward: { coins: chestCoins(index), booster: CHEST_BOOSTS[index % CHEST_BOOSTS.length], skin: index % 2 ? CHEST_SKINS[(index - 1) / 2] || null : null },
   };
 }
 
@@ -377,7 +374,7 @@ const TREASURE_BOOSTS = ['stone', 'time', 'golden', 'rewind', 'sponge', 'nest', 
 export function bossTreasure(bossId) {
   const w = BOSS_TREASURE_IDS.indexOf(bossId);
   if (w < 0) return null;
-  return { id: bossId, coins: 120 + 40 * w, booster: TREASURE_BOOSTS[w], charges: 1 }; // 0.8.15: 120 to 480 coins (was 150 to 600) and one charge (was 2 or 3): a normal win pays more instead
+  return { id: bossId, coins: treasureCoins(w), booster: TREASURE_BOOSTS[w], charges: 1 }; // 0.8.17 the Mint: 100 to 280 coins (was 120 to 480) and one charge
 }
 // +1 of a booster into a wallet (a full stack pays its price in coins instead): the boss treasure and a win's taste
 function giveBooster(w, id, n = 1) {
@@ -386,7 +383,7 @@ function giveBooster(w, id, n = 1) {
   if (k > 0) w.owned = { ...w.owned, [id]: ownedCount(w, id) + k };
   w.coins += giftCoins(id, n - k);
 }
-// what n gifts of a booster pay when the stack is full (half price, rounded to 5)
+// what n gifts of a booster pay when the stack is full (GIFT_FULL of the price, rounded to 5)
 export const giftCoins = (id, n = 1) => (BOOSTERS[id] && n > 0 ? Math.round((BOOSTERS[id].price * GIFT_FULL * n) / 5) * 5 : 0);
 export function giftBooster(wallet, id, n = 1) { const w = sanitizeWallet(wallet); giveBooster(w, id, n); return w; }
 export function tasteBooster(wallet, id) { const w = sanitizeWallet(wallet); giveBooster(w, id); return w; }
@@ -429,7 +426,7 @@ export function useCharge(wallet) {
 export function dailyChest(dayStr) {
   let h = 0;
   for (const c of String(dayStr)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  const coins = [25, 30, 40, 30, 50, 35, 60][h % 7] * (PLATFORM.web ? WEB.winMult : 1), charges = h % 3 === 0 ? 2 : 1;
+  const D = FAUCETS.dailyChest.coins, coins = D[h % D.length] * (PLATFORM.web ? WEB.winMult : 1), charges = h % 3 === 0 ? 2 : 1;
   return { coins, charges };
 }
 export function openDailyChest(wallet, dayStr) {
@@ -571,7 +568,7 @@ export const IAP = {
   coins_1500: { sku: 'coins_1500', usd: 4.99, type: 'consumable', name: 'Sack of coins', coins: 1500, tag: 'Most popular' },
   coins_3300: { sku: 'coins_3300', usd: 9.99, type: 'consumable', name: 'Chest of coins', coins: 3300, tag: 'Best value' },
   starter_nest: { sku: 'starter_nest', usd: 0.99, type: 'once', name: 'Starter Nest', line: '600 coins, 3 Chick Charges, 2 of every boost and the Cocoa Hen. Only once.', coins: 600, charges: 3, boosts: 2, hen: 'cocoa' },
-  eggscape_premium: { sku: 'eggscape_premium', usd: 2.99, type: 'once', name: 'Unlock Everything', line: 'Every bonus without a video, every level open, the six power chicks, the Golden Hen and egg, 1500 coins and a free Chick Charge every day.', coins: 1500, chicks: true, premium: true, egg: 'golden', daily: 1 },
+  eggscape_premium: { sku: 'eggscape_premium', usd: 2.99, type: 'once', name: 'Unlock Everything', line: 'Every bonus at once, every level open, the six power chicks, the Golden Hen and egg, 1500 coins and a free Chick Charge every day.', coins: 1500, chicks: true, premium: true, egg: 'golden', daily: 1 },
   eggscape_collector: { sku: 'eggscape_collector', usd: 5.99, type: 'once', name: 'The Whole Coop', line: 'All of Unlock Everything, every hen outfit, every egg, the three premium chicks and 3000 coins. Forever.', coins: 3000, chicks: true, premium: true, egg: 'golden', daily: 1, collector: true },
   bundle_helper: { sku: 'bundle_helper', usd: 1.99, type: 'consumable', name: 'Helper Bundle', line: '800 coins, 5 Chick Charges, 3 Ally Tickets and 2 of every boost.', coins: 800, charges: 5, ally: 3, boosts: 2 },
   egg_bank: { sku: 'egg_bank', usd: 1.99, type: 'consumable', name: 'Golden Egg Bank', line: 'Every win drops coins in. Crack it open for all of them.', bank: true },
@@ -795,9 +792,9 @@ export function buyDeal(wallet, day) {
   return w;
 }
 
-// Bonus chest (the win card's one video when an ad break would have been due, ads.js bonusDue): 40 coins and one
+// Bonus chest (the win card's one video when an ad break would have been due, ads.js bonusDue): 30 coins (the Mint) and one
 // booster picked by the level id, so the same level always shows the same chest
-export const BONUS_CHEST = { coins: 40 };
+export const BONUS_CHEST = { coins: FAUCETS.bonusChest.coins }; // 0.8.17: 30 (was 40), inside the Mint's win-video pot
 export const bonusChest = (levelId) => ({ coins: BONUS_CHEST.coins, booster: BOOSTER_ORDER[Math.abs(Math.floor(levelId || 0)) % BOOSTER_ORDER.length] });
 export function openBonusChest(wallet, levelId) {
   const R = bonusChest(levelId), w = sanitizeWallet(wallet);

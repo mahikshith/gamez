@@ -7,10 +7,13 @@
 // 5 Easy's star goals: harder second and third stars, the level itself passed as before; Easy pays less, no hard bonus
 // 6 fairness: two saves that differ in skill, payment, videos watched and online state get the same level setup (the
 //   fuse and every sim parameter), and two that differ only in payment, videos and online state get the same decisions
+import { readFileSync } from 'node:fs';
 import * as PA from '../src/engine/pacer.js';
 import * as ENG from '../src/engine/index.js';
 import * as GL from '../src/goals.js';
 import * as E from '../src/economy.js';
+import * as MINT from '../src/engine/mint.js';
+import * as DR from '../src/director.js';
 import { Sim, isHardLevel } from '../src/sim/sim.js';
 import { LEVELS } from '../src/data/levels.js';
 
@@ -38,6 +41,11 @@ const plan = (s, id, o = {}) => PA.failPlan(s, { levelId: id, boss: id % 5 === 0
   PA.result(soft, { id: 14, won: true, stars: 1 }); ok(PA.losses(soft, 14) === 0, 'a win clears the count');
   ok(!PA.retryGift(s, 12), 'no gift before Keep trying');
   PA.declined(s, 12); ok(PA.retryGift(s, 12) && !PA.retryGift(s, 12), 'Keep trying: one free booster on the next try, once');
+  const won = fresh(); won.stars[16] = 1; lose(won, 16, 3); const G3 = plan(won, 16, { canSkip: false });
+  ok(!G3.ask && G3.gift, 'a won level replayed for stars (no skip there): no pop-up, the free booster all the same');
+  PA.declined(won, 16); ok(PA.retryGift(won, 16) && !plan(won, 16, { canSkip: false }).gift, '... once in a losing run');
+  PA.result(won, { id: 16, won: true, stars: 2 }); lose(won, 16, 3); ok(plan(won, 16, { canSkip: false }).gift, '... and again in a later losing run (a win in between)');
+  ok(!plan(fresh({ adapt: false, stars: { 3: 1, 16: 1 } }), 16, { canSkip: false }).gift, 'the switch off: no such booster');
 }
 // ---- 2 the hint and the Scarecrow
 {
@@ -50,9 +58,12 @@ const plan = (s, id, o = {}) => PA.failPlan(s, { levelId: id, boss: id % 5 === 0
   const strong = fresh(); strong.dir.att = { 6: { tries: 1, wins: 1 }, 7: { tries: 1, wins: 1 }, 8: { tries: 1, wins: 1 } }; strong.dir.recent = ['w', 'w', 'w', 'w', 'w'];
   lose(strong, 21, 2); ok(!plan(strong, 21).hint, 'a strong player does not get it on loss 2');
   lose(strong, 21, 2); ok(plan(strong, 21).hint, '... and gets it on loss 4');
-  PA.gave(strong, 21, 'hint'); ok(!plan(strong, 21).hint, 'once per level');
+  PA.gave(strong, 21, 'hint'); ok(!plan(strong, 21).hint, 'not on the next loss');
+  lose(strong, 21, PA.PACE.hintAgain - 1); ok(!plan(strong, 21).hint, `not before ${PA.PACE.hintAgain} more losses`);
+  lose(strong, 21, 1); ok(plan(strong, 21).hint, `again after ${PA.PACE.hintAgain} more losses in a row (loss ${PA.losses(strong, 21)})`);
   const off = fresh({ adapt: false }); off.dir.att = weak.dir.att; lose(off, 21, 3); ok(!plan(off, 21).hint, 'switch off: not before the plain loss 4');
   lose(off, 21, 1); ok(plan(off, 21).hint, 'switch off: the hint at loss 4');
+  PA.gave(off, 21, 'hint'); lose(off, 21, 4); ok(!plan(off, 21).hint, 'switch off: once per level');
   const b = fresh(); lose(b, 10, 2); ok(!plan(b, 10).scare, 'no Scarecrow on boss loss 2');
   lose(b, 10, 1); ok(plan(b, 10).scare, 'a free Scarecrow on boss loss 3');
 }
@@ -75,7 +86,7 @@ const plan = (s, id, o = {}) => PA.failPlan(s, { levelId: id, boss: id % 5 === 0
   ok(PA.dareMet({ kind: 'noboost' }, { boosts: 0 }) && !PA.dareMet({ kind: 'noboost' }, { boosts: 1 }), 'no boosters: judged');
   ok(PA.dareMet({ kind: 'every' }, { broken: 0, saved: 3, total: 3 }) && !PA.dareMet({ kind: 'every' }, { broken: 1, saved: 2, total: 3 }), 'every egg: judged');
   ok(PA.dareMet({ kind: 'nochick' }, { chicks: 0 }) && PA.dareMet({ kind: 'turns', n: 9 }, { turns: 9 }) && !PA.dareMet({ kind: 'turns', n: 9 }, { turns: 10 }), 'no chick and turns: judged');
-  ok(PA.dareCoins(40) === 20, 'a met dare pays half as much again (MINT)');
+  ok(PA.dareCoins(40) === Math.round(40 * MINT.FAUCETS.dare.share) && PA.PACE.dareBonus === MINT.FAUCETS.dare.share, `a met dare pays the Mint's share on top (FAUCETS.dare ${MINT.FAUCETS.dare.share}: +${PA.dareCoins(40)} on 40)`);
   const kinds = new Set(); for (let id = 6; id < 50; id++) { const q = fresh(); for (const k of [1, 2, 3]) PA.result(q, { id: k + 100, won: true, stars: 3, first: true }); const x = PA.dareFor(q, ctx(id, { tries: 1, turns: 12, goals: ['home', 'clean'] })); if (x) kinds.add(x.kind); }
   ok(['noboost', 'every', 'turns', 'nochick'].every((k) => kinds.has(k)), 'the dare fits the level: ' + [...kinds].join(', '));
   const off = fresh({ adapt: false }); for (const id of [9, 10, 11]) PA.result(off, { id, won: true, stars: 3, first: true }); ok(!PA.dareFor(off, ctx(12)), 'switch off: no dares');
@@ -106,7 +117,8 @@ const plan = (s, id, o = {}) => PA.failPlan(s, { levelId: id, boss: id % 5 === 0
   ok(GL.score(g, { ...F, used: 20 }).stars === 3, 'every egg and the bonus: three');
   ok(GL.score(g, { ...F, saved: 2, broken: 1, used: 20 }).stars === 1, 'an egg lost: one star, however fast');
   const c = (o) => E.levelCoins({ stars: 3, saved: 3, eggs: 3, ...o }).total;
-  ok(c({ easy: true }) < c({}) && c({ easy: true, hard: true }) === c({ easy: true }), `Easy pays ${c({ easy: true })} against ${c({})}, and no hard-level bonus`);
+  ok(Math.abs(c({ easy: true }) - c({}) * MINT.FAUCETS.easy.share) <= 0.5 && c({ easy: true, hard: true }) === c({ easy: true }), `Easy pays ${c({ easy: true })} against ${c({})} (the Mint's FAUCETS.easy ${MINT.FAUCETS.easy.share}), and no hard-level bonus`);
+  ok(c({ easy: true, fresh: false }) === Math.round(c({ easy: true }) * MINT.FAUCETS.replay.share), `an Easy replay with no new star: the replay share of the Easy pay (${c({ easy: true, fresh: false })})`);
   ok(c({ hard: true }) > c({}), 'Medium and Hard keep the hard-level bonus');
 }
 // ---- 6 fairness
@@ -129,8 +141,15 @@ const plan = (s, id, o = {}) => PA.failPlan(s, { levelId: id, boss: id % 5 === 0
   const base = () => { const s = mk({ att: { 12: { tries: 4, wins: 0, streak: 4 }, 6: { tries: 2, wins: 1 } }, recent: ['w', 'f', 'f', 'f', 'f'] }); PA.result(s, { id: 12, won: false }); PA.result(s, { id: 12, won: false }); PA.result(s, { id: 12, won: false }); return s; };
   const P1 = base(), P2 = base();
   P2.wallet = { ...P2.wallet, coins: 99999, payer: true, noAds: true, collector: true }; P2.offers = { ads: 500, adsDay: { day: new Date().toISOString(), n: 30 } }; P2.online = false;
-  const dec = (s) => JSON.stringify({ plan: PA.failPlan(s, { levelId: 12, boss: false, canSkip: true, now: 1 }), read: PA.read(s, { levelId: 12, now: 1 }), cards: PA.cards(s), marks: PA.marks(s, { short: 3, rows: [{ id: 2, stars: 1, best: 3 }] }) }).replace(/"why":"[^"]*"/g, '');
+  const dec = (s) => JSON.stringify({ plan: PA.failPlan(s, { levelId: 12, boss: false, canSkip: true, now: 1 }), read: PA.read(s, { levelId: 12, now: 1 }), cards: PA.cards(s), marks: PA.marks(s, { short: 3, rows: [{ id: 2, stars: 1, best: 3 }] }), won: PA.failPlan(s, { levelId: 12, canSkip: false, now: 1 }), dare: PA.dareFor(s, { levelId: 14, tries: 1, eggs: 4, target: 3, now: 1 }) }).replace(/"why":"[^"]*"/g, '');
   ok(dec(P1) === dec(P2), 'payment, videos and online state change nothing the Pacer decides');
+  const SRC = readFileSync(new URL('../src/engine/pacer.js', import.meta.url), 'utf8').replace(/\/\/.*$/gm, '').replace(/`[^`]*`|'[^'\n]*'/g, "''"); // (code only: no comments, no words in strings)
+  { const d = fresh(), now = Date.parse('2026-12-01T12:00:00'); DR.noteResult(d, 21, false, {}); DR.noteResult(d, 21, false, {}); DR.noteTrial(d, 30, { id: 'stone' }, now); DR.noteTrial(d, 31, { id: 'stone' }, now);
+    const t = DR.failHelp(d, { levelId: 21, timeout: true, struggling: true, now, owned: {} }), k = DR.failHelp(d, { levelId: 21, thorns: true, struggling: true, now, owned: {} });
+    ok(!(t && t.kind === 'trialBoost') && k && k.kind === 'trialBoost' && k.id === 'snips', `past the daily two free tries a struggling player still gets one, never a Slow fuse (out of time: ${t ? t.kind + ' ' + t.id : 'none'}; thorns: ${k && k.id})`); }
+  const MAINJS = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8'), LB = (MAINJS.match(/const LOSS_BOOST = (\{[^}]*\})/) || [])[1] || '';
+  ok(LB && !/:\s*'time'/.test(LB), `the Pacer's free booster is never the Slow fuse (main.js LOSS_BOOST ${LB})`);
+  ok(!/wallet|noAds|payer|premium|online|isOnline|videoOk|adsToday|offers|navigator|timeLimit|timeLeft|fuse/.test(SRC.replace(/softFuse/g, '')), 'the Pacer\'s code reads no purse, payment, video count, connection or clock of the level (no time lever)');
 }
 console.log(bad ? `${bad} FAILED` : 'all pacer checks passed');
 process.exit(bad ? 1 : 0);

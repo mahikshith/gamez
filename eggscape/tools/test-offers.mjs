@@ -128,7 +128,7 @@ const app = { money: true };
   ok(id(OF.evaluate(s, 'home', { ...app, now: NOW })) !== 'skip_videos', '2 videos today, 2 in all: nothing');
   watch(s, 1);
   const o = OF.evaluate(s, 'home', { ...app, now: NOW });
-  ok(id(o) === 'skip_videos' && o.sku === 'eggscape_premium' && o.title === 'Skip the videos' && /every video reward at once/.test(o.line), '3 videos today: Skip the videos, selling Unlock Everything');
+  ok(id(o) === 'skip_videos' && o.sku === 'eggscape_premium' && o.title === 'Rewards without waiting' && /every reward at once/.test(o.line), '3 videos today: Rewards without waiting, selling Unlock Everything');
   ok(id(OF.evaluate(s, 'win', { ...app, now: NOW })) === 'skip_videos', 'also at a win');
   ok(OF.evaluate(s, 'fail', { ...app, now: NOW, fails: 1 }) === null && OF.evaluate(s, 'play', { ...app, now: NOW }) === null, 'never on a fail card, never in play');
   ok(id(OF.evaluate(s, 'shop', { ...app, now: NOW })) !== 'skip_videos', 'not the shop featured card');

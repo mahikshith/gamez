@@ -15,7 +15,8 @@
 //   land.start({ from, to, src: { x, y }, items: [{ art, src, n?, dest: 'bag' | 'shop', size?, draw? }], delay?, wait? })
 //   land.go(src?)              // a landing started with wait: true sets off (a reveal's claim)
 //   land.draw(ctx, u, A, kit)  // once a frame, after the page (over its dim). kit: { ui, coin(ctx, x, y, r, t),
-//                              //   art(ctx, art, x, y, size, t), bag(ctx, x, y, s, bump), shop(ctx, x, y, s) }
+//                              //   art(ctx, art, x, y, size, t), bag(ctx, x, y, s, bump), shop(ctx, x, y, s),
+//                              //   purse?: { x, y, w, h, size } (the page's own purse chip: the landing draws there) }
 //   land.busy() / land.finish() / land.active() / land.shown() / land.clear() / land.state (QA)
 
 import { rays, glow, burst, confetti, sparkleRing } from '../render/celebrate.js';
@@ -83,8 +84,9 @@ export function createLanding(env) {
       }
       if (L.done && L.finalAt == null) L.finalAt = t;
       // ---- the purse chip: the map header's gold coin button, top right in the safe area
-      const fs = 20 * u, h = 46 * u, digits = String(Math.max(L.from, L.to)).replace(/\d/g, '0');
-      const w = Math.max(104 * u, ui.measure(digits, fs) + 66 * u), x = A.x1 - 10 * u - w, y = A.y + 8 * u;
+      // (kit.purse { x, y, w, h, size }: a page that has its own purse chip in its header (the Lucky Spin) lands on it, in its place)
+      const KP = kit.purse, fs = KP ? KP.size : 20 * u, h = KP ? KP.h : 46 * u, digits = String(Math.max(L.from, L.to)).replace(/\d/g, '0');
+      const w = KP ? KP.w : Math.max(104 * u, ui.measure(digits, fs) + 66 * u), x = KP ? KP.x : A.x1 - 10 * u - w, y = KP ? KP.y : A.y + 8 * u;
       const pin = calm ? 1 : backOut((t - L.born) / 0.22); // (it is there from the first frame: a quick settle, never a slide)
       let bump = 0;
       if (!calm) { const q = (t - L.lastLand) / BUMP; if (q >= 0 && q < 1) bump = 0.09 * Math.sin(q * Math.PI); if (L.finalAt != null) { const z = (t - L.finalAt) / 0.32; if (z >= 0 && z < 1) bump = Math.max(bump, 0.2 * Math.sin(z * Math.PI)); } }
@@ -108,7 +110,7 @@ export function createLanding(env) {
           ctx.save(); ctx.globalAlpha = Math.min(1, k * 2) * fade; ctx.translate(pcx, py); ctx.scale(pk, pk);
           ui.text('+' + L.amt, 0, 0, { size: ps, align: 'center', color: '#ffe27a', stroke: 'rgba(60,28,6,0.95)', strokeW: 4.5 * u, noRecord: true });
           ctx.restore();
-          ui.record({ x: pcx - ui.measure('+' + L.amt, ps) / 2, y: py - ps * 0.6, w: ui.measure('+' + L.amt, ps), h: ps * 1.2 }, 'land:plus');
+          if (fade >= 1) ui.record({ x: pcx - ui.measure('+' + L.amt, ps) / 2, y: py - ps * 0.6, w: ui.measure('+' + L.amt, ps), h: ps * 1.2 }, 'land:plus'); // (fading out it drifts up to the chip's edge)
         }
       }
       // ---- the chips for things: the bag (boosters, charges) and the shop (eggs, outfits), left of the purse

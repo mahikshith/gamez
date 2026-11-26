@@ -162,45 +162,66 @@ const HOUR = 3600000, DAY = 24 * HOUR, T0 = new Date(2026, 10, 24, 18, 0, 0).get
   ok(n.key === 'hen:royal' && n.short === 50, 'coins that changed nothing point at the thing just out of reach: 50 short');
   ok(CO.suggest(mk({ wallet: { coins: 20 } }), items) === null, 'nothing near: nothing is said');
 }
-{ // the herald: one real reason, at his hour, never at night, backing off when ignored
+{ // the herald (0.8.17): a catalogue of true notes, per segment, at his hour, never at night, capped, backing off
+  const SEG = (o = {}) => HE.segment({ stage: 'regular', mood: 'steady', spender: 'saver', video: 'some', ...o.m }, { back: o.back ?? 0.3 });
+  const C = (o = {}) => ({ unlocked: 12, chestDay: '2026-11-24', dailyOn: true, hour: 18, seg: SEG(), giftOk: true, ...o });
   const s = mk({ unlocked: 9 });
-  ok(HE.plan(s, { spins: 1 }, T0) === null, 'never asked: nothing is planned');
-  ok(HE.shouldAsk(s, { unlocked: 9, stars: 3, spins: 1 }) && !HE.shouldAsk(s, { unlocked: 4, stars: 3, spins: 1 }) && !HE.shouldAsk(s, { unlocked: 9, stars: 1, spins: 1 }) && !HE.shouldAsk(s, { unlocked: 9, stars: 3, spins: 0, spinLeft: 0 }) && !HE.shouldAsk(s, { unlocked: 9, stars: 3, spins: 1, child: true }), 'asked on a good win with something to promise, not early, not a child');
+  ok(HE.plan(s, C({ spins: 1 }), T0) === null, 'never asked: nothing is planned');
+  // the ask card: from the first boss win, at happy moments only, once a session, then every three days of play, no cap
+  const A = (o) => HE.askNow(s, { won3: true, won5: true, sess: 1, days: [], ...o }, T0);
+  ok(A({ moment: 'boss' }) && A({ moment: 'spin' }) && A({ moment: 'welcome' }) && !A({ moment: 'fail' }) && !A({ moment: 'win' }), 'asked at a boss win, a banked spin, a welcome back; never after a loss');
+  ok(!A({ moment: 'boss', won5: false }) && !A({ moment: 'boss', won3: false, won5: false }) && !A({ moment: 'boss', child: true }) && !A({ moment: 'boss', on: true }), 'not before the first boss win, never for a child, never once they are on');
+  ok(A({ moment: 'chip', won5: false }) && !A({ moment: 'chip', won3: false }), 'the bell chip opens the card whenever he taps it, from level 3 won');
+  HE.noteAsk(s, { sess: 1 }, T0); HE.answer(s, false, T0);
+  ok(!A({ moment: 'boss', sess: 1 }) && !A({ moment: 'boss', sess: 2, days: ['2026-11-25', '2026-11-26'] }) && A({ moment: 'boss', sess: 3, days: ['2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27'] }), '"not now": never twice in a session, back after three days of play');
+  for (let i = 0; i < 6; i++) HE.noteAsk(s, { sess: 10 + i }, T0 + i * 4 * DAY);
+  ok(HE.askNow(s, { moment: 'spin', won3: true, won5: true, sess: 99, days: ['2026-12-20', '2026-12-21', '2026-12-22'] }, T0) && HE.herState(s).asks === 7, 'no cap in total: it keeps coming back at that pace');
   HE.answer(s, true, T0);
-  ok(!HE.shouldAsk(s, { unlocked: 9, stars: 3, spins: 1 }), 'asked once only');
-  const P = HE.plan(s, { spins: 1, hour: 18 }, T0), at = new Date(P.at);
-  ok(P.id === 'spin' && at.getHours() === 18 && P.at - T0 >= HE.HERALD.minAheadH * HOUR && P.at - T0 <= 48 * HOUR, 'a banked spin, tomorrow at the hour he plays: ' + P.title);
-  const night = HE.plan(s, { spins: 1, hour: 23 }, T0), early = HE.plan(s, { spins: 1, hour: 5 }, T0);
-  ok(new Date(night.at).getHours() === 20 && new Date(early.at).getHours() === 9, 'a night owl is told at 20:00, an early bird at 09:00: never in the quiet hours');
-  ok(HE.plan(s, { spins: 0, spinLeft: 1, hour: 18 }, T0).id === 'spin1' && HE.plan(s, { starsToChest: 1, chestSkin: true, hour: 18 }, T0).id === 'chest' && HE.plan(s, { hour: 18 }, T0).id === 'daily', 'the reason is the most real thing waiting');
-  HE.plan(s, { spins: 1, hour: 18 }, T0);
-  ok(HE.opened(s, '', T0 + 2 * HOUR).fired === false && HE.herState(s).n === 0, 'he came back before it was due: cancelled, not counted');
-  let p = HE.plan(s, { spins: 1, hour: 18 }, T0); let r = HE.opened(s, 'spin', p.at + HOUR);
-  ok(r.hit && HE.herState(s).opened === 1 && HE.herState(s).ignored === 0, 'opened from the reminder: counted as opened');
-  let now = p.at + HOUR; const waits = [];
-  for (let i = 0; i < 3; i++) { p = HE.plan(s, { spins: 1, starsToChest: 1, hour: 18 }, now); waits.push(Math.round((p.at - now) / HOUR)); now = p.at + 30 * HOUR; HE.opened(s, '', now); }
-  ok(waits[1] > waits[0] && waits[2] > waits[1] && HE.herState(s).ignored === 3, `each one ignored makes the next come later: ${waits.join(', ')} h`);
-  ok(HE.plan(s, { spins: 1, hour: 18 }, now) === null, 'three ignored in a row: they stop');
-  HE.setOff(s, false);
-  ok(HE.plan(s, { spins: 1, hour: 18 }, now) !== null, 'switching them on again in Settings starts afresh');
-  HE.setOff(s, true);
-  ok(HE.plan(s, { spins: 1, hour: 18 }, now) === null && HE.plan(mk({ eng: { her: { ok: -1 } } }), { spins: 1 }, T0) === null, 'switched off or refused: nothing, ever');
-  const d = mk({ eng: { her: { ok: 1 } } });
-  let q = HE.plan(d, { hour: 18 }, T0); HE.opened(d, '', q.at + HOUR);
-  ok(HE.plan(d, { hour: 18 }, q.at + HOUR) === null, 'the daily chest alone is not worth a second reminder after one was ignored');
-  { // a long absence: three notes in all (about a day, three days, a week), each for something true, then silence
-    const w = mk({ unlocked: 9, eng: { her: { ok: 1 } } }), W = HE.plan(w, { spins: 1, hour: 18, unlocked: 9 }, T0), ats = [W.at, ...W.more.map((m) => m.at)];
-    ok(W.more.length === 2 && W.more[0].id === 'back' && W.more[1].id === 'back2' && ats.every((t, i) => !i || t - ats[i - 1] >= 20 * HOUR) && ats.every((t) => new Date(t).getHours() === 18), `planned on leaving: ${ats.map((t) => ((t - T0) / DAY).toFixed(1)).join(', ')} days later, never two in one day, at his hour`);
-    ok(W.more[0].at - T0 >= 2 * DAY, 'the second speaks of the welcome-back gift only once that gift exists (two days away)');
-    ok(HE.plan(mk({ unlocked: 2, eng: { her: { ok: 1 } } }), { spins: 1, hour: 18, unlocked: 2 }, T0).more.length === 0, 'no later notes before the level the gift exists from');
-    const r1 = HE.opened(w, 'back', W.more[0].at + HOUR), H1 = HE.herState(w);
-    ok(r1.hit && r1.shown === 2 && r1.id === 'back' && H1.n === 2 && H1.opened === 1 && H1.ignored === 0 && H1.sent.filter((q) => q.open).length === 1, 'he opens the game from the second: two were shown, one opened, nothing counts as ignored');
-    const W2 = HE.plan(w, { spins: 1, hour: 18, unlocked: 9 }, T0 + 10 * DAY); HE.opened(w, '', T0 + 30 * DAY);
-    ok(HE.herState(w).ignored === HE.HERALD.giveUp - 1 && HE.plan(w, { spins: 1, hour: 18, unlocked: 9 }, T0 + 30 * DAY).more.length === 0 && W2.more.length === 2, 'all three ignored, back by himself weeks later: one single note next time, no series');
-    const back = HE.herState({ eng: { her: JSON.parse(JSON.stringify(HE.herState(mk({ unlocked: 9, eng: { her: { ok: 1, plan: { at: 5, id: 'spin', more: [{ at: 9, id: 'back' }, null, { at: 0 }] } } } })))) } });
-    ok(back.plan.more.length === 1 && back.plan.more[0].id === 'back', 'the plan survives being saved and loaded');
-  }
-  ok(/allowed|switched off/.test(HE.line(s)), 'one line for the speed log: ' + HE.line(s));
+  const P = HE.plan(s, C({ spins: 1 }), T0), at = new Date(P.at);
+  ok(P.id === 'spin' && P.land === 'spin' && at.getHours() === 18 && P.at - T0 >= HE.HERALD.minAheadH * HOUR && P.at - T0 <= 48 * HOUR, 'a banked spin, tomorrow at the hour he plays: ' + P.title);
+  const night = HE.plan(s, C({ spins: 1, hour: 23 }), T0), early = HE.plan(s, C({ spins: 1, hour: 5 }), T0);
+  ok([night, ...night.more].every((q) => new Date(q.at).getHours() === 20) && [early, ...early.more].every((q) => new Date(q.at).getHours() === 9), 'a night owl is told at 20:00, an early bird at 09:00: never in the quiet hours');
+  // truthfulness: every note's thing is true at the moment it shows; nothing true, nothing sent
+  const all = [];
+  const states = [C({ spins: 1 }), C({ spinLeft: 1 }), C({ starsToChest: 1, chestSkin: true }), C({ chestDay: '2026-11-24' }), C({ flame: 4 }), C({ stuck: 14, stuckBoost: 'Stone Shell', seg: SEG({ m: { mood: 'stuck' } }) }), C({ starsToWorld: 2, nextWorld: 'Frost Peak' }), C({ nextBoss: 15 }), C({ quest: 'The Lost Egg' }),
+    C({ premium: true, charges: 0, chargeMax: 3, premDay: '2026-11-24', seg: SEG({ m: { spender: 'payer' } }) }), C({ videosOn: true, videoDay: '2026-11-24', seg: SEG({ m: { video: 'fan' } }) }), C({ unlocked: 3, seg: SEG({ m: { stage: 'new' } }) }), C({ allDone: true, newContent: true })];
+  for (const c of states) { const p = HE.plan(mk({ eng: { her: { ok: 1 } } }), c, T0); if (p) for (const q of [p, ...p.more]) all.push({ q, c }); }
+  const lie = all.filter(({ q, c }) => !HE.entry(q.id).when(c, q.at, T0) || (HE.entry(q.id).who && !HE.entry(q.id).who(c.seg)));
+  const ids = new Set(all.map(({ q }) => q.id));
+  ok(!lie.length && ['spin', 'spin1', 'chest1', 'daily', 'flame', 'helper', 'world', 'boss', 'quest', 'charge', 'videos', 'newbie', 'fresh', 'back3', 'back7', 'back14', 'back30'].every((i) => ids.has(i)), `${all.length} notes over ${states.length} players, every catalogue entry used, none untrue at its moment` + (lie.length ? ': ' + lie[0].q.id : ''));
+  const bare = HE.plan(mk({ eng: { her: { ok: 1 } } }), { hour: 18, chestDay: '', dailyOn: false, unlocked: 2, giftOk: false, seg: SEG() }, T0);
+  ok(bare === null, 'nothing real waiting (no chest, no spin, no gift yet): no note at all');
+  ok(HE.plan(mk({ eng: { her: { ok: 1 } } }), C({ chestDay: '2026-11-25' }), new Date(2026, 10, 25, 7).getTime()).at > new Date(2026, 10, 26, 0).getTime(), 'the daily chest already opened today: its note is for a day when it is really back');
+  ok(!HE.CATALOGUE.some((e) => { const t = JSON.stringify(e.text(C({ spins: 1, flame: 3, stuck: 4, stuckBoost: 'x', starsToWorld: 2, nextWorld: 'W', nextBoss: 5, quest: 'Q', unlocked: 3 }), T0 + 5 * DAY, T0)) + JSON.stringify(e.voice || {}); return /buy|sale|offer|deal|price|\$|discount|shop|store|premium|unlock everything|limited|hurry|last chance/i.test(t); }), 'no note speaks of money, prices, the shop or pressure');
+  // timing and restraint: one a day, three a week, the series backs off, six unanswered and it stops
+  const w = mk({ eng: { her: { ok: 1 } } }), W = HE.plan(w, C({ spins: 1, flame: 3, starsToChest: 1 }), T0), ats = [W.at, ...W.more.map((m) => m.at)], dd = ats.map((t) => Math.round((t - T0) / DAY));
+  const week = Math.max(...ats.map((t) => ats.filter((u) => u > t - 7 * DAY && u <= t).length)), gaps = dd.slice(1).map((d, i) => d - dd[i]);
+  ok(ats.length === 6 && new Set(ats.map((t) => new Date(t).toDateString())).size === 6 && week <= HE.HERALD.week && gaps[2] >= 2 && gaps[4] >= 7, `a series of ${ats.length} on days ${dd.join(', ')}: one a day, at most ${week} in any seven, every other day after two, weekly after four, then nothing`);
+  ok(W.more.slice(-4).map((m) => m.id).join() === 'back3,back7,back14,back30' && /80/.test(W.more[5 - 1].text), 'away 3, 7, 14, 30 days: the welcome-back gift, growing (director.js gives it on return): ' + W.more.slice(-4).map((m) => m.text.match(/\d+/)[0]).join(' > '));
+  HE.opened(w, '', W.more[1].at + HOUR);
+  ok(HE.herState(w).n === 3 && HE.herState(w).ignored === 3, 'he came back by himself after three: three filed as sent, unanswered');
+  const W2 = HE.plan(w, C({ spins: 1 }), W.more[1].at + 2 * HOUR), w2 = [W2.at, ...W2.more.map((m) => m.at)], sent = HE.herState(w).sent.map((q) => q.t);
+  ok(w2.every((t) => sent.filter((u) => u > t - 7 * DAY && u <= t).length + w2.filter((u) => u > t - 7 * DAY && u <= t).length <= HE.HERALD.week), 'the weekly cap counts the notes that already fired');
+  ok(HE.opened(w, '', W2.at - HOUR).fired === false && HE.herState(w).n === 3, 'he opened the game before the next was due: all cancelled, not counted');
+  const r = (HE.plan(w, C({ spins: 1 }), T0 + 40 * DAY), HE.opened(w, 'spin', HE.herState(w).plan.at + HOUR));
+  ok(r.hit && r.land === 'spin' && HE.herState(w).opened === 1 && HE.herState(w).ignored === 0, 'opened from a note: counted, and the tap lands on the spin page');
+  ok(HE.opened(w, 'test', T0).test && HE.herState(w).test === T0 && HE.herState(w).opened === 1, 'the Settings test note is filed apart');
+  HE.setOff(w, true);
+  ok(HE.plan(w, C({ spins: 1 }), T0) === null && HE.plan(mk({ eng: { her: { ok: -1 } } }), C({ spins: 1 }), T0) === null && HE.plan(mk({ eng: { her: { ok: 1 } } }), C({ spins: 1, child: true }), T0) === null, 'switched off, "not now" or a child: nothing, ever');
+  // segments differ
+  const one = (seg, c = {}) => { const p = HE.plan(mk({ eng: { her: { ok: 1 } } }), C({ seg, ...c }), T0); return p ? [p, ...p.more].map((q) => q.id) : []; };
+  const rich = { spins: 0, flame: 3, stuck: 9, stuckBoost: 'Stone Shell', starsToWorld: 2, nextWorld: 'Frost Peak', videosOn: true, videoDay: '2026-11-24', premium: true, charges: 0, chargeMax: 3, premDay: '2026-11-24' };
+  const plain = { ...rich, flame: 0, stuck: 0 };
+  const stuck = one(SEG({ m: { mood: 'stuck' } }), rich), cruise = one(SEG({ m: { mood: 'cruising' } }), rich), fan = one(SEG({ m: { video: 'fan' } }), plain), shy = one(SEG({ m: { video: 'shy' } }), plain), payer = one(SEG({ m: { spender: 'payer' } }), plain);
+  ok(stuck[0] === 'helper' && cruise[0] !== 'helper' && fan.includes('videos') && !shy.includes('videos') && !payer.includes('videos') && payer.includes('charge') && !shy.includes('charge'), `segments get their own order: stuck ${stuck[0]}, cruising ${cruise[0]}; videos for the fan only (${fan.join(' ')}); the free charge for the payer (${payer.join(' ')})`);
+  const day1 = (b) => { const p = HE.plan(mk({ eng: { her: { ok: 1 } } }), C({ seg: SEG({ back: b }), starsToWorld: 2, nextWorld: 'W', dailyOn: false }), T0); return Math.round((p.at - T0) / DAY); };
+  ok(day1(0.9) > 1 && day1(0.1) === 1, `likely to come back anyway: no day-one note about progress (first note on day ${day1(0.9)}, against day ${day1(0.1)})`);
+  ok(HE.segment({ stage: 'veteran', mood: 'flow', spender: 'payer', video: 'none' }, { back: 0.7 }).key === 'veteran/cruising/payer/likely', 'a segment from the Brain and the Oracle: ' + HE.segment({ stage: 'veteran', mood: 'flow', spender: 'payer', video: 'none' }, { back: 0.7 }).key);
+  let led = null; HE.plan(mk({ eng: { her: { ok: 1 } } }), C({ spins: 1, flame: 3, lead: (c, m) => { led = m; return [...c].reverse(); } }), T0);
+  ok(led === 'note', 'the Conductor is asked which engine\'s note leads');
+  const back = HE.herState({ eng: { her: JSON.parse(JSON.stringify(HE.herState(mk({ unlocked: 9, eng: { her: { ok: 1, plan: { at: 5, id: 'spin', more: [{ at: 9, id: 'back3' }, null, { at: 0 }] } } } })))) } });
+  ok(back.plan.more.length === 1 && back.plan.more[0].id === 'back3', 'the plan survives being saved and loaded');
+  ok(/allowed|switched off/.test(HE.line(w)), 'one line for the speed log: ' + HE.line(w));
 }
 { // 0.8.15 Scarecrow booster in the sim: villains are scared off while it stands, and a saved sim restores exactly
   const { Sim, DT, SCARE_S } = await import('../src/sim/sim.js');

@@ -383,7 +383,7 @@ export class UI {
   pageHeader(P, o = {}) {
     const { s, x, y, w, h } = P, g = 8 * s, tail = 16 * s;
     const rightW = o.right ? o.right.w : 0;
-    const tw0 = this.measure(o.title, 25 * s), need = tw0 + 48 * s, want = Math.max(150 * s, need);
+    const tw0 = o.title ? this.measure(o.title, 25 * s) : 0, need = tw0 + 48 * s, want = Math.max(150 * s, need);
     const room = (leftW) => w - 2 * (Math.max(leftW, rightW) + g + tail); // centred on the column
     const span = (leftW) => w - leftW - rightW - 2 * (g + tail); // between the left buttons and the right slot
     // the second left button stays while it costs the title nothing (the right slot is as wide anyway and the title is
@@ -393,6 +393,7 @@ export class UI {
     this.button(o.back || 'back', '', x, y, h, h, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: h / 2 });
     if (two) this.button(o.left2.id, '', x + h + g, y, h, h, { kind: 'hud', icon: o.left2.icon, iconS: 1.25, round: h / 2 });
     if (o.right) o.right.draw(x + w - rightW, y, rightW, h);
+    if (o.title == null) return { two, ribL: x + w / 2, ribR: x + w / 2 }; // (no title for a moment: the Lucky Spin's bag chip stands there while a prize lands in it)
     // 0.8.16 (a five-digit purse cut the shop's title to "Sh..."): the title is always whole. Centred on the column
     // while it fits there; else it takes the room between the buttons and the right slot (off centre); and if even
     // that is short its letters shrink to fit. Never an ellipsis.
@@ -443,6 +444,8 @@ export class UI {
       ctx.translate(-cx, -by);
     }
     if (o.disabled) ctx.globalAlpha *= o.dim ?? (o.keepFace ? 1 : 0.82);
+    const adOff = !!o.ad && AD_OFF && !o.disabled; // 0.8.17: no video can be shown now: the same button, dimmed, its badge a no-signal mark
+    if (adOff) { ctx.globalAlpha *= 0.62; o = { ...o, shimmer: false }; }
     if (!o.ghost) {
     // contact shadow
     if (!o.flat) { this.roundRect(x - 0.5 * u, y + lip + 2.5 * u, w + u, fh, rad); ctx.fillStyle = 'rgba(16,6,0,0.22)'; ctx.fill(); }
@@ -584,8 +587,29 @@ export class UI {
   pop(t, dur = 0.3) { return this.calm || t >= dur ? 1 : 0.86 + 0.14 * backOut(t / dur); }
 }
 
+// 0.8.17: while no video can be shown (offline, no ad loaded, the iPhone shell without ads) main.js says so once a frame
+// and every film badge turns into a no-signal mark (the buttons that carry one dim too); a tap says how to get it
+let AD_OFF = false;
+export function setAdOff(v) { AD_OFF = !!v; }
+export const adOff = () => AD_OFF;
+// the no-signal mark: the badge's tile in grey, the wifi fan crossed out (same size and place as the film badge)
+export function drawNoSignal(ctx, x, cy, w, h) {
+  ctx.save();
+  const y = cy - h / 2, r = h * 0.28;
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  ctx.fillStyle = '#ece8f2'; ctx.fill();
+  const fx = x + w / 2, fy = y + h * 0.8, R = h * 0.62;
+  ctx.strokeStyle = '#7d7590'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, h * 0.11);
+  for (const k of [1, 0.66]) { ctx.beginPath(); ctx.arc(fx, fy, R * k, -Math.PI * 0.78, -Math.PI * 0.22); ctx.stroke(); }
+  ctx.fillStyle = '#7d7590'; ctx.beginPath(); ctx.arc(fx, fy - h * 0.04, h * 0.09, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#e8402e'; ctx.lineWidth = Math.max(1.2, h * 0.12);
+  ctx.beginPath(); ctx.moveTo(x + w * 0.24, y + h * 0.18); ctx.lineTo(x + w * 0.76, y + h * 0.84); ctx.stroke();
+  ctx.restore();
+}
+
 // "Watch a video" badge: a white film tile with a red play triangle. Every rewarded-ad button carries it.
 export function drawAdBadge(ctx, x, cy, w, h) {
+  if (AD_OFF) { drawNoSignal(ctx, x, cy, w, h); return; }
   ctx.save();
   const y = cy - h / 2, r = h * 0.28;
   const rr = (dx, dy) => {

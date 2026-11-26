@@ -27,6 +27,7 @@ import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback;
 import com.google.android.gms.ads.rewarded.RewardedAd;
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.nio.charset.StandardCharsets;
@@ -46,7 +47,8 @@ import java.util.Set;
 /**
  * Ads (AdMob) and in-app products (Play Billing) for the web game. The game's policy and the product table live in
  * src/ads.js and src/economy.js; this class only shows and sells what it is asked to, and answers through
- * window.__eggAd(id, ok) / window.__eggBuy(id, ok, state) / window.__eggGrant(sku, token) / window.__eggPrice(sku, price).
+ * window.__eggAd(id, ok) / window.__eggBuy(id, ok, state) / window.__eggGrant(sku, token) / window.__eggPrice(sku, price) /
+ * window.__eggStore(json list of the one-time products Play lists now; refunds, see src/guard.js).
  *
  * Money safety: every PURCHASED purchase is handed to window.__eggGrant first. Only when that returns true (the game
  * saved it; it is idempotent per purchase token) is a consumable consumed or a non-consumable acknowledged. A purchase
@@ -70,17 +72,22 @@ public class Monetization {
     /**
      * Security: the app's licence key (Play Console > Monetize with Play > Monetization setup > Licensing, the base64 RSA
      * public key). When set, a purchase is granted only if Google's signature over it checks out, which stops fake-billing
-     * apps from minting coins. Empty (test builds) skips the check. There is no game server, so this is the strongest
-     * check available on the device.
+     * apps from minting coins. There is no game server, so this is the strongest check available on the device.
+     * 0.8.17: while it is empty, only a debuggable build (the proof / test APK) treats purchases as verified; a release
+     * build refuses every purchase (nothing is granted, nothing acknowledged) until the key is pasted here.
      */
     static final String PLAY_LICENSE_KEY = "";
     private static final String PREFS = "egg_money", PREF_CHILD = "childSafe";
 
     private final Activity act;
     private final WebView web;
-    private RewardedAd rewarded;
+    private volatile RewardedAd rewarded; // read from the JS bridge thread too (adReady)
     private InterstitialAd interstitial;
-    private boolean loadingRewarded, loadingInterstitial;
+    private volatile boolean loadingRewarded;
+    private boolean loadingInterstitial;
+    private long lastRewardedTry;
+    /** a debuggable build (the proof APK): test purchases count as verified while PLAY_LICENSE_KEY is empty */
+    private final boolean debug;
     private BillingClient billing;
     private final Map<String, ProductDetails> products = new HashMap<>();
     private String buyId, buySku;
@@ -92,6 +99,7 @@ public class Monetization {
     Monetization(Activity act, WebView web) {
         this.act = act;
         this.web = web;
+        this.debug = (act.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         try {
             // a child-safe player (the game's age question) keeps child-directed ad requests from the very first ad
             applyChildSafe(act.getSharedPreferences(PREFS, Activity.MODE_PRIVATE).getBoolean(PREF_CHILD, false));
@@ -146,9 +154,19 @@ public class Monetization {
     }
 
     // ------------------------------------------------------------------ ads
+    /**
+     * 0.8.17: is a rewarded ad loaded right now? The page shows its video buttons in their offline state while not (no
+     * signal, no fill). A load that failed is tried again here, at most every 20 s (offline it fails at once).
+     */
+    boolean adReady() {
+        if (rewarded == null && !loadingRewarded && System.currentTimeMillis() - lastRewardedTry > 20000) loadRewarded();
+        return rewarded != null;
+    }
+
     private void loadRewarded() {
         if (rewarded != null || loadingRewarded) return;
         loadingRewarded = true;
+        lastRewardedTry = System.currentTimeMillis();
         act.runOnUiThread(() -> RewardedAd.load(act, REWARDED_UNIT, new AdRequest.Builder().build(), new RewardedAdLoadCallback() {
             @Override public void onAdLoaded(@NonNull RewardedAd ad) { rewarded = ad; loadingRewarded = false; }
             @Override public void onAdFailedToLoad(@NonNull LoadAdError e) { rewarded = null; loadingRewarded = false; }
@@ -181,7 +199,7 @@ public class Monetization {
 
     void onHostResume() {
         final String id = showingId;
-        if (id == null) return;
+        if (id == null) { restore(); return; } // Play's guide: query purchases on every resume (pending ones, refunds)
         web.postDelayed(() -> {
             if (!id.equals(showingId)) return;
             boolean ok = showingOk != null && showingOk[0];
@@ -245,6 +263,7 @@ public class Monetization {
                 ProductDetails.OneTimePurchaseOfferDetails o = d.getOneTimePurchaseOfferDetails();
                 if (o != null) js("window.__eggPrice&&window.__eggPrice(" + q(d.getProductId()) + "," + q(o.getFormattedPrice()) + ")");
             }
+            if (!details.isEmpty()) restore(); // the products are known now: the store's list can be sent (sendOwned)
         });
     }
 
@@ -257,10 +276,31 @@ public class Monetization {
     private void restore(Runnable after) {
         if (billing == null || !billing.isReady()) { connectBilling(); if (after != null) after.run(); return; }
         billing.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build(), (r, list) -> {
-            if (r.getResponseCode() == BillingClient.BillingResponseCode.OK && list != null)
+            if (r.getResponseCode() == BillingClient.BillingResponseCode.OK && list != null) {
                 for (Purchase p : list) handle(p, null);
+                sendOwned(list);
+            }
             if (after != null) after.run();
         });
+    }
+
+    /**
+     * 0.8.17 refunds: the full set of one-time products Play lists for this account, sent to the page after a SUCCESSFUL
+     * query only (the caller checked OK). Not sent while Play does not know this app's products (a proof build without
+     * them: a test unlock must never be taken away by an empty list), nor from a release build without the licence key
+     * (nothing there can be verified). The page takes a purchase back only after two such lists an hour apart.
+     */
+    private void sendOwned(List<Purchase> list) {
+        if (PLAY_LICENSE_KEY.isEmpty() && !debug) return;
+        synchronized (products) { if (products.isEmpty()) return; }
+        Set<String> owned = new HashSet<>();
+        for (Purchase p : list) {
+            if (!verified(p)) continue;
+            for (String s : p.getProducts()) if (ONE_TIME.contains(s)) owned.add(s);
+        }
+        JSONArray a = new JSONArray();
+        for (String s : owned) a.put(s);
+        js("window.__eggStore&&window.__eggStore(" + q(a.toString()) + ")");
     }
 
     void buy(String sku, String id) {
@@ -332,9 +372,10 @@ public class Monetization {
             billing.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(p.getPurchaseToken()).build(), r -> { });
     }
 
-    /** Google's RSA signature over the purchase JSON, checked with the app's licence key (skipped while the key is empty) */
-    private static boolean verified(Purchase p) {
-        if (PLAY_LICENSE_KEY.isEmpty()) return true;
+    /** Google's RSA signature over the purchase JSON, checked with the app's licence key. Key empty: only a debuggable
+     *  (proof / test) build accepts purchases; a release build refuses them all. */
+    private boolean verified(Purchase p) {
+        if (PLAY_LICENSE_KEY.isEmpty()) return debug;
         try {
             PublicKey key = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(android.util.Base64.decode(PLAY_LICENSE_KEY, android.util.Base64.DEFAULT)));
             Signature sig = Signature.getInstance("SHA1withRSA");

@@ -17,7 +17,8 @@
 // What it decides (one function each, pure over the save, every answer with a `why` for the decision trace):
 //   failPlan   after a loss: the "Stuck? Skip this one" pop-up (PACE.stuckAsk losses in a row, soft ones count, once per
 //              level per session, never in the early days), a free hint (loss 4; 3 for a lingerer or a leaver; 2 for a
-//              stuck player) and a free Scarecrow at a boss (loss 3)
+//              stuck player; again every PACE.hintAgain more losses), a free Scarecrow at a boss (loss 3), and where no
+//              skip is possible (a won level replayed for stars) the pop-up's free booster without the pop-up
 //   retryGift  the try after the pop-up was declined starts with one free booster (once per level)
 //   dareFor    one optional dare on the level card for a cruising player (never L1-5, never a first try at a boss);
 //              fewer for a player who declines them
@@ -29,14 +30,16 @@
 import { slot } from './hub.js';
 import * as BR from '../brain.js';
 import { HARD_IDS } from '../sim/sim.js';
+import * as MINT from './mint.js';
 
 export const PACE = {
   stuckAsk: 3, // losses in a row on one level (a pause-page restart counts) before the skip pop-up
   hintAt: 4, hintLeaver: 3, hintStuck: 2, // the free hint: the plain loss, a lingerer or leaver, a struggling player
+  hintAgain: 3, // ... and again after this many more losses in a row on the same level (adaptive help on; off: once)
   bossScare: 3, // a free Scarecrow on this loss in a row at a boss
   cruiseRun: 3, // first-try three-star wins in a row that read as cruising
   dareFrom: 6, // no dares on levels 1 to 5
-  dareBonus: 0.5, // MINT: a dare met pays this much more (the mint table's figure once src/engine/mint.js lands)
+  dareBonus: MINT.FAUCETS.dare.share, // a dare met pays this much more (the Mint's table: src/engine/mint.js FAUCETS.dare)
   dareWait: 2, // each dare declined holds the next ones back this many more levels (at most dareWaitMax)
   dareWaitMax: 8,
   softFuse: 0.5, // a restart from the pause page after this share of the fuse (or after an egg was lost) is a soft loss
@@ -69,7 +72,7 @@ export function pacState(save) {
     soft: map(o.soft), // per level: losses in a row, pause-page restarts included; a win clears it
     asked: map(o.asked), // per level: the session the skip pop-up was shown in
     gift: map(o.gift), // per level: 1 = the pop-up was declined, the next try gets a free booster; 2 = given
-    hint: map(o.hint), scare: map(o.scare), // per level: the free hint / Scarecrow was given
+    hint: map(o.hint), scare: map(o.scare), // per level: the loss in a row the free hint was given on / the Scarecrow was given
     dared: map(o.dared), // per level: a dare was met here (the map's flame mark)
     ft3: Math.max(0, Math.floor(num(o.ft3))), // first-try three-star wins in a row
     dare: { off: num(d.off), took: num(d.took), no: num(d.no), met: num(d.met), wait: num(d.wait) },
@@ -145,7 +148,7 @@ export function result(save, r = {}) {
   const P = pacState(save), id = +r.id;
   if (!(id > 0)) return;
   if (r.won) {
-    delete P.soft[id];
+    delete P.soft[id]; delete P.hint[id]; delete P.gift[id]; // (a replay for stars that goes badly gets its hint and its booster again)
     P.ft3 = r.first && r.stars >= 3 ? P.ft3 + 1 : 0;
     if (r.dare && r.dare.met) { P.dare.met++; P.dared[id] = 1; }
     if (P.cur && P.cur.lv === id) P.cur = null;
@@ -165,22 +168,25 @@ export function cards(save) {
 
 // ---- after a loss
 // ctx: { levelId, boss, early (nothing is offered yet: earlyDays), canSkip, now }
-// -> { ask, hint, scare, why }
+// -> { ask, hint, scare, gift (call declined: the next try's free booster), why }
 export function failPlan(save, ctx = {}) {
   const P = pacState(save), id = +ctx.levelId, adapt = on(save);
   if (!(id > 0)) return { ask: false, hint: false, scare: false, why: '' };
   const R = read(save, { levelId: id, now: ctx.now }), n = losses(save, id);
   const hintAt = !adapt ? PACE.hintAt : R.struggling ? PACE.hintStuck : R.linger || R.leaver ? PACE.hintLeaver : PACE.hintAt;
   const ask = adapt && !ctx.early && !!ctx.canSkip && n >= PACE.stuckAsk && P.asked[id] !== P.sid + 1;
+  // no skip here (a level already won, replayed for its stars; the last level): the pop-up's "Keep trying" booster comes anyway
+  const gift = adapt && !ctx.early && !ctx.canSkip && n >= PACE.stuckAsk && !P.gift[id];
   const scare = !!ctx.boss && !ctx.early && n >= PACE.bossScare && !P.scare[id];
-  const hint = !ctx.early && !scare && n >= hintAt && !P.hint[id];
+  const hint = !ctx.early && !scare && n >= hintAt && (!P.hint[id] || (adapt && n - P.hint[id] >= PACE.hintAgain));
   const bits = [`${n} in a row on level ${id}`, R.why];
   if (ask) bits.push('the skip pop-up (once this session)');
   if (scare) bits.push('a free Scarecrow at the boss');
   if (hint) bits.push(`a free hint (at loss ${hintAt})`);
+  if (gift) bits.push('no skip here: a free booster on the next try');
   const why = bits.join('; ');
-  if (ask || scare || hint) note(P, 'fail:' + id, why, ctx.now);
-  return { ask, hint, scare, why, hintAt, n };
+  if (ask || scare || hint || gift) note(P, 'fail:' + id, why, ctx.now);
+  return { ask, hint, scare, gift, why, hintAt, n };
 }
 // the pop-up was put up (it does not come back on this level this session)
 export function asked(save, id) { const P = pacState(save); P.asked[id] = P.sid + 1; }
@@ -189,7 +195,7 @@ export function declined(save, id) { const P = pacState(save); if (!P.gift[id]) 
 // the retry: -> true once after a declined pop-up (the caller picks the level's most useful booster)
 export function retryGift(save, id) { const P = pacState(save); if (P.gift[id] !== 1) return false; P.gift[id] = 2; return true; }
 // the free hint or Scarecrow was given here
-export function gave(save, id, kind) { const P = pacState(save); if (kind === 'hint') P.hint[id] = 1; else if (kind === 'scare') P.scare[id] = 1; }
+export function gave(save, id, kind) { const P = pacState(save); if (kind === 'hint') P.hint[id] = Math.max(1, losses(save, id)); else if (kind === 'scare') P.scare[id] = 1; }
 
 // ---- dares, by choice
 const DARE = {
@@ -236,7 +242,7 @@ export function dareMet(d, F = {}) {
   return false;
 }
 // the coins of a met dare, on top of the win's own (the win pays its normal amount whatever happens to the dare)
-export const dareCoins = (coins) => Math.round(Math.max(0, num(coins)) * PACE.dareBonus);
+export const dareCoins = (coins) => MINT.dareCoins(coins);
 export const dared = (save, id) => !!pacState(save).dared[id];
 
 // ---- the star gate: where the next star is nearest

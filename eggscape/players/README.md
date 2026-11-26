@@ -81,6 +81,76 @@ Status: FIXED (changed in the build named), OPEN (needs a decision or real data)
 | 17 | With the new rules a pull is worth about 50 coins against a first price of 80 (62%), so a coin spin is a real sink. Players who like the wheel now spend 63% of what they earn against 42% for those who do not (it was level before). Coin prizes went up to 30, 60 and 150 so a win feels like one and the lanes in `tools/test-loop.mjs` hold (boss treasures 59% of coins). | Rule | OPEN: watch in real logs how many coin and video spins follow a villain row (the row is `spin` in the buttons-shown-vs-taken tally). |
 | 18 | Risk named to mykee: a slot machine where paid pulls can lose nothing back is closer to what store rating forms call simulated gambling than 0.8.15 was. | Outside rule (store ratings) | OPEN: his call; the odds page and the daily caps (3 video, 3 coin pulls) stay. |
 
+### 2026-11-25, build 0.8.17, the coin engine (mykee: "from the rewarded videos, the slot machine and the daily unlockables the user could unlock everything ... without spending a single dollar"; "users cannot unlock a far distant world without unlocking the previous one")
+
+**Measured before any change** (`src/engine/mint.js` did not exist; app build; numbers from the game's own functions):
+
+| Faucet (before) | Amount | Ceiling |
+| --- | --- | --- |
+| First clear, two stars | 21 to 36 a level, 1,311 for all 50 (three stars perfect: 1,856) | once per level |
+| Replay of a level already at three stars | full pay (34 for three stars) | **none: a farm** |
+| Star chests | 30 + 10 a chest = 750, plus 10 boosters and 5 egg skins | 10 chests |
+| Boss treasures | 120 + 40 a world = 3,000 | 10 |
+| Daily chest | 25 to 60, mean 38.6 | one a day |
+| Free-coins videos | 40/30/25/20/20/15 = 150 | six a day |
+| Double coins video | the win's coins again | **every win, no daily limit** |
+| Bonus chest video | 40 coins + a booster | every third win or so, no daily limit |
+| Lucky Spin pull | worth 49.7 (14.3 in coins) at the first wheel, 71.2 (35.9) at the last | 3 video, 3 coin, 2 for time, 2 cheer-up a day + 1 per 3 fresh wins |
+| Daily Vault | its win + 40 | one a day |
+
+| Sink (before) | Total |
+| --- | --- |
+| Things to own for coins: 14 egg skins 2,900, 16 hen outfits 3,910, 3 premium chicks 4,500 | **11,310** (the six level chicks, 2,900, come free with their level) |
+| World gates, flat 80 + 40 a world, any world from world 1 | 2,520 |
+| Boosters 40-90, kits, charges 45-350, tickets 80-150, coin spins 80/110/150 x the wheel | endless |
+
+| Purse after level (wins every level first try, 2 stars, 6 a day, spends nothing) | 5 | 10 | 12 | 20 | 30 | 50 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Before, no videos | 314 | 706 | 775 | 1,625 | 2,744 | 5,563 |
+| Before, every video and spin | 581 | 1,358 | **1,497** | 3,209 | 5,019 | 10,106 |
+| 0.8.17, no videos (online) | 186 | 391 | 441 | 824 | 1,315 | 2,438 |
+| 0.8.17, every free thing | 297 | 646 | **698** | 1,364 | 2,005 | 3,750 |
+
+| Owning the whole catalogue (never leaving, never paying, buying all he can after every session) | child | commuter | quitter | grinder | video lover | video hater | payer | weekender |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Before: all owned on day (earliest) | >120 (39) | **41 (23)** | 51 (34) | 72 (31) | 42 (23) | >120 | >120 (109) | >120 (21) |
+| Before: owned on day 30 | 67% | **81%** | 63% | 75% | 79% | 55% | 59% | 68% |
+| 0.8.17: all owned on day | >90 | >90 | >90 | >90 | >90 | >90 | >90 | >90 |
+| 0.8.17: owned on day 30 | 23% | **39.7%** | 29% | 40% | 38% | 22% | 25% | 30% |
+
+| # | What was seen | Rule or assumption | Status |
+| --- | --- | --- | --- |
+| 19 | Any world gate could be bought from world 1 on (flat 80 + 40 a world). Buying ahead let the player play nothing new (a level still needs the one before it won), but it spent coins and removed the star target later. | Rule | FIXED 0.8.17: a world opens (stars or coins) only when the world before is open and its boss is won or skipped (`MINT.worldReady`); `gate:<k>` refuses otherwise and takes nothing. The price is the stars missing: 75 a star, at least 150, nothing at the target (`MINT.gatePrice`). Stars per world scale with `PER_ENV` (1.4 a level). |
+| 20 | A level already at three stars paid in full on every replay. | Rule | FIXED 0.8.17: a win with no new star pays 40%; a new star pays in full. |
+| 21 | Double coins had no daily limit (a 30-level day was worth about 800 coins of videos); the Bonus chest neither. | Rule | FIXED 0.8.17: both share one pot of 50 coins a day; once it is spent the win page offers neither until tomorrow. |
+| 22 | Through level 12 with every free thing taken: 1,497 coins (three chicks, or every gate to world 6). The commuter owned 81% of the catalogue on day 30. | Rule | FIXED 0.8.17: free-coins videos 4 a day, 50 coins; daily chest 10 to 25; boss treasures 40 + 8 a world; star chests 10 + 5; spin coin prizes 10/20/50, wheel sizes x1.1/1.2/1.3 (were x1.5/2/2.5); a second ticket 20 coins; a gift into a full stack pays a quarter (was half), a charge into a full sack too (was its whole price); Daily Vault bonus 5 (was 40); a win offline 7 + 2 an egg + 4 a star + 4 perfect, and **online +20%** on its own line ("Online bonus +N"), so an online win pays about what it did. One table: `src/engine/mint.js`; `tools/test-mint.mjs` holds the targets. |
+| 23 | The commuter target (40% on day 30) is met only just (39.7%). Wins are now half his coins; cutting them further would make the first levels feel poor. | Rule | OPEN: if a later change adds a faucet, `tools/test-mint.mjs` fails first. |
+| 24 | Simulated players never buy a world gate: they average more than 2 stars a level, the gates ask 1.4. The gate price matters only to a one-star player. | Assumption (stars per win) | OPEN: real logs will say. |
+| 25 | With 15% of sessions offline (no videos there) and the win-video pot, videos a play day fell (child 8.3 to 6.4, video lover 7.8 to 5.4) and so did the assumed ad income (child $0.98 to $0.74 a month). | Assumption (online share, eCPM) | OPEN: mykee to weigh ad income against the economy. |
+| 26 | Money only: the Golden Hen and no videos (Premium), every level open (Unlock Everything), the whole collection at once (The Whole Coop). Coin-buyable: the golden egg (300) and the three premium chicks (1,200 to 1,800), as before. | Rule | KEPT. |
+
+### 2026-11-25, build 0.8.17, the Pacer (mykee: "never ever reduce the time or increase the time for them ... push the struggling players"; "they could beat the level in easy mode, but the goals need to be high-target goals in order to earn 3 stars")
+
+`node tools/sim-players.mjs --compare`: the same people and seeds without the Pacer and with it (300 of each, 30 days,
+seed 1; seeds 2 and 3 agree on every direction below). The Pacer never touches the fuse, the rings, villains, odds or
+prices; it fits help, the skip pop-up, a free booster, hints, dares and Easy's star goals.
+
+| Before > after | child | commuter | quitter | grinder | video lover | video hater | payer | weekender |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Tries stuck with no help % | **4.9 > 1.5** | 0.1 > 0.0 | 0.0 > 0.0 | 0.0 > 0.0 | 1.7 > 0.4 | 0.6 > 0.2 | 0.9 > 0.2 | 1.3 > 0.3 |
+| Worst losing run (median) | 7 > 6 | 3 > 3 | 2 > 2 | 3 > 3 | 4 > 4 | 3 > 3 | 4 > 4 | 4 > 4 |
+| Stars won on Easy | 31.8 > 23.5 | 8.0 > 4.8 | 3.1 > 2.4 | 7.9 > 4.3 | 13.7 > 7.8 | 8.7 > 4.8 | 11.7 > 6.0 | 12.8 > 7.1 |
+| Finished all 50 % (day) | 72 (4) > 76 (3) | 53 (11) > 57 (10) | 5 (21) > 8 (22) | 91 (2) > 94 (2) | 80 (5) > 79 (5) | 70 (5) > 70 (4) | 84 (4) > 85 (4) | 86 (5) > 85 (5) |
+| Dares offered / taken / met | - | 2/0/0 | 1/0/0 | **7/6/3** | 2/0/0 | 3/1/0 | 2/1/0 | 2/1/0 |
+| Coins in | 5159 > 5184 | 3349 > 3386 | 1023 > 1071 | 4589 > 4704 | 5210 > 5221 | 3795 > 3880 | 5804 > 5887 | 4568 > 4568 |
+
+| # | What was seen | Rule or assumption | Status |
+| --- | --- | --- | --- |
+| 27 | Most of the child's stuck tries were replays of levels he had already won (no skip there) and tries that came back to a level by the map, where the "Keep trying" booster had been used up or was dropped. | Rule | FIXED 0.8.17: the Pacer's free booster also comes where no skip is possible, waits for the next try on that level however he gets there, and comes again in a later losing run; the free hint comes again every 3 more losses. Stuck tries with no help fell by 70% for the child; no persona's worst losing run grew. |
+| 28 | Easy's second star asks for every egg (flawless where Medium asks for no cracks), the third also for the bonus goal; an Easy win pays 70% (the Mint's FAUCETS.easy) and no hard-level extra. Stars won on Easy fell by 26% (child) to 46% (grinder). The planner (tools/planner-easy.mjs, 16 levels) still gets three stars on Easy on 6 of 16 (Medium 11 of 16). | Rule (the planner), assumption (how often a player who needed Easy loses an egg) | KEPT; the child's fall is the smallest because he plays Easy most and the sim's share of his flawless wins is assumed. |
+| 29 | The grinder takes 6 of 7 dares and meets 3, for 45 coins in a month; his day to finish all 50 stays day 2. Nobody else is offered more than 3. | Assumption (dare taken, dare met) | KEPT: coins from dares do not move the Mint's targets (commuter 39.7% of the catalogue on day 30, as before the Pacer). |
+| 30 | "Left after a losing run" rose for the video lover (26 > 34) and the weekender (17 > 23) on seed 1 and fell on others: more of them are still playing at the end of the month, so more endings are left to count. | Assumption (leaving) | OPEN. |
+
 ## What real logs have said
 
 Nothing yet: no speed log from build 0.8.15 or later has been filed. From 0.8.15 on the log carries, as counts only:

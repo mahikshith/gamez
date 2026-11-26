@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- 0.8.15: one local reminder a day at most (a spin or a chest is waiting). Asked for in the game, after a win. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 0.8.17: a restart drops alarms; the planned reminders are set again from the app's own preferences (Replan.java) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:label="Eggscape"
         android:icon="@mipmap/ic_launcher"
@@ -29,6 +31,14 @@
         </activity>
         <!-- 0.8.15: shows the reminder the game planned (Reminders.java). Not exported: only this app's own alarm reaches it. -->
         <receiver android:name=".Reminders" android:exported="false" />
+        <!-- 0.8.17: after a phone restart or an app update, the reminders still to come are set again. Exported only
+             because the system sends these; both are protected broadcasts that no other app can send. -->
+        <receiver android:name=".Replan" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <!-- 0.8.12: starts the game again in a fresh process when its drawing has gone slow for good (src/recover.js).
              Its own process, not exported, never in the recent-apps list. -->
         <activity
