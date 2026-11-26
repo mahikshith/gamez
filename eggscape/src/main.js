@@ -11717,7 +11717,8 @@ function drawSpinOdds(SL) {
   const top = P.bottom + 10 * u, bot = A.y1 - 10 * u, btnH = (wide ? 48 : 56) * u, fs = 14 * u, footH = foot.length * 20 * u + 8 * u, g = 10 * u;
   const rowH = Math.min(58 * u, (bot - top - btnH - footH - 2 * g - 16 * u) / rowsN), panelH = rowsN * rowH + 16 * u, used = panelH + g + footH + g + btnH;
   const x = P.x, w = P.w, y = top + Math.max(0, (bot - top - used) * 0.4);
-  ui.frame(x, y, w, panelH, { s: u, r: 22 * u });
+  // frame818 (mykee: no frames): no cream panel; the rows float on the machine's own purple page, light words on it
+  const INK1 = '#fff6e0', INK2 = '#ffe0a0', EDGE = 'rgba(20,8,30,0.7)';
   const cw = (w - 24 * u) / cols, ks = clamp(rowH / (46 * u), 0.7, 1.12);
   SL.forEach((sl, i) => {
     const c = Math.floor(i / rowsN), r = i % rowsN, rx = x + 12 * u + c * cw, my = y + 8 * u + r * rowH + rowH / 2, C = SLICE_COL[sl.id], note = sliceNote(sl);
@@ -11726,10 +11727,10 @@ function drawSpinOdds(SL) {
     drawSliceIcon(ctx, sl, rx + 4 * u + chw / 2, my, Math.min(ch * 0.92, chw * 0.8), G.t);
     const pct = `${+sl.pct.toFixed(2)}%`, pw = ui.measure('12.75%', 17 * u * ks) + 6 * u, tx = rx + chw + 14 * u, tw = cw - chw - 26 * u - pw;
     const fit = (str, size) => size * clamp(tw / ui.measure(str, size), 0.76, 1); // a narrow column: smaller print before a cut-off word
-    ui.text(sliceName(sl), tx, note ? my - 8 * u * ks : my, { size: fit(sliceName(sl), 16 * u * ks), color: ui.C.ink, maxW: tw, tag: 'odds:n' + i });
-    if (note) ui.text(note, tx, my + 10 * u * ks, { size: fit(note, 11.5 * u * ks), color: ui.C.ink2, maxW: tw, tag: 'odds:s' + i });
-    ui.text(pct, rx + cw - 8 * u, my, { size: 17 * u * ks, align: 'right', color: ui.C.ink, tag: 'odds:p' + i });
-    if (r > 0) { ctx.fillStyle = 'rgba(90,50,14,0.12)'; ctx.fillRect(rx + 4 * u, my - rowH / 2 - 0.5 * u, cw - 8 * u, 1 * u); } // a hairline between rows
+    ui.text(sliceName(sl), tx, note ? my - 8 * u * ks : my, { size: fit(sliceName(sl), 16 * u * ks), color: INK1, stroke: EDGE, strokeW: 3 * u, maxW: tw, tag: 'odds:n' + i });
+    if (note) ui.text(note, tx, my + 10 * u * ks, { size: fit(note, 11.5 * u * ks), color: INK2, stroke: EDGE, strokeW: 2.5 * u, maxW: tw, tag: 'odds:s' + i });
+    ui.text(pct, rx + cw - 8 * u, my, { size: 17 * u * ks, align: 'right', color: '#ffe27a', stroke: EDGE, strokeW: 3 * u, tag: 'odds:p' + i });
+    if (r > 0) { ctx.fillStyle = 'rgba(255,232,190,0.16)'; ctx.fillRect(rx + 4 * u, my - rowH / 2 - 0.5 * u, cw - 8 * u, 1 * u); } // a hairline between rows
   });
   const fy = y + panelH + g;
   foot.forEach((l, i) => ui.text(l, A.cx, fy + 14 * u + i * 20 * u, { size: fs, align: 'center', color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, maxW: w - 8 * u, tag: 'odds:f' + i }));

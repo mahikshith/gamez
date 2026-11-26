@@ -629,7 +629,7 @@ export function createWonder(env) {
     ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, R0, 0, Math.PI * 2); ctx.fill();
     K.sunburst(x + w / 2, y + h / 2, Math.max(w, h) * (big ? 0.7 : 0.62), 'rgba(255,255,255,0.22)');
     const pic = Math.min(h * (big ? 0.86 : 0.86), w * (big ? 0.86 : 0.8)), px = x + w / 2, py = y + h / 2;
-    drawExtraIcon(ctx, L.wonder.kind, px, py, pic, t, { calm: env.save().calm });
+    drawExtraIcon(ctx, L.wonder.kind, px, py, pic, t, { calm: env.save().calm, bare: true });
     ui.record({ x: px - pic / 2, y: py - pic / 2, w: pic, h: pic }, 'wv:introPic', 'wv:introPic');
     if (/2$/.test(L.key)) { // the II badge on the picture's corner
       const k = pic / 150, tw = 30 * k, th = 20 * k, tx = px + pic / 2 - tw + 6 * k, ty = py - pic / 2 - 6 * k;
