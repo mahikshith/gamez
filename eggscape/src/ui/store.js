@@ -1169,6 +1169,10 @@ const BOOST_HUE = { stone: '#aab4be', golden: '#ffd24a', time: '#ff9f5a', rewind
 const ITEM_HUE = { ally: '#ff8a72', goldhour: '#ffc74a', skip: '#8ac4ff' };
 
 const perkFit = (ui, line, room, s) => fitWrap(ui, line, room, 2, 10.5 * s, 8.5 * s);
+// a tile's lower stack (0.8.18): the one gap between the name, the power chip and the price chip; the power chip's height
+// (two lines always), its icon and inset; the room its words have
+const TILE_GAP = 5, PERK_H = 32, PERK_IC = 18, PERK_IN = 4, PERK_X = 4; // PERK_X: the chip's inset from the tile's sides
+const perkRoom = (w, s) => w - 2 * PERK_X * s - 2 * PERK_IN * s - PERK_IC * s - 3 * s;
 function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   // item.tap: the tile acts at once (the FREE TODAY row) instead of opening the detail sheet; item.trying: worn on trial
   const lip = 5 * s, fh = h - lip, r = 18 * s, col = item.hue || '#7fc3ff', B = item.trying ? { label: 'Trying', kind: 'secondary' } : item.btn;
@@ -1181,24 +1185,30 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   const on = B.keepFace && B.label === 'Equipped';
   ctx.lineWidth = (on ? 4 : 2.5) * s; ctx.strokeStyle = on ? '#ffc83a' : tint(col, -0.5); ctx.stroke();
   // a soft light behind the art
-  const pkH = item.pkH != null ? item.pkH * s : item.perk ? 21 * s : 0; // an egg skin's power: its own pill under the name (item.pkH: the grid's one pill room, 0.8.16)
-  const chipH = 26 * s, nameS = 13 * s, top = item.why ? 30 * s : item.badgeCol ? 18 * s : 0, ah = fh - chipH - nameS * 1.3 - 16 * s - top - pkH, acx = x + w / 2, acy = y + 6 * s + top + ah / 2; // a Save pill gets its own room above the art
+  const pkH = item.pkH != null ? item.pkH * s : item.perk ? PERK_H * s : 0; // an egg skin's power: its own chip under the name (item.pkH: the grid's one chip room, 0.8.16)
+  // 0.8.18 (mykee: "the textual information right above the coins is not properly aligned or equally spaced"): the lower
+  // stack is laid from the bottom up with one gap between its parts: the price chip, the power chip (the grid's one room:
+  // two lines always), the name. Every tile of a row has the same three lines; the name never touches a chip.
+  const chipH = 26 * s, nameS = 13 * s, TG = TILE_GAP * s, top = item.why ? 30 * s : item.badgeCol ? 18 * s : 0;
+  // (a tile with no power in a grid of powers: its name stands in the middle of the chip room and its art takes the rest)
+  const cy0 = y + fh - 8 * s - chipH, pky = cy0 - (pkH ? TG + pkH : 0), nameY = pkH && !item.perk ? cy0 - TG - pkH / 2 : pky - TG - nameS * 0.55; // the price chip's top, the power chip's top, the name's centre line
+  const ah = nameY - nameS * 0.6 - 4 * s - (y + 6 * s + top), acx = x + w / 2, acy = y + 6 * s + top + ah / 2; // a Save pill gets its own room above the art
   const lg = ctx.createRadialGradient(acx, acy, 0, acx, acy, Math.min(w, ah) * 0.55); lg.addColorStop(0, 'rgba(255,255,255,0.75)'); lg.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = lg; ctx.fillRect(x, y, w, ah + 12 * s);
   const bounce = item.flash < 0.6 ? 1 + 0.2 * Math.sin((item.flash / 0.6) * Math.PI) : 1;
   item.icon(ctx, acx, acy, Math.min(w * 0.86, ah * 1.06), t, bounce);
   ui.record({ x: acx - Math.min(w * 0.86, ah) / 2, y: acy - ah / 2, w: Math.min(w * 0.86, ah), h: ah }, 'store:tart:' + item.key);
   const nm = item.short || item.name, nmw = ui.measure(nm, nameS), nmMax = w - 7 * s; // (0.8.14: "Snowy Owl Look" keeps the size of its neighbours; only a longer name still shrinks) shrink a long name to fit whole ("Snowy Owl Look" at 360 px) rather than cut it
-  ui.text(nm, x + w / 2, y + 6 * s + top + ah + 4 * s + nameS * 0.6, { size: nmw > nmMax ? Math.floor(nameS * nmMax / nmw * 0.97) : nameS, align: 'center', maxW: nmMax, color: tint(col, -0.72), tag: 'store:tname:' + item.key });
+  ui.text(nm, x + w / 2, nameY, { size: nmw > nmMax ? Math.floor(nameS * nmMax / nmw * 0.97) : nameS, align: 'center', maxW: nmMax, color: tint(col, -0.72), tag: 'store:tname:' + item.key });
   if (item.perk) { // the egg skin's power: its icon and at most four words
     // 0.8.16 (mykee: "maintain font consistency"): every power is written at one size; a line too long for the tile
     // takes a second line instead of shrinking (it used to go down to 7 units, a different size on every tile)
-    const ic = 19 * s, room = w - 8 * s - ic - 10 * s, F = perkFit(ui, item.perk.line, room, s), lh = F.size * 1.12;
-    const ph = Math.max(ic, F.lines.length * lh + 6 * s), slot = Math.max(ph, pkH - 2 * s), py = y + 6 * s + top + ah + 4 * s + nameS * 1.3 + (slot - ph) / 2;
-    const pw2 = Math.min(w - 8 * s, ic + Math.max(...F.lines.map((l) => ui.measure(l, F.size))) + 10 * s), px2 = x + (w - pw2) / 2;
-    ui.roundRect(px2, py, pw2, ph, Math.min(ph / 2, 11 * s)); ctx.fillStyle = 'rgba(70,40,110,0.9)'; ctx.fill();
-    pictoPerk(ctx, item.perk.icon, px2 + ic / 2 + 1 * s, py + ph / 2, ic * 0.76, t);
-    F.lines.forEach((ln, i) => ui.text(ln, px2 + ic + 1 * s, py + ph / 2 + (i - (F.lines.length - 1) / 2) * lh, { size: F.size, color: '#fff', maxW: pw2 - ic - 8 * s, tag: 'store:perk:' + item.key + (i ? ':' + i : ''), group: 'store:tart:' + item.key }));
+    // 0.8.18: the chip is the price chip's width and the grid's one height; the icon at one x, the words left after it
+    // (item.pkS: the grid's one size, the largest at which every power of the grid fits its two lines)
+    const ph = pkH || PERK_H * s, px2 = x + PERK_X * s, pw2 = w - 2 * PERK_X * s, ic = PERK_IC * s, room = perkRoom(w, s), F = item.pkS ? fitWrap(ui, item.perk.line, room, 2, item.pkS * s, item.pkS * s) : perkFit(ui, item.perk.line, room, s), lh = F.size * 1.12;
+    ui.roundRect(px2, pky, pw2, ph, Math.min(ph / 2, 11 * s)); ctx.fillStyle = 'rgba(70,40,110,0.9)'; ctx.fill();
+    pictoPerk(ctx, item.perk.icon, px2 + PERK_IN * s + ic / 2, pky + ph / 2, ic * 0.76, t);
+    F.lines.forEach((ln, i) => ui.text(ln, px2 + PERK_IN * s + ic + 3 * s, pky + ph / 2 + (i - (F.lines.length - 1) / 2) * lh + 0.5 * s, { size: F.size, color: '#fff', maxW: room, tag: 'store:perk:' + item.key + (i ? ':' + i : ''), group: 'store:tart:' + item.key }));
   }
   if (item.why) { // FOR YOU: why this one, on a small ribbon across the top of the tile
     const F = fitWrap(ui, item.why, w - 26 * s, 2, 11.5 * s, 9.5 * s), lh = F.size * 1.12, rh = Math.max(18 * s, F.lines.length * lh + 5 * s), ry = y + 6 * s;
@@ -1208,7 +1218,7 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   if (item.num) ui.num(item.num, acx, acy + ah * 0.32, { size: 19 * s, align: 'center', maxW: w - 16 * s, tag: 'store:tnum:' + item.key, group: 'store:tart:' + item.key }); // what the free video pays
   if (item.premium) { ui.roundRect(x + 3 * s, y + 3 * s, w - 6 * s, fh - 6 * s, r - 3 * s); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#ffc928'; ctx.stroke(); } // a premium chick: a gold inner rim (its token wears the crown)
   // the chip
-  const cx0 = x + 8 * s, cy0 = y + fh - 8 * s - chipH, cwid = w - 16 * s;
+  const cx0 = x + 8 * s, cwid = w - 16 * s;
   const coinChip = !!B.coin, ok = B.kind === 'primary' || B.kind === 'gold' || B.kind === 'secondary';
   const fill = B.keepFace ? '#fffaf0' : B.disabled ? '#b8ad9e' : coinChip ? (ok ? '#3eb42d' : '#a09383') : B.kind === 'gold' ? '#f6a21b' : B.kind === 'secondary' ? '#3a80ea' : B.kind === 'ad' ? '#7a48e8' : B.kind === 'off' ? '#a09383' : '#3eb42d';
   ui.roundRect(cx0, cy0, cwid, chipH, chipH / 2); ctx.fillStyle = fill; ctx.fill();
@@ -1377,10 +1387,13 @@ export function drawStore(ui, ctx, W, H, state) {
     const tn = n, tw = (cw - (tn - 1) * gap) / tn;
     // 0.8.16: a power that needs two lines at the one size: every tile of this grid gets the taller pill room, and the
     // tiles grow by as much, so no egg is drawn smaller for it
-    const pk2 = items.some((it) => it.perk && perkFit(ui, it.perk.line, tw - 8 * s - 19 * s - 10 * s, s).lines.length > 1), pkU = pk2 ? 32 : 21;
-    const th = Math.round(Math.min(tw * (cols === 1 ? 1.22 : 1.12), 200 * s) + (pk2 ? 11 * s : 0));
+    // 0.8.18: a grid with any power gives every tile the one two-line chip room (a tile without a power keeps it empty,
+    // so the names and the prices of a row stand on the same lines); the tiles grow by the room and the even gaps
+    const pk2 = items.some((it) => it.perk);
+    const th = Math.round(Math.min(tw * (cols === 1 ? 1.22 : 1.12), 200 * s) + (pk2 ? 21 * s : 5 * s));
     items.forEach(tileLook);
-    items.forEach((it) => { it.pkH = it.perk ? pkU : pk2 ? 0 : null; });
+    const pkS = pk2 ? Math.min(...items.filter((it) => it.perk).map((it) => perkFit(ui, it.perk.line, perkRoom(tw, s), s).size / s)) : 0;
+    items.forEach((it) => { it.pkH = pk2 ? PERK_H : null; it.pkS = pkS; });
     for (let i = 0; i < items.length; i += tn) {
       const R = items.slice(i, i + tn);
       R.forEach((it) => hit(it.key));
