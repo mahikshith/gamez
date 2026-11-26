@@ -8339,13 +8339,14 @@ function drawLevelIntro(L, acc) {
       const cy = Math.max(top, y - Math.max(0, (y - top) * 0.5));
       carRow(rx, cy, rw); wayRow(rx, wy, rw);
     } else {
-      const D = faceD(rw), blocks = [];
-      if (fcs.length) blocks.push(faceH(D)); if (goals) blocks.push(STARH);
-      const used = blocks.reduce((a, b) => a + b, 0), g2 = Math.max(gp, (y - top - used) / (blocks.length + 1)); // the room left shared out as even gaps
+      const nb = (nF ? 1 : 0) + (goals ? 1 : 0), want = (nF ? faceH(faceD(rw)) : 0) + (goals ? STARH : 0);
+      const fit = want > 0 ? clamp((y - top - gp * 0.5 * (nb + 1)) / want, 0.72, 1) : 1; // (the ring speed strip too: the faces and stars only as much smaller as the room needs)
+      const D = faceD(rw, fit), SH = STARH * fit, used = (nF ? faceH(D) : 0) + (goals ? SH : 0);
+      const g2 = Math.max(gp * 0.5, (y - top - used) / (nb + 1)); // the room left shared out as even gaps
       let by = top + g2;
       drawHero(Gm);
-      if (fcs.length) { faceRow(rx, by, rw, D); by += faceH(D) + g2; }
-      if (goals) starRow(rx, by, rw, STARH);
+      if (nF) { faceRow(rx, by, rw, D); by += faceH(D) + g2; }
+      if (goals) starRow(rx, by, rw, SH);
     }
     header(x0, hdrY, W0);
     bottom(rx, rw);
