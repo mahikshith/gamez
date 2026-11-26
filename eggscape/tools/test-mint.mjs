@@ -10,6 +10,7 @@ import * as SP from '../src/spin.js';
 import { LEVELS } from '../src/data/levels.js';
 import { HARD_IDS } from '../src/sim/sim.js';
 import { bossOf } from '../src/road.js';
+import { worldOfId } from '../src/road.js'; // 0.8.17 bandit
 import { purse, owning, town, life, PERSONAS, PER_ENV, CATALOGUE, envOpen } from './sim-players.mjs';
 import * as SQ from '../src/side.js';
 let bad = 0;
@@ -24,7 +25,7 @@ E.setPlatform(false);
   ok(E.levelCoins(r).total === F.win.show + 2 * F.win.egg + 2 * F.win.star, `a win pays the table's parts (${E.levelCoins(r).total} offline for two stars)`);
   ok(E.levelCoins({ ...r, hard: true }).total === Math.round((F.win.show + 2 * F.win.egg + 2 * F.win.star) * F.win.hard), 'a hard level pays the table\'s share more');
   ok(JSON.stringify(E.AD_REWARDS.freeCoins.ladder) === JSON.stringify(F.freeCoins.ladder) && E.AD_REWARDS.freeCoins.cooldownSec === F.freeCoins.cooldownSec, 'the free-coins videos: the table\'s ladder ' + F.freeCoins.ladder.join('/'));
-  ok(E.BOSS_TREASURE_IDS.every((b, w) => E.bossTreasure(b).coins === M.treasureCoins(w)), 'boss treasures: ' + E.BOSS_TREASURE_IDS.map((b) => E.bossTreasure(b).coins).join('/'));
+  ok(E.BOSS_TREASURE_IDS.every((b) => E.bossTreasure(b).coins === M.treasureCoins(worldOfId(b))), /* 0.8.17 bandit: by world */ 'boss treasures: ' + E.BOSS_TREASURE_IDS.map((b) => E.bossTreasure(b).coins).join('/'));
   ok(Array.from({ length: E.CHEST_COUNT }, (_, i) => E.chestFor(999, i).reward.coins).every((c, i) => c === M.chestCoins(i)), 'star chests: the table\'s coins');
   ok(['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26'].every((d) => F.dailyChest.coins.includes(E.dailyChest(d).coins)), 'the daily chest pays one of the table\'s amounts');
   ok(E.BONUS_CHEST.coins === F.bonusChest.coins && E.GIFT_FULL === F.giftFull.share && E.COUPON.coins === F.spin.coupon, 'bonus chest, full-stack gifts and a second ticket: the table\'s amounts');

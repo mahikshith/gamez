@@ -71,6 +71,7 @@ import { drawSeaUnder, drawSeaOver, seaEvent, seaAnim } from './render/sea.js'; 
 import { drawReefUnder, drawReefOver, reefEvent, drawSurface, drawBoat, boatSeat, drawRiseGuide } from './render/reef.js'; // world 8 Coral Reef (underwater)
 import { drawUrchins, urchinEvent } from './render/urchinplay.js'; // 0.8.17 urchin: Spike the sea urchin (level 46)
 import { drawDenAlone, drawThiefDens, eggInDen, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
+import { drawBandit, bandHides, banditEvent } from './render/banditplay.js'; // 0.8.17 bandit
 import { RIG as THIEF_RIG } from './sim/thieves.js';
 import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
 import { LAB_DEMOS } from './data/lab-demos.js'; // v4 Shape Lab studio levels: the clockwork cast and the owl
@@ -202,7 +203,7 @@ const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volca
 const LAB = [
   { name: 'Chicks', items: CHICK_DEMOS.map((d) => [d.kind, d.kind[0].toUpperCase() + d.kind.slice(1)]) },
   { name: 'Creatures', items: [['frog', 'Frog'], ['octopus', 'Octo'], ['octoden', 'Puddle'], ['fish', 'Fish'], ['reef', 'Reef'], ['penguin', 'Pip']] }, // 0.8.17 pip
-  { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King']] },
+  { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King'], ['bandit', 'Bandit']] }, // 0.8.17 bandit
   { name: 'Bayou', items: [['gator', 'Gator'], ['turtle', 'Turtle'], ['mosquito', 'Bugs'], ['grandpa', 'Grandpa']] },
   { name: 'Allies', items: [['rooster', 'Rooster'], ['goose', 'Goose']] },
   { name: 'Coral Reef', items: [['hermit', 'Hermit'], ['puffer', 'Puffer'], ['jelly', 'Jelly'], ['kingcrab', 'King'], ['urchin', 'Urchin']] }, // 0.8.17 urchin
@@ -807,6 +808,7 @@ function frameOf(all, maxCh) {
     }
   }
   for (const T of sim.thieves || []) if (T.ph !== 'gone' && T.ph !== 'wait' && T.ph !== 'hide') hds.push(sim.thBody(T)); // v3.6 thieves
+  if (sim.band) hds.push(sim.bandHead(sim.band)); // 0.8.17 bandit
   if (sim.kc && all) { R = Math.max(R, sim.outerR + 0.72); yMin = Math.min(yMin, sim.kc.by - 0.95); yMax = Math.max(yMax, sim.kc.by + 0.95); } // world 8: the King Crab's arms hug the vault
   const BQ = bossPose(sim, false); // bosses (v3.1): keep the boss over the vault in frame
   // the big Blizzard cloud only when framing the whole vault (portrait screens have the height to spare); a zoomed-in
@@ -4490,6 +4492,7 @@ function handleEvents() {
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
         bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.7 Gator Bayou
         thiefEvent(ev, fx, { popup: denPopup, audio, hitStop, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.6 the weasel and the rats
+        banditEvent(ev, fx, { popup, audio, hitStop, calm: save.calm, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // 0.8.17 bandit
         reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // world 8 reef
         urchinEvent(ev, fx, { popup, audio, buzz, calm: save.calm }); // 0.8.17 urchin
         { const U = { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }; cwEvent(ev, fx, U); owlEvent(ev, fx, U); movesEvent(ev, fx, U); } // v4 the clockwork cast, the owl
@@ -5567,6 +5570,7 @@ function render() {
   if (DEV && G.probe) G.probe('portalsFuse');
   if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length, G.nestDrops && G.nestDrops.run === G.run ? G.nestDrops : null, G.t, nestPass(k, t)); // world 8: the basket under the boat
   if (DEV && G.probe) G.probe('nest');
+  if (sim.band) blastXf(() => drawBandit(ctx, sim, t, k, save.calm), 2.6); // 0.8.17 bandit: under the rings (their edge pinches his arm)
   { const tl = toWorld(0, G.hudBottom + 8 * ui.u), tr = toWorld(W_, 0); allyFrame(sim, { x0: tl.x, x1: tr.x, top: tl.y }, save.calm, G.screen === 'play' ? fx : null); } // the rooster's perch and the crow wave (render only)
   if (DEV && G.probe) G.probe('ally');
   const eggPts = sim.aliveEggs().map((e) => e.body.getPosition());
@@ -5641,7 +5645,7 @@ function render() {
   blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
   SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
   if (DEV && G.probe) G.probe('creatures');
-  for (const e of sim.aliveEggs()) if (!overNest(sim, e) && !eggInDen(sim, e)) drawEggFelt(e, t, k); // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
+  for (const e of sim.aliveEggs()) if (!overNest(sim, e) && !eggInDen(sim, e) && !bandHides(sim, e)) drawEggFelt(e, t, k); /* 0.8.17 bandit: not his sack */ // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
   drawChickFX(ctx, sim, t, k);
   drawMagnetField(ctx, sim, t, k, save.calm); // v3.1 magnet; 2026-11-20: over the eggs (the two poles, the field lines, the pull)
   blastXf(() => { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); }, 10.4); // v3.3: the arms wrapped over a held egg

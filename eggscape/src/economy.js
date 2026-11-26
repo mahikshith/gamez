@@ -9,6 +9,7 @@
 // new products that call addCoins(); buy() / useBooster() stay the only spend paths.
 
 import { WORLD_N, bossOf } from './road.js'; // 0.8.17: sixty levels, six a world
+import { worldOfId } from './road.js'; // 0.8.17 bandit
 import { FAUCETS, winParts, treasureCoins, chestCoins } from './engine/mint.js'; // 0.8.17: the coin loop's one table
 
 export const MAX_OWNED = 9;
@@ -372,11 +373,14 @@ export function openChest(wallet, chest) {
 // The chick that joins at the next level (strikes.js unlock = boss + 1) is shown in it as part of the reward.
 // 0.8.17: the bosses of the 60-level road (5, 12, 18 .. 60: road.js bossOf)
 export const BOSS_TREASURE_IDS = Array.from({ length: WORLD_N }, (_, w) => bossOf(w));
+BOSS_TREASURE_IDS.splice(1, 0, 6); // 0.8.17 bandit: world 1's second boss (L6, Bandit the raccoon) has a chest too
+const EXTRA_CHEST = { 6: { booster: 'time' } }; // 0.8.17 bandit: his chest (world 1 has two): the world's coins, a different booster, a charge
 const TREASURE_BOOSTS = ['stone', 'time', 'golden', 'rewind', 'sponge', 'nest', 'snips', 'golden', 'time', 'stone'];
 export function bossTreasure(bossId) {
-  const w = BOSS_TREASURE_IDS.indexOf(bossId);
-  if (w < 0) return null;
-  return { id: bossId, coins: treasureCoins(w), booster: TREASURE_BOOSTS[w], charges: 1 }; // 0.8.17 the Mint: 100 to 280 coins (was 120 to 480) and one charge
+  if (!BOSS_TREASURE_IDS.includes(bossId)) return null;
+  const w = worldOfId(bossId); // 0.8.17 bandit: by world (two chests in world 1)
+  const X = EXTRA_CHEST[bossId] || {}; // 0.8.17 bandit
+  return { id: bossId, coins: X.coins ?? treasureCoins(w), booster: X.booster || TREASURE_BOOSTS[w], charges: 1 }; // 0.8.17 the Mint: 100 to 280 coins (was 120 to 480) and one charge
 }
 // +1 of a booster into a wallet (a full stack pays its price in coins instead): the boss treasure and a win's taste
 function giveBooster(w, id, n = 1) {

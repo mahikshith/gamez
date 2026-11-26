@@ -21,6 +21,8 @@ import { GATOR } from '../sim/bayou.js';
 import { pipActor } from './pip.js'; // 0.8.17 pip
 import { urchinActor } from './urchinplay.js'; // 0.8.17 urchin
 import { cocoActor } from './coco.js'; // 0.8.17 coco
+import { drawBanditStage } from './banditplay.js'; // 0.8.17 bandit
+import { RACCOON_M } from './raccoon.js'; // 0.8.17 bandit
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -314,10 +316,70 @@ function bossGator(ctx, S) {
   return { threat: !hit, bonk: hit ? seg(T, 2.0, 2.55) : 0, x: p.x + s * 0.2, y: p.y - s * 0.45, own: true };
 }
 
+// 0.8.17 bandit: Bandit the raccoon (render/banditplay.js draws him with his own art). He tiptoes in on the yard, eyes the
+// egg, licks his lips and reaches up through the gap to it. Turn: the gap's trailing edge closes on his arm, PINCH!, he
+// yanks it back and hops about shaking a red paw while the egg drops home. Harm: he pulls the egg out through the gap
+// and bags it. Drawn UNDER the ring (act.under) so its edge goes over his arm; draw() adds the jolt and the word.
+const BAND_G0 = -0.38, BAND_GW = 0.12; // the gap's start (left of the egg) and half its width (howto.js gw / 2)
+function bandArm(S) { // the arm's track in (angle, lift): straight in through the gap, then along the floor to the egg's side
+  const lo = -S.band - 0.08 * S.k, hi = S.eggS * 0.3, aA = S.g0 + 0.07, pA = -(S.eggS * 0.62) / S.floor;
+  const L1 = hi - lo, L2 = Math.abs(pA - aA) * S.floor;
+  return { lo, hi, aA, pA, L1, L2, pt: (e, a = aA) => { const d = clamp(e, 0, 1) * (L1 + L2); return d <= L1 ? { phi: a, lift: lo + d } : { phi: a + Math.sign(pA - a) * (d - L1) / S.floor, lift: hi }; } };
+}
+const BH = { walk: [0.15, 0.75], peek: [0.75, 1.05], reach: [1.05, 1.35], pull: [1.5, 1.95] }; // the harm beat's clock
+// the stolen egg on the harm beat (howto.js harmBeat 'sack'): in his paw from the egg's spot out through the gap
+export function bandHarmEgg(S, T) {
+  if (T < BH.pull[0]) return { eA: 0, eLift: 0, eAlpha: 1 };
+  const A = bandArm(S), q = A.pt(1 - ease(seg(T, BH.pull[0], BH.pull[1]))), inn = clamp((q.lift - A.lo) / A.L1, 0, 1);
+  return { eA: q.phi + (S.eggS * 0.5 / S.floor) * inn, eLift: q.lift - S.eggS * 0.3 * inn - S.eggS * 0.5 * (1 - inn), eAlpha: 1 - seg(T, BH.pull[1] - 0.08, BH.pull[1] + 0.04) };
+}
+function bandit(ctx, S) {
+  const { T, t, m, k } = S, s = RACCOON_M * k * 0.95, u = s / 100, A = bandArm(S), M = S.at(A.aA, A.lo);
+  const fx1 = M.x - 58 * u, fy = S.ground, x0 = S.cx - S.w * 0.5 - s * 0.7, harm = m === 'harm';
+  const W = harm ? BH : { walk: [0.2, 0.95], peek: [0.95, 1.3], reach: [1.3, 1.6] };
+  const walk = ease(seg(T, W.walk[0], W.walk[1])), fx = lerp(x0, fx1, walk);
+  let st = walk < 1 ? 'sneak' : 'peek', uu = walk < 1 ? 0.001 + Math.abs(fx - x0) / (0.36 * k) : seg(T, W.peek[0], W.peek[1]), arm = null, hurt = false, eye = 'normal', bub = '', add = null, hug = false;
+  let ar = { threat: true, bonk: 0, x: M.x, y: M.y, own: true };
+  const track = (e, a) => { const n = 10, out = []; for (let i = 0; i <= n; i++) { const q = A.pt((e * i) / n, a), P = S.at(q.phi, q.lift); out.push([P.x, P.y]); } return out; };
+  if (T >= W.peek[0] && T < W.peek[0] + 0.25) bub = '!';
+  if (T >= W.reach[0]) {
+    const e = ease(seg(T, W.reach[0], W.reach[1]));
+    st = 'reach'; uu = 0.14 + 0.46 * e; eye = 'lock';
+    if (harm) {
+      if (T >= BH.pull[0]) { const back = 1 - ease(seg(T, BH.pull[0], BH.pull[1])); arm = back > 0.02 ? track(back) : null; if (!arm) { st = 'grab'; uu = 0.35 + 0.65 * seg(T, BH.pull[1], 2.6); hug = true; eye = 'happy'; } }
+      else arm = track(e);
+      ar.threat = true;
+    } else {
+      const edge = BAND_G0 + S.th - BAND_GW; // the gap's trailing edge
+      if (T < TB) arm = track(e);
+      else {
+        const stuck = T < TB + 0.16, a = Math.max(A.aA, edge);
+        if (stuck) { arm = track(1 - 0.15 * seg(T, TB, TB + 0.16), a); st = 'pinched'; uu = 0.16 * seg(T, TB, TB + 0.16); hurt = true; eye = 'squeeze'; }
+        else { st = 'pinched'; uu = 0.16 + 0.84 * seg(T, TB + 0.16, 3.7); eye = 'squeeze'; }
+        ar = { threat: false, bonk: seg(T, TB, TB + 0.6), x: S.at(a, A.lo).x - s * 0.35, y: S.at(a, A.lo).y - s * 0.95, own: true, word: 'PINCH!' };
+        S._pinch = stuck ? S.at(a, -S.band * 0.5) : null;
+      }
+      if (T < TB) S._pinch = null;
+    }
+  } else S._pinch = null;
+  if (st === 'reach' && T > W.reach[1]) uu = 0.6;
+  drawBanditStage(ctx, fx, fy, s, t, st, uu, { face: 1, arm, hurt, eye, bubble: bub, add, calm: S.calm, hug, to: st === 'pinched' ? [M.x, M.y] : null });
+  return ar;
+}
+const banditActor = {
+  under: (ctx, S) => { S._ar = bandit(ctx, S); },
+  draw: (ctx, S) => { // over the ring: the jolt where its edge bites his arm
+    const P = S._pinch;
+    if (P && !S.calm) { ctx.save(); ctx.strokeStyle = '#ffe14a'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(2, S.k * 0.035); for (let i = 0; i < 7; i++) { const a = (i / 7) * TAU + 0.2, r0 = S.k * 0.16, r1 = r0 + S.k * 0.13; ctx.beginPath(); ctx.moveTo(P.x + Math.cos(a) * r0, P.y + Math.sin(a) * r0); ctx.lineTo(P.x + Math.cos(a) * r1, P.y + Math.sin(a) * r1); ctx.stroke(); } ctx.restore(); }
+    return S._ar || { threat: false, bonk: 0, x: 0, y: 0, own: true };
+  },
+  stage: () => ({ g0: BAND_G0, dTh: -BAND_G0, hand: [0.14, 0.5], pan: 0.2 }),
+};
+
 // the harm beats' marks (howto.js reads them too): where the salamander's jet lands, where Sly's orb sits, how far the
 // thorn-back shoves the egg
 export const BREATH_AT = 0, CHAM_ORB = -0.22, BUMP_A = 0.36, BITE_AT = 1.75; // BITE_AT: s into the harm beat when the jaws shut
-export const harmActor = (kind) => (kind === 'salamander' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' || kind === 'urchin' ? ACTORS[kind] : null); // 0.8.17 urchin
+export const harmActor = (kind) => (kind === 'boss:raccoon' || kind === 'salamander' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' || kind === 'urchin' ? ACTORS[kind] : null); // 0.8.17 urchin
 const CRAWL = () => ({ g0: 0.4, dTh: -0.4, pan: 0.2 }); // the crawlers come along the ring from the left: the camera steps that way
 export const ACTORS = {
   // pan: the camera steps to the villain's side (a share of the stage's width), so it is whole in the picture
@@ -335,8 +397,9 @@ export const ACTORS = {
   'boss:golem': { draw: crawler('thornback', { skin: 'crystal', big: 1.12 }), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) }, // 0.8.14 Duke Quartz in person (he was a round badge)
 };
 // the moves an actor plays; any other plan keeps the portrait
+ACTORS['boss:raccoon'] = banditActor; // 0.8.17 bandit
 ACTORS['boss:weasel'] = ACTORS.weasel; // the Weasel Raid's boss is the weasel himself: his whole body, not a head on the ring
-const PLAYS = { 'boss:ratking': ['turn', 'tap', 'rooster'], 'boss:gator': ['drop'], 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], frostsal: ['turn', 'tap'], faceoff: ['faceoff'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'], 'boss:golem': ['stone', 'tap'] };
+const PLAYS = { 'boss:raccoon': ['turn'], 'boss:ratking': ['turn', 'tap', 'rooster'], 'boss:gator': ['drop'], 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], frostsal: ['turn', 'tap'], faceoff: ['faceoff'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'], 'boss:golem': ['stone', 'tap'] };
 ACTORS.penguin = pipActor; PLAYS.penguin = ['turn']; // 0.8.17 pip
 ACTORS.urchin = urchinActor; PLAYS.urchin = ['turn']; // 0.8.17 urchin: Spike acts his own scene
 ACTORS.monkey = cocoActor; PLAYS.monkey = ['turn']; // 0.8.17 coco

@@ -25,6 +25,7 @@ import { drawOrb } from './powers.js';
 import { penguinPose, drawPenguin } from './penguin.js'; // 0.8.17 pip
 import { drawUrchin, urchinPose } from './urchin.js'; // 0.8.17 urchin
 import { monkeyPose, drawMonkey } from './monkey.js'; // 0.8.17 coco
+import { drawRaccoon, raccoonPose } from './raccoon.js'; // 0.8.17 bandit
 
 const TAU = Math.PI * 2;
 const INK = '#2a1606';
@@ -106,6 +107,8 @@ const ART = {
   beetle(ctx, x, y, d, t) { drawCwIntro(ctx, 'beetle', x - d * 0.52, y - d * 0.4, d * 0.8, d * 0.68, t); },
   jack(ctx, x, y, d, t) { drawCwIntro(ctx, 'jack', x - d / 2, y - d * 0.72, d, d * 1.1, t); },
   'boss:kingcrab'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawKingEmblem(ctx, d * 0.38, t); ctx.restore(); },
+  'boss:raccoon'(ctx, x, y, d, t) { const c = (t % 3.2) / 3.2; drawRaccoon(ctx, x - d * 0.06, y + d * 0.44, d * 0.72, t, raccoonPose('peek', t, Math.min(1, c * 1.6) * (c < 0.9 ? 1 : (1 - c) * 10)), { egg: false }); }, // 0.8.17 bandit: licking his lips
+  bandit(ctx, x, y, d, t) { ART['boss:raccoon'](ctx, x, y, d, t); }, // 0.8.17 bandit: the practice tile
   'boss:owl'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y - d * 0.06); drawOwlEmblem(ctx, d * 0.3, t); ctx.restore(); },
   // the boss-bar emblems (render/boss.js drawBossEmblem; that function is not exported, so the two shapes are redrawn here)
   'boss:blizzard'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawGeckoEmblem(ctx, d * 0.23, t); ctx.restore(); }, // Baron von Brr, the frost gecko

@@ -46,6 +46,7 @@ export function value(sim) {
   if (sim.thieves && sim.thieves.length) v += sim.thiefScore(); // v3.6: a trapped or beaten thief boss is worth something
   if (sim.kc) v += sim.reefScore(); // world 8: a stuck or beaten King Crab claw
   const reef = sim.hermits.length || sim.puffs.length || sim.jellies.length || sim.kc || (sim.urchins || []).length; // 0.8.17 urchin
+  if (sim.band) v += sim.bandScore(); // 0.8.17 bandit: a pinched or beaten raccoon
   for (const e of sim.aliveEggs()) {
     const c = sim.channelOf(e);
     v += c * 300 - e.cracks * 200 + e.mult * 15;
@@ -59,6 +60,7 @@ export function value(sim) {
     if (sim.salThreat) v -= 450 * sim.salThreat(e);
     if (sim.thieves.length) v -= 1600 * sim.thiefThreat(e); // v3.6: held or stashed by a thief, or about to be
     if (reef) v -= 1600 * sim.reefThreat(e); // world 8: in a claw or the King Crab's pile, a crab's shell, a jelly's reach
+    if (sim.band) v -= 1600 * sim.bandThreat(e); // 0.8.17 bandit: in his paw or his sack, or about to be
     if (sim.bayouPlan) v -= 1500 * sim.bayouPlan(e); // v3.7: gator jaws, a turtle's clamp, a mosquito lift
     if (sim.pips && sim.pips.length) v -= 500 * sim.pipThreat(e); // 0.8.17 pip
     if (sim.cocos && sim.cocos.length) v -= 700 * sim.cocoThreat(e); // 0.8.17 coco

@@ -20,4 +20,9 @@ export const THIEF_DEMOS = [
     ...base, id: 914, kind: 'ratking', name: 'The Rat King (studio)', theme: 'vault', material: 'metal', world: 7, boss: 'ratking', rats: { n: 2, delay: 4 },
     bossFight: { kind: 'ratking', delay: 2, den: { a: -50, hp: 4 }, throws: ['curse', 'thorn'], phases: [{ attacks: [], every: 6 }, { at: { saved: 1, t: 35 }, attacks: ['throw', 'fog'], every: 6 }] },
   },
+  { // 0.8.17 bandit: the raccoon boss (sim/bandit.js); his zone of the outer ring is its lower-left arc
+    ...base, id: 915, kind: 'bandit', name: 'Bandit (studio)', boss: 'raccoon', eggs: 4, weasel: { a: 30, delay: 9999 }, raccoon: { delay: 2 },
+    bossFight: { kind: 'raccoon', delay: 2, phases: [{ attacks: [] }] }, tip: 'His paw comes up through a gap: turn that ring and pinch it. Three pinches bag him.',
+    rings: [...rings.slice(0, 3), { gaps: [{ a: -125 }, { a: 20 }], thorns: [{ a: 100, n: 2 }] }],
+  },
 ];
