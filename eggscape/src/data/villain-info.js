@@ -149,8 +149,8 @@ export const VILLAIN_INFO = {
   },
   frog: {
     group: 'creature', name: 'Frog',
-    does: 'Hops ring to ring, plugs gaps, eats orbs and chicks. Never eggs.',
-    beat: 'Eggs land softly on it. A flaming egg or dash chick scares it.',
+    does: 'Hops ring to ring, plugs gaps. Its tongue snatches eggs and orbs.',
+    beat: 'Turn a wall into its tongue: bonk! Drop an egg on it: it spits.',
   },
   penguin: { // 0.8.17 pip
     group: 'creature', name: 'Pip the Penguin',
