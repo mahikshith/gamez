@@ -22,6 +22,7 @@ import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge, setAdOff } from './
 import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
 import { drawSnake } from './render/characters.js';
 import * as MS from './render/mapscene.js'; // the world map: land, road, scenery and cast
+import { chestSpot as mfChestSpot } from './render/mapfarm.js'; // 0.8.17: where a boss's treasure chest stands
 import { drawRoadDress } from './render/mapamb.js'; // the outfit's pack strings its garland along the road
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
 import { drawSprite, drawBossCard, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
@@ -3125,9 +3126,10 @@ function drawGift(c, x, y, S, t = 0) {
   c.restore();
 }
 // the gift mark on the map: a purple pill under the header's right edge, "N rewards waiting", the gift bobbing on it
+const waitMarkW = (h) => { const n = waitingList().length; return ui.measure(`${n} reward${n > 1 ? 's' : ''} waiting`, 16 * ui.u) + h * 1.1 + 34 * ui.u; }; // (0.8.17: the map keeps its stops' taps clear of it)
 function waitMark(xr, y, h) {
   if (!waitShown()) { G.waitMarkT = null; return; }
-  const u = ui.u, n = waitingList().length, label = `${n} reward${n > 1 ? 's' : ''} waiting`, size = 16 * u, w = ui.measure(label, size) + h * 1.1 + 34 * u;
+  const u = ui.u, n = waitingList().length, label = `${n} reward${n > 1 ? 's' : ''} waiting`, size = 16 * u, w = waitMarkW(h);
   const T0 = G.waitMarkT ?? (G.waitMarkT = G.t), k = save.calm ? 1 : backK(Math.min(1, (G.t - T0) / 0.35)); // it pops in once
   ctx.save(); ctx.translate(xr - w / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-(xr - w / 2), -(y + h / 2));
   ui.button('wait:open', label, xr - w, y, w, h, { kind: 'ad', shimmer: true, size, round: h * 0.42, iconS: 1.35, icon: (c, X, Y, S) => drawGift(c, X, Y + (save.calm ? 0 : Math.sin(G.t * 2.4) * 1.5 * u) + S * 0.08, S * 0.95, save.calm ? 0 : G.t) });
@@ -9454,6 +9456,7 @@ function drawLevels() {
   const wide = mapWide(), gateW = G.mapGate ? G.mapGate.w : -1, ctaOn = playable(nx) && envOpen(envOf(nx)) && envOf(nx) !== gateW; // (not while its world's gate opens)
   const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 440) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - (wide ? 4 : 20) * u; // 0.8.16: on the page column, clear of the bottom edge
   const tapBot = ctaOn && !wide ? ctaY - 6 * u : vb; // stops under the PLAY bar keep no tap target
+  const wmY = (ctaOn ? ctaY - 12 * u : vb - 16 * u) - 46 * u, wmX = waitShown() ? A.x1 - pad - waitMarkW(46 * u) : Infinity; // 0.8.17: nor under the gift mark (waitMark below)
   G.mapView = { vt, vb: tapBot, cta: ctaOn ? { x: ctaX, y: ctaY, w: ctaW, h: ctaH } : null }; // QA: the part of the map that shows
   // a place's landmarks (0.8.7 the Farm, 0.8.10 the Crystal Caves, 0.8.12 the Volcano and the Vault): scenery beside the
   // road, drawn far to near; the level to play's landmark glows. 0.8.14: they are no longer the buttons (mykee: the hen
@@ -9484,7 +9487,8 @@ function drawLevels() {
     let x0 = x + bx.x0, x1 = x + bx.x1, y0 = y + bx.y0, y1 = y + bx.y1;
     if (x1 - x0 < 48) { x0 = x - 24; x1 = x + 24; } // a touch box of at least 48 px each way
     if (y1 - y0 < 48) { const m2 = (y0 + y1) / 2; y0 = m2 - 24; y1 = m2 + 24; }
-    const tb = ctaOn && wide && x1 > ctaX - 6 * u ? Math.min(tapBot, ctaY - 6 * u) : tapBot;
+    let tb = ctaOn && wide && x1 > ctaX - 6 * u ? Math.min(tapBot, ctaY - 6 * u) : tapBot;
+    if (x1 > wmX - 6 * u && y1 > wmY - 6 * u) tb = Math.min(tb, wmY - 6 * u);
     let p = 0;
     if (state !== 'far' && y0 >= vt + 2 * u && y1 <= tb) { // a stop half under the header or the PLAY bar keeps no tap target
       ui.button('lv:' + i, '', x0, y0, x1 - x0, y1 - y0, { ghost: true, disabled: !open });
@@ -9505,12 +9509,10 @@ function drawLevels() {
   for (let i = 0; i < LEVELS.length; i++) {
     const Lv = LEVELS[i];
     if (!Lv.boss || !E.bossTreasure(Lv.id)) continue;
-    const st0 = L.stops[i], r = Math.max(L.stopR * 1.2, 46 * u), y = st0.y - sy; // 0.8.14: clear of the boss's nest and its ring
+    const st0 = L.stops[i], spot = mfChestSpot(L, i, A, u), r = spot.r, y = st0.y - sy; // 0.8.14: clear of the boss's nest and its ring
     if (y < vt - r * 3 || y > H_ + r * 3 || !envOpen(st0.w)) continue;
-    const side = st0.x < A.cx ? -1 : 1, cr = Math.min(L.stopR * 1.14, 34 * u);
-    let cx = st0.x + side * (r + cr * 1.25);
-    if (cx - cr < A.x + 4 * u || cx + cr > A.x1 - 4 * u) cx = st0.x - side * (r + cr * 1.25); // no room that way: the other side
-    const cy = y - r * 0.15, beaten = bossBeaten(Lv.id), opened = E.treasureOpened(save.wallet, Lv.id), state = opened ? 'open' : beaten ? 'ready' : 'locked';
+    const cr = spot.cr, cx = spot.x; // 0.8.17 (mapfarm.js chestSpot): the outer side, unless the screen edge or a neighbouring stop is in the way
+    const cy = spot.y - sy, beaten = bossBeaten(Lv.id), opened = E.treasureOpened(save.wallet, Lv.id), state = opened ? 'open' : beaten ? 'ready' : 'locked';
     const bob = state === 'ready' && !calm ? Math.abs(Math.sin(t * 3 + i)) * 4 * u : 0;
     ctx.beginPath(); ctx.ellipse(cx, cy + cr * 0.55, cr * 0.7, cr * 0.16, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
     drawChest(ctx, cx, cy - bob, cr * 1.7, t + i, state);
@@ -9654,7 +9656,7 @@ function drawLevels() {
     if (!wide) { const fb = ctx.createLinearGradient(0, ctaY - 30 * u, 0, H_); fb.addColorStop(0, 'rgba(20,10,30,0)'); fb.addColorStop(1, 'rgba(20,10,30,0.5)'); ctx.fillStyle = fb; ctx.fillRect(0, ctaY - 30 * u, W_, H_ - ctaY + 30 * u); }
     ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, ctaX, ctaY, ctaW, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: (wide ? 20 : 23) * u, round: 18 * u });
   }
-  waitMark(X1, (ctaOn ? ctaY - 12 * u : vb - 16 * u) - 46 * u, 46 * u); // 0.8.17: rewards that waited for a connection, over PLAY's right end
+  waitMark(X1, wmY, 46 * u); // 0.8.17: rewards that waited for a connection, over PLAY's right end
   drawShopHand(); // 0.8.14: once, the first time the shop mark turns on
   if (S.max > 0 && !calm) { // a thin scroll thumb
     const th = Math.max(30 * u, vh * vh / L.H), ty2 = vt + clamp(S.y / S.max, 0, 1) * (vh - th - 4 * u);

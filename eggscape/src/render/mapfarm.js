@@ -111,6 +111,21 @@ export function farmPlan(L) {
 // 0.8.17 (six stops a world): slots[i] = the stop (0 .. L.per - 1 in the world) landmark i stands by. The Farm's five stand
 // by its first five; in the other worlds the new level is the fourth, so their landmarks keep the old five (SLOTS_4TH).
 export const SLOTS_4TH = [0, 1, 2, 4, 5];
+// 0.8.17: where a boss's treasure chest stands (main.js drawMap draws it; planStops keeps the plaques clear of it): beside
+// the boss stop on the outer side, unless the screen edge or a neighbouring stop (six a band sit closer) is in the way.
+// -> { x, y (its centre, map space), r (the room kept round the boss stop), cr (the chest's half size) }
+export function chestSpot(L, i, A, u) {
+  const st = L.stops[i], r = Math.max(L.stopR * 1.2, 46 * u), cr = Math.min(L.stopR * 1.14, 34 * u), side = st.x < A.x + A.w / 2 ? -1 : 1, d = r + cr * 1.25, y = st.y - r * 0.15;
+  const fits = (cx) => cx - cr >= A.x + 4 * u && cx + cr <= A.x1 - 4 * u;
+  const near = (cx) => [i - 1, i + 1].map((j) => L.stops[j]).filter((q) => q && Math.abs(q.x - cx) <= cr + L.stopR * 1.3);
+  const clear = (cx, cy) => near(cx).every((q) => q.y - L.stopR * 1.9 > cy + cr * 0.9 || q.y + L.stopR * 1.3 < cy - cr);
+  const a = st.x + side * d, b = st.x - side * d;
+  if (fits(a) && clear(a, y)) return { x: a, y, r, cr };
+  // a stop just below on that side (with the hen standing in it): lift the chest a little rather than cross the road
+  const lift = Math.max(0, ...near(a).map((q) => y + cr * 0.9 - (q.y - L.stopR * 1.9) + 2 * u));
+  if (fits(a) && lift <= cr * 1.2 && clear(a, y - lift)) return { x: a, y: y - lift, r, cr };
+  return { x: fits(b) && clear(b, y) ? b : fits(a) ? a : b, y, r, cr };
+}
 export function planStops(L, w, LMSw, slots = LMSw.map((_, i) => i)) {
   const u = L.u, A = L.A, top = L.bandTop(w), lms = [], i0 = w * (L.per || 5), n = LMSw.filter((_, i) => i0 + slots[i] < L.stops.length).length;
   // the plaques first (they only depend on the stops): on a post at the road side, beside the stop
@@ -123,11 +138,9 @@ export function planStops(L, w, LMSw, slots = LMSw.map((_, i) => i)) {
   const hitsPlaque = (i, x0, x1, y0, y1) => plq.some((q, j) => j !== i && x0 < q.board.x + q.board.w && x1 > q.board.x && y0 < q.y && y1 > q.board.y);
   const hitsRoad = (x0, x1, y0, y1) => { for (let y = y0; y <= y1 + 0.1; y += 4) { const x = L.pathX(y); if (x + L.roadW * 0.5 > x0 && x - L.roadW * 0.5 < x1) return true; } return false; };
   const hitsLm = (x0, x1, y0, y1) => lms.some((m) => { const r = lmArt(m), k = 10 * u; return x0 < r.x1 - k && x1 > r.x0 + k && y0 < r.y1 - k && y1 > r.y0 + k; });
-  // the boss's chest (main.js drawMap: beside the boss stop, on the outer side unless the screen edge is too near)
-  const bs = L.stops[bossOf(w) - 1], cr = Math.min(L.stopR * 1.14, 34 * u), cR = Math.max(L.stopR * 1.2, 46 * u), cs = bs && (bs.x < A.x + A.w / 2 ? -1 : 1);
-  let chX = bs ? bs.x + cs * (cR + cr * 1.25) : 0;
-  if (bs && (chX - cr < A.x + 4 * u || chX + cr > A.x1 - 4 * u)) chX = bs.x - cs * (cR + cr * 1.25);
-  const hitsChest = (x0, x1, y0, y1) => !!bs && x0 < chX + cr && x1 > chX - cr && y0 < bs.y + cr * 1.4 && y1 > bs.y - cR * 0.15 - cr;
+  // the boss's chest (main.js drawMap draws it where chestSpot says)
+  const bs = L.stops[bossOf(w) - 1], ch = bs ? chestSpot(L, bossOf(w) - 1, A, u) : null, cr = ch ? ch.cr : 0, cR = ch ? ch.r : 0, chX = ch ? ch.x : 0;
+  const hitsChest = (x0, x1, y0, y1) => !!ch && x0 < chX + cr && x1 > chX - cr && y0 < ch.y + cR * 0.15 + cr * 1.4 && y1 > ch.y - cr;
   for (let i = 0; i < n; i++) {
     const S = LMSw[i], st = L.stops[i0 + slots[i]];
     let best = null;
