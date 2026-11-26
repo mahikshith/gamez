@@ -7877,8 +7877,14 @@ function drawLevelIntro(L, acc) {
   // whole tiles across the row's full width (three; four on a phone on its side), never a cut one, never a blank side.
   // R.y is the chick in focus (the one the stage plays), in steps; the row shows the window around it: at the list's
   // start the focus is the left tile, at its end the right one. A round arrow at each end steps one chick.
-  const NV = land ? 4 : 3;
+  // sweep817 (mykee: "the chick carousel art is small on its side"): on its side the row shows three bigger tiles when the
+  // right column has the height for them (the room it had sat above the row as a gap), else four
+  let NV = land ? 4 : 3;
   const carDims = (w) => { const gap = 10 * s, cw = (w - (NV - 1) * gap) / NV; return { cw, ch: Math.round(cw * (land ? 1.1 : 1.06)), gap, step: cw + gap }; };
+  if (land && hasCh) {
+    const rTop = A.y + 6 * s + HDR + 8 * s + 12 * s + TABH + 2 * s, rBot = A.y1 - 10 * s - 56 * s - (showBoost ? gp + 68 * s : 0) - ringStripH(0, rwL, s) - 4 * s;
+    NV = 3; const h3 = carDims(rwL).ch + 25 * s; if (h3 + 3 * 12 * s > rBot - rTop) NV = 4;
+  }
   { const D = carDims(land ? rwL : iwP); R.step = D.step; R.max = Math.max(0, (nI - 1) * D.step);
     if (R.lid !== L.id + ':' + G.li) { // a new level: the picked chick is the one in focus
       R.lid = L.id + ':' + G.li; R.v = 0; R.to = null; R.pt = G.introPick ? G.introPick.t : 0; R.cb = G.chickBuy || null;
@@ -7901,9 +7907,11 @@ function drawLevelIntro(L, acc) {
     G.carRect = V;
     const r0 = ui.rects.length, b0 = ui.buttons.length;
     const cy = y + CTOP, tl = [];
-    const ns = Math.min(17 * s, cw / 7.2), ls = Math.min(13.5 * s, cw / 9);
-    const lines = items.map(({ S }) => wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s - ls * 2.2).slice(0, 1));
-    const two = items.some(({ S }) => ui.measure(S.name, ns) > cw - 14 * s), textH = ns * 1.15 * (two ? 2 : 1) + 6 * s + ls * 1.2 + ls * 0.6 + 6 * s;
+    // sweep817: on its side the tiles are small, so each is the chick's picture and its name on one line (its power is
+    // the caption under the stage beside the row); the art takes the height the words gave back
+    const ns = land ? Math.min(15 * s, ...items.map(({ S }) => (15 * s * (cw - 14 * s)) / Math.max(1, ui.measure(S.name, 15 * s)))) : Math.min(17 * s, cw / 7.2), ls = Math.min(13.5 * s, cw / 9);
+    const lines = items.map(({ S }) => (land ? [] : wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s - ls * 2.2).slice(0, 1)));
+    const two = !land && items.some(({ S }) => ui.measure(S.name, ns) > cw - 14 * s), textH = land ? ns * 1.15 + 8 * s : ns * 1.15 * (two ? 2 : 1) + 6 * s + ls * 1.2 + ls * 0.6 + 6 * s;
     // the arrows (the game's round back button): the left one from the second chick on, the right one until the last
     const az = 44 * s, ay = cy + 7 * s + (ch - 14 * s - textH) / 2 - az / 2, aL = nI > 1 && ci > 0 ? x - az * 0.37 : null, aR = nI > 1 && ci < nI - 1 ? x + w - az * 0.63 : null;
     ctx.save(); ctx.beginPath(); ctx.rect(x - 8 * s, y, w + 16 * s, rowH); ctx.clip();
