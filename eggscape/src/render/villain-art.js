@@ -86,6 +86,14 @@ const ART = {
     const S = d * 0.4;
     drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', frost: 1, glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9103 });
   },
+  emberspit(ctx, x, y, d, t) { // 0.8.18 the ember spit on a loop: the head glows, the spark runs up his back, the jaws pop
+    const S = d * 0.4, u = (t % 2.4) / 2.4, f = Math.min(1, u / 0.72), pop = u >= 0.72 && u < 0.84;
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'breath', p: pop ? 0.5 : 0.3 * f, blend: { fire: 0, mouth: pop ? 0.95 : 0 }, fuse: u < 0.72 ? f : 0, cheek: u < 0.72 ? Math.min(1, f * 2.5) : 0, glow: 0.9, look: { x: 0.5, y: 0.5 }, id: 9106 });
+  },
+  fireup(ctx, x, y, d, t) { // 0.8.18 white-hot and smug about it
+    const S = d * 0.4;
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', white: 1, expr: { k: 'smug', a: 1 }, glow: 1, look: { x: 0.4, y: 0.5 }, id: 9107 });
+  },
   faceoff(ctx, x, y, d, t) { // the two of them nose to nose
     const S = d * 0.26;
     drawSalamander(ctx, x - d * 0.06, y - d * 0.1, S, t, { heading: 0, curve: -0.2 / S, pose: 'idle', glow: 0.9, look: { x: 1, y: 0 }, id: 9104 });

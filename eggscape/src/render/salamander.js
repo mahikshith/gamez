@@ -858,12 +858,16 @@ function drawEmberFly(ctx, E, k, t, calm, low) {
   const u = clamp(E.u, 0, 1), q = pos(u), r = (0.08 + 0.05 * Math.sin(Math.PI * u)) * k;
   for (let j = 3; j >= 1; j--) { const p = pos(Math.max(0, u - 0.05 * j)); ctx.fillStyle = `rgba(255,${150 - 20 * j},40,${0.55 - 0.13 * j})`; ctx.beginPath(); ctx.arc(p.x, p.y, r * (1 - 0.2 * j), 0, TAU); ctx.fill(); }
   if (!low) { const g = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, r * 2.8); g.addColorStop(0, 'rgba(255,220,120,0.55)'); g.addColorStop(1, 'rgba(255,90,10,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, r * 2.8, 0, TAU); ctx.fill(); }
-  ctx.fillStyle = '#c3360a'; ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#ffa42a'; ctx.beginPath(); ctx.arc(q.x - r * 0.15, q.y - r * 0.18, r * 0.72, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#fff4c8'; ctx.beginPath(); ctx.arc(q.x - r * 0.25, q.y - r * 0.28, r * 0.34, 0, TAU); ctx.fill();
+  drawEmberBall(ctx, q.x, q.y, r, t, calm);
+}
+// the ember itself (px space): a molten ball with tumbling dark crust flecks (also the level card's harm beat, howto.js)
+export function drawEmberBall(ctx, x, y, r, t, calm) {
+  ctx.fillStyle = '#c3360a'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#ffa42a'; ctx.beginPath(); ctx.arc(x - r * 0.15, y - r * 0.18, r * 0.72, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#fff4c8'; ctx.beginPath(); ctx.arc(x - r * 0.25, y - r * 0.28, r * 0.34, 0, TAU); ctx.fill();
   ctx.strokeStyle = '#5a1606'; ctx.lineWidth = Math.max(1, r * 0.16); ctx.lineCap = 'round';
-  for (let i = 0; i < 3; i++) { const a = i * 2.1 + (calm ? 0.4 : t * 6); ctx.beginPath(); ctx.arc(q.x, q.y, r * 0.82, a, a + 0.55); ctx.stroke(); } // dark crust flecks tumbling
-  ctx.lineWidth = Math.max(1, r * 0.12); ctx.strokeStyle = '#4a1206'; ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, TAU); ctx.stroke();
+  for (let i = 0; i < 3; i++) { const a = i * 2.1 + (calm ? 0.4 : t * 6); ctx.beginPath(); ctx.arc(x, y, r * 0.82, a, a + 0.55); ctx.stroke(); } // dark crust flecks tumbling
+  ctx.lineWidth = Math.max(1, r * 0.12); ctx.strokeStyle = '#4a1206'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
 }
 // the fire-up flare round the body (px space): a hot disc, a ring and rays that burst out and fade. Calm: the soft disc only.
 function drawFlare(ctx, at, s, u, calm, low) {
