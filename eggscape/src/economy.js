@@ -8,6 +8,7 @@
 // Google Play later: each booster carries a `sku` id. Real-money coin packs would be added as
 // new products that call addCoins(); buy() / useBooster() stay the only spend paths.
 
+import { WORLD_N, bossOf } from './road.js'; // 0.8.17: sixty levels, six a world
 import { FAUCETS, winParts, treasureCoins, chestCoins } from './engine/mint.js'; // 0.8.17: the coin loop's one table
 
 export const MAX_OWNED = 9;
@@ -329,7 +330,7 @@ export function unlockables(wallet) {
 
 // ---------------------------------------------------------------- star chests
 // Every 15 stars unlocks a chest on the level map: some coins plus one booster.
-// 0.8.15: ten chests (150 stars = 50 levels x 3), and every second one holds an egg skin that the map shows ahead of
+// 0.8.15: ten chests (150 stars = 50 levels x 3; 0.8.17: of the 180 stars of 60 levels, as before), and every second one holds an egg skin that the map shows ahead of
 // time (research: a visible prize is the reason to replay for three stars). A skin already owned pays half its price.
 export const STARS_PER_CHEST = 15;
 export const CHEST_COUNT = 10;
@@ -369,7 +370,8 @@ export function openChest(wallet, chest) {
 // A treasure chest stands beside every boss on the level map (mykee: "after clearing a boss level, show some treasure
 // and the unlockables"). Beating the boss opens it, once: coins, a booster and Chick Charges, growing world by world.
 // The chick that joins at the next level (strikes.js unlock = boss + 1) is shown in it as part of the reward.
-export const BOSS_TREASURE_IDS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+// 0.8.17: the bosses of the 60-level road (5, 12, 18 .. 60: road.js bossOf)
+export const BOSS_TREASURE_IDS = Array.from({ length: WORLD_N }, (_, w) => bossOf(w));
 const TREASURE_BOOSTS = ['stone', 'time', 'golden', 'rewind', 'sponge', 'nest', 'snips', 'golden', 'time', 'stone'];
 export function bossTreasure(bossId) {
   const w = BOSS_TREASURE_IDS.indexOf(bossId);

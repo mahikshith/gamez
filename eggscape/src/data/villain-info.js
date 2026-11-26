@@ -1,4 +1,4 @@
-// "Who's in this vault": one entry for every villain, boss, creature and hazard that can appear in levels 1-50, the
+// "Who's in this vault": one entry for every villain, boss, creature and hazard that can appear in levels 1-60, the
 // practice vaults and the Wonder Vaults. Written from the sim (src/sim/*.js), not from memory: `does` is what the sim
 // makes it do, `beat` the counter the sim actually honours. Plain words, at most ~70 characters a line.
 // Boss attack counters reuse the in-game tip toasts (render/bossmoves.js, owl.js, reef.js, levels.js tips) so the

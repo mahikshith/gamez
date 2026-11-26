@@ -9,6 +9,7 @@ import * as E from '../src/economy.js';
 import * as SP from '../src/spin.js';
 import { LEVELS } from '../src/data/levels.js';
 import { HARD_IDS } from '../src/sim/sim.js';
+import { bossOf } from '../src/road.js';
 import { purse, owning, town, life, PERSONAS, PER_ENV, CATALOGUE, envOpen } from './sim-players.mjs';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
@@ -49,7 +50,7 @@ E.setPlatform(false);
   const S = { stars: {}, wallet: E.defaultWallet(), gates: { 4: 1 }, skipped: {} };
   for (let id = 1; id <= 12; id++) S.stars[id] = 2;
   ok(envOpen(S, 2) && !envOpen(S, 3) && !envOpen(S, 4), 'a gate bought far ahead (an old save) opens nothing before the worlds in front of it');
-  S.skipped = { 15: 1 }; for (let id = 13; id <= 14; id++) S.stars[id] = 3;
+  S.skipped = { [bossOf(2)]: 1 }; for (let id = 13; id < bossOf(2); id++) S.stars[id] = 3; // (0.8.17: world 3's boss is 18 on the 60-level road; it was 15)
   ok(envOpen(S, 3), 'a skipped boss counts as passed (a skip never leaves a dead end)');
 }
 { // replays, the online share, the pot

@@ -14,7 +14,7 @@
 //                     weasel in his crates; dust in the light and glints on the gold (mapamb.js)
 //   drawThievesFront  over the landmarks: the Rat King and his coin rats
 // Reduced motion (calm): everything holds still.
-import { planStops, drawLandmarkBody, drawFarmPlaque, signBox, lmArt } from './mapfarm.js';
+import { planStops, SLOTS_4TH, drawLandmarkBody, drawFarmPlaque, signBox, lmArt } from './mapfarm.js';
 import { drawThief, thiefPose } from './thieves.js';
 import { RIG } from '../sim/thieves.js';
 import { drawSnake } from './snake.js';
@@ -140,7 +140,7 @@ const hitAny = (boxes, b) => boxes.some((q) => b.x0 < q.x1 && b.x1 > q.x0 && b.y
 
 export function thievesPlan(L) {
   if (L._vault) return L._vault;
-  const plan = planStops(L, WI, LMS), u = L.u, A = L.A, top = plan.top, BH = L.BH, st = (k) => L.stops[WI * 5 + k];
+  const plan = planStops(L, WI, LMS, SLOTS_4TH), u = L.u, A = L.A, top = plan.top, BH = L.BH, st = (k) => L.stops[WI * L.per + SLOTS_4TH[k]]; // k: the old five
   plan.props = []; plan.pillars = []; plan.torches = []; plan.ropes = [];
   if (plan.lms.length < 5) return (L._vault = plan);
   const boxes = plan.lms.map((m) => lmArt(m)).concat(plan.lms.map((m) => { const b = m.plaque.board; return { x0: b.x - 4 * u, x1: b.x + b.w + 4 * u, y0: b.y, y1: m.plaque.y + 6 * u }; }));

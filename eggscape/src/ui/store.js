@@ -9,6 +9,7 @@
 //           sheet pays), 'deal:buy' (TODAY'S DEAL, coins)
 //   A coin button the player cannot afford stays tappable (off face): the game answers with its "Get more" sheet.
 //   picker: 'boost:<boosterId>', 'shop'
+import { ROAD_N } from '../road.js';
 import { glideStep, snapPx } from '../scroll.js';
 import { focusY, focusTrip, focusLook, focusDraw, focusHand } from './focus.js'; // 0.8.16: the one "scroll to it and point at it"
 import { drawEggSkinArt } from '../render/eggskins.js';
@@ -978,7 +979,7 @@ function drawBanner(ctx, sku, cx, cy, bw, bh, t, wallet, k = 1) {
 // getting"): G.detail 'iap:<sku>'. What is inside as rows [{ art, text, grid? }] (grid: [{ art, name }], the outfits /
 // eggs / chicks one by one), counted from bundleParts like the strip. levels: how many levels the game has.
 const STRIKE_NAME = (id) => (STRIKES.find((S) => S.id === id) || {}).name || id;
-export function iapRows(sku, levels = 50) {
+export function iapRows(sku, levels = ROAD_N) {
   const P = IAP[sku];
   if (!P) return [];
   if (COIN_PACKS.includes(sku)) return [{ art: 'coins', text: fmtNum(P.coins) + ' coins' }];

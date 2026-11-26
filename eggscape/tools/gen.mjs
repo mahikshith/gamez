@@ -6,6 +6,8 @@
 //
 // Usage: node tools/gen.mjs [ids] [--tries N] [--jobs N]     (writes src/data/levels.js)
 //        node tools/gen.mjs --assemble                         (rewrite levels.js from tools/gen-out)
+//        node tools/gen.mjs <ids> --splice                     (only those levels are written; every other level keeps
+//                                                               its text in levels.js exactly: the hand-tuned first five)
 //        node tools/gen.mjs --worker <id> --tries N --out <file>
 import { fork } from 'node:child_process';
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -27,12 +29,17 @@ const OSTRICH_GAP = 0.9, WIDE_GAP = 1.1;
 const wrapD = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 const dist = (a, b) => Math.abs(wrapD(a - b));
 const halfDeg = (len, r) => ((len / r) * 180) / Math.PI / 2;
+// 0.8.17 (sixty levels, six a world): a level that was on the 50-level road keeps its old number as `gid`, and every
+// rule below that grows with the level number reads it, so regenerating an old level lays out exactly what it had.
+// A new level (no gid) is ruled by its own number.
+const gidOf = (spec) => spec.gid ?? spec.id;
 // level fields copied from the spec as they are (not laid out)
 const LEVEL_KEYS = ['boss', 'bossFight', 'gravity', 'water', 'lava', 'wind', 'nest', 'weather', 'weatherOpts', 'snake', 'bonus', 'weasel', 'rats', 'eagle', 'icicles', 'eggKinds', 'gusts', 'salamander', 'octopus', 'chameleon'];
 LEVEL_KEYS.push('softCurtain'); // the level that first teaches the thorn curtain
 LEVEL_KEYS.push('hermit', 'puffer', 'jelly'); // world 8 Coral Reef
 LEVEL_KEYS.push('shape', 'rock', 'spider'); // v4 Shape Lab: vault shape, the rocking vault, the clockwork spider (beetle and jack are laid out below)
 LEVEL_KEYS.push('gator', 'turtle', 'mosquito'); // world 9 Gator Bayou
+LEVEL_KEYS.push('frog'); // the frog (Woodcutter Glade, Gator Crossing, the 0.8.17 Frog Pond)
 
 // ---------- layout ----------
 function radii(spec) {
@@ -51,8 +58,9 @@ function channelPoint(spec, rs, ch, a, floor = false) {
 
 // pads per ring when the spec does not say: generous early, scarce late
 function defaultPads(spec, i) {
-  if (i === 0) return spec.id <= 6 ? 1 : 0;
-  return spec.id <= 8 ? 2 : spec.id <= 15 ? 2 : 1;
+  const id = gidOf(spec);
+  if (i === 0) return id <= 6 ? 1 : 0;
+  return id <= 8 ? 2 : id <= 15 ? 2 : 1;
 }
 
 // a ring geared (through any chain of gears) to a one-way ring can only turn one way itself
@@ -182,7 +190,7 @@ function layRing(spec, i, r, R, prev) {
     };
     const s1 = safe(1), s2 = safe(-1);
     if (!s1 && !s2) return null;
-    if (spec.id >= 4 && s1 && s2 && inner.length >= 2 && R() < 0.7) return null; // usually one wrong way
+    if (gidOf(spec) >= 4 && s1 && s2 && inner.length >= 2 && R() < 0.7) return null; // usually one wrong way
   }
 
   // items on free floor, away from where eggs start
@@ -244,7 +252,7 @@ function layRing(spec, i, r, R, prev) {
     for (let t = 0; t < 200; t++) {
       const len = +(1.0 + R() * 0.9).toFixed(2);
       const w = halfDeg(len, r);
-      const a = k === 0 && i > 0 && spec.id <= 5 ? BOTTOM + Math.round((R() - 0.5) * 20) : Math.round(R() * 360 - 180);
+      const a = k === 0 && i > 0 && gidOf(spec) <= 5 ? BOTTOM + Math.round((R() - 0.5) * 20) : Math.round(R() * 360 - 180);
       if (blocked(a, w)) continue;
       pads.push({ a, len });
       break;
@@ -375,8 +383,8 @@ export async function evaluate(spec, L) {
   if ((L.eggKinds || []).includes('ostrich')) { const od = await ostrichDrops(L); rec.drops = od.join(''); if (od.includes(0)) return fail('ostrich'); }
   const ex = alignAll(L);
   rec.exploit = ex;
-  if (ex >= 2 && spec.id > 2) return fail('exploit'); // L1-L2 are the gentle tutorials: lining up gaps is the lesson
-  if (spec.id <= 5) {
+  if (ex >= 2 && gidOf(spec) > 2) return fail('exploit'); // L1-L2 are the gentle tutorials: lining up gaps is the lesson
+  if (gidOf(spec) <= 5) {
     // a second, sloppier pass: each move is replayed for real, so small drifts play out the way they
     // would for a human. Robust layouts survive it.
     const q = solve(L, { replay: true });
@@ -423,11 +431,12 @@ export async function ostrichDrops(L0) {
 async function worker(id, tries, out) {
   const spec = id >= 900 ? dailySpec(id - 900) : SPECS.find((s) => s.id === id);
   const found = [];
-  let seed = id * 7919;
+  let seed = (spec.gid ?? (id < 900 ? 100 + id : id)) * 7919; // (a new level starts its own run of seeds)
   for (let n = 0; n < tries; n++) {
     let L = null;
     for (let g = 0; g < 500 && !L; g++) L = layout(spec, ++seed);
     if (!L) break;
+    if (n < (+process.env.FROM || 0)) continue; // FROM=n: skip the first n layouts (already tried: a search resumes where it stopped)
     const r = await evaluate(spec, L);
     console.error(`L${id} #${n} seed=${L.seed} ${r.ok ? 'KEEP' : 'drop:' + r.why} ${JSON.stringify(r.rec)}`);
     if (r.ok) found.push({ ...r.rec, level: L });
@@ -439,22 +448,38 @@ async function worker(id, tries, out) {
 // difficulty of a kept layout, for picking along the curve
 const hardness = (c) => c.moves * 1.5 + c.plannerT / 8 + (c.roughBroken || 0) * 2 + (c.stars === 2 ? 1 : 0) + (c.hard === 1 ? 2 : 0);
 
-// Sawtooth (per environment of 5): the first level after a boss is a breather, the boss the hardest, a climb between.
+// Sawtooth (per world): the first level after a boss is a breather, the boss (the world's last) the hardest, a climb between.
 function pick(id, found) {
   if (!found.length) return null;
   const sorted = [...found].sort((a, b) => hardness(a) - hardness(b));
-  const k = (id - 1) % 5;
-  const q = id <= 2 || k === 0 ? 0 : k === 4 ? 1 : 0.25 + 0.25 * (k - 1);
+  const spec = SPECS.find((s) => s.id === id), mates = spec ? SPECS.filter((s) => s.world === spec.world) : [], n = Math.max(2, mates.length);
+  const k = spec ? mates.indexOf(spec) : 0;
+  const q = gidOf(spec || { id }) <= 2 || k === 0 ? 0 : k === n - 1 ? 1 : 0.25 + (0.5 * (k - 1)) / Math.max(1, n - 3);
   return sorted[Math.round(q * (sorted.length - 1))];
 }
 
 // the fuse: generous on L1-L2, tight from L3 (F30). Easy/Hard scale it at run time.
 // spec.noFuse: no clock at all (time 0: the sim, HUD and goals run without one); spec.fuseX stretches it (the first five)
 function fuse(c, spec) {
-  const id = spec.id;
+  const id = gidOf(spec);
   if (spec.noFuse) return 0;
   const t = (id <= 2 ? c.plannerT * 3 + 25 : c.plannerT * 2.2 + 15) * (spec.fuseX || 1);
   return Math.max(id <= 2 ? 45 : 30, Math.min(spec.fuseX ? 240 : 160, Math.round(t / 5) * 5));
+}
+
+function levelText(L) {
+  const { rings, ...rest } = L;
+  const top = JSON.stringify(rest).replace(/"(\w+)":/g, '$1: ').replace(/,(?=\w+: )/g, ', ');
+  const rl = rings.map((r) => '      ' + JSON.stringify(r).replace(/"(\w+)":/g, '$1: ').replace(/,(?=\w+: )/g, ', ')).join(',\n');
+  return `  {\n    ${top.slice(1, -1)},\n    rings: [\n${rl},\n    ],\n  }`;
+}
+// the current levels.js, one text block per level id (--splice keeps them as they are)
+function levelBlocks() {
+  const f = join(ROOT, 'src', 'data', 'levels.js');
+  if (!existsSync(f)) return {};
+  const src = readFileSync(f, 'utf8'), out = {};
+  for (const b of src.split(/\n(?=  \{\n)/).slice(1)) { const m = /^  \{\n    id: (\d+),/.exec(b); if (m) out[+m[1]] = b.replace(/,?\n\];\n?$/, '').replace(/,$/, ''); }
+  return out;
 }
 
 function writeLevels(chosen) {
@@ -466,12 +491,7 @@ function writeLevels(chosen) {
 // channel ch. time = the fuse in seconds (Medium; Easy x1.6, Hard x0.8).
 
 export const LEVELS = [\n`;
-  const body = chosen.map((L) => {
-    const { rings, ...rest } = L;
-    const top = JSON.stringify(rest).replace(/"(\w+)":/g, '$1: ').replace(/,(?=\w+: )/g, ', ');
-    const rl = rings.map((r) => '      ' + JSON.stringify(r).replace(/"(\w+)":/g, '$1: ').replace(/,(?=\w+: )/g, ', ')).join(',\n');
-    return `  {\n    ${top.slice(1, -1)},\n    rings: [\n${rl},\n    ],\n  }`;
-  }).join(',\n');
+  const body = chosen.map((L) => L._text || levelText(L)).join(',\n');
   writeFileSync(join(ROOT, 'src', 'data', 'levels.js'), head + body + ',\n];\n');
 }
 
@@ -499,7 +519,9 @@ async function main() {
   const report = [];
   // levels with no fresh results keep their current layout (so a few levels can be regenerated alone)
   const { LEVELS: OLD } = await import('../src/data/levels.js').catch(() => ({ LEVELS: [] }));
+  const splice = args.includes('--splice'), TEXT = splice ? levelBlocks() : {};
   for (const spec of SPECS) {
+    if (splice && !ids.includes(spec.id) && TEXT[spec.id]) { chosen.push({ _text: TEXT[spec.id] }); report.push(`L${spec.id}: its text as it was`); continue; }
     const f = join(OUT_DIR, `L${spec.id}.json`);
     const found = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : [];
     const old = OLD.find((L) => L.id === spec.id);

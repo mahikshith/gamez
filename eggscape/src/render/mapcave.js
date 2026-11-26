@@ -12,7 +12,7 @@
 //   drawCaveLive    the life, every frame, only what is on screen, pure functions of the clock: no state, no
 //                   allocation in the loops, no gradients made per frame (glows are cached sprites), no shadowBlur.
 // Reduced motion (calm): everything holds still.
-import { planStops, drawLandmarkBody, drawFarmPlaque, signBox, lmArt } from './mapfarm.js';
+import { planStops, SLOTS_4TH, drawLandmarkBody, drawFarmPlaque, signBox, lmArt } from './mapfarm.js';
 import { freeCanvas } from './cvfree.js';
 import { drawThief, thiefPose } from './thieves.js';
 import { drawCrawler } from './crawlers.js';
@@ -124,7 +124,7 @@ const roadHit = (L, x0, x1, y0, y1, m = 4) => { for (let y = y0; y <= y1 + 0.1; 
 
 export function cavePlan(L) {
   if (L._cave) return L._cave;
-  const plan = planStops(L, WI, LMS), u = L.u, A = L.A, top = plan.top, BH = L.BH, st = (k) => L.stops[WI * 5 + k];
+  const plan = planStops(L, WI, LMS, SLOTS_4TH), u = L.u, A = L.A, top = plan.top, BH = L.BH, st = (k) => L.stops[WI * L.per + SLOTS_4TH[k]]; // k: the old five
   if (plan.lms.length < 5) { plan.props = []; return (L._cave = plan); }
   const boxes = plan.lms.map((m) => lmArt(m)).concat(plan.lms.map((m) => { const b = m.plaque.board; return { x0: b.x - 4 * u, x1: b.x + b.w + 4 * u, y0: b.y, y1: m.plaque.y + 6 * u }; }));
   // the stream: from a waterfall in the right wall, across the road on a stone bridge, under the Crystal Bridge, into a

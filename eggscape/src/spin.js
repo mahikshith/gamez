@@ -40,10 +40,11 @@
 // save.spin = { wins, bank, sure (banked spins that are cheer-up spins), miss (villain rows in a row just now),
 //   again (unused since 0.8.16, kept 0), t: { day, ad, coin, played, steps, cheer, retry },
 //   n, cheered: [levelId, ...] }   (state() makes any save safe)
+import { firstOf } from './road.js'; // 0.8.17: sixty levels, six a world
 import { FAUCETS } from './engine/mint.js'; // 0.8.17: the coin prizes and the wheel's sizes live in the Mint
 import { BOOSTERS, BOOSTER_ORDER, HEN_SKINS, HEN_SKIN_ORDER, CHICK_IDS, CHICK_PRICES, ITEMS, CHARGE_ITEM, GIFT_MAX, GIFT_FULL, MAX_CHARGES, MAX_TICKETS, COUPON, couponHeld, unlockables, giftBooster, sanitizeWallet, ownedCount, ownsHenSkin, ownsChick } from './economy.js';
 
-export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [80, 110, 150], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [11, 26, 41], tierX: FAUCETS.spin.tierX.slice(), cheerAt: 3, cheerMax: 2, miss: 45, missRow: 2 };
+export const SPIN = { every: 3, from: 3, bankMax: 3, adPerDay: 3, coin: [80, 110, 150], rareCoins: 300, playEvery: 4, playMax: 2, tierAt: [firstOf(2), firstOf(5), firstOf(8)], tierX: FAUCETS.spin.tierX.slice(), cheerAt: 3, cheerMax: 2, miss: 45, missRow: 2 };
 
 // The prizes. w = weight = the odds in percent of a pull that wins (they add up to 100).
 export const TABLE = [
@@ -86,7 +87,7 @@ export const banked = (save) => (open(save) ? state(save).bank : 0);
 export const left = (save) => SPIN.every - state(save).wins;
 export const meter = (save) => ({ have: state(save).wins, of: SPIN.every, left: left(save), bank: banked(save) });
 
-// the wheel's size: 0..3 by the level reached (worlds 3, 6 and 9 open the next one). Coins on the wheel are x tierX.
+// the wheel's size: 0..3 by the level reached (worlds 3, 6 and 9 open the next one: levels 13, 31, 49 on the 60-level road). Coins on the wheel are x tierX.
 export const tier = (save) => SPIN.tierAt.filter((lv) => (save.unlocked || 1) >= lv).length;
 export const coinX = (save) => SPIN.tierX[tier(save)];
 const step = (S) => { S.wins++; if (S.wins < SPIN.every) return false; S.wins = 0; if (S.bank < SPIN.bankMax) S.bank++; return true; };

@@ -12,7 +12,7 @@ const levels = (s, n) => { for (let i = 0; i < n; i++) BR.note(s, 'level'); };
 {
   ok(BR.model(mk({ unlocked: 3 })).stage === 'new', 'before level 6: new');
   ok(BR.model(mk({ offers: { sessions: 1 } })).stage === 'new', 'first session: new');
-  ok(BR.model(mk({ unlocked: 9 })).stage === 'learning' && BR.model(mk()).stage === 'regular' && BR.model(mk({ unlocked: 35 })).stage === 'veteran', 'stages by progress');
+  ok(BR.model(mk({ unlocked: 9 })).stage === 'learning' && BR.model(mk()).stage === 'regular' && BR.model(mk({ unlocked: 36 })).stage === 'veteran', 'stages by progress');
   const s = mk(); s.dir.att[14] = { streak: 3 };
   ok(BR.model(s).mood === 'stuck', '3 losses in a row here: stuck');
   ok(BR.model(mk({ dir: { recent: ['f', 'f', 'w', 'f', 'f', 'w'], att: {}, spent: { all: 0 } } })).mood === 'stuck', '4 of the last 6 lost: stuck');
@@ -72,7 +72,7 @@ const levels = (s, n) => { for (let i = 0; i < n; i++) BR.note(s, 'level'); };
   const young = mk({ unlocked: 8, offers: { sessions: 3, ads: 0, firstDay: T0 - DAY } });
   ok(BR.shopPlan(young, { now: T0, bundles: B3 }).hero === 'starter_nest', 'a young account: the Starter Nest leads');
   ok(BR.shopPlan(mk({ offers: { sessions: 4, ads: 9, firstDay: T0 - DAY } }), { now: T0, bundles: B3 }).hero === 'eggscape_premium', 'a video fan: Unlock Everything leads');
-  ok(BR.shopPlan(mk({ unlocked: 35 }), { now: T0, bundles: B3 }).order[0] === 'eggscape_premium', 'the hero is first in the order');
+  ok(BR.shopPlan(mk({ unlocked: 36 }), { now: T0, bundles: B3 }).order[0] === 'eggscape_premium', 'the hero is first in the order');
   ok(BR.shopPlan(mk({ wallet: { noAds: true, starter: true, payer: true } }), { now: T0, bundles: ['eggscape_collector'] }).hero === 'eggscape_collector', 'owns Premium: the Coop leads');
   const items = [{ key: 'skin:dino', kind: 'skin', price: 200, owned: false, tried: true }, { key: 'skin:golden', kind: 'skin', price: 300, owned: false }, { key: 'hen:santa', kind: 'hen', price: 250, owned: true }, { key: 'chick:bomb', kind: 'chick', price: 450, owned: false }, { key: 'boost:time', kind: 'boost', price: 50, owned: 0 }, { key: 'kit:rescue', kind: 'kit', price: 110, owned: false }];
   const P = BR.shopPlan(mk({ wallet: { coins: 320 } }), { now: T0, bundles: B3, items });

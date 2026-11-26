@@ -16,6 +16,7 @@ import * as MINT from '../src/engine/mint.js';
 import * as DR from '../src/director.js';
 import { Sim, isHardLevel } from '../src/sim/sim.js';
 import { LEVELS } from '../src/data/levels.js';
+import { fromOld } from '../src/road.js';
 
 let bad = 0;
 const ok = (c, m) => { if (!c) { bad++; console.log('FAIL ' + m); } else console.log('ok   ' + m); };
@@ -111,7 +112,7 @@ const plan = (s, id, o = {}) => PA.failPlan(s, { levelId: id, boss: id % 5 === 0
     if (e[0].kind === m[0].kind && e[0].n === m[0].n && (e[1].kind === 'all' || e[1].kind === 'perfect') && e[2].kind === 'both') harder++;
   }
   ok(harder === n, `Easy: the first star as on Medium, the second every egg, the third every egg AND the bonus (${harder}/${n})`);
-  const L = LEVELS.find((q) => q.id === 12), g = GL.levelGoals(L, 1.6, true, 'easy');
+  const L = LEVELS.find((q) => q.id === fromOld(12)), g = GL.levelGoals(L, 1.6, true, 'easy'); // (Icicle Hollow, a time bonus: 12 on the 50-level road)
   const F = { won: true, saved: 3, target: 2, total: 3, broken: 0, crackedHome: 0, crackedLive: 0, used: 200, turns: 3, prizeHome: false, prizeGone: false, orbs: 0, orbsAll: 0 };
   ok(GL.score(g, F).stars === 2, 'every egg but too slow: two stars on Easy');
   ok(GL.score(g, { ...F, used: 20 }).stars === 3, 'every egg and the bonus: three');

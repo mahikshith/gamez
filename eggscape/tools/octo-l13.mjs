@@ -7,7 +7,7 @@ import { solve } from './planner.mjs';
 import { OCT } from '../src/sim/sea.js';
 export const OCTO_L13 = { ch: 3, a: -60, delay: 10, den: true };
 export function studioL13(octopus = OCTO_L13) {
-  const L = LEVELS.find((l) => l.id === 13);
+  const L = LEVELS.find((l) => l.id === 15);
   return { ...JSON.parse(JSON.stringify(L)), id: 990, name: 'Studio: Duck Pond + octopus', octopus: { ...octopus } };
 }
 if (process.argv[1] && process.argv[1].endsWith('octo-l13.mjs')) {
@@ -17,7 +17,7 @@ if (process.argv[1] && process.argv[1].endsWith('octo-l13.mjs')) {
   if (opt('hold')) Object.assign(OCT.hold, opt('hold'));
   const modes = process.argv.slice(2).filter((a) => !a.startsWith('--'));
   for (const mode of modes.length ? modes : ['easy', 'medium', 'hard']) {
-    for (const [name, L] of [...(process.argv.includes('--skipbase') ? [] : [['L13 as shipped', LEVELS.find((l) => l.id === 13)]]), ['L13 + octopus', studioL13(over ? { ...OCTO_L13, ...over } : OCTO_L13)]]) {
+    for (const [name, L] of [...(process.argv.includes('--skipbase') ? [] : [['L13 as shipped', LEVELS.find((l) => l.id === 15)]]), ['L13 + octopus', studioL13(over ? { ...OCTO_L13, ...over } : OCTO_L13)]]) {
       const t0 = Date.now();
       const r = solve(L, { mode, depth2: process.argv.includes('--depth2') });
       const stars = r.saved >= r.target ? (r.broken === 0 ? (r.perfect ? 3 : 2) : 1) : 0;

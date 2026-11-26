@@ -229,7 +229,8 @@ const HOUR = 3600000, DAY = 24 * HOUR, T0 = new Date(2026, 10, 24, 18, 0, 0).get
   const run = (sim, secs) => { for (let i = 0; i < secs / DT && sim.state === 'play'; i++) { sim.step(); sim.events.length = 0; } };
   const sig = (sim) => JSON.stringify([sim.t, sim.scareT, sim.eggs.map((e) => { const p = e.body.getPosition(); return [e.alive, +p.x.toFixed(6), +p.y.toFixed(6)]; })]);
   let scared = 0, tried = 0, exact = 0, same = 0;
-  for (const id of [8, 12, 16, 18, 22, 27, 33, 38, 42, 47]) {
+  const { fromOld } = await import('../src/road.js'); // 0.8.17: the same ten levels on the 60-level road
+  for (const id of [8, 12, 16, 18, 22, 27, 33, 38, 42, 47].map(fromOld)) {
     const L = LEVELS[id - 1]; tried++;
     const a = new Sim(L, { mode: 'medium', scare: true });
     let hit = false;
@@ -244,7 +245,7 @@ const HOUR = 3600000, DAY = 24 * HOUR, T0 = new Date(2026, 10, 24, 18, 0, 0).get
   ok(scared >= 5, `villains are scared off on ${scared} of ${tried} sampled levels within 12 s`);
   ok(exact === tried, `a sim saved with the Scarecrow up restores with its clock and its eggs where they were (${exact}/${tried})`);
   ok(same === tried, 'without the booster nothing in the sim changes');
-  const z = new Sim(LEVELS[11], { mode: 'easy', scare: true }); run(z, SCARE_S + 1);
+  const z = new Sim(LEVELS[fromOld(12) - 1], { mode: 'easy', scare: true }); run(z, SCARE_S + 1);
   ok(z.state !== 'play' || z.scareT === 0, `it stands ${SCARE_S} s and then falls`);
 }
 console.log(bad ? `\n${bad} FAILED` : '\nall engine checks passed');

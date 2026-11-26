@@ -18,7 +18,7 @@ const at = (evs, type) => { const e = evs.find((x) => x[1] === type); return e ?
 const same = (level, sim, T, pick) => { const s = sim.snapshot(), a = Sim.fromState(level, s), b = Sim.fromState(level, s); run(a, T); run(b, T); const f = (x) => JSON.stringify(pick(x), (k, v) => (typeof v === 'number' ? +v.toFixed(9) : v)); return f(a) === f(b); };
 
 { // hermit crab (level 36: delay 1.5)
-  const L = lv(36), sim = new Sim(L, { mode: 'medium' }), d = L.hermit.delay;
+  const L = lv(43), sim = new Sim(L, { mode: 'medium' }), d = L.hermit.delay;
   const evs = run(sim, d + HERMIT.in + 0.2), roll = at(evs, 'hermitRoll'), inn = at(evs, 'hermitIn'), pop = at(evs, 'hermitPop');
   ok(Math.abs(roll - (d - HERMIT.roll)) < 0.02 && Math.abs(inn - d) < 0.02 && Math.abs(pop - (d + HERMIT.in - HERMIT.pop)) < 0.02, `hermit: rolls in at ${roll.toFixed(2)} s, lands at ${inn.toFixed(2)} s, pops out at ${pop.toFixed(2)} s`);
   ok(sim.hermitLive(sim.hermits[0]) && sim.hermits[0].ph !== 'in', `hermit: live ${(d + HERMIT.in).toFixed(2)} s in, as before (delay + in)`);
@@ -26,7 +26,7 @@ const same = (level, sim, T, pick) => { const s = sim.snapshot(), a = Sim.fromSt
   ok(same(L, s2, 1.5, (x) => x.hermits), 'hermit: a snapshot in the middle of the entrance runs the same');
 }
 { // spring jack (level 48)
-  const L = lv(48), sim = new Sim(L, { mode: 'medium' }); run(sim, 1);
+  const L = lv(57), sim = new Sim(L, { mode: 'medium' }); run(sim, 1);
   const J = sim.cw.jk[0], ring = sim.rings[J.fi], q = sim.cwFloor(J.fi, J.la + 1.7 / ring.r, 0.3), j = sim.cwFloor(J.fi, J.la, 0.3), e = sim.eggs[0], d = Math.hypot(j.x - q.x, j.y - q.y);
   e.body.setTransform({ x: q.x, y: q.y }, 0);
   const evs = run(sim, 4, () => { if (J.ph === 'ready') { const p = e.body.getPosition(), dd = Math.hypot(j.x - p.x, j.y - p.y) || 1; e.body.setLinearVelocity({ x: ((j.x - p.x) / dd) * 1.3, y: ((j.y - p.y) / dd) * 1.3 }); } });
@@ -48,13 +48,13 @@ const same = (level, sim, T, pick) => { const s = sim.snapshot(), a = Sim.fromSt
   ok(s2.p2.tw > 0 && same(L, s2, 2, (x) => [x.snakes.map((q) => [q.a, q.rad, q.stun, q.back]), x.p2.tw]), 'twister: a snapshot in the wind-up runs the same');
 }
 { // Electromagnet (level 47)
-  const L = lv(47), sim = new Sim(L, { mode: 'medium' }); run(sim, 2);
+  const L = lv(56), sim = new Sim(L, { mode: 'medium' }); run(sim, 2);
   const e = sim.aliveEggs()[0]; sim.p2Take(e, 'iron'); sim.p2Take(e, 'shock');
   const evs = run(sim, 8), on = at(evs, 'emagOn'), off = at(evs, 'emagOff'), hum = evs.filter((x) => x[1] === 'emagHum').length;
   ok(on > 0 && off > on + 5 && hum >= 8, `electromagnet: on at ${on.toFixed(2)} s, off at ${off.toFixed(2)} s, ${hum} hums between`);
 }
 { // Bait and switch on a snapping turtle (level 43)
-  const L = lv(43), sim = new Sim(L, { mode: 'medium' }); run(sim, 6);
+  const L = lv(51), sim = new Sim(L, { mode: 'medium' }); run(sim, 6);
   const e = sim.aliveEggs()[0], r = sim.rings[3].r - 0.3, a = (-55 * Math.PI) / 180, T = sim.turtles[0], a0 = T.a;
   e.body.setTransform({ x: r * Math.cos(a), y: r * Math.sin(a) }, 0); sim.p2Take(e, 'decoy'); sim.p2Take(e, 'warp'); e.body.setTransform({ x: 0, y: 0.2 }, 0);
   const evs = run(sim, 2.2), lure = at(evs, 'baitLure'), open = at(evs, 'warpOpen'), bait = at(evs, 'warpBait');

@@ -17,7 +17,7 @@
 
 import { now as gameNow } from './clock.js'; // 0.8.17: a day that never goes back (moving the phone's date repeats nothing)
 const MIN = 60e3, DAY = 864e5;
-export const BRAIN = { gapLevels: 3, gapMin: 10, nudgeLevels: 1, backoffMax: 8, restDays: 1, richCoins: 600, poorCoins: 40, fanToday: 3, fanAll: 8, shyFrom: 15, flowWins: 3, cruiseWins: 6 };
+export const BRAIN = { gapLevels: 3, gapMin: 10, nudgeLevels: 1, backoffMax: 8, restDays: 1, richCoins: 600, poorCoins: 40, fanToday: 3, fanAll: 8, shyFrom: 18, flowWins: 3, cruiseWins: 6 };
 const dayKey = (now) => { const d = new Date(gameNow(now)); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 const num = (v) => Math.max(0, Number(v) || 0);
 
@@ -42,7 +42,7 @@ export function model(save, ctx = {}) {
   const unlocked = save.unlocked || 1, recent = Array.isArray(D.recent) ? D.recent : [];
   const lv = ctx.levelId != null ? ctx.levelId : unlocked, a = (D.att && D.att[lv]) || null;
   const f6 = recent.slice(-6).filter((x) => x === 'f').length, here = a ? a.streak || 0 : 0, hot = num(D.hot);
-  const stage = unlocked < 6 || num(o.sessions) <= 1 ? 'new' : unlocked < 12 ? 'learning' : unlocked < 30 ? 'regular' : 'veteran';
+  const stage = unlocked < 6 || num(o.sessions) <= 1 ? 'new' : unlocked < 14 ? 'learning' : unlocked < 36 ? 'regular' : 'veteran'; // (0.8.17: 12 and 30 on the 50-level road)
   const mood = here >= 3 || f6 >= 4 ? 'stuck' : hot >= BRAIN.cruiseWins ? 'cruising' : hot >= BRAIN.flowWins ? 'flow' : 'steady';
   const coins = num(w.coins), purse = coins >= BRAIN.richCoins ? 'rich' : coins < BRAIN.poorCoins ? 'poor' : 'ok';
   const payer = !!w.payer || !!w.noAds || !!w.collector, spent = num(D.spent && D.spent.all);
@@ -102,7 +102,7 @@ export function shopPlan(save, ctx = {}) {
   const bundles = Array.isArray(ctx.bundles) ? ctx.bundles : [], has = (s) => bundles.includes(s);
   const young = now - (num(o.firstDay) || now) < 7 * DAY;
   let hero = null;
-  if (has('eggscape_premium') && (M.video === 'fan' || M.stage === 'veteran' || (M.unlocked >= 12 && !young))) hero = 'eggscape_premium';
+  if (has('eggscape_premium') && (M.video === 'fan' || M.stage === 'veteran' || (M.unlocked >= 14 && !young))) hero = 'eggscape_premium';
   else if (has('starter_nest') && !w.starter && M.spender !== 'payer') hero = 'starter_nest';
   else if (has('eggscape_premium')) hero = 'eggscape_premium';
   else if (has('eggscape_collector')) hero = 'eggscape_collector';

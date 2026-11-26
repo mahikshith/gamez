@@ -37,7 +37,7 @@ export const SKIP_COINS = 150;
 // 2026-11-20 shop 2.0 (mykee: "every ad should be beneficial, for the player and for us"): the app shows no
 // interstitials (on: false). The same cadence now decides when the win card offers the Bonus chest video instead of
 // "Double coins" (bonusDue). Web portals keep their own commercialBreak exactly as before: portals require it.
-export const INTER = { on: false, from: 8, gapS: 240, levels: 3 };
+export const INTER = { on: false, from: 9, /* 0.8.17: 8 on the 50-level road */ gapS: 240, levels: 3 };
 
 const st = { busy: false, lastInter: 0, sinceInter: 0, prices: {}, fails: {}, seq: 0, pending: new Map(), adWait: new Set(), childSafe: false };
 let save = null, persist = () => {}, onGrant = () => {}, onRevoke = () => {};

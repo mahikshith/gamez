@@ -18,7 +18,7 @@ fs.mkdirSync(out, { recursive: true });
   // attacks: null = the real level; [] = no attacks; ['stomp'] = that one. o.spike: Spike's delay (999 = he stays out)
   const start = (attacks, o = {}) => ev(([attacks, o]) => {
     globalThis.__eggDebug = 1;
-    const E = __egg, L = E.LEVELS.find((l) => l.id === 20);
+    const E = __egg, L = E.LEVELS.find((l) => l.id === 24);
     E.setSave({ mode: o.mode || 'medium', calm: false, seen: {} });
     const bf = attacks ? { ...L.bossFight, delay: o.delay ?? 2.2, thorn: { ...L.bossFight.thorn }, spike: { ...L.bossFight.spike, delay: o.spike ?? 999 }, phases: [{ attacks: attacks.length ? attacks : ['stomp'], every: attacks.length ? (o.every || 30) : 999 }] } : L.bossFight;
     if (attacks && !attacks.length) bf.delay = 999;

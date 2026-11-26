@@ -22,6 +22,7 @@ import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge, setAdOff } from './
 import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
 import { drawSnake } from './render/characters.js';
 import * as MS from './render/mapscene.js'; // the world map: land, road, scenery and cast
+import { chestSpot as mfChestSpot } from './render/mapfarm.js'; // 0.8.17: where a boss's treasure chest stands
 import { drawRoadDress } from './render/mapamb.js'; // the outfit's pack strings its garland along the road
 import { POWER_INFO, drawOrb, drawPowerCard } from './render/powers.js';
 import { drawSprite, drawBossCard, drawHenActor, setSpriteCalm, drawHenLegacy, ANIMATED_HEN } from './render/sprites.js';
@@ -99,6 +100,7 @@ import { createWonder } from './wonder.js'; // WONDER: the bonus world (own scre
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
 import { drawVillainPortrait, PORTRAIT_BG, hasPortrait } from './render/villain-art.js';
 import { drawExtrasMark } from './render/extras.js';
+import * as ROAD from './road.js'; // 0.8.17: sixty levels, six a world; the old saves' level ids move once (migrateRoad)
 import * as AL from './album.js'; // 0.8.17: the combo album (drawAlbum)
 import * as RS from './reset.js'; // 0.8.17: Settings > Reset progress (what goes, what stays)
 import { PRIVACY, PRIVACY_URL, PRIVACY_DATE } from './data/privacy.js'; // 0.8.17: Settings > Privacy policy
@@ -122,13 +124,13 @@ const TEST = typeof __TEST__ !== 'undefined' && __TEST__;
 const RING_SPEED_DEFAULT = 1.5;
 const SAVE_VER = 3; // v3: 35 new levels, progress resets; settings, wallet and discoveries carry over
 // mode: difficulty (F32); stars/best are kept per mode (Medium uses the v1 keys); calm = reduced motion
-const defaultSave = () => ({ v: SAVE_VER, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), gates: {}, ringSpeed: RING_SPEED_DEFAULT, rsDef: 2, adClaim: 0, daily: { day: '', best: 0, paid: '' } });
+const defaultSave = () => ({ v: SAVE_VER, road: ROAD.ROAD_V, unlocked: 1, stars: {}, best: {}, streak: 0, sfx: true, music: true, seen: {}, mode: 'medium', calm: false, intro: {}, bonus: {}, wallet: E.defaultWallet(), gates: {}, ringSpeed: RING_SPEED_DEFAULT, rsDef: 2, adClaim: 0, daily: { day: '', best: 0, paid: '' } });
 let save = defaultSave();
 const MODE_LIST = ['easy', 'medium', 'hard'];
 const sk = (id, mode = save.mode) => (mode === 'medium' ? String(id) : mode[0] + id);
 const starsOf = (id) => save.stars[sk(id)] || 0;
 // star gates (I5): environment k (0-based) opens at GATE * k stars, counting each level's best over all modes
-const GATE = 7, PER_ENV = 5;
+const GATE = 7, PER_ENV = ROAD.PER_ENV; // 0.8.17: six levels a world (road.js)
 const bestStarsOf = (id) => Math.max(0, ...MODE_LIST.map((m) => save.stars[sk(id, m)] || 0));
 // 2026-11-20 first-five ladder: nothing is sold or advertised until level 3 is won. The one switch for every entry point
 // (level page Boosters tab, Free booster video, coin/shop chip; win card Bonus chest and offers; the Director's nudges
@@ -140,7 +142,7 @@ const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0);
 // level 1 with the teaching hand (no map, no level card). Any win, or a level unlocked, and home is the full home.
 const firstRun = () => !TEST && !allOpen() && bestTotal() === 0 && (save.unlocked || 1) <= 1;
 const envOf = (i) => Math.floor(i / PER_ENV);
-const envNeed = (k) => (TEST ? 0 : MINT.worldNeed(k, PER_ENV)); // 0.8.17: GATE (7) stars a world of five, scaled by PER_ENV
+const envNeed = (k) => (TEST ? 0 : MINT.worldNeed(k, PER_ENV)); // 0.8.17: GATE (7) stars a world of five, scaled by PER_ENV (six a world since 0.8.17)
 // a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all.
 // 0.8.17 (mykee: "users cannot unlock a far distant world without unlocking the previous one"; the Mint): only the next
 // world, once the one before is open and its boss is won or skipped, for the stars it is missing (MINT.gatePrice: 75 a
@@ -175,6 +177,7 @@ function nextIdx() {
   return Math.max(0, lim - 1);
 }
 function loadSave(s) {
+  s = ROAD.migrateRoad(s); // 0.8.17: a save from the 50-level road moves to the 60-level numbering, once (save.road)
   save = { ...defaultSave(), ...s };
   if (s.rsDef !== 2) { save.rsDef = 2; if (!(+s.ringSpeed) || +s.ringSpeed === 1) save.ringSpeed = RING_SPEED_DEFAULT; }
   save.wallet = E.sanitizeWallet(save.wallet);
@@ -570,6 +573,7 @@ function startLevel(i, opts = {}) {
   if (G.sim && !G.result && G.sim.t > 1 && save.streak) { save.streak = 0; persist(); }
   G.run = (G.run || 0) + 1;
   G.li = i;
+  if (i !== -2) G.demo = null; // 0.8.17: a practice vault played before does not follow into the road (it turned off the skip and the Pacer there)
   G.level = i === -2 && G.demo ? G.demo : i < 0 ? dailyLevel() : LEVELS[i]; // -2: a dev chick demo (v3.2)
   G.theme = themeFor(G.level);
   if (DEV && BG_FORCE) G.theme = THEMES.find((th) => th.id === BG_FORCE) || G.theme; // dev: ?bg=coop forces a level's backdrop theme
@@ -1411,7 +1415,7 @@ async function press(id) {
       if (leaveAsk('levels')) break;
       portal.gameplayStop();
       if (G.screen !== 'title' && G.demo && G.level === G.demo) { setScreen('practice'); break; } // a practice vault goes back to the Practice screen, where it was opened
-      G.world = clamp(envOf(nextIdx()), 0, Math.ceil(LEVELS.length / PER_ENV) - 1);
+      G.world = clamp(envOf(nextIdx()), 0, Math.ceil(LEVELS.length / ROAD.PER_ENV) - 1);
       setScreen('levels');
       break;
     case 'go': {
@@ -2291,16 +2295,16 @@ function drawModals() {
 // as levels go on new villains come: show what is coming and how it connects"). A chest stands beside every boss on the
 // map. Locked: it shows what it holds and who guards it. Beaten: it glows; open it for coins, a booster and Chick Charges.
 // Inside it also shows the chick that joins at the next level (what it does, the villains it answers) and the next
-// world's new villains, so the reward points at the levels ahead. Bosses 35-50 add no free chick: the shop's premium
+// world's new villains, so the reward points at the levels ahead. Bosses 36-60 add no free chick: the shop's premium
 // chicks are offered instead (one button, never a popup).
 const bossBeaten = (id) => bestStarsOf(id) > 0;
-function newKindsFor(w) { // villains that first appear in world w (levels 5w+1 .. 5w+5), in order of appearance
+function newKindsFor(w) { // villains that first appear in world w (its PER_ENV levels), in order of appearance
   const seen = new Set(), out = [];
   for (const Lv of LEVELS) {
     const ks = villainKinds(Lv).filter((k) => hasPortrait(k) || VILLAIN_INFO[k]);
-    const inW = Lv.id > w * 5 && Lv.id <= w * 5 + 5;
+    const inW = Lv.id > w * ROAD.PER_ENV && Lv.id <= (w + 1) * ROAD.PER_ENV;
     for (const k of ks) { if (inW && !seen.has(k) && !out.includes(k)) out.push(k); }
-    if (Lv.id <= w * 5) ks.forEach((k) => seen.add(k));
+    if (Lv.id <= w * ROAD.PER_ENV) ks.forEach((k) => seen.add(k));
   }
   return out;
 }
@@ -2318,7 +2322,7 @@ function drawTreasurePage() {
   const T = G.treasure, R = E.bossTreasure(T.id);
   if (!R) { G.treasure = null; return; }
   const Lb = LEVELS.find((Lv) => Lv.id === T.id), beaten = bossBeaten(T.id), opened = E.treasureOpened(save.wallet, T.id);
-  const w = T.id / 5, chick = STRIKES.find((S) => S.unlock === T.id + 1), nk = w < WORLDS.length ? newKindsFor(w).slice(0, 4) : [];
+  const w = ROAD.worldOfId(T.id) + 1, chick = STRIKES.find((S) => S.unlock === T.id + 1), nk = w < WORLDS.length ? newKindsFor(w).slice(0, 4) : [];
   const bossName = (VILLAIN_INFO['boss:' + (Lb && Lb.boss)] || {}).name || (Lb ? Lb.name : 'the boss');
   dim(0.78);
   const fresh = T.openedAt != null ? G.t - T.openedAt : 9;
@@ -3160,9 +3164,10 @@ function drawGift(c, x, y, S, t = 0) {
   c.restore();
 }
 // the gift mark on the map: a purple pill under the header's right edge, "N rewards waiting", the gift bobbing on it
+const waitMarkW = (h) => { const n = waitingList().length; return ui.measure(`${n} reward${n > 1 ? 's' : ''} waiting`, 16 * ui.u) + h * 1.1 + 34 * ui.u; }; // (0.8.17: the map keeps its stops' taps clear of it)
 function waitMark(xr, y, h) {
   if (!waitShown()) { G.waitMarkT = null; return; }
-  const u = ui.u, n = waitingList().length, label = `${n} reward${n > 1 ? 's' : ''} waiting`, size = 16 * u, w = ui.measure(label, size) + h * 1.1 + 34 * u;
+  const u = ui.u, n = waitingList().length, label = `${n} reward${n > 1 ? 's' : ''} waiting`, size = 16 * u, w = waitMarkW(h);
   const T0 = G.waitMarkT ?? (G.waitMarkT = G.t), k = save.calm ? 1 : backK(Math.min(1, (G.t - T0) / 0.35)); // it pops in once
   ctx.save(); ctx.translate(xr - w / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-(xr - w / 2), -(y + h / 2));
   ui.button('wait:open', label, xr - w, y, w, h, { kind: 'ad', shimmer: true, size, round: h * 0.42, iconS: 1.35, icon: (c, X, Y, S) => drawGift(c, X, Y + (save.calm ? 0 : Math.sin(G.t * 2.4) * 1.5 * u) + S * 0.08, S * 0.95, save.calm ? 0 : G.t) });
@@ -6902,7 +6907,7 @@ function bossStage(x, y, w, h, s) {
 }
 
 // first level of a world, first visit: its intro line rides on the level card (one card, no extra tap)
-function worldOpener(L) { return !!(L && L.intro && !L.boss && G.li >= 0 && (L.id - 1) % PER_ENV === 0 && !save.intro[L.id]); }
+function worldOpener(L) { return !!(L && L.intro && !L.boss && G.li >= 0 && (L.id - 1) % ROAD.PER_ENV === 0 && !save.intro[L.id]); }
 function drawIntro() {
   const L = G.level, C = ui.C;
   const acc = /^#[0-9a-f]{6}$/i.test(G.theme.palette.accent || '') ? G.theme.palette.accent : '#ee5a36';
@@ -7402,7 +7407,7 @@ function drawLevelIntro(L, acc) {
   // ---- what the level teaches (0.8.10 / 2026-11-23): the scenes, the tiles under the stage, the reminder chips
   const howTeach = () => {
     if (G.howT && G.howT.lid === pg.lid) return G.howT;
-    const toys = G.li >= 0 ? { 2: ['flame'], 3: ['twin', 'curtain'], 4: ['portal', 'glow'], 18: ['bulk'], 22: ['warp'], 27: ['warp'], 43: ['bait'], 44: ['sweep', 'twister'], 47: ['magnet'] }[L.id] || [] : []; // the first-five ladder: each level's new toy, first (2026-11-20: and the Practice content placed in L22-L47)
+    const toys = G.li >= 0 ? { 2: ['flame'], 3: ['twin', 'curtain'], 4: ['portal', 'glow'], 21: ['bulk'], 26: ['warp'], 32: ['warp'], 51: ['bait'], 53: ['sweep', 'twister'], 56: ['magnet'] }[L.id] || [] : []; // the first-five ladder: each level's new toy, first (2026-11-20: and the Practice content placed in L22-L47 of the 50-level road, L26-L56 now)
     const things = G.li >= 0 ? levelThings(L) : [], fresh = things.filter((k) => teachFirst(k) === L.id), foeOf = L.salamander ? 'salamander' : L.eagle ? 'eagle' : 'snake';
     const chickOn = things.includes('chick') && strikesOpen().length > 0, chickId = strikeFor(L, G.li) || (strikesOpen()[0] || {}).id;
     const foe = (kinds.find((k) => !/^(icicles|lava|lightning|embers|quake|rain|current|gusts|popthorns|vines|doors|curse|thornorb)$/.test(k)) || 'snake').replace(/^boss:/, '');
@@ -9595,7 +9600,7 @@ function mapFocusWorld(w) {
   const L = mapLayoutNow(), nx = nextIdx();
   if (envOf(nx) === w && envOpen(w)) mapFocusY(L.stops[nx].y, 0.55);
   else if (!envOpen(w)) mapFocusY(L.bandTop(w) + L.BH * 0.9, 0.62); // the gate card
-  else mapFocusY(L.stops[Math.min(LEVELS.length - 1, w * PER_ENV)].y, 0.62);
+  else mapFocusY(L.stops[Math.min(LEVELS.length - 1, w * ROAD.PER_ENV)].y, 0.62);
 }
 function drawLevels() {
   const u = ui.u, A = ui.A, pad = 14 * u, S = G.mscroll;
@@ -9657,7 +9662,7 @@ function drawLevels() {
     if (TR.t0 < 0) TR.t0 = G.screenT;
     // 0.8.14: she walks the ROAD (the road is the curve x = pathX(y) through every stop), not a straight line over the
     // scenery; a longer stretch (a world's last stop to the next world's first) takes a little longer
-    const a = L.stops[TR.from], b = L.stops[TR.to], dur = 1.2 * clamp(Math.abs(b.y - a.y) / (L.BH * 0.175), 1, 1.8), p = clamp((G.screenT - TR.t0 - TRIP0) / dur, 0, 1), e = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p);
+    const a = L.stops[TR.from], b = L.stops[TR.to], dur = 1.2 * clamp(Math.abs(b.y - a.y) / (L.BH * L.stepFY), 1, 1.8), p = clamp((G.screenT - TR.t0 - TRIP0) / dur, 0, 1), e = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p);
     TR.y = a.y + (b.y - a.y) * e; TR.x = L.pathX(TR.y); TR.p = p; TR.e = e; TR.dur = dur;
     camTo((TR.y + b.y) / 2, 0.55, fresh); // both stops in view: the padlock breaking ahead and the hen
     if (TR.unl && !TR.snd && G.screenT - TR.t0 - UNL0 >= 0.32) { TR.snd = 1; audio.play('unlock'); buzz('tap'); }
@@ -9681,6 +9686,7 @@ function drawLevels() {
   const wide = mapWide(), gateW = G.mapGate ? G.mapGate.w : -1, ctaOn = playable(nx) && envOpen(envOf(nx)) && envOf(nx) !== gateW; // (not while its world's gate opens)
   const ctaH = (wide ? 52 : 60) * u, ctaW = Math.min(A.w - 2 * pad, (wide ? 250 : 440) * u), ctaX = wide ? A.x1 - pad - ctaW : A.cx - ctaW / 2, ctaY = vb - ctaH - (wide ? 4 : 20) * u; // 0.8.16: on the page column, clear of the bottom edge
   const tapBot = ctaOn && !wide ? ctaY - 6 * u : vb; // stops under the PLAY bar keep no tap target
+  const wmY = (ctaOn ? ctaY - 12 * u : vb - 16 * u) - 46 * u, wmX = waitShown() ? A.x1 - pad - waitMarkW(46 * u) : Infinity; // 0.8.17: nor under the gift mark (waitMark below)
   G.mapView = { vt, vb: tapBot, cta: ctaOn ? { x: ctaX, y: ctaY, w: ctaW, h: ctaH } : null }; // QA: the part of the map that shows
   // a place's landmarks (0.8.7 the Farm, 0.8.10 the Crystal Caves, 0.8.12 the Volcano and the Vault): scenery beside the
   // road, drawn far to near; the level to play's landmark glows. 0.8.14: they are no longer the buttons (mykee: the hen
@@ -9688,9 +9694,9 @@ function drawLevels() {
   const PL = MS.PLACES;
   const placeW = Object.keys(PL).map(Number).sort((a, b) => b - a);
   for (const w of placeW) {
-    const Pz = PL[w], i0 = w * PER_ENV;
+    const Pz = PL[w], i0 = w * ROAD.PER_ENV;
     for (let k = Math.min(LEVELS.length - i0, Pz.landmarks.length) - 1; k >= 0; k--) {
-      const i = i0 + k, m = Pz.stop(L, k);
+      const m = Pz.stop(L, k), i = m ? m.gi : i0 + k; // (0.8.17: a landmark stands by its own stop, not always the k-th)
       if (!m || L.stops[i].w !== w || m.y - sy - 230 * u > H_ || m.y - sy + 60 * u < vt) continue;
       const cur = playable(i) && envOpen(w) && i === nx && !(TR && !TR.arrived);
       Pz.drawLandmark(ctx, L, m, sy, t, calm, 0, cur ? (calm ? 0.75 : 0.6 + 0.3 * Math.sin(t * 2.6)) : 0, DPR);
@@ -9711,7 +9717,8 @@ function drawLevels() {
     let x0 = x + bx.x0, x1 = x + bx.x1, y0 = y + bx.y0, y1 = y + bx.y1;
     if (x1 - x0 < 48) { x0 = x - 24; x1 = x + 24; } // a touch box of at least 48 px each way
     if (y1 - y0 < 48) { const m2 = (y0 + y1) / 2; y0 = m2 - 24; y1 = m2 + 24; }
-    const tb = ctaOn && wide && x1 > ctaX - 6 * u ? Math.min(tapBot, ctaY - 6 * u) : tapBot;
+    let tb = ctaOn && wide && x1 > ctaX - 6 * u ? Math.min(tapBot, ctaY - 6 * u) : tapBot;
+    if (x1 > wmX - 6 * u && y1 > wmY - 6 * u) tb = Math.min(tb, wmY - 6 * u);
     let p = 0;
     if (state !== 'far' && y0 >= vt + 2 * u && y1 <= tb) { // a stop half under the header or the PLAY bar keeps no tap target
       ui.button('lv:' + i, '', x0, y0, x1 - x0, y1 - y0, { ghost: true, disabled: !open });
@@ -9733,12 +9740,10 @@ function drawLevels() {
   for (let i = 0; i < LEVELS.length; i++) {
     const Lv = LEVELS[i];
     if (!Lv.boss || !E.bossTreasure(Lv.id)) continue;
-    const st0 = L.stops[i], r = Math.max(L.stopR * 1.2, 46 * u), y = st0.y - sy; // 0.8.14: clear of the boss's nest and its ring
+    const st0 = L.stops[i], spot = mfChestSpot(L, i, A, u), r = spot.r, y = st0.y - sy; // 0.8.14: clear of the boss's nest and its ring
     if (y < vt - r * 3 || y > H_ + r * 3 || !envOpen(st0.w)) continue;
-    const side = st0.x < A.cx ? -1 : 1, cr = Math.min(L.stopR * 1.14, 34 * u);
-    let cx = st0.x + side * (r + cr * 1.25);
-    if (cx - cr < A.x + 4 * u || cx + cr > A.x1 - 4 * u) cx = st0.x - side * (r + cr * 1.25); // no room that way: the other side
-    const cy = y - r * 0.15, beaten = bossBeaten(Lv.id), opened = E.treasureOpened(save.wallet, Lv.id), state = opened ? 'open' : beaten ? 'ready' : 'locked';
+    const cr = spot.cr, cx = spot.x; // 0.8.17 (mapfarm.js chestSpot): the outer side, unless the screen edge or a neighbouring stop is in the way
+    const cy = spot.y - sy, beaten = bossBeaten(Lv.id), opened = E.treasureOpened(save.wallet, Lv.id), state = opened ? 'open' : beaten ? 'ready' : 'locked';
     const bob = state === 'ready' && !calm ? Math.abs(Math.sin(t * 3 + i)) * 4 * u : 0;
     ctx.beginPath(); ctx.ellipse(cx, cy + cr * 0.55, cr * 0.7, cr * 0.16, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
     drawChest(ctx, cx, cy - bob, cr * 1.7, t + i, state);
@@ -9882,7 +9887,7 @@ function drawLevels() {
     if (!wide) { const fb = ctx.createLinearGradient(0, ctaY - 30 * u, 0, H_); fb.addColorStop(0, 'rgba(20,10,30,0)'); fb.addColorStop(1, 'rgba(20,10,30,0.5)'); ctx.fillStyle = fb; ctx.fillRect(0, ctaY - 30 * u, W_, H_ - ctaY + 30 * u); }
     ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, ctaX, ctaY, ctaW, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: (wide ? 20 : 23) * u, round: 18 * u });
   }
-  waitMark(X1, (ctaOn ? ctaY - 12 * u : vb - 16 * u) - 46 * u, 46 * u); // 0.8.17: rewards that waited for a connection, over PLAY's right end
+  waitMark(X1, wmY, 46 * u); // 0.8.17: rewards that waited for a connection, over PLAY's right end
   drawShopHand(); // 0.8.14: once, the first time the shop mark turns on
   if (S.max > 0 && !calm) { // a thin scroll thumb
     const th = Math.max(30 * u, vh * vh / L.H), ty2 = vt + clamp(S.y / S.max, 0, 1) * (vh - th - 4 * u);
@@ -11159,7 +11164,7 @@ if (DEV) window.__egg = {
     return G.infoKinds.slice();
   },
   uiRect: (tag) => ui.rects.find((r) => r.tag === tag) || null, // QA strips: where a recorded block was drawn
-  setSave(s) { loadSave(s); },
+  setSave(s) { loadSave({ road: ROAD.ROAD_V, ...s }); }, // (QA saves are written in today's numbering; pass road: 0 for a save from the 50-level road)
   ads, // shop QA: stuck counts, prices, the purchase bridge
   get save() { return save; },
   // QA only: jump straight to an end screen with a plausible result

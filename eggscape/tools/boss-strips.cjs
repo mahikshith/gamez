@@ -73,7 +73,7 @@ sh.save(out,quality=84)
   const prep = (f) => ev(f);
 
   if (want('cage')) {
-    await start(20, 'cage');
+    await start(24, 'cage');
     await prep(() => { for (const i of [1, 2]) Q.park(i); Q.solidTo(3, -90); Q.egg(0, 3, -90); Q.run(0.3); });
     await upTo('cage', 'warn');
     await seq('cage', [[0.1, 'telegraph: cell + crystal outlines'], [0.5, 'telegraph'], [0.5, 'telegraph: outlines fill']]);
@@ -83,7 +83,7 @@ sh.save(out,quality=84)
     sheet('cage');
   }
   if (want('shards')) {
-    await start(20, 'shards');
+    await start(24, 'shards');
     await prep(() => { Q.park(1); Q.park(2); Q.gapTo(2, -90); Q.solidTo(3, -90); Q.egg(0, 3, -90); Q.run(0.6); });
     await upTo('shards', 'warn');
     await seq('shards', [[0.1, 'telegraph: wedge marked'], [0.5, 'glints fall, egg ringed red (no roof)'], [0.05, 'counter: turn a wall over it', () => Q.turn(2, 50, 0.5)], [0.2, 'roofed: ring turns green']]);
@@ -92,7 +92,7 @@ sh.save(out,quality=84)
     sheet('shards');
   }
   if (want('magma')) {
-    await start(25, 'magma');
+    await start(30, 'magma');
     await prep(() => { Q.park(1); Q.park(2); Q.gapTo(4, -72); Q.egg(0, 4, -90); Q.run(0.5); });
     await upTo('magma', 'warn');
     await seq('magma', [[0.05, 'telegraph: ring glows; counter: turn the gap under the egg', () => Q.turn(4, -45, 1.4)], [0.3, 'egg drops off the ring'], [0.2, 'glow pulses faster']]);
@@ -101,7 +101,7 @@ sh.save(out,quality=84)
     sheet('magma');
   }
   if (want('whip')) {
-    await start(25, 'whip');
+    await start(30, 'whip');
     await prep(() => { Q.park(1); Q.park(2); Q.gapTo(4, 0); Q.egg(0, 4, -90); Q.run(0.5); });
     await upTo('whip', 'warn');
     await seq('whip', [[0.1, 'telegraph: ring flashes, arrows coil'], [0.5, 'coiling'], [0.5, 'about to whip']]);
@@ -115,7 +115,7 @@ sh.save(out,quality=84)
     sheet('whip');
   }
   if (want('dive')) {
-    await start(30, 'dive', { eagle: undefined, snake: undefined });
+    await start(36, 'dive', { eagle: undefined, snake: undefined });
     await prep(() => { Q.park(1); Q.park(2); Q.gapTo(4, -100); Q.egg(0, 5, -100); Q.run(0.6); });
     await upTo('dive', 'warn');
     await seq('dive', [[0.1, 'shadow circles wide, locked egg ringed red'], [0.5, 'shadow tightens'], [0.6, 'shadow small and dark on the egg']]);
@@ -129,7 +129,7 @@ sh.save(out,quality=84)
     sheet('dive');
   }
   if (want('wgust')) {
-    await start(30, 'wgust', { eagle: undefined, snake: undefined });
+    await start(36, 'wgust', { eagle: undefined, snake: undefined });
     await prep(() => { Q.park(2); Q.egg(0, 5, -100); Q.egg(1, 4, -70); Q.run(0.6); });
     await upTo('wgust', 'warn');
     await seq('wgust', [[0.1, 'telegraph: chevrons show the way'], [0.6, 'chevrons fill in'], [0.6, 'about to blow']]);

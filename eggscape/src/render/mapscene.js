@@ -1,7 +1,7 @@
 // The world map (2026-11-16, mykee: "one continuous page, wavy path, every world in its own theme, characters placed
 // in the scenery and alive"). One tall map, World 1 at the bottom and World 10 at the top, scrolled vertically.
 // Each world is a band of land in its own look; the band's top edge is a wavy hill line that overlaps the band above.
-// A single winding road (a sine, never straight zig-zags) runs through all 50 stops.
+// A single winding road (a sine, never straight zig-zags) runs through all 60 stops (0.8.17: six a world).
 //
 // Layout and art only: main.js owns the scroll, the buttons, the hen at the next stop and the gate cards.
 // The still part of every band (ground, trees, barns, crystals...) is painted once into an offscreen canvas and blitted;
@@ -23,7 +23,7 @@ import { PLACE as VOLCANO_PLACE, freeSalamanders } from './mapvolcano.js'; // 0.
 import { PLACE as THIEVES_PLACE, freeThieves } from './mapthieves.js'; // 0.8.12: World 7, the Thieves' Vault
 export * as FARM from './mapfarm.js';
 // 0.8.10: the worlds painted as one place, by world index. Each entry: { landmarks (the LMS shapes), paintBand(c, L, E),
-// drawLive(ctx, L, sy, t, calm, vt, vb), drawFront?(...), stop(L, i) (i: 0..4 within the world), drawLandmark(ctx, L, m,
+// drawLive(ctx, L, sy, t, calm, vt, vb), drawFront?(...), stop(L, k) (k: the landmark; its .gi is the stop's map index), drawLandmark(ctx, L, m,
 // sy, t, calm, press, glow, DPR), drawPlaque(ctx, L, m, sy, press) }. 0.8.14: the landmarks are scenery; every world's
 // stops are the nests on the road (drawStop below), and drawPlaque is no longer used. A world not listed keeps the
 // generic band and the walking cast. The next world plugs in here.
@@ -35,9 +35,10 @@ const lerp = (a, b, k) => a + (b - a) * k;
 const ss = (k) => { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); };
 function rng(seed) { let s = (seed * 9301 + 49297) % 233280 || 1; return () => (s = (s * 9301 + 49297) % 233280) / 233280; }
 
-export const NW = 10, PER = 5;
-// per-stop height fractions inside a band (bottom to top); the strip under the first stop holds the world sign / gate
-const STOP_FY = [0.84, 0.665, 0.49, 0.315, 0.14];
+export const NW = 10, PER = 6;
+// per-stop height fractions inside a band (bottom to top); the strip under the first stop holds the world sign / gate.
+// 0.8.17: six stops, the first and the last where the five stood, evenly between
+const STOP_FY = [0.84, 0.7, 0.56, 0.42, 0.28, 0.14], STEP_FY = 0.14;
 
 // ------------------------------------------------------------------ the look of each world
 // ground: band top/bottom colours; road: fill, edge, dash; sky: whether the band's upper part is sky (open worlds)
@@ -85,7 +86,7 @@ export function mapLayout(o) {
     const x = b >= a ? lerp(a, b, s < 0 ? 1 - fx : fx) : (a + b) / 2;
     return { x, y, side: s, room: Math.max(0, b - a) + 2 * wHalf, fit: b >= a };
   }
-  return { BH, H, TOP, BOT, nw, n, amp, period, roadW, stopR, bandTop, pathX, stops, place, u, A, cx, W: o.W };
+  return { BH, H, TOP, BOT, nw, n, amp, period, roadW, stopR, bandTop, pathX, stops, place, u, A, cx, W: o.W, per: PER, stepFY: STEP_FY };
 }
 
 // ------------------------------------------------------------------ painting kit (static)

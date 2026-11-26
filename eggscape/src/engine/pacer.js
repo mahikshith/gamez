@@ -30,6 +30,7 @@
 import { slot } from './hub.js';
 import * as BR from '../brain.js';
 import { HARD_IDS } from '../sim/sim.js';
+import { ROAD_N, bossOf, worldOfId } from '../road.js'; // 0.8.17: sixty levels, six a world
 import * as MINT from './mint.js';
 
 export const PACE = {
@@ -58,7 +59,7 @@ export const on = (save) => !!save && save.adapt !== false;
 // a level's difficulty, 0 (anyone) .. 1 (nearly nobody): the first five teach, then a slow climb; the hard levels and
 // the bosses stand out. The same guess as tools/sim-players.mjs WORLD.guess (real logs replace it there).
 export function diff(id) {
-  return Math.min(0.92, (id <= 5 ? 0.08 + 0.03 * id : 0.26 + 0.0105 * (id - 5)) + (HARD_IDS.includes(id) ? 0.13 : 0) + (id % 5 === 0 ? 0.07 : 0));
+  return Math.min(0.92, (id <= 5 ? 0.08 + 0.03 * id : 0.26 + (0.0105 * 45 * (id - 5)) / (ROAD_N - 5)) + (HARD_IDS.includes(id) ? 0.13 : 0) + (id >= 1 && id <= ROAD_N && bossOf(worldOfId(id)) === id ? 0.07 : 0)); // (0.8.17: the climb spread over the 60-level road; bosses from road.js)
 }
 
 const SAFE = new WeakSet();

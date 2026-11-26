@@ -1,7 +1,7 @@
 // King Crab soak: N random-input runs of level 40 (all modes); checks no exception, no NaN, the fight always ends.
 import { Sim, DT } from '../src/sim/sim.js';
 import { LEVELS } from '../src/data/levels.js';
-const L = LEVELS.find((l) => l.id === 40), N = +process.argv[2] || 20;
+const L = LEVELS.find((l) => l.id === 48), N = +process.argv[2] || 20;
 let seed = 12345; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
 const res = { won: 0, lost: 0, other: 0, bad: 0, atk: {} };
 for (let run = 0; run < N; run++) {

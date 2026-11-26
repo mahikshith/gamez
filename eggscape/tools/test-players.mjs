@@ -15,7 +15,7 @@ ok(names.every((k) => T[k].d1 > 0 && T[k].tries > 0 && T[k].coinsIn > 0), 'every
 ok(T.videoHater.videos === 0 && T.payer.premium > T.quitter.premium, 'a player who never watches sees no video counted; payers pay more often than quitters');
 const a = life(PERSONAS.commuter, 42, 20), b = life(PERSONAS.commuter, 42, 20);
 ok(JSON.stringify(a) === JSON.stringify(b), 'the same seed gives the same life (a finding can be shown again)');
-ok(WORLD.diff(1) < WORLD.diff(9) && WORLD.diff(9) > WORLD.diff(8) && WORLD.diff(50) <= 0.95, 'the assumed difficulty climbs, and a hard level stands out');
+ok(WORLD.diff(1) < WORLD.diff(11) && WORLD.diff(11) > WORLD.diff(10) && WORLD.diff(60) <= 0.95, 'the assumed difficulty climbs, and a hard level stands out'); // (0.8.17: 11 is world 2's hard level)
 const C = crowd({ n: 150, days: 20, seed: 5 });
 ok(!C.bad.length && Object.keys(C.rows).length >= 12, `a crowd of ${C.n} with every trait at random broke no rule` + (C.bad.length ? ': ' + C.bad[0] : ''));
 const K = clickers({ n: 40, steps: 300, seed: 7 });

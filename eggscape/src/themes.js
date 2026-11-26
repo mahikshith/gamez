@@ -5,6 +5,7 @@
 
 import { freeCanvas } from './render/cvfree.js'; // 0.8.10: a backdrop gives its layers back when it is rebuilt or dropped
 import { PERF } from './perf.js'; // 2026-11-19 graphics quality: Low flattens the layers, Medium/Low drop the light shafts
+import { lookOf } from './road.js'; // 0.8.17: sixty levels; the backdrop look of a level that moved
 import { FARM_ART, setSceneCalm } from './render/farmscene.js'; // 2026-11-20: the Farm's five landmark scenes (coop .. redbarn)
 export { setSceneCalm };
 
@@ -214,7 +215,7 @@ ART.farm = {
   atmo: { haze: ['#e6f5ff', 0.4], bloom: ['#ffffff', 0.4, 10], key: ['#fff6c0', 0.2], shadow: ['#0c3a2a', 0.22], shafts: ['#fff8d8', 0.09] },
   frame: { kit: 'leafy', cols: ['#3a2a1a', '#1c5a2a', '#2c7a34', '#4c9c40'], flowers: ['#ffffff', '#ffe066', '#ff9ec7'], tone: ['#0a2a1c', 0.22] },
   stage: { flowers: ['#ffffff', '#ffe066', '#ff9ec7', '#ffffff'] },
-  variants: [null, null, null, null, 'golden'],
+  variants: [null, null, null, null, 'golden', 'moon'], // 0.8.17: the sixth, Midnight Raid (road.js lookOf): the farm by moonlight
   veil: ['#3a8ad0', 0.16],
   prep(S) {
     const { u, R, dpr } = S;
@@ -1958,7 +1959,8 @@ export function createBackdrop(theme, seed = 1) {
   const art = ART[th.id] || ART.farm;
   const P = th.palette;
   const lv = seed > 0 && seed % 97 === 0 ? seed / 97 : 0;
-  const S = { th, P, seed: (seed >>> 0) ^ hash32(th.id), w: 0, h: 0, dpr: 1, layers: [], tf: null, ySign: 1, px: 0, py: 0, lv, vi: lv ? (lv - 1) % 5 : 0 };
+  const LK = lv ? lookOf(lv) : null; // 0.8.17 (road.js): an old level keeps its scenery and time of day at its new number
+  const S = { th, P, seed: ((LK ? LK.seed : seed) >>> 0) ^ hash32(th.id), w: 0, h: 0, dpr: 1, layers: [], tf: null, ySign: 1, px: 0, py: 0, lv, vi: LK ? LK.slot : 0 };
   const grade = GRADE[(art.variants || [])[S.vi]] || null;
   let A = null, G = null, FT = null, FB = null, lavaG = null;
   S.tf = (ctx, f) => { // apply layer transform for depth f (0 sky .. 1 near)

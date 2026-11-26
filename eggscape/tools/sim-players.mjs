@@ -19,6 +19,8 @@ import * as OF from '../src/offers.js';
 import * as OR from '../src/engine/oracle.js';
 import * as HE from '../src/engine/herald.js';
 import * as ENG from '../src/engine/index.js';
+import { ROAD_N } from '../src/road.js';
+import { BOSS_TREASURE_IDS } from '../src/economy.js';
 import * as MINT from '../src/engine/mint.js';
 import { LEVELS } from '../src/data/levels.js';
 import { HARD_IDS } from '../src/sim/sim.js';
@@ -37,7 +39,8 @@ const REAL = realLevels();
 // ---------------------------------------------------------------- what is assumed
 export const WORLD = {
   // how hard level id is, 0 (anyone) .. 1 (nearly nobody): the first five teach, then a slow climb; hard levels and bosses stand out
-  guess: (id) => Math.min(0.92, (id <= 5 ? 0.08 + 0.03 * id : 0.26 + 0.0105 * (id - 5)) + (HARD_IDS.includes(id) ? 0.13 : 0) + (id % 5 === 0 ? 0.07 : 0)),
+  // (0.8.17: sixty levels; the climb is spread over 55 levels instead of 45 and ends where it did)
+  guess: (id) => Math.min(0.92, (id <= 5 ? 0.08 + 0.03 * id : 0.26 + (0.0105 * 45 * (id - 5)) / (ROAD_N - 5)) + (HARD_IDS.includes(id) ? 0.13 : 0) + (BOSS_TREASURE_IDS.includes(id) ? 0.07 : 0)),
   steep: 6, // how sharply skill against difficulty turns into winning
   // a level real players tried at least `realMin` times uses their win rate instead of the guess (taken as the rate of a
   // middling player, skill 0.5): players/real.json
@@ -152,10 +155,10 @@ export function life(P, seed, days = 30, watch = null, opt = {}) {
   };
   // what is waiting (as main.js waitingCtx: what each note of the Herald's catalogue needs to be true)
   const waiting = () => { const tot = totalStars(save), ch = E.chestFor(tot, save.wallet.chests), on = SP.open(save), spins = on ? SP.banked(save) : 0, left = on ? SP.left(save) : 0, w = save.wallet, lv = save.unlocked;
-    const att = (save.dir && save.dir.att && save.dir.att[lv]) || {}, bag = Object.keys(w.owned || {}).filter((b) => w.owned[b] > 0), wk = Math.floor((lv - 1) / 5) + 1, need = 7 * wk - tot, stuck = att.streak >= 3 && !save.stars[lv] ? lv : 0;
+    const att = (save.dir && save.dir.att && save.dir.att[lv]) || {}, bag = Object.keys(w.owned || {}).filter((b) => w.owned[b] > 0), wk = Math.floor((lv - 1) / PER_ENV) + 1, need = MINT.worldNeed(wk, PER_ENV) - tot, stuck = att.streak >= 3 && !save.stars[lv] ? lv : 0;
     return { spins, spinLeft: spins ? 0 : left, starsToChest: ch && !ch.ready ? ch.at - tot : 0, chestSkin: !!(ch && ch.reward.skin && !E.ownsSkin(w, ch.reward.skin)), daily: true, child: false, waiting: spins > 0 || left === 1,
       chestDay: w.daily || '', dailyOn: true, videosOn: !premium, videoDay: save.adDay && save.adDay.n > 0 ? save.adDay.day : '', premium, charges: w.charges || 0, chargeMax: E.MAX_CHARGES, premDay: w.premDay || '',
-      starsToWorld: wk < 10 && need > 0 ? need : 0, nextWorld: wk < 10 ? 'World ' + (wk + 1) : '', nextBoss: lv % 5 === 0 && !save.stars[lv] ? lv : 0, flame: DR.hotCount(save), stuck, stuckBoost: stuck && bag.length ? bag[0] : '', unlocked: lv, allDone: lv >= LEVELS.length && !!save.stars[LEVELS.length], newContent: false, giftOk: !DR.earlyDays(save) }; };
+      starsToWorld: wk < 10 && need > 0 ? need : 0, nextWorld: wk < 10 ? 'World ' + (wk + 1) : '', nextBoss: BOSS_TREASURE_IDS.includes(lv) && !save.stars[lv] ? lv : 0, flame: DR.hotCount(save), stuck, stuckBoost: stuck && bag.length ? bag[0] : '', unlocked: lv, allDone: lv >= LEVELS.length && !!save.stars[LEVELS.length], newContent: false, giftOk: !DR.earlyDays(save) }; };
   // the reminder question at a happy moment (main.js remAskOk): the new rules, or (opt.before) 0.8.15's: once, on a good win with a spin near
   const ask = (moment, stars, d, now) => {
     if (S.allowed) return;
@@ -233,7 +236,7 @@ export function life(P, seed, days = 30, watch = null, opt = {}) {
         if (yes(sig(WORLD.steep * (P.skill - WORLD.dailyDiff)))) { S.wins++; save.daily = { day: dayKey(now), paid: dayKey(now) }; const vc = E.levelCoins({ stars: 2, saved: 2, eggs: 3 }).total + MINT.FAUCETS.dailyVault.coins; save.wallet = E.payWin(save.wallet, vc + MINT.onlineBonus(vc, online), true).wallet; sync('vault', now); SP.noteWin(save, true); SP.notePlayed(save, dayKey(now)); spinAll(now); }
       }
       while (now < end) {
-        // which level: the next one, or (those who chase stars) an old one with stars missing; after level 50 only old ones are left
+        // which level: the next one, or (those who chase stars) an old one with stars missing; after the last level only old ones are left
         const done = save.unlocked >= LEVELS.length && (save.stars[LEVELS.length] || 0) > 0;
         let L = LEVELS[Math.min(LEVELS.length, save.unlocked) - 1];
         if (done || yes(P.stars)) { const old = LEVELS.filter((l) => l.id < save.unlocked + (done ? 1 : 0) && (save.stars[l.id] || 0) < 3); if (old.length) L = old[Math.floor(R() * old.length)]; else if (done) break; }
@@ -252,7 +255,7 @@ export function life(P, seed, days = 30, watch = null, opt = {}) {
         const chase = id < save.unlocked && (save.stars[id] || 0) > 0, easy = (att.streak >= 2 && yes(P.easy || 0)) || (chase && yes((P.easy || 0) * 0.5));
         // the Pacer's dare (a cruising player, by choice); a "no boosters" dare takes the streak's free ones' place
         let dare = null;
-        if (PAC && !DR.earlyDays(save)) { const dd = ENG.pacer.dareFor(save, { levelId: id, boss: id % 5 === 0, tries: att.tries, eggs: 3, target: L.target || 2, turns: 0, chick: id >= 13, goals: ['home', 'clean', 'time'] }); if (dd) { S.dares++; if (yes(P.dare || 0)) ENG.pacer.dareTake(save, id, true); dare = ENG.pacer.dareStart(save, id); if (dare) S.daresTook++; } }
+        if (PAC && !DR.earlyDays(save)) { const dd = ENG.pacer.dareFor(save, { levelId: id, boss: !!L.boss, tries: att.tries, eggs: 3, target: L.target || 2, turns: 0, chick: id >= 13, goals: ['home', 'clean', 'time'] }); if (dd) { S.dares++; if (yes(P.dare || 0)) ENG.pacer.dareTake(save, id, true); dare = ENG.pacer.dareStart(save, id); if (dare) S.daresTook++; } }
         // help before the try: a booster he holds (on a level that already beat him, or a hard one), bought if he is stuck and buys
         let help = (DR.hotCount(save) >= 2 && !(dare && dare.kind === 'noboost') ? 0.5 : 0) + (pending.id === id ? pending.n * WORLD.booster + (pending.hint ? WORLD.hint : 0) : 0);
         if (PAC && !(dare && dare.kind === 'noboost') && ENG.pacer.retryGift(save, id)) help += WORLD.booster; // the Pacer's free booster after "Keep trying" (main.js pacerRetry: on the retry of that level)
@@ -289,10 +292,10 @@ export function life(P, seed, days = 30, watch = null, opt = {}) {
           if (stars > old) { save.stars[id] = stars; newToday = true; }
           save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, id + 1));
           let spinGot = SP.noteWin(save, stars > old); if (secs >= 15 && SP.notePlayed(save, dayKey(now))) spinGot = true;
-          if (id % 5 === 0 && stars > old) ask('boss', stars, d, now); else if (spinGot) ask('spin', stars, d, now);
+          if (L.boss && stars > old) ask('boss', stars, d, now); else if (spinGot) ask('spin', stars, d, now);
           // the win page's one video (0.8.17: inside the Mint's win-video pot a day): the Bonus chest when an ad break would
           // have been due (ads.js bonusDue: from level 8, three wins and four minutes apart), else Double coins
-          const day = dayKey(now), chest = id >= 8 && bonusWins >= 3 && now - bonusAt >= 240000 && MINT.winVideoOk(save.mint, day, E.BONUS_CHEST.coins);
+          const day = dayKey(now), chest = id >= 9 /* ads.js INTER.from (8 on the 50-level road) */ && bonusWins >= 3 && now - bonusAt >= 240000 && MINT.winVideoOk(save.mint, day, E.BONUS_CHEST.coins);
           if (chest) { bonusWins = 0; bonusAt = now; }
           if (!early && (chest || MINT.winVideoOk(save.mint, day, pay.coins)) && wantsVideo(now)) {
             video(now);
@@ -300,8 +303,8 @@ export function life(P, seed, days = 30, watch = null, opt = {}) {
             else { save.wallet = E.addCoins(save.wallet, pay.coins); save.mint = MINT.winVideoTake(save.mint, day, pay.coins); S.dbl++; S.dblCoins += pay.coins; dayAdd(now, pay.coins, 'winVideo'); }
             sync('video', now);
           }
-          if (id % 5 === 0 && E.bossTreasure(id) && !E.treasureOpened(save.wallet, id)) { const w = E.openBossTreasure(save.wallet, id); if (w) { save.wallet = w; sync('treasure', now); } }
-          { const T = DR.winTaste(save, { levelId: id, boss: id % 5 === 0, chicks: [], rand: R }); if (T) { DR.startTaste(save, T, now, R); if (T.kind === 'boost') { save.wallet = E.tasteBooster(save.wallet, T.id); sync('gift', now); } } }
+          if (E.bossTreasure(id) && !E.treasureOpened(save.wallet, id)) { const w = E.openBossTreasure(save.wallet, id); if (w) { save.wallet = w; sync('treasure', now); } }
+          { const T = DR.winTaste(save, { levelId: id, boss: !!L.boss, chicks: [], rand: R }); if (T) { DR.startTaste(save, T, now, R); if (T.kind === 'boost') { save.wallet = E.tasteBooster(save.wallet, T.id); sync('gift', now); } } }
           for (let ch = E.chestFor(totalStars(save), save.wallet.chests); ch && ch.ready; ch = E.chestFor(totalStars(save), save.wallet.chests)) { const w = E.openChest(save.wallet, ch); if (!w) break; save.wallet = w; sync('chest', now); }
           offer('win', now, { levelId: id, prevFails: att.streak });
           spinAll(now);
@@ -316,7 +319,7 @@ export function life(P, seed, days = 30, watch = null, opt = {}) {
           if (PAC) { // the Pacer after the loss: "Stuck? Skip this one" (a video or coins, or Keep trying: a free booster next), a free hint, a boss Scarecrow
             ENG.pacer.result(save, { id, won: false });
             const early2 = DR.earlyDays(save), canSkip = id < LEVELS.length && !save.skipped[id] && !(save.stars[id] > 0);
-            const F = ENG.pacer.failPlan(save, { levelId: id, boss: id % 5 === 0, early: early2, canSkip, now });
+            const F = ENG.pacer.failPlan(save, { levelId: id, boss: !!L.boss, early: early2, canSkip, now });
             if (F.scare) { ENG.pacer.gave(save, id, 'scare'); pending = { id, n: 1 }; S.freeHelp++; }
             else if (F.hint) { ENG.pacer.gave(save, id, 'hint'); pending = { id, n: 0, hint: true }; S.hints++; }
             if (F.ask) {
@@ -459,7 +462,7 @@ export function purse({ all = false, perDay = 6, seeds = 200, at = [5, 10, 12, 2
       save.wallet = p.wallet; save.stars[L.id] = 2; save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, L.id + 1)); wins++;
       SP.noteWin(save, true); SP.notePlayed(save, day);
       if (all && !DR.earlyDays(save)) {
-        if (L.id >= 8 && wins % 3 === 0 && MINT.winVideoOk(save.mint, day, E.BONUS_CHEST.coins)) { save.wallet = E.openBonusChest(save.wallet, L.id); save.mint = MINT.winVideoTake(save.mint, day, E.BONUS_CHEST.coins); }
+        if (L.id >= 9 && wins % 3 === 0 && MINT.winVideoOk(save.mint, day, E.BONUS_CHEST.coins)) { save.wallet = E.openBonusChest(save.wallet, L.id); save.mint = MINT.winVideoTake(save.mint, day, E.BONUS_CHEST.coins); }
         else if (MINT.winVideoOk(save.mint, day, p.coins)) { save.wallet = E.addCoins(save.wallet, p.coins); save.mint = MINT.winVideoTake(save.mint, day, p.coins); }
       }
       if (E.bossTreasure(L.id)) save.wallet = E.openBossTreasure(save.wallet, L.id) || save.wallet;
@@ -485,7 +488,7 @@ export function crowd({ n = 2000, days = 30, seed = 1 } = {}) {
     P.pay = R() < 0.05 ? 0.2 + R() * 0.5 : 0; // about one in twenty would ever pay; the rest never do
     people.push({ P, S: life(P, seed * 50021 + i * 104729, days) });
   }
-  const OUT = { 'left by day 7 %': (s) => (s.quitDay >= 0 && s.quitDay <= 7 ? 100 : 0), 'level on day 30': (s) => s.level, 'finished all 50 %': (s) => (s.doneDay >= 0 ? 100 : 0), 'spent of earned %': (s) => (s.in ? (s.out * 100) / s.in : 0), 'boosters left unused': (s) => s.stock,
+  const OUT = { 'left by day 7 %': (s) => (s.quitDay >= 0 && s.quitDay <= 7 ? 100 : 0), 'level on day 30': (s) => s.level, [`finished all ${LEVELS.length} %`]: (s) => (s.doneDay >= 0 ? 100 : 0), 'spent of earned %': (s) => (s.in ? (s.out * 100) / s.in : 0), 'boosters left unused': (s) => s.stock,
     'tries stuck, no help %': (s) => (s.tries ? (s.starved * 100) / s.tries : 0), 'videos a play day': (s) => (s.daysPlayed ? s.videos / s.daysPlayed : 0), 'offer cards a session': (s) => (s.sessions ? s.cards / s.sessions : 0), 'paid anything %': (s) => (Object.keys(s.buys).length ? 100 : 0), 'things to own bought': (s) => s.unlocks };
   const rows = {};
   for (const t of Object.keys(RANGE)) {
@@ -510,8 +513,8 @@ export function clickers({ n = 200, steps = 400, seed = 1 } = {}) {
     ENG.boot(save); ENG.open(save, now, '');
     const day = () => dayKey(now), w = (x) => { if (x) save.wallet = x; return !!x; };
     const A = [
-      () => { const id = 1 + Math.floor(R() * Math.min(50, save.unlocked)), won = R() < 0.55; ENG.levelStart(save, { levelId: id }, now); now += 30000 + R() * 90000;
-        if (won) { w(E.payWin(save.wallet, E.levelCoins({ stars: 1 + Math.floor(R() * 3), saved: 2, eggs: 3, hard: HARD_IDS.includes(id) }).total, true).wallet); const old = save.stars[id] || 0, st = 1 + Math.floor(R() * 3); if (st > old) save.stars[id] = st; save.unlocked = Math.max(save.unlocked, Math.min(50, id + 1)); SP.noteWin(save, st > old); }
+      () => { const id = 1 + Math.floor(R() * Math.min(LEVELS.length, save.unlocked)), won = R() < 0.55; ENG.levelStart(save, { levelId: id }, now); now += 30000 + R() * 90000;
+        if (won) { w(E.payWin(save.wallet, E.levelCoins({ stars: 1 + Math.floor(R() * 3), saved: 2, eggs: 3, hard: HARD_IDS.includes(id) }).total, true).wallet); const old = save.stars[id] || 0, st = 1 + Math.floor(R() * 3); if (st > old) save.stars[id] = st; save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, id + 1)); SP.noteWin(save, st > old); }
         DR.noteResult(save, id, won, { saved: won ? 2 : 1 }); BR.note(save, 'level', {}, now); ENG.result(save, { id, won, secs: 40, near: !won && R() < 0.4 }, { videoShown: true, coinShown: R() < 0.5, price: 60, rewound: R() < 0.2, boosts: Math.floor(R() * 3) }, now);
         if (!won) SP.noteLoss(save, id, ((save.dir.att[id] || {}).streak) || 0, day()); SP.notePlayed(save, day()); },
       () => w(E.buy(save.wallet, pick(E.BOOSTER_ORDER))),
@@ -571,7 +574,7 @@ export function findings(T) {
     if (r.used < 1 && r.gifts > 5) say(who, `was given ${r.gifts.toFixed(1)} boosters and used ${r.used.toFixed(1)}`);
     if (r.asksPerSession > 0.4) say(who, `a paid offer card in ${Math.round(r.asksPerSession * 100)}% of sessions (${r.askTop})`);
     if (r.videosDay > 10) say(who, `${r.videosDay.toFixed(1)} videos on a day he plays: more than a person sits through`);
-    if (r.finished > 40) say(who, `${r.finished}% finish all 50 levels inside the month, and then ${Math.round(r.idle * 100)}% of their days bring nothing new`);
+    if (r.finished > 40) say(who, `${r.finished}% finish all ${LEVELS.length} levels inside the month, and then ${Math.round(r.idle * 100)}% of their days bring nothing new`);
     if (r.asked < 40 && r.d7 > 30) say(who, `only ${r.asked}% are ever asked about reminders`);
     for (const k of ['win', 'back', 'video', 'coins']) { const o = r.oracle[k]; if (o.graded >= 30 && o.fit > o.rules + 0.01) say(who, `the Oracle's learned "${k}" guess is worse than its rules (${o.fit.toFixed(3)} against ${o.rules.toFixed(3)}); it stays unused, as designed`); }
     if (r.oracle.back.graded < 15) say(who, `"comes back" is graded ${OR.LEARN.min} times for only ${r.oracle.back.graded}%: most leave before the phone can learn it`);
@@ -595,7 +598,7 @@ if (isMain) {
     line('worst losing run (median)', (r) => r.stuckMax);
     line('* left after a losing run %', (r) => r.leftOnLoss);
     line('* playing on day 30 %', (r) => r.d30);
-    line('finished all 50 % (day)', (r) => `${r.finished}${r.finished ? '(' + r.doneDays + ')' : ''}`);
+    line(`finished all ${LEVELS.length} % (day)`, (r) => `${r.finished}${r.finished ? '(' + r.doneDays + ')' : ''}`);
     line('level on day 30 (median)', (r) => r.level30);
     line('stars won on Easy', (r) => r.easyStars.toFixed(1));
     line('coins in', (r) => Math.round(r.coinsIn));
@@ -619,7 +622,7 @@ if (isMain) {
   row('* playing on day 1 / 7 / 30 %', (r) => `${r.d1}/${r.d7}/${r.d30}`);
   row('* most left at', (r) => (r.quitTop.split(',')[0] || '-'));
   row('level reached day 7 / 30', (r) => `${r.level7}/${r.level30}`);
-  row('finished all 50 %', (r) => r.finished);
+  row(`finished all ${LEVELS.length} %`, (r) => r.finished);
   row('tries, win rate', (r) => `${Math.round(r.tries)}, ${Math.round(r.winRate * 100)}%`);
   row('worst losing run (median)', (r) => r.stuckMax);
   row('tries stuck with no help %', (r) => r.starved.toFixed(1));

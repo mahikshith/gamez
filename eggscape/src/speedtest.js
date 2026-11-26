@@ -29,7 +29,7 @@ import { drawClockwork } from './render/clockwork.js';
 import { drawOrb } from './render/powers.js';
 import { stampStats } from './render/stamp.js';
 
-const LEVEL_ID = 20;
+const LEVEL_ID = 24; // (0.8.17: 20 on the 50-level road; the same level)
 // seconds per graphics step / per micro test. A step's warm-up lasts until the art stops baking pictures for the new
 // resolution (at least WARM, at most WARM_MAX); frames right after a bake are not counted (like the Auto governor)
 const WARM = 0.3, WARM_MAX = 1.6, MEASURE = 1.2, MWARM = 0.2, MMEASURE = 0.7;
