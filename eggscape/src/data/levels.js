@@ -279,8 +279,8 @@ export const LEVELS = [
       {gaps: [{a: 113, x: 2}], thorns: [{a: 17, n: 2},{a: -133, n: 2, side: "out", h: 0.26}], pads: [{a: -155, len: 1.29}], honey: [{a: -15, len: 1.16}]},
       {gaps: [{a: -22},{a: -177}], thorns: [{a: -144, n: 2},{a: 11, n: 2}], pads: [{a: -52, len: 1.8}]},
       {gaps: [{a: 110, x: 3, len: 0.7},{a: -134}], thorns: [{a: 6, n: 3},{a: 164, n: 3}], pads: [{a: -33, len: 1.39}]},
-      {gaps: [{a: 65},{a: 172}], thorns: [{a: 115, n: 3},{a: -36, n: 2, kind: "blunt"}], pads: [{a: -108, len: 1.72}]},
-      {gaps: [{a: -21},{a: 140}], thorns: [{a: 42, n: 1},{a: -139, n: 2}], pads: [{a: 106, len: 1.53}], creep: {a0: -102, a1: -75, v: 0.22, rest: 1.6, form: "lava", w: 0.7}},
+      {gaps: [{a: 65},{a: 172}], thorns: [{a: 115, n: 3},{a: -36, n: 2, kind: "blunt"}], pads: [{a: -108, len: 1.72}], creep: {a0: -100, a1: -72, v: 0.22, rest: 1.6, form: "lava", w: 0.6}},
+      {gaps: [{a: -21},{a: 140}], thorns: [{a: 42, n: 1},{a: -139, n: 2}], pads: [{a: 106, len: 1.53}]},
     ],
   },
   {
