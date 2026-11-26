@@ -2831,6 +2831,9 @@ function drawDetail() {
   if (cardFull({}, A)) {
     const rest = build(0)(1, fullInner(A, u) / u).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0) + CARD_HEAD + 22;
     artH = clamp((A.y1 - A.y - 30 * u) / u - rest - 40, 140, 380); // (up to a square stage)
+  } else if (A.w > A.h * 1.15) { // on its side (frame818: no card round it): the picture takes the left column's height
+    const words = Math.min(3, wrapText(it.line, 16.5 * u, Math.min(A.w - 32 * u, 780 * u) / 2 - 38 * u).length);
+    artH = clamp((A.y1 - A.y - 30 * u) / u - CARD_HEAD - 22 - 14 - words * 22 - 10, 120, 300);
   }
   stackCard(it.name, build(artH), { ribbon: '#7a48e8', grow: 1.2, twoCol: true }); // 0.8.16: landscape: the picture and its words left, the power and the buttons right
 }
