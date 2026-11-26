@@ -9562,7 +9562,10 @@ function drawWinPage() {
     B.push({ h: stH * s, gap: 6 * s, // her place on the knoll, as large as the room allows; the win streak's flame beside her
       at: (x, y, w) => { T.box = { x, y, w, h: stH * s }; T.henH = Math.min(0.685 * stH, side ? 160 : first ? 250 : 215) * s; T.clip = { x: 0, y: 0, w: ui.w, h: ui.h }; T.mid = { x: x + w / 2, y: y + stH * s * 0.34 }; },
       draw: () => {
+        const RX = inCard ? winReact(r, S, pt, done) : null, ft = sceneAt(T.box, T.henH); // (each goal's moment: she leans, or hops)
+        if (RX) { ctx.save(); ctx.translate(ft.cx, ft.gy + RX.dy * T.henH); ctx.rotate(RX.rot); ctx.scale(1 + (1 - RX.sy) * 0.6, RX.sy); ctx.translate(-ft.cx, -ft.gy); }
         if (inCard) drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, clip: T.clip, fxBig });
+        if (RX) ctx.restore();
         ui.record(T.box, 'win:hen');
         if (r.hot >= 2) { // the win streak: its flame and how many, a chip floating at her top left
           const ch = 34 * s, nt = String(r.hot), cw = ch * 0.95 + ui.measure(nt, 19 * s) + 12 * s, cx0 = T.box.x + 4 * s, cy0 = T.box.y + 8 * s;
@@ -9574,14 +9577,15 @@ function drawWinPage() {
     if (!first) {
       B.push({ h: D.scoreH * s, gap: D.g * s, right: true, // one big score; NEW BEST! or the best so far under it; the points come in from its sides
         at: (x, y, w) => { T.score = { x: x + w * 0.5, y: y + D.num * 0.56 * s }; T.scoreW = w; T.bestY = y + (D.scoreH - 13) * s; },
-        draw: () => {
+        draw: () => { const cov = whyCover(r, pt, done); if (cov > 0.99) return; if (cov > 0) { ctx.save(); ctx.globalAlpha = ui.aBase = 1 - cov; } scoreDraw(); if (cov > 0) { ctx.restore(); ui.aBase = 1; } } });
+      const scoreDraw = () => {
           const cx = T.score.x, ny = T.score.y, ns = D.num * s, w = T.scoreW;
           let pk = 1;
           if (!done) { for (const q of S.toks) { const a = (pt - q.land) / 0.22; if (a > 0 && a < 1) pk = Math.max(pk, 1 + 0.1 * Math.sin(a * Math.PI)); } if (S.stamp != null) { const a = (pt - S.stamp - 0.12) / 0.22; if (a > 0 && a < 1) pk = Math.max(pk, 1 + 0.16 * Math.sin(a * Math.PI)); } }
           const ka = done ? 1 : clamp((pt - S.side0) / 0.25, 0, 1); // it comes as the points appear beside it
           if (ka <= 0) return;
           if (ka < 1) pk *= 0.6 + 0.4 * backK(ka);
-          ctx.save(); if (pk !== 1) { ctx.translate(cx, ny); ctx.scale(pk, pk); ctx.translate(-cx, -ny); } ctx.globalAlpha = Math.min(1, ka * 2);
+          ctx.save(); if (pk !== 1) { ctx.translate(cx, ny); ctx.scale(pk, pk); ctx.translate(-cx, -ny); } ctx.globalAlpha *= Math.min(1, ka * 2);
           ui.num(fmtN(done ? r.total : r.shownTotal), cx, ny, { size: ns, align: 'center', maxW: w - 20 * s, tag: 'win:total' });
           ctx.restore();
           if (r.prevBest == null) return; // (the Daily Vault, a lab vault)
@@ -9595,11 +9599,11 @@ function drawWinPage() {
             ctx.restore();
             ui.record({ x: cx - bw / 2, y: by - bh / 2, w: bw, h: bh }, 'win:best');
             if (!calm && !r.skipped) CB.confetti(ctx, cx, by, a, { n: 22, speed: 230 * s, g: 380 * s, life: 1.2, seed: 5, size: 5.5 * s, spread: Math.PI * 1.2 });
-          } else { ctx.save(); ctx.globalAlpha = done ? 1 : clamp(a / 0.3, 0, 1); ui.text('Best ' + fmtN(r.prevBest), cx, by + (done ? 0 : 6 * s * (1 - clamp(a / 0.3, 0, 1))), { size: 16 * s, align: 'center', color: '#fff', stroke: 'rgba(30,60,14,0.85)', strokeW: 3.5 * s, maxW: w, tag: 'win:best' }); ctx.restore(); }
-        } });
+          } else { ctx.save(); ctx.globalAlpha *= done ? 1 : clamp(a / 0.3, 0, 1); ui.text('Best ' + fmtN(r.prevBest), cx, by + (done ? 0 : 6 * s * (1 - clamp(a / 0.3, 0, 1))), { size: 16 * s, align: 'center', color: '#fff', stroke: 'rgba(30,60,14,0.85)', strokeW: 3.5 * s, maxW: w, tag: 'win:best' }); ctx.restore(); }
+        };
       B.push({ h: D.coinH * s, gap: D.g * s, right: true, // the coins: the pill, the bursts that join it, the purse they fly into
-        at: (x, y, w) => { T.coinY = y + D.coinH * s / 2; T.coinX = x + w / 2; },
-        draw: () => drawWinCoinRow(r, S, T, D, s, pt, done, tilesOn) });
+        at: (x, y, w) => { T.coinY = y + D.coinH * s / 2; T.coinX = x + w / 2; const top = T.score.y - D.num * 0.56 * s - D.g * s, bot = y + D.coinH * s; T.meadow = { x: x + w / 2, y: (top + bot) / 2, h: bot - top, w }; }, // (the goals' moments play here, before the score comes)
+        draw: () => { const cov = whyCover(r, pt, done); if (cov > 0.99) return; if (cov > 0) { ctx.save(); ctx.globalAlpha = ui.aBase = 1 - cov; } drawWinCoinRow(r, S, T, D, s, pt, done, tilesOn); if (cov > 0) { ctx.restore(); ui.aBase = 1; } } });
       if (tilesOn) B.push({ h: D.tileH * s, gap: D.g * s, right: true, // the last beat: where the new coins can go
         at: (x, y, w) => { T.tiles = { x, y, w, h: D.tileH * s }; const tw = WL ? (w - 10 * s) / 2 : w, R = Math.min(33 * s, D.tileH * s * 0.37); T.shopCoin = { x: x + 14 * s + 2 * R + 22 * s, y: y + (D.tileH * s - Math.min(6 * u, D.tileH * s * 0.13)) / 2 + 16 * s }; T.tw = tw; },
         draw: (x, y, w) => {
@@ -9767,7 +9771,7 @@ function winSides(r, S, T, D, s, pt, done) {
   const calm = save.calm, cy = T.score.y, numW = Math.min(T.scoreW - 20 * s, ui.measure(fmtN(r.total), D.num * s) * 1.04), x0 = T.score.x - T.scoreW / 2, x1 = T.score.x + T.scoreW / 2;
   const Lb = { a: x0 + 2 * s, b: T.score.x - numW / 2 - 10 * s }, Rb = { a: T.score.x + numW / 2 + 10 * s, b: x1 - 2 * s }, lw = Lb.b - Lb.a, rw = Rb.b - Rb.a, lc = (Lb.a + Lb.b) / 2, rc = (Rb.a + Rb.b) / 2;
   const ia = done ? 1 : clamp((pt - S.scoreEnd - 0.15) / 0.6, 0, 1);
-  if (ia > 0) sideSparkles([Lb, Rb], cy, s, ia);
+  if (ia > 0) sideSparkles([Lb, Rb], cy, s, ia * (1 - whyCover(r, pt, done)));
   if (done || lw < 26 * s) return;
   const ink = 'rgba(50,26,6,0.92)', label = (txt, x, y, a, sc = 1) => { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(sc, sc); ui.text(txt, 0, 0, { size: 19 * s, align: 'center', color: '#fff6c8', stroke: ink, strokeW: 4.5 * s, noRecord: true }); ctx.restore(); };
   const land = (q) => { const h = (pt - q.land) / 0.32; if (h > 0 && h < 1) CB.landFlash(ctx, T.score.x + (q.k === 'clock' ? 1 : -1) * numW * 0.18, cy, 34 * s, h); };
@@ -9846,49 +9850,94 @@ function winWobble(r, S, q, pt, done) {
   if (a == null || a > 0.6 || litStar(r, q)) return 0;
   return 0.24 * Math.sin(a * 19) * (1 - a / 0.6) ** 2 * Math.min(1, a / 0.04);
 }
-// the middle of the page: the goal's icon grows out of its badge and comes here, its words under it, holds, and goes
-// home under its star (where a missed one keeps its grey dash). Calm: the reasons stand still in the middle for 2 s
-// (a tap on a star: that one for 1.5 s).
+// 0.8.18 review: a goal's moment plays in the meadow under her, where the score comes later (never over her): the goal's
+// icon flies down from under its star, grows big there, its reason stands beside it in large outlined words on the
+// grass, holds, and the icon flies back up under its star (a missed one keeps its grey dash). A won goal: its tick at
+// the star and a small gold "+" sparkle in the same spot, so the meadow is alive through the whole goals beat.
+// Calm: the missed reasons stand still there for the first 2 s (a tap on a star: that one for 1.5 s).
+const WHY_BIG = WHY_K * 1.6; // the icon's size in the meadow (times its badge)
 function winWhy(r, S, T, s, pt, done) {
-  const C0 = T.mid || { x: ui.A.cx, y: T.badges[1].y + 90 * s }, br = T.br, glow = (x, y, R, a) => { if (a <= 0.01) return; ctx.save(); ctx.globalAlpha = a; const gr = ctx.createRadialGradient(x, y, 0, x, y, R); gr.addColorStop(0, 'rgba(255,252,235,0.95)'); gr.addColorStop(0.55, 'rgba(255,248,220,0.55)'); gr.addColorStop(1, 'rgba(255,248,220,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.fill(); ctx.restore(); };
-  const words = (txt, x, y, ok, a, sc = 1) => {
-    if (a <= 0 || !txt) return;
-    const fs = 23 * s, tw = Math.min(T.box ? T.box.w - 8 * s : 1e4, ui.measure(txt, fs) + 34 * s), th = 44 * s;
-    ctx.save(); ctx.globalAlpha = Math.min(1, a); ctx.translate(x, y); ctx.scale(sc, sc);
-    ui.glass(-tw / 2, -th / 2, tw, th, ok ? { border: 'rgba(170,240,140,0.9)', a: 'rgba(36,110,28,0.94)', b: 'rgba(20,72,16,0.94)' } : { border: 'rgba(255,232,190,0.75)', a: 'rgba(92,58,30,0.94)', b: 'rgba(56,32,14,0.94)' });
-    ui.text(txt, 0, 0.5 * s, { size: fs, align: 'center', color: '#fff', maxW: tw - 20 * s, noRecord: true });
-    ctx.restore();
+  const br = T.br, M = T.meadow || { x: T.mid.x, y: T.mid.y, h: 150 * s, w: T.box.w };
+  const glow = (x, y, R, a) => { if (a <= 0.01) return; ctx.save(); ctx.globalAlpha = a; const gr = ctx.createRadialGradient(x, y, 0, x, y, R); gr.addColorStop(0, 'rgba(255,252,235,0.9)'); gr.addColorStop(0.5, 'rgba(255,248,220,0.45)'); gr.addColorStop(1, 'rgba(255,248,220,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.fill(); ctx.restore(); };
+  // the icon on the left, the words beside it (one size: the "Best" line's 1.8x; a long line shrinks a little, whole)
+  const lay = (txt, k, fs0 = 29 * s) => {
+    const R = br * k, room = M.w - 2 * R - 18 * s;
+    let fs = fs0, tw = ui.measure(txt, fs);
+    if (tw > room) { fs = Math.max(18 * s, (fs * room) / tw); tw = ui.measure(txt, fs); }
+    const x0 = M.x - (2 * R + 14 * s + tw) / 2;
+    return { R, ix: x0 + R, tx: x0 + 2 * R + 14 * s, fs };
+  };
+  const words = (txt, x, y, fs, ok, a, sc = 1) => {
+    if (a <= 0.01 || !txt) return;
+    ctx.save(); ctx.globalAlpha = ui.aBase = Math.min(1, a); ctx.translate(x, y); ctx.scale(sc, sc);
+    ui.text(txt, 0, 0.5 * s, { size: fs, color: ok ? '#f2ffe0' : '#fff', stroke: 'rgba(34,20,6,0.95)', strokeW: Math.max(3, fs * 0.24), shadow: 'rgba(10,30,5,0.45)', shadowD: fs * 0.09, noRecord: true });
+    ctx.restore(); ui.aBase = 1;
   };
   const txtOf = (q) => { const g = r.goals && r.goals[q]; return litStar(r, q) ? goalNum(g, r) : goalWhy(g); };
-  if (save.calm) { // the reasons, still, in the middle: the missed ones for the first 2 s, or the tapped one for 1.5 s
+  if (save.calm) { // still: one row per reason, stacked in the meadow
     const tap = r.why && G.t - r.why.t0 < WHY_LEN ? r.why.q : null, qs = tap != null ? [tap] : G.screenT < 2 && r.goals ? [0, 1, 2].filter((q) => !litStar(r, q)) : [];
     if (!qs.length) return;
-    const a = tap != null ? 1 : 1 - clamp((G.screenT - 1.75) / 0.25, 0, 1), rowH = 2 * br + 16 * s, y0 = C0.y - ((qs.length - 1) * rowH) / 2;
-    glow(C0.x, C0.y, Math.max(90 * s, qs.length * rowH * 0.8), a * 0.8);
+    const a = tap != null ? 1 : 1 - clamp((G.screenT - 1.75) / 0.25, 0, 1), k = Math.min(WHY_BIG, (M.h / qs.length - 10 * s) / (2 * br)), rowH = 2 * br * k + 10 * s, y0 = M.y - ((qs.length - 1) * rowH) / 2;
     qs.forEach((q, i) => {
-      const y = y0 + i * rowH, txt = txtOf(q), fs = 20 * s, tw = ui.measure(txt, fs), w = 2 * br + 12 * s + tw + 26 * s, x = C0.x - w / 2, ok = litStar(r, q);
-      ctx.save(); ctx.globalAlpha = a;
-      ui.glass(x, y - br - 6 * s, w, 2 * br + 12 * s, ok ? { border: 'rgba(170,240,140,0.9)', a: 'rgba(36,110,28,0.94)', b: 'rgba(20,72,16,0.94)' } : { border: 'rgba(255,232,190,0.75)', a: 'rgba(92,58,30,0.94)', b: 'rgba(56,32,14,0.94)' });
-      goalBadge(r.goals[q], x + 6 * s + br, y, br, ok, 1);
-      ui.text(txt, x + 2 * br + 18 * s, y + 0.5 * s, { size: fs, color: '#fff', noRecord: true });
-      ctx.restore();
+      const y = y0 + i * rowH, ok = litStar(r, q), L = lay(txtOf(q), k, Math.min(29 * s, br * k * 0.9));
+      glow(L.ix, y, L.R * 1.6, a * 0.8);
+      ctx.save(); ctx.globalAlpha = a; ctx.translate(L.ix, y); ctx.scale(k, k); ctx.translate(-L.ix, -y); goalBadge(r.goals[q], L.ix, y, br, ok, 1); ctx.restore();
+      words(txtOf(q), L.tx, y, L.fs, ok, a);
     });
     return;
   }
+  if (!done) S.slots.forEach((sl, q) => { // a won goal: a gold "+" pops up in the meadow, with a few sparks, and fades
+    if (sl.miss) return;
+    const a = pt - S.badge[q];
+    if (a < 0 || a > 0.62) return;
+    const k = backK(clamp(a / 0.24, 0, 1)), fade = 1 - clamp((a - 0.36) / 0.26, 0, 1), x = M.x + (q - 1) * 46 * s, y = M.y - 14 * s * CB.easeOut(a / 0.62), L = 15 * s * k, th = 7 * s * k;
+    CB.sparks(ctx, x, y, 14 * s, clamp(a / 0.5, 0, 1), PERF.low ? 5 : 8, q + 2);
+    ctx.save(); ctx.globalAlpha = fade;
+    for (const [w, h] of [[2 * L, th], [th, 2 * L]]) { ui.roundRect(x - w / 2, y - h / 2, w, h, th / 2); ctx.fillStyle = '#ffd23f'; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = '#9a5a08'; ctx.stroke(); }
+    ui.roundRect(x - th / 2, y - th / 2, th, th, th / 2); ctx.fillStyle = '#ffd23f'; ctx.fill(); // (the cross's middle, over the two outlines)
+    CB.glint(ctx, x + L * 0.6, y - L * 0.7, 6 * s * k);
+    ctx.restore();
+  });
   for (let q = 0; q < 3; q++) {
     const a = whyAt(r, S, q, pt, done);
     if (a == null) continue;
-    const g = r.goals && r.goals[q], ok = litStar(r, q), B = T.badges[q], replay = !!(r.why && r.why.q === q && G.t - r.why.t0 < WHY_LEN);
-    const k1 = clamp((a - 0.12) / 0.36, 0, 1), k2 = ss01((a - 1.12) / 0.32), out = ss01(k1) * (1 - k2);
-    const [x, y] = k2 > 0 ? CB.arcPt(C0.x, C0.y, B.x, B.y, k2, 26 * s, 0) : CB.arcPt(B.x, B.y, C0.x, C0.y, ss01(k1), 34 * s, 0);
-    const grow = 1 + (WHY_K - 1) * (k2 > 0 ? 1 - k2 : backK(k1));
-    glow(x, y, br * WHY_K * 2, out * 0.95);
-    if (out > 0.3 && a < 0.75) { const p = (a - 0.4) / 0.35; if (p > 0 && p < 1) { ctx.save(); ctx.globalAlpha = 0.5 * (1 - p); ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 4 * s * (1 - p); ctx.beginPath(); ctx.arc(x, y, br * WHY_K * (1 + 0.5 * p), 0, TAU); ctx.stroke(); ctx.restore(); } } // a soft ring as it arrives
+    const g = r.goals && r.goals[q], ok = litStar(r, q), B = T.badges[q], replay = !!(r.why && r.why.q === q && G.t - r.why.t0 < WHY_LEN), txt = txtOf(q);
+    const k = Math.min(WHY_BIG, (M.h * 0.47) / br), L = lay(txt, k), iy = M.y;
+    const k1 = clamp((a - 0.12) / 0.38, 0, 1), k2 = ss01((a - 1.12) / 0.32), out = ss01(k1) * (1 - k2);
+    const [x, y] = k2 > 0 ? CB.arcPt(L.ix, iy, B.x, B.y, k2, 30 * s, 0) : CB.arcPt(B.x, B.y, L.ix, iy, ss01(k1), 26 * s, 0); // a little lift, then down into the meadow
+    const grow = 1 + (k - 1) * (k2 > 0 ? 1 - k2 : backK(k1));
+    glow(x, y, br * grow * 1.7, out * 0.85);
+    if (a > 0.46 && a < 0.86) { const p = (a - 0.46) / 0.4; ctx.save(); ctx.globalAlpha = 0.55 * (1 - p); ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 4 * s * (1 - p); ctx.beginPath(); ctx.arc(L.ix, iy, br * k * (1 + 0.4 * p), 0, TAU); ctx.stroke(); ctx.restore(); } // a soft ring as it lands
     ctx.save(); ctx.translate(x, y); ctx.scale(grow, grow); ctx.translate(-x, -y);
     goalBadge(g, x, y, br, ok, ok || replay ? 1 : clamp((a - 1.36) / 0.28, 0, 1));
     ctx.restore();
-    const wa = clamp((a - 0.42) / 0.2, 0, 1) * (1 - clamp((a - 1.04) / 0.14, 0, 1));
-    words(txtOf(q), C0.x, C0.y + br * WHY_K + 16 * s + 20 * s, ok, wa * 1.4, backK(clamp((a - 0.42) / 0.26, 0, 1)));
+    const wa = clamp((a - 0.44) / 0.2, 0, 1) * (1 - clamp((a - 1.04) / 0.14, 0, 1));
+    words(txt, L.tx, iy, L.fs, ok, wa * 1.4, 0.7 + 0.3 * backK(clamp((a - 0.44) / 0.26, 0, 1)));
+  }
+}
+// how much a goal's moment hides what stands in the meadow at the time (the score, the coins: a replay, or Calm's 2 s)
+function whyCover(r, pt, done) {
+  if (r.why && G.t - r.why.t0 < WHY_LEN) { const a = G.t - r.why.t0; return save.calm ? 1 : ss01(a / 0.2) * (1 - ss01((a - 1.3) / 0.2)); }
+  if (save.calm && G.screenT < 2 && r.goals && [0, 1, 2].some((q) => !litStar(r, q))) return 1 - clamp((G.screenT - 1.75) / 0.25, 0, 1);
+  return 0;
+}
+// she reacts to each goal's moment (her whole figure, no new art): a missed one, a sympathetic lean with her shoulders
+// down; a won one, a little hop with a squash as she lands. null: she just plays her routine
+function winReact(r, S, pt, done) {
+  if (save.calm) return null;
+  for (let q = 0; q < 3; q++) {
+    const a = whyAt(r, S, q, pt, done);
+    if (a == null) continue;
+    if (!litStar(r, q)) { const e = ss01(a / 0.3) * (1 - ss01((a - 1.1) / 0.35)); return { rot: -0.11 * e + 0.03 * e * Math.sin(a * 5), sy: 1 - 0.06 * e, dy: 0 }; }
+    return hop(a - 0.12);
+  }
+  if (done) return null;
+  for (let q = 0; q < 3; q++) if (!S.slots[q].miss) { const a = pt - S.badge[q]; if (a > 0 && a < 0.5) return hop(a); }
+  return null;
+  function hop(a) {
+    if (a <= 0 || a >= 0.5) return null;
+    const h = clamp(a / 0.36, 0, 1);
+    return { rot: 0, dy: -Math.sin(h * Math.PI) * 0.1, sy: a > 0.36 ? 1 - 0.08 * Math.sin(((a - 0.36) / 0.14) * Math.PI) : 1 + 0.04 * Math.sin(h * Math.PI) };
   }
 }
 // a tap on a star or its badge (any time on the page): that goal's moment again
