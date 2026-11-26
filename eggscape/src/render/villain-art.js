@@ -24,6 +24,7 @@ import { drawOwlEmblem } from './owl.js';
 import { drawOrb } from './powers.js';
 import { penguinPose, drawPenguin } from './penguin.js'; // 0.8.17 pip
 import { drawUrchin, urchinPose } from './urchin.js'; // 0.8.17 urchin
+import { monkeyPose, drawMonkey } from './monkey.js'; // 0.8.17 coco
 
 const TAU = Math.PI * 2;
 const INK = '#2a1606';
@@ -73,6 +74,7 @@ const ART = {
   },
   frog(ctx, x, y, d, t) { drawFrog(ctx, x, y + d * 0.3, d * 0.8, t, { look: { x: 0.4, y: 0.1 }, face: 1 }); },
   penguin(ctx, x, y, d, t) { drawPenguin(ctx, x, y + d * 0.4, d * 0.66, t, penguinPose('idle', t), { face: 1 }); }, // 0.8.17 pip
+  monkey(ctx, x, y, d, t) { drawMonkey(ctx, x - d * 0.04, y + d * 0.42, d * 0.8, t, monkeyPose('laugh', t), { face: 1 }); }, // 0.8.17 coco
   eagle(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.08, d * 0.54, t, { w: { hover: 1 }, phase: t * 8.5, face: 1 }); },
   'boss:eagle'(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.08, d * 0.56, t, { w: { hover: 1 }, phase: t * 8.5, face: -1 }); },
   salamander(ctx, x, y, d, t) {

@@ -61,6 +61,7 @@ export function value(sim) {
     if (reef) v -= 1600 * sim.reefThreat(e); // world 8: in a claw or the King Crab's pile, a crab's shell, a jelly's reach
     if (sim.bayouPlan) v -= 1500 * sim.bayouPlan(e); // v3.7: gator jaws, a turtle's clamp, a mosquito lift
     if (sim.pips && sim.pips.length) v -= 500 * sim.pipThreat(e); // 0.8.17 pip
+    if (sim.cocos && sim.cocos.length) v -= 700 * sim.cocoThreat(e); // 0.8.17 coco
     // predators (v3): an egg the eagle can reach while it is locked on
     const E = sim.eagle;
     if (E && E.reach && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tid === e.id) v -= 700;
@@ -98,6 +99,7 @@ export function actions(sim) {
     if (c < sim.rings.length) floors.add(c);
     if (c + 1 < sim.rings.length) floors.add(c + 1);
   }
+  if (sim.cocoRingsHeld) for (const i of sim.cocoRingsHeld()) floors.add(i); // 0.8.17 coco: a flick of the ring he holds is a move
   // a geared partner turns with its ring: one of the two is enough
   for (const i of [...floors]) { const T = sim.rings[i].gear; if (T && T.some((r) => r.i < i && floors.has(r.i))) floors.delete(i); }
   for (const i of floors) if (sim.rings[i].grabbable) for (const d of DELTAS) if (!sim.canTurn || sim.canTurn(sim.rings[i], d)) out.push({ ring: i, delta: d });

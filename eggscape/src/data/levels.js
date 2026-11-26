@@ -86,13 +86,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 10, theme: "mushroom", name: "Leapfrog Glade", eggs: 3, target: 2, time: 65, spacing: 1, material: "wood", nest: {w: 2.8}, snake: {delay: 8, speed: 0.36}, bonus: {kind: "turns", n: 8}, frog: [{ch: 2, a: -60, delay: 6, every: 7},{ch: 3, a: 120, delay: 10, every: 8}], tip: "A frog in a gap is a door the snake cannot pass.", orbs: [{type: "fire_red", ch: 1, a: -159},{type: "rockskin", ch: 3, a: -103}], seed: 871094, world: 2, intro: {title: "Frogs and a snake", line: "A frog sitting in a gap plugs it, for the snake too. Let the frogs block its way."},
+    id: 10, theme: "jungle", name: "Monkey Business", eggs: 3, target: 2, time: 65, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 14}, monkey: {ch: 2, a: -100, delay: 5}, tip: "Flick the ring Coco hangs from: he lets the egg go.", orbs: [{type: "fire_red", ch: 1, a: 36},{type: "rockskin", ch: 3, a: 61}], seed: 871091, world: 2, intro: {title: "Coco the Monkey", line: "Coco grabs eggs with his tail and throws banana peels. Flick his ring hard: whoa, off he flies!"},
     rings: [
-      {gaps: [{a: 163}], thorns: [{a: 28, n: 2}]},
-      {gaps: [{a: 97, x: 2},{a: -161}], thorns: [{a: 32, n: 3}], pads: [{a: -121, len: 1.42},{a: -24, len: 1.15}]},
-      {mat: "wood", gaps: [{a: 60},{a: -18}], thorns: [{a: 27, n: 2},{a: 114, n: 2, kind: "blunt"}], pads: [{a: 159, len: 1.87},{a: -102, len: 1.42}]},
-      {gaps: [{a: 18, x: 3, len: 0.7},{a: -151}], thorns: [{a: -32, n: 3},{a: 68, n: 2}], pads: [{a: -96, len: 1.77},{a: 171, len: 1.35}]},
-      {gaps: [{a: 64},{a: -23}], thorns: [{a: 16, n: 1},{a: 135, n: 1}], pads: [{a: -160, len: 1.85},{a: -100, len: 1.31}]},
+      {gaps: [{a: 57}], thorns: [{a: 147, n: 1}]},
+      {gaps: [{a: -153, x: 2},{a: -18}], thorns: [{a: -48, n: 1}], pads: [{a: 45, len: 1.32},{a: 107, len: 1.04}]},
+      {gaps: [{a: 156},{a: 48}], thorns: [{a: 80, n: 1, kind: "blunt"}], pads: [{a: -87, len: 1.38},{a: 134, len: 1.05}]},
+      {gaps: [{a: -21, x: 3, len: 0.7},{a: -148}], thorns: [{a: -48, n: 1},{a: 75, n: 1}], pads: [{a: -115, len: 1.42},{a: 16, len: 1.48}]},
+      {gaps: [{a: 146},{a: 37}], thorns: [{a: 89, n: 1}], pads: [{a: 12, len: 1.42},{a: -52, len: 1.18}]},
     ],
   },
   {

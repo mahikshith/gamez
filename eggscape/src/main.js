@@ -82,6 +82,8 @@ import { drawCrawler, SPECIES as CRAWLER_SPECIES, crawlerAnim } from './render/c
 import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render/frog.js'; // v3.3 frog
 import { drawPips, pipEvent, pipCalm } from './render/pip.js'; // 0.8.17 pip
 import { PIP_DEMO } from './data/pip-demo.js'; // 0.8.17 pip: his practice vault (joins LAB_DEMOS below)
+import { drawCocos, drawCocoOver, cocoEvent, cocoCalm } from './render/coco.js'; // 0.8.17 coco
+import { COCO_DEMO } from './data/coco-demo.js'; // 0.8.17 coco: his practice vault (joins LAB_DEMOS below)
 import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem } from './render/bayou.js'; // v3.7 Gator Bayou
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
@@ -210,6 +212,7 @@ const LAB = [
   { name: 'Clockwork', items: [['spider', 'Spider'], ['beetle', 'Beetle'], ['jack', 'Jack'], ['owl', 'Owl']] }, // v4 Shape Lab
 ];
 if (!LAB_DEMOS.includes(PIP_DEMO)) LAB_DEMOS.push(PIP_DEMO); // 0.8.17 pip: Practice > Creatures > Pip, and ?demo=penguin
+if (!LAB_DEMOS.includes(COCO_DEMO)) { LAB_DEMOS.push(COCO_DEMO); LAB.find((g) => g.name === 'Creatures').items.push(['monkey', 'Coco']); } // 0.8.17 coco: Practice > Creatures > Coco, and ?demo=monkey
 const BONUS_TEXT = (b, fuse = 1) => ({ turns: `${b.n} turns or fewer`, prize: 'Save the speckled egg', orbs: 'Collect every orb', time: `Finish within ${Math.round(b.s * fuse)} s` })[b.kind] || '';
 const BONUS_COINS = 15;
 const AD_BOOST = ['golden', 'time', 'stone', 'sponge']; // the intro card's free booster, by level
@@ -4467,6 +4470,7 @@ function handleEvents() {
         salEvent(ev, fx); // v3.2 lava salamander
         frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.3 frog
         pipEvent(ev, fx, { popup, audio }); // 0.8.17 pip
+        cocoEvent(ev, fx, { popup, audio }); // 0.8.17 coco
         seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.3
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
         bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.7 Gator Bayou
@@ -5618,6 +5622,7 @@ function render() {
   SL(['urchin'], (c) => drawUrchins(c, sim, t, k, save.calm)); // 0.8.17 urchin: Spike rolls on the channel floor, under the eggs
   SL(['thief'], (c) => drawThieves(c, sim, t, k)); // v3.6: the weasel and the rats on the ring floor
   SL(['pip'], (c) => { pipCalm(save.calm); drawPips(c, sim, t, k); }); // 0.8.17 pip: on his channel floor, under the eggs he holds
+  SL(['coco'], (c) => { cocoCalm(save.calm); drawCocos(c, sim, t, k); }); // 0.8.17 coco: on his ring and his floor, under the eggs (and his peels)
   blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
   SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
   if (DEV && G.probe) G.probe('creatures');
@@ -5629,6 +5634,7 @@ function render() {
   if (sim.water) drawBoat(ctx, sim, t, k); // world 8: the boat on the surface, over the hen's legs
   blastXf(() => drawThiefDens(ctx, sim, t, k, true), 2.2); // 2026-11-19: the den's rim and shade over a stolen egg (it lies inside); the stump's red alert
   blastXf(() => drawThievesOver(ctx, sim, t, k), 9.1); // v3.6: the weasel's jaws over a held egg, the trap ring
+  SL(['coco'], (c) => drawCocoOver(c, sim, t, k)); // 0.8.17 coco: his tail's curl over the egg he holds, a peel in flight
   SL(['mosq'], (c) => drawBayouOver(c, sim, t, k)); // v3.7: a turtle's beak round its egg, mosquito swarms
   SL(['snake'], (c) => W.drawSnakes(c, sim, t, k)); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);

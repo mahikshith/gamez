@@ -20,6 +20,7 @@ import { drawGator } from './bayou.js';
 import { GATOR } from '../sim/bayou.js';
 import { pipActor } from './pip.js'; // 0.8.17 pip
 import { urchinActor } from './urchinplay.js'; // 0.8.17 urchin
+import { cocoActor } from './coco.js'; // 0.8.17 coco
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -338,6 +339,7 @@ ACTORS['boss:weasel'] = ACTORS.weasel; // the Weasel Raid's boss is the weasel h
 const PLAYS = { 'boss:ratking': ['turn', 'tap', 'rooster'], 'boss:gator': ['drop'], 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], frostsal: ['turn', 'tap'], faceoff: ['faceoff'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'], 'boss:golem': ['stone', 'tap'] };
 ACTORS.penguin = pipActor; PLAYS.penguin = ['turn']; // 0.8.17 pip
 ACTORS.urchin = urchinActor; PLAYS.urchin = ['turn']; // 0.8.17 urchin: Spike acts his own scene
+ACTORS.monkey = cocoActor; PLAYS.monkey = ['turn']; // 0.8.17 coco
 export function actorFor(plan) {
   const k = plan && plan.kind;
   return k && ACTORS[k] && PLAYS[k].includes(plan.move) ? ACTORS[k] : null;
