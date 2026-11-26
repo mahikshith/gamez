@@ -52,10 +52,10 @@ export const KITS = {
   smug: 2.0, comfort: 2.2, scold: 2.0, // s
   rest: m3(4.0, 3.2, 2.6), // s mama waits before she sends them again
   tumble: 1.6, dangle: 1.6, dive: 0.8, flee: 1.3, // s
-  shake: m3(10, 12, 13), // deg their ring turned (leaky sum, either way) that tumbles them
-  shakeTau: 0.45,
+  shake: m3(0.4, 0.55, 0.65), // their ring turned either way (a leaky sum) past this share of what a full-speed turn of it
+  // adds up to: at full speed about 0.5 / 0.8 / 1.05 s of turning tumbles them; a slow turn never does
+  shakeTau: 1.0,
   arc: 64, // deg either side of the bottom they walk on a floor
-  slip: 8, // deg past that a turning floor carries them before they lose their footing (a tumble)
   lean: 0.5, // m from an egg they heave it
   sulk: 2.4, // s scooping the kits into the sack (the eggs pop out at its middle)
   spillT: 0.75, // s an egg flies from the sack back into the vault
@@ -238,7 +238,7 @@ export const kitMethods = {
       }
       case 'up': case 'down': case 'hop': this.kitCross(K, G, dt); break;
       case 'out': {
-        const u = this.kitU(G), F = G.from, R1 = this.rings[n - 1].r + RING_TH / 2 + 0.3, P1 = { x: R1 * Math.cos(EXIT), y: R1 * Math.sin(EXIT) }, P2 = { x: P1.x - 0.3, y: this.groundY };
+        const u = this.kitU(G), F = G.from, R1 = this.rings[n - 1].r + RING_TH / 2 + 0.3, oa = G.oa ?? EXIT, P1 = { x: R1 * Math.cos(oa), y: R1 * Math.sin(oa) }, P2 = { x: P1.x - 0.3, y: this.groundY };
         if (u < 0.45) { const k = ss(0, 0.45, u); G.x = F.x + (P1.x - F.x) * k; G.y = F.y + (P1.y - F.y) * k + 0.35 * Math.sin(k * Math.PI); }
         else { const k = ss(0.45, 1, u); G.x = P1.x + (P2.x - P1.x) * k; G.y = P1.y + (P2.y - P1.y) * k * k; }
         if ((G.t -= dt) <= 0) { G.x = P2.x; G.y = this.groundY; this.kitSet(G, 'yard'); this.emit('kitDown', { x: G.x, y: G.y + 0.3 }); }
@@ -256,15 +256,18 @@ export const kitMethods = {
     }
   },
   kitDist(G, e) { const p = e.body.getPosition(), r = this.kitFloor(G.c); return Math.abs(wrap(Math.atan2(p.y, p.x) - G.a)) * r; },
-  // the floor they stand on turns under them: they ride it; a brisk turn (or tipped too far up the side) tumbles them, a
-  // gap turned under them leaves them dangling. Returns true when that ended their step.
+  // the floor they stand on turns under them: they scramble to keep their spot (like a treadmill: the floor slides under
+  // their feet, as eggs slide back down a turning floor), so a gap turned under them leaves them DANGLING by their tails,
+  // and a brisk turn (a leaky sum of it past KITS.shake of a full-speed turn) trips them up: they TUMBLE. Returns true
+  // when that ended their step.
   kitRide(G, dt) {
     const ring = this.rings[G.c], ra = ring.body.getAngle(), da = wrap(ra - G.ra);
-    G.ra = ra; G.a = wrap(G.a + da);
-    if (G.ph === 'tumble' || G.ph === 'dangle') { if (G.ph === 'tumble') G.p = null; return false; }
+    G.ra = ra;
+    if (G.ph === 'tumble' || G.ph === 'dangle') return false;
     G.fl = G.fl * Math.exp(-dt / KITS.shakeTau) + Math.abs(da);
-    if (G.fl > this.kitM(KITS.shake) * D2R || !this.kitArcOk(G.a, KITS.slip)) { this.kitTumble(G, G.fl > this.kitM(KITS.shake) * D2R ? 'spin' : 'tip'); return true; }
-    if (this.kitHole(G.c, G.a) && this.kitHole(G.c, G.a + 0.07 / this.kitFloor(G.c)) && this.kitHole(G.c, G.a - 0.07 / this.kitFloor(G.c))) { this.kitDangle(G); return true; }
+    const r = this.kitFloor(G.c);
+    if (this.kitHole(G.c, G.a) && this.kitHole(G.c, G.a + 0.07 / r) && this.kitHole(G.c, G.a - 0.07 / r)) { this.kitDangle(G); return true; }
+    if (G.fl > this.kitM(KITS.shake) * this.maxOmega(ring) * KITS.shakeTau) { this.kitTumble(G, 'spin'); return true; }
     return false;
   },
   // walk along the floor toward angle goal; stops at a hole (returns 'hole') or at the goal ('there')
@@ -310,7 +313,8 @@ export const kitMethods = {
     G.wait = 0;
     if (G.c === n - 1) {
       const w = this.kitWalk(G, EXIT, v, dt);
-      if (w === 'there') { G.from = { ...this.kitPt(G.c, G.a, EGG_W / 2 + KITS.ride) }; this.kitSet(G, 'out', KITS.out); this.emit('kitOut', { ...this.kitBody(G), ring: G.c }); }
+      // at her spot, or at a hole in the floor near it (they climb out through the gap instead of over the rim)
+      if (w === 'there' || (w === 'hole' && Math.abs(wrap(G.a - EXIT)) < 32 * D2R)) { G.from = { ...this.kitPt(G.c, G.a, EGG_W / 2 + KITS.ride) }; G.oa = G.a; this.kitSet(G, 'out', KITS.out); this.emit('kitOut', { ...this.kitBody(G), ring: G.c }); }
       else if (w === 'hole' && !this.kitHopOver(G, EXIT)) G.wait = 1;
       return;
     }
