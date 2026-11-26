@@ -22,6 +22,10 @@
 // v3 ring fields: oneway (1 | -1: the ring only turns that way), curtain (the first n gaps get a thorn curtain only
 //   fire burns), grate (n quail-only grated openings on free floor), barriers (n wooden walls on this channel floor:
 //   they block eggs and snakes; fire burns them, venom melts them).
+// 0.8.18 ring field: creep {len (m of rim), v (m/s), rest (s, the coil at each end on Medium: the safe window), side 'in' |
+//   'out', delay}: a thorn creeper crawls a stretch of this ring's rim from just past a gap's edge (sim/creeper.js; laid out
+//   by tools/gen.mjs layCreep). First met on L11 (slow and short), then once a world from 3 to 7 on a level that measured
+//   easy for its place.
 // v3 level fields: snake {delay, speed, a, len, size, kind, skin} or an array of them (kind: 'classic' | 'fast' (emerald,
 //   speed x1.3, body x0.8) | 'constrictor' (amber, armoured: half the back-off from a protected egg, speed x0.8) |
 //   'spitter' (crimson, venom melts a barrier in half the time); a trait is on only when the spec sets `kind`.
@@ -138,8 +142,9 @@ export const SPECS = [
     nest: { w: 2.8 }, bonus: { kind: 'turns' }, snake: [{ delay: 9, speed: 0.35, a: 0 }, { delay: 18, speed: 0.35, a: 125 }],
     orbs: [{ type: 'rockskin', ch: 1 }, { type: 'fire_gold', ch: 2 }, { type: 'fire_green', ch: 4 }, { type: 'hatch_glow', ch: 1 }],
     tip: 'Two snakes. Tap the glow chick as one closes in: the flash stuns it for 3 s.',
+    intro: { title: 'Thorn creeper', line: 'Pass when it curls.' }, // 0.8.18 creeper: its first level (the only Wild Woods level with no other new thing)
     useTap: true, // its glow-chick intro moved to L4 (the first-five ladder)
-    rings: [{ mat: 'wood', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'wood', gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { mat: 'wood', gaps: 2, thorns: 2, size: [2, 3] }] },
+    rings: [{ mat: 'wood', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'wood', gaps: 2, thorns: 2, size: [2, 3], creep: { len: 1.2, v: 0.35, rest: 1.4, delay: 4 } }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { mat: 'wood', gaps: 2, thorns: 2, size: [2, 3] }] },
   { id: 12, gid: 10, world: 2, theme: 'jungle', name: 'Serpent Hollow', boss: 'snake', eggs: 3, target: 2, spacing: 1.0, material: 'vine', minMoves: 5,
     nest: { w: 3.0 }, bonus: { kind: 'prize' },
     snake: [{ delay: 7, speed: 0.28, size: 1.5, len: 1.6, a: 0 }, { delay: 15, speed: 0.45, size: 0.8, a: 140 }],
@@ -161,7 +166,7 @@ export const SPECS = [
     orbs: [{ type: 'stone', ch: 1 }, { type: 'fire_green', ch: 3 }, { type: 'frost', ch: 2 }],
     intro: { title: 'Falling ice', line: 'An icicle grows over an egg and shakes before it drops: turn the ring above to swing it away. Big chunks freeze a ring.' },
     tip: 'Ice leaves a slippery patch. The frost orb freezes the ring under your egg.',
-    rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: -1, gear: true }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
+    rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: -1, gear: true }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1, creep: { len: 1.5, v: 0.45, rest: 1.2 } }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
   { id: 15, gid: 13, world: 3, theme: 'frozen', name: 'Duck Creek', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5, eggKinds: ['duck'],
     weather: 'current', weatherOpts: { strength: 0.8 }, snake: { delay: 14, speed: 0.33 },
     octopus: { ch: 3, a: -60, delay: 10, den: true },
@@ -225,7 +230,7 @@ export const SPECS = [
     portals: [{ from: [2, 150], to: [4, -30], emit: ['fire_green'], every: 10 }, { from: [1, -120], to: [3, 60] }],
     intro: { title: 'A thief in the dark', line: 'The weasel followed you into the caves. Send your eggs through the portals, out of his reach.' },
     tip: 'Trap the weasel behind a turned ring, then drop an egg on him: he gives one back.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], grate: 1 }, { mat: 'glass', gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], grate: 1 }, { mat: 'glass', gaps: 2, thorns: 2, size: [2, 3], creep: { len: 1.6, v: 0.5, rest: 1.1 } }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 23, gid: 19, world: 4, theme: 'crystal', name: 'Glass Floor', eggs: 3, target: 2, spacing: 1.0, material: 'glass', minMoves: 5, eggKinds: [null, 'quail'],
     nest: { w: 3.0 }, bonus: { kind: 'time' }, rats: { a: 100, n: 2, delay: 9 },
     orbs: [{ type: 'bubble', ch: 1 }, { type: 'magnet', ch: 3 }, { type: 'hatch_swoop', ch: 3 }],
@@ -321,7 +326,7 @@ export const SPECS = [
     weather: 'thunder', // boss817: the storm's lightning (L31) locks rings here too (it sat below both neighbours)
     orbs: [{ type: 'feather', ch: 1 }, { type: 'fire_black', ch: 2 }, { type: 'thunder', ch: 3 }, { type: 'hatch_glow', ch: 4 }],
     tip: 'Gusts shove your eggs along the channels. Grab the feather before Sly does.',
-    rings: [{ gaps: 1, thorns: 1 }, { mat: 'cloud', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], gear: true }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'cloud', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { mat: 'cloud', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], gear: true }, { gaps: 2, thorns: 2, size: [2, 3], creep: { len: 1.8, v: 0.6, rest: 1.0 } }, { mat: 'cloud', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 35, gid: 29, world: 6, theme: 'storm', name: 'Thunder Gears', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5, weather: 'thunder',
     nest: { w: 3.0 }, bonus: { kind: 'turns' }, eagle: { delay: 12, every: 11 },
     gusts: { delay: 9, every: 10, strength: 3, dur: 2 }, // v3.1: storm gusts shove eggs (and snakes) along the channels
@@ -366,7 +371,7 @@ export const SPECS = [
     nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'turns' }, weasel: { a: 150, delay: 7 }, rats: { a: -60, n: 2, ch: 2, delay: 10 },
     orbs: [{ type: 'water', ch: 2 }, { type: 'hatch_glow', ch: 1 }, { type: 'fire_red', ch: 4 }],
     tip: 'Water and light send the rats home. Shut the weasel out behind a door.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], shut: { period: 4, open: 0.5 } }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1, shut: { period: 4.5, open: 0.5 } }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], shut: { period: 4, open: 0.5 } }, { gaps: 2, thorns: 2, size: [2, 3], creep: { len: 2.0, v: 0.65, rest: 0.9 } }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1, shut: { period: 4.5, open: 0.5 } }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 41, gid: 34, world: 7, theme: 'clock', name: 'Sky Bridge', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5, eggKinds: [null, 'quail'],
     nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'turns' }, eagle: { delay: 9, every: 11 },
     orbs: [{ type: 'magnet', ch: 1 }, { type: 'feather', ch: 4 }, { type: 'hatch_pick', ch: 4 }],

@@ -21,6 +21,7 @@ import { stkMethods } from './strike.js'; // Chick Strike powers
 import { perkMethods, PERK } from './perks.js'; // 0.8.10 egg skin powers
 import { pipMethods } from './pip.js'; // 0.8.17 pip: Pip the penguin (level 16)
 import { cocoMethods } from './coco.js'; // 0.8.17 coco: Coco the monkey (level 10)
+import { creepMethods } from './creeper.js'; // 0.8.18 creeper: the thorn creeper crawling a ring's rim
 import { reachMethods } from './henreach.js'; // the hen runs the basket under an egg (nest.reach)
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 import { WORLD_N, hardOf } from '../road.js'; // 0.8.17: sixty levels, six a world
@@ -315,6 +316,7 @@ export class Sim {
     this.pipInit(L); // 0.8.17 pip
     this.cocoInit(L); // 0.8.17 coco
     this.bandInit(L); // 0.8.17 bandit (sim/bandit.js)
+    this.creepInit(L); // 0.8.18 creeper (sim/creeper.js)
     this.reefInit(L); if (L.bossFight && L.bossFight.kind === 'kingcrab') this.kcInit(L); // world 8 (sim/reef.js, sim/kingcrab.js)
     this.cwInit(L); this.owlInit(L); // v4: the clockwork cast and the Clockwork Owl
     this.bayouInit(L); // v3.7: Gator Bayou creatures (sim/bayou.js)
@@ -664,6 +666,7 @@ export class Sim {
     this.frogStep(cdt); // v3.3 frog
     this.pipStep(cdt); // 0.8.17 pip
     this.cocoStep(cdt); // 0.8.17 coco
+    this.creepStep(dt); // 0.8.18 creeper: a plant, not fooled by the decoy chick
     this.cwStep(cdt); // v4 the clockwork cast
     this.bayouStep(cdt); // v3.7 gators, turtles, mosquitoes
     if (this.weather && this.state === 'play') this.weatherStep(dt);
@@ -2307,6 +2310,7 @@ export class Sim {
     if (this.gators && (this.gators.length || this.mosqs.length)) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.9 * this.bayouThreat(e)); // v3.7
     if (this.pips && this.pips.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.5 * this.pipThreat(e)); // 0.8.17 pip: not wicked, a mild cue
     if (this.cocos && this.cocos.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.5 * this.cocoThreat(e)); // 0.8.17 coco: cheeky, a mild cue
+    if (this.creeps && this.creeps.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.6 * this.creepThreat(e)); // 0.8.18 creeper
     lv = Math.round(lv * 10) / 10;
     if (lv !== this.danger) { this.danger = lv; this.emit('danger', { level: lv }); }
   }
@@ -2510,6 +2514,7 @@ export class Sim {
       thieves: this.thiefState(), // v3.6 the weasel and the rats
       pip: this.pipState(), // 0.8.17 pip
       coco: this.cocoState(), // 0.8.17 coco
+      creep: this.creepState(), // 0.8.18 creeper
       band: this.bandState(), // 0.8.17 bandit
       reef: this.reefState(), // world 8
       cw: this.cwState(), owl: this.owlState(), // v4 the clockwork cast and the Clockwork Owl
@@ -2575,6 +2580,7 @@ export class Sim {
     sim.thiefLoad(S.thieves); // v3.6 the weasel and the rats
     sim.pipLoad(S.pip); // 0.8.17 pip
     sim.cocoLoad(S.coco); // 0.8.17 coco
+    sim.creepLoad(S.creep); // 0.8.18 creeper
     sim.bandLoad(S.band); // 0.8.17 bandit
     sim.reefLoad(S.reef); // world 8
     sim.cwLoad(S.cw); sim.owlLoad(S.owl); // v4
@@ -2989,6 +2995,7 @@ Object.assign(Sim.prototype, warpMethods); // v3.4 warp gate (sim/warp.js)
 Object.assign(Sim.prototype, bayouMethods); // v3.7 Gator Bayou (sim/bayou.js)
 Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves.js)
 Object.assign(Sim.prototype, pipMethods); // 0.8.17 pip
+Object.assign(Sim.prototype, creepMethods); // 0.8.18 creeper
 Object.assign(Sim.prototype, cocoMethods); // 0.8.17 coco
 Object.assign(Sim.prototype, banditMethods); // 0.8.17 bandit (sim/bandit.js)
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)

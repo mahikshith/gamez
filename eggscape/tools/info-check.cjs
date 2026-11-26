@@ -59,6 +59,7 @@ function scan(L, where, INFO) {
     for (const k of Object.keys(r)) {
       if (k === 'retract') want.add('popthorns');
       else if (k === 'vine' || k === 'vineOpts') want.add('vines');
+      else if (k === 'creep') want.add('creeper'); // 0.8.18 creeper
       else if (!RING_BOARD.has(k)) bad(`${where}: ring ${ri} key "${k}" unknown`);
     }
     for (const g of r.gaps || []) for (const k of Object.keys(g)) { if (k === 'vine') want.add('vines'); else if (!GAP_BOARD.has(k)) bad(`${where}: gap key "${k}" unknown`); }

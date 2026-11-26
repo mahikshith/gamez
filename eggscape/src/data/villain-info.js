@@ -296,6 +296,11 @@ export const VILLAIN_INFO = {
     does: 'Creep across a gap and seal it with thorns, then grow back.',
     beat: 'Drop through before it closes. Fire burns the vine back.',
   },
+  creeper: { // 0.8.18 (sim/creeper.js)
+    group: 'hazard', name: 'Thorn creeper',
+    does: 'Crawls to and fro along a ring edge. Its head cracks eggs.',
+    beat: 'Pass while it curls up at an end. Fire burns it to a stump.',
+  },
   doors: { // 2026-11-20 first-five ladder: gate doors left world 1, so their first level (L31) teaches them here
     group: 'hazard', name: 'Gate doors',
     does: 'A sliding door shuts a gap, then opens again on a steady beat.',
@@ -390,6 +395,7 @@ export function villainKinds(L, sim = null) {
   const rings = L.rings || [];
   if (rings.some((r) => r.retract)) set.add('popthorns');
   if (rings.some((r) => r.vine || (r.gaps || []).some((g) => g.vine))) set.add('vines');
+  if (rings.some((r) => r.creep)) set.add('creeper'); // 0.8.18 creeper
   if (rings.some((r) => (r.gaps || []).some((g) => g.shut))) set.add('doors');
   const orbTypes = [...(L.orbs || []).map((o) => o.type), ...(L.portals || []).flatMap((p) => p.emit || []), ...((L.bossFight && L.bossFight.throws) || [])];
   for (const [t, k] of Object.entries(HAZARD_ORBS)) if (orbTypes.includes(t)) set.add(k);
