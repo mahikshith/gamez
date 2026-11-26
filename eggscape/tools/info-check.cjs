@@ -19,6 +19,7 @@ const bad = (s) => problems.push(s);
 // board furniture: level keys that are not villains or hazards (a key in neither list fails the check)
 const BOARD = new Set(['id', 'key', 'kind', 'theme', 'name', 'eggs', 'target', 'time', 'spacing', 'material', 'nest', 'bonus', 'tip', 'seed', 'world', 'intro',
   'rings', 'orbs', 'portals', 'barriers', 'weatherOpts', 'eggKinds', 'water', 'shape', 'rock', 'boss', 'chickEggs', 'allies', 'pitch', 'wonder', 'r0', 'solve', 'fails', 'cw']);
+BOARD.add('softCurtain'); // a flag on the level that first teaches the thorn curtain (that curtain only cracks): board, like gap.curtain
 const RING_BOARD = new Set(['gaps', 'thorns', 'pads', 'mat', 'gear', 'oneway', 'ice', 'honey', 'shape', 'fixed', 'grate']);
 const GAP_BOARD = new Set(['a', 'len', 'x', 'shut', 'curtain', 'grate']);
 // villain / hazard keys -> table kind
@@ -28,6 +29,7 @@ CREATURE.push('urchin'); // 0.8.17 urchin
 CREATURE.push('monkey'); // 0.8.17 coco
 const HAZARD_KEY = { icicles: 'icicles', lava: 'lava', gusts: 'gusts', wind: 'gusts' };
 const WEATHER = { thunder: 'lightning', current: 'current', embers: 'embers', quake: 'quake', rain: 'rain' };
+const SKY = new Set(['none', 'fireflies', 'leaves', 'snow', 'fog', 'ghosts', 'ash', 'sandstorm']); // weather that is only a picture (no rule changes in sim/): nothing to explain
 const ORB = { curse: 'curse', thorn: 'thornorb' };
 const listOf = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
 
@@ -51,7 +53,7 @@ function scan(L, where, INFO) {
     } else if (HAZARD_KEY[k]) want.add(HAZARD_KEY[k]);
     else bad(`${where}: level key "${k}" is neither a villain/hazard nor known board furniture`);
   }
-  if (L.weather) { if (WEATHER[L.weather]) want.add(WEATHER[L.weather]); else bad(`${where}: weather "${L.weather}" not in the table`); }
+  if (L.weather && !SKY.has(L.weather)) { if (WEATHER[L.weather]) want.add(WEATHER[L.weather]); else bad(`${where}: weather "${L.weather}" not in the table`); }
   for (const [ri, r] of (L.rings || []).entries()) {
     for (const k of Object.keys(r)) {
       if (k === 'retract') want.add('popthorns');
