@@ -29,7 +29,7 @@ const open = async (app) => {
     window.SAVE = (unl = 20) => { const st = {}; for (let i = 1; i < unl; i++) st[i] = 2; E.setSave({ unlocked: unl, stars: st, age: '13+', wallet: { coins: 400 }, spin: { wins: 1, bank: 2, n: 5 }, seen: { pickN: 2, rsTried: 1, setOpen: 1, shopHand: 1 } }); const s = E.save; for (let i = 1; i <= 60; i++) s.intro[i] = 1; s.strikeSeen = new Proxy({}, { get: () => 1 }); E.G.toasts = []; E.G.toast = null; E.G.leftAsked = true; E.G.leaveAsk = null; E.G.remAsk = null; E.G.nudge = null; E.G.offer = null; E.G.offerTried = true; };
     window.HOME = () => { E.G.settingsOpen = false; E.G.detail = null; E.G.offer = null; E.G.album = null; E.G.screen = 'title'; E.G.screenT = 5; F(3); };
     window.PLAYING = (lv = 10) => { E.start(lv); F(20); for (let k = 0; k < 4 && E.G.screen === 'intro'; k++) { E.press(k % 2 ? 'inext' : 'go'); F(3); } if (E.G.screen === 'intro') E.G.screen = 'play'; F(30); E.G.offer = null; E.G.nudge = null; };
-    window.WHERE = () => ({ screen: E.G.screen, settings: !!E.G.settingsOpen, sub: !!E.G.setSub, detail: E.G.detail || null, offer: !!E.G.offer, album: !!E.G.album, sheet: !!(E.G.spin && E.G.spin.sheet), card: E.wonder.state.card || null, modal: !!(E.G.got || E.G.detail || E.G.offer || E.G.getMore || E.G.chickBuy || E.G.treasure || E.G.leaveAsk || E.G.stuckAsk) });
+    window.WHERE = () => ({ screen: E.G.screen, settings: !!E.G.settingsOpen, sub: !!E.G.setSub, detail: E.G.detail || null, offer: !!E.G.offer, album: !!E.G.album, sheet: !!(E.G.spin && E.G.spin.sheet), card: E.wonder.state.card || null, modal: !!(E.G.got || E.G.detail || E.G.offer || E.G.getMore || E.G.chickBuy || E.G.treasure || E.G.leaveAsk || E.G.stuckAsk), tab: E.G.screen === 'intro' ? E.G.itab || 'level' : null });
   });
   return p;
 };
@@ -49,6 +49,9 @@ await p.evaluate(() => SAVE(20));
 await row('home', 'app start', () => { HOME(); return WHERE(); }, { screen: 'title' });
 await row('world map', 'home (PLAY)', () => { HOME(); __egg.press('levels'); F(30); return WHERE(); }, { screen: 'title' });
 await row('level card', 'map', () => { __egg.press('levels'); F(20); __egg.press('lv:9'); F(30); return WHERE(); }, { screen: 'levels' });
+// 0.8.18: the chick picker opens from the chick's face on the level card; Back closes it (the card stays), then the map
+await row('chick picker', 'level card (the chick\'s face)', () => { __egg.press('levels'); F(20); __egg.press('lv:9'); F(30); __egg.press('face:chick'); F(20); return WHERE(); }, { screen: 'intro', tab: (v, got, at) => v === 'level' && at.tab === 'chicks' });
+await row('level card', 'chick picker closed', () => WHERE(), { screen: 'levels' });
 await row('play', 'level card', () => { PLAYING(10); return WHERE(); }, { screen: 'pause' });
 await row('pause page', 'play', () => WHERE(), { screen: 'play' });
 await row('a level after Back twice', 'play', () => { __egg.press('pause'); F(5); return { t: __egg.G.sim.t }; }, { screen: 'play' }); // (pause, resume: the level never quits by Back)
