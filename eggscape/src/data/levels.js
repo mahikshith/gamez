@@ -117,13 +117,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 13, theme: "frozen", name: "Frozen Lake", eggs: 3, target: 2, time: 80, spacing: 1.05, material: "wood", nest: {w: 2.6}, snake: {delay: 8, speed: 0.35}, bonus: {kind: "turns", n: 9}, tip: "Arrow rings only turn one way: sometimes the long way round is the safe one.", orbs: [{type: "hourglass", ch: 1, a: 82},{type: "stone", ch: 2, a: 79}], seed: 87129, world: 3, intro: {title: "Frozen Lake", line: "Arrow rings turn only one way, and ice is slippery. The hourglass slows the world and stops the fuse."},
+    id: 13, theme: "frozen", name: "Frozen Lake", eggs: 3, target: 2, time: 85, spacing: 1.05, material: "wood", nest: {w: 2.6}, snake: {delay: 8, speed: 0.35}, bonus: {kind: "turns", n: 12}, tip: "Arrow rings only turn one way: sometimes the long way round is the safe one.", orbs: [{type: "hourglass", ch: 1, a: 35},{type: "stone", ch: 2, a: -23}], seed: 87150, world: 3, intro: {title: "Frozen Lake", line: "Arrow rings turn only one way, and ice is slippery. The hourglass slows the world and stops the fuse."},
     rings: [
-      {gaps: [{a: 150}]},
-      {mat: "ice", oneway: 1, gaps: [{a: -17, x: 2}], thorns: [{a: 119, n: 2, side: "out", h: 0.26},{a: 52, n: 2, side: "out", h: 0.26}], pads: [{a: 73, len: 1.55}]},
-      {gaps: [{a: 16},{a: 144}], thorns: [{a: 64, n: 2},{a: -34, n: 3}], pads: [{a: 96, len: 1.59}]},
-      {mat: "ice", oneway: -1, gaps: [{a: 63, x: 3, len: 0.7},{a: -133}], thorns: [{a: 124, n: 2, side: "out", h: 0.26},{a: -95, n: 2, side: "out", h: 0.26}], pads: [{a: -81, len: 1.74}]},
-      {gaps: [{a: 102},{a: -171}], thorns: [{a: 51, n: 2},{a: 143, n: 2}], pads: [{a: -65, len: 1.01}]},
+      {gaps: [{a: -156}]},
+      {mat: "ice", oneway: 1, gaps: [{a: 29, x: 2}], thorns: [{a: 154, n: 2, side: "out", h: 0.26},{a: 92, n: 2, side: "out", h: 0.26}], pads: [{a: -132, len: 1.31}]},
+      {gaps: [{a: -34},{a: -170}], thorns: [{a: -138, n: 2},{a: 67, n: 3}], pads: [{a: 132, len: 1.35}]},
+      {mat: "ice", oneway: -1, gaps: [{a: 37, x: 3, len: 0.7},{a: 155}], thorns: [{a: -152, n: 2, side: "out", h: 0.26},{a: -32, n: 2, side: "out", h: 0.26}], pads: [{a: 76, len: 1.2}]},
+      {gaps: [{a: 123},{a: -6}], thorns: [{a: 53, n: 2},{a: -140, n: 1}], pads: [{a: -171, len: 1.63}]},
     ],
   },
   {

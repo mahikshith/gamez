@@ -150,7 +150,7 @@ export const SPECS = [
     rings: [{ mat: 'wood', gaps: 1, thorns: 1, gear: true }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], blunt: 1, gear: true }, { mat: 'wood', gaps: 2, thorns: 1, size: [2, 3], barriers: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { mat: 'wood', gaps: 2, thorns: 2, size: [1, 2] }] },
 
   // ---------------- 3 Frozen Lake: one-way rings, ice, icicles, the current (moving nest); hourglass, duck egg
-  { id: 13, gid: 11, world: 3, theme: 'frozen', name: 'Frozen Lake', eggs: 3, target: 2, spacing: 1.05, material: 'wood', minMoves: 9,
+  { id: 13, gid: 11, world: 3, theme: 'frozen', name: 'Frozen Lake', eggs: 3, target: 2, spacing: 1.05, material: 'wood', minMoves: 10,
     nest: { w: 2.6 }, bonus: { kind: 'turns' }, snake: { delay: 8, speed: 0.35 }, // boss817: the Wild Woods snake follows you onto the ice
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'stone', ch: 2 }],
     intro: { title: 'Frozen Lake', line: 'Arrow rings turn only one way, and ice is slippery. The hourglass slows the world and stops the fuse.' },
@@ -489,12 +489,13 @@ export const SPECS = [
   //   seam is its way through), rock ({} or {amp, hold, swing}: the whole vault leans and back), spider {ring, delay, every},
   //   beetle {ch, a?, delay, dir}, jack [{ch, a?}] (gen.mjs puts a missing a on free floor of that ring; a jack just short of a gap),
 //   useCombo (the planner's run must fire a power combo).
-  { id: 55, gid: 46, world: 10, theme: 'lab', name: 'Square One', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 12, shape: 'square',
+  { id: 55, gid: 46, world: 10, theme: 'lab', name: 'Square One', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 12, fuseX: 0.75, shape: 'square',
     nest: { w: 2.7 }, bonus: { kind: 'turns' }, spider: { ring: 2, delay: 4 },
     orbs: [{ type: 'iron', ch: 1 }, { type: 'fire_red', ch: 3 }],
     intro: { title: 'Shape Lab', cw: 'spider', line: 'Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider crawls to a gap and webs it shut; slip an egg past while it spins.' },
     tip: 'A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.',
-    // boss817 (the level after a boss is a step on): a fifth ring with a Gator Bayou thorn vine (L50) on one gap
+    // boss817 (the level after a boss is a step on): a fifth ring with a Gator Bayou thorn vine (L50) on one gap; fuseX
+    // keeps the clock near what it was (100 s, was 60; the plain formula gives 130 for the longer climb)
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 2, gapX: [2], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, vine: 1, thorns: 2, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2] }] },
   { id: 56, gid: 47, world: 10, theme: 'lab', name: 'Hex Works', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 3, shape: 'hex',
     nest: { w: 2.7 }, bonus: { kind: 'time' }, beetle: { ch: 2, delay: 3 }, spider: { ring: 4, delay: 12 },
