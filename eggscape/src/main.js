@@ -8599,10 +8599,8 @@ function pauseRingRow(x, y, w, s, h, bare = false) {
 function foeStage(kd, i, s, iw) {
   const C = ui.C, stH = Math.min((iw - 24 * s) * 0.58, 220 * s), plan = howToPlan(kd), I = VILLAIN_INFO[kd] || { name: kd }, H = 12 * s + stH + 36 * s;
   return { h: H, gap: 10 * s, draw: (x, y, w) => {
-    ui.well(x, y, w, H, { s, a: '#f3e2bd', b: '#fbf0d6' });
-    const sx = x + 12 * s, sy = y + 12 * s, sw = w - 24 * s, th = G.theme && G.theme.palette;
-    drawHowTo(ctx, plan, sx, sy, sw, stH, G.t + i * 1.3, { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark });
-    ui.roundRect(sx, sy, sw, stH, Math.min(18, stH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
+    const sx = x + 12 * s, sy = y + 12 * s, sw = w - 24 * s, th = G.theme && G.theme.palette; // (frame818: no cream box; the demo melts into the page)
+    heroDemo(plan, G.t + i * 1.3, sx, sy, sw, stH, 1, { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark }, true);
     ui.record({ x: sx, y: sy, w: sw, h: stH }, 'pause:stage' + i);
     const nm = I.name, ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
     ui.roundRect(sx + sw - 8 * s - tw, sy + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = I.group === 'boss' ? 'rgba(160,30,40,0.9)' : 'rgba(30,24,40,0.72)'; ctx.fill();
@@ -8612,7 +8610,7 @@ function foeStage(kd, i, s, iw) {
       ui.roundRect(sx + 8 * s, sy + stH - 34 * s, lw, 26 * s, 13 * s); ctx.fillStyle = 'rgba(176,34,24,0.9)'; ctx.fill();
       ui.text(lt, sx + 8 * s + lw / 2, sy + stH - 21 * s, { size: ls, align: 'center', color: '#fff', noRecord: true });
     }
-    ui.text(plan.cap, x + w / 2, sy + stH + 18 * s, { size: 16.5 * s, align: 'center', color: '#2d6a1c', maxW: w - 24 * s, tag: 'pause:cap' + i });
+    ui.text(plan.cap, x + w / 2, sy + stH + 18 * s, { size: 16.5 * s, align: 'center', color: '#c8f5a0', stroke: 'rgba(30,14,4,0.85)', strokeW: 3.2 * s, maxW: w - 24 * s, tag: 'pause:cap' + i });
   } };
 }
 // 0.8.17 tour817 (mykee: "optimize the UI/UX for the pause menu: remove empty spaces, right sizes for the sections ...
@@ -8649,18 +8647,19 @@ function drawPause() {
       { h: 30 * s, gap: 6 * s, tight: true, draw: (x, y, w) => ui.text(G.li >= 0 ? `Level ${L.id} · ${L.name}` : L.name, x + w / 2, y + 15 * s, { size: 20 * s, align: 'center', maxW: w, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:name' }) },
       // where the level stands: the eggs home and the clock, then its three stars and how each stands right now
       { h: stH, gap: 12 * s, draw: (x, y, w) => {
-        ui.well(x, y, w, stH, { s, a: '#f3e2bd', b: '#fbf0d6' });
+        // frame818 (mykee: no frames): no cream box; the goal, the clock and the three stars stand on the level's own scene in light words
+        const LT = '#fff6e0', LT2 = 'rgba(255,246,224,0.62)', EDGE = 'rgba(30,14,4,0.85)', ew = 3.2 * s;
         const cy = y + topH / 2, a = `${st.saved}/${st.target} home`, b = sim.timeLimit ? fmtTime(sim.timeLeft) : '', aw = 32 * s + ui.measure(a, 20 * s), bw2 = b ? 32 * s + ui.measure(b, 20 * s) : 0, gp = b ? 26 * s : 0;
         let gx = x + w / 2 - (aw + gp + bw2) / 2;
-        drawEggIcon(ctx, gx + 12 * s, cy, 30 * s, 'alive'); ui.text(a, gx + 30 * s, cy, { size: 20 * s, color: st.saved >= st.target ? C.good : C.ink, tag: 'pause:goal' });
-        if (b) { gx += aw + gp; pictoClock(ctx, gx + 12 * s, cy, 28 * s); ui.text(b, gx + 30 * s, cy, { size: 20 * s, color: sim.timeLeft <= 10 ? C.bad : C.warn, tag: 'pause:time' }); }
+        drawEggIcon(ctx, gx + 12 * s, cy, 30 * s, 'alive'); ui.text(a, gx + 30 * s, cy, { size: 20 * s, color: st.saved >= st.target ? '#a8f07a' : LT, stroke: EDGE, strokeW: ew, tag: 'pause:goal' });
+        if (b) { gx += aw + gp; pictoClock(ctx, gx + 12 * s, cy, 28 * s); ui.text(b, gx + 30 * s, cy, { size: 20 * s, color: sim.timeLeft <= 10 ? '#ff8a70' : '#ffd36a', stroke: EDGE, strokeW: ew, tag: 'pause:time' }); }
         if (!goalsOn) return;
         const ok = goalsLive(sim);
         G.goals.forEach((g, i) => {
           const ry = y + topH + 4 * s + rowH * (i + 0.5);
-          ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(x + 10 * s, ry - rowH / 2, w - 20 * s, 1.2 * s);
+          ctx.fillStyle = 'rgba(255,240,210,0.16)'; ctx.fillRect(x + 10 * s, ry - rowH / 2, w - 20 * s, 1.2 * s);
           drawStar(ctx, x + 26 * s, ry, 11 * s, ok[i]);
-          ui.text(g.long, x + 48 * s, ry, { size: 16.5 * s, color: ok[i] ? C.ink : 'rgba(80,50,25,0.6)', maxW: w - 96 * s, tag: 'pause:goal' + i });
+          ui.text(g.long, x + 48 * s, ry, { size: 16.5 * s, color: ok[i] ? LT : LT2, stroke: EDGE, strokeW: ew, maxW: w - 96 * s, tag: 'pause:goal' + i });
           if (!ok[i]) pictoCross(ctx, x + w - 24 * s, ry, 22 * s);
         });
       } },
@@ -8678,8 +8677,7 @@ function drawPause() {
       // the settings a player changes mid-level, as one group: the ring speed (live: the level runs at it on Resume),
       // then sound, music and vibration side by side (the same switches as Settings)
       { h: gh, gap: 12 * s, draw: (x, y, w) => {
-        ui.well(x, y, w, gh, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
-        pauseRingRow(x, y + 8 * s, w, s, RH, true);
+        pauseRingRow(x, y + 8 * s, w, s, RH, true); // (frame818: no cream box round the group: its controls float on the scene)
         R.rs = { x, y, w, h: 8 * s + RH + 4 * s };
         if (!TG.length) return;
         const n = TG.length, tw = (w - 16 * s - 8 * s * (n - 1)) / n, ty = y + 16 * s + RH;
