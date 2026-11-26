@@ -106,12 +106,15 @@ export const SPECS = [
     rings: [{ gaps: 1, gapLen: 0.9 }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
 
   // ---------------- 2 Wild Woods: snakes (two from L9), wooden barriers, the chick; rock skin, sun flame
-  { id: 7, gid: 6, world: 2, theme: 'bramble', name: 'Bramble Path', eggs: 3, target: 2, spacing: 1.05, material: 'vine', minMoves: 4,
+  { id: 7, gid: 6, world: 2, theme: 'bramble', name: 'Bramble Path', eggs: 3, target: 2, spacing: 1.05, material: 'vine', minMoves: 8,
     nest: { w: 2.6 }, bonus: { kind: 'turns' }, snake: { delay: 6, speed: 0.4 },
     orbs: [{ type: 'rockskin', ch: 1 }, { type: 'fire_red', ch: 2 }],
     intro: { title: 'Wild Woods', line: 'A snake slides in and hunts your eggs. It crosses a ring only through a gap: turn the gaps away. Rock skin turns every egg to stone.' },
     tip: 'Grab the rock skin, then run every egg down while they are stone.',
-    rings: [{ mat: 'wood', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { mat: 'wood', gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2] }] },
+    // 0.8.17 boss817 (mykee: the level after a boss must not be a rest): the Farm's thorn curtain (L3) shuts the middle
+    // ring's one gap while the snake hunts, so the flame in channel 2 is the way on; a fifth ring, one sponge a ring.
+    // minMoves on the post-boss levels (and L28, L34) asks the planner's clear for as many moves as the world before.
+    rings: [{ mat: 'wood', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], pads: 1 }, { mat: 'wood', gaps: 1, curtain: 1, thorns: 1, size: [2, 3], blunt: 1, pads: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2], pads: 1 }, { mat: 'wood', gaps: 2, thorns: 2, size: [1, 2], pads: 1 }] },
   { id: 8, gid: 7, world: 2, theme: 'jungle', name: 'Jungle Nursery', eggs: 3, target: 2, spacing: 1.0, material: 'vine', minMoves: 5,
     nest: { w: 2.8 }, bonus: { kind: 'prize' }, snake: { delay: 12, speed: 0.35 },
     orbs: [{ type: 'fire_gold', ch: 1 }, { type: 'rockskin', ch: 2 }],
@@ -147,12 +150,12 @@ export const SPECS = [
     rings: [{ mat: 'wood', gaps: 1, thorns: 1, gear: true }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], blunt: 1, gear: true }, { mat: 'wood', gaps: 2, thorns: 1, size: [2, 3], barriers: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { mat: 'wood', gaps: 2, thorns: 2, size: [1, 2] }] },
 
   // ---------------- 3 Frozen Lake: one-way rings, ice, icicles, the current (moving nest); hourglass, duck egg
-  { id: 13, gid: 11, world: 3, theme: 'frozen', name: 'Frozen Lake', eggs: 3, target: 2, spacing: 1.05, material: 'wood', minMoves: 4,
-    nest: { w: 2.6 }, bonus: { kind: 'turns' },
+  { id: 13, gid: 11, world: 3, theme: 'frozen', name: 'Frozen Lake', eggs: 3, target: 2, spacing: 1.05, material: 'wood', minMoves: 9,
+    nest: { w: 2.6 }, bonus: { kind: 'turns' }, snake: { delay: 8, speed: 0.35 }, // boss817: the Wild Woods snake follows you onto the ice
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'stone', ch: 2 }],
     intro: { title: 'Frozen Lake', line: 'Arrow rings turn only one way, and ice is slippery. The hourglass slows the world and stops the fuse.' },
     tip: 'Arrow rings only turn one way: sometimes the long way round is the safe one.',
-    rings: [{ gaps: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1, pads: 1 }, { gaps: 2, thorns: 2, size: [2, 3], pads: 1 }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], oneway: -1, pads: 1 }, { gaps: 2, thorns: 2, size: [1, 2], pads: 1 }] },
   { id: 14, gid: 12, world: 3, theme: 'blizzard', name: 'Icicle Hollow', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5,
     nest: { w: 2.8 }, bonus: { kind: 'time' }, icicles: { every: 5, delay: 4, big: 3 }, snake: { delay: 10, speed: 0.35 }, // M4: a chaser in every world
     orbs: [{ type: 'stone', ch: 1 }, { type: 'fire_green', ch: 3 }, { type: 'frost', ch: 2 }],
@@ -264,8 +267,8 @@ export const SPECS = [
     intro: { title: 'Dash chick', chick: 'dash', line: 'The orange orb hatches a dash chick. Tap it once: it shoots along its channel, bonks snakes and the salamander dizzy, and grabs orbs.' }, useTap: true,
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   // 0.8.17: the face-off: fire and frost salamanders in two channels; the player steers them head to head
-  { id: 28, world: 5, theme: 'volcano', name: 'The Face-off', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 5,
-    nest: { w: 3.0 }, bonus: { kind: 'turns' },
+  { id: 28, world: 5, theme: 'volcano', name: 'The Face-off', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 10,
+    nest: { w: 3.0 }, bonus: { kind: 'turns' }, lava: { every: 7, delay: 6 }, // boss817: L26's lava rocks keep falling (it sat below both neighbours)
     salamander: [{ delay: 3, every: 6.5, a: 140, ch: 2 }, { delay: 6, every: 7, a: -20, ch: 3, kind: 'frost' }],
     orbs: [{ type: 'water', ch: 1 }, { type: 'fire_red', ch: 3 }, { type: 'hourglass', ch: 4 }],
     intro: { title: 'Fire meets frost', line: 'A frost salamander walks in. Its bite freezes an egg. When it meets the fire one they fight, and both are knocked out.' },
@@ -290,14 +293,15 @@ export const SPECS = [
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { noGap: true, thorns: 2, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
 
   // ---------------- 6 Storm Peaks: lightning, the eagle (it also takes snakes), gears; guardian feather, thunder
-  { id: 31, gid: 26, world: 6, theme: 'storm', name: 'Storm Peaks', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 4, weather: 'thunder',
+  { id: 31, gid: 26, world: 6, theme: 'storm', name: 'Storm Peaks', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 12, weather: 'thunder',
     nest: { w: 2.8 }, bonus: { kind: 'turns' },
     gusts: { delay: 7, every: 11, strength: 3, dur: 2 }, // v3.1: storm gusts shove eggs (and snakes) along the channels
     chameleon: { delay: 2, dir: 1 }, // Sly, the orb thief (sim/chameleon.js): crawls in through an outer gap and eats orbs
     orbs: [{ type: 'thunder', ch: 2 }, { type: 'bubble', ch: 3 }, { type: 'magnet', ch: 1 }, { type: 'fire_black', ch: 4 }],
     intro: { title: 'Storm Peaks', line: 'Lightning strikes and locks a ring. And Sly the chameleon creeps in to steal power orbs with his tongue: grab them first.' },
     tip: 'Let Sly eat the black flame: he gets sick and coughs up the last orb he stole.',
-    rings: [{ gaps: 1, thorns: 1 }, { mat: 'cloud', gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'cloud', gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    // boss817 (the level after a boss is a step on): the Volcano's forge spikes pump on the third ring, and a sixth ring
+    rings: [{ gaps: 1, thorns: 1 }, { mat: 'cloud', gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 3, size: [2, 3], retract: { period: 3, on: 0.5 } }, { mat: 'cloud', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 32, gid: 27, world: 6, theme: 'storm', name: 'Eagle Crag', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5, weather: 'thunder',
     nest: { w: 3.0 }, bonus: { kind: 'prize' }, eagle: { delay: 8, every: 11 },
     gusts: { delay: 10, every: 14, strength: 1.8, dur: 1.6 }, // v3.1: storm gusts shove eggs (and snakes) along the channels
@@ -312,8 +316,9 @@ export const SPECS = [
     tip: 'The eagle loves snakes. Keep the snake in the outer channel and let it feed.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'cloud', gaps: 2, thorns: 1, size: [2, 3], barriers: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   // 0.8.17: Sly and the gusts, no eagle
-  { id: 34, world: 6, theme: 'storm', name: 'Sly in the Gale', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5,
+  { id: 34, world: 6, theme: 'storm', name: 'Sly in the Gale', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 10,
     nest: { w: 3.0 }, bonus: { kind: 'turns' }, gusts: { delay: 6, every: 9, strength: 3, dur: 2 }, chameleon: { delay: 3, dir: -1 },
+    weather: 'thunder', // boss817: the storm's lightning (L31) locks rings here too (it sat below both neighbours)
     orbs: [{ type: 'feather', ch: 1 }, { type: 'fire_black', ch: 2 }, { type: 'thunder', ch: 3 }, { type: 'hatch_glow', ch: 4 }],
     tip: 'Gusts shove your eggs along the channels. Grab the feather before Sly does.',
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'cloud', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], gear: true }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'cloud', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
@@ -383,12 +388,13 @@ export const SPECS = [
   // ---------------- 8 Coral Reef: underwater, eggs float UP to the hen's boat; hermit crab, pufferfish, jellyfish; the
   // three new powers (warp gate L37, shock ring L38, frost nova L39), reused at the King Crab (L40). water: true on these
   // five levels only (sim/sim.js: buoyancy, drag and a bob; the basket hangs under her boat at the surface).
-  { id: 43, gid: 36, world: 8, theme: 'reef', name: 'Under the Waves', eggs: 3, target: 2, spacing: 1.05, material: 'coral', minMoves: 3, water: true,
+  { id: 43, gid: 36, world: 8, theme: 'reef', name: 'Under the Waves', eggs: 3, target: 2, spacing: 1.05, material: 'coral', minMoves: 12, water: true,
     nest: { w: 2.8 }, bonus: { kind: 'time' }, hermit: { ch: 1, a: 70, delay: 1.5 }, fish: { ch: 2, n: 7, speed: 0.9, a: 20, turn: 14 },
     orbs: [{ type: 'bubble', ch: 2 }],
     intro: { title: 'Coral Reef', line: 'Underwater, eggs float UP! Line the gaps up toward the top to reach the hen\'s boat. A hermit crab tucks eggs in its shell: bump an egg into it, or turn a gap to it.' },
     tip: 'A tucked egg is safe from thorns. Turn a gap to the crab and the egg floats out through it.',
-    rings: [{ gaps: 1 }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2] }, { gaps: 2, gapX: [2], thorns: 1, size: [2, 2] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2] }] },
+    // boss817 (the level after a boss is a step on): the Thieves' Vault gate doors (L37) on the second ring, a fifth ring
+    rings: [{ gaps: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [1, 2], shut: { period: 4.5, open: 0.5 } }, { gaps: 2, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
   { id: 44, gid: 37, world: 8, theme: 'reef', name: 'Puffer Lagoon', eggs: 3, target: 2, spacing: 1.05, material: 'coral', minMoves: 4, water: true, eggKinds: ['duck'],
     nest: { w: 2.7 }, bonus: { kind: 'turns' }, puffer: { ch: 3, a: 40, delay: 3 }, hermit: { ch: 4, a: 150, delay: 9 },
     orbs: [{ type: 'warp', ch: 2 }, { type: 'twin', ch: 1 }],
@@ -432,12 +438,13 @@ export const SPECS = [
 
   // ---------------- 9 Gator Bayou (v3.7): an alligator, a mosquito swarm and a snapping turtle; Grandpa Gator at L45.
   // Thorn vines are the clock. Powers taught here: Pepper Puff (L41), Decoy Egg (L42), Laser Cannon (L43).
-  { id: 49, gid: 41, world: 9, theme: 'bayou', name: 'Gator Crossing', eggs: 3, target: 2, spacing: 1.15, material: 'wood', minMoves: 4,
-    nest: { w: 2.8 }, bonus: { kind: 'turns' }, gator: { ch: 4, a: -60, delay: 6 }, frog: { ch: 2, a: -130, delay: 16, every: 8 },
+  { id: 49, gid: 41, world: 9, theme: 'bayou', name: 'Gator Crossing', eggs: 3, target: 2, spacing: 1.15, material: 'wood', minMoves: 12,
+    nest: { w: 2.8 }, bonus: { kind: 'turns' }, gator: { ch: 4, a: -60, delay: 6 }, frog: { ch: 2, a: -130, delay: 8, every: 8 }, // boss817: the frog's first hop 8 s in (was 16)
     orbs: [{ type: 'pepper', ch: 2 }, { type: 'fire_red', ch: 3 }],
     intro: { title: 'Gator Bayou', line: 'An alligator lies in the outer channel like a log. Asleep, his back is a bridge. Awake, he snaps at eggs that drop near his jaws.' },
     tip: 'Turn the gap away from his jaws and he bites nothing. Pepper makes him sneeze and swim off.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, thorns: 2, size: [2, 3], gear: true }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [2], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    // boss817 (the level after a boss is a step on): the reef's gate doors (L44, L47) on the third ring
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, thorns: 2, size: [2, 3], gear: true }, { gaps: 2, thorns: 2, size: [2, 3], shut: { period: 4.5, open: 0.5 } }, { gaps: 2, gapX: [2], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 50, gid: 42, world: 9, theme: 'bayou', name: 'Mosquito Marsh', eggs: 3, target: 2, spacing: 1.1, material: 'wood', minMoves: 5,
     nest: { w: 2.8 }, bonus: { kind: 'time' }, gator: { ch: 5, a: -120, delay: 9 }, mosquito: { ch: 2, a: -40, delay: 5 }, turtle: { ch: 3, a: -120, delay: 8 },
     orbs: [{ type: 'pepper', ch: 1 }, { type: 'fire_red', ch: 2 }, { type: 'decoy', ch: 3 }, { type: 'fire_red', ch: 4 }],
@@ -482,12 +489,13 @@ export const SPECS = [
   //   seam is its way through), rock ({} or {amp, hold, swing}: the whole vault leans and back), spider {ring, delay, every},
   //   beetle {ch, a?, delay, dir}, jack [{ch, a?}] (gen.mjs puts a missing a on free floor of that ring; a jack just short of a gap),
 //   useCombo (the planner's run must fire a power combo).
-  { id: 55, gid: 46, world: 10, theme: 'lab', name: 'Square One', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 3, shape: 'square',
+  { id: 55, gid: 46, world: 10, theme: 'lab', name: 'Square One', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 12, shape: 'square',
     nest: { w: 2.7 }, bonus: { kind: 'turns' }, spider: { ring: 2, delay: 4 },
     orbs: [{ type: 'iron', ch: 1 }, { type: 'fire_red', ch: 3 }],
     intro: { title: 'Shape Lab', cw: 'spider', line: 'Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider crawls to a gap and webs it shut; slip an egg past while it spins.' },
     tip: 'A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 2, gapX: [2], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2] }] },
+    // boss817 (the level after a boss is a step on): a fifth ring with a Gator Bayou thorn vine (L50) on one gap
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 2, gapX: [2], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, vine: 1, thorns: 2, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2] }] },
   { id: 56, gid: 47, world: 10, theme: 'lab', name: 'Hex Works', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 3, shape: 'hex',
     nest: { w: 2.7 }, bonus: { kind: 'time' }, beetle: { ch: 2, delay: 3 }, spider: { ring: 4, delay: 12 },
     orbs: [{ type: 'shrink', ch: 1 }, { type: 'iron', ch: 3 }, { type: 'shock', ch: 4 }],
