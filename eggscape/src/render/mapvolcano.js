@@ -15,7 +15,7 @@
 //   drawVolcanoFront  over the landmarks: the crater's smoke, its eruptions and the drifting embers (mapamb.js)
 // Reduced motion (calm): everything holds still.
 import { planStops, SLOTS_4TH, drawLandmarkBody, drawFarmPlaque, signBox, lmArt } from './mapfarm.js';
-import { drawCrawler } from './crawlers.js';
+import { drawSalamander } from './salamander.js'; // 0.8.18 lava: the salamanders are the game's own (new) rig, faces and all
 import { freeCanvas } from './cvfree.js';
 import { drawMapAmb } from './mapamb.js';
 import { flame } from '../themes.js';
@@ -723,7 +723,7 @@ function crawler(ctx, slot, x, y, s, t, o) {
     if (!e) { e = { cv: document.createElement('canvas'), key: '' }; e.cv.width = e.cv.height = W; CSPR.set(slot, e); }
     const c = e.cv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, e.cv.width, e.cv.height);
     c.setTransform(D, 0, 0, D, D * (R - x), D * (R - y)); c.lineCap = 'round'; c.lineJoin = 'round';
-    drawCrawler(c, x, y, s, t, o, 'salamander');
+    drawSalamander(c, x, y, s, t, o);
     e.key = key; e.W = W; e.x = x; e.y = y; e.R = R;
   }
   ctx.drawImage(e.cv, 0, 0, e.W, e.W, x - e.R, y - e.R, e.W / D, e.W / D);
@@ -744,7 +744,8 @@ function walker(ctx, L, w, sy, u, t, calm) {
   else if (R.kind === 'lick') { const fl = win(R.k, 0.5, 0.9, 0.08) + win(R.k, 1.1, 1.4, 0.06); B.tongue = clamp(fl, 0, 1); B.mouth = fl * 0.3; }
   const head = loopPt(lp, R.s);
   const trail = (d) => { const q = loopPt(lp, R.s - d); q.y -= sy; return q; };
-  crawler(ctx, w.k, head.x, head.y - sy, w.s, t, { trail, gait: R.gait, pose: 'idle', blend: B, glow, aim, fireLen: 38, look: { x: 0.4 + aim, y: 0.2 }, id: w.k === 'bask' ? 9501 : 9502, curve: 0 });
+  const ex = R.kind === 'bask' ? { k: 'smug', a: 1 } : R.kind === 'lick' ? { k: 'greedy', a: 1 } : null; // 0.8.18: smug while he basks, greedy as he licks his lips
+  crawler(ctx, w.k, head.x, head.y - sy, w.s, t, { trail, gait: R.gait, pose: 'idle', blend: B, glow, aim, fireLen: 38, look: { x: 0.4 + aim, y: 0.2 }, id: w.k === 'bask' ? 9501 : 9502, curve: 0, expr: ex, cheek: R.kind === 'puff' ? B.swell || 0 : 0, calm });
 }
 // two young salamanders chasing each other round a boulder: they run, stop, one rears and hisses, off they go again.
 // The far side of the loop passes behind the boulder (drawn here, between them)

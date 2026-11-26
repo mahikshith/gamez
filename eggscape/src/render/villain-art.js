@@ -27,6 +27,7 @@ import { drawUrchin, urchinPose } from './urchin.js'; // 0.8.17 urchin
 import { monkeyPose, drawMonkey } from './monkey.js'; // 0.8.17 coco
 import { drawRaccoon, raccoonPose } from './raccoon.js'; // 0.8.17 bandit
 import { kitsPortrait } from './kitsplay.js'; // 0.8.18 kits
+import { drawCreeperPortrait } from './creeper.js'; // 0.8.18 creeper
 
 const TAU = Math.PI * 2;
 const INK = '#2a1606';
@@ -81,11 +82,19 @@ const ART = {
   'boss:eagle'(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.08, d * 0.56, t, { w: { hover: 1 }, phase: t * 8.5, face: -1 }); },
   salamander(ctx, x, y, d, t) {
     const S = d * 0.4;
-    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9101 });
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9101, expr: { k: Math.floor(t / 3.2) % 2 ? 'greedy' : 'smug', a: Math.min(1, 3 * Math.min((t / 3.2) % 1, 1 - (t / 3.2) % 1) + 0.2) } }); // 0.8.18: smug, then greedy (licking his lips), in turn
   },
   frostsal(ctx, x, y, d, t) {
     const S = d * 0.4;
     drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', frost: 1, glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9103 });
+  },
+  emberspit(ctx, x, y, d, t) { // 0.8.18 the ember spit on a loop: the head glows, the spark runs up his back, the jaws pop
+    const S = d * 0.4, u = (t % 2.4) / 2.4, f = Math.min(1, u / 0.72), pop = u >= 0.72 && u < 0.84;
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'breath', p: pop ? 0.5 : 0.3 * f, blend: { fire: 0, mouth: pop ? 0.95 : 0 }, fuse: u < 0.72 ? f : 0, cheek: u < 0.72 ? Math.min(1, f * 2.5) : 0, glow: 0.9, look: { x: 0.5, y: 0.5 }, id: 9106 });
+  },
+  fireup(ctx, x, y, d, t) { // 0.8.18 white-hot and smug about it
+    const S = d * 0.4;
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', white: 1, expr: { k: 'smug', a: 1 }, glow: 1, look: { x: 0.4, y: 0.5 }, id: 9107 });
   },
   faceoff(ctx, x, y, d, t) { // the two of them nose to nose
     const S = d * 0.26;
@@ -94,7 +103,7 @@ const ART = {
   },
   'boss:salamander'(ctx, x, y, d, t) {
     const S = d * 0.44;
-    drawSalamander(ctx, x + 0.78 * S, y + d * 0.08, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 1, look: { x: 0.4, y: 0.5 }, id: 9102 });
+    drawSalamander(ctx, x + 0.78 * S, y + d * 0.08, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 1, look: { x: 0.4, y: 0.5 }, id: 9102, white: 0.5 + 0.5 * Math.sin(t * 0.9), expr: { k: 'smug', a: 1 } }); // 0.8.18: the boss swells white-hot and back, smug
   },
   hermit(ctx, x, y, d, t) { drawHermit(ctx, x + d * 0.04, y + d * 0.26, d * 0.8, t, { pose: 'walk', u: t * 0.6 }); },
   puffer(ctx, x, y, d, t) { drawPuffer(ctx, x, y, d * 0.62, t, { sw: 0.5 + 0.5 * Math.sin(t * 1.4) }); },
@@ -223,6 +232,14 @@ const ART = {
     if (dw > 0.5) for (const sd of [-1, 1]) { const x0 = sd < 0 ? x - gw / 2 : x + gw / 2 - dw; ctx.fillStyle = '#b8432f'; ctx.fillRect(x0, y0, dw, h); ctx.strokeStyle = '#4a140c'; ctx.strokeRect(x0, y0, dw, h); }
     ctx.fillStyle = '#fff4dc'; ctx.beginPath(); ctx.ellipse(x, y0 - d * 0.16, d * 0.12, d * 0.15, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = INK; ctx.stroke();
   },
+  creeper(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t); }, // 0.8.18 creeper: its own head on a strip of rim
+  swampvine(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'vine'); }, // 0.8.18 the creeper family: each form on its own bed
+  frostcrawler(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'frost'); },
+  lavaflow(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'lava'); },
+  anemone(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'anemone'); },
+  spark(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'spark'); },
+  sawtooth(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'saw'); },
+  shard(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'shard'); },
   curse(ctx, x, y, d, t) { drawOrb(ctx, 'curse', x, y, d * 0.3, t, true); },
   thornorb(ctx, x, y, d, t) { drawOrb(ctx, 'thorn', x, y, d * 0.3, t, true); },
 };

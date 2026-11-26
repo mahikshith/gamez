@@ -28,7 +28,8 @@ import { FISH } from '../sim/sea.js';
 import { drawGator } from './bayou.js';
 import { GATOR } from '../sim/bayou.js';
 import { drawEagle, drawLavaRock, drawMeltHole, drawIcicle } from './v3art.js';
-import { drawSalHeat } from './salamander.js'; // the game's own red-hot wall (the salamander's harm beat)
+import { drawSalHeat, drawEmberBall } from './salamander.js'; // the game's own red-hot wall (the salamander's harm beat)
+import { CREEP_HIT } from './creeper.js'; // 0.8.18 creeper
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -130,6 +131,11 @@ export const THREAT = {
 SHOW.penguin = P('turn', 'Turn a wall into his slide: BONK!', { fx: 'bonk' }); THREAT.penguin = 'Shoves eggs'; // 0.8.17 pip
 SHOW.monkey = P('turn', 'Flick his ring hard: whoa, he lets go!', { fx: 'bonk' }); THREAT.monkey = 'Grabs eggs'; // 0.8.17 coco
 for (const c of ['ice', 'woods', 'sea', 'cave', 'goggles', 'bow', '']) { const k = c ? 'kits:' + c : 'kits'; SHOW[k] = P('turn', 'Turn their ring hard: they tumble!', { fx: 'bonk' }); THREAT[k] = 'Carry eggs off'; HARM[k] = ['kits', 'TAKEN!']; } // 0.8.18 kits: mama raccoon's kits (howact.js kitsActor acts both beats)
+SHOW.emberspit = P('turn', 'Turn the gap out of his line', { fx: 'bonk' }); THREAT.emberspit = 'Spits embers'; HARM.emberspit = ['fall', 'CRACK!']; // 0.8.18 lava
+SHOW.fireup = P('turn', 'Turn its ring: he rides away', { fx: 'bonk' }); THREAT.fireup = 'Goes white-hot'; // 0.8.18 lava (the info panel and the lesson teach the water)
+SHOW.creeper = P('turn', 'Pass when it curls up'); THREAT.creeper = 'Crawls, cracks'; HARM.creeper = ['creep', 'CRACK!'];
+// the family's other forms: the same two beats in their own look (render/creeper.js creeperActorFor)
+for (const [kind, show, threat] of [['swampvine', 'Pass when it curls up', 'Crawls, cracks'], ['frostcrawler', 'Pass when it rests', 'Crawls, cracks'], ['lavaflow', 'Roll across, never stop', 'Hot: do not rest'], ['anemone', 'Pass when it shuts', 'Drifts, stings'], ['spark', 'Pass when it rests', 'Races, zaps'], ['sawtooth', 'Pass when it stops', 'Rolls, cracks'], ['shard', 'Pass when it rests', 'Crawls, cracks']]) { SHOW[kind] = P('turn', show); THREAT[kind] = threat; HARM[kind] = ['creep', 'CRACK!']; } // 0.8.18 creeper (its rig acts both beats: render/creeper.js)
 export const threatWords = (kind) => THREAT[kind] || THREAT[String(kind).replace(/^boss:/, '')] || 'Hunts eggs';
 // the first-five ladder (2026-11-20, owner: every level from 2 on hands over a new toy, shown on its level card with the
 // game's own art): the red flame, the twin orb, the thorn curtain, the portal, the glow chick. move 'toy', plan.toy names it.
@@ -599,6 +605,17 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
         if (haz.boom < 0.3) burst(ctx, mk.x, mk.y - Z * 0.05, Z * 0.22 * (0.5 + haz.boom * 2), 1 - haz.boom / 0.3, '#ff8a3a');
       }
     }
+    else if (hk === 'emberspit') { // 0.8.18 an ember lobs in from the left and lands by the egg as a bubbling pool
+      const rr = eggS * 0.3, f = haz.fall, top = y + eggS * 0.4, land = mk.y - rr * 0.6, ex = mk.x - (1 - f) * Z * 0.5, ey = land + (top - land) * (1 - f) - Math.sin(Math.PI * f) * eggS * 0.6;
+      if (haz.fall > 0 && haz.boom <= 0) drawEmberBall(ctx, ex, ey, rr * (0.7 + 0.3 * f), t, calm);
+      else if (haz.boom > 0) {
+        const g = ease(Math.min(1, haz.boom * 3));
+        ctx.save(); ctx.fillStyle = '#5a1606'; ctx.beginPath(); ctx.ellipse(mk.x, mk.y - band * 0.05, eggS * 0.9 * g, eggS * 0.22 * g, 0, Math.PI, TAU); ctx.fill();
+        ctx.fillStyle = '#e8420c'; ctx.beginPath(); ctx.ellipse(mk.x, mk.y - band * 0.05, eggS * 0.8 * g, eggS * 0.17 * g, 0, Math.PI, TAU); ctx.fill();
+        ctx.fillStyle = '#ffe696'; ctx.beginPath(); ctx.ellipse(mk.x, mk.y - band * 0.05, eggS * 0.38 * g, eggS * 0.08 * g, 0, Math.PI, TAU); ctx.fill(); ctx.restore();
+        if (haz.boom < 0.4) burst(ctx, mk.x, mk.y - Z * 0.04, Z * 0.18 * (0.5 + haz.boom * 2), 1 - haz.boom / 0.4, '#ff8a3a');
+      }
+    }
     else if (hk === 'icicles') { // 0.8.14: the game's own icicle hangs over the mark, shakes, then drops and shatters
       const ih = eggS * 1.5, hang = y + ih * 0.5 + 2, land = mk.y - ih * 0.5, f = haz.fall * haz.fall, shake = haz.warn > 0 && haz.fall <= 0 ? Math.sin(T * 38) * eggS * 0.035 * haz.warn : 0;
       if (haz.boom <= 0) drawIcicle(ctx, mk.x + shake, hang + (land - hang) * f, ih, t);
@@ -966,6 +983,7 @@ function harmBeat(ctx, plan, T, t, S, set) {
     const O = at(CHAM_ORB, eggS * 0.4), gone = seg(T, 1.35, 1.75), M = at(CHAM_ORB - 0.3, eggS * 0.3);
     under.push(() => { if (gone < 1) { const X = O.x + (M.x - O.x) * gone, Y = O.y + (M.y - O.y) * gone, r = eggS * 0.42 * (1 - 0.7 * gone); if (Wd && Wd.orb) Wd.orb(ctx, 'fire_red', X, Y, r, t); else { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(X, Y, r * 0.8, 0, TAU); ctx.fill(); } } });
     say(1.75);
+  } else if (ty === 'creep') { if (T > CREEP_HIT) Q.look = { cracks: 3 }; say(CREEP_HIT); lost(CREEP_HIT + 0.4, { x: E0.x - eggS * 0.62, y: E0.y + eggS * 0.1 }); // 0.8.18 creeper: its head runs into the egg
   } else if (ty === 'bump') { // he walks on into the egg and shoves it along
     Q.gap = 1.1; q.eA = BUMP_A * ease(seg(T, 1.0, 1.9)); q.slideV = 0;
     if (T > 1.2) Q.look = { cracks: 1 }; // 0.8.14: his thorny hide cracks what he rams

@@ -13,6 +13,7 @@
 
 import { costumeOf } from '../render/costume.js'; // 0.8.18 kits (a plain table: no drawing is pulled in)
 
+import { CREEP_KIND } from '../sim/creeper.js'; // 0.8.18 the creeper family's kinds
 export const VILLAIN_INFO = {
   // ---------------------------------------------------------------- bosses
   'boss:weasel': {
@@ -62,6 +63,8 @@ export const VILLAIN_INFO = {
       magma: 'Get your eggs off the glowing ring in time. Its thorns burn.',
       whip: 'Hold that ring as the whip lands and it barely moves.',
       heat: 'An egg that waits ~9 s in one channel cracks. Keep moving.',
+      spit: 'He glows and spits an ember through a gap: turn that gap away.', // 0.8.18
+      fire: 'A red flame orb or lava makes him white-hot. Water cools him.', // 0.8.18
     },
   },
   'boss:eagle': {
@@ -180,6 +183,18 @@ export const VILLAIN_INFO = {
     group: 'creature', name: 'Lava salamander',
     does: 'Coils, then snaps: it eats an egg at its snout. Its fire heats walls.',
     beat: 'Turn its ring to carry it off. A stone egg breaks its bite. Water cools it.',
+  },
+  emberspit: { // 0.8.18 lava: the salamander's ember spit
+    group: 'creature', name: 'Ember spit',
+    does: 'He glows, a spark runs up his back, and he spits an ember at an egg.',
+    beat: 'Turn the gap out of his line: it splats on the wall. Water douses it.',
+    more: 'The ember pool cracks an egg once. It burns thorns away.',
+  },
+  fireup: { // 0.8.18 lava: the salamander's fire-up
+    group: 'creature', name: 'White-hot',
+    does: 'He gulps a red flame orb (or steps in lava) and goes white-hot.',
+    beat: 'Grab the flame orb first. Water cools him at once: he sulks.',
+    more: 'Then he is quicker, breathes twice as far, and his feet burn thorns.',
   },
   frostsal: {
     group: 'creature', name: 'Frost salamander',
@@ -305,6 +320,46 @@ export const VILLAIN_INFO = {
     does: 'Creep across a gap and seal it with thorns, then grow back.',
     beat: 'Drop through before it closes. Fire burns the vine back.',
   },
+  creeper: { // 0.8.18 (sim/creeper.js)
+    group: 'hazard', name: 'Thorn creeper',
+    does: 'Crawls along a ring edge. A baby shoves eggs aside; a grown one cracks them.',
+    beat: 'Pass while it curls up at an end. Fire burns it to a stump.',
+  },
+  swampvine: { // 0.8.18 the creeper family: the bayou's form (the thorn creeper's rule)
+    group: 'hazard', name: 'Swamp vine',
+    does: 'Crawls to and fro along a ring edge. Its thorny head cracks eggs.',
+    beat: 'Pass while it curls up at an end. Fire burns it to a stump.',
+  },
+  frostcrawler: { // 0.8.18 the creeper family: frozen lake and blizzard
+    group: 'hazard', name: 'Frost crawler',
+    does: 'Ice spikes crawl along a ring edge. A hit cracks an egg and shoves it.',
+    beat: 'Pass while it rests at an end. Fire melts it to a puddle.',
+  },
+  lavaflow: { // 0.8.18 the creeper family: the volcano's form
+    group: 'hazard', name: 'Lava flow',
+    does: 'Hot lava creeps along a ring edge. An egg resting on it heats up and cracks.',
+    beat: 'Roll across, never stop on it. A water egg cools it to crust.',
+  },
+  anemone: { // 0.8.18 the creeper family: the reef's form
+    group: 'hazard', name: 'Stinging anemone',
+    does: 'Drifts along a ring edge, open and stinging. It reaches far.',
+    beat: 'Pass while it is shut at an end. Fire or a stone makes it flinch shut.',
+  },
+  spark: { // 0.8.18 the creeper family: the storm's form
+    group: 'hazard', name: 'Rim spark',
+    does: 'Races along a ring edge and zaps eggs.',
+    beat: 'It rests long at each end: pass then. A stone grounds it.',
+  },
+  sawtooth: { // 0.8.18 the creeper family: the clockwork form
+    group: 'hazard', name: 'Saw tooth',
+    does: 'A saw wheel runs along a ring edge and cracks eggs.',
+    beat: 'Pass while it stops at an end. A stone knocks it off.',
+  },
+  shard: { // 0.8.18 the creeper family: the crystal cave's form
+    group: 'hazard', name: 'Crawling shard',
+    does: 'A crystal crawls along a ring edge. Its spikes crack eggs.',
+    beat: 'Pass while it rests at an end. A stone shatters it.',
+  },
   doors: { // 2026-11-20 first-five ladder: gate doors left world 1, so their first level (L31) teaches them here
     group: 'hazard', name: 'Gate doors',
     does: 'A sliding door shuts a gap, then opens again on a steady beat.',
@@ -322,7 +377,7 @@ export const VILLAIN_INFO = {
   },
 };
 
-export const ATTACK_EXTRA = { heat: 'Rising heat' }; // phase flags shown as an attack (names not in sim/boss.js ATTACK_NAME)
+export const ATTACK_EXTRA = { heat: 'Rising heat', spit: 'Ember spit', fire: 'Fire-up' }; // phase flags shown as an attack (names not in sim/boss.js ATTACK_NAME)
 
 const CREATURE_KEYS = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
 CREATURE_KEYS.push('penguin'); // 0.8.17 pip
@@ -341,6 +396,8 @@ export function bossAttacks(L) {
   for (const P of F.phases || []) {
     for (const a of P.attacks || []) if (!out.includes(a)) out.push(a);
     if (P.heat && !out.includes('heat')) out.push('heat');
+    if (P.spit && !out.includes('spit')) out.push('spit'); // 0.8.18 the salamander's powers in the boss's later phases
+    if (P.fire && !out.includes('fire')) out.push('fire');
   }
   return out;
 }
@@ -365,6 +422,8 @@ export function villainKinds(L, sim = null) {
       if (n - fr > 0) set.add('salamander');
       if (fr) set.add('frostsal');
       if (fr && n - fr > 0 && !boss) set.add('faceoff');
+      if (listOf(L[k]).some((S) => S && S.kind !== 'frost' && S.spit)) set.add('emberspit'); // 0.8.18
+      if (listOf(L[k]).some((S) => S && S.kind !== 'frost' && S.fireup)) set.add('fireup');
       continue;
     }
     set.add(k);
@@ -381,6 +440,8 @@ export function villainKinds(L, sim = null) {
     if (live(sim.cocos)) set.add('monkey'); // 0.8.17 coco
     if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp === 'sal' && C.kind !== 'frost')) set.add('salamander'); // L15's frost gecko and L20's thorn-backs are not salamanders
     if ((sim.sals || []).some((C) => C.sp === 'sal' && C.kind === 'frost')) set.add('frostsal');
+    if ((sim.sals || []).some((C) => C.sp === 'sal' && !C.boss && C.spit)) set.add('emberspit'); // 0.8.18 (the boss's are attack lines)
+    if ((sim.sals || []).some((C) => C.sp === 'sal' && !C.boss && C.fu)) set.add('fireup');
     if ((sim.sals || []).some((C) => C.role === 'spike')) set.add('spike');
     if (live(sim.hermits)) set.add('hermit');
     if (live(sim.puffs)) set.add('puffer');
@@ -402,6 +463,7 @@ export function villainKinds(L, sim = null) {
   const rings = L.rings || [];
   if (rings.some((r) => r.retract)) set.add('popthorns');
   if (rings.some((r) => r.vine || (r.gaps || []).some((g) => g.vine))) set.add('vines');
+  for (const r of rings) if (r.creep) set.add(CREEP_KIND[r.creep.form] || 'creeper'); // 0.8.18 the creeper family: its world's form
   if (rings.some((r) => (r.gaps || []).some((g) => g.shut))) set.add('doors');
   const orbTypes = [...(L.orbs || []).map((o) => o.type), ...(L.portals || []).flatMap((p) => p.emit || []), ...((L.bossFight && L.bossFight.throws) || [])];
   for (const [t, k] of Object.entries(HAZARD_ORBS)) if (orbTypes.includes(t)) set.add(k);

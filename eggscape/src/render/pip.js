@@ -3,15 +3,19 @@
 // flipper or at his beak is in front of him); pipEvent gives each moment its sound and its little word.
 import { penguinPose, penguinBlend, drawPenguin, drawSnowSpray } from './penguin.js';
 import { PIP } from '../sim/pip.js';
+import { drawInChannel } from './ringclip.js';
+import { RING_TH } from '../sim/geom.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const ss = (a, b, v) => { const u = clamp((v - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
 const eio = (u) => (u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u));
 const back = (u, s = 1.6) => { u -= 1; return u * u * ((s + 1) * u + s) + 1; };
 const pxAt = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { /* never break the frame */ } ctx.restore(); };
-// 0.8.18: in play Pip is drawn 1.7x his sim body, from the same point between his feet (at 450x1000 he was about one egg
-// tall and his face did not read). What he bumps, shoves and holds is the sim's and is unchanged.
-export const PIP_PLAY = 1.7;
+// 0.8.18: in play Pip is drawn 1.5x his sim body, from the same point between his feet (at 450x1000 he was about one egg
+// tall and his face did not read). What he bumps, shoves and holds is the sim's and is unchanged. Standing he is then
+// taller than his channel: what reaches past the far face of the ring above (his hat's top) is only a faint ghost, so
+// he never sits over that ring's eggs and their eggs never sit on his face (1.7x put his eyes up there).
+export const PIP_PLAY = 1.5;
 const DM = {}; // per penguin: the boing's start, the wind-up's start
 let CALM = false;
 export function pipCalm(on) { CALM = !!on; }
@@ -69,7 +73,7 @@ export function drawPips(ctx, sim, t, k) {
     let alpha = P.alpha ?? 1, pop = 1, hop = 0, sq = 0;
     if (P.ph === 'in') { const v = clamp(1 - P.t / Math.max(0.01, P.dur), 0, 1); pop = 0.2 + 0.8 * back(ss(0, 1, v)); alpha *= ss(0, 0.3, v); }
     if (P.ph === 'boing') { const v = clamp(1 - P.t / Math.max(0.01, P.dur), 0, 1); hop = Math.sin(v * Math.PI) * 0.22 * (1 - v * 0.4); sq = v < 0.18 ? Math.sin((v / 0.18) * Math.PI) * 0.25 : 0; }
-    pxAt(ctx, x, y, k, () => {
+    const body = () => pxAt(ctx, x, y, k, () => {
       ctx.rotate(Math.atan2(-Math.cos(P.a), -Math.sin(P.a)));
       ctx.globalAlpha *= alpha;
       if (hop || sq) { ctx.translate(0, -hop * k); ctx.scale(1 + sq * 0.6, 1 - sq); }
@@ -78,6 +82,14 @@ export function drawPips(ctx, sim, t, k) {
       drawPenguin(ctx, 0, 0, s, t, pose, { face: P.face, out, eye: P.ph === 'fall' && u > 0.3 ? 'happy' : undefined });
       if (P.ph === 'slide' && out.front && !CALM) drawSnowSpray(ctx, out.front.x, out.front.y, s, t, { k: clamp(Math.abs(P.v) / 2, 0.15, 1) * ss(0.3, 0.8, clamp(P.st / PIP.dive, 0, 1)), face: Math.sign(P.v) || P.face });
     });
+    // the far face of the ring above his channel (none over the innermost channel); dropping through a gap he leaves
+    // his channel, so the line slides away over a quarter second instead of letting go at once
+    const above = sim.rings[P.ch - 1];
+    if (!above) { body(); continue; }
+    if (P.ph === 'fall' || P.ph === 'out') { if (D.drop == null) D.drop = t; } else D.drop = null;
+    const drop = D.drop == null ? 0 : ss(0, 0.3, t - D.drop);
+    if (drop >= 1) { body(); continue; }
+    drawInChannel(ctx, above.r - RING_TH / 2 - drop * 1.2, false, 0.32, body);
   }
 }
 

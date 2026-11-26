@@ -24,6 +24,7 @@ import { cocoActor } from './coco.js'; // 0.8.17 coco
 import { drawBanditPerch } from './banditplay.js'; // 0.8.17 bandit (0.8.18: on the ring)
 import { drawKitsCard, kitsCardEgg, kitsHarmEgg } from './kitsplay.js'; // 0.8.18 kits
 import { RING_TH } from '../sim/geom.js'; // 0.8.18 bandit
+import { creeperActor, creeperActorFor } from './creeper.js'; // 0.8.18 creeper
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -222,7 +223,7 @@ function crawler(species, X = {}) {
     const walk = ease(seg(T, 0.2, 1.3));
     let vA = lerp(start, stop, walk), pose = walk < 1 ? 'walk' : 'idle', p = 0, tt = t, status = null, alpha = 1, glue = 0, threat = T < TB;
     let gait = (vA - start) * S.floor;
-    let aim = 0, fireLen = 0, target = null;
+    let aim = 0, fireLen = 0, target = null, spitF = -1, spitAge = -1;
     if (m === 'harm') { // 2026-11-23 the harm beat (howto.js harmBeat): what this crawler does, acted by its own rig
       threat = true;
       if (species === 'salamander') { // 0.8.14 the bite: it walks right up to the egg, coils with its jaws wide, and snaps (BITE_AT)
@@ -236,7 +237,9 @@ function crawler(species, X = {}) {
       }
     } else if (m === 'turn') {
       vA += S.th; // it rides the ring
-      if (T >= TB) { const q = seg(T, TB, 3.1); pose = 'dazed'; vA -= 0.75 * q * q; threat = false; }
+      if (X.spit) { // 0.8.18 the ember spit: he winds up (glow, the spark up his back); the turn takes the gap out of his line, the ember splats: shocked, then miffed
+        if (T < TB) { pose = 'breath'; p = 0.3 * seg(T, 0.9, TB); spitF = seg(T, 0.9, TB); } else { pose = 'idle'; threat = false; spitAge = T - TB; }
+      } else if (T >= TB) { const q = seg(T, TB, 3.1); pose = 'dazed'; vA -= 0.75 * q * q; threat = false; }
     } else if (m === 'stone') {
       vA = stop - 0.1; pose = 'idle'; gait = 0;
       if (T >= 1.95) { pose = 'flipped'; p = 0.16 + 0.6 * seg(T, 1.95, 3.6); vA -= 0.28 * ease(seg(T, 1.95, 2.5)); threat = false; alpha = 1 - seg(T, 3.6, 4.2); }
@@ -257,6 +260,10 @@ function crawler(species, X = {}) {
     const o = { heading, curve: -1 / S.floor, trail, gait, pose, p, status, look: { x: 0.6, y: -0.3 }, id: 9300, skin: X.skin };
     if (aim || fireLen) { o.aim = aim; o.fireLen = fireLen; }
     if (target) o.target = target;
+    if (X.fire && threat) { o.white = 1; o.expr = { k: 'smug', a: 1 }; } // 0.8.18 white-hot (and smug) until he is beaten
+    if (spitF >= 0) { o.fuse = spitF; o.cheek = Math.min(1, spitF * 2.5); o.blend = { fire: 0, mouth: 0 }; }
+    if (spitAge >= 0) { o.expr = { k: 'miff', a: seg(spitAge, 0.3, 0.6) }; o.shock = 1 - seg(spitAge, 0.3, 0.6); const b = S.at(vA + 0.3, s * 0.5), k2 = seg(spitAge, 0, 0.55); // the ember splats: a spray of molten drops
+      if (k2 < 1) { ctx.save(); ctx.globalAlpha *= 1 - k2; for (let i = 0; i < 7; i++) { const a = i * 0.9, r = s * (0.1 + 0.32 * k2); ctx.fillStyle = i % 2 ? '#ffb43c' : '#ff5a14'; ctx.beginPath(); ctx.arc(b.x + Math.cos(a) * r, b.y + Math.sin(a) * r, s * 0.06 * (1 - 0.5 * k2), 0, TAU); ctx.fill(); } ctx.fillStyle = '#fff2b0'; ctx.beginPath(); ctx.arc(b.x, b.y, s * 0.1 * (1 - k2), 0, TAU); ctx.fill(); ctx.restore(); } }
     if (species === 'salamander') drawSalamander(ctx, head.x, head.y, s, tt, { ...o, glow: 0.8, frost: X.frost }); else drawCrawler(ctx, head.x, head.y, s, tt, o, species);
     ctx.restore();
     return { threat, bonk: 0, x: head.x, y: head.y - s * 0.45, own: true };
@@ -383,7 +390,8 @@ const banditActor = {
 // the harm beats' marks (howto.js reads them too): where the salamander's jet lands, where Sly's orb sits, how far the
 // thorn-back shoves the egg
 export const BREATH_AT = 0, CHAM_ORB = -0.22, BUMP_A = 0.36, BITE_AT = 1.75; // BITE_AT: s into the harm beat when the jaws shut
-export const harmActor = (kind) => (/^kits/.test(kind) || kind === 'boss:raccoon' || kind === 'salamander' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' || kind === 'urchin' ? ACTORS[kind] : null); // 0.8.17 urchin
+const CREEP_KINDS = new Set(['swampvine', 'frostcrawler', 'lavaflow', 'anemone', 'spark', 'sawtooth', 'shard']); // 0.8.18 the creeper family
+export const harmActor = (kind) => (/^kits/.test(kind) || kind === 'boss:raccoon' || kind === 'salamander' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' || kind === 'urchin' || kind === 'creeper' || CREEP_KINDS.has(kind) ? ACTORS[kind] : null); // 0.8.17 urchin, 0.8.18 creeper
 const CRAWL = () => ({ g0: 0.4, dTh: -0.4, pan: 0.2 }); // the crawlers come along the ring from the left: the camera steps that way
 export const ACTORS = {
   // pan: the camera steps to the villain's side (a share of the stage's width), so it is whole in the picture
@@ -395,6 +403,8 @@ export const ACTORS = {
   'boss:gator': { draw: bossGator, stage: () => ({ g0: 0.4, dTh: -0.4, pan: 0.1 }) },
   salamander: { draw: crawler('salamander'), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
   frostsal: { draw: crawler('salamander', { frost: 1 }), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
+  emberspit: { draw: crawler('salamander', { spit: 1 }), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) }, // 0.8.18
+  fireup: { draw: crawler('salamander', { fire: 1 }), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) }, // 0.8.18
   faceoff: { draw: faceoff, stage: () => ({ g0: 2.6, dTh: 0, pan: 0 }) },
   chameleon: { draw: crawler('chameleon'), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
   spike: { draw: crawler('thornback'), stage: CRAWL, aim: (S) => S.at(-0.3, 0.15 * S.k) },
@@ -415,6 +425,9 @@ for (const c of ['ice', 'woods', 'sea', 'cave', 'goggles', 'bow']) {
   PLAYS['kits:' + c] = ['turn'];
 }
 ACTORS.kits = ACTORS['kits:bow']; PLAYS.kits = ['turn'];
+PLAYS.emberspit = ['turn']; PLAYS.fireup = ['turn']; // 0.8.18 lava
+ACTORS.creeper = creeperActor; PLAYS.creeper = ['turn']; // 0.8.18 creeper: it crawls, curls up by the gap, the egg rolls over it
+for (const [kind, form] of [['swampvine', 'vine'], ['frostcrawler', 'frost'], ['lavaflow', 'lava'], ['anemone', 'anemone'], ['spark', 'spark'], ['sawtooth', 'saw'], ['shard', 'shard']]) { ACTORS[kind] = creeperActorFor(form); PLAYS[kind] = ['turn']; } // 0.8.18 the family's forms
 export function actorFor(plan) {
   const k = plan && plan.kind;
   return k && ACTORS[k] && PLAYS[k].includes(plan.move) ? ACTORS[k] : null;

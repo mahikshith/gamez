@@ -62,8 +62,10 @@ function where(q) {
   if (k === 'pip') { const P = find(sim.pips, ev.id); if (P && sim.pipBody) return sim.pipBody(P); }
   if (k === 'coco') { const C = find(sim.cocos, ev.id); if (C && sim.cocoBody) return sim.cocoBody(C); }
   if (k === 'urchin') { const U = find(sim.urchins, ev.id); if (U) return { x: U.x, y: U.y }; }
+  if (k.startsWith('creep_')) { const C = find(sim.creeps, ev.id); if (C && sim.creepHead) return sim.creepHead(C); } // 0.8.18 creeper: follow it
   if (k.startsWith('bandit')) { const b = banditLesson(sim); if (b) return b; }
   if (k === 'kits') { const L = sim.kitLesson && sim.kitLesson(); if (L) return { x: L.at.x, y: L.at.y }; } // 0.8.18 kits
+  if (k === 'salFireUp') { const C = find(sim.sals, ev.id); const h = C && C.pts && C.pts[0]; if (h) return { x: h.x, y: h.y }; } // 0.8.18: the white-hot salamander, live
   return Number.isFinite(ev.x) && Number.isFinite(ev.y) ? { x: ev.x, y: ev.y } : null;
 }
 // the egg a level's caption is about (a duck egg, a quail...), else none
@@ -112,7 +114,7 @@ function path(spec, q, p, ri) {
     }
   } else { // spin
     const b = q.key.startsWith('bandit') ? banditLesson(sim) : null;
-    dir = b && b.dir ? b.dir : 0;
+    dir = b && b.dir ? b.dir : q.key.startsWith('creep_') && q.ev.away ? q.ev.away : 0; // 0.8.18 creeper: the way that carries it off the egg
     a1 = a0 + (dir || 1) * sw;
   }
   return { a0, a1, r: r.r, dir };
@@ -125,6 +127,12 @@ function tapTarget(q, p) {
     for (const o of sim.orbs || []) if (o.alive && /^fire_(red|black)$/.test(o.type)) { const dd = Math.hypot(o.x - p.x, o.y - p.y); if (dd < bd) { bd = dd; best = { x: o.x, y: o.y }; } }
     if (best) return best;
     for (const e of sim.aliveEggs()) if (e.fire > 0) { const b = e.body.getPosition(); return { x: b.x, y: b.y }; }
+  }
+  if (q.key === 'salFireUp') { // 0.8.18: water cools a white-hot salamander: the water orb (or a water egg) nearest him
+    let best = null, bd = 1e9;
+    for (const o of sim.orbs || []) if (o.alive && o.type === 'water') { const dd = Math.hypot(o.x - p.x, o.y - p.y); if (dd < bd) { bd = dd; best = { x: o.x, y: o.y }; } }
+    if (best) return best;
+    for (const e of sim.aliveEggs()) if (e.water > 0) { const b = e.body.getPosition(); return { x: b.x, y: b.y }; }
   }
   return { x: p.x, y: p.y };
 }

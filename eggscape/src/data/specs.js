@@ -22,6 +22,11 @@
 // v3 ring fields: oneway (1 | -1: the ring only turns that way), curtain (the first n gaps get a thorn curtain only
 //   fire burns), grate (n quail-only grated openings on free floor), barriers (n wooden walls on this channel floor:
 //   they block eggs and snakes; fire burns them, venom melts them).
+// 0.8.18 ring field: creep {len (m of rim), v (m/s), rest (s, the pause at each end on Medium: the safe window), side 'in' |
+//   'out', delay, form, w}: the creeper family travels a stretch of this ring's rim from just past a gap's edge
+//   (sim/creeper.js; laid out by tools/gen.mjs layCreep). form = its world's look and small rule: 'thorn' (default: farm,
+//   woods), 'frost', 'shard', 'spark', 'saw', 'anemone', 'vine' (bayou), 'lava' (w = the flow's length; volcano, not placed
+//   yet). First met in world 2 as a slow, gentle thorn creeper on L11, then on a level that measured easy for its place.
 // v3 level fields: snake {delay, speed, a, len, size, kind, skin} or an array of them (kind: 'classic' | 'fast' (emerald,
 //   speed x1.3, body x0.8) | 'constrictor' (amber, armoured: half the back-off from a protected egg, speed x0.8) |
 //   'spitter' (crimson, venom melts a barrier in half the time); a trait is on only when the spec sets `kind`.
@@ -139,7 +144,7 @@ export const SPECS = [
     orbs: [{ type: 'rockskin', ch: 1 }, { type: 'fire_gold', ch: 2 }, { type: 'fire_green', ch: 4 }, { type: 'hatch_glow', ch: 1 }],
     tip: 'Two snakes. Tap the glow chick as one closes in: the flash stuns it for 3 s.',
     useTap: true, // its glow-chick intro moved to L4 (the first-five ladder)
-    rings: [{ mat: 'wood', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'wood', gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { mat: 'wood', gaps: 2, thorns: 2, size: [2, 3] }] },
+    rings: [{ mat: 'wood', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'wood', gaps: 2, thorns: 2, size: [2, 3], creep: { len: 1.2, v: 0.35, rest: 1.4, delay: 4, baby: 1 } }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { mat: 'wood', gaps: 2, thorns: 2, size: [2, 3] }] },
   { id: 12, gid: 10, world: 2, theme: 'jungle', name: 'Serpent Hollow', boss: 'snake', eggs: 3, target: 2, spacing: 1.0, material: 'vine', minMoves: 5,
     nest: { w: 3.0 }, bonus: { kind: 'prize' },
     snake: [{ delay: 7, speed: 0.28, size: 1.5, len: 1.6, a: 0 }, { delay: 15, speed: 0.45, size: 0.8, a: 140 }],
@@ -225,7 +230,7 @@ export const SPECS = [
     portals: [{ from: [2, 150], to: [4, -30], emit: ['fire_green'], every: 10 }, { from: [1, -120], to: [3, 60] }],
     intro: { title: 'A thief in the dark', line: 'The weasel followed you into the caves. Send your eggs through the portals, out of his reach.' },
     tip: 'Trap the weasel behind a turned ring, then drop an egg on him: he gives one back.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], grate: 1 }, { mat: 'glass', gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], grate: 1 }, { mat: 'glass', gaps: 2, thorns: 2, size: [2, 3], creep: { len: 1.2, v: 0.7, rest: 1.4, form: 'shard' } }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 23, gid: 19, world: 4, theme: 'crystal', name: 'Glass Floor', eggs: 3, target: 2, spacing: 1.0, material: 'glass', minMoves: 5, eggKinds: [null, 'quail'],
     nest: { w: 3.0 }, bonus: { kind: 'time' }, rats: { a: 100, n: 2, delay: 9 },
     orbs: [{ type: 'bubble', ch: 1 }, { type: 'magnet', ch: 3 }, { type: 'hatch_swoop', ch: 3 }],
@@ -258,7 +263,7 @@ export const SPECS = [
     orbs: [{ type: 'fire_black', ch: 2 }, { type: 'water', ch: 3 }, { type: 'hourglass', ch: 4 }, { type: 'warp', ch: 1 }],
     intro: { title: 'Lava rocks', line: 'Lava rocks fall on the rings, glow, then melt a hole. The hole heals after 5 s. A water egg cools them.' },
     tip: 'This ring has no gap. Wait for a lava hole, or burn one with the black flame.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { noGap: true, thorns: 1, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { noGap: true, thorns: 1, size: [1, 2], creep: { len: 0.9, v: 0.22, rest: 1.6, form: 'lava', w: 0.6, at: 'bottom' } }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 27, gid: 23, world: 5, theme: 'volcano', name: 'Honey Vents', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 5,
     nest: { w: 3.0 }, bonus: { kind: 'turns' }, lava: { every: 6, delay: 4 }, salamander: { delay: 5, every: 7, a: -40, ch: 3 },
     snake: { delay: 9, a: 40, speed: 0.35 },
@@ -273,7 +278,7 @@ export const SPECS = [
     orbs: [{ type: 'water', ch: 1 }, { type: 'fire_red', ch: 3 }, { type: 'hourglass', ch: 4 }],
     intro: { title: 'Fire meets frost', line: 'A frost salamander walks in. Its bite freezes an egg. When it meets the fire one they fight, and both are knocked out.' },
     tip: 'Turn their rings to bring them head to head: the steam knocks both out. Then run your eggs past.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1, creep: { a0: -100, a1: -72, v: 0.22, rest: 1.6, form: 'lava', w: 0.6 } }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 29, gid: 24, world: 5, theme: 'volcano', name: 'Spike Forge', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 5,
     nest: { w: 3.0 }, bonus: { kind: 'time' }, lava: { every: 6, delay: 5 }, salamander: [{ delay: 4, every: 6.5, a: 120, ch: 2 }, { delay: 9, every: 7, a: -30, ch: 2, dir: -1, kind: 'frost' }], // 0.8.14: fire meets frost in one channel (0.8.17: its card moved to The Face-off, where they first meet)
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'water', ch: 3 }, { type: 'fire_green', ch: 5 }, { type: 'hatch_swoop', ch: 2 }],
@@ -321,7 +326,7 @@ export const SPECS = [
     weather: 'thunder', // boss817: the storm's lightning (L31) locks rings here too (it sat below both neighbours)
     orbs: [{ type: 'feather', ch: 1 }, { type: 'fire_black', ch: 2 }, { type: 'thunder', ch: 3 }, { type: 'hatch_glow', ch: 4 }],
     tip: 'Gusts shove your eggs along the channels. Grab the feather before Sly does.',
-    rings: [{ gaps: 1, thorns: 1 }, { mat: 'cloud', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], gear: true }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'cloud', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { mat: 'cloud', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], gear: true, creep: { a0: -150, a1: -118, v: 0.9, rest: 1.6, form: 'spark' } }, { gaps: 2, thorns: 2, size: [2, 3] }, { mat: 'cloud', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 35, gid: 29, world: 6, theme: 'storm', name: 'Thunder Gears', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5, weather: 'thunder',
     nest: { w: 3.0 }, bonus: { kind: 'turns' }, eagle: { delay: 12, every: 11 },
     gusts: { delay: 9, every: 10, strength: 3, dur: 2 }, // v3.1: storm gusts shove eggs (and snakes) along the channels
@@ -366,7 +371,7 @@ export const SPECS = [
     nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'turns' }, weasel: { a: 150, delay: 7 }, rats: { a: -60, n: 2, ch: 2, delay: 10 },
     orbs: [{ type: 'water', ch: 2 }, { type: 'hatch_glow', ch: 1 }, { type: 'fire_red', ch: 4 }],
     tip: 'Water and light send the rats home. Shut the weasel out behind a door.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], shut: { period: 4, open: 0.5 } }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1, shut: { period: 4.5, open: 0.5 } }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], shut: { period: 4, open: 0.5 } }, { gaps: 2, thorns: 2, size: [2, 3], creep: { len: 0.7, v: 0.4, rest: 2, form: 'saw' } }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1, shut: { period: 4.5, open: 0.5 } }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 41, gid: 34, world: 7, theme: 'clock', name: 'Sky Bridge', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 5, eggKinds: [null, 'quail'],
     nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo' }, bonus: { kind: 'turns' }, eagle: { delay: 9, every: 11 },
     orbs: [{ type: 'magnet', ch: 1 }, { type: 'feather', ch: 4 }, { type: 'hatch_pick', ch: 4 }],
@@ -407,7 +412,7 @@ export const SPECS = [
     orbs: [{ type: 'shock', ch: 1 }, { type: 'water', ch: 3 }],
     intro: { title: 'Jellyfish', line: 'A jellyfish drifts through the reef. Its sting cracks an egg, but its glow lights up murky water. Water washes it away; a live ring stuns it.' },
     tip: 'The shock ring makes the ring under the egg live: jellyfish and crabs that touch it are stunned.',
-    rings: [{ gaps: 1, thorns: 1, gear: true }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2], gear: true }, { gaps: 2, gapX: [2], thorns: 1, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2], out: 1 }, { gaps: 2, thorns: 1, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1, gear: true }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2], gear: true }, { gaps: 2, gapX: [2], thorns: 1, size: [1, 2], creep: { len: 1.2, v: 0.35, rest: 1.3, form: 'anemone' } }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2], out: 1 }, { gaps: 2, thorns: 1, size: [1, 2] }] },
   // 0.8.17 urchin: Spike the sea urchin (sim/urchin.js) lives on the floor of channel 2. He naps (eggs slip past), puffs and
   // rolls (a living thorn that fills the channel), and dashes at an egg he sees through a gap of ring 1. Shut that gap in
   // his face (or behind him on his way back) and he flips, helpless. One villain, no current: the tricks come one at a time.
@@ -469,7 +474,7 @@ export const SPECS = [
     orbs: [{ type: 'decoy', ch: 1 }, { type: 'fire_red', ch: 2 }, { type: 'laser', ch: 3 }, { type: 'pepper', ch: 4 }, { type: 'spin', ch: 4 }],
     intro: { title: 'Swamp current', line: 'The current pushes every egg along, and the duck egg floats on it. Throw the decoy to pull the gator, the turtle and the swarm off your real eggs.' },
     tip: 'The gator bites the decoy first. Send real eggs past while he chews wood.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, thorns: 2, size: [2, 3] }, { gaps: 2, vine: 1, thorns: 2, size: [2, 3], gear: true }, { gaps: 2, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 1, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, thorns: 2, size: [2, 3] }, { gaps: 2, vine: 1, thorns: 2, size: [2, 3], gear: true, creep: { len: 1.6, v: 0.5, rest: 1.1, form: 'vine' } }, { gaps: 2, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 1, size: [1, 2] }] },
   { id: 54, gid: 45, world: 9, theme: 'bayou', name: 'Grandpa Gator', boss: 'gator', eggs: 3, target: 2, spacing: 1.15, material: 'wood', minMoves: 6,
     nest: { w: 2.8 }, bonus: { kind: 'prize' },
     gator: [{ ch: 3, a: -60, call: 1 }, { ch: 4, a: -120, call: 1, face: -1 }], mosquito: { ch: 2, a: 60, delay: 14 }, turtle: { ch: 4, a: -40, delay: 10 },

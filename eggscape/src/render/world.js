@@ -1479,7 +1479,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 // Eagle (G48). layer 'back' = its shadow on the vault (drawn under the eggs): faint and soft while it soars,
 // sweeping onto the target and turning dark and sharp as it locks on; 'front' = the bird. Pose weights,
 // wing beat, the turn-round and blinks are smoothed here per frame; the sim only says what it is doing.
-const EA = { t: -1, ph: 0, w: {}, face: 1, turnT: 0, pitch: 0, roll: 0, blink: 2.5, feathers: [], phase: null, res: null, stars: 0, toes: 1, flapT: 0 };
+const EA = { t: -1, ph: 0, w: {}, face: 1, turnT: 0, pitch: 0, roll: 0, blink: 2.5, feathers: [], phase: null, res: null, stars: 0, toes: 1, flapT: 0, smug: 0, shock: 0, mood: null };
 const EASE = (u) => u * u * (3 - 2 * u);
 
 function eagleShadowAt(ctx, sim, E, t, k) {
@@ -1620,11 +1620,17 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
   if (EA.blink < -0.13) EA.blink = 2.2 + ((t * 7.3) % 1.8);
   const eye = frozen ? 0.5 : EA.blink < 0 && ph !== 'warn' && ph !== 'dive' ? 0.08 : 1;
   const gloat = ph === 'gloat' && E.scr ? 0.55 + 0.45 * Math.sin(t * 9) : 0;
+  // 0.8.18 faces: smug while it carries off what it grabbed and while it gloats; a start of shock when a strike comes up
+  // empty (slammed the ring, bounced off a shield or a decoy, the target slipped away), then a scowl as it climbs out
+  const missed = E.res && E.res !== 'grab';
+  if (ph === 'strike' || ph === 'carry' || ph === 'gloat' || ph === 'dive' || ph === 'warn') EA.mood = missed && ph === 'strike' ? 'miss' : ph === 'carry' || ph === 'gloat' ? 'smug' : null;
+  const wantSmug = EA.mood === 'smug' && (ph === 'carry' || ph === 'gloat' || ph === 'up') ? 1 : 0, wantShock = EA.mood === 'miss' && (ph === 'strike' || ph === 'up') ? (ph === 'strike' ? 1 : 0.3) : 0;
+  if (!frozen) { EA.smug += (wantSmug - EA.smug) * (1 - Math.exp(-dt * 7)); EA.shock += (wantShock - EA.shock) * (1 - Math.exp(-dt * (wantShock > EA.shock ? 18 : 4))); }
   eagleFeathers(ctx, dt, k);
   if (ph === 'carry' && E.carry === 'orb') pxSpace(ctx, E.x + E.face * 0.12, E.y - 0.3 * EAGLE_LEN - 0.12, k, () => drawOrb(ctx, E.ctype, 0, 0, 0.2 * k, t, true));
   const sz = EAGLE_LEN * k, tt = frozen ? st.hold : t, box = { x0: -1.3 * sz, y0: -1.2 * sz, x1: 1.3 * sz, y1: 1.2 * sz };
   pxSpace(ctx, E.x, E.y, k, () => {
-    statusDraw(ctx, box, (c) => drawEagle(c, 0, 0, sz, tt, { w: EA.w, phase: EA.ph, face: EA.face, turn, pitch: EA.pitch, roll, grab, toes, eye, stars: EA.stars, beak: gloat || null }), st, { off: Math.max(1, sz * 0.015), crys: Math.max(1, sz / 80) });
+    statusDraw(ctx, box, (c) => drawEagle(c, 0, 0, sz, tt, { w: EA.w, phase: EA.ph, face: EA.face, turn, pitch: EA.pitch, roll, grab, toes, eye, stars: EA.stars, beak: gloat || null, smug: EA.smug, shock: EA.shock }), st, { off: Math.max(1, sz * 0.015), crys: Math.max(1, sz / 80) });
   });
 }
 

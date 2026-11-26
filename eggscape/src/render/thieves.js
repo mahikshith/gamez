@@ -452,7 +452,7 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
     function drawEye() {
       const e = rat ? H(7.5, -4.5) : H(5.5, -4.5), em = o.eye || 'normal';
       ctx.save();
-      ctx.translate(e.x, e.y); ctx.rotate(hr); ctx.scale(HS * 1.3, HS * 1.3);
+      ctx.translate(e.x, e.y); ctx.rotate(hr); ctx.scale(HS * (rat && !king ? 1.55 : 1.3), HS * (rat && !king ? 1.55 : 1.3)); // 0.8.18: a rat's eye bigger, so its face reads at play size
       ctx.lineWidth = ow * 0.6; ctx.strokeStyle = C.line;
       const bro = em === 'angry' ? 1 : p.brow;
       if (em === 'spiral') spiralEye(ctx, 0, 0, 4.6, t, 1, C.line);
@@ -888,6 +888,15 @@ let CALM_ON = false;
 export const WEASEL_PLAY = 1.35;
 // (the rats are not: at 1.35x they overflow their hole boards; see the 0.8.18 audit)
 const PLAY_SCALE = { weasel: WEASEL_PLAY };
+// 0.8.18 rats: 1.4x out in the vault (the peek, the dash, the roll), easing back to 1x over their last metre to the hole,
+// so at the hole board they are the size its opening was drawn for (no pop: the size follows the distance smoothly)
+export const RAT_PLAY = 1.4;
+function playScale(sim, T) {
+  if (T.kind !== 'rat') return PLAY_SCALE[T.kind] || 1;
+  if (!sim.thDenPt || T.ph === 'hide' || T.ph === 'wait') return 1;
+  const O = sim.thieves[T.home] || T, d = sim.thDenPt(T), off = T.ch === (O.run ?? T.run) ? Math.abs(wrap(d.a - T.a)) * T.r : 9;
+  return 1 + (RAT_PLAY - 1) * ss(0.25, 1.1, off);
+}
 function drawOne(ctx, sim, T, t, k, head) {
   const D = DM[T.id] || (DM[T.id] = { pose: null, fz: 0, thawT: -9 });
   const L = lookOf(T), frozen = T.frozen > 0, s = RIG[T.kind].s * k;
@@ -929,7 +938,7 @@ function drawOne(ctx, sim, T, t, k, head) {
     if (T.ph === 'sqSkid') skidDust(ctx, T, k, s);
     if (fl) { ctx.translate(0, -fl.h * k); if (fl.sq) { ctx.scale(1 + 0.3 * fl.sq, 1 - 0.3 * fl.sq); } }
     if (W && !frozen) { if (W.off) ctx.translate(T.face * W.off * k, 0); if (W.fx < 1) ctx.scale(W.fx, 1 + 0.1 * (1 - W.fx)); }
-    { const A = PLAY_SCALE[T.kind] || 1; if (A !== 1) { const mx = T.face * RIG[T.kind].mouthX * k; ctx.translate(mx, 0); ctx.scale(A, A); ctx.translate(-mx, 0); } } // drawn bigger than the sim body, the jaws / nose kept on the egg
+    { const A = playScale(sim, T); if (A !== 1) { const mx = T.face * RIG[T.kind].mouthX * k; ctx.translate(mx, 0); ctx.scale(A, A); ctx.translate(-mx, 0); } } // drawn bigger than the sim body, the jaws / nose kept on the egg
     ctx.translate(0, mid - hop * k); ctx.rotate(-pitch * T.face + shake + spin - (fl ? fl.spin * T.face : 0)); ctx.scale(pop, pop); ctx.translate(0, -mid);
     drawThief(ctx, 0, 0, s, t, pose, o, T.kind);
     if (T.cuff > 0 && !head) cuffSmear(ctx, T, s);

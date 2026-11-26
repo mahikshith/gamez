@@ -282,7 +282,64 @@ function layRing(spec, i, r, R, prev) {
   if (items.length) ring.items = items;
   if (pads.length) ring.pads = pads;
   if (honey.length) ring.honey = honey;
+  if (rs.creep) { // 0.8.18 creeper: laid after everything else and without the rng, so the rest of the layout is what it was
+    const cp = layCreep(spec, i, r, rs.creep, gaps, thorns, bars);
+    if (!cp) return null;
+    ring.creep = cp;
+  }
   return ring;
+}
+
+// 0.8.18 the thorn creeper (sim/creeper.js): rs.creep = { len (m of rim), v (m/s), rest (s coil, Medium), side 'in'|'out',
+// delay, at 'gap' | 'bottom', a0 + a1 (by hand, ring-local deg) }. at 'bottom': the stretch lies over the bottom at the start (where an egg that drops into the
+// channel comes to rest), cut short by a gap or floor thorn either side. Otherwise (at 'gap'): its stretch starts just past the edge of an open gap and runs away from it along free rim: up to the nearest
+// gap, floor thorn (on its face) or wooden wall, never over the eggs' start on the centre ring. Of every gap edge, the one
+// with the most free rim wins (the gap it guards is a way out the eggs want). Deterministic: no rng.
+function layCreep(spec, i, r, o, gaps, thorns, bars) {
+  const side = o.side === 'out' ? 'out' : 'in', want = (o.len / r) * (180 / Math.PI), M = 5;
+  if (o.a0 != null && o.a1 != null) { // a stretch set by hand (ring-local deg): on the eggs' route, where the search would not put it
+    const out = { a0: o.a0, a1: o.a1, v: o.v, rest: o.rest };
+    if (side === 'out') out.side = 'out';
+    if (o.delay != null) out.delay = o.delay;
+    if (o.form && o.form !== 'thorn') out.form = o.form;
+    if (o.w) out.w = o.w;
+    if (o.baby) out.baby = 1;
+    return out;
+  }
+  const doors = gaps.filter((g) => !g.curtain && !g.vine && !g.grate);
+  const sideTh = thorns.filter((t) => (side === 'out' ? t.side === 'out' : t.side !== 'out'));
+  const span = (n) => ((n - 1) * THORN_STEP) / 2 + 7;
+  let best = null;
+  if (o.at === 'bottom') { // over the bottom at the start: an egg that drops into this channel lands on its stretch
+    let lo = BOTTOM - want / 2, hi = BOTTOM + want / 2;
+    const cut = (a, w) => { const d = wrapD(a - BOTTOM); if (Math.abs(d) < w) { lo = hi = BOTTOM; return; } if (d > 0) hi = Math.min(hi, BOTTOM + d - w); else lo = Math.max(lo, BOTTOM + d + w); };
+    for (const q of gaps) cut(q.a, halfDeg(q.len || (q.grate ? 0.7 : GAP_LEN), r) + 6);
+    for (const t of sideTh) cut(t.a, span(t.n) + 6);
+    if (side === 'in') for (const b of bars) cut(b, 8);
+    if (i === 0 || hi - lo < want * 0.6) return null;
+    best = { a0: lo, a1: hi };
+  }
+  for (const g of best ? [] : doors) for (const s of [1, -1]) {
+    const e = g.a + s * (halfDeg(g.len || GAP_LEN, r) + M);
+    let free = 300;
+    const block = (a, w) => { const d = (((s * (a - e)) % 360) + 360) % 360 - w; if (d < free) free = d; };
+    for (const q of gaps) if (q !== g) block(q.a, halfDeg(q.len || (q.grate ? 0.7 : GAP_LEN), r) + 6);
+    for (const t of sideTh) block(t.a, span(t.n) + 6);
+    if (side === 'in') for (const b of bars) block(b, 8);
+    if (i === 0) block(BOTTOM, 40); // the eggs start there
+    const len = Math.min(want, free);
+    if (len < want * 0.7) continue;
+    if (!best || free > best.free) best = { free, a0: s > 0 ? e : e - len, a1: s > 0 ? e + len : e };
+  }
+  if (!best) return null;
+  const out = { a0: Math.round(wrapD(best.a0)), a1: 0, v: o.v, rest: o.rest };
+  out.a1 = out.a0 + Math.round(best.a1 - best.a0);
+  if (side === 'out') out.side = 'out';
+  if (o.delay != null) out.delay = o.delay;
+  if (o.form && o.form !== 'thorn') out.form = o.form; // the world's form of the creeper family (sim/creeper.js FORMS)
+  if (o.w) out.w = o.w; // the lava flow's own length (m)
+  if (o.baby) out.baby = 1; // the first meeting: it only shoves (sim/creeper.js creepBite)
+  return out;
 }
 
 export function layout(spec, seed) {
