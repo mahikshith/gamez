@@ -796,8 +796,8 @@ export class Sim {
       if (this.snaps.length > 26) this.snaps.shift();
     }
 
-    // the fuse
-    if (this.state === 'play' && this.timeLimit) {
+    // the fuse (0.8.18: it stands still while a teaching moment holds, the same for every player: src/engine/teach.js)
+    if (this.state === 'play' && this.timeLimit && !this.clockHold) {
       this.timeLeft -= dt * this.fuseRate();
       if (this.timeLeft <= 0) {
         this.timeLeft = 0;

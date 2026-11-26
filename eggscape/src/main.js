@@ -98,6 +98,7 @@ import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' c
 import { STRIKES, STRIKE, STRIKE_FROM, EGG_STRIKES } from './data/strikes.js';
 import { focusAsk, focusStart, focusEnd, focusY, focusTrip, focusLook, focusDraw, focusUseHand, tabForKey } from './ui/focus.js'; // 0.8.16: scroll to the thing and point at it
 import { drawHand as teachHand } from './render/wonder.js';
+import { lessonKit, lessonReset, lessonAsk, lessonLevel, lessonTick, lessonTap, lessonHoldsClock, lessonStepped, lessonOn, drawLesson } from './lesson.js'; // 0.8.18 teaching moments (docs/teaching.md)
 focusUseHand(teachHand); // the teaching hand (Papa Rooster's first call)
 import { stampStats, stampSweep } from './render/stamp.js';
 import { cvStats, freeCanvas } from './render/cvfree.js';
@@ -628,6 +629,7 @@ function startLevel(i, opts = {}) {
   G.lastEgg = false;
   G.snakeToast = false;
   G.predToast = {}; // predators (v3): first-time toasts
+  lessonReset(); // 0.8.18: this try's meetings and teaching moments
   // the "i" panel: who is in this vault, and whether any of it is new to this player (the HUD button pulses, "New!")
   G.infoKinds = villainKinds(G.level, G.sim);
   G.infoNew = G.infoKinds.some((k) => !save.seen['v:' + k]);
@@ -668,7 +670,7 @@ function startLevel(i, opts = {}) {
   if (opts.direct) {
     portal.gameplayStart();
     audio.musicIntro(); // the world's short intro sting, then its loop
-    toast(shortTip(G.level.tip), 3.2);
+    lessonLevel(); // 0.8.18: the caption is a ghost-finger demo on the real rings (first two visits)
   }
 }
 // (0.8.14: the 4 s "Change ring speed and sound in Settings" toast is gone: nobody read it. The ring speed strip on the
@@ -1066,10 +1068,10 @@ function camPunch(amt, x, y) {
 // moment camera: an ally's hit or a power chick's landing. The camera eases toward the point of contact, pushes in a
 // modest 16%, holds, and eases back, all through the normal camera springs (just a pulled-in target). One at a time,
 // never in reduced motion, never while a finger holds a ring (the shot must stand still under it).
-function camMoment(x, y, hold = 0.6) {
+function camMoment(x, y, hold = 0.6, amt = 1) {
   const cv = G.cv;
   if (save.calm || cv.mom || G.screen !== 'play' || !G.sim || G.sim.state !== 'play' || G.sim.rings.some((r) => r.held)) return;
-  cv.mom = { x, y, t: 0, hold };
+  cv.mom = { x, y, t: 0, hold, amt }; // amt < 1: a lean (0.8.18 teaching moments), not the full push
 }
 // 2026-11-16 (owner on L21: the crawlers need the salamander's close-ups): the crawlers' signature moves get the moment
 // camera too. The frost gecko's lick and his frost breath / deep freeze (L15), a thorn-back's spike drop, flip and duel
@@ -1108,7 +1110,7 @@ function camMomentTarget(T, dt) {
   M.t += dt;
   const end = MOM_IN + M.hold + MOM_OUT;
   if (M.t >= end || save.calm || G.screen !== 'play') { G.cv.mom = null; return T; }
-  const w = M.t < MOM_IN ? ss01(M.t / MOM_IN) : M.t > end - MOM_OUT ? ss01((end - M.t) / MOM_OUT) : 1;
+  const w = (M.t < MOM_IN ? ss01(M.t / MOM_IN) : M.t > end - MOM_OUT ? ss01((end - M.t) / MOM_OUT) : 1) * (M.amt ?? 1);
   const k = T.k * MOM_ZOOM, P = G.play, hw = P.w / (2 * k), hh = P.h / (2 * k);
   // follow the point, but never show more than a little past the resting frame's edges
   const tx = clamp(M.x, T.x - (P.w / (2 * T.k)) * 0.45, T.x + (P.w / (2 * T.k)) * 0.45), ty = clamp(M.y, T.y - (P.h / (2 * T.k)) * 0.45, T.y + (P.h / (2 * T.k)) * 0.45);
@@ -1216,6 +1218,7 @@ function pointerDown(e) {
   } // tap an egg friend: it jumps and flips (only the buttons start a level)
   if (G.screen === 'win' || G.screen === 'fail') return skipCheer(x, y); // a tap off the buttons skips the hen's routine to its end
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
+  lessonTap(x, y); // 0.8.18: input stays live through a teaching moment (the tapped thing answers it, any other touch lets it go)
   if (e.pointerType === 'touch') {
     // a second finger means pinch-zoom: let go of any ring and turn nothing until the fingers lift
     G.tp.set(e.pointerId, { x, y });
@@ -1552,7 +1555,7 @@ async function press(id) {
       setScreen('play');
       portal.gameplayStart();
       audio.musicIntro(); // the world's short intro sting, then its loop
-      toast(shortTip(G.level.tip), 3.4);
+      lessonLevel(); // 0.8.18: the caption is a ghost-finger demo on the real rings (first two visits)
       break;
     }
     case 'daily':
@@ -3800,7 +3803,7 @@ function tourPauseHud(x, y, d) {
   if (!G.tourPause) {
     if (TR.tourSeen(save, 'pauseBtn') || G.screen !== 'play' || !sim || sim.state !== 'play') return;
     const quiet = G.held.size === 0 && sim.t >= TR.TOUR.pauseAfter && G.t - (G.touchAt || 0) >= TR.TOUR.pauseIdle;
-    const busy = fuseIntroOn() || !!G.teach || !!G.toast || G.toasts.length > 0 || !!G.hint || !!G.hintShow || !!G.card || !!G.endCard || !!G.slow || modalOpen() || (G.stkHint != null && G.t - G.stkHint < 6) || (!!G.roosterCoach && G.roosterRun === G.run);
+    const busy = fuseIntroOn() || lessonOn() || !!G.teach || !!G.toast || G.toasts.length > 0 || !!G.hint || !!G.hintShow || !!G.card || !!G.endCard || !!G.slow || modalOpen() || (G.stkHint != null && G.t - G.stkHint < 6) || (!!G.roosterCoach && G.roosterRun === G.run);
     if (!TR.tourMay(save, 'pauseBtn', { screen: G.screen, levelId: tourLv(), won1: bestStarsOf(1) > 0, quiet, busy })) return;
     G.tourPause = { t0: G.t, run: G.run }; tourStart('pauseBtn'); audio.play('hud_pop', { vol: 0.55 });
   }
@@ -4670,7 +4673,7 @@ function handleEvents() {
         fx.smoke(ev.x, ev.y, 2, 'rgba(90,80,80,0.4)');
         break;
       case 'snakeIn':
-        if (!G.snakeToast) { G.snakeToast = true; tipToast('A snake! Turn the rings so no gap lines up for it.'); }
+        if (!G.snakeToast) { G.snakeToast = true; lessonAsk('snake', 'A snake! Turn the rings so no gap lines up for it.', ev); }
         break;
       case 'snakeRecoil':
         popup(ev.x, ev.y + 0.5, 'Too hard to bite!', { size: 18 });
@@ -4700,7 +4703,7 @@ function handleEvents() {
       case 'vineClose': // v3.3: a thorn vine has sealed its gap
         audio.play('thorn_snap', { pitch: 0.8 });
         fx.chips(ev.x, ev.y, '#c23a55', 6, 1.5);
-        if (!G.predToast.vineClose) { G.predToast.vineClose = 1; tipToast('Thorn vines seal a gap when they reach across. Fire burns them back.'); }
+        if (!G.predToast.vineClose) { G.predToast.vineClose = 1; lessonAsk('vineClose', 'Thorn vines seal a gap when they reach across. Fire burns them back.', ev); }
         break;
       case 'thornSnap':
         audio.play('thorn_snap');
@@ -4761,7 +4764,7 @@ function handleEvents() {
         audio.play('lava_sizzle', { vol: 0.6, pitch: 1.6 }); audio.play('glass_crack', { vol: 0.35, pitch: 2.2 });
         fx.chips(ev.x, ev.y, '#2b1a12', 8, 2); fx.smoke(ev.x, ev.y + 0.1, ev.boss ? 3 : 5, 'rgba(50,44,44,0.6)');
         buzz('hit');
-        if (!save.seen.laserFoe) { save.seen.laserFoe = 1; persist(); tipToast('The laser stuns villains too!'); }
+        if (!save.seen.laserFoe) { save.seen.laserFoe = 1; persist(); lessonAsk('laserFoe', 'The laser stuns villains too!', ev); }
         break;
       case 'vaultBurst':
         G.burstAt = G.t; // 2026-11-15: every creature and portal is blown out with the rings (blastXf), none left hanging
@@ -4778,17 +4781,18 @@ function handleEvents() {
         bossEvent(ev, fx); // bosses (v3.1)
         chickEvent(ev, fx, { popup, audio, toast }); // v3.2 chick kinds
         salEvent(ev, fx); // v3.2 lava salamander
-        frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.3 frog
+        frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.3 frog
+        if (ev.type === 'pipWarn') lessonAsk('pip', null, ev); else if (ev.type === 'cocoRide') lessonAsk('coco', null, ev); else if (ev.type === 'urPuff' && ev.aim) lessonAsk('urchin', null, ev); // 0.8.18: their first telegraph is the meeting
         pipEvent(ev, fx, { popup, audio }); // 0.8.17 pip
         cocoEvent(ev, fx, { popup, audio }); // 0.8.17 coco
-        seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.3
+        seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.3
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
-        bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.7 Gator Bayou
-        thiefEvent(ev, fx, { popup: denPopup, audio, hitStop, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.6 the weasel and the rats
-        banditEvent(ev, fx, { popup, audio, hitStop, calm: save.calm, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // 0.8.17 bandit
-        reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // world 8 reef
+        bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.7 Gator Bayou
+        thiefEvent(ev, fx, { popup: denPopup, audio, hitStop, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.6 the weasel and the rats
+        banditEvent(ev, fx, { popup, audio, hitStop, calm: save.calm, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // 0.8.17 bandit
+        reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // world 8 reef
         urchinEvent(ev, fx, { popup, audio, buzz, calm: save.calm }); // 0.8.17 urchin
-        { const U = { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }; cwEvent(ev, fx, U); owlEvent(ev, fx, U); movesEvent(ev, fx, U); } // v4 the clockwork cast, the owl
+        { const U = { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }; cwEvent(ev, fx, U); owlEvent(ev, fx, U); movesEvent(ev, fx, U); } // v4 the clockwork cast, the owl
         break;
       case 'won':
         onWin();
@@ -4811,6 +4815,13 @@ const STRIKE_API = {
   buzz: (k) => buzz(k),
   slow(left, scale) { if (!save.calm) G.slow = { left, scale }; },
 };
+// 0.8.18 teaching moments (src/lesson.js plays them, src/engine/teach.js holds the rules, docs/teaching.md the guidelines)
+lessonKit({
+  get G() { return G; }, get save() { return save; }, get ui() { return ui; },
+  toScreen, persist, tipToast, leadEgg, audio, camMoment, buzz, hand: teachHand, FONT, low: () => !!PERF.low,
+  busy: () => G.screen !== 'play' || fuseIntroOn() || !!G.card || modalOpen(),
+  won: () => !!G.level && G.li >= 0 && bestStarsOf(G.level.id) > 0,
+});
 function strikeFrom() { return G.henAt ? strikeSeat(G.henAt) : {}; }
 function fireStrike(force) {
   const sim = G.sim;
@@ -4887,7 +4898,7 @@ const P2_API = {
 // ---------------------------------------------------------------- v3.2 lava salamander: events -> SFX/VFX
 const SAL_HIT = { lava: ['Recharged!', '#ffb347', 'lava_sizzle'], bolt: ['Zapped!', '#fff27a', 'glass_crack'], flash: ['Dazzled!', '#fff6c2', 'glass_crack'], dash: ['Bonk!', '#ffd6a0', 'rock_hit'], ice: ['Brr!', '#bfe9ff', 'glass_crack'], quake: ['Steady!', '#ffd6a0', 'rock_hit'] };
 function salEvent(ev, fx) {
-  const once = (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } }; // first-time villain tips stay ~7 s (tipToast)
+  const once = (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } }; // first-time villain tips stay ~7 s (tipToast)
   switch (ev.type) {
     case 'salIn':
       audio.play('sal_call', { vol: 0.9 }); audio.play('ember_hiss', { vol: 0.5 });
@@ -5073,7 +5084,7 @@ function salEvent(ev, fx) {
 // ---------------------------------------------------------------- predators (v3)
 // events -> SFX/VFX for snakes, barriers, the eagle and the chick (reuses existing sounds)
 function predEvent(ev, fx) {
-  const once = (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } }; // first-time villain tips stay ~7 s (tipToast)
+  const once = (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } }; // first-time villain tips stay ~7 s (tipToast)
   switch (ev.type) {
     case 'snakeEat':
       audio.play('squish', { intensity: 0.8, pitch: 0.7 });
@@ -5245,7 +5256,7 @@ function bossEvent(ev, fx) {
   switch (ev.type) {
     case 'gustWarn':
       audio.play('wind_gust', { vol: 0.35, pitch: 0.6 });
-      if (!G.predToast.gust) { G.predToast.gust = 1; tipToast('A gust is coming! It shoves eggs along the channels.'); }
+      if (!G.predToast.gust) { G.predToast.gust = 1; lessonAsk('gust', 'A gust is coming! It shoves eggs along the channels.', { ...ev, x: 0, y: G.sim.outerR * 0.5 }); }
       break;
     case 'gust':
       audio.play('wind_gust', { vol: 1, pitch: 0.9 });
@@ -5590,7 +5601,7 @@ function update(dt) {
   const running = (G.screen === 'play' && !fuseIntroOn()) || ((G.screen === 'win' || G.screen === 'fail') && G.screenT < 4);
   keyboardTurn(dt);
   // slow motion (power cards, the last egg) scales the world's time, not the UI's
-  const sdt = G.slow ? dt * slowScale(G.slow) : dt;
+  const sdt = (G.slow ? dt * slowScale(G.slow) : dt) * lessonTick(dt); // 0.8.18: a teaching moment slows the world too
   if (G.slow && (G.slow.left -= dt) <= 0) G.slow = null;
   if (G.card && (G.card.t += dt) > G.card.dur) G.card = null;
   if (G.hen.t > 0 && (G.hen.t -= dt) <= 0) G.hen.mood = 'idle';
@@ -5617,7 +5628,8 @@ function update(dt) {
     // frames (at most 8 steps in one) instead of in one heavy frame that makes the next one late as well
     G.acc = Math.min(G.acc + Math.min(sdt, 0.1), 0.1);
     let n = 0;
-    while (G.acc >= DT * 0.75 && n < 8) { if (DEV && G.autoplay) botTick(sim, G.botMem || (G.botMem = {})); sim.step(); G.acc -= DT; n++; }
+    while (G.acc >= DT * 0.75 && n < 8) { if (DEV && G.autoplay) botTick(sim, G.botMem || (G.botMem = {})); sim.clockHold = lessonHoldsClock(); sim.step(); if (sim.clockHold) lessonStepped(); G.acc -= DT; n++; } // (the fuse stands still while a teaching moment holds)
+    sim.clockHold = false;
     handleEvents();
   }
   ringTicks(sim);
@@ -5996,6 +6008,7 @@ function render() {
   }
 
 
+  if (G.screen === 'play') drawLesson(ctx, W_, H_); // 0.8.18 teaching moment: dim, spotlight, ghost finger (under the HUD)
   // UI
   if (DEV && G.probe) G.probe('tintEtc');
   if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info' && G.screen !== 'intro' && G.screen !== 'win' && G.screen !== 'fail') drawHUD();
@@ -12272,6 +12285,7 @@ if (DEV) window.__egg = {
   strikeArt: { drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick },
   chickArt: { drawKindChick, drawChickEgg }, // chick kinds pose sheets (QA strips)
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
+  lessonAsk, lessonLevel, // 0.8.18 QA: lessonAsk(key, null, {x, y}) asks for a teaching moment; lessonLevel() the level's opening demo
   frame(dt = 1 / 60) { update(dt); renderAll(); tallyFrame(); }, fxStats: menuFxStats,
   actSteps, // film strips replay planner moves through this
   snakeArt: drawSnake, // palette strips
