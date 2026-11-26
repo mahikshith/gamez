@@ -2945,16 +2945,32 @@ function payChickSpots(n, cx, floor, w, h) {
 }
 // the stage: a warm window with slow rays and sparkles, and the product's own cast. o: { age (s since the page opened;
 // the cast pops in), henDX (the hen's walk-in offset), henMood, chickK (i => 0..1 pop), lockA (i => lock state or null) }
+// frame818 (owner: frameless pages): the pay page and the party are one warm scene edge to edge, the sunburst centred on
+// the cast, deepening to amber at the screen's edges and its foot, so the cream tiles and the buttons float on it
+function payScene(cx, cy, a = 1) {
+  const calm = save.calm, R = Math.hypot(Math.max(cx, W_ - cx), Math.max(cy, H_ - cy));
+  ctx.save(); ctx.globalAlpha *= a;
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+  g.addColorStop(0, '#fff3c2'); g.addColorStop(0.26, '#ffd36a'); g.addColorStop(0.62, '#f0921e'); g.addColorStop(1, '#a8460a');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W_, H_);
+  CB.rays(ctx, cx, cy, R, calm ? 0.2 : G.t * 0.1, 'rgba(255,255,255,0.2)', 16, 0.5);
+  if (!PERF.low) CB.glow(ctx, cx, cy, Math.min(W_, H_) * 0.5, 0.6);
+  const f = ctx.createLinearGradient(0, H_ * 0.55, 0, H_); f.addColorStop(0, 'rgba(110,40,0,0)'); f.addColorStop(1, 'rgba(110,40,0,0.42)');
+  ctx.fillStyle = f; ctx.fillRect(0, H_ * 0.55, W_, H_ * 0.45);
+  ctx.restore();
+}
 function payStage(sku, x, y, w, h, s, o = {}) {
   const calm = save.calm, t = G.t, P = E.IAP[sku], cx = x + w / 2, age = calm ? 9 : o.age ?? 9;
   ctx.save();
-  ui.roundRect(x, y, w, h, 22 * s);
-  const g = ctx.createRadialGradient(cx, y + h * 0.55, 0, cx, y + h * 0.55, Math.max(w, h) * 0.75);
-  g.addColorStop(0, '#fff3c2'); g.addColorStop(0.45, '#ffd36a'); g.addColorStop(1, '#e98a1e');
-  ctx.fillStyle = g; ctx.fill();
-  ctx.clip();
-  CB.rays(ctx, cx, y + h * 0.5, Math.hypot(w, h) * 0.7, calm ? 0.2 : t * 0.1, 'rgba(255,255,255,0.22)', 14, 0.5);
-  CB.glow(ctx, cx, y + h * 0.5, Math.min(w, h) * 0.55, 0.65);
+  if (!o.bare) {
+    ui.roundRect(x, y, w, h, 22 * s);
+    const g = ctx.createRadialGradient(cx, y + h * 0.55, 0, cx, y + h * 0.55, Math.max(w, h) * 0.75);
+    g.addColorStop(0, '#fff3c2'); g.addColorStop(0.45, '#ffd36a'); g.addColorStop(1, '#e98a1e');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.clip();
+    CB.rays(ctx, cx, y + h * 0.5, Math.hypot(w, h) * 0.7, calm ? 0.2 : t * 0.1, 'rgba(255,255,255,0.22)', 14, 0.5);
+    CB.glow(ctx, cx, y + h * 0.5, Math.min(w, h) * 0.55, 0.65);
+  }
   const floor = y + h * 0.9;
   ctx.fillStyle = 'rgba(160,80,10,0.18)'; ctx.beginPath(); ctx.ellipse(cx, floor + h * 0.02, w * 0.48, h * 0.09, 0, 0, Math.PI * 2); ctx.fill();
   payTwinkles(x, y, w, h, t, 9, calm);
@@ -3010,7 +3026,7 @@ function payStage(sku, x, y, w, h, s, o = {}) {
     pop(0.04, cx, floor, () => coinHeap(cx, floor, Math.min(w * (0.6 + 0.07 * k), h * (0.8 + 0.08 * k)), 3 + k, t));
   }
   ctx.restore();
-  ctx.save(); ui.roundRect(x, y, w, h, 22 * s); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#ffe9a0'; ctx.stroke(); ui.roundRect(x - 2 * s, y - 2 * s, w + 4 * s, h + 4 * s, 24 * s); ctx.lineWidth = 2 * s; ctx.strokeStyle = 'rgba(60,20,0,0.6)'; ctx.stroke(); ctx.restore();
+  if (!o.bare) { ctx.save(); ui.roundRect(x, y, w, h, 22 * s); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#ffe9a0'; ctx.stroke(); ui.roundRect(x - 2 * s, y - 2 * s, w + 4 * s, h + 4 * s, 24 * s); ctx.lineWidth = 2 * s; ctx.strokeStyle = 'rgba(60,20,0,0.6)'; ctx.stroke(); ctx.restore(); }
   if (!o.noRecord) ui.record({ x, y, w, h }, 'pay:stage');
 }
 // a round close glyph (white X with a dark edge) for the page's top-left button
@@ -3018,7 +3034,7 @@ const xIcon = (c, X, Y, S) => { c.save(); c.lineCap = 'round'; for (const [col, 
 // one perk tile: the picture first, then its three words (tapped: the one-line detail in their place)
 function payTile(T, i, x, y, w, h, s, t, tip) {
   const tag = 'pay:tile:' + i, across = w > h * 1.45;
-  ui.roundRect(x, y + 3 * s, w, h, 14 * s); ctx.fillStyle = 'rgba(16,4,34,0.4)'; ctx.fill();
+  ui.roundRect(x, y + 3 * s, w, h, 14 * s); ctx.fillStyle = 'rgba(96,36,0,0.38)'; ctx.fill();
   ui.roundRect(x, y, w, h, 14 * s);
   const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, tip ? '#fff3c4' : '#fffaf0'); g.addColorStop(1, tip ? '#ffd97a' : '#f5deb0');
   ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = '#e7b04a'; ctx.stroke();
@@ -3061,17 +3077,7 @@ function drawIapSheet(sku) {
   if (PAY.key !== sku || G.t < PAY.t0) { PAY.key = sku; PAY.t0 = G.t; G.payTip = null; if (!calm) audio.play('ui_open'); }
   ui.calm = calm;
   const age = calm ? 9 : G.t - PAY.t0, tiles = payTiles(sku), once = P.type === 'once';
-  // the page: a deep purple ground with a warm glow where the stage stands
-  ctx.save();
-  const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#41206e'); bg.addColorStop(1, '#1c0b34');
-  ctx.globalAlpha = calm ? 1 : clamp(age / 0.18, 0, 1);
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_);
-  ctx.restore();
   const Pb = ui.pageBox(), s = Pb.s, X = Pb.x, W = Pb.w, wide = A.w > A.h * 1.15;
-  // the header: the round close button, the name on its ribbon
-  ui.button('dt:close', '', X, Pb.y, Pb.h, Pb.h, { kind: 'hud', icon: xIcon, iconS: 1.15, round: Pb.h / 2 });
-  const rw = Math.min(ui.measure(P.name, 25 * s) + 56 * s, W - 2 * (Pb.h + 26 * s));
-  ui.ribbon(P.name, A.cx, Pb.y + 2 * s, rw, Pb.h - 6 * s, { s, color: payHero(sku) ? '#d89a1c' : '#8a5ad8', size: Math.min(25 * s, 25 * s * (rw - 30 * s) / ui.measure(P.name, 25 * s)), tag: 'card:title' });
   const top = Pb.bottom, bottom = A.y1 - 10 * s;
   const note = G.payNote && G.payNote.sku === sku && G.t - G.payNote.t0 < 4 ? 'No payment was made' : once && can ? 'One-time purchase' : '';
   const btnH = 70 * s, noteH = note ? 22 * s : 0, notH = 46 * s, amt = !tiles.length;
@@ -3101,7 +3107,12 @@ function drawIapSheet(sku) {
     gaps = [0, 0, 30 * s + Math.min(free * 0.2, 20 * s), 0]; // a little more air above the button, the rest above and below
     Y0 = top + 12 * s + (free - (gaps[2] - 30 * s)) / 2;
   }
-  payStage(sku, stage.x, stage.y, stage.w, stage.h, s, { age });
+  // the page (frame818): one warm scene edge to edge, its sunburst on the cast; the header and the tiles float on it
+  payScene(stage.x + stage.w / 2, stage.y + stage.h * 0.5, calm ? 1 : clamp(age / 0.18, 0, 1));
+  ui.button('dt:close', '', X, Pb.y, Pb.h, Pb.h, { kind: 'hud', icon: xIcon, iconS: 1.15, round: Pb.h / 2 });
+  { const rw = Math.min(ui.measure(P.name, 25 * s) + 56 * s, W - 2 * (Pb.h + 26 * s));
+    ui.ribbon(P.name, A.cx, Pb.y + 2 * s, rw, Pb.h - 6 * s, { s, color: payHero(sku) ? '#d89a1c' : '#8a5ad8', size: Math.min(25 * s, 25 * s * (rw - 30 * s) / ui.measure(P.name, 25 * s)), tag: 'card:title' }); }
+  payStage(sku, stage.x, stage.y, stage.w, stage.h, s, { age, bare: true });
   let y = Y0;
   const popIn = (d, cx, cy, draw) => { const k = calm ? 1 : backK((age - d) / 0.34); if (k <= 0.01) return; ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); draw(); ctx.restore(); };
   if (rows) {
@@ -3116,16 +3127,16 @@ function drawIapSheet(sku) {
     popIn(0.2, RX + RW / 2, cy, () => {
       drawCoin(ctx, x0 + 24 * s, cy, 23 * s, G.t);
       ui.num(amountStr, x0 + 60 * s, cy, { size: ns, tag: 'pay:amt', maxW: RW - 140 * s });
-      ui.text('coins', x0 + 70 * s + nw, cy + 6 * s, { size: 24 * s, color: '#ffe9b0', tag: 'pay:unit' });
+      ui.text('coins', x0 + 70 * s + nw, cy + 6 * s, { size: 24 * s, color: '#fff3d0', stroke: '#8a4a04', strokeW: 4 * s, tag: 'pay:unit' });
     });
     y += amtH;
   }
   y += gaps[2];
   popIn(0.36, RX + RW / 2, y + btnH / 2, () => payBuy(sku, RX, y, RW, btnH, s, can, price));
   y += btnH;
-  if (noteH) { y += 8 * s; ui.text(note, RX + RW / 2, y + noteH / 2, { size: 15 * s, align: 'center', color: 'rgba(255,236,206,0.78)', maxW: RW, tag: 'pay:once' }); y += noteH; }
+  if (noteH) { y += 8 * s; ui.text(note, RX + RW / 2, y + noteH / 2, { size: 15 * s, align: 'center', color: '#fff6e0', stroke: 'rgba(110,44,0,0.85)', strokeW: 3.5 * s, maxW: RW, tag: 'pay:once' }); y += noteH; }
   y += 4 * s;
-  ui.button('dt:close', 'Not now', RX, y, RW, notH, { ghost: true, textColor: 'rgba(255,240,220,0.92)', size: 19 * s });
+  ui.button('dt:close', 'Not now', RX, y, RW, notH, { kind: 'tertiary', size: 19 * s }); // (frame818: the same cream button as every page's Not now)
 }
 
 // 0.8.17 THE UNLOCK PARTY (mykee: "Even unlocking things could be as celebratory as possible"): Unlock Everything or The
@@ -3156,11 +3167,6 @@ function drawParty(under) {
     while (R.cues < n && t >= PARTY.ch0 + PARTY.gap * R.cues) { const id = ids[R.cues]; audio.play('glass_break', { vol: 0.35, pitch: 1.5 }); audio.play(CHICK_SND[id] || 'decoy_peep', { vol: 0.45 }); R.cues++; buzz('tap'); }
     if (t >= partyEnd(n)) { R.phase = 'got'; gotIap(R.sku); }
   }
-  ctx.save();
-  const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#41206e'); bg.addColorStop(1, '#1c0b34');
-  ctx.globalAlpha = calm || !show ? 1 : clamp(t / 0.2, 0, 1);
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_);
-  ctx.restore();
   const Pb = ui.pageBox(), s = Pb.s, X = Pb.x, W = Pb.w, wide = A.w > A.h * 1.15;
   const title = R.sku === PREMIUM_SKU ? 'Everything unlocked!' : 'The whole coop is yours!';
   const coinW = Math.max(84 * s, ui.measure(String(purse.shown()).replace(/\d/g, '0'), 19 * s) + 56 * s);
@@ -3172,7 +3178,8 @@ function drawParty(under) {
   const lockA = (i) => { const tb = PARTY.ch0 + PARTY.gap * i; if (!show || t < 0.3 + 0.05 * i) return null; const a = (t - (tb - 0.22)) / 0.5; return a >= 1 ? null : Math.max(0, a); };
   const chickK = (i) => (show ? (calm ? 1 : backK((t - (PARTY.ch0 + PARTY.gap * i)) / 0.34)) : 1);
   const walk = show && !calm ? smooth01(t / PARTY.in) : 1;
-  payStage(R.sku, sx, sy, sw, sh, s, { age: 9, henDX: -(1 - walk) * (sw * 0.5 + A.w * 0.35), henLook: walk < 1 ? 1 : undefined, henMood: show && t < PARTY.in ? 'idle' : 'happy', henN: show ? (R.arrived ? 1 : 0) : 2 + Math.floor(G.t / 2.4), chickK, lockA, noRecord: under, big: !wide });
+  payScene(A.cx, sy + sh * 0.5, calm || !show ? 1 : clamp(t / 0.2, 0, 1)); // (frame818: the stage is the whole screen)
+  payStage(R.sku, sx, sy, sw, sh, s, { bare: true, age: 9, henDX: -(1 - walk) * (sw * 0.5 + A.w * 0.35), henLook: walk < 1 ? 1 : undefined, henMood: show && t < PARTY.in ? 'idle' : 'happy', henN: show ? (R.arrived ? 1 : 0) : 2 + Math.floor(G.t / 2.4), chickK, lockA, noRecord: under, big: !wide });
   if (!calm && show) { // confetti: a burst from the top, a second as the last chick lands
     CB.confetti(ctx, A.cx, A.y + A.h * 0.12, t - 0.05, { n: 70, speed: A.h * 0.9, g: A.h * 0.9, life: 2.6, seed: 7, size: Math.max(6, 8 * u), spread: Math.PI * 1.3, dir: Math.PI / 2 });
     CB.confetti(ctx, A.cx, sy + sh * 0.45, t - (PARTY.ch0 + PARTY.gap * (n - 1)), { n: 50, speed: sh * 1.6, g: sh * 1.4, life: 2.2, seed: 11, size: Math.max(6, 7 * u) });
@@ -3223,7 +3230,6 @@ function drawGot() {
     while (R.popped < R.items.length && t >= 0.6 + 0.14 * R.popped + 0.08) { R.popped++; audio.play('hud_pop', { vol: 0.7 }); }
     if (!R.landed && R.coins0 != null && t >= R.land) R.landed = true; // (the purse's own landing sounds and buzzes)
   }
-  dim(0.84 * clamp(t / 0.18, 0, 1));
   // 0.8.17: on a phone held upright the top row belongs to the purse and the bag (ui/landing.js): the page starts under it.
   // sweep817 (mykee: "there could be a lot of empty spaces"): the page is laid out as a column of blocks (the ribbon, the
   // prize, its name and line, the row of what was inside, the closing line). The prize grows into the room the page has
@@ -3250,6 +3256,7 @@ function drawGot() {
   { let y = y0 + gap; for (const [k, h] of B) { at0[k] = { y, h }; y += h + gap; } }
   const heroX = wide ? A.x + A.w * 0.27 : A.cx, heroY = wide ? A.y + A.h * 0.47 : at0.hero.y + 0.31 * S * m, cx = heroX;
   const ribY = at0.rib.y + hs * 0.85 + 2 * u, nameY = at0.name.y + nameS * 0.65, rowTop = at0.items ? at0.items.y + cell * 0.04 : 0;
+  revealBack(cx, heroY, clamp(t / 0.18, 0, 1)); // (frame818: its own ground, the page under it gone)
   ctx.save(); ctx.globalAlpha = clamp(t / 0.18, 0, 1);
   sunburst(cx, heroY, S * 1.3 * m, 'rgba(255,226,140,0.17)', 14);
   const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.75 * m); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
@@ -3346,7 +3353,7 @@ function drawWaitList() {
   const L = waitingList();
   if (!L.length) { G.waitList = null; return; }
   dim(0.55);
-  const wide = L.length > 1 && ui.A.w > ui.A.h * 1.15;
+  const wide = L.length > 2 && ui.A.w > ui.A.h * 1.15; // (frame818: two rows stack, their Close under both)
   stackCard('Rewards waiting', (s) => {
     const C = ui.C, day = today();
     return [
@@ -6340,6 +6347,17 @@ function dim(a = 0.55) {
   ctx.fillStyle = `rgba(24,12,5,${a})`;
   ctx.fillRect(0, 0, W_, H_);
 }
+// frame818 (owner: nothing under a reveal may read through): the reveals' own ground, a deep warm brown lit where the
+// prize stands. It fades in over the page it opens on (a: 0..1) and is solid once in, so no words or buttons show under it.
+function revealBack(cx, cy, a = 1) {
+  if (a <= 0) return;
+  const R = Math.hypot(Math.max(cx, W_ - cx), Math.max(cy, H_ - cy));
+  ctx.save(); ctx.globalAlpha *= Math.min(1, a);
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+  g.addColorStop(0, '#5e4114'); g.addColorStop(0.45, '#3a250c'); g.addColorStop(1, '#1e1006');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W_, H_);
+  ctx.restore();
+}
 
 // ---- allies (v3.5): one call per attempt, Rooster or Goose
 const allyKinds = () => (G.sim && G.sim.ally ? G.sim.ally.avail : []);
@@ -8013,7 +8031,7 @@ const HD = { mk: '', cv: null, mask: null };
 function heroDemo(plan, tt, x, y, w, h, a, ho, own) {
   if (a <= 0.01 || !(w > 24 && h > 24)) return; // no room for a demo (a squat screen with a long caption): nothing, never a negative box
   if (!own) { if (ho.world) ho.world = { ...ho.world, back: () => true }; ho.bare = true; } // no panel: the scene's things stand on the page's world (own: frame818, the demo keeps its own world, its edges melting into the page's sky)
-  if (PERF.low) { ctx.save(); ctx.globalAlpha *= a; drawHowTo(ctx, plan, x, y, w, h, tt, ho); ctx.restore(); return; }
+  if (PERF.low && !own) { ctx.save(); ctx.globalAlpha *= a; drawHowTo(ctx, plan, x, y, w, h, tt, ho); ctx.restore(); return; } // (a demo with its own world keeps the soft mask on Low: drawn straight it would be a box again; it is a card, not play)
   const mk = Math.round(w) + 'x' + Math.round(h) + '@' + DPR;
   if (HD.mk !== mk) {
     for (const cv of [HD.cv, HD.mask]) if (cv) freeCanvas(cv);
@@ -9949,7 +9967,7 @@ function drawWinPage() {
     drawWinStar(r, q, L(x0, T.stars[q].x + dx), L(y0, T.stars[q].y + dy), L(R0, T.R), calm, from);
   });
   if (rvOn) { drawReveal(r, stars); return; }
-  if (r.rvDone != null && !calm) { const q = (G.t - r.rvDone) / 0.3; if (q < 1) dim(0.84 * (1 - q)); } // the reveals' shade lifts as the page comes
+  if (r.rvDone != null && !calm) { const q = (G.t - r.rvDone) / 0.3; if (q < 1) revealBack(ui.A.cx, ui.A.cy, 1 - q); } // the reveals' shade lifts as the page comes
   winFinish(r, BIG, calm);
   stars();
 }
@@ -10330,8 +10348,8 @@ function tasteArt(T, x, y, h, live) {
 function drawReveal(r, drawStars) {
   const RV = r.rv, it = RV.list[RV.i], calm = save.calm, A = ui.A, u = ui.u, ink = 'rgba(60,28,6,0.9)', P = rvPlan(r, it);
   const t = calm ? P.set + 0.3 : RV.t, fin = calm ? 1 : clamp(RV.t / 0.18, 0, 1);
-  dim(0.84 * (RV.i ? 1 : fin)); // the show sinks under the first one (deep: the prize alone on the page)
   const { S, cx, cy, heroY, rowY, hy, hs, ls, room } = rvGeom();
+  revealBack(cx, heroY, RV.i ? 1 : fin); // the show sinks under the first one (frame818: under its own ground, the prize alone on the page)
   const opened = t >= P.open, oa = t - P.open; // oa: seconds since it opened
   const ant = calm || opened ? 0 : clamp((t - P.land - 0.12) / (P.open - P.land - 0.12), 0, 1); // the anticipation builds
   ctx.save(); ctx.globalAlpha = fin; // rays and a warm glow behind the prize (the glow beats harder before it opens)
