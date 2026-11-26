@@ -7174,15 +7174,33 @@ function drawIntro() {
     dim(0.62);
     const S = fresh[fresh.length - 1];
     G.stkCard = S.id;
-    // a new chick gets a proper introduction (2026-11-19): a big stage, its power with its pictogram, the downside, how to use it
-    stackCard('New chick!', (s, iw) => [
-      { h: 34 * s, gap: 4 * s, draw: (x, y, w) => ui.text(S.name, x + w / 2, y + 17 * s, { size: 28 * s, align: 'center', maxW: w, color: S.col ? ui.tint(S.col[1], -0.3) : ui.C.ink, tag: 'stkname' }) },
-      { h: 190 * s, gap: 8 * s, draw: (x, y, w) => { artStage(x, y, w, 190 * s, s, () => drawStrikeStage(ctx, S.id, x, y + 8 * s, w, 176 * s, G.t)); const bz = 46 * s; ctx.beginPath(); ctx.arc(x + w - bz * 0.7, y + 190 * s - bz * 0.7, bz * 0.56, 0, 7); ctx.fillStyle = '#25355c'; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); pictoPower(ctx, S.id, x + w - bz * 0.7, y + 190 * s - bz * 0.7, bz * 0.95, G.t); } },
-      ...wrapText(S.up, 19 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 19 * s, { tag: 'stkup:' + i, gap: i ? 2 * s : 10 * s })),
-      ...wrapText('Downside: ' + S.down, 16 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 16 * s, { color: ui.C.warn, tag: 'stkdown:' + i, gap: i ? 2 * s : 8 * s })),
-      ...wrapText('Pick it on the level page. In the level, fill the chick button, then tap it at the right moment.', 15 * s, iw).slice(0, 3).map((l, i) => lineBlock(l, 15 * s, { color: ui.C.ink2, tag: 'stkhow' + i, gap: i ? 2 * s : 10 * s })),
-      { h: 60 * s, gap: 16 * s, draw: (x, y, w) => ui.button('stk:gotit', 'GOT IT', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * s }) },
-    ], { ribbon: '#e8962a' });
+    // a new chick gets a proper introduction (2026-11-19): its name, a big stage, what it does and its downside, GOT IT.
+    // sweep817 (mykee: "no explaining words", "a lot of empty spaces"): the paragraph on how to use it is gone; its power
+    // plays instead as the road's own looped how-to scene (the chick flies in and does its thing to a villain), the
+    // upside and the downside one short line each, and the two stages share the page's height. On its side: the chick
+    // on the left, its power playing on the right over the lines and GOT IT.
+    const wideC = ui.A.w > ui.A.h * 1.15, th = G.theme && G.theme.palette, PW = POWER_WORDS[S.id] || ['', ''];
+    if (!G.stkShow || G.stkShow.id !== S.id) G.stkShow = { id: S.id, t0: G.t };
+    const one = (alts, fs, w) => alts.find((q) => q && ui.measure(q, fs) <= w) || alts[alts.length - 1];
+    const plan = chickPlan(S.id, '', 'snake'), ho = { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark };
+    const hb0 = G.hudBottom; G.hudBottom = ui.A.y; // the page starts at the top of the safe area (drawHUD skips 'intro'), like the world's new-thing card
+    try { stackCard('New chick!', (s, iw) => {
+      const room = ui.A.y1 - Math.max(G.hudBottom, ui.A.y) - 30 * ui.u - (CARD_HEAD + 22) * s; // the card's column (stackCard's own sums)
+      const fk = wideC ? 1 : clamp(room / s / 640, 1, 1.22), z = s * fk; // a tall page: the words and the button a size up (one size for the page)
+      const nameB = { h: 34 * z, gap: 4 * s, draw: (x, y, w) => ui.text(S.name, x + w / 2, y + 17 * z, { size: 28 * z, align: 'center', maxW: w, color: S.col ? ui.tint(S.col[1], -0.3) : ui.C.ink, tag: 'stkname' }) };
+      const upB = { h: 19 * z * 1.25, gap: 10 * s, draw: (x, y, w) => ui.text(one([S.up, shortTip(S.up), PW[0]], 19 * z, w), x + w / 2, y + 19 * z * 0.62, { size: 19 * z, align: 'center', maxW: w, color: ui.C.ink, tag: 'stkup:0' }) };
+      const dnB = { h: 16 * z * 1.25, gap: 4 * s, draw: (x, y, w) => ui.text(one([S.down && 'Downside: ' + S.down, S.down && 'Downside: ' + shortTip(S.down), 'Downside: ' + PW[1]], 16 * z, w), x + w / 2, y + 16 * z * 0.62, { size: 16 * z, align: 'center', maxW: w, color: ui.C.warn, tag: 'stkdown:0' }) };
+      const btnB = { h: 60 * z, gap: 16 * s, draw: (x, y, w) => ui.button('stk:gotit', 'GOT IT', x, y, w, 60 * z, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * z }) };
+      const chickB = (h) => ({ h, gap: 8 * s, draw: (x, y, w) => { artStage(x, y, w, h, s, () => drawStrikeStage(ctx, S.id, x, y + 8 * s, w, h - 14 * s, G.t)); const bz = 46 * s; ctx.beginPath(); ctx.arc(x + w - bz * 0.7, y + h - bz * 0.7, bz * 0.56, 0, 7); ctx.fillStyle = '#25355c'; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); pictoPower(ctx, S.id, x + w - bz * 0.7, y + h - bz * 0.7, bz * 0.95, G.t); ui.record({ x, y, w, h }, 'stk:art'); } });
+      const powB = (h) => ({ h, gap: 10 * s, draw: (x, y, w) => { drawHowTo(ctx, plan, x, y, w, h, G.t - G.stkShow.t0, ho); ui.roundRect(x, y, w, h, Math.min(18, h * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke(); ui.record({ x, y, w, h }, 'stk:power'); } });
+      const sum = (B) => B.reduce((a, b) => a + b.gap + b.h, 0);
+      if (wideC) { // two columns: each fills the card's height
+        const lh = Math.max(120 * s, room - sum([nameB]) - 8 * s), rh = Math.max(110 * s, room - sum([upB, dnB, btnB]) - 10 * s);
+        return [nameB, chickB(Math.min(lh, iw * 1.1)), { ...powB(Math.min(rh, iw * 0.9)), right: true }, { ...upB, right: true }, { ...dnB, right: true }, { ...btnB, right: true }];
+      }
+      const left = Math.max(240 * s, room * 0.92 - sum([nameB, upB, dnB, btnB]) - 18 * s), hc = clamp(left * 0.48, 110 * s, iw * 0.8), hp = clamp(left - hc, 120 * s, iw * 0.85);
+      return [nameB, chickB(hc), powB(hp), upB, dnB, btnB];
+    }, { ribbon: '#e8962a', twoCol: true, full: wideC ? undefined : true, grow: 1.2 }); } finally { G.hudBottom = hb0; }
     return;
   }
   if (L.intro && !save.intro[L.id] && !worldOpener(L)) {
