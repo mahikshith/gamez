@@ -531,7 +531,7 @@ const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }
     side: () => cardSide(), stage: (sd, card) => { const hb = G.hudBottom; G.hudBottom = ui.A.y; try { return sideStage(sd, card); } finally { G.hudBottom = hb; } },
     henStage: (b, s, win) => henStage(b, s, win), artStage: (x, y, w, h, s, d) => artStage(x, y, w, h, s, d), tiles: (items, s, cols) => pauseTiles(items, s, cols),
     sunburst: (cx, cy, R, col, n) => sunburst(cx, cy, R, col, n), feathers: (a) => winFeathers(a), dim: (a) => dim(a), purse: () => purse,
-    bare: (title, build, o) => bareStack(title, build, o), scene: (at, a, warm) => sceneBack(at, a, warm), sceneAt: (box, henH) => sceneAt(box, henH), // 0.8.18 the frameless pages
+    bare: (title, build, o) => bareStack(title, build, o), bareHead: () => BARE_HEAD, scene: (at, a, warm) => sceneBack(at, a, warm), sceneAt: (box, henH) => sceneAt(box, henH), // 0.8.18 the frameless pages
     SLAM, slam: (x, y, R, v, calm, q) => slamStar(x, y, R, v, calm, q), coinRow: (cx, cy, h, s, o) => coinRow(cx, cy, h, s, o), settle: () => { purse.settle(); purse.release(); } } }); // 0.8.17 win817: the win pages' stars and coins, one family
 
 function themeFor(level) {
@@ -9560,7 +9560,7 @@ function drawWinPage() {
         ui.record({ x: T.badges[0].x - T.br, y: T.badges[0].y - T.br, w: T.badges[2].x - T.badges[0].x + 2 * T.br, h: 2 * T.br }, 'win:badges');
       } });
     B.push({ h: stH * s, gap: 6 * s, // her place on the knoll, as large as the room allows; the win streak's flame beside her
-      at: (x, y, w) => { T.box = { x, y, w, h: stH * s }; T.henH = Math.min(0.685 * stH, side ? 160 : 215) * s; T.clip = { x: 0, y: 0, w: ui.w, h: ui.h }; T.mid = { x: x + w / 2, y: y + stH * s * 0.34 }; },
+      at: (x, y, w) => { T.box = { x, y, w, h: stH * s }; T.henH = Math.min(0.685 * stH, side ? 160 : first ? 250 : 215) * s; T.clip = { x: 0, y: 0, w: ui.w, h: ui.h }; T.mid = { x: x + w / 2, y: y + stH * s * 0.34 }; },
       draw: () => {
         if (inCard) drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, clip: T.clip, fxBig });
         ui.record(T.box, 'win:hen');
@@ -9649,7 +9649,7 @@ function drawWinPage() {
   else { // her place takes what the rest leaves (a short phone: the rows tighten a little first, so she is not a thumbnail)
     const room = () => room0 - BARE_HEAD - 8 - sum(build(1));
     if (room() < 150) { D = { ...D, R: 31, sp: 90, br: 18, num: 58, scoreH: 88, tileH: 74, dblH: 48 }; starH = 10 + 2 * D.R + 8 + 2 * D.br + 4; }
-    stH = clamp(room(), 90, 320);
+    stH = clamp(room(), 90, first ? 470 : 320); // (level 1: the stars, her and NEXT: she takes the page)
   }
   const bo = side ? { twoCol: true, maxW: Math.min(A.w - 32 * u, 900 * u) } : {};
   bareStack(title, build, { ...bo, hidden: true }); // lay out first: her flight and the scene need the targets

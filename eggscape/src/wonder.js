@@ -739,7 +739,10 @@ export function createWonder(env) {
         if (!win) ui.text(`${saved}/${n}`, mid, y + 47 * s, { size: 18 * s, align: 'center', maxW: w - 16 * s, color: '#fff', stroke: ink, strokeW: 3.5 * s, tag: 'wv:eggsn' });
       } });
       if (win && P) B.push({ h: 48 * s, gap: 10 * s, right: R, draw: (x, y, w) => { // what it paid, then its coins fly into the purse beside it
-        const k0 = calm || S.skip ? 1 : clamp((S.cardT - SIDE_PILL) / 0.3, 0, 1), Rw = K.coinRow(x + w / 2, y + 24 * s, 42 * s, s, { txt: '+' + P.coins, k: k0, tag: 'wv:pay' });
+        const k0 = calm || S.skip ? 1 : clamp((S.cardT - SIDE_PILL) / 0.3, 0, 1);
+        ctx.save(); if (k0 < 1) ctx.globalAlpha = ui.aBase = k0; // (0.8.18: the purse comes with the pill, not alone on the meadow)
+        const Rw = K.coinRow(x + w / 2, y + 24 * s, 42 * s, s, { txt: '+' + P.coins, k: k0, tag: 'wv:pay' });
+        ctx.restore(); ui.aBase = 1;
         if (!S.flown && (calm || S.skip || S.cardT > SIDE_FLY)) { S.flown = true; if (env.coinsFly) env.coinsFly(P, Rw.pill, 0.5); if (calm || S.skip) K.settle(); }
       } });
       if (win) B.push({ h: 70 * s, gap: 12 * s, right: R, draw: (x, y, w) => { // Map big and thick in the thumb zone, Again small beside it
@@ -754,7 +757,7 @@ export function createWonder(env) {
       return B;
     };
     const RIB = win ? '#f0542e' : near ? '#e0882a' : '#5a82c8';
-    const stH = wide ? Math.max(90, (A.h - 18 * u) / u - 16) : roomFor(build, win ? 110 : 130, 460);
+    const rest = build(0)(1).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0), stH = wide ? Math.max(90, (A.h - 18 * u) / u - 16) : clamp((A.h - 18 * u) / u - K.bareHead() - rest - 6, win ? 110 : 130, 460); // (her place takes what the rest leaves)
     const o = { ribbon: RIB, ...(wide ? { twoCol: true, maxW: Math.min(A.w - 32 * u, 900 * u) } : {}) };
     K.bare(title, build(stH), { ...o, hidden: true });
     K.scene(K.sceneAt(T.box, T.henH), k, win);
