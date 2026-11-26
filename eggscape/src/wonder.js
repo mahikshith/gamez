@@ -536,6 +536,7 @@ export function createWonder(env) {
       ui.text(L.name, ttx, top + 11 * u, { size: 19 * u, color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname:' + key, maxW: tw });
       lines.forEach((l, i) => ui.text(l, ttx, top + 26 * u + 7.5 * u + i * 15 * u, { size: ps, color: 'rgba(255,255,255,0.9)', group: grp, tag: 'wvpitch:' + key + i, maxW: tw }));
       if (L.album && L.fresh && !part) env.albumMark(x + rowW - 6 * u, ry + 6 * u, rowH); // a new find: the mark leads into the album, to its tile
+      if (L.album && env.albumLead) env.albumLead(SC, ry + SC.y - vt, { x, y: ry, w: rowW, h: rowH }, vb - vt); // home's mark: the page lands on this row and rings it
       if (part) { // a row cut by the list edge records nothing for the overlap check and taps only inside the list
         ui.rects.length = n0;
         const bt = ui.buttons[nb]; if (bt) { const t2 = Math.max(bt.y, vt), b2 = Math.min(bt.y + bt.h, vb); if (b2 - t2 < 8 * u) ui.buttons.length = nb; else { bt.y = t2; bt.h = b2 - t2; } }

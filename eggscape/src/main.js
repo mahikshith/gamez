@@ -501,7 +501,7 @@ const G = {
 };
 
 // WONDER: the bonus world's controller. It gets the canvas, the UI kit and a few shell services; it never touches the campaign save keys.
-const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, escroll: () => G.escroll, album: () => xsAlbumRow(), albumIcon: (c, x, y, S, t) => albumRowIcon(c, x, y, S, t), albumMark: (xr, y, h) => markBadge(xr - 4 * ui.u, y + 4 * ui.u, Math.min(11 * ui.u, h * 0.14), G.t, '!'), glide: (S, dt) => glideDt(S, dt), setScreen: (s) => setScreen(s), leave: () => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); setScreen('extras'); } });
+const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, escroll: () => G.escroll, album: () => xsAlbumRow(), albumIcon: (c, x, y, S, t) => albumRowIcon(c, x, y, S, t), albumMark: (xr, y, h) => markBadge(xr - 4 * ui.u, y + 4 * ui.u, Math.min(11 * ui.u, h * 0.14), G.t, '!'), albumLead: (S, off, R, vh) => albumLead(S, off, R, vh), glide: (S, dt) => glideDt(S, dt), setScreen: (s) => setScreen(s), leave: () => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); setScreen('extras'); } });
 
 function themeFor(level) {
   return THEMES.find((t) => t.id === level.theme) || THEMES[(level.id - 1) % THEMES.length];
@@ -1919,7 +1919,7 @@ async function press(id) {
       break;
     case 'extras': // the Extras menu: Wonder Vaults (bonus) and, in the test build, the Practice vaults
       portal.gameplayStop();
-      if (G.screen === 'title') G.escroll = { y: 0, v: 0, max: 0, t: G.t };
+      if (G.screen === 'title') G.escroll = { y: 0, v: 0, max: 0, t: G.t, want: albumMarkOn() ? 'album' : null }; // 0.8.17: home's album mark leads to the album row
       setScreen('extras');
       break;
     default:
@@ -9279,10 +9279,13 @@ function drawTitle() {
     const tagS = 13 * u;
     pop(0.4, chx, ground, () => {
       drawChest(ctx, chx, chy, cs, G.t, chestOpen ? 'open' : 'ready');
-      const tagT = chestOpen ? chestInText() : 'FREE', tgw = ui.measure(tagT, tagS) + 14 * u, tcx = Math.min(chx, A.x1 - 4 * u - tgw / 2); // 0.8.17: "Opens in 6h 12m" (kept on the screen)
-      ui.roundRect(tcx - tgw / 2, chy - cs * 0.62 - tagS, tgw, tagS * 1.6, tagS * 0.8);
+      // 0.8.17: "Opens in 6h 12m", kept on the screen; beside the landscape buttons it takes two lines when one does not fit
+      let L = [chestOpen ? chestInText() : 'FREE'], tgw = ui.measure(L[0], tagS) + 14 * u, tcx = Math.min(chx, A.x1 - 4 * u - tgw / 2);
+      if (wide && chestOpen && tcx - tgw / 2 < bx + bw / 2 + 4 * u) { L = ['Opens in', L[0].replace(/^Opens in /, '')]; tgw = Math.max(...L.map((l) => ui.measure(l, tagS))) + 14 * u; tcx = Math.min(chx, A.x1 - 4 * u - tgw / 2); }
+      const tlh = tagS * 1.2, ty = chy - cs * 0.62 - tagS - (L.length - 1) * tlh;
+      ui.roundRect(tcx - tgw / 2, ty, tgw, tagS * 1.6 + (L.length - 1) * tlh, tagS * 0.8);
       ctx.fillStyle = chestOpen ? 'rgba(40,24,10,0.7)' : '#e8402e'; ctx.fill();
-      ui.text(tagT, tcx, chy - cs * 0.62 - tagS * 0.2, { size: tagS, align: 'center', color: '#fff', tag: 'title:chesttag' });
+      L.forEach((l, i) => ui.text(l, tcx, ty + tagS * 0.8 + i * tlh, { size: tagS, align: 'center', color: '#fff', tag: 'title:chesttag' + (i || '') }));
     });
     homeHit('home:chest', chx - cs * 0.6, chy - cs * 0.62 - tagS, cs * 1.2, cs * 1.1 + tagS);
   }
@@ -10236,6 +10239,12 @@ function openAlbum() {
   if (D.fresh.length) { save.seen = AL.albumSeen(save.seen, D.fresh); persist(); } // shown now: the marks go
   audio.play('ui_open');
 }
+// the Extras page's album row (wonder.js): reached from home's mark, the page scrolls to it and rings it
+function albumLead(S, off, R, vh) {
+  if (S.want === 'album') { S.want = null; focusTrip(S, focusY(off, R.h, vh, S.max, ui.u), save.calm); focusStart(S, 'album', G.t + 0.1, 4, false); }
+  const look = S.hl && S.hl.key === 'album' ? focusLook(S.hl, G.t, save.calm) : null;
+  if (look) focusDraw(ctx, ui, look, R, 18 * ui.u, ui.u);
+}
 function closeAlbum() { if (!G.album) return; G.escroll = G.album.keep || G.escroll; G.album = null; }
 // two orbs side by side and the spark: the combo's shape, as a dark silhouette with a "?" (a combo not found yet)
 function comboShadow(c, x, y, r, a = 1) {
@@ -10481,7 +10490,7 @@ function drawSetSub() {
     if (down && q > SB.q) audio.play('ring_tick', { pitch: 0.9 + q * 0.09 });
     SB.q = q;
     if (SB.k >= 1) { ui.pressedId = null; G.pressPointer = null; doReset(); return; }
-    const avail = (land ? A.y1 - 8 * s : A.y1 - pad - 72 * s) - (P.bottom + 8 * s), hd = Math.min(land ? avail * 0.62 : 190 * s, avail * 0.55), henH = Math.min(120 * s, avail - hd - 40 * s);
+    const avail = (land ? A.y1 - 8 * s : A.y1 - pad - 72 * s) - (P.bottom + 8 * s), hd = Math.min(land ? avail * 0.62 : 230 * s, avail * 0.5), henH = Math.min(land ? 120 * s : 170 * s, avail - hd - 40 * s);
     B.push({ h: Math.max(60 * s, avail - 20 * s), gap: 6 * s, draw: (x, y, w) => {
       const H = Math.max(60 * s, avail - 20 * s), sp = (H - henH - hd) / 3, hy = y + sp + henH / 2, cx = x + w / 2, cy = y + sp * 2 + henH + hd / 2, R = hd / 2;
       drawHenAnim(ctx, down ? 'gasp' : 'worried', cx, hy, henH, G.t, { key: 'reset', calm, shadow: 0 });
@@ -10509,9 +10518,10 @@ function drawSetSub() {
     if (bottom.extra) { bottom.extra.draw(x0, vb - bottom.extra.h, cw); vb -= bottom.extra.h + 14 * s; }
   }
   const vt = P.bottom + 8 * s, V = { x: A.x, y: vt, w: A.w, h: Math.max(60, vb - vt) };
-  if (SB.kind === 'reset1' && !land) { // a tall phone: the hen grows into the spare room, what is left spreads over the gaps
+  if (SB.kind === 'reset1' && !land) { // a tall phone: the hen grows into the spare room, what is left spreads over the gaps (a short one: she gets smaller first)
     const sum = B.reduce((a, b) => a + b.h + b.gap, 0), spare = V.h - sum - 8 * s;
-    if (spare > 0) { const hen = B.find((b) => b.hen), g = Math.min(spare * 0.5, 60 * s), d = (spare - g) / (B.length + 1); hen.h += g; for (const b of B) b.gap += d; }
+    if (spare < 0) { const hen = B.find((b) => b.hen); hen.h = Math.max(72 * s, hen.h + spare); }
+    else if (spare > 0) { const hen = B.find((b) => b.hen), g = Math.min(spare * 0.5, 60 * s), d = (spare - g) / (B.length + 1); hen.h += g; for (const b of B) b.gap += d; }
     for (const b of B) if (b.hen) { const d0 = b.draw, hh = b.h; b.draw = (x, y, w) => d0(x, y, w, hh); }
   }
   if (SB.kind === 'reset2') { pg.y = 0; pg.max = 0; let y = vt; for (const b of B) { y += b.gap ?? 10 * s; b.draw(x0, y, cw); y += b.h; } return; }
