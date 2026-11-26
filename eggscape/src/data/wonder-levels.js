@@ -119,7 +119,7 @@ export const WONDER_LEVELS = [
     rings: [
       { gaps: [{ a: -20, len: 0.86 }], thorns: [{ a: 160, n: 1, side: 'out' }] },
       { gaps: [{ a: 180, len: 0.86 }], thorns: [{ a: 0, n: 2, side: 'out' }, { a: 75, n: 1, side: 'out' }] },
-      { gaps: [{ a: 120, len: 0.86 }], thorns: [{ a: 30, n: 1, side: 'out' }, { a: 90, n: 1, side: 'out' }] },
+      { gaps: [{ a: 120, len: 0.86 }], thorns: [{ a: 30, n: 1, side: 'out' }, { a: 45, n: 1, side: 'out' }] },
     ],
     solve: [['drop', 0, 2, 1, -1], ['drop', 0, 1, 1, -1], ['drop', 0, 0, 1, 1], ['drop', 0, 2, 3, 1], ['drop', 0, 1, 3, 1], ['drop', 0, 0, 3, 1], ['drop', 0, 2, 2, 1], ['drop', 0, 1, 2, 1], ['drop', 0, 0, 2, 1]],
   },
@@ -152,17 +152,17 @@ export const WONDER_LEVELS = [
     fails: [[['hatch']], [['set', 0, 90], ['set', 1, 120], ['set', 3, 180], ['hatch']], [['set', 0, 90], ['set', 2, 90], ['set', 3, 180], ['hatch']], [['set', 0, 130], ['set', 1, 135], ['hatch']]],
   },
   {
-    // Hatchlings in the mirror: all four chicks (was three of four), a thorn more on rings 2 and 3, 45 s
+    // Hatchlings in the mirror: all four chicks (was three of four), a thorn more on the outer ring, 45 s (was 75)
     id: 910, key: 'hatch2', name: 'Hatchlings II', theme: 'lab', material: 'wood', eggs: 4, target: 4, time: 45, r0: 1.05, spacing: 1.0, seed: 9, nest: { w: 2.6 },
     pitch: 'Four chicks, no stragglers', tip: 'The lamp hatches the eggs and the chicks walk by themselves. Every one of them must get home: move the gaps ahead of them.',
     wonder: { kind: 'hatch', lamp: { ch: 1, a: -90 }, eggs: [null, null, { ch: 2, a: -84 }, { ch: 2, a: -96 }] },
     rings: [
       { gaps: [{ a: 150 }] },
       { fixed: 1, mat: 'stone', gaps: [{ a: -145, len: 0.9 }] },
-      { gaps: [{ a: 170 }], thorns: [{ a: -50, n: 2 }, { a: 120, n: 1 }] },
+      { gaps: [{ a: 170 }], thorns: [{ a: -50, n: 2 }] },
       { gaps: [{ a: 160, len: 0.9 }], thorns: [{ a: -140, n: 2 }, { a: 120, n: 1 }], pads: [{ a: -90, len: 1.2 }] },
     ],
-    solve: [[0, 3, 120], [0, 2, 90], ['wait', 2], [0, 0, 120], ['wait', 30]],
+    solve: [[0, 3, 120], [0, 2, 120], ['wait', 2], [0, 0, 120], ['wait', 30]],
     fails: [[['wait', 20]], [[0, 3, -110], [0, 2, -100], ['wait', 2], [0, 0, -120], ['wait', 30]]], // idle; the first vault's turns
   },
 ];
