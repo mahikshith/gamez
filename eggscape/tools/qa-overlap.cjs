@@ -99,7 +99,7 @@ const srv = http.createServer((q, r) => {
     }
     // 0.8.17 the Pacer (src/engine/pacer.js): the Stuck? pop-up arriving and settled, the free hint on the fail page's
     // help card, the dare chip (off and taken), Easy's goals on the level card and the win page, the map's marks, the switch
-    await check('pacer-stuck', ([sv, tp]) => { const E = __egg; eval(sv); const o = []; for (let n = 0; n < 3; n++) { if (E.G.screen === 'fail') E.press('retry'); else { E.start(11); for (let k = 0; k < 20; k++) E.frame(1 / 60); eval(tp); } for (let k = 0; k < 30; k++) E.frame(1 / 60); E.G.sim.state = 'failed'; E.endRun(false); for (let k = 0; k < 300 && E.G.screen !== 'fail'; k++) E.frame(1 / 60); }
+    await check('pacer-stuck', ([sv, tp]) => { const E = __egg; eval(sv); const o = []; for (let n = 0; n < 3; n++) { if (n && E.G.screen === 'fail') E.press('retry'); else { E.start(11); for (let k = 0; k < 20; k++) E.frame(1 / 60); eval(tp); } for (let k = 0; k < 30; k++) E.frame(1 / 60); E.G.sim.state = 'failed'; E.endRun(false); for (let k = 0; k < 300 && E.G.screen !== 'fail'; k++) E.frame(1 / 60); }
       if (!E.G.stuckAsk) return [['pacer-stuck', 'no pop-up after three losses']];
       for (let k = 0; k < 40; k++) E.frame(1 / 60); o.push(...E.overlaps()); for (let k = 0; k < 60; k++) E.frame(1 / 60); return o.concat(E.overlaps()); }, [mkSave({ lv: 12 }), toPlay], true);
     await check('pacer-hint', () => { const E = __egg; E.press('stuck:no'); for (let k = 0; k < 20; k++) E.frame(1 / 60); const o = E.overlaps(); const S = E.G.fscroll; if (S && S.max > 0) { S.y = S.max; S.v = 0; E.frame(1 / 60); return o.concat(E.overlaps()); } return o; }, 0, true);
