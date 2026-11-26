@@ -561,12 +561,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 55, theme: "lab", name: "Square One", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 9}, shape: "square", spider: {ring: 2, delay: 4}, tip: "A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.", orbs: [{type: "iron", ch: 1, a: 50},{type: "fire_red", ch: 3, a: 140}], seed: 364277, world: 10, intro: {title: "Shape Lab", cw: "spider", line: "Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider crawls to a gap and webs it shut; slip an egg past while it spins."},
+    id: 55, theme: "lab", name: "Square One", eggs: 3, target: 2, time: 100, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 15}, shape: "square", spider: {ring: 2, delay: 4}, tip: "A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.", orbs: [{type: "iron", ch: 1, a: -171},{type: "fire_red", ch: 3, a: -47}], seed: 364280, world: 10, intro: {title: "Shape Lab", cw: "spider", line: "Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider crawls to a gap and webs it shut; slip an egg past while it spins."},
     rings: [
-      {gaps: [{a: 171}], thorns: [{a: 89, n: 2}]},
-      {gaps: [{a: 71, x: 2},{a: -143}], thorns: [{a: -21, n: 1},{a: 159, n: 2}], pads: [{a: -70, len: 1.38}]},
-      {gaps: [{a: -31},{a: 154}], thorns: [{a: 102, n: 3},{a: -172, n: 2}], pads: [{a: -61, len: 1.85}]},
-      {gaps: [{a: 58, x: 3, len: 0.7},{a: -148}], thorns: [{a: 5, n: 1}], pads: [{a: -126, len: 1.53}]},
+      {gaps: [{a: 178}], thorns: [{a: 34, n: 2}]},
+      {gaps: [{a: 98, x: 2},{a: -38}], thorns: [{a: 67, n: 1},{a: -162, n: 1}], pads: [{a: -107, len: 1.43}]},
+      {gaps: [{a: 60},{a: -159}], thorns: [{a: -26, n: 3},{a: 98, n: 2}], pads: [{a: -70, len: 1.72}]},
+      {gaps: [{a: 129, vine: 1},{a: -33}], thorns: [{a: 11, n: 1},{a: -75, n: 1, side: "out", h: 0.26}], pads: [{a: -169, len: 1.89}]},
+      {gaps: [{a: 164, x: 3, len: 0.7},{a: 41}], thorns: [{a: 125, n: 2}], pads: [{a: -149, len: 1.69}]},
     ],
   },
   {
