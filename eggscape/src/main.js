@@ -7393,7 +7393,7 @@ function introPlans(L) {
   if (I && I.id === L.id && I.li === G.li) return I.P;
   let P = [];
   if (G.li >= 0 && !L.intro.chick && !L.intro.cw) {
-    const ks = (INTRO_KINDS[L.id] || villainKinds(L).filter((k) => kindFirst(k) === L.id)).filter((k) => !L.boss || /^boss:/.test(k));
+    const ks = (INTRO_KINDS[L.id] || villainKinds(L).filter((k) => kindFirst(k) === L.id && !/^kits/.test(k))).filter((k) => !L.boss || /^boss:/.test(k)); // (mama raccoon's kits have their own lesson in play: the card stays on its own subject)
     P = ks.slice(0, 3).map((k) => howToPlan(k, { harm: true }));
     if (!P.length) {
       const foeOf = L.salamander ? 'salamander' : L.eagle ? 'eagle' : 'snake';
