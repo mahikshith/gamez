@@ -3207,42 +3207,60 @@ function drawGot() {
     if (!R.landed && R.coins0 != null && t >= R.land) R.landed = true; // (the purse's own landing sounds and buzzes)
   }
   dim(0.84 * clamp(t / 0.18, 0, 1));
-  // 0.8.17: on a phone held upright the top row belongs to the purse and the bag (ui/landing.js): the page starts under it
-  // and the whole picture (headline to the last row) stands in the middle of the room left: even gaps above and below
-  const top = A.h > A.w ? 62 * u : 0, S = Math.min(A.w * 0.9, (A.h - top) * 0.46, 420 * u), cx = A.cx, hh = S * 0.5, hs = Math.min(39 * u, 0.12 * S);
-  const ws = Math.min(20 * u, 0.062 * S), WL = R.what ? wrapText(R.what, ws, Math.min(A.w - 48 * u, 380 * u)).slice(0, 3) : [], whatH = WL.length ? WL.length * ws * 1.3 + 0.03 * S : 0;
-  const n = R.items.length, per = Math.max(1, Math.min(4, n)), rowsN = Math.ceil(n / per), cell = Math.min(S * 0.27, (A.w - 30 * u) / per);
-  const ls = Math.max(13 * u, Math.min(18 * u, cell * 0.16)), rowH = cell * 0.78 + ls * 2.6;
+  // 0.8.17: on a phone held upright the top row belongs to the purse and the bag (ui/landing.js): the page starts under it.
+  // sweep817 (mykee: "there could be a lot of empty spaces"): the page is laid out as a column of blocks (the ribbon, the
+  // prize, its name and line, the row of what was inside, the closing line). The prize grows into the room the page has
+  // (up to 1.8x) and what is still left is shared as even gaps, so no half of the page is a dark hole. On its side: the
+  // prize big on the left at full height, the ribbon, name and row in a column on the right.
+  const wide = A.w > A.h * 1.15, top = A.h > A.w ? 62 * u : 0;
+  const S = wide ? Math.min(A.w * 0.42, A.h * 0.62, 420 * u) : Math.min(A.w * 0.9, (A.h - top) * 0.46, 420 * u), hh = S * 0.5, hs = Math.min(39 * u, 0.12 * S);
+  const colW = wide ? A.w * 0.44 - 24 * u : A.w - 30 * u, colX = wide ? A.x + A.w * 0.72 : A.cx;
+  const ws = Math.min(20 * u, 0.062 * S), WL = R.what ? wrapText(R.what, ws, Math.min(colW - 18 * u, 380 * u)).slice(0, 3) : [], whatH = WL.length ? WL.length * ws * 1.3 + 0.03 * S : 0;
+  const n = R.items.length, per = Math.max(1, Math.min(4, n)), rowsN = n ? Math.ceil(n / per) : 0;
   const willBag = R.items.some((it) => landWhere(it.art)), lineOn = R.line ? !(willBag && R.line === 'Added to your bag') : R.line !== '' && !willBag && R.coins0 == null; // (0.8.17: the purse and the bag chips show it)
-  const above = 0.98 * S + hs * 0.85, below = 0.02 * S + whatH + rowsN * rowH + (lineOn ? 40 * u : 0), mid = A.y + top + (A.h - top) / 2;
-  const cy = Math.max(A.y + top + above + 4 * u, Math.min(mid + (above - below) / 2, A.y1 - below - 8 * u)), heroY = cy - 0.42 * S;
+  const nameS = Math.min(34 * u, (wide ? 0.125 : 0.1) * S), heroW0 = R.sku ? Math.min(A.w - 30 * u, S * 1.05) : 0.45 * S; // (the prize's drawn width at 1x)
+  const mMax = Math.max(1, Math.min(wide ? 3 : 1.8, ((wide ? A.w * 0.46 : A.w - 24 * u) / heroW0)));
+  const cellOf = (m) => Math.min(S * 0.27 * Math.min(wide ? 2 : 1.3, m), colW / per), rowHOf = (c) => c * 0.78 + Math.max(13 * u, Math.min(18 * u, c * 0.16)) * 2.6;
+  const y0 = A.y + top + (wide ? 52 * u : 6 * u), y1 = A.y1 - 12 * u, room = y1 - y0;
+  // the blocks under the prize (portrait) or in the right column (on its side), in order
+  const blocksFor = (m) => { const c = cellOf(m); return [['rib', hs * 1.9], ...(wide ? [] : [['hero', 0.62 * S * m]]), ['name', nameS * 1.3 + whatH], ...(n ? [['items', rowsN * rowHOf(c)]] : []), ...(lineOn ? [['line', 30 * u]] : [])]; };
+  const sumOf = (B) => B.reduce((a, b) => a + b[1], 0);
+  let m = 1;
+  if (wide) m = clamp((A.h * 0.7) / ((R.sku ? 0.5 : 0.42) * S), 1, mMax); // (the drawn prize stands about 0.42 S tall at 1x)
+  else { const c1 = sumOf(blocksFor(1)); m = clamp(1 + (room * 0.8 - c1) / (0.62 * S * 1.15), 1, mMax); for (let k = 0; k < 4 && sumOf(blocksFor(m)) > room * 0.86 && m > 1; k++) m = Math.max(1, m - 0.08); }
+  const cell = cellOf(m), ls = Math.max(13 * u, Math.min(18 * u, cell * 0.16)), rowH = rowHOf(cell);
+  const B = blocksFor(m), gap = Math.max(4 * u, (room - sumOf(B)) / (B.length + 1)), at0 = {};
+  { let y = y0 + gap; for (const [k, h] of B) { at0[k] = { y, h }; y += h + gap; } }
+  const heroX = wide ? A.x + A.w * 0.27 : A.cx, heroY = wide ? A.y + A.h * 0.47 : at0.hero.y + 0.31 * S * m, cx = heroX;
+  const ribY = at0.rib.y + hs * 0.85 + 2 * u, nameY = at0.name.y + nameS * 0.65, rowTop = at0.items ? at0.items.y + cell * 0.04 : 0;
   ctx.save(); ctx.globalAlpha = clamp(t / 0.18, 0, 1);
-  sunburst(cx, heroY, S * 1.3, 'rgba(255,226,140,0.17)', 14);
-  const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.75); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
-  ctx.fillStyle = g; ctx.fillRect(cx - S, heroY - S, 2 * S, 2 * S);
+  sunburst(cx, heroY, S * 1.3 * m, 'rgba(255,226,140,0.17)', 14);
+  const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.75 * m); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
+  ctx.fillStyle = g; ctx.fillRect(cx - S * m, heroY - S * m, 2 * S * m, 2 * S * m);
   ctx.restore();
   const pop = (t0, x, y, draw) => { const k = calm ? 1 : backK((t - t0) / 0.32); if (k <= 0.01) return; ctx.save(); ctx.translate(x, y); ctx.scale(k, k); draw(); ctx.restore(); };
   if (!calm) { // 0.8.17 (mykee: "make it like a celebration"): a burst of light and confetti as the prize pops, as big as the prize
     const wt = clamp(((R.coins || 0) + 40 * R.items.length) / 300, 0.15, 1);
-    if (t > 0.18 && t < 0.78) { ctx.save(); ctx.globalAlpha = 0.6; CB.burst(ctx, cx, heroY, S * (0.38 + 0.25 * wt), (t - 0.18) / 0.6); ctx.restore(); }
+    if (t > 0.18 && t < 0.78) { ctx.save(); ctx.globalAlpha = 0.6; CB.burst(ctx, cx, heroY, S * m * (0.38 + 0.25 * wt), (t - 0.18) / 0.6); ctx.restore(); }
     CB.confetti(ctx, cx, heroY, t - 0.1, { n: Math.round(18 + 34 * wt), speed: S * (1.4 + 0.6 * wt), g: S * 1.5, life: 1.9, seed: 3, size: Math.max(6, S * 0.024) });
   }
   // the prize: the bundle's banner art, or the item itself
   const hw = Math.min(A.w - 30 * u, S * 1.05);
   pop(0.1, cx, heroY, () => {
+    ctx.scale(m, m);
     if (R.sku) drawIapBanner(ctx, R.sku, 0, 0, hw, hh, G.t, save.wallet);
     else if (R.art) spinArt(ctx, R.art, 0, 0, hh * 1.5, G.t); // a wheel prize
     else { const it = storeItem(R.key, storeState()); if (it) it.icon(ctx, 0, 0, hh * 1.1, G.t, 1); }
   });
-  if (calm || t > 0.35) ui.text(R.name, cx, heroY + hh * 0.62, { size: Math.min(34 * u, 0.1 * S), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 5 * u, maxW: A.w - 40 * u, tag: 'got:name' });
+  { const hH = (R.sku ? 0.5 : 0.44) * S * m; ui.record({ x: cx - heroW0 * m / 2, y: heroY - hH / 2, w: heroW0 * m, h: hH }, 'got:hero'); } // (what the prize covers when drawn)
+  if (calm || t > 0.35) ui.text(R.name, colX, nameY, { size: nameS, align: 'center', color: '#fff6c8', stroke: ink, strokeW: 5 * u, maxW: colW - 10 * u, tag: 'got:name' });
   // what was inside: one by one into a grid (up to 4 a row)
   // what it does, in one or two lines under its name (R.what: a booster's, a chick's, a ticket's own line)
-  if (WL.length && (calm || t > 0.5)) WL.forEach((ln, q) => ui.text(ln, cx, heroY + hh * 0.62 + 0.1 * S + q * ws * 1.3, { size: ws, align: 'center', color: '#ffffff', stroke: ink, strokeW: 4 * u, maxW: A.w - 40 * u, tag: 'got:what' + q }));
-  const rowTop = heroY + hh * 0.62 + 0.13 * S + whatH;
+  if (WL.length && (calm || t > 0.5)) WL.forEach((ln, q) => ui.text(ln, colX, nameY + nameS * 0.65 + 0.03 * S + ws * 0.65 + q * ws * 1.3, { size: ws, align: 'center', color: '#ffffff', stroke: ink, strokeW: 4 * u, maxW: colW - 10 * u, tag: 'got:what' + q }));
   let coinAt = null;
   const at = [];
   R.items.forEach((it, j) => {
-    const r = Math.floor(j / per), inRow = Math.min(per, n - r * per), k = j - r * per, x = cx + (k - (inRow - 1) / 2) * cell, y = rowTop + r * rowH + cell * 0.32, t0 = 0.6 + 0.14 * j;
+    const r = Math.floor(j / per), inRow = Math.min(per, n - r * per), k = j - r * per, x = colX + (k - (inRow - 1) / 2) * cell, y = rowTop + r * rowH + cell * 0.32, t0 = 0.6 + 0.14 * j;
     at[j] = { x, y };
     if (it.art === 'coins' && !coinAt) coinAt = { x, y };
     pop(t0, x, y, () => drawPart(ctx, it.art, 0, 0, cell * 0.72, G.t));
@@ -3256,9 +3274,9 @@ function drawGot() {
     R.items.forEach((it, j) => { const wh = landWhere(it.art); if (wh) its.push({ art: it.art, src: at[j], ...wh }); });
     if (R.coins0 != null || its.length) land.start({ from: R.coins0 ?? save.wallet.coins, to: save.wallet.coins, src: coinAt || { x: cx, y: heroY }, items: its, delay: calm ? 0 : Math.max(0, R.land - 0.6 - t) });
   }
-  const yEnd = Math.min(A.y1 - 34 * u, rowTop + rowsN * rowH + 16 * u);
-  if (t > R.end - 0.2 && lineOn) tickLine(R.line || 'Added to your bag', cx, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: A.w - 36 * u, tag: 'got:line', coin: !!R.lineCoin });
-  pop(0.06, cx, cy - 0.98 * S, () => { const hs = Math.min(39 * u, 0.12 * S), w = Math.min(A.w - 36 * u, ui.measure('YOU GOT!', hs) + 80 * u); ui.ribbon('YOU GOT!', 0, -hs * 0.85, w, hs * 1.7, { color: '#d89a1c', size: hs, noRecord: true }); });
+  const yEnd = at0.line ? at0.line.y + 15 * u : Math.min(A.y1 - 34 * u, rowTop + rowsN * rowH + 16 * u);
+  if (t > R.end - 0.2 && lineOn) tickLine(R.line || 'Added to your bag', colX, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: colW - 6 * u, tag: 'got:line', coin: !!R.lineCoin });
+  pop(0.06, colX, ribY, () => { const w = Math.min(colW - 6 * u, ui.measure('YOU GOT!', hs) + 80 * u); ui.ribbon('YOU GOT!', 0, -hs * 0.85, w, hs * 1.7, { color: '#d89a1c', size: hs, noRecord: true }); });
   landDraw(); // over everything on the page: the purse, the bag and what flies into them
   ui.buttons.push({ id: 'got:tap', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); // a tap anywhere
 }
