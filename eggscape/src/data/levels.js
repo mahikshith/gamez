@@ -57,12 +57,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 7, theme: "bramble", name: "Bramble Path", eggs: 3, target: 2, time: 55, spacing: 1.05, material: "vine", nest: {w: 2.6}, snake: {delay: 6, speed: 0.4}, bonus: {kind: "turns", n: 7}, tip: "Grab the rock skin, then run every egg down while they are stone.", orbs: [{type: "rockskin", ch: 1, a: -148},{type: "fire_red", ch: 2, a: 136}], seed: 47520, world: 2, intro: {title: "Wild Woods", line: "A snake slides in and hunts your eggs. It crosses a ring only through a gap: turn the gaps away. Rock skin turns every egg to stone."},
+    id: 7, theme: "bramble", name: "Bramble Path", eggs: 3, target: 2, time: 75, spacing: 1.05, material: "vine", nest: {w: 2.6}, snake: {delay: 6, speed: 0.4}, bonus: {kind: "turns", n: 11}, tip: "Grab the rock skin, then run every egg down while they are stone.", orbs: [{type: "rockskin", ch: 1, a: -56},{type: "fire_red", ch: 2, a: 58}], seed: 47525, world: 2, intro: {title: "Wild Woods", line: "A snake slides in and hunts your eggs. It crosses a ring only through a gap: turn the gaps away. Rock skin turns every egg to stone."},
     rings: [
-      {mat: "wood", gaps: [{a: 53}], thorns: [{a: -167, n: 2}], pads: [{a: 133, len: 1.3}]},
-      {gaps: [{a: -170, x: 2}], thorns: [{a: 115, n: 3},{a: 11, n: 2, side: "out", h: 0.26}], pads: [{a: -34, len: 1.33},{a: -88, len: 1.05}]},
-      {mat: "wood", gaps: [{a: -20},{a: 59}], thorns: [{a: 24, n: 2},{a: 138, n: 3, kind: "blunt"}], pads: [{a: -47, len: 1.05},{a: 102, len: 1.07}]},
-      {gaps: [{a: 133, x: 3, len: 0.7},{a: 13}], thorns: [{a: 99, n: 2},{a: 177, n: 1}], pads: [{a: -64, len: 1.13},{a: -137, len: 1.07}]},
+      {mat: "wood", gaps: [{a: 21}], thorns: [{a: 122, n: 1}], pads: [{a: -178, len: 1.34}]},
+      {gaps: [{a: 91, x: 2}], thorns: [{a: 21, n: 3},{a: 152, n: 2, side: "out", h: 0.26}], pads: [{a: -24, len: 1.46}]},
+      {mat: "wood", gaps: [{a: 27, curtain: 1}], thorns: [{a: -148, n: 3, kind: "blunt"}], pads: [{a: -73, len: 1.83}]},
+      {gaps: [{a: -164, x: 3, len: 0.7},{a: 95}], thorns: [{a: 55, n: 2},{a: 123, n: 1}], pads: [{a: 173, len: 1.71}]},
+      {mat: "wood", gaps: [{a: -31},{a: 46}], thorns: [{a: 11, n: 2},{a: 129, n: 1}], pads: [{a: -81, len: 1.84}]},
     ],
   },
   {
@@ -116,13 +117,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 13, theme: "frozen", name: "Frozen Lake", eggs: 3, target: 2, time: 85, spacing: 1.05, material: "wood", nest: {w: 2.6}, bonus: {kind: "turns", n: 10}, tip: "Arrow rings only turn one way: sometimes the long way round is the safe one.", orbs: [{type: "hourglass", ch: 1, a: 152},{type: "stone", ch: 2, a: 119}], seed: 87113, world: 3, intro: {title: "Frozen Lake", line: "Arrow rings turn only one way, and ice is slippery. The hourglass slows the world and stops the fuse."},
+    id: 13, theme: "frozen", name: "Frozen Lake", eggs: 3, target: 2, time: 85, spacing: 1.05, material: "wood", nest: {w: 2.6}, snake: {delay: 8, speed: 0.35}, bonus: {kind: "turns", n: 12}, tip: "Arrow rings only turn one way: sometimes the long way round is the safe one.", orbs: [{type: "hourglass", ch: 1, a: 35},{type: "stone", ch: 2, a: -23}], seed: 87150, world: 3, intro: {title: "Frozen Lake", line: "Arrow rings turn only one way, and ice is slippery. The hourglass slows the world and stops the fuse."},
     rings: [
-      {gaps: [{a: 130}]},
-      {mat: "ice", oneway: 1, gaps: [{a: -9, x: 2}], thorns: [{a: -132, n: 2, side: "out", h: 0.26},{a: 91, n: 2, side: "out", h: 0.26}], pads: [{a: -94, len: 1.25},{a: -166, len: 1.45}]},
-      {gaps: [{a: 56},{a: -151}], thorns: [{a: 11, n: 3},{a: 160, n: 2}], pads: [{a: 110, len: 1.66},{a: -87, len: 1.05}]},
-      {mat: "ice", oneway: -1, gaps: [{a: 134, x: 3, len: 0.7},{a: 9}], thorns: [{a: -151, n: 2, side: "out", h: 0.26},{a: -44, n: 2, side: "out", h: 0.26}], pads: [{a: 49, len: 1.25},{a: -116, len: 1.41}]},
-      {gaps: [{a: 65},{a: -34}], thorns: [{a: 21, n: 2},{a: 175, n: 2}], pads: [{a: -161, len: 1.59},{a: 119, len: 1.46}]},
+      {gaps: [{a: -156}]},
+      {mat: "ice", oneway: 1, gaps: [{a: 29, x: 2}], thorns: [{a: 154, n: 2, side: "out", h: 0.26},{a: 92, n: 2, side: "out", h: 0.26}], pads: [{a: -132, len: 1.31}]},
+      {gaps: [{a: -34},{a: -170}], thorns: [{a: -138, n: 2},{a: 67, n: 3}], pads: [{a: 132, len: 1.35}]},
+      {mat: "ice", oneway: -1, gaps: [{a: 37, x: 3, len: 0.7},{a: 155}], thorns: [{a: -152, n: 2, side: "out", h: 0.26},{a: -32, n: 2, side: "out", h: 0.26}], pads: [{a: 76, len: 1.2}]},
+      {gaps: [{a: 123},{a: -6}], thorns: [{a: 53, n: 2},{a: -140, n: 1}], pads: [{a: -171, len: 1.63}]},
     ],
   },
   {
@@ -272,14 +273,14 @@ export const LEVELS = [
     ],
   },
   {
-    id: 28, theme: "volcano", name: "The Face-off", eggs: 3, target: 2, time: 70, spacing: 1, material: "obsidian", nest: {w: 3}, bonus: {kind: "turns", n: 8}, salamander: [{delay: 3, every: 6.5, a: 140, ch: 2},{delay: 6, every: 7, a: -20, ch: 3, kind: "frost"}], tip: "Turn their rings to bring them head to head: the steam knocks both out. Then run your eggs past.", orbs: [{type: "water", ch: 1, a: -106},{type: "fire_red", ch: 3, a: -60},{type: "hourglass", ch: 4, a: -75}], seed: 1013633, world: 5, intro: {title: "Fire meets frost", line: "A frost salamander walks in. Its bite freezes an egg. When it meets the fire one they fight, and both are knocked out."},
+    id: 28, theme: "volcano", name: "The Face-off", eggs: 3, target: 2, time: 85, spacing: 1, material: "obsidian", lava: {every: 7, delay: 6}, nest: {w: 3}, bonus: {kind: "turns", n: 12}, salamander: [{delay: 3, every: 6.5, a: 140, ch: 2},{delay: 6, every: 7, a: -20, ch: 3, kind: "frost"}], tip: "Turn their rings to bring them head to head: the steam knocks both out. Then run your eggs past.", orbs: [{type: "water", ch: 1, a: -174},{type: "fire_red", ch: 3, a: 179},{type: "hourglass", ch: 4, a: -172}], seed: 1013634, world: 5, intro: {title: "Fire meets frost", line: "A frost salamander walks in. Its bite freezes an egg. When it meets the fire one they fight, and both are knocked out."},
     rings: [
-      {gaps: [{a: 163}], thorns: [{a: -7, n: 1}]},
-      {gaps: [{a: -28, x: 2}], thorns: [{a: 61, n: 2},{a: -88, n: 2, side: "out", h: 0.26}], pads: [{a: 118, len: 1.57}], honey: [{a: -164, len: 1.23}]},
-      {gaps: [{a: 64},{a: -136}], thorns: [{a: -22, n: 3},{a: 133, n: 3}], pads: [{a: -105, len: 1.27}]},
-      {gaps: [{a: 118, x: 3, len: 0.7},{a: -18}], thorns: [{a: 25, n: 3},{a: -151, n: 3}], pads: [{a: 151, len: 1.05}]},
-      {gaps: [{a: 36},{a: 149}], thorns: [{a: 67, n: 2},{a: -159, n: 2, kind: "blunt"}], pads: [{a: 175, len: 1.23}]},
-      {gaps: [{a: -170},{a: 91}], thorns: [{a: 53, n: 1},{a: 141, n: 2}], pads: [{a: -17, len: 1.49}]},
+      {gaps: [{a: -145}], thorns: [{a: 87, n: 2}]},
+      {gaps: [{a: 113, x: 2}], thorns: [{a: 17, n: 2},{a: -133, n: 2, side: "out", h: 0.26}], pads: [{a: -155, len: 1.29}], honey: [{a: -15, len: 1.16}]},
+      {gaps: [{a: -22},{a: -177}], thorns: [{a: -144, n: 2},{a: 11, n: 2}], pads: [{a: -52, len: 1.8}]},
+      {gaps: [{a: 110, x: 3, len: 0.7},{a: -134}], thorns: [{a: 6, n: 3},{a: 164, n: 3}], pads: [{a: -33, len: 1.39}]},
+      {gaps: [{a: 65},{a: 172}], thorns: [{a: 115, n: 3},{a: -36, n: 2, kind: "blunt"}], pads: [{a: -108, len: 1.72}]},
+      {gaps: [{a: -21},{a: 140}], thorns: [{a: 42, n: 1},{a: -139, n: 2}], pads: [{a: 106, len: 1.53}]},
     ],
   },
   {
@@ -305,13 +306,14 @@ export const LEVELS = [
     ],
   },
   {
-    id: 31, theme: "storm", name: "Storm Peaks", eggs: 3, target: 2, time: 80, spacing: 1, material: "metal", nest: {w: 2.8}, weather: "thunder", bonus: {kind: "turns", n: 10}, gusts: {delay: 7, every: 11, strength: 3, dur: 2}, chameleon: { delay: 2, dir: 1}, tip: "Let Sly eat the black flame: he gets sick and coughs up the last orb he stole.", orbs: [{type: "thunder", ch: 2, a: 11},{type: "bubble", ch: 3, a: -86},{type: "magnet", ch: 1, a: 96},{type: "fire_black", ch: 4, a: -115}], seed: 205897, world: 6, intro: {title: "Storm Peaks", line: "Lightning strikes and locks a ring. And Sly the chameleon creeps in to steal power orbs with his tongue: grab them first."},
+    id: 31, theme: "storm", name: "Storm Peaks", eggs: 3, target: 2, time: 115, spacing: 1, material: "metal", nest: {w: 2.8}, weather: "thunder", bonus: {kind: "turns", n: 13}, gusts: {delay: 7, every: 11, strength: 3, dur: 2}, chameleon: {delay: 2, dir: 1}, tip: "Let Sly eat the black flame: he gets sick and coughs up the last orb he stole.", orbs: [{type: "thunder", ch: 2, a: -126},{type: "bubble", ch: 3, a: 171},{type: "magnet", ch: 1, a: -68},{type: "fire_black", ch: 4, a: 46}], seed: 205898, world: 6, intro: {title: "Storm Peaks", line: "Lightning strikes and locks a ring. And Sly the chameleon creeps in to steal power orbs with his tongue: grab them first."},
     rings: [
-      {gaps: [{a: 111}], thorns: [{a: 9, n: 1}]},
-      {mat: "cloud", gaps: [{a: 12, x: 2}], thorns: [{a: 74, n: 3},{a: 85, n: 2, side: "out", h: 0.26}], pads: [{a: 120, len: 1.79}]},
-      {gaps: [{a: -40},{a: 113}], thorns: [{a: 44, n: 3},{a: -140, n: 2, kind: "blunt"}], pads: [{a: 2, len: 1.51}]},
-      {mat: "cloud", gaps: [{a: -2, x: 3, len: 0.7},{a: -157}], thorns: [{a: -33, n: 2},{a: 80, n: 3}], pads: [{a: -124, len: 1.32}]},
-      {gaps: [{a: 89},{a: -35}], thorns: [{a: 38, n: 1},{a: 139, n: 1}], pads: [{a: -88, len: 1.03}]},
+      {gaps: [{a: 102}], thorns: [{a: 160, n: 1}]},
+      {mat: "cloud", gaps: [{a: 175, x: 2}], thorns: [{a: 33, n: 2},{a: 31, n: 2, side: "out", h: 0.26}], pads: [{a: 76, len: 1.04}]},
+      {retract: {phase: 2.68, period: 3, on: 0.5}, gaps: [{a: 141},{a: 25}], thorns: [{a: 87, n: 3},{a: -161, n: 3},{a: 65, n: 3}], pads: [{a: -63, len: 1.06}]},
+      {mat: "cloud", gaps: [{a: 55, x: 3, len: 0.7},{a: -156}], thorns: [{a: 23, n: 2},{a: 85, n: 2, kind: "blunt"}], pads: [{a: -46, len: 1.69}]},
+      {gaps: [{a: 99},{a: -19}], thorns: [{a: 16, n: 2},{a: -173, n: 3}], pads: [{a: -95, len: 1.76}]},
+      {gaps: [{a: 29},{a: 178}], thorns: [{a: 54, n: 1},{a: -44, n: 1}], pads: [{a: -151, len: 1.21}]},
     ],
   },
   {
@@ -337,14 +339,14 @@ export const LEVELS = [
     ],
   },
   {
-    id: 34, theme: "storm", name: "Sly in the Gale", eggs: 3, target: 2, time: 90, spacing: 1, material: "metal", nest: {w: 3}, bonus: {kind: "turns", n: 9}, gusts: {delay: 6, every: 9, strength: 3, dur: 2}, chameleon: {delay: 3, dir: -1}, tip: "Gusts shove your eggs along the channels. Grab the feather before Sly does.", orbs: [{type: "feather", ch: 1, a: 147},{type: "fire_black", ch: 2, a: -31},{type: "thunder", ch: 3, a: 47},{type: "hatch_glow", ch: 4, a: 61}], seed: 1061152, world: 6,
+    id: 34, theme: "storm", name: "Sly in the Gale", eggs: 3, target: 2, time: 115, spacing: 1, material: "metal", nest: {w: 3}, weather: "thunder", bonus: {kind: "turns", n: 14}, gusts: {delay: 6, every: 9, strength: 3, dur: 2}, chameleon: {delay: 3, dir: -1}, tip: "Gusts shove your eggs along the channels. Grab the feather before Sly does.", orbs: [{type: "feather", ch: 1, a: 107},{type: "fire_black", ch: 2, a: 25},{type: "thunder", ch: 3, a: -97},{type: "hatch_glow", ch: 4, a: -58}], seed: 1061147, world: 6,
     rings: [
-      {gaps: [{a: 114}], thorns: [{a: 177, n: 1}]},
-      {mat: "cloud", gear: 2, gaps: [{a: -149, x: 2}], thorns: [{a: 46, n: 3},{a: 34, n: 2, side: "out", h: 0.26}], pads: [{a: -83, len: 1.84}]},
-      {gaps: [{a: -10},{a: 178}], thorns: [{a: 111, n: 3},{a: -143, n: 3}], pads: [{a: -66, len: 1.53}]},
-      {mat: "cloud", gaps: [{a: 120, x: 3, len: 0.7},{a: -144}], thorns: [{a: 47, n: 3},{a: 173, n: 3, kind: "blunt"}], pads: [{a: -2, len: 1.19}]},
-      {gaps: [{a: -2},{a: -178}], thorns: [{a: -41, n: 2},{a: 30, n: 2}], pads: [{a: -80, len: 1.02}]},
-      {gaps: [{a: 135},{a: 60}], thorns: [{a: 89, n: 1},{a: 15, n: 2}], pads: [{a: -137, len: 1.3}]},
+      {gaps: [{a: 48}], thorns: [{a: -8, n: 1}]},
+      {mat: "cloud", gear: 2, gaps: [{a: 175, x: 2}], thorns: [{a: -26, n: 3},{a: 50, n: 2, side: "out", h: 0.26}], pads: [{a: 138, len: 1.19}]},
+      {gaps: [{a: 74},{a: -48}], thorns: [{a: -10, n: 3},{a: 152, n: 3}], pads: [{a: 47, len: 1.32}]},
+      {mat: "cloud", gaps: [{a: -153, x: 3, len: 0.7},{a: 104}], thorns: [{a: -6, n: 2},{a: 144, n: 2, kind: "blunt"}], pads: [{a: 56, len: 1.83}]},
+      {gaps: [{a: 74},{a: -37}], thorns: [{a: 43, n: 2},{a: 120, n: 3}], pads: [{a: -77, len: 1.89}]},
+      {gaps: [{a: 144},{a: 34}], thorns: [{a: 76, n: 2},{a: -150, n: 1}], pads: [{a: -92, len: 1.38}]},
     ],
   },
   {
@@ -434,12 +436,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 43, theme: "reef", name: "Under the Waves", eggs: 3, target: 2, time: 80, spacing: 1.05, material: "coral", water: true, nest: {w: 2.8}, bonus: {kind: "time", s: 40}, hermit: {ch: 1, a: 70, delay: 1.5}, fish: {ch: 2, n: 7, speed: 0.9, a: 20, turn: 14}, tip: "A tucked egg is safe from thorns. Turn a gap to the crab and the egg floats out through it.", orbs: [{type: "bubble", ch: 2, a: 166}], seed: 285085, world: 8, intro: {title: "Coral Reef", line: "Underwater, eggs float UP! Line the gaps up toward the top to reach the hen's boat. A hermit crab tucks eggs in its shell: bump an egg into it, or turn a gap to it."},
+    id: 43, theme: "reef", name: "Under the Waves", eggs: 3, target: 2, time: 90, spacing: 1.05, material: "coral", water: true, nest: {w: 2.8}, bonus: {kind: "time", s: 50}, hermit: {ch: 1, a: 70, delay: 1.5}, fish: {ch: 2, n: 7, speed: 0.9, a: 20, turn: 14}, tip: "A tucked egg is safe from thorns. Turn a gap to the crab and the egg floats out through it.", orbs: [{type: "bubble", ch: 2, a: 98}], seed: 285088, world: 8, intro: {title: "Coral Reef", line: "Underwater, eggs float UP! Line the gaps up toward the top to reach the hen's boat. A hermit crab tucks eggs in its shell: bump an egg into it, or turn a gap to it."},
     rings: [
-      {gaps: [{a: 175}]},
-      {gaps: [{a: -116, x: 2}], thorns: [{a: 13, n: 2}], pads: [{a: 148, len: 1.53}]},
-      {gaps: [{a: 141, x: 2},{a: -43}], thorns: [{a: 36, n: 2}], pads: [{a: -90, len: 1.39}]},
-      {gaps: [{a: 28, x: 3, len: 0.7},{a: -169}], thorns: [{a: -128, n: 2}], pads: [{a: 155, len: 1.21}]},
+      {gaps: [{a: -153}]},
+      {gaps: [{a: 146, x: 2, shut: {period: 4.5, open: 0.5, phase: 1.93}}], thorns: [{a: -63, n: 1},{a: 36, n: 1, side: "out", h: 0.26}], pads: [{a: -177, len: 1.45}]},
+      {gaps: [{a: 30, x: 2},{a: -56}], thorns: [{a: -5, n: 2},{a: -173, n: 2}], pads: [{a: 71, len: 1.39}]},
+      {gaps: [{a: 0, x: 3, len: 0.7},{a: 149}], thorns: [{a: 39, n: 2},{a: -50, n: 1}], pads: [{a: -159, len: 1.1}]},
+      {gaps: [{a: -49},{a: -138}], thorns: [{a: -73, n: 1}], pads: [{a: 55, len: 1.43}]},
     ],
   },
   {
@@ -493,13 +496,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 49, theme: "bayou", name: "Gator Crossing", eggs: 3, target: 2, time: 110, spacing: 1.15, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 14}, gator: {ch: 4, a: -60, delay: 6}, frog: {ch: 2, a: -130, delay: 16, every: 8}, tip: "Turn the gap away from his jaws and he bites nothing. Pepper makes him sneeze and swim off.", orbs: [{type: "pepper", ch: 2, a: -6},{type: "fire_red", ch: 3, a: 60}], seed: 324683, world: 9, intro: {title: "Gator Bayou", line: "An alligator lies in the outer channel like a log. Asleep, his back is a bridge. Awake, he snaps at eggs that drop near his jaws."},
+    id: 49, theme: "bayou", name: "Gator Crossing", eggs: 3, target: 2, time: 125, spacing: 1.15, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 17}, gator: {ch: 4, a: -60, delay: 6}, frog: {ch: 2, a: -130, delay: 8, every: 8}, tip: "Turn the gap away from his jaws and he bites nothing. Pepper makes him sneeze and swim off.", orbs: [{type: "pepper", ch: 2, a: -34},{type: "fire_red", ch: 3, a: -129}], seed: 324691, world: 9, intro: {title: "Gator Bayou", line: "An alligator lies in the outer channel like a log. Asleep, his back is a bridge. Awake, he snaps at eggs that drop near his jaws."},
     rings: [
-      {gaps: [{a: -28}], thorns: [{a: 93, n: 1}]},
-      {gear: 2, gaps: [{a: 77}], thorns: [{a: 21, n: 2},{a: -3, n: 2, side: "out", h: 0.26}], pads: [{a: 163, len: 1.44}]},
-      {gaps: [{a: -134},{a: 20}], thorns: [{a: -29, n: 3},{a: 65, n: 2}], pads: [{a: -169, len: 1.82}]},
-      {gaps: [{a: -23, x: 2},{a: 167}], thorns: [{a: 104, n: 2},{a: -162, n: 2, kind: "blunt"}], pads: [{a: 48, len: 1.17}]},
-      {gaps: [{a: -150},{a: 70}], thorns: [{a: 40, n: 2},{a: 121, n: 1}], pads: [{a: 177, len: 1.53}]},
+      {gaps: [{a: 57}], thorns: [{a: 123, n: 1}]},
+      {gear: 2, gaps: [{a: 174}], thorns: [{a: 114, n: 3},{a: -17, n: 2, side: "out", h: 0.26}], pads: [{a: 68, len: 1.68}]},
+      {gaps: [{a: 134, shut: {period: 4.5, open: 0.5, phase: 2.84}},{a: 24, shut: {period: 4.5, open: 0.5, phase: 2.43}}], thorns: [{a: 72, n: 2},{a: 179, n: 2}], pads: [{a: -33, len: 1.87}]},
+      {gaps: [{a: -180, x: 2},{a: 59}], thorns: [{a: 20, n: 3},{a: 110, n: 2, kind: "blunt"}], pads: [{a: -128, len: 1.73}]},
+      {gaps: [{a: -9},{a: 125}], thorns: [{a: 84, n: 2},{a: -154, n: 2}], pads: [{a: 47, len: 1.64}]},
     ],
   },
   {
@@ -558,12 +561,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 55, theme: "lab", name: "Square One", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 9}, shape: "square", spider: {ring: 2, delay: 4}, tip: "A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.", orbs: [{type: "iron", ch: 1, a: 50},{type: "fire_red", ch: 3, a: 140}], seed: 364277, world: 10, intro: {title: "Shape Lab", cw: "spider", line: "Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider crawls to a gap and webs it shut; slip an egg past while it spins."},
+    id: 55, theme: "lab", name: "Square One", eggs: 3, target: 2, time: 100, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 15}, shape: "square", spider: {ring: 2, delay: 4}, tip: "A webbed egg rides its ring: turn it over another gap. The iron shell tears webs and smashes thorns.", orbs: [{type: "iron", ch: 1, a: -171},{type: "fire_red", ch: 3, a: -47}], seed: 364280, world: 10, intro: {title: "Shape Lab", cw: "spider", line: "Square vaults: eggs rest on flat sides and slide at corners. The clockwork spider crawls to a gap and webs it shut; slip an egg past while it spins."},
     rings: [
-      {gaps: [{a: 171}], thorns: [{a: 89, n: 2}]},
-      {gaps: [{a: 71, x: 2},{a: -143}], thorns: [{a: -21, n: 1},{a: 159, n: 2}], pads: [{a: -70, len: 1.38}]},
-      {gaps: [{a: -31},{a: 154}], thorns: [{a: 102, n: 3},{a: -172, n: 2}], pads: [{a: -61, len: 1.85}]},
-      {gaps: [{a: 58, x: 3, len: 0.7},{a: -148}], thorns: [{a: 5, n: 1}], pads: [{a: -126, len: 1.53}]},
+      {gaps: [{a: 178}], thorns: [{a: 34, n: 2}]},
+      {gaps: [{a: 98, x: 2},{a: -38}], thorns: [{a: 67, n: 1},{a: -162, n: 1}], pads: [{a: -107, len: 1.43}]},
+      {gaps: [{a: 60},{a: -159}], thorns: [{a: -26, n: 3},{a: 98, n: 2}], pads: [{a: -70, len: 1.72}]},
+      {gaps: [{a: 129, vine: 1},{a: -33}], thorns: [{a: 11, n: 1},{a: -75, n: 1, side: "out", h: 0.26}], pads: [{a: -169, len: 1.89}]},
+      {gaps: [{a: 164, x: 3, len: 0.7},{a: 41}], thorns: [{a: 125, n: 2}], pads: [{a: -149, len: 1.69}]},
     ],
   },
   {

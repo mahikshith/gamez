@@ -44,6 +44,7 @@ LEVEL_KEYS.push('penguin'); // 0.8.17 pip
 LEVEL_KEYS.push('urchin'); // 0.8.17 urchin: Spike the sea urchin (level 46)
 LEVEL_KEYS.push('monkey'); // 0.8.17 coco
 LEVEL_KEYS.push('raccoon'); // 0.8.17 bandit: the raccoon boss (L6)
+LEVEL_KEYS.push('fish'); // fish schools (0.8.8 put them in by hand; a regenerated level keeps them)
 
 // ---------- layout ----------
 function radii(spec) {
@@ -452,13 +453,15 @@ async function worker(id, tries, out) {
 // difficulty of a kept layout, for picking along the curve
 const hardness = (c) => c.moves * 1.5 + c.plannerT / 8 + (c.roughBroken || 0) * 2 + (c.stars === 2 ? 1 : 0) + (c.hard === 1 ? 2 : 0);
 
-// Sawtooth (per world): the first level after a boss is a breather, the boss (the world's last) the hardest, a climb between.
+// Sawtooth (per world): the boss (the world's last) the hardest, a climb between. 0.8.17 boss817 (mykee: "Post boss levels
+// are always easy"): the first level of worlds 2 on is a step on from the world before, not a breather, so it takes the
+// middle of its keepers (its spec carries the previous world's pressure); only world 1's first takes the easiest.
 function pick(id, found) {
   if (!found.length) return null;
   const sorted = [...found].sort((a, b) => hardness(a) - hardness(b));
   const spec = SPECS.find((s) => s.id === id), mates = spec ? SPECS.filter((s) => s.world === spec.world) : [], n = Math.max(2, mates.length);
   const k = spec ? mates.indexOf(spec) : 0;
-  const q = gidOf(spec || { id }) <= 2 || k === 0 ? 0 : k === n - 1 ? 1 : 0.25 + (0.5 * (k - 1)) / Math.max(1, n - 3);
+  const q = gidOf(spec || { id }) <= 2 || (k === 0 && (spec?.world ?? 1) <= 1) ? 0 : k === 0 ? 0.5 : k === n - 1 ? 1 : 0.25 + (0.5 * (k - 1)) / Math.max(1, n - 3);
   return sorted[Math.round(q * (sorted.length - 1))];
 }
 
