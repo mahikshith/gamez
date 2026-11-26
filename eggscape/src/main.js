@@ -1443,7 +1443,7 @@ async function press(id) {
   { const b = ui.buttons.find((q) => q.id === id); if (b && b.w < ui.w * 1.5) G.pressAt = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; } // coins a press brings fly from its button (purse.gain)
   audio.play(id === 'pause' || id === 'levels' || id === 'practice' ? 'ui_back' : 'ui_tap');
   prizePop.skip(); // a video's little celebration goes on its way at a tap (0.8.17)
-  if (G.screen === 'intro' && G.level && G.li >= 0 && /^(boost:|adboost$|shop:boosts$|strip:more$)/.test(id) && !(save.seen || {})['strip:' + G.level.id]) { save.seen = { ...save.seen, ['strip:' + G.level.id]: 1 }; persist(); } // the booster strip was touched: its call for attention rests on this level for good
+  if (G.screen === 'intro' && G.level && G.li >= 0 && /^(boost:|adboost$|shop:boosts$|strip:more$|strip:back$)/.test(id) && !(save.seen || {})['strip:' + G.level.id]) { save.seen = { ...save.seen, ['strip:' + G.level.id]: 1 }; persist(); } // the booster strip was touched: its call for attention rests on this level for good
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
   if (id.startsWith('wait:go:')) { await waitClaim(id.slice(8)); return; } // 0.8.17: one waiting reward, one video
   if (id.startsWith('xs:') || (id === 'set:close' && G.setSub) || (id === 'back' && G.album && G.screen === 'extras')) { await xsPress(id); return; } // 0.8.17: the combo album, Settings' privacy / reset / footer (xsPress)
@@ -2065,8 +2065,9 @@ async function press(id) {
       } else if (id && id.startsWith('mode:')) {
         save.mode = id.slice(5);
         persist();
-      } else if (id === 'strip:more') { // the booster row's next page (it starts at the first again on another level)
-        const lid = G.level && G.level.id; G.boostPg = { lid, n: (G.boostPg && G.boostPg.lid === lid ? G.boostPg.n : 0) + 1 }; audio.play('ui_tap');
+      } else if (id === 'strip:more' || id === 'strip:back') { // the booster row one page on or back (0.8.17: it scrolls, ">>" then "<<"; it starts at the first again on another level)
+        const lid = G.level && G.level.id, P = G.boostPg && G.boostPg.lid === lid ? G.boostPg : (G.boostPg = { lid, k: 0 });
+        if (P.n) P.k = E.stripStep(P.n, P.fit, P.k, id === 'strip:more' ? 1 : -1); audio.play('ui_tap');
       } else if (id && id.startsWith('boost:')) {
         const b = id.slice(6);
         if (G.boostSel.has(b)) G.boostSel.delete(b); else { G.boostSel.add(b); if (!(save.seen || {})['bu:' + b]) { save.seen = { ...(save.seen || {}), ['bu:' + b]: 1 }; persist(); } }
@@ -2658,10 +2659,10 @@ function drawRemAsk() {
       ui.text(text, tx, by + bh / 2 + 9 * s, { size: ts, color: ui.C.ink, maxW: tw, tag: 'rem:text' });
       ui.record({ x: bx + 14 * s, y: by + (bh - d) / 2, w: d, h: d }, 'rem:icon');
     } },
-    lineBlock(sys ? 'Notifications are off for Eggscape on this phone.' : 'One a day at most. Never at night.', 15 * s, { color: ui.C.ink2, tag: 'rem:why', gap: 8 * s }),
-    { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ui.button('rem:yes', yes, x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: Math.min(22 * s, (w - 28 * s) * 22 / Math.max(1, ui.measure(yes, 22))) }) },
-    { h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rem:no', 'Not now', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
-  ], { ribbon: '#e8a020' });
+    { ...lineBlock(sys ? 'Notifications are off for Eggscape on this phone.' : 'One a day at most. Never at night.', 15 * s, { color: ui.C.ink2, tag: 'rem:why', gap: 8 * s }), right: true },
+    { h: 58 * s, gap: 14 * s, right: true, draw: (x, y, w) => ui.button('rem:yes', yes, x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: Math.min(22 * s, (w - 28 * s) * 22 / Math.max(1, ui.measure(yes, 22))) }) },
+    { h: 52 * s, gap: 10 * s, right: true, draw: (x, y, w) => ui.button('rem:no', 'Not now', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
+  ], { ribbon: '#e8a020', twoCol: true }); // 0.8.17 (mykee: landscape "too much empty UI space"): on its side the note left, the words and the buttons right
 }
 // first launch (app only, behind OF.AGE_GATE): a neutral question, two equal buttons, nothing pre-chosen
 function drawAgeAsk() {
@@ -3271,10 +3272,11 @@ function drawWaitList() {
   const L = waitingList();
   if (!L.length) { G.waitList = null; return; }
   dim(0.55);
+  const wide = L.length > 1 && ui.A.w > ui.A.h * 1.15;
   stackCard('Rewards waiting', (s) => {
     const C = ui.C, day = today();
     return [
-      ...L.map((it, i) => ({ h: 76 * s, gap: i ? 10 * s : 14 * s, draw: (x, y, w) => {
+      ...L.map((it, i) => ({ h: 76 * s, gap: i > (wide ? 1 : 0) ? 10 * s : 14 * s, right: wide && i % 2 === 1, draw: (x, y, w) => {
         ui.well(x, y, w, 76 * s, { s });
         const ax = x + 42 * s, ay = y + 38 * s, bw = 128 * s;
         if (it.kind === 'coins') for (const [dx, dy] of [[-10, 7], [10, 7], [0, -7]]) drawCoin(ctx, ax + dx * s, ay + dy * s, 14 * s, G.t + dx);
@@ -3287,9 +3289,9 @@ function drawWaitList() {
         const full = it.kind === 'coins' && WT.room(save.waiting, day) < it.n; // over today's ceiling: it waits for tomorrow
         ui.button('wait:go:' + it.id, full ? 'Tomorrow' : 'Watch', x + w - bw - 10 * s, y + 13 * s, bw, 50 * s, full ? { kind: 'off', disabled: true, size: 17 * s } : { kind: 'ad', ad: true, shimmer: i === 0, size: 19 * s });
       } })),
-      { h: 52 * s, gap: 16 * s, draw: (x, y, w) => ui.button('wait:close', 'Close', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
+      { h: 52 * s, gap: 16 * s, right: wide && L.length % 2 === 1, draw: (x, y, w) => ui.button('wait:close', 'Close', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
     ];
-  }, { ribbon: '#7a48e8', full: false });
+  }, { ribbon: '#7a48e8', full: false, twoCol: wide }); // 0.8.17: on its side the rewards stand in two columns (the Close under the shorter one)
 }
 
 function drawGetMore() {
@@ -7296,6 +7298,25 @@ const lvLaser = () => ((G.level && G.level.orbs) || []).some((o) => o.type === '
 const CHEV = {}; let CHEV_N = 0; // the scroll arrows on screen: id -> its scroller and view height
 const pageColH = (B, s) => B.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
 // a scrolling column of blocks inside V (screen coordinates; the scroll is applied to y, so recorded rects are real)
+// 0.8.17: two columns of blocks that scroll as one page (Settings on a phone on its side), else as pageScroll
+function pageScroll2(L, R, S, V, xl, xr, w, s) {
+  const H = Math.max(pageColH(L, s), pageColH(R, s)) + 18 * s;
+  S.max = Math.max(0, H - V.h);
+  glide(S);
+  const r0 = ui.rects.length, b0 = ui.buttons.length, sY = snapPx(S.y, DPR);
+  ctx.save(); ctx.beginPath(); ctx.rect(V.x, V.y, V.w, V.h); ctx.clip();
+  for (const [B, x] of [[L, xl], [R, xr]]) { let y = V.y + 6 * s - sY; for (const b of B) { y += b.gap ?? 10 * s; if (y + b.h > V.y - 40 * s && y < V.y + V.h + 40 * s) b.draw(x, y, w); y += b.h; } }
+  ctx.restore();
+  clipRecorded(r0, b0, V);
+  if (S.max > 0) {
+    const fade = (yy, down) => { const g = ctx.createLinearGradient(0, yy, 0, yy + (down ? 22 : -22) * s); g.addColorStop(0, 'rgba(12,7,3,0.55)'); g.addColorStop(1, 'rgba(12,7,3,0)'); ctx.fillStyle = g; ctx.fillRect(V.x, down ? yy : yy - 22 * s, V.w, 22 * s); };
+    if (S.y > 1) fade(V.y, true);
+    if (S.y < S.max - 1) { fade(V.y + V.h, false);
+      const cx2 = Math.min(V.x + V.w - 22 * s, xr + w + 2 * s), cy2 = V.y + V.h - 22 * s, cid = S.cid || (S.cid = ++CHEV_N);
+      chevron(cx2, cy2 + (save.calm ? 0 : 3 * s * Math.sin(G.t * 4)), 17 * s, 'd', 1);
+      CHEV[cid] = { S, h: V.h }; ui.buttons.push({ id: 'pgdn:' + cid, x: cx2 - 26 * s, y: cy2 - 26 * s, w: 52 * s, h: 52 * s }); }
+  }
+}
 function pageScroll(blocks, S, V, x, w, s, top) {
   const H = pageColH(blocks, s) + 18 * s;
   S.max = Math.max(0, H - V.h);
@@ -7585,7 +7606,7 @@ function drawLevelIntro(L, acc) {
   };
 
   // ---- the tabs, with a pulsing mark on the one that needs the player
-  const TABH = 42 * s;
+  const TABH = 52 * s; // (0.8.17: each tab a 44 px tap target, mykee's "user comfort"; it was 34)
   const newChick = T.open.some((S) => !S.premium && S.unlock === L.id && G.li >= 0);
   const chickMark = T.need || newChick || (!early && locked.some((c) => c.canAfford));
   const tabs = (x, y, w) => {
@@ -7615,7 +7636,7 @@ function drawLevelIntro(L, acc) {
     ctx.globalAlpha = 1;
     ui.record({ x: gx, y: cy - es * sc / 2, w: eggsW * sc, h: es * sc }, 'intro:eggs');
     gx += (eggsW + 10 * s) * sc;
-    ui.text(need, gx, cy, { size: fs * sc, color: C.ink, maxW: nw * sc + 1, tag: 'intro:need' });
+    ui.text(need, gx, cy, { size: fs * sc, color: C.ink, maxW: nw * sc + 4 * s, tag: 'intro:need' }); // (+4: a scaled size measures a hair wider; 0.8.17 "Bring 3 of 5 ho...")
     if (tl) { gx += (nw + 22 * s) * sc; pictoClock(ctx, gx + 13 * s * sc, cy, 24 * s * sc); ui.text(ts, gx + 32 * s * sc, cy, { size: fs * sc, color: C.warn, tag: 'intro:time' }); }
   } };
   // the caption under the stage: who or what it is (bold) and what to do (green); red while the harm plays
@@ -7646,7 +7667,7 @@ function drawLevelIntro(L, acc) {
   } });
   // the tiles of what is on this level: one even grid; the one playing is green with a play mark; a tap plays it again
   // (a name too long for its tile takes two lines, never an ellipsis; the tiles then stand a little taller)
-  const tiles = HT.tiles, tn = tiles.length, tCols = Math.min(tn, 4), tRows = tn ? Math.ceil(tn / tCols) : 0, tGap = 8 * s, tFs = 14 * s;
+  const tiles = HT.tiles, tn = tiles.length, tCols = tn === 5 ? 5 : Math.min(tn, 4), /* (0.8.17: five in one row, not four and a lone one) */ tRows = tn ? Math.ceil(tn / tCols) : 0, tGap = 8 * s, tFs = 14 * s;
   const tileLines = (w) => { const cw = (w - (tCols - 1) * tGap) / tCols; return tiles.map((Ti) => (ui.measure(Ti.name, tFs) <= cw - 8 * s ? [Ti.name] : wrapText(Ti.name, tFs, cw - 8 * s).slice(0, 2))); };
   const tileBlock = (w0) => { const TL = tn ? tileLines(w0) : [], two = TL.some((l) => l.length > 1), tileH = (two ? 72 : 58) * s; return !tn ? (nP > 1 ? { h: 14 * s, gap: gp, draw: (x, y, w) => { for (let q = 0; q < nP; q++) { ctx.beginPath(); ctx.arc(x + w / 2 + (q - (nP - 1) / 2) * 16 * s, y + 7 * s, (q === Hw.i % nP ? 5 : 3.5) * s, 0, 7); ctx.fillStyle = q === Hw.i % nP ? '#3cb043' : 'rgba(120,80,30,0.35)'; ctx.fill(); } } } : null)
     : { h: tRows * tileH + (tRows - 1) * tGap, gap: gp, draw: (x, y, w) => {
@@ -7670,17 +7691,22 @@ function drawLevelIntro(L, acc) {
     } }; };
   // the reminder chips (what this level also holds, taught on an earlier card): every one whole, wrapped to more rows
   const chips = HT.chips, chH = 28 * s, chFs = 14 * s;
-  const chipRows = (w) => { const ws = chips.map((c) => Math.min(w, chH + ui.measure(c.name, chFs) + 12 * s)), R = []; let cur = [], cw = 0; ws.forEach((cw0, i) => { if (cur.length && cw + gp * 0.75 + cw0 > w) { R.push(cur); cur = []; cw = 0; } cw += (cur.length ? gp * 0.75 : 0) + cw0; cur.push(i); }); if (cur.length) R.push(cur); return { R, ws }; };
-  const chipBlock = (w) => { if (!chips.length) return null; const { R, ws } = chipRows(w); return { h: R.length * chH + (R.length - 1) * 6 * s, gap: gp, draw: (x, y, ww) => {
-    R.forEach((row, r) => {
-      const tw = row.reduce((a, i) => a + ws[i], 0) + (row.length - 1) * gp * 0.75; let cx = x + (ww - tw) / 2; const cy = y + r * (chH + 6 * s);
-      for (const i of row) {
-        const c = chips[i];
-        ui.roundRect(cx, cy, ws[i], chH, chH / 2); ctx.fillStyle = c.fresh ? 'rgba(46,120,40,0.16)' : 'rgba(122,80,40,0.12)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = c.fresh ? 'rgba(46,120,40,0.7)' : 'rgba(122,80,40,0.4)'; ctx.stroke();
-        c.art(ctx, cx + chH / 2 + 1 * s, cy + chH / 2, chH * 0.36);
-        ui.text(c.name, cx + chH + 2 * s, cy + chH / 2 + 0.5 * s, { size: chFs, color: c.fresh ? '#2d6a1c' : C.ink, maxW: ws[i] - chH - 8 * s, tag: 'intro:chip' + i });
-        cx += ws[i] + gp * 0.75;
-      }
+  // 0.8.17 (mykee: "the info ... like top chick, rock skin etc on the level card is not properly aligned"): a tidy grid,
+  // not a ragged wrap: every chip as wide as the widest needs, stretched so a row runs edge to edge of the column, the
+  // rows as even as the count allows (5: three and two), a shorter last row centred on the same chip width
+  const chG = 6 * s;
+  const chipRows = (w) => {
+    const nat = Math.min(w, Math.max(...chips.map((c) => chH + ui.measure(c.name, chFs) + 14 * s))), n = chips.length;
+    const maxC = clamp(Math.floor((w + chG) / (nat + chG)), 1, n), rows = Math.ceil(n / maxC), cols = Math.ceil(n / rows);
+    return { rows, cols, cw: (w - (cols - 1) * chG) / cols };
+  };
+  const chipBlock = (w) => { if (!chips.length) return null; const { rows } = chipRows(w); return { h: rows * chH + (rows - 1) * chG, gap: gp, draw: (x, y, ww) => {
+    const { cols, cw } = chipRows(ww), n = chips.length;
+    chips.forEach((c, i) => {
+      const r = Math.floor(i / cols), k = i % cols, inRow = Math.min(cols, n - r * cols), cx = x + (cols - inRow) * (cw + chG) / 2 + k * (cw + chG), cy = y + r * (chH + chG);
+      ui.roundRect(cx, cy, cw, chH, chH / 2); ctx.fillStyle = c.fresh ? 'rgba(46,120,40,0.16)' : 'rgba(122,80,40,0.12)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = c.fresh ? 'rgba(46,120,40,0.7)' : 'rgba(122,80,40,0.4)'; ctx.stroke();
+      c.art(ctx, cx + chH / 2 + 1 * s, cy + chH / 2, chH * 0.36);
+      ui.text(c.name, cx + chH + 2 * s, cy + chH / 2 + 0.5 * s, { size: chFs, color: c.fresh ? '#2d6a1c' : C.ink, maxW: cw - chH - 8 * s, tag: 'intro:chip' + i });
     });
   } }; };
   // the three star goals, one compact row
@@ -7711,7 +7737,7 @@ function drawLevelIntro(L, acc) {
     } }
   const carCenter = () => (nI ? clamp(Math.round(R.y / Math.max(1, R.step || 1)), 0, nI - 1) : 0);
   let handLater = null;
-  const CTOP = 16 * s, CBOT = 16 * s; // room above for the raised tile and its tick; below for the dots
+  const CTOP = (land ? 12 : 16) * s, CBOT = (land ? 13 : 16) * s; // room above for the raised tile and its tick; below for the dots (0.8.17: on its side 7 px less, the taller tabs' room)
   const carBlock = (w0) => { const D = carDims(w0); return { h: D.ch + CTOP + CBOT, gap: gp, draw: (x, y, w) => {
     const { cw, ch, step, gap } = D, rowH = D.ch + CTOP + CBOT;
     if (G.introPick && G.introPick.t !== R.pt) { R.pt = G.introPick.t; const k = items.findIndex((it) => it.S.id === G.introPick.id); if (k >= 0) { R.v = 0; R.to = k * step; } } // a tapped chick takes the focus
@@ -7819,22 +7845,23 @@ function drawLevelIntro(L, acc) {
   // ---- the bottom: the big button, the boosters strip right above it, and the ring speed strip above that
   // 0.8.16: the booster tiles run from PLAY's left edge to its right one. On a tall phone six fill the width; on a
   // short one they keep their size and the room between them grows (drawBoosterStrip spreads a full row)
-  const BTN = 56 * s, BC0 = 49 * s, bcFull = Math.min((iwP - 5 * 8 * s) / 6, 72 * s);
+  const BTN = (land ? 56 : 64) * s, BC0 = 49 * s, /* 0.8.17 (mykee: "the next button on the level card should be thick and big"): 66 px at 450x1000 in portrait, the map's PLAY and the win page's NEXT are 62 */ bcFull = Math.min((iwP - 5 * 8 * s) / 6, 72 * s);
   const STRIP = 19 * s + (land ? BC0 : Math.max(BC0, BC0 + (bcFull - BC0) * clamp((A.h / s - 640) / 160, 0, 1)));
   const bigButton = (x, y, w) => {
-    if (lvTab) ui.button(hasCh ? 'inext' : 'go', hasCh ? 'NEXT' : 'PLAY', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: hasCh ? ICON.next : ICON.play, size: 27 * s });
-    else ui.button('go', T.need ? 'PICK A CHICK' : 'PLAY', x, y, w, BTN, T.need ? { kind: 'off', size: 24 * s } : { kind: 'primary', shimmer: true, icon: ICON.play, size: 27 * s }); // need: the button says what is missing (it still takes the tap and nudges)
+    const bs = (land ? 27 : 30) * s;
+    if (lvTab) ui.button(hasCh ? 'inext' : 'go', hasCh ? 'NEXT' : 'PLAY', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: hasCh ? ICON.next : ICON.play, size: bs });
+    else ui.button('go', T.need ? 'PICK A CHICK' : 'PLAY', x, y, w, BTN, T.need ? { kind: 'off', size: bs * 0.89 } : { kind: 'primary', shimmer: true, icon: ICON.play, size: bs }); // need: the button says what is missing (it still takes the tap and nudges)
   };
   const adOn = showBoost && !G.adBoost && !G.golden;
   const boostState = () => ({ wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t,
-    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: null, attn: stripAttn(L), s, page: G.boostPg && G.boostPg.lid === L.id ? G.boostPg.n : 0, ...boostUse(L), teach: boostTeach(L) });
+    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: null, attn: stripAttn(L), s, scroll: G.boostPg && G.boostPg.lid === L.id ? G.boostPg : (G.boostPg = { lid: L.id, k: 0 }), ...boostUse(L), teach: boostTeach(L) });
   // 0.8.17 (mykee: "an even more blinking effect so that the user will be able to point it out"): the strip blinks its rim
   // twice every 2.4 s and a shine runs over it (ui/store.js stripAttn), with a tapping hand on the first three level
   // cards of a session; once the player has touched the strip on this level it rests there for good. Calm: a steady rim.
   if (G.stripLid !== pg.lid) { G.stripLid = pg.lid; G.stripVisits = (G.stripVisits || 0) + (showBoost ? 1 : 0); }
   const stripAttn = (Lv) => (G.li < 0 || (save.seen || {})['strip:' + Lv.id] ? null : { calm: !!save.calm, pointer: G.stripVisits <= 3 ? (px, py, c, t) => { const q = save.calm ? 0.5 : (t % 1.1) / 1.1, down = q > 0.45 && q < 0.7; teachHand(ctx, px, py + (save.calm ? 0 : -Math.abs(Math.sin(q * Math.PI)) * c * 0.14), Math.min(c * 0.62, 40 * s), down, 1); } : null });
-  const bottom = (x, w) => { // draws from the bottom of the safe rect up; returns the top of what it drew
-    let y = A.y1 - 6 * s - BTN;
+  const bottom = (x, w, mb = 6 * s) => { // draws from the bottom of the safe rect up (mb above its edge); returns the top of what it drew
+    let y = A.y1 - mb - BTN;
     bigButton(x, y, w);
     if (showBoost) { y -= gp + STRIP; drawBoosterStrip(ui, ctx, x, y, w, STRIP, boostState()); }
     const rh = ringStripH(x, w, s);
@@ -7857,6 +7884,45 @@ function drawLevelIntro(L, acc) {
     S.y = 0; S.v = 0; S.max = 0; G.ipAnchor = {};
     let y = V.y; for (const b of B) { y += b.gap ?? 10 * s; b.draw(x, y, w); y += b.h; }
   };
+  // 0.8.17 (mykee 2026-11-26: "the top section of the level card is too empty ... and the level card feels congested
+  // because of it"): the stage used to take every spare pixel (its top half only sky) while the blocks under it sat
+  // 6 px apart. Portrait now lays the sheet as one column from the tabs down to PLAY with ONE gap between every block
+  // (under PLAY too): the stage takes what is left up to 0.9 of its width (past that a stage only adds sky; its art is
+  // sized by the width), the room left is shared out as the gap, and past a calm gap the stage grows again. The goal
+  // and the timer sit in one band. A page too short for even gaps keeps the scrolling column below (false).
+  const goalBand = { h: 40 * s, draw: (x, y, w) => {
+    ui.roundRect(x, y, w, 40 * s, 20 * s); ctx.fillStyle = 'rgba(122,80,40,0.10)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(122,80,40,0.28)'; ctx.stroke();
+    goalRow.draw(x + 12 * s, y + 5 * s, w - 24 * s);
+  } };
+  const evenPortrait = (x0, yT, iw) => {
+    const tight = 6 * s, STG = { stage: true, h: 0 };
+    const lay = (dn) => {
+      const it = [];
+      if (hasCh) it.push({ h: TABH, first: true, draw: (x, y, w) => tabs(x, y, w) });
+      if (lvTab) { const pk = perkBlock(iw); if (pk) it.push(pk); it.push(goalBand, STG, { ...capBlock(iw), tight: true }); for (const b of [tileBlock(iw), chipBlock(iw), starBlock]) if (b) it.push(b); }
+      else it.push(STG, { ...chickCap(iw, dn), tight: true }, carBlock(iw));
+      const rh = ringStripH(x0, iw, s);
+      if (rh > 0) it.push({ h: rh, draw: (x, y, w) => ringSpeedStrip(x, y, w, s) });
+      if (showBoost) it.push({ h: STRIP, draw: (x, y, w) => drawBoosterStrip(ui, ctx, x, y, w, STRIP, boostState()) });
+      it.push({ h: BTN, draw: (x, y, w) => bigButton(x, y, w) });
+      const F = it.reduce((a, b) => a + b.h + (b.tight ? tight : 0), 0), n = it.filter((b) => !b.tight && !b.first).length + 1;
+      const avail = A.y1 - yT - F, lo = lvTab ? Math.min(165 * s, iw * 0.5) : Math.min(150 * s, iw * 0.45), hi1 = iw * 0.9, hi2 = Math.min(iw * (lvTab ? 1.2 : 1.05), 560 * s);
+      let st = clamp(avail - n * 14 * s, lo, hi1), G0 = (avail - st) / n;
+      if (G0 > 28 * s) { st = Math.max(st, Math.min(hi2, avail - n * 28 * s)); G0 = (avail - st) / n; }
+      return { it, st, G0, ok: G0 >= 10 * s };
+    };
+    let P = lay(true);
+    if (!lvTab && P.st < iw * 0.7) { const P2 = lay(false); if (P2.ok) P = P2; } // the downside line rides along while the stage keeps (nearly) its full size
+    if (!P.ok || (!lvTab && !nI)) return false;
+    const V = { x: A.x, y: yT, w: A.w, h: A.y1 - yT };
+    G.ipRect = V; G.ipRectR = null; pg.y = 0; pg.v = 0; pg.max = 0; G.ipAnchor = {};
+    let y = yT;
+    for (const b of P.it) {
+      if (!b.first) y += b.tight ? tight : P.G0;
+      if (b.stage) { (lvTab ? levelStage(P.st) : chickStage(P.st)).draw(x0, y, iw); y += P.st; } else { b.draw(x0, y, iw); y += b.h; }
+    }
+    return true;
+  };
   const k = ui.pop(G.screenT, 0.32);
   ctx.save();
   if (k !== 1) { ctx.translate(A.cx, A.cy); ctx.scale(k, k); ctx.translate(-A.cx, -A.cy); }
@@ -7867,6 +7933,7 @@ function drawLevelIntro(L, acc) {
     nameBlock(x0, y, iw); y += nameH + 6 * s;
     sheet(Math.max(A.x, x0 - pad), y, Math.min(A.w, iw + 2 * pad));
     y += 10 * s;
+    if (evenPortrait(x0, y, iw)) { if (handLater) handLater(); ctx.restore(); return; }
     if (hasCh) { tabs(x0, y, iw); y += TABH + 2 * s; }
     const yb = bottom(x0, iw);
     const V = { x: A.x, y, w: A.w, h: yb - y };
@@ -7905,28 +7972,37 @@ function drawLevelIntro(L, acc) {
     sheet(A.w <= W0 + 2 * pad + 1 ? A.x : x0 - pad, y, A.w <= W0 + 2 * pad + 1 ? A.w : W0 + 2 * pad);
     y += 12 * s;
     // left: the name, then the stage (the level's scene, or the middle chick's power) and its caption
-    const V = { x: A.x, y, w: lx + lw + gap2 / 2 - A.x, h: A.y1 - 6 * s - y };
+    const V = { x: A.x, y, w: lx + lw + gap2 / 2 - A.x, h: A.y1 - 10 * s - y }; // (0.8.17: its foot level with the big button's, 10 px over the edge)
     G.ipRect = V;
     const nmB = { h: nameH, gap: 0, draw: (x, yy, w) => { // the name on the cream: brown ink
       ui.text(L.name, x + w / 2, yy + 15 * s, { size: 25 * s, align: 'center', maxW: w, color: C.ink, tag: 'intro:name' });
       if (world) ui.text(world, x + w / 2, yy + 31 * s + 9 * s, { size: 15 * s, align: 'center', maxW: w, color: '#b0700a', tag: 'intro:world' });
     } };
     const top = nameUp ? [] : [nmB];
-    const B = lvTab ? fitCol([...top, goalRow], levelStage, [capBlock(lw), starBlock].filter(Boolean), V.h, 150 * s, lw * 0.75) : fitCol(top, chickStage, [chickCap(lw)], V.h, 130 * s, lw * 0.75);
-    B[0] = { ...B[0], gap: 0 };
-    column(B, pg, V, lx, lw);
     // right: the tabs on top, the boosters and the big button at the bottom, the tab's content between (it scrolls when short)
+    // 0.8.17 (mykee: "too much empty UI space" on a phone on its side): the Level tab's blocks spread over the whole column
+    // with one even gap (they used to stop 20 px apart over a dead band above the boosters); while there is room the star
+    // goals, then the goal band, move over from the left, and the stage there grows into the height they leave
     let ry = y;
-    if (hasCh) { tabs(rx, ry, rw); ry += TABH + 4 * s; }
-    const yb = bottom(rx, rw) - 4 * s;
+    if (hasCh) { tabs(rx, ry, rw); ry += TABH + 2 * s; }
+    const yb = bottom(rx, rw, 10 * s) - 4 * s;
     const pr = G.ipageR || (G.ipageR = { y: 0, v: 0, max: 0, t: G.t, lid: null });
     if (pr.lid !== pg.lid + ':' + (lvTab ? 0 : 1)) { pr.lid = pg.lid + ':' + (lvTab ? 0 : 1); pr.y = 0; pr.v = 0; }
     G.ipRectR = { x: rx - gap2 / 2, y: ry, w: A.x1 - (rx - gap2 / 2), h: yb - ry };
     const RB = (lvTab ? [perkBlock(rw), tileBlock(rw), chipBlock(rw)] : [carBlock(rw)]).filter(Boolean);
-    const room = G.ipRectR.h - pageColH(RB, s) - 6 * s;
-    if (room > 0 && RB.length && lvTab) { const add = Math.min(room / (RB.length + 1), 20 * s); RB.forEach((b, i) => { RB[i] = { ...b, gap: (b.gap ?? 10 * s) + add }; }); }
-    else if (room > 0 && RB.length) RB[0] = { ...RB[0], gap: (RB[0].gap ?? 10 * s) + room }; // the chick row rides low, just above the boosters (0.8.17: the thumb)
-    if (RB.length) RB[0] = { ...RB[0], gap: RB[0].gap - gp };
+    const fitsR = (list) => G.ipRectR.h - 6 * s - list.reduce((a, b) => a + b.h, 0) >= (list.length + 1) * 12 * s;
+    let goalR = false, starR = false;
+    if (lvTab && starBlock && fitsR([...RB, starBlock])) { RB.push(starBlock); starR = true; }
+    if (lvTab && fitsR([goalBand, ...RB])) { RB.unshift(goalBand); goalR = true; }
+    const B = lvTab ? fitCol([...top, ...(goalR ? [] : [goalRow])], levelStage, [capBlock(lw), starR ? null : starBlock].filter(Boolean), V.h, 150 * s, lw * 0.75) : fitCol(top, chickStage, [chickCap(lw)], V.h, 130 * s, lw * 0.75);
+    B[0] = { ...B[0], gap: 0 };
+    column(B, pg, V, lx, lw);
+    const room = G.ipRectR.h - pageColH(RB.map((b) => ({ ...b, gap: 0 })), s) - 6 * s;
+    if (room > 0 && RB.length && lvTab) { const add = room / (RB.length + 1); RB.forEach((b, i) => { RB[i] = { ...b, gap: add }; }); }
+    else {
+      if (room > 0 && RB.length) RB[0] = { ...RB[0], gap: (RB[0].gap ?? 10 * s) + room }; // the chick row rides low, just above the boosters (0.8.17: the thumb)
+      if (RB.length) RB[0] = { ...RB[0], gap: RB[0].gap - gp };
+    }
     column(RB, pr, G.ipRectR, rx, rw);
   }
   if (handLater) handLater();
@@ -8411,12 +8487,14 @@ function drawSettings() {
   const u = ui.u, A = ui.A, C = ui.C, s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, land = A.h < 520 * u;
   const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#3b2468'); bg.addColorStop(1, '#1c1233');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); // a full page: nothing of the game shows behind it
-  const cw = Math.min(A.w - 2 * pad, 560 * s), x0 = A.cx - cw / 2;
+  // 0.8.17 (mykee: landscape "too much empty UI space"): a phone on its side lays the sections in two columns that scroll together
+  const two = A.w > A.h * 1.15 && A.w - 2 * pad >= 700 * s, W2 = Math.min(A.w - 2 * pad, 1100 * s), cgap = 24 * s;
+  const cw = two ? (W2 - cgap) / 2 : Math.min(A.w - 2 * pad, 560 * s), x0 = two ? A.cx - W2 / 2 : A.cx - cw / 2;
   const pg = G.setpage || (G.setpage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
   if (pg.lid !== G.setSeq) { pg.lid = G.setSeq; pg.y = 0; pg.v = 0; pg.to = null; pg.hl = null; if (G.setFirst && G.setFirst.seq === G.setSeq) { focusStart(pg, 'rs', G.t + 0.15, undefined, false); G.setRsAt = true; } } // the marked way in: the ring speed row
   // header: back, the ribbon, and (landscape) Done
   // (0.8.14: the one page header, ui.pageHeader; back sits on the rows' left edge, Done on their right edge)
-  const P = ui.pageBox(560 * s), hy = P.y, hh = P.h;
+  const P = ui.pageBox(two ? 1100 * s : 560 * s), hy = P.y, hh = P.h;
   ui.pageHeader(P, { back: 'set:close', title: 'Settings', color: '#7a48e8', tag: 'set:title', right: land ? { w: 130 * s, draw: (x, y, w, h) => ui.button('set:close', 'Done', x, y, w, h, { kind: 'primary', icon: ICON.check, size: 19 * s }) } : null });
   let vb = A.y1 - (land ? 2 * u : pad);
   if (!land) {
@@ -8425,13 +8503,13 @@ function drawSettings() {
     vb = A.y1 - pad - 20 * s - 56 * s - 8 * s;
   }
   const vt = hy + hh + 8 * s, V = { x: A.x, y: vt, w: A.w, h: Math.max(60, vb - vt) };
-  const B = [], on = (v) => v !== false;
-  if (remCan()) { B.push(setHead('Notifications', s)); B.push(remCard(s)); } // 0.8.17: first, so it is in the first screenful (app only, never for a child profile)
-  B.push(setHead('Sound and feel', s));
+  const B = [], on = (v) => v !== false, heads = [];
+  if (remCan()) { heads.push(B.length); B.push(setHead('Notifications', s)); B.push(remCard(s)); } // 0.8.17: first, so it is in the first screenful (app only, never for a child profile)
+  heads.push(B.length); B.push(setHead('Sound and feel', s));
   if (portal.showMuteButton) { B.push(setRow(s, 'sfx', 'Sound', 'sound', '#3a80ea', { on: save.sfx })); B.push(setRow(s, 'music', 'Music', 'note', '#9a5ae8', { on: save.music })); }
   if (__APP__ || (typeof navigator !== 'undefined' && navigator.vibrate)) B.push(setRow(s, 'vibe', 'Vibration', 'buzz', '#e8702f', { on: on(save.vibe) }));
   B.push(setRow(s, 'shake', 'Screen shake', 'shake', '#d8453a', { on: on(save.shake) && !save.calm, sub: save.calm ? 'Off while Calm motion is on' : null }));
-  B.push(setHead('Gameplay', s));
+  heads.push(B.length); B.push(setHead('Gameplay', s));
   const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
   const rsLook = focusLook(pg.hl, G.t, save.calm); // the first visit (the Settings mark): the ring round this row ~4 s or until a touch
   if (pg.hl && !rsLook && G.t - pg.hl.t0 >= 0) pg.hl = null;
@@ -8440,7 +8518,7 @@ function drawSettings() {
   B.push(rsB);
   B.push(setCard(s, 'Difficulty', 'flag', '#e0a21c', null, 42 * s, (x, y, w) => modeRow(x, y, w, 42 * s, s)));
   B.push(setRow(s, 'set:adapt', 'Adaptive help', 'sparkle', '#e0507e', { on: save.adapt !== false, sub: 'Help and dares that fit how you play' })); // the Pacer's switch (src/engine/pacer.js)
-  B.push(setHead('Display', s));
+  heads.push(B.length); B.push(setHead('Display', s));
   const gl = save.gfx === 'auto' ? `Auto picked ${TIER_NAME[PERF.tier]} for this phone` : save.gfx === 'high' ? 'Sharpest picture, every effect' : save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
   B.push(setCard(s, 'Graphics', 'sparkle', '#2aa7a0', null, 42 * s, (x, y, w) => segRow('gfx:', [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], save.gfx, x, y, w, 42 * s, s), gl));
   const fl = save.fps === 30 ? 'Saves battery, keeps the phone cool' : save.fps === 60 ? 'Smoothest motion, uses more battery' : `Now ${PERF.fpsCap} fps`;
@@ -8454,11 +8532,28 @@ function drawSettings() {
   B.push(...xsSetBlocks(s)); // 0.8.17: Privacy policy, Reset progress (their own block, last)
   if (land) B.push({ h: 28 * s, gap: 8 * s, draw: (x, y, w) => setFooter(x + w / 2, y + 14 * s, s) }); // the version and the support id (a tap copies them)
   G.setRect = V;
-  if (G.setRsAt) { // the first visit: the ring speed row in view (on a short screen the page starts scrolled to it)
-    G.setRsAt = false; let yy = 0; for (const b of B) { yy += b.gap ?? 10 * s; if (b === rsB) break; yy += b.h; }
-    const H = pageColH(B, s) + 18 * s; focusTrip(pg, focusY(yy, rsCard.h, V.h, Math.max(0, H - V.h), s), save.calm); // scrolled to (about 0.4 s), the row in the upper middle
+  let BL = B, BR = null;
+  if (two) { // the Notifications card first (in the first screenful), then Gameplay (ring speed, difficulty, the help), the
+    // rest in their order; the page splits where the two columns come out the most even (a section cut in two repeats its
+    // heading on the right)
+    const secs = heads.map((h, i) => B.slice(h, heads[i + 1] ?? B.length)), tail = B.slice(0, heads[0] || 0), gi = secs.findIndex((q) => q.includes(rsB)), ni = remCan() ? 0 : -1;
+    const ord = [...tail, ...(ni >= 0 && ni !== gi ? secs[ni] : []), ...(gi >= 0 ? secs[gi] : []), ...secs.filter((q, i) => i !== gi && i !== ni).flat()], hd = new Set(heads.map((h) => B[h]));
+    let best = null, cur = null;
+    for (let i = 1; i < ord.length; i++) {
+      if (hd.has(ord[i - 1])) cur = ord[i - 1];
+      if (hd.has(ord[i - 1]) || !hd.has(ord[i]) && !cur) continue; // never a heading left alone at a column's foot
+      const l = ord.slice(0, i), r = hd.has(ord[i]) ? ord.slice(i) : [cur, ...ord.slice(i)], m = Math.max(pageColH(l, s), pageColH(r, s));
+      if (!best || m < best.m) best = { m, l, r };
+    }
+    if (best) { BL = best.l; BR = best.r; }
   }
-  pageScroll(B, pg, V, x0, cw, s, true);
+  if (G.setRsAt) { // the first visit: the ring speed row in view (on a short screen the page starts scrolled to it)
+    const col = BR && BR.includes(rsB) ? BR : BL;
+    G.setRsAt = false; let yy = 0; for (const b of col) { yy += b.gap ?? 10 * s; if (b === rsB) break; yy += b.h; }
+    const H = Math.max(pageColH(BL, s), BR ? pageColH(BR, s) : 0) + 18 * s; focusTrip(pg, focusY(yy, rsCard.h, V.h, Math.max(0, H - V.h), s), save.calm); // scrolled to (about 0.4 s), the row in the upper middle
+  }
+  if (BR) pageScroll2(BL, BR, pg, V, x0, x0 + cw + cgap, cw, s);
+  else pageScroll(B, pg, V, x0, cw, s, true);
 }
 // a segmented control on a cream card: a recessed track, the chosen option a raised green key (like Easy/Medium/Hard)
 function segRow(pre, opts, cur, x, y, w, h, s) {
@@ -9467,7 +9562,7 @@ function drawFailPage() {
     } });
     if (SP.banked(save) > 0) B.push(spinRowBlock(s, { cheer, quiet: top !== 'spin' })); // 0.8.15: a spin that waits (the cheer-up spin after three losses lands here)
     else if (prog) B.push({ h: 26 * s, gap: 4 * s, draw: (x, y, w) => leadLine(prog, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'fail:near' }) });
-    if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: 6 * s }));
+    if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: (sd ? 3 : 6) * s }));
     if (Hp) B.push({ h: 78 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
       const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost' || Hp.kind === 'freeHint', ad = Hp.kind === 'adBoost';
       ui.well(x, y, w, 78 * s, { s, a: free ? '#d8f5c0' : '#ffe9b0', b: free ? '#f0ffe4' : '#fff6dc' });
@@ -9511,7 +9606,7 @@ function drawFailPage() {
       else ui.button('skip:coins', 'Skip ' + SKIP_COINS, x, y, w, h, { kind: save.wallet.coins >= SKIP_COINS ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 18 * s }); // too few coins: the tap opens Get more
     };
     const lvBtn = (x, y, w, h) => ui.button('levels', 'Levels', x, y, w, h, { kind: 'tertiary', icon: ICON.grid, size: 18 * s });
-    const gC = 12 * s;
+    const gC = (sd ? 8 : 12) * s; // (0.8.17: on its side 4 px less, so the page fits without a 5 px scroll and Levels is whole)
     if (ways.length === 2) {
       B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); skipBtn(ways[1], x + hw + 10 * s, y, hw, BH * s); } });
       B.push({ h: BH * s, gap: 10 * s, draw: (x, y, w) => lvBtn(x, y, w, BH * s) });

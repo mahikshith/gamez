@@ -25,6 +25,20 @@ const SIMS = readdirSync(new URL('../src/sim/', import.meta.url)).filter((f) => 
     if (E.pageOf(list, fit, pages).items[0] !== 0) all = false; // after the last page the first comes again
   }
   ok(all, 'a row of tiles never leaves one out: 1 to 14 things in a row of 2 to 9, every one is on exactly one page');
+  { // 0.8.17: the level card's row scrolls (">>" at the start, "<<" at the end, both between): walked forward from the
+    // start and back from the end, every item shows, no arrow tile sits on one, and the row never holds more than fit
+    let good = true;
+    for (let n = 1; n <= 14; n++) for (let fit = 3; fit <= 9; fit++) {
+      for (const dir of [1, -1]) {
+        const seen = new Set(); let k = dir > 0 ? 0 : Math.max(0, n - fit), steps = 0;
+        for (;;) { const V = E.stripView(n, fit, k); if (V.last - V.first + 1 + V.L + V.R > fit || (n > fit && V.first !== V.k + (V.L ? 1 : 0))) good = false; for (let i = V.first; i <= V.last; i++) seen.add(i); const nk = E.stripStep(n, fit, k, dir); if (nk === k || ++steps > 20) break; k = nk; }
+        if (seen.size !== n) good = false;
+        const end = E.stripView(n, fit, k); if (n > fit && (dir > 0 ? end.R || !end.L : end.L || !end.R)) good = false; // the far end shows only the arrow back
+      }
+    }
+    ok(good, 'the booster row scrolls: ">>" at the start, "<<" at the end, every booster on a page, no arrow over one');
+    ok(STORE.includes("'strip:back'") && MAIN.includes("id === 'strip:back'"), 'the row\'s back arrow is drawn and handled');
+  }
   ok(STORE.includes('pageOf(all, fit') && STORE.includes("'strip:more'") && MAIN.includes("id === 'strip:more'"), 'the level card\'s booster row uses it, and its next-page tile is handled');
   ok(E.BOOSTER_ORDER.length + 1 > 6, '(there are more boosters than the six tiles a phone row holds, so this matters)');
 }
