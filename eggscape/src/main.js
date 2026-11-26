@@ -8964,7 +8964,7 @@ const purseChipW = (val, h, s) => h * 0.25 + h * 0.6 + 7 * s + ui.measure(String
 // the Shop tile (to: where its coin goes); returns where the pill's coin and the purse's coin sit
 function coinRow(cx, cy, h, s, o) {
   const txt = o.txt, pw = coinPillW(o.maxTxt || txt, h, s), val = String(purse.shown()), cw = purseChipW(val, h, s), g = 18 * s, hv = o.hv || 0;
-  const gw = pw + (g + cw) * (1 - ss01(hv)), x0 = cx - gw / 2, out = {};
+  const gw = pw + (g + cw) * (1 - ss01(hv)), x0 = Math.min(cx - gw / 2, o.maxR != null ? o.maxR - gw : 1e9), out = {};
   out.pill = o.k > 0 ? coinPill(x0, cy, pw, h, s, txt, o.k) : { x: x0 + h * 0.5, y: cy };
   if (o.k > 0) ui.record({ x: x0, y: cy - h / 2, w: pw, h }, o.tag || 'win:coins');
   if (hv < 1) {
@@ -9005,8 +9005,8 @@ function drawWinPage() {
   if (r.mark === undefined) { const M = shopMarkNow(); r.mark = tilesOn && M.on && M.pick ? M.pick.key : null; }
   const dblOn = !first && !earlyDays() && (r.chest || r.dblOk !== false || G.doubled); // nothing advertised before L3 is won; none once the day's win-video pot is spent
   const last = G.li < 0 || G.li === LEVELS.length - 1;
-  const D = side ? { R: 27, sp: 72, br: 16, num: 48, scoreH: 76, coinH: 42, tileH: 66, dblH: 46, btnH: 60, g: 7 } : { R: 36, sp: 98, br: 20, num: 64, scoreH: 94, coinH: 48, tileH: 84, dblH: 52, btnH: 70, g: 10 };
-  const starH = 10 + 2 * D.R + 8 + 2 * D.br + 4;
+  let D = side ? { R: 27, sp: 72, br: 16, num: 48, scoreH: 76, coinH: 42, tileH: 66, dblH: 46, btnH: 60, g: 7 } : { R: 36, sp: 98, br: 20, num: 64, scoreH: 94, coinH: 48, tileH: 84, dblH: 52, btnH: 70, g: 10 };
+  let starH = 10 + 2 * D.R + 8 + 2 * D.br + 4;
   let stH = 0;
   const build = (s) => {
     const B = [];
@@ -9035,14 +9035,15 @@ function drawWinPage() {
           const ch = 34 * s, nt = String(r.hot), cw = ch * 0.95 + ui.measure(nt, 19 * s) + 12 * s, cx0 = T.box.x + 10 * s, cy0 = T.box.y + 10 * s;
           ui.glass(cx0, cy0, cw, ch, { border: 'rgba(255,200,120,0.8)' });
           streakFlame(ctx, 'hot:win', cx0 + ch * 0.5, cy0 + ch * 0.5, ch * 0.78, r.hot, G.t, calm);
-          ui.text(nt, cx0 + ch * 0.95, cy0 + ch / 2 + 0.5 * s, { size: 19 * s, color: '#fff', stroke: 'rgba(40,16,4,0.9)', strokeW: 3 * s, tag: 'win:hot' });
+          ui.text(nt, cx0 + ch * 0.95, cy0 + ch / 2 + 0.5 * s, { size: 19 * s, color: '#fff', stroke: 'rgba(40,16,4,0.9)', strokeW: 3 * s, tag: 'win:hot', group: 'win:hen' }); // (on her stage: one group)
         }
       } });
     if (!first) {
       B.push({ h: D.scoreH * s, gap: D.g * s, right: true, // one big score; NEW BEST! or the best so far under it
-        at: (x, y, w) => { T.score = { x: x + w / 2, y: y + D.num * 0.56 * s }; T.scoreW = w; T.bestY = y + (D.scoreH - 13) * s; },
+        at: (x, y, w) => { T.score = { x: x + w * (D.inline ? 0.31 : 0.5), y: y + D.num * 0.56 * s }; T.scoreW = D.inline ? w * 0.62 : w; T.bestY = y + (D.scoreH - 13) * s; if (D.inline) { T.coinX = x + w * 0.78; T.coinY = T.score.y; T.coinMaxR = x + w; } },
         draw: (x, y, w) => {
-          const cx = x + w / 2, ny = T.score.y, ns = D.num * s;
+          if (D.inline) drawWinCoinRow(r, S, T, D, s, pt, done, tilesOn);
+          const cx = T.score.x, ny = T.score.y, ns = D.num * s; w = T.scoreW;
           let pk = 1;
           if (!done) { for (const q of S.toks) { const a = (pt - q.land) / 0.22; if (a > 0 && a < 1) pk = Math.max(pk, 1 + 0.12 * Math.sin(a * Math.PI)); } if (S.stamp != null) { const a = (pt - S.stamp - 0.12) / 0.22; if (a > 0 && a < 1) pk = Math.max(pk, 1 + 0.16 * Math.sin(a * Math.PI)); } }
           const ka = done ? 1 : clamp((pt - S.toks[0].at + 0.1) / 0.25, 0, 1); // it comes as the first points leave her stage
@@ -9064,7 +9065,7 @@ function drawWinPage() {
             if (!calm && !r.skipped) CB.confetti(ctx, cx, by, a, { n: 22, speed: 230 * s, g: 380 * s, life: 1.2, seed: 5, size: 5.5 * s, spread: Math.PI * 1.2 });
           } else { ctx.save(); ctx.globalAlpha = done ? 1 : clamp(a / 0.3, 0, 1); ui.text('Best ' + fmtN(r.prevBest), cx, by + (done ? 0 : 6 * s * (1 - clamp(a / 0.3, 0, 1))), { size: 16 * s, align: 'center', color: C.ink2, maxW: w, tag: 'win:best' }); ctx.restore(); }
         } });
-      B.push({ h: D.coinH * s, gap: D.g * s, right: true, // the coins: the pill, the bursts that join it, the purse they fly into
+      if (!D.inline) B.push({ h: D.coinH * s, gap: D.g * s, right: true, // the coins: the pill, the bursts that join it, the purse they fly into
         at: (x, y, w) => { T.coinY = y + D.coinH * s / 2; T.coinX = x + w / 2; },
         draw: () => drawWinCoinRow(r, S, T, D, s, pt, done, tilesOn) });
       if (tilesOn) B.push({ h: D.tileH * s, gap: D.g * s, right: true, // the last beat: where the new coins can go
@@ -9116,9 +9117,10 @@ function drawWinPage() {
   if (side) { // her column is as tall as the other one
     const R = build(1).filter((b) => b.right);
     stH = Math.max(80, sum(R) - starH - 6);
-  } else { // her stage takes what the rest leaves
-    const room = (A.y1 - Math.max(G.hudBottom, A.y) - 30 * u) / u - CARD_HEAD - 22 - sum(build(1));
-    stH = clamp(room, 90, 300);
+  } else { // her stage takes what the rest leaves (a short phone: the rows tighten a little first, so she is not a thumbnail)
+    const room = () => (A.y1 - Math.max(G.hudBottom, A.y) - 30 * u) / u - CARD_HEAD - 22 - sum(build(1));
+    if (room() < 150) { D = { ...D, R: 31, sp: 90, br: 18, num: 58, scoreH: 88, tileH: 74, dblH: 48 }; starH = 10 + 2 * D.R + 8 + 2 * D.br + 4; }
+    stH = clamp(room(), 90, 300);
   }
   const cardO = side ? { twoCol: true, maxW: Math.min(A.w - 32 * u, 900 * u) } : {};
   const card = stackCard(title, build, { ...cardO, hidden: true }); // lay out first: her flight needs the targets
@@ -9171,7 +9173,7 @@ function drawWinCoinRow(r, S, T, D, s, pt, done, tilesOn) {
   else { val = Math.round(base * clamp((pt - S.pill) / 0.3, 0, 1)); for (const q of ex) if (pt >= q.at + 0.24) val += q.v; }
   const kp = done || Db ? 1 : clamp((pt - S.pill) / 0.3, 0, 1);
   const hv = tilesOn ? (done ? 1 : clamp((pt - S.tiles) / 0.38, 0, 1)) : 0;
-  const R = coinRow(T.coinX, T.coinY, h, s, { txt: '+' + val, maxTxt: '+' + (Db ? Db.b : r.coins || 0), k: kp, hv, to: T.shopCoin });
+  const R = coinRow(T.coinX, T.coinY, h, s, { txt: '+' + val, maxTxt: '+' + (Db ? Db.b : r.coins || 0), k: kp, hv, to: T.shopCoin, maxR: T.coinMaxR });
   r.coinAt = R.pill;
   if (r.perkGold && !calm && kp > 0) goldGlints(R.pill.x, R.pill.y, s); // Midas (the Golden egg): the coin shimmers
   const p0 = r.purse0 != null ? r.purse0 + (r.trFlown && r.treasure ? r.treasure.coins : 0) : null;
