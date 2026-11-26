@@ -64,6 +64,9 @@ export function model(save, ctx = {}) {
 export function gate(save, moment, ctx = {}) {
   const now = ctx.now || Date.now(), B = brainState(save), M = model(save, ctx);
   const no = (why) => ({ money: false, nudge: false, spend: false, why });
+  // 0.8.17 the first levels' tour (tour.js): showing once where a control lives is not an ask (nothing sold, nothing to
+  // answer). Any moment but play; in play only a quiet spell (ctx.quiet: hands off, nothing else on screen). Never money.
+  if (ctx.tour) return moment === 'play' && !ctx.quiet ? no('a tour step in play waits for a quiet spell') : { money: false, nudge: true, spend: false, why: 'a tour step: it only shows where something is' };
   if (moment === 'play') return no('never during play');
   if (moment === 'shop') return { money: true, nudge: true, spend: true, why: 'the player opened the shop' };
   if (M.stage === 'new') return no('first levels: nothing is asked');
