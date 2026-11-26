@@ -242,7 +242,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 25, theme: "volcano", name: "Volcano", eggs: 3, target: 2, time: 75, spacing: 1, material: "obsidian", nest: {w: 2.8}, bonus: {kind: "orbs"}, tip: "The salamander rides the ring under it. Turn that ring to carry it away from your eggs; water cools it down.", orbs: [{type: "water", ch: 1, a: 157},{type: "fire_red", ch: 3, a: -81}], seed: 166300, world: 5, intro: {title: "The lava salamander", line: "It eats an egg at its snout: watch for the red ring. Turn the ring it stands on to carry it away. Its fire heats walls."}, salamander: {delay: 3, every: 6, a: 160, ch: 2},
+    id: 25, theme: "volcano", name: "Volcano", eggs: 3, target: 2, time: 75, spacing: 1, material: "obsidian", nest: {w: 2.8}, bonus: {kind: "orbs"}, tip: "The salamander rides the ring under it. Turn that ring to carry it away. When it glows, turn the gap out of its line.", orbs: [{type: "water", ch: 1, a: 157},{type: "fire_red", ch: 3, a: -81}], seed: 166300, world: 5, intro: {title: "The lava salamander", line: "It eats an egg at its snout: watch for the red ring. Turn the ring it stands on to carry it away. Its fire heats walls."}, salamander: {delay: 3, every: 6, a: 160, ch: 2, spit: 1.5},
     rings: [
       {gaps: [{a: -166}], thorns: [{a: 147, n: 2}]},
       {gaps: [{a: 99, x: 2}], thorns: [{a: 141, n: 2},{a: -73, n: 2, side: "out", h: 0.26}], pads: [{a: -50, len: 1.9}]},
@@ -252,7 +252,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 26, theme: "volcano", name: "Melt-Through", eggs: 3, target: 2, time: 70, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 2.8}, bonus: {kind: "time", s: 35}, tip: "This ring has no gap. Wait for a lava hole, or burn one with the black flame.", orbs: [{type: "fire_black", ch: 2, a: -106},{type: "water", ch: 3, a: -97},{type: "hourglass", ch: 4, a: 32},{type: "warp", ch: 1, a: -60}], seed: 174219, world: 5, intro: {title: "Lava rocks", line: "Lava rocks fall on the rings, glow, then melt a hole. The hole heals after 5 s. A water egg cools them."}, salamander: {delay: 6, every: 7, a: 30, ch: 3},
+    id: 26, theme: "volcano", name: "Melt-Through", eggs: 3, target: 2, time: 70, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 2.8}, bonus: {kind: "time", s: 35}, tip: "This ring has no gap. Wait for a lava hole, or burn one with the black flame.", orbs: [{type: "fire_black", ch: 2, a: -106},{type: "water", ch: 3, a: -97},{type: "hourglass", ch: 4, a: 32},{type: "warp", ch: 1, a: -60}], seed: 174219, world: 5, intro: {title: "Lava rocks", line: "Lava rocks fall on the rings, glow, then melt a hole. The hole heals after 5 s. A water egg cools them."}, salamander: {delay: 6, every: 7, a: 30, ch: 3, spit: 1},
     rings: [
       {gaps: [{a: 53}], thorns: [{a: 2, n: 1}]},
       {gaps: [{a: 128, x: 2}], thorns: [{a: 4, n: 2},{a: -68, n: 2, side: "out", h: 0.26}], pads: [{a: -177, len: 1.35}]},
@@ -262,7 +262,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 27, theme: "volcano", name: "Honey Vents", eggs: 3, target: 2, time: 115, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 3}, snake: {delay: 9, a: 40, speed: 0.35}, bonus: {kind: "turns", n: 16}, salamander: {delay: 5, every: 7, a: -40, ch: 3}, tip: "Honey holds an egg while the rocks fall. Lure the snake to the salamander: they face off and leave your eggs alone.", orbs: [{type: "water", ch: 2, a: -12},{type: "stone", ch: 4, a: -115},{type: "hatch_dash", ch: 1, a: -1}], seed: 182148, world: 5, intro: {title: "Dash chick", chick: "dash", line: "The orange orb hatches a dash chick. Tap it once: it shoots along its channel, bonks snakes and the salamander dizzy, and grabs orbs."},
+    id: 27, theme: "volcano", name: "Honey Vents", eggs: 3, target: 2, time: 115, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 3}, snake: {delay: 9, a: 40, speed: 0.35}, bonus: {kind: "turns", n: 16}, salamander: {delay: 5, every: 7, a: -40, ch: 3, fireup: 1}, tip: "Honey holds an egg while the rocks fall. Lure the snake to the salamander: they face off and leave your eggs alone.", orbs: [{type: "water", ch: 2, a: -12},{type: "stone", ch: 4, a: -115},{type: "hatch_dash", ch: 1, a: -1}], seed: 182148, world: 5, intro: {title: "Dash chick", chick: "dash", line: "The orange orb hatches a dash chick. Tap it once: it shoots along its channel, bonks snakes and the salamander dizzy, and grabs orbs."},
     rings: [
       {gaps: [{a: 148}], thorns: [{a: 3, n: 1}]},
       {gaps: [{a: 77, x: 2}], thorns: [{a: 0, n: 3},{a: -163, n: 2, side: "out", h: 0.26}], pads: [{a: -95, len: 1.9}], honey: [{a: 164, len: 1.04}]},
@@ -284,7 +284,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 29, theme: "volcano", name: "Spike Forge", eggs: 3, target: 2, time: 90, spacing: 1, material: "obsidian", lava: {every: 6, delay: 5}, nest: {w: 3}, bonus: {kind: "time", s: 50}, salamander: [{delay: 4, every: 6.5, a: 120, ch: 2},{delay: 9, every: 7, a: -30, ch: 2, dir: -1, kind: "frost"}], intro: {title: "Fire meets frost", line: "A frost salamander walks in. Its bite freezes an egg. When it meets the fire one they fight, and both are knocked out."}, tip: "Forge spikes pump in and out. Count the beat and pass while they are down.", orbs: [{type: "hourglass", ch: 1, a: -59},{type: "water", ch: 3, a: -51},{type: "fire_green", ch: 5, a: 118},{type: "hatch_swoop", ch: 2, a: -61}], seed: 190062, world: 5,
+    id: 29, theme: "volcano", name: "Spike Forge", eggs: 3, target: 2, time: 90, spacing: 1, material: "obsidian", lava: {every: 6, delay: 5}, nest: {w: 3}, bonus: {kind: "time", s: 50}, salamander: [{delay: 4, every: 6.5, a: 120, ch: 2, spit: 1, fireup: 1},{delay: 9, every: 7, a: -30, ch: 2, dir: -1, kind: "frost"}], intro: {title: "Fire meets frost", line: "A frost salamander walks in. Its bite freezes an egg. When it meets the fire one they fight, and both are knocked out."}, tip: "Forge spikes pump in and out. Count the beat and pass while they are down.", orbs: [{type: "hourglass", ch: 1, a: -59},{type: "water", ch: 3, a: -51},{type: "fire_green", ch: 5, a: 118},{type: "hatch_swoop", ch: 2, a: -61}], seed: 190062, world: 5,
     rings: [
       {gear: 1, gaps: [{a: -15}], thorns: [{a: -175, n: 1}]},
       {retract: {phase: 2.21, period: 3, on: 0.5}, gaps: [{a: 50, x: 2}], thorns: [{a: 162, n: 2},{a: 158, n: 2},{a: 113, n: 2}], pads: [{a: -86, len: 1.23}]},
@@ -295,7 +295,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 30, theme: "volcano", name: "The Eruption", eggs: 3, target: 2, time: 90, spacing: 1, material: "obsidian", boss: "salamander", bossFight: {kind: "salamander", delay: 3, phases: [{attacks: ["rock"], every: 4.5},{at: {saved: 1, t: 30}, attacks: ["rock2","magma","rock"], every: 5.5},{at: {saved: 2, t: 60}, attacks: ["rock2","magma","rock","whip"], every: 4.5, heat: true}]}, nest: {w: 3}, bonus: {kind: "prize"}, tip: "Rocks melt holes everywhere. Use them, and take the feather for the last run.", orbs: [{type: "water", ch: 1, a: 33},{type: "feather", ch: 3, a: 51},{type: "water", ch: 4, a: -164}], seed: 197980, world: 5, intro: {title: "Boss: The Lava Salamander", line: "It walks the rings, spits lava rocks at your eggs and breathes fire on the walls. At the end the heat cracks any egg that waits."}, salamander: {delay: 3, ch: 3, a: 90},
+    id: 30, theme: "volcano", name: "The Eruption", eggs: 3, target: 2, time: 90, spacing: 1, material: "obsidian", boss: "salamander", bossFight: {kind: "salamander", delay: 3, phases: [{attacks: ["rock"], every: 4.5},{at: {saved: 1, t: 30}, attacks: ["rock2","magma","rock"], every: 5.5, spit: true},{at: {saved: 2, t: 60}, attacks: ["rock2","magma","rock","whip"], every: 4.5, heat: true, spit: true, fire: true}]}, nest: {w: 3}, bonus: {kind: "prize"}, tip: "Rocks melt holes everywhere. Use them, and take the feather for the last run.", orbs: [{type: "water", ch: 1, a: 33},{type: "feather", ch: 3, a: 51},{type: "water", ch: 4, a: -164}], seed: 197980, world: 5, intro: {title: "Boss: The Lava Salamander", line: "It walks the rings, spits lava rocks at your eggs and breathes fire on the walls. At the end the heat cracks any egg that waits."}, salamander: {delay: 3, ch: 3, a: 90},
     rings: [
       {gaps: [{a: 30}], thorns: [{a: 178, n: 2}]},
       {gaps: [{a: -19, x: 2}], thorns: [{a: 126, n: 3},{a: -140, n: 2, side: "out", h: 0.26}], pads: [{a: 176, len: 1.42}], honey: [{a: 59, len: 0.92}]},

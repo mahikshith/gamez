@@ -128,7 +128,7 @@ export const salMethods = {
         rivalCD: 0, rid: -1, rv: 0, climbCD: 0, climb: null, charge: 0, lavaCD: 0, hold: 0, bph: 0, bk: -1, bsaved: 0, hole: 0,
         ht: -1, htT: BRAIN.quiet, alT: 0, brT: 9, tcd: 0, jet: 0, jk: -1, ut: 0, uA: 0, uR: 0, uD: 1, // the brain (BRAIN)
         kind: P.kind === 'frost' && !P.gecko && !P.cham && !P.thorn ? 'frost' : '', bj: -1, bcd: 0, ate: 0, fid: -1, fcd: 0, fv: 0, // the bite (BITE), the face-off (FACE)
-        spit: P.spit ? 1 : 0, scd: SPIT.first, sj: -1, sx: 0, sy: 0, miff: 0, // 0.8.18 ember spit (SPIT): on, cooldown, target egg, aim point, s miffed
+        spit: P.spit ? (P.spit > 0 ? +P.spit : 1) : 0, scd: SPIT.first * (P.spit > 1 ? P.spit : 1), sj: -1, sx: 0, sy: 0, miff: 0, // 0.8.18 ember spit (SPIT): on, cooldown, target egg, aim point, s miffed
         fu: P.fireup ? 1 : 0, wh: 0, whD: 1, fuCD: 0, dbl: 0, sulk: 0, og: 0, gk: 0, // fire-up (FIRE): on, s white-hot (of whD), cooldown, double breath, s sulking, wants an orb
       });
     });
@@ -797,7 +797,7 @@ export const salMethods = {
     const h = C.pts[0], hd = this.salHeading(C), x0 = h.x + Math.cos(hd) * 0.18 * C.size, y0 = h.y + Math.sin(hd) * 0.18 * C.size;
     const d = Math.hypot(C.sx, C.sy), n = this.rings.length, ch = clamp(this.chAt(d), 1, n - 1);
     const fr = Math.abs(d - this.rings[ch - 1].r) < Math.abs(d - this.rings[ch].r) ? ch - 1 : ch;
-    C.scd = SPIT.cd * this.salSpitM().cd * (C.boss ? (BOSS_MODE[this.mode] || BOSS_MODE.medium).every : 1);
+    C.scd = SPIT.cd * this.salSpitM().cd * (C.boss ? (BOSS_MODE[this.mode] || BOSS_MODE.medium).every : C.spit || 1); // a level's spit: N (N > 1: a gentler level, N x the wait)
     C.next = Math.max(C.next, 2);
     this.salEmbers.push({ k: ++this.salEmN, x0, y0, x1: C.sx, y1: C.sy, u: 0, T: SPIT.fly, ch, fr, own: C.id });
     this.emit('salSpit', { x: x0, y: y0, tx: C.sx, ty: C.sy, id: C.id });
