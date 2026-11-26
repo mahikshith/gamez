@@ -26,7 +26,8 @@ export const stkMethods = {
     const any = !!(L.bossFight || this.snakes.length || (this.sals || []).length || this.eagle || (this.thieves || []).length || (this.frogs || []).length
       || (this.octos || []).length || (this.schools || []).length || (this.hermits || []).length || (this.puffs || []).length || (this.jellies || []).length
       || this.kc || (this.cw && this.cwAny()) || (this.gators || []).length || (this.turtles || []).length || (this.mosqs || []).length
-      || (this.pips || []).length); // 0.8.17 pip
+      || (this.pips || []).length
+      || (this.urchins || []).length); // 0.8.17 urchin
     this.stk = {
       id, any, on: !!(id && any), m: id && this.mode === 'easy' ? CHARGE.easy : 0, base: CHARGE.base, uses: 0, full: 0, saved: 0,
       fly: null, fx: [], glue: [], held: {}, gl: [], rage: 0, dcy: 0, n: 0,
@@ -59,6 +60,7 @@ export const stkMethods = {
     (this.puffs || []).forEach((P, i) => { if (P.ph !== 'wait' && P.ph !== 'gone') add('pu' + i, 'puff', P, this.puffXY(P)); });
     (this.jellies || []).forEach((J, i) => { if (J.ph === 'float' || J.ph === 'in') add('je' + i, 'jelly', J, J); });
     if (this.kc && !this.kc.done) add('kc', 'kc', this.kc, { x: this.kc.bx, y: this.kc.by }, true);
+    this.urTargets?.(add); // 0.8.17 urchin
     if (this.cw) {
       this.cw.sp.forEach((S, i) => { if (S.ph !== 'flung' && S.ph !== 'wait') add('sp' + i, 'spider', S, this.cwSpider(S)); });
       this.cw.bt.forEach((B, i) => { if (B.ph !== 'wait') add('bt' + i, 'beetle', B, this.cwXY(B)); });
@@ -491,6 +493,7 @@ export const stkMethods = {
         try { this.reefP2(kind, T.type === 'kc' && kind === 'ice' ? Tm / 0.6 : Tm); } finally { [this.hermits, this.puffs, this.jellies, this.kc] = keep; }
         break;
       }
+      case 'urchin': this.urP2One(R, kind === 'spin' ? 'spin' : kind, Tm, why); break; // 0.8.17 urchin
       case 'spider': case 'beetle': case 'jack': {
         if (T.type === 'jack' && kind !== 'ice' && kind !== 'bolt') { stun3(); break; }
         const C = this.cw, keep = [C.sp, C.bt, C.jk];

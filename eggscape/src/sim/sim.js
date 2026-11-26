@@ -11,6 +11,7 @@ import { p2Methods, P2_TYPES, P2_KEYS } from './powers2.js'; // v3.4 powers and 
 import { warpMethods } from './warp.js'; // v3.4 warp gate
 import { thiefMethods } from './thieves.js';
 import { reefMethods } from './reef.js'; // world 8: hermit crab, pufferfish, jellyfish
+import { urchinMethods } from './urchin.js'; // 0.8.17 urchin: Spike the sea urchin (level 46)
 import { kcMethods } from './kingcrab.js'; // world 8 boss: the King Crab // v3.6 the egg thieves: weasel, rats, their bosses
 import { cwMethods } from './clockwork.js'; // v4 the clockwork cast: spider, wind-up beetle, spring jack
 import { owlMethods } from './owl.js'; // v4 the Clockwork Owl boss
@@ -2975,6 +2976,7 @@ Object.assign(Sim.prototype, bayouMethods); // v3.7 Gator Bayou (sim/bayou.js)
 Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves.js)
 Object.assign(Sim.prototype, pipMethods); // 0.8.17 pip
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
+Object.assign(Sim.prototype, urchinMethods); // 0.8.17 urchin (sim/urchin.js; built, stepped and saved through reef.js)
 Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl
 Object.assign(Sim.prototype, stkMethods); // Chick Strike powers (sim/strike.js)
 Object.assign(Sim.prototype, perkMethods); // egg skin powers (sim/perks.js)

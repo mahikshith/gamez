@@ -24,6 +24,7 @@ const GAP_BOARD = new Set(['a', 'len', 'x', 'shut', 'curtain', 'grate']);
 // villain / hazard keys -> table kind
 const CREATURE = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
 CREATURE.push('penguin'); // 0.8.17 pip
+CREATURE.push('urchin'); // 0.8.17 urchin
 const HAZARD_KEY = { icicles: 'icicles', lava: 'lava', gusts: 'gusts', wind: 'gusts' };
 const WEATHER = { thunder: 'lightning', current: 'current', embers: 'embers', quake: 'quake', rain: 'rain' };
 const ORB = { curse: 'curse', thorn: 'thornorb' };

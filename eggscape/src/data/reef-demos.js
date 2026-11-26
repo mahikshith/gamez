@@ -30,4 +30,11 @@ export const REEF_DEMOS = [
     tip: 'Turn the ring while a claw is inside: it gets stuck. Then bump an egg into the claw.',
     rings: rings([{ a: 75 }, { a: -110 }]),
   },
+  { // 0.8.17 urchin: Spike the sea urchin (level 46's villain)
+    ...base, id: 979, kind: 'urchin', name: 'Sea Urchin', seed: 9799, urchin: { ch: 2, a: 62, delay: 1 },
+    tip: 'Shut the gap he aims through: SPLAT! A chick or a Stone egg flips him too.',
+    intro: { title: 'Spike the sea urchin', line: 'He rolls the floor, puffs up and dashes at an egg. Turn a wall into his dash!' },
+    orbs: [{ type: 'stone', ch: 1, a: -120 }],
+    rings: [{ gaps: [{ a: -90 }] }, { gaps: [{ a: 170 }, { a: 10 }] }, { gaps: [{ a: 88 }] }, { gaps: [{ a: -40 }] }, { gaps: [{ a: -70 }] }],
+  },
 ];

@@ -23,6 +23,7 @@ import { drawKingEmblem } from './kingcrab.js';
 import { drawOwlEmblem } from './owl.js';
 import { drawOrb } from './powers.js';
 import { penguinPose, drawPenguin } from './penguin.js'; // 0.8.17 pip
+import { drawUrchin, urchinPose } from './urchin.js'; // 0.8.17 urchin
 
 const TAU = Math.PI * 2;
 const INK = '#2a1606';
@@ -94,6 +95,7 @@ const ART = {
   hermit(ctx, x, y, d, t) { drawHermit(ctx, x + d * 0.04, y + d * 0.26, d * 0.8, t, { pose: 'walk', u: t * 0.6 }); },
   puffer(ctx, x, y, d, t) { drawPuffer(ctx, x, y, d * 0.62, t, { sw: 0.5 + 0.5 * Math.sin(t * 1.4) }); },
   jelly(ctx, x, y, d, t) { drawJelly(ctx, x, y - d * 0.12, d * 0.72, t, {}); },
+  urchin(ctx, x, y, d, t) { drawUrchin(ctx, x, y + d * 0.41, d * 0.7, t, urchinPose('idle', t), { face: 1 }); }, // 0.8.17 urchin
   gator(ctx, x, y, d, t) { ctx.save(); ctx.translate(x - d * 0.1, y + d * 0.16); drawGator(ctx, d * 0.86, t, { jaw: 0.35 + 0.15 * Math.sin(t * 1.6), eye: 'open', look: -0.4 }); ctx.restore(); },
   'boss:gator'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.08, y); drawGatorEmblem(ctx, d * 0.42, t); ctx.restore(); },
   turtle(ctx, x, y, d, t) { ctx.save(); ctx.translate(x - d * 0.04, y + d * 0.18); drawTurtle(ctx, d * 0.84, t, { head: 0.1 + 0.1 * Math.sin(t * 1.5), glare: 1 }); ctx.restore(); },

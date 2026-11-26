@@ -45,7 +45,7 @@ export function value(sim) {
   let v = st.saved * 1500 - st.broken * 2500 + st.score * 0.2;
   if (sim.thieves && sim.thieves.length) v += sim.thiefScore(); // v3.6: a trapped or beaten thief boss is worth something
   if (sim.kc) v += sim.reefScore(); // world 8: a stuck or beaten King Crab claw
-  const reef = sim.hermits.length || sim.puffs.length || sim.jellies.length || sim.kc;
+  const reef = sim.hermits.length || sim.puffs.length || sim.jellies.length || sim.kc || (sim.urchins || []).length; // 0.8.17 urchin
   for (const e of sim.aliveEggs()) {
     const c = sim.channelOf(e);
     v += c * 300 - e.cracks * 200 + e.mult * 15;

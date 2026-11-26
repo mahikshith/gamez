@@ -55,6 +55,7 @@ const PUFF_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; /
 export const reefMethods = {
   // ---------- build
   reefInit(L) {
+    this.urInit(L); // 0.8.17 urchin (sim/urchin.js)
     this.hermits = []; this.puffs = []; this.jellies = []; this.pfFix = [];
     const n = this.rings.length;
     if (n < 2) return;
@@ -83,6 +84,7 @@ export const reefMethods = {
     for (const P of this.puffs) this.puffOne(P, dt, end);
     for (const J of this.jellies) this.jellyOne(J, dt, end);
     if (this.kc) this.kcStep(dt, end); // the King Crab (sim/kingcrab.js)
+    this.urStep(dt, end); // 0.8.17 urchin
   },
 
   // ---------- held eggs (egg.hc: 1 in a hermit's shell, 2 in a King Crab claw, 3 in the King Crab's pile)
@@ -422,6 +424,7 @@ export const reefMethods = {
   // the warp gate (sim/warp.js) takes the hermit crab as it grabs; kingcrab.js handles a claw
   reefWarp(W, kind, X) {
     if (kind === 'kclaw') return this.kcWarp ? this.kcWarp(W, X) : false;
+    if (kind === 'urchin') return this.urWarp(W, X); // 0.8.17 urchin
     if (kind !== 'hermit') return false;
     const b = this.hermitBody(X), r = this.reefFloor(X.ch) - HERMIT.bodyH, far = wrap(X.a + Math.PI * 0.8 * (X.a > -Math.PI / 2 ? -1 : 1));
     X.wa = far; X.tgt = 0;
@@ -463,6 +466,7 @@ export const reefMethods = {
     const R = this.rings[ri].r;
     for (const J of this.jellies) if (!(J.stn > 0) && Math.abs(Math.hypot(J.x, J.y) - R) < JELLY.r + 0.15 && this.jellyStun(J, this.reefM(JELLY.stun), true)) this.emit('p2Hit', { kind: 'zap', x: J.x, y: J.y });
     this.kcShock?.(ri, T);
+    this.urShock(ri, T); // 0.8.17 urchin
   },
   // hazards (boss.js animalsHit via sea.js seaHit) and the chick powers: gust rock lava ice bolt quake flash dash
   reefHit(kind, o = {}) {
@@ -473,6 +477,7 @@ export const reefMethods = {
     for (const P of this.puffs) if (P.ph !== 'wait' && near(this.puffXY(P), 0.4)) { if (kind === 'quake') continue; if (this.puffPop(P, kind)) n++; else if (kind === 'bolt' || kind === 'flash') { P.stn = 2; n++; } }
     for (const J of this.jellies) if (near(J, 0.35) && (kind === 'bolt' || kind === 'flash') && this.jellyStun(J, kind === 'bolt' ? 3 : 2, kind === 'bolt')) n++;
     if (this.kcHit) n += this.kcHit(kind, o);
+    n += this.urHit(kind, o); // 0.8.17 urchin
     return n;
   },
 
@@ -486,13 +491,13 @@ export const reefMethods = {
       const p = e.body.getPosition(), d = Math.hypot(p.x - J.x, p.y - J.y + 0.1);
       if (d < 1.1) v = Math.max(v, 0.25 * (1 - d / 1.1));
     }
-    return Math.max(v, this.kcThreat ? this.kcThreat(e) : 0);
+    return Math.max(v, this.kcThreat ? this.kcThreat(e) : 0, this.urThreat(e)); // 0.8.17 urchin
   },
   reefScore() { return this.kcScore ? this.kcScore() : 0; },
 
   // ---------- state
   reefState() {
-    return { hermits: this.hermits.map((H) => ({ ...H })), puffs: this.puffs.map((P) => ({ ...P })), jellies: this.jellies.map((J) => ({ ...J })), kc: this.kcState ? this.kcState() : null };
+    return { hermits: this.hermits.map((H) => ({ ...H })), puffs: this.puffs.map((P) => ({ ...P })), jellies: this.jellies.map((J) => ({ ...J })), kc: this.kcState ? this.kcState() : null, ur: this.urState() }; // 0.8.17 urchin: ur
   },
   reefLoad(S) {
     if (!S) return;
@@ -502,6 +507,7 @@ export const reefMethods = {
     this.pfFix = [];
     for (const P of this.puffs) if (P.ph === 'big') this.puffFixOn(P);
     if (S.kc && this.kcLoad) this.kcLoad(S.kc);
+    this.urLoad(S.ur); // 0.8.17 urchin
     for (const e of this.eggs) if (e.hc && e.body) e.body.setActive(false);
   },
 };

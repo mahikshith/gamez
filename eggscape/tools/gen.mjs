@@ -41,6 +41,7 @@ LEVEL_KEYS.push('shape', 'rock', 'spider'); // v4 Shape Lab: vault shape, the ro
 LEVEL_KEYS.push('gator', 'turtle', 'mosquito'); // world 9 Gator Bayou
 LEVEL_KEYS.push('frog'); // the frog (Woodcutter Glade, Gator Crossing, the 0.8.17 Frog Pond)
 LEVEL_KEYS.push('penguin'); // 0.8.17 pip
+LEVEL_KEYS.push('urchin'); // 0.8.17 urchin: Spike the sea urchin (level 46)
 
 // ---------- layout ----------
 function radii(spec) {
