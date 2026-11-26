@@ -17,7 +17,7 @@ const ss = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x);
 const backOut = (x) => { x = Math.max(0, Math.min(1, x)); const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); }; // overshoot, settle
 
 // ---- state per level try
-export function lessonReset() { const G = K.G; G.lrun = T.newRun(); G.lessonQ = []; G.lesson = null; }
+export function lessonReset() { const G = K.G; G.lrun = T.newRun(); G.lessonQ = []; G.lesson = null; G.pwPops = []; }
 export function lessonOn() { const G = K.G; return !!(G.lesson && !G.lesson.done); }
 
 // A tip key from an event (old once(key, text) sites): a lesson when the table has one, the old tip otherwise.
@@ -55,6 +55,8 @@ export function banditLesson(sim) {
 // where the subject is now (live for the creatures that move; the event's spot for the rest)
 function where(q) {
   const sim = K.G.sim, ev = q.ev, k = q.key;
+  if (k === 'chick') { const e = ev.egg; if (e && e.body && e.alive) { const b = e.body.getPosition(); return { x: b.x, y: b.y }; } }
+  if (k.startsWith('pw:')) { const e = ev.egg; if (e && e.body && e.alive) { const b = e.body.getPosition(); return { x: b.x, y: b.y }; } }
   if (k.startsWith('lv:')) { const L = K.leadEgg(sim); if (!L) return null; const e = special(sim) || L.egg, p = e.body.getPosition(); return { x: p.x, y: p.y }; }
   if (k === 'snake') { const S = find(sim.snakes, ev.id); const h = S && S.pts && S.pts[0]; if (h) return { x: h.x, y: h.y }; }
   if (k === 'pip') { const P = find(sim.pips, ev.id); if (P && sim.pipBody) return sim.pipBody(P); }
@@ -190,6 +192,7 @@ export function lessonStepped() { const m = K.G.lesson; if (m && !m.done) m.simI
 // ---- the picture
 export function drawLesson(ctx, W, H) {
   const G = K.G, m = G.lesson, sim = G.sim;
+  if (sim) drawPops(ctx);
   if (!m || m.done || !sim) return;
   const u = K.ui.u, show = T.showAt(m), calm = m.calm, low = K.low();
   if (show <= 0.01) return;
@@ -218,7 +221,8 @@ export function drawLesson(ctx, W, H) {
   ctx.restore();
   // the answer, done by the ghost finger
   const hq = m.out != null && m.ok ? 1 : Math.max(0, Math.min(1, (m.age - T.TEACH.easeIn * 0.5) / Math.max(0.3, m.hold)));
-  if (m.path) drawTurn(ctx, m, hq, show, u, calm);
+  if (m.spec.g === 'power') drawPowerMoment(ctx, m, hq, show, u, calm, c, R);
+  else if (m.path) drawTurn(ctx, m, hq, show, u, calm);
   else if (m.tap) drawTap(ctx, m, hq, show, u, calm, c, R);
   // a look lesson: at most three words under the spotlight
   if (m.spec.g === 'look' && m.words) {
@@ -295,3 +299,109 @@ function drawTap(ctx, m, hq, show, u, calm, c, R) {
   const lift = calm || press ? 0 : beat < 0.35 ? 16 * (1 - ss(beat / 0.35)) : 16 * ss((beat - 0.6) / 0.4); // down, press, up
   K.hand(ctx, s.x, s.y + lift * u, 46 * u, press, fa * show);
 }
+
+// ---- 0.8.18 power pickups (no card): the first two pickups of a power are a moment on the egg that took it (the effect,
+// its icon and its name), later ones only the icon popping at the egg. main.js calls lessonPower from the 'pickup' event.
+export function lessonPower(ev) {
+  const G = K.G, sim = G.sim;
+  if (!G.lrun) lessonReset();
+  if (!ev || !ev.power || !sim) return;
+  const key = 'pw:' + ev.power, p = ev.egg && ev.egg.body ? ev.egg.body.getPosition() : { x: ev.x, y: ev.y };
+  const ctx = { now: G.t, timeLeft: sim.timeLimit ? sim.timeLeft : null, held: null, ring: null, adapt: K.save.adapt !== false, calm: !!K.save.calm, busy: K.busy(), replayWon: K.won() };
+  const P = T.powerPlan(K.save, G.lrun, key, ctx);
+  if (P.kind === 'wait') { pop(ev, p); return; }
+  T.meet(K.save, G.lrun, key); K.persist();
+  if (P.kind === 'pop') { pop(ev, p); return; }
+  const q = { key, ev, until: G.t };
+  const m = T.begin(G.lrun, P.plan, G.t);
+  Object.assign(m, { q, spec: T.lessonOf(key), ri: -1, p: { x: p.x, y: p.y }, path: null, tap: null, ang0: 0, tapAt: null, power: ev.power, gag: GAG[ev.power] || null, gagHit: false });
+  G.lesson = m;
+  if (P.plan.lean) K.camMoment(p.x, p.y, P.plan.hold, 0.45);
+}
+function pop(ev, p) { K.G.pwPops.push({ id: ev.power, egg: ev.egg, x: p.x, y: p.y, t0: K.G.t }); }
+// the third pickup on: the power's icon pops out of the egg (overshoot, settle), rises a little and fades (0.8 s)
+function drawPops(ctx) {
+  const G = K.G, u = K.ui.u, calm = !!K.save.calm;
+  G.pwPops = (G.pwPops || []).filter((q) => G.t - q.t0 < 0.8);
+  for (const q of G.pwPops) {
+    const a = (G.t - q.t0) / 0.8;
+    if (q.egg && q.egg.body && q.egg.alive) { const b = q.egg.body.getPosition(); q.x = b.x; q.y = b.y; }
+    const s = K.toScreen(q.x, q.y), k = calm ? 1 : backOut(a / 0.3), rise = calm ? 0 : 26 * u * ss(a), al = 1 - ss((a - 0.6) / 0.4);
+    ctx.save(); ctx.globalAlpha = al;
+    K.drawOrb(ctx, q.id, s.x, s.y - 30 * u - rise, 15 * u * k, G.t, true);
+    ctx.restore();
+  }
+}
+// what each power's moment shows besides its own effect art (an icon gag where the effect is not self-evident)
+const GAG = {
+  stone: 'tooth', rockskin: 'tooth', iron: 'tooth', feather: 'tooth', golden: 'tooth',
+  fire_red: 'thorn', frostnova: 'thorn', brittle: 'thorn',
+  fire_green: 'heal', hourglass: 'clock', bubble: 'up', fire_black: 'down', shrink: 'shrink',
+  thunder: 'crack', thorn: 'crack', curse: 'clock2', frost: 'flake', water: 'splash',
+};
+function drawPowerMoment(ctx, m, hq, show, u, calm, c, R) {
+  const G = K.G, name = K.powerName(m.power), id = m.power;
+  const right = c.x < (G.play.x + G.play.w / 2); // the icon and name sit on the roomier side of the egg
+  const sd = right ? 1 : -1;
+  // the gag, in screen space by the egg
+  const g = m.gag, ink = 'rgba(40,18,4,0.85)';
+  ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const er = Math.max(22 * u, Math.min(32 * u, 0.34 * G.cam.k)); // the gag's scale: the egg's size on screen, never too small to read
+  if (g === 'tooth') { // a snake's fang flies at the shell, pings off it and tumbles away
+    const hit = 0.42, f = calm ? 1 : hq;
+    if (!m.gagHit && f >= hit && !calm) { m.gagHit = true; K.audio.play('steel_clang', { vol: 0.45, pitch: 1.6 }); }
+    let x, y, rot, al;
+    if (calm) { x = c.x - sd * er * 1.7; y = c.y - er * 1.2; rot = 0.6; al = 0.85; }
+    else if (f < hit) { const k = ss(f / hit); x = c.x - sd * (er * 3.4 - er * 2.3 * k); y = c.y - er * (2.6 - 1.7 * k); rot = -0.5 * sd; al = ss(f / 0.12); }
+    else { const k = (f - hit) / (1 - hit); x = c.x - sd * (er * 1.1 + er * 2.2 * k); y = c.y - er * 0.9 - er * 2.0 * Math.sin(k * 2.2) + er * 2.4 * k * k; rot = -0.5 * sd + sd * 7 * k; al = 1 - ss((k - 0.6) / 0.4); }
+    ctx.save(); ctx.globalAlpha = show * al; ctx.translate(x, y); ctx.rotate(rot);
+    const fs = er * 0.8;
+    ctx.beginPath(); ctx.moveTo(-fs * 0.45, -fs * 0.6); ctx.quadraticCurveTo(0, -fs * 0.75, fs * 0.45, -fs * 0.6); ctx.quadraticCurveTo(fs * 0.3, fs * 0.2, 0, fs * 0.95); ctx.quadraticCurveTo(-fs * 0.3, fs * 0.2, -fs * 0.45, -fs * 0.6); ctx.closePath();
+    ctx.fillStyle = '#fffaf0'; ctx.fill(); ctx.lineWidth = 2 * u; ctx.strokeStyle = ink; ctx.stroke();
+    ctx.restore();
+    if (!calm && f >= hit && f < hit + 0.25) { // the ping: a white star on the shell
+      const k = (f - hit) / 0.25, px = c.x - sd * er * 0.9, py = c.y - er * 0.75;
+      ctx.globalAlpha = show * (1 - k); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5 * u;
+      for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3, r0 = 4 * u, r1 = (8 + 12 * k) * u; ctx.beginPath(); ctx.moveTo(px + Math.cos(a) * r0, py + Math.sin(a) * r0); ctx.lineTo(px + Math.cos(a) * r1, py + Math.sin(a) * r1); ctx.stroke(); }
+    }
+  } else if (g === 'thorn') { // a thorn by the egg; a lick of the power's flame, the thorn chars and crumbles
+    const f = calm ? 1 : hq, tx = c.x - sd * er * 1.9, ty = c.y + er * 0.3, burnt = ss((f - 0.3) / 0.35), gone = ss((f - 0.6) / 0.3);
+    const ts = er * 0.75 * (1 - 0.7 * gone);
+    ctx.globalAlpha = show * (1 - gone);
+    ctx.beginPath(); ctx.moveTo(tx - ts * 0.5, ty + ts * 0.5); ctx.lineTo(tx, ty - ts * 0.8); ctx.lineTo(tx + ts * 0.5, ty + ts * 0.5); ctx.closePath();
+    ctx.fillStyle = burnt > 0.5 ? '#2a1a14' : '#b3263a'; ctx.fill(); ctx.lineWidth = 2 * u; ctx.strokeStyle = ink; ctx.stroke();
+    if (f > 0.2 && f < 0.75 && !calm) { const k = (f - 0.2) / 0.55, fl = Math.sin(k * Math.PI); ctx.globalAlpha = show * fl; K.flame(ctx, tx, ty - ts * 0.2, er * 0.9 * fl, G.t); }
+    if (gone > 0 && !calm) { ctx.globalAlpha = show * (1 - gone) * 0.8; ctx.fillStyle = '#5a4a40'; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(tx + (i - 2) * 4 * u, ty + ts * 0.5 + gone * 14 * u * (1 + (i % 2)), 1.8 * u, 0, 7); ctx.fill(); } }
+  } else if (g === 'heal' || g === 'crack') { // a crack on the shell: it mends (green), or it appears (a bad orb)
+    const f = calm ? 1 : hq, k = g === 'heal' ? 1 - ss((f - 0.25) / 0.45) : ss((f - 0.15) / 0.3);
+    ctx.globalAlpha = show * k; ctx.strokeStyle = '#3a2410'; ctx.lineWidth = 2.6 * u;
+    ctx.beginPath(); ctx.moveTo(c.x - er * 0.5, c.y - er * 0.35); ctx.lineTo(c.x - er * 0.15, c.y - er * 0.05); ctx.lineTo(c.x - er * 0.3, c.y + er * 0.2); ctx.lineTo(c.x + er * 0.15, c.y + er * 0.45); ctx.stroke();
+    if (g === 'heal' && f > 0.3) { ctx.globalAlpha = show * (1 - ss((f - 0.7) / 0.3)); ctx.fillStyle = '#8dff8a'; for (let i = 0; i < 4; i++) { const a = G.t * 3 + i * 1.6; ctx.beginPath(); ctx.arc(c.x + Math.cos(a) * er * 0.9, c.y + Math.sin(a) * er * 0.9, 2.6 * u, 0, 7); ctx.fill(); } }
+  } else if (g === 'clock' || g === 'clock2') { // seconds fly from the egg to the timer (the curse: the timer runs off faster)
+    const to = K.clockAt(); 
+    if (to) for (let i = 0; i < 3; i++) {
+      const f = calm ? 1 : clamp01((hq - 0.15 - i * 0.12) / 0.45), k = ss(f), from = g === 'clock' ? c : to, dst = g === 'clock' ? to : c;
+      const x = from.x + (dst.x - from.x) * k, y = from.y + (dst.y - from.y) * k - Math.sin(k * Math.PI) * 50 * u;
+      ctx.globalAlpha = show * (calm ? (i ? 0 : 1) : Math.sin(Math.min(1, f * 1.1) * Math.PI) * 0.95 + (f >= 1 ? 0 : 0.05));
+      K.clock(ctx, calm ? to.x : x, calm ? to.y + 24 * u : y, 26 * u);
+    }
+  } else if (g === 'up' || g === 'down') { // the way the egg is about to go
+    const dir = g === 'up' ? -1 : 1;
+    for (let i = 0; i < 2; i++) { const f = calm ? 0.5 : (hq * 1.6 + i * 0.5) % 1, yy = c.y + dir * (er * 1.3 + f * er * 1.3 + i * 10 * u); ctx.globalAlpha = show * (calm ? 1 : Math.sin(f * Math.PI)); ctx.beginPath(); ctx.moveTo(c.x - 9 * u, yy - dir * 5 * u); ctx.lineTo(c.x, yy + dir * 4 * u); ctx.lineTo(c.x + 9 * u, yy - dir * 5 * u); ctx.strokeStyle = 'rgba(40,18,4,0.55)'; ctx.lineWidth = 7 * u; ctx.stroke(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3.4 * u; ctx.stroke(); }
+  } else if (g === 'flake') { const f = calm ? 1 : backOut(clamp01(hq / 0.35)); ctx.globalAlpha = show; K.picto(ctx, 'freeze', c.x - sd * er * 1.8, c.y + er * 0.4, er * 1.1 * f, G.t); }
+  ctx.restore();
+  // the icon and the name, floating out beside the egg (overshoot, settle), a little drift up, gone with the moment
+  const k = calm ? 1 : backOut(clamp01(m.age / 0.32)), drift = calm ? 0 : -6 * u * ss(hq);
+  const ix = c.x + sd * (er + 30 * u), iy = c.y - er * 0.7 + drift;
+  ctx.save(); ctx.globalAlpha = show;
+  K.drawOrb(ctx, id, ix, iy, 19 * u * k, G.t, true);
+  const sz = 23 * u; ctx.font = `800 ${Math.round(sz)}px ${K.FONT}`; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  const w = ctx.measureText(name).width, P = G.play;
+  let tx = right ? ix + 26 * u : ix - 26 * u - w; tx = Math.max(P.x + 8 * u, Math.min(P.x + P.w - 8 * u - w, tx));
+  const ty = iy + (1 - k) * 8 * u;
+  ctx.textAlign = 'left'; ctx.lineWidth = sz * 0.26; ctx.strokeStyle = 'rgba(40,16,4,0.85)'; ctx.strokeText(name, tx, ty);
+  ctx.fillStyle = '#fff6d6'; ctx.fillText(name, tx, ty); // (the orb beside it carries the power's colour)
+  ctx.restore();
+  if (K.ui.record) K.ui.record({ x: tx, y: ty - sz / 2, w, h: sz }, 'lesson:power', 'lesson:power');
+}
+const clamp01 = (x) => Math.max(0, Math.min(1, x));

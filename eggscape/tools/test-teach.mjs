@@ -86,8 +86,29 @@ const ctx = (o = {}) => ({ now: 100, timeLeft: 60, held: null, ring: 2, adapt: t
   const n = T.begin(T.newRun(), { subject: 'y', n: 1, hold: 1.5 }, 0); T.tick(n, 0.05); T.finish(n, false);
   ok(Math.abs(T.scaleAt(n, 0.05) - T.scaleAt(m, 0.05)) < 1e-9, 'let go while easing in: no jump in speed');
 }
+{ // 0.8.18 power pickups: a moment on the first two pickups of each power (no card), then only the icon; a pickup that
+  // cannot have its moment now (spacing, another moment on) pops the icon and keeps the meeting for later
+  const save = {}, kinds = [];
+  for (let i = 0; i < 4; i++) {
+    const run = T.newRun(), q = T.powerPlan(save, run, 'pw:stone', ctx());
+    kinds.push(q.kind + (q.plan ? ':' + q.plan.hold : ''));
+    if (q.kind !== 'wait') T.meet(save, run, 'pw:stone');
+  }
+  ok(kinds.join() === `moment:${T.POWER.hold},moment:${T.POWER.hold},pop,pop`, 'stone shell: moment, moment, then the icon only: ' + kinds.join());
+  const s2 = {}, r2 = T.newRun();
+  T.meet(s2, r2, 'snake'); const m = T.begin(r2, T.want(s2, r2, 'snake', ctx({ now: 10 })), 10);
+  ok(T.powerPlan(s2, r2, 'pw:fire_red', ctx({ now: 10.2 })).kind === 'wait' && !(s2.met['pw:fire_red']), 'never while a lesson is on: the icon pops and the first meeting is kept for later');
+  while (!T.tick(m, 1 / 60)); T.end(s2, r2, m, 12);
+  ok(T.powerPlan(s2, r2, 'pw:fire_red', ctx({ now: 15 })).kind === 'wait', 'the 6 s spacing holds for pickups too');
+  ok(T.powerPlan(s2, r2, 'pw:fire_red', ctx({ now: 18.5 })).kind === 'moment', 'after it, the first pickup gets its moment');
+  const s3 = {}, r3 = T.newRun(), q3 = T.powerPlan(s3, r3, 'pw:hourglass', ctx({ adapt: false }));
+  ok(q3.kind === 'moment' && q3.plan.hold === T.POWER.holdShort, 'adaptive help off: one short moment');
+  ok(T.lessonOf('pw:anything').g === 'power', 'every power pickup is a power moment (no words but its name)');
+  const m4 = T.begin(T.newRun(), q3.plan, 0); let len = 0; while (!T.tick(m4, 1 / 60)) len += 1 / 60;
+  ok(len < 1.2, `a pickup moment is short (${len.toFixed(2)} s)`);
+}
 { // every lesson in the table is a known gesture with at most three words
-  const G = new Set(['away', 'open', 'spin', 'tap', 'look', 'none']);
+  const G = new Set(['away', 'open', 'spin', 'tap', 'look', 'none', 'power']);
   const rows = Object.entries(T.LESSONS);
   ok(rows.every(([, v]) => G.has(v.g)), `${rows.length} lessons, each a known gesture`);
   ok(rows.every(([, v]) => !v.w || v.w.split(/\s+/).length <= 3), 'no lesson says more than three words');

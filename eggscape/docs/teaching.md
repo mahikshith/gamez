@@ -54,6 +54,7 @@ A replay of a won level teaches nothing for a subject already met twice (that fo
 | `spin` | turns the ring the subject sits on or rides | salamander, Coco, Bandit (against his crank), beetle, whirlpool, cage, whip |
 | `tap`  | taps the thing to use | thorn vine (the fire orb) |
 | `look` | spotlight only, at most three words | effects and threats no ring turn answers (laser, gust, frost) |
+| `power` | no finger: the power's effect, an icon gag, its icon and name (pickups, section 5b) | every orb |
 | `none` | no moment: the creature's own pop-up says it | reactions such as a frog's soft landing, a snake clash |
 
 Ring choice: `floor` (the ring just outside the subject: its channel floor), `own` (the ring nearest its radius),
@@ -64,6 +65,19 @@ Ring choice: `floor` (the ring just outside the subject: its channel floor), `ow
 The text bar ("The duck egg floats and rides the current") is gone. On the first two visits to a level the finger shows
 the first move on the real rings: it brings the gap to the egg the caption is about (the special egg kind of the level,
 else the egg furthest along). Level 1 keeps its own coach instead. The words stay in the level's "i" panel.
+
+## 5b. Power pickups and lost stars (no words in play)
+
+- **A power pickup has no card.** The first two pickups of each power (`save.met['pw:<id>']`, the same two-meetings rule,
+  6 s spacing and clock hold as a lesson, never while another moment is on) are a short moment on the egg that took it:
+  the power's own effect art plays, an icon gag shows what is not self-evident (a snake fang pings off the stone shell, a
+  flame licks a thorn away, a crack mends, seconds fly to the timer, arrows show the bubble's lift), and the orb's icon with
+  its NAME only (one or two words) floats by the egg for about a second. From the third pickup: the icon pops at the egg.
+  A first pickup that could not have its moment (spacing, another moment on) only pops the icon and keeps its meeting.
+  The sentence stays on the level card's faces and in the "i" panel.
+- **A lost star goal has no words.** The HUD star bulges, cracks and greys with a small shake; the goal's icon (the level
+  card's and win page's own) flies out of it and fades. Calm: a soft fade.
+- Any other message in play: an icon gesture where one exists (the teach hand on a button), else three words at most.
 
 ## 6. Adding a new villain's lesson
 

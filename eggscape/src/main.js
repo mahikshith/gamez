@@ -98,7 +98,7 @@ import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' c
 import { STRIKES, STRIKE, STRIKE_FROM, EGG_STRIKES } from './data/strikes.js';
 import { focusAsk, focusStart, focusEnd, focusY, focusTrip, focusLook, focusDraw, focusUseHand, tabForKey } from './ui/focus.js'; // 0.8.16: scroll to the thing and point at it
 import { drawHand as teachHand } from './render/wonder.js';
-import { lessonKit, lessonReset, lessonAsk, lessonLevel, lessonTick, lessonTap, lessonHoldsClock, lessonStepped, lessonOn, drawLesson } from './lesson.js'; // 0.8.18 teaching moments (docs/teaching.md)
+import { lessonKit, lessonReset, lessonAsk, lessonLevel, lessonPower, lessonTick, lessonTap, lessonHoldsClock, lessonStepped, lessonOn, drawLesson } from './lesson.js'; // 0.8.18 teaching moments (docs/teaching.md)
 focusUseHand(teachHand); // the teaching hand (Papa Rooster's first call)
 import { stampStats, stampSweep } from './render/stamp.js';
 import { cvStats, freeCanvas } from './render/cvfree.js';
@@ -1469,11 +1469,11 @@ async function press(id) {
     case 'ally': {
       // allies (v3.5): free on Easy and after a fail; otherwise a rewarded ad (never costs progress, the button stays on a miss)
       if (G.screen !== 'play' || !allyShown()) break;
-      if (!allyKinds().some((k) => G.sim.allyCan(k))) { toast('Nothing for a farm friend to help with yet.', 2.2); break; }
+      if (!allyKinds().some((k) => G.sim.allyCan(k))) { toast('Not yet', 1.6); break; } // 0.8.18: three words at most in play
       if (G.roosterCoach) { save.seen = { ...(save.seen || {}), rooster: 1 }; persist(); G.allyAd = true; G.roosterCoach = false; } // the lesson: his first call is on the house
       if (!allyFree() && !G.allyAd && save.wallet.tickets.ally > 0) { // an Ally Ticket (shop) stands in for the ad
         const w = E.useTicket(save.wallet, 'ally');
-        if (w) { save.wallet = w; persist(); G.allyAd = true; toast(`Ally Ticket used (${w.tickets.ally} left)`, 2); }
+        if (w) { save.wallet = w; persist(); G.allyAd = true; toast(`Ticket used`, 1.6); }
       }
       if (!allyFree() && !G.allyAd) {
         const ok = await rewarded('ally');
@@ -1488,7 +1488,7 @@ async function press(id) {
     case 'ally:goose':
       if (G.screen === 'play' && allyShown() && G.allyOpen && G.sim.allyCan(id.slice(5))) {
         if (G.sim.callAlly(id.slice(5))) G.allyOpen = false;
-        else toast(id === 'ally:goose' ? 'The goose sees nothing to chase right now.' : 'The rooster cannot help right now.', 2.2);
+        else toast('Not now', 1.6);
       }
       break;
     case 'play': {
@@ -1522,7 +1522,7 @@ async function press(id) {
         if (A.n < 3) {
           G.itab = 'chicks'; if (G.ipage) { G.ipage.y = 0; G.ipage.v = 0; G.ipage.to = null; } // the Chicks tab (0.8.14: on a phone on its side too)
           audio.play('cluck', { pitch: 0.8, vol: 0.5 });
-          toast('Tap a chick first', 2.4); break;
+          break; // 0.8.18 words818: no words: the hand taps the chicks faster and the tiles jump (pickJump)
         }
         const open = strikesOpen(), S = open[open.length - 1];
         G.toasts = []; G.toast = null; // (the nudge's own toast goes with it)
@@ -1550,7 +1550,7 @@ async function press(id) {
         persist();
         startLevel(G.li, { direct: true, golden: G.golden || boost.golden, boost, adBoost: G.adBoost });
         if (pg.boost) pacerGiftPop(pg.boost);
-        if (hot.length) toast(`Win streak ${DR.hotCount(save)}: free ${hot.map((b) => E.BOOSTERS[b].name).join(' + ')}!`, 3);
+        if (hot.length && !pg.boost) pacerGiftPop({ [hot[0]]: true }); // 0.8.18 words818: the streak's free booster pops over the level (its icon and name)
         break;
       }
       if (G.li >= 0 && G.level) ENG.levelStart(save, { levelId: G.level.id, hard: isHardLevel(G.level) }); // the Oracle notes its guess for this try
@@ -2556,11 +2556,11 @@ async function takeHelp() {
     G.failHelp = null; portal.gameplayStop();
     startLevel(G.li, { direct: true });
     G.trialChick = { lid, id: H.id }; // (startLevel keeps it: the trial lasts this one try)
-    toast(`${(STRIKE[H.id] || {}).name || 'Your chick'} is with you this try. Tap it to send it!`, 3.2);
+    G.stkHint = G.t; G.stkHintN = (G.stkHintN || 0) + 1; // 0.8.18 words818: the hand taps the chick's button (no sentence)
   } else if (H.kind === 'trialBoost') {
     DR.noteTrial(save, lid, H, Date.now()); persist();
     G.failHelp = null; boostRun(H.id);
-    toast(`Free ${E.BOOSTERS[H.id].name}: ${E.BOOSTERS[H.id].line}`, 3.2);
+    pacerGiftPop({ [H.id]: true }); // 0.8.18 words818: its icon and name pop over the level
   } else if (H.kind === 'buyBoost') {
     if (H.bought) return;
     if (save.wallet.coins < H.price) { needCoins(H.price); return; }
@@ -4042,7 +4042,7 @@ function onewayDrag(h, dTheta) {
   if (ring.denied > 0.1) return;
   ring.denied = 0.35;
   audio.play('motor_tick', { vol: 0.8 });
-  if (!G.onewayTip) { G.onewayTip = true; toast('This ring only turns one way: follow the arrows.', 2.6); }
+  if (!G.onewayTip) { G.onewayTip = true; toast('One way only', 2); } // 0.8.18: three words at most in play (the ring's own arrows show the way)
 }
 
 // hourglass (cool) and the curse (hot) tint the edges of the screen while they last
@@ -4513,7 +4513,7 @@ function handleEvents() {
         fx.chips(ev.x, ev.y, '#ffe9b0', 5, 1.4);
         fx.dust(ev.x, ev.y, 3, 'rgba(236,226,204,0.7)');
         audio.play('ring_tick', { vol: 0.55, pitch: 1.5 });
-        if (!save.seen.graze) { save.seen.graze = 1; persist(); toast('Close call! A slow brush against a thorn only shoves the egg.', 3.4); }
+        if (!save.seen.graze) { save.seen.graze = 1; persist(); toast('Close call!', 1.8); }
         break;
       case 'crack':
         audio.play('egg_crack');
@@ -4557,7 +4557,7 @@ function handleEvents() {
       }
       case 'save': {
         { const np = sim.nest.getPosition(); if (!G.nestDrops || G.nestDrops.run !== G.run) G.nestDrops = { run: G.run }; G.nestDrops[ev.n - 1] = { x: ev.x - np.x, y: ev.y - np.y, a: ev.egg && ev.egg.body ? ev.egg.body.getAngle() : 0, t0: G.t }; } // the egg at home starts where the live one was
-        if (ev.egg && ev.egg.chick && !ev.egg.powU && sim.banked && sim.banked().includes(ev.egg)) toast('Your chick kept its power. Tap the glowing chick button to use it.', 3);
+        if (ev.egg && ev.egg.chick && !ev.egg.powU && sim.banked && sim.banked().includes(ev.egg) && (save.seen.bankHint || 0) < 2) { save.seen.bankHint = (save.seen.bankHint || 0) + 1; persist(); G.bankHint = G.t; } // 0.8.18 words818: the hand taps the glowing chick button
         audio.play('egg_save', { pitch: (1 + (ev.combo - 1) * 0.12) * (ev.egg && ev.egg.caught ? 1.22 : 1) }); // nest.reach: a catch sings a little higher
         if (ev.combo > 1) audio.play('combo', { intensity: (ev.combo - 2) / 2 });
         buzz('save');
@@ -4593,7 +4593,7 @@ function handleEvents() {
         break;
       case 'comet':
         audio.play('fire_ignite');
-        popup(ev.x, ev.y + 0.5, 'COMET!', { sub: 'safe landing + double score', color: '#9fe8ff', size: 26, life: 1.4 });
+        popup(ev.x, ev.y + 0.5, 'COMET!', { sub: 'x2 score', color: '#9fe8ff', size: 26, life: 1.4 });
         break;
       case 'squish':
         if (G.t - lastBump > 0.05) { lastBump = G.t; audio.play('squish', { intensity: clamp(ev.v / 6, 0, 1) }); }
@@ -4612,10 +4612,8 @@ function handleEvents() {
         eggFx(ev.egg).sv -= 5; // the egg swells with it for a beat
         hitStop(0.045);
         camPunch(0.04, ev.x, ev.y);
-        const first = !save.seen[ev.power];
-        if (first) { save.seen[ev.power] = 1; persist(); }
-        G.card = { id: ev.power, t: 0, dur: first ? 1.6 : 0.9 };
-        G.slow = { left: first ? 1.2 : 0.5, scale: 0.25 };
+        if (!save.seen[ev.power]) { save.seen[ev.power] = 1; persist(); } // (the orb is known from now on: the "i" panel and the level card say what it does)
+        lessonPower(ev); // 0.8.18 words818: no card in play. The first two pickups: a moment on the egg (the effect, the icon, the name); then the icon pops
         break;
       }
       case 'orbSpawn':
@@ -4624,7 +4622,7 @@ function handleEvents() {
         break;
       case 'meteor':
         audio.play('fire_ignite', { pitch: 0.7 });
-        popup(ev.x, ev.y + 0.5, 'METEOR!', { sub: 'too far: it will crack', color: '#ff9a5a', size: 26, life: 1.4 });
+        popup(ev.x, ev.y + 0.5, 'METEOR!', { sub: 'it will crack', color: '#ff9a5a', size: 26, life: 1.4 });
         break;
       case 'meteorLand':
         fx.wave(ev.x, ev.y, 1.1, '#ffb27a', 0.45, 0.12);
@@ -4679,7 +4677,7 @@ function handleEvents() {
         if (!G.snakeToast) { G.snakeToast = true; lessonAsk('snake', 'A snake! Turn the rings so no gap lines up for it.', ev); }
         break;
       case 'snakeRecoil':
-        popup(ev.x, ev.y + 0.5, 'Too hard to bite!', { size: 18 });
+        popup(ev.x, ev.y + 0.5, 'Too hard!', { size: 18 });
         audio.play('steel_clang', { vol: 0.6 });
         fx.sparkle(ev.x, ev.y, 7, '#fff1b8');
         fx.chips(ev.x, ev.y, '#d8cbb0', 5, 1.6);
@@ -4689,7 +4687,7 @@ function handleEvents() {
         fx.sparkle(ev.x, ev.y, 12, '#ffe58a');
         break;
       case 'twinFull':
-        popup(ev.egg.body.getPosition().x, ev.egg.body.getPosition().y + 0.5, 'Nest is full (4)', { size: 18 });
+        popup(ev.egg.body.getPosition().x, ev.egg.body.getPosition().y + 0.5, 'Nest full', { size: 18 });
         break;
       case 'portal':
         audio.play('portal_enter');
@@ -4782,7 +4780,7 @@ function handleEvents() {
         v3Event(ev, fx);
         predEvent(ev, fx); // predators (v3)
         bossEvent(ev, fx); // bosses (v3.1)
-        chickEvent(ev, fx, { popup, audio, toast }); // v3.2 chick kinds
+        chickEvent(ev, fx, { popup, audio, toast: () => { if (ev.type === 'chickHatch' && ev.egg) lessonAsk('chick', null, ev); } }); // v3.2 chick kinds (0.8.18: "tap it to use its power" is a tap moment on the chick)
         salEvent(ev, fx); // v3.2 lava salamander
         frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.3 frog
         if (ev.type === 'bandCrank') lessonAsk('bandit', null, ev); else if (ev.type === 'pipWarn') lessonAsk('pip', null, ev); else if (ev.type === 'cocoRide') lessonAsk('coco', null, ev); else if (ev.type === 'urPuff' && ev.aim) lessonAsk('urchin', null, ev); // 0.8.18: their first telegraph is the meeting
@@ -4809,10 +4807,17 @@ function handleEvents() {
 }
 
 // ---------------------------------------------------------------- Chick Strike: event helpers (render/strike.js) and the button
+// 0.8.18 words818: the power and chick tips that fired in play, cut to three words at most (the level card's faces and the
+// "i" panel keep the sentences). A key not listed says nothing: its own effect and pop-up already show it.
+const ONCE_WORDS = {
+  stkPhx: 'Once a level', stkTock: 'Costs 10 s', stkPop: 'Bubbles shove', stkIcy: 'Icy rings', stkJolt: 'Eggs jolted',
+  stkShove: 'Shoves eggs too', stkRage: 'They are furious', stkSpin: 'Ring spun',
+  frostnova: 'Thorns shatter', shock: 'Shock ring', thunderclap: 'All stunned', laser: 'Tap to fire', brittle: 'Brittle thorns', padBurn: 'Sponge burnt',
+};
 const STRIKE_API = {
   popup, audio,
   get sim() { return G.sim; },
-  once(key, text, d = 3.2) { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } },
+  once(key, text, d = 3.2) { if (!G.predToast[key]) { G.predToast[key] = 1; const w = ONCE_WORDS[key]; if (w) toast(w, 1.8); } }, // 0.8.18: three words at most in play
   hitStop: (s) => hitStop(s),
   punch: (a, x, y) => camPunch(a, x, y),
   buzz: (k) => buzz(k),
@@ -4822,6 +4827,8 @@ const STRIKE_API = {
 lessonKit({
   get G() { return G; }, get save() { return save; }, get ui() { return ui; },
   toScreen, persist, tipToast, leadEgg, audio, camMoment, buzz, hand: teachHand, FONT, low: () => !!PERF.low,
+  drawOrb, powerName: (id) => powerInfo(id).name, powerColor: (id) => powerInfo(id).color, flame: (c, x, y, s) => pictoFlame(c, x, y, s), clock: (c, x, y, s) => pictoClock(c, x, y, s), picto: pictoPower,
+  clockAt: () => G.fiSlot || null, // the HUD timer's slot (power moments fly seconds to it)
   busy: () => G.screen !== 'play' || fuseIntroOn() || !!G.card || modalOpen(),
   won: () => !!G.level && G.li >= 0 && bestStarsOf(G.level.id) > 0,
 });
@@ -4833,16 +4840,16 @@ function fireStrike(force) {
   const bag = !force && !sim.stkReady() && !sim.stk.fly && !sim.stk.spent && sim.state === 'play' && (save.wallet.charges || 0) > 0;
   if (!force && !bag && !sim.stkReady()) {
     G.stkWob = G.t; audio.play('motor_tick', { vol: 0.6, pitch: 1.4 });
-    if (!sim.stk.fly && G.t - (G.stkNoBagT || -9) > 4) { G.stkNoBagT = G.t; toast('Not charged yet. Save eggs and grab orbs to fill it, or get Chick Charges in the shop.', 2.6); }
+    if (!sim.stk.fly && G.t - (G.stkNoBagT || -9) > 4) { G.stkNoBagT = G.t; toast('Not charged yet', 1.8); }
     return null;
   }
   const pick = G.stkPick && G.t - G.stkPick.t < 1.5 ? G.stkPick.key : null;
   const r = sim.stkFire({ ...strikeFrom(), pick, force, bag });
   if (!r.ok) {
     G.stkWob = G.t;
-    if (r.why === 'none') toast('No villain to strike right now.', 2);
-    else if (r.why === 'noegg') toast('No egg the chick can reach right now.', 2);
-    else if (r.why === 'spent' && G.t - (G.stkNoBagT || -9) > 3) { G.stkNoBagT = G.t; toast('The Phoenix Chick flies once a level.', 2.2); }
+    if (r.why === 'none') toast('No villain yet', 1.8); // 0.8.18: three words at most in play
+    else if (r.why === 'noegg') toast('No egg reachable', 1.8);
+    else if (r.why === 'spent' && G.t - (G.stkNoBagT || -9) > 3) { G.stkNoBagT = G.t; toast('Once a level', 1.8); }
   }
   else {
     G.stkPick = null;
@@ -4888,12 +4895,12 @@ function drawStrikeBtn() {
 const P2_API = {
   popup, audio, toast,
   get sim() { return G.sim; },
-  once(key, text, d = 3.2) { if (!G.predToast[key]) { G.predToast[key] = 1; toast(text, d); } },
+  once(key, text, d = 3.2) { if (!G.predToast[key]) { G.predToast[key] = 1; const w = ONCE_WORDS[key]; if (w) toast(w, 1.8); } }, // 0.8.18: three words at most in play
   // a combo takes over the power card ("COMBO! <name>"); the first time it lingers (the album remembers it)
   combo(ev) {
     const id = 'combo_' + ev.id, first = !save.seen[id];
     if (first) { save.seen[id] = 1; persist(); }
-    G.card = { id, t: 0, dur: first ? 2.6 : 1.3, album: first }; // 0.8.17: the first time it says "Added to your album"
+    // 0.8.18 words818: no card over play (its "COMBO! <name>" pops in the world; the album keeps the sentence)
     G.slow = { left: first ? 1.4 : 0.7, scale: 0.25 };
   },
 };
@@ -4977,7 +4984,7 @@ function salEvent(ev, fx) {
       fx.chips(ev.x, ev.y, '#e6f6ff', 7, 1.8);
       break;
     case 'geckoShrug':
-      popup(ev.x, ev.y + 0.5, 'Too hard to lick', { color: '#e6e6e6', size: 15, life: 0.8 });
+      popup(ev.x, ev.y + 0.5, 'Too hard!', { color: '#e6e6e6', size: 15, life: 0.8 });
       break;
     case 'salWarn':
       audio.play('sal_charge', { vol: 0.8 });
@@ -5046,7 +5053,7 @@ function salEvent(ev, fx) {
       audio.play('rock_hit', { vol: 0.9, pitch: 0.8 });
       fx.sparkle(ev.x, ev.y, 8, '#fff2a8');
       fx.shake = Math.max(fx.shake, 0.2);
-      popup(ev.x, ev.y + 0.6, 'Too hard to bite!', { color: '#fff2a8', size: 18, life: 1.0 });
+      popup(ev.x, ev.y + 0.6, 'Too hard!', { color: '#fff2a8', size: 18, life: 1.0 });
       break;
     case 'salFrostBite':
       audio.play('frost_lick', { vol: 0.9 });
@@ -5129,7 +5136,7 @@ function predEvent(ev, fx) {
       // the bait got away: feathers, a cheep, no yolk and no lost star
       audio.play('egg_save', { pitch: 1.6, vol: 0.6 });
       fx.chips(ev.x, ev.y, '#ffe066', 10, 2.4);
-      popup(ev.x, ev.y + 0.5, 'The chick flew off!', { color: '#ffe066', size: 18, life: 1.3 });
+      popup(ev.x, ev.y + 0.5, 'Chick flew off!', { color: '#ffe066', size: 18, life: 1.3 });
       break;
     case 'snakeHiss':
       audio.play('snake_hiss', { vol: 0.8 });
@@ -5243,7 +5250,7 @@ function lockedRing(ring) {
   if (ring.denied > 0.1) return;
   ring.denied = 0.35;
   audio.play('glass_crack', { vol: 0.5, pitch: 1.8 });
-  if (!G.predToast.lock) { G.predToast.lock = 1; toast('Frozen solid! That ring thaws in a moment.', 2.4); }
+  if (!G.predToast.lock) { G.predToast.lock = 1; toast('Frozen solid!', 1.8); }
 }
 const BOSS_WARN_SFX = {
   gale: ['wind_gust', { vol: 0.6, pitch: 0.7 }], freeze: ['glass_crack', { vol: 0.7, pitch: 0.6 }], icicles: ['glass_crack', { vol: 0.6, pitch: 1.5 }],
@@ -5277,7 +5284,7 @@ function bossEvent(ev, fx) {
       break;
     case 'bossPhase': {
       const names = (ev.attacks || []).map((a) => ATTACK_NAME[a]).filter((x, i, a) => x && a.indexOf(x) === i);
-      toast(`${BOSS_TITLE[ev.kind] || 'The boss'}: phase ${ev.phase + 1} of ${ev.n}!${names.length ? ' ' + names.join(', ') + '.' : ''}`, 2.6);
+      toast(`Phase ${ev.phase + 1}/${ev.n}!`, 2); // 0.8.18: no sentence in play (the boss bar and his moves show the rest)
       audio.play('unlock', { pitch: 0.6, vol: 0.8 });
       if (!save.calm) { fx.flash = 0.35; fx.flashColor = '#ff8a3d'; }
       fx.shake = Math.max(fx.shake, 0.35);
@@ -5339,7 +5346,7 @@ function bossEvent(ev, fx) {
       break;
     case 'bossSummon':
       audio.play('lava_sizzle', { vol: 0.6, pitch: 1.6 });
-      toast(ev.who === 'rats' ? 'His rats scurry in!' : ev.who === 'gators' ? 'Baby gators swim in!' : 'A snake slithers in!', 2.2);
+      toast(ev.who === 'rats' ? 'Rats incoming!' : ev.who === 'gators' ? 'Baby gators!' : 'Snake incoming!', 1.8);
       break;
     case 'heatWarn':
       audio.play('lava_sizzle', { vol: 0.5 });
@@ -5412,8 +5419,38 @@ function watchStars() {
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play' || G.li === -1 || !G.goals) return;
   if ((G.goalTick = (G.goalTick || 0) + 1) % 6) return; // ten times a second is plenty
   const now = goalsLive(G.sim), was = G.goalOk || [true, true, true];
-  for (let i = 1; i < 3; i++) if (was[i] && !now[i]) { const l = GL.lostLine(G.goals[i]); if (l) toast(`${l}: a star is gone`, 2.4); }
+  for (let i = 1; i < 3; i++) if (was[i] && !now[i]) starLost(i); // 0.8.18 words818: the HUD star cracks and its goal's icon flies out (no words)
   G.goalOk = now;
+}
+// 0.8.18 words818 (mykee: "nobody reads text while playing"): a star's goal is lost: no words. The star in the HUD bulges,
+// cracks and greys with a small shake, and the goal's own icon (the level card's and win page's) flies out of it and fades.
+// Calm: a soft fade to grey, the icon fades in place. STAR_LOST s long; the HUD's still layer leaves that star out meanwhile.
+const STAR_LOST = 1.1;
+function starLost(i) {
+  G.starLost = { i, t0: G.t, run: G.run, g: G.goals[i] };
+  audio.play('glass_crack', { vol: 0.45, pitch: 1.5 });
+  buzz('tick');
+}
+const starLostOn = (i) => !!(G.starLost && G.starLost.run === G.run && G.t - G.starLost.t0 < STAR_LOST && (i == null || G.starLost.i === i));
+function drawStarLost() {
+  if (!starLostOn() || !G.trayStar) return;
+  const L = G.starLost, P = G.trayStar[L.i], u = ui.u, calm = save.calm, a = (G.t - L.t0) / STAR_LOST;
+  if (!P) return;
+  ctx.save();
+  const grey = calm ? ss01(a / 0.8) : ss01((a - 0.12) / 0.25);
+  const bulge = calm ? 1 : 1 + 0.35 * Math.sin(Math.min(1, a / 0.12) * Math.PI / 2) * (1 - ss01((a - 0.12) / 0.2));
+  const sh = calm ? 0 : 3 * u * Math.sin(a * 70) * Math.max(0, 1 - (a - 0.12) / 0.35) * (a > 0.12 ? 1 : 0);
+  // the star: gold to grey, with a crack across it
+  ctx.translate(P.x + sh, P.y); ctx.scale(bulge, bulge);
+  ctx.globalAlpha = 1 - grey; drawStar(ctx, 0, 0, P.r, true, 1, false);
+  ctx.globalAlpha = grey; drawStar(ctx, 0, 0, P.r, false, 1, false);
+  if (!calm && a > 0.12) { ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(50,30,14,0.9)'; ctx.lineWidth = 1.4 * u; ctx.beginPath(); ctx.moveTo(-P.r * 0.15, -P.r * 0.9); ctx.lineTo(P.r * 0.1, -P.r * 0.25); ctx.lineTo(-P.r * 0.2, P.r * 0.1); ctx.lineTo(P.r * 0.15, P.r * 0.7); ctx.stroke(); }
+  ctx.restore();
+  // the goal's icon: out of the star, down and aside with an overshoot, then it fades
+  const f = calm ? 0 : ss01((a - 0.15) / 0.45), al = calm ? Math.sin(Math.min(1, a) * Math.PI) : (a < 0.15 ? 0 : 1 - ss01((a - 0.6) / 0.4));
+  const S = 26 * u * (calm ? 1 : backK(clamp((a - 0.15) / 0.35, 0, 1)));
+  const ix = P.x + (calm ? 0 : 20 * u * f), iy = P.y + (calm ? 26 * u : 34 * u * f + 10 * u * Math.sin(f * Math.PI) * -1);
+  if (al > 0.01 && S > 0.5) { ctx.save(); ctx.globalAlpha = al; goalGlyph(goalKind(L.g), ix, iy, S); ctx.restore(); }
 }
 const TRAY_STARS = (u) => 6 * u + 3 * 15 * u; // the width the tray's star group takes
 function drawTrayStars(x, y, u) {
@@ -5421,7 +5458,8 @@ function drawTrayStars(x, y, u) {
   const ok = G.goalOk || [true, true, true];
   ctx.fillStyle = 'rgba(255,232,196,0.3)';
   ctx.fillRect(x, y - 9 * u, 1.5 * u, 18 * u);
-  for (let i = 0; i < 3; i++) drawStar(ctx, x + 6 * u + 15 * u * (i + 0.5), y, 6.6 * u, ok[i], 1, false);
+  G.trayStar = [0, 1, 2].map((i) => ({ x: x + 6 * u + 15 * u * (i + 0.5), y, r: 6.6 * u })); // (where drawStarLost plays)
+  for (let i = 0; i < 3; i++) if (!starLostOn(i)) drawStar(ctx, x + 6 * u + 15 * u * (i + 0.5), y, 6.6 * u, ok[i], 1, false);
   ui.record({ x: x + 6 * u, y: y - 8 * u, w: 45 * u, h: 16 * u }, 'hud:stars');
 }
 
@@ -5608,7 +5646,7 @@ function update(dt) {
   if (G.slow && (G.slow.left -= dt) <= 0) G.slow = null;
   if (G.card && (G.card.t += dt) > G.card.dur) G.card = null;
   if (G.hen.t > 0 && (G.hen.t -= dt) <= 0) G.hen.mood = 'idle';
-  if (G.portalTip && G.screen === 'play' && !G.toast) { G.portalTip = 0; toast('Portal: an egg that falls into the purple swirl pops out of the orange one. Follow the dotted trail.', 3.6); }
+  if (G.portalTip && G.screen === 'play' && !G.toast) { G.portalTip = 0; const pt = sim.portals.find((q) => q.pull || Math.hypot(q.ax - q.bx, q.ay - q.by) > 0.05); if (pt) lessonAsk('portal', null, { x: pt.ax, y: pt.ay, x2: pt.bx, y2: pt.by }); } // 0.8.18: a look moment on the purple swirl
   // stall watch (2026-11-15 softlock report): nothing moved and nothing came home for a while. Enough eggs home: offer
   // Finish. Not enough: after a long still spell offer Retry (an egg wedged, a creature sitting on it).
   if (G.screen === 'play' && sim.state === 'play') {
@@ -5768,7 +5806,7 @@ function hintWork() {
   G.hint = null;
   const b = H.out.best;
   if (b) G.hintShow = { ring: b.ring, dir: Math.sign(b.delta), amt: Math.min(Math.abs(b.delta), 2), t: 6 };
-  else toast('Try turning the ring under an egg.', 2.4);
+  else toast('Turn a ring', 1.8); // 0.8.18: three words at most in play
   if (G.screen === 'pause') press('resume');
 }
 
@@ -5931,7 +5969,7 @@ function render() {
     if (driven && !save.seen.gears && G.screen === 'play') {
       save.seen.gears = 1;
       persist();
-      popup(0, sim.outerR + 0.6, 'Geared!', { sub: 'linked rings turn the other way', color: '#ffd36b', size: 20, life: 2.4 });
+      popup(0, sim.outerR + 0.6, 'Geared!', { sub: 'other way', color: '#ffd36b', size: 20, life: 2.4 });
     }
   }
   if (sim.wx.bolt) { const b = sim.boltPoint(sim.wx.bolt); W.drawBoltWarn(ctx, b.x, b.y, t); }
@@ -6304,6 +6342,10 @@ function drawBankBtn() {
     ctx.fillStyle = '#fff'; ctx.font = `700 ${12 * u}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('x' + B.length, bx, by + 0.5 * u); ctx.restore();
   }
+  if (G.bankHint != null && G.t - G.bankHint < 3.2) { // 0.8.18 words818: the hand taps the glowing chick button twice (no sentence)
+    const ph = save.calm ? 0.45 : ((G.t - G.bankHint) * 1.25) % 1, press = !save.calm && ph > 0.35 && ph < 0.6, a = Math.min(1, (3.2 - (G.t - G.bankHint)) / 0.4);
+    ctx.save(); ctx.translate(x + bs * 0.55, y + bs * (press ? 0.5 : 0.66)); teachHand(ctx, 0, 0, bs * 0.85, press, a); ctx.restore();
+  }
 }
 function allyTicket(x, y, bs, tk) {
   const u = ui.u, tw2 = 30 * u, th2 = 17 * u, tx2 = x + bs - tw2 + 6 * u, ty2 = y + bs - th2 + 2 * u;
@@ -6454,8 +6496,9 @@ function drawHUD() {
   for (const e of sim.eggs) tray += e.fled ? 'f' : e.saved ? 's' : e.alive ? 'a' + e.cracks : 'b' + e.cracks;
   const timeTxt = sim.timeLimit ? fmtTime(sim.timeLeft) : '';
   const key = G.run + '|' + G.li + '|' + G.level.id + '|' + A.x + ',' + A.y + ',' + A.w + ',' + A.h + ',' + W_ + ',' + G.hudBottom + ',' + G.bossBar + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0) + (V.pause ? 1 : 0) + (V.bump ? 1 : 0) + (V.perk ? 1 : 0) + (settingsMarkOn() ? 1 : 0)
-    + '|' + (P ? P.icon : '') + '|' + st.score + '|' + tray + '|' + st.saved + '/' + hudNeed(st) + '|' + (G.goalOk ? G.goalOk.join() : '') + '|' + timeTxt.length + '|' + (sim.bx && sim.bx.boss ? 1 : 0);
+    + '|' + (P ? P.icon : '') + '|' + st.score + '|' + tray + '|' + st.saved + '/' + hudNeed(st) + '|' + (G.goalOk ? G.goalOk.join() : '') + (starLostOn() ? 'L' + G.starLost.i : '') + '|' + timeTxt.length + '|' + (sim.bx && sim.bx.boss ? 1 : 0);
   const Y = hudLayer('top', key, 0, 0, W_, G.hudBottom + 20 * u, () => hudStill(V, timeTxt));
+  drawStarLost(); // 0.8.18 words818: a lost star cracks live over the still layer
   // ---- live: what the layer left out
   const row1 = Y.row1;
   if (V.pause) { ui.button('pause', '', Y.X0, Y.Y0, Y.bs, Y.bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u }); setMarkAt(Y.X0, Y.Y0, Y.bs, Y.bs, true); }
@@ -12030,7 +12073,7 @@ function watchFrame(raw, work, every) {
   const cap = 1000 / (every * VSYNC.iv);
   if (DEV && FAKE) { const ill = fakeIll(); fps = cap * (ill ? FAKE.fps || 0.4 : 1); js = ill ? js * (FAKE.js || 8) + 30 : Math.min(js, 8); } // the page test plays a healthy phone that falls ill (a headless browser has no steady pace of its own)
   recWindow({ scr: s, fps, js, dpr: DPR, cap, step: PERF.step, hot: REC.bad > 0 && phoneHot() });
-  if (REC.note) { const n = REC.note; REC.note = ''; if (n === 'ok') toast('Back to full speed', 2.2); }
+  if (REC.note) { const n = REC.note; REC.note = ''; if (n === 'ok') toast('Full speed again', 1.8); }
   const busy = G.adBusy || ads.busy || !!G.getMore || !!G.detail || !!G.chickBuy || G.settingsOpen || speedTest.active || G.screenT < 0.5;
   const rung = recDue(s, busy, G.sim ? G.sim.t : 99);
   if (rung) cure(rung);
