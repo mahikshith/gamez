@@ -8454,9 +8454,18 @@ function drawSettings() {
   if (land) B.push({ h: 28 * s, gap: 8 * s, draw: (x, y, w) => setFooter(x + w / 2, y + 14 * s, s) }); // the version and the support id (a tap copies them)
   G.setRect = V;
   let BL = B, BR = null;
-  if (two) { // the split at the section heading that leaves the two columns the most even
-    let best = null;
-    for (const i of heads) { if (!i) continue; const l = B.slice(0, i), r = B.slice(i), m = Math.max(pageColH(l, s), pageColH(r, s)); if (!best || m < best.m) best = { m, l, r }; }
+  if (two) { // the Notifications card first (in the first screenful), then Gameplay (ring speed, difficulty, the help), the
+    // rest in their order; the page splits where the two columns come out the most even (a section cut in two repeats its
+    // heading on the right)
+    const secs = heads.map((h, i) => B.slice(h, heads[i + 1] ?? B.length)), tail = B.slice(0, heads[0] || 0), gi = secs.findIndex((q) => q.includes(rsB)), ni = remCan() ? 0 : -1;
+    const ord = [...tail, ...(ni >= 0 && ni !== gi ? secs[ni] : []), ...(gi >= 0 ? secs[gi] : []), ...secs.filter((q, i) => i !== gi && i !== ni).flat()], hd = new Set(heads.map((h) => B[h]));
+    let best = null, cur = null;
+    for (let i = 1; i < ord.length; i++) {
+      if (hd.has(ord[i - 1])) cur = ord[i - 1];
+      if (hd.has(ord[i - 1]) || !hd.has(ord[i]) && !cur) continue; // never a heading left alone at a column's foot
+      const l = ord.slice(0, i), r = hd.has(ord[i]) ? ord.slice(i) : [cur, ...ord.slice(i)], m = Math.max(pageColH(l, s), pageColH(r, s));
+      if (!best || m < best.m) best = { m, l, r };
+    }
     if (best) { BL = best.l; BR = best.r; }
   }
   if (G.setRsAt) { // the first visit: the ring speed row in view (on a short screen the page starts scrolled to it)
