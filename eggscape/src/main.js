@@ -3210,42 +3210,60 @@ function drawGot() {
     if (!R.landed && R.coins0 != null && t >= R.land) R.landed = true; // (the purse's own landing sounds and buzzes)
   }
   dim(0.84 * clamp(t / 0.18, 0, 1));
-  // 0.8.17: on a phone held upright the top row belongs to the purse and the bag (ui/landing.js): the page starts under it
-  // and the whole picture (headline to the last row) stands in the middle of the room left: even gaps above and below
-  const top = A.h > A.w ? 62 * u : 0, S = Math.min(A.w * 0.9, (A.h - top) * 0.46, 420 * u), cx = A.cx, hh = S * 0.5, hs = Math.min(39 * u, 0.12 * S);
-  const ws = Math.min(20 * u, 0.062 * S), WL = R.what ? wrapText(R.what, ws, Math.min(A.w - 48 * u, 380 * u)).slice(0, 3) : [], whatH = WL.length ? WL.length * ws * 1.3 + 0.03 * S : 0;
-  const n = R.items.length, per = Math.max(1, Math.min(4, n)), rowsN = Math.ceil(n / per), cell = Math.min(S * 0.27, (A.w - 30 * u) / per);
-  const ls = Math.max(13 * u, Math.min(18 * u, cell * 0.16)), rowH = cell * 0.78 + ls * 2.6;
+  // 0.8.17: on a phone held upright the top row belongs to the purse and the bag (ui/landing.js): the page starts under it.
+  // sweep817 (mykee: "there could be a lot of empty spaces"): the page is laid out as a column of blocks (the ribbon, the
+  // prize, its name and line, the row of what was inside, the closing line). The prize grows into the room the page has
+  // (up to 1.8x) and what is still left is shared as even gaps, so no half of the page is a dark hole. On its side: the
+  // prize big on the left at full height, the ribbon, name and row in a column on the right.
+  const wide = A.w > A.h * 1.15, top = A.h > A.w ? 62 * u : 0;
+  const S = wide ? Math.min(A.w * 0.42, A.h * 0.62, 420 * u) : Math.min(A.w * 0.9, (A.h - top) * 0.46, 420 * u), hh = S * 0.5, hs = Math.min(39 * u, 0.12 * S);
+  const colW = wide ? A.w * 0.44 - 24 * u : A.w - 30 * u, colX = wide ? A.x + A.w * 0.72 : A.cx;
+  const ws = Math.min(20 * u, 0.062 * S), WL = R.what ? wrapText(R.what, ws, Math.min(colW - 18 * u, 380 * u)).slice(0, 3) : [], whatH = WL.length ? WL.length * ws * 1.3 + 0.03 * S : 0;
+  const n = R.items.length, per = Math.max(1, Math.min(4, n)), rowsN = n ? Math.ceil(n / per) : 0;
   const willBag = R.items.some((it) => landWhere(it.art)), lineOn = R.line ? !(willBag && R.line === 'Added to your bag') : R.line !== '' && !willBag && R.coins0 == null; // (0.8.17: the purse and the bag chips show it)
-  const above = 0.98 * S + hs * 0.85, below = 0.02 * S + whatH + rowsN * rowH + (lineOn ? 40 * u : 0), mid = A.y + top + (A.h - top) / 2;
-  const cy = Math.max(A.y + top + above + 4 * u, Math.min(mid + (above - below) / 2, A.y1 - below - 8 * u)), heroY = cy - 0.42 * S;
+  const nameS = Math.min(34 * u, (wide ? 0.125 : 0.1) * S), heroW0 = R.sku ? Math.min(A.w - 30 * u, S * 1.05) : 0.45 * S; // (the prize's drawn width at 1x)
+  const mMax = Math.max(1, Math.min(wide ? 3 : 1.8, ((wide ? A.w * 0.46 : A.w - 24 * u) / heroW0)));
+  const cellOf = (m) => Math.min(S * 0.27 * Math.min(wide ? 2 : 1.3, m), colW / per), rowHOf = (c) => c * 0.78 + Math.max(13 * u, Math.min(18 * u, c * 0.16)) * 2.6;
+  const y0 = A.y + top + (wide ? 52 * u : 6 * u), y1 = A.y1 - 12 * u, room = y1 - y0;
+  // the blocks under the prize (portrait) or in the right column (on its side), in order
+  const blocksFor = (m) => { const c = cellOf(m); return [['rib', hs * 1.9], ...(wide ? [] : [['hero', 0.62 * S * m]]), ['name', nameS * 1.3 + whatH], ...(n ? [['items', rowsN * rowHOf(c)]] : []), ...(lineOn ? [['line', 30 * u]] : [])]; };
+  const sumOf = (B) => B.reduce((a, b) => a + b[1], 0);
+  let m = 1;
+  if (wide) m = clamp((A.h * 0.7) / ((R.sku ? 0.5 : 0.42) * S), 1, mMax); // (the drawn prize stands about 0.42 S tall at 1x)
+  else { const c1 = sumOf(blocksFor(1)); m = clamp(1 + (room * 0.8 - c1) / (0.62 * S * 1.15), 1, mMax); for (let k = 0; k < 4 && sumOf(blocksFor(m)) > room * 0.86 && m > 1; k++) m = Math.max(1, m - 0.08); }
+  const cell = cellOf(m), ls = Math.max(13 * u, Math.min(18 * u, cell * 0.16)), rowH = rowHOf(cell);
+  const B = blocksFor(m), gap = Math.max(4 * u, (room - sumOf(B)) / (B.length + 1)), at0 = {};
+  { let y = y0 + gap; for (const [k, h] of B) { at0[k] = { y, h }; y += h + gap; } }
+  const heroX = wide ? A.x + A.w * 0.27 : A.cx, heroY = wide ? A.y + A.h * 0.47 : at0.hero.y + 0.31 * S * m, cx = heroX;
+  const ribY = at0.rib.y + hs * 0.85 + 2 * u, nameY = at0.name.y + nameS * 0.65, rowTop = at0.items ? at0.items.y + cell * 0.04 : 0;
   ctx.save(); ctx.globalAlpha = clamp(t / 0.18, 0, 1);
-  sunburst(cx, heroY, S * 1.3, 'rgba(255,226,140,0.17)', 14);
-  const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.75); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
-  ctx.fillStyle = g; ctx.fillRect(cx - S, heroY - S, 2 * S, 2 * S);
+  sunburst(cx, heroY, S * 1.3 * m, 'rgba(255,226,140,0.17)', 14);
+  const g = ctx.createRadialGradient(cx, heroY, 0, cx, heroY, S * 0.75 * m); g.addColorStop(0, 'rgba(255,220,120,0.42)'); g.addColorStop(1, 'rgba(255,220,120,0)');
+  ctx.fillStyle = g; ctx.fillRect(cx - S * m, heroY - S * m, 2 * S * m, 2 * S * m);
   ctx.restore();
   const pop = (t0, x, y, draw) => { const k = calm ? 1 : backK((t - t0) / 0.32); if (k <= 0.01) return; ctx.save(); ctx.translate(x, y); ctx.scale(k, k); draw(); ctx.restore(); };
   if (!calm) { // 0.8.17 (mykee: "make it like a celebration"): a burst of light and confetti as the prize pops, as big as the prize
     const wt = clamp(((R.coins || 0) + 40 * R.items.length) / 300, 0.15, 1);
-    if (t > 0.18 && t < 0.78) { ctx.save(); ctx.globalAlpha = 0.6; CB.burst(ctx, cx, heroY, S * (0.38 + 0.25 * wt), (t - 0.18) / 0.6); ctx.restore(); }
+    if (t > 0.18 && t < 0.78) { ctx.save(); ctx.globalAlpha = 0.6; CB.burst(ctx, cx, heroY, S * m * (0.38 + 0.25 * wt), (t - 0.18) / 0.6); ctx.restore(); }
     CB.confetti(ctx, cx, heroY, t - 0.1, { n: Math.round(18 + 34 * wt), speed: S * (1.4 + 0.6 * wt), g: S * 1.5, life: 1.9, seed: 3, size: Math.max(6, S * 0.024) });
   }
   // the prize: the bundle's banner art, or the item itself
   const hw = Math.min(A.w - 30 * u, S * 1.05);
   pop(0.1, cx, heroY, () => {
+    ctx.scale(m, m);
     if (R.sku) drawIapBanner(ctx, R.sku, 0, 0, hw, hh, G.t, save.wallet);
     else if (R.art) spinArt(ctx, R.art, 0, 0, hh * 1.5, G.t); // a wheel prize
     else { const it = storeItem(R.key, storeState()); if (it) it.icon(ctx, 0, 0, hh * 1.1, G.t, 1); }
   });
-  if (calm || t > 0.35) ui.text(R.name, cx, heroY + hh * 0.62, { size: Math.min(34 * u, 0.1 * S), align: 'center', color: '#fff6c8', stroke: ink, strokeW: 5 * u, maxW: A.w - 40 * u, tag: 'got:name' });
+  { const hH = (R.sku ? 0.5 : 0.44) * S * m; ui.record({ x: cx - heroW0 * m / 2, y: heroY - hH / 2, w: heroW0 * m, h: hH }, 'got:hero'); } // (what the prize covers when drawn)
+  if (calm || t > 0.35) ui.text(R.name, colX, nameY, { size: nameS, align: 'center', color: '#fff6c8', stroke: ink, strokeW: 5 * u, maxW: colW - 10 * u, tag: 'got:name' });
   // what was inside: one by one into a grid (up to 4 a row)
   // what it does, in one or two lines under its name (R.what: a booster's, a chick's, a ticket's own line)
-  if (WL.length && (calm || t > 0.5)) WL.forEach((ln, q) => ui.text(ln, cx, heroY + hh * 0.62 + 0.1 * S + q * ws * 1.3, { size: ws, align: 'center', color: '#ffffff', stroke: ink, strokeW: 4 * u, maxW: A.w - 40 * u, tag: 'got:what' + q }));
-  const rowTop = heroY + hh * 0.62 + 0.13 * S + whatH;
+  if (WL.length && (calm || t > 0.5)) WL.forEach((ln, q) => ui.text(ln, colX, nameY + nameS * 0.65 + 0.03 * S + ws * 0.65 + q * ws * 1.3, { size: ws, align: 'center', color: '#ffffff', stroke: ink, strokeW: 4 * u, maxW: colW - 10 * u, tag: 'got:what' + q }));
   let coinAt = null;
   const at = [];
   R.items.forEach((it, j) => {
-    const r = Math.floor(j / per), inRow = Math.min(per, n - r * per), k = j - r * per, x = cx + (k - (inRow - 1) / 2) * cell, y = rowTop + r * rowH + cell * 0.32, t0 = 0.6 + 0.14 * j;
+    const r = Math.floor(j / per), inRow = Math.min(per, n - r * per), k = j - r * per, x = colX + (k - (inRow - 1) / 2) * cell, y = rowTop + r * rowH + cell * 0.32, t0 = 0.6 + 0.14 * j;
     at[j] = { x, y };
     if (it.art === 'coins' && !coinAt) coinAt = { x, y };
     pop(t0, x, y, () => drawPart(ctx, it.art, 0, 0, cell * 0.72, G.t));
@@ -3259,9 +3277,9 @@ function drawGot() {
     R.items.forEach((it, j) => { const wh = landWhere(it.art); if (wh) its.push({ art: it.art, src: at[j], ...wh }); });
     if (R.coins0 != null || its.length) land.start({ from: R.coins0 ?? save.wallet.coins, to: save.wallet.coins, src: coinAt || { x: cx, y: heroY }, items: its, delay: calm ? 0 : Math.max(0, R.land - 0.6 - t) });
   }
-  const yEnd = Math.min(A.y1 - 34 * u, rowTop + rowsN * rowH + 16 * u);
-  if (t > R.end - 0.2 && lineOn) tickLine(R.line || 'Added to your bag', cx, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: A.w - 36 * u, tag: 'got:line', coin: !!R.lineCoin });
-  pop(0.06, cx, cy - 0.98 * S, () => { const hs = Math.min(39 * u, 0.12 * S), w = Math.min(A.w - 36 * u, ui.measure('YOU GOT!', hs) + 80 * u); ui.ribbon('YOU GOT!', 0, -hs * 0.85, w, hs * 1.7, { color: '#d89a1c', size: hs, noRecord: true }); });
+  const yEnd = at0.line ? at0.line.y + 15 * u : Math.min(A.y1 - 34 * u, rowTop + rowsN * rowH + 16 * u);
+  if (t > R.end - 0.2 && lineOn) tickLine(R.line || 'Added to your bag', colX, yEnd, Math.min(22 * u, 0.07 * S), { stroke: ink, fit: colW - 6 * u, tag: 'got:line', coin: !!R.lineCoin });
+  pop(0.06, colX, ribY, () => { const w = Math.min(colW - 6 * u, ui.measure('YOU GOT!', hs) + 80 * u); ui.ribbon('YOU GOT!', 0, -hs * 0.85, w, hs * 1.7, { color: '#d89a1c', size: hs, noRecord: true }); });
   landDraw(); // over everything on the page: the purse, the bag and what flies into them
   ui.buttons.push({ id: 'got:tap', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); // a tap anywhere
 }
@@ -3752,7 +3770,11 @@ function drawShopHand() {
   ctx.save(); ctx.globalAlpha = a;
   // the bubble under the button: the thing's picture and one line, a tail pointing up at the button
   const txt = `You can get a new ${markWhat(H.key)}!`, ts = 15 * u, ph = 46 * u, bh = 56 * u;
-  const bw = Math.min(A.w - 24 * u, ui.measure(txt, ts) + ph + 34 * u), bx = clamp(B.x + B.w / 2 - bw / 2, A.x + 12 * u, A.x1 - 12 * u - bw), by = B.y + B.h + 14 * u;
+  const bw = Math.min(A.w - 24 * u, ui.measure(txt, ts) + ph + 34 * u), by = B.y + B.h + 14 * u;
+  // sweep817 (the first-time outfit bubble sat on a world gate's sign): it takes the first place under the header that
+  // leaves the map's gate boards, gates and side doors clear (under the button, then the left edge, then the right)
+  const hits = ui.rects.filter((r) => /^(levels:gateboard|btn:gate|btn:sq)/.test(r.tag)).map((r) => (/^btn:gate/.test(r.tag) ? { x: r.x, y: r.y - 76 * u, w: r.w, h: r.h + 76 * u } : r)), clear = (x) => !hits.some((r) => r.x < x + bw && r.x + r.w > x && r.y < by + bh + 4 * u && r.y + r.h > by - 10 * u);
+  const bx = [clamp(B.x + B.w / 2 - bw / 2, A.x + 12 * u, A.x1 - 12 * u - bw), A.x + 12 * u, A.x1 - 12 * u - bw].find(clear) ?? clamp(B.x + B.w / 2 - bw / 2, A.x + 12 * u, A.x1 - 12 * u - bw);
   ui.roundRect(bx, by + 3 * u, bw, bh, 16 * u); ctx.fillStyle = 'rgba(30,14,4,0.35)'; ctx.fill();
   ui.roundRect(bx, by, bw, bh, 16 * u); ctx.fillStyle = '#fff8e6'; ctx.fill(); ctx.lineWidth = 2.5 * u; ctx.strokeStyle = '#e0a020'; ctx.stroke();
   const tx = clamp(B.x + B.w / 2, bx + 22 * u, bx + bw - 22 * u);
@@ -6815,18 +6837,21 @@ function drawToast() {
   const age = G.t - T.t0;
   const a = Math.min(1, age * 5, T.life * 3);
   const size = 16 * u;
-  const A = ui.A, maxW = Math.min(A.w - 32 * u, 520 * u);
+  // sweep817 (mykee: "the HUD should sit in the side margins rather than over the vault"): on a phone on its side a
+  // message in play stands in the HUD's own column under it, not over the vault's top rings
+  const A = ui.A, side = G.screen === 'play' && G.sideHud && G.hudCol > 0 && G.sideHudBottom > 0, maxW = side ? G.hudCol : Math.min(A.w - 32 * u, 520 * u);
   const xw = T.tip ? 22 * u : 0; // a villain tip keeps a little close mark on its right: a tap puts it away
   const ico = toastIcon(T), icw = ico ? 26 * u : 0;
   const lines = wrapText(T.text, size, maxW - 32 * u - xw - icw);
   const h = Math.max(lines.length * size * 1.3 + 18 * u, ico ? 34 * u : 0);
   const w = Math.min(maxW, Math.max(...lines.map((l) => ui.measure(l, size))) + 32 * u + xw + icw);
-  const x = A.cx - w / 2, y = G.screen === 'title' && G.titleToastY ? G.titleToastY : G.screen === 'store' ? A.y1 - h - 22 * u : Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
+  const x = side ? A.x + 12 * u + (G.hudCol - w) / 2 : A.cx - w / 2, y = side ? G.sideHudBottom + 4 * u : G.screen === 'title' && G.titleToastY ? G.titleToastY : G.screen === 'store' ? A.y1 - h - 22 * u : Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
   G.toastRect = { x, y, w, h };
   ctx.save();
   ctx.globalAlpha = a; ui.aBase = a;
   const k = ui.pop(age, 0.22);
-  if (k !== 1) { ctx.translate(A.cx, y + h / 2); ctx.scale(k, k); ctx.translate(-A.cx, -(y + h / 2)); }
+  const mx = x + w / 2;
+  if (k !== 1) { ctx.translate(mx, y + h / 2); ctx.scale(k, k); ctx.translate(-mx, -(y + h / 2)); }
   ui.glass(x, y, w, h, { r: Math.min(h / 2, 18 * u), a: 'rgba(58,36,20,0.94)', b: 'rgba(28,16,8,0.94)', border: 'rgba(255,224,160,0.6)', record: true, tag: 'toast', group: 'toast' });
   if (ico) { // the icon in the left margin
     const ix = x + 22 * u, iy = y + h / 2, iz = 24 * u;
@@ -6834,7 +6859,7 @@ function drawToast() {
     else if (ico === 'egg') drawEggIcon(ctx, ix, iy, iz, 'alive'); else if (ico === 'coin') drawCoin(ctx, ix, iy, 10 * u, G.t); else if (ico === 'check') pictoCheck(ctx, ix, iy, iz);
     else if (ico === 'cross') pictoCross(ctx, ix, iy, iz); else pictoPower(ctx, ico, ix, iy, iz, G.t);
   }
-  lines.forEach((l, i) => ui.text(l, A.cx - xw / 2 + icw / 2, y + (h - lines.length * size * 1.3) / 2 + size * 1.3 * (i + 0.5), { size, align: 'center', color: '#fff8e8', group: 'toast', tag: 'toast:' + i }));
+  lines.forEach((l, i) => ui.text(l, mx - xw / 2 + icw / 2, y + (h - lines.length * size * 1.3) / 2 + size * 1.3 * (i + 0.5), { size, align: 'center', color: '#fff8e8', group: 'toast', tag: 'toast:' + i }));
   if (T.tip) { // the close mark, and a hairline that runs down with the tip's time
     const cx = x + w - 13 * u - 4 * u, cy = y + h / 2, r = 4.5 * u;
     ctx.strokeStyle = 'rgba(255,232,190,0.75)'; ctx.lineWidth = 2 * u; ctx.lineCap = 'round';
@@ -6845,7 +6870,7 @@ function drawToast() {
   ui.aBase = 1;
   ctx.restore();
   // popups must stay below the toast
-  G.toastBottom = y + h;
+  G.toastBottom = side ? 0 : y + h; // (in the side column it is not over the play: popups keep their place)
 }
 
 function wrapText(text, size, maxW) {
@@ -7243,15 +7268,33 @@ function drawIntro() {
     dim(0.62);
     const S = fresh[fresh.length - 1];
     G.stkCard = S.id;
-    // a new chick gets a proper introduction (2026-11-19): a big stage, its power with its pictogram, the downside, how to use it
-    stackCard('New chick!', (s, iw) => [
-      { h: 34 * s, gap: 4 * s, draw: (x, y, w) => ui.text(S.name, x + w / 2, y + 17 * s, { size: 28 * s, align: 'center', maxW: w, color: S.col ? ui.tint(S.col[1], -0.3) : ui.C.ink, tag: 'stkname' }) },
-      { h: 190 * s, gap: 8 * s, draw: (x, y, w) => { artStage(x, y, w, 190 * s, s, () => drawStrikeStage(ctx, S.id, x, y + 8 * s, w, 176 * s, G.t)); const bz = 46 * s; ctx.beginPath(); ctx.arc(x + w - bz * 0.7, y + 190 * s - bz * 0.7, bz * 0.56, 0, 7); ctx.fillStyle = '#25355c'; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); pictoPower(ctx, S.id, x + w - bz * 0.7, y + 190 * s - bz * 0.7, bz * 0.95, G.t); } },
-      ...wrapText(S.up, 19 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 19 * s, { tag: 'stkup:' + i, gap: i ? 2 * s : 10 * s })),
-      ...wrapText('Downside: ' + S.down, 16 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 16 * s, { color: ui.C.warn, tag: 'stkdown:' + i, gap: i ? 2 * s : 8 * s })),
-      ...wrapText('Pick it on the level page. In the level, fill the chick button, then tap it at the right moment.', 15 * s, iw).slice(0, 3).map((l, i) => lineBlock(l, 15 * s, { color: ui.C.ink2, tag: 'stkhow' + i, gap: i ? 2 * s : 10 * s })),
-      { h: 60 * s, gap: 16 * s, draw: (x, y, w) => ui.button('stk:gotit', 'GOT IT', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * s }) },
-    ], { ribbon: '#e8962a' });
+    // a new chick gets a proper introduction (2026-11-19): its name, a big stage, what it does and its downside, GOT IT.
+    // sweep817 (mykee: "no explaining words", "a lot of empty spaces"): the paragraph on how to use it is gone; its power
+    // plays instead as the road's own looped how-to scene (the chick flies in and does its thing to a villain), the
+    // upside and the downside one short line each, and the two stages share the page's height. On its side: the chick
+    // on the left, its power playing on the right over the lines and GOT IT.
+    const wideC = ui.A.w > ui.A.h * 1.15, th = G.theme && G.theme.palette, PW = POWER_WORDS[S.id] || ['', ''];
+    if (!G.stkShow || G.stkShow.id !== S.id) G.stkShow = { id: S.id, t0: G.t };
+    const one = (alts, fs, w) => alts.find((q) => q && ui.measure(q, fs) <= w) || alts[alts.length - 1];
+    const plan = chickPlan(S.id, '', 'snake'), ho = { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark };
+    const hb0 = G.hudBottom; G.hudBottom = ui.A.y; // the page starts at the top of the safe area (drawHUD skips 'intro'), like the world's new-thing card
+    try { stackCard('New chick!', (s, iw) => {
+      const room = ui.A.y1 - Math.max(G.hudBottom, ui.A.y) - 30 * ui.u - (CARD_HEAD + 22) * s; // the card's column (stackCard's own sums)
+      const fk = wideC ? 1 : clamp(room / s / 640, 1, 1.22), z = s * fk; // a tall page: the words and the button a size up (one size for the page)
+      const nameB = { h: 34 * z, gap: 4 * s, draw: (x, y, w) => ui.text(S.name, x + w / 2, y + 17 * z, { size: 28 * z, align: 'center', maxW: w, color: S.col ? ui.tint(S.col[1], -0.3) : ui.C.ink, tag: 'stkname' }) };
+      const upB = { h: 19 * z * 1.25, gap: 10 * s, draw: (x, y, w) => ui.text(one([S.up, shortTip(S.up), PW[0]], 19 * z, w), x + w / 2, y + 19 * z * 0.62, { size: 19 * z, align: 'center', maxW: w, color: ui.C.ink, tag: 'stkup:0' }) };
+      const dnB = { h: 16 * z * 1.25, gap: 4 * s, draw: (x, y, w) => ui.text(one([S.down && 'Downside: ' + S.down, S.down && 'Downside: ' + shortTip(S.down), 'Downside: ' + PW[1]], 16 * z, w), x + w / 2, y + 16 * z * 0.62, { size: 16 * z, align: 'center', maxW: w, color: ui.C.warn, tag: 'stkdown:0' }) };
+      const btnB = { h: 60 * z, gap: 16 * s, draw: (x, y, w) => ui.button('stk:gotit', 'GOT IT', x, y, w, 60 * z, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * z }) };
+      const chickB = (h) => ({ h, gap: 8 * s, draw: (x, y, w) => { artStage(x, y, w, h, s, () => drawStrikeStage(ctx, S.id, x, y + 8 * s, w, h - 14 * s, G.t)); const bz = 46 * s; ctx.beginPath(); ctx.arc(x + w - bz * 0.7, y + h - bz * 0.7, bz * 0.56, 0, 7); ctx.fillStyle = '#25355c'; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); pictoPower(ctx, S.id, x + w - bz * 0.7, y + h - bz * 0.7, bz * 0.95, G.t); ui.record({ x, y, w, h }, 'stk:art'); } });
+      const powB = (h) => ({ h, gap: 10 * s, draw: (x, y, w) => { drawHowTo(ctx, plan, x, y, w, h, G.t - G.stkShow.t0, ho); ui.roundRect(x, y, w, h, Math.min(18, h * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke(); ui.record({ x, y, w, h }, 'stk:power'); } });
+      const sum = (B) => B.reduce((a, b) => a + b.gap + b.h, 0);
+      if (wideC) { // two columns: each fills the card's height
+        const lh = Math.max(120 * s, room - sum([nameB]) - 8 * s), rh = Math.max(110 * s, room - sum([upB, dnB, btnB]) - 10 * s);
+        return [nameB, chickB(Math.min(lh, iw * 1.1)), { ...powB(Math.min(rh, iw * 0.9)), right: true }, { ...upB, right: true }, { ...dnB, right: true }, { ...btnB, right: true }];
+      }
+      const left = Math.max(240 * s, room * 0.92 - sum([nameB, upB, dnB, btnB]) - 18 * s), hc = clamp(left * 0.48, 110 * s, iw * 0.8), hp = clamp(left - hc, 120 * s, iw * 0.85);
+      return [nameB, chickB(hc), powB(hp), upB, dnB, btnB];
+    }, { ribbon: '#e8962a', twoCol: true, full: wideC ? undefined : true, grow: 1.2 }); } finally { G.hudBottom = hb0; }
     return;
   }
   if (L.intro && !save.intro[L.id] && !worldOpener(L)) {
@@ -7260,15 +7303,18 @@ function drawIntro() {
     // 0.8.14 (mykee, on the "Lava rocks" card: "it just shows the lava salamander. That is quite dumb"): the card plays
     // the new thing's own scene, big (what it does to an egg, then what to do), and the page is filled
     const IP = introPlans(L), hb0 = G.hudBottom;
+    // sweep817 (on its side the card was a narrow portrait card with empty halves): the scene on the left at the full
+    // height, its lines and GOT IT on the right (stackCard's two columns; portrait unchanged)
+    const hasArt = !!(IP.length || L.intro.chick || L.intro.cw || (!L.boss && L.salamander));
     if (IP.length) G.hudBottom = ui.A.y; // the page starts at the top of the safe area (drawHUD skips 'intro'), like the fail page
     try { stackCard(L.intro.title, (s, iw) => [
       // (the framed villain portrait card was removed at the owner's request: bosses introduce themselves in the level)
       ...(IP.length ? [introStage(IP, s, iw, wrapText(L.intro.line, 17 * s, iw).slice(0, 4).length)] : L.intro.chick ? [{ h: 104 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 104 * s, s, () => chickIntroArt(L.intro.chick, x, y, w, 104 * s)) }] // v3.2: meet the chick kind
         : L.intro.cw ? [{ h: 100 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 100 * s, s, () => drawCwIntro(ctx, L.intro.cw, x, y, w, 100 * s, G.t)) }] // v4: meet the clockwork creature
         : !L.boss && L.salamander ? [{ h: 96 * s, gap: 0, draw: (x, y, w) => artStage(x, y, w, 96 * s, s, () => salIntroArt(x, y, w, 96 * s)) }] : []), // v3.2: meet the salamander
-      ...wrapText(L.intro.line, 17 * s, iw).slice(0, 4).map((l, i) => lineBlock(l, 17 * s, { tag: 'wintro:' + i, gap: i ? 2 * s : 8 * s })),
-      { h: 58 * s, gap: 18 * s, draw: (x, y, w) => ui.button('gotit', 'GOT IT', x, y, w, 58 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 23 * s }) },
-    ], { ribbon: L.boss ? '#c9342c' : acc, full: IP.length ? true : undefined }); } finally { G.hudBottom = hb0; }
+      ...wrapText(L.intro.line, 17 * s, iw).slice(0, 4).map((l, i) => ({ ...lineBlock(l, 17 * s, { tag: 'wintro:' + i, gap: i ? 2 * s : 8 * s }), right: hasArt })),
+      { h: 58 * s, gap: 18 * s, right: hasArt, draw: (x, y, w) => ui.button('gotit', 'GOT IT', x, y, w, 58 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 23 * s }) },
+    ], { ribbon: L.boss ? '#c9342c' : acc, full: IP.length ? true : undefined, twoCol: hasArt }); } finally { G.hudBottom = hb0; }
     return;
   }
   drawLevelIntro(L, acc);
@@ -7298,8 +7344,8 @@ function introPlans(L) {
 }
 function introStage(P, s, iw, lines = 3) {
   // the stage takes the room the page has left (a tall phone: nearly square; a short one: a wide strip), never less than 0.6 of its width
-  const room = (ui.A.y1 - ui.A.y - 30 * ui.u) / s - (250 + 24 * lines);
-  const stH = clamp(room * s, iw * 0.6, Math.min(iw * 1.12, 440 * s)), capH = 36 * s, n = P.length;
+  const room = (ui.A.y1 - ui.A.y - 30 * ui.u) / s - (250 + 24 * lines), capH = 36 * s, n = P.length;
+  const stH = ui.A.w > ui.A.h * 1.15 ? clamp(ui.A.y1 - ui.A.y - 30 * ui.u - (CARD_HEAD + 22) * s - capH - 8 * s, iw * 0.5, iw * 0.9) : clamp(room * s, iw * 0.6, Math.min(iw * 1.12, 440 * s)); // (on its side: the left column's full height)
   return { h: stH + capH, gap: 4 * s, draw: (x, y, w) => {
     const I = G.introP;
     if (!save.calm && n > 1 && G.t - I.t0 >= (P[I.i % n].loop || HOWTO_LOOP)) { I.i = (I.i + 1) % n; I.t0 = G.t; }
@@ -7946,8 +7992,14 @@ function drawLevelIntro(L, acc) {
   // whole tiles across the row's full width (three; four on a phone on its side), never a cut one, never a blank side.
   // R.y is the chick in focus (the one the stage plays), in steps; the row shows the window around it: at the list's
   // start the focus is the left tile, at its end the right one. A round arrow at each end steps one chick.
-  const NV = land ? 4 : 3;
+  // sweep817 (mykee: "the chick carousel art is small on its side"): on its side the row shows three bigger tiles when the
+  // right column has the height for them (the room it had sat above the row as a gap), else four
+  let NV = land ? 4 : 3;
   const carDims = (w) => { const gap = 10 * s, cw = (w - (NV - 1) * gap) / NV; return { cw, ch: Math.round(cw * (land ? 1.1 : 1.06)), gap, step: cw + gap }; };
+  if (land && hasCh) {
+    const rTop = A.y + 6 * s + HDR + 8 * s + 12 * s + TABH + 2 * s, rBot = A.y1 - 10 * s - 56 * s - (showBoost ? gp + 68 * s : 0) - ringStripH(0, rwL, s) - 4 * s;
+    NV = 3; const h3 = carDims(rwL).ch + 25 * s; if (h3 + 3 * 12 * s > rBot - rTop) NV = 4;
+  }
   { const D = carDims(land ? rwL : iwP); R.step = D.step; R.max = Math.max(0, (nI - 1) * D.step);
     if (R.lid !== L.id + ':' + G.li) { // a new level: the picked chick is the one in focus
       R.lid = L.id + ':' + G.li; R.v = 0; R.to = null; R.pt = G.introPick ? G.introPick.t : 0; R.cb = G.chickBuy || null;
@@ -7970,9 +8022,11 @@ function drawLevelIntro(L, acc) {
     G.carRect = V;
     const r0 = ui.rects.length, b0 = ui.buttons.length;
     const cy = y + CTOP, tl = [];
-    const ns = Math.min(17 * s, cw / 7.2), ls = Math.min(13.5 * s, cw / 9);
-    const lines = items.map(({ S }) => wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s - ls * 2.2).slice(0, 1));
-    const two = items.some(({ S }) => ui.measure(S.name, ns) > cw - 14 * s), textH = ns * 1.15 * (two ? 2 : 1) + 6 * s + ls * 1.2 + ls * 0.6 + 6 * s;
+    // sweep817: on its side the tiles are small, so each is the chick's picture and its name on one line (its power is
+    // the caption under the stage beside the row); the art takes the height the words gave back
+    const ns = land ? Math.min(15 * s, ...items.map(({ S }) => (15 * s * (cw - 14 * s)) / Math.max(1, ui.measure(S.name, 15 * s)))) : Math.min(17 * s, cw / 7.2), ls = Math.min(13.5 * s, cw / 9);
+    const lines = items.map(({ S }) => (land ? [] : wrapText((POWER_WORDS[S.id] || [''])[0], ls, cw - 14 * s - ls * 2.2).slice(0, 1)));
+    const two = !land && items.some(({ S }) => ui.measure(S.name, ns) > cw - 14 * s), textH = land ? ns * 1.15 + 8 * s : ns * 1.15 * (two ? 2 : 1) + 6 * s + ls * 1.2 + ls * 0.6 + 6 * s;
     // the arrows (the game's round back button): the left one from the second chick on, the right one until the last
     const az = 44 * s, ay = cy + 7 * s + (ch - 14 * s - textH) / 2 - az / 2, aL = nI > 1 && ci > 0 ? x - az * 0.37 : null, aR = nI > 1 && ci < nI - 1 ? x + w - az * 0.63 : null;
     ctx.save(); ctx.beginPath(); ctx.rect(x - 8 * s, y, w + 16 * s, rowH); ctx.clip();
@@ -9974,27 +10028,27 @@ function drawFailPage() {
     if (SP.banked(save) > 0) B.push(spinRowBlock(s, { cheer, quiet: top !== 'spin' })); // 0.8.15: a spin that waits (the cheer-up spin after three losses lands here)
     else if (prog) B.push({ h: 26 * s, gap: 4 * s, draw: (x, y, w) => leadLine(prog, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'fail:near' }) });
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: (sd ? 3 : 6) * s }));
-    if (Hp) B.push({ h: 78 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
+    if (Hp) B.push({ h: 70 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
+      // sweep817 (the saving-booster row): the spin row's grid (70 high, the same button at the same place and size), its
+      // name alone on one line (the small explaining line under it is gone: the picture and the name say it)
       const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost' || Hp.kind === 'freeHint', ad = Hp.kind === 'adBoost';
-      ui.well(x, y, w, 78 * s, { s, a: free ? '#d8f5c0' : '#ffe9b0', b: free ? '#f0ffe4' : '#fff6dc' });
-      const ax = x + 38 * s, ay = y + 39 * s;
-      if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, ax, ay + 6 * s, 48 * s, G.t, {});
-      else if (Hp.kind === 'freeHint') lampIcon(ctx, ax, ay, 60 * s); // the Pacer's free hint: the Hint button's lamp
+      ui.well(x, y, w, 70 * s, { s, a: free ? '#d8f5c0' : '#ffe9b0', b: free ? '#f0ffe4' : '#fff6dc' });
+      const ax = x + 36 * s, ay = y + 35 * s;
+      if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, ax, ay + 6 * s, 46 * s, G.t, {});
+      else if (Hp.kind === 'freeHint') lampIcon(ctx, ax, ay, 54 * s); // the Pacer's free hint: the Hint button's lamp
       else { // 0.8.17: a spend moment makes it hop in (drop, squash, settle)
         const hx = spendFx.hopXf('failhelp');
         if (hx) { ctx.save(); ctx.globalAlpha *= hx.a; ctx.translate(ax, ay + 28 * s + hx.dy * 56 * s); ctx.scale(hx.sx, hx.sy); ctx.translate(-ax, -ay - 28 * s); }
-        drawBoosterIcon(ctx, Hp.id, ax, ay, 56 * s, G.t);
+        drawBoosterIcon(ctx, Hp.id, ax, ay, 52 * s, G.t);
         if (hx) ctx.restore();
-        spendFx.at('failhelp', { x: ax - 28 * s, y: ay - 28 * s, w: 56 * s, h: 56 * s });
+        spendFx.at('failhelp', { x: ax - 26 * s, y: ay - 26 * s, w: 52 * s, h: 52 * s });
       }
-      const bw = Math.min(118 * s, w * 0.3), tx = x + 74 * s, tw = x + w - bw - 16 * s - tx;
-      ui.text(Hp.label, tx, y + 26 * s, { size: 16.5 * s, color: ui.C.ink, maxW: tw, tag: 'fail:help' });
-      const ln = wrapText(Hp.line, 12.5 * s, tw).slice(0, 2);
-      ln.forEach((l, i) => ui.text(l, tx, y + 48 * s + i * 15 * s, { size: 12.5 * s, color: ui.C.ink2, maxW: tw, tag: 'fail:help' + i }));
+      const bw = Math.min(124 * s, w * 0.34), tx = x + 68 * s, tw = x + w - bw - 16 * s - tx;
+      ui.text(Hp.label, tx, y + 35 * s, { size: 16 * s, color: ui.C.ink, maxW: tw, tag: 'fail:help' });
       const lab = free ? 'FREE' : ad ? 'Watch' : String(Hp.price);
-      ui.button('help:go', lab, x + w - bw - 8 * s, y + 13 * s, bw, 52 * s, free ? { kind: 'primary', shimmer: top === 'help', size: 20 * s } : ad ? { kind: 'ad', ad: true, size: 17 * s } : { kind: save.wallet.coins >= Hp.price || Hp.bought ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s, ...(Hp.bought ? { disabled: true, keepFace: true } : {}) });
-      spendFx.at('failhelp:btn', { x: x + w - bw - 8 * s, y: y + 13 * s, w: bw, h: 52 * s });
-      ui.record({ x, y, w, h: 78 * s }, 'panel:failhelp'); // (a panel: its own words and button sit on it)
+      ui.button('help:go', lab, x + w - bw - 8 * s, y + 10 * s, bw, 50 * s, free ? { kind: 'primary', shimmer: top === 'help', size: 21 * s } : ad ? { kind: 'ad', ad: true, size: 19 * s } : { kind: save.wallet.coins >= Hp.price || Hp.bought ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s, ...(Hp.bought ? { disabled: true, keepFace: true } : {}) });
+      spendFx.at('failhelp:btn', { x: x + w - bw - 8 * s, y: y + 10 * s, w: bw, h: 50 * s });
+      ui.record({ x, y, w, h: 70 * s }, 'panel:failhelp'); // (a panel: its own words and button sit on it)
     } });
     // row A: RETRY, the whole width, the biggest (one egg short with a Rewind to offer: Rewind takes that place, RETRY the row under it)
     const RH = sd ? 62 : 68;
@@ -10075,12 +10129,15 @@ function drawTitle() {
   const wide = A.w > A.h * 1.15;
   // 0.8.16 (mykee: "it's not full screen"): in portrait the buttons stand on the page column (ui.pageBox: the level
   // card's and the shop's edges); landscape keeps its two columns
-  const bw = wide ? Math.min(310 * u, A.w - 44 * u) : ui.pageBox(440 * u).w;
+  // sweep817 (mykee: "fix landscape orientation: too much empty UI space"): on its side the meadow sits lower and the
+  // button block grows (up to a third) to the height above it, so the right column is not a short stack over grass
+  const groundW = A.y1 - Math.max(72 * u, A.h * 0.17), bk = wide ? clamp(Math.min((groundW - A.y - 28 * u) / ((fr ? 100 : 184) * u + 40 * u), (A.w * 0.4) / (310 * u)), 1, 1.35) : 1, U = u * bk;
+  const bw = wide ? Math.min(310 * U, Math.max(A.w * 0.4, A.w - 44 * u)) : ui.pageBox(440 * u).w;
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
   // landscape: two balanced columns, logo + vault on the left, the buttons on the right, the meadow low across both
-  const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? A.x + A.w * 0.73 : cx;
-  const blockH = (fr ? 100 : 184) * u; // Play + Levels row + difficulty + Extras
-  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - (fr ? 124 : 208) * u - 16 * u;
+  const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? Math.min(A.x + A.w * 0.73, A.x1 - 89 * u - bw / 2) : cx; // (on its side the daily chest keeps its place right of the block)
+  const blockH = (fr ? 100 : 184) * U; // Play + Levels row + difficulty + Extras
+  const ground = wide ? groundW : A.y1 - (fr ? 124 : 208) * u - 16 * u;
   const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - (fr ? 124 : 208) * u; // room for the Extras row (and its lip, clear of the phone's bottom edge) under the difficulty row
   if (!themeBack(ctx, ui.skin, W_, H_, ground)) G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t); // a skin pack paints its whole scene instead
   // the earth under the controls falls into shade, so the buttons carry the bottom of the screen
@@ -10092,7 +10149,7 @@ function drawTitle() {
   // spans the page column, the buttons' own edges, and stands clear under the Settings button; nothing shares its
   // row any more (Unlock all moved down into the button block). Shorter screens keep the title between the corners.
   const tall = !wide && A.h >= A.w * 1.9;
-  const logoS = tall ? bw / 5.02 : Math.min(66 * u, (wide ? A.w * 0.5 : A.w) / 7.3, A.h / 6);
+  const logoS = tall ? bw / 5.02 : wide ? Math.min(80 * u, A.w * 0.5 / 7.3, A.h / 5.4) : Math.min(66 * u, A.w / 7.3, A.h / 6);
   const ty = tall ? A.y + 56 * u + logoS * 0.57 : A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
   const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, intro ? T * 1.7 : 9, FONT, ui.skin && ui.skin.pack ? (c, ch, i, sz, n) => logoDress(ui.skin, c, ch, i, sz, n) : null); // intro: the letters drop in a quicker cascade
   ui.record(logo, 'title:logo');
@@ -10155,36 +10212,36 @@ function drawTitle() {
   const side = fr ? null : ads.canBuyPremium ? { id: 'home:premium', label: 'Unlock all', o: { kind: 'gold', icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) } }
     : ads.premium && save.wallet.premDay !== today() && save.wallet.charges < E.MAX_CHARGES ? { id: 'home:charge', label: 'Free charge', o: { kind: 'primary', shimmer: true, icon: (c, x, y, sz) => drawStrikeToken(c, 'freeze', x, y, sz * 0.42, G.t, true) } } : null;
   // PLAY breathes
-  const ph = (fr ? 84 : 70) * u, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
+  const ph = (fr ? 84 : 70) * U, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
   pop(0.25, bx, by + ph / 2, () => {
     ctx.save();
     ctx.translate(bx, by + ph / 2); ctx.scale(br, br); ctx.translate(-bx, -(by + ph / 2));
-    ui.button('play', nextIdx() > 0 ? `PLAY  Level ${LEVELS[nextIdx()].id}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: (fr ? 34 : 28) * u, round: 20 * u });
+    ui.button('play', nextIdx() > 0 ? `PLAY  Level ${LEVELS[nextIdx()].id}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: (fr ? 34 : 28) * U, round: 20 * U });
     ctx.restore();
   });
   if (fr) { if (fade) ctx.globalAlpha = 1; return; } // first launch: PLAY alone (Levels, Daily, Shop, Extras and the bank come with the first win)
-  const ry = by + ph + 8 * u, rh = 54 * u;
-  const bankEh = Math.min(rh * 0.8, 44 * u), bankEw = bankEh * 0.78, bankOn = save.wallet.bank > 0 && ads.moneyShop;
-  const bankIn = bankOn && bx + bw / 2 + 8 * u + bankEw > A.x1 - 2 * u; // 0.8.16: no room beside the row: the egg ends the row, on the column's right edge
-  const tw = (bw - 16 * u - (bankIn ? bankEw + 8 * u : 0)) / 3, /* 0.8.14: one gutter, 8 units, across and down the block */ paid = save.daily.paid === today();
-  pop(0.33, bx - bw / 2 + tw / 2, ry + rh / 2, () => ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u }));
-  pop(0.4, bx - bw / 2 + tw * 1.5 + 8 * u, ry + rh / 2, () => ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u }));
-  pop(0.47, bx - bw / 2 + tw * 2.5 + 16 * u, ry + rh / 2, () => purseBtn(bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, 18 * u));
+  const ry = by + ph + 8 * U, rh = 54 * U;
+  const bankEh = Math.min(rh * 0.8, 44 * U), bankEw = bankEh * 0.78, bankOn = save.wallet.bank > 0 && ads.moneyShop;
+  const bankIn = bankOn && bx + bw / 2 + 8 * U + bankEw > A.x1 - 2 * U; // 0.8.16: no room beside the row: the egg ends the row, on the column's right edge
+  const tw = (bw - 16 * U - (bankIn ? bankEw + 8 * U : 0)) / 3, /* 0.8.14: one gutter, 8 units, across and down the block */ paid = save.daily.paid === today();
+  pop(0.33, bx - bw / 2 + tw / 2, ry + rh / 2, () => ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * U }));
+  pop(0.4, bx - bw / 2 + tw * 1.5 + 8 * U, ry + rh / 2, () => ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * U, ry, tw, rh, paid ? { kind: 'off', size: 13 * U } : { kind: 'orange', icon: ICON.day, size: 17 * U }));
+  pop(0.47, bx - bw / 2 + tw * 2.5 + 16 * U, ry + rh / 2, () => purseBtn(bx - bw / 2 + 2 * (tw + 8 * U), ry, tw, rh, 18 * U));
   // the Golden Egg Bank: a small glass egg beside the coins, filling as wins drop coins in (tap: its card in the shop)
   if (bankOn) {
-    const eh = bankEh, ew = bankEw, ex = bx + bw / 2 + (bankIn ? -ew / 2 : 8 * u + ew / 2), ey = ry + rh / 2 - 2 * u;
+    const eh = bankEh, ew = bankEw, ex = bx + bw / 2 + (bankIn ? -ew / 2 : 8 * U + ew / 2), ey = ry + rh / 2 - 2 * U;
     {
       pop(0.5, ex, ey, () => drawGlassEgg(ctx, ex, ey, eh, save.wallet.bank / E.BANK_CAP, G.t));
       ui.record({ x: ex - ew / 2, y: ey - eh / 2, w: ew, h: eh }, 'title:bank');
-      homeHit('home:bank', ex - ew / 2 - 4 * u, ey - eh / 2 - 4 * u, ew + 8 * u, eh + 8 * u);
+      homeHit('home:bank', ex - ew / 2 - 4 * U, ey - eh / 2 - 4 * U, ew + 8 * U, eh + 8 * U);
     }
   }
   // (2026-11-16 research: no top casual game puts a difficulty switch on home; it lives in Settings)
   // Extras: as wide as Play, 52 u tall, with the Extras page's little planet and egg
-  const ey = ry + rh + 8 * u, ew = side ? (bw - 8 * u) / 2 : bw, es = side ? 18 * u : 20 * u;
-  pop(0.54, bx - bw / 2 + ew / 2, ey + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ey, ew, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: side ? 1.5 : 1.8, size: es, round: 17 * u }));
-  if (albumMarkOn()) pop(0.6, bx - bw / 2 + ew - 4 * u, ey + 4 * u, () => markBadge(Math.min(bx - bw / 2 + ew - 3 * u, A.x1 - 12 * u), ey + 3 * u, 11 * u, G.t, '!')); // 0.8.17: a new combo find (it leads to its album tile)
-  if (side) pop(0.6, bx + bw / 2 - ew / 2, ey + 26 * u, () => ui.button(side.id, side.label, bx + bw / 2 - ew, ey, ew, 52 * u, { ...side.o, size: es, round: 17 * u }));
+  const ey = ry + rh + 8 * U, ew = side ? (bw - 8 * U) / 2 : bw, es = side ? 18 * U : 20 * U;
+  pop(0.54, bx - bw / 2 + ew / 2, ey + 26 * U, () => ui.button('extras', 'Extras', bx - bw / 2, ey, ew, 52 * U, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: side ? 1.5 : 1.8, size: es, round: 17 * U }));
+  if (albumMarkOn()) pop(0.6, bx - bw / 2 + ew - 4 * U, ey + 4 * U, () => markBadge(Math.min(bx - bw / 2 + ew - 3 * U, A.x1 - 12 * U), ey + 3 * U, 11 * U, G.t, '!')); // 0.8.17: a new combo find (it leads to its album tile)
+  if (side) pop(0.6, bx + bw / 2 - ew / 2, ey + 26 * U, () => ui.button(side.id, side.label, bx + bw / 2 - ew, ey, ew, 52 * U, { ...side.o, size: es, round: 17 * U }));
   if (fade) ctx.globalAlpha = 1;
 }
 
@@ -10849,18 +10906,25 @@ function drawSpin() {
     const lw = A.w - cW - 3 * P.pad, areaH = bot - top;
     // a phone on its side: the hen beside the machine. A tablet on its side has the height for the portrait stack (the
     // hen on the floor under a taller machine), and that makes the machine a good deal bigger: take whichever is bigger
-    const mwA = Math.min(areaH / 0.83, lw / 1.56, 420 * u), mwB = Math.min(areaH / 1.2, lw / 1.1, 460 * u);
+    const mwA = Math.min(areaH / 0.83, (A.w - 3 * P.pad) * 0.54 / 1.091, 460 * u), mwB = Math.min(areaH / 1.2, lw / 1.1, 460 * u);
     if (mwB > mwA) {
       mw = mwB; mh = mw * clamp((areaH - mw * 0.34 - 12 * u) / (mw * 1.05), 0.78, 1.12); hh = clamp(areaH - mh * 1.05 - 12 * u, mw * 0.3, mw * 0.4);
       const gap = Math.max(0, (areaH - mh * 1.05 - hh) / 3);
       mx = A.x + P.pad + (lw - mw * 1.091) / 2; my = top + gap; floorY = my + mh * 1.05 + gap + hh; henX = (hx) => mx + mw * hx;
+      cX = A.x1 - P.pad - cW; cY = top + Math.max(0, (areaH - ctlH) / 2);
     } else {
-      beside = true; mw = mwA; mh = mw * 0.78; hh = mw * 0.32;
-      const gx = A.x + P.pad + (lw - mw * 1.54) / 2;
-      mx = gx + mw * 0.45; my = top + (areaH - mh * 1.04) / 2; floorY = my + mh * 1.02;
-      henX = (hx) => gx + mw * 0.19 + (hx - 0.5) * mw * 0.1;
+      // sweep817 (mykee: "fix landscape orientation: too much empty UI space"): a phone on its side. The machine at the
+      // full height on the right, its lever by the right thumb; on the left the hen's patch of floor (the same floor as
+      // the machine's feet) and over her the meter and the ways to spin, the room left shared as even gaps
+      beside = true; mw = mwA; mh = mw * 0.78;
+      mx = A.x1 - P.pad - mw * 1.091; my = top + (areaH - mh * 1.04) / 2; floorY = my + mh * 1.02;
+      const lx = A.x + P.pad, lW = mx - P.pad - lx;
+      cW = Math.min(360 * u, lW); cX = lx + (lW - cW) / 2;
+      hh = clamp(Math.min(mw * 0.56, (floorY - top - ctlH) * 0.7), mw * 0.3, mw * 0.56);
+      const gap = Math.max(4 * u, (floorY - top - ctlH - hh) / 3);
+      cY = top + gap;
+      henX = (hx) => lx + lW / 2 + (hx - 0.5) * lW * 0.42;
     }
-    cX = A.x1 - P.pad - cW; cY = top + Math.max(0, (areaH - ctlH) / 2);
   } else {
     // the full screen (mykee, 13:34: "use full screen and clear ui layouts"): the machine as wide as the page allows,
     // and what height is left over is shared out as four even gaps, never left as one empty band
