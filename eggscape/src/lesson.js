@@ -46,19 +46,11 @@ function find(arr, id) { return (arr || []).find((q) => q.id === id) || null; }
 // that ring against him. Read whichever the sim exposes: B.ring / B.perch.ring (index) and B.crank / B.perch.dir (the way he
 // turns it, + = counter-clockwise). Rewire here once the rewrite has merged (names below are guesses).
 export function banditLesson(sim) {
-  const B = sim && sim.band;
-  if (!B) return null;
-  const n = sim.rings.length, P = B.perch || {};
-  const ri = [B.ring, P.ring, B.ri].find((v) => Number.isInteger(v) && v >= 0 && v < n);
-  const crank = [B.crank, P.dir, B.cdir].find((v) => typeof v === 'number' && v !== 0);
-  const at = typeof sim.bandHead === 'function' ? sim.bandHead(B) : { x: B.x || 0, y: (sim.groundY || 0) + 1 };
-  if (ri != null) { // on a ring: the spot is where he sits, the answer turns his ring against his crank
-    const pt = Number.isFinite(P.x) ? { x: P.x, y: P.y } : at;
-    return { x: pt.x, y: pt.y, ring: ri, dir: crank ? -Math.sign(crank) : 0 };
-  }
-  const R = sim.rings[n - 1], ga = Number.isFinite(B.ga) ? B.ga : Number.isFinite(B.p0) ? B.p0 : null;
-  if (ga != null && R) return { x: Math.cos(ga) * R.r, y: Math.sin(ga) * R.r, ring: n - 1, dir: 0 }; // the gap his paw comes through
-  return { x: at.x, y: at.y, ring: n - 1, dir: 0 };
+  const L = sim && typeof sim.bandLesson === 'function' ? sim.bandLesson() : null; // null until he sits on a ring
+  if (!L || !Number.isInteger(L.ring) || L.ring < 0 || L.ring >= sim.rings.length) return null;
+  const pt = L.perch && Number.isFinite(L.perch.x) ? L.perch : L.head;
+  if (!pt || !Number.isFinite(pt.x)) return null;
+  return { x: pt.x, y: pt.y, ring: L.ring, dir: L.counter }; // the answer: turn his ring against his crank
 }
 // where the subject is now (live for the creatures that move; the event's spot for the rest)
 function where(q) {

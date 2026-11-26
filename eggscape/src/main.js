@@ -4782,7 +4782,7 @@ function handleEvents() {
         chickEvent(ev, fx, { popup, audio, toast }); // v3.2 chick kinds
         salEvent(ev, fx); // v3.2 lava salamander
         frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.3 frog
-        if (ev.type === 'pipWarn') lessonAsk('pip', null, ev); else if (ev.type === 'cocoRide') lessonAsk('coco', null, ev); else if (ev.type === 'urPuff' && ev.aim) lessonAsk('urchin', null, ev); // 0.8.18: their first telegraph is the meeting
+        if (ev.type === 'bandCrank') lessonAsk('bandit', null, ev); else if (ev.type === 'pipWarn') lessonAsk('pip', null, ev); else if (ev.type === 'cocoRide') lessonAsk('coco', null, ev); else if (ev.type === 'urPuff' && ev.aim) lessonAsk('urchin', null, ev); // 0.8.18: their first telegraph is the meeting
         pipEvent(ev, fx, { popup, audio }); // 0.8.17 pip
         cocoEvent(ev, fx, { popup, audio }); // 0.8.17 coco
         seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.3
@@ -6333,8 +6333,8 @@ function drawAllyBtn() {
   face();
   // 2026-11-20 (mykee: "we did not show the user how to use Papa Rooster"): the first time he can help, a hand taps his
   // button and a bubble says what he does; that first call is free
-  if (G.roosterCoach) {
-    const msg = 'Tap Papa Rooster: he chases thieves away!', ts = 15 * u, tw = Math.min(ui.A.w - 24 * u, ui.measure(msg, ts) + 28 * u), th2 = 34 * u;
+  if (G.roosterCoach && !G.lesson) { // 0.8.18: one idea at a time (not during a teaching moment), three words at most
+    const msg = 'Tap for help!', ts = 15 * u, tw = Math.min(ui.A.w - 24 * u, ui.measure(msg, ts) + 28 * u), th2 = 34 * u;
     const bx = clamp(x + bs / 2 - tw * 0.25, ui.A.x + 10 * u, ui.A.x1 - tw - 10 * u), by = y - th2 - 26 * u;
     ui.roundRect(bx, by, tw, th2, th2 / 2); ctx.fillStyle = '#fff8e6'; ctx.fill(); ctx.lineWidth = 2.5 * u; ctx.strokeStyle = '#c9342c'; ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x + bs / 2 - 8 * u, by + th2); ctx.lineTo(x + bs / 2, by + th2 + 10 * u); ctx.lineTo(x + bs / 2 + 8 * u, by + th2); ctx.closePath(); ctx.fillStyle = '#fff8e6'; ctx.fill();
