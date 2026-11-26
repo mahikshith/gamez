@@ -57,9 +57,11 @@ for (const c in PAL) ICED[c] = mixHex(PAL[c], '#bfe6ff', 0.55);
 // puff; sk*: the sack (x, y, rotation, size, o: open, f: in front, strap); egg: the hugged egg (ex, ey); throb: the red
 // paw; hand: 0 mitt, 1 pointing, 2 two fingers (whistle); note: whistle sound; stars; sweat; g0 / g1: the near / far
 // paw's finger curl (0 open .. 1 gripping); fr0 / fr1: the near / far foot's turn (+ = toes down)
+// 0.8.18 the hold (raccoonHold): hw0 / hw1 how firmly the near / far paw is on the egg (0 free .. 1 its palm on the shell),
+// hq0 where the near paw sits round it (0 its near side .. ~1.2 over its top), stf 0..1 the egg going into his sack
 const REST = { by: 36, dx: 0, rot: 0, sq: 0, hx: 5, hy: -42, hr: 0, hsc: 1, a0x: -15, a0y: 10, a1x: 23, a1y: 9, f0x: -8, f0y: 33, f1x: 10, f1y: 33,
   look: 0.3, looky: 0, lid: 0.12, lidLo: 0, brow: 0.2, pup: 1, happy: 0, squeeze: 0, spiral: 0, jaw: 0, smile: 0.6, teeth: 0, pucker: 0, tongue: 0, ta: 0.8, cheek: 0,
-  ear: 0, tail: 0.15, tc: 1.0, tw: 0, puff: 0, skx: -25, sky: -9, skr: -0.32, sks: 1, sko: 0, skf: 0, strap: 1, egg: 0, ex: 16, ey: 2, throb: 0, hand: 0, note: 0, stars: 0, sweat: 0, g0: 0.45, g1: 0.45, fr0: 0, fr1: 0 };
+  ear: 0, tail: 0.15, tc: 1.0, tw: 0, puff: 0, skx: -25, sky: -9, skr: -0.32, sks: 1, sko: 0, skf: 0, strap: 1, egg: 0, ex: 16, ey: 2, throb: 0, hand: 0, note: 0, stars: 0, sweat: 0, g0: 0.45, g1: 0.45, fr0: 0, fr1: 0, hw0: 0, hw1: 0, hq0: 0, stf: 0 };
 const KEYS = Object.keys(REST);
 // world targets (rig units, floor at y = 0) into the torso's frame
 function fin(p, w) {
@@ -71,6 +73,41 @@ const P = (o) => Object.assign({}, REST, o);
 const fract = (x) => x - Math.floor(x);
 const PERCH = new Set(['climb', 'hop', 'sit', 'crank', 'shaken', 'fall', 'perchReach', 'perchGrab']);
 export function raccoonPose(state, t, u = 0, opt = {}) {
+  const p = pose0(state, t, u, opt);
+  if (!opt.noHold && (p.hw0 > 0 || p.hw1 > 0)) raccoonHold(p, opt.egg);
+  return p;
+}
+// ------------------------------------------------------------------ 0.8.18 the hold: paws ON the egg
+// The egg (the real one: EGG_W x EGG_H drawn x1.06, 12.5 x 16.6 rig units at play scale) sits between his palms: each
+// wrist HOLD_D from its centre, the hand turned to point at it, the fingers folded over the shell. egg { x, y } is its
+// centre in rig units (floor frame, y down; default: the pose's own ex / ey), a its long axis' turn (0 upright). Apply it
+// AFTER any blend (a blended paw lags a moving egg): p.hw0 / hw1 say how firmly each paw is on it.
+export const HOLD_D = 15.2;
+const holdDir = (q) => [-Math.cos(q), -Math.sin(q)];
+// the stuff: his sack swings out from his back (round the outside, so it never passes through him), comes in FRONT of his
+// hip with its mouth open, and goes back the same way. T: [out, front, leave, back] (u), F / O: the front and the outside
+// spots (rig units, floor frame), r: its turn in front
+function sackSwing(p, u, T, F, O, r = 0.15) {
+  const B = { x: p.skx, y: p.sky, r: p.skr }, f = fin({ ...p }, { sk: F }), o = fin({ ...p }, { sk: O }), Fp = { x: f.skx, y: f.sky, r }, Op = { x: o.skx, y: o.sky, r: -0.75 };
+  const L = (a, b, k) => { p.skx = lerp(a.x, b.x, k); p.sky = lerp(a.y, b.y, k); p.skr = lerp(a.r, b.r, k); };
+  const m1 = (T[0] + T[1]) / 2, m2 = (T[2] + T[3]) / 2;
+  if (u < m1) L(B, Op, ss(T[0], m1, u)); else if (u < T[2]) L(Op, Fp, ss(m1, T[1], u)); else if (u < m2) L(Fp, Op, ss(T[2], m2, u)); else L(Op, B, ss(m2, T[3], u));
+  p.skf = u >= m1 && u < m2 ? 1 : 0;
+  p.sko = ss(m1, T[1], u) * (1 - ss(T[2] - 0.04, T[2], u));
+} // the near paw's spot round the egg: 0 its near side, pi / 2 its top
+export function raccoonHold(p, egg) {
+  const cr = Math.cos(p.rot), sr = Math.sin(p.rot), sx = 1 + p.sq * 0.7, sy = 1 - p.sq;
+  const E = egg || { x: (p.dx + p.ex * cr - p.ey * sr) * sx, y: (-p.by + p.ex * sr + p.ey * cr) * sy, a: 0 };
+  const a = E.a || 0, ux = Math.cos(a), uy = Math.sin(a), vx = -uy, vy = ux; // u: across the egg (toward his front), v: down it
+  const d = holdDir(p.hq0), dx = d[0] * ux + d[1] * vx, dy = d[0] * uy + d[1] * vy, lo = 3 * Math.max(0, Math.cos(p.hq0));
+  const W0 = [E.x + dx * HOLD_D + vx * lo, E.y + dy * HOLD_D + vy * lo], W1 = [E.x + ux * (HOLD_D + 2.5) + vx * 2, E.y + uy * (HOLD_D + 2.5) + vy * 2]; // the far palm shows past the shell's far side
+  const q = fin({ ...p }, { a0: W0, a1: W1, e: [E.x, E.y] });
+  p.a0x = lerp(p.a0x, q.a0x, p.hw0); p.a0y = lerp(p.a0y, q.a0y, p.hw0); p.a1x = lerp(p.a1x, q.a1x, p.hw1); p.a1y = lerp(p.a1y, q.a1y, p.hw1);
+  p.ex = q.ex; p.ey = q.ey; p.ea = a - p.rot;
+  p.pa0 = Math.atan2(-dy, -dx) - p.rot; p.pa1 = Math.atan2(-uy, -ux) - p.rot; // the hands point at the egg (torso frame)
+  return p;
+}
+function pose0(state, t, u, opt) {
   if (PERCH.has(state) || (opt.perch && (state === 'reach' || state === 'grab' || state === 'idle'))) return perchPose(state, t, u, opt);
   const to = opt.to || [88, -24], br = Math.sin(t * 2.6);
   switch (state) {
@@ -96,12 +133,18 @@ export function raccoonPose(state, t, u = 0, opt = {}) {
     }
     case 'grab': { // yanks the egg home, squashes round it, then bounces with it, cheek to shell
       const k = ss(0, 0.28, u), hug = back(ss(0.24, 0.42, u)), gl = ss(0.42, 0.55, u), h = Math.abs(Math.sin(t * 7.5)) * gl;
-      const p = P({ by: 36 - 5 * Math.sin(ss(0.2, 0.45, u) * Math.PI) + 5 * h, dx: 10 * (1 - k), rot: lerp(0.34, -0.1, k) + 0.05 * Math.sin(t * 7.5) * gl, sq: 0.1 * Math.sin(ss(0.2, 0.45, u) * Math.PI) - 0.05 * h, hx: 3, hy: -43, hr: lerp(-0.3, 0.08, hug), look: 0.8, looky: 0.6,
+      const sf = opt.stuff != null; // (the stuff after a catch: the egg is already at his chest, no yank)
+      const p = P({ by: 36 - 5 * Math.sin(ss(0.2, 0.45, u) * Math.PI) + 5 * h, dx: sf ? 0 : 10 * (1 - k), rot: (sf ? -0.08 : lerp(0.34, -0.1, k)) + 0.05 * Math.sin(t * 7.5) * gl, sq: 0.1 * Math.sin(ss(0.2, 0.45, u) * Math.PI) - 0.05 * h, hx: 3, hy: -43, hr: lerp(-0.3, 0.08, hug), look: 0.8, looky: 0.6,
         lid: 0.15, g0: 0.75, g1: 0.75, happy: gl, smile: 1, jaw: 0.25 + 0.4 * gl, teeth: gl, brow: 0.1, ear: -0.2 * gl, tail: 0.35, tc: 1.0, tw: Math.sin(t * 15) * (0.2 + 0.7 * gl), egg: 1, sky: -9 - 4 * h, a1x: 30, a1y: -9 });
       fin(p, { f0: [-9, -3 - 5 * h], f1: [11, -3 - 5 * h] });
       const far = fin({ ...p, rot: 0.34, dx: 10 }, { e: to }); // where the egg was
       p.ex = lerp(far.ex, 30, k); p.ey = lerp(far.ey, 1, k) - 4 * Math.sin(k * Math.PI);
       p.a0x = p.ex + lerp(-2, -1, hug); p.a0y = p.ey + lerp(4, 23, hug); p.a1x = p.ex + lerp(10, 15, hug); p.a1y = p.ey - 9 * hug;
+      if (opt.stuff != null) { // 0.8.18 on the yard: the egg he caught, from his arms into his sack (sim/bandit.js bandHoldPt 'stuff')
+        const q = opt.stuff;
+        Object.assign(p, { hw0: ss(0, 0.12, q) * (1 - ss(0.78, 0.9, q)), hw1: ss(0, 0.12, q) * (1 - ss(0.3, 0.5, q)), hq0: lerp(0.2, 1.3, ss(0.25, 0.6, q)), stf: ss(0.6, 0.76, q), look: lerp(p.look, -0.6, ss(0.2, 0.5, q)), looky: lerp(p.looky, 0.9, ss(0.2, 0.5, q)) });
+        sackSwing(p, q, [0, 0.28, 0.8, 0.98], [-13, -16], [-46, -40], 0.1);
+      }
       return p;
     }
     case 'pinched': { // the jolt: rigid, eyes popping, fur on end, the paw still caught; then free and hopping on one foot
@@ -218,18 +261,33 @@ function perchPose(state, t, u, opt) {
       const S = { o: { by: 25 - 3 * a - (3 + 4 * deep) * sh + 2 * tug, dx: -6 * a + 9 * lean * sh - 3 * tug, rot: -0.08 - 0.22 * a + (0.3 + 0.2 * deep) * lean * sh - 0.1 * tug, sq: 0.1 * a - 0.05 * sh * (1 - g), hx: 5 + 3 * sh, hr: 0.1 * a + (0.12 + 0.2 * deep) * sh, look: 1, looky: 0.3 + 0.6 * deep, lid: 0.12 + 0.15 * g, lidLo: 0.25 * g,
           pup: 1.15, brow: 0.8, tongue: clamp(sh, 0, 1) * (1 - tug), ta: 1.0 + 0.3 * Math.sin(t * 6.3), smile: 0.4 + 0.5 * g, ear: 0.3 * a - 0.25 * sh, tail: -1.0 + 1.5 * sh, tc: -0.45 + 0.9 * sh, tw: Math.sin(t * 8) * 0.3, g0: 0.5 - 0.5 * clamp(sh, 0, 1) + 0.05 * wig + 0.9 * g, g1: 0.6 + 0.4 * ss(0.1, 0.3, u), sky: -9 - 2 * sh },
         w: { f0: SOLE(9, R), f1: SOLE(20, R), a1: [lerp(25, 27, ss(0.1, 0.3, u)), lerp(-19, RIM(27, R)[1], ss(0.1, 0.3, u))] } };
-      const p = perchFin(S, opt), w = fin({ ...p }, { a0: [to[0] + 2.5 * wig - 5 * tug, to[1] + 2 * Math.sin(t * 11) * (1 - g) * clamp(sh, 0, 1) - 6 * tug] }), s0 = fin({ ...p }, { a0: [14, -20] });
+      // 0.8.18 the paw flies at the egg's near shell (a little short of it, so the overshoot lands ON the shell, never
+      // through it); from the touch on raccoonHold puts the palm exactly on the egg, wherever the egg is
+      S.o.hw0 = ss(0.4, 0.5, u); S.o.hq0 = 0.85; S.o.g0 = Math.min(S.o.g0, 0.62);
+      const sd = holdDir(0.85), sx0 = to[0] + sd[0] * (HOLD_D + 6), sy0 = to[1] + sd[1] * (HOLD_D + 6);
+      const p = perchFin(S, opt), w = fin({ ...p }, { a0: [sx0 + 2.5 * wig, sy0 + 2 * Math.sin(t * 11) * (1 - g) * clamp(sh, 0, 1)] }), s0 = fin({ ...p }, { a0: [14, -20] });
       p.a0x = lerp(lerp(s0.a0x, -30, a), w.a0x, clamp(sh, 0, 1.06)); p.a0y = lerp(lerp(s0.a0y, -22, a), w.a0y, clamp(sh, 0, 1.06));
       return p;
     }
     case 'grab': case 'perchGrab': { // the yank home, a squash round the egg, then smug: lids low, a slow sideways look, the tail curling
       const to = opt.to || [50, 30], k = back(ss(0, 0.3, u), 1.4), hug = back(ss(0.22, 0.42, u)), sm = ss(0.4, 0.6, u), br = Math.sin(t * 2.2), pat = Math.max(0, Math.sin(t * 5)) * sm;
       const S = { o: { by: 25 + 2 * Math.sin(ss(0.15, 0.45, u) * Math.PI) + 0.8 * br * sm, dx: 8 * (1 - k), rot: lerp(0.4, -0.2, k) + 0.02 * br, sq: 0.09 * Math.sin(ss(0.2, 0.45, u) * Math.PI) + 0.012 * br, hx: 4, hy: -43, hr: lerp(0.25, -0.16, hug) + 0.03 * br, look: lerp(0.9, -0.55, sm), looky: lerp(0.7, -0.1, sm),
-          lid: 0.15 + 0.32 * sm, lidLo: 0.15 * sm, brow: 0.3 + 0.5 * sm, smile: 1, jaw: 0.3 * (1 - sm), teeth: 1 - sm, ear: -0.15, tail: -1.0 + 1.3 * sm, tc: -0.45 + 1.5 * sm, tw: Math.sin(t * 3) * 0.7, egg: 1, g0: 0.8, g1: 0.75 - 0.3 * pat, sky: -9 },
+          lid: 0.15 + 0.32 * sm, lidLo: 0.15 * sm, brow: 0.3 + 0.5 * sm, smile: 1, jaw: 0.3 * (1 - sm), teeth: 1 - sm, ear: -0.15, tail: -1.0 + 1.3 * sm, tc: -0.45 + 1.5 * sm, tw: Math.sin(t * 3) * 0.7, egg: 1, g0: 0.6, g1: 0.6, sky: -9 },
         w: { f0: SOLE(9, R), f1: SOLE(20, R) } };
-      const p = perchFin(S, opt), far = fin({ ...p }, { e: to });
-      p.ex = lerp(far.ex, 14, clamp(k, 0, 1.05)); p.ey = lerp(far.ey, -1, clamp(k, 0, 1.05)) - 5 * Math.sin(clamp(k, 0, 1) * Math.PI);
+      // 0.8.18 both paws on the egg: the near one from the touch, the far one joins as it comes up; then he swings his sack
+      // round to his hip, opens it and pushes the egg in with the near paw (the far one lets go). sim/bandit.js bandHoldPt
+      // moves the real egg the same way: chest (0.65 m up, 0.25 fwd), then down into the sack (0.32 up, 0.35 back)
+      const st = ss(0.7, 0.8, u);
+      Object.assign(S.o, { hw0: 1 - ss(0.9, 0.97, u), hw1: ss(0.1, 0.3, u) * (1 - ss(0.72, 0.8, u)), hq0: lerp(0.85, 0.15, ss(0, 0.32, u)) + 1.15 * st, stf: ss(0.8, 0.9, u), look: lerp(S.o.look, -0.5, st), looky: lerp(S.o.looky, 0.9, st), hr: S.o.hr + 0.1 * st });
+      // the egg's own path (rig units, floor frame) when no real egg is given: the same as the sim's at play scale (to,
+      // then 14 fwd 36 up by u 0.35; then 19.6 back 18 up, over a little arc)
+      const p = perchFin(S, opt), ky = ss(0, 0.35, u), s2 = ss(0.74, 0.9, u), cx = lerp(to[0], 14, ky), cy = lerp(to[1], -36.4, ky);
+      const far = fin({ ...p }, { e: [lerp(cx, -19.6, s2), lerp(cy, -17.9, s2) - 6.7 * Math.sin(s2 * Math.PI)] });
+      p.ex = far.ex; p.ey = far.ey;
       p.a0x = p.ex + lerp(-1, -3, hug); p.a0y = p.ey + lerp(3, 17, hug); p.a1x = p.ex + lerp(8, 14, hug); p.a1y = p.ey + lerp(-2, -7, hug) - 3 * pat;
+      const ks = fin({ ...p }, { a1: [25, -19] });
+      p.a1x = lerp(p.a1x, ks.a1x, st); p.a1y = lerp(p.a1y, ks.a1y, st);
+      sackSwing(p, u, [0.64, 0.8, 0.92, 1], [-19, -5], [-48, -14]);
       return p;
     }
     case 'shaken': { // the ring turned against him: rocking, arms windmilling, a foot in the air, fur on end
@@ -276,10 +334,11 @@ function hose(c, pts, w, col, line, lw) {
 }
 
 // the sack in its own frame (centre 0,0; the neck at the top): open 0 = tied shut, 1 = gaping
-function sackShape(c, C, lw, open, t) {
+function sackShape(c, C, lw, open, t, mid) {
   const n = lerp(5, 17, open), body = [[0, 20], [13, 17], [19, 6], [17, -7], [n + 1, -15], [-n - 1, -15], [-17, -7], [-19, 6], [-13, 17]];
   const top = open > 0.5 ? [[-n - 2, -15], [-n - 3, -21], [-n * 0.4, -19], [0, -22], [n * 0.4, -19], [n + 3, -21], [n + 2, -15], [0, -12]] : [[-6, -15], [-11, -25], [-3, -22], [2, -27], [6, -22], [12, -24], [6, -15]];
   ink(c, blobP(top), C.sackLo, C.line, lw);
+  if (mid) mid(); // (0.8.18 the egg going in: in front of the back lip, behind the sack's front)
   ink(c, blobP(body), C.sackLo, C.line, lw);
   fillP(c, blobP(inset(body, 0.84, -1.5, -2)), C.sack);
   fillP(c, ellP(-8, -4, 5, 8, 0.35), C.sackHi);
@@ -396,7 +455,7 @@ export function drawRaccoon(ctx, x, y, s, t, pose, o = {}) {
   try {
     ctx.translate(x, y); ctx.scale(u * face, u); ctx.scale(sx, sy); ctx.translate(p.dx, -p.by); ctx.rotate(p.rot);
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    const sack = () => { ctx.save(); ctx.translate(p.skx, p.sky); ctx.rotate(p.skr); ctx.scale(p.sks, p.sks); sackShape(ctx, C, lw / p.sks, p.sko, t); ctx.restore(); };
+    const sack = (mid) => { ctx.save(); ctx.translate(p.skx, p.sky); ctx.rotate(p.skr); ctx.scale(p.sks, p.sks); sackShape(ctx, C, lw / p.sks, p.sko, t, mid); ctx.restore(); };
     const layer = o.layer;
     // ---- tail: a fat ringed brush, behind everything
     if (layer !== 'front') {
@@ -430,22 +489,29 @@ export function drawRaccoon(ctx, x, y, s, t, pose, o = {}) {
     fillP(ctx, ellP(8, 3, 12.5, 16, 0.08), C.creamLo); fillP(ctx, ellP(7, 1.5, 11, 14, 0.08), C.cream);
     fillP(ctx, ellP(-13, -12, 5, 8, 0.5), C.furHi);
     if (p.strap > 0.5) { ctx.beginPath(); ctx.moveTo(-17, -19); ctx.quadraticCurveTo(2, -8, 21, 6); ctx.lineWidth = lw * 2.6; ctx.strokeStyle = C.line; ctx.stroke(); ctx.lineWidth = lw * 1.3; ctx.strokeStyle = C.rope; ctx.stroke(); }
-    // ---- the hugged egg, the far arm
-    if (p.egg > 0.02 && o.egg !== false) {
-      ctx.save(); ctx.translate(p.ex, p.ey); ctx.rotate(0.12); ctx.scale(p.egg, p.egg);
-      const eg = (c) => { c.beginPath(); c.moveTo(0, -22); c.bezierCurveTo(13, -22, 18, -2, 18, 5); c.bezierCurveTo(18, 16, 10, 22, 0, 22); c.bezierCurveTo(-10, 22, -18, 16, -18, 5); c.bezierCurveTo(-18, -2, -13, -22, 0, -22); c.closePath(); };
-      ink(ctx, eg, C.eggLo, C.line, lw); ctx.save(); ctx.translate(-1.5, -2); ctx.scale(0.87, 0.88); fillP(ctx, eg, C.egg); ctx.restore(); fillP(ctx, ellP(-7, -9, 3.5, 6, 0.4), '#ffffff');
-      ctx.restore();
-    }
-    const arm = (sx0, sy0, hx0, hy0, far, mode, throb, curl) => { // the shoulder follows the reach; one tapered shape to the wrist
+    const arm = (sx0, sy0, hx0, hy0, far, mode, throb, curl, pa, pw = 0) => { // the shoulder follows the reach; one tapered shape to the wrist
       const rx = hx0 - sx0, ry = hy0 - sy0, sxx = sx0 + clamp(rx / 34, -1, 1) * 3.2, syy = sy0 + clamp(ry / 34, -1, 0.5) * 3.4;
       const d = Math.hypot(hx0 - sxx, hy0 - syy), l = Math.max(17, d * 0.51), k1 = ik(sxx, syy, hx0, hy0, l, l, 1), k2 = ik(sxx, syy, hx0, hy0, l, l, -1), k = k1[1] > k2[1] ? k1 : k2;
       const thin = d > 40 ? Math.max(0.72, 1 - (d - 40) * 0.006) : 1;
-      const ang = limb(ctx, [sxx, syy], k, [hx0, hy0], 12.5 * thin, 10 * thin, 8, far ? C.furLo : C.fur, C.line, lw, far ? null : C.furHi);
-      const sd = clamp((Math.cos(ang) * 1 - Math.sin(ang) * 0.3) * 3.5, -1, 1); // fingers fold toward the ground (and a little forward)
+      const ang0 = limb(ctx, [sxx, syy], k, [hx0, hy0], 12.5 * thin, 10 * thin, 8, far ? C.furLo : C.fur, C.line, lw, far ? null : C.furHi);
+      const hw = pa == null ? 0 : clamp(pw, 0, 1), ang = ang0 + Math.atan2(Math.sin((pa ?? 0) - ang0), Math.cos((pa ?? 0) - ang0)) * hw; // on an egg the wrist turns the hand at it
+      const sd = lerp(clamp((Math.cos(ang) * 1 - Math.sin(ang) * 0.3) * 3.5, -1, 1), 0.22, hw); // fingers fold toward the ground (and a little forward); on an egg, over its shell
       hand(ctx, hx0 + Math.cos(ang) * 1.5, hy0 + Math.sin(ang) * 1.5, ang, 6.2, C, lw, mode, throb, t, curl, sd);
     };
-    arm(13, -13, p.a1x, p.a1y, true, 0, 0, p.g1);
+    // ---- the far arm (behind the egg), the egg between his paws (0.8.18: the size of a real egg, or o.eggDraw draws the
+    // real one: it gets the canvas in this frame and draws in world space itself)
+    arm(13, -13, p.a1x, p.a1y, true, 0, 0, p.g1, p.pa1, p.hw1);
+    // going into the sack (stf, the sack in front): drawn inside the sack, between its back lip and its front; once in, gone
+    const into = p.stf > 0.01 && p.skf > 0.5, Mt = ctx.getTransform(), eggNow = () => {
+      if (p.stf > 0.99) return;
+      if (o.eggDraw) { o.eggDraw(ctx); return; }
+      if (!(p.egg > 0.02) || o.egg === false) return;
+      ctx.save(); ctx.translate(p.ex, p.ey); ctx.rotate(p.ea ?? 0.12); ctx.scale(p.egg * 0.73, p.egg * 0.73);
+      const eg = (c) => { c.beginPath(); c.moveTo(0, -22); c.bezierCurveTo(13, -22, 18, -2, 18, 5); c.bezierCurveTo(18, 16, 10, 22, 0, 22); c.bezierCurveTo(-10, 22, -18, 16, -18, 5); c.bezierCurveTo(-18, -2, -13, -22, 0, -22); c.closePath(); };
+      ink(ctx, eg, C.eggLo, C.line, lw); ctx.save(); ctx.translate(-1.5, -2); ctx.scale(0.87, 0.88); fillP(ctx, eg, C.egg); ctx.restore(); fillP(ctx, ellP(-7, -9, 3.5, 6, 0.4), '#ffffff');
+      ctx.restore();
+    };
+    if (!into) eggNow();
     // ---- head
     ctx.save();
     ctx.translate(p.hx, p.hy); ctx.rotate(p.hr); ctx.scale(p.hsc, p.hsc);
@@ -499,8 +565,10 @@ export function drawRaccoon(ctx, x, y, s, t, pose, o = {}) {
     }
     ctx.restore();
     // ---- the near arm, over the head; the sack when it is in front
-    arm(-7, -13, p.a0x, p.a0y, false, p.hand, p.throb, p.g0);
-    if (p.skf > 0.5) sack();
+    const near = () => arm(-7, -13, p.a0x, p.a0y, false, p.hand, p.throb, p.g0, p.pa0, p.hw0);
+    if (!into) near();
+    if (p.skf > 0.5) sack(into ? () => { const m = ctx.getTransform(); ctx.setTransform(Mt); eggNow(); ctx.setTransform(m); } : null);
+    if (into) near(); // pushing the egg in: his paw over the sack's mouth
   } finally { ctx.restore(); }
   if (o.out) {
     const hc = Math.cos(p.hr), hs = Math.sin(p.hr), H = (lx, ly) => toPx(p.hx + (lx * hc - ly * hs) * p.hsc, p.hy + (lx * hs + ly * hc) * p.hsc);
