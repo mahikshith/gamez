@@ -314,7 +314,7 @@ export const VILLAIN_INFO = {
   },
   lavaflow: { // 0.8.18 the creeper family: the volcano's form
     group: 'hazard', name: 'Lava flow',
-    does: 'Hot floor that flows slowly along a ring edge. An egg that rests on it heats and cracks.',
+    does: 'Hot lava creeps along a ring edge. An egg resting on it heats up and cracks.',
     beat: 'Roll across, never stop on it. A water egg cools it to crust.',
   },
   anemone: { // 0.8.18 the creeper family: the reef's form
