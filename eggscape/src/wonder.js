@@ -794,17 +794,17 @@ export function createWonder(env) {
     const AL = env.album ? env.album() : null, nSec = AL ? 3 : 2;
     // 0.8.17: the vaults are side quests on the map now; one row leads there (main.js 'xs:side': the first open one)
     const n = 1, wvRows = 1, nRows = wvRows + 1 + (AL ? 1 : 0);
-    const rowH0 = clamp((vb - vt - pad - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - 4 * u) / nRows, 84 * u, wide ? 108 * u : 216 * u); // (0.8.17 polish: three rows on a tall phone grow, so the page is not half empty)
-    // a tall screen with room to spare: the rows stand a little further apart (up to 12 units each), not one hole at the bottom
-    const spare = Math.max(0, vb - vt - pad - 4 * u - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - nRows * rowH0), air = Math.min(wide ? 12 * u : 36 * u, spare / (wvRows + nSec - 1));
-    const gap = 10 * u + air, secGap = 14 * u + air;
-    const fixedH = nSec * headH + (nSec - 1) * secGap + (wvRows - 1) * gap;
-    const total = wide ? vb - vt : 4 * u + fixedH + nRows * rowH0 + pad;
+    // frame818 (owner: no empty bands, even gaps): upright, the rows share the whole safe height, one equal gap g0 above the
+    // first heading, between the sections and under the last row; a short phone that cannot fit them at 84 units scrolls
+    const g0 = clamp((vb - vt) * 0.028, 12 * u, 24 * u);
+    const rowH0 = wide ? 108 * u : Math.max(84 * u, (vb - vt - nSec * headH - (nSec + 1) * g0) / nRows);
+    const gap = g0, secGap = g0;
+    const total = wide ? vb - vt : (nSec + 1) * g0 + nSec * headH + nRows * rowH0;
     SC.max = Math.max(0, total - (vb - vt));
     env.glide(SC, dt);
     // the list, clipped under the header
     ctx.save(); ctx.beginPath(); ctx.rect(0, vt, z.W, vb - vt); ctx.clip();
-    let y = vt - SC.y + 4 * u;
+    let y = vt - SC.y + (wide ? 4 * u : g0);
     const out = (yy, hh) => yy < vt || yy + hh > vb;
     const head = (txt, yy, tag, chip, hx = lx) => {
       const tw = ui.measure(txt, 18 * u), cw2 = chip ? ui.measure(chip, 11 * u) + 16 * u : 0, nr = out(yy, headH);
@@ -815,7 +815,7 @@ export function createWonder(env) {
       const prac = !!L.practice || !!L.album || !!L.side, s = prac ? 0 : starsOf(L.key), key = L.side ? 'twin' : L.album ? 'album' : prac ? 'practice' : L.key, face = ui.faceOf(L.side ? '#8a5ad8' : TILE[key] || '#8a5ad8');
       const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = L.side ? 'sq:bonus' : L.album ? 'xs:album' : prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
       const b = ui.button(id, '', x, ry, rowW, rowH, { face, keepFace: true, round: 18 * u });
-      const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, 140 * u, rowW * 0.3), tx = x + Math.min(8 * u + (fh - ts) / 2 - 3 * u, 20 * u);
+      const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, Math.max(140 * u, rowW * 0.36), rowW * 0.36) /* frame818: a tall row's picture grows with it */, tx = x + Math.min(8 * u + (fh - ts) / 2 - 3 * u, 20 * u);
       if (vert) { // 0.8.17 landscape: a tall tile per section, the picture big on top, the words and the stars (or the arrow) under it
         const ns = clamp(rowW * 0.08, 19 * u, 25 * u), ps = clamp(rowW * 0.055, 13 * u, 16 * u), lines = wrapText(L.pitch, ps, rowW - 28 * u).slice(0, 2), foot = 34 * u;
         const wordsH = ns * 1.2 + 4 * u + lines.length * ps * 1.2, vts = Math.max(40 * u, Math.min(rowW * 0.62, fh - wordsH - foot - 34 * u, 190 * u)), blk = vts + 12 * u + wordsH + 10 * u + foot, y0 = fy + (fh - blk) / 2, cx = x + rowW / 2;
