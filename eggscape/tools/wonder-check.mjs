@@ -56,6 +56,9 @@ export function play(level, script = level.solve || [], o = {}) {
         g.setHen(cmd); tick();
       }
       settle(a[4] ?? 1.5);
+    } else if (a[0] === 'beat') { // ['beat', vault, period, at]: wait (as a player watching pop thorns) until that vault's beat reaches `at` s
+      const sim = g.sims[a[1]], ph = () => (((sim.t - a[3]) % a[2]) + a[2]) % a[2];
+      for (let n = 0; n < a[2] / DT + 2 && live() && ph() > DT * 1.01; n++) tick();
     } else if (a[0] === 'greedy') greedy(g, a[1] || 40, live, tick, a[2] || 1);
     else if (a[0] === 'set') g.turn(0, a[1], deg(a[2]));
     else if (a[0] === 'hatch') { g.hatch(); while (g.phase === 'run' && live()) tick(); if (g.phase === 'over') settle(0.5); }
