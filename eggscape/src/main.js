@@ -573,6 +573,7 @@ function startLevel(i, opts = {}) {
   if (G.sim && !G.result && G.sim.t > 1 && save.streak) { save.streak = 0; persist(); }
   G.run = (G.run || 0) + 1;
   G.li = i;
+  if (i !== -2) G.demo = null; // 0.8.17: a practice vault played before does not follow into the road (it turned off the skip and the Pacer there)
   G.level = i === -2 && G.demo ? G.demo : i < 0 ? dailyLevel() : LEVELS[i]; // -2: a dev chick demo (v3.2)
   G.theme = themeFor(G.level);
   if (DEV && BG_FORCE) G.theme = THEMES.find((th) => th.id === BG_FORCE) || G.theme; // dev: ?bg=coop forces a level's backdrop theme
