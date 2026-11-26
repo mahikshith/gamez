@@ -1,14 +1,16 @@
 // The side quests on the map (0.8.17, mykee: "from the map we could build a different pathway where there could be bonus
 // levels ... rather than having one linear path we could have different sub-paths. People could always skip them").
-// At each world's fourth stop a short trail of stepping stones (the world's own stone) leaves the road to a round vault
-// door with the vault's picture in its window: a different family from the road's nests and stone discs, set off the
-// road where the scenery has room, so it never reads as a stop on the way. Locked: dim, a padlock. Open: it glows and
-// bobs. Won: its stars on a plate under it. Layout and art only; main.js owns the taps, the hen's walk and the reveal.
+// 0.8.18 (mykee: "show a split path towards that level, and it could merge back"): a FORK of the road leaves it under
+// the branch stop's nest, swings out to a round vault door with the vault's picture in its window (a different family
+// from the road's nests, sitting ON the fork, so it reads as the fork's own stop) and swings back to join the road one or
+// two levels on. Locked: the fork faded, a small padlock where it leaves the road, the door dim. Open: lit, a pulse runs
+// along it once, the door glows and bobs. Won: gold down the fork, its stars on a plate under the door. Layout and art
+// only; main.js owns the taps, the hen's walk and the reveal.
 import { freeCanvas } from './cvfree.js';
 import { drawExtraIcon } from './extras.js';
 import { FONT } from '../ui/ui.js';
 import { chestSpot, lmArt } from './mapfarm.js';
-import { gateSpot, signSpot, stopTint, brightStar, PLACES, WORLD_LOOK } from './mapscene.js';
+import { gateSpot, signSpot, brightStar, roadCols, PLACES, WORLD_LOOK } from './mapscene.js';
 import { SIDE } from '../side.js';
 import { bossOf } from '../road.js';
 
@@ -48,73 +50,183 @@ function blockers(L, w) {
 }
 function roadHit(L, b, pad) { for (let y = b.y0; y <= b.y1 + 0.1; y += 4) { const x = L.pathX(y); if (x + L.roadW * 0.5 + pad > b.x0 && x - L.roadW * 0.5 - pad < b.x1) return true; } return false; }
 
-// the trail: a gentle curve of stepping stones from the stop's nest to the door; t 0..1 -> point
-function curve(a, c, b) { return (t) => { const m = 1 - t; return { x: m * m * a.x + 2 * m * t * c.x + t * t * b.x, y: m * m * a.y + 2 * m * t * c.y + t * t * b.y }; }; }
-function trailOf(L, st, x, y) {
-  const u = L.u, R = doorR(L), s = x > st.x ? 1 : -1, a = { x: st.x + s * 40 * u, y: st.y + 12 * u }, dx = x - a.x, dy = y + R * 0.55 - a.y;
-  const len = Math.hypot(dx, dy) || 1, b = { x: x - (dx / len) * (R + 4 * u), y: y + R * 0.55 - (dy / len) * (R * 0.4) };
-  const c = { x: (a.x + b.x) / 2 - (dy / len) * len * 0.16 * s, y: (a.y + b.y) / 2 + Math.abs(dx / len) * len * 0.12 };
-  const f = curve(a, c, b), n = Math.max(3, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / (17 * u)));
-  const stones = []; for (let k = 0; k <= n; k++) { const p = f(k / n); stones.push({ x: p.x + (k % 2 ? 2.5 : -2.5) * u, y: p.y, k }); }
-  return { f, a, b, stones, len: Math.hypot(b.x - a.x, b.y - a.y) };
+// 0.8.18 the FORK (mykee: "the world map should have a separate path for that, and it should also integrate back into the
+// map ... show a split path towards that level, and it could merge back"): a narrower road of the same family leaves the
+// main road under the branch stop's nest, swings out to the quest's door and swings back to join the road again under the
+// nest one or two levels on. Two cubic legs, S -> N (the door) -> E, smooth through the door (its tangent there runs from
+// S to E), each end leaving / meeting the road along the road's own direction.
+function roadDist(L, p) { let m = 1e9; for (let y = p.y - 70 * L.u; y <= p.y + 70 * L.u; y += 3) m = Math.min(m, Math.hypot(L.pathX(y) - p.x, y - p.y)); return m; } // how far a point is from the road's middle line
+function roadDir(L, y) { const dx = L.pathX(y - 2) - L.pathX(y + 2), d = Math.hypot(dx, 4) || 1; return { x: dx / d, y: -4 / d }; } // the road's way on (up the map)
+function cubic(p0, p1, p2, p3, n) {
+  const out = [];
+  for (let k = 0; k <= n; k++) { const t = k / n, m = 1 - t; out.push({ x: m * m * m * p0.x + 3 * m * m * t * p1.x + 3 * m * t * t * p2.x + t * t * t * p3.x, y: m * m * m * p0.y + 3 * m * m * t * p1.y + 3 * m * t * t * p2.y + t * t * t * p3.y }); }
+  return out;
 }
+const plen = (P) => { let a = 0; for (let k = 1; k < P.length; k++) a += Math.hypot(P[k].x - P[k - 1].x, P[k].y - P[k - 1].y); return a; };
+export const forkW = (L) => L.roadW * 0.56; // the fork's width: the road's family, narrower
+function forkOf(L, S, N, E) {
+  const c = { x: E.x - S.x, y: E.y - S.y }, cl = Math.hypot(c.x, c.y) || 1, T = { x: c.x / cl, y: c.y / cl }; // through the door: from S towards E
+  const dS = roadDir(L, S.y), dE = roadDir(L, E.y), la = Math.hypot(N.x - S.x, N.y - S.y), lb = Math.hypot(E.x - N.x, E.y - N.y);
+  const toN = { x: (N.x - S.x) / (la || 1), y: (N.y - S.y) / (la || 1) }, fromN = { x: (E.x - N.x) / (lb || 1), y: (E.y - N.y) / (lb || 1) };
+  const mixd = (a, b, k) => { const x = a.x * k + b.x * (1 - k), y = a.y * k + b.y * (1 - k), d = Math.hypot(x, y) || 1; return { x: x / d, y: y / d }; };
+  const s1 = mixd(dS, toN, 0.45), e1 = mixd(dE, fromN, 0.45);
+  const nA = Math.max(10, Math.round(la / (5 * L.u))), nB = Math.max(10, Math.round(lb / (5 * L.u)));
+  const A = cubic(S, { x: S.x + s1.x * la * 0.5, y: S.y + s1.y * la * 0.5 }, { x: N.x - T.x * la * 0.42, y: N.y - T.y * la * 0.42 }, N, nA);
+  const B = cubic(N, { x: N.x + T.x * lb * 0.42, y: N.y + T.y * lb * 0.42 }, { x: E.x - e1.x * lb * 0.5, y: E.y - e1.y * lb * 0.5 }, E, nB);
+  return { S, E, A, B, la: plen(A), lb: plen(B) };
+}
+// the fork's points as one line S .. N .. E (for drawing, the pulse and the keep-out boxes)
+export const forkPts = (f) => f.A.concat(f.B.slice(1));
 
-// where every side quest goes in this layout (cached on L). -> [{ w, key, i (the branch stop), x, y, R, trail, box }]
+// where every side quest goes in this layout (cached on L). -> [{ w, key, i (the branch stop), j (where it joins again), x, y,
+// R, fork, box }]
 export function sidePlan(L) {
   if (L._side) return L._side;
-  const u = L.u, A = L.A, R = doorR(L), DB = doorBox(L), out = [];
+  const u = L.u, A = L.A, R = doorR(L), DB = doorBox(L), out = [], fw = forkW(L);
   L._side = out; L.sideKeep = (w) => sideKeep(L, w); // (mapscene bandLayout keeps the props off them; set first: a band painted while this runs reads what is placed so far)
   for (const q of SIDE) {
     const i = q.i, st = L.stops[i];
     if (!st) continue;
-    const w = q.w, top = L.bandTop(w), step = L.BH * L.stepFY, { out: hard, soft } = blockers(L, w), far = 92 * u; // far: the door stands at least this far from its stop, so the trail reads
+    const w = q.w, top = L.bandTop(w), { out: hard, soft } = blockers(L, w);
     let best = null;
-    for (const fy of [0, -0.35, 0.35, -0.7, 0.7, -1, 1, -1.3, 1.3]) {
-      const y = st.y + fy * step;
-      if (y - R - 12 * u < top + 0.05 * L.BH || y + R + 24 * u > top + 0.93 * L.BH) continue;
-      for (const s of [-1, 1]) {
-        for (let k = 0; k < 40; k++) {
-          const x = L.pathX(y) + s * (L.roadW * 0.5 + R + 18 * u + k * 6 * u);
-          if (x - R - 4 * u < A.x || x + R + 4 * u > A.x1) break;
-          if (Math.hypot(x - st.x, y - st.y) < far) continue;
-          const b = { x0: x + DB.x0, x1: x + DB.x1, y0: y + DB.y0, y1: y + DB.y1 };
-          if (roadHit(L, b, 8 * u)) continue;
-          if (hard.some((h) => !h.lm && hit(b, h))) continue;
-          const lmA = hard.reduce((a2, h) => a2 + (h.lm ? area(b, h) : 0), 0);
-          const tr = trailOf(L, st, x, y);
-          if (tr.stones.slice(1).some((p) => roadHit(L, { x0: p.x - 5 * u, x1: p.x + 5 * u, y0: p.y - 4 * u, y1: p.y + 4 * u }, 2 * u))) continue;
-          if (tr.stones.some((p) => hard.some((h) => h.stop !== i && !h.lm && hit({ x0: p.x - 6 * u, x1: p.x + 6 * u, y0: p.y - 5 * u, y1: p.y + 5 * u }, h)))) continue;
-          const sc = Math.abs(tr.len - 120 * u) + Math.max(0, tr.len - 170 * u) * 4 + Math.abs(fy) * 30 * u + soft.reduce((a2, h) => a2 + area(b, h), 0) / (4 * u) + lmA / (2 * u); // a trail of about 120 units reads as a path of its own; a long one wanders off (it is avoided harder than a landmark's corner covered)
-          if (!best || sc < best.sc) best = { sc, x, y, tr, b };
-          if (!lmA) break; // the nearest clear spot on this side at this height (else further out may clear the landmark)
+    // candidates: out from the road along its normal (the road runs steep on a phone, nearly flat on a phone on its side),
+    // half way between the two stops first. strict 2: clear of everything; 1: may cross a landmark's corner; 0: may cross
+    // a sign, gate or chest too (never the road, a stop or the screen edge). The first level with a fit wins
+    for (const strict of [2, 1, 0, -1]) { // (-1: the last resort, the door may stand a little into the next band)
+      if (best) break;
+      const bandLo = strict < 0 ? -0.12 : 0.03, bandHi = strict < 0 ? 1.1 : 0.95;
+      for (const j of [i + 2, i + 1]) {
+        const en = L.stops[j]; if (!en || en.w !== w) continue;
+        const S = { x: st.x, y: st.y }, E = { x: en.x, y: en.y };
+        const C = []; // the spots to try: out along the road's normal from points between the two stops (each ray stops at the screen's or the band's edge)
+        for (const fy of [0.5, 0.36, 0.64, 0.22, 0.78]) {
+          const y0 = S.y + (E.y - S.y) * fy, x0 = L.pathX(y0), d = roadDir(L, y0);
+          for (const s of [-1, 1]) for (let k = 0; k < 30; k++) {
+            const off = L.roadW * 0.5 + R + 24 * u + k * 6 * u, x = x0 - d.y * s * off, y = y0 + d.x * s * off;
+            if (x - R - 6 * u < A.x || x + R + 6 * u > A.x1 || y - R - 12 * u < top + bandLo * L.BH || y + R + 24 * u > top + bandHi * L.BH) break;
+            C.push({ x, y, fy });
+          }
+        }
+        if (strict < 0) for (let y = top + bandLo * L.BH + R + 12 * u; y < top + bandHi * L.BH - R - 24 * u; y += 10 * u) for (let x = A.x + R + 6 * u; x < A.x1 - R - 6 * u; x += 10 * u) C.push({ x, y, fy: clamp((y - S.y) / (E.y - S.y || 1), -1, 2) }); // (last resort: anywhere in the band)
+        for (const { x, y, fy } of C) {
+          {
+            {
+              const off = roadDist(L, { x, y });
+              const b = { x0: x + DB.x0, x1: x + DB.x1, y0: y + DB.y0, y1: y + DB.y1 };
+              if (roadHit(L, b, 8 * u)) continue;
+              if (hard.some((h) => h.stop != null && (strict >= 0 || (h.stop !== i && h.stop !== j)) && hit(b, h))) continue;
+              if (strict < 0 && [st, en].some((z) => Math.hypot(z.x - x, z.y - y) < L.stopR + R + 6 * u)) continue; // (last resort: it may touch its own two stops' plates, never their nests)
+              let pen = hard.reduce((a2, h) => a2 + (h.stop == null && !h.lm ? area(b, h) : 0), 0) * 6;
+              if (pen && strict > 0) continue;
+              const f = forkOf(L, S, { x, y }, E), P = forkPts(f);
+              let bad = false, lmA = hard.reduce((a2, h) => a2 + (h.lm ? area(b, h) : 0), 0), softA = soft.reduce((a2, h) => a2 + area(b, h), 0);
+              if (lmA && strict === 2) continue;
+              for (const p of P) {
+                const dS = Math.hypot(p.x - S.x, p.y - S.y), dE = Math.hypot(p.x - E.x, p.y - E.y), dN = Math.hypot(p.x - x, p.y - y);
+                if (dN < R) continue; // under the door
+                if (p.x - fw / 2 < A.x + 2 * u || p.x + fw / 2 > A.x1 - 2 * u) { bad = true; break; }
+                if (Math.min(dS, dE) > L.stopR * 1.5 && roadDist(L, p) < L.roadW * 0.5 + fw * 0.5 + 5 * u) { bad = true; break; } // it never crosses or runs along the road
+                const pb = { x0: p.x - fw / 2, x1: p.x + fw / 2, y0: p.y - fw / 2, y1: p.y + fw / 2 };
+                if (strict >= 0 ? hard.some((h) => h.stop != null && h.stop !== i && h.stop !== j && hit(pb, h)) : L.stops.some((z, k2) => k2 !== i && k2 !== j && Math.hypot(z.x - p.x, z.y - p.y) < L.stopR * 1.25)) { bad = true; break; } // (last resort: clear of the other nests themselves)
+                const hp = hard.reduce((a2, h) => a2 + (h.stop == null && !h.lm ? area(pb, h) : 0), 0), lmP = hard.reduce((a2, h) => a2 + (h.lm ? area(pb, h) : 0), 0);
+                if ((hp && strict > 0) || (lmP && strict === 2)) { bad = true; break; }
+                pen += hp * 6; lmA += lmP * 2; softA += soft.reduce((a2, h) => a2 + area(pb, h), 0) * 0.3;
+              }
+              if (bad) continue;
+              const bal = Math.abs(f.la - f.lb);
+              const sc = Math.abs(off - (L.roadW * 0.5 + R + 66 * u)) * 1.5 + bal * 0.25 + Math.abs(fy - 0.5) * 40 * u + (j === i + 1 ? 60 * u : 0) + softA / (4 * u) + lmA / (2 * u) + pen / (u * u);
+              if (!best || sc < best.sc) best = { sc, x, y, f, b, j };
+            }
+          }
         }
       }
     }
-    if (!best) { const s = st.x < L.cx ? 1 : -1, x = clamp(st.x + s * 110 * u, A.x + R + 6 * u, A.x1 - R - 6 * u); best = { x, y: st.y, tr: trailOf(L, st, x, st.y), b: { x0: x + DB.x0, x1: x + DB.x1, y0: st.y + DB.y0, y1: st.y + DB.y1 } }; } // (never: a layout with no room)
-    out.push({ w, key: q.key, i, at: q.at, x: best.x, y: best.y, R, trail: best.tr, box: best.b, two: /2$/.test(q.key), kind: q.level.wonder.kind });
+    if (!best) { const j = Math.min(i + 1, L.stops.length - 1), en = L.stops[j], y = (st.y + en.y) / 2, s = L.pathX(y) < L.cx ? 1 : -1, x = clamp(L.pathX(y) + s * (L.roadW * 0.5 + R + 30 * u), A.x + R + 6 * u, A.x1 - R - 6 * u); best = { x, y, j, f: forkOf(L, { x: st.x, y: st.y }, { x, y }, { x: en.x, y: en.y }), b: { x0: x + DB.x0, x1: x + DB.x1, y0: y + DB.y0, y1: y + DB.y1 } }; } // (never: a layout with no room)
+    out.push({ w, key: q.key, i, j: best.j, at: q.at, x: best.x, y: best.y, R, fork: best.f, box: best.b, two: /2$/.test(q.key), kind: q.level.wonder.kind });
   }
   return out;
 }
-// the boxes a world's still props and walking cast keep clear of (mapscene bandLayout)
+// the boxes a world's still props and walking cast keep clear of (mapscene bandLayout): the door and the whole fork, with
+// room either side, so nothing round sits by the fork looking like a stop of its own
 export function sideKeep(L, w) {
   const q = (L._side || []).find((p) => p.w === w); if (!q) return [];
-  const u = L.u;
-  return [q.box, ...q.trail.stones.filter((_, k) => k % 2 === 0).map((p) => ({ x0: p.x - 9 * u, x1: p.x + 9 * u, y0: p.y - 8 * u, y1: p.y + 6 * u }))];
+  const u = L.u, P = forkPts(q.fork), m = forkW(L) * 0.5 + 12 * u, out = [{ x0: q.box.x0 - 10 * u, x1: q.box.x1 + 10 * u, y0: q.box.y0 - 6 * u, y1: q.box.y1 + 6 * u }];
+  for (let k = 0; k < P.length; k += 3) out.push({ x0: P[k].x - m, x1: P[k].x + m, y0: P[k].y - m, y1: P[k].y + m });
+  return out;
+}
+// the hen's way between a stop of the road and the door: along the road to the nearer end of the fork, then up that leg.
+// -> { pts (map space, from the stop to the door), len }. back: the same way the other round (door -> stop)
+export function sideRoute(L, q, from, back = false) {
+  const st = L.stops[from] || L.stops[q.i], f = q.fork;
+  const road = (y0, y1) => { const P = [], n = Math.max(1, Math.round(Math.abs(y1 - y0) / (6 * L.u))); for (let k = 0; k <= n; k++) { const y = y0 + ((y1 - y0) * k) / n; P.push({ x: L.pathX(y), y }); } return P; };
+  const viaA = road(st.y, f.S.y).concat(f.A.slice(1)), viaB = road(st.y, f.E.y).concat(f.B.slice().reverse().slice(1));
+  if (from === q.i) viaA[0] = { x: st.x, y: st.y }; if (from === q.j) viaB[0] = { x: st.x, y: st.y };
+  const N = { x: q.x, y: q.y }, trim = (P) => { const k = P.findIndex((p) => Math.hypot(p.x - N.x, p.y - N.y) < q.R * 0.85); return k > 1 ? P.slice(0, k) : P; }; // she stops on the fork at the door's rim (the door stays in view beside her)
+  const A2 = trim(viaA), B2 = trim(viaB), a = plen(A2), b = plen(B2), pts = a <= b ? A2 : B2;
+  return { pts: back ? pts.slice().reverse() : pts, len: Math.min(a, b), leg: a <= b ? 'A' : 'B' };
+}
+// a point at arc length s along a polyline (and the way it heads there)
+export function along(P, s) {
+  for (let k = 1; k < P.length; k++) {
+    const d = Math.hypot(P[k].x - P[k - 1].x, P[k].y - P[k - 1].y);
+    if (s <= d || k === P.length - 1) { const t = d ? clamp(s / d, 0, 1) : 1; return { x: P[k - 1].x + (P[k].x - P[k - 1].x) * t, y: P[k - 1].y + (P[k].y - P[k - 1].y) * t, dx: P[k].x - P[k - 1].x }; }
+    s -= d;
+  }
+  return { x: P[0].x, y: P[0].y, dx: 0 };
+}
+// the fork's touch boxes (a tap on the path walks the hen there too): squares along it, clear of the two nests at its ends
+// and off the door's middle (its own box). map space
+export function forkTaps(L, q) {
+  const u = L.u, P = forkPts(q.fork), s = Math.max(30 * u, 44), out = [];
+  let last = null;
+  for (const p of P) {
+    if (Math.hypot(p.x - q.fork.S.x, p.y - q.fork.S.y) < L.stopR * 1.6 || Math.hypot(p.x - q.fork.E.x, p.y - q.fork.E.y) < L.stopR * 1.6) continue;
+    const b = { x0: p.x - s / 2, x1: p.x + s / 2, y0: p.y - s / 2, y1: p.y + s / 2 };
+    if (Math.hypot(p.x - q.x, p.y - q.y) < q.R + s * 0.35 || (last && hit(b, last))) continue; // (it may share a corner with the door's box: the same tap)
+    out.push(b); last = b;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- art
-// the trail: flat stepping stones in the world's stone, a little shadow; dim while the door is shut. n: stones shown (the reveal draws them in)
-export function drawSideTrail(ctx, L, q, sy, state, n = 1e9) {
-  const u = L.u, T = stopTint(q.w), lit = state !== 'locked';
-  ctx.save(); if (!lit) ctx.globalAlpha *= 0.72;
-  q.trail.stones.forEach((p, k) => {
-    if (k >= n) return;
-    const x = p.x, y = p.y - sy, rx = (k === 0 ? 6 : 7.6) * u, ry = rx * 0.58;
-    ctx.beginPath(); ctx.ellipse(x, y + 1.6 * u, rx * 1.05, ry * 1.05, 0, 0, TAU); ctx.fillStyle = 'rgba(20,10,0,0.28)'; ctx.fill();
-    ctx.beginPath(); ctx.ellipse(x, y, rx, ry, (k % 3 - 1) * 0.2, 0, TAU); ctx.fillStyle = T.st; ctx.fill(); ctx.lineWidth = 1.3 * u; ctx.strokeStyle = T.stE; ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(x - rx * 0.25, y - ry * 0.3, rx * 0.4, ry * 0.28, 0, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fill();
-  });
+// the fork: the road's own strokes (its shade, edge, fill and dashes, in the world's colours), narrower. Locked: faded,
+// a small padlock where it leaves the road. Open: lit; o.pulse (0..1) runs a soft glow once from S through the door to E.
+// Won: the walked road's gold down its middle. o.lit (0..1): how much of it has lit up so far (the reveal draws it in).
+export function drawSideFork(ctx, L, q, sy, state, o = {}) {
+  const u = L.u, P = forkPts(q.fork), fw = forkW(L), K = roadCols(q.w), locked = state === 'locked', lit = o.lit == null ? 1 : o.lit;
+  const line = (a = 0, b = P.length - 1) => { ctx.beginPath(); for (let k = a; k <= b; k++) { const p = P[k]; if (k === a) ctx.moveTo(p.x, p.y - sy); else ctx.lineTo(p.x, p.y - sy); } };
+  const strokeAll = (a, b) => {
+    line(a, b); ctx.strokeStyle = 'rgba(20,10,0,0.22)'; ctx.lineWidth = fw + 7 * u; ctx.stroke();
+    ctx.strokeStyle = K.edge; ctx.lineWidth = fw + 3 * u; ctx.stroke();
+    ctx.strokeStyle = K.fill; ctx.lineWidth = fw - 2 * u; ctx.stroke();
+  };
+  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const nl = Math.round((P.length - 1) * clamp(lit, 0, 1));
+  if (locked || nl < P.length - 1) { ctx.save(); ctx.globalAlpha *= 0.42; strokeAll(nl, P.length - 1); ctx.restore(); } // faded: shut (or not lit yet)
+  if (!locked && nl > 0) {
+    strokeAll(0, nl);
+    if (state === 'won') { line(0, nl); ctx.strokeStyle = '#f6c454'; ctx.lineWidth = fw * 0.5; ctx.stroke(); ctx.strokeStyle = 'rgba(255,244,190,0.55)'; ctx.lineWidth = fw * 0.15; ctx.stroke(); }
+    else if (K.dash && !/,\s*0\)$/.test(K.dash)) { line(0, nl); ctx.lineCap = 'butt'; ctx.setLineDash([5 * u, 8 * u]); ctx.strokeStyle = K.dash; ctx.lineWidth = 2.4 * u; ctx.stroke(); ctx.setLineDash([]); }
+  }
+  if (!locked && o.pulse != null && o.pulse > 0 && o.pulse < 1) { // the pulse: a soft bright bead with a tail, eased along once
+    const s = ss(o.pulse) * plen(P), tail = 70 * u;
+    for (let k = 0; k < 7; k++) {
+      const pt = along(P, Math.max(0, s - (k * tail) / 7)), a = (1 - k / 7) * Math.sin(Math.PI * clamp(o.pulse * 1.15, 0, 1));
+      const r = fw * (0.9 - k * 0.07), g = ctx.createRadialGradient(pt.x, pt.y - sy, 0, pt.x, pt.y - sy, r);
+      g.addColorStop(0, `rgba(255,250,215,${0.85 * a})`); g.addColorStop(1, 'rgba(255,240,180,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(pt.x, pt.y - sy, r, 0, TAU); ctx.fill();
+    }
+  }
   ctx.restore();
+  if (locked || (o.lockK != null && o.lockK < 1)) { // the padlock where it leaves the road (o.lockK 0..1: it breaks away)
+    const pt = along(q.fork.A, Math.min(q.fork.la * 0.42, L.stopR * 2.1)), k = o.lockK == null ? 0 : clamp(o.lockK, 0, 1);
+    ctx.save(); ctx.globalAlpha *= 1 - ss((k - 0.35) / 0.65);
+    const lift = k * k * 26 * u, sc = 1 + 0.35 * Math.sin(Math.PI * clamp(k * 1.6, 0, 1));
+    ctx.translate(pt.x, pt.y - sy - 3 * u - lift); ctx.rotate(k * 0.9); ctx.scale(sc, sc);
+    ctx.beginPath(); ctx.arc(0, 2 * u, 10.5 * u, 0, TAU); ctx.fillStyle = 'rgba(30,20,10,0.35)'; ctx.fill();
+    padlock(ctx, 0, 0, 6.4 * u);
+    ctx.restore();
+  }
 }
 // the door's picture (stamped once per vault, state and size): a heavy round door, gold rim and bolts, a dark steel band
 // in the world's colour, the vault's own scene in its round window, hinges on one side. Locked: dimmed, a padlock.
@@ -190,7 +302,7 @@ export function drawSideDoor(ctx, L, q, sy, state, o = {}) {
     const a = t * 1.6 + q.w, sx = x + Math.cos(a) * (R + 1 * u), sy2 = y + Math.sin(a) * (R + 1 * u), r = 4.5 * u;
     ctx.beginPath(); ctx.moveTo(sx, sy2 - r); ctx.quadraticCurveTo(sx, sy2, sx + r, sy2); ctx.quadraticCurveTo(sx, sy2, sx, sy2 + r); ctx.quadraticCurveTo(sx, sy2, sx - r, sy2); ctx.quadraticCurveTo(sx, sy2, sx, sy2 - r); ctx.fillStyle = '#fffbe0'; ctx.fill();
   }
-  if (state === 'locked') padlock(ctx, x + R * 0.62, y + R * 0.52, 7.4 * u);
+  // (0.8.18: a shut one's padlock sits on its fork, where it leaves the road: drawSideFork)
   if (state === 'won') { // the stars it earned, on a dark plate under it
     const pw = 52 * u, ph = 16 * u, py = y + R + 3 * u;
     ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - pw / 2, py, pw, ph, ph / 2) : ctx.rect(x - pw / 2, py, pw, ph); ctx.fillStyle = 'rgba(30,16,6,0.9)'; ctx.fill(); ctx.lineWidth = 1.2 * u; ctx.strokeStyle = 'rgba(255,232,170,0.6)'; ctx.stroke();
