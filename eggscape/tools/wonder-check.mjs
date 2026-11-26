@@ -23,7 +23,17 @@ export function play(level, script = level.solve || [], o = {}) {
   };
   const live = () => g.state === 'play' && g.t < (level.time || 60) + 30;
   const settle = (s) => { for (let i = 0; i < s / DT && live(); i++) tick(); };
-  for (const a of script) {
+  // ['down', order (1 inner first / -1 outer first), waitBetween]: the obvious player, every movable ring's first gap
+  // turned straight down the short way, one ring after the other (a plan: every gap down, then HATCH)
+  const expand = (a) => {
+    if (a[0] !== 'down') return [a];
+    const sim = g.sim, rs = sim.rings.filter((r) => r.grabbable && r.gaps.length && !(g.kind === 'twin' && !g.link[r.i])), out = [];
+    if (a[1] < 0) rs.reverse();
+    for (const r of rs) { const d = Math.atan2(Math.sin(-Math.PI / 2 - (r.spec.angle ? deg(r.spec.angle) : 0) - r.gaps[0].a), Math.cos(-Math.PI / 2 - (r.spec.angle ? deg(r.spec.angle) : 0) - r.gaps[0].a)) * 180 / Math.PI; out.push(g.kind === 'plan' ? ['set', r.i, d] : [0, r.i, d, a[2] ?? 1.5]); }
+    if (g.kind === 'plan') out.push(['hatch']); else out.push(['wait', 30]);
+    return out;
+  };
+  for (const a of script.flatMap(expand)) {
     if (!live()) break;
     if (a[0] === 'wait') settle(a[1]);
     else if (a[0] === 'hen') { // ['hen', angle, way (1 ccw / -1 cw / 0 shorter), pace 0..1, waitAfter]: walk her round the rail to an angle
@@ -33,7 +43,24 @@ export function play(level, script = level.solve || [], o = {}) {
       let cmd = H.target, left = d;
       while (Math.abs(left) > 1e-4 && live()) { const st = Math.sign(left) * Math.min(Math.abs(left), pace * H.speed * DT); if (!lags(g.sim, cmd, Math.sign(left))) { cmd += st; left -= st; } g.setHen(cmd); tick(); }
       settle(a[4] ?? 1.5);
-    } else if (a[0] === 'set') g.turn(0, a[1], deg(a[2]));
+    } else if (a[0] === 'henGap') { // ['henGap', ring, way, pace, waitAfter, lead]: she walks to ring's gap and keeps under it while it moves (a ring that turns by itself) until no egg waits inside that ring
+      const H = g.sim.hen, ring = g.sim.rings[a[1]], pace = a[3] || 0.5, lead = deg(a[5] || 0);
+      const want = () => ring.body.getAngle() + ring.gaps[0].a + lead * Math.sign(ring.motor || 1);
+      let cmd = H.target, way = a[2] || 0, n = 0;
+      const inside = () => g.sim.eggs.some((e) => e.alive && !e.saved && g.sim.channelOf(e) <= a[1]);
+      while (live() && inside() && n++ < 40 / DT) {
+        let d = Math.atan2(Math.sin(want() - cmd), Math.cos(want() - cmd));
+        if (way && Math.sign(d) !== way && Math.abs(d) > 0.3) d += way * 2 * Math.PI; else way = 0; // the first approach goes the asked way, then she just keeps up
+        const st = Math.sign(d) * Math.min(Math.abs(d), pace * H.speed * DT);
+        if (!lags(g.sim, cmd, Math.sign(d))) cmd += st;
+        g.setHen(cmd); tick();
+      }
+      settle(a[4] ?? 1.5);
+    } else if (a[0] === 'beat') { // ['beat', vault, period, at]: wait (as a player watching pop thorns) until that vault's beat reaches `at` s
+      const sim = g.sims[a[1]], ph = () => (((sim.t - a[3]) % a[2]) + a[2]) % a[2];
+      for (let n = 0; n < a[2] / DT + 2 && live() && ph() > DT * 1.01; n++) tick();
+    } else if (a[0] === 'greedy') greedy(g, a[1] || 40, live, tick, a[2] || 1);
+    else if (a[0] === 'set') g.turn(0, a[1], deg(a[2]));
     else if (a[0] === 'hatch') { g.hatch(); while (g.phase === 'run' && live()) tick(); if (g.phase === 'over') settle(0.5); }
     else if (a[0] === 'rewind') g.rewind();
     else if (a[0] === 'drop') { // ['drop', vault, ring, eggId, dir]: bring that ring's nearest gap (going dir) to the egg and wait for it to pass (closed loop, like a player watching)
@@ -58,6 +85,48 @@ export function play(level, script = level.solve || [], o = {}) {
   settle(o.tail ?? 6);
   g.log = log;
   return g;
+}
+
+// 0.8.18 the greedy player (mykee: "too easy, too damn easy"): no plan, only reflex. Every moment it takes the egg that is
+// lowest in the vault (inner first; planet: outer first) and swings the nearest gap of the ring under it straight there,
+// the short way, at full speed (twin: vault A first; mama: she walks the short way to that ring's gap; plan: every gap
+// straight down, then HATCH). A side quest is meant to beat this player: it needs an order, a direction or a moment.
+export function greedy(g, secs, live, tick, pace = 1) {
+  const sims = g.sims, kind = g.kind, t0 = g.t;
+  if (kind === 'plan') {
+    for (const r of g.sim.rings) if (r.grabbable && r.gaps.length) { const d = Math.atan2(Math.sin(-Math.PI / 2 - (r.body.getAngle() + r.gaps[0].a)), Math.cos(-Math.PI / 2 - (r.body.getAngle() + r.gaps[0].a))); g.turn(0, r.i, d); }
+    g.hatch(); while (g.phase === 'run' && live()) tick();
+    return;
+  }
+  const pick = (sim) => {
+    const eggs = sim.eggs.filter((e) => e.alive && !e.saved).map((e) => ({ e, ch: sim.channelOf(e) }));
+    eggs.sort((a, b) => (kind === 'planet' ? b.ch - a.ch : a.ch - b.ch));
+    for (const { e, ch } of eggs) { const r = sim.rings[kind === 'planet' ? ch - 1 : ch]; if (r && (kind === 'mama' || r.grabbable)) return { e, r }; }
+    return null;
+  };
+  const gapOff = (r, e) => { // the signed turn that brings r's nearest gap centre under egg e
+    const p = e.body.getPosition(), ea = Math.atan2(p.y, p.x);
+    let best = null;
+    for (const gp of r.gaps) { const d = Math.atan2(Math.sin(ea - (r.body.getAngle() + gp.a)), Math.cos(ea - (r.body.getAngle() + gp.a))); if (best == null || Math.abs(d) < Math.abs(best)) best = d; }
+    return best ?? 0;
+  };
+  while (live() && g.t - t0 < secs) {
+    if (kind === 'mama') {
+      const P = pick(g.sim); if (!P) { tick(); continue; }
+      const H = g.sim.hen, gp = P.r.gaps[0], want = P.r.body.getAngle() + gp.a, d = Math.atan2(Math.sin(want - H.target), Math.cos(want - H.target));
+      const st = Math.sign(d) * Math.min(Math.abs(d), pace * 0.5 * H.speed * DT);
+      if (!lags(g.sim, H.target, Math.sign(d))) g.setHen(H.target + st);
+      tick(); continue;
+    }
+    let moved = false;
+    for (let si = 0; si < sims.length && !moved; si++) {
+      const P = pick(sims[si]); if (!P) continue;
+      const d = gapOff(P.r, P.e), rate = sims[si].maxOmega(P.r) * pace;
+      if (Math.abs(d) > 0.004) g.turn(si, P.r.i, Math.sign(d) * Math.min(Math.abs(d), rate * DT));
+      moved = true;
+    }
+    tick();
+  }
 }
 
 // mama, like a player watching: she waits for her eggs when they lag more than LAG behind her (closed loop)
@@ -115,6 +184,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (V) console.log('   ' + g.log.join(' | '));
     if (g.kind === 'plan') { const n = g.log.filter((x) => x.includes('portal')).length; console.log(`        chain: run ${g.runT.toFixed(1)}s, ${n} portal trips`); ok = ok && n >= 2 && g.runT >= 6; }
     (L.fails || []).forEach((f, k) => { const h = play(L, f, { tail: 20 }), bad = h.state === 'won'; ok = ok && !bad; console.log(`        must-fail #${k + 1}: ${bad ? 'WON (BAD)' : h.state + (h.over ? ':' + h.over : '')} saved=${h.stats().saved}`); });
+    // 0.8.18 side quests are meant to be cracked, not stumbled through: the obvious player (every gap straight down, inner or
+    // outer first) and the greedy reflex player (at three paces) must not win any vault
+    const easy = [...(['mama', 'planet'].includes(L.wonder.kind) ? [] : [[['down', 1]], [['down', -1]]]), ...[1, 0.6, 0.35].map((p) => [['greedy', (L.time || 40) + 5, p]])];
+    const easyOut = easy.map((sc) => { const h = play(L, sc, { tail: 4 }); ok = ok && h.state !== 'won'; return `${sc[0][0]}${sc[0][1] === 1 || sc[0][1] === -1 ? (sc[0][1] > 0 ? '+' : '-') : sc[0][2]}:${h.state === 'won' ? 'WON (BAD)' : h.stats().saved + '/' + h.stats().total}`; });
+    console.log(`        easy players: ${easyOut.join(' ')}`);
     let crashes = 0, probs = [], wins = 0;
     for (let k = 0; k < N; k++) {
       try { const r = soak(L, 1000 + k * 77); if (r.problem) probs.push(r.problem); if (r.state === 'won') wins++; } catch (e) { crashes++; probs.push(String(e && e.stack || e).split('\n').slice(0, 3).join(' / ')); }

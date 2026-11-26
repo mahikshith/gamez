@@ -298,7 +298,12 @@ export function drawRoadDress(ctx, L, sy, vt, vb, t, bg, calm) {
   const pt = (y, side) => { const d = (L.pathX(y + 1) - L.pathX(y - 1)) / 2, n = Math.hypot(1, d); return { x: L.pathX(y) + (side * off) / n, y: y - sy - (side * off * d) / n }; };
   ctx.save(); ctx.lineCap = 'round';
   try {
-    for (let y = a; y + gap <= b; y += gap) {
+    // 0.8.18 (mykee: "way too many flags on the pathway"): no longer the whole road. One short garland of two spans
+    // where each world begins (just above its sign), so it reads as a welcome, not as clutter along every step.
+    const spans = [];
+    for (let w = 0; w < L.nw; w++) { const y0 = L.bandTop(w) + L.BH * 0.9 - gap * 2; spans.push(y0, y0 + gap); }
+    for (const y of spans) {
+      if (y + gap < a || y > b || y < yEnd || y + gap > yStart + gap) continue;
       const k = Math.round(y / gap), side = 1, p = pt(y, side), q = pt(y + gap, side), sag = 12 * u;
       const at = (v) => ({ x: p.x + (q.x - p.x) * v, y: p.y + (q.y - p.y) * v + Math.sin(v * Math.PI) * sag });
       // post, then the sagging line

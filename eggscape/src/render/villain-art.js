@@ -13,7 +13,7 @@ import { drawSnake } from './snake.js';
 import { drawThief, thiefPose, drawThiefEmblem } from './thieves.js';
 import { drawOctopus } from './octopus.js';
 import { drawFish } from './sea.js';
-import { drawFrog } from './frog.js';
+import { drawFrog, frogPortrait } from './frog.js';
 import { drawEagle } from './v3art.js';
 import { drawSalamander } from './salamander.js';
 import { drawHermit, drawPuffer, drawJelly } from './reef.js';
@@ -73,7 +73,7 @@ const ART = {
     const L = d * 0.3;
     [[-0.2, -0.16, 0], [0.16, -0.02, 1.3], [-0.12, 0.2, 2.1]].forEach(([fx, fy, ph]) => drawFish(ctx, x + fx * d + Math.sin(t * 1.3 + ph) * d * 0.03, y + fy * d, L, 0, t + ph, { flip: 1 }));
   },
-  frog(ctx, x, y, d, t) { drawFrog(ctx, x, y + d * 0.3, d * 0.8, t, { look: { x: 0.4, y: 0.1 }, face: 1 }); },
+  frog(ctx, x, y, d, t) { drawFrog(ctx, x - d * 0.04, y + d * 0.3, d * 0.8, t, frogPortrait(t)); }, // 0.8.18: the lock-on, a lip-lick, the egg in its cheeks, ptoo
   penguin(ctx, x, y, d, t) { drawPenguin(ctx, x, y + d * 0.4, d * 0.66, t, penguinPose('idle', t), { face: 1 }); }, // 0.8.17 pip
   monkey(ctx, x, y, d, t) { drawMonkey(ctx, x - d * 0.04, y + d * 0.42, d * 0.8, t, monkeyPose('laugh', t), { face: 1 }); }, // 0.8.17 coco
   eagle(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.08, d * 0.54, t, { w: { hover: 1 }, phase: t * 8.5, face: 1 }); },

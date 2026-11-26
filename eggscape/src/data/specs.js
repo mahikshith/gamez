@@ -122,10 +122,10 @@ export const SPECS = [
     tip: 'The chick is bait: while the snake chases it, move the others.',
     rings: [{ mat: 'wood', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'wood', gaps: 2, thorns: 2, size: [2, 3], blunt: 2 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], gear: true }, { mat: 'wood', gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 9, gid: 8, world: 2, theme: 'mushroom', name: 'Woodcutter Glade', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5,
-    nest: { w: 2.8 }, bonus: { kind: 'time' }, frog: { ch: 2, a: -120, delay: 6, every: 7 }, // 2026-11-20: the frog instead of a fourth snake level in a row
+    nest: { w: 2.8 }, bonus: { kind: 'time' }, frog: { ch: 2, a: -120, delay: 6, every: 7, sn: 1 }, // 0.8.18: one snatch on its first level (room to learn it); 2026-11-20: the frog instead of a fourth snake level in a row
     orbs: [{ type: 'fire_red', ch: 1 }, { type: 'rockskin', ch: 3 }],
-    intro: { title: 'The frog', line: 'It hops from ring to ring, plugs gaps and licks up orbs. Wooden walls block eggs: fire burns them.' },
-    tip: 'Grab the orbs before the frog licks them up. A flaming egg scares it off.',
+    intro: { title: 'The frog', line: 'Its tongue snatches eggs! Turn a wall into it: bonk. Wooden walls block eggs: fire burns them.' },
+    tip: 'Turn a wall into its tongue: bonk! A flaming egg scares the frog off.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 2, gapX: [2], thorns: 1, size: [2, 3], barriers: 1 }, { gaps: 2, thorns: 1, size: [2, 3], barriers: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1, gear: true }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   // 0.8.17 coco: Coco the monkey (src/sim/coco.js) rides ring 1 over channel 2, snatches eggs with his tail and tosses banana peels; a hard flick throws him off
   { id: 10, world: 2, theme: 'jungle', name: 'Monkey Business', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5,
@@ -461,7 +461,7 @@ export const SPECS = [
   { id: 52, world: 9, theme: 'bayou', name: 'Froggy Bottom', eggs: 3, target: 2, spacing: 1.1, material: 'wood', minMoves: 5,
     nest: { w: 2.8 }, bonus: { kind: 'turns' }, frog: { ch: 2, a: -100, delay: 10, every: 8 }, turtle: { ch: 3, a: -80, delay: 6 }, mosquito: { ch: 1, a: 40, delay: 9 },
     orbs: [{ type: 'pepper', ch: 1 }, { type: 'decoy', ch: 2 }, { type: 'fire_red', ch: 3 }],
-    tip: 'The frog licks up orbs: grab the pepper first. Drop an egg on the turtle to flip it.',
+    tip: 'Drop an egg on the frog: it spits out what it took. Drop one on the turtle to flip it.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, vine: 1, thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], gear: true }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 53, gid: 44, world: 9, theme: 'bayou', name: 'Decoy Delta', eggs: 3, target: 2, spacing: 1.15, material: 'wood', minMoves: 5, eggKinds: ['duck'],
     weather: 'current', weatherOpts: { strength: 0.5 },

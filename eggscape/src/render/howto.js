@@ -47,7 +47,7 @@ const SHOW = {
   'boss:ratking': P('turn', 'Trap him with a ring turn, then hit him', { fx: 'bonk' }),
   octopus: P('tap', 'Zap it with a chick: it lets the egg go', { power: 'thunder', fx: 'zap' }),
   fish: P('fish', 'The school carries eggs along, even to a gap'),
-  frog: P('frog', 'It plugs gaps. A flaming egg scares it off'),
+  frog: P('frog', 'Turn its ring: the tongue misses'),
   eagle: P('turn', 'Turn a wall over the egg: the eagle bonks', { fx: 'bonk' }),
   'boss:eagle': P('turn', 'Turn a wall over the egg it dives at', { fx: 'bonk' }),
   salamander: P('turn', 'Turn its ring: it rides away from the egg', { fx: 'bonk' }),
@@ -116,7 +116,7 @@ const HARM = {
   salamander: ['chomp', 'EATEN!'], frostsal: ['frostbite', 'FROZEN!'], chameleon: ['tongue', 'GULP!'], spike: ['bump', 'CRACK!'], // 0.8.14: the salamanders bite, the thorn-back's ram cracks
 };
 export const THREAT = {
-  snake: 'Eats eggs', weasel: 'Steals eggs', rats: 'Roll eggs away', octopus: 'Grabs eggs', fish: 'Sweep eggs', frog: 'Plugs gaps',
+  snake: 'Eats eggs', weasel: 'Steals eggs', rats: 'Roll eggs away', octopus: 'Grabs eggs', fish: 'Sweep eggs', frog: 'Snatches eggs',
   eagle: 'Snatches eggs', salamander: 'Eats eggs', frostsal: 'Bites, freezes', faceoff: 'They fight', spike: 'Rams, cracks', chameleon: 'Steals orbs', hermit: 'Carries eggs',
   puffer: 'Plugs a gap', jelly: 'Stings eggs', gator: 'Bites eggs', turtle: 'Clamps eggs', mosquito: 'Lift eggs up', spider: 'Webs gaps',
   beetle: 'Pushes eggs', jack: 'Flings eggs', icicles: 'Fall on eggs', lava: 'Rocks fall', lightning: 'Zaps eggs', gusts: 'Blow eggs',
@@ -482,21 +482,29 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   } else if (m === 'frog' || m === 'fish') { // 2026-11-20: the frog and the fish school on their own game rigs
     vAlpha = 0; toy = { deco: { thorns: 0 }, look: null };
     const k = kW;
-    if (m === 'frog') { // it hops into the gap and plugs it; a flaming egg scares it off, the gap is free again
-      const fA0 = -0.62, hop = seg(T, 0.8, 1.25), esc = seg(T, 1.9, 2.5);
-      { const u = ease(seg(T, 1.0, 1.55)), p0 = at(-0.3, eggS * 1.9), p1 = at(0, eggS * 0.55); if (T < 1.6) toy.orb = { type: 'fire_red', x: p0.x + (p1.x - p0.x) * u, y: p0.y + (p1.y - p0.y) * u, a: 1 - seg(T, 1.5, 1.6) }; if (T > 1.55 && T < 2.0) toy.burst = { x: p1.x, y: p1.y, k: seg(T, 1.55, 2.0), col: '#ff8a3a' }; }
-      if (T > 1.55) toy.look = { fire: 1 };
-      const d = ease(seg(T, 2.55, 3.1)); th = -gap0 * d; hand = dragHand(at, T, 2.45, 3.1, 0.5, 0.5 - gap0);
-      eD = seg(T, 3.15, 3.55); done = seg(T, 3.55, 3.9);
+    if (m === 'frog') { // 0.8.18: it locks on the egg, licks its lips, a dotted line shows where its tongue will go; the finger
+      // turns its ring: it rides away on it while the gap comes under the egg, the tongue falls short and slaps the rim: BONK,
+      // dizzy stars, and the egg drops home
+      const fA0 = -0.36, d = ease(seg(T, 1.25, 2.0)); th = -gap0 * d; hand = dragHand(at, T, 1.15, 2.0, fA0 + 0.08, fA0 + 0.08 - gap0);
+      eD = seg(T, 2.05, 2.45); done = seg(T, 2.5, 2.85);
+      const lock = seg(T, 0.25, 0.6), shot = seg(T, 1.95, 2.15), back = seg(T, 2.15, 2.3), dizzy = seg(T, 2.3, 2.45) * (1 - seg(T, 3.4, 3.7));
       toy.under = () => {
-        const sPx = FROG.w * FROG_ART * k, op = { face: 1, look: { x: 0.7, y: 0.1 }, id: 3 };
-        let phi = fA0, lift = 0, al = 1;
-        if (T < 0.8) { op.crouch = seg(T, 0.35, 0.8); op.puff = Math.sin(seg(T, 0.4, 0.8) * Math.PI); }
-        else if (T < 1.25) { phi = fA0 + (gap0 - fA0) * ease(hop); lift = Math.sin(hop * Math.PI) * k * 0.8; op.stretch = Math.sin(hop * Math.PI); }
-        else if (T < 1.9) { phi = gap0; lift = -band * 0.35; op.face = -1; op.plug = 1; op.squash = 0.5 * (1 - seg(T, 1.25, 1.45)); op.scared = seg(T, 1.6, 1.75); op.look = { x: 0.8, y: 0.3 }; if (T > 1.75) op.shake = 2; }
-        else { phi = gap0 + 0.7 * esc; lift = Math.sin(esc * Math.PI * 0.7) * k * 1.8 + esc * k * 0.6; op.stretch = Math.min(1, esc * 3); op.scared = 1; al = 1 - seg(T, 2.25, 2.5); }
-        const p = at(phi, lift);
-        ctx.save(); ctx.globalAlpha *= al; ctx.translate(p.x, p.y); ctx.rotate(-phi + (T > 1.9 ? -0.5 * Math.sin(esc * Math.PI) : 0)); drawFrog(ctx, 0, 0, sPx, t, op); ctx.restore();
+        const sPx = FROG.w * FROG_ART * k, um = 100 / (FROG.w * FROG_ART), phi = fA0 + th, p = at(phi, 0);
+        const op = { face: 1, id: 3, look: { x: 0.9, y: 0.25 }, greed: T < 1.95 ? lock : 0, lick: T > 0.6 && T < 1.9 ? ((T - 0.6) / 1.3) % 1 : -1, puff: 0.6 * lock * (T < 1.95 ? 1 : 0) };
+        if (T >= 1.95 && T < 2.3) { // the shot: out to where the egg was, short of it, then back into its face
+          const reach = 0.95 * um * (T < 2.15 ? ease(shot) : 1 - ease(back)), e0 = at(0, eggS * 0.5);
+          const dx = e0.x - p.x, dy = e0.y - p.y, a = phi, lx = (dx * Math.cos(a) + dy * Math.sin(a)) / (sPx / 100), ly = (-dx * Math.sin(a) + dy * Math.cos(a)) / (sPx / 100), n = Math.hypot(lx, ly) || 1;
+          op.tongue = { x: 30 + (lx / n) * reach, y: -22 + (ly / n) * reach }; op.tout = T < 2.15 ? 1 : 0; op.mouth = 1;
+          if (T > 2.12) { op.bonk = 1; op.lean = -0.3; }
+        }
+        if (dizzy > 0) op.stun = dizzy;
+        if (T < 1.95 && lock > 0) { // the line its tongue will take
+          const e0 = at(0, eggS * 0.5), m0 = { x: p.x + Math.cos(phi) * sPx * 0.42 + Math.sin(phi) * sPx * 0.3, y: p.y - Math.sin(phi) * sPx * 0.42 - Math.cos(phi) * sPx * 0.25 };
+          ctx.save(); ctx.globalAlpha *= lock * (1 - seg(T, 1.6, 1.95)); ctx.setLineDash([2, eggS * 0.18]); ctx.lineCap = 'round'; ctx.lineWidth = Math.max(2.5, eggS * 0.07); ctx.strokeStyle = '#ff7a9c';
+          ctx.beginPath(); ctx.moveTo(m0.x, m0.y); ctx.lineTo(e0.x, e0.y); ctx.stroke(); ctx.restore();
+        }
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(-phi); drawFrog(ctx, 0, 0, sPx, t, op); ctx.restore();
+        if (T > 2.12 && T < 2.6 && !calm) { const q = seg(T, 2.12, 2.6), b = at(phi + 0.2, eggS * 0.45); ctx.save(); ctx.globalAlpha *= 1 - q; ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = Math.max(2, eggS * 0.06); for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; ctx.beginPath(); ctx.moveTo(b.x + Math.cos(a) * eggS * 0.15 * (1 + q), b.y + Math.sin(a) * eggS * 0.15 * (1 + q)); ctx.lineTo(b.x + Math.cos(a) * eggS * 0.35 * (1 + q), b.y + Math.sin(a) * eggS * 0.35 * (1 + q)); ctx.stroke(); } ctx.restore(); }
       };
     } else { // the school swims along the channel and carries the egg to the gap
       const sp = 0.62, ph = (TT) => -1.2 + sp * (TT - 0.2), tDrop = 0.2 + (gap0 - 0.03 + 1.2) / sp;
