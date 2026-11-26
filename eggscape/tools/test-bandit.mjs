@@ -184,6 +184,62 @@ for (const mode of ['easy', 'medium', 'hard']) {
   ok(sim2.bandWeaselT().ph === 'wait', 'without the whistle the weasel never comes out');
 }
 
+// ---------------------------------------------------------------- 0.8.18 the stand-off: the whistled weasel comes for its share
+{
+  const { DUEL } = await import('../src/sim/bandit.js');
+  const egg0 = (sim) => sim.eggs.map((e) => `${e.id}:${e.hc}:${e.alive}:${e.cracks}`).join(' ');
+  // he sits on his first perch; the weasel is whistled up with a short hunt left; bag = an egg in his sack first
+  const duelSim = (mode, bag) => {
+    const sim = setup({ mode }), B = sim.band;
+    until(sim, 'sit');
+    if (bag) { const e = sim.eggs[0]; e.hc = 3; B.sack.push(e.id); e.body.setActive(false); }
+    B.whistled = 1; sim.bandCall(B); B.wz = 1.0;
+    return sim;
+  };
+  const duelRun = (sim, secs = 40) => {
+    const L = [];
+    run(sim, secs, (s, ev) => { if (/^bandDuel/.test(ev.type)) L.push({ t: s.t, type: ev.type, ph: ev.ph, eggs: egg0(s), W: s.bandWeaselT().ph }); }, (s) => s.band.dueled && !s.band.duel && s.bandWeaselT().ph === 'hide');
+    return L;
+  };
+  for (const mode of ['easy', 'medium', 'hard']) {
+    const sim = duelSim(mode, false), B = sim.band, W = sim.bandWeaselT(), eggsAt = egg0(sim);
+    const evs = [], L = [];
+    run(sim, 40, (s, ev) => { evs.push({ t: s.t, type: ev.type }); if (/^bandDuel/.test(ev.type)) L.push({ t: s.t, type: ev.type, ph: ev.ph }); }, (s) => s.band.dueled && !s.band.duel && W.ph === 'hide');
+    const at = (ph) => (L.find((e) => e.ph === ph) || {}).t, win = L.find((e) => e.type === 'bandDuelWin');
+    const order = ['come', 'freeze', 'stare', 'circle', 'fight'].map(at);
+    ok(order.every((x) => x != null) && order.every((x, i) => !i || x > order[i - 1]) && win && win.t > order[4], `${mode}: the stand-off plays out: it comes, they freeze, stare, circle, scuffle (${order.map((x) => x && x.toFixed(1)).join(', ')}; ${win ? win.t.toFixed(1) : '-'} s)`);
+    ok(win && Math.abs(win.t - order[4] - DUEL.fight) < 0.05 && Math.abs(order[2] - order[1] - DUEL.freeze) < 0.05, `${mode}: the scuffle lasts ${win ? (win.t - order[4]).toFixed(2) : '-'} s (DUEL.fight ${DUEL.fight})`);
+    const mid = evs.filter((e) => e.t >= order[0] && e.t <= (win ? win.t : 1e9));
+    ok(!mid.some((e) => /^(bandReach|bandGrab|bandCrank|thiefGrab|thiefPounce|thiefCarry)/.test(e.type)) && egg0(sim) === eggsAt, `${mode}: neither bothers an egg while it lasts`);
+    ok(win && W.ph === 'hide' && W.t > 1e8 && (B.ph === 'sit' || B.ph === 'spit' || B.ph === 'crank'), `${mode}: his sack empty, he wins: the weasel slinks home for good (${W.ph}) and he goes back to work (${B.ph})`);
+  }
+  { // the slink and the dust, mid-scene
+    const sim = duelSim('medium', false), B = sim.band, W = sim.bandWeaselT();
+    run(sim, 40, null, (s) => s.band.ph === 'dust');
+    ok(B.ph === 'dust' && W.ph === 'home' && W.k === 'slink' && B.duel && B.duel.win === 'band', 'he dusts his paws while the weasel slinks off dizzy');
+  }
+  { // an egg in his sack: the weasel grabs the sack, it rips, the egg rolls free into the vault
+    const sim = duelSim('medium', true), B = sim.band, W = sim.bandWeaselT(), e = sim.eggs[0];
+    const L = []; let spill = null;
+    run(sim, 40, (s, ev) => { if (ev.type === 'bandDuelRip') L.push(ev); if (ev.type === 'bandSpill' && !spill) spill = s.t; }, (s) => spill != null && s.t > spill + 0.5);
+    ok(L.length === 1 && L[0].n === 1 && B.ph !== 'duel' && W.k !== 'slink', `with an egg in his sack the sack rips (${L.length ? L[0].n : 0} egg rolls free) and the weasel bolts`);
+    ok(spill != null && e.alive && e.cracks === 0 && !e.hc && sim.channelOf(e) === sim.rings.length - 1, 'the egg rolls back onto the outer floor, uncracked');
+    run(sim, 20, null, (s) => W.ph === 'hide');
+    ok(W.ph === 'hide' && W.t > 1e8, 'and the weasel stays home');
+  }
+  { // rewind and the planner: a snapshot mid-scuffle carries on exactly
+    const a = duelSim('medium', true);
+    run(a, 40, null, (s) => s.band.duel && s.band.duel.ph === 'fight' && s.band.duel.t > DUEL.freeze + DUEL.stare + DUEL.circle + 1);
+    const b = Sim.fromState(L6, a.fullState());
+    run(a, 6); run(b, 6);
+    const key = (s) => JSON.stringify([s.band.ph, s.band.duel, s.band.sack, s.band.spill.length, s.bandWeaselT().ph, +s.bandWeaselT().a.toFixed(6), s.eggs.map((e) => e.hc)]);
+    ok(key(a) === key(b), 'a snapshot mid-scuffle carries on exactly (rewind, the planner)');
+    const c = duelSim('medium', true), d = duelSim('medium', true);
+    run(c, 25); run(d, 25);
+    ok(key(c) === key(d), 'the stand-off is deterministic');
+  }
+}
+
 // ---------------------------------------------------------------- the other counters
 // his paw on the egg: returns the sim mid-grab (the egg in his paw)
 function grabbing(o = {}) { const sim = setup(o); until(sim, 'grab'); run(sim, 0.2); return sim; }
@@ -356,7 +412,8 @@ function cranking(o = {}) { const sim = setup(o); until(sim, 'crank'); run(sim, 
   ok(KL.length >= 1 && KL.length <= 5 && new Set(worlds).size === worlds.length && KL.every((L) => !banned.has(L.id) && !L.water && !L.shape && !L.raccoon), `the kits play in ${KL.map((L) => 'L' + L.id).join(', ')}: at most five, one per world, never L1-6, the frog's, Volcano, underwater or shaped vaults`);
   ok(KL.every((L) => costumeOf(L.theme) !== 'bow') && new Set(KL.map((L) => costumeOf(L.theme))).size === KL.length, `each wears its world's costume (${KL.map((L) => costumeOf(L.theme)).join(', ')})`);
   const KLV = KL.find((L) => L.id === 19) || KL[0];
-  const lvK = { ...KLV, icicles: undefined, kits: { ...KLV.kits, delay: 1 } }; // (no falling ice: the kits alone)
+  const lvK = { ...KLV, icicles: undefined, kits: { ...KLV.kits, n: undefined, delay: 1 } }; // (no falling ice: the kits alone; the mode's own number of kits)
+  ok(KL.every((L) => new Sim(L, { mode: 'medium' }).kit.n === (L.kits.n || KITS.n.medium)), `a level may set its number of kits (${KL.map((L) => 'L' + L.id + ' ' + new Sim(L, { mode: 'medium' }).kit.n).join(', ')})`);
   // the outer ring turned so no gap is near the bottom; egg 0 resting on the outer floor at angle egg (deg)
   const kset = ({ mode = 'medium', egg = -100, gap = 90, lv = lvK } = {}) => {
     const sim = new Sim(lv, { mode }), outer = sim.rings[sim.rings.length - 1];

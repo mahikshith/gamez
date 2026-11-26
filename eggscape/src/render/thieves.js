@@ -550,7 +550,16 @@ function lookOf(T) {
     case 'stalk': st = 'stalk'; break;
     case 'carry': st = 'carry'; break;
     case 'inner': st = T.eid ? 'carry' : 'stalk'; o.eye = 'wide'; o.sweat = 0.5; break;
-    case 'home': st = T.ai === 'roll' || T.k === 'scare' ? 'scared' : 'prowl'; o.eye = 'wide'; break;
+    case 'home': st = T.ai === 'roll' || T.k === 'scare' ? 'scared' : 'prowl'; o.eye = 'wide';
+      if (T.k === 'slink') { st = 'defeated'; o.eye = 'spiral'; o.stars = 2; o.earFlat = 1; } // 0.8.18 the stand-off lost: dizzy, an ear flat, slinking home
+      break;
+    // 0.8.18 the stand-off with Bandit (sim/bandit.js DUEL): it scurries up for its share, stops dead, glares, sidles; inside
+    // the dust cloud it is not drawn
+    case 'duel':
+      if (T.k === 'come') { st = 'prowl'; o.eye = 'lock'; }
+      else if (T.k === 'freeze') { st = 'crouch'; uu = 0.12; o.eye = 'wide'; o.bristle = 0.6; }
+      else { st = 'stalk'; o.eye = 'angry'; o.bristle = 0.4; }
+      break;
     case 'toss': st = 'toss'; break;
     case 'crouch': st = 'crouch'; o.eye = 'lock'; break;
     case 'brace': st = 'brace'; o.eye = 'lock'; break;
@@ -852,7 +861,7 @@ function crown(ctx, x, y, s, lw) {
 export function drawThieves(ctx, sim, t, k, calm = false) {
   CALM_ON = !!calm; weaselCalm(CALM_ON);
   for (const T of sim.thieves || []) {
-    if (T.ph === 'wait' || T.ph === 'gone' || T.ph === 'hide') continue;
+    if (T.ph === 'wait' || T.ph === 'gone' || T.ph === 'hide' || (T.ph === 'duel' && T.k === 'fight')) continue; // 0.8.18: in the stand-off's dust cloud
     if (denMove(sim, T, t)?.z != null) continue; // inside its stump: drawn in the doorway (drawThiefDens 'in')
     if (T.ph === 'crouch') telegraph(ctx, sim, T, t, k);
     if (T.ph === 'brace') rollMark(ctx, sim, T, t, k);
@@ -900,7 +909,7 @@ function drawOne(ctx, sim, T, t, k, head) {
       if ((L.st === 'prowl' || L.st === 'stalk') && t - (D.carT ?? -9) < 0.12 && !(dm && dm.walk)) L.st = 'idle';
       pose = thiefBlend('t' + T.id, thiefPose(T.kind, L.st, t, L.u, odo), t, T.ph === 'leap' || T.ph === 'trapped' || T.ph === 'sqThrow' || T.ph === 'tumble' ? 22 : 9);
       if (T.cuff > 0) pose = cuffPose(pose, T);
-      if (T.kind === 'weasel') { pose = voiceBeats(T, pose, L); if (W) pose = weaselSprings(pose, W); }
+      if (T.kind === 'weasel') { pose = voiceBeats(T, pose, L); if (W) pose = weaselSprings(pose, W); if (L.o.earFlat) pose = { ...pose, ear: 1, tail: -0.2, tc: -0.4 }; } // 0.8.18: the stand-off lost, ears flat, tail down
       D.pose = { ...pose };
     }
     if (D.fz > 0 && !frozen) D.thawT = t;
