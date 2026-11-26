@@ -522,7 +522,13 @@ const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }
   sideWin: (key, stars) => { const before = save.wallet.coins, r = SQ.sideWin(save, key, stars); save.wallet = E.addCoins(save.wallet, r.coins); ledger('win'); persist(); purse.hold(before); return { ...r, before }; },
   sideCoins: (key) => SQ.sideCoins(save, key), sideStars: () => ({ have: SQ.sideTotal(save), max: SQ.SIDE_MAX }), drawCoin: (c, x, y, r, t) => drawCoin(c, x, y, r, t),
   coinsFly: (P, at) => { purse.gain({ from: P.before, src: at }); },
-  leave: (side) => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); if (side) { G.world = side.w; G.sideFocus = side.w; G.mapTravel = null; setScreen('levels'); } else setScreen('extras'); } });
+  leave: (side) => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); if (side) { G.world = side.w; G.sideFocus = side.w; G.mapTravel = null; setScreen('levels'); } else setScreen('extras'); },
+  // 0.8.17 polish: a side quest's card, pause, win and fail pages are laid out with the road's own page kit (the win and
+  // fail pages' full page and side stage, her stage, the art stage, the pause tiles, the purse), never a copy of it
+  kit: { head: () => CARD_HEAD, page: (title, build, o = {}) => { const hb = G.hudBottom; G.hudBottom = ui.A.y; try { return stackCard(title, build, o); } finally { G.hudBottom = hb; } },
+    side: () => cardSide(), stage: (sd, card) => { const hb = G.hudBottom; G.hudBottom = ui.A.y; try { return sideStage(sd, card); } finally { G.hudBottom = hb; } },
+    henStage: (b, s, win) => henStage(b, s, win), artStage: (x, y, w, h, s, d) => artStage(x, y, w, h, s, d), tiles: (items, s, cols) => pauseTiles(items, s, cols),
+    sunburst: (cx, cy, R, col, n) => sunburst(cx, cy, R, col, n), feathers: (a) => winFeathers(a), dim: (a) => dim(a), purse: () => purse } });
 
 function themeFor(level) {
   return THEMES.find((t) => t.id === level.theme) || THEMES[(level.id - 1) % THEMES.length];
@@ -3438,7 +3444,7 @@ function pacerStopMark(id, x, y, r, t, calm) {
     const sx = x + side * R * 0.95 - (side < 0 ? tw : 0), sy = y - R * 0.75, p = calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3.2 + id), rr = (9 + 2 * p) * u;
     ctx.save(); ctx.globalAlpha = 0.35 + 0.35 * p; ctx.beginPath(); ctx.arc(sx, sy, rr * 1.9, 0, 7); ctx.fillStyle = '#fff3a0'; ctx.fill(); ctx.restore();
     drawStar(ctx, sx, sy, rr, true);
-    ui.text('+1', sx + rr + 3 * u, sy + 1 * u, { size: 13 * u, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'map:plus' + id, noRecord: sy - 12 * u < levelPageTop() || sy + 12 * u > ui.A.y1 }); // (half under the header: not a thing to read)
+    ui.text('+1', sx + rr + 3 * u, sy + 1 * u, { size: 13 * u, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'map:plus' + id, noRecord: sy - 12 * u < levelPageTop() || sy + 12 * u > (G.mapView ? G.mapView.vb : ui.A.y1) }); // (half under the header or the PLAY bar: not a thing to read)
   }
 }
 // "Stuck? Skip this one" (the Pacer, after the third loss in a row): over the fail page before its buttons, the hen
@@ -3456,11 +3462,11 @@ function drawStuckAsk() {
   const cx = ui.A.cx, cy = ui.A.cy, sc = 0.55 + 0.45 * e;
   ctx.translate(cx, cy + (1 - e) * 90 * ui.u); ctx.scale(sc, sc); ctx.translate(-cx, -cy);
   const portrait = ui.A.h > ui.A.w * 1.15;
-  stackCard('Stuck?', (s) => { const hh = portrait ? clamp((ui.A.h - 40 * ui.u) / s - 305, 128, 320) : 176; return [ // her stage takes the room a tall phone gives (no blank paper); on its side she stands left of the buttons
+  stackCard('Stuck?', (s) => { const hh = portrait ? clamp((ui.A.y1 - Math.max(G.hudBottom, ui.A.y) - 30 * ui.u) / s - 248, 128, 560) : 176; return [ // (0.8.17 polish: the stage fills to the buttons, no gap left over) // her stage takes the room a tall phone gives (no blank paper); on its side she stands left of the buttons
     { h: hh * s, gap: portrait ? 4 * s : 0, draw: (x, y, w) => {
       const aw = Math.min(w, Math.max(190, hh * 1.3) * s);
       ui.well(x + (w - aw) / 2, y, aw, hh * s, { s, a: '#d9e8ff', b: '#eef5ff' });
-      drawHenAnim(ctx, 'worried', x + w / 2, y + hh / 2 * s, hh * 0.86 * s, G.t, { key: 'stuck', face: 1, calm: save.calm, shadow: 0 });
+      drawHenAnim(ctx, 'worried', x + w / 2, y + hh / 2 * s, Math.min(hh * 0.78 * s, aw * 0.86), G.t, { key: 'stuck', face: 1, calm: save.calm, shadow: 0 });
       ui.record({ x: x + (w - aw) / 2, y, w: aw, h: hh * s }, 'stuck:hen');
     } },
     { ...lineBlock('Skip this one', 21 * s, { color: ui.C.ink, tag: 'stuck:line', gap: portrait ? 10 * s : 0 }), right: true },
@@ -7396,7 +7402,7 @@ function tabMark(x, y, r) {
 // the ring speed strip (levels 2 to 5): ringSpeedStrip below, by the Settings page
 // its height, measured once per level by drawing it where nothing shows (it may record buttons: those are taken back)
 function ringStripH(x, w, s) {
-  const key = (G.level && G.level.id) + ':' + G.li + ':' + Math.round(w) + ':' + s.toFixed(3);
+  const key = (G.level && G.level.id) + ':' + G.li + ':' + Math.round(w) + ':' + s.toFixed(3) + ':' + rsStripH(); // (0.8.17 polish: a short screen's strip grows its line after the first change; measured again then, PLAY stays clear)
   if (G.rsMeas && G.rsMeas.key === key) return G.rsMeas.h;
   const r0 = ui.rects.length, b0 = ui.buttons.length;
   ctx.save(); ctx.globalAlpha = 0; let h = 0;
@@ -9780,6 +9786,10 @@ function drawLevels() {
     let x0 = x + bx.x0, x1 = x + bx.x1, y0 = y + bx.y0, y1 = y + bx.y1;
     if (x1 - x0 < 48) { x0 = x - 24; x1 = x + 24; } // a touch box of at least 48 px each way
     if (y1 - y0 < 48) { const m2 = (y0 + y1) / 2; y0 = m2 - 24; y1 = m2 + 24; }
+    for (const ob of ui.buttons) { // (0.8.17 polish: two stops close on the road, a tablet's map: the later one's box gives way, so one tap is one level)
+      if (!/^lv:/.test(ob.id) || x1 <= ob.x || x0 >= ob.x + ob.w || y1 <= ob.y || y0 >= ob.y + ob.h) continue;
+      if ((y0 + y1) / 2 < ob.y + ob.h / 2) y1 = Math.min(y1, ob.y - 1); else y0 = Math.max(y0, ob.y + ob.h + 1);
+    }
     let tb = ctaOn && wide && x1 > ctaX - 6 * u ? Math.min(tapBot, ctaY - 6 * u) : tapBot;
     if (x1 > wmX - 6 * u && y1 > wmY - 6 * u) tb = Math.min(tb, wmY - 6 * u);
     let p = 0;
@@ -10797,7 +10807,7 @@ function drawSetSub() {
     if (down && q > SB.q) audio.play('ring_tick', { pitch: 0.9 + q * 0.09 });
     SB.q = q;
     if (SB.k >= 1) { ui.pressedId = null; G.pressPointer = null; doReset(); return; }
-    const avail = (land ? A.y1 - 8 * s : A.y1 - pad - 72 * s) - (P.bottom + 8 * s), hd = Math.min(land ? avail * 0.62 : 230 * s, avail * 0.5), henH = Math.min(land ? 120 * s : 170 * s, avail - hd - 40 * s);
+    const avail = (land ? A.y1 - 8 * s : A.y1 - pad - 72 * s) - (P.bottom + 8 * s), hd = Math.min(land ? avail * 0.62 : Math.min(cw * 0.6, 300 * s), avail * (land ? 0.5 : 0.36)), henH = Math.min(land ? 120 * s : Math.min(cw * 0.78, 340 * s), avail - hd - 40 * s, land ? avail : avail * 0.4); // (0.8.17 polish: a tall phone grows the hen and the button, the gaps stay a comfortable even few)
     B.push({ h: Math.max(60 * s, avail - 20 * s), gap: 6 * s, draw: (x, y, w) => {
       const H = Math.max(60 * s, avail - 20 * s), sp = (H - henH - hd) / 3, hy = y + sp + henH / 2, cx = x + w / 2, cy = y + sp * 2 + henH + hd / 2, R = hd / 2;
       drawHenAnim(ctx, down ? 'gasp' : 'worried', cx, hy, henH, G.t, { key: 'reset', calm, shadow: 0 });
