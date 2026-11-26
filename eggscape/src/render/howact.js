@@ -22,6 +22,7 @@ import { pipActor } from './pip.js'; // 0.8.17 pip
 import { urchinActor } from './urchinplay.js'; // 0.8.17 urchin
 import { cocoActor } from './coco.js'; // 0.8.17 coco
 import { drawBanditPerch } from './banditplay.js'; // 0.8.17 bandit (0.8.18: on the ring)
+import { drawKitsCard, kitsCardEgg, kitsHarmEgg } from './kitsplay.js'; // 0.8.18 kits
 import { RING_TH } from '../sim/geom.js'; // 0.8.18 bandit
 
 const TAU = Math.PI * 2;
@@ -382,7 +383,7 @@ const banditActor = {
 // the harm beats' marks (howto.js reads them too): where the salamander's jet lands, where Sly's orb sits, how far the
 // thorn-back shoves the egg
 export const BREATH_AT = 0, CHAM_ORB = -0.22, BUMP_A = 0.36, BITE_AT = 1.75; // BITE_AT: s into the harm beat when the jaws shut
-export const harmActor = (kind) => (kind === 'boss:raccoon' || kind === 'salamander' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' || kind === 'urchin' ? ACTORS[kind] : null); // 0.8.17 urchin
+export const harmActor = (kind) => (/^kits/.test(kind) || kind === 'boss:raccoon' || kind === 'salamander' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' || kind === 'urchin' ? ACTORS[kind] : null); // 0.8.17 urchin
 const CRAWL = () => ({ g0: 0.4, dTh: -0.4, pan: 0.2 }); // the crawlers come along the ring from the left: the camera steps that way
 export const ACTORS = {
   // pan: the camera steps to the villain's side (a share of the stage's width), so it is whole in the picture
@@ -406,6 +407,14 @@ const PLAYS = { 'boss:raccoon': ['turn'], 'boss:ratking': ['turn', 'tap', 'roost
 ACTORS.penguin = pipActor; PLAYS.penguin = ['turn']; // 0.8.17 pip
 ACTORS.urchin = urchinActor; PLAYS.urchin = ['turn']; // 0.8.17 urchin: Spike acts his own scene
 ACTORS.monkey = cocoActor; PLAYS.monkey = ['turn']; // 0.8.17 coco
+// 0.8.18 kits: mama on the yard and three kits on the floor (render/kitsplay.js drawKitsCard): the counter (they carry the egg
+// left, the hand turns the ring hard, they tumble, the egg rolls back and drops through the gap, they run home crying) and
+// the harm (they carry it out to her sack)
+for (const c of ['ice', 'woods', 'sea', 'cave', 'goggles', 'bow']) {
+  ACTORS['kits:' + c] = { draw: (ctx, S) => drawKitsCard(ctx, S, c), stage: (m) => ({ g0: 0.42, dTh: -0.42, egg: m === 'harm' ? kitsHarmEgg : kitsCardEgg, pan: 0.06 }), aim: (S) => S.at(S.eA ?? 0, S.eggS) };
+  PLAYS['kits:' + c] = ['turn'];
+}
+ACTORS.kits = ACTORS['kits:bow']; PLAYS.kits = ['turn'];
 export function actorFor(plan) {
   const k = plan && plan.kind;
   return k && ACTORS[k] && PLAYS[k].includes(plan.move) ? ACTORS[k] : null;

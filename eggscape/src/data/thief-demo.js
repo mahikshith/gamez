@@ -25,4 +25,8 @@ export const THIEF_DEMOS = [
     bossFight: { kind: 'raccoon', delay: 2, phases: [{ attacks: [] }] }, tip: 'Turn his ring against him!',
     rings: [...rings.slice(0, 3), { gaps: [{ a: -125 }, { a: 20 }], thorns: [{ a: 100, n: 2 }] }],
   },
+  { // 0.8.18 kits: mama raccoon unties her sack on the yard and her kits come in for an egg (sim/kits.js)
+    ...base, id: 916, kind: 'kits', name: 'Mama Raccoon (studio)', kits: { delay: 2 }, tip: 'Turn their ring hard: they tumble and drop it.',
+    rings: [...rings.slice(0, 3), { gaps: [{ a: -40 }, { a: 150 }], thorns: [{ a: 100, n: 2 }] }],
+  },
 ];

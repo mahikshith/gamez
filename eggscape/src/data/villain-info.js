@@ -11,6 +11,8 @@
 // villainKinds(level, sim) lists what is in a level: from the level data, plus anything the sim has live.
 // tools/info-check.cjs fails the build check if a level carries a villain/hazard the table does not cover.
 
+import { costumeOf } from '../render/costume.js'; // 0.8.18 kits (a plain table: no drawing is pulled in)
+
 export const VILLAIN_INFO = {
   // ---------------------------------------------------------------- bosses
   'boss:weasel': {
@@ -122,6 +124,13 @@ export const VILLAIN_INFO = {
     },
   },
   // ---------------------------------------------------------------- creatures
+  // 0.8.18 kits: mama raccoon and her kits, first of the creatures (a level's face), one kind per world costume (the face on the card, the map and the reel wears
+  // the level's costume); sim/kits.js
+  ...Object.fromEntries(['ice', 'woods', 'sea', 'cave', 'goggles', 'bow'].map((c) => ['kits:' + c, {
+    group: 'creature', name: 'Mama Raccoon', costume: c,
+    does: 'Her kits sneak in and carry eggs off to her sack.',
+    beat: 'Turn their ring hard: they tumble and drop it.',
+  }])),
   snake: {
     group: 'creature', name: 'Snake',
     does: 'Slides in and eats eggs. It crosses rings only at lined-up gaps.',
@@ -338,10 +347,13 @@ export function bossAttacks(L) {
 
 // Every kind present in level L (bosses first, then creatures, then hazards). sim (optional): the live Sim, which adds
 // anything it is running that the level data does not name (and is how a boss's summoned creatures are found).
+// 0.8.18 kits: the kind for a level with mama raccoon (her world costume: render/costume.js costumeOf)
+export const kitsKind = (L) => 'kits:' + ((L.kits && L.kits.costume) || costumeOf(L.theme));
 export function villainKinds(L, sim = null) {
   if (!L) return [];
   const boss = bossOf(L), set = new Set();
   if (boss) set.add('boss:' + boss);
+  if (L.kits) set.add(kitsKind(L)); // 0.8.18 kits: first of the creatures, so the level's face is the costumed mama
   for (const k of CREATURE_KEYS) {
     const n = listOf(L[k]).length;
     if (!n) continue;

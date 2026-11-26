@@ -12,6 +12,7 @@
 import { RACCOON_M, raccoonPose, raccoonBlend, raccoonFin, drawRaccoon, drawSack } from './raccoon.js';
 import { BANDIT_SCALE } from './banditplay.js';
 import { kitPose, kitBlend, drawKit, KIT_M } from './kits.js';
+const KS = 1.4; // the kits in play a size up from the rig's metres (2026-11-26: at 0.44 m they read as grey specks on a phone)
 import { costumeOf } from './costume.js';
 import { RING_TH, EGG_W } from '../sim/geom.js';
 import { PERF } from '../perf.js';
@@ -135,19 +136,19 @@ function egg(ctx, x, y, h, rot) {
 function kitOnFloor(ctx, rf, a, h, k, t, st, u, face, o) {
   const r = rf - h, px = r * Math.cos(a), py = r * Math.sin(a), th = Math.PI / 2 - (a + Math.PI);
   ctx.save(); ctx.translate(px, py); ctx.scale(1 / k, -1 / k); ctx.rotate(th);
-  try { const p = kitPose(st, t, u, o); Object.assign(p, o.add || {}); drawKit(ctx, 0, 0, KIT_M * k, t, p, { ...o, face }); }
+  try { const p = kitPose(st, t, u, o); Object.assign(p, o.add || {}); drawKit(ctx, 0, 0, KIT_M * KS * k, t, p, { ...o, face }); }
   finally { ctx.restore(); }
 }
 function kitAt(ctx, x, y, rot, k, t, st, u, face, o) {
   ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); ctx.rotate(rot);
-  try { const p = kitPose(st, t, u, o); Object.assign(p, o.add || {}); drawKit(ctx, 0, 0, KIT_M * k, t, p, { ...o, face }); }
+  try { const p = kitPose(st, t, u, o); Object.assign(p, o.add || {}); drawKit(ctx, 0, 0, KIT_M * KS * k, t, p, { ...o, face }); }
   finally { ctx.restore(); }
 }
 function drawCrew(ctx, sim, K, t, k, calm, costume) {
   const G = K.g, n = K.n, low = !!PERF.low, base = { costume, calm, low };
   const ord = [0, 1, 2].slice(0, n);
   const fl = G.c >= 0 && sim.rings[G.c] ? sim.kitFloor(G.c) : 0, d = G.dir || 1, gu = uOf(G), gait = G.odo / 0.22;
-  const sp = (i) => (0.34 + 0.03 * i) / Math.max(1, fl); // the spacing along a floor (rad)
+  const sp = (i) => (0.46 + 0.04 * i) / Math.max(1, fl); // the spacing along a floor (rad)
   switch (G.ph) {
     case 'sack': { // at home beside mama (only while she reacts or rests)
       const g = sim.kitGeo(), gy = sim.groundY;
@@ -169,7 +170,7 @@ function drawCrew(ctx, sim, K, t, k, calm, costume) {
     case 'run': case 'yard': {
       const carry = G.ph === 'yard';
       ord.forEach((i) => {
-        if (carry) { const st = i === 0 ? 'pull' : i === 1 ? 'push' : 'ride', x = G.x + (i === 0 ? 0.36 : i === 1 ? -0.36 : 0) * d, y = sim.groundY + (i === 2 ? EGG_W + 0.08 : 0); kitAt(ctx, x, y, 0, k, t, st, gait + i * 0.3, d, { ...base, who: i }); }
+        if (carry) { const st = i === 0 ? 'pull' : i === 1 ? 'push' : 'ride', x = G.x + (i === 0 ? 0.48 : i === 1 ? -0.48 : 0) * d, y = sim.groundY + (i === 2 ? EGG_W + 0.08 : 0); kitAt(ctx, x, y, 0, k, t, st, gait + i * 0.3, d, { ...base, who: i }); }
         else kitAt(ctx, G.x - d * 0.34 * i, sim.groundY, 0, k, t, 'run', gait + i * 0.37, d, { ...base, who: i });
       });
       return;
@@ -179,7 +180,7 @@ function drawCrew(ctx, sim, K, t, k, calm, costume) {
       return;
     }
     case 'out': { // over the rim with the egg and down to the yard
-      ord.forEach((i) => kitAt(ctx, G.x + (i - 1) * 0.3, G.y - 0.15 + (i === 2 ? 0.45 : 0), 0, k, t, i === 2 ? 'ride' : 'climb', 0, -1, { ...base, who: i }));
+      ord.forEach((i) => kitAt(ctx, G.x + (i - 1) * 0.4, G.y - 0.15 + (i === 2 ? 0.45 : 0), 0, k, t, i === 2 ? 'ride' : 'climb', 0, -1, { ...base, who: i }));
       return;
     }
     case 'flee': { // home: crying (a tumble, a dangle), diving (a crow, a flash), or just running
@@ -189,17 +190,17 @@ function drawCrew(ctx, sim, K, t, k, calm, costume) {
     }
     case 'up': case 'down': case 'hop': {
       const P = G.p || sim.kitBody(G), a = Math.atan2(P.y, P.x), rP = Math.hypot(P.x, P.y);
-      ord.forEach((i) => { if (G.eid && G.ph !== 'up') { const st = i === 0 ? 'pull' : i === 1 ? 'push' : 'ride', off = (i === 0 ? 0.36 : i === 1 ? -0.36 : 0) * d / Math.max(1, rP), h = i === 2 ? EGG_W + 0.1 : 0; kitOnFloor(ctx, rP + 0.2, a + off, h, k, t, st, gait, d, { ...base, who: i }); } else kitOnFloor(ctx, rP + 0.2, a - d * sp(i) * 0.6 * i, 0.05 * i, k, t, G.ph === 'up' ? 'climb' : 'run', t * 2 + i, d, { ...base, who: i }); });
+      ord.forEach((i) => { if (G.eid && G.ph !== 'up') { const st = i === 0 ? 'pull' : i === 1 ? 'push' : 'ride', off = (i === 0 ? 0.48 : i === 1 ? -0.48 : 0) * d / Math.max(1, rP), h = i === 2 ? EGG_W + 0.1 : 0; kitOnFloor(ctx, rP + 0.2, a + off, h, k, t, st, gait, d, { ...base, who: i }); } else kitOnFloor(ctx, rP + 0.2, a - d * sp(i) * 0.6 * i, 0.05 * i, k, t, G.ph === 'up' ? 'climb' : 'run', t * 2 + i, d, { ...base, who: i }); });
       return;
     }
     case 'dangle': { // hanging by their tails from the edge of the hole, upside down, flailing
-      ord.forEach((i) => { const a = G.a + (i - (n - 1) / 2) * sp(i) * 0.8, r = fl + RING_TH + 0.04, sw = calm ? 0 : 0.12 * Math.sin(t * 4 + i * 1.7), th = Math.PI / 2 - (a + Math.PI) + Math.PI + sw; ctx.save(); ctx.translate(r * Math.cos(a), r * Math.sin(a)); ctx.scale(1 / k, -1 / k); ctx.rotate(th); const p = kitPose('dangle', t, 0, { who: i }); p.tail = -1.3; drawKit(ctx, 0, 0, KIT_M * k, t, p, { ...base, who: i, face: i % 2 ? -1 : 1 }); ctx.restore(); });
+      ord.forEach((i) => { const a = G.a + (i - (n - 1) / 2) * sp(i) * 0.8, r = fl + RING_TH + 0.04, sw = calm ? 0 : 0.12 * Math.sin(t * 4 + i * 1.7), th = Math.PI / 2 - (a + Math.PI) + Math.PI + sw; ctx.save(); ctx.translate(r * Math.cos(a), r * Math.sin(a)); ctx.scale(1 / k, -1 / k); ctx.rotate(th); const p = kitPose('dangle', t, 0, { who: i }); p.tail = -1.3; drawKit(ctx, 0, 0, KIT_M * KS * k, t, p, { ...base, who: i, face: i % 2 ? -1 : 1 }); ctx.restore(); });
       return;
     }
     default: { // on a floor: go, wait, lift, carry, tumble
       if (!fl) return;
       if (G.ph === 'carry') {
-        ord.forEach((i) => { const st = i === 0 ? 'pull' : i === 1 ? 'push' : 'ride', off = (i === 0 ? 0.36 : i === 1 ? -0.36 : 0) * d / fl, h = i === 2 ? EGG_W + 0.06 : 0; kitOnFloor(ctx, fl, G.a + off, h, k, t, st, G.wait ? 0 : gait + i * 0.21, d, { ...base, who: i, add: G.wait ? { looky: -0.8, brow: -0.3 } : null }); });
+        ord.forEach((i) => { const st = i === 0 ? 'pull' : i === 1 ? 'push' : 'ride', off = (i === 0 ? 0.48 : i === 1 ? -0.48 : 0) * d / fl, h = i === 2 ? EGG_W + 0.06 : 0; kitOnFloor(ctx, fl, G.a + off, h, k, t, st, G.wait ? 0 : gait + i * 0.21, d, { ...base, who: i, add: G.wait ? { looky: -0.8, brow: -0.3 } : null }); });
         return;
       }
       if (G.ph === 'lift') {
@@ -227,6 +228,70 @@ export function drawKits(ctx, sim, t, k, calm, layer = 'front') {
   drawCrew(ctx, sim, K, t, k, calm, costume);
 }
 
+// ---------------------------------------------------------------- outside play (0.8.18 "put them everywhere the old designs are")
+// mama in pixel space (y down): feet at (x, y), s = px per 100 rig units (in play PLAY_M * k), a canned beat ph/gph
+// (her phase, the crew's: 'carry' = proud, 'tumble' = gasp, 'sack' + ph 'smug' = smug, 'comfort', 'scold', 'sulk')
+export function drawMamaPx(ctx, x, y, s, t, ph, gph, costume, o = {}) {
+  const k = s / PLAY_M, G = { ph: gph || 'sack', t: o.gt ?? 0.5, dur: o.gdur ?? 1, why: o.why, wait: 0 }, K = { ph, t: o.kt ?? 0, dur: o.kdur ?? 1, x: 0, n: 3, sack: [], g: G };
+  ctx.save(); ctx.translate(x, y); ctx.scale(k, -k);
+  try { drawMama(ctx, 0, 0, k, t, K, G, { costume, calm: !!o.calm, low: !!o.low, eyeAt: o.eyeAt ? { x: (o.eyeAt.x - x) / k, y: -(o.eyeAt.y - y) / k } : null }); }
+  finally { ctx.restore(); }
+}
+// one kit in pixel space: feet at (x, y), s px per 100 rig units, turned rot (rad) about the feet
+export function drawKitPx(ctx, x, y, s, t, st, u, face, o = {}) {
+  ctx.save(); ctx.translate(x, y); if (o.rot) ctx.rotate(o.rot);
+  try { const p = kitPose(st, t, u, o); Object.assign(p, o.add || {}); drawKit(ctx, 0, 0, s, t, p, { ...o, face }); }
+  finally { ctx.restore(); }
+}
+// the portrait (info panel, map, Lucky Spin reel, level card faces, Practice tile): mama in her costume, proud, paws
+// clasped, her keen kit in front heaving an egg over his head (d x d box centred at x, y; the caller clips it)
+export function kitsPortrait(ctx, x, y, d, t, costume) {
+  const s = d * 0.5, fy = y + d * 0.47;
+  drawMamaPx(ctx, x - d * 0.13, fy, s, t, 'watch', 'carry', costume);
+  const sk = s * 0.62, kx = x + d * 0.2, bob = Math.abs(Math.sin(t * 3.4)) * sk * 0.03;
+  egg(ctx, kx + sk * 0.12, fy - sk * 0.47 - bob, sk * 0.3, 0.15 * Math.sin(t * 1.7));
+  drawKitPx(ctx, kx, fy, sk, t, 'lift', 0.95, -1, { who: 0, costume });
+}
+// the level card's scene (render/howact.js kitsActor): the stage hands its clock T, the egg's angle eA and the ring's turn
+// th; at(phi, lift) is a stage point (phi 0 = the bottom, + to the right), k px per metre, ground the yard's y.
+// turn: three kits carry the egg left along the floor (mama proud on the yard), the hand turns the ring hard: they
+// tumble (her gasp), the egg rolls back to the bottom and drops through the gap the turn brought round, they run home
+// crying (she comforts). harm: they carry it out over the rim and off to her sack (she pats it, smug).
+export const KCARD = { carry: [0.2, 1.35], tumble: 1.55, home: [2.1, 2.8], out: [0.5, 2.2] };
+export const kitsCardEgg = (T) => -0.3 * ss(KCARD.carry[0], KCARD.carry[1], T) * (1 - ss(1.6, 2.2, T));
+export const kitsHarmEgg = (T) => -0.95 * ss(KCARD.out[0], KCARD.out[1], T);
+export function drawKitsCard(ctx, S, costume) {
+  const { T, t, k, at, eggS } = S, harm = S.m === 'harm', sk = KIT_M * KS * k, n = 3, eA = S.eA ?? 0, fl = S.floor;
+  const ms = Math.min(PLAY_M * k * 0.82, S.h * 0.27), mx = S.x + ms * 0.62, my = S.ground; // (small, in the corner under the ring's left: the ring and the egg stay clear)
+  // mama on the yard, her face on the beat
+  let ph = 'watch', gph = 'carry', gt = 0.5;
+  if (harm) { if (T > 2.2) ph = 'smug', gph = 'sack'; }
+  else if (T >= KCARD.tumble && T < KCARD.home[0] + 0.3) { gph = 'tumble'; gt = 1 - ss(KCARD.tumble, KCARD.tumble + 0.3, T); }
+  else if (T >= KCARD.home[0] + 0.3) ph = 'comfort', gph = 'sack';
+  else if (T < KCARD.carry[0] + 0.1) gph = 'go';
+  drawMamaPx(ctx, mx, my, ms, t, ph, gph, costume, { gt, gdur: 1, kdur: 1, kt: 0.5, eyeAt: at(eA, eggS) });
+  const off = (0.48 * k) / fl, base = { costume, calm: !!S.calm };
+  if (harm) { // the carry out: along the floor, then the egg and its crew fade off toward her sack
+    const a = kitsHarmEgg(T), al = 1 - ss(2.0, 2.4, T), gait = T * 5;
+    if (al <= 0) return { threat: true, x: at(a, 0).x, y: at(a, 0).y, own: true };
+    ctx.save(); ctx.globalAlpha *= al;
+    [0, 1, 2].forEach((i) => { const st = T < KCARD.out[0] ? 'lift' : i === 0 ? 'pull' : i === 1 ? 'push' : 'ride', aa = a + (i === 0 ? -off : i === 1 ? off : 0), P = at(aa, i === 2 ? EGG_W * k + 2 : 0); drawKitPx(ctx, P.x, P.y, sk, t, st, T < KCARD.out[0] ? ss(0, KCARD.out[0], T) : gait + i * 0.2, -1, { ...base, who: i, rot: -aa }); });
+    ctx.restore();
+    return { threat: true, x: at(a, 0).x, y: at(a, 0).y - sk * 0.4, own: true };
+  }
+  const car = T < KCARD.tumble, home = ss(KCARD.home[0], KCARD.home[1], T), gait = T * 5;
+  const a0 = -0.3 * ss(KCARD.carry[0], KCARD.carry[1], Math.min(T, KCARD.tumble)) + (S.th || 0) * 0.5; // where they fell
+  ctx.save(); ctx.globalAlpha *= 1 - ss(KCARD.home[1] - 0.3, KCARD.home[1], T);
+  [0, 1, 2].slice(0, n).forEach((i) => {
+    if (car) { const st = i === 0 ? 'pull' : i === 1 ? 'push' : 'ride', aa = eA + (i === 0 ? -off : i === 1 ? off : 0), P = at(aa, i === 2 ? EGG_W * k + 2 : 0); drawKitPx(ctx, P.x, P.y, sk, t, st, gait + i * 0.2, -1, { ...base, who: i, rot: -aa }); return; }
+    if (home <= 0) { const aa = a0 + (i - 1) * off * 1.1, P = at(aa, 0); drawKitPx(ctx, P.x, P.y, sk, t, 'tumble', 0, i % 2 ? -1 : 1, { ...base, who: i, rot: -aa }); return; }
+    const aa = a0 + (i - 1) * off * 1.1 - 0.7 * home, P = at(aa, 0); drawKitPx(ctx, P.x, P.y, sk, t, 'cry', t * 2.4 + i * 0.3, -1, { ...base, who: i, rot: -aa });
+  });
+  ctx.restore();
+  const P = at(car ? eA : a0, 0);
+  return { threat: car, bonk: ss(KCARD.tumble, KCARD.tumble + 0.5, T), x: P.x - sk * 0.3, y: P.y - sk * 1.25, own: true, word: T > KCARD.tumble && T < KCARD.home[0] ? 'WHOA!' : undefined };
+}
+
 // ---------------------------------------------------------------- events: the game's own sounds, a pop or two, no words
 export function kitsEvent(ev, fx, U) {
   const { popup, audio } = U;
@@ -250,4 +315,4 @@ export function kitsEvent(ev, fx, U) {
     case 'kitSpill': audio.play('release', { vol: 0.6, pitch: 1.1 }); fx.sparkle(ev.x, ev.y, 10, '#bff0a0'); break;
   }
 }
-if (typeof __DEV__ === 'undefined' || __DEV__) { try { window.__kits = { drawKit, kitPose, drawMama, mamaLook, drawKits, KIT_M, PLAY_M }; } catch (_) { /* no window */ } }
+if (typeof __DEV__ === 'undefined' || __DEV__) { try { window.__kits = { drawKit, kitPose, drawMama, mamaLook, drawKits, KIT_M, PLAY_M, drawMamaPx, drawKitPx, kitsPortrait, drawKitsCard }; } catch (_) { /* no window */ } }

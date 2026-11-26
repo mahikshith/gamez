@@ -84,8 +84,10 @@ export const kitMethods = {
   // the yard: mama sits at its far (left) end with her sack to her right, toward the vault
   kitGeo() {
     const R = this.outerR, nl = this.nestX0 - (this.nestAmp || 0) - this.nestW / 2;
-    const x1 = Math.min(nl - 0.55, -R * 0.5), x0 = Math.min(x1 - 0.4, -R * 0.88);
-    return { x0, x1, mama: x0 + 0.1, sack: x0 + 0.72, gy: this.groundY };
+    // her sack sits just under the way in (EXIT, on the lower left of the vault), clear of the basket; she sits at its
+    // left, inside a phone's portrait frame (2026-11-26: at -0.88 R she was cut by the screen's edge)
+    const sack = Math.min(nl - 0.8, -R * 0.5), x0 = sack - 0.72, x1 = sack + 0.4;
+    return { x0, x1, mama: x0 + 0.1, sack, gy: this.groundY };
   },
   kitSet(o, ph, t = 0) { o.ph = ph; o.t = o.dur = t; },
   kitU(o) { return clamp(1 - o.t / Math.max(1e-3, o.dur), 0, 1); },

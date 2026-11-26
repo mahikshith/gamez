@@ -207,7 +207,7 @@ const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volca
 const LAB = [
   { name: 'Chicks', items: CHICK_DEMOS.map((d) => [d.kind, d.kind[0].toUpperCase() + d.kind.slice(1)]) },
   { name: 'Creatures', items: [['frog', 'Frog'], ['octopus', 'Octo'], ['octoden', 'Puddle'], ['fish', 'Fish'], ['reef', 'Reef'], ['penguin', 'Pip']] }, // 0.8.17 pip
-  { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King'], ['bandit', 'Bandit']] }, // 0.8.17 bandit
+  { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King'], ['bandit', 'Bandit'], ['kits', 'Kits']] }, // 0.8.17 bandit; 0.8.18 kits
   { name: 'Bayou', items: [['gator', 'Gator'], ['turtle', 'Turtle'], ['mosquito', 'Bugs'], ['grandpa', 'Grandpa']] },
   { name: 'Allies', items: [['rooster', 'Rooster'], ['goose', 'Goose']] },
   { name: 'Coral Reef', items: [['hermit', 'Hermit'], ['puffer', 'Puffer'], ['jelly', 'Jelly'], ['kingcrab', 'King'], ['urchin', 'Urchin']] }, // 0.8.17 urchin
@@ -11081,6 +11081,7 @@ const TAU = Math.PI * 2;
 const spinSlices = () => SP.wheel(save);
 // the thieves that can come up on the reels, with the voice each has in the game; only ones this player has met
 const SPIN_VILLAINS = { weasel: 'weasel_snicker', snake: 'snake_hiss', rats: 'rat_squeak', octopus: 'ink_squirt', frog: 'tongue_lick', eagle: 'eagle_screech', salamander: 'sal_huff', chameleon: 'tongue_lick', hermit: 'crab_snap', gator: 'gator_snap', spider: 'gear_whir', 'boss:raccoon': 'weasel_snicker', monkey: 'gecko_chirp', penguin: 'squish', urchin: 'stun_stars' }; // 0.8.18: Bandit, Coco, Pip and Spike
+for (const c of ['ice', 'woods', 'sea', 'cave', 'goggles', 'bow']) SPIN_VILLAINS['kits:' + c] = 'weasel_snicker'; // 0.8.18 kits: mama in the costume of the world she was met in (only once met: save.seen)
 function spinVillain(not) {
   const met = Object.keys(SPIN_VILLAINS).filter((k) => save.seen['v:' + k] && hasPortrait(k)), pool = met.length > 1 ? met.filter((k) => k !== not) : met;
   return pool.length ? pool[Math.floor(Math.random() * pool.length)] : 'weasel'; // (which villain is looks only: the roll was made before this)

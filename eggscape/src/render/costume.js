@@ -76,8 +76,8 @@ export function costumeHead(ctx, kind, H, lw, t, o = {}) {
     } else if (kind === 'cave') { // a yellow hard hat with a lamp at the front (a soft beam forward)
       const by = top + 3 * s;
       if (!o.calm && !o.low) { // the beam (a soft wedge, flickering a little)
-        const k = 0.16 + 0.04 * Math.sin(t * 9) * Math.sin(t * 3.3), lx = cx + w * 0.55, ly = top - 9 * s;
-        c.save(); c.globalAlpha *= k; c.fillStyle = '#fff2a0'; c.beginPath(); c.moveTo(lx, ly - 2 * s); c.lineTo(lx + 120 * s * s, ly - 26 * s * s); c.lineTo(lx + 120 * s * s, ly + 30 * s * s); c.closePath(); c.fill(); c.restore();
+        const k = 0.12 + 0.03 * Math.sin(t * 9) * Math.sin(t * 3.3), lx = cx + w * 0.55, ly = top - 9 * s; // (short: it lit half the vault)
+        c.save(); c.globalAlpha *= k; c.fillStyle = '#fff2a0'; c.beginPath(); c.moveTo(lx, ly - 2 * s); c.lineTo(lx + 48 * s, ly - 13 * s); c.lineTo(lx + 48 * s, ly + 15 * s); c.closePath(); c.fill(); c.restore();
       }
       const dome = () => { c.beginPath(); c.moveTo(cx - w * 0.92, by); c.bezierCurveTo(cx - w * 0.95, top - 21 * s, cx + w * 0.85, top - 22 * s, cx + w * 0.88, by); c.closePath(); };
       dome(); ink(c, '#f2c21e', lw);
