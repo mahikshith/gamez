@@ -26,7 +26,7 @@
 //   'out', delay, form, w}: the creeper family travels a stretch of this ring's rim from just past a gap's edge
 //   (sim/creeper.js; laid out by tools/gen.mjs layCreep). form = its world's look and small rule: 'thorn' (default: farm,
 //   woods), 'frost', 'shard', 'spark', 'saw', 'anemone', 'vine' (bayou), 'lava' (w = the flow's length; volcano, not placed
-//   yet). First met as a slow baby thorn creeper on L7, then once a world on a level that measured easy for its place.
+//   yet). First met in world 2 as a slow, gentle thorn creeper on L11, then on a level that measured easy for its place.
 // v3 level fields: snake {delay, speed, a, len, size, kind, skin} or an array of them (kind: 'classic' | 'fast' (emerald,
 //   speed x1.3, body x0.8) | 'constrictor' (amber, armoured: half the back-off from a protected egg, speed x0.8) |
 //   'spitter' (crimson, venom melts a barrier in half the time); a trait is on only when the spec sets `kind`.
@@ -119,7 +119,7 @@ export const SPECS = [
     // 0.8.17 boss817 (mykee: the level after a boss must not be a rest): the Farm's thorn curtain (L3) shuts the middle
     // ring's one gap while the snake hunts, so the flame in channel 2 is the way on; a fifth ring, one sponge a ring.
     // minMoves on the post-boss levels (and L28, L34) asks the planner's clear for as many moves as the world before.
-    rings: [{ mat: 'wood', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], pads: 1, creep: { len: 0.9, v: 0.3, rest: 1.6, delay: 5 } }, { mat: 'wood', gaps: 1, curtain: 1, thorns: 1, size: [2, 3], blunt: 1, pads: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2], pads: 1 }, { mat: 'wood', gaps: 2, thorns: 2, size: [1, 2], pads: 1 }] },
+    rings: [{ mat: 'wood', gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], pads: 1 }, { mat: 'wood', gaps: 1, curtain: 1, thorns: 1, size: [2, 3], blunt: 1, pads: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2], pads: 1 }, { mat: 'wood', gaps: 2, thorns: 2, size: [1, 2], pads: 1 }] },
   { id: 8, gid: 7, world: 2, theme: 'jungle', name: 'Jungle Nursery', eggs: 3, target: 2, spacing: 1.0, material: 'vine', minMoves: 5,
     nest: { w: 2.8 }, bonus: { kind: 'prize' }, snake: { delay: 12, speed: 0.35 },
     orbs: [{ type: 'fire_gold', ch: 1 }, { type: 'rockskin', ch: 2 }],
@@ -173,7 +173,7 @@ export const SPECS = [
     nest: { w: 2.8 }, bonus: { kind: 'prize' },
     orbs: [{ type: 'water', ch: 2 }, { type: 'thunder', ch: 3 }, { type: 'hatch_glow', ch: 3 }],
     tip: 'The duck egg floats and rides the current. Let it drift to the gap.',
-    rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], oneway: 1, creep: { len: 1.4, v: 0.45, rest: 1.2, form: 'frost' } }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], oneway: 1 }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   // 0.8.17 pip: Pip the penguin (src/sim/pip.js) slides the ice channels and shoves or carries eggs; a wall or a sponge stops him
   { id: 16, world: 3, theme: 'blizzard', name: "Pip's Rink", eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5,
     penguin: { ch: 2, a: -125, delay: 5 }, nest: { w: 2.8 }, bonus: { kind: 'time' },
@@ -377,7 +377,7 @@ export const SPECS = [
     orbs: [{ type: 'magnet', ch: 1 }, { type: 'feather', ch: 4 }, { type: 'hatch_pick', ch: 4 }],
     portals: [{ from: [2, -30], to: [4, -150], emit: ['bubble', 'magnet'], every: 9 }, { from: [4, 90], to: [4, 90], emit: ['hatch_pick'], every: 9, pull: 0 }],
     tip: 'The portal drops eggs past the eagle’s reach, onto the ice. Drill it with the purple chick.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, thorns: 2, size: [2, 3], grate: 1, creep: { len: 1.3, v: 0.8, rest: 1.4, form: 'saw' } }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], oneway: 1 }, { mat: 'ice', noGap: true, ice: true }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], oneway: 1 }, { mat: 'ice', noGap: true, ice: true }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 42, gid: 35, world: 7, theme: 'vault', name: 'The Rat King', boss: 'ratking', eggs: 3, target: 2, spacing: 1.0, material: 'metal', minMoves: 6,
     nest: { w: 2.7, amp: 1.0, period: 9, pattern: 'stopgo', drop: 1.1 }, bonus: { kind: 'prize' },
     rats: { n: 2, delay: 999 },
@@ -399,7 +399,7 @@ export const SPECS = [
     intro: { title: 'Coral Reef', line: 'Underwater, eggs float UP! Line the gaps up toward the top to reach the hen\'s boat. A hermit crab tucks eggs in its shell: bump an egg into it, or turn a gap to it.' },
     tip: 'A tucked egg is safe from thorns. Turn a gap to the crab and the egg floats out through it.',
     // boss817 (the level after a boss is a step on): the Thieves' Vault gate doors (L37) on the second ring, a fifth ring
-    rings: [{ gaps: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [1, 2], shut: { period: 4.5, open: 0.5 } }, { gaps: 2, gapX: [2], thorns: 2, size: [2, 3], creep: { len: 1.3, v: 0.35, rest: 1.2, form: 'anemone' } }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
+    rings: [{ gaps: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [1, 2], shut: { period: 4.5, open: 0.5 } }, { gaps: 2, gapX: [2], thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
   { id: 44, gid: 37, world: 8, theme: 'reef', name: 'Puffer Lagoon', eggs: 3, target: 2, spacing: 1.05, material: 'coral', minMoves: 4, water: true, eggKinds: ['duck'],
     nest: { w: 2.7 }, bonus: { kind: 'turns' }, puffer: { ch: 3, a: 40, delay: 3 }, hermit: { ch: 4, a: 150, delay: 9 },
     orbs: [{ type: 'warp', ch: 2 }, { type: 'twin', ch: 1 }],
@@ -412,7 +412,7 @@ export const SPECS = [
     orbs: [{ type: 'shock', ch: 1 }, { type: 'water', ch: 3 }],
     intro: { title: 'Jellyfish', line: 'A jellyfish drifts through the reef. Its sting cracks an egg, but its glow lights up murky water. Water washes it away; a live ring stuns it.' },
     tip: 'The shock ring makes the ring under the egg live: jellyfish and crabs that touch it are stunned.',
-    rings: [{ gaps: 1, thorns: 1, gear: true }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2], gear: true }, { gaps: 2, gapX: [2], thorns: 1, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2], out: 1 }, { gaps: 2, thorns: 1, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1, gear: true }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2], gear: true }, { gaps: 2, gapX: [2], thorns: 1, size: [1, 2], creep: { len: 1.2, v: 0.35, rest: 1.3, form: 'anemone' } }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2], out: 1 }, { gaps: 2, thorns: 1, size: [1, 2] }] },
   // 0.8.17 urchin: Spike the sea urchin (sim/urchin.js) lives on the floor of channel 2. He naps (eggs slip past), puffs and
   // rolls (a living thorn that fills the channel), and dashes at an egg he sees through a gap of ring 1. Shut that gap in
   // his face (or behind him on his way back) and he flips, helpless. One villain, no current: the tricks come one at a time.

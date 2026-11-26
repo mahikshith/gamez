@@ -97,7 +97,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 11, theme: "bramble", name: "Twin Fangs", eggs: 3, target: 2, time: 105, spacing: 1, material: "vine", nest: {w: 2.8}, snake: [{delay: 9, speed: 0.35, a: 0},{delay: 18, speed: 0.35, a: 125}], bonus: {kind: "turns", n: 14}, tip: "Two snakes. Tap the glow chick as one closes in: the flash stuns it for 3 s.", orbs: [{type: "rockskin", ch: 1, a: 139},{type: "fire_gold", ch: 2, a: 102},{type: "fire_green", ch: 4, a: 81},{type: "hatch_glow", ch: 1, a: 65}], seed: 71272, world: 2, intro: {title: "Thorn creeper", line: "Pass when it curls."},
+    id: 11, theme: "bramble", name: "Twin Fangs", eggs: 3, target: 2, time: 105, spacing: 1, material: "vine", nest: {w: 2.8}, snake: [{delay: 9, speed: 0.35, a: 0},{delay: 18, speed: 0.35, a: 125}], bonus: {kind: "turns", n: 14}, tip: "Two snakes. Tap the glow chick as one closes in: the flash stuns it for 3 s.", orbs: [{type: "rockskin", ch: 1, a: 139},{type: "fire_gold", ch: 2, a: 102},{type: "fire_green", ch: 4, a: 81},{type: "hatch_glow", ch: 1, a: 65}], seed: 71272, world: 2,
     rings: [
       {mat: "wood", gaps: [{a: -178}], thorns: [{a: 136, n: 1}]},
       {gaps: [{a: 46, x: 2}], thorns: [{a: 147, n: 3},{a: 171, n: 2, side: "out", h: 0.26, kind: "blunt"}], pads: [{a: -148, len: 1.32},{a: -37, len: 1.86}]},
@@ -127,13 +127,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 14, theme: "blizzard", name: "Icicle Hollow", eggs: 3, target: 2, time: 90, spacing: 1, material: "stone", nest: {w: 2.8}, snake: {delay: 10, speed: 0.35}, bonus: {kind: "time", s: 45}, icicles: {every: 5, delay: 4, big: 3}, tip: "Ice leaves a slippery patch. The frost orb freezes the ring under your egg.", orbs: [{type: "stone", ch: 1, a: 172},{type: "fire_green", ch: 3, a: -73},{type: "frost", ch: 2, a: -28}], seed: 95033, world: 3, intro: {title: "Falling ice", line: "An icicle grows over an egg and shakes before it drops: turn the ring above to swing it away. Big chunks freeze a ring."},
+    id: 14, theme: "blizzard", name: "Icicle Hollow", eggs: 3, target: 2, time: 105, spacing: 1, material: "stone", nest: {w: 2.8}, snake: {delay: 10, speed: 0.35}, bonus: {kind: "time", s: 60}, icicles: {every: 5, delay: 4, big: 3}, tip: "Ice leaves a slippery patch. The frost orb freezes the ring under your egg.", orbs: [{type: "stone", ch: 1, a: -71},{type: "fire_green", ch: 3, a: -81},{type: "frost", ch: 2, a: -166}], seed: 95034, world: 3, intro: {title: "Falling ice", line: "An icicle grows over an egg and shakes before it drops: turn the ring above to swing it away. Big chunks freeze a ring."},
     rings: [
-      {gaps: [{a: 116}], thorns: [{a: -12, n: 1}]},
-      {mat: "ice", oneway: -1, gear: 2, gaps: [{a: -155, x: 2}], thorns: [{a: 58, n: 2, side: "out", h: 0.26},{a: -93, n: 2, side: "out", h: 0.26}], pads: [{a: 3, len: 1.34},{a: 113, len: 1.35}]},
-      {gaps: [{a: 145},{a: -28}], thorns: [{a: 80, n: 2, side: "out", h: 0.26},{a: -159, n: 2, side: "out", h: 0.26, kind: "blunt"}], pads: [{a: 59, len: 1.42},{a: 0, len: 1.29}], creep: {a0: 157, a1: 185, v: 0.45, rest: 1.2}},
-      {mat: "ice", gaps: [{a: 6, x: 3, len: 0.7},{a: 97}], thorns: [{a: 41, n: 2},{a: 160, n: 3}], pads: [{a: -80, len: 1.62},{a: -114, len: 1.83}]},
-      {oneway: 1, gaps: [{a: 64},{a: 177}], thorns: [{a: 136, n: 1, side: "out", h: 0.26},{a: -132, n: 1, side: "out", h: 0.26}], pads: [{a: -64, len: 1.41},{a: -1, len: 1.74}]},
+      {gaps: [{a: 46}], thorns: [{a: 107, n: 1}]},
+      {mat: "ice", oneway: -1, gear: 2, gaps: [{a: 106, x: 2}], thorns: [{a: 143, n: 2, side: "out", h: 0.26},{a: 67, n: 2, side: "out", h: 0.26}], pads: [{a: -136, len: 1.85},{a: -13, len: 1.56}]},
+      {gaps: [{a: 46},{a: -159}], thorns: [{a: -16, n: 2, side: "out", h: 0.26},{a: -82, n: 2, side: "out", h: 0.26, kind: "blunt"}], pads: [{a: -110, len: 1.35},{a: 118, len: 1.21}]},
+      {mat: "ice", gaps: [{a: 112, x: 3, len: 0.7},{a: -38}], thorns: [{a: -7, n: 2},{a: -148, n: 2}], pads: [{a: 132, len: 1.27},{a: 77, len: 1.9}]},
+      {oneway: 1, gaps: [{a: 69},{a: -173}], thorns: [{a: -43, n: 1, side: "out", h: 0.26},{a: 131, n: 1, side: "out", h: 0.26}], pads: [{a: 31, len: 1.72},{a: 4, len: 1.45}]},
     ],
   },
   {
@@ -214,7 +214,7 @@ export const LEVELS = [
     rings: [
       {gaps: [{a: 177}], thorns: [{a: 48, n: 1}]},
       {gaps: [{a: 20, x: 2},{a: 173, grate: 1}], thorns: [{a: 82, n: 2},{a: 107, n: 2, side: "out", h: 0.26}], pads: [{a: -139, len: 1.03}]},
-      {mat: "glass", gaps: [{a: 81},{a: -25}], thorns: [{a: 14, n: 3},{a: 150, n: 3}], pads: [{a: -123, len: 1.11}], creep: {a0: -67, a1: -37, v: 0.5, rest: 1.1}},
+      {mat: "glass", gaps: [{a: 81},{a: -25}], thorns: [{a: 14, n: 3},{a: 150, n: 3}], pads: [{a: -123, len: 1.11}], creep: {a0: -60, a1: -37, v: 0.7, rest: 1.4, form: "shard"}},
       {gaps: [{a: -142, x: 3, len: 0.7},{a: 116}], thorns: [{a: 33, n: 2},{a: 167, n: 2, kind: "blunt"}], pads: [{a: 90, len: 1.02}]},
       {gaps: [{a: 5},{a: -174}], thorns: [{a: -26, n: 2},{a: 39, n: 1}], pads: [{a: -125, len: 1.86}]},
     ],
@@ -343,7 +343,7 @@ export const LEVELS = [
     rings: [
       {gaps: [{a: 48}], thorns: [{a: -8, n: 1}]},
       {mat: "cloud", gear: 2, gaps: [{a: 175, x: 2}], thorns: [{a: -26, n: 3},{a: 50, n: 2, side: "out", h: 0.26}], pads: [{a: 138, len: 1.19}]},
-      {gaps: [{a: 74},{a: -48}], thorns: [{a: -10, n: 3},{a: 152, n: 3}], pads: [{a: 47, len: 1.32}], creep: {a0: -94, a1: -60, v: 0.6, rest: 1}},
+      {gaps: [{a: 74},{a: -48}], thorns: [{a: -10, n: 3},{a: 152, n: 3}], pads: [{a: 47, len: 1.32}], creep: {a0: -81, a1: -60, v: 0.9, rest: 1.6, form: "spark"}},
       {mat: "cloud", gaps: [{a: -153, x: 3, len: 0.7},{a: 104}], thorns: [{a: -6, n: 2},{a: 144, n: 2, kind: "blunt"}], pads: [{a: 56, len: 1.83}]},
       {gaps: [{a: 74},{a: -37}], thorns: [{a: 43, n: 2},{a: 120, n: 3}], pads: [{a: -77, len: 1.89}]},
       {gaps: [{a: 144},{a: 34}], thorns: [{a: 76, n: 2},{a: -150, n: 1}], pads: [{a: -92, len: 1.38}]},
@@ -456,11 +456,11 @@ export const LEVELS = [
     ],
   },
   {
-    id: 45, theme: "reef", name: "Jelly Drift", eggs: 3, target: 2, time: 140, spacing: 1.05, material: "coral", water: true, nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.4}, bonus: {kind: "prize"}, jelly: {ch: 2, a: 30, delay: 2}, fish: {ch: 3, n: 7, speed: 1, a: 160, turn: 12}, tip: "The shock ring makes the ring under the egg live: jellyfish and crabs that touch it are stunned.", orbs: [{type: "shock", ch: 1, a: -23},{type: "water", ch: 3, a: -13}], seed: 300924, world: 8, intro: {title: "Jellyfish", line: "A jellyfish drifts through the reef. Its sting cracks an egg, but its glow lights up murky water. Water washes it away; a live ring stuns it."},
+    id: 45, theme: "reef", name: "Jelly Drift", eggs: 3, target: 2, time: 150, spacing: 1.05, material: "coral", water: true, nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.4}, bonus: {kind: "prize"}, jelly: {ch: 2, a: 30, delay: 2}, fish: {ch: 3, n: 7, speed: 1, a: 160, turn: 12}, tip: "The shock ring makes the ring under the egg live: jellyfish and crabs that touch it are stunned.", orbs: [{type: "shock", ch: 1, a: -23},{type: "water", ch: 3, a: -13}], seed: 300924, world: 8, intro: {title: "Jellyfish", line: "A jellyfish drifts through the reef. Its sting cracks an egg, but its glow lights up murky water. Water washes it away; a live ring stuns it."},
     rings: [
       {gear: 1, gaps: [{a: -123}], thorns: [{a: -49, n: 1}]},
       {gear: 2, gaps: [{a: -51, x: 2}], thorns: [{a: 166, n: 1}], pads: [{a: 60, len: 1.53}]},
-      {gaps: [{a: 22, x: 2},{a: -95}], thorns: [{a: -27, n: 2}], pads: [{a: 153, len: 1.58}]},
+      {gaps: [{a: 22, x: 2},{a: -95}], thorns: [{a: -27, n: 2}], pads: [{a: 153, len: 1.58}], creep: {a0: 34, a1: 56, v: 0.35, rest: 1.3, form: "anemone"}},
       {gaps: [{a: -176, x: 3, len: 0.7},{a: -11}], thorns: [{a: -96, n: 2},{a: -114, n: 1, side: "out", h: 0.3}], pads: [{a: -43, len: 1.35}]},
       {gaps: [{a: -51},{a: 145}], thorns: [{a: 21, n: 1}], pads: [{a: -173, len: 1.09}]},
     ],
@@ -539,11 +539,11 @@ export const LEVELS = [
     ],
   },
   {
-    id: 53, theme: "bayou", name: "Decoy Delta", eggs: 3, target: 2, time: 160, spacing: 1.15, material: "wood", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.5}, bonus: {kind: "turns", n: 15}, eggKinds: ["duck"], gator: {ch: 4, a: -70, delay: 7}, turtle: {ch: 3, a: -60, delay: 6}, mosquito: {ch: 2, a: 140, delay: 9}, tip: "The gator bites the decoy first. Send real eggs past while he chews wood.", orbs: [{type: "decoy", ch: 1, a: -124},{type: "fire_red", ch: 2, a: -93},{type: "laser", ch: 3, a: -105},{type: "pepper", ch: 4, a: -7},{type: "spin", ch: 4, a: -70}], seed: 348440, world: 9, intro: {title: "Swamp current", line: "The current pushes every egg along, and the duck egg floats on it. Throw the decoy to pull the gator, the turtle and the swarm off your real eggs."},
+    id: 53, theme: "bayou", name: "Decoy Delta", eggs: 3, target: 2, time: 160, spacing: 1.15, material: "wood", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.5}, bonus: {kind: "turns", n: 17}, eggKinds: ["duck"], gator: {ch: 4, a: -70, delay: 7}, turtle: {ch: 3, a: -60, delay: 6}, mosquito: {ch: 2, a: 140, delay: 9}, tip: "The gator bites the decoy first. Send real eggs past while he chews wood.", orbs: [{type: "decoy", ch: 1, a: -124},{type: "fire_red", ch: 2, a: -93},{type: "laser", ch: 3, a: -105},{type: "pepper", ch: 4, a: -7},{type: "spin", ch: 4, a: 70}], seed: 348440, world: 9, intro: {title: "Swamp current", line: "The current pushes every egg along, and the duck egg floats on it. Throw the decoy to pull the gator, the turtle and the swarm off your real eggs."},
     rings: [
       {gaps: [{a: 2}], thorns: [{a: -168, n: 1}]},
       {gaps: [{a: -173}], thorns: [{a: 97, n: 3},{a: 12, n: 2, side: "out", h: 0.26}], pads: [{a: 143, len: 1.37}]},
-      {gear: 3, gaps: [{a: 138, vine: 1},{a: -46}], thorns: [{a: 102, n: 2},{a: -154, n: 2, side: "out", h: 0.26}], pads: [{a: -173, len: 1.07}]},
+      {gear: 3, gaps: [{a: 138, vine: 1},{a: -46}], thorns: [{a: 102, n: 2},{a: -154, n: 2, side: "out", h: 0.26}], pads: [{a: -173, len: 1.07}], creep: {a0: -85, a1: -58, v: 0.5, rest: 1.1, form: "vine"}},
       {gaps: [{a: -164, x: 2},{a: 100}], thorns: [{a: 53, n: 3},{a: 149, n: 3}], pads: [{a: -119, len: 1.17}]},
       {gaps: [{a: 67},{a: -18}], thorns: [{a: 18, n: 3},{a: 128, n: 3, kind: "blunt"}], pads: [{a: -67, len: 1.51}]},
       {gaps: [{a: 22},{a: -165}], thorns: [{a: -9, n: 2}], pads: [{a: -57, len: 1.12}]},
@@ -571,11 +571,11 @@ export const LEVELS = [
     ],
   },
   {
-    id: 56, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 60, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 30}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30},{type: "shock", ch: 4, a: -60}], beetle: {ch: 2, delay: 3, a: -167}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "Turn the beetle's ring to wind him: he marches the way you turned it, shoves eggs ahead and crushes thorns. Unwound, he is a wall."},
+    id: 56, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 110, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 60}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30},{type: "shock", ch: 4, a: -167}], beetle: {ch: 2, delay: 3, a: -86}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "Turn the beetle's ring to wind him: he marches the way you turned it, shoves eggs ahead and crushes thorns. Unwound, he is a wall."},
     rings: [
       {gaps: [{a: 124}], thorns: [{a: 45, n: 1}]},
       {gaps: [{a: 164, x: 2},{a: 31, grate: 1}], thorns: [{a: -6, n: 2},{a: -113, n: 2, side: "out", h: 0.26}], pads: [{a: -135, len: 1.03}]},
-      {gaps: [{a: -41},{a: 88}], thorns: [{a: 12, n: 3},{a: 149, n: 2}], pads: [{a: -67, len: 1.48}]},
+      {gaps: [{a: -41},{a: 88}], thorns: [{a: 12, n: 3},{a: 149, n: 2}], pads: [{a: -67, len: 1.48}], creep: {a0: -77, a1: -53, v: 0.8, rest: 1.4, form: "saw"}},
       {gaps: [{a: 44, x: 3, len: 0.7},{a: 123}], thorns: [{a: 73, n: 1},{a: -175, n: 2}], pads: [{a: 143, len: 1.07}]},
       {gaps: [{a: 176},{a: 13}], thorns: [{a: 111, n: 2}], pads: [{a: -89, len: 1.27}]},
     ],

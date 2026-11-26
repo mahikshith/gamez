@@ -257,7 +257,7 @@ export const creepMethods = {
       }
       const eta = this.creepEta(C, u);
       if (eta === Infinity) continue;
-      th = Math.max(th, clamp(1.2 - eta / 3, 0, 1)); // (no threat while it is still far off: the planner may use the stretch)
+      th = Math.max(th, clamp(1.15 - eta / 3.5, 0.25, 1));
     }
     return th;
   },
