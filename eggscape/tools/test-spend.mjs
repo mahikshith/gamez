@@ -2,6 +2,7 @@
 import * as BR from '../src/brain.js';
 import * as E from '../src/economy.js';
 import * as FX from '../src/ui/spendfx.js';
+import { createPurse } from '../src/ui/purse.js';
 let fails = 0;
 const ok = (c, msg) => { if (!c) { fails++; console.log('FAIL', msg); } else console.log('ok  ', msg); };
 const DAY = 864e5, T0 = Date.UTC(2026, 10, 2, 9);
@@ -90,6 +91,20 @@ const pick = (s, m, c, visit, now = T0) => BR.spendPick(s, m, c, { now, visit })
   low = false; fx.play({ id: 'afford', kind: 'peek', slot: 'shop', scr: 'levels', seq: 4 });
   const ended = fx.tick('fail', 9); ok(!fx.on('shop') && ended && ended.id === 'afford', 'the screen changed: the moment ends and says so');
   ok(FX.ease.back(1) === 1 && FX.ease.out(0) === 0, 'easing');
+}
+// ---- every coin spend counts the purse DOWN (src/ui/purse.js)
+{
+  let t = 0, coins = 300, scr = 'fail';
+  const P = createPurse({ clock: () => t, calm: () => false, wallet: () => coins, screen: () => scr, sound: () => {}, buzz: () => {} });
+  const nop = () => {}, ctx = new Proxy({}, { get: (o, k) => (k in o ? o[k] : nop), set: (o, k, v) => { o[k] = v; return true; } });
+  const UI = { measure: () => 10, glass: nop, text: nop }, A = { x: 0, y: 0, x1: 400, y1: 800 }, draw = () => P.draw(ctx, 1, A, nop, UI);
+  draw(); coins = 240; P.spend({ dst: { x: 50, y: 400 } });
+  ok(P.shown() === 300, 'a spend: the counter still shows the old total');
+  t = 0.3; draw(); const mid = P.shown();
+  ok(mid < 300 && mid > 240, `it counts down (${mid})`);
+  t = 3; draw(); draw(); ok(P.shown() === 240, 'and lands on the purse');
+  coins = 200; draw(); t = 3.2; draw(); ok(P.shown() < 240 && P.shown() > 200, 'a drop with no spend call counts down by itself');
+  scr = 'play'; coins = 100; draw(); ok(P.shown() === 100, 'during play the number simply follows the purse');
 }
 console.log(fails ? `\n${fails} spend test(s) FAILED` : '\nall spend tests passed');
 process.exit(fails ? 1 : 0);

@@ -3630,7 +3630,7 @@ function rewindArt(c, x, y, S) { // the rewind's prize: a blue disc with the rew
 // flying to the thing, then the thing is celebrated (YOU GOT, or the prize pop over the level it starts).
 const spendFx = createSpendFx({ clock: () => G.t, calm: () => !!save.calm, low: () => !!PERF.low, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k) });
 const SPEND_KIT = { ui: null, u: 1, A: null, t: 0, coin: (c, x, y, r, t) => drawCoin(c, x, y, r, t) };
-function spendDraw() { SPEND_KIT.ui = ui; SPEND_KIT.u = ui.u; SPEND_KIT.A = ui.A; SPEND_KIT.t = G.t; spendFx.draw(ctx, SPEND_KIT); }
+function spendDraw() { const m = spendFx.cur; if (m && (G.got || (modalOpen() && m.slot !== 'keep'))) return; SPEND_KIT.ui = ui; SPEND_KIT.u = ui.u; SPEND_KIT.A = ui.A; SPEND_KIT.t = G.t; spendFx.draw(ctx, SPEND_KIT); }
 const spendVisit = () => `${G.screen}:${G.scrSeq}`;
 // a thing's picture for the bubble: the shop's own art (markArt), a booster, a kit's first booster
 function spendArt(key) {
@@ -3643,7 +3643,7 @@ const spendTaste = (key) => (/^(skin|hen|set):/.test(key) ? 'looks' : /^(chick|b
 // ask the Brain once per visit and place (tag): it picks one of cands (or none) and the look plays
 function spendOnce(tag, moment, cands) {
   const v = spendVisit() + '|' + tag;
-  if (G.spendAsked === v || !cands.length || spendFx.cur || G.adBusy) return false;
+  if (G.spendAsked === v || !cands.length || spendFx.cur || G.adBusy || G.got || G.settingsOpen || (modalOpen() && tag !== 'keep')) return false; // (a sheet or a reveal is up: ask again once it is gone)
   G.spendAsked = v;
   const now = Date.now(), r = BR.spendPick(save, moment, cands, { now, visit: spendVisit() });
   if (!r.pick) { if (r.why !== 'nothing to show' && r.why !== 'one a visit') BR.why(save, moment, null, 'spend: ' + r.why, now); return false; }
@@ -3672,7 +3672,7 @@ function spendThen(dst, fn) {
 }
 // home and the map: what the Shop button can show (asked once the page has settled; fresh coins: once they landed)
 function homeSpend() {
-  if (G.screenT < 1.6 || modalOpen() || G.settingsOpen || G.mapTravel || G.treasure || G.shopHand || G.got || purse.active() || G.adBusy || land.active()) return;
+  if (G.screenT < 1.6 || modalOpen() || G.settingsOpen || G.mapTravel || G.treasure || G.shopHand || G.got || purse.active() || G.adBusy || land.busy()) return; // (a landing still flying: wait; a finished one left on its page does not hold this)
   const w = save.wallet, coins = w.coins || 0, v = spendVisit();
   if (G.spendBase == null || G.spendBase.v !== v) G.spendBase = { v, coins };
   const C = [], items = markItems().filter((i) => !i.owned && i.price > 0);

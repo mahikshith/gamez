@@ -47,11 +47,11 @@ export function createPurse(env) {
     if (H && w < H.v) H = null;
   }
   // coins went out: count down from what the counters showed (from) to the purse, coins flying to dst
-  function down(from, dst) {
-    const w = env.wallet(), calm = env.calm();
-    if (!(from > w)) return false;
-    const amt = from - w;
-    P = { from, to: w, down: true, part: false, t0: now(), roll: 0, dur: calm ? 0.25 : DOWN, src: null, dst: calm ? null : dst || null, n: calm || !dst ? 0 : Math.max(3, Math.min(8, Math.round(2 + Math.log2(Math.max(1, amt)) * 0.8))), scr: env.screen(), lastTick: -1, landed: false, popAt: 0 };
+  function down(from, dst, to) {
+    const w = env.wallet(), calm = env.calm(), end = Math.min(w, to != null ? to : w);
+    if (!(from > end)) return false;
+    const amt = from - end;
+    P = { from, to: end, down: true, part: end < w, t0: now(), roll: 0, dur: calm ? 0.25 : DOWN, src: null, dst: calm ? null : dst || null, n: calm || !dst ? 0 : Math.max(3, Math.min(8, Math.round(2 + Math.log2(Math.max(1, amt)) * 0.8))), scr: env.screen(), lastTick: -1, landed: false, popAt: 0 };
     H = null;
     return true;
   }
@@ -69,7 +69,12 @@ export function createPurse(env) {
       H = null;
       return true;
     },
-    hold(v) { check(); if (!P) H = { v: Math.max(0, Math.round(v)), scr: env.screen() }; },
+    hold(v) {
+      check();
+      const sc = env.screen();
+      if (!P && seen != null && seenScr === sc && sc !== 'play' && v < seen && env.wallet() < seen) { down(seen, dstNext, Math.round(v)); dstNext = null; return; } // coins went out first (a coin spin): count down to the held total
+      if (!P) H = { v: Math.max(0, Math.round(v)), scr: sc };
+    },
     spend(o = {}) {
       const t = now(), w = env.wallet();
       const from = P || H ? shownAt(t) : seen != null ? seen : w;

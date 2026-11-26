@@ -90,7 +90,7 @@ export function createSpendFx(env) {
       const k = api.k(slot);
       if (k < 0 || calm() || M.kind !== 'wave') return null;
       const e = el(), env2 = e < 0.95 ? Math.sin(cl(e / 0.95) * Math.PI) : 0;
-      return { dy: -Math.abs(Math.sin(e * 9)) * 0.05 * env2, sx: 1, sy: 1, rot: Math.sin(e * 9) * 0.26 * env2, a: 1 };
+      return { dy: -Math.abs(Math.sin(e * 9)) * 0.09 * env2, sx: 1, sy: 1, rot: Math.sin(e * 9) * 0.42 * env2, a: 1 };
     },
     draw(ctx, kit) {
       frame++;
@@ -210,7 +210,7 @@ export function createSpendFx(env) {
   // ---- wave: the control rocks its picture (waveXf); then the keep tag swings on it
   function drawWave(ctx, kit, m, e, B) {
     if (!B) return;
-    swingTag(ctx, kit, m, B.x + B.w * 0.82, B.y + 8 * kit.u, e - 0.75, Math.min(34 * kit.u, B.h * 0.3));
+    swingTag(ctx, kit, m, B.x + B.w * 0.8, B.y + 6 * kit.u, e - 0.75, Math.min(42 * kit.u, B.h * 0.34));
   }
   // a tag on a string, pinned at (x, y): it drops in and swings to rest (Calm: hanging still)
   function swingTag(ctx, kit, m, x, y, tt, h) {
