@@ -7,7 +7,7 @@
 //   banditEvent(ev, fx, U)               sounds, popups and tips (U: { popup, audio, once, hitStop, calm })
 //   drawBanditEmblem / drawBanditCard    the boss bar chip and the intro portrait
 // Calm (save.calm): no shake, no flash, the telegraph mark does not pulse.
-import { RACCOON_M, raccoonPose, raccoonBlend, drawRaccoon } from './raccoon.js';
+import { RACCOON_M, raccoonPose, raccoonBlend, drawRaccoon, raccoonPaw } from './raccoon.js';
 import { BAND } from '../sim/bandit.js';
 import { RING_TH } from '../sim/geom.js';
 
@@ -48,7 +48,7 @@ function look(sim, B, t) {
 }
 
 // the rig point (forward, down) of a world point, from his feet
-const rigOf = (B, gY, x, y) => [((x - B.x) * B.face * 100) / RACCOON_M, (-(y - gY) * 100) / RACCOON_M];
+const rigOf = (B, gY, x, y, m) => [((x - B.x) * B.face * 100) / m, (-(y - gY) * 100) / m];
 // put the art's near paw exactly on a rig point (the inverse of raccoon.js drawRaccoon's torso frame)
 function pawTo(p, w) {
   const sx = 1 + p.sq * 0.7, sy = 1 - p.sq, cr = Math.cos(p.rot), sr = Math.sin(p.rot);
@@ -61,6 +61,17 @@ function toPx(p, lx, ly, u, face) {
   return { x: (p.dx + lx * cr - ly * sr) * sx * u * face, y: (-p.by + lx * sr + ly * cr) * sy * u };
 }
 const FZ = { on: false, t: 0 };
+// 0.8.18 (owner: "the raccoon is too small for starters"): in play he is drawn this much bigger than the sim's 1.22 m
+// thief, so that perched on a ring he is about 1.7 channels tall (a channel is 0.89 m; he sits about 85 rig units high)
+export const BANDIT_SCALE = 1.7;
+const PLAY_M = RACCOON_M * BANDIT_SCALE; // metres per 100 rig units in play
+// On the yard (the 0.8.17 behaviour: he stands under the vault and reaches up through a gap) he is as big as the room under
+// the outer ring at his spot allows, so his head never goes behind the ring: near full size out at the side, smaller in
+// under the vault by the basket. Never smaller than the 0.8.17 thief, never bigger than BANDIT_SCALE.
+export function banditYardScale(sim, x) {
+  const ro = sim.bandOuter().r + RING_TH / 2, under = Math.abs(x) < ro ? -Math.sqrt(ro * ro - x * x) - sim.groundY : 99;
+  return clamp((0.9 * under) / 1.22, 1, BANDIT_SCALE);
+}
 
 export function bandHides(sim, e) {
   const B = sim.band;
@@ -70,14 +81,14 @@ export function bandHides(sim, e) {
 export function drawBandit(ctx, sim, t, k, calm) {
   const B = sim.band;
   if (!B) return;
-  const gY = sim.groundY, s = RACCOON_M * k, u = s / 100, L = look(sim, B, t);
+  const gY = sim.groundY, M = RACCOON_M * banditYardScale(sim, B.x), s = M * k, u = s / 100, L = look(sim, B, t);
   if (L.frozen && !FZ.on) { FZ.on = true; FZ.t = t; } else if (!L.frozen) FZ.on = false;
   const tt = FZ.on ? FZ.t : t;
   const path = sim.bandPath(B), inArm = (B.ph === 'reach' || B.ph === 'grope' || B.ph === 'tease' || B.ph === 'strain' || B.ph === 'yank' || B.ph === 'retract' || B.ph === 'pinch') && B.ext > 0;
   const opt = {};
   const paw = sim.bandPaw(B), out = inArm && B.ext > path.L1; // the paw is past the gap's mouth: the bent arm runs on from there
   const tgt = out ? path.G0 : paw;
-  if (inArm || B.ph === 'yelp') opt.to = rigOf(B, gY, tgt.x, tgt.y);
+  if (inArm || B.ph === 'yelp') opt.to = rigOf(B, gY, tgt.x, tgt.y, M);
   let p = raccoonPose(L.st, tt, L.u, opt);
   Object.assign(p, L.add);
   if (inArm) pawTo(p, opt.to); // exact: the arm meets the bent part at the gap's mouth
@@ -134,14 +145,16 @@ export function drawBandit(ctx, sim, t, k, calm) {
 }
 // the bent arm along pts (px, y down: from the gap's mouth on) and his paw at its end; shared with the level card (howact.js)
 function armTo(ctx, pts, u, ice, hurt, hold, t) {
-  const lw = Math.max(2.3, 1.15 / u) * u, wd = 10.5 * u;
+  const lw = Math.max(2.3, 1.15 / u) * u, wd = 9.5 * u;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const line = () => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); };
+  // one smooth sleeve: the corners at the gap's mouth and on the floor are rounded off (mid-point curves), never kinked
+  const line = () => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length - 1; i++) ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2); ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]); };
   line(); ctx.lineWidth = wd + lw * 2; ctx.strokeStyle = ice ? ICE.ink : INK; ctx.stroke();
   line(); ctx.lineWidth = wd; ctx.strokeStyle = ice ? ICE.fur : FUR; ctx.stroke();
-  // his paw: a dark mitt, fingers spread to grope (curled round an egg he holds), red and throbbing when pinched
+  // his paw (the art's own: fingers and a thumb): spread and groping, curled round an egg he holds, red and throbbing when pinched
   const H = pts[pts.length - 1], Hp = pts[pts.length - 2], ang = Math.atan2(H[1] - Hp[1], H[0] - Hp[0]);
-  mitt(ctx, H[0], H[1], ang, 8.2 * u * (hurt && t ? 1 + 0.12 * Math.sin(t * 30) : 1), lw, ice ? ICE.paw : hurt ? HURT : PAW, ice ? ICE.ink : INK, hold, t);
+  const cu = hold ? 0.8 : hurt ? 0 : 0.2 + 0.2 * Math.sin(t * 13), r = 5.8 * u * (hurt && t ? 1.3 + 0.12 * Math.sin(t * 30) : 1);
+  raccoonPaw(ctx, H[0], H[1], ang, r, lw, { col: ice ? ICE.paw : hurt ? HURT : PAW, hi: ice || hurt ? 'rgba(255,255,255,0.25)' : PAWHI, line: ice ? ICE.ink : INK }, [cu, cu + 0.1 * Math.sin(t * 13 + 1), cu, cu], 1, null, hurt ? 1.5 : 1.15);
 }
 // the level card's Bandit (howact.js): drawn at his feet (fx, fy) in px (y down), s px per 100 rig units, the art's state
 // st at u; o.arm: px points from the gap's mouth to his paw (his near paw goes to the first, the bent arm runs on)
@@ -165,24 +178,33 @@ export function drawBanditStage(ctx, fx, fy, s, t, st, u0, o = {}) {
     if (o.bubble) bubble(ctx, toPx(p, p.hx + 30, p.hy - 64, u, face), 13 * u * 2.2, o.bubble);
   } finally { ctx.restore(); }
 }
+// ---------- 0.8.18: Bandit ON a ring (art for the new behaviour: climb, hop, sit, crank, reach, grab, shaken, fall)
+// World space (y up, metres, the vault's centre at 0, 0), k px per metre. He perches on the outer face of a ring of
+// radius r (to its centre line) at world angle a, drawn at BANDIT_SCALE. Draw o.layer 'back' BEFORE the rings (his tail
+// hangs behind them) and 'front' AFTER them (body, paws wrapped over the rim, sack). st / u / opt as raccoonPose (the perch
+// states); o: { face (1: he faces clockwise on screen, -1 the other way), layer, eye, frozen, calm, id (blend memory),
+// add (pose overrides), out (as drawRaccoon), at ({ x, y } world: his perch point when he has left the rim: a hop
+// between spots, the fall) }. opt.to / opt.eye given in WORLD metres are turned into his rig here
+// (o.toW, o.eyeW: { x, y }).
+export function drawBanditPerch(ctx, r, a, t, k, st, u, o = {}) {
+  const face = o.face < 0 ? -1 : 1, s = PLAY_M * k, ro = r + RING_TH / 2, px = o.at ? o.at.x : ro * Math.cos(a), py = o.at ? o.at.y : ro * Math.sin(a), th = Math.PI / 2 - a;
+  const rig = (W) => { const dx = (W.x - px) * k, dy = -(W.y - py) * k, c = Math.cos(-th), sn = Math.sin(-th); return [((dx * c - dy * sn) * face * 100) / s, ((dx * sn + dy * c) * 100) / s]; };
+  const opt = { perch: true, R: (ro * 100) / PLAY_M, tilt: Math.atan2(Math.sin(th), Math.cos(th)) * face, ...(o.opt || {}) };
+  if (o.toW) opt.to = rig(o.toW);
+  if (o.eyeW) opt.eye = rig(o.eyeW);
+  let p = raccoonPose(st, t, u, opt);
+  if (o.add) Object.assign(p, o.add);
+  if (!o.calm && o.id) p = o.layer === 'front' && o.blended ? o.blended : raccoonBlend(o.id, p, t, o.rate || 14);
+  ctx.save(); ctx.translate(px, py); ctx.scale(1 / k, -1 / k); ctx.rotate(th);
+  try { drawRaccoon(ctx, 0, 0, s, t, p, { face, frozen: o.frozen ? 1 : 0, eye: o.eye || 'normal', egg: o.egg, layer: o.layer, out: o.out }); } finally { ctx.restore(); }
+  return p; // pass it back as o.blended for the second layer, so both layers show the same pose
+}
 function egg(ctx, x, y, h, rot) {
   const w = h * 0.76;
   ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
   ctx.beginPath(); for (let i = 0; i <= 24; i++) { const a = (i / 24) * TAU, s2 = Math.sin(a); ctx.lineTo((w / 2) * Math.cos(a) * (1 + 0.13 * s2), (h / 2) * s2); }
   ctx.closePath(); ctx.fillStyle = '#fff1d6'; ctx.fill(); ctx.lineWidth = Math.max(1, h * 0.08); ctx.strokeStyle = INK; ctx.stroke();
   ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(-w * 0.16, -h * 0.18, w * 0.1, h * 0.14, 0.4, 0, TAU); ctx.fill();
-  ctx.restore();
-}
-function mitt(ctx, x, y, ang, r, lw, col, ink, hold, t) {
-  ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
-  const wig = hold ? 0 : Math.sin(t * 13) * 0.25;
-  const blob = () => { ctx.beginPath(); ctx.ellipse(0, 0, r * 1.15, r * 0.95, 0, 0, TAU); };
-  for (let i = -1; i <= 1; i++) { // fingers
-    const a = i * 0.55 + wig * (i + 1), fx = Math.cos(a) * r * (hold ? 0.95 : 1.35), fy = Math.sin(a) * r * (hold ? 0.95 : 1.2);
-    ctx.beginPath(); ctx.ellipse(fx, fy, r * 0.48, r * 0.36, a, 0, TAU); ctx.lineWidth = lw * 2; ctx.strokeStyle = ink; ctx.stroke(); ctx.fillStyle = col; ctx.fill();
-  }
-  blob(); ctx.lineWidth = lw * 2; ctx.strokeStyle = ink; ctx.stroke(); ctx.fillStyle = col; ctx.fill();
-  ctx.beginPath(); ctx.ellipse(-r * 0.2, -r * 0.3, r * 0.5, r * 0.22, 0, 0, TAU); ctx.fillStyle = col === PAW ? PAWHI : 'rgba(255,255,255,0.25)'; ctx.fill();
   ctx.restore();
 }
 function bubble(ctx, P, r, ch) {
@@ -275,3 +297,21 @@ export function drawBanditCard(ctx, x, y, w, h, t, age) {
   ctx.restore();
   return true;
 }
+
+// ---------- dev only: the perch states on a stand-in ring (window.__bandit.demo), for strips and for whoever builds the behaviour
+const DEMO = [['climb', 1.5], ['hop', 0.95], ['sit', 2.2], ['crank', 3], ['reach', 1.5], ['grab', 1.8], ['shaken', 1.6], ['fall', 1.3]];
+function demoAt(T) { let x = T % DEMO.reduce((n, d) => n + d[1], 0); for (const [st, d] of DEMO) { if (x < d) return { st, u: x / d, d }; x -= d; } return { st: 'sit', u: 0, d: 1 }; }
+// centre (cx, cy) px of a 4-ring vault like L6's, k px per metre; o: { a (perch angle, rad), face, st, u (else it cycles on t), calm, rings: false }
+function banditDemo(ctx, cx, cy, k, t, o = {}) {
+  const D = o.st ? { st: o.st, u: o.u || 0 } : demoAt(t), a = o.a ?? 2.0, face = o.face || 1, R = 4.2, eggA = a - face * 0.2, eggW = { x: (R - 0.52) * Math.cos(eggA), y: (R - 0.52) * Math.sin(eggA) };
+  const st = D.st, u = !o.st && (st === 'sit' || st === 'crank') ? 0 : D.u, base = { face, calm: true, opt: {}, eyeW: eggW, toW: eggW, egg: st === 'grab' ? undefined : false };
+  if (st === 'fall') { const T = Math.max(0, u - 0.12) * 0.95, ro = R + RING_TH / 2, vx = -Math.sin(a) * face * 1.7 + Math.cos(a) * 1.6, vy = Math.cos(a) * face * 1.7 + Math.sin(a) * 1.6; base.at = { x: ro * Math.cos(a) + vx * T, y: ro * Math.sin(a) + vy * T - 4.5 * T * T }; } // thrown off backwards, then gravity
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(k, -k);
+  const p = drawBanditPerch(ctx, R, a, t, k, st, u, { ...base, layer: 'back' });
+  if (o.rings !== false) for (const r of [3.15, 4.2]) { ctx.beginPath(); ctx.arc(0, 0, r, a - 0.9, a + 0.9); ctx.lineCap = 'butt'; ctx.lineWidth = RING_TH + 5 / k; ctx.strokeStyle = '#3a2412'; ctx.stroke(); ctx.lineWidth = RING_TH; ctx.strokeStyle = '#a8713c'; ctx.stroke(); ctx.lineWidth = RING_TH * 0.3; ctx.strokeStyle = '#c99556'; ctx.stroke(); }
+  if (st !== 'grab' && st !== 'fall' && st !== 'shaken') { ctx.save(); ctx.translate(eggW.x, eggW.y); ctx.scale(1 / k, -1 / k); egg(ctx, 0, 0, 0.56 * k, 0.1); ctx.restore(); }
+  drawBanditPerch(ctx, R, a, t, k, st, u, { ...base, layer: 'front' });
+  ctx.restore();
+  return D;
+}
+if (typeof __DEV__ === 'undefined' || __DEV__) { try { window.__bandit = { drawBanditPerch, demo: banditDemo, demoAt, DEMO, BANDIT_SCALE }; } catch (_) { /* no window */ } }
