@@ -181,7 +181,8 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   const U = h, Z = Math.min(h, w * 0.62), cx = x + w / 2; // U: the stage's height (vertical placing); Z: the size of things (a tall stage does not blow them up)
   const Wd = o.world || null;
   ctx.save();
-  // the panel: the level's own backdrop (else a soft sky and a meadow strip), rounded
+  // the panel: the level's own backdrop (else a soft sky and a meadow strip), rounded; o.bare (0.8.18, the level card's
+  // hero): no panel and no veil, the scene's things stand on the page's own world (its world.back paints nothing)
   rr(ctx, x, y, w, h, Math.min(18, h * 0.08)); ctx.clip();
   if (!(Wd && Wd.back && Wd.back(ctx, x, y, w, h))) {
     const g = ctx.createLinearGradient(0, y, 0, y + h);
@@ -192,7 +193,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   // 2026-11-23 (mykee: "the background is highlighted", "extreme close-up", villains cut by the stage's edge): the
   // backdrop stands back behind a veil in the world's own sky colour, and a scene with a villain in it is seen from a
   // step back (the ground stays put), so the whole villain is in the picture.
-  if (Wd) { ctx.save(); ctx.globalAlpha = 0.42; ctx.fillStyle = o.sky1 || '#f6ead0'; ctx.fillRect(x, y, w, h); ctx.globalAlpha = 0.16; ctx.fillStyle = '#fff6e0'; ctx.fillRect(x, y, w, h); ctx.restore(); }
+  if (Wd && !o.bare) { ctx.save(); ctx.globalAlpha = 0.42; ctx.fillStyle = o.sky1 || '#f6ead0'; ctx.fillRect(x, y, w, h); ctx.globalAlpha = 0.16; ctx.fillStyle = '#fff6e0'; ctx.fillRect(x, y, w, h); ctx.restore(); }
   ctx.globalAlpha = fade;
 
   // ring geometry: centre above the panel; phi = 0 is straight down
