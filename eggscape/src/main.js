@@ -3442,7 +3442,7 @@ function pacerStopMark(id, x, y, r, t, calm) {
     const sx = x + side * R * 0.95 - (side < 0 ? tw : 0), sy = y - R * 0.75, p = calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3.2 + id), rr = (9 + 2 * p) * u;
     ctx.save(); ctx.globalAlpha = 0.35 + 0.35 * p; ctx.beginPath(); ctx.arc(sx, sy, rr * 1.9, 0, 7); ctx.fillStyle = '#fff3a0'; ctx.fill(); ctx.restore();
     drawStar(ctx, sx, sy, rr, true);
-    ui.text('+1', sx + rr + 3 * u, sy + 1 * u, { size: 13 * u, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'map:plus' + id, noRecord: sy - 12 * u < levelPageTop() || sy + 12 * u > ui.A.y1 }); // (half under the header: not a thing to read)
+    ui.text('+1', sx + rr + 3 * u, sy + 1 * u, { size: 13 * u, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'map:plus' + id, noRecord: sy - 12 * u < levelPageTop() || sy + 12 * u > (G.mapView ? G.mapView.vb : ui.A.y1) }); // (half under the header or the PLAY bar: not a thing to read)
   }
 }
 // "Stuck? Skip this one" (the Pacer, after the third loss in a row): over the fail page before its buttons, the hen
@@ -9782,6 +9782,10 @@ function drawLevels() {
     let x0 = x + bx.x0, x1 = x + bx.x1, y0 = y + bx.y0, y1 = y + bx.y1;
     if (x1 - x0 < 48) { x0 = x - 24; x1 = x + 24; } // a touch box of at least 48 px each way
     if (y1 - y0 < 48) { const m2 = (y0 + y1) / 2; y0 = m2 - 24; y1 = m2 + 24; }
+    for (const ob of ui.buttons) { // (0.8.17 polish: two stops close on the road, a tablet's map: the later one's box gives way, so one tap is one level)
+      if (!/^lv:/.test(ob.id) || x1 <= ob.x || x0 >= ob.x + ob.w || y1 <= ob.y || y0 >= ob.y + ob.h) continue;
+      if ((y0 + y1) / 2 < ob.y + ob.h / 2) y1 = Math.min(y1, ob.y - 1); else y0 = Math.max(y0, ob.y + ob.h + 1);
+    }
     let tb = ctaOn && wide && x1 > ctaX - 6 * u ? Math.min(tapBot, ctaY - 6 * u) : tapBot;
     if (x1 > wmX - 6 * u && y1 > wmY - 6 * u) tb = Math.min(tb, wmY - 6 * u);
     let p = 0;
