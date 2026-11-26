@@ -7929,7 +7929,6 @@ function lcPress(id) {
     if (H.pin === key) { H.cur = { key: 'vault' }; H.pin = 'vault'; } else { H.cur = { key, plan: F.plan, name: F.name, words: F.words, ts: G.t }; H.pin = key; }
     return;
   }
-  if (id === 'perk:dare') press('dare:chip');
   audio.play('ui_tap'); G.lcPop = { id, t0: G.t };
   say();
 }
@@ -8039,7 +8038,10 @@ function drawLevelIntro(L, acc) {
     if (P.num) { const nr = 8.5 * s, nx = PR * 0.72, ny = PR * 0.7; ctx.beginPath(); ctx.arc(nx, ny, nr, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = P.col; ctx.stroke(); ui.text(String(P.num), nx, ny + 0.5 * s, { size: 12 * s, align: 'center', color: P.col, noRecord: true }); } // the count: wins in a row, levels left
     ctx.restore();
     const r = { x: X - PR, y: cy - PR, w: PR * 2, h: PR * 2 };
-    ui.record(r, 'intro:perk' + i); ui.buttons.push({ id: 'perk:' + P.id, ...r }); tips['perk:' + P.id] = P.tip;
+    const bid = P.id === 'dare' ? 'dare:chip' : 'perk:' + P.id; // the dare keeps its own id: a tap takes it, another puts it back
+    ui.record(r, 'intro:perk' + i); ui.buttons.push({ id: bid, ...r }); tips[bid] = P.tip;
+    const fx = G.dareFx; // the dare was just tapped: its pop and its words, as the other badges get
+    if (P.id === 'dare' && fx && G.lcDareT !== fx.t0 && G.t - fx.t0 < 0.25) { G.lcDareT = fx.t0; G.lcPop = { id: 'perk:dare', t0: fx.t0 }; G.lcTip = { id: bid, text: P.tip, x: X, y: r.y, h: r.h, t0: fx.t0 }; }
   });
 
   // ---- the goal on the hero: the eggs to bring home (the target ones whole, the rest faint) and the clock
