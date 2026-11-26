@@ -1173,6 +1173,7 @@ function pointerDown(e) {
   // until the finger moved), and that touch does not also press the button it happened to land on
   if (G.pdrag) { const pd0 = G.pdrag; for (const q of [pd0.sc, pd0.cand && pd0.cand.x, pd0.cand && pd0.cand.y]) if (q) { if (Math.abs(q.v) > 90) pd0.caught = true; q.v = 0; q.to = null; } if (pd0.caught) return; }
   if (G.screen === 'play' && fuseIntroSkip()) { G.pdrag = null; return; } // a tap skips the fuse intro (and does nothing else)
+  if (G.screen === 'spin' && id === 'spin:lever' && leverDown(e.pointerId, x, y)) { try { canvas.setPointerCapture(e.pointerId); } catch (_) {} return; } // 0.8.17: the lever is dragged
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
   if (G.screen === 'info') { const C = G.infoCard; if (C && (x < C.x || x > C.x + C.w || y < C.y - 10 * ui.u || y > C.y + C.h + 6 * ui.u)) { G.pdrag = null; press('info:close'); } return; } // a tap off the card closes it
   if (G.screen === 'play' && G.toast && G.toast.tip && G.toastRect) { const R = G.toastRect; if (x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h) { G.toast.life = Math.min(G.toast.life, 0.2); return; } } // a tap on a villain tip puts it away
@@ -1227,6 +1228,7 @@ const TOUCH_TURN_GAIN = 1.3;
 function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
+  if (G.spin && G.spin.lv && G.spin.lv.pid === e.pointerId) { leverMove(y); return; } // the spin lever under a finger
   const pd = G.pdrag;
   if (pd && pd.pid === e.pointerId && (G.settingsOpen || G.screen === 'practice' || G.screen === 'extras' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store' || G.screen === 'intro' || G.screen === 'pause' || G.screen === 'fail')) { // 0.8.7: the pause page was missing here, so it never scrolled under a finger (0.8.10: and Settings over the title, mykee: "users are not able to scroll it")
     if (pd.bar && (pd.scrub || (!pd.moved && Math.abs(x - pd.x0) > 9 * ui.u && Math.abs(x - pd.x0) > Math.abs(y - pd.y0)))) { // the speed bar follows the finger sideways
@@ -1295,6 +1297,7 @@ function flingSpeed(pd) {
   return clamp(((a[0] - b[0]) / dt) * 1000 * 1.15, -7000, 7000);
 }
 function pointerUp(e) {
+  if (G.spin && G.spin.lv && G.spin.lv.pid === e.pointerId) leverUp();
   const pd = G.pdrag;
   if (pd && pd.pid === e.pointerId) { if (pd.moved && pd.sc && !pd.scrub) pd.sc.v = flingSpeed(pd); G.pdrag = null; }
   if (G.screen === 'wonder') wonder.pointerUp(e); // WONDER
@@ -3610,7 +3613,7 @@ const DIAG_MARK = /^(iap:|deal:|buy:|item:|chick:|charge:|hen:|skin:|kit:|hset:|
 // Haptics on the hero beats (the app's EggApp bridge, navigator.vibrate on the web). 0.8.9: only the Vibration switch turns
 // them off (not sound, not Calm motion), and each beat has its own pattern [on, off, on, ...] in ms: 18 to 30 ms one-shots
 // were not felt on most phones.
-const HAPTIC = { attack: [40, 35, 60], slam: [70, 40, 90], save: 30, crack: 45, broke: [60, 40, 80], star: 35, win: [40, 60, 40, 60, 120], fail: [120, 80, 160], strike: 50, crow: 70, boss: 80, hit: 40, thorn: 35, pick: 25, chick: 20, treasure: [30, 40, 30, 40, 150], tap: 25, tick: 20 };
+const HAPTIC = { attack: [40, 35, 60], slam: [70, 40, 90], save: 30, crack: 45, broke: [60, 40, 80], star: 35, win: [40, 60, 40, 60, 120], fail: [120, 80, 160], strike: 50, crow: 70, boss: 80, hit: 40, thorn: 35, pick: 25, chick: 20, treasure: [30, 40, 30, 40, 150], tap: 25, tick: 20, notch: 9, flick: 6, edge: 16, settle: 8 }; // (0.8.17: notch, the spin lever's ratchet; flick / edge / settle, a list's tick, its end, a snap)
 const EV_BUZZ = { break: 'broke', bossHit: 'hit', bossFlinch: 'hit', thiefHit: 'hit', thiefDefeat: 'hit', snakeRecoil: 'hit', eagleSlam: 'hit', kcHit: 'hit', gatorHit: 'hit', owlJam: 'hit', allyKnock: 'hit', pickup: 'pick', thornSnap: 'thorn', thornBurn: 'thorn', stkLaunch: 'strike', stkSnip: 'pick' }; // events that had a sound but no buzz
 let lastBuzz = { t: -9, p: 0 };
 // 0.8.10 (mykee on 0.8.9: "I didn't feel vibrations or any shaky effects on any level. The user should feel it when an
@@ -10109,7 +10112,7 @@ function openSpin() {
   const b1 = spinBoost();
   land.clear();
   G.spin = { from: G.screen, reels: G.spin && G.spin.reels ? G.spin.reels.map((p) => Math.round(p)) : [0, 1, 2], run: null, st: 'idle', leverT: -9, tickT: -9, buzzT: -9, sheet: false, lit: false,
-    cast: { who: spinVillain(), item: b1, item2: spinBoost(), chick: spinChick() }, hx: 0.5, hv: 0, henN: 0, stops: 0, miss: false, missT: -99 };
+    cast: { who: spinVillain(), item: b1, item2: spinBoost(), chick: spinChick() }, hx: 0.5, hv: 0, henN: 0, stops: 0, miss: false, missT: -99, idleT: G.t, lvK: 0, lvV: 0, lv: null };
   resetHen('spin');
   G.getMore = null; G.detail = null; G.toasts = []; G.toast = null;
   setScreen('spin'); audio.play('ui_open');
@@ -10157,6 +10160,72 @@ async function spinGo(how) {
   S.lit = false; S.leverT = G.t;
   audio.play('slot_lever'); buzz('tap');
   if (save.calm) { S.run.forEach((r, i) => { S.reels[i] = r.a1; }); S.run = null; S.st = S.miss ? 'stolen' : 'stopped'; S.tStop = G.t; S.lit = !S.miss; if (S.miss) { S.missT = G.t; S.vSide = -1; audio.play('slot_miss'); } } else { S.st = 'spinning'; audio.play('slot_spin', { intensity: 1, vol: 0.8 }); }
+}
+// ---- 0.8.17 the lever (mykee: "scrollable lever for spin rather than button; should show a finger kind of thing to the
+// user"): a free spin is pulled by dragging the lever's knob down. The knob follows the finger on a spring, a ratchet
+// clicks (and the phone ticks lightly) at each of six notches; let go past 60% of the way and it pulls the spin (the
+// same spinGo as the SPIN button: the result, odds and prices do not change), earlier and it springs back up. A plain
+// tap on it still pulls, as before. A hand shows the drag (down, let go) for the first three pulls on this phone and
+// whenever the player waits on the page; Calm: a still hand on the knob with an arrow down.
+const LEVER_KEY = 'egg.leverN', LEVER_PULL = 0.6, LEVER_NOTCH = 6;
+const leverN = () => { try { return +localStorage.getItem(LEVER_KEY) || 0; } catch (e) { return 0; } };
+function leverNote() { try { localStorage.setItem(LEVER_KEY, String(leverN() + 1)); } catch (e) { /* (a private window: the hand shows again) */ } }
+// the knob's travel: the lever turns by th = 2k; seen from the front the knob sits h·cos(th) above the socket, so a
+// finger d px below where it took hold asks for k = acos(1 - d / h) / 2 (the knob stays under the finger)
+const leverK = (d, h) => clamp(Math.acos(clamp(1 - Math.max(0, d) / Math.max(1, h), -1, 1)) / 2, 0, 1);
+function leverDown(pid, x, y) {
+  const S = G.spin;
+  if (!S || S.st !== 'idle' || S.sheet || !S.leverOk || G.adBusy) return false;
+  const k0 = clamp(S.lvK || 0, 0, 1);
+  S.lv = { pid, x0: x, y0: y, t0: G.t, moved: false, to: k0, n: Math.floor(k0 * LEVER_NOTCH), d0: S.lvGeo ? S.lvGeo.h * (1 - Math.cos(2 * k0)) : 0 }; // (caught mid-swing: it carries on from where the knob is)
+  S.idleT = G.t; S.handOff = true; // a hand on it: the hint goes until the next wait
+  audio.play('grab', { vol: 0.5 });
+  return true;
+}
+function leverMove(y) {
+  const S = G.spin, V = S && S.lv;
+  if (!V || !S.lvGeo) return;
+  const d = y - V.y0;
+  if (!V.moved && Math.abs(d) > 6 * ui.u) V.moved = true;
+  if (!V.moved) return;
+  V.to = leverK(d + V.d0, S.lvGeo.h);
+  const n = Math.floor(V.to * LEVER_NOTCH + 1e-6);
+  if (n !== V.n) { // a notch: the ratchet clicks, a light tick in the hand (one per notch, never a stream)
+    if (n > V.n || G.t - (V.tickT || 0) > 0.08) { audio.play('slot_tick', { vol: 0.6, pitch: 0.78 + 0.07 * n }); buzz('notch'); V.tickT = G.t; }
+    V.n = n;
+  }
+}
+function leverUp() {
+  const S = G.spin, V = S && S.lv;
+  if (!V) return;
+  S.lv = null; S.idleT = G.t;
+  const tap = !V.moved && G.t - V.t0 < 0.5;
+  if (tap || V.to >= LEVER_PULL) {
+    const k = S.lvK || 0;
+    press('spin:lever'); // (spinGo runs at once for a free spin: S.st and S.leverT are set before this returns)
+    if (S.st !== 'idle') { S.leverT = G.t - 0.13 * clamp(k, 0, 1); S.lvK = 0; S.lvV = 0; if (!tap) leverNote(); return; } // the pull carries on from where the hand let go
+  }
+  if (V.moved) audio.play('release', { vol: 0.45 }); // let go early: it springs back up
+}
+// the lever's place on the page this frame (set by drawSpin): one spring step toward the finger (or home)
+function leverStep(S) {
+  const to = S.lv ? S.lv.to : S.hintTo || 0, tight = !!S.lv || S.hintHeld, dt = clamp(G.t - (S.lvT ?? G.t), 0, 0.05); S.lvT = G.t;
+  if (save.calm) { S.lvK = to; S.lvV = 0; return; }
+  const om = tight ? 34 : 26, z = tight ? 0.85 : 0.42; // under the finger (or the hint's hand): tight; let go: a springy return with one small bounce
+  for (let left = dt; left > 1e-6;) { const h = Math.min(left, 1 / 240); left -= h; S.lvV += (-om * om * ((S.lvK || 0) - to) - 2 * z * om * (S.lvV || 0)) * h; S.lvK = (S.lvK || 0) + S.lvV * h; }
+  if (!S.lv && !to && Math.abs(S.lvK) < 0.002 && Math.abs(S.lvV) < 0.02) { S.lvK = 0; S.lvV = 0; }
+}
+// the hand that shows the drag: on the knob, presses, draws it down to the bottom, lets go; the lever follows it
+function leverHint(S) {
+  if (S.st !== 'idle' || S.sheet || !S.leverOk || S.lv || land.busy()) { S.hintK = 0; return null; }
+  const waited = G.t - (S.idleT ?? G.t) > 4.5;
+  if (!(leverN() < 3 && !S.handOff) && !waited) { S.hintK = 0; return null; }
+  if (waited) S.handOff = false;
+  const per = 2.4, q = save.calm ? 0.3 : ((G.t - (S.idleT ?? 0)) % per) / per;
+  const a = q < 0.08 ? q / 0.08 : q > 0.62 ? clamp(1 - (q - 0.62) / 0.12, 0, 1) : 1; // fades in onto the knob, out after letting go
+  const down = save.calm ? 0 : q < 0.16 ? 0 : q < 0.5 ? ss01((q - 0.16) / 0.34) : 1; // presses, then pulls (eased)
+  const held = save.calm || (q > 0.12 && q < 0.52);
+  return { a, held, k: save.calm ? 0 : held ? down * 0.82 : 0, q, down };
 }
 // a winning pull: what the machine shows (the prize is already in the wallet; the counters hold the purse before it)
 function spinPrize(S, res, how, w0, c0) {
@@ -10264,14 +10333,20 @@ function drawSpin() {
   ctx.save(); ctx.globalAlpha = 0.9; sunburst(mcx, mcy, mw * 1.25, 'rgba(255,214,120,0.09)', 14); ctx.restore();
   { const g = ctx.createRadialGradient(mcx, mcy, mw * 0.2, mcx, mcy, mw); g.addColorStop(0, 'rgba(255,220,130,0.26)'); g.addColorStop(1, 'rgba(255,220,130,0)'); ctx.fillStyle = g; ctx.fillRect(mcx - mw, mcy - mw, mw * 2, mw * 2); }
   const idle = S.st === 'idle', litK = S.lit ? (idle ? clamp(1 - (G.t - (S.doneT || 0)) / 2.5, 0, 1) : 1) : 0;
-  const lt = G.t - S.leverT, lk = calm ? 0 : lt < 0.13 ? lt / 0.13 : lt < 0.42 ? 1 : clamp(1 - (lt - 0.42) / 0.5, 0, 1) * (1 + 0.12 * Math.sin((lt - 0.42) * 22) * clamp(1 - (lt - 0.42) / 0.5, 0, 1));
+  const lt = G.t - S.leverT, lk0 = calm ? 0 : lt < 0.13 ? lt / 0.13 : lt < 0.42 ? 1 : clamp(1 - (lt - 0.42) / 0.5, 0, 1) * (1 + 0.12 * Math.sin((lt - 0.42) * 22) * clamp(1 - (lt - 0.42) / 0.5, 0, 1));
+  S.leverOk = idle && !!W.free && !S.sheet; // 0.8.17: a free spin can be pulled by dragging the lever (leverDown)
+  if (!idle) { S.lv = null; S.lvK = 0; S.lvV = 0; }
+  const HN = leverHint(S); S.hintTo = HN ? HN.k : 0; S.hintHeld = !!(HN && HN.held);
+  leverStep(S);
+  const lk = idle && (S.lv || Math.abs(S.lvK) > 0.002 || Math.abs(S.lvV) > 0.02) ? clamp(S.lvK, -0.08, 1.05) : lk0; // the finger's lever (or the hand's), else the pull's own swing
   { const jt = G.t - Math.max(S.joltT || -9, S.leverT + 0.13); if (!calm && jt >= 0 && jt < 0.22) my += Math.sin(jt * 60) * 2.2 * u * (1 - jt / 0.22); } // a reel locking, the lever hitting bottom: the cabinet shudders
   const stolen = S.st === 'stolen', sT = G.t - S.tStop, badK = stolen ? clamp(sT / 0.2, 0, 1) : S.miss && idle ? clamp(1 - (G.t - (S.doneT || 0)) / 0.6, 0, 1) : 0;
   // the villains' row: the cabinet sags on its feet (down with a small bounce, up again as they go)
   const sag = calm ? badK : stolen ? clamp(sT / 0.28, 0, 1) ** 0.5 * (1 + 0.18 * Math.sin(clamp(sT / 0.5, 0, 1) * Math.PI)) : badK;
   ctx.save();
   if (sag > 0) { ctx.translate(mcx, my + mh); ctx.scale(1 + 0.03 * sag, 1 - 0.055 * sag); ctx.translate(-mcx, -(my + mh)); }
-  const GM = drawSlot(ctx, mx, my, mw, mh, SL, S.reels, { dpr: Math.min(DPR, 2), t: G.t, calm, lit: litK, bad: badK, winT: S.st === 'stopped' || S.st === 'prize' ? G.t - S.tStop : 9, speed, lever: clamp(lk, 0, 1.1), ready: (W.free || W.retry === 'free') && idle });
+  const GM = drawSlot(ctx, mx, my, mw, mh, SL, S.reels, { dpr: Math.min(DPR, 2), t: G.t, calm, lit: litK, bad: badK, winT: S.st === 'stopped' || S.st === 'prize' ? G.t - S.tStop : 9, speed, lever: clamp(lk, -0.08, 1.1), ready: (W.free || W.retry === 'free') && idle && !S.lv });
+  S.lvGeo = GM.lever;
   ctx.restore();
   // and smoke puffs out from its shoulders (Calm: no smoke)
   if (stolen && !calm) for (let i = 0; i < 12; i++) {
@@ -10295,7 +10370,20 @@ function drawSpin() {
     drawHenAnim(ctx, mood, hxp, floorY - hh * 0.5, hh, G.t, { key: 'spin', face: 1, n: S.henN, drift, calm, danger: spinning && !S.stops ? 0.5 : 0 });
   }
   ui.record({ x: mx, y: GM.bodyY, w: mw, h: GM.bodyH }, 'spin:machine');
-  if (idle) ui.buttons.push({ id: 'spin:lever', x: GM.lever.x - GM.lever.h * 0.35, y: GM.lever.y - GM.lever.h * 1.3, w: GM.lever.h * 0.95, h: GM.lever.h * 2.3 }); // a tap on the lever is the SPIN button's tap
+  if (idle) { // the lever's grip: the knob's whole travel, at least 56 px wide for a thumb (a drag pulls it, a tap is the SPIN button's tap)
+    const Lv = GM.lever, gw = Math.max(56, Lv.h * 0.95), gx = Math.min(Lv.x - Lv.h * 0.35, A.x1 + 4 * u - gw);
+    ui.buttons.push({ id: 'spin:lever', x: gx, y: Lv.y - Lv.h * 1.3, w: gw, h: Lv.h * 2.3 });
+  }
+  if (HN && HN.a > 0) { // the hand on the knob (Calm: still, with an arrow down beside the lever)
+    const Lv = GM.lever, hkk = HN.held ? clamp(lk, 0, 1.05) : HN.q > 0.5 ? 0.82 : 0, th = 2 * hkk, kx = Lv.x + Lv.h * 0.12 * (1 - 0.5 * Math.sin(th)), ky = Lv.y - Lv.h * Math.cos(th) - (HN.q > 0.52 ? (HN.q - 0.52) * Lv.h * 0.8 : 0), hs = clamp(Lv.h * 0.62, 40 * u, 66 * u); // (let go: the hand lifts off where it was while the lever springs home)
+    if (calm) {
+      const ax = Math.min(Lv.x + Lv.h * 0.3, A.x1 - 12 * u), a0 = Lv.y - Lv.h * 0.35, a1 = Lv.y + Lv.h * 0.45; // (beside the arm, under the hand: off the reels)
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (const [c, lw] of [['rgba(40,14,4,0.75)', 9 * u], ['#fff3cf', 5 * u]]) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(ax, a0); ctx.lineTo(ax, a1); ctx.moveTo(ax - 9 * u, a1 - 11 * u); ctx.lineTo(ax, a1); ctx.lineTo(ax + 9 * u, a1 - 11 * u); ctx.stroke(); }
+      ctx.restore();
+    }
+    teachHand(ctx, Math.min(kx - hs * 0.04, A.x1 - hs * 0.62), ky + hs * 0.1, hs, HN.held, HN.a); // (the palm stays on the screen)
+  }
   // ---- the prize out of the tray (0.8.17, mykee: "we don't have to show the result card"): it rises out of the tray
   // under the reels and grows, its name on a ribbon under it and what it does under that, then it flies to where it
   // lives (ui/landing.js: coins pour from it in arcs onto the purse, a thing flies into the bag or to the shop)
