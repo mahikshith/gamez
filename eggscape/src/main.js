@@ -3169,7 +3169,7 @@ function drawParty(under) {
   }
   const Pb = ui.pageBox(), s = Pb.s, X = Pb.x, W = Pb.w, wide = A.w > A.h * 1.15;
   const title = R.sku === PREMIUM_SKU ? 'Everything unlocked!' : 'The whole coop is yours!';
-  const coinW = Math.max(84 * s, ui.measure(String(purse.shown()).replace(/\d/g, '0'), 19 * s) + 56 * s);
+  const coinW = Math.max(84 * s, ui.measure(String(purse.shown()).replace(/\d/g, '0'), 19 * s) + Math.max(56 * s, Pb.h + 8 * s)); // (frame818: the coin chip is as tall as the header: its number keeps room beside the coin)
   const rw = Math.min(ui.measure(title, 25 * s) + 56 * s, W - 2 * (Math.max(Pb.h, coinW) + 22 * s));
   const playH = 72 * s, top = Pb.bottom + 12 * s, bottom = A.y1 - 12 * s;
   // the stage: as big as the page allows above the PLAY button (landscape: a wide window, PLAY under it)
