@@ -501,7 +501,7 @@ function drawBossEmblemLive(ctx, kind, cx, cy, d, t) {
   } else if (kind === 'golem') {
     drawThornEmblem(ctx, r, t); // Duke Quartz's face
   } else if (kind === 'salamander') { // 0.8.18 lava: his own face (the new rig), smug, looking at you
-    drawSalamander(ctx, 0, -r * 0.55, r * 1.9, t, { heading: -Math.PI / 2, pose: 'idle', id: 17, noShadow: 1, glow: 0.9, look: { x: 0.5, y: 0.5 }, expr: { k: 'smug', a: 1 } });
+    drawSalamander(ctx, 0, -r * 0.32, r * 2.4, t, { heading: -Math.PI / 2, pose: 'idle', id: 17, noShadow: 1, glow: 0.9, look: { x: 0.5, y: 0.5 }, expr: { k: 'smug', a: 1 } });
   } else if (kind === 'snake') {
     ctx.strokeStyle = '#9be36a';
     ctx.lineWidth = r * 0.22;
