@@ -7542,7 +7542,7 @@ function drawLevelIntro(L, acc) {
   };
 
   // ---- the tabs, with a pulsing mark on the one that needs the player
-  const TABH = 42 * s;
+  const TABH = 52 * s; // (0.8.17: each tab a 44 px tap target, mykee's "user comfort"; it was 34)
   const newChick = T.open.some((S) => !S.premium && S.unlock === L.id && G.li >= 0);
   const chickMark = T.need || newChick || (!early && locked.some((c) => c.canAfford));
   const tabs = (x, y, w) => {
@@ -7627,17 +7627,22 @@ function drawLevelIntro(L, acc) {
     } }; };
   // the reminder chips (what this level also holds, taught on an earlier card): every one whole, wrapped to more rows
   const chips = HT.chips, chH = 28 * s, chFs = 14 * s;
-  const chipRows = (w) => { const ws = chips.map((c) => Math.min(w, chH + ui.measure(c.name, chFs) + 12 * s)), R = []; let cur = [], cw = 0; ws.forEach((cw0, i) => { if (cur.length && cw + gp * 0.75 + cw0 > w) { R.push(cur); cur = []; cw = 0; } cw += (cur.length ? gp * 0.75 : 0) + cw0; cur.push(i); }); if (cur.length) R.push(cur); return { R, ws }; };
-  const chipBlock = (w) => { if (!chips.length) return null; const { R, ws } = chipRows(w); return { h: R.length * chH + (R.length - 1) * 6 * s, gap: gp, draw: (x, y, ww) => {
-    R.forEach((row, r) => {
-      const tw = row.reduce((a, i) => a + ws[i], 0) + (row.length - 1) * gp * 0.75; let cx = x + (ww - tw) / 2; const cy = y + r * (chH + 6 * s);
-      for (const i of row) {
-        const c = chips[i];
-        ui.roundRect(cx, cy, ws[i], chH, chH / 2); ctx.fillStyle = c.fresh ? 'rgba(46,120,40,0.16)' : 'rgba(122,80,40,0.12)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = c.fresh ? 'rgba(46,120,40,0.7)' : 'rgba(122,80,40,0.4)'; ctx.stroke();
-        c.art(ctx, cx + chH / 2 + 1 * s, cy + chH / 2, chH * 0.36);
-        ui.text(c.name, cx + chH + 2 * s, cy + chH / 2 + 0.5 * s, { size: chFs, color: c.fresh ? '#2d6a1c' : C.ink, maxW: ws[i] - chH - 8 * s, tag: 'intro:chip' + i });
-        cx += ws[i] + gp * 0.75;
-      }
+  // 0.8.17 (mykee: "the info ... like top chick, rock skin etc on the level card is not properly aligned"): a tidy grid,
+  // not a ragged wrap: every chip as wide as the widest needs, stretched so a row runs edge to edge of the column, the
+  // rows as even as the count allows (5: three and two), a shorter last row centred on the same chip width
+  const chG = 6 * s;
+  const chipRows = (w) => {
+    const nat = Math.min(w, Math.max(...chips.map((c) => chH + ui.measure(c.name, chFs) + 14 * s))), n = chips.length;
+    const maxC = clamp(Math.floor((w + chG) / (nat + chG)), 1, n), rows = Math.ceil(n / maxC), cols = Math.ceil(n / rows);
+    return { rows, cols, cw: (w - (cols - 1) * chG) / cols };
+  };
+  const chipBlock = (w) => { if (!chips.length) return null; const { rows } = chipRows(w); return { h: rows * chH + (rows - 1) * chG, gap: gp, draw: (x, y, ww) => {
+    const { cols, cw } = chipRows(ww), n = chips.length;
+    chips.forEach((c, i) => {
+      const r = Math.floor(i / cols), k = i % cols, inRow = Math.min(cols, n - r * cols), cx = x + (cols - inRow) * (cw + chG) / 2 + k * (cw + chG), cy = y + r * (chH + chG);
+      ui.roundRect(cx, cy, cw, chH, chH / 2); ctx.fillStyle = c.fresh ? 'rgba(46,120,40,0.16)' : 'rgba(122,80,40,0.12)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = c.fresh ? 'rgba(46,120,40,0.7)' : 'rgba(122,80,40,0.4)'; ctx.stroke();
+      c.art(ctx, cx + chH / 2 + 1 * s, cy + chH / 2, chH * 0.36);
+      ui.text(c.name, cx + chH + 2 * s, cy + chH / 2 + 0.5 * s, { size: chFs, color: c.fresh ? '#2d6a1c' : C.ink, maxW: cw - chH - 8 * s, tag: 'intro:chip' + i });
     });
   } }; };
   // the three star goals, one compact row
@@ -7668,7 +7673,7 @@ function drawLevelIntro(L, acc) {
     } }
   const carCenter = () => (nI ? clamp(Math.round(R.y / Math.max(1, R.step || 1)), 0, nI - 1) : 0);
   let handLater = null;
-  const CTOP = 16 * s, CBOT = 16 * s; // room above for the raised tile and its tick; below for the dots
+  const CTOP = (land ? 12 : 16) * s, CBOT = (land ? 13 : 16) * s; // room above for the raised tile and its tick; below for the dots (0.8.17: on its side 7 px less, the taller tabs' room)
   const carBlock = (w0) => { const D = carDims(w0); return { h: D.ch + CTOP + CBOT, gap: gp, draw: (x, y, w) => {
     const { cw, ch, step, gap } = D, rowH = D.ch + CTOP + CBOT;
     if (G.introPick && G.introPick.t !== R.pt) { R.pt = G.introPick.t; const k = items.findIndex((it) => it.S.id === G.introPick.id); if (k >= 0) { R.v = 0; R.to = k * step; } } // a tapped chick takes the focus
@@ -7776,11 +7781,12 @@ function drawLevelIntro(L, acc) {
   // ---- the bottom: the big button, the boosters strip right above it, and the ring speed strip above that
   // 0.8.16: the booster tiles run from PLAY's left edge to its right one. On a tall phone six fill the width; on a
   // short one they keep their size and the room between them grows (drawBoosterStrip spreads a full row)
-  const BTN = 56 * s, BC0 = 49 * s, bcFull = Math.min((iwP - 5 * 8 * s) / 6, 72 * s);
+  const BTN = (land ? 56 : 64) * s, BC0 = 49 * s, /* 0.8.17 (mykee: "the next button on the level card should be thick and big"): 66 px at 450x1000 in portrait, the map's PLAY and the win page's NEXT are 62 */ bcFull = Math.min((iwP - 5 * 8 * s) / 6, 72 * s);
   const STRIP = 19 * s + (land ? BC0 : Math.max(BC0, BC0 + (bcFull - BC0) * clamp((A.h / s - 640) / 160, 0, 1)));
   const bigButton = (x, y, w) => {
-    if (lvTab) ui.button(hasCh ? 'inext' : 'go', hasCh ? 'NEXT' : 'PLAY', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: hasCh ? ICON.next : ICON.play, size: 27 * s });
-    else ui.button('go', T.need ? 'PICK A CHICK' : 'PLAY', x, y, w, BTN, T.need ? { kind: 'off', size: 24 * s } : { kind: 'primary', shimmer: true, icon: ICON.play, size: 27 * s }); // need: the button says what is missing (it still takes the tap and nudges)
+    const bs = (land ? 27 : 30) * s;
+    if (lvTab) ui.button(hasCh ? 'inext' : 'go', hasCh ? 'NEXT' : 'PLAY', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: hasCh ? ICON.next : ICON.play, size: bs });
+    else ui.button('go', T.need ? 'PICK A CHICK' : 'PLAY', x, y, w, BTN, T.need ? { kind: 'off', size: bs * 0.89 } : { kind: 'primary', shimmer: true, icon: ICON.play, size: bs }); // need: the button says what is missing (it still takes the tap and nudges)
   };
   const adOn = showBoost && !G.adBoost && !G.golden;
   const boostState = () => ({ wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t,
@@ -7914,7 +7920,7 @@ function drawLevelIntro(L, acc) {
     // with one even gap (they used to stop 20 px apart over a dead band above the boosters); while there is room the star
     // goals, then the goal band, move over from the left, and the stage there grows into the height they leave
     let ry = y;
-    if (hasCh) { tabs(rx, ry, rw); ry += TABH + 4 * s; }
+    if (hasCh) { tabs(rx, ry, rw); ry += TABH + 2 * s; }
     const yb = bottom(rx, rw, 10 * s) - 4 * s;
     const pr = G.ipageR || (G.ipageR = { y: 0, v: 0, max: 0, t: G.t, lid: null });
     if (pr.lid !== pg.lid + ':' + (lvTab ? 0 : 1)) { pr.lid = pg.lid + ':' + (lvTab ? 0 : 1); pr.y = 0; pr.v = 0; }
