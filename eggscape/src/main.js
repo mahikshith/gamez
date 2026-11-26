@@ -7770,8 +7770,8 @@ function drawLevelIntro(L, acc) {
   // cards of a session; once the player has touched the strip on this level it rests there for good. Calm: a steady rim.
   if (G.stripLid !== pg.lid) { G.stripLid = pg.lid; G.stripVisits = (G.stripVisits || 0) + (showBoost ? 1 : 0); }
   const stripAttn = (Lv) => (G.li < 0 || (save.seen || {})['strip:' + Lv.id] ? null : { calm: !!save.calm, pointer: G.stripVisits <= 3 ? (px, py, c, t) => { const q = save.calm ? 0.5 : (t % 1.1) / 1.1, down = q > 0.45 && q < 0.7; teachHand(ctx, px, py + (save.calm ? 0 : -Math.abs(Math.sin(q * Math.PI)) * c * 0.14), Math.min(c * 0.62, 40 * s), down, 1); } : null });
-  const bottom = (x, w) => { // draws from the bottom of the safe rect up; returns the top of what it drew
-    let y = A.y1 - 6 * s - BTN;
+  const bottom = (x, w, mb = 6 * s) => { // draws from the bottom of the safe rect up (mb above its edge); returns the top of what it drew
+    let y = A.y1 - mb - BTN;
     bigButton(x, y, w);
     if (showBoost) { y -= gp + STRIP; drawBoosterStrip(ui, ctx, x, y, w, STRIP, boostState()); }
     const rh = ringStripH(x, w, s);
@@ -7882,28 +7882,37 @@ function drawLevelIntro(L, acc) {
     sheet(A.w <= W0 + 2 * pad + 1 ? A.x : x0 - pad, y, A.w <= W0 + 2 * pad + 1 ? A.w : W0 + 2 * pad);
     y += 12 * s;
     // left: the name, then the stage (the level's scene, or the middle chick's power) and its caption
-    const V = { x: A.x, y, w: lx + lw + gap2 / 2 - A.x, h: A.y1 - 6 * s - y };
+    const V = { x: A.x, y, w: lx + lw + gap2 / 2 - A.x, h: A.y1 - 10 * s - y }; // (0.8.17: its foot level with the big button's, 10 px over the edge)
     G.ipRect = V;
     const nmB = { h: nameH, gap: 0, draw: (x, yy, w) => { // the name on the cream: brown ink
       ui.text(L.name, x + w / 2, yy + 15 * s, { size: 25 * s, align: 'center', maxW: w, color: C.ink, tag: 'intro:name' });
       if (world) ui.text(world, x + w / 2, yy + 31 * s + 9 * s, { size: 15 * s, align: 'center', maxW: w, color: '#b0700a', tag: 'intro:world' });
     } };
     const top = nameUp ? [] : [nmB];
-    const B = lvTab ? fitCol([...top, goalRow], levelStage, [capBlock(lw), starBlock].filter(Boolean), V.h, 150 * s, lw * 0.75) : fitCol(top, chickStage, [chickCap(lw)], V.h, 130 * s, lw * 0.75);
-    B[0] = { ...B[0], gap: 0 };
-    column(B, pg, V, lx, lw);
     // right: the tabs on top, the boosters and the big button at the bottom, the tab's content between (it scrolls when short)
+    // 0.8.17 (mykee: "too much empty UI space" on a phone on its side): the Level tab's blocks spread over the whole column
+    // with one even gap (they used to stop 20 px apart over a dead band above the boosters); while there is room the star
+    // goals, then the goal band, move over from the left, and the stage there grows into the height they leave
     let ry = y;
     if (hasCh) { tabs(rx, ry, rw); ry += TABH + 4 * s; }
-    const yb = bottom(rx, rw) - 4 * s;
+    const yb = bottom(rx, rw, 10 * s) - 4 * s;
     const pr = G.ipageR || (G.ipageR = { y: 0, v: 0, max: 0, t: G.t, lid: null });
     if (pr.lid !== pg.lid + ':' + (lvTab ? 0 : 1)) { pr.lid = pg.lid + ':' + (lvTab ? 0 : 1); pr.y = 0; pr.v = 0; }
     G.ipRectR = { x: rx - gap2 / 2, y: ry, w: A.x1 - (rx - gap2 / 2), h: yb - ry };
     const RB = (lvTab ? [perkBlock(rw), tileBlock(rw), chipBlock(rw)] : [carBlock(rw)]).filter(Boolean);
-    const room = G.ipRectR.h - pageColH(RB, s) - 6 * s;
-    if (room > 0 && RB.length && lvTab) { const add = Math.min(room / (RB.length + 1), 20 * s); RB.forEach((b, i) => { RB[i] = { ...b, gap: (b.gap ?? 10 * s) + add }; }); }
-    else if (room > 0 && RB.length) RB[0] = { ...RB[0], gap: (RB[0].gap ?? 10 * s) + room }; // the chick row rides low, just above the boosters (0.8.17: the thumb)
-    if (RB.length) RB[0] = { ...RB[0], gap: RB[0].gap - gp };
+    const fitsR = (list) => G.ipRectR.h - 6 * s - list.reduce((a, b) => a + b.h, 0) >= (list.length + 1) * 12 * s;
+    let goalR = false, starR = false;
+    if (lvTab && starBlock && fitsR([...RB, starBlock])) { RB.push(starBlock); starR = true; }
+    if (lvTab && fitsR([goalBand, ...RB])) { RB.unshift(goalBand); goalR = true; }
+    const B = lvTab ? fitCol([...top, ...(goalR ? [] : [goalRow])], levelStage, [capBlock(lw), starR ? null : starBlock].filter(Boolean), V.h, 150 * s, lw * 0.75) : fitCol(top, chickStage, [chickCap(lw)], V.h, 130 * s, lw * 0.75);
+    B[0] = { ...B[0], gap: 0 };
+    column(B, pg, V, lx, lw);
+    const room = G.ipRectR.h - pageColH(RB.map((b) => ({ ...b, gap: 0 })), s) - 6 * s;
+    if (room > 0 && RB.length && lvTab) { const add = room / (RB.length + 1); RB.forEach((b, i) => { RB[i] = { ...b, gap: add }; }); }
+    else {
+      if (room > 0 && RB.length) RB[0] = { ...RB[0], gap: (RB[0].gap ?? 10 * s) + room }; // the chick row rides low, just above the boosters (0.8.17: the thumb)
+      if (RB.length) RB[0] = { ...RB[0], gap: RB[0].gap - gp };
+    }
     column(RB, pr, G.ipRectR, rx, rw);
   }
   if (handLater) handLater();
