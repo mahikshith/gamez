@@ -55,7 +55,7 @@ const SHOW = {
   faceoff: P('faceoff', 'Fire meets frost: both are knocked out', { loop: 5.2 }),
   'boss:salamander': P('dodge', 'Roll eggs off the glowing mark', { haz: 'lava' }),
   spike: P('stone', 'Roll a stone egg into it: it flips over'),
-  urchin: P('turn', 'Shut the gap he aims through: SPLAT!', { fx: 'bonk' }), // 0.8.17 urchin
+  urchin: P('turn', 'Shut his gap: SPLAT!', { fx: 'bonk' }), // 0.8.17 urchin
   'boss:golem': P('stone', 'Roll a stone egg into him: he flips'),
   'boss:blizzard': P('tap', 'Freeze him with a chick, then hurry', { power: 'freeze', fx: 'freeze' }),
   chameleon: P('turn', 'Grab the orbs first, turn him away', { fx: 'bonk' }),

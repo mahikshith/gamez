@@ -8,7 +8,8 @@
 //   outside; he is heavy and sits on the lower wall, upright at the top of the vault where the eggs go by. His floor ring
 //   carries him (turn it and he rides). The gaps of his floor are where eggs come up into his channel.
 //   NAP   spines folded, eyes half shut, a bubble: harmless. Eggs float over him, bumping softly (the window to pass).
-//   PUFF  the telegraph (URCHIN.puff s, about a second): the bubble pops, he glares, the spines slide out ring by ring.
+//   PUFF  the telegraph (URCHIN.puff s, about a second): the bubble pops, he glares, the spines slide out ring by ring
+//         and shove aside (never crack) an egg resting against him.
 //   ROLL  spines out, he rolls slowly along his floor (URCHIN.roll m/s) and fills the channel: a touch cracks an egg once
 //         (then that egg is safe from him for URCHIN.ban s) and shoves it on; he bounces back off it. He turns round at
 //         thorns and at the edges of his floor's gaps. Away from home he drops back home through a floor gap.
@@ -37,7 +38,7 @@ export const URCHIN = {
   see: m3(2.2, 2.6, 3.0), dashV: m3(3.0, 3.8, 4.4), back: 2.0, over: 0.35, // m he spots an egg from; m/s; m/s home; m past the aim point
   dashCd: m3(6, 4, 3), // s after a dash before the next
   knock: m3(2.0, 2.6, 3.0), shove: 1.1, soft: 0.7, // m/s: a dash hit, a roll touch, a bump into a napping (or flipped) urchin
-  flip: m3(5, 4, 3.2), splat: 0.45, dizzy: 0.7, bump: 0.55, laugh: 1.1, ban: 3, // s
+  flip: m3(5, 4, 3.2), splat: 0.45, dizzy: 0.7, bump: 0.55, laugh: 1.1, ban: 3, spread: 1.2, // s (spread: an egg his spines shove aside as they come out is safe from them that long)
   cross: 1.4, in: 0.8, // m/s through a gap toward home; s the entrance
   scare: 6, out: 6, // s caps: scared, knocked out of the vault
 };
@@ -130,6 +131,7 @@ export const urchinMethods = {
           if (!q) { U.aim = 0; U.tgt = 0; }
           else { const ga = Math.atan2(q.y, q.x); U.face = wrap(ga - this.urAng(U)) >= 0 ? 1 : -1; }
         }
+        { const th = U.dur * 0.55; if (U.t < th && U.t + dt >= th) this.urSpread(U); } // the spines come out: they shove aside an egg resting on him (no crack)
         this.urTouch(U);
         if ((U.t -= dt) > 0) break;
         if (U.aim && this.urGo(U)) break;
@@ -357,6 +359,16 @@ export const urchinMethods = {
     if (e.golden) { e.golden = 0; e.safeT = Math.max(e.safeT || 0, 0.6); this.emit('goldenSave', { egg: e }); return; }
     this.crack(e, 0, 'urchin');
   },
+  urSpread(U) {
+    for (const e of this.aliveEggs()) {
+      if (!this.urFit(e)) continue;
+      const p = e.body.getPosition();
+      if (Math.hypot(p.x - U.x, p.y - U.y) > URCHIN.reach + this.urEggR(e)) continue;
+      U.ban[e.id] = Math.max(U.ban[e.id] || 0, URCHIN.spread);
+      this.urPush(U, e, URCHIN.shove);
+      this.emit('urBump', { x: p.x, y: p.y, id: U.id, by: 'spread' });
+    }
+  },
   urTurnFrom(U, p, by) {
     const da = wrap(Math.atan2(p.y, p.x) - this.urAng(U));
     if (da * U.face >= 0) { U.face = -U.face; this.urSet(U, 'bump', URCHIN.bump); this.emit('urBump', { x: U.x, y: U.y, id: U.id, by }); }
@@ -368,11 +380,14 @@ export const urchinMethods = {
       if (d < URCHIN.body + this.urEggR(e) - 0.02) this.urPush(U, e, URCHIN.soft, true);
     }
   },
-  // an egg pushed straight away from his middle, at least v m/s (up: away from his floor only, so it rides over a soft lump)
-  urPush(U, e, v, up = false) {
-    const p = e.body.getPosition(), q = e.body.getLinearVelocity(), d = Math.hypot(p.x - U.x, p.y - U.y) || 1, nx = up ? U.ux : (p.x - U.x) / d, ny = up ? U.uy : (p.y - U.y) / d;
-    const along = q.x * nx + q.y * ny;
-    if (along < v) e.body.setLinearVelocity({ x: q.x + nx * (v - along), y: q.y + ny * (v - along) });
+  // an egg pushed straight away from his middle, at least v m/s (along: along his floor only, to the side the egg is on,
+  // so it slides on past a soft lump and is never pressed into the wall above him and held there)
+  urPush(U, e, v, along = false) {
+    const p = e.body.getPosition(), q = e.body.getLinearVelocity(), d = Math.hypot(p.x - U.x, p.y - U.y) || 1;
+    let nx = (p.x - U.x) / d, ny = (p.y - U.y) / d;
+    if (along) { const sd = (p.x - U.x) * -U.uy + (p.y - U.y) * U.ux >= 0 ? 1 : -1; nx = -U.uy * sd; ny = U.ux * sd; }
+    const now = q.x * nx + q.y * ny;
+    if (now < v) e.body.setLinearVelocity({ x: q.x + nx * (v - now), y: q.y + ny * (v - now) });
   },
 
   // ---------- powers (powers2.js p2All, via urP2), Chick Strike (strike.js stkApply 'urchin'), hazards and chick powers

@@ -196,7 +196,7 @@ export const VILLAIN_INFO = {
   },
   urchin: { // 0.8.17 urchin
     group: 'creature', name: 'Spike the sea urchin',
-    does: 'Rolls the floor, puffs up, then dashes at an egg: his spines crack it.',
+    does: 'Puffs up, then dashes at an egg and cracks it. His roll cracks too.',
     beat: 'Shut the gap he aims through: SPLAT! He lies on his back a while.',
     more: 'A chick or a Stone egg flips him too. Asleep, he is harmless.',
   },

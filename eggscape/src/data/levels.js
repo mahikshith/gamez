@@ -463,13 +463,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 46, theme: "reef", name: "Riptide Reef", eggs: 3, target: 2, time: 105, spacing: 1.05, material: "coral", water: true, nest: {w: 2.7}, weather: "current", weatherOpts: {strength: 0.5}, bonus: {kind: "time", s: 55}, hermit: {ch: 3, a: 150, delay: 6}, puffer: {ch: 2, a: 60, delay: 4}, tip: "The current pushes every egg along. Let it carry them to a gap the puffer is not plugging.", orbs: [{type: "warp", ch: 1, a: 63},{type: "shock", ch: 3, a: -106}], seed: 1156175, world: 8,
+    id: 46, theme: "reef", name: "Urchin Alley", eggs: 3, target: 2, time: 140, spacing: 1.05, material: "coral", water: true, nest: {w: 2.7}, bonus: {kind: "time", s: 80}, urchin: {ch: 2, a: 90, delay: 3}, tip: "Shut the gap he aims through: SPLAT! He lies on his back and you can slip past.", orbs: [{type: "stone", ch: 1, a: -4}], seed: 1156201, world: 8, intro: {title: "Spike the sea urchin", line: "A living thorn: he rolls and dashes at eggs. Turn a wall into his dash and he flips!"},
     rings: [
-      {gaps: [{a: -79}], thorns: [{a: -154, n: 1}]},
-      {gaps: [{a: -26, x: 2, shut: {period: 5, open: 0.5, phase: 4.61}}], thorns: [{a: 40, n: 1},{a: 144, n: 1, side: "out", h: 0.26}], pads: [{a: -80, len: 1.57}]},
-      {gear: 3, gaps: [{a: -179},{a: 4}], thorns: [{a: -95, n: 2},{a: 31, n: 1, side: "out", h: 0.3}], pads: [{a: -27, len: 1.44}]},
-      {gear: 4, gaps: [{a: -120, x: 3, len: 0.7},{a: -30}], thorns: [{a: -68, n: 1},{a: -177, n: 2}], pads: [{a: 126, len: 1.22}]},
-      {gaps: [{a: -71}], thorns: [{a: 149, n: 2},{a: 152, n: 1, side: "out", h: 0.26}], pads: [{a: -131, len: 1.82}]},
+      {gaps: [{a: 151}]},
+      {gaps: [{a: -106, x: 2},{a: 47}], pads: [{a: 110, len: 1.26}]},
+      {gaps: [{a: 177},{a: -69}], pads: [{a: -45, len: 1.15}]},
+      {gaps: [{a: -2, x: 3, len: 0.7},{a: -144}], thorns: [{a: -29, n: 1}], pads: [{a: -64, len: 1.08}]},
+      {gaps: [{a: -93}], thorns: [{a: -56, n: 1}], pads: [{a: 120, len: 1.57}]},
     ],
   },
   {
