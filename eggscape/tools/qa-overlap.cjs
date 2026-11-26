@@ -83,9 +83,13 @@ const srv = http.createServer((q, r) => {
     for (let i = 0; i < n; i++) {
       const shoot = i === 0 || i === n - 1 || i === 12;
       await check(`L${i + 1}-intro`, (i) => { const E = __egg; E.start(i); for (let k = 0; k < 40; k++) E.frame(1 / 60); return E.overlaps(); }, i, shoot);
-      // 0.8.14: the level card's Chicks tab, with the chick in the middle of the carousel and, at the row's end, a locked one
-      if (await p.evaluate(() => __egg.ui.buttons.some((b) => b.id === 'itab:chicks'))) {
-        await check(`L${i + 1}-intro-chicks`, () => { const E = __egg; E.press('itab:chicks'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return E.overlaps(); }, 0, shoot);
+      // 0.8.18: the card without a frame: the new thing's demo on the hero with its name and words (4 s in), then a face
+      // tapped (its demo held on the hero, the face raised and ringed) and a star's word bubble
+      await check(`L${i + 1}-intro-demo`, () => { const E = __egg; for (let k = 0; k < 200; k++) E.frame(1 / 60); return E.overlaps(); }, 0, i === 5);
+      await check(`L${i + 1}-intro-face`, () => { const E = __egg, f = E.ui.buttons.filter((b) => /^face:/.test(b.id) && b.id !== 'face:chick'); if (!f.length) return []; E.press(f[f.length - 1].id); for (let k = 0; k < 40; k++) E.frame(1 / 60); E.press('star:1'); for (let k = 0; k < 10; k++) E.frame(1 / 60); const o = E.overlaps(); E.press('hero:tap'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return o; }, 0, i === 17);
+      // 0.8.14: the chick picker (0.8.18: opened from the chick's face), with the chick in the middle of the carousel and, at the row's end, a locked one
+      if (await p.evaluate(() => __egg.ui.buttons.some((b) => b.id === 'face:chick'))) {
+        await check(`L${i + 1}-intro-chicks`, () => { const E = __egg; E.press('face:chick'); for (let k = 0; k < 30; k++) E.frame(1 / 60); return E.overlaps(); }, 0, shoot);
         // 0.8.16: the picker's arrows: two chicks on (both arrows over the row's ends), and they must have moved the focus
         await check(`L${i + 1}-intro-chicks-mid`, () => { const E = __egg, R = E.G.car, y0 = R ? R.y : 0, many = R && R.max > 2.5 * R.step; if (!many) return []; E.press('car:next'); for (let k = 0; k < 20; k++) E.frame(1 / 60); E.press('car:next'); for (let k = 0; k < 30; k++) E.frame(1 / 60);
           const o = E.overlaps(), has = ['car:prev', 'car:next'].every((id) => E.ui.buttons.some((b) => b.id === id)); return Math.abs(R.y - y0 - 2 * R.step) < 1 && has ? o : o.concat([['picker arrows', 'did not step two chicks or are missing']]); }, 0, i === 12);
