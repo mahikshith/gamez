@@ -9920,27 +9920,27 @@ function drawFailPage() {
     if (SP.banked(save) > 0) B.push(spinRowBlock(s, { cheer, quiet: top !== 'spin' })); // 0.8.15: a spin that waits (the cheer-up spin after three losses lands here)
     else if (prog) B.push({ h: 26 * s, gap: 4 * s, draw: (x, y, w) => leadLine(prog, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'fail:near' }) });
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: (sd ? 3 : 6) * s }));
-    if (Hp) B.push({ h: 78 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
+    if (Hp) B.push({ h: 70 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
+      // sweep817 (the saving-booster row): the spin row's grid (70 high, the same button at the same place and size), its
+      // name alone on one line (the small explaining line under it is gone: the picture and the name say it)
       const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost' || Hp.kind === 'freeHint', ad = Hp.kind === 'adBoost';
-      ui.well(x, y, w, 78 * s, { s, a: free ? '#d8f5c0' : '#ffe9b0', b: free ? '#f0ffe4' : '#fff6dc' });
-      const ax = x + 38 * s, ay = y + 39 * s;
-      if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, ax, ay + 6 * s, 48 * s, G.t, {});
-      else if (Hp.kind === 'freeHint') lampIcon(ctx, ax, ay, 60 * s); // the Pacer's free hint: the Hint button's lamp
+      ui.well(x, y, w, 70 * s, { s, a: free ? '#d8f5c0' : '#ffe9b0', b: free ? '#f0ffe4' : '#fff6dc' });
+      const ax = x + 36 * s, ay = y + 35 * s;
+      if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, ax, ay + 6 * s, 46 * s, G.t, {});
+      else if (Hp.kind === 'freeHint') lampIcon(ctx, ax, ay, 54 * s); // the Pacer's free hint: the Hint button's lamp
       else { // 0.8.17: a spend moment makes it hop in (drop, squash, settle)
         const hx = spendFx.hopXf('failhelp');
         if (hx) { ctx.save(); ctx.globalAlpha *= hx.a; ctx.translate(ax, ay + 28 * s + hx.dy * 56 * s); ctx.scale(hx.sx, hx.sy); ctx.translate(-ax, -ay - 28 * s); }
-        drawBoosterIcon(ctx, Hp.id, ax, ay, 56 * s, G.t);
+        drawBoosterIcon(ctx, Hp.id, ax, ay, 52 * s, G.t);
         if (hx) ctx.restore();
-        spendFx.at('failhelp', { x: ax - 28 * s, y: ay - 28 * s, w: 56 * s, h: 56 * s });
+        spendFx.at('failhelp', { x: ax - 26 * s, y: ay - 26 * s, w: 52 * s, h: 52 * s });
       }
-      const bw = Math.min(118 * s, w * 0.3), tx = x + 74 * s, tw = x + w - bw - 16 * s - tx;
-      ui.text(Hp.label, tx, y + 26 * s, { size: 16.5 * s, color: ui.C.ink, maxW: tw, tag: 'fail:help' });
-      const ln = wrapText(Hp.line, 12.5 * s, tw).slice(0, 2);
-      ln.forEach((l, i) => ui.text(l, tx, y + 48 * s + i * 15 * s, { size: 12.5 * s, color: ui.C.ink2, maxW: tw, tag: 'fail:help' + i }));
+      const bw = Math.min(124 * s, w * 0.34), tx = x + 68 * s, tw = x + w - bw - 16 * s - tx;
+      ui.text(Hp.label, tx, y + 35 * s, { size: 16 * s, color: ui.C.ink, maxW: tw, tag: 'fail:help' });
       const lab = free ? 'FREE' : ad ? 'Watch' : String(Hp.price);
-      ui.button('help:go', lab, x + w - bw - 8 * s, y + 13 * s, bw, 52 * s, free ? { kind: 'primary', shimmer: top === 'help', size: 20 * s } : ad ? { kind: 'ad', ad: true, size: 17 * s } : { kind: save.wallet.coins >= Hp.price || Hp.bought ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s, ...(Hp.bought ? { disabled: true, keepFace: true } : {}) });
-      spendFx.at('failhelp:btn', { x: x + w - bw - 8 * s, y: y + 13 * s, w: bw, h: 52 * s });
-      ui.record({ x, y, w, h: 78 * s }, 'panel:failhelp'); // (a panel: its own words and button sit on it)
+      ui.button('help:go', lab, x + w - bw - 8 * s, y + 10 * s, bw, 50 * s, free ? { kind: 'primary', shimmer: top === 'help', size: 21 * s } : ad ? { kind: 'ad', ad: true, size: 19 * s } : { kind: save.wallet.coins >= Hp.price || Hp.bought ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s, ...(Hp.bought ? { disabled: true, keepFace: true } : {}) });
+      spendFx.at('failhelp:btn', { x: x + w - bw - 8 * s, y: y + 10 * s, w: bw, h: 50 * s });
+      ui.record({ x, y, w, h: 70 * s }, 'panel:failhelp'); // (a panel: its own words and button sit on it)
     } });
     // row A: RETRY, the whole width, the biggest (one egg short with a Rewind to offer: Rewind takes that place, RETRY the row under it)
     const RH = sd ? 62 : 68;
