@@ -7956,7 +7956,7 @@ function heroBake(V, low) {
 // the demo on the hero, no panel, its edges melting into the page (a soft mask; Low graphics: drawn straight, no mask)
 const HD = { mk: '', cv: null, mask: null };
 function heroDemo(plan, tt, x, y, w, h, a, ho) {
-  if (a <= 0.01) return;
+  if (a <= 0.01 || !(w > 24 && h > 24)) return; // no room for a demo (a squat screen with a long caption): nothing, never a negative box
   if (ho.world) ho.world = { ...ho.world, back: () => true }; ho.bare = true; // no panel: the scene's things stand on the page's world
   if (PERF.low) { ctx.save(); ctx.globalAlpha *= a; drawHowTo(ctx, plan, x, y, w, h, tt, ho); ctx.restore(); return; }
   const mk = Math.round(w) + 'x' + Math.round(h) + '@' + DPR;
