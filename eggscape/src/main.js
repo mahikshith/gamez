@@ -1355,22 +1355,54 @@ function wheel(e) {
   setZoom((G.zm || 0) - clamp(e.deltaY, -120, 120) * 0.003);
 }
 
+// ---- 0.8.17 Back (mykee: "back button should be intuitive"): the phone's Back, Escape on the web, and every on-screen
+// back arrow lead the same way. The top pop-up closes first (an offer counts as "No thanks", a pay page goes back to
+// where it was opened); then a page goes back to the page the player came from: the shop and Practice to the page that
+// opened them (the pause page keeps its level, paused), the album to Extras, Settings (and its privacy page) to where it
+// was opened, a side quest to the map at its door, the spin page to the page it came from. In play Back pauses (never
+// quits a level in one press); the pause page resumes. The level card, the win and the fail pages go to the map. The home
+// page answers false: the Android shell then asks for a second press within 2 s ("Press back again to leave").
+// Returns true when the game took the press.
+function backPress() {
+  if (speedTest.active) { speedTest.back(); return true; }
+  if (G.adBusy) { ads.cancelWait(); return true; } // a pending ad that never reported back: Back returns to the game
+  if (modalOpen()) { // a sheet closes first
+    if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close');
+    else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null;
+    else if (G.detail) press('dt:close'); // (a pay page opened from an offer, Home or Settings: back to that page)
+    else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.remAsk) press('rem:later'); else if (G.leaveAsk) press('leave:stay');
+    else if (G.treasure) G.treasure = null; else if (G.nudge) press('nudge:no'); else if (G.skipAsk) G.skipAsk = null; else if (G.stuckAsk) press('stuck:no');
+    return true;
+  }
+  if (G.settingsOpen) { press('set:close'); return true; } // Settings (its privacy / reset page first: set:close goes back to Settings)
+  switch (G.screen) {
+    case 'play': if (G.sim && G.sim.state === 'play') press('pause'); return true; // (a decided level: its end card is on its way)
+    case 'pause': press('resume'); return true;
+    case 'info': press('info:close'); return true;
+    case 'store': case 'practice': case 'extras': case 'levels': press('back'); return true; // (the album: back to Extras)
+    case 'spin': press('spin:back'); return true;
+    case 'wonder': return wonder.back(); // a side quest's card -> the map; play -> its pause page -> play; an end page -> the map
+    case 'intro':
+      if (G.stkCard) { press('stk:gotit'); return true; } // a chick's card on the level page: it closes
+      if (G.introFoe) { G.introFoe = null; return true; } // a villain's one-line card
+      press('levels'); return true; // the level card -> the map (a practice vault's -> Practice)
+    case 'win': case 'fail': if (G.adBusy) return true; press('levels'); return true; // the end pages -> the map, never a retry or the next level by a Back
+    default: return false; // home: the shell's "press again to leave"
+  }
+}
 function keyDown(e) {
   onFirstInput();
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close'); else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; else if (G.stuckAsk) press('stuck:no'); } return; }
+  if (modalOpen()) { if (k === 'Escape' && !e.repeat) backPress(); return; } // 0.8.17: Escape is the phone's Back (backPress)
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
-  if (k === 'Escape' && !e.repeat && G.settingsOpen) { press('set:close'); return; }
-  if ((k === 'Escape' || k === 'p' || k === 'P') && !e.repeat) {
+  if (k === 'Escape' && !e.repeat) { backPress(); return; } // 0.8.17: the one Back (backPress), the same as the phone's
+  if ((k === 'p' || k === 'P') && !e.repeat) {
     if (G.screen === 'play') press('pause');
     else if (G.screen === 'pause') press('resume');
-    else if (k === 'Escape' && (G.screen === 'practice' || G.screen === 'extras')) press('back');
-    else if (k === 'Escape' && G.screen === 'spin') press('spin:back');
-    else if (k === 'Escape' && G.screen === 'wonder') wonder.back();
     return;
   }
   if (G.screen === 'play' && G.sim) {
@@ -1573,7 +1605,7 @@ async function press(id) {
       break;
     }
     case 'home:premium': // 0.8.17: straight onto the Unlock Everything page (it was the shop, then its card, then the page)
-      openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true;
+      openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true; G.payRet = null;
       break;
     case 'home:charge': { // Premium's free Chick Charge of the day
       const w = E.claimPremiumCharge(save.wallet, today());
@@ -1612,7 +1644,7 @@ async function press(id) {
       G.waitList = null;
       break;
     case 'dt:close': // a pay page opened from outside the shop (Home, Settings, an offer) goes back where the player was
-      if (G.payBack && G.detail && G.detail.startsWith('iap:')) { G.detail = null; G.payBack = false; await press('back'); break; }
+      if (G.payBack && G.detail && G.detail.startsWith('iap:')) { const R = G.payRet; G.payRet = null; G.detail = null; G.payBack = false; await press('back'); if (R && R.offer && !G.offer) G.offer = R.offer; else if (R && R.settings) { G.settingsOpen = true; G.setSeq = (G.setSeq || 0) + 1; } break; } // (0.8.17 Back: and to the offer card, or Settings, it was opened from)
       G.detail = null;
       break;
     case 'help:go': await takeHelp(); break;
@@ -1644,7 +1676,7 @@ async function press(id) {
       const O = G.offer;
       G.offer = null;
       if (O) BR.note(save, 'yes', { id: O.id });
-      if (O && O.id === 'skip_videos') { openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true; } // a look at what it gives, never a payment from the card
+      if (O && O.id === 'skip_videos') { openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true; G.payRet = { offer: O }; } // a look at what it gives, never a payment from the card
       else if (O && O.sku) await buyIap(O.sku);
       break;
     }
@@ -1950,6 +1982,7 @@ async function press(id) {
       applySettings(save); persist();
       break;
     case 'set:novideo': case 'chip:skip': // the "what you get" sheet of Unlock Everything: the shop opens on it, nothing is charged
+      G.payRet = id === 'set:novideo' && G.settingsOpen ? { settings: 1 } : null;
       G.skipChip = null; G.settingsOpen = false; openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true;
       break;
     case 'set:restore':
@@ -11211,24 +11244,7 @@ async function boot() {
     audioHold('hidden', document.hidden);
   });
   window.addEventListener('blur', clearKeys);
-  installApp(() => { // Android back button (see app.js): consume it where the game has a natural "back"
-    if (G.adBusy) { ads.cancelWait(); return true; } // a pending ad that never reported back: Back returns to the game
-    if (modalOpen()) { // a sheet closes first (an offer counts as "No thanks"; the age question waits for next launch)
-      if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null;
-      else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.remAsk) press('rem:later'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null;
-      return true;
-    }
-    if (G.settingsOpen) { press('set:close'); return true; } // the Settings page closes first
-    switch (G.screen) {
-      case 'play': press('pause'); return true;
-      case 'pause': press('resume'); return true;
-      case 'info': press('info:close'); return true;
-      case 'practice': case 'extras': case 'store': case 'levels': press('back'); return true;
-      case 'spin': press('spin:back'); return true;
-      case 'wonder': return wonder.back(); // 0.8.17: a side quest's card / pause page / end page (wonder.js)
-      default: return false;
-    }
-  });
+  installApp(() => backPress()); // Android back button (see app.js): backPress below; false on the home page (the shell asks for a second press within 2 s, then leaves)
   portal.onPause(() => { G.paused = true; clearKeys(); audioHold('portal', true); });
   portal.onResume(() => { G.paused = false; last = performance.now(); audioHold('portal', false); });
   portal.onAudioChange(() => applyAudioSettings());
