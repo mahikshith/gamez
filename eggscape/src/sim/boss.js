@@ -133,6 +133,7 @@ export function animalsHit(sim, kind, o = {}) {
   if (sim.thieves && sim.thieves.length) n += sim.thiefHit(kind, o); // v3.6: the weasel and the rats
   if (sim.bayouHit) n += sim.bayouHit(kind, o); // v3.7: a quake flips snapping turtles, lightning scatters mosquitoes
   if (sim.pipHit) n += sim.pipHit(kind, o); // 0.8.17 pip
+  if (sim.cocoHit) n += sim.cocoHit(kind, o); // 0.8.17 coco
   if (kind === 'quake' || kind === 'bolt') {
     const B = sim.bx && sim.bx.boss;
     if (B && B.den && B.atk && B.atk.ph === 'warn') { B.atk = null; B.t = 1.5; B.flinch = 0.8; sim.emit('bossFlinch', { x: B.x, y: B.y }); }

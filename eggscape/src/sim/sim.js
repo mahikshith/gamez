@@ -18,6 +18,7 @@ import { bayouMethods } from './bayou.js'; // v3.7 Gator Bayou: alligator, snapp
 import { stkMethods } from './strike.js'; // Chick Strike powers
 import { perkMethods, PERK } from './perks.js'; // 0.8.10 egg skin powers
 import { pipMethods } from './pip.js'; // 0.8.17 pip: Pip the penguin (level 16)
+import { cocoMethods } from './coco.js'; // 0.8.17 coco: Coco the monkey (level 10)
 import { reachMethods } from './henreach.js'; // the hen runs the basket under an egg (nest.reach)
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 import { WORLD_N, hardOf } from '../road.js'; // 0.8.17: sixty levels, six a world
@@ -310,6 +311,7 @@ export class Sim {
     this.seaInit(L); // v3.3: octopus and fish schools (sim/sea.js)
     this.thiefInit(L); // v3.6: the egg thieves (sim/thieves.js)
     this.pipInit(L); // 0.8.17 pip
+    this.cocoInit(L); // 0.8.17 coco
     this.reefInit(L); if (L.bossFight && L.bossFight.kind === 'kingcrab') this.kcInit(L); // world 8 (sim/reef.js, sim/kingcrab.js)
     this.cwInit(L); this.owlInit(L); // v4: the clockwork cast and the Clockwork Owl
     this.bayouInit(L); // v3.7: Gator Bayou creatures (sim/bayou.js)
@@ -536,6 +538,7 @@ export class Sim {
     this.v3Rings();
     this.p2Rings(); // v3.4 spin storm
     rockStep(this, dt); // v3.3 M10: the rocking vault leans every ring
+    this.cocoRings(dt); // 0.8.17 coco: the ring he rides swings by itself; a hard flick of it throws him off
     for (const ring of this.rings) {
       ring.body.setAngularVelocity(ring.omega);
       const moving = !ring.motor && !ring.follower && Math.abs(ring.omega) > 0.25;
@@ -656,6 +659,7 @@ export class Sim {
     this.chickStep(dt); // v3.2 chick kinds
     this.frogStep(cdt); // v3.3 frog
     this.pipStep(cdt); // 0.8.17 pip
+    this.cocoStep(cdt); // 0.8.17 coco
     this.cwStep(cdt); // v4 the clockwork cast
     this.bayouStep(cdt); // v3.7 gators, turtles, mosquitoes
     if (this.weather && this.state === 'play') this.weatherStep(dt);
@@ -2296,6 +2300,7 @@ export class Sim {
     if (this.thieves.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.thiefThreat(e)); // v3.6: the thieves
     if (this.gators && (this.gators.length || this.mosqs.length)) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.9 * this.bayouThreat(e)); // v3.7
     if (this.pips && this.pips.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.5 * this.pipThreat(e)); // 0.8.17 pip: not wicked, a mild cue
+    if (this.cocos && this.cocos.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.5 * this.cocoThreat(e)); // 0.8.17 coco: cheeky, a mild cue
     lv = Math.round(lv * 10) / 10;
     if (lv !== this.danger) { this.danger = lv; this.emit('danger', { level: lv }); }
   }
@@ -2498,6 +2503,7 @@ export class Sim {
       stk: this.stkState(), // Chick Strike powers
       thieves: this.thiefState(), // v3.6 the weasel and the rats
       pip: this.pipState(), // 0.8.17 pip
+      coco: this.cocoState(), // 0.8.17 coco
       reef: this.reefState(), // world 8
       cw: this.cwState(), owl: this.owlState(), // v4 the clockwork cast and the Clockwork Owl
       bayou: this.bayouState(), // v3.7 Gator Bayou
@@ -2561,6 +2567,7 @@ export class Sim {
     sim.stkLoad(S.stk); // Chick Strike powers
     sim.thiefLoad(S.thieves); // v3.6 the weasel and the rats
     sim.pipLoad(S.pip); // 0.8.17 pip
+    sim.cocoLoad(S.coco); // 0.8.17 coco
     sim.reefLoad(S.reef); // world 8
     sim.cwLoad(S.cw); sim.owlLoad(S.owl); // v4
     sim.bayouLoad(S.bayou); // v3.7 Gator Bayou
@@ -2974,6 +2981,7 @@ Object.assign(Sim.prototype, warpMethods); // v3.4 warp gate (sim/warp.js)
 Object.assign(Sim.prototype, bayouMethods); // v3.7 Gator Bayou (sim/bayou.js)
 Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves.js)
 Object.assign(Sim.prototype, pipMethods); // 0.8.17 pip
+Object.assign(Sim.prototype, cocoMethods); // 0.8.17 coco
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
 Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl
 Object.assign(Sim.prototype, stkMethods); // Chick Strike powers (sim/strike.js)
