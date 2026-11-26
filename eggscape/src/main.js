@@ -3454,11 +3454,11 @@ function drawStuckAsk() {
   const cx = ui.A.cx, cy = ui.A.cy, sc = 0.55 + 0.45 * e;
   ctx.translate(cx, cy + (1 - e) * 90 * ui.u); ctx.scale(sc, sc); ctx.translate(-cx, -cy);
   const portrait = ui.A.h > ui.A.w * 1.15;
-  stackCard('Stuck?', (s) => { const hh = portrait ? clamp((ui.A.h - 40 * ui.u) / s - 305, 128, 320) : 176; return [ // her stage takes the room a tall phone gives (no blank paper); on its side she stands left of the buttons
+  stackCard('Stuck?', (s) => { const hh = portrait ? clamp((ui.A.y1 - Math.max(G.hudBottom, ui.A.y) - 30 * ui.u) / s - 248, 128, 560) : 176; return [ // (0.8.17 polish: the stage fills to the buttons, no gap left over) // her stage takes the room a tall phone gives (no blank paper); on its side she stands left of the buttons
     { h: hh * s, gap: portrait ? 4 * s : 0, draw: (x, y, w) => {
       const aw = Math.min(w, Math.max(190, hh * 1.3) * s);
       ui.well(x + (w - aw) / 2, y, aw, hh * s, { s, a: '#d9e8ff', b: '#eef5ff' });
-      drawHenAnim(ctx, 'worried', x + w / 2, y + hh / 2 * s, hh * 0.86 * s, G.t, { key: 'stuck', face: 1, calm: save.calm, shadow: 0 });
+      drawHenAnim(ctx, 'worried', x + w / 2, y + hh / 2 * s, Math.min(hh * 0.86 * s, aw * 0.86), G.t, { key: 'stuck', face: 1, calm: save.calm, shadow: 0 });
       ui.record({ x: x + (w - aw) / 2, y, w: aw, h: hh * s }, 'stuck:hen');
     } },
     { ...lineBlock('Skip this one', 21 * s, { color: ui.C.ink, tag: 'stuck:line', gap: portrait ? 10 * s : 0 }), right: true },
@@ -10793,7 +10793,7 @@ function drawSetSub() {
     if (down && q > SB.q) audio.play('ring_tick', { pitch: 0.9 + q * 0.09 });
     SB.q = q;
     if (SB.k >= 1) { ui.pressedId = null; G.pressPointer = null; doReset(); return; }
-    const avail = (land ? A.y1 - 8 * s : A.y1 - pad - 72 * s) - (P.bottom + 8 * s), hd = Math.min(land ? avail * 0.62 : 230 * s, avail * 0.5), henH = Math.min(land ? 120 * s : 170 * s, avail - hd - 40 * s);
+    const avail = (land ? A.y1 - 8 * s : A.y1 - pad - 72 * s) - (P.bottom + 8 * s), hd = Math.min(land ? avail * 0.62 : Math.min(cw * 0.6, 300 * s), avail * (land ? 0.5 : 0.36)), henH = Math.min(land ? 120 * s : Math.min(cw * 0.78, 340 * s), avail - hd - 40 * s, land ? avail : avail * 0.4); // (0.8.17 polish: a tall phone grows the hen and the button, the gaps stay a comfortable even few)
     B.push({ h: Math.max(60 * s, avail - 20 * s), gap: 6 * s, draw: (x, y, w) => {
       const H = Math.max(60 * s, avail - 20 * s), sp = (H - henH - hd) / 3, hy = y + sp + henH / 2, cx = x + w / 2, cy = y + sp * 2 + henH + hd / 2, R = hd / 2;
       drawHenAnim(ctx, down ? 'gasp' : 'worried', cx, hy, henH, G.t, { key: 'reset', calm, shadow: 0 });
