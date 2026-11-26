@@ -64,6 +64,7 @@ export function value(sim) {
     if (sim.bayouPlan) v -= 1500 * sim.bayouPlan(e); // v3.7: gator jaws, a turtle's clamp, a mosquito lift
     if (sim.pips && sim.pips.length) v -= 500 * sim.pipThreat(e); // 0.8.17 pip
     if (sim.cocos && sim.cocos.length) v -= 700 * sim.cocoThreat(e); // 0.8.17 coco
+    if (sim.frogs && sim.frogs.length) v -= 1400 * sim.frogThreatOf(e); // 0.8.18 frog: in its cheeks, or locked on with a clear line
     // predators (v3): an egg the eagle can reach while it is locked on
     const E = sim.eagle;
     if (E && E.reach && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tid === e.id) v -= 700;
