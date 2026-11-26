@@ -1,6 +1,8 @@
 # Builds the Eggscape Android proof APK (web game inside a WebView shell, eggscape/android)
 # and publishes it as the "web-proof" pre-release so it has a direct download link.
 name: Android proof APK
+# the row's title in the Actions list: which phone it is for and the version, so it cannot be mistaken for the iPhone row
+run-name: "ANDROID APK: Eggscape for Android phones (run ${{ github.run_number }})"
 on:
   workflow_dispatch:
   push:
@@ -40,6 +42,22 @@ jobs:
         with:
           name: ${{ env.APK_NAME }}
           path: eggscape/android/eggscape-web-proof.apk
+          retention-days: 30
+      # the separate everything-unlocked test app: its own app id (installs beside the normal one), every level, chick,
+      # outfit and egg open and a deep purse. Never a store build.
+      - name: Build the unlocked test APK
+        working-directory: eggscape
+        run: |
+          EGG_UNLOCKED=1 sh android/sync-web.sh
+          cd android
+          gradle --no-daemon assembleDebug -Punlocked
+          cp app/build/outputs/apk/debug/app-debug.apk eggscape-unlocked-test.apk
+          ls -l eggscape-unlocked-test.apk
+      - name: Upload the unlocked test APK as a run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}-UNLOCKED-test
+          path: eggscape/android/eggscape-unlocked-test.apk
           retention-days: 30
       - name: Publish pre-release
         working-directory: eggscape/android

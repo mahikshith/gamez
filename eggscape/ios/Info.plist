@@ -4,9 +4,9 @@
 <dict>
 	<!-- keep in step with android/app/build.gradle (versionName, versionCode) -->
 	<key>CFBundleShortVersionString</key>
-	<string>0.8.16</string>
+	<string>0.8.17</string>
 	<key>CFBundleVersion</key>
-	<string>24</string>
+	<string>25</string>
 	<!-- merged over xtool's defaults (bundle ID, version, executable) -->
 	<key>CFBundleDisplayName</key>
 	<string>Eggscape</string>

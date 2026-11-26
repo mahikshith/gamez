@@ -1,6 +1,6 @@
 // A player who only ever taps the big button: every level card must reach play (2026-11-24: level 13 could not be
 // opened, PLAY sent the player back to the Chicks tab until a tile was tapped). node tools/qa-walk.cjs [distDir]
-// env SIZE=384x853 FROM=2 TO=60. Needs a dev build. Exit code 1 if any level is stuck.
+// env SIZE=384x853 FROM=2 TO=60 [MODE=easy] [CRUISE=1]. Needs a dev build. Exit code 1 if any level is stuck.
 const { chromium } = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const dist = process.argv[2] || path.join(__dirname, '../dist/dev');
 (async () => {
@@ -14,7 +14,8 @@ const dist = process.argv[2] || path.join(__dirname, '../dist/dev');
   const CTA = ['stk:gotit', 'gotit', 'inext', 'go'];
   let bad = 0;
   for (let id = +(process.env.FROM || 2); id <= +(process.env.TO || 60); id++) {
-    await p.evaluate((id) => { const E = __egg, s = E.save; s.unlocked = Math.max(s.unlocked || 1, id); s.seen = { ...(s.seen || {}), boot1: 1 }; E.start(id - 1); }, id);
+    // MODE=easy|medium|hard plays the cards in that mode; CRUISE=1 reads as a cruising player (the Pacer's dare chip on the cards)
+    await p.evaluate(([id, mode, cruise]) => { const E = __egg, s = E.save; s.unlocked = Math.max(s.unlocked || 1, id); s.seen = { ...(s.seen || {}), boot1: 1 }; if (mode) s.mode = mode; if (cruise) { s.stars = { ...(s.stars || {}), 3: 3 }; s.eng = { ...(s.eng || {}), pac: { ft3: 3 } }; } E.start(id - 1); }, [id, process.env.MODE || '', !!process.env.CRUISE]);
     await p.waitForTimeout(900);
     const seq = []; let ok = false;
     for (let n = 0; n < 9; n++) {

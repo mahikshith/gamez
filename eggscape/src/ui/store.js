@@ -1119,9 +1119,9 @@ function freeTiles(st, state) {
   // Unlock Everything: the "video" tiles pay at once (ads.rewarded), so they carry no film badge
   const DONE = { label: 'Tomorrow', keepFace: true, disabled: true };
   return [
-    { key: 'free:daily', name: 'Daily gift', hue: '#ffc74a', tap: 'home:chest', flash: flashOf(st, 'free:daily'),
+    { key: 'free:daily', name: state.dailyOpen && state.dailyIn ? 'Opens in' : 'Daily gift', hue: '#ffc74a', tap: 'home:chest', flash: flashOf(st, 'free:daily'),
       icon: (c, cx, cy, it, tt, b) => drawChest(c, cx, cy + it * 0.08, it * 0.72 * b, tt, state.dailyOpen ? 'open' : 'ready'),
-      btn: state.dailyOpen ? DONE : { label: 'Open', kind: 'primary' } },
+      btn: state.dailyOpen ? (state.dailyIn ? { ...DONE, label: state.dailyIn.replace(/^Opens in /, '') } : DONE) : { label: 'Open', kind: 'primary' } }, // 0.8.17: "Opens in" over "6h 12m" (main.js chestInText, the game's day)
     { key: 'free:sample', name: S.video ? 'Free boost' : 'Free sample', hue: BOOST_HUE[S.id] || '#9be37a', tap: 'sample', flash: flashOf(st, 'free:sample'),
       icon: (c, cx, cy, it, tt, b) => drawBoosterIcon(c, S.id, cx, cy, it * 0.7 * b, tt),
       btn: S.done ? DONE : S.video && !prem ? { label: 'Free', kind: 'ad', ad: true } : { label: 'Free', kind: 'primary' } },
@@ -1276,7 +1276,7 @@ const WEB_TABS = [['deals', 'Free'], ['boosters', 'Power-ups'], ['hens', 'Hens']
 
 // state: { area, wallet, t, adReady, adCooldownLeft, flash, tab, scroll (also .want: 'coins' | 'bank' jumps there once),
 //   dragging, price(sku), featured: { sku } | null, reach (furthest level, for the power chicks), money (real-money
-//   products shown: the app; false on web portals), dailyOpen (the daily chest was opened today) }
+//   products shown: the app; false on web portals), dailyOpen (the daily chest was opened today), dailyIn (then: "Opens in 6h 12m") }
 export function drawStore(ui, ctx, W, H, state) {
   const { wallet, t = 0, adReady = false, adCooldownLeft = 0, flash = null } = state;
   AD_NOW = state.adCoins || AD_REWARDS.freeCoins.coins;

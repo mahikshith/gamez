@@ -8,7 +8,7 @@
     <!-- 0.8.17: a restart drops alarms; the planned reminders are set again from the app's own preferences (Replan.java) -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
-        android:label="Eggscape"
+        android:label="@string/app_label"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:hardwareAccelerated="true"

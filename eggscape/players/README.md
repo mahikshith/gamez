@@ -129,6 +129,28 @@ Status: FIXED (changed in the build named), OPEN (needs a decision or real data)
 | 25 | With 15% of sessions offline (no videos there) and the win-video pot, videos a play day fell (child 8.3 to 6.4, video lover 7.8 to 5.4) and so did the assumed ad income (child $0.98 to $0.74 a month). | Assumption (online share, eCPM) | OPEN: mykee to weigh ad income against the economy. |
 | 26 | Money only: the Golden Hen and no videos (Premium), every level open (Unlock Everything), the whole collection at once (The Whole Coop). Coin-buyable: the golden egg (300) and the three premium chicks (1,200 to 1,800), as before. | Rule | KEPT. |
 
+### 2026-11-25, build 0.8.17, the Pacer (mykee: "never ever reduce the time or increase the time for them ... push the struggling players"; "they could beat the level in easy mode, but the goals need to be high-target goals in order to earn 3 stars")
+
+`node tools/sim-players.mjs --compare`: the same people and seeds without the Pacer and with it (300 of each, 30 days,
+seed 1; seeds 2 and 3 agree on every direction below). The Pacer never touches the fuse, the rings, villains, odds or
+prices; it fits help, the skip pop-up, a free booster, hints, dares and Easy's star goals.
+
+| Before > after | child | commuter | quitter | grinder | video lover | video hater | payer | weekender |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Tries stuck with no help % | **4.9 > 1.5** | 0.1 > 0.0 | 0.0 > 0.0 | 0.0 > 0.0 | 1.7 > 0.4 | 0.6 > 0.2 | 0.9 > 0.2 | 1.3 > 0.3 |
+| Worst losing run (median) | 7 > 6 | 3 > 3 | 2 > 2 | 3 > 3 | 4 > 4 | 3 > 3 | 4 > 4 | 4 > 4 |
+| Stars won on Easy | 31.8 > 23.5 | 8.0 > 4.8 | 3.1 > 2.4 | 7.9 > 4.3 | 13.7 > 7.8 | 8.7 > 4.8 | 11.7 > 6.0 | 12.8 > 7.1 |
+| Finished all 50 % (day) | 72 (4) > 76 (3) | 53 (11) > 57 (10) | 5 (21) > 8 (22) | 91 (2) > 94 (2) | 80 (5) > 79 (5) | 70 (5) > 70 (4) | 84 (4) > 85 (4) | 86 (5) > 85 (5) |
+| Dares offered / taken / met | - | 2/0/0 | 1/0/0 | **7/6/3** | 2/0/0 | 3/1/0 | 2/1/0 | 2/1/0 |
+| Coins in | 5159 > 5184 | 3349 > 3386 | 1023 > 1071 | 4589 > 4704 | 5210 > 5221 | 3795 > 3880 | 5804 > 5887 | 4568 > 4568 |
+
+| # | What was seen | Rule or assumption | Status |
+| --- | --- | --- | --- |
+| 27 | Most of the child's stuck tries were replays of levels he had already won (no skip there) and tries that came back to a level by the map, where the "Keep trying" booster had been used up or was dropped. | Rule | FIXED 0.8.17: the Pacer's free booster also comes where no skip is possible, waits for the next try on that level however he gets there, and comes again in a later losing run; the free hint comes again every 3 more losses. Stuck tries with no help fell by 70% for the child; no persona's worst losing run grew. |
+| 28 | Easy's second star asks for every egg (flawless where Medium asks for no cracks), the third also for the bonus goal; an Easy win pays 70% (the Mint's FAUCETS.easy) and no hard-level extra. Stars won on Easy fell by 26% (child) to 46% (grinder). The planner (tools/planner-easy.mjs, 16 levels) still gets three stars on Easy on 6 of 16 (Medium 11 of 16). | Rule (the planner), assumption (how often a player who needed Easy loses an egg) | KEPT; the child's fall is the smallest because he plays Easy most and the sim's share of his flawless wins is assumed. |
+| 29 | The grinder takes 6 of 7 dares and meets 3, for 45 coins in a month; his day to finish all 50 stays day 2. Nobody else is offered more than 3. | Assumption (dare taken, dare met) | KEPT: coins from dares do not move the Mint's targets (commuter 39.7% of the catalogue on day 30, as before the Pacer). |
+| 30 | "Left after a losing run" rose for the video lover (26 > 34) and the weekender (17 > 23) on seed 1 and fell on others: more of them are still playing at the end of the month, so more endings are left to count. | Assumption (leaving) | OPEN. |
+
 ## What real logs have said
 
 Nothing yet: no speed log from build 0.8.15 or later has been filed. From 0.8.15 on the log carries, as counts only:

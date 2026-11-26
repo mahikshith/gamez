@@ -101,6 +101,9 @@ import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/vi
 import { drawVillainPortrait, PORTRAIT_BG, hasPortrait } from './render/villain-art.js';
 import { drawExtrasMark } from './render/extras.js';
 import * as ROAD from './road.js'; // 0.8.17: sixty levels, six a world; the old saves' level ids move once (migrateRoad)
+import * as AL from './album.js'; // 0.8.17: the combo album (drawAlbum)
+import * as RS from './reset.js'; // 0.8.17: Settings > Reset progress (what goes, what stays)
+import { PRIVACY, PRIVACY_URL, PRIVACY_DATE } from './data/privacy.js'; // 0.8.17: Settings > Privacy policy
 import { vibrate, installApp } from './app.js'; // Android WebView proof shell: bridge vibration, back button, FPS overlay (no-ops outside EGG_APP)
 // Safety net: an animated size that dips below zero (a shrinking bubble, a tiny card on a short screen) makes arc() /
 // ellipse() THROW, which kills the rest of that frame every frame. Clamp the radius to 0 instead (NaN too).
@@ -152,8 +155,9 @@ const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5]; // 202
 const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed : RING_SPEED_DEFAULT);
 // 0.8.17: the hidden tester switch (7 taps on the logo) works only in dev builds and the separate unlocked test builds;
 // in a store build the taps do nothing and an old save.tester flag is ignored (it opened the $2.99 unlock for free)
-const TESTER_OK = DEV || TEST || (typeof __UNLOCKED__ !== 'undefined' && !!__UNLOCKED__); /* global __UNLOCKED__ */
-const allOpen = () => TEST || (TESTER_OK && !!save.tester) || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($2.99) opens every level
+const UNLOCKED = typeof __UNLOCKED__ !== 'undefined' && !!__UNLOCKED__; /* global __UNLOCKED__ */
+const TESTER_OK = DEV || TEST || UNLOCKED;
+const allOpen = () => TEST || UNLOCKED || (TESTER_OK && !!save.tester) || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($2.99) opens every level
 // open: the world before is open and its boss passed (MINT.worldReady), and the stars are there or the gate was bought
 function envOpen(k) {
   if (allOpen()) return true;
@@ -371,6 +375,7 @@ const talView = { n: 0, key: '', seen: new Set(), sc: '', t0: 0 };
 function tallyFlush() { // the seconds on the screen that was up are filed; the clock starts again
   const now = performance.now();
   if (talView.sc && talView.t0) ENG.tally.screen(save, talView.sc, (now - talView.t0) / 1000, save.unlocked || 1);
+  if (talView.sc === 'intro' && talView.t0 && G.li >= 0) ENG.pacer.card(save, (now - talView.t0) / 1000); // the Pacer: how long the level card holds him
   talView.sc = G.screen || ''; talView.t0 = now;
 }
 function tallyFrame() {
@@ -501,7 +506,7 @@ const G = {
 };
 
 // WONDER: the bonus world's controller. It gets the canvas, the UI kit and a few shell services; it never touches the campaign save keys.
-const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, escroll: () => G.escroll, glide: (S, dt) => glideDt(S, dt), setScreen: (s) => setScreen(s), leave: () => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); setScreen('extras'); } });
+const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, escroll: () => G.escroll, album: () => xsAlbumRow(), albumIcon: (c, x, y, S, t) => albumRowIcon(c, x, y, S, t), albumMark: (xr, y, h) => markBadge(xr - 4 * ui.u, y + 4 * ui.u, Math.min(11 * ui.u, h * 0.14), G.t, '!'), albumLead: (S, off, R, vh) => albumLead(S, off, R, vh), glide: (S, dt) => glideDt(S, dt), setScreen: (s) => setScreen(s), leave: () => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); setScreen('extras'); } });
 
 function themeFor(level) {
   return THEMES.find((t) => t.id === level.theme) || THEMES[(level.id - 1) % THEMES.length];
@@ -614,7 +619,7 @@ function startLevel(i, opts = {}) {
   G.result = null;
   G.burstAt = null;
   G.usedRewind = false;
-  G.goals = GL.levelGoals(G.level, G.sim.MD.fuse, i >= 0); G.goalOk = [true, true, true];
+  G.goals = GL.levelGoals(G.level, G.sim.MD.fuse, i >= 0, G.sim.mode); G.goalOk = [true, true, true];
   G.doubled = false;
   G.held.clear();
   G.keySel = firstGrabbable(0, 1);
@@ -1306,7 +1311,7 @@ function keyDown(e) {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close'); else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
+  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close'); else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; else if (G.stuckAsk) press('stuck:no'); } return; }
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
@@ -1359,6 +1364,7 @@ async function press(id) {
   if (G.screen === 'intro' && G.level && G.li >= 0 && /^(boost:|adboost$|shop:boosts$|strip:more$)/.test(id) && !(save.seen || {})['strip:' + G.level.id]) { save.seen = { ...save.seen, ['strip:' + G.level.id]: 1 }; persist(); } // the booster strip was touched: its call for attention rests on this level for good
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
   if (id.startsWith('wait:go:')) { await waitClaim(id.slice(8)); return; } // 0.8.17: one waiting reward, one video
+  if (id.startsWith('xs:') || (id === 'set:close' && G.setSub) || (id === 'back' && G.album && G.screen === 'extras')) { await xsPress(id); return; } // 0.8.17: the combo album, Settings' privacy / reset / footer (xsPress)
   switch (id) {
     case 'ad:back': ads.cancelWait(); break; // an ad that never said it closed: back to the game (no reward)
     case 'zoom:in': setZoom((G.zm || 0) + 0.34); break;
@@ -1432,6 +1438,7 @@ async function press(id) {
       }
       { const T = introChicks(); if (T.id) { save.lastStk = T.id; if (T.choice) save.seen.pickN = (save.seen.pickN || 0) + 1; persist(); } }
       if (worldOpener(G.level)) { save.intro[G.level.id] = 1; persist(); }
+      pacerGo(); // the level card's dare: taken or declined (the Pacer)
       // owned boosters picked on the intro card are spent now and the level restarts with them
       const boost = { ...G.boost }; // keeps a booster the intro ad already gave
       let picked = 0;
@@ -1442,11 +1449,14 @@ async function press(id) {
       }
       G.boostSel.clear();
       // the win streak's free start boosters (Director: two or more levels won in a row)
-      const hot = G.li >= 0 ? DR.hotBoosts(save).filter((b) => !boost[b]) : [];
+      const hot = G.li >= 0 && !(G.dare && G.dare.kind === 'noboost') ? DR.hotBoosts(save).filter((b) => !boost[b]) : []; // (a "no boosters" dare takes the streak's free ones' place)
       for (const b of hot) { boost[b] = true; picked++; }
+      const pg = !(G.dare && G.dare.kind === 'noboost') ? pacerRetry() : {}; // the Pacer's free booster after "Keep trying", when he comes back by the level card
+      for (const b of Object.keys(pg.boost || {})) if (!boost[b]) { boost[b] = true; picked++; }
       if (picked) {
         persist();
         startLevel(G.li, { direct: true, golden: G.golden || boost.golden, boost, adBoost: G.adBoost });
+        if (pg.boost) pacerGiftPop(pg.boost);
         if (hot.length) toast(`Win streak ${DR.hotCount(save)}: free ${hot.map((b) => E.BOOSTERS[b].name).join(' + ')}!`, 3);
         break;
       }
@@ -1623,7 +1633,7 @@ async function press(id) {
       const P = G.parent;
       G.parent = null;
       if (!P) break;
-      if (P.q.choices[+id.slice(3)] === P.q.answer) await buyIap(P.sku, true);
+      if (P.q.choices[+id.slice(3)] === P.q.answer) { if (P.reset) xsOpen('reset1'); else await buyIap(P.sku, true); } // 0.8.17: or Reset progress
       else toast('Not quite. Ask a grown-up to help.', 2.4);
       break;
     }
@@ -1714,6 +1724,23 @@ async function press(id) {
       if (G.screen === 'play' && G.sim.state === 'play') { setScreen('pause'); portal.gameplayStop(); releaseAll(); }
       else if (G.screen === 'intro') setScreen('levels');
       break;
+    case 'stuck:ad': case 'stuck:ticket': case 'stuck:coins': // the Pacer's "Stuck? Skip this one": the fail card's own skip
+      if (id === 'stuck:ad' && !ads.videoOk) { videoOff(null); break; } // no video now: the sad hen's line, as every video button; the pop-up stays (coins or Keep trying)
+      G.stuckAsk = null;
+      if (G.screen === 'fail') await skipGo(id.slice(6));
+      break;
+    case 'stuck:no': // "Keep trying": back to the fail page; the next try starts with a free booster
+      if (G.stuckAsk && G.level) { ENG.pacer.declined(save, G.level.id); pacerWhy('fail', 'stuck:no', `kept trying on level ${G.level.id}`); persist(); }
+      G.stuckAsk = null;
+      break;
+    case 'dare:chip': { // the level card's dare: a tap takes it, another tap puts it back
+      const d = dareNow();
+      if (!d || G.screen !== 'intro') break;
+      d.took = !d.took; ENG.pacer.dareTake(save, G.level.id, d.took); persist();
+      G.dareFx = { t0: G.t, on: d.took };
+      audio.play(d.took ? 'fire_ignite' : 'ui_back', d.took ? { vol: 0.7 } : undefined); buzz('tap');
+      break;
+    }
     case 'pause:skip': // the pause page's Skip level: a small sheet first (what happens, one video, cancel)
       if (G.screen === 'pause' && skipNow()) G.skipAsk = { t0: G.t };
       break;
@@ -1745,11 +1772,15 @@ async function press(id) {
       if (G.screen === 'play' && G.sim && G.sim.finish()) audio.play('unlock');
       break;
     case 'restart':
-    case 'retry':
+    case 'retry': {
       portal.gameplayStop();
       if (id === 'retry' && G.screen === 'fail') { save.streak = 0; persist(); }
-      startLevel(G.li, { direct: true });
+      if (id === 'restart' && G.screen === 'pause') pacerRestart(); // a restart that hides a loss counts as one (the Pacer)
+      const po = id === 'retry' && G.screen === 'fail' ? pacerRetry() : {}; // the try after "Keep trying": one free booster
+      startLevel(G.li, { direct: true, ...po });
+      if (po.boost) pacerGiftPop(po.boost);
       break;
+    }
     case 'next': {
       // 2026-11-20 (Google Play ad policy: no interstitial as a level begins, none between a tap and what it starts):
       // the between-levels break, when one is due, comes here, as the player leaves the score card, before the map
@@ -1848,6 +1879,9 @@ async function press(id) {
       if (save.gfx === 'auto') save.gfxStep = -1; // Auto starts again from the phone's own guess
       applySettings(save); setDPR(); persist();
       break;
+    case 'set:adapt': // the Pacer's honesty switch: off = no skip pop-up, no dares, no marks, the plain hint timing
+      save.adapt = save.adapt === false; persist();
+      break;
     case 'set:fpsshow':
       save.showFps = !save.showFps; persist();
       break;
@@ -1918,7 +1952,7 @@ async function press(id) {
       break;
     case 'extras': // the Extras menu: Wonder Vaults (bonus) and, in the test build, the Practice vaults
       portal.gameplayStop();
-      if (G.screen === 'title') G.escroll = { y: 0, v: 0, max: 0, t: G.t };
+      if (G.screen === 'title') G.escroll = { y: 0, v: 0, max: 0, t: G.t, want: albumMarkOn() ? 'album' : null }; // 0.8.17: home's album mark leads to the album row
       setScreen('extras');
       break;
     default:
@@ -2227,12 +2261,12 @@ function shopBrain() {
   return G.shopPlan.out;
 }
 // forYou ([{ key, why }], the FOR YOU row), hero (a bundle sku) and order ([sku, ...], the BUNDLES row): the Brain's plan. balHold: the balance shown while a purchase reveal's coins fly.
-const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) },
+const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today(), dailyIn: chestInText(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) },
   ...shopBrain(), balHold: purse.held() ?? (G.got && G.got.coins0 != null && !G.got.flown ? G.got.coins0 : null) });
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
 function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
-function modalOpen() { return !!(G.got || G.party || G.waitList || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
+function modalOpen() { return !!(G.got || G.party || G.waitList || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause') || (G.stuckAsk && G.screen === 'fail' && G.screenT >= STUCK_AFTER)); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
@@ -2253,6 +2287,7 @@ function drawModals() {
     else if (G.leaveAsk) drawLeaveAsk();
     else if (G.treasure) drawTreasure();
     else if (G.skipAsk) drawSkipAsk();
+    else if (G.stuckAsk) drawStuckAsk();
   } finally { G.hudBottom = hb; }
 }
 // ---- boss treasure (2026-11-19, mykee: "after clearing a boss level, show some treasure, the unlockables, the new birds;
@@ -2382,6 +2417,8 @@ async function takeHelp() {
   const H = G.failHelp, lid = G.level && G.level.id;
   if (!H || G.screen !== 'fail' || lid == null) return;
   const boostRun = (b) => startLevel(G.li, b === 'golden' ? { direct: true, golden: true } : { direct: true, boost: { [b]: true } });
+  if (H.pacer) { ENG.pacer.gave(save, lid, H.pacer); persist(); } // the Pacer's free hint or Scarecrow: once per level
+  if (H.kind === 'freeHint') { G.failHelp = null; G.hintFree = lid; portal.gameplayStop(); startLevel(G.li, { direct: true }); return; } // the hint shows once the next try is running
   if (H.kind === 'trialChick') {
     DR.noteTrial(save, lid, H, Date.now()); persist();
     G.trialChick = { lid, id: H.id };
@@ -3205,7 +3242,7 @@ const skipLv = () => ({ id: G.level ? G.level.id : 0, count: LEVELS.length, jour
 // can this level be skipped now: in play (the pause page) or once it is lost (the fail card)
 const skipNow = () => !!G.sim && (G.screen === 'fail' ? G.sim.state !== 'play' : G.sim.state === 'play') && SK.canSkip(save, skipLv());
 // how it can be paid now, in button order (src/skip.js skipWays): 'ticket' | 'ad', then 'coins' while stuck (fail card only)
-const skipWays = () => (skipNow() ? SK.skipWays(save, skipLv(), { stuck: G.screen === 'fail' && G.li >= 0 && ads.stuck(G.level.id), tickets: save.wallet.tickets.skip }) : []);
+const skipWays = () => (skipNow() ? SK.skipWays(save, skipLv(), { stuck: G.screen === 'fail' && G.li >= 0 && (ads.stuck(G.level.id) || ENG.pacer.losses(save, G.level.id) >= SK_STUCK), tickets: save.wallet.tickets.skip }) : []);
 // The one skip (0.8.14: the pause sheet and the fail card end the same way): pay (a ticket, a video or coins), then
 // SK.applySkip, and the map, where the hen hops to the next stop and its level page opens (a star gate: the map waits).
 async function skipGo(way) {
@@ -3238,6 +3275,180 @@ function drawSkipAsk() {
       : ui.button('sk:go', ads.premium ? 'Skip level' : 'Watch to skip', x, y, w, 56 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 20 * s } : { kind: 'ad', ad: true, size: 19 * s }) },
     { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('sk:no', 'Cancel', x, y, w, 50 * s, { kind: 'tertiary', size: 19 * s }) },
   ], { ribbon: '#7a48e8' });
+}
+
+// ---- the Pacer (src/engine/pacer.js, 0.8.17, mykee: "push the struggling players ... never ever reduce the time or
+// increase the time for them"): what is fitted to the player around the play. The play itself (the fuse, the rings, the
+// villains, odds and prices) is never touched. Every decision is filed in the Brain's trace with the Pacer's reason.
+const STUCK_AFTER = 0.5; // s: the fail page settles first, then the pop-up rises over it
+const SK_STUCK = 3; // losses in a row that open the coin skip (ads.js STUCK_FAILS; the Pacer's own count survives a restart)
+const LOSS_BOOST = { time: 'nest', thorns: 'snips', villains: 'stone', nest: 'nest' }; // why it was lost -> the most useful start booster (as director.js bestBoost, but never the Slow fuse: the Pacer has no time lever; out of time: the Wide Nest)
+const pacerWhy = (moment, pick, why) => { if (why) BR.why(save, moment, pick, 'pacer: ' + why); };
+// after a loss (onFail, the Director's help already picked): the pop-up, a free hint, a free Scarecrow at a boss
+function pacerFail() {
+  const L = G.level, id = L.id;
+  ENG.pacer.result(save, { id, won: false });
+  const P = ENG.pacer.failPlan(save, { levelId: id, boss: !!L.boss, early: earlyDays(), canSkip: SK.canSkip(save, skipLv()), now: Date.now() });
+  G.stuckAsk = null;
+  if (P.scare) G.failHelp = { kind: 'trialBoost', id: 'scare', label: `Free ${E.BOOSTERS.scare.name}`, line: E.BOOSTERS.scare.line, pacer: 'scare' };
+  else if (P.hint) G.failHelp = { kind: 'freeHint', id: 'hint', label: 'Show me the way', line: 'A free hint on your next try.', pacer: 'hint' };
+  if (P.ask) { G.stuckAsk = { lid: id, t0: null }; ENG.pacer.asked(save, id); }
+  else if (P.gift) ENG.pacer.declined(save, id); // no skip on this level (won before): the next try's free booster all the same
+  pacerWhy('fail', P.ask ? 'stuck:ask' : P.scare ? 'help:scare' : P.hint ? 'help:hint' : null, P.why);
+}
+// the retry after "Keep trying": one free start booster, the one that answers why it was lost (once per level)
+function pacerRetry() {
+  const id = G.li >= 0 && G.level ? G.level.id : 0;
+  if (!id || !ENG.pacer.retryGift(save, id)) return {};
+  const b = LOSS_BOOST[G.lastLoss] || 'stone';
+  pacerWhy('fail', 'gift:' + b, `the try after "Keep trying" on level ${id} starts with a free ${E.BOOSTERS[b].name}`); persist();
+  return { boost: { [b]: true } };
+}
+const pacerGiftPop = (boost) => { const b = Object.keys(boost)[0]; popPrize(`Free ${E.BOOSTERS[b].name}`, (c, x, y, S, t) => drawBoosterIcon(c, b, x, y, S, t), null, 0.5); };
+// a restart from the pause page: a soft loss when most of the fuse is gone or an egg was lost
+function pacerRestart() {
+  if (!(G.li >= 0 && G.level && G.sim && G.sim.state === 'play')) return;
+  const sim = G.sim, used = sim.timeLimit ? 1 - Math.max(0, sim.timeLeft) / sim.timeLimit : 0;
+  if (ENG.pacer.restart(save, G.level.id, { used, lost: sim.stats().broken })) { pacerWhy('pause', 'soft', `a restart on level ${G.level.id} counted as a loss`); persist(); }
+}
+// the free hint: the solver's next move, shown as the Hint button shows it, once the try is running
+function freeHintTick() {
+  if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play' || fuseIntroOn() || !G.level || G.hintFree !== G.level.id || G.sim.t < 0.6) return;
+  G.hintFree = 0;
+  const out = {};
+  G.hint = { out, gen: hintSearch(Sim, G.level, G.sim.fullState(), { mode: G.sim.mode, ...G.boost }, out) };
+  popPrize('Hint', (c, x, y, S) => lampIcon(c, x, y, S), null, 0.2);
+}
+// the level card's dare: asked once per visit of the card; the Pacer keeps the same one while it is this level's
+function dareNow() {
+  if (G.li < 0 || !G.level || G.screen !== 'intro' || earlyDays()) return null;
+  const L = G.level, k = L.id + ':' + G.scrSeq;
+  if (G.dareC && G.dareC.k === k) return G.dareC.d;
+  const a = (save.dir && save.dir.att && save.dir.att[L.id]) || {}, gl = G.goals || [];
+  const d = ENG.pacer.dareFor(save, { levelId: L.id, boss: !!L.boss, tries: a.tries || 0, eggs: L.eggs, target: L.target, turns: L.bonus && L.bonus.kind === 'turns' ? L.bonus.n : 0,
+    chick: !!(G.sim && G.sim.stk && G.sim.stk.any && strikesOpen().length), goals: gl.map((g) => g.kind).concat(gl.filter((g) => g.b).map((g) => g.b.kind)), now: Date.now() });
+  G.dareC = { k, d };
+  if (d && d.why) { pacerWhy('intro', 'dare:' + d.kind, d.why); persist(); }
+  return d;
+}
+// PLAY from the level card: the dare is taken (it rides along until this level is won) or declined
+function pacerGo() {
+  if (G.li < 0 || !G.level) return;
+  const d = dareNow(), lid = G.level.id;
+  G.dare = d ? ENG.pacer.dareStart(save, lid) : G.dare && G.dare.lid === lid ? G.dare : null;
+  if (G.dare && !G.dare.lid) G.dare.lid = lid;
+  if (d) { pacerWhy('intro', 'dare:' + d.kind, `dare ${d.short} on level ${lid} ${G.dare ? 'taken' : 'declined'}`); persist(); }
+  G.dareC = null;
+}
+// a win: a dare met pays its share on top; the Pacer files the run (a first-try three-star win feeds "cruising")
+function pacerWin() {
+  if (!(G.li >= 0 && G.level && G.result)) return;
+  const L = G.level, r = G.result, sim = G.sim, a = (save.dir && save.dir.att && save.dir.att[L.id]) || {};
+  const d = G.dare && G.dare.lid === L.id ? G.dare : null;
+  let met = false;
+  if (d) {
+    const st = sim.stats();
+    met = ENG.pacer.dareMet(d, { broken: st.broken, saved: st.saved, total: st.total, turns: sim.turns || 0, boosts: Object.values(G.boost || {}).filter(Boolean).length + (G.golden ? 1 : 0), chicks: (sim.stk && sim.stk.n) || 0 });
+    const add = met ? ENG.pacer.dareCoins(r.coins) : 0;
+    r.coins += add;
+    r.dare = { long: d.long, ok: met, res: met ? `+${add} coins` : 'Missed' };
+    G.dare = null;
+    pacerWhy('win', 'dare:' + d.kind, `dare ${d.short} on level ${L.id} ${met ? `met: +${add} coins` : 'missed: the win pays as usual'}`);
+  }
+  ENG.pacer.result(save, { id: L.id, won: true, stars: r.stars, first: !(a.tries > 0), mode: sim.mode, dare: d ? { kind: d.kind, met } : null });
+}
+// the chip on the level card's perks row: a flame-edged pill, the dare and what it pays; a tap lights it (taken)
+function dareChip(x, y, maxW, s, dry) {
+  const d = dareNow();
+  if (!d) return 0;
+  const h = 34 * s, fs = 14.5 * s, lab = 'Dare: ' + d.short, pay = `+${Math.round(MINT.FAUCETS.dare.share * 100)}%`, cr = 8 * s; // the Mint's dare share (FAUCETS.dare)
+  const lw = ui.measure(lab, fs), pw = ui.measure(pay, fs), w = Math.min(maxW, 30 * s + lw + 10 * s + cr * 2 + 4 * s + pw + (d.took ? 26 * s : 0) + 12 * s);
+  if (dry) return w;
+  const on = !!d.took, t = G.t, calm = save.calm, fx = G.dareFx && G.t - G.dareFx.t0 < 0.5 ? G.dareFx : null;
+  const k = fx && !calm ? 1 + 0.12 * Math.sin(Math.PI * Math.min(1, (G.t - fx.t0) / 0.5)) * (1 - (G.t - fx.t0) / 0.5) : 1; // a bump as it lights (eased out)
+  ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + h / 2));
+  // the flame edge: little tongues of fire licking up all round the pill (still under Calm), brighter when taken
+  const fl = on ? 1 : 0.7;
+  for (let i = 0; i < 14; i++) {
+    const q = i / 14, ex = x + 8 * s + q * (w - 16 * s), up = (calm ? 0.6 : 0.55 + 0.45 * Math.sin(t * 7 + i * 2.1)) * (on ? 9 : 6) * s;
+    ctx.beginPath(); ctx.moveTo(ex - 5 * s, y + 4 * s); ctx.quadraticCurveTo(ex, y - up * 0.3, ex + 1 * s, y - up); ctx.quadraticCurveTo(ex + 3 * s, y - up * 0.2, ex + 5 * s, y + 4 * s); ctx.closePath();
+    ctx.fillStyle = `rgba(255,${(120 + 60 * Math.abs(Math.sin(i * 1.7))) | 0},30,${0.85 * fl})`; ctx.fill();
+  }
+  ui.roundRect(x, y, w, h, h / 2);
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  if (on) { g.addColorStop(0, '#ff8a2a'); g.addColorStop(1, '#d8341c'); } else { g.addColorStop(0, 'rgba(92,34,12,0.94)'); g.addColorStop(1, 'rgba(60,18,6,0.94)'); }
+  ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = 2.5 * s; const rg = ctx.createLinearGradient(x, 0, x + w, 0); rg.addColorStop(0, '#ffd23a'); rg.addColorStop(0.5, '#ff6a1a'); rg.addColorStop(1, '#ffd23a'); ctx.strokeStyle = rg; ctx.stroke();
+  ctx.restore();
+  const cy = y + h / 2;
+  pictoFlame(ctx, x + 16 * s, cy, 24 * s);
+  ui.text(lab, x + 30 * s, cy, { size: fs, color: '#fff', maxW: lw + 1, noRecord: true });
+  const px = x + 30 * s + lw + 10 * s;
+  drawCoin(ctx, px + cr, cy, cr, 0);
+  ui.text(pay, px + cr * 2 + 4 * s, cy, { size: fs, color: '#ffe066', noRecord: true });
+  if (on) { const tx = x + w - 20 * s; ctx.beginPath(); ctx.arc(tx, cy, 10 * s, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); pictoCheck(ctx, tx, cy, 15 * s, '#2f9e1c'); }
+  ui.record({ x, y, w, h }, 'intro:darechip');
+  ui.buttons.push({ id: 'dare:chip', x, y, w, h });
+  return w;
+}
+// the map: a flame where a dare was met; at a star gate, the three stops where the next star is nearest sparkle "+1"
+function pacerStopMark(id, x, y, r, t, calm) {
+  if (G.pmarkT !== G.t) { // worked out once a frame
+    G.pmarkT = G.t;
+    const k = envOf(Math.min(LEVELS.length - 1, (save.unlocked || 1) - 1)), short = envOpen(k) ? 0 : envNeed(k) - bestTotal();
+    const sig = `${short}|${bestTotal()}|${save.adapt !== false}`;
+    if (!G.pmarks || G.pmarks.sig !== sig) {
+      const rows = LEVELS.map((L) => ({ id: L.id, stars: bestStarsOf(L.id), best: Math.max(0, ...MODE_LIST.map((m) => save.best[sk(L.id, m)] || 0)) }));
+      G.pmarks = { sig, ids: ENG.pacer.marks(save, { short, rows }) };
+    }
+  }
+  const u = ui.u, R = Math.max(r, 20 * u);
+  if (ENG.pacer.dared(save, id)) { // a dare met: a small flame badge on the nest's shoulder
+    const fx = x - R * 0.95, fy = y - R * 0.55;
+    ctx.beginPath(); ctx.arc(fx, fy, 10 * u, 0, 7); ctx.fillStyle = 'rgba(70,20,6,0.9)'; ctx.fill(); ctx.lineWidth = 2 * u; ctx.strokeStyle = '#ffb02a'; ctx.stroke();
+    pictoFlame(ctx, fx, fy, 15 * u);
+  }
+  if (G.pmarks.ids.includes(id)) { // "+1 star here": a star that twinkles over the stop (steady under Calm)
+    const tw = ui.measure('+1', 13 * u) + 14 * u, side = x + R * 0.95 + tw + 11 * u > ui.A.x1 - 4 * u ? -1 : 1; // the side with room (never off the screen's edge)
+    const sx = x + side * R * 0.95 - (side < 0 ? tw : 0), sy = y - R * 0.75, p = calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3.2 + id), rr = (9 + 2 * p) * u;
+    ctx.save(); ctx.globalAlpha = 0.35 + 0.35 * p; ctx.beginPath(); ctx.arc(sx, sy, rr * 1.9, 0, 7); ctx.fillStyle = '#fff3a0'; ctx.fill(); ctx.restore();
+    drawStar(ctx, sx, sy, rr, true);
+    ui.text('+1', sx + rr + 3 * u, sy + 1 * u, { size: 13 * u, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'map:plus' + id, noRecord: sy - 12 * u < levelPageTop() || sy + 12 * u > ui.A.y1 }); // (half under the header: not a thing to read)
+  }
+}
+// "Stuck? Skip this one" (the Pacer, after the third loss in a row): over the fail page before its buttons, the hen
+// worried, two equal ways to skip (a video, or coins: the fail card's own skip) and a quiet "Keep trying"
+function drawStuckAsk() {
+  const A = G.stuckAsk;
+  if (G.screen !== 'fail' || !G.level || A.lid !== G.level.id) { G.stuckAsk = null; return; }
+  if (A.t0 == null) { A.t0 = G.t; audio.play('cluck', { pitch: 0.78, vol: 0.55 }); }
+  const ways = skipWays();
+  if (!ways.length) { G.stuckAsk = null; return; }
+  const p = save.calm ? 1 : clamp((G.t - A.t0) / 0.42, 0, 1), c1 = 1.7, e = 1 + (c1 + 1) * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); // ease out with a little overshoot
+  dim(0.6 * Math.min(1, p * 1.6));
+  const first = ways[0], coins = ways.includes('coins');
+  ctx.save(); // (no fade: the card's buttons and her art paint at full strength; it rises and grows into place instead)
+  const cx = ui.A.cx, cy = ui.A.cy, sc = 0.55 + 0.45 * e;
+  ctx.translate(cx, cy + (1 - e) * 90 * ui.u); ctx.scale(sc, sc); ctx.translate(-cx, -cy);
+  const portrait = ui.A.h > ui.A.w * 1.15;
+  stackCard('Stuck?', (s) => { const hh = portrait ? clamp((ui.A.h - 40 * ui.u) / s - 305, 128, 320) : 176; return [ // her stage takes the room a tall phone gives (no blank paper); on its side she stands left of the buttons
+    { h: hh * s, gap: portrait ? 4 * s : 0, draw: (x, y, w) => {
+      const aw = Math.min(w, Math.max(190, hh * 1.3) * s);
+      ui.well(x + (w - aw) / 2, y, aw, hh * s, { s, a: '#d9e8ff', b: '#eef5ff' });
+      drawHenAnim(ctx, 'worried', x + w / 2, y + hh / 2 * s, hh * 0.86 * s, G.t, { key: 'stuck', face: 1, calm: save.calm, shadow: 0 });
+      ui.record({ x: x + (w - aw) / 2, y, w: aw, h: hh * s }, 'stuck:hen');
+    } },
+    { ...lineBlock('Skip this one', 21 * s, { color: ui.C.ink, tag: 'stuck:line', gap: portrait ? 10 * s : 0 }), right: true },
+    { h: 58 * s, gap: 14 * s, right: true, draw: (x, y, w) => {
+      const hw = coins ? (w - 10 * s) / 2 : w;
+      if (first === 'ticket') ui.button('stuck:ticket', 'Ticket', x, y, hw, 58 * s, { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3, size: 20 * s });
+      else if (ads.premium) ui.button('stuck:ad', 'Skip', x, y, hw, 58 * s, { kind: 'secondary', icon: ICON.next, size: 20 * s });
+      else ui.button('stuck:ad', 'Watch', x, y, hw, 58 * s, { kind: 'ad', ad: true, size: 20 * s }); // offline: dimmed with the no-signal badge, as every video button (setAdOff)
+      if (coins) ui.button('stuck:coins', String(SKIP_COINS), x + hw + 10 * s, y, hw, 58 * s, { kind: save.wallet.coins >= SKIP_COINS ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 22 * s });
+    } },
+    { h: 48 * s, gap: 12 * s, right: true, draw: (x, y, w) => ui.button('stuck:no', 'Keep trying', x, y, w, 48 * s, { kind: 'tertiary', size: 18 * s }) },
+  ]; }, { ribbon: '#5a82c8', pop: false, grow: 1.12, twoCol: true });
+  ctx.restore();
 }
 
 // the one coin-gain effect (src/ui/purse.js): every counter draws purse.shown(); every grant calls purse.gain()
@@ -4346,7 +4557,7 @@ const P2_API = {
   combo(ev) {
     const id = 'combo_' + ev.id, first = !save.seen[id];
     if (first) { save.seen[id] = 1; persist(); }
-    G.card = { id, t: 0, dur: first ? 2.2 : 1.3 };
+    G.card = { id, t: 0, dur: first ? 2.6 : 1.3, album: first }; // 0.8.17: the first time it says "Added to your album"
     G.slow = { left: first ? 1.4 : 0.7, scale: 0.25 };
   },
 };
@@ -4882,7 +5093,7 @@ function computeResult() {
   const L = G.level;
   const timeBonus = Math.floor(sim.timeLeft) * 10;
   // 0.8.7: one star per goal (src/goals.js); a rewind (an ad reward) costs no star
-  const goals = G.goals || GL.levelGoals(L, sim.MD.fuse, G.li >= 0), F = GL.facts(sim), sc = GL.score(goals, { ...F, won: st.saved >= st.target });
+  const goals = G.goals || GL.levelGoals(L, sim.MD.fuse, G.li >= 0, sim.mode), F = GL.facts(sim), sc = GL.score(goals, { ...F, won: st.saved >= st.target });
   const stars = sc.stars;
   const streak = stars === 3 ? (save.streak || 0) + 1 : 0;
   const streakMult = [1, 1, 1.2, 1.5, 2][Math.min(4, streak)];
@@ -4891,11 +5102,11 @@ function computeResult() {
   // coins (F7) and the bonus objective (C3): bonus coins are paid the first time it is met, per mode
   const bonus = !!L.bonus && sim.bonusMet();
   const bonusCoins = bonus && !save.bonus[sk(L.id, sim.mode)] && G.li >= 0 ? BONUS_COINS : 0;
-  // 0.8.17 the Mint: a level won again without a new star pays its replay share (40%)
-  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id, hard: isHardLevel(L) && G.li >= 0, fresh: G.li >= 0 ? stars > bestStarsOf(L.id) : true }).total + bonusCoins;
+  // 0.8.17 the Mint: a level won again without a new star pays its replay share (40%); Easy pays its share (FAUCETS.easy)
+  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id, hard: isHardLevel(L) && G.li >= 0, fresh: G.li >= 0 ? stars > bestStarsOf(L.id) : true, easy: G.li >= 0 && sim.mode === 'easy' }).total + bonusCoins;
   if (G.li < 0) coins = G.li === -1 && stars && save.daily.paid !== today() ? coins + DAILY_COINS : 0; // the Daily Vault pays once a day; a lab vault pays nothing
   const cracked = sim.savedLog.filter((q) => q.cracks > 0).length, used = sim.timeLimit ? Math.max(0, sim.timeLimit - Math.max(0, sim.timeLeft)) : sim.t;
-  return { broken: st.broken, cracked, used, stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus && !goals.some((g) => g.kind === L.bonus.kind), // a bonus that is a star goal is not listed twice
+  return { broken: st.broken, cracked, used, stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus && !goals.some((g) => g.kind === L.bonus.kind || (g.b && g.b.kind === L.bonus.kind)), // a bonus that is a star goal is not listed twice
     goals: goals.map((g, i) => ({ long: g.long, ok: sc.met[i], res: GL.outcome(g, F, sc.met[i]) })) };
 }
 
@@ -4931,6 +5142,7 @@ function onWin() {
   G.result.cheer = pickRoutine({ stars: G.result.stars, streak: G.result.streak, boss: !!L.boss && G.li >= 0, firstWorld, last: save.lastCheer });
   save.lastCheer = G.result.cheer;
   G.result.purse0 = save.wallet.coins; // the purse before this win: the card rolls it up to the new total (purse.gain)
+  pacerWin(); // the Pacer: a dare met pays its share (before the skin's power and the bank, like the win's own coins)
   { // the egg skin's coin power (Shiny, Midas, Treasure Sense) first, then Golden Hour, then the bank's share
     const pre = G.result.coins, pk = eggPerk();
     G.result.coins = E.perkCoins(eggPerkId(), pre, G.sim.savedLog.length);
@@ -5014,7 +5226,8 @@ function onFail() {
       const cheer = SP.noteLoss(save, G.level.id, run, today()), played = G.sim.t >= 15 && SP.notePlayed(save, today());
       G.failSpin = { cheer, got: (cheer ? 1 : 0) + (played ? 1 : 0), ...SP.meter(save) };
     }
-    G.failHelp = earlyDays() ? null : DR.failHelp(save, failCtx(st));
+    G.failHelp = earlyDays() ? null : DR.failHelp(save, { ...failCtx(st), struggling: !!(save.adapt !== false && (ENG.pacer.read(save, { levelId: G.level.id }) || {}).struggling) });
+    pacerFail(); // the Pacer: the skip pop-up, a free hint, a free Scarecrow at a boss
     if (st.target >= 2 && st.saved === st.target - 1) BR.why(save, 'fail', 'soclose', `one egg short on level ${G.level.id}: ${earlyDays() || G.usedRewind || !G.sim.canRewind() ? 'said so, RETRY leads' : 'Rewind leads, RETRY under it'}`);
     persist();
   }
@@ -5070,6 +5283,7 @@ function update(dt) {
   if (G.hintShow && (G.hintShow.t -= dt) <= 0) G.hintShow = null;
   heartbeat(dt); // predators (v3)
   if (G.hint) hintWork();
+  else if (G.hintFree) freeHintTick(); // the Pacer's free hint, once the try is running
   if (G.hitstop > 0) G.hitstop -= dt;
   else if (running && !G.adBusy) {
     // 2026-11-20 pacing: the step count rounds a little early (acc may sit up to a quarter step below zero), so a frame
@@ -5468,7 +5682,7 @@ function render() {
   if (G.screen === 'title') drawTitle();
   if (G.screen === 'levels') drawLevels();
   if (G.screen === 'practice') drawPractice();
-  if (G.screen === 'extras') wonder.drawExtras(); // Extras: Wonder Vaults + the Practice button
+  if (G.screen === 'extras') { if (G.album) drawAlbum(); else wonder.drawExtras(); } // Extras: Wonder Vaults + the Practice button (0.8.17: the combo album over it)
   if (G.screen === 'store') drawStoreScreen(); // (reached only if the early path above is skipped)
   if (G.settingsOpen && (G.screen === 'pause' || G.screen === 'title')) drawSettings();
   else G.settingsOpen = false;
@@ -5652,7 +5866,8 @@ function drawCard() {
   const A = ui.A, w = Math.min(A.w - 24 * u, 380 * u), x = A.cx - w / 2, y = G.hudBottom + 10 * u;
   const lineS = 15 * u, icon = 64 * u;
   const lines = wrapText(info.line, lineS, w - icon - 28 * u).slice(0, 3);
-  const h = Math.max(icon + 8 * u, 16 * u + 24 * u + lines.length * lineS * 1.25 + 10 * u);
+  const alb = c.album && /^combo_/.test(c.id) ? 22 * u : 0; // 0.8.17: a combo's first time: "Added to your album"
+  const h = Math.max(icon + 8 * u, 16 * u + 24 * u + lines.length * lineS * 1.25 + 10 * u + alb);
   ctx.save();
   ctx.globalAlpha = a; ui.aBase = a;
   const k = ui.pop(c.t, 0.22);
@@ -5662,6 +5877,11 @@ function drawCard() {
   const tx = x + icon + 16 * u;
   ui.text(info.name, tx, y + 10 * u + 12 * u, { size: 22 * u, color: info.color, stroke: 'rgba(0,0,0,0.6)', maxW: w - icon - 26 * u, tag: 'card:name', group: 'card' });
   lines.forEach((l, i) => ui.text(l, tx, y + 40 * u + lineS * 1.25 * (i + 0.5), { size: lineS, color: '#fff', maxW: w - icon - 26 * u, tag: 'card:l' + i, group: 'card' }));
+  if (alb) { // the album's picture and the line, in the card's gold (it fades in a beat after the card)
+    const ay = y + 40 * u + lineS * 1.25 * lines.length + 3 * u + 9 * u, k = save.calm ? 1 : clamp((c.t - 0.35) / 0.3, 0, 1);
+    ctx.save(); ctx.globalAlpha *= k; albumIcon(ctx, tx + 9 * u, ay, 20 * u, 0);
+    ui.text('Added to your album', tx + 24 * u, ay + 0.5 * u, { size: 13.5 * u, color: '#ffd23f', maxW: w - icon - 50 * u, tag: 'card:album', group: 'card' }); ctx.restore();
+  }
   ui.aBase = 1;
   ctx.restore();
 }
@@ -7155,7 +7375,7 @@ function ringStripH(x, w, s) {
 // the chips that used to sit on the stage (the win streak, a free try, the egg's power): measured, then drawn in a row
 function perkItems(s) {
   const out = [], H = 34 * s;
-  for (const f of [hotBadge, tryChip, perkChipCard]) { const w = f(0, 0, 9999, s, true); if (w > 0) out.push({ w, h: H, draw: (x, y, maxW) => f(x, y, maxW, s, false) }); }
+  for (const f of [dareChip, hotBadge, tryChip, perkChipCard]) { const w = f(0, 0, 9999, s, true); if (w > 0) out.push({ w, h: H, draw: (x, y, maxW) => f(x, y, maxW, s, false) }); }
   return out;
 }
 function drawLevelIntro(L, acc) {
@@ -7210,7 +7430,7 @@ function drawLevelIntro(L, acc) {
     if (kinds.some((k) => k === 'weasel' || k === 'rats' || k === 'boss:weasel') && G.sim && G.sim.ally && G.sim.ally.avail.includes('rooster') && !(G.li >= 0 && G.li < 4 && L.id < 5)) P.push(HOWTO_ROOSTER); // Papa Rooster from L5 (the first-five ladder)
     if (!P.length && !vOld.length) P = [HOWTO_BASIC];
     let auto = P.map((p, i) => i);
-    P = [...P, ...vOld];
+    P = [...P, ...(P.length && ENG.pacer.cards(save) === 'new' ? [] : vOld)]; // the Pacer: a player who skips every card sees only what is new
     if (!auto.length) auto = P.map((p, i) => i); // nothing new: the reminders take turns
     const shown = new Set(P.filter((p) => p.move === 'floor').map((p) => 'floor:' + p.surf).concat(P.filter((p) => p.move === 'toy').map((p) => 'toy:' + p.toy), P.some((p) => p.teach) ? ['chick'] : []));
     const chips = things.filter((k) => !shown.has(k) && !acted.includes(k) && !k.startsWith('mix:') && (k !== 'chick' || chickOn)).map((k) => ({ ...teachChip(k), fresh: teachFirst(k) === L.id }));
@@ -7358,7 +7578,7 @@ function drawLevelIntro(L, acc) {
   } }; };
   // the three star goals, one compact row
   const starBlock = G.li >= 0 ? { h: 30 * s, gap: gp, draw: (x, y, w) => {
-    const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0)).map((g) => g.short), cw3 = w / 3, sr = 10.5 * s, fs = 15 * s;
+    const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0, save.mode)).map((g) => g.short), cw3 = w / 3, sr = 10.5 * s, fs = 15 * s;
     ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x, y, w, 1.5 * s);
     for (let i = 0; i < 3; i++) {
       const tw = Math.min(ui.measure(lab[i], fs), cw3 - sr * 2 - 12 * s), gx = x + cw3 * i + (cw3 - (sr * 2 + 5 * s + tw)) / 2, cy = y + 17 * s;
@@ -8070,6 +8290,7 @@ function ringSpeedStrip(x, y, w, s) {
 // the strip as a block for the level card's pinned column (RS_STRIP_H tall), or nothing
 const rsStripBlock = (s) => (ringSpeedStripOn() ? [{ h: rsStripH() * s, gap: 8 * s, draw: (x, y, w) => ringSpeedStrip(x, y, w, s) }] : []);
 function drawSettings() {
+  if (G.setSub) { if (G.setSub.seq === G.setSeq) return drawSetSub(); xsClose(); } // 0.8.17: the privacy page and the reset card (drawSetSub)
   ui.buttons.length = 0; ui.rects.length = 0; ui.calm = save.calm;
   const u = ui.u, A = ui.A, C = ui.C, s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, land = A.h < 520 * u;
   const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#3b2468'); bg.addColorStop(1, '#1c1233');
@@ -8083,7 +8304,7 @@ function drawSettings() {
   ui.pageHeader(P, { back: 'set:close', title: 'Settings', color: '#7a48e8', tag: 'set:title', right: land ? { w: 130 * s, draw: (x, y, w, h) => ui.button('set:close', 'Done', x, y, w, h, { kind: 'primary', icon: ICON.check, size: 19 * s }) } : null });
   let vb = A.y1 - (land ? 2 * u : pad);
   if (!land) {
-    ui.text('Eggscape ' + __VERSION__, A.cx, A.y1 - pad - 6 * s, { size: 12.5 * s, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' });
+    setFooter(A.cx, A.y1 - pad - 6 * s, s); // 0.8.17: the version and the support id (a tap copies them)
     ui.button('set:close', 'Done', x0, A.y1 - pad - 20 * s - 56 * s, cw, 56 * s, { kind: 'primary', icon: ICON.check, size: 22 * s });
     vb = A.y1 - pad - 20 * s - 56 * s - 8 * s;
   }
@@ -8102,6 +8323,7 @@ function drawSettings() {
   const rsB = rsLook ? { ...rsCard, draw: (x, y, w) => { rsCard.draw(x, y, w); focusDraw(ctx, ui, rsLook, { x, y, w, h: rsCard.h }, 16 * s, s); } } : rsCard;
   B.push(rsB);
   B.push(setCard(s, 'Difficulty', 'flag', '#e0a21c', null, 42 * s, (x, y, w) => modeRow(x, y, w, 42 * s, s)));
+  B.push(setRow(s, 'set:adapt', 'Adaptive help', 'sparkle', '#e0507e', { on: save.adapt !== false, sub: 'Help and dares that fit how you play' })); // the Pacer's switch (src/engine/pacer.js)
   B.push(setHead('Display', s));
   const gl = save.gfx === 'auto' ? `Auto picked ${TIER_NAME[PERF.tier]} for this phone` : save.gfx === 'high' ? 'Sharpest picture, every effect' : save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
   B.push(setCard(s, 'Graphics', 'sparkle', '#2aa7a0', null, 42 * s, (x, y, w) => segRow('gfx:', [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], save.gfx, x, y, w, 42 * s, s), gl));
@@ -8113,7 +8335,8 @@ function drawSettings() {
   B.push(setRow(s, 'set:log', 'Share speed log', 'file', '#5a7aa8', { act: 'Share' })); // 0.8.7: the game notes frame rates and hitches by itself; this hands the file over
   if (ads.moneyShop && !ads.premium && !OF.childSafe(save)) B.push(setRow(s, 'set:novideo', 'No videos', 'novideo', '#7a48e8', { act: 'See' })); // the sheet of Unlock Everything (no payment starts here)
   if (ads.canBuyPremium || ads.premium) B.push(setRow(s, 'set:restore', 'Restore purchases', 'ring', '#c88a1c', { act: 'Restore' }));
-  if (land) B.push({ h: 16 * s, gap: 8 * s, draw: (x, y, w) => ui.text('Eggscape ' + __VERSION__, x + w / 2, y + 8 * s, { size: 12.5 * s, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' }) });
+  B.push(...xsSetBlocks(s)); // 0.8.17: Privacy policy, Reset progress (their own block, last)
+  if (land) B.push({ h: 28 * s, gap: 8 * s, draw: (x, y, w) => setFooter(x + w / 2, y + 14 * s, s) }); // the version and the support id (a tap copies them)
   G.setRect = V;
   if (G.setRsAt) { // the first visit: the ring speed row in view (on a short screen the page starts scrolled to it)
     G.setRsAt = false; let yy = 0; for (const b of B) { yy += b.gap ?? 10 * s; if (b === rsB) break; yy += b.h; }
@@ -8494,6 +8717,7 @@ function drawWinPage() {
     const goals = (r.goals || []).map((g) => [g.long, g.ok, g.res]);
     const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
     if (r.hasBonus) goals.push(['Bonus goal', !!r.bonus, r.bonus ? 'Done' : 'Missed', 'target']);
+    if (r.dare) goals.push([r.dare.long, r.dare.ok, r.dare.res, 'flame']); // the Pacer's dare, when one was taken
     const gh = 40 * s, GH = 30 * s + goals.length * gh + 6 * s;
     if (!first) B.push({ h: GH, gap: 10 * s, draw: (x, y, w) => {
       ui.well(x, y, w, GH, { s, a: '#f3e2bd', b: '#fbf0d6' });
@@ -8508,7 +8732,7 @@ function drawWinPage() {
       goals.forEach(([txt, ok, res, pic], i) => {
         const ry = y + 30 * s + i * gh + gh / 2;
         if (i) { ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(x + 10 * s, ry - gh / 2, w - 20 * s, 1.2 * s); }
-        if (pic) pictoTarget(ctx, gx + sr * 1.6, ry, 24 * s); else drawStar(ctx, gx + sr * 1.6, ry, sr * 1.7, ok); // one star, one goal
+        if (pic === 'flame') pictoFlame(ctx, gx + sr * 1.6, ry, 24 * s); else if (pic) pictoTarget(ctx, gx + sr * 1.6, ry, 24 * s); else drawStar(ctx, gx + sr * 1.6, ry, sr * 1.7, ok); // one star, one goal
         const ix = x + w - 22 * s;
         (ok ? pictoCheck : pictoCross)(ctx, ix, ry, 24 * s);
         const rw = ui.measure(res, 14.5 * s), tx = gx + sr * 3.6 + 8 * s, rx = ix - 18 * s;
@@ -9087,7 +9311,7 @@ function drawFailPage() {
   const near = st.target >= 2 && st.saved === st.target - 1, lead = near && rew && !earlyDays();
   // 0.8.15 the Conductor: the way back in, a gift that waits, the Director's help and the meter are candidates; one
   // leads (it alone shimmers), an ask the Brain holds back is not shown, and with nothing else a line says what is near
-  const cheer = !!(G.failSpin && G.failSpin.cheer), hk = Hp0 ? (Hp0.kind === 'trialChick' || Hp0.kind === 'trialBoost' ? 'rescue' : Hp0.kind === 'adBoost' ? 'video' : 'coins') : null;
+  const cheer = !!(G.failSpin && G.failSpin.cheer), hk = Hp0 ? (Hp0.kind === 'trialChick' || Hp0.kind === 'trialBoost' || Hp0.kind === 'freeHint' ? 'rescue' : Hp0.kind === 'adBoost' ? 'video' : 'coins') : null;
   const FL = G.li >= 0 ? pageLead('fail', [lead ? { id: 'rewind', sys: 'rewind', kind: 'rescue', near: st.saved / st.target } : null, Hp0 ? { id: 'help', sys: 'director', kind: hk, near: 0.9, price: Hp0.price } : null, ...nearThings().map((c) => (c.id === 'spin' && cheer ? { ...c, kind: 'rescue' } : c))].filter(Boolean)) : { lead: null, order: [], held: [] };
   const top = FL.lead ? FL.lead.id : null, Hp = Hp0 && !FL.held.some((h) => h.id === 'help') ? Hp0 : null, prog = !Hp && !SP.banked(save) ? FL.order.find((c) => c.kind === 'progress') : null;
   const hotB = (() => { let o = []; if (hl >= 2 && (save.unlocked || 1) >= 6) for (const [n, b] of DR.HOT) if (hl >= n) o = b; return o; })(); // what the streak was worth
@@ -9129,10 +9353,11 @@ function drawFailPage() {
     else if (prog) B.push({ h: 26 * s, gap: 4 * s, draw: (x, y, w) => leadLine(prog, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'fail:near' }) });
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: 6 * s }));
     if (Hp) B.push({ h: 78 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
-      const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost', ad = Hp.kind === 'adBoost';
+      const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost' || Hp.kind === 'freeHint', ad = Hp.kind === 'adBoost';
       ui.well(x, y, w, 78 * s, { s, a: free ? '#d8f5c0' : '#ffe9b0', b: free ? '#f0ffe4' : '#fff6dc' });
       const ax = x + 38 * s, ay = y + 39 * s;
       if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, ax, ay + 6 * s, 48 * s, G.t, {});
+      else if (Hp.kind === 'freeHint') lampIcon(ctx, ax, ay, 60 * s); // the Pacer's free hint: the Hint button's lamp
       else drawBoosterIcon(ctx, Hp.id, ax, ay, 56 * s, G.t);
       const bw = Math.min(118 * s, w * 0.3), tx = x + 74 * s, tw = x + w - bw - 16 * s - tx;
       ui.text(Hp.label, tx, y + 26 * s, { size: 16.5 * s, color: ui.C.ink, maxW: tw, tag: 'fail:help' });
@@ -9244,7 +9469,7 @@ function drawTitle() {
   const subY = ty + logoS * 0.5 + 18 * u;
   G.titleToastY = subY + 16 * u;
   { const p = ent(0.3, 0.32); ctx.save(); ctx.globalAlpha *= p; ctx.translate(0, (1 - p) * 14 * u); // the tagline slides up under the title
-    ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? A.w * 0.5 : A.w) - 32 * u }); ctx.restore(); }
+    ui.text(TEST || UNLOCKED ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? A.w * 0.5 : A.w) - 32 * u }); ctx.restore(); }
   // the toy vault: centred between the subtitle and the meadow, or to the left of the buttons on a wide screen
   const eggH = Math.min(46 * u, (ground - subY) * 0.22);
   let vx = cx, vy, R;
@@ -9271,10 +9496,13 @@ function drawTitle() {
     const tagS = 13 * u;
     pop(0.4, chx, ground, () => {
       drawChest(ctx, chx, chy, cs, G.t, chestOpen ? 'open' : 'ready');
-      const tagT = chestOpen ? 'Tomorrow' : 'FREE', tgw = ui.measure(tagT, tagS) + 14 * u;
-      ui.roundRect(chx - tgw / 2, chy - cs * 0.62 - tagS, tgw, tagS * 1.6, tagS * 0.8);
+      // 0.8.17: "Opens in 6h 12m", kept on the screen; beside the landscape buttons it takes two lines when one does not fit
+      let L = [chestOpen ? chestInText() : 'FREE'], tgw = ui.measure(L[0], tagS) + 14 * u, tcx = Math.min(chx, A.x1 - 4 * u - tgw / 2);
+      if (wide && chestOpen && tcx - tgw / 2 < bx + bw / 2 + 4 * u) { L = ['Opens in', L[0].replace(/^Opens in /, '')]; tgw = Math.max(...L.map((l) => ui.measure(l, tagS))) + 14 * u; tcx = Math.min(chx, A.x1 - 4 * u - tgw / 2); }
+      const tlh = tagS * 1.2, ty = chy - cs * 0.62 - tagS - (L.length - 1) * tlh;
+      ui.roundRect(tcx - tgw / 2, ty, tgw, tagS * 1.6 + (L.length - 1) * tlh, tagS * 0.8);
       ctx.fillStyle = chestOpen ? 'rgba(40,24,10,0.7)' : '#e8402e'; ctx.fill();
-      ui.text(tagT, chx, chy - cs * 0.62 - tagS * 0.2, { size: tagS, align: 'center', color: '#fff', tag: 'title:chesttag' });
+      L.forEach((l, i) => ui.text(l, tcx, ty + tagS * 0.8 + i * tlh, { size: tagS, align: 'center', color: '#fff', tag: 'title:chesttag' + (i || '') }));
     });
     homeHit('home:chest', chx - cs * 0.6, chy - cs * 0.62 - tagS, cs * 1.2, cs * 1.1 + tagS);
   }
@@ -9325,6 +9553,7 @@ function drawTitle() {
   // Extras: as wide as Play, 52 u tall, with the Extras page's little planet and egg
   const ey = ry + rh + 8 * u, ew = side ? (bw - 8 * u) / 2 : bw, es = side ? 18 * u : 20 * u;
   pop(0.54, bx - bw / 2 + ew / 2, ey + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ey, ew, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: side ? 1.5 : 1.8, size: es, round: 17 * u }));
+  if (albumMarkOn()) pop(0.6, bx - bw / 2 + ew - 4 * u, ey + 4 * u, () => markBadge(Math.min(bx - bw / 2 + ew - 3 * u, A.x1 - 12 * u), ey + 3 * u, 11 * u, G.t, '!')); // 0.8.17: a new combo find (it leads to its album tile)
   if (side) pop(0.6, bx + bw / 2 - ew / 2, ey + 26 * u, () => ui.button(side.id, side.label, bx + bw / 2 - ew, ey, ew, 52 * u, { ...side.o, size: es, round: 17 * u }));
   if (fade) ctx.globalAlpha = 1;
 }
@@ -9504,6 +9733,7 @@ function drawLevels() {
     }
     if (state === 'cur') { if (!(TR && !TR.arrived)) MS.drawStopCall(ctx, L, x, y, t, calm, boss); curAt = { x, y, o, boss, i }; }
     MS.drawStop(ctx, L, x, y, state, o);
+    if (state === 'won' || state === 'cur') pacerStopMark(Lv.id, x, y, L.stopR, t, calm); // the Pacer: a dare met here, or "+1 star here" at a star gate
   }
   // the boss treasures: a chest beside every boss stop, on the side away from where the hen would stand
   for (let i = 0; i < LEVELS.length; i++) {
@@ -10205,6 +10435,348 @@ let last = 0;
 // 2026-11-20 pacing: ivs is a slow average of the callback gaps near iv (a precise refresh interval for snapping dt);
 // err is the time snapped off dt and not yet given back
 const VSYNC = { last: 0, buf: [], iv: 1000 / 60, ivs: 0, err: 0 };
+// ================================================================ 0.8.17 extras: the combo album, the daily chest's
+// "Opens in", and Settings' Privacy policy, Reset progress and version footer. The rules and the words live in
+// src/album.js, src/clock.js (opensIn), src/reset.js and src/data/privacy.js; this block draws them and takes their taps
+// (ids 'xs:*', one line at the top of press()).
+
+// ---- the daily chest: when it opens next. The game's own day (src/clock.js) decides, so the countdown ends exactly when
+// the chest can open, also after the phone's clock was set back. Plain information on a free gift: no urgency styling.
+const chestInText = () => CK.opensText(CK.opensIn(save.clock, Date.now()));
+
+// ---- the combo album: a page over the Extras screen (G.album; G.screen stays 'extras'). Opened from its row on the
+// Extras page (and from home's Extras button through that page); a new find marks both, and opening lands on its tile.
+const albumNow = () => AL.albumOf(save.seen);
+const comboName = (id) => powerInfo(id).name;
+function xsAlbumRow() { const D = albumNow(); return { n: D.n, total: D.total, fresh: D.fresh.length > 0 || D.prize, pitch: 'Two powers at once' }; }
+const albumMarkOn = () => { const D = albumNow(); return D.fresh.length > 0 || D.prize; };
+function openAlbum() {
+  const D = albumNow(), want = D.fresh[0] || (D.prize ? '_prize' : null);
+  G.album = { keep: G.escroll, fresh: D.fresh.slice(), t0: G.t, want, went: false, snd: {} };
+  G.escroll = { y: 0, v: 0, max: 0, t: G.t };
+  if (D.fresh.length) { save.seen = AL.albumSeen(save.seen, D.fresh); persist(); } // shown now: the marks go
+  audio.play('ui_open');
+}
+// the Extras page's album row (wonder.js): reached from home's mark, the page scrolls to it and rings it
+function albumLead(S, off, R, vh) {
+  if (S.want === 'album') { S.want = null; focusTrip(S, focusY(off, R.h, vh, S.max, ui.u), save.calm); focusStart(S, 'album', G.t + 0.1, 4, false); }
+  const look = S.hl && S.hl.key === 'album' ? focusLook(S.hl, G.t, save.calm) : null;
+  if (look) focusDraw(ctx, ui, look, R, 18 * ui.u, ui.u);
+}
+function closeAlbum() { if (!G.album) return; G.escroll = G.album.keep || G.escroll; G.album = null; }
+// two orbs side by side and the spark: the combo's shape, as a dark silhouette with a "?" (a combo not found yet)
+function comboShadow(c, x, y, r, a = 1) {
+  c.save(); c.globalAlpha *= a; c.lineWidth = Math.max(1.5, r * 0.07); c.strokeStyle = 'rgba(200,180,255,0.35)'; c.fillStyle = '#1d1433';
+  for (const [dx, dy] of [[-0.42, 0.06], [0.42, -0.06]]) { c.beginPath(); c.arc(x + dx * r, y + dy * r, r * 0.6, 0, 7); c.fill(); c.stroke(); }
+  c.beginPath(); for (let i = 0; i < 8; i++) { const q = (i * Math.PI) / 4 - Math.PI / 2, rr = i % 2 ? r * 0.13 : r * 0.36; c.lineTo(x + Math.cos(q) * rr, y + Math.sin(q) * rr); } c.closePath(); c.fill(); c.stroke();
+  c.restore();
+  ui.text('?', x, y + r * 0.04, { size: r * 0.95, align: 'center', color: '#cdb8ff', stroke: '#1d1433', strokeW: r * 0.16, noRecord: true });
+}
+// the album row's picture on the Extras page: a photo album with the first combo found on its cover
+function albumIcon(c, x, y, S, t) {
+  const w = S * 0.74, h = S * 0.8, x0 = x - w / 2, y0 = y - h / 2, lw = Math.max(1.5, S * 0.035);
+  c.save(); c.lineJoin = 'round';
+  ui.roundRect(x0 + S * 0.05, y0 + S * 0.04, w, h, S * 0.07); c.fillStyle = '#fff4dc'; c.fill(); c.lineWidth = lw; c.strokeStyle = '#5a1838'; c.stroke(); // the pages
+  ui.roundRect(x0, y0, w, h, S * 0.07); const g = c.createLinearGradient(0, y0, 0, y0 + h); g.addColorStop(0, '#d8487e'); g.addColorStop(1, '#8e2452'); c.fillStyle = g; c.fill(); c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.22)'; c.fillRect(x0 + S * 0.07, y0, S * 0.05, h); // the spine's stitch
+  ui.roundRect(x0 + w * 0.2, y0 + h * 0.14, w * 0.7, h * 0.72, S * 0.05); c.fillStyle = '#3a1430'; c.fill();
+  c.fillStyle = '#ffd24a'; for (const [cx, cy, d] of [[x0 + w * 0.2, y0 + h * 0.14, 1], [x0 + w * 0.9, y0 + h * 0.86, -1]]) { c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + d * S * 0.12, cy); c.lineTo(cx, cy + d * S * 0.12); c.closePath(); c.fill(); }
+  c.restore();
+  const f = albumNow().list.find((q) => q.found), r = S * 0.21, cx = x0 + w * 0.55, cy = y0 + h * 0.5;
+  if (f) drawOrb(c, 'combo_' + f.id, cx, cy, r, save.calm ? 0 : t); else comboShadow(c, cx, cy, r);
+}
+// ...on the Extras page, in the same rounded picture tile as the rows above it (render/extras.js well)
+function albumRowIcon(c, x, y, S, t) {
+  const x0 = x - S / 2, y0 = y - S / 2, g = c.createLinearGradient(0, y0, 0, y0 + S); g.addColorStop(0, '#f2a0c4'); g.addColorStop(1, '#c4507e');
+  ui.roundRect(x0, y0, S, S, S * 0.22); c.fillStyle = g; c.fill();
+  c.save(); ui.roundRect(x0, y0, S, S, S * 0.22); c.clip(); const sh = c.createLinearGradient(0, y0, 0, y0 + S); sh.addColorStop(0, 'rgba(0,0,0,0.28)'); sh.addColorStop(0.18, 'rgba(0,0,0,0)'); sh.addColorStop(0.8, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(255,255,255,0.14)'); c.fillStyle = sh; c.fillRect(x0, y0, S, S); c.restore();
+  albumIcon(c, x, y + S * 0.02, S * 0.92, t);
+  ui.roundRect(x0, y0, S, S, S * 0.22); c.lineWidth = S * 0.045; c.strokeStyle = 'rgba(20,8,30,0.55)'; c.stroke();
+}
+// the prize medal: a gold disc with a star on two ribbon tails (grey until the album is whole)
+function albumMedal(c, x, y, R, lit, t) {
+  c.save(); c.lineJoin = 'round'; c.lineWidth = Math.max(1.5, R * 0.08); c.strokeStyle = lit ? '#5a3000' : '#3a3050';
+  for (const [d, col] of [[-1, lit ? '#e8402e' : '#6a6080'], [1, lit ? '#3a80ea' : '#7a7090']]) {
+    c.beginPath(); c.moveTo(x + d * R * 0.2, y + R * 0.3); c.lineTo(x + d * R * 0.75, y + R * 1.45); c.lineTo(x + d * R * 0.42, y + R * 1.3); c.lineTo(x + d * R * 0.3, y + R * 1.62); c.lineTo(x - d * R * 0.12, y + R * 0.5); c.closePath(); c.fillStyle = col; c.fill(); c.stroke();
+  }
+  const g = c.createRadialGradient(x - R * 0.3, y - R * 0.35, R * 0.1, x, y, R);
+  g.addColorStop(0, lit ? '#fff3b0' : '#c9c0dc'); g.addColorStop(1, lit ? '#e8a018' : '#8a80a0');
+  c.beginPath(); c.arc(x, y, R, 0, 7); c.fillStyle = g; c.fill(); c.stroke();
+  c.beginPath(); c.arc(x, y, R * 0.76, 0, 7); c.lineWidth = Math.max(1, R * 0.05); c.strokeStyle = lit ? 'rgba(120,60,0,0.5)' : 'rgba(60,50,80,0.4)'; c.stroke();
+  c.restore();
+  drawStar(c, x, y + R * 0.03, R * 0.5, lit);
+  if (lit && !save.calm) { c.save(); c.globalAlpha = 0.5 + 0.5 * Math.sin(t * 3); c.fillStyle = '#fff'; c.beginPath(); for (let i = 0; i < 8; i++) { const q = (i * Math.PI) / 4, rr = i % 2 ? R * 0.05 : R * 0.2; c.lineTo(x + R * 0.55 + Math.cos(q) * rr, y - R * 0.55 + Math.sin(q) * rr); } c.fill(); c.restore(); }
+}
+// one tile: the combo's art (or its silhouette), its name and what it does (or the hint); the last tile is the prize
+function albumTile(it, x, y, w, h, s, o) {
+  const prize = !!it.prize, D = o.D, found = prize ? D.done : it.found && o.k > 0;
+  const col = prize ? (D.done ? '#ffc23a' : '#8a7aa8') : found ? '#ffc94a' : '#6a58a8';
+  const lip = 5 * s, fh = h - lip, r = 18 * s, tint = ui.tint, ink = found ? tint(col, -0.74) : '#f2eaff';
+  ui.roundRect(x, y + lip, w, fh, r); ctx.fillStyle = tint(col, -0.42); ctx.fill();
+  ui.roundRect(x, y, w, fh, r); const g = ctx.createLinearGradient(0, y, 0, y + fh); g.addColorStop(0, tint(col, found ? 0.6 : 0.25)); g.addColorStop(1, tint(col, found ? 0.12 : -0.12));
+  ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = tint(col, -0.5); ctx.stroke();
+  // the words from the bottom up: the name, then the line (or the prize's count / button)
+  const ns = o.ns, ls = o.ls, lh = o.lh, nY = y + fh - 10 * s - o.nMax * lh - ns * 0.62, aTop = y + 8 * s, aBot = nY - ns * 0.7 - 4 * s;
+  const acx = x + w / 2, acy = (aTop + aBot) / 2, aD = Math.min(w * 0.7, aBot - aTop);
+  if (found) { const lg = ctx.createRadialGradient(acx, acy, 0, acx, acy, aD * 0.6); lg.addColorStop(0, 'rgba(255,255,255,0.75)'); lg.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = lg; ctx.fillRect(x, aTop, w, aBot - aTop + 6 * s); }
+  const grp = 'album:t:' + it.id, t = save.calm ? 0 : G.t;
+  if (prize) albumMedal(ctx, acx, acy - aD * 0.14, aD * 0.3, D.done, t);
+  else if (found) {
+    const k = o.k, sc = k < 1 ? Math.max(0.05, backK(k)) : 1;
+    if (k < 1) { // the reveal: a ring of sparks and the art popping out of its silhouette
+      ctx.save(); ctx.globalAlpha = 1 - k; comboShadow(ctx, acx, acy, aD / 2.3 * (1 + 0.3 * k)); ctx.restore();
+      for (let i = 0; i < 10; i++) { const q = (i / 10) * Math.PI * 2 + 0.3, rr = aD * (0.25 + 0.45 * k); ctx.save(); ctx.globalAlpha = 1 - k; ctx.fillStyle = i % 2 ? '#fff3a8' : '#ffffff'; ctx.beginPath(); ctx.arc(acx + Math.cos(q) * rr, acy + Math.sin(q) * rr, (3.5 - 2 * k) * s, 0, 7); ctx.fill(); ctx.restore(); }
+    }
+    ctx.save(); ctx.translate(acx, acy); ctx.scale(sc, sc); drawOrb(ctx, 'combo_' + it.id, 0, 0, aD / 2.3, t); ctx.restore();
+  } else comboShadow(ctx, acx, acy, aD / 2.3);
+  ui.record({ x: acx - aD / 2, y: aTop, w: aD, h: aBot - aTop }, 'album:art:' + it.id, grp);
+  const name = prize ? 'Album prize' : found ? it.name : '? ? ?';
+  ui.text(name, acx, nY, { size: ns, align: 'center', maxW: w - 14 * s, color: ink, stroke: found ? null : 'rgba(20,10,40,0.6)', strokeW: 3 * s, tag: 'album:name:' + it.id, group: grp });
+  const ly = nY + ns * 0.62 + 4 * s;
+  if (prize) {
+    const bh = Math.min(40 * s, o.nMax * lh + 2 * s), bw = Math.min(w - 20 * s, 150 * s), bx = acx - bw / 2;
+    if (D.prize) ui.button('xs:prize', '+' + AL.ALBUM_PRIZE, bx, ly + (o.nMax * lh - bh) / 2, bw, bh, { kind: 'gold', icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 18 * s, shimmer: true });
+    else ui.text(D.done ? 'Complete!' : `${D.n} / ${D.total} found`, acx, ly + o.nMax * lh / 2, { size: 15 * s, align: 'center', maxW: w - 14 * s, color: ink, tag: 'album:count', group: grp });
+  } else o.lines.forEach((l, i) => ui.text(l, acx, ly + lh * (i + 0.5) + (o.nMax - o.lines.length) * lh / 2, { size: ls, align: 'center', maxW: w - 12 * s, color: found ? tint(col, -0.62) : 'rgba(236,226,255,0.88)', tag: 'album:l' + i + ':' + it.id, group: grp }));
+  if (o.fresh) { const pw = ui.measure('NEW', 11 * s) + 14 * s, ph = 19 * s; ui.roundRect(x + 7 * s, y + 7 * s, pw, ph, ph / 2); ctx.fillStyle = '#e8402e'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); ui.text('NEW', x + 7 * s + pw / 2, y + 7 * s + ph / 2 + 0.5 * s, { size: 11 * s, align: 'center', color: '#fff', tag: 'album:new:' + it.id, group: grp }); }
+  if (o.look) focusDraw(ctx, ui, o.look, { x, y, w, h }, r, s);
+}
+function drawAlbum() {
+  const AB = G.album, A = ui.A, u = ui.u, calm = save.calm, S = G.escroll, D = albumNow();
+  ui.calm = calm;
+  const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#1c1440'); bg.addColorStop(1, '#3a2152'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_);
+  const items = [...D.list, { prize: true, id: '_prize' }], wide = A.w > A.h * 1.15, cols = wide ? 4 : 2, rows = Math.ceil(items.length / cols);
+  const P = ui.pageBox(wide ? 900 * u : 560 * u), s = P.s, gap = 12 * s, vt = P.bottom + 8 * s, vb = A.y1 - 8 * s, V = { x: A.x, y: vt, w: A.w, h: vb - vt };
+  const tw = (P.w - gap * (cols - 1)) / cols, ns = 17 * s, ls = 13.5 * s, lh = ls * 1.24;
+  const lineOf = (it) => (it.found ? powerInfo('combo_' + it.id).line : AL.hintText(it.id, comboName));
+  const wraps = items.map((it) => (it.prize ? [] : wrapText(lineOf(it), ls, tw - 18 * s).slice(0, 3)));
+  const nMax = Math.max(2, ...wraps.map((q) => q.length)), textH = ns * 1.3 + nMax * lh + 14 * s;
+  const need = 8 * s + Math.min(tw * 0.5, 84 * s) + textH + 5 * s, room = V.h - 10 * s;
+  const th = clamp((room - (rows - 1) * gap) / rows, need, need * 1.3);
+  const air = Math.min(30 * s, Math.max(0, room - rows * th - (rows - 1) * gap) / (rows + 1)), rowGap = gap + air;
+  const total = 6 * s + air * 2 + rows * th + (rows - 1) * rowGap + 4 * s;
+  S.max = Math.max(0, total - V.h);
+  glide(S);
+  if (AB.want && !AB.went) { // the new find (or the prize waiting): the page lands on its tile and rings it
+    AB.went = true; const i = items.findIndex((q) => q.id === AB.want);
+    if (i >= 0) { focusTrip(S, focusY(6 * s + air + Math.floor(i / cols) * (th + rowGap), th, V.h, S.max, s), calm); focusStart(S, AB.want, G.t + 0.1, 4, false); }
+  }
+  const r0 = ui.rects.length, b0 = ui.buttons.length, y0 = vt + 6 * s + air - snapPx(S.y, DPR);
+  ctx.save(); ctx.beginPath(); ctx.rect(V.x, V.y, V.w, V.h); ctx.clip();
+  items.forEach((it, i) => {
+    const c = i % cols, rr = Math.floor(i / cols), inRow = Math.min(cols, items.length - rr * cols), rx = P.x + (P.w - (inRow * tw + (inRow - 1) * gap)) / 2;
+    const x = rx + c * (tw + gap), y = y0 + rr * (th + rowGap);
+    if (y > V.y + V.h || y + th < V.y) return;
+    const fi = AB.fresh.indexOf(it.id), fresh = fi >= 0;
+    let k = 1;
+    if (fresh && !calm) { // a new find turns over from its silhouette, one after the other
+      k = clamp((G.t - AB.t0 - 0.45 - fi * 0.3) / 0.55, 0, 1);
+      if (k > 0 && !AB.snd[it.id]) { AB.snd[it.id] = 1; audio.play('star', { pitch: 1 + fi * 0.08 }); }
+    }
+    const look = S.hl && S.hl.key === it.id ? focusLook(S.hl, G.t, calm) : null;
+    albumTile(it, x, y, tw, th, s, { D, k, fresh, look, ns, ls, lh, nMax, lines: wraps[i] });
+  });
+  ctx.restore();
+  clipRecorded(r0, b0, V);
+  if (S.max > 0 && !calm) { const th2 = Math.max(30 * u, V.h * V.h / total), ty2 = vt + clamp(S.y / S.max, 0, 1) * (V.h - th2 - 4 * u); ui.roundRect(A.x1 - 5 * u, ty2, 3 * u, th2, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill(); }
+  // the header: back, the title, the count (the same chip as the Extras page's stars)
+  const cnt = `${D.n} / ${D.total}`, cw = 10 * s + 22 * s + 6 * s + ui.measure(cnt, 17 * s) + 12 * s;
+  ui.pageHeader(P, { back: 'xs:alback', title: 'Combo album', color: '#c0558a', tag: 'album:title', right: { w: cw, draw: (x, y, w, h) => {
+    const ch = h - 6 * s, cy = y + 2 * s + ch / 2;
+    ui.glass(x, cy - ch / 2, w, ch);
+    albumIcon(ctx, x + 10 * s + 11 * s, cy, 24 * s, calm ? 0 : G.t);
+    ui.text(cnt, x + w - 12 * s, cy + 0.5 * s, { size: 17 * s, color: '#fff', align: 'right', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * s, tag: 'album:count:head' });
+  } } });
+}
+function albumPrize() {
+  const D = albumNow();
+  if (!D.prize) return;
+  save.wallet = E.addCoins(save.wallet, AL.ALBUM_PRIZE); save.seen = { ...save.seen, albumPrize: 1 }; persist();
+  startGot({ name: 'Album complete!', art: 'coins', coins: AL.ALBUM_PRIZE, items: [{ art: 'coins', label: '+' + AL.ALBUM_PRIZE }] });
+}
+
+// ---- Settings, the bottom block: Privacy policy, Reset progress, and the footer (version and support id)
+SI.shield = (c, x, y, S) => { c.beginPath(); c.moveTo(x, y - S * 0.38); c.quadraticCurveTo(x + S * 0.2, y - S * 0.26, x + S * 0.34, y - S * 0.27); c.quadraticCurveTo(x + S * 0.36, y + S * 0.22, x, y + S * 0.4); c.quadraticCurveTo(x - S * 0.36, y + S * 0.22, x - S * 0.34, y - S * 0.27); c.quadraticCurveTo(x - S * 0.2, y - S * 0.26, x, y - S * 0.38); c.closePath(); c.fill(); c.strokeStyle = 'rgba(30,60,130,0.85)'; c.lineWidth = S * 0.09; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); c.moveTo(x - S * 0.14, y + S * 0.01); c.lineTo(x - S * 0.03, y + S * 0.12); c.lineTo(x + S * 0.16, y - S * 0.1); c.stroke(); };
+SI.restart = (c, x, y, S) => { c.lineWidth = S * 0.12; c.lineCap = 'round'; c.beginPath(); c.arc(x, y + S * 0.02, S * 0.28, -Math.PI * 0.55, Math.PI * 1.2); c.stroke(); const a = -Math.PI * 0.55, ax = x + S * 0.28 * Math.cos(a), ay = y + S * 0.02 + S * 0.28 * Math.sin(a); c.beginPath(); c.moveTo(ax - S * 0.2, ay - S * 0.04); c.lineTo(ax + S * 0.06, ay - S * 0.16); c.lineTo(ax + S * 0.04, ay + S * 0.14); c.closePath(); c.fill(); };
+// the support id: random, made once and kept in the save (no device identifiers); the footer shows its first 8 characters
+function supportId() {
+  if (!save.sid) {
+    let id = '';
+    try { const a = new Uint8Array(8); crypto.getRandomValues(a); id = Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(''); } catch (_) { id = (Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10)).padEnd(16, '0'); }
+    save.sid = id; persist();
+  }
+  return String(save.sid).slice(0, 8);
+}
+/* global __BUILD__ */
+const verText = () => `Eggscape ${__VERSION__}${typeof __BUILD__ !== 'undefined' && __BUILD__ ? ` (${__BUILD__})` : ''}`;
+function copyText(str) {
+  const old = () => { try { const ta = document.createElement('textarea'); ta.value = str; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); } catch (_) { /* nothing to copy into */ } };
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(str).catch(old); return; } } catch (_) { /* older web view */ }
+  old();
+}
+// the footer line at (cx, cy): "Eggscape 0.8.17 (25) · ID 3f9a2c1d"; a tap copies both and it says "Copied" a moment
+function setFooter(cx, cy, s) {
+  const el = G.t - (G.copiedAt ?? -9), on = el < 1.6, size = 12.5 * s;
+  const str = `${verText()}  ·  ID ${supportId()}`, w = ui.measure(str, size);
+  if (on) {
+    const a = save.calm ? 1 : Math.min(1, el / 0.15, (1.6 - el) / 0.3), k = save.calm ? 1 : Math.max(0.3, backK(Math.min(1, el / 0.25))), ts = 14 * s * k, cw = ui.measure('Copied', ts) + 22 * s * k;
+    ctx.save(); ctx.globalAlpha *= a; // it pops in (eased, a little overshoot) and fades out
+    pictoCheck(ctx, cx - cw / 2 + 8 * s * k, cy, 15 * s * k, '#8fe07a');
+    ui.text('Copied', cx - cw / 2 + 20 * s * k, cy + 0.5 * s, { size: ts, color: '#dff7d4', tag: 'set:copied' });
+    ctx.restore();
+  } else ui.text(str, cx, cy, { size, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' });
+  ui.buttons.push({ id: 'xs:sid', x: cx - w / 2 - 12 * s, y: cy - 12 * s, w: w + 24 * s, h: 24 * s });
+}
+// the rows for drawSettings (one line there): their own block, after everything else
+const xsSetBlocks = (s) => [setHead('Privacy and data', s), setRow(s, 'xs:privacy', 'Privacy policy', 'shield', '#3a80ea', { act: 'Read' }), setRow(s, 'xs:reset', 'Reset progress', 'restart', '#d8453a', { act: 'Reset' })];
+
+// the pages behind them, drawn in place of the Settings list while G.setSub is up (its own scroller swapped in)
+function xsOpen(kind) {
+  const keep = G.setSub ? G.setSub.keep : G.setpage;
+  G.setSub = { kind, seq: G.setSeq, t0: G.t, keep, k: 0, lt: G.t, q: 0 };
+  G.setpage = { y: 0, v: 0, max: 0, t: G.t, lid: G.setSeq };
+  audio.play('ui_open');
+}
+function xsClose() { if (!G.setSub) return; G.setpage = G.setSub.keep || G.setpage; G.setSub = null; }
+function openLink(url) { // the hosted policy: Android's web view hands an https link to the browser (MainActivity); the web opens a tab
+  if (!/^https:\/\//.test(url)) return false;
+  try {
+    if (typeof __APP__ !== 'undefined' && __APP__) { window.location.href = url; return true; }
+    if (typeof window !== 'undefined' && window.EGG_APP === true) return false; // the iPhone shell: no outside links yet, the page in the game
+    return !!window.open(url, '_blank', 'noopener');
+  } catch (_) { return false; }
+}
+const subBg = () => { const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#3b2468'); bg.addColorStop(1, '#1c1233'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); };
+// a picture-and-words row in a well: the reset card's lists
+const xsItemRow = (s, art, label, col) => ({ h: 50 * s, gap: 4 * s, draw: (x, y, w) => {
+  art(x + 32 * s, y + 25 * s, 40 * s);
+  ui.text(label, x + 64 * s, y + 25 * s, { size: 17 * s, color: col, maxW: w - 72 * s, tag: 'reset:i:' + label });
+} });
+function xsWellBlock(s, head, ok, rows) {
+  const hh = 40 * s, h = hh + rows.reduce((a, b) => a + b.h + b.gap, 0) + 10 * s;
+  return { h, gap: 10 * s, draw: (x, y, w) => {
+    ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+    const bx = x + 14 * s, by = y + 10 * s, d = 24 * s;
+    ctx.beginPath(); ctx.arc(bx + d / 2, by + d / 2, d / 2, 0, 7); ctx.fillStyle = ok ? '#3eb42d' : '#d8453a'; ctx.fill();
+    (ok ? pictoCheck : pictoCross)(ctx, bx + d / 2, by + d / 2, d * 0.62, '#fff');
+    ui.text(head, bx + d + 10 * s, by + d / 2 + 0.5 * s, { size: 15 * s, color: ok ? '#2d6a1c' : '#a3271c', tag: 'reset:head:' + head });
+    let yy = y + hh;
+    for (const R of rows) { yy += R.gap; R.draw(x + 4 * s, yy, w - 8 * s); yy += R.h; }
+  } };
+}
+function drawSetSub() {
+  const SB = G.setSub, u = ui.u, A = ui.A, s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, land = A.h < 520 * u, calm = save.calm;
+  ui.buttons.length = 0; ui.rects.length = 0; ui.calm = calm;
+  subBg();
+  const P = ui.pageBox(560 * s), cw = P.w, x0 = P.x, pg = G.setpage;
+  const title = SB.kind === 'privacy' ? 'Privacy policy' : 'Reset progress', color = SB.kind === 'privacy' ? '#3a80ea' : '#d8453a';
+  const B = [];
+  let bottom = null; // the big button(s) pinned under the list (portrait); landscape: Cancel in the header, the rest in the list
+  if (SB.kind === 'privacy') {
+    B.push({ h: 18 * s, gap: 4 * s, draw: (x, y, w) => ui.text('Updated ' + PRIVACY_DATE, x + w / 2, y + 9 * s, { size: 13 * s, align: 'center', color: 'rgba(255,240,210,0.75)', tag: 'pp:date' }) });
+    for (const [head, ...paras] of PRIVACY) {
+      const iw = cw - 32 * s, ps = 15 * s, plh = ps * 1.34, L = paras.map((p) => wrapText(p, ps, iw)), n = L.reduce((a, b) => a + b.length, 0);
+      const h = 16 * s + 22 * s + 6 * s + n * plh + (L.length - 1) * 6 * s + 12 * s;
+      B.push({ h, gap: 10 * s, draw: (x, y, w) => {
+        ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+        ui.text(head, x + 16 * s, y + 16 * s + 11 * s, { size: 19 * s, color: ui.C.ink, maxW: w - 32 * s, tag: 'pp:h:' + head });
+        let yy = y + 16 * s + 22 * s + 6 * s;
+        L.forEach((lines, j) => { lines.forEach((l, i) => ui.text(l, x + 16 * s, yy + plh * (i + 0.5), { size: ps, color: ui.C.ink2, maxW: w - 30 * s, tag: `pp:${head}:${j}:${i}` })); yy += lines.length * plh + 6 * s; });
+      } });
+    }
+    bottom = { id: 'xs:subback', label: 'Done', kind: 'primary', icon: ICON.check };
+  } else if (SB.kind === 'reset1') {
+    const ink = ui.C.ink, gone = [
+      xsItemRow(s, (x, y, S) => { drawStar(ctx, x, y, S * 0.42, true); }, 'Levels and stars', ink),
+      xsItemRow(s, (x, y, S) => { drawBoosterIcon(ctx, 'golden', x + S * 0.12, y - S * 0.06, S * 0.66, 0); drawCoin(ctx, x - S * 0.16, y + S * 0.12, S * 0.26, 0); }, 'Coins and power-ups', ink),
+      xsItemRow(s, (x, y, S) => drawHenSkinPreview(ctx, 'santa', x, y + S * 0.02, S * 0.95, 0), 'Hens, eggs and chicks', ink),
+      xsItemRow(s, (x, y, S) => albumIcon(ctx, x, y, S * 1.05, 0), 'Combo album', ink),
+    ];
+    const kept = [xsItemRow(s, (x, y, S) => settingsIcon(ctx, x, y, S * 0.9, '#6b3f17', '#f0dcb2'), 'Your settings', ink)];
+    if (ads.moneyShop) kept.unshift(xsItemRow(s, (x, y, S) => drawGift(ctx, x, y, S * 0.9, 0), 'Purchases: the store gives them back', ink));
+    B.push({ h: 118 * s, gap: 4 * s, hen: 1, draw: (x, y, w, h = 118 * s) => drawHenAnim(ctx, 'worried', x + w / 2, y + h / 2, h * 0.95, G.t, { key: 'reset', calm, shadow: 0 }) });
+    B.push(xsWellBlock(s, 'Erased', false, gone));
+    B.push(xsWellBlock(s, 'Kept', true, kept));
+    const red = { h: 50 * s, gap: 14 * s, draw: (x, y, w) => ui.button('xs:next', 'Reset progress', x + w * 0.15, y, w * 0.7, 50 * s, { kind: 'red', size: 18 * s, icon: (c, X, Y, S2) => { c.save(); c.fillStyle = '#fff'; c.strokeStyle = '#fff'; SI.restart(c, X, Y, S2); c.restore(); } }) };
+    if (land) B.push(red);
+    bottom = { id: 'xs:subback', label: 'Cancel', kind: 'primary', extra: land ? null : red };
+  } else { // reset2: hold the red button two seconds (a ring fills); letting go drains it
+    const dt = clamp(G.t - SB.lt, 0, 0.1), down = ui.pressedId === 'xs:hold';
+    SB.lt = G.t;
+    SB.k = clamp(SB.k + (down ? dt / 2 : -dt * 1.6), 0, 1);
+    const q = Math.floor(SB.k * 8);
+    if (down && q > SB.q) audio.play('ring_tick', { pitch: 0.9 + q * 0.09 });
+    SB.q = q;
+    if (SB.k >= 1) { ui.pressedId = null; G.pressPointer = null; doReset(); return; }
+    const avail = (land ? A.y1 - 8 * s : A.y1 - pad - 72 * s) - (P.bottom + 8 * s), hd = Math.min(land ? avail * 0.62 : 230 * s, avail * 0.5), henH = Math.min(land ? 120 * s : 170 * s, avail - hd - 40 * s);
+    B.push({ h: Math.max(60 * s, avail - 20 * s), gap: 6 * s, draw: (x, y, w) => {
+      const H = Math.max(60 * s, avail - 20 * s), sp = (H - henH - hd) / 3, hy = y + sp + henH / 2, cx = x + w / 2, cy = y + sp * 2 + henH + hd / 2, R = hd / 2;
+      drawHenAnim(ctx, down ? 'gasp' : 'worried', cx, hy, henH, G.t, { key: 'reset', calm, shadow: 0 });
+      // the ring round the button: a dark track, the fill eased in and out of its ends
+      const k = SB.k, e = k * k * (3 - 2 * k), lw = 12 * s;
+      ctx.save(); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(cx, cy, R + lw, 0, 7); ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(20,8,30,0.55)'; ctx.stroke();
+      if (e > 0.002) { ctx.beginPath(); ctx.arc(cx, cy, R + lw, -Math.PI / 2, -Math.PI / 2 + e * Math.PI * 2); ctx.lineWidth = lw * 0.72; ctx.strokeStyle = '#ffd23f'; ctx.stroke(); }
+      ctx.restore();
+      ui.record({ x: cx - R - lw * 1.5, y: cy - R - lw * 1.5, w: 2 * R + 3 * lw, h: 2 * R + 3 * lw }, 'reset:ring', 'btn:xs:hold');
+      const b = ui.button('xs:hold', '', cx - R, cy - R, 2 * R, 2 * R, { kind: 'red', round: R });
+      const fy = b.cy;
+      ctx.save(); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff'; ctx.translate(cx, fy - R * 0.2); ctx.rotate(calm ? 0 : -e * Math.PI * 2); SI.restart(ctx, 0, 0, R * 0.62); ctx.restore();
+      ui.text('Hold', cx, fy + R * 0.36, { size: Math.min(28 * s, R * 0.3), align: 'center', color: '#fff', stroke: 'rgba(90,10,5,0.8)', strokeW: 4 * s, tag: 'reset:hold', group: 'btn:xs:hold' });
+    } });
+    bottom = { id: 'xs:subback', label: 'Cancel', kind: 'primary' };
+  }
+  // header (landscape: the big button sits in the header's right slot, like Settings' Done)
+  ui.pageHeader(P, { back: 'xs:subback', title, color, tag: 'sub:title', right: land && bottom ? { w: 130 * s, draw: (x, y, w, h) => ui.button(bottom.id, bottom.label, x, y, w, h, { kind: bottom.kind, icon: bottom.icon, size: 19 * s }) } : null });
+  let vb = A.y1 - (land ? 2 * u : pad);
+  if (!land && bottom) {
+    const bh = 60 * s, by = A.y1 - pad - bh;
+    ui.button(bottom.id, bottom.label, x0, by, cw, bh, { kind: bottom.kind, icon: bottom.icon, size: 23 * s });
+    vb = by - 10 * s;
+    if (bottom.extra) { bottom.extra.draw(x0, vb - bottom.extra.h, cw); vb -= bottom.extra.h + 14 * s; }
+  }
+  const vt = P.bottom + 8 * s, V = { x: A.x, y: vt, w: A.w, h: Math.max(60, vb - vt) };
+  if (SB.kind === 'reset1' && !land) { // a tall phone: the hen grows into the spare room, what is left spreads over the gaps (a short one: she gets smaller first)
+    const sum = B.reduce((a, b) => a + b.h + b.gap, 0), spare = V.h - sum - 8 * s;
+    if (spare < 0) { const hen = B.find((b) => b.hen); hen.h = Math.max(72 * s, hen.h + spare); }
+    else if (spare > 0) { const hen = B.find((b) => b.hen), g = Math.min(spare * 0.5, 60 * s), d = (spare - g) / (B.length + 1); hen.h += g; for (const b of B) b.gap += d; }
+    for (const b of B) if (b.hen) { const d0 = b.draw, hh = b.h; b.draw = (x, y, w) => d0(x, y, w, hh); }
+  }
+  if (SB.kind === 'reset2') { pg.y = 0; pg.max = 0; let y = vt; for (const b of B) { y += b.gap ?? 10 * s; b.draw(x0, y, cw); y += b.h; } return; }
+  pageScroll(B, pg, V, x0, cw, s, SB.kind === 'privacy');
+}
+// child-safe mode: a grown-up's sum first (drawParentCheck), then the card
+function askReset() { if (OF.childSafe(save)) G.parent = { reset: true, q: OF.parentQuestion() }; else xsOpen('reset1'); }
+// the wipe: the save starts again with what src/reset.js keeps, the store is asked for the purchases, home
+function doReset() {
+  const fresh = RS.resetSave(save, defaultSave());
+  xsClose(); G.settingsOpen = false; closeAlbum();
+  loadSave(fresh); lastCoins = null;
+  G.fails = {}; G.got = null; G.party = null; G.detail = null; G.parent = null; G.offer = null; G.nudge = null; G.toasts = []; G.toast = null;
+  G.markC = null; G.shopPlan = null; G.forYou = null; G.stkSel = null; G.trialChick = null;
+  for (const L of LEVELS) ads.won(L.id); // the stuck counts of this session
+  persist();
+  OF.startSession(save, Date.now());
+  ads.restore(); // the store's own record: Android hands every purchase it still knows back (window.__eggGrant, no coins twice)
+  portal.gameplayStop();
+  startLevel(nextIdx()); setScreen('title'); G.homeIntro = true; G.screenT = 0;
+  audio.play('rewind'); buzz('win');
+}
+// every 'xs:' tap (and Back while one of these pages is up)
+async function xsPress(id) {
+  switch (id) {
+    case 'xs:album': openAlbum(); break;
+    case 'back': case 'xs:alback': closeAlbum(); break;
+    case 'xs:prize': albumPrize(); break;
+    case 'xs:privacy': if (!(PRIVACY_URL && openLink(PRIVACY_URL))) xsOpen('privacy'); break;
+    case 'xs:reset': askReset(); break;
+    case 'xs:next': xsOpen('reset2'); break;
+    case 'xs:hold': break; // a tap is not a hold (the ring drains)
+    case 'set:close': case 'xs:subback': xsClose(); break;
+    case 'xs:sid': copyText(`${verText()}, support id ${supportId()}`); G.copiedAt = G.t; audio.play('hud_pop'); break;
+  }
+}
+
 function frame(now) {
   requestAnimationFrame(frame); // first: an error below can never stop the loop (a stopped loop is a frozen level)
   if (VSYNC.last) {
@@ -10447,6 +11019,13 @@ async function boot() {
       else if (s && (s.v === 1 || s.v === 2)) loadSave({ sfx: s.sfx, music: s.music, mode: s.mode, calm: s.calm, wallet: s.wallet, seen: s.seen });
     }
   } catch (_) { save = defaultSave(); }
+  // 0.8.17: the separate everything-unlocked test app (build flag __UNLOCKED__, its own app id): once, the whole coop,
+  // both bundles' boosters, charges and tickets, and a deep purse, so every page and animation can be tried at once
+  if (typeof __UNLOCKED__ !== 'undefined' && __UNLOCKED__ && !save.unlockedKit) {
+    let w = save.wallet;
+    for (const sku of ['eggscape_collector', 'starter_nest', 'bundle_helper']) w = E.grantIap(w, sku, 'unlocked-build:' + sku, Date.now()).wallet;
+    save.wallet = E.addCoins(w, 20000); save.unlockedKit = 1; persist();
+  }
   if (PREVIEW === 'spin') { const stars = {}; for (let i = 1; i < 12; i++) stars[i] = 2; save = defaultSave(); loadSave({ ...save, unlocked: 12, stars, wallet: { ...save.wallet, coins: 300 }, spin: { wins: 1, bank: 3 } }); } // the Lucky Spin to show: a player at level 12 with three spins
   // the app build used to be an everything-unlocked test build: its saves carry 50 fake levels and 99999 coins. The first
   // real-progression launch starts the journey fresh (settings and the hen's skins carry over).

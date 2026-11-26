@@ -197,6 +197,7 @@ export function ownedCount(wallet, id) {
 //   perfect +4 for a perfect clutch                     (0 or 4)
 //   hard    a level marked hard pays half as much again
 //   replay  fresh === false (no new star): only the Mint's replay share (40%) is paid
+//   easy    a win on Easy (r.easy) pays the Mint's Easy share (FAUCETS.easy, 70%) and no hard-level half again
 // Win examples offline: 1 star ~14, 2 stars ~20, 3 stars perfect ~30 (online ~17, ~24, ~36).
 export const HARD_PAY = FAUCETS.win.hard;
 export function levelCoins(result) {

@@ -7,9 +7,12 @@ android {
         applicationId 'com.eggscape.game'
         minSdk 24
         targetSdk 34
-        versionCode 24
-        versionName '0.8.16'
+        versionCode 25
+        versionName '0.8.17'
         ndk { abiFilters 'arm64-v8a' }
+        // -Punlocked: the separate everything-unlocked test app; it installs beside the normal one under its own id and name
+        if (project.hasProperty('unlocked')) { applicationIdSuffix '.unlocked'; versionNameSuffix '-unlocked' }
+        resValue 'string', 'app_label', project.hasProperty('unlocked') ? 'Eggscape UNLOCKED' : 'Eggscape'
     }
     // throwaway proof key kept in the repo so every proof build installs over the last one; NOT for store releases
     signingConfigs { proof { storeFile rootProject.file('proof.keystore'); storePassword 'android'; keyAlias 'androiddebugkey'; keyPassword 'android' } }
