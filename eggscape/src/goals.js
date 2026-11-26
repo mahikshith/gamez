@@ -49,8 +49,8 @@ function easyGoals(L, fuse) {
   // every egg; and never less than Medium's second star asks: where that is "No cracks", every egg AND no cracks
   const m2 = levelGoals(L, fuse, true, 'medium')[1].kind;
   const every = t === n || m2 !== 'all' ? { kind: 'perfect', short: 'Flawless', long: 'No egg lost or cracked' } : { kind: 'all', short: 'Lose none', long: 'Lose no eggs' };
-  // (the card's row reads star by star: "Lose none", then "+ Under 96 s" on top of it; the win page says it whole)
-  return [home, every, { kind: 'both', a: every, b, short: `+ ${b.short}`, long: `${every.long} and ${b.long.charAt(0).toLowerCase()}${b.long.slice(1)}` }];
+  // (the card's row reads star by star: "Lose none", then "+ Under 96 s" on top of it; the win page says it whole, short)
+  return [home, every, { kind: 'both', a: every, b, short: `+ ${b.short}`, long: `${every.short} + ${b.short}` }]; // the win page's row at its full size, as the card reads it: "Flawless + Under 96 s"
 }
 function bonusGoal(L, fuse) {
   const B = L.bonus;
