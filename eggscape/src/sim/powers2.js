@@ -214,6 +214,7 @@ export const p2Methods = {
     this.reefP2?.(kind, T); // world 8: hermit crabs, puffers, jellyfish, the King Crab
     this.cwP2?.(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v4: the clockwork cast (sim/clockwork.js)
     this.bayouP2?.(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v3.7: gators, turtles, mosquitoes
+    this.pipP2?.(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // 0.8.17 pip
   },
   // fish schools: frozen by ice, stunned by lightning; they just carry on for the rest
   p2Fish(S, kind, T) {
@@ -665,6 +666,7 @@ export const p2Methods = {
     for (const S of this.schools || []) if (!(S.sn > 0 || S.fz > 0) && S.f.some((f) => Math.abs(f.r - R) < touch + 0.25)) this.p2Fish(S, 'bolt', 2.5);
     this.thiefShock(P.shockR, T); // v3.6: a thief standing on the live ring
     this.reefShock?.(P.shockR, T); // world 8
+    this.pipShock?.(P.shockR, T); // 0.8.17 pip
     if (P.shockR !== this.rings.length - 1) return; // the eagle and the bosses only meet the outer ring
     const E = this.p2Eagle();
     if (E && !P.fx.e && Math.abs(Math.hypot(E.x, E.y) - R) < 0.9) { this.eagleDaze('shock'); E.t = 2.5; this.p2Mark('e', 'zap', 1.5, E.x, E.y); }

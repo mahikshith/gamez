@@ -146,13 +146,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 16, theme: "blizzard", name: "Icefall Slide", eggs: 3, target: 2, time: 80, spacing: 1, material: "stone", nest: {w: 2.7, amp: 1.2, period: 8, pattern: "slide"}, bonus: {kind: "time", s: 45}, icicles: {every: 5, delay: 5, big: 3}, tip: "An icicle shakes before it drops: turn the ring above the egg.", orbs: [{type: "hourglass", ch: 1, a: 47},{type: "frost", ch: 2, a: -68},{type: "fire_green", ch: 4, a: 59}], seed: 918606, world: 3, intro: {title: "Sliding nest", line: "The ice carries the nest from side to side. Drop when it slides under, and swing the icicles away."},
+    id: 16, theme: "blizzard", name: "Pip's Rink", eggs: 3, target: 2, time: 125, spacing: 1, material: "stone", nest: {w: 2.8}, bonus: {kind: "time", s: 70}, penguin: {ch: 2, a: -125, delay: 5}, tip: "Line a gap up in front of Pip: he shoves the egg through it for you.", barriers: [{ring: 3, a: -58}], orbs: [{type: "frost", ch: 2, a: 6},{type: "stone", ch: 3, a: 123}], seed: 918605, world: 3, intro: {title: "Pip the Penguin", line: "Pip belly-slides on the ice and shoves eggs along. Turn a wall or a sponge into his path: bonk!"},
     rings: [
-      {gaps: [{a: 110}], thorns: [{a: 5, n: 2}]},
-      {mat: "ice", oneway: 1, gaps: [{a: -154, x: 2}], thorns: [{a: 99, n: 2, side: "out", h: 0.26},{a: 39, n: 2, side: "out", h: 0.26}], pads: [{a: -10, len: 1.71}]},
-      {gaps: [{a: -15},{a: 84}], thorns: [{a: 40, n: 2},{a: -165, n: 2, kind: "blunt"}], pads: [{a: -127, len: 1.05}]},
-      {mat: "ice", gaps: [{a: 53, x: 3, len: 0.7},{a: 150}], thorns: [{a: 100, n: 3},{a: -169, n: 2}], pads: [{a: -48, len: 1.59}]},
-      {oneway: -1, gaps: [{a: -38},{a: -141}], thorns: [{a: -62, n: 1, side: "out", h: 0.26},{a: -173, n: 1, side: "out", h: 0.26}], pads: [{a: 104, len: 1.47}]},
+      {gaps: [{a: 44}], thorns: [{a: 100, n: 2}]},
+      {mat: "ice", gaps: [{a: 151, x: 2}], thorns: [{a: -141, n: 2}], pads: [{a: 105, len: 1.46}]},
+      {mat: "ice", gaps: [{a: 37},{a: -150}], thorns: [{a: -20, n: 2}], pads: [{a: 150, len: 1.75}]},
+      {gaps: [{a: -3, x: 3, len: 0.7},{a: 151}], thorns: [{a: 81, n: 3},{a: 28, n: 2, side: "out", h: 0.26}], pads: [{a: -75, len: 1.07}]},
+      {gaps: [{a: -135},{a: 85}], thorns: [{a: 17, n: 2},{a: 146, n: 2}], pads: [{a: -114, len: 1.71}]},
     ],
   },
   {

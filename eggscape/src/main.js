@@ -79,6 +79,8 @@ import { movesEvent } from './render/bossmoves.js'; // the boss variety moves
 import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
 import { drawCrawler, SPECIES as CRAWLER_SPECIES, crawlerAnim } from './render/crawlers.js'; // the salamander's cousins (dev strips; not in a level yet)
 import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render/frog.js'; // v3.3 frog
+import { drawPips, pipEvent, pipCalm } from './render/pip.js'; // 0.8.17 pip
+import { PIP_DEMO } from './data/pip-demo.js'; // 0.8.17 pip: his practice vault (joins LAB_DEMOS below)
 import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem } from './render/bayou.js'; // v3.7 Gator Bayou
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
 import { drawRockHud } from './render/shapes.js';
@@ -194,7 +196,7 @@ const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volca
 // test build lab pages (v3.6): every studio vault, reachable without the dev console
 const LAB = [
   { name: 'Chicks', items: CHICK_DEMOS.map((d) => [d.kind, d.kind[0].toUpperCase() + d.kind.slice(1)]) },
-  { name: 'Creatures', items: [['frog', 'Frog'], ['octopus', 'Octo'], ['octoden', 'Puddle'], ['fish', 'Fish'], ['reef', 'Reef']] },
+  { name: 'Creatures', items: [['frog', 'Frog'], ['octopus', 'Octo'], ['octoden', 'Puddle'], ['fish', 'Fish'], ['reef', 'Reef'], ['penguin', 'Pip']] }, // 0.8.17 pip
   { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King']] },
   { name: 'Bayou', items: [['gator', 'Gator'], ['turtle', 'Turtle'], ['mosquito', 'Bugs'], ['grandpa', 'Grandpa']] },
   { name: 'Allies', items: [['rooster', 'Rooster'], ['goose', 'Goose']] },
@@ -206,6 +208,7 @@ const LAB = [
   { name: 'More combos', items: [['combo_magnet', 'Magnet'], ['combo_stink', 'Stink'], ['combo_bait', 'Bait'], ['warp_boss', 'Boss']] },
   { name: 'Clockwork', items: [['spider', 'Spider'], ['beetle', 'Beetle'], ['jack', 'Jack'], ['owl', 'Owl']] }, // v4 Shape Lab
 ];
+if (!LAB_DEMOS.includes(PIP_DEMO)) LAB_DEMOS.push(PIP_DEMO); // 0.8.17 pip: Practice > Creatures > Pip, and ?demo=penguin
 const BONUS_TEXT = (b, fuse = 1) => ({ turns: `${b.n} turns or fewer`, prize: 'Save the speckled egg', orbs: 'Collect every orb', time: `Finish within ${Math.round(b.s * fuse)} s` })[b.kind] || '';
 const BONUS_COINS = 15;
 const AD_BOOST = ['golden', 'time', 'stone', 'sponge']; // the intro card's free booster, by level
@@ -4462,6 +4465,7 @@ function handleEvents() {
         chickEvent(ev, fx, { popup, audio, toast }); // v3.2 chick kinds
         salEvent(ev, fx); // v3.2 lava salamander
         frogEvent(ev, fx, { popup, audio, toast, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.3 frog
+        pipEvent(ev, fx, { popup, audio }); // 0.8.17 pip
         seaEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.3
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
         bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.7 Gator Bayou
@@ -5610,6 +5614,7 @@ function render() {
   { const wx = warpXfBegin(ctx, sim, 'o'); SL(['octo', 'fish'], (c) => drawSeaUnder(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
   SL(['hermit', 'puff', 'jelly', 'kc'], (c) => drawReefUnder(c, sim, t, k, G.theme)); // world 8: bubbles, hermit crabs, puffers, jellyfish, the King Crab
   SL(['thief'], (c) => drawThieves(c, sim, t, k)); // v3.6: the weasel and the rats on the ring floor
+  SL(['pip'], (c) => { pipCalm(save.calm); drawPips(c, sim, t, k); }); // 0.8.17 pip: on his channel floor, under the eggs he holds
   blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
   SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
   if (DEV && G.probe) G.probe('creatures');
