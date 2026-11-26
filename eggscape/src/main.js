@@ -5421,6 +5421,9 @@ function update(dt) {
   for (const p of G.popups) { p.life -= dt; p.y -= 34 * ui.u * dt; }
   G.popups = G.popups.filter((p) => p.life > 0);
   // toasts
+  // 0.8.17: a level's villain tip never follows the player out of the level. Its clock only runs in play, so one carried
+  // to the home page, the map or the shop by a fast Back used to stay there for good
+  if (G.screen !== 'play' && G.screen !== 'pause' && G.screen !== 'info' && G.screen !== 'intro') { if (G.toast && G.toast.tip) G.toast = null; if (G.toasts.some((q) => q.tip)) G.toasts = G.toasts.filter((q) => !q.tip); }
   if (G.toast && (!G.toast.tip || G.screen === 'play') && !fuseIntroOn()) { G.toast.life -= dt; if (G.toast.life <= 0) G.toast = null; } // a villain tip's clock stops while the game is paused
   if (!G.toast && G.toasts.length) G.toast = { ...G.toasts.shift(), t0: G.t };
   if (G.result && G.screen === 'win') {
