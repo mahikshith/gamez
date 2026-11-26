@@ -11,6 +11,7 @@
 // villainKinds(level, sim) lists what is in a level: from the level data, plus anything the sim has live.
 // tools/info-check.cjs fails the build check if a level carries a villain/hazard the table does not cover.
 
+import { CREEP_KIND } from '../sim/creeper.js'; // 0.8.18 the creeper family's kinds
 export const VILLAIN_INFO = {
   // ---------------------------------------------------------------- bosses
   'boss:weasel': {
@@ -310,6 +311,46 @@ export const VILLAIN_INFO = {
     does: 'Creep across a gap and seal it with thorns, then grow back.',
     beat: 'Drop through before it closes. Fire burns the vine back.',
   },
+  creeper: { // 0.8.18 (sim/creeper.js)
+    group: 'hazard', name: 'Thorn creeper',
+    does: 'Crawls along a ring edge. A baby shoves eggs aside; a grown one cracks them.',
+    beat: 'Pass while it curls up at an end. Fire burns it to a stump.',
+  },
+  swampvine: { // 0.8.18 the creeper family: the bayou's form (the thorn creeper's rule)
+    group: 'hazard', name: 'Swamp vine',
+    does: 'Crawls to and fro along a ring edge. Its thorny head cracks eggs.',
+    beat: 'Pass while it curls up at an end. Fire burns it to a stump.',
+  },
+  frostcrawler: { // 0.8.18 the creeper family: frozen lake and blizzard
+    group: 'hazard', name: 'Frost crawler',
+    does: 'Ice spikes crawl along a ring edge. A hit cracks an egg and shoves it.',
+    beat: 'Pass while it rests at an end. Fire melts it to a puddle.',
+  },
+  lavaflow: { // 0.8.18 the creeper family: the volcano's form
+    group: 'hazard', name: 'Lava flow',
+    does: 'Hot lava creeps along a ring edge. An egg resting on it heats up and cracks.',
+    beat: 'Roll across, never stop on it. A water egg cools it to crust.',
+  },
+  anemone: { // 0.8.18 the creeper family: the reef's form
+    group: 'hazard', name: 'Stinging anemone',
+    does: 'Drifts along a ring edge, open and stinging. It reaches far.',
+    beat: 'Pass while it is shut at an end. Fire or a stone makes it flinch shut.',
+  },
+  spark: { // 0.8.18 the creeper family: the storm's form
+    group: 'hazard', name: 'Rim spark',
+    does: 'Races along a ring edge and zaps eggs.',
+    beat: 'It rests long at each end: pass then. A stone grounds it.',
+  },
+  sawtooth: { // 0.8.18 the creeper family: the clockwork form
+    group: 'hazard', name: 'Saw tooth',
+    does: 'A saw wheel runs along a ring edge and cracks eggs.',
+    beat: 'Pass while it stops at an end. A stone knocks it off.',
+  },
+  shard: { // 0.8.18 the creeper family: the crystal cave's form
+    group: 'hazard', name: 'Crawling shard',
+    does: 'A crystal crawls along a ring edge. Its spikes crack eggs.',
+    beat: 'Pass while it rests at an end. A stone shatters it.',
+  },
   doors: { // 2026-11-20 first-five ladder: gate doors left world 1, so their first level (L31) teaches them here
     group: 'hazard', name: 'Gate doors',
     does: 'A sliding door shuts a gap, then opens again on a steady beat.',
@@ -410,6 +451,7 @@ export function villainKinds(L, sim = null) {
   const rings = L.rings || [];
   if (rings.some((r) => r.retract)) set.add('popthorns');
   if (rings.some((r) => r.vine || (r.gaps || []).some((g) => g.vine))) set.add('vines');
+  for (const r of rings) if (r.creep) set.add(CREEP_KIND[r.creep.form] || 'creeper'); // 0.8.18 the creeper family: its world's form
   if (rings.some((r) => (r.gaps || []).some((g) => g.shut))) set.add('doors');
   const orbTypes = [...(L.orbs || []).map((o) => o.type), ...(L.portals || []).flatMap((p) => p.emit || []), ...((L.bossFight && L.bossFight.throws) || [])];
   for (const [t, k] of Object.entries(HAZARD_ORBS)) if (orbTypes.includes(t)) set.add(k);
