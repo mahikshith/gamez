@@ -145,14 +145,16 @@ export function drawGator(ctx, s, t = 0, o = {}) {
     // nostril
     { const [nx, ny] = jawRot(47, G_TOP0(47) - 1.5), [X, Y] = M(nx, ny); ctx.beginPath(); ctx.ellipse(X, Y, 1.1, 0.75, -0.3, 0, TAU); ctx.fillStyle = C.line; ctx.fill(); }
     // ---- the eye in its raised socket
-    const big = o.baby ? 1.25 : 1, [ex0, ey0] = jawRot(27.3, G_TOP0(27.3) - 3.1), [EX, EY] = M(ex0, ey0), er = 3.3 * big * (pres ? 1.28 : 1);
+    const big = (o.baby ? 1.25 : 1) * (o.boss ? 1 : 1.4), [ex0, ey0] = jawRot(27.3, G_TOP0(27.3) - 3.1 - (o.boss ? 0 : 1.2)), [EX, EY] = M(ex0, ey0), er = 3.3 * big * (pres ? 1.28 : 1); // 0.8.18: a level gator's eye 1.4x (it read as a dot in play)
     ctx.save(); ctx.translate(EX, EY); ctx.rotate(-jaw * 0.8);
     if (eyeMode === 'spiral') { ctx.beginPath(); ctx.arc(0, 0, er, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 0, 0, er, t, 1, C.line); }
     else {
-      const bl = blinkAt(t, id * 3 + 1), lid = eyeMode === 'half' ? 0.55 : o.boss ? 0.36 : jawU > 0.2 ? 0.06 : 0.24;
-      eye(ctx, 0, 0, { r: er, iris: C.eye, irisLo: C.eyeLo, pupil: 'slit', wide: jawU > 0.3, look: { x: o.look ?? 0.4, y: 0.1 }, lid: Math.max(lid, bl), lidCol: C.base, line: C.line, lw: lw * 0.75, shut: eyeMode === 'shut' ? 1 : eyeMode === 'squint' ? 'squint' : 0, mad: jawU > 0.2 || o.boss ? 0.28 : 0.1 });
-      // brow ridge: a heavy lid line that scowls
-      ctx.beginPath(); ctx.moveTo(-er * 1.25, -er * 0.5); ctx.quadraticCurveTo(-er * 0.2, -er * 1.45, er * 1.3, -er * 0.35);
+      const bl = blinkAt(t, id * 3 + 1), smug = o.smug || 0, lid = eyeMode === 'half' ? 0.55 : o.boss ? 0.36 : jawU > 0.2 ? 0.06 : lerp(0.24, 0.5, smug);
+      eye(ctx, 0, 0, { r: er, iris: C.eye, irisLo: C.eyeLo, pupil: 'slit', wide: jawU > 0.3, look: { x: (o.look ?? 0.4) - 0.5 * (o.miss || 0), y: 0.1 - 0.25 * smug - 0.6 * (o.miss || 0) }, lid: Math.max(lid, bl), lidCol: C.base, line: C.line, lw: lw * 0.75, shut: eyeMode === 'shut' ? 1 : eyeMode === 'squint' ? 'squint' : 0, mad: jawU > 0.2 || o.boss ? 0.28 : 0.1 + 0.15 * smug });
+      if (!o.boss && eyeMode !== 'shut' && eyeMode !== 'squint') { ctx.beginPath(); ctx.arc(-er * 0.3, -er * 0.35, er * 0.2, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill(); } // a glint: a live eye
+      // brow ridge: a heavy lid line that acts: down at the snout for the snap, raised in a hurt or a daze, a slow smug tilt after a bite
+      const bro = o.boss ? 0 : eyeMode === 'squint' ? -0.7 : clamp(0.15 + 0.9 * ss(0.05, 0.5, jawU) + 0.5 * smug - 1.1 * (o.miss || 0), -1, 1);
+      ctx.beginPath(); ctx.moveTo(-er * 1.25, -er * (0.5 + 0.35 * Math.max(0, -bro))); ctx.quadraticCurveTo(-er * 0.2, -er * (1.45 - 0.25 * bro), er * 1.3, -er * (0.35 - 0.45 * bro));
       if (o.boss) { ctx.lineWidth = 2.4 + lw * 1.5; ctx.strokeStyle = C.line; ctx.stroke(); ctx.lineWidth = 2.4; ctx.strokeStyle = C.brow; ctx.stroke(); } else ink(lw * 1.1);
     }
     ctx.restore();
@@ -281,9 +283,9 @@ export function drawTurtle(ctx, s, t = 0, o = {}) {
       ctx.beginPath(); ctx.moveTo(9, -6.6); ctx.quadraticCurveTo(12.5, -3.4, 14, 0); ctx.lineWidth = 1.3; ctx.strokeStyle = C.beakHi; ctx.stroke();
     } });
     ctx.beginPath(); ctx.arc(11.6, -3.4, 0.6, 0, TAU); ctx.fillStyle = C.line; ctx.fill(); // nostril
-    if (o.eye === 'spiral') { ctx.beginPath(); ctx.arc(2.6, -3.6, 3.7, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 2.6, -3.6, 3.4, t, 1, C.line); }
-    else eye(ctx, 2.6, -3.6, { r: 3.7, white: '#fff6d8', irisR: 0.66, iris: C.eye, irisLo: C.eyeLo, pupil: 'round', pupilR: 0.36, look: { x: o.lookX ?? 0.5, y: 0.1 }, lid: Math.max(o.glare ? 0.3 : 0.16, blinkAt(t, 7)), mad: o.glare ? 0.42 : 0.12, lidCol: C.skin, line: C.line, lw: lw * 0.7, shut: o.eye === 'shut' ? 1 : 0 });
-    { const g = o.glare ? 1 : o.eye === 'spiral' ? -1 : 0.25; ctx.beginPath(); ctx.moveTo(-2, -8.4 + g * 0.6); ctx.lineTo(6.8, -8.4 + g * 3); ink(lw * 1.5); } // a heavy brow: a scowl when it means it
+    if (o.eye === 'spiral') { ctx.beginPath(); ctx.arc(2.6, -3.9, 4.6, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 2.6, -3.9, 4.2, t, 1, C.line); }
+    else eye(ctx, 2.6, -3.9, { r: 4.6, white: '#fff6d8', irisR: 0.66, iris: C.eye, irisLo: C.eyeLo, pupil: 'round', pupilR: 0.36, look: { x: o.lookX ?? 0.5, y: 0.1 }, lid: Math.max(o.glare ? 0.3 : 0.16, blinkAt(t, 7)), mad: o.glare ? 0.42 : 0.12, lidCol: C.skin, line: C.line, lw: lw * 0.7, shut: o.eye === 'shut' ? 1 : 0 });
+    { const g = o.glare ? 1 : o.eye === 'spiral' ? -1 : 0.25; ctx.beginPath(); ctx.moveTo(-2.4, -9.6 + g * 0.6); ctx.lineTo(7.4, -9.6 + g * 3); ink(lw * 1.5); } // a heavy brow: a scowl when it means it
     ctx.restore();
     // plastron (belly plate): on its back this is what faces up
     const plast = () => { S([[-33, 8], [-30, 3.4], [0, 2.2], [27, 3.4], [30, 8], [0, 9.5]]); };
@@ -425,6 +427,7 @@ export function drawBayou(ctx, sim, t, k) {
     if (G.ph === 'log') eye = G.next > 0.6 ? 'shut' : 'half';
     if (G.ph === 'warn') { jaw = ss(0, 0.6, G.t / G.dur); eye = 'open'; }
     if (G.ph === 'after') jaw = G.t < 0.1 ? 1 - G.t / 0.1 : 0;
+    let smug = 0, miss = 0; if (G.ph === 'after') { const q = clamp(G.t / Math.max(0.01, G.dur), 0, 1), env = ss(0.2, 0.45, q) * (1 - ss(0.85, 1, q)); if (SNAP[G.id] === 1) smug = env; else if (SNAP[G.id] === -1) miss = env; }
     if (G.ph === 'flee') eye = 'squint';
     if (G.ph === 'dizzy') { eye = 'spiral'; jaw = 0.3; }
     if (G.ph === 'hurt') { eye = 'squint'; jaw = 0.5; }
@@ -435,7 +438,7 @@ export function drawBayou(ctx, sim, t, k) {
     if (atk && atk.name === 'roll' && atk.ph === 'warn') { jaw = 0.9 * ss(0, 0.5, warnU); eye = 'open'; }
     const stun = st && (st.k === 'stun');
     if (stun) { eye = 'spiral'; jaw = 0.25; }
-    const o = { jaw, eye, tail, boss: G.boss, baby: G.call && !G.boss, gait: (A.g / 9 / (0.121 * GATOR.L * G.s)) * TAU, walk: clamp(A.sp / 0.07, 0, 1), chomp: G.ph === 'after' ? clamp(1 - G.t / 0.32, 0, 1) : 0, bend: rf * k, roll: G.roll > 0 ? 1 - G.roll / 0.9 : 0, sneeze: G.sneeze > 0 ? G.sneeze / 0.8 : 0, stars: G.ph === 'dizzy' || stun ? 1 : 0, alpha, id: G.id, look: 0.35, noZ: !!st };
+    const o = { jaw, eye, tail, smug, miss, boss: G.boss, baby: G.call && !G.boss, gait: (A.g / 9 / (0.121 * GATOR.L * G.s)) * TAU, walk: clamp(A.sp / 0.07, 0, 1), chomp: G.ph === 'after' ? clamp(1 - G.t / 0.32, 0, 1) : 0, bend: rf * k, roll: G.roll > 0 ? 1 - G.roll / 0.9 : 0, sneeze: G.sneeze > 0 ? G.sneeze / 0.8 : 0, stars: G.ph === 'dizzy' || stun ? 1 : 0, alpha, id: G.id, look: 0.35, noZ: !!st };
     // the telegraph: a red bite mark over the jaws while they open at an egg
     if (G.ph === 'warn') biteMark(ctx, sim.gJaw(G), t, k, ss(0, 1, G.t / G.dur), G.s);
     if (G.lu && G.ph !== 'warp' && !st) { const J = sim.gJaw(G), F = sim.byFrame(G); luredHearts(ctx, J.x + F.nx * 0.25 - F.tx * G.face * 0.25, J.y + F.ny * 0.25 - F.ty * G.face * 0.25, k, t, G.id); drool(ctx, J.x + F.tx * G.face * 0.1 - F.nx * 0.2, J.y + F.ty * G.face * 0.1 - F.ny * 0.2, k, t + G.id); o.look = 0.9; if (o.eye !== 'spiral') o.eye = 'open'; if (!o.jaw) o.jaw = 0.18 + 0.05 * Math.sin(t * 5); }
@@ -520,12 +523,14 @@ function liftMark(ctx, R, t) {
 }
 
 // ================================================================= events (popups, sound, particles)
+const SNAP = {}; // 0.8.18: per gator, how its last snap went (bayouEvent sets it; drawGators acts it)
 export function bayouEvent(ev, fx, api) {
   const { popup, audio, once } = api;
   switch (ev.type) {
     case 'baitLure': audio.play('tongue_lick', { vol: 0.45, pitch: 1.3 }); audio.play('cheer_up', { vol: 0.3, pitch: 1.5 }); fx.sparkle(ev.x, ev.y + 0.4, 5, '#ff9ab8'); break; // it has seen the decoy: smitten
     case 'gatorWarn': audio.play('squish', { vol: 0.7, pitch: 0.45 }); once('gator', 'A gator! Its jaws open under a gap: turn that gap away.'); break;
     case 'gatorSnap':
+      SNAP[ev.id] = ev.hit ? 1 : -1; // the face after it: smug (an egg) or a puzzled look (missed)
       audio.play('steel_clang', { vol: ev.hit ? 0.8 : 0.5, pitch: ev.boss ? 0.4 : 0.7 });
       fx.shake = Math.max(fx.shake, ev.hit ? 0.3 : 0.12);
       popup(ev.x, ev.y + 0.55, ev.decoy ? 'Wood!' : ev.stone ? 'Clonk!' : ev.hit ? 'Chomp!' : 'Missed!', { color: ev.hit ? '#ff8a6a' : '#e8f4c8', size: 20, life: 0.9 });
