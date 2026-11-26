@@ -635,14 +635,6 @@ export function createWonder(env) {
   }
   // one centred line of ink on the page
   const inkLine = (str, size, tag, o = {}) => ({ h: size * 1.3, gap: o.gap, draw: (x, y, w) => ui.text(str, x + w / 2, y + size * 0.66, { size, align: 'center', maxW: w, color: o.color || ui.C.ink, tag }) });
-  // the eggs: one slot each, the ones home filled in, and the count under them (the fail page's row)
-  const eggsRow = (saved, n, s, tag) => ({ h: 62 * s, gap: 8 * s, draw: (x, y, w) => {
-    ui.well(x, y, w, 62 * s, { s });
-    const sp = Math.min(30 * s, (w - 20 * s) / Math.max(1, n)), es = Math.min(26 * s, sp * 0.95), mid = x + w / 2;
-    for (let i = 0; i < n; i++) drawEggIcon(ctx, mid + (i - (n - 1) / 2) * sp, y + 20 * s, es, i < saved ? 'saved' : 'slot');
-    ui.record({ x: mid - (n * sp) / 2, y: y + 7 * s, w: n * sp, h: 26 * s }, tag + 'eggs');
-    ui.text(`${saved}/${n}`, mid, y + 47 * s, { size: 17 * s, align: 'center', maxW: w - 16 * s, color: ui.C.ink, tag });
-  } });
   // a wide screen: the stage left of the card (null in portrait)
   const wideSide = () => { const A = ui.A; return A.w > A.h * 1.15 ? K.side() : null; };
 
@@ -702,77 +694,76 @@ export function createWonder(env) {
     } else K.page('Paused', build(roomFor(build, 100, 420)), { full: true, ribbon: RIB });
   }
   const SIDE_STAR0 = 0.3, SIDE_EGG0 = 0.95, SIDE_PILL = 1.25, SIDE_FLY = 1.6, SIDE_DONE = 2.4; // the side win page's beats (s)
+  // 0.8.18 (mykee: "I want this screen to not have boundaries"): the win and fail pages are the road's frameless pages:
+  // the scene (a noon sky, or a soft evening) edge to edge, her knoll, the meadow down to the buttons; the ribbon, the
+  // stars, the eggs, the coins and the buttons float on it. Landscape: she stands on the left, the rest on the right.
   function drawSideEnd() {
-    const g = S.game, A = ui.A, u = ui.u, z = env.size(), win = S.card === 'win', st = g.stats(), stars = g.stars(), calm = env.save().calm, P = S.pay, C = ui.C;
+    const g = S.game, A = ui.A, u = ui.u, z = env.size(), win = S.card === 'win', st = g.stats(), stars = g.stars(), calm = env.save().calm, P = S.pay;
     ui.calm = calm;
-    const sd = wideSide(), k = calm ? 1 : ease(S.cardT / 0.45), seed = S.level.id || 0;
-    K.dim((sd ? 0.74 : 0.6) + 0.14 * k);
-    if (win) { // rays over the whole page, then drifting feathers (still under reduced motion)
-      ctx.save(); ctx.globalAlpha = 0.5 + 0.5 * k; K.sunburst(A.cx, A.y + A.h * 0.36, Math.max(z.W, z.H) * 0.85, 'rgba(255,226,140,0.07)', 16); ctx.restore();
-      K.feathers(0.35 + 0.5 * k);
-    }
+    const wide = A.w > A.h * 1.15, k = calm ? 1 : ease(S.cardT / 0.45), seed = S.level.id || 0;
+    K.dim(0.6 + 0.14 * k);
     const near = st.target >= 2 && st.saved === st.target - 1, timeout = !win && !!g.timeLimit && g.timeLeft <= 0;
     const title = win ? (stars === 3 ? 'Perfect!' : stars === 2 ? 'Great job!' : 'Vault cracked!') : near ? 'So close!' : timeout ? 'Out of time!' : 'Too many eggs broke';
-    const T = {}; // where her stage sits (portrait: in the page; landscape: left of the card)
-    const henT = Math.max(0, S.cardT - 0.25);
+    const T = {}; // where her place is (the scene's knoll stands under it)
+    const henT = Math.max(0, S.cardT - 0.25), R = wide; // R: on a wide screen every block but hers stands in the right column
+    const ink = 'rgba(40,22,8,0.9)';
     const build = (stH) => (s) => {
       const B = [];
       // 0.8.17 win817 (the road's win page, one family): the stars slam onto their sockets, the eggs home pop in as one
       // line, the "+N" pill pops and its coins fly into the purse beside it; a tap skips to the end (pointerDown)
-      if (win) B.push({ h: 96 * s, gap: 0, draw: (x, y, w) => {
-        const R = 38 * s, sp = 100 * s, cx = x + w / 2;
+      if (win) B.push({ h: 96 * s, gap: 0, right: R, draw: (x, y, w) => {
+        const Rr = 38 * s, sp = 100 * s, cx = x + w / 2;
         for (let i = 0; i < 3; i++) {
-          const v = calm ? 9 : S.cardT - SIDE_STAR0 - i * 0.24, sx = cx + (i - 1) * sp, sy = y + R + 10 * s - (i === 1 ? 8 * s : 0);
-          drawStar(ctx, sx, sy, R, false, 1, true);
+          const v = calm ? 9 : S.cardT - SIDE_STAR0 - i * 0.24, sx = cx + (i - 1) * sp, sy = y + Rr + 10 * s - (i === 1 ? 8 * s : 0);
+          drawStar(ctx, sx, sy, Rr, false, 1, true);
           if (i >= stars) continue;
           if (v >= K.SLAM && !S['st' + i]) { S['st' + i] = 1; if (!calm && !S.skip) { audio.play('star', { intensity: i / 2, pitch: 1 + i * 0.12 }); if (env.buzz) env.buzz('star'); } }
-          K.slam(sx, sy, R, v, calm || S.skip, i);
+          K.slam(sx, sy, Rr, v, calm || S.skip, i);
         }
-        ui.record({ x: cx - sp - R, y: y + 2 * s, w: 2 * (sp + R), h: 2 * R + 10 * s }, 'wv:stars');
+        ui.record({ x: cx - sp - Rr, y: y + 2 * s, w: 2 * (sp + Rr), h: 2 * Rr + 10 * s }, 'wv:stars');
       } });
-      else B.push({ h: 30 * s, gap: 4 * s, draw: (x, y, w) => { // why it failed: an icon and a few words
-        const t = near ? 'Just one egg short' : timeout ? 'No time left' : 'Too many eggs lost', tw = ui.measure(t, 19 * s) + 34 * s, x0 = x + w / 2 - tw / 2;
-        if (near) drawEggIcon(ctx, x0 + 12 * s, y + 15 * s, 24 * s, 'alive'); else if (timeout) pictoClock(ctx, x0 + 12 * s, y + 15 * s, 28 * s); else pictoBroken(ctx, x0 + 12 * s, y + 15 * s, 28 * s);
-        ui.text(t, x0 + 30 * s, y + 15 * s, { size: 19 * s, color: C.warn, maxW: w - 34 * s, tag: 'wv:cardline' });
+      else B.push({ h: 34 * s, gap: 4 * s, right: R, draw: (x, y, w) => { // why it failed: an icon and a few words, floating
+        const t = near ? 'Just one egg short' : timeout ? 'No time left' : 'Too many eggs lost', tw = ui.measure(t, 20 * s) + 36 * s, x0 = x + w / 2 - tw / 2;
+        if (near) drawEggIcon(ctx, x0 + 12 * s, y + 17 * s, 26 * s, 'alive'); else if (timeout) pictoClock(ctx, x0 + 12 * s, y + 17 * s, 30 * s); else pictoBroken(ctx, x0 + 12 * s, y + 17 * s, 30 * s);
+        ui.text(t, x0 + 32 * s, y + 17 * s, { size: 20 * s, color: '#fff', stroke: ink, strokeW: 4 * s, maxW: w - 36 * s, tag: 'wv:cardline' });
       } });
-      if (stH > 0) B.push({ h: stH * s, gap: (win ? 6 : 8) * s, draw: (x, y, w) => {
-        T.box = { x, y, w, h: stH * s }; T.henH = Math.min(0.685 * stH, 150) * s; // (a tall stage gives her air, not a close-up) T.clip = { x: 0, y: A.y, w: z.W, h: y + stH * s - A.y };
-        K.henStage(T.box, s, win);
-        drawCelebration(ctx, win ? S.cheer : 'encourage', henT, T.box, { pw: win ? routinePower(stars) : 0.5, calm, henH: T.henH, seed, clip: T.clip });
+      if (stH > 0) B.push({ h: stH * s, gap: (win ? 6 : 8) * s, at: (x, y, w) => { T.box = { x, y, w, h: stH * s }; T.henH = Math.min(0.685 * stH, wide ? 170 : 210) * s; }, draw: () => {
+        drawCelebration(ctx, win ? S.cheer : 'encourage', henT, T.box, { pw: win ? routinePower(stars) : 0.5, calm, henH: T.henH, seed, clip: { x: 0, y: 0, w: z.W, h: z.H } });
         ui.record(T.box, 'wv:hen');
       } });
-      if (!win) B.push(eggsRow(st.saved, Math.max(1, st.target), s, 'wv:eggs'));
-      else B.push({ h: 40 * s, gap: 8 * s, draw: (x, y, w) => { // the eggs home: one line of eggs, popping in one by one
-        const n = st.total, sp = Math.min(40 * s, (w - 20 * s) / Math.max(1, n)), es = Math.min(32 * s, sp * 0.9), mid = x + w / 2;
-        for (let i = 0; i < n; i++) { const q = calm || S.skip ? 1 : clamp((S.cardT - SIDE_EGG0 - i * 0.07) / 0.25, 0, 1); if (q <= 0) continue; const ex = mid + (i - (n - 1) / 2) * sp, ey = y + 20 * s; ctx.save(); ctx.translate(ex, ey); ctx.scale(backOut(q), backOut(q)); drawEggIcon(ctx, 0, 0, es, i < st.saved ? 'saved' : 'slot'); ctx.restore(); }
+      // the eggs: one line of eggs (a win: popping in one by one; a fail: the slots, the ones home filled in, and the count)
+      B.push({ h: (win ? 40 : 58) * s, gap: 8 * s, right: R, draw: (x, y, w) => {
+        const n = win ? st.total : Math.max(1, st.target), saved = st.saved, sp = Math.min(40 * s, (w - 20 * s) / Math.max(1, n)), es = Math.min(32 * s, sp * 0.9), mid = x + w / 2;
+        for (let i = 0; i < n; i++) { const q = !win || calm || S.skip ? 1 : clamp((S.cardT - SIDE_EGG0 - i * 0.07) / 0.25, 0, 1); if (q <= 0) continue; const ex = mid + (i - (n - 1) / 2) * sp, ey = y + 20 * s; ctx.save(); ctx.translate(ex, ey); ctx.scale(backOut(q), backOut(q)); drawEggIcon(ctx, 0, 0, es, i < saved ? 'saved' : 'slot'); ctx.restore(); }
         ui.record({ x: mid - (n * sp) / 2, y: y + 20 * s - es / 2, w: n * sp, h: es }, 'wv:eggs');
+        if (!win) ui.text(`${saved}/${n}`, mid, y + 47 * s, { size: 18 * s, align: 'center', maxW: w - 16 * s, color: '#fff', stroke: ink, strokeW: 3.5 * s, tag: 'wv:eggsn' });
       } });
-      if (win && P) B.push({ h: 48 * s, gap: 10 * s, draw: (x, y, w) => { // what it paid, then its coins fly into the purse beside it
-        const k0 = calm || S.skip ? 1 : clamp((S.cardT - SIDE_PILL) / 0.3, 0, 1), R = K.coinRow(x + w / 2, y + 24 * s, 42 * s, s, { txt: '+' + P.coins, k: k0, tag: 'wv:pay' });
-        if (!S.flown && (calm || S.skip || S.cardT > SIDE_FLY)) { S.flown = true; if (env.coinsFly) env.coinsFly(P, R.pill, 0.5); if (calm || S.skip) K.settle(); }
+      if (win && P) B.push({ h: 48 * s, gap: 10 * s, right: R, draw: (x, y, w) => { // what it paid, then its coins fly into the purse beside it
+        const k0 = calm || S.skip ? 1 : clamp((S.cardT - SIDE_PILL) / 0.3, 0, 1);
+        ctx.save(); if (k0 < 1) ctx.globalAlpha = ui.aBase = k0; // (0.8.18: the purse comes with the pill, not alone on the meadow)
+        const Rw = K.coinRow(x + w / 2, y + 24 * s, 42 * s, s, { txt: '+' + P.coins, k: k0, tag: 'wv:pay' });
+        ctx.restore(); ui.aBase = 1;
+        if (!S.flown && (calm || S.skip || S.cardT > SIDE_FLY)) { S.flown = true; if (env.coinsFly) env.coinsFly(P, Rw.pill, 0.5); if (calm || S.skip) K.settle(); }
       } });
-      if (win) B.push({ h: 70 * s, gap: 12 * s, draw: (x, y, w) => { // Map big and thick in the thumb zone, Again small beside it
+      if (win) B.push({ h: 70 * s, gap: 12 * s, right: R, draw: (x, y, w) => { // Map big and thick in the thumb zone, Again small beside it
         const rw = w * 0.3;
         ui.button('wv:retry', 'Again', x, y, rw, 70 * s, { kind: 'secondary', icon: ICON.retry, size: 18 * s });
         ui.button('wv:map', 'Map', x + rw + 10 * s, y, w - rw - 10 * s, 70 * s, { kind: 'primary', icon: ICON.grid, size: 30 * s });
       } });
       else {
-        B.push({ h: 68 * s, gap: 14 * s, draw: (x, y, w) => ui.button('wv:retry', 'RETRY', x, y, w, 68 * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 27 * s }) });
-        B.push({ h: 58 * s, gap: 12 * s, draw: (x, y, w) => ui.button('wv:map', 'Map', x, y, w, 58 * s, { kind: 'tertiary', icon: ICON.grid, size: 18 * s }) });
+        B.push({ h: 68 * s, gap: 14 * s, right: R, draw: (x, y, w) => ui.button('wv:retry', 'RETRY', x, y, w, 68 * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 27 * s }) });
+        B.push({ h: 58 * s, gap: 12 * s, right: R, draw: (x, y, w) => ui.button('wv:map', 'Map', x, y, w, 58 * s, { kind: 'tertiary', icon: ICON.grid, size: 18 * s }) });
       }
       return B;
     };
     const RIB = win ? '#f0542e' : near ? '#e0882a' : '#5a82c8';
-    if (sd) { // the card slides in from the right; she stands left of it
-      const o = { ...sd.cardO, ribbon: RIB, pop: false }, card = K.page(title, build(0), { ...o, hidden: true }), { box, henH } = K.stage(sd, card);
-      ctx.save(); ctx.globalAlpha = k; K.sunburst(box.x + box.w / 2, box.y + box.h - henH * 0.55, Math.min(box.w * 0.62, box.h * 0.8), win ? 'rgba(255,236,170,0.13)' : 'rgba(200,214,255,0.1)'); ctx.restore();
-      K.page(title, build(0), { ...o, dx: (1 - k) * (z.W - card.x + 20 * u) });
-      drawCelebration(ctx, win ? S.cheer : 'encourage', henT, box, { pw: win ? routinePower(stars) : 0.5, calm, henH, seed });
-      ui.record({ x: box.x + box.w / 2 - henH * 0.6, y: box.y + box.h - henH * 1.5, w: henH * 1.2, h: henH * 1.5 }, 'wv:hen');
-    } else { // the page rises from below
-      const stH = roomFor(build, win ? 110 : 130, win ? 300 : 280), o = { full: true, ribbon: RIB, pop: false }, card = K.page(title, build(stH), { ...o, hidden: true });
-      K.page(title, build(stH), { ...o, dy: (1 - k) * (z.H - card.y + 20 * u) });
-    }
+    const rest = build(0)(1).reduce((a, b) => a + (b.gap ?? 10) + b.h, 0), stH = wide ? Math.max(90, (A.h - 18 * u) / u - 16) : clamp((A.h - 18 * u) / u - K.bareHead() - rest - 6, win ? 110 : 130, 460); // (her place takes what the rest leaves)
+    const o = { ribbon: RIB, ...(wide ? { twoCol: true, maxW: Math.min(A.w - 32 * u, 900 * u) } : {}) };
+    K.bare(title, build(stH), { ...o, hidden: true });
+    K.scene(K.sceneAt(T.box, T.henH), k, win);
+    if (win) K.feathers(0.5 * k);
+    // the page rises from below (landscape: from the right); the scene fades in under it
+    K.bare(title, build(stH), { ...o, ...(wide ? { dx: (1 - k) * z.W * 0.5 } : { dy: (1 - k) * z.H * 0.5 }) });
   }
 
   // ---------------------------------------------------------------- the Extras screen (menu): Wonder Vaults + Practice
