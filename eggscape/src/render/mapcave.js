@@ -16,6 +16,7 @@ import { planStops, SLOTS_4TH, drawLandmarkBody, drawFarmPlaque, signBox, lmArt 
 import { freeCanvas } from './cvfree.js';
 import { drawThief, thiefPose } from './thieves.js';
 import { drawCrawler } from './crawlers.js';
+import { drawSalamander } from './salamander.js'; // 0.8.18 lava: the basking salamander is the game's own (new) rig
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -733,7 +734,7 @@ function clusterTwinkle(ctx, p, sy, u, t, seed) {
 // the salamander basking on the warm rock: still, eyes half shut, the tail curling lazily; now and then a tongue flick
 function salamander(ctx, wr, sy, u, t, calm) {
   const s = wr.s * u, x = wr.x, y = wr.y - sy - 12 * s, cyc = fract((t + 0.6) / 4.2) * 4.2, fl = calm ? 0 : win(cyc, 2.9, 3.35, 0.08);
-  drawCrawler(ctx, x + 24 * s, y, 30 * s, t, { heading: Math.PI + 0.12, curve: 0.012 / s, pose: 'idle', blend: { tongue: fl, mouth: fl * 0.35 }, glow: 0.6, id: 9401 }, 'salamander');
+  drawSalamander(ctx, x + 24 * s, y, 30 * s, t, { heading: Math.PI + 0.12, curve: 0.012 / s, pose: 'idle', blend: { tongue: fl, mouth: fl * 0.35 }, glow: 0.6, id: 9401, expr: { k: 'smug', a: 1 - fl }, calm });
 }
 // two rats tugging at one gem: they sit up and heave in turn, the gem rocks between them; now and then one squeaks
 function rats(ctx, ra, sy, u, t, calm) {

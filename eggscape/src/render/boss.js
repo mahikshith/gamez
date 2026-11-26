@@ -7,6 +7,7 @@ import { RING_TH, TAU } from '../sim/geom.js';
 import { ringPoint, galeNow, heatOf, bossPhases, bossProgress, BOSS_TITLE, ATTACK_NAME } from '../sim/boss.js';
 import { isSpriteCalm } from './sprites.js';
 import { drawThiefEmblem } from './thieves.js';
+import { drawSalamander } from './salamander.js'; // 0.8.18 lava: the boss bar's face
 import { drawKingEmblem, drawKingBar } from './kingcrab.js'; // world 8 boss
 import { drawOwlBoss, drawOwlRings, drawOwlEmblem, drawOwlBar } from './owl.js'; // v4 the Clockwork Owl
 import { drawGatorEmblem } from './bayou.js'; // v3.7
@@ -499,18 +500,8 @@ function drawBossEmblemLive(ctx, kind, cx, cy, d, t) {
     drawGeckoEmblem(ctx, r, t);
   } else if (kind === 'golem') {
     drawThornEmblem(ctx, r, t); // Duke Quartz's face
-  } else if (kind === 'salamander') {
-    ctx.fillStyle = '#ffd04a';
-    ctx.beginPath();
-    ctx.moveTo(0, -r * 0.72);
-    ctx.quadraticCurveTo(r * 0.55, -r * 0.1, r * 0.35, r * 0.4);
-    ctx.quadraticCurveTo(0, r * 0.75, -r * 0.35, r * 0.4);
-    ctx.quadraticCurveTo(-r * 0.55, -r * 0.1, 0, -r * 0.72);
-    ctx.fill();
-    ctx.fillStyle = '#ff7a1a';
-    ctx.beginPath();
-    ctx.ellipse(0, r * 0.25, r * 0.18, r * 0.28, 0, 0, TAU);
-    ctx.fill();
+  } else if (kind === 'salamander') { // 0.8.18 lava: his own face (the new rig), smug, looking at you
+    drawSalamander(ctx, 0, -r * 0.55, r * 1.9, t, { heading: -Math.PI / 2, pose: 'idle', id: 17, noShadow: 1, glow: 0.9, look: { x: 0.5, y: 0.5 }, expr: { k: 'smug', a: 1 } });
   } else if (kind === 'snake') {
     ctx.strokeStyle = '#9be36a';
     ctx.lineWidth = r * 0.22;

@@ -8427,7 +8427,7 @@ function salIntroArt(x, y, w, h) {
   g.addColorStop(0, 'rgba(255,110,30,0.28)'); g.addColorStop(1, 'rgba(255,110,30,0)');
   ctx.fillStyle = g;
   ctx.fillRect(x + 4, y + 4, w - 8, h - 8);
-  drawSalamander(ctx, x + w / 2 + 0.95 * S, y + h * 0.52, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 49 });
+  drawSalamander(ctx, x + w / 2 + 0.95 * S, y + h * 0.52, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 49, expr: { k: 'smug', a: 1 } }); // 0.8.18: his new smug face
   ctx.restore();
 }
 
