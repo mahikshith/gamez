@@ -25,6 +25,7 @@ import * as MINT from '../src/engine/mint.js';
 import { LEVELS } from '../src/data/levels.js';
 import { HARD_IDS } from '../src/sim/sim.js';
 import { SKIP_COINS } from '../src/ads.js';
+import * as SQ from '../src/side.js';
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -73,6 +74,11 @@ export const WORLD = {
   dareMet: 0.7, // a taken dare is met this share of the times the player would have three-starred anyway
   online: 0.85, // 0.8.17: share of sessions played online (offline: no videos, no online share of a win)
   gateBuy: 0.5, // a shut world gate he can pay for: bought at least this often (or as often as he spends coins on help)
+  // 0.8.17 side quests (src/side.js): one Wonder Vault a world off the road, open once its branch level is won. A share of
+  // players ever take each one (sideTry, decided once per player and side quest); such a player gives it a go once a
+  // session at most (sideGo) while it is unwon; star chasers come back for its missing stars. It is tougher than the road
+  // level it branches from (sideStep), takes longer (sideSecs) and pays the Mint's sideQuest row (no online share, no spin step).
+  sideTry: 0.6, sideGo: 0.5, sideStep: 0.15, sideSecs: 95,
 };
 // 0.8.17 the world gates (main.js envOpen / GATE_COINS, the Mint's rules): levels per world, counted from the levels
 export const PER_ENV = LEVELS.filter((l) => l.world === LEVELS[0].world).length;
@@ -100,7 +106,7 @@ const rng = (seed) => () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(
 const sig = (z) => 1 / (1 + Math.exp(-z));
 const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const stock = (w) => Object.values(w.owned || {}).reduce((a, b) => a + b, 0);
-const totalStars = (save) => LEVELS.reduce((a, L) => a + (save.stars[L.id] || 0), 0);
+const totalStars = (save) => LEVELS.reduce((a, L) => a + (save.stars[L.id] || 0), 0) + SQ.sideTotal(save); // 0.8.17: the side quests' bonus stars count (main.js bestTotal)
 // the same rule as main.js: world k is open when every world up to it is ready (the one before open, its boss passed)
 // and has its stars or its bought gate
 const envBoss = (save, k) => { const Lw = LEVELS.slice(k * PER_ENV, (k + 1) * PER_ENV), b = Lw.find((L) => L.boss) || Lw[Lw.length - 1]; return !!b && ((save.stars[b.id] || 0) > 0 || !!(save.skipped && save.skipped[b.id])); };
@@ -117,11 +123,12 @@ export function life(P, seed, days = 30, watch = null, opt = {}) {
   const save = { unlocked: 1, stars: {}, best: {}, wallet: E.defaultWallet(), streak: 0, daily: {}, adDay: null, gates: {}, skipped: {}, mint: null, adapt: PAC };
   const S = { // what happened, for the report
     daysPlayed: 0, sessions: 0, cards: 0, cardsMax: 0, buys: {}, tries: 0, wins: 0, videos: 0, usd: 0, moneyAsks: 0, moneyAskEarly: 0, spins: { free: 0, ad: 0, coin: 0, miss: 0, retry: 0 }, bought: 0, used: 0, rewinds: 0, skips: 0, popups: 0, popSkips: 0, hints: 0, easyStars: 0, dares: 0, daresTook: 0, daresMet: 0, dareCoins: 0, leftOnLoss: false, unlocks: 0, coupons: 0, starved: 0, freeHelp: 0, asks: {},
-    gates: 0, gateCoins: 0, gatesStars: 0, replays: 0, replayCoins: 0, online: 0, dbl: 0, dblCoins: 0, chests: 0, dayMax: 0, gatedBy: 0,
+    gates: 0, gateCoins: 0, gatesStars: 0, replays: 0, replayCoins: 0, online: 0, dbl: 0, dblCoins: 0, chests: 0, dayMax: 0, gatedBy: 0, sideTries: 0, sideWins: 0, sideCoins: 0,
     notes: 0, notesGone: 0, notesSameDay: 0, notesTapped: 0, notesPulled: 0, lapsedBack: 0, noteIds: {}, remAsks: 0, askedDay: -1, allowed: false, quitDay: -1, quitAt: 0, levelAt: {}, doneDay: -1, idleDays: 0, maxStock: 0, maxPurse: 0, stuckMax: 0, down: '', bad: [],
   };
   const fail = (m) => { if (S.bad.length < 5) S.bad.push(m); };
   ENG.boot(save);
+  const sideWant = {}, sideAtt = {}, RS = rng(seed * 31 + 7), ys = (p) => RS() < p; // 0.8.17 side quests: which he takes, his tries at each (their own dice, so the road's draws stay as they were)
   let alive = true, lastEnd = '', cheered = false, plan = null, lastNoteDay = '', premium = false, cardsNow = 0, pending = { id: 0, n: 0 }, online = true, bonusWins = 0, bonusAt = 0, dayIn = { day: '', n: 0 };
   // coins from videos, video spins and daily gifts in one day (the Mint's DAY ceiling). Banked free spins are counted
   // apart (freeSpins): most come from fresh wins, one for every three new levels, so they are paid by progress, not by the day
@@ -235,7 +242,22 @@ export function life(P, seed, days = 30, watch = null, opt = {}) {
         now += 80000; S.tries++;
         if (yes(sig(WORLD.steep * (P.skill - WORLD.dailyDiff)))) { S.wins++; save.daily = { day: dayKey(now), paid: dayKey(now) }; const vc = E.levelCoins({ stars: 2, saved: 2, eggs: 3 }).total + MINT.FAUCETS.dailyVault.coins; save.wallet = E.payWin(save.wallet, vc + MINT.onlineBonus(vc, online), true).wallet; sync('vault', now); SP.noteWin(save, true); SP.notePlayed(save, dayKey(now)); spinAll(now); }
       }
+      let sideDone = false; // a side quest at most once a session
       while (now < end) {
+        // 0.8.17 a side quest: one he takes (sideTry, once per player and quest), unwon, or (a star chaser) short of three stars
+        if (!sideDone) {
+          const q = SQ.SIDE.find((q) => SQ.sideOpen(save, q, premium) && (sideWant[q.key] ??= ys(WORLD.sideTry)) && (SQ.sideStars(save, q.key) === 0 ? ys(WORLD.sideGo) : SQ.sideStars(save, q.key) < 3 && ys(P.stars * WORLD.sideGo)));
+          if (q) {
+            sideDone = true; S.sideTries++; now += WORLD.sideSecs * 1000 + 20000; // (session time it takes from the road)
+            const sw = (sideAtt[q.key] = (sideAtt[q.key] || 0) + 1), pw = sig(WORLD.steep * (P.skill - WORLD.diff(q.at) - WORLD.sideStep) + WORLD.learn * Math.min(4, sw - 1));
+            if (ys(pw)) {
+              const stars = ys(pw * pw) ? 3 : ys(0.75) ? 2 : 1, r = SQ.sideWin(save, q.key, stars);
+              S.sideWins++; S.sideCoins += r.coins; save.wallet = E.addCoins(save.wallet, r.coins); sync('side', now);
+              for (let ch = E.chestFor(totalStars(save), save.wallet.chests); ch && ch.ready; ch = E.chestFor(totalStars(save), save.wallet.chests)) { const w = E.openChest(save.wallet, ch); if (!w) break; save.wallet = w; sync('chest', now); }
+            }
+            continue;
+          }
+        }
         // which level: the next one, or (those who chase stars) an old one with stars missing; after the last level only old ones are left
         const done = save.unlocked >= LEVELS.length && (save.stars[LEVELS.length] || 0) > 0;
         let L = LEVELS[Math.min(LEVELS.length, save.unlocked) - 1];

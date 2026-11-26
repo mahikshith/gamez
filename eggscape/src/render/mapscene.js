@@ -270,6 +270,7 @@ function bandLayout(L, w) {
   const u = L.u, boxes = [], out = { still: [], cast: [] };
   const sign = MS_SIGN(L, w);
   boxes.push(sign);
+  if (L.sideKeep) boxes.push(...L.sideKeep(w)); // 0.8.17: the side quest's door and trail (render/mapside.js) keep their room
   const BIG = { barn: 1, windmill: 1, volcano: 1, peak: 1, vault: 1, cypress: 1, lake: 1, lava: 1, swamp: 1 };
   const still = (STILL[w] || []).map((e, i) => ['still', e, i]);
   const items = [...still.filter((q) => BIG[q[1][0]]), ...(CAST[w] || []).map((e, i) => ['cast', e, i]), ...still.filter((q) => !BIG[q[1][0]])]; // the set pieces, the cast, then the small props

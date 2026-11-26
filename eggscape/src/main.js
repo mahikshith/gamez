@@ -97,6 +97,8 @@ import * as CB from './render/celebrate.js'; // 0.8.15 the celebration kit: rays
 import { REC, recInit, recWindow, recProbe, recDue, recPre, recGo, recIll } from './recover.js';
 import { drawHowTo, howToPlan, chickPlan, toyPlan, floorPlan, chickTeach, threatWords, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
+import * as SQ from './side.js'; // 0.8.17: the side quests (a Wonder Vault a world, off the road on the map)
+import * as MSIDE from './render/mapside.js'; // 0.8.17: their doors and trails on the map
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
 import { drawVillainPortrait, PORTRAIT_BG, hasPortrait } from './render/villain-art.js';
 import { drawExtrasMark } from './render/extras.js';
@@ -137,7 +139,7 @@ const bestStarsOf = (id) => Math.max(0, ...MODE_LIST.map((m) => save.stars[sk(id
 // and fail help; offer cards anywhere). The map's own shop button stays. Tune it here.
 E.setPlatform(!ads.moneyShop); // 0.8.11: a web portal sells nothing, so wins and videos pay more there (economy.js PLATFORM)
 const earlyDays = () => DR.earlyDays(save); // src/director.js: SELL_AFTER
-const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0);
+const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0) + SQ.sideTotal(save); // 0.8.17: a side quest's bonus stars count (gates, chests, the map's total)
 // a brand-new player (nothing won yet, nothing unlocked): home is the logo and one big PLAY, and PLAY goes straight into
 // level 1 with the teaching hand (no map, no level card). Any win, or a level unlocked, and home is the full home.
 const firstRun = () => !TEST && !allOpen() && bestTotal() === 0 && (save.unlocked || 1) <= 1;
@@ -506,7 +508,13 @@ const G = {
 };
 
 // WONDER: the bonus world's controller. It gets the canvas, the UI kit and a few shell services; it never touches the campaign save keys.
-const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, escroll: () => G.escroll, album: () => xsAlbumRow(), albumIcon: (c, x, y, S, t) => albumRowIcon(c, x, y, S, t), albumMark: (xr, y, h) => markBadge(xr - 4 * ui.u, y + 4 * ui.u, Math.min(11 * ui.u, h * 0.14), G.t, '!'), albumLead: (S, off, R, vh) => albumLead(S, off, R, vh), glide: (S, dt) => glideDt(S, dt), setScreen: (s) => setScreen(s), leave: () => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); setScreen('extras'); } });
+const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, escroll: () => G.escroll, album: () => xsAlbumRow(), albumIcon: (c, x, y, S, t) => albumRowIcon(c, x, y, S, t), albumMark: (xr, y, h) => markBadge(xr - 4 * ui.u, y + 4 * ui.u, Math.min(11 * ui.u, h * 0.14), G.t, '!'), albumLead: (S, off, R, vh) => albumLead(S, off, R, vh), glide: (S, dt) => glideDt(S, dt), setScreen: (s) => setScreen(s),
+  // 0.8.17 side quests: a win pays (the Mint's sideQuest row) and files its stars; the coins fly to the purse on its page;
+  // leaving goes back to the map at the vault's door
+  sideWin: (key, stars) => { const before = save.wallet.coins, r = SQ.sideWin(save, key, stars); save.wallet = E.addCoins(save.wallet, r.coins); ledger('win'); persist(); purse.hold(before); return { ...r, before }; },
+  sideCoins: (key) => SQ.sideCoins(save, key), sideStars: () => ({ have: SQ.sideTotal(save), max: SQ.SIDE_MAX }), drawCoin: (c, x, y, r, t) => drawCoin(c, x, y, r, t),
+  coinsFly: (P, at) => { purse.gain({ from: P.before, src: at }); },
+  leave: (side) => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); if (side) { G.world = side.w; G.sideFocus = side.w; G.mapTravel = null; setScreen('levels'); } else setScreen('extras'); } });
 
 function themeFor(level) {
   return THEMES.find((t) => t.id === level.theme) || THEMES[(level.id - 1) % THEMES.length];
@@ -1322,6 +1330,7 @@ function keyDown(e) {
     else if (G.screen === 'pause') press('resume');
     else if (k === 'Escape' && (G.screen === 'practice' || G.screen === 'extras')) press('back');
     else if (k === 'Escape' && G.screen === 'spin') press('spin:back');
+    else if (k === 'Escape' && G.screen === 'wonder') wonder.back();
     return;
   }
   if (G.screen === 'play' && G.sim) {
@@ -1968,6 +1977,12 @@ async function press(id) {
         // test build: the chick lab (v3.2), one practice vault per chick kind
         const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS, ...REEF_DEMOS, ...BAYOU_DEMOS, ...LAB_DEMOS].find((x) => x.kind === k);
         if (d) { G.demo = d; startLevel(-2); }
+      } else if (id && id.startsWith('sq:')) { // 0.8.17: a side quest's door on the map: the hen walks the trail, then its card
+        const q = MSIDE.sidePlan(mapLayoutNow()).find((p) => p.w === +id.slice(3));
+        if (q && !G.sideWalk && SQ.sideOpen(save, q, allOpen())) { G.mapTravel = null; G.sideReveal = null; G.sideWalk = { q, t0: G.screenT }; audio.play('hen_hop'); }
+      } else if (id === 'xs:side') { // the Extras page's Bonus vaults: the map, at the first open side quest (else the first one)
+        const Q = SQ.SIDE.filter((q) => SQ.sideOpen(save, q, allOpen())), q = Q.find((p) => SQ.sideStars(save, p.key) < 3) || Q[0] || SQ.SIDE[0];
+        if (q) { G.world = q.w; G.sideFocus = q.w; G.mapTravel = null; setScreen('levels'); }
       } else if (id && id.startsWith('wv:')) { // WONDER: the bonus world's own buttons
         wonder.press(id);
       } else if (id && id.startsWith('mode:')) {
@@ -9587,7 +9602,7 @@ function mapHeaderH() { return (mapWide() ? 14 + 46 + 8 + 20 : 14 + 46 + 12 + 44
 function levelPageTop() { return ui.A.y + mapHeaderH(); }
 function mapLayoutNow() {
   const A = ui.A, k = `${W_}x${H_}x${A.x}x${A.y}x${A.w}x${A.h}x${ui.u}`;
-  if (!G.mapL || G.mapL.key !== k) { G.mapL = MS.mapLayout({ W: W_, A, u: ui.u, n: LEVELS.length }); G.mapL.key = k; }
+  if (!G.mapL || G.mapL.key !== k) { G.mapL = MS.mapLayout({ W: W_, A, u: ui.u, n: LEVELS.length }); G.mapL.key = k; MSIDE.sidePlan(G.mapL); } // (the side quests' doors first: the scenery keeps off them)
   return G.mapL;
 }
 // scroll so map y sits at view fraction f (0 top .. 1 bottom of the map view)
@@ -9609,6 +9624,8 @@ function drawLevels() {
   S.max = Math.max(0, L.H - vh);
   let fresh = false;
   if (G.screenT < S.seenT || S.focus !== G.world + ':' + S.enter) { mapFocusWorld(G.world); S.focus = G.world + ':' + S.enter; fresh = true; } // just opened: show where the player is
+  const SIDES = MSIDE.sidePlan(L); // 0.8.17: the side quests' doors and trails
+  if (G.sideFocus != null) { const q = SIDES.find((p) => p.w === G.sideFocus); if (q) mapFocusY(q.y, 0.55); G.sideFocus = null; G.sideWalk = null; } // back from a side quest (or Extras' Bonus vaults): at its door
   S.seenT = G.screenT;
   const dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
   const camTo = (y, f, snap) => { const want = clamp(y - vh * f, 0, S.max); S.y = snap ? want : S.y + (want - S.y) * Math.min(1, dt * 6); S.v = 0; return Math.abs(want - S.y) < 3; }; // the camera glides there
@@ -9655,9 +9672,29 @@ function drawLevels() {
     const due = treasureDue(TR.from);
     if (due) G.treasure = { id: due, t: G.t, openedAt: null };
   }
+  // 0.8.17 a side quest that just opened (its branch level won, this is the trip from it): the camera eases to its door,
+  // the trail draws in, the door pops with a sound and the hen looks at it; then the trip goes on. Any other one open and
+  // not yet shown (an old save, Unlock Everything) simply stands open.
+  if (!G.sideReveal && !G.mapGate) {
+    const uq = SQ.sideUnseen(save, allOpen());
+    if (uq) {
+      const q = SIDES.find((p) => p.key === uq.key);
+      if (q && TR && TR.from === q.i && !TR.arrived && TR.t0 < 0 && envOpen(q.w)) G.sideReveal = { q, t0: null };
+      else if (!(TR && TR.from === uq.i)) { for (const p of SQ.SIDE) if (SQ.sideOpen(save, p, allOpen())) SQ.markSeen(save, p.key); persist(); }
+    }
+  }
+  const SR = G.sideReveal, SR_T = 1.7;
+  if (SR) {
+    camTo(SR.q.y, 0.5, fresh || save.calm); // (calm: a cut, no glide)
+    if (SR.t0 == null && Math.abs(S.y - clamp(SR.q.y - vh * 0.5, 0, S.max)) < 30 * u) SR.t0 = G.t;
+    const rs = SR.t0 == null ? -1 : G.t - SR.t0;
+    if (rs >= 0.5 && !SR.snd) { SR.snd = 1; audio.play('unlock', { pitch: 1.25 }); audio.play('star', { pitch: 1.2 }); buzz('tap'); }
+    if (TR) TR.face = SR.q.x > L.stops[TR.from].x ? 1 : -1; // the hen looks at it
+    if (rs >= SR_T) { for (const p of SQ.SIDE) if (SQ.sideOpen(save, p, allOpen())) SQ.markSeen(save, p.key); persist(); G.sideReveal = null; }
+  }
   if (TR && TR.unl == null) TR.unl = TR.to > SN.top && !allOpen() ? 1 : 0;
   const UNL0 = 0.2, TRIP0 = TR && TR.unl ? 0.8 : 0.5; // the padlock breaks from 0.2 s; she sets off once it is gone
-  if (TR && (G.treasure || gateHold)) { const a = L.stops[TR.from]; TR.t0 = -1; TR.x = a.x; TR.y = a.y; TR.p = 0; TR.e = 0; TR.dur = 1.2; } // the trip waits for the treasure sheet (and the gate)
+  if (TR && (G.treasure || gateHold || G.sideReveal)) { const a = L.stops[TR.from]; TR.t0 = -1; TR.x = a.x; TR.y = a.y; TR.p = 0; TR.e = 0; TR.dur = 1.2; } // the trip waits for the treasure sheet (and the gate)
   else if (TR) {
     if (TR.t0 < 0) TR.t0 = G.screenT;
     // 0.8.14: she walks the ROAD (the road is the curve x = pathX(y) through every stop), not a straight line over the
@@ -9681,6 +9718,14 @@ function drawLevels() {
   const nx = nextIdx();
   let doneTo = null; for (let i = 0; i < LEVELS.length; i++) if (bestStarsOf(LEVELS[i].id) > 0 || SK.isSkipped(save, LEVELS[i].id)) doneTo = L.stops[i].y;
   MS.drawRoad(ctx, L, sy, vt, H_, doneTo);
+  // 0.8.17 the side quests' trails: stepping stones off the road (under the scenery's creatures, the stops and the hen)
+  const sqState = (q) => (!envOpen(q.w) || !SQ.sideOpen(save, q, allOpen()) || (G.sideReveal && G.sideReveal.q === q && G.sideReveal.t0 == null) ? 'locked' : SQ.sideStars(save, q.key) > 0 ? 'won' : 'open');
+  const srS = G.sideReveal && G.sideReveal.t0 != null ? G.t - G.sideReveal.t0 : -1;
+  for (const q of SIDES) {
+    if (q.y - sy < vt - 160 * u || q.y - sy > H_ + 120 * u) continue;
+    const rv = G.sideReveal && G.sideReveal.q === q, n = rv && !save.calm ? Math.floor(q.trail.stones.length * ss01(srS / 0.5)) : 1e9;
+    MSIDE.drawSideTrail(ctx, L, q, sy, rv && srS < 0.5 ? 'open' : sqState(q), n);
+  }
   if (ui.skin && ui.skin.pack && ui.skin.pack.bg) drawRoadDress(ctx, L, sy, vt, H_, t, ui.skin.pack.bg, calm);
   MS.drawCast(ctx, L, sy, vt, H_, t, calm, DPR);
   const wide = mapWide(), gateW = G.mapGate ? G.mapGate.w : -1, ctaOn = playable(nx) && envOpen(envOf(nx)) && envOf(nx) !== gateW; // (not while its world's gate opens)
@@ -9725,7 +9770,7 @@ function drawLevels() {
       p = calm ? 0 : ui.pressAmt('lv:' + i, ui.pressedId === 'lv:' + i);
     }
     // the nest the hen sits in is drawn in two passes, its front (rim, badge, plate) over her
-    const henIn = TR ? (i === TR.from && inA > 0) || (i === TR.to && inB > 0) : state === 'cur';
+    const henIn = TR ? (i === TR.from && inA > 0) || (i === TR.to && inB > 0) : state === 'cur' && !G.sideWalk; // (0.8.17: she is out on a side quest's trail)
     const o = { w, num: Lv.id, stars: starsOf(Lv.id), boss, DPR, p, part: henIn ? 'back' : 'all', hard: isHardLevel(Lv) && save.mode !== 'easy' };
     if (TR && i === TR.from) { TR.fromSt = state; fromAt = { x, y, o }; } // the nest she climbs out of
     if (TR && i === TR.to && ulS != null && ulS < MS.UNLOCK_T && state === 'cur') { // its padlock breaks away, then it turns into her nest
@@ -9735,6 +9780,21 @@ function drawLevels() {
     if (state === 'cur') { if (!(TR && !TR.arrived)) MS.drawStopCall(ctx, L, x, y, t, calm, boss); curAt = { x, y, o, boss, i }; }
     MS.drawStop(ctx, L, x, y, state, o);
     if (state === 'won' || state === 'cur') pacerStopMark(Lv.id, x, y, L.stopR, t, calm); // the Pacer: a dare met here, or "+1 star here" at a star gate
+  }
+  // 0.8.17 the side quests' doors (render/mapside.js): locked (dim, a padlock), open (it glows and bobs), won (its stars).
+  // A tap on an open one walks the hen down its trail and opens its card; one half under the header or PLAY takes no tap.
+  for (const q of SIDES) {
+    const y = q.y - sy;
+    if (y < vt - 120 * u || y > H_ + 90 * u) continue;
+    const st = sqState(q), rv = G.sideReveal && G.sideReveal.q === q;
+    if (rv && srS < 0.5) continue; // (the reveal: the trail draws in first, then the door pops)
+    const b = q.box, by0 = b.y0 - sy, by1 = b.y1 - sy;
+    let tb = tapBot; if (b.x1 > wmX - 6 * u && by1 > wmY - 6 * u) tb = Math.min(tb, wmY - 6 * u); if (ctaOn && wide && b.x1 > ctaX - 6 * u) tb = Math.min(tb, ctaY - 6 * u);
+    let p = 0;
+    if (st !== 'locked' && by0 >= vt + 2 * u && by1 <= tb && !G.sideWalk) { ui.button('sq:' + q.w, '', b.x0, by0, b.x1 - b.x0, by1 - by0, { ghost: true }); p = calm ? 0 : ui.pressAmt('sq:' + q.w, ui.pressedId === 'sq:' + q.w); }
+    const bo = (k) => { const q2 = k - 1; return 1 + 2.7 * q2 * q2 * q2 + 1.7 * q2 * q2; }, pop = rv && !calm ? 0.35 + 0.65 * bo(clamp((srS - 0.5) / 0.4, 0, 1)) : 1;
+    MSIDE.drawSideDoor(ctx, L, q, sy, rv ? 'open' : st, { t, calm, stars: SQ.sideStars(save, q.key), DPR, p, pop, glow: rv && calm ? 0.8 : 0 });
+    if (rv) MSIDE.drawSideBurst(ctx, L, q, sy, srS - 0.5, calm);
   }
   // the boss treasures: a chest beside every boss stop, on the side away from where the hen would stand
   for (let i = 0; i < LEVELS.length; i++) {
@@ -9814,7 +9874,7 @@ function drawLevels() {
     const hop = calm || TR.arrived ? 0 : Math.abs(Math.sin(e * Math.PI * steps)) * hh * 0.2 * (1 - e * 0.4);
     const dirY = L.stops[TR.to].y < L.stops[TR.from].y ? -1 : 1, dx = L.pathX(TR.y + dirY * 8 * u) - TR.x;
     if (TR.face == null) TR.face = ahead(TR.from) * (dirY < 0 ? 1 : -1);
-    if (TR.arrived || e > 0.92) TR.face = ahead(TR.to); else if (Math.abs(dx) > 1.5 * u) TR.face = dx > 0 ? 1 : -1;
+    if (G.sideReveal) { /* she looks at the side quest's door (set above) */ } else if (TR.arrived || e > 0.92) TR.face = ahead(TR.to); else if (Math.abs(dx) > 1.5 * u) TR.face = dx > 0 ? 1 : -1;
     const gy = TR.y - sy + fa + (fb - fa) * e + inA * (MS.nestSeat(L, sA, bA, hh) - fa) + inB * (MS.nestSeat(L, 'cur', bB, hh) - fb), hx = TR.x; // the ground under her feet (in a nest: down in the straw)
     if (hop > 0.5) { ctx.beginPath(); ctx.ellipse(hx, gy + 1 * u, hh * 0.26 * (1 - hop / (hh * 0.6)), hh * 0.065, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill(); }
     // 0.8.17 (mykee: "the hen and the nest are coinciding ... I could see the hen background"): she is drawn whole and
@@ -9834,6 +9894,16 @@ function drawLevels() {
       for (let q = 0; q < 8; q++) { const an = q * Math.PI / 4 + 0.3, rr = L.stopR * (1.2 + 1.6 * k); drawStar(ctx, b.x + Math.cos(an) * rr, by - hh * 0.3 + Math.sin(an) * rr * 0.8, 6 * u * (1 - k * 0.5), true); }
       ctx.restore();
     }
+  } else if (G.sideWalk) { // 0.8.17: she hops out of her nest and down the side quest's trail to its door, then its card opens
+    const W = G.sideWalk, q = W.q, st = L.stops[q.i], tr = q.trail, k = clamp((G.screenT - W.t0) / 1.0, 0, 1), e = k < 0.5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k);
+    camTo((q.y + st.y) / 2, 0.55, false);
+    const P = e < 0.2 ? { x: st.x + (tr.a.x - st.x) * (e / 0.2), y: st.y + (tr.a.y - st.y) * (e / 0.2) } : tr.f((e - 0.2) / 0.8);
+    const h2 = hh * 0.86, hop = calm || k >= 1 ? 0 : Math.abs(Math.sin(k * Math.PI * 5)) * h2 * 0.14, face = q.x > st.x ? 1 : -1;
+    if (hop > 0.5) { ctx.beginPath(); ctx.ellipse(P.x, P.y - sy + 1 * u, h2 * 0.24, h2 * 0.06, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill(); }
+    drawHenAnim(ctx, k >= 1 ? 'happy' : 'idle', P.x, P.y - sy - hop - h2 * 0.5, h2, t, { key: 'map', face, calm, shadow: 0 });
+    G.mapHen = { x: P.x, y: P.y - sy - hop, side: q.w };
+    if (k >= 1 && !W.done) { W.done = G.screenT; audio.play('hen_land'); }
+    if (W.done && G.screenT - W.done > 0.25) { G.sideWalk = null; wonder.start(q.key, { side: { w: q.w } }); }
   } else if (curAt) {
     const fy = curAt.y + MS.nestSeat(L, 'cur', curAt.boss, hh); // 0.8.16: sitting IN the nest, her lower half in the straw
     ctx.save(); MS.nestClip(ctx, L, curAt.x, curAt.y, 'cur', curAt.boss);
@@ -9850,7 +9920,7 @@ function drawLevels() {
   const X0 = A.x + pad, X1 = A.x1 - pad, Y0 = A.y + pad, hy = Y0 + 23 * u;
   ui.button('back', '', X0, Y0, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
   const remB = remChipOn() ? 46 * u + 8 * u : 0; if (remB) drawRemChip(X0 + 54 * u, Y0, 46 * u); // 0.8.17: reminders are off: the bell with a slash, beside back
-  const starTxt = `${totalStars} / ${LEVELS.length * 3}`, stw = ui.measure(starTxt, 17 * u);
+  const starTxt = `${totalStars} / ${LEVELS.length * 3 + SQ.SIDE_MAX}`, stw = ui.measure(starTxt, 17 * u); // (0.8.17: the side quests' bonus stars count too)
   const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = X1 - chipW;
   ui.glass(chipX, hy - 18 * u, chipW, 36 * u);
   drawStar(ctx, chipX + 9 * u + 11 * u, hy, 9.5 * u, true);
@@ -10999,6 +11069,7 @@ async function boot() {
       case 'info': press('info:close'); return true;
       case 'practice': case 'extras': case 'store': case 'levels': press('back'); return true;
       case 'spin': press('spin:back'); return true;
+      case 'wonder': return wonder.back(); // 0.8.17: a side quest's card / pause page / end page (wonder.js)
       default: return false;
     }
   });
@@ -11116,6 +11187,8 @@ if (DEV) window.__egg = {
   stampStats,
   perf: { bodyCache, ringCache, PERF, STEPS, hud: HUD_CACHE, hudLayers: HL, applySettings: () => { applySettings(save); setDPR(); } },
   mapJump(w) { G.world = w; G.mscroll.focus = ''; }, // map shots: show world w
+  sidePlan() { return MSIDE.sidePlan(mapLayoutNow()).map((q) => ({ w: q.w, key: q.key, i: q.i, x: q.x, y: q.y, R: q.R, box: q.box, stones: q.trail.stones.length })); }, // 0.8.17 QA: the side quests' doors
+  sideFocus(w) { G.world = w; G.sideFocus = w; G.mscroll.focus = ''; }, // map shots: centre side quest w's door
   mapScroll(y) { G.mscroll.y = y; G.mscroll.v = 0; G.mscroll.focus = G.world + ':' + G.mscroll.enter; },
   G, LEVELS, LAB, ui, art: { drawOctopus: devOcto, octoAnim: devOctoAnim, drawJelly: devJelly }, drawVillainPortrait, PORTRAIT_BG, HEN_SKIN_ORDER: E.HEN_SKIN_ORDER, SKIN_ORDER: E.SKIN_ORDER, setEggSkin: (k) => W.setSkin(k),
   get sim() { return G.sim; },
