@@ -7392,7 +7392,7 @@ function tabMark(x, y, r) {
 // the ring speed strip (levels 2 to 5): ringSpeedStrip below, by the Settings page
 // its height, measured once per level by drawing it where nothing shows (it may record buttons: those are taken back)
 function ringStripH(x, w, s) {
-  const key = (G.level && G.level.id) + ':' + G.li + ':' + Math.round(w) + ':' + s.toFixed(3);
+  const key = (G.level && G.level.id) + ':' + G.li + ':' + Math.round(w) + ':' + s.toFixed(3) + ':' + rsStripH(); // (0.8.17 polish: a short screen's strip grows its line after the first change; measured again then, PLAY stays clear)
   if (G.rsMeas && G.rsMeas.key === key) return G.rsMeas.h;
   const r0 = ui.rects.length, b0 = ui.buttons.length;
   ctx.save(); ctx.globalAlpha = 0; let h = 0;
