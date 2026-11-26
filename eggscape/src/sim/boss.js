@@ -135,6 +135,7 @@ export function animalsHit(sim, kind, o = {}) {
   if (sim.pipHit) n += sim.pipHit(kind, o); // 0.8.17 pip
   if (sim.cocoHit) n += sim.cocoHit(kind, o); // 0.8.17 coco
   if (sim.band) n += sim.bandHit(kind, o); // 0.8.17 bandit: lightning on his paw hurts, a quake or a rock makes him reel
+  if (sim.kit && (kind === 'bolt' || kind === 'quake' || kind === 'rock')) n += sim.kitHit(kind, o); // 0.8.18 kits: back into the sack
   if (kind === 'quake' || kind === 'bolt') {
     const B = sim.bx && sim.bx.boss;
     if (B && B.den && B.atk && B.atk.ph === 'warn') { B.atk = null; B.t = 1.5; B.flinch = 0.8; sim.emit('bossFlinch', { x: B.x, y: B.y }); }

@@ -47,6 +47,7 @@ export function value(sim) {
   if (sim.kc) v += sim.reefScore(); // world 8: a stuck or beaten King Crab claw
   const reef = sim.hermits.length || sim.puffs.length || sim.jellies.length || sim.kc || (sim.urchins || []).length; // 0.8.17 urchin
   if (sim.band) v += sim.bandScore(); // 0.8.17 bandit: a pinched or beaten raccoon
+  if (sim.kit) v += sim.kitScore(); // 0.8.18 kits: a failed fetch, mama gone
   for (const e of sim.aliveEggs()) {
     const c = sim.channelOf(e);
     v += c * 300 - e.cracks * 200 + e.mult * 15;
@@ -61,6 +62,7 @@ export function value(sim) {
     if (sim.thieves.length) v -= 1600 * sim.thiefThreat(e); // v3.6: held or stashed by a thief, or about to be
     if (reef) v -= 1600 * sim.reefThreat(e); // world 8: in a claw or the King Crab's pile, a crab's shell, a jelly's reach
     if (sim.band) v -= 1600 * sim.bandThreat(e); // 0.8.17 bandit: in his paw or his sack, or about to be
+    if (sim.kit) v -= 1600 * sim.kitThreat(e); // 0.8.18 kits: carried off or in mama's sack
     if (sim.bayouPlan) v -= 1500 * sim.bayouPlan(e); // v3.7: gator jaws, a turtle's clamp, a mosquito lift
     if (sim.pips && sim.pips.length) v -= 500 * sim.pipThreat(e); // 0.8.17 pip
     if (sim.cocos && sim.cocos.length) v -= 700 * sim.cocoThreat(e); // 0.8.17 coco
@@ -102,6 +104,7 @@ export function actions(sim) {
     if (c + 1 < sim.rings.length) floors.add(c + 1);
   }
   if (sim.cocoRingsHeld) for (const i of sim.cocoRingsHeld()) floors.add(i); // 0.8.17 coco: a flick of the ring he holds is a move
+  if (sim.kit) { const K = sim.kitLesson(); if (K) floors.add(K.ring); } // 0.8.18 kits: a turn of the floor they walk on is a move
   // a geared partner turns with its ring: one of the two is enough
   for (const i of [...floors]) { const T = sim.rings[i].gear; if (T && T.some((r) => r.i < i && floors.has(r.i))) floors.delete(i); }
   for (const i of floors) if (sim.rings[i].grabbable) for (const d of DELTAS) if (!sim.canTurn || sim.canTurn(sim.rings[i], d)) out.push({ ring: i, delta: d });
