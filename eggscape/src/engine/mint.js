@@ -43,6 +43,10 @@ export const FAUCETS = {
   bonusGoal: { coins: 15, ceiling: 'once per level and mode', why: 'main.js BONUS_COINS' },
   // the combo album (src/album.js): every power combo found in play. Paid once ever, on the album page.
   album: { coins: 50, ceiling: 'once ever', why: 'a thank-you for finding all seven combos, not a wage' },
+  // a win on Easy pays this share of a Medium win, and a level marked hard pays no extra there (the Pacer, 0.8.17)
+  easy: { share: 0.7, ceiling: 'per win on Easy', why: 'Easy is the safety net, not the better-paying way through' },
+  // a dare met (the Pacer's optional dare for a cruising player) pays this share of the win's coins on top
+  dare: { share: 0.5, ceiling: 'one dare a level, offered only to a cruising player, fewer after each one declined', why: 'a chosen harder way pays a little more, never a penalty' },
 };
 
 // ---------------------------------------------------------------- sinks: what takes coins out
@@ -63,13 +67,15 @@ export const TARGETS = { ownAllDay: 45, commuterDay30: 0.4, purseAt: 12 };
 
 // ---------------------------------------------------------------- the rules, pure
 const int = (v) => Math.max(0, Math.floor(Number(v) || 0));
-// what a win pays before the online share: fresh = it earned a new star (or it is the first clear); k = platform factor
+// what a win pays before the online share: fresh = it earned a new star (or it is the first clear); easy = won on Easy;
+// k = platform factor
 export function winParts(r, k = 1) {
   const W = FAUCETS.win, stars = Math.max(0, Math.min(3, int(r.stars))), saved = Math.max(0, Math.min(r.eggs > 0 ? r.eggs : 6, int(r.saved)));
   const base = (W.show + W.egg * saved) * k, star = W.star * stars * k, perfect = r.perfect && stars > 0 ? W.perfect * k : 0;
-  const sum = base + star + perfect, hard = r.hard && stars > 0 ? Math.round(sum * (W.hard - 1)) : 0;
-  const replay = r.fresh === false ? -Math.round((sum + hard) * (1 - FAUCETS.replay.share)) : 0;
-  return { base, stars: star, perfect, hard, replay, total: sum + hard + replay };
+  const sum = base + star + perfect, hard = r.hard && !r.easy && stars > 0 ? Math.round(sum * (W.hard - 1)) : 0;
+  const easy = r.easy ? -Math.round((sum + hard) * (1 - FAUCETS.easy.share)) : 0; // Easy: its share, no hard-level extra
+  const replay = r.fresh === false ? -Math.round((sum + hard + easy) * (1 - FAUCETS.replay.share)) : 0;
+  return { base, stars: star, perfect, hard, easy, replay, total: sum + hard + easy + replay };
 }
 // the online share of a win's coins (shown as its own line); 0 offline
 export const onlineBonus = (coins, online = true) => (online && coins > 0 ? Math.max(1, Math.round(coins * FAUCETS.online.share)) : 0);
@@ -84,6 +90,8 @@ export function isOnline({ web = false, nav = null, bridge = null } = {}) {
 
 export const treasureCoins = (w) => FAUCETS.bossTreasure.base + FAUCETS.bossTreasure.step * int(w);
 export const chestCoins = (i) => FAUCETS.starChest.base + FAUCETS.starChest.step * int(i);
+// the coins of a met dare, on top of the win's own coins (the win pays its normal amount whatever happens to the dare)
+export const dareCoins = (coins) => Math.round(Math.max(0, Number(coins) || 0) * FAUCETS.dare.share);
 
 // the win-video pot: mint = save.mint ({ day, wv }), day = the game's day key
 const pot = (mint, day) => (mint && typeof mint === 'object' && mint.day === day ? int(mint.wv) : 0);

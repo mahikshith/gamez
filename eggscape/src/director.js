@@ -119,7 +119,7 @@ export function profile(save) {
 }
 
 // ---- the fail card's one help card
-// ctx: { levelId, nearMiss, timeout, thorns (the level has thorns), villains (it has thieves/hunters), lockedChick
+// ctx: { levelId, nearMiss, timeout, thorns (the level has thorns), villains (it has thieves/hunters), struggling (the Pacer reads him so), lockedChick
 //   ({ id, name } the best locked chick to try), owned ({ boosterId: count }), adReady, now, chickLevel (chicks exist) }
 // -> { kind: 'trialChick' | 'trialBoost' | 'buyBoost' | 'adBoost', id, price?, label, line } | null
 // The early days (2026-11-20 first-five ladder): until level SELL_AFTER is won (any mode) nothing is sold or advertised:
@@ -140,7 +140,7 @@ export function failHelp(save, ctx) {
   const owns = ctx.owned && ctx.owned[fit] > 0;
   // 2nd loss here: a freebie, once per level, a couple a day
   const today = dayKey(ctx.now || Date.now()), nToday = D.trials.day === today ? D.trials.n : 0;
-  if (streak >= 2 && !D.trials.lv[lv] && nToday < DIR.trialsPerDay) {
+  if (streak >= 2 && !D.trials.lv[lv] && (nToday < DIR.trialsPerDay || (ctx.struggling && fit !== 'time'))) { // (0.8.17: the Pacer's struggling player is not held to the daily two; never for a Slow fuse: the Pacer has no time lever)
     const c = ctx.lockedChick;
     if (c && ctx.villains && ctx.chickLevel && !D.trials.chicks.includes(c.id)) return { kind: 'trialChick', id: c.id, label: `Try ${c.name} free`, line: 'Free for your next try.' };
     if (B && !owns) return { kind: 'trialBoost', id: fit, label: `Free ${B.name}`, line: B.line };

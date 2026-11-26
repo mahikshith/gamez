@@ -371,6 +371,7 @@ const talView = { n: 0, key: '', seen: new Set(), sc: '', t0: 0 };
 function tallyFlush() { // the seconds on the screen that was up are filed; the clock starts again
   const now = performance.now();
   if (talView.sc && talView.t0) ENG.tally.screen(save, talView.sc, (now - talView.t0) / 1000, save.unlocked || 1);
+  if (talView.sc === 'intro' && talView.t0 && G.li >= 0) ENG.pacer.card(save, (now - talView.t0) / 1000); // the Pacer: how long the level card holds him
   talView.sc = G.screen || ''; talView.t0 = now;
 }
 function tallyFrame() {
@@ -614,7 +615,7 @@ function startLevel(i, opts = {}) {
   G.result = null;
   G.burstAt = null;
   G.usedRewind = false;
-  G.goals = GL.levelGoals(G.level, G.sim.MD.fuse, i >= 0); G.goalOk = [true, true, true];
+  G.goals = GL.levelGoals(G.level, G.sim.MD.fuse, i >= 0, G.sim.mode); G.goalOk = [true, true, true];
   G.doubled = false;
   G.held.clear();
   G.keySel = firstGrabbable(0, 1);
@@ -1306,7 +1307,7 @@ function keyDown(e) {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close'); else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
+  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close'); else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; else if (G.stuckAsk) press('stuck:no'); } return; }
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
@@ -1433,6 +1434,7 @@ async function press(id) {
       }
       { const T = introChicks(); if (T.id) { save.lastStk = T.id; if (T.choice) save.seen.pickN = (save.seen.pickN || 0) + 1; persist(); } }
       if (worldOpener(G.level)) { save.intro[G.level.id] = 1; persist(); }
+      pacerGo(); // the level card's dare: taken or declined (the Pacer)
       // owned boosters picked on the intro card are spent now and the level restarts with them
       const boost = { ...G.boost }; // keeps a booster the intro ad already gave
       let picked = 0;
@@ -1443,11 +1445,14 @@ async function press(id) {
       }
       G.boostSel.clear();
       // the win streak's free start boosters (Director: two or more levels won in a row)
-      const hot = G.li >= 0 ? DR.hotBoosts(save).filter((b) => !boost[b]) : [];
+      const hot = G.li >= 0 && !(G.dare && G.dare.kind === 'noboost') ? DR.hotBoosts(save).filter((b) => !boost[b]) : []; // (a "no boosters" dare takes the streak's free ones' place)
       for (const b of hot) { boost[b] = true; picked++; }
+      const pg = !(G.dare && G.dare.kind === 'noboost') ? pacerRetry() : {}; // the Pacer's free booster after "Keep trying", when he comes back by the level card
+      for (const b of Object.keys(pg.boost || {})) if (!boost[b]) { boost[b] = true; picked++; }
       if (picked) {
         persist();
         startLevel(G.li, { direct: true, golden: G.golden || boost.golden, boost, adBoost: G.adBoost });
+        if (pg.boost) pacerGiftPop(pg.boost);
         if (hot.length) toast(`Win streak ${DR.hotCount(save)}: free ${hot.map((b) => E.BOOSTERS[b].name).join(' + ')}!`, 3);
         break;
       }
@@ -1715,6 +1720,23 @@ async function press(id) {
       if (G.screen === 'play' && G.sim.state === 'play') { setScreen('pause'); portal.gameplayStop(); releaseAll(); }
       else if (G.screen === 'intro') setScreen('levels');
       break;
+    case 'stuck:ad': case 'stuck:ticket': case 'stuck:coins': // the Pacer's "Stuck? Skip this one": the fail card's own skip
+      if (id === 'stuck:ad' && !ads.videoOk) { videoOff(null); break; } // no video now: the sad hen's line, as every video button; the pop-up stays (coins or Keep trying)
+      G.stuckAsk = null;
+      if (G.screen === 'fail') await skipGo(id.slice(6));
+      break;
+    case 'stuck:no': // "Keep trying": back to the fail page; the next try starts with a free booster
+      if (G.stuckAsk && G.level) { ENG.pacer.declined(save, G.level.id); pacerWhy('fail', 'stuck:no', `kept trying on level ${G.level.id}`); persist(); }
+      G.stuckAsk = null;
+      break;
+    case 'dare:chip': { // the level card's dare: a tap takes it, another tap puts it back
+      const d = dareNow();
+      if (!d || G.screen !== 'intro') break;
+      d.took = !d.took; ENG.pacer.dareTake(save, G.level.id, d.took); persist();
+      G.dareFx = { t0: G.t, on: d.took };
+      audio.play(d.took ? 'fire_ignite' : 'ui_back', d.took ? { vol: 0.7 } : undefined); buzz('tap');
+      break;
+    }
     case 'pause:skip': // the pause page's Skip level: a small sheet first (what happens, one video, cancel)
       if (G.screen === 'pause' && skipNow()) G.skipAsk = { t0: G.t };
       break;
@@ -1746,11 +1768,15 @@ async function press(id) {
       if (G.screen === 'play' && G.sim && G.sim.finish()) audio.play('unlock');
       break;
     case 'restart':
-    case 'retry':
+    case 'retry': {
       portal.gameplayStop();
       if (id === 'retry' && G.screen === 'fail') { save.streak = 0; persist(); }
-      startLevel(G.li, { direct: true });
+      if (id === 'restart' && G.screen === 'pause') pacerRestart(); // a restart that hides a loss counts as one (the Pacer)
+      const po = id === 'retry' && G.screen === 'fail' ? pacerRetry() : {}; // the try after "Keep trying": one free booster
+      startLevel(G.li, { direct: true, ...po });
+      if (po.boost) pacerGiftPop(po.boost);
       break;
+    }
     case 'next': {
       // 2026-11-20 (Google Play ad policy: no interstitial as a level begins, none between a tap and what it starts):
       // the between-levels break, when one is due, comes here, as the player leaves the score card, before the map
@@ -1848,6 +1874,9 @@ async function press(id) {
       save.gfx = id.slice(4);
       if (save.gfx === 'auto') save.gfxStep = -1; // Auto starts again from the phone's own guess
       applySettings(save); setDPR(); persist();
+      break;
+    case 'set:adapt': // the Pacer's honesty switch: off = no skip pop-up, no dares, no marks, the plain hint timing
+      save.adapt = save.adapt === false; persist();
       break;
     case 'set:fpsshow':
       save.showFps = !save.showFps; persist();
@@ -2233,7 +2262,7 @@ const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? {
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
 function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
-function modalOpen() { return !!(G.got || G.party || G.waitList || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
+function modalOpen() { return !!(G.got || G.party || G.waitList || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause') || (G.stuckAsk && G.screen === 'fail' && G.screenT >= STUCK_AFTER)); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
@@ -2254,6 +2283,7 @@ function drawModals() {
     else if (G.leaveAsk) drawLeaveAsk();
     else if (G.treasure) drawTreasure();
     else if (G.skipAsk) drawSkipAsk();
+    else if (G.stuckAsk) drawStuckAsk();
   } finally { G.hudBottom = hb; }
 }
 // ---- boss treasure (2026-11-19, mykee: "after clearing a boss level, show some treasure, the unlockables, the new birds;
@@ -2383,6 +2413,8 @@ async function takeHelp() {
   const H = G.failHelp, lid = G.level && G.level.id;
   if (!H || G.screen !== 'fail' || lid == null) return;
   const boostRun = (b) => startLevel(G.li, b === 'golden' ? { direct: true, golden: true } : { direct: true, boost: { [b]: true } });
+  if (H.pacer) { ENG.pacer.gave(save, lid, H.pacer); persist(); } // the Pacer's free hint or Scarecrow: once per level
+  if (H.kind === 'freeHint') { G.failHelp = null; G.hintFree = lid; portal.gameplayStop(); startLevel(G.li, { direct: true }); return; } // the hint shows once the next try is running
   if (H.kind === 'trialChick') {
     DR.noteTrial(save, lid, H, Date.now()); persist();
     G.trialChick = { lid, id: H.id };
@@ -3205,7 +3237,7 @@ const skipLv = () => ({ id: G.level ? G.level.id : 0, count: LEVELS.length, jour
 // can this level be skipped now: in play (the pause page) or once it is lost (the fail card)
 const skipNow = () => !!G.sim && (G.screen === 'fail' ? G.sim.state !== 'play' : G.sim.state === 'play') && SK.canSkip(save, skipLv());
 // how it can be paid now, in button order (src/skip.js skipWays): 'ticket' | 'ad', then 'coins' while stuck (fail card only)
-const skipWays = () => (skipNow() ? SK.skipWays(save, skipLv(), { stuck: G.screen === 'fail' && G.li >= 0 && ads.stuck(G.level.id), tickets: save.wallet.tickets.skip }) : []);
+const skipWays = () => (skipNow() ? SK.skipWays(save, skipLv(), { stuck: G.screen === 'fail' && G.li >= 0 && (ads.stuck(G.level.id) || ENG.pacer.losses(save, G.level.id) >= SK_STUCK), tickets: save.wallet.tickets.skip }) : []);
 // The one skip (0.8.14: the pause sheet and the fail card end the same way): pay (a ticket, a video or coins), then
 // SK.applySkip, and the map, where the hen hops to the next stop and its level page opens (a star gate: the map waits).
 async function skipGo(way) {
@@ -3238,6 +3270,180 @@ function drawSkipAsk() {
       : ui.button('sk:go', ads.premium ? 'Skip level' : 'Watch to skip', x, y, w, 56 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 20 * s } : { kind: 'ad', ad: true, size: 19 * s }) },
     { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('sk:no', 'Cancel', x, y, w, 50 * s, { kind: 'tertiary', size: 19 * s }) },
   ], { ribbon: '#7a48e8' });
+}
+
+// ---- the Pacer (src/engine/pacer.js, 0.8.17, mykee: "push the struggling players ... never ever reduce the time or
+// increase the time for them"): what is fitted to the player around the play. The play itself (the fuse, the rings, the
+// villains, odds and prices) is never touched. Every decision is filed in the Brain's trace with the Pacer's reason.
+const STUCK_AFTER = 0.5; // s: the fail page settles first, then the pop-up rises over it
+const SK_STUCK = 3; // losses in a row that open the coin skip (ads.js STUCK_FAILS; the Pacer's own count survives a restart)
+const LOSS_BOOST = { time: 'nest', thorns: 'snips', villains: 'stone', nest: 'nest' }; // why it was lost -> the most useful start booster (as director.js bestBoost, but never the Slow fuse: the Pacer has no time lever; out of time: the Wide Nest)
+const pacerWhy = (moment, pick, why) => { if (why) BR.why(save, moment, pick, 'pacer: ' + why); };
+// after a loss (onFail, the Director's help already picked): the pop-up, a free hint, a free Scarecrow at a boss
+function pacerFail() {
+  const L = G.level, id = L.id;
+  ENG.pacer.result(save, { id, won: false });
+  const P = ENG.pacer.failPlan(save, { levelId: id, boss: !!L.boss, early: earlyDays(), canSkip: SK.canSkip(save, skipLv()), now: Date.now() });
+  G.stuckAsk = null;
+  if (P.scare) G.failHelp = { kind: 'trialBoost', id: 'scare', label: `Free ${E.BOOSTERS.scare.name}`, line: E.BOOSTERS.scare.line, pacer: 'scare' };
+  else if (P.hint) G.failHelp = { kind: 'freeHint', id: 'hint', label: 'Show me the way', line: 'A free hint on your next try.', pacer: 'hint' };
+  if (P.ask) { G.stuckAsk = { lid: id, t0: null }; ENG.pacer.asked(save, id); }
+  else if (P.gift) ENG.pacer.declined(save, id); // no skip on this level (won before): the next try's free booster all the same
+  pacerWhy('fail', P.ask ? 'stuck:ask' : P.scare ? 'help:scare' : P.hint ? 'help:hint' : null, P.why);
+}
+// the retry after "Keep trying": one free start booster, the one that answers why it was lost (once per level)
+function pacerRetry() {
+  const id = G.li >= 0 && G.level ? G.level.id : 0;
+  if (!id || !ENG.pacer.retryGift(save, id)) return {};
+  const b = LOSS_BOOST[G.lastLoss] || 'stone';
+  pacerWhy('fail', 'gift:' + b, `the try after "Keep trying" on level ${id} starts with a free ${E.BOOSTERS[b].name}`); persist();
+  return { boost: { [b]: true } };
+}
+const pacerGiftPop = (boost) => { const b = Object.keys(boost)[0]; popPrize(`Free ${E.BOOSTERS[b].name}`, (c, x, y, S, t) => drawBoosterIcon(c, b, x, y, S, t), null, 0.5); };
+// a restart from the pause page: a soft loss when most of the fuse is gone or an egg was lost
+function pacerRestart() {
+  if (!(G.li >= 0 && G.level && G.sim && G.sim.state === 'play')) return;
+  const sim = G.sim, used = sim.timeLimit ? 1 - Math.max(0, sim.timeLeft) / sim.timeLimit : 0;
+  if (ENG.pacer.restart(save, G.level.id, { used, lost: sim.stats().broken })) { pacerWhy('pause', 'soft', `a restart on level ${G.level.id} counted as a loss`); persist(); }
+}
+// the free hint: the solver's next move, shown as the Hint button shows it, once the try is running
+function freeHintTick() {
+  if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play' || fuseIntroOn() || !G.level || G.hintFree !== G.level.id || G.sim.t < 0.6) return;
+  G.hintFree = 0;
+  const out = {};
+  G.hint = { out, gen: hintSearch(Sim, G.level, G.sim.fullState(), { mode: G.sim.mode, ...G.boost }, out) };
+  popPrize('Hint', (c, x, y, S) => lampIcon(c, x, y, S), null, 0.2);
+}
+// the level card's dare: asked once per visit of the card; the Pacer keeps the same one while it is this level's
+function dareNow() {
+  if (G.li < 0 || !G.level || G.screen !== 'intro' || earlyDays()) return null;
+  const L = G.level, k = L.id + ':' + G.scrSeq;
+  if (G.dareC && G.dareC.k === k) return G.dareC.d;
+  const a = (save.dir && save.dir.att && save.dir.att[L.id]) || {}, gl = G.goals || [];
+  const d = ENG.pacer.dareFor(save, { levelId: L.id, boss: !!L.boss, tries: a.tries || 0, eggs: L.eggs, target: L.target, turns: L.bonus && L.bonus.kind === 'turns' ? L.bonus.n : 0,
+    chick: !!(G.sim && G.sim.stk && G.sim.stk.any && strikesOpen().length), goals: gl.map((g) => g.kind).concat(gl.filter((g) => g.b).map((g) => g.b.kind)), now: Date.now() });
+  G.dareC = { k, d };
+  if (d && d.why) { pacerWhy('intro', 'dare:' + d.kind, d.why); persist(); }
+  return d;
+}
+// PLAY from the level card: the dare is taken (it rides along until this level is won) or declined
+function pacerGo() {
+  if (G.li < 0 || !G.level) return;
+  const d = dareNow(), lid = G.level.id;
+  G.dare = d ? ENG.pacer.dareStart(save, lid) : G.dare && G.dare.lid === lid ? G.dare : null;
+  if (G.dare && !G.dare.lid) G.dare.lid = lid;
+  if (d) { pacerWhy('intro', 'dare:' + d.kind, `dare ${d.short} on level ${lid} ${G.dare ? 'taken' : 'declined'}`); persist(); }
+  G.dareC = null;
+}
+// a win: a dare met pays its share on top; the Pacer files the run (a first-try three-star win feeds "cruising")
+function pacerWin() {
+  if (!(G.li >= 0 && G.level && G.result)) return;
+  const L = G.level, r = G.result, sim = G.sim, a = (save.dir && save.dir.att && save.dir.att[L.id]) || {};
+  const d = G.dare && G.dare.lid === L.id ? G.dare : null;
+  let met = false;
+  if (d) {
+    const st = sim.stats();
+    met = ENG.pacer.dareMet(d, { broken: st.broken, saved: st.saved, total: st.total, turns: sim.turns || 0, boosts: Object.values(G.boost || {}).filter(Boolean).length + (G.golden ? 1 : 0), chicks: (sim.stk && sim.stk.n) || 0 });
+    const add = met ? ENG.pacer.dareCoins(r.coins) : 0;
+    r.coins += add;
+    r.dare = { long: d.long, ok: met, res: met ? `+${add} coins` : 'Missed' };
+    G.dare = null;
+    pacerWhy('win', 'dare:' + d.kind, `dare ${d.short} on level ${L.id} ${met ? `met: +${add} coins` : 'missed: the win pays as usual'}`);
+  }
+  ENG.pacer.result(save, { id: L.id, won: true, stars: r.stars, first: !(a.tries > 0), mode: sim.mode, dare: d ? { kind: d.kind, met } : null });
+}
+// the chip on the level card's perks row: a flame-edged pill, the dare and what it pays; a tap lights it (taken)
+function dareChip(x, y, maxW, s, dry) {
+  const d = dareNow();
+  if (!d) return 0;
+  const h = 34 * s, fs = 14.5 * s, lab = 'Dare: ' + d.short, pay = `+${Math.round(MINT.FAUCETS.dare.share * 100)}%`, cr = 8 * s; // the Mint's dare share (FAUCETS.dare)
+  const lw = ui.measure(lab, fs), pw = ui.measure(pay, fs), w = Math.min(maxW, 30 * s + lw + 10 * s + cr * 2 + 4 * s + pw + (d.took ? 26 * s : 0) + 12 * s);
+  if (dry) return w;
+  const on = !!d.took, t = G.t, calm = save.calm, fx = G.dareFx && G.t - G.dareFx.t0 < 0.5 ? G.dareFx : null;
+  const k = fx && !calm ? 1 + 0.12 * Math.sin(Math.PI * Math.min(1, (G.t - fx.t0) / 0.5)) * (1 - (G.t - fx.t0) / 0.5) : 1; // a bump as it lights (eased out)
+  ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + h / 2));
+  // the flame edge: little tongues of fire licking up all round the pill (still under Calm), brighter when taken
+  const fl = on ? 1 : 0.7;
+  for (let i = 0; i < 14; i++) {
+    const q = i / 14, ex = x + 8 * s + q * (w - 16 * s), up = (calm ? 0.6 : 0.55 + 0.45 * Math.sin(t * 7 + i * 2.1)) * (on ? 9 : 6) * s;
+    ctx.beginPath(); ctx.moveTo(ex - 5 * s, y + 4 * s); ctx.quadraticCurveTo(ex, y - up * 0.3, ex + 1 * s, y - up); ctx.quadraticCurveTo(ex + 3 * s, y - up * 0.2, ex + 5 * s, y + 4 * s); ctx.closePath();
+    ctx.fillStyle = `rgba(255,${(120 + 60 * Math.abs(Math.sin(i * 1.7))) | 0},30,${0.85 * fl})`; ctx.fill();
+  }
+  ui.roundRect(x, y, w, h, h / 2);
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  if (on) { g.addColorStop(0, '#ff8a2a'); g.addColorStop(1, '#d8341c'); } else { g.addColorStop(0, 'rgba(92,34,12,0.94)'); g.addColorStop(1, 'rgba(60,18,6,0.94)'); }
+  ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = 2.5 * s; const rg = ctx.createLinearGradient(x, 0, x + w, 0); rg.addColorStop(0, '#ffd23a'); rg.addColorStop(0.5, '#ff6a1a'); rg.addColorStop(1, '#ffd23a'); ctx.strokeStyle = rg; ctx.stroke();
+  ctx.restore();
+  const cy = y + h / 2;
+  pictoFlame(ctx, x + 16 * s, cy, 24 * s);
+  ui.text(lab, x + 30 * s, cy, { size: fs, color: '#fff', maxW: lw + 1, noRecord: true });
+  const px = x + 30 * s + lw + 10 * s;
+  drawCoin(ctx, px + cr, cy, cr, 0);
+  ui.text(pay, px + cr * 2 + 4 * s, cy, { size: fs, color: '#ffe066', noRecord: true });
+  if (on) { const tx = x + w - 20 * s; ctx.beginPath(); ctx.arc(tx, cy, 10 * s, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); pictoCheck(ctx, tx, cy, 15 * s, '#2f9e1c'); }
+  ui.record({ x, y, w, h }, 'intro:darechip');
+  ui.buttons.push({ id: 'dare:chip', x, y, w, h });
+  return w;
+}
+// the map: a flame where a dare was met; at a star gate, the three stops where the next star is nearest sparkle "+1"
+function pacerStopMark(id, x, y, r, t, calm) {
+  if (G.pmarkT !== G.t) { // worked out once a frame
+    G.pmarkT = G.t;
+    const k = envOf(Math.min(LEVELS.length - 1, (save.unlocked || 1) - 1)), short = envOpen(k) ? 0 : envNeed(k) - bestTotal();
+    const sig = `${short}|${bestTotal()}|${save.adapt !== false}`;
+    if (!G.pmarks || G.pmarks.sig !== sig) {
+      const rows = LEVELS.map((L) => ({ id: L.id, stars: bestStarsOf(L.id), best: Math.max(0, ...MODE_LIST.map((m) => save.best[sk(L.id, m)] || 0)) }));
+      G.pmarks = { sig, ids: ENG.pacer.marks(save, { short, rows }) };
+    }
+  }
+  const u = ui.u, R = Math.max(r, 20 * u);
+  if (ENG.pacer.dared(save, id)) { // a dare met: a small flame badge on the nest's shoulder
+    const fx = x - R * 0.95, fy = y - R * 0.55;
+    ctx.beginPath(); ctx.arc(fx, fy, 10 * u, 0, 7); ctx.fillStyle = 'rgba(70,20,6,0.9)'; ctx.fill(); ctx.lineWidth = 2 * u; ctx.strokeStyle = '#ffb02a'; ctx.stroke();
+    pictoFlame(ctx, fx, fy, 15 * u);
+  }
+  if (G.pmarks.ids.includes(id)) { // "+1 star here": a star that twinkles over the stop (steady under Calm)
+    const tw = ui.measure('+1', 13 * u) + 14 * u, side = x + R * 0.95 + tw + 11 * u > ui.A.x1 - 4 * u ? -1 : 1; // the side with room (never off the screen's edge)
+    const sx = x + side * R * 0.95 - (side < 0 ? tw : 0), sy = y - R * 0.75, p = calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3.2 + id), rr = (9 + 2 * p) * u;
+    ctx.save(); ctx.globalAlpha = 0.35 + 0.35 * p; ctx.beginPath(); ctx.arc(sx, sy, rr * 1.9, 0, 7); ctx.fillStyle = '#fff3a0'; ctx.fill(); ctx.restore();
+    drawStar(ctx, sx, sy, rr, true);
+    ui.text('+1', sx + rr + 3 * u, sy + 1 * u, { size: 13 * u, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'map:plus' + id, noRecord: sy - 12 * u < levelPageTop() || sy + 12 * u > ui.A.y1 }); // (half under the header: not a thing to read)
+  }
+}
+// "Stuck? Skip this one" (the Pacer, after the third loss in a row): over the fail page before its buttons, the hen
+// worried, two equal ways to skip (a video, or coins: the fail card's own skip) and a quiet "Keep trying"
+function drawStuckAsk() {
+  const A = G.stuckAsk;
+  if (G.screen !== 'fail' || !G.level || A.lid !== G.level.id) { G.stuckAsk = null; return; }
+  if (A.t0 == null) { A.t0 = G.t; audio.play('cluck', { pitch: 0.78, vol: 0.55 }); }
+  const ways = skipWays();
+  if (!ways.length) { G.stuckAsk = null; return; }
+  const p = save.calm ? 1 : clamp((G.t - A.t0) / 0.42, 0, 1), c1 = 1.7, e = 1 + (c1 + 1) * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); // ease out with a little overshoot
+  dim(0.6 * Math.min(1, p * 1.6));
+  const first = ways[0], coins = ways.includes('coins');
+  ctx.save(); // (no fade: the card's buttons and her art paint at full strength; it rises and grows into place instead)
+  const cx = ui.A.cx, cy = ui.A.cy, sc = 0.55 + 0.45 * e;
+  ctx.translate(cx, cy + (1 - e) * 90 * ui.u); ctx.scale(sc, sc); ctx.translate(-cx, -cy);
+  const portrait = ui.A.h > ui.A.w * 1.15;
+  stackCard('Stuck?', (s) => { const hh = portrait ? clamp((ui.A.h - 40 * ui.u) / s - 305, 128, 320) : 176; return [ // her stage takes the room a tall phone gives (no blank paper); on its side she stands left of the buttons
+    { h: hh * s, gap: portrait ? 4 * s : 0, draw: (x, y, w) => {
+      const aw = Math.min(w, Math.max(190, hh * 1.3) * s);
+      ui.well(x + (w - aw) / 2, y, aw, hh * s, { s, a: '#d9e8ff', b: '#eef5ff' });
+      drawHenAnim(ctx, 'worried', x + w / 2, y + hh / 2 * s, hh * 0.86 * s, G.t, { key: 'stuck', face: 1, calm: save.calm, shadow: 0 });
+      ui.record({ x: x + (w - aw) / 2, y, w: aw, h: hh * s }, 'stuck:hen');
+    } },
+    { ...lineBlock('Skip this one', 21 * s, { color: ui.C.ink, tag: 'stuck:line', gap: portrait ? 10 * s : 0 }), right: true },
+    { h: 58 * s, gap: 14 * s, right: true, draw: (x, y, w) => {
+      const hw = coins ? (w - 10 * s) / 2 : w;
+      if (first === 'ticket') ui.button('stuck:ticket', 'Ticket', x, y, hw, 58 * s, { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3, size: 20 * s });
+      else if (ads.premium) ui.button('stuck:ad', 'Skip', x, y, hw, 58 * s, { kind: 'secondary', icon: ICON.next, size: 20 * s });
+      else ui.button('stuck:ad', 'Watch', x, y, hw, 58 * s, { kind: 'ad', ad: true, size: 20 * s }); // offline: dimmed with the no-signal badge, as every video button (setAdOff)
+      if (coins) ui.button('stuck:coins', String(SKIP_COINS), x + hw + 10 * s, y, hw, 58 * s, { kind: save.wallet.coins >= SKIP_COINS ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 22 * s });
+    } },
+    { h: 48 * s, gap: 12 * s, right: true, draw: (x, y, w) => ui.button('stuck:no', 'Keep trying', x, y, w, 48 * s, { kind: 'tertiary', size: 18 * s }) },
+  ]; }, { ribbon: '#5a82c8', pop: false, grow: 1.12, twoCol: true });
+  ctx.restore();
 }
 
 // the one coin-gain effect (src/ui/purse.js): every counter draws purse.shown(); every grant calls purse.gain()
@@ -4882,7 +5088,7 @@ function computeResult() {
   const L = G.level;
   const timeBonus = Math.floor(sim.timeLeft) * 10;
   // 0.8.7: one star per goal (src/goals.js); a rewind (an ad reward) costs no star
-  const goals = G.goals || GL.levelGoals(L, sim.MD.fuse, G.li >= 0), F = GL.facts(sim), sc = GL.score(goals, { ...F, won: st.saved >= st.target });
+  const goals = G.goals || GL.levelGoals(L, sim.MD.fuse, G.li >= 0, sim.mode), F = GL.facts(sim), sc = GL.score(goals, { ...F, won: st.saved >= st.target });
   const stars = sc.stars;
   const streak = stars === 3 ? (save.streak || 0) + 1 : 0;
   const streakMult = [1, 1, 1.2, 1.5, 2][Math.min(4, streak)];
@@ -4891,11 +5097,11 @@ function computeResult() {
   // coins (F7) and the bonus objective (C3): bonus coins are paid the first time it is met, per mode
   const bonus = !!L.bonus && sim.bonusMet();
   const bonusCoins = bonus && !save.bonus[sk(L.id, sim.mode)] && G.li >= 0 ? BONUS_COINS : 0;
-  // 0.8.17 the Mint: a level won again without a new star pays its replay share (40%)
-  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id, hard: isHardLevel(L) && G.li >= 0, fresh: G.li >= 0 ? stars > bestStarsOf(L.id) : true }).total + bonusCoins;
+  // 0.8.17 the Mint: a level won again without a new star pays its replay share (40%); Easy pays its share (FAUCETS.easy)
+  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id, hard: isHardLevel(L) && G.li >= 0, fresh: G.li >= 0 ? stars > bestStarsOf(L.id) : true, easy: G.li >= 0 && sim.mode === 'easy' }).total + bonusCoins;
   if (G.li < 0) coins = G.li === -1 && stars && save.daily.paid !== today() ? coins + DAILY_COINS : 0; // the Daily Vault pays once a day; a lab vault pays nothing
   const cracked = sim.savedLog.filter((q) => q.cracks > 0).length, used = sim.timeLimit ? Math.max(0, sim.timeLimit - Math.max(0, sim.timeLeft)) : sim.t;
-  return { broken: st.broken, cracked, used, stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus && !goals.some((g) => g.kind === L.bonus.kind), // a bonus that is a star goal is not listed twice
+  return { broken: st.broken, cracked, used, stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus && !goals.some((g) => g.kind === L.bonus.kind || (g.b && g.b.kind === L.bonus.kind)), // a bonus that is a star goal is not listed twice
     goals: goals.map((g, i) => ({ long: g.long, ok: sc.met[i], res: GL.outcome(g, F, sc.met[i]) })) };
 }
 
@@ -4931,6 +5137,7 @@ function onWin() {
   G.result.cheer = pickRoutine({ stars: G.result.stars, streak: G.result.streak, boss: !!L.boss && G.li >= 0, firstWorld, last: save.lastCheer });
   save.lastCheer = G.result.cheer;
   G.result.purse0 = save.wallet.coins; // the purse before this win: the card rolls it up to the new total (purse.gain)
+  pacerWin(); // the Pacer: a dare met pays its share (before the skin's power and the bank, like the win's own coins)
   { // the egg skin's coin power (Shiny, Midas, Treasure Sense) first, then Golden Hour, then the bank's share
     const pre = G.result.coins, pk = eggPerk();
     G.result.coins = E.perkCoins(eggPerkId(), pre, G.sim.savedLog.length);
@@ -5014,7 +5221,8 @@ function onFail() {
       const cheer = SP.noteLoss(save, G.level.id, run, today()), played = G.sim.t >= 15 && SP.notePlayed(save, today());
       G.failSpin = { cheer, got: (cheer ? 1 : 0) + (played ? 1 : 0), ...SP.meter(save) };
     }
-    G.failHelp = earlyDays() ? null : DR.failHelp(save, failCtx(st));
+    G.failHelp = earlyDays() ? null : DR.failHelp(save, { ...failCtx(st), struggling: !!(save.adapt !== false && (ENG.pacer.read(save, { levelId: G.level.id }) || {}).struggling) });
+    pacerFail(); // the Pacer: the skip pop-up, a free hint, a free Scarecrow at a boss
     if (st.target >= 2 && st.saved === st.target - 1) BR.why(save, 'fail', 'soclose', `one egg short on level ${G.level.id}: ${earlyDays() || G.usedRewind || !G.sim.canRewind() ? 'said so, RETRY leads' : 'Rewind leads, RETRY under it'}`);
     persist();
   }
@@ -5070,6 +5278,7 @@ function update(dt) {
   if (G.hintShow && (G.hintShow.t -= dt) <= 0) G.hintShow = null;
   heartbeat(dt); // predators (v3)
   if (G.hint) hintWork();
+  else if (G.hintFree) freeHintTick(); // the Pacer's free hint, once the try is running
   if (G.hitstop > 0) G.hitstop -= dt;
   else if (running && !G.adBusy) {
     // 2026-11-20 pacing: the step count rounds a little early (acc may sit up to a quarter step below zero), so a frame
@@ -7161,7 +7370,7 @@ function ringStripH(x, w, s) {
 // the chips that used to sit on the stage (the win streak, a free try, the egg's power): measured, then drawn in a row
 function perkItems(s) {
   const out = [], H = 34 * s;
-  for (const f of [hotBadge, tryChip, perkChipCard]) { const w = f(0, 0, 9999, s, true); if (w > 0) out.push({ w, h: H, draw: (x, y, maxW) => f(x, y, maxW, s, false) }); }
+  for (const f of [dareChip, hotBadge, tryChip, perkChipCard]) { const w = f(0, 0, 9999, s, true); if (w > 0) out.push({ w, h: H, draw: (x, y, maxW) => f(x, y, maxW, s, false) }); }
   return out;
 }
 function drawLevelIntro(L, acc) {
@@ -7216,7 +7425,7 @@ function drawLevelIntro(L, acc) {
     if (kinds.some((k) => k === 'weasel' || k === 'rats' || k === 'boss:weasel') && G.sim && G.sim.ally && G.sim.ally.avail.includes('rooster') && !(G.li >= 0 && G.li < 4 && L.id < 5)) P.push(HOWTO_ROOSTER); // Papa Rooster from L5 (the first-five ladder)
     if (!P.length && !vOld.length) P = [HOWTO_BASIC];
     let auto = P.map((p, i) => i);
-    P = [...P, ...vOld];
+    P = [...P, ...(P.length && ENG.pacer.cards(save) === 'new' ? [] : vOld)]; // the Pacer: a player who skips every card sees only what is new
     if (!auto.length) auto = P.map((p, i) => i); // nothing new: the reminders take turns
     const shown = new Set(P.filter((p) => p.move === 'floor').map((p) => 'floor:' + p.surf).concat(P.filter((p) => p.move === 'toy').map((p) => 'toy:' + p.toy), P.some((p) => p.teach) ? ['chick'] : []));
     const chips = things.filter((k) => !shown.has(k) && !acted.includes(k) && !k.startsWith('mix:') && (k !== 'chick' || chickOn)).map((k) => ({ ...teachChip(k), fresh: teachFirst(k) === L.id }));
@@ -7364,7 +7573,7 @@ function drawLevelIntro(L, acc) {
   } }; };
   // the three star goals, one compact row
   const starBlock = G.li >= 0 ? { h: 30 * s, gap: gp, draw: (x, y, w) => {
-    const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0)).map((g) => g.short), cw3 = w / 3, sr = 10.5 * s, fs = 15 * s;
+    const lab = (G.goals || GL.levelGoals(L, 1, G.li >= 0, save.mode)).map((g) => g.short), cw3 = w / 3, sr = 10.5 * s, fs = 15 * s;
     ctx.fillStyle = 'rgba(122,80,40,0.18)'; ctx.fillRect(x, y, w, 1.5 * s);
     for (let i = 0; i < 3; i++) {
       const tw = Math.min(ui.measure(lab[i], fs), cw3 - sr * 2 - 12 * s), gx = x + cw3 * i + (cw3 - (sr * 2 + 5 * s + tw)) / 2, cy = y + 17 * s;
@@ -8109,6 +8318,7 @@ function drawSettings() {
   const rsB = rsLook ? { ...rsCard, draw: (x, y, w) => { rsCard.draw(x, y, w); focusDraw(ctx, ui, rsLook, { x, y, w, h: rsCard.h }, 16 * s, s); } } : rsCard;
   B.push(rsB);
   B.push(setCard(s, 'Difficulty', 'flag', '#e0a21c', null, 42 * s, (x, y, w) => modeRow(x, y, w, 42 * s, s)));
+  B.push(setRow(s, 'set:adapt', 'Adaptive help', 'sparkle', '#e0507e', { on: save.adapt !== false, sub: 'Help and dares that fit how you play' })); // the Pacer's switch (src/engine/pacer.js)
   B.push(setHead('Display', s));
   const gl = save.gfx === 'auto' ? `Auto picked ${TIER_NAME[PERF.tier]} for this phone` : save.gfx === 'high' ? 'Sharpest picture, every effect' : save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
   B.push(setCard(s, 'Graphics', 'sparkle', '#2aa7a0', null, 42 * s, (x, y, w) => segRow('gfx:', [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], save.gfx, x, y, w, 42 * s, s), gl));
@@ -8502,6 +8712,7 @@ function drawWinPage() {
     const goals = (r.goals || []).map((g) => [g.long, g.ok, g.res]);
     const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
     if (r.hasBonus) goals.push(['Bonus goal', !!r.bonus, r.bonus ? 'Done' : 'Missed', 'target']);
+    if (r.dare) goals.push([r.dare.long, r.dare.ok, r.dare.res, 'flame']); // the Pacer's dare, when one was taken
     const gh = 40 * s, GH = 30 * s + goals.length * gh + 6 * s;
     if (!first) B.push({ h: GH, gap: 10 * s, draw: (x, y, w) => {
       ui.well(x, y, w, GH, { s, a: '#f3e2bd', b: '#fbf0d6' });
@@ -8516,7 +8727,7 @@ function drawWinPage() {
       goals.forEach(([txt, ok, res, pic], i) => {
         const ry = y + 30 * s + i * gh + gh / 2;
         if (i) { ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(x + 10 * s, ry - gh / 2, w - 20 * s, 1.2 * s); }
-        if (pic) pictoTarget(ctx, gx + sr * 1.6, ry, 24 * s); else drawStar(ctx, gx + sr * 1.6, ry, sr * 1.7, ok); // one star, one goal
+        if (pic === 'flame') pictoFlame(ctx, gx + sr * 1.6, ry, 24 * s); else if (pic) pictoTarget(ctx, gx + sr * 1.6, ry, 24 * s); else drawStar(ctx, gx + sr * 1.6, ry, sr * 1.7, ok); // one star, one goal
         const ix = x + w - 22 * s;
         (ok ? pictoCheck : pictoCross)(ctx, ix, ry, 24 * s);
         const rw = ui.measure(res, 14.5 * s), tx = gx + sr * 3.6 + 8 * s, rx = ix - 18 * s;
@@ -9095,7 +9306,7 @@ function drawFailPage() {
   const near = st.target >= 2 && st.saved === st.target - 1, lead = near && rew && !earlyDays();
   // 0.8.15 the Conductor: the way back in, a gift that waits, the Director's help and the meter are candidates; one
   // leads (it alone shimmers), an ask the Brain holds back is not shown, and with nothing else a line says what is near
-  const cheer = !!(G.failSpin && G.failSpin.cheer), hk = Hp0 ? (Hp0.kind === 'trialChick' || Hp0.kind === 'trialBoost' ? 'rescue' : Hp0.kind === 'adBoost' ? 'video' : 'coins') : null;
+  const cheer = !!(G.failSpin && G.failSpin.cheer), hk = Hp0 ? (Hp0.kind === 'trialChick' || Hp0.kind === 'trialBoost' || Hp0.kind === 'freeHint' ? 'rescue' : Hp0.kind === 'adBoost' ? 'video' : 'coins') : null;
   const FL = G.li >= 0 ? pageLead('fail', [lead ? { id: 'rewind', sys: 'rewind', kind: 'rescue', near: st.saved / st.target } : null, Hp0 ? { id: 'help', sys: 'director', kind: hk, near: 0.9, price: Hp0.price } : null, ...nearThings().map((c) => (c.id === 'spin' && cheer ? { ...c, kind: 'rescue' } : c))].filter(Boolean)) : { lead: null, order: [], held: [] };
   const top = FL.lead ? FL.lead.id : null, Hp = Hp0 && !FL.held.some((h) => h.id === 'help') ? Hp0 : null, prog = !Hp && !SP.banked(save) ? FL.order.find((c) => c.kind === 'progress') : null;
   const hotB = (() => { let o = []; if (hl >= 2 && (save.unlocked || 1) >= 6) for (const [n, b] of DR.HOT) if (hl >= n) o = b; return o; })(); // what the streak was worth
@@ -9137,10 +9348,11 @@ function drawFailPage() {
     else if (prog) B.push({ h: 26 * s, gap: 4 * s, draw: (x, y, w) => leadLine(prog, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'fail:near' }) });
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: 6 * s }));
     if (Hp) B.push({ h: 78 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
-      const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost', ad = Hp.kind === 'adBoost';
+      const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost' || Hp.kind === 'freeHint', ad = Hp.kind === 'adBoost';
       ui.well(x, y, w, 78 * s, { s, a: free ? '#d8f5c0' : '#ffe9b0', b: free ? '#f0ffe4' : '#fff6dc' });
       const ax = x + 38 * s, ay = y + 39 * s;
       if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, ax, ay + 6 * s, 48 * s, G.t, {});
+      else if (Hp.kind === 'freeHint') lampIcon(ctx, ax, ay, 60 * s); // the Pacer's free hint: the Hint button's lamp
       else drawBoosterIcon(ctx, Hp.id, ax, ay, 56 * s, G.t);
       const bw = Math.min(118 * s, w * 0.3), tx = x + 74 * s, tw = x + w - bw - 16 * s - tx;
       ui.text(Hp.label, tx, y + 26 * s, { size: 16.5 * s, color: ui.C.ink, maxW: tw, tag: 'fail:help' });
@@ -9514,6 +9726,7 @@ function drawLevels() {
     }
     if (state === 'cur') { if (!(TR && !TR.arrived)) MS.drawStopCall(ctx, L, x, y, t, calm, boss); curAt = { x, y, o, boss, i }; }
     MS.drawStop(ctx, L, x, y, state, o);
+    if (state === 'won' || state === 'cur') pacerStopMark(Lv.id, x, y, L.stopR, t, calm); // the Pacer: a dare met here, or "+1 star here" at a star gate
   }
   // the boss treasures: a chest beside every boss stop, on the side away from where the hen would stand
   for (let i = 0; i < LEVELS.length; i++) {
