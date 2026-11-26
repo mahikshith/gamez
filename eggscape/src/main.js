@@ -48,6 +48,7 @@ import * as CK from './clock.js'; // 0.8.17: the game's day only moves forward (
 import * as GD from './guard.js'; // 0.8.17: a refunded one-time purchase is taken back (the store's own record)
 import * as WT from './waiting.js'; // 0.8.17: video rewards met offline wait for a connection
 import * as BR from './brain.js'; // 2026-11-23: the Brain, one arbiter over the Director and the offer engine (who is playing, when to ask, what fits)
+import * as TR from './tour.js'; // 0.8.17: the first levels' tour (the pause button, the pause page, the shop once level 3 is won)
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
 import { geckoStrikeEv, drawGeckoCard, geckoAnchor } from './render/gecko15.js'; // L15: the frost gecko boss
@@ -1188,6 +1189,7 @@ function pointerDown(e) {
     if (cx || cy) G.pdrag = { pid: e.pointerId, cand: { x: cx, y: cy }, x0: x, y0: y, s0: 0, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
   }
   if (G.shopHand) G.shopHand = null; // the shop hand (map) goes on any tap; the tap itself still does its job
+  G.touchAt = G.t; G.tourPause = null; G.tourShop = null; if (G.ppTour) G.ppTour.seq = -1; // 0.8.17 the tour: any touch ends its step (the tap still does its job)
   if (G.screen === 'levels' && G.mapTravel && !G.treasure) G.mapTravel = null; // a touch during the trip: the map is the player's now (not while the boss treasure sheet is up: the trip goes on after it)
   if (G.screen === 'levels' && !G.settingsOpen && y > levelPageTop()) G.pdrag = { pid: e.pointerId, sc: G.mscroll, y0: y, s0: G.mscroll.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; // the world map scrolls by drag; a tap on a stop still presses
   // 0.8.7: a finger put on a list that is still gliding catches it there (it used to keep sliding under the finger
@@ -1570,6 +1572,7 @@ async function press(id) {
     case 'store': { // 0.8.14: with the shop mark on, the shop opens on the thing the coins now reach, with a ring on it
       const M = shopMarkNow();
       G.shopHand = null;
+      if (G.tourTaste && G.tourTaste.seq === G.scrSeq && !earlyDays()) { const k = G.tourTaste.key; G.tourTaste = null; G.tourShop = null; if (storeItem(k, { wallet: save.wallet })) { openStoreOn(k); G.detail = k; break; } } // 0.8.17 the shop tour's free taste: its sheet, Try it free
       if (M.pick && (M.on || G.screen === 'pause')) openStoreOn(M.pick.key); else openStore('deals'); // (the pause page's banner names the pick: it opens on it)
       break;
     }
@@ -3627,7 +3630,7 @@ const SHOP_HAND_LEN = 6;
 function drawShopHand() {
   const M = shopMarkNow();
   if (!G.shopHand) {
-    if (save.seen.shopHand || !M.on || !M.pick || G.mapTravel || G.treasure || modalOpen() || G.settingsOpen || G.screenT < 0.8 || !G.shopBtn || G.shopBtn.t !== G.t) return;
+    if (save.seen.shopHand || G.tourShop || (G.tourTaste && G.tourTaste.seq === G.scrSeq) || !M.on || !M.pick || G.mapTravel || G.treasure || modalOpen() || G.settingsOpen || G.screenT < 0.8 || !G.shopBtn || G.shopBtn.t !== G.t) return;
     G.shopHand = { t0: G.t, key: M.pick.key }; save.seen = { ...save.seen, shopHand: 1 }; persist();
   }
   const H = G.shopHand, el = G.t - H.t0, B = G.shopBtn;
@@ -3649,6 +3652,87 @@ function drawShopHand() {
   const per = 1.1, q = save.calm ? 0.5 : (el % per) / per, press = q > 0.4 && q < 0.7, hs = Math.min(B.h * 1.3, 56 * u);
   teachHand(ctx, B.x + B.w * 0.8, B.y + B.h * (press ? 0.5 : 0.66), hs, press, a); // on the right half: the coin count stays readable
 }
+// ---- 0.8.17 the first levels' tour (src/tour.js holds the rules; mykee: "introduce the user to the settings and
+// everything in the pause menu, and shop too"; "many users feel there are too many buttons"): no new buttons, a word
+// at most; the gold ring and the teaching hand on what is already there, each once. Any touch ends a step and still
+// does its job (the pointer handler); a step lives on its own screen only (it ends when the screen changes).
+const tourLv = () => (G.li >= 0 && !G.demo && G.level ? G.level.id : 0);
+function tourStart(step) { TR.tourMark(save, step); persist(); }
+// the pause button, once level 1 is won: the first quiet spell of play (3 s in, hands off 2.5 s, nothing else showing)
+function tourPauseHud(x, y, d) {
+  const sim = G.sim;
+  if (!G.tourPause) {
+    if (TR.tourSeen(save, 'pauseBtn') || G.screen !== 'play' || !sim || sim.state !== 'play') return;
+    const quiet = G.held.size === 0 && sim.t >= TR.TOUR.pauseAfter && G.t - (G.touchAt || 0) >= TR.TOUR.pauseIdle;
+    const busy = fuseIntroOn() || !!G.teach || !!G.toast || G.toasts.length > 0 || !!G.hint || !!G.hintShow || !!G.card || !!G.endCard || !!G.slow || modalOpen() || (G.stkHint != null && G.t - G.stkHint < 6) || !!G.roosterCoach;
+    if (!TR.tourMay(save, 'pauseBtn', { screen: G.screen, levelId: tourLv(), won1: bestStarsOf(1) > 0, quiet, busy })) return;
+    G.tourPause = { t0: G.t, run: G.run }; tourStart('pauseBtn'); audio.play('hud_pop', { vol: 0.55 });
+  }
+  const T = G.tourPause, look = G.screen === 'play' && T.run === G.run ? focusLook({ t0: T.t0, dur: TR.TOUR.pauseLen, point: true }, G.t, save.calm) : null;
+  if (!look) { G.tourPause = null; return; }
+  const u = ui.u, ts = 15 * u, tw = ui.measure('Pause', ts) + 20 * u, th = 26 * u, hs = 44;
+  focusDraw(ctx, ui, look, { x, y, w: d, h: d }, 15 * u, u, { x: x + d * 0.6, y: y + d * 0.7, size: hs });
+  // one word, beside the hand (clear of the finger), on a dark pill
+  const px = x + d * 0.6 + hs * 0.55 * u, py = y + d + 10 * u;
+  ctx.save(); ctx.globalAlpha = look.a;
+  ui.roundRect(px, py, tw, th, th / 2); ctx.fillStyle = 'rgba(30,14,4,0.78)'; ctx.fill(); ctx.lineWidth = 2 * u; ctx.strokeStyle = '#fff3a8'; ctx.stroke();
+  ui.text('Pause', px + tw / 2, py + th / 2 + 0.5 * u, { size: ts, align: 'center', color: '#fff', noRecord: true });
+  ctx.restore();
+}
+// the pause page has just opened (drawPause): the pause button is found, and the first time, the page's tour
+function tourPauseOpened() {
+  G.ppTour = null;
+  if (G.screen !== 'pause') return;
+  if (!TR.tourSeen(save, 'pauseBtn') && G.li >= 0) tourStart('pauseBtn'); // he found it by himself: no pointing at it later
+  if (TR.tourMay(save, 'pausePage', { screen: 'pause', levelId: tourLv(), busy: modalOpen() || G.settingsOpen })) { G.ppTour = { t0: G.t, seq: G.scrSeq, step: -1 }; tourStart('pausePage'); }
+}
+// drawn over the pause page: its sections in turn (the ring speed, the switches, Resume; Calm: the three, steady);
+// with no page tour running, the shop's (level 3 won) on the Shop tile
+function tourPausePage(s) {
+  const T = G.ppTour;
+  if (!T) { if (G.ppTiles && G.ppTiles.shop) drawShopTour(G.ppTiles.shop); return; }
+  const R = G.ppTourR || {}, Lk = TR.tourPageAt(G.t - T.t0, save.calm, { rs: !!R.rs, snd: !!R.snd, go: !!R.go });
+  if (T.seq !== G.scrSeq || Lk.done || modalOpen() || G.settingsOpen) { G.ppTour = null; return; }
+  if (!Lk.on.length) return;
+  if (Lk.step !== T.step) { T.step = Lk.step; audio.play('score_tick', { pitch: 1 + 0.12 * (Lk.step || 0), vol: 0.6 }); }
+  const p = save.calm ? 0 : 0.5 - 0.5 * Math.cos(((G.t - T.t0 - TR.TOUR.pageDelay) / TR.TOUR.pageStep) * Math.PI * 2);
+  for (const k of Lk.on) if (R[k]) focusDraw(ctx, ui, { a: Lk.a, p, bob: 0, press: false, point: false }, R[k], 16 * s, s);
+}
+// the eggs and outfits that could be the shop tour's free taste (each tried once ever: director.js canTry)
+function tourShopItems() {
+  const w = save.wallet, out = [], ok = (key) => { try { return !!storeItem(key, { wallet: w }); } catch (e) { return false; } };
+  for (const id of E.SKIN_ORDER) if (id !== 'classic') out.push({ key: 'skin:' + id, owned: (w.skins || []).includes(id), canTry: DR.canTry(save, 'skin', id, false) && ok('skin:' + id) });
+  for (const id of E.HEN_SKIN_ORDER) if (id !== 'classic' && !E.HEN_SKINS[id].premium) out.push({ key: 'hen:' + id, owned: (w.henSkins || []).includes(id), canTry: DR.canTry(save, 'hen', id, false) && ok('hen:' + id) });
+  return out;
+}
+// the shop, once level 3 is won (map or pause page; B: the shop button on this page): the ring and the hand on it and,
+// in a bubble, one egg to try free. A tap on the shop from that same page opens on that egg (its sheet: Try it free).
+// It shows the thing, never its price.
+function drawShopTour(B) {
+  if (!G.tourShop) {
+    if (TR.tourSeen(save, 'shop') || !B || G.screenT < 0.8) return;
+    const busy = !!(G.mapTravel || G.treasure || modalOpen() || G.settingsOpen || G.shopHand || G.ppTour);
+    if (!TR.tourMay(save, 'shop', { screen: G.screen, levelId: tourLv(), busy })) return;
+    G.tourShop = { t0: G.t, seq: G.scrSeq, key: TR.shopTaste(tourShopItems()) }; G.tourTaste = G.tourShop.key ? { key: G.tourShop.key, seq: G.scrSeq } : null; tourStart('shop'); audio.play('hud_pop', { vol: 0.6 });
+  }
+  const T = G.tourShop, look = T.seq === G.scrSeq && B && !modalOpen() ? focusLook({ t0: T.t0, dur: TR.TOUR.shopLen, point: true }, G.t, save.calm) : null;
+  if (!look) { G.tourShop = null; return; }
+  const u = ui.u, A = ui.A;
+  focusDraw(ctx, ui, look, B, 14 * u, u, { x: B.x + B.w * 0.74, y: B.y + B.h * 0.62, size: 44 });
+  if (!T.key) return;
+  // the bubble: the egg (or outfit) big, "Try free" (under the button on the map, over the tile on the pause page)
+  const txt = 'Try free', ts = 17 * u, ph = 50 * u, bh = 62 * u, bw = ph + ui.measure(txt, ts) + 36 * u, down = B.y + B.h / 2 < A.cy;
+  const bx = clamp(B.x + B.w * 0.3 - bw / 2, A.x + 10 * u, A.x1 - 10 * u - bw), by = down ? B.y + B.h + 16 * u : B.y - 16 * u - bh, k = save.calm ? 1 : 0.7 + 0.3 * (1 - (1 - Math.min(1, (G.t - T.t0) / 0.35)) ** 3);
+  const tx = clamp(B.x + B.w * 0.3, bx + 22 * u, bx + bw - 22 * u), ty = down ? by : by + bh, d = down ? -1 : 1;
+  ctx.save(); ctx.globalAlpha = look.a; ctx.translate(tx, ty); ctx.scale(k, k); ctx.translate(-tx, -ty);
+  ui.roundRect(bx, by + 3 * u, bw, bh, 18 * u); ctx.fillStyle = 'rgba(30,14,4,0.35)'; ctx.fill();
+  ui.roundRect(bx, by, bw, bh, 18 * u); ctx.fillStyle = '#fff8e6'; ctx.fill(); ctx.lineWidth = 2.5 * u; ctx.strokeStyle = '#e0a020'; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tx - 10 * u, ty); ctx.lineTo(tx, ty - d * 11 * u); ctx.lineTo(tx + 10 * u, ty); ctx.closePath(); ctx.fillStyle = '#fff8e6'; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(tx - 10 * u, ty); ctx.lineTo(tx, ty - d * 11 * u); ctx.lineTo(tx + 10 * u, ty); ctx.stroke();
+  markArt(T.key, bx + 14 * u + ph / 2, by + bh / 2 + 2 * u, ph * 0.9);
+  ui.text(txt, bx + 22 * u + ph, by + bh / 2 + 0.5 * u, { size: ts, color: '#2d6a1c', maxW: bw - ph - 30 * u, noRecord: true });
+  ctx.restore();
+}
 // 0.8.14 the same mark on every way into Settings (home's gear, the pause button, the pause page's tile), from level 2
 // until Settings was opened once (save.seen.setOpen)
 const settingsMarkOn = () => !!save && !save.seen.setOpen && (save.unlocked || 1) >= 2 && !firstRun();
@@ -3666,6 +3750,7 @@ function purseBtn(x, y, w, h, size) {
   if (M.on) { const r = Math.min(11 * ui.u, h * 0.26); markBadge(Math.min(x + w - r * 0.35, ui.A.x1 - r - 1), Math.max(y + r * 0.2, ui.A.y + r + 1), r, G.t); }
   if (sc !== 1) ctx.restore();
   if (M.on) G.shopBtn = { x, y, w, h, t: G.t }; // where the map's one-time hand points
+  G.shopBtnAny = { x, y, w, h, t: G.t }; // (the shop tour's ring, whatever the mark)
 }
 
 const DIAG_MARK = /^(iap:|deal:|buy:|item:|chick:|charge:|hen:|skin:|kit:|hset:|try:|sample$|bonus$|ad:|go$|retry$|next$|home:chest$|tr:)/;
@@ -6203,6 +6288,7 @@ function drawHUD() {
   // ---- live: what the layer left out
   const row1 = Y.row1;
   if (V.pause) { ui.button('pause', '', Y.X0, Y.Y0, Y.bs, Y.bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u }); setMarkAt(Y.X0, Y.Y0, Y.bs, Y.bs, true); }
+  tourPauseHud(Y.X0, Y.Y0, Y.bs); // 0.8.17: once level 1 is won, a quiet spell: where the pause button is (tour.js)
   if (V.bump && !Y.noScore) {
     ctx.save();
     { const k = 1 + 0.22 * HUDS.bump; ctx.translate(Y.sx, Y.sy); ctx.scale(k, k); ctx.translate(-Y.sx, -Y.sy); }
@@ -8098,15 +8184,17 @@ function bossPortrait(ctx, bossId, x, y, w, h, t) { if (bossId === 'blizzard') r
 // 0.8.14 (mykee: "not properly aligned ... not properly shown with definite icons ... a different kind of color coding
 // for this pause menu ... for different buttons"): equal tiles, each its own colour, the icon and the label INSIDE the
 // tile; a short last row is centred. items: [id, label, icon, face (a kind name or a palette), mark?]
-function pauseTiles(items, s, cols = 3) {
-  const gap = 10 * s, th = (cols > 3 ? 66 : 78) * s, rows = Math.ceil(items.length / cols);
+// th0 (0.8.17 tour817): a taller tile when the page has the room (the icon grows with it, up to a third more)
+function pauseTiles(items, s, cols = 3, th0 = 0) {
+  const gap = 10 * s, th1 = (cols > 3 ? 66 : 78) * s, th = th0 || th1, rows = Math.ceil(items.length / cols), grow = clamp(th / th1, 1, 1.3);
   return { h: rows * th + (rows - 1) * gap, gap: 12 * s, draw: (x, y, w) => {
     items.forEach(([id, label, icon, face, mark], i) => {
       // 0.8.16: a short last row spans the column too (same left and right edges as the row above)
       const r = Math.floor(i / cols), c = i % cols, inRow = Math.min(cols, items.length - r * cols), tw = (w - gap * (inRow - 1)) / inRow;
       const bx = x + c * (tw + gap), by = y + r * (th + gap);
       const B = ui.button(id, '', bx, by, tw, th, { ...(typeof face === 'string' ? { kind: face } : { face }), round: 18 * s });
-      const isz = (cols > 3 ? 28 : 32) * s, ls = (cols > 3 ? 14.5 : 16) * s, cy = B.cy;
+      const isz = (cols > 3 ? 28 : 32) * s * grow, ls = (cols > 3 ? 14.5 : 16) * s, cy = B.cy;
+      if (G.screen === 'pause') (G.ppTiles || (G.ppTiles = {}))[id] = { x: bx, y: by, w: tw, h: th }; // (the tour's ring finds it)
       icon(ctx, bx + tw / 2, cy - ls * 0.62 - 2 * s, isz);
       ui.text(label, bx + tw / 2, cy + isz * 0.5 + 4 * s, { size: ls, align: 'center', color: '#fff', stroke: 'rgba(30,14,4,0.55)', strokeW: 3 * s, maxW: tw - 10 * s, tag: 'pause:lbl:' + id, group: 'btn:' + id });
       if (mark) mark(bx, by, tw, th);
@@ -8136,9 +8224,10 @@ function pauseTileItems() {
 }
 // the pause page's ring speed row (0.8.17): the level card's little ring turning at the chosen speed, then the same
 // - / bars / + as Settings (press ids rs:-, rs:+, rs:<i>; a sideways drag slides the bars). It applies at once.
-function pauseRingRow(x, y, w, s, h) {
+// bare (tour817): drawn inside the page's settings group, whose well it shares
+function pauseRingRow(x, y, w, s, h, bare = false) {
   const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
-  ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+  if (!bare) ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
   const rr = Math.min(16 * s, h * 0.3), rcx = x + 12 * s + rr + 2 * s, rcy = y + h / 2, dt = clamp(G.t - (G.rsT ?? G.t), 0, 0.1), ang = save.calm ? 0.6 : (G.rsAng = (G.rsAng || 0) + dt * 1.6 * sp);
   G.rsT = G.t;
   ctx.save(); ctx.lineCap = 'round';
@@ -8171,90 +8260,107 @@ function foeStage(kd, i, s, iw) {
     ui.text(plan.cap, x + w / 2, sy + stH + 18 * s, { size: 16.5 * s, align: 'center', color: '#2d6a1c', maxW: w - 24 * s, tag: 'pause:cap' + i });
   } };
 }
+// 0.8.17 tour817 (mykee: "optimize the UI/UX for the pause menu: remove empty spaces, right sizes for the sections ...
+// Take reference of popular games menu options"; "many users feel there are too many buttons"). The big casual games'
+// pause page: a title strip (Paused, the level's name), where the level stands (the goal, the clock and the three
+// stars in one card), then the controls in the thumb zone: the settings a player changes mid-level as one group (ring
+// speed; sound, music, vibration), the tiles, and Resume, the biggest, lowest. Everything on one column grid (one
+// width, one left and right edge). A short page is never left with a band: the tiles, Resume, the settings and the
+// star rows first grow to their tallest, then what is left is shared out as even gaps. A long one (villains) scrolls
+// above the controls. A phone on its side: what the level is on the left, the controls on the right (the right thumb).
 function drawPause() {
   ui.calm = save.calm;
   introBackdrop();
   const u = ui.u, A = ui.A, C = ui.C, sim = G.sim, st = sim.stats(), L = G.level;
-  const s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, iw = Math.min(A.w - 2 * pad, 520 * s), x0 = A.cx - iw / 2;
+  const s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, wide = A.w > A.h * 1.15;
   const pg = G.ppage || (G.ppage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
-  if (pg.lid !== G.scrSeq) { pg.lid = G.scrSeq; pg.y = 0; pg.v = 0; G.pauseKinds = sim.state === 'play' && G.li >= 0 ? villainKinds(L, sim).filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 8) : []; }
+  if (pg.lid !== G.scrSeq) { pg.lid = G.scrSeq; pg.y = 0; pg.v = 0; G.pauseKinds = sim.state === 'play' && G.li >= 0 ? villainKinds(L, sim).filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 8) : []; tourPauseOpened(); }
   const kinds = G.pauseKinds || [];
   const k = ui.pop(G.screenT, 0.25);
   ctx.save();
   if (k !== 1) { ctx.translate(A.cx, A.cy); ctx.scale(k, k); ctx.translate(-A.cx, -A.cy); }
-  const tb = portal.showMuteButton, wide = A.w > A.h * 1.15;
-  const blocks = [
-    { h: 46 * s, gap: 0, draw: (x, y, w) => ui.ribbon('Paused', x + w / 2, y, clamp(ui.measure('Paused', 28 * s) + 80 * s, 170 * s, w), 46 * s, { s, color: '#3a80ea', size: 28 * s, tag: 'pause:title' }) },
-    { h: 30 * s, gap: 6 * s, tight: true, draw: (x, y, w) => ui.text(G.li >= 0 ? `Level ${L.id} · ${L.name}` : L.name, x + w / 2, y + 15 * s, { size: 20 * s, align: 'center', maxW: w, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:name' }) },
-    // the goal and the clock, and the sound and music toggles
-    { h: 56 * s, gap: 12 * s, draw: (x, y, w) => {
-      const bw = tb ? 2 * 48 * s + 8 * s : 0, gw = w - bw - (tb ? 10 * s : 0);
-      ui.well(x, y, gw, 56 * s, { s, a: '#f3e2bd', b: '#fbf0d6' });
-      const a = `${st.saved}/${st.target} home`, b = sim.timeLimit ? fmtTime(sim.timeLeft) : '', aw = 32 * s + ui.measure(a, 20 * s), bw2 = b ? 32 * s + ui.measure(b, 20 * s) : 0, gp = b ? 26 * s : 0;
-      let gx = x + gw / 2 - (aw + gp + bw2) / 2;
-      drawEggIcon(ctx, gx + 12 * s, y + 28 * s, 30 * s, 'alive'); ui.text(a, gx + 30 * s, y + 28 * s, { size: 20 * s, color: st.saved >= st.target ? C.good : C.ink, tag: 'pause:goal' });
-      if (b) { gx += aw + gp; pictoClock(ctx, gx + 12 * s, y + 28 * s, 28 * s); ui.text(b, gx + 30 * s, y + 28 * s, { size: 20 * s, color: sim.timeLeft <= 10 ? C.bad : C.warn, tag: 'pause:time' }); }
-      if (tb) {
-        ui.button('sfx', '', x + w - bw, y + 4 * s, 48 * s, 48 * s, { kind: save.sfx ? 'tertiary' : 'off', icon: ICON.sound(save.sfx), iconS: 1.2, round: 14 * s });
-        ui.button('music', '', x + w - 48 * s, y + 4 * s, 48 * s, 48 * s, { kind: save.music ? 'tertiary' : 'off', icon: ICON.note(save.music), iconS: 1.2, round: 14 * s });
-      }
-    } },
-    (() => { const c = G.li >= 0 && !earlyDays() ? pageLead('pause').lead : null; return c ? leadBlock(c, s, { gap: 12 * s, tag: 'pause:lead', quiet: true }) : null; })(), // 0.8.15: what waits for him or what he is closest to (the Conductor's one thing)
-    // the hint and Skip level: two equal halves, each with its icon and the video mark (Skip only when src/skip.js allows it)
-    G.hint ? lineBlock('Hint…', 18 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:hint', gap: 14 * s })
-      : sim.state !== 'play' && !skipNow() ? null : { h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
-        const sk = skipNow(), hn = sim.state === 'play', hw = sk && hn ? (w - 10 * s) / 2 : w, tk = save.wallet.tickets.skip > 0;
-        if (hn) ui.button('hint', 'Hint', x, y, hw, 58 * s, { kind: 'ad', ad: !ads.premium, icon: lampIcon, iconS: 1.25, size: 19 * s, round: 18 * s });
-        if (sk) ui.button('pause:skip', 'Skip level', x + (hn ? hw + 10 * s : 0), y, hw, 58 * s, { ...(tk ? { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t) } : { face: ui.faceOf('#5a6ee0'), ad: !ads.premium, icon: ICON.next }), iconS: 1.15, size: 19 * s, round: 18 * s });
+  const iw = wide ? Math.min((A.w - 3 * pad) / 2, 520 * s) : Math.min(A.w - 2 * pad, 520 * s);
+  const lx = wide ? A.cx - iw - pad / 2 : A.cx - iw / 2, rx = wide ? A.cx + pad / 2 : lx;
+  const tb = portal.showMuteButton, vib = __APP__ || (typeof navigator !== 'undefined' && !!navigator.vibrate);
+  const TG = [...(tb ? [['sfx', ICON.sound(save.sfx), !!save.sfx, '#3a80ea'], ['music', ICON.note(save.music), !!save.music, '#9a5ae8']] : []), ...(vib ? [['vibe', vibeIcon(save.vibe !== false), save.vibe !== false, '#e8702f']] : [])]; // (Settings' own badge colours)
+  const goalsOn = !!(G.li >= 0 && G.goals && sim.state === 'play'), TI = pauseTileItems(), R = (G.ppTourR = {});
+  G.ppTiles = {};
+  // gi: how much the level's side grows (the star rows), gf: the controls (tiles, Resume, the settings rows); 0..1
+  const build = (gi, gf) => {
+    const rowH = (32 + 8 * gi) * s, topH = (54 + 6 * gi) * s, TH = (78 + 20 * gf) * s, BTN = (60 + 10 * gf) * s, RH = (52 + 6 * gf) * s, TGH = (44 + 6 * gf) * s;
+    const stH = topH + (goalsOn ? 3 * rowH + 8 * s : 0), gh = 8 * s + RH + (TG.length ? 8 * s + TGH : 0) + 8 * s;
+    const info = [
+      { h: 46 * s, gap: 0, draw: (x, y, w) => ui.ribbon('Paused', x + w / 2, y, clamp(ui.measure('Paused', 28 * s) + 80 * s, 170 * s, w), 46 * s, { s, color: '#3a80ea', size: 28 * s, tag: 'pause:title' }) },
+      { h: 30 * s, gap: 6 * s, tight: true, draw: (x, y, w) => ui.text(G.li >= 0 ? `Level ${L.id} · ${L.name}` : L.name, x + w / 2, y + 15 * s, { size: 20 * s, align: 'center', maxW: w, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:name' }) },
+      // where the level stands: the eggs home and the clock, then its three stars and how each stands right now
+      { h: stH, gap: 12 * s, draw: (x, y, w) => {
+        ui.well(x, y, w, stH, { s, a: '#f3e2bd', b: '#fbf0d6' });
+        const cy = y + topH / 2, a = `${st.saved}/${st.target} home`, b = sim.timeLimit ? fmtTime(sim.timeLeft) : '', aw = 32 * s + ui.measure(a, 20 * s), bw2 = b ? 32 * s + ui.measure(b, 20 * s) : 0, gp = b ? 26 * s : 0;
+        let gx = x + w / 2 - (aw + gp + bw2) / 2;
+        drawEggIcon(ctx, gx + 12 * s, cy, 30 * s, 'alive'); ui.text(a, gx + 30 * s, cy, { size: 20 * s, color: st.saved >= st.target ? C.good : C.ink, tag: 'pause:goal' });
+        if (b) { gx += aw + gp; pictoClock(ctx, gx + 12 * s, cy, 28 * s); ui.text(b, gx + 30 * s, cy, { size: 20 * s, color: sim.timeLeft <= 10 ? C.bad : C.warn, tag: 'pause:time' }); }
+        if (!goalsOn) return;
+        const ok = goalsLive(sim);
+        G.goals.forEach((g, i) => {
+          const ry = y + topH + 4 * s + rowH * (i + 0.5);
+          ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(x + 10 * s, ry - rowH / 2, w - 20 * s, 1.2 * s);
+          drawStar(ctx, x + 26 * s, ry, 11 * s, ok[i]);
+          ui.text(g.long, x + 48 * s, ry, { size: 16.5 * s, color: ok[i] ? C.ink : 'rgba(80,50,25,0.6)', maxW: w - 96 * s, tag: 'pause:goal' + i });
+          if (!ok[i]) pictoCross(ctx, x + w - 24 * s, ry, 22 * s);
+        });
       } },
-    // the three stars of this level and how each stands right now
-    G.li >= 0 && G.goals && sim.state === 'play' ? { h: 3 * 32 * s + 12 * s, gap: 14 * s, draw: (x, y, w) => {
-      ui.well(x, y, w, 3 * 32 * s + 12 * s, { s, a: '#f3e2bd', b: '#fbf0d6' });
-      const ok = goalsLive(sim);
-      G.goals.forEach((g, i) => {
-        const ry = y + 6 * s + 32 * s * (i + 0.5);
-        if (i) { ctx.fillStyle = 'rgba(122,80,40,0.16)'; ctx.fillRect(x + 10 * s, ry - 16 * s, w - 20 * s, 1.2 * s); }
-        drawStar(ctx, x + 26 * s, ry, 11 * s, ok[i]);
-        ui.text(g.long, x + 48 * s, ry, { size: 16.5 * s, color: ok[i] ? C.ink : 'rgba(80,50,25,0.6)', maxW: w - 96 * s, tag: 'pause:goal' + i });
-        if (!ok[i]) pictoCross(ctx, x + w - 24 * s, ry, 22 * s);
-      });
-    } } : null,
-    ...(kinds.length ? [pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeStage(kd, i, s, iw))] : []),
-  ].filter(Boolean);
-  // 0.8.17 (mykee: "Resume button should be below, right where the thumb is"; "scroll speed button should be present in
-  // the game itself and shop button too"): the controls stand in one block at the bottom, in thumb reach: the tiles
-  // (Restart, Levels, Home / Settings, Practice, Shop), the ring speed row (live: the level runs at it on Resume) and
-  // Resume, full width, where PLAY sits on the level card. What the level is (goal, stars, villains) scrolls above them.
-  // A phone on its side keeps the tiles in the left column's list; Resume and the ring speed row stand under it.
-  const BTN = 56 * s, RH = 56 * s, gB = 10 * s;
-  const TI = pauseTileItems(), tiles = pauseTiles(TI, s, wide ? TI.length : 3); // (on its side: one row)
-  const land = A.w > A.h * 1.15 && kinds.length;
-  const foot = (x, w, tl) => { // draws from the bottom of the safe rect up; returns the top of what it drew
-    let y = A.y1 - 6 * s - BTN;
-    ui.button('resume', 'Resume', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: ICON.play, size: 27 * s });
-    y -= gB + RH; pauseRingRow(x, y, w, s, RH);
-    if (tl) { y -= gB + tl.h; tl.draw(x, y, w); }
-    return y;
+      (() => { const c = G.li >= 0 && !earlyDays() ? pageLead('pause').lead : null; return c ? leadBlock(c, s, { gap: 12 * s, tag: 'pause:lead', quiet: true }) : null; })(), // 0.8.15: what waits for him or what he is closest to (the Conductor's one thing)
+      // the hint and Skip level: two equal halves, each with its icon and the video mark (Skip only when src/skip.js allows it)
+      G.hint ? lineBlock('Hint…', 18 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:hint', gap: 14 * s })
+        : sim.state !== 'play' && !skipNow() ? null : { h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
+          const sk = skipNow(), hn = sim.state === 'play', hw = sk && hn ? (w - 10 * s) / 2 : w, tk = save.wallet.tickets.skip > 0;
+          if (hn) ui.button('hint', 'Hint', x, y, hw, 58 * s, { kind: 'ad', ad: !ads.premium, icon: lampIcon, iconS: 1.25, size: 19 * s, round: 18 * s });
+          if (sk) ui.button('pause:skip', 'Skip level', x + (hn ? hw + 10 * s : 0), y, hw, 58 * s, { ...(tk ? { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t) } : { face: ui.faceOf('#5a6ee0'), ad: !ads.premium, icon: ICON.next }), iconS: 1.15, size: 19 * s, round: 18 * s });
+        } },
+      ...(kinds.length ? [pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeStage(kd, i, s, iw))] : []),
+    ].filter(Boolean);
+    const foot = [
+      // the settings a player changes mid-level, as one group: the ring speed (live: the level runs at it on Resume),
+      // then sound, music and vibration side by side (the same switches as Settings)
+      { h: gh, gap: 12 * s, draw: (x, y, w) => {
+        ui.well(x, y, w, gh, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+        pauseRingRow(x, y + 8 * s, w, s, RH, true);
+        R.rs = { x, y, w, h: 8 * s + RH + 4 * s };
+        if (!TG.length) return;
+        const n = TG.length, tw = (w - 16 * s - 8 * s * (n - 1)) / n, ty = y + 16 * s + RH;
+        TG.forEach(([id, icon, on, col], i) => ui.button(id, '', x + 8 * s + i * (tw + 8 * s), ty, tw, TGH, { ...(on ? { face: ui.faceOf(col) } : { kind: 'off' }), icon, iconS: 1.3, round: 14 * s }));
+        R.snd = { x, y: ty - 4 * s, w, h: TGH + 12 * s };
+      } },
+      pauseTiles(TI, s, 3, TH),
+      { h: BTN, gap: 12 * s, draw: (x, y, w) => { ui.button('resume', 'Resume', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: ICON.play, size: 27 * s }); R.go = { x, y, w, h: BTN }; } },
+    ];
+    return { info, foot };
   };
-  // a short list: the room it leaves is shared out as air between its blocks (never one empty band)
-  const air = (B, Vh) => { const H = pageColH(B, s) + 18 * s; if (H < Vh) { const n = B.filter((b) => !b.tight).length, add = Math.min((Vh - H) / (n + 1), 40 * s); for (const b of B) if (!b.tight) b.gap = (b.gap ?? 10 * s) + add; } return B; }; // (the level's name stays under its ribbon)
-  if (land) { // a phone on its side: the controls on the left, the villains scroll on their own on the right
-    const lw = Math.min((A.w - 3 * pad) * 0.5, 460 * s), rw = Math.min(A.w - 3 * pad - lw, 520 * s), lx = A.cx - (lw + rw + pad) / 2, rx = lx + lw + pad;
-    const nf = 2 + kinds.length; // the section heading, then the villain cards
-    const top = foot(lx, lw, null);
-    G.ppRect = { x: A.x, y: A.y + 6 * u, w: rx - pad / 2 - A.x, h: top - 8 * s - (A.y + 6 * u) };
-    const L0 = blocks.slice(0, blocks.length - nf + 1); L0.splice(Math.min(3, L0.length), 0, tiles);
-    pageScroll(air(L0, G.ppRect.h), pg, G.ppRect, lx, lw, s);
-    const pr = G.ppageR || (G.ppageR = { y: 0, v: 0, max: 0, t: G.t, lid: null });
-    if (pr.lid !== pg.lid) { pr.lid = pg.lid; pr.y = 0; pr.v = 0; }
-    G.ppRectR = { x: rx - pad / 2, y: A.y + 6 * u, w: A.x1 - (rx - pad / 2), h: A.h - 12 * u };
-    pageScroll([pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeStage(kd, i, s, rw))], pr, G.ppRectR, rx, rw, s);
-  } else {
-    const top = foot(x0, iw, wide ? null : tiles);
-    G.ppRect = { x: A.x, y: A.y + 6 * u, w: A.w, h: top - 8 * s - (A.y + 6 * u) }; G.ppRectR = null;
-    if (wide) blocks.splice(Math.min(3, blocks.length), 0, tiles);
-    pageScroll(air(blocks, G.ppRect.h), pg, G.ppRect, x0, iw, s);
+  const top = A.y + 6 * u, bot = A.y1 - 6 * s, gapV = 6 * s;
+  const iNeed = (P) => pageColH(P.info, s) + 18 * s, fNeed = (P) => pageColH(P.foot, s) - P.foot[0].gap;
+  // the room left is first grown into (up to the tallest sizes), then shared out as even gaps between the sections
+  const slots = (B) => B.filter((b, i) => i > 0 && !b.tight);
+  const share = (S, free, n) => { if (free <= 0 || !n) return 0; const add = Math.min(free / n, 48 * s); for (const b of S) b.gap = (b.gap ?? 10 * s) + add; return free - add * n; };
+  const P0 = build(0, 0), P1 = build(1, 1), gOf = (free, d, k2) => (free > 0 ? clamp(free * k2 / Math.max(1, d), 0, 1) : 0);
+  let P, left = 0;
+  if (!wide) { // one column: the sections, the gap over the controls, and the controls' own gaps share the room alike
+    const g = gOf(bot - top - gapV - iNeed(P0) - fNeed(P0), iNeed(P1) + fNeed(P1) - iNeed(P0) - fNeed(P0), 0.5);
+    P = build(g, g);
+    const S = [...slots(P.info), ...P.foot.slice(1)];
+    left = share(S, bot - top - gapV - iNeed(P) - fNeed(P), S.length + 1);
+  } else { // two panes, each filled on its own: the level's side from the top, the controls from the bottom
+    P = build(gOf(bot - top - iNeed(P0), iNeed(P1) - iNeed(P0), 0.5), gOf(bot - top - fNeed(P0), fNeed(P1) - fNeed(P0), 0.6));
+    left = share(slots(P.info), bot - top - iNeed(P), slots(P.info).length + 1);
+    share(P.foot.slice(1), bot - top - fNeed(P), 3); // (and one share over the group, so its top sits a gap under the edge)
   }
+  if (left > 0) P.info[0].gap = left / 2; // a very tall page: the rest above and below, never one band
+  // the controls, from the bottom of the safe rect up
+  let y = bot;
+  for (let i = P.foot.length - 1; i >= 0; i--) { y -= P.foot[i].h; P.foot[i].draw(rx, y, iw); if (i) y -= P.foot[i].gap; }
+  const ft = wide ? bot : y - gapV;
+  G.ppRect = wide ? { x: A.x, y: top, w: rx - pad / 2 - A.x, h: bot - top } : { x: A.x, y: top, w: A.w, h: ft - top }; G.ppRectR = null;
+  pageScroll(P.info, pg, G.ppRect, lx, iw, s, true);
+  tourPausePage(s);
   ctx.restore();
 }
 
@@ -8466,10 +8572,11 @@ function ringSpeedStrip(x, y, w, s) {
     ui.text('RING SPEED', lx, ty, { size: 14.5 * s, color: C.ink, tag: 'rs:head' });
     ui.text('Too slow? Turn it up', x + w - 14 * s, ty, { size: 13.5 * s, align: 'right', color: C.ink2, maxW: w - ui.measure('RING SPEED', 14.5 * s) - 44 * s, tag: 'rs:hint' });
   } else {
-    const t = 'You can change it any time in Settings', ts = Math.min(13.5 * s, (w - 70 * s) * 20 / ui.measure(t, 20)), tw = ui.measure(t, ts), x1 = x + w / 2 - (tw + 46 * s) / 2;
+    // 0.8.17 tour817: the quickest way back to it is the pause page now (the same row, live), so the line names that
+    const t = 'Change it any time on the pause page', ts = Math.min(13.5 * s, (w - 70 * s) * 20 / ui.measure(t, 20)), tw = ui.measure(t, ts), x1 = x + w / 2 - (tw + 46 * s) / 2;
     pictoCheck(ctx, x1 + 9 * s, ty, 18 * s);
     ui.text(t, x1 + 22 * s, ty, { size: ts, color: '#2d6a1c', tag: 'rs:done' });
-    settingsIcon(ctx, x1 + 22 * s + tw + 14 * s, ty, 20 * s, '#6b3f17', '#f0dcb2');
+    { const px = x1 + 22 * s + tw + 6 * s, d = 18 * s; ui.roundRect(px, ty - d / 2, d, d, 5 * s); ctx.fillStyle = '#6b3f17'; ctx.fill(); ctx.fillStyle = '#f0dcb2'; ctx.fillRect(px + d * 0.27, ty - d * 0.28, d * 0.16, d * 0.56); ctx.fillRect(px + d * 0.57, ty - d * 0.28, d * 0.16, d * 0.56); } // the pause button's two bars
   }
   const cx = rcx + rr + 12 * s, ch = 44 * s;
   ringSpeedCtl(cx, y + H - 8 * s - ch, x + w - 10 * s - cx, s, k, ch);
@@ -10157,6 +10264,7 @@ function drawLevels() {
     ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, ctaX, ctaY, ctaW, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: (wide ? 20 : 23) * u, round: 18 * u });
   }
   waitMark(X1, wmY, 46 * u); // 0.8.17: rewards that waited for a connection, over PLAY's right end
+  drawShopTour(G.shopBtnAny && G.shopBtnAny.t === G.t ? G.shopBtnAny : null); // 0.8.17: once level 3 is won, where the shop is (tour.js)
   drawShopHand(); // 0.8.14: once, the first time the shop mark turns on
   if (S.max > 0 && !calm) { // a thin scroll thumb
     const th = Math.max(30 * u, vh * vh / L.H), ty2 = vt + clamp(S.y / S.max, 0, 1) * (vh - th - 4 * u);
