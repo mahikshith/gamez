@@ -88,6 +88,22 @@ export function pageOf(list, fit, page = 0) {
   const per = fit - 1, pages = Math.ceil(list.length / per), pg = (((page | 0) % pages) + pages) % pages;
   return { items: list.slice(pg * per, pg * per + per), more: { pg, pages } };
 }
+// 0.8.17 (mykee: "at the end of the boosters it shows the same '>>' but it should be in reverse"): the level card's
+// booster row scrolls instead of wrapping round. k is the item at the row's left edge (0..n-fit). At the start a ">>"
+// tile takes the right end, at the end a "<<" tile the left one, in the middle both; an arrow's slot hides the item
+// under it, so no arrow ever sits on a booster. stripStep: the k one page on (dir 1) or back (-1): the next page starts
+// right after the last item shown, the one before ends right before the first, so every item shows on some page.
+export function stripView(n, fit, k = 0) {
+  if (n <= fit) return { k: 0, max: 0, L: false, R: false, first: 0, last: n - 1 };
+  const max = n - fit, kk = Math.max(0, Math.min(max, Math.round(k))), L = kk > 0, R = kk < max;
+  return { k: kk, max, L, R, first: kk + (L ? 1 : 0), last: kk + fit - 1 - (R ? 1 : 0) };
+}
+export function stripStep(n, fit, k, dir) {
+  const v = stripView(n, fit, k);
+  if (!v.max) return 0;
+  const to = dir > 0 ? Math.max(v.k + 1, v.last) : Math.min(v.k - 1, v.first - fit + 1);
+  return Math.max(0, Math.min(v.max, to));
+}
 // Stable display order for UI lists.
 export const BOOSTER_ORDER = ['stone', 'golden', 'time', 'rewind', 'sponge', 'nest', 'snips', 'scare'];
 // the star chests hand out the first five in turn (their rewards were set before the newer boosts)

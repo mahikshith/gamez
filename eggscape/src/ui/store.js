@@ -16,7 +16,7 @@ import { drawEggSkinArt } from '../render/eggskins.js';
 import { pictoPerk } from './picto.js'; // an egg skin's power as one glyph
 import { ICON, C, tint, drawAdBadge } from './ui.js';
 import { themeBack } from './theme.js';
-import { BOOSTERS, BOOSTER_ORDER, pageOf, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin,
+import { BOOSTERS, BOOSTER_ORDER, pageOf, stripView, stripStep, SKINS, SKIN_ORDER, AD_REWARDS, MAX_OWNED, canAfford, canAffordSkin, ownedCount, ownsSkin, equippedSkin,
   CHARGE_PACKS, MAX_CHARGES, HEN_SKINS, HEN_SKIN_ORDER, ownsHenSkin, ITEMS, ITEM_ORDER, itemCount, CHICK_PRICES, ownsChick, skinPerk,
   IAP, COIN_PACKS, iapAvailable, usdHint, BANK_OPEN, BANK_CAP, BUNDLES, bundleParts, bundleTimes, CHICK_IDS,
   KITS, KIT_ORDER, kitPrice, kitSave, kitFull, SETS, SET_ORDER, setAvailable, setPrice, setSave, sampleFor, bundleValue, dailyDeal, DEAL_OFF, unlockPrice, couponHeld } from '../economy.js';
@@ -1897,8 +1897,11 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   // Scarecrow won on the Lucky Spin that cannot be picked is a broken promise), and no tile shrinks: when they do not
   // all fit, the last tile turns the row to its next page
   const fit = Math.max(1, Math.floor((w + gap) / (c + gap) + 0.001));
-  const { items, more } = pageOf(all, fit, state.page || 0);
-  const n = items.length + (more ? 1 : 0);
+  // 0.8.17: with state.scroll ({ k, y }, kept by the caller) the row scrolls: ">>" at the start, "<<" at the end, both
+  // between (economy.js stripView); a tap glides one page (ease-out, at once with Calm). Without it, the pages wrap.
+  const S = state.scroll && all.length > fit && fit >= 3 ? state.scroll : null;
+  const { items, more } = S ? { items: all, more: null } : pageOf(all, fit, state.page || 0);
+  const n = S ? fit : items.length + (more ? 1 : 0);
   // the label: BOOSTERS, or the one just tapped and what it does
   // (0.8.15, a booster's lesson: one he owns, has never picked and this level has a use for is named before any tap,
   // with what it does, and its tile glows; no free booster is given for it)
@@ -1910,8 +1913,18 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   ui.text(str, x + w / 2, y + labH / 2, { size: lab, align: 'center', maxW: w, color: tapped ? C.ink : '#9a5a1c', tag: 'strip:label' });
   // 0.8.16: a full row runs edge to edge (the same left and right edges as the button under it): the room is shared between the tiles
   const jg = n === fit && n > 1 ? (w - n * c) / (n - 1) : gap, ty = y + labH + 2 * s, tw = n * c + (n - 1) * jg, x0 = x + w / 2 - tw / 2;
+  let V = null, win = null;
+  if (S) { // the scroller: k (whole items) is where it is going, S.y (items, eased) where it is drawn
+    V = stripView(all.length, fit, S.k); S.k = V.k; S.n = all.length; S.fit = fit;
+    const dt = Math.max(0, Math.min(0.1, t - (S.t ?? t))); S.t = t;
+    if (S.y == null || ui.calm) S.y = V.k; else { S.y += (V.k - S.y) * (1 - Math.exp(-11 * dt)); if (Math.abs(V.k - S.y) < 0.004) S.y = V.k; }
+    win = { x: x0 + (V.L ? c + jg : 0) - 1, x1: x0 + tw - (V.R ? c + jg : 0) + 1 };
+    ctx.save(); ctx.beginPath(); ctx.rect(win.x, ty - 8 * s, win.x1 - win.x, c + 16 * s); ctx.clip();
+  }
   items.forEach((it, i) => {
-    const cx = x0 + i * (c + jg), id = it.id, B = BOOSTERS[id], on = it.own && selected.has(id);
+    const cx = x0 + (S ? i - S.y : i) * (c + jg), id = it.id, B = BOOSTERS[id], on = it.own && selected.has(id);
+    if (S && (cx + c < win.x || cx > win.x1)) return;
+    const r0 = ui.rects.length, b0 = ui.buttons.length, part = S && (cx < win.x - 0.5 || cx + c > win.x1 + 0.5); // half under an arrow while it glides: drawn, not tappable
     if (it.ad) {
       ui.button('adboost', '', cx, ty, c, c, { kind: 'ad', round: 14 * s });
       drawBoosterIcon(ctx, id, cx + c / 2, ty + c * 0.38, c * 0.5, t);
@@ -1941,7 +1954,15 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
       drawCoin(ctx, cx + c / 2 - pw / 2 + ps * 0.72, py + ps * 0.72, ps * 0.5, t);
       ui.text(String(B.price), cx + c / 2 - pw / 2 + ps * 1.3, py + ps * 0.74, { size: ps, color: afford ? '#ffe27a' : '#d8c8a8', maxW: pw - ps * 1.4, noRecord: true });
     }
+    if (part) { ui.rects.length = r0; ui.buttons.length = b0; }
   });
+  if (S) {
+    ctx.restore();
+    const pages = [0]; for (let q = 0; q < 20; q++) { const nk = stripStep(all.length, fit, pages[pages.length - 1], 1); if (nk === pages[pages.length - 1]) break; pages.push(nk); }
+    const pg = Math.max(0, pages.findIndex((q) => q >= V.k));
+    if (V.L) stripArrow(ui, ctx, 'strip:back', x0, ty, c, s, -1, pages.length, pg);
+    if (V.R) stripArrow(ui, ctx, 'strip:more', x0 + (fit - 1) * (c + jg), ty, c, s, 1, pages.length, pg);
+  }
   if (state.attn && items.length) stripAttn(ui, ctx, x0, ty, tw, c, jg, n, t, s, state.attn);
   if (more) { // the row's next page: an arrow, and a dot for each page
     const cx = x0 + items.length * (c + jg), mx = cx + c / 2, my = ty + c * 0.4, a = c * 0.13;
@@ -1952,6 +1973,17 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
     for (let i = 0; i < more.pages; i++) { ctx.beginPath(); ctx.arc(dx0 + i * dg, dy, dr, 0, Math.PI * 2); ctx.fillStyle = i === more.pg ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.fill(); }
     ctx.restore();
   }
+}
+
+// the booster row's arrow tile: ">>" (dir 1) or "<<" (dir -1), and a dot for each page under it
+function stripArrow(ui, ctx, id, cx, ty, c, s, dir, pages, pg) {
+  const mx = cx + c / 2, my = ty + c * 0.4, a = c * 0.13;
+  ui.button(id, '', cx, ty, c, c, { kind: 'secondary', round: 14 * s });
+  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, c * 0.085); ctx.strokeStyle = '#fff';
+  for (const dx of [-a * 0.75, a * 0.75]) { ctx.beginPath(); ctx.moveTo(mx + dx - a * 0.5 * dir, my - a); ctx.lineTo(mx + dx + a * 0.5 * dir, my); ctx.lineTo(mx + dx - a * 0.5 * dir, my + a); ctx.stroke(); }
+  const dr = Math.min(3.2 * s, c * 0.06), dg = dr * 3.2, dx0 = mx - ((pages - 1) * dg) / 2, dy = ty + c - 11 * s;
+  for (let i = 0; i < pages; i++) { ctx.beginPath(); ctx.arc(dx0 + i * dg, dy, dr, 0, Math.PI * 2); ctx.fillStyle = i === pg ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.fill(); }
+  ctx.restore();
 }
 
 // the strip's call for attention (see drawBoosterStrip): the rim, the sweep, the hand

@@ -1386,7 +1386,7 @@ async function press(id) {
   { const b = ui.buttons.find((q) => q.id === id); if (b && b.w < ui.w * 1.5) G.pressAt = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; } // coins a press brings fly from its button (purse.gain)
   audio.play(id === 'pause' || id === 'levels' || id === 'practice' ? 'ui_back' : 'ui_tap');
   prizePop.skip(); // a video's little celebration goes on its way at a tap (0.8.17)
-  if (G.screen === 'intro' && G.level && G.li >= 0 && /^(boost:|adboost$|shop:boosts$|strip:more$)/.test(id) && !(save.seen || {})['strip:' + G.level.id]) { save.seen = { ...save.seen, ['strip:' + G.level.id]: 1 }; persist(); } // the booster strip was touched: its call for attention rests on this level for good
+  if (G.screen === 'intro' && G.level && G.li >= 0 && /^(boost:|adboost$|shop:boosts$|strip:more$|strip:back$)/.test(id) && !(save.seen || {})['strip:' + G.level.id]) { save.seen = { ...save.seen, ['strip:' + G.level.id]: 1 }; persist(); } // the booster strip was touched: its call for attention rests on this level for good
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
   if (id.startsWith('wait:go:')) { await waitClaim(id.slice(8)); return; } // 0.8.17: one waiting reward, one video
   if (id.startsWith('xs:') || (id === 'set:close' && G.setSub) || (id === 'back' && G.album && G.screen === 'extras')) { await xsPress(id); return; } // 0.8.17: the combo album, Settings' privacy / reset / footer (xsPress)
@@ -2003,8 +2003,9 @@ async function press(id) {
       } else if (id && id.startsWith('mode:')) {
         save.mode = id.slice(5);
         persist();
-      } else if (id === 'strip:more') { // the booster row's next page (it starts at the first again on another level)
-        const lid = G.level && G.level.id; G.boostPg = { lid, n: (G.boostPg && G.boostPg.lid === lid ? G.boostPg.n : 0) + 1 }; audio.play('ui_tap');
+      } else if (id === 'strip:more' || id === 'strip:back') { // the booster row one page on or back (0.8.17: it scrolls, ">>" then "<<"; it starts at the first again on another level)
+        const lid = G.level && G.level.id, P = G.boostPg && G.boostPg.lid === lid ? G.boostPg : (G.boostPg = { lid, k: 0 });
+        if (P.n) P.k = E.stripStep(P.n, P.fit, P.k, id === 'strip:more' ? 1 : -1); audio.play('ui_tap');
       } else if (id && id.startsWith('boost:')) {
         const b = id.slice(6);
         if (G.boostSel.has(b)) G.boostSel.delete(b); else { G.boostSel.add(b); if (!(save.seen || {})['bu:' + b]) { save.seen = { ...(save.seen || {}), ['bu:' + b]: 1 }; persist(); } }
@@ -7551,7 +7552,7 @@ function drawLevelIntro(L, acc) {
     ctx.globalAlpha = 1;
     ui.record({ x: gx, y: cy - es * sc / 2, w: eggsW * sc, h: es * sc }, 'intro:eggs');
     gx += (eggsW + 10 * s) * sc;
-    ui.text(need, gx, cy, { size: fs * sc, color: C.ink, maxW: nw * sc + 1, tag: 'intro:need' });
+    ui.text(need, gx, cy, { size: fs * sc, color: C.ink, maxW: nw * sc + 4 * s, tag: 'intro:need' }); // (+4: a scaled size measures a hair wider; 0.8.17 "Bring 3 of 5 ho...")
     if (tl) { gx += (nw + 22 * s) * sc; pictoClock(ctx, gx + 13 * s * sc, cy, 24 * s * sc); ui.text(ts, gx + 32 * s * sc, cy, { size: fs * sc, color: C.warn, tag: 'intro:time' }); }
   } };
   // the caption under the stage: who or what it is (bold) and what to do (green); red while the harm plays
@@ -7582,7 +7583,7 @@ function drawLevelIntro(L, acc) {
   } });
   // the tiles of what is on this level: one even grid; the one playing is green with a play mark; a tap plays it again
   // (a name too long for its tile takes two lines, never an ellipsis; the tiles then stand a little taller)
-  const tiles = HT.tiles, tn = tiles.length, tCols = Math.min(tn, 4), tRows = tn ? Math.ceil(tn / tCols) : 0, tGap = 8 * s, tFs = 14 * s;
+  const tiles = HT.tiles, tn = tiles.length, tCols = tn === 5 ? 5 : Math.min(tn, 4), /* (0.8.17: five in one row, not four and a lone one) */ tRows = tn ? Math.ceil(tn / tCols) : 0, tGap = 8 * s, tFs = 14 * s;
   const tileLines = (w) => { const cw = (w - (tCols - 1) * tGap) / tCols; return tiles.map((Ti) => (ui.measure(Ti.name, tFs) <= cw - 8 * s ? [Ti.name] : wrapText(Ti.name, tFs, cw - 8 * s).slice(0, 2))); };
   const tileBlock = (w0) => { const TL = tn ? tileLines(w0) : [], two = TL.some((l) => l.length > 1), tileH = (two ? 72 : 58) * s; return !tn ? (nP > 1 ? { h: 14 * s, gap: gp, draw: (x, y, w) => { for (let q = 0; q < nP; q++) { ctx.beginPath(); ctx.arc(x + w / 2 + (q - (nP - 1) / 2) * 16 * s, y + 7 * s, (q === Hw.i % nP ? 5 : 3.5) * s, 0, 7); ctx.fillStyle = q === Hw.i % nP ? '#3cb043' : 'rgba(120,80,30,0.35)'; ctx.fill(); } } } : null)
     : { h: tRows * tileH + (tRows - 1) * tGap, gap: gp, draw: (x, y, w) => {
@@ -7763,7 +7764,7 @@ function drawLevelIntro(L, acc) {
   };
   const adOn = showBoost && !G.adBoost && !G.golden;
   const boostState = () => ({ wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t,
-    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: null, attn: stripAttn(L), s, page: G.boostPg && G.boostPg.lid === L.id ? G.boostPg.n : 0, ...boostUse(L), teach: boostTeach(L) });
+    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: null, attn: stripAttn(L), s, scroll: G.boostPg && G.boostPg.lid === L.id ? G.boostPg : (G.boostPg = { lid: L.id, k: 0 }), ...boostUse(L), teach: boostTeach(L) });
   // 0.8.17 (mykee: "an even more blinking effect so that the user will be able to point it out"): the strip blinks its rim
   // twice every 2.4 s and a shine runs over it (ui/store.js stripAttn), with a tapping hand on the first three level
   // cards of a session; once the player has touched the strip on this level it rests there for good. Calm: a steady rim.
@@ -7793,6 +7794,45 @@ function drawLevelIntro(L, acc) {
     S.y = 0; S.v = 0; S.max = 0; G.ipAnchor = {};
     let y = V.y; for (const b of B) { y += b.gap ?? 10 * s; b.draw(x, y, w); y += b.h; }
   };
+  // 0.8.17 (mykee 2026-11-26: "the top section of the level card is too empty ... and the level card feels congested
+  // because of it"): the stage used to take every spare pixel (its top half only sky) while the blocks under it sat
+  // 6 px apart. Portrait now lays the sheet as one column from the tabs down to PLAY with ONE gap between every block
+  // (under PLAY too): the stage takes what is left up to 0.9 of its width (past that a stage only adds sky; its art is
+  // sized by the width), the room left is shared out as the gap, and past a calm gap the stage grows again. The goal
+  // and the timer sit in one band. A page too short for even gaps keeps the scrolling column below (false).
+  const goalBand = { h: 40 * s, draw: (x, y, w) => {
+    ui.roundRect(x, y, w, 40 * s, 20 * s); ctx.fillStyle = 'rgba(122,80,40,0.10)'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = 'rgba(122,80,40,0.28)'; ctx.stroke();
+    goalRow.draw(x + 12 * s, y + 5 * s, w - 24 * s);
+  } };
+  const evenPortrait = (x0, yT, iw) => {
+    const tight = 6 * s, STG = { stage: true, h: 0 };
+    const lay = (dn) => {
+      const it = [];
+      if (hasCh) it.push({ h: TABH, first: true, draw: (x, y, w) => tabs(x, y, w) });
+      if (lvTab) { const pk = perkBlock(iw); if (pk) it.push(pk); it.push(goalBand, STG, { ...capBlock(iw), tight: true }); for (const b of [tileBlock(iw), chipBlock(iw), starBlock]) if (b) it.push(b); }
+      else it.push(STG, { ...chickCap(iw, dn), tight: true }, carBlock(iw));
+      const rh = ringStripH(x0, iw, s);
+      if (rh > 0) it.push({ h: rh, draw: (x, y, w) => ringSpeedStrip(x, y, w, s) });
+      if (showBoost) it.push({ h: STRIP, draw: (x, y, w) => drawBoosterStrip(ui, ctx, x, y, w, STRIP, boostState()) });
+      it.push({ h: BTN, draw: (x, y, w) => bigButton(x, y, w) });
+      const F = it.reduce((a, b) => a + b.h + (b.tight ? tight : 0), 0), n = it.filter((b) => !b.tight && !b.first).length + 1;
+      const avail = A.y1 - yT - F, lo = lvTab ? Math.min(165 * s, iw * 0.5) : Math.min(150 * s, iw * 0.45), hi1 = iw * 0.9, hi2 = Math.min(iw * (lvTab ? 1.2 : 1.05), 560 * s);
+      let st = clamp(avail - n * 14 * s, lo, hi1), G0 = (avail - st) / n;
+      if (G0 > 28 * s) { st = Math.max(st, Math.min(hi2, avail - n * 28 * s)); G0 = (avail - st) / n; }
+      return { it, st, G0, ok: G0 >= 10 * s };
+    };
+    let P = lay(true);
+    if (!lvTab && P.st < iw * 0.7) { const P2 = lay(false); if (P2.ok) P = P2; } // the downside line rides along while the stage keeps (nearly) its full size
+    if (!P.ok || (!lvTab && !nI)) return false;
+    const V = { x: A.x, y: yT, w: A.w, h: A.y1 - yT };
+    G.ipRect = V; G.ipRectR = null; pg.y = 0; pg.v = 0; pg.max = 0; G.ipAnchor = {};
+    let y = yT;
+    for (const b of P.it) {
+      if (!b.first) y += b.tight ? tight : P.G0;
+      if (b.stage) { (lvTab ? levelStage(P.st) : chickStage(P.st)).draw(x0, y, iw); y += P.st; } else { b.draw(x0, y, iw); y += b.h; }
+    }
+    return true;
+  };
   const k = ui.pop(G.screenT, 0.32);
   ctx.save();
   if (k !== 1) { ctx.translate(A.cx, A.cy); ctx.scale(k, k); ctx.translate(-A.cx, -A.cy); }
@@ -7803,6 +7843,7 @@ function drawLevelIntro(L, acc) {
     nameBlock(x0, y, iw); y += nameH + 6 * s;
     sheet(Math.max(A.x, x0 - pad), y, Math.min(A.w, iw + 2 * pad));
     y += 10 * s;
+    if (evenPortrait(x0, y, iw)) { if (handLater) handLater(); ctx.restore(); return; }
     if (hasCh) { tabs(x0, y, iw); y += TABH + 2 * s; }
     const yb = bottom(x0, iw);
     const V = { x: A.x, y, w: A.w, h: yb - y };
