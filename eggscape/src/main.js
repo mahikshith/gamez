@@ -7,7 +7,7 @@ import { LEVELS } from './data/levels.js';
 import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop, setSceneCalm } from './themes.js';
 import { bodyCache, ringCache, releaseRings } from './render/ringart.js';
-import { dragTo, grab, glideStep, snapPx } from './scroll.js';
+import { dragTo, grab, glideStep, snapPx, scrollFeel } from './scroll.js';
 import { diag } from './diag.js'; // 0.8.7: the built-in speed log (Settings > Display > Share log)
 import { formStats } from './render/castkit.js';
 import { PERF, applySettings, tick as perfTick, takeStep, newLevel as perfNewLevel, STEPS, TIER_NAME } from './perf.js';
@@ -1017,6 +1017,27 @@ const TABLET_MIN = 600, TABLET_K = 36; // a screen at least 600 px on its short 
 const ACTION_ZOOM = 1.32; // the action cam pushes in this far past the whole-vault frame at most
 const CAM_WIDE = 0.8; // the establishing shot starts this much wider than the whole vault
 
+// 0.8.17 scroll haptics (scroll.js scrollFeel): every list on screen, one light tick as it passes an item while flung,
+// a firmer bump when it runs into its end, a tick when the chick picker settles on a chick. The Vibration switch rules
+// (buzz); Calm keeps the single ticks and drops the running ones.
+function scrollHaptics() {
+  if (save.vibe === false || G.adBusy) return;
+  const u = ui.u, L = [];
+  const add = (S, step, snap) => { if (S && S.max > 0) L.push([S, step, snap]); };
+  if (G.settingsOpen) add(G.setpage, 90 * u);
+  else if (!modalOpen()) {
+    const sc = G.screen;
+    if (sc === 'practice') add(G.pscroll, 90 * u); else if (sc === 'extras') add(G.escroll, 110 * u); else if (sc === 'info') add(G.iscroll, 90 * u);
+    else if (sc === 'store') add(G.sscroll, 110 * u); else if (sc === 'levels') add(G.mscroll, 120 * u); else if (sc === 'fail') add(G.fscroll, 90 * u);
+    else if (sc === 'pause') { add(G.ppage, 90 * u); add(G.ppageR, 90 * u); }
+    else if (sc === 'intro') { add(G.ipage, 90 * u); add(G.ipageR, 90 * u); if (G.car) add(G.car, G.car.step, true); }
+  }
+  for (const [S, step, snap] of L) {
+    const pd = G.pdrag, held = !!(pd && pd.moved && pd.sc === S);
+    const f = scrollFeel(S, { step, now: G.t, held, snap, calm: !!save.calm });
+    if (f) buzz(f === 'edge' ? 'edge' : f === 'settle' ? 'settle' : 'flick');
+  }
+}
 // player zoom z: -1 whole vault, 0 auto (null), +1 twice auto
 function setZoom(z) {
   z = clamp(z, -1, 1);
@@ -1573,6 +1594,7 @@ async function press(id) {
     case 'tab:boosters':
     case 'tab:hens':
     case 'tab:skins':
+      if (G.storeTab !== id.slice(4)) buzz('settle'); // 0.8.17: a light tick as the tab changes
       G.storeTab = id.slice(4);
       G.sscroll = { y: 0, v: 0, max: 0, t: G.t };
       G.detail = null;
@@ -1936,6 +1958,7 @@ async function press(id) {
     case 'rs:-': case 'rs:+': case 'rs:0': case 'rs:1': case 'rs:2': case 'rs:3': case 'rs:4': case 'rs:5': case 'rs:6': case 'rs:7': case 'rs:8': case 'rs:9': case 'rs:10': case 'rs:11': { // one per RING_SPEEDS (0.8.10: the bars past 200% did nothing)
       const k = RING_SPEEDS.indexOf(ringSpeed()), n = id === 'rs:-' ? k - 1 : id === 'rs:+' ? k + 1 : +id.slice(3);
       save.ringSpeed = RING_SPEEDS[clamp(n, 0, RING_SPEEDS.length - 1)];
+      if (save.ringSpeed !== RING_SPEEDS[k]) buzz('settle'); // 0.8.17: a light tick per step (a drag along the bars ticks through them)
       if (G.sim) G.sim.ringSpeed = save.ringSpeed;
       if (!save.seen.rsTried) { save.seen = { ...save.seen, rsTried: 1 }; if (G.screen === 'intro') G.rsDone = { seq: G.scrSeq, lid: G.level && G.level.id }; } // the level card's strip: a tick and where it lives
       persist();
@@ -2019,6 +2042,7 @@ async function press(id) {
         const R = G.car; if (R && R.step) { const k = clamp(Math.round((R.to != null ? R.to : R.y) / R.step) + (id === 'car:next' ? 1 : -1), 0, Math.round(R.max / R.step)); R.v = 0; R.to = k * R.step; audio.play('ui_tap'); }
       } else if (id === 'inext') { await press('itab:chicks');
       } else if (id && id.startsWith('itab:')) { // the level page's tabs
+        if (G.itab !== id.slice(5)) buzz('settle'); // (0.8.17: a light tick as the tab changes)
         if (G.itab !== id.slice(5)) { G.itab = id.slice(5); if (G.ipage) { G.ipage.y = 0; G.ipage.v = 0; G.ipage.to = null; } }
       } else if (id === 'party:tap') { // the unlock party: a tap skips to the coins
         const R = G.party; if (R && R.phase === 'show') { R.t0 = G.t - partyEnd(R.sku === PREMIUM_SKU ? E.bundleParts(R.sku).chicks.length : 0); R.cues = 99; R.arrived = true; }
@@ -5297,6 +5321,7 @@ function update(dt) {
   }
   offerMoments();
   computeLayout();
+  scrollHaptics();
   if (G.screen === 'wonder') { wonder.update(dt); return; } // WONDER: its own loop; the campaign world stands still
   if (!G.sim) return;
   const sim = G.sim;

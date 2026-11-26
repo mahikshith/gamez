@@ -58,3 +58,26 @@ export function glideStep(S, dt, lim = 0) {
 }
 // where to draw: whole device pixels, so a picture stamped at the scroll offset stays crisp and does not shimmer
 export const snapPx = (y, dpr = 1) => Math.round(y * dpr) / dpr;
+
+// 0.8.17 (mykee: "add haptics to the scrolling everywhere, even when choosing the chicks"): what a list should feel
+// like this frame, as a word for the caller's haptics (never a stream: at most ~12 ticks a second):
+//   'edge'   it ran into its end (flung there, or pulled past it): a slightly firmer bump, once per arrival
+//   'settle' a snapping list (o.snap) came to rest on a new item: a very light tick
+//   'flick'  it passed an item boundary (every o.step px) while gliding free (o.held: a finger on it; a snapping list
+//            ticks under the finger and on its way to a tapped item too; a page's own trips never tick): a soft tick
+// o: { step, now (s), held, snap, calm (no flick ticks) }. State lives on S (fi, fs, ft, fy, fo, fv, ff).
+export const FEEL_RATE = 12;
+export function scrollFeel(S, o) {
+  const step = o.step > 0 ? o.step : 0, now = o.now, y = S.y;
+  const idx = step ? Math.floor(Math.max(0, Math.min(S.max, y)) / step + 1e-6) : 0, over = overOf(S) !== 0, end = S.max > 0 && (y <= 0.5 || y >= S.max - 0.5);
+  if (S.ff == null) { S.ff = 1; S.fi = idx; S.fs = idx; S.ft = -9; S.fy = y; S.fo = over || end; return null; }
+  const was = S.fo, fv = Math.max(Math.abs(S.v), Math.abs(S.fv || 0)); S.fy = y; S.fo = over || end; S.fv = S.v; // (the speed it had a frame ago: a plain stop zeroes it on arrival)
+  let out = null;
+  if (S.max > 0 && !was && (over || end) && S.to == null && (o.held ? over : fv > 60)) out = 'edge'; // arrived at an end flung (a finger: only when it pulls past it; a page's own glide never bumps)
+  if (!out && o.snap && !o.held && S.to == null && Math.abs(S.v) < 1 && step && Math.abs(y - idx * step) < 0.5 && idx !== S.fs) out = 'settle';
+  if (!out && idx !== S.fi && !over && step && !o.calm && (!o.held || o.snap) && (o.held || Math.abs(S.v) > 240 || (o.snap && S.to != null)) && now - S.ft >= 1 / FEEL_RATE) { out = 'flick'; S.ft = now; }
+  S.fi = idx;
+  if (out === 'settle' || (o.snap && !o.held && Math.abs(S.v) < 1 && S.to == null && Math.abs(y - idx * step) < 0.5)) S.fs = idx;
+  if (out === 'edge') S.ft = now;
+  return out;
+}
