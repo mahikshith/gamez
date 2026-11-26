@@ -17,6 +17,7 @@ import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
 import { geckoAnchor, geckoFreeze, drawGeckoEmblem, drawGeckoOver } from './gecko15.js'; // L15: Baron von Brr, the frost gecko (his body: render/salamander.js)
 import { thornAnchor, drawThornEmblem, drawSpikes, drawThornOver } from './crystal20.js'; // L20: Duke Quartz, the crystal thorn-back (his body: render/salamander.js)
+import { drawBanditEmblem } from './banditplay.js'; // 0.8.17 bandit
 
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { if (globalThis.__eggDebug) console.error(e); /* art never breaks the frame */ } ctx.restore(); };
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -454,6 +455,7 @@ function drawStar(ctx, x, y, r, col) {
 
 // the bar's portrait chip: a small code-drawn emblem per boss (screen space, y down)
 const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78', kingcrab: '#1f6a96', owl: '#1d3a5c', gator: '#2f5a3a' };
+EMBLEM_BG.raccoon = '#2c2a4a'; // 0.8.17 bandit
 // The chip is tiny but redraws a whole character; keep it on an offscreen canvas and refresh it ~12x a second.
 const EMB = new Map();
 function drawBossEmblem(ctx, kind, cx, cy, d, t) {
@@ -491,6 +493,8 @@ function drawBossEmblemLive(ctx, kind, cx, cy, d, t) {
     drawOwlEmblem(ctx, r, t);
   } else if (kind === 'gator') {
     drawGatorEmblem(ctx, r, t);
+  } else if (kind === 'raccoon') { // 0.8.17 bandit
+    drawBanditEmblem(ctx, r, t);
   } else if (kind === 'blizzard') {
     drawGeckoEmblem(ctx, r, t);
   } else if (kind === 'golem') {
@@ -564,7 +568,7 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   if (!slim) ui.text(title, nameX, y + h / 2, { size: 13 * u, maxW: nameW, color: '#ffe3b0', stroke: 'rgba(0,0,0,0.6)', tag: 'hud:bossName' });
   // phase segments
   const bx = nameX + nameW + 8 * u, bw = x + w - 6 * u - bx, by = y + h * 0.22, bh = h * 0.56, gap = 4 * u;
-  const F = (B.den && sim.thiefBoss && sim.thiefBoss()) || (B.kind === 'gator' && sim.gatorBossBar && sim.gatorBossBar()); // v3.7: Grandpa's teeth
+  const F = (B.den && sim.thiefBoss && sim.thiefBoss()) || (B.kind === 'gator' && sim.gatorBossBar && sim.gatorBossBar()) || (B.kind === 'raccoon' && sim.bandBossBar && sim.bandBossBar()); // v3.7: Grandpa's teeth // 0.8.17 bandit
   if (F) { drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v3.5: hit pips
   if (B.kind === 'kingcrab' && sim.kc) { drawKingBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // world 8: shell pips
   if (B.kind === 'owl' && sim.owl) { drawOwlBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v4: gear pips

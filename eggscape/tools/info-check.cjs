@@ -46,6 +46,7 @@ function scan(L, where, INFO) {
       if ((k === 'snake' && boss === 'snake') || (k === 'eagle' && boss === 'eagle') || (k === 'salamander' && boss === 'salamander' && n === 1)) continue;
       if (n) want.add(k);
     } else if (HAZARD_KEY[k]) want.add(HAZARD_KEY[k]);
+    else if (k === 'raccoon') want.add('boss:raccoon'); // 0.8.17 bandit: the raccoon boss's own key
     else bad(`${where}: level key "${k}" is neither a villain/hazard nor known board furniture`);
   }
   if (L.weather) { if (WEATHER[L.weather]) want.add(WEATHER[L.weather]); else bad(`${where}: weather "${L.weather}" not in the table`); }

@@ -96,6 +96,11 @@ export const VILLAIN_INFO = {
       silt: 'It hides part of the vault for a while. A jelly’s glow helps.',
     },
   },
+  'boss:raccoon': { // 0.8.17 bandit
+    group: 'boss', name: 'Bandit the Raccoon',
+    does: 'Reaches up through an outer-ring gap and bags the egg there.',
+    beat: 'Turn that ring while his paw is in: three pinches bag him.',
+  },
   'boss:gator': {
     group: 'boss', name: 'Grandpa Gator',
     does: 'His tail sweep shakes every ring; his death roll spins one.',

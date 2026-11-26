@@ -19,6 +19,7 @@ function hold(sim) { for (const r of sim.rings) if (!r.motor) r.target = r.body.
 function tick(sim, B) {
   sim.step();
   for (const ev of sim.events) if (ev.type === 'break') B.why[ev.why] = (B.why[ev.why] || 0) + 1;
+  for (const ev of sim.events) if (ev.type === 'bandReach') B.paw = 1; else if (ev.type === 'bandGrab') B.steal++; else if (ev.type === 'bandPinch') B.pinch++; // 0.8.17 bandit
   sim.events.length = 0;
 }
 function wait(sim, s, B) {
@@ -43,6 +44,8 @@ function react(sim, B) {
     if (e.tapAt == null) e.tapAt = sim.t + 0.8 + R() * 2.5;
     else if (sim.t >= e.tapAt) { sim.tapChick(e.id); e.tapAt = Infinity; B.taps++; }
   }
+  if (B.paw) { B.paw = 0; if (R() < 0.5) B.pending = { at: sim.t + 0.3 + R() * 0.5, ring: sim.rings.length - 1, d: (R() < 0.5 ? -1 : 1) * (20 + R() * 20) * DEG }; } // 0.8.17 bandit: half the time the player turns the outer ring on his paw
+  if (B.pending && !(sim.thieves && sim.thieves.length) && sim.t >= B.pending.at) { const P = B.pending; B.pending = null; turn(sim, P.ring, P.d, B); }
   if (!sim.thieves || !sim.thieves.length) return;
   if (sim.level.id >= 5 && sim.allyAvailable && sim.allyAvailable('rooster') && sim.eggs.some((e) => e.thf || (e.alive && !e.saved && sim.thiefThreat(e) >= 1))) {
     if (B.roosterAt == null) B.roosterAt = sim.t + 0.8 + R() * 2.5;
@@ -63,7 +66,7 @@ function react(sim, B) {
 export function clumsy(L, seed, mode = 'medium') {
   const sim = new Sim(L, { mode });
   const R = rng(seed);
-  const B = { R, taps: 0, why: {}, crouch: null, pending: null, bonks: 0, rooster: 0, roosterAt: null, roosterWill: R() < 0.75 };
+  const B = { R, taps: 0, why: {}, crouch: null, pending: null, bonks: 0, rooster: 0, roosterAt: null, roosterWill: R() < 0.75, paw: 0, steal: 0, pinch: 0 };
   wait(sim, 0.6 + R() * 0.8, B); // looking at the vault first
   let moves = 0;
   while (sim.state === 'play' && sim.t < 400 && moves < 200) {
@@ -100,7 +103,7 @@ export function clumsy(L, seed, mode = 'medium') {
   }
   while (sim.state === 'winning' || sim.state === 'failing') tick(sim, B);
   const st = sim.stats();
-  return { won: sim.state === 'won', t: sim.t, saved: st.saved, lost: st.total - st.saved, broken: st.broken, timeout: sim.timeLimit > 0 && sim.timeLeft <= 0, moves, bonks: B.bonks, rooster: B.rooster, why: B.why };
+  return { won: sim.state === 'won', t: sim.t, saved: st.saved, lost: st.total - st.saved, broken: st.broken, timeout: sim.timeLimit > 0 && sim.timeLeft <= 0, moves, bonks: B.bonks, rooster: B.rooster, why: B.why, steal: B.steal, pinch: B.pinch, beaten: sim.band ? sim.band.done : 0 };
 }
 
 if (process.argv[1] && process.argv[1].endsWith('first5-bot.mjs')) {
@@ -115,6 +118,6 @@ if (process.argv[1] && process.argv[1].endsWith('first5-bot.mjs')) {
     for (let k = 0; k < runs; k++) res.push(clumsy(L, 1000 + k * 7919 + id, mode));
     const W = res.filter((r) => r.won), why = {};
     for (const r of res) for (const [k, v] of Object.entries(r.why)) why[k] = (why[k] || 0) + v;
-    console.log(`L${id} ${L.name}: rings ${L.rings.length}, fuse ${L.time || 'none'} | wins ${W.length}/${runs} = ${((100 * W.length) / runs).toFixed(1)}% | median win ${med(W.map((r) => r.t)).toFixed(1)} s | eggs lost/run ${(res.reduce((a, r) => a + r.lost, 0) / runs).toFixed(2)} (broken ${(res.reduce((a, r) => a + r.broken, 0) / runs).toFixed(2)}) | fails: timeout ${res.filter((r) => !r.won && r.timeout).length}, other ${res.filter((r) => !r.won && !r.timeout).length} | eggs broke by ${JSON.stringify(why)}`);
+    console.log(`L${id} ${L.name}: rings ${L.rings.length}, fuse ${L.time || 'none'} | wins ${W.length}/${runs} = ${((100 * W.length) / runs).toFixed(1)}% | median win ${med(W.map((r) => r.t)).toFixed(1)} s | eggs lost/run ${(res.reduce((a, r) => a + r.lost, 0) / runs).toFixed(2)} (broken ${(res.reduce((a, r) => a + r.broken, 0) / runs).toFixed(2)}) | fails: timeout ${res.filter((r) => !r.won && r.timeout).length}, other ${res.filter((r) => !r.won && !r.timeout).length} | eggs broke by ${JSON.stringify(why)}${L.raccoon ? ` | Bandit: steals/run ${(res.reduce((a, r) => a + r.steal, 0) / runs).toFixed(2)}, pinches/run ${(res.reduce((a, r) => a + r.pinch, 0) / runs).toFixed(2)}, beaten ${res.filter((r) => r.beaten).length}` : ''}`); // 0.8.17 bandit
   }
 }

@@ -48,12 +48,12 @@ export const LEVELS = [
     ],
   },
   {
-    id: 6, theme: "farm", name: "Midnight Raid", eggs: 5, target: 3, time: 90, spacing: 1.05, material: "wood", nest: {w: 2.9, amp: 1, period: 9, pattern: "stopgo"}, weather: "fireflies", bonus: {kind: "turns", n: 12}, weasel: {a: 30, delay: 6}, tip: "Papa Rooster chases the weasel off. Drop when the hen stops.", orbs: [{type: "hatch_glow", ch: 1, a: -60},{type: "fire_red", ch: 2, a: -169},{type: "fire_green", ch: 3, a: 1}], seed: 839418, world: 1, intro: {title: "Midnight Raid", line: "The weasel is back for more eggs, and the hen keeps her nest on the move. Drop when she stops."},
+    id: 6, theme: "farm", name: "Midnight Raid", eggs: 5, target: 3, time: 95, spacing: 1.05, material: "wood", boss: "raccoon", bossFight: {kind: "raccoon", delay: 3, phases: [{attacks: []}]}, nest: {w: 2.9}, weather: "fireflies", bonus: {kind: "turns", n: 9}, weasel: {a: 30, delay: 9999}, raccoon: {delay: 3}, tip: "Bandit reaches through the outer ring: turn it while his paw is in. A stone egg is too heavy for him.", orbs: [{type: "hatch_glow", ch: 1, a: 101},{type: "fire_red", ch: 2, a: -26},{type: "fire_green", ch: 3, a: 172}], seed: 839417, world: 1, intro: {title: "Boss: Bandit the Raccoon", line: "His paw comes up through a gap: turn that ring and PINCH it! Three pinches bag him."},
     rings: [
-      {gaps: [{a: 86, len: 0.9}], pads: [{a: 165, len: 1.64}]},
-      {gaps: [{a: -176, x: 2}], thorns: [{a: 48, n: 2}], pads: [{a: -18, len: 1.83},{a: 104, len: 1.85}]},
-      {gaps: [{a: 22},{a: 151}], thorns: [{a: 59, n: 1}], pads: [{a: 120, len: 1.32},{a: -62, len: 1.02}]},
-      {gaps: [{a: -147, x: 3, len: 0.7},{a: 117}], thorns: [{a: 28, n: 1},{a: 154, n: 2}], pads: [{a: -74, len: 1.44},{a: -11, len: 1.82}]},
+      {gaps: [{a: 123, len: 0.9}], pads: [{a: 3, len: 1.56}]},
+      {gaps: [{a: -167, x: 2}], thorns: [{a: -6, n: 2}], pads: [{a: 132, len: 1.47},{a: -77, len: 1.49}]},
+      {gaps: [{a: 140},{a: -41}], thorns: [{a: 102, n: 1}], pads: [{a: -102, len: 1.07},{a: 56, len: 1.65}]},
+      {gaps: [{a: -143},{a: 110}], thorns: [{a: 18, n: 1}], pads: [{a: -60, len: 1.63},{a: 162, len: 1.61}]},
     ],
   },
   {

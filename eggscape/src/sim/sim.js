@@ -10,6 +10,7 @@ import { seaMethods } from './sea.js'; // v3.3 octopus and fish schools
 import { p2Methods, P2_TYPES, P2_KEYS } from './powers2.js'; // v3.4 powers and combos
 import { warpMethods } from './warp.js'; // v3.4 warp gate
 import { thiefMethods } from './thieves.js';
+import { banditMethods } from './bandit.js'; // 0.8.17 bandit: the raccoon boss of L6
 import { reefMethods } from './reef.js'; // world 8: hermit crab, pufferfish, jellyfish
 import { kcMethods } from './kingcrab.js'; // world 8 boss: the King Crab // v3.6 the egg thieves: weasel, rats, their bosses
 import { cwMethods } from './clockwork.js'; // v4 the clockwork cast: spider, wind-up beetle, spring jack
@@ -308,6 +309,7 @@ export class Sim {
     this.allyInit(L); // v3.4: farm allies (sim/allies.js)
     this.seaInit(L); // v3.3: octopus and fish schools (sim/sea.js)
     this.thiefInit(L); // v3.6: the egg thieves (sim/thieves.js)
+    this.bandInit(L); // 0.8.17 bandit (sim/bandit.js)
     this.reefInit(L); if (L.bossFight && L.bossFight.kind === 'kingcrab') this.kcInit(L); // world 8 (sim/reef.js, sim/kingcrab.js)
     this.cwInit(L); this.owlInit(L); // v4: the clockwork cast and the Clockwork Owl
     this.bayouInit(L); // v3.7: Gator Bayou creatures (sim/bayou.js)
@@ -1395,6 +1397,7 @@ export class Sim {
     else this.salEndStep(dt); // v3.2: the salamander dives (win) or grins (loss); in play boss.js v31Step drives it
     this.seaStep(dt, end); // v3.3: octopus and fish schools
     this.thiefStep(dt); // v3.6: the weasel and the rats (sim/thieves.js)
+    this.bandStep(dt); // 0.8.17 bandit
     this.reefStep(dt, end); // world 8: hermit crabs, puffers, jellyfish, the King Crab
     for (const b of this.barriers) if (b.alive && b.fire && (b.burn += dt / BURN_T) >= 1) this.removeBarrier(b, 'burn');
     if (this.eagle) this.eagleStep(dt); // after the level ends it flees (win) or gloats (loss)
@@ -2291,6 +2294,7 @@ export class Sim {
     if (E && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tk !== 'orb') lv = Math.max(lv, E.reach ? 0.9 : 0.5);
     if (this.sals && this.sals.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.7 * this.salThreat(e)); // v3.2: a breath aimed at an egg
     if (this.thieves.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.thiefThreat(e)); // v3.6: the thieves
+    if (this.band) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.bandThreat(e)); // 0.8.17 bandit
     if (this.gators && (this.gators.length || this.mosqs.length)) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.9 * this.bayouThreat(e)); // v3.7
     lv = Math.round(lv * 10) / 10;
     if (lv !== this.danger) { this.danger = lv; this.emit('danger', { level: lv }); }
@@ -2493,6 +2497,7 @@ export class Sim {
       p2: this.p2State(), // v3.4 powers
       stk: this.stkState(), // Chick Strike powers
       thieves: this.thiefState(), // v3.6 the weasel and the rats
+      band: this.bandState(), // 0.8.17 bandit
       reef: this.reefState(), // world 8
       cw: this.cwState(), owl: this.owlState(), // v4 the clockwork cast and the Clockwork Owl
       bayou: this.bayouState(), // v3.7 Gator Bayou
@@ -2555,6 +2560,7 @@ export class Sim {
     sim.p2Load(S.p2); // v3.4 powers
     sim.stkLoad(S.stk); // Chick Strike powers
     sim.thiefLoad(S.thieves); // v3.6 the weasel and the rats
+    sim.bandLoad(S.band); // 0.8.17 bandit
     sim.reefLoad(S.reef); // world 8
     sim.cwLoad(S.cw); sim.owlLoad(S.owl); // v4
     sim.bayouLoad(S.bayou); // v3.7 Gator Bayou
@@ -2967,6 +2973,7 @@ Object.assign(Sim.prototype, p2Methods); // v3.4 powers and combos (sim/powers2.
 Object.assign(Sim.prototype, warpMethods); // v3.4 warp gate (sim/warp.js)
 Object.assign(Sim.prototype, bayouMethods); // v3.7 Gator Bayou (sim/bayou.js)
 Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves.js)
+Object.assign(Sim.prototype, banditMethods); // 0.8.17 bandit (sim/bandit.js)
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
 Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl
 Object.assign(Sim.prototype, stkMethods); // Chick Strike powers (sim/strike.js)

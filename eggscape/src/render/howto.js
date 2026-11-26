@@ -16,7 +16,7 @@ import { drawVillainPortrait } from './villain-art.js';
 import { drawHand } from './wonder.js';
 import { drawStrikeChick, drawStrikeButton } from './strike.js'; // 0.8.10: the chick scenes show the real HUD badge
 import { drawKindChick } from './chicks.js'; // the bulk chick's own art (L18's card)
-import { actorFor, harmActor, BREATH_AT, CHAM_ORB, BUMP_A, BITE_AT, FACE_T } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers)
+import { actorFor, harmActor, BREATH_AT, CHAM_ORB, BUMP_A, BITE_AT, FACE_T, bandHarmEgg } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers) // 0.8.17 bandit: bandHarmEgg
 import { statusDraw } from './status.js';
 import { beamSparks, scorchStub, drawPepperCloud, drawTwister, drawSneeze, drawDecoyAt, TWIST_T } from './powers2.js'; // 2026-11-20: Practice content in the campaign
 import { paintVortex } from './warp.js';
@@ -63,6 +63,7 @@ const SHOW = {
   jelly: P('tap', 'Zap it with a chick to stun it', { power: 'thunder', fx: 'zap' }),
   gator: P('turn', 'Turn the gap away from his jaws', { fx: 'bonk' }),
   'boss:gator': P('drop', 'When he is dizzy, drop an egg on him', { fx: 'dizzy' }),
+  'boss:raccoon': P('turn', 'His paw is in the gap: turn the ring. PINCH!', { fx: 'bonk' }), // 0.8.17 bandit
   turtle: P('drop', 'Drop an egg on its shell: it flips', { fx: 'flip' }),
   mosquito: P('tap', 'A chick blasts them away', { power: 'bomb', fx: 'blast' }),
   spider: P('wait', 'Slip the egg past while it spins'),
@@ -108,6 +109,7 @@ const HARM = {
   puffer: ['block', 'BLOCKED!'], spider: ['block', 'WEBBED!'], vines: ['block', 'BLOCKED!'], turtle: ['block', 'STUCK!'], doors: ['block', 'SHUT!'],
   current: ['push', 'PUSHED!'], gusts: ['push', 'BLOWN!'], beetle: ['push', 'PUSHED!'], 'boss:golem': ['bump', 'CRACK!'], quake: ['push', 'SHAKE!'], rain: ['push', 'SLIDE!'],
   mosquito: ['lift', 'LIFTED!'], gator: ['bite', 'CHOMP!'], jack: ['bounce', 'BOING!'],
+  'boss:raccoon': ['sack', 'BAGGED!'], // 0.8.17 bandit: his rig acts it (howact.js)
   // 2026-11-23 the crawlers (their own rigs act it, howact.js harmActor): the jet heats the wall, the tongue takes an orb, the hip shoves
   salamander: ['chomp', 'EATEN!'], frostsal: ['frostbite', 'FROZEN!'], chameleon: ['tongue', 'GULP!'], spike: ['bump', 'CRACK!'], // 0.8.14: the salamanders bite, the thorn-back's ram cracks
 };
@@ -119,7 +121,7 @@ export const THREAT = {
   embers: 'Burn eggs', quake: 'Shakes eggs', rain: 'Slippery rings', current: 'Pushes eggs', popthorns: 'Spikes pop up', vines: 'Seal gaps',
   doors: 'Shut gaps', curse: 'Fuse x2', thornorb: 'Cracks eggs',
   'boss:weasel': 'Steals eggs', 'boss:snake': 'Two snakes', 'boss:blizzard': 'Bites, freezes', 'boss:golem': 'Rams, cracks', 'boss:salamander': 'Spits lava',
-  'boss:eagle': 'Dives for eggs', 'boss:ratking': 'Pounces', 'boss:kingcrab': 'Claws eggs', 'boss:gator': 'Shakes rings', 'boss:owl': 'Swoops at eggs',
+  'boss:eagle': 'Dives for eggs', 'boss:ratking': 'Pounces', 'boss:kingcrab': 'Claws eggs', 'boss:gator': 'Shakes rings', 'boss:owl': 'Swoops at eggs', 'boss:raccoon': 'Snatches eggs', // 0.8.17 bandit
 };
 export const threatWords = (kind) => THREAT[kind] || THREAT[String(kind).replace(/^boss:/, '')] || 'Hunts eggs';
 // the first-five ladder (2026-11-20, owner: every level from 2 on hands over a new toy, shown on its level card with the
@@ -537,6 +539,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     const zm = o.zoom || (Wd && (hp || ['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish', 'faceoff'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.kind === 'spider') ? 0.8 : Wd && plan.move === 'floor' ? 0.86 : 1), pan = SG && SG.pan ? SG.pan * w : !act && plan.kind && vAlpha > 0 && zm !== 1 ? 0.05 * w : 0; // a portrait villain stands on the left
     if (zm !== 1 || pan) { ctx.translate(cx + pan, y + h); ctx.scale(zm, zm); ctx.translate(-cx, -(y + h)); }
   }
+  if (act && act.under) { ctx.save(); try { Object.assign(SA, { T, t, m, th, fx: plan.fx, eA }); act.under(ctx, SA); } catch (e) { SA._ar = null; } ctx.restore(); } // 0.8.17 bandit: an actor under the ring (its edge pinches his arm)
   // ---- the ring: a thick slab with one gap (the game's own ring when it is given)
   const gapA = (toy && toy.gap != null ? toy.gap : gap0) + th, gw = 0.24;
   if (Wd) Wd.ring(ctx, C, kW, gapA, t, door, toy ? toy.deco : null);
@@ -597,7 +600,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     ctx.save();
     try { SA.T = T; SA.t = t; SA.m = m; SA.th = th; SA.fx = plan.fx; SA.eA = eA; AR = act.draw(ctx, SA); } catch (e) { AR = null; if (!ERR1) { ERR1 = true; try { console.warn('howto actor', plan.kind, e); } catch (e2) { /* no console */ } } }
     ctx.restore();
-    if (AR && AR.bonk > 0 && AR.bonk < 1) { ctx.save(); ctx.globalAlpha *= 1 - seg(AR.bonk, 0.6, 1); word(ctx, 'BONK!', clamp(AR.x, x + Z * 0.3, x + w - Z * 0.3), Math.max(y + Z * 0.16, AR.y), Z * 0.15 * (1 + 0.3 * Math.sin(Math.min(1, AR.bonk * 2.5) * Math.PI)), '#fff', '#c8321e'); ctx.restore(); }
+    if (AR && AR.bonk > 0 && AR.bonk < 1) { ctx.save(); ctx.globalAlpha *= 1 - seg(AR.bonk, 0.6, 1); word(ctx, AR.word || 'BONK!', clamp(AR.x, x + Z * 0.3, x + w - Z * 0.3), Math.max(y + Z * 0.16, AR.y), Z * 0.15 * (1 + 0.3 * Math.sin(Math.min(1, AR.bonk * 2.5) * Math.PI)), '#fff', '#c8321e'); ctx.restore(); }
   }
   if (!AR && vAlpha > 0.01 && plan.kind) {
     const v = at(vA, vLift);
@@ -821,7 +824,8 @@ function harmBeat(ctx, plan, T, t, S, set) {
   const E0 = at(0, eggS * 0.5), egg = (X, Y, look) => S.drawE(X, Y, eggS, false, true, look);
   const turnGap = (t0, t1) => { const d = ease(seg(T, t0, t1)); q.th = -gap0 * d; q.hand = dragHand(at, T, t0, t1, 0.5, 0.5 - gap0); return d; };
   const ty = H.t;
-  if (ty === 'steal') { // it comes along the floor, takes the egg and goes off with it
+  if (ty === 'sack') { Object.assign(q, bandHarmEgg({ band, floor, eggS, g0: gap0, k: Wd ? kW : Z / 2.5 }, T)); say(1.6); lost(1.95, E0); } // 0.8.17 bandit: out through the gap in his paw
+  else if (ty === 'steal') { // it comes along the floor, takes the egg and goes off with it
     const walk = ease(seg(T, 0.2, 1.0)), go = ease(seg(T, 1.3, 2.3)), up = kind === 'octopus' ? 1 : 0;
     const vA = vEnd - 0.55 * (1 - walk) - 0.9 * go, v = at(vA, vD * 0.3 + up * go * U * 0.45);
     if (T > 1.05) { q.eA = -0.9 * go; q.eLift = up * go * U * 0.45 + eggS * 0.15 * seg(T, 1.05, 1.2); }

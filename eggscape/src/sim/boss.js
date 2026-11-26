@@ -33,7 +33,7 @@ const MOVES = new Set(['cage', 'shards', 'magma', 'whip', 'dive', 'wgust', 'pop'
 const GALE_T = 2.6, FREEZE_T = 4, FROST_ORB_T = 3, CHUNK_FREEZE_T = 3, FOG_T = 3.5, WALL_T = 8, ICE_WALL_T = 6, PATCH_T = 6;
 const ICE_HANG = 1.1; // s an icicle shakes before it drops (level icicles; a volley uses WARN.icicles)
 const THROW_FLY = 0.6, PUNCH_W = 2.4, HEAT_T = 9;
-export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'Baron von Brr', golem: 'Duke Quartz', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl', gator: 'Grandpa Gator' };
+export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'Baron von Brr', golem: 'Duke Quartz', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl', gator: 'Grandpa Gator', raccoon: 'Bandit' }; // 0.8.17 bandit
 export const ATTACK_NAME = { gale: 'Gale', freeze: 'Deep freeze', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning', snap: 'Claw snap', snap2: 'Twin claws', silt: 'Silt cloud', bubbles: 'Bubble barrage', barnacles: 'Barnacle toss', whirl: 'Whirlpool spin', swoop: 'Swoop', wind: 'Wind-up', gears: 'Gear bomb', gears2: 'Gear bombs', sweep: 'Tail sweep', roll: 'Death roll', cage: 'Crystal cage', shards: 'Shard rain', magma: 'Magma ring', whip: 'Tail whip', dive: 'Dive snatch', wgust: 'Wing gust', pop: 'Tunnel pop' };
 const RING_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING
 
@@ -132,6 +132,7 @@ export function animalsHit(sim, kind, o = {}) {
   if (sim.seaHit) n += sim.seaHit(kind, o); // v3.3: the octopus lets go, fish scatter (sim/sea.js)
   if (sim.thieves && sim.thieves.length) n += sim.thiefHit(kind, o); // v3.6: the weasel and the rats
   if (sim.bayouHit) n += sim.bayouHit(kind, o); // v3.7: a quake flips snapping turtles, lightning scatters mosquitoes
+  if (sim.band) n += sim.bandHit(kind, o); // 0.8.17 bandit: lightning on his paw hurts, a quake or a rock makes him reel
   if (kind === 'quake' || kind === 'bolt') {
     const B = sim.bx && sim.bx.boss;
     if (B && B.den && B.atk && B.atk.ph === 'warn') { B.atk = null; B.t = 1.5; B.flinch = 0.8; sim.emit('bossFlinch', { x: B.x, y: B.y }); }
@@ -395,6 +396,7 @@ function bossStep(sim, B, dt) {
   else if (B.kind === 'golem' && sim.level.bossFight.thorn) sim.thornBossPose(B); // L20: Duke Quartz in the vault is the boss
   else if (B.kind === 'gator') sim.gatorBossPose?.(B); // v3.7: Grandpa Gator lies in the outer channel
   else if (B.den) sim.thiefBossPose(B); // v3.6: the thief boss throws from its mouth
+  else if (B.kind === 'raccoon') sim.bandBossPose?.(B); // 0.8.17 bandit: he stands in the yard under the vault
   // quake after a stomp
   if (B.quake > 0) {
     B.quake -= dt;
