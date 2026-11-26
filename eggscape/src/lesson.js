@@ -170,7 +170,8 @@ function heldRing() { const r = K.G.sim.rings.find((q) => q.held || q.keyHeld); 
 function watchAnswer(m) {
   const sim = K.G.sim, r = sim.rings[m.ri];
   if (m.path && r && (r.held || r.keyHeld)) {
-    const d = wrap(r.body.getAngle() - m.ang0), need = m.path.dir;
+    const to = Number.isFinite(r.target) ? r.target : r.body.getAngle(); // the finger's own drag (the ring itself follows at the slowed world's pace)
+    const d = wrap(to - m.ang0), need = m.path.dir;
     if (Math.abs(d) >= T.TEACH.turnOk && (!need || Math.sign(d) === need)) return answered(m);
   }
   if (m.tapAt != null && K.G.t - m.tapAt > 0.08 && !(r && (r.held || r.keyHeld) && m.path)) T.finish(m, false); // a tap elsewhere: it steps aside
