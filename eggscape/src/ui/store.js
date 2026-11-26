@@ -1886,7 +1886,9 @@ export function drawBoosterPicker(ui, ctx, x, y, w, h, state) {
 // after the blinks, and (attn.pointer, the caller's first visits of a session) a small tapping hand on the first tile.
 // Calm: the rim stays bright and still, no sweep. The caller stops it for good on a level once the strip was touched.
 export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
-  const { wallet, selected = new Set(), lastTapped = null, t = 0, hide = [], ad = null, mark = null, first = [], last = [], teach = null } = state, s = state.s || ui.u;
+  const { wallet, selected = new Set(), lastTapped = null, t = 0, hide = [], ad = null, mark = null, first = [], last = [], teach = null, spot = null } = state, s = state.s || ui.u;
+  // 0.8.17 spot: a spend moment on one booster not owned ({ id, xf (its hop: dy, sx, sy, a), at(rect), buy }): its picture
+  // hops in, main.js swings its price tag on it, and while it runs a tap on it buys it with coins (no trip to the shop)
   // (the ones this level has a use for lead, the ones it has no use for come last: a Scarecrow where no villain lives)
   const rank = (id) => (first.includes(id) ? 0 : last.includes(id) ? 2 : 1);
   const owned = BOOSTER_ORDER.filter((id) => ownedCount(wallet, id) > 0 && !hide.includes(id)).sort((a, b) => rank(a) - rank(b));
@@ -1945,9 +1947,13 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
         ctx.beginPath(); ctx.moveTo(kx - kr * 0.45, ky); ctx.lineTo(kx - kr * 0.1, ky + kr * 0.38); ctx.lineTo(kx + kr * 0.5, ky - kr * 0.35); ctx.stroke(); ctx.restore();
       } else if (mark) mark(cx + c - 9 * s, ty + 9 * s, 7.5 * s);
     } else {
-      const afford = ((wallet && wallet.coins) || 0) >= B.price;
-      ui.button('shop:boosts', '', cx, ty, c, c, { kind: 'tertiary', round: 14 * s });
-      drawBoosterIcon(ctx, id, cx + c / 2, ty + c * 0.38, c * 0.5, t);
+      const afford = ((wallet && wallet.coins) || 0) >= B.price, sp = spot && spot.id === id ? spot : null;
+      ui.button(sp && sp.buy && afford ? 'sbuy:' + id : 'shop:boosts', '', cx, ty, c, c, { kind: 'tertiary', round: 14 * s });
+      const xf = sp && sp.xf, icx = cx + c / 2, icy = ty + c * 0.38;
+      if (xf) { ctx.save(); ctx.globalAlpha *= xf.a; ctx.translate(icx, icy + c * 0.25 + xf.dy * c * 0.6); ctx.scale(xf.sx, xf.sy); ctx.translate(-icx, -icy - c * 0.25); }
+      drawBoosterIcon(ctx, id, icx, icy, c * 0.5, t);
+      if (xf) ctx.restore();
+      if (sp && sp.at) sp.at({ x: cx, y: ty, w: c, h: c });
       const ps = Math.min(c * 0.22, 14 * s), pw = Math.min(c - 6 * s, ui.measure(String(B.price), ps) + ps * 2), py = ty + c - ps * 1.45 - 6 * s;
       ui.roundRect(cx + c / 2 - pw / 2, py, pw, ps * 1.45, ps * 0.72);
       ctx.fillStyle = afford ? 'rgba(42,26,10,0.88)' : 'rgba(42,26,10,0.6)'; ctx.fill();

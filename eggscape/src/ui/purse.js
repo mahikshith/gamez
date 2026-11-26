@@ -16,21 +16,25 @@
 //   purse.pop()            // the counter's scale this frame (1 = still)
 //   purse.draw(ctx, u, area, drawCoin, ui)  // once a frame, last: the flying coins, the burst, and a floating purse
 //                                           // when no counter of its own is on screen
+//   purse.spend({ dst? })  // 0.8.17: coins were spent: the number counts DOWN from what was shown to the purse while coins
+//                          // fly from the counter to dst (the thing bought: { x, y } or a function giving one), a soft
+//                          // burst where they land. Any drop of the purse on the same screen counts down by itself (no
+//                          // coins fly then); a page that knows what was bought calls spend with its dst first.
 
 export const rollDur = (amount, calm) => (calm ? 0.25 : Math.min(1.2, Math.max(0.6, 0.6 + 0.2 * Math.log10(Math.max(1, amount)))));
 export const flyN = (amount) => Math.max(4, Math.min(12, Math.round(3 + Math.log2(Math.max(1, amount)))));
-const FLY = 0.46, POP = 0.32, STAGGER = 0.045, TICK = 0.065, LINGER = 0.9;
+const FLY = 0.46, POP = 0.32, STAGGER = 0.045, TICK = 0.065, LINGER = 0.9, DOWN = 0.7; // DOWN: a spend's count-down
 const easeOut = (k) => 1 - (1 - k) ** 3;
 
 export function createPurse(env) {
-  let P = null, H = null, at = null, atFrame = -1, frame = 0, seen = null; // seen: the total on screen at the last frame (the "before" of a gain that names none)
+  let P = null, H = null, at = null, atFrame = -1, frame = 0, seen = null, seenScr = null, dstNext = null; // seen: the total on screen at the last frame (the "before" of a gain that names none)
   const now = () => env.clock();
   function settle() { P = null; H = null; }
   // done: a total still to come (the win card's coins after a boss treasure's) stays held until its own gain
   function finish() { const w = env.wallet(); H = P.part && P.to < w ? { v: P.to, scr: P.scr } : null; P = null; }
   // P's clock: t0 (start, after any delay), roll = when the number starts to move, end = roll + dur, pop after it
   function shownAt(t) {
-    if (!P) return H ? H.v : env.wallet();
+    if (!P) { const w = env.wallet(), sc = env.screen(); return H ? H.v : seen != null && w < seen && seenScr === sc && sc !== 'play' ? seen : w; } // (a spend not yet counted: the old total until draw starts the count-down)
     if (t < P.t0 + P.roll) return P.from;
     const k = Math.min(1, (t - P.t0 - P.roll) / P.dur);
     return Math.round(P.from + (P.to - P.from) * easeOut(k));
@@ -39,8 +43,17 @@ export function createPurse(env) {
     const s = env.screen(), w = env.wallet();
     if (P && P.scr !== s) settle();
     if (H && H.scr !== s) H = null;
-    if (P && w < P.to) settle(); // a spend while it rolls: show the real purse
+    if (P && w < P.to) { const cur = shownAt(now()); settle(); seen = cur; } // a spend while it rolls: it counts down from where it stood
     if (H && w < H.v) H = null;
+  }
+  // coins went out: count down from what the counters showed (from) to the purse, coins flying to dst
+  function down(from, dst, to) {
+    const w = env.wallet(), calm = env.calm(), end = Math.min(w, to != null ? to : w);
+    if (!(from > end)) return false;
+    const amt = from - end;
+    P = { from, to: end, down: true, part: end < w, t0: now(), roll: 0, dur: calm ? 0.25 : DOWN, src: null, dst: calm ? null : dst || null, n: calm || !dst ? 0 : Math.max(3, Math.min(8, Math.round(2 + Math.log2(Math.max(1, amt)) * 0.8))), scr: env.screen(), lastTick: -1, landed: false, popAt: 0 };
+    H = null;
+    return true;
   }
   return {
     gain(o = {}) {
@@ -56,7 +69,20 @@ export function createPurse(env) {
       H = null;
       return true;
     },
-    hold(v) { check(); if (!P) H = { v: Math.max(0, Math.round(v)), scr: env.screen() }; },
+    hold(v) {
+      check();
+      const sc = env.screen();
+      if (!P && seen != null && seenScr === sc && sc !== 'play' && v < seen && env.wallet() < seen) { down(seen, dstNext, Math.round(v)); dstNext = null; return; } // coins went out first (a coin spin): count down to the held total
+      if (!P) H = { v: Math.max(0, Math.round(v)), scr: sc };
+    },
+    spend(o = {}) {
+      const t = now(), w = env.wallet();
+      const from = P || H ? shownAt(t) : seen != null ? seen : w;
+      if (P && !P.down) settle();
+      if (from > w) return down(from, o.dst || null);
+      dstNext = o.dst || null; // the wallet goes down after this call: the next frame takes it
+      return false;
+    },
     release() { H = null; }, // (0.8.17 ui/landing.js: a reward page held the counters while its coins landed)
     settle,
     active() { check(); return !!P; },
@@ -64,6 +90,7 @@ export function createPurse(env) {
     shown() { check(); return shownAt(now()); },
     at(p) { at = p; atFrame = frame; },
     pop() {
+      if (P && P.down) { const q = (now() - P.t0) / 0.3; return q >= 0 && q < 1 ? 1 - 0.1 * Math.sin(q * Math.PI) : 1; } // a spend: a small squeeze as the coins leave
       if (!P || !P.landed) return 1;
       const q = (now() - P.popAt) / POP;
       return q >= 1 || q < 0 ? 1 : 1 + 0.28 * Math.sin(q * Math.PI) * (1 - q * 0.4);
@@ -73,6 +100,9 @@ export function createPurse(env) {
     draw(ctx, u, A, drawCoin, ui) {
       frame++;
       check();
+      { const w = env.wallet(), sc = env.screen(); // coins spent on this screen: the counters count down to the purse
+        if (!P && !H && seen != null && w < seen && seenScr === sc && sc !== 'play') down(seen, dstNext);
+        dstNext = null; seenScr = sc; }
       seen = P || H ? shownAt(now()) : env.wallet();
       if (!P) return;
       const t = now(), calm = env.calm(), rel = t - P.t0, mine = atFrame === frame - 1 && at; // a counter drawn this frame
@@ -92,6 +122,30 @@ export function createPurse(env) {
         if (rel > end + 0.3) { finish(); return; }
       }
       if (rel < 0) return;
+      if (P.down) { // a spend: coins leave the counter for the thing bought, the number ticks down, a burst where they land
+        const d = typeof P.dst === 'function' ? P.dst() : P.dst, k = Math.min(1, rel / P.dur);
+        if (tgt && d) for (let i = 0; i < P.n; i++) {
+          const q = (rel - i * STAGGER) / FLY;
+          if (q <= 0 || q >= 1) continue;
+          const e = q * q * (3 - 2 * q), sx = tgt.x + Math.sin(i * 2.4) * 6 * u, sy = tgt.y + Math.cos(i * 1.7) * 4 * u;
+          const x = sx + (d.x - sx) * e, y = sy + (d.y - sy) * e - Math.sin(q * Math.PI) * (40 + 14 * (i % 3)) * u;
+          drawCoin(ctx, x, y, (10 - 2 * q) * u, t * 3 + i);
+        }
+        if (k < 1 && (P.lastTick < 0 || rel - P.lastTick >= TICK)) { P.lastTick = rel; env.sound('score_tick', { vol: 0.28, pitch: 1.5 - 0.6 * k }); }
+        const endAt = Math.max(P.dur, d ? FLY + (P.n - 1) * STAGGER : 0);
+        if (!P.landed && rel >= endAt) { P.landed = true; P.popAt = t; if (d) { env.sound('unlock', { vol: 0.7 }); env.buzz('tick'); } }
+        if (P.landed && d) {
+          const q = (t - P.popAt) / 0.5;
+          if (q < 1) {
+            ctx.save(); ctx.globalAlpha = 1 - q;
+            ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 5 * u * (1 - q); ctx.beginPath(); ctx.arc(d.x, d.y, (12 + 34 * q) * u, 0, 7); ctx.stroke();
+            if (!calm) { ctx.fillStyle = '#ffd94a'; for (let i = 0; i < 10; i++) { const a = i * 0.628 + 0.2, r = (16 + 36 * q) * u; ctx.beginPath(); ctx.arc(d.x + Math.cos(a) * r, d.y + Math.sin(a) * r, 3 * u * (1 - q), 0, 7); ctx.fill(); } }
+            ctx.restore();
+          }
+        }
+        if (P.landed && (!d || t - P.popAt > 0.5) && (mine || rel > P.dur + LINGER)) finish();
+        return;
+      }
       // flying coins: from the source in an arc, one after another, into the counter's coin
       if (P.src && tgt) for (let i = 0; i < P.n; i++) {
         const q = (rel - i * STAGGER) / FLY;
