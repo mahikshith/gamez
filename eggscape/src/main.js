@@ -7889,7 +7889,7 @@ function heroBackdrop(gy, info, shade) {
     if (gy != null && gy < H_) G.backdrop.drawGround(ctx, 0, gy, W_, H_ - gy, 0, info);
   } catch (e) { ctx.fillStyle = '#2a1c12'; ctx.fillRect(0, 0, W_, H_); }
   const L0 = (shade.x != null ? shade.x : shade.y) - 60 * ui.u, g = shade.x != null ? ctx.createLinearGradient(L0, 0, W_, 0) : ctx.createLinearGradient(0, L0, 0, H_); // where the controls sit: below the hero, or right of it on a phone on its side
-  g.addColorStop(0, 'rgba(14,8,4,0)'); g.addColorStop(0.3, 'rgba(14,8,4,0.32)'); g.addColorStop(1, 'rgba(14,8,4,0.55)');
+  g.addColorStop(0, 'rgba(14,8,4,0)'); g.addColorStop(0.35, 'rgba(14,8,4,0.12)'); g.addColorStop(1, 'rgba(14,8,4,0.3)'); // (only as dark as the words need: the world goes on behind)
   ctx.fillStyle = g; if (shade.x != null) ctx.fillRect(L0, 0, W_ - L0, H_); else ctx.fillRect(0, L0, W_, H_ - L0);
   const t = ctx.createLinearGradient(0, 0, 0, 90 * ui.u); t.addColorStop(0, 'rgba(14,8,4,0.35)'); t.addColorStop(1, 'rgba(14,8,4,0)'); // the header's ground
   ctx.fillStyle = t; ctx.fillRect(0, 0, W_, 90 * ui.u);
@@ -7967,6 +7967,7 @@ function drawLevelIntro(L, acc) {
     if (!H.cur.plan && el >= (H.i ? 3.2 : 1.3)) swap(demos[H.i % demos.length]); // the vault first: a moment to look, then what is new
     else if (H.cur.plan && el >= (H.cur.plan.loop || HOWTO_LOOP) * (demos.length > 1 ? 1 : 2)) { H.i++; swap(H.i % demos.length ? demos[H.i % demos.length] : { key: 'vault' }); } // (one new thing plays twice, then the vault; two take turns)
   }
+  if (H.pin && H.pin !== 'vault' && H.cur.plan && G.t - H.t0 >= (H.cur.plan.loop || HOWTO_LOOP) * 2) { H.prev = H.cur; H.cur = { key: 'vault' }; H.tx = G.t; H.t0 = G.t; H.pin = 'vault'; } // a tapped face's scene: twice, then back to the vault by itself
   { const dt = Math.min(0.05, Math.max(0, G.t - H.last)); H.last = G.t; // the rings: in slowly (eased), then a slow turn; a tap's spin runs down
     if (!calm && !low) { H.kv *= Math.exp(-dt * 1.8); H.ang += dt * (0.16 * clamp(st / 0.7, 0, 1) ** 2 + H.kv); } }
 
@@ -8027,17 +8028,17 @@ function drawLevelIntro(L, acc) {
   { const P = eggPerk(); if (P) perks.push({ id: 'perk', col: '#4a2a78', rim: '#e2ceff', tip: P.line, art: (X, Y, r) => pictoPerk(ctx, P.icon, X, Y, r * 1.45, G.t) }); }
   if (perks.length && !calm && !G.lcPerkSnd && st > 0.22) { G.lcPerkSnd = true; audio.play('hud_pop', { vol: 0.4 }); }
   if (st < 0.05) G.lcPerkSnd = false;
-  const PR = 19 * s, PG = 6 * s;
-  const perkRow = (x, cy) => perks.forEach((P, i) => {
-    const X = x + PR + i * (PR * 2 + PG), k = popK(0.18 + i * 0.07, 0.24), tp = G.lcPop && G.lcPop.id === 'perk:' + P.id ? G.t - G.lcPop.t0 : 9, kk = k * (tp < 0.3 && !calm ? 1 + 0.16 * Math.sin((tp / 0.3) * Math.PI) : 1);
+  const PR = 24 * s, PG = 7 * s; // (a crowded foot: the goal and the badges a size down together, never under 0.82)
+  const perkRow = (x, cy, f = 1) => perks.forEach((P, i) => {
+    const X = x + PR * f + i * (PR * 2 + PG) * f, k = popK(0.18 + i * 0.07, 0.24), tp = G.lcPop && G.lcPop.id === 'perk:' + P.id ? G.t - G.lcPop.t0 : 9, kk = k * (tp < 0.3 && !calm ? 1 + 0.16 * Math.sin((tp / 0.3) * Math.PI) : 1);
     if (kk <= 0.01) return;
-    ctx.save(); ctx.translate(X, cy); ctx.scale(kk, kk);
+    ctx.save(); ctx.translate(X, cy); ctx.scale(kk * f, kk * f);
     ctx.beginPath(); ctx.arc(0, 2.5 * s, PR, 0, TAU); ctx.fillStyle = 'rgba(10,4,0,0.35)'; ctx.fill();
     ctx.beginPath(); ctx.arc(0, 0, PR, 0, TAU); ctx.fillStyle = P.col; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = P.rim; ctx.stroke();
     P.art(0, 0, PR * 0.95);
-    if (P.num) { const nr = 8.5 * s, nx = PR * 0.72, ny = PR * 0.7; ctx.beginPath(); ctx.arc(nx, ny, nr, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = P.col; ctx.stroke(); ui.text(String(P.num), nx, ny + 0.5 * s, { size: 12 * s, align: 'center', color: P.col, noRecord: true }); } // the count: wins in a row, levels left
+    if (P.num) { const nr = 10.5 * s, nx = PR * 0.74, ny = PR * 0.72; ctx.beginPath(); ctx.arc(nx, ny, nr, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = P.col; ctx.stroke(); ui.text(String(P.num), nx, ny + 0.5 * s, { size: 15 * s, align: 'center', color: P.col, noRecord: true }); } // the count: wins in a row, levels left
     ctx.restore();
-    const r = { x: X - PR, y: cy - PR, w: PR * 2, h: PR * 2 };
+    const r = { x: X - PR * f, y: cy - PR * f, w: PR * 2 * f, h: PR * 2 * f };
     const bid = P.id === 'dare' ? 'dare:chip' : 'perk:' + P.id; // the dare keeps its own id: a tap takes it, another puts it back
     ui.record(r, 'intro:perk' + i); ui.buttons.push({ id: bid, ...r }); tips[bid] = P.tip;
     const fx = G.dareFx; // the dare was just tapped: its pop and its words, as the other badges get
@@ -8046,15 +8047,16 @@ function drawLevelIntro(L, acc) {
 
   // ---- the goal on the hero: the eggs to bring home (the target ones whole, the rest faint) and the clock
   const tl = G.sim && G.sim.timeLimit;
-  const goalW = () => { const es = 24 * s; return 18 * s + L.eggs * es + (tl ? 14 * s + 26 * s + ui.measure(`${Math.round(tl)}s`, 19 * s) : 0) + 12 * s; };
-  const goalPill = (cx, cy) => { // returns its right edge
-    const es = 24 * s, gw = goalW(), gh = 40 * s, x = cx - gw / 2, y = cy - gh / 2, k = popK(0.1, 0.26);
+  const GH = 52 * s; // the goal's height (its eggs and clock big enough to read at a glance)
+  const goalW = (f = 1) => { const es = 31 * s; return (23 * s + L.eggs * es + (tl ? 18 * s + 34 * s + ui.measure(`${Math.round(tl)}s`, 25 * s) : 0) + 16 * s) * f; };
+  const goalPill = (cx, cy, f = 1) => { // returns its right edge (f: a crowded foot's size)
+    const es = 31 * s * f, gw = goalW(f), gh = GH * f, x = cx - gw / 2, y = cy - gh / 2, k = popK(0.1, 0.26);
     ctx.save(); if (k !== 1) { ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); }
     ui.glass(x, y, gw, gh, { r: gh / 2, a: 'rgba(40,24,12,0.72)', b: 'rgba(20,12,6,0.78)' });
-    for (let i = 0; i < L.eggs; i++) { ctx.globalAlpha = i < L.target ? 1 : 0.36; drawEggIcon(ctx, x + 16 * s + es * (i + 0.5), cy, es * 0.92, 'alive'); }
+    for (let i = 0; i < L.eggs; i++) { ctx.globalAlpha = i < L.target ? 1 : 0.36; drawEggIcon(ctx, x + 21 * s * f + es * (i + 0.5), cy, es * 0.92, 'alive'); }
     ctx.globalAlpha = 1;
-    ui.record({ x: x + 16 * s, y: cy - es / 2, w: L.eggs * es, h: es }, 'intro:eggs');
-    if (tl) { const tx = x + 16 * s + L.eggs * es + 14 * s; pictoClock(ctx, tx + 12 * s, cy, 24 * s); ui.text(`${Math.round(tl)}s`, tx + 28 * s, cy + 0.5 * s, { size: 19 * s, color: '#fff3cf', tag: 'intro:time' }); }
+    ui.record({ x: x + 21 * s * f, y: cy - es / 2, w: L.eggs * es, h: es }, 'intro:eggs');
+    if (tl) { const tx = x + 21 * s * f + L.eggs * es + 18 * s * f; pictoClock(ctx, tx + 15 * s * f, cy, 31 * s * f); ui.text(`${Math.round(tl)}s`, tx + 36 * s * f, cy + 0.5 * s, { size: 25 * s * f, color: '#fff3cf', tag: 'intro:time' }); }
     ctx.restore();
     tips['perk:goal'] = L.target === L.eggs ? `All ${L.eggs} eggs home` : `${L.target} of ${L.eggs} home`;
     ui.buttons.push({ id: 'perk:goal', x, y, w: gw, h: gh });
@@ -8064,10 +8066,12 @@ function drawLevelIntro(L, acc) {
   // ---- the hero: the vault (or a demo) in the rect V, the goal and the perks on its foot
   // its geometry (the vault and its nest fitted into V above the goal's line) and the backdrop under it, painted first
   // whichever view is up, so the frozen picture is the same for the card and its chick picker
+  const hd = (() => { const sim = G.sim, R0 = sim ? sim.outerR : 3, n = sim && !sim.water ? sim.nest.getPosition() : null; return { R0, n, top: R0 * 1.14, bot: n ? Math.min(-R0 - 0.1, n.y - 0.55) : -R0 - 0.1, half: R0 * 1.06 }; })();
+  const heroK = (w, h) => Math.max(4, Math.min((w - 8 * s) / (2 * hd.half), (h - GH - 10 * s) / (hd.top - hd.bot))); // the vault as big as the room lets it: the width first
+  const heroNeed = (k) => (hd.top - hd.bot) * k + 10 * s + GH; // the vault, its nest and the goal under them
   const heroGeom = (V, shade) => {
-    const sim = G.sim, R0 = sim ? sim.outerR : 3, n = sim && !sim.water ? sim.nest.getPosition() : null;
-    const gh = 40 * s, top = R0 * 1.14, bot = n ? Math.min(-R0 - 0.1, n.y - 0.55) : -R0 - 0.1, half = R0 * 1.12;
-    const k = Math.max(4, Math.min((V.w - 8 * s) / (2 * half), (V.h - gh - 10 * s) / (top - bot)));
+    const sim = G.sim, { R0, n, top, bot } = hd, gh = GH;
+    const k = heroK(V.w, V.h);
     // the vault, its nest and the goal under it as one group, in the middle of the room (a tall phone: sky above, earth below)
     const grp = (top - bot) * k + 10 * s + gh, off = Math.max(0, (V.h - grp) * 0.42), roomH = Math.min(V.h, off + (top - bot) * k + 6 * s);
     const HV = { w: V.w, h: roomH, k, cx: V.w / 2, cy: off + top * k }, footY = V.y + off + (top - bot) * k + 10 * s + gh / 2; // footY: the goal's line
@@ -8102,19 +8106,20 @@ function drawLevelIntro(L, acc) {
         const foe = kinds.find((q) => !LC_HAZ.test(q));
         if (foe) {
           const tt = calm || low ? 1.2 : G.t, Rp = R0 * k, d = clamp(Rp * 0.7, 54 * s, 120 * s), ph = calm ? 0 : Math.sin(tt * 0.5);
-          const phi = 0.62 + 0.3 * ph, rr = Rp + d * 0.12, X = HV.cx + Math.sin(phi) * rr, Y = HV.cy - Math.cos(phi) * rr - (calm ? 0 : Math.abs(Math.sin(tt * 3.2)) * 3 * s);
+          const phi = 0.62 + 0.3 * ph, rr = Rp + d * 0.12, X = Math.min(HV.cx + Math.sin(phi) * rr, HV.w - d * 0.42), Y = HV.cy - Math.cos(phi) * rr - (calm ? 0 : Math.abs(Math.sin(tt * 3.2)) * 3 * s);
           ctx.beginPath(); ctx.ellipse(X, Y + d * 0.34, d * 0.3, d * 0.07, 0, 0, TAU); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill();
           drawVillainPortrait(ctx, foe, X, Y, d, tt);
         }
         ctx.restore();
-      } else { // a demo, its edges melting into the scene
+      } else { // a demo, its edges melting into the scene; under its words, so nothing it drops in runs through them
+        const nfs = 22 * s, wfs = 18 * s, capH = nfs + (Q.words ? wfs + 6 * s : 0) + 20 * s, dy0 = vy + capH, dh = roomH - capH;
         const sc = calm ? 1 : 0.94 + 0.06 * backK(clamp((G.t - H.tx) / 0.4, 0, 1));
-        ctx.save(); ctx.translate(vx + V.w / 2, vy + roomH / 2); ctx.scale(sc, sc); ctx.translate(-(vx + V.w / 2), -(vy + roomH / 2));
-        heroDemo(Q.plan, calm ? 0 : G.t - (Q.ts ?? H.t0), vx, vy, V.w, roomH, a, ho);
+        ctx.save(); ctx.translate(vx + V.w / 2, dy0 + dh / 2); ctx.scale(sc, sc); ctx.translate(-(vx + V.w / 2), -(dy0 + dh / 2));
+        heroDemo(Q.plan, calm ? 0 : G.t - (Q.ts ?? H.t0), vx, dy0, V.w, dh, a, ho);
         ctx.restore();
-        // its name and at most four words, at the top of the hero (red while the harm plays)
+        // its name and at most four words in their own place at the top of the hero (red while the harm plays)
         if (a > 0.5) {
-          const harm = Q.plan.kind && Q.words && !calm && (ho._phase === 'harm' || (!Q.plan.harm && ho._pt < 1.6)), nfs = 22 * s, wfs = 18 * s, ty = vy + 14 * s;
+          const harm = Q.plan.kind && Q.words && !calm && (ho._phase === 'harm' || (!Q.plan.harm && ho._pt < 1.6)), ty = vy + 8 * s;
           ctx.save(); ctx.globalAlpha *= (a - 0.5) * 2;
           ui.text(Q.name, vx + V.w / 2, ty + nfs * 0.5, { size: nfs, align: 'center', maxW: V.w - 24 * s, color: '#fff', stroke: INK, strokeW: 5 * s, shadow: 'rgba(0,0,0,0.3)', tag: 'intro:capname' });
           if (Q.words) ui.text(harm ? threatWords(Q.plan.kind) : Q.words, vx + V.w / 2, ty + nfs + 6 * s + wfs * 0.5, { size: wfs, align: 'center', maxW: V.w - 24 * s, color: harm ? '#ff8a6a' : '#c8f59a', stroke: INK, strokeW: 4.5 * s, tag: 'intro:cap0' });
@@ -8123,9 +8128,9 @@ function drawLevelIntro(L, acc) {
       }
     }
     // the goal and the perks on the hero's foot, as one centred group
-    const pw = perks.length ? perks.length * (PR * 2 + PG) + 4 * s : 0, gw = goalW(), gx = V.x + V.w / 2 - pw / 2;
-    const right = goalPill(gx, footY);
-    perkRow(right + 4 * s, footY);
+    const pw0 = perks.length ? perks.length * (PR * 2 + PG) + 4 * s : 0, f = clamp((V.w - 12 * s) / (goalW() + pw0), 0.82, 1), pw = pw0 * f, gw = goalW(f), gx = V.x + V.w / 2 - pw / 2;
+    const right = goalPill(gx, footY, f);
+    perkRow(right + 4 * s * f, footY, f);
     return { gw: gw + pw };
   };
 
@@ -8177,11 +8182,11 @@ function drawLevelIntro(L, acc) {
   // ---- the three stars: each with the win page's goal icon and at most a number; a tap says what it asks
   const goals = G.li >= 0 ? G.goals || GL.levelGoals(L, 1, true, save.mode) : null;
   const starRow = (x, y, w, h) => {
-    const cw = w / 3, sr = Math.min(15 * s, h * 0.38), br = Math.min(15 * s, h * 0.38), fs = 18 * s;
+    const cw = w / 3, sr = Math.min(25 * s, h * 0.38), br = sr, fs = Math.round(sr * 1.12);
     goals.slice(0, 3).forEach((g, i) => {
       const kd = goalKind(g), num = kd === 'home' ? String(g.n || L.target) : kd === 'turns' ? String((g.b || g).n || '') : kd === 'time' ? `${(g.b || g).s || ''}s` : '';
       const iw = sr * 2 + 2 * s + br * 2 + (num ? 6 * s + ui.measure(num, fs) : 0), cx = x + cw * i + cw / 2, cy = y + h / 2, ix = cx - iw / 2, k = popK(0.14 + i * 0.05, 0.26);
-      const tp = G.lcPop && G.lcPop.id === 'star:' + i ? G.t - G.lcPop.t0 : 9, kk = k * (tp < 0.3 && !calm ? 1 + 0.14 * Math.sin((tp / 0.3) * Math.PI) : 1);
+      const tp = G.lcPop && G.lcPop.id === 'star:' + i ? G.t - G.lcPop.t0 : 9, kk = k * (tp < 0.3 && !calm ? 1 + 0.14 * Math.sin((tp / 0.3) * Math.PI) : 1) * Math.min(1, (cw - 18 * s) / iw); // (a narrow phone: one that would not fit its third a little smaller)
       ctx.save(); if (kk !== 1) { ctx.translate(cx, cy); ctx.scale(kk, kk); ctx.translate(-cx, -cy); }
       drawStar(ctx, ix + sr, cy, sr, true);
       goalBadge(g, ix + sr * 2 + 2 * s + br, cy, br, true, 0);
@@ -8192,7 +8197,7 @@ function drawLevelIntro(L, acc) {
       ui.buttons.push({ id: 'star:' + i, ...rect }); tips['star:' + i] = words;
     });
   };
-  const STARH = 40 * s;
+  const STARH = 56 * s;
 
   // ---- the chick picker (the chick's face): its power on the hero, the row of chicks, its way in; Back closes it
   const nI = items.length;
@@ -8291,19 +8296,35 @@ function drawLevelIntro(L, acc) {
 
   // ---- the page
   const hdrY = A.y + 6 * s;
+  // the faces' size: big, bigger still when there are few (five or more: they scroll sideways past what fits)
+  const nF = fcs.length, fgap = (D) => Math.max(8 * s, D * 0.16);
+  const faceD = (w, grow = 1) => { if (!nF) return 0; const D = (nF >= 5 ? 62 : nF === 4 ? 70 : 78) * s * grow; return nF <= 5 ? Math.max(54 * s, Math.min(D, (w - 8 * s + fgap(D)) / nF - fgap(D))) : D; };
   if (!land) {
+    // the height shared out: the bottom blocks, then the vault as wide as the page lets it, then the stars and the faces
+    // grow a little, then what is left as even gaps; short of room, the vault tucks a little under the header
     const iw = W0, y0 = A.y1 - bottomH(iw), top = hdrY + hdrH + 2 * s; // y0: the bottom blocks' top (drawn last, over the shade)
-    const D = clamp((iw - 16 * s) / Math.max(1, Math.min(fcs.length, 6)) - 10 * s, 50 * s, A.h < 760 * s ? 54 * s : 64 * s); // (a short screen: the faces a size down, the hero keeps its room)
-    let y = y0;
-    const fy = fcs.length ? (y -= gp + faceH(D), y) : null, sy = goals ? (y -= gp * 0.6 + STARH, y) : null;
-    const Gm = heroGeom({ x: A.x + 4 * s, y: top, w: A.w - 8 * s, h: y - gp - top }, { y: y - gp });
+    const nb = 1 + (goals ? 1 : 0) + (nF ? 1 : 0), gmin = 10 * s, Vw = A.w - 8 * s;
+    let D = faceD(iw), SH = goals ? STARH : 0;
+    const fixed = () => SH + (nF ? faceH(D) : 0), room = () => y0 - top - fixed() - gmin * (nb + 1);
+    let k = heroK(Vw, room()), lift = 0;
+    const kW = heroK(Vw, 1e6);
+    if (k < kW) { lift = Math.min(hdrH * 0.5, heroNeed(kW) - room()); k = heroK(Vw, room() + lift); }
+    let slack = room() + lift - heroNeed(k);
+    if (slack > 0 && fixed() > 0) { const gr = 1 + clamp((slack * 0.3) / fixed(), 0, 0.22), f0 = fixed(); SH *= gr; D = faceD(iw, gr); slack -= fixed() - f0; }
+    const gap = gmin + Math.max(0, slack) / (nb + 1);
+    let y = top - lift + gap;
+    const HVr = { x: A.x + 4 * s, y, w: Vw, h: heroNeed(k) };
+    y += HVr.h + gap;
+    const sy = goals ? y : null; if (goals) y += SH + gap;
+    const fy = nF ? y : null;
+    const Gm = heroGeom(HVr, { y: y0 - gap });
     if (pick) {
       y = y0 - gp - WAYH; const wy = y; y -= gp + carH(iw); const cy = y;
       pickHero({ x: x0, y: top + 2 * s, w: iw, h: y - gp * 0.5 - top - 2 * s }); carRow(x0, cy, iw); wayRow(x0, wy, iw);
     } else {
       drawHero(Gm);
-      if (goals) starRow(x0, sy, iw, STARH);
-      if (fcs.length) faceRow(x0, fy, iw, D);
+      if (goals) starRow(x0, sy, iw, SH);
+      if (nF) faceRow(x0, fy, iw, D);
     }
     header(x0, hdrY, iw);
     bottom(x0, iw);
@@ -8318,7 +8339,7 @@ function drawLevelIntro(L, acc) {
       const cy = Math.max(top, y - Math.max(0, (y - top) * 0.5));
       carRow(rx, cy, rw); wayRow(rx, wy, rw);
     } else {
-      const D = clamp((rw - 16 * s) / Math.max(1, Math.min(fcs.length, 6)) - 10 * s, 48 * s, 60 * s), blocks = [];
+      const D = faceD(rw), blocks = [];
       if (fcs.length) blocks.push(faceH(D)); if (goals) blocks.push(STARH);
       const used = blocks.reduce((a, b) => a + b, 0), g2 = Math.max(gp, (y - top - used) / (blocks.length + 1)); // the room left shared out as even gaps
       let by = top + g2;
