@@ -2218,7 +2218,7 @@ function drawAdWait(W_, H_) {
   ui.buttons.length = 0; ui.rects.length = 0; // nothing under the shade takes a tap while an ad is pending
   if ((G.adVis || 0) < 1.5) return;
   const s = ui.u, w = Math.min(320 * s, W_ - 40 * s), h = 150 * s, x = (W_ - w) / 2, y = (H_ - h) / 2;
-  ui.panel(x, y, w, h, { r: 20 * s });
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(0, 0, W_, H_); // (frame818: no panel; the words and the button float on a deeper shade)
   ui.text('Waiting for the ad to close', W_ / 2, y + 34 * s, { size: 19 * s, align: 'center', maxW: w - 30 * s, color: '#fff6dc', noRecord: true });
   ui.button('ad:back', 'Back to game', x + 30 * s, y + 70 * s, w - 60 * s, 56 * s, { kind: 'secondary', size: 21 * s });
 }

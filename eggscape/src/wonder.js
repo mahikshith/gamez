@@ -577,8 +577,8 @@ export function createWonder(env) {
     const a = clamp(S.cardT / 0.25, 0, 1);
     ctx.fillStyle = `rgba(10,6,20,${0.5 * a})`; ctx.fillRect(0, 0, z.W, z.H);
     const w = Math.min(330 * u, A.w - 28 * u), h = (win ? 268 : 220) * u, x = A.cx - w / 2, y = Math.max(A.y + 24 * u, A.cy - h / 2) + (1 - a) * 20 * u;
+    K.scene({ cx: A.cx, gy: y + h - 78 * u, hh: 120 * u, sy: y + h * 0.4 }, a, win); // frame818 (mykee: no frames): the road's frameless scene edge to edge, the buttons on its meadow
     ctx.save(); ctx.globalAlpha = a; ui.aBase = a;
-    ui.frame(x, y, w, h, {});
     ui.ribbon(win ? L.name : 'So close!', A.cx, y - 16 * u, Math.min(w - 20 * u, 270 * u), 40 * u, { color: win ? '#e8503a' : '#6c7aa0', size: 21 * u, tag: 'wv:cardtitle' });
     let cy = y + 62 * u;
     if (win) {
