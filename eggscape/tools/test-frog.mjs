@@ -103,8 +103,8 @@ const run = (s, sec, on) => { for (let i = 0; i < sec / DT && s.state === 'play'
 
 // ---- 5. fair: Easy snatches once a level, never in the last seconds, rewind is exact
 {
-  const cnt = (mode, time) => {
-    const s = new Sim(studio(R(90, 90, 90, 90), { ch: 2, a: -100, delay: 99, every: 99 }, { time }), { mode });
+  const cnt = (mode, time, sn) => {
+    const s = new Sim(studio(R(90, 90, 90, 90), { ch: 2, a: -100, delay: 99, every: 99, sn }, { time }), { mode });
     const F = s.frogs[0]; F.snCD = 0;
     let n = 0;
     for (let k = 0; k < 3; k++) {
@@ -116,6 +116,7 @@ const run = (s, sec, on) => { for (let i = 0; i < sec / DT && s.state === 'play'
   };
   ok(cnt('easy', 0) === 1, 'Easy: one snatch a level');
   ok(cnt('medium', 0) >= 2, 'Medium: more than one, with a cooldown between');
+  ok(cnt('hard', 0, 1) === 1, 'a level\'s frog.sn caps it (its first level: one snatch, even on Hard)');
   const s = new Sim(studio(R(90, 90, 90, 90), { ch: 2, a: -100, delay: 99, every: 99 }, { time: 60 }), {});
   s.timeLeft = FROG.snTail + 0.5; s.frogs[0].snCD = 0; place(s, 1, 2, -72);
   let n = 0; run(s, 0.4, (ev) => { if (ev.type === 'frogLick' && ev.kind === 'egg') n++; });

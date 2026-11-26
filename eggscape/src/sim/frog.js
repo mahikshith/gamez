@@ -26,7 +26,8 @@
 //     can crack it in there; frogCarry keeps it at the cheek). It hops one ring INWARD with it (a setback, never a loss)
 //     and spits it out ("ptoo", frogRelease) FROG.hold s after the grab, or at once when it is scared, bopped, hit by a
 //     power, or its ring is turned briskly (F.spin, a leaky sum of degrees: it gets dizzy). It never eats an egg.
-//     Fair: at most one egg in the mouth, snCD s between snatches, snMax a level (Easy: one), none in the last snTail s.
+//     Fair: at most one egg in the mouth, snCD s between snatches, snMax a level (Easy: one; a level's frog.sn caps it
+//     lower: its first level teaches it with one), none in the last snTail s.
 //   THE BONK (the counter). A wall turned between frog and egg when the tongue shoots: it slaps the wall and snaps back
 //     into its face; it sits dizzy for bonkStun s (the stun state: it hops and licks nothing, plugs what it plugged).
 //   THE BELLY BOP. An egg landing hard on it (bopV) makes it cough up what it holds: the held egg is spat out, a
@@ -94,7 +95,7 @@ export const frogMethods = {
         // 0.8.18: the egg in its cheeks (id, -1 none), s since the grab, hopped inward with it, where the tongue caught it;
         // snatch cooldown and count; the bonk (1 shot at a wall, 2 slapped); its ring's leaky turn sum (deg); a bop to
         // handle, its cooldown, s offended; the swallowed orb's type and s since; s the spit lasted (render)
-        eg: -1, egT: 0, egHop: 0, gx: 0, gy: 0, snCD: P.delay ?? 3, snN: 0, bkN: 0, bonk: 0, spin: 0, bopReq: 0, bopCD: 0, off: 0, belly: '', bsrc: '', bellyT: 0, spWhy: '',
+        eg: -1, egT: 0, egHop: 0, gx: 0, gy: 0, snCD: P.delay ?? 3, snN: 0, snMx: P.sn ?? 99, bkN: 0, bonk: 0, spin: 0, bopReq: 0, bopCD: 0, off: 0, belly: '', bsrc: '', bellyT: 0, spWhy: '',
       };
       this.frogs.push(F);
       this.frogSeat(F);
@@ -270,7 +271,7 @@ export const frogMethods = {
           }
           return;
         }
-        if (F.snCD <= 0 && F.snN < M.snMax) { const pr = this.frogEggPrey(F, M); if (pr) { this.frogLick(F, pr, M); return; } }
+        if (F.snCD <= 0 && F.snN < Math.min(M.snMax, F.snMx ?? 99)) { const pr = this.frogEggPrey(F, M); if (pr) { this.frogLick(F, pr, M); return; } }
         if (F.lickCD <= 0) { const pr = this.frogPrey(F, M); if (pr) { this.frogLick(F, pr, M); return; } }
         // 0.8.10: an egg in another channel brings the hop forward (never closer together than FROG.hunt), so the frog
         // goes after the eggs instead of sitting out its timer
