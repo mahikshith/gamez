@@ -148,7 +148,7 @@ export function failHelp(save, ctx) {
   if (owns) return null; // they already have the right tool: the intro card offers it on the retry
   // a near miss on the first loss, or stuck (3+): the fitting booster for coins, else for a video
   if ((streak === 1 && ctx.nearMiss) || streak >= 3) {
-    if (B && coins >= B.price) return { kind: 'buyBoost', id: fit, price: B.price, label: `Retry with ${B.name}`, line: B.line };
+    if (B && coins >= B.price) return { kind: 'buyBoost', id: fit, price: B.price, label: B.name, line: B.line };
     if (B && ctx.adReady && !P.payer && streak >= 3) return { kind: 'adBoost', id: fit, label: `Watch: retry with ${B.name}`, line: B.line };
   }
   return null;

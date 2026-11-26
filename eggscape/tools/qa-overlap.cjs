@@ -140,7 +140,7 @@ const srv = http.createServer((q, r) => {
       await check(`spend-${lab}`, ([sv, mp, tp, wt, o]) => { const E = __egg; eval(sv);
         if (o.map) eval(mp);
         else if (o.strip) { E.G.lastLoss = 'villains'; E.start(14); }
-        else { E.start(14); for (let k = 0; k < 20; k++) E.frame(1 / 60); eval(tp); E.step(25); const sm = E.sim; if (o.fail === 'save') { sm.savedLog.length = 0; for (let i = 0; i < (sm.level.target || 2) - 1; i++) sm.savedLog.push({ pts: 500, cracks: 0 }); } E.showResult('fail'); E.G.failHelp = o.fail === 'save' ? { kind: 'buyBoost', id: 'stone', price: 60, label: 'Retry with Stone Shell', line: 'One hit on an egg is shrugged off.' } : null; if (o.fail === 'save') E.G.usedRewind = true; }
+        else { E.start(14); for (let k = 0; k < 20; k++) E.frame(1 / 60); eval(tp); E.step(25); const sm = E.sim; if (o.fail === 'save') { sm.savedLog.length = 0; for (let i = 0; i < (sm.level.target || 2) - 1; i++) sm.savedLog.push({ pts: 500, cracks: 0 }); } E.showResult('fail'); E.G.failHelp = o.fail === 'save' ? { kind: 'buyBoost', id: 'stone', price: 60, label: 'Stone Shell', line: 'One hit on an egg is shrugged off.' } : null; if (o.fail === 'save') E.G.usedRewind = true; }
         return eval(wt); }, [spSave(o), spMap, toPlay, spWait, o], lab === 'save');
     }
     // 0.8.17 the Pacer (src/engine/pacer.js): the Stuck? pop-up arriving and settled, the free hint on the fail page's
