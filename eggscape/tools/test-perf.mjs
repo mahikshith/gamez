@@ -1,5 +1,5 @@
 // Auto quality and the 30 fps fallback (src/perf.js): node tools/test-perf.mjs
-import { PERF, applySettings, tick, newLevel, takeStep, STEPS, advise } from '../src/perf.js';
+import { PERF, applySettings, tick, newLevel, takeStep, STEPS, advise, deviceGuess } from '../src/perf.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
 const save = { gfx: 'auto', fps: 'auto', gfxStep: STEPS.length - 1 };
@@ -135,6 +135,20 @@ s = { gfx: 'low', fps: 'auto', gfxSharp: 2 }; applySettings(s); ok(PERF.dprCap =
   PERF.guess = { tier: 'high' }; s = { gfx: 'low', fps: 'auto' }; applySettings(s); a = advise(s, 3);
   ok(a.to === 'auto' && a.tip, 'the advisor: Low picked by hand on a strong phone suggests Auto');
   PERF.guess = null;
+}
+// ---- 0.8.18 an iPhone 15 Pro's log: guessed Low, and Low Power Mode's 30 Hz screen read as a slow phone
+{
+  const g = deviceGuess({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148', hardwareConcurrency: 4, dpr: 3 });
+  ok(g.tier === 'high', `an iPhone with a 3x screen is a strong phone whatever its "4 cores" say (${g.tier})`);
+  const g2 = deviceGuess({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) Mobile/15E148', hardwareConcurrency: 4, dpr: 2 });
+  ok(g2.tier === 'medium' && g2.unknown, 'an iPhone with a 2x screen starts on Medium detail with nearly all its pixels');
+  const g3 = deviceGuess({ userAgent: 'Mozilla/5.0 (Linux; Android 14; SM-A057F) Mobile', hardwareConcurrency: 4, deviceMemory: 4, dpr: 2 });
+  ok(g3.tier === 'low', 'a four-core Android phone is still a Low phone');
+  const s = A(); let t = 0, moves = 0;
+  while (t < 120000) { tick(s, 33.3 * (0.98 + 0.04 * rnd()), true, 5, false, 33.3); if (PERF.want >= 0 && takeStep(s, true)) moves++; t += 33.3; }
+  ok(PERF.step === 0 && PERF.fpsCap === 60 && moves === 0, `a 30 Hz screen (Low Power Mode) with every frame on its refresh: Auto stays on High (step ${PERF.step}, cap ${PERF.fpsCap})`);
+  t = 0; while (t < 20000) { tick(s, rnd() < 0.4 ? 66.6 : 33.3, true, 5, false, 33.3); if (PERF.want >= 0) takeStep(s, true); t += 40; }
+  ok(PERF.step > 0, 'the same screen really missing refreshes still steps down');
 }
 // ---- the pace on a fast screen (90 Hz): missing refreshes locks every second refresh, quality stays
 {

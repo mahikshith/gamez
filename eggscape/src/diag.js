@@ -137,6 +137,7 @@ export const diag = {
         return;
       }
     }
+    if (gap > 2500) return; // 0.8.18 (an iPhone log: 40 s 'hitches' on the menus): the app was away (iOS stops frames before it says hidden); not the phone's pace
     const k = iv > 0 ? gap / iv : 1, want = every || 1;
     D.n++; D.span += gap; D.js += work; if (work > D.jsx) D.jsx = work; if (gap > D.worst) D.worst = gap;
     if (k < 1.5) D.g1++; else if (k < 2.5) D.g2++; else if (k < 3.5) D.g3++; else D.g4++;

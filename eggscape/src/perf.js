@@ -48,7 +48,15 @@ export function deviceGuess(nav = typeof navigator !== 'undefined' ? navigator :
   // graphics chips of older and budget phones: Adreno 3xx-5xx and 60x-61x, Mali-T, Mali-G31..G57 and G71/G72, PowerVR
   const weakGpu = /Adreno[^0-9]*([3-5]\d\d|6[01]\d)\b|Mali-(T|G3\d|G5[0-7]|G7[12]\b)|PowerVR|SGX|Vivante|VideoCore/i.test(gpu);
   let tier = 'high', unknown = false;
-  if (mobile) {
+  // 0.8.18 (a tester's iPhone 15 Pro log, 2026-11-26): Safari and WKWebView say "4 cores", no memory size and only
+  // "Apple GPU" on every iPhone, so the rule below called a flagship a Low phone and Auto drew it at 1x on a 3x screen
+  // (the blurry picture that "looked good on High"). Apple devices are judged by their screen instead: every iPhone
+  // with a 3x screen is strong; the 2x ones (SE, older) start on Medium and climb if they can.
+  const apple = /iPhone|iPad|iPod/i.test(nav.userAgent || '') || (/Macintosh/i.test(nav.userAgent || '') && +nav.maxTouchPoints > 1);
+  if (apple) {
+    const dpr = (typeof window !== 'undefined' && +window.devicePixelRatio) || +nav.dpr || 0;
+    tier = dpr >= 3 || /iPad|Macintosh/i.test(nav.userAgent || '') ? 'high' : 'medium'; unknown = tier === 'medium';
+  } else if (mobile) {
     if ((mem && mem <= 2) || (cores && cores <= 4)) tier = 'low';
     else if ((mem && mem <= 4) || weakGpu) tier = (mem && mem <= 4 && weakGpu) ? 'low' : 'medium';
     // a phone that tells us little (no memory size, or no graphics chip name) starts on Medium, not High: Auto steps up
@@ -145,7 +153,10 @@ export function tick(save, ms, measuring, work = 0, skip = false, iv = 16.7) {
     PERF.pn++; if (ms > iv * 1.5) PERF.pm++;
     if (PERF.pn >= 120) { if (PERF.pm > PERF.pn * 0.125) { PERF.pace = 2; PERF.why = 'pace'; PERF.acc = PERF.n = PERF.work = PERF.miss = PERF.bad = 0; } PERF.pn = PERF.pm = 0; }
   }
-  const budget = 1000 / PERF.fpsCap;
+  // 0.8.18 (the same iPhone log): Low Power Mode holds the screen at 30 Hz. Every frame then takes 33 ms, which is
+  // on time for THAT screen, but against a 16.7 ms budget every frame counted as late and Auto walked down to Low
+  // 0.8x for nothing. A frame can never be earlier than the screen's own refresh: that is the budget's floor.
+  const budget = Math.max(1000 / PERF.fpsCap, iv > 0 ? iv * 0.98 : 0);
   PERF.acc += ms / 1000; PERF.n++; PERF.work += work;
   if (ms > budget * LATE) PERF.miss++;
   if (PERF.acc < 2) return false;

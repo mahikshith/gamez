@@ -8815,7 +8815,7 @@ function drawSettings() {
   if (!PERF.guess) PERF.guess = deviceGuess(); // the picture advisor (src/perf.js advise) wants to know what this phone can do
   const gAdv = gfxAdvise(save, window.devicePixelRatio || 1), gl = gAdv.tip || gAdv.line;
   B.push(setCard(s, 'Graphics', 'sparkle', '#2aa7a0', null, 42 * s, (x, y, w) => segRow('gfx:', [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], save.gfx, x, y, w, 42 * s, s), gl));
-  const fl = save.fps === 30 ? 'Saves battery, keeps the phone cool' : save.fps === 60 ? 'Smoothest motion, uses more battery' : `Now ${PERF.fpsCap} fps`;
+  const fl = save.fps === 30 ? 'Saves battery, keeps the phone cool' : VSYNC.iv > 28 ? 'This phone is saving power: its screen runs at 30' : save.fps === 60 ? 'Smoothest motion, uses more battery' : `Now ${PERF.fpsCap} fps`; // 0.8.18: Low Power Mode (iPhone) holds 30 Hz whatever is picked here
   B.push(setCard(s, 'Frame rate', 'fps', '#3a80ea', null, 42 * s, (x, y, w) => segRow('fps:', [['auto', 'Auto'], [30, '30 fps'], [60, '60 fps']], save.fps, x, y, w, 42 * s, s), fl));
   B.push(setRow(s, 'calm', 'Calm motion', 'leaf', '#4aa83a', { on: !!save.calm, sub: 'No shake or flashes' }));
   B.push(setRow(s, 'set:fpsshow', 'Show fps', 'dial', '#8a6ad0', { on: !!save.showFps }));
@@ -11878,6 +11878,7 @@ async function boot() {
   // 0.8.12: quality steps learned by 0.8.9 to 0.8.11 may be the ill phone's (mykee's flagship came back from its restart on
   // Low at 0.8x): Auto starts once more from the phone's own guess
   if (!save.seen.gfx812) { save.seen.gfx812 = 1; if (save.gfx === 'auto') save.gfxStep = -1; }
+  if (!save.seen.gfx818) { save.seen.gfx818 = 1; if (save.gfx === 'auto') { save.gfxStep = -1; save.gfxSharp = 0; } } // 0.8.18: iPhones were guessed Low; Auto starts again once
   if (!save.seen.gfx817) { save.seen.gfx817 = 1; if (save.gfx === 'auto') { save.gfxStep = -1; save.gfxSharp = 0; } } // 0.8.17: Auto learned too soft a picture under the old rules; it starts again once
   applySettings(save); setDPR(); // graphics quality: the phone's own guess or what it learned last time (src/perf.js)
   diag.init({
