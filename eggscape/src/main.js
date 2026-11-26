@@ -3664,7 +3664,7 @@ function tourPauseHud(x, y, d) {
   if (!G.tourPause) {
     if (TR.tourSeen(save, 'pauseBtn') || G.screen !== 'play' || !sim || sim.state !== 'play') return;
     const quiet = G.held.size === 0 && sim.t >= TR.TOUR.pauseAfter && G.t - (G.touchAt || 0) >= TR.TOUR.pauseIdle;
-    const busy = fuseIntroOn() || !!G.teach || !!G.toast || G.toasts.length > 0 || !!G.hint || !!G.hintShow || !!G.card || !!G.endCard || !!G.slow || modalOpen() || (G.stkHint != null && G.t - G.stkHint < 6) || !!G.roosterCoach;
+    const busy = fuseIntroOn() || !!G.teach || !!G.toast || G.toasts.length > 0 || !!G.hint || !!G.hintShow || !!G.card || !!G.endCard || !!G.slow || modalOpen() || (G.stkHint != null && G.t - G.stkHint < 6) || (!!G.roosterCoach && G.roosterRun === G.run);
     if (!TR.tourMay(save, 'pauseBtn', { screen: G.screen, levelId: tourLv(), won1: bestStarsOf(1) > 0, quiet, busy })) return;
     G.tourPause = { t0: G.t, run: G.run }; tourStart('pauseBtn'); audio.play('hud_pop', { vol: 0.55 });
   }
@@ -6160,7 +6160,7 @@ function drawAllyBtn() {
     if (!still) return;
     if (!free && can && tk > 0) allyTicket(x, y, bs, tk); else if (!free && can) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
   };
-  G.roosterCoach = coach;
+  G.roosterCoach = coach; G.roosterRun = G.run; // (the tour: the flag counts only on the run that drew it)
   if (still) { hudLayer('ally', W_ + ',' + H_ + '|' + (can ? 1 : 0) + (free ? 1 : 0) + '|' + Math.min(tk || 0, 99) + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x - 3 * u, y - 3 * u, bs + 12 * u, bs + 9 * u, face); return; }
   face();
   // 2026-11-20 (mykee: "we did not show the user how to use Papa Rooster"): the first time he can help, a hand taps his
