@@ -147,6 +147,11 @@ export const VILLAIN_INFO = {
     does: 'Hops ring to ring, plugs gaps, eats orbs and chicks. Never eggs.',
     beat: 'Eggs land softly on it. A flaming egg or dash chick scares it.',
   },
+  penguin: { // 0.8.17 pip
+    group: 'creature', name: 'Pip the Penguin',
+    does: 'Belly-slides the ice, shoves eggs ahead and tucks a still one away.',
+    beat: 'Turn a wall or sponge into his slide: bonk, he drops it unharmed.',
+  },
   eagle: {
     group: 'creature', name: 'Eagle',
     does: 'Dives through outer-ring gaps, snatches an egg, drops it from high.',
@@ -295,6 +300,7 @@ export const VILLAIN_INFO = {
 export const ATTACK_EXTRA = { heat: 'Rising heat' }; // phase flags shown as an attack (names not in sim/boss.js ATTACK_NAME)
 
 const CREATURE_KEYS = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
+CREATURE_KEYS.push('penguin'); // 0.8.17 pip
 const listOf = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
 const HAZARD_ORBS = { curse: 'curse', thorn: 'thornorb' };
 
@@ -341,6 +347,7 @@ export function villainKinds(L, sim = null) {
     if (live(sim.octos)) set.add('octopus');
     if (live(sim.schools)) set.add('fish');
     if (live(sim.frogs)) set.add('frog');
+    if (live(sim.pips)) set.add('penguin'); // 0.8.17 pip
     if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp === 'sal' && C.kind !== 'frost')) set.add('salamander'); // L15's frost gecko and L20's thorn-backs are not salamanders
     if ((sim.sals || []).some((C) => C.sp === 'sal' && C.kind === 'frost')) set.add('frostsal');
     if ((sim.sals || []).some((C) => C.role === 'spike')) set.add('spike');
