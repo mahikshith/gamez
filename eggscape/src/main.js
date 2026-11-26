@@ -2,7 +2,7 @@
 import { Sim, DT, LEGACY_ORB, EAGLE_LEN, REWIND_S, SCARE_S, isHardLevel } from './sim/sim.js';
 import { hintSearch, actSteps } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
-import { curtainFront, vineFront } from './render/v3art.js'; // where a burning thorn curtain's fire has got to
+import { curtainFront, vineFront, drawEagle as devEagle } from './render/v3art.js'; // where a burning thorn curtain's fire has got to; the eagle rig (dev face strips)
 import { LEVELS } from './data/levels.js';
 import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop, setSceneCalm } from './themes.js';
@@ -12417,7 +12417,7 @@ if (DEV) window.__egg = {
   sidePlan() { const L = mapLayoutNow(); return MSIDE.sidePlan(L).map((q) => ({ w: q.w, key: q.key, i: q.i, j: q.j, x: q.x, y: q.y, R: q.R, box: q.box, pts: MSIDE.forkPts(q.fork).length, la: q.fork.la, lb: q.fork.lb, taps: MSIDE.forkTaps(L, q).length })); }, // 0.8.17 QA: the side quests' doors (0.8.18: on their forks)
   sideFocus(w) { G.world = w; G.sideFocus = w; G.mscroll.focus = ''; }, // map shots: centre side quest w's door
   mapScroll(y) { G.mscroll.y = y; G.mscroll.v = 0; G.mscroll.focus = G.world + ':' + G.mscroll.enter; },
-  G, LEVELS, LAB, ui, art: { drawOctopus: devOcto, octoAnim: devOctoAnim, drawJelly: devJelly }, drawVillainPortrait, PORTRAIT_BG, HEN_SKIN_ORDER: E.HEN_SKIN_ORDER, SKIN_ORDER: E.SKIN_ORDER, setEggSkin: (k) => W.setSkin(k),
+  G, LEVELS, LAB, ui, art: { drawEagle: devEagle, drawOctopus: devOcto, octoAnim: devOctoAnim, drawJelly: devJelly }, drawVillainPortrait, PORTRAIT_BG, HEN_SKIN_ORDER: E.HEN_SKIN_ORDER, SKIN_ORDER: E.SKIN_ORDER, setEggSkin: (k) => W.setSkin(k),
   get sim() { return G.sim; },
   start: (i, o) => startLevel(i, o),
   endRun: (won) => (won ? onWin() : onFail()), // the real win and fail paths (the engine, the spin meter, the reminder question), not just the card

@@ -5,6 +5,8 @@
 // is splatted on). Calm (save.calm): no shake, a steady aim line.
 import { urchinPose, urchinBlend, drawUrchin, URCHIN_M, URCHIN_TURN } from './urchin.js';
 import { URCHIN } from '../sim/urchin.js';
+import { RING_TH } from '../sim/geom.js';
+import { drawInChannel } from './ringclip.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -104,11 +106,17 @@ export function drawUrchins(ctx, sim, t, k, calm = false) {
     const ux = Math.cos(M.ang), uy = Math.sin(M.ang), fx = F.cx - ux * F.h, fy = F.cy - uy * F.h;
     const grow = U.ph === 'in' ? out3(1 - U.t / U.dur) : U.ph === 'warp' ? Math.abs(U.t / U.dur - 0.5) * 2 : 1;
     if (grow <= 0.02) continue;
-    ctx.save();
-    ctx.translate(fx, fy); ctx.scale(1 / k, -1 / k);
-    ctx.rotate(Math.atan2(ux, uy)); // local (0, -1) -> world (ux, uy)
-    drawUrchin(ctx, 0, 0, k * URCHIN_M * URCHIN.art * SPIKE_PLAY * grow, t, pose, { face: F.face, ...F.o });
-    ctx.restore();
+    const body = () => {
+      ctx.save();
+      ctx.translate(fx, fy); ctx.scale(1 / k, -1 / k);
+      ctx.rotate(Math.atan2(ux, uy)); // local (0, -1) -> world (ux, uy)
+      drawUrchin(ctx, 0, 0, k * URCHIN_M * URCHIN.art * SPIKE_PLAY * grow, t, pose, { face: F.face, ...F.o });
+      ctx.restore();
+    };
+    // 1.7x his spines reach past the ring over his channel (its outer face): there they are only a faint ghost, over
+    // neither that ring nor the next channel's eggs
+    const over = sim.rings[U.ch];
+    if (over) drawInChannel(ctx, over.r + RING_TH / 2, true, 0.3, body); else body();
   }
 }
 

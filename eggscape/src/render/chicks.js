@@ -73,8 +73,22 @@ function cel(ctx, C, o, sh = { x: -9, y: -10, r: 1.0 }, box = 40) {
 }
 // Big glossy eye. look: {x, y}; shut 0..1; mood: 'happy' (^), 'squint' (><), 'fierce' (flat top lid)
 const HLOOK = { x: 0, y: 0, shut: 0 }; // the hatch moment's look-around and blink (drawKindChick sets it, every eye adds it)
+// 0.8.18 faces (weasel818): every eye is drawn 1.15x (one egg tall, the eyes have to carry the face) and drawKindChick
+// sets a mood that every eye takes up: wow 0..1 (just hatched: round eyes, a pin of light), scare 0..1 (a predator close:
+// wide eyes, worried brows), happy (the level is won: ^ ^ eyes)
+const EYE_K = 1.15;
+const HMOOD = { wow: 0, scare: 0, happy: 0 };
 function eye(ctx, x, y, rx, ry, t, o, { shut = 0, look = { x: 0, y: 0 }, mood = null, side = 1, star = false } = {}) {
   if (HLOOK.x || HLOOK.shut) { look = { x: look.x + HLOOK.x, y: look.y + HLOOK.y }; shut = Math.max(shut, HLOOK.shut); }
+  const wide = Math.max(HMOOD.wow, HMOOD.scare);
+  rx *= EYE_K * (1 + 0.1 * wide); ry *= EYE_K * (1 + 0.22 * wide);
+  if (HMOOD.happy > 0.5 && mood !== 'squint') mood = 'happy';
+  if (wide > 0.3 && mood !== 'happy' && mood !== 'squint') { shut = Math.min(shut, 1 - wide); star = false; }
+  if (HMOOD.scare > 0.05 && mood !== 'happy') { // worried brows: the inner ends up
+    const sd = x < 0 ? -1 : 1, by = y - ry * 1.45;
+    ctx.save(); ctx.globalAlpha *= HMOOD.scare; ctx.strokeStyle = LINE; ctx.lineWidth = Math.max(2.2, o * 0.85); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x + sd * rx * 0.9, by + ry * 0.25); ctx.lineTo(x - sd * rx * 0.8, by - ry * 0.3); ctx.stroke(); ctx.restore();
+  }
   if (mood === 'squint') {
     ctx.strokeStyle = '#2a1d14';
     ctx.lineWidth = o * 0.95;
@@ -106,7 +120,7 @@ function eye(ctx, x, y, rx, ry, t, o, { shut = 0, look = { x: 0, y: 0 }, mood = 
   if (star) sparkle(ctx, x - rx * 0.3 + look.x, y - h * 0.32 + look.y, rx * 0.62);
   else {
     ctx.beginPath();
-    ctx.ellipse(x - rx * 0.32 + look.x, y - h * 0.38 + look.y, rx * 0.42, rx * 0.46, -0.3, 0, TAU);
+    ctx.ellipse(x - rx * 0.32 + look.x, y - h * 0.38 + look.y, rx * 0.42 * (1 - 0.35 * wide), rx * 0.46 * (1 - 0.35 * wide), -0.3, 0, TAU);
     ctx.fill();
   }
   ctx.beginPath();
@@ -1224,6 +1238,8 @@ export function drawKindChick(ctx, kind, cx, cy, s, t = 0, st = {}) {
     ctx.lineCap = 'round';
     const flap = clamp(st.flap || 0, 0, 1);
     const S = { ...st, flap };
+    HMOOD.scare = clamp(st.scare || 0, 0, 1); HMOOD.happy = st.happy ? 1 : 0;
+    HMOOD.wow = st.hatch !== undefined ? Math.sin(Math.PI * clamp((st.hatch - H_HIT) / 0.5, 0, 1)) : 0; // pops out round-eyed, settles
     if (st.hatch !== undefined) hatchPose(ctx, st.hatch);
     if (kind === 'bulk' && st.pow) {
       bulkPuffed(ctx, t, o, S, st.rx || 70, st.ry || 40, st.rot || 0);
@@ -1243,6 +1259,7 @@ export function drawKindChick(ctx, kind, cx, cy, s, t = 0, st = {}) {
     // art must never break the frame
   }
   HLOOK.x = HLOOK.y = HLOOK.shut = 0;
+  HMOOD.wow = HMOOD.scare = HMOOD.happy = 0;
   ctx.restore();
 }
 
@@ -1513,7 +1530,7 @@ export function drawChickEgg(ctx, egg, t, k) {
     return true;
   }
   const b = egg.body, p = b.getPosition(), v = b.getLinearVelocity();
-  const st = { flap: v.y < -0.3 ? 1 : 0.3, ready: !egg.powU, pow: egg.powK || 0, powT: egg.powT || 0, face: egg.face || 1 };
+  const st = { flap: v.y < -0.3 ? 1 : 0.3, ready: !egg.powU, pow: egg.powK || 0, powT: egg.powT || 0, face: egg.face || 1, scare: MOOD.get(egg) || 0, happy: WON };
   // phase changes, for the short after-anims the sim has no phase for (swoop landing settle, bulk deflate pfff)
   let ph = PHASE.get(egg);
   if (!ph) PHASE.set(egg, (ph = { k: st.pow, from: 0, at: -9 }));
@@ -1716,7 +1733,30 @@ const DRILL_MAT = {
 };
 const CRACKS = [[1, 0.26, 0.15], [-1, 0.24, 0.12], [1, 0.14, 0.9], [-1, 0.16, 0.8]];
 // World space, drawn over the eggs: the flash, dash streaks, swoop wind, pick sparks, daze stars.
+// 0.8.18 faces: what each hatched chick feels, for drawChickEgg (read one frame late, which nobody sees). Scared: a
+// predator's mouth, a diving eagle's aim or a thief within about a metre and a half; happy: the level is won.
+const MOOD = new WeakMap(); // egg -> eased scare 0..1
+let WON = false, MOOD_T = 0;
+function chickMoods(sim, t) {
+  const dt = clamp(t - MOOD_T, 0, 0.1); MOOD_T = t;
+  WON = sim.state === 'won' || sim.state === 'winning';
+  const pts = [], E = sim.eagle;
+  if (E && (E.phase === 'warn' || E.phase === 'dive' || E.phase === 'strike') && E.tx != null) pts.push(E.tx, E.ty);
+  for (const C of sim.sals || []) if (C.rad > 0 && C.ph !== 'wait' && C.ph !== 'gone') pts.push(C.rad * Math.cos(C.a), C.rad * Math.sin(C.a));
+  for (const T of sim.thieves || []) if (T.r > 0 && T.ph !== 'wait' && T.ph !== 'gone' && T.ph !== 'hide') pts.push(T.r * Math.cos(T.a), T.r * Math.sin(T.a));
+  for (const S of sim.snakes || []) { const h = S.pts && S.pts[0]; if (h && !S.gone && h.x != null) pts.push(h.x, h.y); }
+  for (const e of sim.eggs) {
+    if (!e.chick || !e.alive || !e.body) continue;
+    const p = e.body.getPosition();
+    let near = 0;
+    for (let i = 0; i < pts.length; i += 2) { const d = Math.hypot(pts[i] - p.x, pts[i + 1] - p.y); if (d < 1.5) near = Math.max(near, d < 0.8 ? 1 : (1.5 - d) / 0.7); }
+    const m = MOOD.get(e) || 0;
+    MOOD.set(e, m + (near - m) * (1 - Math.exp(-dt * (near > m ? 10 : 3))));
+  }
+}
+
 export function drawChickFX(ctx, sim, t, k) {
+  chickMoods(sim, t);
   const px = 1 / k;
   for (const e of sim.eggs) {
     if (!e.alive || e.saved || !e.chick || !e.powK || !e.body) continue;

@@ -360,6 +360,11 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     const P = blendPose(opts.w || { glide: 1 }, { phase: opts.phase || 0 }, t);
     if (opts.toes != null) P.toes = clamp(opts.toes, 0, 1);
     if (opts.beak != null) P.beak = Math.max(P.beak, opts.beak);
+    // 0.8.18 faces (weasel818): the head drawn 1.22x about the neck and the eye a further 1.25x, so the face reads at
+    // play size; smug 0..1 (a held egg, a gloat: half-moon lids, the brow up) and shock 0..1 (a strike that missed: wide,
+    // pin pupil, brow high, beak dropped) act on the eye
+    const HS = opts.hs ?? 1.22, ES = 1.25, smug = clamp(opts.smug || 0, 0, 1), shock = clamp(opts.shock || 0, 0, 1) * (1 - clamp(P.wide, 0, 1));
+    P.beak = Math.max(P.beak, shock * 0.6);
     const pitch = (opts.pitch || 0) + P.pitch * D2R, bank = clamp(opts.roll || 0, -1, 1), roll = bank * 30;
     P.eF -= Math.abs(bank) * 34; P.eN -= Math.abs(bank) * 14;
     const ow = clamp(s * 0.021, 1.15, 3.4) / k; // outline in body units: about 1.2..3.4 px whatever the size
@@ -429,7 +434,7 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     // head (white) + beak, turned about the neck
     const hr = P.head * D2R, nx = 23 + P.neck, ny = -9;
     const head = new Path2D();
-    const H = (x, y) => { const c = Math.cos(hr), sn = Math.sin(hr), X = x - 23, Y = y + 9; return [nx + X * c - Y * sn, ny + X * sn + Y * c]; };
+    const H = (x, y) => { const c = Math.cos(hr), sn = Math.sin(hr), X = (x - 23) * HS, Y = (y + 9) * HS; return [nx + X * c - Y * sn, ny + X * sn + Y * c]; };
     const hm = (x, y) => { const q = H(x, y); head.moveTo(q[0], q[1]); };
     const hb = (a, b, c, d, e, f) => { const q1 = H(a, b), q2 = H(c, d), q3 = H(e, f); head.bezierCurveTo(q1[0], q1[1], q2[0], q2[1], q3[0], q3[1]); };
     const hl = (a, b) => { const q = H(a, b); head.lineTo(q[0], q[1]); };
@@ -471,7 +476,7 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     ctx.clip(head);
     ctx.fillStyle = EG.whiteLo;
     const q0 = H(30, 4);
-    ctx.beginPath(); ctx.ellipse(q0[0], q0[1], 17, 10, hr - 0.25, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(q0[0], q0[1], 17 * HS, 10 * HS, hr - 0.25, 0, TAU); ctx.fill();
     ctx.restore();
 
     // near leg (in front of the body); tucked legs vanish into the belly feathers
@@ -500,40 +505,44 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     ctx.stroke(lower); ctx.fillStyle = EG.beakLo; ctx.fill(lower);
     ctx.stroke(upper); ctx.fillStyle = EG.beak; ctx.fill(upper);
     ctx.save(); ctx.clip(upper);
-    const qh = H(46, -21); ctx.fillStyle = EG.beakHi; ctx.beginPath(); ctx.ellipse(qh[0], qh[1], 6, 2.4, hr + 0.15, 0, TAU); ctx.fill();
-    const ql = H(50, -12); ctx.fillStyle = EG.beakLo; ctx.beginPath(); ctx.ellipse(ql[0], ql[1], 8, 2.6, hr + 0.3, 0, TAU); ctx.fill();
+    const qh = H(46, -21); ctx.fillStyle = EG.beakHi; ctx.beginPath(); ctx.ellipse(qh[0], qh[1], 6 * HS, 2.4 * HS, hr + 0.15, 0, TAU); ctx.fill();
+    const ql = H(50, -12); ctx.fillStyle = EG.beakLo; ctx.beginPath(); ctx.ellipse(ql[0], ql[1], 8 * HS, 2.6 * HS, hr + 0.3, 0, TAU); ctx.fill();
     ctx.restore();
     // cere line + nostril
     ctx.lineWidth = ow * 0.7; ctx.strokeStyle = EG.beakLo;
     let a0 = H(43.2, -21.4), a1 = H(42.6, -13.2);
     ctx.beginPath(); ctx.moveTo(a0[0], a0[1]); ctx.lineTo(a1[0], a1[1]); ctx.stroke();
-    a0 = H(45.8, -17.6); ctx.fillStyle = EG.line; ctx.beginPath(); ctx.arc(a0[0], a0[1], 0.9, 0, TAU); ctx.fill();
+    a0 = H(45.8, -17.6); ctx.fillStyle = EG.line; ctx.beginPath(); ctx.arc(a0[0], a0[1], 0.9 * HS, 0, TAU); ctx.fill();
 
     // eye under a heavy brow: squints to a slit when it locks on, goes wide and empty when dazed
     const ec = H(35.5, -17.5), blink = clamp(opts.eye == null ? 1 : opts.eye, 0, 1);
-    const wide = clamp(P.wide, 0, 1), sq = clamp(P.squint, 0, 1) * (1 - wide);
-    const er = 3.5 + wide * 0.9, open = blink * (1 - 0.55 * sq);
+    const wide = clamp(P.wide, 0, 1), sq = clamp(P.squint, 0, 1) * (1 - wide) * (1 - shock) * (1 - smug * 0.7);
+    const er = 3.5 + wide * 0.9 + shock * 0.6, open = blink * (1 - 0.55 * sq) * (1 - 0.3 * smug), eo = ow / (HS * ES);
     ctx.save();
     ctx.translate(ec[0], ec[1]);
     ctx.rotate(hr);
+    ctx.scale(HS * ES, HS * ES);
     const eye = new Path2D();
     eye.ellipse(0, 0, er * 1.1, er, 0, 0, TAU);
     ctx.save();
     ctx.clip(eye);
     ctx.fillStyle = EG.iris; ctx.fill(eye);
     ctx.fillStyle = EG.pupil;
-    ctx.beginPath(); ctx.arc(0.9 + sq * 0.5, 0.2, er * (wide ? 0.32 : 0.56), 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(0.9 + sq * 0.5 + smug * 0.6, 0.2, er * (wide ? 0.32 : 0.56 * (1 - 0.5 * shock)), 0, TAU); ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(-0.4, -1.3, er * 0.24, 0, TAU); ctx.fill();
     // lids close from the top (blink, squint)
     ctx.fillStyle = EG.white;
     ctx.fillRect(-er * 1.4, -er * 1.2, er * 2.8, er * 2.2 * (1 - open) + 0.01);
+    const lo = er * 0.8 * smug; // smug: the lower lid rises (a half moon)
+    if (lo > 0.05) ctx.fillRect(-er * 1.4, er - lo, er * 2.8, lo + er * 0.3);
     ctx.restore();
-    ctx.lineWidth = ow * 0.9; ctx.strokeStyle = EG.line; ctx.stroke(eye);
+    ctx.lineWidth = eo * 0.9; ctx.strokeStyle = EG.line; ctx.stroke(eye);
     if (open < 0.98) { const ly = -er + 2 * er * (1 - open); ctx.beginPath(); ctx.moveTo(-er * 1.1, ly); ctx.lineTo(er * 1.1, ly + 0.3); ctx.stroke(); }
+    if (lo > 0.05) { ctx.beginPath(); ctx.moveTo(-er * 1.05, er - lo + 0.3); ctx.quadraticCurveTo(0, er - lo - 0.5, er * 1.05, er - lo + 0.2); ctx.stroke(); }
     if (wide > 0.5) spiralEye(ctx, 0, 0, er * 0.95, t, 1, EG.pupil); // dazed: a spiral in the eye
     // brow ridge: a white shelf with a dark underside, lower and steeper as it squints
-    const bt = -er - 0.8 + sq * 1.6 - wide * 1.8;
+    const bt = -er - 0.8 + sq * 1.6 - wide * 1.8 - shock * 1.3 - smug * 0.8;
     const brow = new Path2D();
     brow.moveTo(-er * 1.9, bt - 2.2 - wide);
     brow.quadraticCurveTo(0, bt - 3.8 - wide, er * 1.9, bt + 0.6 + sq * 1.6);
@@ -541,7 +550,7 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     brow.quadraticCurveTo(0, bt - 0.8, -er * 1.6, bt - 0.2);
     brow.closePath();
     ctx.fillStyle = EG.white; ctx.fill(brow);
-    ctx.lineWidth = ow * 1.15; ctx.strokeStyle = EG.line;
+    ctx.lineWidth = eo * 1.15; ctx.strokeStyle = EG.line;
     ctx.beginPath(); ctx.moveTo(-er * 1.55, bt - 0.2); ctx.quadraticCurveTo(0, bt - 0.8, er * 1.5, bt + 2.0 + sq * 1.8); ctx.stroke();
     ctx.restore();
 
