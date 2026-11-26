@@ -99,6 +99,9 @@ import { createWonder } from './wonder.js'; // WONDER: the bonus world (own scre
 import { VILLAIN_INFO, ATTACK_EXTRA, villainKinds, bossAttacks } from './data/villain-info.js'; // the "i" panel: who is in this vault
 import { drawVillainPortrait, PORTRAIT_BG, hasPortrait } from './render/villain-art.js';
 import { drawExtrasMark } from './render/extras.js';
+import * as AL from './album.js'; // 0.8.17: the combo album (drawAlbum)
+import * as RS from './reset.js'; // 0.8.17: Settings > Reset progress (what goes, what stays)
+import { PRIVACY, PRIVACY_URL, PRIVACY_DATE } from './data/privacy.js'; // 0.8.17: Settings > Privacy policy
 import { vibrate, installApp } from './app.js'; // Android WebView proof shell: bridge vibration, back button, FPS overlay (no-ops outside EGG_APP)
 // Safety net: an animated size that dips below zero (a shrinking bubble, a tiny card on a short screen) makes arc() /
 // ellipse() THROW, which kills the rest of that frame every frame. Clamp the radius to 0 instead (NaN too).
@@ -498,7 +501,7 @@ const G = {
 };
 
 // WONDER: the bonus world's controller. It gets the canvas, the UI kit and a few shell services; it never touches the campaign save keys.
-const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, escroll: () => G.escroll, glide: (S, dt) => glideDt(S, dt), setScreen: (s) => setScreen(s), leave: () => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); setScreen('extras'); } });
+const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }), save: () => save, persist: () => persist(), time: () => G.t, escroll: () => G.escroll, album: () => xsAlbumRow(), albumIcon: (c, x, y, S, t) => albumRowIcon(c, x, y, S, t), albumMark: (xr, y, h) => markBadge(xr - 4 * ui.u, y + 4 * ui.u, Math.min(11 * ui.u, h * 0.14), G.t, '!'), albumLead: (S, off, R, vh) => albumLead(S, off, R, vh), glide: (S, dt) => glideDt(S, dt), setScreen: (s) => setScreen(s), leave: () => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); setScreen('extras'); } });
 
 function themeFor(level) {
   return THEMES.find((t) => t.id === level.theme) || THEMES[(level.id - 1) % THEMES.length];
@@ -1356,6 +1359,7 @@ async function press(id) {
   if (G.screen === 'intro' && G.level && G.li >= 0 && /^(boost:|adboost$|shop:boosts$|strip:more$)/.test(id) && !(save.seen || {})['strip:' + G.level.id]) { save.seen = { ...save.seen, ['strip:' + G.level.id]: 1 }; persist(); } // the booster strip was touched: its call for attention rests on this level for good
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
   if (id.startsWith('wait:go:')) { await waitClaim(id.slice(8)); return; } // 0.8.17: one waiting reward, one video
+  if (id.startsWith('xs:') || (id === 'set:close' && G.setSub) || (id === 'back' && G.album && G.screen === 'extras')) { await xsPress(id); return; } // 0.8.17: the combo album, Settings' privacy / reset / footer (xsPress)
   switch (id) {
     case 'ad:back': ads.cancelWait(); break; // an ad that never said it closed: back to the game (no reward)
     case 'zoom:in': setZoom((G.zm || 0) + 0.34); break;
@@ -1620,7 +1624,7 @@ async function press(id) {
       const P = G.parent;
       G.parent = null;
       if (!P) break;
-      if (P.q.choices[+id.slice(3)] === P.q.answer) await buyIap(P.sku, true);
+      if (P.q.choices[+id.slice(3)] === P.q.answer) { if (P.reset) xsOpen('reset1'); else await buyIap(P.sku, true); } // 0.8.17: or Reset progress
       else toast('Not quite. Ask a grown-up to help.', 2.4);
       break;
     }
@@ -1915,7 +1919,7 @@ async function press(id) {
       break;
     case 'extras': // the Extras menu: Wonder Vaults (bonus) and, in the test build, the Practice vaults
       portal.gameplayStop();
-      if (G.screen === 'title') G.escroll = { y: 0, v: 0, max: 0, t: G.t };
+      if (G.screen === 'title') G.escroll = { y: 0, v: 0, max: 0, t: G.t, want: albumMarkOn() ? 'album' : null }; // 0.8.17: home's album mark leads to the album row
       setScreen('extras');
       break;
     default:
@@ -2224,7 +2228,7 @@ function shopBrain() {
   return G.shopPlan.out;
 }
 // forYou ([{ key, why }], the FOR YOU row), hero (a bundle sku) and order ([sku, ...], the BUNDLES row): the Brain's plan. balHold: the balance shown while a purchase reveal's coins fly.
-const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) },
+const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today(), dailyIn: chestInText(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) },
   ...shopBrain(), balHold: purse.held() ?? (G.got && G.got.coins0 != null && !G.got.flown ? G.got.coins0 : null) });
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
@@ -4342,7 +4346,7 @@ const P2_API = {
   combo(ev) {
     const id = 'combo_' + ev.id, first = !save.seen[id];
     if (first) { save.seen[id] = 1; persist(); }
-    G.card = { id, t: 0, dur: first ? 2.2 : 1.3 };
+    G.card = { id, t: 0, dur: first ? 2.6 : 1.3, album: first }; // 0.8.17: the first time it says "Added to your album"
     G.slow = { left: first ? 1.4 : 0.7, scale: 0.25 };
   },
 };
@@ -5464,7 +5468,7 @@ function render() {
   if (G.screen === 'title') drawTitle();
   if (G.screen === 'levels') drawLevels();
   if (G.screen === 'practice') drawPractice();
-  if (G.screen === 'extras') wonder.drawExtras(); // Extras: Wonder Vaults + the Practice button
+  if (G.screen === 'extras') { if (G.album) drawAlbum(); else wonder.drawExtras(); } // Extras: Wonder Vaults + the Practice button (0.8.17: the combo album over it)
   if (G.screen === 'store') drawStoreScreen(); // (reached only if the early path above is skipped)
   if (G.settingsOpen && (G.screen === 'pause' || G.screen === 'title')) drawSettings();
   else G.settingsOpen = false;
@@ -5648,7 +5652,8 @@ function drawCard() {
   const A = ui.A, w = Math.min(A.w - 24 * u, 380 * u), x = A.cx - w / 2, y = G.hudBottom + 10 * u;
   const lineS = 15 * u, icon = 64 * u;
   const lines = wrapText(info.line, lineS, w - icon - 28 * u).slice(0, 3);
-  const h = Math.max(icon + 8 * u, 16 * u + 24 * u + lines.length * lineS * 1.25 + 10 * u);
+  const alb = c.album && /^combo_/.test(c.id) ? 22 * u : 0; // 0.8.17: a combo's first time: "Added to your album"
+  const h = Math.max(icon + 8 * u, 16 * u + 24 * u + lines.length * lineS * 1.25 + 10 * u + alb);
   ctx.save();
   ctx.globalAlpha = a; ui.aBase = a;
   const k = ui.pop(c.t, 0.22);
@@ -5658,6 +5663,11 @@ function drawCard() {
   const tx = x + icon + 16 * u;
   ui.text(info.name, tx, y + 10 * u + 12 * u, { size: 22 * u, color: info.color, stroke: 'rgba(0,0,0,0.6)', maxW: w - icon - 26 * u, tag: 'card:name', group: 'card' });
   lines.forEach((l, i) => ui.text(l, tx, y + 40 * u + lineS * 1.25 * (i + 0.5), { size: lineS, color: '#fff', maxW: w - icon - 26 * u, tag: 'card:l' + i, group: 'card' }));
+  if (alb) { // the album's picture and the line, in the card's gold (it fades in a beat after the card)
+    const ay = y + 40 * u + lineS * 1.25 * lines.length + 3 * u + 9 * u, k = save.calm ? 1 : clamp((c.t - 0.35) / 0.3, 0, 1);
+    ctx.save(); ctx.globalAlpha *= k; albumIcon(ctx, tx + 9 * u, ay, 20 * u, 0);
+    ui.text('Added to your album', tx + 24 * u, ay + 0.5 * u, { size: 13.5 * u, color: '#ffd23f', maxW: w - icon - 50 * u, tag: 'card:album', group: 'card' }); ctx.restore();
+  }
   ui.aBase = 1;
   ctx.restore();
 }
@@ -8066,6 +8076,7 @@ function ringSpeedStrip(x, y, w, s) {
 // the strip as a block for the level card's pinned column (RS_STRIP_H tall), or nothing
 const rsStripBlock = (s) => (ringSpeedStripOn() ? [{ h: rsStripH() * s, gap: 8 * s, draw: (x, y, w) => ringSpeedStrip(x, y, w, s) }] : []);
 function drawSettings() {
+  if (G.setSub) { if (G.setSub.seq === G.setSeq) return drawSetSub(); xsClose(); } // 0.8.17: the privacy page and the reset card (drawSetSub)
   ui.buttons.length = 0; ui.rects.length = 0; ui.calm = save.calm;
   const u = ui.u, A = ui.A, C = ui.C, s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, land = A.h < 520 * u;
   const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#3b2468'); bg.addColorStop(1, '#1c1233');
@@ -8079,7 +8090,7 @@ function drawSettings() {
   ui.pageHeader(P, { back: 'set:close', title: 'Settings', color: '#7a48e8', tag: 'set:title', right: land ? { w: 130 * s, draw: (x, y, w, h) => ui.button('set:close', 'Done', x, y, w, h, { kind: 'primary', icon: ICON.check, size: 19 * s }) } : null });
   let vb = A.y1 - (land ? 2 * u : pad);
   if (!land) {
-    ui.text('Eggscape ' + __VERSION__, A.cx, A.y1 - pad - 6 * s, { size: 12.5 * s, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' });
+    setFooter(A.cx, A.y1 - pad - 6 * s, s); // 0.8.17: the version and the support id (a tap copies them)
     ui.button('set:close', 'Done', x0, A.y1 - pad - 20 * s - 56 * s, cw, 56 * s, { kind: 'primary', icon: ICON.check, size: 22 * s });
     vb = A.y1 - pad - 20 * s - 56 * s - 8 * s;
   }
@@ -8109,7 +8120,8 @@ function drawSettings() {
   B.push(setRow(s, 'set:log', 'Share speed log', 'file', '#5a7aa8', { act: 'Share' })); // 0.8.7: the game notes frame rates and hitches by itself; this hands the file over
   if (ads.moneyShop && !ads.premium && !OF.childSafe(save)) B.push(setRow(s, 'set:novideo', 'No videos', 'novideo', '#7a48e8', { act: 'See' })); // the sheet of Unlock Everything (no payment starts here)
   if (ads.canBuyPremium || ads.premium) B.push(setRow(s, 'set:restore', 'Restore purchases', 'ring', '#c88a1c', { act: 'Restore' }));
-  if (land) B.push({ h: 16 * s, gap: 8 * s, draw: (x, y, w) => ui.text('Eggscape ' + __VERSION__, x + w / 2, y + 8 * s, { size: 12.5 * s, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' }) });
+  B.push(...xsSetBlocks(s)); // 0.8.17: Privacy policy, Reset progress (their own block, last)
+  if (land) B.push({ h: 28 * s, gap: 8 * s, draw: (x, y, w) => setFooter(x + w / 2, y + 14 * s, s) }); // the version and the support id (a tap copies them)
   G.setRect = V;
   if (G.setRsAt) { // the first visit: the ring speed row in view (on a short screen the page starts scrolled to it)
     G.setRsAt = false; let yy = 0; for (const b of B) { yy += b.gap ?? 10 * s; if (b === rsB) break; yy += b.h; }
@@ -9267,10 +9279,13 @@ function drawTitle() {
     const tagS = 13 * u;
     pop(0.4, chx, ground, () => {
       drawChest(ctx, chx, chy, cs, G.t, chestOpen ? 'open' : 'ready');
-      const tagT = chestOpen ? 'Tomorrow' : 'FREE', tgw = ui.measure(tagT, tagS) + 14 * u;
-      ui.roundRect(chx - tgw / 2, chy - cs * 0.62 - tagS, tgw, tagS * 1.6, tagS * 0.8);
+      // 0.8.17: "Opens in 6h 12m", kept on the screen; beside the landscape buttons it takes two lines when one does not fit
+      let L = [chestOpen ? chestInText() : 'FREE'], tgw = ui.measure(L[0], tagS) + 14 * u, tcx = Math.min(chx, A.x1 - 4 * u - tgw / 2);
+      if (wide && chestOpen && tcx - tgw / 2 < bx + bw / 2 + 4 * u) { L = ['Opens in', L[0].replace(/^Opens in /, '')]; tgw = Math.max(...L.map((l) => ui.measure(l, tagS))) + 14 * u; tcx = Math.min(chx, A.x1 - 4 * u - tgw / 2); }
+      const tlh = tagS * 1.2, ty = chy - cs * 0.62 - tagS - (L.length - 1) * tlh;
+      ui.roundRect(tcx - tgw / 2, ty, tgw, tagS * 1.6 + (L.length - 1) * tlh, tagS * 0.8);
       ctx.fillStyle = chestOpen ? 'rgba(40,24,10,0.7)' : '#e8402e'; ctx.fill();
-      ui.text(tagT, chx, chy - cs * 0.62 - tagS * 0.2, { size: tagS, align: 'center', color: '#fff', tag: 'title:chesttag' });
+      L.forEach((l, i) => ui.text(l, tcx, ty + tagS * 0.8 + i * tlh, { size: tagS, align: 'center', color: '#fff', tag: 'title:chesttag' + (i || '') }));
     });
     homeHit('home:chest', chx - cs * 0.6, chy - cs * 0.62 - tagS, cs * 1.2, cs * 1.1 + tagS);
   }
@@ -9321,6 +9336,7 @@ function drawTitle() {
   // Extras: as wide as Play, 52 u tall, with the Extras page's little planet and egg
   const ey = ry + rh + 8 * u, ew = side ? (bw - 8 * u) / 2 : bw, es = side ? 18 * u : 20 * u;
   pop(0.54, bx - bw / 2 + ew / 2, ey + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ey, ew, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: side ? 1.5 : 1.8, size: es, round: 17 * u }));
+  if (albumMarkOn()) pop(0.6, bx - bw / 2 + ew - 4 * u, ey + 4 * u, () => markBadge(Math.min(bx - bw / 2 + ew - 3 * u, A.x1 - 12 * u), ey + 3 * u, 11 * u, G.t, '!')); // 0.8.17: a new combo find (it leads to its album tile)
   if (side) pop(0.6, bx + bw / 2 - ew / 2, ey + 26 * u, () => ui.button(side.id, side.label, bx + bw / 2 - ew, ey, ew, 52 * u, { ...side.o, size: es, round: 17 * u }));
   if (fade) ctx.globalAlpha = 1;
 }
@@ -10201,6 +10217,348 @@ let last = 0;
 // 2026-11-20 pacing: ivs is a slow average of the callback gaps near iv (a precise refresh interval for snapping dt);
 // err is the time snapped off dt and not yet given back
 const VSYNC = { last: 0, buf: [], iv: 1000 / 60, ivs: 0, err: 0 };
+// ================================================================ 0.8.17 extras: the combo album, the daily chest's
+// "Opens in", and Settings' Privacy policy, Reset progress and version footer. The rules and the words live in
+// src/album.js, src/clock.js (opensIn), src/reset.js and src/data/privacy.js; this block draws them and takes their taps
+// (ids 'xs:*', one line at the top of press()).
+
+// ---- the daily chest: when it opens next. The game's own day (src/clock.js) decides, so the countdown ends exactly when
+// the chest can open, also after the phone's clock was set back. Plain information on a free gift: no urgency styling.
+const chestInText = () => CK.opensText(CK.opensIn(save.clock, Date.now()));
+
+// ---- the combo album: a page over the Extras screen (G.album; G.screen stays 'extras'). Opened from its row on the
+// Extras page (and from home's Extras button through that page); a new find marks both, and opening lands on its tile.
+const albumNow = () => AL.albumOf(save.seen);
+const comboName = (id) => powerInfo(id).name;
+function xsAlbumRow() { const D = albumNow(); return { n: D.n, total: D.total, fresh: D.fresh.length > 0 || D.prize, pitch: 'Two powers at once' }; }
+const albumMarkOn = () => { const D = albumNow(); return D.fresh.length > 0 || D.prize; };
+function openAlbum() {
+  const D = albumNow(), want = D.fresh[0] || (D.prize ? '_prize' : null);
+  G.album = { keep: G.escroll, fresh: D.fresh.slice(), t0: G.t, want, went: false, snd: {} };
+  G.escroll = { y: 0, v: 0, max: 0, t: G.t };
+  if (D.fresh.length) { save.seen = AL.albumSeen(save.seen, D.fresh); persist(); } // shown now: the marks go
+  audio.play('ui_open');
+}
+// the Extras page's album row (wonder.js): reached from home's mark, the page scrolls to it and rings it
+function albumLead(S, off, R, vh) {
+  if (S.want === 'album') { S.want = null; focusTrip(S, focusY(off, R.h, vh, S.max, ui.u), save.calm); focusStart(S, 'album', G.t + 0.1, 4, false); }
+  const look = S.hl && S.hl.key === 'album' ? focusLook(S.hl, G.t, save.calm) : null;
+  if (look) focusDraw(ctx, ui, look, R, 18 * ui.u, ui.u);
+}
+function closeAlbum() { if (!G.album) return; G.escroll = G.album.keep || G.escroll; G.album = null; }
+// two orbs side by side and the spark: the combo's shape, as a dark silhouette with a "?" (a combo not found yet)
+function comboShadow(c, x, y, r, a = 1) {
+  c.save(); c.globalAlpha *= a; c.lineWidth = Math.max(1.5, r * 0.07); c.strokeStyle = 'rgba(200,180,255,0.35)'; c.fillStyle = '#1d1433';
+  for (const [dx, dy] of [[-0.42, 0.06], [0.42, -0.06]]) { c.beginPath(); c.arc(x + dx * r, y + dy * r, r * 0.6, 0, 7); c.fill(); c.stroke(); }
+  c.beginPath(); for (let i = 0; i < 8; i++) { const q = (i * Math.PI) / 4 - Math.PI / 2, rr = i % 2 ? r * 0.13 : r * 0.36; c.lineTo(x + Math.cos(q) * rr, y + Math.sin(q) * rr); } c.closePath(); c.fill(); c.stroke();
+  c.restore();
+  ui.text('?', x, y + r * 0.04, { size: r * 0.95, align: 'center', color: '#cdb8ff', stroke: '#1d1433', strokeW: r * 0.16, noRecord: true });
+}
+// the album row's picture on the Extras page: a photo album with the first combo found on its cover
+function albumIcon(c, x, y, S, t) {
+  const w = S * 0.74, h = S * 0.8, x0 = x - w / 2, y0 = y - h / 2, lw = Math.max(1.5, S * 0.035);
+  c.save(); c.lineJoin = 'round';
+  ui.roundRect(x0 + S * 0.05, y0 + S * 0.04, w, h, S * 0.07); c.fillStyle = '#fff4dc'; c.fill(); c.lineWidth = lw; c.strokeStyle = '#5a1838'; c.stroke(); // the pages
+  ui.roundRect(x0, y0, w, h, S * 0.07); const g = c.createLinearGradient(0, y0, 0, y0 + h); g.addColorStop(0, '#d8487e'); g.addColorStop(1, '#8e2452'); c.fillStyle = g; c.fill(); c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.22)'; c.fillRect(x0 + S * 0.07, y0, S * 0.05, h); // the spine's stitch
+  ui.roundRect(x0 + w * 0.2, y0 + h * 0.14, w * 0.7, h * 0.72, S * 0.05); c.fillStyle = '#3a1430'; c.fill();
+  c.fillStyle = '#ffd24a'; for (const [cx, cy, d] of [[x0 + w * 0.2, y0 + h * 0.14, 1], [x0 + w * 0.9, y0 + h * 0.86, -1]]) { c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + d * S * 0.12, cy); c.lineTo(cx, cy + d * S * 0.12); c.closePath(); c.fill(); }
+  c.restore();
+  const f = albumNow().list.find((q) => q.found), r = S * 0.21, cx = x0 + w * 0.55, cy = y0 + h * 0.5;
+  if (f) drawOrb(c, 'combo_' + f.id, cx, cy, r, save.calm ? 0 : t); else comboShadow(c, cx, cy, r);
+}
+// ...on the Extras page, in the same rounded picture tile as the rows above it (render/extras.js well)
+function albumRowIcon(c, x, y, S, t) {
+  const x0 = x - S / 2, y0 = y - S / 2, g = c.createLinearGradient(0, y0, 0, y0 + S); g.addColorStop(0, '#f2a0c4'); g.addColorStop(1, '#c4507e');
+  ui.roundRect(x0, y0, S, S, S * 0.22); c.fillStyle = g; c.fill();
+  c.save(); ui.roundRect(x0, y0, S, S, S * 0.22); c.clip(); const sh = c.createLinearGradient(0, y0, 0, y0 + S); sh.addColorStop(0, 'rgba(0,0,0,0.28)'); sh.addColorStop(0.18, 'rgba(0,0,0,0)'); sh.addColorStop(0.8, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(255,255,255,0.14)'); c.fillStyle = sh; c.fillRect(x0, y0, S, S); c.restore();
+  albumIcon(c, x, y + S * 0.02, S * 0.92, t);
+  ui.roundRect(x0, y0, S, S, S * 0.22); c.lineWidth = S * 0.045; c.strokeStyle = 'rgba(20,8,30,0.55)'; c.stroke();
+}
+// the prize medal: a gold disc with a star on two ribbon tails (grey until the album is whole)
+function albumMedal(c, x, y, R, lit, t) {
+  c.save(); c.lineJoin = 'round'; c.lineWidth = Math.max(1.5, R * 0.08); c.strokeStyle = lit ? '#5a3000' : '#3a3050';
+  for (const [d, col] of [[-1, lit ? '#e8402e' : '#6a6080'], [1, lit ? '#3a80ea' : '#7a7090']]) {
+    c.beginPath(); c.moveTo(x + d * R * 0.2, y + R * 0.3); c.lineTo(x + d * R * 0.75, y + R * 1.45); c.lineTo(x + d * R * 0.42, y + R * 1.3); c.lineTo(x + d * R * 0.3, y + R * 1.62); c.lineTo(x - d * R * 0.12, y + R * 0.5); c.closePath(); c.fillStyle = col; c.fill(); c.stroke();
+  }
+  const g = c.createRadialGradient(x - R * 0.3, y - R * 0.35, R * 0.1, x, y, R);
+  g.addColorStop(0, lit ? '#fff3b0' : '#c9c0dc'); g.addColorStop(1, lit ? '#e8a018' : '#8a80a0');
+  c.beginPath(); c.arc(x, y, R, 0, 7); c.fillStyle = g; c.fill(); c.stroke();
+  c.beginPath(); c.arc(x, y, R * 0.76, 0, 7); c.lineWidth = Math.max(1, R * 0.05); c.strokeStyle = lit ? 'rgba(120,60,0,0.5)' : 'rgba(60,50,80,0.4)'; c.stroke();
+  c.restore();
+  drawStar(c, x, y + R * 0.03, R * 0.5, lit);
+  if (lit && !save.calm) { c.save(); c.globalAlpha = 0.5 + 0.5 * Math.sin(t * 3); c.fillStyle = '#fff'; c.beginPath(); for (let i = 0; i < 8; i++) { const q = (i * Math.PI) / 4, rr = i % 2 ? R * 0.05 : R * 0.2; c.lineTo(x + R * 0.55 + Math.cos(q) * rr, y - R * 0.55 + Math.sin(q) * rr); } c.fill(); c.restore(); }
+}
+// one tile: the combo's art (or its silhouette), its name and what it does (or the hint); the last tile is the prize
+function albumTile(it, x, y, w, h, s, o) {
+  const prize = !!it.prize, D = o.D, found = prize ? D.done : it.found && o.k > 0;
+  const col = prize ? (D.done ? '#ffc23a' : '#8a7aa8') : found ? '#ffc94a' : '#6a58a8';
+  const lip = 5 * s, fh = h - lip, r = 18 * s, tint = ui.tint, ink = found ? tint(col, -0.74) : '#f2eaff';
+  ui.roundRect(x, y + lip, w, fh, r); ctx.fillStyle = tint(col, -0.42); ctx.fill();
+  ui.roundRect(x, y, w, fh, r); const g = ctx.createLinearGradient(0, y, 0, y + fh); g.addColorStop(0, tint(col, found ? 0.6 : 0.25)); g.addColorStop(1, tint(col, found ? 0.12 : -0.12));
+  ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = tint(col, -0.5); ctx.stroke();
+  // the words from the bottom up: the name, then the line (or the prize's count / button)
+  const ns = o.ns, ls = o.ls, lh = o.lh, nY = y + fh - 10 * s - o.nMax * lh - ns * 0.62, aTop = y + 8 * s, aBot = nY - ns * 0.7 - 4 * s;
+  const acx = x + w / 2, acy = (aTop + aBot) / 2, aD = Math.min(w * 0.7, aBot - aTop);
+  if (found) { const lg = ctx.createRadialGradient(acx, acy, 0, acx, acy, aD * 0.6); lg.addColorStop(0, 'rgba(255,255,255,0.75)'); lg.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = lg; ctx.fillRect(x, aTop, w, aBot - aTop + 6 * s); }
+  const grp = 'album:t:' + it.id, t = save.calm ? 0 : G.t;
+  if (prize) albumMedal(ctx, acx, acy - aD * 0.14, aD * 0.3, D.done, t);
+  else if (found) {
+    const k = o.k, sc = k < 1 ? Math.max(0.05, backK(k)) : 1;
+    if (k < 1) { // the reveal: a ring of sparks and the art popping out of its silhouette
+      ctx.save(); ctx.globalAlpha = 1 - k; comboShadow(ctx, acx, acy, aD / 2.3 * (1 + 0.3 * k)); ctx.restore();
+      for (let i = 0; i < 10; i++) { const q = (i / 10) * Math.PI * 2 + 0.3, rr = aD * (0.25 + 0.45 * k); ctx.save(); ctx.globalAlpha = 1 - k; ctx.fillStyle = i % 2 ? '#fff3a8' : '#ffffff'; ctx.beginPath(); ctx.arc(acx + Math.cos(q) * rr, acy + Math.sin(q) * rr, (3.5 - 2 * k) * s, 0, 7); ctx.fill(); ctx.restore(); }
+    }
+    ctx.save(); ctx.translate(acx, acy); ctx.scale(sc, sc); drawOrb(ctx, 'combo_' + it.id, 0, 0, aD / 2.3, t); ctx.restore();
+  } else comboShadow(ctx, acx, acy, aD / 2.3);
+  ui.record({ x: acx - aD / 2, y: aTop, w: aD, h: aBot - aTop }, 'album:art:' + it.id, grp);
+  const name = prize ? 'Album prize' : found ? it.name : '? ? ?';
+  ui.text(name, acx, nY, { size: ns, align: 'center', maxW: w - 14 * s, color: ink, stroke: found ? null : 'rgba(20,10,40,0.6)', strokeW: 3 * s, tag: 'album:name:' + it.id, group: grp });
+  const ly = nY + ns * 0.62 + 4 * s;
+  if (prize) {
+    const bh = Math.min(40 * s, o.nMax * lh + 2 * s), bw = Math.min(w - 20 * s, 150 * s), bx = acx - bw / 2;
+    if (D.prize) ui.button('xs:prize', '+' + AL.ALBUM_PRIZE, bx, ly + (o.nMax * lh - bh) / 2, bw, bh, { kind: 'gold', icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 18 * s, shimmer: true });
+    else ui.text(D.done ? 'Complete!' : `${D.n} / ${D.total} found`, acx, ly + o.nMax * lh / 2, { size: 15 * s, align: 'center', maxW: w - 14 * s, color: ink, tag: 'album:count', group: grp });
+  } else o.lines.forEach((l, i) => ui.text(l, acx, ly + lh * (i + 0.5) + (o.nMax - o.lines.length) * lh / 2, { size: ls, align: 'center', maxW: w - 12 * s, color: found ? tint(col, -0.62) : 'rgba(236,226,255,0.88)', tag: 'album:l' + i + ':' + it.id, group: grp }));
+  if (o.fresh) { const pw = ui.measure('NEW', 11 * s) + 14 * s, ph = 19 * s; ui.roundRect(x + 7 * s, y + 7 * s, pw, ph, ph / 2); ctx.fillStyle = '#e8402e'; ctx.fill(); ctx.lineWidth = 1.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); ui.text('NEW', x + 7 * s + pw / 2, y + 7 * s + ph / 2 + 0.5 * s, { size: 11 * s, align: 'center', color: '#fff', tag: 'album:new:' + it.id, group: grp }); }
+  if (o.look) focusDraw(ctx, ui, o.look, { x, y, w, h }, r, s);
+}
+function drawAlbum() {
+  const AB = G.album, A = ui.A, u = ui.u, calm = save.calm, S = G.escroll, D = albumNow();
+  ui.calm = calm;
+  const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#1c1440'); bg.addColorStop(1, '#3a2152'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_);
+  const items = [...D.list, { prize: true, id: '_prize' }], wide = A.w > A.h * 1.15, cols = wide ? 4 : 2, rows = Math.ceil(items.length / cols);
+  const P = ui.pageBox(wide ? 900 * u : 560 * u), s = P.s, gap = 12 * s, vt = P.bottom + 8 * s, vb = A.y1 - 8 * s, V = { x: A.x, y: vt, w: A.w, h: vb - vt };
+  const tw = (P.w - gap * (cols - 1)) / cols, ns = 17 * s, ls = 13.5 * s, lh = ls * 1.24;
+  const lineOf = (it) => (it.found ? powerInfo('combo_' + it.id).line : AL.hintText(it.id, comboName));
+  const wraps = items.map((it) => (it.prize ? [] : wrapText(lineOf(it), ls, tw - 18 * s).slice(0, 3)));
+  const nMax = Math.max(2, ...wraps.map((q) => q.length)), textH = ns * 1.3 + nMax * lh + 14 * s;
+  const need = 8 * s + Math.min(tw * 0.5, 84 * s) + textH + 5 * s, room = V.h - 10 * s;
+  const th = clamp((room - (rows - 1) * gap) / rows, need, need * 1.3);
+  const air = Math.min(30 * s, Math.max(0, room - rows * th - (rows - 1) * gap) / (rows + 1)), rowGap = gap + air;
+  const total = 6 * s + air * 2 + rows * th + (rows - 1) * rowGap + 4 * s;
+  S.max = Math.max(0, total - V.h);
+  glide(S);
+  if (AB.want && !AB.went) { // the new find (or the prize waiting): the page lands on its tile and rings it
+    AB.went = true; const i = items.findIndex((q) => q.id === AB.want);
+    if (i >= 0) { focusTrip(S, focusY(6 * s + air + Math.floor(i / cols) * (th + rowGap), th, V.h, S.max, s), calm); focusStart(S, AB.want, G.t + 0.1, 4, false); }
+  }
+  const r0 = ui.rects.length, b0 = ui.buttons.length, y0 = vt + 6 * s + air - snapPx(S.y, DPR);
+  ctx.save(); ctx.beginPath(); ctx.rect(V.x, V.y, V.w, V.h); ctx.clip();
+  items.forEach((it, i) => {
+    const c = i % cols, rr = Math.floor(i / cols), inRow = Math.min(cols, items.length - rr * cols), rx = P.x + (P.w - (inRow * tw + (inRow - 1) * gap)) / 2;
+    const x = rx + c * (tw + gap), y = y0 + rr * (th + rowGap);
+    if (y > V.y + V.h || y + th < V.y) return;
+    const fi = AB.fresh.indexOf(it.id), fresh = fi >= 0;
+    let k = 1;
+    if (fresh && !calm) { // a new find turns over from its silhouette, one after the other
+      k = clamp((G.t - AB.t0 - 0.45 - fi * 0.3) / 0.55, 0, 1);
+      if (k > 0 && !AB.snd[it.id]) { AB.snd[it.id] = 1; audio.play('star', { pitch: 1 + fi * 0.08 }); }
+    }
+    const look = S.hl && S.hl.key === it.id ? focusLook(S.hl, G.t, calm) : null;
+    albumTile(it, x, y, tw, th, s, { D, k, fresh, look, ns, ls, lh, nMax, lines: wraps[i] });
+  });
+  ctx.restore();
+  clipRecorded(r0, b0, V);
+  if (S.max > 0 && !calm) { const th2 = Math.max(30 * u, V.h * V.h / total), ty2 = vt + clamp(S.y / S.max, 0, 1) * (V.h - th2 - 4 * u); ui.roundRect(A.x1 - 5 * u, ty2, 3 * u, th2, 1.5 * u); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill(); }
+  // the header: back, the title, the count (the same chip as the Extras page's stars)
+  const cnt = `${D.n} / ${D.total}`, cw = 10 * s + 22 * s + 6 * s + ui.measure(cnt, 17 * s) + 12 * s;
+  ui.pageHeader(P, { back: 'xs:alback', title: 'Combo album', color: '#c0558a', tag: 'album:title', right: { w: cw, draw: (x, y, w, h) => {
+    const ch = h - 6 * s, cy = y + 2 * s + ch / 2;
+    ui.glass(x, cy - ch / 2, w, ch);
+    albumIcon(ctx, x + 10 * s + 11 * s, cy, 24 * s, calm ? 0 : G.t);
+    ui.text(cnt, x + w - 12 * s, cy + 0.5 * s, { size: 17 * s, color: '#fff', align: 'right', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * s, tag: 'album:count:head' });
+  } } });
+}
+function albumPrize() {
+  const D = albumNow();
+  if (!D.prize) return;
+  save.wallet = E.addCoins(save.wallet, AL.ALBUM_PRIZE); save.seen = { ...save.seen, albumPrize: 1 }; persist();
+  startGot({ name: 'Album complete!', art: 'coins', coins: AL.ALBUM_PRIZE, items: [{ art: 'coins', label: '+' + AL.ALBUM_PRIZE }] });
+}
+
+// ---- Settings, the bottom block: Privacy policy, Reset progress, and the footer (version and support id)
+SI.shield = (c, x, y, S) => { c.beginPath(); c.moveTo(x, y - S * 0.38); c.quadraticCurveTo(x + S * 0.2, y - S * 0.26, x + S * 0.34, y - S * 0.27); c.quadraticCurveTo(x + S * 0.36, y + S * 0.22, x, y + S * 0.4); c.quadraticCurveTo(x - S * 0.36, y + S * 0.22, x - S * 0.34, y - S * 0.27); c.quadraticCurveTo(x - S * 0.2, y - S * 0.26, x, y - S * 0.38); c.closePath(); c.fill(); c.strokeStyle = 'rgba(30,60,130,0.85)'; c.lineWidth = S * 0.09; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); c.moveTo(x - S * 0.14, y + S * 0.01); c.lineTo(x - S * 0.03, y + S * 0.12); c.lineTo(x + S * 0.16, y - S * 0.1); c.stroke(); };
+SI.restart = (c, x, y, S) => { c.lineWidth = S * 0.12; c.lineCap = 'round'; c.beginPath(); c.arc(x, y + S * 0.02, S * 0.28, -Math.PI * 0.55, Math.PI * 1.2); c.stroke(); const a = -Math.PI * 0.55, ax = x + S * 0.28 * Math.cos(a), ay = y + S * 0.02 + S * 0.28 * Math.sin(a); c.beginPath(); c.moveTo(ax - S * 0.2, ay - S * 0.04); c.lineTo(ax + S * 0.06, ay - S * 0.16); c.lineTo(ax + S * 0.04, ay + S * 0.14); c.closePath(); c.fill(); };
+// the support id: random, made once and kept in the save (no device identifiers); the footer shows its first 8 characters
+function supportId() {
+  if (!save.sid) {
+    let id = '';
+    try { const a = new Uint8Array(8); crypto.getRandomValues(a); id = Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(''); } catch (_) { id = (Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10)).padEnd(16, '0'); }
+    save.sid = id; persist();
+  }
+  return String(save.sid).slice(0, 8);
+}
+/* global __BUILD__ */
+const verText = () => `Eggscape ${__VERSION__}${typeof __BUILD__ !== 'undefined' && __BUILD__ ? ` (${__BUILD__})` : ''}`;
+function copyText(str) {
+  const old = () => { try { const ta = document.createElement('textarea'); ta.value = str; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); } catch (_) { /* nothing to copy into */ } };
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(str).catch(old); return; } } catch (_) { /* older web view */ }
+  old();
+}
+// the footer line at (cx, cy): "Eggscape 0.8.17 (25) · ID 3f9a2c1d"; a tap copies both and it says "Copied" a moment
+function setFooter(cx, cy, s) {
+  const el = G.t - (G.copiedAt ?? -9), on = el < 1.6, size = 12.5 * s;
+  const str = `${verText()}  ·  ID ${supportId()}`, w = ui.measure(str, size);
+  if (on) {
+    const a = save.calm ? 1 : Math.min(1, el / 0.15, (1.6 - el) / 0.3), k = save.calm ? 1 : Math.max(0.3, backK(Math.min(1, el / 0.25))), ts = 14 * s * k, cw = ui.measure('Copied', ts) + 22 * s * k;
+    ctx.save(); ctx.globalAlpha *= a; // it pops in (eased, a little overshoot) and fades out
+    pictoCheck(ctx, cx - cw / 2 + 8 * s * k, cy, 15 * s * k, '#8fe07a');
+    ui.text('Copied', cx - cw / 2 + 20 * s * k, cy + 0.5 * s, { size: ts, color: '#dff7d4', tag: 'set:copied' });
+    ctx.restore();
+  } else ui.text(str, cx, cy, { size, align: 'center', color: 'rgba(255,240,210,0.7)', tag: 'set:version' });
+  ui.buttons.push({ id: 'xs:sid', x: cx - w / 2 - 12 * s, y: cy - 12 * s, w: w + 24 * s, h: 24 * s });
+}
+// the rows for drawSettings (one line there): their own block, after everything else
+const xsSetBlocks = (s) => [setHead('Privacy and data', s), setRow(s, 'xs:privacy', 'Privacy policy', 'shield', '#3a80ea', { act: 'Read' }), setRow(s, 'xs:reset', 'Reset progress', 'restart', '#d8453a', { act: 'Reset' })];
+
+// the pages behind them, drawn in place of the Settings list while G.setSub is up (its own scroller swapped in)
+function xsOpen(kind) {
+  const keep = G.setSub ? G.setSub.keep : G.setpage;
+  G.setSub = { kind, seq: G.setSeq, t0: G.t, keep, k: 0, lt: G.t, q: 0 };
+  G.setpage = { y: 0, v: 0, max: 0, t: G.t, lid: G.setSeq };
+  audio.play('ui_open');
+}
+function xsClose() { if (!G.setSub) return; G.setpage = G.setSub.keep || G.setpage; G.setSub = null; }
+function openLink(url) { // the hosted policy: Android's web view hands an https link to the browser (MainActivity); the web opens a tab
+  if (!/^https:\/\//.test(url)) return false;
+  try {
+    if (typeof __APP__ !== 'undefined' && __APP__) { window.location.href = url; return true; }
+    if (typeof window !== 'undefined' && window.EGG_APP === true) return false; // the iPhone shell: no outside links yet, the page in the game
+    return !!window.open(url, '_blank', 'noopener');
+  } catch (_) { return false; }
+}
+const subBg = () => { const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#3b2468'); bg.addColorStop(1, '#1c1233'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); };
+// a picture-and-words row in a well: the reset card's lists
+const xsItemRow = (s, art, label, col) => ({ h: 50 * s, gap: 4 * s, draw: (x, y, w) => {
+  art(x + 32 * s, y + 25 * s, 40 * s);
+  ui.text(label, x + 64 * s, y + 25 * s, { size: 17 * s, color: col, maxW: w - 72 * s, tag: 'reset:i:' + label });
+} });
+function xsWellBlock(s, head, ok, rows) {
+  const hh = 40 * s, h = hh + rows.reduce((a, b) => a + b.h + b.gap, 0) + 10 * s;
+  return { h, gap: 10 * s, draw: (x, y, w) => {
+    ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+    const bx = x + 14 * s, by = y + 10 * s, d = 24 * s;
+    ctx.beginPath(); ctx.arc(bx + d / 2, by + d / 2, d / 2, 0, 7); ctx.fillStyle = ok ? '#3eb42d' : '#d8453a'; ctx.fill();
+    (ok ? pictoCheck : pictoCross)(ctx, bx + d / 2, by + d / 2, d * 0.62, '#fff');
+    ui.text(head, bx + d + 10 * s, by + d / 2 + 0.5 * s, { size: 15 * s, color: ok ? '#2d6a1c' : '#a3271c', tag: 'reset:head:' + head });
+    let yy = y + hh;
+    for (const R of rows) { yy += R.gap; R.draw(x + 4 * s, yy, w - 8 * s); yy += R.h; }
+  } };
+}
+function drawSetSub() {
+  const SB = G.setSub, u = ui.u, A = ui.A, s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, land = A.h < 520 * u, calm = save.calm;
+  ui.buttons.length = 0; ui.rects.length = 0; ui.calm = calm;
+  subBg();
+  const P = ui.pageBox(560 * s), cw = P.w, x0 = P.x, pg = G.setpage;
+  const title = SB.kind === 'privacy' ? 'Privacy policy' : 'Reset progress', color = SB.kind === 'privacy' ? '#3a80ea' : '#d8453a';
+  const B = [];
+  let bottom = null; // the big button(s) pinned under the list (portrait); landscape: Cancel in the header, the rest in the list
+  if (SB.kind === 'privacy') {
+    B.push({ h: 18 * s, gap: 4 * s, draw: (x, y, w) => ui.text('Updated ' + PRIVACY_DATE, x + w / 2, y + 9 * s, { size: 13 * s, align: 'center', color: 'rgba(255,240,210,0.75)', tag: 'pp:date' }) });
+    for (const [head, ...paras] of PRIVACY) {
+      const iw = cw - 32 * s, ps = 15 * s, plh = ps * 1.34, L = paras.map((p) => wrapText(p, ps, iw)), n = L.reduce((a, b) => a + b.length, 0);
+      const h = 16 * s + 22 * s + 6 * s + n * plh + (L.length - 1) * 6 * s + 12 * s;
+      B.push({ h, gap: 10 * s, draw: (x, y, w) => {
+        ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+        ui.text(head, x + 16 * s, y + 16 * s + 11 * s, { size: 19 * s, color: ui.C.ink, maxW: w - 32 * s, tag: 'pp:h:' + head });
+        let yy = y + 16 * s + 22 * s + 6 * s;
+        L.forEach((lines, j) => { lines.forEach((l, i) => ui.text(l, x + 16 * s, yy + plh * (i + 0.5), { size: ps, color: ui.C.ink2, maxW: w - 30 * s, tag: `pp:${head}:${j}:${i}` })); yy += lines.length * plh + 6 * s; });
+      } });
+    }
+    bottom = { id: 'xs:subback', label: 'Done', kind: 'primary', icon: ICON.check };
+  } else if (SB.kind === 'reset1') {
+    const ink = ui.C.ink, gone = [
+      xsItemRow(s, (x, y, S) => { drawStar(ctx, x, y, S * 0.42, true); }, 'Levels and stars', ink),
+      xsItemRow(s, (x, y, S) => { drawBoosterIcon(ctx, 'golden', x + S * 0.12, y - S * 0.06, S * 0.66, 0); drawCoin(ctx, x - S * 0.16, y + S * 0.12, S * 0.26, 0); }, 'Coins and power-ups', ink),
+      xsItemRow(s, (x, y, S) => drawHenSkinPreview(ctx, 'santa', x, y + S * 0.02, S * 0.95, 0), 'Hens, eggs and chicks', ink),
+      xsItemRow(s, (x, y, S) => albumIcon(ctx, x, y, S * 1.05, 0), 'Combo album', ink),
+    ];
+    const kept = [xsItemRow(s, (x, y, S) => settingsIcon(ctx, x, y, S * 0.9, '#6b3f17', '#f0dcb2'), 'Your settings', ink)];
+    if (ads.moneyShop) kept.unshift(xsItemRow(s, (x, y, S) => drawGift(ctx, x, y, S * 0.9, 0), 'Purchases: the store gives them back', ink));
+    B.push({ h: 118 * s, gap: 4 * s, hen: 1, draw: (x, y, w, h = 118 * s) => drawHenAnim(ctx, 'worried', x + w / 2, y + h / 2, h * 0.95, G.t, { key: 'reset', calm, shadow: 0 }) });
+    B.push(xsWellBlock(s, 'Erased', false, gone));
+    B.push(xsWellBlock(s, 'Kept', true, kept));
+    const red = { h: 50 * s, gap: 14 * s, draw: (x, y, w) => ui.button('xs:next', 'Reset progress', x + w * 0.15, y, w * 0.7, 50 * s, { kind: 'red', size: 18 * s, icon: (c, X, Y, S2) => { c.save(); c.fillStyle = '#fff'; c.strokeStyle = '#fff'; SI.restart(c, X, Y, S2); c.restore(); } }) };
+    if (land) B.push(red);
+    bottom = { id: 'xs:subback', label: 'Cancel', kind: 'primary', extra: land ? null : red };
+  } else { // reset2: hold the red button two seconds (a ring fills); letting go drains it
+    const dt = clamp(G.t - SB.lt, 0, 0.1), down = ui.pressedId === 'xs:hold';
+    SB.lt = G.t;
+    SB.k = clamp(SB.k + (down ? dt / 2 : -dt * 1.6), 0, 1);
+    const q = Math.floor(SB.k * 8);
+    if (down && q > SB.q) audio.play('ring_tick', { pitch: 0.9 + q * 0.09 });
+    SB.q = q;
+    if (SB.k >= 1) { ui.pressedId = null; G.pressPointer = null; doReset(); return; }
+    const avail = (land ? A.y1 - 8 * s : A.y1 - pad - 72 * s) - (P.bottom + 8 * s), hd = Math.min(land ? avail * 0.62 : 230 * s, avail * 0.5), henH = Math.min(land ? 120 * s : 170 * s, avail - hd - 40 * s);
+    B.push({ h: Math.max(60 * s, avail - 20 * s), gap: 6 * s, draw: (x, y, w) => {
+      const H = Math.max(60 * s, avail - 20 * s), sp = (H - henH - hd) / 3, hy = y + sp + henH / 2, cx = x + w / 2, cy = y + sp * 2 + henH + hd / 2, R = hd / 2;
+      drawHenAnim(ctx, down ? 'gasp' : 'worried', cx, hy, henH, G.t, { key: 'reset', calm, shadow: 0 });
+      // the ring round the button: a dark track, the fill eased in and out of its ends
+      const k = SB.k, e = k * k * (3 - 2 * k), lw = 12 * s;
+      ctx.save(); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(cx, cy, R + lw, 0, 7); ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(20,8,30,0.55)'; ctx.stroke();
+      if (e > 0.002) { ctx.beginPath(); ctx.arc(cx, cy, R + lw, -Math.PI / 2, -Math.PI / 2 + e * Math.PI * 2); ctx.lineWidth = lw * 0.72; ctx.strokeStyle = '#ffd23f'; ctx.stroke(); }
+      ctx.restore();
+      ui.record({ x: cx - R - lw * 1.5, y: cy - R - lw * 1.5, w: 2 * R + 3 * lw, h: 2 * R + 3 * lw }, 'reset:ring', 'btn:xs:hold');
+      const b = ui.button('xs:hold', '', cx - R, cy - R, 2 * R, 2 * R, { kind: 'red', round: R });
+      const fy = b.cy;
+      ctx.save(); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff'; ctx.translate(cx, fy - R * 0.2); ctx.rotate(calm ? 0 : -e * Math.PI * 2); SI.restart(ctx, 0, 0, R * 0.62); ctx.restore();
+      ui.text('Hold', cx, fy + R * 0.36, { size: Math.min(28 * s, R * 0.3), align: 'center', color: '#fff', stroke: 'rgba(90,10,5,0.8)', strokeW: 4 * s, tag: 'reset:hold', group: 'btn:xs:hold' });
+    } });
+    bottom = { id: 'xs:subback', label: 'Cancel', kind: 'primary' };
+  }
+  // header (landscape: the big button sits in the header's right slot, like Settings' Done)
+  ui.pageHeader(P, { back: 'xs:subback', title, color, tag: 'sub:title', right: land && bottom ? { w: 130 * s, draw: (x, y, w, h) => ui.button(bottom.id, bottom.label, x, y, w, h, { kind: bottom.kind, icon: bottom.icon, size: 19 * s }) } : null });
+  let vb = A.y1 - (land ? 2 * u : pad);
+  if (!land && bottom) {
+    const bh = 60 * s, by = A.y1 - pad - bh;
+    ui.button(bottom.id, bottom.label, x0, by, cw, bh, { kind: bottom.kind, icon: bottom.icon, size: 23 * s });
+    vb = by - 10 * s;
+    if (bottom.extra) { bottom.extra.draw(x0, vb - bottom.extra.h, cw); vb -= bottom.extra.h + 14 * s; }
+  }
+  const vt = P.bottom + 8 * s, V = { x: A.x, y: vt, w: A.w, h: Math.max(60, vb - vt) };
+  if (SB.kind === 'reset1' && !land) { // a tall phone: the hen grows into the spare room, what is left spreads over the gaps (a short one: she gets smaller first)
+    const sum = B.reduce((a, b) => a + b.h + b.gap, 0), spare = V.h - sum - 8 * s;
+    if (spare < 0) { const hen = B.find((b) => b.hen); hen.h = Math.max(72 * s, hen.h + spare); }
+    else if (spare > 0) { const hen = B.find((b) => b.hen), g = Math.min(spare * 0.5, 60 * s), d = (spare - g) / (B.length + 1); hen.h += g; for (const b of B) b.gap += d; }
+    for (const b of B) if (b.hen) { const d0 = b.draw, hh = b.h; b.draw = (x, y, w) => d0(x, y, w, hh); }
+  }
+  if (SB.kind === 'reset2') { pg.y = 0; pg.max = 0; let y = vt; for (const b of B) { y += b.gap ?? 10 * s; b.draw(x0, y, cw); y += b.h; } return; }
+  pageScroll(B, pg, V, x0, cw, s, SB.kind === 'privacy');
+}
+// child-safe mode: a grown-up's sum first (drawParentCheck), then the card
+function askReset() { if (OF.childSafe(save)) G.parent = { reset: true, q: OF.parentQuestion() }; else xsOpen('reset1'); }
+// the wipe: the save starts again with what src/reset.js keeps, the store is asked for the purchases, home
+function doReset() {
+  const fresh = RS.resetSave(save, defaultSave());
+  xsClose(); G.settingsOpen = false; closeAlbum();
+  loadSave(fresh); lastCoins = null;
+  G.fails = {}; G.got = null; G.party = null; G.detail = null; G.parent = null; G.offer = null; G.nudge = null; G.toasts = []; G.toast = null;
+  G.markC = null; G.shopPlan = null; G.forYou = null; G.stkSel = null; G.trialChick = null;
+  for (const L of LEVELS) ads.won(L.id); // the stuck counts of this session
+  persist();
+  OF.startSession(save, Date.now());
+  ads.restore(); // the store's own record: Android hands every purchase it still knows back (window.__eggGrant, no coins twice)
+  portal.gameplayStop();
+  startLevel(nextIdx()); setScreen('title'); G.homeIntro = true; G.screenT = 0;
+  audio.play('rewind'); buzz('win');
+}
+// every 'xs:' tap (and Back while one of these pages is up)
+async function xsPress(id) {
+  switch (id) {
+    case 'xs:album': openAlbum(); break;
+    case 'back': case 'xs:alback': closeAlbum(); break;
+    case 'xs:prize': albumPrize(); break;
+    case 'xs:privacy': if (!(PRIVACY_URL && openLink(PRIVACY_URL))) xsOpen('privacy'); break;
+    case 'xs:reset': askReset(); break;
+    case 'xs:next': xsOpen('reset2'); break;
+    case 'xs:hold': break; // a tap is not a hold (the ring drains)
+    case 'set:close': case 'xs:subback': xsClose(); break;
+    case 'xs:sid': copyText(`${verText()}, support id ${supportId()}`); G.copiedAt = G.t; audio.play('hud_pop'); break;
+  }
+}
+
 function frame(now) {
   requestAnimationFrame(frame); // first: an error below can never stop the loop (a stopped loop is a frozen level)
   if (VSYNC.last) {
