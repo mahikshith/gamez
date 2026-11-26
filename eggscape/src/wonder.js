@@ -90,8 +90,17 @@ export function createWonder(env) {
     const A = ui.A, u = ui.u, bs = Math.max(46, 55 * u), pad = 8 * u, side = A.w > A.h;
     return { bs, pad, side, gap: 8 * u, bot: A.y1 - 6 * u - bs };
   }
+  // sweep817 (mykee: on a phone on its side "the vault should fill the height, the HUD should sit in the side margins
+  // rather than over the vault"): when the vaults at the full height leave a margin wide enough on each side, the top
+  // band goes; Pause, the eggs and clock, the name and the tip stand in the left margin (marginCol: its width)
+  function marginCol() {
+    const A = ui.A, u = ui.u, Z = zoomBar();
+    if (!S.game || !(A.w > A.h * 1.3 && A.h < 560 * u)) return 0;
+    const B = stage(), h = A.h - 20 * u, vw = h * (B.x1 - B.x0) / (B.y1 - B.y0), m = (A.w - (Z.side ? Z.bs + 2 * Z.pad : 0) - vw) / 2;
+    return m >= 160 * u ? Math.min(m, 230 * u) : 0;
+  }
   function playRect() {
-    const A = ui.A, u = ui.u, Z = zoomBar(), top = A.y + 62 * u, bot = Math.max((S.game.kind === 'plan' ? 86 : 10) * u, Z.side ? 10 * u : Z.bs + Z.pad + 2 * u); // the vaults frame inside the safe rect
+    const A = ui.A, u = ui.u, Z = zoomBar(), top = A.y + (marginCol() ? 10 : 62) * u, bot = Math.max((S.game.kind === 'plan' ? 86 : 10) * u, Z.side ? 10 * u : Z.bs + Z.pad + 2 * u); // the vaults frame inside the safe rect
     const sw = Z.side ? Z.bs + 2 * Z.pad : 0;
     return { x: A.x, y: top, w: A.w - sw, h: A.y1 - top - bot };
   }
@@ -512,13 +521,15 @@ export function createWonder(env) {
     else ui.button('wv:quit', '', X0, Y0, 44 * u, 44 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 14 * u });
     // right: eggs home (per vault) and the clock (or the attempt count)
     const eggsTxt = st.per.map((p) => `${p.saved}/${p.target}`).join('  '), right = g.kind === 'plan' ? `Try ${st.attempts}` : fmt(g.timeLeft);
-    const ew = ui.measure(eggsTxt, 17 * u), rw = ui.measure(g.kind === 'plan' ? 'Try 88' : '0:00', 17 * u), cw = 30 * u + ew + 14 * u + rw + 14 * u, cx = A.x1 - pad - cw, cy = Y0 + 22 * u;
+    const MC = marginCol(), colW = MC - 2 * pad;
+    const ew = ui.measure(eggsTxt, 17 * u), rw = ui.measure(g.kind === 'plan' ? 'Try 88' : '0:00', 17 * u), cw = 30 * u + ew + 14 * u + rw + 14 * u, cx = MC ? X0 : A.x1 - pad - cw, cy = MC ? Y0 + 44 * u + 10 * u + 19 * u : Y0 + 22 * u;
     ui.glass(cx, cy - 19 * u, cw, 38 * u);
     drawEggIcon(ctx, cx + 17 * u, cy, 11 * u, 'ok');
     ui.text(eggsTxt, cx + 30 * u, cy + 0.5 * u, { size: 17 * u, color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'wv:eggs' });
     ui.text(right, cx + cw - 14 * u, cy + 0.5 * u, { size: 17 * u, align: 'right', color: g.timeLimit && g.timeLeft < 10 ? '#ff8a6a' : '#ffe9a8', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'wv:clock' });
     const tl = X0 + 44 * u + 10 * u, trr = cx - 10 * u;
-    if (trr - tl > 70 * u) ui.text(L.name, (tl + trr) / 2, cy + 0.5 * u, { size: 19 * u, align: 'center', color: '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 4 * u, shadow: 'rgba(30,14,4,0.6)', tag: 'wv:name', maxW: trr - tl });
+    if (MC) ui.text(L.name, X0, cy + 19 * u + 10 * u + 11 * u, { size: 19 * u, color: '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 4 * u, shadow: 'rgba(30,14,4,0.6)', tag: 'wv:name', maxW: colW });
+    else if (trr - tl > 70 * u) ui.text(L.name, (tl + trr) / 2, cy + 0.5 * u, { size: 19 * u, align: 'center', color: '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 4 * u, shadow: 'rgba(30,14,4,0.6)', tag: 'wv:name', maxW: trr - tl });
     // the zoom buttons (the road's: -, + and, while the player's zoom is on, auto)
     const Z = zoomBar(), zl = g.state === 'play' && !S.card ? drawZoom(Z) : A.x1;
     // plan: HATCH / REWIND and the stopped clock (left of the zoom buttons when they share the bottom row)
@@ -531,11 +542,11 @@ export function createWonder(env) {
     }
     // the tip: one line at the start, gone on the first touch
     if (S.tipT > 0 && L.tip && !S.card) {
-      const a = clamp(S.tipT / 0.5, 0, 1) * clamp(S.t / 0.4, 0, 1), ts = 14 * u, mw = Math.min(A.w - 28 * u, 520 * u), lines = wrapText(L.tip, ts, mw - 28 * u);
-      const h = lines.length * ts * 1.3 + 16 * u, w = Math.max(...lines.map((l) => ui.measure(l, ts))) + 28 * u, x = A.cx - w / 2, y = A.y + 66 * u;
+      const a = clamp(S.tipT / 0.5, 0, 1) * clamp(S.t / 0.4, 0, 1), ts = 14 * u, mw = MC ? colW : Math.min(A.w - 28 * u, 520 * u), lines = wrapText(L.tip, ts, mw - 28 * u);
+      const h = lines.length * ts * 1.3 + 16 * u, w = Math.max(...lines.map((l) => ui.measure(l, ts))) + 28 * u, x = MC ? X0 : A.cx - w / 2, y = MC ? cy + 19 * u + 10 * u + 26 * u : A.y + 66 * u, tx = x + w / 2;
       ctx.save(); ctx.globalAlpha = a; ui.aBase = a;
       ui.glass(x, y, w, h, { r: 14 * u });
-      lines.forEach((l, i) => ui.text(l, A.cx, y + 8 * u + ts * 0.65 + i * ts * 1.3, { size: ts, align: 'center', color: '#fff', tag: 'wv:tip' + i, group: 'wv:tip' }));
+      lines.forEach((l, i) => ui.text(l, tx, y + 8 * u + ts * 0.65 + i * ts * 1.3, { size: ts, align: 'center', color: '#fff', tag: 'wv:tip' + i, group: 'wv:tip' }));
       ui.aBase = 1; ctx.restore();
     }
   }

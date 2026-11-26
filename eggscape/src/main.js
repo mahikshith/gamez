@@ -6746,18 +6746,21 @@ function drawToast() {
   const age = G.t - T.t0;
   const a = Math.min(1, age * 5, T.life * 3);
   const size = 16 * u;
-  const A = ui.A, maxW = Math.min(A.w - 32 * u, 520 * u);
+  // sweep817 (mykee: "the HUD should sit in the side margins rather than over the vault"): on a phone on its side a
+  // message in play stands in the HUD's own column under it, not over the vault's top rings
+  const A = ui.A, side = G.screen === 'play' && G.sideHud && G.hudCol > 0 && G.sideHudBottom > 0, maxW = side ? G.hudCol : Math.min(A.w - 32 * u, 520 * u);
   const xw = T.tip ? 22 * u : 0; // a villain tip keeps a little close mark on its right: a tap puts it away
   const ico = toastIcon(T), icw = ico ? 26 * u : 0;
   const lines = wrapText(T.text, size, maxW - 32 * u - xw - icw);
   const h = Math.max(lines.length * size * 1.3 + 18 * u, ico ? 34 * u : 0);
   const w = Math.min(maxW, Math.max(...lines.map((l) => ui.measure(l, size))) + 32 * u + xw + icw);
-  const x = A.cx - w / 2, y = G.screen === 'title' && G.titleToastY ? G.titleToastY : G.screen === 'store' ? A.y1 - h - 22 * u : Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
+  const x = side ? A.x + 12 * u + (G.hudCol - w) / 2 : A.cx - w / 2, y = side ? G.sideHudBottom + 4 * u : G.screen === 'title' && G.titleToastY ? G.titleToastY : G.screen === 'store' ? A.y1 - h - 22 * u : Math.max(G.hudBottom + 10 * u, (G.infoLow || 0) + 8 * u);
   G.toastRect = { x, y, w, h };
   ctx.save();
   ctx.globalAlpha = a; ui.aBase = a;
   const k = ui.pop(age, 0.22);
-  if (k !== 1) { ctx.translate(A.cx, y + h / 2); ctx.scale(k, k); ctx.translate(-A.cx, -(y + h / 2)); }
+  const mx = x + w / 2;
+  if (k !== 1) { ctx.translate(mx, y + h / 2); ctx.scale(k, k); ctx.translate(-mx, -(y + h / 2)); }
   ui.glass(x, y, w, h, { r: Math.min(h / 2, 18 * u), a: 'rgba(58,36,20,0.94)', b: 'rgba(28,16,8,0.94)', border: 'rgba(255,224,160,0.6)', record: true, tag: 'toast', group: 'toast' });
   if (ico) { // the icon in the left margin
     const ix = x + 22 * u, iy = y + h / 2, iz = 24 * u;
@@ -6765,7 +6768,7 @@ function drawToast() {
     else if (ico === 'egg') drawEggIcon(ctx, ix, iy, iz, 'alive'); else if (ico === 'coin') drawCoin(ctx, ix, iy, 10 * u, G.t); else if (ico === 'check') pictoCheck(ctx, ix, iy, iz);
     else if (ico === 'cross') pictoCross(ctx, ix, iy, iz); else pictoPower(ctx, ico, ix, iy, iz, G.t);
   }
-  lines.forEach((l, i) => ui.text(l, A.cx - xw / 2 + icw / 2, y + (h - lines.length * size * 1.3) / 2 + size * 1.3 * (i + 0.5), { size, align: 'center', color: '#fff8e8', group: 'toast', tag: 'toast:' + i }));
+  lines.forEach((l, i) => ui.text(l, mx - xw / 2 + icw / 2, y + (h - lines.length * size * 1.3) / 2 + size * 1.3 * (i + 0.5), { size, align: 'center', color: '#fff8e8', group: 'toast', tag: 'toast:' + i }));
   if (T.tip) { // the close mark, and a hairline that runs down with the tip's time
     const cx = x + w - 13 * u - 4 * u, cy = y + h / 2, r = 4.5 * u;
     ctx.strokeStyle = 'rgba(255,232,190,0.75)'; ctx.lineWidth = 2 * u; ctx.lineCap = 'round';
@@ -6776,7 +6779,7 @@ function drawToast() {
   ui.aBase = 1;
   ctx.restore();
   // popups must stay below the toast
-  G.toastBottom = y + h;
+  G.toastBottom = side ? 0 : y + h; // (in the side column it is not over the play: popups keep their place)
 }
 
 function wrapText(text, size, maxW) {
