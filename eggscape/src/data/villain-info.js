@@ -194,6 +194,12 @@ export const VILLAIN_INFO = {
     does: 'Drifts right through the walls. Its sting cracks eggs it touches.',
     beat: 'Water washes it away; the live ring or a zap stuns it.',
   },
+  urchin: { // 0.8.17 urchin
+    group: 'creature', name: 'Spike the sea urchin',
+    does: 'Rolls the floor, puffs up, then dashes at an egg: his spines crack it.',
+    beat: 'Shut the gap he aims through: SPLAT! He lies on his back a while.',
+    more: 'A chick or a Stone egg flips him too. Asleep, he is harmless.',
+  },
   gator: {
     group: 'creature', name: 'Alligator',
     does: 'Asleep he is a log to roll over. Awake he bites eggs at his gap.',
@@ -295,6 +301,7 @@ export const VILLAIN_INFO = {
 export const ATTACK_EXTRA = { heat: 'Rising heat' }; // phase flags shown as an attack (names not in sim/boss.js ATTACK_NAME)
 
 const CREATURE_KEYS = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
+CREATURE_KEYS.push('urchin'); // 0.8.17 urchin
 const listOf = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
 const HAZARD_ORBS = { curse: 'curse', thorn: 'thornorb' };
 
@@ -347,6 +354,7 @@ export function villainKinds(L, sim = null) {
     if (live(sim.hermits)) set.add('hermit');
     if (live(sim.puffs)) set.add('puffer');
     if (live(sim.jellies)) set.add('jelly');
+    if (live(sim.urchins)) set.add('urchin'); // 0.8.17 urchin
     if ((sim.gators || []).some((G) => !G.boss)) set.add('gator');
     if (live(sim.turtles)) set.add('turtle');
     if (live(sim.mosqs)) set.add('mosquito');

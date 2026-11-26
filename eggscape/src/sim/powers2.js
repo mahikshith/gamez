@@ -212,6 +212,7 @@ export const p2Methods = {
     this.seaP2?.(kind, T); // v3.5: the octopus (sim/sea.js): frozen, or stunned
     for (const S of this.schools || []) this.p2Fish(S, kind, T);
     this.reefP2?.(kind, T); // world 8: hermit crabs, puffers, jellyfish, the King Crab
+    this.urP2?.(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // 0.8.17 urchin
     this.cwP2?.(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v4: the clockwork cast (sim/clockwork.js)
     this.bayouP2?.(kind, kind === 'bolt' ? P2.thunderclap.stun * this.p2M.up : T); // v3.7: gators, turtles, mosquitoes
   },

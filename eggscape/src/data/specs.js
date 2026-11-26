@@ -399,12 +399,15 @@ export const SPECS = [
     intro: { title: 'Jellyfish', line: 'A jellyfish drifts through the reef. Its sting cracks an egg, but its glow lights up murky water. Water washes it away; a live ring stuns it.' },
     tip: 'The shock ring makes the ring under the egg live: jellyfish and crabs that touch it are stunned.',
     rings: [{ gaps: 1, thorns: 1, gear: true }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2], gear: true }, { gaps: 2, gapX: [2], thorns: 1, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2], out: 1 }, { gaps: 2, thorns: 1, size: [1, 2] }] },
-  // 0.8.17: the puffer and the hermit crab in a current
-  { id: 46, world: 8, theme: 'reef', name: 'Riptide Reef', eggs: 3, target: 2, spacing: 1.05, material: 'coral', minMoves: 5, water: true,
-    weather: 'current', weatherOpts: { strength: 0.5 }, nest: { w: 2.7 }, bonus: { kind: 'time' }, puffer: { ch: 2, a: 60, delay: 4 }, hermit: { ch: 3, a: 150, delay: 6 },
-    orbs: [{ type: 'warp', ch: 1 }, { type: 'shock', ch: 3 }],
-    tip: 'The current pushes every egg along. Let it carry them to a gap the puffer is not plugging.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [1, 2], shut: { period: 5, open: 0.5 } }, { gaps: 2, thorns: 1, size: [2, 3], out: 1, gear: true }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2], gear: true }, { gaps: 1, thorns: 2, size: [1, 2] }] },
+  // 0.8.17 urchin: Spike the sea urchin (sim/urchin.js) lives on the floor of channel 2. He naps (eggs slip past), puffs and
+  // rolls (a living thorn that fills the channel), and dashes at an egg he sees through a gap of ring 1. Shut that gap in
+  // his face (or behind him on his way back) and he flips, helpless. One villain, no current: the tricks come one at a time.
+  { id: 46, world: 8, theme: 'reef', name: 'Urchin Alley', eggs: 3, target: 2, spacing: 1.05, material: 'coral', minMoves: 5, water: true,
+    nest: { w: 2.7 }, bonus: { kind: 'time' }, urchin: { ch: 2, a: 90, delay: 3 },
+    orbs: [{ type: 'stone', ch: 1 }],
+    intro: { title: 'Spike the sea urchin', line: 'A living thorn: he rolls and dashes at eggs. Turn a wall into his dash and he flips!' },
+    tip: 'Shut the gap he aims through: SPLAT! He lies on his back and you can slip past.',
+    rings: [{ gaps: 1 }, { gaps: 2, gapX: [2] }, { gaps: 2 }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2] }, { gaps: 1, thorns: 1, size: [1, 2] }] },
   { id: 47, gid: 39, world: 8, theme: 'reef', name: 'Kelp Castle', eggs: 3, target: 2, spacing: 1.05, material: 'coral', minMoves: 5, water: true, eggKinds: [null, 'quail'],
     nest: { w: 2.7 }, bonus: { kind: 'turns' }, hermit: { ch: 3, a: 160, delay: 4 }, puffer: { ch: 4, a: 30, delay: 7 }, jelly: { ch: 1, a: -30, delay: 3 },
     orbs: [{ type: 'frostnova', ch: 2 }, { type: 'warp', ch: 4 }],

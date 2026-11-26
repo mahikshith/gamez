@@ -69,6 +69,7 @@ import { drawJelly as devJelly } from './render/reef.js';
 import { REEF_DEMOS } from './data/reef-demos.js'; // world 8 studio levels (dev)
 import { drawSeaUnder, drawSeaOver, seaEvent, seaAnim } from './render/sea.js'; // v3.3 octopus and fish
 import { drawReefUnder, drawReefOver, reefEvent, drawSurface, drawBoat, boatSeat, drawRiseGuide } from './render/reef.js'; // world 8 Coral Reef (underwater)
+import { drawUrchins, urchinEvent } from './render/urchinplay.js'; // 0.8.17 urchin: Spike the sea urchin (level 46)
 import { drawDenAlone, drawThiefDens, eggInDen, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
 import { RIG as THIEF_RIG } from './sim/thieves.js';
 import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
@@ -198,7 +199,7 @@ const LAB = [
   { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King']] },
   { name: 'Bayou', items: [['gator', 'Gator'], ['turtle', 'Turtle'], ['mosquito', 'Bugs'], ['grandpa', 'Grandpa']] },
   { name: 'Allies', items: [['rooster', 'Rooster'], ['goose', 'Goose']] },
-  { name: 'Coral Reef', items: [['hermit', 'Hermit'], ['puffer', 'Puffer'], ['jelly', 'Jelly'], ['kingcrab', 'King']] },
+  { name: 'Coral Reef', items: [['hermit', 'Hermit'], ['puffer', 'Puffer'], ['jelly', 'Jelly'], ['kingcrab', 'King'], ['urchin', 'Urchin']] }, // 0.8.17 urchin
   { name: 'Powers', items: [['frostnova', 'Frost'], ['shock', 'Shock'], ['thunderclap', 'Clap'], ['laser', 'Laser'], ['spin', 'Spin']] },
   { name: 'More powers', items: [['pepper', 'Pepper'], ['shrink', 'Shrink'], ['iron', 'Iron'], ['decoy', 'Decoy']] },
   { name: 'Warp Gate', items: [['warp', 'Snake'], ['warp_eagle', 'Eagle'], ['warp_sal', 'Lizard'], ['warp_frog', 'Frog'], ['warp_octo', 'Octo']] },
@@ -4467,6 +4468,7 @@ function handleEvents() {
         bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.7 Gator Bayou
         thiefEvent(ev, fx, { popup: denPopup, audio, hitStop, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // v3.6 the weasel and the rats
         reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }); // world 8 reef
+        urchinEvent(ev, fx, { popup, audio, buzz, calm: save.calm }); // 0.8.17 urchin
         { const U = { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; tipToast(text); } } }; cwEvent(ev, fx, U); owlEvent(ev, fx, U); movesEvent(ev, fx, U); } // v4 the clockwork cast, the owl
         break;
       case 'won':
@@ -5609,6 +5611,7 @@ function render() {
   { const wx = warpXfBegin(ctx, sim, 'f'); SL(['frog'], (c) => drawFrogs(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); }
   { const wx = warpXfBegin(ctx, sim, 'o'); SL(['octo', 'fish'], (c) => drawSeaUnder(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
   SL(['hermit', 'puff', 'jelly', 'kc'], (c) => drawReefUnder(c, sim, t, k, G.theme)); // world 8: bubbles, hermit crabs, puffers, jellyfish, the King Crab
+  SL(['urchin'], (c) => drawUrchins(c, sim, t, k, save.calm)); // 0.8.17 urchin: Spike rolls on the channel floor, under the eggs
   SL(['thief'], (c) => drawThieves(c, sim, t, k)); // v3.6: the weasel and the rats on the ring floor
   blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
   SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)

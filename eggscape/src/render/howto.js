@@ -55,6 +55,7 @@ const SHOW = {
   faceoff: P('faceoff', 'Fire meets frost: both are knocked out', { loop: 5.2 }),
   'boss:salamander': P('dodge', 'Roll eggs off the glowing mark', { haz: 'lava' }),
   spike: P('stone', 'Roll a stone egg into it: it flips over'),
+  urchin: P('turn', 'Shut the gap he aims through: SPLAT!', { fx: 'bonk' }), // 0.8.17 urchin
   'boss:golem': P('stone', 'Roll a stone egg into him: he flips'),
   'boss:blizzard': P('tap', 'Freeze him with a chick, then hurry', { power: 'freeze', fx: 'freeze' }),
   chameleon: P('turn', 'Grab the orbs first, turn him away', { fx: 'bonk' }),
@@ -104,6 +105,7 @@ const HARM = {
   eagle: ['snatch', 'SNATCH!'], 'boss:eagle': ['snatch', 'SNATCH!'], 'boss:owl': ['snatch', 'SNATCH!'],
   icicles: ['fall', 'CRACK!'], lava: ['fall', 'CRACK!'], lightning: ['fall', 'ZAP!'], embers: ['fall', 'CRACK!'], 'boss:salamander': ['fall', 'CRACK!'],
   jelly: ['sting', 'STING!'], 'boss:blizzard': ['frost', 'FROZEN!'],
+  urchin: ['bump', 'CRACK!'], // 0.8.17 urchin: his dash
   thornorb: ['orb', 'CRACK!'], curse: ['orb', 'FUSE x2!'], popthorns: ['pop', 'CRACK!'],
   puffer: ['block', 'BLOCKED!'], spider: ['block', 'WEBBED!'], vines: ['block', 'BLOCKED!'], turtle: ['block', 'STUCK!'], doors: ['block', 'SHUT!'],
   current: ['push', 'PUSHED!'], gusts: ['push', 'BLOWN!'], beetle: ['push', 'PUSHED!'], 'boss:golem': ['bump', 'CRACK!'], quake: ['push', 'SHAKE!'], rain: ['push', 'SLIDE!'],
@@ -118,6 +120,7 @@ export const THREAT = {
   beetle: 'Pushes eggs', jack: 'Flings eggs', icicles: 'Fall on eggs', lava: 'Rocks fall', lightning: 'Zaps eggs', gusts: 'Blow eggs',
   embers: 'Burn eggs', quake: 'Shakes eggs', rain: 'Slippery rings', current: 'Pushes eggs', popthorns: 'Spikes pop up', vines: 'Seal gaps',
   doors: 'Shut gaps', curse: 'Fuse x2', thornorb: 'Cracks eggs',
+  urchin: 'Dashes, cracks', // 0.8.17 urchin
   'boss:weasel': 'Steals eggs', 'boss:snake': 'Two snakes', 'boss:blizzard': 'Bites, freezes', 'boss:golem': 'Rams, cracks', 'boss:salamander': 'Spits lava',
   'boss:eagle': 'Dives for eggs', 'boss:ratking': 'Pounces', 'boss:kingcrab': 'Claws eggs', 'boss:gator': 'Shakes rings', 'boss:owl': 'Swoops at eggs',
 };
@@ -597,7 +600,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     ctx.save();
     try { SA.T = T; SA.t = t; SA.m = m; SA.th = th; SA.fx = plan.fx; SA.eA = eA; AR = act.draw(ctx, SA); } catch (e) { AR = null; if (!ERR1) { ERR1 = true; try { console.warn('howto actor', plan.kind, e); } catch (e2) { /* no console */ } } }
     ctx.restore();
-    if (AR && AR.bonk > 0 && AR.bonk < 1) { ctx.save(); ctx.globalAlpha *= 1 - seg(AR.bonk, 0.6, 1); word(ctx, 'BONK!', clamp(AR.x, x + Z * 0.3, x + w - Z * 0.3), Math.max(y + Z * 0.16, AR.y), Z * 0.15 * (1 + 0.3 * Math.sin(Math.min(1, AR.bonk * 2.5) * Math.PI)), '#fff', '#c8321e'); ctx.restore(); }
+    if (AR && AR.bonk > 0 && AR.bonk < 1) { ctx.save(); ctx.globalAlpha *= 1 - seg(AR.bonk, 0.6, 1); word(ctx, AR.word || 'BONK!', clamp(AR.x, x + Z * 0.3, x + w - Z * 0.3), Math.max(y + Z * 0.16, AR.y), Z * 0.15 * (1 + 0.3 * Math.sin(Math.min(1, AR.bonk * 2.5) * Math.PI)), '#fff', '#c8321e'); ctx.restore(); }
   }
   if (!AR && vAlpha > 0.01 && plan.kind) {
     const v = at(vA, vLift);

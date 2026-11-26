@@ -18,6 +18,7 @@ import { drawCrawler } from './crawlers.js';
 import { drawSalamander } from './salamander.js';
 import { drawGator } from './bayou.js';
 import { GATOR } from '../sim/bayou.js';
+import { urchinActor } from './urchinplay.js'; // 0.8.17 urchin
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -314,7 +315,7 @@ function bossGator(ctx, S) {
 // the harm beats' marks (howto.js reads them too): where the salamander's jet lands, where Sly's orb sits, how far the
 // thorn-back shoves the egg
 export const BREATH_AT = 0, CHAM_ORB = -0.22, BUMP_A = 0.36, BITE_AT = 1.75; // BITE_AT: s into the harm beat when the jaws shut
-export const harmActor = (kind) => (kind === 'salamander' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' ? ACTORS[kind] : null);
+export const harmActor = (kind) => (kind === 'salamander' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' || kind === 'urchin' ? ACTORS[kind] : null); // 0.8.17 urchin
 const CRAWL = () => ({ g0: 0.4, dTh: -0.4, pan: 0.2 }); // the crawlers come along the ring from the left: the camera steps that way
 export const ACTORS = {
   // pan: the camera steps to the villain's side (a share of the stage's width), so it is whole in the picture
@@ -334,6 +335,7 @@ export const ACTORS = {
 // the moves an actor plays; any other plan keeps the portrait
 ACTORS['boss:weasel'] = ACTORS.weasel; // the Weasel Raid's boss is the weasel himself: his whole body, not a head on the ring
 const PLAYS = { 'boss:ratking': ['turn', 'tap', 'rooster'], 'boss:gator': ['drop'], 'boss:snake': ['tap'], 'boss:weasel': ['turn', 'tap', 'rooster'], snake: ['turn', 'tap'], weasel: ['turn', 'tap', 'rooster'], rats: ['turn', 'tap'], salamander: ['turn', 'tap'], frostsal: ['turn', 'tap'], faceoff: ['faceoff'], chameleon: ['turn', 'tap'], spike: ['stone', 'tap'], 'boss:golem': ['stone', 'tap'] };
+ACTORS.urchin = urchinActor; PLAYS.urchin = ['turn']; // 0.8.17 urchin: Spike acts his own scene
 export function actorFor(plan) {
   const k = plan && plan.kind;
   return k && ACTORS[k] && PLAYS[k].includes(plan.move) ? ACTORS[k] : null;
