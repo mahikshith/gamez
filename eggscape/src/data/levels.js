@@ -77,7 +77,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 9, theme: "mushroom", name: "Woodcutter Glade", eggs: 3, target: 2, time: 75, spacing: 1, material: "wood", nest: {w: 2.8}, frog: {ch: 2, a: -120, delay: 6, every: 7}, bonus: {kind: "time", s: 40}, tip: "Grab the orbs before the frog licks them up. A flaming egg scares it off.", barriers: [{ring: 1, a: 133},{ring: 2, a: -124}], orbs: [{type: "fire_red", ch: 1, a: 164},{type: "rockskin", ch: 3, a: -79}], seed: 63353, world: 2, intro: {title: "The frog", line: "It hops from ring to ring, plugs gaps and licks up orbs. Wooden walls block eggs: fire burns them."},
+    id: 9, theme: "mushroom", name: "Woodcutter Glade", eggs: 3, target: 2, time: 75, spacing: 1, material: "wood", nest: {w: 2.8}, frog: {ch: 2, a: -120, delay: 6, every: 7, sn: 1}, bonus: {kind: "time", s: 40}, tip: "Turn a wall into its tongue: bonk! A flaming egg scares the frog off.", barriers: [{ring: 1, a: 133},{ring: 2, a: -124}], orbs: [{type: "fire_red", ch: 1, a: 164},{type: "rockskin", ch: 3, a: -79}], seed: 63353, world: 2, intro: {title: "The frog", line: "Its tongue snatches eggs! Turn a wall into it: bonk. Wooden walls block eggs: fire burns them."},
     rings: [
       {gaps: [{a: 169}], thorns: [{a: 76, n: 2}]},
       {gaps: [{a: 26, x: 2},{a: -144}], thorns: [{a: -26, n: 3}], pads: [{a: 161, len: 1.3},{a: 88, len: 1.59}]},
@@ -528,7 +528,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 52, theme: "bayou", name: "Froggy Bottom", eggs: 3, target: 2, time: 160, spacing: 1.1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 18}, turtle: {ch: 3, a: -80, delay: 6}, mosquito: {ch: 1, a: 40, delay: 9}, frog: {ch: 2, a: -100, delay: 10, every: 8}, tip: "The frog licks up orbs: grab the pepper first. Drop an egg on the turtle to flip it.", orbs: [{type: "pepper", ch: 1, a: -58},{type: "decoy", ch: 2, a: -105},{type: "fire_red", ch: 3, a: -99}], seed: 1203689, world: 9,
+    id: 52, theme: "bayou", name: "Froggy Bottom", eggs: 3, target: 2, time: 160, spacing: 1.1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 18}, turtle: {ch: 3, a: -80, delay: 6}, mosquito: {ch: 1, a: 40, delay: 9}, frog: {ch: 2, a: -100, delay: 10, every: 8}, tip: "Drop an egg on the frog: it spits out what it took. Drop one on the turtle to flip it.", orbs: [{type: "pepper", ch: 1, a: -58},{type: "decoy", ch: 2, a: -105},{type: "fire_red", ch: 3, a: -99}], seed: 1203689, world: 9,
     rings: [
       {gaps: [{a: 62}], thorns: [{a: 133, n: 1}]},
       {gaps: [{a: 101, x: 2}], thorns: [{a: 157, n: 3},{a: 50, n: 2, side: "out", h: 0.26}], pads: [{a: 9, len: 1.22}]},

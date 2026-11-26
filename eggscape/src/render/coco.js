@@ -14,6 +14,11 @@ const ss = (a, b, v) => { const u = clamp((v - a) / (b - a), 0, 1); return u * u
 const lerp = (a, b, k) => a + (b - a) * k;
 const back = (u, s = 1.6) => { u -= 1; return u * u * ((s + 1) * u + s) + 1; };
 const wrap = (a) => { a = (a + Math.PI) % (2 * Math.PI); if (a < 0) a += 2 * Math.PI; return a - Math.PI; };
+// 0.8.18: in play Coco is drawn 1.7x the size that fits his channel, from the same grip point on his ring (at 450x1000 he
+// was about one egg tall and his face did not read); hanging he reaches over the floor ring, standing over the ceiling ring.
+// The rig's floor depth D is counted in the bigger units, so his feet still land on the floor and his hands on the rings;
+// what he grabs and what hits him is the sim's and is unchanged.
+export const COCO_PLAY = 1.7;
 const DM = {}; // per monkey: the pose he froze in, the time he froze
 let CALM = false;
 export function cocoCalm(on) { CALM = !!on; }
@@ -130,7 +135,7 @@ function local(a, r, k, wx, wy) {
 function eggTop(e) { const p = e.body.getPosition(), ang = e.body.getAngle(); return { x: p.x - Math.sin(ang) * 0.17, y: p.y + Math.cos(ang) * 0.17 }; }
 
 function poseNow(sim, C, t, k) {
-  const gap = sim.cocoFloorR(C) - sim.cocoGripR(C), M = cocoScale(gap), D = (gap / M) * 100, s = M * k, u = s / 100, face = C.face < 0 ? -1 : 1;
+  const gap = sim.cocoFloorR(C) - sim.cocoGripR(C), M = cocoScale(gap) * COCO_PLAY, D = (gap / M) * 100, s = M * k, u = s / 100, face = C.face < 0 ? -1 : 1;
   const D0 = DM[C.id] || (DM[C.id] = { ph: '', t0: 0, frz: null, ft: 0 });
   const { a, r } = anchorOf(sim, C);
   if (C.ph === 'frozen') {

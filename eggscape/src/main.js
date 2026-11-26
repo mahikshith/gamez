@@ -5992,13 +5992,13 @@ function render() {
   { const wx = warpXfBegin(ctx, sim, 'o'); SL(['octo', 'fish'], (c) => drawSeaUnder(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
   SL(['hermit', 'puff', 'jelly', 'kc'], (c) => drawReefUnder(c, sim, t, k, G.theme)); // world 8: bubbles, hermit crabs, puffers, jellyfish, the King Crab
   SL(['urchin'], (c) => drawUrchins(c, sim, t, k, save.calm)); // 0.8.17 urchin: Spike rolls on the channel floor, under the eggs
-  SL(['thief'], (c) => drawThieves(c, sim, t, k)); // v3.6: the weasel and the rats on the ring floor
+  SL(['thief'], (c) => drawThieves(c, sim, t, k, !!save.calm)); // v3.6: the weasel and the rats on the ring floor
   SL(['pip'], (c) => { pipCalm(save.calm); drawPips(c, sim, t, k); }); // 0.8.17 pip: on his channel floor, under the eggs he holds
   SL(['coco'], (c) => { cocoCalm(save.calm); drawCocos(c, sim, t, k); }); // 0.8.17 coco: on his ring and his floor, under the eggs (and his peels)
   blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
   SL(['gator', 'turtle'], (c) => drawBayou(c, sim, t, k)); // v3.7: gators and snapping turtles on the channel floor (eggs roll over them)
   if (DEV && G.probe) G.probe('creatures');
-  for (const e of sim.aliveEggs()) if (!overNest(sim, e) && !eggInDen(sim, e) && !bandHides(sim, e)) drawEggFelt(e, t, k); /* 0.8.17 bandit: not his sack */ // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
+  for (const e of sim.aliveEggs()) if (!overNest(sim, e) && !eggInDen(sim, e) && !bandHides(sim, e) && e.hc !== 4) drawEggFelt(e, t, k); /* 0.8.18 frog: hc 4 = in its cheeks (render/frog.js draws it there) */ /* 0.8.17 bandit: not his sack */ // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
   drawChickFX(ctx, sim, t, k);
   drawMagnetField(ctx, sim, t, k, save.calm); // v3.1 magnet; 2026-11-20: over the eggs (the two poles, the field lines, the pull)
   blastXf(() => { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); }, 10.4); // v3.3: the arms wrapped over a held egg

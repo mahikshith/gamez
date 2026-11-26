@@ -9,6 +9,9 @@ const ss = (a, b, v) => { const u = clamp((v - a) / (b - a), 0, 1); return u * u
 const eio = (u) => (u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u));
 const back = (u, s = 1.6) => { u -= 1; return u * u * ((s + 1) * u + s) + 1; };
 const pxAt = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { /* never break the frame */ } ctx.restore(); };
+// 0.8.18: in play Pip is drawn 1.7x his sim body, from the same point between his feet (at 450x1000 he was about one egg
+// tall and his face did not read). What he bumps, shoves and holds is the sim's and is unchanged.
+export const PIP_PLAY = 1.7;
 const DM = {}; // per penguin: the boing's start, the wind-up's start
 let CALM = false;
 export function pipCalm(on) { CALM = !!on; }
@@ -61,7 +64,7 @@ export function drawPips(ctx, sim, t, k) {
     if (P.ph === 'windup') slideMark(ctx, P, k, t);
     const [st, u] = lookOf(P);
     const pose = penguinBlend('pip' + P.id, penguinPose(st, t, u), t, P.ph === 'bump' || P.ph === 'fall' || P.ph === 'boing' ? 24 : 11);
-    const s = PIP.m * k; // px per 100 rig units (PIP.m metres per 100 units, k px per metre)
+    const s = PIP.m * k * PIP_PLAY; // px per 100 rig units (PIP.m metres per 100 units, k px per metre), drawn PIP_PLAY bigger
     const x = P.r * Math.cos(P.a), y = P.r * Math.sin(P.a);
     let alpha = P.alpha ?? 1, pop = 1, hop = 0, sq = 0;
     if (P.ph === 'in') { const v = clamp(1 - P.t / Math.max(0.01, P.dur), 0, 1); pop = 0.2 + 0.8 * back(ss(0, 1, v)); alpha *= ss(0, 0.3, v); }

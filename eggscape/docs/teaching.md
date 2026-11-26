@@ -49,7 +49,7 @@ A replay of a won level teaches nothing for a subject already met twice (that fo
 
 | gesture | what the finger does | used for |
 |---|---|---|
-| `away` | drags the ring under the subject so the nearby gap moves away | snake, gator, weasel, eagle, owl swoop, Pip, shards |
+| `away` | drags the ring under the subject so the nearby gap moves away | snake, gator, weasel, eagle, owl swoop, Pip, shards, the frog's egg snatch (its ring is the wall between frog and egg) |
 | `open` | brings the nearest gap of that ring to the subject | rats, hermit crab, urchin, dizzy gator, turtle, a level's caption |
 | `spin` | turns the ring the subject sits on or rides | salamander, Coco, Bandit (against his crank), beetle, whirlpool, cage, whip |
 | `tap`  | taps the thing to use | thorn vine (the fire orb) |
