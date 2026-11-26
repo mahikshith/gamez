@@ -10,7 +10,7 @@
 import { grantIap, sanitizeWallet } from './economy.js';
 import { clean as guardClean, ONCE } from './guard.js';
 
-export const RESET_KEEP = ['sfx', 'music', 'vibe', 'shake', 'calm', 'ringSpeed', 'rsDef', 'gfx', 'fps', 'gfxStep', 'saver', 'showFps', 'mode', 'age', 'clock', 'sid', 'real', 'adDay', 'adClaim', 'mint'];
+export const RESET_KEEP = ['sfx', 'music', 'vibe', 'shake', 'calm', 'ringSpeed', 'rsDef', 'gfx', 'fps', 'gfxStep', 'gfxSharp', 'saver', 'showFps', 'mode', 'age', 'clock', 'sid', 'real', 'adDay', 'adClaim', 'mint'];
 // today's claims in the wallet (a reset must not hand them out again) and the purchase history
 const WALLET_KEEP = ['daily', 'premDay', 'sampleDay', 'sampleId', 'tokens', 'payer', 'spend', 'lastBuyAt', 'noInter'];
 

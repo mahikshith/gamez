@@ -1,5 +1,5 @@
 // Auto quality and the 30 fps fallback (src/perf.js): node tools/test-perf.mjs
-import { PERF, applySettings, tick, newLevel, takeStep, STEPS } from '../src/perf.js';
+import { PERF, applySettings, tick, newLevel, takeStep, STEPS, advise } from '../src/perf.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
 const save = { gfx: 'auto', fps: 'auto', gfxStep: STEPS.length - 1 };
@@ -99,6 +99,43 @@ s = { gfx: 'auto', fps: 'auto', gfxStep: 3 }; applySettings(s);
 for (let lv = 0; lv < 4; lv++) { newLevel(s); takeStep(s, false); play(s, 30, steady(16.7, 3)); }
 newLevel(s); takeStep(s, false);
 ok(PERF.step === 0, `a capable phone started low climbs back to High (step ${PERF.step})`);
+// ---- 0.8.17 sharpness: the pixels and the detail are two levers (a tester on Auto played on a blurry picture)
+s = A();
+play(s, 3, steady(16.7, 3));
+play(s, 4.1, () => (rnd() < 0.35 ? [33.4, 14] : [16.7, 13]));
+ok(PERF.tier === 'medium' && PERF.dprCap === 2 && s.gfxSharp === 2, `heavy JS work lowers the detail and KEEPS the pixels (tier ${PERF.tier}, ${PERF.dprCap}x)`);
+newLevel(s); play(s, 3, steady(16.7, 9)); play(s, 4.2, () => (rnd() < 0.35 ? [33.4, 5] : [16.7, 5]));
+ok(PERF.tier === 'medium' && PERF.dprCap === 1.75, `then late frames with light JS work give pixels back first, one notch (${PERF.dprCap}x)`);
+s = { gfx: 'auto', fps: 'auto', gfxStep: 2 }; applySettings(s);
+for (let lv = 0; lv < 3; lv++) { newLevel(s); takeStep(s, false); play(s, 30, steady(16.7, 10)); }
+newLevel(s); takeStep(s, false);
+ok(PERF.tier === 'medium' && PERF.dprCap === 2, `a mid phone with every frame on time but busy JS (10 ms): stays Medium detail and gets its pixels back (${PERF.tier} ${PERF.dprCap}x)`);
+s = { gfx: 'auto', fps: 'auto', gfxStep: 3 }; applySettings(s);
+{ const before = PERF.dprCap; newLevel(s); play(s, 40, steady(16.7, 10)); ok(PERF.dprCap === before, 'pixels never come back in the middle of a level (the resize is a hitch)'); takeStep(s, false); ok(PERF.dprCap > before, '... they land with the next level'); }
+s = { gfx: 'auto', fps: 'auto', gfxStep: 1 }; applySettings(s);
+newLevel(s); play(s, 20, steady(16.7, 12)); newLevel(s); takeStep(s, false);
+ok(PERF.step === 0, 'High 1.75x with on-time frames and 12 ms of JS: the last pixels come back (the old rule wanted under 8 ms)');
+s = { gfx: 'auto', fps: 'auto', gfxStep: -1 }; PERF.guess = { tier: 'medium', unknown: true }; applySettings(s);
+ok(PERF.tier === 'medium' && PERF.dprCap === 1.75, `a phone that says little about itself starts on Medium detail but 1.75x, not 1.5x (${PERF.dprCap}x)`);
+PERF.guess = { tier: 'medium', unknown: false }; s = { gfx: 'auto', fps: 'auto', gfxStep: -1 }; applySettings(s);
+ok(PERF.dprCap === 1.5, 'a phone with a known weak chip starts at 1.5x as before');
+// a phone that cannot hold the extra pixels does not see-saw
+s = { gfx: 'auto', fps: 'auto', gfxStep: 2 }; applySettings(s); moves = 0;
+for (let lv = 0; lv < 30; lv++) { newLevel(s); if (takeStep(s, false)) moves++; moves += play(s, 60, () => (PERF.dprCap > 1.5 ? (rnd() < 0.3 ? [33.4, 10] : [16.7, 10]) : [16.7, 10])); }
+ok(moves <= 8 && PERF.dprCap <= 1.75, `a phone that is only smooth at 1.5x does not see-saw: ${moves} changes in 30 levels`);
+s = { gfx: 'high', fps: 'auto', gfxSharp: 2 }; applySettings(s); ok(PERF.dprCap === 2, 'High is 2x');
+s = { gfx: 'low', fps: 'auto', gfxSharp: 2 }; applySettings(s); ok(PERF.dprCap === 1, 'a fixed choice is never sharpened behind the player\'s back');
+{
+  s = { gfx: 'auto', fps: 'auto', gfxStep: 3 }; applySettings(s); let a = advise(s, 3);
+  ok(a.soft && a.to === 'high' && /softer/.test(a.line), 'the advisor: Auto on a soft picture says so and names High');
+  s = { gfx: 'auto', fps: 'auto', gfxStep: 0 }; applySettings(s); a = advise(s, 3);
+  ok(!a.soft && !a.tip && /sharp picture/.test(a.line), 'the advisor: Auto at full resolution says "sharp picture"');
+  s = { gfx: 'auto', fps: 'auto', gfxStep: 4 }; applySettings(s); a = advise(s, 1);
+  ok(!a.soft, 'the advisor: a 1x screen drawn at 1x is as sharp as it gets, no tip');
+  PERF.guess = { tier: 'high' }; s = { gfx: 'low', fps: 'auto' }; applySettings(s); a = advise(s, 3);
+  ok(a.to === 'auto' && a.tip, 'the advisor: Low picked by hand on a strong phone suggests Auto');
+  PERF.guess = null;
+}
 // ---- the pace on a fast screen (90 Hz): missing refreshes locks every second refresh, quality stays
 {
   const s = A(); let i = 0;

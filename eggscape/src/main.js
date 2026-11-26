@@ -10,7 +10,7 @@ import { bodyCache, ringCache, releaseRings } from './render/ringart.js';
 import { dragTo, grab, glideStep, snapPx, scrollFeel } from './scroll.js';
 import { diag } from './diag.js'; // 0.8.7: the built-in speed log (Settings > Display > Share log)
 import { formStats } from './render/castkit.js';
-import { PERF, applySettings, tick as perfTick, takeStep, newLevel as perfNewLevel, STEPS, TIER_NAME } from './perf.js';
+import { PERF, applySettings, tick as perfTick, takeStep, newLevel as perfNewLevel, STEPS, TIER_NAME, advise as gfxAdvise, deviceGuess } from './perf.js';
 import { speedTest, openSpeedTest } from './speedtest.js'; // 2026-11-20: Settings > Display > Speed test (on the player's own phone)
 import { audio, MAIN_THEME } from './audio.js';
 import { portal } from './sdk/portal.js';
@@ -1959,7 +1959,7 @@ async function press(id) {
       break;
     case 'gfx:auto': case 'gfx:high': case 'gfx:medium': case 'gfx:low':
       save.gfx = id.slice(4);
-      if (save.gfx === 'auto') save.gfxStep = -1; // Auto starts again from the phone's own guess
+      if (save.gfx === 'auto') { save.gfxStep = -1; save.gfxSharp = 0; } // Auto starts again from the phone's own guess
       applySettings(save); setDPR(); persist();
       break;
     case 'set:adapt': // the Pacer's honesty switch: off = no skip pop-up, no dares, no marks, the plain hint timing
@@ -8519,7 +8519,8 @@ function drawSettings() {
   B.push(setCard(s, 'Difficulty', 'flag', '#e0a21c', null, 42 * s, (x, y, w) => modeRow(x, y, w, 42 * s, s)));
   B.push(setRow(s, 'set:adapt', 'Adaptive help', 'sparkle', '#e0507e', { on: save.adapt !== false, sub: 'Help and dares that fit how you play' })); // the Pacer's switch (src/engine/pacer.js)
   heads.push(B.length); B.push(setHead('Display', s));
-  const gl = save.gfx === 'auto' ? `Auto picked ${TIER_NAME[PERF.tier]} for this phone` : save.gfx === 'high' ? 'Sharpest picture, every effect' : save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
+  if (!PERF.guess) PERF.guess = deviceGuess(); // the picture advisor (src/perf.js advise) wants to know what this phone can do
+  const gAdv = gfxAdvise(save, window.devicePixelRatio || 1), gl = gAdv.tip || gAdv.line;
   B.push(setCard(s, 'Graphics', 'sparkle', '#2aa7a0', null, 42 * s, (x, y, w) => segRow('gfx:', [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], save.gfx, x, y, w, 42 * s, s), gl));
   const fl = save.fps === 30 ? 'Saves battery, keeps the phone cool' : save.fps === 60 ? 'Smoothest motion, uses more battery' : `Now ${PERF.fpsCap} fps`;
   B.push(setCard(s, 'Frame rate', 'fps', '#3a80ea', null, 42 * s, (x, y, w) => segRow('fps:', [['auto', 'Auto'], [30, '30 fps'], [60, '60 fps']], save.fps, x, y, w, 42 * s, s), fl));
@@ -11369,7 +11370,7 @@ async function boot() {
   // the app build used to be an everything-unlocked test build: its saves carry 50 fake levels and 99999 coins. The first
   // real-progression launch starts the journey fresh (settings and the hen's skins carry over).
   if (typeof __APP__ !== 'undefined' && __APP__ && !save.real) {
-    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm, ringSpeed: save.ringSpeed, saver: save.saver, gfx: save.gfx, fps: save.fps, gfxStep: save.gfxStep };
+    const keep = { sfx: save.sfx, music: save.music, mode: save.mode, calm: save.calm, ringSpeed: save.ringSpeed, saver: save.saver, gfx: save.gfx, fps: save.fps, gfxStep: save.gfxStep, gfxSharp: save.gfxSharp };
     save = { ...defaultSave(), ...keep };
     ads.rebind(save);
   }
@@ -11392,6 +11393,7 @@ async function boot() {
   // 0.8.12: quality steps learned by 0.8.9 to 0.8.11 may be the ill phone's (mykee's flagship came back from its restart on
   // Low at 0.8x): Auto starts once more from the phone's own guess
   if (!save.seen.gfx812) { save.seen.gfx812 = 1; if (save.gfx === 'auto') save.gfxStep = -1; }
+  if (!save.seen.gfx817) { save.seen.gfx817 = 1; if (save.gfx === 'auto') { save.gfxStep = -1; save.gfxSharp = 0; } } // 0.8.17: Auto learned too soft a picture under the old rules; it starts again once
   applySettings(save); setDPR(); // graphics quality: the phone's own guess or what it learned last time (src/perf.js)
   diag.init({
     version: __VERSION__, app: typeof __APP__ !== 'undefined' && !!__APP__, perf: PERF, guess: () => PERF.guess,

@@ -17,6 +17,18 @@ export const STEPS = [['high', 2], ['high', 1.75], ['medium', 1.5], ['medium', 1
 export const GFX_LIST = ['auto', 'high', 'medium', 'low'];
 export const FPS_LIST = ['auto', 30, 60];
 const FIRST = { high: 0, medium: 2, low: 4 };
+// 0.8.17 sharpness (mykee 2026-11-26: a tester on Auto played on a blurry picture that looked good on High and never
+// knew). Three faults made Auto softer than the phone needed:
+//  1. the DETAIL tier and the RESOLUTION were one ladder, so a phone short of JS time (too many drawing commands) was
+//     moved to Medium and lost a quarter of its pixels too, which does not buy back any JS time;
+//  2. the climb back asked for JS work under half a frame even for a step that only adds pixels, so a mid phone with
+//     every frame on time sat on a soft picture for good;
+//  3. a phone that says little about itself started soft.
+// Now Auto also keeps a resolution floor ("sharp", save.gfxSharp): the pixels Auto holds on to while the detail tier
+// moves. Heavy JS work lowers the detail and KEEPS the pixels; late frames with light JS work lower the pixels first;
+// clean frames give pixels back even when the JS work is too high for a richer tier.
+export const RES = [2, 1.75, 1.5, 1.25, 1, 0.8];
+const resDown = (r) => RES.find((v) => v < r - 0.01) || 0, resUp = (r) => [...RES].reverse().find((v) => v > r + 0.01) || 0;
 
 // What the phone says about itself. Nothing here leaves the device.
 export function deviceGuess(nav = typeof navigator !== 'undefined' ? navigator : {}) {
@@ -35,15 +47,15 @@ export function deviceGuess(nav = typeof navigator !== 'undefined' ? navigator :
   } catch (_) { gpu = ''; }
   // graphics chips of older and budget phones: Adreno 3xx-5xx and 60x-61x, Mali-T, Mali-G31..G57 and G71/G72, PowerVR
   const weakGpu = /Adreno[^0-9]*([3-5]\d\d|6[01]\d)\b|Mali-(T|G3\d|G5[0-7]|G7[12]\b)|PowerVR|SGX|Vivante|VideoCore/i.test(gpu);
-  let tier = 'high';
+  let tier = 'high', unknown = false;
   if (mobile) {
     if ((mem && mem <= 2) || (cores && cores <= 4)) tier = 'low';
     else if ((mem && mem <= 4) || weakGpu) tier = (mem && mem <= 4 && weakGpu) ? 'low' : 'medium';
     // a phone that tells us little (no memory size, or no graphics chip name) starts on Medium, not High: Auto steps up
     // after ~12 s of easy frames anyway, while starting too high would make the first seconds stutter (mykee 2026-11-19)
-    else if (!mem || !gpu || !cores) tier = 'medium';
+    else if (!mem || !gpu || !cores) { tier = 'medium'; unknown = true; }
   }
-  return { tier, cores, mem, gpu, mobile };
+  return { tier, cores, mem, gpu, mobile, unknown };
 }
 
 // The live quality state. main.js calls tick() once a frame with the frame interval in ms.
@@ -60,6 +72,7 @@ export const PERF = {
   get tier() { return STEPS[this.step][0]; },
   get low() { return this.tier === 'low'; },
   get lite() { return this.tier !== 'high'; },
+  sharp: 0, wantSharp: -1, sharpFails: 0, sgood: 0, // Auto's resolution floor (0 = the step's own), a change waiting for the next level, how often it had to give pixels back
   dprCap: 2,
   fpsCap: 60,
 };
@@ -73,9 +86,13 @@ export function applySettings(save) {
     if (!(save.gfxStep >= 0 && save.gfxStep < STEPS.length)) {
       PERF.guess = PERF.guess || deviceGuess();
       save.gfxStep = FIRST[PERF.guess.tier];
+      // a phone that tells us little starts with fewer effects but nearly all its pixels: blur is what a player sees first
+      save.gfxSharp = PERF.guess.unknown ? 1.75 : 0;
     }
     PERF.step = save.gfxStep;
-  } else PERF.step = FIRST[save.gfx];
+    PERF.sharp = RES.includes(save.gfxSharp) && save.gfxSharp > STEPS[PERF.step][1] ? save.gfxSharp : 0;
+  } else { PERF.step = FIRST[save.gfx]; PERF.sharp = 0; }
+  PERF.wantSharp = -1; PERF.sharpFails = 0; PERF.sgood = 0;
   PERF.acc = PERF.n = PERF.good = PERF.warm = PERF.miss = PERF.bad = PERF.work = 0; PERF.want = -1;
   PERF.fails.fill(0);
   PERF.pace = 1; PERF.pn = PERF.pm = 0;
@@ -84,7 +101,8 @@ export function applySettings(save) {
   refresh(save);
 }
 function refresh(save) {
-  PERF.dprCap = STEPS[PERF.step][1];
+  if (PERF.sharp <= STEPS[PERF.step][1]) PERF.sharp = 0;
+  PERF.dprCap = Math.max(STEPS[PERF.step][1], save.gfx === 'auto' ? PERF.sharp : 0);
   PERF.fpsCap = save.fps === 30 ? 30 : save.fps === 60 ? 60 : (PERF.slow30 ? 30 : 60);
 }
 
@@ -148,9 +166,19 @@ export function tick(save, ms, measuring, work = 0, skip = false, iv = 16.7) {
     PERF.bad = 0;
     const js = wavg > budget * JS_HEAVY;
     PERF.why = js ? 'js' : 'gpu';
+    PERF.sgood = 0;
+    // 0.8.17: pixels held above the step's own resolution go first when the drawing (not the JS) is late
+    if (!js && PERF.sharp > STEPS[PERF.step][1]) {
+      const r = resDown(PERF.sharp);
+      PERF.wantSharp = r > STEPS[PERF.step][1] ? r : 0; PERF.sharpFails = Math.min(3, PERF.sharpFails + 1);
+      PERF.want = PERF.step; return true;
+    }
     if (PERF.step < STEPS.length - 1) {
       let to = PERF.step + 1;
-      if (js) { const t = STEPS[PERF.step][0]; while (to < STEPS.length - 1 && STEPS[to][0] === t) to++; } // straight to the next detail tier
+      if (js) { // straight to the next detail tier, and the pixels stay (0.8.17: fewer commands is the cure, not blur)
+        const t = STEPS[PERF.step][0]; while (to < STEPS.length - 1 && STEPS[to][0] === t) to++;
+        PERF.wantSharp = PERF.dprCap;
+      }
       PERF.fails[PERF.step] = Math.min(3, PERF.fails[PERF.step] + 1);
       PERF.want = to; return true;
     }
@@ -158,10 +186,18 @@ export function tick(save, ms, measuring, work = 0, skip = false, iv = 16.7) {
     return false;
   }
   PERF.bad = 0;
-  if (late < CLEAN && wavg < budget * 0.5 && PERF.fpsCap === 60) {
+  // 0.8.17: a step up inside the same tier only adds pixels, which costs raster time, not JS: it may be taken with JS
+  // work up to 80% of the frame (it used to need under 50%, and mid phones stayed soft with every frame on time)
+  const pixelsOnly = PERF.step > 0 && STEPS[PERF.step - 1][0] === STEPS[PERF.step][0] && PERF.sharp < STEPS[PERF.step - 1][1];
+  if (late < CLEAN && wavg < budget * (pixelsOnly ? 0.8 : 0.5) && PERF.fpsCap === 60) {
     const f = PERF.step > 0 ? PERF.fails[PERF.step - 1] : 0, need = f >= 3 ? Infinity : 12 * 2 ** f;
-    if ((PERF.good += 2) >= need && PERF.step > 0) { PERF.want = PERF.step - 1; PERF.good = 0; PERF.why = 'up'; return true; }
+    if ((PERF.good += 2) >= need && PERF.step > 0) { PERF.want = PERF.step - 1; PERF.good = 0; PERF.sgood = 0; PERF.why = 'up'; return true; }
   } else PERF.good = 0;
+  // ... and where the JS work is too high for a richer tier but every frame is on time, the pixels alone come back
+  if (late < CLEAN && wavg < budget * 0.8 && PERF.fpsCap === 60 && PERF.dprCap < RES[0] && PERF.want < 0) {
+    const need = PERF.sharpFails >= 3 ? Infinity : 12 * 2 ** PERF.sharpFails;
+    if ((PERF.sgood += 2) >= need) { PERF.wantSharp = resUp(PERF.dprCap); PERF.want = PERF.step; PERF.sgood = 0; PERF.why = 'sharp'; return true; }
+  } else PERF.sgood = 0;
   return false;
 }
 // a new level: its card runs at 60 again
@@ -179,14 +215,34 @@ export function newLevel(save) {
 // Auto used to climb and fall again and again during play); a step DOWN lands at once, then Auto waits again
 export function takeStep(save, playing = false) {
   if (PERF.want < 0) return false;
-  if (playing && PERF.want < PERF.step) return false;
+  const moreSharp = PERF.wantSharp > PERF.dprCap + 0.01 && PERF.want === PERF.step; // pixels coming back: between levels, like any step up
+  if (playing && (PERF.want < PERF.step || moreSharp)) return false;
   PERF.warm = 0; PERF.bad = 0;
   PERF.step = PERF.want; PERF.want = -1;
-  if (save.gfx === 'auto') save.gfxStep = PERF.step;
+  if (PERF.wantSharp >= 0) { PERF.sharp = PERF.wantSharp; PERF.wantSharp = -1; }
+  if (save.gfx === 'auto') { save.gfxStep = PERF.step; save.gfxSharp = PERF.sharp > STEPS[PERF.step][1] ? PERF.sharp : 0; }
   refresh(save);
   return true;
 }
 // the speed test (src/speedtest.js) draws at each step in turn, then puts back exactly what was running
 export function benchStep(i, dprCap = STEPS[i][1]) { PERF.step = i; PERF.dprCap = dprCap; }
+// 0.8.17 the picture advisor: what Settings says about the picture right now, and whether another choice would suit
+// this phone better. devDpr = the screen's own pixel ratio. Read on the phone, sent nowhere.
+//   sharp   the drawn pixels against what this screen can show at the game's best (2x): 1 = as sharp as it gets
+//   tip     '' or one honest sentence; to = the Graphics choice the tip speaks of
+export function advise(save, devDpr = 1) {
+  const best = Math.min(devDpr || 1, RES[0]), now = Math.min(devDpr || 1, PERF.dprCap), sharp = best > 0 ? now / best : 1;
+  const soft = sharp < 0.8, g = PERF.guess;
+  let line, tip = '', to = '';
+  if (save.gfx === 'auto') {
+    line = `Auto: ${TIER_NAME[PERF.tier]} detail, ${soft ? 'softer picture to stay smooth' : 'sharp picture'}`;
+    if (soft) { tip = 'High is sharper, but play may stutter on this phone'; to = 'high'; }
+  } else if (save.gfx === 'high') line = 'Sharpest picture, every effect';
+  else {
+    line = save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
+    if (soft && g && g.tier === 'high') { tip = 'This phone can show a sharper picture: try Auto'; to = 'auto'; }
+  }
+  return { sharp, soft, line, tip, to };
+}
 // for the Settings line: what Auto is running right now
 export const TIER_NAME = { high: 'High', medium: 'Medium', low: 'Low' };

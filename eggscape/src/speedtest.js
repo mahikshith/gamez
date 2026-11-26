@@ -70,7 +70,7 @@ function close(useBest) {
   for (const k of ['pointerup', 'pointermove', 'pointercancel']) window.removeEventListener(k, T.swallow, { capture: true });
   benchStep(T.keep.step, T.keep.dprCap);
   if (useBest && T.best >= 0) {
-    env.save.gfx = 'auto'; env.save.gfxStep = T.best;
+    env.save.gfx = 'auto'; env.save.gfxStep = T.best; env.save.gfxSharp = 0;
     env.applySettings();
     env.persist();
   }
