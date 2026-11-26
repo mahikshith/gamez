@@ -153,8 +153,9 @@ const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5]; // 202
 const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed : RING_SPEED_DEFAULT);
 // 0.8.17: the hidden tester switch (7 taps on the logo) works only in dev builds and the separate unlocked test builds;
 // in a store build the taps do nothing and an old save.tester flag is ignored (it opened the $2.99 unlock for free)
-const TESTER_OK = DEV || TEST || (typeof __UNLOCKED__ !== 'undefined' && !!__UNLOCKED__); /* global __UNLOCKED__ */
-const allOpen = () => TEST || (TESTER_OK && !!save.tester) || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($2.99) opens every level
+const UNLOCKED = typeof __UNLOCKED__ !== 'undefined' && !!__UNLOCKED__; /* global __UNLOCKED__ */
+const TESTER_OK = DEV || TEST || UNLOCKED;
+const allOpen = () => TEST || UNLOCKED || (TESTER_OK && !!save.tester) || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($2.99) opens every level
 // open: the world before is open and its boss passed (MINT.worldReady), and the stars are there or the gate was bought
 function envOpen(k) {
   if (allOpen()) return true;
@@ -9464,7 +9465,7 @@ function drawTitle() {
   const subY = ty + logoS * 0.5 + 18 * u;
   G.titleToastY = subY + 16 * u;
   { const p = ent(0.3, 0.32); ctx.save(); ctx.globalAlpha *= p; ctx.translate(0, (1 - p) * 14 * u); // the tagline slides up under the title
-    ui.text(TEST ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? A.w * 0.5 : A.w) - 32 * u }); ctx.restore(); }
+    ui.text(TEST || UNLOCKED ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? A.w * 0.5 : A.w) - 32 * u }); ctx.restore(); }
   // the toy vault: centred between the subtitle and the meadow, or to the left of the buttons on a wide screen
   const eggH = Math.min(46 * u, (ground - subY) * 0.22);
   let vx = cx, vy, R;
@@ -11014,6 +11015,13 @@ async function boot() {
       else if (s && (s.v === 1 || s.v === 2)) loadSave({ sfx: s.sfx, music: s.music, mode: s.mode, calm: s.calm, wallet: s.wallet, seen: s.seen });
     }
   } catch (_) { save = defaultSave(); }
+  // 0.8.17: the separate everything-unlocked test app (build flag __UNLOCKED__, its own app id): once, the whole coop,
+  // both bundles' boosters, charges and tickets, and a deep purse, so every page and animation can be tried at once
+  if (typeof __UNLOCKED__ !== 'undefined' && __UNLOCKED__ && !save.unlockedKit) {
+    let w = save.wallet;
+    for (const sku of ['eggscape_collector', 'starter_nest', 'bundle_helper']) w = E.grantIap(w, sku, 'unlocked-build:' + sku, Date.now()).wallet;
+    save.wallet = E.addCoins(w, 20000); save.unlockedKit = 1; persist();
+  }
   if (PREVIEW === 'spin') { const stars = {}; for (let i = 1; i < 12; i++) stars[i] = 2; save = defaultSave(); loadSave({ ...save, unlocked: 12, stars, wallet: { ...save.wallet, coins: 300 }, spin: { wins: 1, bank: 3 } }); } // the Lucky Spin to show: a player at level 12 with three spins
   // the app build used to be an everything-unlocked test build: its saves carry 50 fake levels and 99999 coins. The first
   // real-progression launch starts the journey fresh (settings and the hen's skins carry over).

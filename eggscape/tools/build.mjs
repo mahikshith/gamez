@@ -74,6 +74,7 @@ async function bundle(portal, { minify, sourcemap }) {
       __GD_ID__: JSON.stringify(gdId),
       __DEV__: JSON.stringify(!minify),
       __TEST__: JSON.stringify(test),
+      __UNLOCKED__: JSON.stringify(process.env.EGG_UNLOCKED === '1'), // EGG_UNLOCKED=1: the separate everything-unlocked test app (never a store build)
       __APP__: JSON.stringify(isApp),
       __VERSION__: JSON.stringify(appVersion),
       __BUILD__: JSON.stringify(appBuild),

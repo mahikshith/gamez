@@ -3,6 +3,7 @@
 # iPhone shell or this file changes (the repository is public, so macOS minutes are free; keep it narrow all the same).
 # Installing on a real iPhone is done with xtool on a computer: eggscape/docs/ios-test.md.
 name: iOS build check
+run-name: "IPHONE APP: Eggscape .ipa for iPhone (run ${{ github.run_number }})"
 on:
   workflow_dispatch:
   push:
