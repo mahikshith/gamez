@@ -11032,7 +11032,7 @@ function practiceIcon(k, x, y, r, t) {
 const TAU = Math.PI * 2;
 const spinSlices = () => SP.wheel(save);
 // the thieves that can come up on the reels, with the voice each has in the game; only ones this player has met
-const SPIN_VILLAINS = { weasel: 'weasel_snicker', snake: 'snake_hiss', rats: 'rat_squeak', octopus: 'ink_squirt', frog: 'tongue_lick', eagle: 'eagle_screech', salamander: 'sal_huff', chameleon: 'tongue_lick', hermit: 'crab_snap', gator: 'gator_snap', spider: 'gear_whir' };
+const SPIN_VILLAINS = { weasel: 'weasel_snicker', snake: 'snake_hiss', rats: 'rat_squeak', octopus: 'ink_squirt', frog: 'tongue_lick', eagle: 'eagle_screech', salamander: 'sal_huff', chameleon: 'tongue_lick', hermit: 'crab_snap', gator: 'gator_snap', spider: 'gear_whir', 'boss:raccoon': 'weasel_snicker', monkey: 'gecko_chirp', penguin: 'squish', urchin: 'stun_stars' }; // 0.8.18: Bandit, Coco, Pip and Spike
 function spinVillain(not) {
   const met = Object.keys(SPIN_VILLAINS).filter((k) => save.seen['v:' + k] && hasPortrait(k)), pool = met.length > 1 ? met.filter((k) => k !== not) : met;
   return pool.length ? pool[Math.floor(Math.random() * pool.length)] : 'weasel'; // (which villain is looks only: the roll was made before this)
