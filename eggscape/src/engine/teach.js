@@ -74,10 +74,27 @@ export const LESSONS = {
   pip: L('away'), // Pip the penguin slides: turn the gap away from his slide
   coco: L('spin', 'own'), // Coco the monkey rides a ring: turn that ring against him (a hard flick throws him off)
   urchin: L('open'), // Spike the urchin puffs at an egg: open the gap behind the egg
+  // 0.8.18 words818: texts that used to pop up in play
+  portal: L('look', 'own', 'Purple to orange'), // the portal tip: on the purple swirl
+  chick: L('tap', 'own'), // a hatched chick: "tap it to use its power" (the finger taps the chick)
   // a level's opening caption: the finger brings a gap to the egg it is about (main.js lessonLevel)
   lv: L('open'),
 };
-export const lessonOf = (subject) => LESSONS[subject] || (String(subject).startsWith('lv:') ? LESSONS.lv : null);
+// ---- 0.8.18 words818: power pickups ('pw:<orb id>') are moments of their own: no finger, the power's effect shown on the
+// egg that took it with its icon and name (one or two words) for about a second; the first two pickups of each power only.
+// From the third: just the icon popping at the egg (powerPlan says which).
+export const POWER = { hold: 1.0, holdShort: 0.6 };
+const PW = { g: 'power', ring: 'own', w: '' };
+export const lessonOf = (subject) => LESSONS[subject] || (String(subject).startsWith('lv:') ? LESSONS.lv : String(subject).startsWith('pw:') ? PW : null);
+// a power pickup: 'moment' (meet it and play the moment: want() said yes), 'pop' (meet it, just the icon: it is a third
+// pickup, or the first with Adaptive help off already seen), 'wait' (a first or second pickup that could not have its
+// moment now: spacing, another moment on, the last 5 s: just the icon, and the meeting is not used up)
+export function powerPlan(save, run, subject, ctx) {
+  const p = want(save, run, subject, ctx);
+  if (p) return { kind: 'moment', plan: { ...p, hold: Math.min(p.hold, p.hold === TEACH.hold ? POWER.hold : POWER.holdShort) } };
+  const met = (save && save.met && save.met[subject]) | 0;
+  return { kind: met >= (ctx.adapt !== false ? TEACH.meetings : 1) || run.n[subject] ? 'pop' : 'wait' };
+}
 
 // ---- meetings
 const metOf = (save, s) => ((save && save.met && save.met[s]) | 0);
