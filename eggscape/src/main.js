@@ -9985,12 +9985,15 @@ function drawTitle() {
   const wide = A.w > A.h * 1.15;
   // 0.8.16 (mykee: "it's not full screen"): in portrait the buttons stand on the page column (ui.pageBox: the level
   // card's and the shop's edges); landscape keeps its two columns
-  const bw = wide ? Math.min(310 * u, A.w - 44 * u) : ui.pageBox(440 * u).w;
+  // sweep817 (mykee: "fix landscape orientation: too much empty UI space"): on its side the meadow sits lower and the
+  // button block grows (up to a third) to the height above it, so the right column is not a short stack over grass
+  const groundW = A.y1 - Math.max(72 * u, A.h * 0.17), bk = wide ? clamp(Math.min((groundW - A.y - 28 * u) / ((fr ? 100 : 184) * u + 40 * u), (A.w * 0.4) / (310 * u)), 1, 1.35) : 1, U = u * bk;
+  const bw = wide ? Math.min(310 * U, Math.max(A.w * 0.4, A.w - 44 * u)) : ui.pageBox(440 * u).w;
   // buttons sit on the meadow at the bottom: Play, then Levels | Daily | Shop, then the difficulty row
   // landscape: two balanced columns, logo + vault on the left, the buttons on the right, the meadow low across both
-  const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? A.x + A.w * 0.73 : cx;
-  const blockH = (fr ? 100 : 184) * u; // Play + Levels row + difficulty + Extras
-  const ground = wide ? A.y1 - Math.max(96 * u, A.h * 0.2) : A.y1 - (fr ? 124 : 208) * u - 16 * u;
+  const lx = wide ? A.x + A.w * 0.29 : cx, bx = wide ? Math.min(A.x + A.w * 0.73, A.x1 - 89 * u - bw / 2) : cx; // (on its side the daily chest keeps its place right of the block)
+  const blockH = (fr ? 100 : 184) * U; // Play + Levels row + difficulty + Extras
+  const ground = wide ? groundW : A.y1 - (fr ? 124 : 208) * u - 16 * u;
   const by = wide ? Math.max(A.y + 14 * u, A.y + (ground - A.y - blockH) / 2 + 4 * u) : A.y1 - (fr ? 124 : 208) * u; // room for the Extras row (and its lip, clear of the phone's bottom edge) under the difficulty row
   if (!themeBack(ctx, ui.skin, W_, H_, ground)) G.backdrop.drawGround(ctx, 0, ground, W_, H_ - ground, G.t); // a skin pack paints its whole scene instead
   // the earth under the controls falls into shade, so the buttons carry the bottom of the screen
@@ -10002,7 +10005,7 @@ function drawTitle() {
   // spans the page column, the buttons' own edges, and stands clear under the Settings button; nothing shares its
   // row any more (Unlock all moved down into the button block). Shorter screens keep the title between the corners.
   const tall = !wide && A.h >= A.w * 1.9;
-  const logoS = tall ? bw / 5.02 : Math.min(66 * u, (wide ? A.w * 0.5 : A.w) / 7.3, A.h / 6);
+  const logoS = tall ? bw / 5.02 : wide ? Math.min(80 * u, A.w * 0.5 / 7.3, A.h / 5.4) : Math.min(66 * u, A.w / 7.3, A.h / 6);
   const ty = tall ? A.y + 56 * u + logoS * 0.57 : A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
   const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, intro ? T * 1.7 : 9, FONT, ui.skin && ui.skin.pack ? (c, ch, i, sz, n) => logoDress(ui.skin, c, ch, i, sz, n) : null); // intro: the letters drop in a quicker cascade
   ui.record(logo, 'title:logo');
@@ -10065,36 +10068,36 @@ function drawTitle() {
   const side = fr ? null : ads.canBuyPremium ? { id: 'home:premium', label: 'Unlock all', o: { kind: 'gold', icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) } }
     : ads.premium && save.wallet.premDay !== today() && save.wallet.charges < E.MAX_CHARGES ? { id: 'home:charge', label: 'Free charge', o: { kind: 'primary', shimmer: true, icon: (c, x, y, sz) => drawStrikeToken(c, 'freeze', x, y, sz * 0.42, G.t, true) } } : null;
   // PLAY breathes
-  const ph = (fr ? 84 : 70) * u, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
+  const ph = (fr ? 84 : 70) * U, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
   pop(0.25, bx, by + ph / 2, () => {
     ctx.save();
     ctx.translate(bx, by + ph / 2); ctx.scale(br, br); ctx.translate(-bx, -(by + ph / 2));
-    ui.button('play', nextIdx() > 0 ? `PLAY  Level ${LEVELS[nextIdx()].id}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: (fr ? 34 : 28) * u, round: 20 * u });
+    ui.button('play', nextIdx() > 0 ? `PLAY  Level ${LEVELS[nextIdx()].id}` : 'PLAY', bx - bw / 2, by, bw, ph, { kind: 'primary', shimmer: true, icon: ICON.play, size: (fr ? 34 : 28) * U, round: 20 * U });
     ctx.restore();
   });
   if (fr) { if (fade) ctx.globalAlpha = 1; return; } // first launch: PLAY alone (Levels, Daily, Shop, Extras and the bank come with the first win)
-  const ry = by + ph + 8 * u, rh = 54 * u;
-  const bankEh = Math.min(rh * 0.8, 44 * u), bankEw = bankEh * 0.78, bankOn = save.wallet.bank > 0 && ads.moneyShop;
-  const bankIn = bankOn && bx + bw / 2 + 8 * u + bankEw > A.x1 - 2 * u; // 0.8.16: no room beside the row: the egg ends the row, on the column's right edge
-  const tw = (bw - 16 * u - (bankIn ? bankEw + 8 * u : 0)) / 3, /* 0.8.14: one gutter, 8 units, across and down the block */ paid = save.daily.paid === today();
-  pop(0.33, bx - bw / 2 + tw / 2, ry + rh / 2, () => ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * u }));
-  pop(0.4, bx - bw / 2 + tw * 1.5 + 8 * u, ry + rh / 2, () => ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * u, ry, tw, rh, paid ? { kind: 'off', size: 13 * u } : { kind: 'orange', icon: ICON.day, size: 17 * u }));
-  pop(0.47, bx - bw / 2 + tw * 2.5 + 16 * u, ry + rh / 2, () => purseBtn(bx - bw / 2 + 2 * (tw + 8 * u), ry, tw, rh, 18 * u));
+  const ry = by + ph + 8 * U, rh = 54 * U;
+  const bankEh = Math.min(rh * 0.8, 44 * U), bankEw = bankEh * 0.78, bankOn = save.wallet.bank > 0 && ads.moneyShop;
+  const bankIn = bankOn && bx + bw / 2 + 8 * U + bankEw > A.x1 - 2 * U; // 0.8.16: no room beside the row: the egg ends the row, on the column's right edge
+  const tw = (bw - 16 * U - (bankIn ? bankEw + 8 * U : 0)) / 3, /* 0.8.14: one gutter, 8 units, across and down the block */ paid = save.daily.paid === today();
+  pop(0.33, bx - bw / 2 + tw / 2, ry + rh / 2, () => ui.button('levels', 'Levels', bx - bw / 2, ry, tw, rh, { kind: 'secondary', icon: ICON.grid, size: 17 * U }));
+  pop(0.4, bx - bw / 2 + tw * 1.5 + 8 * U, ry + rh / 2, () => ui.button('daily', paid ? dailyNextText() : 'Daily', bx - bw / 2 + tw + 8 * U, ry, tw, rh, paid ? { kind: 'off', size: 13 * U } : { kind: 'orange', icon: ICON.day, size: 17 * U }));
+  pop(0.47, bx - bw / 2 + tw * 2.5 + 16 * U, ry + rh / 2, () => purseBtn(bx - bw / 2 + 2 * (tw + 8 * U), ry, tw, rh, 18 * U));
   // the Golden Egg Bank: a small glass egg beside the coins, filling as wins drop coins in (tap: its card in the shop)
   if (bankOn) {
-    const eh = bankEh, ew = bankEw, ex = bx + bw / 2 + (bankIn ? -ew / 2 : 8 * u + ew / 2), ey = ry + rh / 2 - 2 * u;
+    const eh = bankEh, ew = bankEw, ex = bx + bw / 2 + (bankIn ? -ew / 2 : 8 * U + ew / 2), ey = ry + rh / 2 - 2 * U;
     {
       pop(0.5, ex, ey, () => drawGlassEgg(ctx, ex, ey, eh, save.wallet.bank / E.BANK_CAP, G.t));
       ui.record({ x: ex - ew / 2, y: ey - eh / 2, w: ew, h: eh }, 'title:bank');
-      homeHit('home:bank', ex - ew / 2 - 4 * u, ey - eh / 2 - 4 * u, ew + 8 * u, eh + 8 * u);
+      homeHit('home:bank', ex - ew / 2 - 4 * U, ey - eh / 2 - 4 * U, ew + 8 * U, eh + 8 * U);
     }
   }
   // (2026-11-16 research: no top casual game puts a difficulty switch on home; it lives in Settings)
   // Extras: as wide as Play, 52 u tall, with the Extras page's little planet and egg
-  const ey = ry + rh + 8 * u, ew = side ? (bw - 8 * u) / 2 : bw, es = side ? 18 * u : 20 * u;
-  pop(0.54, bx - bw / 2 + ew / 2, ey + 26 * u, () => ui.button('extras', 'Extras', bx - bw / 2, ey, ew, 52 * u, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: side ? 1.5 : 1.8, size: es, round: 17 * u }));
-  if (albumMarkOn()) pop(0.6, bx - bw / 2 + ew - 4 * u, ey + 4 * u, () => markBadge(Math.min(bx - bw / 2 + ew - 3 * u, A.x1 - 12 * u), ey + 3 * u, 11 * u, G.t, '!')); // 0.8.17: a new combo find (it leads to its album tile)
-  if (side) pop(0.6, bx + bw / 2 - ew / 2, ey + 26 * u, () => ui.button(side.id, side.label, bx + bw / 2 - ew, ey, ew, 52 * u, { ...side.o, size: es, round: 17 * u }));
+  const ey = ry + rh + 8 * U, ew = side ? (bw - 8 * U) / 2 : bw, es = side ? 18 * U : 20 * U;
+  pop(0.54, bx - bw / 2 + ew / 2, ey + 26 * U, () => ui.button('extras', 'Extras', bx - bw / 2, ey, ew, 52 * U, { kind: 'ad', icon: (c, x, y, s) => drawExtrasMark(c, x, y, s * 1.25, save.calm ? 0 : G.t), iconS: side ? 1.5 : 1.8, size: es, round: 17 * U }));
+  if (albumMarkOn()) pop(0.6, bx - bw / 2 + ew - 4 * U, ey + 4 * U, () => markBadge(Math.min(bx - bw / 2 + ew - 3 * U, A.x1 - 12 * U), ey + 3 * U, 11 * U, G.t, '!')); // 0.8.17: a new combo find (it leads to its album tile)
+  if (side) pop(0.6, bx + bw / 2 - ew / 2, ey + 26 * U, () => ui.button(side.id, side.label, bx + bw / 2 - ew, ey, ew, 52 * U, { ...side.o, size: es, round: 17 * U }));
   if (fade) ctx.globalAlpha = 1;
 }
 
