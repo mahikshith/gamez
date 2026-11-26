@@ -11,6 +11,7 @@ import { LEVELS } from '../src/data/levels.js';
 import { HARD_IDS } from '../src/sim/sim.js';
 import { bossOf } from '../src/road.js';
 import { purse, owning, town, life, PERSONAS, PER_ENV, CATALOGUE, envOpen } from './sim-players.mjs';
+import * as SQ from '../src/side.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
 const F = M.FAUCETS, sum = (a) => a.reduce((x, y) => x + y, 0);
@@ -104,6 +105,16 @@ E.setPlatform(false);
   ok(E.buyHenSkin(rich, 'golden') === null && E.HEN_SKINS.golden.premium, 'money only: the Golden Hen (with Unlock Everything; no videos and every level open come only with it too)');
   ok(E.SKINS.golden.price > 0 && Object.keys(E.PREMIUM_CHICKS).every((id) => E.CHICK_PRICES[id] > 0), 'coin-buyable, as before: the golden egg and the three premium chicks (they are part of the coin catalogue)');
   ok(HARD_IDS.length > 0 && LEVELS.length % PER_ENV === 0, 'every world is whole (the gate rules count levels per world, never 50 or 5)');
+}
+// ---- 7. side quests (0.8.17, src/side.js): the Mint's sideQuest row, paid once in full, then a little; their stars count
+{
+  const Q = F.sideQuest, s = {}, key = SQ.SIDE[0].key, one = E.levelCoins({ stars: 2, saved: 2, eggs: 3 }).total + M.onlineBonus(E.levelCoins({ stars: 2, saved: 2, eggs: 3 }).total);
+  const a = SQ.sideWin(s, key, 2), b = SQ.sideWin(s, key, 3), c = SQ.sideWin(s, key, 1);
+  ok(a.coins === Q.first && a.fresh && b.coins === Q.replay && c.coins === Q.replay && SQ.sideStars(s, key) === 3, `a side quest pays ${Q.first} on its first win, ${Q.replay} on every later one; its best stars are kept (${SQ.sideStars(s, key)})`);
+  ok(Q.first <= 3 * one && Q.replay * 2 < Q.first, `its first win is ${(Q.first / one).toFixed(1)} normal first clears (${one} online, two stars; three would be ${3 * one}: the commuter target leaves room for ${Q.first})`);
+  ok(/const bestTotal = \(\) => LEVELS\.reduce\([^\n]*\+ SQ\.sideTotal\(save\)/.test(MAIN) && /SQ\.sideWin\(save/.test(MAIN) && /LEVELS\.length \* 3 \+ SQ\.SIDE_MAX/.test(MAIN), 'main.js: the map\'s star total (gates, chests, the header\'s maximum) counts the bonus stars; a side-quest win pays through side.js');
+  const W = []; for (let i = 0; i < 24; i++) W.push(life(PERSONAS.commuter, 500 + i * 13, 30).sideWins);
+  ok(W.filter((n) => n > 0).length >= 6, `the simulator plays them: ${W.filter((n) => n > 0).length} of 24 commuters won a side quest by day 30 (${W.reduce((x, y) => x + y, 0)} wins), so the day-30 target above includes their coins`);
 }
 console.log(bad ? `\n${bad} FAILED` : '\nall mint checks passed');
 process.exit(bad ? 1 : 0);

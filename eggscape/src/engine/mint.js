@@ -47,6 +47,11 @@ export const FAUCETS = {
   easy: { share: 0.7, ceiling: 'per win on Easy', why: 'Easy is the safety net, not the better-paying way through' },
   // a dare met (the Pacer's optional dare for a cruising player) pays this share of the win's coins on top
   dare: { share: 0.5, ceiling: 'one dare a level, offered only to a cruising player, fewer after each one declined', why: 'a chosen harder way pays a little more, never a penalty' },
+  // a side quest on the map (src/side.js: one Wonder Vault a world, off the road, tougher than the road). Its first win pays
+  // `first`, every later win `replay`; its 1 to 3 bonus stars count in the map's star total (worlds, star chests).
+  // The brief asked for about three normal first clears (69); the commuter's day-30 target (at most 40%) leaves room for
+  // less: 18 (0.8 of a first clear). Measured over 8 seeds, the pay moves the commuter by less than the seeds' own spread.
+  sideQuest: { first: 18, replay: 4, ceiling: 'first: once per side quest (ten); replay: per win', why: 'a tougher, optional detour pays a little, once; its bonus stars are the real prize; replays are no farm' },
 };
 
 // ---------------------------------------------------------------- sinks: what takes coins out

@@ -20,10 +20,13 @@ export function createWonder(env) {
   const space = () => S.game && (S.game.kind === 'planet' || S.game.kind === 'mama');
   const starsOf = (key) => (env.save().wonder || {})[key] || 0;
 
-  function start(key) {
+  // o.side: played as a side quest from the map (0.8.17): its card first, the pause page, the campaign's pay and stars
+  // (env.sideWin), and back to the map at its door (env.leave). o.go: straight into play (a retry), no card.
+  function start(key, o = {}) {
     const L = wonderByKey(key);
     if (!L) return false;
     S.level = L;
+    S.side = o.side ? { w: o.side.w, key } : null; S.pay = null; S.flown = false;
     S.game = new WonderGame(L);
     S.theme = THEMES.find((t) => t.id === L.theme) || THEMES[0];
     S.backdrop = createBackdrop(S.theme, L.id * 97);
@@ -31,7 +34,7 @@ export function createWonder(env) {
     S.backdrop.resize(z.W, z.H, z.DPR);
     S.fx = S.game.sims.map(() => new FX());
     S.hens = S.game.sims.map(() => ({ mood: 'idle', t: 0, face: 1 }));
-    S.t = 0; S.card = null; S.cardT = 0; S.endT = 0; S.touched = false; S.hatched = false; S.slow = 1; S.snap = true; S.overT = 0; S.tipT = 4.5; S.acc = 0;
+    S.t = 0; S.card = S.side && !o.go ? 'intro' : null; S.cardT = 0; S.endT = 0; S.touched = false; S.hatched = false; S.slow = 1; S.snap = true; S.overT = 0; S.tipT = 4.5; S.acc = 0;
     S.held.clear();
     S.frost = S.game.kind === 'plan' ? 1 : 0;
     W.setSkin(env.save().wallet.skin);
@@ -41,10 +44,19 @@ export function createWonder(env) {
     return true;
   }
   function quit() {
-    for (const h of S.held.values()) h.ring.held = false;
+    for (const h of S.held.values()) if (h.ring) h.ring.held = false;
     S.held.clear();
     audio.setRingTurn(0);
-    env.leave();
+    env.leave(S.side);
+  }
+  // the phone's Back (main.js): the card -> the map; play -> the pause page; the pause page -> play; an end page -> the map
+  function back() {
+    if (!S.game) return false;
+    if (!S.side) { quit(); return true; }
+    if (S.card === 'pause') press('wv:resume');
+    else if (!S.card && S.game.state === 'play') press('wv:pause');
+    else quit();
+    return true;
   }
 
   // ---------------------------------------------------------------- layout and camera
@@ -147,8 +159,11 @@ export function createWonder(env) {
     const g = S.game;
     if (id.startsWith('wv:play:')) return start(id.slice(8));
     if (!g) return;
-    if (id === 'wv:quit') quit();
-    else if (id === 'wv:retry') start(S.level.key);
+    if (id === 'wv:quit' || id === 'wv:map') { audio.play('ui_back'); quit(); }
+    else if (id === 'wv:go') { if (S.card === 'intro') { S.card = null; S.cardT = 0; S.t = 0; S.tipT = 4.5; audio.play('ui_open'); } }
+    else if (id === 'wv:pause') { if (!S.card && g.state === 'play') { S.card = 'pause'; S.cardT = 0; for (const h of S.held.values()) if (h.ring) h.ring.held = false; S.held.clear(); audio.setRingTurn(0); audio.play('ui_tap'); } }
+    else if (id === 'wv:resume') { if (S.card === 'pause') { S.card = null; audio.play('ui_tap'); } }
+    else if (id === 'wv:retry') start(S.level.key, { side: S.side, go: true });
     else if (id === 'wv:next') { const i = WONDER_LEVELS.indexOf(S.level), N = WONDER_LEVELS[i + 1]; if (N) start(N.key); else quit(); }
     else if (id === 'wv:hatch') { if (g.hatch()) { S.hatched = true; audio.play('unlock'); for (const h of S.held.values()) if (h.ring) h.ring.held = false; S.held.clear(); } }
     else if (id === 'wv:rewind') { if (g.rewind()) rebuilt(); }
@@ -223,6 +238,7 @@ export function createWonder(env) {
   function update(dt) {
     const g = S.game;
     if (!g) return;
+    if (S.card === 'intro' || S.card === 'pause') { S.cardT += dt; camera(dt); return; } // the side quest's card and the pause page: the vault stands still
     S.t += dt;
     if (S.tipT > 0 && S.touched) S.tipT = Math.min(S.tipT, 0.6);
     S.tipT -= dt;
@@ -260,13 +276,16 @@ export function createWonder(env) {
     if (g.state !== 'play' && !S.card) {
       S.endT += dt;
       if (S.endT > (g.state === 'won' ? 1.3 : 0.9)) {
-        S.card = g.state === 'won' ? 'win' : 'fail'; S.cardT = 0;
+        S.card = g.state === 'won' ? 'win' : 'fail'; S.cardT = 0; S.st0 = S.st1 = S.st2 = 0;
         for (const h of S.held.values()) if (h.ring) h.ring.held = false;
         S.held.clear();
         if (g.state === 'won') {
           const sv = env.save(), st = g.stars();
-          sv.wonder = sv.wonder || {};
-          if (st > (sv.wonder[S.level.key] || 0)) { sv.wonder[S.level.key] = st; env.persist(); }
+          if (S.side && env.sideWin) S.pay = env.sideWin(S.level.key, st); // a side quest: the campaign pays it and files its stars (main.js)
+          else {
+            sv.wonder = sv.wonder || {};
+            if (st > (sv.wonder[S.level.key] || 0)) { sv.wonder[S.level.key] = st; env.persist(); }
+          }
         } else audio.play('level_fail');
       }
     }
@@ -376,8 +395,11 @@ export function createWonder(env) {
     const fl = Math.max(...S.fx.map((f) => f.flash));
     if (fl > 0 && !env.save().calm) { ctx.globalAlpha = fl * 0.5; ctx.fillStyle = '#fff2c4'; ctx.fillRect(0, 0, z.W, z.H); ctx.globalAlpha = 1; }
     drawHint(t);
-    drawHUD();
-    if (S.card) drawCard();
+    if (!(S.side && S.card)) drawHUD(); // (a side quest's pages stand alone: no clock under them, room for the purse)
+    if (S.card === 'intro') drawIntro();
+    else if (S.card === 'pause') drawPause();
+    else if (S.card && S.side) drawSideEnd();
+    else if (S.card) drawCard();
   }
 
   // twin: a golden cord between the two vault hubs with a little gear on it; it pulses while a ring is held
@@ -414,7 +436,8 @@ export function createWonder(env) {
   function drawHUD() {
     const g = S.game, A = ui.A, u = ui.u, pad = 10 * u, st = g.stats(), L = S.level, X0 = A.x + pad, Y0 = A.y + pad;
     ui.calm = env.save().calm;
-    ui.button('wv:quit', '', X0, Y0, 44 * u, 44 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 14 * u });
+    if (S.side) ui.button('wv:pause', '', X0, Y0, 44 * u, 44 * u, { kind: 'hud', icon: ICON.pause, iconS: 1.1, round: 14 * u }); // a side quest: the pause page (Resume, Retry, Map)
+    else ui.button('wv:quit', '', X0, Y0, 44 * u, 44 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 14 * u });
     // right: eggs home (per vault) and the clock (or the attempt count)
     const eggsTxt = st.per.map((p) => `${p.saved}/${p.target}`).join('  '), right = g.kind === 'plan' ? `Try ${st.attempts}` : fmt(g.timeLeft);
     const ew = ui.measure(eggsTxt, 17 * u), rw = ui.measure(g.kind === 'plan' ? 'Try 88' : '0:00', 17 * u), cw = 30 * u + ew + 14 * u + rw + 14 * u, cx = A.x1 - pad - cw, cy = Y0 + 22 * u;
@@ -474,6 +497,96 @@ export function createWonder(env) {
     ui.aBase = 1; ctx.restore();
   }
 
+  // ---------------------------------------------------------------- the side quest's pages (0.8.17)
+  // its card (the vault's picture, its name and one line, the stars it has, the coins its next win pays, PLAY), the
+  // pause page, and its win / fail pages in the campaign's manner: stars that pop in one by one, the coins flying to the
+  // purse, then Map. Back on every page leads to the map at the vault's door.
+  const ease = (k) => { k = clamp(k, 0, 1); return 1 - (1 - k) ** 3; };
+  const backOut = (k) => { k = clamp(k, 0, 1); const c1 = 1.7, c3 = c1 + 1, q = k - 1; return 1 + c3 * q * q * q + c1 * q * q; };
+  function sideFrame(h, title, col, under, maxW = 360) { // dims the vault, a card in the middle of the safe area (eased in); -> its box
+    const z = env.size(), A = ui.A, u = ui.u, a = env.save().calm ? 1 : ease(S.cardT / 0.3), w = Math.min(maxW * u, A.w - 28 * u);
+    ctx.fillStyle = `rgba(10,6,20,${0.55 * a})`; ctx.fillRect(0, 0, z.W, z.H);
+    if (under) under();
+    const x = A.cx - w / 2, y = Math.max(A.y + 26 * u, A.cy - h / 2) + (1 - a) * 24 * u;
+    ctx.save(); ctx.globalAlpha = a; ui.aBase = a;
+    ui.frame(x, y, w, h, {});
+    ui.ribbon(title, A.cx, y - 16 * u, Math.min(w - 20 * u, 280 * u), 40 * u, { color: col, size: 21 * u, tag: 'wv:cardtitle' });
+    return { x, y, w, h, a, done: () => { ui.aBase = 1; ctx.restore(); } };
+  }
+  const coinPill = (cx, cy, n, s, tag) => { // a dark pill: a coin and +n
+    const txt = '+' + n, fs = 19 * s, tw = ui.measure(txt, fs), cr = 11 * s, w = cr * 2 + 8 * s + tw + 24 * s, x = cx - w / 2;
+    ui.roundRect(x, cy - 17 * s, w, 34 * s, 17 * s); ctx.fillStyle = 'rgba(60,30,8,0.16)'; ctx.fill();
+    if (env.drawCoin) env.drawCoin(ctx, x + 12 * s + cr, cy, cr, env.save().calm ? 0 : S.t); else { ctx.beginPath(); ctx.arc(x + 12 * s + cr, cy, cr, 0, TAU); ctx.fillStyle = '#f2c43a'; ctx.fill(); }
+    ui.text(txt, x + 12 * s + cr * 2 + 8 * s, cy + 0.5 * s, { size: fs, color: '#6a3a08', tag, maxW: tw + 4 * s });
+    return { x: x + 12 * s + cr, y: cy };
+  };
+  function drawIntro() {
+    const A = ui.A, u = ui.u, L = S.level, wide = A.h < 560 * u, best = starsOf(L.key), t = env.save().calm ? 0 : S.t + S.cardT;
+    const h = wide ? Math.min(A.h - 40 * u, 300 * u) : 404 * u, F = sideFrame(h, L.name, '#8a4ad8', null, wide ? 520 : 360); // (a short screen: the picture beside the words)
+    const { x, y, w } = F, pay = env.sideCoins ? env.sideCoins(L.key) : 0;
+    const pic = wide ? Math.min(150 * u, h - 70 * u) : 150 * u, px = wide ? x + 22 * u + pic / 2 : A.cx, py = wide ? y + 34 * u + pic / 2 : y + 40 * u + pic / 2;
+    drawExtraIcon(ctx, L.wonder.kind, px, py, pic, t, { calm: env.save().calm });
+    ui.record({ x: px - pic / 2, y: py - pic / 2, w: pic, h: pic }, 'wv:introPic', 'wv:introPic');
+    if (/2$/.test(L.key)) { const tw = 30 * u, th = 20 * u, tx = px + pic / 2 - tw + 6 * u, ty = py - pic / 2 - 6 * u; ui.roundRect(tx, ty, tw, th, th / 2); ctx.fillStyle = '#d8402e'; ctx.fill(); ctx.lineWidth = 2 * u; ctx.strokeStyle = '#3a0a04'; ctx.stroke(); ui.text('II', tx + tw / 2, ty + th / 2 + 0.5 * u, { size: 14 * u, align: 'center', color: '#fff', tag: 'wv:introII', group: 'wv:introPic' }); } // (the tag is a badge on the picture's corner)
+    const cx = wide ? (px + pic / 2 + x + w) / 2 : A.cx, cw = wide ? x + w - (px + pic / 2) - 28 * u : w - 40 * u;
+    let cy = wide ? y + 48 * u : py + pic / 2 + 26 * u;
+    ui.text(L.pitch, cx, cy, { size: 19 * u, align: 'center', color: '#5a3416', tag: 'wv:introLine', maxW: cw });
+    cy += 40 * u;
+    const sr = 15 * u; // the stars it has (empty sockets until won), the coins its next win pays
+    const sc = pay ? cx - 52 * u : cx;
+    for (let i = 0; i < 3; i++) drawStar(ctx, sc + (i - 1) * 2.3 * sr, cy, sr, i < best);
+    ui.record({ x: sc - 3.3 * sr, y: cy - sr, w: 6.6 * sr, h: 2 * sr }, 'wv:introStars');
+    if (pay) coinPill(cx + 56 * u, cy, pay, u, 'wv:introPay');
+    const bh = 60 * u, bw = Math.min(cw, 260 * u), by = y + h - bh - 24 * u;
+    ui.button('wv:go', 'PLAY', cx - bw / 2, by, bw, bh, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * u, round: 18 * u });
+    F.done();
+    ui.button('wv:map', '', A.x + 10 * u, A.y + 10 * u, 44 * u, 44 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 14 * u }); // back to the map
+  }
+  function drawPause() {
+    const A = ui.A, u = ui.u, bh = 54 * u, gap = 12 * u, h = 3 * bh + 2 * gap + 72 * u, F = sideFrame(h, 'Paused', '#6c7aa0'), bw = F.w - 44 * u, bx = F.x + 22 * u;
+    let by = F.y + 40 * u;
+    ui.button('wv:resume', 'Resume', bx, by, bw, bh, { kind: 'primary', icon: ICON.play, size: 21 * u }); by += bh + gap;
+    ui.button('wv:retry', 'Retry', bx, by, bw, bh, { kind: 'secondary', icon: ICON.retry, size: 20 * u }); by += bh + gap;
+    ui.button('wv:map', 'Map', bx, by, bw, bh, { kind: 'secondary', icon: ICON.grid, size: 20 * u });
+    F.done();
+  }
+  function drawSideEnd() {
+    const g = S.game, A = ui.A, u = ui.u, win = S.card === 'win', st = g.stats(), stars = g.stars(), L = S.level, calm = env.save().calm, P = S.pay;
+    const rays = () => { // rays behind the card (turning slowly; still under reduced motion)
+      const z = env.size(), cx0 = A.cx, cy0 = A.cy - 40 * u, R0 = Math.max(z.W, z.H) * 0.8, a0 = calm ? 0 : S.cardT * 0.15, al = ease(S.cardT / 0.4);
+      ctx.save(); ctx.globalAlpha = 0.5 * al; ctx.fillStyle = 'rgba(255,226,140,0.12)';
+      for (let i = 0; i < 14; i++) { const a = a0 + (i / 14) * TAU; ctx.beginPath(); ctx.moveTo(cx0, cy0); ctx.arc(cx0, cy0, R0, a, a + TAU / 28); ctx.closePath(); ctx.fill(); }
+      const gr = ctx.createRadialGradient(cx0, cy0, 0, cx0, cy0, R0 * 0.6); gr.addColorStop(0, 'rgba(255,214,120,0.35)'); gr.addColorStop(1, 'rgba(255,214,120,0)'); ctx.fillStyle = gr; ctx.fillRect(0, 0, z.W, z.H);
+      ctx.restore();
+    };
+    const h = (win ? 300 : 236) * u, F = sideFrame(h, win ? (stars === 3 ? 'Perfect!' : 'Vault cracked!') : 'So close!', win ? '#e8503a' : '#6c7aa0', win ? rays : null), { x, y, w } = F;
+    let cy = y + 60 * u;
+    if (win) { // the stars pop in one by one (a sound each), the bonus ones a map total counts
+      for (let i = 0; i < 3; i++) {
+        const t0 = 0.35 + i * 0.3, on = i < stars && S.cardT > t0, k = on ? clamp((S.cardT - t0) / 0.3, 0, 1) : 1, R = (i === 1 ? 30 : 25) * u;
+        if (on && !S['st' + i]) { S['st' + i] = 1; audio.play('star', { pitch: 1 + i * 0.12 }); }
+        drawStar(ctx, A.cx + (i - 1) * 66 * u, cy + (i === 1 ? -6 * u : 0), R * (on ? (calm ? 1 : backOut(k)) : 1), on);
+      }
+      ui.record({ x: A.cx - 96 * u, y: cy - 38 * u, w: 192 * u, h: 66 * u }, 'wv:stars');
+      cy += 56 * u;
+    }
+    ui.text(`${st.saved} of ${st.total} home`, A.cx, cy, { size: 19 * u, align: 'center', color: '#5a3416', tag: 'wv:cardline', maxW: w - 30 * u });
+    if (win && P) { // the coins, then they fly to the purse
+      const c = coinPill(A.cx, cy + 46 * u, P.coins, u, 'wv:pay'), tFly = 0.35 + 3 * 0.3 + 0.2;
+      if (!S.flown && S.cardT > tFly) { S.flown = true; if (env.coinsFly) env.coinsFly(P, c); }
+      cy += 46 * u;
+    } else if (!win) ui.text(g.kind === 'twin' ? ((S.level.wonder.vaults[0].target || 1) > 1 ? `Bring ${S.level.wonder.vaults[0].target} home from each vault` : 'Save an egg from each vault') : `Bring ${st.target} home`, A.cx, cy + 28 * u, { size: 15 * u, color: '#8a6238', align: 'center', tag: 'wv:cardsub', maxW: w - 30 * u });
+    const by = y + h - 76 * u, bh = 56 * u, gap = 12 * u, bw = (w - 44 * u - gap) / 2;
+    if (win) {
+      ui.button('wv:retry', 'Again', x + 22 * u, by, bw, bh, { kind: 'secondary', icon: ICON.retry, size: 19 * u });
+      ui.button('wv:map', 'Map', x + 22 * u + bw + gap, by, bw, bh, { kind: 'primary', icon: ICON.grid, size: 20 * u, shimmer: S.cardT > 1.6 });
+    } else {
+      ui.button('wv:map', 'Map', x + 22 * u, by, bw, bh, { kind: 'secondary', icon: ICON.grid, size: 19 * u });
+      ui.button('wv:retry', 'Retry', x + 22 * u + bw + gap, by, bw, bh, { kind: 'primary', icon: ICON.retry, size: 20 * u, shimmer: true });
+    }
+    F.done();
+  }
+
   // ---------------------------------------------------------------- the Extras screen (menu): Wonder Vaults + Practice
   // One column of wide row cards (two columns on a wide screen): a big picture tile on the left, the name and its one
   // line, the stars on the right. Wonder Vaults (bonus) first, then Practice under its own heading in the same row style.
@@ -496,7 +609,8 @@ export function createWonder(env) {
     const listW = P.w, rowW = (listW - colGap * (cols - 1)) / cols, lx = P.x;
     // 0.8.17: the combo album (env.album, main.js) sits under Practice in the same row style, its own heading
     const AL = env.album ? env.album() : null, nSec = AL ? 3 : 2;
-    const n = WONDER_LEVELS.length, wvRows = Math.ceil(n / cols), nRows = wvRows + 1 + (AL ? 1 : 0);
+    // 0.8.17: the vaults are side quests on the map now; one row leads there (main.js 'xs:side': the first open one)
+    const n = 1, wvRows = 1, nRows = wvRows + 1 + (AL ? 1 : 0);
     const rowH = clamp((vb - vt - pad - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - 4 * u) / nRows, 84 * u, 108 * u);
     // a tall screen with room to spare: the rows stand a little further apart (up to 12 units each), not one hole at the bottom
     const spare = Math.max(0, vb - vt - pad - 4 * u - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - nRows * rowH), air = Math.min(12 * u, spare / (wvRows + nSec - 1));
@@ -515,8 +629,8 @@ export function createWonder(env) {
       if (chip) { const cx0 = lx + 4 * u + tw + 8 * u; ui.roundRect(cx0, yy + headH / 2 - 10 * u, cw2, 19 * u, 9.5 * u); ctx.fillStyle = '#ffd24a'; ctx.fill(); ui.text(chip, cx0 + cw2 / 2, yy + headH / 2 + 0.5 * u, { size: 11 * u, align: 'center', color: '#5a2a08', tag: tag + ':chip', noRecord: nr }); }
     };
     const row = (L, x, ry) => {
-      const prac = !!L.practice || !!L.album, s = prac ? 0 : starsOf(L.key), key = L.album ? 'album' : prac ? 'practice' : L.key, face = ui.faceOf(TILE[key] || '#8a5ad8');
-      const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = L.album ? 'xs:album' : prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
+      const prac = !!L.practice || !!L.album || !!L.side, s = prac ? 0 : starsOf(L.key), key = L.side ? 'twin' : L.album ? 'album' : prac ? 'practice' : L.key, face = ui.faceOf(L.side ? '#8a5ad8' : TILE[key] || '#8a5ad8');
+      const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = L.side ? 'sq:bonus' : L.album ? 'xs:album' : prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
       const b = ui.button(id, '', x, ry, rowW, rowH, { face, keepFace: true, round: 18 * u });
       const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, 88 * u, rowW * 0.26), tx = x + 8 * u + (fh - ts) / 2 - 3 * u;
       if (L.album) env.albumIcon(ctx, tx + ts / 2, fy + fh / 2, ts, t); else drawExtraIcon(ctx, key, tx + ts / 2, fy + fh / 2, ts, t, { calm: sv.calm });
@@ -544,7 +658,7 @@ export function createWonder(env) {
     };
     head('Wonder Vaults', y, 'extras:wv', 'BONUS');
     y += headH;
-    WONDER_LEVELS.forEach((L, i) => row(L, lx + (i % cols) * (rowW + colGap), y + Math.floor(i / cols) * (rowH + gap)));
+    row({ side: true, key: '_side', name: 'Bonus vaults', pitch: 'Side quests on the map' }, lx, y);
     y += wvRows * rowH + (wvRows - 1) * gap + secGap;
     head('Practice', y, 'extras:practice');
     y += headH;
@@ -559,7 +673,7 @@ export function createWonder(env) {
     // the header band over the list: back, title, stars
     ctx.fillStyle = '#1c1440'; ctx.globalAlpha = 0.94; ctx.fillRect(0, 0, z.W, vt - 4 * u); ctx.globalAlpha = 1;
     const g2 = ctx.createLinearGradient(0, vt - 4 * u, 0, vt + 10 * u); g2.addColorStop(0, 'rgba(10,4,24,0.55)'); g2.addColorStop(1, 'rgba(10,4,24,0)'); ctx.fillStyle = g2; ctx.fillRect(0, vt - 4 * u, z.W, 14 * u);
-    const total3 = WONDER_LEVELS.reduce((a, L) => a + starsOf(L.key), 0), starTxt = `${total3} / ${WONDER_LEVELS.length * 3}`, hs = P.s, stw = ui.measure(starTxt, 17 * hs);
+    const SD = env.sideStars ? env.sideStars() : { have: WONDER_LEVELS.reduce((a, L) => a + starsOf(L.key), 0), max: WONDER_LEVELS.length * 3 }, starTxt = `${SD.have} / ${SD.max}`, hs = P.s, stw = ui.measure(starTxt, 17 * hs);
     const chipW = 10 * hs + 20 * hs + 5 * hs + stw + 12 * hs;
     ui.pageHeader(P, { back: 'back', title: 'Extras', color: '#8a5ad8', tag: 'extras:title', right: { w: chipW, draw: (x, y, w, h) => {
       const ch = h - 6 * hs, cy = y + 2 * hs + ch / 2; // the ribbon's band: one centre line
@@ -573,5 +687,5 @@ export function createWonder(env) {
     }
   }
 
-  return { start, has: (k) => !!wonderByKey(k), update, render, pointerDown, pointerMove, pointerUp, press, drawExtras, resize() { S.snap = true; if (S.backdrop) { const z = env.size(); S.backdrop.resize(z.W, z.H, z.DPR); } }, get state() { return S; }, LEVELS: WONDER_LEVELS, toScreen, starsOf };
+  return { start, back, has: (k) => !!wonderByKey(k), update, render, pointerDown, pointerMove, pointerUp, press, drawExtras, resize() { S.snap = true; if (S.backdrop) { const z = env.size(); S.backdrop.resize(z.W, z.H, z.DPR); } }, get state() { return S; }, LEVELS: WONDER_LEVELS, toScreen, starsOf };
 }
