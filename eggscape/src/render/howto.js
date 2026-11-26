@@ -28,6 +28,7 @@ import { drawGator } from './bayou.js';
 import { GATOR } from '../sim/bayou.js';
 import { drawEagle, drawLavaRock, drawMeltHole, drawIcicle } from './v3art.js';
 import { drawSalHeat, drawEmberBall } from './salamander.js'; // the game's own red-hot wall (the salamander's harm beat)
+import { CREEP_HIT } from './creeper.js'; // 0.8.18 creeper
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -130,6 +131,9 @@ SHOW.penguin = P('turn', 'Turn a wall into his slide: BONK!', { fx: 'bonk' }); T
 SHOW.monkey = P('turn', 'Flick his ring hard: whoa, he lets go!', { fx: 'bonk' }); THREAT.monkey = 'Grabs eggs'; // 0.8.17 coco
 SHOW.emberspit = P('turn', 'Turn the gap out of his line', { fx: 'bonk' }); THREAT.emberspit = 'Spits embers'; HARM.emberspit = ['fall', 'CRACK!']; // 0.8.18 lava
 SHOW.fireup = P('turn', 'Turn its ring: he rides away', { fx: 'bonk' }); THREAT.fireup = 'Goes white-hot'; // 0.8.18 lava (the info panel and the lesson teach the water)
+SHOW.creeper = P('turn', 'Pass when it curls up'); THREAT.creeper = 'Crawls, cracks'; HARM.creeper = ['creep', 'CRACK!'];
+// the family's other forms: the same two beats in their own look (render/creeper.js creeperActorFor)
+for (const [kind, show, threat] of [['swampvine', 'Pass when it curls up', 'Crawls, cracks'], ['frostcrawler', 'Pass when it rests', 'Crawls, cracks'], ['lavaflow', 'Roll across, never stop', 'Hot: do not rest'], ['anemone', 'Pass when it shuts', 'Drifts, stings'], ['spark', 'Pass when it rests', 'Races, zaps'], ['sawtooth', 'Pass when it stops', 'Rolls, cracks'], ['shard', 'Pass when it rests', 'Crawls, cracks']]) { SHOW[kind] = P('turn', show); THREAT[kind] = threat; HARM[kind] = ['creep', 'CRACK!']; } // 0.8.18 creeper (its rig acts both beats: render/creeper.js)
 export const threatWords = (kind) => THREAT[kind] || THREAT[String(kind).replace(/^boss:/, '')] || 'Hunts eggs';
 // the first-five ladder (2026-11-20, owner: every level from 2 on hands over a new toy, shown on its level card with the
 // game's own art): the red flame, the twin orb, the thorn curtain, the portal, the glow chick. move 'toy', plan.toy names it.
@@ -976,6 +980,7 @@ function harmBeat(ctx, plan, T, t, S, set) {
     const O = at(CHAM_ORB, eggS * 0.4), gone = seg(T, 1.35, 1.75), M = at(CHAM_ORB - 0.3, eggS * 0.3);
     under.push(() => { if (gone < 1) { const X = O.x + (M.x - O.x) * gone, Y = O.y + (M.y - O.y) * gone, r = eggS * 0.42 * (1 - 0.7 * gone); if (Wd && Wd.orb) Wd.orb(ctx, 'fire_red', X, Y, r, t); else { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(X, Y, r * 0.8, 0, TAU); ctx.fill(); } } });
     say(1.75);
+  } else if (ty === 'creep') { if (T > CREEP_HIT) Q.look = { cracks: 3 }; say(CREEP_HIT); lost(CREEP_HIT + 0.4, { x: E0.x - eggS * 0.62, y: E0.y + eggS * 0.1 }); // 0.8.18 creeper: its head runs into the egg
   } else if (ty === 'bump') { // he walks on into the egg and shoves it along
     Q.gap = 1.1; q.eA = BUMP_A * ease(seg(T, 1.0, 1.9)); q.slideV = 0;
     if (T > 1.2) Q.look = { cracks: 1 }; // 0.8.14: his thorny hide cracks what he rams
