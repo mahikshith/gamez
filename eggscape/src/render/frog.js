@@ -307,10 +307,9 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
     ctx.beginPath(); ctx.moveTo(-42, 1); ctx.bezierCurveTo(-16, -2, 18, -4, 50, -5); ctx.lineTo(50, 8); ctx.lineTo(-42, 8); ctx.closePath();
     ctx.fillStyle = C.bellyLo; ctx.fill();
     if (op.glow && op.glow.a > 0.01) { // 0.8.18: the swallowed orb shines through the belly
-      const g = ctx.createRadialGradient(6, -10, 2, 6, -10, 38), c0 = op.glow.col;
-      g.addColorStop(0, c0); g.addColorStop(0.55, c0 + 'cc'); g.addColorStop(1, c0 + '00');
-      ctx.globalAlpha = op.glow.a; ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(6, -10, 46, 26, 0, 0, TAU); ctx.fill();
-      ctx.globalAlpha = op.glow.a * 0.9; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(4, -10, 7, 3.4, -0.1, 0, TAU); ctx.fill();
+      const g = ctx.createRadialGradient(4, -5, 1, 4, -5, 26), c0 = op.glow.col;
+      g.addColorStop(0, '#ffffff'); g.addColorStop(0.25, c0); g.addColorStop(0.7, c0 + '88'); g.addColorStop(1, c0 + '00');
+      ctx.globalAlpha = op.glow.a; ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(4, -5, 30, 12, 0, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1;
     }
     ctx.restore();
@@ -398,9 +397,9 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
     toes(ctx, ft[0] - 1, ft[1] - 1, 3, 7, 3.6, 3.1, o, 0.42);
     stars(false);
     if (op.burp > 0 && op.burp < 1) { // a little burp bubble from the lips, tinted like the orb
-      const b = op.burp, bx = 50 + 10 * b, by = -42 - 26 * b, br = 3 + 5 * sstep(b / 0.4);
+      const b = op.burp, bx = 46 + 8 * b, by = -34 - 24 * b, br = 3 + 5 * sstep(b / 0.4);
       ctx.save(); ctx.globalAlpha = 1 - sstep((b - 0.6) / 0.4);
-      ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fillStyle = (op.glow && op.glow.col ? op.glow.col : '#d6f4ff') + '55'; ctx.fill(); ctx.lineWidth = o * 0.6; ctx.strokeStyle = LINE; ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fillStyle = 'rgba(235,250,255,0.55)'; ctx.fill(); ctx.lineWidth = o * 0.6; ctx.strokeStyle = op.glow && op.glow.col ? op.glow.col : LINE; ctx.stroke();
       ctx.beginPath(); ctx.arc(bx - br * 0.35, by - br * 0.35, br * 0.25, 0, TAU); ctx.fillStyle = '#ffffff'; ctx.fill();
       ctx.restore();
     }
