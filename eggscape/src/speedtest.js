@@ -39,6 +39,7 @@ let T = null; // the running test (null when closed)
 export const speedTest = {
   get active() { return !!T; },
   frame(now) { if (T) step(now); },
+  back() { if (T) close(false); }, // 0.8.17: the phone's Back stops the test (nothing saved changes), as Close does
 };
 if (typeof window !== 'undefined') window.__eggSpeed = speedTest; // for tools/perf87/speedshot.cjs (read-only)
 

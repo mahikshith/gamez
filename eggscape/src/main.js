@@ -7,7 +7,7 @@ import { LEVELS } from './data/levels.js';
 import { DAILY } from './data/daily.js';
 import { THEMES, createBackdrop, setSceneCalm } from './themes.js';
 import { bodyCache, ringCache, releaseRings } from './render/ringart.js';
-import { dragTo, grab, glideStep, snapPx } from './scroll.js';
+import { dragTo, grab, glideStep, snapPx, scrollFeel } from './scroll.js';
 import { diag } from './diag.js'; // 0.8.7: the built-in speed log (Settings > Display > Share log)
 import { formStats } from './render/castkit.js';
 import { PERF, applySettings, tick as perfTick, takeStep, newLevel as perfNewLevel, STEPS, TIER_NAME } from './perf.js';
@@ -1017,6 +1017,27 @@ const TABLET_MIN = 600, TABLET_K = 36; // a screen at least 600 px on its short 
 const ACTION_ZOOM = 1.32; // the action cam pushes in this far past the whole-vault frame at most
 const CAM_WIDE = 0.8; // the establishing shot starts this much wider than the whole vault
 
+// 0.8.17 scroll haptics (scroll.js scrollFeel): every list on screen, one light tick as it passes an item while flung,
+// a firmer bump when it runs into its end, a tick when the chick picker settles on a chick. The Vibration switch rules
+// (buzz); Calm keeps the single ticks and drops the running ones.
+function scrollHaptics() {
+  if (save.vibe === false || G.adBusy) return;
+  const u = ui.u, L = [];
+  const add = (S, step, snap) => { if (S && S.max > 0) L.push([S, step, snap]); };
+  if (G.settingsOpen) add(G.setpage, 90 * u);
+  else if (!modalOpen()) {
+    const sc = G.screen;
+    if (sc === 'practice') add(G.pscroll, 90 * u); else if (sc === 'extras') add(G.escroll, 110 * u); else if (sc === 'info') add(G.iscroll, 90 * u);
+    else if (sc === 'store') add(G.sscroll, 110 * u); else if (sc === 'levels') add(G.mscroll, 120 * u); else if (sc === 'fail') add(G.fscroll, 90 * u);
+    else if (sc === 'pause') { add(G.ppage, 90 * u); add(G.ppageR, 90 * u); }
+    else if (sc === 'intro') { add(G.ipage, 90 * u); add(G.ipageR, 90 * u); if (G.car) add(G.car, G.car.step, true); }
+  }
+  for (const [S, step, snap] of L) {
+    const pd = G.pdrag, held = !!(pd && pd.moved && pd.sc === S);
+    const f = scrollFeel(S, { step, now: G.t, held, snap, calm: !!save.calm });
+    if (f) buzz(f === 'edge' ? 'edge' : f === 'settle' ? 'settle' : 'flick');
+  }
+}
 // player zoom z: -1 whole vault, 0 auto (null), +1 twice auto
 function setZoom(z) {
   z = clamp(z, -1, 1);
@@ -1159,7 +1180,7 @@ function pointerDown(e) {
   if (G.adBusy || modalOpen()) { if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; } return; } // a sheet or popup takes every tap (and an ad wait: only its "Back to game")
   const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'extras' ? G.escroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'pause' ? (G.ppRectR && x >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'fail' && G.fscroll && G.fscroll.max > 0 ? G.fscroll : null;
   if (SC) G.pdrag = { pid: e.pointerId, sc: SC, y0: y, s0: SC.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
-  if (SC && G.settingsOpen && /^rs:\d+$/.test(id || '')) Object.assign(G.pdrag, { bar: true, x0: x }); // the ring speed bar: a sideways drag slides it, an up/down one scrolls the page
+  if (SC && (G.settingsOpen || G.screen === 'pause') && /^rs:\d+$/.test(id || '')) Object.assign(G.pdrag, { bar: true, x0: x }); // the ring speed bar (Settings, the pause page): a sideways drag slides it, an up/down one scrolls the page
   if (G.screen === 'intro') { // 2026-11-19 level page: the page scrolls up/down, the chick row left/right (the first clear move picks)
     const inR = (R) => R && x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h;
     const land = ui.A.w > ui.A.h * 1.15, cx = inR(G.carRect) && G.car && G.car.max > 0 ? G.car : null;
@@ -1173,6 +1194,7 @@ function pointerDown(e) {
   // until the finger moved), and that touch does not also press the button it happened to land on
   if (G.pdrag) { const pd0 = G.pdrag; for (const q of [pd0.sc, pd0.cand && pd0.cand.x, pd0.cand && pd0.cand.y]) if (q) { if (Math.abs(q.v) > 90) pd0.caught = true; q.v = 0; q.to = null; } if (pd0.caught) return; }
   if (G.screen === 'play' && fuseIntroSkip()) { G.pdrag = null; return; } // a tap skips the fuse intro (and does nothing else)
+  if (G.screen === 'spin' && id === 'spin:lever' && leverDown(e.pointerId, x, y)) { try { canvas.setPointerCapture(e.pointerId); } catch (_) {} return; } // 0.8.17: the lever is dragged
   if (id) { ui.pressedId = id; G.pressPointer = e.pointerId; return; }
   if (G.screen === 'info') { const C = G.infoCard; if (C && (x < C.x || x > C.x + C.w || y < C.y - 10 * ui.u || y > C.y + C.h + 6 * ui.u)) { G.pdrag = null; press('info:close'); } return; } // a tap off the card closes it
   if (G.screen === 'play' && G.toast && G.toast.tip && G.toastRect) { const R = G.toastRect; if (x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h) { G.toast.life = Math.min(G.toast.life, 0.2); return; } } // a tap on a villain tip puts it away
@@ -1227,6 +1249,7 @@ const TOUCH_TURN_GAIN = 1.3;
 function pointerMove(e) {
   const x = e.clientX, y = e.clientY;
   G.pointer = { x, y };
+  if (G.spin && G.spin.lv && G.spin.lv.pid === e.pointerId) { leverMove(y); return; } // the spin lever under a finger
   const pd = G.pdrag;
   if (pd && pd.pid === e.pointerId && (G.settingsOpen || G.screen === 'practice' || G.screen === 'extras' || G.screen === 'info' || G.screen === 'levels' || G.screen === 'store' || G.screen === 'intro' || G.screen === 'pause' || G.screen === 'fail')) { // 0.8.7: the pause page was missing here, so it never scrolled under a finger (0.8.10: and Settings over the title, mykee: "users are not able to scroll it")
     if (pd.bar && (pd.scrub || (!pd.moved && Math.abs(x - pd.x0) > 9 * ui.u && Math.abs(x - pd.x0) > Math.abs(y - pd.y0)))) { // the speed bar follows the finger sideways
@@ -1295,6 +1318,7 @@ function flingSpeed(pd) {
   return clamp(((a[0] - b[0]) / dt) * 1000 * 1.15, -7000, 7000);
 }
 function pointerUp(e) {
+  if (G.spin && G.spin.lv && G.spin.lv.pid === e.pointerId) leverUp();
   const pd = G.pdrag;
   if (pd && pd.pid === e.pointerId) { if (pd.moved && pd.sc && !pd.scrub) pd.sc.v = flingSpeed(pd); G.pdrag = null; }
   if (G.screen === 'wonder') wonder.pointerUp(e); // WONDER
@@ -1325,27 +1349,60 @@ function wheel(e) {
   if (modalOpen()) return;
   const SC = G.settingsOpen && G.setpage ? G.setpage : G.screen === 'practice' ? G.pscroll : G.screen === 'extras' ? G.escroll : G.screen === 'info' ? G.iscroll : G.screen === 'store' ? G.sscroll : G.screen === 'levels' ? G.mscroll : G.screen === 'pause' ? (G.ppRectR && e.clientX >= G.ppRectR.x ? G.ppageR : G.ppage) : G.screen === 'fail' && G.fscroll && G.fscroll.max > 0 ? G.fscroll : G.screen === 'intro' ? (e.shiftKey && G.car ? G.car : G.ipRectR && ui.A.w > ui.A.h * 1.15 && e.clientX >= G.ipRectR.x ? G.ipageR : G.ipage) : null;
   if (SC) { e.preventDefault(); SC.y = clamp(SC.y + clamp(e.deltaY * (e.deltaMode === 1 ? 32 : 1), -400, 400), 0, SC.max); SC.v = 0; return; } // 2026-11-19: the world map scrolls with a mouse wheel too
+  if (G.screen === 'wonder') { e.preventDefault(); wonder.wheel(e); return; } // 0.8.17: the bonus vaults zoom too
   if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play') return;
   e.preventDefault();
   setZoom((G.zm || 0) - clamp(e.deltaY, -120, 120) * 0.003);
 }
 
+// ---- 0.8.17 Back (mykee: "back button should be intuitive"): the phone's Back, Escape on the web, and every on-screen
+// back arrow lead the same way. The top pop-up closes first (an offer counts as "No thanks", a pay page goes back to
+// where it was opened); then a page goes back to the page the player came from: the shop and Practice to the page that
+// opened them (the pause page keeps its level, paused), the album to Extras, Settings (and its privacy page) to where it
+// was opened, a side quest to the map at its door, the spin page to the page it came from. In play Back pauses (never
+// quits a level in one press); the pause page resumes. The level card, the win and the fail pages go to the map. The home
+// page answers false: the Android shell then asks for a second press within 2 s ("Press back again to leave").
+// Returns true when the game took the press.
+function backPress() {
+  if (speedTest.active) { speedTest.back(); return true; }
+  if (G.adBusy) { ads.cancelWait(); return true; } // a pending ad that never reported back: Back returns to the game
+  if (modalOpen()) { // a sheet closes first
+    if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close');
+    else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null;
+    else if (G.detail) press('dt:close'); // (a pay page opened from an offer, Home or Settings: back to that page)
+    else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.remAsk) press('rem:later'); else if (G.leaveAsk) press('leave:stay');
+    else if (G.treasure) G.treasure = null; else if (G.nudge) press('nudge:no'); else if (G.skipAsk) G.skipAsk = null; else if (G.stuckAsk) press('stuck:no');
+    return true;
+  }
+  if (G.settingsOpen) { press('set:close'); return true; } // Settings (its privacy / reset page first: set:close goes back to Settings)
+  switch (G.screen) {
+    case 'play': if (G.sim && G.sim.state === 'play') press('pause'); return true; // (a decided level: its end card is on its way)
+    case 'pause': press('resume'); return true;
+    case 'info': press('info:close'); return true;
+    case 'store': case 'practice': case 'extras': case 'levels': press('back'); return true; // (the album: back to Extras)
+    case 'spin': press('spin:back'); return true;
+    case 'wonder': return wonder.back(); // a side quest's card -> the map; play -> its pause page -> play; an end page -> the map
+    case 'intro':
+      if (G.stkCard) { press('stk:gotit'); return true; } // a chick's card on the level page: it closes
+      if (G.introFoe) { G.introFoe = null; return true; } // a villain's one-line card
+      press('levels'); return true; // the level card -> the map (a practice vault's -> Practice)
+    case 'win': case 'fail': if (G.adBusy) return true; press('levels'); return true; // the end pages -> the map, never a retry or the next level by a Back
+    default: return false; // home: the shell's "press again to leave"
+  }
+}
 function keyDown(e) {
   onFirstInput();
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close'); else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; else if (G.stuckAsk) press('stuck:no'); } return; }
+  if (modalOpen()) { if (k === 'Escape' && !e.repeat) backPress(); return; } // 0.8.17: Escape is the phone's Back (backPress)
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
-  if (k === 'Escape' && !e.repeat && G.settingsOpen) { press('set:close'); return; }
-  if ((k === 'Escape' || k === 'p' || k === 'P') && !e.repeat) {
+  if (k === 'Escape' && !e.repeat) { backPress(); return; } // 0.8.17: the one Back (backPress), the same as the phone's
+  if ((k === 'p' || k === 'P') && !e.repeat) {
     if (G.screen === 'play') press('pause');
     else if (G.screen === 'pause') press('resume');
-    else if (k === 'Escape' && (G.screen === 'practice' || G.screen === 'extras')) press('back');
-    else if (k === 'Escape' && G.screen === 'spin') press('spin:back');
-    else if (k === 'Escape' && G.screen === 'wonder') wonder.back();
     return;
   }
   if (G.screen === 'play' && G.sim) {
@@ -1548,7 +1605,7 @@ async function press(id) {
       break;
     }
     case 'home:premium': // 0.8.17: straight onto the Unlock Everything page (it was the shop, then its card, then the page)
-      openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true;
+      openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true; G.payRet = null;
       break;
     case 'home:charge': { // Premium's free Chick Charge of the day
       const w = E.claimPremiumCharge(save.wallet, today());
@@ -1569,6 +1626,7 @@ async function press(id) {
     case 'tab:boosters':
     case 'tab:hens':
     case 'tab:skins':
+      if (G.storeTab !== id.slice(4)) buzz('settle'); // 0.8.17: a light tick as the tab changes
       G.storeTab = id.slice(4);
       G.sscroll = { y: 0, v: 0, max: 0, t: G.t };
       G.detail = null;
@@ -1586,7 +1644,7 @@ async function press(id) {
       G.waitList = null;
       break;
     case 'dt:close': // a pay page opened from outside the shop (Home, Settings, an offer) goes back where the player was
-      if (G.payBack && G.detail && G.detail.startsWith('iap:')) { G.detail = null; G.payBack = false; await press('back'); break; }
+      if (G.payBack && G.detail && G.detail.startsWith('iap:')) { const R = G.payRet; G.payRet = null; G.detail = null; G.payBack = false; await press('back'); if (R && R.offer && !G.offer) G.offer = R.offer; else if (R && R.settings) { G.settingsOpen = true; G.setSeq = (G.setSeq || 0) + 1; } break; } // (0.8.17 Back: and to the offer card, or Settings, it was opened from)
       G.detail = null;
       break;
     case 'help:go': await takeHelp(); break;
@@ -1618,7 +1676,7 @@ async function press(id) {
       const O = G.offer;
       G.offer = null;
       if (O) BR.note(save, 'yes', { id: O.id });
-      if (O && O.id === 'skip_videos') { openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true; } // a look at what it gives, never a payment from the card
+      if (O && O.id === 'skip_videos') { openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true; G.payRet = { offer: O }; } // a look at what it gives, never a payment from the card
       else if (O && O.sku) await buyIap(O.sku);
       break;
     }
@@ -1924,6 +1982,7 @@ async function press(id) {
       applySettings(save); persist();
       break;
     case 'set:novideo': case 'chip:skip': // the "what you get" sheet of Unlock Everything: the shop opens on it, nothing is charged
+      G.payRet = id === 'set:novideo' && G.settingsOpen ? { settings: 1 } : null;
       G.skipChip = null; G.settingsOpen = false; openStore('deals', 'iap:' + PREMIUM_SKU); G.detail = 'iap:' + PREMIUM_SKU; G.payBack = true;
       break;
     case 'set:restore':
@@ -1932,6 +1991,7 @@ async function press(id) {
     case 'rs:-': case 'rs:+': case 'rs:0': case 'rs:1': case 'rs:2': case 'rs:3': case 'rs:4': case 'rs:5': case 'rs:6': case 'rs:7': case 'rs:8': case 'rs:9': case 'rs:10': case 'rs:11': { // one per RING_SPEEDS (0.8.10: the bars past 200% did nothing)
       const k = RING_SPEEDS.indexOf(ringSpeed()), n = id === 'rs:-' ? k - 1 : id === 'rs:+' ? k + 1 : +id.slice(3);
       save.ringSpeed = RING_SPEEDS[clamp(n, 0, RING_SPEEDS.length - 1)];
+      if (save.ringSpeed !== RING_SPEEDS[k]) buzz('settle'); // 0.8.17: a light tick per step (a drag along the bars ticks through them)
       if (G.sim) G.sim.ringSpeed = save.ringSpeed;
       if (!save.seen.rsTried) { save.seen = { ...save.seen, rsTried: 1 }; if (G.screen === 'intro') G.rsDone = { seq: G.scrSeq, lid: G.level && G.level.id }; } // the level card's strip: a tick and where it lives
       persist();
@@ -1959,6 +2019,7 @@ async function press(id) {
       break;
     case 'practice': // the Practice screen: every studio vault as a tile (also reachable from the pause card)
       portal.gameplayStop();
+      G.pracFrom = G.screen === 'pause' && G.sim && G.sim.state === 'play' ? G.sim : null; // 0.8.17: Back from there returns to this paused level
       setScreen('practice');
       break;
     case 'spin': openSpin(); break;
@@ -1973,6 +2034,7 @@ async function press(id) {
     case 'back':
       G.getMore = null; G.detail = null;
       if (G.screen === 'store') shopSeen(); // (after a purchase fewer things are in reach: saving up again lights the mark)
+      if (G.screen === 'practice' && G.pracFrom && G.pracFrom === G.sim && G.sim.state === 'play' && G.li >= 0) { G.pracFrom = null; setScreen('pause'); break; } // opened from the pause page: back to that level, paused
       setScreen(G.screen === 'store' ? G.storeFrom || 'title' : G.screen === 'practice' ? 'extras' : 'title');
       break;
     case 'extras': // the Extras menu: Wonder Vaults (bonus) and, in the test build, the Practice vaults
@@ -2013,6 +2075,7 @@ async function press(id) {
         const R = G.car; if (R && R.step) { const k = clamp(Math.round((R.to != null ? R.to : R.y) / R.step) + (id === 'car:next' ? 1 : -1), 0, Math.round(R.max / R.step)); R.v = 0; R.to = k * R.step; audio.play('ui_tap'); }
       } else if (id === 'inext') { await press('itab:chicks');
       } else if (id && id.startsWith('itab:')) { // the level page's tabs
+        if (G.itab !== id.slice(5)) buzz('settle'); // (0.8.17: a light tick as the tab changes)
         if (G.itab !== id.slice(5)) { G.itab = id.slice(5); if (G.ipage) { G.ipage.y = 0; G.ipage.v = 0; G.ipage.to = null; } }
       } else if (id === 'party:tap') { // the unlock party: a tap skips to the coins
         const R = G.party; if (R && R.phase === 'show') { R.t0 = G.t - partyEnd(R.sku === PREMIUM_SKU ? E.bundleParts(R.sku).chicks.length : 0); R.cues = 99; R.arrived = true; }
@@ -3607,7 +3670,7 @@ const DIAG_MARK = /^(iap:|deal:|buy:|item:|chick:|charge:|hen:|skin:|kit:|hset:|
 // Haptics on the hero beats (the app's EggApp bridge, navigator.vibrate on the web). 0.8.9: only the Vibration switch turns
 // them off (not sound, not Calm motion), and each beat has its own pattern [on, off, on, ...] in ms: 18 to 30 ms one-shots
 // were not felt on most phones.
-const HAPTIC = { attack: [40, 35, 60], slam: [70, 40, 90], save: 30, crack: 45, broke: [60, 40, 80], star: 35, win: [40, 60, 40, 60, 120], fail: [120, 80, 160], strike: 50, crow: 70, boss: 80, hit: 40, thorn: 35, pick: 25, chick: 20, treasure: [30, 40, 30, 40, 150], tap: 25, tick: 20 };
+const HAPTIC = { attack: [40, 35, 60], slam: [70, 40, 90], save: 30, crack: 45, broke: [60, 40, 80], star: 35, win: [40, 60, 40, 60, 120], fail: [120, 80, 160], strike: 50, crow: 70, boss: 80, hit: 40, thorn: 35, pick: 25, chick: 20, treasure: [30, 40, 30, 40, 150], tap: 25, tick: 20, notch: 9, flick: 6, edge: 16, settle: 8 }; // (0.8.17: notch, the spin lever's ratchet; flick / edge / settle, a list's tick, its end, a snap)
 const EV_BUZZ = { break: 'broke', bossHit: 'hit', bossFlinch: 'hit', thiefHit: 'hit', thiefDefeat: 'hit', snakeRecoil: 'hit', eagleSlam: 'hit', kcHit: 'hit', gatorHit: 'hit', owlJam: 'hit', allyKnock: 'hit', pickup: 'pick', thornSnap: 'thorn', thornBurn: 'thorn', stkLaunch: 'strike', stkSnip: 'pick' }; // events that had a sound but no buzz
 let lastBuzz = { t: -9, p: 0 };
 // 0.8.10 (mykee on 0.8.9: "I didn't feel vibrations or any shaky effects on any level. The user should feel it when an
@@ -5291,6 +5354,7 @@ function update(dt) {
   }
   offerMoments();
   computeLayout();
+  scrollHaptics();
   if (G.screen === 'wonder') { wonder.update(dt); return; } // WONDER: its own loop; the campaign world stands still
   if (!G.sim) return;
   const sim = G.sim;
@@ -7984,36 +8048,31 @@ function lampIcon(c, x, y, S) {
   c.strokeRect(x - r * 0.45, gy + r * 1.28, r * 0.9, r * 0.22);
   c.restore();
 }
-// the pause page's SHOP banner: gold, the coin total, three things the player does not own yet (what the coins reach
-// first), the mark when the coins reach something new, and one line when something can be had now. Tap: the shop on it.
-function pauseShop(s) {
-  const H = 96 * s;
-  return { h: H, gap: 12 * s, draw: (x, y, w) => {
-    const M = shopMarkNow(), coins = save.wallet.coins;
-    const B = ui.button('shop', '', x, y, w, H, { kind: 'gold', shimmer: true, shimmerOff: 60, round: 20 * s });
-    const fy = B.cy - (H - 6 * s) / 2, top = fy + 34 * s, grp = 'btn:shop';
-    // three pictures: not owned, the ones the coins reach first (dearest of those), then the nearest ones beyond
-    const own = markItems().filter((i) => !i.owned && (i.kind === 'skin' || i.kind === 'hen'));
-    const can = own.filter((i) => i.price <= coins).sort((a, b) => b.price - a.price), far = own.filter((i) => i.price > coins).sort((a, b) => a.price - b.price);
-    const pics = (M.pick && (M.pick.kind === 'skin' || M.pick.kind === 'hen') ? [own.find((i) => i.key === M.pick.key)] : []).concat(can, far).filter((v, i, a) => v && a.findIndex((q) => q.key === v.key) === i).slice(0, 3);
-    const pw = Math.min(54 * s, (w * 0.46) / 3), px0 = x + w - 12 * s - pics.length * pw;
-    pics.forEach((it, i) => {
-      const cx = px0 + (i + 0.5) * pw;
-      ctx.beginPath(); ctx.arc(cx, top, pw * 0.46, 0, 7); ctx.fillStyle = it.price <= coins ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.28)'; ctx.fill();
-      markArt(it.key, cx, top + 1 * s, pw * 0.82);
-    });
-    ui.record({ x: px0, y: top - pw * 0.46, w: pics.length * pw, h: pw * 0.92 }, 'pause:shoppics', grp);
-    shopIcon(ctx, x + 32 * s, top, 34 * s);
-    ui.text('Shop', x + 56 * s, top - 8 * s, { size: 25 * s, color: '#fff', stroke: '#8a4a04', strokeW: 4 * s, maxW: px0 - x - 66 * s, tag: 'pause:shop', group: grp });
-    ui.text(String(purse.shown()), x + 57 * s, top + 15 * s, { size: 16 * s, color: '#fff8e0', stroke: '#8a4a04', strokeW: 3 * s, maxW: px0 - x - 66 * s, tag: 'pause:coins', group: grp });
-    // one short line when the coins reach something
-    if (M.pick) {
-      const t = `You can get the ${markName(M.pick.key)}`, ly = fy + H - 6 * s - 18 * s;
-      ui.roundRect(x + 10 * s, ly - 12 * s, w - 20 * s, 24 * s, 12 * s); ctx.fillStyle = 'rgba(120,60,0,0.28)'; ctx.fill();
-      ui.text(t, x + w / 2, ly, { size: 14.5 * s, align: 'center', color: '#fff', stroke: 'rgba(90,40,0,0.7)', strokeW: 2.5 * s, maxW: w - 36 * s, tag: 'pause:shopline', group: grp });
-    } else ui.text('New eggs and outfits', x + w / 2, fy + H - 6 * s - 18 * s, { size: 14.5 * s, align: 'center', color: '#fff', stroke: 'rgba(90,40,0,0.7)', strokeW: 2.5 * s, maxW: w - 36 * s, tag: 'pause:shopline', group: grp });
-    if (M.on) markBadge(x + w - 8 * s, y + 6 * s, 12 * s, G.t);
-  } };
+// the pause page's tiles: Restart, Levels, Home / Settings, Practice and (0.8.17, once level 3 is won) the Shop, gold,
+// with its mark when the coins reach something new; a tap opens the shop on that thing, and Back comes to this page again
+function pauseTileItems() {
+  const T = [
+    ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, ui.faceOf('#1f9e94')], ['home', 'Home', ICON.home, ui.faceOf('#e0507e')],
+    ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad', (bx, by, bw, bh) => setMarkAt(bx, by, bw, bh)], ['practice', 'Practice', (c, X, Y, S) => pictoTarget(c, X, Y, S * 0.95), 'orange'],
+  ];
+  if (!earlyDays()) T.push(['shop', 'Shop', (c, X, Y, S) => shopIcon(c, X, Y, S * 1.1), 'gold', (bx, by, bw) => { if (shopMarkNow().on) markBadge(bx + bw - 8 * ui.u, by + 6 * ui.u, 12 * ui.u, G.t); }]);
+  return T;
+}
+// the pause page's ring speed row (0.8.17): the level card's little ring turning at the chosen speed, then the same
+// - / bars / + as Settings (press ids rs:-, rs:+, rs:<i>; a sideways drag slides the bars). It applies at once.
+function pauseRingRow(x, y, w, s, h) {
+  const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
+  ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+  const rr = Math.min(16 * s, h * 0.3), rcx = x + 12 * s + rr + 2 * s, rcy = y + h / 2, dt = clamp(G.t - (G.rsT ?? G.t), 0, 0.1), ang = save.calm ? 0.6 : (G.rsAng = (G.rsAng || 0) + dt * 1.6 * sp);
+  G.rsT = G.t;
+  ctx.save(); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(rcx, rcy, rr, ang + 0.55, ang + Math.PI * 2 - 0.55); ctx.lineWidth = 7 * s; ctx.strokeStyle = '#6b3f17'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(rcx, rcy, rr, ang + 0.55, ang + Math.PI * 2 - 0.55); ctx.lineWidth = 4 * s; ctx.strokeStyle = '#d99a4e'; ctx.stroke();
+  drawEggIcon(ctx, rcx, rcy, 14 * s, 'alive');
+  ctx.restore();
+  ui.record({ x: rcx - rr - 4 * s, y: rcy - rr - 4 * s, w: 2 * rr + 8 * s, h: 2 * rr + 8 * s }, 'pause:rsring');
+  const cx = rcx + rr + 12 * s, ch = h - 12 * s;
+  ringSpeedCtl(cx, y + 6 * s, x + w - 8 * s - cx, s, k, ch);
 }
 // 0.8.7 (mykee: "the info on the pause page should be an animation, not text"): each villain of this level as its
 // own little cartoon (the level card's stage: the villain's game rig, the move that beats it), one line under it
@@ -8050,7 +8109,7 @@ function drawPause() {
   const tb = portal.showMuteButton, wide = A.w > A.h * 1.15;
   const blocks = [
     { h: 46 * s, gap: 0, draw: (x, y, w) => ui.ribbon('Paused', x + w / 2, y, clamp(ui.measure('Paused', 28 * s) + 80 * s, 170 * s, w), 46 * s, { s, color: '#3a80ea', size: 28 * s, tag: 'pause:title' }) },
-    { h: 30 * s, gap: 6 * s, draw: (x, y, w) => ui.text(G.li >= 0 ? `Level ${L.id} · ${L.name}` : L.name, x + w / 2, y + 15 * s, { size: 20 * s, align: 'center', maxW: w, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:name' }) },
+    { h: 30 * s, gap: 6 * s, tight: true, draw: (x, y, w) => ui.text(G.li >= 0 ? `Level ${L.id} · ${L.name}` : L.name, x + w / 2, y + 15 * s, { size: 20 * s, align: 'center', maxW: w, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:name' }) },
     // the goal and the clock, and the sound and music toggles
     { h: 56 * s, gap: 12 * s, draw: (x, y, w) => {
       const bw = tb ? 2 * 48 * s + 8 * s : 0, gw = w - bw - (tb ? 10 * s : 0);
@@ -8064,13 +8123,7 @@ function drawPause() {
         ui.button('music', '', x + w - 48 * s, y + 4 * s, 48 * s, 48 * s, { kind: save.music ? 'tertiary' : 'off', icon: ICON.note(save.music), iconS: 1.2, round: 14 * s });
       }
     } },
-    { h: 66 * s, gap: 14 * s, draw: (x, y, w) => ui.button('resume', 'Resume', x, y, w, 66 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * s, round: 20 * s }) },
     (() => { const c = G.li >= 0 && !earlyDays() ? pageLead('pause').lead : null; return c ? leadBlock(c, s, { gap: 12 * s, tag: 'pause:lead', quiet: true }) : null; })(), // 0.8.15: what waits for him or what he is closest to (the Conductor's one thing)
-    earlyDays() ? null : pauseShop(s), // 0.8.14: the shop, big and gold, right under Resume (never before level 3 is won)
-    pauseTiles([
-      ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, ui.faceOf('#1f9e94')], ['home', 'Home', ICON.home, ui.faceOf('#e0507e')],
-      ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad', (bx, by, bw, bh) => setMarkAt(bx, by, bw, bh)], ['practice', 'Practice', (c, X, Y, S) => pictoTarget(c, X, Y, S * 0.95), 'orange'],
-    ], s, wide ? 5 : 3),
     // the hint and Skip level: two equal halves, each with its icon and the video mark (Skip only when src/skip.js allows it)
     G.hint ? lineBlock('Hint…', 18 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:hint', gap: 14 * s })
       : sim.state !== 'play' && !skipNow() ? null : { h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
@@ -8092,19 +8145,39 @@ function drawPause() {
     } } : null,
     ...(kinds.length ? [pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeStage(kd, i, s, iw))] : []),
   ].filter(Boolean);
+  // 0.8.17 (mykee: "Resume button should be below, right where the thumb is"; "scroll speed button should be present in
+  // the game itself and shop button too"): the controls stand in one block at the bottom, in thumb reach: the tiles
+  // (Restart, Levels, Home / Settings, Practice, Shop), the ring speed row (live: the level runs at it on Resume) and
+  // Resume, full width, where PLAY sits on the level card. What the level is (goal, stars, villains) scrolls above them.
+  // A phone on its side keeps the tiles in the left column's list; Resume and the ring speed row stand under it.
+  const BTN = 56 * s, RH = 56 * s, gB = 10 * s;
+  const TI = pauseTileItems(), tiles = pauseTiles(TI, s, wide ? TI.length : 3); // (on its side: one row)
   const land = A.w > A.h * 1.15 && kinds.length;
+  const foot = (x, w, tl) => { // draws from the bottom of the safe rect up; returns the top of what it drew
+    let y = A.y1 - 6 * s - BTN;
+    ui.button('resume', 'Resume', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: ICON.play, size: 27 * s });
+    y -= gB + RH; pauseRingRow(x, y, w, s, RH);
+    if (tl) { y -= gB + tl.h; tl.draw(x, y, w); }
+    return y;
+  };
+  // a short list: the room it leaves is shared out as air between its blocks (never one empty band)
+  const air = (B, Vh) => { const H = pageColH(B, s) + 18 * s; if (H < Vh) { const n = B.filter((b) => !b.tight).length, add = Math.min((Vh - H) / (n + 1), 40 * s); for (const b of B) if (!b.tight) b.gap = (b.gap ?? 10 * s) + add; } return B; }; // (the level's name stays under its ribbon)
   if (land) { // a phone on its side: the controls on the left, the villains scroll on their own on the right
     const lw = Math.min((A.w - 3 * pad) * 0.5, 460 * s), rw = Math.min(A.w - 3 * pad - lw, 520 * s), lx = A.cx - (lw + rw + pad) / 2, rx = lx + lw + pad;
     const nf = 2 + kinds.length; // the section heading, then the villain cards
-    G.ppRect = { x: A.x, y: A.y + 6 * u, w: rx - pad / 2 - A.x, h: A.h - 12 * u };
-    pageScroll(blocks.slice(0, blocks.length - nf + 1), pg, G.ppRect, lx, lw, s);
+    const top = foot(lx, lw, null);
+    G.ppRect = { x: A.x, y: A.y + 6 * u, w: rx - pad / 2 - A.x, h: top - 8 * s - (A.y + 6 * u) };
+    const L0 = blocks.slice(0, blocks.length - nf + 1); L0.splice(Math.min(3, L0.length), 0, tiles);
+    pageScroll(air(L0, G.ppRect.h), pg, G.ppRect, lx, lw, s);
     const pr = G.ppageR || (G.ppageR = { y: 0, v: 0, max: 0, t: G.t, lid: null });
     if (pr.lid !== pg.lid) { pr.lid = pg.lid; pr.y = 0; pr.v = 0; }
     G.ppRectR = { x: rx - pad / 2, y: A.y + 6 * u, w: A.x1 - (rx - pad / 2), h: A.h - 12 * u };
     pageScroll([pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeStage(kd, i, s, rw))], pr, G.ppRectR, rx, rw, s);
   } else {
-    G.ppRect = { x: A.x, y: A.y + 6 * u, w: A.w, h: A.h - 12 * u }; G.ppRectR = null;
-    pageScroll(blocks, pg, G.ppRect, x0, iw, s);
+    const top = foot(x0, iw, wide ? null : tiles);
+    G.ppRect = { x: A.x, y: A.y + 6 * u, w: A.w, h: top - 8 * s - (A.y + 6 * u) }; G.ppRectR = null;
+    if (wide) blocks.splice(Math.min(3, blocks.length), 0, tiles);
+    pageScroll(air(blocks, G.ppRect.h), pg, G.ppRect, x0, iw, s);
   }
   ctx.restore();
 }
@@ -10097,7 +10170,7 @@ function openSpin() {
   const b1 = spinBoost();
   land.clear();
   G.spin = { from: G.screen, reels: G.spin && G.spin.reels ? G.spin.reels.map((p) => Math.round(p)) : [0, 1, 2], run: null, st: 'idle', leverT: -9, tickT: -9, buzzT: -9, sheet: false, lit: false,
-    cast: { who: spinVillain(), item: b1, item2: spinBoost(), chick: spinChick() }, hx: 0.5, hv: 0, henN: 0, stops: 0, miss: false, missT: -99 };
+    cast: { who: spinVillain(), item: b1, item2: spinBoost(), chick: spinChick() }, hx: 0.5, hv: 0, henN: 0, stops: 0, miss: false, missT: -99, idleT: G.t, lvK: 0, lvV: 0, lv: null };
   resetHen('spin');
   G.getMore = null; G.detail = null; G.toasts = []; G.toast = null;
   setScreen('spin'); audio.play('ui_open');
@@ -10145,6 +10218,72 @@ async function spinGo(how) {
   S.lit = false; S.leverT = G.t;
   audio.play('slot_lever'); buzz('tap');
   if (save.calm) { S.run.forEach((r, i) => { S.reels[i] = r.a1; }); S.run = null; S.st = S.miss ? 'stolen' : 'stopped'; S.tStop = G.t; S.lit = !S.miss; if (S.miss) { S.missT = G.t; S.vSide = -1; audio.play('slot_miss'); } } else { S.st = 'spinning'; audio.play('slot_spin', { intensity: 1, vol: 0.8 }); }
+}
+// ---- 0.8.17 the lever (mykee: "scrollable lever for spin rather than button; should show a finger kind of thing to the
+// user"): a free spin is pulled by dragging the lever's knob down. The knob follows the finger on a spring, a ratchet
+// clicks (and the phone ticks lightly) at each of six notches; let go past 60% of the way and it pulls the spin (the
+// same spinGo as the SPIN button: the result, odds and prices do not change), earlier and it springs back up. A plain
+// tap on it still pulls, as before. A hand shows the drag (down, let go) for the first three pulls on this phone and
+// whenever the player waits on the page; Calm: a still hand on the knob with an arrow down.
+const LEVER_KEY = 'egg.leverN', LEVER_PULL = 0.6, LEVER_NOTCH = 6;
+const leverN = () => { try { return +localStorage.getItem(LEVER_KEY) || 0; } catch (e) { return 0; } };
+function leverNote() { try { localStorage.setItem(LEVER_KEY, String(leverN() + 1)); } catch (e) { /* (a private window: the hand shows again) */ } }
+// the knob's travel: the lever turns by th = 2k; seen from the front the knob sits h·cos(th) above the socket, so a
+// finger d px below where it took hold asks for k = acos(1 - d / h) / 2 (the knob stays under the finger)
+const leverK = (d, h) => clamp(Math.acos(clamp(1 - Math.max(0, d) / Math.max(1, h), -1, 1)) / 2, 0, 1);
+function leverDown(pid, x, y) {
+  const S = G.spin;
+  if (!S || S.st !== 'idle' || S.sheet || !S.leverOk || G.adBusy) return false;
+  const k0 = clamp(S.lvK || 0, 0, 1);
+  S.lv = { pid, x0: x, y0: y, t0: G.t, moved: false, to: k0, n: Math.floor(k0 * LEVER_NOTCH), d0: S.lvGeo ? S.lvGeo.h * (1 - Math.cos(2 * k0)) : 0 }; // (caught mid-swing: it carries on from where the knob is)
+  S.idleT = G.t; S.handOff = true; // a hand on it: the hint goes until the next wait
+  audio.play('grab', { vol: 0.5 });
+  return true;
+}
+function leverMove(y) {
+  const S = G.spin, V = S && S.lv;
+  if (!V || !S.lvGeo) return;
+  const d = y - V.y0;
+  if (!V.moved && Math.abs(d) > 6 * ui.u) V.moved = true;
+  if (!V.moved) return;
+  V.to = leverK(d + V.d0, S.lvGeo.h);
+  const n = Math.floor(V.to * LEVER_NOTCH + 1e-6);
+  if (n !== V.n) { // a notch: the ratchet clicks, a light tick in the hand (one per notch, never a stream)
+    if (n > V.n || G.t - (V.tickT || 0) > 0.08) { audio.play('slot_tick', { vol: 0.6, pitch: 0.78 + 0.07 * n }); buzz('notch'); V.tickT = G.t; }
+    V.n = n;
+  }
+}
+function leverUp() {
+  const S = G.spin, V = S && S.lv;
+  if (!V) return;
+  S.lv = null; S.idleT = G.t;
+  const tap = !V.moved && G.t - V.t0 < 0.5;
+  if (tap || V.to >= LEVER_PULL) {
+    const k = S.lvK || 0;
+    press('spin:lever'); // (spinGo runs at once for a free spin: S.st and S.leverT are set before this returns)
+    if (S.st !== 'idle') { S.leverT = G.t - 0.13 * clamp(k, 0, 1); S.lvK = 0; S.lvV = 0; if (!tap) leverNote(); return; } // the pull carries on from where the hand let go
+  }
+  if (V.moved) audio.play('release', { vol: 0.45 }); // let go early: it springs back up
+}
+// the lever's place on the page this frame (set by drawSpin): one spring step toward the finger (or home)
+function leverStep(S) {
+  const to = S.lv ? S.lv.to : S.hintTo || 0, tight = !!S.lv || S.hintHeld, dt = clamp(G.t - (S.lvT ?? G.t), 0, 0.05); S.lvT = G.t;
+  if (save.calm) { S.lvK = to; S.lvV = 0; return; }
+  const om = tight ? 34 : 26, z = tight ? 0.85 : 0.42; // under the finger (or the hint's hand): tight; let go: a springy return with one small bounce
+  for (let left = dt; left > 1e-6;) { const h = Math.min(left, 1 / 240); left -= h; S.lvV += (-om * om * ((S.lvK || 0) - to) - 2 * z * om * (S.lvV || 0)) * h; S.lvK = (S.lvK || 0) + S.lvV * h; }
+  if (!S.lv && !to && Math.abs(S.lvK) < 0.002 && Math.abs(S.lvV) < 0.02) { S.lvK = 0; S.lvV = 0; }
+}
+// the hand that shows the drag: on the knob, presses, draws it down to the bottom, lets go; the lever follows it
+function leverHint(S) {
+  if (S.st !== 'idle' || S.sheet || !S.leverOk || S.lv || land.busy()) { S.hintK = 0; return null; }
+  const waited = G.t - (S.idleT ?? G.t) > 4.5;
+  if (!(leverN() < 3 && !S.handOff) && !waited) { S.hintK = 0; return null; }
+  if (waited) S.handOff = false;
+  const per = 2.4, q = save.calm ? 0.3 : ((G.t - (S.idleT ?? 0)) % per) / per;
+  const a = q < 0.08 ? q / 0.08 : q > 0.62 ? clamp(1 - (q - 0.62) / 0.12, 0, 1) : 1; // fades in onto the knob, out after letting go
+  const down = save.calm ? 0 : q < 0.16 ? 0 : q < 0.5 ? ss01((q - 0.16) / 0.34) : 1; // presses, then pulls (eased)
+  const held = save.calm || (q > 0.12 && q < 0.52);
+  return { a, held, k: save.calm ? 0 : held ? down * 0.82 : 0, q, down };
 }
 // a winning pull: what the machine shows (the prize is already in the wallet; the counters hold the purse before it)
 function spinPrize(S, res, how, w0, c0) {
@@ -10252,14 +10391,20 @@ function drawSpin() {
   ctx.save(); ctx.globalAlpha = 0.9; sunburst(mcx, mcy, mw * 1.25, 'rgba(255,214,120,0.09)', 14); ctx.restore();
   { const g = ctx.createRadialGradient(mcx, mcy, mw * 0.2, mcx, mcy, mw); g.addColorStop(0, 'rgba(255,220,130,0.26)'); g.addColorStop(1, 'rgba(255,220,130,0)'); ctx.fillStyle = g; ctx.fillRect(mcx - mw, mcy - mw, mw * 2, mw * 2); }
   const idle = S.st === 'idle', litK = S.lit ? (idle ? clamp(1 - (G.t - (S.doneT || 0)) / 2.5, 0, 1) : 1) : 0;
-  const lt = G.t - S.leverT, lk = calm ? 0 : lt < 0.13 ? lt / 0.13 : lt < 0.42 ? 1 : clamp(1 - (lt - 0.42) / 0.5, 0, 1) * (1 + 0.12 * Math.sin((lt - 0.42) * 22) * clamp(1 - (lt - 0.42) / 0.5, 0, 1));
+  const lt = G.t - S.leverT, lk0 = calm ? 0 : lt < 0.13 ? lt / 0.13 : lt < 0.42 ? 1 : clamp(1 - (lt - 0.42) / 0.5, 0, 1) * (1 + 0.12 * Math.sin((lt - 0.42) * 22) * clamp(1 - (lt - 0.42) / 0.5, 0, 1));
+  S.leverOk = idle && !!W.free && !S.sheet; // 0.8.17: a free spin can be pulled by dragging the lever (leverDown)
+  if (!idle) { S.lv = null; S.lvK = 0; S.lvV = 0; }
+  const HN = leverHint(S); S.hintTo = HN ? HN.k : 0; S.hintHeld = !!(HN && HN.held);
+  leverStep(S);
+  const lk = idle && (S.lv || Math.abs(S.lvK) > 0.002 || Math.abs(S.lvV) > 0.02) ? clamp(S.lvK, -0.08, 1.05) : lk0; // the finger's lever (or the hand's), else the pull's own swing
   { const jt = G.t - Math.max(S.joltT || -9, S.leverT + 0.13); if (!calm && jt >= 0 && jt < 0.22) my += Math.sin(jt * 60) * 2.2 * u * (1 - jt / 0.22); } // a reel locking, the lever hitting bottom: the cabinet shudders
   const stolen = S.st === 'stolen', sT = G.t - S.tStop, badK = stolen ? clamp(sT / 0.2, 0, 1) : S.miss && idle ? clamp(1 - (G.t - (S.doneT || 0)) / 0.6, 0, 1) : 0;
   // the villains' row: the cabinet sags on its feet (down with a small bounce, up again as they go)
   const sag = calm ? badK : stolen ? clamp(sT / 0.28, 0, 1) ** 0.5 * (1 + 0.18 * Math.sin(clamp(sT / 0.5, 0, 1) * Math.PI)) : badK;
   ctx.save();
   if (sag > 0) { ctx.translate(mcx, my + mh); ctx.scale(1 + 0.03 * sag, 1 - 0.055 * sag); ctx.translate(-mcx, -(my + mh)); }
-  const GM = drawSlot(ctx, mx, my, mw, mh, SL, S.reels, { dpr: Math.min(DPR, 2), t: G.t, calm, lit: litK, bad: badK, winT: S.st === 'stopped' || S.st === 'prize' ? G.t - S.tStop : 9, speed, lever: clamp(lk, 0, 1.1), ready: (W.free || W.retry === 'free') && idle });
+  const GM = drawSlot(ctx, mx, my, mw, mh, SL, S.reels, { dpr: Math.min(DPR, 2), t: G.t, calm, lit: litK, bad: badK, winT: S.st === 'stopped' || S.st === 'prize' ? G.t - S.tStop : 9, speed, lever: clamp(lk, -0.08, 1.1), ready: (W.free || W.retry === 'free') && idle && !S.lv });
+  S.lvGeo = GM.lever;
   ctx.restore();
   // and smoke puffs out from its shoulders (Calm: no smoke)
   if (stolen && !calm) for (let i = 0; i < 12; i++) {
@@ -10283,7 +10428,20 @@ function drawSpin() {
     drawHenAnim(ctx, mood, hxp, floorY - hh * 0.5, hh, G.t, { key: 'spin', face: 1, n: S.henN, drift, calm, danger: spinning && !S.stops ? 0.5 : 0 });
   }
   ui.record({ x: mx, y: GM.bodyY, w: mw, h: GM.bodyH }, 'spin:machine');
-  if (idle) ui.buttons.push({ id: 'spin:lever', x: GM.lever.x - GM.lever.h * 0.35, y: GM.lever.y - GM.lever.h * 1.3, w: GM.lever.h * 0.95, h: GM.lever.h * 2.3 }); // a tap on the lever is the SPIN button's tap
+  if (idle) { // the lever's grip: the knob's whole travel, at least 56 px wide for a thumb (a drag pulls it, a tap is the SPIN button's tap)
+    const Lv = GM.lever, gw = Math.max(56, Lv.h * 0.95), gx = Math.min(Lv.x - Lv.h * 0.35, A.x1 + 4 * u - gw);
+    ui.buttons.push({ id: 'spin:lever', x: gx, y: Lv.y - Lv.h * 1.3, w: gw, h: Lv.h * 2.3 });
+  }
+  if (HN && HN.a > 0) { // the hand on the knob (Calm: still, with an arrow down beside the lever)
+    const Lv = GM.lever, hkk = HN.held ? clamp(lk, 0, 1.05) : HN.q > 0.5 ? 0.82 : 0, th = 2 * hkk, kx = Lv.x + Lv.h * 0.12 * (1 - 0.5 * Math.sin(th)), ky = Lv.y - Lv.h * Math.cos(th) - (HN.q > 0.52 ? (HN.q - 0.52) * Lv.h * 0.8 : 0), hs = clamp(Lv.h * 0.62, 40 * u, 66 * u); // (let go: the hand lifts off where it was while the lever springs home)
+    if (calm) {
+      const ax = Math.min(Lv.x + Lv.h * 0.3, A.x1 - 12 * u), a0 = Lv.y - Lv.h * 0.35, a1 = Lv.y + Lv.h * 0.45; // (beside the arm, under the hand: off the reels)
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (const [c, lw] of [['rgba(40,14,4,0.75)', 9 * u], ['#fff3cf', 5 * u]]) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(ax, a0); ctx.lineTo(ax, a1); ctx.moveTo(ax - 9 * u, a1 - 11 * u); ctx.lineTo(ax, a1); ctx.lineTo(ax + 9 * u, a1 - 11 * u); ctx.stroke(); }
+      ctx.restore();
+    }
+    teachHand(ctx, Math.min(kx - hs * 0.04, A.x1 - hs * 0.62), ky + hs * 0.1, hs, HN.held, HN.a); // (the palm stays on the screen)
+  }
   // ---- the prize out of the tray (0.8.17, mykee: "we don't have to show the result card"): it rises out of the tray
   // under the reels and grows, its name on a ribbon under it and what it does under that, then it flies to where it
   // lives (ui/landing.js: coins pour from it in arcs onto the purse, a thing flies into the bag or to the shop)
@@ -11086,24 +11244,7 @@ async function boot() {
     audioHold('hidden', document.hidden);
   });
   window.addEventListener('blur', clearKeys);
-  installApp(() => { // Android back button (see app.js): consume it where the game has a natural "back"
-    if (G.adBusy) { ads.cancelWait(); return true; } // a pending ad that never reported back: Back returns to the game
-    if (modalOpen()) { // a sheet closes first (an offer counts as "No thanks"; the age question waits for next launch)
-      if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null;
-      else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.remAsk) press('rem:later'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null;
-      return true;
-    }
-    if (G.settingsOpen) { press('set:close'); return true; } // the Settings page closes first
-    switch (G.screen) {
-      case 'play': press('pause'); return true;
-      case 'pause': press('resume'); return true;
-      case 'info': press('info:close'); return true;
-      case 'practice': case 'extras': case 'store': case 'levels': press('back'); return true;
-      case 'spin': press('spin:back'); return true;
-      case 'wonder': return wonder.back(); // 0.8.17: a side quest's card / pause page / end page (wonder.js)
-      default: return false;
-    }
-  });
+  installApp(() => backPress()); // Android back button (see app.js): backPress below; false on the home page (the shell asks for a second press within 2 s, then leaves)
   portal.onPause(() => { G.paused = true; clearKeys(); audioHold('portal', true); });
   portal.onResume(() => { G.paused = false; last = performance.now(); audioHold('portal', false); });
   portal.onAudioChange(() => applyAudioSettings());

@@ -530,7 +530,7 @@ public class MainActivity extends Activity {
             if ("true".equals(r)) return;
             long now = System.currentTimeMillis();
             if (now - lastBack < 2000) finish();
-            else { lastBack = now; Toast.makeText(this, "Press back again to exit", Toast.LENGTH_SHORT).show(); }
+            else { lastBack = now; Toast.makeText(this, "Press back again to leave", Toast.LENGTH_SHORT).show(); }
         });
     }
 }

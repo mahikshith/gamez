@@ -18,7 +18,7 @@ import { drawSpace, drawPlanet, drawSun, drawRail, drawPull, drawLamp, drawBolts
 
 export function createWonder(env) {
   const { ctx, ui, audio } = env;
-  const S = { level: null, game: null, t: 0, fx: [], cam: { x: 0, y: 0, k: 40 }, held: new Map(), card: null, cardT: 0, endT: 0, hens: [], touched: false, hatched: false, slow: 1, lastBump: 0, frost: 1, overT: 0, off: [], tipT: 0, arrows: [] };
+  const S = { level: null, game: null, t: 0, fx: [], cam: { x: 0, y: 0, k: 40 }, held: new Map(), card: null, cardT: 0, endT: 0, hens: [], touched: false, hatched: false, slow: 1, lastBump: 0, frost: 1, overT: 0, off: [], tipT: 0, arrows: [], zm: null, tp: new Map(), pinch: null, lastAct: null };
   const space = () => S.game && (S.game.kind === 'planet' || S.game.kind === 'mama');
   const starsOf = (key) => (env.save().wonder || {})[key] || 0;
 
@@ -36,6 +36,7 @@ export function createWonder(env) {
     S.backdrop.resize(z.W, z.H, z.DPR);
     S.fx = S.game.sims.map(() => new FX());
     S.hens = S.game.sims.map(() => ({ mood: 'idle', t: 0, face: 1 }));
+    S.zm = null; S.pinch = null; S.tp.clear(); S.lastAct = null;
     S.t = 0; S.card = S.side && !o.go ? 'intro' : null; S.cardT = 0; S.endT = 0; S.touched = false; S.hatched = false; S.slow = 1; S.snap = true; S.overT = 0; S.tipT = 4.5; S.acc = 0;
     S.held.clear();
     S.frost = S.game.kind === 'plan' ? 1 : 0;
@@ -82,13 +83,45 @@ export function createWonder(env) {
     S.off = off;
     return B;
   }
+  // 0.8.17 (mykee: "zoom controls and camera movements are not present in Extras"): the road's zoom buttons, pinch and
+  // wheel, and its camera. Like the road, the buttons get their own strip (a bottom row; on a phone on its side, a right
+  // column) so they never sit on a vault, the hen or the nest.
+  function zoomBar() {
+    const A = ui.A, u = ui.u, bs = Math.max(46, 55 * u), pad = 8 * u, side = A.w > A.h;
+    return { bs, pad, side, gap: 8 * u, bot: A.y1 - 6 * u - bs };
+  }
   function playRect() {
-    const A = ui.A, u = ui.u, top = A.y + 62 * u, bot = (S.game.kind === 'plan' ? 86 : 10) * u; // the vaults frame inside the safe rect
-    return { x: A.x, y: top, w: A.w, h: A.y1 - top - bot };
+    const A = ui.A, u = ui.u, Z = zoomBar(), top = A.y + 62 * u, bot = Math.max((S.game.kind === 'plan' ? 86 : 10) * u, Z.side ? 10 * u : Z.bs + Z.pad + 2 * u); // the vaults frame inside the safe rect
+    const sw = Z.side ? Z.bs + 2 * Z.pad : 0;
+    return { x: A.x, y: top, w: A.w - sw, h: A.y1 - top - bot };
+  }
+  // player zoom z (S.zm): -1 the whole stage, 0 the camera's own shot (null), +1 twice as close
+  const setZoom = (z) => { z = clamp(z, -1, 1); S.zm = Math.abs(z) < 0.05 ? null : z; };
+  // every egg still in play, in stage metres (each vault's offset added)
+  function eggsAt() {
+    const out = [];
+    S.game.sims.forEach((sim, si) => { const o = S.off[si] || { x: 0, y: 0 }; for (const e of sim.aliveEggs()) { const p = e.body.getPosition(); out.push({ x: p.x + o.x, y: p.y + o.y }); } });
+    return out;
+  }
+  // zoom out and slide just enough that every point (plus m metres) is in the play rect (the road's keepInView)
+  function keepIn(T, pts, m, P) {
+    if (!pts.length) return T;
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const q of pts) { x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y); }
+    x0 -= m; x1 += m; y0 -= m; y1 += m;
+    const k = Math.min(T.k, P.w / (x1 - x0), P.h / (y1 - y0)), hw = P.w / (2 * k), hh = P.h / (2 * k);
+    return { x: clamp(T.x, x1 - hw, x0 + hw), y: clamp(T.y, y1 - hh, y0 + hh), k };
+  }
+  // keep a shot inside the stage box where it can (no empty space past the vaults when it could show vault)
+  function inBox(T, B, P) {
+    const hw = P.w / (2 * T.k), hh = P.h / (2 * T.k), cx = (B.x0 + B.x1) / 2, cy = (B.y0 + B.y1) / 2;
+    return { x: B.x1 - B.x0 > 2 * hw ? clamp(T.x, B.x0 + hw, B.x1 - hw) : cx, y: B.y1 - B.y0 > 2 * hh ? clamp(T.y, B.y0 + hh, B.y1 - hh) : cy, k: T.k };
   }
   function camera(dt) {
-    const B = stage(), P = playRect(), g = S.game;
-    let T = { x: (B.x0 + B.x1) / 2, y: (B.y0 + B.y1) / 2, k: Math.min(P.w / (B.x1 - B.x0), P.h / (B.y1 - B.y0)) };
+    const B = stage(), P = playRect(), g = S.game, calm = env.save().calm;
+    const F = { x: (B.x0 + B.x1) / 2, y: (B.y0 + B.y1) / 2, k: Math.min(P.w / (B.x1 - B.x0), P.h / (B.y1 - B.y0)) };
+    let T = F, rate = 3.2;
+    const live = !S.card && g.state === 'play', eggs = live ? eggsAt() : [];
     // plan: while it plays out the camera leans in on the egg furthest along (never losing the nest)
     if (g.kind === 'plan' && g.phase !== 'plan' && g.state === 'play') {
       const sim = g.sim, eggs = sim.aliveEggs();
@@ -98,10 +131,31 @@ export function createWonder(env) {
         const p = lead.body.getPosition(), k = T.k * 1.3, hw = P.w / (2 * k), hh = P.h / (2 * k);
         T = { x: clamp(lerp(T.x, p.x, 0.6), Math.min(B.x0 + hw, T.x), Math.max(B.x1 - hw, T.x)), y: clamp(lerp(T.y, p.y, 0.6), Math.min(B.y0 + hh, T.y), Math.max(B.y1 - hh, T.y)), k };
       }
+    } else if (live && !calm && S.zm == null && g.kind === 'hatch' && eggs.length) { // (the twins and the disc vaults: one steady whole shot, both vaults whole)
+      // the road's action cam: a gentle push in toward the eggs, pulled back just enough to keep every egg in the shot;
+      // while a finger holds a ring the shot holds still, so the ring never slides
+      if (S.held.size && S.lastAct) T = S.lastAct;
+      else {
+        let cx = 0, cy = 0; for (const q of eggs) { cx += q.x; cy += q.y; } cx /= eggs.length; cy /= eggs.length;
+        T = keepIn({ x: lerp(F.x, cx, 0.5), y: lerp(F.y, cy, 0.5), k: F.k * 1.25 }, eggs, 1.1, P);
+        T.k = Math.max(T.k, F.k); T = inBox(T, B, P); S.lastAct = T;
+      }
+      rate = 1.6; // slow and soft: a camera operator, not a chase cam
+    }
+    if (live && S.zm != null) { // the player's zoom (buttons, pinch, wheel) overrides the camera's own lean
+      const z = S.zm;
+      if (z < 0) T = { x: lerp(T.x, F.x, -z), y: lerp(T.y, F.y, -z), k: T.k * Math.pow(Math.min(1, F.k / T.k), -z) };
+      else {
+        let cx = T.x, cy = T.y;
+        if (eggs.length) { cx = cy = 0; for (const q of eggs) { cx += q.x; cy += q.y; } cx = lerp(T.x, cx / eggs.length, Math.min(1, z * 2)); cy = lerp(T.y, cy / eggs.length, Math.min(1, z * 2)); }
+        T = inBox({ x: cx, y: cy, k: T.k * Math.pow(2, z) }, B, P);
+        if (g.kind === 'twin') T = keepIn(T, eggs, 0.9, P); // the twins: both vaults' eggs stay in the shot (both stay playable)
+      }
+      rate = 4.5;
     }
     const c = S.cam;
-    if (S.snap || env.save().calm) { c.x = T.x; c.y = T.y; c.k = T.k; S.snap = false; }
-    else { const a = 1 - Math.exp(-dt * 3.2); c.x += (T.x - c.x) * a; c.y += (T.y - c.y) * a; c.k *= Math.exp(Math.log(T.k / c.k) * a); }
+    if (S.snap || calm) { c.x = T.x; c.y = T.y; c.k = T.k; S.snap = false; }
+    else { const a = 1 - Math.exp(-dt * rate); c.x += (T.x - c.x) * a; c.y += (T.y - c.y) * a; c.k *= Math.exp(Math.log(T.k / c.k) * a); }
   }
   const toScreen = (si, x, y) => { const P = playRect(), o = S.off[si] || { x: 0, y: 0 }; return { x: P.x + P.w / 2 + (o.x + x - S.cam.x) * S.cam.k, y: P.y + P.h / 2 - (o.y + y - S.cam.y) * S.cam.k }; };
   const toWorld = (si, sx, sy) => { const P = playRect(), o = S.off[si] || { x: 0, y: 0 }; return { x: (sx - P.x - P.w / 2) / S.cam.k + S.cam.x - o.x, y: -(sy - P.y - P.h / 2) / S.cam.k + S.cam.y - o.y }; };
@@ -116,6 +170,15 @@ export function createWonder(env) {
     const g = S.game;
     if (!g || S.card || g.state !== 'play') return;
     const x = e.clientX, y = e.clientY, si = vaultAt(x, y), w = toWorld(si, x, y);
+    if (e.pointerType === 'touch') { // a second finger is a pinch: let go of what is held and turn nothing until the fingers lift (the road's rule)
+      S.tp.set(e.pointerId, { x, y });
+      if (S.tp.size > 1) {
+        for (const h of S.held.values()) { if (h.ring) { h.ring.held = false; if (g.kind === 'twin') { const tw = g.sims[1 - h.si].rings[h.ring.i]; if (tw) tw.held = false; } } }
+        S.held.clear();
+        if (!S.pinch) { const [a, b] = [...S.tp.values()]; S.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, z: S.zm || 0 }; }
+        return;
+      }
+    }
     if (g.kind === 'mama') {
       S.held.set(e.pointerId, { hen: true });
       g.setHen(Math.atan2(w.y, w.x));
@@ -136,7 +199,8 @@ export function createWonder(env) {
     audio.play('grab', { vol: 0.6 });
   }
   function pointerMove(e) {
-    const h = S.held.get(e.pointerId), g = S.game;
+    const h = S.held.get(e.pointerId), g = S.game, tp = S.tp.get(e.pointerId);
+    if (tp) { tp.x = e.clientX; tp.y = e.clientY; if (S.pinch && S.tp.size > 1) { const [a, b] = [...S.tp.values()]; setZoom(S.pinch.z + Math.log2(Math.hypot(a.x - b.x, a.y - b.y) / S.pinch.d)); return; } }
     if (!h || !g) return;
     const x = e.clientX, y = e.clientY;
     if (h.hen) { const w = toWorld(0, x, y); if (Math.hypot(w.x, w.y) > 0.4) g.setHen(Math.atan2(w.y, w.x)); return; }
@@ -148,6 +212,7 @@ export function createWonder(env) {
     h.x = x; h.y = y;
   }
   function pointerUp(e) {
+    S.tp.delete(e.pointerId); if (S.tp.size < 2) S.pinch = null;
     const h = S.held.get(e.pointerId);
     if (!h) return;
     S.held.delete(e.pointerId);
@@ -169,6 +234,9 @@ export function createWonder(env) {
     else if (id === 'wv:next') { const i = WONDER_LEVELS.indexOf(S.level), N = WONDER_LEVELS[i + 1]; if (N) start(N.key); else quit(); }
     else if (id === 'wv:hatch') { if (g.hatch()) { S.hatched = true; audio.play('unlock'); for (const h of S.held.values()) if (h.ring) h.ring.held = false; S.held.clear(); } }
     else if (id === 'wv:rewind') { if (g.rewind()) rebuilt(); }
+    else if (id === 'wv:zin') setZoom((S.zm || 0) + 0.34);
+    else if (id === 'wv:zout') setZoom((S.zm || 0) - 0.34);
+    else if (id === 'wv:zauto') S.zm = null;
   }
   function rebuilt() { // plan: the vault was rebuilt for a new attempt
     S.fx = S.game.sims.map(() => new FX());
@@ -450,9 +518,11 @@ export function createWonder(env) {
     ui.text(right, cx + cw - 14 * u, cy + 0.5 * u, { size: 17 * u, align: 'right', color: g.timeLimit && g.timeLeft < 10 ? '#ff8a6a' : '#ffe9a8', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'wv:clock' });
     const tl = X0 + 44 * u + 10 * u, trr = cx - 10 * u;
     if (trr - tl > 70 * u) ui.text(L.name, (tl + trr) / 2, cy + 0.5 * u, { size: 19 * u, align: 'center', color: '#fff', stroke: 'rgba(30,14,4,0.75)', strokeW: 4 * u, shadow: 'rgba(30,14,4,0.6)', tag: 'wv:name', maxW: trr - tl });
-    // plan: HATCH / REWIND and the stopped clock
+    // the zoom buttons (the road's: -, + and, while the player's zoom is on, auto)
+    const Z = zoomBar(), zl = g.state === 'play' && !S.card ? drawZoom(Z) : A.x1;
+    // plan: HATCH / REWIND and the stopped clock (left of the zoom buttons when they share the bottom row)
     if (g.kind === 'plan' && !S.card) {
-      const bw = Math.min(250 * u, A.w - 110 * u), bh = 60 * u, bx = A.cx - bw / 2 + 22 * u, by = A.y1 - bh - 14 * u;
+      const r0 = Z.side ? A.x1 : zl - 10 * u, l0 = A.x + 14 * u + 56 * u, bw = Math.min(250 * u, A.w - 110 * u, r0 - l0), bh = 60 * u, bx = Z.side ? A.cx - bw / 2 + 22 * u : l0 + (r0 - l0 - bw) / 2, by = A.y1 - bh - 14 * u;
       drawStopClock(ctx, bx - 34 * u, by + bh * 0.45, 40 * u, g.phase === 'plan');
       ui.record({ x: bx - 56 * u, y: by + bh * 0.45 - 22 * u, w: 44 * u, h: 44 * u }, 'wv:clockicon');
       if (g.phase === 'plan') ui.button('wv:hatch', 'HATCH', bx, by, bw, bh, { kind: 'primary', shimmer: S.touched, icon: ICON.play, size: 26 * u, round: 18 * u });
@@ -468,6 +538,21 @@ export function createWonder(env) {
       ui.aBase = 1; ctx.restore();
     }
   }
+  function drawZoom(Z) { // returns the left edge of the row (portrait)
+    const A = ui.A, u = ui.u, items = [['wv:zin', ICON.zoom(true), ''], ['wv:zout', ICON.zoom(false), '']];
+    if (S.zm != null) items.push(['wv:zauto', null, 'auto']);
+    const P = playRect();
+    let left = A.x1;
+    items.forEach(([id, icon, label], i) => {
+      const x = Z.side ? A.x1 - Z.pad - Z.bs : A.x1 - Z.pad - Z.bs * (i + 1) - Z.gap * i;
+      const y = Z.side ? P.y + (P.h - (Z.bs * 3 + Z.gap * 2)) / 2 + (Z.bs + Z.gap) * i : Z.bot;
+      ui.button(id, label, x, y, Z.bs, Z.bs, { kind: 'hud', icon, iconS: 1.3, size: label ? 13 * u : undefined, round: 15 * u });
+      left = Math.min(left, x);
+    });
+    return left;
+  }
+  // a mouse wheel zooms, as on the road
+  function wheel(e) { if (S.game && !S.card && S.game.state === 'play') setZoom((S.zm || 0) - clamp(e.deltaY, -120, 120) * 0.003); }
   function wrapText(text, size, maxW) {
     const out = []; let cur = '';
     for (const w of text.split(' ')) { const tr = cur ? cur + ' ' + w : w; if (ui.measure(tr, size) > maxW && cur) { out.push(cur); cur = w; } else cur = tr; }
@@ -591,8 +676,10 @@ export function createWonder(env) {
         if (b) { gx += aw + gp; if (g.timeLimit) pictoClock(ctx, gx + 12 * s, y + 28 * s, 28 * s); else drawStopClock(ctx, gx + 12 * s, y + 28 * s, 26 * s, false); ui.text(b, gx + 30 * s, y + 28 * s, { size: 20 * s, color: g.timeLimit && g.timeLeft <= 10 ? C.bad : C.warn, tag: 'wv:pauseTime' }); }
       } });
       if (stH > 0) B.push({ h: stH * s, gap: 12 * s, draw: (x, y, w) => picStage(x, y, w, stH * s, s, true) });
-      B.push({ h: 66 * s, gap: 14 * s, draw: (x, y, w) => ui.button('wv:resume', 'Resume', x, y, w, 66 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 28 * s, round: 20 * s }) });
+      // 0.8.17 (mykee: "Resume button should be below, right where the thumb is"): the road's pause page order: the
+      // tiles, then Resume full width at the bottom of the page
       B.push(K.tiles([['wv:retry', 'Retry', ICON.retry, 'secondary'], ['wv:map', 'Map', ICON.grid, ui.faceOf('#1f9e94')]], s, 2));
+      B.push({ h: 56 * s, gap: 12 * s, draw: (x, y, w) => ui.button('wv:resume', 'Resume', x, y, w, 56 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 27 * s }) });
       return B;
     };
     const RIB = '#3a80ea';
@@ -775,5 +862,5 @@ export function createWonder(env) {
     }
   }
 
-  return { start, back, has: (k) => !!wonderByKey(k), update, render, pointerDown, pointerMove, pointerUp, press, drawExtras, resize() { S.snap = true; if (S.backdrop) { const z = env.size(); S.backdrop.resize(z.W, z.H, z.DPR); } }, get state() { return S; }, LEVELS: WONDER_LEVELS, toScreen, starsOf };
+  return { start, back, wheel, has: (k) => !!wonderByKey(k), update, render, pointerDown, pointerMove, pointerUp, press, drawExtras, resize() { S.snap = true; if (S.backdrop) { const z = env.size(); S.backdrop.resize(z.W, z.H, z.DPR); } }, get state() { return S; }, LEVELS: WONDER_LEVELS, toScreen, starsOf };
 }

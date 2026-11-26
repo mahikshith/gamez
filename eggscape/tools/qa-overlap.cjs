@@ -74,6 +74,8 @@ const srv = http.createServer((q, r) => {
     await check('extras-side', () => { const E = __egg; E.G.screen = 'title'; E.press('extras'); for (let i = 0; i < 20; i++) E.frame(1 / 60); E.press('sq:bonus'); for (let i = 0; i < 40; i++) E.frame(1 / 60); return E.G.screen === 'levels' ? E.overlaps() : [['Bonus vaults', 'did not open the map']]; }, 0, false);
     for (const k of await p.evaluate(() => __egg.wonder.LEVELS.map((L) => L.key))) { // WONDER: each bonus vault in play, then its end cards
       await check(`wonder-${k}`, (k) => { const E = __egg; E.startDemo(k); for (let i = 0; i < 60; i++) E.frame(1 / 60); return E.overlaps(); }, k, k === 'plan' || k === 'twin');
+      // 0.8.17 (feel817): the road's zoom buttons in every vault, zoomed in twice and then out past the whole frame
+      await check(`wonder-${k}-zoom`, () => { const E = __egg; const o = []; E.press('wv:zin'); E.press('wv:zin'); for (let i = 0; i < 60; i++) E.frame(1 / 60); o.push(...E.overlaps()); for (let n = 0; n < 4; n++) E.press('wv:zout'); for (let i = 0; i < 60; i++) E.frame(1 / 60); return o.concat(E.overlaps()); }, 0, k === 'twin');
       await check(`wonder-${k}-won`, () => { const E = __egg, g = E.wonder.state.game; g.end('won'); for (let i = 0; i < 200; i++) E.frame(1 / 60); return E.overlaps(); }, 0, k === 'twin');
       await check(`wonder-${k}-failed`, (k) => { const E = __egg; E.startDemo(k); E.frame(1 / 60); E.wonder.state.game.end('failed'); for (let i = 0; i < 200; i++) E.frame(1 / 60); const o = E.overlaps(); E.press('wv:quit'); E.frame(1 / 60); return o; }, k, false);
     }
@@ -146,6 +148,8 @@ const srv = http.createServer((q, r) => {
     const toSpin = `(() => { const E = __egg; E.G.screen = 'title'; E.press('levels'); for (let k = 0; k < 40; k++) E.frame(1 / 60); E.press('spin'); for (let k = 0; k < 40; k++) E.frame(1 / 60); })()`;
     await check('spin-map', (sv) => { const E = __egg; eval(sv); E.G.screen = 'title'; E.press('levels'); for (let k = 0; k < 60; k++) E.frame(1 / 60); return E.overlaps(); }, spinSave({}), false);
     await check('spin-idle', ([sv, ts]) => { const E = __egg; eval(sv); eval(ts); return E.G.screen === 'spin' ? E.overlaps() : [['the spin page', 'did not open']]; }, [spinSave({}), toSpin], true);
+    // 0.8.17 (feel817): the lever dragged halfway down (the grip, the hand's hint and the arm at mid travel), then let go
+    await check('spin-lever', ([sv, ts]) => { const E = __egg; eval(sv); eval(ts); const S = E.G.spin; if (E.G.screen !== 'spin' || !S) return [['the spin page', 'did not open']]; for (let k = 0; k < 90; k++) E.frame(1 / 60); const o = E.overlaps(); S.lv = { pid: 77, x0: 0, y0: 0, t0: E.G.t, moved: true, to: 0.5, n: 3, d0: 0 }; for (let k = 0; k < 30; k++) E.frame(1 / 60); o.push(...E.overlaps()); S.lv = null; for (let k = 0; k < 40; k++) E.frame(1 / 60); return o.concat(E.overlaps()); }, [spinSave({}), toSpin], true);
     await check('spin-odds', () => { const E = __egg; E.press('spin:odds'); for (let k = 0; k < 20; k++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
     await check('spin-pay', ([sv, ts]) => { const E = __egg; eval(sv); eval(ts); const o = E.overlaps(); E.save.wallet.coins = 5; E.press('spin:coin'); for (let k = 0; k < 10; k++) E.frame(1 / 60); return o.concat(E.overlaps()); }, [spinSave({ spin: { wins: 2, bank: 0, n: 5 } }), toSpin], false);
     await check('spin-villains', ([sv, ts]) => { const E = __egg; eval(sv); eval(ts); const r = Math.random; let n = 0; Math.random = () => (n++ === 0 ? 0.9 : 0.5); E.press('spin:go'); Math.random = r;
