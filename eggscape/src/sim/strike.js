@@ -25,7 +25,8 @@ export const stkMethods = {
     const id = STRIKE[this.opts.strike] ? this.opts.strike : null, L = this.level;
     const any = !!(L.bossFight || this.snakes.length || (this.sals || []).length || this.eagle || (this.thieves || []).length || (this.frogs || []).length
       || (this.octos || []).length || (this.schools || []).length || (this.hermits || []).length || (this.puffs || []).length || (this.jellies || []).length
-      || this.kc || (this.cw && this.cwAny()) || (this.gators || []).length || (this.turtles || []).length || (this.mosqs || []).length);
+      || this.kc || (this.cw && this.cwAny()) || (this.gators || []).length || (this.turtles || []).length || (this.mosqs || []).length
+      || (this.pips || []).length); // 0.8.17 pip
     this.stk = {
       id, any, on: !!(id && any), m: id && this.mode === 'easy' ? CHARGE.easy : 0, base: CHARGE.base, uses: 0, full: 0, saved: 0,
       fly: null, fx: [], glue: [], held: {}, gl: [], rage: 0, dcy: 0, n: 0,
@@ -66,6 +67,7 @@ export const stkMethods = {
     (this.gators || []).forEach((G, i) => { if (!['hid', 'gone', 'beaten'].includes(G.ph)) add('ga' + i, 'gator', G, G, !!G.boss); });
     (this.turtles || []).forEach((T, i) => { if (T.ph !== 'gone') add('tu' + i, 'turtle', T, T); });
     (this.mosqs || []).forEach((Q, i) => { if (Q.ph !== 'scatter') add('mq' + i, 'mosq', Q, Q); });
+    (this.pips || []).forEach((P) => { if (this.pipLive(P)) add('pp' + P.id, 'pip', P, this.pipBody(P)); }); // 0.8.17 pip
     const B = this.bx && this.bx.boss;
     if (B && !['snake', 'salamander', 'kingcrab', 'gator'].includes(B.kind) && !(B.kind === 'blizzard' && this.geckoOf && this.geckoOf()) && !(B.kind === 'golem' && this.duke && this.duke()) && !B.den && !(B.kind === 'owl' && this.owl && this.owl.down)) add('bx', 'bx', B, B, true);
     return out;
@@ -502,6 +504,7 @@ export const stkMethods = {
         try { this.bayouP2(kind, T.type === 'gator' && R.boss ? Tm / 0.4 : Tm); } finally { [this.gators, this.turtles, this.mosqs] = keep; }
         break;
       }
+      case 'pip': this.pipHit(kind, { p: R }, Tm); break; // 0.8.17 pip
       case 'bx': {
         const B = R;
         B.flinch = Math.max(B.flinch, 0.9);

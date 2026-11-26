@@ -60,6 +60,7 @@ export function value(sim) {
     if (sim.thieves.length) v -= 1600 * sim.thiefThreat(e); // v3.6: held or stashed by a thief, or about to be
     if (reef) v -= 1600 * sim.reefThreat(e); // world 8: in a claw or the King Crab's pile, a crab's shell, a jelly's reach
     if (sim.bayouPlan) v -= 1500 * sim.bayouPlan(e); // v3.7: gator jaws, a turtle's clamp, a mosquito lift
+    if (sim.pips && sim.pips.length) v -= 500 * sim.pipThreat(e); // 0.8.17 pip
     // predators (v3): an egg the eagle can reach while it is locked on
     const E = sim.eagle;
     if (E && E.reach && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tid === e.id) v -= 700;

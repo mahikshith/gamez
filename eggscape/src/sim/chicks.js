@@ -189,6 +189,7 @@ export const chickMethods = {
     for (const C of this.salsNear?.(p.x, p.y, R + 0.2) || []) { this.hitSalamander?.(C, 'flash', { x: p.x, y: p.y }); this.chickGain += 2; } // v3.2: stuns the salamander
     this.chickGain += 2 * (this.seaHit?.('flash', { x: p.x, y: p.y, r: R }) || 0); // v3.3: the octopus lets go, fish scatter
     this.chickGain += 2 * (this.thiefHit?.('flash', { x: p.x, y: p.y, r: R }) || 0); // v3.6: rats run from the light, the weasel is dazed
+    this.chickGain += 2 * (this.pipHit?.('flash', { x: p.x, y: p.y, r: R }) || 0); // 0.8.17 pip
     const E = this.eagle;
     if (E && E.phase !== 'away' && E.phase !== 'up' && (Math.hypot(E.x - p.x, E.y - p.y) < R + 1.6 || E.tid === egg.id)) {
       if (this.hitEagle) this.hitEagle('flash', { x: p.x, y: p.y });
@@ -235,6 +236,7 @@ export const chickMethods = {
       }
     }
     this.chickGain += 2 * (this.seaHit?.('dash', { x: p.x, y: p.y, r: CHICK_R }) || 0); // v3.3: bonks the octopus loose
+    this.chickGain += 2 * (this.pipHit?.('dash', { x: p.x, y: p.y, r: CHICK_R }) || 0); // 0.8.17 pip
     for (const C of this.salsNear?.(p.x, p.y, CHICK_R + 0.3) || []) { // v3.2: bonks the salamander
       if (C.ph === 'daze') continue;
       this.hitSalamander?.(C, 'dash', { x: p.x, y: p.y });
