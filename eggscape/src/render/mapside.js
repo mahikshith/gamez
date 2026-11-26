@@ -202,7 +202,7 @@ export function drawSideFork(ctx, L, q, sy, state, o = {}) {
   };
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const nl = Math.round((P.length - 1) * clamp(lit, 0, 1));
-  if (locked || nl < P.length - 1) { ctx.save(); ctx.globalAlpha *= 0.42; strokeAll(nl, P.length - 1); ctx.restore(); } // faded: shut (or not lit yet)
+  if (locked || nl < P.length - 1) { ctx.save(); ctx.globalAlpha *= 0.6; strokeAll(nl, P.length - 1); ctx.restore(); } // faded: shut (or not lit yet)
   if (!locked && nl > 0) {
     strokeAll(0, nl);
     if (state === 'won') { line(0, nl); ctx.strokeStyle = '#f6c454'; ctx.lineWidth = fw * 0.5; ctx.stroke(); ctx.strokeStyle = 'rgba(255,244,190,0.55)'; ctx.lineWidth = fw * 0.15; ctx.stroke(); }
