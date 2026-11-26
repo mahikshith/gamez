@@ -107,7 +107,13 @@ const ART = {
   beetle(ctx, x, y, d, t) { drawCwIntro(ctx, 'beetle', x - d * 0.52, y - d * 0.4, d * 0.8, d * 0.68, t); },
   jack(ctx, x, y, d, t) { drawCwIntro(ctx, 'jack', x - d / 2, y - d * 0.72, d, d * 1.1, t); },
   'boss:kingcrab'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawKingEmblem(ctx, d * 0.38, t); ctx.restore(); },
-  'boss:raccoon'(ctx, x, y, d, t) { const c = (t % 3.2) / 3.2; drawRaccoon(ctx, x - d * 0.06, y + d * 0.44, d * 0.72, t, raccoonPose('peek', t, Math.min(1, c * 1.6) * (c < 0.9 ? 1 : (1 - c) * 10)), { egg: false }); }, // 0.8.17 bandit: licking his lips
+  'boss:raccoon'(ctx, x, y, d, t) { // 0.8.17 bandit; 0.8.18: on a ring's rim, cranking it hand over hand
+    const s = d * 0.6, u = s / 100, fy = y + d * 0.3, R = 235 * u, cy = fy + R + 4 * u;
+    ctx.save(); ctx.lineCap = 'butt';
+    for (const [lw, col] of [[20 * u, '#3a2412'], [15 * u, '#a8713c'], [5 * u, '#c99556']]) { ctx.lineWidth = lw; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(x, cy, R + 4 * u, -Math.PI / 2 - 0.3, -Math.PI / 2 + 0.3); ctx.stroke(); }
+    ctx.restore();
+    drawRaccoon(ctx, x - d * 0.08, fy, s, t, raccoonPose('crank', t, 0, { R: 235 }), { egg: false });
+  },
   bandit(ctx, x, y, d, t) { ART['boss:raccoon'](ctx, x, y, d, t); }, // 0.8.17 bandit: the practice tile
   'boss:owl'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y - d * 0.06); drawOwlEmblem(ctx, d * 0.3, t); ctx.restore(); },
   // the boss-bar emblems (render/boss.js drawBossEmblem; that function is not exported, so the two shapes are redrawn here)

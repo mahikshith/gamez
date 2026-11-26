@@ -98,8 +98,8 @@ export const VILLAIN_INFO = {
   },
   'boss:raccoon': { // 0.8.17 bandit
     group: 'boss', name: 'Bandit the Raccoon',
-    does: 'Reaches up through an outer-ring gap and bags the egg there.',
-    beat: 'Turn that ring while his paw is in: three pinches bag him.',
+    does: 'Sits on a ring and cranks eggs up to him.',
+    beat: 'Turn his ring hard against him. Three times!',
   },
   'boss:gator': {
     group: 'boss', name: 'Grandpa Gator',

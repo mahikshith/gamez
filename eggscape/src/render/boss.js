@@ -598,10 +598,39 @@ function drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t) {
     bossPip(ctx, ui, sx, by, sw, bh, null);
     if (i < F.hp) bossPip(ctx, ui, sx, by, sw, bh, hot ? (Math.floor(t * 6) % 2 ? '#ffd63c' : '#ffb03c') : ph === 'crouch' ? '#ff6a3d' : '#ff9a3d');
   }
+  if (F.icon) { barIcon(ctx, F.icon, bx + bw / 2, y + h / 2, h * 0.78, t); return; } // 0.8.18 bandit: a picture, no words
   const label = F.label || (F.hp <= 0 || ph === 'defeated' || ph === 'flee' || ph === 'gone' ? 'DEFEATED!'
     : ph === 'trapped' ? 'TRAPPED! HIT IT' : ph === 'crouch' ? 'POUNCE!' : F.eid ? 'STOLE AN EGG!'
       : warn ? (ATTACK_NAME[B.atk.name] || '').toUpperCase() + '!' : 'TRAP IT!');
   ui.text(label, bx + bw / 2, y + h / 2, { size: 12 * u, align: 'center', maxW: bw - 8 * u, color: '#fff', stroke: 'rgba(0,0,0,0.75)', tag: 'hud:bossPhase' });
+}
+
+// 0.8.18 bandit: the bar's hint as a picture. 'ringArrow': a ring with a fat arrow the way to turn it (dir +1 counter-
+// clockwise on screen), lit and nudging while it matters; 'sack': his loot sack, tied (he is beaten)
+function barIcon(ctx, I, cx, cy, d, t) {
+  const r = d * 0.36, lw = Math.max(2, d * 0.12);
+  ctx.save(); ctx.translate(cx, cy); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (I.kind === 'sack') {
+    ctx.fillStyle = '#c99c58'; ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = lw * 0.5;
+    ctx.beginPath(); ctx.ellipse(0, r * 0.25, r * 0.85, r * 0.75, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-r * 0.35, -r * 0.45); ctx.lineTo(-r * 0.55, -r * 0.95); ctx.lineTo(0, -r * 0.7); ctx.lineTo(r * 0.55, -r * 0.95); ctx.lineTo(r * 0.35, -r * 0.45); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore(); return;
+  }
+  const dir = I.dir < 0 ? -1 : 1, hot = I.hot && !I.off, nudge = hot ? 0.18 * Math.max(0, Math.sin(t * 7)) : 0, rot = -dir * nudge; // canvas y-down: counter-clockwise on screen is a negative turn
+  ctx.globalAlpha *= I.off ? 0.45 : 1;
+  ctx.rotate(rot);
+  // the ring: a dark band, as in play
+  ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = lw * 1.6; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = '#b07a42'; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+  // the arrow round its top, pointing the way to turn
+  const col = hot ? '#ffe14a' : '#ffd08a', a0 = -Math.PI * 0.85, a1 = -Math.PI * 0.15, head = dir > 0 ? a0 : a1, tail = dir > 0 ? a1 : a0;
+  ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = lw * 1.9; ctx.beginPath(); ctx.arc(0, 0, r * 1.45, Math.min(a0, a1) + 0.12, Math.max(a0, a1) - 0.12); ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = lw * 1.1; ctx.beginPath(); ctx.arc(0, 0, r * 1.45, Math.min(a0, a1) + 0.12, Math.max(a0, a1) - 0.12); ctx.stroke();
+  const hx = Math.cos(head) * r * 1.45, hy = Math.sin(head) * r * 1.45, tx = dir > 0 ? Math.sin(head) : -Math.sin(head), ty = dir > 0 ? -Math.cos(head) : Math.cos(head), nx = Math.cos(head), ny = Math.sin(head), L = r * 0.7, W = r * 0.5;
+  ctx.beginPath(); ctx.moveTo(hx + tx * L, hy + ty * L); ctx.lineTo(hx + nx * W, hy + ny * W); ctx.lineTo(hx - nx * W, hy - ny * W); ctx.closePath();
+  ctx.fillStyle = col; ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = lw * 0.45; ctx.fill(); ctx.stroke();
+  void tail;
+  ctx.restore();
 }
 
 // ---------- magnet: its look moved to render/magnet.js (2026-11-20 redesign)

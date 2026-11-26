@@ -19,7 +19,7 @@ function hold(sim) { for (const r of sim.rings) if (!r.motor) r.target = r.body.
 function tick(sim, B) {
   sim.step();
   for (const ev of sim.events) if (ev.type === 'break') B.why[ev.why] = (B.why[ev.why] || 0) + 1;
-  for (const ev of sim.events) if (ev.type === 'bandReach') B.paw = 1; else if (ev.type === 'bandGrab') B.steal++; else if (ev.type === 'bandPinch') B.pinch++; // 0.8.17 bandit
+  for (const ev of sim.events) if (ev.type === 'bandCrank') { B.paw = 1; B.ring = ev.ring; B.dir = ev.dir; } else if (ev.type === 'bandGrab') B.steal++; else if (ev.type === 'bandHurt') B.pinch++; // 0.8.17 bandit (0.8.18: he cranks a ring; a hurt)
   sim.events.length = 0;
 }
 function wait(sim, s, B) {
@@ -44,7 +44,7 @@ function react(sim, B) {
     if (e.tapAt == null) e.tapAt = sim.t + 0.8 + R() * 2.5;
     else if (sim.t >= e.tapAt) { sim.tapChick(e.id); e.tapAt = Infinity; B.taps++; }
   }
-  if (B.paw) { B.paw = 0; if (R() < 0.5) B.pending = { at: sim.t + 0.3 + R() * 0.5, ring: sim.rings.length - 1, d: (R() < 0.5 ? -1 : 1) * (20 + R() * 20) * DEG }; } // 0.8.17 bandit: half the time the player turns the outer ring on his paw
+  if (B.paw) { B.paw = 0; if (R() < 0.5) B.pending = { at: sim.t + 0.3 + R() * 1.5, ring: B.ring, d: (R() < 0.5 ? -1 : 1) * (B.dir || 1) * (20 + R() * 20) * DEG }; } // 0.8.17 bandit (0.8.18): half the time the player turns his ring, either way
   if (B.pending && !(sim.thieves && sim.thieves.length) && sim.t >= B.pending.at) { const P = B.pending; B.pending = null; turn(sim, P.ring, P.d, B); }
   if (!sim.thieves || !sim.thieves.length) return;
   if (sim.level.id >= 5 && sim.allyAvailable && sim.allyAvailable('rooster') && sim.eggs.some((e) => e.thf || (e.alive && !e.saved && sim.thiefThreat(e) >= 1))) {

@@ -48,7 +48,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 6, theme: "farm", name: "Midnight Raid", eggs: 5, target: 3, time: 95, spacing: 1.05, material: "wood", boss: "raccoon", bossFight: {kind: "raccoon", delay: 3, phases: [{attacks: []}]}, nest: {w: 2.9}, weather: "fireflies", bonus: {kind: "turns", n: 9}, weasel: {a: 30, delay: 9999}, raccoon: {delay: 3}, tip: "Bandit reaches through the outer ring: turn it while his paw is in. A stone egg is too heavy for him.", orbs: [{type: "hatch_glow", ch: 1, a: 101},{type: "fire_red", ch: 2, a: -26},{type: "fire_green", ch: 3, a: 172}], seed: 839417, world: 1, intro: {title: "Boss: Bandit the Raccoon", line: "His paw comes up through a gap: turn that ring and PINCH it! Three pinches bag him."},
+    id: 6, theme: "farm", name: "Midnight Raid", eggs: 5, target: 3, time: 95, spacing: 1.05, material: "wood", boss: "raccoon", bossFight: {kind: "raccoon", delay: 3, phases: [{attacks: []}]}, nest: {w: 2.9}, weather: "fireflies", bonus: {kind: "turns", n: 9}, weasel: {a: 30, delay: 9999}, raccoon: {delay: 3}, tip: "Bandit turns a ring: turn it back, hard!", orbs: [{type: "hatch_glow", ch: 1, a: 101},{type: "fire_red", ch: 2, a: -26},{type: "fire_green", ch: 3, a: 172}], seed: 839417, world: 1, intro: {title: "Boss: Bandit the Raccoon", line: "Turn his ring against him!"},
     rings: [
       {gaps: [{a: 123, len: 0.9}], pads: [{a: 3, len: 1.56}]},
       {gaps: [{a: -167, x: 2}], thorns: [{a: -6, n: 2}], pads: [{a: 132, len: 1.47},{a: -77, len: 1.49}]},
