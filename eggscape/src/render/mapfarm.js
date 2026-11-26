@@ -16,6 +16,7 @@ import { drawRooster, roosterPose, drawGoose, goosePose } from './allies.js';
 import { freeCanvas } from './cvfree.js';
 import { drawChick } from './characters.js';
 import { drawThief, thiefPose } from './thieves.js';
+import { bossOf } from '../road.js'; // 0.8.17: the boss stop of a world (its chest stands beside it)
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -121,6 +122,12 @@ export function planStops(L, w, LMSw, slots = LMSw.map((_, i) => i)) {
   const sign2 = L.nw > w + 1 ? signBox(L, w + 1) : null;
   const hitsPlaque = (i, x0, x1, y0, y1) => plq.some((q, j) => j !== i && x0 < q.board.x + q.board.w && x1 > q.board.x && y0 < q.y && y1 > q.board.y);
   const hitsRoad = (x0, x1, y0, y1) => { for (let y = y0; y <= y1 + 0.1; y += 4) { const x = L.pathX(y); if (x + L.roadW * 0.5 > x0 && x - L.roadW * 0.5 < x1) return true; } return false; };
+  const hitsLm = (x0, x1, y0, y1) => lms.some((m) => { const r = lmArt(m), k = 10 * u; return x0 < r.x1 - k && x1 > r.x0 + k && y0 < r.y1 - k && y1 > r.y0 + k; });
+  // the boss's chest (main.js drawMap: beside the boss stop, on the outer side unless the screen edge is too near)
+  const bs = L.stops[bossOf(w) - 1], cr = Math.min(L.stopR * 1.14, 34 * u), cR = Math.max(L.stopR * 1.2, 46 * u), cs = bs && (bs.x < A.x + A.w / 2 ? -1 : 1);
+  let chX = bs ? bs.x + cs * (cR + cr * 1.25) : 0;
+  if (bs && (chX - cr < A.x + 4 * u || chX + cr > A.x1 - 4 * u)) chX = bs.x - cs * (cR + cr * 1.25);
+  const hitsChest = (x0, x1, y0, y1) => !!bs && x0 < chX + cr && x1 > chX - cr && y0 < bs.y + cr * 1.4 && y1 > bs.y - cR * 0.15 - cr;
   for (let i = 0; i < n; i++) {
     const S = LMSw[i], st = L.stops[i0 + slots[i]];
     let best = null;
@@ -136,6 +143,7 @@ export function planStops(L, w, LMSw, slots = LMSw.map((_, i) => i)) {
           if (hitsRoad(bx0 - S.gap * d * 0.5, bx1 + S.gap * d * 0.5, y0, fy + 4 * u)) continue;
           if (hitsPlaque(i, bx0, bx1, fy - S.top * d, fy + 6 * d)) continue;
           if (sign2 && bx0 < sign2.x1 && bx1 > sign2.x0 && fy - S.top * d * 0.86 < sign2.y1) continue; // the next world's sign stands just above
+          if (hitsLm(bx0, bx1, fy - S.top * d * 0.86, fy) || hitsChest(bx0, bx1, fy - S.top * d, fy)) continue; // 0.8.17: six stops a band sit closer; keep clear of the landmarks placed below
           best = { x, y: fy, d, sc, side: s, flip: s !== S.pref };
         }
         if (best) break;

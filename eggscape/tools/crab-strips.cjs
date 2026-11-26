@@ -13,7 +13,7 @@ fs.mkdirSync(out, { recursive: true });
   await p.goto('file://' + html); await p.waitForTimeout(900);
   const ev = (fn, a) => p.evaluate(fn, a);
   const start = (attack, every = 30) => ev(([attack, every]) => {
-    const E = __egg, L = E.LEVELS.find((l) => l.id === 40);
+    const E = __egg, L = E.LEVELS.find((l) => l.id === 48);
     E.setSave({ mode: 'medium', calm: true, seen: { kcBub: 1, kcWhirl: 1, kcBar: 1 } });
     E.G.demo = { ...JSON.parse(JSON.stringify(L)), id: 990, jelly: undefined, bossFight: { kind: 'kingcrab', delay: 0.4, phases: [{ attacks: [attack], every }] } };
     E.start(-2, { direct: true }); E.G.paused = true; E.G.toast = null; E.G.toasts.length = 0;

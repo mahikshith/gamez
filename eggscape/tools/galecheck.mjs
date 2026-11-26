@@ -1,7 +1,7 @@
 // L15: during the blizzard's gale, how far do free rings turn and eggs move? node tools/galecheck.mjs
 import { Sim, DT } from '../src/sim/sim.js';
 import { LEVELS } from '../src/data/levels.js';
-const sim = new Sim(LEVELS.find((l) => l.id === 15), { mode: 'medium' });
+const sim = new Sim(LEVELS.find((l) => l.id === 18), { mode: 'medium' });
 let inGale = 0, a0 = null, e0 = null;
 for (let s = 0; s < 40 / DT && sim.state === 'play'; s++) {
   for (const r of sim.rings) if (!r.motor && !(sim.bx.boss.atk && sim.bx.boss.atk.ph === 'act')) r.target = r.body.getAngle();

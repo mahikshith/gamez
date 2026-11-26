@@ -8,7 +8,7 @@ fs.mkdirSync(out, { recursive: true });
   const files = [];
   const one = async (attack, adv, label) => {
     await p.evaluate(([attack]) => {
-      const E = __egg, L = E.LEVELS.find((l) => l.id === 40);
+      const E = __egg, L = E.LEVELS.find((l) => l.id === 48);
       E.setSave({ mode: 'medium', calm: true, seen: {} });
       E.G.demo = { ...JSON.parse(JSON.stringify(L)), id: 990, jelly: undefined, bossFight: { kind: 'kingcrab', delay: 0.4, phases: [{ attacks: [attack], every: 30 }] } };
       E.start(-2, { direct: true }); E.G.paused = true;

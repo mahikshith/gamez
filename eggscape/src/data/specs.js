@@ -400,11 +400,11 @@ export const SPECS = [
     tip: 'The shock ring makes the ring under the egg live: jellyfish and crabs that touch it are stunned.',
     rings: [{ gaps: 1, thorns: 1, gear: true }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2], gear: true }, { gaps: 2, gapX: [2], thorns: 1, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 1, size: [1, 2], out: 1 }, { gaps: 2, thorns: 1, size: [1, 2] }] },
   // 0.8.17: the puffer and the hermit crab in a current
-  { id: 46, world: 8, theme: 'reef', name: 'Riptide Reef', eggs: 3, target: 2, spacing: 1.05, material: 'coral', minMoves: 4, water: true,
+  { id: 46, world: 8, theme: 'reef', name: 'Riptide Reef', eggs: 3, target: 2, spacing: 1.05, material: 'coral', minMoves: 5, water: true,
     weather: 'current', weatherOpts: { strength: 0.5 }, nest: { w: 2.7 }, bonus: { kind: 'time' }, puffer: { ch: 2, a: 60, delay: 4 }, hermit: { ch: 3, a: 150, delay: 6 },
     orbs: [{ type: 'warp', ch: 1 }, { type: 'shock', ch: 3 }],
     tip: 'The current pushes every egg along. Let it carry them to a gap the puffer is not plugging.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 1, size: [2, 3], out: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [1, 2], shut: { period: 5, open: 0.5 } }, { gaps: 2, thorns: 1, size: [2, 3], out: 1, gear: true }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2], gear: true }, { gaps: 1, thorns: 2, size: [1, 2] }] },
   { id: 47, gid: 39, world: 8, theme: 'reef', name: 'Kelp Castle', eggs: 3, target: 2, spacing: 1.05, material: 'coral', minMoves: 5, water: true, eggKinds: [null, 'quail'],
     nest: { w: 2.7 }, bonus: { kind: 'turns' }, hermit: { ch: 3, a: 160, delay: 4 }, puffer: { ch: 4, a: 30, delay: 7 }, jelly: { ch: 1, a: -30, delay: 3 },
     orbs: [{ type: 'frostnova', ch: 2 }, { type: 'warp', ch: 4 }],

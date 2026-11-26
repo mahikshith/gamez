@@ -19,7 +19,7 @@ fs.mkdirSync(out, { recursive: true });
   // attacks: null = the real level; [] = no attacks (he only hunts); ['gale'] = that one, every `every` s
   const start = (attacks, o = {}) => ev(([attacks, o]) => {
     globalThis.__eggDebug = 1;
-    const E = __egg, L = E.LEVELS.find((l) => l.id === 15);
+    const E = __egg, L = E.LEVELS.find((l) => l.id === 18);
     E.setSave({ mode: o.mode || 'medium', calm: false, seen: {} });
     const bf = attacks ? { ...L.bossFight, delay: o.delay ?? 2.2, gecko: { ...L.bossFight.gecko, ...(o.gecko || {}) }, phases: [{ attacks: attacks.length ? attacks : ['gale'], every: attacks.length ? (o.every || 30) : 999 }] } : L.bossFight;
     if (attacks && !attacks.length) bf.delay = 999;
