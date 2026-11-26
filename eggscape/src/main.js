@@ -10758,18 +10758,25 @@ function drawSpin() {
     const lw = A.w - cW - 3 * P.pad, areaH = bot - top;
     // a phone on its side: the hen beside the machine. A tablet on its side has the height for the portrait stack (the
     // hen on the floor under a taller machine), and that makes the machine a good deal bigger: take whichever is bigger
-    const mwA = Math.min(areaH / 0.83, lw / 1.56, 420 * u), mwB = Math.min(areaH / 1.2, lw / 1.1, 460 * u);
+    const mwA = Math.min(areaH / 0.83, (A.w - 3 * P.pad) * 0.54 / 1.091, 460 * u), mwB = Math.min(areaH / 1.2, lw / 1.1, 460 * u);
     if (mwB > mwA) {
       mw = mwB; mh = mw * clamp((areaH - mw * 0.34 - 12 * u) / (mw * 1.05), 0.78, 1.12); hh = clamp(areaH - mh * 1.05 - 12 * u, mw * 0.3, mw * 0.4);
       const gap = Math.max(0, (areaH - mh * 1.05 - hh) / 3);
       mx = A.x + P.pad + (lw - mw * 1.091) / 2; my = top + gap; floorY = my + mh * 1.05 + gap + hh; henX = (hx) => mx + mw * hx;
+      cX = A.x1 - P.pad - cW; cY = top + Math.max(0, (areaH - ctlH) / 2);
     } else {
-      beside = true; mw = mwA; mh = mw * 0.78; hh = mw * 0.32;
-      const gx = A.x + P.pad + (lw - mw * 1.54) / 2;
-      mx = gx + mw * 0.45; my = top + (areaH - mh * 1.04) / 2; floorY = my + mh * 1.02;
-      henX = (hx) => gx + mw * 0.19 + (hx - 0.5) * mw * 0.1;
+      // sweep817 (mykee: "fix landscape orientation: too much empty UI space"): a phone on its side. The machine at the
+      // full height on the right, its lever by the right thumb; on the left the hen's patch of floor (the same floor as
+      // the machine's feet) and over her the meter and the ways to spin, the room left shared as even gaps
+      beside = true; mw = mwA; mh = mw * 0.78;
+      mx = A.x1 - P.pad - mw * 1.091; my = top + (areaH - mh * 1.04) / 2; floorY = my + mh * 1.02;
+      const lx = A.x + P.pad, lW = mx - P.pad - lx;
+      cW = Math.min(360 * u, lW); cX = lx + (lW - cW) / 2;
+      hh = clamp(Math.min(mw * 0.56, (floorY - top - ctlH) * 0.7), mw * 0.3, mw * 0.56);
+      const gap = Math.max(4 * u, (floorY - top - ctlH - hh) / 3);
+      cY = top + gap;
+      henX = (hx) => lx + lW / 2 + (hx - 0.5) * lW * 0.42;
     }
-    cX = A.x1 - P.pad - cW; cY = top + Math.max(0, (areaH - ctlH) / 2);
   } else {
     // the full screen (mykee, 13:34: "use full screen and clear ui layouts"): the machine as wide as the page allows,
     // and what height is left over is shared out as four even gaps, never left as one empty band
