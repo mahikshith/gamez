@@ -44,6 +44,7 @@ LEVEL_KEYS.push('penguin'); // 0.8.17 pip
 LEVEL_KEYS.push('urchin'); // 0.8.17 urchin: Spike the sea urchin (level 46)
 LEVEL_KEYS.push('monkey'); // 0.8.17 coco
 LEVEL_KEYS.push('raccoon'); // 0.8.17 bandit: the raccoon boss (L6)
+LEVEL_KEYS.push('kits'); // 0.8.18 kits: mama raccoon and her kits (sim/kits.js)
 LEVEL_KEYS.push('fish'); // fish schools (0.8.8 put them in by hand; a regenerated level keeps them)
 
 // ---------- layout ----------

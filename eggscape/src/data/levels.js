@@ -87,7 +87,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 10, theme: "jungle", name: "Monkey Business", eggs: 3, target: 2, time: 65, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 14}, monkey: {ch: 2, a: -100, delay: 5}, tip: "Flick the ring Coco hangs from: he lets the egg go.", orbs: [{type: "fire_red", ch: 1, a: 36},{type: "rockskin", ch: 3, a: 61}], seed: 871091, world: 2, intro: {title: "Coco the Monkey", line: "Coco grabs eggs with his tail and throws banana peels. Flick his ring hard: whoa, off he flies!"},
+    id: 10, theme: "jungle", name: "Monkey Business", eggs: 3, target: 2, time: 65, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 14}, monkey: {ch: 2, a: -100, delay: 5}, tip: "Flick the ring Coco hangs from: he lets the egg go.", orbs: [{type: "fire_red", ch: 1, a: 36},{type: "rockskin", ch: 3, a: 61}], kits: {delay: 8}, seed: 871091, world: 2, intro: {title: "Coco the Monkey", line: "Coco grabs eggs with his tail and throws banana peels. Flick his ring hard: whoa, off he flies!"},
     rings: [
       {gaps: [{a: 57}], thorns: [{a: 147, n: 1}]},
       {gaps: [{a: -153, x: 2},{a: -18}], thorns: [{a: -48, n: 1}], pads: [{a: 45, len: 1.32},{a: 107, len: 1.04}]},
@@ -127,7 +127,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 14, theme: "blizzard", name: "Icicle Hollow", eggs: 3, target: 2, time: 105, spacing: 1, material: "stone", nest: {w: 2.8}, snake: {delay: 10, speed: 0.35}, bonus: {kind: "time", s: 60}, icicles: {every: 5, delay: 4, big: 3}, tip: "Ice leaves a slippery patch. The frost orb freezes the ring under your egg.", orbs: [{type: "stone", ch: 1, a: -71},{type: "fire_green", ch: 3, a: -81},{type: "frost", ch: 2, a: -166}], seed: 95034, world: 3, intro: {title: "Falling ice", line: "An icicle grows over an egg and shakes before it drops: turn the ring above to swing it away. Big chunks freeze a ring."},
+    id: 14, theme: "blizzard", name: "Icicle Hollow", eggs: 3, target: 2, time: 105, spacing: 1, material: "stone", nest: {w: 2.8}, snake: {delay: 10, speed: 0.35}, bonus: {kind: "time", s: 60}, icicles: {every: 5, delay: 4, big: 3}, tip: "Ice leaves a slippery patch. The frost orb freezes the ring under your egg.", orbs: [{type: "stone", ch: 1, a: -71},{type: "fire_green", ch: 3, a: -81},{type: "frost", ch: 2, a: -166}], kits: {delay: 9}, seed: 95034, world: 3, intro: {title: "Falling ice", line: "An icicle grows over an egg and shakes before it drops: turn the ring above to swing it away. Big chunks freeze a ring."},
     rings: [
       {gaps: [{a: 46}], thorns: [{a: 107, n: 1}]},
       {mat: "ice", oneway: -1, gear: 2, gaps: [{a: 106, x: 2}], thorns: [{a: 143, n: 2, side: "out", h: 0.26},{a: 67, n: 2, side: "out", h: 0.26}], pads: [{a: -136, len: 1.85},{a: -13, len: 1.56}]},
@@ -179,7 +179,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 19, theme: "crystal", name: "Crystal Caves", eggs: 3, target: 2, time: 160, spacing: 1, material: "stone", nest: {w: 2.8}, bonus: {kind: "orbs"}, icicles: {every: 7, delay: 8, big: 4}, eggKinds: ["quail"], tip: "Only the quail fits a grate. Send it for the flame: the curtain must burn for the others.", portals: [{a: [0,2.65], b: [0,2.65], emit: ["fire_red"], every: 7, pull: 0},{a: [-3.16,-1.82], b: [3.56,-2.99], emit: ["fire_green","bubble"], every: 9}], orbs: [{type: "fire_red", ch: 2, a: 157},{type: "twin", ch: 3, a: 112}], seed: 126707, world: 4, intro: {title: "Crystal Caves", line: "Grates let only the little quail egg through. Portals suck in eggs from every side."},
+    id: 19, theme: "crystal", name: "Crystal Caves", eggs: 3, target: 2, time: 160, spacing: 1, material: "stone", nest: {w: 2.8}, bonus: {kind: "orbs"}, icicles: {every: 7, delay: 8, big: 4}, eggKinds: ["quail"], tip: "Only the quail fits a grate. Send it for the flame: the curtain must burn for the others.", portals: [{a: [0,2.65], b: [0,2.65], emit: ["fire_red"], every: 7, pull: 0},{a: [-3.16,-1.82], b: [3.56,-2.99], emit: ["fire_green","bubble"], every: 9}], orbs: [{type: "fire_red", ch: 2, a: 157},{type: "twin", ch: 3, a: 112}], kits: {delay: 12, n: 2}, seed: 126707, world: 4, intro: {title: "Crystal Caves", line: "Grates let only the little quail egg through. Portals suck in eggs from every side."},
     rings: [
       {gaps: [{a: 66}]},
       {gaps: [{a: 97, x: 2},{a: 56, grate: 1}], thorns: [{a: -8, n: 2},{a: -20, n: 2, side: "out", h: 0.26}], pads: [{a: -144, len: 1.81}]},
@@ -581,7 +581,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 57, theme: "lab", name: "Spiral Spring", eggs: 3, target: 2, time: 75, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 9}, tip: "Spin storm flings the beetle on its back, but your eggs tumble too.", orbs: [{type: "shrink", ch: 1, a: -87},{type: "iron", ch: 2, a: 10},{type: "spin", ch: 3, a: -11}], beetle: {ch: 3, delay: 6, a: -137}, jack: [{ch: 1, a: 164}], seed: 380114, world: 10, intro: {title: "Spring jack", cw: "jack", line: "Roll an egg over the jack and it bounces back up: time it to jump a gap. An iron egg jams it. The spiral ring has no gap: roll down its step."},
+    id: 57, theme: "lab", name: "Spiral Spring", eggs: 3, target: 2, time: 75, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 9}, tip: "Spin storm flings the beetle on its back, but your eggs tumble too.", orbs: [{type: "shrink", ch: 1, a: -87},{type: "iron", ch: 2, a: 10},{type: "spin", ch: 3, a: -11}], beetle: {ch: 3, delay: 6, a: -137}, jack: [{ch: 1, a: 164}], kits: {delay: 7}, seed: 380114, world: 10, intro: {title: "Spring jack", cw: "jack", line: "Roll an egg over the jack and it bounces back up: time it to jump a gap. An iron egg jams it. The spiral ring has no gap: roll down its step."},
     rings: [
       {gaps: [{a: 89}], thorns: [{a: -170, n: 2}]},
       {gaps: [{a: -168, x: 2},{a: -43}], thorns: [{a: -132, n: 1},{a: 61, n: 1}], pads: [{a: 126, len: 1.37}]},
