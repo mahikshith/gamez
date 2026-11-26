@@ -478,7 +478,7 @@ export function createWonder(env) {
   // One column of wide row cards (two columns on a wide screen): a big picture tile on the left, the name and its one
   // line, the stars on the right. Wonder Vaults (bonus) first, then Practice under its own heading in the same row style.
   // The rows grow to fill the page; when they cannot fit at their smallest height the page scrolls (env.glide, as Practice).
-  const TILE = { planet: '#5a6ad8', plan: '#3f9fd0', mama: '#d8862a', twin: '#3fa86a', hatch: '#e0a81c', practice: '#3fae4a' };
+  const TILE = { planet: '#5a6ad8', plan: '#3f9fd0', mama: '#d8862a', twin: '#3fa86a', hatch: '#e0a81c', practice: '#3fae4a', album: '#c0558a' };
   function drawExtras() {
     const z = env.size(), A = ui.A, u = ui.u, t = env.time(), sv = env.save(), SC = env.escroll();
     ui.calm = sv.calm;
@@ -494,12 +494,14 @@ export function createWonder(env) {
     const wide = A.w > A.h * 1.15, cols = wide ? 2 : 1, colGap = 12 * u, headH = 30 * u;
     const P = ui.pageBox(wide ? 860 * u : 460 * u), pad = P.pad, vt = P.bottom + 8 * P.s, vb = A.y1;
     const listW = P.w, rowW = (listW - colGap * (cols - 1)) / cols, lx = P.x;
-    const n = WONDER_LEVELS.length, wvRows = Math.ceil(n / cols), nRows = wvRows + 1;
-    const rowH = clamp((vb - vt - pad - (2 * headH + 14 * u + (wvRows - 1) * 10 * u) - 4 * u) / nRows, 84 * u, 108 * u);
+    // 0.8.17: the combo album (env.album, main.js) sits under Practice in the same row style, its own heading
+    const AL = env.album ? env.album() : null, nSec = AL ? 3 : 2;
+    const n = WONDER_LEVELS.length, wvRows = Math.ceil(n / cols), nRows = wvRows + 1 + (AL ? 1 : 0);
+    const rowH = clamp((vb - vt - pad - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - 4 * u) / nRows, 84 * u, 108 * u);
     // a tall screen with room to spare: the rows stand a little further apart (up to 12 units each), not one hole at the bottom
-    const spare = Math.max(0, vb - vt - pad - 4 * u - (2 * headH + 14 * u + (wvRows - 1) * 10 * u) - nRows * rowH), air = Math.min(12 * u, spare / (wvRows + 1));
+    const spare = Math.max(0, vb - vt - pad - 4 * u - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - nRows * rowH), air = Math.min(12 * u, spare / (wvRows + nSec - 1));
     const gap = 10 * u + air, secGap = 14 * u + air;
-    const fixedH = 2 * headH + secGap + (wvRows - 1) * gap;
+    const fixedH = nSec * headH + (nSec - 1) * secGap + (wvRows - 1) * gap;
     const total = 4 * u + fixedH + nRows * rowH + pad;
     SC.max = Math.max(0, total - (vb - vt));
     env.glide(SC, dt);
@@ -513,11 +515,11 @@ export function createWonder(env) {
       if (chip) { const cx0 = lx + 4 * u + tw + 8 * u; ui.roundRect(cx0, yy + headH / 2 - 10 * u, cw2, 19 * u, 9.5 * u); ctx.fillStyle = '#ffd24a'; ctx.fill(); ui.text(chip, cx0 + cw2 / 2, yy + headH / 2 + 0.5 * u, { size: 11 * u, align: 'center', color: '#5a2a08', tag: tag + ':chip', noRecord: nr }); }
     };
     const row = (L, x, ry) => {
-      const prac = !!L.practice, s = prac ? 0 : starsOf(L.key), key = prac ? 'practice' : L.key, face = ui.faceOf(TILE[key] || '#8a5ad8');
-      const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
+      const prac = !!L.practice || !!L.album, s = prac ? 0 : starsOf(L.key), key = L.album ? 'album' : prac ? 'practice' : L.key, face = ui.faceOf(TILE[key] || '#8a5ad8');
+      const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = L.album ? 'xs:album' : prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
       const b = ui.button(id, '', x, ry, rowW, rowH, { face, keepFace: true, round: 18 * u });
       const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, 88 * u, rowW * 0.26), tx = x + 8 * u + (fh - ts) / 2 - 3 * u;
-      drawExtraIcon(ctx, key, tx + ts / 2, fy + fh / 2, ts, t, { calm: sv.calm });
+      if (L.album) env.albumIcon(ctx, tx + ts / 2, fy + fh / 2, ts, t); else drawExtraIcon(ctx, key, tx + ts / 2, fy + fh / 2, ts, t, { calm: sv.calm });
       // the right edge: three stars on a dark pill, or a round chevron for Practice
       const sr = Math.min(8.5 * u, rowW / 40), pillW = sr * 8.6, rightW = prac ? 30 * u : pillW;
       const rx = x + rowW - 14 * u - rightW / 2, cy = fy + fh / 2;
@@ -533,6 +535,7 @@ export function createWonder(env) {
       const blockH = 22 * u + 4 * u + lines.length * 15 * u, top = fy + (fh - blockH) / 2;
       ui.text(L.name, ttx, top + 11 * u, { size: 19 * u, color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname:' + key, maxW: tw });
       lines.forEach((l, i) => ui.text(l, ttx, top + 26 * u + 7.5 * u + i * 15 * u, { size: ps, color: 'rgba(255,255,255,0.9)', group: grp, tag: 'wvpitch:' + key + i, maxW: tw }));
+      if (L.album && L.fresh && !part) env.albumMark(x + rowW - 6 * u, ry + 6 * u, rowH); // a new find: the mark leads into the album, to its tile
       if (part) { // a row cut by the list edge records nothing for the overlap check and taps only inside the list
         ui.rects.length = n0;
         const bt = ui.buttons[nb]; if (bt) { const t2 = Math.max(bt.y, vt), b2 = Math.min(bt.y + bt.h, vb); if (b2 - t2 < 8 * u) ui.buttons.length = nb; else { bt.y = t2; bt.h = b2 - t2; } }
@@ -545,6 +548,12 @@ export function createWonder(env) {
     head('Practice', y, 'extras:practice');
     y += headH;
     row({ practice: true, key: '_practice', name: 'Practice', pitch: 'Try any villain or power' }, lx, y);
+    if (AL) {
+      y += rowH + secGap;
+      head('Collection', y, 'extras:album', `${AL.n} / ${AL.total}`);
+      y += headH;
+      row({ album: true, key: '_album', name: 'Combo album', pitch: AL.pitch, fresh: AL.fresh }, lx, y);
+    }
     ctx.restore();
     // the header band over the list: back, title, stars
     ctx.fillStyle = '#1c1440'; ctx.globalAlpha = 0.94; ctx.fillRect(0, 0, z.W, vt - 4 * u); ctx.globalAlpha = 1;
