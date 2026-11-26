@@ -1,12 +1,14 @@
-// The thorn creeper (sim/creeper.js, 0.8.18): node tools/test-creeper.mjs   (exits 1 on a failure)
+// The creeper family (sim/creeper.js, 0.8.18): node tools/test-creeper.mjs   (exits 1 on a failure)
 // No browser. A small dry vault (four rings, gaps only where the test wants them) with a creeper on ring 1's inner face
 // (the floor of channel 1) over the bottom, and one egg put where the test wants it. Checks the crawl (eased, back and
 // forth), the coil (the safe window: at least 0.8 s on Medium, harmless, an egg rolls over it), a hit (breaks on Medium,
 // one crack on Easy), every counter (a flaming egg burns it to a stump that regrows, a stone egg snaps it, the glow
 // chick's flash, the laser, Thorn Snips), that it rides with its ring, the teaching hook (creeperNear), determinism (two
-// runs, and a snapshot taken mid-crawl, match exactly), and the level data (each level that has one: proved by gen.mjs).
+// runs, and a snapshot taken mid-crawl, match exactly), each form's own rule (frost cracks, lava heats a resting egg and
+// water crusts it, the anemone flinches shut, spark / saw / shard shrug off fire), and the level data (one form per world,
+// the first a gentle thorn in world 2, none in the volcano or on L23; each level proved by gen.mjs).
 import { Sim, DT } from '../src/sim/sim.js';
-import { CREEP } from '../src/sim/creeper.js';
+import { CREEP, FORMS, CREEP_KIND } from '../src/sim/creeper.js';
 import { LEVELS } from '../src/data/levels.js';
 import { villainKinds, VILLAIN_INFO } from '../src/data/villain-info.js';
 let bad = 0;
@@ -172,22 +174,92 @@ const hold = (sim) => { const e = sim.eggs[0]; if (e.body) { put(sim, e, 2, 90);
   ok(JSON.stringify(a.creepState()) === JSON.stringify(b.creepState()), 'a snapshot taken mid-crawl plays on the same');
 }
 
+// ---------------------------------------------------------------- the family: each form's own rule
+{ // frost: a hit cracks once and shoves (never the outright break); on Easy it only shoves
+  const sim = fresh('medium', {}, {}, { form: 'frost' });
+  put(sim, sim.eggs[0], 1, -90);
+  const log = run(sim, 5);
+  ok(!!at(log, 'creepHit') && sim.eggs[0].alive && sim.eggs[0].cracks === 1, `frost, Medium: a hit cracks the egg once and shoves it (cracks ${sim.eggs[0].cracks}, ${sim.eggs[0].alive ? 'alive' : 'broken'})`);
+  const se = fresh('easy', {}, {}, { form: 'frost' }); put(se, se.eggs[0], 1, -90); const le = run(se, 8);
+  ok(!!at(le, 'creepHit') && se.eggs[0].cracks === 0 && se.eggs[0].alive, 'frost, Easy: only a shove');
+  const sf = fresh('medium', {}, {}, { form: 'frost' }); const e = sf.eggs[0]; put(sf, e, 1, -90); e.fire = 6; e.fireKind = 'fire_red';
+  const lf = run(sf, 4); ok(!!at(lf, 'creepBurn') && C0(sf).ph === 'stump', 'frost: a flaming egg melts it to a puddle (then it refreezes, like the stump)');
+}
+const lava = (mode = 'medium', o = {}, opts = {}) => fresh(mode, opts, {}, { form: 'lava', a0: -100, a1: -80, v: 0.2, rest: 6, w: 0.6, delay: 6, ...o });
+// an egg resting on the flow: put on the floor at the bottom, its start grace run out, the flow's middle under it; pin(sim)
+// keeps it resting there (still) step by step
+const onLava = (sim) => { const e = sim.eggs[0]; put(sim, e, 1, -90); run(sim, 1.3); put(sim, e, 1, -90); C0(sim).u = deg(-90) - sim.rings[1].body.getAngle(); return e; };
+const pin = (sim) => () => put(sim, sim.eggs[0], 1, -90);
+{ // lava: a resting egg heats and cracks after heatT; rolling across does not; water crusts it; fire and stone eggs do not heat
+  const sim = lava(), C = C0(sim), e = onLava(sim);
+  ok(sim.creepOnPool(C, e), 'lava: the egg rests on the flow (it lies over the bottom)');
+  const heats = []; const log = run(sim, 1.3, (q) => { pin(sim)(); heats.push(C.heat[e.id] || 0); });
+  ok(!at(log, 'crack') && Math.max(...heats) > 1.0, `an egg resting on it heats (${Math.max(...heats).toFixed(2)} s) and holds for now`);
+  const l2 = run(sim, 0.6, pin(sim));
+  ok(!!at(l2, 'crack') && e.alive && e.cracks === 1, `after about ${CREEP.heatT.medium} s it cracks (cracks ${e.cracks})`);
+  const s2 = lava(), C2 = C0(s2), e2 = onLava(s2), p0 = e2.body.getPosition().clone ? e2.body.getPosition().clone() : { ...e2.body.getPosition() };
+  const l3 = run(s2, 3, () => { e2.body.setTransform(p0, 0); e2.body.setLinearVelocity({ x: 1.2, y: 0 }); });
+  ok(!at(l3, 'crack') && (C2.heat[e2.id] || 0) < 0.6, `an egg rolling across (fast) hardly heats (${(C2.heat[e2.id] || 0).toFixed(2)} s after 3 s)`);
+  const s3 = lava(), C3 = C0(s3), e3 = onLava(s3); e3.water = 5;
+  const l4 = run(s3, 0.5, pin(s3));
+  ok(!!at(l4, 'creepCrust') && ['burn', 'stump'].includes(C3.ph) && !at(l4, 'crack'), `a water egg cools it to crust (${C3.ph})`);
+  e3.water = 0; const l4b = run(s3, 3, pin(s3)); ok(!at(l4b, 'crack'), 'crusted, it is safe to rest on');
+  const s4 = lava(), C4 = C0(s4), e4 = onLava(s4); e4.fire = 8; e4.fireKind = 'fire_red';
+  const l5 = run(s4, 2.5, pin(s4)); ok(!at(l5, 'crack') && !at(l5, 'creepBurn') && C4.ph !== 'burn', 'a flaming egg neither heats nor hurts it (fire means nothing to lava)');
+  const s5 = lava(); hold(s5); const H5 = s5.creepHead(C0(s5)); ok(s5.creepBurnAt(H5.x, H5.y, 1) === 0, 'the glow flash does nothing to lava');
+  const s6 = lava('medium', {}, { snips: true }); hold(s6); run(s6, 2); ok(C0(s6).ph === 'gone', 'Thorn Snips crust it over for good');
+  const s7 = lava('easy'), e7 = onLava(s7); run(s7, 1.9, pin(s7)); ok(e7.cracks === 0, `Easy: a longer wait before it cracks (${CREEP.heatT.easy} s)`);
+  const sa = lava(), ea = onLava(sa); run(sa, 0.7, pin(sa));
+  const sb = Sim.fromState(level({}, { form: 'lava', a0: -100, a1: -80, v: 0.2, rest: 6, w: 0.6, delay: 6 }), sa.fullState()); run(sa, 1.5); run(sb, 1.5);
+  ok(JSON.stringify(sa.creepState()) === JSON.stringify(sb.creepState()) && sa.eggs[0].cracks === sb.eggs[0].cracks, 'lava: a snapshot (with the heat) plays on the same');
+  const st = lava(), et = onLava(st); run(st, 0.8, pin(st)); ok(st.creepThreat(et) > 0.6, `the planner sees a hot egg in danger (${st.creepThreat(et).toFixed(2)})`);
+}
+{ // anemone: fire or a stone make it flinch shut (harmless), then it opens and drifts on from where it was; open, it reaches further
+  const sim = fresh('medium', {}, {}, { form: 'anemone' }); const C = C0(sim);
+  run(sim, 1.2); const u0 = C.u, ph0 = C.ph;
+  ok(sim.creepReach(C) > FORMS.anemone.hr + FORMS.anemone.reach + 0.05 || ph0 !== 'crawl', 'open and drifting, its tentacles reach further');
+  ok(sim.creepBurnAt(sim.creepHead(C).x, sim.creepHead(C).y, 1) === 1 && C.ph === 'shut', `fire makes it flinch shut (${C.ph})`);
+  const e = sim.eggs[0]; const a = sim.rings[1].body.getAngle() + C.u; put(sim, e, 1, (a * 180) / Math.PI);
+  const log = run(sim, 1.5);
+  ok(!at(log, 'creepHit') && Math.abs(C.u - u0) < 1e-6, 'shut, it is harmless and stays where it was');
+  hold(sim); run(sim, 1.5); ok(C.ph === 'crawl' || C.ph === 'coil', `then it opens and drifts on (${C.ph})`);
+  const s2 = fresh('medium', {}, {}, { form: 'anemone' }); const e2 = s2.eggs[0]; put(s2, e2, 1, -90); s2.setStone(e2, true);
+  const l2 = run(s2, 4); ok(!!at(l2, 'creepShut') && !at(l2, 'creepSnap'), 'a stone egg makes it flinch (it is soft: nothing snaps)');
+}
+for (const f of ['spark', 'saw', 'shard']) { // fire means nothing to them; a stone knocks them off; their hit breaks like the thorn's
+  const sim = fresh('medium', {}, {}, { form: f }); hold(sim);
+  const H = sim.creepHead(C0(sim));
+  ok(sim.creepBurnAt(H.x, H.y, 1) === 0 && C0(sim).ph !== 'burn', `${f}: the glow flash does nothing`);
+  const s2 = fresh('medium', {}, {}, { form: f }); const e = s2.eggs[0]; put(s2, e, 1, -90); s2.setStone(e, true);
+  ok(!!at(run(s2, 4), 'creepSnap'), `${f}: a stone egg knocks it off`);
+  const s3 = fresh('medium', {}, {}, { form: f }); put(s3, s3.eggs[0], 1, -90);
+  ok(!!at(run(s3, 5), 'break'), `${f}: its hit breaks an egg on Medium`);
+}
+{ // the teaching hook carries the form and the way to turn its ring
+  const sim = fresh('medium', {}, {}, { form: 'spark' }); put(sim, sim.eggs[0], 1, -75);
+  let ev = null; for (let i = 0; i < 4 / DT && !ev; i++) { for (const q of sim.rings) q.target = q.body.getAngle(); sim.step(); ev = sim.events.find((x) => x.type === 'creeperNear') || null; sim.events.length = 0; }
+  ok(!!ev && ev.form === 'spark' && ev.ring === 1 && (ev.away === 1 || ev.away === -1), `creeperNear carries form, ring and the way away (${ev && ev.form} ${ev && ev.away})`);
+}
+
 // ---------------------------------------------------------------- the levels
 {
-  const with_ = LEVELS.filter((L) => L.rings.some((r) => r.creep));
-  ok(with_.length >= 5 && with_.length <= 7, `the creeper is in ${with_.length} levels (${with_.map((L) => 'L' + L.id).join(' ')})`);
-  ok(with_.every((L) => L.id > 5 && L.id !== 23), 'never in levels 1-5 or level 23');
+  const with_ = LEVELS.filter((L) => L.rings.some((r) => r.creep)), form = (L) => L.rings.find((r) => r.creep).creep.form || 'thorn';
+  ok(with_.length >= 5, `the family is in ${with_.length} levels (${with_.map((L) => 'L' + L.id + ':' + form(L)).join(' ')})`);
+  ok(with_.every((L) => L.id > 5 && L.id !== 23 && L.world !== 5), 'never in levels 1-5, the volcano (world 5, for now) or level 23');
   const first = with_[0];
-  ok(first && first.world === 2, `its first level is in world 2 (L${first && first.id})`);
+  ok(first && first.world === 2 && form(first) === 'thorn', `its first level is in world 2, a thorn creeper (L${first && first.id})`);
   if (first) {
     const c = first.rings.find((r) => r.creep).creep;
-    ok(c.v <= 0.45 && c.a1 - c.a0 <= 50 && c.rest >= 1.2, `its first appearance is gentle (v ${c.v} m/s, stretch ${c.a1 - c.a0} deg, coil ${c.rest} s)`);
+    ok(c.v <= 0.35 && c.a1 - c.a0 <= 40 && c.rest >= 1.4, `its first appearance is a gentle baby (v ${c.v} m/s, stretch ${c.a1 - c.a0} deg, coil ${c.rest} s)`);
   }
+  const WF = { 2: ['thorn'], 3: ['frost'], 4: ['shard'], 6: ['spark'], 7: ['saw', 'thorn'], 8: ['anemone'], 9: ['vine'], 10: ['saw'] };
+  for (const w of [2, 3, 4, 6, 7, 8, 9, 10]) { const L = with_.filter((q) => q.world === w); ok(L.length >= 1 && L.every((q) => WF[w].includes(form(q))), `world ${w}: ${L.map((q) => 'L' + q.id + ' ' + form(q)).join(', ') || 'none'}`); }
   for (const L of with_) {
-    ok(villainKinds(L).includes('creeper'), `L${L.id}: the level card lists the creeper`);
-    for (const r of L.rings) if (r.creep) ok(r.creep.rest >= 0.8, `L${L.id}: coil ${r.creep.rest} s (at least 0.8 s on Medium)`);
+    const k = CREEP_KIND[form(L)];
+    ok(villainKinds(L).includes(k) && !!VILLAIN_INFO[k], `L${L.id}: the level card lists the ${k}`);
+    for (const r of L.rings) if (r.creep) ok(r.creep.rest >= 0.8, `L${L.id}: rest ${r.creep.rest} s (at least 0.8 s on Medium)`);
   }
-  ok(!!VILLAIN_INFO.creeper, 'the creeper is in the villain table');
+  for (const k of Object.values(CREEP_KIND)) ok(!!VILLAIN_INFO[k], `${k} is in the villain table`);
 }
 
 console.log(bad ? `\n${bad} FAILED` : '\nall ok');

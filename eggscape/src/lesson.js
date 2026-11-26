@@ -60,6 +60,7 @@ function where(q) {
   if (k === 'pip') { const P = find(sim.pips, ev.id); if (P && sim.pipBody) return sim.pipBody(P); }
   if (k === 'coco') { const C = find(sim.cocos, ev.id); if (C && sim.cocoBody) return sim.cocoBody(C); }
   if (k === 'urchin') { const U = find(sim.urchins, ev.id); if (U) return { x: U.x, y: U.y }; }
+  if (k.startsWith('creep_')) { const C = find(sim.creeps, ev.id); if (C && sim.creepHead) return sim.creepHead(C); } // 0.8.18 creeper: follow it
   if (k.startsWith('bandit')) { const b = banditLesson(sim); if (b) return b; }
   return Number.isFinite(ev.x) && Number.isFinite(ev.y) ? { x: ev.x, y: ev.y } : null;
 }
@@ -108,7 +109,7 @@ function path(spec, q, p, ri) {
     }
   } else { // spin
     const b = q.key.startsWith('bandit') ? banditLesson(sim) : null;
-    dir = b && b.dir ? b.dir : 0;
+    dir = b && b.dir ? b.dir : q.key.startsWith('creep_') && q.ev.away ? q.ev.away : 0; // 0.8.18 creeper: the way that carries it off the egg
     a1 = a0 + (dir || 1) * sw;
   }
   return { a0, a1, r: r.r, dir };

@@ -129,7 +129,9 @@ export const THREAT = {
 };
 SHOW.penguin = P('turn', 'Turn a wall into his slide: BONK!', { fx: 'bonk' }); THREAT.penguin = 'Shoves eggs'; // 0.8.17 pip
 SHOW.monkey = P('turn', 'Flick his ring hard: whoa, he lets go!', { fx: 'bonk' }); THREAT.monkey = 'Grabs eggs'; // 0.8.17 coco
-SHOW.creeper = P('turn', 'Pass when it curls up'); THREAT.creeper = 'Crawls, cracks'; HARM.creeper = ['creep', 'CRACK!']; // 0.8.18 creeper (its rig acts both beats: render/creeper.js)
+SHOW.creeper = P('turn', 'Pass when it curls up'); THREAT.creeper = 'Crawls, cracks'; HARM.creeper = ['creep', 'CRACK!'];
+// the family's other forms: the same two beats in their own look (render/creeper.js creeperActorFor)
+for (const [kind, show, threat] of [['swampvine', 'Pass when it curls up', 'Crawls, cracks'], ['frostcrawler', 'Pass when it rests', 'Crawls, cracks'], ['lavaflow', 'Roll across, never stop', 'Hot: do not rest'], ['anemone', 'Pass when it shuts', 'Drifts, stings'], ['spark', 'Pass when it rests', 'Races, zaps'], ['sawtooth', 'Pass when it stops', 'Rolls, cracks'], ['shard', 'Pass when it rests', 'Crawls, cracks']]) { SHOW[kind] = P('turn', show); THREAT[kind] = threat; HARM[kind] = ['creep', 'CRACK!']; } // 0.8.18 creeper (its rig acts both beats: render/creeper.js)
 export const threatWords = (kind) => THREAT[kind] || THREAT[String(kind).replace(/^boss:/, '')] || 'Hunts eggs';
 // the first-five ladder (2026-11-20, owner: every level from 2 on hands over a new toy, shown on its level card with the
 // game's own art): the red flame, the twin orb, the thorn curtain, the portal, the glow chick. move 'toy', plan.toy names it.

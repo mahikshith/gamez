@@ -326,6 +326,8 @@ function layCreep(spec, i, r, o, gaps, thorns, bars) {
   out.a1 = out.a0 + Math.round(best.a1 - best.a0);
   if (side === 'out') out.side = 'out';
   if (o.delay != null) out.delay = o.delay;
+  if (o.form && o.form !== 'thorn') out.form = o.form; // the world's form of the creeper family (sim/creeper.js FORMS)
+  if (o.w) out.w = o.w; // the lava flow's own length (m)
   return out;
 }
 

@@ -223,6 +223,13 @@ const ART = {
     ctx.fillStyle = '#fff4dc'; ctx.beginPath(); ctx.ellipse(x, y0 - d * 0.16, d * 0.12, d * 0.15, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = INK; ctx.stroke();
   },
   creeper(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t); }, // 0.8.18 creeper: its own head on a strip of rim
+  swampvine(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'vine'); }, // 0.8.18 the creeper family: each form on its own bed
+  frostcrawler(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'frost'); },
+  lavaflow(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'lava'); },
+  anemone(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'anemone'); },
+  spark(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'spark'); },
+  sawtooth(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'saw'); },
+  shard(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'shard'); },
   curse(ctx, x, y, d, t) { drawOrb(ctx, 'curse', x, y, d * 0.3, t, true); },
   thornorb(ctx, x, y, d, t) { drawOrb(ctx, 'thorn', x, y, d * 0.3, t, true); },
 };
