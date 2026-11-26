@@ -301,6 +301,7 @@ function layCreep(spec, i, r, o, gaps, thorns, bars) {
     if (side === 'out') out.side = 'out';
     if (o.delay != null) out.delay = o.delay;
     if (o.form && o.form !== 'thorn') out.form = o.form;
+    if (o.w) out.w = o.w;
     if (o.baby) out.baby = 1;
     return out;
   }
