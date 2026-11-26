@@ -122,6 +122,7 @@ export const THREAT = {
   'boss:eagle': 'Dives for eggs', 'boss:ratking': 'Pounces', 'boss:kingcrab': 'Claws eggs', 'boss:gator': 'Shakes rings', 'boss:owl': 'Swoops at eggs',
 };
 SHOW.penguin = P('turn', 'Turn a wall into his slide: BONK!', { fx: 'bonk' }); THREAT.penguin = 'Shoves eggs'; // 0.8.17 pip
+SHOW.monkey = P('turn', 'Flick his ring hard: whoa, he lets go!', { fx: 'bonk' }); THREAT.monkey = 'Grabs eggs'; // 0.8.17 coco
 export const threatWords = (kind) => THREAT[kind] || THREAT[String(kind).replace(/^boss:/, '')] || 'Hunts eggs';
 // the first-five ladder (2026-11-20, owner: every level from 2 on hands over a new toy, shown on its level card with the
 // game's own art): the red flame, the twin orb, the thorn curtain, the portal, the glow chick. move 'toy', plan.toy names it.

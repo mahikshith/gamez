@@ -24,6 +24,7 @@ const GAP_BOARD = new Set(['a', 'len', 'x', 'shut', 'curtain', 'grate']);
 // villain / hazard keys -> table kind
 const CREATURE = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
 CREATURE.push('penguin'); // 0.8.17 pip
+CREATURE.push('monkey'); // 0.8.17 coco
 const HAZARD_KEY = { icicles: 'icicles', lava: 'lava', gusts: 'gusts', wind: 'gusts' };
 const WEATHER = { thunder: 'lightning', current: 'current', embers: 'embers', quake: 'quake', rain: 'rain' };
 const ORB = { curse: 'curse', thorn: 'thornorb' };
@@ -71,7 +72,7 @@ function scan(L, where, INFO) {
   const { DAILY } = await imp('daily.js');
   const { WONDER_LEVELS } = await imp('wonder-levels.js');
   const demos = [];
-  for (const f of ['chick-demos', 'sea-demos', 'power-demos', 'thief-demo', 'ally-demos', 'reef-demos', 'bayou-demos', 'lab-demos', 'frog-demo', 'pip-demo']) for (const v of Object.values(await imp(f + '.js'))) demos.push(...listOf(v));
+  for (const f of ['chick-demos', 'sea-demos', 'power-demos', 'thief-demo', 'ally-demos', 'reef-demos', 'bayou-demos', 'lab-demos', 'frog-demo', 'pip-demo', 'coco-demo']) for (const v of Object.values(await imp(f + '.js'))) demos.push(...listOf(v));
   // the table itself: every entry has its lines, none over ~70 characters (80 is a hard stop)
   for (const [k, I] of Object.entries(INFO)) {
     for (const f of ['name', 'does', 'beat', 'group']) if (!I[f]) bad(`table ${k}: no ${f}`);
