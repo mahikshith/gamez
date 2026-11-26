@@ -61,6 +61,7 @@ export const LESSONS = {
   thiefRat: L('open'), thiefWeasel: L('away'), thiefKing: L('spin'), thiefGap: L('none'), thiefTrapped: L('look', 'own', 'Now hit it'),
   thiefStash: L('look', 'own', 'Bonk it back'), ratSquabble: L('look', 'own', 'Move eggs now'),
   // Bandit the raccoon (render/banditplay.js via main.js banditLesson: his ring, against his crank)
+  kits: L('spin', 'kits'), // 0.8.18 mama raccoon's kits: turn the ring they carry the egg on (they tumble)
   bandit: L('spin', 'bandit'), banditSack: L('spin', 'bandit'), banditCatch: L('look', 'own', 'Caught, not broken'), banditWhistle: L('look', 'own', 'Weasel coming'),
   // reef (render/reef.js)
   hermit: L('open'), puffer: L('look', 'own', 'Thorn pops it'), jelly: L('look', 'own', 'Stings crack eggs'), kcStuck: L('look', 'own', 'Hit the claw'),

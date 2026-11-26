@@ -222,7 +222,7 @@ export function drawKit(ctx, x, y, s, t, p, o = {}) {
       // whiskers
       c.beginPath(); for (const [a, b, e, f] of [[20, 8, 29, 6], [20, 10, 28, 12]]) { c.moveTo(a, b); c.lineTo(e, f); } c.lineWidth = lw * 0.45; c.strokeStyle = C.line; c.stroke();
       if (p.sweat > 0.05 && !o.calm) for (let i = 0; i < 2; i++) { const f = fract(t * 1.8 + i * 0.5), a = -2.3 + i * 0.7, r0 = 22 + f * 10; c.save(); c.globalAlpha *= 1 - f * f; c.translate(Math.cos(a) * r0, Math.sin(a) * r0); c.rotate(a + Math.PI / 2); c.beginPath(); c.moveTo(0, -3.4); c.quadraticCurveTo(2.4, 0, 0, 2); c.quadraticCurveTo(-2.4, 0, 0, -3.4); c.closePath(); inkF(c, C.tear, C.line, lw * 0.5); c.restore(); }
-      if (o.costume) costumeHead(c, o.costume, { top: -19, cx: -1, w: 20, ear: [-10, -14], s: 0.74 }, lw, t + w, { calm: o.calm, low: o.low });
+      if (o.costume) costumeHead(c, o.costume, { top: -21, cx: -1, w: 20, ear: [-10, -14], s: 0.74 }, lw, t + w, { calm: o.calm, low: o.low });
       if (p.stars > 0) dizzyStars(c, 0, -26, 17, 5, t, { n: Math.round(p.stars), size: Math.max(4, 3 / u) });
       if (p.z > 0.5 && !o.calm) { const f = fract(t * 0.45 + w * 0.3); c.save(); c.globalAlpha *= Math.sin(f * Math.PI); c.font = `900 ${Math.round(9 + 5 * f)}px sans-serif`; c.textAlign = 'center'; c.lineWidth = lw * 1.6; c.strokeStyle = C.line; c.fillStyle = '#e8f0ff'; const zx = 18 + 10 * f, zy = -24 - 14 * f; c.strokeText('z', zx, zy); c.fillText('z', zx, zy); c.restore(); }
       c.restore();

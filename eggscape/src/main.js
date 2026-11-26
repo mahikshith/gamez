@@ -74,6 +74,7 @@ import { drawReefUnder, drawReefOver, reefEvent, drawSurface, drawBoat, boatSeat
 import { drawUrchins, urchinEvent } from './render/urchinplay.js'; // 0.8.17 urchin: Spike the sea urchin (level 46)
 import { drawDenAlone, drawThiefDens, eggInDen, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
 import { drawBandit, bandHides, banditEvent } from './render/banditplay.js'; // 0.8.17 bandit
+import { drawKits, kitsEvent } from './render/kitsplay.js'; // 0.8.18 kits: mama raccoon and her kits
 import { RIG as THIEF_RIG } from './sim/thieves.js';
 import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
 import { LAB_DEMOS } from './data/lab-demos.js'; // v4 Shape Lab studio levels: the clockwork cast and the owl
@@ -822,6 +823,7 @@ function frameOf(all, maxCh) {
   }
   for (const T of sim.thieves || []) if (T.ph !== 'gone' && T.ph !== 'wait' && T.ph !== 'hide') hds.push(sim.thBody(T)); // v3.6 thieves
   if (sim.band) hds.push(sim.bandHead(sim.band)); // 0.8.17 bandit
+  if (sim.kit && sim.kit.ph !== 'wait' && sim.kit.ph !== 'gone') hds.push(sim.kitHead()); // 0.8.18 kits: mama on her yard
   if (sim.kc && all) { R = Math.max(R, sim.outerR + 0.72); yMin = Math.min(yMin, sim.kc.by - 0.95); yMax = Math.max(yMax, sim.kc.by + 0.95); } // world 8: the King Crab's arms hug the vault
   const BQ = bossPose(sim, false); // bosses (v3.1): keep the boss over the vault in frame
   // the big Blizzard cloud only when framing the whole vault (portrait screens have the height to spare); a zoomed-in
@@ -4790,6 +4792,8 @@ function handleEvents() {
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
         bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.7 Gator Bayou
         thiefEvent(ev, fx, { popup: denPopup, audio, hitStop, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.6 the weasel and the rats
+        if (ev.type === 'kitCarry') lessonAsk('kits', null, ev); // 0.8.18 kits: the first carry is the meeting
+        kitsEvent(ev, fx, { popup, audio }); // 0.8.18 kits
         banditEvent(ev, fx, { popup, audio, hitStop, calm: save.calm, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // 0.8.17 bandit
         reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // world 8 reef
         urchinEvent(ev, fx, { popup, audio, buzz, calm: save.calm }); // 0.8.17 urchin
@@ -6008,6 +6012,7 @@ function render() {
   blastXf(() => drawThievesOver(ctx, sim, t, k), 9.1); // v3.6: the weasel's jaws over a held egg, the trap ring
   SL(['coco'], (c) => drawCocoOver(c, sim, t, k)); // 0.8.17 coco: his tail's curl over the egg he holds, a peel in flight
   if (sim.band) blastXf(() => drawBandit(ctx, sim, t, k, save.calm, 'front'), 2.6); // 0.8.18 bandit: on a ring, in front of it and the eggs (the crank arrow, his body and paws)
+  if (sim.kit) blastXf(() => drawKits(ctx, sim, t, k, save.calm, 'front'), 2.6); // 0.8.18 kits: mama on the yard, the kits on the floors (over the egg they carry)
   SL(['mosq'], (c) => drawBayouOver(c, sim, t, k)); // v3.7: a turtle's beak round its egg, mosquito swarms
   SL(['snake'], (c) => W.drawSnakes(c, sim, t, k)); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);

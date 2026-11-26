@@ -33,18 +33,18 @@ export function costumeHead(ctx, kind, H, lw, t, o = {}) {
   c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
   try {
     if (kind === 'ice') { // a woolly beanie: ribbed brim, two stripes, a pompom that bobs
-      const by = top + 13 * s, bob = o.calm ? 0 : Math.sin(t * 5.2) * 1.6 * s;
-      const dome = () => { c.beginPath(); c.moveTo(cx - w * 0.98, by); c.bezierCurveTo(cx - w * 1.0, top - 12 * s, cx + w * 0.85, top - 14 * s, cx + w * 0.92, by - 1 * s); c.closePath(); };
+      const by = top + 6 * s, bob = o.calm ? 0 : Math.sin(t * 5.2) * 1.6 * s;
+      const dome = () => { c.beginPath(); c.moveTo(cx - w * 0.98, by); c.bezierCurveTo(cx - w * 1.0, top - 19 * s, cx + w * 0.85, top - 21 * s, cx + w * 0.92, by - 1 * s); c.closePath(); };
       dome(); ink(c, '#3a8fd6', lw);
       c.save(); dome(); c.clip();
-      c.fillStyle = '#f4f8ff'; for (const k of [0.32, 0.62]) { const y = by - (by - (top - 12 * s)) * k; c.fillRect(cx - w * 1.2, y - 2.6 * s, w * 2.4, 5.2 * s); }
-      c.fillStyle = 'rgba(255,255,255,0.35)'; c.beginPath(); c.ellipse(cx - w * 0.45, top - 3 * s, w * 0.28, 4 * s, -0.35, 0, TAU); c.fill();
+      c.fillStyle = '#f4f8ff'; for (const k of [0.32, 0.62]) { const y = by - (by - (top - 19 * s)) * k; c.fillRect(cx - w * 1.2, y - 2.6 * s, w * 2.4, 5.2 * s); }
+      c.fillStyle = 'rgba(255,255,255,0.35)'; c.beginPath(); c.ellipse(cx - w * 0.45, top - 10 * s, w * 0.28, 4 * s, -0.35, 0, TAU); c.fill();
       c.restore();
       // the brim: a fat ribbed band
       c.beginPath(); c.moveTo(cx - w * 1.04, by + 5 * s); c.quadraticCurveTo(cx, by - 3 * s, cx + w * 0.98, by + 4 * s); c.lineTo(cx + w * 0.96, by - 4 * s); c.quadraticCurveTo(cx, by - 11 * s, cx - w * 1.02, by - 3 * s); c.closePath(); ink(c, '#e9f1fb', lw);
       c.beginPath(); for (let i = 1; i < 9; i++) { const x = cx - w + (i * 2 * w) / 9; c.moveTo(x, by - 5 * s + Math.abs(x - cx) * 0.06); c.lineTo(x, by + 2.5 * s + Math.abs(x - cx) * 0.06); } c.lineWidth = lw * 0.6; c.strokeStyle = '#9fb6cf'; c.stroke();
       // pompom
-      const px = cx - w * 0.1, py = top - 14 * s + bob;
+      const px = cx - w * 0.1, py = top - 21 * s + bob;
       c.beginPath(); for (let i = 0; i <= 14; i++) { const a = (i / 14) * TAU, r = 7.5 * s * (1 + 0.12 * Math.sin(a * 5)); c.lineTo(px + Math.cos(a) * r, py + Math.sin(a) * r); } c.closePath(); ink(c, '#ffffff', lw);
       c.fillStyle = '#d6e4f2'; c.beginPath(); c.ellipse(px + 2 * s, py + 2.5 * s, 4 * s, 3 * s, 0, 0, TAU); c.fill();
     } else if (kind === 'woods') { // a big leaf worn as a cap (stalk forward), a daisy by the ear
@@ -63,7 +63,7 @@ export function costumeHead(ctx, kind, H, lw, t, o = {}) {
       c.beginPath(); c.arc(0, 0, fr * 0.62, 0, TAU); ink(c, '#ffc93a', lw * 0.55);
       c.restore();
     } else if (kind === 'sea') { // a snorkel mask pushed up on the forehead, the strap round the head, the tube beside it
-      const my = top + 8 * s, mx = cx + w * 0.22;
+      const my = top + 1 * s, mx = cx + w * 0.22;
       c.beginPath(); c.moveTo(cx - w * 1.02, my + 4 * s); c.quadraticCurveTo(cx - w * 0.2, my - 4 * s, mx, my); c.lineWidth = lw * 2 + 5 * s; c.strokeStyle = INK; c.stroke(); c.lineWidth = 5 * s; c.strokeStyle = '#ff7a2a'; c.stroke(); // strap
       // the tube: up behind the head from the strap, a bend and an orange cap
       c.beginPath(); c.moveTo(cx - w * 0.75, my + 2 * s); c.lineTo(cx - w * 0.82, top - 16 * s); c.quadraticCurveTo(cx - w * 0.8, top - 23 * s, cx - w * 0.6, top - 22 * s); c.lineWidth = lw * 2 + 6 * s; c.strokeStyle = INK; c.stroke(); c.lineWidth = 6 * s; c.strokeStyle = '#ffd23a'; c.stroke();
@@ -74,21 +74,21 @@ export function costumeHead(ctx, kind, H, lw, t, o = {}) {
       c.beginPath(); c.ellipse(mx + 0.5 * s, my - 2 * s, mw * 0.74, mh * 0.62, -0.08, 0, TAU); c.fillStyle = '#bff0ff'; c.fill(); c.lineWidth = lw * 0.6; c.strokeStyle = '#167a8c'; c.stroke();
       c.fillStyle = 'rgba(255,255,255,0.9)'; c.beginPath(); c.ellipse(mx - mw * 0.32, my - mh * 0.5, mw * 0.18, mh * 0.16, -0.4, 0, TAU); c.fill();
     } else if (kind === 'cave') { // a yellow hard hat with a lamp at the front (a soft beam forward)
-      const by = top + 9 * s;
+      const by = top + 3 * s;
       if (!o.calm && !o.low) { // the beam (a soft wedge, flickering a little)
-        const k = 0.16 + 0.04 * Math.sin(t * 9) * Math.sin(t * 3.3), lx = cx + w * 0.55, ly = top - 3 * s;
-        c.save(); c.globalAlpha *= k; c.fillStyle = '#fff2a0'; c.beginPath(); c.moveTo(lx, ly - 2 * s); c.lineTo(lx + 120 * s, ly - 26 * s); c.lineTo(lx + 120 * s, ly + 30 * s); c.closePath(); c.fill(); c.restore();
+        const k = 0.16 + 0.04 * Math.sin(t * 9) * Math.sin(t * 3.3), lx = cx + w * 0.55, ly = top - 9 * s;
+        c.save(); c.globalAlpha *= k; c.fillStyle = '#fff2a0'; c.beginPath(); c.moveTo(lx, ly - 2 * s); c.lineTo(lx + 120 * s * s, ly - 26 * s * s); c.lineTo(lx + 120 * s * s, ly + 30 * s * s); c.closePath(); c.fill(); c.restore();
       }
-      const dome = () => { c.beginPath(); c.moveTo(cx - w * 0.92, by); c.bezierCurveTo(cx - w * 0.95, top - 15 * s, cx + w * 0.85, top - 16 * s, cx + w * 0.88, by); c.closePath(); };
+      const dome = () => { c.beginPath(); c.moveTo(cx - w * 0.92, by); c.bezierCurveTo(cx - w * 0.95, top - 21 * s, cx + w * 0.85, top - 22 * s, cx + w * 0.88, by); c.closePath(); };
       dome(); ink(c, '#f2c21e', lw);
-      c.save(); dome(); c.clip(); c.fillStyle = '#ffe36a'; c.beginPath(); c.ellipse(cx - w * 0.3, top - 6 * s, w * 0.4, 5 * s, -0.3, 0, TAU); c.fill(); c.fillStyle = '#d29a0a'; c.fillRect(cx - 2 * s, top - 20 * s, 4 * s, 30 * s); c.restore();
+      c.save(); dome(); c.clip(); c.fillStyle = '#ffe36a'; c.beginPath(); c.ellipse(cx - w * 0.3, top - 12 * s, w * 0.4, 5 * s, -0.3, 0, TAU); c.fill(); c.fillStyle = '#d29a0a'; c.fillRect(cx - 2 * s, top - 26 * s, 4 * s, 30 * s); c.restore();
       c.beginPath(); c.moveTo(cx - w * 1.08, by + 2 * s); c.quadraticCurveTo(cx, by - 5 * s, cx + w * 1.1, by + 1 * s); c.lineTo(cx + w * 1.08, by - 3 * s); c.quadraticCurveTo(cx, by - 9 * s, cx - w * 1.05, by - 2 * s); c.closePath(); ink(c, '#e0a812', lw); // brim
-      const lx = cx + w * 0.55, ly = top - 3 * s;
+      const lx = cx + w * 0.55, ly = top - 9 * s;
       c.beginPath(); c.rect(lx - 6 * s, ly - 4.5 * s, 7 * s, 9 * s); ink(c, '#6a6f7a', lw * 0.7);
       c.beginPath(); c.arc(lx + 1.5 * s, ly, 4.6 * s, 0, TAU); ink(c, '#fff6c8', lw * 0.7);
       c.fillStyle = '#ffffff'; c.beginPath(); c.arc(lx + 0.4 * s, ly - 1.4 * s, 1.6 * s, 0, TAU); c.fill();
     } else if (kind === 'goggles') { // brass goggles up on the forehead, glass dark with soot
-      const gy = top + 8 * s, g1 = cx + w * 0.42, g0 = cx - w * 0.22, R = 7.6 * s;
+      const gy = top - 1 * s, g1 = cx + w * 0.42, g0 = cx - w * 0.22, R = 7.6 * s;
       c.beginPath(); c.moveTo(cx - w * 1.02, gy + 3 * s); c.quadraticCurveTo(cx, gy - 4 * s, cx + w * 0.95, gy + 1 * s); c.lineWidth = lw * 2 + 5 * s; c.strokeStyle = INK; c.stroke(); c.lineWidth = 5 * s; c.strokeStyle = '#5a3a22'; c.stroke();
       c.beginPath(); c.moveTo(g0 + R * 0.8, gy - 1 * s); c.lineTo(g1 - R * 0.8, gy - 1.5 * s); c.lineWidth = lw * 2 + 3 * s; c.strokeStyle = INK; c.stroke(); c.lineWidth = 3 * s; c.strokeStyle = '#b8842a'; c.stroke(); // the bridge
       for (const [x, y, r] of [[g0, gy - 1 * s, R * 0.92], [g1, gy - 2 * s, R]]) {
