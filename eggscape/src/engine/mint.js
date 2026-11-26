@@ -24,13 +24,13 @@ export const FAUCETS = {
   // online play pays this share on top of a win, shown on the win page as its own line. Offline players see no videos,
   // so the engine says it in the open, the same for everyone: the base is set so ONLINE play earns what was intended.
   online: { share: 0.2, ceiling: 'per win', why: 'offline play earns less (no videos), so online play is paid a little more, openly' },
-  bossTreasure: { base: 40, step: 8, ceiling: 'once per boss', why: 'the big moment of each world; it was 120 + 40 a world, a third of all coins' },
+  bossTreasure: { base: 30, step: 6, ceiling: 'once per boss', why: 'the big moment of each world; it was 120 + 40 a world, a third of all coins' },
   starChest: { base: 10, step: 5, ceiling: 'once per 15 stars', why: 'stars are the reason to replay; the chest skins are the prize, not the coins' },
   dailyChest: { coins: [8, 8, 10, 8, 15, 8, 20], ceiling: 'once a day', why: 'a reason to come back, never a wage' },
   freeCoins: { ladder: [20, 15, 10, 5], cooldownSec: 180, ceiling: 'four videos a day, 50 coins', why: 'a chosen video is worth a little, never a living' },
   // the win page's videos: Double coins and the Bonus chest's coins share one pot a day. Once it is spent, the win page
   // offers neither until tomorrow (the video was a chosen reward, so nothing is cut short after it is offered).
-  winVideo: { perDay: 50, ceiling: '50 coins a day', why: 'Double coins on every win was a second wage with no limit' },
+  winVideo: { perDay: 40, ceiling: '40 coins a day', why: 'Double coins on every win was a second wage with no limit' },
   bonusChest: { coins: 30, ceiling: 'inside the win-video pot', why: 'a boost and a few coins' },
   // the Lucky Spin's coin prizes (spin.js TABLE ids c1, c2, c3) and the wheel's size by the world reached
   // coupon: what a second half-price ticket pays while one is held (economy.js COUPON.coins, x the wheel size; was 40);

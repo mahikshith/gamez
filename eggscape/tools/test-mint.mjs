@@ -63,7 +63,7 @@ E.setPlatform(false);
   ok(!M.isOnline({ nav: { onLine: true }, bridge: { isOnline: () => false } }) && M.isOnline({ nav: { onLine: false }, bridge: { isOnline: () => true } }) && !M.isOnline({ nav: { onLine: false }, bridge: { isOnline: () => { throw new Error('x'); } } }), 'the app shell\'s own signal wins when it has one');
   let m = null; const day = '2026-12-01';
   ok(M.winVideoLeft(m, day) === F.winVideo.perDay && M.winVideoOk(m, day, 30), 'a new day: the win-video pot is full');
-  m = M.winVideoTake(m, day, 30); ok(!M.winVideoOk(m, day, 30) && M.winVideoOk(m, day, 20) && M.winVideoOk(m, '2026-12-02', 50), 'used up: no Double worth more than what is left today; tomorrow it is full again');
+  m = M.winVideoTake(m, day, 30); ok(!M.winVideoOk(m, day, 30) && M.winVideoOk(m, day, F.winVideo.perDay - 30) && M.winVideoOk(m, '2026-12-02', F.winVideo.perDay), 'used up: no Double worth more than what is left today; tomorrow it is full again');
 }
 
 // ---- 3. the day's ceiling: videos + spins + daily gifts, every one taken
