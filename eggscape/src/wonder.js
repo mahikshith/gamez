@@ -622,9 +622,13 @@ export function createWonder(env) {
   // the vault's picture on a stage of its own colour with slow rays (the card and the pause page)
   function picStage(x, y, w, h, s, big) {
     const L = S.level, col = TILE[L.wonder.kind] || '#5a6ad8', t = env.save().calm ? 0 : S.t + S.cardT;
-    if (big) ui.well(x, y, w, h, { s, r: 16 * s, a: tint(col, -0.25), b: tint(col, -0.55), border: 'rgba(40,24,10,0.7)', shade: 'rgba(0,0,10,0.4)', paint: () => K.sunburst(x + w / 2, y + h / 2, Math.max(w, h) * 0.8, 'rgba(255,255,255,0.1)') });
-    else K.sunburst(x + w / 2, y + h / 2, Math.min(w, h) * 0.62, 'rgba(255,236,170,0.12)');
-    const pic = Math.min(h * (big ? 0.8 : 0.86), w * (big ? 0.8 : 0.8)), px = x + w / 2, py = y + h / 2;
+    // frame818 (mykee: no frames): no well around it; the picture floats on the page's scene, its own colour glowing
+    // behind it and slow rays (the art a size up into the room the frame took)
+    const R0 = Math.min(w, h) * 0.62, gl = ctx.createRadialGradient(x + w / 2, y + h / 2, 0, x + w / 2, y + h / 2, R0);
+    gl.addColorStop(0, tint(col, 0.35) + 'cc'); gl.addColorStop(1, tint(col, 0.35) + '00');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, R0, 0, Math.PI * 2); ctx.fill();
+    K.sunburst(x + w / 2, y + h / 2, Math.max(w, h) * (big ? 0.7 : 0.62), 'rgba(255,255,255,0.22)');
+    const pic = Math.min(h * (big ? 0.86 : 0.86), w * (big ? 0.86 : 0.8)), px = x + w / 2, py = y + h / 2;
     drawExtraIcon(ctx, L.wonder.kind, px, py, pic, t, { calm: env.save().calm });
     ui.record({ x: px - pic / 2, y: py - pic / 2, w: pic, h: pic }, 'wv:introPic', 'wv:introPic');
     if (/2$/.test(L.key)) { // the II badge on the picture's corner

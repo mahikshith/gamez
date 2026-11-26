@@ -2637,7 +2637,7 @@ function drawOffer() {
     return [
       { h: 132 * s, gap: 4 * s, draw: (x, y, w) => {
         const aw = Math.min(w, 170 * s);
-        ui.well(x + (w - aw) / 2, y, aw, 132 * s, { s, a: '#ffe9b0', b: '#fff6dc' });
+        artGlow(x + (w - aw) / 2, y, aw, 132 * s, '#fff6dc');
         drawOfferArt(ctx, O.sku || O.item, x + w / 2, y + 66 * s, 120 * s, G.t, save.wallet);
         ui.record({ x: x + (w - aw) / 2, y, w: aw, h: 132 * s }, 'of:art');
       } },
@@ -2660,7 +2660,7 @@ function drawNudge() {
   stackCard(title, (s, iw) => [
     { h: 132 * s, gap: 4 * s, draw: (x, y, w) => {
       const aw = Math.min(w, 170 * s), wx = n.kind === 'keep' ? spendFx.waveXf('keep') : null;
-      ui.well(x + (w - aw) / 2, y, aw, 132 * s, { s, a: '#ffe9b0', b: '#fff6dc' });
+      artGlow(x + (w - aw) / 2, y, aw, 132 * s, '#fff6dc');
       if (n.kind === 'keep') spendFx.at('keep', { x: x + (w - aw) / 2, y, w: aw, h: 132 * s });
       if (wx) { ctx.save(); ctx.translate(x + w / 2, y + 120 * s + wx.dy * 132 * s); ctx.rotate(wx.rot); ctx.translate(-(x + w / 2), -(y + 120 * s)); } // (rocks on its foot)
       if (n.kind === 'keep' && n.what === 'hen') drawHenSkinPreview(ctx, n.id, x + w / 2, y + 70 * s, 118 * s, G.t);
@@ -2805,7 +2805,7 @@ function drawDetail() {
     return [
       { h: AH, gap: 4 * s, draw: (x, y, w) => {
         const aw = artH > 140 ? w : Math.min(w, 170 * s);
-        ui.well(x + (w - aw) / 2, y, aw, AH, { s, a: '#cfe9fb', b: '#eaf6ff' });
+        artGlow(x + (w - aw) / 2, y, aw, AH, '#eaf6ff'); // (frame818: the picture floats in a soft light, no box)
         it.icon(ctx, x + w / 2, y + AH / 2, Math.min(AH * 0.9, aw * 0.8), G.t, it.flash < 0.6 ? 1 + 0.2 * Math.sin((it.flash / 0.6) * Math.PI) : 1);
         ui.record({ x: x + (w - aw) / 2, y, w: aw, h: AH }, 'dt:art');
       } },
@@ -3599,7 +3599,7 @@ function drawStuckAsk() {
   stackCard('Stuck?', (s) => { const hh = portrait ? clamp((ui.A.y1 - Math.max(G.hudBottom, ui.A.y) - 30 * ui.u) / s - 248, 128, 560) : 176; return [ // (0.8.17 polish: the stage fills to the buttons, no gap left over) // her stage takes the room a tall phone gives (no blank paper); on its side she stands left of the buttons
     { h: hh * s, gap: portrait ? 4 * s : 0, draw: (x, y, w) => {
       const aw = Math.min(w, Math.max(190, hh * 1.3) * s);
-      ui.well(x + (w - aw) / 2, y, aw, hh * s, { s, a: '#d9e8ff', b: '#eef5ff' });
+      artGlow(x + (w - aw) / 2, y, aw, hh * s, '#eef5ff');
       drawHenAnim(ctx, 'worried', x + w / 2, y + hh / 2 * s, Math.min(hh * 0.78 * s, aw * 0.86), G.t, { key: 'stuck', face: 1, calm: save.calm, shadow: 0 });
       ui.record({ x: x + (w - aw) / 2, y, w: aw, h: hh * s }, 'stuck:hen');
     } },
@@ -3612,7 +3612,7 @@ function drawStuckAsk() {
       if (coins) ui.button('stuck:coins', String(SKIP_COINS), x + hw + 10 * s, y, hw, 58 * s, { kind: save.wallet.coins >= SKIP_COINS ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 22 * s });
     } },
     { h: 48 * s, gap: 12 * s, right: true, draw: (x, y, w) => ui.button('stuck:no', 'Keep trying', x, y, w, 48 * s, { kind: 'tertiary', size: 18 * s }) },
-  ]; }, { ribbon: '#5a82c8', pop: false, grow: 1.12, twoCol: true });
+  ]; }, { ribbon: '#5a82c8', pop: false, grow: 1.12, twoCol: true, evening: true });
   ctx.restore();
 }
 
@@ -7204,7 +7204,23 @@ function cardFull(o, A) {
   return A.h > A.w * 1.15; // portrait: the page is the screen
 }
 const fullInner = (A, s) => Math.min(A.w - 32 * ui.u, Math.max(372 * s, 440 * ui.u));
-function stackCard(title, build, o = {}) {
+// frame818: the stack pages' backdrop, the win page's scene (sceneBack) over the whole screen: crestY, where the meadow
+// rises (the buttons stand on it); sunY, where the rays turn (behind the page's middle). o.evening: the fail page's
+// soft evening instead of noon. It fades in with the page (Calm: at once) and paints under the system bars; only what
+// the player reads or taps keeps to the safe rect.
+function pageScene(crestY, sunY, o = {}) {
+  const u = ui.u, hh = 120 * u, a = save.calm || o.dx || o.dy ? 1 : clamp(G.screenT / 0.18, 0, 1);
+  ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.globalAlpha = 1; // (the screen's own frame: a card that rises or grows moves, its scene never does)
+  if (a < 1) { ctx.fillStyle = '#1c120a'; ctx.globalAlpha = 0.45 * (1 - a); ctx.fillRect(0, 0, ui.w, ui.h); ctx.globalAlpha = 1; } // (under a fade-in: the board sinks first)
+  sceneBack({ cx: ui.A.cx, gy: crestY - hh * 0.03, hh, sy: sunY }, a, !o.evening);
+  ctx.restore();
+}
+const HALO = 'rgba(255,250,236,0.92)';
+function stackCard(title, build, o = {}) { // (frame818: dark words on the page's sky carry a light rim while it draws)
+  const h0 = ui.halo; if (!o.hidden) ui.halo = HALO;
+  try { return stackCard0(title, build, o); } finally { ui.halo = h0; }
+}
+function stackCard0(title, build, o = {}) {
   const u = ui.u;
   ui.calm = save.calm;
   const A = ui.A, top = Math.max(G.hudBottom, A.y) + 16 * u; // the ribbon stands 8 units proud of the card
@@ -7246,19 +7262,22 @@ function stackCard(title, build, o = {}) {
     }
     // a card of a few lines and a button (a boss's hello, a short notice) stays a floating card: stretched over a
     // whole page it would be mostly blank paper
+    // a card of a few lines and a button (a boss's hello, a short notice) keeps its rows together (frame818: frameless,
+    // they float as one group high on the page, and the hen stands on the meadow under them)
     if (m.h < avail * 0.6 && o.full !== true) { full = false; m = measure(u); }
   }
   const { s, w, blocks } = m;
   const inner = m.inner ?? w - 48 * s, pad = (w - inner) / 2; // where the content column starts inside the panel
   const h = full ? avail : Math.min(m.h, avail);
   const x = full ? A.x : (o.cx || A.cx) - w / 2;
-  const y = full ? top : Math.max(top, (A.y1 + Math.max(G.hudBottom, A.y)) / 2 - h / 2);
+  const short = !full && !two && A.h > A.w * 1.15; // (frame818: a short one on a tall phone sits higher: the meadow and the hen below it)
+  const y = full ? top : short ? top + Math.max(0, avail - h) * 0.3 : Math.max(top, (A.y1 + Math.max(G.hudBottom, A.y)) / 2 - h / 2);
   if (scrolls && !two) { // too tall even at o.minS: the frame fills the room and the blocks scroll inside it (pageScroll)
     const V = { x, y: y + CARD_HEAD * s - 8 * s, w, h: h - CARD_HEAD * s + 2 * s };
     if (o.hidden) return { x, y, w, h, s, full, V };
+    pageScene(V.y + V.h - 6 * s, y + h * 0.38, o); // (frame818: no frame; the scene edge to edge, the blocks scroll on it)
     ctx.save();
     if (o.dx || o.dy) ctx.translate(o.dx || 0, o.dy || 0);
-    ui.frame(x, y, w, h, { s, r: full ? 2 * s : 24 * s });
     pageScroll(blocks, o.scroll, V, x + pad, inner, s, true);
     const rw = clamp(ui.measure(title, 24 * s) + 56 * s, w * 0.6, w - 14 * s);
     ui.ribbon(title, x + w / 2, y - 8 * s, rw, 40 * s, { s, color: o.ribbon || '#ee5a36', size: 24 * s, tag: 'card:title' });
@@ -7288,13 +7307,26 @@ function stackCard(title, build, o = {}) {
     for (const b of blocks) { cy += (b.gap ?? 10 * s) + (loose(b) ? air : 0); if (b.at) b.at(x + pad, cy, inner); cy += b.h; }
     return { x, y, w, h, s, full };
   }
+  // frame818 (mykee: "wherever possible do not show frames, just show full screen, no boundaries"): no cream panel and no
+  // wooden border; the page is the win page's scene edge to edge (under the phone's bars too), its meadow rising under
+  // the last row so the buttons stand on ground, the rays behind the page's middle; the blocks float on it
+  let crest = y + h - 10 * s;
+  if (!two) { let cy0 = y + CARD_HEAD * s + top0, last = cy0; for (const b of blocks) { cy0 += (b.gap ?? 10 * s) + (loose(b) ? air : 0); last = cy0; cy0 += b.h; } crest = Math.max(last - 14 * s, A.y + A.h * 0.55); }
+  pageScene(crest, y + h * 0.38, o);
+  if (short && !o.dx && !o.dy) { // the hen on the meadow under a short page's rows (never under them: only where the room is)
+    const room = A.y1 - (y + h) - 8 * u, hh = Math.min(room * 0.66, 170 * u);
+    if (hh >= 90 * u) {
+      const fy = y + h + 8 * u + room * 0.5 + hh * 0.42;
+      ctx.save(); ctx.beginPath(); ctx.ellipse(A.cx, fy, hh * 0.42, hh * 0.08, 0, 0, TAU); ctx.fillStyle = 'rgba(16,44,10,0.25)'; ctx.fill(); ctx.restore();
+      drawHenAnim(ctx, 'idle', A.cx, fy - hh * 0.5, hh, G.t, { key: 'page', face: 1, calm: save.calm, shadow: 0 });
+    }
+  }
   ctx.save();
   if (o.dx || o.dy) ctx.translate(o.dx || 0, o.dy || 0);
   else if (o.pop !== false) {
     const k = ui.pop(G.screenT, 0.32);
     if (k !== 1) { ctx.translate(x + w / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + h / 2)); }
   }
-  ui.frame(x, y, w, h, { s, r: full ? 2 * s : 24 * s });
   const rw = clamp(ui.measure(title, 24 * s) + 56 * s, w * 0.6, w - 14 * s);
   ui.ribbon(title, x + w / 2, y - 8 * s, rw, 40 * s, { s, color: o.ribbon || '#ee5a36', size: 24 * s, tag: 'card:title' });
   if (two) { // each column centred in the card's height
@@ -7310,7 +7342,6 @@ function stackCard(title, build, o = {}) {
         cy += b.h;
       }
     }
-    ui.roundRect(x + 24 * s + m.cw + 13 * s, y + CARD_HEAD * s + 4 * s, 2 * s, maxC - 4 * s, s); ctx.fillStyle = 'rgba(120,80,40,0.18)'; ctx.fill(); // the fold between the columns
     ctx.restore();
     return { x, y, w, h, s };
   }
@@ -7346,15 +7377,32 @@ function modeRow(x, y, w, h, s, dark) {
 }
 
 // a dark stage inside a card for art that glows (chicks, salamander, clockwork)
+// frame818: a picture's place on a frameless page: a soft pool of light behind it that melts into the scene (no box)
+function artGlow(x, y, w, h, col = '#fff6dc') {
+  const cx = x + w / 2, cy = y + h / 2, R = Math.max(w, h) * 0.6;
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(1, clamp(h / w, 0.55, 1.2));
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+  g.addColorStop(0, col); g.addColorStop(0.45, col + 'b0'); g.addColorStop(1, col + '00');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fill(); ctx.restore();
+}
+// frame818: no box: a soft night pool under the art (its glow still reads on the page's bright sky), melting into the scene
 function artStage(x, y, w, h, s, draw) {
-  ui.well(x, y + 2 * s, w, h - 4 * s, { s, r: 14 * s, a: '#31476e', b: '#1b2742', border: 'rgba(40,24,10,0.7)', shade: 'rgba(0,0,10,0.45)' });
+  const cx = x + w / 2, cy = y + h / 2, R = Math.max(w, h) * 0.62;
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(1, Math.min(1, h / w) * 1.05 + 0.05);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+  g.addColorStop(0, 'rgba(27,39,66,0.92)'); g.addColorStop(0.45, 'rgba(36,52,88,0.7)'); g.addColorStop(1, 'rgba(49,71,110,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fill(); ctx.restore();
   draw();
 }
 
 // the boss's portrait hangs in a dark red hall with slow rays: this one is different
-function bossStage(x, y, w, h, s) {
-  ui.well(x, y + 2 * s, w, h - 6 * s, { s, r: 14 * s, a: '#6a1830', b: '#2c0a1c', border: 'rgba(40,10,10,0.8)', shade: 'rgba(0,0,0,0.5)',
-    paint: () => sunburst(x + w / 2, y + h / 2, w * 0.7, 'rgba(255,120,90,0.13)') });
+function bossStage(x, y, w, h, s) { // (frame818: a dark red pool, no box)
+  const cx = x + w / 2, cy = y + h / 2, R = Math.max(w, h) * 0.62;
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(1, Math.min(1, h / w) * 1.05 + 0.05);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+  g.addColorStop(0, 'rgba(106,24,48,0.95)'); g.addColorStop(0.5, 'rgba(70,14,32,0.7)'); g.addColorStop(1, 'rgba(44,10,28,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.5, h * 0.5, 0, 0, TAU); ctx.clip(); sunburst(cx, cy, w * 0.7, 'rgba(255,120,90,0.13)'); ctx.restore();
 }
 
 // first level of a world, first visit: its intro line rides on the level card (one card, no extra tap)
@@ -9173,16 +9221,21 @@ function sunburst(cx, cy, R, col, n = 12) {
   ctx.restore();
 }
 // the hen's stage on a result card: a sky window with rays (win: warm noon; fail: a soft evening)
+// frame818: no sky window (the page is the sky now): her own grassy knoll floating on the scene, a soft shadow under it
 function henStage(box, s, win) {
-  ui.well(box.x, box.y + 2 * s, box.w, box.h - 2 * s, { s, r: 16 * s, a: win ? '#58b9f5' : '#8fa6d8', b: win ? '#c9ecff' : '#e6d9ee', border: 'rgba(60,34,12,0.7)', shade: 'rgba(10,40,90,0.3)',
-    paint: () => {
-      sunburst(box.x + box.w / 2, box.y + box.h * 0.62, box.w * 0.8, win ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.16)');
-      // a grassy knoll for her to stand on
-      ctx.fillStyle = win ? '#6cc247' : '#7fae6a';
-      ctx.beginPath(); ctx.ellipse(box.x + box.w / 2, box.y + box.h + box.h * 0.2, box.w * 0.75, box.h * 0.36, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.beginPath(); ctx.ellipse(box.x + box.w / 2, box.y + box.h + box.h * 0.22, box.w * 0.7, box.h * 0.36, 0, 0, 7); ctx.fill();
-    } });
+  const cx = box.x + box.w / 2, ky = box.y + box.h - box.h * 0.05, kw = Math.min(box.w * 0.42, box.h * 0.85), kh = Math.max(10 * s, box.h * 0.06), dh = kh * 2.2;
+  ctx.save();
+  // a little floating island: earth tapering under the grass, a soft shadow far below
+  ctx.beginPath(); ctx.ellipse(cx, ky + dh + kh * 1.6, kw * 0.55, kh * 0.4, 0, 0, TAU); ctx.fillStyle = 'rgba(20,40,70,0.12)'; ctx.fill();
+  const e = ctx.createLinearGradient(0, ky, 0, ky + dh);
+  e.addColorStop(0, win ? '#9a6234' : '#7f5f48'); e.addColorStop(1, win ? '#5e3518' : '#4c3628');
+  ctx.beginPath(); ctx.moveTo(cx - kw * 0.98, ky); ctx.bezierCurveTo(cx - kw * 0.7, ky + dh * 0.7, cx - kw * 0.25, ky + dh, cx, ky + dh); ctx.bezierCurveTo(cx + kw * 0.25, ky + dh, cx + kw * 0.7, ky + dh * 0.7, cx + kw * 0.98, ky); ctx.closePath();
+  ctx.fillStyle = e; ctx.fill();
+  const g = ctx.createLinearGradient(0, ky - kh, 0, ky + kh);
+  g.addColorStop(0, win ? '#93e060' : '#9cc585'); g.addColorStop(1, win ? '#4f9e34' : '#5d8a50');
+  ctx.beginPath(); ctx.ellipse(cx, ky, kw, kh, 0, 0, TAU); ctx.fillStyle = g; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, ky - kh * 0.1, kw * 0.88, kh * 0.6, 0, Math.PI * 1.08, Math.PI * 1.92); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.stroke();
+  ctx.restore();
 }
 
 // 2026-11-19 (mykee: "the celebration page is not clear enough... too congested... should be big across the whole page,
@@ -9542,7 +9595,7 @@ function sceneBack(at, a, warm = true) {
   const sk = ctx.createLinearGradient(0, 0, 0, base);
   sk.addColorStop(0, warm ? '#3d9fe8' : '#6878c0'); sk.addColorStop(0.55, warm ? '#86ccf8' : '#a6aedd'); sk.addColorStop(1, warm ? '#d6f1ff' : '#ecdcea');
   ctx.fillStyle = sk; ctx.fillRect(0, 0, W, base + 2);
-  const sy = gy - hh * 0.55, gl = ctx.createRadialGradient(cx, sy, 0, cx, sy, hh * 2);
+  const sy = at.sy ?? gy - hh * 0.55, gl = ctx.createRadialGradient(cx, sy, 0, cx, sy, hh * 2);
   gl.addColorStop(0, warm ? 'rgba(255,248,210,0.7)' : 'rgba(255,232,220,0.4)'); gl.addColorStop(1, 'rgba(255,248,210,0)');
   ctx.fillStyle = gl; ctx.fillRect(0, 0, W, base + 2);
   sunburst(cx, sy, Math.hypot(W, H), warm ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)', 16);
@@ -10525,7 +10578,7 @@ function drawFailPage() {
   }
   if (G.li >= 0 && G.screenT > 0.6) spendOnce('fail', 'fail', SC);
   const title = near ? 'So close!' : timeout ? 'Out of time!' : 'Too many eggs broke';
-  const card = stackCard(title, build(stH), { ...(sd ? sd.cardO : { full: true }), ribbon: near ? '#e0882a' : '#5a82c8', minS: u, scroll: G.fscroll, grow: 1.2 });
+  const card = stackCard(title, build(stH), { ...(sd ? sd.cardO : { full: true }), ribbon: near ? '#e0882a' : '#5a82c8', minS: u, scroll: G.fscroll, grow: 1.2, evening: true });
   if (sd) {
     const { box, henH } = sideStage(sd, card);
     drawCelebration(ctx, 'encourage', G.screenT, box, { henH, calm: save.calm, pw: 0.5 });
