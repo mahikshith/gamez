@@ -1089,6 +1089,8 @@ function crawlerMoment(ev) {
     case 'chamSick': hold = 0.75; break;
     case 'thornFlip': hold = 0.65; break;
     case 'thornDuel': hold = 1.1; break;
+    case 'salSpitWarn': x = (ev.hx + ev.tx) / 2; y = (ev.hy + ev.ty) / 2; hold = 0.7; break; // 0.8.18: the salamander's ember spit (his head and where it lands)
+    case 'salFireUp': hold = 0.6; break; // 0.8.18: he goes white-hot
     case 'spikeUp': { if (ev.own == null) return; const C = (sim.sals || []).find((c) => c.id === ev.own); if (!C || !C.pts.length) return; x = (ev.x + C.pts[0].x) / 2; y = (ev.y + C.pts[0].y) / 2; hold = 0.5; break; } // the spike and the lizard that shed it
     case 'bossWarn': { // Baron von Brr winds up his frost breath or the deep freeze
       if (ev.kind !== 'blizzard' || (ev.attack !== 'gale' && ev.attack !== 'freeze')) return;
@@ -4534,7 +4536,7 @@ function handleEvents() {
         // a scorch crack: the popup steps aside from the salamander's head, which breathes right there
         let px = ev.x;
         if (ev.why === 'scorch' && sim.sals) { const h = sim.sals.map((C) => C.pts[0]).filter(Boolean).sort((a, b) => Math.hypot(a.x - ev.x, a.y - ev.y) - Math.hypot(b.x - ev.x, b.y - ev.y))[0]; if (h) px += h.x > ev.x ? -0.7 : 0.7; }
-        popup(px, ev.y + 0.55, `Crack ${ev.n || ev.egg.cracks}/3`, { sub: ev.why === 'fall' && v3Fall ? (v3Fall === 'eagle' ? 'dropped by the eagle' : `fell ${v3Fall} rings`) : ev.why === 'scorch' ? 'red-hot wall' : ev.why === 'frostbite' ? 'frost bite' : ev.why === 'thornback' ? 'rammed by a thorn-back' : ev.why === 'spike' ? 'grey spikes crack, never break' : '', color: (ev.n || 1) >= 2 ? '#ff7a6a' : '#ffc24a', size: 18, life: 1.1 });
+        popup(px, ev.y + 0.55, `Crack ${ev.n || ev.egg.cracks}/3`, { sub: ev.why === 'fall' && v3Fall ? (v3Fall === 'eagle' ? 'dropped by the eagle' : `fell ${v3Fall} rings`) : ev.why === 'scorch' ? 'red-hot wall' : ev.why === 'ember' ? 'ember' : ev.why === 'frostbite' ? 'frost bite' : ev.why === 'thornback' ? 'rammed by a thorn-back' : ev.why === 'spike' ? 'grey spikes crack, never break' : '', color: (ev.n || 1) >= 2 ? '#ff7a6a' : '#ffc24a', size: 18, life: 1.1 });
         break;
       case 'break': {
         if (ev.why === 'thorn') W.thornBite(G.sim, ev.x, ev.y, G.t); // v3.3: the thorn stabs
@@ -5005,8 +5007,9 @@ function salEvent(ev, fx) {
     case 'salCool':
       audio.play('ember_hiss');
       audio.play('splash', { vol: 0.5 });
-      fx.smoke(ev.hx, ev.hy + 0.25, 3, 'rgba(230,240,255,0.4)'); // light: the grey creature must stay readable
+      fx.smoke(ev.hx, ev.hy + 0.25, ev.doused ? 5 : 3, 'rgba(230,240,255,0.4)'); // light: the grey creature must stay readable (0.8.18: a doused white-hot one puffs more)
       popup(ev.hx, ev.hy + 0.85, 'Cooled!', { color: '#8fd0ff', size: 20 });
+      if (ev.doused) audio.play('sal_yelp', { vol: 0.7, pitch: 0.9 }); // 0.8.18: knocked off white-hot
       once('salCool', 'Water cools the salamander to stone: harmless for a few seconds.');
       break;
     case 'salHit': {
@@ -5081,6 +5084,42 @@ function salEvent(ev, fx) {
       audio.play('ember_hiss', { vol: 0.8 });
       audio.play('splash', { vol: 0.4, pitch: 0.6 });
       break;
+    // ---- 0.8.18 the ember spit and the fire-up (sim/salamander.js SPIT, FIRE): sound and sparks, no words
+    case 'salSpitWarn':
+      audio.play('sal_charge', { vol: 0.7, pitch: 1.35 });
+      lessonAsk('salSpit', null, ev); // turn the gap out of his line
+      break;
+    case 'salSpit':
+      audio.play('sal_huff', { vol: 0.8, pitch: 1.3 }); audio.play('ember_hiss', { vol: 0.35, pitch: 1.6 });
+      fx.sparkle(ev.x, ev.y, 6, '#ffd27a');
+      break;
+    case 'salSpitSplat':
+      audio.play('rock_hit', { vol: 0.55, pitch: 1.5 }); audio.play('ember_hiss', { vol: 0.5, pitch: 1.4 }); audio.play('sal_yelp', { vol: 0.5, pitch: 1.2 }); // (he yelps: missed!)
+      fx.chips(ev.x, ev.y, '#ff8a2a', 9, 2.2);
+      fx.smoke(ev.x, ev.y, 2, 'rgba(90,70,60,0.35)');
+      break;
+    case 'salPool':
+      audio.play('lava_sizzle', { vol: 0.6, pitch: 0.9 });
+      fx.chips(ev.x, ev.y, '#ffb347', 8, 1.8);
+      break;
+    case 'salPoolBurn': audio.play('ember_hiss', { vol: 0.6 }); fx.smoke(ev.x, ev.y, 2, 'rgba(255,170,110,0.35)'); break; // the crack popup names it
+    case 'salPoolHop': // Easy: no crack, a hop and a yelp
+      audio.play('egg_bump', { vol: 0.6, pitch: 1.6 }); audio.play('ember_hiss', { vol: 0.35, pitch: 1.7 });
+      fx.smoke(ev.x, ev.y, 1, 'rgba(70,60,56,0.4)');
+      break;
+    case 'salPoolDouse':
+      audio.play('ember_hiss', { vol: 0.7, pitch: 1.1 });
+      fx.smoke(ev.x, ev.y + 0.1, 3, 'rgba(230,240,255,0.5)');
+      break;
+    case 'salGulp': audio.play('squish', { vol: 0.8, pitch: 0.8 }); fx.sparkle(ev.x, ev.y, 8, '#ff9a3a'); break;
+    case 'salFireUp':
+      audio.play('sal_call', { vol: 0.9, pitch: 0.85 }); audio.play('lava_sizzle', { vol: 0.6, pitch: 0.7 });
+      fx.sparkle(ev.x, ev.y, save.calm ? 6 : 14, '#fff2b0');
+      if (!save.calm) fx.wave(ev.x, ev.y, 1.1, '#ffd27a', 0.4, 0.06);
+      if (!ev.boss) lessonAsk('salFireUp', null, ev); // water cools him: the finger taps the water
+      break;
+    case 'salFireOut': audio.play('ember_hiss', { vol: 0.35, pitch: 0.8 }); break;
+    case 'salFootBurn': break; // (each thorn's own burn says it)
   }
 }
 
@@ -5912,7 +5951,7 @@ function render() {
   blastXf(() => drawRockHud(ctx, sim, k, t), 15.3); // v3.3 M10: the rocking vault's level and warning arrows
   setBossView({ top: G.cam.y + (G.play.h / 2) / G.cam.k, k: G.cam.k, u: ui.u }); // bosses (v3.1): the cloud comes into view
   blastXf(() => drawBossRings(ctx, sim, k, t), 12.1); // bosses (v3.1): frost, ice patches, walls, telegraphs on the rings
-  blastXf(() => drawSalHeat(ctx, sim, k, t), 13.2); // v3.2: red-hot ring sections and the salamander's target mark
+  blastXf(() => drawSalHeat(ctx, sim, k, t, !!save.calm), 13.2); // v3.2: red-hot ring sections and the salamander's target mark
   blastXf(() => drawP2Back(ctx, sim, k, t), 14.1); // v3.4: live ring, scorched sponge, iron bars, brittle thorns, blackout, laser beak
   const SL0 = (types, fn) => strikeLayer(ctx, sim, k, t, types, (c) => crowFlinch(c, sim, types, fn));
   const SL = (types, fn) => blastXf(() => SL0(types, fn), types.length * 1.7 + types[0].length); // the crow wave makes a creature flinch as it passes // Chick Strike: a struck villain's layer is drawn through its reaction
@@ -5948,7 +5987,7 @@ function render() {
   blastXf(() => { W.drawLavaRocks(ctx, sim, k, t); W.drawIcicles(ctx, sim, k, t); }, 16.2); // v3
   blastXf(() => drawBossUnder(ctx, sim, k, t), 4.3);
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
-  SL(['sal'], (c) => drawSalamanders(c, sim, t, k)); // v3.2: the lava salamander walks the floor, under the eggs
+  SL(['sal'], (c) => drawSalamanders(c, sim, t, k, !!save.calm)); // v3.2: the lava salamander walks the floor, under the eggs
   blastXf(() => drawFrogTele(ctx, sim, k, t), 5.2); // v3.3: the frog's hop mark, then the frog itself (eggs land on it)
   { const wx = warpXfBegin(ctx, sim, 'f'); SL(['frog'], (c) => drawFrogs(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); }
   { const wx = warpXfBegin(ctx, sim, 'o'); SL(['octo', 'fish'], (c) => drawSeaUnder(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)

@@ -47,6 +47,8 @@ export const LESSONS = {
   salIn: L('spin'), salFire: L('look', 'own', 'Red-hot wall'), salCool: L('none'), salLava: L('none'),
   salRival: L('none'), salCoil: L('spin'), salFrostBite: L('look', 'own', 'Frozen stuck'), salFrost: L('look', 'own', 'Ice: eggs slide'),
   salFace: L('none'), thornIn: L('look', 'own', 'Stone flips him'), spikeIn: L('look', 'own', 'Drops thorns'),
+  salSpit: L('away', 'ev'), // 0.8.18 ember spit: x, y is where his line crosses the ring between: turn that gap out of his line
+  salFireUp: L('tap', 'own'), // 0.8.18 fire-up (white-hot): the finger taps the water that cools him (src/lesson.js tapTarget)
   thornHip: L('away'), thornDuel: L('look', 'own', 'Pick a winner'), chamIn: L('look', 'own', 'Feed black flame'),
   geckoIn: L('look', 'own', 'Icy feet'), geckoLick: L('look', 'own', 'Frozen stuck'),
   // frog (render/frog.js)
