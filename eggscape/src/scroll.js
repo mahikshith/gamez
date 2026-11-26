@@ -6,7 +6,7 @@
 //   - Reduced motion: no stretch, the plain stop
 // Pure numbers, no drawing: main.js and ui/store.js call these, tools/test-scroll.mjs checks them.
 
-export const SCROLL_DRAG = 2.3; // a fling keeps gliding for about 1/SCROLL_DRAG s of its speed
+export const SCROLL_DRAG = 1.6; // a fling glides v / SCROLL_DRAG px (0.8.17: was 2.3; testers wanted faster, longer flings: 45% further for the same flick)
 const EDGE_DRAG = 16, HOME = 13; // past an end: the fling dies fast, the content springs home (1/s)
 
 // how far the content shows past its end for a finger pulled d px past it: 1:1 at first, never more than lim
