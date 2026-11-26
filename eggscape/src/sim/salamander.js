@@ -31,6 +31,7 @@
 //   but keeps its own pace, climbs and breath rhythm (salBossSync). The thorn-backs turn round but get no chase speed-up.
 // Size: the salamander is drawn and hit-tested at SAL.small x (its body sits inside its channel); the boss is 1.3x that.
 //   salRank(C) (1, or the boss's 1.3) keeps its walk speed and the idle breath's reach as they were.
+import { Vec2 } from 'planck';
 import { RING_TH, TAU, wrap, clamp } from './geom.js';
 import { BOSS_MODE, bossPhases } from './boss.js';
 import { thornMethods, THORN } from './thornback.js'; // L20: Duke Quartz and Spike, the thorn-back lizards
@@ -65,8 +66,29 @@ export const BRAIN = {
 export const BITE = { reach: 0.62, keep: 0.22, back: 0.12, coil: 0.85, snap: 0.16, chew: 1.3, miss: 0.55, ouch: 1.8, full: 3.5, cd: 1.2 };
 export const FROST = { ice: 6, freeze: 3.5 };
 export const FACE = { r: 1.25, t: 3.0, jet: 0.9, burst: 2.3, daze: 3.5, cd: 12, back: 0.9 };
+// 0.8.18 (the owner: "it does not have good attacks ... it should also have special kinds of powers"). Two powers, each
+// switched on per level (level.salamander {spit: 1, fireup: 1}; the boss: its phase's {spit, fire} flags).
+// EMBER SPIT: an egg in a NEIGHBOUR channel, SPIT.minD .. SPIT.range m from the head, in front of it (SPIT.cone), with a straight
+//   line from the head to it that only crosses rings inside their open gaps (or melted holes), SPIT.clear m from the edges:
+//   he stops, rears, the cheeks puff and glow and a spark fuse runs down his back ('spitWarn', SPIT.warn x SPIT_M.warn; he keeps
+//   his eye on the egg), then lobs a glowing ember at where the egg is ('spit'). It flies SPIT.fly s on that straight line
+//   (the art lifts it in a lob). Each ring it crosses must still be open there at the moment it crosses: a ring turned so its
+//   wall is in the way takes it (a splat on the wall: he is surprised, then miffed for SPIT.miff s). It lands on the floor of
+//   the egg's channel (the wall the egg rests on) as an ember pool SPIT.len m long that rides that ring: SPIT.pool s
+//   burning, then SPIT.crust s a cooling crust that crumbles. An egg touching a burning pool: one crack (once per pool);
+//   Easy never cracks, the egg hops off with a yelp. A water egg (or a water orb where it lands) douses it; stone, rock
+//   skin, the feather and chicks shrug it off. Upside: thorns where it lands or splats burn away.
+// FIRE-UP: a red flame orb in his own channel (FIRE.see m along it) makes him greedy: he goes for it, and one at his snout
+//   (FIRE.orbR m) he gulps ('gulp', FIRE.gulp s). A lava rock or a melted lava hole under him does the same at once. He goes
+//   WHITE-HOT for FIRE.t x FIRE_M s: FIRE.speed x faster, his next breath heats FIRE.dbl x the section, and thorns by his feet
+//   burn away. Water (an orb, a water egg) knocks him straight back to grey (the cool) and he sulks. FIRE.cd s before the next.
+// Everything is plain data (C fields, this.salEmbers, this.salPools) in salState / salLoad, so rewind and the planner are exact.
+export const SPIT = { warn: 1.0, fly: 0.75, after: 0.6, range: 3.6, minD: 0.7, cone: 1.35, clear: 0.05, cd: 7, first: 3, gapAfterBreath: 1.5, pool: 5, crust: 1.1, len: 0.62, miff: 1.5, hop: 2.4 };
+export const SPIT_M = { easy: { warn: 1.45, cd: 1.35 }, medium: { warn: 1, cd: 1 }, hard: { warn: 0.85, cd: 0.85 } };
+export const FIRE = { t: 6, speed: 1.3, dbl: 2, orbR: 0.62, see: 4.5, gulp: 0.65, cd: 5, sulk: 2.6, burnR: 0.42 };
+export const FIRE_M = { easy: 0.7, medium: 1, hard: 1.15 };
 // phases in which a crawler looks about for eggs
-const SENSE = new Set(['walk', 'brake', 'turn', 'warn', 'fire', 'settle', 'rest', 'block', 'lick', 'hip', 'drop', 'gloat']);
+const SENSE = new Set(['walk', 'brake', 'turn', 'warn', 'fire', 'settle', 'rest', 'block', 'lick', 'hip', 'drop', 'gloat', 'spitWarn', 'spit', 'gulp']);
 // The frost gecko (species 'gecko': Baron von Brr, the level-15 boss; level.bossFight.gecko {delay, dir}). The same crawler,
 // a little slower, with no fire: he crawls in through a gap of the outer ring, hunts the leading egg, and the
 // level's blizzard attacks (sim/boss.js gale, freeze, icicles) come from him. Icy feet: the floor he walked on stays icy
@@ -84,6 +106,7 @@ export const salMethods = {
     this.sals = [];
     this.salHot = []; // hot ring segments: [{ri, si}] (the heat itself is sg.hot / sg.hotK)
     this.salBurnN = 0;
+    this.salEmbers = []; this.salPools = []; this.salEmN = 0; // 0.8.18 ember spit: in flight, on the floor (SPIT)
     const boss = !!(L.bossFight && L.bossFight.kind === 'salamander');
     let list = !L.salamander ? [] : Array.isArray(L.salamander) ? L.salamander : [L.salamander];
     if (boss && !list.length) list = [{ delay: L.bossFight.delay ?? 3, ch: 2, a: 90 }];
@@ -105,6 +128,8 @@ export const salMethods = {
         rivalCD: 0, rid: -1, rv: 0, climbCD: 0, climb: null, charge: 0, lavaCD: 0, hold: 0, bph: 0, bk: -1, bsaved: 0, hole: 0,
         ht: -1, htT: BRAIN.quiet, alT: 0, brT: 9, tcd: 0, jet: 0, jk: -1, ut: 0, uA: 0, uR: 0, uD: 1, // the brain (BRAIN)
         kind: P.kind === 'frost' && !P.gecko && !P.cham && !P.thorn ? 'frost' : '', bj: -1, bcd: 0, ate: 0, fid: -1, fcd: 0, fv: 0, // the bite (BITE), the face-off (FACE)
+        spit: P.spit ? 1 : 0, scd: SPIT.first, sj: -1, sx: 0, sy: 0, miff: 0, // 0.8.18 ember spit (SPIT): on, cooldown, target egg, aim point, s miffed
+        fu: P.fireup ? 1 : 0, wh: 0, whD: 1, fuCD: 0, dbl: 0, sulk: 0, og: 0, gk: 0, // fire-up (FIRE): on, s white-hot (of whD), cooldown, double breath, s sulking, wants an orb
       });
     });
   },
@@ -155,11 +180,13 @@ export const salMethods = {
     this.salHotStep(dt);
     for (const C of this.sals) this.salOne(C, dt, true);
     this.salHeat();
+    this.salEmberStep(dt, true); this.salPoolStep(dt, true);
   },
   // after the level is decided (predStep): dive on a win, grin on a loss
   salEndStep(dt) {
     if (!this.sals || !this.sals.length) return;
     this.salHotStep(dt);
+    this.salEmberStep(dt, false); this.salPoolStep(dt, false);
     const win = this.state === 'winning' || this.state === 'won';
     for (const C of this.sals) {
       if (C.ph === 'wait' || C.ph === 'gone') { C.ph = 'gone'; continue; }
@@ -186,13 +213,14 @@ export const salMethods = {
     if (C.ph === 'gone' || C.ph === 'warp') return; // v3.4: 'warp' = inside a warp gate (sim/warp.js moves it)
     if (C.ph === 'wait') { if (play && (C.t -= dt) <= 0) this.salEnter(C); return; }
     this.salCarry(C);
-    for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD', 'bored', 'tcd', 'alT', 'bcd', 'fcd']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
+    for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD', 'bored', 'tcd', 'alT', 'bcd', 'fcd', 'scd', 'fuCD', 'miff', 'sulk']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
     C.brT = Math.min(99, C.brT + dt);
     if (play && C.sp !== 'chameleon') { if (SENSE.has(C.ph)) this.salSense(C, dt); else if (C.ht < 0) C.htT = Math.min(99, C.htT + dt); }
     if (C.sp === 'gecko') { this.geckoOne(C, dt, play); return; }
     if (C.sp === 'thornback') { this.thornOne(C, dt, play); return; }
     if (C.sp === 'chameleon') { this.chamOne(C, dt, play); return; }
     if (C.cool > 0) C.cool = Math.max(0, C.cool - dt);
+    if (C.wh > 0) this.salWhiteStep(C, dt, play); // FIRE: white-hot
     if (C.shove) this.salShove(C, dt);
     if (play) {
       if (C.boss) this.salBossSync(C);
@@ -207,6 +235,21 @@ export const salMethods = {
           const e = this.salBiteAt(C);
           if (e) { C.bj = e.id; this.salHalt(C, 'coil', BITE.coil * this.PM.warn); break; }
         }
+        C.og = 0;
+        if (play && this.salFuOK(C)) { // FIRE: greedy for a flame orb in its channel; one at the snout is gulped; lava under it fires it up at once
+          if (this.salLavaUnder(C)) { this.salFireUp(C, 'lava'); }
+          else {
+            const O = this.salOrbWant(C);
+            if (O) {
+              C.og = 1;
+              if (O.d < FIRE.orbR * Math.max(1, this.salRank(C)) && !C.climb) { this.salGulpStart(C, O.o); break; }
+            }
+          }
+        }
+        if (play && C.cool <= 0 && !C.og && !C.climb && this.salSpitReady(C) && !this.salCrossing(C)) { // SPIT: an egg in a neighbour channel, a line through a gap
+          const S = this.salSpitAt(C);
+          if (S) { C.sj = S.e.id; C.sx = S.x; C.sy = S.y; this.salHalt(C, 'spitWarn', SPIT.warn * this.salSpitM().warn); break; }
+        }
         if (play && C.cool <= 0 && !C.boss && C.bored <= 0 && C.brT >= this.PM.salGap && !C.climb && !this.salCrossing(C)) { // an egg by a wall just ahead: breathe at it
           const S = this.salStrikeAt(C);
           if (S) { C.tw = S.w; C.jet = S.jet; C.jk = S.id; this.salHalt(C, 'warn', SAL.warn * this.PM.warn); break; }
@@ -217,10 +260,16 @@ export const salMethods = {
           this.salHalt(C, 'warn', SAL.warn * this.PM.warn);
           break;
         }
-        if (play && C.cool <= 0 && C.bored <= 0 && this.salChase(C)) break;
-        this.salMove(C, SAL.speed * Math.sqrt(this.salRank(C)) * this.salPace(C) * dt);
+        if (play && C.cool <= 0 && (C.bored <= 0 || C.og) && this.salChase(C)) break;
+        this.salMove(C, SAL.speed * Math.sqrt(this.salRank(C)) * this.salPace(C) * (C.wh > 0 ? FIRE.speed : 1) * dt);
         break;
       }
+      case 'spitWarn': // SPIT: rear, cheeks puff, the fuse runs down his back; his eye stays on the egg
+        if (play) this.salSpitAim(C);
+        if ((C.t -= dt) <= 0) { if (play) this.salSpitLaunch(C); this.salSet(C, 'spit', SPIT.after); }
+        break;
+      case 'spit': if ((C.t -= dt) <= 0) { C.sj = -1; C.next = Math.max(C.next, 1.5); this.salSet(C, 'walk'); } break;
+      case 'gulp': if ((C.t -= dt) <= 0) { if (play) this.salFireUp(C, 'orb'); this.salSet(C, 'walk'); } break;
       case 'turn': this.salTurnStep(C, dt); break;
       case 'brake': {
         const r = (C.stopAt - C.odo) * C.mv, d = Math.min(Math.max(0, r), SAL.brakeV * dt);
@@ -270,6 +319,10 @@ export const salMethods = {
     if (ph === 'warn' && C.jet > 0) this.salAim(C);
     if (ph === 'coil') { const e = this.salBiteEgg(C), h = C.pts[0], p = e ? e.body.getPosition() : h; this.emit('salCoil', { x: h.x, y: h.y, ex: p.x, ey: p.y, id: C.id, egg: e, frost: C.kind === 'frost' }); }
     if (ph === 'warn') { const T = this.salTarget(C), h = C.pts[0]; this.emit('salWarn', { x: T.x, y: T.y, hx: h.x, hy: h.y, ring: T.ri, id: C.id }); }
+    if (ph === 'spitWarn') { // SPIT: x, y = where its line crosses the ring between (the gap a turn of that ring takes away)
+      const h = C.pts[0], q = this.salCross(h.x, h.y, C.sx, C.sy)[0] || { x: (h.x + C.sx) / 2, y: (h.y + C.sy) / 2, ri: -1 };
+      this.emit('salSpitWarn', { x: q.x, y: q.y, ring: q.ri, hx: h.x, hy: h.y, tx: C.sx, ty: C.sy, id: C.id });
+    }
   },
   // Stop with all four feet down: a walk runs on (fast) to the next phase of the stride where every foot is planted
   // (the art's leg cycle is pinned to odo: frac(odo / stride) in [0, 0.1) or [0.5, 0.6)), then enters `ph`.
@@ -359,6 +412,7 @@ export const salMethods = {
   salClimbPick(C, hc, ar) {
     const n = this.rings.length;
     let top = -1;
+    if (C.og) return; // FIRE: it stays in its channel while it goes for a flame orb there
     if (C.sp === 'chameleon') top = C.goal; // L26: toward the orb he wants, not the eggs
     else {
       const T = C.boss ? null : this.salTargetEgg(C); // hunting (the brain): toward its target's channel
@@ -445,10 +499,16 @@ export const salMethods = {
   // which way to go for its target: the shorter way round in its channel, or toward the gap that leads to the target's
   // channel. A target behind it: halt (all four feet down) and U-turn. true = it changed phase.
   salChase(C) {
-    const e = this.salTargetEgg(C);
-    if (!e || C.climb || C.tcd > 0 || this.salCrossing(C)) return false;
-    const R = this.salRel(C, e), hc = this.salCh(C), h = C.pts[0], ha = Math.atan2(h.y, h.x), hr = Math.max(0.5, Math.hypot(h.x, h.y));
+    const O = C.og ? this.salOrbWant(C) : null, e = O ? null : this.salTargetEgg(C); // FIRE: a flame orb it wants comes first
+    if ((!e && !O) || C.climb || C.tcd > 0 || this.salCrossing(C)) return false;
     let want = 0;
+    if (O) {
+      if (Math.abs(O.along) > BRAIN.behind) want = Math.sign(O.along);
+      if (!want || want === C.dir) return false;
+      this.salHalt(C, 'turn', BRAIN.turn);
+      return true;
+    }
+    const R = this.salRel(C, e), hc = this.salCh(C), h = C.pts[0], ha = Math.atan2(h.y, h.x), hr = Math.max(0.5, Math.hypot(h.x, h.y));
     if (R.same) { if (Math.abs(R.along) > BRAIN.behind) want = Math.sign(R.along); }
     else {
       const ring = this.rings[R.ce > hc ? hc : hc - 1], ra = ring.body.getAngle(), ea = Math.atan2(R.p.y, R.p.x);
@@ -589,9 +649,9 @@ export const salMethods = {
 
   // ---------- the breath
   salFire(C) {
-    const T = this.salTarget(C), ring = this.rings[T.ri], la = T.a - ring.body.getAngle(), half = (SAL.hotLen * C.size) / (2 * ring.r);
-    const k = ++this.salBurnN;
-    C.brT = 0;
+    const T = this.salTarget(C), ring = this.rings[T.ri], la = T.a - ring.body.getAngle(), half = this.salHotLen(C) / (2 * ring.r);
+    const k = ++this.salBurnN, dbl = C.dbl ? 1 : 0;
+    C.brT = 0; C.dbl = 0; // FIRE: the white-hot double breath is spent
     let n = 0;
     if (C.kind === 'frost') { // the frost salamander: the section ices over (frictionless), nothing burns
       ring.segs.forEach((sg) => { if (sg.alive && Math.abs(wrap((sg.a0 + sg.a1) / 2 - la)) <= half) { sg.ice = Math.max(sg.ice || 0, FROST.ice); n++; } });
@@ -610,7 +670,204 @@ export const salMethods = {
       if (Cu && Cu.alive && !Cu.burning && Math.abs(wrap(g.a - la)) < half + g.len / (2 * ring.r)) { Cu.burning = true; burnt += 4; const q = ring.body.getWorldPoint({ x: ring.r * Math.cos(g.a), y: ring.r * Math.sin(g.a) }); this.emit('curtainBurn', { x: q.x, y: q.y, ring: ring.i }); }
     }
     this.chickGain = (this.chickGain || 0) + burnt; // the planner counts cleared thorns
-    this.emit('salFire', { x: T.x, y: T.y, ring: ring.i, id: C.id, n, burnt });
+    this.emit('salFire', { x: T.x, y: T.y, ring: ring.i, id: C.id, n, burnt, dbl });
+  },
+  salHotLen(C) { return SAL.hotLen * C.size * (C.dbl ? FIRE.dbl : 1); }, // m of wall a breath heats (FIRE: double while white-hot)
+
+  // ---------- 0.8.18 powers: the ember spit (SPIT) and the fire-up (FIRE)
+  // is a power on: the level's salamander spec, or (the boss) its current phase's flag {spit, fire}
+  salPw(C, k) {
+    if (C.sp !== 'sal' || C.kind === 'frost') return false;
+    if (!C.boss) return !!C[k];
+    const B = this.bx && this.bx.boss, ph = B ? bossPhases(this)[B.phase] || {} : {};
+    return !!ph[k === 'fu' ? 'fire' : 'spit'];
+  },
+  salSpitM() { return SPIT_M[this.mode] || SPIT_M.medium; },
+  salFuOK(C) { return C.cool <= 0 && C.wh <= 0 && C.fuCD <= 0 && this.salLive(C) && this.salPw(C, 'fu'); },
+  salSpitReady(C) {
+    if (C.scd > 0 || C.brT < SPIT.gapAfterBreath || !this.salPw(C, 'spit')) return false;
+    const B = C.boss && this.bx && this.bx.boss;
+    return !(B && B.atk); // the boss never spits over one of its own attacks
+  },
+  salHeading(C) { const h = C.pts[0], q = C.pts[Math.min(C.pts.length - 1, 6)]; return Math.atan2(h.y - q.y, h.x - q.x); },
+  // the nearest red flame orb in its own channel, FIRE.see m along it: {o, along (m, ccw +), d (m from the head)}
+  salOrbWant(C) {
+    const h = C.pts[0], hc = this.salCh(C), hr = Math.max(0.5, Math.hypot(h.x, h.y)), ha = Math.atan2(h.y, h.x);
+    let best = null;
+    for (const o of this.orbs) {
+      if (!o.alive || o.taken || o.type !== 'fire_red' || this.chAt(Math.hypot(o.x, o.y)) !== hc) continue;
+      const along = wrap(Math.atan2(o.y, o.x) - ha) * hr;
+      if (Math.abs(along) < FIRE.see && (!best || Math.abs(along) < Math.abs(best.along))) best = { o, along, d: Math.hypot(o.x - h.x, o.y - h.y) };
+    }
+    return best;
+  },
+  // a melted lava hole under its front half (it is crossing a ring there)
+  salLavaUnder(C) {
+    for (let i = 0; i < Math.min(C.pts.length, 12); i += 3) {
+      const q = C.pts[i];
+      for (const ring of this.rings) {
+        if (Math.abs(q.r - ring.r) > RING_TH / 2 + 0.1) continue;
+        const la = mod(q.a - ring.body.getAngle(), TAU);
+        for (const sg of ring.segs) if (sg.melt > 0 && ((la >= sg.a0 && la < sg.a1) || (la + TAU >= sg.a0 && la + TAU < sg.a1))) return true;
+      }
+    }
+    return false;
+  },
+  salGulpStart(C, o) {
+    o.alive = false; o.taken = true; this.kill.push(o.body);
+    C.og = 0;
+    this.salHalt(C, 'gulp', FIRE.gulp);
+    this.emit('salGulp', { x: o.x, y: o.y, id: C.id, hx: C.pts[0].x, hy: C.pts[0].y });
+  },
+  salFireUp(C, why) {
+    C.wh = C.whD = FIRE.t * (FIRE_M[this.mode] || 1);
+    C.dbl = 1; C.charge = 1; C.og = 0; C.sulk = 0;
+    C.next = Math.min(C.next, 2.5);
+    const h = C.pts[0];
+    this.emit('salFireUp', { x: h.x, y: h.y, id: C.id, why, boss: C.boss });
+  },
+  // white-hot: it burns down; thorns by its feet burn away
+  salWhiteStep(C, dt, play) {
+    if ((C.wh -= dt) <= 0) {
+      C.wh = 0; C.dbl = 0; C.fuCD = Math.max(C.fuCD, FIRE.cd);
+      const h = C.pts[0];
+      this.emit('salFireOut', { x: h.x, y: h.y, id: C.id });
+      return;
+    }
+    if (!play || (C.gk = (C.gk + 1) % 3) || !this.salLive(C)) return;
+    const m = Math.min(C.pts.length, Math.ceil((SAL.svl * C.size) / SAL.trail) + 1);
+    let n = 0;
+    for (const ring of this.rings) {
+      const ra = ring.body.getAngle();
+      for (const th of ring.thorns) {
+        if (!th.alive) continue;
+        const a = ra + th.a, tx = th.tip * Math.cos(a), ty = th.tip * Math.sin(a);
+        for (let i = 0; i < m; i += 4) { const q = C.pts[i]; if (Math.abs(q.x - tx) < FIRE.burnR && Math.abs(q.y - ty) < FIRE.burnR && Math.hypot(q.x - tx, q.y - ty) < FIRE.burnR) { this.removeThorn(th, 'burn'); n++; break; } }
+      }
+    }
+    if (n) { this.chickGain = (this.chickGain || 0) + n; this.emit('salFootBurn', { x: C.pts[0].x, y: C.pts[0].y, id: C.id, n }); }
+  },
+  // an open way through `ring` at ring-local angle la: an open gap or a melted hole, `clear` m inside its edges
+  salOpenAt(ring, la, clear) {
+    for (const g of ring.gaps) if (this.snakeGap(g) && Math.abs(wrap(la - g.a)) * ring.r < g.len / 2 - clear) return true;
+    for (const h of this.salHoles(ring)) if (Math.abs(wrap(la - h.a)) * ring.r < h.len / 2 - clear) return true;
+    return false;
+  },
+  // where the straight line a -> b crosses ring circles: [{ri, u (0..1 along it), x, y}]
+  salCross(ax, ay, bx, by, u0 = 0, u1 = 1) {
+    const dx = bx - ax, dy = by - ay, A = dx * dx + dy * dy, Bq = 2 * (ax * dx + ay * dy), out = [];
+    if (A < 1e-9) return out;
+    for (const ring of this.rings) {
+      const Cq = ax * ax + ay * ay - ring.r * ring.r, D = Bq * Bq - 4 * A * Cq;
+      if (D < 0) continue;
+      const s = Math.sqrt(D);
+      for (const u of [(-Bq - s) / (2 * A), (-Bq + s) / (2 * A)]) if (u > u0 && u <= u1) out.push({ ri: ring.i, u, x: ax + dx * u, y: ay + dy * u });
+    }
+    return out.sort((p, q) => p.u - q.u);
+  },
+  // the ember's landing spot for an egg: on the floor of the egg's channel (the wall it rests nearer), at the egg's angle
+  salSpitSpot(e) {
+    const p = e.body.getPosition(), d = Math.hypot(p.x, p.y), n = this.rings.length, ch = clamp(this.channelOf(e), 1, n - 1);
+    const fr = Math.abs(d - this.rings[ch - 1].r) < Math.abs(d - this.rings[ch].r) ? ch - 1 : ch, side = fr === ch - 1 ? 1 : -1;
+    const r = this.rings[fr].r + side * (RING_TH / 2 + 0.14), a = Math.atan2(p.y, p.x);
+    return { x: r * Math.cos(a), y: r * Math.sin(a), ch, fr };
+  },
+  // an egg to spit at: a neighbour channel, in range and in front, every ring on the way open where the line crosses it
+  salSpitAt(C) {
+    const h = C.pts[0], hc = this.salCh(C), hd = this.salHeading(C);
+    let best = null, bd = 1e9;
+    for (const e of this.aliveEggs()) {
+      if (!this.salPreyOK(C, e) || e.icy > 0 || Math.abs(this.channelOf(e) - hc) !== 1) continue;
+      const S = this.salSpitSpot(e), d = Math.hypot(S.x - h.x, S.y - h.y);
+      if (d < SPIT.minD || d > SPIT.range || d >= bd || Math.abs(wrap(Math.atan2(S.y - h.y, S.x - h.x) - hd)) > SPIT.cone) continue;
+      const X = this.salCross(h.x, h.y, S.x, S.y);
+      if (!X.length || !X.every((q) => { const ring = this.rings[q.ri]; return this.salOpenAt(ring, mod(Math.atan2(q.y, q.x) - ring.body.getAngle(), TAU), SPIT.clear); })) continue;
+      bd = d; best = { e, x: S.x, y: S.y };
+    }
+    return best;
+  },
+  // through the telegraph its eye stays on the egg (while that egg is still in a neighbour channel)
+  salSpitAim(C) {
+    const e = this.eggs.find((x) => x.id === C.sj && x.alive && !x.saved);
+    if (!e || Math.abs(this.channelOf(e) - this.salCh(C)) !== 1) return;
+    const S = this.salSpitSpot(e);
+    C.sx = S.x; C.sy = S.y;
+  },
+  salSpitLaunch(C) {
+    const h = C.pts[0], hd = this.salHeading(C), x0 = h.x + Math.cos(hd) * 0.18 * C.size, y0 = h.y + Math.sin(hd) * 0.18 * C.size;
+    const d = Math.hypot(C.sx, C.sy), n = this.rings.length, ch = clamp(this.chAt(d), 1, n - 1);
+    const fr = Math.abs(d - this.rings[ch - 1].r) < Math.abs(d - this.rings[ch].r) ? ch - 1 : ch;
+    C.scd = SPIT.cd * this.salSpitM().cd * (C.boss ? (BOSS_MODE[this.mode] || BOSS_MODE.medium).every : 1);
+    C.next = Math.max(C.next, 2);
+    this.salEmbers.push({ k: ++this.salEmN, x0, y0, x1: C.sx, y1: C.sy, u: 0, T: SPIT.fly, ch, fr, own: C.id });
+    this.emit('salSpit', { x: x0, y: y0, tx: C.sx, ty: C.sy, id: C.id });
+  },
+  // the embers in flight: each ring they cross must be open there right then, or they splat on its wall
+  salEmberStep(dt, play) {
+    for (let i = this.salEmbers.length - 1; i >= 0; i--) {
+      const E = this.salEmbers[i], u0 = E.u, u1 = Math.min(1, u0 + dt / E.T);
+      E.u = u1;
+      let hit = null;
+      for (const q of this.salCross(E.x0, E.y0, E.x1, E.y1, u0, u1)) {
+        const ring = this.rings[q.ri];
+        if (!this.salOpenAt(ring, mod(Math.atan2(q.y, q.x) - ring.body.getAngle(), TAU), 0)) { hit = q; break; }
+      }
+      if (hit) { this.salEmbers.splice(i, 1); this.salSplat(E, hit, play); continue; }
+      if (u1 >= 1) { this.salEmbers.splice(i, 1); this.salLand(E, play); }
+    }
+  },
+  // burn the thorns of `ring` within `len` m of world angle a that stick out on `side` (+1 outward, -1 inward, 0 both)
+  salBurnArc(ring, a, len, side) {
+    const la = a - ring.body.getAngle();
+    let n = 0;
+    for (const th of ring.thorns) if (th.alive && Math.abs(wrap(th.a - la)) * ring.r < len && (!side || Math.sign(th.tip - th.base) === side)) { this.removeThorn(th, 'burn'); n++; }
+    if (n) this.chickGain = (this.chickGain || 0) + n;
+    return n;
+  },
+  salSplat(E, q, play) {
+    const ring = this.rings[q.ri], from = Math.hypot(E.x0, E.y0) < ring.r ? -1 : 1; // the side it came from
+    const burnt = play ? this.salBurnArc(ring, Math.atan2(q.y, q.x), 0.32, from) : 0;
+    const C = this.sals.find((c) => c.id === E.own);
+    if (C) C.miff = SPIT.miff;
+    this.emit('salSpitSplat', { x: q.x, y: q.y, ring: ring.i, id: E.own, burnt });
+  },
+  salLand(E, play) {
+    const ring = this.rings[E.fr], a = Math.atan2(E.y1, E.x1), side = E.fr === E.ch - 1 ? 1 : -1;
+    const P = { k: E.k, ri: E.fr, ch: E.ch, la: mod(a - ring.body.getAngle(), TAU), half: SPIT.len / (2 * ring.r), t: SPIT.pool + SPIT.crust, hit: [], own: E.own };
+    const burnt = play ? this.salBurnArc(ring, a, SPIT.len / 2 + 0.12, side) : 0;
+    this.creeperBurn?.(E.x1, E.y1, SPIT.len / 2 + 0.15); // a thorn creeper there burns too (when the level has one)
+    this.salPools.push(P);
+    this.emit('salPool', { x: E.x1, y: E.y1, ring: ring.i, id: E.own, burnt });
+  },
+  salPoolPt(P) {
+    const ring = this.rings[P.ri], a = ring.body.getAngle() + P.la, r = ring.r + (P.ri === P.ch - 1 ? 1 : -1) * (RING_TH / 2 + 0.12);
+    return { x: r * Math.cos(a), y: r * Math.sin(a), a };
+  },
+  salPoolStep(dt, play) {
+    for (let i = this.salPools.length - 1; i >= 0; i--) {
+      const P = this.salPools[i];
+      if ((P.t -= dt) <= 0 || !this.rings[P.ri]) { this.salPools.splice(i, 1); continue; }
+      if (!play || P.t <= SPIT.crust) continue;
+      const ring = this.rings[P.ri], ra = ring.body.getAngle(), c = this.salPoolPt(P);
+      for (const o of this.orbs) if (o.alive && o.type === 'water' && Math.hypot(o.x - c.x, o.y - c.y) < 0.5) { P.t = SPIT.crust; this.emit('salPoolDouse', { x: c.x, y: c.y }); break; } // a water orb there puts it out
+      if (P.t <= SPIT.crust) continue;
+      for (const e of this.aliveEggs()) {
+        if (P.hit.includes(e.id) || this.channelOf(e) !== P.ch) continue;
+        const p = e.body.getPosition(), d = Math.hypot(p.x, p.y);
+        if (Math.abs(d - ring.r) > RING_TH / 2 + 0.34 || Math.abs(wrap(Math.atan2(p.y, p.x) - ra - P.la)) * ring.r > P.half * ring.r + 0.12) continue;
+        P.hit.push(e.id);
+        if (e.water > 0) { P.t = SPIT.crust; this.emit('salPoolDouse', { x: p.x, y: p.y, egg: e }); break; }
+        if (this.armored(e) || e.chick) { this.emit('salShrug', { x: p.x, y: p.y, egg: e }); continue; }
+        if (this.MD.softThorns) { // Easy: never a crack: it hops off with a yelp
+          const m = e.body.getMass() * SPIT.hop, nx = p.x / (d || 1), ny = p.y / (d || 1), inw = P.ri === P.ch - 1 ? 1 : -1, tg = Math.sign(wrap(Math.atan2(p.y, p.x) - ra - P.la)) || 1;
+          e.body.applyLinearImpulse(Vec2(m * (nx * inw * 0.8 - ny * tg * 0.6), m * (ny * inw * 0.8 + nx * tg * 0.6)), p, true);
+          this.emit('salPoolHop', { x: p.x, y: p.y, egg: e });
+          continue;
+        }
+        this.emit('salPoolBurn', { x: p.x, y: p.y, egg: e });
+        this.crack(e, 0, 'ember');
+      }
+    }
   },
   // eggs on a hot section: one crack per breath (the breath's hotK); water steams it, armour shrugs it off
   salHeat() {
@@ -651,11 +908,13 @@ export const salMethods = {
   },
   salQuell(C, x, y) { this.salWet(C, x, y); },
   salWet(C, x, y) {
-    this.salRelease(C); C.bj = -1; C.fid = -1;
+    this.salRelease(C); C.bj = -1; C.fid = -1; C.sj = -1; C.og = 0;
     C.cool = SAL.cool; C.wetCD = SAL.cool + SAL.wetCD; C.climb = null;
     C.next = Math.max(C.next, 2);
+    const doused = C.wh > 0; // FIRE: water knocks a white-hot one straight back to grey, and it sulks
+    if (doused) { C.wh = 0; C.dbl = 0; C.sulk = FIRE.sulk; C.fuCD = Math.max(C.fuCD, FIRE.cd); }
     this.salHalt(C, 'hiss', SAL.hiss);
-    this.emit('salCool', { x, y, hx: C.pts[0].x, hy: C.pts[0].y, id: C.id, frost: C.kind === 'frost' });
+    this.emit('salCool', { x, y, hx: C.pts[0].x, hy: C.pts[0].y, id: C.id, frost: C.kind === 'frost', doused: doused ? 1 : 0 });
   },
 
   // ---------- hazards: gust | rock | lava | quake | bolt | ice | flash (glow chick) | dash (dash chick) | water
@@ -680,6 +939,7 @@ export const salMethods = {
       if (C.cool > 0) { C.cool = Math.min(C.cool, 0.5); }
       else C.next = Math.max(0.6, Math.min(C.next, C.next - 2.5));
       this.emit('salHit', { kind: 'lava', x: h.x, y: h.y, id: C.id });
+      if (this.salFuOK(C, true)) this.salFireUp(C, 'lava'); // FIRE: lava fires it up
       return;
     }
     if (kind === 'quake') { this.emit('salHit', { kind, x: h.x, y: h.y, id: C.id }); return; } // it grips the walls
@@ -705,7 +965,10 @@ export const salMethods = {
     const B = this.bx && this.bx.boss;
     if (!B) return;
     // a breath half a beat after each lava attack: rock, fire, rock, fire
-    if (B.atk && B.atk.ph === 'act' && C.bk !== B.k) { C.bk = B.k; if (C.ph === 'walk') C.next = Math.min(Math.max(C.next, 0.8), this.salEvery(C) * 0.5); }
+    if (B.atk && B.atk.ph === 'act' && C.bk !== B.k) {
+      C.bk = B.k; if (C.ph === 'walk') C.next = Math.min(Math.max(C.next, 0.8), this.salEvery(C) * 0.5);
+      if (B.atk.name === 'magma' && this.salFuOK(C, true)) this.salFireUp(C, 'magma'); // FIRE (a fire phase): it drinks its own magma ring and goes white-hot
+    }
     if (B.atk && C.ph === 'walk' && C.next < 0.8) C.next = 0.8; // never on top of a lava throw
     if (B.phase !== C.bph) { C.bph = B.phase; this.salDaze(C, 1.6); } // a new phase: it reels with the boss
     if (B.saved !== C.bsaved) { C.bsaved = B.saved; if (C.ph === 'warn') { C.next = 1.6; this.salSet(C, 'walk'); this.emit('salFlinch', { x: C.pts[0].x, y: C.pts[0].y }); } }
@@ -917,7 +1180,15 @@ export const salMethods = {
     for (const C of this.sals) {
       if (C.ph !== 'warn' && !(C.ph === 'brake' && C.pend === 'warn')) continue;
       const T = this.salTarget(C);
-      if (Math.hypot(p.x - T.x, p.y - T.y) < (SAL.hotLen * C.size) / 2 + 0.45) v = Math.max(v, 0.8);
+      if (Math.hypot(p.x - T.x, p.y - T.y) < this.salHotLen(C) / 2 + 0.45) v = Math.max(v, 0.8);
+    }
+    // SPIT: a spit wound up at this egg, an ember coming down by it, a burning pool it is on or rolling into
+    for (const C of this.sals) if ((C.ph === 'spitWarn' || (C.ph === 'brake' && C.pend === 'spitWarn')) && C.sj === e.id) v = Math.max(v, 0.7);
+    for (const E of this.salEmbers) if (Math.hypot(p.x - E.x1, p.y - E.y1) < SPIT.len / 2 + 0.5) v = Math.max(v, 0.85);
+    for (const P of this.salPools) {
+      if (P.t <= SPIT.crust + 0.2 || P.hit.includes(e.id) || this.channelOf(e) !== P.ch) continue;
+      const c = this.salPoolPt(P);
+      if (Math.hypot(p.x - c.x, p.y - c.y) < SPIT.len / 2 + 0.45) { v = 1; break; }
     }
     return v;
   },
@@ -928,6 +1199,7 @@ export const salMethods = {
       n: this.salBurnN,
       sals: (this.sals || []).map((C) => ({ ...C, pts: C.pts.map((q) => ({ ...q })), climb: C.climb ? { ...C.climb } : null })),
       hot: this.salHot.map((H) => { const sg = this.rings[H.ri].segs[H.si]; return [H.ri, H.si, sg.hot, sg.hotK]; }),
+      em: (this.salEmbers || []).map((E) => ({ ...E })), pools: (this.salPools || []).map((P) => ({ ...P, hit: P.hit.slice() })), emN: this.salEmN || 0, // 0.8.18 SPIT
     };
   },
   salLoad(S) {
@@ -935,6 +1207,7 @@ export const salMethods = {
     this.salBurnN = S.n || 0;
     this.sals = S.sals.map((C) => ({ ...C, pts: C.pts.map((q) => ({ ...q })), climb: C.climb ? { ...C.climb } : null }));
     this.salHot = [];
+    this.salEmbers = (S.em || []).map((E) => ({ ...E })); this.salPools = (S.pools || []).map((P) => ({ ...P, hit: P.hit.slice() })); this.salEmN = S.emN || 0;
     for (const [ri, si, hot, hotK] of S.hot || []) { const sg = this.rings[ri].segs[si]; sg.hot = hot; sg.hotK = hotK; this.salHot.push({ ri, si }); }
   },
 };
