@@ -9189,7 +9189,7 @@ function winSpinTile(x, y, w, h, s, leads, shim = leads) {
 // About 3 s untouched; a tap anywhere skips to the end; NEXT takes a tap from the first frame. Calm: the end at once.
 // With reward reveals waiting, her big show and the reveals come first (as before); the sequence runs once the page has
 // slid in (its stars landed in the show).
-const SLAM = 0.22, TOK_FLY = 0.34, ROLL = 0.22, PURSE_DUR = 0.5, FLOAT = 0.9;
+const SLAM = 0.22, TOK_FLY = 0.34, ROLL = 0.22, PURSE_DUR = 0.5;
 const winPT = (r) => r.t - winShow(r); // the page's own clock (held at 0 through the reveals)
 const fmtN = (n) => Math.round(n).toLocaleString('en-US');
 // star q is goal q's: lit when that goal was met (one star, one goal: the badge under it tells which)
