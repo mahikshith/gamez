@@ -526,6 +526,8 @@ function roadKit(L, ctx) {
   L._road.gold = gg; L._road.goldHi = gh;
   return L._road;
 }
+// 0.8.18: a world's road colours (render/mapside.js strokes the side quests' forks in them)
+export function roadCols(w) { const c = w === 0 ? FARM_ROAD : (WORLD_LOOK[w] || WORLD_LOOK[1]).road; return { fill: c[0], edge: c[1], dash: c[2] }; }
 // a colour (#hex or rgba()) with its alpha set to a
 function withA(c, a) {
   if (c[0] === '#') { const n = parseInt(c.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }

@@ -62,6 +62,24 @@ function installBot(key) {
         while (Math.abs(leftA) > 1e-4 && live()) { const st = Math.sign(leftA) * Math.min(Math.abs(leftA), (pace * H.speed) / 60); if (!lags(sim, cmd, Math.sign(leftA))) { cmd += st; leftA -= st; } p = Wd.toScreen(0, R * Math.cos(cmd), R * Math.sin(cmd)); ev('pointermove', p.x, p.y); yield; }
         ev('pointerup', p.x, p.y);
         yield* frames(Math.round((a[4] ?? 1.5) * 60));
+      } else if (a[0] === 'henGap') { // 0.8.18 (as tools/wonder-check.mjs): she follows a ring's gap while it turns by itself, until no egg waits inside it
+        const sim = g().sim, H = sim.hen, ring = sim.rings[a[1]], pace = a[3] || 0.5, lead = (a[5] || 0) * D, R = sim.nestR + 0.1;
+        const want = () => ring.body.getAngle() + ring.gaps[0].a + lead * Math.sign(ring.motor || 1);
+        const inside = () => sim.eggs.some((e) => e.alive && !e.saved && sim.channelOf(e) <= a[1]);
+        let cmd = H.target, way = a[2] || 0, n = 0, p = Wd.toScreen(0, R * Math.cos(cmd), R * Math.sin(cmd));
+        ev('pointerdown', p.x, p.y); yield;
+        while (live() && inside() && n++ < 40 * 60) {
+          let d = wrap(want() - cmd);
+          if (way && Math.sign(d) !== way && Math.abs(d) > 0.3) d += way * 2 * Math.PI; else way = 0;
+          const st = Math.sign(d) * Math.min(Math.abs(d), (pace * H.speed) / 60);
+          if (!lags(sim, cmd, Math.sign(d))) cmd += st;
+          p = Wd.toScreen(0, R * Math.cos(cmd), R * Math.sin(cmd)); ev('pointermove', p.x, p.y); yield;
+        }
+        ev('pointerup', p.x, p.y);
+        yield* frames(Math.round((a[4] ?? 1.5) * 60));
+      } else if (a[0] === 'beat') { // 0.8.18 (as tools/wonder-check.mjs): wait for that vault's pop-thorn beat
+        const sim = g().sims[a[1]], ph = () => (((sim.t - a[3]) % a[2]) + a[2]) % a[2];
+        for (let n = 0; n < a[2] * 60 + 2 && live() && ph() > (1 / 60) * 1.01; n++) yield;
       } else if (a[0] === 'set') {
         const ring = g().sim.rings[a[1]], a0 = ring.body.getAngle(), goal = wrap(a[2] * D);
         yield* drag(0, a[1], () => goal - (ring.body.getAngle() - a0), 1.6);
@@ -99,7 +117,7 @@ function installBot(key) {
   const b = await chromium.launch();
   const strips = [];
   let problems = 0;
-  const keys = ['planet', 'plan', 'mama', 'twin', 'hatch'].filter((k) => !only || only.includes(k));
+  const keys = ['planet', 'plan', 'mama', 'twin', 'hatch', 'twin2', 'mama2', 'planet2', 'plan2', 'hatch2'].filter((k) => !only || only.includes(k)); // 0.8.18: all ten side quests
   for (const key of keys) {
     const p = await b.newPage({ viewport: { width: VW, height: VH }, deviceScaleFactor: 2 });
     const errors = [];

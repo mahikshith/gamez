@@ -21,6 +21,7 @@ const BOARD = new Set(['id', 'key', 'kind', 'theme', 'name', 'eggs', 'target', '
   'rings', 'orbs', 'portals', 'barriers', 'weatherOpts', 'eggKinds', 'water', 'shape', 'rock', 'boss', 'chickEggs', 'allies', 'pitch', 'wonder', 'r0', 'solve', 'fails', 'cw']);
 BOARD.add('softCurtain'); // a flag on the level that first teaches the thorn curtain (that curtain only cracks): board, like gap.curtain
 const RING_BOARD = new Set(['gaps', 'thorns', 'pads', 'mat', 'gear', 'oneway', 'ice', 'honey', 'shape', 'fixed', 'grate']);
+RING_BOARD.add('motor'); // 0.8.18 side quests: a ring that turns on its own (specs.js ring field), board like gear
 const GAP_BOARD = new Set(['a', 'len', 'x', 'shut', 'curtain', 'grate']);
 // villain / hazard keys -> table kind
 const CREATURE = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];

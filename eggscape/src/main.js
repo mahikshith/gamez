@@ -525,7 +525,7 @@ const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }
   sideWin: (key, stars) => { const before = save.wallet.coins, r = SQ.sideWin(save, key, stars); save.wallet = E.addCoins(save.wallet, r.coins); ledger('win'); persist(); purse.hold(before); return { ...r, before }; },
   sideCoins: (key) => SQ.sideCoins(save, key), sideStars: () => ({ have: SQ.sideTotal(save), max: SQ.SIDE_MAX }), drawCoin: (c, x, y, r, t) => drawCoin(c, x, y, r, t),
   coinsFly: (P, at, dur) => { purse.gain({ from: P.before, src: at, dur }); },
-  leave: (side) => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); if (side) { G.world = side.w; G.sideFocus = side.w; G.mapTravel = null; setScreen('levels'); } else setScreen('extras'); },
+  leave: (side) => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); if (side) { G.world = side.w; G.sideFocus = side.w; G.sideHome = side.w; G.mapTravel = null; setScreen('levels'); } else setScreen('extras'); },
   // 0.8.17 polish: a side quest's card, pause, win and fail pages are laid out with the road's own page kit (the win and
   // fail pages' full page and side stage, her stage, the art stage, the pause tiles, the purse), never a copy of it
   kit: { head: () => CARD_HEAD, page: (title, build, o = {}) => { const hb = G.hudBottom; G.hudBottom = ui.A.y; try { return stackCard(title, build, o); } finally { G.hudBottom = hb; } },
@@ -2082,8 +2082,8 @@ async function press(id) {
         const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS, ...REEF_DEMOS, ...BAYOU_DEMOS, ...LAB_DEMOS].find((x) => x.kind === k);
         if (d) { G.demo = d; startLevel(-2); }
       } else if (id && id.startsWith('sq:') && id !== 'sq:bonus') { // 0.8.17: a side quest's door on the map ('sq:' + world): the hen walks the trail, then its card
-        const q = MSIDE.sidePlan(mapLayoutNow()).find((p) => p.w === +id.slice(3));
-        if (q && !G.sideWalk && SQ.sideOpen(save, q, allOpen())) { G.mapTravel = null; G.sideReveal = null; G.sideWalk = { q, t0: G.screenT }; audio.play('hen_hop'); }
+        const q = MSIDE.sidePlan(mapLayoutNow()).find((p) => p.w === parseInt(id.slice(3), 10)), nx = nextIdx(); // (0.8.18: 'sq:' + world + ':path' is a tap on its fork)
+        if (q && !G.sideWalk && SQ.sideOpen(save, q, allOpen())) { G.mapTravel = null; G.sideReveal = null; G.sideWalk = { q, t0: G.screenT, from: playable(nx) && envOpen(envOf(nx)) ? nx : q.i }; audio.play('hen_hop'); } // she walks from her nest
       } else if (id === 'sq:bonus') { // the Extras page's Bonus vaults: the map, at the first open side quest (else the first one)
         const Q = SQ.SIDE.filter((q) => SQ.sideOpen(save, q, allOpen())), q = Q.find((p) => SQ.sideStars(save, p.key) < 3) || Q[0] || SQ.SIDE[0];
         if (q) { G.world = q.w; G.sideFocus = q.w; G.mapTravel = null; setScreen('levels'); }
@@ -10688,6 +10688,11 @@ function drawLevels() {
   if (G.screenT < S.seenT || S.focus !== G.world + ':' + S.enter) { mapFocusWorld(G.world); S.focus = G.world + ':' + S.enter; fresh = true; } // just opened: show where the player is
   const SIDES = MSIDE.sidePlan(L); // 0.8.17: the side quests' doors and trails
   if (G.sideFocus != null) { const q = SIDES.find((p) => p.w === G.sideFocus); if (q) mapFocusY(q.y, 0.55); G.sideFocus = null; G.sideWalk = null; } // back from a side quest (or Extras' Bonus vaults): at its door
+  if (G.sideHome != null) { // 0.8.18: back from a side quest, the hen walks home from its door along the fork to her nest
+    const q = SIDES.find((p) => p.w === G.sideHome), n0 = nextIdx();
+    if (q && playable(n0) && envOpen(envOf(n0))) G.sideWalk = { q, from: n0, back: true, t0: G.screenT + 0.4 };
+    G.sideHome = null;
+  }
   S.seenT = G.screenT;
   const dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
   const camTo = (y, f, snap) => { const want = clamp(y - vh * f, 0, S.max); S.y = snap ? want : S.y + (want - S.y) * Math.min(1, dt * 6); S.v = 0; return Math.abs(want - S.y) < 3; }; // the camera glides there
@@ -10745,12 +10750,13 @@ function drawLevels() {
       else if (!(TR && TR.from === uq.i)) { for (const p of SQ.SIDE) if (SQ.sideOpen(save, p, allOpen())) SQ.markSeen(save, p.key); persist(); }
     }
   }
-  const SR = G.sideReveal, SR_T = 1.7;
+  const SR = G.sideReveal, SR_T = 2.1; // 0.8.18: the fork's padlock breaks, the fork lights up to the door, the door pops
   if (SR) {
     camTo(SR.q.y, 0.5, fresh || save.calm); // (calm: a cut, no glide)
     if (SR.t0 == null && Math.abs(S.y - clamp(SR.q.y - vh * 0.5, 0, S.max)) < 30 * u) SR.t0 = G.t;
     const rs = SR.t0 == null ? -1 : G.t - SR.t0;
-    if (rs >= 0.5 && !SR.snd) { SR.snd = 1; audio.play('unlock', { pitch: 1.25 }); audio.play('star', { pitch: 1.2 }); buzz('tap'); }
+    if (rs >= 0.2 && !SR.snd) { SR.snd = 1; audio.play('unlock', { pitch: 1.25 }); buzz('tap'); }
+    if (rs >= 0.8 && !SR.snd2) { SR.snd2 = 1; audio.play('star', { pitch: 1.2 }); }
     if (TR) TR.face = SR.q.x > L.stops[TR.from].x ? 1 : -1; // the hen looks at it
     if (rs >= SR_T) { for (const p of SQ.SIDE) if (SQ.sideOpen(save, p, allOpen())) SQ.markSeen(save, p.key); persist(); G.sideReveal = null; }
   }
@@ -10769,6 +10775,17 @@ function drawLevels() {
     if (TR.arrived && G.screenT - TR.arrived > 0.6) { G.mapTravel = null; if (playable(TR.to)) press('lv:' + TR.to); }
   }
   const ulS = TR && TR.unl ? (TR.t0 < 0 ? -1 : G.screenT - TR.t0 - UNL0) : null; // the padlock break on the stop she goes to (s)
+  // 0.8.18 the hen's walk to a side quest's door (mykee: "the hen will move there and they can see it"): out of her nest,
+  // along the road to the nearer end of its fork, up the fork to the door; after the quest the same way home. Eased (a slow
+  // start, a slow arrival), a hop a step, the camera with her
+  const SW = G.sideWalk && !TR ? G.sideWalk : null;
+  if (SW) {
+    if (!SW.route) { SW.route = MSIDE.sideRoute(L, SW.q, SW.from, !!SW.back); SW.dur = clamp(SW.route.len / (190 * u), 0.9, 2.4); }
+    const k = clamp((G.screenT - SW.t0) / SW.dur, 0, 1), e = k < 0.5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k);
+    SW.k = k; SW.e = e; SW.P = MSIDE.along(SW.route.pts, e * SW.route.len);
+    SW.inN = SW.back ? ss01((e - 0.9) / 0.1) : 1 - ss01(e / 0.1); // climbing out of her nest (home: into it)
+    camTo(SW.P.y, 0.55, false);
+  }
   // her nest while she climbs out of one and settles into the next (0.8.17: the nest's front is drawn over her then)
   const inA = TR ? 1 - ss01(TR.e / 0.12) : 0, inB = TR ? ss01((TR.e - 0.88) / 0.12) : 0;
   glideDt(S, dt);
@@ -10780,13 +10797,19 @@ function drawLevels() {
   const nx = nextIdx();
   let doneTo = null; for (let i = 0; i < LEVELS.length; i++) if (bestStarsOf(LEVELS[i].id) > 0 || SK.isSkipped(save, LEVELS[i].id)) doneTo = L.stops[i].y;
   MS.drawRoad(ctx, L, sy, vt, H_, doneTo);
-  // 0.8.17 the side quests' trails: stepping stones off the road (under the scenery's creatures, the stops and the hen)
+  // 0.8.18 the side quests' forks: a narrower road off the road, out to the door and back onto the road (under the
+  // scenery's creatures, the stops and the hen). Open: a pulse runs along it once each time the map shows it
   const sqState = (q) => (!envOpen(q.w) || !SQ.sideOpen(save, q, allOpen()) || (G.sideReveal && G.sideReveal.q === q && G.sideReveal.t0 == null) ? 'locked' : SQ.sideStars(save, q.key) > 0 ? 'won' : 'open');
   const srS = G.sideReveal && G.sideReveal.t0 != null ? G.t - G.sideReveal.t0 : -1;
+  if (!G.sidePulse || G.screenT < G.sidePulse.st) G.sidePulse = {}; G.sidePulse.st = G.screenT; // (one pulse a fork per visit of the map: the screen's clock restarts on each)
   for (const q of SIDES) {
-    if (q.y - sy < vt - 160 * u || q.y - sy > H_ + 120 * u) continue;
-    const rv = G.sideReveal && G.sideReveal.q === q, n = rv && !save.calm ? Math.floor(q.trail.stones.length * ss01(srS / 0.5)) : 1e9;
-    MSIDE.drawSideTrail(ctx, L, q, sy, rv && srS < 0.5 ? 'open' : sqState(q), n);
+    const P0 = q.fork.S.y, P1 = q.fork.E.y;
+    if (P0 - sy < vt - 40 * u || P1 - sy > H_ + 40 * u) continue;
+    const rv = G.sideReveal && G.sideReveal.q === q, st = sqState(q);
+    if (rv) { MSIDE.drawSideFork(ctx, L, q, sy, srS < 0 ? 'locked' : 'open', calm ? { lockK: srS < 0 ? 0 : 1 } : { lit: srS < 0 ? 0 : ss01((srS - 0.35) / 0.9), lockK: srS < 0 ? 0 : clamp(srS / 0.55, 0, 1), pulse: srS < 0.35 ? null : (srS - 0.35) / 0.9 }); continue; }
+    let pulse = null;
+    if (st !== 'locked' && !calm && q.y - sy > vt && q.y - sy < H_ - 60 * u) { const k = q.key, ps = G.sidePulse; if (ps[k] == null) ps[k] = G.t + 0.25; pulse = (G.t - ps[k]) / 1.6; }
+    MSIDE.drawSideFork(ctx, L, q, sy, st, { pulse });
   }
   if (ui.skin && ui.skin.pack && ui.skin.pack.bg) drawRoadDress(ctx, L, sy, vt, H_, t, ui.skin.pack.bg, calm);
   MS.drawCast(ctx, L, sy, vt, H_, t, calm, DPR);
@@ -10836,7 +10859,7 @@ function drawLevels() {
       p = calm ? 0 : ui.pressAmt('lv:' + i, ui.pressedId === 'lv:' + i);
     }
     // the nest the hen sits in is drawn in two passes, its front (rim, badge, plate) over her
-    const henIn = TR ? (i === TR.from && inA > 0) || (i === TR.to && inB > 0) : state === 'cur' && !G.sideWalk; // (0.8.17: she is out on a side quest's trail)
+    const henIn = TR ? (i === TR.from && inA > 0) || (i === TR.to && inB > 0) : state === 'cur' && (!G.sideWalk || (SW && i === SW.from && SW.inN > 0)); // (0.8.17: she is out on a side quest's fork)
     const o = { w, num: Lv.id, stars: starsOf(Lv.id), boss, DPR, p, part: henIn ? 'back' : 'all', hard: isHardLevel(Lv) && save.mode !== 'easy' };
     if (TR && i === TR.from) { TR.fromSt = state; fromAt = { x, y, o }; } // the nest she climbs out of
     if (TR && i === TR.to && ulS != null && ulS < MS.UNLOCK_T && state === 'cur') { // its padlock breaks away, then it turns into her nest
@@ -10847,20 +10870,30 @@ function drawLevels() {
     MS.drawStop(ctx, L, x, y, state, o);
     if (state === 'won' || state === 'cur') pacerStopMark(Lv.id, x, y, L.stopR, t, calm); // the Pacer: a dare met here, or "+1 star here" at a star gate
   }
-  // 0.8.17 the side quests' doors (render/mapside.js): locked (dim, a padlock), open (it glows and bobs), won (its stars).
-  // A tap on an open one walks the hen down its trail and opens its card; one half under the header or PLAY takes no tap.
+  // 0.8.17 the side quests' doors (render/mapside.js): locked (dim; 0.8.18: the padlock sits on the fork), open (it glows
+  // and bobs), won (its stars). A tap on an open one, or on its fork (0.8.18), walks the hen there and opens its card; a
+  // box half under the header or PLAY takes no tap.
   for (const q of SIDES) {
     const y = q.y - sy;
     if (y < vt - 120 * u || y > H_ + 90 * u) continue;
-    const st = sqState(q), rv = G.sideReveal && G.sideReveal.q === q;
-    if (rv && srS < 0.5) continue; // (the reveal: the trail draws in first, then the door pops)
+    const st = sqState(q), rv = G.sideReveal && G.sideReveal.q === q, popAt = 0.8;
     const b = q.box, by0 = b.y0 - sy, by1 = b.y1 - sy;
     let tb = tapBot; if (b.x1 > wmX - 6 * u && by1 > wmY - 6 * u) tb = Math.min(tb, wmY - 6 * u); if (ctaOn && wide && b.x1 > ctaX - 6 * u) tb = Math.min(tb, ctaY - 6 * u);
     let p = 0;
-    if (st !== 'locked' && by0 >= vt + 2 * u && by1 <= tb && !G.sideWalk) { ui.button('sq:' + q.w, '', b.x0, by0, b.x1 - b.x0, by1 - by0, { ghost: true }); p = calm ? 0 : ui.pressAmt('sq:' + q.w, ui.pressedId === 'sq:' + q.w); }
-    const bo = (k) => { const q2 = k - 1; return 1 + 2.7 * q2 * q2 * q2 + 1.7 * q2 * q2; }, pop = rv && !calm ? 0.35 + 0.65 * bo(clamp((srS - 0.5) / 0.4, 0, 1)) : 1;
-    MSIDE.drawSideDoor(ctx, L, q, sy, rv ? 'open' : st, { t, calm, stars: SQ.sideStars(save, q.key), DPR, p, pop, glow: rv && calm ? 0.8 : 0 });
-    if (rv) MSIDE.drawSideBurst(ctx, L, q, sy, srS - 0.5, calm);
+    if (st !== 'locked' && !rv && !G.sideWalk) {
+      const id = 'sq:' + q.w, ok = (r) => r.y0 >= vt + 2 * u && r.y1 <= tb && !(ctaOn && wide && r.x1 > ctaX - 6 * u && r.y1 > ctaY - 6 * u) && !(r.x1 > wmX - 6 * u && r.y1 > wmY - 6 * u) && !ui.buttons.some((ob) => /^(lv|tr):/.test(ob.id) && r.x1 > ob.x && r.x0 < ob.x + ob.w && r.y1 > ob.y && r.y0 < ob.y + ob.h);
+      const D = { x0: b.x0, x1: b.x1, y0: by0, y1: by1 }; // the door's box gives way to a stop's (keeping the bigger part), so one tap is one thing
+      for (const ob of ui.buttons) {
+        if (!/^(lv|tr):/.test(ob.id) || D.x1 <= ob.x || D.x0 >= ob.x + ob.w || D.y1 <= ob.y || D.y0 >= ob.y + ob.h) continue;
+        const cuts = [{ ...D, y1: Math.min(D.y1, ob.y - 1) }, { ...D, y0: Math.max(D.y0, ob.y + ob.h + 1) }, { ...D, x1: Math.min(D.x1, ob.x - 1) }, { ...D, x0: Math.max(D.x0, ob.x + ob.w + 1) }];
+        Object.assign(D, cuts.reduce((a2, c) => ((c.x1 - c.x0) * (c.y1 - c.y0) > (a2.x1 - a2.x0) * (a2.y1 - a2.y0) ? c : a2)));
+      }
+      if (D.x1 - D.x0 >= 30 * u && D.y1 - D.y0 >= 30 * u && ok(D)) { ui.button(id, '', D.x0, D.y0, D.x1 - D.x0, D.y1 - D.y0, { ghost: true }); p = calm ? 0 : ui.pressAmt(id, ui.pressedId === id); }
+      for (const r of MSIDE.forkTaps(L, q)) { const R2 = { x0: r.x0, x1: r.x1, y0: r.y0 - sy, y1: r.y1 - sy }; if (ok(R2)) { const rr = { x: R2.x0, y: R2.y0, w: R2.x1 - R2.x0, h: R2.y1 - R2.y0 }; ui.record(rr, 'btn:' + id + ':path', 'btn:' + id); ui.buttons.push({ id: id + ':path', ...rr }); } } // (one group with the door: they are the same thing)
+    }
+    const bo = (k) => { const q2 = k - 1; return 1 + 2.7 * q2 * q2 * q2 + 1.7 * q2 * q2; }, pop = rv && !calm && srS >= popAt ? 0.8 + 0.2 * bo(clamp((srS - popAt) / 0.4, 0, 1)) : 1;
+    MSIDE.drawSideDoor(ctx, L, q, sy, rv ? (srS < popAt ? 'locked' : 'open') : st, { t, calm, stars: SQ.sideStars(save, q.key), DPR, p, pop, glow: rv && calm ? 0.8 : 0 });
+    if (rv) MSIDE.drawSideBurst(ctx, L, q, sy, srS - popAt, calm);
   }
   // the boss treasures: a chest beside every boss stop, on the side away from where the hen would stand
   for (let i = 0; i < LEVELS.length; i++) {
@@ -10960,16 +10993,20 @@ function drawLevels() {
       for (let q = 0; q < 8; q++) { const an = q * Math.PI / 4 + 0.3, rr = L.stopR * (1.2 + 1.6 * k); drawStar(ctx, b.x + Math.cos(an) * rr, by - hh * 0.3 + Math.sin(an) * rr * 0.8, 6 * u * (1 - k * 0.5), true); }
       ctx.restore();
     }
-  } else if (G.sideWalk) { // 0.8.17: she hops out of her nest and down the side quest's trail to its door, then its card opens
-    const W = G.sideWalk, q = W.q, st = L.stops[q.i], tr = q.trail, k = clamp((G.screenT - W.t0) / 1.0, 0, 1), e = k < 0.5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k);
-    camTo((q.y + st.y) / 2, 0.55, false);
-    const P = e < 0.2 ? { x: st.x + (tr.a.x - st.x) * (e / 0.2), y: st.y + (tr.a.y - st.y) * (e / 0.2) } : tr.f((e - 0.2) / 0.8);
-    const h2 = hh * 0.86, hop = calm || k >= 1 ? 0 : Math.abs(Math.sin(k * Math.PI * 5)) * h2 * 0.14, face = q.x > st.x ? 1 : -1;
-    if (hop > 0.5) { ctx.beginPath(); ctx.ellipse(P.x, P.y - sy + 1 * u, h2 * 0.24, h2 * 0.06, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill(); }
-    drawHenAnim(ctx, k >= 1 ? 'happy' : 'idle', P.x, P.y - sy - hop - h2 * 0.5, h2, t, { key: 'map', face, calm, shadow: 0 });
-    G.mapHen = { x: P.x, y: P.y - sy - hop, side: q.w };
-    if (k >= 1 && !W.done) { W.done = G.screenT; audio.play('hen_land'); }
-    if (W.done && G.screenT - W.done > 0.25) { G.sideWalk = null; wonder.start(q.key, { side: { w: q.w } }); }
+  } else if (SW) { // 0.8.18: she walks the road and the fork to a side quest's door (or home from it), then its card opens
+    const P = SW.P, steps = Math.max(3, Math.round(SW.route.len / (30 * u))), boss = !!(curAt && curAt.boss), fa = MS.stopFeet(L, boss);
+    const hop = calm || SW.k >= 1 || SW.k <= 0 ? 0 : Math.abs(Math.sin(SW.e * Math.PI * steps)) * hh * 0.16 * (1 - SW.inN);
+    const face = Math.abs(P.dx) > 0.3 ? (P.dx > 0 ? 1 : -1) : (SW.face || 1); SW.face = face;
+    const inNest = SW.inN > 0 && curAt && curAt.i === SW.from, gy = P.y - sy + fa + (inNest ? SW.inN * (MS.nestSeat(L, 'cur', boss, hh) - fa) : 0);
+    if (hop > 0.5) { ctx.beginPath(); ctx.ellipse(P.x, gy + 1 * u, hh * 0.26 * (1 - hop / (hh * 0.6)), hh * 0.065, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill(); }
+    ctx.save(); if (inNest) MS.nestClip(ctx, L, curAt.x, curAt.y, 'cur', boss);
+    drawHenAnim(ctx, SW.k >= 1 && !SW.back ? 'happy' : 'idle', P.x, gy - hop - hh * 0.5, hh, t, { key: 'map', face, calm, shadow: 0 });
+    ctx.restore();
+    if (inNest) MS.drawStop(ctx, L, curAt.x, curAt.y, 'cur', { ...curAt.o, part: 'front' });
+    G.mapHen = { x: P.x, y: gy - hop, side: SW.q.w };
+    if (SW.k >= 1 && !SW.done) { SW.done = G.screenT; audio.play('hen_land'); }
+    if (SW.done && SW.back) G.sideWalk = null; // home: she sits in her nest again
+    else if (SW.done && G.screenT - SW.done > 0.25) { G.sideWalk = null; wonder.start(SW.q.key, { side: { w: SW.q.w } }); }
   } else if (curAt) {
     const fy = curAt.y + MS.nestSeat(L, 'cur', curAt.boss, hh); // 0.8.16: sitting IN the nest, her lower half in the straw
     ctx.save(); MS.nestClip(ctx, L, curAt.x, curAt.y, 'cur', curAt.boss);
@@ -12333,7 +12370,7 @@ if (DEV) window.__egg = {
   stampStats,
   perf: { bodyCache, ringCache, PERF, STEPS, hud: HUD_CACHE, hudLayers: HL, applySettings: () => { applySettings(save); setDPR(); } },
   mapJump(w) { G.world = w; G.mscroll.focus = ''; }, // map shots: show world w
-  sidePlan() { return MSIDE.sidePlan(mapLayoutNow()).map((q) => ({ w: q.w, key: q.key, i: q.i, x: q.x, y: q.y, R: q.R, box: q.box, stones: q.trail.stones.length })); }, // 0.8.17 QA: the side quests' doors
+  sidePlan() { const L = mapLayoutNow(); return MSIDE.sidePlan(L).map((q) => ({ w: q.w, key: q.key, i: q.i, j: q.j, x: q.x, y: q.y, R: q.R, box: q.box, pts: MSIDE.forkPts(q.fork).length, la: q.fork.la, lb: q.fork.lb, taps: MSIDE.forkTaps(L, q).length })); }, // 0.8.17 QA: the side quests' doors (0.8.18: on their forks)
   sideFocus(w) { G.world = w; G.sideFocus = w; G.mscroll.focus = ''; }, // map shots: centre side quest w's door
   mapScroll(y) { G.mscroll.y = y; G.mscroll.v = 0; G.mscroll.focus = G.world + ':' + G.mscroll.enter; },
   G, LEVELS, LAB, ui, art: { drawOctopus: devOcto, octoAnim: devOctoAnim, drawJelly: devJelly }, drawVillainPortrait, PORTRAIT_BG, HEN_SKIN_ORDER: E.HEN_SKIN_ORDER, SKIN_ORDER: E.SKIN_ORDER, setEggSkin: (k) => W.setSkin(k),
