@@ -175,6 +175,12 @@ const hold = (sim) => { const e = sim.eggs[0]; if (e.body) { put(sim, e, 2, 90);
 }
 
 // ---------------------------------------------------------------- the family: each form's own rule
+{ // the baby (first meeting, spec baby: 1): a hit only shoves, on every mode
+  for (const m of ['medium', 'hard']) {
+    const sb = fresh(m, {}, {}, { baby: 1 }); put(sb, sb.eggs[0], 1, -90); const lb = run(sb, 5);
+    ok(!!at(lb, 'creepHit') && sb.eggs[0].alive && sb.eggs[0].cracks === 0, `baby, ${m}: a hit only shoves (cracks ${sb.eggs[0].cracks}, ${sb.eggs[0].alive ? 'alive' : 'broken'})`);
+  }
+}
 { // frost: a hit cracks once and shoves (never the outright break); on Easy it only shoves
   const sim = fresh('medium', {}, {}, { form: 'frost' });
   put(sim, sim.eggs[0], 1, -90);
@@ -251,6 +257,7 @@ for (const f of ['spark', 'saw', 'shard']) { // fire means nothing to them; a st
   if (first) {
     const c = first.rings.find((r) => r.creep).creep;
     ok(c.v <= 0.35 && c.a1 - c.a0 <= 40 && c.rest >= 1.4, `its first appearance is a gentle baby (v ${c.v} m/s, stretch ${c.a1 - c.a0} deg, coil ${c.rest} s)`);
+    ok(c.baby === 1 && !first.intro, `its first level marks it a baby (only shoves) and introduces nothing else (L${first.id})`);
   }
   const WF = { 2: ['thorn'], 3: ['frost'], 4: ['shard'], 6: ['spark'], 7: ['saw', 'thorn'], 8: ['anemone'], 9: ['vine'], 10: ['saw'] };
   for (const w of [2, 3, 4, 6, 7, 8, 9, 10]) { const L = with_.filter((q) => q.world === w); ok(L.length >= 1 && L.every((q) => WF[w].includes(form(q))), `world ${w}: ${L.map((q) => 'L' + q.id + ' ' + form(q)).join(', ') || 'none'}`); }

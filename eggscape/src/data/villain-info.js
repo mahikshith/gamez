@@ -299,7 +299,7 @@ export const VILLAIN_INFO = {
   },
   creeper: { // 0.8.18 (sim/creeper.js)
     group: 'hazard', name: 'Thorn creeper',
-    does: 'Crawls to and fro along a ring edge. Its head cracks eggs.',
+    does: 'Crawls along a ring edge. A baby shoves eggs aside; a grown one cracks them.',
     beat: 'Pass while it curls up at an end. Fire burns it to a stump.',
   },
   swampvine: { // 0.8.18 the creeper family: the bayou's form (the thorn creeper's rule)

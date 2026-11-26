@@ -16,7 +16,8 @@
 //   BURN   knocked back where it is (burnt, snapped, melted, cooled), then STUMP (harmless) for CREEP.regrow s, GROW, COIL.
 //   GONE   the Thorn Snips booster takes it off for the level.
 // THE FORMS (FORMS below; at most one small rule of their own)
-//   thorn   farm, woods, mushroom: a bramble head; its head breaks an egg (Easy: a crack and a shove). Fire burns it to a
+//   thorn   farm, woods, mushroom: a bramble head; its head breaks an egg (Easy: a crack and a shove; a baby, spec `baby: 1`,
+//           on its first meeting only shoves, on every mode). Fire burns it to a
 //           stump that regrows; a stone, comet or golden egg snaps it; Snips snip it off.
 //   vine    the bayou's swamp vine: the thorn's rule in a mossy skin.
 //   frost   frozen lake, blizzard: a crawling cluster of ice spikes. Own rule: a hit CRACKS once and shoves (never breaks
@@ -79,7 +80,7 @@ export const creepMethods = {
       const hr = o.w ? o.w / 2 : F.hr, rh = side === 'in' ? ring.r - RING_TH / 2 - F.lift : ring.r + RING_TH / 2 + F.lift;
       const a0 = (Math.min(o.a0, o.a1) * Math.PI) / 180, a1 = (Math.max(o.a0, o.a1) * Math.PI) / 180;
       this.creeps.push({
-        id: this.creeps.length, ri, side, rh, a0, a1, form, hr, heat: {}, v: o.v || 0.5, rest: o.rest || 1,
+        id: this.creeps.length, ri, side, rh, a0, a1, form, hr, heat: {}, v: o.v || 0.5, rest: o.rest || 1, baby: o.baby ? 1 : 0,
         u: a0, dir: 1, ph: 'coil', t: o.delay ?? 2.5, dur: o.delay ?? 2.5, s: 0, spd: 0, // u: the head's ring-local angle; s: 0..1 along this crawl
         hits: 0, near: 0, bit: 0, snipped: 0, why: '',
       });
@@ -156,12 +157,12 @@ export const creepMethods = {
     C.hits++;
     C.bitDur = C.dur; this.creepSet(C, 'bite', CREEP.bite); C.spd = 0;
     this.emit('creepHit', { id: C.id, form: C.form, egg: e, x: H.x, y: H.y });
-    if ((this.MD.softThorns || formOf(C).hit === 'crack') && !e.chick) { // Easy (and frost on every mode): one crack and a shove off
-      const frost = formOf(C).hit === 'crack';
-      e.safeT = Math.max(e.safeT || 0, frost ? 1.6 : 0.8); // (frost: time to get clear before the next spike)
+    if ((this.MD.softThorns || formOf(C).hit === 'crack' || C.baby) && !e.chick) { // Easy (and frost on every mode): one crack and a shove off
+      const frost = formOf(C).hit === 'crack', baby = !!C.baby; // 0.8.18 creeper: the baby (first meeting) only shoves, on every mode
+      e.safeT = Math.max(e.safeT || 0, frost ? 1.6 : baby ? 1.2 : 0.8); // (frost: time to get clear before the next spike)
       this.defer(() => {
         if (!e.alive || e.saved) return;
-        if (this.MD.softThorns ? !frost && e.cracks < 2 : true) this.crack(e, 0, 'spike'); // (Easy: never the breaking one; frost on Easy only shoves)
+        if (!baby && (this.MD.softThorns ? !frost && e.cracks < 2 : true)) this.crack(e, 0, 'spike'); // (Easy: never the breaking one; frost on Easy only shoves)
         const b = e.body, m = b.getMass() * 1.8 * this.vs;
         b.applyLinearImpulse({ x: nx * m, y: ny * m }, b.getPosition(), true);
       });

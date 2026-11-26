@@ -290,12 +290,20 @@ function layRing(spec, i, r, R, prev) {
 }
 
 // 0.8.18 the thorn creeper (sim/creeper.js): rs.creep = { len (m of rim), v (m/s), rest (s coil, Medium), side 'in'|'out',
-// delay, at 'gap' | 'bottom' }. at 'bottom': the stretch lies over the bottom at the start (where an egg that drops into the
+// delay, at 'gap' | 'bottom', a0 + a1 (by hand, ring-local deg) }. at 'bottom': the stretch lies over the bottom at the start (where an egg that drops into the
 // channel comes to rest), cut short by a gap or floor thorn either side. Otherwise (at 'gap'): its stretch starts just past the edge of an open gap and runs away from it along free rim: up to the nearest
 // gap, floor thorn (on its face) or wooden wall, never over the eggs' start on the centre ring. Of every gap edge, the one
 // with the most free rim wins (the gap it guards is a way out the eggs want). Deterministic: no rng.
 function layCreep(spec, i, r, o, gaps, thorns, bars) {
   const side = o.side === 'out' ? 'out' : 'in', want = (o.len / r) * (180 / Math.PI), M = 5;
+  if (o.a0 != null && o.a1 != null) { // a stretch set by hand (ring-local deg): on the eggs' route, where the search would not put it
+    const out = { a0: o.a0, a1: o.a1, v: o.v, rest: o.rest };
+    if (side === 'out') out.side = 'out';
+    if (o.delay != null) out.delay = o.delay;
+    if (o.form && o.form !== 'thorn') out.form = o.form;
+    if (o.baby) out.baby = 1;
+    return out;
+  }
   const doors = gaps.filter((g) => !g.curtain && !g.vine && !g.grate);
   const sideTh = thorns.filter((t) => (side === 'out' ? t.side === 'out' : t.side !== 'out'));
   const span = (n) => ((n - 1) * THORN_STEP) / 2 + 7;
@@ -328,6 +336,7 @@ function layCreep(spec, i, r, o, gaps, thorns, bars) {
   if (o.delay != null) out.delay = o.delay;
   if (o.form && o.form !== 'thorn') out.form = o.form; // the world's form of the creeper family (sim/creeper.js FORMS)
   if (o.w) out.w = o.w; // the lava flow's own length (m)
+  if (o.baby) out.baby = 1; // the first meeting: it only shoves (sim/creeper.js creepBite)
   return out;
 }
 
