@@ -874,6 +874,9 @@ export function drawThievesOver(ctx, sim, t, k) {
   }
 }
 let CALM_ON = false;
+// 0.8.18: in play the weasel is drawn 1.35x his sim body (about his jaws, feet on the floor) so his face reads on a phone
+// (at 450x1000 his head was under one egg wide); what he can reach, hit and be hit by is the sim's and is unchanged
+export const WEASEL_PLAY = 1.35;
 function drawOne(ctx, sim, T, t, k, head) {
   const D = DM[T.id] || (DM[T.id] = { pose: null, fz: 0, thawT: -9 });
   const L = lookOf(T), frozen = T.frozen > 0, s = RIG[T.kind].s * k;
@@ -915,6 +918,7 @@ function drawOne(ctx, sim, T, t, k, head) {
     if (T.ph === 'sqSkid') skidDust(ctx, T, k, s);
     if (fl) { ctx.translate(0, -fl.h * k); if (fl.sq) { ctx.scale(1 + 0.3 * fl.sq, 1 - 0.3 * fl.sq); } }
     if (W && !frozen) { if (W.off) ctx.translate(T.face * W.off * k, 0); if (W.fx < 1) ctx.scale(W.fx, 1 + 0.1 * (1 - W.fx)); }
+    if (T.kind === 'weasel') { const mx = T.face * RIG.weasel.mouthX * k; ctx.translate(mx, 0); ctx.scale(WEASEL_PLAY, WEASEL_PLAY); ctx.translate(-mx, 0); } // drawn bigger than his body in the sim, his jaws kept on the egg
     ctx.translate(0, mid - hop * k); ctx.rotate(-pitch * T.face + shake + spin - (fl ? fl.spin * T.face : 0)); ctx.scale(pop, pop); ctx.translate(0, -mid);
     drawThief(ctx, 0, 0, s, t, pose, o, T.kind);
     if (T.cuff > 0 && !head) cuffSmear(ctx, T, s);

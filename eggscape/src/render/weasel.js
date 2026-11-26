@@ -106,7 +106,7 @@ export function weaselAct(p, state, t, u, ph, B, F) {
       break;
     }
     case 'defeated': p.look = -0.8; p.looky = 0.5; p.smile = -1; p.pup = 0.9; p.lid = 0.55; p.lidLo = 0.3; p.tc = -0.5; break;
-    case 'stand': p.smile = 0.9; p.look = 0.3 + 0.6 * dart(t, 0.8); p.lid = 0.25; p.lidLo = 0.15; p.grip = 0.55; p.tc = 0.9; p.tw = Math.sin(t * 1.6) * 0.4; break;
+    case 'stand': p.smile = 1; p.look = 0.3 + 0.6 * dart(t, 0.8); p.lid = 0.4; p.lidLo = 0.2; p.brow = 0.85; // the card and the map: the sly look, lids low, brow down p.grip = 0.55; p.tc = 0.9; p.tw = Math.sin(t * 1.6) * 0.4; break;
     default: { // idle: sniffing in bursts, eyes wandering over the loot, the tail swishing a beat behind
       const sn = Math.max(0, Math.sin(t * 0.9));
       p.look = lerp(dart(t, 0.9), 1, sn); p.looky = 0.5 * sn; p.smile = 0.6; p.lid = 0.24; p.lidLo = 0.1; p.tw = Math.sin(t * 1.9 - 0.8) * 0.4; p.tc = 0.5 + 0.2 * Math.sin(t * 1.1);
