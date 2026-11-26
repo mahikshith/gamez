@@ -252,13 +252,13 @@ export const LEVELS = [
     ],
   },
   {
-    id: 26, theme: "volcano", name: "Melt-Through", eggs: 3, target: 2, time: 70, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 2.8}, bonus: {kind: "time", s: 35}, tip: "This ring has no gap. Wait for a lava hole, or burn one with the black flame.", orbs: [{type: "fire_black", ch: 2, a: -106},{type: "water", ch: 3, a: -97},{type: "hourglass", ch: 4, a: 32},{type: "warp", ch: 1, a: -60}], seed: 174219, world: 5, intro: {title: "Lava rocks", line: "Lava rocks fall on the rings, glow, then melt a hole. The hole heals after 5 s. A water egg cools them."}, salamander: {delay: 6, every: 7, a: 30, ch: 3, spit: 1},
+    id: 26, theme: "volcano", name: "Melt-Through", eggs: 3, target: 2, time: 80, spacing: 1, material: "obsidian", lava: {every: 6, delay: 4}, nest: {w: 2.8}, bonus: {kind: "time", s: 45}, salamander: {delay: 6, every: 7, a: 30, ch: 3}, tip: "This ring has no gap. Wait for a lava hole, or burn one with the black flame.", orbs: [{type: "fire_black", ch: 2, a: 73},{type: "water", ch: 3, a: 40},{type: "hourglass", ch: 4, a: -160},{type: "warp", ch: 1, a: -137}], seed: 174220, world: 5, intro: {title: "Lava rocks", line: "Lava rocks fall on the rings, glow, then melt a hole. The hole heals after 5 s. A water egg cools them."},
     rings: [
-      {gaps: [{a: 53}], thorns: [{a: 2, n: 1}]},
-      {gaps: [{a: 128, x: 2}], thorns: [{a: 4, n: 2},{a: -68, n: 2, side: "out", h: 0.26}], pads: [{a: -177, len: 1.35}]},
-      {gaps: [], thorns: [{a: 166, n: 2}], pads: [{a: 17, len: 1.37}]},
-      {gaps: [{a: 134, x: 3, len: 0.7},{a: 34}], thorns: [{a: 94, n: 2},{a: -145, n: 2}], pads: [{a: -63, len: 1.86}]},
-      {gaps: [{a: -31},{a: 101}], thorns: [{a: 71, n: 2},{a: 136, n: 1}], pads: [{a: 38, len: 1.84}]},
+      {gaps: [{a: 141}], thorns: [{a: 38, n: 2}]},
+      {gaps: [{a: -175, x: 2}], thorns: [{a: 23, n: 3},{a: -103, n: 2, side: "out", h: 0.26}], pads: [{a: 62, len: 1.01}]},
+      {gaps: [], thorns: [{a: -136, n: 1}], pads: [{a: 112, len: 1.2}], creep: {a0: -98, a1: -81, v: 0.22, rest: 1.6, form: "lava", w: 0.6}},
+      {gaps: [{a: 115, x: 3, len: 0.7},{a: -159}], thorns: [{a: -8, n: 2},{a: 163, n: 3}], pads: [{a: 45, len: 1.86}]},
+      {gaps: [{a: 19},{a: 161}], thorns: [{a: 101, n: 2},{a: -37, n: 1}], pads: [{a: -69, len: 1.08}]},
     ],
   },
   {
@@ -280,7 +280,7 @@ export const LEVELS = [
       {gaps: [{a: -22},{a: -177}], thorns: [{a: -144, n: 2},{a: 11, n: 2}], pads: [{a: -52, len: 1.8}]},
       {gaps: [{a: 110, x: 3, len: 0.7},{a: -134}], thorns: [{a: 6, n: 3},{a: 164, n: 3}], pads: [{a: -33, len: 1.39}]},
       {gaps: [{a: 65},{a: 172}], thorns: [{a: 115, n: 3},{a: -36, n: 2, kind: "blunt"}], pads: [{a: -108, len: 1.72}]},
-      {gaps: [{a: -21},{a: 140}], thorns: [{a: 42, n: 1},{a: -139, n: 2}], pads: [{a: 106, len: 1.53}]},
+      {gaps: [{a: -21},{a: 140}], thorns: [{a: 42, n: 1},{a: -139, n: 2}], pads: [{a: 106, len: 1.53}], creep: {a0: -102, a1: -75, v: 0.22, rest: 1.6, form: "lava", w: 0.7}},
     ],
   },
   {
