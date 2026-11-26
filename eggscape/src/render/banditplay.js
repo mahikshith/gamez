@@ -8,7 +8,8 @@
 //   drawBanditPerch                          him on a ring (also the level card's actor, howact.js)
 //   drawBanditEmblem / drawBanditCard        the boss bar chip and the intro portrait
 // Calm (save.calm): no shake, no pulsing; poses are not blended.
-import { RACCOON_M, raccoonPose, raccoonBlend, drawRaccoon, CRANK_PULL } from './raccoon.js';
+import { RACCOON_M, raccoonPose, raccoonBlend, raccoonHold, drawRaccoon, CRANK_PULL } from './raccoon.js';
+import { drawEgg } from './world.js';
 import { RING_TH } from '../sim/geom.js';
 
 const TAU = Math.PI * 2;
@@ -26,13 +27,10 @@ const FZ = { on: false, t: 0 };
 // thief, so that perched on a ring he is about 1.7 channels tall (a channel is 0.89 m; he sits about 85 rig units high)
 export const BANDIT_SCALE = 1.7;
 const PLAY_M = RACCOON_M * BANDIT_SCALE; // metres per 100 rig units in play
-// On the yard he is as big as the room under the outer ring at his spot allows, so his head never goes behind the ring:
-// near full size out at the side, smaller in under the vault. Never smaller than the 0.8.17 thief, never bigger than
-// BANDIT_SCALE.
-export function banditYardScale(sim, x) {
-  const ro = sim.bandOuter().r + RING_TH / 2, under = Math.abs(x) < ro ? -Math.sqrt(ro * ro - x * x) - sim.groundY : 99;
-  return clamp((0.9 * under) / 1.22, 1, BANDIT_SCALE);
-}
+// 0.8.18 (owner: "on the floor it is so small, but on the rings it looks so big"): ONE size everywhere. On the yard he is
+// drawn at BANDIT_SCALE too, in FRONT of the rings (a foreground character: his head may cross the vault's lower rim)
+// instead of being shrunk to fit under it.
+export function banditYardScale() { return BANDIT_SCALE; }
 // ---------- in play (0.8.18): on the yard while he comes in, ON a ring's floor while he works it
 const D2R = Math.PI / 180;
 const YARD_PH = new Set(['idle', 'sneak', 'crouch', 'dash', 'stuff', 'laugh', 'scared', 'stun', 'defeated']);
@@ -114,7 +112,7 @@ function sackEggs(ctx, B, p, u, face) {
 
 export function bandHides(sim, e) {
   const B = sim.band;
-  return !!B && (B.sack.includes(e.id) || ((B.ph === 'stuff' || B.ph === 'grab') && B.eid === e.id));
+  return !!B && (B.sack.includes(e.id) || ((B.ph === 'stuff' || B.ph === 'grab') && B.eid === e.id) || (B.ph === 'dash' && B.tgt === e.id && !e.hc));
 }
 
 // layer 'back' (before the rings): Bandit on the yard whole, or the tail of a perched Bandit that hangs behind his ring;
@@ -125,16 +123,16 @@ export function drawBandit(ctx, sim, t, k, calm, layer = 'back') {
   const X = sim.bx && sim.bx.boss, frozen = !!((X && X.stk > 0) || B.fz > 0 || B.held);
   if (frozen && !FZ.on) { FZ.on = true; FZ.t = t; } else if (!frozen) FZ.on = false;
   const tt = FZ.on ? FZ.t : t;
-  if (YARD_PH.has(B.ph)) { if (layer === 'back') drawYard(ctx, sim, B, tt, k, calm, frozen); return; }
+  if (YARD_PH.has(B.ph)) { if (layer === 'front') drawYard(ctx, sim, B, tt, k, calm, frozen); return; } // in front of the rim
   const P = clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1), ring = sim.rings[B.ri];
   if (!ring) return;
   const base = { face: B.face, inner: true, layer, frozen, calm, id: 'bandit', rate: 14, eye: 'normal' };
   if (B.ph === 'climb') { // a leap from the yard to the outside of the rim, then the haul over it onto the floor
-    const g = sim.groundY, F = B.from || { x: B.x, y: g }, thP = -Math.PI / 2 - B.pa, ys = banditYardScale(sim, F.x) / BANDIT_SCALE, L = 0.34;
+    const g = sim.groundY, F = B.from || { x: B.x, y: g }, thP = -Math.PI / 2 - B.pa, L = 0.34;
     if (P < L) {
       const v = P / L, e = ss(0, 1, v), rr = ring.r + RING_TH / 2 + 0.05, H = { x: rr * Math.cos(B.pa) - 0.25, y: rr * Math.sin(B.pa) - 0.9 };
       const at = { x: lerp(F.x, H.x, e), y: lerp(F.y, H.y, e) + 1.1 * Math.sin(v * Math.PI) };
-      drawBanditPerch(ctx, ring.r, B.pa, tt, k, 'hop', 0.22 + 0.4 * v, { ...base, at, th: thP * ss(0.3, 1, v), sc: lerp(ys, 1, e), opt: { h: 0 }, eye: 'lock', id: null });
+      drawBanditPerch(ctx, ring.r, B.pa, tt, k, 'hop', 0.22 + 0.4 * v, { ...base, at, th: thP * ss(0.3, 1, v), opt: { h: 0 }, eye: 'lock', id: null });
       return;
     }
     drawBanditPerch(ctx, ring.r, B.pa, tt, k, 'climb', 0.04 + 0.96 * ss(0, 1, (P - L) / (1 - L)), { ...base, id: null });
@@ -159,22 +157,51 @@ export function drawBandit(ctx, sim, t, k, calm, layer = 'back') {
   // his eyes follow the egg nearest him on his floor while he sits
   let eyeW = null;
   if (Lk.st === 'sit') { let bd = 9; for (const e of sim.aliveEggs()) { if (e.hc || sim.channelOf(e) !== B.ri) continue; const p = e.body.getPosition(), q = sim.bandPerchPt(B), d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; eyeW = { x: p.x, y: p.y }; } } }
-  const o = { ...base, add: Lk.add, eye: frozen ? 'normal' : Lk.o.eye, toW: Lk.o.toW, eyeW, egg: Lk.o.hug ? undefined : false, under: (c, p, u, face) => sackEggs(c, B, p, u, face) };
+  const o = { ...base, add: Lk.add, eye: frozen ? 'normal' : Lk.o.eye, toW: Lk.o.toW, eyeW, egg: false, under: (c, p, u, face) => sackEggs(c, B, p, u, face) };
+  // 0.8.18 the egg he reaches for / holds is the REAL one where the sim has it: his paws close on it, and while he holds it
+  // he draws it himself between his paws (bandHides keeps the game from drawing it again)
+  const live = liveEgg(sim, B);
+  if (live) { o.toW = live.w; o.eggW = live.w; if (B.ph === 'grab') o.eggDraw = eggDrawer(ctx, live.e, live.a, t, k); }
   if (calm) o.id = null;
   if (layer === 'back') { MEMP.p = drawBanditPerch(ctx, ring.r, B.pa, tt, k, Lk.st, Lk.u, o); MEMP.t = t; return; }
   drawBanditPerch(ctx, ring.r, B.pa, tt, k, Lk.st, Lk.u, { ...o, blended: MEMP.t === t ? MEMP.p : null });
 }
 const MEMP = { p: null, t: -1 };
+// the egg in his paws (grab, stuff) or under them (reach, strain): { e, w (its sim position), a (its drawn turn) }. A held
+// egg turns from how it lay at the touch to upright in his arms (sim/bandit.js pins it at a fixed turn).
+const HOLDA = { id: 0, a: 0 };
+function liveEgg(sim, B) {
+  const id = B.ph === 'grab' || B.ph === 'stuff' ? B.eid : B.ph === 'reach' || B.ph === 'strain' || B.ph === 'dash' ? B.tgt : 0, e = id ? sim.eggs.find((q) => q.id === id && q.alive) : null;
+  if (!e || !e.body) return null;
+  const P = e.body.getPosition(), w = { x: P.x, y: P.y };
+  if (!e.hc) { HOLDA.id = e.id; HOLDA.a = e.body.getAngle(); return { e, w, a: HOLDA.a }; }
+  const up = B.ph === 'grab' ? B.pa + Math.PI / 2 : 0, a0 = HOLDA.id === e.id ? HOLDA.a : up, q = ss(0, 0.35, clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1));
+  return { e, w, a: a0 + Math.atan2(Math.sin(up - a0), Math.cos(up - a0)) * q };
+}
+// draws the real egg (render/world.js drawEgg) in world space from inside his rig, turned to a, without its floor shadow
+function eggDrawer(ctx, e, a, t, k) {
+  const M = ctx.getTransform(), body = Object.create(e.body);
+  body.getAngle = () => a; body.getLinearVelocity = () => ({ x: 0, y: 9 }); // (a fast egg casts no contact shadow)
+  const egg = Object.create(e); egg.body = body;
+  return (c) => { c.save(); c.setTransform(M); try { drawEgg(c, egg, t, k); } finally { c.restore(); } };
+}
 function drawYard(ctx, sim, B, t, k, calm, ice) {
-  const gY = sim.groundY, M = RACCOON_M * banditYardScale(sim, B.x), s = M * k, u = s / 100, L = lookYard(sim, B);
-  let p = raccoonPose(L.st, t, L.u, {});
+  const gY = sim.groundY, s = PLAY_M * k, u = s / 100, L = lookYard(sim, B), live = B.ph === 'stuff' || B.ph === 'dash' ? liveEgg(sim, B) : null;
+  const opt = { noHold: true };
+  if (B.ph === 'stuff') opt.stuff = clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1);
+  let p = raccoonPose(L.st, t, L.u, opt);
   Object.assign(p, L.add);
-  p = calm ? p : raccoonBlend('banditY', p, t, 12);
+  const W0 = { hw0: p.hw0, hw1: p.hw1, hq0: p.hq0 }; // the hold's weights as posed (not trailing behind a blend)
+  p = { ...(calm ? p : raccoonBlend('banditY', p, t, 12)), ...W0 };
+  const eggDraw = live ? eggDrawer(ctx, live.e, live.a, t, k) : null;
+  if (live && B.ph === 'stuff') raccoonHold(p, { x: ((live.w.x - B.x) * 100 * B.face) / PLAY_M, y: (-(live.w.y - gY) * 100) / PLAY_M, a: 0 });
+  else p.hw0 = p.hw1 = 0;
   ctx.save(); ctx.translate(B.x, gY); ctx.scale(1 / k, -1 / k);
   try {
     sackEggs(ctx, B, p, u, B.face);
-    drawRaccoon(ctx, 0, 0, s, t, p, { face: B.face, frozen: ice ? 1 : 0, eye: L.o.eye, egg: B.ph === 'stuff' ? undefined : false });
-    if (B.ph === 'crouch' && B.t / B.dur < 0.8) bubble(ctx, toPx(p, p.hx + 30, p.hy - 64, u, B.face), 13 * u * 2.2, '!');
+    drawRaccoon(ctx, 0, 0, s, t, p, { face: B.face, frozen: ice ? 1 : 0, eye: L.o.eye, egg: false, eggDraw: B.ph === 'stuff' ? eggDraw : null });
+    if (B.ph === 'dash' && eggDraw) eggDraw(ctx); // the egg he runs under falls in front of him (bandHides)
+    if (B.ph === 'crouch' && B.t / B.dur < 0.8) bubble(ctx, toPx(p, p.hx + 30, p.hy - 58, u, B.face), 13 * u * 1.7, '!'); // (0.8.18: the same size on screen as at his old yard scale)
   } finally { ctx.restore(); }
 }
 // ---------- 0.8.18: Bandit ON a ring (art for the new behaviour: climb, hop, sit, crank, reach, grab, shaken, fall)
@@ -192,16 +219,19 @@ export function drawBanditPerch(ctx, r, a, t, k, st, u, o = {}) {
   const face = o.face < 0 ? -1 : 1, s = PLAY_M * (o.sc || 1) * k, inner = !!o.inner, ro = inner ? r - RING_TH / 2 : r + RING_TH / 2, aN = inner ? a + Math.PI : a;
   const px = o.at ? o.at.x : ro * Math.cos(a), py = o.at ? o.at.y : ro * Math.sin(a), th = o.th ?? Math.PI / 2 - aN;
   const rig = (W) => { const dx = (W.x - px) * k, dy = -(W.y - py) * k, c = Math.cos(-th), sn = Math.sin(-th); return [((dx * c - dy * sn) * face * 100) / s, ((dx * sn + dy * c) * 100) / s]; };
-  const opt = { perch: true, R: inner ? -1 : (ro * 100) / (PLAY_M * (o.sc || 1)), tilt: Math.atan2(Math.sin(th), Math.cos(th)) * face, ...(o.opt || {}) };
+  const opt = { perch: true, R: inner ? -1 : (ro * 100) / (PLAY_M * (o.sc || 1)), tilt: Math.atan2(Math.sin(th), Math.cos(th)) * face, noHold: true, ...(o.opt || {}) };
   if (o.toW) opt.to = rig(o.toW);
   if (o.eyeW) opt.eye = rig(o.eyeW);
   let p = raccoonPose(st, t, u, opt);
   if (o.add) Object.assign(p, o.add);
-  if (!o.calm && o.id) p = o.layer === 'front' && o.blended ? o.blended : raccoonBlend(o.id, p, t, o.rate || 14);
+  if (!o.calm && o.id) p = o.layer === 'front' && o.blended ? o.blended : { ...raccoonBlend(o.id, p, t, o.rate || 14), hw0: p.hw0, hw1: p.hw1, hq0: p.hq0 }; // (the hold's weights as posed)
+  // 0.8.18 his paws on the egg, after the blend (a blended paw would trail a moving egg): the real egg (o.eggW, world) or
+  // the pose's own
+  if ((p.hw0 > 0 || p.hw1 > 0) && !(o.layer === 'front' && o.blended)) { const EW = o.eggW || (st === 'reach' || st === 'perchReach' ? o.toW : null); if (EW) { const E = rig(EW); raccoonHold(p, { x: E[0], y: E[1], a: 0 }); } else raccoonHold(p); }
   ctx.save(); ctx.translate(px, py); ctx.scale(1 / k, -1 / k); ctx.rotate(th);
   try {
     if (o.under && o.layer !== 'back') o.under(ctx, p, s / 100, face);
-    drawRaccoon(ctx, 0, 0, s, t, p, { face, frozen: o.frozen ? 1 : 0, eye: o.eye || 'normal', egg: o.egg, layer: o.layer, out: o.out });
+    drawRaccoon(ctx, 0, 0, s, t, p, { face, frozen: o.frozen ? 1 : 0, eye: o.eye || 'normal', egg: o.egg, layer: o.layer, out: o.out, eggDraw: o.eggDraw });
   } finally { ctx.restore(); }
   return p; // pass it back as o.blended for the second layer, so both layers show the same pose
 }

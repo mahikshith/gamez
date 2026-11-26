@@ -329,7 +329,7 @@ export const banditMethods = {
     if (e && e.body.isActive() && !e.hc) {
       const m = this.bandMouth(B), p = e.body.getPosition();
       if (Math.hypot(p.x - m.x, p.y - m.y) < BAND.catchR) { // caught: into the sack
-        this.reefTake(e, 2); B.eid = e.id; B.sx = p.x; B.sy = p.y; B.face = 1; B.tgt = 0;
+        this.reefTake(e, 2); B.eid = e.id; B.sx = p.x; B.sy = p.y; B.px = p.x; B.py = p.y; B.face = 1; B.tgt = 0; // (px, py: where it was caught)
         this.bandSet(B, 'stuff', BAND.stuff);
         this.emit('bandCatch', { x: p.x, y: p.y, egg: e });
         return;
@@ -354,15 +354,23 @@ export const banditMethods = {
     B.sack = B.sack.filter((id) => this.eggs.some((q) => q.id === id && q.alive && !q.saved));
     B.sack.forEach((id, i) => { const e = this.eggs.find((q) => q.id === id), p = this.bandSackPt(B, i + 1); this.bandPin(e, p.x, p.y); });
   },
-  // where the egg in his paw is: at the grab point, then hugged to his chest (on the yard: at his sack)
-  bandHoldPt(B) {
-    if (B.ph === 'grab') { const C = this.bandBody(B, 0.65, 0.25), k = ss(0, 0.35, 1 - B.t / Math.max(1e-3, B.dur)); return { x: B.px + (C.x - B.px) * k, y: B.py + (C.y - B.py) * k }; }
+  // where the egg in his paw is: at the grab point, then hugged to his chest, then (0.8.18) down into his sack at his hip;
+  // on the yard from his arms (where he caught it) into his sack. render/banditplay.js draws it exactly here, his paws on
+  // it. stuff = 0: without the trip to the sack (his reaching paw for bandKnock / bandHit, as before)
+  bandHoldPt(B, stuff = 1) {
+    const u = 1 - B.t / Math.max(1e-3, B.dur);
+    if (B.ph === 'grab') {
+      const s = stuff ? ss(0.74, 0.9, u) : 0;
+      if (s > 0) return this.bandBody(B, 0.65 - 0.33 * s + 0.12 * Math.sin(s * Math.PI), 0.25 - 0.6 * s);
+      const C = this.bandBody(B, 0.65, 0.25), k = ss(0, 0.35, u); return { x: B.px + (C.x - B.px) * k, y: B.py + (C.y - B.py) * k };
+    }
     if (this.bandPerched(B)) return this.bandBody(B, 0.65, 0.25);
+    if (B.ph === 'stuff' && stuff) { const M = { x: B.px, y: B.py }, s = ss(0, 0.76, u), x1 = B.x - 0.23 * B.face, y1 = this.groundY + 0.5; return { x: M.x + (x1 - M.x) * s, y: M.y + (y1 - M.y) * s + 0.15 * Math.sin(s * Math.PI) }; } // into his sack, swung round in front of his hip
     return this.bandSackPt(B, 0);
   },
   bandSackPt(B, i) {
     if (this.bandPerched(B) || B.ph === 'hop' || B.ph === 'climb') { const P = this.bandPerched(B) ? this.bandBody(B, 0.6, -0.45) : this.bandHead(B); return { x: P.x + (i % 2 ? 0.08 : -0.08), y: P.y + 0.04 * i }; }
-    return { x: B.x - 0.3 * B.face + (i % 2 ? 0.08 : -0.08), y: this.groundY + 0.42 + 0.04 * i };
+    return { x: B.x - 0.44 * B.face + (i % 2 ? 0.08 : -0.08), y: this.groundY + 0.8 + 0.04 * i }; // 0.8.18: his sack as drawn (banditplay BANDIT_SCALE)
   },
   bandPin(e, x, y) {
     const b = e.body;
@@ -417,7 +425,7 @@ export const banditMethods = {
     if (!this.bandPerched(B)) return this.bandHead(B);
     const S = this.bandBody(B, 0.75, 0.2);
     if (B.ph === 'reach' || B.ph === 'strain') { const k = B.ph === 'strain' ? 1 : ss(0.15, 0.6, 1 - B.t / Math.max(1e-3, B.dur)); return { x: S.x + (B.px - S.x) * k, y: S.y + (B.py - S.y) * k }; }
-    if (B.ph === 'grab') return this.bandHoldPt(B);
+    if (B.ph === 'grab') return this.bandHoldPt(B, 0);
     return S;
   },
   // one hurt (a shake mid-work, a zap, a flash, a burn, a peck): he wobbles and drops what he holds; three and he falls
