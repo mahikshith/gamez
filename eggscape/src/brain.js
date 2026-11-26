@@ -15,9 +15,10 @@
 // doubles, up to eight times) and rests a day after a "yes". Never a different price per player, never a changed
 // difficulty, never a timer, never an ask during play or inside a winning run.
 
+import { now as gameNow } from './clock.js'; // 0.8.17: a day that never goes back (moving the phone's date repeats nothing)
 const MIN = 60e3, DAY = 864e5;
 export const BRAIN = { gapLevels: 3, gapMin: 10, nudgeLevels: 1, backoffMax: 8, restDays: 1, richCoins: 600, poorCoins: 40, fanToday: 3, fanAll: 8, shyFrom: 18, flowWins: 3, cruiseWins: 6 };
-const dayKey = (now) => { const d = new Date(now); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+const dayKey = (now) => { const d = new Date(gameNow(now)); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 const num = (v) => Math.max(0, Number(v) || 0);
 
 const SAFE = new WeakSet(); // states made safe already: brainState hands the same object back (callers hold on to it)

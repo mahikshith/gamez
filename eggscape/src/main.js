@@ -18,7 +18,7 @@ import { FX } from './render/fx.js';
 import * as W from './render/world.js';
 import { themeBack, themeWash, themeTick, logoDress } from './ui/theme.js';
 import { menuFxBack, menuFxFront, menuFxStats } from './ui/menufx.js'; // the skin's living effect over the menus
-import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge } from './ui/ui.js';
+import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge, setAdOff } from './ui/ui.js';
 import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
 import { drawSnake } from './render/characters.js';
 import * as MS from './render/mapscene.js'; // the world map: land, road, scenery and cast
@@ -41,7 +41,11 @@ import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, f
 import * as OF from './offers.js'; // 2026-11-16: the offer engine, the age question and child-safe mode
 import * as ENG from './engine/index.js'; // 0.8.15: the background subsystems (Ledger, Pulse, Oracle, Conductor, Herald) behind one safe face
 import * as SP from './spin.js'; // 0.8.15: the Lucky Spin's rules
+import * as MINT from './engine/mint.js'; // 0.8.17: the coin loop's one table (world gates in order, replays, the online share, the win-video pot)
 import { drawSlot, slotGeom, stripPos, drawSliceIcon, drawTicket, drawSlotIcon, drawVillainCard, releaseSlot, SLICE_COL } from './render/slot.js'; // and its machine: three reels and a lever
+import * as CK from './clock.js'; // 0.8.17: the game's day only moves forward (the phone's date cannot repeat daily things)
+import * as GD from './guard.js'; // 0.8.17: a refunded one-time purchase is taken back (the store's own record)
+import * as WT from './waiting.js'; // 0.8.17: video rewards met offline wait for a connection
 import * as BR from './brain.js'; // 2026-11-23: the Brain, one arbiter over the Director and the offer engine (who is playing, when to ask, what fits)
 import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
@@ -122,7 +126,7 @@ const MODE_LIST = ['easy', 'medium', 'hard'];
 const sk = (id, mode = save.mode) => (mode === 'medium' ? String(id) : mode[0] + id);
 const starsOf = (id) => save.stars[sk(id)] || 0;
 // star gates (I5): environment k (0-based) opens at GATE * k stars, counting each level's best over all modes
-const GATE = 7, PER_ENV = 5;
+const GATE = 7, PER_ENV = ROAD.PER_ENV; // 0.8.17: six levels a world (road.js)
 const bestStarsOf = (id) => Math.max(0, ...MODE_LIST.map((m) => save.stars[sk(id, m)] || 0));
 // 2026-11-20 first-five ladder: nothing is sold or advertised until level 3 is won. The one switch for every entry point
 // (level page Boosters tab, Free booster video, coin/shop chip; win card Bonus chest and offers; the Director's nudges
@@ -133,15 +137,32 @@ const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0);
 // a brand-new player (nothing won yet, nothing unlocked): home is the logo and one big PLAY, and PLAY goes straight into
 // level 1 with the teaching hand (no map, no level card). Any win, or a level unlocked, and home is the full home.
 const firstRun = () => !TEST && !allOpen() && bestTotal() === 0 && (save.unlocked || 1) <= 1;
-const envOf = (i) => Math.floor(i / ROAD.PER_ENV);
-const envNeed = (k) => (TEST ? 0 : GATE * k);
-// a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all
-const GATE_COINS = (k) => 80 + 40 * k;
+const envOf = (i) => Math.floor(i / PER_ENV);
+const envNeed = (k) => (TEST ? 0 : MINT.worldNeed(k, PER_ENV)); // 0.8.17: GATE (7) stars a world of five, scaled by PER_ENV (six a world since 0.8.17)
+// a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all.
+// 0.8.17 (mykee: "users cannot unlock a far distant world without unlocking the previous one"; the Mint): only the next
+// world, once the one before is open and its boss is won or skipped, for the stars it is missing (MINT.gatePrice: 75 a
+// star, at least 150; nothing at the star target). It was a flat 80 + 40 a world, any world, from the first one.
+const GATE_COINS = (k) => MINT.gatePrice(k, bestTotal(), PER_ENV);
+// world k's boss (or its last level) is won or skipped: the next world may open
+const envBoss = (k) => { const Lw = LEVELS.slice(k * PER_ENV, (k + 1) * PER_ENV), b = Lw.find((L) => L.boss) || Lw[Lw.length - 1]; return !!b && (bestStarsOf(b.id) > 0 || SK.isSkipped(save, b.id)); };
 // Settings (2026-11-15): how fast the rings follow a finger, 0.6x .. 2x of the designed speed
 const RING_SPEEDS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5]; // 2026-11-16 mykee: experienced players want even faster (300%; no extra tunnelling seen in a 3x wall-crossing check)
 const ringSpeed = () => (RING_SPEEDS.includes(+save.ringSpeed) ? +save.ringSpeed : RING_SPEED_DEFAULT);
-const allOpen = () => TEST || !!save.tester || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($2.99) opens every level
-const envOpen = (k) => allOpen() || bestTotal() >= envNeed(k) || !!(save.gates && save.gates[k]);
+// 0.8.17: the hidden tester switch (7 taps on the logo) works only in dev builds and the separate unlocked test builds;
+// in a store build the taps do nothing and an old save.tester flag is ignored (it opened the $2.99 unlock for free)
+const TESTER_OK = DEV || TEST || (typeof __UNLOCKED__ !== 'undefined' && !!__UNLOCKED__); /* global __UNLOCKED__ */
+const allOpen = () => TEST || (TESTER_OK && !!save.tester) || !!(save.wallet && save.wallet.noAds); // 2026-11-20: Unlock Everything ($2.99) opens every level
+// open: the world before is open and its boss passed (MINT.worldReady), and the stars are there or the gate was bought
+function envOpen(k) {
+  if (allOpen()) return true;
+  const st = bestTotal();
+  for (let j = 0; j <= k; j++) if (!MINT.worldReady(j, () => true, envBoss) || !(st >= envNeed(j) || !!(save.gates && save.gates[j]))) return false;
+  return true;
+}
+// 0.8.17: world k may be opened now (by stars or for coins): the world before is open and its boss passed. The map's gate
+// shows its coin button only then (GATE_COINS(k) is 0 when the stars are already there: it opens by itself)
+const envReady = (k) => !envOpen(k) && MINT.worldReady(k, envOpen, envBoss);
 const playable = (i) => i >= 0 && i < LEVELS.length && (allOpen() || (i < save.unlocked && envOpen(envOf(i))));
 // the level the Play button means: the first one not yet cleared (in the order of the map), else the frontier.
 // 2026-11-15: it was save.unlocked - 1, which an everything-unlocked build set to 50 ("PLAY Level 50" on every launch)
@@ -155,6 +176,7 @@ function loadSave(s) {
   save = { ...defaultSave(), ...s };
   if (s.rsDef !== 2) { save.rsDef = 2; if (!(+s.ringSpeed) || +s.ringSpeed === 1) save.ringSpeed = RING_SPEED_DEFAULT; }
   save.wallet = E.sanitizeWallet(save.wallet);
+  CK.bind(save, () => { const b = appBridge(); return b && typeof b.uptime === 'function' ? Number(b.uptime()) : undefined; }); // the game's day (save.clock)
   if (!MODE_LIST.includes(save.mode)) save.mode = 'medium';
   for (const [o, n] of Object.entries(LEGACY_ORB)) if (save.seen[o]) save.seen[n] = 1; // v1 discoveries
   ads.rebind(save);
@@ -183,8 +205,10 @@ const BONUS_TEXT = (b, fuse = 1) => ({ turns: `${b.n} turns or fewer`, prize: 'S
 const BONUS_COINS = 15;
 const AD_BOOST = ['golden', 'time', 'stone', 'sponge']; // the intro card's free booster, by level
 // Daily Vault (C7): one pre-validated layout per day, the same for everyone; level index -1
-const DAILY_COINS = 40;
-const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const DAILY_COINS = MINT.FAUCETS.dailyVault.coins; // 0.8.17 the Mint: 15 (was 40)
+// 0.8.17: the game's own day (src/clock.js): it only moves forward, so moving the phone's date back and forth no longer
+// repeats the chest, the samples, the spins and the freebies (same 'YYYY-MM-DD' key as before)
+const today = () => CK.today();
 // the free-coins video: what it pays now (a little less each time, six a day), and seconds until the next one
 const adCoins = () => E.freeCoinsNext(save.adDay, today());
 function adCd() {
@@ -218,55 +242,112 @@ let lastCoins = null;
 let ledWhy = 'other';
 const ledWhyOf = (id) => (/^(buy|item|chick|charge|hen|skin|kit|set|gate|cb):/.test(id) || id === 'deal' ? 'shop' : /^rewind/.test(id) ? 'rewind' : /^skip/.test(id) ? 'skip' : /^spin/.test(id) ? 'spin' : id === 'chest' ? 'chest' : id === 'tr:open' ? 'treasure' : id === 'home:chest' ? 'daily' : id === 'ad:coins' || id === 'double' ? 'video' : /^(nudge|sample|help|of)(:|$)/.test(id) ? 'gift' : id === 'go' || id === 'ally' || id === 'strike' || id === 'bank' ? 'use' : 'other');
 const ledger = (why) => ENG.sync(save, why, today());
-// what is waiting for the player's next visit: the Herald's reasons for a reminder, the Oracle's "something is waiting"
+// what is waiting for the player's next visit: what each note of the Herald's catalogue needs to be true (herald.js
+// CATALOGUE), and the Oracle's "something is waiting"
 function waitingCtx() {
-  const total = bestTotal(), ch = E.chestFor(total, save.wallet.chests), on = SP.open(save), spins = on ? SP.banked(save) : 0, left = on ? SP.left(save) : 0;
-  return { spins, spinLeft: spins ? 0 : left, starsToChest: ch && !ch.ready ? ch.at - total : 0, chestSkin: !!(ch && ch.reward.skin && !E.ownsSkin(save.wallet, ch.reward.skin)), daily: true, child: OF.childSafe(save), waiting: spins > 0 || left === 1 };
+  const total = bestTotal(), ch = E.chestFor(total, save.wallet.chests), on = SP.open(save), spins = on ? SP.banked(save) : 0, left = on ? SP.left(save) : 0, w = save.wallet;
+  let wk = -1; for (let k = 1; k < WORLDS.length && k * PER_ENV < LEVELS.length; k++) if (!envOpen(k)) { wk = k; break; } // the next world still behind its star gate
+  const nx = LEVELS[nextIdx()], won = (id) => bestStarsOf(id) > 0, att = save.dir && save.dir.att && nx ? save.dir.att[nx.id] : null;
+  const bag = Object.keys(w.owned || {}).filter((b) => w.owned[b] > 0 && E.BOOSTERS[b]), stuck = nx && !won(nx.id) && att && att.streak >= 3 ? nx.id : 0;
+  const adDay = save.adDay && save.adDay.n > 0 ? save.adDay.day : '';
+  return { spins, spinLeft: spins ? 0 : left, starsToChest: ch && !ch.ready ? ch.at - total : 0, chestSkin: !!(ch && ch.reward.skin && !E.ownsSkin(w, ch.reward.skin)), daily: true, child: OF.childSafe(save), waiting: spins > 0 || left === 1,
+    chestDay: w.daily || '', dailyOn: true, videosOn: !!ads.moneyShop && !ads.premium, videoDay: adDay, premium: !!ads.premium, charges: w.charges || 0, chargeMax: E.MAX_CHARGES, premDay: w.premDay || '',
+    starsToWorld: wk > 0 ? Math.max(0, envNeed(wk) - total) : 0, nextWorld: wk > 0 ? WORLDS[wk] : '', nextBoss: nx && nx.boss && !won(nx.id) && playable(nextIdx()) ? nx.id : 0, quest: '', flame: DR.hotCount(save),
+    stuck, stuckBoost: stuck && bag.length ? E.BOOSTERS[bag[0]].name : '', unlocked: save.unlocked || 1, allDone: LEVELS.every((L) => won(L.id)), newContent: false, giftOk: !earlyDays() };
 }
 // what a skin, an outfit or a chick costs him right now: half while a half-price ticket is held (economy.js COUPON)
 const upPrice = (list) => E.unlockPrice(save.wallet, list).price;
 const appBridge = () => { try { return typeof window !== 'undefined' && window.EggApp ? window.EggApp : null; } catch (_) { return null; } };
-// the game came to the front: a session starts or goes on; a reminder that was pending is cancelled and graded
+// the game came to the front: a session starts or goes on; the notes that were pending are cancelled and graded
 function engOpen() {
   const b = appBridge(); let from = '';
   try { if (b && typeof b.openedFrom === 'function') from = String(b.openedFrom() || ''); } catch (_) { /* no shell */ }
   const R = ENG.open(save, Date.now(), from);
   try { if (b && typeof b.notifyCancel === 'function') b.notifyCancel(); } catch (_) { /* no shell */ }
+  remSt.t = -1e9; remInf.t = -1e9; // the phone's settings may have changed while he was away
   if (R && R.reminder && R.reminder.fired) diag.note({ reminder: R.reminder });
+  if (R && R.awayH >= 20) G.offerTried = false; // a day or more away: the home's one card (the welcome-back gift) may show again
+  if (from === 'test') { G.remLand = null; toast('The test note arrived. Reminders work on this phone!', 3.2); audio.play('unlock'); }
+  else if (R && R.reminder && R.reminder.hit && R.reminder.land) G.remLand = { to: R.reminder.land, t: G.t }; // the tap lands on what the note spoke of
+  if (G.remFrom === 'sys' && remPhone() === 'granted') { ENG.herald.answer(save, true); G.remFrom = null; G.remAsk = null; persist(); audio.play('unlock'); toast('Reminders are on. One a day at most.', 2.8); } // back from the phone's settings with them allowed
 }
-// the game went to the background: the Oracle notes its guess for "comes back", the Herald plans one reminder (app only)
+// the game went to the background: the Oracle notes its guess for "comes back", the Herald plans its series (app only)
 function engClose(screen = G.screen) {
   tallyFlush();
   const P = ENG.close(save, { ...waitingCtx(), unlocked: save.unlocked || 1, screen, level: G.level && G.li >= 0 ? G.level.id : 0, lastWon: G.screen === 'win' }, Date.now()), b = appBridge();
   try {
     if (P && b && typeof b.notifyAt === 'function') {
+      if (typeof b.notifyCancel === 'function') b.notifyCancel(); // a fresh series, never one left over
       b.notifyAt(String(P.at), P.id, P.title, P.text);
-      if (typeof b.notifyMore === 'function') (P.more || []).forEach((m, i) => b.notifyMore(String(i + 1), String(m.at), m.id, m.title, m.text)); // the two later notes of a long absence; all are cancelled on opening
+      if (typeof b.notifyMore === 'function') (P.more || []).forEach((m, i) => b.notifyMore(String(i + 1), String(m.at), m.id, m.title, m.text)); // the rest of the series; all are cancelled on opening
     }
   } catch (_) { /* no shell */ }
 }
-// ---- reminders (app only, 0.8.15): the Herald (engine/herald.js) decides; this is the question and the switch.
-// Asked once, on a good win with a spin near; "No thanks" is final (Settings can turn them on); never for a child profile.
+// where a tap on a note lands (herald.js CATALOGUE land): the spin page, the coop's chest, the map's star chest, the level
+function remLanding() {
+  const L = G.remLand;
+  if (!L || modalOpen() || G.settingsOpen || G.adBusy || !['title', 'levels'].includes(G.screen) || G.t - L.t < 0.4) return;
+  G.remLand = null;
+  if (L.to === 'spin' && SP.open(save)) openSpin();
+  else if ((L.to === 'level' || L.to === 'map' || L.to === 'chest' || L.to === 'quest') && G.screen !== 'levels') press('levels');
+  else if ((L.to === 'daily' || L.to === 'charge' || L.to === 'home' || L.to === 'coins') && G.screen !== 'title') setScreen('title');
+}
+// ---- reminders (app only): the Herald (engine/herald.js) decides; this is the question, the bell chip and the switch.
+// 0.8.17 (mykee: "even if the user skips or says not now, when they come back we should always show it"): while they are
+// off, a small bell with a slash on the home and the map opens the question; the question itself comes back at happy
+// moments (a boss win, a spin banked, a welcome back), once per three days of play at most, never after a loss.
 const remCan = () => { const b = appBridge(); return !!(b && typeof b.notifyAsk === 'function' && typeof b.notifyState === 'function') && !OF.childSafe(save); };
-const remSt = { v: '', t: -1e9 };
-function remPhone() { // "granted" | "ask" | "off": what the phone says; asked of the shell at most every two seconds
+const remSt = { v: '', t: -1e9 }, remInf = { v: {}, t: -1e9 };
+function remPhone() { // "granted" | "ask" | "never" (Android will not ask again) | "off": what the phone says; asked of the shell at most every two seconds
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
   if (now - remSt.t > 2000) { remSt.t = now; try { remSt.v = String(appBridge().notifyState() || ''); } catch (_) { remSt.v = ''; } }
   return remSt.v;
 }
+function remInfo() { // the phone's side (Reminders.java info): channel, battery saver, the planned notes, the last fired and opened
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  if (now - remInf.t > 2000) { remInf.t = now; try { const b = appBridge(); remInf.v = b && typeof b.notifyInfo === 'function' ? JSON.parse(String(b.notifyInfo() || '{}')) || {} : {}; } catch (_) { remInf.v = {}; } }
+  return remInf.v;
+}
 const remOn = () => { const H = ENG.herald.state(save); return H.ok === 1 && !H.off && remPhone() === 'granted'; };
-function remRequest(from) { // Android's own question (13+), or a plain yes where the phone needs none; the answer lands in __eggNotif
+const remSys = () => ['never', 'off'].includes(remPhone()); // only the phone's own settings can turn them on now
+const remChipOn = () => remCan() && !remOn() && !earlyDays();
+function remRequest(from) { // Android's own question (13+), a plain yes where the phone needs none, or the phone's settings page when Android will not ask
   G.remFrom = from; remSt.t = -1e9;
+  if (remSys()) { G.remFrom = 'sys'; try { appBridge().notifySettings('app'); } catch (_) { /* no shell */ } return; }
   try { appBridge().notifyAsk(); } catch (_) { /* no shell */ }
 }
+function remTest() { // Settings: a real note through the real path in about ten seconds
+  const b = appBridge();
+  if (remPhone() !== 'granted') { remRequest('test'); return; }
+  try { if (b && typeof b.notifyTest === 'function') { b.notifyTest('10'); toast('A test note comes in about 10 seconds. You can leave the game.', 3.4); audio.play('ui_open'); } else toast('Update the app to send a test note.', 2.8); } catch (_) { /* no shell */ }
+}
+// the speed log's notif line: permission, channel, battery saver, planned times, last fired, last opened from
+function remLine() {
+  const I = remInfo(), t = (ms) => (ms ? new Date(ms).toISOString().slice(5, 16).replace('T', ' ') : '-');
+  return `perm ${remPhone() || '?'}, chan ${I.chan || '?'}, battery ${I.battery || '?'}${I.strict ? ' (strict maker ' + I.maker + ')' : ''}, sdk ${I.sdk || '?'}, planned ${(I.plan || []).map((q) => q.id + '@' + t(q.at)).join(' ') || '-'}, fired ${I.firedId || '-'} ${t(I.firedAt)}, opened ${I.openId || '-'} ${t(I.openAt)}, replanned ${I.replanN || 0} ${t(I.replanAt)}; herald ${ENG.lines(save).herald}`;
+}
+// may the question show at this happy moment? moment: 'boss' | 'spin' | 'welcome' | 'chip'
+function remAskOk(moment) {
+  if (!remCan()) return false;
+  const P = save.eng && save.eng.pulse, S = P && P.sess && P.sess[P.sess.length - 1];
+  return ENG.herald.askNow(save, { moment, on: remOn(), child: OF.childSafe(save), won3: !earlyDays(), won5: bestStarsOf(5) > 0, sess: S ? S.t : 0, days: (P && P.days) || [] });
+}
+function remAskShow(moment) {
+  const P = save.eng && save.eng.pulse, S = P && P.sess && P.sess[P.sess.length - 1];
+  ENG.herald.noteAsk(save, { sess: S ? S.t : 0 });
+  G.remAsk = { ...waitingCtx(), moment, t0: G.t }; audio.play('ui_open');
+  BR.why(save, moment === 'chip' ? 'home' : moment === 'welcome' ? 'home' : 'win', 'reminder', `the reminder question (${moment})`); persist();
+}
 if (typeof window !== 'undefined') window.__eggNotif = (ok) => {
+  const from = G.remFrom;
   try {
     remSt.t = -1e9;
-    ENG.herald.answer(save, !!ok); if (ok) ENG.herald.setOff(save, false);
-    BR.why(save, 'home', 'reminder', ok ? 'reminders allowed' : 'reminders refused on the phone');
+    ENG.herald.answer(save, !!ok);
+    BR.why(save, 'home', 'reminder', ok ? 'reminders allowed' : 'reminders not allowed on the phone (the bell stays)');
     persist();
-    if (ok) { audio.play('unlock'); toast('Reminders are on. One a day at most.', 2.8); }
-    else if (G.remFrom === 'set') toast('Allow notifications for Eggscape in your phone settings.', 3.4);
+    if (ok && from === 'test') remTest();
+    else if (ok) { audio.play('unlock'); toast('Reminders are on. One a day at most.', 2.8); }
+    else if (from === 'set' || from === 'test') toast('Allow notifications for Eggscape in your phone settings.', 3.4);
   } catch (_) { /* optional */ }
   G.remFrom = null;
 };
@@ -1069,7 +1150,7 @@ function pointerDown(e) {
   if (G.screen === 'title') {
     // hidden tester switch: tap the logo 7 times within 3 s to open (or lock again) every level and world
     const LR = ui.rects.find((r) => r.tag === 'title:logo');
-    if (LR && x >= LR.x && x <= LR.x + LR.w && y >= LR.y && y <= LR.y + LR.h) {
+    if (TESTER_OK && LR && x >= LR.x && x <= LR.x + LR.w && y >= LR.y && y <= LR.y + LR.h) {
       G.logoTaps = (G.logoTaps || []).filter((q) => G.t - q < 3); G.logoTaps.push(G.t);
       if (G.logoTaps.length >= 7) { G.logoTaps = []; save.tester = !save.tester; persist(); toast(save.tester ? 'Tester mode: every level open' : 'Tester mode off', 2.4); }
     }
@@ -1224,7 +1305,7 @@ function keyDown(e) {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   G.keys[k.toLowerCase()] = true;
-  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close'); else if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
+  if (modalOpen()) { if (k === 'Escape') { if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close'); else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null; else if (G.offer) press('of:no'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null; else if (G.skipAsk) G.skipAsk = null; } return; }
   if (G.screen === 'info' && !e.repeat && (k === 'Escape' || k === 'i' || k === 'I' || k === 'Enter' || k === ' ')) { press('info:close'); return; } // the "i" panel
   if (G.screen === 'info' && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp')) { const S = G.iscroll, d = (k.startsWith('Page') ? 0.8 * H_ : 60 * ui.u) * (k.endsWith('Up') ? -1 : 1); S.y = clamp(S.y + d, 0, S.max); S.v = 0; return; }
   if ((k === 'i' || k === 'I') && !e.repeat && (G.screen === 'play' || G.screen === 'pause')) { press('info'); return; }
@@ -1276,6 +1357,7 @@ async function press(id) {
   prizePop.skip(); // a video's little celebration goes on its way at a tap (0.8.17)
   if (G.screen === 'intro' && G.level && G.li >= 0 && /^(boost:|adboost$|shop:boosts$|strip:more$)/.test(id) && !(save.seen || {})['strip:' + G.level.id]) { save.seen = { ...save.seen, ['strip:' + G.level.id]: 1 }; persist(); } // the booster strip was touched: its call for attention rests on this level for good
   if (id.startsWith('foe:')) { const k = id.slice(4); G.introFoe = G.introFoe === k ? null : k; return; } // intro: a villain portrait opens its one-line card
+  if (id.startsWith('wait:go:')) { await waitClaim(id.slice(8)); return; } // 0.8.17: one waiting reward, one video
   switch (id) {
     case 'ad:back': ads.cancelWait(); break; // an ad that never said it closed: back to the game (no reward)
     case 'zoom:in': setZoom((G.zm || 0) + 0.34); break;
@@ -1438,10 +1520,10 @@ async function press(id) {
       break;
     }
     case 'gate:0': case 'gate:1': case 'gate:2': case 'gate:3': case 'gate:4': case 'gate:5': case 'gate:6': case 'gate:7': case 'gate:8': case 'gate:9': {
-      const k = +id.slice(5), price = GATE_COINS(k);
-      if (envOpen(k)) break;
-      { let f = -1; for (let q = 0; q < WORLDS.length; q++) if (!envOpen(q)) { f = q; break; } if (k !== f) break; } // 0.8.17: only the first shut world opens for coins
-      if (save.wallet.coins < price) { needCoins(price); break; }
+      const k = +id.slice(5), B = MINT.gateBuy(k, { stars: bestTotal(), perEnv: PER_ENV, coins: save.wallet.coins, open: envOpen, bossPassed: envBoss }), price = B.price;
+      if (B.why === 'open') break;
+      if (B.why === 'order') { audio.play('ui_back'); toast(envOpen(k - 1) ? `Beat the boss of ${WORLDS[k - 1] || 'the world before'} first` : `Open ${WORLDS[k - 1] || 'the world before'} first`, 2.4); break; } // nothing is taken
+      if (!B.ok) { needCoins(price); break; }
       save.wallet = { ...save.wallet, coins: save.wallet.coins - price };
       save.gates = { ...(save.gates || {}), [k]: 1 };
       persist(); // 0.8.17: the map opens its gate on screen (padlock, gate, fog, sign) with its own sounds, no toast
@@ -1461,6 +1543,12 @@ async function press(id) {
     case 'gm:close':
       G.getMore = null;
       break;
+    case 'wait:open': // 0.8.17: the gift mark (map, home): the rewards that waited for a connection
+      G.waitList = { t0: G.t }; audio.play('hud_pop', { vol: 0.8 });
+      break;
+    case 'wait:close':
+      G.waitList = null;
+      break;
     case 'dt:close': // a pay page opened from outside the shop (Home, Settings, an offer) goes back where the player was
       if (G.payBack && G.detail && G.detail.startsWith('iap:')) { G.detail = null; G.payBack = false; await press('back'); break; }
       G.detail = null;
@@ -1478,7 +1566,7 @@ async function press(id) {
       } else if (n.kind === 'welcome') {
         const b = E.BOOSTER_ORDER[Math.floor(Math.random() * 5)];
         save.wallet = { ...save.wallet, coins: save.wallet.coins + n.coins, owned: { ...(save.wallet.owned || {}), [b]: ((save.wallet.owned || {})[b] || 0) + 1 } };
-        G.nudge = null; persist(); audio.play('level_win');
+        G.nudge = null; persist(); audio.play('level_win'); G.remWelcome = G.t + 3.2; // then, at this happy moment, perhaps the reminder question
         startGot({ name: 'Welcome back!', art: 'coins', quiet: true, coins: n.coins, items: [{ art: 'coins', label: '+' + n.coins }, { art: 'boost:' + b, label: E.BOOSTERS[b].name }] }); // 0.8.17: shown, not a toast
       } else if (n.kind === 'afford') {
         G.nudge = null; persist();
@@ -1517,14 +1605,17 @@ async function press(id) {
     case 'age:later':
       G.ageAsk = false; G.ageLater = true; // asked again next launch
       break;
-    case 'rem:yes': G.remAsk = null; remRequest('card'); break;
-    case 'rem:no': // final: the question never comes back by itself (the switch in Settings stays)
-      G.remAsk = null; ENG.herald.answer(save, false); BR.why(save, 'win', 'reminder', 'reminders: no thanks'); persist();
+    case 'rem:yes': G.remAsk = null; remRequest('card'); break; // (Android's question, or the phone's settings page when it will not ask)
+    case 'rem:no': // "Not now": the bell stays on the home and the map, and the question comes back at a happy moment in three days of play
+      G.remAsk = null; ENG.herald.answer(save, false); BR.why(save, 'win', 'reminder', 'reminders: not now'); persist();
       break;
-    case 'rem:later': G.remAsk = null; break; // the back key: no answer, another good win may ask again
+    case 'rem:later': G.remAsk = null; break; // the back key: the same as "Not now", without an answer
+    case 'rem:chip': if (remChipOn()) remAskShow('chip'); break; // the bell with a slash: the question, whenever he wants it
+    case 'set:remtest': remTest(); break;
+    case 'set:remsys': try { appBridge().notifySettings(remSys() ? 'app' : 'battery'); } catch (_) { /* no shell */ } G.remFrom = remSys() ? 'sys' : null; break;
     case 'set:remind':
       if (remOn()) { ENG.herald.setOff(save, true); try { appBridge().notifyCancel(); } catch (_) { /* no shell */ } persist(); }
-      else if (remPhone() === 'granted') { ENG.herald.answer(save, true); ENG.herald.setOff(save, false); persist(); toast('Reminders are on. One a day at most.', 2.8); }
+      else if (remPhone() === 'granted') { ENG.herald.answer(save, true); ENG.herald.setOff(save, false); persist(); audio.play('unlock'); toast('Reminders are on. One a day at most.', 2.8); }
       else remRequest('set');
       break;
     case 'pc:0': case 'pc:1': case 'pc:2': {
@@ -1554,7 +1645,8 @@ async function press(id) {
       break;
     case 'ad:coins': {
       if (adCd() > 0) break;
-      const pay = adCoins(), src = G.pressAt, ok = await rewarded('coins');
+      const fd = save.adDay && save.adDay.day === today() ? save.adDay.n | 0 : 0;
+      const pay = adCoins(), src = G.pressAt, ok = await rewarded('coins', { kind: 'coins', n: pay, key: `free:${today()}:${fd}`, kept: () => { save.adClaim = Date.now(); save.adDay = E.noteFreeCoins(save.adDay, today()); } });
       if (ok) {
         save.wallet = E.addCoins(save.wallet, pay); void src;
         startGot({ name: 'Free coins', art: 'coins', quiet: true, coins: pay, items: [{ art: 'coins', label: '+' + pay }] }); // 0.8.17: a YOU GOT! with the purse on it: the video's coins land in front of the player
@@ -1713,7 +1805,7 @@ async function press(id) {
       const src = G.pressAt;
       if (!(await rewarded('bonus'))) break; // Premium: granted at once, no video (ads.rewarded)
       const R = E.bonusChest(G.level.id), first = !G.result.purseGo;
-      save.wallet = E.openBonusChest(save.wallet, G.level.id); G.doubled = true; G.result.chestOpen = true;
+      save.wallet = E.openBonusChest(save.wallet, G.level.id); G.doubled = true; G.result.chestOpen = true; save.mint = MINT.winVideoTake(save.mint, today(), R.coins);
       recordResult(); persist();
       G.result.purseGo = true; void src; // (the win's own coins land with these, if their roll had not run yet)
       audio.play('treasure_open'); portal.happy();
@@ -1721,11 +1813,13 @@ async function press(id) {
       break;
     }
     case 'double': {
-      if (G.doubled) break;
-      const ok = await rewarded('double');
+      if (G.doubled || (G.result && G.result.dblOk === false)) break;
+      const dk = G.result && G.level ? (G.result.waitKey = G.result.waitKey || `double:${G.level.id}:${Date.now()}`) : '';
+      const ok = await rewarded('double', dk && G.result.coins > 0 ? { kind: 'coins', n: G.result.coins, key: dk } : null);
+      if (ok && dk) save.waiting = { ...WT.clean(save.waiting), list: waitingList().filter((it) => it.key !== dk) }; // doubled after all: nothing waits for it
       if (ok && G.result) {
         const r = G.result, a = r.coins || 0, first = !r.purseGo;
-        G.doubled = true;
+        G.doubled = true; save.mint = MINT.winVideoTake(save.mint, today(), a); // the Mint's win-video pot
         r.total *= 2;
         r.shownTotal = r.total;
         save.wallet = E.addCoins(save.wallet, a);
@@ -1757,7 +1851,7 @@ async function press(id) {
       save.showFps = !save.showFps; persist();
       break;
     case 'set:log': { // hand the speed log to the share sheet (app) or save it as a file (web)
-      diag.note({ brain: BR.trace(save), who: BR.model(save), tries: DR.triesLine(save), mode: save.mode, eng: ENG.lines(save, { levelId: save.unlocked || 1 }), tal: ENG.tally.table(save), first: (save.eng && save.eng.pulse && save.eng.pulse.first) || 0, spin: save.spin || null }); // the Brain's last decisions travel with the speed log; 0.8.15: tries and wins per level (how hard the game really is)
+      diag.note({ brain: BR.trace(save), who: BR.model(save), tries: DR.triesLine(save), mode: save.mode, eng: ENG.lines(save, { levelId: save.unlocked || 1 }), notif: remCan() ? remLine() : 'web', tal: ENG.tally.table(save), first: (save.eng && save.eng.pulse && save.eng.pulse.first) || 0, spin: save.spin || null }); // the Brain's last decisions travel with the speed log; 0.8.15: tries and wins per level (how hard the game really is)
       const how = diag.share();
       toast(how === 'download' ? 'Speed log saved to your downloads' : how ? 'Pick where to send the speed log' : 'Could not share the log here', 2.6);
       break;
@@ -1995,8 +2089,11 @@ async function breakThen(fn, info = {}) {
   fn();
 }
 
-async function rewarded(tag) {
+// keepIt: a reward tied to a moment that will pass ({ kind: 'coins' | 'spin', n, key, kept() }): met with no video to
+// show, it waits for a connection (src/waiting.js) and kept() uses the moment up
+async function rewarded(tag, keepIt = null) {
   if (G.adBusy) return false;
+  if (!ads.videoOk) { videoOff(keepIt); return false; } // 0.8.17: never a free reward in place of a video, never a failing one
   G.adBusy = true; G.adVis = 0;
   portal.gameplayStop();
   let ok = false;
@@ -2013,6 +2110,43 @@ async function rewarded(tag) {
   // used); a video closed early, or none to show, says so: the sad hen and one line, never silence
   if (!ok) prizePop.start({ sad: true, name: 'No reward this time' });
   return ok;
+}
+// 0.8.17 (mykee: "when the user is offline there is no way to display those ads"): a video button tapped while none can
+// be shown says how to get it, in one line; a reward whose moment will pass waits (at most 3, src/waiting.js)
+function videoOff(keepIt) {
+  if (keepIt && !earlyDays()) {
+    const S = WT.clean(save.waiting), list = WT.keep(S.list, keepIt, Date.now(), { early: earlyDays() });
+    if (list.some((it) => it.key === keepIt.key) && !S.list.some((it) => it.key === keepIt.key)) {
+      save.waiting = { ...S, list };
+      try { if (keepIt.kept) keepIt.kept(); } catch (_) { /* the moment's own bookkeeping */ }
+      persist();
+    }
+  }
+  prizePop.start({ sad: true, name: ads.videoWhy === 'offline' ? 'Connect to get this reward' : 'No video right now' }); // the one line, over every page
+}
+const waitingList = () => WT.clean(save.waiting).list;
+// the gift mark shows once a video can be shown again (and never before level 3 is won)
+const waitShown = () => waitingList().length > 0 && ads.videoOk && !earlyDays();
+// claim one waiting reward: one video, then the normal reward moment (the YOU GOT! with its purse, or the Lucky Spin)
+async function waitClaim(id) {
+  const it0 = waitingList().find((x) => x.id === id);
+  if (!it0 || (it0.kind === 'coins' && WT.room(save.waiting, today()) < it0.n)) return;
+  if (!(await rewarded('wait'))) return;
+  const r = WT.claim(save.waiting, id, today());
+  if (!r.item) return;
+  save.waiting = r.state;
+  if (!r.state.list.length) G.waitList = null;
+  if (r.item.kind === 'coins') {
+    save.wallet = E.addCoins(save.wallet, r.item.n);
+    startGot({ name: 'Free coins', art: 'coins', quiet: true, coins: r.item.n, items: [{ art: 'coins', label: '+' + r.item.n }] });
+    audio.play('combo', { intensity: 0.5 });
+  } else {
+    const P = SP.state(save);
+    P.bank = Math.min(SP.SPIN.bankMax, P.bank + r.item.n);
+    G.waitList = null;
+    if (SP.open(save)) openSpin(); // the spin waits on the machine: he pulls it himself
+  }
+  persist();
 }
 // ---------------------------------------------------------------- shop (2026-11-16 revamp)
 // the shop opens on a tab (and optionally scrolled to a section: 'coins' | 'bank'); Back returns to the exact screen it
@@ -2097,7 +2231,7 @@ const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? {
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
 function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
-function modalOpen() { return !!(G.got || G.party || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
+function modalOpen() { return !!(G.got || G.party || G.waitList || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause')); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
@@ -2107,6 +2241,7 @@ function drawModals() {
     if (G.got) { if (G.party) drawParty(true); drawGot(); } // the coins' reveal runs over the unlock party's stage
     else if (G.party) drawParty();
     else if (G.parent) drawParentCheck();
+    else if (G.waitList) drawWaitList();
     else if (G.getMore) drawGetMore();
     else if (G.chickBuy) drawChickBuy();
     else if (G.detail) drawDetail();
@@ -2278,6 +2413,8 @@ function homeNudge(now) {
   return true;
 }
 function offerMoments() {
+  remLanding(); // a note was tapped: open what it spoke of
+  if (G.remWelcome && !modalOpen() && !G.settingsOpen && !G.adBusy && G.t > G.remWelcome) { G.remWelcome = 0; if (['title', 'levels'].includes(G.screen) && remAskOk('welcome')) { remAskShow('welcome'); return; } } // after the welcome-back gift
   if (G.offerTried || modalOpen() || G.settingsOpen || G.adBusy) return;
   const sc = G.screen;
   if ((sc === 'title' || (sc === 'levels' && !G.mapTravel && !G.treasure)) && G.screenT > 1.4) { // home, or the map (the app opens on it now)
@@ -2288,9 +2425,9 @@ function offerMoments() {
   } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0 && !(sc === 'win' && revealing(G.result))) { G.offerTried = true; if ((sc === 'fail' && G.failHelp) || earlyDays()) return; } // one help on a fail card, never two
   else if (sc === 'intro' && G.screenT > 0.3 && G.li >= 0) { G.offerTried = true; G.introTip = null; if (earlyDays()) return; } // the intro's gentle chick line
   else return;
-  if (sc === 'win' && G.remDue) { // the reminder question (free, once): it takes this card's one ask
-    G.remDue = false;
-    if (remCan()) { G.remAsk = { ...waitingCtx() }; BR.why(save, 'win', 'reminder', 'asked once, after a good win, with a spin near'); return; }
+  if (sc === 'win' && G.remDue) { // the reminder question (free): it takes this card's one ask
+    const mo = G.remDue; G.remDue = null;
+    if (remAskOk(mo)) { remAskShow(mo); return; }
   }
   const moment = sc === 'title' || sc === 'levels' ? 'home' : sc;
   const ctx2 = offerCtx();
@@ -2356,28 +2493,42 @@ function drawNudge() {
     ...(n.kind === 'welcome' ? [] : [{ h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('nudge:no', n.kind === 'keep' ? 'No thanks' : 'Later', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) }]),
   ], { ribbon: n.kind === 'welcome' ? '#3cb043' : '#d89a1c' });
 }
-// the reminder question (0.8.15): the note itself is the picture, as it will look on the phone; two buttons, no clock
+// the reminder question (0.8.15; 0.8.17 worded around the real thing waiting): the note itself is the picture, as it
+// will look on the phone, saying what is really coming; the button names it ("Tell me when my spin is ready"). When
+// Android will no longer ask (refused before) or the phone has them switched off, the button opens the phone's own page.
+function remPreview(R) {
+  if (R.spins > 0) return ['Your Lucky Spin is ready', 'spin'];
+  if (R.spinLeft > 0) return [R.spinLeft === 1 ? 'One win to your Lucky Spin' : `${R.spinLeft} wins to your Lucky Spin`, 'spin'];
+  if (R.starsToChest === 1) return ['One star to your next chest', 'chest'];
+  if (R.flame >= 2) return [`Your ${R.flame}-win flame is still burning`, 'flame'];
+  return ['A fresh chest landed in the coop', 'chest'];
+}
 function drawRemAsk() {
-  const R = G.remAsk, text = R.spins > 0 ? 'A free spin is waiting' : R.spinLeft > 0 ? `${R.spinLeft} win${R.spinLeft > 1 ? 's' : ''} to your free spin` : 'Your chest is nearly full';
+  const R = G.remAsk, [text, what] = remPreview(R), sys = remSys(), calm = save.calm;
+  const yes = sys ? 'Turn on in phone settings' : what === 'spin' ? 'Tell me when my spin is ready' : what === 'flame' ? 'Tell me before it goes out' : 'Tell me when my chest is ready';
+  // the note slides down into place (eased) and gives a little ring; Calm: it simply sits there
+  const k = calm ? 1 : clamp((G.t - (R.t0 ?? G.t - 1)) / 0.55, 0, 1), e = 1 - Math.pow(1 - k, 3), ring = calm ? 0 : Math.max(0, 1 - Math.abs(G.t - (R.t0 ?? -9) - 0.7) / 0.35);
   dim(0.55);
-  stackCard('Want a reminder?', (s) => [
+  stackCard('Want a reminder?', (s, iw) => [
     { h: 96 * s, gap: 6 * s, draw: (x, y, w) => {
-      const bw = Math.min(w, 300 * s), bx = x + (w - bw) / 2, bh = 72 * s, by = y + 12 * s + Math.sin(G.t * 2.2) * 2 * s, d = 44 * s;
-      ctx.save();
+      const bw = Math.min(w, 320 * s), bx = x + (w - bw) / 2, bh = 72 * s, by = y + 12 * s - (1 - e) * 22 * s + (calm ? 0 : Math.sin(G.t * 2.2) * 2 * s * k), d = 44 * s;
+      ctx.save(); ctx.globalAlpha *= 0.25 + 0.75 * e;
       ctx.shadowColor = 'rgba(40,20,5,0.35)'; ctx.shadowBlur = 14 * s; ctx.shadowOffsetY = 4 * s;
       ui.roundRect(bx, by, bw, bh, 18 * s); ctx.fillStyle = '#fffdf6'; ctx.fill();
       ctx.restore();
       ui.roundRect(bx, by, bw, bh, 18 * s); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(70,40,10,0.35)'; ctx.stroke();
-      ctx.beginPath(); ctx.arc(bx + 14 * s + d / 2, by + bh / 2, d / 2, 0, 7); ctx.fillStyle = '#e8a020'; ctx.fill();
-      ctx.beginPath(); ctx.ellipse(bx + 14 * s + d / 2, by + bh / 2 + d * 0.03, d * 0.22, d * 0.29, 0, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
-      const tx = bx + 14 * s + d + 12 * s, tw = bw - (tx - bx) - 12 * s;
+      const ix = bx + 14 * s + d / 2, iy = by + bh / 2;
+      ctx.beginPath(); ctx.arc(ix, iy, d / 2, 0, 7); ctx.fillStyle = '#e8a020'; ctx.fill();
+      ctx.save(); ctx.translate(ix, iy - d * 0.3); ctx.rotate(Math.sin(G.t * 26) * 0.32 * ring); ctx.translate(-ix, -(iy - d * 0.3)); // the bell rings once as the note lands
+      ctx.fillStyle = '#fff'; SI.bell(ctx, ix, iy, d * 0.78); ctx.restore();
+      const tx = bx + 14 * s + d + 12 * s, tw = bw - (tx - bx) - 12 * s, ts = Math.min(17 * s, tw * 17 / Math.max(1, ui.measure(text, 17)));
       ui.text('Eggscape', tx, by + bh / 2 - 12 * s, { size: 13 * s, color: ui.C.ink2, maxW: tw, tag: 'rem:app' });
-      ui.text(text, tx, by + bh / 2 + 9 * s, { size: 17 * s, color: ui.C.ink, maxW: tw, tag: 'rem:text' });
+      ui.text(text, tx, by + bh / 2 + 9 * s, { size: ts, color: ui.C.ink, maxW: tw, tag: 'rem:text' });
       ui.record({ x: bx + 14 * s, y: by + (bh - d) / 2, w: d, h: d }, 'rem:icon');
     } },
-    lineBlock('One a day at most. Never at night.', 15 * s, { color: ui.C.ink2, tag: 'rem:why', gap: 8 * s }),
-    { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ui.button('rem:yes', 'Yes, tell me', x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: 22 * s }) },
-    { h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rem:no', 'No thanks', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
+    lineBlock(sys ? 'Notifications are off for Eggscape on this phone.' : 'One a day at most. Never at night.', 15 * s, { color: ui.C.ink2, tag: 'rem:why', gap: 8 * s }),
+    { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ui.button('rem:yes', yes, x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: Math.min(22 * s, (w - 28 * s) * 22 / Math.max(1, ui.measure(yes, 22))) }) },
+    { h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rem:no', 'Not now', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
   ], { ribbon: '#e8a020' });
 }
 // first launch (app only, behind OF.AGE_GATE): a neutral question, two equal buttons, nothing pre-chosen
@@ -2951,6 +3102,63 @@ const packRow = (sku, s, tg) => ({ h: 66 * s, gap: 12 * s, draw: (x, y, w) => {
   ui.text('coins', x + 70 * s, y + 47 * s, { size: 14 * s, color: ui.C.ink2, tag: tg + ':unit', maxW: w - bw - 90 * s });
   ui.button('gm:iap:' + sku, ads.price(sku), x + w - bw - 9 * s, y + 11 * s, bw, 44 * s, { kind: 'primary', size: 18 * s, shimmer: !save.calm });
 } });
+// 0.8.17 a gift box (the rewards that waited for a connection): a red box, a gold ribbon and bow; S: its width.
+// t: the bow's little wiggle (0 in Calm)
+function drawGift(c, x, y, S, t = 0) {
+  const w = S, h = S * 0.62, lidH = S * 0.24, lx = x - w / 2, by = y - h * 0.2, rr = S * 0.08, ink = '#5a1608';
+  c.save(); c.lineJoin = 'round'; c.lineWidth = Math.max(1.5, S * 0.045);
+  c.fillStyle = 'rgba(40,20,4,0.22)'; c.beginPath(); c.ellipse(x, by + h + S * 0.03, w * 0.55, S * 0.07, 0, 0, Math.PI * 2); c.fill();
+  const box = (x0, y0, bw, bh, a, b) => { ui.roundRect(x0, y0, bw, bh, rr); const g = c.createLinearGradient(0, y0, 0, y0 + bh); g.addColorStop(0, a); g.addColorStop(1, b); c.fillStyle = g; c.fill(); c.strokeStyle = ink; c.stroke(); };
+  box(lx + w * 0.05, by, w * 0.9, h, '#f05a3c', '#c8301e'); // the box
+  c.fillStyle = '#ffd34a'; c.fillRect(x - S * 0.08, by + c.lineWidth / 2, S * 0.16, h - c.lineWidth); // the ribbon down
+  const wig = t ? Math.sin(t * 4) * 0.08 : 0;
+  c.save(); c.translate(x, by - lidH * 0.2); c.rotate(wig * 0.25);
+  box(-w / 2, -lidH * 0.8, w, lidH, '#ff7a54', '#e0412a'); // the lid
+  c.fillStyle = '#ffd34a'; c.fillRect(-S * 0.08, -lidH * 0.8 + c.lineWidth / 2, S * 0.16, lidH - c.lineWidth);
+  for (const sx of [-1, 1]) { // the bow: two loops
+    c.save(); c.rotate(sx * (0.5 + wig)); c.beginPath(); c.ellipse(sx * S * 0.13, -lidH * 0.8 - S * 0.07, S * 0.15, S * 0.085, 0, 0, Math.PI * 2);
+    c.fillStyle = '#ffd34a'; c.fill(); c.strokeStyle = '#8a5a06'; c.stroke(); c.restore();
+  }
+  c.beginPath(); c.arc(0, -lidH * 0.8 - S * 0.02, S * 0.065, 0, Math.PI * 2); c.fillStyle = '#ffe680'; c.fill(); c.strokeStyle = '#8a5a06'; c.stroke();
+  c.restore();
+  c.fillStyle = 'rgba(255,255,255,0.28)'; c.fillRect(lx + w * 0.12, by + h * 0.12, w * 0.08, h * 0.6); // a glint
+  c.restore();
+}
+// the gift mark on the map: a purple pill under the header's right edge, "N rewards waiting", the gift bobbing on it
+function waitMark(xr, y, h) {
+  if (!waitShown()) { G.waitMarkT = null; return; }
+  const u = ui.u, n = waitingList().length, label = `${n} reward${n > 1 ? 's' : ''} waiting`, size = 16 * u, w = ui.measure(label, size) + h * 1.1 + 34 * u;
+  const T0 = G.waitMarkT ?? (G.waitMarkT = G.t), k = save.calm ? 1 : backK(Math.min(1, (G.t - T0) / 0.35)); // it pops in once
+  ctx.save(); ctx.translate(xr - w / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-(xr - w / 2), -(y + h / 2));
+  ui.button('wait:open', label, xr - w, y, w, h, { kind: 'ad', shimmer: true, size, round: h * 0.42, iconS: 1.35, icon: (c, X, Y, S) => drawGift(c, X, Y + (save.calm ? 0 : Math.sin(G.t * 2.4) * 1.5 * u) + S * 0.08, S * 0.95, save.calm ? 0 : G.t) });
+  ctx.restore();
+}
+// the page of waiting rewards: each one, what it pays, and one video to claim it (the gift mark opens it)
+function drawWaitList() {
+  const L = waitingList();
+  if (!L.length) { G.waitList = null; return; }
+  dim(0.55);
+  stackCard('Rewards waiting', (s) => {
+    const C = ui.C, day = today();
+    return [
+      ...L.map((it, i) => ({ h: 76 * s, gap: i ? 10 * s : 14 * s, draw: (x, y, w) => {
+        ui.well(x, y, w, 76 * s, { s });
+        const ax = x + 42 * s, ay = y + 38 * s, bw = 128 * s;
+        if (it.kind === 'coins') for (const [dx, dy] of [[-10, 7], [10, 7], [0, -7]]) drawCoin(ctx, ax + dx * s, ay + dy * s, 14 * s, G.t + dx);
+        else drawSlotIcon(ctx, ax, ay, 24 * s, save.calm ? 0 : G.t);
+        ui.record({ x: x + 12 * s, y: y + 12 * s, w: 60 * s, h: 52 * s }, 'wl:art' + i);
+        if (it.kind === 'coins') {
+          ui.num('+' + it.n, x + 84 * s, y + 28 * s, { size: 24 * s, tag: 'wl:n' + i, maxW: w - bw - 104 * s });
+          ui.text('coins', x + 84 * s, y + 54 * s, { size: 14 * s, color: C.ink2, tag: 'wl:u' + i, maxW: w - bw - 104 * s });
+        } else ui.text('Lucky Spin', x + 84 * s, y + 38 * s, { size: 19 * s, color: C.ink, tag: 'wl:n' + i, maxW: w - bw - 104 * s });
+        const full = it.kind === 'coins' && WT.room(save.waiting, day) < it.n; // over today's ceiling: it waits for tomorrow
+        ui.button('wait:go:' + it.id, full ? 'Tomorrow' : 'Watch', x + w - bw - 10 * s, y + 13 * s, bw, 50 * s, full ? { kind: 'off', disabled: true, size: 17 * s } : { kind: 'ad', ad: true, shimmer: i === 0, size: 19 * s });
+      } })),
+      { h: 52 * s, gap: 16 * s, draw: (x, y, w) => ui.button('wait:close', 'Close', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
+    ];
+  }, { ribbon: '#7a48e8', full: false });
+}
+
 function drawGetMore() {
   const M = G.getMore;
   dim(0.55);
@@ -2979,6 +3187,13 @@ function onGrant(sku) {
   }
   audio.play('unlock');
   toast(`Thank you! ${P ? P.name : 'Your purchase'} is yours.`, 3);
+}
+// 0.8.17 a refunded one-time purchase was taken back (src/guard.js): one calm line, once; the shop offers it again
+function guardNote() {
+  const r = GD.takeNote(save.guard);
+  if (!r.line) return;
+  save.guard = r.guard; G.featAt = null; persist();
+  toast(r.line, 4.5);
 }
 
 // 2026-11-23 the pause page's Skip level (src/skip.js holds the rule): a real journey level, not won, not skipped
@@ -4674,7 +4889,8 @@ function computeResult() {
   // coins (F7) and the bonus objective (C3): bonus coins are paid the first time it is met, per mode
   const bonus = !!L.bonus && sim.bonusMet();
   const bonusCoins = bonus && !save.bonus[sk(L.id, sim.mode)] && G.li >= 0 ? BONUS_COINS : 0;
-  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id, hard: isHardLevel(L) && G.li >= 0 }).total + bonusCoins;
+  // 0.8.17 the Mint: a level won again without a new star pays its replay share (40%)
+  let coins = E.levelCoins({ stars, saved: st.saved, eggs: st.total, perfect: st.perfect, levelId: L.id, hard: isHardLevel(L) && G.li >= 0, fresh: G.li >= 0 ? stars > bestStarsOf(L.id) : true }).total + bonusCoins;
   if (G.li < 0) coins = G.li === -1 && stars && save.daily.paid !== today() ? coins + DAILY_COINS : 0; // the Daily Vault pays once a day; a lab vault pays nothing
   const cracked = sim.savedLog.filter((q) => q.cracks > 0).length, used = sim.timeLimit ? Math.max(0, sim.timeLimit - Math.max(0, sim.timeLeft)) : sim.t;
   return { broken: st.broken, cracked, used, stars, saved: st.saved, eggs: st.total, eggScore: st.score, timeBonus, streak, streakMult, total, shownTotal: 0, t: 0, target: st.target, perfect: st.perfect, rewound: G.usedRewind, coins, bonus, hasBonus: !!L.bonus && !goals.some((g) => g.kind === L.bonus.kind), // a bonus that is a star goal is not listed twice
@@ -4717,8 +4933,13 @@ function onWin() {
     const pre = G.result.coins, pk = eggPerk();
     G.result.coins = E.perkCoins(eggPerkId(), pre, G.sim.savedLog.length);
     G.result.perkCoins = G.result.coins - pre; G.result.perkGold = !!(pk && pk.id === 'golden');
+    // 0.8.17 the Mint's online share, its own line on the win page; offline the line is simply absent (never blocks play)
+    G.result.online = MINT.onlineBonus(pre, MINT.isOnline({ web: !ads.moneyShop, nav: typeof navigator !== 'undefined' ? navigator : null, bridge: typeof window !== 'undefined' ? window.EggApp : null }));
+    G.result.coins += G.result.online;
     const P = E.payWin(save.wallet, G.result.coins, ads.moneyShop);
     ledger(ledWhy); save.wallet = P.wallet; G.result.coins = P.coins; G.result.goldHour = P.doubled; ledger('win'); ledWhy = 'win';
+    // 0.8.17: the win page's videos share the Mint's pot a day (Double coins, the Bonus chest's coins): offered only while it holds them
+    G.result.dblOk = MINT.winVideoOk(save.mint, today(), G.result.coins);
   }
   if (G.result.bonus) save.bonus[sk(G.level.id, G.sim.mode)] = 1;
   if (G.li >= 0 && G.level) { // the Director: the result, a skin trial running down, and now and then a new one as a gift
@@ -4728,7 +4949,7 @@ function onWin() {
     G.result.hot = DR.hotCount(save);
     // 2026-11-20 shop 2.0 (no interstitials in the app): when an ad break would have been due, the win card offers a
     // Bonus chest video instead of Double coins. Never on a losing streak.
-    if (!earlyDays() && ads.bonusDue({ levelId: G.level.id, frustrated: DR.frustration(save, G.level.id) >= 0.5 })) { ads.noteBonus(); G.result.chest = E.bonusChest(G.level.id); }
+    if (!earlyDays() && MINT.winVideoOk(save.mint, today(), E.BONUS_CHEST.coins) && ads.bonusDue({ levelId: G.level.id, frustrated: DR.frustration(save, G.level.id) >= 0.5 })) { ads.noteBonus(); G.result.chest = E.bonusChest(G.level.id); }
   }
   G.trialChick = null;
   G.result.prevBest = G.li >= 0 ? save.best[sk(L.id, G.sim.mode)] || 0 : null; // the card's "NEW BEST!" compares with the best before this run
@@ -4739,7 +4960,7 @@ function onWin() {
   if (G.li >= -1) {
     const got = SP.noteWin(save, freshWin), played = G.sim.t >= 15 && SP.notePlayed(save, today());
     G.result.spin = { fresh: freshWin && SP.open(save), got: (got ? 1 : 0) + (played ? 1 : 0), ...SP.meter(save) };
-    if (G.li >= 0 && remCan() && ENG.herald.shouldAsk(save, { unlocked: save.unlocked, stars: G.result.stars, ...waitingCtx() })) G.remDue = true;
+    if (G.li >= 0) { const mo = L.boss ? 'boss' : G.result.spin.got ? 'spin' : ''; G.remDue = mo && remAskOk(mo) ? mo : null; } // 0.8.17: the reminder question at a happy moment (a boss beaten, a spin banked)
     persist();
   }
   if (G.li >= 0 && L.boss && E.bossTreasure(L.id) && !E.treasureOpened(save.wallet, L.id) && bossBeaten(L.id)) { // the boss treasure opens in the celebration, not on the map
@@ -5032,6 +5253,7 @@ function render() {
   setSceneCalm(save.calm); // and the farm scenes' live touches (src/render/farmscene.js)
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ui.begin();
+  setAdOff(!ads.videoOk); // 0.8.17: offline (or no video loaded): every video button shows its offline state
   if (G.screen === 'wonder' || (G.screen === 'info' && G.infoFrom === 'wonder')) { wonder.render(); if (G.screen === 'info') drawInfo(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // WONDER (the "i" panel can sit over a Wonder Vault)
   if (!G.sim) {
     ctx.fillStyle = '#1b1410';
@@ -7234,15 +7456,16 @@ function drawLevelIntro(L, acc) {
   const oneLine = (alts, fs, w) => alts.find((q) => q && ui.measure(q, fs) <= w) || alts[alts.length - 1];
   const upOf = (S, w) => oneLine([S.up, shortTip(S.up), (POWER_WORDS[S.id] || [''])[0]], chFsU, w);
   const dnOf = (S, w) => oneLine([S.down && 'Downside: ' + S.down, S.down && 'Downside: ' + shortTip(S.down), 'Downside: ' + (POWER_WORDS[S.id] || ['', ''])[1]], chFsD, w);
-  const chickCap = (w) => {
-    return { h: chFsN * 1.2 + chFsU * 1.22 + 3 * s + chFsD * 1.22 + 5 * s + wayH, gap: 6 * s, draw: (x, y, ww) => {
+  // 0.8.17: the name, its one line and its way in; the downside line only when the column has room to spare (dn)
+  const chickCap = (w, dn = true) => {
+    return { h: chFsN * 1.2 + chFsU * 1.22 + 3 * s + (dn ? chFsD * 1.22 : 0) + 5 * s + wayH, gap: 6 * s, draw: (x, y, ww) => {
       if (!cS) return;
       const S = cS.S, LK = cS.locked;
       let yy = y;
       ui.text(S.name, x + ww / 2, yy + chFsN * 0.62, { size: chFsN, align: 'center', maxW: ww, color: S.col ? ui.tint(S.col[1], -0.3) : C.ink, tag: 'intro:pickname' }); yy += chFsN * 1.2;
       ui.text(upOf(S, ww - 8 * s), x + ww / 2, yy + chFsU * 0.62, { size: chFsU, align: 'center', maxW: ww, color: C.ink, tag: 'intro:pickup' }); yy += chFsU * 1.22 + 3 * s;
-      ui.text(dnOf(S, ww - 8 * s), x + ww / 2, yy + chFsD * 0.62, { size: chFsD, align: 'center', maxW: ww, color: C.warn, tag: 'intro:pickdn' });
-      const wy = y + chFsN * 1.2 + chFsU * 1.22 + 3 * s + chFsD * 1.22 + 5 * s, cy = wy + wayH / 2;
+      if (dn) ui.text(dnOf(S, ww - 8 * s), x + ww / 2, yy + chFsD * 0.62, { size: chFsD, align: 'center', maxW: ww, color: C.warn, tag: 'intro:pickdn' });
+      const wy = y + chFsN * 1.2 + chFsU * 1.22 + 3 * s + (dn ? chFsD * 1.22 : 0) + 5 * s, cy = wy + wayH / 2;
       if (LK) { // its way in: free at a later level (or a premium one), and unlocking it now for coins (the same sheet as today)
         const tip = G.introTip && G.introTip.id === S.id ? shortTip(G.introTip.line) || G.introTip.line : '';
         const free = tip || (S.premium ? 'A premium chick' : `Free at level ${S.unlock}`), buy = !early;
@@ -7327,8 +7550,12 @@ function drawLevelIntro(L, acc) {
       post.push(capBlock(iw), ...[tileBlock(iw), chipBlock(iw), starBlock].filter(Boolean));
       B = fitCol(pre, levelStage, post, V.h, Math.min(165 * s, iw * 0.5), Math.min(iw * 1.1, 560 * s)); // (0.8.16: a page with little else grows its picture, nearly square, as the level's own card does)
     } else {
-      pre.push(carBlock(iw)); post.push(chickCap(iw));
-      B = fitCol(pre, chickStage, post, V.h, Math.min(150 * s, iw * 0.45), Math.min(iw * 0.95, 560 * s));
+      // 0.8.17 (mykee: the chick row where the thumb is): the demo on top, as big as the column allows, then the chosen chick's
+      // name and line, then the row of chicks in the lower third just above the boosters and the main button
+      const hiS = Math.min(iw * 0.95, 560 * s), loS = Math.min(150 * s, iw * 0.45), carB = carBlock(iw);
+      const dnOn = V.h - (pageColH([chickCap(iw, true), carB], s) + 6 * s + gp) >= Math.min(hiS, iw * 0.8); // the downside line rides along when the stage still gets (nearly) its full size
+      post.push(chickCap(iw, dnOn), carB);
+      B = fitCol(pre, chickStage, post, V.h, loS, hiS);
     }
     if (B.length) B[0] = { ...B[0], gap: B[0].gap - gp };
     column(B, pg, V, x0, iw);
@@ -7368,7 +7595,8 @@ function drawLevelIntro(L, acc) {
     G.ipRectR = { x: rx - gap2 / 2, y: ry, w: A.x1 - (rx - gap2 / 2), h: yb - ry };
     const RB = (lvTab ? [perkBlock(rw), tileBlock(rw), chipBlock(rw)] : [carBlock(rw)]).filter(Boolean);
     const room = G.ipRectR.h - pageColH(RB, s) - 6 * s;
-    if (room > 0 && RB.length) { const add = Math.min(room / (RB.length + 1), 20 * s); RB.forEach((b, i) => { RB[i] = { ...b, gap: (b.gap ?? 10 * s) + add }; }); }
+    if (room > 0 && RB.length && lvTab) { const add = Math.min(room / (RB.length + 1), 20 * s); RB.forEach((b, i) => { RB[i] = { ...b, gap: (b.gap ?? 10 * s) + add }; }); }
+    else if (room > 0 && RB.length) RB[0] = { ...RB[0], gap: (RB[0].gap ?? 10 * s) + room }; // the chick row rides low, just above the boosters (0.8.17: the thumb)
     if (RB.length) RB[0] = { ...RB[0], gap: RB[0].gap - gp };
     column(RB, pr, G.ipRectR, rx, rw);
   }
@@ -7678,6 +7906,41 @@ const vibeIcon = (on) => (c, x, y, S) => {
   c.restore();
 };
 
+// 0.8.17: the bell with a slash (reminders are off): a quiet round chip on the home and the map's header, never over
+// play. A tap opens the reminder question. A gold dot when something is waiting right now that a note would have told
+// him about (a spin banked, today's chest); it swings a little now and then (Calm: still).
+function drawRemChip(x, y, d) {
+  const dot = ENG.herald.waiting(save, waitingCtx()), sw = save.calm || !dot ? 0 : Math.sin(G.t * 18) * 0.22 * Math.max(0, 1 - ((G.t % 6) / 0.6));
+  ui.button('rem:chip', '', x, y, d, d, { kind: 'hud', round: d / 2, icon: (c, X, Y, S) => {
+    c.save(); c.fillStyle = '#fff4dc'; c.translate(X, Y - S * 0.3); c.rotate(sw); c.translate(-X, -(Y - S * 0.3)); SI.bell(c, X, Y + S * 0.04, S * 1.2); c.restore();
+    c.save(); c.lineCap = 'round'; c.strokeStyle = 'rgba(40,20,5,0.75)'; c.lineWidth = S * 0.2; c.beginPath(); c.moveTo(X - S * 0.36, Y - S * 0.36); c.lineTo(X + S * 0.36, Y + S * 0.36); c.stroke();
+    c.strokeStyle = '#ff8a6a'; c.lineWidth = S * 0.1; c.stroke(); c.restore();
+  }, iconS: 1.55 });
+  if (dot) { const r = d * 0.13, cx = x + d * 0.84, cy = y + d * 0.16; ctx.beginPath(); ctx.arc(cx, cy, r + 1.5, 0, 7); ctx.fillStyle = 'rgba(40,20,5,0.6)'; ctx.fill(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = '#ffd23a'; ctx.fill(); }
+}
+// Settings, the Reminders card (app only): the switch, the state in plain words, a test note, and the phone's own page
+// when the phone is in the way (blocked there, or a battery saver known to stop alarms)
+function remCard(s) {
+  const I = remInfo(), on = remOn(), ph = remPhone(), H = ENG.herald.state(save);
+  const fix = remSys() ? 'app' : I.strict && I.battery === 'saver' && on ? 'battery' : '';
+  const st = remSys() ? 'Blocked in the phone\u2019s settings' : !on ? 'Off' : fix === 'battery' ? 'On \u00b7 the battery saver may stop them' : 'On \u00b7 one a day at most, never at night';
+  const hh = 66 * s, bh = 44 * s, h = hh + bh + 12 * s;
+  return { h, gap: 8 * s, draw: (x, y, w) => {
+    ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
+    const d = 42 * s, bx = x + 12 * s, by = y + (hh - d) / 2, sw = 58 * s, sh = 32 * s, tx = bx + d + 12 * s, tw = w - (tx - x) - sw - 22 * s;
+    setBadge('bell', on ? '#e8a020' : '#a98f73', bx, by, d);
+    ui.text('Reminders', tx, y + hh / 2 - 9 * s, { size: 19 * s, color: ui.C.ink, maxW: tw, tag: 'set:l:set:remind' });
+    ui.text(st, tx, y + hh / 2 + 13 * s, { size: 13 * s, color: fix ? '#b0421c' : ui.C.ink2, maxW: tw, tag: 'set:s:set:remind' });
+    setSwitch(x + w - sw - 12 * s, y + (hh - sh) / 2, sw, sh, on);
+    ui.buttons.push({ id: 'set:remind', x, y, w, h: hh });
+    const ry = y + hh, iw = w - 24 * s, half = (iw - 10 * s) / 2;
+    if (fix) {
+      ui.button('set:remtest', 'Send a test', x + 12 * s, ry, half, bh, { kind: 'secondary', size: Math.min(16 * s, half * 16 / (ui.measure('Send a test', 16) + 24)), icon: (c, X, Y, S) => { c.save(); c.fillStyle = '#fff'; SI.bell(c, X, Y, S); c.restore(); } });
+      ui.button('set:remsys', fix === 'battery' ? 'Battery' : 'Phone settings', x + 12 * s + half + 10 * s, ry, half, bh, { kind: 'orange', size: Math.min(16 * s, half * 16 / (ui.measure('Phone settings', 16) + 24)), icon: (c, X, Y, S) => settingsIcon(c, X, Y, S * 1.05, '#fff4dc') });
+    } else ui.button('set:remtest', 'Send a test in 10 seconds', x + 12 * s, ry, iw, bh, { kind: 'secondary', size: Math.min(16 * s, (iw - 60 * s) * 16 / ui.measure('Send a test in 10 seconds', 16)), icon: (c, X, Y, S) => { c.save(); c.fillStyle = '#fff'; SI.bell(c, X, Y, S); c.restore(); } });
+  } };
+}
+
 // Settings (2026-11-15, mykee; 0.8.9: a full page with an icon on every row, "not half page"): the pause page's kit
 // (header ribbon, one scrolling column, a big Done pinned below). Opens over the home or the pause page; only its own
 // buttons take taps while it shows. Three sections: Sound and feel, Gameplay, Display.
@@ -7824,11 +8087,11 @@ function drawSettings() {
   }
   const vt = hy + hh + 8 * s, V = { x: A.x, y: vt, w: A.w, h: Math.max(60, vb - vt) };
   const B = [], on = (v) => v !== false;
+  if (remCan()) { B.push(setHead('Notifications', s)); B.push(remCard(s)); } // 0.8.17: first, so it is in the first screenful (app only, never for a child profile)
   B.push(setHead('Sound and feel', s));
   if (portal.showMuteButton) { B.push(setRow(s, 'sfx', 'Sound', 'sound', '#3a80ea', { on: save.sfx })); B.push(setRow(s, 'music', 'Music', 'note', '#9a5ae8', { on: save.music })); }
   if (__APP__ || (typeof navigator !== 'undefined' && navigator.vibrate)) B.push(setRow(s, 'vibe', 'Vibration', 'buzz', '#e8702f', { on: on(save.vibe) }));
   B.push(setRow(s, 'shake', 'Screen shake', 'shake', '#d8453a', { on: on(save.shake) && !save.calm, sub: save.calm ? 'Off while Calm motion is on' : null }));
-  if (remCan()) B.push(setRow(s, 'set:remind', 'Reminders', 'bell', '#e8a020', { on: remOn(), sub: 'One a day at most' })); // app only, never for a child profile
   B.push(setHead('Gameplay', s));
   const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
   const rsLook = focusLook(pg.hl, G.t, save.calm); // the first visit (the Settings mark): the ring round this row ~4 s or until a touch
@@ -8259,7 +8522,7 @@ function drawWinPage() {
     const terms = [['egg', fmt(r.eggScore), 'Egg points']];
     if (r.timeBonus) terms.push(['+'], ['clock', fmt(r.timeBonus), 'Time left']);
     if (r.streakMult > 1) terms.push(['x'], ['flame', 'x' + r.streakMult, '3-star streak']);
-    const best = r.prevBest != null ? (r.total > r.prevBest ? 'new' : r.prevBest) : null, SH = (best != null ? 126 : 108) * s;
+    const best = r.prevBest != null ? (r.total > r.prevBest ? 'new' : r.prevBest) : null, SH = ((best != null ? 126 : 108) + (r.online ? 16 : 0)) * s; // 0.8.17: the online line's room
     if (!first) B.push({ h: SH, gap: 8 * s, draw: (x, y, w) => {
       ui.well(x, y, w, SH, { s, a: '#f3e2bd', b: '#fbf0d6' });
       const ops = terms.filter((q) => q.length === 1).length, nt = terms.length - ops, ow = 16 * s, tw = (w - 12 * s - ops * ow) / nt;
@@ -8281,7 +8544,7 @@ function drawWinPage() {
       if (best === 'new') { if (r.shownTotal >= r.total) { const bw = Math.min(120 * s, LW - 20 * s), bx = Math.max(x + 10 * s + bw / 2, Math.min(tcx, x + LW - 10 * s - bw / 2)); ui.ribbon('NEW BEST!', bx, y + 102 * s, bw, 21 * s, { s, color: '#3eaa2a', size: 13.5 * s, noRecord: true }); ui.record({ x: bx - bw / 2, y: y + 102 * s, w: bw, h: 21 * s }, 'win:best'); } }
       else if (best != null) ui.text('Best ' + fmt(best), tcx, y + 111 * s, { size: 14 * s, align: 'center', color: C.ink2, maxW: totW + 40 * s, tag: 'win:best' });
       ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x + LW, y + 70 * s, 1.5 * s, SH - 80 * s); // the fold
-      const ix = x + LW + 28 * s, iy = y + 62 * s + (SH - 62 * s) / 2 - 1 * s;
+      const ix = x + LW + 28 * s, iy = y + 62 * s + (SH - 62 * s) / 2 - 1 * s - (r.online ? 8 * s : 0); // (the online line sits under them)
       drawCoin(ctx, ix, iy, 13 * s, G.t);
       if (r.perkGold && !save.calm) goldGlints(ix, iy, s); // Midas (the Golden egg): the count-up shimmers
       drawWinCoins(r, ix, iy, w - LW - 4 * s, s, cnt, inCard); // the count-up, its roll into the purse, and the doubling moment
@@ -8345,7 +8608,7 @@ function drawWinPage() {
       ui.button('restart', 'Retry', x, y, rw, 58 * s, { kind: 'secondary', icon: ICON.retry, size: 19 * s });
       ui.button('next', last ? 'ALL LEVELS' : 'NEXT', x + rw + 10 * s, y, w - rw - 10 * s, 58 * s, { kind: 'primary', shimmer: nextLeads, icon: ICON.next, size: 24 * s });
     } });
-    if (!earlyDays()) B.push({ h: 48 * s, right: true, draw: (x, y, w) => { // nothing advertised before L3 is won (the Double coins video too)
+    if (!earlyDays() && (r.chest || r.dblOk !== false || G.doubled)) B.push({ h: 48 * s, right: true, draw: (x, y, w) => { // nothing advertised before L3 is won (the Double coins video too); 0.8.17: none once the day's win-video pot is spent
       if (!inCard) return;
       if (r.chest && !G.doubled) { // the Bonus chest: one video, the chest, its coins and its boost shown as art on the button
         const bw = w, bx = x, ch = r.chest, B2 = ui.button('bonus', '', bx, y, bw, 48 * s, { kind: 'ad', shimmer: true });
@@ -8702,6 +8965,7 @@ function drawWinCoins(r, ix, iy, cw, s, cnt, inCard) {
     r.purseGo = true;
     purse.gain({ from: r.purse0 + (r.trFlown && r.treasure ? r.treasure.coins : 0), src: r.coinAt });
   }
+  if (r.online) winOnlineLine(r, ix, iy, cw, s, cnt);
   if (!D) {
     ui.text('Coins', tx, iy - 10 * s, { size: 12.5 * s, color: C.ink2, maxW, tag: 'win:lcoin' });
     ui.text('+' + Math.round((r.coins || 0) * cnt), tx, iy + 9 * s, { size: 19 * s, color: col, maxW, tag: 'win:vcoin' });
@@ -8737,6 +9001,21 @@ function drawWinCoins(r, ix, iy, cw, s, cnt, inCard) {
   ui.text('x2', 0, 0, { size: 22 * s, align: 'center', color: '#ff5a1f', stroke: '#fffaf0', strokeW: 4.5 * s, noRecord: true });
   ctx.restore();
   ui.record({ x: sx - 15 * s, y: sy - 9 * s, w: 30 * s, h: 19 * s }, 'win:x2'); // its resting place (the overlap check)
+}
+
+// 0.8.17 the Mint's online share (mykee: offline players see no videos, so "the engine provides less coins"): its own
+// line under the coins, a small signal mark and "Online bonus +N". It pops in with a soft tick once the count-up has
+// finished (an eased overshoot; Calm: it is simply there). Offline the line is absent.
+function winOnlineLine(r, ix, iy, cw, s, cnt) {
+  const calm = save.calm, x0 = ix - 13 * s, y0 = iy + 28 * s, maxW = cw - 26 * s, txt = `Online bonus +${r.online}`;
+  if (cnt < 1 && !calm) return; // it comes when the count-up is done
+  if (r.onT == null) { r.onT = G.t; if (!calm) audio.play('hud_pop', { vol: 0.5 }); }
+  const p = calm ? 1 : clamp((G.t - r.onT) / 0.35, 0, 1), c1 = 1.70158, q = p - 1, e = 1 + (c1 + 1) * q * q * q + c1 * q * q; // ease-out-back
+  const sz = 12 * s, bw = 13 * s;
+  ctx.save(); ctx.globalAlpha = Math.min(1, p * 3); ctx.translate(x0, y0); ctx.scale(e, e); ctx.translate(-x0, -y0);
+  for (let i = 0; i < 3; i++) { const h = (4 + 3 * i) * s; ui.roundRect(x0 + i * 4.4 * s, y0 + 5 * s - h, 3 * s, h, 1.2 * s); ctx.fillStyle = '#2d9a3a'; ctx.fill(); } // the signal mark
+  ui.text(txt, x0 + bw + 4 * s, y0, { size: sz, color: '#2d7a1c', maxW: maxW - bw - 4 * s, tag: 'win:online', noRecord: p < 1 });
+  ctx.restore();
 }
 
 // One result star. In the show it flies up from the hen (from) along an arc with a tail of glints, growing and spinning,
@@ -8998,7 +9277,19 @@ function drawTitle() {
     homeHit('home:chest', chx - cs * 0.6, chy - cs * 0.62 - tagS, cs * 1.2, cs * 1.1 + tagS);
   }
   pop(0.05, vx, vy, () => drawTitleScene(ctx, { cx: vx, cy: vy, R, ground, h: eggH, W: W_, H: H_, u, onLand: () => audio.play('hen_land', { vol: 0.5 }) }, G.t, save.calm), 0.5); // the toy vault and the meadow friends settle in
+  if (!fr && waitShown()) { // 0.8.17: rewards that waited for a connection: a gift on the meadow (over the egg friends), its tag says how many
+    const n = waitingList().length, tagS = 13 * u, gS = Math.min(cs * 0.9, 54 * u), gx = wide ? A.x + A.w * 0.43 : A.x + A.w * 0.44, gy = ground - gS * 0.42;
+    const tagT = `${n} reward${n > 1 ? 's' : ''} waiting`, tgw = ui.measure(tagT, tagS) + 16 * u, ty0 = gy - gS * 0.62 - tagS * 1.25;
+    const T0 = G.waitMarkT ?? (G.waitMarkT = G.t), k = save.calm ? 1 : backK(Math.min(1, (G.t - T0) / 0.35));
+    ctx.save(); ctx.translate(gx, ground); ctx.scale(k, k); ctx.translate(-gx, -ground);
+    drawGift(ctx, gx, gy + (save.calm ? 0 : Math.abs(Math.sin(G.t * 2.2)) * -3 * u), gS, save.calm ? 0 : G.t);
+    ui.roundRect(gx - tgw / 2, ty0, tgw, tagS * 1.6, tagS * 0.8); ctx.fillStyle = '#7a48e8'; ctx.fill();
+    ui.text(tagT, gx, ty0 + tagS * 0.8, { size: tagS, align: 'center', color: '#fff', tag: 'title:waittag' });
+    ctx.restore();
+    homeHit('wait:open', gx - Math.max(gS * 0.6, tgw / 2), ty0, Math.max(gS * 1.2, tgw), ground - ty0);
+  }
   pop(0.2, A.x + 30 * u, A.y + 30 * u, () => { ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }); setMarkAt(A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u); }); // 0.8.14: the Settings mark
+  if (remChipOn()) pop(0.3, A.x1 - 30 * u, A.y + 30 * u, () => drawRemChip(A.x1 - 50 * u, A.y + 10 * u, 40 * u)); // 0.8.17: reminders are off: the bell with a slash, in the other top corner
   // remove ads / buy the game (app, until bought), or Premium's free Chick Charge of the day: 0.8.16, a button of the
   // block, beside Extras (same height, same size of words, the column's right edge), no longer a pill over the title
   const side = fr ? null : ads.canBuyPremium ? { id: 'home:premium', label: 'Unlock all', o: { kind: 'gold', icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) } }
@@ -9262,7 +9553,10 @@ function drawLevels() {
     if (!locked) continue;
     // the gate: a star, have / need and a thin bar on its board, no sentence. Only the first shut world may be opened with
     // coins (0.8.17): its coin button hangs under the board (not before level 3 is won); farther worlds show the board only
-    const coin = w === firstShut && gs < 0 && !earlyDays(), g = MS.drawGate(ctx, L, w, sy, { have: totalStars, need: envNeed(w), s: gs, calm, coin });
+    // coins open a world only when it may open right now (envReady on the coin branch: the world before is open and its boss
+    // won or skipped; until that merges, the same rule inline) and stars alone do not already open it (price 0)
+    const bi = Math.min(LEVELS.length, w * PER_ENV) - 1, ready = typeof envReady === 'function' ? envReady(w) : w === firstShut && bi >= 0 && (bestStarsOf(LEVELS[bi].id) > 0 || SK.isSkipped(save, LEVELS[bi].id));
+    const coin = ready && GATE_COINS(w) > 0 && gs < 0 && !earlyDays(), g = MS.drawGate(ctx, L, w, sy, { have: totalStars, need: envNeed(w), s: gs, calm, coin });
     const Bd = g.board, by0 = Bd.y - sy;
     if (gs < 0 && by0 >= vt + 2 * u && by0 + Bd.h <= tapBot) ui.record({ x: Bd.x, y: by0, w: Bd.w, h: Bd.h }, 'levels:gateboard' + w, 'levels:gateboard' + w);
     if (coin) {
@@ -9322,6 +9616,7 @@ function drawLevels() {
   ctx.fillStyle = hb; ctx.fillRect(0, 0, W_, vt + 10 * u);
   const X0 = A.x + pad, X1 = A.x1 - pad, Y0 = A.y + pad, hy = Y0 + 23 * u;
   ui.button('back', '', X0, Y0, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
+  const remB = remChipOn() ? 46 * u + 8 * u : 0; if (remB) drawRemChip(X0 + 54 * u, Y0, 46 * u); // 0.8.17: reminders are off: the bell with a slash, beside back
   const starTxt = `${totalStars} / ${LEVELS.length * 3}`, stw = ui.measure(starTxt, 17 * u);
   const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = X1 - chipW;
   ui.glass(chipX, hy - 18 * u, chipW, 36 * u);
@@ -9344,7 +9639,7 @@ function drawLevels() {
   let wv = 0;
   for (let w = L.nw - 1; w >= 0; w--) if (midY >= L.bandTop(w) - L.BH * 0.02) { wv = w; break; }
   for (let w = 0; w < L.nw; w++) if (midY >= L.bandTop(w)) { wv = w; break; }
-  const titleL = X0 + 46 * u + 18 * u, titleR = (wide ? mx : chipX) - 18 * u, wname = WORLDS[wv] || 'Levels';
+  const titleL = X0 + 46 * u + remB + 18 * u, titleR = (wide ? mx : chipX) - 18 * u, wname = WORLDS[wv] || 'Levels';
   const rbw = clamp(ui.measure(wname, 20 * u) + 36 * u, Math.min(120 * u, titleR - titleL), titleR - titleL);
   ui.ribbon(wname, (titleL + titleR) / 2, hy - 18 * u, rbw, 36 * u, { color: MS.WORLD_LOOK[wv].accent, size: 20 * u, tag: 'levels:title' });
   // how far along: a thin bar of the whole journey and the levels still to play
@@ -9359,6 +9654,7 @@ function drawLevels() {
     if (!wide) { const fb = ctx.createLinearGradient(0, ctaY - 30 * u, 0, H_); fb.addColorStop(0, 'rgba(20,10,30,0)'); fb.addColorStop(1, 'rgba(20,10,30,0.5)'); ctx.fillStyle = fb; ctx.fillRect(0, ctaY - 30 * u, W_, H_ - ctaY + 30 * u); }
     ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, ctaX, ctaY, ctaW, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: (wide ? 20 : 23) * u, round: 18 * u });
   }
+  waitMark(X1, (ctaOn ? ctaY - 12 * u : vb - 16 * u) - 46 * u, 46 * u); // 0.8.17: rewards that waited for a connection, over PLAY's right end
   drawShopHand(); // 0.8.14: once, the first time the shop mark turns on
   if (S.max > 0 && !calm) { // a thin scroll thumb
     const th = Math.max(30 * u, vh * vh / L.H), ty2 = vt + clamp(S.y / S.max, 0, 1) * (vh - th - 4 * u);
@@ -9402,7 +9698,10 @@ function practiceIcon(k, x, y, r, t) {
 // The cast (mykee: "character pictures for powerups and villains ... the hen should have proper expressions and
 // movements"): the reels show the booster that is really being won, the player's own power chick for a Chick Charge
 // and a villain he has met; the hen on the roof walks along with the reels, frets while they run, hops as each prize
-// locks, dances for the row, and gasps and cries when the villain climbs up beside her and laughs.
+// locks, dances for the row, and gasps and cries when the villains come up and laugh on the reels.
+// 0.8.17 (mykee: "we don't have to show the result card to the user ... it is not a good experience"): no card. The
+// machine and the cast tell it: a prize rises out of the tray and flies to where it lives (coins onto the purse in the
+// header, a thing into the bag); a villain row flashes red, the cabinet sags and smokes, the villains cackle in place.
 const TAU = Math.PI * 2;
 const spinSlices = () => SP.wheel(save);
 // the thieves that can come up on the reels, with the voice each has in the game; only ones this player has met
@@ -9420,10 +9719,49 @@ const sliceName = (s) => (s.kind === 'villain' ? 'Three villains' : s.kind === '
 const sliceNote = (s) => (s.kind === 'villain' ? 'No prize. Never three times in a row' : s.kind === 'booster' ? 'Any kind' : s.kind === 'coupon' ? `${Math.round((E.COUPON.coins * SP.coinX(save)) / 5) * 5} coins if you hold one` : s.kind === 'scare' ? 'Villains keep away at the start' : s.kind === 'rare' ? 'An outfit or a chick you do not own' : '');
 // the prize's picture: the reveal's hero and the odds sheet's rows share it
 function spinArt(c, art, x, y, s, t) { if (art === 'chest') drawChest(c, x, y + s * 0.06, s * 0.62, t, 'open'); else if (art === 'ticket') drawTicket(c, x, y, s * 0.9); else if (art === 'skip') drawItemArt(c, 'skip', x, y, s, t); else drawPart(c, art, x, y, s, t); }
-const REEL_T = [1.9, 2.55, 3.3]; // seconds each reel runs: left, middle, right (the last one keeps you waiting)
+const REEL_T = [1.9, 2.55, 3.3]; // seconds each reel runs on its own: left, middle, right (the last one keeps you waiting)
+// 0.8.17 TAP TO STOP (mykee: "the moment they tap on the screen the slot machine slowly stops"): while the reels turn,
+// each tap stops the next reel still at speed (left, middle, right); it eases down over about STOP_T, runs a touch past
+// its picture and settles back with a clunk. The result was rolled when the lever was pulled (spinGo asks spin.js
+// first, and it is in the wallet before a reel moves): a tap NEVER changes it, only when each reel comes to rest. A tapped
+// reel still stops on the rolled picture (its stop place is the rolled one plus whole turns); when it is too far to ease
+// there in time, the reel (a blur at that speed) skips whole tiles unseen.
+const STOP_T = 0.45, STOP_OV = 0.14, STOP_BACK = 0.12;
+function reelAt(r, t) { // a running reel's place at time t: its own run, or the stop a tap gave it
+  const s = r.stop;
+  if (s) {
+    const k = t - s.t0;
+    if (k >= s.T + STOP_BACK) return s.p1;
+    if (k >= s.T) { const q = 1 - (k - s.T) / STOP_BACK; return s.p1 + STOP_OV * q * q; }
+    const q = Math.max(0, k / s.T), D = s.p1 + STOP_OV - s.p0; // a cubic from its speed at the tap down to rest
+    return s.p0 + s.v0 * s.T * (q - 2 * q * q + q * q * q) + D * (3 * q * q - 2 * q * q * q);
+  }
+  const x = clamp((t - r.t0) / r.dur, 0, 1), b0 = r.a0 - 0.28, u1 = (x - 0.05) / 0.85; // a kick back, a run that gathers and fades, a little too far, and home
+  return x < 0.05 ? r.a0 - 0.28 * Math.sin((x / 0.05) * Math.PI / 2) : x < 0.9 ? b0 + (r.a1 + 0.16 - b0) * (1 - Math.pow(1 - Math.pow(u1, 1.35), 2.4)) : r.a1 + 0.16 * Math.pow(1 - (x - 0.9) / 0.1, 2);
+}
+const reelLock = (r) => (r.stop ? r.stop.t0 + r.stop.T : r.t0 + r.dur * 0.9); // the clunk
+const reelEnd = (r) => (r.stop ? r.stop.t0 + r.stop.T + STOP_BACK : r.t0 + r.dur);
+const reelSettling = (r, t) => !!r.stop || r.done || t >= r.t0 + r.dur * 0.62; // already slowing to its stop by itself
+const nextReel = (S) => (S.run ? S.run.findIndex((r) => !r.want && !reelSettling(r, G.t)) : -1);
+function stopReel(S, i) {
+  const r = S.run[i], t = G.t, n = spinSlices().length, p0 = reelAt(r, t), v0 = (reelAt(r, t + 0.01) - p0) / 0.01;
+  if (v0 < 7) { r.want = true; return; } // still winding up: it stops as soon as it is up to speed
+  r.want = false;
+  let p1 = r.a1 + n * Math.ceil((p0 + (v0 * STOP_T) / 3 + 0.2 - STOP_OV - r.a1) / n), D = p1 + STOP_OV - p0, jump = 0; // the rolled picture, whole turns on
+  if (D > v0 * 0.7) { jump = Math.round(D - v0 * STOP_T * 0.6); D -= jump; } // too far to ease there: skip whole tiles (a blur)
+  const T = clamp(STOP_T, D / v0, (3 * D) / v0); // the ease starts at the reel's own speed and never runs backward
+  r.stop = { t0: t, p0: p0 + jump, v0, p1, T };
+}
+// the nudge (mykee: "show it to the user, kind of a nudge"): a hand taps the reel that stops next, for the first five
+// spins on this device and again whenever the last three went by without a tap. Per device (browser storage).
+const NUDGE_KEY = 'egg.spinNudge';
+function nudgeRead() { try { const o = JSON.parse(localStorage.getItem(NUDGE_KEY) || '{}') || {}; return { n: Math.max(0, o.n | 0), taps: Array.isArray(o.taps) ? o.taps.slice(-3) : [] }; } catch (e) { return { n: 0, taps: [] }; } }
+const nudgeOn = () => { const o = nudgeRead(); return o.n < 5 || (o.taps.length >= 3 && !o.taps.some(Boolean)); };
+function nudgeNote(tapped) { const o = nudgeRead(); o.n++; o.taps = [...o.taps, !!tapped].slice(-3); try { localStorage.setItem(NUDGE_KEY, JSON.stringify(o)); } catch (e) { /* (a private window: the hand just shows again) */ } }
 function openSpin() {
   if (!SP.open(save) || G.screen === 'spin') return;
   const b1 = spinBoost();
+  land.clear();
   G.spin = { from: G.screen, reels: G.spin && G.spin.reels ? G.spin.reels.map((p) => Math.round(p)) : [0, 1, 2], run: null, st: 'idle', leverT: -9, tickT: -9, buzzT: -9, sheet: false, lit: false,
     cast: { who: spinVillain(), item: b1, item2: spinBoost(), chick: spinChick() }, hx: 0.5, hv: 0, henN: 0, stops: 0, miss: false, missT: -99 };
   resetHen('spin');
@@ -9434,78 +9772,89 @@ function closeSpin() {
   const S = G.spin;
   if (S && S.sheet) { S.sheet = false; return; }
   if (S && S.st !== 'idle') return spinSkip();
-  releaseSlot();
+  land.clear(); releaseSlot();
   setScreen(S && S.from && S.from !== 'spin' ? S.from : 'levels');
 }
-function spinSkip() { const S = G.spin; if (S && S.st === 'spinning' && S.run) for (const r of S.run) r.t0 = Math.min(r.t0, G.t - r.dur); else if (S && (S.st === 'stopped' || (S.st === 'stolen' && G.t - S.tStop > 0.5))) S.tStop = G.t - 9; }
+// a tap while the machine is busy: it stops the next reel; with the row in, it sends the prize on its way (a second
+// lands it at once); after the villains, it lets them go
+function spinSkip() {
+  const S = G.spin;
+  if (!S) return;
+  if (S.st === 'spinning' && S.run) { const i = nextReel(S); if (i >= 0) { S.tapped = true; stopReel(S, i); audio.play('slot_tick', { vol: 0.7, pitch: 0.8 }); buzz('tap'); } }
+  else if (S.st === 'stopped') { S.st = 'prize'; S.popT = G.t - SPIN_POP; audio.play('hud_pop', { vol: 0.8 }); }
+  else if (S.st === 'prize') { if (!S.flyT) S.popT = Math.min(S.popT, G.t - SPIN_POP - spinHold(S)); else if (land.busy()) land.finish(); }
+  else if (S.st === 'stolen' && G.t - S.tStop > 0.5) S.tStop = G.t - 9;
+}
 async function spinGo(how) {
   const S = G.spin;
   if (!S || S.st !== 'idle' || S.sheet || G.adBusy || G.screen !== 'spin') return;
   const day = today(), W = SP.ways(save, day);
   if (how === 'free' ? !W.free : how === 'ad' ? !W.ad : how === 'retry' ? !W.retry : W.coin == null) return;
   if (how === 'coin' && save.wallet.coins < W.coin) { S.shortT = G.t; audio.play('ui_back'); return; } // the machine sells nothing: no "Get more" sheet here
-  if (how === 'ad' || (how === 'retry' && W.retry === 'ad')) { if (!(await rewarded('spin'))) return; if (G.screen !== 'spin' || G.spin !== S || S.st !== 'idle') return; }
+  const SPk = how === 'ad' ? { kind: 'spin', n: 1, key: `spin:${day}:${SP.state(save).t.ad}`, kept: () => { SP.state(save).t.ad++; } } : null; // 0.8.17: offline, the video spin waits
+  if (how === 'ad' || (how === 'retry' && W.retry === 'ad')) { if (!(await rewarded('spin', SPk))) return; if (G.screen !== 'spin' || G.spin !== S || S.st !== 'idle') return; }
+  if (land.busy()) land.finish();
+  land.clear(); S.landOff = 0; // (the last prize's chips go)
   const snap = (w) => JSON.stringify({ ...E.sanitizeWallet(w), coins: 0 }), w0 = snap(save.wallet), c0 = E.sanitizeWallet(save.wallet).coins, M0 = SP.meter(save);
+  // THE RESULT IS ROLLED HERE, before a reel moves (and saved): taps on the reels only choose when each one stops
   const res = SP.spin(save, how, day);
   if (!res) return;
   S.shown = { W, M: M0 }; // the controls keep showing what they showed until the reels have stopped: they must not give the result away
-  S.res = res; S.miss = !!res.miss; S.stops = 0; S.henN++;
+  S.res = res; S.miss = !!res.miss; S.stops = 0; S.henN++; S.popT = 0; S.flyT = 0; S.tapped = false; S.nudge = !save.calm && nudgeOn();
   // the cast for this pull: the booster really won (else any), his chick, and a villain he knows (a new face each time)
   S.cast = { who: res.miss ? spinVillain(S.cast.who) : S.cast.who, item: res.prize && res.prize.kind === 'booster' && res.slice.id === 'b1' ? res.prize.item : S.cast.item, item2: res.prize && res.prize.kind === 'booster' && res.slice.id === 'b2' ? res.prize.item : S.cast.item2, chick: spinChick() };
   if (res.miss) { ledWhy = 'spin'; BR.why(save, 'spin', 'vil', how); persist(); S.got = null; S.big = 0; S.missHow = how; }
   else spinPrize(S, res, how, w0, c0);
   // each reel runs on by whole turns and comes to rest on the result's picture
   const SL = spinSlices(), n = SL.length, idx = SL.findIndex((q) => q.id === res.slice.id);
-  S.run = [0, 1, 2].map((r) => { const a0 = S.reels[r], k = stripPos(r, idx, n); let a1 = Math.ceil(a0) + (2 + r) * n; a1 += (((k - a1) % n) + n) % n; return { a0, a1, t0: G.t + 0.16 + r * 0.04, dur: REEL_T[r], done: false }; });
+  S.run = [0, 1, 2].map((r) => { const a0 = S.reels[r], k = stripPos(r, idx, n); let a1 = Math.ceil(a0) + (2 + r) * n; a1 += (((k - a1) % n) + n) % n; return { a0, a1, t0: G.t + 0.16 + r * 0.04, dur: REEL_T[r], done: false, want: false, stop: null }; });
   S.lit = false; S.leverT = G.t;
   audio.play('slot_lever'); buzz('tap');
-  if (save.calm) { S.run.forEach((r, i) => { S.reels[i] = r.a1; }); S.run = null; S.st = S.miss ? 'stolen' : 'stopped'; S.tStop = S.miss ? G.t : G.t - 9; S.lit = !S.miss; if (S.miss) { S.missT = G.t; S.vSide = -1; audio.play('slot_miss'); } } else { S.st = 'spinning'; audio.play('slot_spin', { intensity: 1, vol: 0.8 }); }
+  if (save.calm) { S.run.forEach((r, i) => { S.reels[i] = r.a1; }); S.run = null; S.st = S.miss ? 'stolen' : 'stopped'; S.tStop = G.t; S.lit = !S.miss; if (S.miss) { S.missT = G.t; S.vSide = -1; audio.play('slot_miss'); } } else { S.st = 'spinning'; audio.play('slot_spin', { intensity: 1, vol: 0.8 }); }
 }
-// After coins arrive, the one thing to point at (engine/conduct.js suggest; mykee: "suggest by the coins he holds"):
-// the best thing to own that these coins have brought within reach, else the nearest one just out of reach. A line
-// under the prize, never a popup; nothing in the first levels.
-function coinsReach(gained) {
-  if (earlyDays()) return '';
-  const w = save.wallet, buyable = new Set(lockedChicks().map((c) => c.id));
-  const items = E.unlockables(w).filter((u) => u.kind !== 'chick' || buyable.has(u.id)).map((u) => ({ key: u.kind + ':' + u.id, kind: u.kind, price: E.unlockPrice(w, u.price).price, owned: false }));
-  const R = ENG.suggest(save, items, { gained });
-  if (!R) return '';
-  const [kind, id] = R.key.split(':'), name = kind === 'skin' ? `${E.SKINS[id].name} egg` : kind === "hen" ? E.HEN_SKINS[id].name : (STRIKES.find((k) => k.id === id) || { name: 'chick' }).name;
-  return R.short ? `${R.short} more coins for the ${name}` : `Enough for the ${name} now`;
-}
-// a winning pull: what the reveal will say (the prize is already in the wallet)
+// a winning pull: what the machine shows (the prize is already in the wallet; the counters hold the purse before it)
 function spinPrize(S, res, how, w0, c0) {
   const snap = (w) => JSON.stringify({ ...E.sanitizeWallet(w), coins: 0 });
   const P = res.prize, gained = save.wallet.coins - (c0 - res.paid), conv = P.kind !== 'coins' && gained > 0 && snap(save.wallet) === w0; // a full bag paid coins instead
   ledWhy = 'spin'; BR.why(save, 'spin', res.slice.id, how); persist();
-  if (gained > 0) purse.hold(c0 - res.paid); // the prize coins fly in with the reveal, not before
-  const chick = P.kind === 'chick' ? STRIKES.find((k) => k.id === P.item) : null;
-  const coins = P.kind === 'coins' || conv, reach = P.kind === 'coins' ? coinsReach(gained) : '';
+  purse.hold(c0 - res.paid); // the prize's coins land on the purse with the prize, not before
+  const chick = P.kind === 'chick' ? STRIKES.find((k) => k.id === P.item) : null, coins = P.kind === 'coins' || conv, w = save.wallet;
   S.big = P.rare || P.kind === 'coupon' || res.slice.id === 'c3' ? 1 : 0.4; // how loud the machine cheers
+  const art = coins ? 'coins' : P.kind === 'booster' ? 'boost:' + P.item : P.kind === 'coupon' ? 'ticket' : P.kind === 'charge' ? 'charge' : P.kind === 'skip' ? 'skip' : P.kind === 'hen' ? 'hen:' + P.item : 'chick:' + P.item;
   S.got = {
     name: coins ? `${gained} coins` : P.kind === 'booster' ? (P.n > 1 ? `${P.n} x ${P.name}` : P.name) : P.kind === 'hen' ? `${P.name} outfit` : chick ? chick.name : P.name,
-    art: coins ? 'coins' : P.kind === 'booster' ? 'boost:' + P.item : P.kind === 'coupon' ? 'ticket' : P.kind === 'charge' ? 'charge' : P.kind === 'skip' ? 'skip' : P.kind === 'hen' ? 'hen:' + P.item : 'chick:' + P.item,
-    items: !coins && gained > 0 ? [{ art: 'coins', label: '+' + gained }] : [], coins: gained > 0 ? gained : 0, quiet: true,
-    lineCoin: / more coins /.test(reach),
+    art, coins: gained > 0 ? gained : 0, from: c0 - res.paid,
     // 0.8.16 (mykee: "if the user gets any power up from the reward machine, they should know what exactly it does")
-    what: coins ? '' : P.kind === 'booster' ? E.BOOSTERS[P.item].line : chick ? chick.up : P.kind === 'charge' ? E.CHARGE_ITEM.line : P.kind === 'skip' ? E.ITEMS.skip.line : '',
-    line: conv ? 'Your bag was full: coins instead' : P.kind === 'coins' ? reach : P.kind === 'coupon' ? 'Half off one thing in the shop' : P.kind === 'hen' || P.kind === 'chick' ? 'Yours to keep' : gained > 0 ? 'Bag full: the rest in coins' : 'Added to your bag',
+    what: coins ? '' : P.kind === 'booster' ? E.BOOSTERS[P.item].line : chick ? chick.up : P.kind === 'charge' ? E.CHARGE_ITEM.line : P.kind === 'skip' ? E.ITEMS.skip.line : P.kind === 'coupon' ? 'Half off one thing in the shop' : '',
+    // where it lives: coins on the purse; boosters, charges and tickets in the bag (with how many there are now); looks in the shop
+    where: coins ? null : P.kind === 'booster' ? { dest: 'bag', n: E.ownedCount(w, P.item) } : P.kind === 'charge' ? { dest: 'bag', n: w.charges } : P.kind === 'skip' ? { dest: 'bag', n: (w.tickets || {}).skip || 0 } : P.kind === 'coupon' ? { dest: 'bag' } : { dest: 'shop' },
   };
 }
+// the prize out of the tray: it rises and grows (SPIN_POP), shows its name and what it does (spinHold), then flies
+const SPIN_POP = 0.4;
+const spinHold = (S) => (S.got && S.got.where ? (S.got.what ? 1.5 : 1.1) : 0.55);
 function drawSpin() {
   const u = ui.u, A = ui.A, S = G.spin, calm = save.calm;
   if (!S) { setScreen('levels'); return; }
   ui.calm = calm;
   spinBack();
   menuFx();
+  if (S.flyGo && S.got && S.popAt) { // the prize sets off: the coins from the pile, the thing from where it stands, at the size it has there
+    const R = S.got, Q = S.popAt; S.flyGo = false;
+    land.start({ from: R.from, to: save.wallet.coins, src: { x: Q.x, y: Q.y }, items: R.where ? [{ art: R.art, src: { x: Q.x, y: Q.y }, size: Q.size, draw: (c, x, y, s2, t) => spinArt(c, R.art, x, y, s2, t), ...R.where }] : [] });
+  }
   const wide = A.w > A.h * 1.2, P = ui.pageBox(wide ? Infinity : 440 * u), s = P.s, hold = S.st !== 'idle' && S.shown, W = hold ? S.shown.W : SP.ways(save, today()), M = hold ? S.shown.M : SP.meter(save), SL = spinReels(S.cast);
   const coinW = Math.max(84 * s, ui.measure(String(purse.shown()).replace(/\d/g, '0'), 17 * s) + 56 * s), long = P.w - 2 * (coinW + 24 * s) >= ui.measure('Lucky Spin', 25 * s) + 48 * s; // a narrow phone: the ribbon says Spin whole, not Lucky Sp...
-  ui.pageHeader(P, { back: 'spin:back', title: long ? 'Lucky Spin' : 'Spin', color: '#e8a020', tag: 'spin:title', right: { w: coinW, draw: (bx, by, bw, bh) => purseBtn(bx, by + (bh - 44 * s) / 2, bw, 44 * s, 17 * s) } });
+  // 0.8.17: while a prize lands (ui/landing.js) the landing draws the purse chip in its own place, and the bag chip it
+  // fills stands where the title was
+  const LS = land.active() ? land.state : null, bagOn = !!(LS && LS.items > 0);
+  ui.pageHeader(P, { back: 'spin:back', title: bagOn ? null : long ? 'Lucky Spin' : 'Spin', color: '#e8a020', tag: 'spin:title', right: { w: coinW, draw: (bx, by, bw, bh) => { S.purseR = { x: bx, y: by + (bh - 44 * s) / 2, w: bw, h: 44 * s, size: 17 * s }; if (!LS) purseBtn(bx, by + (bh - 44 * s) / 2, bw, 44 * s, 17 * s); } } });
   // ---- layout (mykee, 13:29: "dont add the pics or images on top of the slot machine and so does the text ... u are
   // pushing ui buttons to the very bottom"): nothing stands on the machine. Portrait: the machine, the floor in front of
-  // it where the hen walks, then the controls right under her, and what is left over goes below them. Landscape: the
-  // hen's patch of floor, the machine, the controls beside them.
-  const top = P.bottom + 6 * u, bot = A.y1 - 10 * u, bh = (wide ? 66 : 72) * u, ctlH = 36 * u + bh + 12 * u + 48 * u;
+  // it where the hen walks, then the controls right under her, and what is left over goes between them. Landscape: the
+  // hen's patch of floor, the machine, the controls beside them. 0.8.17: no odds button under the controls (a small
+  // round "i" on the cabinet's corner opens the odds page): that height went to the hen and the gaps.
+  const top = P.bottom + 6 * u, bot = A.y1 - 10 * u, bh = (wide ? 66 : 72) * u, ctlH = 36 * u + bh;
   let mx, my, mw, mh, hh, cX, cY, cW, floorY, henX, beside = false;
   if (wide) {
     cW = Math.min(340 * u, A.w * 0.42);
@@ -9528,39 +9877,42 @@ function drawSpin() {
     // the full screen (mykee, 13:34: "use full screen and clear ui layouts"): the machine as wide as the page allows,
     // and what height is left over is shared out as four even gaps, never left as one empty band
     const areaH = bot - top - ctlH;
-    mw = Math.min((areaH - 24 * u) / 1.5, (A.w / 2 - 6 * u) / 0.571, 440 * u); mh = mw * 1.12; hh = clamp(areaH - mh * 1.05 - 24 * u, mw * 0.32, mw * 0.42);
+    mw = Math.min((areaH - 24 * u) / 1.5, (A.w / 2 - 6 * u) / 0.571, 440 * u); mh = mw * 1.12; hh = clamp(areaH - mh * 1.05 - 24 * u - 4 * 14 * u, mw * 0.32, mw * 0.5);
     const gap = Math.max(4 * u, (areaH - mh * 1.05 - hh) / 4);
-    // the cabinet a touch left of the middle (its lever stands out on the right); the buttons start at its left edge and
-    // end as far from the other side
-    mx = A.cx - mw * 0.52; cW = mw * 1.04; cX = mx; my = top + gap; floorY = my + mh * 1.05 + gap + hh; cY = floorY + gap;
+    // the cabinet a touch left of the middle (its lever stands out on the right); the buttons as wide as the page column
+    mx = A.cx - mw * 0.52; cW = P.w; cX = P.x; my = top + gap; floorY = my + mh * 1.05 + gap + hh; cY = floorY + gap;
     henX = (hx) => mx + mw * hx;
   }
-  // ---- the reels: each runs up to speed, runs on, and settles onto its picture with a small bounce
+  // ---- the reels: each runs up to speed, runs on, and settles onto its picture with a small bounce (or a tap stops it)
   const n = SL.length, speed = [0, 0, 0];
   if (S.st === 'spinning' && S.run) {
     const dtF = Math.max(1 / 240, G.t - (S.lastT || G.t));
     S.run.forEach((r, i) => {
-      const x = clamp((G.t - r.t0) / r.dur, 0, 1), prev = S.reels[i];
-      const b0 = r.a0 - 0.28, u1 = (x - 0.05) / 0.85; // a kick back, a run that gathers and fades, a little too far, and home
-      const pos = x < 0.05 ? r.a0 - 0.28 * Math.sin((x / 0.05) * Math.PI / 2) : x < 0.9 ? b0 + (r.a1 + 0.16 - b0) * (1 - Math.pow(1 - Math.pow(u1, 1.35), 2.4)) : r.a1 + 0.16 * Math.pow(1 - (x - 0.9) / 0.1, 2);
+      if (r.want && !r.stop) { if (reelSettling(r, G.t)) r.want = false; else if (reelAt(r, G.t + 0.01) - reelAt(r, G.t) >= 0.07) stopReel(S, i); } // a tap while it wound up: now
+      const prev = S.reels[i], pos = reelAt(r, G.t);
       S.reels[i] = pos; speed[i] = (pos - prev) / dtF;
       if (Math.floor(pos) !== Math.floor(prev) && !r.done && G.t - S.tickT > 0.05) { S.tickT = G.t; audio.play('slot_tick', { vol: 0.55, pitch: 0.92 + 0.1 * i }); if (G.t - S.buzzT > 0.16 && speed[i] < 9) { S.buzzT = G.t; buzz('tick'); } }
-      if (x >= 0.9 && !r.done) { r.done = true; S.joltT = G.t; S.stops++; S.henN++; audio.play('slot_stop', { pitch: (S.miss ? [0.84, 0.75, 0.667] : [1, 1.125, 1.26])[i] }); buzz('pick'); } // it locks as it overshoots: the clunk (a step up for each prize, a step down for each villain), and the cabinet takes the knock
+      if (G.t >= reelLock(r) && !r.done) { r.done = true; S.joltT = G.t; S.stops++; S.henN++; audio.play('slot_stop', { pitch: (S.miss ? [0.84, 0.75, 0.667] : [1, 1.125, 1.26])[i] }); buzz('pick'); } // it locks as it overshoots: the clunk (a step up for each prize, a step down for each villain), and the cabinet takes the knock
     });
-    if (S.run.every((r) => G.t - r.t0 >= r.dur)) {
+    if (S.run.every((r) => G.t >= reelEnd(r))) {
       S.run.forEach((r, i) => { S.reels[i] = r.a1; }); S.run = null; S.tStop = G.t; S.henN++;
-      if (S.miss) { S.st = 'stolen'; S.missT = G.t; S.vSide = S.hx < 0.5 ? 1 : -1; audio.play('slot_miss'); buzz('fail'); } // the villain comes up at the end of the roof the hen is not on
+      nudgeNote(S.tapped);
+      if (S.miss) { S.st = 'stolen'; S.missT = G.t; S.vSide = -1; audio.play('slot_miss'); buzz('fail'); }
       else { S.st = 'stopped'; S.lit = true; audio.play('slot_win', { intensity: S.big }); audio.play('cluck', { vol: 0.7 }); buzz('treasure'); }
     }
   }
   S.lastT = G.t;
   const refill = () => { if (PREVIEW && !SP.banked(save) && !SP.ways(save, today()).retry) SP.state(save).bank = 2; };
-  if (S.st === 'stopped' && G.t - S.tStop > 0.9 && !G.got) { S.st = 'prize'; startGot(S.got); }
-  else if (S.st === 'prize' && !G.got) { S.st = 'idle'; S.doneT = G.t; refill(); }
-  else if (S.st === 'stolen') { // the villain climbs up beside the hen, laughs with its own voice, and ducks away
+  const R = S.got;
+  if (S.st === 'stopped' && G.t - S.tStop > (calm ? 0.15 : 0.35)) { S.st = 'prize'; S.popT = G.t; audio.play(R && R.where ? 'unlock' : 'hud_pop', { vol: 0.8, intensity: S.big }); if (!calm) audio.play('confetti', { vol: 0.35 + 0.3 * S.big }); }
+  else if (S.st === 'prize') {
+    if (!S.flyT && G.t - S.popT >= SPIN_POP + spinHold(S)) { S.flyT = G.t; S.flyGo = true; } // (the landing starts at the top of the next frame, where the prize stands)
+    else if (S.flyT && !land.busy() && G.t - S.flyT > 0.3) { S.st = 'idle'; S.doneT = G.t; S.landOff = G.t + (R && R.coins ? 1.6 : 0.9); refill(); }
+  } else if (S.st === 'stolen') { // the villains laugh on the reels with their own voice; the machine sags and smokes
     if (!S.voiceT || S.voiceT < S.tStop) { if (G.t - S.tStop > 0.45) { S.voiceT = G.t; audio.play(SPIN_VILLAINS[S.cast.who] || 'weasel_snicker', { vol: 0.9 }); audio.play('cluck', { vol: 0.5, pitch: 1.25 }); } }
     if (G.t - S.tStop > (calm ? 1.6 : 2.7)) { S.st = 'idle'; S.doneT = G.t; refill(); }
   }
+  if (S.st === 'idle' && S.landOff && G.t > S.landOff && !land.busy()) { land.clear(); S.landOff = 0; } // the "+N" has faded: the header's own chips again
   // ---- the scene
   const mcx = mx + mw / 2, mcy = my + mh * 0.5;
   ctx.save(); ctx.globalAlpha = 0.9; sunburst(mcx, mcy, mw * 1.25, 'rgba(255,214,120,0.09)', 14); ctx.restore();
@@ -9569,30 +9921,79 @@ function drawSpin() {
   const lt = G.t - S.leverT, lk = calm ? 0 : lt < 0.13 ? lt / 0.13 : lt < 0.42 ? 1 : clamp(1 - (lt - 0.42) / 0.5, 0, 1) * (1 + 0.12 * Math.sin((lt - 0.42) * 22) * clamp(1 - (lt - 0.42) / 0.5, 0, 1));
   { const jt = G.t - Math.max(S.joltT || -9, S.leverT + 0.13); if (!calm && jt >= 0 && jt < 0.22) my += Math.sin(jt * 60) * 2.2 * u * (1 - jt / 0.22); } // a reel locking, the lever hitting bottom: the cabinet shudders
   const stolen = S.st === 'stolen', sT = G.t - S.tStop, badK = stolen ? clamp(sT / 0.2, 0, 1) : S.miss && idle ? clamp(1 - (G.t - (S.doneT || 0)) / 0.6, 0, 1) : 0;
-  // the machine first, then the floor show in front of it
+  // the villains' row: the cabinet sags on its feet (down with a small bounce, up again as they go)
+  const sag = calm ? badK : stolen ? clamp(sT / 0.28, 0, 1) ** 0.5 * (1 + 0.18 * Math.sin(clamp(sT / 0.5, 0, 1) * Math.PI)) : badK;
+  ctx.save();
+  if (sag > 0) { ctx.translate(mcx, my + mh); ctx.scale(1 + 0.03 * sag, 1 - 0.055 * sag); ctx.translate(-mcx, -(my + mh)); }
   const GM = drawSlot(ctx, mx, my, mw, mh, SL, S.reels, { dpr: Math.min(DPR, 2), t: G.t, calm, lit: litK, bad: badK, winT: S.st === 'stopped' || S.st === 'prize' ? G.t - S.tStop : 9, speed, lever: clamp(lk, 0, 1.1), ready: (W.free || W.retry === 'free') && idle });
-  // the villain slides in along the floor from the side the hen is not on (landscape: over her patch of floor),
-  // laughs with its own voice, and slides out again
-  if (stolen && !calm) {
-    const up = sT < 0.45 ? 0 : sT < 2.3 ? Math.min(1, (sT - 0.45) / 0.22) : Math.max(0, 1 - (sT - 2.3) / 0.25), back = up < 1 && sT < 1 ? 1 + 0.12 * Math.sin(up * Math.PI) : 1; // in with a small overshoot, a laugh, out again
-    const d = hh * 0.86, side = wide ? -1 : S.vSide, x1 = beside ? henX(0.5) : mx + mw * (side > 0 ? 0.84 : 0.16), x0 = side > 0 ? A.x1 + d : A.x - d, vy = beside ? floorY - hh - d * 0.56 : floorY - d * 0.52, laugh = sT > 0.7 && sT < 2.3 ? Math.abs(Math.sin((sT - 0.7) * 13)) * d * 0.06 : 0;
-    if (up > 0) { ctx.save(); ctx.translate(x0 + (x1 - x0) * up * back, vy - laugh); ctx.rotate(0.08 * side + Math.sin(sT * 13) * 0.06 * (laugh > 0 ? 1 : 0)); drawVillainCard(ctx, S.cast.who, 0, 0, d, G.t); ctx.restore(); }
+  ctx.restore();
+  // and smoke puffs out from its shoulders (Calm: no smoke)
+  if (stolen && !calm) for (let i = 0; i < 12; i++) {
+    const q = (sT - 0.1 - i * 0.17) / 1.3; if (q <= 0 || q >= 1) continue;
+    const side = i % 2 ? 1 : -1, e = 1 - (1 - q) ** 2, pr = mw * (0.04 + 0.065 * e), px = mcx + side * mw * (0.42 + 0.14 * e), py = Math.max(P.bottom + pr, GM.bodyY + mw * 0.03 - mw * 0.2 * e), sd = side; // (from its shoulders, never up into the header)
+    ctx.save(); ctx.globalAlpha = 0.8 * (1 - q) ** 1.2;
+    ctx.fillStyle = '#9a8ea8'; ctx.beginPath(); ctx.arc(px, py, pr, 0, TAU); ctx.arc(px - sd * pr * 0.72, py + pr * 0.32, pr * 0.72, 0, TAU); ctx.arc(px + sd * pr * 0.6, py + pr * 0.42, pr * 0.62, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#d6cee0'; ctx.beginPath(); ctx.arc(px - pr * 0.22, py - pr * 0.28, pr * 0.55, 0, TAU); ctx.arc(px - sd * pr * 0.8, py + pr * 0.1, pr * 0.35, 0, TAU); ctx.fill();
+    ctx.restore();
   }
   // the hen on the floor in front of the machine: she walks along with the reels, frets while they run, hops for each
-  // prize that locks, dances for the row; a villain makes her gasp, and when it comes in she turns to it and cries
+  // prize that locks, dances for the row; the villains make her gasp, then cry
   {
-    const spinning = S.st === 'spinning', since = G.t - S.leverT;
-    const tx = spinning ? [0.2, 0.5, 0.8][Math.min(2, S.stops)] : stolen ? (S.vSide > 0 && !wide ? 0.34 : 0.66) : idle && G.t - S.missT < 5 ? (S.vSide > 0 && !wide ? 0.42 : 0.58) : 0.5; // she trots to stand under the reel that locks next
+    const spinning = S.st === 'spinning';
+    const tx = spinning ? [0.2, 0.5, 0.8][Math.min(2, S.stops)] : 0.5; // she trots to stand under the reel that locks next
     const dtH = calm ? 0 : clamp(G.t - (S.henT || G.t), 0, 0.05), want = clamp((tx - S.hx) * 6, -0.34, 0.34); // machine-widths a second: a trot, never a slide
     S.hv += (want - S.hv) * (1 - Math.exp(-dtH * 10)); S.hx = calm ? tx : clamp(S.hx + S.hv * dtH, 0.16, 0.84); S.henT = G.t;
     const mood = spinning ? (S.miss && S.stops > 0 ? 'gasp' : S.stops > 0 ? 'happy' : 'worried') : S.st === 'stopped' || S.st === 'prize' ? (S.big >= 1 ? 'dance' : 'happy') : stolen ? (sT < 0.45 ? 'gasp' : 'cry') : G.t - S.missT < 5 ? 'sad' : G.t - (S.doneT || -9) < 1.2 && !S.miss ? 'happy' : 'idle';
     const drift = calm ? 0 : (S.hv * mw * (beside ? 0.1 : 1)) / (hh / 100), hxp = henX(S.hx);
     ui.record({ x: hxp - hh * 0.4, y: floorY - hh * 0.9, w: hh * 0.8, h: hh * 0.9 }, 'spin:hen');
-    drawHenAnim(ctx, mood, hxp, floorY - hh * 0.5, hh, G.t, { key: 'spin', face: beside ? 1 : stolen || (idle && G.t - S.missT < 5) ? (S.vSide > 0 && !wide ? 1 : -1) : 1, n: S.henN, drift, calm, danger: spinning && !S.stops ? 0.5 : 0 });
+    drawHenAnim(ctx, mood, hxp, floorY - hh * 0.5, hh, G.t, { key: 'spin', face: 1, n: S.henN, drift, calm, danger: spinning && !S.stops ? 0.5 : 0 });
   }
   ui.record({ x: mx, y: GM.bodyY, w: mw, h: GM.bodyH }, 'spin:machine');
   if (idle) ui.buttons.push({ id: 'spin:lever', x: GM.lever.x - GM.lever.h * 0.35, y: GM.lever.y - GM.lever.h * 1.3, w: GM.lever.h * 0.95, h: GM.lever.h * 2.3 }); // a tap on the lever is the SPIN button's tap
-  // ---- the controls: how near the next free spin is, the ways to spin now, the odds
+  // ---- the prize out of the tray (0.8.17, mykee: "we don't have to show the result card"): it rises out of the tray
+  // under the reels and grows, its name on a ribbon under it and what it does under that, then it flies to where it
+  // lives (ui/landing.js: coins pour from it in arcs onto the purse, a thing flies into the bag or to the shop)
+  const ty = GM.py + GM.ph + GM.bodyH * 0.1175, popY = GM.wy + GM.wh * 0.38, S0 = Math.min(GM.wh * 1.02, mw * 0.5);
+  if (R && S.popT && (S.st === 'prize' || (idle && S.flyT && G.t - S.flyT < 3))) {
+    const pt = G.t - S.popT, fl = S.flyT ? G.t - S.flyT : -1, items = !!R.where;
+    const inK = calm ? 1 : clamp(pt / SPIN_POP, 0, 1), rise = calm ? 1 : 1 - (1 - inK) ** 3, sc = calm ? 1 : 0.25 + 0.75 * backK(inK);
+    const LS2 = land.state, coinsOut = !items && fl >= 0 ? (LS2 ? clamp((LS2.rel - (LS2.end - 0.35)) / 0.3, 0, 1) : 1) : 0; // the pile sinks back once the last coins are out
+    const gone = items ? (fl >= 0 && !S.flyGo ? 1 : 0) : coinsOut, py = ty + (popY - ty) * rise * (1 - (calm ? 0 : coinsOut)), k2 = sc * (1 - 0.75 * gone);
+    const party = clamp(pt / 0.2, 0, 1) * (1 - clamp(fl >= 0 ? fl / 0.3 : 0, 0, 1));
+    if (party > 0) { // the light behind it
+      ctx.save(); ctx.globalAlpha = party;
+      sunburst(mcx, py, S0 * 1.2, 'rgba(255,240,170,0.42)', 12);
+      const g = ctx.createRadialGradient(mcx, py, 0, mcx, py, S0 * 0.72); g.addColorStop(0, 'rgba(255,248,200,0.95)'); g.addColorStop(0.55, 'rgba(255,228,140,0.7)'); g.addColorStop(1, 'rgba(255,220,120,0)'); ctx.fillStyle = g; ctx.fillRect(mcx - S0, py - S0, S0 * 2, S0 * 2);
+      ctx.restore();
+    }
+    if (gone < 1 && k2 > 0.01) { ctx.save(); ctx.translate(mcx, py + (calm ? 0 : Math.sin(G.t * 5) * S0 * 0.015 * inK)); ctx.scale(k2, k2); spinArt(ctx, R.art, 0, 0, S0 * (items ? 0.92 : 1.05), G.t); ctx.restore(); }
+    S.popAt = { x: mcx, y: py, size: S0 * 0.92 }; // (the landing sets off from here, at the top of the next frame)
+    const nk = calm ? 1 : clamp((pt - SPIN_POP * 0.6) / 0.25, 0, 1), na = 1 - clamp(fl >= 0 ? fl / 0.2 : 0, 0, 1);
+    if (nk > 0 && na > 0) { // its name on a ribbon, what it does under it (one or two lines)
+      const ns = Math.min(24 * u, S0 * 0.15), rw = Math.min(A.w - 24 * u, Math.max(mw * 0.62, ui.measure(R.name, ns) + 70 * u)), rh = ns * 1.7, ry = popY + S0 * 0.46;
+      const ws = 16 * u, WL = R.what ? wrapText(R.what, ws, Math.min(A.w - 32 * u, mw * 0.98)).slice(0, 2) : [], wy = ry + rh + 6 * u;
+      ctx.save(); ctx.globalAlpha = na; ctx.translate(mcx, ry + rh / 2); const kk = calm ? 1 : backK(nk); ctx.scale(kk, kk); ctx.translate(-mcx, -(ry + rh / 2));
+      ui.ribbon(R.name, mcx, ry, rw, rh, { color: '#d89a1c', size: ns, noRecord: true });
+      ctx.restore();
+      ui.rects.push({ x: mcx - rw / 2, y: ry, w: rw, h: rh, tag: 'spin:prize', group: 'spin:prize', container: 'spin:machine' });
+      if (WL.length) {
+        const wk = calm ? 1 : clamp((pt - SPIN_POP - 0.1) / 0.25, 0, 1);
+        if (wk > 0) {
+          const bw = Math.max(...WL.map((l) => ui.measure(l, ws))) + 28 * u, bhh = WL.length * ws * 1.3 + 12 * u;
+          ctx.save(); ctx.globalAlpha = na * wk;
+          ui.roundRect(mcx - bw / 2, wy, bw, bhh, 12 * u); ctx.fillStyle = 'rgba(40,12,24,0.82)'; ctx.fill(); ctx.lineWidth = 2 * u; ctx.strokeStyle = 'rgba(255,214,110,0.8)'; ctx.stroke();
+          WL.forEach((l, q) => ui.text(l, mcx, wy + 6 * u + ws * 0.65 + q * ws * 1.3, { size: ws, align: 'center', color: '#fff6dc', noRecord: true }));
+          ctx.restore();
+          ui.rects.push({ x: mcx - bw / 2, y: wy, w: bw, h: bhh, tag: 'spin:what', group: 'spin:what', container: 'spin:machine' });
+        }
+      }
+    }
+  }
+  // ---- the odds: a small round "i" on the cabinet's top left corner, beside the sign (the stores ask that the odds are
+  // one tap away; mykee: "do we have to show the probability to the user? No")
+  const ir = 17 * u, ix = Math.min(mx + mw * 0.1 - ir - 4 * u, mx + ir), iy = GM.bodyY - ir - 5 * u;
+  ui.button('spin:odds', 'i', ix - ir, iy - ir, ir * 2, ir * 2, { kind: 'tertiary', round: ir, size: 21 * u, ...(idle ? {} : { disabled: true, keepFace: true, dim: 0.45 }) });
+  // ---- the controls: how near the next free spin is, the ways to spin now
   ctx.save(); if (!idle) ctx.globalAlpha = 0.45;
   {
     const x = cX, y = cY, w = cW, my = y + 15 * u, fs = 15.5 * u, off = idle ? {} : { disabled: true, keepFace: true, dim: 0.45 }; // while the reels run the buttons rest
@@ -9617,10 +10018,19 @@ function drawSpin() {
       else if (k === 'ad') ui.button('spin:ad', ads.premium ? 'Free spin' : 'Spin', bx, by, bw, bh, ads.premium ? { kind: 'secondary', size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, size: 22 * u, ...off });
       else ui.button('spin:coin', `Spin ${W.coin}`, bx + sh, by, bw, bh, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 22 * u, ...off });
     });
-    ui.button('spin:odds', 'Prizes and odds', x, by + bh + 12 * u, w, 48 * u, { kind: 'tertiary', size: 17 * u, ...off });
   }
   ctx.restore();
-  if (!idle) { ui.buttons.length = 0; ui.buttons.push({ id: 'spin:skip', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); } // a tap anywhere brings the reels to their stop at once
+  // ---- the nudge: a small hand taps the reel that stops next (no words; Calm: it only points)
+  if (S.st === 'spinning' && S.nudge && !S.tapped) {
+    const i = nextReel(S), el = G.t - S.leverT - 0.3;
+    if (i >= 0 && el > 0) {
+      const per = 0.8, q = calm ? 0.2 : (el % per) / per, press = !calm && q > 0.35 && q < 0.6, hs = Math.min(GM.cw * 0.95, 62 * u);
+      const a = Math.min(1, el / 0.25) * clamp((S.run[i].t0 + S.run[i].dur * 0.62 - G.t) / 0.2, 0, 1);
+      teachHand(ctx, GM.wx[i] + GM.cw * 0.55, GM.wy + GM.wh * (press ? 0.6 : 0.68), hs, press, a);
+    }
+  }
+  if (!idle) { ui.buttons.length = 0; ui.buttons.push({ id: 'spin:skip', x: -1e4, y: -1e4, w: 3e4, h: 3e4 }); } // a tap anywhere: the next reel stops (and later, the prize goes on its way)
+  if (land.active()) land.draw(ctx, u, A, { ...LAND_KIT, ui, purse: S.purseR }); // the purse (and the bag) in the header, and what flies into them
   if (S.sheet) drawSpinOdds(spinSlices().map((sl) => (sl.kind === 'villain' ? { ...sl, who: S.cast.who } : sl)));
 }
 // the odds: every prize on the reels, what it is, how often it comes
@@ -10003,7 +10413,7 @@ async function boot() {
   installApp(() => { // Android back button (see app.js): consume it where the game has a natural "back"
     if (G.adBusy) { ads.cancelWait(); return true; } // a pending ad that never reported back: Back returns to the game
     if (modalOpen()) { // a sheet closes first (an offer counts as "No thanks"; the age question waits for next launch)
-      if (G.parent) G.parent = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null;
+      if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null; else if (G.detail) G.detail = null;
       else if (G.offer) press('of:no'); else if (G.ageAsk) press('age:later'); else if (G.remAsk) press('rem:later'); else if (G.leaveAsk) press('leave:stay'); else if (G.treasure) G.treasure = null;
       return true;
     }
@@ -10093,6 +10503,7 @@ async function boot() {
     persist();
   }
   ads.attach(save, persist, onGrant);
+  ads.onRevoke(guardNote); guardNote(); // 0.8.17: a refund taken back says so once (also one noted before a restart)
   OF.startSession(save, Date.now()); if (!DR.dirState(save).lastSeen) DR.noteSeen(save, Date.now()); engOpen(); persist();
   if (OF.childSafe(save) && ads.moneyShop) ads.setChildSafe(true); // the shell also remembers it; this keeps both in step
   applyAudioSettings();

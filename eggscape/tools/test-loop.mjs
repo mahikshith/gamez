@@ -45,7 +45,9 @@ console.log('     ' + 'ONE CLEAR'.padEnd(16) + String(Math.round(coins)).padStar
 
 const perLv = use / avgBoost / N, share = coins / catalogue;
 ok(perLv >= 0.4 && perLv <= 0.8, `free things to use up: ${perLv.toFixed(2)} booster-worths a level (lane 0.4 to 0.8; it was 1.19)`);
-ok(share >= 0.3 && share <= 0.5, `one clear pays for ${Math.round(share * 100)}% of everything there is to own (lane 30 to 50%)`);
+// 0.8.17 the Mint (src/engine/mint.js): the lane moved down from 30-50%. A free player earns the catalogue over months of
+// play, not in one clear (mykee: "the user could unlock everything in the game without spending a single dollar")
+ok(share >= 0.1 && share <= 0.3, `one clear pays for ${Math.round(share * 100)}% of everything there is to own (lane 10 to 30%; it was 30 to 50%)`);
 ok(src['boss treasures'].coins / coins <= 0.6, `boss treasures are ${Math.round(src['boss treasures'].coins / coins * 100)}% of the coins (at most 60%; it was 67%)`);
 ok(src.wins.coins / coins >= 0.2, `plain wins are ${Math.round(src.wins.coins / coins * 100)}% of the coins (at least 20%; it was 18%)`);
 ok(src.wins.coins / N >= 20 && src.wins.coins / N <= 35, `a two-star win pays about ${Math.round(src.wins.coins / N)} coins: a booster is two or three wins away`);

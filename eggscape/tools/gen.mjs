@@ -436,6 +436,7 @@ async function worker(id, tries, out) {
     let L = null;
     for (let g = 0; g < 500 && !L; g++) L = layout(spec, ++seed);
     if (!L) break;
+    if (n < (+process.env.FROM || 0)) continue; // FROM=n: skip the first n layouts (already tried: a search resumes where it stopped)
     const r = await evaluate(spec, L);
     console.error(`L${id} #${n} seed=${L.seed} ${r.ok ? 'KEEP' : 'drop:' + r.why} ${JSON.stringify(r.rec)}`);
     if (r.ok) found.push({ ...r.rec, level: L });
