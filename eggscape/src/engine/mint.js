@@ -41,6 +41,8 @@ export const FAUCETS = {
   // which made every booster prize of a strong player's spins a coin prize
   giftFull: { share: 0.25, ceiling: 'per gift into a full stack', why: 'a winning pull is never empty, but a full bag is no coin mine' },
   bonusGoal: { coins: 15, ceiling: 'once per level and mode', why: 'main.js BONUS_COINS' },
+  // the combo album (src/album.js): every power combo found in play. Paid once ever, on the album page.
+  album: { coins: 50, ceiling: 'once ever', why: 'a thank-you for finding all seven combos, not a wage' },
 };
 
 // ---------------------------------------------------------------- sinks: what takes coins out
