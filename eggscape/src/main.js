@@ -2596,10 +2596,10 @@ function drawRemAsk() {
       ui.text(text, tx, by + bh / 2 + 9 * s, { size: ts, color: ui.C.ink, maxW: tw, tag: 'rem:text' });
       ui.record({ x: bx + 14 * s, y: by + (bh - d) / 2, w: d, h: d }, 'rem:icon');
     } },
-    lineBlock(sys ? 'Notifications are off for Eggscape on this phone.' : 'One a day at most. Never at night.', 15 * s, { color: ui.C.ink2, tag: 'rem:why', gap: 8 * s }),
-    { h: 58 * s, gap: 14 * s, draw: (x, y, w) => ui.button('rem:yes', yes, x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: Math.min(22 * s, (w - 28 * s) * 22 / Math.max(1, ui.measure(yes, 22))) }) },
-    { h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('rem:no', 'Not now', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
-  ], { ribbon: '#e8a020' });
+    { ...lineBlock(sys ? 'Notifications are off for Eggscape on this phone.' : 'One a day at most. Never at night.', 15 * s, { color: ui.C.ink2, tag: 'rem:why', gap: 8 * s }), right: true },
+    { h: 58 * s, gap: 14 * s, right: true, draw: (x, y, w) => ui.button('rem:yes', yes, x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: Math.min(22 * s, (w - 28 * s) * 22 / Math.max(1, ui.measure(yes, 22))) }) },
+    { h: 52 * s, gap: 10 * s, right: true, draw: (x, y, w) => ui.button('rem:no', 'Not now', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
+  ], { ribbon: '#e8a020', twoCol: true }); // 0.8.17 (mykee: landscape "too much empty UI space"): on its side the note left, the words and the buttons right
 }
 // first launch (app only, behind OF.AGE_GATE): a neutral question, two equal buttons, nothing pre-chosen
 function drawAgeAsk() {
@@ -3209,10 +3209,11 @@ function drawWaitList() {
   const L = waitingList();
   if (!L.length) { G.waitList = null; return; }
   dim(0.55);
+  const wide = L.length > 1 && ui.A.w > ui.A.h * 1.15;
   stackCard('Rewards waiting', (s) => {
     const C = ui.C, day = today();
     return [
-      ...L.map((it, i) => ({ h: 76 * s, gap: i ? 10 * s : 14 * s, draw: (x, y, w) => {
+      ...L.map((it, i) => ({ h: 76 * s, gap: i > (wide ? 1 : 0) ? 10 * s : 14 * s, right: wide && i % 2 === 1, draw: (x, y, w) => {
         ui.well(x, y, w, 76 * s, { s });
         const ax = x + 42 * s, ay = y + 38 * s, bw = 128 * s;
         if (it.kind === 'coins') for (const [dx, dy] of [[-10, 7], [10, 7], [0, -7]]) drawCoin(ctx, ax + dx * s, ay + dy * s, 14 * s, G.t + dx);
@@ -3225,9 +3226,9 @@ function drawWaitList() {
         const full = it.kind === 'coins' && WT.room(save.waiting, day) < it.n; // over today's ceiling: it waits for tomorrow
         ui.button('wait:go:' + it.id, full ? 'Tomorrow' : 'Watch', x + w - bw - 10 * s, y + 13 * s, bw, 50 * s, full ? { kind: 'off', disabled: true, size: 17 * s } : { kind: 'ad', ad: true, shimmer: i === 0, size: 19 * s });
       } })),
-      { h: 52 * s, gap: 16 * s, draw: (x, y, w) => ui.button('wait:close', 'Close', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
+      { h: 52 * s, gap: 16 * s, right: wide && L.length % 2 === 1, draw: (x, y, w) => ui.button('wait:close', 'Close', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
     ];
-  }, { ribbon: '#7a48e8', full: false });
+  }, { ribbon: '#7a48e8', full: false, twoCol: wide }); // 0.8.17: on its side the rewards stand in two columns (the Close under the shorter one)
 }
 
 function drawGetMore() {
@@ -7233,6 +7234,25 @@ const lvLaser = () => ((G.level && G.level.orbs) || []).some((o) => o.type === '
 const CHEV = {}; let CHEV_N = 0; // the scroll arrows on screen: id -> its scroller and view height
 const pageColH = (B, s) => B.reduce((a, b) => a + (b.gap ?? 10 * s) + b.h, 0);
 // a scrolling column of blocks inside V (screen coordinates; the scroll is applied to y, so recorded rects are real)
+// 0.8.17: two columns of blocks that scroll as one page (Settings on a phone on its side), else as pageScroll
+function pageScroll2(L, R, S, V, xl, xr, w, s) {
+  const H = Math.max(pageColH(L, s), pageColH(R, s)) + 18 * s;
+  S.max = Math.max(0, H - V.h);
+  glide(S);
+  const r0 = ui.rects.length, b0 = ui.buttons.length, sY = snapPx(S.y, DPR);
+  ctx.save(); ctx.beginPath(); ctx.rect(V.x, V.y, V.w, V.h); ctx.clip();
+  for (const [B, x] of [[L, xl], [R, xr]]) { let y = V.y + 6 * s - sY; for (const b of B) { y += b.gap ?? 10 * s; if (y + b.h > V.y - 40 * s && y < V.y + V.h + 40 * s) b.draw(x, y, w); y += b.h; } }
+  ctx.restore();
+  clipRecorded(r0, b0, V);
+  if (S.max > 0) {
+    const fade = (yy, down) => { const g = ctx.createLinearGradient(0, yy, 0, yy + (down ? 22 : -22) * s); g.addColorStop(0, 'rgba(12,7,3,0.55)'); g.addColorStop(1, 'rgba(12,7,3,0)'); ctx.fillStyle = g; ctx.fillRect(V.x, down ? yy : yy - 22 * s, V.w, 22 * s); };
+    if (S.y > 1) fade(V.y, true);
+    if (S.y < S.max - 1) { fade(V.y + V.h, false);
+      const cx2 = Math.min(V.x + V.w - 22 * s, xr + w + 2 * s), cy2 = V.y + V.h - 22 * s, cid = S.cid || (S.cid = ++CHEV_N);
+      chevron(cx2, cy2 + (save.calm ? 0 : 3 * s * Math.sin(G.t * 4)), 17 * s, 'd', 1);
+      CHEV[cid] = { S, h: V.h }; ui.buttons.push({ id: 'pgdn:' + cid, x: cx2 - 26 * s, y: cy2 - 26 * s, w: 52 * s, h: 52 * s }); }
+  }
+}
 function pageScroll(blocks, S, V, x, w, s, top) {
   const H = pageColH(blocks, s) + 18 * s;
   S.max = Math.max(0, H - V.h);
@@ -8388,12 +8408,14 @@ function drawSettings() {
   const u = ui.u, A = ui.A, C = ui.C, s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, land = A.h < 520 * u;
   const bg = ctx.createLinearGradient(0, 0, 0, H_); bg.addColorStop(0, '#3b2468'); bg.addColorStop(1, '#1c1233');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W_, H_); // a full page: nothing of the game shows behind it
-  const cw = Math.min(A.w - 2 * pad, 560 * s), x0 = A.cx - cw / 2;
+  // 0.8.17 (mykee: landscape "too much empty UI space"): a phone on its side lays the sections in two columns that scroll together
+  const two = A.w > A.h * 1.15 && A.w - 2 * pad >= 700 * s, W2 = Math.min(A.w - 2 * pad, 1100 * s), cgap = 24 * s;
+  const cw = two ? (W2 - cgap) / 2 : Math.min(A.w - 2 * pad, 560 * s), x0 = two ? A.cx - W2 / 2 : A.cx - cw / 2;
   const pg = G.setpage || (G.setpage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
   if (pg.lid !== G.setSeq) { pg.lid = G.setSeq; pg.y = 0; pg.v = 0; pg.to = null; pg.hl = null; if (G.setFirst && G.setFirst.seq === G.setSeq) { focusStart(pg, 'rs', G.t + 0.15, undefined, false); G.setRsAt = true; } } // the marked way in: the ring speed row
   // header: back, the ribbon, and (landscape) Done
   // (0.8.14: the one page header, ui.pageHeader; back sits on the rows' left edge, Done on their right edge)
-  const P = ui.pageBox(560 * s), hy = P.y, hh = P.h;
+  const P = ui.pageBox(two ? 1100 * s : 560 * s), hy = P.y, hh = P.h;
   ui.pageHeader(P, { back: 'set:close', title: 'Settings', color: '#7a48e8', tag: 'set:title', right: land ? { w: 130 * s, draw: (x, y, w, h) => ui.button('set:close', 'Done', x, y, w, h, { kind: 'primary', icon: ICON.check, size: 19 * s }) } : null });
   let vb = A.y1 - (land ? 2 * u : pad);
   if (!land) {
@@ -8402,13 +8424,13 @@ function drawSettings() {
     vb = A.y1 - pad - 20 * s - 56 * s - 8 * s;
   }
   const vt = hy + hh + 8 * s, V = { x: A.x, y: vt, w: A.w, h: Math.max(60, vb - vt) };
-  const B = [], on = (v) => v !== false;
-  if (remCan()) { B.push(setHead('Notifications', s)); B.push(remCard(s)); } // 0.8.17: first, so it is in the first screenful (app only, never for a child profile)
-  B.push(setHead('Sound and feel', s));
+  const B = [], on = (v) => v !== false, heads = [];
+  if (remCan()) { heads.push(B.length); B.push(setHead('Notifications', s)); B.push(remCard(s)); } // 0.8.17: first, so it is in the first screenful (app only, never for a child profile)
+  heads.push(B.length); B.push(setHead('Sound and feel', s));
   if (portal.showMuteButton) { B.push(setRow(s, 'sfx', 'Sound', 'sound', '#3a80ea', { on: save.sfx })); B.push(setRow(s, 'music', 'Music', 'note', '#9a5ae8', { on: save.music })); }
   if (__APP__ || (typeof navigator !== 'undefined' && navigator.vibrate)) B.push(setRow(s, 'vibe', 'Vibration', 'buzz', '#e8702f', { on: on(save.vibe) }));
   B.push(setRow(s, 'shake', 'Screen shake', 'shake', '#d8453a', { on: on(save.shake) && !save.calm, sub: save.calm ? 'Off while Calm motion is on' : null }));
-  B.push(setHead('Gameplay', s));
+  heads.push(B.length); B.push(setHead('Gameplay', s));
   const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
   const rsLook = focusLook(pg.hl, G.t, save.calm); // the first visit (the Settings mark): the ring round this row ~4 s or until a touch
   if (pg.hl && !rsLook && G.t - pg.hl.t0 >= 0) pg.hl = null;
@@ -8417,7 +8439,7 @@ function drawSettings() {
   B.push(rsB);
   B.push(setCard(s, 'Difficulty', 'flag', '#e0a21c', null, 42 * s, (x, y, w) => modeRow(x, y, w, 42 * s, s)));
   B.push(setRow(s, 'set:adapt', 'Adaptive help', 'sparkle', '#e0507e', { on: save.adapt !== false, sub: 'Help and dares that fit how you play' })); // the Pacer's switch (src/engine/pacer.js)
-  B.push(setHead('Display', s));
+  heads.push(B.length); B.push(setHead('Display', s));
   const gl = save.gfx === 'auto' ? `Auto picked ${TIER_NAME[PERF.tier]} for this phone` : save.gfx === 'high' ? 'Sharpest picture, every effect' : save.gfx === 'medium' ? 'Softer picture, fewer light effects' : 'Smoothest on older phones';
   B.push(setCard(s, 'Graphics', 'sparkle', '#2aa7a0', null, 42 * s, (x, y, w) => segRow('gfx:', [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], save.gfx, x, y, w, 42 * s, s), gl));
   const fl = save.fps === 30 ? 'Saves battery, keeps the phone cool' : save.fps === 60 ? 'Smoothest motion, uses more battery' : `Now ${PERF.fpsCap} fps`;
@@ -8431,11 +8453,19 @@ function drawSettings() {
   B.push(...xsSetBlocks(s)); // 0.8.17: Privacy policy, Reset progress (their own block, last)
   if (land) B.push({ h: 28 * s, gap: 8 * s, draw: (x, y, w) => setFooter(x + w / 2, y + 14 * s, s) }); // the version and the support id (a tap copies them)
   G.setRect = V;
-  if (G.setRsAt) { // the first visit: the ring speed row in view (on a short screen the page starts scrolled to it)
-    G.setRsAt = false; let yy = 0; for (const b of B) { yy += b.gap ?? 10 * s; if (b === rsB) break; yy += b.h; }
-    const H = pageColH(B, s) + 18 * s; focusTrip(pg, focusY(yy, rsCard.h, V.h, Math.max(0, H - V.h), s), save.calm); // scrolled to (about 0.4 s), the row in the upper middle
+  let BL = B, BR = null;
+  if (two) { // the split at the section heading that leaves the two columns the most even
+    let best = null;
+    for (const i of heads) { if (!i) continue; const l = B.slice(0, i), r = B.slice(i), m = Math.max(pageColH(l, s), pageColH(r, s)); if (!best || m < best.m) best = { m, l, r }; }
+    if (best) { BL = best.l; BR = best.r; }
   }
-  pageScroll(B, pg, V, x0, cw, s, true);
+  if (G.setRsAt) { // the first visit: the ring speed row in view (on a short screen the page starts scrolled to it)
+    const col = BR && BR.includes(rsB) ? BR : BL;
+    G.setRsAt = false; let yy = 0; for (const b of col) { yy += b.gap ?? 10 * s; if (b === rsB) break; yy += b.h; }
+    const H = Math.max(pageColH(BL, s), BR ? pageColH(BR, s) : 0) + 18 * s; focusTrip(pg, focusY(yy, rsCard.h, V.h, Math.max(0, H - V.h), s), save.calm); // scrolled to (about 0.4 s), the row in the upper middle
+  }
+  if (BR) pageScroll2(BL, BR, pg, V, x0, x0 + cw + cgap, cw, s);
+  else pageScroll(B, pg, V, x0, cw, s, true);
 }
 // a segmented control on a cream card: a recessed track, the chosen option a raised green key (like Easy/Medium/Hard)
 function segRow(pre, opts, cur, x, y, w, h, s) {

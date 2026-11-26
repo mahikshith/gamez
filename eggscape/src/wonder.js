@@ -694,33 +694,47 @@ export function createWonder(env) {
     // (0.8.14: the header and the rows share one column, ui.pageBox / ui.pageHeader, like every other page)
     const wide = A.w > A.h * 1.15, cols = wide ? 2 : 1, colGap = 12 * u, headH = 30 * u;
     const P = ui.pageBox(wide ? 860 * u : 460 * u), pad = P.pad, vt = P.bottom + 8 * P.s, vb = A.y1;
-    const listW = P.w, rowW = (listW - colGap * (cols - 1)) / cols, lx = P.x;
+    const listW = P.w, rowW0 = wide ? listW : (listW - colGap * (cols - 1)) / cols, lx = P.x; // (0.8.17: a wide page lays its sections side by side, below)
     // 0.8.17: the combo album (env.album, main.js) sits under Practice in the same row style, its own heading
     const AL = env.album ? env.album() : null, nSec = AL ? 3 : 2;
     // 0.8.17: the vaults are side quests on the map now; one row leads there (main.js 'xs:side': the first open one)
     const n = 1, wvRows = 1, nRows = wvRows + 1 + (AL ? 1 : 0);
-    const rowH = clamp((vb - vt - pad - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - 4 * u) / nRows, 84 * u, wide ? 108 * u : 216 * u); // (0.8.17 polish: three rows on a tall phone grow, so the page is not half empty)
+    const rowH0 = clamp((vb - vt - pad - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - 4 * u) / nRows, 84 * u, wide ? 108 * u : 216 * u); // (0.8.17 polish: three rows on a tall phone grow, so the page is not half empty)
     // a tall screen with room to spare: the rows stand a little further apart (up to 12 units each), not one hole at the bottom
-    const spare = Math.max(0, vb - vt - pad - 4 * u - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - nRows * rowH), air = Math.min(wide ? 12 * u : 36 * u, spare / (wvRows + nSec - 1));
+    const spare = Math.max(0, vb - vt - pad - 4 * u - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - nRows * rowH0), air = Math.min(wide ? 12 * u : 36 * u, spare / (wvRows + nSec - 1));
     const gap = 10 * u + air, secGap = 14 * u + air;
     const fixedH = nSec * headH + (nSec - 1) * secGap + (wvRows - 1) * gap;
-    const total = 4 * u + fixedH + nRows * rowH + pad;
+    const total = wide ? vb - vt : 4 * u + fixedH + nRows * rowH0 + pad;
     SC.max = Math.max(0, total - (vb - vt));
     env.glide(SC, dt);
     // the list, clipped under the header
     ctx.save(); ctx.beginPath(); ctx.rect(0, vt, z.W, vb - vt); ctx.clip();
     let y = vt - SC.y + 4 * u;
     const out = (yy, hh) => yy < vt || yy + hh > vb;
-    const head = (txt, yy, tag, chip) => {
+    const head = (txt, yy, tag, chip, hx = lx) => {
       const tw = ui.measure(txt, 18 * u), cw2 = chip ? ui.measure(chip, 11 * u) + 16 * u : 0, nr = out(yy, headH);
-      ui.text(txt, lx + 4 * u, yy + headH / 2 - 1 * u, { size: 18 * u, color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, tag, noRecord: nr });
-      if (chip) { const cx0 = lx + 4 * u + tw + 8 * u; ui.roundRect(cx0, yy + headH / 2 - 10 * u, cw2, 19 * u, 9.5 * u); ctx.fillStyle = '#ffd24a'; ctx.fill(); ui.text(chip, cx0 + cw2 / 2, yy + headH / 2 + 0.5 * u, { size: 11 * u, align: 'center', color: '#5a2a08', tag: tag + ':chip', noRecord: nr }); }
+      ui.text(txt, hx + 4 * u, yy + headH / 2 - 1 * u, { size: 18 * u, color: '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, tag, noRecord: nr });
+      if (chip) { const cx0 = hx + 4 * u + tw + 8 * u; ui.roundRect(cx0, yy + headH / 2 - 10 * u, cw2, 19 * u, 9.5 * u); ctx.fillStyle = '#ffd24a'; ctx.fill(); ui.text(chip, cx0 + cw2 / 2, yy + headH / 2 + 0.5 * u, { size: 11 * u, align: 'center', color: '#5a2a08', tag: tag + ':chip', noRecord: nr }); }
     };
-    const row = (L, x, ry) => {
+    const row = (L, x, ry, rowW = rowW0, rowH = rowH0, vert = false) => {
       const prac = !!L.practice || !!L.album || !!L.side, s = prac ? 0 : starsOf(L.key), key = L.side ? 'twin' : L.album ? 'album' : prac ? 'practice' : L.key, face = ui.faceOf(L.side ? '#8a5ad8' : TILE[key] || '#8a5ad8');
       const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = L.side ? 'sq:bonus' : L.album ? 'xs:album' : prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
       const b = ui.button(id, '', x, ry, rowW, rowH, { face, keepFace: true, round: 18 * u });
       const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, 140 * u, rowW * 0.3), tx = x + Math.min(8 * u + (fh - ts) / 2 - 3 * u, 20 * u);
+      if (vert) { // 0.8.17 landscape: a tall tile per section, the picture big on top, the words and the stars (or the arrow) under it
+        const ns = clamp(rowW * 0.08, 19 * u, 25 * u), ps = clamp(rowW * 0.055, 13 * u, 16 * u), lines = wrapText(L.pitch, ps, rowW - 28 * u).slice(0, 2), foot = 34 * u;
+        const wordsH = ns * 1.2 + 4 * u + lines.length * ps * 1.2, vts = Math.max(40 * u, Math.min(rowW * 0.62, fh - wordsH - foot - 34 * u, 190 * u)), blk = vts + 12 * u + wordsH + 10 * u + foot, y0 = fy + (fh - blk) / 2, cx = x + rowW / 2;
+        if (L.album) env.albumIcon(ctx, cx, y0 + vts / 2, vts, t); else drawExtraIcon(ctx, key, cx, y0 + vts / 2, vts, t, { calm: sv.calm });
+        const wy = y0 + vts + 12 * u;
+        ui.text(L.name, cx, wy + ns * 0.58, { size: ns, align: 'center', color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname:' + key, maxW: rowW - 20 * u });
+        lines.forEach((l, i) => ui.text(l, cx, wy + ns * 1.2 + 4 * u + ps * 0.6 + i * ps * 1.2, { size: ps, align: 'center', color: 'rgba(255,255,255,0.9)', group: grp, tag: 'wvpitch:' + key + i, maxW: rowW - 20 * u }));
+        const fcy = wy + wordsH + 10 * u + foot / 2, sr = 9 * u;
+        if (prac) { ctx.beginPath(); ctx.arc(cx, fcy, 15 * u, 0, 7); ctx.fillStyle = 'rgba(30,10,0,0.3)'; ctx.fill(); ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3.4 * u; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(cx - 3 * u, fcy - 7 * u); ctx.lineTo(cx + 4 * u, fcy); ctx.lineTo(cx - 3 * u, fcy + 7 * u); ctx.stroke(); ctx.restore(); }
+        else { ui.roundRect(cx - sr * 4.3, fcy - sr * 1.45, sr * 8.6, sr * 2.9, sr * 1.45); ctx.fillStyle = 'rgba(30,10,0,0.3)'; ctx.fill(); for (let q = 0; q < 3; q++) drawStar(ctx, cx + (q - 1) * sr * 2.65, fcy, sr, q < s); }
+        if (L.album && L.fresh) env.albumMark(x + rowW - 6 * u, ry + 6 * u, rowH);
+        if (L.album && env.albumLead) env.albumLead(SC, ry + SC.y - vt, { x, y: ry, w: rowW, h: rowH }, vb - vt);
+        return;
+      }
       if (L.album) env.albumIcon(ctx, tx + ts / 2, fy + fh / 2, ts, t); else drawExtraIcon(ctx, key, tx + ts / 2, fy + fh / 2, ts, t, { calm: sv.calm });
       // the right edge: three stars on a dark pill, or a round chevron for Practice
       const sr = Math.min(8.5 * u, rowW / 40), pillW = sr * 8.6, rightW = prac ? 30 * u : pillW;
@@ -744,18 +758,27 @@ export function createWonder(env) {
         const bt = ui.buttons[nb]; if (bt) { const t2 = Math.max(bt.y, vt), b2 = Math.min(bt.y + bt.h, vb); if (b2 - t2 < 8 * u) ui.buttons.length = nb; else { bt.y = t2; bt.h = b2 - t2; } }
       }
     };
+    // 0.8.17 (mykee: landscape "too much empty UI space"; the one column used half the width): on its side each section
+    // is a column of its own, its heading over one tall tile, the three side by side over the page's whole width and height
+    const SECS = [['Wonder Vaults', 'extras:wv', 'BONUS', { side: true, key: '_side', name: 'Bonus vaults', pitch: 'Side quests on the map' }], ['Practice', 'extras:practice', null, { practice: true, key: '_practice', name: 'Practice', pitch: 'Try any villain or power' }],
+      ...(AL ? [['Collection', 'extras:album', `${AL.n} / ${AL.total}`, { album: true, key: '_album', name: 'Combo album', pitch: AL.pitch, fresh: AL.fresh }]] : [])];
+    if (wide) {
+      const cw = (listW - colGap * (SECS.length - 1)) / SECS.length, rh = vb - vt - 4 * u - headH - 6 * u - Math.max(pad, 12 * u);
+      SECS.forEach(([txt, tag, chip, L], i) => { const x = lx + i * (cw + colGap); head(txt, vt + 4 * u, tag, chip, x); row(L, x, vt + 4 * u + headH + 6 * u, cw, rh, true); });
+    } else {
     head('Wonder Vaults', y, 'extras:wv', 'BONUS');
     y += headH;
     row({ side: true, key: '_side', name: 'Bonus vaults', pitch: 'Side quests on the map' }, lx, y);
-    y += wvRows * rowH + (wvRows - 1) * gap + secGap;
+    y += wvRows * rowH0 + (wvRows - 1) * gap + secGap;
     head('Practice', y, 'extras:practice');
     y += headH;
     row({ practice: true, key: '_practice', name: 'Practice', pitch: 'Try any villain or power' }, lx, y);
     if (AL) {
-      y += rowH + secGap;
+      y += rowH0 + secGap;
       head('Collection', y, 'extras:album', `${AL.n} / ${AL.total}`);
       y += headH;
       row({ album: true, key: '_album', name: 'Combo album', pitch: AL.pitch, fresh: AL.fresh }, lx, y);
+    }
     }
     ctx.restore();
     // the header band over the list: back, title, stars
