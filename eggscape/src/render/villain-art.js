@@ -80,11 +80,19 @@ const ART = {
   'boss:eagle'(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.08, d * 0.56, t, { w: { hover: 1 }, phase: t * 8.5, face: -1 }); },
   salamander(ctx, x, y, d, t) {
     const S = d * 0.4;
-    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9101 });
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9101, expr: { k: Math.floor(t / 3.2) % 2 ? 'greedy' : 'smug', a: Math.min(1, 3 * Math.min((t / 3.2) % 1, 1 - (t / 3.2) % 1) + 0.2) } }); // 0.8.18: smug, then greedy (licking his lips), in turn
   },
   frostsal(ctx, x, y, d, t) {
     const S = d * 0.4;
     drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', frost: 1, glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9103 });
+  },
+  emberspit(ctx, x, y, d, t) { // 0.8.18 the ember spit on a loop: the head glows, the spark runs up his back, the jaws pop
+    const S = d * 0.4, u = (t % 2.4) / 2.4, f = Math.min(1, u / 0.72), pop = u >= 0.72 && u < 0.84;
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'breath', p: pop ? 0.5 : 0.3 * f, blend: { fire: 0, mouth: pop ? 0.95 : 0 }, fuse: u < 0.72 ? f : 0, cheek: u < 0.72 ? Math.min(1, f * 2.5) : 0, glow: 0.9, look: { x: 0.5, y: 0.5 }, id: 9106 });
+  },
+  fireup(ctx, x, y, d, t) { // 0.8.18 white-hot and smug about it
+    const S = d * 0.4;
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', white: 1, expr: { k: 'smug', a: 1 }, glow: 1, look: { x: 0.4, y: 0.5 }, id: 9107 });
   },
   faceoff(ctx, x, y, d, t) { // the two of them nose to nose
     const S = d * 0.26;
@@ -93,7 +101,7 @@ const ART = {
   },
   'boss:salamander'(ctx, x, y, d, t) {
     const S = d * 0.44;
-    drawSalamander(ctx, x + 0.78 * S, y + d * 0.08, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 1, look: { x: 0.4, y: 0.5 }, id: 9102 });
+    drawSalamander(ctx, x + 0.78 * S, y + d * 0.08, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 1, look: { x: 0.4, y: 0.5 }, id: 9102, white: 0.5 + 0.5 * Math.sin(t * 0.9), expr: { k: 'smug', a: 1 } }); // 0.8.18: the boss swells white-hot and back, smug
   },
   hermit(ctx, x, y, d, t) { drawHermit(ctx, x + d * 0.04, y + d * 0.26, d * 0.8, t, { pose: 'walk', u: t * 0.6 }); },
   puffer(ctx, x, y, d, t) { drawPuffer(ctx, x, y, d * 0.62, t, { sw: 0.5 + 0.5 * Math.sin(t * 1.4) }); },

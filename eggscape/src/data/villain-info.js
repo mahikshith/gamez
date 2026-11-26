@@ -60,6 +60,8 @@ export const VILLAIN_INFO = {
       magma: 'Get your eggs off the glowing ring in time. Its thorns burn.',
       whip: 'Hold that ring as the whip lands and it barely moves.',
       heat: 'An egg that waits ~9 s in one channel cracks. Keep moving.',
+      spit: 'He glows and spits an ember through a gap: turn that gap away.', // 0.8.18
+      fire: 'A red flame orb or lava makes him white-hot. Water cools him.', // 0.8.18
     },
   },
   'boss:eagle': {
@@ -171,6 +173,18 @@ export const VILLAIN_INFO = {
     group: 'creature', name: 'Lava salamander',
     does: 'Coils, then snaps: it eats an egg at its snout. Its fire heats walls.',
     beat: 'Turn its ring to carry it off. A stone egg breaks its bite. Water cools it.',
+  },
+  emberspit: { // 0.8.18 lava: the salamander's ember spit
+    group: 'creature', name: 'Ember spit',
+    does: 'He glows, a spark runs up his back, and he spits an ember at an egg.',
+    beat: 'Turn the gap out of his line: it splats on the wall. Water douses it.',
+    more: 'The ember pool cracks an egg once. It burns thorns away.',
+  },
+  fireup: { // 0.8.18 lava: the salamander's fire-up
+    group: 'creature', name: 'White-hot',
+    does: 'He gulps a red flame orb (or steps in lava) and goes white-hot.',
+    beat: 'Grab the flame orb first. Water cools him at once: he sulks.',
+    more: 'Then he is quicker, breathes twice as far, and his feet burn thorns.',
   },
   frostsal: {
     group: 'creature', name: 'Frost salamander',
@@ -313,7 +327,7 @@ export const VILLAIN_INFO = {
   },
 };
 
-export const ATTACK_EXTRA = { heat: 'Rising heat' }; // phase flags shown as an attack (names not in sim/boss.js ATTACK_NAME)
+export const ATTACK_EXTRA = { heat: 'Rising heat', spit: 'Ember spit', fire: 'Fire-up' }; // phase flags shown as an attack (names not in sim/boss.js ATTACK_NAME)
 
 const CREATURE_KEYS = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
 CREATURE_KEYS.push('penguin'); // 0.8.17 pip
@@ -332,6 +346,8 @@ export function bossAttacks(L) {
   for (const P of F.phases || []) {
     for (const a of P.attacks || []) if (!out.includes(a)) out.push(a);
     if (P.heat && !out.includes('heat')) out.push('heat');
+    if (P.spit && !out.includes('spit')) out.push('spit'); // 0.8.18 the salamander's powers in the boss's later phases
+    if (P.fire && !out.includes('fire')) out.push('fire');
   }
   return out;
 }
@@ -353,6 +369,8 @@ export function villainKinds(L, sim = null) {
       if (n - fr > 0) set.add('salamander');
       if (fr) set.add('frostsal');
       if (fr && n - fr > 0 && !boss) set.add('faceoff');
+      if (listOf(L[k]).some((S) => S && S.kind !== 'frost' && S.spit)) set.add('emberspit'); // 0.8.18
+      if (listOf(L[k]).some((S) => S && S.kind !== 'frost' && S.fireup)) set.add('fireup');
       continue;
     }
     set.add(k);
@@ -369,6 +387,8 @@ export function villainKinds(L, sim = null) {
     if (live(sim.cocos)) set.add('monkey'); // 0.8.17 coco
     if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp === 'sal' && C.kind !== 'frost')) set.add('salamander'); // L15's frost gecko and L20's thorn-backs are not salamanders
     if ((sim.sals || []).some((C) => C.sp === 'sal' && C.kind === 'frost')) set.add('frostsal');
+    if ((sim.sals || []).some((C) => C.sp === 'sal' && !C.boss && C.spit)) set.add('emberspit'); // 0.8.18 (the boss's are attack lines)
+    if ((sim.sals || []).some((C) => C.sp === 'sal' && !C.boss && C.fu)) set.add('fireup');
     if ((sim.sals || []).some((C) => C.role === 'spike')) set.add('spike');
     if (live(sim.hermits)) set.add('hermit');
     if (live(sim.puffs)) set.add('puffer');

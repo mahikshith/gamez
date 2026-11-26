@@ -27,7 +27,7 @@ import { FISH } from '../sim/sea.js';
 import { drawGator } from './bayou.js';
 import { GATOR } from '../sim/bayou.js';
 import { drawEagle, drawLavaRock, drawMeltHole, drawIcicle } from './v3art.js';
-import { drawSalHeat } from './salamander.js'; // the game's own red-hot wall (the salamander's harm beat)
+import { drawSalHeat, drawEmberBall } from './salamander.js'; // the game's own red-hot wall (the salamander's harm beat)
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -128,6 +128,8 @@ export const THREAT = {
 };
 SHOW.penguin = P('turn', 'Turn a wall into his slide: BONK!', { fx: 'bonk' }); THREAT.penguin = 'Shoves eggs'; // 0.8.17 pip
 SHOW.monkey = P('turn', 'Flick his ring hard: whoa, he lets go!', { fx: 'bonk' }); THREAT.monkey = 'Grabs eggs'; // 0.8.17 coco
+SHOW.emberspit = P('turn', 'Turn the gap out of his line', { fx: 'bonk' }); THREAT.emberspit = 'Spits embers'; HARM.emberspit = ['fall', 'CRACK!']; // 0.8.18 lava
+SHOW.fireup = P('turn', 'Turn its ring: he rides away', { fx: 'bonk' }); THREAT.fireup = 'Goes white-hot'; // 0.8.18 lava (the info panel and the lesson teach the water)
 export const threatWords = (kind) => THREAT[kind] || THREAT[String(kind).replace(/^boss:/, '')] || 'Hunts eggs';
 // the first-five ladder (2026-11-20, owner: every level from 2 on hands over a new toy, shown on its level card with the
 // game's own art): the red flame, the twin orb, the thorn curtain, the portal, the glow chick. move 'toy', plan.toy names it.
@@ -595,6 +597,17 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
         const sink = seg(haz.boom, 0.45, 0.8);
         ctx.save(); ctx.globalAlpha *= 1 - sink; drawLavaRock(ctx, mk.x, land + rr * 0.9 * sink, rr * (1 - 0.3 * sink), t, 1); ctx.restore();
         if (haz.boom < 0.3) burst(ctx, mk.x, mk.y - Z * 0.05, Z * 0.22 * (0.5 + haz.boom * 2), 1 - haz.boom / 0.3, '#ff8a3a');
+      }
+    }
+    else if (hk === 'emberspit') { // 0.8.18 an ember lobs in from the left and lands by the egg as a bubbling pool
+      const rr = eggS * 0.3, f = haz.fall, top = y + eggS * 0.4, land = mk.y - rr * 0.6, ex = mk.x - (1 - f) * Z * 0.5, ey = land + (top - land) * (1 - f) - Math.sin(Math.PI * f) * eggS * 0.6;
+      if (haz.fall > 0 && haz.boom <= 0) drawEmberBall(ctx, ex, ey, rr * (0.7 + 0.3 * f), t, calm);
+      else if (haz.boom > 0) {
+        const g = ease(Math.min(1, haz.boom * 3));
+        ctx.save(); ctx.fillStyle = '#5a1606'; ctx.beginPath(); ctx.ellipse(mk.x, mk.y - band * 0.05, eggS * 0.9 * g, eggS * 0.22 * g, 0, Math.PI, TAU); ctx.fill();
+        ctx.fillStyle = '#e8420c'; ctx.beginPath(); ctx.ellipse(mk.x, mk.y - band * 0.05, eggS * 0.8 * g, eggS * 0.17 * g, 0, Math.PI, TAU); ctx.fill();
+        ctx.fillStyle = '#ffe696'; ctx.beginPath(); ctx.ellipse(mk.x, mk.y - band * 0.05, eggS * 0.38 * g, eggS * 0.08 * g, 0, Math.PI, TAU); ctx.fill(); ctx.restore();
+        if (haz.boom < 0.4) burst(ctx, mk.x, mk.y - Z * 0.04, Z * 0.18 * (0.5 + haz.boom * 2), 1 - haz.boom / 0.4, '#ff8a3a');
       }
     }
     else if (hk === 'icicles') { // 0.8.14: the game's own icicle hangs over the mark, shakes, then drops and shatters
