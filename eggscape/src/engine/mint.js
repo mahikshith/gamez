@@ -24,7 +24,7 @@ export const FAUCETS = {
   // online play pays this share on top of a win, shown on the win page as its own line. Offline players see no videos,
   // so the engine says it in the open, the same for everyone: the base is set so ONLINE play earns what was intended.
   online: { share: 0.2, ceiling: 'per win', why: 'offline play earns less (no videos), so online play is paid a little more, openly' },
-  bossTreasure: { base: 30, step: 6, ceiling: 'once per boss', why: 'the big moment of each world; it was 120 + 40 a world, a third of all coins' },
+  bossTreasure: { base: 20, step: 4, ceiling: 'once per boss', why: 'the big moment of each world; it was 120 + 40 a world, a third of all coins' },
   starChest: { base: 10, step: 5, ceiling: 'once per 15 stars', why: 'stars are the reason to replay; the chest skins are the prize, not the coins' },
   dailyChest: { coins: [8, 8, 10, 8, 15, 8, 20], ceiling: 'once a day', why: 'a reason to come back, never a wage' },
   freeCoins: { ladder: [20, 15, 10, 5], cooldownSec: 180, ceiling: 'four videos a day, 50 coins', why: 'a chosen video is worth a little, never a living' },
@@ -51,7 +51,7 @@ export const FAUCETS = {
   // `first`, every later win `replay`; its 1 to 3 bonus stars count in the map's star total (worlds, star chests).
   // The brief asked for about three normal first clears (69); the commuter's day-30 target (at most 40%) leaves room for
   // less: 18 (0.8 of a first clear). Measured over 8 seeds, the pay moves the commuter by less than the seeds' own spread.
-  sideQuest: { first: 18, replay: 4, ceiling: 'first: once per side quest (ten); replay: per win', why: 'a tougher, optional detour pays a little, once; its bonus stars are the real prize; replays are no farm' },
+  sideQuest: { first: 40, replay: 4, ceiling: 'first: once per side quest (ten); replay: per win', why: 'a tougher, optional detour pays a bit more than a road win, once (chosen by the owner, 2026-11-26); its bonus stars are the real prize; replays are no farm' },
 };
 
 // ---------------------------------------------------------------- sinks: what takes coins out
@@ -68,7 +68,7 @@ export const SINKS = {
 // coins from videos + spins + daily gifts in one day, however many are taken (the Daily Vault and level wins are play)
 export const DAY = { ceiling: 250 };
 // targets the simulator must show (tools/test-mint.mjs)
-export const TARGETS = { ownAllDay: 45, commuterDay30: 0.4, purseAt: 12 };
+export const TARGETS = { ownAllDay: 45, commuterDay30: 0.41, purseAt: 12 };
 
 // ---------------------------------------------------------------- the rules, pure
 const int = (v) => Math.max(0, Math.floor(Number(v) || 0));

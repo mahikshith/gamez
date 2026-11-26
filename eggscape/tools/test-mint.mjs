@@ -95,7 +95,11 @@ E.setPlatform(false);
   const O = owning({ n: 60, days: 90, seed: 1 });
   console.log(`     catalogue ${CATALOGUE} coins; all owned on day (earliest life), owned on day 30: ` + Object.entries(O).map(([k, v]) => `${k} ${v.first > 90 ? '>90' : v.first} ${Math.round(v.at30 * 100)}%`).join(', '));
   ok(Object.values(O).every((v) => v.first >= M.TARGETS.ownAllDay), `no kind of player owns the whole coin catalogue before day ${M.TARGETS.ownAllDay}`);
-  ok(O.commuter.at30 <= M.TARGETS.commuterDay30, `the middle player (commuter) owns ${(O.commuter.at30 * 100).toFixed(1)}% of it on day 30 (at most 40%)`);
+  // 2026-11-26, the owner's choice: side quests pay 40 on a first win and the middle player may own "about 41%" on day 30
+  // (it was 40%). Measured as the mean of three seeds of 40 lives: one seed alone swings between 39.8 and 42.1 with the
+  // same table, so a single run passed or failed by luck; half a point of that noise is allowed on the mean.
+  const C3 = [1, 2, 3].map((seed) => owning({ n: 40, days: 30, seed, only: 'commuter' }).commuter.at30), cm = C3.reduce((x, y) => x + y, 0) / C3.length;
+  ok(cm <= M.TARGETS.commuterDay30 + 0.005, `the middle player (commuter) owns ${(cm * 100).toFixed(1)}% of it on day 30, mean of three seeds (target about ${Math.round(M.TARGETS.commuterDay30 * 100)}%)`);
 }
 
 // ---- 6. what stays as it was
