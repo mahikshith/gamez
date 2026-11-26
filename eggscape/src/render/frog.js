@@ -569,6 +569,24 @@ function lickMark(ctx, F, t, sim) {
   ctx.restore();
 }
 
+// 0.8.18 the frog away from play (the info panel, the map, the Lucky Spin reel, the level card's faces, Practice): its
+// new trick in one loop of PORTRAIT_T s: eyes lock on and it licks its lips, then sits smug with an egg in its stuffed
+// cheeks (a stand-in egg with a worried face: no sim egg there), then "ptoo". frogPortrait(t) gives the drawFrog options.
+const PORTRAIT_T = 6;
+function portraitEgg(g, x, y, r) {
+  g.save(); g.translate(x, y); g.fillStyle = '#fff3dc'; g.beginPath(); g.ellipse(0, 0, r * 0.78, r, 0, 0, TAU); g.fill(); g.lineWidth = Math.max(1.5, r * 0.09); g.strokeStyle = '#4a2a10'; g.stroke();
+  g.fillStyle = '#2a1a10'; for (const sx of [-0.25, 0.25]) { g.beginPath(); g.ellipse(sx * r, -0.05 * r, 0.11 * r, 0.15 * r, 0, 0, TAU); g.fill(); }
+  g.beginPath(); g.ellipse(0, 0.3 * r, 0.08 * r, 0.11 * r, 0, 0, TAU); g.fill(); g.restore();
+}
+export function frogPortrait(t = 0) {
+  const u = ((t % PORTRAIT_T) + PORTRAIT_T) % PORTRAIT_T, sm = (a, b) => { const q = clamp((u - a) / (b - a), 0, 1); return q * q * (3 - 2 * q); };
+  const cheek = sm(2.6, 3.0) * (1 - sm(5.3, 5.5)), greed = 1 - sm(2.4, 2.7);
+  const op = { face: 1, look: { x: 0.4 + 0.5 * greed, y: 0.1 + 0.15 * greed }, greed, puff: 0.5 * greed, lick: u > 0.6 && u < 2.2 ? ((u - 0.6) / 0.8) % 1 : -1 };
+  if (cheek > 0.01) { op.cheek = cheek; op.cheekEgg = portraitEgg; op.smug = 0.7 * cheek; op.look = { x: 0.2, y: -0.2 }; }
+  if (u > 5.3 && u < 5.9) { op.spit = clamp((u - 5.3) / 0.6, 0, 1); op.mouth = 0.6 * Math.sin(op.spit * Math.PI); }
+  return op;
+}
+
 export function drawFrogs(ctx, sim, t, k, theme) {
   const list = sim.frogs || [];
   if (!list.length) return;
