@@ -197,7 +197,7 @@ export const SPECS = [
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'ice', gaps: 2, thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
 
   // ---------------- 4 Crystal Caves: portals that suck and spit orbs, grates, quail and ostrich eggs, glass
-  { id: 19, gid: 16, world: 4, theme: 'crystal', name: 'Crystal Caves', eggs: 3, target: 2, spacing: 1.0, material: 'stone', kits: {delay: 12, n: 2}, minMoves: 4, eggKinds: ['quail'],
+  { id: 19, gid: 16, world: 4, theme: 'crystal', name: 'Crystal Caves', eggs: 3, target: 2, spacing: 1.0, material: 'stone', kits: {delay: 16, n: 2}, minMoves: 4, eggKinds: ['quail'],
     nest: { w: 2.8 }, bonus: { kind: 'orbs' }, icicles: { every: 7, delay: 8, big: 4 },
     orbs: [{ type: 'fire_red', ch: 2 }, { type: 'twin', ch: 3 }],
     portals: [{ from: [2, 90], to: [2, 90], emit: ['fire_red'], every: 7, pull: 0 }, { from: [3, -150], to: [4, -40], emit: ['fire_green', 'bubble'], every: 9 }],

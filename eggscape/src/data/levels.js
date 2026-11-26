@@ -179,7 +179,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 19, theme: "crystal", name: "Crystal Caves", eggs: 3, target: 2, time: 160, spacing: 1, material: "stone", nest: {w: 2.8}, bonus: {kind: "orbs"}, icicles: {every: 7, delay: 8, big: 4}, eggKinds: ["quail"], tip: "Only the quail fits a grate. Send it for the flame: the curtain must burn for the others.", portals: [{a: [0,2.65], b: [0,2.65], emit: ["fire_red"], every: 7, pull: 0},{a: [-3.16,-1.82], b: [3.56,-2.99], emit: ["fire_green","bubble"], every: 9}], orbs: [{type: "fire_red", ch: 2, a: 157},{type: "twin", ch: 3, a: 112}], kits: {delay: 12, n: 2}, seed: 126707, world: 4, intro: {title: "Crystal Caves", line: "Grates let only the little quail egg through. Portals suck in eggs from every side."},
+    id: 19, theme: "crystal", name: "Crystal Caves", eggs: 3, target: 2, time: 160, spacing: 1, material: "stone", nest: {w: 2.8}, bonus: {kind: "orbs"}, icicles: {every: 7, delay: 8, big: 4}, eggKinds: ["quail"], tip: "Only the quail fits a grate. Send it for the flame: the curtain must burn for the others.", portals: [{a: [0,2.65], b: [0,2.65], emit: ["fire_red"], every: 7, pull: 0},{a: [-3.16,-1.82], b: [3.56,-2.99], emit: ["fire_green","bubble"], every: 9}], orbs: [{type: "fire_red", ch: 2, a: 157},{type: "twin", ch: 3, a: 112}], kits: {delay: 16, n: 2}, seed: 126707, world: 4, intro: {title: "Crystal Caves", line: "Grates let only the little quail egg through. Portals suck in eggs from every side."},
     rings: [
       {gaps: [{a: 66}]},
       {gaps: [{a: 97, x: 2},{a: 56, grate: 1}], thorns: [{a: -8, n: 2},{a: -20, n: 2, side: "out", h: 0.26}], pads: [{a: -144, len: 1.81}]},
