@@ -521,7 +521,13 @@ const wonder = createWonder({ ctx, ui, audio, size: () => ({ W: W_, H: H_, DPR }
   sideWin: (key, stars) => { const before = save.wallet.coins, r = SQ.sideWin(save, key, stars); save.wallet = E.addCoins(save.wallet, r.coins); ledger('win'); persist(); purse.hold(before); return { ...r, before }; },
   sideCoins: (key) => SQ.sideCoins(save, key), sideStars: () => ({ have: SQ.sideTotal(save), max: SQ.SIDE_MAX }), drawCoin: (c, x, y, r, t) => drawCoin(c, x, y, r, t),
   coinsFly: (P, at) => { purse.gain({ from: P.before, src: at }); },
-  leave: (side) => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); if (side) { G.world = side.w; G.sideFocus = side.w; G.mapTravel = null; setScreen('levels'); } else setScreen('extras'); } });
+  leave: (side) => { if (G.theme) audio.music(G.theme.music); audio.setMaterial((G.level && G.level.material) || 'wood'); if (side) { G.world = side.w; G.sideFocus = side.w; G.mapTravel = null; setScreen('levels'); } else setScreen('extras'); },
+  // 0.8.17 polish: a side quest's card, pause, win and fail pages are laid out with the road's own page kit (the win and
+  // fail pages' full page and side stage, her stage, the art stage, the pause tiles, the purse), never a copy of it
+  kit: { head: () => CARD_HEAD, page: (title, build, o = {}) => { const hb = G.hudBottom; G.hudBottom = ui.A.y; try { return stackCard(title, build, o); } finally { G.hudBottom = hb; } },
+    side: () => cardSide(), stage: (sd, card) => { const hb = G.hudBottom; G.hudBottom = ui.A.y; try { return sideStage(sd, card); } finally { G.hudBottom = hb; } },
+    henStage: (b, s, win) => henStage(b, s, win), artStage: (x, y, w, h, s, d) => artStage(x, y, w, h, s, d), tiles: (items, s, cols) => pauseTiles(items, s, cols),
+    sunburst: (cx, cy, R, col, n) => sunburst(cx, cy, R, col, n), feathers: (a) => winFeathers(a), dim: (a) => dim(a), purse: () => purse } });
 
 function themeFor(level) {
   return THEMES.find((t) => t.id === level.theme) || THEMES[(level.id - 1) % THEMES.length];
