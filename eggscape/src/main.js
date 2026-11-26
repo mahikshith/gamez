@@ -36,6 +36,7 @@ import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded
 import { drawStore, drawCoin, drawBoosterStrip, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, drawItemArt, PROMISE, valueBadge } from './ui/store.js';
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as SK from './skip.js'; // 2026-11-23: the pause page's Skip level (one rewarded video)
+import { createSpendFx } from './ui/spendfx.js'; // 0.8.17: the spend moments' one family of animations (the Brain picks the moment)
 import { createPurse } from './ui/purse.js'; // 2026-11-23: one coin-gain effect for every place the purse grows
 import { createLanding, createPrizePop } from './ui/landing.js'; // 0.8.17: every reward lands on its page (the purse and the bag), every video says what it gave
 import * as DR from './director.js'; // 2026-11-20: the Director (help ladder, freebies, trials, home nudges)
@@ -1175,6 +1176,7 @@ function pointerDown(e) {
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
   focusEnd(G.sscroll); focusEnd(G.setpage); // any touch: the ring and the hand let go
+  spendFx.skip(); // 0.8.17: a spend moment jumps to its end state (a second tap lets it go); the tap still does its job
   if (!G.adBusy && G.detail && !G.got && G.dscroll && G.detail === 'iap:' + G.dscroll.key && G.dscroll.max > 0 && G.dlRect && x >= G.dlRect.x && x <= G.dlRect.x + G.dlRect.w && y >= G.dlRect.y && y <= G.dlRect.y + G.dlRect.h) { // the bundle sheet's list scrolls under a finger
     const D = G.dscroll; G.pdrag = { pid: e.pointerId, sc: D, y0: y, s0: D.y, moved: false, last: y, lt: performance.now(), v: 0, smp: [] }; D.v = 0; D.to = null;
   }
@@ -1569,9 +1571,10 @@ async function press(id) {
       break;
     case 'shop':
     case 'store': { // 0.8.14: with the shop mark on, the shop opens on the thing the coins now reach, with a ring on it
-      const M = shopMarkNow();
+      const M = shopMarkNow(), SM = spendFx.on('shop') && spendFx.cur.key ? spendFx.cur.key : null;
       G.shopHand = null;
-      if (M.pick && (M.on || G.screen === 'pause')) openStoreOn(M.pick.key); else openStore('deals'); // (the pause page's banner names the pick: it opens on it)
+      if (SM) { spendTake('shop'); openStoreOn(SM); } // 0.8.17: a spend moment's bubble is up: the shop opens on what it showed
+      else if (M.pick && (M.on || G.screen === 'pause')) openStoreOn(M.pick.key); else openStore('deals'); // (the pause page's banner names the pick: it opens on it)
       break;
     }
     case 'win:shop': // the win card's "New in shop" chip: the shop, on the thing this win's coins reach
@@ -1654,10 +1657,16 @@ async function press(id) {
       const n = G.nudge;
       if (!n) break;
       if (n.kind === 'keep') {
+        if (n.bought) break;
         const hen = n.what === 'hen', w = hen ? E.buyHenSkin(save.wallet, n.id) : E.buySkin(save.wallet, n.id);
         if (!w) { needCoins(n.price); break; }
-        save.wallet = w; DR.clearKeepAsk(save, n.what); if (!hen) W.setSkin(w.skin); G.nudge = null; persist();
-        startGot({ name: hen ? n.name : n.name + ' egg', key: (hen ? 'hen:' : 'skin:') + n.id, items: [], line: hen ? 'Your hen wears it now' : 'On your eggs now' }); // 0.8.17: the reveal, worn
+        save.wallet = w; DR.clearKeepAsk(save, n.what); if (!hen) W.setSkin(w.skin); n.bought = true; persist(); spendTake('keep', true);
+        // 0.8.17: the purse counts down, its coins fly into the picture, then the reveal (worn)
+        const r = ui.rects.find((q) => q.tag === 'nudge:art');
+        spendThen(r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : null, () => {
+          if (G.nudge === n) G.nudge = null;
+          startGot({ name: hen ? n.name : n.name + ' egg', key: (hen ? 'hen:' : 'skin:') + n.id, items: [], line: hen ? 'Your hen wears it now' : 'On your eggs now' }); // 0.8.17: the reveal, worn
+        });
       } else if (n.kind === 'welcome') {
         const b = E.BOOSTER_ORDER[Math.floor(Math.random() * 5)];
         save.wallet = { ...save.wallet, coins: save.wallet.coins + n.coins, owned: { ...(save.wallet.owned || {}), [b]: ((save.wallet.owned || {})[b] || 0) + 1 } };
@@ -1896,7 +1905,7 @@ async function press(id) {
       break;
     }
     case 'rewind:coins': { // Royal Match's continue: coins instead of a video, a little dearer each time on this level
-      if (G.screen !== 'fail' || G.usedRewind || !G.sim.canRewind()) break;
+      if (G.screen !== 'fail' || G.usedRewind || G.rewBuy || !G.sim.canRewind()) break;
       const lid = G.level.id, price = DR.rewindPrice((G.rewindBuys || {})[lid]);
       if (save.wallet.coins < price) { needCoins(price); break; }
       const back = G.sim.rewind(REWIND_S);
@@ -1904,7 +1913,10 @@ async function press(id) {
       save.wallet = { ...save.wallet, coins: save.wallet.coins - price };
       G.rewindBuys = { ...(G.rewindBuys || {}), [lid]: ((G.rewindBuys || {})[lid] || 0) + 1 };
       persist();
-      rewound(back);
+      // 0.8.17: the purse counts down and its coins fly into the Rewind button, then the level runs back (and the prize pops)
+      spendTake('rewind', true);
+      { const b = ui.buttons.find((q) => q.id === 'rewind:coins'), seq = G.scrSeq; G.rewBuy = true;
+        spendThen(b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : null, () => { G.rewBuy = false; if (G.screen === 'fail' && G.scrSeq === seq) rewound(back); }); }
       break;
     }
     case 'sample': { // 2026-11-20 shop 2.0, FREE TODAY: a boost never tried, free; once all are tried, today's boost for a video
@@ -2028,7 +2040,11 @@ async function press(id) {
     case 'spin:go': case 'spin:lever': await spinGo('free'); break; // (the lever also pulls a Try again that costs nothing; one that takes a video is asked for by its own button)
     case 'spin:ad': await spinGo('ad'); break;
     case 'spin:retry': await spinGo('retry'); break;
-    case 'spin:coin': await spinGo('coin'); break;
+    case 'spin:coin': { // 0.8.17: the purse counts down into the machine (and a spend moment on it was taken)
+      const W2 = G.spin && SP.ways(save, today());
+      if (W2 && W2.coin != null && save.wallet.coins >= W2.coin && G.spin.st === 'idle') { spendTake('spin', true); const b = ui.buttons.find((q) => q.id === 'spin:coin'); purse.spend({ dst: b ? { x: b.x + b.w / 2, y: b.y } : null }); }
+      await spinGo('coin'); break;
+    }
     case 'spin:skip': spinSkip(); break;
     case 'spin:odds': if (G.spin && G.spin.st === 'idle') G.spin.sheet = true; break;
     case 'spin:odds:x': case 'spin:odds:ok': if (G.spin) G.spin.sheet = false; break;
@@ -2069,6 +2085,14 @@ async function press(id) {
       } else if (id === 'strip:more' || id === 'strip:back') { // the booster row one page on or back (0.8.17: it scrolls, ">>" then "<<"; it starts at the first again on another level)
         const lid = G.level && G.level.id, P = G.boostPg && G.boostPg.lid === lid ? G.boostPg : (G.boostPg = { lid, k: 0 });
         if (P.n) P.k = E.stripStep(P.n, P.fit, P.k, id === 'strip:more' ? 1 : -1); audio.play('ui_tap');
+      } else if (id && id.startsWith('sbuy:')) { // 0.8.17 the level card's spend moment: one tap buys the booster with coins, the purse counts down into it, it is armed
+        const b = id.slice(5), w = E.BOOSTERS[b] ? E.buy(save.wallet, b) : null;
+        if (!w) { if (E.BOOSTERS[b]) needCoins(E.BOOSTERS[b].price); }
+        else {
+          save.wallet = w; persist(); spendTake('strip', true);
+          const r = ui.buttons.find((q) => q.id === id), dst = r ? { x: r.x + r.w / 2, y: r.y + r.h * 0.38 } : null, seq = G.scrSeq;
+          spendThen(dst, () => { if (G.screen !== 'intro' || G.scrSeq !== seq) return; G.boostSel.add(b); G.boostLast = b; audio.play('power_pickup', { vol: 0.6 }); popPrize(E.BOOSTERS[b].name, (c, x, y, S, t) => drawBoosterIcon(c, b, x, y, S, t), dst, 0.3); });
+        }
       } else if (id && id.startsWith('boost:')) {
         const b = id.slice(6);
         if (G.boostSel.has(b)) G.boostSel.delete(b); else { G.boostSel.add(b); if (!(save.seen || {})['bu:' + b]) { save.seen = { ...(save.seen || {}), ['bu:' + b]: 1 }; persist(); } }
@@ -2528,9 +2552,17 @@ async function takeHelp() {
     G.failHelp = null; boostRun(H.id);
     toast(`Free ${E.BOOSTERS[H.id].name}: ${E.BOOSTERS[H.id].line}`, 3.2);
   } else if (H.kind === 'buyBoost') {
+    if (H.bought) return;
     if (save.wallet.coins < H.price) { needCoins(H.price); return; }
     save.wallet = { ...save.wallet, coins: save.wallet.coins - H.price }; persist();
-    G.failHelp = null; boostRun(H.id);
+    // 0.8.17: the purse counts down, its coins fly into the booster, then the retry starts with it and it pops over the level
+    H.bought = true; spendTake('failhelp', true);
+    const r = ui.rects.find((q) => q.tag === 'panel:failhelp'), run = G.run;
+    spendThen(r ? { x: r.x + 38 * ui.u, y: r.y + r.h / 2 } : null, () => {
+      if (G.screen !== 'fail' || G.failHelp !== H || G.run !== run) return;
+      G.failHelp = null; boostRun(H.id);
+      popPrize(E.BOOSTERS[H.id].name, (c, x, y, S, t) => drawBoosterIcon(c, H.id, x, y, S, t), null, 0.5);
+    });
   } else if (H.kind === 'adBoost') {
     if (await rewarded('booster')) { G.failHelp = null; boostRun(H.id); popPrize(E.BOOSTERS[H.id].name, (c, x, y, S, t) => drawBoosterIcon(c, H.id, x, y, S, t), null, 0.5); } // 0.8.17: it pops over the level it starts
   }
@@ -2539,7 +2571,7 @@ async function takeHelp() {
 function homeNudge(now) {
   const chicks = strikeReach() >= STRIKE_FROM ? STRIKES.filter((S) => !strikesOpen().includes(S) && E.CHICK_PRICES[S.id]).map((S) => ({ id: S.id, name: S.name, price: E.CHICK_PRICES[S.id] })).sort((a, b) => a.price - b.price) : [];
   const n = DR.homeNudge(save, { now, chicks });
-  if (!n) return false;
+  if (!n || n.kind === 'afford') return false; // 0.8.17: "you can unlock it now" is no longer a popup: the Shop button shows it (spend moment 'afford')
   if (n.kind !== 'keep') DR.noteNudge(save, n, now);
   BR.note(save, 'ask', { id: 'nudge:' + n.kind, kind: 'nudge' }, now); BR.why(save, 'home', 'nudge:' + n.kind, 'the Director\'s nudge comes before any paid offer', now);
   persist();
@@ -2582,6 +2614,7 @@ function offerMoments() {
   BR.note(save, 'ask', { id: o.id, kind: paid ? 'money' : 'video' }, ctx2.now); BR.why(save, moment, o.id, 'the best fit at a calm moment', ctx2.now);
   persist();
   G.offer = { ...o, lv: ctx2.levelId };
+  G.offerShownV = spendVisit(); // (0.8.17: that visit has had its one thing: no spend moment after it)
 }
 // a calm modal card: art, title, one line, the price (or the free video), and a big "No thanks". No timers.
 function drawOffer() {
@@ -2610,19 +2643,24 @@ function drawNudge() {
   dim(0.55);
   const title = n.kind === 'keep' ? (n.what === 'hen' ? `Keep the ${n.name}?` : `Keep the ${n.name} Egg?`) : n.kind === 'welcome' ? 'Welcome back!' : 'You can unlock it now!';
   const line = n.kind === 'keep' ? 'Your free try is over. Keep it for good:' : n.kind === 'welcome' ? `A gift for coming back: ${n.coins} coins and a free booster.` : `You have the coins for ${n.name}.`;
+  // 0.8.17 spend moment 'keep': the thing waves goodbye, then a keep tag with its coin price swings on it (the Brain may hold it back)
+  if (n.kind === 'keep' && !n.bought && G.got == null && save.wallet.coins >= n.price) spendOnce('keep', 'home', [{ id: 'keep', kind: 'wave', slot: 'keep', key: (n.what === 'hen' ? 'hen:' : 'skin:') + n.id, price: n.price, taste: 'looks' }]);
   stackCard(title, (s, iw) => [
     { h: 132 * s, gap: 4 * s, draw: (x, y, w) => {
-      const aw = Math.min(w, 170 * s);
+      const aw = Math.min(w, 170 * s), wx = n.kind === 'keep' ? spendFx.waveXf('keep') : null;
       ui.well(x + (w - aw) / 2, y, aw, 132 * s, { s, a: '#ffe9b0', b: '#fff6dc' });
+      if (n.kind === 'keep') spendFx.at('keep', { x: x + (w - aw) / 2, y, w: aw, h: 132 * s });
+      if (wx) { ctx.save(); ctx.translate(x + w / 2, y + 120 * s + wx.dy * 132 * s); ctx.rotate(wx.rot); ctx.translate(-(x + w / 2), -(y + 120 * s)); } // (rocks on its foot)
       if (n.kind === 'keep' && n.what === 'hen') drawHenSkinPreview(ctx, n.id, x + w / 2, y + 70 * s, 118 * s, G.t);
       else if (n.kind === 'keep' || (n.kind === 'afford' && n.item.startsWith('skin:'))) drawSkinPreview(ctx, n.kind === 'keep' ? n.id : n.item.slice(5), x + w / 2, y + 66 * s, 104 * s, G.t);
       else if (n.kind === 'afford') drawStrikeChick(ctx, n.item.slice(6), x + w / 2, y + 72 * s, 112 * s, G.t, {});
       else drawOfferArt(ctx, 'coins', x + w / 2, y + 66 * s, 120 * s, G.t, save.wallet);
+      if (wx) ctx.restore();
       ui.record({ x: x + (w - aw) / 2, y, w: aw, h: 132 * s }, 'nudge:art');
     } },
     ...wrapText(line, 16.5 * s, iw).slice(0, 2).map((l, i) => lineBlock(l, 16.5 * s, { color: ui.C.ink, tag: 'nudge:line' + i, gap: i ? 2 * s : 10 * s })),
     { h: 58 * s, gap: 14 * s, draw: (x, y, w) => n.kind === 'keep'
-      ? ui.button('nudge:yes', String(n.price), x, y, w, 58 * s, { kind: save.wallet.coins >= n.price ? 'gold' : 'off', dim: 1, shimmer: save.wallet.coins >= n.price, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 24 * s })
+      ? ui.button('nudge:yes', String(n.price), x, y, w, 58 * s, { kind: save.wallet.coins >= n.price || n.bought ? 'gold' : 'off', dim: 1, shimmer: save.wallet.coins >= n.price && !n.bought, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 24 * s, ...(n.bought ? { disabled: true, keepFace: true } : {}) })
       : ui.button('nudge:yes', n.kind === 'welcome' ? 'Collect' : 'See it', x, y, w, 58 * s, { kind: 'primary', shimmer: true, size: 22 * s }) },
     ...(n.kind === 'welcome' ? [] : [{ h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('nudge:no', n.kind === 'keep' ? 'No thanks' : 'Later', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) }]),
   ], { ribbon: n.kind === 'welcome' ? '#3cb043' : '#d89a1c' });
@@ -3582,6 +3620,80 @@ function rewindArt(c, x, y, S) { // the rewind's prize: a blue disc with the rew
 }
 // ---- the shop mark (0.8.14, director.js shopMark): a blinking badge on every shop button while the coins reach
 // something new (an egg, an outfit, a reached chick, a set) the player has not seen in the shop yet
+// ---- 0.8.17 spend moments (mykee: "come up with points or situations where users are more likely to spend coins and
+// build proper animations"). The look is src/ui/spendfx.js (one family: peek, walk, hop, tag, wave), the choice is the
+// Brain's (src/brain.js spendPick: one a screen visit, through its gate, never before level 3 is won, never during play,
+// backing off after a moment left untaken). The places: home and the map (the Shop button: afford, fresh coins, today's
+// deal, a new world's outfit), the fail card (the booster that would have saved it, the coin Rewind that keeps a streak),
+// the level card (the booster strip before a boss or a lost level), the keep card (a free try ended), the Lucky Spin
+// (one more coin spin after a lost pull). Every coin purchase counts the purse DOWN (ui/purse.js spend) with coins
+// flying to the thing, then the thing is celebrated (YOU GOT, or the prize pop over the level it starts).
+const spendFx = createSpendFx({ clock: () => G.t, calm: () => !!save.calm, low: () => !!PERF.low, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k) });
+const SPEND_KIT = { ui: null, u: 1, A: null, t: 0, coin: (c, x, y, r, t) => drawCoin(c, x, y, r, t) };
+function spendDraw() { SPEND_KIT.ui = ui; SPEND_KIT.u = ui.u; SPEND_KIT.A = ui.A; SPEND_KIT.t = G.t; spendFx.draw(ctx, SPEND_KIT); }
+const spendVisit = () => `${G.screen}:${G.scrSeq}`;
+// a thing's picture for the bubble: the shop's own art (markArt), a booster, a kit's first booster
+function spendArt(key) {
+  const [k, id] = key.split(':');
+  if (k === 'boost') return (c, x, y, h, t) => drawBoosterIcon(c, id, x, y, h, t);
+  if (k === 'kit') return (c, x, y, h, t) => drawBoosterIcon(c, (E.KITS[id] && E.KITS[id].parts[0]) || 'stone', x, y, h, t);
+  return (c, x, y, h) => markArt(key, x, y, h);
+}
+const spendTaste = (key) => (/^(skin|hen|set):/.test(key) ? 'looks' : /^(chick|boost|kit):/.test(key) ? 'power' : null);
+// ask the Brain once per visit and place (tag): it picks one of cands (or none) and the look plays
+function spendOnce(tag, moment, cands) {
+  const v = spendVisit() + '|' + tag;
+  if (G.spendAsked === v || !cands.length || spendFx.cur || G.adBusy) return false;
+  G.spendAsked = v;
+  const now = Date.now(), r = BR.spendPick(save, moment, cands, { now, visit: spendVisit() });
+  if (!r.pick) { if (r.why !== 'nothing to show' && r.why !== 'one a visit') BR.why(save, moment, null, 'spend: ' + r.why, now); return false; }
+  const P = r.pick;
+  BR.spendNote(save, 'show', { id: P.id, key: P.key, visit: spendVisit() }, now); BR.why(save, moment, 'spend:' + P.id, r.why, now); persist();
+  spendFx.play({ ...P, art: P.art || (P.key ? spendArt(P.key.replace(/^strip:\d+:/, 'boost:').replace(/@.*$/, '')) : null), scr: G.screen, seq: G.scrSeq });
+  return true;
+}
+// the player went for it (tapped the control it played on), or bought from it (the moments rest a little)
+function spendTake(slot, bought) {
+  const m = spendFx.cur;
+  if (!m || m.slot !== slot || m.taken) return;
+  spendFx.take(); BR.spendNote(save, bought ? 'buy' : 'take', { id: m.id, key: m.key }, Date.now()); persist();
+}
+// each frame: a moment whose screen visit is over ends; untaken, it is a "no" (the Brain backs off)
+function spendTick() {
+  const e = spendFx.tick(G.screen, G.scrSeq);
+  if (e && !e.taken) { BR.spendNote(save, 'no', { id: e.id, key: e.key }, Date.now()); persist(); }
+  if (G.spendQ && G.spendQ.length) { const due = G.spendQ.filter((q) => G.t >= q.at); if (due.length) { G.spendQ = G.spendQ.filter((q) => G.t < q.at); for (const q of due) q.fn(); } }
+  if (G.screen === 'title' || G.screen === 'levels') homeSpend();
+}
+// after coins were spent here: the purse counts down while coins fly to dst, and fn runs once they landed
+function spendThen(dst, fn) {
+  purse.spend({ dst });
+  G.spendQ = [...(G.spendQ || []), { at: G.t + (save.calm ? 0.3 : 0.8), fn }];
+}
+// home and the map: what the Shop button can show (asked once the page has settled; fresh coins: once they landed)
+function homeSpend() {
+  if (G.screenT < 1.6 || modalOpen() || G.settingsOpen || G.mapTravel || G.treasure || G.shopHand || G.got || purse.active() || G.adBusy || land.active()) return;
+  const w = save.wallet, coins = w.coins || 0, v = spendVisit();
+  if (G.spendBase == null || G.spendBase.v !== v) G.spendBase = { v, coins };
+  const C = [], items = markItems().filter((i) => !i.owned && i.price > 0);
+  const gained = coins - G.spendBase.coins;
+  if (gained >= 20) { // a big coin moment on this page (a boss treasure, the star chest, the daily chest, the welcome gift)
+    const can = items.filter((i) => i.price <= coins && i.price > coins - gained).sort((a, b) => b.price - a.price)[0];
+    if (can) C.push({ id: 'fresh', kind: 'peek', slot: 'shop', key: can.key, price: can.price, taste: spendTaste(can.key) });
+    if (C.length) { spendOnce('fresh', 'home', C); return; }
+  }
+  if ((G.spendAsked && G.spendAsked.startsWith(v + '|enter')) || G.offerShownV === v) return; // (a paid offer had this visit: nothing more)
+  const M = shopMarkNow();
+  if (M.on && M.pick) C.push({ id: 'afford', kind: 'peek', slot: 'shop', key: M.pick.key, price: M.pick.price, taste: spendTaste(M.pick.key) });
+  const D = E.dailyDeal(w, today());
+  if (D && !D.done && D.price <= coins) C.push({ id: 'deal', kind: 'peek', slot: 'shop', key: D.key, price: D.price, was: D.was, taste: spendTaste(D.key) });
+  const wn = ROAD.worldOfId(Math.min(save.unlocked || 1, LEVELS.length)) + 1, hid = E.HEN_SKIN_ORDER.find((h) => E.HEN_SKINS[h] && E.HEN_SKINS[h].world === wn);
+  if (wn >= 2 && hid && !E.ownsHenSkin(w, hid) && storeItem('hen:' + hid, { wallet: w })) {
+    const price = upPrice(E.HEN_SKINS[hid].price);
+    C.push({ id: 'world', kind: 'walk', slot: 'shop', key: 'hen:' + hid, price, can: price <= coins, taste: 'looks', walker: (c, x, y, h, t, dir) => { c.save(); c.translate(x, y); if (dir < 0) c.scale(-1, 1); drawHenSkinPreview(c, hid, 0, -h * 0.5, h, t); c.restore(); } });
+  }
+  spendOnce('enter', 'home', C);
+}
 function markItems() {
   const w = save.wallet, tr = DR.dirState(save).trials || {}, items = [];
   for (const id of E.SKIN_ORDER) if (id !== 'classic') items.push({ key: 'skin:' + id, kind: 'skin', price: upPrice(E.SKINS[id].price), owned: (w.skins || []).includes(id), tried: (tr.skins || []).includes(id) });
@@ -3664,6 +3776,7 @@ function purseBtn(x, y, w, h, size) {
   const sc = purse.pop(), cx = x + w / 2, cy = y + h / 2, M = shopMarkNow();
   if (sc !== 1) { ctx.save(); ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.translate(-cx, -cy); }
   ui.button('shop', String(purse.shown()), x, y, w, h, { kind: 'gold', shimmer: M.on, icon: (c, X, Y, S) => { drawCoin(c, X, Y, S * 0.56, G.t); purse.at({ x: X, y: Y }); }, size });
+  spendFx.at('shop', { x, y, w, h }); // a spend moment's bubble opens under (or over) it
   if (M.on) { const r = Math.min(11 * ui.u, h * 0.26); markBadge(Math.min(x + w - r * 0.35, ui.A.x1 - r - 1), Math.max(y + r * 0.2, ui.A.y + r + 1), r, G.t); }
   if (sc !== 1) ctx.restore();
   if (M.on) G.shopBtn = { x, y, w, h, t: G.t }; // where the map's one-time hand points
@@ -5358,6 +5471,7 @@ function update(dt) {
     }
   }
   offerMoments();
+  spendTick(); // 0.8.17 the spend moments
   computeLayout();
   scrollHaptics();
   if (G.screen === 'wonder') { wonder.update(dt); return; } // WONDER: its own loop; the campaign world stands still
@@ -5566,7 +5680,7 @@ function lastEggMoment(sim) {
 const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1, spin: 1 };
 const SCENE_SCREENS = { title: 1, store: 1, practice: 1, levels: 1, spin: 1 }; // these paint a full themed scene (0.8.10: the map paints its own whole picture too, and the wash, drawn after it, dimmed its header and PLAY); the others keep the game behind and get a wash
 function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
-function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); purse.draw(ctx, ui.u, ui.A, drawCoin, ui); LAND_KIT.ui = ui; prizePop.draw(ctx, ui.u, ui.A, LAND_KIT); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
+function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); purse.draw(ctx, ui.u, ui.A, drawCoin, ui); spendDraw(); LAND_KIT.ui = ui; prizePop.draw(ctx, ui.u, ui.A, LAND_KIT); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
 function drawStoreScreen() { // the shop's toast floats over its scrolling list (like a clipped card, it records nothing)
   drawStore(ui, ctx, W_, H_, { ...storeState(), area: ui.A, adReady: adCd() === 0, adCooldownLeft: adCd(), adCoins: adCoins(), tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), featured: storeFeatured() }); { const ci = ui.rects.find((r) => r.tag === 'store:coinicon'); if (ci) purse.at({ x: ci.x + ci.w / 2, y: ci.y + ci.h / 2 }); } const n0 = ui.rects.length; drawToast(); ui.rects.length = n0; menuFx(); /* the shop paints its own backdrop: the effect drifts over it */
 }
@@ -5836,6 +5950,20 @@ function flipped(x, y, draw) {
 // which boosters this level has a use for (they lead the level card's row) and which it has none for (they come last)
 // a booster's lesson (level card): the one he owns, has never picked and this level has a use for; none in the first levels
 function boostTeach(L) { return earlyDays() ? null : boostUse(L).first.find((id) => E.ownedCount(save.wallet, id) > 0 && !(save.seen || {})['bu:' + id]) || null; }
+// 0.8.17 spend moment 'strip': before a boss, or on a level lost before, the booster that fits (not owned, the coins reach
+// it) hops onto the level card's strip and its price tag swings on it; while it runs one tap buys it with coins and arms it
+function stripSpot(L) {
+  if (G.li < 0 || earlyDays() || G.golden || !save.wallet) return null;
+  const m = spendFx.cur;
+  if (m && m.slot === 'strip' && m.lid === L.id && m.scr === G.screen) return { id: m.boost, xf: spendFx.hopXf('strip'), at: (r) => spendFx.at('strip', r), buy: !m.taken && spendFx.on('strip') };
+  if (G.screenT < 0.5 || G.screen !== 'intro') return null;
+  const a = DR.dirState(save).att[L.id], lost = !!(a && a.streak >= 1 && !(a.wins > 0)), boss = !!L.boss;
+  if (!lost && !boss) return null;
+  const pick = [...(lost && G.lastLoss ? [LOSS_BOOST[G.lastLoss]] : []), ...boostUse(L).first, boss ? 'stone' : 'nest'].find((b) => E.BOOSTERS[b] && E.BOOSTERS[b].price > 0 && E.ownedCount(save.wallet, b) === 0);
+  if (!pick || save.wallet.coins < E.BOOSTERS[pick].price) return null;
+  spendOnce('strip', 'intro', [{ id: 'strip', kind: 'hop', slot: 'strip', key: `strip:${L.id}:${pick}`, price: E.BOOSTERS[pick].price, lid: L.id, boost: pick, taste: 'power' }]);
+  return null;
+}
 function boostUse(L) {
   const foes = villainKinds(L).some((k) => (VILLAIN_INFO[k] || {}).group !== 'hazard'), thorns = (L.rings || []).some((r) => r.thorns && r.thorns.length);
   return { first: [foes && 'scare', thorns && 'snips'].filter(Boolean), last: [!foes && 'scare', !thorns && 'snips'].filter(Boolean) };
@@ -7857,7 +7985,7 @@ function drawLevelIntro(L, acc) {
   };
   const adOn = showBoost && !G.adBoost && !G.golden;
   const boostState = () => ({ wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t,
-    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: null, attn: stripAttn(L), s, scroll: G.boostPg && G.boostPg.lid === L.id ? G.boostPg : (G.boostPg = { lid: L.id, k: 0 }), ...boostUse(L), teach: boostTeach(L) });
+    ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: null, attn: spendFx.on('strip') ? null : stripAttn(L), s, scroll: G.boostPg && G.boostPg.lid === L.id ? G.boostPg : (G.boostPg = { lid: L.id, k: 0 }), ...boostUse(L), teach: boostTeach(L), spot: stripSpot(L) });
   // 0.8.17 (mykee: "an even more blinking effect so that the user will be able to point it out"): the strip blinks its rim
   // twice every 2.4 s and a shine runs over it (ui/store.js stripAttn), with a tapping hand on the first three level
   // cards of a session; once the player has touched the strip on this level it rests there for good. Calm: a steady rim.
@@ -9696,6 +9824,10 @@ function drawFailPage() {
   const FL = G.li >= 0 ? pageLead('fail', [lead ? { id: 'rewind', sys: 'rewind', kind: 'rescue', near: st.saved / st.target } : null, Hp0 ? { id: 'help', sys: 'director', kind: hk, near: 0.9, price: Hp0.price } : null, ...nearThings().map((c) => (c.id === 'spin' && cheer ? { ...c, kind: 'rescue' } : c))].filter(Boolean)) : { lead: null, order: [], held: [] };
   const top = FL.lead ? FL.lead.id : null, Hp = Hp0 && !FL.held.some((h) => h.id === 'help') ? Hp0 : null, prog = !Hp && !SP.banked(save) ? FL.order.find((c) => c.kind === 'progress') : null;
   const hotB = (() => { let o = []; if (hl >= 2 && (save.unlocked || 1) >= 6) for (const [n, b] of DR.HOT) if (hl >= n) o = b; return o; })(); // what the streak was worth
+  // 0.8.17 spend moments on this card (the Brain picks one): the booster that would have saved it, the Rewind that keeps a streak
+  const SC = [];
+  if (Hp && Hp.kind === 'buyBoost' && !Hp.bought && save.wallet.coins >= Hp.price) SC.push({ id: 'save', kind: 'hop', slot: 'failhelp', key: 'boost:' + Hp.id + '@' + G.level.id, price: Hp.price, art: null });
+  if (rew && coinR && hl >= 2 && save.wallet.coins >= price && !G.rewBuy) SC.push({ id: 'streak', kind: 'tag', slot: 'rewind', key: 'rewind:' + G.level.id + ':' + hl, price, tagArt: (c, x, y, h) => pictoFlame(c, x, y, h) });
   const build = (stH) => (s) => {
     const B = [];
     // why it failed: an icon and two or three words (the ribbon above says the same)
@@ -9724,6 +9856,7 @@ function drawFailPage() {
           ctx.save(); ctx.globalAlpha = 0.3 + 0.45 * p; ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.ellipse(ex, ey, es * (0.54 + 0.07 * p), es * (0.64 + 0.07 * p), 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
           drawEggIcon(ctx, ex, ey, es, 'slot');
           ctx.save(); ctx.globalAlpha = 0.25 + 0.4 * p; drawEggIcon(ctx, ex, ey - (save.calm ? 0 : (1 - p) * 3 * s), es * 0.9, 'alive'); ctx.restore();
+          spendFx.at('failhelp:slot', { x: ex - es / 2, y: ey - es * 0.6, w: es, h: es * 1.2 }); // (a spend moment's spark runs here: what the booster would have saved)
         } else drawEggIcon(ctx, ex, ey, es, 'slot');
       }
       ui.record({ x: mid - n * sp / 2, y: y + (sd ? EH / 2 - 13 : 7) * s, w: n * sp, h: 26 * s }, 'fail:eggs');
@@ -9739,13 +9872,20 @@ function drawFailPage() {
       const ax = x + 38 * s, ay = y + 39 * s;
       if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, ax, ay + 6 * s, 48 * s, G.t, {});
       else if (Hp.kind === 'freeHint') lampIcon(ctx, ax, ay, 60 * s); // the Pacer's free hint: the Hint button's lamp
-      else drawBoosterIcon(ctx, Hp.id, ax, ay, 56 * s, G.t);
+      else { // 0.8.17: a spend moment makes it hop in (drop, squash, settle)
+        const hx = spendFx.hopXf('failhelp');
+        if (hx) { ctx.save(); ctx.globalAlpha *= hx.a; ctx.translate(ax, ay + 28 * s + hx.dy * 56 * s); ctx.scale(hx.sx, hx.sy); ctx.translate(-ax, -ay - 28 * s); }
+        drawBoosterIcon(ctx, Hp.id, ax, ay, 56 * s, G.t);
+        if (hx) ctx.restore();
+        spendFx.at('failhelp', { x: ax - 28 * s, y: ay - 28 * s, w: 56 * s, h: 56 * s });
+      }
       const bw = Math.min(118 * s, w * 0.3), tx = x + 74 * s, tw = x + w - bw - 16 * s - tx;
       ui.text(Hp.label, tx, y + 26 * s, { size: 16.5 * s, color: ui.C.ink, maxW: tw, tag: 'fail:help' });
       const ln = wrapText(Hp.line, 12.5 * s, tw).slice(0, 2);
       ln.forEach((l, i) => ui.text(l, tx, y + 48 * s + i * 15 * s, { size: 12.5 * s, color: ui.C.ink2, maxW: tw, tag: 'fail:help' + i }));
       const lab = free ? 'FREE' : ad ? 'Watch' : String(Hp.price);
-      ui.button('help:go', lab, x + w - bw - 8 * s, y + 13 * s, bw, 52 * s, free ? { kind: 'primary', shimmer: top === 'help', size: 20 * s } : ad ? { kind: 'ad', ad: true, size: 17 * s } : { kind: save.wallet.coins >= Hp.price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s });
+      ui.button('help:go', lab, x + w - bw - 8 * s, y + 13 * s, bw, 52 * s, free ? { kind: 'primary', shimmer: top === 'help', size: 20 * s } : ad ? { kind: 'ad', ad: true, size: 17 * s } : { kind: save.wallet.coins >= Hp.price || Hp.bought ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s, ...(Hp.bought ? { disabled: true, keepFace: true } : {}) });
+      spendFx.at('failhelp:btn', { x: x + w - bw - 8 * s, y: y + 13 * s, w: bw, h: 52 * s });
       ui.record({ x, y, w, h: 78 * s }, 'panel:failhelp'); // (a panel: its own words and button sit on it)
     } });
     // row A: RETRY, the whole width, the biggest (one egg short with a Rewind to offer: Rewind takes that place, RETRY the row under it)
@@ -9765,7 +9905,7 @@ function drawFailPage() {
       B.push({ h, gap: hl >= 2 ? 4 * s : (lead ? (sd ? 10 : 14) : 12) * s, draw: (x, y, w) => {
         const hw = coinR ? (w - 10 * s) / 2 : w;
         ui.button('rewind', G.freeRewind ? 'Free rewind' : `Rewind ${REWIND_S}s`, x, y, hw, h, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: fs, shimmer: lead && top === 'rewind' } : { kind: 'ad', ad: true, size: fs, shimmer: lead && top === 'rewind' });
-        if (coinR) ui.button('rewind:coins', 'Rewind ' + price, x + hw + 10 * s, y, hw, h, { kind: save.wallet.coins >= price ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: fs });
+        if (coinR) { ui.button('rewind:coins', 'Rewind ' + price, x + hw + 10 * s, y, hw, h, { kind: save.wallet.coins >= price || G.rewBuy ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: fs, ...(G.rewBuy ? { disabled: true, keepFace: true } : {}) }); spendFx.at('rewind', { x: x + hw + 10 * s, y, w: hw, h }); }
       } });
     };
     if (lead) { rewRows(); retryRow(); } else { retryRow(); if (rew) rewRows(); }
@@ -9791,6 +9931,7 @@ function drawFailPage() {
     const roomU = (A.y1 - A.y - 30 * u) / u;
     stH = clamp(roomU - rest - 24, 130, 260);
   }
+  if (G.li >= 0 && G.screenT > 0.6) spendOnce('fail', 'fail', SC);
   const title = near ? 'So close!' : timeout ? 'Out of time!' : 'Too many eggs broke';
   const card = stackCard(title, build(stH), { ...(sd ? sd.cardO : { full: true }), ribbon: near ? '#e0882a' : '#5a82c8', minS: u, scroll: G.fscroll, grow: 1.2 });
   if (sd) {
@@ -10773,8 +10914,10 @@ function drawSpin() {
       const sh = k === 'coin' && !calm && G.t - (S.shortT || -9) < 0.4 ? Math.sin((G.t - S.shortT) * 40) * 4 * u : 0; // too few coins: the button shakes its head
       if (k === 'retry') ui.button('spin:retry', 'Try again', bx, by, bw, bh, W.retry === 'free' || ads.premium ? { kind: 'primary', shimmer: idle, size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, shimmer: idle, size: 22 * u, ...off });
       else if (k === 'ad') ui.button('spin:ad', ads.premium ? 'Free spin' : 'Spin', bx, by, bw, bh, ads.premium ? { kind: 'secondary', size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, size: 22 * u, ...off });
-      else ui.button('spin:coin', `Spin ${W.coin}`, bx + sh, by, bw, bh, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 22 * u, ...off });
+      else { ui.button('spin:coin', `Spin ${W.coin}`, bx + sh, by, bw, bh, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 22 * u, ...off }); spendFx.at('spin', { x: bx, y: by, w: bw, h: bh }); }
     });
+    // 0.8.17 spend moment 'spin': the villains took the last pull and a coin spin is in reach: a shine over its button, a tag swings on it
+    if (lost && idle && W.coin != null && save.wallet.coins >= W.coin && G.t - S.missT > 0.8) spendOnce('spin', 'spin', [{ id: 'spin', kind: 'tag', slot: 'spin', key: 'spin:' + today() + ':' + SP.state(save).t.coin, price: 0, tagArt: (c, x, y, h) => drawSlotIcon(c, x, y, h * 0.5, 0) }]);
   }
   ctx.restore();
   // ---- the nudge: a small hand taps the reel that stops next (no words; Calm: it only points)
@@ -11662,6 +11805,7 @@ if (DEV) window.__egg = {
   seaAnim, // v3.3: the octopus's and fishes' render state (QA strips)
   handle: () => handleEvents(),
   purse, // the coin-gain effect (QA strips: purse.state)
+  spendFx, // 0.8.17 the spend moments (QA strips: spendFx.cur)
   land, prizePop, // 0.8.17 the reward landing and the prize pop (QA strips: land.state, prizePop.state)
   overlaps: () => G.overlaps,
   // the "i" panel (tools/info-check.cjs, qa-overlap): the table, the kind finder, the portraits, and an opener for any screen

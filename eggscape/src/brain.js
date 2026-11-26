@@ -16,6 +16,7 @@
 // difficulty, never a timer, never an ask during play or inside a winning run.
 
 import { now as gameNow } from './clock.js'; // 0.8.17: a day that never goes back (moving the phone's date repeats nothing)
+import { earlyDays } from './director.js'; // nothing sold or advertised before level 3 is won
 const MIN = 60e3, DAY = 864e5;
 export const BRAIN = { gapLevels: 3, gapMin: 10, nudgeLevels: 1, backoffMax: 8, restDays: 1, richCoins: 600, poorCoins: 40, fanToday: 3, fanAll: 8, shyFrom: 18, flowWins: 3, cruiseWins: 6 };
 const dayKey = (now) => { const d = new Date(gameNow(now)); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
@@ -31,6 +32,7 @@ export function brainState(save) {
     restUntil: num(b.restUntil), // after a real-money purchase: no money asks until then
     videoNo: Math.floor(num(b.videoNo)), // offered videos the player turned down
     log: Array.isArray(b.log) ? b.log.slice(-30) : [],
+    fx: fxClean(b.fx), // the spend moments (spendPick below)
   };
   SAFE.add(save.brain);
   return save.brain;
@@ -56,13 +58,14 @@ export function model(save, ctx = {}) {
   return { stage, mood, purse, spender, video, taste, coins, unlocked, hot, here, videosToday: today, videosAll: all };
 }
 
-// ---- may the player be asked something now? 'money' = a paid offer popup, 'nudge' = a free or coin suggestion.
-// moment: 'home' | 'win' | 'fail' | 'intro' | 'shop' | 'play'. The shop never needs a gate: the player walked in.
+// ---- may the player be asked something now? 'money' = a paid offer popup, 'nudge' = a free or coin suggestion,
+// 'spend' = a spend moment (spendPick: one short animation on a control already on screen, never a popup).
+// moment: 'home' | 'win' | 'fail' | 'intro' | 'spin' | 'shop' | 'play'. The shop never needs a gate: the player walked in.
 export function gate(save, moment, ctx = {}) {
   const now = ctx.now || Date.now(), B = brainState(save), M = model(save, ctx);
-  const no = (why) => ({ money: false, nudge: false, why });
+  const no = (why) => ({ money: false, nudge: false, spend: false, why });
   if (moment === 'play') return no('never during play');
-  if (moment === 'shop') return { money: true, nudge: true, why: 'the player opened the shop' };
+  if (moment === 'shop') return { money: true, nudge: true, spend: true, why: 'the player opened the shop' };
   if (M.stage === 'new') return no('first levels: nothing is asked');
   const asks = B.asks, last = asks[asks.length - 1] || null, lastMoney = [...asks].reverse().find((a) => a.kind === 'money') || null;
   const noes = asks.filter((a) => a.kind === 'money' && a.res === 'no' && now - a.t < 7 * DAY).length;
@@ -73,7 +76,7 @@ export function gate(save, moment, ctx = {}) {
   else if (moment === 'win' && (M.mood === 'flow' || M.mood === 'cruising')) { money = false; why = 'a winning run is not interrupted'; }
   else if (lastMoney && (B.done - lastMoney.at < BRAIN.gapLevels * back || now - lastMoney.t < BRAIN.gapMin * MIN * back)) { money = false; why = noes ? `backing off after ${noes} no` : 'too soon after the last ask'; }
   else if (last && last.kind !== 'money' && B.done - last.at < BRAIN.nudgeLevels) { money = false; why = 'one ask at a time'; }
-  return { money, nudge, why: money ? why : nudge ? why : why + ', and one ask at a time' };
+  return { money, nudge, spend: spendOk(save, B, now), why: money ? why : nudge ? why : why + ', and one ask at a time' };
 }
 
 // ---- how well each offer fits this player (multiplies the offer engine's fit; 1 = neutral). Prices never change.
@@ -117,6 +120,72 @@ export function shopPlan(save, ctx = {}) {
   const fav = M.taste === 'looks' ? ['set', 'hen', 'skin'] : M.taste === 'power' ? ['chick', 'kit', 'boost'] : ['chick', 'hen', 'skin', 'kit'];
   for (const k of fav) take(items.filter((i) => i.kind === k && (k === 'boost' || k === 'kit' ? true : free(i))).sort(cheap)[0], 'You can get it now');
   return { hero, order, forYou: pick, model: M };
+}
+
+// ---- spend moments (0.8.17, mykee: "come up with points or situations where users are more likely to spend coins and
+// build proper animations ... for those scenarios"). One short animation (under 1.5 s, any tap skips it) on a control
+// already on screen: the purse and the Shop button on home and the map, the fail card's help and its coin Rewind, the
+// level card's booster strip, the keep card, the Lucky Spin's coin button. Never a popup, never a new button, never a
+// different price. The Brain picks at most ONE a screen visit, and only when the gate says spend:
+//   never during play; nothing before level 3 is won (director.js earlyDays) nor for a new player; nothing while the
+//   rest after a real-money purchase runs; SPEND.restLevels levels of rest after a coin purchase made from a moment;
+//   a moment left untaken is a "no": each "no" in a row doubles the levels before the next (1, 2, 4, 8), and the same
+//   thing is never shown twice (sameMax); SPEND.perDay a day at most.
+// ids, the first that fits leads: save (the booster that would have saved a near miss), streak (the coin Rewind that
+// keeps a win streak), keep (a free try ended), deal (today's deal, a returning player), fresh (new coins reach
+// something), world (a new world's outfit), afford (the purse crossed a wanted thing's price), strip (the level card's
+// booster for a boss or a lost level), spin (one more coin spin after a lost pull), chick (a locked chick the coins reach)
+export const SPEND = { restLevels: 2, backoffMax: 8, sameMax: 1, perDay: 6, rank: { save: 0, streak: 1, keep: 2, deal: 3, fresh: 4, world: 5, afford: 6, strip: 7, spin: 8, chick: 9 } };
+function fxClean(f) {
+  const o = f && typeof f === 'object' ? f : {};
+  const last = o.last && typeof o.last.id === 'string' ? { id: o.last.id, key: String(o.last.key || ''), at: Math.floor(num(o.last.at)), t: num(o.last.t), res: o.last.res === 'yes' || o.last.res === 'no' ? o.last.res : '' } : null;
+  const seen = {}; if (o.seen && typeof o.seen === 'object') for (const k of Object.keys(o.seen).slice(-120)) seen[k] = Math.floor(num(o.seen[k]));
+  return { visit: typeof o.visit === 'string' ? o.visit : '', last, noes: Math.min(4, Math.floor(num(o.noes))), restAt: Number.isFinite(o.restAt) ? o.restAt : -1, seen, day: typeof o.day === 'string' ? o.day : '', n: Math.floor(num(o.n)) };
+}
+// the levels to wait after the last moment: none after a "yes", 1, 2, 4, 8 after "no"s in a row
+export const spendGap = (noes) => (noes > 0 ? Math.min(SPEND.backoffMax, 2 ** (noes - 1)) : 0);
+function spendOk(save, B, now) {
+  const F = B.fx;
+  if (earlyDays(save)) return false; // nothing before level 3 is won
+  if (now < B.restUntil) return false;
+  if (F.restAt >= 0 && B.done - F.restAt < SPEND.restLevels) return false;
+  if (F.last && F.last.res !== 'yes' && B.done - F.last.at < spendGap(F.noes || (F.last.res === 'no' ? 1 : 0))) return false;
+  if (F.day === dayKey(now) && F.n >= SPEND.perDay) return false;
+  return true;
+}
+// cands: [{ id (a SPEND.rank key), key (what it shows: 'boost:stone', 'skin:dino', 'strip:14:stone' ...), price, taste? ('looks' | 'power') }]
+// ctx: { now, visit (a name for this screen visit: one moment a visit) } -> { pick: cand | null, why }
+export function spendPick(save, moment, cands, ctx = {}) {
+  const now = ctx.now || Date.now(), B = brainState(save), F = B.fx;
+  const list = (Array.isArray(cands) ? cands : []).filter((c) => c && SPEND.rank[c.id] != null);
+  if (!list.length) return { pick: null, why: 'nothing to show' };
+  if (ctx.visit && F.visit === ctx.visit) return { pick: null, why: 'one a visit' };
+  const G = gate(save, moment, ctx);
+  if (!G.spend) return { pick: null, why: earlyDays(save) ? 'nothing before level 3 is won' : G.why === 'ok' || G.money || G.nudge ? 'spend moments are resting' : G.why };
+  const M = model(save, ctx);
+  const fresh = list.filter((c) => (F.seen[c.id + ':' + (c.key || '')] || 0) < SPEND.sameMax);
+  if (!fresh.length) return { pick: null, why: 'shown before' };
+  const score = (c) => SPEND.rank[c.id] - (c.taste && c.taste === M.taste ? 0.5 : 0);
+  const pick = fresh.slice().sort((a, b) => score(a) - score(b))[0];
+  return { pick, why: `${pick.id} leads of ${fresh.length}` };
+}
+// what happened to a moment: 'show' (it played), 'take' (the player went for it), 'no' (the visit ended without),
+// 'buy' (a coin purchase made from it: the moments rest SPEND.restLevels levels)
+export function spendNote(save, event, data = {}, now = Date.now()) {
+  const B = brainState(save), F = B.fx;
+  if (event === 'show') {
+    const d = dayKey(now), k = String(data.id) + ':' + String(data.key || '');
+    F.visit = String(data.visit || ''); F.last = { id: String(data.id), key: String(data.key || ''), at: B.done, t: now, res: '' };
+    F.seen = { ...F.seen, [k]: (F.seen[k] || 0) + 1 };
+    if (F.day !== d) { F.day = d; F.n = 0; }
+    F.n++;
+  } else if (event === 'take' || event === 'buy') {
+    if (F.last && !F.last.res) F.last.res = 'yes';
+    F.noes = 0;
+    if (event === 'buy') F.restAt = B.done;
+  } else if (event === 'no') {
+    if (F.last && !F.last.res) { F.last.res = 'no'; F.noes = Math.min(4, F.noes + 1); }
+  }
 }
 
 // ---- what happened
