@@ -1,60 +1,21 @@
-// Bandit the raccoon IN PLAY (0.8.17, L6): his own art (render/raccoon.js, never redrawn here) driven by the sim
-// (sim/bandit.js). He stands on the yard under the vault's lower-left side; his near arm reaches up to the mouth of the
-// gap he goes through and from there on a bent arm (drawn here, in his fur and ink) runs onto the outer channel's floor
-// to his paw. He is drawn after the basket and BEFORE the rings, so the ring's edge closes over his arm when it pinches.
-//   drawBandit(ctx, sim, t, k, calm)     world space (y up, metres), k = px per metre
-//   bandHides(sim, egg)                  the eggs he draws himself (in his sack, hugged while he stuffs it)
-//   banditEvent(ev, fx, U)               sounds, popups and tips (U: { popup, audio, once, hitStop, calm })
-//   drawBanditEmblem / drawBanditCard    the boss bar chip and the intro portrait
-// Calm (save.calm): no shake, no flash, the telegraph mark does not pulse.
-import { RACCOON_M, raccoonPose, raccoonBlend, drawRaccoon, raccoonPaw } from './raccoon.js';
-import { BAND } from '../sim/bandit.js';
+// Bandit the raccoon IN PLAY (0.8.17, L6; 0.8.18: on the rings): his own art (render/raccoon.js) driven by the sim
+// (sim/bandit.js). On the yard (coming in, the crouch, the catch, beaten in his sack) he is drawn whole before the rings;
+// on a ring he sits on its floor (drawBanditPerch, inner face) in two layers: his tail behind the rings, the rest of him
+// (and the faint arrow of his crank) after the rings and the eggs.
+//   drawBandit(ctx, sim, t, k, calm, layer)  world space (y up, metres), k = px per metre; layer 'back' | 'front'
+//   bandHides(sim, egg)                      the eggs he draws himself (in his sack, hugged after a grab)
+//   banditEvent(ev, fx, U)                   sounds and a few short popups (U: { popup, audio, hitStop, calm })
+//   drawBanditPerch                          him on a ring (also the level card's actor, howact.js)
+//   drawBanditEmblem / drawBanditCard        the boss bar chip and the intro portrait
+// Calm (save.calm): no shake, no pulsing; poses are not blended.
+import { RACCOON_M, raccoonPose, raccoonBlend, drawRaccoon, CRANK_PULL } from './raccoon.js';
 import { RING_TH } from '../sim/geom.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const ss = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
-const INK = '#221622', FUR = '#9494aa', PAW = '#40394e', PAWHI = '#5d5570', HURT = '#ef4634';
-const ICE = { fur: '#aec8e0', paw: '#8aa6c2', ink: '#5a7a96' }; // his colours iced over (raccoon.js mixes 55% toward #bfe6ff)
+const INK = '#221622';
 
-// his pose this frame, from the sim's phase: [state, u, extra pose fields, draw options]
-function look(sim, B, t) {
-  const X = sim.bx && sim.bx.boss, P = (k) => clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1);
-  const o = { eye: 'normal' }, add = {};
-  let st = 'idle', u = 0;
-  switch (B.ph) {
-    case 'sneak': st = 'sneak'; u = 0.001 + B.odo / 0.36; break;
-    case 'dash': st = 'sneak'; u = 0.001 + B.odo / 0.5; o.eye = 'lock'; break;
-    case 'scared': st = Math.abs(sim.bandGeo().x0 - B.x) > 0.03 ? 'sneak' : 'idle'; u = 0.001 + B.odo / 0.4; o.eye = 'wide'; add.sweat = 1; add.ear = 0.8; break;
-    case 'peek': st = 'peek'; u = P(); break;
-    case 'reach': st = 'reach'; u = 0.14 + 0.3 * clamp(B.ext / Math.max(0.1, sim.bandPath(B).L1 + sim.bandPath(B).L2), 0, 1); break;
-    case 'grope': case 'tease': st = 'reach'; u = 0.6; break;
-    case 'strain': st = 'reach'; u = 0.6; add.sweat = 1; add.brow = -0.6; add.jaw = 0.4; add.teeth = 1; break;
-    case 'yank': case 'retract': st = 'reach'; u = 0.6; break;
-    case 'stuff': st = 'grab'; u = 0.55 * P(); break;
-    case 'laugh': st = 'laugh'; break;
-    case 'huh': st = 'idle'; o.eye = 'wide'; add.brow = -0.5; add.smile = -0.2; break;
-    case 'miss': st = 'idle'; add.brow = -0.7; add.smile = -0.4; break;
-    case 'pinch': st = 'pinched'; u = 0.16 * P(); break;
-    case 'yelp': st = 'pinched'; u = 0.16 + 0.84 * P(); break;
-    case 'stun': st = 'dizzy'; u = 0; break;
-    case 'whistle': st = 'whistle'; u = P(); break;
-    case 'dizzy': st = 'dizzy'; u = P(); break;
-    case 'defeated': st = 'defeated'; u = clamp((sim.t - (B.t0 ?? sim.t)) / 2, 0, 1); break;
-  }
-  if (B.end === 'win' && B.ph !== 'defeated') { st = 'idle'; add.brow = -0.8; add.smile = -0.6; add.ear = 0.6; } // he sulks
-  if (B.end === 'lose' && B.ph !== 'defeated') st = 'laugh';
-  return { st, u, o, add, frozen: (X && X.stk > 0) || B.fz > 0 || B.held };
-}
-
-// the rig point (forward, down) of a world point, from his feet
-const rigOf = (B, gY, x, y, m) => [((x - B.x) * B.face * 100) / m, (-(y - gY) * 100) / m];
-// put the art's near paw exactly on a rig point (the inverse of raccoon.js drawRaccoon's torso frame)
-function pawTo(p, w) {
-  const sx = 1 + p.sq * 0.7, sy = 1 - p.sq, cr = Math.cos(p.rot), sr = Math.sin(p.rot);
-  const X = w[0] / sx - p.dx, Y = w[1] / sy + p.by;
-  p.a0x = X * cr + Y * sr; p.a0y = -X * sr + Y * cr;
-}
 // the art's own px point of a torso-frame point (raccoon.js toPx), at feet (0, 0)
 function toPx(p, lx, ly, u, face) {
   const sx = 1 + p.sq * 0.7, sy = 1 - p.sq, cr = Math.cos(p.rot), sr = Math.sin(p.rot);
@@ -65,117 +26,155 @@ const FZ = { on: false, t: 0 };
 // thief, so that perched on a ring he is about 1.7 channels tall (a channel is 0.89 m; he sits about 85 rig units high)
 export const BANDIT_SCALE = 1.7;
 const PLAY_M = RACCOON_M * BANDIT_SCALE; // metres per 100 rig units in play
-// On the yard (the 0.8.17 behaviour: he stands under the vault and reaches up through a gap) he is as big as the room under
-// the outer ring at his spot allows, so his head never goes behind the ring: near full size out at the side, smaller in
-// under the vault by the basket. Never smaller than the 0.8.17 thief, never bigger than BANDIT_SCALE.
+// On the yard he is as big as the room under the outer ring at his spot allows, so his head never goes behind the ring:
+// near full size out at the side, smaller in under the vault. Never smaller than the 0.8.17 thief, never bigger than
+// BANDIT_SCALE.
 export function banditYardScale(sim, x) {
   const ro = sim.bandOuter().r + RING_TH / 2, under = Math.abs(x) < ro ? -Math.sqrt(ro * ro - x * x) - sim.groundY : 99;
   return clamp((0.9 * under) / 1.22, 1, BANDIT_SCALE);
 }
+// ---------- in play (0.8.18): on the yard while he comes in, ON a ring's floor while he works it
+const D2R = Math.PI / 180;
+const YARD_PH = new Set(['idle', 'sneak', 'crouch', 'dash', 'stuff', 'laugh', 'scared', 'stun', 'defeated']);
+// his yard pose this frame: [state, u, extra pose fields, draw options]
+function lookYard(sim, B) {
+  const P = () => clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1), o = { eye: 'normal' }, add = {};
+  let st = 'idle', u = 0;
+  switch (B.ph) {
+    case 'sneak': st = 'sneak'; u = 0.001 + B.odo / 0.36; break;
+    case 'dash': st = 'sneak'; u = 0.001 + B.odo / 0.5; o.eye = 'lock'; break;
+    case 'scared': st = Math.abs(sim.bandGeo().x0 - B.x) > 0.03 ? 'sneak' : 'idle'; u = 0.001 + B.odo / 0.4; o.eye = 'wide'; add.sweat = 1; add.ear = 0.8; break;
+    case 'crouch': { // he looks up at the ring, eyes lock, then sinks into a crouch: the telegraph before the leap
+      const q = P(), dn = ss(0.45, 1, q);
+      st = 'peek'; u = 0.3 * ss(0, 0.4, q); o.eye = 'lock';
+      Object.assign(add, { looky: -0.9, look: 0.7, hr: -0.3 * ss(0, 0.3, q), by: 34 - 9 * dn, sq: 0.15 * dn, ear: -0.4, tail: 0.5 + 0.6 * dn, tongue: 0 });
+      break;
+    }
+    case 'stuff': st = 'grab'; u = 0.55 * P(); break;
+    case 'laugh': st = 'laugh'; break;
+    case 'stun': st = 'dizzy'; u = 0; break;
+    case 'defeated': st = 'defeated'; u = clamp((sim.t - (B.t0 ?? sim.t)) / 2, 0, 1); break;
+  }
+  if (B.end === 'win' && B.ph !== 'defeated') { st = 'idle'; add.brow = -0.8; add.smile = -0.6; add.ear = 0.6; } // he sulks
+  if (B.end === 'lose' && B.ph !== 'defeated') st = 'laugh';
+  return { st, u, o, add };
+}
+// on a ring: [state, u, pose overrides, options]
+function lookPerch(sim, B, t) {
+  const P = clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1), add = {}, o = { eye: 'normal' };
+  let st = 'sit', u = 0;
+  switch (B.ph) {
+    case 'spit': Object.assign(add, spitPose(P, t)); o.eye = P > 0.55 ? 'lock' : 'normal'; break;
+    case 'crank': st = 'crank'; u = 0.001 + (B.cr * 100) / (PLAY_M * CRANK_PULL); break;
+    case 'reach': st = 'reach'; u = 0.82 * P; o.eye = 'lock'; o.toW = { x: B.px, y: B.py }; break;
+    case 'strain': st = 'reach'; u = 0.86 + 0.04 * Math.sin(t * 20); o.toW = { x: B.px, y: B.py }; Object.assign(add, { sweat: 1, brow: -0.6, jaw: 0.4, teeth: 1, tongue: 0 }); break;
+    case 'grab': st = 'grab'; u = P; o.toW = { x: B.px, y: B.py }; o.hug = true; break;
+    case 'shaken': st = 'shaken'; u = B.hurt ? 1 : 0.45; o.eye = B.hurt ? 'squeeze' : 'wide'; break;
+    case 'whistle': st = 'whistle'; u = P; break;
+    case 'perchStun': Object.assign(add, { spiral: 1, stars: 3, lid: 0, jaw: 0.35, tongue: 1, ta: 1.3, smile: -0.3 }); break;
+    case 'cower': Object.assign(add, { ear: 1, sweat: 1, brow: -0.8, pup: 0.6, smile: -0.5, by: 21 }); o.eye = 'wide'; break;
+  }
+  if (B.end === 'win') { st = 'sit'; Object.assign(add, { brow: -0.8, smile: -0.6, ear: 0.6, lid: 0.4 }); }
+  if (B.end === 'lose') { st = 'sit'; Object.assign(add, { happy: 1, jaw: 0.7, teeth: 1, smile: 1 }); }
+  return { st, u, add, o };
+}
+// the telegraph before a crank: both paws to his mouth, a "ptoo" into them, then rubbing them together, eyes on the ring
+function spitPose(q, t) {
+  const up = ss(0, 0.25, q) * (1 - ss(0.5, 0.62, q)), pt = ss(0.3, 0.38, q) * (1 - ss(0.44, 0.55, q)), rub = ss(0.55, 0.65, q), w = Math.sin(t * 22) * rub;
+  return {
+    a0x: lerp(14, 11, up) + 3 * w, a0y: lerp(-20, -16, up) + lerp(0, 8, rub) - 1.5 * w, a1x: lerp(25, 19, up) - 3 * w, a1y: lerp(-19, -16, up) + lerp(0, 8, rub) + 1.5 * w,
+    pucker: up * (1 - pt), cheek: 0.6 * up, jaw: 0.5 * pt, g0: 0.3, g1: 0.3, brow: 0.5 + 0.45 * rub, look: 0.9, looky: 0.6 * rub, smile: 0.3 + 0.4 * rub, hr: -0.1 * up + 0.12 * rub, lid: 0.15 + 0.15 * rub,
+  };
+}
+const lerp = (a, b, k) => a + (b - a) * k;
+// the faint arrow along his ring the way he will turn it (the crank's telegraph), sliding his way while he cranks
+function crankArrow(ctx, sim, B, t, k, calm) {
+  const ring = sim.rings[B.ri], P = clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1), al = B.ph === 'spit' ? ss(0.1, 0.6, P) : 1;
+  if (!ring || al <= 0) return;
+  const r = ring.r, a0 = B.pa - B.side * 6 * D2R, a1 = B.pa - B.side * 62 * D2R, lo = Math.min(a0, a1), hi = Math.max(a0, a1), head = B.dir > 0 ? hi : lo;
+  const pulse = calm ? 0.8 : 0.65 + 0.35 * Math.sin(t * 5);
+  ctx.save(); ctx.lineCap = 'round';
+  ctx.globalAlpha *= 0.55 * al * pulse;
+  ctx.strokeStyle = '#ffdc7a'; ctx.lineWidth = RING_TH * 0.42;
+  const dash = 0.34, gap = 0.22, off = calm ? 0 : (((t * 0.9 * B.dir) % (dash + gap)) + (dash + gap)) % (dash + gap);
+  ctx.setLineDash([dash, gap]); ctx.lineDashOffset = (B.dir > 0 ? -1 : 1) * off * 1;
+  ctx.beginPath(); ctx.arc(0, 0, r, lo, hi); ctx.stroke(); ctx.setLineDash([]);
+  // the head: a chevron on the ring
+  const hx = r * Math.cos(head), hy = r * Math.sin(head), tx = -Math.sin(head) * B.dir, ty = Math.cos(head) * B.dir, nx = Math.cos(head), ny = Math.sin(head), L = 0.42, W = 0.3;
+  ctx.fillStyle = '#ffdc7a'; ctx.beginPath(); ctx.moveTo(hx + tx * L, hy + ty * L); ctx.lineTo(hx + nx * W, hy + ny * W); ctx.lineTo(hx - nx * W, hy - ny * W); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+// the eggs in his sack peek out over its neck (drawn first: the sack goes over them); p is his pose, u px per rig unit
+function sackEggs(ctx, B, p, u, face) {
+  const n = B.sack.length;
+  if (!n || B.ph === 'defeated') return;
+  const sk = toPx(p, p.skx, p.sky, u, face);
+  for (let i = 0; i < Math.min(4, n); i++) egg(ctx, sk.x + (i - (Math.min(4, n) - 1) / 2) * 11 * u, sk.y - 22 * u - (i % 2) * 3 * u, 17 * u, (i - 1.5) * 0.25);
+}
 
 export function bandHides(sim, e) {
   const B = sim.band;
-  return !!B && (B.sack.includes(e.id) || (B.ph === 'stuff' && B.eid === e.id));
+  return !!B && (B.sack.includes(e.id) || ((B.ph === 'stuff' || B.ph === 'grab') && B.eid === e.id));
 }
 
-export function drawBandit(ctx, sim, t, k, calm) {
+// layer 'back' (before the rings): Bandit on the yard whole, or the tail of a perched Bandit that hangs behind his ring;
+// layer 'front' (after the rings and the eggs): the crank arrow and the rest of him
+export function drawBandit(ctx, sim, t, k, calm, layer = 'back') {
   const B = sim.band;
   if (!B) return;
-  const gY = sim.groundY, M = RACCOON_M * banditYardScale(sim, B.x), s = M * k, u = s / 100, L = look(sim, B, t);
-  if (L.frozen && !FZ.on) { FZ.on = true; FZ.t = t; } else if (!L.frozen) FZ.on = false;
+  const X = sim.bx && sim.bx.boss, frozen = !!((X && X.stk > 0) || B.fz > 0 || B.held);
+  if (frozen && !FZ.on) { FZ.on = true; FZ.t = t; } else if (!frozen) FZ.on = false;
   const tt = FZ.on ? FZ.t : t;
-  const path = sim.bandPath(B), inArm = (B.ph === 'reach' || B.ph === 'grope' || B.ph === 'tease' || B.ph === 'strain' || B.ph === 'yank' || B.ph === 'retract' || B.ph === 'pinch') && B.ext > 0;
-  const opt = {};
-  const paw = sim.bandPaw(B), out = inArm && B.ext > path.L1; // the paw is past the gap's mouth: the bent arm runs on from there
-  const tgt = out ? path.G0 : paw;
-  if (inArm || B.ph === 'yelp') opt.to = rigOf(B, gY, tgt.x, tgt.y, M);
-  let p = raccoonPose(L.st, tt, L.u, opt);
-  Object.assign(p, L.add);
-  if (inArm) pawTo(p, opt.to); // exact: the arm meets the bent part at the gap's mouth
-  p = calm ? p : raccoonBlend('bandit', p, t, inArm ? 40 : 12);
-  if (inArm) pawTo(p, opt.to);
-  const ice = L.frozen, face = B.face;
-  // the telegraph: a dashed mark on the gap he is eyeing, and the "!" over his head
-  if (B.ph === 'peek' && !sim.state.startsWith('w')) {
-    const ring = sim.bandOuter(), q = clamp(1 - B.t / B.dur, 0, 1), pulse = calm ? 1 : 0.75 + 0.25 * Math.sin(t * 12), r = 0.42 + (calm ? 0 : 0.08 * (1 - q));
-    const gx = ring.r * Math.cos(B.ga), gy = ring.r * Math.sin(B.ga);
-    ctx.save(); ctx.lineWidth = 3 / k; ctx.setLineDash([7 / k, 5 / k]); ctx.strokeStyle = `rgba(255,207,106,${0.9 * pulse})`;
-    ctx.beginPath(); ctx.arc(gx, gy, r, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = `rgba(255,140,60,${0.18 * pulse})`; ctx.fill(); ctx.restore();
+  if (YARD_PH.has(B.ph)) { if (layer === 'back') drawYard(ctx, sim, B, tt, k, calm, frozen); return; }
+  const P = clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1), ring = sim.rings[B.ri];
+  if (!ring) return;
+  const base = { face: B.face, inner: true, layer, frozen, calm, id: 'bandit', rate: 14, eye: 'normal' };
+  if (B.ph === 'climb') { // a leap from the yard to the outside of the rim, then the haul over it onto the floor
+    const g = sim.groundY, F = B.from || { x: B.x, y: g }, thP = -Math.PI / 2 - B.pa, ys = banditYardScale(sim, F.x) / BANDIT_SCALE, L = 0.34;
+    if (P < L) {
+      const v = P / L, e = ss(0, 1, v), rr = ring.r + RING_TH / 2 + 0.05, H = { x: rr * Math.cos(B.pa) - 0.25, y: rr * Math.sin(B.pa) - 0.9 };
+      const at = { x: lerp(F.x, H.x, e), y: lerp(F.y, H.y, e) + 1.1 * Math.sin(v * Math.PI) };
+      drawBanditPerch(ctx, ring.r, B.pa, tt, k, 'hop', 0.22 + 0.4 * v, { ...base, at, th: thP * ss(0.3, 1, v), sc: lerp(ys, 1, e), opt: { h: 0 }, eye: 'lock', id: null });
+      return;
+    }
+    drawBanditPerch(ctx, ring.r, B.pa, tt, k, 'climb', 0.04 + 0.96 * ss(0, 1, (P - L) / (1 - L)), { ...base, id: null });
+    return;
   }
-  // world -> his px space (y down, origin at his feet)
-  ctx.save();
-  ctx.translate(B.x, gY); ctx.scale(1 / k, -1 / k);
-  const W = (x, y) => ({ x: (x - B.x) * k, y: -(y - gY) * k });
-  try {
-    // the eggs in his sack peek out over its neck (drawn first: the sack and his tail go over them)
-    const n = B.sack.length;
-    if (n && B.ph !== 'defeated') {
-      const sk = toPx(p, p.skx, p.sky, u, face);
-      for (let i = 0; i < Math.min(4, n); i++) {
-        const ex = sk.x + (i - (Math.min(4, n) - 1) / 2) * 11 * u, ey = sk.y - 22 * u - (i % 2) * 3 * u;
-        egg(ctx, ex, ey, 17 * u, (i - 1.5) * 0.25);
-      }
-    }
-    // the art's own paw at the gap's mouth is hidden: the bent arm goes on from there
-    const G0 = out ? W(path.G0.x, path.G0.y) : null, hidePaw = out && B.ph !== 'yelp';
-    if (hidePaw) { ctx.save(); ctx.beginPath(); ctx.rect(-4000, -4000, 8000, 8000); ctx.moveTo(G0.x + 11 * u, G0.y); ctx.arc(G0.x, G0.y, 11 * u, 0, TAU); ctx.clip('evenodd'); }
-    drawRaccoon(ctx, 0, 0, s, tt, p, { face, frozen: ice ? 1 : 0, eye: L.o.eye, egg: B.ph === 'stuff' ? undefined : false });
-    if (hidePaw) ctx.restore();
-    if (hidePaw) {
-      // the bent arm: from a little back along his straight arm, through the gap's mouth, onto the floor, along it to the paw
-      const sh = toPx(p, -7, -13, u, face), dx = G0.x - sh.x, dy = G0.y - sh.y, dl = Math.hypot(dx, dy) || 1;
-      const pts = [[G0.x - (dx / dl) * 14 * u, G0.y - (dy / dl) * 14 * u], [G0.x, G0.y]];
-      const k1 = clamp((B.ext - path.L1) / path.L2, 0, 1), G1 = W(path.G0.x + (path.G1.x - path.G0.x) * k1, path.G0.y + (path.G1.y - path.G0.y) * k1);
-      pts.push([G1.x, G1.y]);
-      const m = Math.ceil(Math.abs(B.arc) * path.ri / 0.18);
-      for (let i = 1; i <= m; i++) { const a = B.ga + (B.arc * i) / m, q = W(path.ri * Math.cos(a), path.ri * Math.sin(a)); pts.push([q.x, q.y]); }
-      const hurt = B.ph === 'pinch';
-      armTo(ctx, pts, u, ice, hurt, B.eid ? 1 : 0, calm ? 0 : t);
-      if (hurt) { // the ring's edge across his arm: a jolt of lines where it bites
-        const ring = sim.bandOuter(), c = W(ring.r * Math.cos(B.ga), ring.r * Math.sin(B.ga));
-        ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 2.2 * Math.max(1, u * 3);
-        for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + 0.3, r0 = 10 * u * 3, r1 = r0 + 9 * u * 3; ctx.beginPath(); ctx.moveTo(c.x + Math.cos(a) * r0, c.y + Math.sin(a) * r0); ctx.lineTo(c.x + Math.cos(a) * r1, c.y + Math.sin(a) * r1); ctx.stroke(); }
-      }
-    }
-    // a question mark when he lost the gap; the stars of a stun are the art's own
-    if (B.ph === 'huh') bubble(ctx, toPx(p, p.hx + 30, p.hy - 64, u, face), 13 * u * 2.2, '?');
-    if (B.ph === 'peek' && B.t / B.dur < 0.75) bubble(ctx, toPx(p, p.hx + 30, p.hy - 64, u, face), 13 * u * 2.2, '!');
-  } finally { ctx.restore(); }
+  if (B.ph === 'hop') { // the hop to his next perch: up, over the vault's floor, down onto the other ring
+    const F = B.from || { ri: B.ri, pa: B.pa }, r0 = sim.bandFloor(F.ri), r1 = sim.bandFloor(B.ri), e = ss(0.18, 0.78, P);
+    const A = { x: r0 * Math.cos(F.pa), y: r0 * Math.sin(F.pa) }, C = { x: r1 * Math.cos(B.pa), y: r1 * Math.sin(B.pa) };
+    const th0 = -Math.PI / 2 - F.pa, th1 = -Math.PI / 2 - B.pa, at = { x: lerp(A.x, C.x, e), y: lerp(A.y, C.y, e) + 1.4 * Math.sin(e * Math.PI) };
+    const flip = P > 0.5 ? B.face : -B.face; // he turns in the air to face down his new slope
+    drawBanditPerch(ctx, ring.r, B.pa, tt, k, 'hop', P, { ...base, face: flip, at, th: lerp(th0, th1, e), opt: { h: 0 }, id: null });
+    return;
+  }
+  if (B.ph === 'fall') { // the third hurt: he loses his grip and goes over backwards, down to the yard
+    const F = B.from || sim.bandPerchPt(B), g = sim.groundY, v = ss(0, 1, P), x1 = B.lx ?? F.x;
+    const at = { x: lerp(F.x, x1, v), y: lerp(F.y, g + 0.25, P * P) + 1.2 * Math.sin(Math.min(1, P * 1.6) * Math.PI) * (1 - P) };
+    drawBanditPerch(ctx, ring.r, B.pa, tt, k, 'fall', P, { ...base, at, th: (-Math.PI / 2 - B.pa) * (1 - v), id: null, layer: layer === 'back' ? 'back' : 'front' });
+    return;
+  }
+  const Lk = lookPerch(sim, B, t);
+  if (layer === 'front' && (B.ph === 'spit' || B.ph === 'crank') && !sim.state.startsWith('w') && !frozen) crankArrow(ctx, sim, B, t, k, calm);
+  // his eyes follow the egg nearest him on his floor while he sits
+  let eyeW = null;
+  if (Lk.st === 'sit') { let bd = 9; for (const e of sim.aliveEggs()) { if (e.hc || sim.channelOf(e) !== B.ri) continue; const p = e.body.getPosition(), q = sim.bandPerchPt(B), d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; eyeW = { x: p.x, y: p.y }; } } }
+  const o = { ...base, add: Lk.add, eye: frozen ? 'normal' : Lk.o.eye, toW: Lk.o.toW, eyeW, egg: Lk.o.hug ? undefined : false, under: (c, p, u, face) => sackEggs(c, B, p, u, face) };
+  if (calm) o.id = null;
+  if (layer === 'back') { MEMP.p = drawBanditPerch(ctx, ring.r, B.pa, tt, k, Lk.st, Lk.u, o); MEMP.t = t; return; }
+  drawBanditPerch(ctx, ring.r, B.pa, tt, k, Lk.st, Lk.u, { ...o, blended: MEMP.t === t ? MEMP.p : null });
 }
-// the bent arm along pts (px, y down: from the gap's mouth on) and his paw at its end; shared with the level card (howact.js)
-function armTo(ctx, pts, u, ice, hurt, hold, t) {
-  const lw = Math.max(2.3, 1.15 / u) * u, wd = 9.5 * u;
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  // one smooth sleeve: the corners at the gap's mouth and on the floor are rounded off (mid-point curves), never kinked
-  const line = () => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length - 1; i++) ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2); ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]); };
-  line(); ctx.lineWidth = wd + lw * 2; ctx.strokeStyle = ice ? ICE.ink : INK; ctx.stroke();
-  line(); ctx.lineWidth = wd; ctx.strokeStyle = ice ? ICE.fur : FUR; ctx.stroke();
-  // his paw (the art's own: fingers and a thumb): spread and groping, curled round an egg he holds, red and throbbing when pinched
-  const H = pts[pts.length - 1], Hp = pts[pts.length - 2], ang = Math.atan2(H[1] - Hp[1], H[0] - Hp[0]);
-  const cu = hold ? 0.8 : hurt ? 0 : 0.2 + 0.2 * Math.sin(t * 13), r = 5.8 * u * (hurt && t ? 1.3 + 0.12 * Math.sin(t * 30) : 1);
-  raccoonPaw(ctx, H[0], H[1], ang, r, lw, { col: ice ? ICE.paw : hurt ? HURT : PAW, hi: ice || hurt ? 'rgba(255,255,255,0.25)' : PAWHI, line: ice ? ICE.ink : INK }, [cu, cu + 0.1 * Math.sin(t * 13 + 1), cu, cu], 1, null, hurt ? 1.5 : 1.15);
-}
-// the level card's Bandit (howact.js): drawn at his feet (fx, fy) in px (y down), s px per 100 rig units, the art's state
-// st at u; o.arm: px points from the gap's mouth to his paw (his near paw goes to the first, the bent arm runs on)
-export function drawBanditStage(ctx, fx, fy, s, t, st, u0, o = {}) {
-  const u = s / 100, face = o.face || 1, arm = o.arm && o.arm.length > 1 ? o.arm : null, opt = {};
-  const to = arm ? arm[0] : o.to;
-  if (to) opt.to = [((to[0] - fx) * face) / u, (to[1] - fy) / u];
-  const p = raccoonPose(st, t, u0, opt);
-  Object.assign(p, o.add || {});
-  if (arm) pawTo(p, opt.to);
-  ctx.save(); ctx.translate(fx, fy);
+const MEMP = { p: null, t: -1 };
+function drawYard(ctx, sim, B, t, k, calm, ice) {
+  const gY = sim.groundY, M = RACCOON_M * banditYardScale(sim, B.x), s = M * k, u = s / 100, L = lookYard(sim, B);
+  let p = raccoonPose(L.st, t, L.u, {});
+  Object.assign(p, L.add);
+  p = calm ? p : raccoonBlend('banditY', p, t, 12);
+  ctx.save(); ctx.translate(B.x, gY); ctx.scale(1 / k, -1 / k);
   try {
-    const G0 = arm ? { x: arm[0][0] - fx, y: arm[0][1] - fy } : null;
-    if (arm) { ctx.save(); ctx.beginPath(); ctx.rect(-4000, -4000, 8000, 8000); ctx.moveTo(G0.x + 11 * u, G0.y); ctx.arc(G0.x, G0.y, 11 * u, 0, TAU); ctx.clip('evenodd'); }
-    drawRaccoon(ctx, 0, 0, s, t, p, { face, eye: o.eye || 'normal', egg: o.hug ? undefined : false });
-    if (arm) {
-      ctx.restore();
-      const sh = toPx(p, -7, -13, u, face), dx = G0.x - sh.x, dy = G0.y - sh.y, dl = Math.hypot(dx, dy) || 1;
-      armTo(ctx, [[G0.x - (dx / dl) * 14 * u, G0.y - (dy / dl) * 14 * u], ...arm.map((q) => [q[0] - fx, q[1] - fy])], u, false, !!o.hurt, 0, o.calm ? 0 : t);
-    }
-    if (o.bubble) bubble(ctx, toPx(p, p.hx + 30, p.hy - 64, u, face), 13 * u * 2.2, o.bubble);
+    sackEggs(ctx, B, p, u, B.face);
+    drawRaccoon(ctx, 0, 0, s, t, p, { face: B.face, frozen: ice ? 1 : 0, eye: L.o.eye, egg: B.ph === 'stuff' ? undefined : false });
+    if (B.ph === 'crouch' && B.t / B.dur < 0.8) bubble(ctx, toPx(p, p.hx + 30, p.hy - 64, u, B.face), 13 * u * 2.2, '!');
   } finally { ctx.restore(); }
 }
 // ---------- 0.8.18: Bandit ON a ring (art for the new behaviour: climb, hop, sit, crank, reach, grab, shaken, fall)
@@ -187,16 +186,23 @@ export function drawBanditStage(ctx, fx, fy, s, t, st, u0, o = {}) {
 // between spots, the fall) }. opt.to / opt.eye given in WORLD metres are turned into his rig here
 // (o.toW, o.eyeW: { x, y }).
 export function drawBanditPerch(ctx, r, a, t, k, st, u, o = {}) {
-  const face = o.face < 0 ? -1 : 1, s = PLAY_M * k, ro = r + RING_TH / 2, px = o.at ? o.at.x : ro * Math.cos(a), py = o.at ? o.at.y : ro * Math.sin(a), th = Math.PI / 2 - a;
+  // 0.8.18 o.inner: he sits on the ring's INNER face (its floor, low in the vault), his up toward the vault's centre;
+  // o.th: the frame's turn instead of the perch's (a leap, a hop, the fall); o.sc: a size factor; o.under(ctx, pose, u,
+  // face): drawn in his frame before him (the eggs in his sack)
+  const face = o.face < 0 ? -1 : 1, s = PLAY_M * (o.sc || 1) * k, inner = !!o.inner, ro = inner ? r - RING_TH / 2 : r + RING_TH / 2, aN = inner ? a + Math.PI : a;
+  const px = o.at ? o.at.x : ro * Math.cos(a), py = o.at ? o.at.y : ro * Math.sin(a), th = o.th ?? Math.PI / 2 - aN;
   const rig = (W) => { const dx = (W.x - px) * k, dy = -(W.y - py) * k, c = Math.cos(-th), sn = Math.sin(-th); return [((dx * c - dy * sn) * face * 100) / s, ((dx * sn + dy * c) * 100) / s]; };
-  const opt = { perch: true, R: (ro * 100) / PLAY_M, tilt: Math.atan2(Math.sin(th), Math.cos(th)) * face, ...(o.opt || {}) };
+  const opt = { perch: true, R: inner ? -1 : (ro * 100) / (PLAY_M * (o.sc || 1)), tilt: Math.atan2(Math.sin(th), Math.cos(th)) * face, ...(o.opt || {}) };
   if (o.toW) opt.to = rig(o.toW);
   if (o.eyeW) opt.eye = rig(o.eyeW);
   let p = raccoonPose(st, t, u, opt);
   if (o.add) Object.assign(p, o.add);
   if (!o.calm && o.id) p = o.layer === 'front' && o.blended ? o.blended : raccoonBlend(o.id, p, t, o.rate || 14);
   ctx.save(); ctx.translate(px, py); ctx.scale(1 / k, -1 / k); ctx.rotate(th);
-  try { drawRaccoon(ctx, 0, 0, s, t, p, { face, frozen: o.frozen ? 1 : 0, eye: o.eye || 'normal', egg: o.egg, layer: o.layer, out: o.out }); } finally { ctx.restore(); }
+  try {
+    if (o.under && o.layer !== 'back') o.under(ctx, p, s / 100, face);
+    drawRaccoon(ctx, 0, 0, s, t, p, { face, frozen: o.frozen ? 1 : 0, eye: o.eye || 'normal', egg: o.egg, layer: o.layer, out: o.out });
+  } finally { ctx.restore(); }
   return p; // pass it back as o.blended for the second layer, so both layers show the same pose
 }
 function egg(ctx, x, y, h, rot) {
@@ -215,51 +221,46 @@ function bubble(ctx, P, r, ch) {
   ctx.restore();
 }
 
-// ---------- events: sounds (the game's own), popups, the first-time tips
+// ---------- events: sounds (the game's own) and a few short popups; no text tips (0.8.18: one idea on screen, shown not told)
 export function banditEvent(ev, fx, U) {
-  const { popup, audio, once } = U, calm = !!U.calm;
+  const { popup, audio } = U, calm = !!U.calm;
   switch (ev.type) {
-    case 'bandPeek':
-      audio.play('weasel_sniff', { vol: 0.55, pitch: 0.75 });
-      once('bandit', 'Bandit! When his paw comes up through a gap, turn that ring: PINCH!', 4.4);
-      break;
-    case 'bandReach': audio.play('wind_gust', { vol: 0.35, pitch: 1.8 }); break;
-    case 'bandGrab': audio.play('grab', { vol: 0.75, pitch: 0.8 }); popup(ev.x, ev.y + 0.6, ev.golden ? 'Ooh, gold!' : 'Snatched!', { color: '#ff9a6a', size: 18, life: 0.9 }); break;
-    case 'bandCatch': audio.play('grab', { vol: 0.75, pitch: 0.9 }); popup(ev.x, ev.y + 0.7, 'Caught it!', { color: '#ff9a6a', size: 18, life: 1 }); once('banditCatch', 'Bandit catches eggs that fall on his side of the yard. Pinch him three times to get them back.', 4); break;
-    case 'bandStuff':
-      audio.play('squish', { vol: 0.5, pitch: 0.7 });
-      popup(ev.x, ev.y + 0.8, 'In the sack!', { color: '#ff7a5a', size: 18, life: 1 });
-      once('banditSack', 'He bagged an egg! Pinch his paw three times and his sack spills every egg back.', 4.4);
-      break;
+    case 'bandCrouch': audio.play('weasel_sniff', { vol: 0.55, pitch: 0.75 }); break;
+    case 'bandClimb': audio.play('hen_hop', { vol: 0.6, pitch: 0.7 }); break;
+    case 'bandHop': audio.play('hen_hop', { vol: 0.6, pitch: 0.8 }); break;
+    case 'bandPerch': audio.play('hen_land', { vol: 0.55, pitch: 0.75 }); break;
+    case 'bandSpit': audio.play('squish', { vol: 0.35, pitch: 1.7 }); break;
+    case 'bandCrank': audio.play('gear_whir', { vol: 0.4, pitch: 0.6 }); break;
+    case 'bandReach': audio.play('tongue_lick', { vol: 0.45, pitch: 0.8 }); break;
+    case 'bandGrab': audio.play('grab', { vol: 0.75, pitch: 0.8 }); if (ev.golden) fx.sparkle(ev.x, ev.y, 10, '#ffd63c'); break;
+    case 'bandCatch': audio.play('grab', { vol: 0.75, pitch: 0.9 }); break;
+    case 'bandStuff': audio.play('squish', { vol: 0.5, pitch: 0.7 }); audio.play('weasel_snicker', { vol: 0.45, pitch: 0.8 }); break;
     case 'bandMiss': audio.play('egg_bump', { vol: 0.3, pitch: 0.7 }); break;
-    case 'bandHuh': audio.play('squish', { vol: 0.35, pitch: 1.6 }); popup(ev.x, ev.y + 0.7, 'Huh?', { color: '#bff0a0', size: 16, life: 0.8 }); break;
     case 'bandStrain': audio.play('squish', { vol: 0.5, pitch: 0.5 }); break;
-    case 'bandHeavy': audio.play('rock_hit', { vol: 0.6, pitch: 0.8 }); popup(ev.x, ev.y + 0.5, 'Too heavy!', { color: '#bff0a0', size: 18, life: 1 }); break;
+    case 'bandHeavy': audio.play('rock_hit', { vol: 0.6, pitch: 0.8 }); break;
     case 'bandDash': audio.play('egg_bump', { vol: 0.35, pitch: 1.9 }); break;
-    case 'bandPinch': {
-      const word = ev.why === 'hot' ? 'HOT!' : ev.why === 'zap' ? 'ZAP!' : ev.why === 'flash' ? 'FLASH!' : ev.why === 'pinch' ? 'PINCH!' : 'OUCH!';
-      audio.play('thorn_snap', { vol: 0.85, pitch: 0.9 }); audio.play('weasel_yelp', { vol: 0.8, pitch: 0.7 });
+    case 'bandShake': // the counter: his ring turned against him
+      audio.play('ring_tick', { vol: 0.8, pitch: 0.6 }); audio.play('egg_bump', { vol: 0.5, pitch: 0.6 });
+      if (!ev.hurt) popup(ev.x, ev.y + 0.5, '!?', { color: '#ffe680', size: 20, life: 0.7 });
+      break;
+    case 'bandHurt': {
+      audio.play('thorn_snap', { vol: 0.8, pitch: 0.9 }); audio.play('weasel_yelp', { vol: 0.8, pitch: 0.7 });
       fx.sparkle(ev.x, ev.y, 14, '#ffe08a');
-      if (!calm) { fx.shake = Math.max(fx.shake || 0, 0.25); if (U.hitStop) U.hitStop(0.06); }
-      popup(ev.x, ev.y + 0.7, word, { color: '#ff6a4a', size: 24, life: 1.2, sub: ev.left > 0 ? `${ev.left} more to bag him` : '' });
+      if (!calm) { fx.shake = Math.max(fx.shake || 0, 0.22); if (U.hitStop) U.hitStop(0.06); }
+      popup(ev.x, ev.y + 0.5, ev.why === 'hot' ? 'HOT!' : ev.why === 'zap' ? 'ZAP!' : 'OUCH!', { color: '#ff6a4a', size: 24, life: 1.1 });
       break;
     }
-    case 'bandDizzy': audio.play('stun_stars', { vol: 0.7 }); break;
+    case 'bandFall': audio.play('creature_hurt', { vol: 0.8, pitch: 0.7 }); audio.play('wind_gust', { vol: 0.4, pitch: 1.4 }); break;
     case 'bandDefeat':
-      audio.play('creature_hurt', { vol: 0.8, pitch: 0.7 }); audio.play('tada', { vol: 0.6 });
-      popup(ev.x, ev.y + 1.0, 'BAGGED!', { color: '#ffd63c', size: 28, life: 1.6, sub: ev.n ? 'his sack spills!' : '' });
+      audio.play('rock_hit', { vol: 0.6, pitch: 0.6 }); audio.play('tada', { vol: 0.6 });
+      popup(ev.x, ev.y + 1.0, 'BAGGED!', { color: '#ffd63c', size: 28, life: 1.6 });
       if (!calm) fx.shake = Math.max(fx.shake || 0, 0.3);
       break;
-    case 'bandSpill': audio.play('release', { vol: 0.6, pitch: 1.1 }); fx.sparkle(ev.x, ev.y, 10, '#bff0a0'); popup(ev.x, ev.y + 0.6, 'Egg back!', { color: '#bff0a0', size: 18, life: 1.1 }); break;
-    case 'bandWhistle':
-      audio.play('wind_gust', { vol: 0.45, pitch: 2.4 }); if (ev.weasel) audio.play('weasel_snicker', { vol: 0.6 });
-      popup(ev.x, ev.y + 0.9, 'FWEEET!', { color: '#ffe680', size: 22, life: 1.1 });
-      if (ev.weasel) once('banditWhistle', 'He whistled for the weasel! It hunts for a little while, then goes home.', 4);
-      break;
-    case 'bandDrop': if (ev.why === 'cold' || ev.why === 'daze' || ev.why === 'scare') popup(ev.x, ev.y + 0.5, 'Dropped it!', { color: '#bff0a0', size: 16, life: 0.8 }); break;
+    case 'bandSpill': audio.play('release', { vol: 0.6, pitch: 1.1 }); fx.sparkle(ev.x, ev.y, 10, '#bff0a0'); break;
+    case 'bandWhistle': audio.play('wind_gust', { vol: 0.45, pitch: 2.4 }); if (ev.weasel) audio.play('weasel_snicker', { vol: 0.6 }); break;
     case 'bandFreeze': audio.play('glass_crack', { vol: 0.5 }); break;
     case 'bandStun': audio.play('stun_stars', { vol: 0.6 }); break;
-    case 'bandScared': audio.play('egg_bump', { vol: 0.5, pitch: 1.9 }); popup(ev.x, ev.y + 0.6, 'Eek!', { color: '#bff0ff', size: 18, life: 0.8 }); break;
+    case 'bandScared': audio.play('egg_bump', { vol: 0.5, pitch: 1.9 }); break;
   }
 }
 

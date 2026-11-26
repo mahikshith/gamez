@@ -542,6 +542,7 @@ export class Sim {
     this.p2Rings(); // v3.4 spin storm
     rockStep(this, dt); // v3.3 M10: the rocking vault leans every ring
     this.cocoRings(dt); // 0.8.17 coco: the ring he rides swings by itself; a hard flick of it throws him off
+    this.bandRings(dt); // 0.8.18 bandit: the ring he sits on turns as he cranks it; turned briskly against him, he is shaken
     for (const ring of this.rings) {
       ring.body.setAngularVelocity(ring.omega);
       const moving = !ring.motor && !ring.follower && Math.abs(ring.omega) > 0.25;

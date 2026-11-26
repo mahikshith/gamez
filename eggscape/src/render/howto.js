@@ -64,7 +64,7 @@ const SHOW = {
   jelly: P('tap', 'Zap it with a chick to stun it', { power: 'thunder', fx: 'zap' }),
   gator: P('turn', 'Turn the gap away from his jaws', { fx: 'bonk' }),
   'boss:gator': P('drop', 'When he is dizzy, drop an egg on him', { fx: 'dizzy' }),
-  'boss:raccoon': P('turn', 'His paw is in the gap: turn the ring. PINCH!', { fx: 'bonk' }), // 0.8.17 bandit
+  'boss:raccoon': P('turn', 'Turn his ring against him!', { fx: 'bonk' }), // 0.8.17 bandit (0.8.18: he cranks a ring)
   turtle: P('drop', 'Drop an egg on its shell: it flips', { fx: 'flip' }),
   mosquito: P('tap', 'A chick blasts them away', { power: 'bomb', fx: 'blast' }),
   spider: P('wait', 'Slip the egg past while it spins'),
@@ -111,7 +111,7 @@ const HARM = {
   puffer: ['block', 'BLOCKED!'], spider: ['block', 'WEBBED!'], vines: ['block', 'BLOCKED!'], turtle: ['block', 'STUCK!'], doors: ['block', 'SHUT!'],
   current: ['push', 'PUSHED!'], gusts: ['push', 'BLOWN!'], beetle: ['push', 'PUSHED!'], 'boss:golem': ['bump', 'CRACK!'], quake: ['push', 'SHAKE!'], rain: ['push', 'SLIDE!'],
   mosquito: ['lift', 'LIFTED!'], gator: ['bite', 'CHOMP!'], jack: ['bounce', 'BOING!'],
-  'boss:raccoon': ['sack', 'BAGGED!'], // 0.8.17 bandit: his rig acts it (howact.js)
+  'boss:raccoon': ['sack', 'NABBED!'], // 0.8.17 bandit: his rig acts it (howact.js)
   // 2026-11-23 the crawlers (their own rigs act it, howact.js harmActor): the jet heats the wall, the tongue takes an orb, the hip shoves
   salamander: ['chomp', 'EATEN!'], frostsal: ['frostbite', 'FROZEN!'], chameleon: ['tongue', 'GULP!'], spike: ['bump', 'CRACK!'], // 0.8.14: the salamanders bite, the thorn-back's ram cracks
 };
@@ -124,7 +124,7 @@ export const THREAT = {
   doors: 'Shut gaps', curse: 'Fuse x2', thornorb: 'Cracks eggs',
   urchin: 'Dashes, cracks', // 0.8.17 urchin
   'boss:weasel': 'Steals eggs', 'boss:snake': 'Two snakes', 'boss:blizzard': 'Bites, freezes', 'boss:golem': 'Rams, cracks', 'boss:salamander': 'Spits lava',
-  'boss:eagle': 'Dives for eggs', 'boss:ratking': 'Pounces', 'boss:kingcrab': 'Claws eggs', 'boss:gator': 'Shakes rings', 'boss:owl': 'Swoops at eggs', 'boss:raccoon': 'Snatches eggs', // 0.8.17 bandit
+  'boss:eagle': 'Dives for eggs', 'boss:ratking': 'Pounces', 'boss:kingcrab': 'Claws eggs', 'boss:gator': 'Shakes rings', 'boss:owl': 'Swoops at eggs', 'boss:raccoon': 'Cranks rings', // 0.8.17 bandit
 };
 SHOW.penguin = P('turn', 'Turn a wall into his slide: BONK!', { fx: 'bonk' }); THREAT.penguin = 'Shoves eggs'; // 0.8.17 pip
 SHOW.monkey = P('turn', 'Flick his ring hard: whoa, he lets go!', { fx: 'bonk' }); THREAT.monkey = 'Grabs eggs'; // 0.8.17 coco
@@ -227,7 +227,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     eD = seg(T, 2.0, 2.45); done = seg(T, 2.45, 2.8);
   } else if (m === 'turn') {
     vA = vEnd - 0.3 * (1 - walk);
-    const d = ease(seg(T, 1.45, 2.25)); th = dTh * d;
+    const d = ease(seg(T, 1.45, 2.25)); th = SG && SG.th ? SG.th(T) : dTh * d; // 0.8.18 bandit: an actor may turn the ring itself first (his crank)
     hand = SG && SG.hand ? dragHand(at, T, 1.35, 2.25, SG.hand[0], SG.hand[1]) : dragHand(at, T, 1.35, 2.25, 0.5, 0.5 - gap0);
     if (SG && SG.egg) eA = SG.egg(T);
     if (T > 1.85) { vFx = plan.fx || 'bonk'; fxK = seg(T, 1.85, 2.9); }
@@ -829,7 +829,7 @@ function harmBeat(ctx, plan, T, t, S, set) {
   const E0 = at(0, eggS * 0.5), egg = (X, Y, look) => S.drawE(X, Y, eggS, false, true, look);
   const turnGap = (t0, t1) => { const d = ease(seg(T, t0, t1)); q.th = -gap0 * d; q.hand = dragHand(at, T, t0, t1, 0.5, 0.5 - gap0); return d; };
   const ty = H.t;
-  if (ty === 'sack') { Object.assign(q, bandHarmEgg({ band, floor, eggS, g0: gap0, k: Wd ? kW : Z / 2.5 }, T)); say(1.6); lost(1.95, E0); } // 0.8.17 bandit: out through the gap in his paw
+  if (ty === 'sack') { Object.assign(q, bandHarmEgg({ band, floor, eggS, g0: gap0, k: Wd ? kW : Z / 2.5 }, T)); say(1.9); lost(2.1, at(q.eA, eggS * 0.5)); } // 0.8.17 bandit (0.8.18: cranked up to him, grabbed, into his sack)
   else if (ty === 'steal') { // it comes along the floor, takes the egg and goes off with it
     const walk = ease(seg(T, 0.2, 1.0)), go = ease(seg(T, 1.3, 2.3)), up = kind === 'octopus' ? 1 : 0;
     const vA = vEnd - 0.55 * (1 - walk) - 0.9 * go, v = at(vA, vD * 0.3 + up * go * U * 0.45);

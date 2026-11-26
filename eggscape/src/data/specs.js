@@ -93,16 +93,16 @@ export const SPECS = [
     rings: [{ gaps: 1, gapLen: 0.9 }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2] }] },
 
   // 0.8.17 (sixty levels): world 1's finale after the boss, at night. Not a boss at first; 0.8.17 bandit: the new boss of
-  //   world 1, Bandit the raccoon (sim/bandit.js). He tiptoes about the yard under the vault's lower-left side and reaches
-  //   up through a gap of the outer ring for an egg resting near it; turn that ring while his paw is in and its edge
-  //   pinches it (three pinches bag him and his sack spills every egg back). After the second pinch he whistles the
-  //   weasel out for a short hunt. Gentle: the sixth level of the game. A still basket (he is the reason to hurry).
+  //   world 1, Bandit the raccoon (sim/bandit.js). 0.8.18: he climbs onto the outer ring, sits on it and slowly cranks it
+  //   so eggs roll up to his paws; turn his ring briskly against him to shake him (three hurts bag him and his sack
+  //   spills every egg back; after each hurt he hops a ring inward and cranks the other way). After the second hurt he
+  //   whistles the weasel out for a short hunt. Gentle: the sixth level of the game. A still basket.
   { id: 6, world: 1, theme: 'farm', name: 'Midnight Raid', boss: 'raccoon', eggs: 5, target: 3, spacing: 1.05, material: 'wood', minMoves: 4, fuseX: 1.5,
     nest: { w: 2.9 }, bonus: { kind: 'turns' }, weather: 'fireflies', // (visual only: a summer night)
     raccoon: { delay: 3 }, weasel: { a: 30, delay: 9999 }, bossFight: { kind: 'raccoon', delay: 3, phases: [{ attacks: [] }] }, // 0.8.17 bandit: the weasel only comes when he whistles
     orbs: [{ type: 'hatch_glow', ch: 1 }, { type: 'fire_red', ch: 2 }, { type: 'fire_green', ch: 3 }],
-    intro: { title: 'Boss: Bandit the Raccoon', line: 'His paw comes up through a gap: turn that ring and PINCH it! Three pinches bag him.' },
-    tip: 'Bandit reaches through the outer ring: turn it while his paw is in. A stone egg is too heavy for him.',
+    intro: { title: 'Boss: Bandit the Raccoon', line: 'Turn his ring against him!' },
+    tip: 'Bandit turns a ring: turn it back, hard!',
     rings: [{ gaps: 1, gapLen: 0.9 }, { gaps: 1, gapX: [2], thorns: 1, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
 
   // ---------------- 2 Wild Woods: snakes (two from L9), wooden barriers, the chick; rock skin, sun flame

@@ -5869,7 +5869,7 @@ function render() {
   if (DEV && G.probe) G.probe('portalsFuse');
   if (sim.water) drawSurface(ctx, sim, G.theme, t, k, sim.savedLog.length); else W.drawNest(ctx, sim, G.theme, t, sim.savedLog.length, G.nestDrops && G.nestDrops.run === G.run ? G.nestDrops : null, G.t, nestPass(k, t)); // world 8: the basket under the boat
   if (DEV && G.probe) G.probe('nest');
-  if (sim.band) blastXf(() => drawBandit(ctx, sim, t, k, save.calm), 2.6); // 0.8.17 bandit: under the rings (their edge pinches his arm)
+  if (sim.band) blastXf(() => drawBandit(ctx, sim, t, k, save.calm, 'back'), 2.6); // 0.8.17 bandit: on the yard whole; 0.8.18: on a ring, his tail behind it
   { const tl = toWorld(0, G.hudBottom + 8 * ui.u), tr = toWorld(W_, 0); allyFrame(sim, { x0: tl.x, x1: tr.x, top: tl.y }, save.calm, G.screen === 'play' ? fx : null); } // the rooster's perch and the crow wave (render only)
   if (DEV && G.probe) G.probe('ally');
   const eggPts = sim.aliveEggs().map((e) => e.body.getPosition());
@@ -5953,6 +5953,7 @@ function render() {
   blastXf(() => drawThiefDens(ctx, sim, t, k, true), 2.2); // 2026-11-19: the den's rim and shade over a stolen egg (it lies inside); the stump's red alert
   blastXf(() => drawThievesOver(ctx, sim, t, k), 9.1); // v3.6: the weasel's jaws over a held egg, the trap ring
   SL(['coco'], (c) => drawCocoOver(c, sim, t, k)); // 0.8.17 coco: his tail's curl over the egg he holds, a peel in flight
+  if (sim.band) blastXf(() => drawBandit(ctx, sim, t, k, save.calm, 'front'), 2.6); // 0.8.18 bandit: on a ring, in front of it and the eggs (the crank arrow, his body and paws)
   SL(['mosq'], (c) => drawBayouOver(c, sim, t, k)); // v3.7: a turtle's beak round its egg, mosquito swarms
   SL(['snake'], (c) => W.drawSnakes(c, sim, t, k)); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
