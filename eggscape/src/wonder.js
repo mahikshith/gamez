@@ -699,9 +699,9 @@ export function createWonder(env) {
     const AL = env.album ? env.album() : null, nSec = AL ? 3 : 2;
     // 0.8.17: the vaults are side quests on the map now; one row leads there (main.js 'xs:side': the first open one)
     const n = 1, wvRows = 1, nRows = wvRows + 1 + (AL ? 1 : 0);
-    const rowH = clamp((vb - vt - pad - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - 4 * u) / nRows, 84 * u, 108 * u);
+    const rowH = clamp((vb - vt - pad - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - 4 * u) / nRows, 84 * u, wide ? 108 * u : 216 * u); // (0.8.17 polish: three rows on a tall phone grow, so the page is not half empty)
     // a tall screen with room to spare: the rows stand a little further apart (up to 12 units each), not one hole at the bottom
-    const spare = Math.max(0, vb - vt - pad - 4 * u - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - nRows * rowH), air = Math.min(12 * u, spare / (wvRows + nSec - 1));
+    const spare = Math.max(0, vb - vt - pad - 4 * u - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - nRows * rowH), air = Math.min(wide ? 12 * u : 36 * u, spare / (wvRows + nSec - 1));
     const gap = 10 * u + air, secGap = 14 * u + air;
     const fixedH = nSec * headH + (nSec - 1) * secGap + (wvRows - 1) * gap;
     const total = 4 * u + fixedH + nRows * rowH + pad;
@@ -720,7 +720,7 @@ export function createWonder(env) {
       const prac = !!L.practice || !!L.album || !!L.side, s = prac ? 0 : starsOf(L.key), key = L.side ? 'twin' : L.album ? 'album' : prac ? 'practice' : L.key, face = ui.faceOf(L.side ? '#8a5ad8' : TILE[key] || '#8a5ad8');
       const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = L.side ? 'sq:bonus' : L.album ? 'xs:album' : prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
       const b = ui.button(id, '', x, ry, rowW, rowH, { face, keepFace: true, round: 18 * u });
-      const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, 88 * u, rowW * 0.26), tx = x + 8 * u + (fh - ts) / 2 - 3 * u;
+      const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, 140 * u, rowW * 0.3), tx = x + Math.min(8 * u + (fh - ts) / 2 - 3 * u, 20 * u);
       if (L.album) env.albumIcon(ctx, tx + ts / 2, fy + fh / 2, ts, t); else drawExtraIcon(ctx, key, tx + ts / 2, fy + fh / 2, ts, t, { calm: sv.calm });
       // the right edge: three stars on a dark pill, or a round chevron for Practice
       const sr = Math.min(8.5 * u, rowW / 40), pillW = sr * 8.6, rightW = prac ? 30 * u : pillW;
@@ -733,10 +733,10 @@ export function createWonder(env) {
         for (let q = 0; q < 3; q++) drawStar(ctx, rx + (q - 1) * sr * 2.65, cy, sr, q < s);
       }
       // the words, between the picture and the right edge; the one line wraps to a second rather than shrink
-      const ttx = tx + ts + 12 * u, tw = x + rowW - 14 * u - rightW - 8 * u - ttx, ps = 12.5 * u, lines = wrapText(L.pitch, ps, tw).slice(0, 2);
-      const blockH = 22 * u + 4 * u + lines.length * 15 * u, top = fy + (fh - blockH) / 2;
-      ui.text(L.name, ttx, top + 11 * u, { size: 19 * u, color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname:' + key, maxW: tw });
-      lines.forEach((l, i) => ui.text(l, ttx, top + 26 * u + 7.5 * u + i * 15 * u, { size: ps, color: 'rgba(255,255,255,0.9)', group: grp, tag: 'wvpitch:' + key + i, maxW: tw }));
+      const ttx = tx + ts + 12 * u, tw = x + rowW - 14 * u - rightW - 8 * u - ttx, ns = clamp(rowH * 0.13, 19 * u, 24 * u), ps = clamp(rowH * 0.085, 12.5 * u, 15 * u), lines = wrapText(L.pitch, ps, tw).slice(0, 2); // (a tall row's words grow with it)
+      const blockH = ns * 1.16 + 4 * u + lines.length * ps * 1.2, top = fy + (fh - blockH) / 2;
+      ui.text(L.name, ttx, top + ns * 0.58, { size: ns, color: '#fff', stroke: face.line, strokeW: 3 * u, group: grp, tag: 'wvname:' + key, maxW: tw });
+      lines.forEach((l, i) => ui.text(l, ttx, top + ns * 1.16 + 4 * u + ps * 0.6 + i * ps * 1.2, { size: ps, color: 'rgba(255,255,255,0.9)', group: grp, tag: 'wvpitch:' + key + i, maxW: tw }));
       if (L.album && L.fresh && !part) env.albumMark(x + rowW - 6 * u, ry + 6 * u, rowH); // a new find: the mark leads into the album, to its tile
       if (L.album && env.albumLead) env.albumLead(SC, ry + SC.y - vt, { x, y: ry, w: rowW, h: rowH }, vb - vt); // home's mark: the page lands on this row and rings it
       if (part) { // a row cut by the list edge records nothing for the overlap check and taps only inside the list
