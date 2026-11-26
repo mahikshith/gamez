@@ -1977,10 +1977,10 @@ async function press(id) {
         // test build: the chick lab (v3.2), one practice vault per chick kind
         const k = id.slice(5), d = k === 'frog' ? FROG_DEMO : [...CHICK_DEMOS, ...SEA_DEMOS, ...POWER_DEMOS, ...THIEF_DEMOS, ...ALLY_DEMOS, ...REEF_DEMOS, ...BAYOU_DEMOS, ...LAB_DEMOS].find((x) => x.kind === k);
         if (d) { G.demo = d; startLevel(-2); }
-      } else if (id && id.startsWith('sq:')) { // 0.8.17: a side quest's door on the map: the hen walks the trail, then its card
+      } else if (id && id.startsWith('sq:') && id !== 'sq:bonus') { // 0.8.17: a side quest's door on the map ('sq:' + world): the hen walks the trail, then its card
         const q = MSIDE.sidePlan(mapLayoutNow()).find((p) => p.w === +id.slice(3));
         if (q && !G.sideWalk && SQ.sideOpen(save, q, allOpen())) { G.mapTravel = null; G.sideReveal = null; G.sideWalk = { q, t0: G.screenT }; audio.play('hen_hop'); }
-      } else if (id === 'xs:side') { // the Extras page's Bonus vaults: the map, at the first open side quest (else the first one)
+      } else if (id === 'sq:bonus') { // the Extras page's Bonus vaults: the map, at the first open side quest (else the first one)
         const Q = SQ.SIDE.filter((q) => SQ.sideOpen(save, q, allOpen())), q = Q.find((p) => SQ.sideStars(save, p.key) < 3) || Q[0] || SQ.SIDE[0];
         if (q) { G.world = q.w; G.sideFocus = q.w; G.mapTravel = null; setScreen('levels'); }
       } else if (id && id.startsWith('wv:')) { // WONDER: the bonus world's own buttons

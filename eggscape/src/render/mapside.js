@@ -29,7 +29,7 @@ function blockers(L, w) {
   for (let j = 0; j < L.stops.length; j++) {
     const st = L.stops[j]; if (Math.abs(st.w - w) > 1) continue;
     const b = (j + 1) % 6 === 0 ? 1.22 : 1, rx = Math.max(37 * u * b, 30) + 6 * u; // (a stop's touch box is at least 48 px wide)
-    out.push({ x0: st.x - rx, x1: st.x + rx, y0: st.y - L.stopR * 2.2, y1: st.y + 38 * u * b, stop: j }); // the nest, its badge and plate, the hen in it
+    out.push({ x0: st.x - rx, x1: st.x + rx, y0: st.y - L.stopR * 2.2, y1: st.y + Math.max(44 * u * b, 30), stop: j }); // the nest, its badge and plate, the hen in it
   }
   for (const k of [w, w + 1]) {
     if (k >= L.nw) continue;
@@ -40,7 +40,7 @@ function blockers(L, w) {
   if (L.stops[bi]) { const c = chestSpot(L, bi, L.A, u); out.push({ x0: c.x - c.cr * 1.15, x1: c.x + c.cr * 1.15, y0: c.y - c.cr * 1.25, y1: c.y + c.cr * 1.7 }); } // the boss's treasure chest
   const P = PLACES[w];
   if (P) { // a world painted as one place: its landmarks are hard, its small props soft
-    for (let k = 0; k < (P.landmarks || []).length; k++) { const m = P.stop(L, k); if (m) { const r = lmArt(m); out.push({ x0: r.x0 + 6 * u, x1: r.x1 - 6 * u, y0: r.y0 + 8 * u, y1: r.y1 }); } }
+    for (let k = 0; k < (P.landmarks || []).length; k++) { const m = P.stop(L, k); if (m) { const r = lmArt(m); out.push({ x0: r.x0 + 6 * u, x1: r.x1 - 6 * u, y0: r.y0 + 8 * u, y1: r.y1, lm: 1 }); } } // (lm: may be covered a little where nothing else fits)
     const plan = L[PLAN_KEY[w]];
     for (const p of (plan && plan.props) || []) if (p.box) soft.push(p.box);
   }
@@ -79,13 +79,14 @@ export function sidePlan(L) {
           if (Math.hypot(x - st.x, y - st.y) < far) continue;
           const b = { x0: x + DB.x0, x1: x + DB.x1, y0: y + DB.y0, y1: y + DB.y1 };
           if (roadHit(L, b, 8 * u)) continue;
-          if (hard.some((h) => hit(b, h))) continue;
+          if (hard.some((h) => !h.lm && hit(b, h))) continue;
+          const lmA = hard.reduce((a2, h) => a2 + (h.lm ? area(b, h) : 0), 0);
           const tr = trailOf(L, st, x, y);
           if (tr.stones.slice(1).some((p) => roadHit(L, { x0: p.x - 5 * u, x1: p.x + 5 * u, y0: p.y - 4 * u, y1: p.y + 4 * u }, 2 * u))) continue;
-          if (tr.stones.some((p) => hard.some((h) => h.stop !== i && hit({ x0: p.x - 6 * u, x1: p.x + 6 * u, y0: p.y - 5 * u, y1: p.y + 5 * u }, h)))) continue;
-          const sc = Math.abs(tr.len - 120 * u) + Math.abs(fy) * 30 * u + soft.reduce((a2, h) => a2 + area(b, h), 0) / (4 * u); // a trail of about 120 units reads as a path of its own
+          if (tr.stones.some((p) => hard.some((h) => h.stop !== i && !h.lm && hit({ x0: p.x - 6 * u, x1: p.x + 6 * u, y0: p.y - 5 * u, y1: p.y + 5 * u }, h)))) continue;
+          const sc = Math.abs(tr.len - 120 * u) + Math.max(0, tr.len - 170 * u) * 4 + Math.abs(fy) * 30 * u + soft.reduce((a2, h) => a2 + area(b, h), 0) / (4 * u) + lmA / (2 * u); // a trail of about 120 units reads as a path of its own; a long one wanders off (it is avoided harder than a landmark's corner covered)
           if (!best || sc < best.sc) best = { sc, x, y, tr, b };
-          break; // the nearest clear spot on this side at this height
+          if (!lmA) break; // the nearest clear spot on this side at this height (else further out may clear the landmark)
         }
       }
     }

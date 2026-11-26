@@ -503,8 +503,8 @@ export function createWonder(env) {
   // purse, then Map. Back on every page leads to the map at the vault's door.
   const ease = (k) => { k = clamp(k, 0, 1); return 1 - (1 - k) ** 3; };
   const backOut = (k) => { k = clamp(k, 0, 1); const c1 = 1.7, c3 = c1 + 1, q = k - 1; return 1 + c3 * q * q * q + c1 * q * q; };
-  function sideFrame(h, title, col, under) { // dims the vault, a card in the middle of the safe area (eased in); -> its box
-    const z = env.size(), A = ui.A, u = ui.u, a = env.save().calm ? 1 : ease(S.cardT / 0.3), w = Math.min(360 * u, A.w - 28 * u);
+  function sideFrame(h, title, col, under, maxW = 360) { // dims the vault, a card in the middle of the safe area (eased in); -> its box
+    const z = env.size(), A = ui.A, u = ui.u, a = env.save().calm ? 1 : ease(S.cardT / 0.3), w = Math.min(maxW * u, A.w - 28 * u);
     ctx.fillStyle = `rgba(10,6,20,${0.55 * a})`; ctx.fillRect(0, 0, z.W, z.H);
     if (under) under();
     const x = A.cx - w / 2, y = Math.max(A.y + 26 * u, A.cy - h / 2) + (1 - a) * 24 * u;
@@ -522,12 +522,12 @@ export function createWonder(env) {
   };
   function drawIntro() {
     const A = ui.A, u = ui.u, L = S.level, wide = A.h < 560 * u, best = starsOf(L.key), t = env.save().calm ? 0 : S.t + S.cardT;
-    const h = wide ? Math.min(A.h - 40 * u, 300 * u) : 404 * u, F = sideFrame(h, L.name, '#8a4ad8');
+    const h = wide ? Math.min(A.h - 40 * u, 300 * u) : 404 * u, F = sideFrame(h, L.name, '#8a4ad8', null, wide ? 520 : 360); // (a short screen: the picture beside the words)
     const { x, y, w } = F, pay = env.sideCoins ? env.sideCoins(L.key) : 0;
     const pic = wide ? Math.min(150 * u, h - 70 * u) : 150 * u, px = wide ? x + 22 * u + pic / 2 : A.cx, py = wide ? y + 34 * u + pic / 2 : y + 40 * u + pic / 2;
     drawExtraIcon(ctx, L.wonder.kind, px, py, pic, t, { calm: env.save().calm });
-    ui.record({ x: px - pic / 2, y: py - pic / 2, w: pic, h: pic }, 'wv:introPic');
-    if (/2$/.test(L.key)) { const tw = 30 * u, th = 20 * u, tx = px + pic / 2 - tw + 6 * u, ty = py - pic / 2 - 6 * u; ui.roundRect(tx, ty, tw, th, th / 2); ctx.fillStyle = '#d8402e'; ctx.fill(); ctx.lineWidth = 2 * u; ctx.strokeStyle = '#3a0a04'; ctx.stroke(); ui.text('II', tx + tw / 2, ty + th / 2 + 0.5 * u, { size: 14 * u, align: 'center', color: '#fff', tag: 'wv:introII' }); }
+    ui.record({ x: px - pic / 2, y: py - pic / 2, w: pic, h: pic }, 'wv:introPic', 'wv:introPic');
+    if (/2$/.test(L.key)) { const tw = 30 * u, th = 20 * u, tx = px + pic / 2 - tw + 6 * u, ty = py - pic / 2 - 6 * u; ui.roundRect(tx, ty, tw, th, th / 2); ctx.fillStyle = '#d8402e'; ctx.fill(); ctx.lineWidth = 2 * u; ctx.strokeStyle = '#3a0a04'; ctx.stroke(); ui.text('II', tx + tw / 2, ty + th / 2 + 0.5 * u, { size: 14 * u, align: 'center', color: '#fff', tag: 'wv:introII', group: 'wv:introPic' }); } // (the tag is a badge on the picture's corner)
     const cx = wide ? (px + pic / 2 + x + w) / 2 : A.cx, cw = wide ? x + w - (px + pic / 2) - 28 * u : w - 40 * u;
     let cy = wide ? y + 48 * u : py + pic / 2 + 26 * u;
     ui.text(L.pitch, cx, cy, { size: 19 * u, align: 'center', color: '#5a3416', tag: 'wv:introLine', maxW: cw });
@@ -575,7 +575,7 @@ export function createWonder(env) {
       const c = coinPill(A.cx, cy + 46 * u, P.coins, u, 'wv:pay'), tFly = 0.35 + 3 * 0.3 + 0.2;
       if (!S.flown && S.cardT > tFly) { S.flown = true; if (env.coinsFly) env.coinsFly(P, c); }
       cy += 46 * u;
-    } else if (!win) ui.text(g.kind === 'twin' ? 'Save an egg from each vault' : `Bring ${st.target} home`, A.cx, cy + 28 * u, { size: 15 * u, color: '#8a6238', align: 'center', tag: 'wv:cardsub', maxW: w - 30 * u });
+    } else if (!win) ui.text(g.kind === 'twin' ? ((S.level.wonder.vaults[0].target || 1) > 1 ? `Bring ${S.level.wonder.vaults[0].target} home from each vault` : 'Save an egg from each vault') : `Bring ${st.target} home`, A.cx, cy + 28 * u, { size: 15 * u, color: '#8a6238', align: 'center', tag: 'wv:cardsub', maxW: w - 30 * u });
     const by = y + h - 76 * u, bh = 56 * u, gap = 12 * u, bw = (w - 44 * u - gap) / 2;
     if (win) {
       ui.button('wv:retry', 'Again', x + 22 * u, by, bw, bh, { kind: 'secondary', icon: ICON.retry, size: 19 * u });
@@ -630,7 +630,7 @@ export function createWonder(env) {
     };
     const row = (L, x, ry) => {
       const prac = !!L.practice || !!L.album || !!L.side, s = prac ? 0 : starsOf(L.key), key = L.side ? 'twin' : L.album ? 'album' : prac ? 'practice' : L.key, face = ui.faceOf(L.side ? '#8a5ad8' : TILE[key] || '#8a5ad8');
-      const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = L.side ? 'xs:side' : L.album ? 'xs:album' : prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
+      const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = L.side ? 'sq:bonus' : L.album ? 'xs:album' : prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
       const b = ui.button(id, '', x, ry, rowW, rowH, { face, keepFace: true, round: 18 * u });
       const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, 88 * u, rowW * 0.26), tx = x + 8 * u + (fh - ts) / 2 - 3 * u;
       if (L.album) env.albumIcon(ctx, tx + ts / 2, fy + fh / 2, ts, t); else drawExtraIcon(ctx, key, tx + ts / 2, fy + fh / 2, ts, t, { calm: sv.calm });
