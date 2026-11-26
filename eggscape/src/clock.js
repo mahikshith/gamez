@@ -58,3 +58,21 @@ function look() {
 export function today() { const c = look(); return c ? c.day : dayOf(Date.now()); }
 // a "now" that never goes back (for the rules that make their own day keys from a time)
 export function now(t = Date.now()) { const c = look(); return c ? Math.max(t, c.max) : t; }
+
+// ---- when the game's day turns next (0.8.17, the daily chest's "Opens in 6h 12m"). step() above moves the day only
+// when the phone's time is past the latest moment seen AND on a later date, so the next day starts at the local
+// midnight after the remembered day, or just after that latest moment if the phone's clock was set back. The chest's
+// button counts down to exactly that, so it never promises an opening the day rule would refuse.
+export function nextDayAt(state) {
+  const s = clean(state);
+  if (!s.day) return 0;
+  const [y, m, d] = s.day.split('-').map(Number);
+  return Math.max(new Date(y, m - 1, d + 1).getTime(), s.max + 1);
+}
+// ms until then (0: it has turned)
+export const opensIn = (state, now) => Math.max(0, nextDayAt(state) - now);
+// "Opens in 6h 12m", "Opens in 12m" under an hour (minutes, rounded up: it never says 0m)
+export function opensText(ms) {
+  const m = Math.max(1, Math.ceil(ms / 6e4)), h = Math.floor(m / 60);
+  return h ? `Opens in ${h}h ${String(m % 60).padStart(2, '0')}m` : `Opens in ${m}m`;
+}
