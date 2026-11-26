@@ -11,6 +11,9 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const ease = (u) => { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); };
 const out3 = (u) => 1 - Math.pow(1 - clamp(u, 0, 1), 3);
 const wrapA = (a) => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
+// 0.8.18: in play Spike is drawn 1.7x his sim body, standing on the same floor point (at 450x1000 he was a purple dot
+// about one egg wide: his face did not read). What he touches, bumps and splats on is the sim's and is unchanged.
+export const SPIKE_PLAY = 1.7;
 const MEM = new Map(); // per urchin: the frame's eased angle, the end clock
 
 // where and how to draw him: { fx, fy (the floor point under him, world m), ang (his "up", world rad), face, pose, o }
@@ -104,7 +107,7 @@ export function drawUrchins(ctx, sim, t, k, calm = false) {
     ctx.save();
     ctx.translate(fx, fy); ctx.scale(1 / k, -1 / k);
     ctx.rotate(Math.atan2(ux, uy)); // local (0, -1) -> world (ux, uy)
-    drawUrchin(ctx, 0, 0, k * URCHIN_M * URCHIN.art * grow, t, pose, { face: F.face, ...F.o });
+    drawUrchin(ctx, 0, 0, k * URCHIN_M * URCHIN.art * SPIKE_PLAY * grow, t, pose, { face: F.face, ...F.o });
     ctx.restore();
   }
 }

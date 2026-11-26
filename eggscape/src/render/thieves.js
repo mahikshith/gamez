@@ -16,6 +16,7 @@
 import { RIG, FIGHT } from '../sim/thieves.js';
 import { strikeActOf } from './strikehit.js'; // Chick Strike: the face it pulls when a chick hits it
 import { dizzyStars, spiralEye, boltStroke } from './status.js';
+import { drawWeasel, weaselAct, weaselCalm } from './weasel.js'; // 0.8.18: the weasel's own art and acting, in the raccoon's hand
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -52,9 +53,10 @@ const isRat = (kind) => kind === 'rat' || kind === 'ratking';
 // ear 0 up .. 1 flat back; look: pupils -1..1; lid 0 open .. 1 shut; brow -1 sad .. 1 fierce; tail: base angle (+ up), tc:
 // curl, tw: wave; puff: bristle; tongue 0..1; whisk: whisker twitch; paw: front paws raised 0..1 (rat push)
 const KEYS = ['by', 'dx', 'pitch', 'st', 'sq', 'hx', 'hy', 'hr', 'jaw', 'ear', 'look', 'lid', 'brow', 'tail', 'tc', 'tw', 'puff', 'tongue', 'whisk',
+  'looky', 'lidLo', 'pup', 'smile', 'ta', 'grip', 'hsc', // 0.8.18 the weasel's face (render/weasel.js): pupils up / down, lower lid, pupil size, smile -1..1, tongue angle, finger curl, head size
   'f0x', 'f0y', 'f1x', 'f1y', 'f2x', 'f2y', 'f3x', 'f3y'];
 function rest(sp) {
-  return { by: sp.by, dx: 0, pitch: 0, st: 1, sq: 0, hx: 0, hy: 0, hr: 0, jaw: 0, ear: 0, look: 0.3, lid: 0.2, brow: 0.3, tail: 0.15, tc: 0.4, tw: 0, puff: 0, tongue: 0, whisk: 0,
+  return { by: sp.by, dx: 0, pitch: 0, st: 1, sq: 0, hx: 0, hy: 0, hr: 0, jaw: 0, ear: 0, look: 0.3, lid: 0.2, brow: 0.3, tail: 0.15, tc: 0.4, tw: 0, puff: 0, tongue: 0, whisk: 0, looky: 0, lidLo: 0, pup: 1, smile: 0.3, ta: 1.5, grip: 0.5, hsc: 1,
     f0x: sp.feet[0], f0y: 0, f1x: sp.feet[1], f1y: 0, f2x: sp.feet[2], f2y: 0, f3x: sp.feet[3], f3y: 0 };
 }
 // one gait cycle advances 2 x stride units; metres per cycle per species
@@ -72,6 +74,11 @@ function trot(sp, ph, L = sp.stride, lift = sp.lift, bound = 0) {
   return f;
 }
 export function thiefPose(kind, state, t, u = 0, odo = 0) {
+  if (kind !== 'weasel') return rigPose(kind, state, t, u, odo);
+  const sp = SP.weasel, base = state === 'spin' ? 'scared' : state === 'huh' ? 'idle' : state;
+  return weaselAct(rigPose(kind, base, t, u, odo), state, t, u, (odo / cycleOf(kind)) || 0, sp.by, sp.feet);
+}
+function rigPose(kind, state, t, u = 0, odo = 0) {
   const sp = spOf(kind), B = sp.by, R = rest(sp), P = (o) => Object.assign({}, R, o), rat = isRat(kind);
   const ph = (odo / cycleOf(kind)) || 0, bob = Math.sin(ph * TAU * 2), F = sp.feet;
   const arch = rat ? 0 : Math.sin(ph * TAU * 2) * 0.05; // the weasel's bounding back
@@ -186,6 +193,7 @@ const blob = (pts) => (c) => {
 
 export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
   if (!(s > 0)) return;
+  if (kind === 'weasel' && !(typeof window !== 'undefined' && window.__weaselOld)) return drawWeasel(ctx, x, y, s, t, pose, o, WK);
   const rat = isRat(kind), king = kind === 'ratking', sp = spOf(kind), frozen = o.frozen > 0, only = o.only;
   const C = frozen ? ICED[kind] : PALS[kind], PAL = PALS[kind];
   const u = s / 100, ow = Math.max(2.6, 1.2 / u); // outline half-width in units (never under ~1.2 px)
@@ -496,6 +504,7 @@ export function drawThief(ctx, x, y, s, t, pose, o = {}, kind = 'weasel') {
   ctx.restore();
 }
 
+const WK = { ice: (...a) => iceDetails(...a), zap: (...a) => zapArcs(...a) };
 function iceDetails(ctx, T, H, ow, t, o) {
   ctx.save();
   ctx.fillStyle = 'rgba(255,255,255,0.95)'; // glints: crisp white facets on the shell
@@ -840,7 +849,8 @@ function crown(ctx, x, y, s, lw) {
 }
 
 // a thief in the level (under the eggs); the pounce / roll telegraph first
-export function drawThieves(ctx, sim, t, k) {
+export function drawThieves(ctx, sim, t, k, calm = false) {
+  CALM_ON = !!calm; weaselCalm(CALM_ON);
   for (const T of sim.thieves || []) {
     if (T.ph === 'wait' || T.ph === 'gone' || T.ph === 'hide') continue;
     if (denMove(sim, T, t)?.z != null) continue; // inside its stump: drawn in the doorway (drawThiefDens 'in')
@@ -863,9 +873,16 @@ export function drawThievesOver(ctx, sim, t, k) {
     if (T.eid && T.ai === 'hunt' && DM[T.id] && DM[T.id].pose) drawOne(ctx, sim, T, t, k, true);
   }
 }
+let CALM_ON = false;
+// 0.8.18: in play the weasel is drawn 1.35x his sim body (about his jaws, feet on the floor) so his face reads on a phone
+// (at 450x1000 his head was under one egg wide); what he can reach, hit and be hit by is the sim's and is unchanged
+export const WEASEL_PLAY = 1.35;
+// (the rats are not: at 1.35x they overflow their hole boards; see the 0.8.18 audit)
+const PLAY_SCALE = { weasel: WEASEL_PLAY };
 function drawOne(ctx, sim, T, t, k, head) {
   const D = DM[T.id] || (DM[T.id] = { pose: null, fz: 0, thawT: -9 });
   const L = lookOf(T), frozen = T.frozen > 0, s = RIG[T.kind].s * k;
+  const W = T.kind === 'weasel' && !head ? weaselStage(T, t, L, D) : null; // 0.8.18: his acting on top of the sim's phases
   const hop = head ? D.hop || 0 : (D.hop = hopOver(sim, T));
   if (hop > 0.05) { L.st = 'leap'; L.u = 0.5 - 0.35 * Math.sign(D.hopD || 0); }
   const dm = head ? null : denMove(sim, T, t); // going in or out of its stump
@@ -883,13 +900,13 @@ function drawOne(ctx, sim, T, t, k, head) {
       if ((L.st === 'prowl' || L.st === 'stalk') && t - (D.carT ?? -9) < 0.12 && !(dm && dm.walk)) L.st = 'idle';
       pose = thiefBlend('t' + T.id, thiefPose(T.kind, L.st, t, L.u, odo), t, T.ph === 'leap' || T.ph === 'trapped' || T.ph === 'sqThrow' || T.ph === 'tumble' ? 22 : 9);
       if (T.cuff > 0) pose = cuffPose(pose, T);
-      if (T.kind === 'weasel') pose = voiceBeats(T, pose, L);
+      if (T.kind === 'weasel') { pose = voiceBeats(T, pose, L); if (W) pose = weaselSprings(pose, W); }
       D.pose = { ...pose };
     }
     if (D.fz > 0 && !frozen) D.thawT = t;
     D.fz = T.frozen;
   }
-  const o = { ...L.o, face: T.face, frozen: frozen ? T.frozen : 0, crown: T.kind === 'ratking', cape: T.kind === 'ratking' };
+  const o = { ...L.o, face: W ? T.face * W.sgn : T.face, frozen: frozen ? T.frozen : 0, crown: T.kind === 'ratking', cape: T.kind === 'ratking' };
   if (frozen) { o.eye = o.eye === 'spiral' ? 'normal' : o.eye; o.stars = 0; o.sweat = 0; o.zap = 0; }
   if (head) { o.only = 'head'; o.stars = 0; o.sweat = 0; o.zap = 0; }
   let alpha = T.ph === 'flee' ? T.alpha : 1, pop = T.ph === 'in' && !dm ? 0.35 + 0.65 * easeBack(clamp(1 - T.t / Math.max(0.01, T.dur), 0, 1)) : 1;
@@ -902,9 +919,12 @@ function drawOne(ctx, sim, T, t, k, head) {
     const mid = -RIG[T.kind].bodyY * k;
     if (T.ph === 'sqSkid') skidDust(ctx, T, k, s);
     if (fl) { ctx.translate(0, -fl.h * k); if (fl.sq) { ctx.scale(1 + 0.3 * fl.sq, 1 - 0.3 * fl.sq); } }
+    if (W && !frozen) { if (W.off) ctx.translate(T.face * W.off * k, 0); if (W.fx < 1) ctx.scale(W.fx, 1 + 0.1 * (1 - W.fx)); }
+    { const A = PLAY_SCALE[T.kind] || 1; if (A !== 1) { const mx = T.face * RIG[T.kind].mouthX * k; ctx.translate(mx, 0); ctx.scale(A, A); ctx.translate(-mx, 0); } } // drawn bigger than the sim body, the jaws / nose kept on the egg
     ctx.translate(0, mid - hop * k); ctx.rotate(-pitch * T.face + shake + spin - (fl ? fl.spin * T.face : 0)); ctx.scale(pop, pop); ctx.translate(0, -mid);
     drawThief(ctx, 0, 0, s, t, pose, o, T.kind);
     if (T.cuff > 0 && !head) cuffSmear(ctx, T, s);
+    if (W && W.bub && !frozen) thinkBubble(ctx, T, s, W.bub, W.bk);
     if (!head && t - D.thawT < 0.6) thawShards(ctx, k, (t - D.thawT) / 0.6, mid);
   });
 }
@@ -929,6 +949,56 @@ function denPlace(ctx, sim, T, k, m, f) {
     const g = ctx.createLinearGradient(0, -h * 1.1, 0, 3); g.addColorStop(0, `rgba(8,4,2,${0.75 * m.z})`); g.addColorStop(1, `rgba(8,4,2,${0.45 * m.z})`); // the dark of the hollow closes over it
     stumpDoor(ctx, w, h); ctx.fillStyle = g; ctx.fill();
   });
+}
+// ---- 0.8.18 the weasel's acting in play. The sim only knows phases and a walk at a steady speed; this adds what an
+// animator would (render only: the sim, its timings and what can be hit are untouched):
+//   a "!" when he spots his egg, a "Huh?" beat when a pounce is blocked or the way out shuts on him (he stops and looks
+//   before the panic), legs spinning on the spot before he bolts from Papa Rooster (he is drawn held back for half a
+//   second and catches his sim place up), a quick flip when he turns round instead of a mirror pop, and two springs on
+//   his walk: the body lags a start and overshoots a stop and settles, the tail and ears follow a beat behind.
+// Calm: none of the springs, the flip or the hold-back; the "Huh?" beat stays (it is a still pose).
+const WALKS = new Set(['prowl', 'stalk', 'idle', 'scared', 'defeated', 'carry']);
+function weaselStage(T, t, L, D) {
+  const W = { sgn: 1, fx: 1, off: 0, bub: '', bk: 0, sx: 0, tx: 0 }, calm = CALM_ON;
+  if (D.wph !== T.ph) { D.wph = T.ph; D.wt = t; D.wodo = T.odo; }
+  const age = t - D.wt;
+  if (T.ph === 'bonk' && L.u > 0.42) { L.o.eye = 'normal'; L.o.stars = 0; if (L.u > 0.5 && L.u < 0.9) { W.bub = '?'; W.bk = (L.u - 0.5) / 0.4; } }
+  else if (T.ph === 'trapped' && age < 0.8) { L.st = 'huh'; L.u = age / 0.8; L.o.eye = 'normal'; L.o.sweat = 0; if (L.u > 0.4) { W.bub = '?'; W.bk = (L.u - 0.4) / 0.6; } }
+  else if (T.ph === 'crouch' && L.u > 0.03 && L.u < 0.24) { W.bub = '!'; W.bk = (L.u - 0.03) / 0.21; L.o.eye = 'normal'; }
+  else if (L.st === 'scared' && (T.ph === 'home' || T.ph === 'flee') && age < 0.5 && !calm) { const q = age / 0.5; L.st = 'spin'; L.u = q; W.off = -(T.odo - D.wodo) * (1 - ss(0.5, 1, q)); }
+  if (L.st === 'carry') L.o.eye = L.o.eye === 'wide' ? 'wide' : 'normal';
+  const dt = t - (D.wlt ?? t); D.wlt = t;
+  if (calm || !(dt > 0 && dt < 0.1)) { D.sx = D.sv = D.tx = D.tv = 0; D.wv = 0; D.wo = T.odo; D.wface = T.face; return W; }
+  // the walk's speed (its own steps: the ring carrying it does not count) and the two springs it kicks
+  const v = clamp((T.odo - (D.wo ?? T.odo)) / dt, 0, 3), dv = W.off ? 0 : v - (D.wv || 0); D.wo = T.odo; D.wv = v;
+  let n = Math.max(1, Math.ceil(dt / 0.017)); const h = dt / n;
+  D.sv = (D.sv || 0) - dv * 5; D.tv = (D.tv || 0) - dv * 4;
+  for (; n > 0; n--) { D.sv += (-210 * (D.sx || 0) - 13 * D.sv) * h; D.sx = (D.sx || 0) + D.sv * h; D.tv += (-70 * (D.tx || 0) - 6.5 * D.tv) * h; D.tx = (D.tx || 0) + D.tv * h; }
+  D.sx = clamp(D.sx, -0.5, 0.5); D.tx = clamp(D.tx, -0.7, 0.7);
+  W.sx = D.sx; W.tx = D.tx;
+  // the turn: the old side closes like a door, the new one swings open with a little overshoot
+  if (D.wface != null && D.wface !== T.face && WALKS.has(L.st) && !T.eid) D.turnT = t;
+  D.wface = T.face;
+  const q = (t - (D.turnT ?? -9)) / 0.22;
+  if (q >= 0 && q < 1) { if (q < 0.45) { W.sgn = -1; W.fx = 1 - 0.85 * ss(0, 0.45, q); } else W.fx = 0.15 + 0.85 * easeBack((q - 0.45) / 0.55); W.fx = clamp(W.fx, 0.12, 1.08); }
+  return W;
+}
+function weaselSprings(p, W) {
+  const a = W.sx, b = W.tx; // a < 0: left behind by a start; a > 0: carried on past a stop
+  if (Math.abs(a) < 0.004 && Math.abs(b) < 0.004) return p;
+  const fwd = Math.max(0, a), bk = Math.max(0, -a);
+  return { ...p, dx: p.dx + a * 16, st: p.st + bk * 0.22 - fwd * 0.1, sq: p.sq + fwd * 0.3, pitch: p.pitch + bk * 0.12 - fwd * 0.16, hx: p.hx + a * 9, hy: p.hy + fwd * 6 - bk * 2, hr: p.hr + fwd * 0.3 - bk * 0.2,
+    ear: p.ear + b * -1.6, tail: p.tail + b * 1.5, tc: p.tc + b * 2.2 };
+}
+// a small round bubble over his head with one mark in it (no words): "!" he has seen it, "?" he does not get it
+function thinkBubble(ctx, T, s, ch, q) {
+  const U = s / 100, r = 15 * U * (q < 0.25 ? easeBack(q / 0.25) : 1 - ss(0.85, 1, q)), rot = Math.atan2(-Math.cos(T.a), -Math.sin(T.a));
+  if (!(r > 1)) return;
+  ctx.save(); ctx.translate(T.face * 62 * U, -84 * U); ctx.rotate(-rot + (CALM_ON ? 0 : Math.sin(q * 9) * 0.08));
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fillStyle = '#fffbe8'; ctx.fill(); ctx.lineWidth = Math.max(1.5, r * 0.14); ctx.strokeStyle = '#24141a'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(-T.face * r * 0.75, r * 1.05, r * 0.22, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = ch === '!' ? '#d23a2a' : '#3a2a5a'; ctx.font = `900 ${Math.round(r * 1.45)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ch, 0, r * 0.08);
+  ctx.restore();
 }
 // the weasel acts its voice (main.js plays it on the same sim tick the phase starts; audio.js sets the beats): two sniffs
 // and a curious "mm?" as it crouches (weasel_sniff), a shoulder hitch on every "hee" of its snicker as it comes in and as it

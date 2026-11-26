@@ -5992,7 +5992,7 @@ function render() {
   { const wx = warpXfBegin(ctx, sim, 'o'); SL(['octo', 'fish'], (c) => drawSeaUnder(c, sim, t, k, G.theme)); warpXfEnd(ctx, wx); } // v3.3: fish, ink, the octopus (the arms behind a held egg)
   SL(['hermit', 'puff', 'jelly', 'kc'], (c) => drawReefUnder(c, sim, t, k, G.theme)); // world 8: bubbles, hermit crabs, puffers, jellyfish, the King Crab
   SL(['urchin'], (c) => drawUrchins(c, sim, t, k, save.calm)); // 0.8.17 urchin: Spike rolls on the channel floor, under the eggs
-  SL(['thief'], (c) => drawThieves(c, sim, t, k)); // v3.6: the weasel and the rats on the ring floor
+  SL(['thief'], (c) => drawThieves(c, sim, t, k, !!save.calm)); // v3.6: the weasel and the rats on the ring floor
   SL(['pip'], (c) => { pipCalm(save.calm); drawPips(c, sim, t, k); }); // 0.8.17 pip: on his channel floor, under the eggs he holds
   SL(['coco'], (c) => { cocoCalm(save.calm); drawCocos(c, sim, t, k); }); // 0.8.17 coco: on his ring and his floor, under the eggs (and his peels)
   blastXf(() => drawClockworkTele(ctx, sim, t, k), 6.1); SL(['spider', 'beetle', 'jack'], (c) => drawClockwork(c, sim, t, k)); // v4: webs, spring jacks, wind-up beetles, spiders
