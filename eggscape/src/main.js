@@ -3767,7 +3767,11 @@ function drawShopHand() {
   ctx.save(); ctx.globalAlpha = a;
   // the bubble under the button: the thing's picture and one line, a tail pointing up at the button
   const txt = `You can get a new ${markWhat(H.key)}!`, ts = 15 * u, ph = 46 * u, bh = 56 * u;
-  const bw = Math.min(A.w - 24 * u, ui.measure(txt, ts) + ph + 34 * u), bx = clamp(B.x + B.w / 2 - bw / 2, A.x + 12 * u, A.x1 - 12 * u - bw), by = B.y + B.h + 14 * u;
+  const bw = Math.min(A.w - 24 * u, ui.measure(txt, ts) + ph + 34 * u), by = B.y + B.h + 14 * u;
+  // sweep817 (the first-time outfit bubble sat on a world gate's sign): it takes the first place under the header that
+  // leaves the map's gate boards, gates and side doors clear (under the button, then the left edge, then the right)
+  const hits = ui.rects.filter((r) => /^(levels:gateboard|btn:gate|btn:sq)/.test(r.tag)).map((r) => (/^btn:gate/.test(r.tag) ? { x: r.x, y: r.y - 76 * u, w: r.w, h: r.h + 76 * u } : r)), clear = (x) => !hits.some((r) => r.x < x + bw && r.x + r.w > x && r.y < by + bh + 4 * u && r.y + r.h > by - 10 * u);
+  const bx = [clamp(B.x + B.w / 2 - bw / 2, A.x + 12 * u, A.x1 - 12 * u - bw), A.x + 12 * u, A.x1 - 12 * u - bw].find(clear) ?? clamp(B.x + B.w / 2 - bw / 2, A.x + 12 * u, A.x1 - 12 * u - bw);
   ui.roundRect(bx, by + 3 * u, bw, bh, 16 * u); ctx.fillStyle = 'rgba(30,14,4,0.35)'; ctx.fill();
   ui.roundRect(bx, by, bw, bh, 16 * u); ctx.fillStyle = '#fff8e6'; ctx.fill(); ctx.lineWidth = 2.5 * u; ctx.strokeStyle = '#e0a020'; ctx.stroke();
   const tx = clamp(B.x + B.w / 2, bx + 22 * u, bx + bw - 22 * u);
