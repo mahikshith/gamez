@@ -213,6 +213,8 @@ function iceStep(sim, dt) {
       const p = e.body.getPosition();
       if (Math.hypot(p.x - I.x, p.y - tip) < (I.big ? 0.36 : 0.3)) {
         gone = true;
+        // 0.8.18 kits: an egg the kits carry has a kit riding on top: the ice bonks HIM, they tumble and the egg is spared
+        if (sim.kit && sim.kit.g && sim.kit.g.eid === e.id && (sim.kit.g.ph === 'carry' || sim.kit.g.ph === 'lift')) { sim.emit('icicleShatter', { x: I.x, y: tip, big: I.big }); sim.kitTumble(sim.kit.g, 'ice'); break; }
         sim.emit('icicleHit', { egg: e, x: I.x, y: tip, big: I.big });
         sim.crack(e, 0, 'icicle', I.big ? 2 : 1);
       }

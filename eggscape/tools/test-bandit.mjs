@@ -544,6 +544,13 @@ function cranking(o = {}) { const sim = setup(o); until(sim, 'crank'); run(sim, 
       }
     }
     ok(broke === 0, `the kits never crack an egg (${runs} runs of brisk turning, all modes)`);
+    { // falling ice on the egg they carry: it bonks the kit riding on top, they tumble, the egg is spared
+      const sim = carrying(), G = sim.kit.g, e = sim.eggs[0], p = e.body.getPosition(), c0 = e.cracks;
+      const okX = !!(sim.bx && sim.bx.ice);
+      if (okX) sim.bx.ice.push({ ri: -1, la: 0, rad: 0, ph: 'fall', t: 0, dur: 1, x: p.x, y: p.y + 0.62, vy: 0, big: 0, eid: e.id, fell: 1 });
+      const log = krun(sim, 0.5);
+      ok(okX && has(log, 'kitTumble') && log.find((q) => q.type === 'kitTumble').why === 'ice' && e.alive && e.cracks === c0 && !cracked(log), 'falling ice on the egg they carry bonks the kit on top: they tumble, the egg is not cracked');
+    }
   }
 }
 

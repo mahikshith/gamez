@@ -89,7 +89,7 @@ export const BAND = {
 const PERCH = new Set(['sit', 'spit', 'crank', 'reach', 'grab', 'strain', 'shaken', 'whistle', 'perchStun', 'cower', 'duel', 'dust', 'huh']);
 // the stand-off's clock (s): COME (at most; the weasel runs along its run to below his perch), FREEZE, STARE, CIRCLE,
 // SCUFFLE (the dust cloud), then his DUST (he won) or HUH (the sack ripped)
-export const DUEL = { come: 7.0, near: 0.1, gap: 1.05, sidle: 0.22, freeze: 0.6, stare: 1.3, circle: 1.1, fight: 4.0, dust: 1.6, huh: 1.8, wait: 4.0 };
+export const DUEL = { come: 7.0, near: 0.1, gap: 1.6, sidle: 0.22, freeze: 0.6, stare: 1.3, circle: 1.1, fight: 4.0, dust: 1.6, huh: 1.8, wait: 4.0 };
 const DUEL_PH = ['freeze', 'stare', 'circle', 'fight'];
 const HURTABLE = new Set(['spit', 'crank', 'reach', 'grab', 'strain', 'perchStun']); // a shake now is a real hurt
 const CATCH = new Set(['idle', 'sneak', 'crouch']); // on the yard he can run to catch a falling egg
