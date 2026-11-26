@@ -7434,7 +7434,7 @@ function drawIntro() {
       const dnB = { h: 16 * z * 1.25, gap: 4 * s, draw: (x, y, w) => ui.text(one([S.down && 'Downside: ' + S.down, S.down && 'Downside: ' + shortTip(S.down), 'Downside: ' + PW[1]], 16 * z, w), x + w / 2, y + 16 * z * 0.62, { size: 16 * z, align: 'center', maxW: w, color: ui.C.warn, tag: 'stkdown:0' }) };
       const btnB = { h: 60 * z, gap: 16 * s, draw: (x, y, w) => ui.button('stk:gotit', 'GOT IT', x, y, w, 60 * z, { kind: 'primary', shimmer: true, icon: ICON.play, size: 24 * z }) };
       const chickB = (h) => ({ h, gap: 8 * s, draw: (x, y, w) => { artStage(x, y, w, h, s, () => drawStrikeStage(ctx, S.id, x, y + 8 * s, w, h - 14 * s, G.t)); const bz = 46 * s; ctx.beginPath(); ctx.arc(x + w - bz * 0.7, y + h - bz * 0.7, bz * 0.56, 0, 7); ctx.fillStyle = '#25355c'; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#fff'; ctx.stroke(); pictoPower(ctx, S.id, x + w - bz * 0.7, y + h - bz * 0.7, bz * 0.95, G.t); ui.record({ x, y, w, h }, 'stk:art'); } });
-      const powB = (h) => ({ h, gap: 10 * s, draw: (x, y, w) => { drawHowTo(ctx, plan, x, y, w, h, G.t - G.stkShow.t0, ho); ui.roundRect(x, y, w, h, Math.min(18, h * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke(); ui.record({ x, y, w, h }, 'stk:power'); } });
+      const powB = (h) => ({ h, gap: 10 * s, draw: (x, y, w) => { heroDemo(plan, G.t - G.stkShow.t0, x, y, w, h, 1, ho, true); ui.record({ x, y, w, h }, 'stk:power'); } });
       const sum = (B) => B.reduce((a, b) => a + b.gap + b.h, 0);
       if (wideC) { // two columns: each fills the card's height
         const lh = Math.max(120 * s, room - sum([nameB]) - 8 * s), rh = Math.max(110 * s, room - sum([upB, dnB, btnB]) - 10 * s);
@@ -7499,8 +7499,7 @@ function introStage(P, s, iw, lines = 3) {
     if (!save.calm && n > 1 && G.t - I.t0 >= (P[I.i % n].loop || HOWTO_LOOP)) { I.i = (I.i + 1) % n; I.t0 = G.t; }
     const plan = P[I.i % n], th = G.theme && G.theme.palette;
     const ho = { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark };
-    drawHowTo(ctx, plan, x, y, w, stH, G.t - I.t0, ho);
-    ui.roundRect(x, y, w, stH, Math.min(18, stH * 0.08)); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(90,50,16,0.55)'; ctx.stroke();
+    heroDemo(plan, G.t - I.t0, x, y, w, stH, 1, ho, true); // (frame818: no box; its edges melt into the page)
     ui.record({ x, y, w, h: stH }, 'wintro:stage');
     const harmNow = plan.kind && !save.calm && (ho._phase === 'harm' || (!plan.harm && ho._pt < 1.6));
     ui.text(harmNow ? threatWords(plan.kind) : plan.cap, x + w / 2, y + stH + capH / 2 + 1 * s, { size: 18 * s, align: 'center', color: harmNow ? '#b8321e' : '#2d6a1c', maxW: w, tag: 'wintro:cap' });
@@ -8003,9 +8002,9 @@ function heroBake(V, low) {
 }
 // the demo on the hero, no panel, its edges melting into the page (a soft mask; Low graphics: drawn straight, no mask)
 const HD = { mk: '', cv: null, mask: null };
-function heroDemo(plan, tt, x, y, w, h, a, ho) {
+function heroDemo(plan, tt, x, y, w, h, a, ho, own) {
   if (a <= 0.01 || !(w > 24 && h > 24)) return; // no room for a demo (a squat screen with a long caption): nothing, never a negative box
-  if (ho.world) ho.world = { ...ho.world, back: () => true }; ho.bare = true; // no panel: the scene's things stand on the page's world
+  if (!own) { if (ho.world) ho.world = { ...ho.world, back: () => true }; ho.bare = true; } // no panel: the scene's things stand on the page's world (own: frame818, the demo keeps its own world, its edges melting into the page's sky)
   if (PERF.low) { ctx.save(); ctx.globalAlpha *= a; drawHowTo(ctx, plan, x, y, w, h, tt, ho); ctx.restore(); return; }
   const mk = Math.round(w) + 'x' + Math.round(h) + '@' + DPR;
   if (HD.mk !== mk) {
@@ -9080,70 +9079,147 @@ function phaseWords(level) {
   const head = `The bar at the top splits the fight into ${P.length} phases. In each new phase the boss attacks faster and with new moves.`;
   return when.length ? head + ' ' + when.join('; ').replace(/^p/, 'P') + '.' : head;
 }
-function drawInfo() {
-  dim(0.62);
-  const u = ui.u, s = u, C = ui.C;
-  ui.calm = save.calm;
-  const S = G.iscroll, dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
-  const A = ui.A, w = Math.min(A.w - 24 * u, 470 * u), x = A.cx - w / 2, fw = 7 * s, pad = 14 * s, iw = w - 2 * fw - 2 * pad;
-  const rows = infoRows(s, iw), title = 'Who\u2019s in this vault';
-  const footH = 50 * s, head = CARD_HEAD * s, listH = rows.length ? rows.reduce((a, r) => a + r.h, 0) + 4 * s : 64 * s;
-  const top = A.y + 12 * u + 8 * s, maxH = A.y1 - top - 12 * u - 5 * s;
-  const h = Math.min(maxH, head + listH + 12 * s + footH + 16 * s), y = Math.max(top, A.cy - h / 2);
-  G.infoCard = { x, y, w, h };
+// frame818: a list that scrolls on a frameless page: it is drawn into a picture of its own whose top and bottom melt away
+// (only where more is hidden that way), so rows slide out under a soft edge, never under a hard cut or a coloured band.
+// Low graphics: a plain clip. draw() paints in screen coordinates; ui.ctx and ctx point at the picture meanwhile.
+const FL = { cv: null, mk: '' };
+function fadeList(x, y, w, h, s, up, down, draw) {
+  if (PERF.low || !(w > 4 && h > 4)) { ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); try { draw(); } finally { ctx.restore(); } return; }
+  const mk = Math.ceil(w * DPR) + 'x' + Math.ceil(h * DPR);
+  if (FL.mk !== mk) { if (FL.cv) freeCanvas(FL.cv); FL.cv = heroCv(w, h); FL.mk = mk; }
+  const c = FL.cv.getContext('2d'), c0 = ctx, u0 = ui.ctx;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1; c.clearRect(0, 0, FL.cv.width, FL.cv.height);
+  c.setTransform(DPR, 0, 0, DPR, -x * DPR, -y * DPR);
+  ctx = c; ui.ctx = c;
+  try { draw(); } finally { ctx = c0; ui.ctx = u0; }
+  const e = 26 * s;
+  if (up || down) {
+    c.setTransform(DPR, 0, 0, DPR, 0, 0); c.globalCompositeOperation = 'destination-in';
+    const g = c.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, up ? 'rgba(0,0,0,0)' : '#000'); g.addColorStop(Math.min(0.45, e / h), '#000'); g.addColorStop(Math.max(0.55, 1 - e / h), '#000'); g.addColorStop(1, down ? 'rgba(0,0,0,0)' : '#000');
+    c.fillStyle = g; c.fillRect(0, 0, w, h); c.globalCompositeOperation = 'source-over';
+  }
+  ctx.drawImage(FL.cv, x, y, w, h);
+}
+// a villain's round portrait (the level card's faces): its group's colour, the live portrait, a light rim and a soft shadow
+function infoFace(kind, group, cx, cy, d, s) {
+  const bg = PORTRAIT_BG[group] || PORTRAIT_BG.creature, r = d / 2;
   ctx.save();
-  const k = ui.pop(G.screenT, 0.32);
-  if (k !== 1) { ctx.translate(x + w / 2, y + h / 2); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + h / 2)); }
-  ui.frame(x, y, w, h, { s, r: 24 * s });
-  const rw = clamp(ui.measure(title, 24 * s) + 56 * s, w * 0.6, w - 14 * s);
-  ui.ribbon(title, x + w / 2, y - 8 * s, rw, 40 * s, { s, color: '#7a3fb8', size: 24 * s, tag: 'info:title' });
-  // the list viewport, between the ribbon and the footer
-  const vx = x + fw + pad, vy = y + head - 4 * s, vw = iw, vh = Math.max(20 * s, y + h - fw - 12 * s - footH - 10 * s - vy);
-  S.max = Math.max(0, listH - vh);
-  glideDt(S, dt);
-  ctx.save(); ctx.beginPath(); ctx.rect(x + fw, vy, w - 2 * fw, vh); ctx.clip();
-  if (!rows.length) ui.text('Nothing hunts your eggs here: just you, the rings and gravity.', x + w / 2, vy + 30 * s, { size: 14.5 * s, align: 'center', maxW: iw, color: C.ink2, tag: 'info:empty' });
-  let ry = vy + 4 * s - S.y;
-  for (const R of rows) {
-    if (ry + R.h > vy - 2 && ry < vy + vh + 2) {
-      if (R.ri) { ctx.fillStyle = 'rgba(122,78,30,0.22)'; ctx.fillRect(vx, ry - 1 * s, vw, 1.5 * s); }
-      const py = ry + 6 * s, bg = PORTRAIT_BG[R.I.group] || PORTRAIT_BG.creature;
-      ui.well(vx, py, R.P, R.P, { s, r: 12 * s, a: bg[0], b: bg[1], border: 'rgba(40,24,10,0.7)', shade: 'rgba(0,0,10,0.45)',
-        paint: () => drawVillainPortrait(ctx, R.kind, vx + R.P / 2, py + R.P / 2, R.P, G.t) });
-      const grp = 'info:r' + R.ri;
-      for (const it of R.items) {
-        const yy = py + it.y, inside = yy - it.size * 0.6 >= vy && yy + it.size * 0.6 <= vy + vh;
-        let xx = vx + it.x;
-        if (it.ico) { // the trait icon sits in the margin left of the text
-          const ix = xx - it.size * 0.85, isz = it.size * 1.25;
-          if (it.ico === 'warn') pictoWarn(ctx, ix, yy, isz); else if (it.ico === 'ok') pictoCheck(ctx, ix, yy, isz); else if (it.ico === 'bolt') pictoPower(ctx, 'thunder', ix, yy, isz, G.t); else pictoClock(ctx, ix, yy, isz * 0.9);
-        }
-        const r1 = ui.text(it.str, xx, yy, { size: it.size, color: it.color, maxW: vx + vw - xx, tag: grp + ':' + it.str.slice(0, 18), group: grp, noRecord: !inside });
-        if (it.tag) { // a small group tag after the name when it fits
-          const ts = 10.5 * s, tw2 = ui.measure(it.tag, ts) + 10 * s, tx2 = r1.x + r1.w + 8 * s;
-          if (tx2 + tw2 <= vx + vw) {
-            ui.roundRect(tx2, yy - ts * 0.75, tw2, ts * 1.5, ts * 0.75); ctx.fillStyle = it.tag === 'BOSS' ? '#c9342c' : '#6a6f7c'; ctx.fill();
-            ui.text(it.tag, tx2 + tw2 / 2, yy, { size: ts, align: 'center', color: '#fff', tag: grp + ':tag', group: grp, noRecord: !inside });
+  ctx.beginPath(); ctx.arc(cx, cy + 3 * s, r, 0, TAU); ctx.fillStyle = 'rgba(10,30,60,0.22)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU);
+  const g = ctx.createLinearGradient(0, cy - r, 0, cy + r); g.addColorStop(0, bg[0]); g.addColorStop(1, bg[1]); ctx.fillStyle = g; ctx.fill();
+  ctx.save(); ctx.clip(); drawVillainPortrait(ctx, kind, cx, cy, d, G.t); ctx.restore();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.lineWidth = 3 * s; ctx.strokeStyle = group === 'boss' ? '#ffd2a0' : '#fff6e0'; ctx.stroke();
+  ctx.restore();
+}
+// one villain (or none) on the "i" page: its face big in the middle, its name and its lines centred under it; none: the
+// hen, happy, over the one line that says so
+function infoHero(R, x, y, w, h, s0) {
+  const C = ui.C;
+  if (!R) {
+    const hh = clamp(h * 0.42, 120 * s0, 260 * s0), fs = 18 * s0, lines = wrapText('Nothing hunts your eggs here: just you, the rings and gravity.', fs, w).slice(0, 3);
+    const gh = hh + 18 * s0 + lines.length * fs * 1.3, y0 = y + (h - gh) * 0.42;
+    ctx.save(); ctx.beginPath(); ctx.ellipse(x + w / 2, y0 + hh, hh * 0.4, hh * 0.07, 0, 0, TAU); ctx.fillStyle = 'rgba(16,44,10,0.2)'; ctx.fill(); ctx.restore();
+    drawHenAnim(ctx, 'happy', x + w / 2, y0 + hh * 0.5, hh, G.t, { key: 'info', face: 1, calm: save.calm, shadow: 0 });
+    lines.forEach((l, i) => ui.text(l, x + w / 2, y0 + hh + 18 * s0 + fs * 0.65 + i * fs * 1.3, { size: fs, align: 'center', maxW: w, color: C.ink, tag: 'info:empty' + i }));
+    return;
+  }
+  const lh = (it) => it.size * (it.name ? 1.5 : 1.3);
+  if (ui.A.w > ui.A.h * 1.15) { // on its side: the face left, its lines right of it, both centred in the room
+    const d = Math.min(h * 0.92, w * 0.3, 220 * s0), tw = w - d - 24 * s0;
+    let sh = s0 * 1.15, R2, gh;
+    for (let n = 0; n < 4; n++) { R2 = infoRows(sh, tw + 76 * sh).find((q) => q.kind === R.kind) || R; gh = R2.items.reduce((a, it) => a + lh(it), 0); if (gh <= h || sh <= s0 * 0.8) break; sh *= Math.max(0.8, h / gh); }
+    const bx = x + (w - d - 24 * s0 - Math.min(tw, w)) / 2, fx = x + (w - (d + 24 * s0 + tw)) / 2 + d / 2;
+    infoFace(R.kind, R.I.group, fx, y + h / 2, d, s0 * 1.2);
+    ui.record({ x: fx - d / 2, y: y + h / 2 - d / 2, w: d, h: d }, 'info:face');
+    let yy = y + Math.max(0, (h - gh) / 2);
+    const tx = fx + d / 2 + 24 * s0;
+    for (const it of R2.items) {
+      const L = lh(it), cy = yy + L / 2, iw2 = it.ico ? it.size * 1.5 : 0;
+      if (it.ico) { const ix = tx + it.size * 0.65, isz = it.size * 1.25; if (it.ico === 'warn') pictoWarn(ctx, ix, cy, isz); else if (it.ico === 'ok') pictoCheck(ctx, ix, cy, isz); else if (it.ico === 'bolt') pictoPower(ctx, 'thunder', ix, cy, isz, G.t); else pictoClock(ctx, ix, cy, isz * 0.9); }
+      const r1 = ui.text(it.str, tx + iw2, cy, { size: it.size, color: it.color, maxW: tw - iw2, tag: 'info:h:' + it.str.slice(0, 18), group: 'info:hero' });
+      if (it.tag) { const ts = 10.5 * sh, tw2 = ui.measure(it.tag, ts) + 10 * sh, tx2 = r1.x + r1.w + 8 * sh; ui.roundRect(tx2, cy - ts * 0.75, tw2, ts * 1.5, ts * 0.75); ctx.fillStyle = it.tag === 'BOSS' ? '#c9342c' : '#6a6f7c'; ctx.fill(); ui.text(it.tag, tx2 + tw2 / 2, cy, { size: ts, align: 'center', color: '#fff', tag: 'info:h:tag', group: 'info:hero' }); }
+      yy += L;
+    }
+    void bx;
+    return;
+  }
+  // portrait: the face as big as the page lets it, the words a size up on a tall phone; all of it fits (steps down if not)
+  let sh = s0 * clamp(h / (460 * s0), 1.2, 1.55), d = clamp(Math.min(w * 0.62, h * 0.42), 110 * s0, 260 * s0), R2, gh;
+  for (let n = 0; n < 4; n++) { R2 = infoRows(sh, w + 76 * sh).find((q) => q.kind === R.kind) || R; gh = d + 16 * s0 + R2.items.reduce((a, it) => a + lh(it), 0); if (gh <= h || sh <= s0 * 0.85) break; const k = Math.max(0.8, h / gh); sh *= k; d *= k; }
+  const items = R2.items, y0 = y + Math.max(0, (h - gh) * 0.42);
+  infoFace(R.kind, R.I.group, x + w / 2, y0 + d / 2, d, s0 * 1.3);
+  ui.record({ x: x + w / 2 - d / 2, y: y0, w: d, h: d }, 'info:face');
+  let yy = y0 + d + 16 * s0;
+  for (const it of items) {
+    const L = lh(it), cy = yy + L / 2, iw2 = it.ico ? it.size * 1.5 : 0, tw = Math.min(w - iw2, ui.measure(it.str, it.size)), tagW = it.tag ? ui.measure(it.tag, 10.5 * sh) + 18 * sh : 0;
+    const x0 = x + w / 2 - (iw2 + tw + tagW) / 2;
+    if (it.ico) { const ix = x0 + it.size * 0.65, isz = it.size * 1.25; if (it.ico === 'warn') pictoWarn(ctx, ix, cy, isz); else if (it.ico === 'ok') pictoCheck(ctx, ix, cy, isz); else if (it.ico === 'bolt') pictoPower(ctx, 'thunder', ix, cy, isz, G.t); else pictoClock(ctx, ix, cy, isz * 0.9); }
+    const r1 = ui.text(it.str, x0 + iw2, cy, { size: it.size, color: it.color, maxW: w - iw2, tag: 'info:h:' + it.str.slice(0, 18), group: 'info:hero' });
+    if (it.tag) { const ts = 10.5 * sh, tw2 = ui.measure(it.tag, ts) + 10 * sh, tx2 = r1.x + r1.w + 8 * sh; ui.roundRect(tx2, cy - ts * 0.75, tw2, ts * 1.5, ts * 0.75); ctx.fillStyle = it.tag === 'BOSS' ? '#c9342c' : '#6a6f7c'; ctx.fill(); ui.text(it.tag, tx2 + tw2 / 2, cy, { size: ts, align: 'center', color: '#fff', tag: 'info:h:tag', group: 'info:hero' }); }
+    yy += L;
+  }
+}
+// frame818 (mykee: no frames): the "i" page is a page, not a card: the scene edge to edge, the ribbon on top, the rows
+// floating on it (round faces as on the level card) and scrolling under soft edges, Back at the bottom in thumb reach.
+function drawInfo() {
+  const u = ui.u, C = ui.C, A = ui.A;
+  ui.calm = save.calm;
+  ui.buttons.length = 0; ui.rects.length = 0; // (a page over the vault: what lies under it can neither be tapped nor collide)
+  const S = G.iscroll, dt = Math.min(0.1, Math.max(0, G.t - (S.t || G.t))); S.t = G.t;
+  const s0 = u * clamp(A.w / (390 * u), 1, 1.15), w = Math.min(A.w - 32 * u, 560 * s0), x = A.cx - w / 2;
+  const title = 'Who\u2019s in this vault';
+  const footH = 56 * s0, ribH = 42 * s0, top = A.y + 6 * u, footY = A.y1 - 12 * u - footH;
+  const vy = top + ribH + 12 * s0, vh = Math.max(40 * s0, footY - 16 * s0 - vy);
+  // a few rows grow into the page (no blank half page), up to 1.45x; one villain is the page's hero (infoHero)
+  let s = s0, rows = infoRows(s, w), listH = rows.reduce((a, r) => a + r.h, 0) + 8 * s;
+  for (let n = 0; n < 3 && rows.length > 1 && listH < vh * 0.72 && s < u * 1.45 - 0.001; n++) {
+    const s2 = Math.min(u * 1.45, s * Math.min(1.3, (vh * 0.72) / listH)), r2 = infoRows(s2, w), l2 = r2.reduce((a, r) => a + r.h, 0) + 8 * s2;
+    if (l2 > vh) break;
+    s = s2; rows = r2; listH = l2;
+  }
+  const hero = rows.length <= 1;
+  if (hero) listH = vh; // (one face or none: laid out in the page's middle, nothing scrolls)
+  G.infoCard = { x: 0, y: 0, w: ui.w, h: ui.h }; // (the whole screen is the page: a tap anywhere stays on it; Back closes)
+  pageScene(footY - 10 * s, vy + Math.min(vh, listH) * 0.4, {});
+  const h0 = ui.halo; ui.halo = HALO;
+  try {
+    const k = ui.pop(G.screenT, 0.32);
+    ctx.save(); if (k !== 1) { ctx.translate(A.cx, top + ribH / 2); ctx.scale(k, k); ctx.translate(-A.cx, -(top + ribH / 2)); }
+    const rw = clamp(ui.measure(title, 25 * s) + 64 * s, w * 0.62, w);
+    ui.ribbon(title, A.cx, top + 4 * s, rw, ribH, { s, color: '#7a3fb8', size: 25 * s, tag: 'info:title' });
+    ctx.restore();
+    S.max = Math.max(0, listH - vh);
+    glideDt(S, dt);
+    const off = S.max > 0 ? 0 : (vh - listH) * 0.4; // a short list sits in the page's middle, not stuck under the ribbon
+    const r0 = ui.rects.length, b0 = ui.buttons.length;
+    if (hero) infoHero(rows[0], x, vy, w, vh, s0);
+    else fadeList(x - 16 * u, vy, w + 32 * u, vh, s, S.y > 1, S.y < S.max - 1, () => {
+      let ry = vy + off + 4 * s - S.y;
+      for (const R of rows) {
+        if (ry + R.h > vy - 2 && ry < vy + vh + 2) {
+          if (R.ri) { ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fillRect(x + R.P * 0.3, ry - 1 * s, w - R.P * 0.6, 1.5 * s); }
+          const py = ry + 6 * s;
+          infoFace(R.kind, R.I.group, x + R.P / 2, py + R.P / 2, R.P, s);
+          const grp = 'info:r' + R.ri;
+          for (const it of R.items) {
+            const yy = py + it.y, inside = yy - it.size * 0.6 >= vy && yy + it.size * 0.6 <= vy + vh;
+            const xx = x + it.x;
+            if (it.ico) { const ix = xx - it.size * 0.85, isz = it.size * 1.25; if (it.ico === 'warn') pictoWarn(ctx, ix, yy, isz); else if (it.ico === 'ok') pictoCheck(ctx, ix, yy, isz); else if (it.ico === 'bolt') pictoPower(ctx, 'thunder', ix, yy, isz, G.t); else pictoClock(ctx, ix, yy, isz * 0.9); }
+            const r1 = ui.text(it.str, xx, yy, { size: it.size, color: it.color, maxW: x + w - xx, tag: grp + ':' + it.str.slice(0, 18), group: grp, noRecord: !inside });
+            if (it.tag) {
+              const ts = 10.5 * s, tw2 = ui.measure(it.tag, ts) + 10 * s, tx2 = r1.x + r1.w + 8 * s;
+              if (tx2 + tw2 <= x + w) { ui.roundRect(tx2, yy - ts * 0.75, tw2, ts * 1.5, ts * 0.75); ctx.fillStyle = it.tag === 'BOSS' ? '#c9342c' : '#6a6f7c'; ctx.fill(); ui.text(it.tag, tx2 + tw2 / 2, yy, { size: ts, align: 'center', color: '#fff', tag: grp + ':tag', group: grp, noRecord: !inside }); }
+            }
           }
         }
+        ry += R.h;
       }
-    }
-    ry += R.h;
-  }
-  ctx.restore();
-  // soft edges where the list scrolls under the header and the footer
-  if (S.max > 0) {
-    const fade = (yy, up) => { // the card's cream at that height (ui.frame: #fffaea at the top to #f6e2ba at the bottom)
-      const f = clamp((yy - y) / h, 0, 1), c = [255 - 9 * f, 250 - 24 * f, 234 - 48 * f].map(Math.round).join(',');
-      const g = ctx.createLinearGradient(0, yy, 0, yy + (up ? -10 : 10) * s); g.addColorStop(0, `rgba(${c},0.95)`); g.addColorStop(1, `rgba(${c},0)`); ctx.fillStyle = g; ctx.fillRect(x + fw, up ? yy - 10 * s : yy, w - 2 * fw, 10 * s); };
-    if (S.y > 1) fade(vy, false);
-    if (S.y < S.max - 1) fade(vy + vh, true);
-    const th = Math.max(26 * s, vh * vh / listH), ty = vy + clamp(S.y / S.max, 0, 1) * (vh - th);
-    ui.roundRect(x + w - fw - 6 * s, ty, 3.5 * s, th, 1.75 * s); ctx.fillStyle = 'rgba(122,78,30,0.45)'; ctx.fill();
-  }
-  const fy = y + h - fw - 12 * s - footH;
-  ui.button('info:close', G.infoFrom === 'pause' ? 'Back' : 'Back to the vault', x + fw + pad, fy, iw, footH, { kind: 'primary', icon: G.infoFrom === 'pause' ? ICON.left : ICON.play, size: 19 * s });
-  ctx.restore();
+    });
+    clipRecorded(r0, b0, { x: x - 16 * u, y: vy, w: w + 32 * u, h: vh });
+    if (S.max > 0) { const th = Math.max(26 * s, vh * vh / listH), ty = vy + clamp(S.y / S.max, 0, 1) * (vh - th); ui.roundRect(Math.min(A.x1 - 8 * u, x + w + 8 * u), ty, 4 * s, th, 2 * s); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fill(); }
+    ui.button('info:close', G.infoFrom === 'pause' ? 'Back' : 'Back to the vault', x, footY, w, footH, { kind: 'primary', icon: G.infoFrom === 'pause' ? ICON.left : ICON.play, size: 21 * s });
+  } finally { ui.halo = h0; }
 }
 
 // The win screen in two beats (Duolingo-style).
