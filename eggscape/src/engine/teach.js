@@ -51,6 +51,7 @@ export const LESSONS = {
   geckoIn: L('look', 'own', 'Icy feet'), geckoLick: L('look', 'own', 'Frozen stuck'),
   // frog (render/frog.js)
   frog: L('look', 'own', 'Plugs gaps'), frogPlug: L('none'), frogLick: L('look', 'own', 'Orb in danger'), frogScare: L('none'), frogBounce: L('none'),
+  frogSnatch: L('away', 'ev'), // 0.8.18: it locks on an egg: the finger turns the ring that puts a wall into its tongue's line (ev.ring)
   // sea (render/sea.js)
   octIn: L('look', 'own', 'Carries eggs off'), octInk: L('look', 'own', 'Wait it out'), octGrab: L('none'),
   fishScatter: L('none'), fishIn: L('look', 'own', 'Fish push eggs'),

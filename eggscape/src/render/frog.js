@@ -11,6 +11,11 @@
 //   tout 1 | 0 (tongue going out | coming back)    prey(ctx, ux, uy) draws what the tip carries
 //   scared 0..1 (wide eyes, sweat)   plug 0..1 (sitting in a gap: flat, belly through the opening)
 //   look {x, y} pupils -1..1         lean rad (nose up/down)              shake px-ish wobble   um art units per metre
+// 0.8.18 faces and the snatch (the owner: "charm and clear faces matter"):
+//   greed 0..1 (eyes lock on and bulge, big glinting pupils, a drool drop)   smug 0..1 (sitting in a gap: lazy lids, a grin)
+//   off 0..1 (offended after a bop: lids half down, brows slanted, a pout)   bonk 0..1 (tongue slapped a wall: eyes squeezed)
+//   cheek 0..1.2 (stuffed cheeks)  cheekEgg(ctx, x, y, r) draws the held egg inside, under the stretched skin
+//   spit 0..1 (an "O" of a mouth)  glow {col, a} (a swallowed orb shining through the belly)   burp 0..1 (a bubble)
 // States drawn into the frog's own art (the shared creature-state look):
 //   frozen 0..1 (ice shell grows in)  crack 0..1 (hairline cracks, shiver)   shards [{x,y,a,s,al}] (thaw pieces)
 //   stun 0..1 (slack, spiral eyes, loose tongue, three stars)      zap 0..1 (jagged arcs and a flash, fades out)
@@ -18,9 +23,11 @@
 import { TAU } from '../sim/geom.js';
 import { FROG, FROG_MODE } from '../sim/frog.js';
 import { drawOrb } from './powers.js';
+import { PERF } from '../perf.js';
 import { drawKindChick } from './chicks.js';
 import { drawChick } from './characters.js';
-import { RING_MAT_BASE } from './world.js';
+import { RING_MAT_BASE, drawEgg } from './world.js';
+import { POWER_INFO } from './powers.js';
 
 export const FROG_ART = 0.96; // 100 art units = FROG.w * FROG_ART metres (about 1.09 m)
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -157,6 +164,23 @@ function tongue(ctx, root, tp, o, bend, w0, w1, tipR, prey) {
   ctx.beginPath(); ctx.ellipse(bx - tipR * 0.32, by - tipR * 0.36, tipR * 0.3, tipR * 0.2, -0.6, 0, TAU); ctx.fillStyle = C.tongueHi; ctx.fill();
 }
 
+// 0.8.18 the stuffed cheeks: the throat blown round an egg. The egg (cheekEgg) is drawn inside, then the skin goes over it
+// thin enough for the egg's worried face to show through; a shade, a shine and stretch marks on top. Body frame units.
+export const CHEEK = { x: 31, y: -6 };
+function drawCheek(ctx, k, o, egg) {
+  const rx = 5 + 20 * k, ry = 4 + 19 * k, cx = CHEEK.x + 2 * k, cy = CHEEK.y + 2 * k;
+  const shape = () => { ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0.2, 0, TAU); };
+  shape(); ctx.fillStyle = C.bellyLo; ctx.fill();
+  if (egg && k > 0.45) { ctx.save(); shape(); ctx.clip(); egg(ctx, cx, cy + 1, ry * 0.92); ctx.restore(); }
+  ctx.save(); ctx.globalAlpha = egg && k > 0.45 ? 0.3 : 1; shape(); ctx.fillStyle = C.belly; ctx.fill(); ctx.restore();
+  ctx.save(); shape(); ctx.clip(); // a hard shade crescent underneath, a shine on top
+  ctx.globalAlpha = 0.5; ctx.fillStyle = C.bellyLo; ctx.beginPath(); ctx.ellipse(cx + rx * 0.15, cy + ry * 0.75, rx * 1.1, ry * 0.5, 0.2, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 0.85; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(cx - rx * 0.35, cy - ry * 0.5, rx * 0.32, ry * 0.15, -0.35, 0, TAU); ctx.fill();
+  ctx.restore();
+  shape(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
+  if (k > 0.7) { ctx.strokeStyle = C.bellyLo; ctx.lineWidth = 1.3; for (const a of [-0.5, 0.15]) { ctx.beginPath(); ctx.arc(cx, cy, rx * 0.86, a, a + 0.35); ctx.stroke(); } } // stretch marks
+}
+
 export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
   if (!(s > 0)) return;
   if (!op.inner && (op.frozen > 0 || op.zap > 0) && typeof document !== 'undefined') { drawFrogShell(ctx, x, y, s, t, op); return; }
@@ -165,6 +189,8 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
   const plug = clamp(op.plug || 0, 0, 1), puff = clamp(op.puff || 0, 0, 1), scared = clamp(op.scared || 0, 0, 1);
   const mouth = clamp(Math.max(op.mouth || 0, 0.5 * stun), 0, 1), gulp = op.gulp == null ? -1 : op.gulp, lick = op.lick == null ? -1 : op.lick;
   const look = op.look || { x: 0.3, y: 0 }, tip = op.tongue || null;
+  const greed = clamp(op.greed || 0, 0, 1), smug = clamp(op.smug || 0, 0, 1) * (1 - stun), off = clamp(op.off || 0, 0, 1) * (1 - stun), bonk = clamp(op.bonk || 0, 0, 1);
+  const cheek = clamp(op.cheek || 0, 0, 1.3), spit = op.spit == null ? -1 : clamp(op.spit, 0, 1);
   const U = s / 100, o = clamp(1.9 / U, 2.8, 7);
   const skinName = SKINS[op.skin] ? op.skin : 'tree', ice = op.tint === 'ice';
   C = ice ? iced(skinName) : SKINS[skinName];
@@ -206,7 +232,7 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
 
     // eyes: big, glossy, on top of the head. The far one sits behind the near one, a size smaller.
     const lid = Math.max(op.blink || 0, gulp >= 0 ? sstep((gulp - 0.05) / 0.2) * (1 - sstep((gulp - 0.7) / 0.25)) : 0);
-    const eyeSink = gulp >= 0 ? 5 * Math.sin(Math.PI * clamp(gulp, 0, 1)) : 0, bulge = 1 + 0.16 * scared;
+    const eyeSink = gulp >= 0 ? 5 * Math.sin(Math.PI * clamp(gulp, 0, 1)) : 0, bulge = 1 + 0.16 * scared + 0.24 * greed;
     const eyeAt = (ex, ey, er, far) => {
       ey += eyeSink;
       const R = er * bulge;
@@ -216,6 +242,13 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
       ctx.fillStyle = stun > 0.3 ? '#fffbe8' : far ? C.eyeLo : C.eye; ctx.fill();
       ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
       ctx.clip();
+      if (bonk > 0.3 && stun <= 0.3) { // squeezed shut: the lid over it all, a tight ">" crease
+        ctx.fillStyle = far ? C.shade : C.base; ctx.fillRect(ex - R * 1.4, ey - R * 1.4, R * 2.8, R * 2.8);
+        ctx.strokeStyle = LINE; ctx.lineWidth = o * 0.9; ctx.beginPath(); ctx.moveTo(ex - R * 0.55, ey - R * 0.45); ctx.lineTo(ex + R * 0.35, ey); ctx.lineTo(ex - R * 0.55, ey + R * 0.45); ctx.stroke();
+        ctx.restore();
+        ctx.beginPath(); ctx.arc(ex, ey, R, 0, TAU); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
+        return;
+      }
       if (stun > 0.3) { // spiral eyes: a dark spiral, slowly turning
         ctx.beginPath();
         for (let a = 0; a < TAU * 2.2; a += 0.25) { const rr = (a / (TAU * 2.2)) * R * 0.82, aa = a - t * 3 * (far ? -1 : 1); a ? ctx.lineTo(ex + rr * Math.cos(aa), ey + rr * Math.sin(aa)) : ctx.moveTo(ex, ey); }
@@ -223,13 +256,14 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
       } else {
         // iris: the lower half a shade darker (a hard cel crescent), then a big round pupil that follows `look`
         if (!far) { ctx.fillStyle = C.eyeLo; ctx.beginPath(); ctx.arc(ex, ey + R * 0.28, R * 0.98, 0, Math.PI); ctx.fill(); ctx.beginPath(); ctx.arc(ex, ey, R, 0, TAU); ctx.fillStyle = C.eye; ctx.save(); ctx.clip(); ctx.beginPath(); ctx.arc(ex - R * 0.1, ey - R * 0.12, R * 0.98, 0, TAU); ctx.fill(); ctx.restore(); }
-        const pr = R * (0.62 - 0.2 * scared), px = ex + look.x * R * 0.3, py = ey + look.y * R * 0.26;
+        const pr = R * (0.62 - 0.2 * scared + 0.1 * greed), px = ex + look.x * R * 0.3, py = ey + look.y * R * 0.26;
         ctx.fillStyle = C.pupil; ctx.beginPath(); ctx.ellipse(px, py, pr * (far ? 0.85 : 1), pr * 0.96, 0, 0, TAU); ctx.fill();
         ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.arc(px - pr * 0.36, py - pr * 0.4, pr * (far ? 0.26 : 0.34), 0, TAU); ctx.fill(); // the glossy glint
         if (!far) { ctx.beginPath(); ctx.arc(px + pr * 0.42, py + pr * 0.38, pr * 0.14, 0, TAU); ctx.fill(); }
+        if (greed > 0.3 && !far) { ctx.beginPath(); ctx.arc(px + pr * 0.2, py - pr * 0.5, pr * 0.16 * greed, 0, TAU); ctx.fill(); } // a greedy sparkle
       }
       // the eyelid slides down from the top (a blink, or shut for a gulp); the brow ridge always covers a bit
-      const cover = clamp(0.1 - 0.1 * scared + lid * 0.95 + 0.3 * stun, 0, 1.1);
+      const cover = clamp(0.1 - 0.1 * scared - 0.1 * greed + lid * 0.95 + 0.3 * stun + 0.42 * off + 0.36 * smug, 0, 1.1);
       ctx.fillStyle = far ? C.shade : C.base;
       ctx.fillRect(ex - R * 1.4, ey - R * 1.4, R * 2.8, R * (0.2 + cover * 1.8));
       ctx.fillStyle = far ? C.deep : C.shade;
@@ -237,6 +271,10 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
       if (lid > 0.5 || stun > 0.3) { ctx.strokeStyle = LINE; ctx.lineWidth = o * 0.8; ctx.beginPath(); ctx.moveTo(ex - R * 0.9, ey + R * 0.05); ctx.quadraticCurveTo(ex, ey + R * 0.5, ex + R * 0.9, ey + R * 0.05); ctx.stroke(); }
       ctx.restore();
       ctx.beginPath(); ctx.arc(ex, ey, R, 0, TAU); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
+      if (off > 0.05) { // an offended brow: slanted down toward the nose
+        ctx.save(); ctx.globalAlpha *= clamp(off * 2, 0, 1); ctx.strokeStyle = LINE; ctx.lineWidth = o * 1.25; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(ex - R * 0.85, ey - R * 1.18); ctx.lineTo(ex + R * 0.8, ey - R * 0.82); ctx.stroke(); ctx.restore();
+      }
     };
     // ---- body and head, tilted up on the straight arms like a sitting frog (drawn in the body's own frame) ----
     const tilt = (0.55 - 0.27 * crouch - 0.2 * plug - 0.28 * stun) * (1 - st) + 0.08 * st;
@@ -268,6 +306,13 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
     ctx.fillStyle = C.belly; ctx.fill();
     ctx.beginPath(); ctx.moveTo(-42, 1); ctx.bezierCurveTo(-16, -2, 18, -4, 50, -5); ctx.lineTo(50, 8); ctx.lineTo(-42, 8); ctx.closePath();
     ctx.fillStyle = C.bellyLo; ctx.fill();
+    if (op.glow && op.glow.a > 0.01) { // 0.8.18: the swallowed orb shines through the belly
+      const g = ctx.createRadialGradient(6, -10, 2, 6, -10, 38), c0 = op.glow.col;
+      g.addColorStop(0, c0); g.addColorStop(0.55, c0 + 'cc'); g.addColorStop(1, c0 + '00');
+      ctx.globalAlpha = op.glow.a; ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(6, -10, 46, 26, 0, 0, TAU); ctx.fill();
+      ctx.globalAlpha = op.glow.a * 0.9; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(4, -10, 7, 3.4, -0.1, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     ctx.restore();
     body(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
     // cheek blush and ear drum
@@ -278,6 +323,7 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
     // throat sac (under the chin): pulses when idle, swells before a hop, a lump travels down it when swallowing
     const idlePulse = 0.08 + 0.06 * (0.5 + 0.5 * Math.sin(t * 2.6 + (op.id || 0))), pf = Math.max(puff, idlePulse);
     const sacX = 28, sacY = -5 + 2 * pf, sr = 5 + 11 * pf;
+    if (cheek < 0.35) {
     ctx.beginPath(); ctx.ellipse(sacX, sacY, sr * 1.05, sr * (0.8 + 0.12 * pf), 0.15, 0, TAU);
     ctx.fillStyle = C.belly; ctx.fill(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
     ctx.save(); ctx.clip(); ctx.fillStyle = C.bellyLo; ctx.beginPath(); ctx.ellipse(sacX + sr * 0.15, sacY + sr * 0.5, sr * 1.1, sr * 0.5, 0.15, 0, TAU); ctx.fill(); ctx.restore();
@@ -287,11 +333,18 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
       ctx.beginPath(); ctx.ellipse(lx, ly, lr * 1.08, lr, 0.2, 0, TAU); ctx.fillStyle = C.belly; ctx.fill(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
       ctx.beginPath(); ctx.ellipse(lx - lr * 0.25, ly - lr * 0.3, lr * 0.45, lr * 0.28, 0.2, 0, TAU); ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.8; ctx.fill(); ctx.globalAlpha = 1;
     }
+    } // (no sac to see under stuffed cheeks)
 
     // mouth: a wide smile; open, the lower jaw drops and a dark red cavity shows
     const mO = Math.max(mouth, tip ? 0.95 : 0, lick >= 0 ? 0.3 : 0);
     const lipTop = () => { ctx.moveTo(43.5, -18.5); ctx.quadraticCurveTo(28, -13.5, 8, -15); };
-    if (mO > 0.04) {
+    const ooh = spit >= 0 ? Math.sin(Math.PI * clamp((spit - 0.3) / 0.6, 0, 1)) : 0; // the spit: lips pursed into an O
+    if (ooh > 0.05) {
+      ctx.beginPath(); lipTop(); ctx.quadraticCurveTo(3, -15.5, 0, -21); ctx.lineWidth = o * 0.9; ctx.strokeStyle = LINE; ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(45, -14, 3 + 4 * ooh, 3.5 + 4.5 * ooh, 0.2, 0, TAU); ctx.fillStyle = C.mouth; ctx.fill(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
+    } else if (off > 0.3 && mO <= 0.04) { // a pout: a short line turned down at the corner
+      ctx.beginPath(); ctx.moveTo(43, -17); ctx.quadraticCurveTo(32, -15.5, 22, -14.5); ctx.quadraticCurveTo(17, -14, 14, -11.5); ctx.lineWidth = o * 0.9; ctx.strokeStyle = LINE; ctx.stroke();
+    } else if (mO > 0.04) {
       const jaw = 6.5 * mO;
       ctx.beginPath(); lipTop(); ctx.lineTo(7, -11); ctx.quadraticCurveTo(26, -9.5 + jaw * 0.7, 40, -9.5 + jaw); ctx.closePath();
       ctx.fillStyle = C.mouth; ctx.fill();
@@ -300,7 +353,14 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
       ctx.beginPath(); lipTop(); ctx.lineWidth = o; ctx.strokeStyle = LINE; ctx.stroke();
     } else {
       ctx.beginPath(); lipTop(); ctx.quadraticCurveTo(3, -15.5, 0, -21); ctx.lineWidth = o * 0.9; ctx.strokeStyle = LINE; ctx.stroke();
+      if (smug > 0.3) { ctx.beginPath(); ctx.moveTo(2.5, -23.5); ctx.quadraticCurveTo(-1, -22, -1.5, -18); ctx.lineWidth = o * 0.7; ctx.stroke(); } // the grin's dimple
     }
+    if (greed > 0.4 && !tip) { // a drool drop at the lip
+      const dd = 3 + 3 * greed;
+      ctx.beginPath(); ctx.moveTo(36, -11); ctx.quadraticCurveTo(37.5, -11 + dd, 36 + 0.1, -10 + dd * 1.4); ctx.quadraticCurveTo(34.5, -11 + dd, 36, -11);
+      ctx.fillStyle = '#d6f4ff'; ctx.fill(); ctx.lineWidth = o * 0.55; ctx.strokeStyle = LINE; ctx.stroke();
+    }
+    if (cheek > 0.02) drawCheek(ctx, cheek, o, op.cheekEgg);
     ctx.fillStyle = LINE; ctx.beginPath(); ctx.ellipse(40, -24, 1.8, 1.3, 0.3, 0, TAU); ctx.fill(); // nostril
     eyeAt(16, -40, 11.5, false); // the near eye, the big one
     ctx.restore();
@@ -337,6 +397,13 @@ export function drawFrog(ctx, x, y, s, t = 0, op = {}) {
     plump(ctx, fe, fw, 5.8, 5, o, C.base, C.shade, null);
     toes(ctx, ft[0] - 1, ft[1] - 1, 3, 7, 3.6, 3.1, o, 0.42);
     stars(false);
+    if (op.burp > 0 && op.burp < 1) { // a little burp bubble from the lips, tinted like the orb
+      const b = op.burp, bx = 50 + 10 * b, by = -42 - 26 * b, br = 3 + 5 * sstep(b / 0.4);
+      ctx.save(); ctx.globalAlpha = 1 - sstep((b - 0.6) / 0.4);
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fillStyle = (op.glow && op.glow.col ? op.glow.col : '#d6f4ff') + '55'; ctx.fill(); ctx.lineWidth = o * 0.6; ctx.strokeStyle = LINE; ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx - br * 0.35, by - br * 0.35, br * 0.25, 0, TAU); ctx.fillStyle = '#ffffff'; ctx.fill();
+      ctx.restore();
+    }
     // sweat drops when scared
     if (scared > 0.05) {
       ctx.fillStyle = C.sweat; ctx.strokeStyle = LINE; ctx.lineWidth = o * 0.6;
@@ -483,10 +550,21 @@ export function drawFrogTele(ctx, sim, k, t) {
 }
 
 // Marks what it is about to lick (a thin ring round the orb or chick), under the frog.
-function lickMark(ctx, F, t) {
+function lickMark(ctx, F, t, sim) {
   if (F.ph !== 'lick') return;
   const p = clamp(F.t / F.dur, 0, 1), pu = 0.5 + 0.5 * Math.sin(t * 14);
   ctx.save();
+  if (F.lk === 'egg' && sim.frogMouth) { // 0.8.18: the line its tongue will take (put a wall across it), drawn as it locks on
+    const m = sim.frogMouth(F), f = sstep(p / 0.35), x1 = m.x + (F.lx - m.x) * f, y1 = m.y + (F.ly - m.y) * f;
+    ctx.lineCap = 'round'; ctx.setLineDash([0.02, 0.11]); ctx.lineDashOffset = -t * 0.4;
+    ctx.globalAlpha = 0.55; ctx.lineWidth = 0.075; ctx.strokeStyle = '#3a0b18'; ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.globalAlpha = 0.6 + 0.4 * p; ctx.lineWidth = 0.04; ctx.strokeStyle = '#ff7a9c'; ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    ctx.lineWidth = 0.045; ctx.strokeStyle = `rgba(255,110,145,${0.5 + 0.35 * p + 0.15 * pu})`;
+    ctx.beginPath(); ctx.arc(F.lx, F.ly, 0.42 - 0.1 * p + 0.02 * pu, 0, TAU); ctx.stroke();
+    ctx.restore();
+    return;
+  }
   ctx.lineWidth = 0.035; ctx.strokeStyle = `rgba(255,120,150,${0.35 + 0.4 * p + 0.2 * pu})`;
   ctx.beginPath(); ctx.arc(F.lx, F.ly, 0.34 - 0.08 * p + 0.02 * pu, 0, TAU); ctx.stroke();
   ctx.restore();
@@ -535,16 +613,42 @@ export function drawFrogs(ctx, sim, t, k, theme) {
         ch.puff = 0.35 * (1 - tau);
         break;
       }
-      case 'lick': ch.lick = p; ch.lean = 0; break;
+      case 'lick': ch.lick = p; ch.lean = 0; if (F.lk === 'egg') { ch.greed = sstep(p / 0.2); ch.puff = 0.2 + 0.7 * sstep(p); ch.lean = 0.08 * sstep(p / 0.3); } break; // 0.8.18: the lock-on
       case 'tongue': {
-        const g = F.t / FROG.tongueT, e = g < FROG.grab ? Math.pow(sstep(g / FROG.grab), 0.6) : 1 - sstep((g - FROG.grab) / (1 - FROG.grab));
+        const g = F.t / (F.dur || FROG.tongueT), e = g < FROG.grab ? Math.pow(sstep(g / FROG.grab), 0.6) : 1 - sstep((g - FROG.grab) / (1 - FROG.grab));
         ch.mouth = g < 0.9 ? 1 : 0.4;
         ch.tongueE = e;
+        if (F.lk === 'egg') ch.greed = F.bonk ? 0 : 1 - 0.5 * sstep((g - FROG.grab) / 0.3);
+        if (F.bonk && g > FROG.grab) { ch.bonk = sstep((g - FROG.grab) / 0.12); ch.lean = -0.32 * ch.bonk; ch.squash = 0.25 * ch.bonk; } // it snaps back into its face
+        break;
+      }
+      case 'stuff': { // the cheeks fill round the egg, a squeeze of the eyes
+        ch.cheek = sstep(p / 0.45) * (1 + 0.14 * Math.sin(Math.PI * clamp((p - 0.35) / 0.65, 0, 1)));
+        ch.blink = 0.75 * Math.sin(Math.PI * Math.min(1, p / 0.6)); ch.squash = 0.3 * Math.sin(Math.PI * clamp(p / 0.5, 0, 1));
+        break;
+      }
+      case 'spit': { // it rears back, cheeks squeezed, then "ptoo": the lips pucker and the cheeks go flat
+        const a = FROG.spitAt, w = sstep(p / a), r2 = clamp((p - a) / (1 - a), 0, 1);
+        ch.spit = p;
+        ch.cheek = p < a ? 1 + 0.16 * w : 1.16 * (1 - sstep(r2 / 0.3));
+        ch.lean = p < a ? -0.2 * w : -0.2 + 0.36 * sstep(r2 / 0.25) - 0.16 * sstep((r2 - 0.4) / 0.6);
+        ch.squash = p < a ? 0.15 * w : 0.2 * Math.sin(Math.PI * clamp(r2 / 0.5, 0, 1));
         break;
       }
       case 'gulp': ch.gulp = clamp(F.t / F.dur, 0, 1); ch.puff = 0.55 + 0.45 * Math.sin(Math.min(1, ch.gulp / 0.6) * Math.PI); ch.squash = 0.42 * Math.sin(Math.PI * clamp(ch.gulp / 0.5, 0, 1)); break; // a quick body squash for ~0.3 s
     }
     if (F.bump > 0 && F.ph === 'sit') ch.squash = 0.3 * F.bump;
+    // 0.8.18: an egg in its cheeks (riding along, wobbling a little), smug in a gap, offended after a bop, a glowing belly
+    const held = F.eg >= 0 ? sim.eggs.find((q) => q.id === F.eg && q.alive) : null;
+    if (held && F.ph !== 'stuff' && F.ph !== 'spit' && F.ph !== 'tongue') ch.cheek = 1 + 0.035 * Math.sin(t * 7 + F.id);
+    R.smug = ease(R.smug || 0, F.gi >= 0 && (F.ph === 'sit' || F.ph === 'land') && !held && !(F.off > 0) && !F.sc ? 1 : 0, 4);
+    ch.smug = R.smug;
+    if (F.off > 0) ch.off = sstep((FROG.offT - F.off) / 0.12) * sstep(F.off / 0.35);
+    if (F.belly) {
+      const col = POWER_INFO[F.belly] && /^#[0-9a-f]{6}$/i.test(POWER_INFO[F.belly].color) ? POWER_INFO[F.belly].color : '#ffe066', b = F.bellyT;
+      ch.glow = { col, a: b < FROG.bellyT ? sstep(b / 0.5) * (1 - 0.45 * sstep((b - FROG.bellyT + 0.6) / 0.6)) : 0.5 + (PERF.low ? 0 : 0.12 * Math.sin(t * 3)) };
+      if (b > 0.95 && b < 1.75) ch.burp = (b - 0.95) / 0.8;
+    }
     ch.plug = R.plug;
     ch.blink = blinkAt(t, F.id);
     // ---- states (thunderclap, rooster, zap: stunned; frost nova: frozen). Frozen holds the pose it froze in.
@@ -562,13 +666,17 @@ export function drawFrogs(ctx, sim, t, k, theme) {
     if (th >= 0 && th < 0.7) ch.shake = Math.max(ch.shake || 0, th > 0.25 ? 2.2 * (1 - (th - 0.25) / 0.45) : 0);
     if (zapT > 0) ch.zap = clamp(zapT / 0.3, 0, 1);
     if (stn > 0 && !(zapT > 0)) ch.stun = Math.min(1, (F.stnMax - stn) / 0.3 + 0.01, stn / 0.25);
-    if (frz > 0 || ch.stun > 0) { ch.crouch = ch.puff = ch.gulp = ch.lick = ch.tongue = ch.prey = undefined; ch.stretch = ch.squash = 0; ch.scared = 0; if (frz > 0) { ch.blink = 0.55; ch.look = { x: 0.3, y: 0 }; } }
+    if (frz > 0 || ch.stun > 0) { ch.crouch = ch.puff = ch.gulp = ch.lick = ch.tongue = ch.prey = undefined; ch.stretch = ch.squash = 0; ch.scared = 0; ch.greed = ch.smug = ch.off = 0; if (frz > 0) { ch.blink = 0.55; ch.look = { x: 0.3, y: 0 }; } }
     // ---- what it looks at: the prey, the threat, else the nearest egg
     let tgt = null;
     if (F.ph === 'lick' || F.ph === 'tongue') tgt = { x: F.lx, y: F.ly };
     else if (F.ph !== 'hop') {
-      let bd = 3;
-      for (const e of sim.aliveEggs()) { const q = e.body.getPosition(), d = Math.hypot(q.x - F.x, q.y - F.y); if (d < bd) { bd = d; tgt = { x: q.x, y: q.y }; } }
+      const aim = sim.frogAim ? sim.frogAim(F) : null; // 0.8.18: a decoy or a chick nearby: its eyes follow that
+      if (aim && aim.lure) tgt = { x: aim.x, y: aim.y };
+      else {
+        let bd = 3;
+        for (const e of sim.aliveEggs()) { if (e === held) continue; const q = e.body.getPosition(), d = Math.hypot(q.x - F.x, q.y - F.y); if (d < bd) { bd = d; tgt = { x: q.x, y: q.y }; } }
+      }
     }
     const lk = tgt ? toLocal(tgt.x, tgt.y, 1) : { x: 0.35 + 0.3 * Math.sin(t * 0.6 + F.id), y: -0.05 };
     const ll = Math.hypot(lk.x, lk.y) || 1;
@@ -581,9 +689,12 @@ export function drawFrogs(ctx, sim, t, k, theme) {
       const T = toLocal(F.got ? F.px : F.lx, F.got ? F.py : F.ly, um), e = ch.tongueE;
       const far = clamp(Math.hypot(T.x - mouth.x, T.y - mouth.y), 1, 1e9), cap = Math.min(1, (FROG_MODE.hard.tongue * 1.1 * um) / far);
       ch.tongue = { x: mouth.x + (T.x - mouth.x) * e * cap, y: mouth.y + (T.y - mouth.y) * e * cap };
-      ch.tout = F.t < FROG.tongueT * FROG.grab ? 1 : 0;
-      if (F.got && F.t >= FROG.tongueT * FROG.grab) { const pk = F.pk, ty2 = F.pty; ch.prey = (c2, ux, uy) => frogPrey(c2, pk, ty2, ch.tongue.x + ux * 7, ch.tongue.y + uy * 7, um, e, t); }
+      ch.tout = F.t < (F.dur || FROG.tongueT) * FROG.grab ? 1 : 0;
+      if (F.got && F.pk === 'egg' && held) { const tp = ch.tongue; ch.prey = (c2, ux, uy) => eggAt(c2, WM, held, tp.x + ux * 9, tp.y + uy * 9, lerp(0.21, 0.3, e) * um, t, k); }
+      else if (F.got && F.t >= (F.dur || FROG.tongueT) * FROG.grab) { const pk = F.pk, ty2 = F.pty; ch.prey = (c2, ux, uy) => frogPrey(c2, pk, ty2, ch.tongue.x + ux * 7, ch.tongue.y + uy * 7, um, e, t); }
     }
+    if ((F.ph === 'lick' || F.ph === 'tongue') && F.lk === 'egg') { const le = sim.eggs.find((q) => q.id === F.lid); if (le && le.alive) le.fear = Math.max(le.fear || 0, 0.3); } // it gulps: the egg sees it coming
+    if (held && ch.cheek > 0.4) { held.fear = 0.5; ch.cheekEgg = (c2, x, y, r) => eggAt(c2, WM, held, x, y, r, t, k); }
     if (F.ph === 'gulp') ch.lick = -1;
     if (frz > 0 || ch.stun > 0) { ch.tongue = null; ch.prey = undefined; }
     // ---- orientation: lie on the surface; in the air nose along the flight
@@ -598,7 +709,8 @@ export function drawFrogs(ctx, sim, t, k, theme) {
     // ---- draw: rotate onto the surface (local up = the normal), at the feet point
     const theta = Math.atan2(-F.nx, F.ny);
     ch.mouth = ch.mouth || 0;
-    lickMark(ctx, F, t);
+    lickMark(ctx, F, t, sim);
+    const WM = ctx.getTransform(); // the world frame (eggAt draws a held egg in it)
     ctx.save();
     ctx.translate(F.x, F.y);
     ctx.scale(1 / k, -1 / k);
@@ -611,6 +723,16 @@ export function drawFrogs(ctx, sim, t, k, theme) {
   }
 }
 
+// 0.8.18: the held egg drawn at (ax, ay) of the current (art) frame, sized so its half height is r art units: the game's own
+// egg art, drawn in the world frame WM about its body (so its face, cracks and skin are the real ones), scaled down
+function eggAt(ctx, WM, e, ax, ay, r, t, k) {
+  if (!e || !e.body || typeof DOMPoint === 'undefined') return;
+  const m = ctx.getTransform(), d = m.transformPoint(new DOMPoint(ax, ay)), w = WM.inverse().transformPoint(d);
+  const s = (r * Math.hypot(m.a, m.b)) / (0.29 * Math.hypot(WM.a, WM.b)), p = e.body.getPosition();
+  ctx.save();
+  try { ctx.setTransform(WM); ctx.translate(w.x, w.y); ctx.scale(s, s); ctx.translate(-p.x, -p.y); drawEgg(ctx, e, t, k * s); } catch (er) { /* art never breaks the frame */ }
+  ctx.restore();
+}
 // the swallowed thing riding the tongue tip (art units; the frame is the frog's)
 function frogPrey(ctx, kind, type, x, y, um, e, t) {
   const sc = clamp(0.4 + 0.6 * sstep(e / 0.75), 0.3, 1); // it shrinks as the tongue drags it in, and slips into the mouth
@@ -633,7 +755,7 @@ export function frogEvent(ev, fx, api) {
     case 'frogHop':
       audio.play('squish', { intensity: 0.5, pitch: 1.1, vol: 0.7 });
       fx.dust(ev.x, ev.y, 4, 'rgba(190,230,150,0.7)');
-      once('frog', 'A frog! It hops through gaps, plugs them, and swallows orbs and chicks. Eggs bounce softly on its back.');
+      once('frog', 'A frog! It hops through gaps and plugs them. Its tongue snatches orbs, chicks and eggs: turn a wall into it.');
       break;
     case 'frogLand':
       audio.play('egg_bump', { vol: 0.45, pitch: 0.6 });
@@ -642,7 +764,35 @@ export function frogEvent(ev, fx, api) {
       break;
     case 'frogLick':
       audio.play('squish', { intensity: 0.3, pitch: 1.7, vol: 0.5 });
+      if (ev.kind === 'egg') { once('frogSnatch', null); break; } // 0.8.18: locked on an egg (the lesson: turn a wall into the line)
       once('frogLick', 'The frog licks its lips: it is about to snatch that orb or chick!');
+      break;
+    // 0.8.18 the snatch, the bonk, the spit, the bop
+    case 'frogSnatch':
+      audio.play('squish', { intensity: 1, pitch: 0.65, vol: 0.8 });
+      fx.dust(ev.x, ev.y, 4, 'rgba(255,170,190,0.7)');
+      break;
+    case 'frogBonk':
+      audio.play('rock_hit', { vol: 0.55, pitch: 1.5 });
+      audio.play('egg_bump', { vol: 0.4, pitch: 1.6 });
+      fx.sparkle(ev.x, ev.y, 7, '#ffe14a');
+      popup(ev.x, ev.y + 0.45, 'Bonk!', { color: '#ffe58a', size: 17, life: 0.9 });
+      break;
+    case 'frogSpit':
+      if (ev.why === 'end' || !ev.egg) break;
+      audio.play('bubble_pop', { vol: 0.6, pitch: 0.75 });
+      fx.dust(ev.x, ev.y, 6, 'rgba(220,245,255,0.8)');
+      popup(ev.x, ev.y + 0.55, 'Ptoo!', { color: '#d8f6ff', size: 16, life: 0.85 });
+      break;
+    case 'frogBop':
+      audio.play('egg_bump', { vol: 0.5, pitch: 1.25 });
+      break;
+    case 'frogCough':
+      audio.play('bubble_pop', { vol: 0.55, pitch: 1.3 });
+      fx.sparkle(ev.x, ev.y, 8, (POWER_INFO[ev.orb] && POWER_INFO[ev.orb].color) || '#ffe066');
+      break;
+    case 'frogBurp':
+      audio.play('bubble_pop', { vol: 0.3, pitch: 1.7 });
       break;
     case 'frogTongue':
       audio.play('thorn_snap', { vol: 0.45, pitch: 2 });
@@ -650,7 +800,7 @@ export function frogEvent(ev, fx, api) {
     case 'frogEat':
       audio.play('squish', { intensity: 0.9, pitch: 0.8 });
       fx.sparkle(ev.x, ev.y, 6, ev.kind === 'chick' ? '#ffe066' : '#d8ffb0');
-      popup(ev.x, ev.y + 0.6, ev.kind === 'chick' ? 'Chick gulped!' : 'Orb gulped!', { color: '#c9ff9e', size: 18, life: 1.1 });
+      popup(ev.x, ev.y + 0.6, 'Gulp!', { color: '#c9ff9e', size: 17, life: 1 }); // (0.8.18: this event never reached here before: its 'type' was overwritten)
       break;
     case 'frogGulp':
       audio.play('bubble_pop', { vol: 0.5, pitch: 0.6 });
