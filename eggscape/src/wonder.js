@@ -168,6 +168,7 @@ export function createWonder(env) {
   // ---------------------------------------------------------------- input
   function pointerDown(e) {
     const g = S.game;
+    if (S.card === 'win' && S.cardT < SIDE_DONE) { S.cardT = SIDE_DONE; S.skip = true; return; } // 0.8.17 win817: a tap skips the win page's show to its end
     if (!g || S.card || g.state !== 'play') return;
     const x = e.clientX, y = e.clientY, si = vaultAt(x, y), w = toWorld(si, x, y);
     if (e.pointerType === 'touch') { // a second finger is a pinch: let go of what is held and turn nothing until the fingers lift (the road's rule)
@@ -346,7 +347,7 @@ export function createWonder(env) {
     if (g.state !== 'play' && !S.card) {
       S.endT += dt;
       if (S.endT > (g.state === 'won' ? 1.3 : 0.9)) {
-        S.card = g.state === 'won' ? 'win' : 'fail'; S.cardT = 0; S.st0 = S.st1 = S.st2 = 0;
+        S.card = g.state === 'won' ? 'win' : 'fail'; S.cardT = 0; S.st0 = S.st1 = S.st2 = 0; S.skip = false;
         S.cheer = g.state === 'won' ? pickRoutine({ stars: g.stars(), last: S.cheer }) : 'encourage'; // her show on a side quest's end page
         for (const h of S.held.values()) if (h.ring) h.ring.held = false;
         S.held.clear();
@@ -689,6 +690,7 @@ export function createWonder(env) {
       picStage(box.x, box.y, box.w, box.h, u, false);
     } else K.page('Paused', build(roomFor(build, 100, 420)), { full: true, ribbon: RIB });
   }
+  const SIDE_STAR0 = 0.3, SIDE_EGG0 = 0.95, SIDE_PILL = 1.25, SIDE_FLY = 1.6, SIDE_DONE = 2.4; // the side win page's beats (s)
   function drawSideEnd() {
     const g = S.game, A = ui.A, u = ui.u, z = env.size(), win = S.card === 'win', st = g.stats(), stars = g.stars(), calm = env.save().calm, P = S.pay, C = ui.C;
     ui.calm = calm;
@@ -704,14 +706,18 @@ export function createWonder(env) {
     const henT = Math.max(0, S.cardT - 0.25);
     const build = (stH) => (s) => {
       const B = [];
-      if (win) B.push({ h: 74 * s, gap: 0, draw: (x, y, w) => { // the stars pop in one by one (a sound each)
-        const R = 31 * s, sp = 80 * s, cx = x + w / 2;
+      // 0.8.17 win817 (the road's win page, one family): the stars slam onto their sockets, the eggs home pop in as one
+      // line, the "+N" pill pops and its coins fly into the purse beside it; a tap skips to the end (pointerDown)
+      if (win) B.push({ h: 96 * s, gap: 0, draw: (x, y, w) => {
+        const R = 38 * s, sp = 100 * s, cx = x + w / 2;
         for (let i = 0; i < 3; i++) {
-          const t0 = 0.5 + i * 0.3, on = i < stars && (calm || S.cardT > t0), q = on && !calm ? clamp((S.cardT - t0) / 0.3, 0, 1) : 1;
-          if (on && !S['st' + i]) { S['st' + i] = 1; if (!calm) audio.play('star', { intensity: i / 2, pitch: 1 + i * 0.12 }); }
-          drawStar(ctx, cx + (i - 1) * sp, y + R + 6 * s - (i === 1 ? 7 * s : 0), R * (on ? backOut(q) : 1), on);
+          const v = calm ? 9 : S.cardT - SIDE_STAR0 - i * 0.24, sx = cx + (i - 1) * sp, sy = y + R + 10 * s - (i === 1 ? 8 * s : 0);
+          drawStar(ctx, sx, sy, R, false, 1, true);
+          if (i >= stars) continue;
+          if (v >= K.SLAM && !S['st' + i]) { S['st' + i] = 1; if (!calm && !S.skip) { audio.play('star', { intensity: i / 2, pitch: 1 + i * 0.12 }); if (env.buzz) env.buzz('star'); } }
+          K.slam(sx, sy, R, v, calm || S.skip, i);
         }
-        ui.record({ x: cx - sp - R, y, w: 2 * (sp + R), h: 2 * R + 10 * s }, 'wv:stars');
+        ui.record({ x: cx - sp - R, y: y + 2 * s, w: 2 * (sp + R), h: 2 * R + 10 * s }, 'wv:stars');
       } });
       else B.push({ h: 30 * s, gap: 4 * s, draw: (x, y, w) => { // why it failed: an icon and a few words
         const t = near ? 'Just one egg short' : timeout ? 'No time left' : 'Too many eggs lost', tw = ui.measure(t, 19 * s) + 34 * s, x0 = x + w / 2 - tw / 2;
@@ -724,24 +730,20 @@ export function createWonder(env) {
         drawCelebration(ctx, win ? S.cheer : 'encourage', henT, T.box, { pw: win ? routinePower(stars) : 0.5, calm, henH: T.henH, seed, clip: T.clip });
         ui.record(T.box, 'wv:hen');
       } });
-      B.push(eggsRow(st.saved, win ? st.total : Math.max(1, st.target), s, 'wv:eggs'));
-      if (win && P) B.push({ h: 64 * s, gap: 8 * s, draw: (x, y, w) => { // what it paid, then the coins fly into the purse beside it
-        ui.well(x, y, w, 64 * s, { s, a: '#f3e2bd', b: '#fbf0d6' });
-        const cy = y + 32 * s, cx = x + 34 * s;
-        env.drawCoin(ctx, cx, cy, 15 * s, calm ? 0 : S.t);
-        ui.text('+' + P.coins, cx + 24 * s, cy + 1 * s, { size: 26 * s, color: '#a85f00', tag: 'wv:pay', maxW: w * 0.4 });
-        if (!S.flown && S.cardT > 0.5 + 3 * 0.3 + 0.2) { S.flown = true; if (env.coinsFly) env.coinsFly(P, { x: cx, y: cy }); }
-        const pu = K.purse(), val = String(pu.shown()), fs = 20 * s, cr = 12 * s, ph = 42 * s, pw = 12 * s + cr * 2 + 8 * s + ui.measure(val.replace(/\d/g, '0'), fs) + 16 * s, px = x + w - 12 * s - pw, py = cy - ph / 2, sc = pu.pop();
-        ctx.save(); if (sc !== 1) { ctx.translate(px + pw / 2, cy); ctx.scale(sc, sc); ctx.translate(-(px + pw / 2), -cy); }
-        ui.glass(px, py, pw, ph, { border: 'rgba(255,224,150,0.85)', a: 'rgba(54,30,10,0.92)', b: 'rgba(30,16,6,0.92)' });
-        env.drawCoin(ctx, px + 10 * s + cr, cy, cr, calm ? 0 : S.t); pu.at({ x: px + 10 * s + cr, y: cy });
-        ui.text(val, px + 10 * s + cr * 2 + 8 * s, cy + 0.5 * s, { size: fs, color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', strokeW: 3 * s, tag: 'wv:purse' });
-        ctx.restore();
+      if (!win) B.push(eggsRow(st.saved, Math.max(1, st.target), s, 'wv:eggs'));
+      else B.push({ h: 40 * s, gap: 8 * s, draw: (x, y, w) => { // the eggs home: one line of eggs, popping in one by one
+        const n = st.total, sp = Math.min(40 * s, (w - 20 * s) / Math.max(1, n)), es = Math.min(32 * s, sp * 0.9), mid = x + w / 2;
+        for (let i = 0; i < n; i++) { const q = calm || S.skip ? 1 : clamp((S.cardT - SIDE_EGG0 - i * 0.07) / 0.25, 0, 1); if (q <= 0) continue; const ex = mid + (i - (n - 1) / 2) * sp, ey = y + 20 * s; ctx.save(); ctx.translate(ex, ey); ctx.scale(backOut(q), backOut(q)); drawEggIcon(ctx, 0, 0, es, i < st.saved ? 'saved' : 'slot'); ctx.restore(); }
+        ui.record({ x: mid - (n * sp) / 2, y: y + 20 * s - es / 2, w: n * sp, h: es }, 'wv:eggs');
       } });
-      if (win) B.push({ h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
-        const rw = w * 0.36;
-        ui.button('wv:retry', 'Again', x, y, rw, 58 * s, { kind: 'secondary', icon: ICON.retry, size: 19 * s });
-        ui.button('wv:map', 'Map', x + rw + 10 * s, y, w - rw - 10 * s, 58 * s, { kind: 'primary', shimmer: S.cardT > 1.6, icon: ICON.grid, size: 24 * s });
+      if (win && P) B.push({ h: 48 * s, gap: 10 * s, draw: (x, y, w) => { // what it paid, then its coins fly into the purse beside it
+        const k0 = calm || S.skip ? 1 : clamp((S.cardT - SIDE_PILL) / 0.3, 0, 1), R = K.coinRow(x + w / 2, y + 24 * s, 42 * s, s, { txt: '+' + P.coins, k: k0, tag: 'wv:pay' });
+        if (!S.flown && (calm || S.skip || S.cardT > SIDE_FLY)) { S.flown = true; if (env.coinsFly) env.coinsFly(P, R.pill, 0.5); if (calm || S.skip) K.settle(); }
+      } });
+      if (win) B.push({ h: 70 * s, gap: 12 * s, draw: (x, y, w) => { // Map big and thick in the thumb zone, Again small beside it
+        const rw = w * 0.3;
+        ui.button('wv:retry', 'Again', x, y, rw, 70 * s, { kind: 'secondary', icon: ICON.retry, size: 18 * s });
+        ui.button('wv:map', 'Map', x + rw + 10 * s, y, w - rw - 10 * s, 70 * s, { kind: 'primary', icon: ICON.grid, size: 30 * s });
       } });
       else {
         B.push({ h: 68 * s, gap: 14 * s, draw: (x, y, w) => ui.button('wv:retry', 'RETRY', x, y, w, 68 * s, { kind: 'primary', shimmer: true, icon: ICON.retry, size: 27 * s }) });

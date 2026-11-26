@@ -8,7 +8,7 @@
 // leaving the screen settles the number at once. No canvas is created: coins and bursts are drawn as plain paths.
 //
 //   const purse = createPurse({ clock, calm, wallet, screen, sound, buzz });
-//   purse.gain({ src: { x, y }, from?, to?, delay? })   // after the wallet changed
+//   purse.gain({ src: { x, y }, from?, to?, delay?, dur? })   // after the wallet changed (dur: the roll's length, a page with its own beat)
 //   purse.hold(v)          // show v (a total not yet "paid in" on screen) until a gain takes it on, or the screen changes
 //   purse.release()        // drop a held total (a landing on a reward page is over: the counters show the purse)
 //   purse.shown()          // the number every counter draws
@@ -52,7 +52,7 @@ export function createPurse(env) {
       const to = Math.min(w, o.to != null ? o.to : w);
       if (to <= from) { if (!P) H = to < w ? { v: to, scr: env.screen() } : null; return false; }
       const amt = to - from, src = !calm && o.src ? o.src : null;
-      P = { from, to, part: to < w, t0: t + (o.delay || 0), roll: src ? FLY * 0.8 : 0, dur: rollDur(amt, calm), src, n: src ? flyN(amt) : 0, scr: env.screen(), lastTick: -1, landed: false, popAt: 0 };
+      P = { from, to, part: to < w, t0: t + (o.delay || 0), roll: src ? FLY * 0.8 : 0, dur: o.dur && !calm ? o.dur : rollDur(amt, calm), src, n: src ? flyN(amt) : 0, scr: env.screen(), lastTick: -1, landed: false, popAt: 0 };
       H = null;
       return true;
     },
