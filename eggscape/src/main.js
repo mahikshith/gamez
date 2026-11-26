@@ -3711,7 +3711,7 @@ function tourShopItems() {
 function drawShopTour(B) {
   if (!G.tourShop) {
     if (TR.tourSeen(save, 'shop') || !B || G.screenT < 0.8) return;
-    const busy = !!(G.mapTravel || G.treasure || modalOpen() || G.settingsOpen || G.shopHand || G.ppTour);
+    const busy = !!(G.mapTravel || G.treasure || modalOpen() || G.settingsOpen || G.shopHand || (G.ppTour && G.screen === 'pause'));
     if (!TR.tourMay(save, 'shop', { screen: G.screen, levelId: tourLv(), busy })) return;
     G.tourShop = { t0: G.t, seq: G.scrSeq, key: TR.shopTaste(tourShopItems()) }; G.tourTaste = G.tourShop.key ? { key: G.tourShop.key, seq: G.scrSeq } : null; tourStart('shop'); audio.play('hud_pop', { vol: 0.6 });
   }
@@ -6475,6 +6475,7 @@ function drawSideHUD() {
   let y = Y0;
   ui.button('pause', '', X0, y, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
   setMarkAt(X0, y, bs, bs, true); // 0.8.14: the Settings mark (see the portrait HUD)
+  tourPauseHud(X0, y, bs); // 0.8.17: once level 1 is won, where the pause button is (tour.js)
   // (the "i" button moved into the pause page, 2026-11-19)
   perkChipHud(X0 + bs + gap, Y0 + (bs - 30 * u) / 2, u); // the equipped egg's power
   G.infoLow = 0;
