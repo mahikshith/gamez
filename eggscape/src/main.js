@@ -11825,7 +11825,7 @@ function drawSpin() {
       const sh = k === 'coin' && !calm && G.t - (S.shortT || -9) < 0.4 ? Math.sin((G.t - S.shortT) * 40) * 4 * u : 0; // too few coins: the button shakes its head
       if (k === 'retry') ui.button('spin:retry', 'Try again', bx, by, bw, bh, W.retry === 'free' || ads.premium ? { kind: 'primary', shimmer: idle, size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, shimmer: idle, size: 22 * u, ...off });
       else if (k === 'ad') ui.button('spin:ad', ads.premium ? 'Free spin' : 'Spin', bx, by, bw, bh, ads.premium ? { kind: 'secondary', size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, size: 22 * u, ...off });
-      else { ui.button('spin:coin', bw < 128 * u ? String(W.coin) : `Spin ${W.coin}`, bx + sh, by, bw, bh, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 22 * u, ...off }); spendFx.at('spin', { x: bx, y: by, w: bw, h: bh }); }
+      else { ui.button('spin:coin', bw < 112 * u ? String(W.coin) : `Spin ${W.coin}`, bx + sh, by, bw, bh, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 22 * u, ...off }); spendFx.at('spin', { x: bx, y: by, w: bw, h: bh }); }
     });
     // 0.8.17 spend moment 'spin': the villains took the last pull and a coin spin is in reach: a shine over its button, a tag swings on it
     if (lost && idle && W.coin != null && save.wallet.coins >= W.coin && G.t - S.missT > 0.8) spendOnce('spin', 'spin', [{ id: 'spin', kind: 'tag', slot: 'spin', key: 'spin:' + today() + ':' + SP.state(save).t.coin, price: 0, tagArt: (c, x, y, h) => drawSlotIcon(c, x, y, h * 0.5, 0) }]);
