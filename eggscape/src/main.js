@@ -12117,13 +12117,13 @@ function drawLeaveAsk() {
   if (L.id === 'villain' && L.villain) { // he peeks in behind her, late, and ducks a little
     const k2 = calm ? 1 : ez((el - 0.45) / 0.5), d = hh * 0.62, bob = calm ? 0 : Math.sin(G.t * 2.2) * 3 * q;
     ctx.save(); ctx.globalAlpha = clamp(k2 * 1.5, 0, 1);
-    drawVillainPortrait(ctx, L.villain, cx + hh * 0.56 + (1 - k2) * hh * 0.5, cy - hh * 0.34 + bob, d, G.t);
+    drawVillainPortrait(ctx, L.villain, Math.min(cx + hh * 0.56, A.x1 - d / 2 - 10 * q) + (1 - k2) * hh * 0.5, cy - hh * 0.34 + bob, d, G.t);
     ctx.restore();
   }
   if (L.id === 'boss') { // the boss peeks in behind her, dizzy (stars turn over his head), his bar nearly empty
-    const k2 = calm ? 1 : ez((el - 0.45) / 0.5), d = hh * 0.6, px = cx + hh * 0.5 + (1 - k2) * hh * 0.5, py = cy - hh * 0.4 + (calm ? 0 : Math.sin(G.t * 1.6) * 4 * q), bid = R.boss || (G.level && G.level.boss);
+    const k2 = calm ? 1 : ez((el - 0.45) / 0.5), d = hh * 0.52, px = Math.min(cx + hh * 0.52, A.x1 - d * 0.56 - 10 * q) + (1 - k2) * hh * 0.5, py = cy - hh * 0.52 + (calm ? 0 : Math.sin(G.t * 1.6) * 4 * q), bid = R.boss || (G.level && G.level.boss);
     ctx.save(); ctx.globalAlpha = clamp(k2 * 1.5, 0, 1);
-    if (bid) { ctx.save(); ctx.beginPath(); ctx.arc(px, py, d / 2, 0, 7); ctx.clip(); ctx.translate(px, py); ctx.rotate(calm ? 0.12 : 0.12 + Math.sin(G.t * 1.6) * 0.07); bossPortrait(ctx, bid, -d / 2, -d / 2, d, d, G.t); ctx.restore(); ctx.beginPath(); ctx.arc(px, py, d / 2, 0, 7); ctx.lineWidth = 4 * q; ctx.strokeStyle = '#3a1410'; ctx.stroke(); }
+    if (bid) { ctx.save(); ctx.beginPath(); ctx.arc(px, py, d / 2, 0, 7); ctx.clip(); ctx.translate(px, py); ctx.rotate(calm ? 0.12 : 0.12 + Math.sin(G.t * 1.6) * 0.07); bossPortrait(ctx, bid, -d * 0.95, -d * 0.7, d * 1.9, d * 1.9, G.t); ctx.restore(); } // (his card drawn large: the round window shows him, not the card's edge)
     for (let i = 0; i < 3; i++) { const a = (calm ? 0.4 : G.t * 2.4) + i * 2.094; drawStar(ctx, px + Math.cos(a) * d * 0.42, py - d * 0.56 + Math.sin(a) * d * 0.1, 9 * q, true); }
     const bw2 = d * 1.05, bx2 = px - bw2 / 2, by2 = py + d * 0.58, bh2 = 14 * q, left = clamp(R.bossLeft ?? 0.2, 0.06, 1);
     ui.roundRect(bx2, by2, bw2, bh2, bh2 / 2); ctx.fillStyle = 'rgba(20,10,30,0.85)'; ctx.fill(); ctx.lineWidth = 2 * q; ctx.strokeStyle = '#ffe8b0'; ctx.stroke();
