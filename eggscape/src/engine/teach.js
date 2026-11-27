@@ -28,6 +28,7 @@ export const TEACH = {
 //   away  the finger drags the ring under the subject so the gap near it moves AWAY (no gap lines up for it)
 //   open  the finger takes the nearest gap of that ring and drags it TO the subject (a way through, a drop)
 //   spin  the finger turns the ring the subject sits on or rides (steer it, wind it, shake it off, against his crank)
+//   shake the finger swings the ring under the subject to and fro (0.8.19: a frozen egg's ice cracks, then bursts)
 //   tap   the finger taps a thing (the fire a vine fears)
 //   look  no gesture: the spotlight and slow motion alone, with at most three words under it
 //   none  no moment at all: the creature's own pop-up in the world already says it (a reaction, not a threat)
@@ -45,12 +46,13 @@ export const LESSONS = {
   eagle: L('away', 'outer'), eagleGrab: L('none'), eagleFeather: L('none'), bossThrow: L('look', 'own', 'Not all help'),
   // the salamander and the crawlers (main.js salEvent)
   salIn: L('spin'), salFire: L('look', 'own', 'Red-hot wall'), salCool: L('none'), salLava: L('none'),
-  salRival: L('none'), salCoil: L('spin'), salFrostBite: L('look', 'own', 'Frozen stuck'), salFrost: L('look', 'own', 'Ice: eggs slide'),
+  salRival: L('none'), salCoil: L('spin'), salFrostBite: L('shake'), salFrost: L('look', 'own', 'Ice: eggs slide'),
   salFace: L('none'), thornIn: L('look', 'own', 'Stone flips him'), spikeIn: L('look', 'own', 'Drops thorns'),
-  salSpit: L('away', 'ev'), // 0.8.18 ember spit: x, y is where his line crosses the ring between: turn that gap out of his line
+  salLash: L('away', 'ev'), // 0.8.19 Tongue Lash (it replaced the ember spit): x, y where his line crosses the ring between (ev.ring),
+  // else the egg's own floor: turn the egg out of his line (main.js lashLessonEv)
   salFireUp: L('tap', 'own'), // 0.8.18 fire-up (white-hot): the finger taps the water that cools him (src/lesson.js tapTarget)
   thornHip: L('away'), thornDuel: L('look', 'own', 'Pick a winner'), chamIn: L('look', 'own', 'Feed black flame'),
-  geckoIn: L('look', 'own', 'Icy feet'), geckoLick: L('look', 'own', 'Frozen stuck'),
+  geckoIn: L('look', 'own', 'Icy feet'), geckoLick: L('shake'), // 0.8.19: the frozen egg: shake the ring under it (the ice cracks, then bursts)
   // frog (render/frog.js)
   frog: L('look', 'own', 'Plugs gaps'), frogPlug: L('none'), frogLick: L('look', 'own', 'Orb in danger'), frogScare: L('none'), frogBounce: L('none'),
   frogSnatch: L('away', 'ev'), // 0.8.18: it locks on an egg: the finger turns the ring that puts a wall into its tongue's line (ev.ring)

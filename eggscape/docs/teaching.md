@@ -49,9 +49,10 @@ A replay of a won level teaches nothing for a subject already met twice (that fo
 
 | gesture | what the finger does | used for |
 |---|---|---|
-| `away` | drags the ring under the subject so the nearby gap moves away | snake, gator, weasel, eagle, owl swoop, Pip, shards, the frog's egg snatch (its ring is the wall between frog and egg) |
+| `away` | drags the ring under the subject so the nearby gap moves away | snake, the salamander's Tongue Lash (0.8.19: the ring his line crosses, else the egg's floor), gator, weasel, eagle, owl swoop, Pip, shards, the frog's egg snatch (its ring is the wall between frog and egg) |
 | `open` | brings the nearest gap of that ring to the subject | rats, hermit crab, urchin, dizzy gator, turtle, a level's caption |
 | `spin` | turns the ring the subject sits on or rides | salamander, Coco, Bandit (against his crank), mama raccoon's kits (the floor they carry an egg on: either way, briskly), beetle, whirlpool, cage, whip |
+| `shake` | swings the ring under the subject to and fro (arrow heads at both ends) | 0.8.19: the frozen egg (gecko lick, frost bite): the ice cracks on the first swing and bursts on the second |
 | `tap`  | taps the thing to use | thorn vine (the fire orb) |
 | `look` | spotlight only, at most three words | effects and threats no ring turn answers (laser, gust, frost) |
 | `power` | no finger: the power's effect, an icon gag, its icon and name (pickups, section 5b) | every orb |

@@ -1082,6 +1082,14 @@ function camMoment(x, y, hold = 0.6, amt = 1) {
 // (L20), Sly's snatch and his sick cough (L26). At most one every CRAWL_GAP s so a busy fight never keeps the camera
 // hunting; camMoment itself skips calm mode, a held ring and a moment already running.
 const CRAWL_GAP = 5;
+// 0.8.19 (aggroB) the Tongue Lash lesson: where to act. His line crosses a ring: that ring (turn the gap out of his line);
+// else the ring under the egg (roll the egg out of his line)
+function lashLessonEv(ev) {
+  const sim = G.sim, X = sim && sim.salCross ? sim.salCross(ev.hx, ev.hy, ev.x, ev.y) : [];
+  if (X.length) { const q = X[X.length - 1]; return { ...ev, x: q.x, y: q.y, ring: q.ri }; }
+  const e = ev.egg, c = e && sim.channelOf ? sim.channelOf(e) : -1;
+  return { ...ev, ring: c >= 0 ? Math.min(c, sim.rings.length - 1) : undefined };
+}
 function crawlerMoment(ev) {
   const sim = G.sim, cv = G.cv;
   if (!sim || save.calm || G.t - (cv.crawlT ?? -99) < CRAWL_GAP) return;
@@ -1094,6 +1102,9 @@ function crawlerMoment(ev) {
     case 'thornDuel': hold = 1.1; break;
     case 'salSpitWarn': x = (ev.hx + ev.tx) / 2; y = (ev.hy + ev.ty) / 2; hold = 0.7; break; // 0.8.18: the salamander's ember spit (his head and where it lands)
     case 'salFireUp': hold = 0.6; break; // 0.8.18: he goes white-hot
+    case 'salLashWarn': x = (ev.hx + ev.x) / 2; y = (ev.hy + ev.y) / 2; hold = 0.6; break; // 0.8.19 (aggroB): his mouth and the egg he locked on
+    case 'salDiveBubble': x = ev.ex; y = ev.ey; hold = 0.5; break; // where he will come up
+    case 'thornRoll': hold = 0.5; break;
     case 'spikeUp': { if (ev.own == null) return; const C = (sim.sals || []).find((c) => c.id === ev.own); if (!C || !C.pts.length) return; x = (ev.x + C.pts[0].x) / 2; y = (ev.y + C.pts[0].y) / 2; hold = 0.5; break; } // the spike and the lizard that shed it
     case 'bossWarn': { // Baron von Brr winds up his frost breath or the deep freeze
       if (ev.kind !== 'blizzard' || (ev.attack !== 'gale' && ev.attack !== 'freeze')) return;
@@ -5110,7 +5121,6 @@ function salEvent(ev, fx) {
     // ---- 0.8.18 the ember spit and the fire-up (sim/salamander.js SPIT, FIRE): sound and sparks, no words
     case 'salSpitWarn':
       audio.play('sal_charge', { vol: 0.7, pitch: 1.35 });
-      lessonAsk('salSpit', null, ev); // turn the gap out of his line
       break;
     case 'salSpit':
       audio.play('sal_huff', { vol: 0.8, pitch: 1.3 }); audio.play('ember_hiss', { vol: 0.35, pitch: 1.6 });
@@ -5142,6 +5152,44 @@ function salEvent(ev, fx) {
       if (!ev.boss) lessonAsk('salFireUp', null, ev); // water cools him: the finger taps the water
       break;
     case 'salFireOut': audio.play('ember_hiss', { vol: 0.35, pitch: 0.8 }); break;
+    // ---- 0.8.19 (aggroB) the crawlers' new moves (sim/salamander.js LASH DIVE, thornback.js ROLL, chameleon.js VANISH,
+    // the gecko's nip and the frozen egg's ice): sound and sparks, no words. Lessons: the Tongue Lash and the frozen egg.
+    case 'salLashWarn':
+      audio.play('sal_charge', { vol: 0.7, pitch: 1.5 });
+      if (!ev.boss) lessonAsk('salLash', null, lashLessonEv(ev)); // move the egg out of his line: turn the ring between (or under it)
+      break;
+    case 'salLashFling': audio.play('tongue_lick', { vol: 0.9, pitch: 0.8 }); break;
+    case 'salLashStick': audio.play('squish', { vol: 0.6, pitch: 1.5 }); fx.sparkle(ev.x, ev.y, 5, '#ff8fa0'); break;
+    case 'salLashStrain': audio.play('motor_tick', { vol: 0.7, pitch: 0.6 }); break;
+    case 'salLashBurn': audio.play('ember_hiss', { vol: 0.8, pitch: 1.3 }); audio.play('sal_yelp', { vol: 0.6 }); fx.sparkle(ev.hx, ev.hy, 8, '#ffb347'); break;
+    case 'salLashMiss': audio.play('sal_yelp', { vol: 0.35, pitch: 1.35 }); break;
+    case 'salLashSnap':
+      if (ev.why === 'tug') { audio.play('release', { vol: 0.8, pitch: 1.4 }); audio.play('sal_yelp', { vol: 0.7, pitch: 1.1 }); fx.sparkle(ev.hx, ev.hy, save.calm ? 4 : 10, '#ffe27a'); }
+      else if (ev.why === 'stone') { audio.play('rock_hit', { vol: 0.9, pitch: 0.8 }); fx.sparkle(ev.hx, ev.hy, 8, '#fff2a8'); }
+      else audio.play('rock_hit', { vol: 0.5, pitch: 1.6 });
+      break;
+    case 'salDiveWarn': audio.play('lava_sizzle', { vol: 0.6, pitch: 0.7 }); fx.smoke(ev.x, ev.y, 2, 'rgba(255,150,90,0.35)'); break;
+    case 'salDiveBubble': audio.play('lava_sizzle', { vol: 0.5, pitch: 1.3 }); fx.sparkle(ev.ex, ev.ey, 6, '#ffb347'); break;
+    case 'salDiveUp':
+      audio.play('ember_hiss', { vol: 0.8 }); audio.play('sal_call', { vol: 0.6, pitch: 1.2 });
+      fx.chips(ev.x, ev.y, '#ff9a3a', 10, 2.4);
+      if (!save.calm) fx.shake = Math.max(fx.shake, 0.2);
+      break;
+    case 'salRoar': audio.play('boss_roar', { vol: 0.8, pitch: 1.2 }); break;
+    case 'volcRumble': audio.play('motor_tick', { vol: 0.8, pitch: 0.45 }); if (!save.calm) fx.shake = Math.max(fx.shake, 0.15); break;
+    case 'geckoNipWarn': audio.play('gecko_chirp', { vol: 0.6, pitch: 1.4 }); break;
+    case 'geckoNip': audio.play('glass_crack', { vol: 0.8 }); fx.chips(ev.x, ev.y, '#d9f3ff', 6, 1.6); break;
+    case 'geckoNipMiss': audio.play('rock_hit', { vol: 0.4, pitch: 1.7 }); break;
+    case 'eggIceCrack': audio.play('glass_crack', { vol: 0.6, pitch: 1.3 }); fx.chips(ev.x, ev.y, '#e6f6ff', 5, 1.4); break;
+    case 'eggIceBurst':
+      audio.play('glass_break', { vol: 0.8, pitch: 1.2 });
+      fx.chips(ev.x, ev.y, '#e6f6ff', 12, 2.6); fx.sparkle(ev.x, ev.y, 8, '#ffffff');
+      break;
+    case 'thornRoll': audio.play('rock_hit', { vol: 0.6, pitch: 0.7 }); break;
+    case 'thornRollHit': audio.play('thorn_hit', { vol: 0.8 }); audio.play('egg_bump', { vol: 0.6 }); fx.sparkle(ev.x, ev.y, 6, '#fff2a8'); break;
+    case 'thornRollBonk': audio.play('rock_hit', { vol: 0.9, pitch: 0.6 }); fx.sparkle(ev.x, ev.y, 8, '#fff2a8'); if (!save.calm) fx.shake = Math.max(fx.shake, 0.2); break;
+    case 'chamFade': audio.play('bubble_on', { vol: 0.35, pitch: 0.7 }); break;
+    case 'chamPop': audio.play('bubble_pop', { vol: 0.5, pitch: 1.2 }); fx.sparkle(ev.x, ev.y, save.calm ? 4 : 8, '#9fe07a'); break;
     case 'salFootBurn': break; // (each thorn's own burn says it)
   }
 }

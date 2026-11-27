@@ -557,11 +557,14 @@ export const salMethods = {
       const z = T[T.length - 1], y = T[T.length - 2], n = this.rings.length, c = clamp(this.chAt(z.r), 1, n - 1);
       const dr = clamp(this.salMid(c) - z.r, -SAL.trail * 0.7, SAL.trail * 0.7), r = z.r + dr;
       // 0.8.19 (the Twister bug: "half of the body stayed, the other half went for a spin"): the tail grows on round the
-      // channel the way the body already runs from head to tail. It used to follow only the last step, and a tail that
-      // came in radially through a gap (no way round at all) grew back toward the head: the body folded in half.
-      let da = wrap(z.a - y.a);
-      if (Math.abs(da) * Math.max(z.r, 0.3) < SAL.trail * 0.4) da = wrap(z.a - T[0].a) || -C.dir;
-      T.push(this.salPt({}, z.a + Math.sign(da) * Math.sqrt(SAL.trail * SAL.trail - dr * dr) / Math.max(r, 0.3), r));
+      // channel the way the body already runs from head to tail; a tail that came in radially through a gap (no way round
+      // at all) grows on straight out the way it came. It used to turn round the channel or back toward the head: the
+      // body folded in half.
+      const da = wrap(z.a - y.a);
+      if (Math.abs(da) * Math.max(z.r, 0.3) < SAL.trail * 0.4) {
+        const ux = z.x - y.x, uy = z.y - y.y, ul = Math.hypot(ux, uy) || 1, nx = z.x + (ux / ul) * SAL.trail, ny = z.y + (uy / ul) * SAL.trail;
+        T.push(this.salPt({}, Math.atan2(ny, nx), Math.hypot(nx, ny)));
+      } else T.push(this.salPt({}, z.a + Math.sign(da) * Math.sqrt(SAL.trail * SAL.trail - dr * dr) / Math.max(r, 0.3), r));
     }
     C.rad = T[0].r; C.a = T[0].a;
   },

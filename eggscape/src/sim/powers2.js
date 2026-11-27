@@ -224,7 +224,7 @@ export const p2Methods = {
     if (kind === 'ice' ? this.fishFreeze(S, T) : kind === 'bolt' ? this.fishStun(S, Math.min(T, P2.thunderclap.stun), true) : false) this.emit('p2Hit', { kind: kind === 'ice' ? 'ice' : 'zap', x: at.x, y: at.y });
   },
   p2Snakes() { return this.snakes.filter((S) => !S.gone && S.inside && S.pts.length > 1 && !S.carried && !S.warp && !(S.flee >= 0)); },
-  p2Sals() { return (this.sals || []).filter((C) => this.salLive(C) && C.ph !== 'in' && C.ph !== 'dive' && C.ph !== 'grin' && C.ph !== 'warp'); },
+  p2Sals() { return (this.sals || []).filter((C) => this.salLive(C) && C.ph !== 'in' && C.ph !== 'dive' && C.ph !== 'grin' && C.ph !== 'warp' && !(this.salHidden && this.salHidden(C))); }, // (aggroB) not while under the lava floor
   p2Eagle() { const E = this.eagle; return E && !E.end && !E.warp && E.phase !== 'away' && E.phase !== 'enter' ? E : null; },
   p2Mark(key, k, t, x, y) { this.p2.fx[key] = { k, t, max: t }; if (x != null && !this.scareQuiet) this.emit('p2Hit', { kind: k, x, y }); }, // (the Scarecrow re-scares quietly: one cue, not one every beat)
 

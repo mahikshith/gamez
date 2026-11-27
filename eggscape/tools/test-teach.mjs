@@ -108,7 +108,7 @@ const ctx = (o = {}) => ({ now: 100, timeLeft: 60, held: null, ring: 2, adapt: t
   ok(len < 1.2, `a pickup moment is short (${len.toFixed(2)} s)`);
 }
 { // every lesson in the table is a known gesture with at most three words
-  const G = new Set(['away', 'open', 'spin', 'tap', 'look', 'none', 'power']);
+  const G = new Set(['away', 'open', 'spin', 'tap', 'look', 'none', 'power', 'shake']); // 0.8.19 shake: the frozen egg (aggroB)
   const rows = Object.entries(T.LESSONS);
   ok(rows.every(([, v]) => G.has(v.g)), `${rows.length} lessons, each a known gesture`);
   ok(rows.every(([, v]) => !v.w || v.w.split(/\s+/).length <= 3), 'no lesson says more than three words');
