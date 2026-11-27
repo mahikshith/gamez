@@ -101,13 +101,18 @@ for (const mode of ['easy', 'medium', 'hard']) {
   const t = at(evs, 'salLashSnap', 'tug');
   ok(t && egg.alive && C.ph === 'daze' && C.dk === 'tug', `tug: stretched past ${(LASH.reach + LASH.slack).toFixed(1)} m it snaps; he tumbles, dazed (${C.ph}/${C.dk})`);
   ok(ls > 0.6, `tug: the tension showed (C.ls up to ${ls.toFixed(2)})`);
+  // the real way: turn the ring the egg rests on away from him while he reels: the ring drags it till the tongue snaps
+  const S2 = scene(); let spun = false;
+  const evs2 = run(S2.sim, 5, (t, E) => { if (at(E, 'salLashSnap')) return false; if (S2.C.ph === 'reel') { spun = true; const r = S2.sim.rings[3]; r.target = r.body.getAngle() + 0.5; } });
+  const t2 = at(evs2, 'salLashSnap');
+  ok(spun && t2 && t2.why === 'tug' && S2.egg.alive, `tug: turning the egg's ring away snaps the tongue (${t2 ? t2.why : 'no snap'})`);
 }
-// 5. a water egg: a mouthful of water (doused); a stone egg: he strains, it snaps, ouch
+// 5. a water egg: he will not lash it (he picks another move); a stone egg: he strains, it snaps, ouch
 {
   const { sim, egg } = scene();
   egg.water = 30;
   const evs = run(sim, 4);
-  ok(egg.alive && egg.cracks === 0 && has(evs, 'salLashFling') && has(evs, 'salCool') && has(evs, 'salCool').at > has(evs, 'salLashFling').at, 'water: the tongue on a water egg: a mouthful of water, he hisses');
+  ok(egg.alive && egg.cracks === 0 && !has(evs, 'salLashWarn'), 'water: he knows better than to lash a water egg');
   const S2 = scene(); S2.egg.stone = 30;
   const evs2 = run(S2.sim, 4);
   ok(S2.egg.alive && has(evs2, 'salLashStrain') && at(evs2, 'salLashSnap', 'stone'), 'stone: he strains on a stone egg, the tongue snaps');

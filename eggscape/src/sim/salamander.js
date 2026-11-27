@@ -103,7 +103,7 @@ export const FIRE_M = { easy: 0.7, medium: 1, hard: 1.15 };
 // LAVA DIVE: a target DIVE.chans or more channels away, or one channel away with the way through more than DIVE.walk m of
 //   walking: 'sink' (a pool glows under him DIVE.glow s, then he slides in), 'under' (DIVE.under s, unseen), 'bubble' (the exit
 //   pool, DIVE.off m from the egg in its channel and riding that ring, bubbles for the whole tell), 'rise'. Then he hunts.
-export const LASH = { min: 0.75, reach: 2.2, cone: 1.25, clear: 0.04, fly: 0.2, reelV: 1.5, acc: 7, slack: 0.5, cd: 2.5, miss: 0.5, strain: 0.5, ouch: 1.2, burn: 1.5, tumble: 1.5, maxReel: 3.2, arrive: 0.5, past: 0.3, jam: 0.25, steady: 6 };
+export const LASH = { min: 0.75, reach: 2.2, cone: 1.25, clear: 0.04, fly: 0.2, reelV: 1.5, acc: 7, slack: 0.5, cd: 2.5, miss: 0.5, strain: 0.5, ouch: 1.2, burn: 1.5, tumble: 1.5, maxReel: 3.2, arrive: 0.5, past: 0.3, jam: 0.25, steady: 6, under: 0.15 };
 export const DIVE = { chans: 2, walk: 2.5, sink: 0.55, glow: 0.3, under: 0.4, bubble: 1.7, rise: 0.45, off: 1.6, cd: 8, poolR: 0.45 };
 // THE VOLCANO (sim.js lavaStep, boss.js rock/rock2/rock3): level.lava rocks are the backdrop volcano's bombs. The same seeded
 // targets, VOLC.every x sparser; 'rumble' (VOLC.rumble s: the mountain rumbles and puffs, the target section is marked) then a
@@ -159,7 +159,7 @@ export const salMethods = {
         fu: P.fireup ? 1 : 0, wh: 0, whD: 1, fuCD: 0, dbl: 0, sulk: 0, og: 0, gk: 0, // fire-up (FIRE): on, s white-hot (of whD), cooldown, double breath, s sulking, wants an orb
         // 0.8.19: the tongue (LASH: target egg, s cooldown, 0..1 out, 0..1 tension, m at the stick), the dive (DIVE: s cooldown, exit
         // channel, ring, ring-local angle), the director's token (move name, an egg taken), the chameleon's vanish, the thorn-back's roll
-        lj: -1, lcd: 1.5, lk: 0, ls: 0, lgR: -1, lgA: 0, lgS: 0, lw: 0, dcd: 3, dvC: 0, dvR: 0, dvL: 0, tok: '', tokT: 0, gh: 0, rcd: 2, rl: 0, rv2: 0,
+        lj: -1, lcd: 1.5, lk: 0, ls: 0, lgR: -1, lgA: 0, lgS: 0, lw: 0, lfR: -1, lfC: -1, dcd: 3, dvC: 0, dvR: 0, dvL: 0, tok: '', tokT: 0, gh: 0, rcd: 2, rl: 0, rv2: 0,
       });
     });
   },
@@ -701,13 +701,12 @@ export const salMethods = {
     const M = this.salMouth(C), hd = Math.atan2(M.hy, M.hx);
     let best = null, bd = 1e9;
     for (const e of this.aliveEggs()) {
-      if (!this.salPreyOK(C, e) || e.icy > 0 || e.honey > 0) continue;
+      if (!this.salPreyOK(C, e) || e.icy > 0 || e.honey > 0 || e.water > 0 || e.fire > 0) continue; // he knows better than to lick water or fire
       const p = e.body.getPosition(), d = Math.hypot(p.x - M.x, p.y - M.y);
       if (d < LASH.min || d > LASH.reach || Math.abs(wrap(Math.atan2(p.y - M.y, p.x - M.x) - hd)) > LASH.cone) continue;
       if (!this.salLashOpen(M, p)) continue;
-      const sc = d + (e.water > 0 ? 1.5 : 0); // it would rather not lick a water egg (it still will, and pays for it)
-      if (sc >= bd) continue;
-      bd = sc; best = e;
+      if (d >= bd) continue;
+      bd = d; best = e;
     }
     return best;
   },
@@ -721,6 +720,7 @@ export const salMethods = {
     if (this.armored(e)) { this.salSet(C, 'strain', LASH.strain); this.emit('salLashStrain', { x: p.x, y: p.y, hx: M.x, hy: M.y, id: C.id, egg: e }); return; }
     C.ls = 0;
     C.lgR = -1; C.lw = 0;
+    { const pr = Math.hypot(p.x, p.y); let bi = -1, bd = 9; this.rings.forEach((R, i) => { const d = Math.abs(R.r - pr); if (d < bd) { bd = d; bi = i; } }); C.lfR = bi; C.lfC = this.channelOf(e); } // the ring it rests on, its channel
     this.salSet(C, 'reel', LASH.maxReel);
     this.emit('salLashStick', { x: p.x, y: p.y, hx: M.x, hy: M.y, id: C.id, egg: e });
   },
@@ -742,16 +742,23 @@ export const salMethods = {
       const ring = this.rings[C.lgR], r = ring.r - C.lgS * (LASH.past + 0.1);
       open = this.salOpenAt(ring, mod(C.lgA - ring.body.getAngle(), TAU), LASH.clear);
       tx = r * Math.cos(C.lgA); ty = r * Math.sin(C.lgA);
+      // still in its own channel and not under the gap yet: along the channel first (not into the wall beside the gap)
+      const ea = Math.atan2(p.y, p.x), off = wrap(C.lgA - ea) * pr;
+      if (Math.sign(pr - ring.r) === C.lgS && Math.abs(off) > LASH.under) { const a = ea + (Math.sign(off) * Math.min(Math.abs(off), 0.5)) / pr, rm = C.lfC > 0 ? this.salMid(clamp(C.lfC, 1, this.rings.length - 1)) : pr; tx = rm * Math.cos(a); ty = rm * Math.sin(a); } // (lifted to mid-channel, off the floor)
     } else open = this.salLashOpen(M, p);
     C.lw = open ? 0 : C.lw + dt;
     if (C.lw > LASH.jam) { this.salLashSnap(C, 'wall'); return; }
     const bd = this.salBiteDist(C, e);
     if (bd >= 0 && bd < BITE.reach * Math.max(0.9, this.salRank(C))) { C.bj = e.id; C.lj = -1; C.lk = 0; this.salSnap(C); return; } // at the mouth: the bite
-    const gx = tx - p.x, gy = ty - p.y, gd = Math.hypot(gx, gy) || 1e-6, ux = gx / gd, uy = gy / gd, v = e.body.getLinearVelocity(), va = v.x * ux + v.y * uy, want = LASH.reelV * this.salReelK(C) * this.vs;
+    const gx = tx - p.x, gy = ty - p.y, gd = Math.hypot(gx, gy) || 1e-6, ux = gx / gd, uy = gy / gd, v = e.body.getLinearVelocity(), want = LASH.reelV * this.salReelK(C) * this.vs;
     // the tongue holds the egg up (gravity cancelled), steadies it on the line (sideways speed damped) and pulls it along
-    const dv = va < want ? Math.min(want - va, LASH.acc * dt) : 0, vy = v.y + this.g * dt, vp = 1 - Math.min(1, LASH.steady * dt);
-    const pa = v.x * ux + vy * uy, px = v.x - ux * pa, py = vy - uy * pa;
-    e.body.setLinearVelocity(Vec2(ux * (pa + dv) + px * vp, uy * (pa + dv) + py * vp)); e.body.setAwake(true);
+    // TUG OF WAR: while the egg is still in its own channel, the ring it rested on drags it along (its speed is that ring's
+    // surface speed plus the pull): turning that ring away faster than he reels stretches the tongue till it snaps
+    const FR = C.lfR >= 0 && this.channelOf(e) === C.lfC ? this.rings[C.lfR] : null, w = FR ? FR.body.getAngularVelocity() : 0;
+    const sx = -w * p.y, sy = w * p.x, rx = v.x - sx, ry = v.y - sy, ra = rx * ux + ry * uy;
+    const dv = clamp(want - ra, -LASH.acc * dt, LASH.acc * dt), vy = ry + this.g * dt, vp = 1 - Math.min(1, LASH.steady * dt);
+    const pa = rx * ux + vy * uy, px = rx - ux * pa, py = vy - uy * pa;
+    e.body.setLinearVelocity(Vec2(ux * (pa + dv) + px * vp + sx, uy * (pa + dv) + py * vp + sy)); e.body.setAwake(true);
     if ((C.t -= dt) <= 0) this.salLashSnap(C, 'slip');
   },
   // a clean miss (out of line or reach before it stuck): he blinks, annoyed
