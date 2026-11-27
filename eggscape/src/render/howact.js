@@ -430,3 +430,171 @@ export function actorFor(plan) {
   const k = plan && plan.kind;
   return k && ACTORS[k] && PLAYS[k].includes(plan.move) ? ACTORS[k] : null;
 }
+
+// ---- card819: every orb and every booster acts its own scene on the level card (mykee 2026-11-27: "Have proper animation
+// for all the power-ups, stone eggs and everything"). One stage, one egg on the ring with its gap to the right: the orb
+// drifts onto the egg (K.orbIn), the egg wears the power's own in-game look (world.js drawEgg through o.world.egg), the
+// power does its one thing, then the ring turns the gap under the egg and it drops home. A booster starts the same way
+// with its own picture popping in. K: the stage's kit from howto.js (at, eggS, gap0, the hands, the toy record...).
+// Returns the scene's motion { th, eA, eD, done, eLift, hand, stone, miss }; the pictures go on K.toy (look, deco, over...).
+export const ORB_LOOP = { frost: 5.2, hourglass: 5.0, bubble: 4.8, rewind: 5.0, spin: 4.8 };
+export function orbScene(id, K) {
+  const { T, t, at, gap0, eggS, Z, x, y, w, h, toy, calm } = K, H = K.helpers || {};
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v), seg = (q, a, b) => clamp((q - a) / (b - a), 0, 1);
+  const ease = (u) => { u = clamp(u, 0, 1); return u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u); };
+  const back = (u) => { u = clamp(u, 0, 1); const c1 = 1.70158, q = u - 1; return 1 + (c1 + 1) * q * q * q + c1 * q * q; }; // a pop with overshoot
+  const R = { th: 0, eA: 0, eD: 0, done: 0, eLift: 0, hand: null, stone: false, miss: 0 };
+  const egg0 = (lift = 0.5) => at(0, eggS * lift);
+  const home = (t0, span = 0.8) => { const d = ease(seg(T, t0, t0 + span)); R.th = -gap0 * d; R.hand = K.dragHand(t0 - 0.1, t0 + span, 0.5, 0.5 - gap0); R.eD = seg(T, t0 + span + 0.15, t0 + span + 0.55); R.done = seg(T, t0 + span + 0.55, t0 + span + 0.9); };
+  const sparkles = (t0, t1, col, n = 5) => { if (T < t0 || T > t1) return null; const q = seg(T, t0, t1); return () => { const e = egg0(); ctx0().save(); ctx0().globalAlpha *= Math.sin(q * Math.PI); for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + q * 2.4, r = eggS * (0.55 + 0.5 * q); H.star5 && H.star5(ctx0(), e.x + Math.cos(a) * r, e.y + Math.sin(a) * r * 0.9, eggS * 0.13 * (1 - 0.4 * q), col); } ctx0().restore(); }; };
+  const ctx0 = () => K.ctx;
+  const chain = (...fs) => { const L = fs.filter(Boolean); return L.length ? () => L.forEach((f) => f()) : null; };
+  const pop = (draw, t0, t1, px, py, sz) => { // a picture that pops in (overshoot), holds, and fades
+    if (T < t0 || T > t1) return null;
+    const k = calm ? 1 : back(seg(T, t0, t0 + 0.35)), a = 1 - seg(T, t1 - 0.25, t1);
+    return () => { const c = ctx0(); c.save(); c.globalAlpha *= a; c.translate(px, py); c.scale(k, k); draw(c, 0, 0, sz); c.restore(); };
+  };
+  const thornsPass = (burn) => { toy.deco = { thorns: 1, burnt: burn }; };
+  const [kind, sub] = id.split(':'); // 'orb:<type>' | 'boost:<id>'
+  const B = kind === 'boost' ? sub : null, O = kind === 'orb' && sub !== 'thorns' ? sub : null, EK = kind === 'egg' ? sub : null;
+  if (O) K.orbIn(O, 0.3, 0.95);
+  const boostPic = B && K.boost ? pop((c, X, Y, S) => K.boost(c, B, X, Y, S, t), 0.15, 1.25, x + w / 2, y + h * 0.2, eggS * 1.3) : null;
+  const e0 = egg0();
+  if (EK) toy.look = { kind: EK };
+  switch (O || B || EK || sub) {
+    case 'thorns': // the ring's thorns: the egg rolls onto one: a crack (what a thorn does)
+      thornsPass(false); toy.look = T > 1.95 ? { cracks: 2 } : null; if (T > 1.95 && T < 2.7) toy.word = { s: 'OUCH!', k: seg(T, 1.95, 2.7), red: 1 };
+      R.miss = seg(T, 2.0, 2.9); home(1.2); break;
+    case 'quail': // a small light egg: it hops along quickly
+      R.eLift = calm ? 0 : Math.abs(Math.sin(T * 5)) * eggS * 0.2 * (1 - seg(T, 1.1, 1.3)); home(1.2, 0.6); break;
+    case 'ostrich': { // a big heavy egg: THUD into the basket
+      home(1.3, 1.0); if (R.done > 0 && R.done < 1) { toy.burst = { x: K.nest.x, y: K.nest.y - eggS * 0.3, k: R.done, col: '#d9b98a' }; toy.word = { s: 'THUD!', k: R.done }; } break;
+    }
+    case 'duck': { // it floats on the current and rides it to the gap
+      const dr = ease(seg(T, 0.6, 2.2)); R.eA = gap0 * dr; R.eLift = calm ? 0 : Math.sin(T * 4) * eggS * 0.06;
+      toy.under = () => { const c = ctx0(); c.save(); c.strokeStyle = 'rgba(120,200,255,0.85)'; c.lineWidth = Math.max(2, eggS * 0.07); c.lineCap = 'round'; for (let i = 0; i < 3; i++) { const a0 = -0.5 + i * 0.25 + ((calm ? 0 : t * 0.35) % 0.25), p0 = at(a0, eggS * (0.12 + 0.1 * i)), p1 = at(a0 + 0.14, eggS * (0.12 + 0.1 * i)); c.beginPath(); c.moveTo(p0.x, p0.y); c.quadraticCurveTo((p0.x + p1.x) / 2, (p0.y + p1.y) / 2 - eggS * 0.12, p1.x, p1.y); c.stroke(); } c.restore(); };
+      R.eD = seg(T, 2.35, 2.75); R.done = seg(T, 2.75, 3.1); break;
+    }
+    case 'fire_red': if (T > 0.95) toy.look = { fire: 'fire_red' }; thornsPass(T > 1.7); home(1.3); break;
+    case 'fire_green': toy.look = T < 0.95 ? { cracks: 2 } : { fire: 'fire_green', cracks: T < 1.45 ? 2 : T < 1.8 ? 1 : 0 }; toy.over = sparkles(1.1, 2.0, '#8af0a0', 6); home(2.0); break;
+    case 'fire_gold': toy.look = T < 0.95 ? null : T < 1.7 ? { fire: 'fire_gold' } : { chick: 'glow' }; if (T > 1.6 && T < 2.3) toy.flash = { x: e0.x, y: e0.y, k: seg(T, 1.6, 2.3) }; home(2.3); break;
+    case 'fire_black': { // it eats through the floor where it sits: a black hole, and down it goes
+      if (T > 0.95) toy.look = { fire: 'fire_black' };
+      const hk = ease(seg(T, 1.2, 1.9)), f = at(0, 0);
+      toy.under = hk > 0 ? () => { const c = ctx0(); c.save(); c.fillStyle = 'rgba(20,6,30,0.9)'; c.beginPath(); c.ellipse(f.x, f.y + K.band * 0.1, eggS * 0.62 * hk, K.band * 0.75 * hk, 0, 0, Math.PI * 2); c.fill(); c.fillStyle = 'rgba(160,80,240,0.55)'; c.beginPath(); c.ellipse(f.x, f.y + K.band * 0.1, eggS * 0.62 * hk, K.band * 0.75 * hk, 0, Math.PI, Math.PI * 2); c.lineWidth = 3; c.strokeStyle = 'rgba(190,120,255,0.8)'; c.stroke(); c.restore(); } : null;
+      R.eD = seg(T, 2.0, 2.45); R.done = seg(T, 2.45, 2.8); break;
+    }
+    case 'stone': case 'rockskin': case 'iron':
+      if (B || T > 0.95) { toy.look = O === 'rockskin' ? { rockskin: 1 } : O === 'iron' ? { iron: 1 } : { stone: 1 }; R.stone = O !== 'rockskin' && O !== 'iron'; }
+      thornsPass(T > 1.75); if (T > 1.7 && T < 2.4) toy.word = { s: 'CRUNCH!', k: seg(T, 1.7, 2.4) }; home(1.3); break;
+    case 'golden': // the golden shell takes the thorn's hit and flies off; the egg is whole
+      toy.look = T < 1.75 ? { golden: 1 } : null; thornsPass(false);
+      if (T > 1.72 && T < 2.2) toy.burst = { x: e0.x, y: e0.y, k: seg(T, 1.72, 2.2), col: '#ffd23a' };
+      toy.over = sparkles(1.75, 2.4, '#ffe27a', 7); home(1.3); break;
+    case 'feather': toy.look = T > 0.95 ? { guard: 1 } : null; thornsPass(false); toy.over = sparkles(1.6, 2.3, '#c8f4ff'); home(1.3); break;
+    case 'bubble': { // up it floats, the ring turns under it, the bubble pops and it drops
+      const up = ease(seg(T, 1.0, 1.8)) * (1 - ease(seg(T, 2.6, 2.75)));
+      toy.look = T > 0.95 && T < 2.6 ? { bubble: 1 } : null; R.eLift = eggS * 1.5 * up + (calm ? 0 : Math.sin(t * 3) * eggS * 0.08 * up);
+      const d = ease(seg(T, 1.7, 2.5)); R.th = -gap0 * d; R.hand = K.dragHand(1.6, 2.5, 0.5, 0.5 - gap0);
+      if (T > 2.6 && T < 3.0) toy.burst = { x: e0.x, y: e0.y - eggS * 1.5 * (1 - seg(T, 2.6, 2.75)), k: seg(T, 2.6, 3.0), col: '#bdf2ff' };
+      if (T > 2.6 && T < 3.2) toy.word = { s: 'POP!', k: seg(T, 2.6, 3.2) };
+      R.eD = seg(T, 2.75, 3.15); R.done = seg(T, 3.15, 3.5); break;
+    }
+    case 'water': { // a lava rock lands on the water shell: a hiss of steam and not a crack
+      toy.look = T > 0.95 ? { water: 1 } : null;
+      const f = ease(seg(T, 1.2, 1.75)), top = y - eggS, land = e0.y - eggS * 0.55;
+      toy.over = chain(T > 1.2 && T < 1.75 && H.lava ? () => H.lava(ctx0(), e0.x + (1 - f) * Z * 0.25, top + (land - top) * f * f, eggS * 0.4, t, 1) : null,
+        T > 1.75 && T < 2.7 ? () => { const c = ctx0(), q = seg(T, 1.75, 2.7); c.save(); c.globalAlpha *= 1 - q; c.fillStyle = '#ffffff'; for (let i = 0; i < 4; i++) { c.beginPath(); c.arc(e0.x + (i - 1.5) * eggS * 0.3, e0.y - eggS * (0.5 + q * 1.1 + i * 0.1), eggS * (0.16 + 0.2 * q), 0, Math.PI * 2); c.fill(); } c.restore(); } : null);
+      home(2.4); break;
+    }
+    case 'thunder': // a zap, and a crack: the one to steer clear of
+      toy.look = T < 0.95 ? null : { zap: T < 1.9, cracks: T > 1.25 ? 1 : 0 };
+      toy.over = T > 0.95 && T < 1.6 && H.zig ? () => H.zig(ctx0(), e0.x, e0.y, eggS * 1.3, T, 1 - seg(T, 0.95, 1.6)) : null;
+      R.miss = seg(T, 1.3, 2.3); home(2.4); break;
+    case 'magnet': { // a second egg beside it: tied together, they go home together
+      toy.twin = { show: true, a: -0.2, eD: 0 }; const lk = seg(T, 0.95, 1.3);
+      toy.over = lk > 0 ? () => { const c = ctx0(), b = at(-0.2, eggS * 0.5), a = at(R.eA, eggS * 0.5 + R.eLift); if (R.eD > 0 || R.done > 0) return; c.save(); c.globalAlpha *= lk; c.strokeStyle = '#ff4f7b'; c.lineWidth = Math.max(3, eggS * 0.08); c.setLineDash([eggS * 0.12, eggS * 0.08]); c.lineDashOffset = calm ? 0 : -t * 30; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); c.restore(); } : null;
+      home(1.4); toy.twin.eD = R.eD; break;
+    }
+    case 'hourglass': { // everything slows: a big glass over the stage, the turn takes its time
+      const on = seg(T, 0.95, 1.3) * (1 - seg(T, 3.9, 4.3));
+      toy.under = on > 0 ? () => { const c = ctx0(); c.save(); c.globalAlpha *= on * 0.35; c.fillStyle = '#9fd0ff'; c.fillRect(x, y, w, h); c.restore(); if (K.Wd && K.Wd.orb) { c.save(); c.globalAlpha *= on * 0.55; K.Wd.orb(c, 'hourglass', x + w / 2, y + h * 0.24, eggS * 0.9, calm ? 0 : t * 0.25); c.restore(); } } : null;
+      home(1.5, 1.7); break;
+    }
+    case 'frost': { // the ring freezes solid: the finger pulls, nothing moves; it thaws, then it turns
+      const ice = T > 0.95 && T < 2.9;
+      toy.deco = { mat: ice ? 'ice' : null, thorns: 0 };
+      if (T > 1.2 && T < 2.3) { R.hand = K.dragHand(1.3, 2.2, 0.5, 0.4); R.th = calm ? 0 : Math.sin(T * 40) * 0.008; }
+      toy.over = sparkles(1.0, 1.7, '#e6fbff', 6);
+      if (T >= 2.6) home(2.9); break;
+    }
+    case 'frostnova': thornsPass(T > 1.9); if (T > 0.95 && T < 1.9) toy.flash = { x: e0.x, y: e0.y, k: seg(T, 0.95, 1.9), col: '#bff4ff' }; toy.over = sparkles(1.0, 1.9, '#dff8ff', 8); home(2.1); break;
+    case 'shock': { // the ring crackles: the egg hops off it
+      const live = seg(T, 0.95, 1.2) * (1 - seg(T, 2.3, 2.6));
+      toy.under = live > 0 && K.Wd && K.Wd.live ? () => K.Wd.live(ctx0(), K.C, K.kW, t, live) : null;
+      R.eLift = live > 0 && !calm ? Math.abs(Math.sin((T - 0.95) * 7)) * eggS * 0.35 * live : 0; home(2.5); break;
+    }
+    case 'thunderclap': if (T > 0.95 && T < 1.8) toy.flash = { x: x + w / 2, y: y + h * 0.4, k: seg(T, 0.95, 1.8), col: '#fff27a' }; toy.over = T > 1.0 && T < 1.8 && H.zig ? () => H.zig(ctx0(), x + w * 0.5, y + h * 0.25, Z * 0.5, T, 1 - seg(T, 1.0, 1.8)) : null; home(2.0); break;
+    case 'laser': { // a beam from the egg cuts the thorns by the gap
+      thornsPass(T > 1.75); const g = at(0.42, 0);
+      toy.over = T > 1.25 && T < 1.95 ? () => { const c = ctx0(), q = seg(T, 1.25, 1.95); c.save(); c.globalAlpha *= Math.sin(q * Math.PI); c.lineCap = 'round'; for (const [lw, col] of [[eggS * 0.22, 'rgba(255,80,50,0.45)'], [eggS * 0.08, '#fff2e0']]) { c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); c.moveTo(e0.x, e0.y); c.lineTo(g.x, g.y - eggS * 0.2); c.stroke(); } c.restore(); } : null;
+      home(2.0); break;
+    }
+    case 'spin': { // the whole vault spins round once, the gap comes under the egg
+      const d = ease(seg(T, 1.1, 2.5)); R.th = -(gap0 + Math.PI * 2) * d; R.eD = seg(T, 2.6, 3.0); R.done = seg(T, 3.0, 3.35);
+      R.eLift = !calm && d > 0 && d < 1 ? Math.abs(Math.sin(d * Math.PI * 4)) * eggS * 0.18 : 0; break;
+    }
+    case 'pepper': { // a puff of pepper: the creature sneezes and runs
+      const pf = seg(T, 1.0, 1.3) * (1 - seg(T, 2.3, 2.7)), vx = x + w * 0.18 - ease(seg(T, 1.6, 2.4)) * w * 0.4;
+      toy.over = chain(pf > 0 ? () => { const c = ctx0(); c.save(); c.globalAlpha *= pf * 0.85; for (let i = 0; i < 7; i++) { const a = i * 0.9 + (calm ? 0 : t * 0.6); c.fillStyle = i % 2 ? '#ff9a5a' : '#ffc79a'; c.beginPath(); c.arc(e0.x + Math.cos(a) * eggS * 0.8 - eggS * 0.4, e0.y - eggS * 0.3 + Math.sin(a) * eggS * 0.45, eggS * (0.32 + 0.1 * (i % 3)) * (0.6 + 0.4 * pf), 0, Math.PI * 2); c.fill(); } c.restore(); } : null,
+        H.portrait && T < 2.5 ? () => { const c = ctx0(); c.save(); c.globalAlpha *= 1 - seg(T, 2.1, 2.5); c.translate(vx, e0.y - eggS * 0.1); if (T > 1.6) c.scale(-1, 1); H.portrait(c, 'snake', 0, 0, eggS * 1.6, t); c.restore(); } : null);
+      home(2.5); break;
+    }
+    case 'decoy': { // a big wooden egg pops out: what hunts goes for it
+      const k = calm ? 1 : back(seg(T, 1.0, 1.4)), d = at(-0.38, 0);
+      toy.over = T > 1.0 && H.decoy ? () => { const c = ctx0(); c.save(); c.translate(K.C.x, K.C.y); c.scale(K.kW, -K.kW); H.decoy(c, (d.x - K.C.x) / K.kW, -(d.y - K.C.y) / K.kW + 0.4 * k, 0.62 * 1.3 * k, 1, t, 0); c.restore(); } : null;
+      home(1.8); break;
+    }
+    case 'shrink': toy.look = T > 0.95 ? { shrink: 1 } : null; if (T > 0.95 && T < 1.4) toy.burst = { x: e0.x, y: e0.y, k: seg(T, 0.95, 1.4), col: '#c49bff' }; home(1.6); break;
+    case 'hatch_pick': case 'hatch_swoop': case 'hatch_dash': { // the egg hatches its chick; a tap and it does its trick
+      const ck = O.slice(6); toy.look = T > 0.95 ? { chick: ck } : null;
+      R.hand = K.tapHand({ x: e0.x, y: e0.y, r: eggS * 0.5 }, 1.25, 1.6);
+      if (ck === 'pick') { thornsPass(T > 1.9); if (T > 1.7 && T < 2.4) toy.word = { s: 'CRACK!', k: seg(T, 1.7, 2.4) }; }
+      else if (ck === 'swoop') R.eLift = eggS * 1.4 * Math.sin(Math.PI * seg(T, 1.7, 2.5));
+      else R.eA = 0.3 * Math.sin(Math.PI * seg(T, 1.7, 2.3));
+      if (T > 2.4) home(2.5); break;
+    }
+    case 'time': // fifteen more seconds on the fuse: the clock pops, its hand sweeps back
+      toy.over = boostPic; if (T > 0.6 && T < 1.6) toy.word = { s: '+15s', k: seg(T, 0.6, 1.6) }; home(1.6); break;
+    case 'rewind': { // the egg rolls off and is lost; the picture runs back and it is on the ring again
+      const off = ease(seg(T, 0.5, 1.3)), bk = ease(seg(T, 1.7, 2.5));
+      R.eA = -0.75 * off * (1 - bk); R.miss = T > 1.2 && T < 1.75 ? seg(T, 1.2, 1.75) : 0;
+      toy.look = off > 0.95 && bk < 0.05 ? { cracks: 3 } : null;
+      toy.over = chain(pop((c, X, Y, S) => K.boost && K.boost(c, 'rewind', X, Y, S, calm ? 0 : -t * 3), 1.55, 2.65, x + w / 2, y + h * 0.22, eggS * 1.3),
+        bk > 0 && bk < 1 ? () => { const c = ctx0(); c.save(); c.globalAlpha *= 0.25 * Math.sin(bk * Math.PI); c.fillStyle = '#7ab8ff'; c.fillRect(x, y, w, h); c.restore(); } : null);
+      if (T > 2.6) home(2.7); break;
+    }
+    case 'sponge': { // a soft pad on the basket: the egg lands with a squash and a bounce
+      home(1.4); const nx = K.nest.x, ny = K.nest.y;
+      toy.over = chain(boostPic, R.done > 0 || R.eD > 0.6 ? () => {} : null);
+      toy.under = () => { const c = ctx0(), sq = R.done > 0 && R.done < 0.6 && !calm ? Math.sin(R.done / 0.6 * Math.PI) : 0; c.save(); c.translate(nx, ny - eggS * 0.38); c.scale(1 + 0.15 * sq, 1 - 0.3 * sq); c.fillStyle = '#ffe26a'; c.strokeStyle = '#a8760a'; c.lineWidth = 2.5; c.beginPath(); c.ellipse(0, 0, eggS * 0.85, eggS * 0.2, 0, 0, Math.PI * 2); c.fill(); c.stroke(); c.fillStyle = 'rgba(168,118,10,0.5)'; for (let i = -2; i <= 2; i++) { c.beginPath(); c.arc(i * eggS * 0.3, 0, eggS * 0.05, 0, Math.PI * 2); c.fill(); } c.restore(); };
+      R.eLift = R.done > 0 && R.done < 0.8 && !calm ? Math.sin(seg(R.done, 0.1, 0.8) * Math.PI) * eggS * 0.4 : 0; break;
+    }
+    case 'nest': toy.nestK = 1 + 0.35 * (calm ? 1 : back(seg(T, 0.4, 0.9))); toy.over = boostPic; home(1.4); break;
+    case 'snips': { // the scissors fly to the thorns: snip, they fall
+      const f = ease(seg(T, 0.5, 1.2)), g = at(0.4, eggS * 0.4), sx = x + w / 2 + (g.x - x - w / 2) * f, sy = y + h * 0.2 + (g.y - y - h * 0.2) * f;
+      thornsPass(T > 1.35); if (T > 1.3 && T < 2.0) toy.word = { s: 'SNIP!', k: seg(T, 1.3, 2.0) };
+      toy.over = T < 1.8 && K.boost ? () => { const c = ctx0(); c.save(); c.globalAlpha *= 1 - seg(T, 1.5, 1.8); K.boost(c, 'snips', sx, sy, eggS * (1.3 - 0.4 * f), calm ? 0 : t * 3); c.restore(); } : null;
+      home(1.8); break;
+    }
+    case 'scare': { // the scarecrow pops up: the snake comes, sees it, and runs off
+      const k = calm ? 1 : back(seg(T, 0.3, 0.7)), sx = x + w * 0.8, sy = K.nest.y - eggS * 0.2, run = ease(seg(T, 1.5, 2.3)), vx = x + w * 0.05 + ease(seg(T, 0.5, 1.4)) * w * 0.22 - run * w * 0.4;
+      toy.over = chain(K.boost ? () => { const c = ctx0(); c.save(); c.translate(sx, sy); c.scale(k, k); K.boost(c, 'scare', 0, -eggS * 0.8, eggS * 1.7, calm ? 0 : t); c.restore(); } : null,
+        H.portrait && T < 2.3 ? () => { const c = ctx0(); c.save(); c.globalAlpha *= 1 - seg(T, 1.9, 2.3); c.translate(vx, e0.y - eggS * 0.2); if (T > 1.5) c.scale(-1, 1); H.portrait(c, 'snake', 0, 0, eggS * 1.6, t); c.restore(); if (T > 1.3 && T < 2.0 && H.word) { c.save(); c.globalAlpha *= 1 - seg(T, 1.7, 2.0); H.word(c, '!', vx, e0.y - eggS * 1.2, Z * 0.18, '#fff', '#c9342c'); c.restore(); } } : null);
+      home(2.2); break;
+    }
+    default: if (T > 0.95 && O) toy.look = null; home(1.4);
+  }
+  if (boostPic && !toy.over) toy.over = boostPic;
+  return R;
+}

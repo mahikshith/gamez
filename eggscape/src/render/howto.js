@@ -17,7 +17,7 @@ import { drawHand } from './wonder.js';
 import { drawStrikeChick, drawStrikeButton } from './strike.js'; // 0.8.10: the chick scenes show the real HUD badge
 import { drawKindChick } from './chicks.js'; // the bulk chick's own art (L18's card)
 import { kitsHarmEgg } from './kitsplay.js'; // 0.8.18 kits
-import { actorFor, harmActor, BREATH_AT, CHAM_ORB, BUMP_A, BITE_AT, FACE_T, bandHarmEgg } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers) // 0.8.17 bandit: bandHarmEgg
+import { actorFor, harmActor, BREATH_AT, CHAM_ORB, BUMP_A, BITE_AT, FACE_T, bandHarmEgg, orbScene, ORB_LOOP } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers) // 0.8.17 bandit: bandHarmEgg
 import { statusDraw } from './status.js';
 import { beamSparks, scorchStub, drawPepperCloud, drawTwister, drawSneeze, drawDecoyAt, TWIST_T } from './powers2.js'; // 2026-11-20: Practice content in the campaign
 import { paintVortex } from './warp.js';
@@ -152,9 +152,11 @@ const TOY = {
   magnet: 'Shock + iron: iron eggs stick to the live ring',
 };
 const TOY_NAME = { flame: 'Red flame', twin: 'Twin orb', curtain: 'Thorn curtain', portal: 'Portal', glow: 'Glow chick', bulk: 'Bulk chick', warp: 'Warp gate', bait: 'Bait and switch', sweep: 'Sweep beam', twister: 'Pepper twister', magnet: 'Electromagnet' };
-const NEW_TOYS = ['warp', 'bait', 'sweep', 'twister', 'magnet']; // these need the game's own art (o.world)
+const NEW_TOYS = ['warp', 'bait', 'sweep', 'twister', 'magnet', 'orb']; // these need the game's own art (o.world)
 // foe: the creature a toy scene shows (the warp gate takes the level's own: 'salamander', 'eagle', else a snake)
 export function toyPlan(id, foe) { return { kind: null, toy: id, move: 'toy', cap: TOY[id] || '', name: TOY_NAME[id] || id, foe }; }
+// card819: an orb or a booster acting its own scene (howact.js orbScene); key 'orb:<type>' or 'boost:<id>'
+export function orbPlan(key) { const id = key.split(':')[1]; return { kind: null, toy: 'orb', orb: key, move: 'toy', cap: '', name: id, loop: ORB_LOOP[id] || LOOP }; }
 // 0.8.10 (mykee on L11: "we are not providing relevant information ... where the floor is slippery"): a ring floor that
 // behaves on its own gets its own scene on the first level that has it. loop: a longer scene (ice plays it twice: too late, then early)
 const FLOOR = { ice: ['Ice: eggs slide', 'Ice floor', 7.4], honey: ['Honey: eggs stick', 'Honey', 4.8], cloud: ['Cloud: eggs bounce', 'Cloud floor', 4.8] };
@@ -243,13 +245,14 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     eD = seg(T, 2.3, 2.75); done = seg(T, 2.75, 3.1);
   } else if (m === 'tap' || m === 'rooster') {
     vA = vEnd - 0.3 * (1 - walk);
-    btn = { x: x + Math.max(w * 0.1, Z * 0.16), y: y + U * 0.8, r: Z * 0.13, id: m === 'rooster' ? 'rooster' : plan.power || 'thunder' };
+    btn = { x: x + Math.max(w * 0.1, Z * 0.16), y: y + U * (m === 'rooster' ? 0.66 : 0.8), r: Z * 0.13, id: m === 'rooster' ? 'rooster' : plan.power || 'thunder' }; // (card819: the rooster's button clear of the basket's rim)
     if (m === 'tap') { // 0.8.10: the HUD's own chick badge: a saved egg tops up its meter, it beats gold, the finger taps it
       btn.r = Z * 0.2; btn.x = x + Math.max(w * 0.12, btn.r * 1.25); btn.y = y + U * 0.76;
       btn.m = 0.6 + 0.4 * ease(seg(T, 0.6, 1.0)); btn.busy = T > 1.62;
       const sv = { x: nest.x - eggS * 0.45, y: nest.y - eggS * 0.42 }; btn.saved = { x: sv.x, y: T < 0.45 ? y - eggS + (sv.y - y + eggS) * Math.pow(seg(T, 0.1, 0.45), 2) : sv.y, a: seg(T, 0.05, 0.12) }; // an egg comes home first: that is what fills the badge
       if (T > 0.45 && T < 1.0) { const k = ease(seg(T, 0.45, 0.95)); btn.spark = { x: sv.x + (btn.x - sv.x) * k, y: sv.y + (btn.y - sv.y) * k - Math.sin(k * Math.PI) * U * 0.2, k }; }
     }
+    { const zB = o.zoom || (Wd ? 0.8 : 1), pB = SG && SG.pan ? SG.pan * w : 0, minX = cx + (x + w * 0.17 + btn.r * zB - cx - pB) / zB; if (btn.x < minX) btn.x = minX; } // card819: the camera's step to the villain's side took the rooster's button off the stage
     hand = tapHand(btn, T, 1.25, 1.7);
     const hit = 2.15;
     const onEgg = plan.fx === 'carry' || plan.fx === 'bubble'; // the phoenix and the bubble go for the egg, not the villain
@@ -296,7 +299,10 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     toy = { deco: { thorns: 0 }, look: null };
     // an orb drifts down onto the egg: it is taken (a burst in its colour) and the egg changes
     const orbIn = (type, t0, t1) => { const k = ease(seg(T, t0, t1)), p0 = at(-0.42, eggS * 1.9), p1 = eggAt(eggS * 0.55); if (T < t1 + 0.05) toy.orb = { type, x: p0.x + (p1.x - p0.x) * k, y: p0.y + (p1.y - p0.y) * k, a: 1 - seg(T, t1 - 0.05, t1 + 0.05) }; if (T > t1 && T < t1 + 0.45) toy.burst = { x: p1.x, y: p1.y, k: seg(T, t1, t1 + 0.45), col: type === 'twin' ? '#ffe58a' : type === 'hatch_glow' ? '#fff27a' : type === 'hatch_bulk' ? '#b6f070' : '#ff8a3a' }; };
-    if (id === 'flame' || id === 'curtain') {
+    if (id === 'orb') { // card819: every orb and booster (howact.js orbScene)
+      const q = orbScene(plan.orb, { T, t, at, gap0, eggS, kW, Z, U, x, y, w, h, C, band, nest, toy, calm, Wd, ctx, boost: o.boost, orbIn: (ty, t0, t1) => orbIn(ty, t0, t1), dragHand: (t0, t1, a0, a1) => dragHand(at, T, t0, t1, a0, a1), tapHand: (b, t0, t1) => tapHand(b, T, t0, t1), helpers: { star5, zig, word, decoy: drawDecoyAt, lava: drawLavaRock, portrait: drawVillainPortrait } });
+      th = q.th; eA = q.eA; eD = q.eD; done = q.done; eLift = q.eLift; hand = q.hand; miss = q.miss; if (q.stone) stone = true;
+    } else if (id === 'flame' || id === 'curtain') {
       orbIn('fire_red', 0.35, 1.0);
       if (T > 1.0) toy.look = { fire: 1 };
       const d = ease(seg(T, 1.2, 2.1)); th = -gap0 * d;
@@ -558,6 +564,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
   { // the camera (see the veil above): a step back for a scene with a villain, and a step to the villain's side
     const zm = o.zoom || (Wd && (hp || ['turn', 'tap', 'rooster', 'stone', 'drop', 'frog', 'fish', 'faceoff'].includes(plan.move) || (plan.move === 'toy' && NEW_TOYS.includes(plan.toy)) || plan.kind === 'spider') ? 0.8 : Wd && plan.move === 'floor' ? 0.86 : 1), pan = SG && SG.pan ? SG.pan * w : !act && plan.kind && vAlpha > 0 && zm !== 1 ? 0.05 * w : 0; // a portrait villain stands on the left
     if (zm !== 1 || pan) { ctx.translate(cx + pan, y + h); ctx.scale(zm, zm); ctx.translate(-cx, -(y + h)); }
+    o._btnS = btn ? { x: cx + pan + zm * (btn.x - cx), y: y + h + zm * (btn.y - y - h), r: btn.r * zm, x0: x, y0: y, w, h } : null; // card819: where the tap button lands (the card's audit checks it is on the stage)
   }
   if (act && act.under) { ctx.save(); try { Object.assign(SA, { T, t, m, th, fx: plan.fx, eA }); act.under(ctx, SA); } catch (e) { SA._ar = null; } ctx.restore(); } // 0.8.17 bandit: an actor under the ring (its edge pinches his arm)
   // ---- the ring: a thick slab with one gap (the game's own ring when it is given)
@@ -577,7 +584,7 @@ export function drawHowTo(ctx, plan, x, y, w, h, t, o = {}) {
     for (const [lw, col] of [[band + 4, '#4a140c'], [band, '#b8432f']]) { ctx.strokeStyle = col; ctx.lineWidth = lw; arc(ctx, C, R, gapA - gw / 2, gapA - gw / 2 + sh); arc(ctx, C, R, gapA + gw / 2 - sh, gapA + gw / 2); }
   }
   // the basket
-  if (Wd) Wd.nest(ctx, nest.x, nest.y, Math.max(Z * 0.7, eggS * 2.2), done, t); else drawBasket(ctx, nest.x, nest.y, Z * 0.42, done);
+  if (Wd) Wd.nest(ctx, nest.x, nest.y, Math.max(Z * 0.7, eggS * 2.2) * ((toy && toy.nestK) || 1), done, t); else drawBasket(ctx, nest.x, nest.y, Z * 0.42, done);
   // a hazard's warning mark on the floor, and its fall
   if (haz && haz.k === 'thorns') {
     if (plan.kind === 'vines' && haz.up > 0.02) { ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#2f6a2a'; ctx.lineWidth = Math.max(3, eggS * 0.1); ctx.beginPath(); for (let i = 0; i <= 16; i++) { const p = at(0.12 + th + 0.2 * haz.up * (i / 16), Math.sin(i * 1.3) * eggS * 0.06); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); } ctx.stroke(); ctx.restore(); }

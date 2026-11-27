@@ -655,7 +655,7 @@ export function createWonder(env) {
     const build = (stH) => (s) => {
       const B = [];
       if (stH > 0) B.push({ h: stH * s, gap: 4 * s, draw: (x, y, w) => picStage(x, y, w, stH * s, s, true) });
-      B.push(inkLine(L.pitch, 20 * s, 'wv:introLine', { gap: 12 * s }));
+      // (card819, mykee: no explaining text under the title: the picture plays the vault's trick by itself)
       B.push({ h: 40 * s, gap: 8 * s, draw: (x, y, w) => { // the stars it has (sockets until won) and the coins its next win pays
         const sr = 17 * s, pw = pay ? ui.measure('+' + pay, 19 * s) + 22 * s + 32 * s : 0, gp = pay ? 22 * s : 0, sw = 6.6 * sr, x0 = x + w / 2 - (sw + gp + pw) / 2, cy = y + 20 * s;
         for (let i = 0; i < 3; i++) drawStar(ctx, x0 + sw / 2 + (i - 1) * 2.3 * sr, cy, sr, i < best);
