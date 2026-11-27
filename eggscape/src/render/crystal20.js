@@ -150,6 +150,14 @@ function beaten(S, dt, t) {
   return el;
 }
 
+// faces3: where the nearest egg is, as a look in the head's frame (x ahead, y to its right on screen), or null
+function eggLook(sim, sn, hd) {
+  let best = null, bd = 6;
+  for (const e of sim.eggs) { if (!e.alive || e.saved) continue; const p = e.body.getPosition(), d = Math.hypot(p.x - sn.x, p.y - sn.y); if (d < bd) { bd = d; best = p; } }
+  if (!best) return null;
+  const rel = hd - Math.atan2(best.y - sn.y, best.x - sn.x);
+  return { x: Math.cos(rel), y: Math.sin(rel) };
+}
 // ctx: world space (meters, y up). k: pixels per meter. From drawSalamanders (render/salamander.js) for each thorn-back.
 export function drawThorn20(ctx, sim, C, k, t) {
   const S = stateOf(sim, C, t);
@@ -169,6 +177,12 @@ export function drawThorn20(ctx, sim, C, k, t) {
     pose: 'idle', blend: { ...S.B, lay: S.lay >= 0 ? S.lay : 0 }, gait: S.odo * k, id: 200 + C.id, heading: -S.hd, aim: -S.aim, look: S.wide ? { x: 0.1, y: 0 } : S.look, noShadow: frozen ? 1 : 0,
     trail: (d) => { const q = bodyAt(S, d / k); return { x: q.x * k, y: -q.y * k }; }, status: st, out, skin: duke ? 'crystal' : undefined,
   };
+  // faces3: smug as he gloats over a hit (and grins at the end), "huh?" when he is blocked; on the prowl his eyes go to the
+  // nearest egg
+  const wantM = C.ph === 'gloat' || C.ph === 'grin' ? 'smug' : C.ph === 'block' ? 'huh' : '';
+  if (wantM) { S.mood = wantM; S.mk = Math.min(1, (S.mk || 0) + dt * 6); } else S.mk = Math.max(0, (S.mk || 0) - dt * 2.5);
+  if (S.mk > 0.01 && S.mood) { o.mood = S.mood; o.moodK = S.mk; }
+  if (C.ph === 'walk' && !S.wide) { const el2 = eggLook(sim, sn, S.hd); if (el2) o.look = { x: lerp(S.look.x, el2.x, 0.85), y: lerp(S.look.y, el2.y, 0.85) }; }
   if (S.wide) o.blink = 0;
   ctx.scale(1 / k, -1 / k);
   drawCrawler(ctx, sn.x * k, -sn.y * k, L * k, frozen ? st.hold : t, o, 'thornback');

@@ -127,6 +127,52 @@ function dancePose(tt) {
     eHappy: ss(0.72, 0.84, air), beak: 3 + 1.6 * air, blush: 0.5, lid: 0.2, low: 0.25, bw: 1, smile: 1, cheek: 0.9 }); // eyes close at the top of each hop, a cocky brow
 }
 
+// faces3 (0.8.18): the moods the level hen was missing. Each is a full pose blended like the others.
+// proud (the level is won): chest out, beak in the air, eyes shut in a smug smile, wings on her hips, a slow pleased nod
+function proudPose(tt) {
+  const br = Math.sin(tt * 2), nod = Math.max(0, Math.sin(tt * 1.7)) ** 3;
+  return pose({ sq: 0.025 + br * 0.012, lean: -0.11, puff: 1.06, hx: -1.5, hy: -3 + nod * 1.6, hr: -0.3 + nod * 0.1, comb: -0.12 + br * 0.04,
+    wa: 0.62, wf: 0.6, sp: 0.45, tail: 0.3, tsp: 1, eHappy: 1, brow: 0, browY: -0.6, bw: 1, smile: 1, cheek: 1, blush: 0.6, beak: 0, lid: 0.3, low: 0.3 });
+}
+// comfort (the level is lost): no tears; a soft, kind face (brows up in the middle, a small brave smile), the head tilted,
+// a wing on her chest, a slow nod as if to say "never mind"
+function comfortPose(tt) {
+  const br = Math.sin(tt * 1.6), nod = Math.sin(tt * 1.25);
+  return pose({ sq: -0.02 + br * 0.012, hx: 1.5, hy: 2 + nod * 1.2, hr: 0.16 + nod * 0.05, comb: 0.12, wa: 0.85, wf: 0.1, sp: 0.15, tail: -0.12,
+    brow: 1, browY: 0.4, lid: 0.42, low: 0.12, pup: 1.15, smile: 0.55, cheek: 0.2, blush: 0.7, pdx: 0.5, pdy: 0.4, beak: 0 }); // the lids slant down outward (kind, a little sad), the smile stays
+}
+// hurry (the clock is nearly out): a foot taps, the wings wring at her chest, she nibbles her beak, and her eyes flick
+// up (the sky, the clock) and back to the eggs
+function hurryPose(tt) {
+  const tap = Math.max(0, Math.sin(tt * 11)), k = Math.floor(tt * 1.4), f = ss(0, 0.12, fract(tt * 1.4)), up = (i) => (i % 2 ? 1 : 0);
+  const g = lerp(up(k - 1), up(k), f);
+  return pose({ sq: 0.015 - tap * 0.012, dx: Math.sin(tt * 37) * 0.35, hx: -1, hy: -1 - g * 1.5, hr: -0.05 - g * 0.1, comb: Math.sin(tt * 18) * 0.06,
+    wa: 0.7 + Math.sin(tt * 9) * 0.16, wf: 0.65 - Math.sin(tt * 9) * 0.16, sp: 0.25, tail: 0.1, tsp: 0.3, fR: tap * 3.5, puff: 1.02,
+    eWide: 0.6, brow: 1, browY: -0.8, lid: 0, low: 0.2, pup: 0.7, pdx: lerp(0.6, 0.3, g), pdy: lerp(0.8, -1.3, g), beak: 0.9 + Math.abs(Math.sin(tt * 9)) * 0.8, teeth: 1, smile: -0.6, sweat: 0.8, blush: 0.25 });
+}
+// doze (a long quiet stretch in a level): heavy lids, the head sinks, slow deep breaths; now and then she nods off and
+// jerks awake, yawns, or preens her wing. Driven by its own slots so it never repeats in step with the idle schedule.
+function dozePose(tt) {
+  const br = Math.sin(tt * 1.3);
+  const P = pose({ sq: -0.025 + br * 0.03, puff: 1.03, hy: 2.5 + br * 0.6, hr: 0.08, comb: 0.12, tail: -0.1, lid: 0.7, low: 0.2, smile: 0.25, browY: 0.5, blush: 0.4, pdy: 0.6 });
+  const ph = tt % 5.2, cyc = Math.floor(tt / 5.2) % 3;
+  if (ph >= 2.6 && ph <= 4.1) {
+    const u = (ph - 2.6) / 1.5;
+    if (cyc === 0) { // nod off, then a jerk awake: eyes pop, the comb wobbles
+      const d = ss(0, 0.5, u) * (1 - ss(0.62, 0.68, u)), j = env(u, 0.62, 0.66, 0.8, 1);
+      P.hy += 6 * d - 3 * j; P.hr += 0.3 * d - 0.15 * j; P.lid = lerp(P.lid, 1, ss(0, 0.3, u) * (1 - ss(0.6, 0.64, u))); P.lid = lerp(P.lid, -0.05, j);
+      P.eWide += 1.1 * j; P.pup = lerp(P.pup, 0.45, j); P.browY -= 2.2 * j; P.comb += Math.sin(u * 40) * 0.3 * j; P.lift += 2.5 * j; P.tufts = 0.8 * j; P.pdx = lerp(P.pdx, 0, j); P.pdy = lerp(P.pdy, 0, j);
+    } else if (cyc === 1) { // a big yawn: head up, beak wide, eyes squeezed, wings stretch
+      const y = env(u, 0, 0.3, 0.62, 0.85);
+      P.hy -= 3 * y; P.hr -= 0.3 * y; P.beak = 6 * y; P.eSqueeze = y; P.wa += 0.7 * y; P.wf += 0.8 * y; P.sp += 0.5 * y; P.puff += 0.03 * y; P.tsp += 0.5 * y; P.sq += 0.04 * y;
+    } else { // a preen: beak down into the wing, a few nibbles, the wing lifts a little to meet it
+      const p = env(u, 0, 0.2, 0.75, 0.95), nib = Math.max(0, Math.sin(u * 30)) * p;
+      P.hx -= 5 * p; P.hy += 9 * p; P.hr += 0.75 * p; P.wa += 0.3 * p; P.sp += 0.35 * p; P.beak = 1.6 * nib; P.lid = lerp(P.lid, 1, p); P.dx += nib * 0.4; P.tufts = 0.4 * p;
+    }
+  }
+  return P;
+}
+
 function blendInto(out, p, w, wf = w) { // wf: the weight of the face keys
   if (w <= 0.0005 && wf <= 0.0005) return;
   for (const k of KEYS) out[k] += p[k] * (FACE.has(k) ? wf : w);
@@ -153,6 +199,17 @@ function gaspFace(P, su, t0 = 0) {
   P.beak = lerp(P.beak, 5.6, T); P.teeth = lerp(P.teeth, 0, T); P.browY = lerp(P.browY, -2.8, T); P.brow = lerp(P.brow, 0.45, T); P.smile = lerp(P.smile, -0.2, T);
   P.eSqueeze *= 1 - T; P.eHappy *= 1 - T; P.pdx *= 1 - T; P.pdy *= 1 - T;
 }
+// faces3: a wince (an egg cracks): a blink of wide eyes, then squeezed shut > < with gritted teeth and the brows crushed
+// down, the head pulled in; then she peeks, worried, at the egg (the caller's gaze aims the pupils)
+function winceFace(P, u) {
+  const pre = env(u, 0, 0.02, 0.04, 0.06), W = ss(0.04, 0.07, u) * (1 - ss(0.4, 0.48, u)), pk = ss(0.42, 0.5, u);
+  P.eWide = lerp(P.eWide, 0.8, pre);
+  P.eSqueeze = Math.max(P.eSqueeze * (1 - pk), W); P.eHappy *= 1 - Math.max(W, pk);
+  P.teeth = lerp(P.teeth, 1, W); P.beak = lerp(P.beak, 2.8, W); P.smile = lerp(P.smile, -1, Math.max(W, pk * 0.6)); P.cheek = lerp(P.cheek, 1, W);
+  P.brow = lerp(P.brow, 1, Math.max(W, pk)); P.browY = lerp(P.browY, lerp(1.4, -1.6, pk), Math.max(W, pk)); P.grit = lerp(P.grit, 0.6, W);
+  P.eWide = lerp(P.eWide, 0.75, pk); P.lid = lerp(P.lid, 0, pk); P.low = lerp(P.low, 0.25, pk); P.pup = lerp(P.pup, 0.6, pk); P.bw *= 1 - Math.max(W, pk); P.teeth = lerp(P.teeth, 0.6, pk);
+  P.sweat = Math.max(P.sweat, pk);
+}
 const REACT = {
   happy: [
     { len: CHEER_LEN, f(P, cu) { // hop: crouch, hop, flap, land, a small second hop, feather burst
@@ -165,7 +222,7 @@ const REACT = {
       if (cu >= 0.92) sq -= 0.08 * Math.exp(-(cu - 0.92) / 0.07);
       P.lift += lift; P.sq += sq;
       const fl = Math.sin(cu * 34) * 0.5;
-      P.wa = lerp(P.wa, 1.45 + fl, E); P.wf = lerp(P.wf, 1.35 + fl, E); P.sp = lerp(P.sp, 1, E);
+      P.wa = lerp(P.wa, 1.3 + fl * 0.5, E); P.wf = lerp(P.wf, 1.45 + fl, E); P.sp = lerp(P.sp, 1, E); // faces3: the near wing stays off her face
       cheerCommon(P, E, lift / 15);
       P.beak = lerp(P.beak, 4.5, E); P.hy += -2 * E; P.hr = lerp(P.hr, -0.15, E);
       P.tail = lerp(P.tail, 0.15 + Math.sin(cu * 26) * 0.18, E); P.tsp = lerp(P.tsp, 0.8, E); P.sway += Math.sin(cu * 9) * 0.05 * E;
@@ -256,7 +313,39 @@ const REACT = {
       return { heart: u, breath: (u - 0.04) / 0.34 };
     } },
   ],
+  // faces3: an egg cracks: she winces (see winceFace), with three ways of taking it in the body
+  wince: [
+    { len: 0.95, f(P, u) { // recoil: a jolt back, shoulders up, a shudder, then a lean in to look
+      const j = env(u, 0, 0.05, 0.3, 0.5), sh = env(u, 0.06, 0.1, 0.32, 0.42), look = env(u, 0.45, 0.6, 0.75, 0.95);
+      P.lean -= 0.13 * j; P.hx -= 4 * j; P.hy += 3 * j; P.sq -= 0.06 * j; P.puff += 0.05 * j; P.tufts = Math.max(P.tufts, j);
+      P.dx += Math.sin(u * 70) * 1.1 * sh; P.wa = lerp(P.wa, 1, j); P.wf = lerp(P.wf, 1.1, j); P.sp = lerp(P.sp, 0.5, j);
+      P.lean += 0.08 * look; P.hx += 3 * look; P.hy -= 1 * look;
+      winceFace(P, u);
+    } },
+    { len: 0.95, f(P, u) { // clutch: both wings to her chest, a little hop of fright, then she peers
+      const E = env(u, 0, 0.06, 0.6, 0.95), a = clamp(u / 0.2, 0, 1), air = u < 0.2 ? Math.sin(a * Math.PI) : 0;
+      P.lift += 4 * air; P.sq += 0.06 * air - (u >= 0.2 ? 0.08 * Math.exp(-(u - 0.2) / 0.07) : 0);
+      P.wa = lerp(P.wa, 0.95, E); P.wf = lerp(P.wf, 1.3, E); P.sp = lerp(P.sp, 0.25, E); P.puff += 0.04 * E; P.hy += 2 * E; P.tufts = Math.max(P.tufts, 0.8 * E);
+      winceFace(P, u);
+    } },
+    { len: 0.95, f(P, u) { // duck: head pulled right in, a shake, then a slow peek out
+      const d = env(u, 0, 0.06, 0.32, 0.55), sh = env(u, 0.08, 0.14, 0.34, 0.44);
+      P.sq -= 0.1 * d; P.lift -= 3 * d; P.hx -= 4 * d; P.hy += 5 * d; P.puff += 0.04 * d;
+      P.wa = lerp(P.wa, 0.9, d); P.wf = lerp(P.wf, 0.9, d);
+      P.hr += Math.sin(u * 46) * 0.14 * sh; P.comb += Math.sin(u * 46 - 0.8) * 0.2 * sh; P.tufts = Math.max(P.tufts, d * 0.9);
+      winceFace(P, u);
+    } },
+  ],
 };
+// faces3: an egg is lost: a gasp first (a jump back, wings fly out, eyes pop, beak wide), the tears only after it
+const LOST_LEN = 0.75;
+function lostLayer(P, u) {
+  const a = clamp(u / 0.24, 0, 1), air = u < 0.24 ? Math.sin(a * Math.PI) : 0, E = env(u, 0, 0.05, 0.42, LOST_LEN);
+  P.lift += 5 * air; P.sq += 0.08 * air - (u >= 0.24 ? 0.09 * Math.exp(-(u - 0.24) / 0.07) : 0);
+  P.lean -= 0.1 * E; P.hx -= 2 * E; P.hy -= 2.5 * E; P.puff += 0.05 * E; P.tufts = Math.max(P.tufts, E);
+  P.wa = lerp(P.wa, 1.35, E); P.wf = lerp(P.wf, 1.7, E); P.sp = lerp(P.sp, 0.9, E);
+  gaspFace(P, u * 0.62);
+}
 // pick a variant: random-looking from the trigger count, never the one played last time
 const nextVariant = (prev, n) => (prev < 0 ? Math.floor(hash(n * 3.7 + 1) * 3) : (prev + 1 + (hash(n * 1.3 + 5) > 0.5 ? 1 : 0)) % 3);
 
@@ -326,19 +415,23 @@ export function henWingOver(ctx) {
 const HENS = {}; // key -> state
 
 function fresh(t, face) {
-  return { t, c: 0, w: { worry: 0, cry: 0, dance: 0 }, x: 0, sv: 0, phase: 0, mood: 'idle', n: 0, cheerAt: -9, cheerK: 0, cheerV: -1, queued: false,
-    startleAt: -9, startleK: 0, startleV: -1, phewAt: -9, phewK: 0, phewV: -1, worryT: 0, face, faceT: face, sec: null };
+  return { t, c: 0, w: { worry: 0, cry: 0, dance: 0, proud: 0, comfort: 0, hurry: 0, doze: 0 }, x: 0, sv: 0, phase: 0, mood: 'idle', n: 0, cheerAt: -9, cheerK: 0, cheerV: -1, queued: false,
+    startleAt: -9, startleK: 0, startleV: -1, phewAt: -9, phewK: 0, phewV: -1, winceAt: -9, winceK: 0, winceV: -1, lostAt: -9, quiet: 0, wakeAt: -9, worryT: 0, face, faceT: face, sec: null };
 }
 export const resetHen = (key) => { delete HENS[key || 'level']; };
 
-function moodTargets(mood, danger) {
-  let worry = 0, cry = 0, dance = 0;
+function moodTargets(mood, danger, hurry = 0) {
+  let worry = 0, cry = 0, dance = 0, proud = 0, comfort = 0, hur = 0;
   if (mood === 'gasp') worry = 1;
   else if (mood === 'worried') worry = 0.75;
+  else if (mood === 'wince') worry = 0.5; // faces3: after the wince she stays concerned for a moment
   else if (mood === 'cry' || mood === 'sad') cry = 1;
   else if (mood === 'dance') dance = 1;
+  else if (mood === 'proud') proud = 1; // faces3: the level is won
+  else if (mood === 'comfort') comfort = 1; // faces3: the level is lost
   if (danger > 0.15) worry = Math.max(worry, Math.min(0.6, (danger - 0.15) * 1.3));
-  return { worry, cry, dance };
+  if (hurry > 0 && mood !== 'cry' && mood !== 'sad' && mood !== 'proud' && mood !== 'comfort') hur = clamp(hurry, 0, 1) * (1 - worry); // faces3: the clock is nearly out
+  return { worry, cry, dance, proud, comfort, hurry: hur };
 }
 
 /* ------------------------------------------------------------------ the draw */
@@ -360,7 +453,7 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
 
   // ---- events: a new mood or a bumped counter fires the one-shot layers (each picks a variant)
   const n = o.n || 0, again = n !== st.n || mood !== st.mood;
-  const tg = moodTargets(mood, o.danger || 0);
+  const tg = moodTargets(mood, o.danger || 0, o.hurry || 0);
   const fireCheer = (skip) => { st.cheerAt = st.c - (skip ? 0.085 : 0); st.cheerK++; st.cheerV = o.variant != null ? o.variant : skip && st.cheerV === 0 ? 0 : nextVariant(st.cheerV, st.cheerK + n); st.queued = false; };
   if (again) {
     if (mood === 'happy') {
@@ -372,35 +465,55 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
     else if (mood === 'worried' && st.worryT < 0.3) { st.startleAt = st.c; st.startleK++; st.startleV = 0; } // something creeping close: the plain jump
     if (mood === 'phew') { st.phewAt = st.c; st.phewK++; st.phewV = o.variant != null ? o.variant : nextVariant(st.phewV, st.phewK + n); }
     if (mood === 'catch') { st.phewAt = st.c; st.phewK++; st.phewV = 0; st.cheerQ = st.c + 0.92; } // she ran and caught it: phew (eyes shut, a breath, the sweat flicked away), then the cheer
+    if (mood === 'wince') { st.winceAt = st.c; st.winceK++; st.winceV = o.variant != null ? o.variant : nextVariant(st.winceV, st.winceK + n); } // faces3: an egg cracks
+    if (mood === 'cry' && st.w.cry < 0.5 && st.c - st.lostAt > 1) st.lostAt = st.c; // faces3: an egg is lost: the gasp comes before the tears
     st.mood = mood; st.n = n;
   }
+  // faces3: a long quiet stretch (the level hen only, o.doze): she gets drowsy; anything happening wakes her with a start
+  const busy = again || mood !== 'idle' || (o.danger || 0) > 0.15 || (o.hurry || 0) > 0 || Math.abs(st.sv) > 3 || (o.carry && Math.abs(o.carry.v) > 0.3);
+  if (busy) { if (st.w.doze > 0.4 && !calm) st.wakeAt = st.c; st.quiet = 0; } else st.quiet += dt;
+  tg.doze = o.doze && !calm && st.quiet > 9 ? 1 : 0;
+  if (st.c - st.lostAt < LOST_LEN * 0.8) tg.cry = 0; // the tears wait for the gasp
   if (st.cheerQ && st.c >= st.cheerQ) { st.cheerQ = 0; fireCheer(false); }
   if (st.queued && st.c - st.cheerAt > REACT.happy[Math.max(0, st.cheerV)].len * 0.7) fireCheer(true); // later hops skip the crouch
-  if (calm) { st.cheerAt = -9; st.startleAt = -9; st.phewAt = -9; st.queued = false; }
+  if (calm) { st.cheerAt = -9; st.startleAt = -9; st.phewAt = -9; st.winceAt = -9; st.lostAt = -9; st.wakeAt = -9; st.queued = false; }
 
   // ---- weights ease toward the wanted state (fast into fear, slow out of tears)
   const ease = (cur, want, tin, tout) => (calm ? want : cur + (want - cur) * (1 - Math.exp(-dt / (want > cur ? tin : tout))));
   st.w.worry = ease(st.w.worry, tg.worry, 0.07, 0.4);
   st.w.cry = ease(st.w.cry, tg.cry, 0.3, 0.55);
   st.w.dance = ease(st.w.dance, tg.dance, 0.22, 0.3);
+  st.w.proud = ease(st.w.proud, tg.proud, 0.25, 0.3);
+  st.w.comfort = ease(st.w.comfort, tg.comfort, 0.35, 0.3);
+  st.w.hurry = ease(st.w.hurry, tg.hurry, 0.3, 0.4);
+  st.w.doze = ease(st.w.doze, tg.doze, 1.2, 0.06); // she drifts off slowly and wakes at once
   st.worryT = st.w.worry;
-  const wsum = st.w.worry + st.w.cry + st.w.dance, nrm = wsum > 1 ? 1 / wsum : 1;
-  const wW = st.w.worry * nrm, wC = st.w.cry * nrm, wD = st.w.dance * nrm, wI = Math.max(0, 1 - wW - wC - wD);
+  const wsum = st.w.worry + st.w.cry + st.w.dance + st.w.proud + st.w.comfort + st.w.hurry + st.w.doze, nrm = wsum > 1 ? 1 / wsum : 1;
+  const wW = st.w.worry * nrm, wC = st.w.cry * nrm, wD = st.w.dance * nrm, wPr = st.w.proud * nrm, wCo = st.w.comfort * nrm, wH = st.w.hurry * nrm, wZ = st.w.doze * nrm;
+  const wI = Math.max(0, 1 - wW - wC - wD - wPr - wCo - wH - wZ);
 
   const P = {};
   for (const k of KEYS) P[k] = 0;
   // the face snaps between the states while the body eases (calm: the weights are already 0 or 1)
-  let fW = sharp(st.w.worry), fC = sharp(st.w.cry), fD = sharp(st.w.dance);
-  const fsum = fW + fC + fD; if (fsum > 1) { fW /= fsum; fC /= fsum; fD /= fsum; }
-  blendInto(P, idlePose(tt), wI, Math.max(0, 1 - fW - fC - fD));
+  let fW = sharp(st.w.worry), fC = sharp(st.w.cry), fD = sharp(st.w.dance), fP = sharp(st.w.proud), fCo = sharp(st.w.comfort), fH = sharp(st.w.hurry), fZ = ss(0, 1, st.w.doze);
+  const fsum = fW + fC + fD + fP + fCo + fH + fZ; if (fsum > 1) { fW /= fsum; fC /= fsum; fD /= fsum; fP /= fsum; fCo /= fsum; fH /= fsum; fZ /= fsum; }
+  blendInto(P, idlePose(tt), wI, Math.max(0, 1 - fW - fC - fD - fP - fCo - fH - fZ));
   blendInto(P, worryPose(tt), wW, fW);
   blendInto(P, cryPose(tt), wC, fC);
   blendInto(P, dancePose(tt), wD, fD);
+  // faces3: a villain near an egg: even before the full fright, her face is worried (brows up, eyes wide, a frown, a drop
+  // of sweat), so the danger reads at play size; her eyes go to the egg (o.gaze, below)
+  const dz = ss(0.15, 0.4, o.danger || 0) * Math.max(0, 1 - fC - fD - fP - fCo) * (1 - fW * 0.5);
+  if (dz > 0.002) { P.brow = lerp(P.brow, 1, dz); P.browY = lerp(P.browY, -1.2, dz); P.eWide = Math.max(P.eWide, 0.6 * dz); P.pup = lerp(P.pup, 0.65, dz); P.smile = lerp(P.smile, -0.55, dz); P.lid = lerp(P.lid, 0, dz); P.low = lerp(P.low, 0.2, dz); P.bw *= 1 - dz; P.grit *= 1 - dz; P.sweat = Math.max(P.sweat, 0.7 * dz); }
+  if (wPr > 0.0005 || fP > 0.0005) blendInto(P, proudPose(tt), wPr, fP);
+  if (wCo > 0.0005 || fCo > 0.0005) blendInto(P, comfortPose(tt), wCo, fCo);
+  if (wH > 0.0005 || fH > 0.0005) blendInto(P, hurryPose(tt), wH, fH);
+  if (wZ > 0.0005 || fZ > 0.0005) blendInto(P, dozePose(tt), wZ, fZ);
 
   // ---- walk: ease a position toward the look target, steps follow the speed; she turns to face the way she goes
   let walkAmt = 0;
   if (o.look !== undefined && !calm) {
-    const still = clamp(1 - wW - wC - wD, 0, 1);
+    const still = clamp(1 - wW - wC - wD - wPr - wCo - wZ, 0, 1);
     let want = clamp(o.look, -1, 1) * WALK_RANGE;
     if (Math.abs(o.look) < 0.05) { // nothing to follow: a short shuffle now and then
       const w = slot(tt, 7.3, 4, 0.1, 0.55);
@@ -507,12 +620,21 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
   if (su >= 0 && su < R2.len) R2.f(P, su);
   const pu = calm ? 99 : st.c - st.phewAt, R3 = REACT.phew[Math.max(0, st.phewV)];
   if (pu >= 0 && pu < R3.len) { const x = R3.f(P, pu) || {}; if (x.heart >= 0) heart = x.heart; if (x.breath >= 0 && x.breath < 1) breath = x.breath; }
+  const wu = calm ? 99 : st.c - st.winceAt, R4 = REACT.wince[Math.max(0, st.winceV)];
+  if (wu >= 0 && wu < R4.len) R4.f(P, wu);
+  const lu = calm ? 99 : st.c - st.lostAt;
+  if (lu >= 0 && lu < LOST_LEN) lostLayer(P, lu);
+  const ku = calm ? 99 : st.c - st.wakeAt; // woken with a start: a pop of the eyes and a ruffle
+  if (ku >= 0 && ku < 0.5) { const j = env(ku, 0, 0.04, 0.2, 0.5); P.eWide = Math.max(P.eWide, 1.1 * j); P.pup = lerp(P.pup, 0.4, j); P.lift += 3 * Math.sin(clamp(ku / 0.22, 0, 1) * Math.PI); P.tufts = Math.max(P.tufts, j); P.comb += Math.sin(ku * 40) * 0.25 * j; P.lid = lerp(P.lid, -0.05, j); }
+  // calm (reduced motion): no one-shots, so the moods that are only one-shots hold a gentle face instead
+  if (calm && (mood === 'happy' || mood === 'catch')) cheerCommon(P, 1, 0);
+  else if (calm && mood === 'wince') { P.brow = 1; P.browY = -1; P.eWide = 0.6; P.smile = -0.4; P.beak = 1; P.pup = 0.7; }
   // ---- nest.reach: her near wing rests on the basket's rim and grips it while it moves (it lets go for a reaction while
   // the basket stands still). The wing points at the rim from her shoulder through the body's own lean (an inverse of
   // drawHenPose's body frame) and opens just far enough to reach it.
   if (C && C.rx != null) {
     const moving = clamp(Math.abs(st.cv) / 0.3, 0, 1);
-    const busy = (cu >= 0 && cu < R1.len) || (su >= 0 && su < R2.len) || (pu >= 0 && pu < R3.len);
+    const busy = (cu >= 0 && cu < R1.len) || (su >= 0 && su < R2.len) || (pu >= 0 && pu < R3.len) || (wu >= 0 && wu < R4.len) || (lu >= 0 && lu < LOST_LEN);
     const want = Math.max(moving, busy ? 0 : wI * (1 - st.w.worry));
     st.grip = (st.grip ?? want) + (want - (st.grip ?? want)) * (1 - Math.exp(-dt / 0.1));
     const g = ss(0, 1, st.grip);
@@ -552,6 +674,16 @@ export function drawHenAnim(ctx, mood, cx, cy, h, t = 0, o = {}) {
   const fs = st.face >= 0 ? 1 : -1;
   P.pdx += (o.look || 0) * 0.8 * fs;
   P.beak += beakPeck;
+  // faces3: her eyes on a thing (o.gaze = [x, y] in the caller's pixels, o.gazeW 0..1: the egg in danger, the egg about to
+  // land): the pupils lock on, the head turns a little after them (it overrides the worried darts, not a blink or a squeeze)
+  const gw = o.gaze && !calm ? clamp(o.gazeW == null ? 1 : o.gazeW, 0, 1) : 0;
+  st.gw = (st.gw || 0) + (gw - (st.gw || 0)) * (calm ? 1 : 1 - Math.exp(-dt / 0.08));
+  if (st.gw > 0.01 && o.gaze) {
+    const sc = h / 100, hx0 = cx + (st.x + (20 + P.hx) * fs) * sc, hy0 = cy + (-27.5 + P.hy - P.lift) * sc;
+    const dx = (o.gaze[0] - hx0) * fs, dy = o.gaze[1] - hy0, l = Math.hypot(dx, dy) || 1, g = st.gw;
+    P.pdx = lerp(P.pdx, (dx / l) * 1.7, g); P.pdy = lerp(P.pdy, (dy / l) * 1.5, g);
+    P.hx += (dx / l) * 2.2 * g; P.hy += (dy / l) * 1.6 * g; P.hr += (dy / l) * 0.08 * g;
+  }
   return drawHenPose(ctx, P, cx, cy, h, { face: st.face, x: st.x, blink, tt, shadow: o.shadow, enter: o.enter, calm, breath, world,
     burst: burst >= 0 ? { u: burst, k: st.cheerK } : null, loose: st.w.worry > 0.3 && P.tufts > 0.3 ? st.w.worry : 0, notes: wD, heart });
 }
@@ -568,7 +700,8 @@ export function drawHenPose(ctx, P, cx, cy, h, o = {}) {
   const hap = clamp(v('eHappy'), 0, 1), sqz = clamp(v('eSqueeze'), 0, 1), wide = clamp(v('eWide'), 0, 1.4), worry = clamp(v('brow'), 0, 1), grit = clamp(v('grit'), 0, 1), tear = clamp(v('tear'), 0, 1);
   const f = { hap, sqz, wide, wink: clamp(v('wink'), 0, 1), lid: v('lid'), low: v('low'), pup: clamp(v('pup'), 0.15, 1.3), tilt: grit * 0.6 - worry * 0.62, by: -v('browY') + Math.min(1, wide) * 1.3 + hap * 1.1,
     bw: clamp(v('bw'), 0, 1), bwF: clamp(v('bwF'), 0, 1), smile: clamp(v('smile') + hap * 0.7 - Math.max(sqz, tear) * 1.3, -1, 1), cheek: clamp(Math.max(v('cheek'), hap * 0.9), 0, 1), teeth: v('teeth'),
-    pdx: v('pdx'), pdy: v('pdy'), beak: v('beak'), tear: v('tear'), blink: o.blink || 0 };
+    pdx: v('pdx'), pdy: v('pdy'), beak: v('beak'), tear: v('tear'), blink: o.blink || 0,
+    es: 1 + 0.18 * (1 - ss(70, 150, h)) }; // faces3: at play size (~60 px) her eyes and brows are drawn 1.18x so the face reads on a phone
   ctx.save();
   try {
     ctx.translate(cx, cy);
@@ -851,8 +984,9 @@ function drawHead(ctx, H, P, f, tt, o, hat) {
   // the acting face: two eyes with lids, a brow each (the far eye is foreshortened and sits just above the beak)
   const a0 = ctx.globalAlpha;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const lids = [NE, FE].map((E) => drawEye(ctx, E, f, o));
-  drawBrow(ctx, NE, f, lids[0]); drawBrow(ctx, FE, f, lids[1]);
+  const eyeAt = (E, fn) => { if (!(f.es > 1.001)) return fn(); ctx.save(); ctx.translate(E.x, E.y); ctx.scale(f.es, f.es); ctx.translate(-E.x, -E.y); const r = fn(); ctx.restore(); return r; };
+  const lids = [NE, FE].map((E) => eyeAt(E, () => drawEye(ctx, E, f, o)));
+  eyeAt(NE, () => drawBrow(ctx, NE, f, lids[0])); eyeAt(FE, () => drawBrow(ctx, FE, f, lids[1]));
   if (f.cheek > 0.3 && f.sqz < 0.5) { // the cheek crease of a real smile, under the near eye
     ctx.strokeStyle = 'rgba(150,104,58,0.8)'; ctx.lineWidth = o * 0.5;
     ctx.beginPath(); ctx.moveTo(NE.x - NE.rx * 0.8, NE.y + NE.ry * 1.18); ctx.quadraticCurveTo(NE.x - 0.3, NE.y + NE.ry * (1.2 + 0.26 * f.cheek), NE.x + NE.rx * 0.6, NE.y + NE.ry * 1.14); ctx.stroke();

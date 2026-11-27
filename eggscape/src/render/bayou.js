@@ -145,19 +145,28 @@ export function drawGator(ctx, s, t = 0, o = {}) {
     // nostril
     { const [nx, ny] = jawRot(47, G_TOP0(47) - 1.5), [X, Y] = M(nx, ny); ctx.beginPath(); ctx.ellipse(X, Y, 1.1, 0.75, -0.3, 0, TAU); ctx.fillStyle = C.line; ctx.fill(); }
     // ---- the eye in its raised socket
-    const big = (o.baby ? 1.25 : 1) * (o.boss ? 1 : 1.4), [ex0, ey0] = jawRot(27.3, G_TOP0(27.3) - 3.1 - (o.boss ? 0 : 1.2)), [EX, EY] = M(ex0, ey0), er = 3.3 * big * (pres ? 1.28 : 1); // 0.8.18: a level gator's eye 1.4x (it read as a dot in play)
+    const wake = o.boss ? 0 : clamp(o.wake || 0, 0, 1); // faces3: the eyes snap open as the log wakes (a 0.6 s take)
+    const big = (o.baby ? 1.25 : 1) * (o.boss ? 1 : 1.62) * (1 + 0.28 * wake), [ex0, ey0] = jawRot(27.3, G_TOP0(27.3) - 3.1 - (o.boss ? 0 : 1.6)), [EX, EY] = M(ex0, ey0), er = 3.3 * big * (pres ? 1.28 : 1); // 0.8.18: a level gator's eye 1.4x (it read as a dot in play); faces3: 1.62x with a white
     ctx.save(); ctx.translate(EX, EY); ctx.rotate(-jaw * 0.8);
     if (eyeMode === 'spiral') { ctx.beginPath(); ctx.arc(0, 0, er, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 0, 0, er, t, 1, C.line); }
     else {
       const bl = blinkAt(t, id * 3 + 1), smug = o.smug || 0, lid = eyeMode === 'half' ? 0.55 : o.boss ? 0.36 : jawU > 0.2 ? 0.06 : lerp(0.24, 0.5, smug);
-      eye(ctx, 0, 0, { r: er, iris: C.eye, irisLo: C.eyeLo, pupil: 'slit', wide: jawU > 0.3, look: { x: (o.look ?? 0.4) - 0.5 * (o.miss || 0), y: 0.1 - 0.25 * smug - 0.6 * (o.miss || 0) }, lid: Math.max(lid, bl), lidCol: C.base, line: C.line, lw: lw * 0.75, shut: eyeMode === 'shut' ? 1 : eyeMode === 'squint' ? 'squint' : 0, mad: jawU > 0.2 || o.boss ? 0.28 : 0.1 + 0.15 * smug });
+      const lk = { x: clamp((o.look ?? 0.4) - 0.9 * (o.miss || 0), -1.3, 1.3), y: clamp((o.lookY ?? 0.1) - 0.25 * smug - 0.9 * (o.miss || 0), -1.2, 1.2) };
+      eye(ctx, 0, 0, { r: er, iris: C.eye, irisLo: C.eyeLo, pupil: 'slit', wide: jawU > 0.3 || wake > 0.3, look: lk, lid: wake > 0.2 ? 0 : Math.max(lid, bl), lidCol: C.base, line: C.line, lw: lw * 0.75, shut: eyeMode === 'shut' ? 1 : eyeMode === 'squint' ? 'squint' : 0, mad: jawU > 0.2 || o.boss ? 0.28 : 0.1 + 0.15 * smug,
+        ...(o.boss ? {} : { white: '#fffbe6', irisR: 0.7 - 0.12 * wake }) }); // faces3: a white round the iris, so where it looks reads in play
       if (!o.boss && eyeMode !== 'shut' && eyeMode !== 'squint') { ctx.beginPath(); ctx.arc(-er * 0.3, -er * 0.35, er * 0.2, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill(); } // a glint: a live eye
       // brow ridge: a heavy lid line that acts: down at the snout for the snap, raised in a hurt or a daze, a slow smug tilt after a bite
-      const bro = o.boss ? 0 : eyeMode === 'squint' ? -0.7 : clamp(0.15 + 0.9 * ss(0.05, 0.5, jawU) + 0.5 * smug - 1.1 * (o.miss || 0), -1, 1);
+      const bro = o.boss ? 0 : eyeMode === 'squint' ? -0.7 : clamp(0.15 + 0.9 * ss(0.05, 0.5, jawU) + 0.5 * smug - 1.1 * (o.miss || 0) - 1.2 * wake, -1, 1);
       ctx.beginPath(); ctx.moveTo(-er * 1.25, -er * (0.5 + 0.35 * Math.max(0, -bro))); ctx.quadraticCurveTo(-er * 0.2, -er * (1.45 - 0.25 * bro), er * 1.3, -er * (0.35 - 0.45 * bro));
-      if (o.boss) { ctx.lineWidth = 2.4 + lw * 1.5; ctx.strokeStyle = C.line; ctx.stroke(); ctx.lineWidth = 2.4; ctx.strokeStyle = C.brow; ctx.stroke(); } else ink(lw * 1.1);
+      if (o.boss) { ctx.lineWidth = 2.4 + lw * 1.5; ctx.strokeStyle = C.line; ctx.stroke(); ctx.lineWidth = 2.4; ctx.strokeStyle = C.brow; ctx.stroke(); } else ink(lw * 1.6);
+      // faces3: the wake take: snap lines off the eye; a "?" over a puzzled miss
+      if (wake > 0.05) burst(ctx, 0, 0, er * 1.35, er * (1.75 + 0.5 * wake), -Math.PI * 0.95, -Math.PI * 0.25, 3, lw * 0.9 * wake + 0.3, '#fff6d0', C.line);
+      const mq = o.boss ? 0 : clamp((o.miss || 0) * 1.6, 0, 1);
+      if (mq > 0.05) { ctx.save(); ctx.translate(er * 0.4, -er * 2.6 - 2 * mq); ctx.rotate(jaw * 0.8 + 0.15); ctx.globalAlpha *= mq; ctx.font = `900 ${(er * 2.3).toFixed(1)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.lineWidth = lw * 1.6; ctx.strokeStyle = C.line; ctx.strokeText('?', 0, 0); ctx.fillStyle = '#fff6d0'; ctx.fillText('?', 0, 0); ctx.restore(); }
     }
     ctx.restore();
+    // faces3: the smirk after a bite: the corner of the mouth curls up at the hinge
+    if (!o.boss && (o.smug || 0) > 0.05 && jawU < 0.3) { const [X, Y] = M(22.5, G_MOUTH(22.5)), q = o.smug; ctx.beginPath(); ctx.moveTo(X + 3, Y + 0.6); ctx.quadraticCurveTo(X - 0.5, Y + 1.2, X - 1.8, Y - 2.6 * q); ctx.lineCap = 'round'; ink(lw * 1.1); }
     // ---- Grandpa: moss on his back, the lily pad hat with its flower
     if (o.boss) {
       for (const [x, r] of [[-22, 3], [-7, 3.6], [8, 2.8]]) { const y = G_TOP0(x) + 0.6; pts(range(x - r * 1.7, x + r * 1.7, (q) => y + Math.max(0, r * Math.cos(((q - x) / (r * 1.7)) * Math.PI / 2)) * 1.0, 0.8)); ctx.fillStyle = C.moss; ctx.fill(); ink(lw * 0.7); const [X, Y] = M(x + r * 0.4, y + r * 0.3); ctx.fillStyle = C.mossLo; ctx.beginPath(); ctx.ellipse(X, Y, r * 0.7, r * 0.25, 0, 0, TAU); ctx.fill(); }
@@ -438,7 +447,13 @@ export function drawBayou(ctx, sim, t, k) {
     if (atk && atk.name === 'roll' && atk.ph === 'warn') { jaw = 0.9 * ss(0, 0.5, warnU); eye = 'open'; }
     const stun = st && (st.k === 'stun');
     if (stun) { eye = 'spiral'; jaw = 0.25; }
-    const o = { jaw, eye, tail, smug, miss, boss: G.boss, baby: G.call && !G.boss, gait: (A.g / 9 / (0.121 * GATOR.L * G.s)) * TAU, walk: clamp(A.sp / 0.07, 0, 1), chomp: G.ph === 'after' ? clamp(1 - G.t / 0.32, 0, 1) : 0, bend: rf * k, roll: G.roll > 0 ? 1 - G.roll / 0.9 : 0, sneeze: G.sneeze > 0 ? G.sneeze / 0.8 : 0, stars: G.ph === 'dizzy' || stun ? 1 : 0, alpha, id: G.id, look: 0.35, noZ: !!st };
+    // faces3: its eyes on the nearest egg (in its own frame: x along its facing, y down), the eyes snap open as a log wakes
+    let gLook = 0.35, lookY = 0.1;
+    if (!G.boss && eye === 'open') { const F = sim.byFrame(G); let bd = 9; for (const e of sim.eggs) { if (!e.alive || e.saved) continue; const p = e.body.getPosition(), dx = p.x - F.x, dy = p.y - F.y, d = Math.hypot(dx, dy); if (d < bd) { bd = d; const l = Math.max(0.5, d); gLook = clamp(((dx * F.tx + dy * F.ty) * (A.f >= 0 ? 1 : -1)) / l * 1.3, -1.3, 1.3); lookY = clamp(-(dx * F.nx + dy * F.ny) / l, -1, 1); } } }
+    if (WAKE.ph[G.id] === 'log' && G.ph !== 'log') WAKE.t[G.id] = t;
+    WAKE.ph[G.id] = G.ph;
+    const wk = t - (WAKE.t[G.id] ?? -9), wake = wk >= 0 && wk < 0.7 ? Math.sin(Math.min(1, wk / 0.08) * Math.PI / 2) * (1 - ss(0.35, 0.7, wk)) : 0;
+    const o = { jaw, eye, tail, smug, miss, wake, lookY, boss: G.boss, baby: G.call && !G.boss, gait: (A.g / 9 / (0.121 * GATOR.L * G.s)) * TAU, walk: clamp(A.sp / 0.07, 0, 1), chomp: G.ph === 'after' ? clamp(1 - G.t / 0.32, 0, 1) : 0, bend: rf * k, roll: G.roll > 0 ? 1 - G.roll / 0.9 : 0, sneeze: G.sneeze > 0 ? G.sneeze / 0.8 : 0, stars: G.ph === 'dizzy' || stun ? 1 : 0, alpha, id: G.id, look: gLook, noZ: !!st };
     // the telegraph: a red bite mark over the jaws while they open at an egg
     if (G.ph === 'warn') biteMark(ctx, sim.gJaw(G), t, k, ss(0, 1, G.t / G.dur), G.s);
     if (G.lu && G.ph !== 'warp' && !st) { const J = sim.gJaw(G), F = sim.byFrame(G); luredHearts(ctx, J.x + F.nx * 0.25 - F.tx * G.face * 0.25, J.y + F.ny * 0.25 - F.ty * G.face * 0.25, k, t, G.id); drool(ctx, J.x + F.tx * G.face * 0.1 - F.nx * 0.2, J.y + F.ty * G.face * 0.1 - F.ny * 0.2, k, t + G.id); o.look = 0.9; if (o.eye !== 'spiral') o.eye = 'open'; if (!o.jaw) o.jaw = 0.18 + 0.05 * Math.sin(t * 5); }
@@ -523,6 +538,7 @@ function liftMark(ctx, R, t) {
 }
 
 // ================================================================= events (popups, sound, particles)
+const WAKE = { ph: {}, t: {} }; // faces3: per gator, its last phase and when it woke from a log
 const SNAP = {}; // 0.8.18: per gator, how its last snap went (bayouEvent sets it; drawGators acts it)
 export function bayouEvent(ev, fx, api) {
   const { popup, audio, once } = api;

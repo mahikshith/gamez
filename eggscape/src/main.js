@@ -4540,7 +4540,7 @@ function handleEvents() {
           hitStop(0.05);
           camPunch(0.028, ev.x, ev.y);
         }
-        hen('gasp', 1.2);
+        hen('wince', 1.2); // faces3: she winces (squeezed shut, teeth gritted), then peeks at the egg
         fx.shake = Math.max(fx.shake, 0.4 + 0.15 * clamp((ev.v || 4) / 8, 0, 1)); // 0.8.10: a crack is felt
         buzz('crack');
         if (ev.why === 'spike') audio.play('rock_hit', { vol: 0.6 });
@@ -5436,7 +5436,7 @@ function drawDanger() {
 }
 
 function hen(mood, t) {
-  G.hen = { mood, t, n: (G.hen.n || 0) + 1 };
+  G.hen = { mood, t, t0: t, n: (G.hen.n || 0) + 1 };
 }
 
 // skip the hen's win / fail routine to its final pose (a tap off the buttons, Enter, or reduced motion)
@@ -6213,6 +6213,29 @@ function drawScarecrowAt(sim, k, t) {
   ctx.restore();
 }
 const HEN_N = { x: 0, y: 0 };
+// faces3: the egg the hen should be watching: the one the villains threaten most (the same read-only threat calls the
+// planner uses), or null when nothing threatens any egg
+function henWatch(sim) {
+  let best = null, bv = 0.12;
+  for (const e of sim.aliveEggs()) {
+    let v = 0;
+    const p = e.body.getPosition();
+    for (const S of sim.snakes || []) { if (S.gone || !S.inside || !S.pts.length) continue; const d = Math.hypot(p.x - S.pts[0].x, p.y - S.pts[0].y); if (d < 3) v = Math.max(v, 1 - d / 3); }
+    const E = sim.eagle; if (E && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tk !== 'orb' && E.tid === e.id) v = Math.max(v, 0.9);
+    try {
+      if (sim.sals && sim.sals.length) v = Math.max(v, sim.salThreat(e));
+      if (sim.thieves && sim.thieves.length) v = Math.max(v, sim.thiefThreat(e));
+      if (sim.band) v = Math.max(v, sim.bandThreat(e));
+      if (sim.gators && (sim.gators.length || (sim.mosqs && sim.mosqs.length))) v = Math.max(v, sim.bayouThreat(e));
+      if (sim.pips && sim.pips.length) v = Math.max(v, sim.pipThreat(e));
+      if (sim.cocos && sim.cocos.length) v = Math.max(v, sim.cocoThreat(e));
+      if (sim.creeps && sim.creeps.length) v = Math.max(v, sim.creepThreat(e));
+      if (sim.frogs && sim.frogs.length && sim.frogThreatOf) v = Math.max(v, sim.frogThreatOf(e));
+    } catch (err) { /* a threat read must never break the frame */ }
+    if (v > bv) { bv = v; best = e; }
+  }
+  return best ? { e: best, v: bv } : null;
+}
 // The hen sits beside the nest (F16) and reacts: happy on a save, gasp on a crack, cry on a break.
 function drawHenAt(sim, k, t) {
   if (k < 20) return; // too small to read
@@ -6252,12 +6275,21 @@ function drawHenAt(sim, k, t) {
   ctx.restore();
   if (ANIMATED_HEN) {
     // M7: she shuffles toward the egg that is about to land (never off her patch) and reacts to every event herself
-    let look = 0;
+    let look = 0, lookE = null;
     for (const e of sim.eggs) {
       if (!e.alive || e.saved) continue;
       const p = e.body.getPosition(), l = -clamp(1.5 - ((p.y - sim.groundY) * (sim.gy || 1)) / 5, 0, 1) * (Math.abs(p.x - n.x) < 2.4 ? 1 : 0.3); // toward the nest as an egg nears the exit
-      if (l < look) look = l;
+      if (l < look) { look = l; lookE = e; }
     }
+    // faces3: her eyes follow the egg in danger (else the egg about to land); the mood holds the level's end: proud on a
+    // win, a kind face on a loss (after the tears of a last break); she fidgets when the clock is nearly out
+    const watch = G.screen === 'play' && G.danger > 0.12 ? henWatch(sim) : null, ge = watch ? watch.e : lookE;
+    const gy0 = seat ? seat.y : sim.groundY, gp = ge && ge.body ? ge.body.getPosition() : null;
+    const gaze = gp ? [(gp.x - hx) * k, -(gp.y - gy0) * k] : null, gazeW = watch ? clamp(watch.v * 1.8, 0.5, 1) : clamp(-look * 1.4, 0, 0.85);
+    const hurry = G.screen === 'play' && sim.state === 'play' && sim.timeLimit > 14 && sim.timeLeft <= 10 ? clamp(0.6 + (10 - sim.timeLeft) / 25, 0, 1) : 0;
+    let mood = G.hen.mood;
+    if ((sim.state === 'winning' || sim.state === 'won') && !((mood === 'happy' || mood === 'catch') && G.hen.t > G.hen.t0 - 0.6)) mood = 'proud'; // the last hop, then proud
+    else if ((sim.state === 'failing' || sim.state === 'failed') && !((mood === 'cry' || mood === 'wince') && G.hen.t > G.hen.t0 - 0.7)) mood = 'comfort'; // the gasp, then a kind face (never despair)
     // her patch moves with a sliding basket: hand her its speed so she walks with it (local units are hs/100 px)
     const hp = G.henPrev, dtr = hp ? t - hp.t : 0, drift = hp && dtr > 0 && dtr < 0.2 && hp.run === G.run ? ((hx - hp.x) / dtr) * k * 100 / hs : 0;
     // nest.reach: she holds the basket and runs it under an egg: hand her its speed, its acceleration and where its rim is
@@ -6274,7 +6306,7 @@ function drawHenAt(sim, k, t) {
       }
     }
     G.henPrev = { x: hx, t, run: G.run, v: carry ? carry.v : 0 };
-    drawHenActor(ctx, G.hen.mood, 0, -0.49 * hs, hs, t, { key: 'level', n: G.hen.n, look: G.screen === 'play' && !carry ? look : carry ? undefined : 0, danger: G.danger, shadow: 0.26, drift, carry });
+    drawHenActor(ctx, mood, 0, -0.49 * hs, hs, t, { key: 'level', n: G.hen.n, look: G.screen === 'play' && !carry ? look : carry ? undefined : 0, danger: G.danger, shadow: 0.26, drift, carry, gaze, gazeW, hurry, doze: G.screen === 'play' });
     ctx.restore();
     return;
   }
@@ -6377,7 +6409,7 @@ const gooseIcon = (c, x, y, s) => { // a white goose head on its neck, orange be
 };
 const allyFree = () => G.sim.mode === 'easy' || !!G.fails[G.level.id];
 const allyIcon = (c, x, y, s) => { // a little rooster head: red comb, orange beak, white face, wattle
-  c.save(); c.lineJoin = 'round'; c.lineWidth = Math.max(1.5, s * 0.07); c.strokeStyle = '#4a2a12';
+  c.save(); if (allyIconLive) { const b = Math.sin(G.t * 5.7); c.translate(x, y + 0.3 * s); c.rotate(b * 0.06); c.translate(-x, -y - 0.3 * s); y -= Math.abs(b) * 0.03 * s; } c.lineJoin = 'round'; c.lineWidth = Math.max(1.5, s * 0.07); c.strokeStyle = '#4a2a12';
   c.fillStyle = '#e8402e';
   for (const [dx, dy, r] of [[-0.2, -0.3, 0.15], [0, -0.38, 0.18], [0.2, -0.3, 0.15]]) { c.beginPath(); c.arc(x + dx * s, y + dy * s, r * s, 0, 7); c.fill(); c.stroke(); }
   c.beginPath(); c.ellipse(x + 0.2 * s, y + 0.3 * s, 0.1 * s, 0.15 * s, 0, 0, 7); c.fill(); c.stroke();
@@ -6385,10 +6417,21 @@ const allyIcon = (c, x, y, s) => { // a little rooster head: red comb, orange be
   const g = c.createRadialGradient(x - 0.1 * s, y - 0.1 * s, 0.02 * s, x, y, 0.36 * s);
   g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#f3e2c2');
   c.fillStyle = g; c.beginPath(); c.arc(x, y + 0.02 * s, 0.34 * s, 0, 7); c.fill(); c.stroke();
-  c.fillStyle = '#2a1608'; c.beginPath(); c.arc(x + 0.1 * s, y - 0.05 * s, 0.06 * s, 0, 7); c.fill();
-  c.fillStyle = '#fff'; c.beginPath(); c.arc(x + 0.12 * s, y - 0.07 * s, 0.02 * s, 0, 7); c.fill();
+  // faces3: an inviting face, not a dot: a big eye with a glint, one cocky brow up, a grin at the beak. While his button is
+  // live (the coach, a press) he winks at you every couple of seconds and his head bobs
+  const lv = allyIconLive, ph = lv ? (G.t % 2.2) / 2.2 : 0, wink = lv ? Math.max(0, Math.sin(clamp((ph - 0.7) / 0.18, 0, 1) * Math.PI)) : 0;
+  const ex = x + 0.11 * s, ey = y - 0.06 * s, er = 0.115 * s;
+  if (wink < 0.5) {
+    c.fillStyle = '#fffdf6'; c.beginPath(); c.ellipse(ex, ey, er, er * 1.15, 0, 0, 7); c.fill(); c.lineWidth = Math.max(1, s * 0.035); c.stroke();
+    const sq = 1 - wink * 1.6;
+    c.fillStyle = '#2a1608'; c.beginPath(); c.ellipse(ex + 0.03 * s, ey + 0.01 * s, 0.07 * s, 0.08 * s * sq, 0, 0, 7); c.fill();
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(ex + 0.005 * s, ey - 0.025 * s, 0.026 * s, 0, 7); c.fill();
+  } else { c.lineWidth = Math.max(1.4, s * 0.05); c.beginPath(); c.moveTo(ex - er, ey + 0.02 * s); c.quadraticCurveTo(ex, ey - 0.09 * s, ex + er, ey + 0.02 * s); c.stroke(); }
+  c.lineCap = 'round'; c.lineWidth = Math.max(1.4, s * 0.055); c.beginPath(); c.moveTo(ex - 0.13 * s, ey - 0.13 * s - wink * 0.03 * s); c.quadraticCurveTo(ex, ey - 0.25 * s - wink * 0.04 * s, ex + 0.14 * s, ey - 0.2 * s); c.stroke(); // the cocky brow
+  c.lineWidth = Math.max(1, s * 0.035); c.beginPath(); c.moveTo(x + 0.27 * s, y + 0.13 * s); c.quadraticCurveTo(x + 0.21 * s, y + 0.14 * s, x + 0.19 * s, y + 0.08 * s); c.stroke(); // the grin at the beak's corner
   c.restore();
 };
+let allyIconLive = false; // faces3: the ally button is drawn live (not from the still HUD layer): the icon may move
 // a chick that reached the nest with its power unused keeps it: a glowing chick button beside the strike / ally ones
 function drawBankBtn() {
   const sim = G.sim, B = sim.banked ? sim.banked() : [];
@@ -6439,8 +6482,9 @@ function drawAllyBtn() {
     if (!free && can && tk > 0) allyTicket(x, y, bs, tk); else if (!free && can) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
   };
   G.roosterCoach = coach; G.roosterRun = G.run; // (the tour: the flag counts only on the run that drew it)
-  if (still) { hudLayer('ally', W_ + ',' + H_ + '|' + (can ? 1 : 0) + (free ? 1 : 0) + '|' + Math.min(tk || 0, 99) + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x - 3 * u, y - 3 * u, bs + 12 * u, bs + 9 * u, face); return; }
-  face();
+  allyIconLive = !still && !save.calm && can;
+  if (still) { allyIconLive = false; hudLayer('ally', W_ + ',' + H_ + '|' + (can ? 1 : 0) + (free ? 1 : 0) + '|' + Math.min(tk || 0, 99) + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x - 3 * u, y - 3 * u, bs + 12 * u, bs + 9 * u, face); return; }
+  face(); allyIconLive = false;
   // 2026-11-20 (mykee: "we did not show the user how to use Papa Rooster"): the first time he can help, a hand taps his
   // button and a bubble says what he does; that first call is free
   if (G.roosterCoach && !G.lesson) { // 0.8.18: one idea at a time (not during a teaching moment), three words at most
@@ -12587,6 +12631,7 @@ if (DEV) window.__egg = {
   frame(dt = 1 / 60) { update(dt); renderAll(); tallyFrame(); }, fxStats: menuFxStats,
   actSteps, // film strips replay planner moves through this
   snakeArt: drawSnake, // palette strips
+  allyIconDraw: (c, x, y, s, live = true) => { allyIconLive = live; try { allyIcon(c, x, y, s); } finally { allyIconLive = false; } }, // faces3 QA: the call button's rooster
   hen: { anim: drawHenAnim, legacy: drawHenLegacy, events: henIdleEvents, reset: resetHen }, // M7 strips
   cheer: { draw: drawCelebration, routine, ROUTINES, pick: pickRoutine, power: routinePower }, // the hen's win routines (strips)
   allyArt: ALLY_ART, // v3.4: ally strips

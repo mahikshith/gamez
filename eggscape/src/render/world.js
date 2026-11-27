@@ -1629,8 +1629,10 @@ export function drawEagleAt(ctx, sim, t, k, layer = 'front') {
   eagleFeathers(ctx, dt, k);
   if (ph === 'carry' && E.carry === 'orb') pxSpace(ctx, E.x + E.face * 0.12, E.y - 0.3 * EAGLE_LEN - 0.12, k, () => drawOrb(ctx, E.ctype, 0, 0, 0.2 * k, t, true));
   const sz = EAGLE_LEN * k, tt = frozen ? st.hold : t, box = { x0: -1.3 * sz, y0: -1.2 * sz, x1: 1.3 * sz, y1: 1.2 * sz };
+  // faces3: its eye on the egg it hunts (else the nearest): forward / down in its own frame
+  let look = null; { let te = sim.eggs.find((e) => e.id === E.tid && e.alive && !e.saved), bd = 1e9; if (!te) for (const e of sim.eggs) { if (!e.alive || e.saved) continue; const p = e.body.getPosition(), d = Math.hypot(p.x - E.x, p.y - E.y); if (d < bd) { bd = d; te = e; } } if (te && ph !== 'carry') { const p = te.body.getPosition(), dx = (p.x - E.x) * EA.face, dy = E.y - p.y, l = Math.hypot(dx, dy) || 1, c = Math.cos(EA.pitch || 0), s2 = Math.sin(EA.pitch || 0); look = { x: (dx * c + dy * s2) / l, y: (dy * c - dx * s2) / l }; } }
   pxSpace(ctx, E.x, E.y, k, () => {
-    statusDraw(ctx, box, (c) => drawEagle(c, 0, 0, sz, tt, { w: EA.w, phase: EA.ph, face: EA.face, turn, pitch: EA.pitch, roll, grab, toes, eye, stars: EA.stars, beak: gloat || null, smug: EA.smug, shock: EA.shock }), st, { off: Math.max(1, sz * 0.015), crys: Math.max(1, sz / 80) });
+    statusDraw(ctx, box, (c) => drawEagle(c, 0, 0, sz, tt, { w: EA.w, phase: EA.ph, face: EA.face, turn, pitch: EA.pitch, roll, grab, toes, eye, stars: EA.stars, beak: gloat || null, smug: EA.smug, shock: EA.shock, look }), st, { off: Math.max(1, sz * 0.015), crys: Math.max(1, sz / 80) });
   });
 }
 

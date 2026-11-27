@@ -214,11 +214,11 @@ export function roosterPose(anim, k = 0, tt = 0) {
     // shut 0..1 (squeezed closed), wide 0..1 (a startled bigger eye), px = where the pupil looks. Idle = cocky half-lids.
     lidU: 0.36, lidL: 0.1, browA: -0.1, browY: 0, shut: 0, wide: 0, px: 0.7 };
   const f = Math.sin(tt * 18);
-  if (anim === 'fly') { P.wa = lerp(-2.05, -4.25, (f + 1) / 2); P.sp = 1; P.far = 1; P.hx = 6; P.hy = 2; P.beak = 0.3; P.legs = 'tuck'; P.lean = 0.1; P.tail = -0.25 + f * 0.1; P.eye = 'wide'; P.lidU = 0.14; P.lidL = 0; P.wide = 0.45; P.browA = 0.42; P.browY = 0.8; P.px = 1.2; }
+  if (anim === 'fly') { P.wa = lerp(-2.05, -4.25, (f + 1) / 2); P.sp = 1; P.far = 1; P.hx = 6; P.hy = 2; P.beak = 0.3; P.legs = 'tuck'; P.lean = 0.1; P.tail = -0.25 + f * 0.1; P.eye = 'wide'; P.lidU = 0.14; P.lidL = 0; P.wide = 0.45; P.browA = 0.42; P.browY = 0.8; P.px = 1.4; P.pup = 0.85; }
   else if (anim === 'land') {
     const fold = sstep((k - 0.55) / 0.45);
     P.wa = lerp(-1.95 + Math.sin(tt * 24) * 0.3, -3.68, fold); P.sp = 1 - fold; P.far = 1 - fold; P.legs = 'reach'; P.tail = 0.5 * (1 - fold); P.lean = -0.2 * (1 - fold); P.beak = 0.3 * (1 - fold); P.hx = 3; P.eye = 'wide';
-    { const e = 1 - fold; P.wide = 0.9 * e; P.lidU = lerp(0.36, 0, e); P.lidL = lerp(0.1, 0, e); P.browA = lerp(-0.1, -0.32, e); P.browY = -1.8 * e; } // braking: a startled take that settles into his usual look
+    { const e = 1 - fold; P.wide = 1 * e; P.lidU = lerp(0.36, 0, e); P.lidL = lerp(0.1, 0, e); P.browA = lerp(-0.1, -0.36, e); P.browY = -2.6 * e; P.pup = lerp(1, 0.55, e); P.beak = Math.max(P.beak, 0.55 * e); P.px = lerp(0.7, 1.4, e); } // braking: he sees the thief: a startled take (pin pupils, beak agape) that settles into his usual look (faces3)
   } else if (anim === 'crouch') { P.dy = 6 * k; P.sqy = 1 - 0.1 * k; P.wa = 1.7; P.sp = 0.3 * k; P.legs = 'bent'; P.lean = 0.12 * k; P.tail = -0.1; P.eye = 'glare'; P.lidU = 0.2 + 0.14 * k; P.lidL = 0.16 * k; P.browA = 0.15 + 0.4 * k; P.browY = 1.2 * k; P.px = 1.3; }
   else if (anim === 'puff') {
     const a = sstep(k), pop = Math.sin(clamp(k * 1.6, 0, 1) * Math.PI) * 0.04;
@@ -232,6 +232,9 @@ export function roosterPose(anim, k = 0, tt = 0) {
   } else if (anim === 'strut') {
     const ph = tt * 8;
     P.ph = ph; P.legs = 'walk'; P.chest = 1.14; P.hx = 3 + 3 * Math.sin(ph * 2 - 0.8); P.hy = -3; P.tail = 0.35; P.lean = -0.08; P.dy = -2 - Math.abs(Math.sin(ph)) * 1.6; P.eye = 'proud'; P.wa = 2.6; P.lidU = 0.5; P.lidL = 0.2; P.browA = -0.2; P.browY = -1.4; P.px = 1.2;
+    // faces3: puffed and proud after the thief bolts: chest out, beak in the air, eyes shut in a smug arc, brows up; a sly
+    // half-lidded glance back over the last third
+    const gl = sstep((k - 0.62) / 0.12); P.chest = 1.24; P.hr = -0.24 * (1 - gl * 0.5); P.hy = -4; P.shut = 1 - gl; P.browY = -2.2 + 0.8 * gl; P.browA = -0.3 + 0.1 * gl; P.lidU = 0.55; P.lidL = 0.25; P.px = -0.4;
   } else { P.chest = 1.05 + Math.sin(tt * 2.4) * 0.01; P.eye = 'open'; }
   return P;
 }
@@ -374,6 +377,8 @@ export function drawRooster(ctx, cx, cy, s, P) {
       const lidU = Math.max(fv(P.lidU, 0.2), shut * 0.62), lidL = Math.max(fv(P.lidL, 0), shut * 0.42);
       const rx = 5.3 + 0.6 * wide, ry = 6 + 0.9 * wide;
       ctx.lineCap = 'round';
+      const es = 1 + 0.32 * (1 - sstep((s - 70) / 80)); // faces3: at play size (~58 px) the eye and brow are drawn 1.32x so his face reads
+      ctx.save(); if (es > 1.001) { ctx.translate(ex, ey); ctx.scale(es, es); ctx.translate(-ex, -ey); }
       if (shut > 0.8) { // squeezed shut: one thick happy-effort arc with a little crease
         ctx.strokeStyle = EYE; ctx.lineWidth = o * 1.35;
         ctx.beginPath(); ctx.moveTo(ex - 4.8, ey + 1.6); ctx.quadraticCurveTo(ex, ey - 4.2, ex + 4.8, ey + 1.6); ctx.stroke();
@@ -382,7 +387,7 @@ export function drawRooster(ctx, cx, cy, s, P) {
         const ball = () => { ctx.beginPath(); ctx.ellipse(ex, ey, rx, ry, 0, 0, TAU); };
         ball(); ctx.fillStyle = '#fffdf6'; ctx.fill();
         ctx.save(); ball(); ctx.clip();
-        const ix = ex + fv(P.px, 0.7) * (1 - 0.5 * wide), iy = ey + 0.4 + (lidU - lidL) * 1.6, ir = 4 - 0.6 * wide;
+        const ix = ex + fv(P.px, 0.7) * (1 - 0.5 * wide), iy = ey + 0.4 + (lidU - lidL) * 1.6, ir = (4 - 0.6 * wide) * clamp(fv(P.pup, 1), 0.4, 1.2);
         ctx.fillStyle = rgrad(ctx, ix, iy + 1.6, 0.5, ir * 1.25, ['#9a5f2a', '#5c3517', '#3d2210']); ctx.beginPath(); ctx.ellipse(ix, iy, ir, ir * 1.12, 0, 0, TAU); ctx.fill(); // big dark iris, warmer low
         ctx.fillStyle = '#1a100a'; glint(ctx, ix + 0.2, iy, ir * 0.56); // near-black pupil
         ctx.fillStyle = '#fff'; glint(ctx, ix - 1.4, iy - 1.9, 1.5); glint(ctx, ix + 1.5, iy + 1.8, 0.65);
@@ -398,6 +403,7 @@ export function drawRooster(ctx, cx, cy, s, P) {
       ctx.translate(ex + 0.6, ey - ry - 2.6 + browY + (shut > 0.8 ? 1.2 : 0)); ctx.rotate(browA);
       ctx.strokeStyle = '#5a3a1e'; ctx.lineWidth = o * 1.6;
       ctx.beginPath(); ctx.moveTo(-5.8, 0.6); ctx.quadraticCurveTo(-0.5, -1.9 + browA * 2.2, 5.6, 0.2); ctx.stroke();
+      ctx.restore();
       ctx.restore();
     }
     ctx.restore();
