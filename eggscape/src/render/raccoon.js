@@ -358,11 +358,12 @@ function sackShape(c, C, lw, open, t, mid, rip = 0) {
   c.save(); c.translate(5, 5); c.rotate(0.25); c.fillStyle = C.patchA; c.strokeStyle = C.stitch; c.lineWidth = lw * 0.55; c.beginPath(); c.rect(-5.5, -5, 11, 10); c.fill(); c.stroke();
   c.beginPath(); for (const [a, b] of [[-7.5, -2], [-7.5, 3], [7.5, -2], [7.5, 3]]) { c.moveTo(a - 1.6, b); c.lineTo(a + 1.6, b); } c.stroke(); c.restore();
   c.save(); c.translate(-9, 10); c.rotate(-0.4); c.fillStyle = C.patchB; c.beginPath(); c.rect(-3.5, -3, 7, 6); c.fill(); c.lineWidth = lw * 0.5; c.strokeStyle = C.stitch; c.stroke(); c.restore();
-  if (rip) { // 0.8.18 the stand-off lost: a jagged hole low on the side, a flap of cloth hanging out, loose threads
-    c.beginPath(); const J = [[-14, 6], [-9, 3], [-6, 8], [-1, 4], [3, 9], [8, 5], [12, 10], [9, 16], [3, 13], [-2, 17], [-7, 13], [-12, 15]]; c.moveTo(J[0][0], J[0][1]); for (const q of J.slice(1)) c.lineTo(q[0], q[1]); c.closePath();
-    c.fillStyle = '#2a1a10'; c.fill(); c.lineWidth = lw; c.strokeStyle = C.line; c.stroke();
-    c.beginPath(); c.moveTo(3, 13); c.lineTo(9, 16); c.lineTo(10, 25); c.lineTo(6, 23); c.lineTo(3, 27); c.closePath(); c.lineWidth = lw * 1.6; c.strokeStyle = C.line; c.stroke(); c.fillStyle = C.sackLo; c.fill();
-    c.beginPath(); for (const [x0, y0, x1, y1] of [[-12, 15, -14, 21], [-2, 17, -1, 22]]) { c.moveTo(x0, y0); c.quadraticCurveTo(x0 - 1, (y0 + y1) / 2, x1, y1); } c.lineWidth = lw * 0.6; c.strokeStyle = C.stitch; c.stroke();
+  if (rip) { // 0.8.18 the stand-off lost: a jagged hole on the sack's outer bulge (the side he does not cover), a flap hanging out, loose threads
+    const J = [[-19, -8], [-14, -11], [-11, -5], [-6, -10], [-3, -3], [-7, 1], [-4, 6], [-10, 4], [-13, 9], [-18, 3]];
+    c.beginPath(); c.moveTo(J[0][0], J[0][1]); for (const q of J.slice(1)) c.lineTo(q[0], q[1]); c.closePath();
+    c.fillStyle = '#2a1a10'; c.fill(); c.lineWidth = lw * 1.2; c.strokeStyle = C.line; c.stroke();
+    c.beginPath(); c.moveTo(-13, 9); c.lineTo(-10, 4); c.lineTo(-9, 15); c.lineTo(-12, 13); c.lineTo(-15, 18); c.closePath(); c.lineWidth = lw * 1.6; c.strokeStyle = C.line; c.stroke(); c.fillStyle = C.sackLo; c.fill();
+    c.beginPath(); for (const [x0, y0, x1, y1] of [[-18, 3, -22, 9], [-4, 6, -1, 12], [-19, -8, -24, -10]]) { c.moveTo(x0, y0); c.quadraticCurveTo(x0 - 1, (y0 + y1) / 2 + 1, x1, y1); } c.lineWidth = lw * 0.7; c.strokeStyle = C.stitch; c.stroke();
   }
   if (open <= 0.5) { c.beginPath(); c.moveTo(-7, -15.5); c.quadraticCurveTo(0, -13.5, 7, -15.5); c.lineCap = 'round'; c.lineWidth = lw * 2.2; c.strokeStyle = C.line; c.stroke(); c.lineWidth = lw * 1.1; c.strokeStyle = C.rope; c.stroke(); }
 }

@@ -143,7 +143,7 @@ export function drawBandit(ctx, sim, t, k, calm, layer = 'back') {
   if (YARD_PH.has(B.ph)) { if (layer === 'front') drawYard(ctx, sim, B, tt, k, calm, frozen); return; } // in front of the rim
   const P = clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1), ring = sim.rings[B.ri];
   if (!ring) return;
-  const base = { face: B.face, inner: true, layer, frozen, calm, id: 'bandit', rate: 14, eye: 'normal' };
+  const base = { face: B.face, inner: true, layer, frozen, calm, id: 'bandit', rate: 14, eye: 'normal', rip: B.rip };
   if (B.ph === 'climb') { // a leap from the yard to the outside of the rim, then the haul over it onto the floor
     const g = sim.groundY, F = B.from || { x: B.x, y: g }, thP = -Math.PI / 2 - B.pa, L = 0.34;
     if (P < L) {
@@ -280,7 +280,7 @@ export function drawBanditPerch(ctx, r, a, t, k, st, u, o = {}) {
   ctx.save(); ctx.translate(px, py); ctx.scale(1 / k, -1 / k); ctx.rotate(th);
   try {
     if (o.under && o.layer !== 'back') o.under(ctx, p, s / 100, face);
-    drawRaccoon(ctx, 0, 0, s, t, p, { face, frozen: o.frozen ? 1 : 0, eye: o.eye || 'normal', egg: o.egg, layer: o.layer, out: o.out, eggDraw: o.eggDraw });
+    drawRaccoon(ctx, 0, 0, s, t, p, { face, frozen: o.frozen ? 1 : 0, eye: o.eye || 'normal', egg: o.egg, layer: o.layer, out: o.out, eggDraw: o.eggDraw, rip: o.rip });
   } finally { ctx.restore(); }
   return p; // pass it back as o.blended for the second layer, so both layers show the same pose
 }
