@@ -147,6 +147,7 @@ public class MainActivity extends Activity {
             try { getSharedPreferences("egg", MODE_PRIVATE).edit().putString("stash", keep == null ? "" : keep).commit(); } catch (Throwable e) { /* the page's own storage is the fallback */ }
             runOnUiThread(new Runnable() { @Override public void run() { recoverNow(rung); } });
         }
+        @JavascriptInterface public void exitApp() { runOnUiThread(() -> finish()); } // 0.8.19: the home page's leave scene, LEAVE
         @JavascriptInterface public String unstash() {
             try {
                 android.content.SharedPreferences p = getSharedPreferences("egg", MODE_PRIVATE);
@@ -352,7 +353,7 @@ public class MainActivity extends Activity {
         // real phone spends its frame time; release builds never allow it
         if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) WebView.setWebContentsDebuggingEnabled(true);
         web = new WebView(this);
-        web.setBackgroundColor(BG);
+        web.setBackgroundColor(Color.TRANSPARENT); // 0.8.19: until the page has painted, the start window (the egg on the sky, splash_bg) shows through, not a flat colour
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);

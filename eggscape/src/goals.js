@@ -1,7 +1,8 @@
 // The star goals (2026-11-20, mykee: "the stars are always the same: save these eggs, lose none, no cracks. They should
 // change with the levels and raise the bar, a different aim to reach"). Each level has three goals, one star each:
 //   1  the level itself: bring the target number of eggs home (without it there are no stars)
-//   2  the care goal: lose no eggs, or bring them home uncracked; from world 7 on, both at once
+//   2  the care goal: lose no eggs wherever the target is under the eggs (0.8.19: three stars always means every egg
+//      home), no cracks where every egg is the target; from world 7 on, both at once
 //   3  the mastery goal, different from level to level: the level's own challenge from its data (few ring turns, beat
 //      a time, bring the speckled prize egg home, collect every orb). The turn and time numbers come from the planner's
 //      own solution with a margin (tools/gen.mjs), so every goal has been reached by a machine before a player meets it.
@@ -36,9 +37,25 @@ export function levelGoals(L, fuse = 1, campaign = true, mode = 'medium') {
   if (campaign && id >= 4 && world < 1 && t < n) { const g3 = bonusGoal(L, fuse); if (g3) return [home, all, g3]; }
   if (!campaign || id < 1 || world < 1) return [home, t === n ? clean : all, t === n ? (bonusGoal(L, fuse) || all) : clean]; // t === n with no bonus: 'Lose none' is its own star where a twin orb makes an extra egg (L3)
   const g3 = bonusGoal(L, fuse) || clean;
-  let g2 = t === n ? clean : world >= 6 ? perfect : slot % 2 ? clean : all;
+  // 0.8.19 the star rule (mykee: "out of 3 only 2 eggs were saved and we give 3 stars, the users are quite confused"):
+  // where the target is fewer than the eggs, the second star is always "lose none" (flawless from world 7), so three
+  // stars always means every egg came home; the level's own challenge keeps the third place. See starsSound().
+  let g2 = t === n ? clean : world >= 6 ? perfect : all;
   if (g2.kind === g3.kind) g2 = all;
   return [home, g2, g3];
+}
+// Three stars always means every egg came home: true when no outcome with a lost egg can meet all three goals of this
+// level on this mode. Not a look at the goal names: the kindest run with a lost egg (nothing cracked, no turns, no
+// time, the prize home, every orb) is judged by the same judge() the game uses, for every count of eggs home from the
+// target up, lost by breaking or not (carried off, left out), and with the extra eggs a twin orb can make.
+export function starsSound(L, mode = 'medium', campaign = true) {
+  const n = L.eggs || 1, t = L.target || 1, fuse = mode === 'easy' ? 1.6 : 1; // (the fuse only scales a time goal's number)
+  const goals = levelGoals(L, fuse, campaign, mode), twins = JSON.stringify(L).split('twin').length - 1;
+  for (let extra = 0; extra <= twins; extra++) for (let out = 1; out <= n + extra - t; out++) for (const broken of [0, out]) { // not home: broken, or carried off / left out (not broken)
+    const F = { won: true, saved: n + extra - out, target: t, total: n + extra, broken, fled: 0, crackedHome: 0, crackedLive: 0, used: 0, turns: 0, prizeHome: true, prizeGone: false, orbs: 99, orbsAll: 99 };
+    if (score(goals, F).stars === 3) return false;
+  }
+  return true;
 }
 // Easy: [the target home, every egg (flawless where Medium asks for no cracks or every egg is the target), every egg AND the bonus goal]. Levels 1-3
 // (they teach, and have no bonus goal) and any level without one keep the Medium goals.
@@ -48,7 +65,9 @@ function easyGoals(L, fuse) {
   if ((L.id || 0) < EASY_FROM || !b) return null;
   const home = { kind: 'home', n: t, short: t === n ? `All ${n} home` : `${t} of ${n} home`, long: t === n ? `All ${n} eggs home` : `${t} of ${n} eggs home` };
   // every egg; and never less than Medium's second star asks: where that is "No cracks", every egg AND no cracks
-  const m2 = levelGoals(L, fuse, true, 'medium')[1].kind;
+  // (0.8.19: Medium's second star became "Lose none" wherever the target is under the eggs; Easy keeps asking what it asked)
+  const id = L.id || 0, world = Math.floor((id - 1) / PER_WORLD), slot = (id - 1) % PER_WORLD;
+  const m2 = world >= 1 && t < n && world < 6 && slot % 2 ? 'clean' : levelGoals(L, fuse, true, 'medium')[1].kind;
   const every = t === n || m2 !== 'all' ? { kind: 'perfect', short: 'Flawless', long: 'No egg lost or cracked' } : { kind: 'all', short: 'Lose none', long: 'Lose no eggs' };
   // (the card's row reads star by star: "Lose none", then "+ Under 96 s" on top of it; the win page says it whole, short)
   return [home, every, { kind: 'both', a: every, b, short: `+ ${b.short}`, long: `${every.short} + ${b.short}` }]; // the win page's row at its full size, as the card reads it: "Flawless + Under 96 s"
@@ -75,17 +94,20 @@ export function facts(sim) {
     used, turns: sim.turns || 0,
     prizeHome: log.some((q) => q.prize), prizeGone: !!prizeEgg && !prizeEgg.alive && !log.some((q) => q.prize),
     orbs: sim.orbsTaken || 0, orbsAll: sim.orbsStart || 0,
+    fled: sim.eggs.filter((e) => e.fled && !e.saved).length, // carried off: neither broken nor home
   };
 }
 
+// the eggs that did not come home: broken, carried off by a creature, or still out when the level was ended
+const notHome = (F) => Math.max(F.broken || 0, (F.total || 0) - (F.saved || 0));
 // one goal against the facts: 'met' | 'lost' | 'open' (open: still possible, decided at the end)
 export function judge(g, F) {
   const done = F.won;
   switch (g.kind) {
     case 'home': return F.saved >= (g.n || F.target) ? 'met' : done ? 'lost' : 'open'; // n: a count of its own (L1: 1, 2, all 3 home)
-    case 'all': return F.broken > 0 ? 'lost' : done ? 'met' : 'open';
+    case 'all': return F.broken > 0 || F.fled > 0 ? 'lost' : done ? (notHome(F) ? 'lost' : 'met') : 'open'; // 0.8.19: every egg HOME (an egg carried off, or left out when the player ends the level early, is not home)
     case 'clean': return F.crackedHome > 0 || (!done && F.crackedLive > 0) ? 'lost' : done ? 'met' : 'open'; // in play a cracked egg already counts
-    case 'perfect': return F.broken > 0 || F.crackedHome > 0 || (!done && F.crackedLive > 0) ? 'lost' : done ? 'met' : 'open';
+    case 'perfect': return F.broken > 0 || F.fled > 0 || F.crackedHome > 0 || (!done && F.crackedLive > 0) ? 'lost' : done ? (notHome(F) ? 'lost' : 'met') : 'open';
     case 'turns': return F.turns > g.n ? 'lost' : done ? 'met' : 'open';
     case 'time': return F.used > g.s ? 'lost' : done ? 'met' : 'open';
     case 'prize': return F.prizeHome ? 'met' : F.prizeGone || done ? 'lost' : 'open';
@@ -104,9 +126,9 @@ export function outcome(g, F, ok) {
   const eggs = (k) => k + (k === 1 ? ' egg' : ' eggs');
   switch (g.kind) {
     case 'home': return `${F.saved} home`;
-    case 'all': return F.broken ? `${eggs(F.broken)} lost` : 'None lost';
+    case 'all': return notHome(F) ? `${eggs(notHome(F))} lost` : 'None lost';
     case 'clean': return F.crackedHome ? `${eggs(F.crackedHome)} cracked` : 'No cracks';
-    case 'perfect': return F.broken ? `${eggs(F.broken)} lost` : F.crackedHome ? `${eggs(F.crackedHome)} cracked` : 'Perfect';
+    case 'perfect': return notHome(F) ? `${eggs(notHome(F))} lost` : F.crackedHome ? `${eggs(F.crackedHome)} cracked` : 'Perfect';
     case 'turns': return `${F.turns} turns`;
     case 'time': return `${Math.round(F.used)} s`;
     case 'prize': return ok ? 'It is home' : 'It was lost';

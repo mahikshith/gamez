@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The start window: the egg from the icon, centred on the game's sky. The same picture as the page's first paint
+     (src/index.template.html #splash) and frame 0 of the opening (src/ui/opening.js: SKY, EGG_BOX), so nothing jumps
+     when the WebView takes over. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#428abe" android:centerColor="#6eb5e5" android:endColor="#b8ddf3" android:centerY="0.3" />
+        </shape>
+    </item>
+    <item android:drawable="@drawable/ic_fg" android:width="242dp" android:height="242dp" android:gravity="center" />
+</layer-list>

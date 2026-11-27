@@ -5,6 +5,7 @@
 //   pauseBtn   once level 1 is won, the first quiet spell of play (hands off, nothing else on screen): the ring and the
 //              hand on the pause button, "Pause" under it (~2.6 s)
 //   pausePage  the first time the pause page opens: the ring speed, the sound switches and Resume light up in turn (~2 s)
+//              (0.8.19, the rebuilt page: the turtle-to-hare slider, the three round switches top right, the big Resume)
 //   shop       once level 3 is won (director.js earlyDays over), on the map or the pause page: the hand on the shop
 //              button and one free taste (an egg to try free). It shows where the shop is: never a price, never an offer.
 // Every step asks the Brain's gate first (brain.js: a tour step is not an ask; in play only in a quiet spell).
