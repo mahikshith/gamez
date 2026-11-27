@@ -149,11 +149,16 @@ export function begin(run, plan, now) {
   run.moments++;
   return m;
 }
-export function length(m) { return m.out != null ? m.out + m.outLen : TEACH.easeIn + m.hold + TEACH.easeOut; }
+// 0.8.19 (the owner: "show the ghost finger in the level until the user clicks on it ... until the user clicks, we don't
+// move on"): a moment whose answer is a turn of a ring STAYS (m.stay): the slow motion and the held clock run exactly as
+// before (in, hold, back), but the finger and the dimming stay up until the player turns that ring. No timeout ends it.
+export function length(m) { return m.out != null ? m.out + m.outLen : m.stay ? Infinity : TEACH.easeIn + m.hold + TEACH.easeOut; }
 // the world's time scale at the moment's age: 1 -> scale in easeIn, hold, back to 1 from wherever it was when it let go
 const inScale = (age) => (age < TEACH.easeIn ? 1 + (TEACH.scale - 1) * ss(age / TEACH.easeIn) : TEACH.scale);
 export function scaleAt(m, age = m.age) {
   if (age < 0) return 1;
+  const nat = TEACH.easeIn + m.hold; // where the slow motion lets go on its own
+  if (m.stay && (m.out == null || m.out >= nat)) return age < nat ? inScale(age) : age >= nat + TEACH.easeOut ? 1 : TEACH.scale + (1 - TEACH.scale) * ss((age - nat) / TEACH.easeOut);
   const outAt = m.out != null ? m.out : TEACH.easeIn + m.hold, outLen = m.out != null ? m.outLen : TEACH.easeOut;
   if (age < outAt) return inScale(age);
   const s0 = inScale(outAt);
@@ -161,6 +166,7 @@ export function scaleAt(m, age = m.age) {
 }
 // 0..1 how much of the moment shows (dim, spotlight, finger): in with the slow-down, out with the speed-up
 export function showAt(m, age = m.age) {
+  if (m.stay && m.out == null) return ss(age / TEACH.easeIn);
   const outAt = m.out != null ? m.out : TEACH.easeIn + m.hold, outLen = m.out != null ? m.outLen : TEACH.easeOut;
   return ss(age / TEACH.easeIn) * (1 - ss((age - outAt) / outLen));
 }

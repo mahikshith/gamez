@@ -100,7 +100,9 @@ import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' c
 import { STRIKES, STRIKE, STRIKE_FROM, EGG_STRIKES } from './data/strikes.js';
 import { focusAsk, focusStart, focusEnd, focusY, focusTrip, focusLook, focusDraw, focusUseHand, tabForKey } from './ui/focus.js'; // 0.8.16: scroll to the thing and point at it
 import { drawHand as teachHand } from './render/wonder.js';
-import { lessonKit, lessonReset, lessonAsk, lessonLevel, lessonPower, lessonTick, lessonTap, lessonHoldsClock, lessonStepped, lessonOn, drawLesson } from './lesson.js'; // 0.8.18 teaching moments (docs/teaching.md)
+import { lessonKit, lessonReset, lessonAsk, lessonLevel, lessonPower, lessonTick, lessonTap, lessonHoldsClock, lessonStepped, lessonOn, drawLesson, lessonFrozen, pinchZoom, drawRingFocus } from './lesson.js';
+import * as SHOTS from './engine/shots.js'; // 0.8.19 the camera director (villains in frame, entrances, a power's hit)
+import { castOf } from './engine/shotcast.js'; // 0.8.18 teaching moments (docs/teaching.md)
 focusUseHand(teachHand); // the teaching hand (Papa Rooster's first call)
 import { stampStats, stampSweep } from './render/stamp.js';
 import { cvStats, freeCanvas } from './render/cvfree.js';
@@ -1052,6 +1054,8 @@ function scrollHaptics() {
 function setZoom(z) {
   z = clamp(z, -1, 1);
   G.zm = Math.abs(z) < 0.05 ? null : z;
+  G.zmT = G.t; // 0.8.19: the player's own zoom wins over the director for a few seconds
+  if (!save.zoomed) { save.zoomed = 1; persist(); } // (and the pinch lesson is never shown to someone who zooms)
 }
 
 // critically damped follow (eases out of rest and into it; no lurch when the target jumps)
@@ -1108,6 +1112,28 @@ function crawlerMoment(ev) {
   camMoment(x, y, hold);
   if (cv.mom && cv.mom !== was) { cv.crawlT = G.t; camPunch(0.02, x, y); }
 }
+// 0.8.19 the camera director (engine/shots.js): the resting frame T widened and moved so that every villain that is
+// entering, telling or striking is in the shot with its target and the eggs, an entrance gets its establishing move and
+// a power's hit its close-up. The cast comes from engine/shotcast.js (one adapter per villain family).
+function shotsApply(T, dt) {
+  const sim = G.sim, cv = G.cv;
+  if (!sim || G.screen !== 'play' || sim.state !== 'play' || fuseIntroOn()) { cv.shots = null; return T; }
+  if (DEV && G.noShots) return T; // QA: the camera as it was before the director (the audit's "before")
+  const S = cv.shots && cv.shots.sim === sim ? cv.shots : (cv.shots = Object.assign(SHOTS.newShots(), { sim }));
+  const cast = (S.cast = castOf(sim));
+  const D = SHOTS.direct(S, T, cast, sim.aliveEggs().map((e) => e.body.getPosition()), G.play, {
+    dt, live: cv.playT, wholeK: cv.F ? cv.F.k : T.k, calm: !!save.calm, low: !!PERF.low, userAge: G.t - (G.zmT ?? -99), cam: G.cam, demo: pinchZoom(), frozen: lessonFrozen(),
+  });
+  if (!D) return T;
+  cv.smooth = D.smooth;
+  return D;
+}
+// a power landed on the villains now (the rooster's crow): the shot goes to them. False when there is nobody to show.
+function shotsHit() {
+  const sim = G.sim, cv = G.cv;
+  if (!sim || !cv.shots || cv.shots.sim !== sim || G.screen !== 'play') return false;
+  return SHOTS.hit(cv.shots, castOf(sim));
+}
 const MOM_IN = 0.18, MOM_OUT = 0.3, MOM_ZOOM = 1.16;
 // the pulled-in version of the resting target T (weight 0..1 follows the moment's in, hold and out)
 function camMomentTarget(T, dt) {
@@ -1129,6 +1155,7 @@ function updateCamera(dt) {
   if (G.screen === 'pause' && !G.camSnap) return; // the shot holds under the pause card
   if (G.screen === 'play') cv.playT += dt;
   let T = camTarget();
+  if (!G.camSnap) T = shotsApply(T, dt); // 0.8.19: the villains stay in the shot
   // 2026-11-16 (mykee: "screen stuck, hard to control" on L13): while a finger holds a ring the camera stands
   // completely still, so the ring under the finger never slides away from it. It eases on once the finger lets go.
   if (!G.camSnap && G.screen === 'play' && G.sim && G.sim.rings.some((r) => r.held)) { T = { x: cam.x, y: cam.y, k: cam.k }; cv.vx = cv.vy = cv.vk = 0; }
@@ -4511,7 +4538,7 @@ function handleEvents() {
     else crawlerMoment(ev);
     switch (ev.type) {
       case 'allyCrow': // the rooster crows: one short shake and a beat of hit-stop (calm: none); the wave itself is drawn in render/allies.js
-        fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y); camMoment(ev.x, ev.y);
+        fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y); if (!shotsHit()) camMoment(ev.x, ev.y); // 0.8.19: the shot goes to the villains the crow lands on (nobody there: the rooster)
         audio.play('crow_old'); // 2026-11-23 mykee: the rebuilt crow is out, the earlier one is back
         buzz('crow');
         break;
@@ -7208,6 +7235,7 @@ function drawKeyHint() {
   const ea = Math.atan2(E.y - c.y, E.x - c.x), ga = Math.atan2(Gp.y - c.y, Gp.x - c.x);
   let d = ea - ga; d = Math.atan2(Math.sin(d), Math.cos(d));
   if (Math.abs(d) < 0.14) return; // the gap is already under the egg: nothing to teach
+  G.coachRing = { i: r.i, t: G.t }; // 0.8.19: everything but this ring goes off colour while the hand shows (lesson.js drawCoachDim, under the HUD)
   const P = 3.4, q = save.calm ? 0.6 : (G.t % P) / P, mv = ease01((q - 0.14) / 0.5), end = ga + d;
   const ang = ga + d * mv, hx = c.x + Math.cos(ang) * R, hy = c.y + Math.sin(ang) * R;
   const show = save.calm ? 1 : ease01(q / 0.1) * (1 - ease01((q - 0.9) / 0.1)), land = save.calm ? 1 : ease01((q - 0.62) / 0.12) * (1 - ease01((q - 0.95) / 0.05));
@@ -12637,8 +12665,9 @@ if (DEV) window.__egg = {
   strikeArt: { drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick },
   chickArt: { drawKindChick, drawChickEgg }, // chick kinds pose sheets (QA strips)
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
+  castOf, SHOTS, // 0.8.19 QA: the camera director's cast and rules
   lessonAsk, lessonLevel, // 0.8.18 QA: lessonAsk(key, null, {x, y}) asks for a teaching moment; lessonLevel() the level's opening demo
-  frame(dt = 1 / 60) { update(dt); renderAll(); tallyFrame(); }, fxStats: menuFxStats,
+  frame(dt = 1 / 60) { update(dt); renderAll(); tallyFrame(); }, tick(dt = 1 / 60) { update(dt); }, // (tick: no drawing, for the camera audit) fxStats: menuFxStats,
   actSteps, // film strips replay planner moves through this
   search: { value: searchValue, actions: searchActions, act: searchAct }, // clips: a closed-loop player picks each move from the live game
   snakeArt: drawSnake, // palette strips
