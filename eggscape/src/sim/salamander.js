@@ -716,7 +716,7 @@ export const salMethods = {
     C.lk = 1;
     if (e.water > 0) { this.salQuell(C, p.x, p.y); return; } // a mouthful of water
     if (e.fire > 0) { this.salDaze(C, LASH.burn, 'burn'); C.lj = -1; C.lcd = LASH.cd; this.emit('salLashBurn', { x: p.x, y: p.y, hx: M.x, hy: M.y, id: C.id, egg: e }); return; }
-    if (e.chick) { this.chickFlee(e, 'snake'); this.salLashMiss(C, 'chick'); return; }
+    if (e.chick) { this.emit('salShrug', { x: p.x, y: p.y, egg: e }); this.salLashMiss(C, 'chick'); return; } // (aggroB) a chick shrugs the tongue off, as it did the ember spit (it used to flee: an egg lost to a miss)
     if (this.armored(e)) { this.salSet(C, 'strain', LASH.strain); this.emit('salLashStrain', { x: p.x, y: p.y, hx: M.x, hy: M.y, id: C.id, egg: e }); return; }
     C.ls = 0;
     C.lgR = -1; C.lw = 0;
