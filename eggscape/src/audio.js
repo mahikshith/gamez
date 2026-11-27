@@ -2429,7 +2429,7 @@ export function createAudioEngine(externalCtx = null, options = {}) {
     // ring ticks: a hard rate limit across all rings, so constant turning stays a light ratchet
     if (base === 'ring_tick') {
       const gap = t - lastRingTick;
-      if (gap < RING_TICK_GAP && t >= lastRingTick) return NOOP_HANDLE;
+      if (gap < RING_TICK_GAP && t >= lastRingTick && !opts.firm) return NOOP_HANDLE; // (firm: a gap lining up is always heard)
       lastRingTick = t; if (gap < 0.14) o.vol *= 0.65; // a fast spin: the clicks thin out and soften, never a machine gun
     }
     // merge same-name hits inside the window

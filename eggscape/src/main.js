@@ -103,7 +103,9 @@ import { drawPremiumBadge } from './render/premium.js'; // the premium chicks' c
 import { STRIKES, STRIKE, STRIKE_FROM, EGG_STRIKES } from './data/strikes.js';
 import { focusAsk, focusStart, focusEnd, focusY, focusTrip, focusLook, focusDraw, focusUseHand, tabForKey } from './ui/focus.js'; // 0.8.16: scroll to the thing and point at it
 import { drawHand as teachHand } from './render/wonder.js';
-import { lessonKit, lessonReset, lessonAsk, lessonLevel, lessonPower, lessonTick, lessonTap, lessonHoldsClock, lessonStepped, lessonOn, drawLesson } from './lesson.js'; // 0.8.18 teaching moments (docs/teaching.md)
+import { lessonKit, lessonReset, lessonAsk, lessonLevel, lessonPower, lessonTick, lessonTap, lessonHoldsClock, lessonStepped, lessonOn, drawLesson, lessonFrozen, pinchZoom, drawRingFocus } from './lesson.js';
+import * as SHOTS from './engine/shots.js'; // 0.8.19 the camera director (villains in frame, entrances, a power's hit)
+import { castOf } from './engine/shotcast.js'; // 0.8.18 teaching moments (docs/teaching.md)
 focusUseHand(teachHand); // the teaching hand (Papa Rooster's first call)
 import { stampStats, stampSweep } from './render/stamp.js';
 import { cvStats, freeCanvas } from './render/cvfree.js';
@@ -1058,6 +1060,8 @@ function scrollHaptics() {
 function setZoom(z) {
   z = clamp(z, -1, 1);
   G.zm = Math.abs(z) < 0.05 ? null : z;
+  G.zmT = G.t; // 0.8.19: the player's own zoom wins over the director for a few seconds
+  if (!save.zoomed) { save.zoomed = 1; persist(); } // (and the pinch lesson is never shown to someone who zooms)
 }
 
 // critically damped follow (eases out of rest and into it; no lurch when the target jumps)
@@ -1114,6 +1118,28 @@ function crawlerMoment(ev) {
   camMoment(x, y, hold);
   if (cv.mom && cv.mom !== was) { cv.crawlT = G.t; camPunch(0.02, x, y); }
 }
+// 0.8.19 the camera director (engine/shots.js): the resting frame T widened and moved so that every villain that is
+// entering, telling or striking is in the shot with its target and the eggs, an entrance gets its establishing move and
+// a power's hit its close-up. The cast comes from engine/shotcast.js (one adapter per villain family).
+function shotsApply(T, dt) {
+  const sim = G.sim, cv = G.cv;
+  if (!sim || G.screen !== 'play' || sim.state !== 'play' || fuseIntroOn()) { cv.shots = null; return T; }
+  if (DEV && G.noShots) return T; // QA: the camera as it was before the director (the audit's "before")
+  const S = cv.shots && cv.shots.sim === sim ? cv.shots : (cv.shots = Object.assign(SHOTS.newShots(), { sim }));
+  const cast = (S.cast = castOf(sim));
+  const D = SHOTS.direct(S, T, cast, sim.aliveEggs().map((e) => e.body.getPosition()), G.play, {
+    dt, live: cv.playT, wholeK: cv.F ? cv.F.k : T.k, calm: !!save.calm, low: !!PERF.low, userAge: G.t - (G.zmT ?? -99), cam: G.cam, demo: pinchZoom(), frozen: lessonFrozen(),
+  });
+  if (!D) return T;
+  cv.smooth = D.smooth;
+  return D;
+}
+// a power landed on the villains now (the rooster's crow): the shot goes to them. False when there is nobody to show.
+function shotsHit() {
+  const sim = G.sim, cv = G.cv;
+  if (!sim || !cv.shots || cv.shots.sim !== sim || G.screen !== 'play') return false;
+  return SHOTS.hit(cv.shots, castOf(sim));
+}
 const MOM_IN = 0.18, MOM_OUT = 0.3, MOM_ZOOM = 1.16;
 // the pulled-in version of the resting target T (weight 0..1 follows the moment's in, hold and out)
 function camMomentTarget(T, dt) {
@@ -1137,8 +1163,10 @@ function updateCamera(dt) {
   let T = camTarget();
   // 2026-11-16 (mykee: "screen stuck, hard to control" on L13): while a finger holds a ring the camera stands
   // completely still, so the ring under the finger never slides away from it. It eases on once the finger lets go.
-  if (!G.camSnap && G.screen === 'play' && G.sim && G.sim.rings.some((r) => r.held)) { T = { x: cam.x, y: cam.y, k: cam.k }; cv.vx = cv.vy = cv.vk = 0; }
+  const held819 = !G.camSnap && G.screen === 'play' && !!G.sim && G.sim.rings.some((r) => r.held);
+  if (held819) { T = { x: cam.x, y: cam.y, k: cam.k }; cv.vx = cv.vy = cv.vk = 0; }
   if (!G.camSnap) T = camMomentTarget(T, dt); else G.cv.mom = null;
+  if (!G.camSnap && !held819) T = shotsApply(T, dt); // 0.8.19: the villains stay in the shot (the director has the last word, after a moment's push in)
   if (G.camSnap) {
     G.camSnap = false;
     // a new level opens wide (or on its boss) and eases in; a resize just snaps
@@ -4257,18 +4285,46 @@ function drawRingPulse(ring) {
   ctx.restore();
 }
 // rings click through detents while a hand turns them (pitch by ring, loudness by speed)
-const DETENT = Math.PI / 12;
+// 0.8.19 (the owner: "the ring turning effect, sound or haptic, is not properly handled. The sound was introduced in the
+// bonus level but not in the actual levels"). Measured: a detent was 15 degrees of the RING's own travel, so the usual
+// nudge of a campaign ring (a thumb's 5 to 12 degrees) passed no detent and made no sound at all, and no ring ever ticked
+// in the hand; the bonus vaults tick on the finger's own movement (every 0.09 s it moves), so there every drag was heard.
+// Now, in every level: a soft tick per 6 degrees of travel while a hand turns the ring (audio.js keeps it to about 12 a
+// second and thins a fast spin), its pitch rising with the speed, and a firmer, lower one the moment a gap of that ring
+// lines up (under an egg lying on it, or with a gap of the next ring out). The hand feels the same two: a light flick per
+// step (a running tick: Calm drops it, as on a scrolled list) and one firmer tick on the line-up. Not louder than before.
+const DETENT = Math.PI / 30;
 let lastRingTick = 0;
+function ringLined(sim, r, ra) {
+  if (!r.gaps || !r.gaps.length) return 0;
+  const out = sim.rings[r.i + 1], oa = out ? out.body.getAngle() : 0;
+  const near = (a, b, w) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < w;
+  for (const g of r.gaps) {
+    const ga = ra + g.a, w = Math.max(0.05, ((g.len || 0.5) / r.r) * 0.22);
+    for (const e of sim.aliveEggs()) if (sim.channelOf(e) === r.i) { const p = e.body.getPosition(); if (near(ga, Math.atan2(p.y, p.x), w)) return 1; }
+    if (out && out.gaps) for (const g2 of out.gaps) if (near(ga, oa + g2.a, 0.045)) return 1;
+  }
+  return 0;
+}
 function ringTicks(sim) {
   for (const r of sim.rings) {
-    const a = Math.floor(r.body.getAngle() / DETENT);
+    const ra = r.body.getAngle(), a = Math.floor(ra / DETENT), hand = (r.held || r.keyHeld) && G.screen === 'play';
+    const lined = hand ? ringLined(sim, r, ra) : 0, click = lined && r.lined === 0;
+    r.lined = hand ? lined : undefined; // (undefined: a ring just taken with its gap already lined up does not click)
     if (r.tk === undefined) r.tk = a;
-    if (a === r.tk) continue;
+    const step = a !== r.tk;
     r.tk = a;
-    if (!(r.held || r.keyHeld) || G.screen !== 'play' || G.t - lastRingTick < 0.035) continue;
-    lastRingTick = G.t;
-    r.tickT = G.t;
-    audio.play('ring_tick', { pitch: 0.8 + 0.07 * r.i, intensity: clamp(Math.abs(r.omega) / (sim.maxOmega(r) || 1), 0, 1), vol: 0.75 });
+    if (!hand) continue;
+    const sp = clamp(Math.abs(r.omega) / (sim.maxOmega(r) || 1), 0, 1);
+    if (click) { // the gap lines up: firmer and lower
+      lastRingTick = G.t; r.tickT = G.t;
+      audio.play('ring_tick', { pitch: 0.62 + 0.05 * r.i, intensity: 1, vol: 0.9, firm: true });
+      buzz('tick');
+    } else if (step && G.t - lastRingTick >= 0.035) {
+      lastRingTick = G.t; r.tickT = G.t;
+      audio.play('ring_tick', { pitch: 0.8 + 0.07 * r.i + 0.22 * sp, intensity: sp, vol: 0.75 });
+      if (!save.calm) buzz('flick');
+    }
   }
 }
 // Per frame, per egg: run the squash spring, remember the velocity, and call a near miss when an egg that came
@@ -4595,7 +4651,7 @@ function handleEvents() {
     else crawlerMoment(ev);
     switch (ev.type) {
       case 'allyCrow': // the rooster crows: one short shake and a beat of hit-stop (calm: none); the wave itself is drawn in render/allies.js
-        fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y); camMoment(ev.x, ev.y);
+        fx.kick(0.34); hitStop(0.06); camPunch(0.03, ev.x, ev.y); if (!shotsHit()) camMoment(ev.x, ev.y); // 0.8.19: the shot goes to the villains the crow lands on (nobody there: the rooster)
         audio.play('crow_old'); // 2026-11-23 mykee: the rebuilt crow is out, the earlier one is back
         buzz('crow');
         break;
@@ -7278,6 +7334,7 @@ function drawKeyHint() {
   const ea = Math.atan2(E.y - c.y, E.x - c.x), ga = Math.atan2(Gp.y - c.y, Gp.x - c.x);
   let d = ea - ga; d = Math.atan2(Math.sin(d), Math.cos(d));
   if (Math.abs(d) < 0.14) return; // the gap is already under the egg: nothing to teach
+  G.coachRing = { i: r.i, t: G.t }; // 0.8.19: everything but this ring goes off colour while the hand shows (lesson.js drawCoachDim, under the HUD)
   const P = 3.4, q = save.calm ? 0.6 : (G.t % P) / P, mv = ease01((q - 0.14) / 0.5), end = ga + d;
   const ang = ga + d * mv, hx = c.x + Math.cos(ang) * R, hy = c.y + Math.sin(ang) * R;
   const show = save.calm ? 1 : ease01(q / 0.1) * (1 - ease01((q - 0.9) / 0.1)), land = save.calm ? 1 : ease01((q - 0.62) / 0.12) * (1 - ease01((q - 0.95) / 0.05));
@@ -12980,8 +13037,10 @@ if (DEV) window.__egg = {
   strikeArt: { drawStrikeButton, drawStrikeToken, drawStrikeStage, drawStrikeChick },
   chickArt: { drawKindChick, drawChickEgg }, // chick kinds pose sheets (QA strips)
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
+  castOf, SHOTS, // 0.8.19 QA: the camera director's cast and rules
   lessonAsk, lessonLevel, // 0.8.18 QA: lessonAsk(key, null, {x, y}) asks for a teaching moment; lessonLevel() the level's opening demo
   frame(dt = 1 / 60) { update(dt); renderAll(); if (G.opening) drawOpening(); tallyFrame(); }, fxStats: menuFxStats,
+  tick(dt = 1 / 60) { update(dt); }, // no drawing, for the camera audit
   actSteps, // film strips replay planner moves through this
   search: { value: searchValue, actions: searchActions, act: searchAct }, // clips: a closed-loop player picks each move from the live game
   snakeArt: drawSnake, // palette strips

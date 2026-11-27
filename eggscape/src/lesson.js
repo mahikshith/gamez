@@ -8,6 +8,7 @@
 // main.js wires it with lessonKit({...}) once; every call is a no-op outside play.
 import * as T from './engine/teach.js';
 import { DT } from './sim/sim.js';
+import { RING_TH } from './sim/geom.js';
 
 let K = null; // the kit main.js hands in (G, save, toScreen, ...)
 export function lessonKit(kit) { K = kit; }
@@ -141,10 +142,11 @@ function tapTarget(q, p) {
 export function lessonTick(dt) {
   const G = K.G, sim = G.sim;
   if (!G.lrun) return 1;
+  pinchTick(dt);
   const m = G.lesson;
   if (m) {
     if (G.screen !== 'play' || !sim || sim.state !== 'play') T.finish(m, false);
-    else if (!m.done && m.out == null) watchAnswer(m);
+    else if (!m.done && m.out == null) { watchAnswer(m); if (m.stay && m.out == null && !where(m.q)) T.finish(m, false); } // (a staying moment whose subject is gone steps aside)
     if (T.tick(m, dt)) { T.end(K.save, G.lrun, m, G.t); G.lesson = null; K.persist(); }
     return m.done ? 1 : T.scaleAt(m);
   }
@@ -162,6 +164,7 @@ export function lessonTick(dt) {
     G.lessonQ = G.lessonQ.filter((x) => x !== q);
     const m = T.begin(G.lrun, plan, G.t);
     Object.assign(m, { q, spec, ri, p, path: path(spec, q, p, ri), tap: spec.g === 'tap' ? tapTarget(q, p) : null, ang0: sim.rings[ri] ? sim.rings[ri].body.getAngle() : 0, tapAt: null });
+    m.stay = !!m.path; // 0.8.19: a turn lesson stays until the player turns that ring
     G.lesson = m;
     if (plan.lean) K.camMoment(p.x, p.y, plan.hold, 0.45); // a lean, not a zoom
     K.audio.play('hud_pop', { vol: 0.35, pitch: 0.7 });
@@ -178,7 +181,7 @@ function watchAnswer(m) {
     const d = wrap(to - m.ang0), need = m.path.dir;
     if (Math.abs(d) >= T.TEACH.turnOk && (!need || Math.sign(d) === need)) return answered(m);
   }
-  if (m.tapAt != null && K.G.t - m.tapAt > 0.08 && !(r && (r.held || r.keyHeld) && m.path)) T.finish(m, false); // a tap elsewhere: it steps aside
+  if (!m.stay && m.tapAt != null && K.G.t - m.tapAt > 0.08 && !(r && (r.held || r.keyHeld) && m.path)) T.finish(m, false); // a tap elsewhere: it steps aside
 }
 function answered(m) {
   T.finish(m, true);
@@ -190,6 +193,7 @@ function answered(m) {
 // a pointer went down in play (before the ring grab): a tap lesson's thing answers it; anything else lets it go
 export function lessonTap(x, y) {
   const m = K.G.lesson;
+  if (K.G.pinchTip && K.G.pinchTip.out == null) K.G.pinchTip.out = K.G.pinchTip.age; // any touch skips the pinch lesson
   if (!m || m.done || m.out != null) return;
   if (m.tap) { const s = K.toScreen(m.tap.x, m.tap.y); if (Math.hypot(s.x - x, s.y - y) < 70 * K.ui.u) return answered(m); }
   m.tapAt = K.G.t;
@@ -203,6 +207,7 @@ export function lessonStepped() { const m = K.G.lesson; if (m && !m.done) m.simI
 export function drawLesson(ctx, W, H) {
   const G = K.G, m = G.lesson, sim = G.sim;
   if (sim) drawPops(ctx);
+  if (sim) { drawCoachDim(ctx, W, H); drawPinch(ctx); }
   if (!m || m.done || !sim) return;
   const u = K.ui.u, show = T.showAt(m), calm = m.calm, low = K.low();
   if (show <= 0.01) return;
@@ -216,7 +221,8 @@ export function drawLesson(ctx, W, H) {
   // dim round the spot (calm: one soft flat veil, no hole moving)
   ctx.save();
   const a = (calm ? 0.24 : 0.46) * show;
-  if (calm || low) {
+  if (m.path) drawRingFocus(ctx, W, H, m.ri, show, calm); // 0.8.19: a turn lesson: everything but its ring goes off colour
+  else if (calm || low) {
     ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(c.x, c.y, R, 0, Math.PI * 2, true);
     ctx.fillStyle = `rgba(14,8,4,${a})`; ctx.fill('evenodd');
   } else {
@@ -225,12 +231,13 @@ export function drawLesson(ctx, W, H) {
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   }
   // the spotlight's rim: a warm ring, and one ripple out as it lands
-  ctx.globalAlpha = 0.75 * show; ctx.strokeStyle = '#fff1c2'; ctx.lineWidth = 3 * u;
+  ctx.globalAlpha = (m.path ? 0 : 0.75) * show; ctx.strokeStyle = '#fff1c2'; ctx.lineWidth = 3 * u;
   ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI * 2); ctx.stroke();
-  if (!calm && m.age < 0.6) { const q = m.age / 0.6; ctx.globalAlpha = 0.6 * (1 - q) * show; ctx.lineWidth = (5 - 3 * q) * u; ctx.beginPath(); ctx.arc(c.x, c.y, R * (1 + 0.45 * ss(q)), 0, Math.PI * 2); ctx.stroke(); }
+  if (!calm && !m.path && m.age < 0.6) { const q = m.age / 0.6; ctx.globalAlpha = 0.6 * (1 - q) * show; ctx.lineWidth = (5 - 3 * q) * u; ctx.beginPath(); ctx.arc(c.x, c.y, R * (1 + 0.45 * ss(q)), 0, Math.PI * 2); ctx.stroke(); }
   ctx.restore();
   // the answer, done by the ghost finger
-  const hq = m.out != null && m.ok ? 1 : Math.max(0, Math.min(1, (m.age - T.TEACH.easeIn * 0.5) / Math.max(0.3, m.hold)));
+  const LOOP = 2.1; // s: a staying finger does its drag again and again (press, drag along the ring, lift, a breath)
+  const hq = m.out != null && m.ok ? 1 : m.stay ? Math.min(1, ((Math.max(0, m.age - T.TEACH.easeIn * 0.5) % LOOP) / LOOP) * 1.12) : Math.max(0, Math.min(1, (m.age - T.TEACH.easeIn * 0.5) / Math.max(0.3, m.hold)));
   if (m.spec.g === 'power') drawPowerMoment(ctx, m, hq, show, u, calm, c, R);
   else if (m.path) drawTurn(ctx, m, hq, show, u, calm);
   else if (m.tap) drawTap(ctx, m, hq, show, u, calm, c, R);
@@ -415,3 +422,98 @@ function drawPowerMoment(ctx, m, hq, show, u, calm, c, R) {
   if (K.ui.record) K.ui.record({ x: tx, y: ty - sz / 2, w, h: sz }, 'lesson:power', 'lesson:power');
 }
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
+
+// ---------------------------------------------------------------- 0.8.19: the ring under the finger, in full colour
+// Everything but ring ri (and the channel on its floor, where the eggs it carries lie) goes to an off colour: grey and a
+// cool veil; the ring itself keeps its colour and gets a soft warm glow. Calm and low: the flat veil only, a steady glow.
+export function drawRingFocus(ctx, W, H, ri, show, calm) {
+  const G = K.G, sim = G.sim, ring = sim && sim.rings[ri];
+  if (!ring || show <= 0.01) return;
+  const c = K.toScreen(0, 0), k = G.cam.k, u = K.ui.u, low = K.low();
+  const Ro = (ring.r + RING_TH / 2 + 0.07) * k, Ri = ri > 0 ? (sim.rings[ri - 1].r + RING_TH / 2 + 0.05) * k : 0;
+  const hole = () => { ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.moveTo(c.x + Ro, c.y); ctx.arc(c.x, c.y, Ro, 0, Math.PI * 2); if (Ri > 0) { ctx.moveTo(c.x + Ri, c.y); ctx.arc(c.x, c.y, Ri, 0, Math.PI * 2); } };
+  ctx.save();
+  if (!calm && !low) { ctx.globalCompositeOperation = 'saturation'; ctx.globalAlpha = 0.72 * show; ctx.fillStyle = '#808080'; hole(); ctx.fill('evenodd'); ctx.globalCompositeOperation = 'source-over'; }
+  ctx.globalAlpha = 1; ctx.fillStyle = `rgba(26,30,52,${(calm ? 0.28 : low ? 0.46 : 0.32) * show})`; hole(); ctx.fill('evenodd');
+  // the glow: soft and warm on the ring's own band, breathing slowly
+  const br = calm ? 1 : 0.8 + 0.2 * Math.sin(G.t * 2.6), Rm = ring.r * k, bw = RING_TH * k;
+  for (const [lw, al] of [[bw + 22 * u, 0.1], [bw + 12 * u, 0.14], [bw + 4 * u, 0.2]]) { ctx.globalAlpha = al * br * show; ctx.strokeStyle = '#ffe9a0'; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(c.x, c.y, Rm, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.globalAlpha = 0.7 * show; ctx.strokeStyle = '#fff3c4'; ctx.lineWidth = 2 * u;
+  ctx.beginPath(); ctx.arc(c.x, c.y, Rm + bw / 2 + 2 * u, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+// level 1's coach (main.js drawKeyHint notes the ring its hand is on each frame it shows): the same off colour, eased
+function drawCoachDim(ctx, W, H) {
+  const G = K.G, C = G.coachRing, on = !!C && G.t - C.t < 0.12 && !G.lesson;
+  G.coachDim = Math.max(0, Math.min(1, (G.coachDim || 0) + (on ? 1 : -1) * (K.save.calm ? 1 : 0.05)));
+  if (C && G.coachDim > 0.01) drawRingFocus(ctx, W, H, C.i, ss(G.coachDim), !!K.save.calm);
+}
+
+// ---------------------------------------------------------------- 0.8.19: the pinch lesson (zoom, wordless, once)
+// The owner: "we might want to show the zoom in and zoom out options during the tutorial itself". Levels 2 and 3 (level 1
+// belongs to the drag coach), once in a player's life (save.pinchSeen), never for a player who has zoomed himself
+// (save.zoomed), at a calm moment: a few seconds into play, no finger down, no moment, card or toast up. Two ghost fingers
+// land on the vault, spread (the camera pushes in with them, engine/shots.js demo), hold, pinch back (it pulls back out),
+// lift. Any touch skips it. Calm: the two fingers and their arrows, still, and the camera does not move.
+const PINCH = { at: 5, len: 4.6, zoom: 1.2 };
+function pinchTick(dt) {
+  const G = K.G, sim = G.sim, P = G.pinchTip;
+  if (P) {
+    P.age += dt;
+    if (G.screen !== 'play' || !sim || sim.state !== 'play') { G.pinchTip = null; return; }
+    if (P.out != null ? P.age > P.out + 0.3 : P.age >= PINCH.len) G.pinchTip = null;
+    return;
+  }
+  const s = K.save;
+  if (s.pinchSeen || s.zoomed || !G.level || G.demo || !(G.level.id === 2 || G.level.id === 3) || G.screen !== 'play' || !sim || sim.state !== 'play') return;
+  if (G.cv.playT < PINCH.at || G.lesson || G.lessonQ.length || G.teach || G.zm != null || K.busy() || heldRing() != null || (G.tp && G.tp.size)) return;
+  if (sim.timeLimit && sim.timeLeft < 20) return;
+  s.pinchSeen = 1; K.persist();
+  G.pinchTip = { age: 0, out: null };
+  K.audio.play('hud_pop', { vol: 0.3, pitch: 0.8 });
+}
+// 0..1 how far the two fingers are spread at this age (anticipation, overshoot, settle; then back)
+function pinchSpread(a) {
+  if (a < 0.6) return 0;
+  if (a < 0.8) return -0.08 * Math.sin(((a - 0.6) / 0.2) * Math.PI / 2); // a small squeeze first
+  if (a < 1.7) return -0.08 + 1.08 * backOut((a - 0.8) / 0.9);
+  if (a < 2.6) return 1;
+  if (a < 3.5) return 1 - backOut((a - 2.6) / 0.9);
+  return 0;
+}
+// the camera's part of the pinch lesson (1 = none)
+export function pinchZoom() {
+  const P = K && K.G.pinchTip;
+  if (!P || K.save.calm) return 1;
+  const w = P.out != null ? 1 - ss((P.age - P.out) / 0.3) : 1;
+  return 1 + (PINCH.zoom - 1) * Math.max(0, pinchSpread(P.age)) * w;
+}
+// a lesson holds the world in slow motion: the camera director stands still
+export function lessonFrozen() { const m = K && K.G.lesson; return !!m && !m.done && T.scaleAt(m) < 0.98; }
+function drawPinch(ctx) {
+  const G = K.G, P = G.pinchTip;
+  if (!P) return;
+  const u = K.ui.u, calm = !!K.save.calm, A = G.play, cx = A.x + A.w / 2, cy = A.y + A.h * 0.5;
+  const show = ss(P.age / 0.3) * (P.out != null ? 1 - ss((P.age - P.out) / 0.3) : 1 - ss((P.age - (PINCH.len - 0.4)) / 0.4));
+  if (show <= 0.01) return;
+  const sp = calm ? 0.6 : pinchSpread(P.age), d = (46 + 62 * sp) * u, ux = 0.64, uy = -0.77; // the fingers part along a slant
+  const press = calm || (P.age > 0.45 && P.age < 3.75), opening = P.age < 2.2;
+  ctx.save(); ctx.lineCap = 'round';
+  // the stretch between the fingers: a soft band and two arrow heads that point the way they are going
+  const x0 = cx - ux * d, y0 = cy - uy * d, x1 = cx + ux * d, y1 = cy + uy * d;
+  for (const [lw, col, al] of [[9 * u, 'rgba(40,18,4,0.5)', 0.6], [3.5 * u, '#fff6d6', 0.9]]) {
+    ctx.globalAlpha = al * show; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.setLineDash([2 * u, 10 * u]);
+    ctx.beginPath(); ctx.moveTo(x0 + ux * 26 * u, y0 + uy * 26 * u); ctx.lineTo(x1 - ux * 26 * u, y1 - uy * 26 * u); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  if (press) for (const [x, y] of [[x0, y0], [x1, y1]]) { ctx.globalAlpha = 0.5 * show; ctx.strokeStyle = '#ffd34d'; ctx.lineWidth = 3 * u; ctx.beginPath(); ctx.arc(x, y, 19 * u, 0, Math.PI * 2); ctx.stroke(); }
+  for (const s of [-1, 1]) { // arrow heads beyond each finger (out while opening, in while closing)
+    const dir = (calm || opening ? 1 : -1) * s, bx = cx + ux * s * (d + 40 * u), by = cy + uy * s * (d + 40 * u), ang = Math.atan2(uy * dir, ux * dir), hs = 11 * u;
+    ctx.globalAlpha = show * (press ? 0.95 : 0.4); ctx.fillStyle = '#ffd34d'; ctx.strokeStyle = 'rgba(40,18,4,0.6)'; ctx.lineWidth = 2.5 * u; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(bx + Math.cos(ang) * hs, by + Math.sin(ang) * hs); ctx.lineTo(bx + Math.cos(ang + 2.4) * hs, by + Math.sin(ang + 2.4) * hs); ctx.lineTo(bx + Math.cos(ang - 2.4) * hs, by + Math.sin(ang - 2.4) * hs); ctx.closePath(); ctx.stroke(); ctx.fill();
+  }
+  ctx.restore();
+  const lift = press ? 0 : 14 * u;
+  K.hand(ctx, x0, y0 + lift, 46 * u, press, show);
+  K.hand(ctx, x1, y1 + lift, 46 * u, press, show);
+}
