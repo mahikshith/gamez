@@ -20,7 +20,7 @@ const LEAD = 1.35;
 import { costumeOf } from './costume.js';
 import { RING_TH } from '../sim/geom.js';
 import { PERF } from '../perf.js';
-import { UNTIE_POP } from '../sim/kits.js';
+import { UNTIE_POP, KITS } from '../sim/kits.js';
 import { drawInChannel } from './ringclip.js';
 
 const TAU = Math.PI * 2;
@@ -58,7 +58,7 @@ export function mamaLook(K, G, t, sackX) {
     }
     case 'comfort': { // leaning to the crying kit, head on one side, a soft face, patting him
       sitBase(); const pat = Math.max(0, Math.sin(t * 7)) * ss(0.1, 0.3, P);
-      w.a0 = [56, -14 + 6 * pat]; w.a1 = [26, -24];
+      w.a0 = [50, -44 + 6 * pat]; w.a1 = [26, -24]; // (her paw on the crying kit's head: he sits right under it)
       Object.assign(o, { rot: 0.18, hr: 0.28, lid: 0.35, look: 0.7, looky: 0.8, brow: -0.6, smile: 0.35, ear: 0.3 });
       break;
     }
@@ -150,6 +150,8 @@ function kitAt(ctx, x, y, rot, k, t, st, u, face, o) {
   finally { ctx.restore(); }
 }
 // the leader: walks ahead, looking back over his shoulder, one paw beckoning ("this way!")
+// the wail: feet planted, both paws up by the face, mouth wide, tears
+const WAIL = { by: 0, rot: 0.05, f0x: -4, f0y: 0, f1x: 6, f1y: 0, a0x: -4, a0y: -30, a1x: 16, a1y: -32, mouth: 0.95, brow: -1, squeeze: 1, tear: 1, ear: 0.9, hr: -0.25 };
 const LEADER = { look: -1, looky: -0.2, hr: -0.22, a0x: 22, a0y: -30, smile: 1, mouth: 0.45, brow: 0.5 };
 function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
   const G = K.g, n = K.n, low = !!PERF.low, base = { costume, calm, low };
@@ -192,7 +194,8 @@ function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
     }
     case 'flee': { // home: crying (a tumble, a dangle), diving (a crow, a flash), or just running
       const cry = G.why === 'tumble' || G.why === 'dangle', st = G.why === 'dive' || G.why === 'scare' ? 'dive' : cry ? 'cry' : 'run';
-      ord.forEach((i) => { const lag = i * 0.07, q = clamp(gu - lag, 0, 1), F = G.from, S = sim.kitSackPt(K), x = F.x + (S.x - F.x) * ss(0, 1, q), h = Math.max(0.8, (F.y - S.y) * 0.3 + 0.8), y = F.y + (S.y - F.y) * ss(0, 1, q) + h * Math.sin(q * Math.PI); kitAt(ctx, x, y - 0.15, st === 'dive' ? -0.6 * (S.x < F.x ? -1 : 1) : 0, k, t, st, t * 3 + i, S.x < F.x ? -1 : 1, { ...base, who: i }); });
+      const hold = cry ? clamp(KITS.wail / Math.max(1e-3, G.dur), 0, 0.6) : 0; // the held wail where they fell, then the run
+      ord.forEach((i) => { const lag = i * 0.07, q = clamp((gu - hold) / (1 - hold) - lag, 0, 1), F = G.from, S = sim.kitSackPt(K), x = F.x + (S.x - F.x) * ss(0, 1, q), h = Math.max(0.8, (F.y - S.y) * 0.3 + 0.8), y = F.y + (S.y - F.y) * ss(0, 1, q) + h * Math.sin(q * Math.PI); const wl = gu < hold; kitAt(ctx, x + (i - 1) * 0.6 * (1 - ss(0, 0.35, q)), y - 0.15, st === 'dive' ? -0.6 * (S.x < F.x ? -1 : 1) : 0, k, t, st, wl ? 0 : t * 3 + i, wl ? (i % 2 ? 1 : -1) : S.x < F.x ? -1 : 1, { ...base, who: i, add: wl ? WAIL : null }); });
       return;
     }
     case 'up': case 'down': case 'hop': {
@@ -220,7 +223,7 @@ function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
       ord.forEach((i) => {
         const a = G.ph === 'tumble' ? G.a + (i - (n - 1) / 2) * sp(i) : G.a - d * sp(i) * i;
         const st = G.ph === 'tumble' ? 'tumble' : G.wait ? 'wait' : 'walk';
-        kitOnFloor(ctx, fl, a, 0, k, t, st, G.wait ? 0 : gait + i * 0.29, G.ph === 'tumble' ? (i % 2 ? -1 : 1) : d, { ...base, who: i });
+        kitOnFloor(ctx, fl, a, 0, k, t, st, G.ph === 'tumble' ? uOf(G) : G.wait ? 0 : gait + i * 0.29, G.ph === 'tumble' ? (i % 2 ? -1 : 1) : d, { ...base, who: i, beat: G.ph === 'tumble' });
       });
     }
   }

@@ -81,6 +81,11 @@ export function kitPose(state, t, u = 0, o = {}) {
     case 'tumble': { // splayed on his bottom, swaying, stars and spiral eyes
       const sw = Math.sin(T * 2.6), s2 = Math.sin(T * 2.6 - 0.8);
       p = P({ by: -7, sq: 0.08, rot: 0.18 * sw, hr: 0.25 * s2, a0x: -14, a0y: 2, a1x: 20, a1y: 1, f0x: -2, f0y: -2, f1x: 16, f1y: -9, fr0: -0.8, fr1: -1.2, spiral: 1, stars: 3, mouth: 0.35, tongue: 1, smile: -0.2, brow: -0.6, ear: 0.7, tail: -0.1, tw: s2 * 0.4 });
+      if (o.beat) { // in play (u = the tumble's share gone): a backward roll, then the held dizzy sit, then a head shake and up
+        const rl = o.calm ? 1 : ss(0, 0.16, u), up = ss(0.86, 1, u);
+        p.rot -= (1 - rl) * TAU * 0.9; p.by += 12 * Math.sin(rl * Math.PI) * (1 - rl > 0 ? 1 : 0); p.squeeze = rl < 1 ? 1 : 0;
+        p.by = lerp(p.by, 0, up); p.spiral = 1 - up; p.stars = up > 0.5 ? 0 : 3; p.hr += up * 0.4 * Math.sin(T * 30);
+      }
       break;
     }
     case 'dangle': { // (drawn upside down by the caller: his tail hooked over the edge) arms flailing, eyes wide

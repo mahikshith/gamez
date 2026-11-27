@@ -49,9 +49,10 @@ export const KITS = {
   up: 0.75, down: 0.9, hop: 0.6, // s a crossing up through a gap / down through one / a hop over a hole
   lift: m3(1.5, 1.25, 1.1), // s gathering round the egg and heaving (the telegraph)
   out: 1.8, // s over the rim with the egg and down to the yard
-  smug: 2.0, comfort: 2.2, scold: 2.0, // s
+  smug: 2.0, comfort: 2.6, scold: 2.0, // s (comfort: a held hug the player can see)
   rest: m3(4.0, 3.2, 2.6), // s mama waits before she sends them again
-  tumble: 1.6, dangle: 1.6, dive: 0.8, flee: 1.3, // s
+  tumble: 2.0, dangle: 1.6, dive: 0.8, flee: 1.3, // s (tumble: a roll, a held dizzy sit, up again)
+  wail: 0.55, // s a crying kit stands and wails before he runs home (after a tumble or a dangle)
   shake: m3(0.4, 0.55, 0.65), // their ring turned either way (a leaky sum) past this share of what a full-speed turn of it
   // adds up to: at full speed about 0.5 / 0.8 / 1.05 s of turning tumbles them; a slow turn never does
   shakeTau: 1.0,
@@ -440,7 +441,7 @@ export const kitMethods = {
     this.kitLetGo(G, why);
     G.from = { x: P.x, y: P.y }; G.why = why; G.p = null;
     const d = Math.hypot(P.x - this.kitSackPt(this.kit).x, P.y - this.groundY);
-    this.kitSet(G, 'flee', (why === 'dive' || why === 'scare' ? KITS.dive : KITS.flee) * clamp(0.6 + d / 8, 0.7, 1.4));
+    this.kitSet(G, 'flee', (why === 'dive' || why === 'scare' ? KITS.dive : KITS.flee) * clamp(0.6 + d / 8, 0.7, 1.4) + (why === 'tumble' || why === 'dangle' ? KITS.wail : 0));
     this.emit('kitFlee', { ...P, why });
   },
   kitFleeStep(K, G, dt, end = false) {
