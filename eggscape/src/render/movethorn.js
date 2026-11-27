@@ -34,7 +34,7 @@ export function moverPose(th, t, calm) {
   if (!(dt > 0 && dt < 0.12)) { dt = 0; M.lean = M.vel = 0; M.bits.length = 0; M.ph = C.ph; M.stopT = M.goT = -9; }
   const sgn = Math.sign(C.to - C.from) || 1;
   if (C.ph !== M.ph) {
-    if (M.ph === 'slide' && C.ph === 'rest') { M.stopT = t; M.vel += sgn * 3.5; M.puff = sgn; }
+    if (M.ph === 'slide' && C.ph === 'rest') { M.stopT = t; M.vel += sgn * 7; M.puff = sgn; }
     if (M.ph === 'rest' && C.ph === 'slide') M.goT = t;
     M.ph = C.ph;
   }
