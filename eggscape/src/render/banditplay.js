@@ -71,6 +71,11 @@ function lookPerch(sim, B, t) {
     case 'grab': st = 'grab'; u = P; o.toW = { x: B.px, y: B.py }; o.hug = true; break;
     case 'shaken': st = 'shaken'; u = B.hurt ? 1 : 0.45; o.eye = B.hurt ? 'squeeze' : 'wide'; break;
     case 'whistle': st = 'whistle'; u = P; break;
+    case 'eye': { // 0.8.19 the pursuit's telegraph: he sinks (anticipation), ears back, tail up, eyes locked where he goes
+      const dn = ss(0, 0.45, P) * (1 - ss(0.85, 1, P));
+      Object.assign(add, { sq: 0.18 * dn, ear: -0.5 * dn, tail: 0.5 + 0.7 * dn, brow: 0.6, smile: 0.35, hr: -0.15 * dn, jaw: 0.15 * dn });
+      o.eye = 'lock'; break;
+    }
     case 'perchStun': Object.assign(add, { spiral: 1, stars: 3, lid: 0, jaw: 0.35, tongue: 1, ta: 1.3, smile: -0.3 }); break;
     case 'cower': Object.assign(add, { ear: 1, sweat: 1, brow: -0.8, pup: 0.6, smile: -0.5, by: 21 }); o.eye = 'wide'; break;
     // 0.8.18 the stand-off: he sees it coming, FREEZES (ears up, eyes wide), a beat, the eyes NARROW, they CIRCLE (a slow
@@ -159,7 +164,7 @@ export function drawBandit(ctx, sim, t, k, calm, layer = 'back') {
     const F = B.from || { ri: B.ri, pa: B.pa }, r0 = sim.bandFloor(F.ri), r1 = sim.bandFloor(B.ri), e = ss(0.18, 0.78, P);
     const A = { x: r0 * Math.cos(F.pa), y: r0 * Math.sin(F.pa) }, C = { x: r1 * Math.cos(B.pa), y: r1 * Math.sin(B.pa) };
     const th0 = -Math.PI / 2 - F.pa, th1 = -Math.PI / 2 - B.pa, at = { x: lerp(A.x, C.x, e), y: lerp(A.y, C.y, e) + 1.4 * Math.sin(e * Math.PI) };
-    const flip = P > 0.5 ? B.face : -B.face; // he turns in the air to face down his new slope
+    const flip = P > 0.5 ? B.face : F.face ?? -B.face; // he turns in the air to face down his new slope (0.8.19: a pursuit hop keeps his side)
     drawBanditPerch(ctx, ring.r, B.pa, tt, k, 'hop', P, { ...base, face: flip, at, th: lerp(th0, th1, e), opt: { h: 0 }, id: null });
     return;
   }
@@ -176,7 +181,10 @@ export function drawBandit(ctx, sim, t, k, calm, layer = 'back') {
   // his eyes follow the egg nearest him on his floor while he sits
   let eyeW = null;
   if (B.ph === 'duel' || B.ph === 'huh') { const T = sim.bandWeaselT && sim.bandWeaselT(); eyeW = B.ph === 'huh' ? sim.bandSackPt(B, 0) : T ? sim.thBody(T) : null; }
-  else if (Lk.st === 'sit') { let bd = 9; for (const e of sim.aliveEggs()) { if (e.hc || sim.channelOf(e) !== B.ri) continue; const p = e.body.getPosition(), q = sim.bandPerchPt(B), d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; eyeW = { x: p.x, y: p.y }; } } }
+  else if (B.ph === 'eye' && B.go) { const a = (-90 + B.go.side * 32) * Math.PI / 180, r = sim.bandFloor(B.go.ri); eyeW = { x: r * Math.cos(a), y: r * Math.sin(a) }; }
+  else if (B.duel) { const T = sim.bandWeaselT && sim.bandWeaselT(); eyeW = T ? sim.thBody(T) : null; } // 0.8.19 the weasel coming across the rings
+  // 0.8.19 sitting or cranking his eyes follow the nearest egg anywhere (not only on his floor): he is always after one
+  else if (Lk.st === 'sit' || Lk.st === 'crank') { let bd = 9; for (const e of sim.aliveEggs()) { if (e.hc || e.thf) continue; const p = e.body.getPosition(), q = sim.bandPerchPt(B), d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; eyeW = { x: p.x, y: p.y }; } } }
   const o = { ...base, add: Lk.add, eye: frozen ? 'normal' : Lk.o.eye, toW: Lk.o.toW, eyeW, egg: false, under: (c, p, u, face) => sackEggs(c, B, p, u, face) };
   // 0.8.18 the egg he reaches for / holds is the REAL one where the sim has it: his paws close on it, and while he holds it
   // he draws it himself between his paws (bandHides keeps the game from drawing it again)
@@ -307,6 +315,8 @@ export function banditEvent(ev, fx, U) {
     case 'bandCrouch': audio.play('weasel_sniff', { vol: 0.55, pitch: 0.75 }); break;
     case 'bandClimb': audio.play('hen_hop', { vol: 0.6, pitch: 0.7 }); break;
     case 'bandHop': audio.play('hen_hop', { vol: 0.6, pitch: 0.8 }); break;
+    case 'bandEye': audio.play('weasel_sniff', { vol: 0.5, pitch: 0.7 }); break; // 0.8.19 the pursuit's telegraph
+    case 'bandBrace': audio.play('weasel_snicker', { vol: 0.35, pitch: 0.7 }); break; // 0.8.19 he felt the player fight his ring
     case 'bandPerch': audio.play('hen_land', { vol: 0.55, pitch: 0.75 }); break;
     case 'bandSpit': audio.play('squish', { vol: 0.35, pitch: 1.7 }); break;
     case 'bandCrank': audio.play('gear_whir', { vol: 0.4, pitch: 0.6 }); break;

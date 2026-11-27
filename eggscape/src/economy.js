@@ -512,6 +512,9 @@ export const ITEMS = {
   goldhour: { id: 'goldhour', name: 'Golden Hour', line: 'Double coins on your next 3 wins.', price: 120, wins: 3 },
   skip: { id: 'skip', name: 'Skip Ticket', line: 'Skip a level you have not won yet.', price: 150 },
 };
+// 0.8.19 the coin way to skip a level (the pause page, the fail card): what a Skip Ticket costs in the shop, read from
+// the one number, so the two always agree.
+export const SKIP_PRICE = ITEMS.skip.price;
 export const ITEM_ORDER = ['ally', 'goldhour', 'skip'];
 export function itemCount(w, id) {
   if (!w) return 0;

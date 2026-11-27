@@ -29,6 +29,7 @@
 //   leaves eggs alone for a while | scare (the Scarecrow, the laser): he stays out of the vault | quake: knocked onto his
 //   belly into a slide | gust: a shove along his channel.
 import { RING_TH, EGG_W, EGG_H, wrap, clamp } from './geom.js';
+import { dynRowOf as dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 export const PIP = {
@@ -200,7 +201,7 @@ export const pipMethods = {
     this.pipWind(P);
   },
   pipWind(P) {
-    this.pipSet(P, 'windup', this.pipM(PIP.warn));
+    this.pipSet(P, 'windup', tellS(this.pipM(PIP.warn), dynOf(this, 'penguin').tell) * this.menaceTell()); // 0.8.19 the table's tell
     const b = this.pipBody(P);
     this.emit('pipWarn', { id: P.id, x: b.x, y: b.y, face: P.face, a: P.a, r: P.r });
   },
@@ -361,14 +362,14 @@ export const pipMethods = {
   // ---------- what stops him
   pipBump(P, why) {
     this.pipLetAll(P, 'bump');
-    P.v = 0; P.why = why === 'hit' ? 'hit' : ''; P.sulk = PIP.sulk + this.pipM(PIP.dizzy);
+    P.v = 0; P.why = why === 'hit' ? 'hit' : ''; P.sulk = (PIP.sulk * dynOf(this, 'penguin').rest) / this.menaceHeat() + this.pipM(PIP.dizzy);
     this.pipSet(P, 'bump', PIP.bump);
     const b = this.pipBody(P);
     this.emit('pipBump', { id: P.id, x: b.x, y: b.y, why, face: P.face });
   },
   pipBoing(P) {
     this.pipLetAll(P, 'pad', P.v * 0.6); // the eggs he shoved slide on, like curling stones let go
-    P.v = 0; P.sulk = PIP.sulk;
+    P.v = 0; P.sulk = (PIP.sulk * dynOf(this, 'penguin').rest) / this.menaceHeat(); // 0.8.19 its rest x the table / the heat
     this.pipSet(P, 'boing', PIP.boing);
     const b = this.pipBody(P);
     this.emit('pipBoing', { id: P.id, x: b.x, y: b.y });

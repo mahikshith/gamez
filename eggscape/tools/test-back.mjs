@@ -47,15 +47,20 @@ const row = async (name, from, setup, want) => {
 
 await p.evaluate(() => SAVE(20));
 await row('home', 'app start', () => { HOME(); return WHERE(); }, { screen: 'title' });
+// 0.8.19: the first Back on home shows the hen's leave scene (STAY / LEAVE); the second is never held: the game answers false and the shell leaves
+ok(await p.evaluate(() => { const E = __egg, up = !!(E.G.leaveAsk && E.G.leaveAsk.exit), second = E.back(); return up && second === false && !E.G.leaveAsk; }), 'home: Back shows the leave scene once, a second Back leaves');
 await row('world map', 'home (PLAY)', () => { HOME(); __egg.press('levels'); F(30); return WHERE(); }, { screen: 'title' });
 await row('level card', 'map', () => { __egg.press('levels'); F(20); __egg.press('lv:9'); F(30); return WHERE(); }, { screen: 'levels' });
 // 0.8.18: the chick picker opens from the chick's face on the level card; Back closes it (the card stays), then the map
 await row('chick picker', 'level card (the chick\'s face)', () => { __egg.press('levels'); F(20); __egg.press('lv:9'); F(30); __egg.press('face:chick'); F(20); return WHERE(); }, { screen: 'intro', tab: (v, got, at) => v === 'level' && at.tab === 'chicks' });
 await row('level card', 'chick picker closed', () => WHERE(), { screen: 'levels' });
 await row('play', 'level card', () => { PLAYING(10); return WHERE(); }, { screen: 'pause' });
-await row('pause page', 'play', () => WHERE(), { screen: 'play' });
-await row('a level after Back twice', 'play', () => { __egg.press('pause'); F(5); return { t: __egg.G.sim.t }; }, { screen: 'play' }); // (pause, resume: the level never quits by Back)
-await row('shop', 'pause page', () => { const E = __egg; E.press('pause'); F(5); const s = E.G.sim, t = s.t, tl = s.timeLeft; window.SIM0 = { s, t, tl }; E.press('shop'); F(60); return WHERE(); }, { screen: 'pause' });
+// 0.8.19 (mykee: "we forgot the quit option"): Back on the pause page asks once with the leave scene; a second Back leaves to the map
+await row('pause page', 'play', () => WHERE(), { screen: 'pause' });
+ok(await p.evaluate(() => !!__egg.G.leaveAsk && !__egg.G.leaveAsk.exit && __egg.G.sim.state === 'play'), 'pause page: Back asks once (the leave scene), the level still in hand');
+await row('leave scene', 'pause page', () => WHERE(), { screen: 'levels' });
+ok(await p.evaluate(() => !__egg.G.leaveAsk), 'the second Back left: no second question');
+await row('shop', 'pause page', () => { const E = __egg; PLAYING(10); E.press('pause'); F(5); const s = E.G.sim, t = s.t, tl = s.timeLeft; window.SIM0 = { s, t, tl }; E.press('shop'); F(60); return WHERE(); }, { screen: 'pause' });
 ok(await p.evaluate(() => __egg.G.sim === SIM0.s && __egg.G.sim.t === SIM0.t && __egg.G.sim.timeLeft === SIM0.tl && __egg.G.sim.state === 'play'), 'shop from pause: the same level, paused, its clock did not run');
 await row('Settings', 'pause page', () => { __egg.press('settings'); F(10); return WHERE(); }, { screen: 'pause', settings: false });
 await row('info panel ("i")', 'pause page', () => { __egg.press('info'); F(10); return WHERE(); }, { screen: 'pause' });
@@ -64,8 +69,7 @@ ok(await p.evaluate(() => __egg.G.sim === SIM0.s && __egg.G.sim.state === 'play'
 await row('info panel ("i")', 'play', () => { const E = __egg; E.press('resume'); F(5); E.press('info'); F(10); return WHERE(); }, { screen: 'play' });
 await row('win page', 'a won level', () => { PLAYING(9); __egg.showResult('win'); F(30); return WHERE(); }, { screen: 'levels' });
 await row('fail page', 'a lost level', () => { PLAYING(9); __egg.showResult('fail'); F(30); __egg.G.stuckAsk = null; return WHERE(); }, { screen: 'levels' });
-await row('"Stuck?" pop-up', 'fail page (the third loss)', () => { const E = __egg; SAVE(12); for (let n = 0; n < 3; n++) { if (n && E.G.screen === 'fail') E.press('retry'); else PLAYING(11); F(30); E.G.sim.state = 'failed'; E.endRun(false); for (let k = 0; k < 300 && E.G.screen !== 'fail'; k++) F(1); } F(100); return WHERE(); }, { screen: 'fail', modal: false });
-ok(await p.evaluate(() => !__egg.G.stuckAsk), '"Stuck?" pop-up: it was up, and Back closed it ("Keep trying")');
+await row('fail page with the three choices', 'the third loss in a row (0.8.19: a row on the card, no pop-up)', () => { const E = __egg; SAVE(12); for (let n = 0; n < 3; n++) { if (n && E.G.screen === 'fail') E.press('retry'); else PLAYING(11); F(30); E.G.sim.state = 'failed'; E.endRun(false); for (let k = 0; k < 300 && E.G.screen !== 'fail'; k++) F(1); } F(100); return { ...WHERE(), three: ['fail:easy', 'fail:skip'].every((id) => E.ui.buttons.some((b) => b.id === id)), pop: !!E.G.stuckAsk }; }, { screen: (v, got, at) => v === 'levels' && at.three && !at.pop && at.modal === false });
 await row('Settings', 'home', () => { HOME(); __egg.press('settings'); F(10); return WHERE(); }, { screen: 'title', settings: false });
 await row('privacy page', 'Settings', () => { const E = __egg; E.press('settings'); F(5); E.press('xs:privacy'); F(10); return WHERE(); }, { settings: true, sub: false });
 await row('shop', 'home', () => { HOME(); __egg.press('shop'); F(30); return WHERE(); }, { screen: 'title' });
@@ -95,13 +99,13 @@ await p.close();
 
 // the phone's Back (the Android shell calls window.__eggBack): the same press; false only on the home page
 const q = await open(true);
-const r = await q.evaluate(() => { const E = __egg, out = {}; SAVE(20); HOME(); out.homeFn = typeof window.__eggBack; out.home = window.__eggBack(); out.homeStays = E.G.screen;
+const r = await q.evaluate(() => { const E = __egg, out = {}; SAVE(20); HOME(); out.homeFn = typeof window.__eggBack; out.home = window.__eggBack(); out.homeScene = !!(E.G.leaveAsk && E.G.leaveAsk.exit); out.home2 = window.__eggBack(); out.homeStays = E.G.screen; out.homeClosed = !E.G.leaveAsk;
   E.press('levels'); F(20); out.map = window.__eggBack(); F(10); out.mapTo = E.G.screen;
-  PLAYING(10); out.play = window.__eggBack(); F(5); out.playTo = E.G.screen; out.pause = window.__eggBack(); F(5); out.pauseTo = E.G.screen;
+  PLAYING(10); out.play = window.__eggBack(); F(5); out.playTo = E.G.screen; out.pause = window.__eggBack(); F(5); out.pauseTo = E.G.screen; out.pauseScene = !!E.G.leaveAsk; out.leave = window.__eggBack(); F(10); out.leaveTo = E.G.screen;
   return out; });
-ok(r.homeFn === 'function' && r.home === false && r.homeStays === 'title', 'phone Back on home: the game lets the shell ask "Press back again to leave" (returns false, stays home)');
+ok(r.homeFn === 'function' && r.home === true && r.homeScene && r.home2 === false && r.homeClosed && r.homeStays === 'title', 'phone Back on home: the leave scene once (true), then never held: the second press is the shell\'s (false)');
 ok(r.map === true && r.mapTo === 'title', 'phone Back on the map: home');
-ok(r.play === true && r.playTo === 'pause' && r.pause === true && r.pauseTo === 'play', 'phone Back in play pauses, on the pause page resumes');
+ok(r.play === true && r.playTo === 'pause' && r.pause === true && r.pauseTo === 'pause' && r.pauseScene && r.leave === true && r.leaveTo === 'levels', 'phone Back in play pauses; on the pause page it asks once (the leave scene); once more leaves to the map');
 const javaToast = fs.readFileSync(path.join(root, 'android/app/src/main/java/com/eggscape/game/MainActivity.java'), 'utf8');
 ok(/Press back again to leave/.test(javaToast) && /now - lastBack < 2000/.test(javaToast), 'the Android shell: a second Back within 2 s leaves, the first says "Press back again to leave"');
 ok(!p.errs.length && !q.errs.length, 'no page errors' + (p.errs.length || q.errs.length ? ': ' + [...p.errs, ...q.errs].join(' | ') : ''));

@@ -193,7 +193,7 @@ export function forkTaps(L, q) {
 // a small padlock where it leaves the road. Open: lit; o.pulse (0..1) runs a soft glow once from S through the door to E.
 // Won: the walked road's gold down its middle. o.lit (0..1): how much of it has lit up so far (the reveal draws it in).
 export function drawSideFork(ctx, L, q, sy, state, o = {}) {
-  const u = L.u, P = forkPts(q.fork), fw = forkW(L), K = roadCols(q.w), locked = state === 'locked', lit = o.lit == null ? 1 : o.lit;
+  const u = L.u, P = forkPts(q.fork), fw = forkW(L), K = roadCols(q.w), locked = state === 'locked', lit = o.lit == null ? (locked ? 0 : 1) : o.lit; // (0.8.19: a shut fork is a whole road, lit 0; it was 1, which drew none of it)
   const line = (a = 0, b = P.length - 1) => { ctx.beginPath(); for (let k = a; k <= b; k++) { const p = P[k]; if (k === a) ctx.moveTo(p.x, p.y - sy); else ctx.lineTo(p.x, p.y - sy); } };
   const strokeAll = (a, b) => {
     line(a, b); ctx.strokeStyle = 'rgba(20,10,0,0.22)'; ctx.lineWidth = fw + 7 * u; ctx.stroke();
@@ -202,7 +202,7 @@ export function drawSideFork(ctx, L, q, sy, state, o = {}) {
   };
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const nl = Math.round((P.length - 1) * clamp(lit, 0, 1));
-  if (locked || nl < P.length - 1) { ctx.save(); ctx.globalAlpha *= 0.6; strokeAll(nl, P.length - 1); ctx.restore(); } // faded: shut (or not lit yet)
+  if (locked || nl < P.length - 1) { ctx.save(); ctx.globalAlpha *= 0.92 - 0.3 * clamp(lit * 5, 0, 1); strokeAll(nl, P.length - 1); ctx.restore(); } // 0.8.19: shut, it is still drawn as a whole road (its padlock tells); the part not lit yet fades while the pulse lights it
   if (!locked && nl > 0) {
     strokeAll(0, nl);
     if (state === 'won') { line(0, nl); ctx.strokeStyle = '#f6c454'; ctx.lineWidth = fw * 0.5; ctx.stroke(); ctx.strokeStyle = 'rgba(255,244,190,0.55)'; ctx.lineWidth = fw * 0.15; ctx.stroke(); }

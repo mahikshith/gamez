@@ -9,9 +9,9 @@ const LEAD = 1.6; // s before a waiting villain comes out that the camera alread
 // phase names -> act, per family (first match wins)
 const PH = {
   // the weasel, the rats, the rat king (sim/thieves.js T.ph)
-  thief: { enter: S('in'), tell: S('crouch', 'brace', 'stalk', 'laugh'), strike: S('leap', 'grab', 'inner', 'carry', 'push', 'stash', 'toss', 'cross', 'drop', 'sqSkid', 'sqBall', 'sqThrow', 'bonk', 'trapped') },
+  thief: { enter: S('in'), tell: S('crouch', 'brace', 'stalk', 'prowl', 'laugh'), strike: S('leap', 'grab', 'inner', 'carry', 'push', 'stash', 'toss', 'cross', 'drop', 'sqSkid', 'sqBall', 'sqThrow', 'bonk', 'trapped') },
   // Bandit the raccoon (sim/bandit.js B.ph)
-  bandit: { enter: S('sneak', 'climb', 'hop'), tell: S('crouch', 'spit', 'reach', 'whistle'), strike: S('crank', 'grab', 'strain', 'stuff', 'dash', 'duel', 'shaken', 'fall') },
+  bandit: { enter: S('sneak', 'climb', 'hop'), tell: S('crouch', 'spit', 'reach', 'whistle'), strike: S('crank', 'grab', 'strain', 'stuff', 'dash', 'duel', 'shaken', 'fall', 'sit', 'cower', 'dust', 'huh', 'perchStun', 'laugh', 'scared') }, // (on a ring he is always in the shot)
   // mama raccoon (sim/kits.js K.ph) and her crew of kits (K.g.ph)
   mama: { enter: S('walk'), tell: S('untie'), strike: S() },
   kits: { enter: S('run', 'climbIn'), tell: S('pop', 'lift'), strike: S('go', 'up', 'hop', 'down', 'carry', 'out', 'yard', 'tumble', 'dangle', 'flee') },

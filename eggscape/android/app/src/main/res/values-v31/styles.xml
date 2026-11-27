@@ -1,0 +1,13 @@
+<resources>
+    <!-- Android 12+: the system splash can only be an icon on one colour. The egg (same size and place as the page's first
+         paint) on the sky's colour at the middle of the screen; the window behind it is the full picture (splash_bg). -->
+    <style name="Theme.Eggscape" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_bg</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:statusBarColor">@color/egg_bg</item>
+        <item name="android:navigationBarColor">@color/egg_bg</item>
+        <item name="android:windowSplashScreenBackground">@color/egg_sky_mid</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+    </style>
+</resources>

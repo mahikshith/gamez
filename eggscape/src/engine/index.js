@@ -139,7 +139,7 @@ export const tally = {
   table: (save) => HUB.ask('tally', 'table', [save], null),
 };
 // the Pacer (src/engine/pacer.js): every answer falls back to the plain game (no pop-up, no dare, no gift, no mark)
-const NO_PLAN = { ask: false, hint: false, scare: false, gift: false, why: 'pacer off' };
+const NO_PLAN = { ask: false, boost: false, scare: false, gift: false, why: 'pacer off' };
 export const pacer = {
   read: (save, ctx = {}) => HUB.ask('pacer', 'read', [save, ctx], null),
   failPlan: (save, ctx = {}) => HUB.ask('pacer', 'failPlan', [save, ctx], NO_PLAN),

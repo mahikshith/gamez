@@ -169,10 +169,10 @@ export function cards(save) {
 
 // ---- after a loss
 // ctx: { levelId, boss, early (nothing is offered yet: earlyDays), canSkip, now }
-// -> { ask, hint, scare, gift (call declined: the next try's free booster), why }
+// -> { ask, boost (0.8.19: the free suggested booster, in the old free hint's place and on its timing), scare, gift (call declined: the next try's free booster), why }
 export function failPlan(save, ctx = {}) {
   const P = pacState(save), id = +ctx.levelId, adapt = on(save);
-  if (!(id > 0)) return { ask: false, hint: false, scare: false, why: '' };
+  if (!(id > 0)) return { ask: false, boost: false, scare: false, why: '' };
   const R = read(save, { levelId: id, now: ctx.now }), n = losses(save, id);
   const hintAt = !adapt ? PACE.hintAt : R.struggling ? PACE.hintStuck : R.linger || R.leaver ? PACE.hintLeaver : PACE.hintAt;
   const ask = adapt && !ctx.early && !!ctx.canSkip && n >= PACE.stuckAsk && P.asked[id] !== P.sid + 1;
@@ -183,11 +183,11 @@ export function failPlan(save, ctx = {}) {
   const bits = [`${n} in a row on level ${id}`, R.why];
   if (ask) bits.push('the skip pop-up (once this session)');
   if (scare) bits.push('a free Scarecrow at the boss');
-  if (hint) bits.push(`a free hint (at loss ${hintAt})`);
+  if (hint) bits.push(`a free booster (at loss ${hintAt})`);
   if (gift) bits.push('no skip here: a free booster on the next try');
   const why = bits.join('; ');
   if (ask || scare || hint || gift) note(P, 'fail:' + id, why, ctx.now);
-  return { ask, hint, scare, gift, why, hintAt, n };
+  return { ask, boost: hint, scare, gift, why, hintAt, n };
 }
 // the pop-up was put up (it does not come back on this level this session)
 export function asked(save, id) { const P = pacState(save); P.asked[id] = P.sid + 1; }
@@ -196,7 +196,7 @@ export function declined(save, id) { const P = pacState(save); if (!P.gift[id]) 
 // the retry: -> true once after a declined pop-up (the caller picks the level's most useful booster)
 export function retryGift(save, id) { const P = pacState(save); if (P.gift[id] !== 1) return false; P.gift[id] = 2; return true; }
 // the free hint or Scarecrow was given here
-export function gave(save, id, kind) { const P = pacState(save); if (kind === 'hint') P.hint[id] = Math.max(1, losses(save, id)); else if (kind === 'scare') P.scare[id] = 1; }
+export function gave(save, id, kind) { const P = pacState(save); if (kind === 'boost' || kind === 'hint') P.hint[id] = Math.max(1, losses(save, id)); else if (kind === 'scare') P.scare[id] = 1; }
 
 // ---- dares, by choice
 const DARE = {

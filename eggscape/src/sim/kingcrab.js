@@ -25,6 +25,7 @@
 // Downside: an egg it drags out is lost until you hit it.
 import { Vec2, Circle } from 'planck';
 import { RING_TH, TAU, wrap, clamp } from './geom.js';
+import { dynRowOf as dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
 const KC_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING, as the puffer's plug
 const up0 = (sim) => sim.gy || 1;
 
@@ -237,7 +238,7 @@ export const kcMethods = {
         break;
       }
       case 'bonk': if ((C.t -= dt) <= 0) { this.kcSet(C, 'idle'); C.cd = 1; C.tgt = 0; } break;
-      case 'hurt': C.d += 2.4 * dt; if ((C.t -= dt) <= 0) this.kcSet(C, 'away', this.kcM(KC.away)); break;
+      case 'hurt': C.d += 2.4 * dt; if ((C.t -= dt) <= 0) this.kcSet(C, 'away', (this.kcM(KC.away) * dynOf(this, 'crab').rest) / this.menaceHeat()); // 0.8.19 the table / the heat break;
       case 'warp': if ((C.t -= dt) <= 0) this.kcSet(C, 'away', KC.warpAway); break;
     }
     if (C.ph !== 'stuck' && C.ph !== 'snap' && C.ph !== 'warp' && IN.has(C.ph) && this.kcIn(C) && this.kcZapped(C)) this.kcRecoil(C, 'zap');
