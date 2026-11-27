@@ -26,7 +26,7 @@ const STATES = [
   ['levels', `${SAVE(12)} E.G.screen = 'title'; E.press('levels'); ${F(60)} E.G.mapTravel = null; ${F(2)}`],
   ['L6-intro', `${SAVE(6)} E.start(5); ${F(10)} if (E.ui.buttons.some((b) => b.id === 'stk:gotit')) E.press('stk:gotit'); ${F(5)} if (E.ui.buttons.some((b) => b.id === 'gotit')) E.press('gotit'); ${F(60)}`],
   ['L12-play', `${SAVE(12)} E.start(11); ${F(20)} ${TO_PLAY} ${F(60)}`],
-  ['pause', `E.press('pause'); ${F(30)}`],
+  ['pause', `const E = __egg; E.press('pause'); ${F(30)}`],
   ['win', `${SAVE(12)} E.start(11); E.press('go'); E.frame(1 / 60); E.showResult('win', 3); ${F(400)}`],
   ['fail', `${SAVE(12)} E.start(11); ${F(20)} ${TO_PLAY} E.step(14); E.showResult('fail'); ${F(120)}`],
   ['store', `${SAVE(20)} E.G.screen = 'title'; E.press('shop'); ${F(30)}`],

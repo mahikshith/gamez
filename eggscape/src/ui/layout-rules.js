@@ -131,7 +131,8 @@ export function lint(ui, o = {}) {
   const things = [...R.filter((q) => !String(q.tag).startsWith('panel')), ...B.filter((q) => !q.rec && !huge(q))].map((q) => ({ tag: q.tag || 'btn:' + q.id, group: q.group || 'btn:' + q.id, set: q.set, container: q.container, kind: q.kind, x: q.x, y: q.y, w: q.w, h: q.h, x1: q.x + q.w, y1: q.y + q.h }));
   // 5. BALANCE: no empty band over 22 % of the height between the first and the last thing; top / bottom margins within 2x
   if (want.has('BALANCE') && !o.play) {
-    const iv = things.map((q) => [Math.max(A.y, q.y), Math.min(A.y1, q.y1)]).filter((v) => v[1] > v[0]).sort((a, b) => a[0] - b[0]);
+    const SW = ui.w * ui.h, pics = B.filter((q) => !q.rec && huge(q) && q.w * q.h < 0.6 * SW); // a big tap picture (the card's hero) is content; a tap-anywhere catcher is not
+    const iv = [...things, ...pics].map((q) => [Math.max(A.y, q.y), Math.min(A.y1, q.y1)]).filter((v) => v[1] > v[0]).sort((a, b) => a[0] - b[0]);
     if (iv.length >= 2) {
       let end = iv[0][1], band = 0, at = 0;
       for (const [a, b] of iv) { if (a - end > band) { band = a - end; at = end; } end = Math.max(end, b); }
@@ -149,7 +150,8 @@ export function lint(ui, o = {}) {
       const dx = Math.max(a.x, b.x) - Math.min(a.x1, b.x1), dy = Math.max(a.y, b.y) - Math.min(a.y1, b.y1);
       if (dx < -1 && dy < -1) { // overlapping: only text over a button is this rule's (the rest is the overlap check's)
         const t = a.kind === 'text' ? a : b.kind === 'text' ? b : null, btn = t === a ? b : a;
-        if (t && /^btn:/.test(btn.tag) && once('ob' + t.tag + btn.tag)) add('CROWD', t.tag + ' x ' + btn.tag, 'text over a button it does not belong to', 120);
+        const inside = t && t.x >= btn.x - 1 && t.y >= btn.y - 1 && t.x1 <= btn.x1 + 1 && t.y1 <= btn.y1 + 1; // wholly on it: its own caption
+        if (t && !inside && /^btn:/.test(btn.tag) && once('ob' + t.tag + btn.tag)) add('CROWD', t.tag + ' x ' + btn.tag, 'text over a button it does not belong to', 120);
         continue;
       }
       const gap = dx > 0 && dy > 0 ? Math.hypot(dx, dy) : Math.max(dx, dy, 0);
@@ -175,4 +177,23 @@ export function lint(ui, o = {}) {
     if (p) { const f = (p.cy - A.y) / A.h; if (f < TOL.thumb) add('THUMB', 'btn:' + p.id, `centre at ${Math.round(f * 100)} % of the height (want over ${TOL.thumb * 100} %)`, 75 + 100 * (TOL.thumb - f)); }
   }
   return out;
+}
+
+// the dev build's runtime guard (ui.js begin(), dev builds only): once a second, rules 1, 2 and 6 (on screen, tap size,
+// crowding) on the frame just drawn; one console.warn per problem not seen before. ui.guardOff = true silences it (the
+// QA reads the rules itself).
+export function guard(ui) {
+  if (ui.guardOff || !ui.rects.length || typeof performance === 'undefined') return;
+  const now = performance.now();
+  if (now - (ui.guardT || 0) < 1000) return;
+  ui.guardT = now;
+  const seen = (ui.guardSeen = ui.guardSeen || new Set());
+  let f = [];
+  try { f = lint(ui, { rules: ['ONSCREEN', 'TAPSIZE', 'CROWD'] }); } catch (e) { f = [{ rule: 'GUARD', tag: 'error', msg: String(e) }]; }
+  for (const q of f) {
+    const k = q.rule + '|' + q.tag;
+    if (seen.has(k) || seen.size > 400) continue;
+    seen.add(k);
+    console.warn(`[layout] ${q.rule} ${q.tag}: ${q.msg}`);
+  }
 }

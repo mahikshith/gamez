@@ -1,9 +1,9 @@
 import { themeFrame, themeButton, themeShape } from './theme.js';
-import { lint as layoutLint } from './layout-rules.js';
+import { lint as layoutLint, guard as layoutGuard } from './layout-rules.js';
 /* global __DEV__ */
 // lint819: dev builds keep more per record (a rect's size before a strip cut it, each text's fit) and run the layout
 // guard; a release build (__DEV__ false) drops all of it. Outside a build (node tests) it is off.
-const DEV = typeof __DEV__ !== 'undefined' && __DEV__;
+// (written out at each use, not as a const, so esbuild folds it to false and drops the rules module from a release)
 // Screen-space UI: every text and widget goes through here so we can measure,
 // fit, hit-test, and assert that nothing overlaps.
 //
@@ -88,9 +88,9 @@ export class UI {
   }
 
   begin() {
-    if (DEV) this.guard();
+    if ((typeof __DEV__ !== 'undefined' && __DEV__)) layoutGuard(this); // lint819: rules 1, 2 and 6 once a second on the frame just drawn (dev builds only)
     this.halo = null;
-    if (DEV) this.texts = [];
+    if ((typeof __DEV__ !== 'undefined' && __DEV__)) this.texts = [];
     this.rects.length = 0;
     this.buttons.length = 0;
     this.fr++;
@@ -98,31 +98,13 @@ export class UI {
 
   record(r, tag, group, extra) {
     const q = { ...r, tag, group: group || tag };
-    if (DEV) { q.r0 = { x: r.x, y: r.y, w: r.w, h: r.h }; if (group && group !== tag && !/^btn:/.test(group)) q.set = group; if (extra) Object.assign(q, extra); } // r0: survives a strip's cut (clipRecorded spreads the rect)
+    if ((typeof __DEV__ !== 'undefined' && __DEV__)) { q.r0 = { x: r.x, y: r.y, w: r.w, h: r.h }; if (group && group !== tag && !/^btn:/.test(group)) q.set = group; if (extra) Object.assign(q, extra); } // r0: survives a strip's cut (clipRecorded spreads the rect)
     this.rects.push(q);
     return r;
   }
 
   // lint819: the layout rules (src/ui/layout-rules.js) on this frame's records; o: { rules, screen, flow, play }
-  lint(o) { return DEV ? layoutLint(this, o) : []; }
-
-  // lint819 dev guard: once a second, rules 1, 2 and 6 (on screen, tap size, crowding) on the frame just drawn; one
-  // console.warn per problem not seen before (this.guardOff = true silences it; the QA turns it off)
-  guard() {
-    if (this.guardOff || !this.rects.length || typeof performance === 'undefined') return;
-    const now = performance.now();
-    if (now - (this.guardT || 0) < 1000) return;
-    this.guardT = now;
-    const seen = (this.guardSeen = this.guardSeen || new Set());
-    let f = [];
-    try { f = layoutLint(this, { rules: ['ONSCREEN', 'TAPSIZE', 'CROWD'], screen: this.screen || '' }); } catch (e) { f = [{ rule: 'GUARD', tag: 'error', msg: String(e) }]; }
-    for (const q of f) {
-      const k = q.rule + '|' + q.tag;
-      if (seen.has(k) || seen.size > 400) continue;
-      seen.add(k);
-      console.warn(`[layout] ${q.rule} ${q.tag}: ${q.msg}${this.screen ? ' (' + this.screen + ')' : ''}`);
-    }
-  }
+  lint(o) { return (typeof __DEV__ !== 'undefined' && __DEV__) ? layoutLint(this, o) : []; }
 
   font(size) {
     return `600 ${Math.round(size)}px ${FONT}`;
@@ -182,8 +164,8 @@ export class UI {
     const aNow = ctx.globalAlpha;
     ctx.globalAlpha = this.aBase; // as before the kit: text leaves alpha at the base (1 unless a panel is fading in)
     const r = { x: left, y: top, w, h: size };
-    if (DEV) this.texts.push({ str, tag: o.tag, size, fit: size / size0, cut: str !== str0, a: aNow, x: left, y: top, w, h: size });
-    if (!o.noRecord) this.record(r, o.tag || 'text:' + str, o.group, DEV ? { kind: 'text', size } : null);
+    if ((typeof __DEV__ !== 'undefined' && __DEV__)) this.texts.push({ str, tag: o.tag, size, fit: size / size0, cut: str !== str0, a: aNow, x: left, y: top, w, h: size });
+    if (!o.noRecord) this.record(r, o.tag || 'text:' + str, o.group, (typeof __DEV__ !== 'undefined' && __DEV__) ? { kind: 'text', size } : null);
     return r;
   }
 
@@ -554,7 +536,7 @@ export class UI {
     }
     ctx.restore();
     const r = o.hit || { x, y, w, h }; // o.hit: a larger tap/record rect than the drawn face (segmented rows)
-    this.record(r, 'btn:' + id, 'btn:' + id, DEV ? { ui: 1, kind: 'btn', set: o.group } : null); // o.group (lint819): the row / column it lines up with
+    this.record(r, 'btn:' + id, 'btn:' + id, (typeof __DEV__ !== 'undefined' && __DEV__) ? { ui: 1, kind: 'btn', set: o.group } : null); // o.group (lint819): the row / column it lines up with
     if (!o.disabled) this.buttons.push({ id, ...r });
     return { x, y, w, h, dy, cy };
   }
