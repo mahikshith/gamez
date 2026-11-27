@@ -265,7 +265,9 @@ export const p2Methods = {
     else if (kind === 'spin') {
       // it grips both walls: flung to the outermost channel, dizzy
       const n = this.rings.length, r = this.salMid(n - 1);
-      if (!C.boss && Math.abs(C.rad - r) > 0.2) { for (const q of C.pts) this.salPt(q, q.a, r); C.rad = r; C.climb = null; C.car = -1; this.salCarry(C); }
+      // 0.8.19: laid down whole round that channel behind its head (each point used to keep its own angle: a body across a
+      // ring or in a gap folded onto itself, and the art turned only half of it)
+      if (!C.boss && Math.abs(C.rad - r) > 0.2) { const a = C.pts[0].a, m = C.pts.length; C.pts = []; for (let i = 0; i < m; i++) C.pts.push(this.salPt({}, a - (C.dir * i * 0.05) / r, r)); C.rad = r; C.a = a; C.climb = null; C.car = -1; this.salCarry(C); }
       this.salDaze(C, 1.5 * (C.boss ? 0.6 : 1));
       this.p2Mark(key, 'spin', 1, h.x, h.y);
     } else if (kind === 'out') {

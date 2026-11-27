@@ -12,6 +12,7 @@ import { drawKingEmblem, drawKingBar } from './kingcrab.js'; // world 8 boss
 import { drawOwlBoss, drawOwlRings, drawOwlEmblem, drawOwlBar } from './owl.js'; // v4 the Clockwork Owl
 import { drawGatorEmblem } from './bayou.js'; // v3.7
 import { drawIcicle } from './v3art.js';
+import { drawLavaMark } from './world.js'; // 0.8.19 (aggroB) the volcano's marks
 import { drawMammoth, drawMammothEmblem, MAMMOTH_FOOT } from './mammoth.js'; // world 3 boss: Old Frostbeard
 import { drawMovesRings, drawMovesOver } from './bossmoves.js'; // the variety moves (sim/bossmoves.js)
 import { drawOrb } from './powers.js';
@@ -145,11 +146,8 @@ export function drawBossRings(ctx, sim, k, t) {
       ctx.fill();
       ctx.restore();
     }
-  } else if (A.name === 'rock' || A.name === 'rock2') {
-    for (const s of A.spots || []) {
-      const q = ringPoint(sim, s.ri, s.la, sim.rings[s.ri].r);
-      target(ctx, q.x, q.y, 0.5 - 0.1 * u, '#ffb347', t);
-    }
+  } else if (A.name === 'rock' || A.name === 'rock2' || A.name === 'rock3') {
+    for (const s of A.spots || []) drawLavaMark(ctx, sim, s.ri, s.la, 1.0, 0.33 * u, t, isSpriteCalm()); // 0.8.19 (aggroB): the section the volcano's bomb will make red-hot
   } else if (A.name === 'throw' || A.name === 'throw2') {
     for (const s of A.spots || []) target(ctx, s.x, s.y, 0.45 - 0.08 * u, '#ff4d4d', t, true);
   } else if (A.name === 'fog') {

@@ -6,6 +6,7 @@
 import { Sim, DT, PRED } from '../src/sim/sim.js';
 import { SAL, BRAIN, GECKO, BITE, FACE } from '../src/sim/salamander.js';
 import { THORN } from '../src/sim/thornback.js';
+import { dyn } from '../src/data/dynamism.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
 const deg = (d) => (d * Math.PI) / 180;
@@ -45,16 +46,17 @@ function run(sim, secs, each = () => {}) {
 }
 const first = (evs, type) => { const e = evs.find((x) => x.type === type); return e ? e.at : Infinity; };
 
-// 1. an egg in front: notice at once, breathe at the wall it rests on within 4 s
+// 1. an egg in front: notice at once; close and in line (0.8.19 aggroB) the Tongue Lash's lock-on comes first, else the
+// breath at the wall it rests on, within 4 s
 {
   const sim = fresh();
   const egg = putEgg(sim, 2, -90), C = putSal(sim, 2, -90 - 45, 1);
   const evs = run(sim, 5);
-  const al = evs.find((e) => e.type === 'salAlert'), w = evs.find((e) => e.type === 'salWarn');
+  const al = evs.find((e) => e.type === 'salAlert'), w = evs.find((e) => e.type === 'salWarn' || e.type === 'salLashWarn');
   ok(al && al.at < 0.2 && al.egg === egg, `front: alert at ${al ? al.at.toFixed(2) : '-'} s`);
-  ok(w && w.at < 4, `front: breath telegraph at ${w ? w.at.toFixed(2) : '-'} s`);
+  ok(w && w.at < 4, `front: attack telegraph (${w && w.type}) at ${w ? w.at.toFixed(2) : '-'} s`);
   const p = egg.body.getPosition();
-  ok(w && Math.hypot(w.x - p.x, w.y - p.y) < 0.7 && w.ring === 2, `front: aimed at the egg's wall (${w ? Math.hypot(w.x - p.x, w.y - p.y).toFixed(2) : '-'} m off, ring ${w && w.ring})`);
+  ok(w && (w.type === 'salLashWarn' ? w.egg === egg : Math.hypot(w.x - p.x, w.y - p.y) < 0.7 && w.ring === 2), `front: aimed at the egg (${w && w.type})`);
   ok(evs.filter((e) => e.type === 'salAlert').length === 1, 'front: one alert, not one per step');
   void C;
 }
@@ -66,8 +68,8 @@ const first = (evs, type) => { const e = evs.find((x) => x.type === type); retur
   const evs = run(sim, 6, (t) => { if (C.ph === 'turn') sawTurn = true; if (C.dir === -1 && turned === Infinity) turned = t; });
   ok(first(evs, 'salAlert') < 0.2, 'behind: alert');
   ok(sawTurn && turned < 1.2, `behind: U-turn done at ${turned.toFixed(2)} s`);
-  const w = first(evs, 'salWarn');
-  ok(w < 4, `behind: breath telegraph at ${w.toFixed(2)} s`);
+  const w = Math.min(first(evs, 'salWarn'), first(evs, 'salLashWarn'));
+  ok(w < 4, `behind: attack telegraph at ${w.toFixed(2)} s`);
 }
 // 3. an egg one channel out: it turns toward the gap that leads there and climbs through
 {
@@ -89,7 +91,7 @@ for (const mode of ['easy', 'medium', 'hard']) {
   ok(fires.length >= 3 && gaps.every((g) => Math.abs(g - want) < 0.45), `${mode}: idle breaths every ${gaps.map((g) => g.toFixed(2)).join(', ')} s (about ${want.toFixed(2)})`);
   ok(!evs.some((e) => e.type === 'salAlert'), `${mode}: no egg near, no alert`);
 }
-// 5. Easy: no faster chase; Hard: faster than Medium
+// 5. the chase pace (0.8.19 aggroB): SAL.speed x 1.35 x the dynamism tempo of the mode (data/dynamism.js); Hard > Medium > Easy
 {
   const v = {};
   for (const mode of ['easy', 'medium', 'hard']) {
@@ -97,7 +99,8 @@ for (const mode of ['easy', 'medium', 'hard']) {
     putEgg(sim, 2, -90); const C = putSal(sim, 2, -90 - 100, 1);
     const a0 = C.a; run(sim, 0.5); v[mode] = Math.atan2(Math.sin(C.a - a0), Math.cos(C.a - a0)) * sim.salMid(2) / 0.5;
   }
-  ok(Math.abs(v.easy - SAL.speed) < 0.02 && v.medium > v.easy * 1.25 && v.hard > v.medium, `chase speed easy ${v.easy.toFixed(2)}, medium ${v.medium.toFixed(2)}, hard ${v.hard.toFixed(2)} m/s`);
+  const want = (m) => SAL.speed * 1.35 * dyn('salamander', m).tempo;
+  ok(['easy', 'medium', 'hard'].every((m) => Math.abs(v[m] - want(m)) < 0.02) && v.medium > v.easy && v.hard > v.medium, `chase speed easy ${v.easy.toFixed(2)}, medium ${v.medium.toFixed(2)}, hard ${v.hard.toFixed(2)} m/s`);
 }
 // 7. the frost gecko and a thorn-back use the same brain for their own moves: an egg behind turns them round, then the
 //    gecko licks it frozen and the thorn-back hip-checks it

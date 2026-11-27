@@ -1975,6 +1975,7 @@ export function createBackdrop(theme, seed = 1) {
   const api = {
     theme: th,
     set parallaxYSign(v) { S.ySign = v < 0 ? -1 : 1; },
+    crater() { return S.crater && S.M != null ? [S.crater[0] - S.M, S.crater[1] - S.M] : null; }, // 0.8.19 (aggroB): the volcano's mouth on screen (CSS px), for its bombs
     setParallax(ox = 0, oy = 0) { S.px = ox; S.py = oy; },
     // 0.8.10: the pictures of this backdrop (up to three full-screen layers, the light shafts, the corner framing, the
     // stage) go back to the phone before new ones are painted, and when the level cache lets the backdrop go

@@ -103,6 +103,11 @@ function step(sim, C, S, dt, t) {
       W.rear = 0.2; W.mouth = 0.6;
       if (lose && el > b3 + hit) { W.shake = 1; W.mouth = 1; W.crouch = 0.5; }
     }
+  } else if (C.ph === 'curl') { // (aggroB) spike roll tell: hunker, rattle the thorns, glare at the egg, then tuck in
+    const e = sim.eggs.find((x) => x.id === C.lk), u = 1 - clamp(C.t / (C.dur || 1), 0, 1);
+    if (e && e.alive && !e.saved) { const p = e.body.getPosition(); aim = aimAt(p.x, p.y) * 0.5; }
+    W.crouch = sstep(u / 0.4); W.shake = 0.5 + 0.5 * u; W.angry = 1; W.swell = 0.6; W.mouth = 0.3; look = { x: 1, y: 0 };
+  } else if (C.ph === 'roll' || C.ph === 'uncurl') { W.crouch = 1; W.angry = 1; W.dazed = C.ph === 'uncurl' ? 0.3 : 0;
   } else if (C.ph === 'hip') { // a shoulder shove: crouch, then lunge at the egg
     const el = C.dur - C.t, e = sim.eggs.find((x) => x.id === C.lk);
     if (e && e.alive && !e.saved) { const p = e.body.getPosition(); aim = aimAt(p.x, p.y) * 0.6; }
@@ -159,7 +164,49 @@ function eggLook(sim, sn, hd) {
   return { x: Math.cos(rel), y: Math.sin(rel) };
 }
 // ctx: world space (meters, y up). k: pixels per meter. From drawSalamanders (render/salamander.js) for each thorn-back.
-export function drawThorn20(ctx, sim, C, k, t) {
+// (aggroB) spike roll: 0 = the crawler, 1 = the thorny ball (tucks in over the last part of the curl, opens over the uncurl)
+function ballK(C) {
+  if (C.ph === 'roll') return 1;
+  if (C.ph === 'curl') return sstep((1 - clamp(C.t / (C.dur || 1), 0, 1) - 0.55) / 0.45);
+  if (C.ph === 'uncurl') return 1 - sstep((C.dur - C.t) / (C.dur || 1));
+  return 0;
+}
+function drawThornBall(ctx, sim, C, S, L, bk, alpha, duke, t, calm) {
+  const c = bodyAt(S, 0.3 * L), rb = 0.2 * L * (0.55 + 0.45 * bk), sp = rb * (0.35 + 0.15 * bk), dir = C.dir || 1;
+  const rot = (-dir * S.odo) / Math.max(rb, 0.05), ra = Math.atan2(c.y, c.x);
+  const P = duke ? { lo: '#5e3ea8', base: '#ad8fee', hi: '#d6c4ff', line: '#34165f', sp: '#f1eaff' } : { lo: '#8a5a26', base: '#c79a4e', hi: '#e3bf6e', line: '#5b3513', sp: '#fff3cc' };
+  if (C.ph === 'curl' && C.dur) { // the tell: a dotted lane along his channel to the egg he means to flatten
+    const e = sim.eggs.find((x) => x.id === C.lk);
+    if (e && e.alive && !e.saved) {
+      const p = e.body.getPosition(), r = Math.hypot(c.x, c.y), ea = Math.atan2(p.y, p.x);
+      let da = wrap(ea - ra); if (Math.sign(da) !== Math.sign(dir)) da += dir * TAU;
+      const u = 1 - clamp(C.t / C.dur, 0, 1), n = Math.max(3, Math.round((Math.abs(da) * r) / 0.22));
+      ctx.globalAlpha = alpha * (0.35 + 0.45 * u); ctx.fillStyle = '#ff7a3a';
+      for (let i = 1; i <= n; i++) { if (i / n > u * 1.4) break; const a = ra + (da * i) / n; ctx.beginPath(); ctx.arc(r * Math.cos(a), r * Math.sin(a), 0.035 + 0.02 * (calm ? 0 : Math.sin(t * 10 - i)), 0, TAU); ctx.fill(); }
+    }
+  }
+  if (bk <= 0.01) return;
+  ctx.globalAlpha = alpha * bk;
+  if (C.ph === 'roll' && !calm) { // speed streaks behind the ball
+    ctx.strokeStyle = 'rgba(255,240,200,0.55)'; ctx.lineWidth = 0.03; ctx.lineCap = 'round';
+    const r = Math.hypot(c.x, c.y);
+    for (let i = -1; i <= 1; i++) { const rr = r + i * rb * 0.55, a0 = ra - dir * (rb * 1.1) / r, a1 = a0 - dir * (0.35 + 0.15 * Math.abs(i)) / r; ctx.beginPath(); ctx.arc(0, 0, rr, Math.min(a0, a1), Math.max(a0, a1)); ctx.stroke(); }
+  }
+  ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(rot);
+  ctx.fillStyle = P.sp; ctx.strokeStyle = P.line; ctx.lineWidth = 0.025; ctx.lineJoin = 'round';
+  for (let i = 0; i < 9; i++) { // the thorns, poking out all round
+    const a = (i * TAU) / 9, w = 0.32;
+    ctx.beginPath(); ctx.moveTo(Math.cos(a - w) * rb * 0.9, Math.sin(a - w) * rb * 0.9); ctx.lineTo(Math.cos(a) * (rb + sp), Math.sin(a) * (rb + sp)); ctx.lineTo(Math.cos(a + w) * rb * 0.9, Math.sin(a + w) * rb * 0.9); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  const g = ctx.createRadialGradient(-rb * 0.3, rb * 0.3, rb * 0.1, 0, 0, rb);
+  g.addColorStop(0, P.hi); g.addColorStop(0.6, P.base); g.addColorStop(1, P.lo);
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, rb, 0, TAU); ctx.fill(); ctx.lineWidth = 0.035; ctx.stroke();
+  ctx.strokeStyle = P.lo; ctx.lineWidth = 0.025; // the curled-up tail, a spiral seam
+  ctx.beginPath(); for (let i = 0; i <= 16; i++) { const a = i * 0.45, r = rb * (0.85 - i * 0.045); ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke();
+  ctx.restore();
+}
+
+export function drawThorn20(ctx, sim, C, k, t, calm = false) {
   const S = stateOf(sim, C, t);
   const dt = clamp(t - S.t, 0, 0.05);
   S.t = t;
@@ -184,9 +231,15 @@ export function drawThorn20(ctx, sim, C, k, t) {
   if (S.mk > 0.01 && S.mood) { o.mood = S.mood; o.moodK = S.mk; }
   if (C.ph === 'walk' && !S.wide) { const el2 = eggLook(sim, sn, S.hd); if (el2) o.look = { x: lerp(S.look.x, el2.x, 0.85), y: lerp(S.look.y, el2.y, 0.85) }; }
   if (S.wide) o.blink = 0;
-  ctx.scale(1 / k, -1 / k);
-  drawCrawler(ctx, sn.x * k, -sn.y * k, L * k, frozen ? st.hold : t, o, 'thornback');
-  ctx.scale(k, -k);
+  const bk = ballK(C); // (aggroB) the spike roll: he tucks into a thorny ball, rolls down the channel, opens again
+  if (bk < 0.999) {
+    ctx.globalAlpha = alpha * (1 - bk);
+    ctx.scale(1 / k, -1 / k);
+    drawCrawler(ctx, sn.x * k, -sn.y * k, L * k, frozen ? st.hold : t, o, 'thornback');
+    ctx.scale(k, -k);
+  }
+  if (C.ph === 'curl' || C.ph === 'roll' || C.ph === 'uncurl') drawThornBall(ctx, sim, C, S, L, bk, alpha, duke, t, calm);
+  ctx.globalAlpha = alpha;
   if (C.ph === 'in' && C.dur < 0.7) { // a puff of grit where he squeezes in through the gap
     const f = C.dur / 0.7, n = sim.rings.length, ring = sim.rings[n - 1], ga = ring.body.getAngle() + C.ent.la, r = ring.r + 0.1;
     ctx.globalAlpha = 0.7 * (1 - f); ctx.fillStyle = duke ? '#e6dcff' : '#e8d3a0';

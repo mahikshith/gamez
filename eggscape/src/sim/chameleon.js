@@ -24,6 +24,12 @@ export const CHAM = {
   bumpD: 0.5, bump: 1, bumpV: 0.5, bumpR: 0.5, bumpCD: 2,
 };
 export const BAD_ORBS = new Set(['fire_black', 'curse', 'thorn']);
+// 0.8.19 VANISH (the owner: "it can go completely invisible and show up at a different place"): an orb more than VANISH.far m
+// away: 'fade' (VANISH.fade s: his colour drains to a shimmer), then he crosses unseen at the dyn tempo (only a faint outline
+// and, now and then, his eyes); in sight of the orb: 'pop' (VANISH.pop s: he snaps into full colour right there, crest up),
+// then the lock and the tongue. Anything that reaches him (a power, a strike, a stone egg) shows him at once.
+export const VANISH = { far: 1.2, fade: 0.45, pop: 0.35 };
+const GHOST_OK = new Set(['walk', 'brake', 'turn', 'fade', 'pop']);
 const TRAIL = 0.05;
 
 export const chamMethods = {
@@ -54,6 +60,7 @@ export const chamMethods = {
     if (C.held && C.ph !== 'reel') this.chamDrop(C); // knocked out of a reel: the orb falls free
     if (C.shove) this.salShove(C, dt);
     if (play && C.ph !== 'in' && C.ph !== 'grin' && C.ph !== 'beat' && !(C.bumpCD > 0)) this.chamStone(C);
+    if (C.gh && !GHOST_OK.has(C.ph)) { C.gh = 0; this.emit('chamPop', { x: C.pts[0].x, y: C.pts[0].y, id: C.id, hit: 1 }); } // anything that reaches him shows him
     switch (C.ph) {
       case 'in': { // down through the gap on its centre line (the ring carries him; a shut gap stops him)
         const n = this.rings.length, ring = this.rings[n - 1], g = ring.gaps[C.ent.gi], goal = this.salMid(n - 1);
@@ -73,8 +80,9 @@ export const chamMethods = {
         const o = this.chamPick(C);
         if (!o) { if (C.ph !== 'nap') this.salHalt(C, 'nap', 0); break; }
         if (C.ph === 'nap') { C.dir = this.chamDir(C); this.salSet(C, 'walk'); }
-        if (!C.climb && this.chamSight(C, o)) { C.tg = { type: o.type, x: o.x, y: o.y }; this.salHalt(C, 'lock', CHAM.lock); break; }
-        this.salMove(C, CHAM.speed * dt);
+        if (!C.climb && this.chamSight(C, o)) { C.tg = { type: o.type, x: o.x, y: o.y }; this.salHalt(C, C.gh ? 'pop' : 'lock', C.gh ? VANISH.pop : this.salDyn(C).tell); break; }
+        if (!C.gh && !C.climb && !this.salCrossing(C) && Math.hypot(o.x - C.pts[0].x, o.y - C.pts[0].y) > VANISH.far) { this.salHalt(C, 'fade', VANISH.fade); break; } // 0.8.19: far from it: he vanishes
+        this.salMove(C, CHAM.speed * (C.gh ? this.salDyn(C).tempo : 1) * dt);
         break;
       }
       case 'brake': {
@@ -104,6 +112,8 @@ export const chamMethods = {
         break;
       }
       case 'reel': if ((C.t -= dt) <= 0) this.chamGulp(C); break;
+      case 'fade': if ((C.t -= dt) <= 0) { C.gh = 1; this.salSet(C, 'walk'); } break; // 0.8.19 VANISH: gone (a shimmer, his eyes for a blink)
+      case 'pop': if ((C.t -= dt) <= 0) { C.gh = 0; this.salSet(C, 'lock', this.salDyn(C).tell); } break; // right by the orb, in full colour
       case 'digest': case 'miss': case 'stagger': case 'daze':
         if ((C.t -= dt) <= 0) this.salSet(C, 'walk');
         break;
@@ -191,7 +201,7 @@ export const chamMethods = {
     C.ate = [...(C.ate || []), H.type];
     const bad = BAD_ORBS.has(H.type);
     this.emit('chamGulp', { x: h.x, y: h.y, power: H.type, bad: bad ? 1 : 0, id: C.id });
-    if (!bad) { C.goods = [...(C.goods || []), H]; this.salSet(C, 'digest', CHAM.digest); return; }
+    if (!bad) { C.goods = [...(C.goods || []), H]; this.salSet(C, 'digest', this.salDyn(C).rest); return; } // 0.8.19: was CHAM.digest (5 s)
     // the bait: sick, and the last good orb comes back up
     C.sickT = CHAM.sick;
     const G = C.goods || [];

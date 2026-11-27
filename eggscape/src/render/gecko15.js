@@ -81,6 +81,13 @@ function step(sim, C, B, dt, t) {
     if (e && e.alive && !e.saved) { const p = e.body.getPosition(); aim = aimAt(p.x, p.y) * 0.8; S.lk = { x: p.x, y: p.y }; }
     W.crouch = 0.45 + 0.3 * Math.sin(Math.PI * clamp(el / C.dur, 0, 1)); W.tongue = el > 0.12 ? 1 : 0; W.mouth = 0.6; W.frost = 1;
     look = { x: 1, y: 0 };
+  } else if (C.ph === 'nipWarn' || C.ph === 'nip' || C.ph === 'nipWait') { // 0.8.19 freeze and nip: he rears over the frozen egg, jaws open, then snaps
+    const e = sim.eggs.find((x) => x.id === C.lk && x.alive && !x.saved), u2 = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1;
+    if (e) { const p = e.body.getPosition(); aim = aimAt(p.x, p.y) * 0.9; }
+    if (C.ph === 'nipWarn') { W.rear = 0.65 * sstep(u2 / 0.6); W.mouth = 0.25 + 0.7 * sstep(u2); W.angry = 1; W.frost = 1; W.swell = 0.6 * u2; }
+    else if (C.ph === 'nip') { W.crouch = 0.75 * (1 - u2); W.mouth = u2 < 0.3 ? 1 - u2 / 0.3 : 0; W.angry = 1; W.shake = u2 < 0.3 ? 0.5 : 0; }
+    else { W.crouch = 0.3; W.angry = 0.6; W.tongue = 0.5 * (0.5 + 0.5 * Math.sin(t * 6)); }
+    look = { x: 1, y: 0 };
   } else if (A && (C.ph === 'atk' || C.ph === 'brake')) {
     if (A.name === 'gale') {
       if (warn) { W.crouch = 0.5 * Math.sin(Math.PI * clamp(u / 0.5, 0, 1)); W.rear = 0.75 * sstep((u - 0.3) / 0.4); W.swell = sstep((u - 0.35) / 0.4); W.mouth = 0.15 * W.swell; W.angry = 0.7; }
@@ -277,6 +284,7 @@ export function drawGecko15(ctx, sim, k, t, calm) {
   ctx.scale(k, -k);
   if (acting && A.name === 'icicles') drawFlick(ctx, sim, A, t);
   if (C.ph === 'lick' && S.lk) drawLickFx(ctx, C, t);
+  if (C.ph === 'nipWarn') { const e = sim.eggs.find((x) => x.id === C.lk && x.alive && !x.saved); if (e) { const q = e.body.getPosition(), u2 = clamp(1 - C.t / C.dur, 0, 1), r = 0.6 - 0.2 * sstep(u2); ctx.save(); ctx.lineCap = 'round'; ctx.lineWidth = 0.05 + 0.03 * u2; ctx.strokeStyle = `rgba(120,200,255,${0.55 + 0.45 * u2})`; for (let j = 0; j < 2; j++) { ctx.beginPath(); ctx.arc(q.x, q.y, r, t * 3 + j * Math.PI, t * 3 + j * Math.PI + 1.9); ctx.stroke(); } ctx.restore(); } } // 0.8.19 his lock-on
   if (C.ph === 'in' && C.dur < 0.6) { // a puff of snow where he squeezes through the gap
     const f = C.dur / 0.6, n = sim.rings.length, ring = sim.rings[n - 1], ga = ring.body.getAngle() + C.ent.la, r = ring.r + 0.1;
     ctx.globalAlpha = 0.75 * (1 - f); ctx.fillStyle = '#ffffff';
@@ -325,6 +333,13 @@ export function drawGeckoOver(ctx, sim, k, t) {
     ctx.beginPath(); ctx.arc(-R * 0.35, R * 0.42, R * 0.08, 0, TAU); ctx.fillStyle = '#ffffff'; ctx.fill();
     // a frosty rim of crystals as it ices up
     if (grow < 1) { ctx.globalAlpha = 1 - grow; ctx.fillStyle = '#ffffff'; for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + t; ctx.beginPath(); ctx.arc(Math.cos(a) * R * 1.3, Math.sin(a) * R * 1.3, 0.035, 0, TAU); ctx.fill(); } ctx.globalAlpha = 1; }
+    // 0.8.19 shaken once: big cracks split the block (one more swing the other way bursts it)
+    if (e.iceN >= 1) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.98)'; ctx.lineWidth = Math.max(0.026, 2.4 / k); ctx.lineCap = 'round'; ctx.beginPath();
+      for (let i = 0; i < 5; i++) { const a = (i / 5) * TAU + hash(i + e.id * 5), l = R * 1.02; ctx.moveTo(Math.cos(a) * R * 0.08, Math.sin(a) * R * 0.08); ctx.lineTo(Math.cos(a + 0.25) * l * 0.55, Math.sin(a + 0.25) * l * 0.55); ctx.lineTo(Math.cos(a - 0.1) * l, Math.sin(a - 0.1) * l); }
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(40,110,180,0.7)'; ctx.lineWidth = Math.max(0.012, 1 / k); ctx.stroke();
+    }
     // cracks race over it just before it thaws
     if (end > 0) {
       ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = Math.max(0.015, 1.4 / k); ctx.beginPath();

@@ -36,6 +36,7 @@ import { RING_TH, TAU, wrap, clamp } from './geom.js';
 import { BOSS_MODE, bossPhases } from './boss.js';
 import { thornMethods, THORN } from './thornback.js'; // L20: Duke Quartz and Spike, the thorn-back lizards
 import { chamMethods, CHAM } from './chameleon.js'; // L26: Sly the chameleon, the orb thief
+import { dyn } from '../data/dynamism.js'; // 0.8.19: every villain's temper
 
 export const SAL = {
   svl: 1.8, len: 1.96, // snout to hips (m) and snout to tail tip (units of svl): the art's sizes
@@ -87,8 +88,34 @@ export const SPIT = { warn: 1.0, fly: 0.75, after: 0.6, range: 3.6, minD: 0.7, c
 export const SPIT_M = { easy: { warn: 1.45, cd: 1.35 }, medium: { warn: 1, cd: 1 }, hard: { warn: 0.85, cd: 0.85 } };
 export const FIRE = { t: 6, speed: 1.3, dbl: 2, orbR: 0.62, see: 4.5, gulp: 0.65, cd: 5, sulk: 2.6, burnR: 0.42 };
 export const FIRE_M = { easy: 0.7, medium: 1, hard: 1.15 };
+// 0.8.19 (the owner: "not chasing the eggs ... throwing lava orbs at the eggs is not good enough"). Ember Spit is retired:
+// the fire salamander's own way of taking eggs is its tongue, and it travels between rings through lava.
+// Temper (speed while hunting, rests, tells, the player's window) comes from src/data/dynamism.js (salDyn: the mode, the
+// level's own `dyn`, and the menace director's heat when it is there). Every move that can cost an egg asks the director
+// first (salMay: menaceMay) and reports when it ends (salSet -> menaceDone); refused, it stalks ('stalk') instead.
+// TONGUE LASH: an egg LASH.min .. LASH.reach m from the mouth, in front (LASH.cone), on a straight line that crosses rings only
+//   inside open gaps: 'lash' (the tell, dyn tell s: crouch, throat glow, eyes locked), 'fling' (the tongue flies, LASH.fly s)
+//   and sticks, 'reel' (the egg is pulled toward the mouth at LASH.reelV x the mode's window); at the mouth = the bite (salSnap).
+//   Out of line or reach during the tell or the fling: a clean miss (he blinks, annoyed). While it reels: a ring wall coming
+//   between snaps it; the TUG OF WAR: stretched past LASH.reach + LASH.slack m (turn his ring or the egg's away) it snaps, he
+//   tumbles back and is dazed LASH.tumble s. Stone, rock skin, the feather, a decoy: he strains LASH.strain s, it snaps back,
+//   dazed LASH.ouch s. A burning egg burns the tongue (dazed LASH.burn s). Water douses him. A chick flaps free.
+// LAVA DIVE: a target DIVE.chans or more channels away, or one channel away with the way through more than DIVE.walk m of
+//   walking: 'sink' (a pool glows under him DIVE.glow s, then he slides in), 'under' (DIVE.under s, unseen), 'bubble' (the exit
+//   pool, DIVE.off m from the egg in its channel and riding that ring, bubbles for the whole tell), 'rise'. Then he hunts.
+export const LASH = { min: 0.75, reach: 2.2, cone: 1.25, clear: 0.04, fly: 0.2, reelV: 1.5, acc: 7, slack: 0.5, cd: 2.5, miss: 0.5, strain: 0.5, ouch: 1.2, burn: 1.5, tumble: 1.5, maxReel: 3.2, arrive: 0.5, past: 0.3, jam: 0.25, steady: 6 };
+export const DIVE = { chans: 2, walk: 2.5, sink: 0.55, glow: 0.3, under: 0.4, bubble: 1.7, rise: 0.45, off: 1.6, cd: 8, poolR: 0.45 };
+// THE VOLCANO (sim.js lavaStep, boss.js rock/rock2/rock3): level.lava rocks are the backdrop volcano's bombs. The same seeded
+// targets, VOLC.every x sparser; 'rumble' (VOLC.rumble s: the mountain rumbles and puffs, the target section is marked) then a
+// high arc (VOLC.fly s) onto the marked section, which turns red-hot by the salamander's hot rule (VOLC.len m), then melts
+// through as before. The salamander boss calls the volleys (he rears and roars at the mountain through the boss's warn).
+export const VOLC = { every: 1.5, rumble: 0.6, fly: 1.2, len: 1.0, x: 0.55, y: 4 };
+export const STALK = { t: 0.5, v: 0.12 }; // refused by the director: it creeps closer, eyes on the egg, and asks again
+export const SHAKE = { deg: 10 }; // a frozen egg: two swings of its ring (the second the other way) crack the ice, then burst it
+// the phases that belong to a costly move (the director's token is held through them)
+const HOLD = new Set(['brake', 'lash', 'fling', 'reel', 'strain', 'coil', 'warn', 'fire', 'settle', 'nipWarn', 'curl', 'roll', 'hip']);
 // phases in which a crawler looks about for eggs
-const SENSE = new Set(['walk', 'brake', 'turn', 'warn', 'fire', 'settle', 'rest', 'block', 'lick', 'hip', 'drop', 'gloat', 'spitWarn', 'spit', 'gulp']);
+const SENSE = new Set(['walk', 'brake', 'turn', 'warn', 'fire', 'settle', 'rest', 'block', 'lick', 'hip', 'drop', 'gloat', 'spitWarn', 'spit', 'gulp', 'stalk', 'rise', 'nipWait']);
 // The frost gecko (species 'gecko': Baron von Brr, the level-15 boss; level.bossFight.gecko {delay, dir}). The same crawler,
 // a little slower, with no fire: he crawls in through a gap of the outer ring, hunts the leading egg, and the
 // level's blizzard attacks (sim/boss.js gale, freeze, icicles) come from him. Icy feet: the floor he walked on stays icy
@@ -130,6 +157,9 @@ export const salMethods = {
         kind: P.kind === 'frost' && !P.gecko && !P.cham && !P.thorn ? 'frost' : '', bj: -1, bcd: 0, ate: 0, fid: -1, fcd: 0, fv: 0, // the bite (BITE), the face-off (FACE)
         spit: P.spit ? (P.spit > 0 ? +P.spit : 1) : 0, scd: SPIT.first * (P.spit > 1 ? P.spit : 1), sj: -1, sx: 0, sy: 0, miff: 0, // 0.8.18 ember spit (SPIT): on, cooldown, target egg, aim point, s miffed
         fu: P.fireup ? 1 : 0, wh: 0, whD: 1, fuCD: 0, dbl: 0, sulk: 0, og: 0, gk: 0, // fire-up (FIRE): on, s white-hot (of whD), cooldown, double breath, s sulking, wants an orb
+        // 0.8.19: the tongue (LASH: target egg, s cooldown, 0..1 out, 0..1 tension, m at the stick), the dive (DIVE: s cooldown, exit
+        // channel, ring, ring-local angle), the director's token (move name, an egg taken), the chameleon's vanish, the thorn-back's roll
+        lj: -1, lcd: 1.5, lk: 0, ls: 0, lgR: -1, lgA: 0, lgS: 0, lw: 0, dcd: 3, dvC: 0, dvR: 0, dvL: 0, tok: '', tokT: 0, gh: 0, rcd: 2, rl: 0, rv2: 0,
       });
     });
   },
@@ -141,6 +171,31 @@ export const salMethods = {
   salBodyLen(C) { return SAL.len * SAL.svl * C.size; },
   salHead(C) { return C.pts[0] || { x: C.rad * Math.cos(C.a), y: C.rad * Math.sin(C.a) }; },
   salLive(C) { return C.ph !== 'wait' && C.ph !== 'gone' && C.pts.length > 1; },
+  salHidden(C) { return C.ph === 'under' || C.ph === 'bubble'; }, // 0.8.19 lava dive: in the lava, nothing reaches it
+  // ---------- 0.8.19 temper (src/data/dynamism.js) and the menace director (sim/menace.js, when it is there)
+  salDynKind(C) { return C.sp === 'sal' ? (C.kind === 'frost' ? 'salFrost' : 'salamander') : C.sp; },
+  salDyn(C) {
+    const k = this.salDynKind(C), key = '_dyn_' + k;
+    const base = this[key] || (this[key] = dyn(k, this.mode, this.level.dyn && this.level.dyn[k]));
+    const h = this.menaceHeat ? this.menaceHeat() : 1;
+    return h === 1 ? base : { ...base, tempo: base.tempo * h, rest: base.rest / h };
+  },
+  salMay(C, move) {
+    if (!(this.menaceMay ? this.menaceMay('c' + C.id, move) : true)) return false;
+    C.tok = move; C.tokT = 0;
+    return true;
+  },
+  // the ring the player is turning under it (the director's record when it is there, else the ring's own spin): -1, 0, +1
+  salTurned(ri) {
+    if (ri < 0 || !this.rings[ri]) return 0;
+    if (this.menaceTurned) { const r = this.menaceTurned(ri); return typeof r === 'number' ? Math.sign(r) : r ? 1 : 0; }
+    const w = this.rings[ri].body.getAngularVelocity();
+    return Math.abs(w) > 0.6 ? Math.sign(w) : 0;
+  },
+  salMouth(C) {
+    const h = C.pts[0], q = C.pts[Math.min(C.pts.length - 1, 6)], dx = h.x - q.x, dy = h.y - q.y, l = Math.hypot(dx, dy) || 1, f = 0.16 * C.size;
+    return { x: h.x + (dx / l) * f, y: h.y + (dy / l) * f, hx: dx / l, hy: dy / l };
+  },
   salPt(q, a, r) { q.a = a; q.r = r; q.x = r * Math.cos(a); q.y = r * Math.sin(a); return q; },
   salCh(C) { return clamp(this.chAt(C.rad), 1, this.rings.length - 1); },
 
@@ -179,6 +234,7 @@ export const salMethods = {
     if (!this.sals || !this.sals.length) return;
     this.salHotStep(dt);
     for (const C of this.sals) this.salOne(C, dt, true);
+    this.salIceStep(dt); // 0.8.19 shaken free, thawed by fire
     this.salHeat();
     this.salEmberStep(dt, true); this.salPoolStep(dt, true);
   },
@@ -211,9 +267,10 @@ export const salMethods = {
 
   salOne(C, dt, play) {
     if (C.ph === 'gone' || C.ph === 'warp') return; // v3.4: 'warp' = inside a warp gate (sim/warp.js moves it)
+    if (C.tok) this.salTokBack(C); // (a phase set directly: sneezed out, the level over)
     if (C.ph === 'wait') { if (play && (C.t -= dt) <= 0) this.salEnter(C); return; }
     this.salCarry(C);
-    for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD', 'bored', 'tcd', 'alT', 'bcd', 'fcd', 'scd', 'fuCD', 'miff', 'sulk']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
+    for (const k of ['wetCD', 'rivalCD', 'climbCD', 'charge', 'lavaCD', 'bored', 'tcd', 'alT', 'bcd', 'fcd', 'scd', 'fuCD', 'miff', 'sulk', 'lcd', 'dcd', 'rcd']) if (C[k] > 0) C[k] = Math.max(0, C[k] - dt);
     C.brT = Math.min(99, C.brT + dt);
     if (play && C.sp !== 'chameleon') { if (SENSE.has(C.ph)) this.salSense(C, dt); else if (C.ht < 0) C.htT = Math.min(99, C.htT + dt); }
     if (C.sp === 'gecko') { this.geckoOne(C, dt, play); return; }
@@ -224,7 +281,7 @@ export const salMethods = {
     if (C.shove) this.salShove(C, dt);
     if (play) {
       if (C.boss) this.salBossSync(C);
-      if (C.cool <= 0 && C.wetCD <= 0 && C.ph !== 'in') this.salWater(C);
+      if (C.cool <= 0 && C.wetCD <= 0 && C.ph !== 'in' && C.ph !== 'sink' && !this.salHidden(C)) this.salWater(C);
       if ((C.ph === 'walk' || C.ph === 'brake' && C.pend === 'warn') && C.rivalCD <= 0) this.salRivalCheck(C);
       if ((C.ph === 'walk' || C.ph === 'brake' && (C.pend === 'warn' || C.pend === 'coil')) && C.fcd <= 0 && C.cool <= 0) this.salFaceCheck(C);
     }
@@ -233,7 +290,7 @@ export const salMethods = {
       case 'walk': {
         if (play && C.cool <= 0 && C.bcd <= 0 && !C.climb) { // an egg at its snout: coil, then snap (BITE)
           const e = this.salBiteAt(C);
-          if (e) { C.bj = e.id; this.salHalt(C, 'coil', BITE.coil * this.PM.warn); break; }
+          if (e) { if (this.salMay(C, 'bite')) { C.bj = e.id; this.salHalt(C, 'coil', BITE.coil * this.PM.warn); } else this.salStalk(C); break; }
         }
         C.og = 0;
         if (play && this.salFuOK(C)) { // FIRE: greedy for a flame orb in its channel; one at the snout is gulped; lava under it fires it up at once
@@ -246,24 +303,56 @@ export const salMethods = {
             }
           }
         }
-        if (play && C.cool <= 0 && !C.og && !C.climb && this.salSpitReady(C) && !this.salCrossing(C)) { // SPIT: an egg in a neighbour channel, a line through a gap
-          const S = this.salSpitAt(C);
-          if (S) { C.sj = S.e.id; C.sx = S.x; C.sy = S.y; this.salHalt(C, 'spitWarn', SPIT.warn * this.salSpitM().warn); break; }
+        // 0.8.19 the player turned the ring it rides while it hunts: it re-plans at once (a U-turn, a climb, a dive)
+        if (play && C.ht >= 0 && !C.og && this.salTurned(C.car)) { C.tcd = Math.min(C.tcd, 0.2); C.climbCD = Math.min(C.climbCD, 0.3); }
+        if (play && C.cool <= 0 && !C.og && !C.climb && this.salDiveReady(C)) { // DIVE: the egg is far: through the lava
+          const X = this.salDiveAt(C);
+          if (X) { C.dvC = X.ce; C.dvR = X.ri; C.dvL = X.la; this.salHalt(C, 'sink', DIVE.sink); break; }
+        }
+        if (play && C.cool <= 0 && !C.og && !C.climb && this.salLashReady(C) && !this.salCrossing(C)) { // LASH: an egg in line and in reach
+          const e = this.salLashAt(C);
+          if (e) { if (this.salMay(C, 'lash')) { C.lj = e.id; C.lk = 0; C.ls = 0; this.salHalt(C, 'lash', this.salDyn(C).tell); } else this.salStalk(C); break; }
         }
         if (play && C.cool <= 0 && !C.boss && C.bored <= 0 && C.brT >= this.PM.salGap && !C.climb && !this.salCrossing(C)) { // an egg by a wall just ahead: breathe at it
           const S = this.salStrikeAt(C);
-          if (S) { C.tw = S.w; C.jet = S.jet; C.jk = S.id; this.salHalt(C, 'warn', SAL.warn * this.PM.warn); break; }
+          if (S && this.salMay(C, 'breath')) { C.tw = S.w; C.jet = S.jet; C.jk = S.id; this.salHalt(C, 'warn', SAL.warn * this.PM.warn); break; }
         }
         if (play && C.cool <= 0 && (C.next -= dt) <= 0 && !C.climb && !this.salCrossing(C)) {
           C.jet = 0; C.jk = -1;
           C.tw = this.salPickWall(C);
-          this.salHalt(C, 'warn', SAL.warn * this.PM.warn);
-          break;
+          if (!this.salBreathNear(C) || this.salMay(C, 'breath')) { this.salHalt(C, 'warn', SAL.warn * this.PM.warn); break; }
+          C.next = 1; // an egg by that wall and the director says not now: it walks on and breathes later
         }
         if (play && C.cool <= 0 && (C.bored <= 0 || C.og) && this.salChase(C)) break;
         this.salMove(C, SAL.speed * Math.sqrt(this.salRank(C)) * this.salPace(C) * (C.wh > 0 ? FIRE.speed : 1) * dt);
         break;
       }
+      // ---- 0.8.19 refused by the director: it creeps closer, eyes on its egg, then asks again
+      case 'stalk':
+        if (play && !this.salBiteAt(C)) this.salMove(C, STALK.v * C.size * dt, true);
+        if ((C.t -= dt) <= 0) this.salSet(C, 'walk');
+        break;
+      // ---- 0.8.19 TONGUE LASH (LASH)
+      case 'lash': { // the tell: crouched, throat aglow, eyes locked on the egg
+        const e = this.salLashEgg(C);
+        if (!e || !this.salLashLine(C, e, LASH.reach + 0.25)) { this.salLashMiss(C, 'tell'); break; }
+        if ((C.t -= dt) <= 0) { C.lk = 0; this.salSet(C, 'fling', LASH.fly); }
+        break;
+      }
+      case 'fling': { // the tongue flies
+        const e = this.salLashEgg(C);
+        C.lk = clamp(1 - C.t / C.dur, 0, 1);
+        if (!e || !this.salLashLine(C, e, LASH.reach + 0.35)) { this.salLashMiss(C, 'fly'); break; }
+        if ((C.t -= dt) <= 0) this.salLashStick(C, e);
+        break;
+      }
+      case 'reel': if (play) this.salReelStep(C, dt); break;
+      case 'strain': if ((C.t -= dt) <= 0) this.salLashSnap(C, 'stone'); break; // a stone egg: it pulls and pulls, then the tongue snaps back
+      // ---- 0.8.19 LAVA DIVE (DIVE)
+      case 'sink': if ((C.t -= dt) <= 0) this.salSet(C, 'under', DIVE.under); break;
+      case 'under': if ((C.t -= dt) <= 0) this.salSet(C, 'bubble', this.salDyn(C).tell * DIVE.bubble); break;
+      case 'bubble': if ((C.t -= dt) <= 0) this.salDiveRise(C); break;
+      case 'rise': if ((C.t -= dt) <= 0) { C.dcd = DIVE.cd / (this.menaceHeat ? this.menaceHeat() : 1); C.lcd = Math.min(C.lcd, 0.3); C.tcd = 0; this.salSet(C, 'walk'); } break;
       case 'spitWarn': // SPIT: rear, cheeks puff, the fuse runs down his back; his eye stays on the egg
         if (play) this.salSpitAim(C);
         if ((C.t -= dt) <= 0) { if (play) this.salSpitLaunch(C); this.salSet(C, 'spit', SPIT.after); }
@@ -285,11 +374,11 @@ export const salMethods = {
         if ((C.t -= dt) <= 0) this.salSet(C, 'settle', SAL.settle);
         break;
       case 'settle':
-        if ((C.t -= dt) <= 0) { if (C.jet > 0) C.bored = BRAIN.sated; // an aimed breath: it walks on for a while (no camping on one egg)
+        if ((C.t -= dt) <= 0) { if (C.jet > 0) C.bored = this.salDyn(C).rest; // an aimed breath: it walks on a moment (0.8.19: the dyn rest, was 3 s)
           C.next = C.jet > 0 ? Math.max(C.next, this.salEvery(C) * 0.5) : this.salEvery(C); C.jet = 0; C.jk = -1; this.salSet(C, 'walk'); }
         break;
       case 'coil': if ((C.t -= dt) <= 0) this.salSnap(C); break;
-      case 'chew': if ((C.t -= dt) <= 0) { C.bored = BITE.full; C.bcd = BITE.full; C.next = Math.max(C.next, 2); this.salSet(C, 'walk'); } break;
+      case 'chew': if ((C.t -= dt) <= 0) { C.bored = C.bcd = Math.max(1.2, 2 * this.salDyn(C).rest); /* 0.8.19: was BITE.full */ C.next = Math.max(C.next, 2); this.salSet(C, 'walk'); } break;
       case 'miss': if ((C.t -= dt) <= 0) { C.bcd = BITE.cd; this.salSet(C, 'walk'); } break;
       case 'face': this.salFaceStep(C, dt, play); break;
       case 'hiss': if ((C.t -= dt) <= 0) { C.back = SAL.coolBack * C.size; this.salSet(C, 'retreat'); } break;
@@ -299,6 +388,7 @@ export const salMethods = {
         if ((C.back -= d) <= 1e-6) { C.back = 0; if (C.cool > 0) this.salHalt(C, 'rest', 0); else this.salSet(C, 'walk'); }
         break;
       }
+      case 'roar': if ((C.t -= dt) <= 0) this.salSet(C, 'walk'); break; // 0.8.19 the boss calls the volcano's volley
       case 'rest': if ((C.t -= dt) <= 0 && C.cool <= 0) { C.next = Math.max(C.next, 1.5); this.salSet(C, 'walk'); } break;
       case 'rival': this.salRivalStep(C, dt); break;
       case 'daze': if ((C.t -= dt) <= 0) { C.next = Math.max(C.next, 1.5); this.salSet(C, 'walk'); } break;
@@ -312,13 +402,30 @@ export const salMethods = {
     }
   },
 
+  // the director's token goes back when its move is over (any phase that is not part of a costly move), with "an egg taken"
+  salTokBack(C) {
+    if (!C.tok || HOLD.has(C.ph)) return;
+    const m = C.tok, took = C.tokT;
+    C.tok = ''; C.tokT = 0;
+    if (this.menaceDone) this.menaceDone('c' + C.id, m, !!took);
+  },
   salSet(C, ph, t = 0) {
     C.ph = ph; C.t = C.dur = t; C.pend = null;
+    this.salTokBack(C);
     C.mv = ph === 'retreat' ? -1 : 1;
     if (ph === 'turn') { C.ut = C.rad <= this.salMid(this.salCh(C)) ? 1 : -1; C.uA = C.a; C.uR = C.rad; C.uD = C.dir; C.climb = null; }
     if (ph === 'warn' && C.jet > 0) this.salAim(C);
     if (ph === 'coil') { const e = this.salBiteEgg(C), h = C.pts[0], p = e ? e.body.getPosition() : h; this.emit('salCoil', { x: h.x, y: h.y, ex: p.x, ey: p.y, id: C.id, egg: e, frost: C.kind === 'frost' }); }
     if (ph === 'warn') { const T = this.salTarget(C), h = C.pts[0]; this.emit('salWarn', { x: T.x, y: T.y, hx: h.x, hy: h.y, ring: T.ri, id: C.id }); }
+    if (ph === 'lash' || ph === 'fling') { // 0.8.19 LASH: the tell (lash) and the tongue's flight (fling): mouth, the egg
+      const e = this.salLashEgg(C), M = this.salMouth(C), p = e ? e.body.getPosition() : M;
+      this.emit(ph === 'lash' ? 'salLashWarn' : 'salLashFling', { x: p.x, y: p.y, hx: M.x, hy: M.y, id: C.id, egg: e, t });
+    }
+    if (ph === 'fade' || ph === 'pop') { const h = C.pts[0], o = C.tg; this.emit(ph === 'fade' ? 'chamFade' : 'chamPop', { x: h.x, y: h.y, id: C.id, ox: o ? o.x : h.x, oy: o ? o.y : h.y }); } // 0.8.19 VANISH
+    if (ph === 'sink' || ph === 'bubble') { // 0.8.19 DIVE: where it goes down (x, y) and the exit pool (ex, ey)
+      const h = C.pts[0], P = this.salDivePt(C);
+      this.emit(ph === 'sink' ? 'salDiveWarn' : 'salDiveBubble', { x: h.x, y: h.y, ex: P.x, ey: P.y, id: C.id, t, egg: this.salTargetEgg(C) });
+    }
     if (ph === 'spitWarn') { // SPIT: x, y = where its line crosses the ring between (the gap a turn of that ring takes away)
       const h = C.pts[0], q = this.salCross(h.x, h.y, C.sx, C.sy)[0] || { x: (h.x + C.sx) / 2, y: (h.y + C.sy) / 2, ri: -1 };
       this.emit('salSpitWarn', { x: q.x, y: q.y, ring: q.ri, hx: h.x, hy: h.y, tx: C.sx, ty: C.sy, id: C.id });
@@ -447,9 +554,14 @@ export const salMethods = {
       d -= s;
       if (l - s > 1e-4) { const f = s / l; this.salPt(h, h.a + wrap(q.a - h.a) * f, h.r + (q.r - h.r) * f); continue; }
       T.shift();
-      const z = T[T.length - 1], y = T[T.length - 2], da = wrap(z.a - y.a), n = this.rings.length, c = clamp(this.chAt(z.r), 1, n - 1);
+      const z = T[T.length - 1], y = T[T.length - 2], n = this.rings.length, c = clamp(this.chAt(z.r), 1, n - 1);
       const dr = clamp(this.salMid(c) - z.r, -SAL.trail * 0.7, SAL.trail * 0.7), r = z.r + dr;
-      T.push(this.salPt({}, z.a + Math.sign(da || -C.dir) * Math.sqrt(SAL.trail * SAL.trail - dr * dr) / Math.max(r, 0.3), r));
+      // 0.8.19 (the Twister bug: "half of the body stayed, the other half went for a spin"): the tail grows on round the
+      // channel the way the body already runs from head to tail. It used to follow only the last step, and a tail that
+      // came in radially through a gap (no way round at all) grew back toward the head: the body folded in half.
+      let da = wrap(z.a - y.a);
+      if (Math.abs(da) * Math.max(z.r, 0.3) < SAL.trail * 0.4) da = wrap(z.a - T[0].a) || -C.dir;
+      T.push(this.salPt({}, z.a + Math.sign(da) * Math.sqrt(SAL.trail * SAL.trail - dr * dr) / Math.max(r, 0.3), r));
     }
     C.rad = T[0].r; C.a = T[0].a;
   },
@@ -495,7 +607,8 @@ export const salMethods = {
   },
   salTargetEgg(C) { return C.ht >= 0 ? this.eggs.find((x) => x.id === C.ht && x.alive && !x.saved) || null : null; },
   // walk speed factor: PRED.chase while it has a target (not the boss: its pace stays with the fight's rhythm)
-  salPace(C) { return C.ht >= 0 && !C.boss && !(C.bored > 0) ? this.PM.chase || 1 : 1; },
+  // 0.8.19: today's Medium hunting pace (1.35) x the dyn tempo (mode, level, the director's heat)
+  salPace(C) { return C.ht >= 0 && !C.boss && !(C.bored > 0) ? 1.35 * this.salDyn(C).tempo : 1; },
   // which way to go for its target: the shorter way round in its channel, or toward the gap that leads to the target's
   // channel. A target behind it: halt (all four feet down) and U-turn. true = it changed phase.
   salChase(C) {
@@ -533,7 +646,7 @@ export const salMethods = {
     C.a = wrap(C.uA + (C.uD * along) / Math.max(0.5, C.uR));
     C.odo += Math.hypot(C.rad - r0, wrap(C.a - a0) * Math.max(0.5, C.rad));
     this.geckoTrail(C);
-    if (C.t <= 0) { C.dir = -C.uD; C.tcd = BRAIN.turnCD; this.salSet(C, 'walk'); }
+    if (C.t <= 0) { C.dir = -C.uD; C.tcd = BRAIN.turnCD * (C.sp === 'thornback' ? 1 : 1.5 - this.salDyn(C).chase); this.salSet(C, 'walk'); } // 0.8.19: a keen chaser turns again sooner
   },
   // an egg by either wall of its channel, ahead of the snout within breath range: {w: the wall (0 inner, 1 outer), jet: m ahead, id}
   salStrikeAt(C) {
@@ -554,6 +667,166 @@ export const salMethods = {
     if (!e) return;
     const h = C.pts[0], p = e.body.getPosition(), hr = Math.max(0.5, Math.hypot(h.x, h.y)), ahead = wrap(Math.atan2(p.y, p.x) - Math.atan2(h.y, h.x)) * hr * C.dir;
     C.jet = clamp(ahead, 0.35, BRAIN.reach);
+  },
+
+  // ---------- 0.8.19 refused by the director: stalk a moment (creeping closer, eyes on the egg), then ask again
+  salStalk(C) { this.salHalt(C, 'stalk', STALK.t); },
+  // an egg by the wall its idle breath is about to heat (then the breath is a costly move)
+  salBreathNear(C) {
+    const T = this.salTarget(C);
+    return this.aliveEggs().some((e) => { const p = e.body.getPosition(); return Math.hypot(p.x - T.x, p.y - T.y) < this.salHotLen(C) / 2 + 0.6; });
+  },
+
+  // ---------- 0.8.19 TONGUE LASH (LASH)
+  salLashReady(C) {
+    if (C.lcd > 0 || C.sp !== 'sal' || C.kind === 'frost') return false;
+    if (!C.boss) return true;
+    const B = this.bx && this.bx.boss;
+    return this.salPw(C, 'spit') && !(B && B.atk); // the boss: in the phases that had the spit, never over one of its own attacks
+  },
+  salLashEgg(C) { return C.lj >= 0 ? this.eggs.find((x) => x.id === C.lj && x.alive && !x.saved) || null : null; },
+  // every ring between the mouth and the egg is open where the line crosses it
+  salLashOpen(M, p) {
+    return this.salCross(M.x, M.y, p.x, p.y).every((q) => { const ring = this.rings[q.ri]; return this.salOpenAt(ring, mod(Math.atan2(q.y, q.x) - ring.body.getAngle(), TAU), LASH.clear); });
+  },
+  salLashLine(C, e, maxD) {
+    const M = this.salMouth(C), p = e.body.getPosition();
+    return Math.hypot(p.x - M.x, p.y - M.y) <= maxD && this.salLashOpen(M, p);
+  },
+  // the nearest egg in front of the mouth, LASH.min .. LASH.reach m, with a clear line
+  salLashAt(C) {
+    const M = this.salMouth(C), hd = Math.atan2(M.hy, M.hx);
+    let best = null, bd = 1e9;
+    for (const e of this.aliveEggs()) {
+      if (!this.salPreyOK(C, e) || e.icy > 0 || e.honey > 0) continue;
+      const p = e.body.getPosition(), d = Math.hypot(p.x - M.x, p.y - M.y);
+      if (d < LASH.min || d > LASH.reach || Math.abs(wrap(Math.atan2(p.y - M.y, p.x - M.x) - hd)) > LASH.cone) continue;
+      if (!this.salLashOpen(M, p)) continue;
+      const sc = d + (e.water > 0 ? 1.5 : 0); // it would rather not lick a water egg (it still will, and pays for it)
+      if (sc >= bd) continue;
+      bd = sc; best = e;
+    }
+    return best;
+  },
+  // the tongue arrives: it sticks (and reels), or the egg is something it cannot take
+  salLashStick(C, e) {
+    const p = e.body.getPosition(), M = this.salMouth(C);
+    C.lk = 1;
+    if (e.water > 0) { this.salQuell(C, p.x, p.y); return; } // a mouthful of water
+    if (e.fire > 0) { this.salDaze(C, LASH.burn, 'burn'); C.lj = -1; C.lcd = LASH.cd; this.emit('salLashBurn', { x: p.x, y: p.y, hx: M.x, hy: M.y, id: C.id, egg: e }); return; }
+    if (e.chick) { this.chickFlee(e, 'snake'); this.salLashMiss(C, 'chick'); return; }
+    if (this.armored(e)) { this.salSet(C, 'strain', LASH.strain); this.emit('salLashStrain', { x: p.x, y: p.y, hx: M.x, hy: M.y, id: C.id, egg: e }); return; }
+    C.ls = 0;
+    C.lgR = -1; C.lw = 0;
+    this.salSet(C, 'reel', LASH.maxReel);
+    this.emit('salLashStick', { x: p.x, y: p.y, hx: M.x, hy: M.y, id: C.id, egg: e });
+  },
+  salReelK(C) { return dyn('salamander', 'medium').snatch / this.salDyn(C).snatch; }, // the mode's window: a slower reel on Easy
+  // reeling: the egg is pulled toward the mouth; a wall between, or the tongue stretched too far (the tug of war), snaps it
+  salReelStep(C, dt) {
+    const e = this.salLashEgg(C);
+    if (!e || e.icy > 0 || e.hold) { this.salLashSnap(C, 'lost'); return; }
+    const M = this.salMouth(C), p = e.body.getPosition(), dx = M.x - p.x, dy = M.y - p.y, d = Math.hypot(dx, dy) || 1e-6, top = LASH.reach + LASH.slack;
+    C.ls = clamp((d - LASH.reach * 0.55) / (top - LASH.reach * 0.55), 0, 1);
+    if (d > top) { this.salLashTug(C, p); return; }
+    // through a gap: the tongue drags the egg to the gap it went through (fixed where it was when it stuck) and on through,
+    // then on to the mouth. The gap turned away (or a wall in the straight line) for LASH.jam s: it lets go
+    const pr = Math.hypot(p.x, p.y);
+    if (C.lgR >= 0 && (Math.sign(pr - this.rings[C.lgR].r) !== C.lgS && Math.abs(pr - this.rings[C.lgR].r) > LASH.past)) C.lgR = -1;
+    if (C.lgR < 0) { const X = this.salCross(M.x, M.y, p.x, p.y), q = X[X.length - 1]; if (q) { C.lgR = q.ri; C.lgA = Math.atan2(q.y, q.x); C.lgS = Math.sign(pr - this.rings[q.ri].r) || 1; } }
+    let tx = M.x, ty = M.y, open;
+    if (C.lgR >= 0) {
+      const ring = this.rings[C.lgR], r = ring.r - C.lgS * (LASH.past + 0.1);
+      open = this.salOpenAt(ring, mod(C.lgA - ring.body.getAngle(), TAU), LASH.clear);
+      tx = r * Math.cos(C.lgA); ty = r * Math.sin(C.lgA);
+    } else open = this.salLashOpen(M, p);
+    C.lw = open ? 0 : C.lw + dt;
+    if (C.lw > LASH.jam) { this.salLashSnap(C, 'wall'); return; }
+    const bd = this.salBiteDist(C, e);
+    if (bd >= 0 && bd < BITE.reach * Math.max(0.9, this.salRank(C))) { C.bj = e.id; C.lj = -1; C.lk = 0; this.salSnap(C); return; } // at the mouth: the bite
+    const gx = tx - p.x, gy = ty - p.y, gd = Math.hypot(gx, gy) || 1e-6, ux = gx / gd, uy = gy / gd, v = e.body.getLinearVelocity(), va = v.x * ux + v.y * uy, want = LASH.reelV * this.salReelK(C) * this.vs;
+    // the tongue holds the egg up (gravity cancelled), steadies it on the line (sideways speed damped) and pulls it along
+    const dv = va < want ? Math.min(want - va, LASH.acc * dt) : 0, vy = v.y + this.g * dt, vp = 1 - Math.min(1, LASH.steady * dt);
+    const pa = v.x * ux + vy * uy, px = v.x - ux * pa, py = vy - uy * pa;
+    e.body.setLinearVelocity(Vec2(ux * (pa + dv) + px * vp, uy * (pa + dv) + py * vp)); e.body.setAwake(true);
+    if ((C.t -= dt) <= 0) this.salLashSnap(C, 'slip');
+  },
+  // a clean miss (out of line or reach before it stuck): he blinks, annoyed
+  salLashMiss(C, why) {
+    const M = this.salMouth(C);
+    C.lj = -1; C.lk = 0; C.ls = 0; C.lcd = LASH.cd * 0.6;
+    this.salSet(C, 'miss', LASH.miss);
+    this.emit('salLashMiss', { x: M.x, y: M.y, id: C.id, why });
+  },
+  // the tongue lets go mid-reel: a wall came between, the egg was lost, or (stone) it could not budge it
+  salLashSnap(C, why) {
+    const M = this.salMouth(C), e = this.salLashEgg(C), p = e ? e.body.getPosition() : M;
+    C.lj = -1; C.lk = 0; C.ls = 0; C.lcd = LASH.cd;
+    if (why === 'stone') { this.salDaze(C, LASH.ouch * this.PM.back, 'ouch'); C.dk = 'ouch'; }
+    else this.salSet(C, 'miss', LASH.miss);
+    this.emit('salLashSnap', { x: p.x, y: p.y, hx: M.x, hy: M.y, id: C.id, why });
+  },
+  // the tug of war won by the player: stretched past its length, it snaps and he tumbles back, dazed
+  salLashTug(C, p) {
+    const M = this.salMouth(C);
+    C.lj = -1; C.lk = 0; C.ls = 0; C.lcd = LASH.cd;
+    C.shove -= C.dir * 0.4;
+    this.salDaze(C, LASH.tumble, 'tug');
+    this.emit('salLashSnap', { x: p.x, y: p.y, hx: M.x, hy: M.y, id: C.id, why: 'tug' });
+  },
+
+  // ---------- 0.8.19 LAVA DIVE (DIVE)
+  salDiveReady(C) {
+    if (C.dcd > 0 || C.sp !== 'sal' || C.kind === 'frost' || C.ht < 0 || this.salCrossing(C)) return false;
+    const B = C.boss && this.bx && this.bx.boss;
+    return !(B && B.atk);
+  },
+  // m of walking from the head to the nearest way through the ring toward channel ce
+  salWayLen(C, ce) {
+    const hc = this.salCh(C), ring = this.rings[ce > hc ? hc : hc - 1], ra = ring.body.getAngle(), h = C.pts[0], ha = Math.atan2(h.y, h.x), hr = Math.max(0.5, Math.hypot(h.x, h.y));
+    let best = Infinity;
+    for (const g of ring.gaps) if (this.snakeGap(g) && g.len >= 0.6) best = Math.min(best, Math.abs(wrap(ra + g.a - ha)) * hr);
+    for (const q of this.salHoles(ring)) if (q.len >= 0.6) best = Math.min(best, Math.abs(wrap(ra + q.a - ha)) * hr);
+    return best;
+  },
+  salDiveAt(C) {
+    const e = this.salTargetEgg(C), n = this.rings.length;
+    if (!e) return null;
+    const hc = this.salCh(C), ce = this.channelOf(e);
+    if (ce < 1 || ce >= n || ce === hc) return null;
+    if (Math.abs(ce - hc) < DIVE.chans && this.salWayLen(C, ce) <= DIVE.walk) return null; // a gap close by: it climbs
+    return this.salDiveSpot(e, ce);
+  },
+  // the exit pool: DIVE.off m from the egg along its channel, on solid floor, on the side farther from that floor's gaps
+  salDiveSpot(e, ce) {
+    const p = e.body.getPosition(), r = this.salMid(ce), ea = Math.atan2(p.y, p.x);
+    let best = null;
+    for (const s of [1, -1]) {
+      const a = ea + (s * DIVE.off) / r, ri = Math.sin(a) < 0 ? ce : ce - 1, ring = this.rings[ri];
+      if (!this.solidAt(ring, ring.r * Math.cos(a), ring.r * Math.sin(a))) continue;
+      const la = mod(a - ring.body.getAngle(), TAU);
+      let gd = 9;
+      for (const g of ring.gaps) gd = Math.min(gd, Math.abs(wrap(la - g.a)) * ring.r - g.len / 2);
+      if (!best || gd > best.gd + 1e-9) best = { ri, la, ce, gd };
+    }
+    return best;
+  },
+  // where the exit pool is now (it rides its ring): on the floor of the channel
+  salDivePt(C) {
+    const ring = this.rings[C.dvR], a = ring.body.getAngle() + C.dvL, r = ring.r + (C.dvR === C.dvC ? -1 : 1) * (RING_TH / 2 + 0.16);
+    return { x: r * Math.cos(a), y: r * Math.sin(a), a };
+  },
+  salDiveRise(C) {
+    const P = this.salDivePt(C), r = this.salMid(C.dvC), a = P.a, e = this.salTargetEgg(C), m = Math.ceil(this.salBodyLen(C) / SAL.trail) + 2;
+    let dir = C.dir;
+    if (e) { const p = e.body.getPosition(); dir = wrap(Math.atan2(p.y, p.x) - a) >= 0 ? 1 : -1; }
+    C.pts = [];
+    for (let i = 0; i < m; i++) C.pts.push(this.salPt({}, a - (dir * i * SAL.trail) / r, r));
+    C.rad = r; C.a = a; C.dir = dir; C.car = -1; C.climb = null; C.shove = 0;
+    this.salCarry(C);
+    this.salSet(C, 'rise', DIVE.rise);
+    this.emit('salDiveUp', { x: P.x, y: P.y, id: C.id });
+    for (const q of this.aliveEggs()) { const w = q.body.getPosition(); if (q.water > 0 && Math.hypot(w.x - P.x, w.y - P.y) < DIVE.poolR + 0.4) { this.salWet(C, w.x, w.y); break; } } // a water egg on the pool
   },
 
   // ---------- the bite (BITE)
@@ -594,12 +867,13 @@ export const salMethods = {
     if (e.chick) { this.chickFlee(e, 'snake'); C.ate++; this.salSet(C, 'chew', BITE.chew * 0.6); this.emit('salEat', { x: p.x, y: p.y, id: C.id, chick: true, frost }); return; }
     if (frost) { // frost bite: a crack, and the egg freezes onto its wall (Easy: never the breaking crack)
       const last = this.MD.softThorns && e.cracks >= 2;
-      if (!last) this.crack(e, 0, 'frostbite');
+      if (!last) { this.crack(e, 0, 'frostbite'); C.tokT = 1; }
       if (e.alive) this.iceEgg(e, FROST.freeze);
       this.salSet(C, 'chew', BITE.chew * 0.6);
       this.emit('salFrostBite', { x: p.x, y: p.y, hx: h.x, hy: h.y, id: C.id, egg: e, soft: last ? 1 : 0 });
       return;
     }
+    C.tokT = 1; // (the director hears an egg was taken)
     this.breakEgg(e, 'sal');
     if (e.alive) { this.salSet(C, 'miss', BITE.miss); this.emit('salSnapMiss', { x: h.x, y: h.y, id: C.id, guard: 1 }); return; } // the guardian feather held
     C.ate++;
@@ -614,7 +888,7 @@ export const salMethods = {
     if (!ring) return false;
     const rb = ring.body, lp = rb.getLocalPoint(p);
     e.hold = { ri: ring.i, x: lp.x, y: lp.y, a: e.body.getAngle() - rb.getAngle() };
-    e.icy = T;
+    e.icy = T; e.iceN = 0; e.iceA = 0; e.iceD = 0; e.iceBy = -1;
     e.body.setLinearVelocity(rb.getLinearVelocityFromWorldPoint(p)); e.body.setAngularVelocity(rb.getAngularVelocity());
     return true;
   },
@@ -671,6 +945,20 @@ export const salMethods = {
     }
     this.chickGain = (this.chickGain || 0) + burnt; // the planner counts cleared thorns
     this.emit('salFire', { x: T.x, y: T.y, ring: ring.i, id: C.id, n, burnt, dbl });
+  },
+  volcOrigin() { return { x: VOLC.x * this.outerR, y: this.outerR + VOLC.y }; }, // where the bombs come from (the art draws them from the backdrop's crater)
+  // 0.8.19 a ring section turned red-hot from outside (a volcano bomb): the same rule as a breath
+  salHeatArc(ri, la, len) {
+    const ring = this.rings[ri], half = len / (2 * ring.r), k = ++this.salBurnN;
+    let n = 0, burnt = 0;
+    ring.segs.forEach((sg, si) => {
+      if (!sg.alive || Math.abs(wrap((sg.a0 + sg.a1) / 2 - la)) > half) return;
+      if (!(sg.hot > 0)) this.salHot.push({ ri: ring.i, si });
+      sg.hot = SAL.hotT; sg.hotK = k; n++;
+    });
+    for (const th of ring.thorns) if (th.alive && Math.abs(wrap(th.a - la)) < half + 0.1 / ring.r) { this.removeThorn(th, 'burn'); burnt++; }
+    this.chickGain = (this.chickGain || 0) + burnt;
+    return n;
   },
   salHotLen(C) { return SAL.hotLen * C.size * (C.dbl ? FIRE.dbl : 1); }, // m of wall a breath heats (FIRE: double while white-hot)
 
@@ -907,7 +1195,7 @@ export const salMethods = {
   },
   salQuell(C, x, y) { this.salWet(C, x, y); },
   salWet(C, x, y) {
-    this.salRelease(C); C.bj = -1; C.fid = -1; C.sj = -1; C.og = 0;
+    this.salRelease(C); C.bj = -1; C.fid = -1; C.sj = -1; C.og = 0; C.lj = -1; C.lk = 0;
     C.cool = SAL.cool; C.wetCD = SAL.cool + SAL.wetCD; C.climb = null;
     C.next = Math.max(C.next, 2);
     const doused = C.wh > 0; // FIRE: water knocks a white-hot one straight back to grey, and it sulks
@@ -919,7 +1207,7 @@ export const salMethods = {
   // ---------- hazards: gust | rock | lava | quake | bolt | ice | flash (glow chick) | dash (dash chick) | water
   // o: {x, y, dir ({x, y} or a sign along x), power}. Called from animalsHit (boss.js) and the chick powers.
   hitSalamander(C, kind, o = {}) {
-    if (!C || !this.salLive(C) || C.ph === 'dive' || C.ph === 'grin' || C.ph === 'in' || this.state !== 'play') return;
+    if (!C || !this.salLive(C) || C.ph === 'dive' || C.ph === 'grin' || C.ph === 'in' || this.salHidden(C) || this.state !== 'play') return;
     const p = o.power ?? 1, h = C.pts[0];
     if (C.sp === 'thornback' && (kind === 'gust' || kind === 'quake' || kind === 'water' || kind === 'rock' || kind === 'lava')) return; // L20: they grip the walls; no fire to cool
     if (C.sp === 'chameleon' && (kind === 'quake' || kind === 'water' || kind === 'rock' || kind === 'lava')) return; // L26: he grips the walls; no fire to cool or feed
@@ -947,7 +1235,7 @@ export const salMethods = {
     if (!T) return;
     if (C.ph === 'daze' && C.t > T * 0.5) return;
     this.salRelease(C);
-    C.climb = null; C.bj = -1; C.fid = -1;
+    C.climb = null; C.bj = -1; C.fid = -1; C.lj = -1; C.lk = 0;
     C.next = Math.max(C.next, T + 1);
     if (kind === 'dash') C.shove -= C.dir * 0.35; // bonked back along the channel
     this.salHalt(C, 'daze', T);
@@ -956,7 +1244,7 @@ export const salMethods = {
   },
   // which salamanders a hazard reaches (any part of the body within r of x, y)
   salsNear(x, y, r) {
-    return (this.sals || []).filter((C) => this.salLive(C) && C.pts.some((q, i) => i % 3 === 0 && Math.hypot(q.x - x, q.y - y) < r));
+    return (this.sals || []).filter((C) => this.salLive(C) && !this.salHidden(C) && C.pts.some((q, i) => i % 3 === 0 && Math.hypot(q.x - x, q.y - y) < r));
   },
 
   // ---------- the boss: phase rhythm, staggers
@@ -969,13 +1257,14 @@ export const salMethods = {
       if (B.atk.name === 'magma' && this.salFuOK(C, true)) this.salFireUp(C, 'magma'); // FIRE (a fire phase): it drinks its own magma ring and goes white-hot
     }
     if (B.atk && C.ph === 'walk' && C.next < 0.8) C.next = 0.8; // never on top of a lava throw
+    if (B.atk && B.atk.ph === 'warn' && /^rock/.test(B.atk.name) && C.ph === 'walk') { this.salHalt(C, 'roar', B.atk.t); this.emit('salRoar', { x: C.pts[0].x, y: C.pts[0].y, id: C.id, n: (B.atk.spots || []).length }); } // 0.8.19: he rears and roars at the volcano
     if (B.phase !== C.bph) { C.bph = B.phase; this.salDaze(C, 1.6); } // a new phase: it reels with the boss
     if (B.saved !== C.bsaved) { C.bsaved = B.saved; if (C.ph === 'warn') { C.next = 1.6; this.salSet(C, 'walk'); this.emit('salFlinch', { x: C.pts[0].x, y: C.pts[0].y }); } }
   },
   // why: 'frost' (frozen), 'bolt' (zapped), '' (a plain stun: the rooster, a phase change, a spin) - only the art cares
   salDaze(C, T, why = '') {
     if (!this.salLive(C) || C.ph === 'in') return;
-    this.salRelease(C); C.climb = null; C.bj = -1; C.fid = -1; C.next = Math.max(C.next, T + 1);
+    this.salRelease(C); C.climb = null; C.bj = -1; C.fid = -1; C.lj = -1; C.lk = 0; C.next = Math.max(C.next, T + 1);
     this.salHalt(C, 'daze', T);
     C.dk = why;
   },
@@ -1076,8 +1365,19 @@ export const salMethods = {
       case 'turn': this.salTurnStep(C, dt); break;
       case 'lick':
         if (!C.lkd && C.dur - C.t >= GECKO.lickAt) { C.lkd = 1; this.geckoLick(C); }
-        if ((C.t -= dt) <= 0) { C.bored = GECKO.bored; C.climbCD = Math.max(C.climbCD, GECKO.bored * 0.5); this.salSet(C, 'walk'); }
+        if ((C.t -= dt) <= 0) this.geckoAfterLick(C);
         break;
+      // 0.8.19 freeze and nip: the egg he froze, then (the director allowing) a rear-up and a nip that cracks it
+      case 'nipWait': // waiting his turn by the frozen egg: sniffing, pacing on the spot
+        if ((C.t -= dt) <= 0) this.geckoAfterLick(C);
+        break;
+      case 'nipWarn': {
+        const e = this.eggs.find((x) => x.id === C.lk && x.alive && !x.saved);
+        if (!e || !(e.icy > 0)) { this.emit('geckoNipMiss', { x: C.pts[0].x, y: C.pts[0].y, id: C.id, why: 'free' }); C.bored = 0; C.tcd = 0; this.salSet(C, 'walk'); break; } // shaken free: after it at once
+        if ((C.t -= dt) <= 0) this.geckoNip(C, e);
+        break;
+      }
+      case 'nip': if ((C.t -= dt) <= 0) { C.bored = this.salDyn(C).rest; this.salSet(C, 'walk'); } break;
       case 'daze': if ((C.t -= dt) <= 0) this.salSet(C, 'walk'); break;
       case 'retreat': { // scared off (pepper, a shock): he backs away along his own trail
         const d = Math.min(C.back, SAL.backV * dt);
@@ -1125,13 +1425,48 @@ export const salMethods = {
     const p = e.body.getPosition();
     if (Math.hypot(p.x - h.x, p.y - h.y) > GECKO.reach + 0.4) { this.emit('geckoMiss', { x: h.x, y: h.y, id: C.id }); return; }
     if (this.armored(e) || e.chick || e.fire > 0) { this.emit('geckoShrug', { x: p.x, y: p.y, egg: e, id: C.id }); return; } // stone, rock skin, the feather; a flaming egg
-    // 0.8.14: his lick bites. One crack (Easy: never the breaking one), then the egg is frozen onto the nearer wall of its
-    // channel: it rides that ring, nothing else moves it
-    const last = this.MD.softThorns && e.cracks >= 2;
-    if (!last) this.crack(e, 0, 'frostbite');
-    if (!e.alive) return;
-    if (!this.iceEgg(e, GECKO.freeze)) return;
-    this.emit('geckoLick', { x: p.x, y: p.y, egg: e, id: C.id, hx: h.x, hy: h.y, bite: last ? 0 : 1 });
+    // 0.8.19: the lick only freezes the egg onto the nearer wall of its channel (it rides that ring, nothing else moves it);
+    // the crack comes from the nip that follows, and the player can shake the egg free first (salIceStep)
+    if (!this.iceEgg(e, this.salDyn(C).tell + 2)) return;
+    e.iceBy = C.id;
+    this.emit('geckoLick', { x: p.x, y: p.y, egg: e, id: C.id, hx: h.x, hy: h.y, bite: 0 });
+  },
+  geckoAfterLick(C) {
+    const e = this.eggs.find((x) => x.id === C.lk && x.alive && !x.saved);
+    if (e && e.icy > 0 && e.iceBy === C.id) {
+      if (this.salMay(C, 'nip')) { this.salSet(C, 'nipWarn', this.salDyn(C).tell); this.emit('geckoNipWarn', { x: e.body.getPosition().x, y: e.body.getPosition().y, hx: C.pts[0].x, hy: C.pts[0].y, id: C.id, egg: e, t: C.dur }); }
+      else this.salSet(C, 'nipWait', STALK.t);
+      return;
+    }
+    C.bored = this.salDyn(C).rest; C.climbCD = Math.max(C.climbCD, 1); this.salSet(C, 'walk');
+  },
+  geckoNip(C, e) {
+    const p = e.body.getPosition(), h = C.pts[0];
+    if (Math.hypot(p.x - h.x, p.y - h.y) > GECKO.reach + 0.55) { this.emit('geckoNipMiss', { x: h.x, y: h.y, id: C.id, why: 'far' }); this.salSet(C, 'nip', 0.4); return; }
+    e.icy = 0; e.hold = null; e.iceN = 0; e.iceA = 0; e.iceD = 0; // the ice shatters with the nip
+    const last = this.MD.softThorns && e.cracks >= 2; // Easy: never the breaking crack
+    if (!last) { C.tokT = 1; this.crack(e, 0, 'frostbite'); }
+    this.salSet(C, 'nip', 0.4);
+    this.emit('geckoNip', { x: p.x, y: p.y, hx: h.x, hy: h.y, egg: e, id: C.id, bite: last ? 0 : 1 });
+  },
+  // 0.8.19 a frozen egg (the gecko's lick, the frost bite): two swings of its ring, the second the other way, crack the ice
+  // and then burst it (SHAKE); fire (a flaming egg, a red-hot section under it) thaws it at once
+  salIceStep(dt) {
+    for (const e of this.eggs) {
+      if (!e.alive || e.saved || !(e.icy > 0) || !e.hold) continue;
+      const ring = this.rings[e.hold.ri], da = ring.body.getAngularVelocity() * dt, p = e.body.getPosition();
+      let hot = e.fire > 0;
+      if (!hot) for (const H of this.salHot) { const R = this.rings[H.ri], sg = R.segs[H.si]; if (sg.hot > 0 && Math.abs(Math.hypot(p.x, p.y) - R.r) < RING_TH / 2 + 0.45) { const la = mod(Math.atan2(p.y, p.x) - R.body.getAngle(), TAU); if (la > sg.a0 - 0.1 && la < sg.a1 + 0.1) { hot = true; break; } } }
+      if (hot) { e.icy = 0; e.hold = null; e.iceN = 0; e.iceA = 0; e.iceD = 0; this.emit('eggIceBurst', { egg: e, x: p.x, y: p.y, why: 'fire' }); continue; }
+      if (Math.abs(da) < 1e-9) continue;
+      if (Math.sign(da) !== Math.sign(e.iceA)) e.iceA = 0; // a new swing
+      e.iceA += da;
+      if (Math.abs(e.iceA) >= deg(SHAKE.deg) && Math.sign(e.iceA) !== e.iceD) {
+        e.iceD = Math.sign(e.iceA); e.iceN = (e.iceN || 0) + 1;
+        if (e.iceN >= 2) { e.icy = 0; e.hold = null; e.iceN = 0; e.iceA = 0; e.iceD = 0; this.emit('eggIceBurst', { egg: e, x: p.x, y: p.y, why: 'shake' }); }
+        else this.emit('eggIceCrack', { egg: e, x: p.x, y: p.y, n: e.iceN });
+      }
+    }
   },
   // icy feet: the floor under him (the wall eggs rest on: the inner one on the upper arc, the outer one below) ices over
   geckoIce(C) {
@@ -1149,7 +1484,7 @@ export const salMethods = {
     const C = this.geckoOf();
     if (!C) return false;
     if (!this.salLive(C)) return true;
-    return C.ph === 'in' || C.ph === 'daze' || C.ph === 'lick' || C.ph === 'retreat' || (C.ph === 'brake' && C.pend !== 'atk');
+    return C.ph === 'in' || C.ph === 'daze' || C.ph === 'lick' || C.ph === 'nipWarn' || C.ph === 'nip' || C.ph === 'retreat' || (C.ph === 'brake' && C.pend !== 'atk');
   },
   // the boss's point (popups, hits) is his head
   geckoBossPose(B) {
@@ -1180,6 +1515,14 @@ export const salMethods = {
       if (C.ph !== 'warn' && !(C.ph === 'brake' && C.pend === 'warn')) continue;
       const T = this.salTarget(C);
       if (Math.hypot(p.x - T.x, p.y - T.y) < this.salHotLen(C) / 2 + 0.45) v = Math.max(v, 0.8);
+    }
+    // 0.8.19: the tongue locked on or reeling this egg; an exit pool bubbling by it; a thorn-back curling or rolling at it
+    for (const C of this.sals) {
+      const ph = C.ph === 'brake' ? C.pend : C.ph;
+      if ((ph === 'lash' || ph === 'fling' || ph === 'reel') && C.lj === e.id) v = Math.max(v, ph === 'reel' ? 1 : 0.8);
+      if ((ph === 'bubble' || ph === 'under' || ph === 'rise') && C.dvC === this.channelOf(e)) { const P = this.salDivePt(C); if (Math.hypot(p.x - P.x, p.y - P.y) < DIVE.off + 0.6) v = Math.max(v, 0.6); }
+      if ((ph === 'curl' || ph === 'roll') && C.lk === e.id) v = Math.max(v, 0.8);
+      if (ph === 'nipWarn' && C.lk === e.id) v = Math.max(v, 0.9);
     }
     // SPIT: a spit wound up at this egg, an ember coming down by it, a burning pool it is on or rolling into
     for (const C of this.sals) if ((C.ph === 'spitWarn' || (C.ph === 'brake' && C.pend === 'spitWarn')) && C.sj === e.id) v = Math.max(v, 0.7);

@@ -3,7 +3,7 @@ import { World, Vec2, Polygon, Circle, Box, RopeJoint } from 'planck';
 import { EGG_H, EGG_W, RING_TH, TAU, eggHull, solidArcs, wrap, clamp, rng } from './geom.js';
 import { v31Init, v31Step, v31State, v31Load, v31Contact, frostOrb, animalsHit } from './boss.js'; // bosses (v3.1)
 import { chickMethods, CHICK_KEYS } from './chicks.js'; // v3.2 chick kinds
-import { salMethods } from './salamander.js'; // v3.2 lava salamander
+import { salMethods, VOLC } from './salamander.js'; // v3.2 lava salamander; 0.8.19 (aggroB) the volcano's bombs
 import { frogMethods } from './frog.js'; // v3.3 frog
 import { allyMethods } from './allies.js'; // v3.4 farm allies (rooster, goose)
 import { seaMethods } from './sea.js'; // v3.3 octopus and fish schools
@@ -413,6 +413,7 @@ export class Sim {
       fire: 0, fireKind: null, stone: 0, bubble: 0, bubbleFix: null, magnet: 0, joint: null, golden: extra.golden || 0,
       water: 0, zap: 0, glow: 0, chick: 0, meteor: 0, honey: 0, hold: null, honeyCD: 0, prize: 0, spk: new Set(), // spk: blunt spikes touching now
       icy: 0, // L15: frozen solid by the frost gecko's lick (s left; rides egg.hold's ring like honey)
+      iceA: 0, iceN: 0, iceD: 0, iceBy: -1, // 0.8.19 (aggroB): the ice's shakes (sim/salamander.js salIceStep) and who froze it
       crackCD: 0, nestT: 0, inNest: 0, hc: 0, safeT: this.t < 0.5 ? 1.5 : 0, portalCD: 0, born: this.t,
       seed: (this.rand() * 1e9) | 0, impact: 0, lastV: 0, fear: 0,
       ch: 0, mult: 1, freefall: 0, comet: 0, cometUsed: false, bumpCD: 0, bumpV: 0, grazeCD: 0,
@@ -2497,6 +2498,7 @@ export class Sim {
     EGG_KEYS.push('clamp'); // v3.7: held by a snapping turtle (id + 1)
     EGG_KEYS.push('grazeCD'); // v4.1: thorn grace cooldown
     EGG_KEYS.push('icy'); // L15: frozen by the frost gecko's lick
+    EGG_KEYS.push('iceA', 'iceN', 'iceD', 'iceBy'); // 0.8.19 (aggroB): the shakes that crack the ice
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2900,33 +2902,38 @@ export class Sim {
   lavaStep(dt) {
     const LV = this.level.lava;
     if (LV && typeof LV === 'object' && (this.v3T.lava -= dt) <= 0) {
-      this.v3T.lava = LV.every || 7;
+      // 0.8.19 (aggroB): the volcano throws them (sim/salamander.js VOLC): the same seeded targets, sparser, a rumble first
+      const vb = !!this.salHot;
+      this.v3T.lava = (LV.every || 7) * (vb ? VOLC.every : 1);
       const ri = Math.floor(this.rand() * this.rings.length), ring = this.rings[ri];
       const wa = -Math.PI / 2 + (this.rand() - 0.5) * Math.PI * 1.3;
-      const k = { ri, la: wa - ring.body.getAngle(), ph: 'fly', t: 0, x0: (this.rand() - 0.5) * this.outerR, y0: this.outerR + 3, x: 0, y: 0 };
+      const k = { ri, la: wa - ring.body.getAngle(), ph: vb ? 'rumble' : 'fly', t: 0, x0: (this.rand() - 0.5) * this.outerR, y0: this.outerR + 3, x: 0, y: 0, v: vb ? 1 : 0 };
+      if (vb) { k.x0 = VOLC.x * this.outerR; k.y0 = this.outerR + VOLC.y; }
       const q = this.rockAt(k);
       k.x = k.x0; k.y = k.y0;
       this.lavaRocks.push(k);
-      this.emit('lavaWarn', { x: q.x, y: q.y, ring: ri });
+      this.emit(vb ? 'volcRumble' : 'lavaWarn', { x: q.x, y: q.y, ring: ri, t: VOLC.rumble + VOLC.fly });
     }
     for (let i = this.lavaRocks.length - 1; i >= 0; i--) {
       const k = this.lavaRocks[i], q = this.rockAt(k);
       k.t += dt;
+      if (k.ph === 'rumble') { k.x = q.x; k.y = q.y; if (k.t >= VOLC.rumble) { k.ph = 'fly'; k.t = 0; this.emit('lavaWarn', { x: q.x, y: q.y, ring: k.ri, volc: 1 }); } continue; } // 0.8.19 the mountain rumbles and puffs
       if (k.ph === 'fly') {
-        const f = Math.min(1, k.t / ROCK_FLY);
+        const f = Math.min(1, k.t / (k.v ? VOLC.fly : ROCK_FLY));
         k.x = k.x0 + (q.x - k.x0) * f;
         k.y = k.y0 + (q.y - k.y0) * f + 1.6 * Math.sin(Math.PI * f);
         if (f >= 1) {
           k.ph = 'sit'; k.t = 0;
-          this.emit('lavaLand', { x: q.x, y: q.y, ring: k.ri });
+          this.emit('lavaLand', { x: q.x, y: q.y, ring: k.ri, volc: k.v ? 1 : 0 });
           animalsHit(this, 'rock', { x: q.x, y: q.y, r: 0.75 }); // v3.1: animals feel it too
+          if (k.v && this.salHot) { this.salHeatArc(k.ri, k.la, VOLC.len); continue; } // 0.8.19: a volcano bomb makes its section red-hot (the salamander's hot rule)
           if (this.rockHits(k, q, 0.75)) { this.lavaRocks.splice(i, 1); continue; }
         }
         continue;
       }
       k.x = q.x; k.y = q.y;
       for (const S of this.snakesNear(q.x, q.y, 0.5)) if (!(S.stun > 0)) this.hitSnake(S, 'lava', { x: q.x, y: q.y });
-      if (this.rockHits(k, q, 0.4)) { this.lavaRocks.splice(i, 1); continue; }
+      if (!k.v && this.rockHits(k, q, 0.4)) { this.lavaRocks.splice(i, 1); continue; } // (a volcano bomb's heat does the cracking)
       if (k.t >= ROCK_SIT) {
         const ring = this.rings[k.ri], half = HOLE_LEN / (2 * ring.r);
         for (const sg of ring.segs) if (sg.alive && Math.abs(wrap((sg.a0 + sg.a1) / 2 - k.la)) < half) { sg.melt = HOLE_T; sg.vh = 0; }

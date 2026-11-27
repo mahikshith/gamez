@@ -5957,6 +5957,7 @@ function render() {
   const camX = G.cam.x + (cv.kx - G.cam.x) * kick * 0.7, camY = G.cam.y + (cv.ky - G.cam.y) * kick * 0.7;
   G.rk = k;
   G.view.shakeX = ox; G.view.shakeY = oy;
+  { const cr = G.backdrop && G.backdrop.crater ? G.backdrop.crater() : null; sim.volcXY = cr ? { x: camX + (cr[0] - cx - ox) / k, y: camY - (cr[1] - cy - oy) / k } : null; } // 0.8.19 (aggroB): the volcano's bombs fly from the backdrop's crater
   // ground band (drawn under the same camera as the world, so it never slips against it)
   const gy = cy + oy - (sim.groundY - camY) * k;
   if (gy < H_ && !sim.water) G.backdrop.drawGround(ctx, 0, gy, W_, H_ - gy, t, { x: cx + ox + (sim.nest.getPosition().x - camX) * k, k, nw: sim.nestW }); // underwater: no ground (the surface is drawn in the world)
@@ -6038,7 +6039,7 @@ function render() {
   for (const r of sim.rocks) if (r.alive) W.drawRock(ctx, r, G.theme);
   for (const b of sim.bombs) if (b.alive) b.spark = W.drawBomb(ctx, b, t);
   for (const d of sim.debris) W.drawDebris(ctx, d, G.theme);
-  blastXf(() => { W.drawLavaRocks(ctx, sim, k, t); W.drawIcicles(ctx, sim, k, t); }, 16.2); // v3
+  blastXf(() => { W.drawLavaRocks(ctx, sim, k, t, !!save.calm); W.drawIcicles(ctx, sim, k, t); }, 16.2); // v3
   blastXf(() => drawBossUnder(ctx, sim, k, t), 4.3);
   W.drawEagleAt(ctx, sim, t, k, 'back'); // predators (v3): eagle shadow under the eggs
   SL(['sal'], (c) => drawSalamanders(c, sim, t, k, !!save.calm)); // v3.2: the lava salamander walks the floor, under the eggs

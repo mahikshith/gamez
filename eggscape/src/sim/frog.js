@@ -37,6 +37,7 @@
 // frogSpit {why}, frogBop, frogCough {orb}, frogBurp {orb}.
 import { Vec2, Polygon } from 'planck';
 import { RING_TH, wrap, clamp } from './geom.js';
+import { dyn } from '../data/dynamism.js'; // 0.8.19 the frog's temper
 
 export const FROG = {
   w: 1.13, // m, body width (a gap is 0.78 wide: a frog in it covers it with room to spare). v3.5: art is 1.09 m per 100 units
@@ -233,8 +234,16 @@ export const frogMethods = {
     return false;
   },
 
+  // 0.8.19: the mode table with the frog's dyn row (src/data/dynamism.js: tempo shortens the wait between hops, rest is the
+  // lick cooldown) and the menace director's heat when it is there
+  frogM() {
+    const M = FROG_MODE[this.mode] || FROG_MODE.medium, d = this._dynFrog || (this._dynFrog = dyn('frog', 'medium', this.level.dyn && this.level.dyn.frog));
+    const h = this.menaceHeat ? this.menaceHeat() : 1;
+    return { ...M, every: M.every / (d.tempo * h), lick: (M.lick * d.rest) / (FROG.lickCD * h) };
+  },
   frogOne(F, dt, play) {
-    const M = FROG_MODE[this.mode] || FROG_MODE.medium;
+    const M = this.frogM();
+    if (F.tok && F.ph === 'sit' && F.eg < 0) { F.tok = 0; if (this.menaceDone) this.menaceDone('f' + F.id, 'snatch', false); } // the snatch is over: the director's token back
     if (F.ph === 'hop') { this.frogFly(F); return; }
     this.frogPlace(F);
     if (!play) { if (F.eg >= 0) this.frogRelease(F, 'end'); F.bopReq = 0; return; }
@@ -271,7 +280,7 @@ export const frogMethods = {
           }
           return;
         }
-        if (F.snCD <= 0 && F.snN < Math.min(M.snMax, F.snMx ?? 99)) { const pr = this.frogEggPrey(F, M); if (pr) { this.frogLick(F, pr, M); return; } }
+        if (F.snCD <= 0 && F.snN < Math.min(M.snMax, F.snMx ?? 99)) { const pr = this.frogEggPrey(F, M); if (pr && (this.menaceMay ? this.menaceMay('f' + F.id, 'snatch') : true)) { F.tok = 1; this.frogLick(F, pr, M); return; } }
         if (F.lickCD <= 0) { const pr = this.frogPrey(F, M); if (pr) { this.frogLick(F, pr, M); return; } }
         // 0.8.10: an egg in another channel brings the hop forward (never closer together than FROG.hunt), so the frog
         // goes after the eggs instead of sitting out its timer
@@ -375,7 +384,7 @@ export const frogMethods = {
     return out;
   },
   frogRelease(F, why, inPhase = false) {
-    const M = FROG_MODE[this.mode] || FROG_MODE.medium, e = this.eggs.find((q) => q.id === F.eg);
+    const M = this.frogM(), e = this.eggs.find((q) => q.id === F.eg);
     F.eg = -1; F.egT = 0; F.egHop = 0; F.spWhy = why;
     F.snCD = Math.max(F.snCD, M.snCD); F.lickCD = Math.max(F.lickCD, 1.5);
     let at = null;
@@ -712,7 +721,7 @@ export const frogMethods = {
     F.air = 0; F.u = 0; F.hk = '';
     this.frogPlace(F);
     F.solid = this.frogEggNear(F) ? 0 : 1;
-    F.next = F.every * (0.85 + 0.3 * this.rand()) * (FROG_MODE[this.mode] || FROG_MODE.medium).every;
+    F.next = F.every * (0.85 + 0.3 * this.rand()) * this.frogM().every;
     this.frogSet(F, 'land', FROG.land);
     this.emit('frogLand', { x: F.x, y: F.y, id: F.id, plug: F.gi >= 0 ? 1 : 0, scared: F.sc });
   },
