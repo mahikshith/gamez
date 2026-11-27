@@ -10705,18 +10705,19 @@ function drawFailPage() {
     if (SP.banked(save) > 0) B.push(spinRowBlock(s, { cheer, quiet: top !== 'spin' })); // 0.8.15: a spin that waits (the cheer-up spin after three losses lands here)
     else if (prog) B.push({ h: 26 * s, gap: 4 * s, draw: (x, y, w) => leadLine(prog, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'fail:near' }) });
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: (sd ? 3 : 6) * s }));
-    if (three) B.push({ h: 100 * s, gap: 10 * s, draw: (x, y, w) => { // 0.8.19 the stuck player's choices: one row of kid-size pictures
+    const TH3 = sd ? 66 : 100;
+    if (three) B.push({ h: TH3 * s, gap: (sd ? 6 : 10) * s, draw: (x, y, w) => { // 0.8.19 the stuck player's choices: one row of kid-size pictures
       const T = [];
       if (Hp) T.push(['help:go', Hp.kind === 'adBoost' ? 'ad' : 'primary', (cx, cy, S) => { if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, cx, cy + S * 0.12, S * 0.9, G.t, {}); else drawBoosterIcon(ctx, Hp.id, cx, cy, S, G.t); spendFx.at('failhelp', { x: cx - S / 2, y: cy - S / 2, w: S, h: S }); }, Hp.kind === 'adBoost' && !ads.premium ? 'ad' : Hp.kind === 'buyBoost' ? Hp.price : null]);
       if (save.mode !== 'easy') T.push(['fail:easy', ui.faceOf('#2f9e8f'), (cx, cy, S) => pictoTurtle(ctx, cx, cy, S * 1.15), null]);
       if (ways.length) T.push(['fail:skip', ui.faceOf('#5a6ee0'), (cx, cy, S) => (save.wallet.tickets.skip > 0 ? drawItemArt(ctx, 'skip', cx, cy, S * 1.05, G.t) : ICON.next(ctx, cx, cy, S * 0.95)), null]);
       const g = 10 * s, tw = (w - g * 2) / 3, x0 = x + (w - (T.length * tw + (T.length - 1) * g)) / 2;
       T.forEach(([id, face, art, mark], i) => {
-        const bx = x0 + i * (tw + g), Bt = ui.button(id, '', bx, y, tw, 100 * s, { ...(typeof face === 'string' ? { kind: face } : { face }), round: 22 * s, shimmer: id === 'help:go' && top === 'help', ...(id === 'help:go' && Hp.bought ? { disabled: true, keepFace: true } : {}) });
-        art(bx + tw / 2, Bt.cy - (mark ? 8 * s : 0), 60 * s);
-        if (mark === 'ad') drawAdBadge(ctx, bx + tw / 2 - 15 * s, Bt.cy + 32 * s, 30 * s, 21 * s);
+        const bx = x0 + i * (tw + g), Bt = ui.button(id, '', bx, y, tw, TH3 * s, { ...(typeof face === 'string' ? { kind: face } : { face }), round: 22 * s, shimmer: id === 'help:go' && top === 'help', ...(id === 'help:go' && Hp.bought ? { disabled: true, keepFace: true } : {}) });
+        art(bx + tw / 2, Bt.cy - (mark && !sd ? 8 * s : 0), (sd ? 44 : 60) * s);
+        if (mark === 'ad') drawAdBadge(ctx, sd ? bx + tw - 34 * s : bx + tw / 2 - 15 * s, Bt.cy + (sd ? 16 : 32) * s, 30 * s, 21 * s);
         else if (mark) { const t = String(mark), mw = ui.measure(t, 16 * s) + 22 * s; drawCoin(ctx, bx + tw / 2 - mw / 2 + 8 * s, Bt.cy + 32 * s, 8 * s, G.t); ui.text(t, bx + tw / 2 - mw / 2 + 20 * s, Bt.cy + 32 * s, { size: 16 * s, color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * s, noRecord: true }); }
-        if (id === 'help:go') { spendFx.at('failhelp:btn', { x: bx, y, w: tw, h: 100 * s }); ui.record({ x: bx, y, w: tw, h: 100 * s }, 'panel:failhelp'); }
+        if (id === 'help:go') { spendFx.at('failhelp:btn', { x: bx, y, w: tw, h: TH3 * s }); ui.record({ x: bx, y, w: tw, h: TH3 * s }, 'panel:failhelp'); }
       });
     } });
     else if (Hp) B.push({ h: 70 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
@@ -11824,7 +11825,7 @@ function drawSpin() {
       const sh = k === 'coin' && !calm && G.t - (S.shortT || -9) < 0.4 ? Math.sin((G.t - S.shortT) * 40) * 4 * u : 0; // too few coins: the button shakes its head
       if (k === 'retry') ui.button('spin:retry', 'Try again', bx, by, bw, bh, W.retry === 'free' || ads.premium ? { kind: 'primary', shimmer: idle, size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, shimmer: idle, size: 22 * u, ...off });
       else if (k === 'ad') ui.button('spin:ad', ads.premium ? 'Free spin' : 'Spin', bx, by, bw, bh, ads.premium ? { kind: 'secondary', size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, size: 22 * u, ...off });
-      else { ui.button('spin:coin', `Spin ${W.coin}`, bx + sh, by, bw, bh, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 22 * u, ...off }); spendFx.at('spin', { x: bx, y: by, w: bw, h: bh }); }
+      else { ui.button('spin:coin', bw < 128 * u ? String(W.coin) : `Spin ${W.coin}`, bx + sh, by, bw, bh, { kind: rich ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S2) => drawCoin(c, X, Y, S2 * 0.5, G.t), size: 22 * u, ...off }); spendFx.at('spin', { x: bx, y: by, w: bw, h: bh }); }
     });
     // 0.8.17 spend moment 'spin': the villains took the last pull and a coin spin is in reach: a shine over its button, a tag swings on it
     if (lost && idle && W.coin != null && save.wallet.coins >= W.coin && G.t - S.missT > 0.8) spendOnce('spin', 'spin', [{ id: 'spin', kind: 'tag', slot: 'spin', key: 'spin:' + today() + ':' + SP.state(save).t.coin, price: 0, tagArt: (c, x, y, h) => drawSlotIcon(c, x, y, h * 0.5, 0) }]);
@@ -11925,7 +11926,7 @@ function drawLeaveAsk() {
   const q = clamp((wide ? Math.min(A.w / 2, A.h * 1.15) : A.w) / 450, 0.78, 1.12), el = G.t - R.t0;
   const ez = (k) => { const p = clamp(k, 0, 1), c1 = 1.7; return 1 + (c1 + 1) * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); }; // ease out, a little past, settle
   const e = calm ? 1 : ez(el / 0.5);
-  dim(0.72 * Math.min(1, calm ? 1 : el / 0.3));
+  dim((R.exit ? 0.88 : 0.72) * Math.min(1, calm ? 1 : el / 0.3)); // (the bright home page needs more shade than a paused level)
   const BH = 86 * q, pad = 16 * q, bw = wide ? Math.min(A.w / 2 - 2 * pad, 420 * q) : Math.min(A.w - 2 * pad, 440 * q);
   const by = wide ? A.cy + 24 * q : A.y1 - Math.max(26 * q, A.h * 0.05) - BH - 40 * q, bx = wide ? A.cx + (A.w / 2 - bw) / 2 : A.cx - bw / 2;
   const cx = wide ? A.x + A.w / 4 : A.cx, hh = wide ? Math.min(A.h * 0.56, A.w * 0.3) : Math.min(A.h * 0.3, A.w * 0.66), cy = wide ? A.cy - 4 * q : A.y + A.h * 0.36;
