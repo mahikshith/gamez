@@ -149,7 +149,7 @@ const bestStarsOf = (id) => Math.max(0, ...MODE_LIST.map((m) => save.stars[sk(id
 // (level page Boosters tab, Free booster video, coin/shop chip; win card Bonus chest and offers; the Director's nudges
 // and fail help; offer cards anywhere). The map's own shop button stays. Tune it here.
 E.setPlatform(!ads.moneyShop); // 0.8.11: a web portal sells nothing, so wins and videos pay more there (economy.js PLATFORM)
-const earlyDays = () => DR.earlyDays(save); // src/director.js: SELL_AFTER
+const earlyDays = () => !UNLOCKED && DR.earlyDays(save); // src/director.js: SELL_AFTER
 const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0) + SQ.sideTotal(save); // 0.8.17: a side quest's bonus stars count (gates, chests, the map's total)
 // a brand-new player (nothing won yet, nothing unlocked): home is the logo and one big PLAY, and PLAY goes straight into
 // level 1 with the teaching hand (no map, no level card). Any win, or a level unlocked, and home is the full home.
@@ -11630,7 +11630,7 @@ function drawSpin() {
     }
   }
   S.lastT = G.t;
-  const refill = () => { if (PREVIEW && !SP.banked(save) && !SP.ways(save, today()).retry) SP.state(save).bank = 2; };
+  const refill = () => { if (UNLOCKED && SP.banked(save) < SP.SPIN.bankMax) SP.state(save).bank = SP.SPIN.bankMax; if (PREVIEW && !SP.banked(save) && !SP.ways(save, today()).retry) SP.state(save).bank = 2; };
   const R = S.got;
   if (S.st === 'stopped' && G.t - S.tStop > (calm ? 0.15 : 0.35)) { S.st = 'prize'; S.popT = G.t; audio.play(R && R.where ? 'unlock' : 'hud_pop', { vol: 0.8, intensity: S.big }); if (!calm) audio.play('confetti', { vol: 0.35 + 0.3 * S.big }); }
   else if (S.st === 'prize') {
@@ -12521,13 +12521,6 @@ async function boot() {
       else if (s && (s.v === 1 || s.v === 2)) loadSave({ sfx: s.sfx, music: s.music, mode: s.mode, calm: s.calm, wallet: s.wallet, seen: s.seen });
     }
   } catch (_) { save = defaultSave(); }
-  // 0.8.17: the separate everything-unlocked test app (build flag __UNLOCKED__, its own app id): once, the whole coop,
-  // both bundles' boosters, charges and tickets, and a deep purse, so every page and animation can be tried at once
-  if (typeof __UNLOCKED__ !== 'undefined' && __UNLOCKED__ && !save.unlockedKit) {
-    let w = save.wallet;
-    for (const sku of ['eggscape_collector', 'starter_nest', 'bundle_helper']) w = E.grantIap(w, sku, 'unlocked-build:' + sku, Date.now()).wallet;
-    save.wallet = E.addCoins(w, 20000); save.unlockedKit = 1; persist();
-  }
   if (PREVIEW === 'spin') { const stars = {}; for (let i = 1; i < 12; i++) stars[i] = 2; save = defaultSave(); loadSave({ ...save, unlocked: 12, stars, wallet: { ...save.wallet, coins: 300 }, spin: { wins: 1, bank: 3 } }); } // the Lucky Spin to show: a player at level 12 with three spins
   // the app build used to be an everything-unlocked test build: its saves carry 50 fake levels and 99999 coins. The first
   // real-progression launch starts the journey fresh (settings and the hen's skins carry over).
@@ -12537,6 +12530,17 @@ async function boot() {
     ads.rebind(save);
   }
   save.real = 1;
+  // 0.8.17 / 0.8.19: the separate everything-unlocked test app (build flag __UNLOCKED__, its own app id): on every launch (after
+  // the app's fresh start above, which used to wipe it) the whole coop, every level and side quest, every chick, outfit,
+  // egg and boss treasure, every booster stocked, charges and tickets full, a deep purse and the Lucky Spin with pulls
+  if (UNLOCKED) {
+    let w = save.wallet;
+    for (const sku of ['eggscape_collector', 'starter_nest', 'bundle_helper']) w = E.grantIap(w, sku, 'unlocked-build:' + sku, Date.now()).wallet;
+    const owned = {}; for (const id of E.BOOSTER_ORDER) owned[id] = E.MAX_OWNED;
+    w = E.sanitizeWallet({ ...w, owned, charges: E.MAX_CHARGES, tickets: { ally: E.MAX_TICKETS, skip: E.MAX_TICKETS }, treasures: E.BOSS_TREASURE_IDS.slice(), noAds: true, collector: true, coins: Math.max(w.coins, 99999) });
+    save.wallet = w; save.unlocked = LEVELS.length; save.unlockedKit = 2;
+    const sp = SP.state(save); sp.bank = SP.SPIN.bankMax; persist();
+  }
   // 0.8.12: a cure by the slow-drawing watchdog that started the page's process or the whole app again (src/recover.js):
   // the Android shell kept the save, the watchdog's notes and the end of the speed log, because the web view writes
   // its own storage to disk a few seconds late
