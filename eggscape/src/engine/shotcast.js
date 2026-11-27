@@ -4,7 +4,7 @@
 //   actor = { key, fam, x, y, r, act: 'enter' | 'tell' | 'strike' | 'idle', tx, ty }
 const S = (...a) => new Set(a);
 const NEAR = 2.2;
-const LEAD = 1.6; // s before a waiting villain comes out that the camera already goes to its door (so it is there when he is) // m: a villain this close to an egg is acting, whatever its phase is called
+const LEAD = 2.4; // s before a waiting villain comes out that the camera already goes to its door (so it is there when he is) // m: a villain this close to an egg is acting, whatever its phase is called
 
 // phase names -> act, per family (first match wins)
 const PH = {
@@ -25,28 +25,30 @@ export function castOf(sim) {
   const out = [];
   if (!sim) return out;
   const eggs = sim.aliveEggs().map((e) => e.body.getPosition());
-  const add = (key, fam, p, ph, r) => {
+  const add = (key, fam, p, ph, r, lead = 0) => {
     if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
     let act = actOf(fam, ph), tx, ty, bd = 1e9;
     for (const q of eggs) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; tx = q.x; ty = q.y; } }
     if (act === 'idle' && bd < NEAR) act = 'strike';
     const a = { key, fam, x: p.x, y: p.y, r: r || R[fam] || R.any, act, ph };
+    if (lead) a.lead = 1; // not out yet: the camera goes to its door ahead of it (the audit does not count these frames as acting)
     if ((act === 'tell' || act === 'strike') && bd < 4) { a.tx = tx; a.ty = ty; } // its target: the egg it is closest to
     out.push(a);
   };
   const seen = new Set();
   // ---- the thieves
-  (sim.thieves || []).forEach((T, i) => { seen.add('th' + i); if (T.ph === 'wait' && T.t < LEAD && sim.state === 'play') add('th' + i, 'thief', sim.thDenPt(T), 'in', T.boss ? 0.6 : 0); else if (sim.thLive(T)) add('th' + i, 'thief', sim.thBody(T), T.eid && T.ph !== 'in' ? 'carry' : T.ph, T.boss ? 0.6 : 0); });
+  (sim.thieves || []).forEach((T, i) => { seen.add('th' + i); if (T.ph === 'wait' && T.t < LEAD && sim.state === 'play') add('th' + i, 'thief', sim.thDenPt(T), 'in', T.boss ? 0.6 : 0, 1); else if (sim.thLive(T)) add('th' + i, 'thief', sim.thBody(T), T.eid && T.ph !== 'in' ? 'carry' : T.ph, T.boss ? 0.6 : 0); });
   // ---- Bandit
   const B = sim.band;
   if (B && !B.done && B.ph !== 'wait' && B.ph !== 'hide' && B.ph !== 'defeated') {
     const p = sim.bandPerched(B) || B.ph === 'climb' ? sim.bandBody(B, 0.45, 0) : { x: B.x, y: sim.groundY + 0.55 };
-    add('band', 'bandit', p, B.ph === 'idle' && B.ri < 0 && B.t < LEAD ? 'sneak' : B.ph);
+    const bl = B.ph === 'idle' && B.ri < 0 && B.t < LEAD;
+    add('band', 'bandit', p, bl ? 'sneak' : B.ph, 0, bl ? 1 : 0);
   }
   // ---- mama raccoon and the kits
   const K = sim.kit;
   if (K && !K.done && K.ph !== 'gone' && (K.ph !== 'wait' || K.t < LEAD) && Number.isFinite(K.x)) {
-    add('mama', 'mama', { x: K.x, y: sim.groundY + 0.7 }, K.ph === 'wait' ? 'walk' : K.ph);
+    add('mama', 'mama', { x: K.x, y: sim.groundY + 0.7 }, K.ph === 'wait' ? 'walk' : K.ph, 0, K.ph === 'wait' ? 1 : 0);
     if (K.g && sim.kitOut(K.g)) add('kits', 'kits', sim.kitBody(K.g), K.g.ph);
   }
   // ---- everyone else, from the strike's own list of live villains
