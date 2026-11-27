@@ -20,6 +20,7 @@ import { themeBack, themeWash, themeTick, logoDress } from './ui/theme.js';
 import { menuFxBack, menuFxFront, menuFxStats } from './ui/menufx.js'; // the skin's living effect over the menus
 import { UI, FONT, ICON, drawStar, drawEggIcon, drawAdBadge, setAdOff } from './ui/ui.js';
 import { drawTitleScene, drawLogo, titleTap } from './render/title.js';
+import { createOpening } from './ui/opening.js';
 import { drawSnake } from './render/characters.js';
 import * as MS from './render/mapscene.js'; // the world map: land, road, scenery and cast
 import { chestSpot as mfChestSpot } from './render/mapfarm.js'; // 0.8.17: where a boss's treasure chest stands
@@ -1183,6 +1184,7 @@ function onFirstInput() {
 function pointerDown(e) {
   e.preventDefault();
   onFirstInput();
+  if (G.opening && G.opening.tap()) return; // the opening: a tap sends it straight through to the page
   const x = e.clientX, y = e.clientY;
   const id = ui.hit(x, y);
   focusEnd(G.sscroll); focusEnd(G.setpage); // any touch: the ring and the hand let go
@@ -10736,12 +10738,25 @@ function drawFailPage() {
 // one big PLAY that breathes and shimmers; under it the three places to go and the difficulty as a quiet switch.
 // App-start entrance (2026-11-16, mykee: tap the icon -> home right away, the title animating in): each piece of the home
 // pops in on its own beat, ~0.9 s in all. Input is never blocked (hit rects are laid out at their final spot). Calm: instant.
+// 0.8.19 the opening (src/ui/opening.js) plays over the first page: short for a player who has been here before
+function startOpening(img, short = bestTotal() > 0) {
+  G.opening = createOpening({ img, clock: () => G.t, calm: !!save.calm, low: PERF.low, short, sound: (n, o) => audio.play(n, o), logo: (c, x, y, s, enter) => drawLogo(c, 'EGGSCAPE', x, y, s, G.t, enter, FONT, ui.skin && ui.skin.pack && G.screen === 'title' ? (c2, ch, i, sz, n) => logoDress(ui.skin, c2, ch, i, sz, n) : null) });
+  G.startOpening = startOpening; G.homeIntro = 2; G.screenT = 0;
+}
+function drawOpening() {
+  const op = G.opening;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.globalAlpha = 1;
+  if (op.covers()) G.screenT = 0; // the page's own entrance starts as the opening lets it show
+  op.draw(ctx, W_, H_, G.screen === 'title' ? G.logoAt : null);
+  if (op.done) G.opening = null;
+}
 const introBack = (p) => { const c = 1.9; p = Math.min(1, Math.max(0, p)); return 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); };
 function drawTitle() {
   const u = ui.u;
   ui.calm = save.calm;
   const fr = firstRun(); // a brand-new player: the logo's arrival is the moment (slower), one big PLAY, nothing else yet
-  const intro = !!G.homeIntro && !save.calm && G.screenT < (fr ? 2.6 : 1.2), T = fr ? G.screenT * 0.55 : G.screenT;
+  const slow = fr && G.homeIntro !== 2; // (after the opening, which is the logo's moment now, the pieces arrive at the normal pace)
+  const intro = !!G.homeIntro && !save.calm && G.screenT < (slow ? 2.6 : 1.2), T = slow ? G.screenT * 0.55 : G.screenT;
   // a piece's progress 0..1 (starts at `d` s, takes `dur` s); 1 when there is no entrance
   const ent = (d, dur = 0.32) => (intro ? Math.min(1, Math.max(0, (T - d) / dur)) : 1);
   // draw fn() popped in around (px, py): scale with a little overshoot, fading up
@@ -10780,7 +10795,8 @@ function drawTitle() {
   const tall = !wide && A.h >= A.w * 1.9;
   const logoS = tall ? bw / 5.02 : wide ? Math.min(80 * u, A.w * 0.5 / 7.3, A.h / 5.4) : Math.min(66 * u, A.w / 7.3, A.h / 6);
   const ty = tall ? A.y + 56 * u + logoS * 0.57 : A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
-  const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, intro ? T * 1.7 : 9, FONT, ui.skin && ui.skin.pack ? (c, ch, i, sz, n) => logoDress(ui.skin, c, ch, i, sz, n) : null); // intro: the letters drop in a quicker cascade
+  const opw = !!G.opening && G.opening.word(); G.logoAt = { x: lx, y: ty, s: logoS }; // the opening's word flies here and becomes this title
+  const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, opw ? -1 : G.homeIntro === 2 ? 9 : intro ? T * 1.7 : 9, FONT, ui.skin && ui.skin.pack ? (c, ch, i, sz, n) => logoDress(ui.skin, c, ch, i, sz, n) : null); // intro: the letters drop in a quicker cascade
   ui.record(logo, 'title:logo');
   const subY = ty + logoS * 0.5 + 18 * u;
   G.titleToastY = subY + 16 * u;
@@ -12324,6 +12340,7 @@ function frame(now) {
     const w0 = performance.now(), b0 = stampStats.builds;
     update(dt);
     renderAll();
+    if (G.opening) drawOpening();
     tallyFrame();
     FPSM.lastWork = performance.now() - w0;
     FPSM.work += FPSM.lastWork;
@@ -12602,9 +12619,11 @@ async function boot() {
   if (PREVIEW === 'spin') { G.world = envOf(nextIdx()); setScreen('levels'); openSpin(); }
   if (DEV) { const d = new URLSearchParams(location.search).get('demo'); if (d) window.__egg.startDemo(d); } // v3.2: ?demo=glow
   if (!back) { G.homeIntro = true; G.screenT = 0; } // the home page plays its entrance from here (the setup above must not eat it)
-  const sp = document.getElementById('splash'); // the plain sky behind the canvas goes as soon as the first frames are painted
+  // 0.8.19: the opening. The page's first paint (the egg on the sky) goes once the canvas has painted the same picture, and
+  // the canvas plays on from it into the page (src/ui/opening.js). Not for a watchdog cure, nor for a driven browser (the QA tools).
+  const sp = document.getElementById('splash'), auto = DEV && navigator.webdriver && !/[?&]opening=1/.test(location.search);
+  if (!back && !auto) startOpening(sp && sp.querySelector('img'));
   if (sp) requestAnimationFrame(() => requestAnimationFrame(() => sp.remove()));
-  if (sp) { const minShow = back ? 0 : 2300 - (performance.now() - (window.__t0 || 0)); /* the launch sting plays out (egg in the nest) before the home screen */ setTimeout(() => { sp.classList.add('out'); setTimeout(() => sp.remove(), 500); }, Math.max(0, minShow)); }
   portal.loadingDone();
   last = performance.now();
   requestAnimationFrame(frame);
@@ -12638,7 +12657,7 @@ if (DEV) window.__egg = {
   chickArt: { drawKindChick, drawChickEgg }, // chick kinds pose sheets (QA strips)
   step(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) G.sim.step(); handleEvents(); },
   lessonAsk, lessonLevel, // 0.8.18 QA: lessonAsk(key, null, {x, y}) asks for a teaching moment; lessonLevel() the level's opening demo
-  frame(dt = 1 / 60) { update(dt); renderAll(); tallyFrame(); }, fxStats: menuFxStats,
+  frame(dt = 1 / 60) { update(dt); renderAll(); if (G.opening) drawOpening(); tallyFrame(); }, fxStats: menuFxStats,
   actSteps, // film strips replay planner moves through this
   search: { value: searchValue, actions: searchActions, act: searchAct }, // clips: a closed-loop player picks each move from the live game
   snakeArt: drawSnake, // palette strips
