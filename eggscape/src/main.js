@@ -8838,11 +8838,12 @@ function drawPause() {
   const blockH = RH + (pills ? pg2 + PH : 0), y0 = top + T, y1 = A.y1 - pg2;
   // where the level stands: eggs home, the clock, the three stars (pictures and numbers only)
   const shade = (cx, cy, rw) => { const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, rw); g2.addColorStop(0, 'rgba(14,7,3,0.62)'); g2.addColorStop(0.6, 'rgba(14,7,3,0.36)'); g2.addColorStop(1, 'rgba(14,7,3,0)'); ctx.save(); ctx.translate(cx, cy); ctx.scale(1, 0.3); ctx.translate(-cx, -cy); ctx.fillStyle = g2; ctx.fillRect(cx - rw, cy - rw, rw * 2, rw * 2); ctx.restore(); }; // a soft shade under the floating things (no box)
-  const status = (x, y, w) => {
+  const status = (x, y, w, right) => { // right: the pill's right end on the column's right edge, if it clears Home (else centred one line lower)
     const EDGE = 'rgba(30,14,4,0.9)', fs = 27 * q, a = `${st.saved}/${st.target}`, b = sim.timeLimit ? fmtTime(sim.timeLeft) : '', ok = G.li >= 0 && G.goals && play ? goalsLive(sim) : null;
-    const aw = 38 * q + ui.measure(a, fs), bw = b ? 40 * q + ui.measure(b, fs) : 0, sw = ok ? 3 * 34 * q : 0, gp = 24 * q, tot = aw + (b ? gp + bw : 0) + (ok ? gp + sw : 0), cy = y + SH / 2;
-    let gx = x + w / 2 - tot / 2;
-    ui.roundRect(x + w / 2 - tot / 2 - 20 * q, cy - SH / 2 - 4 * q, tot + 40 * q, SH + 8 * q, SH / 2 + 4 * q); ctx.fillStyle = 'rgba(14,7,3,0.62)'; ctx.fill(); // a soft dark pill: it reads on any backdrop
+    const aw = 38 * q + ui.measure(a, fs), bw = b ? 40 * q + ui.measure(b, fs) : 0, sw = ok ? 3 * 34 * q : 0, gp = (right ? 15 : 24) * q, pd = (right ? 13 : 20) * q, tot = aw + (b ? gp + bw : 0) + (ok ? gp + sw : 0);
+    const fits = right && x + w - tot - 2 * pd >= A.x + pad + T + 8 * q, mx = fits ? x + w - pd - tot / 2 : x + w / 2, cy = (right && !fits ? y0 + 14 * q : y) + SH / 2;
+    let gx = mx - tot / 2;
+    ui.roundRect(mx - tot / 2 - pd, cy - SH / 2 - 4 * q, tot + 2 * pd, SH + 8 * q, SH / 2 + 4 * q); ctx.fillStyle = 'rgba(14,7,3,0.62)'; ctx.fill(); // a soft dark pill: it reads on any backdrop
     drawEggIcon(ctx, gx + 14 * q, cy, 36 * q, 'alive'); ui.text(a, gx + 36 * q, cy, { size: fs, color: st.saved >= st.target ? '#a8f07a' : '#fff6e0', stroke: EDGE, strokeW: 4 * q, tag: 'pause:goal' });
     gx += aw + gp;
     if (b) { pictoClock(ctx, gx + 15 * q, cy, 34 * q); ui.text(b, gx + 38 * q, cy, { size: fs, color: sim.timeLeft <= 10 ? '#ff8a70' : '#ffd36a', stroke: EDGE, strokeW: 4 * q, tag: 'pause:time' }); gx += bw + gp; }
@@ -8875,7 +8876,7 @@ function drawPause() {
   // in the middle; every control in one cluster at the bottom: the slider, the thumb's row, the pills, one gap between
   // them and the same gap under them
   const GS = 64 * q, fo = pauseFanOpen();
-  if (wide) { if (fo < 0.98) { ctx.save(); ctx.globalAlpha *= 1 - fo; status(A.cx - iw / 2, top + (T - SH) / 2, iw); ctx.restore(); } } else status(lx, y0 + 14 * q, iw);
+  if (wide) { if (fo < 0.98) { ctx.save(); ctx.globalAlpha *= 1 - fo; status(A.cx - iw / 2, top + (T - SH) / 2, iw); ctx.restore(); } } else status(lx, top + (T - SH) / 2, iw, true); // 2026-11-27 16:56 (mykee: Home and the pill were out of line): one row, Home on the left edge, the pill on the right edge
   const by = wide ? Math.max(y0 + pg2 + RS + pg2, y1 - blockH) : y1 - blockH, ry = by - pg2 - RS;
   shade(rx + iw / 2, ry + RS / 2, iw * 0.5 + 60 * q); pauseRingRow(rx, ry, iw - GS - 8 * q, q, RS); R.rs = { x: rx, y: ry, w: iw - GS - 8 * q, h: RS };
   { const gx = rx + iw - GS, gy = ry + (RS - GS) / 2, cx = gx + GS / 2; // the gear, and where its icons stand when out: a column over it (a phone on its side: the top row, from the right)
