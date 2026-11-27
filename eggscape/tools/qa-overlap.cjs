@@ -21,6 +21,12 @@ const SIZES = process.env.QA_SIZES ? process.env.QA_SIZES.split(',').map((s) => 
 // own OFFSCREEN check (every recorded text and button inside the safe rect), plus every hit box checked against the
 // inset bands here (a tap-anywhere catcher bigger than most of the screen is exempt). The contact sheet tints the bands.
 const SAFE = !!process.env.QA_SAFE;
+// QA_RULES=1 (lint819): the layout rules (src/ui/layout-rules.js through tools/qa-layout.cjs) on every state too: at rest,
+// every scrolling strip at both ends, one tap on each face / star / tile; findings go to <out>/layout-<size>.json and
+// <out>/layout.md (grouped by page, worst first; tools/layout-allow.cjs exempts). Shots are skipped then unless QA_SHOTS=1.
+const RULES = !!process.env.QA_RULES;
+const LAYOUT = RULES ? require('./qa-layout.cjs') : null;
+const SHOTS = !RULES || process.env.QA_SHOTS === '1';
 const SAFE_INS = (w, h) => (w > h ? { t: 0, b: 21, l: 59, r: 59 } : { t: 59, b: 34, l: 0, r: 0 });
 
 const srv = http.createServer((q, r) => {
@@ -37,6 +43,7 @@ const srv = http.createServer((q, r) => {
   const b = await chromium.launch();
   const problems = [];
   const shots = [];
+  const layoutAll = [];
   for (const [w, h] of SIZES) {
     const p = await b.newPage({ viewport: { width: w, height: h } });
     if (SAFE) await p.addInitScript((s) => { window.__eggSafe = s; }, SAFE_INS(w, h));
@@ -47,6 +54,7 @@ const srv = http.createServer((q, r) => {
     const n = await p.evaluate(() => __egg.LEVELS.length);
     const check = async (label, fn, arg, shoot) => {
       if (ONLY && !ONLY.test(label)) return;
+      if (RULES) await LAYOUT.armHere(p, label);
       let ov = await p.evaluate(fn, arg);
       if (SAFE) ov = ov.concat(await p.evaluate(([W, H, I]) => { // hit boxes against the inset bands
         const bad = [], big = W * H * 0.6;
@@ -57,7 +65,8 @@ const srv = http.createServer((q, r) => {
         return bad;
       }, [w, h, SAFE_INS(w, h)]));
       if (ov.length) problems.push(`${w}x${h} ${label}: ${ov.map((o) => o.join(' x ')).join('; ')}`);
-      if (shoot) { const f = path.join(out, `qa-${w}x${h}-${label}.png`);
+      if (RULES) { const f = await LAYOUT.lintHere(p, label, `${w}x${h}`); layoutAll.push(...f); if (f.length) fs.writeFileSync(path.join(out, `layout-${w}x${h}.json`), JSON.stringify(layoutAll.filter((q) => q.size === `${w}x${h}`))); }
+      if (shoot && SHOTS) { const f = path.join(out, `qa-${w}x${h}-${label}.png`);
         if (SAFE) await p.evaluate((I) => { let d = document.getElementById('qa-bands'); if (!d) { d = document.createElement('div'); d.id = 'qa-bands'; d.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9'; document.body.appendChild(d); }
           const band = (css) => `<div style="position:absolute;background:rgba(255,0,0,.4);${css}"></div>`;
           d.innerHTML = band(`left:0;right:0;top:0;height:${I.t}px`) + band(`left:0;right:0;bottom:0;height:${I.b}px`) + band(`left:0;top:0;bottom:0;width:${I.l}px`) + band(`right:0;top:0;bottom:0;width:${I.r}px`); }, SAFE_INS(w, h));
@@ -357,6 +366,7 @@ const srv = http.createServer((q, r) => {
   } catch (e) { console.log('contact sheet skipped:', e.message.split('\n')[0]); }
   await b.close();
   srv.close();
+  if (RULES) { fs.writeFileSync(path.join(out, 'layout.md'), LAYOUT.report(layoutAll)); const n = layoutAll.filter((q) => !q.allowed).length; console.log(`layout rules: ${n} findings not on the allow list (${path.join(out, 'layout.md')})`); }
   console.log(problems.length ? problems.join('\n') : 'NO OVERLAPS');
   console.log(`checked ${SIZES.length} sizes; problems: ${problems.length}`);
 })();
