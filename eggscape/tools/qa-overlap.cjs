@@ -15,6 +15,13 @@ const ALL_SIZES = [[390, 844], [360, 640], [1280, 720], [640, 360], [600, 600], 
 // QA_ONLY="spin|leave" runs only the states whose name matches (each of the 0.8.15 states sets up its own save)
 const ONLY = process.env.QA_ONLY ? new RegExp(process.env.QA_ONLY) : null;
 const SIZES = process.env.QA_SIZES ? process.env.QA_SIZES.split(',').map((s) => s.split('x').map(Number)) : ALL_SIZES;
+// QA_SAFE=1 (frame818): the safe-area check. Every state runs with an iPhone's insets faked through the shell's own hook
+// (window.__eggSafe: portrait a 59 px status bar / Dynamic Island and a 34 px gesture bar; on its side 59 px each side
+// and a 21 px bar), so the page's backdrop runs under them while nothing the player reads or taps may: the UI layer's
+// own OFFSCREEN check (every recorded text and button inside the safe rect), plus every hit box checked against the
+// inset bands here (a tap-anywhere catcher bigger than most of the screen is exempt). The contact sheet tints the bands.
+const SAFE = !!process.env.QA_SAFE;
+const SAFE_INS = (w, h) => (w > h ? { t: 0, b: 21, l: 59, r: 59 } : { t: 59, b: 34, l: 0, r: 0 });
 
 const srv = http.createServer((q, r) => {
   const u = q.url.split('?')[0];
@@ -32,6 +39,7 @@ const srv = http.createServer((q, r) => {
   const shots = [];
   for (const [w, h] of SIZES) {
     const p = await b.newPage({ viewport: { width: w, height: h } });
+    if (SAFE) await p.addInitScript((s) => { window.__eggSafe = s; }, SAFE_INS(w, h));
     const errors = [];
     p.on('pageerror', (e) => errors.push(String(e)));
     await p.goto(`http://localhost:${+process.env.QA_PORT || 8768}/`);
@@ -39,9 +47,21 @@ const srv = http.createServer((q, r) => {
     const n = await p.evaluate(() => __egg.LEVELS.length);
     const check = async (label, fn, arg, shoot) => {
       if (ONLY && !ONLY.test(label)) return;
-      const ov = await p.evaluate(fn, arg);
+      let ov = await p.evaluate(fn, arg);
+      if (SAFE) ov = ov.concat(await p.evaluate(([W, H, I]) => { // hit boxes against the inset bands
+        const bad = [], big = W * H * 0.6;
+        for (const q of __egg.ui.buttons) {
+          if (q.w * q.h >= big) continue;
+          if (q.y < I.t - 1 || q.y + q.h > H - I.b + 1 || q.x < I.l - 1 || q.x + q.w > W - I.r + 1) bad.push(['btn:' + q.id, 'UNDER A SYSTEM BAR']);
+        }
+        return bad;
+      }, [w, h, SAFE_INS(w, h)]));
       if (ov.length) problems.push(`${w}x${h} ${label}: ${ov.map((o) => o.join(' x ')).join('; ')}`);
-      if (shoot) { const f = path.join(out, `qa-${w}x${h}-${label}.png`); await p.screenshot({ path: f }); shots.push({ f, label: `${w}x${h} ${label}` }); }
+      if (shoot) { const f = path.join(out, `qa-${w}x${h}-${label}.png`);
+        if (SAFE) await p.evaluate((I) => { let d = document.getElementById('qa-bands'); if (!d) { d = document.createElement('div'); d.id = 'qa-bands'; d.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9'; document.body.appendChild(d); }
+          const band = (css) => `<div style="position:absolute;background:rgba(255,0,0,.4);${css}"></div>`;
+          d.innerHTML = band(`left:0;right:0;top:0;height:${I.t}px`) + band(`left:0;right:0;bottom:0;height:${I.b}px`) + band(`left:0;top:0;bottom:0;width:${I.l}px`) + band(`right:0;top:0;bottom:0;width:${I.r}px`); }, SAFE_INS(w, h));
+        await p.screenshot({ path: f }); shots.push({ f, label: `${w}x${h} ${label}` }); }
     };
     const frames = (k) => { for (let i = 0; i < k; i++) __egg.frame(1 / 60); };
     await check('title', (k) => { const E = __egg; E.G.screen = 'title'; E.G.screenT = 5; for (let i = 0; i < 3; i++) E.frame(1 / 60); return E.overlaps(); }, 0, true);

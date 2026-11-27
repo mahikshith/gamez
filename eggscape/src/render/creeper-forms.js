@@ -258,7 +258,7 @@ export function formTrack(ctx, ring, C, k, t, calm, low, P, gone, pt, n, rf) {
 // ------------------------------------------------------------------ the lava flow (no head: a length of molten floor)
 // local px frame (the head's), x from -L to +L along the rim; P.ch = crust (cooling 0..1), P.flame unused
 function lavaBody(c, C, P, k, t, calm, low, bend) {
-  const Q = PAL.lava, L = C.hr * k, D = 0.12 * k, cr = clamp(P.lavaCrust || 0, 0, 1), sp = clamp(P.wiggle || 0, 0, 1), wind = P.rear || 0;
+  const Q = PAL.lava, L = C.hr * k, D = 0.18 * k, cr = clamp(P.lavaCrust || 0, 0, 1), sp = clamp(P.wiggle || 0, 0, 1), wind = P.rear || 0;
   const front = 1 + 0.25 * sp + 0.18 * wind; // the front swells as it goes (and in the wind-up)
   const top = (x) => { const u = x / L; if (Math.abs(u) >= 1) return bend(x); const prof = Math.sqrt(1 - u * u) * (u > 0 ? front : 1) * (1 - 0.12 * Math.sin(u * 3 + (calm ? 0 : t * 2))); return bend(x) - D * prof; };
   const N = 28, shape = (grow = 0) => { c.beginPath(); c.moveTo(-L - grow, bend(-L) + 2); for (let i = 0; i <= N; i++) { const x = -L + (2 * L * i) / N; c.lineTo(x, top(x) - grow); } c.lineTo(L + grow, bend(L) + 2); c.closePath(); };
@@ -270,7 +270,7 @@ function lavaBody(c, C, P, k, t, calm, low, bend) {
     g.addColorStop(0, `${Q.glow}${0.55 * ahead})`); g.addColorStop(1, `${Q.glow}0)`);
     c.fillStyle = g; c.beginPath(); c.ellipse(gx, -D * 0.5, L * 1.2, L * 0.75, 0, 0, TAU); c.fill();
     const g2 = c.createRadialGradient(0, -D, 0, 0, -D, L * 1.4);
-    g2.addColorStop(0, `${Q.glow}${0.4 * (1 - cr)})`); g2.addColorStop(1, `${Q.glow}0)`);
+    g2.addColorStop(0, `${Q.glow}${0.55 * (1 - cr)})`); g2.addColorStop(1, `${Q.glow}0)`);
     c.fillStyle = g2; c.beginPath(); c.ellipse(0, -D, L * 1.5, L * 0.9, 0, 0, TAU); c.fill();
     c.restore();
   }

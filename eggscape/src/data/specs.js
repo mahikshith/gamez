@@ -263,7 +263,7 @@ export const SPECS = [
     orbs: [{ type: 'fire_black', ch: 2 }, { type: 'water', ch: 3 }, { type: 'hourglass', ch: 4 }, { type: 'warp', ch: 1 }],
     intro: { title: 'Lava rocks', line: 'Lava rocks fall on the rings, glow, then melt a hole. The hole heals after 5 s. A water egg cools them.' },
     tip: 'This ring has no gap. Wait for a lava hole, or burn one with the black flame.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { noGap: true, thorns: 1, size: [1, 2] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3] }, { noGap: true, thorns: 1, size: [1, 2], creep: { len: 0.9, v: 0.22, rest: 1.6, form: 'lava', w: 0.6, at: 'bottom' } }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 27, gid: 23, world: 5, theme: 'volcano', name: 'Honey Vents', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 5,
     nest: { w: 3.0 }, bonus: { kind: 'turns' }, lava: { every: 6, delay: 4 }, salamander: { delay: 5, every: 7, a: -40, ch: 3 },
     snake: { delay: 9, a: 40, speed: 0.35 },
@@ -278,7 +278,7 @@ export const SPECS = [
     orbs: [{ type: 'water', ch: 1 }, { type: 'fire_red', ch: 3 }, { type: 'hourglass', ch: 4 }],
     intro: { title: 'Fire meets frost', line: 'A frost salamander walks in. Its bite freezes an egg. When it meets the fire one they fight, and both are knocked out.' },
     tip: 'Turn their rings to bring them head to head: the steam knocks both out. Then run your eggs past.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { gaps: 2, thorns: 2, size: [1, 2] }] },
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], honey: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1, creep: { a0: -100, a1: -72, v: 0.22, rest: 1.6, form: 'lava', w: 0.6 } }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   { id: 29, gid: 24, world: 5, theme: 'volcano', name: 'Spike Forge', eggs: 3, target: 2, spacing: 1.0, material: 'obsidian', minMoves: 5,
     nest: { w: 3.0 }, bonus: { kind: 'time' }, lava: { every: 6, delay: 5 }, salamander: [{ delay: 4, every: 6.5, a: 120, ch: 2 }, { delay: 9, every: 7, a: -30, ch: 2, dir: -1, kind: 'frost' }], // 0.8.14: fire meets frost in one channel (0.8.17: its card moved to The Face-off, where they first meet)
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'water', ch: 3 }, { type: 'fire_green', ch: 5 }, { type: 'hatch_swoop', ch: 2 }],

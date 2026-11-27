@@ -62,6 +62,7 @@ export class UI {
     this.skin = null; // the hen skin's UI theme (data/skin-ui.js): button palettes, ribbon, frame wood, button deco
     this.spring = {};
     this.C = C;
+    this.halo = null; // frame818: a light rim colour for dark words while a frameless page draws (null: none)
     this.aBase = 1; // alpha every text returns to (a fading panel sets it for its own draw)
     this.lock = drawLock;
     this.tint = tint;
@@ -81,6 +82,7 @@ export class UI {
   }
 
   begin() {
+    this.halo = null;
     this.rects.length = 0;
     this.buttons.length = 0;
     this.fr++;
@@ -133,6 +135,10 @@ export class UI {
     if (o.stroke) {
       ctx.lineWidth = sw;
       ctx.strokeStyle = o.stroke;
+      ctx.strokeText(str, left, by);
+    } else if (this.halo && !o.shadow && !o.grad && darkInk(o.color)) { // frame818: dark words on a frameless page's sky get a soft light rim
+      ctx.lineWidth = Math.max(2, size * 0.2);
+      ctx.strokeStyle = this.halo;
       ctx.strokeText(str, left, by);
     }
     if (o.grad) {
@@ -585,6 +591,22 @@ export class UI {
 
   // pop-in for a panel: 0.86 -> overshoot -> 1 over ~0.3 s of screen time (1 when reduced motion is on)
   pop(t, dur = 0.3) { return this.calm || t >= dur ? 1 : 0.86 + 0.14 * backOut(t / dur); }
+}
+
+// frame818: is this fill colour dark (ink that needs a light rim on a sky)? '#rgb', '#rrggbb' or 'rgb(a)(...)'
+const INK_CACHE = new Map();
+function darkInk(c) {
+  if (!c || typeof c !== 'string') return false;
+  let v = INK_CACHE.get(c);
+  if (v === undefined) {
+    let r = 255, g = 255, b = 255;
+    const m = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i), n = c.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+    if (m) { const h = m[1].length === 3 ? m[1].replace(/./g, (q) => q + q) : m[1]; r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16); }
+    else if (n) { r = +n[1]; g = +n[2]; b = +n[3]; }
+    v = 0.299 * r + 0.587 * g + 0.114 * b < 150;
+    if (INK_CACHE.size < 256) INK_CACHE.set(c, v);
+  }
+  return v;
 }
 
 // 0.8.17: while no video can be shown (offline, no ad loaded, the iPhone shell without ads) main.js says so once a frame

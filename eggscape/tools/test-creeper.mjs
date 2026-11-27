@@ -251,7 +251,7 @@ for (const f of ['spark', 'saw', 'shard']) { // fire means nothing to them; a st
 {
   const with_ = LEVELS.filter((L) => L.rings.some((r) => r.creep)), form = (L) => L.rings.find((r) => r.creep).creep.form || 'thorn';
   ok(with_.length >= 5, `the family is in ${with_.length} levels (${with_.map((L) => 'L' + L.id + ':' + form(L)).join(' ')})`);
-  ok(with_.every((L) => L.id > 5 && L.id !== 23 && L.world !== 5), 'never in levels 1-5, the volcano (world 5, for now) or level 23');
+  ok(with_.every((L) => L.id > 5 && L.id !== 23 && (L.world !== 5 || ([25, 26, 28].includes(L.id) && form(L) === 'lava'))), 'never in levels 1-5 or level 23; in the volcano only the lava flow, and only on L25, L26 or L28 (L27, L29, L30 are left alone)');
   const first = with_[0];
   ok(first && first.world === 2 && form(first) === 'thorn', `its first level is in world 2, a thorn creeper (L${first && first.id})`);
   if (first) {
@@ -259,8 +259,8 @@ for (const f of ['spark', 'saw', 'shard']) { // fire means nothing to them; a st
     ok(c.v <= 0.35 && c.a1 - c.a0 <= 40 && c.rest >= 1.4, `its first appearance is a gentle baby (v ${c.v} m/s, stretch ${c.a1 - c.a0} deg, coil ${c.rest} s)`);
     ok(c.baby === 1 && !first.intro, `its first level marks it a baby (only shoves) and introduces nothing else (L${first.id})`);
   }
-  const WF = { 2: ['thorn'], 3: ['frost'], 4: ['shard'], 6: ['spark'], 7: ['saw', 'thorn'], 8: ['anemone'], 9: ['vine'], 10: ['saw'] };
-  for (const w of [2, 3, 4, 6, 7, 8, 9, 10]) { const L = with_.filter((q) => q.world === w); ok(L.length >= 1 && L.every((q) => WF[w].includes(form(q))), `world ${w}: ${L.map((q) => 'L' + q.id + ' ' + form(q)).join(', ') || 'none'}`); }
+  const WF = { 2: ['thorn'], 3: ['frost'], 4: ['shard'], 5: ['lava'], 6: ['spark'], 7: ['saw', 'thorn'], 8: ['anemone'], 9: ['vine'], 10: ['saw'] };
+  for (const w of [2, 3, 4, 5, 6, 7, 8, 9, 10]) { const L = with_.filter((q) => q.world === w); ok(L.length >= 1 && L.every((q) => WF[w].includes(form(q))), `world ${w}: ${L.map((q) => 'L' + q.id + ' ' + form(q)).join(', ') || 'none'}`); }
   for (const L of with_) {
     const k = CREEP_KIND[form(L)];
     ok(villainKinds(L).includes(k) && !!VILLAIN_INFO[k], `L${L.id}: the level card lists the ${k}`);
