@@ -57,7 +57,7 @@ export function createOpening(env) {
       if (calm) { // steady picture, the word whole under it, then one cross-dissolve into the page
         ctx.save(); ctx.globalAlpha = 1 - smooth(k);
         sky(); egg(0, 0);
-        const cs = wordSize(W, H, S, 1); env.logo(ctx, cx, cy + S * 0.36 + cs * 0.8, cs, 9);
+        const cs = wordSize(W, H, S, 1); ctx.globalAlpha *= smooth(t / 0.3); env.logo(ctx, cx, cy + S * 0.36 + cs * 0.8, cs, 9); // (the word comes up softly: frame 0 is the first paint)
         ctx.restore();
         if (k >= 1) done = true;
         return;
