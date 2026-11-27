@@ -1,4 +1,9 @@
 import { themeFrame, themeButton, themeShape } from './theme.js';
+import { lint as layoutLint } from './layout-rules.js';
+/* global __DEV__ */
+// lint819: dev builds keep more per record (a rect's size before a strip cut it, each text's fit) and run the layout
+// guard; a release build (__DEV__ false) drops all of it. Outside a build (node tests) it is off.
+const DEV = typeof __DEV__ !== 'undefined' && __DEV__;
 // Screen-space UI: every text and widget goes through here so we can measure,
 // fit, hit-test, and assert that nothing overlaps.
 //
@@ -56,6 +61,7 @@ export class UI {
     this.u = 1;
     this.rects = [];
     this.buttons = [];
+    this.texts = []; // lint819 (dev builds): every text drawn this frame with its fit
     this.debug = false;
     this.fr = 0; // frames drawn: drives the press springs and the CTA shimmer
     this.calm = false; // reduced motion: no squash, no shimmer
@@ -82,15 +88,40 @@ export class UI {
   }
 
   begin() {
+    if (DEV) this.guard();
     this.halo = null;
+    if (DEV) this.texts = [];
     this.rects.length = 0;
     this.buttons.length = 0;
     this.fr++;
   }
 
-  record(r, tag, group) {
-    this.rects.push({ ...r, tag, group: group || tag });
+  record(r, tag, group, extra) {
+    const q = { ...r, tag, group: group || tag };
+    if (DEV) { q.r0 = { x: r.x, y: r.y, w: r.w, h: r.h }; if (group && group !== tag && !/^btn:/.test(group)) q.set = group; if (extra) Object.assign(q, extra); } // r0: survives a strip's cut (clipRecorded spreads the rect)
+    this.rects.push(q);
     return r;
+  }
+
+  // lint819: the layout rules (src/ui/layout-rules.js) on this frame's records; o: { rules, screen, flow, play }
+  lint(o) { return DEV ? layoutLint(this, o) : []; }
+
+  // lint819 dev guard: once a second, rules 1, 2 and 6 (on screen, tap size, crowding) on the frame just drawn; one
+  // console.warn per problem not seen before (this.guardOff = true silences it; the QA turns it off)
+  guard() {
+    if (this.guardOff || !this.rects.length || typeof performance === 'undefined') return;
+    const now = performance.now();
+    if (now - (this.guardT || 0) < 1000) return;
+    this.guardT = now;
+    const seen = (this.guardSeen = this.guardSeen || new Set());
+    let f = [];
+    try { f = layoutLint(this, { rules: ['ONSCREEN', 'TAPSIZE', 'CROWD'], screen: this.screen || '' }); } catch (e) { f = [{ rule: 'GUARD', tag: 'error', msg: String(e) }]; }
+    for (const q of f) {
+      const k = q.rule + '|' + q.tag;
+      if (seen.has(k) || seen.size > 400) continue;
+      seen.add(k);
+      console.warn(`[layout] ${q.rule} ${q.tag}: ${q.msg}${this.screen ? ' (' + this.screen + ')' : ''}`);
+    }
   }
 
   font(size) {
@@ -102,7 +133,7 @@ export class UI {
   text(str, x, y, o = {}) {
     const ctx = this.ctx;
     let size = o.size || 18 * this.u;
-    const maxW = o.maxW || Infinity;
+    const maxW = o.maxW || Infinity, size0 = size, str0 = str;
     ctx.font = this.font(size);
     let w = ctx.measureText(str).width;
     if (w > maxW) {
@@ -148,9 +179,11 @@ export class UI {
       ctx.fillStyle = g;
     } else ctx.fillStyle = o.color || '#fff';
     ctx.fillText(str, left, by);
+    const aNow = ctx.globalAlpha;
     ctx.globalAlpha = this.aBase; // as before the kit: text leaves alpha at the base (1 unless a panel is fading in)
     const r = { x: left, y: top, w, h: size };
-    if (!o.noRecord) this.record(r, o.tag || 'text:' + str, o.group);
+    if (DEV) this.texts.push({ str, tag: o.tag, size, fit: size / size0, cut: str !== str0, a: aNow, x: left, y: top, w, h: size });
+    if (!o.noRecord) this.record(r, o.tag || 'text:' + str, o.group, DEV ? { kind: 'text', size } : null);
     return r;
   }
 
@@ -521,7 +554,7 @@ export class UI {
     }
     ctx.restore();
     const r = o.hit || { x, y, w, h }; // o.hit: a larger tap/record rect than the drawn face (segmented rows)
-    this.record(r, 'btn:' + id, 'btn:' + id);
+    this.record(r, 'btn:' + id, 'btn:' + id, DEV ? { ui: 1, kind: 'btn', set: o.group } : null); // o.group (lint819): the row / column it lines up with
     if (!o.disabled) this.buttons.push({ id, ...r });
     return { x, y, w, h, dy, cy };
   }
