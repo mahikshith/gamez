@@ -512,6 +512,10 @@ export const ITEMS = {
   goldhour: { id: 'goldhour', name: 'Golden Hour', line: 'Double coins on your next 3 wins.', price: 120, wins: 3 },
   skip: { id: 'skip', name: 'Skip Ticket', line: 'Skip a level you have not won yet.', price: 150 },
 };
+// 0.8.19 the coin way to skip a level (the pause page, the fail card): the middle of the start boosters' prices, so a
+// skip costs about what one mid booster costs (40 40 50 60 60 70 80 90: the upper middle, rounded to a ten = 60).
+// The Skip Ticket (150) is the storable kind: it also comes out of chests and spins and is taken before a video.
+export const SKIP_PRICE = (() => { const P = Object.values(BOOSTERS).map((b) => b.price).sort((a, b) => a - b); return Math.round(P[P.length >> 1] / 10) * 10; })();
 export const ITEM_ORDER = ['ally', 'goldhour', 'skip'];
 export function itemCount(w, id) {
   if (!w) return 0;

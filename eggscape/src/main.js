@@ -195,6 +195,7 @@ function loadSave(s) {
   if (s.rsDef !== 2) { save.rsDef = 2; if (!(+s.ringSpeed) || +s.ringSpeed === 1) save.ringSpeed = RING_SPEED_DEFAULT; }
   save.wallet = E.sanitizeWallet(save.wallet);
   CK.bind(save, () => { const b = appBridge(); return b && typeof b.uptime === 'function' ? Number(b.uptime()) : undefined; }); // the game's day (save.clock)
+  if (save.easyBack) { save.mode = save.easyBack; delete save.easyBack; } // 0.8.19: "Easy for this level" was on when the app closed: the level is left, the mode is back
   if (!MODE_LIST.includes(save.mode)) save.mode = 'medium';
   for (const [o, n] of Object.entries(LEGACY_ORB)) if (save.seen[o]) save.seen[n] = 1; // v1 discoveries
   ads.rebind(save);
@@ -373,8 +374,8 @@ if (typeof window !== 'undefined') window.__eggNotif = (ok) => {
 };
 // ---- the Tally (engine/tally.js): which buttons and offers were on a page he saw, which he tapped, seconds per screen.
 // Looked at three times a second, never per frame; one count per visit of a page.
-const TAL_IDS = new Set(['double', 'bonus', 'sample', 'chest', 'daily', 'rewind', 'rewind:coins', 'skip:ad', 'skip:ticket', 'skip:coins', 'ad:coins', 'adboost', 'shop', 'store', 'win:shop', 'gm:shop', 'gm:ad', 'tr:shop', 'tr:open',
-  'home:chest', 'home:bank', 'home:premium', 'home:charge', 'home:hen', 'premium', 'set:novideo', 'chip:skip', 'strike', 'ally', 'settings', 'practice', 'extras', 'info', 'retry', 'next', 'restart', 'hint', 'cb:buy', 'pause:skip', 'store:coins', 'set:remind', 'rem:yes', 'calm', 'spin', 'leave:stay', 'leave:go', 'spin:retry']);
+const TAL_IDS = new Set(['double', 'bonus', 'sample', 'chest', 'daily', 'rewind', 'rewind:coins', 'skip:ad', 'skip:ticket', 'skip:coins', 'sk:go', 'sk:coins', 'fail:easy', 'ad:coins', 'adboost', 'shop', 'store', 'win:shop', 'gm:shop', 'gm:ad', 'tr:shop', 'tr:open',
+  'home:chest', 'home:bank', 'home:premium', 'home:charge', 'home:hen', 'premium', 'set:novideo', 'chip:skip', 'strike', 'ally', 'settings', 'practice', 'extras', 'info', 'retry', 'next', 'restart', 'pause:help', 'cb:buy', 'pause:skip', 'store:coins', 'set:remind', 'rem:yes', 'calm', 'spin', 'leave:stay', 'leave:go', 'spin:retry']);
 const TAL_PRE = /^(buy|charge|chick|hen|skin|kit|item|iap|gm:iap|try|boost|hset|spin|stk:buy|stk:pick|tr:boss|lv|tab):/;
 const talCache = new Map();
 function tallyKey(id) {
@@ -1781,13 +1782,10 @@ async function press(id) {
       save.calm = !save.calm;
       persist();
       break;
-    case 'hint': {
-      const ok = await rewarded('hint');
-      if (ok && G.sim && G.sim.state === 'play') {
-        const out = {};
-        G.hint = { out, gen: hintSearch(Sim, G.level, G.sim.fullState(), { mode: G.sim.mode, ...G.boost }, out) };
-        popPrize('Hint', (c, x, y, S) => lampIcon(c, x, y, S), null, 0.2); // then the hint shows on the board
-      }
+    case 'pause:help': { // the pause page's HELP (0.8.19, in the Hint's place): one video the player picks gives the booster this level asks for; it goes in on Resume
+      if (G.screen !== 'pause' || !G.sim || G.sim.state !== 'play' || G.li < 0 || earlyDays() || (G.pauseHelp && G.pauseHelp.run === G.run)) break;
+      const b = pauseHelpPick(), run = G.run;
+      if ((await rewarded('booster')) && G.run === run && G.screen === 'pause') { G.pauseHelp = { id: b, run }; audio.play('unlock'); buzz('tap'); }
       break;
     }
     case 'tr:close': if (land.busy()) { land.finish(); break; } G.treasure = null; land.clear(); break; // (a tap while the coins fly lands them all; the next closes)
@@ -1848,18 +1846,32 @@ async function press(id) {
       audio.play(d.took ? 'fire_ignite' : 'ui_back', d.took ? { vol: 0.7 } : undefined); buzz('tap');
       break;
     }
-    case 'pause:skip': // the pause page's Skip level: a small sheet first (what happens, one video, cancel)
-      if (G.screen === 'pause' && skipNow()) G.skipAsk = { t0: G.t };
+    case 'fail:easy': // 0.8.19 the stuck player's EASY: this level on Easy; the mode comes back by itself when the level is left (easyTick)
+      if (G.screen !== 'fail' || G.li < 0 || save.mode === 'easy' || !G.level) break;
+      save.easyBack = save.mode; save.mode = 'easy'; G.easyLv = G.level.id; persist();
+      portal.gameplayStop(); audio.play('unlock'); buzz('tap');
+      startLevel(G.li, { direct: true });
+      popPrize('Easy', (c, x, y, S) => pictoTurtle(c, x, y, S), null, 0.5);
+      break;
+    case 'fail:skip': // (the fail card's Skip: the same sheet)
+    case 'pause:skip': // the pause page's Skip: a small sheet first (the two ways, cancel)
+      if ((G.screen === 'pause' || G.screen === 'fail') && skipWays().length) G.skipAsk = { t0: G.t };
       break;
     case 'sk:no':
       G.skipAsk = null;
       break;
-    case 'sk:go': // the pause sheet's button: a Skip Ticket if the player owns one, else the video
+    case 'sk:go': // the skip sheet's first button: a Skip Ticket if the player owns one, else the video
+    case 'sk:coins': { // ... and its second: coins
+      const way = id === 'sk:coins' ? 'coins' : skipWays()[0];
+      if (way === 'ad' && !ads.videoOk) { videoOff(null); break; } // no video now: the sheet stays (coins, or Cancel)
       G.skipAsk = null;
-      if (G.screen === 'pause') await skipGo(skipWays()[0]);
+      if (G.screen === 'pause' || G.screen === 'fail') await skipGo(way);
       break;
+    }
     case 'resume':
       setScreen('play');
+      G.resumeAt = G.t; // 0.8.19: the level eases back to speed (update: resumeEase), the eggs give one soft pulse
+      pauseHelpApply();
       portal.gameplayStart();
       break;
     case 'info': // the "i" panel: what the villains here do. From play it pauses the game; closing resumes.
@@ -2401,7 +2413,7 @@ const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? {
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
 function treasureDue(li) { const Lf = LEVELS[li]; return Lf && Lf.boss && E.bossTreasure(Lf.id) && bossBeaten(Lf.id) && !E.treasureOpened(save.wallet, Lf.id) ? Lf.id : 0; }
-function modalOpen() { return !!(G.got || G.party || G.waitList || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && G.screen === 'pause') || (G.stuckAsk && G.screen === 'fail' && G.screenT >= STUCK_AFTER)); }
+function modalOpen() { return !!(G.got || G.party || G.waitList || G.getMore || G.detail || G.offer || G.ageAsk || G.remAsk || G.leaveAsk || G.parent || G.chickBuy || G.treasure || G.nudge || (G.skipAsk && (G.screen === 'pause' || G.screen === 'fail')) || (G.stuckAsk && G.screen === 'fail' && G.screenT >= STUCK_AFTER)); }
 function drawModals() {
   if (!modalOpen()) return;
   ui.buttons.length = 0; ui.rects.length = 0;
@@ -2552,8 +2564,7 @@ async function takeHelp() {
   const H = G.failHelp, lid = G.level && G.level.id;
   if (!H || G.screen !== 'fail' || lid == null) return;
   const boostRun = (b) => startLevel(G.li, b === 'golden' ? { direct: true, golden: true } : { direct: true, boost: { [b]: true } });
-  if (H.pacer) { ENG.pacer.gave(save, lid, H.pacer); persist(); } // the Pacer's free hint or Scarecrow: once per level
-  if (H.kind === 'freeHint') { G.failHelp = null; G.hintFree = lid; portal.gameplayStop(); startLevel(G.li, { direct: true }); return; } // the hint shows once the next try is running
+  if (H.pacer) { ENG.pacer.gave(save, lid, H.pacer); persist(); } // the Pacer's free booster or Scarecrow: once per level
   if (H.kind === 'trialChick') {
     DR.noteTrial(save, lid, H, Date.now()); persist();
     G.trialChick = { lid, id: H.id };
@@ -2566,6 +2577,11 @@ async function takeHelp() {
     DR.noteTrial(save, lid, H, Date.now()); persist();
     G.failHelp = null; boostRun(H.id);
     pacerGiftPop({ [H.id]: true }); // 0.8.18 words818: its icon and name pop over the level
+  } else if (H.kind === 'useBoost') { // 0.8.19 the stuck row: a booster from the bag
+    const w = E.useBooster(save.wallet, H.id);
+    if (!w) return;
+    save.wallet = w; persist(); G.failHelp = null; boostRun(H.id);
+    popPrize(E.BOOSTERS[H.id].name, (c, x, y, S, t) => drawBoosterIcon(c, H.id, x, y, S, t), null, 0.5);
   } else if (H.kind === 'buyBoost') {
     if (H.bought) return;
     if (save.wallet.coins < H.price) { needCoins(H.price); return; }
@@ -3419,8 +3435,8 @@ function guardNote() {
 const skipLv = () => ({ id: G.level ? G.level.id : 0, count: LEVELS.length, journey: G.li >= 0 && LEVELS[G.li] === G.level && !G.demo, coaching: !!G.teach || firstRun(), won: !!G.level && bestStarsOf(G.level.id) > 0 });
 // can this level be skipped now: in play (the pause page) or once it is lost (the fail card)
 const skipNow = () => !!G.sim && (G.screen === 'fail' ? G.sim.state !== 'play' : G.sim.state === 'play') && SK.canSkip(save, skipLv());
-// how it can be paid now, in button order (src/skip.js skipWays): 'ticket' | 'ad', then 'coins' while stuck (fail card only)
-const skipWays = () => (skipNow() ? SK.skipWays(save, skipLv(), { stuck: G.screen === 'fail' && G.li >= 0 && (ads.stuck(G.level.id) || ENG.pacer.losses(save, G.level.id) >= SK_STUCK), tickets: save.wallet.tickets.skip }) : []);
+// how it can be paid now, in button order (src/skip.js skipWays): 'ticket' | 'ad', then 'coins'; none before level 3 is won
+const skipWays = () => (skipNow() ? SK.skipWays(save, skipLv(), { early: earlyDays(), tickets: save.wallet.tickets.skip }) : []);
 // The one skip (0.8.14: the pause sheet and the fail card end the same way): pay (a ticket, a video or coins), then
 // SK.applySkip, and the map, where the hen hops to the next stop and its level page opens (a star gate: the map waits).
 async function skipGo(way) {
@@ -3443,15 +3459,19 @@ async function skipGo(way) {
   if (way === 'ad') popPrize('Level skipped', (c, x, y, S, t) => drawItemArt(c, 'skip', x, y, S, t), null, 0.8); // 0.8.17: what the video gave, then the hop
   return true;
 }
-function drawSkipAsk() {
-  if (G.screen !== 'pause') { G.skipAsk = null; return; }
+function drawSkipAsk() { // 0.8.19: the one skip sheet (the pause page's Skip pill, the fail card's Skip): the two ways side by side, nothing to read but its name
+  const ways = G.screen === 'pause' || G.screen === 'fail' ? skipWays() : [];
+  if (!ways.length) { G.skipAsk = null; return; }
   dim(0.55);
   stackCard('Skip level?', (s) => [
-    lineBlock('Skip to the next level', 19 * s, { color: ui.C.ink, tag: 'sk:what' }),
-    lineBlock('Come back for stars any time', 14.5 * s, { color: ui.C.ink2, tag: 'sk:back', gap: 6 * s }),
-    { h: 56 * s, gap: 16 * s, draw: (x, y, w) => save.wallet.tickets.skip > 0 ? ui.button('sk:go', 'Use a Skip Ticket', x, y, w, 56 * s, { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3, size: 19 * s }) // 0.8.14: a ticket the player owns comes first
-      : ui.button('sk:go', ads.premium ? 'Skip level' : 'Watch to skip', x, y, w, 56 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, size: 20 * s } : { kind: 'ad', ad: true, size: 19 * s }) },
-    { h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('sk:no', 'Cancel', x, y, w, 50 * s, { kind: 'tertiary', size: 19 * s }) },
+    { h: 96 * s, gap: 0, draw: (x, y, w) => { drawItemArt(ctx, 'skip', x + w / 2, y + 48 * s, 84 * s, G.t); ui.record({ x: x + w / 2 - 42 * s, y: y + 6 * s, w: 84 * s, h: 84 * s }, 'sk:art'); } },
+    { h: 64 * s, gap: 14 * s, draw: (x, y, w) => {
+      const hw = (w - 10 * s) / 2;
+      if (ways[0] === 'ticket') ui.button('sk:go', '', x, y, hw, 64 * s, { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.5, size: 22 * s });
+      else ui.button('sk:go', '', x, y, hw, 64 * s, ads.premium ? { kind: 'secondary', icon: ICON.next, iconS: 1.4, size: 22 * s } : { kind: 'ad', ad: true, icon: ICON.next, iconS: 1.2, size: 22 * s });
+      ui.button('sk:coins', String(SKIP_COINS), x + hw + 10 * s, y, hw, 64 * s, { kind: save.wallet.coins >= SKIP_COINS ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 24 * s }); // too few coins: the tap opens Get more
+    } },
+    { h: 54 * s, gap: 12 * s, draw: (x, y, w) => ui.button('sk:no', 'Cancel', x, y, w, 54 * s, { kind: 'tertiary', size: 19 * s }) },
   ], { ribbon: '#7a48e8' });
 }
 
@@ -3469,11 +3489,19 @@ function pacerFail() {
   const P = ENG.pacer.failPlan(save, { levelId: id, boss: !!L.boss, early: earlyDays(), canSkip: SK.canSkip(save, skipLv()), now: Date.now() });
   G.stuckAsk = null;
   if (P.scare) G.failHelp = { kind: 'trialBoost', id: 'scare', label: `Free ${E.BOOSTERS.scare.name}`, line: E.BOOSTERS.scare.line, pacer: 'scare' };
-  else if (P.hint) G.failHelp = { kind: 'freeHint', id: 'hint', label: 'Show me the way', line: 'A free hint on your next try.', pacer: 'hint' };
+  else if (P.boost) { const b = LOSS_BOOST[G.lastLoss] || 'stone'; G.failHelp = { kind: 'trialBoost', id: b, label: `Free ${E.BOOSTERS[b].name}`, line: E.BOOSTERS[b].line, pacer: 'boost' }; } // 0.8.19: in the free hint's place, the booster that answers why it was lost
   if (P.ask) { G.stuckAsk = { lid: id, t0: null }; ENG.pacer.asked(save, id); }
   else if (P.gift) ENG.pacer.declined(save, id); // no skip on this level (won before): the next try's free booster all the same
-  pacerWhy('fail', P.ask ? 'stuck:ask' : P.scare ? 'help:scare' : P.hint ? 'help:hint' : null, P.why);
+  // 0.8.19 the stuck player's three choices (the fail card's own row, from the second loss in a row past level 3): the
+  // booster, Easy for this level, Skip. The row holds the skip, so the "Stuck?" pop-up is not raised over it (its
+  // "Keep trying" gift comes all the same); with no help picked yet, the booster that answers the loss: owned: use it, else one video
+  if (stuck3()) {
+    if (G.stuckAsk) { G.stuckAsk = null; ENG.pacer.declined(save, id); }
+    if (!G.failHelp) { const b = LOSS_BOOST[G.lastLoss] || 'stone', B = E.BOOSTERS[b]; G.failHelp = E.ownedCount(save.wallet, b) > 0 ? { kind: 'useBoost', id: b, label: B.name, line: B.line } : { kind: 'adBoost', id: b, label: B.name, line: B.line }; }
+  }
+  pacerWhy('fail', P.ask ? 'stuck:ask' : P.scare ? 'help:scare' : P.boost ? 'help:boost' : null, P.why);
 }
+const stuck3 = () => G.li >= 0 && !!G.level && G.level.id > 3 && !earlyDays() && ENG.pacer.losses(save, G.level.id) >= 2;
 // the retry after "Keep trying": one free start booster, the one that answers why it was lost (once per level)
 function pacerRetry() {
   const id = G.li >= 0 && G.level ? G.level.id : 0;
@@ -3489,13 +3517,28 @@ function pacerRestart() {
   const sim = G.sim, used = sim.timeLimit ? 1 - Math.max(0, sim.timeLeft) / sim.timeLimit : 0;
   if (ENG.pacer.restart(save, G.level.id, { used, lost: sim.stats().broken })) { pacerWhy('pause', 'soft', `a restart on level ${G.level.id} counted as a loss`); persist(); }
 }
-// the free hint: the solver's next move, shown as the Hint button shows it, once the try is running
-function freeHintTick() {
-  if (G.screen !== 'play' || !G.sim || G.sim.state !== 'play' || fuseIntroOn() || !G.level || G.hintFree !== G.level.id || G.sim.t < 0.6) return;
-  G.hintFree = 0;
-  const out = {};
-  G.hint = { out, gen: hintSearch(Sim, G.level, G.sim.fullState(), { mode: G.sim.mode, ...G.boost }, out) };
-  popPrize('Hint', (c, x, y, S) => lampIcon(c, x, y, S), null, 0.2);
+// 0.8.19 "Easy for this level" (the fail card's turtle): save.easyBack holds the player's own mode while the level is
+// in hand; the moment it is left (won or not: the map, home, another level, its level card) the mode is back.
+const EASY_IN = new Set(['play', 'pause', 'fail', 'win', 'info', 'store', 'spin']);
+function easyTick() {
+  if (!save.easyBack || (G.easyLv && G.li >= 0 && G.level && G.level.id === G.easyLv && EASY_IN.has(G.screen))) return;
+  save.mode = MODE_LIST.includes(save.easyBack) ? save.easyBack : 'medium'; delete save.easyBack; G.easyLv = 0; persist();
+}
+// ... and its small mark on the HUD's pause button while it lasts
+function easyMark(x, y, bs) {
+  if (!save.easyBack) return;
+  const r = bs * 0.27, cx = x + bs - r * 0.5, cy = y + bs - r * 0.5;
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = '#fff6e0'; ctx.fill(); ctx.lineWidth = 2 * ui.u; ctx.strokeStyle = '#1f4d22'; ctx.stroke(); ctx.restore();
+  pictoTurtle(ctx, cx - r * 0.12, cy - r * 0.05, r * 1.75);
+}
+// 0.8.19 Resume is gentle: the world comes back to speed over RESUME_S (slow first: an ease in), so the player is never
+// thrown back in cold. 0..1, the share of real time the world gets this frame (the clock is the world's: it eases too).
+const RESUME_S = 0.8;
+function resumeEase() {
+  if (G.resumeAt == null || G.screen !== 'play') return 1;
+  const k = (G.t - G.resumeAt) / RESUME_S;
+  if (k >= 1) { G.resumeAt = null; return 1; }
+  return k * k * k;
 }
 // the level card's dare: asked once per visit of the card; the Pacer keeps the same one while it is this level's
 function dareNow() {
@@ -5687,6 +5730,7 @@ function update(dt) {
   }
   offerMoments();
   spendTick(); // 0.8.17 the spend moments
+  easyTick();
   computeLayout();
   scrollHaptics();
   if (G.screen === 'wonder') { wonder.update(dt); return; } // WONDER: its own loop; the campaign world stands still
@@ -5697,7 +5741,7 @@ function update(dt) {
   const running = (G.screen === 'play' && !fuseIntroOn()) || ((G.screen === 'win' || G.screen === 'fail') && G.screenT < 4);
   keyboardTurn(dt);
   // slow motion (power cards, the last egg) scales the world's time, not the UI's
-  const sdt = (G.slow ? dt * slowScale(G.slow) : dt) * lessonTick(dt); // 0.8.18: a teaching moment slows the world too
+  const sdt = (G.slow ? dt * slowScale(G.slow) : dt) * lessonTick(dt) * resumeEase(); // 0.8.18: a teaching moment slows the world too
   if (G.slow && (G.slow.left -= dt) <= 0) G.slow = null;
   if (G.card && (G.card.t += dt) > G.card.dur) G.card = null;
   if (G.hen.t > 0 && (G.hen.t -= dt) <= 0) G.hen.mood = 'idle';
@@ -5715,8 +5759,6 @@ function update(dt) {
   }
   if (G.hintShow && (G.hintShow.t -= dt) <= 0) G.hintShow = null;
   heartbeat(dt); // predators (v3)
-  if (G.hint) hintWork();
-  else if (G.hintFree) freeHintTick(); // the Pacer's free hint, once the try is running
   if (G.hitstop > 0) G.hitstop -= dt;
   else if (running && !G.adBusy) {
     // 2026-11-20 pacing: the step count rounds a little early (acc may sit up to a quarter step below zero), so a frame
@@ -5851,19 +5893,6 @@ function update(dt) {
   if (G.screen === 'fail' && !save.calm) for (const [, name, o] of routineCues('encourage', G.screenT - dt, G.screenT)) audio.play(name, o);
 }
 
-// The in-game hint (C4): a depth-1 search from a frozen copy of the world, ~10 ms per frame (the
-// search yields every 30 sim steps and tries at most 24 moves), then a ghost arrow on the ring to turn.
-function hintWork() {
-  const H = G.hint, t0 = performance.now();
-  let done = false;
-  while (performance.now() - t0 < 10) if (H.gen.next().done) { done = true; break; }
-  if (!done) return;
-  G.hint = null;
-  const b = H.out.best;
-  if (b) G.hintShow = { ring: b.ring, dir: Math.sign(b.delta), amt: Math.min(Math.abs(b.delta), 2), t: 6 };
-  else toast('Turn a ring', 1.8); // 0.8.18: three words at most in play
-  if (G.screen === 'pause') press('resume');
-}
 
 // slow motion: a plain { left, scale } holds its scale; one with `dur` (the winning egg) eases the sim clock down to
 // `scale`, holds, and eases back up, so the world glides into slow motion and out (never a frame-rate drop)
@@ -6108,7 +6137,7 @@ function render() {
   if (G.screen === 'play') drawLesson(ctx, W_, H_); // 0.8.18 teaching moment: dim, spotlight, ghost finger (under the HUD)
   // UI
   if (DEV && G.probe) G.probe('tintEtc');
-  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info' && G.screen !== 'intro' && G.screen !== 'win' && G.screen !== 'fail') drawHUD();
+  if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info' && G.screen !== 'intro' && G.screen !== 'win' && G.screen !== 'fail' && G.screen !== 'pause') drawHUD();
   if (DEV && G.probe) G.probe('hud'); // the intro card carries the name, eggs and time (mykee: the name showed twice)
   if (G.screen === 'play') drawFlyers(); // prizes on their way to the HUD
   if (G.screen === 'play') {
@@ -6612,7 +6641,7 @@ function drawHUD() {
   drawStarLost(); // 0.8.18 words818: a lost star cracks live over the still layer
   // ---- live: what the layer left out
   const row1 = Y.row1;
-  if (V.pause) { ui.button('pause', '', Y.X0, Y.Y0, Y.bs, Y.bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u }); setMarkAt(Y.X0, Y.Y0, Y.bs, Y.bs, true); }
+  if (V.pause) { ui.button('pause', '', Y.X0, Y.Y0, Y.bs, Y.bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u }); setMarkAt(Y.X0, Y.Y0, Y.bs, Y.bs, true); easyMark(Y.X0, Y.Y0, Y.bs); }
   tourPauseHud(Y.X0, Y.Y0, Y.bs); // 0.8.17: once level 1 is won, a quiet spell: where the pause button is (tour.js)
   if (V.bump && !Y.noScore) {
     ctx.save();
@@ -6677,7 +6706,7 @@ function hudStill(V, timeTxt) {
   ctx.fillRect(0, 0, W_, G.hudBottom + 12 * u);
   const row1 = Y0 + bs / 2;
   if (!V.pause) {
-    ui.button('pause', '', X0, Y0, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
+    ui.button('pause', '', X0, Y0, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u }); easyMark(X0, Y0, bs);
     setMarkAt(X0, Y0, bs, bs, true); // 0.8.14: Settings lives behind pause until it was opened once (a still badge: never a blink during play)
   }
   // score chip (right)
@@ -6798,7 +6827,7 @@ function drawSideHUD() {
   g.addColorStop(0, al(0.7)); g.addColorStop(0.75, al(0.38)); g.addColorStop(1, al(0));
   ctx.fillStyle = g; ctx.fillRect(0, 0, X0 + cw + 24 * u, H_);
   let y = Y0;
-  ui.button('pause', '', X0, y, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u });
+  ui.button('pause', '', X0, y, bs, bs, { kind: 'hud', icon: ICON.pause, iconS: 1.25, round: 15 * u }); easyMark(X0, y, bs);
   setMarkAt(X0, y, bs, bs, true); // 0.8.14: the Settings mark (see the portrait HUD)
   tourPauseHud(X0, y, bs); // 0.8.17: once level 1 is won, where the pause button is (tour.js)
   // (the "i" button moved into the pause page, 2026-11-19)
@@ -8628,164 +8657,161 @@ function pauseTiles(items, s, cols = 3, th0 = 0) {
     });
   } };
 }
-// a lamp (the pause page's hint)
-function lampIcon(c, x, y, S) {
-  c.save(); c.lineJoin = 'round';
-  const r = S * 0.3, gy = y - S * 0.08;
-  c.beginPath(); c.arc(x, gy, r, Math.PI * 0.78, Math.PI * 2.22); c.lineTo(x + r * 0.42, gy + r * 1.25); c.lineTo(x - r * 0.42, gy + r * 1.25); c.closePath();
-  c.fillStyle = '#ffe066'; c.fill(); c.lineWidth = Math.max(1.5, S * 0.06); c.strokeStyle = '#7a4a08'; c.stroke();
-  c.fillStyle = '#fff'; c.globalAlpha = 0.7; c.beginPath(); c.ellipse(x - r * 0.35, gy - r * 0.3, r * 0.16, r * 0.3, 0.5, 0, 7); c.fill(); c.globalAlpha = 1;
-  c.fillStyle = '#8a8f9a'; c.fillRect(x - r * 0.45, gy + r * 1.28, r * 0.9, r * 0.22); c.fillRect(x - r * 0.38, gy + r * 1.55, r * 0.76, r * 0.2);
-  c.strokeRect(x - r * 0.45, gy + r * 1.28, r * 0.9, r * 0.22);
+// a turtle and a hare (0.8.19): the two ends of the pause page's ring speed row; the turtle is also the Easy mark
+function pictoTurtle(c, x, y, S) {
+  const r = S * 0.34, ln = '#1f4d22';
+  c.save(); c.lineJoin = c.lineCap = 'round'; c.lineWidth = Math.max(1.5, S * 0.055); c.strokeStyle = ln;
+  c.fillStyle = '#9bd66b';
+  for (const d of [-0.55, 0.5]) { c.beginPath(); c.ellipse(x + d * r, y + r * 0.62, r * 0.2, r * 0.3, 0, 0, 7); c.fill(); c.stroke(); } // feet
+  c.beginPath(); c.moveTo(x - r * 0.95, y + r * 0.3); c.lineTo(x - r * 1.3, y + r * 0.42); c.stroke(); // tail
+  c.beginPath(); c.arc(x + r * 1.08, y + r * 0.02, r * 0.36, 0, 7); c.fill(); c.stroke(); // head
+  c.beginPath(); c.arc(x, y + r * 0.42, r, Math.PI, 0); c.closePath(); c.fillStyle = '#3fa046'; c.fill(); c.stroke(); // shell
+  c.save(); c.clip(); c.fillStyle = 'rgba(255,255,255,0.28)'; c.beginPath(); c.ellipse(x - r * 0.25, y - r * 0.45, r * 0.5, r * 0.26, -0.4, 0, 7); c.fill();
+  c.strokeStyle = 'rgba(20,70,26,0.55)'; c.lineWidth = Math.max(1, S * 0.035); c.beginPath(); c.moveTo(x - r * 0.35, y - r * 0.5); c.lineTo(x - r * 0.5, y + r * 0.42); c.moveTo(x + r * 0.35, y - r * 0.5); c.lineTo(x + r * 0.5, y + r * 0.42); c.stroke(); c.restore();
+  c.fillStyle = '#17300f'; c.beginPath(); c.arc(x + r * 1.2, y - r * 0.06, r * 0.085, 0, 7); c.fill();
   c.restore();
 }
-// the pause page's tiles: Restart, Levels, Home / Settings, Practice and (0.8.17, once level 3 is won) the Shop, gold,
-// with its mark when the coins reach something new; a tap opens the shop on that thing, and Back comes to this page again
-function pauseTileItems() {
-  const T = [
-    ['restart', 'Restart', ICON.retry, 'secondary'], ['levels', 'Levels', ICON.grid, ui.faceOf('#1f9e94')], ['home', 'Home', ICON.home, ui.faceOf('#e0507e')],
-    ['settings', 'Settings', (c, X, Y, S) => settingsIcon(c, X, Y, S, '#fff4dc', (ui.skin && ui.skin.kinds && ui.skin.kinds.ad || {}).b || '#7c4fe0'), 'ad', (bx, by, bw, bh) => setMarkAt(bx, by, bw, bh)], ['practice', 'Practice', (c, X, Y, S) => pictoTarget(c, X, Y, S * 0.95), 'orange'],
-  ];
-  if (!earlyDays()) T.push(['shop', 'Shop', (c, X, Y, S) => shopIcon(c, X, Y, S * 1.1), 'gold', (bx, by, bw) => { if (shopMarkNow().on) markBadge(bx + bw - 8 * ui.u, by + 6 * ui.u, 12 * ui.u, G.t); }]);
-  return T;
+function pictoHare(c, x, y, S) {
+  const r = S * 0.3, ln = '#6b4a3a';
+  c.save(); c.lineJoin = c.lineCap = 'round'; c.lineWidth = Math.max(1.5, S * 0.055); c.strokeStyle = ln; c.fillStyle = '#fff4e6';
+  for (const [dx, a] of [[0.5, -0.5], [0.82, -0.28]]) { c.beginPath(); c.ellipse(x + r * dx - r * 0.3, y - r * 1.0, r * 0.17, r * 0.62, a, 0, 7); c.fill(); c.stroke(); } // ears, laid back
+  c.beginPath(); c.arc(x - r * 1.0, y + r * 0.22, r * 0.24, 0, 7); c.fill(); c.stroke(); // tail
+  c.beginPath(); c.ellipse(x - r * 0.2, y + r * 0.3, r * 0.85, r * 0.6, -0.12, 0, 7); c.fill(); c.stroke(); // body
+  c.beginPath(); c.ellipse(x + r * 0.55, y + r * 0.86, r * 0.42, r * 0.15, -0.2, 0, 7); c.fill(); c.stroke(); // a paw reaching out
+  c.beginPath(); c.arc(x + r * 0.72, y - r * 0.22, r * 0.44, 0, 7); c.fill(); c.stroke(); // head
+  c.fillStyle = '#2a1a12'; c.beginPath(); c.arc(x + r * 0.86, y - r * 0.3, r * 0.085, 0, 7); c.fill();
+  c.fillStyle = '#f08a9a'; c.beginPath(); c.arc(x + r * 1.14, y - r * 0.14, r * 0.07, 0, 7); c.fill();
+  c.restore();
 }
-// the pause page's ring speed row (0.8.17): the level card's little ring turning at the chosen speed, then the same
-// - / bars / + as Settings (press ids rs:-, rs:+, rs:<i>; a sideways drag slides the bars). It applies at once.
-// bare (tour817): drawn inside the page's settings group, whose well it shares
-function pauseRingRow(x, y, w, s, h, bare = false) {
-  const sp = ringSpeed(), k = RING_SPEEDS.indexOf(sp);
-  if (!bare) ui.well(x, y, w, h, { s, r: 16 * s, a: '#f6e6c2', b: '#ecd3a2' });
-  const rr = Math.min(16 * s, h * 0.3), rcx = x + 12 * s + rr + 2 * s, rcy = y + h / 2, dt = clamp(G.t - (G.rsT ?? G.t), 0, 0.1), ang = save.calm ? 0.6 : (G.rsAng = (G.rsAng || 0) + dt * 1.6 * sp);
+// the pause page's ring speed (0.8.19): one slim slider, turtle to hare. The knob is the level card's little ring
+// turning at the chosen speed; a tap on the track, a sideways drag, or a tap on the turtle / the hare moves it
+// (press ids rs:<i>, rs:-, rs:+, as Settings). It applies at once.
+function pauseRingRow(x, y, w, s, h) {
+  const sp = ringSpeed(), n = RING_SPEEDS.length, k = RING_SPEEDS.indexOf(sp), dfl = RING_SPEEDS.indexOf(RING_SPEED_DEFAULT);
+  const e = h, tx = x + e + 6 * s, tw = w - 2 * e - 12 * s, cw = tw / n, cy = y + h / 2, th = 14 * s, kx = tx + cw * (k + 0.5);
+  const col = k === dfl ? '#58c83c' : k < dfl ? '#4a9cf0' : RING_SPEEDS[k] >= 3.5 ? '#f0553a' : '#f59a2c';
+  ctx.save();
+  ui.roundRect(tx, cy - th / 2, tw, th, th / 2); ctx.fillStyle = 'rgba(20,10,4,0.62)'; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = 'rgba(255,240,210,0.55)'; ctx.stroke();
+  ui.roundRect(tx + 2 * s, cy - th / 2 + 2 * s, Math.max(th, kx - tx), th - 4 * s, th / 2); ctx.fillStyle = col; ctx.fill();
+  for (let i = 0; i < n; i++) { ctx.beginPath(); ctx.arc(tx + cw * (i + 0.5), cy, (i === dfl ? 3.4 : 2.2) * s, 0, 7); ctx.fillStyle = i <= k ? 'rgba(255,255,255,0.9)' : 'rgba(255,240,210,0.45)'; ctx.fill(); }
+  // the knob
+  const rr = h * 0.33, dt = clamp(G.t - (G.rsT ?? G.t), 0, 0.1), ang = save.calm ? 0.6 : (G.rsAng = (G.rsAng || 0) + dt * 1.6 * sp);
   G.rsT = G.t;
-  ctx.save(); ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.arc(rcx, rcy, rr, ang + 0.55, ang + Math.PI * 2 - 0.55); ctx.lineWidth = 7 * s; ctx.strokeStyle = '#6b3f17'; ctx.stroke();
-  ctx.beginPath(); ctx.arc(rcx, rcy, rr, ang + 0.55, ang + Math.PI * 2 - 0.55); ctx.lineWidth = 4 * s; ctx.strokeStyle = '#d99a4e'; ctx.stroke();
-  drawEggIcon(ctx, rcx, rcy, 14 * s, 'alive');
+  ctx.beginPath(); ctx.arc(kx, cy, rr + 3 * s, 0, 7); ctx.fillStyle = '#fff6e0'; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#6b3f17'; ctx.stroke();
+  ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(kx, cy, rr - 3 * s, ang + 0.55, ang + Math.PI * 2 - 0.55); ctx.lineWidth = 4.5 * s; ctx.strokeStyle = col; ctx.stroke();
+  drawEggIcon(ctx, kx, cy, rr * 0.95, 'alive');
+  pictoTurtle(ctx, x + e / 2 - 2 * s, cy, e * 0.86); pictoHare(ctx, x + w - e / 2 + 2 * s, cy + 2 * s, e * 0.86);
   ctx.restore();
-  ui.record({ x: rcx - rr - 4 * s, y: rcy - rr - 4 * s, w: 2 * rr + 8 * s, h: 2 * rr + 8 * s }, 'pause:rsring');
-  const cx = rcx + rr + 12 * s, ch = h - 12 * s;
-  ringSpeedCtl(cx, y + 6 * s, x + w - 8 * s - cx, s, k, ch);
+  if (k > 0) ui.buttons.push({ id: 'rs:-', x, y, w: e, h });
+  if (k < n - 1) ui.buttons.push({ id: 'rs:+', x: x + w - e, y, w: e, h });
+  for (let i = 0; i < n; i++) ui.buttons.push({ id: 'rs:' + i, x: tx + cw * i, y, w: cw, h });
+  ui.record({ x, y: cy - e * 0.36, w, h: e * 0.72 }, 'pause:rs');
 }
-// 0.8.7 (mykee: "the info on the pause page should be an animation, not text"): each villain of this level as its
-// own little cartoon (the level card's stage: the villain's game rig, the move that beats it), one line under it
-function foeStage(kd, i, s, iw) {
-  const C = ui.C, stH = Math.min((iw - 24 * s) * 0.58, 220 * s), plan = howToPlan(kd), I = VILLAIN_INFO[kd] || { name: kd }, H = 12 * s + stH + 36 * s;
-  return { h: H, gap: 10 * s, draw: (x, y, w) => {
-    const sx = x + 12 * s, sy = y + 12 * s, sw = w - 24 * s, th = G.theme && G.theme.palette; // (frame818: no cream box; the demo melts into the page)
-    heroDemo(plan, G.t + i * 1.3, sx, sy, sw, stH, 1, { rooster: allyIcon, world: howWorld(), calm: save.calm, sky0: th && th.skyTop, sky1: th && th.skyBottom, ground: th && th.groundTop, ring: th && th.ring && th.ring.base, ringEdge: th && th.ring && th.ring.dark }, true);
-    ui.record({ x: sx, y: sy, w: sw, h: stH }, 'pause:stage' + i);
-    const nm = I.name, ts = 15 * s, tw = Math.min(sw - 20 * s, ui.measure(nm, ts) + 22 * s);
-    ui.roundRect(sx + sw - 8 * s - tw, sy + 8 * s, tw, 26 * s, 13 * s); ctx.fillStyle = I.group === 'boss' ? 'rgba(160,30,40,0.9)' : 'rgba(30,24,40,0.72)'; ctx.fill();
-    ui.text(nm, sx + sw - 8 * s - tw / 2, sy + 21 * s, { size: ts, align: 'center', color: '#fff', maxW: tw - 12 * s, noRecord: true });
-    if (I.group !== 'hazard' && lvLaser()) { // v0.8.9: a red tag in the stage's corner says what the laser does to it
-      const lt = I.group === 'boss' ? 'Laser: it flinches' : 'Laser: stuns it', ls = 13.5 * s, lw = ui.measure(lt, ls) + 20 * s;
-      ui.roundRect(sx + 8 * s, sy + stH - 34 * s, lw, 26 * s, 13 * s); ctx.fillStyle = 'rgba(176,34,24,0.9)'; ctx.fill();
-      ui.text(lt, sx + 8 * s + lw / 2, sy + stH - 21 * s, { size: ls, align: 'center', color: '#fff', noRecord: true });
-    }
-    ui.text(plan.cap, x + w / 2, sy + stH + 18 * s, { size: 16.5 * s, align: 'center', color: '#c8f5a0', stroke: 'rgba(30,14,4,0.85)', strokeW: 3.2 * s, maxW: w - 24 * s, tag: 'pause:cap' + i });
-  } };
+// the booster the pause page's HELP gives for this level, one that works from the middle of a try: villains about (or
+// a boss): the Scarecrow; else a Free rewind; that one in hand already: a stone shell for the egg in front
+function pauseHelpPick() {
+  const sim = G.sim, L = G.level;
+  if (!sim || !L) return 'rewind';
+  if (L.boss || (G.pauseKinds || []).some((k) => (VILLAIN_INFO[k] || {}).group !== 'hazard')) return 'scare';
+  return G.freeRewind || G.usedRewind ? 'stone' : 'rewind';
 }
-// 0.8.17 tour817 (mykee: "optimize the UI/UX for the pause menu: remove empty spaces, right sizes for the sections ...
-// Take reference of popular games menu options"; "many users feel there are too many buttons"). The big casual games'
-// pause page: a title strip (Paused, the level's name), where the level stands (the goal, the clock and the three
-// stars in one card), then the controls in the thumb zone: the settings a player changes mid-level as one group (ring
-// speed; sound, music, vibration), the tiles, and Resume, the biggest, lowest. Everything on one column grid (one
-// width, one left and right edge). A short page is never left with a band: the tiles, Resume, the settings and the
-// star rows first grow to their tallest, then what is left is shared out as even gaps. A long one (villains) scrolls
-// above the controls. A phone on its side: what the level is on the left, the controls on the right (the right thumb).
+// Resume: the booster HELP gave goes into the level now (its picture pops over the board)
+function pauseHelpApply() {
+  const H = G.pauseHelp, sim = G.sim;
+  if (!H || H.run !== G.run || H.used || !sim || sim.state !== 'play') return;
+  H.used = true;
+  if (H.id === 'scare') { sim.scareT = SCARE_S; sim.scareTick = 0; }
+  else if (H.id === 'stone') { const e = sim.aliveEggs()[0]; if (e) { sim.setStone(e, true); e.stone = Math.max(e.stone || 0, 8); } }
+  else G.freeRewind = true;
+  popPrize(E.BOOSTERS[H.id].name, (c, x, y, S, t) => drawBoosterIcon(c, H.id, x, y, S, t), null, 0.5);
+}
+// 0.8.19 (mykee, asked twice: "take references from Subway Surfers, Candy Crush ... We added too many buttons ...
+// shop, the ad, skip, retry and resume properly placed at the thumb level ... the home button always top left").
+// The big casual games' pause: the frozen level, dimmed, edge to edge, and ten things to tap, pictures not sentences.
+//   top left HOME (it asks once), top right sound / music / vibration (one on look, one off look)
+//   upper middle, wordless: eggs home, the clock, the three stars as they stand
+//   middle: the ring speed, one slim slider, turtle to hare
+//   thumb zone: RETRY, RESUME (the biggest, it shimmers), SHOP in one row; under it HELP and SKIP, two equal pills
+// Nothing scrolls, nothing opens a second page. The room left is shared as even gaps. A phone on its side: the level
+// and the slider on the left, the thumb's buttons on the right. Before level 3 is won: no shop, no help, no skip.
 function drawPause() {
   ui.calm = save.calm;
-  introBackdrop();
-  const u = ui.u, A = ui.A, C = ui.C, sim = G.sim, st = sim.stats(), L = G.level;
-  const s = u * clamp(A.w / (390 * u), 0.82, 1), pad = 16 * u, wide = A.w > A.h * 1.15;
+  const A = ui.A, sim = G.sim, st = sim.stats(), L = G.level;
+  if (!G.frzActive) { // the level itself, dimmed (no blur: the player never left it), darker where the controls stand
+    dim(0.5);
+    const g = ctx.createLinearGradient(0, 0, 0, H_);
+    g.addColorStop(0, 'rgba(10,5,2,0.5)'); g.addColorStop(0.22, 'rgba(10,5,2,0)'); g.addColorStop(0.62, 'rgba(10,5,2,0)'); g.addColorStop(1, 'rgba(10,5,2,0.62)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W_, H_);
+    if (G.screenT > 0.25) captureBack();
+  }
   const pg = G.ppage || (G.ppage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
-  if (pg.lid !== G.scrSeq) { pg.lid = G.scrSeq; pg.y = 0; pg.v = 0; G.pauseKinds = sim.state === 'play' && G.li >= 0 ? villainKinds(L, sim).filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 8) : []; tourPauseOpened(); }
-  const kinds = G.pauseKinds || [];
+  if (pg.lid !== G.scrSeq) { pg.lid = G.scrSeq; pg.y = 0; pg.v = 0; pg.max = 0; G.pauseKinds = sim.state === 'play' && G.li >= 0 ? villainKinds(L, sim).filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 8) : []; tourPauseOpened(); }
+  G.ppRect = null; G.ppRectR = null;
+  const wide = A.w > A.h * 1.15, q = clamp((wide ? Math.min(A.w / 2, A.h * 1.15) : A.w) / 450, 0.78, 1.12), pad = 16 * q;
   const k = ui.pop(G.screenT, 0.25);
   ctx.save();
   if (k !== 1) { ctx.translate(A.cx, A.cy); ctx.scale(k, k); ctx.translate(-A.cx, -A.cy); }
-  const iw = wide ? Math.min((A.w - 3 * pad) / 2, 520 * s) : Math.min(A.w - 2 * pad, 520 * s);
-  const lx = wide ? A.cx - iw - pad / 2 : A.cx - iw / 2, rx = wide ? A.cx + pad / 2 : lx;
-  const tb = portal.showMuteButton, vib = __APP__ || (typeof navigator !== 'undefined' && !!navigator.vibrate);
-  const TG = [...(tb ? [['sfx', ICON.sound(save.sfx), !!save.sfx, '#3a80ea'], ['music', ICON.note(save.music), !!save.music, '#9a5ae8']] : []), ...(vib ? [['vibe', vibeIcon(save.vibe !== false), save.vibe !== false, '#e8702f']] : [])]; // (Settings' own badge colours)
-  const goalsOn = !!(G.li >= 0 && G.goals && sim.state === 'play'), TI = pauseTileItems(), R = (G.ppTourR = {});
+  const R = (G.ppTourR = {});
   G.ppTiles = {};
-  // gi: how much the level's side grows (the star rows), gf: the controls (tiles, Resume, the settings rows); 0..1
-  const build = (gi, gf) => {
-    const rowH = (32 + 8 * gi) * s, topH = (54 + 6 * gi) * s, TH = (78 + 20 * gf) * s, BTN = (60 + 10 * gf) * s, RH = (52 + 6 * gf) * s, TGH = (44 + 6 * gf) * s;
-    const stH = topH + (goalsOn ? 3 * rowH + 8 * s : 0), gh = 8 * s + RH + (TG.length ? 8 * s + TGH : 0) + 8 * s;
-    const info = [
-      { h: 46 * s, gap: 0, draw: (x, y, w) => ui.ribbon('Paused', x + w / 2, y, clamp(ui.measure('Paused', 28 * s) + 80 * s, 170 * s, w), 46 * s, { s, color: '#3a80ea', size: 28 * s, tag: 'pause:title' }) },
-      { h: 30 * s, gap: 6 * s, tight: true, draw: (x, y, w) => ui.text(G.li >= 0 ? `Level ${L.id} · ${L.name}` : L.name, x + w / 2, y + 15 * s, { size: 20 * s, align: 'center', maxW: w, color: '#fff', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:name' }) },
-      // where the level stands: the eggs home and the clock, then its three stars and how each stands right now
-      { h: stH, gap: 12 * s, draw: (x, y, w) => {
-        // frame818 (mykee: no frames): no cream box; the goal, the clock and the three stars stand on the level's own scene in light words
-        const LT = '#fff6e0', LT2 = 'rgba(255,246,224,0.62)', EDGE = 'rgba(30,14,4,0.85)', ew = 3.2 * s;
-        const cy = y + topH / 2, a = `${st.saved}/${st.target} home`, b = sim.timeLimit ? fmtTime(sim.timeLeft) : '', aw = 32 * s + ui.measure(a, 20 * s), bw2 = b ? 32 * s + ui.measure(b, 20 * s) : 0, gp = b ? 26 * s : 0;
-        let gx = x + w / 2 - (aw + gp + bw2) / 2;
-        drawEggIcon(ctx, gx + 12 * s, cy, 30 * s, 'alive'); ui.text(a, gx + 30 * s, cy, { size: 20 * s, color: st.saved >= st.target ? '#a8f07a' : LT, stroke: EDGE, strokeW: ew, tag: 'pause:goal' });
-        if (b) { gx += aw + gp; pictoClock(ctx, gx + 12 * s, cy, 28 * s); ui.text(b, gx + 30 * s, cy, { size: 20 * s, color: sim.timeLeft <= 10 ? '#ff8a70' : '#ffd36a', stroke: EDGE, strokeW: ew, tag: 'pause:time' }); }
-        if (!goalsOn) return;
-        const ok = goalsLive(sim);
-        G.goals.forEach((g, i) => {
-          const ry = y + topH + 4 * s + rowH * (i + 0.5);
-          ctx.fillStyle = 'rgba(255,240,210,0.16)'; ctx.fillRect(x + 10 * s, ry - rowH / 2, w - 20 * s, 1.2 * s);
-          drawStar(ctx, x + 26 * s, ry, 11 * s, ok[i]);
-          ui.text(g.long, x + 48 * s, ry, { size: 16.5 * s, color: ok[i] ? LT : LT2, stroke: EDGE, strokeW: ew, maxW: w - 96 * s, tag: 'pause:goal' + i });
-          if (!ok[i]) pictoCross(ctx, x + w - 24 * s, ry, 22 * s);
-        });
-      } },
-      (() => { const c = G.li >= 0 && !earlyDays() ? pageLead('pause').lead : null; return c ? leadBlock(c, s, { gap: 12 * s, tag: 'pause:lead', quiet: true }) : null; })(), // 0.8.15: what waits for him or what he is closest to (the Conductor's one thing)
-      // the hint and Skip level: two equal halves, each with its icon and the video mark (Skip only when src/skip.js allows it)
-      G.hint ? lineBlock('Hint…', 18 * s, { color: '#ffe27a', stroke: 'rgba(40,20,5,0.9)', tag: 'pause:hint', gap: 14 * s })
-        : sim.state !== 'play' && !skipNow() ? null : { h: 58 * s, gap: 12 * s, draw: (x, y, w) => {
-          const sk = skipNow(), hn = sim.state === 'play', hw = sk && hn ? (w - 10 * s) / 2 : w, tk = save.wallet.tickets.skip > 0;
-          if (hn) ui.button('hint', 'Hint', x, y, hw, 58 * s, { kind: 'ad', ad: !ads.premium, icon: lampIcon, iconS: 1.25, size: 19 * s, round: 18 * s });
-          if (sk) ui.button('pause:skip', 'Skip level', x + (hn ? hw + 10 * s : 0), y, hw, 58 * s, { ...(tk ? { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t) } : { face: ui.faceOf('#5a6ee0'), ad: !ads.premium, icon: ICON.next }), iconS: 1.15, size: 19 * s, round: 18 * s });
-        } },
-      ...(kinds.length ? [pageSection(kinds.length === 1 ? 'WHO HUNTS YOUR EGGS' : `WHO HUNTS YOUR EGGS (${kinds.length})`, s, 'pfoes'), ...kinds.map((kd, i) => foeStage(kd, i, s, iw))] : []),
-    ].filter(Boolean);
-    const foot = [
-      // the settings a player changes mid-level, as one group: the ring speed (live: the level runs at it on Resume),
-      // then sound, music and vibration side by side (the same switches as Settings)
-      { h: gh, gap: 12 * s, draw: (x, y, w) => {
-        pauseRingRow(x, y + 8 * s, w, s, RH, true); // (frame818: no cream box round the group: its controls float on the scene)
-        R.rs = { x, y, w, h: 8 * s + RH + 4 * s };
-        if (!TG.length) return;
-        const n = TG.length, tw = (w - 16 * s - 8 * s * (n - 1)) / n, ty = y + 16 * s + RH;
-        TG.forEach(([id, icon, on, col], i) => ui.button(id, '', x + 8 * s + i * (tw + 8 * s), ty, tw, TGH, { ...(on ? { face: ui.faceOf(col) } : { kind: 'off' }), icon, iconS: 1.3, round: 14 * s }));
-        R.snd = { x, y: ty - 4 * s, w, h: TGH + 12 * s };
-      } },
-      pauseTiles(TI, s, 3, TH),
-      { h: BTN, gap: 12 * s, draw: (x, y, w) => { ui.button('resume', 'Resume', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: ICON.play, size: 27 * s }); R.go = { x, y, w, h: BTN }; } },
-    ];
-    return { info, foot };
+  // ---- the corners: Home, and the three switches
+  const T = 58 * q, top = A.y + 10 * q, tg = 10 * q;
+  ui.button('home', '', A.x + pad, top, T, T, { face: ui.faceOf('#e0507e'), icon: ICON.home, iconS: 1.45, round: T / 2 });
+  const tb = portal.showMuteButton, vib = __APP__ || (typeof navigator !== 'undefined' && !!navigator.vibrate);
+  const TG = [...(tb ? [['sfx', ICON.sound(save.sfx), !!save.sfx], ['music', ICON.note(save.music), !!save.music]] : []), ...(vib ? [['vibe', vibeIcon(save.vibe !== false), save.vibe !== false]] : [])];
+  TG.forEach(([id, icon, on], i) => ui.button(id, '', A.x1 - pad - T - (TG.length - 1 - i) * (T + tg), top, T, T, { ...(on ? { face: ui.faceOf('#3a80ea') } : { kind: 'off' }), icon, iconS: 1.45, round: T / 2 }));
+  if (TG.length) R.snd = { x: A.x1 - pad - TG.length * T - (TG.length - 1) * tg - 4 * q, y: top - 4 * q, w: TG.length * T + (TG.length - 1) * tg + 8 * q, h: T + 8 * q };
+  // ---- the columns
+  const iw = wide ? Math.min((A.w - 3 * pad) / 2, 440 * q) : Math.min(A.w - 2 * pad, 440 * q);
+  const lx = wide ? A.x + (A.w / 2 - iw) / 2 + pad / 4 : A.cx - iw / 2, rx = wide ? A.cx + (A.w / 2 - iw) / 2 - pad / 4 : lx;
+  const sold = !earlyDays() && G.li >= 0, play = sim.state === 'play';
+  const canHelp = sold && play, sk = sold && skipNow(), HP = G.pauseHelp && G.pauseHelp.run === G.run ? G.pauseHelp : null;
+  const SH = 46 * q, RS = 62 * q, D = 84 * q, RH = 98 * q, PH = 62 * q, pg2 = 18 * q, pills = canHelp || sk;
+  const blockH = RH + (pills ? pg2 + PH : 0), y0 = top + T, y1 = A.y1 - (wide ? 14 * q : Math.max(26 * q, A.h * 0.05));
+  // where the level stands: eggs home, the clock, the three stars (pictures and numbers only)
+  const status = (x, y, w) => {
+    const EDGE = 'rgba(30,14,4,0.9)', fs = 27 * q, a = `${st.saved}/${st.target}`, b = sim.timeLimit ? fmtTime(sim.timeLeft) : '', ok = G.li >= 0 && G.goals && play ? goalsLive(sim) : null;
+    const aw = 38 * q + ui.measure(a, fs), bw = b ? 40 * q + ui.measure(b, fs) : 0, sw = ok ? 3 * 34 * q : 0, gp = 24 * q, tot = aw + (b ? gp + bw : 0) + (ok ? gp + sw : 0), cy = y + SH / 2;
+    let gx = x + w / 2 - tot / 2;
+    drawEggIcon(ctx, gx + 14 * q, cy, 36 * q, 'alive'); ui.text(a, gx + 36 * q, cy, { size: fs, color: st.saved >= st.target ? '#a8f07a' : '#fff6e0', stroke: EDGE, strokeW: 4 * q, tag: 'pause:goal' });
+    gx += aw + gp;
+    if (b) { pictoClock(ctx, gx + 15 * q, cy, 34 * q); ui.text(b, gx + 38 * q, cy, { size: fs, color: sim.timeLeft <= 10 ? '#ff8a70' : '#ffd36a', stroke: EDGE, strokeW: 4 * q, tag: 'pause:time' }); gx += bw + gp; }
+    if (ok) { ok.forEach((o, i) => drawStar(ctx, gx + 17 * q + i * 34 * q, cy, 15 * q, o)); ui.record({ x: gx, y: cy - 16 * q, w: sw, h: 32 * q }, 'pause:stars'); }
   };
-  const top = A.y + 6 * u, bot = A.y1 - 6 * s, gapV = 6 * s;
-  const iNeed = (P) => pageColH(P.info, s) + 18 * s, fNeed = (P) => pageColH(P.foot, s) - P.foot[0].gap;
-  // the room left is first grown into (up to the tallest sizes), then shared out as even gaps between the sections
-  const slots = (B) => B.filter((b, i) => i > 0 && !b.tight);
-  const share = (S, free, n) => { if (free <= 0 || !n) return 0; const add = Math.min(free / n, 48 * s); for (const b of S) b.gap = (b.gap ?? 10 * s) + add; return free - add * n; };
-  const P0 = build(0, 0), P1 = build(1, 1), gOf = (free, d, k2) => (free > 0 ? clamp(free * k2 / Math.max(1, d), 0, 1) : 0);
-  let P, left = 0;
-  if (!wide) { // one column: the sections, the gap over the controls, and the controls' own gaps share the room alike
-    const g = gOf(bot - top - gapV - iNeed(P0) - fNeed(P0), iNeed(P1) + fNeed(P1) - iNeed(P0) - fNeed(P0), 0.5);
-    P = build(g, g);
-    const S = [...slots(P.info), ...P.foot.slice(1)];
-    left = share(S, bot - top - gapV - iNeed(P) - fNeed(P), S.length + 1);
-  } else { // two panes, each filled on its own: the level's side from the top, the controls from the bottom
-    P = build(gOf(bot - top - iNeed(P0), iNeed(P1) - iNeed(P0), 0.5), gOf(bot - top - fNeed(P0), fNeed(P1) - fNeed(P0), 0.6));
-    left = share(slots(P.info), bot - top - iNeed(P), slots(P.info).length + 1);
-    share(P.foot.slice(1), bot - top - fNeed(P), 3); // (and one share over the group, so its top sits a gap under the edge)
+  // the thumb's row: Retry, Resume, Shop; under it Help and Skip
+  const block = (x, y, w) => {
+    const cy = y + RH / 2, shop = sold, RW = shop ? w - 2 * D - 2 * 22 * q : w - D - 22 * q;
+    ui.button('restart', '', x, cy - D / 2, D, D, { kind: 'secondary', icon: ICON.retry, iconS: 1.5, round: D / 2 });
+    ui.button('resume', '', x + D + 22 * q, y, RW, RH, { kind: 'primary', shimmer: true, icon: ICON.play, iconS: 1.9, size: 30 * q, round: RH / 2 });
+    R.go = { x: x + D + 22 * q, y, w: RW, h: RH };
+    if (shop) {
+      const bx = x + w - D, by = cy - D / 2;
+      ui.button('shop', '', bx, by, D, D, { kind: 'gold', icon: (c, X, Y, S) => shopIcon(c, X, Y, S * 1.15), iconS: 1.5, round: D / 2 });
+      if (shopMarkNow().on) markBadge(bx + D - 10 * q, by + 8 * q, 12 * q, G.t);
+      G.ppTiles.shop = { x: bx, y: by, w: D, h: D };
+    }
+    if (!pills) return;
+    const n = (canHelp ? 1 : 0) + (sk ? 1 : 0), pw = (w - 12 * q) / 2, py = y + RH + pg2, tk = save.wallet.tickets.skip > 0;
+    let px = n === 2 ? x : x + (w - pw) / 2;
+    if (canHelp) {
+      const id = HP ? HP.id : pauseHelpPick(), art = (c, X, Y, S) => drawBoosterIcon(c, id, X, Y, S, G.t);
+      if (HP) { const B = ui.button('pause:help', '', px, py, pw, PH, { kind: 'primary', disabled: true, keepFace: true, icon: art, iconS: 1.9, size: 21 * q, round: PH / 2 }); pictoCheck(ctx, px + pw / 2 + 30 * q, B.cy, 26 * q, '#fff'); }
+      else ui.button('pause:help', 'Help', px, py, pw, PH, { kind: 'ad', ad: !ads.premium, icon: art, iconS: 1.75, size: 21 * q, round: PH / 2 });
+      px += pw + 12 * q;
+    }
+    if (sk) ui.button('pause:skip', 'Skip', px, py, pw, PH, { ...(tk ? { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3 } : { face: ui.faceOf('#5a6ee0'), ad: !ads.premium, icon: ICON.next, iconS: 1.15 }), size: 21 * q, round: PH / 2 });
+  };
+  if (!wide) { // one column: the thumb's block low, the level and the slider share the room above it as even gaps
+    const by = y1 - blockH, gap = (by - y0 - SH - RS) / 3;
+    status(lx, y0 + gap, iw);
+    pauseRingRow(lx, y0 + gap * 2 + SH, iw, q, RS); R.rs = { x: lx, y: y0 + gap * 2 + SH, w: iw, h: RS };
+    block(lx, by, iw);
+  } else { // on its side: the level and the slider left, the thumb's block right
+    const gap = (y1 - y0 - SH - RS) / 3;
+    status(lx, y0 + gap, iw);
+    pauseRingRow(lx, y0 + gap * 2 + SH, iw, q, RS); R.rs = { x: lx, y: y0 + gap * 2 + SH, w: iw, h: RS };
+    block(rx, y0 + (y1 - y0 - blockH) / 2, iw);
   }
-  if (left > 0) P.info[0].gap = left / 2; // a very tall page: the rest above and below, never one band
-  // the controls, from the bottom of the safe rect up
-  let y = bot;
-  for (let i = P.foot.length - 1; i >= 0; i--) { y -= P.foot[i].h; P.foot[i].draw(rx, y, iw); if (i) y -= P.foot[i].gap; }
-  const ft = wide ? bot : y - gapV;
-  G.ppRect = wide ? { x: A.x, y: top, w: rx - pad / 2 - A.x, h: bot - top } : { x: A.x, y: top, w: A.w, h: ft - top }; G.ppRectR = null;
-  pageScroll(P.info, pg, G.ppRect, lx, iw, s, true);
-  tourPausePage(s);
+  tourPausePage(q);
   ctx.restore();
 }
 
@@ -10604,14 +10630,14 @@ function drawFailPage() {
   if (sd) { ctx.save(); ctx.globalAlpha = 0.6; sunburst(sd.x + sd.w / 2, A.y + A.h * 0.62, Math.min(sd.w * 0.62, A.h * 0.6), 'rgba(200,214,255,0.1)'); ctx.restore(); }
   const ways = skipWays(), rew = !G.usedRewind && G.sim.canRewind(), hl = rew && G.li >= 0 ? DR.hotLost(save) : 0;
   const coinR = rew && !G.freeRewind && !ads.premium && G.li >= 0, price = DR.rewindPrice((G.rewindBuys || {})[G.level.id]);
-  const Hp0 = G.failHelp, BH = FAIL_BTN;
+  const Hp0 = G.failHelp, BH = FAIL_BTN, three = stuck3();
   // 0.8.15 "So close": one egg short of the goal is the best moment to offer the way back in (research: the near miss is
   // where a continue is worth most to the player). The page says so, the missing slot glows, and Rewind leads; RETRY stays
   // one row under it, green, free. Never in the first levels (nothing is sold there), never a timer.
   const near = st.target >= 2 && st.saved === st.target - 1, lead = near && rew && !earlyDays();
   // 0.8.15 the Conductor: the way back in, a gift that waits, the Director's help and the meter are candidates; one
   // leads (it alone shimmers), an ask the Brain holds back is not shown, and with nothing else a line says what is near
-  const cheer = !!(G.failSpin && G.failSpin.cheer), hk = Hp0 ? (Hp0.kind === 'trialChick' || Hp0.kind === 'trialBoost' || Hp0.kind === 'freeHint' ? 'rescue' : Hp0.kind === 'adBoost' ? 'video' : 'coins') : null;
+  const cheer = !!(G.failSpin && G.failSpin.cheer), hk = Hp0 ? (Hp0.kind === 'trialChick' || Hp0.kind === 'trialBoost' || Hp0.kind === 'useBoost' ? 'rescue' : Hp0.kind === 'adBoost' ? 'video' : 'coins') : null;
   const FL = G.li >= 0 ? pageLead('fail', [lead ? { id: 'rewind', sys: 'rewind', kind: 'rescue', near: st.saved / st.target } : null, Hp0 ? { id: 'help', sys: 'director', kind: hk, near: 0.9, price: Hp0.price } : null, ...nearThings().map((c) => (c.id === 'spin' && cheer ? { ...c, kind: 'rescue' } : c))].filter(Boolean)) : { lead: null, order: [], held: [] };
   const top = FL.lead ? FL.lead.id : null, Hp = Hp0 && !FL.held.some((h) => h.id === 'help') ? Hp0 : null, prog = !Hp && !SP.banked(save) ? FL.order.find((c) => c.kind === 'progress') : null;
   const hotB = (() => { let o = []; if (hl >= 2 && (save.unlocked || 1) >= 6) for (const [n, b] of DR.HOT) if (hl >= n) o = b; return o; })(); // what the streak was worth
@@ -10657,14 +10683,27 @@ function drawFailPage() {
     if (SP.banked(save) > 0) B.push(spinRowBlock(s, { cheer, quiet: top !== 'spin' })); // 0.8.15: a spin that waits (the cheer-up spin after three losses lands here)
     else if (prog) B.push({ h: 26 * s, gap: 4 * s, draw: (x, y, w) => leadLine(prog, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'fail:near' }) });
     if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: (sd ? 3 : 6) * s }));
-    if (Hp) B.push({ h: 70 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
+    if (three) B.push({ h: 100 * s, gap: 10 * s, draw: (x, y, w) => { // 0.8.19 the stuck player's choices: one row of kid-size pictures
+      const T = [];
+      if (Hp) T.push(['help:go', Hp.kind === 'adBoost' ? 'ad' : 'primary', (cx, cy, S) => { if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, cx, cy + S * 0.12, S * 0.9, G.t, {}); else drawBoosterIcon(ctx, Hp.id, cx, cy, S, G.t); spendFx.at('failhelp', { x: cx - S / 2, y: cy - S / 2, w: S, h: S }); }, Hp.kind === 'adBoost' && !ads.premium ? 'ad' : Hp.kind === 'buyBoost' ? Hp.price : null]);
+      if (save.mode !== 'easy') T.push(['fail:easy', ui.faceOf('#2f9e8f'), (cx, cy, S) => pictoTurtle(ctx, cx, cy, S * 1.15), null]);
+      if (ways.length) T.push(['fail:skip', ui.faceOf('#5a6ee0'), (cx, cy, S) => drawItemArt(ctx, 'skip', cx, cy, S * 1.05, G.t), null]);
+      const g = 10 * s, tw = (w - g * 2) / 3, x0 = x + (w - (T.length * tw + (T.length - 1) * g)) / 2;
+      T.forEach(([id, face, art, mark], i) => {
+        const bx = x0 + i * (tw + g), Bt = ui.button(id, '', bx, y, tw, 100 * s, { ...(typeof face === 'string' ? { kind: face } : { face }), round: 22 * s, shimmer: id === 'help:go' && top === 'help', ...(id === 'help:go' && Hp.bought ? { disabled: true, keepFace: true } : {}) });
+        art(bx + tw / 2, Bt.cy - (mark ? 8 * s : 0), 60 * s);
+        if (mark === 'ad') drawAdBadge(ctx, bx + tw / 2 - 15 * s, Bt.cy + 32 * s, 30 * s, 21 * s);
+        else if (mark) { const t = String(mark), mw = ui.measure(t, 16 * s) + 22 * s; drawCoin(ctx, bx + tw / 2 - mw / 2 + 8 * s, Bt.cy + 32 * s, 8 * s, G.t); ui.text(t, bx + tw / 2 - mw / 2 + 20 * s, Bt.cy + 32 * s, { size: 16 * s, color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * s, noRecord: true }); }
+        if (id === 'help:go') { spendFx.at('failhelp:btn', { x: bx, y, w: tw, h: 100 * s }); ui.record({ x: bx, y, w: tw, h: 100 * s }, 'panel:failhelp'); }
+      });
+    } });
+    else if (Hp) B.push({ h: 70 * s, gap: 10 * s, draw: (x, y, w) => { // the Director's help: a freebie, or the booster that fits
       // sweep817 (the saving-booster row): the spin row's grid (70 high, the same button at the same place and size), its
       // name alone on one line (the small explaining line under it is gone: the picture and the name say it)
-      const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost' || Hp.kind === 'freeHint', ad = Hp.kind === 'adBoost';
+      const free = Hp.kind === 'trialChick' || Hp.kind === 'trialBoost', ad = Hp.kind === 'adBoost';
       ui.well(x, y, w, 70 * s, { s, a: free ? '#d8f5c0' : '#ffe9b0', b: free ? '#f0ffe4' : '#fff6dc' });
       const ax = x + 36 * s, ay = y + 35 * s;
       if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, ax, ay + 6 * s, 46 * s, G.t, {});
-      else if (Hp.kind === 'freeHint') lampIcon(ctx, ax, ay, 54 * s); // the Pacer's free hint: the Hint button's lamp
       else { // 0.8.17: a spend moment makes it hop in (drop, squash, settle)
         const hx = spendFx.hopXf('failhelp');
         if (hx) { ctx.save(); ctx.globalAlpha *= hx.a; ctx.translate(ax, ay + 28 * s + hx.dy * 56 * s); ctx.scale(hx.sx, hx.sy); ctx.translate(-ax, -ay - 28 * s); }
@@ -10708,10 +10747,8 @@ function drawFailPage() {
     };
     const lvBtn = (x, y, w, h) => ui.button('levels', 'Levels', x, y, w, h, { kind: 'tertiary', icon: ICON.grid, size: 18 * s });
     const gC = (sd ? 8 : 12) * s; // (0.8.17: on its side 4 px less, so the page fits without a 5 px scroll and Levels is whole)
-    if (ways.length === 2) {
-      B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); skipBtn(ways[1], x + hw + 10 * s, y, hw, BH * s); } });
-      B.push({ h: BH * s, gap: 10 * s, draw: (x, y, w) => lvBtn(x, y, w, BH * s) });
-    } else if (ways.length === 1) B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); lvBtn(x + hw + 10 * s, y, hw, BH * s); } });
+    if (three) B.push({ h: BH * s, gap: gC, draw: (x, y, w) => lvBtn(x, y, w, BH * s) }); // (the skip is in the choices row)
+    else if (ways.length) B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); lvBtn(x + hw + 10 * s, y, hw, BH * s); } });
     else B.push({ h: BH * s, gap: gC, draw: (x, y, w) => lvBtn(x, y, w, BH * s) });
     return B;
   };

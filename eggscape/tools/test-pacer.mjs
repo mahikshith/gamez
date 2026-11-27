@@ -52,19 +52,19 @@ const plan = (s, id, o = {}) => PA.failPlan(s, { levelId: id, boss: id % 5 === 0
 {
   const s = fresh(); s.dir.recent = ['w', 'w', 'w', 'w', 'w', 'w'];
   PA.result(s, { id: 21, won: false }); // first loss: nothing
-  ok(!plan(s, 21).hint, 'no hint on the first loss');
+  ok(!plan(s, 21).boost, 'no hint on the first loss');
   const weak = fresh(); weak.dir.att = { 6: { tries: 6, wins: 1, streak: 0, help: 1 }, 7: { tries: 7, wins: 1, streak: 0, help: 0 } };
   lose(weak, 21, 2); const P = plan(weak, 21);
-  ok(P.hint && P.hintAt === PA.PACE.hintStuck, `a struggling player gets the hint on loss 2 (${P.why})`);
+  ok(P.boost && P.hintAt === PA.PACE.hintStuck, `a struggling player gets the hint on loss 2 (${P.why})`);
   const strong = fresh(); strong.dir.att = { 6: { tries: 1, wins: 1 }, 7: { tries: 1, wins: 1 }, 8: { tries: 1, wins: 1 } }; strong.dir.recent = ['w', 'w', 'w', 'w', 'w'];
-  lose(strong, 21, 2); ok(!plan(strong, 21).hint, 'a strong player does not get it on loss 2');
-  lose(strong, 21, 2); ok(plan(strong, 21).hint, '... and gets it on loss 4');
-  PA.gave(strong, 21, 'hint'); ok(!plan(strong, 21).hint, 'not on the next loss');
-  lose(strong, 21, PA.PACE.hintAgain - 1); ok(!plan(strong, 21).hint, `not before ${PA.PACE.hintAgain} more losses`);
-  lose(strong, 21, 1); ok(plan(strong, 21).hint, `again after ${PA.PACE.hintAgain} more losses in a row (loss ${PA.losses(strong, 21)})`);
-  const off = fresh({ adapt: false }); off.dir.att = weak.dir.att; lose(off, 21, 3); ok(!plan(off, 21).hint, 'switch off: not before the plain loss 4');
-  lose(off, 21, 1); ok(plan(off, 21).hint, 'switch off: the hint at loss 4');
-  PA.gave(off, 21, 'hint'); lose(off, 21, 4); ok(!plan(off, 21).hint, 'switch off: once per level');
+  lose(strong, 21, 2); ok(!plan(strong, 21).boost, 'a strong player does not get it on loss 2');
+  lose(strong, 21, 2); ok(plan(strong, 21).boost, '... and gets it on loss 4');
+  PA.gave(strong, 21, 'boost'); ok(!plan(strong, 21).boost, 'not on the next loss');
+  lose(strong, 21, PA.PACE.hintAgain - 1); ok(!plan(strong, 21).boost, `not before ${PA.PACE.hintAgain} more losses`);
+  lose(strong, 21, 1); ok(plan(strong, 21).boost, `again after ${PA.PACE.hintAgain} more losses in a row (loss ${PA.losses(strong, 21)})`);
+  const off = fresh({ adapt: false }); off.dir.att = weak.dir.att; lose(off, 21, 3); ok(!plan(off, 21).boost, 'switch off: not before the plain loss 4');
+  lose(off, 21, 1); ok(plan(off, 21).boost, 'switch off: the hint at loss 4');
+  PA.gave(off, 21, 'boost'); lose(off, 21, 4); ok(!plan(off, 21).boost, 'switch off: once per level');
   const b = fresh(); lose(b, 10, 2); ok(!plan(b, 10).scare, 'no Scarecrow on boss loss 2');
   lose(b, 10, 1); ok(plan(b, 10).scare, 'a free Scarecrow on boss loss 3');
 }
