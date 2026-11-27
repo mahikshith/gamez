@@ -103,8 +103,8 @@ export const FIRE_M = { easy: 0.7, medium: 1, hard: 1.15 };
 // LAVA DIVE: a target DIVE.chans or more channels away, or one channel away with the way through more than DIVE.walk m of
 //   walking: 'sink' (a pool glows under him DIVE.glow s, then he slides in), 'under' (DIVE.under s, unseen), 'bubble' (the exit
 //   pool, DIVE.off m from the egg in its channel and riding that ring, bubbles for the whole tell), 'rise'. Then he hunts.
-export const LASH = { min: 0.75, reach: 2.2, cone: 1.25, clear: 0.04, fly: 0.2, reelV: 1.5, acc: 7, slack: 0.5, cd: 2.5, miss: 0.5, strain: 0.5, ouch: 1.2, burn: 1.5, tumble: 1.5, maxReel: 3.2, arrive: 0.5, past: 0.3, jam: 0.25, steady: 6, under: 0.15 };
-export const DIVE = { chans: 2, walk: 2.5, sink: 0.55, glow: 0.3, under: 0.4, bubble: 1.7, rise: 0.45, off: 1.6, cd: 8, poolR: 0.45 };
+export const LASH = { min: 0.75, reach: 2.2, cone: 1.25, clear: 0.04, fly: 0.2, reelV: 1.5, acc: 7, slack: 0.5, cd: 1.4, miss: 0.5, strain: 0.5, ouch: 1.2, burn: 1.5, tumble: 1.5, maxReel: 3.2, arrive: 0.5, past: 0.3, jam: 0.25, steady: 6, under: 0.15 };
+export const DIVE = { chans: 2, walk: 2.5, sink: 0.55, glow: 0.3, under: 0.4, bubble: 1.7, rise: 0.45, off: 1.6, cd: 5, poolR: 0.45 };
 // THE VOLCANO (sim.js lavaStep, boss.js rock/rock2/rock3): level.lava rocks are the backdrop volcano's bombs. The same seeded
 // targets, VOLC.every x sparser; 'rumble' (VOLC.rumble s: the mountain rumbles and puffs, the target section is marked) then a
 // high arc (VOLC.fly s) onto the marked section, which turns red-hot by the salamander's hot rule (VOLC.len m), then melts

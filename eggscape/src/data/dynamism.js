@@ -13,7 +13,7 @@ export const TELL_MIN = 0.45;
 export const DYN = {
   // --- crawlers and the frog (aggroB)
   // the lava salamander: hunts the leading egg, tongue lash in line, lava dive to a far channel, bite at the snout, breath at a wall
-  salamander: { tempo: 1.15, rest: 0.9, tell: 0.7, snatch: 1.3, chase: 1, threat: 6, moves: ['walk', 'climb', 'breath', 'lash', 'dive', 'bite', 'fireup'] },
+  salamander: { tempo: 1.15, rest: 0.6, tell: 0.7, snatch: 1.3, chase: 1, threat: 6, moves: ['walk', 'climb', 'breath', 'lash', 'dive', 'bite', 'fireup'] },
   // the frost salamander (L28, L29): the fire one's walk and climb, an icing breath and the frost bite (no tongue, no dive)
   salFrost: { tempo: 1.1, rest: 1.3, tell: 0.85, snatch: 1.0, chase: 0.7, threat: 4, moves: ['walk', 'climb', 'icebreath', 'frostbite'] },
   // the frost gecko (L18 boss body): walks the ring tops, icy feet, a lick freezes an egg to its ring, then a nip cracks it
