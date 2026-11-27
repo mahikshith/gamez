@@ -92,15 +92,19 @@ for (const mode of ['easy', 'medium', 'hard']) {
   ok(fires.length >= 3 && gaps.every((g) => Math.abs(g - want) < 0.45), `${mode}: idle breaths every ${gaps.map((g) => g.toFixed(2)).join(', ')} s (about ${want.toFixed(2)})`);
   ok(!evs.some((e) => e.type === 'salAlert'), `${mode}: no egg near, no alert`);
 }
-// 5. the chase pace (0.8.19 aggroB): SAL.speed x 1.35 x the dynamism tempo of the mode (data/dynamism.js); Hard > Medium > Easy
+// 5. the chase pace (0.8.19 aggroB): SAL.speed x 1.35 x the dynamism tempo of the mode (data/dynamism.js) x the menace
+// director's heat (sim/menace.js: it glides from its opening value, so the check uses the heat the sim itself ran at,
+// step by step); Hard > Medium > Easy
 {
-  const v = {};
+  const v = {}, h = {};
   for (const mode of ['easy', 'medium', 'hard']) {
     const sim = fresh({}, mode);
     putEgg(sim, 2, -90); const C = putSal(sim, 2, -90 - 100, 1);
-    const a0 = C.a; run(sim, 0.5); v[mode] = Math.atan2(Math.sin(C.a - a0), Math.cos(C.a - a0)) * sim.salMid(2) / 0.5;
+    let hs = 0, n = 0;
+    const a0 = C.a; run(sim, 0.5, () => { hs += sim.menaceHeat ? sim.menaceHeat() : 1; n++; }); v[mode] = Math.atan2(Math.sin(C.a - a0), Math.cos(C.a - a0)) * sim.salMid(2) / 0.5;
+    h[mode] = hs / n;
   }
-  const want = (m) => SAL.speed * 1.35 * dyn('salamander', m).tempo;
+  const want = (m) => SAL.speed * 1.35 * dyn('salamander', m).tempo * h[m];
   ok(['easy', 'medium', 'hard'].every((m) => Math.abs(v[m] - want(m)) < 0.02) && v.medium > v.easy && v.hard > v.medium, `chase speed easy ${v.easy.toFixed(2)}, medium ${v.medium.toFixed(2)}, hard ${v.hard.toFixed(2)} m/s`);
 }
 // 7. the frost gecko and a thorn-back use the same brain for their own moves: an egg behind turns them round, then the

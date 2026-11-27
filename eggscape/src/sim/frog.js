@@ -285,7 +285,9 @@ export const frogMethods = {
         // 0.8.10: an egg in another channel brings the hop forward (never closer together than FROG.hunt), so the frog
         // goes after the eggs instead of sitting out its timer
         if ((F.next -= dt) > 0) {
-          const full = F.every * M.every, aim = this.frogAim(F);
+          // (aggroB, the menace merge) the wait it drew at its last landing, at that moment's heat (F.full); before the first
+          // hop the nominal one without the heat: the live heat must not stretch or shrink a wait already drawn
+          const full = F.full ?? F.every * M.every * (this.menaceHeat ? this.menaceHeat() : 1), aim = this.frogAim(F);
           if (!(aim && !aim.idle && aim.ch !== F.fi && full - F.next >= FROG.hunt * M.every)) return;
         }
         const plan = this.frogPick(F, false, null);
@@ -721,7 +723,8 @@ export const frogMethods = {
     F.air = 0; F.u = 0; F.hk = '';
     this.frogPlace(F);
     F.solid = this.frogEggNear(F) ? 0 : 1;
-    F.next = F.every * (0.85 + 0.3 * this.rand()) * this.frogM().every;
+    F.full = F.every * this.frogM().every; // (aggroB) the nominal wait at this heat: the hunt rule measures from it
+    F.next = F.full * (0.85 + 0.3 * this.rand());
     this.frogSet(F, 'land', FROG.land);
     this.emit('frogLand', { x: F.x, y: F.y, id: F.id, plug: F.gi >= 0 ? 1 : 0, scared: F.sc });
   },
