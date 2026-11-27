@@ -11,7 +11,7 @@
 //
 // Rewarded placements (always the player's choice, always a reward):
 //   rewind   rewind 12 s after a fail       double   double the level's coins     coins   free coins (cooldown)
-//   ally     a farm friend for this attempt booster  a free booster on the intro  hint    a hint
+//   ally     a farm friend for this attempt booster  a free booster on the intro  (0.8.19: the hint is gone; the pause page's Help is a booster)
 //   skip     skip a level you are stuck on  charge   one Chick Charge             gate    open the next world early
 // Stuck help: after STUCK_FAILS fails in a row on one level the fail card offers Skip (ad, or coins) and a free charge.
 // Interstitials (app only): off since 2026-11-20 (INTER.on). Their cadence (never before level INTER.from, INTER.gapS
@@ -21,7 +21,7 @@
 // shell consumes or acknowledges a purchase only after that call returned true (so a crash mid-way never loses one).
 // Payers (any purchase) and No Ads owners get no interstitials; rewarded ads stay their choice.
 import portal from './sdk/portal.js';
-import { IAP, grantIap, usdHint } from './economy.js';
+import { IAP, grantIap, usdHint, SKIP_PRICE } from './economy.js';
 import * as GD from './guard.js'; // 0.8.17: refunds take the unlock back (the store's own record decides)
 
 /* global __APP__, __DEV__ */
@@ -33,7 +33,7 @@ const MONEY = APP || (DEV && typeof location !== 'undefined' && /[?&]shop=app\b/
 export const PREMIUM_SKU = 'eggscape_premium';
 export const PREMIUM_PRICE_HINT = usdHint(PREMIUM_SKU); // shown until the store returns the real localized price
 export const STUCK_FAILS = 3;
-export const SKIP_COINS = 150;
+export const SKIP_COINS = SKIP_PRICE; // 0.8.19: economy.js decides it (near a mid booster)
 // 2026-11-20 shop 2.0 (mykee: "every ad should be beneficial, for the player and for us"): the app shows no
 // interstitials (on: false). The same cadence now decides when the win card offers the Bonus chest video instead of
 // "Double coins" (bonusDue). Web portals keep their own commercialBreak exactly as before: portals require it.

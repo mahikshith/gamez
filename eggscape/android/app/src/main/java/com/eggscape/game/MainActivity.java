@@ -147,6 +147,7 @@ public class MainActivity extends Activity {
             try { getSharedPreferences("egg", MODE_PRIVATE).edit().putString("stash", keep == null ? "" : keep).commit(); } catch (Throwable e) { /* the page's own storage is the fallback */ }
             runOnUiThread(new Runnable() { @Override public void run() { recoverNow(rung); } });
         }
+        @JavascriptInterface public void exitApp() { runOnUiThread(() -> finish()); } // 0.8.19: the home page's leave scene, LEAVE
         @JavascriptInterface public String unstash() {
             try {
                 android.content.SharedPreferences p = getSharedPreferences("egg", MODE_PRIVATE);

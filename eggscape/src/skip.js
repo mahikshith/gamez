@@ -30,12 +30,12 @@ export const isSkipped = (save, id) => !!(save && save.skipped && save.skipped[i
 // 0.8.14 (mykee: "along with the retry ... we might want to show an option to skip the level as well"): the fail card
 // offers Skip level from the first loss, whenever canSkip says yes. One skip, one ending (applySkip and the trip to the
 // next level, the same as the pause page); this says how it can be paid, in the order the buttons show:
-//   a Skip Ticket the player owns, else one rewarded video (Premium: free, rewarded() handles it); and the coin way only
-//   while the old "stuck" rule holds (3 losses in a row on this level), as a second button.
-// o: { stuck, tickets (Skip Tickets owned) }. [] when the level cannot be skipped.
+//   a Skip Ticket the player owns, else one rewarded video (Premium: free, rewarded() handles it), then coins.
+// 0.8.19 (mykee: "we can always provide a skip button in the pause menu for a set of coins or watching an ad"): coins
+// are always the second way (economy.js SKIP_PRICE), on the pause page and the fail card alike. Every way costs
+// something or shows a video, so there is none before level 3 is won (o.early: director.js earlyDays).
+// o: { early, tickets (Skip Tickets owned) }. [] when the level cannot be skipped.
 export function skipWays(save, lv, o = {}) {
-  if (!canSkip(save, lv)) return [];
-  const W = [(o.tickets | 0) > 0 ? 'ticket' : 'ad'];
-  if (o.stuck) W.push('coins');
-  return W;
+  if (o.early || !canSkip(save, lv)) return [];
+  return [(o.tickets | 0) > 0 ? 'ticket' : 'ad', 'coins'];
 }
