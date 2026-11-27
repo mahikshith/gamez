@@ -835,7 +835,6 @@ export const salMethods = {
     const ring = this.rings[E.fr], a = Math.atan2(E.y1, E.x1), side = E.fr === E.ch - 1 ? 1 : -1;
     const P = { k: E.k, ri: E.fr, ch: E.ch, la: mod(a - ring.body.getAngle(), TAU), half: SPIT.len / (2 * ring.r), t: SPIT.pool + SPIT.crust, hit: [], own: E.own };
     const burnt = play ? this.salBurnArc(ring, a, SPIT.len / 2 + 0.12, side) : 0;
-    this.creeperBurn?.(E.x1, E.y1, SPIT.len / 2 + 0.15); // a thorn creeper there burns too (when the level has one)
     this.salPools.push(P);
     this.emit('salPool', { x: E.x1, y: E.y1, ring: ring.i, id: E.own, burnt });
   },

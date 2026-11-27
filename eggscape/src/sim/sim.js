@@ -21,7 +21,7 @@ import { stkMethods } from './strike.js'; // Chick Strike powers
 import { perkMethods, PERK } from './perks.js'; // 0.8.10 egg skin powers
 import { pipMethods } from './pip.js'; // 0.8.17 pip: Pip the penguin (level 16)
 import { cocoMethods } from './coco.js'; // 0.8.17 coco: Coco the monkey (level 10)
-import { creepMethods } from './creeper.js'; // 0.8.18 creeper: the thorn creeper crawling a ring's rim
+import { creepMethods } from './creeper.js'; // 0.8.18 the moving thorn: one of the ring's own thorns, sliding in a groove
 import { reachMethods } from './henreach.js'; // the hen runs the basket under an egg (nest.reach)
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
 import { WORLD_N, hardOf } from '../road.js'; // 0.8.17: sixty levels, six a world
@@ -316,7 +316,7 @@ export class Sim {
     this.pipInit(L); // 0.8.17 pip
     this.cocoInit(L); // 0.8.17 coco
     this.bandInit(L); // 0.8.17 bandit (sim/bandit.js)
-    this.creepInit(L); // 0.8.18 creeper (sim/creeper.js)
+    this.creepInit(L); // 0.8.18 the moving thorn (sim/creeper.js)
     this.reefInit(L); if (L.bossFight && L.bossFight.kind === 'kingcrab') this.kcInit(L); // world 8 (sim/reef.js, sim/kingcrab.js)
     this.cwInit(L); this.owlInit(L); // v4: the clockwork cast and the Clockwork Owl
     this.bayouInit(L); // v3.7: Gator Bayou creatures (sim/bayou.js)
@@ -554,7 +554,7 @@ export class Sim {
         const { period, on, phase = 0 } = ring.retract;
         const ph = (((this.t + phase) % period) + period) % period / period;
         const want = ph < on ? 1 : 0;
-        for (const th of ring.thorns) th.ext += clamp(want - th.ext, -dt * 5, dt * 5);
+        for (const th of ring.thorns) if (!th.mv || this.creepLive(th.mv)) th.ext += clamp(want - th.ext, -dt * 5, dt * 5); // (a moving thorn cut back to its stub stays in: sim/creeper.js)
       }
       for (const g of ring.gaps) {
         if (!g.shut || this.p2.dark > 0) continue; // v3.4 thunderclap: doors black out where they are
@@ -915,15 +915,16 @@ export class Sim {
       if (egg.safeT > 0) return;
       if (egg.icy > 0) return; // L15: frozen solid, a thorn can't get in
       if (this.pk && this.pk.id === 'lava' && !egg.chick && this.perkTake('lava', egg, { th: th.key })) { egg.safeT = 0.5; this.defer(() => this.removeThorn(th, 'burn')); c.setEnabled(false); return; } // Hot Shell: the first thorn burns away
-      if (egg.chick && (th.kind === 'blunt' || this.MD.softThorns)) { egg.peckHit = th.key + 1; return; } // predators (v3): chick pecks
+      if (egg.chick && (th.kind === 'blunt' || this.MD.softThorns || th.baby)) { egg.peckHit = th.key + 1; return; } // predators (v3): chick pecks
       // blunt spikes (and every thorn on Easy) only crack, and stay solid; a chick has no shell
-      if ((th.kind === 'blunt' || this.MD.softThorns) && !egg.chick) {
+      if ((th.kind === 'blunt' || this.MD.softThorns || th.baby) && !egg.chick) { // (th.baby: the first moving thorn a player meets only shoves, sim/creeper.js)
         // one crack per touch (never the breaking one), and the spike shoves the egg off
         if (!egg.spk.has(th.key)) {
           egg.spk.add(th.key);
+          if (th.mv) this.creepBit(th);
           this.defer(() => {
             if (!egg.alive || egg.saved) return;
-            if (egg.cracks < 2) this.crack(egg, 0, 'spike'); // blunt: cracks, never breaks
+            if (egg.cracks < 2 && !th.baby) this.crack(egg, 0, 'spike'); // blunt: cracks, never breaks
             const b = egg.body, p = b.getPosition(), t = th.ring.body.getWorldPoint(Vec2(th.tip * Math.cos(th.a), th.tip * Math.sin(th.a)));
             const dx = p.x - t.x, dy = p.y - t.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 1.6 * this.vs;
             b.applyLinearImpulse(Vec2((dx / d) * m, (dy / d) * m), p, true);
@@ -945,6 +946,7 @@ export class Sim {
         return;
       }
       egg.safeT = 1; // one break only
+      if (th.mv) this.creepBit(th);
       this.defer(() => { egg.safeT = 0; this.breakEgg(egg, 'thorn'); });
       c.setEnabled(false);
     } else if (other.kind === 'seg') {
@@ -1001,6 +1003,7 @@ export class Sim {
       if ((ax * ex + ay * ey) / ((Math.hypot(ax, ay) || 1) * (Math.hypot(ex, ey) || 1)) > GRAZE.tip) return false;
     }
     const ve = eb.getLinearVelocityFromWorldPoint(pt), vt = rb.getLinearVelocityFromWorldPoint(pt);
+    if (th.mv && th.mv.spd > 0) { const A = rb.getAngle() + th.a, sv = th.mv.spd * Math.sign(th.mv.to - th.mv.from); vt.x -= Math.sin(A) * sv; vt.y += Math.cos(A) * sv; } // a moving thorn's own slide (sim/creeper.js)
     const p = eb.getPosition();
     let nx = p.x - pt.x, ny = p.y - pt.y; const d = Math.hypot(nx, ny) || 1; nx /= d; ny /= d; // thorn -> egg
     const closing = (vt.x - ve.x) * nx + (vt.y - ve.y) * ny;
@@ -1256,8 +1259,13 @@ export class Sim {
 
   removeThorn(th, how) {
     if (!th.alive) return;
-    th.alive = false;
-    this.killFix.push([th.ring.body, th.fix]);
+    if (th.mv && how !== 'snip') { // a moving thorn (sim/creeper.js) is cut back to its stub and grows back; only Thorn Snips take it for good
+      if (!this.creepLive(th.mv)) return;
+      this.creepCut(th);
+    } else {
+      th.alive = false;
+      this.killFix.push([th.ring.body, th.fix]);
+    }
     const b = th.ring.body;
     const wp = b.getWorldPoint(Vec2(((th.base + th.tip) / 2) * Math.cos(th.a), ((th.base + th.tip) / 2) * Math.sin(th.a)));
     this.emit(how === 'burn' ? 'thornBurn' : 'thornSnap', { x: wp.x, y: wp.y, thorn: th });
