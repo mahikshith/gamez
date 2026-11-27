@@ -6388,7 +6388,7 @@ const gooseIcon = (c, x, y, s) => { // a white goose head on its neck, orange be
 };
 const allyFree = () => G.sim.mode === 'easy' || !!G.fails[G.level.id];
 const allyIcon = (c, x, y, s) => { // a little rooster head: red comb, orange beak, white face, wattle
-  c.save(); c.lineJoin = 'round'; c.lineWidth = Math.max(1.5, s * 0.07); c.strokeStyle = '#4a2a12';
+  c.save(); if (allyIconLive) { const b = Math.sin(G.t * 5.7); c.translate(x, y + 0.3 * s); c.rotate(b * 0.06); c.translate(-x, -y - 0.3 * s); y -= Math.abs(b) * 0.03 * s; } c.lineJoin = 'round'; c.lineWidth = Math.max(1.5, s * 0.07); c.strokeStyle = '#4a2a12';
   c.fillStyle = '#e8402e';
   for (const [dx, dy, r] of [[-0.2, -0.3, 0.15], [0, -0.38, 0.18], [0.2, -0.3, 0.15]]) { c.beginPath(); c.arc(x + dx * s, y + dy * s, r * s, 0, 7); c.fill(); c.stroke(); }
   c.beginPath(); c.ellipse(x + 0.2 * s, y + 0.3 * s, 0.1 * s, 0.15 * s, 0, 0, 7); c.fill(); c.stroke();
@@ -6396,10 +6396,21 @@ const allyIcon = (c, x, y, s) => { // a little rooster head: red comb, orange be
   const g = c.createRadialGradient(x - 0.1 * s, y - 0.1 * s, 0.02 * s, x, y, 0.36 * s);
   g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#f3e2c2');
   c.fillStyle = g; c.beginPath(); c.arc(x, y + 0.02 * s, 0.34 * s, 0, 7); c.fill(); c.stroke();
-  c.fillStyle = '#2a1608'; c.beginPath(); c.arc(x + 0.1 * s, y - 0.05 * s, 0.06 * s, 0, 7); c.fill();
-  c.fillStyle = '#fff'; c.beginPath(); c.arc(x + 0.12 * s, y - 0.07 * s, 0.02 * s, 0, 7); c.fill();
+  // faces3: an inviting face, not a dot: a big eye with a glint, one cocky brow up, a grin at the beak. While his button is
+  // live (the coach, a press) he winks at you every couple of seconds and his head bobs
+  const lv = allyIconLive, ph = lv ? (G.t % 2.2) / 2.2 : 0, wink = lv ? Math.max(0, Math.sin(clamp((ph - 0.7) / 0.18, 0, 1) * Math.PI)) : 0;
+  const ex = x + 0.11 * s, ey = y - 0.06 * s, er = 0.115 * s;
+  if (wink < 0.5) {
+    c.fillStyle = '#fffdf6'; c.beginPath(); c.ellipse(ex, ey, er, er * 1.15, 0, 0, 7); c.fill(); c.lineWidth = Math.max(1, s * 0.035); c.stroke();
+    const sq = 1 - wink * 1.6;
+    c.fillStyle = '#2a1608'; c.beginPath(); c.ellipse(ex + 0.03 * s, ey + 0.01 * s, 0.07 * s, 0.08 * s * sq, 0, 0, 7); c.fill();
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(ex + 0.005 * s, ey - 0.025 * s, 0.026 * s, 0, 7); c.fill();
+  } else { c.lineWidth = Math.max(1.4, s * 0.05); c.beginPath(); c.moveTo(ex - er, ey + 0.02 * s); c.quadraticCurveTo(ex, ey - 0.09 * s, ex + er, ey + 0.02 * s); c.stroke(); }
+  c.lineCap = 'round'; c.lineWidth = Math.max(1.4, s * 0.055); c.beginPath(); c.moveTo(ex - 0.13 * s, ey - 0.13 * s - wink * 0.03 * s); c.quadraticCurveTo(ex, ey - 0.25 * s - wink * 0.04 * s, ex + 0.14 * s, ey - 0.2 * s); c.stroke(); // the cocky brow
+  c.lineWidth = Math.max(1, s * 0.035); c.beginPath(); c.moveTo(x + 0.27 * s, y + 0.13 * s); c.quadraticCurveTo(x + 0.21 * s, y + 0.14 * s, x + 0.19 * s, y + 0.08 * s); c.stroke(); // the grin at the beak's corner
   c.restore();
 };
+let allyIconLive = false; // faces3: the ally button is drawn live (not from the still HUD layer): the icon may move
 // a chick that reached the nest with its power unused keeps it: a glowing chick button beside the strike / ally ones
 function drawBankBtn() {
   const sim = G.sim, B = sim.banked ? sim.banked() : [];
@@ -6450,8 +6461,9 @@ function drawAllyBtn() {
     if (!free && can && tk > 0) allyTicket(x, y, bs, tk); else if (!free && can) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
   };
   G.roosterCoach = coach; G.roosterRun = G.run; // (the tour: the flag counts only on the run that drew it)
-  if (still) { hudLayer('ally', W_ + ',' + H_ + '|' + (can ? 1 : 0) + (free ? 1 : 0) + '|' + Math.min(tk || 0, 99) + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x - 3 * u, y - 3 * u, bs + 12 * u, bs + 9 * u, face); return; }
-  face();
+  allyIconLive = !still && !save.calm && can;
+  if (still) { allyIconLive = false; hudLayer('ally', W_ + ',' + H_ + '|' + (can ? 1 : 0) + (free ? 1 : 0) + '|' + Math.min(tk || 0, 99) + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x - 3 * u, y - 3 * u, bs + 12 * u, bs + 9 * u, face); return; }
+  face(); allyIconLive = false;
   // 2026-11-20 (mykee: "we did not show the user how to use Papa Rooster"): the first time he can help, a hand taps his
   // button and a bubble says what he does; that first call is free
   if (G.roosterCoach && !G.lesson) { // 0.8.18: one idea at a time (not during a teaching moment), three words at most
@@ -12470,6 +12482,7 @@ if (DEV) window.__egg = {
   frame(dt = 1 / 60) { update(dt); renderAll(); tallyFrame(); }, fxStats: menuFxStats,
   actSteps, // film strips replay planner moves through this
   snakeArt: drawSnake, // palette strips
+  allyIconDraw: (c, x, y, s, live = true) => { allyIconLive = live; try { allyIcon(c, x, y, s); } finally { allyIconLive = false; } }, // faces3 QA: the call button's rooster
   hen: { anim: drawHenAnim, legacy: drawHenLegacy, events: henIdleEvents, reset: resetHen }, // M7 strips
   cheer: { draw: drawCelebration, routine, ROUTINES, pick: pickRoutine, power: routinePower }, // the hen's win routines (strips)
   allyArt: ALLY_ART, // v3.4: ally strips
