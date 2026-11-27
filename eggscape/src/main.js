@@ -4530,7 +4530,7 @@ function handleEvents() {
           hitStop(0.05);
           camPunch(0.028, ev.x, ev.y);
         }
-        hen('gasp', 1.2);
+        hen('wince', 1.2); // faces3: she winces (squeezed shut, teeth gritted), then peeks at the egg
         fx.shake = Math.max(fx.shake, 0.4 + 0.15 * clamp((ev.v || 4) / 8, 0, 1)); // 0.8.10: a crack is felt
         buzz('crack');
         if (ev.why === 'spike') audio.play('rock_hit', { vol: 0.6 });
@@ -5426,7 +5426,7 @@ function drawDanger() {
 }
 
 function hen(mood, t) {
-  G.hen = { mood, t, n: (G.hen.n || 0) + 1 };
+  G.hen = { mood, t, t0: t, n: (G.hen.n || 0) + 1 };
 }
 
 // skip the hen's win / fail routine to its final pose (a tap off the buttons, Enter, or reduced motion)
@@ -6203,6 +6203,29 @@ function drawScarecrowAt(sim, k, t) {
   ctx.restore();
 }
 const HEN_N = { x: 0, y: 0 };
+// faces3: the egg the hen should be watching: the one the villains threaten most (the same read-only threat calls the
+// planner uses), or null when nothing threatens any egg
+function henWatch(sim) {
+  let best = null, bv = 0.12;
+  for (const e of sim.aliveEggs()) {
+    let v = 0;
+    const p = e.body.getPosition();
+    for (const S of sim.snakes || []) { if (S.gone || !S.inside || !S.pts.length) continue; const d = Math.hypot(p.x - S.pts[0].x, p.y - S.pts[0].y); if (d < 3) v = Math.max(v, 1 - d / 3); }
+    const E = sim.eagle; if (E && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tk !== 'orb' && E.tid === e.id) v = Math.max(v, 0.9);
+    try {
+      if (sim.sals && sim.sals.length) v = Math.max(v, sim.salThreat(e));
+      if (sim.thieves && sim.thieves.length) v = Math.max(v, sim.thiefThreat(e));
+      if (sim.band) v = Math.max(v, sim.bandThreat(e));
+      if (sim.gators && (sim.gators.length || (sim.mosqs && sim.mosqs.length))) v = Math.max(v, sim.bayouThreat(e));
+      if (sim.pips && sim.pips.length) v = Math.max(v, sim.pipThreat(e));
+      if (sim.cocos && sim.cocos.length) v = Math.max(v, sim.cocoThreat(e));
+      if (sim.creeps && sim.creeps.length) v = Math.max(v, sim.creepThreat(e));
+      if (sim.frogs && sim.frogs.length && sim.frogThreatOf) v = Math.max(v, sim.frogThreatOf(e));
+    } catch (err) { /* a threat read must never break the frame */ }
+    if (v > bv) { bv = v; best = e; }
+  }
+  return best ? { e: best, v: bv } : null;
+}
 // The hen sits beside the nest (F16) and reacts: happy on a save, gasp on a crack, cry on a break.
 function drawHenAt(sim, k, t) {
   if (k < 20) return; // too small to read
@@ -6242,12 +6265,21 @@ function drawHenAt(sim, k, t) {
   ctx.restore();
   if (ANIMATED_HEN) {
     // M7: she shuffles toward the egg that is about to land (never off her patch) and reacts to every event herself
-    let look = 0;
+    let look = 0, lookE = null;
     for (const e of sim.eggs) {
       if (!e.alive || e.saved) continue;
       const p = e.body.getPosition(), l = -clamp(1.5 - ((p.y - sim.groundY) * (sim.gy || 1)) / 5, 0, 1) * (Math.abs(p.x - n.x) < 2.4 ? 1 : 0.3); // toward the nest as an egg nears the exit
-      if (l < look) look = l;
+      if (l < look) { look = l; lookE = e; }
     }
+    // faces3: her eyes follow the egg in danger (else the egg about to land); the mood holds the level's end: proud on a
+    // win, a kind face on a loss (after the tears of a last break); she fidgets when the clock is nearly out
+    const watch = G.screen === 'play' && G.danger > 0.12 ? henWatch(sim) : null, ge = watch ? watch.e : lookE;
+    const gy0 = seat ? seat.y : sim.groundY, gp = ge && ge.body ? ge.body.getPosition() : null;
+    const gaze = gp ? [(gp.x - hx) * k, -(gp.y - gy0) * k] : null, gazeW = watch ? clamp(watch.v * 1.8, 0.5, 1) : clamp(-look * 1.4, 0, 0.85);
+    const hurry = G.screen === 'play' && sim.state === 'play' && sim.timeLimit > 14 && sim.timeLeft <= 10 ? clamp(0.6 + (10 - sim.timeLeft) / 25, 0, 1) : 0;
+    let mood = G.hen.mood;
+    if ((sim.state === 'winning' || sim.state === 'won') && !((mood === 'happy' || mood === 'catch') && G.hen.t > G.hen.t0 - 0.6)) mood = 'proud'; // the last hop, then proud
+    else if ((sim.state === 'failing' || sim.state === 'failed') && !((mood === 'cry' || mood === 'wince') && G.hen.t > G.hen.t0 - 0.7)) mood = 'comfort'; // the gasp, then a kind face (never despair)
     // her patch moves with a sliding basket: hand her its speed so she walks with it (local units are hs/100 px)
     const hp = G.henPrev, dtr = hp ? t - hp.t : 0, drift = hp && dtr > 0 && dtr < 0.2 && hp.run === G.run ? ((hx - hp.x) / dtr) * k * 100 / hs : 0;
     // nest.reach: she holds the basket and runs it under an egg: hand her its speed, its acceleration and where its rim is
@@ -6264,7 +6296,7 @@ function drawHenAt(sim, k, t) {
       }
     }
     G.henPrev = { x: hx, t, run: G.run, v: carry ? carry.v : 0 };
-    drawHenActor(ctx, G.hen.mood, 0, -0.49 * hs, hs, t, { key: 'level', n: G.hen.n, look: G.screen === 'play' && !carry ? look : carry ? undefined : 0, danger: G.danger, shadow: 0.26, drift, carry });
+    drawHenActor(ctx, mood, 0, -0.49 * hs, hs, t, { key: 'level', n: G.hen.n, look: G.screen === 'play' && !carry ? look : carry ? undefined : 0, danger: G.danger, shadow: 0.26, drift, carry, gaze, gazeW, hurry, doze: G.screen === 'play' });
     ctx.restore();
     return;
   }
