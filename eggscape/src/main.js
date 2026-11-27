@@ -9886,7 +9886,7 @@ function drawWinPage() {
   const last = G.li < 0 || G.li === LEVELS.length - 1;
   // 0.8.19: the stars stand on an arc (a shallow parabola, the middle one highest and a little bigger), larger than
   // before; the goals' chips have their own row low on the page, under her; Double coins is a big button over NEXT
-  let D = side ? { R: 30, sp: 74, br: 21, num: 48, scoreH: dblOn ? 54 : 76, noBest: dblOn, coinH: 40, tileH: 64, dblH: 92, btnH: 56, g: 6 } : { R: 46, sp: 108, br: 28, num: 66, scoreH: 96, coinH: 48, tileH: 84, dblH: 104, btnH: 70, g: 10 };
+  let D = side ? { R: 30, sp: 74, br: 21, num: 48, scoreH: dblOn ? 54 : 76, noBest: dblOn, coinH: 40, tileH: 68, dblH: 92, btnH: 54, g: 5 } : { R: 46, sp: 108, br: 28, num: 66, scoreH: 96, coinH: 48, tileH: 84, dblH: 104, btnH: 70, g: 10 };
   const starH = () => 6 + 2.45 * D.R + 6, chipH = () => 2.4 * D.br + 6;
   let stH = 0;
   const BL = inCard && (done || pt > S.done) && !revealing(r) ? (calm ? 1 : 0.5 + 0.5 * Math.sin(G.t * 4.2)) : null; // all settled: what was missed blinks softly (Calm: a steady outline)
