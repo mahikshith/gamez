@@ -1128,7 +1128,7 @@ function freeTiles(st, state) {
     { key: 'free:coins', name: 'Free coins', hue: '#c7a0ff', tap: 'ad:coins', flash: state.flash && state.flash.id === 'ad' ? state.flash.t : 99, num: '+' + AD_NOW,
       icon: (c, cx, cy, it, tt, b) => coinPile(c, cx, cy - it * 0.06, it * 0.86 * b, 3, tt),
       btn: cd >= 3600 ? DONE : cd > 0 ? { label: fmtTime(cd), kind: 'off', disabled: true } : prem ? { label: 'Free', kind: 'primary' } : { label: adOff ? 'Soon' : 'Free', kind: adOff ? 'off' : 'ad', ad: !adOff, disabled: adOff } },
-  ];
+  ].filter((t) => !(state.early && !prem && (t.key === 'free:coins' || (t.key === 'free:sample' && S.video)))); // 0.8.19: before level 3 is won no video is offered (the shop is open from the second opening)
 }
 
 // coin bundles: a kit of boosts, a set of hen + egg
@@ -1334,7 +1334,7 @@ export function drawStore(ui, ctx, W, H, state) {
   const balStr = String(Math.round(BAL.v));
   const hs = P.s, balSize = 21 * hs;
   // coin, number and "+" are one group, centred in the button (as wide as its widest digits: it does not jitter while it rolls)
-  const balW = ui.measure(String(wallet.coins).replace(/\d/g, '0'), balSize), cr = 11.5 * hs, pr = 9 * hs, grpW = 2 * cr + 6 * hs + balW + 7 * hs + 2 * pr;
+  const balW = ui.measure(String(wallet.coins).replace(/\d/g, '0'), balSize), cr = 11.5 * hs, pr = 9 * hs, grpW = 2 * cr + 6 * hs + balW + (state.early ? 0 : 7 * hs + 2 * pr); // (0.8.19: before level 3 is won the balance has no "+": nothing is sold)
   const coinW = Math.max(96 * hs, grpW + 24 * hs);
   ui.pageHeader(P, { back: 'back', left2: { id: 'home', icon: ICON.home }, title: 'Shop', color: '#f0a01c', tag: 'store:title', right: { w: coinW, draw: (bx, by, bw, bh) => {
     ui.button('store:coins', '', bx, by, bw, bh, { kind: 'gold', shimmer: coinFl > 0, iconS: 1, size: balSize, icon: (c, X, Y) => {
@@ -1343,6 +1343,7 @@ export function drawStore(ui, ctx, W, H, state) {
       ui.record({ x: gx, y: Y - cr, w: 2 * cr, h: 2 * cr }, 'store:coinicon', 'btn:store:coins'); // where the coins fly to (main.js)
       ui.text(balStr, gx + 2 * cr + 6 * hs + balW / 2, Y, { size: balSize, align: 'center', color: '#fff', stroke: '#6b3d04', strokeW: Math.max(2 * hs, balSize * 0.15), shadow: '#6b3d04', shadowD: balSize * 0.07, tag: 'store:balance', group: 'btn:store:coins' });
       const pcx = gx + grpW - pr; // the "+": the coin packs
+      if (state.early) return;
       c.beginPath(); c.arc(pcx, Y, pr, 0, 7); c.fillStyle = '#3cb043'; c.fill(); c.lineWidth = 1.6 * hs; c.strokeStyle = '#1f6b24'; c.stroke();
       c.fillStyle = '#fff'; c.fillRect(pcx - pr * 0.5, Y - pr * 0.13, pr, pr * 0.26); c.fillRect(pcx - pr * 0.13, Y - pr * 0.5, pr * 0.26, pr);
     } });

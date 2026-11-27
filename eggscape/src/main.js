@@ -151,11 +151,13 @@ const bestStarsOf = (id) => Math.max(0, ...MODE_LIST.map((m) => save.stars[sk(id
 // (level page Boosters tab, Free booster video, coin/shop chip; win card Bonus chest and offers; the Director's nudges
 // and fail help; offer cards anywhere). The map's own shop button stays. Tune it here.
 E.setPlatform(!ads.moneyShop); // 0.8.11: a web portal sells nothing, so wins and videos pay more there (economy.js PLATFORM)
-const earlyDays = () => DR.earlyDays(save); // src/director.js: SELL_AFTER
+const earlyDays = () => !UNLOCKED && DR.earlyDays(save); // src/director.js: SELL_AFTER
 const bestTotal = () => LEVELS.reduce((a, L) => a + bestStarsOf(L.id), 0) + SQ.sideTotal(save); // 0.8.17: a side quest's bonus stars count (gates, chests, the map's total)
 // a brand-new player (nothing won yet, nothing unlocked): home is the logo and one big PLAY, and PLAY goes straight into
 // level 1 with the teaching hand (no map, no level card). Any win, or a level unlocked, and home is the full home.
 const firstRun = () => !TEST && !allOpen() && bestTotal() === 0 && (save.unlocked || 1) <= 1;
+// 0.8.19: the home page shows PLAY alone only on the very first opening; from the second opening on (save.launches) it shows the regular options
+const homeBare = () => firstRun() && (save.launches || 0) <= 1;
 const envOf = (i) => Math.floor(i / PER_ENV);
 const envNeed = (k) => (TEST ? 0 : MINT.worldNeed(k, PER_ENV)); // 0.8.17: GATE (7) stars a world of five, scaled by PER_ENV (six a world since 0.8.17)
 // a world gate opens by stars, or for coins (2026-11-15: "or they can buy with the coins they earn"); a tester switch opens all.
@@ -1617,6 +1619,7 @@ async function press(id) {
       goHome();
       break;
     case 'store:coins': // the balance's "+": the coin packs on Deals
+      if (earlyDays()) break; // (no "+" before level 3 is won)
       openStore('deals', 'coins');
       break;
     case 'home:bank': // the glass egg on home: the Golden Egg Bank card
@@ -2422,7 +2425,7 @@ function shopBrain() {
   return G.shopPlan.out;
 }
 // forYou ([{ key, why }], the FOR YOU row), hero (a bundle sku) and order ([sku, ...], the BUNDLES row): the Brain's plan. balHold: the balance shown while a purchase reveal's coins fly.
-const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop, dailyOpen: save.wallet.daily === today(), dailyIn: chestInText(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) },
+const storeState = () => ({ wallet: save.wallet, t: G.t, flash: G.storeFlash ? { id: G.storeFlash.id, t: G.t - G.storeFlash.t0 } : null, price: (sku) => ads.price(sku), reach: strikeReach(), money: ads.moneyShop && !earlyDays(), early: earlyDays(), dailyOpen: save.wallet.daily === today(), dailyIn: chestInText(), day: today(), trial: { skin: DR.trialSkin(save), hen: DR.trialHen(save) },
   ...shopBrain(), balHold: purse.held() ?? (G.got && G.got.coins0 != null && !G.got.flown ? G.got.coins0 : null) });
 // popups and sheets over any screen; while one shows only its own buttons take taps
 // the id of level index li when it is a beaten boss whose treasure chest is still shut (else 0)
@@ -10974,7 +10977,7 @@ const introBack = (p) => { const c = 1.9; p = Math.min(1, Math.max(0, p)); retur
 function drawTitle() {
   const u = ui.u;
   ui.calm = save.calm;
-  const fr = firstRun(); // a brand-new player: the logo's arrival is the moment (slower), one big PLAY, nothing else yet
+  const fr = homeBare(); // a brand-new player on the very first opening: the logo's arrival is the moment (slower), one big PLAY, nothing else yet
   const slow = fr && G.homeIntro !== 2; // (after the opening, which is the logo's moment now, the pieces arrive at the normal pace)
   const intro = !!G.homeIntro && !save.calm && G.screenT < (slow ? 2.6 : 1.2), T = slow ? G.screenT * 0.55 : G.screenT;
   // a piece's progress 0..1 (starts at `d` s, takes `dur` s); 1 when there is no entrance
@@ -11078,7 +11081,7 @@ function drawTitle() {
   if (remChipOn()) pop(0.3, A.x1 - 30 * u, A.y + 30 * u, () => drawRemChip(A.x1 - 50 * u, A.y + 10 * u, 40 * u)); // 0.8.17: reminders are off: the bell with a slash, in the other top corner
   // remove ads / buy the game (app, until bought), or Premium's free Chick Charge of the day: 0.8.16, a button of the
   // block, beside Extras (same height, same size of words, the column's right edge), no longer a pill over the title
-  const side = fr ? null : ads.canBuyPremium ? { id: 'home:premium', label: 'Unlock all', o: { kind: 'gold', icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) } }
+  const side = fr ? null : ads.canBuyPremium ? (earlyDays() ? null : { id: 'home:premium', label: 'Unlock all', o: { kind: 'gold', icon: (c, x, y, sz) => drawStar(c, x, y, sz * 0.48, true) } })
     : ads.premium && save.wallet.premDay !== today() && save.wallet.charges < E.MAX_CHARGES ? { id: 'home:charge', label: 'Free charge', o: { kind: 'primary', shimmer: true, icon: (c, x, y, sz) => drawStrikeToken(c, 'freeze', x, y, sz * 0.42, G.t, true) } } : null;
   // PLAY breathes
   const ph = (fr ? 84 : 70) * U, br = save.calm ? 1 : 1 + 0.018 * Math.sin(G.t * 2.6);
@@ -11864,7 +11867,7 @@ function drawSpin() {
     }
   }
   S.lastT = G.t;
-  const refill = () => { if (PREVIEW && !SP.banked(save) && !SP.ways(save, today()).retry) SP.state(save).bank = 2; };
+  const refill = () => { if (UNLOCKED && SP.banked(save) < SP.SPIN.bankMax) SP.state(save).bank = SP.SPIN.bankMax; if (PREVIEW && !SP.banked(save) && !SP.ways(save, today()).retry) SP.state(save).bank = 2; };
   const R = S.got;
   if (S.st === 'stopped' && G.t - S.tStop > (calm ? 0.15 : 0.35)) { S.st = 'prize'; S.popT = G.t; audio.play(R && R.where ? 'unlock' : 'hud_pop', { vol: 0.8, intensity: S.big }); if (!calm) audio.play('confetti', { vol: 0.35 + 0.3 * S.big }); }
   else if (S.st === 'prize') {
@@ -12820,13 +12823,6 @@ async function boot() {
       else if (s && (s.v === 1 || s.v === 2)) loadSave({ sfx: s.sfx, music: s.music, mode: s.mode, calm: s.calm, wallet: s.wallet, seen: s.seen });
     }
   } catch (_) { save = defaultSave(); }
-  // 0.8.17: the separate everything-unlocked test app (build flag __UNLOCKED__, its own app id): once, the whole coop,
-  // both bundles' boosters, charges and tickets, and a deep purse, so every page and animation can be tried at once
-  if (typeof __UNLOCKED__ !== 'undefined' && __UNLOCKED__ && !save.unlockedKit) {
-    let w = save.wallet;
-    for (const sku of ['eggscape_collector', 'starter_nest', 'bundle_helper']) w = E.grantIap(w, sku, 'unlocked-build:' + sku, Date.now()).wallet;
-    save.wallet = E.addCoins(w, 20000); save.unlockedKit = 1; persist();
-  }
   if (PREVIEW === 'spin') { const stars = {}; for (let i = 1; i < 12; i++) stars[i] = 2; save = defaultSave(); loadSave({ ...save, unlocked: 12, stars, wallet: { ...save.wallet, coins: 300 }, spin: { wins: 1, bank: 3 } }); } // the Lucky Spin to show: a player at level 12 with three spins
   // the app build used to be an everything-unlocked test build: its saves carry 50 fake levels and 99999 coins. The first
   // real-progression launch starts the journey fresh (settings and the hen's skins carry over).
@@ -12836,6 +12832,17 @@ async function boot() {
     ads.rebind(save);
   }
   save.real = 1;
+  // 0.8.17 / 0.8.19: the separate everything-unlocked test app (build flag __UNLOCKED__, its own app id): on every launch (after
+  // the app's fresh start above, which used to wipe it) the whole coop, every level and side quest, every chick, outfit,
+  // egg and boss treasure, every booster stocked, charges and tickets full, a deep purse and the Lucky Spin with pulls
+  if (UNLOCKED) {
+    let w = save.wallet;
+    for (const sku of ['eggscape_collector', 'starter_nest', 'bundle_helper']) w = E.grantIap(w, sku, 'unlocked-build:' + sku, Date.now()).wallet;
+    const owned = {}; for (const id of E.BOOSTER_ORDER) owned[id] = E.MAX_OWNED;
+    w = E.sanitizeWallet({ ...w, owned, charges: E.MAX_CHARGES, tickets: { ally: E.MAX_TICKETS, skip: E.MAX_TICKETS }, treasures: E.BOSS_TREASURE_IDS.slice(), noAds: true, collector: true, coins: Math.max(w.coins, 99999) });
+    save.wallet = w; save.unlocked = LEVELS.length; save.unlockedKit = 2;
+    const sp = SP.state(save); sp.bank = SP.SPIN.bankMax; persist();
+  }
   // 0.8.12: a cure by the slow-drawing watchdog that started the page's process or the whole app again (src/recover.js):
   // the Android shell kept the save, the watchdog's notes and the end of the speed log, because the web view writes
   // its own storage to disk a few seconds late
@@ -12888,6 +12895,7 @@ async function boot() {
   }
   ads.attach(save, persist, onGrant);
   ads.onRevoke(guardNote); guardNote(); // 0.8.17: a refund taken back says so once (also one noted before a restart)
+  if (!back) save.launches = (save.launches || 0) + 1; // 0.8.19: openings of the app (a cure by the watchdog is not one)
   OF.startSession(save, Date.now()); if (!DR.dirState(save).lastSeen) DR.noteSeen(save, Date.now()); engOpen(); persist();
   if (OF.childSafe(save) && ads.moneyShop) ads.setChildSafe(true); // the shell also remembers it; this keeps both in step
   applyAudioSettings();
