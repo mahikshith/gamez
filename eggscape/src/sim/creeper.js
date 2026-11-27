@@ -2,11 +2,12 @@
 // stops. Mixed into Sim (sim.js: Object.assign(Sim.prototype, creepMethods)), so `this` is the Sim. Every field is plain
 // data in this.creeps (creepState / creepLoad), so rewind and the planner stay exact. No randomness.
 //
-// It IS a thorn: creepInit adds a real entry to ring.thorns (sim.js addThorn: the same triangle fixture, the same size)
-// and only its angle `a` changes. So there is ONE RULE, the standing thorn's own (sim.js preSolve): it breaks an egg
-// (Easy: a crack and a shove; a slow brush on its flank is a graze), a flaming egg burns it, a stone, comet or golden egg
-// snaps it, every chick, boss and power that reads ring.thorns sees it, and Thorn Snips take it with the rest. The picture
-// is drawn by the same code from the same entry (render/world.js drawThorns), so the hit shape is the drawn thorn.
+// It IS a thorn: creepInit adds a real entry to ring.thorns (sim.js addThorn: the same triangle, the same size) and only
+// its angle `a` changes. So there is ONE RULE, the standing thorn's own (sim.js thornTouch): it breaks an egg (Easy: a
+// crack and a shove; a slow brush on its flank is a graze), a flaming egg burns it, a stone, comet or golden egg snaps
+// it, every chick, boss and power that reads ring.thorns sees it, and Thorn Snips take it with the rest. The picture is
+// drawn by the same code from the same entry (render/world.js drawThorns), and creepTouch tests eggs against that very
+// triangle, so the hit shape is the drawn thorn. (It carries no physics fixture: see creepTouch.)
 // What a moving thorn adds to a standing one:
 //   REST   at each end of its groove it stands for `rest` s (still a thorn: it hurts). The last CREEP.wind s are the
 //          wind-up (the render's shiver and hot tip).
@@ -23,7 +24,7 @@
 // Events: creepGo (sets off), creepStop (reaches an end), creepGrow (springs back out), creeperNear (an egg sits on its
 // groove with it coming: the teaching hook, main.js lessonAsk('creep_thorn'); one per approach). Burnt / snapped / a hit
 // are the thorn's own events (thornBurn, thornSnap, break with why 'thorn', graze).
-import { Vec2 } from 'planck';
+import { Vec2, testOverlap } from 'planck';
 import { RING_TH, clamp, wrap } from './geom.js';
 import { ringPt, ringSpd } from './shapes.js';
 
@@ -57,7 +58,7 @@ export const creepMethods = {
       if (!o || !ring) return;
       const side = o.side === 'out' ? 'out' : 'in', baby = o.baby ? 1 : 0;
       const a0 = (Math.min(o.a0, o.a1) * Math.PI) / 180, a1 = (Math.max(o.a0, o.a1) * Math.PI) / 180;
-      this.addThorn(ring, a0, side, baby ? CREEP.babyH : CREEP.h, 'hook');
+      this.addThorn(ring, a0, side, baby ? CREEP.babyH : CREEP.h, 'hook', false);
       const th = ring.thorns[ring.thorns.length - 1];
       const C = {
         id: this.creeps.length, ri, ti: ring.thorns.length - 1, side, a0, a1, v: o.v || 0.5, rest: o.rest || 1, baby,
@@ -82,16 +83,43 @@ export const creepMethods = {
   },
   creepLive(C) { return C.ph !== 'gone' && C.ph !== 'stub' && C.ph !== 'grow'; }, // out and sharp
   creepReach() { return CREEP.half + CREEP.reach; },
-  // move the thorn (and its fixture: the standing thorn's own triangle, sim.js addThorn) to ring-local angle u
+  // move the thorn (and its hit shape: the standing thorn's own triangle, sim.js addThorn) to ring-local angle u
   creepPlace(C, u) {
     C.u = u;
     const th = this.creepThorn(C), ring = th.ring;
-    if (th.a === u && th.at === u) return;
-    th.a = th.at = u;
-    if (!th.alive || !th.fix) return;
+    if (th.a === u) return;
+    th.a = u;
     const half = CREEP.half / ringSpd(ring, u), p = (rad, ang) => Vec2(...ringPt(ring, ang, rad));
-    th.fix.getShape()._set(th.side === 'in' ? [p(th.base, u - half), p(th.base, u + half), p(th.tip, u)] : [p(th.base, u + half), p(th.base, u - half), p(th.tip, u)]);
-    th.fix._reset(); // (planck: new broad-phase proxies for the moved shape; its contacts live on, so a touch stays one touch)
+    th.shape._set(th.side === 'in' ? [p(th.base, u - half), p(th.base, u + half), p(th.tip, u)] : [p(th.base, u + half), p(th.base, u - half), p(th.tip, u)]);
+  },
+  // Eggs against the thorn. It has no fixture (a fixture that moves on a ring would stir the physics of the whole vault:
+  // a level with a moving thorn nobody touches plays exactly as it does without one), so the touch is tested here, egg
+  // hull against the thorn's triangle, and handed to the one rule of every thorn (sim.js thornTouch, with the same
+  // checks before it as preSolve) through a stand-in contact. Where the rule leaves a standing thorn solid (Easy's
+  // crack and shove, the baby, a graze) the egg is pushed off the triangle instead of resting inside it.
+  creepTouch(C, th) {
+    const rb = th.ring.body, xr = rb.getTransform(), other = { kind: 'thorn', thorn: th };
+    for (const e of this.eggs) {
+      if (!e.body || !e.fix) continue;
+      const on = e.alive && !e.saved && !e.phx && testOverlap(e.bubbleFix ? e.bubbleFix.getShape() : e.fix.getShape(), 0, th.shape, 0, e.body.getTransform(), xr);
+      if (!on) { if (e.spk && e.spk.has(th.key)) e.spk.delete(th.key); continue; } // (sim.js endContact)
+      if (th.ext < 0.5) continue;
+      // the stand-in contact: its one point is the triangle's nearest point to the egg's centre
+      const pe = e.body.getPosition(), lp = rb.getLocalPoint(pe), V = th.shape.m_vertices;
+      let bx = 0, by = 0, bd = 1e9;
+      for (let i = 0; i < 3; i++) { const a = V[i], b = V[(i + 1) % 3], ex = b.x - a.x, ey = b.y - a.y, t = clamp(((lp.x - a.x) * ex + (lp.y - a.y) * ey) / (ex * ex + ey * ey || 1), 0, 1), qx = a.x + ex * t, qy = a.y + ey * t, d = Math.hypot(lp.x - qx, lp.y - qy); if (d < bd) { bd = d; bx = qx; by = qy; } }
+      const pt = rb.getWorldPoint(Vec2(bx, by));
+      const fc = { off: false, setEnabled(v) { if (!v) this.off = true; }, getWorldManifold: () => ({ points: [pt] }) };
+      if (this.v3Contact(fc, e, other) || this.chickContact(fc, e, other)) continue;
+      if (!e.alive || e.saved) continue;
+      this.thornTouch(fc, e, th);
+      if (fc.off || !e.alive || !e.body || e.safeT >= 1) continue;
+      // still solid to this egg: push it off
+      let nx = pe.x - pt.x, ny = pe.y - pt.y; const d = Math.hypot(nx, ny) || 1; nx /= d; ny /= d;
+      const ve = e.body.getLinearVelocity(), vt = rb.getLinearVelocityFromWorldPoint(pt), A = rb.getAngle() + th.a, sv = C.spd * Math.sign(C.to - C.from);
+      const rel = (ve.x - (vt.x - Math.sin(A) * sv)) * nx + (ve.y - (vt.y + Math.cos(A) * sv)) * ny;
+      if (rel < 0.5) { const m = e.body.getMass() * (0.5 - rel); e.body.applyLinearImpulse(Vec2(nx * m, ny * m), pe, true); }
+    }
   },
   // is there still ring under it?
   creepFloor(C) {
@@ -106,8 +134,9 @@ export const creepMethods = {
       const th = this.creepThorn(C);
       if (!th.alive) { C.ph = 'gone'; C.spd = 0; continue; } // snipped (or the vault burst)
       if (this.state !== 'play' || (this.stkFrozen && this.stkFrozen())) continue; // (Tick-Tock's stopped time holds it where it is)
-      if (!this.creepFloor(C)) { th.alive = false; this.killFix.push([th.ring.body, th.fix]); C.ph = 'gone'; C.spd = 0; this.emit('thornSnap', { ...this.creepHead(C), thorn: th }); continue; }
+      if (!this.creepFloor(C)) { th.alive = false; C.ph = 'gone'; C.spd = 0; this.emit('thornSnap', { ...this.creepHead(C), thorn: th }); continue; }
       this.creepOne(C, th, dt);
+      if (th.alive) this.creepTouch(C, th);
       if (C.ph === 'slide' || C.ph === 'rest') this.creepNear(C);
     }
   },
@@ -130,7 +159,6 @@ export const creepMethods = {
         const u = C.from + (C.to - C.from) * creepEase(C.s);
         C.spd = (Math.abs(u - C.u) * th.ring.r) / Math.max(1e-6, dt);
         this.creepPlace(C, u);
-        this.creepWake(C);
         if (C.s >= 1) { C.dir = -C.dir; C.spd = 0; C.near = 0; this.creepSet(C, 'rest', this.creepRest(C)); this.emit('creepStop', { id: C.id, ...this.creepHead(C) }); }
         return;
       }
@@ -145,11 +173,6 @@ export const creepMethods = {
         if ((C.t -= dt) <= 0) { th.ext = 1; this.creepSet(C, 'rest', this.creepRest(C)); }
         return;
     }
-  },
-  // an egg asleep in its way is woken as it comes (a sleeping body and a ring that is not turning make no contact)
-  creepWake(C) {
-    const H = this.creepHead(C);
-    for (const e of this.eggs) { if (!e.alive || e.saved || !e.body || e.body.isAwake()) continue; const p = e.body.getPosition(); if (Math.hypot(p.x - H.x, p.y - H.y) < 0.75) e.body.setAwake(true); }
   },
   creepEggOn(C) {
     const H = this.creepHead(C);

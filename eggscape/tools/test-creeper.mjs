@@ -48,11 +48,14 @@ const hold = (sim) => { const e = sim.eggs[0]; if (e.body) { put(sim, e, 2, 90);
   ok(ring.thorns.includes(th) && th.mv === C && th.alive && th.kind === 'hook', 'it is an entry of its ring\'s own thorns (a sharp one), so everything that reads ring.thorns sees it');
   ok(th.h === st.h && th.base === st.base && th.tip === st.tip && th.side === st.side, `the same size as a standing thorn of its ring (h ${th.h} m, base ${th.base.toFixed(2)}, tip ${th.tip.toFixed(2)})`);
   // hit shape = the drawn thorn: the fixture's triangle is the three points drawThorns draws from (base +- half, tip), where it is now
-  const tri = (t) => { const s = t.fix.getShape(), n = s.m_count, a = t.a; return [...Array(n)].map((_, i) => { const v = s.m_vertices[i], r = Math.hypot(v.x, v.y), da = Math.atan2(v.y, v.x) - a; return [+r.toFixed(4), +(Math.atan2(Math.sin(da), Math.cos(da)) * r).toFixed(3)]; }).sort((p, q) => p[0] - q[0] || p[1] - q[1]); };
-  ok(JSON.stringify(tri(th)) === JSON.stringify(tri(st)), `its fixture is the standing thorn's own triangle (${JSON.stringify(tri(th))})`);
+  const tri = (t) => { const s = t.shape || t.fix.getShape(), n = s.m_count, a = t.a; return [...Array(n)].map((_, i) => { const v = s.m_vertices[i], r = Math.hypot(v.x, v.y), da = Math.atan2(v.y, v.x) - a; return [+r.toFixed(4), +(Math.atan2(Math.sin(da), Math.cos(da)) * r).toFixed(3)]; }).sort((p, q) => p[0] - q[0] || p[1] - q[1]); };
+  ok(JSON.stringify(tri(th)) === JSON.stringify(tri(st)), `its hit shape is the standing thorn's own triangle (${JSON.stringify(tri(th))})`);
   hold(sim); run(sim, 2.5);
   ok(C.ph === 'slide' && Math.abs(th.a - C.u) < 1e-9 && JSON.stringify(tri(th)) === JSON.stringify(tri(st)), `mid-slide the hit shape is still that triangle, where the thorn is drawn (thorn.a ${(th.a * 180 / Math.PI).toFixed(1)} deg)`);
-  ok(Math.abs(th.fix.getShape().m_vertices.reduce((s, v) => s + Math.atan2(v.y, v.x), 0) / 3 - C.u) < 0.01, 'the fixture moved with it');
+  ok(Math.abs(th.shape.m_vertices.reduce((s, v) => s + Math.atan2(v.y, v.x), 0) / 3 - C.u) < 0.01, 'the hit shape moved with it');
+  // it carries no fixture: a vault whose moving thorn nobody touches plays exactly as the vault without one
+  const play = (withIt) => { const Lv = level(); if (!withIt) delete Lv.rings[1].creep; const q = new Sim(Lv, { mode: 'medium' }); put(q, q.eggs[0], 2, -60); const r1 = q.rings[2]; run(q, 6, (z) => { for (const g of z.rings) g.target = g.body.getAngle() + 0.3; }); const p = q.eggs[0].body ? q.eggs[0].body.getPosition() : { x: 0, y: 0 }; return JSON.stringify([p.x, p.y, q.rings.map((r) => r.body.getAngle()), q.eggs[0].alive]); };
+  ok(th.fix === null && play(true) === play(false), 'no fixture: an egg that never meets it rolls exactly as in the same vault without it');
 }
 
 // ---------------------------------------------------------------- the core
@@ -101,7 +104,7 @@ const hold = (sim) => { const e = sim.eggs[0]; if (e.body) { put(sim, e, 2, 90);
 { // at rest it is still a thorn: an egg dropped on its point breaks (a standing thorn does the same)
   const sim = fresh('medium', {}, {}, { delay: 30, a0: -90 });
   const e = sim.eggs[0], th = T0(sim), A = sim.rings[1].body.getAngle() + th.a, tx = th.tip * Math.cos(A), ty = th.tip * Math.sin(A);
-  e.body.setTransform({ x: tx, y: ty + 0.45 }, 0); e.body.setLinearVelocity({ x: 0, y: -2 }); e.body.setAngularVelocity(0); e.body.setAwake(true);
+  e.body.setTransform({ x: tx, y: ty + 0.45 }, 0); e.body.setLinearVelocity({ x: 0, y: -2 }); e.safeT = 0; // (past the grace every egg has at the start of a level) e.body.setAngularVelocity(0); e.body.setAwake(true);
   const log = run(sim, 3);
   ok(C0(sim).ph !== 'slide' && !!at(log, 'break') && at(log, 'break').why === 'thorn', `resting, it breaks an egg that falls on its point (${log.map((x) => x.type).join(' ') || 'nothing'})`);
 }
@@ -203,8 +206,8 @@ const hold = (sim) => { const e = sim.eggs[0]; if (e.body) { put(sim, e, 2, 90);
   const a = fresh(); hold(a); run(a, 1.5);
   const b = Sim.fromState(level(), a.fullState()); run(a, 3); run(b, 3);
   ok(JSON.stringify(a.creepState()) === JSON.stringify(b.creepState()), 'a snapshot taken mid-slide plays on the same');
-  const v = (s) => JSON.stringify([...Array(3)].map((_, i) => { const q = T0(s).fix.getShape().m_vertices[i]; return [q.x.toFixed(6), q.y.toFixed(6)]; }).sort());
-  ok(v(a) === v(b) && T0(a).a === T0(b).a, 'and its fixture is where the snapshot put it');
+  const v = (s) => JSON.stringify([...Array(3)].map((_, i) => { const q = T0(s).shape.m_vertices[i]; return [q.x.toFixed(6), q.y.toFixed(6)]; }).sort());
+  ok(v(a) === v(b) && T0(a).a === T0(b).a, 'and its hit shape is where the snapshot put it');
 }
 
 // ---------------------------------------------------------------- the baby (a first meeting)
