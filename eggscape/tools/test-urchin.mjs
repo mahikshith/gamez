@@ -7,6 +7,8 @@
 // helpless spell after every counter.
 import { Sim, DT } from '../src/sim/sim.js';
 import { URCHIN } from '../src/sim/urchin.js';
+import { DYN, tellS } from '../src/data/dynamism.js'; // 0.8.19 his puff's length: his mode's, times the table's tell
+const PUFF = (mode) => tellS(URCHIN.puff[mode], DYN.urchin.tell);
 import { LEVELS } from '../src/data/levels.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
@@ -83,7 +85,7 @@ const turnAt = (ring, d) => (sim) => { const r = sim.rings[ring]; r.target = r.b
   const aim = log.find((x) => x.type === 'urPuff' && x.why === '' && sim) && log.filter((x) => x.type === 'urPuff'), dash = at(log, 'urDash'), hit = log.find((x) => x.type === 'urHit');
   const lastPuff = dash ? aim.filter((x) => x.t <= dash.t).pop() : null;
   ok(!!dash && !!hit, 'he spots an egg through a gap and dashes at it');
-  ok(lastPuff && Math.abs(dash.t - lastPuff.t - URCHIN.puff.medium) < 0.05, `the telegraph: he puffs ${lastPuff ? (dash.t - lastPuff.t).toFixed(2) : '?'} s before the dash (Medium ${URCHIN.puff.medium})`);
+  ok(lastPuff && Math.abs(dash.t - lastPuff.t - PUFF('medium')) < 0.05, `the telegraph: he puffs ${lastPuff ? (dash.t - lastPuff.t).toFixed(2) : '?'} s before the dash (Medium ${URCHIN.puff.medium})`);
   ok(sim.eggs[0].cracks === 1 && sim.eggs[0].alive, `the hit cracks it once (${sim.eggs[0].cracks})`);
   ok(!!at(log, 'urLaugh'), 'he rolls home and snickers');
 }
@@ -92,7 +94,7 @@ const turnAt = (ring, d) => (sim) => { const r = sim.rings[ring]; r.target = r.b
     const sim = fresh(mode);
     put(sim, sim.eggs[0], 3, 95);
     const log = run(sim, 14), dash = at(log, 'urDash'), puff = dash && log.filter((x) => x.type === 'urPuff' && x.t <= dash.t).pop();
-    ok(dash && Math.abs(dash.t - puff.t - URCHIN.puff[mode]) < 0.05, `${mode}: ${URCHIN.puff[mode]} s of puff before the dash`);
+    ok(dash && Math.abs(dash.t - puff.t - PUFF(mode)) < 0.05, `${mode}: ${PUFF(mode).toFixed(2)} s of puff before the dash`);
   }
 }
 
