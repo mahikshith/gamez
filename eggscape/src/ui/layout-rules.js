@@ -48,6 +48,16 @@ export function lint(ui, o = {}) {
     const full = rec && rec.r0 ? rec.r0 : b;
     return { id: b.id, x: b.x, y: b.y, w: b.w, h: b.h, x1: b.x + b.w, y1: b.y + b.h, cx: b.x + b.w / 2, cy: b.y + b.h / 2, full, rec, ui: !!(rec && rec.ui), set: rec && rec.set, cut: full.w > 0 && (b.w < full.w * TOL.cut || b.h < full.h * TOL.cut) };
   });
+  // a segmented control (lint819 fix: the ring-speed slider's twelve 16 px ticks): three or more tap boxes of one family
+  // touching edge to edge on one line are one control; tap size is judged on the whole, and its parts never crowd each other
+  const seg = new Map();
+  { const byFam = new Map(); for (const q of B) { if (!q.id.includes(':') || huge(q)) continue; const f = q.id.split(':')[0]; if (!byFam.has(f)) byFam.set(f, []); byFam.get(f).push(q); }
+    for (const L of byFam.values()) {
+      const s2 = [...L].sort((a, b) => a.cy - b.cy || a.x - b.x), runs = [];
+      for (const q of s2) { const r = runs.find((r) => { const p = r[r.length - 1]; return Math.abs(p.cy - q.cy) < 1 && Math.abs(p.h - q.h) < 1 && Math.abs(q.x - p.x1) <= 1; }); if (r) r.push(q); else runs.push([q]); }
+      for (const r of runs) if (r.length >= 3) { const u = { x: r[0].x, y: Math.min(...r.map((q) => q.y)), w: r[r.length - 1].x1 - r[0].x, h: Math.max(...r.map((q) => q.h)) }; for (const q of r) seg.set(q.id, { u, key: r[0].id }); }
+    }
+  }
   const seen = new Set();
   const once = (k) => (seen.has(k) ? false : (seen.add(k), true));
 
@@ -65,13 +75,15 @@ export function lint(ui, o = {}) {
   if (want.has('TAPSIZE')) {
     for (const q of B) {
       if (huge(q)) continue;
-      const need = flow && FLOW_IDS.test(q.id) ? TOL.tapFlow : TOL.tap, m = Math.min(q.w, q.h);
+      const need = flow && FLOW_IDS.test(q.id) ? TOL.tapFlow : TOL.tap, sg = seg.get(q.id), m = sg ? Math.min(sg.u.w, sg.u.h) : Math.min(q.w, q.h);
       if (m < need - 0.5 && once('tap' + q.id)) add('TAPSIZE', 'btn:' + q.id, `${Math.round(q.w)}x${Math.round(q.h)} under ${need}`, 100 + 2 * (need - m));
     }
   }
   // groups for rules 3 and 4: an explicit layout group (o.group on ui.button / the group of ui.record, kept as .set), else
   // the id's family (face:*, star:*, tile:*); plus the page's wide buttons (a stack: same edges) and any three or more
   // ui buttons of one size on one line (a strip: even gaps)
+  // a wide button that shares its line with others (NEXT beside Retry) stands in the stack as that whole line (lint819 fix)
+  const lineOf = (q) => { const L = B.filter((p) => p !== q && !huge(p) && Math.abs(p.cy - q.cy) <= 0.3 * Math.max(p.h, q.h)); if (!L.length) return q; const x = Math.min(q.x, ...L.map((p) => p.x)), x1 = Math.max(q.x1, ...L.map((p) => p.x1)); return { ...q, x, x1, w: x1 - x, cx: (x + x1) / 2, id: [q.id, ...L.map((p) => p.id)].join('+') }; };
   const fam = new Map(), put = (k, q) => { if (!fam.has(k)) fam.set(k, []); fam.get(k).push(q); };
   for (const q of B) {
     if (huge(q)) continue;
@@ -81,7 +93,7 @@ export function lint(ui, o = {}) {
       k = like || k + '#' + [...fam.keys()].filter((f) => f.startsWith(k + '#')).length;
     }
     if (k) put(k, q);
-    if (q.ui && !q.cut && q.w >= 0.5 * A.w) put('stack', q);
+    if (q.ui && !q.cut && q.w >= 0.5 * A.w) put('stack', lineOf(q));
   }
   const bySize = new Map();
   for (const q of B) if (q.ui && !huge(q) && !q.cut) { const k = `${Math.round(q.w)}x${Math.round(q.h)}@${Math.round(q.cy / 3)}`; if (!bySize.has(k)) bySize.set(k, []); bySize.get(k).push(q); }
@@ -137,13 +149,16 @@ export function lint(ui, o = {}) {
     }
   }
   // the things a page shows: recorded rects (no panels) and tap boxes without a rect, cut to the safe rect
-  const things = [...R.filter((q) => !String(q.tag).startsWith('panel')), ...B.filter((q) => !q.rec && !huge(q))].map((q) => ({ tag: q.tag || 'btn:' + q.id, group: q.group || 'btn:' + q.id, set: q.set, container: q.container, kind: q.kind, x: q.x, y: q.y, w: q.w, h: q.h, x1: q.x + q.w, y1: q.y + q.h }));
+  const things = [...R.filter((q) => !String(q.tag).startsWith('panel')), ...B.filter((q) => !q.rec && !huge(q))].map((q) => ({ tag: q.tag || 'btn:' + q.id, group: q.group || 'btn:' + q.id, set: q.set || (q.id && seg.has(q.id) ? 'seg:' + seg.get(q.id).key : undefined), container: q.container, kind: q.kind, x: q.x, y: q.y, w: q.w, h: q.h, x1: q.x + q.w, y1: q.y + q.h,
+    cut: q.r0 ? { l: q.x - q.r0.x > 0.5, t: q.y - q.r0.y > 0.5, r: q.r0.x + q.r0.w - (q.x + q.w) > 0.5, b: q.r0.y + q.r0.h - (q.y + q.h) > 0.5 } : null }));
+  for (const t of things) { const b = B.find((q) => q.rec && t.tag === 'btn:' + q.id); if (b && seg.has(b.id)) t.set = 'seg:' + seg.get(b.id).key; }
   // 5. BALANCE: no empty band over 22 % of the height between the first and the last thing; top / bottom margins within 2x
-  if (want.has('BALANCE') && !o.play) {
+  // (the pause page is the board itself with its controls over it: the board is not recorded, so like play it is exempt)
+  if (want.has('BALANCE') && !o.play && o.screen !== 'pause') {
     // content for balance: every tap box but a tap-anywhere catcher (lint819 fix: a tappable picture recorded as a panel,
     // the level card's hero stage, is content, not a hole), and any picture area a page records as 'panel:art...'
     const SW = ui.w * ui.h, pics = [...B.filter((q) => q.w * q.h < 0.6 * SW), ...R.filter((q) => /^panel:art/.test(q.tag))];
-    const iv = [...things, ...pics].map((q) => [Math.max(A.y, q.y), Math.min(A.y1, q.y1)]).filter((v) => v[1] > v[0]).sort((a, b) => a[0] - b[0]);
+    const iv = [...things, ...pics].map((q) => [Math.max(A.y, q.y), Math.min(A.y1, q.y + q.h)]).filter((v) => v[1] > v[0]).sort((a, b) => a[0] - b[0]);
     if (iv.length >= 2) {
       let end = iv[0][1], band = 0, at = 0;
       for (const [a, b] of iv) { if (a - end > band) { band = a - end; at = end; } end = Math.max(end, b); }
@@ -165,6 +180,10 @@ export function lint(ui, o = {}) {
         if (t && !inside && /^btn:/.test(btn.tag) && once('ob' + t.tag + btn.tag)) add('CROWD', t.tag + ' x ' + btn.tag, 'text over a button it does not belong to', 120);
         continue;
       }
+      // a rect a scrolling window cuts touches the window's edge on that side: scrolling, not crowding (lint819 fix: the
+      // shop's tiles scrolled up to its tab bar)
+      const atCut = (p, q) => p.cut && ((p.cut.t && q.y1 <= p.y + 1) || (p.cut.b && q.y >= p.y1 - 1) || (p.cut.l && q.x1 <= p.x + 1) || (p.cut.r && q.x >= p.x1 - 1));
+      if (atCut(a, b) || atCut(b, a)) continue;
       const gap = dx > 0 && dy > 0 ? Math.hypot(dx, dy) : Math.max(dx, dy, 0);
       if (gap < TOL.crowd && once('cr' + a.tag + b.tag)) add('CROWD', a.tag + ' x ' + b.tag, `${r1(gap)} px apart`, 30 + 5 * (TOL.crowd - gap));
     }

@@ -6792,7 +6792,7 @@ function drawHUD() {
   if (V.bump && !Y.noScore) {
     ctx.save();
     { const k = 1 + 0.22 * HUDS.bump; ctx.translate(Y.sx, Y.sy); ctx.scale(k, k); ctx.translate(-Y.sx, -Y.sy); }
-    ui.num(String(st.score), Y.sx, Y.sy, { size: Y.sS, align: Y.stk ? 'center' : 'right', tag: 'hud:score' });
+    ui.num(String(st.score), Y.sx, Y.sy, { size: Y.sS, align: Y.stk ? 'center' : 'right', tag: 'hud:score', group: 'hud:score' });
     ctx.restore();
   }
   // stall watch: Finish (enough eggs home) or Retry (stuck), centred under the HUD
@@ -6842,7 +6842,7 @@ function hudStill(V, timeTxt) {
   const pal = G.theme.palette;
   const A = ui.A, twoRows = A.w < 760 || A.h > A.w * 1.05;
   const pad = 12 * u, X0 = A.x + pad, Y0 = A.y + pad; // the HUD lives in the safe rect (the scrim still paints edge to edge)
-  const bs = 46 * u;
+  const bs = Math.max(46 * u, 46); // (lint819: the pause button a thumb's size on a small screen too)
   // scrim: the world's plate tint, fading out under the HUD
   const plate = /^rgba\(/.test(pal.plate || '') ? pal.plate : 'rgba(20,14,10,0.55)';
   const al = (a) => plate.replace(/[\d.]+\)$/, a + ')');
@@ -6869,8 +6869,8 @@ function hudStill(V, timeTxt) {
   const sx = stk ? chipX + chipW / 2 : A.x1 - pad - 14 * u, sy = stk ? row1 + 6 * u : row1;
   if (!noScore) {
   ui.glass(chipX, row1 - chipH / 2, chipW, chipH);
-  ui.text('SCORE', stk ? chipX + chipW / 2 : chipX + 13 * u, stk ? row1 - 10 * u : row1 + 1 * u, { size: stk ? 9.5 * u : lblS, align: stk ? 'center' : 'left', color: 'rgba(255,232,196,0.85)', tag: 'hud:scoreLabel' });
-  if (!V.bump) ui.num(scoreTxt, sx, sy, { size: sS, align: stk ? 'center' : 'right', tag: 'hud:score' });
+  ui.text('SCORE', stk ? chipX + chipW / 2 : chipX + 13 * u, stk ? row1 - 10 * u : row1 + 1 * u, { size: stk ? 9.5 * u : lblS, align: stk ? 'center' : 'left', color: 'rgba(255,232,196,0.85)', tag: 'hud:scoreLabel', group: 'hud:score' });
+  if (!V.bump) ui.num(scoreTxt, sx, sy, { size: sS, align: stk ? 'center' : 'right', tag: 'hud:score', group: 'hud:score' });
   }
   let leftEdge = X0 + bs + 8 * u;
   { const pw = V.perk ? 34 * u : perkChipHud(leftEdge, row1 - 15 * u, u); if (pw) leftEdge += pw + 8 * u; } // the equipped egg's power
@@ -6965,7 +6965,7 @@ function hudNeed(st) { return G.li === 0 && G.level && G.level.id === 1 ? st.tot
 // boss bar), so the vault takes the full height. Same pieces and tags as the top HUD.
 function drawSideHUD() {
   const u = ui.u, sim = G.sim, pal = G.theme.palette, A = ui.A;
-  const pad = 12 * u, X0 = A.x + pad, Y0 = A.y + pad, bs = 44 * u, cw = G.hudCol, pillH = 34 * u, gap = 8 * u;
+  const pad = 12 * u, X0 = A.x + pad, Y0 = A.y + pad, bs = Math.max(44 * u, 46), cw = G.hudCol, pillH = 34 * u, gap = 8 * u;
   ui.calm = save.calm;
   const plate = /^rgba\(/.test(pal.plate || '') ? pal.plate : 'rgba(20,14,10,0.55)';
   const al = (a) => plate.replace(/[\d.]+\)$/, a + ')');
@@ -7043,7 +7043,7 @@ function drawSideHUD() {
       ui.glass(sx, y, sw, pillH);
       ctx.save();
       if (HUDS.bump > 0.02 && !save.calm) { const k = 1 + 0.22 * HUDS.bump, px = sx + sw - 13 * u; ctx.translate(px, cy); ctx.scale(k, k); ctx.translate(-px, -cy); }
-      ui.num(scoreTxt, sx + sw - 13 * u, cy, { size: scoreS, align: 'right', tag: 'hud:score' });
+      ui.num(scoreTxt, sx + sw - 13 * u, cy, { size: scoreS, align: 'right', tag: 'hud:score', group: 'hud:score' });
       ctx.restore();
     }
   }
@@ -8884,8 +8884,8 @@ function pauseRingRow(x, y, w, s, h) {
   drawEggIcon(ctx, kx, cy, rr * 0.95, 'alive');
   pictoTurtle(ctx, x + e / 2 - 2 * s, cy, e * 1.04); pictoHare(ctx, x + w - e / 2 + 2 * s, cy + 2 * s, e * 1.04);
   ctx.restore();
-  if (k > 0) ui.buttons.push({ id: 'rs:-', x, y, w: e, h });
-  if (k < n - 1) ui.buttons.push({ id: 'rs:+', x: x + w - e, y, w: e, h });
+  if (k > 0) ui.buttons.push({ id: 'rs:-', x, y, w: tx - x, h }); // (lint819: the turtle and the hare reach the track: one control, no 6 px dead strip between)
+  if (k < n - 1) ui.buttons.push({ id: 'rs:+', x: tx + tw, y, w: x + w - tx - tw, h });
   for (let i = 0; i < n; i++) ui.buttons.push({ id: 'rs:' + i, x: tx + cw * i, y, w: cw, h });
   ui.record({ x, y: cy - e * 0.36, w, h: e * 0.72 }, 'pause:rs');
 }
@@ -10127,7 +10127,8 @@ function drawWinPage() {
   const last = G.li < 0 || G.li === LEVELS.length - 1;
   // 0.8.19: the stars stand on an arc (a shallow parabola, the middle one highest and a little bigger), larger than
   // before; the goals' chips have their own row low on the page, under her; Double coins is a big button over NEXT
-  let D = side ? { R: 30, sp: 74, br: 21, num: 48, scoreH: dblOn ? 54 : 76, noBest: dblOn, coinH: 40, tileH: 68, dblH: 92, btnH: 54, g: 5 } : { R: 46, sp: 108, br: 28, num: 66, scoreH: 96, coinH: 48, tileH: 84, dblH: 104, btnH: 70, g: 10 };
+  // (lint819, on its side: NEXT and Retry 56 px for a thumb, 6 px between rows; the video and the tiles a little lower to make the room)
+  let D = side ? { R: 30, sp: 74, br: 21, num: 48, scoreH: dblOn ? 54 : 76, noBest: dblOn, coinH: 40, tileH: 62, dblH: 80, btnH: 64, g: 7 } : { R: 46, sp: 108, br: 28, num: 66, scoreH: 96, coinH: 48, tileH: 84, dblH: 104, btnH: 70, g: 10 };
   const starH = () => 6 + 2.85 * D.R + 6, chipH = () => 2.4 * D.br + 6;
   let stH = 0;
   const BL = inCard && (done || pt > S.done) && !revealing(r) ? (calm ? 1 : 0.5 + 0.5 * Math.sin(G.t * 4.2)) : null; // all settled: what was missed blinks softly (Calm: a steady outline)
@@ -10166,7 +10167,7 @@ function drawWinPage() {
       draw: () => {
         r.chipHit = inCard && r.goals ? T.chips.map((c) => ({ x: c.x, y: c.y, br: T.br })) : null;
         winChips(r, { chips: T.chips, br: T.br, stars: T.stars, R: T.R }, done || !r.direct || !inCard, BL);
-        ui.record({ x: T.chips[0].x - T.br, y: T.chips[0].y - T.br, w: T.chips[2].x - T.chips[0].x + 2 * T.br, h: 2.4 * T.br }, 'win:badges');
+        ui.record({ x: T.chips[0].x - T.br, y: T.chips[0].y - T.br, w: T.chips[2].x - T.chips[0].x + 2 * T.br, h: 2.4 * T.br }, 'win:badges', 'win:hen'); // (her goal badges stand at her feet: her stage's group)
       } });
     if (!first) {
       B.push({ h: D.scoreH * s, gap: D.g * s, right: true, // one big score; NEW BEST! or the best so far under it; the points come in from its sides
@@ -10180,7 +10181,7 @@ function drawWinPage() {
           if (ka <= 0) return;
           if (ka < 1) pk *= 0.6 + 0.4 * backK(ka);
           ctx.save(); if (pk !== 1) { ctx.translate(cx, ny); ctx.scale(pk, pk); ctx.translate(-cx, -ny); } ctx.globalAlpha *= Math.min(1, ka * 2);
-          ui.num(fmtN(done ? r.total : r.shownTotal), cx, ny, { size: ns, align: 'center', maxW: w - 20 * s, tag: 'win:total' });
+          ui.num(fmtN(done ? r.total : r.shownTotal), cx, ny, { size: ns, align: 'center', maxW: w - 20 * s, tag: 'win:total', group: 'win:score' });
           ctx.restore();
           if (r.prevBest == null || D.noBest) return; // (the Daily Vault, a lab vault; a phone on its side with the big Double button)
           const by = T.bestY, nb = r.total > r.prevBest, a = done ? 9 : pt - S.best;
@@ -10191,9 +10192,9 @@ function drawWinPage() {
             ctx.save(); ctx.translate(cx, by); ctx.scale(sc, sc); ctx.translate(-cx, -by);
             ui.ribbon('NEW BEST!', cx, by - bh / 2, bw, bh, { s, color: '#3eaa2a', size: 15 * s, noRecord: true });
             ctx.restore();
-            ui.record({ x: cx - bw / 2, y: by - bh / 2, w: bw, h: bh }, 'win:best');
+            ui.record({ x: cx - bw / 2, y: by - bh / 2, w: bw, h: bh }, 'win:best', 'win:score');
             if (!calm && !r.skipped) CB.confetti(ctx, cx, by, a, { n: 22, speed: 230 * s, g: 380 * s, life: 1.2, seed: 5, size: 5.5 * s, spread: Math.PI * 1.2 });
-          } else { ctx.save(); ctx.globalAlpha *= done ? 1 : clamp(a / 0.3, 0, 1); ui.text('Best ' + fmtN(r.prevBest), cx, by + (done ? 0 : 6 * s * (1 - clamp(a / 0.3, 0, 1))), { size: 16 * s, align: 'center', color: '#fff', stroke: 'rgba(30,60,14,0.85)', strokeW: 3.5 * s, maxW: w, tag: 'win:best' }); ctx.restore(); }
+          } else { ctx.save(); ctx.globalAlpha *= done ? 1 : clamp(a / 0.3, 0, 1); ui.text('Best ' + fmtN(r.prevBest), cx, by + (done ? 0 : 6 * s * (1 - clamp(a / 0.3, 0, 1))), { size: 16 * s, align: 'center', color: '#fff', stroke: 'rgba(30,60,14,0.85)', strokeW: 3.5 * s, maxW: w, tag: 'win:best', group: 'win:score' }); ctx.restore(); }
         };
       B.push({ h: D.coinH * s, gap: D.g * s, right: true, // the coins: the pill, the bursts that join it, the purse they fly into
         at: (x, y, w) => { T.coinY = y + D.coinH * s / 2; T.coinX = x + w / 2; const top = T.score.y - D.num * 0.56 * s - D.g * s, bot = y + D.coinH * s; T.meadow = { x: x + w / 2, y: (top + bot) / 2, h: bot - top, w }; }, // (the goals' moments play here, before the score comes)
@@ -11213,16 +11214,17 @@ function drawTitle() {
   sg.addColorStop(0, 'rgba(30,14,4,0)'); sg.addColorStop(1, 'rgba(30,14,4,0.5)');
   ctx.fillStyle = sg; ctx.fillRect(0, ground + 20 * u, W_, H_ - ground - 20 * u);
   menuFx(); // the skin's falling effect: over the scene, under the logo and buttons
+  ui.record({ x: A.x, y: Math.min(A.y1, ground - 40 * u), w: A.w, h: Math.max(0, A.y1 - ground + 40 * u) }, 'panel:art:meadow'); // (lint819: the meadow with the hen and her eggs is the page's picture: content for the balance rule)
   // 0.8.16 (mykee: "look at the home page, especially the title and the unlock button"): on a tall phone the title
   // spans the page column, the buttons' own edges, and stands clear under the Settings button; nothing shares its
   // row any more (Unlock all moved down into the button block). Shorter screens keep the title between the corners.
-  const tall = !wide && A.h >= A.w * 1.9;
+  const tall = !wide && A.h >= A.w * 1.9, SETZ = Math.max(40 * u, 48); // SETZ (lint819): the Settings corner button, a thumb's 48 px at least
   const logoS = tall ? bw / 5.02 : wide ? Math.min(80 * u, A.w * 0.5 / 7.3, A.h / 5.4) : Math.min(66 * u, A.w / 7.3, A.h / 6);
-  const ty = tall ? A.y + 56 * u + logoS * 0.57 : A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
+  const ty = tall ? A.y + 20 * u + SETZ + logoS * 0.57 : A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
   const opw = !!G.opening && G.opening.word(); G.logoAt = { x: lx, y: ty, s: logoS }; // the opening's word flies here and becomes this title
   const logo = drawLogo(ctx, 'EGGSCAPE', lx, ty, logoS, G.t, opw ? -1 : G.homeIntro === 2 ? 9 : intro ? T * 1.7 : 9, FONT, ui.skin && ui.skin.pack ? (c, ch, i, sz, n) => logoDress(ui.skin, c, ch, i, sz, n) : null); // intro: the letters drop in a quicker cascade
   ui.record(logo, 'title:logo');
-  const subY = ty + logoS * 0.5 + 18 * u;
+  const subY = ty + logoS * 0.5 + 23 * u; // (lint819: 6 px clear of the title's letters)
   G.titleToastY = subY + 16 * u;
   { const p = ent(0.3, 0.32); ctx.save(); ctx.globalAlpha *= p; ctx.translate(0, (1 - p) * 14 * u); // the tagline slides up under the title
     ui.text(TEST || UNLOCKED ? 'Test build: everything unlocked' : 'Get every egg home to the hen', lx, subY, { size: 17 * u, align: 'center', color: '#fff', stroke: 'rgba(50,24,6,0.8)', strokeW: 4 * u, shadow: 'rgba(50,24,6,0.8)', tag: 'title:sub', maxW: (wide ? A.w * 0.5 : A.w) - 32 * u }); ctx.restore(); }
@@ -11278,7 +11280,7 @@ function drawTitle() {
     ctx.restore();
     homeHit('wait:open', gx - Math.max(gS * 0.6, tgw / 2), ty0, Math.max(gS * 1.2, tgw), ground - ty0);
   }
-  pop(0.2, A.x + 30 * u, A.y + 30 * u, () => { ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }); setMarkAt(A.x + 10 * u, A.y + 10 * u, 40 * u, 40 * u); }); // 0.8.14: the Settings mark
+  pop(0.2, A.x + 10 * u + SETZ / 2, A.y + 10 * u + SETZ / 2, () => { ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, SETZ, SETZ, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }); setMarkAt(A.x + 10 * u, A.y + 10 * u, SETZ, SETZ); }); // 0.8.14: the Settings mark
   if (remChipOn()) pop(0.3, A.x1 - 30 * u, A.y + 30 * u, () => drawRemChip(A.x1 - 50 * u, A.y + 10 * u, 40 * u)); // 0.8.17: reminders are off: the bell with a slash, in the other top corner
   // remove ads / buy the game (app, until bought), or Premium's free Chick Charge of the day: 0.8.16, a button of the
   // block, beside Extras (same height, same size of words, the column's right edge), no longer a pill over the title

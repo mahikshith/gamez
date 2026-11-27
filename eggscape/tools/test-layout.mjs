@@ -34,6 +34,7 @@ ok(rules(page(btn('a', 25, 20, 400, 60), btn('go', 25, 900, 400, 70))).has('BALA
 ok(rules(page(btn('a', 25, 300, 100, 60), btn('b', 128, 300, 100, 60))).has('CROWD'), 'CROWD: 3 px apart');
 ok(rules(frame([{ x: 10, y: 10, w: 100, h: 20, tag: 't', group: 't', kind: 'text' }], [], [{ str: 'A long title', size: 20, fit: 0.7, cut: false, a: 1, x: 10, y: 10, w: 100, h: 20 }])).has('TEXT'), 'TEXT: squeezed to 70 %');
 ok(rules(page(btn('go', 25, 300, 400, 70))).has('THUMB'), 'THUMB: PLAY in the top third');
+{ const sl = page(...[...Array(12).keys()].map((i) => btn('rs:' + i, 100 + 16 * i, 500, 16, 66))), r = rules(sl, { screen: 'title' }); ok(!r.has('TAPSIZE') && !r.has('CROWD'), 'a slider of twelve touching ticks is one control (' + [...r].join(',') + ')'); }
 if (bad) { console.log(`FAIL the rules themselves: ${bad}`); process.exit(1); }
 if (process.env.LAYOUT_UNIT) { console.log('ok   the rules on made-up frames'); process.exit(0); }
 
