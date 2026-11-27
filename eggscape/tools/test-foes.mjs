@@ -4,9 +4,10 @@
 // it round (a U-turn) within about 1 s, then gets breathed at; an egg one channel away sends it to the gap and through;
 // with no egg near it keeps the idle rhythm (every x PRED.sal); a snapshot taken mid-hunt and mid-turn resumes exactly.
 import { Sim, DT, PRED } from '../src/sim/sim.js';
-import { SAL, BRAIN, GECKO, BITE, FACE } from '../src/sim/salamander.js';
+import { SAL, BRAIN, GECKO, BITE, FACE, SHAKE } from '../src/sim/salamander.js';
 import { THORN } from '../src/sim/thornback.js';
 import { dyn } from '../src/data/dynamism.js';
+import { LEVELS } from '../src/data/levels.js';
 let bad = 0;
 const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
 const deg = (d) => (d * Math.PI) / 180;
@@ -177,5 +178,53 @@ for (const sp of ['gecko', 'thornback']) {
     const strip = (s) => JSON.stringify(s.sals, (k, v) => (typeof v === 'number' ? +v.toFixed(9) : v));
     ok(strip(a2) === strip(b2), 'face-off: two restores run the same');
   }
+}
+// 0.8.19 (aggroB) the Twister bug ("half the body stayed, half went for a spin"): every crawler's trail stays one smooth
+// body through the pepper sneeze, the spin and the pepper twister (both), and a snapshot taken mid-flee resumes exactly
+{
+  const fold = (C) => { let m = 0, s = 0; for (let i = 2; i < C.pts.length; i++) { const a0 = C.pts[i - 2], a1 = C.pts[i - 1], a2 = C.pts[i]; s = Math.max(s, Math.hypot(a2.x - a1.x, a2.y - a1.y)); const a = Math.atan2(a1.y - a0.y, a1.x - a0.x), b = Math.atan2(a2.y - a1.y, a2.x - a1.x); m = Math.max(m, Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)))); } return [(m * 180) / Math.PI, s]; };
+  for (const id of [18, 24, 25, 31]) for (const pw of ['pepper', 'spin', 'twister']) {
+    const sim = new Sim(LEVELS.find((l) => l.id === id), { mode: 'medium' });
+    while (sim.t < 6 && sim.state === 'play') sim.step();
+    const e = sim.aliveEggs()[0];
+    if (pw === 'twister') { sim.p2Take(e, 'pepper'); sim.p2Take(e, 'spin'); } else sim.p2Take(e, pw);
+    let worst = 0, seg = 0, S = null;
+    for (let i = 0; i < 7 / DT && sim.state === 'play'; i++) {
+      sim.step(); sim.events.length = 0;
+      if (i === Math.round(1 / DT)) S = sim.snapshot();
+      for (const C of sim.sals) if (C.pts.length > 2 && C.ph !== 'wait' && C.ph !== 'gone') { const [m, sg] = fold(C); worst = Math.max(worst, m); seg = Math.max(seg, sg); }
+    }
+    ok(worst < 100 && seg <= 0.08, `trail L${id} ${pw}: no fold (sharpest bend ${worst.toFixed(0)} deg, longest step ${seg.toFixed(3)} m)`);
+    if (S) { const a = Sim.fromState(sim.level, S), b = Sim.fromState(sim.level, S); for (let i = 0; i < 2 / DT; i++) { a.step(); b.step(); } const st = (x) => JSON.stringify(x.sals, (k, v) => (typeof v === 'number' ? +v.toFixed(9) : v)); ok(st(a) === st(b), `trail L${id} ${pw}: a mid-flee snapshot resumes exactly`); }
+  }
+}
+// 0.8.19 (aggroB) the frozen egg: shaking its ring frees it with no words: the ice cracks on the first swing (SHAKE.deg),
+// bursts on the second the other way; a frozen egg sits still through a slow drift one way
+{
+  const sim = fresh({}); const e = putEgg(sim, 2, -90);
+  run(sim, 0.5); sim.iceEgg(e, 30);
+  const ri = e.hold.ri, r = sim.rings[ri], turn = (d) => { const a = r.body.getAngle() + deg(d); r.target = a; };
+  turn(SHAKE.deg + 4); const ev1 = run(sim, 1.2);
+  ok(ev1.some((x) => x.type === 'eggIceCrack' && x.n === 1) && e.icy > 0, `ice: the first swing cracks the ice (icy ${e.icy.toFixed(1)} s left)`);
+  turn(-(SHAKE.deg + 4) * 2); const ev2 = run(sim, 1.2);
+  ok(ev2.some((x) => x.type === 'eggIceBurst' && x.why === 'shake') && !(e.icy > 0) && !e.hold, 'ice: the swing back bursts it: the egg is free');
+}
+// the thorn-back's spike roll (L24): lined up in his channel, he curls (the tell), rolls, then hits the egg or bonks
+{
+  const sim = new Sim(LEVELS.find((l) => l.id === 24), { mode: 'medium' });
+  run(sim, 14);
+  const S = sim.sals.find((C) => C.role === 'spike' && C.pts.length > 2) || sim.sals.find((C) => C.pts.length > 2);
+  const ch = 2; putSal(sim, ch, -150, 1, S); putEgg(sim, ch, -150 + (2.2 / sim.salMid(ch)) * (180 / Math.PI)); S.rcd = 0; S.bored = 0; S.dropT = 9;
+  let curl = 0;
+  const evs = run(sim, 8, () => { for (const C of sim.sals) if (C.ph === 'curl' && C.dur && !curl) curl = C.dur; });
+  const c = evs.find((x) => x.type === 'thornRoll'), h = c && evs.find((x) => /thornRoll(Hit|Bonk)/.test(x.type) && x.at >= c.at);
+  ok(c && h && curl >= 0.45, `roll: a ${curl.toFixed(2)} s curl, rolled at ${c ? c.at.toFixed(2) : '-'} s, then ${h ? h.type : 'nothing'}`);
+}
+// the chameleon's vanish: far from any orb he fades to a ghost and pops back near one (chamFade, chamPop)
+{
+  const sim = new Sim(LEVELS.find((l) => l.id === 31), { mode: 'medium' });
+  const evs = run(sim, 40);
+  const f = evs.filter((x) => x.type === 'chamFade'), p = evs.filter((x) => x.type === 'chamPop');
+  ok(f.length >= 1 && p.length >= 1 && p[0].at > f[0].at, `vanish: L31 ${f.length} fades, ${p.length} pops in 40 s`);
 }
 process.exit(bad ? 1 : 0);
