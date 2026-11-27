@@ -9946,7 +9946,7 @@ function drawWinPage() {
   // 0.8.19: the stars stand on an arc (a shallow parabola, the middle one highest and a little bigger), larger than
   // before; the goals' chips have their own row low on the page, under her; Double coins is a big button over NEXT
   let D = side ? { R: 30, sp: 74, br: 21, num: 48, scoreH: dblOn ? 54 : 76, noBest: dblOn, coinH: 40, tileH: 68, dblH: 92, btnH: 54, g: 5 } : { R: 46, sp: 108, br: 28, num: 66, scoreH: 96, coinH: 48, tileH: 84, dblH: 104, btnH: 70, g: 10 };
-  const starH = () => 6 + 2.45 * D.R + 6, chipH = () => 2.4 * D.br + 6;
+  const starH = () => 6 + 2.85 * D.R + 6, chipH = () => 2.4 * D.br + 6;
   let stH = 0;
   const BL = inCard && (done || pt > S.done) && !revealing(r) ? (calm ? 1 : 0.5 + 0.5 * Math.sin(G.t * 4.2)) : null; // all settled: what was missed blinks softly (Calm: a steady outline)
   const build = (s) => {
@@ -9955,8 +9955,8 @@ function drawWinPage() {
       at: (x, y, w) => {
         const R = D.R * s, sp = D.sp * s, mx = x + w / 2;
         T.R = R; T.br = D.br * s;
-        T.stars = [0, 1, 2].map((q) => ({ x: mx + (q - 1) * sp, y: y + 6 * s + (q === 1 ? 1.1 * R : 1.45 * R), R: q === 1 ? 1.1 * R : R, tilt: (q - 1) * 0.2 }));
-        T.row = { x: mx - sp - R, y: y + 4 * s, w: 2 * (sp + R), h: 2.45 * R + 6 * s };
+        T.stars = [0, 1, 2].map((q) => ({ x: mx + (q - 1) * sp, y: y + 6 * s + (q === 1 ? 1.1 * R : 1.85 * R), R: q === 1 ? 1.1 * R : R, tilt: (q - 1) * 0.24 }));
+        T.row = { x: mx - sp - R, y: y + 4 * s, w: 2 * (sp + R), h: 2.85 * R + 6 * s };
       },
       draw: () => {
         r.starHit = inCard && r.goals ? T.stars.map((p) => ({ x: p.x, y: p.y, R: p.R })) : null;
@@ -10210,7 +10210,7 @@ function winChips(r, P, rest, bl) {
 // arc to her top left, where it settles with a pop as the badge (1.5x the old one). Calm or skipped: the badge.
 function winFlame(r, S, T, s, pt, done) {
   if (!(r.hot >= 2) || !T.box) return;
-  const F = S.flame, calm = save.calm, ch = 51 * s, nt = String(r.hot), nfs = 28 * s, cw = ch * 0.95 + ui.measure(nt, nfs) + 14 * s, cx0 = T.box.x + 2 * s, cy0 = T.box.y + 4 * s;
+  const F = S.flame, calm = save.calm, ch = 74 * s, nt = String(r.hot), nfs = 40 * s, cw = ch * 0.95 + ui.measure(nt, nfs) + 14 * s, cx0 = T.box.x + 2 * s, cy0 = T.box.y + 4 * s;
   const Bd = { x: cx0 + ch * 0.5, y: cy0 + ch * 0.5, S: ch * 0.78 }, a = done || calm || !F ? 99 : pt - F.at, la = done || calm || !F ? 99 : pt - F.land;
   if (a < 0) return;
   if (la >= 0) { // the badge
@@ -10829,10 +10829,10 @@ function drawFailPage() {
   if (rew && coinR && hl >= 2 && save.wallet.coins >= price && !G.rewBuy) SC.push({ id: 'streak', kind: 'tag', slot: 'rewind', key: 'rewind:' + G.level.id + ':' + hl, price, tagArt: (c, x, y, h) => pictoFlame(c, x, y, h) });
   const build = (stH) => (s) => {
     const B = [];
-    { const R = (sd ? 22 : 34) * s; B.push({ h: 2.45 * R + 10 * s, gap: sd ? 0 : 2 * s, draw: (x, y, w) => { // 0.8.19: the win page's star arc, all dull, so the two pages match
+    { const R = (sd ? 22 : 34) * s; B.push({ h: 2.85 * R + 10 * s, gap: sd ? 0 : 2 * s, draw: (x, y, w) => { // 0.8.19: the win page's star arc, all dull, so the two pages match
       const sp = R * 2.35, mx = x + w / 2;
-      for (let q = 0; q < 3; q++) { const px = mx + (q - 1) * sp, py = y + 4 * s + (q === 1 ? 1.1 * R : 1.45 * R); ctx.save(); ctx.translate(px, py); ctx.rotate((q - 1) * 0.2); drawStar(ctx, 0, 0, q === 1 ? 1.1 * R : R, false, 1, true); ctx.restore(); }
-      ui.record({ x: mx - sp - R, y: y + 2 * s, w: 2 * (sp + R), h: 2.45 * R + 6 * s }, 'fail:stars');
+      for (let q = 0; q < 3; q++) { const px = mx + (q - 1) * sp, py = y + 4 * s + (q === 1 ? 1.1 * R : 1.85 * R); ctx.save(); ctx.translate(px, py); ctx.rotate((q - 1) * 0.24); drawStar(ctx, 0, 0, q === 1 ? 1.1 * R : R, false, 1, true); ctx.restore(); }
+      ui.record({ x: mx - sp - R, y: y + 2 * s, w: 2 * (sp + R), h: 2.85 * R + 6 * s }, 'fail:stars');
     } }); }
     // why it failed: an icon and two or three words (the ribbon above says the same)
     B.push({ h: 30 * s, gap: sd ? 2 * s : 4 * s, draw: (x, y, w) => {
