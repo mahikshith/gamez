@@ -31,7 +31,7 @@ export const DYN = {
   kits: { tempo: 1.3, rest: 0.7, tell: 0.8, snatch: 0.8, chase: 1, threat: 4, moves: ['pop', 'scamper', 'climb', 'cross', 'lift', 'carry', 'lookout'] },
   monkey: { tempo: 1.08, rest: 0.85, tell: 0.85, snatch: 0.85, chase: 0.6, threat: 4, moves: ['swing', 'aim', 'snatch', 'ride', 'peel'] },
   penguin: { tempo: 1.08, rest: 0.85, tell: 1, snatch: 0.85, chase: 0.6, threat: 3, moves: ['waddle', 'windup', 'slide', 'tuck', 'shove'] },
-  urchin: { tempo: 1.08, rest: 0.85, tell: 0.85, snatch: 1, chase: 0.5, threat: 3, moves: ['puff', 'roll', 'dash', 'nap'] },
+  urchin: { tempo: 1, rest: 1, tell: 1, snatch: 1, chase: 0.5, threat: 3, moves: ['puff', 'roll', 'dash', 'nap'] },
   crab: { tempo: 1.05, rest: 0.9, tell: 0.9, snatch: 0.9, chase: 0.7, threat: 6, moves: ['reach', 'snap', 'pull', 'bubble', 'whirl', 'bar'] },
   owl: { tempo: 1, rest: 1, tell: 0.9, snatch: 1, chase: 0, threat: 6, moves: ['wind', 'grab', 'gearbomb'] },
 };
