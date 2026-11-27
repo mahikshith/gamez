@@ -3529,6 +3529,14 @@ function pacerRestart() {
   const sim = G.sim, used = sim.timeLimit ? 1 - Math.max(0, sim.timeLeft) / sim.timeLimit : 0;
   if (ENG.pacer.restart(save, G.level.id, { used, lost: sim.stats().broken })) { pacerWhy('pause', 'soft', `a restart on level ${G.level.id} counted as a loss`); persist(); }
 }
+// ... and "ready": one soft ring opens round every egg still out while the world eases in (wordless; Calm: the same)
+function resumePulse() {
+  if (G.resumeAt == null || !G.sim || G.sim.state !== 'play') return;
+  const k = clamp((G.t - G.resumeAt) / RESUME_S, 0, 1), o = 1 - Math.pow(1 - k, 3), u = ui.u;
+  ctx.save(); ctx.lineWidth = (5 - 3 * o) * u; ctx.strokeStyle = `rgba(255,246,200,${0.85 * (1 - k)})`;
+  for (const e of G.sim.aliveEggs()) { const p = e.body.getPosition(), q = toScreen(p.x, p.y); ctx.beginPath(); ctx.arc(q.x, q.y, (14 + 26 * o) * u, 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
 // 0.8.19 "Easy for this level" (the fail card's turtle): save.easyBack holds the player's own mode while the level is
 // in hand; the moment it is left (won or not: the map, home, another level, its level card) the mode is back.
 const EASY_IN = new Set(['play', 'pause', 'fail', 'win', 'info', 'store', 'spin']);
@@ -6151,7 +6159,7 @@ function render() {
   if (DEV && G.probe) G.probe('tintEtc');
   if (G.screen !== 'title' && G.screen !== 'levels' && G.screen !== 'store' && G.screen !== 'extras' && G.screen !== 'practice' && G.screen !== 'info' && G.screen !== 'intro' && G.screen !== 'win' && G.screen !== 'fail' && G.screen !== 'pause') drawHUD();
   if (DEV && G.probe) G.probe('hud'); // the intro card carries the name, eggs and time (mykee: the name showed twice)
-  if (G.screen === 'play') drawFlyers(); // prizes on their way to the HUD
+  if (G.screen === 'play') { resumePulse(); drawFlyers(); } // prizes on their way to the HUD (0.8.19: after Resume, one soft pulse on the eggs)
   if (G.screen === 'play') {
     // the power card owns the top of the screen while it shows
     if (G.card) drawCard();
@@ -10701,7 +10709,7 @@ function drawFailPage() {
       const T = [];
       if (Hp) T.push(['help:go', Hp.kind === 'adBoost' ? 'ad' : 'primary', (cx, cy, S) => { if (Hp.kind === 'trialChick') drawStrikeChick(ctx, Hp.id, cx, cy + S * 0.12, S * 0.9, G.t, {}); else drawBoosterIcon(ctx, Hp.id, cx, cy, S, G.t); spendFx.at('failhelp', { x: cx - S / 2, y: cy - S / 2, w: S, h: S }); }, Hp.kind === 'adBoost' && !ads.premium ? 'ad' : Hp.kind === 'buyBoost' ? Hp.price : null]);
       if (save.mode !== 'easy') T.push(['fail:easy', ui.faceOf('#2f9e8f'), (cx, cy, S) => pictoTurtle(ctx, cx, cy, S * 1.15), null]);
-      if (ways.length) T.push(['fail:skip', ui.faceOf('#5a6ee0'), (cx, cy, S) => drawItemArt(ctx, 'skip', cx, cy, S * 1.05, G.t), null]);
+      if (ways.length) T.push(['fail:skip', ui.faceOf('#5a6ee0'), (cx, cy, S) => (save.wallet.tickets.skip > 0 ? drawItemArt(ctx, 'skip', cx, cy, S * 1.05, G.t) : ICON.next(ctx, cx, cy, S * 0.95)), null]);
       const g = 10 * s, tw = (w - g * 2) / 3, x0 = x + (w - (T.length * tw + (T.length - 1) * g)) / 2;
       T.forEach(([id, face, art, mark], i) => {
         const bx = x0 + i * (tw + g), Bt = ui.button(id, '', bx, y, tw, 100 * s, { ...(typeof face === 'string' ? { kind: face } : { face }), round: 22 * s, shimmer: id === 'help:go' && top === 'help', ...(id === 'help:go' && Hp.bought ? { disabled: true, keepFace: true } : {}) });
@@ -12776,6 +12784,7 @@ if (DEV) window.__egg = {
     return G.infoKinds.slice();
   },
   uiRect: (tag) => ui.rects.find((r) => r.tag === tag) || null, // QA strips: where a recorded block was drawn
+  back: () => backPress(), // (the phone's Back)
   setSave(s) { loadSave({ road: ROAD.ROAD_V, ...s }); }, // (QA saves are written in today's numbering; pass road: 0 for a save from the 50-level road)
   ads, // shop QA: stuck counts, prices, the purchase bridge
   get save() { return save; },

@@ -47,15 +47,20 @@ const row = async (name, from, setup, want) => {
 
 await p.evaluate(() => SAVE(20));
 await row('home', 'app start', () => { HOME(); return WHERE(); }, { screen: 'title' });
+// 0.8.19: the first Back on home shows the hen's leave scene (STAY / LEAVE); the second is never held: the game answers false and the shell leaves
+ok(await p.evaluate(() => { const E = __egg, up = !!(E.G.leaveAsk && E.G.leaveAsk.exit), second = E.back(); return up && second === false && !E.G.leaveAsk; }), 'home: Back shows the leave scene once, a second Back leaves');
 await row('world map', 'home (PLAY)', () => { HOME(); __egg.press('levels'); F(30); return WHERE(); }, { screen: 'title' });
 await row('level card', 'map', () => { __egg.press('levels'); F(20); __egg.press('lv:9'); F(30); return WHERE(); }, { screen: 'levels' });
 // 0.8.18: the chick picker opens from the chick's face on the level card; Back closes it (the card stays), then the map
 await row('chick picker', 'level card (the chick\'s face)', () => { __egg.press('levels'); F(20); __egg.press('lv:9'); F(30); __egg.press('face:chick'); F(20); return WHERE(); }, { screen: 'intro', tab: (v, got, at) => v === 'level' && at.tab === 'chicks' });
 await row('level card', 'chick picker closed', () => WHERE(), { screen: 'levels' });
 await row('play', 'level card', () => { PLAYING(10); return WHERE(); }, { screen: 'pause' });
-await row('pause page', 'play', () => WHERE(), { screen: 'play' });
-await row('a level after Back twice', 'play', () => { __egg.press('pause'); F(5); return { t: __egg.G.sim.t }; }, { screen: 'play' }); // (pause, resume: the level never quits by Back)
-await row('shop', 'pause page', () => { const E = __egg; E.press('pause'); F(5); const s = E.G.sim, t = s.t, tl = s.timeLeft; window.SIM0 = { s, t, tl }; E.press('shop'); F(60); return WHERE(); }, { screen: 'pause' });
+// 0.8.19 (mykee: "we forgot the quit option"): Back on the pause page asks once with the leave scene; a second Back leaves to the map
+await row('pause page', 'play', () => WHERE(), { screen: 'pause' });
+ok(await p.evaluate(() => !!__egg.G.leaveAsk && !__egg.G.leaveAsk.exit && __egg.G.sim.state === 'play'), 'pause page: Back asks once (the leave scene), the level still in hand');
+await row('leave scene', 'pause page', () => WHERE(), { screen: 'levels' });
+ok(await p.evaluate(() => !__egg.G.leaveAsk), 'the second Back left: no second question');
+await row('shop', 'pause page', () => { const E = __egg; PLAYING(10); E.press('pause'); F(5); const s = E.G.sim, t = s.t, tl = s.timeLeft; window.SIM0 = { s, t, tl }; E.press('shop'); F(60); return WHERE(); }, { screen: 'pause' });
 ok(await p.evaluate(() => __egg.G.sim === SIM0.s && __egg.G.sim.t === SIM0.t && __egg.G.sim.timeLeft === SIM0.tl && __egg.G.sim.state === 'play'), 'shop from pause: the same level, paused, its clock did not run');
 await row('Settings', 'pause page', () => { __egg.press('settings'); F(10); return WHERE(); }, { screen: 'pause', settings: false });
 await row('info panel ("i")', 'pause page', () => { __egg.press('info'); F(10); return WHERE(); }, { screen: 'pause' });
