@@ -11,6 +11,7 @@ import { p2Methods, P2_TYPES, P2_KEYS } from './powers2.js'; // v3.4 powers and 
 import { warpMethods } from './warp.js'; // v3.4 warp gate
 import { thiefMethods } from './thieves.js';
 import { banditMethods } from './bandit.js'; // 0.8.17 bandit: the raccoon boss of L6
+import { menaceMethods } from './menace.js'; // 0.8.19 the menace engine: heat, attack tokens, the breather, ring reactions
 import { kitMethods } from './kits.js'; // 0.8.18 kits: mama raccoon and her kits
 import { reefMethods } from './reef.js'; // world 8: hermit crab, pufferfish, jellyfish
 import { urchinMethods } from './urchin.js'; // 0.8.17 urchin: Spike the sea urchin (level 46)
@@ -316,6 +317,7 @@ export class Sim {
     this.thiefInit(L); // v3.6: the egg thieves (sim/thieves.js)
     this.pipInit(L); // 0.8.17 pip
     this.cocoInit(L); // 0.8.17 coco
+    this.menaceInit(L); // 0.8.19 the menace engine (sim/menace.js)
     this.bandInit(L); // 0.8.17 bandit (sim/bandit.js)
     this.kitInit(L); // 0.8.18 kits (sim/kits.js)
     this.creepInit(L); // 0.8.18 the moving thorn (sim/creeper.js)
@@ -552,6 +554,7 @@ export class Sim {
       ring.body.setAngularVelocity(ring.omega);
       const moving = !ring.motor && !ring.follower && Math.abs(ring.omega) > 0.25;
       if (moving && !ring.moving) this.turns++;
+      if (moving) this.menaceTurnSeen(ring); // 0.8.19 the player's last turn of each ring (sim/menace.js)
       ring.moving = moving;
       if (ring.retract && !this.stkFrozen()) { // (Tick-Tock's stopped time holds moving thorns where they are)
         const { period, on, phase = 0 } = ring.retract;
@@ -1424,6 +1427,7 @@ export class Sim {
     if (!end) this.clashStep(dt);
     else this.salEndStep(dt); // v3.2: the salamander dives (win) or grins (loss); in play boss.js v31Step drives it
     this.seaStep(dt, end); // v3.3: octopus and fish schools
+    this.menaceStep(dt); // 0.8.19 the menace engine first: heat, tokens, the breather
     this.thiefStep(dt); // v3.6: the weasel and the rats (sim/thieves.js)
     this.bandStep(dt); // 0.8.17 bandit
     this.kitStep(dt); // 0.8.18 kits
@@ -2534,6 +2538,7 @@ export class Sim {
       coco: this.cocoState(), // 0.8.17 coco
       creep: this.creepState(), // 0.8.18 creeper
       band: this.bandState(), // 0.8.17 bandit
+      mn: this.menaceState(), // 0.8.19 the menace engine
       kit: this.kitState(), // 0.8.18 kits
       reef: this.reefState(), // world 8
       cw: this.cwState(), owl: this.owlState(), // v4 the clockwork cast and the Clockwork Owl
@@ -2601,6 +2606,7 @@ export class Sim {
     sim.cocoLoad(S.coco); // 0.8.17 coco
     sim.creepLoad(S.creep); // 0.8.18 creeper
     sim.bandLoad(S.band); // 0.8.17 bandit
+    sim.menaceLoad(S.mn); // 0.8.19 the menace engine
     sim.kitLoad(S.kit); // 0.8.18 kits
     sim.reefLoad(S.reef); // world 8
     sim.cwLoad(S.cw); sim.owlLoad(S.owl); // v4
@@ -3006,6 +3012,7 @@ export class Sim {
 }
 
 Object.assign(Sim.prototype, chickMethods); // v3.2 chick kinds (sim/chicks.js)
+Object.assign(Sim.prototype, menaceMethods); // 0.8.19 the menace engine (sim/menace.js)
 Object.assign(Sim.prototype, salMethods); // v3.2 lava salamander (sim/salamander.js)
 Object.assign(Sim.prototype, frogMethods); // v3.3 frog (sim/frog.js)
 Object.assign(Sim.prototype, allyMethods); // v3.4 farm allies (sim/allies.js)

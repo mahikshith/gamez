@@ -15,28 +15,31 @@
 //          0 = never leaves its spot)
 //   threat 1..10 the pressure it puts on a level (set by hand; checked by the hardness tables)
 //   moves  what it can do (docs/dynamism.md: one line each)
-// DYN_MODE scales tempo, rest, tell, snatch and chase per mode (Easy softer, never sleepy). A level may carry
+// DYN_MODE scales tempo, rest, tell, snatch and chase per mode (Easy softer, never sleepy), and sets the menace engine's
+// attack tokens (costly moves at once in a level) and breather (s of no new costly move after a loss): sim/menace.js.
+// The pure speed-ups here are moderate on purpose (the owner: too much hardness and the player quits): the pressure is
+// paced by sim/menace.js (heat from the level's progress, tokens, the breather, answers to the player's ring turns). A level may carry
 // `dyn: { raccoon: { tempo: 1.2 } }`: those fields replace the row's before the mode is applied.
 // No randomness: the result is a pure function of (kind, mode, level), so sims stay deterministic and the planner exact.
 export const TELL_MIN = 0.45; // s
 
 export const DYN = {
   // --- den and yard villains (aggroA)
-  raccoon: { tempo: 1.45, rest: 0.45, tell: 0.7, snatch: 0.8, chase: 1, threat: 6, moves: ['sneak', 'climb', 'crank', 'reach', 'grab', 'shift', 'hop', 'whistle', 'catch', 'standoff'] },
-  weasel: { tempo: 1.45, rest: 0.6, tell: 0.75, snatch: 0.8, chase: 1, threat: 5, moves: ['prowl', 'dart', 'stalk', 'lunge', 'pounce', 'carry', 'stash', 'standoff'] },
-  rat: { tempo: 1.3, rest: 0.65, tell: 0.8, snatch: 0.85, chase: 0.8, threat: 3, moves: ['scurry', 'brace', 'roll', 'stash', 'squabble'] },
-  kits: { tempo: 1.4, rest: 0.6, tell: 0.8, snatch: 0.8, chase: 1, threat: 4, moves: ['pop', 'scamper', 'climb', 'cross', 'lift', 'carry', 'lookout'] },
-  monkey: { tempo: 1.15, rest: 0.8, tell: 0.85, snatch: 0.85, chase: 0.6, threat: 4, moves: ['swing', 'aim', 'snatch', 'ride', 'peel'] },
-  penguin: { tempo: 1.12, rest: 0.8, tell: 0.85, snatch: 0.85, chase: 0.6, threat: 3, moves: ['waddle', 'windup', 'slide', 'tuck', 'shove'] },
-  urchin: { tempo: 1.12, rest: 0.8, tell: 0.85, snatch: 1, chase: 0.5, threat: 3, moves: ['puff', 'roll', 'dash', 'nap'] },
-  crab: { tempo: 1.1, rest: 0.8, tell: 0.9, snatch: 0.9, chase: 0.7, threat: 6, moves: ['reach', 'snap', 'pull', 'bubble', 'whirl', 'bar'] },
+  raccoon: { tempo: 1.25, rest: 0.6, tell: 0.7, snatch: 0.8, chase: 1, threat: 6, moves: ['sneak', 'climb', 'crank', 'reach', 'grab', 'shift', 'hop', 'whistle', 'catch', 'standoff'] },
+  weasel: { tempo: 1.25, rest: 0.7, tell: 0.75, snatch: 0.8, chase: 1, threat: 5, moves: ['prowl', 'dart', 'stalk', 'lunge', 'pounce', 'carry', 'stash', 'standoff'] },
+  rat: { tempo: 1.15, rest: 0.75, tell: 0.8, snatch: 0.85, chase: 0.8, threat: 3, moves: ['scurry', 'brace', 'roll', 'stash', 'squabble'] },
+  kits: { tempo: 1.3, rest: 0.7, tell: 0.8, snatch: 0.8, chase: 1, threat: 4, moves: ['pop', 'scamper', 'climb', 'cross', 'lift', 'carry', 'lookout'] },
+  monkey: { tempo: 1.08, rest: 0.85, tell: 0.85, snatch: 0.85, chase: 0.6, threat: 4, moves: ['swing', 'aim', 'snatch', 'ride', 'peel'] },
+  penguin: { tempo: 1.08, rest: 0.85, tell: 0.85, snatch: 0.85, chase: 0.6, threat: 3, moves: ['waddle', 'windup', 'slide', 'tuck', 'shove'] },
+  urchin: { tempo: 1.08, rest: 0.85, tell: 0.85, snatch: 1, chase: 0.5, threat: 3, moves: ['puff', 'roll', 'dash', 'nap'] },
+  crab: { tempo: 1.05, rest: 0.9, tell: 0.9, snatch: 0.9, chase: 0.7, threat: 6, moves: ['reach', 'snap', 'pull', 'bubble', 'whirl', 'bar'] },
   owl: { tempo: 1, rest: 1, tell: 0.9, snatch: 1, chase: 0, threat: 6, moves: ['wind', 'grab', 'gearbomb'] },
 };
 
 export const DYN_MODE = {
-  easy: { tempo: 0.85, rest: 1.35, tell: 1.35, snatch: 1.3, chase: 0.8 },
-  medium: {},
-  hard: { tempo: 1.12, rest: 0.85, tell: 0.85, snatch: 0.9, chase: 1 },
+  easy: { tempo: 0.85, rest: 1.35, tell: 1.35, snatch: 1.3, chase: 0.8, tokens: 1, breather: 5 },
+  medium: { tokens: 1, breather: 3.5 },
+  hard: { tempo: 1.12, rest: 0.85, tell: 0.85, snatch: 0.9, chase: 1, tokens: 2, breather: 2.5 },
 };
 const ONE = { tempo: 1, rest: 1, tell: 1, snatch: 1, chase: 1, threat: 1, moves: [] };
 const SCALED = ['tempo', 'rest', 'tell', 'snatch', 'chase'];
