@@ -26,6 +26,7 @@
 //         of the vault for a while, warp gate = swallowed as he dashes and spat out across his channel, decoy = he
 //         dashes at the decoy first and pops it.
 import { RING_TH, wrap, clamp } from './geom.js';
+import { dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 export const URCHIN = {
@@ -61,6 +62,9 @@ export const urchinMethods = {
     });
   },
   urM(o) { return o[this.mode] ?? o.medium; },
+  // 0.8.19 its temper (data/dynamism.js DYN.urchin) and the menace engine's heat: naps and dash cool-downs, the puff
+  urRest(v) { return (v * dynOf(this, 'urchin').rest) / this.menaceHeat(); },
+  urPuffT() { return tellS(this.urM(URCHIN.puff), dynOf(this, 'urchin').tell) * this.menaceTell(); },
   urFloor(c) { return this.rings[c - 1].r + RING_TH / 2; }, // channel c's floor: the outer face of ring c - 1
   urArmed(U) { return ARMED.has(U.ph) || (U.ph === 'puff' && U.t < U.dur * 0.55); },
   urLive(U) { return U.ph !== 'wait' && U.ph !== 'out' && U.ph !== 'warp'; },
@@ -120,7 +124,7 @@ export const urchinMethods = {
     if (U.cd > 0) U.cd -= dt;
     if (U.ph !== 'flip' && U.ph !== 'splat' && U.ph !== 'warp' && U.ph !== 'in' && this.urTouched(U)) return;
     switch (U.ph) {
-      case 'in': if ((U.t -= dt) <= 0) this.urSet(U, 'nap', this.urM(URCHIN.nap) * 0.6); break;
+      case 'in': if ((U.t -= dt) <= 0) this.urSet(U, 'nap', this.urRest(this.urM(URCHIN.nap)) * 0.6); break;
       case 'nap': case 'scare':
         this.urSoft(U);
         if ((U.t -= dt) <= 0) this.urPuff(U);
@@ -165,7 +169,7 @@ export const urchinMethods = {
   urChOf(U) { return clamp(this.chAt(this.urRad(U)), 1, this.rings.length - 1); },
   urPuff(U) {
     U.aim = 0; U.tgt = 0;
-    this.urSet(U, 'puff', this.urM(URCHIN.puff)); this.urPos(U); // he spots from where he will dash from: spines out
+    this.urSet(U, 'puff', this.urPuffT()); this.urPos(U); // he spots from where he will dash from: spines out
     const q = U.cd <= 0 ? this.urSpot(U) : null;
     if (q) { U.aim = q.key; U.tgt = q.key; }
     this.emit('urPuff', { x: U.x, y: U.y, id: U.id, aim: U.aim ? 1 : 0 });
@@ -203,7 +207,7 @@ export const urchinMethods = {
     if (this.warpStrike?.('urchin', U)) return true;
     const d = Math.hypot(q.x - U.x, q.y - U.y) || 1;
     U.dx = (q.x - U.x) / d; U.dy = (q.y - U.y) / d; U.dl = d + URCHIN.over; U.sx = U.x; U.sy = U.y; U.hit = 0;
-    U.on = -1; U.cd = this.urM(URCHIN.dashCd); U.n++;
+    U.on = -1; U.cd = this.urRest(this.urM(URCHIN.dashCd)); U.n++;
     this.urSet(U, 'dash', 9);
     this.emit('urDash', { x: U.x, y: U.y, dx: U.dx, dy: U.dy, id: U.id, egg: U.aim });
     return true;
@@ -226,7 +230,7 @@ export const urchinMethods = {
     if (Math.hypot(U.sx - U.x, U.sy - U.y) < 1e-3) {
       this.urLand(U, this.urChOf(U), this.urAng(U));
       if (U.hit) { this.urSet(U, 'laugh', URCHIN.laugh); this.emit('urLaugh', { x: U.x, y: U.y, id: U.id }); }
-      else this.urSet(U, 'nap', this.urM(URCHIN.nap) * 0.5);
+      else this.urSet(U, 'nap', this.urRest(this.urM(URCHIN.nap)) * 0.5);
       U.hit = 0;
     }
   },
@@ -277,7 +281,7 @@ export const urchinMethods = {
   // ---------- rolling along his floor
   urRoll(U, dt) {
     const c = U.on, f = c - 1, ring = this.rings[f], rf = this.urFloor(c), v = this.urM(URCHIN.roll), s = v * dt;
-    if (U.cd <= 0 && this.urTouchless(U)) { const q = this.urSpot(U); if (q) { U.aim = q.key; U.tgt = q.key; this.urSet(U, 'puff', this.urM(URCHIN.puff)); this.emit('urPuff', { x: U.x, y: U.y, id: U.id, aim: 1 }); return; } }
+    if (U.cd <= 0 && this.urTouchless(U)) { const q = this.urSpot(U); if (q) { U.aim = q.key; U.tgt = q.key; this.urSet(U, 'puff', this.urPuffT()); this.emit('urPuff', { x: U.x, y: U.y, id: U.id, aim: 1 }); return; } }
     const a = this.urAng(U), ahead = a + U.face * (0.3 / ring.r);
     // a floor gap ahead: home is through it (away from home), else it is an edge to turn round at
     if (!this.urSolid(f, ahead)) {
@@ -300,7 +304,7 @@ export const urchinMethods = {
     U.la = wrap(U.la + (U.face * s) / rf); U.odo += s;
     this.urPos(U);
     this.urTouch(U);
-    if (U.ph === 'roll' && (U.roll -= dt) <= 0) { this.urSet(U, 'nap', this.urM(URCHIN.nap)); this.emit('urNap', { x: U.x, y: U.y, id: U.id }); }
+    if (U.ph === 'roll' && (U.roll -= dt) <= 0) { this.urSet(U, 'nap', this.urRest(this.urM(URCHIN.nap))); this.emit('urNap', { x: U.x, y: U.y, id: U.id }); }
   },
   urGapAt(c, a) { const ring = this.rings[c], la = wrap(a - ring.body.getAngle()); return ring.gaps.find((g) => Math.abs(wrap(la - g.a)) < g.len / (2 * ring.r)) || null; },
   urGapWide(c, a) { const ring = this.rings[c]; return [-0.2, 0, 0.2].every((o) => !this.urSolid(c, a + o / ring.r)); },

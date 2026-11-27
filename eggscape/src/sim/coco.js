@@ -28,6 +28,7 @@
 //   pepper: ah-CHOO, knocked off, and he leaves eggs alone while it lasts | out (a blast) and scare (the Scarecrow, the
 //   laser): out of the vault for a while | gust: nothing (he holds on). He always lets go of an egg first.
 import { RING_TH, EGG_W, EGG_H, wrap, clamp } from './geom.js';
+import { dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 export const COCO = {
@@ -88,6 +89,10 @@ export const cocoMethods = {
     });
   },
   cocoM(o) { return o[this.mode] ?? o.medium; },
+  // 0.8.19 his temper (data/dynamism.js DYN.monkey) and the menace engine (sim/menace.js): the beat between tricks / heat,
+  // the aim (never under TELL_MIN, longer on the edge of a run); a snatch needs an attack token (refused, he rides instead)
+  cocoHang() { return (COCO.hang * dynOf(this, 'monkey').rest) / this.menaceHeat(); },
+  cocoWarn() { return tellS(this.cocoM(COCO.warn), dynOf(this, 'monkey').tell) * this.menaceTell(); },
   cocoSet(C, ph, t = 0) { C.ph = ph; C.t = C.dur = t; },
   cocoLive(C) { return !GONE.has(C.ph) && C.ph !== 'out'; },
   cocoCeil(C) { return this.rings[C.ch - 1]; },
@@ -174,7 +179,7 @@ export const cocoMethods = {
       if (C.flee > 0) C.flee -= dt;
       for (const id in C.skip) if ((C.skip[id] -= dt) <= 0) delete C.skip[id];
       if (this.state !== 'play') { this.cocoEnd(C, dt); continue; }
-      if (C.ice > 0) { if ((C.ice -= dt) <= 0) { C.ice = 0; if (C.at === 'ceil') this.cocoSet(C, 'hang', COCO.hang); else this.cocoUp(C); this.emit('cocoThaw', { id: C.id, ...this.cocoBody(C) }); } this.cocoHold(C); continue; }
+      if (C.ice > 0) { if ((C.ice -= dt) <= 0) { C.ice = 0; if (C.at === 'ceil') this.cocoSet(C, 'hang', this.cocoHang()); else this.cocoUp(C); this.emit('cocoThaw', { id: C.id, ...this.cocoBody(C) }); } this.cocoHold(C); continue; }
       this.cocoOne(C, dt);
       if (this.cocoLive(C)) this.cocoWatch(C);
       this.cocoHold(C);
@@ -187,9 +192,9 @@ export const cocoMethods = {
       case 'wait': case 'away': if ((C.t -= dt) <= 0) this.cocoEnter(C); return;
       case 'gone': return;
       case 'out': { C.t -= dt; const u = clamp(1 - C.t / C.dur, 0, 1); C.alpha = 1 - sstep((u - 0.5) / 0.5); if (C.t <= 0) { C.alpha = 0; this.cocoSet(C, 'away', C.why === 'out' || C.why === 'scare' ? Math.max(C.dizT, 2) : this.cocoM(COCO.away)); } return; }
-      case 'in': if ((C.t -= dt) <= 0) this.cocoSet(C, 'hang', COCO.hang); return;
-      case 'hang': if ((C.t -= dt) <= 0) this.cocoThink(C); return;
-      case 'ride': if ((C.t -= dt) <= 0) { C.n++; this.cocoSet(C, 'hang', COCO.hang); } return;
+      case 'in': if ((C.t -= dt) <= 0) this.cocoSet(C, 'hang', this.cocoHang()); return;
+      case 'hang': if (this.menaceHolds('coco' + C.id)) this.menaceDone('coco' + C.id, 'snatch', 0); if ((C.t -= dt) <= 0) this.cocoThink(C); return; // (0.8.19 back on the ceiling: his token goes back)
+      case 'ride': if ((C.t -= dt) <= 0) { C.n++; this.cocoSet(C, 'hang', this.cocoHang()); } return;
       case 'aim': {
         const e = this.cocoEgg(C.tgt);
         if (!e || !this.cocoReach(C, e)) { C.tgt = 0; this.cocoSet(C, 'hang', 0.6); return; } // it rolled off: never mind
@@ -198,10 +203,10 @@ export const cocoMethods = {
       }
       case 'snatch': if ((C.t -= dt) <= 0) { this.cocoSet(C, 'hold', this.cocoM(COCO.hold)); C.rp = 0; const e = this.cocoEgg(C.eid); if (e) this.emit('cocoGrab', { id: C.id, egg: e, ...this.cocoBody(C) }); } return;
       case 'hold': if ((C.t -= dt) <= 0) this.cocoSet(C, 'bored', COCO.bored); return;
-      case 'bored': if ((C.t -= dt) <= 0) { this.cocoLetGo(C, 'bored'); C.n++; this.cocoSet(C, 'hang', COCO.hang); } return;
+      case 'bored': if ((C.t -= dt) <= 0) { this.cocoLetGo(C, 'bored'); C.n++; this.cocoSet(C, 'hang', this.cocoHang()); } return;
       case 'down': if ((C.t -= dt) <= 0) { C.wa = this.cocoFloorRing(C).body.getAngle() + C.lf; C.at = 'floor'; this.cocoSet(C, C.why === 'eat' ? 'eat' : 'land', C.why === 'eat' ? COCO.eat : 0.3); if (C.why === 'eat') this.emit('cocoEat', { id: C.id, ...this.cocoBody(C) }); } return;
-      case 'up': if ((C.t -= dt) <= 0) { C.at = 'ceil'; this.cocoSet(C, 'hang', COCO.hang); } return;
-      case 'leap': if ((C.t -= dt) <= 0) { C.at = 'ceil'; this.cocoSet(C, 'hang', COCO.hang); } return;
+      case 'up': if ((C.t -= dt) <= 0) { C.at = 'ceil'; this.cocoSet(C, 'hang', this.cocoHang()); } return;
+      case 'leap': if ((C.t -= dt) <= 0) { C.at = 'ceil'; this.cocoSet(C, 'hang', this.cocoHang()); } return;
       case 'slip': if ((C.t -= dt) <= 0) { C.at = 'floor'; C.wa = C.sd; this.cocoSet(C, 'dizzy', C.why === 'hit' ? C.dizT : this.cocoM(COCO.dizzy)); this.emit('cocoLand', { id: C.id, ...this.cocoBody(C) }); } return;
       case 'land': if ((C.t -= dt) <= 0) this.cocoUp(C); return;
       case 'eat': if ((C.t -= dt) <= 0) this.cocoTossStart(C); return;
@@ -237,11 +242,12 @@ export const cocoMethods = {
 
   // ---------- choosing a trick (hanging, after a beat)
   cocoThink(C) {
-    const e = !(C.sulk > 0) && !(C.flee > 0) && !this.cocoDecoy() ? this.cocoPrey(C) : null;
+    const e0 = !(C.sulk > 0) && !(C.flee > 0) && !this.cocoDecoy() ? this.cocoPrey(C) : null;
+    const e = e0 && this.menaceMay('coco' + C.id, 'snatch') ? e0 : null;
     if (e) {
       const q = this.cocoRel(C, e);
       C.face = q.f >= 0 ? 1 : -1; C.tgt = e.id;
-      this.cocoSet(C, 'aim', this.cocoM(COCO.warn));
+      this.cocoSet(C, 'aim', this.cocoWarn());
       const p = e.body.getPosition();
       this.emit('cocoAim', { id: C.id, egg: e, x: p.x, y: p.y, ...{ bx: this.cocoBody(C).x, by: this.cocoBody(C).y } });
       return;
