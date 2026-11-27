@@ -66,7 +66,9 @@ function report(all, title = 'Layout rule breaks') {
     if (q.allowed) continue;
     const pg = (q.page || '?').replace(/\+mapTravel/, '');
     if (!pages.has(pg)) pages.set(pg, new Map());
-    const m = pages.get(pg), k = q.rule + '|' + norm(q.tag) + '|' + norm(q.msg).replace(/[\d#]+/g, '#');
+    // one entry per kind of break: a page-wide rule once a page; a cut / small tap box once per id family
+    const fam = String(q.tag).replace(/^(btn:[^:]+):.*/, '$1:*'), cutOrTap = q.rule === 'TAPSIZE' || /^cut /.test(q.msg);
+    const m = pages.get(pg), k = /^(FONTS|WORDS|BALANCE)$/.test(q.rule) ? q.rule + '|' + q.msg.split(' ')[0].replace(/\d+/, '#') + (q.rule === 'BALANCE' ? q.msg.split(' ')[0] : '') : q.rule + '|' + norm(cutOrTap ? fam : q.tag) + '|' + norm(q.msg).replace(/[\d#]+/g, '#').replace(/^cut .*/, 'cut');
     const e = m.get(k) || { rule: q.rule, tag: q.tag, msg: q.msg, sev: q.sev, n: 0, sizes: new Set(), states: new Set(), at: q.at };
     e.n++; e.sizes.add(q.size); e.states.add(q.state);
     if (q.sev > e.sev) Object.assign(e, { sev: q.sev, tag: q.tag, msg: q.msg, at: q.at });

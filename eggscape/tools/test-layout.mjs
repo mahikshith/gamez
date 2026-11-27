@@ -14,6 +14,29 @@ const { chromium } = require('playwright');
 const LAYOUT = require('./qa-layout.cjs');
 const here = path.dirname(fileURLToPath(import.meta.url)), dist = path.join(here, '..', 'dist', 'dev', 'index.html');
 const KNOWN_F = path.join(here, 'layout-known.cjs');
+// 1. the rules themselves on made-up frames: each rule fires on its break and stays quiet on a clean page
+const { lint } = await import('../src/ui/layout-rules.js');
+let bad = 0; const ok = (c, m) => { if (!c) { console.log('FAIL ' + m); bad++; } };
+const frame = (rects, buttons, texts = []) => ({ w: 450, h: 1000, A: { x: 0, y: 0, w: 450, h: 1000, x1: 450, y1: 1000, cx: 225, cy: 500 }, rects, buttons, texts });
+const btn = (id, x, y, w, h, o = {}) => [{ x, y, w, h, tag: 'btn:' + id, group: 'btn:' + id, ui: 1, kind: 'btn', ...o }, { id, x, y, w, h }];
+const page = (...bs) => frame(bs.map((b) => b[0]), bs.map((b) => b[1]));
+const rules = (f, o = { screen: 'intro' }) => new Set(lint(f, o).map((q) => q.rule));
+{ const clean = page(btn('back', 16, 16, 56, 56), btn('t:0', 25, 300, 120, 120), btn('t:1', 165, 300, 120, 120), btn('t:2', 305, 300, 120, 120), btn('mid', 25, 600, 400, 60), btn('go', 25, 900, 400, 70));
+  const r = rules(clean); ok(!['ONSCREEN', 'TAPSIZE', 'EVENGAP', 'ALIGN', 'CROWD', 'THUMB'].some((k) => r.has(k)), 'a clean page breaks no rule (' + [...r].join(',') + ')'); }
+ok(rules(page(btn('go', 300, 900, 200, 70))).has('ONSCREEN'), 'ONSCREEN: a button past the right edge');
+ok(rules(frame([{ x: 400, y: 100, w: 30, h: 60, tag: 'face', group: 'faces', r0: { x: 400, y: 100, w: 60, h: 60 } }], [{ id: 'face:x', x: 400, y: 100, w: 30, h: 60 }])).has('ONSCREEN'), 'ONSCREEN: a face its strip cuts to half');
+ok(rules(page(btn('x', 100, 100, 40, 40))).has('TAPSIZE'), 'TAPSIZE: 40 px');
+ok(rules(page(btn('go', 25, 900, 400, 50))).has('TAPSIZE') && !rules(page(btn('go', 25, 900, 400, 50)), { screen: 'title' }).has('TAPSIZE'), 'TAPSIZE: PLAY under 56 on the level flow only');
+ok(rules(page(btn('t:0', 25, 300, 120, 120), btn('t:1', 155, 300, 120, 120), btn('t:2', 305, 300, 120, 120))).has('EVENGAP'), 'EVENGAP: gaps 10 / 30');
+ok(rules(page(btn('a', 25, 600, 400, 60), btn('b', 35, 700, 390, 60))).has('ALIGN'), 'ALIGN: wide buttons 10 px apart on the left');
+ok(rules(page(btn('t:0', 25, 300, 120, 120), btn('t:1', 165, 304, 120, 120), btn('t:2', 305, 300, 120, 120))).has('ALIGN'), 'ALIGN: a tile 4 px off the row line');
+ok(rules(page(btn('a', 25, 20, 400, 60), btn('go', 25, 900, 400, 70))).has('BALANCE'), 'BALANCE: everything at the edges, a hole between');
+ok(rules(page(btn('a', 25, 300, 100, 60), btn('b', 128, 300, 100, 60))).has('CROWD'), 'CROWD: 3 px apart');
+ok(rules(frame([{ x: 10, y: 10, w: 100, h: 20, tag: 't', group: 't', kind: 'text' }], [], [{ str: 'A long title', size: 20, fit: 0.7, cut: false, a: 1, x: 10, y: 10, w: 100, h: 20 }])).has('TEXT'), 'TEXT: squeezed to 70 %');
+ok(rules(page(btn('go', 25, 300, 400, 70))).has('THUMB'), 'THUMB: PLAY in the top third');
+if (bad) { console.log(`FAIL the rules themselves: ${bad}`); process.exit(1); }
+if (process.env.LAYOUT_UNIT) { console.log('ok   the rules on made-up frames'); process.exit(0); }
+
 if (!fs.existsSync(dist)) { console.log('FAIL no dev build at dist/dev (node tools/build.mjs --target web --dev)'); process.exit(1); }
 const SIZES = (process.env.LAYOUT_SIZES || '450x1000,853x384').split(',').map((s) => s.split('x').map(Number));
 

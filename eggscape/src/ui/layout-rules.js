@@ -75,31 +75,37 @@ export function lint(ui, o = {}) {
   const fam = new Map(), put = (k, q) => { if (!fam.has(k)) fam.set(k, []); fam.get(k).push(q); };
   for (const q of B) {
     if (huge(q)) continue;
-    const k = q.set || (q.id.includes(':') ? 'fam:' + q.id.split(':')[0] : null);
+    let k = q.set || (q.id.includes(':') ? 'fam:' + q.id.split(':')[0] : null);
+    if (k && !q.set) { // one family, one role: members of about one size (within 20 %); a header button of the same family is another role
+      const like = [...fam.keys()].find((f) => f.startsWith(k + '#') && fam.get(f).some((m) => !m.cut && Math.abs(m.w - q.w) <= 0.2 * Math.max(m.w, q.w) && Math.abs(m.h - q.h) <= 0.2 * Math.max(m.h, q.h)));
+      k = like || k + '#' + [...fam.keys()].filter((f) => f.startsWith(k + '#')).length;
+    }
     if (k) put(k, q);
     if (q.ui && !q.cut && q.w >= 0.5 * A.w) put('stack', q);
   }
   const bySize = new Map();
   for (const q of B) if (q.ui && !huge(q) && !q.cut) { const k = `${Math.round(q.w)}x${Math.round(q.h)}@${Math.round(q.cy / 3)}`; if (!bySize.has(k)) bySize.set(k, []); bySize.get(k).push(q); }
-  for (const [k, L] of bySize) if (L.length >= 3 && !fam.has('fam:' + L[0].id.split(':')[0])) fam.set('strip:' + k, L);
+  for (const [k, L] of bySize) if (L.length >= 3 && ![...fam.keys()].some((f) => f.startsWith('fam:' + L[0].id.split(':')[0] + '#'))) fam.set('strip:' + k, L);
+  // a line of items breaks into blocks where a gap is over twice the items' size that way (another block of the page)
+  const split = (L, ax) => { const d = ax === 'x' ? 'w' : 'h', out3 = [[L[0]]]; for (let i = 1; i < L.length; i++) { const p = L[i - 1], q = L[i], g = q[ax] - (p[ax] + p[d]); if (g > 2 * Math.max(p[d], q[d]) && g > 40) out3.push([q]); else out3[out3.length - 1].push(q); } return out3; };
   const rows = (L) => { // items sharing a line (centres close), left to right
     const s = [...L].sort((a, b) => a.cy - b.cy), out2 = [];
     for (const q of s) { const r = out2.find((r) => Math.abs(r.cy - q.cy) <= Math.max(4, 0.25 * Math.min(r.h, q.h))); if (r) r.L.push(q); else out2.push({ cy: q.cy, h: q.h, L: [q] }); }
-    return out2.map((r) => r.L.sort((a, b) => a.x - b.x)).filter((r) => r.length >= 2);
+    return out2.flatMap((r) => split(r.L.sort((a, b) => a.x - b.x), 'x')).filter((r) => r.length >= 2);
   };
   const cols = (L) => { // items stacked (horizontal overlap over half the narrower), top to bottom
     const s = [...L].sort((a, b) => a.y - b.y), out2 = [];
     for (const q of s) { const c = out2.find((c) => { const p = c[c.length - 1]; return Math.min(p.x1, q.x1) - Math.max(p.x, q.x) > 0.5 * Math.min(p.w, q.w) && q.y >= p.y1 - 2; }); if (c) c.push(q); else out2.push([q]); }
-    return out2.filter((c) => c.length >= 2);
+    return out2.flatMap((c) => split(c, 'y')).filter((c) => c.length >= 2);
   };
-  const name = (k, L) => (k === 'stack' ? 'stack' : k.startsWith('strip:') ? 'strip' : k.replace(/^fam:/, '')) + '[' + L.map((q) => q.id).join(',').slice(0, 80) + ']';
+  const name = (k, L) => (k === 'stack' ? 'stack' : k.startsWith('strip:') ? 'strip' : k.replace(/^fam:/, '').replace(/#\d+$/, '')) + '[' + L.map((q) => q.id).join(',').slice(0, 80) + ']';
   // 3. EVEN GAPS and equal sizes in a row / column of one group
   if (want.has('EVENGAP') || want.has('ALIGN')) {
     for (const [k, L] of fam) {
       if (k === 'stack') { // the stack only aligns (rule 4)
         for (const c of cols(L)) {
           const dl = Math.max(...c.map((q) => q.x)) - Math.min(...c.map((q) => q.x)), dr = Math.max(...c.map((q) => q.x1)) - Math.min(...c.map((q) => q.x1));
-          if (want.has('ALIGN') && Math.max(dl, dr) > TOL.edge) add('ALIGN', name(k, c), `wide buttons' edges differ: left ${r1(dl)} px, right ${r1(dr)} px`, 60 + Math.max(dl, dr));
+          if (want.has('ALIGN') && Math.max(dl, dr) > TOL.edge) add('ALIGN', name(k, c), `wide buttons' edges differ: left ${r1(dl)} px, right ${r1(dr)} px`, 60 + Math.min(30, Math.max(dl, dr)));
         }
         continue;
       }
@@ -108,22 +114,22 @@ export function lint(ui, o = {}) {
         const gaps = vis.slice(1).map((q, i) => q.x - vis[i].x1);
         const dw = Math.max(...vis.map((q) => q.w)) - Math.min(...vis.map((q) => q.w)), dh = Math.max(...vis.map((q) => q.h)) - Math.min(...vis.map((q) => q.h));
         if (want.has('EVENGAP')) {
-          if (gaps.length >= 2 && Math.max(...gaps) - Math.min(...gaps) > TOL.gap) add('EVENGAP', name(k, r), `row gaps ${gaps.map(Math.round).join('/')} px`, 50 + Math.max(...gaps) - Math.min(...gaps));
-          if (vis.length >= 2 && Math.max(dw, dh) > TOL.gap) add('EVENGAP', name(k, r), `row sizes differ by ${r1(Math.max(dw, dh))} px`, 45 + Math.max(dw, dh));
+          if (gaps.length >= 2 && Math.max(...gaps) - Math.min(...gaps) > TOL.gap) add('EVENGAP', name(k, r), `row gaps ${gaps.map(Math.round).join('/')} px`, 50 + Math.min(30, Math.max(...gaps) - Math.min(...gaps)));
+          if (vis.length >= 2 && Math.max(dw, dh) > TOL.gap) add('EVENGAP', name(k, r), `row sizes differ by ${r1(Math.max(dw, dh))} px`, 45 + Math.min(30, Math.max(dw, dh)));
         }
         if (want.has('ALIGN')) {
           const dc = Math.max(...r.map((q) => q.cy)) - Math.min(...r.map((q) => q.cy));
-          if (dc > TOL.edge) add('ALIGN', name(k, r), `row off one centre line by ${r1(dc)} px`, 55 + dc);
+          if (dc > TOL.edge) add('ALIGN', name(k, r), `row off one centre line by ${r1(dc)} px`, 55 + Math.min(30, dc));
           const x0 = Math.min(...r.map((q) => q.x)), x1 = Math.max(...r.map((q) => q.x1)), dx = (x0 + x1) / 2 - A.cx;
-          if (!r.some((q) => q.cut) && x1 - x0 > 0.5 * A.w && Math.abs(dx) > TOL.centre && !o.offCentre) add('ALIGN', name(k, r), `row ${r1(dx)} px off the column's centre`, 50 + Math.abs(dx));
+          if (!r.some((q) => q.cut) && x1 - x0 > 0.5 * A.w && Math.abs(dx) > TOL.centre && !o.offCentre) add('ALIGN', name(k, r), `row ${r1(dx)} px off the column's centre`, 50 + Math.min(30, Math.abs(dx)));
         }
       }
       for (const c of cols(L)) {
         if (rows(c).length) continue;
         const gaps = c.slice(1).map((q, i) => q.y - c[i].y1);
         const dl = Math.max(...c.map((q) => q.x)) - Math.min(...c.map((q) => q.x)), dr = Math.max(...c.map((q) => q.x1)) - Math.min(...c.map((q) => q.x1));
-        if (want.has('EVENGAP') && gaps.length >= 2 && Math.max(...gaps) - Math.min(...gaps) > TOL.gap) add('EVENGAP', name(k, c), `column gaps ${gaps.map(Math.round).join('/')} px`, 50 + Math.max(...gaps) - Math.min(...gaps));
-        if (want.has('ALIGN') && Math.max(dl, dr) > TOL.edge) add('ALIGN', name(k, c), `column edges differ: left ${r1(dl)} px, right ${r1(dr)} px`, 55 + Math.max(dl, dr));
+        if (want.has('EVENGAP') && gaps.length >= 2 && Math.max(...gaps) - Math.min(...gaps) > TOL.gap) add('EVENGAP', name(k, c), `column gaps ${gaps.map(Math.round).join('/')} px`, 50 + Math.min(30, Math.max(...gaps) - Math.min(...gaps)));
+        if (want.has('ALIGN') && Math.max(dl, dr) > TOL.edge) add('ALIGN', name(k, c), `column edges differ: left ${r1(dl)} px, right ${r1(dr)} px`, 55 + Math.min(30, Math.max(dl, dr)));
       }
     }
   }
@@ -138,7 +144,7 @@ export function lint(ui, o = {}) {
       for (const [a, b] of iv) { if (a - end > band) { band = a - end; at = end; } end = Math.max(end, b); }
       if (band > TOL.band * A.h) add('BALANCE', 'page', `empty band ${Math.round(band)} px (${Math.round((100 * band) / A.h)} % of the height) from y ${Math.round(at)}`, 80 + (100 * band) / A.h);
       const top = iv[0][0] - A.y, bot = A.y1 - end, lo = Math.max(Math.min(top, bot), 0.03 * A.h);
-      if (Math.max(top, bot) > TOL.margin * lo) add('BALANCE', 'page', `margins top ${Math.round(top)} px, bottom ${Math.round(bot)} px`, 70 + Math.max(top, bot) / lo);
+      if (Math.max(top, bot) > TOL.margin * lo) add('BALANCE', 'page', `margins top ${Math.round(top)} px, bottom ${Math.round(bot)} px`, 70 + Math.min(30, 5 * Math.max(top, bot) / lo));
     }
   }
   // 6. CROWDING: nothing closer than 6 px unless one group; text over a button it does not belong to
