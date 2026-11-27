@@ -352,7 +352,7 @@ public class MainActivity extends Activity {
         // real phone spends its frame time; release builds never allow it
         if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) WebView.setWebContentsDebuggingEnabled(true);
         web = new WebView(this);
-        web.setBackgroundColor(BG);
+        web.setBackgroundColor(Color.TRANSPARENT); // 0.8.19: until the page has painted, the start window (the egg on the sky, splash_bg) shows through, not a flat colour
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);

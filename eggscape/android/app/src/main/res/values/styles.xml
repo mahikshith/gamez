@@ -1,10 +1,11 @@
 <resources>
     <style name="Theme.Eggscape" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/egg_bg</item>
+        <item name="android:windowBackground">@drawable/splash_bg</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:statusBarColor">@color/egg_bg</item>
         <item name="android:navigationBarColor">@color/egg_bg</item>
     </style>
     <color name="egg_bg">#428abe</color>
+    <color name="egg_sky_mid">#83c0e9</color>
 </resources>
