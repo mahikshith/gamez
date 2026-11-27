@@ -169,7 +169,7 @@ function grooveLine(c, pts, lw, dark, light, nx, ny) {
 // the "i" panel / card tile portrait: the game's thorn on a strip of rim, sliding to and fro in its groove (screen
 // space, y down, centred in a d x d box)
 export function drawMoverPortrait(ctx, x, y, d, t) {
-  const k = d / 0.92, top = y + d * 0.17, x0 = x - d * 0.3, x1 = x + d * 0.3, P = 3.4, T = ((t % P) + P) % P;
+  const k = d / 0.66, top = y + d * 0.13, x0 = x - d * 0.22, x1 = x + d * 0.22, P = 3.4, T = ((t % P) + P) % P;
   const go = T < P / 2, b = beat(go ? T : T - P / 2, 0.55, 0.75), u = go ? b.f : 1 - b.f, sg = go ? 1 : -1;
   ctx.save();
   ctx.fillStyle = '#b27a45'; ctx.fillRect(x - d * 0.44, top, d * 0.88, 0.16 * k);
