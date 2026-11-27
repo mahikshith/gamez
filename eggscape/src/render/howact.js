@@ -223,10 +223,14 @@ function crawler(species, X = {}) {
     const walk = ease(seg(T, 0.2, 1.3));
     let vA = lerp(start, stop, walk), pose = walk < 1 ? 'walk' : 'idle', p = 0, tt = t, status = null, alpha = 1, glue = 0, threat = T < TB;
     let gait = (vA - start) * S.floor;
-    let aim = 0, fireLen = 0, target = null, spitF = -1, spitAge = -1;
+    let aim = 0, fireLen = 0, target = null, spitAge = -1, lashK = -1, lashTo = null;
     if (m === 'harm') { // 2026-11-23 the harm beat (howto.js harmBeat): what this crawler does, acted by its own rig
       threat = true;
-      if (species === 'salamander') { // 0.8.14 the bite: it walks right up to the egg, coils with its jaws wide, and snaps (BITE_AT)
+      if (species === 'salamander' && X.spit) { // 0.8.19 (aggroB) the Tongue Lash: he stops short, his eyes lock on (throat glows),
+        // the tongue flies to the egg and the jaws shut on it (BITE_AT)
+        const st2 = stop - 0.5; vA = lerp(start, st2, walk); gait = (vA - start) * S.floor;
+        if (T > 1.0) { const u = seg(T, 1.0, BITE_AT - 0.35); pose = 'bite'; p = T < BITE_AT - 0.35 ? 0.18 + 0.4 * u : 0.9; lashK = u; if (T > BITE_AT - 0.35 && T < BITE_AT + 0.15) lashTo = S.at(0, S.eggS * 0.45); }
+      } else if (species === 'salamander') { // 0.8.14 the bite: it walks right up to the egg, coils with its jaws wide, and snaps (BITE_AT)
         if (T > 1.0) { pose = T < BITE_AT + 0.2 ? 'bite' : 'chew'; p = T < BITE_AT ? 0.8 * seg(T, 1.0, BITE_AT) : T < BITE_AT + 0.2 ? 0.8 + 0.2 * seg(T, BITE_AT, BITE_AT + 0.2) : seg(T, BITE_AT + 0.2, BITE_AT + 1.2); }
       } else if (species === 'chameleon') { // it stops short of the orb by the egg and its tongue snatches the orb
         const st2 = stop - 0.34; vA = lerp(start, st2, walk); gait = (vA - start) * S.floor;
@@ -237,8 +241,9 @@ function crawler(species, X = {}) {
       }
     } else if (m === 'turn') {
       vA += S.th; // it rides the ring
-      if (X.spit) { // 0.8.18 the ember spit: he winds up (glow, the spark up his back); the turn takes the gap out of his line, the ember splats: shocked, then miffed
-        if (T < TB) { pose = 'breath'; p = 0.3 * seg(T, 0.9, TB); spitF = seg(T, 0.9, TB); } else { pose = 'idle'; threat = false; spitAge = T - TB; }
+      if (X.spit) { // 0.8.19 (aggroB) the Tongue Lash: his eyes lock on (throat glows); the turn takes the egg out of his line: his
+        // tongue snaps on nothing, then he is miffed
+        if (T < TB) { pose = 'bite'; p = 0.18 + 0.4 * seg(T, 0.9, TB); lashK = seg(T, 0.9, TB); } else { pose = 'idle'; threat = false; spitAge = T - TB; if (T - TB < 0.3) lashTo = S.at(vA + 0.35, lift + s * 0.1); }
       } else if (T >= TB) { const q = seg(T, TB, 3.1); pose = 'dazed'; vA -= 0.75 * q * q; threat = false; }
     } else if (m === 'stone') {
       vA = stop - 0.1; pose = 'idle'; gait = 0;
@@ -261,10 +266,15 @@ function crawler(species, X = {}) {
     if (aim || fireLen) { o.aim = aim; o.fireLen = fireLen; }
     if (target) o.target = target;
     if (X.fire && threat) { o.white = 1; o.expr = { k: 'smug', a: 1 }; } // 0.8.18 white-hot (and smug) until he is beaten
-    if (spitF >= 0) { o.fuse = spitF; o.cheek = Math.min(1, spitF * 2.5); o.blend = { fire: 0, mouth: 0 }; }
-    if (spitAge >= 0) { o.expr = { k: 'miff', a: seg(spitAge, 0.3, 0.6) }; o.shock = 1 - seg(spitAge, 0.3, 0.6); const b = S.at(vA + 0.3, s * 0.5), k2 = seg(spitAge, 0, 0.55); // the ember splats: a spray of molten drops
-      if (k2 < 1) { ctx.save(); ctx.globalAlpha *= 1 - k2; for (let i = 0; i < 7; i++) { const a = i * 0.9, r = s * (0.1 + 0.32 * k2); ctx.fillStyle = i % 2 ? '#ffb43c' : '#ff5a14'; ctx.beginPath(); ctx.arc(b.x + Math.cos(a) * r, b.y + Math.sin(a) * r, s * 0.06 * (1 - 0.5 * k2), 0, TAU); ctx.fill(); } ctx.fillStyle = '#fff2b0'; ctx.beginPath(); ctx.arc(b.x, b.y, s * 0.1 * (1 - k2), 0, TAU); ctx.fill(); ctx.restore(); } }
+    if (lashK >= 0) { o.cheek = Math.min(1, lashK * 1.5); o.blend = { fire: 0 }; } // (aggroB) the lock-on: his throat glows
+    if (spitAge >= 0) { o.expr = { k: 'miff', a: seg(spitAge, 0.3, 0.6) }; o.shock = 1 - seg(spitAge, 0.3, 0.6); }
     if (species === 'salamander') drawSalamander(ctx, head.x, head.y, s, tt, { ...o, glow: 0.8, frost: X.frost }); else drawCrawler(ctx, head.x, head.y, s, tt, o, species);
+    if (lashTo) { // (aggroB) the tongue: from his snout to the egg (or, turned away, a snap on nothing)
+      const M = S.at(vA + (s * 0.55) / S.floor, lift + s * 0.05);
+      ctx.lineCap = 'round'; ctx.strokeStyle = '#7a1630'; ctx.lineWidth = s * 0.11; ctx.beginPath(); ctx.moveTo(M.x, M.y); ctx.lineTo(lashTo.x, lashTo.y); ctx.stroke();
+      ctx.strokeStyle = '#ff6f8f'; ctx.lineWidth = s * 0.07; ctx.stroke();
+      ctx.fillStyle = '#ff6f8f'; ctx.beginPath(); ctx.arc(lashTo.x, lashTo.y, s * 0.08, 0, TAU); ctx.fill();
+    }
     ctx.restore();
     return { threat, bonk: 0, x: head.x, y: head.y - s * 0.45, own: true };
   };
@@ -390,7 +400,7 @@ const banditActor = {
 // the harm beats' marks (howto.js reads them too): where the salamander's jet lands, where Sly's orb sits, how far the
 // thorn-back shoves the egg
 export const BREATH_AT = 0, CHAM_ORB = -0.22, BUMP_A = 0.36, BITE_AT = 1.75; // BITE_AT: s into the harm beat when the jaws shut
-export const harmActor = (kind) => (/^kits/.test(kind) || kind === 'boss:raccoon' || kind === 'salamander' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' || kind === 'urchin' || kind === 'creeper' ? ACTORS[kind] : null); // 0.8.17 urchin, 0.8.18 creeper
+export const harmActor = (kind) => (/^kits/.test(kind) || kind === 'boss:raccoon' || kind === 'salamander' || kind === 'emberspit' || kind === 'frostsal' || kind === 'chameleon' || kind === 'spike' || kind === 'boss:golem' || kind === 'urchin' || kind === 'creeper' ? ACTORS[kind] : null); // 0.8.17 urchin, 0.8.18 creeper
 const CRAWL = () => ({ g0: 0.4, dTh: -0.4, pan: 0.2 }); // the crawlers come along the ring from the left: the camera steps that way
 export const ACTORS = {
   // pan: the camera steps to the villain's side (a share of the stage's width), so it is whole in the picture

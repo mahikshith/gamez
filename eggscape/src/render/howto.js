@@ -131,7 +131,7 @@ export const THREAT = {
 SHOW.penguin = P('turn', 'Turn a wall into his slide: BONK!', { fx: 'bonk' }); THREAT.penguin = 'Shoves eggs'; // 0.8.17 pip
 SHOW.monkey = P('turn', 'Flick his ring hard: whoa, he lets go!', { fx: 'bonk' }); THREAT.monkey = 'Grabs eggs'; // 0.8.17 coco
 for (const c of ['ice', 'woods', 'sea', 'cave', 'goggles', 'bow', '']) { const k = c ? 'kits:' + c : 'kits'; SHOW[k] = P('turn', 'Turn their ring hard: they tumble!', { fx: 'bonk' }); THREAT[k] = 'Carry eggs off'; HARM[k] = ['kits', 'TAKEN!']; } // 0.8.18 kits: mama raccoon's kits (howact.js kitsActor acts both beats)
-SHOW.emberspit = P('turn', 'Turn the gap out of his line', { fx: 'bonk' }); THREAT.emberspit = 'Spits embers'; HARM.emberspit = ['fall', 'CRACK!']; // 0.8.18 lava
+SHOW.emberspit = P('turn', 'Turn the egg out of his line', { fx: 'bonk' }); THREAT.emberspit = 'Tongue lash'; HARM.emberspit = ['chomp', 'EATEN!']; // 0.8.19 (aggroB): the Tongue Lash replaced the ember spit (key kept); his rig acts it (howact.js)
 SHOW.fireup = P('turn', 'Turn its ring: he rides away', { fx: 'bonk' }); THREAT.fireup = 'Goes white-hot'; // 0.8.18 lava (the info panel and the lesson teach the water)
 SHOW.creeper = P('turn', 'Turn it away'); THREAT.creeper = 'Slides, pops'; HARM.creeper = ['creep', 'POP!']; // 0.8.18 the moving thorn
 export const threatWords = (kind) => THREAT[kind] || THREAT[String(kind).replace(/^boss:/, '')] || 'Hunts eggs';

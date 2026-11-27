@@ -88,9 +88,14 @@ const ART = {
     const S = d * 0.4;
     drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', frost: 1, glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9103 });
   },
-  emberspit(ctx, x, y, d, t) { // 0.8.18 the ember spit on a loop: the head glows, the spark runs up his back, the jaws pop
-    const S = d * 0.4, u = (t % 2.4) / 2.4, f = Math.min(1, u / 0.72), pop = u >= 0.72 && u < 0.84;
-    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'breath', p: pop ? 0.5 : 0.3 * f, blend: { fire: 0, mouth: pop ? 0.95 : 0 }, fuse: u < 0.72 ? f : 0, cheek: u < 0.72 ? Math.min(1, f * 2.5) : 0, glow: 0.9, look: { x: 0.5, y: 0.5 }, id: 9106 });
+  emberspit(ctx, x, y, d, t) { // 0.8.19 (aggroB) the Tongue Lash on a loop (key kept): his throat glows as he locks on, the tongue darts out and back
+    const S = d * 0.4, u = (t % 2.4) / 2.4, f = Math.min(1, u / 0.6), out = u < 0.6 ? 0 : Math.sin(Math.PI * Math.min(1, (u - 0.6) / 0.3));
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'bite', p: u < 0.6 ? 0.18 + 0.4 * f : 0.9, blend: { fire: 0 }, cheek: u < 0.6 ? f : 0, glow: 0.9, look: { x: 0.6, y: 0 }, id: 9105 });
+    if (out > 0.02) {
+      const mx = x + 0.8 * S + 0.5 * S, my = y + d * 0.06, tx = mx + out * 1.1 * S;
+      ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#7a1630'; ctx.lineWidth = S * 0.11; ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(tx, my); ctx.stroke();
+      ctx.strokeStyle = '#ff6f8f'; ctx.lineWidth = S * 0.07; ctx.stroke(); ctx.fillStyle = '#ff6f8f'; ctx.beginPath(); ctx.arc(tx, my, S * 0.09, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
   },
   fireup(ctx, x, y, d, t) { // 0.8.18 white-hot and smug about it
     const S = d * 0.4;
