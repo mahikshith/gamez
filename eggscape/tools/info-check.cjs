@@ -47,7 +47,7 @@ function scan(L, where, INFO) {
     }
   }
   for (const k of Object.keys(L)) {
-    if (BOARD.has(k) || k === 'bossFight' || k === 'weather') continue;
+    if (BOARD.has(k) || k === 'bossFight' || k === 'weather' || k === 'dyn') continue; // 0.8.19 (aggroB) dyn: the level's multipliers on its villains' rows (data/dynamism.js), not a villain
     if (CREATURE.includes(k)) {
       const n = listOf(L[k]).length;
       if ((k === 'snake' && boss === 'snake') || (k === 'eagle' && boss === 'eagle') || (k === 'salamander' && boss === 'salamander' && n === 1)) continue;

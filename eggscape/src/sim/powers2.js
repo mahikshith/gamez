@@ -224,7 +224,7 @@ export const p2Methods = {
     if (kind === 'ice' ? this.fishFreeze(S, T) : kind === 'bolt' ? this.fishStun(S, Math.min(T, P2.thunderclap.stun), true) : false) this.emit('p2Hit', { kind: kind === 'ice' ? 'ice' : 'zap', x: at.x, y: at.y });
   },
   p2Snakes() { return this.snakes.filter((S) => !S.gone && S.inside && S.pts.length > 1 && !S.carried && !S.warp && !(S.flee >= 0)); },
-  p2Sals() { return (this.sals || []).filter((C) => this.salLive(C) && C.ph !== 'in' && C.ph !== 'dive' && C.ph !== 'grin' && C.ph !== 'warp'); },
+  p2Sals() { return (this.sals || []).filter((C) => this.salLive(C) && C.ph !== 'in' && C.ph !== 'dive' && C.ph !== 'grin' && C.ph !== 'warp' && !(this.salHidden && this.salHidden(C))); }, // (aggroB) not while under the lava floor
   p2Eagle() { const E = this.eagle; return E && !E.end && !E.warp && E.phase !== 'away' && E.phase !== 'enter' ? E : null; },
   p2Mark(key, k, t, x, y) { this.p2.fx[key] = { k, t, max: t }; if (x != null && !this.scareQuiet) this.emit('p2Hit', { kind: k, x, y }); }, // (the Scarecrow re-scares quietly: one cue, not one every beat)
 
@@ -265,7 +265,9 @@ export const p2Methods = {
     else if (kind === 'spin') {
       // it grips both walls: flung to the outermost channel, dizzy
       const n = this.rings.length, r = this.salMid(n - 1);
-      if (!C.boss && Math.abs(C.rad - r) > 0.2) { for (const q of C.pts) this.salPt(q, q.a, r); C.rad = r; C.climb = null; C.car = -1; this.salCarry(C); }
+      // 0.8.19: laid down whole round that channel behind its head (each point used to keep its own angle: a body across a
+      // ring or in a gap folded onto itself, and the art turned only half of it)
+      if (!C.boss && Math.abs(C.rad - r) > 0.2) { const a = C.pts[0].a, m = C.pts.length; C.pts = []; for (let i = 0; i < m; i++) C.pts.push(this.salPt({}, a - (C.dir * i * 0.05) / r, r)); C.rad = r; C.a = a; C.climb = null; C.car = -1; this.salCarry(C); }
       this.salDaze(C, 1.5 * (C.boss ? 0.6 : 1));
       this.p2Mark(key, 'spin', 1, h.x, h.y);
     } else if (kind === 'out') {

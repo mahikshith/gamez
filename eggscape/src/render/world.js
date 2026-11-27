@@ -1754,9 +1754,56 @@ function liveAtV3(ring, a) {
 
 // Lava rocks: a target mark on the ring while one flies in (fair warning), the rock growing as it
 // comes out of the backdrop, then sitting on the ring glowing.
-export function drawLavaRocks(ctx, sim, k, t) {
+// 0.8.19 (aggroB) a volcano bomb's marked section: the stretch of ring that will go red-hot glows and pulses, ringed by a bright
+// line, from the rumble until it lands (u 0..1 through the tell). Also the salamander boss's volley marks (render/boss.js).
+export function drawLavaMark(ctx, sim, ri, la, len, u, t, calm) {
+  const ring = sim.rings[ri];
+  if (!ring) return;
+  const a = ring.body.getAngle() + la, half = len / (2 * ring.r), pulse = calm ? 0.6 : 0.5 + 0.5 * Math.sin(t * (8 + 10 * u));
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = `rgba(255,${120 - 60 * u},30,${0.25 + 0.35 * u})`; ctx.lineWidth = RING_TH * 2.6;
+  ctx.beginPath(); ctx.arc(0, 0, ring.r, a - half, a + half); ctx.stroke();
+  ctx.strokeStyle = `rgba(255,${200 - 80 * u},80,${0.55 + 0.4 * pulse})`; ctx.lineWidth = RING_TH * 1.25;
+  ctx.beginPath(); ctx.arc(0, 0, ring.r, a - half, a + half); ctx.stroke();
+  ctx.strokeStyle = `rgba(255,240,190,${0.5 + 0.5 * pulse})`; ctx.lineWidth = Math.max(0.03, 2.5 / Math.max(1, ctx.getTransform().a || 1));
+  for (const d of [-1, 1]) { ctx.beginPath(); ctx.arc(0, 0, ring.r + d * RING_TH * 1.3, a - half, a + half); ctx.stroke(); }
+  ctx.restore();
+}
+// a lava bomb: a big glowing rock with a flame tail along its path (dir: the way it flies)
+function drawVolcBomb(ctx, x, y, dx, dy, k, t, calm) {
+  const l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+  ctx.save();
+  for (let j = 5; j >= 1; j--) { ctx.fillStyle = `rgba(255,${150 - j * 15},40,${0.5 - j * 0.08})`; ctx.beginPath(); ctx.arc(x - ux * j * 0.16, y - uy * j * 0.16, 0.26 - j * 0.03, 0, TAU); ctx.fill(); }
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 0.75);
+  g.addColorStop(0, 'rgba(255,200,90,0.55)'); g.addColorStop(1, 'rgba(255,80,20,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 0.75, 0, TAU); ctx.fill();
+  ctx.translate(x, y); ctx.scale(1 / k, -1 / k);
+  drawLavaRock(ctx, 0, 0, 0.3 * k, calm ? 0 : t, 1);
+  ctx.restore();
+}
+export function drawLavaRocks(ctx, sim, k, t, calm = false) {
   for (const R of sim.lavaRocks) {
     const ring = sim.rings[R.ri], q = sim.rockAt(R);
+    if (R.v && (R.ph === 'rumble' || R.ph === 'fly')) { // 0.8.19 a volcano bomb: the mark, the crater's puff, the high arc
+      const V = sim.volcXY || { x: R.x0, y: R.y0 }, fl = R.ph === 'fly' ? Math.min(1, R.t / 1.2) : 0, u = R.ph === 'rumble' ? 0.33 * Math.min(1, R.t / 0.6) : 0.33 + 0.67 * fl;
+      drawLavaMark(ctx, sim, R.ri, R.la, 1.0, u, t, calm);
+      if (R.ph === 'rumble' || fl < 0.25) { // the crater coughs: smoke and a glow
+        const pu = R.ph === 'rumble' ? R.t / 0.6 : 1 + fl * 4;
+        ctx.save();
+        for (let j = 0; j < 4; j++) { const r = 0.35 + 0.3 * pu + j * 0.12; ctx.fillStyle = `rgba(70,45,40,${0.45 * Math.max(0, 1 - pu * 0.45)})`; ctx.beginPath(); ctx.arc(V.x + (j - 1.5) * 0.22, V.y + 0.2 + pu * 0.5 + j * 0.1, r, 0, TAU); ctx.fill(); }
+        const g = ctx.createRadialGradient(V.x, V.y, 0, V.x, V.y, 1.1);
+        g.addColorStop(0, `rgba(255,170,60,${0.6 * Math.min(1, pu)})`); g.addColorStop(1, 'rgba(255,80,20,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(V.x, V.y, 1.1, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+      if (R.ph === 'fly') { // up out of the crater and down onto the mark: a high arc, slow at the top, fast at the end
+        const top = Math.max(V.y, q.y) + 2.2, P = (f) => { const x = V.x + (q.x - V.x) * f, y0 = V.y + (q.y - V.y) * f; return { x, y: y0 + 4 * (top - (V.y + q.y) / 2) * f * (1 - f) }; };
+        const a = P(fl), b = P(Math.max(0, fl - 0.04));
+        drawVolcBomb(ctx, a.x, a.y, a.x - b.x, a.y - b.y, k, t, calm);
+      }
+      continue;
+    }
     if (R.ph === 'fly') {
       const f = Math.min(1, R.t / 1.1);
       ctx.save();

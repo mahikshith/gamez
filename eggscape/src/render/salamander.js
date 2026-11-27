@@ -11,7 +11,7 @@ import { drawVenom } from './v3art.js';
 import { statusClock, statusDraw, dizzyStars } from './status.js';
 import { spline, blinkAt } from './castkit.js';
 import { RING_TH, TAU } from '../sim/geom.js';
-import { SAL, BRAIN, FACE, SPIT, FIRE } from '../sim/salamander.js';
+import { SAL, BRAIN, FACE, SPIT, FIRE, LASH, DIVE } from '../sim/salamander.js';
 import { PERF } from '../perf.js';
 import { drawGecko15 } from './gecko15.js'; // L15: the frost gecko is a sim crawler too
 import { drawThorn20 } from './crystal20.js'; // L20: Duke Quartz and Spike, the thorn-backs
@@ -685,6 +685,16 @@ function poseOf(C) {
     case 'grin': return { pose: 'idle', grin: 1 };
     case 'in': return { pose: 'idle' };
     case 'coil': return { pose: 'bite', p: 0.8 * u, aimAt: 'egg' }; // (0.8.14) the bite: coil, eyes on the egg
+    // 0.8.19 the tongue: crouch low, throat glowing, eyes locked (lash); jaws wide as it flies (fling); braced, pulling (reel)
+    case 'lash': return { pose: 'bite', p: 0.18 + 0.4 * sstep(u), aimAt: 'lash', throat: sstep(u) };
+    case 'fling': return { pose: 'bite', p: 0.9, aimAt: 'lash' };
+    case 'reel': return { pose: 'bite', p: 0.75, aimAt: 'lash', pull: 1 };
+    case 'strain': return { pose: 'hiss', p: 0.6, aimAt: 'lash', pull: 1, shake: 1 };
+    case 'stalk': return { pose: 'walk', aimAt: 'prey', low: 1 };
+    // 0.8.19 the dive and the boss's roar at the volcano
+    case 'sink': case 'under': case 'bubble': return { pose: 'flee' };
+    case 'rise': return { pose: 'hiss', p: 0.3 + 0.4 * (1 - u), aimAt: 'prey' };
+    case 'roar': return { pose: 'breath', p: 0.3 + 0.12 * sstep(u / 0.4), aimAt: 'volcano', roar: 1 };
     // 0.8.18 the ember spit: rear, the cheeks fill and glow, the fuse burns up its back; then a pop of the jaws
     case 'spitWarn': return { pose: 'breath', p: 0.39 * sstep(Math.min(1, u * 1.25)), aimAt: 'spit', fuse: u, cheek: sstep(u / 0.4) };
     case 'spit': { const el = C.dur - C.t; return el < 0.16 ? { pose: 'breath', p: 0.5, aimAt: 'spit', pop: 1 - el / 0.16 } : { pose: 'idle', aimAt: 'spit' }; }
@@ -712,9 +722,14 @@ export function drawSalamanders(ctx, sim, t, k, calm = false) {
   const after = [], low = PERF.low;
   for (const C of sim.sals || []) {
     if (C.sp === 'gecko') { drawGecko15(ctx, sim, k, t, false); continue; } // Baron von Brr (render/gecko15.js)
-    if (C.sp === 'thornback') { drawThorn20(ctx, sim, C, k, t); continue; } // L20 (render/crystal20.js)
-    if (C.sp === 'chameleon') { drawCham26(ctx, sim, C, k, t); continue; } // L26: Sly the orb thief (render/cham26.js)
+    if (C.sp === 'thornback') { drawThorn20(ctx, sim, C, k, t, calm); continue; } // L20 (render/crystal20.js)
+    if (C.sp === 'chameleon') { drawCham26(ctx, sim, C, k, t, calm); continue; } // L26: Sly the orb thief (render/cham26.js)
     if (C.ph === 'wait' || C.ph === 'gone' || C.pts.length < 3) continue;
+    if (C.ph === 'under' || C.ph === 'bubble') { // 0.8.19 in the lava: only the pools show (the exit one bubbles through the tell)
+      const P = sim.salDivePt(C), u = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1;
+      after.push(() => drawDivePool(ctx, P.x, P.y, C.ph === 'bubble' ? 0.35 + 0.65 * sstep(u / 0.35) : 0.25, C.ph === 'bubble' ? u : -1, t, calm, low, C.kind));
+      continue;
+    }
     let R = ANIM.get(C.id);
     const fresh = !R || R.sim !== sim || t < R.t - 0.5;
     if (fresh) { R = { sim, A: crawlerAnim(), t, cool: C.cool > 0 ? 1 : 0, lookX: 1, lookY: 0, aim: 0, out: {} }; ANIM.set(C.id, R); }
@@ -738,6 +753,8 @@ export function drawSalamanders(ctx, sim, t, k, calm = false) {
     else if (W.aimAt === 'face') { const O = sim.sals.find((x) => x.id === C.fid); if (O && O.pts.length) { const a = C.pts[0], b = O.pts[0]; tgt = { x: (a.x + b.x) / 2 * k, y: -(a.y + b.y) / 2 * k }; } }
     else if (W.aimAt === 'snake') { const S = sim.snakes.find((x) => x.id === C.rid) || sim.snakes.find((x) => x.rivalId === C.id && x.rival > 0); if (S && S.pts.length) tgt = { x: S.pts[0].x * k, y: -S.pts[0].y * k }; }
     else if (W.aimAt === 'spit') tgt = { x: C.sx * k, y: -C.sy * k }; // 0.8.18 the ember spit: eyes and snout on where it will land
+    else if (W.aimAt === 'lash' || W.aimAt === 'prey') { const e = sim.eggs.find((x) => x.id === (W.aimAt === 'lash' ? C.lj : C.ht) && x.alive && !x.saved); if (e) { const q = e.body.getPosition(); tgt = { x: q.x * k, y: -q.y * k }; } } // 0.8.19 eyes on its egg
+    else if (W.aimAt === 'volcano') { const V = sim.volcXY || (sim.volcOrigin && sim.volcOrigin()); if (V) tgt = { x: V.x * k, y: -V.y * k }; } // 0.8.19 the boss roars at the mountain
     if (C.og && sim.salOrbWant) { const O = sim.salOrbWant(C); if (O) R.orb = { x: O.o.x * k, y: -O.o.y * k }; } // greedy: eyes on the flame orb
     if (!tgt && (C.og || W.aimAt === 'orb') && R.orb) tgt = R.orb;
     // the brain's alert: the head snaps round to the egg it just noticed (the "!" is drawn after, over every crawler)
@@ -758,7 +775,8 @@ export function drawSalamanders(ctx, sim, t, k, calm = false) {
     const lx = tgt ? 1 : 0.85, ly = tgt ? clamp(R.aim, -1, 1) : 0.15 * Math.sin(t * 0.7 + C.id);
     R.lookX += (lx - R.lookX) * Math.min(1, dt * 6); R.lookY += (ly - R.lookY) * Math.min(1, dt * 6);
     const glow = clamp(0.72 + 0.28 * (C.charge || 0) + (C.ph === 'walk' && C.next < 1.2 ? 0.15 * (1 - C.next / 1.2) : 0), 0, 1);
-    const alpha = C.ph === 'in' ? sstep(1 - C.t / C.dur) : 1;
+    const du = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1, dg = DIVE.glow / DIVE.sink;
+    const alpha = C.ph === 'in' ? sstep(1 - C.t / C.dur) : C.ph === 'sink' ? 1 - sstep((du - dg) / (1 - dg)) : C.ph === 'rise' ? sstep(du / 0.7) : 1; // 0.8.19 into the lava and out
     const o = {
       ...R.A.opts(), gait: C.odo * k, trail: at, id: 50 + C.id, glow, cool: R.cool, aim: R.aim, fireLen, look: { x: R.lookX, y: R.lookY }, out: R.out, frost: C.kind === 'frost',
     };
@@ -790,9 +808,11 @@ export function drawSalamanders(ctx, sim, t, k, calm = false) {
       o.blend = { ...o.blend, rear: Math.max(o.blend.rear, 0.3 * f), swell: Math.max(o.blend.swell, 0.8 * f), angry: Math.max(o.blend.angry, f), mouth: Math.max(o.blend.mouth, 0.25 * f) };
     }
     if (C.ph === 'dive') o.dive = (C.odo - C.hole) * k;
-    // boss: the lava rocks come out of its mouth (mouth open, glowing) while it throws
-    const BX = sim.bx && sim.bx.boss;
-    if (C.boss && BX && BX.atk && (BX.atk.name === 'rock' || BX.atk.name === 'rock2') && C.ph === 'walk') o.mouth = BX.atk.ph === 'warn' ? 0.4 + 0.5 * clamp(1 - BX.atk.t / BX.atk.dur, 0, 1) : 0.9;
+    // 0.8.19: the lash's throat glow (the old spit's cheeks), a strain's shudder, the roar's open jaws
+    if (W.throat !== undefined) { o.cheek = W.throat; o.glow = Math.max(o.glow, 0.8 + 0.2 * W.throat); }
+    if (W.roar) o.blend = { ...o.blend, mouth: 0.85 + 0.1 * Math.sin(t * 9), angry: 1 };
+    if (W.pull) o.blend = { ...o.blend, angry: 1, mouth: Math.max(o.blend.mouth, 0.55) };
+    if (W.low) o.blend = { ...o.blend, crouch: Math.max(o.blend.crouch || 0, 0.45), angry: Math.max(o.blend.angry || 0, 0.6) };
     if (C.ph === 'in') { // it climbs out of a lava pool
       const h = P[0];
       pxSpace(ctx, 0, 0, k, () => {
@@ -807,6 +827,27 @@ export function drawSalamanders(ctx, sim, t, k, calm = false) {
     ctx.restore();
     if (R.flareT !== undefined && t - R.flareT < 0.75) { const u0 = (t - R.flareT) / 0.75; after.push(() => pxSpace(ctx, 0, 0, k, () => drawFlare(ctx, at, s, u0, calm, low))); }
     if (R.puffT !== undefined && t - R.puffT < 1.3) { const u0 = (t - R.puffT) / 1.3, h = at(13 * U); after.push(() => pxSpace(ctx, 0, 0, k, () => drawPuff(ctx, h.x, h.y, s, u0, calm))); }
+    // 0.8.19 the dive: the pool it sinks into (glows first), the one it rises from
+    if (C.ph === 'sink' || C.ph === 'rise') {
+      const h = C.pts[0], P = C.ph === 'rise' ? sim.salDivePt(C) : { x: h.x, y: h.y };
+      after.push(() => drawDivePool(ctx, P.x, P.y, C.ph === 'sink' ? sstep(du / dg) * (1 - 0.3 * sstep((du - 0.7) / 0.3)) : 1 - sstep((du - 0.4) / 0.6), C.ph === 'rise' ? 1 : -1, t, calm, low, C.kind));
+    }
+    // 0.8.19 the tongue: a lock-on ring on the egg through the tell; the tongue flying, stuck, stretching (thinner, trembling)
+    if (C.ph === 'lash' || (C.ph === 'brake' && C.pend === 'lash')) {
+      const e = sim.eggs.find((x) => x.id === C.lj && x.alive && !x.saved), u = C.ph === 'lash' ? du : 0;
+      if (e) after.push(() => lockRing(ctx, e.body.getPosition(), u, t, calm));
+    }
+    if (C.ph === 'fling' || C.ph === 'reel' || C.ph === 'strain') {
+      const e = sim.eggs.find((x) => x.id === C.lj && x.alive && !x.saved), M = sim.salMouth(C);
+      if (e) {
+        const q = e.body.getPosition(), f = C.ph === 'fling' ? backOut(C.lk) : 1, tip = { x: M.x + (q.x - M.x) * f, y: M.y + (q.y - M.y) * f };
+        R.tg = { x: tip.x, y: tip.y, t };
+        after.push(() => drawTongue(ctx, M, tip, C.ph === 'fling' ? 0 : C.ls, t, calm, C.ph === 'strain'));
+      }
+    } else if (R.tg && t - R.tg.t < 0.18) { // snapped back: it flies home
+      const M = sim.salMouth(C), f = 1 - sstep((t - R.tg.t) / 0.18), tip = { x: M.x + (R.tg.x - M.x) * f, y: M.y + (R.tg.y - M.y) * f };
+      after.push(() => drawTongue(ctx, M, tip, 0, t, calm, false));
+    }
     // the bite's telegraph: a red ring closes on the egg it is about to snap at (0.8.14)
     if (C.ph === 'coil') {
       const e = sim.eggs.find((x) => x.id === C.bj && x.alive && !x.saved), u = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1;
@@ -848,6 +889,54 @@ export function drawSalamanders(ctx, sim, t, k, calm = false) {
   for (const E of sim.salEmbers || []) after.push(() => pxSpace(ctx, 0, 0, k, () => drawEmberFly(ctx, E, k, t, calm, low))); // 0.8.18 embers in flight
   for (const f of after) f();
   for (const C of sim.sals || []) if (C.alT > 0 && C.pts.length > 2 && C.ph !== 'wait' && C.ph !== 'gone') drawAlertMark(ctx, C, k);
+}
+// ---------- 0.8.19 the tongue lash and the lava dive (world space, y up)
+// the tongue: a thick, glossy, slightly sagging strap from the mouth to the tip, a sticky pad on the end. Stretched (k 0..1)
+// it thins and trembles; straining at a stone egg it shudders. Calm: no tremble.
+function drawTongue(ctx, M, tip, k, t, calm, strain) {
+  const dx = tip.x - M.x, dy = tip.y - M.y, L = Math.hypot(dx, dy);
+  if (L < 0.02) return;
+  const nx = -dy / L, ny = dx / L, tr = calm ? 0 : (0.025 * k + (strain ? 0.03 : 0)) * Math.sin(t * 55), sag = 0.12 * (1 - k) * Math.min(1, L / 1.2);
+  const cx = M.x + dx * 0.5 + nx * (tr - sag), cy = M.y + dy * 0.5 + ny * (tr - sag) - sag * 0.6, w = 0.085 * (1 - 0.55 * k);
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#7a0f24'; ctx.lineWidth = w + 0.035;
+  ctx.beginPath(); ctx.moveTo(M.x, M.y); ctx.quadraticCurveTo(cx, cy, tip.x, tip.y); ctx.stroke();
+  ctx.strokeStyle = k > 0.6 && !calm ? `rgb(${230 + 25 * k},${70 - 30 * k},${90 - 40 * k})` : '#e0466a'; ctx.lineWidth = w;
+  ctx.beginPath(); ctx.moveTo(M.x, M.y); ctx.quadraticCurveTo(cx, cy, tip.x, tip.y); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,190,205,0.75)'; ctx.lineWidth = w * 0.28;
+  ctx.beginPath(); ctx.moveTo(M.x + nx * w * 0.2, M.y + ny * w * 0.2); ctx.quadraticCurveTo(cx + nx * w * 0.2, cy + ny * w * 0.2, tip.x + nx * w * 0.2, tip.y + ny * w * 0.2); ctx.stroke();
+  ctx.fillStyle = '#c42a4e'; ctx.beginPath(); ctx.ellipse(tip.x, tip.y, 0.11, 0.08, Math.atan2(dy, dx), 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,200,215,0.8)'; ctx.beginPath(); ctx.arc(tip.x - nx * 0.02 + dx / L * 0.02, tip.y - ny * 0.02 + dy / L * 0.02, 0.03, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+// the lock-on: two arcs close on the egg and spin the other way as the tell runs out
+function lockRing(ctx, q, u, t, calm) {
+  const r = 0.62 - 0.22 * sstep(u), a0 = calm ? 0 : t * 3;
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineWidth = 0.05 + 0.03 * u; ctx.strokeStyle = `rgba(255,80,110,${0.55 + 0.45 * u})`;
+  for (let j = 0; j < 2; j++) { ctx.beginPath(); ctx.arc(q.x, q.y, r, a0 + j * Math.PI, a0 + j * Math.PI + 1.9); ctx.stroke(); }
+  ctx.restore();
+}
+// a lava pool on the floor: a glowing ellipse; bubbling (b 0..1 through the exit tell, -1 none) it heaves and pops
+function drawDivePool(ctx, x, y, s, b, t, calm, low, kind) {
+  if (s <= 0.01) return;
+  const a = Math.atan2(y, x), rx = 0.55 * s, ry = 0.2 * s;
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(a + Math.PI / 2);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx * 1.6);
+  g.addColorStop(0, 'rgba(255,236,150,0.95)'); g.addColorStop(0.45, 'rgba(255,120,30,0.85)'); g.addColorStop(1, 'rgba(160,30,0,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, rx * 1.6, ry * 2.2, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#ffd36a'; ctx.beginPath(); ctx.ellipse(0, 0, rx * 0.62, ry * 0.55, 0, 0, TAU); ctx.fill();
+  if (b >= 0) { // bubbles rise and pop, faster as the tell runs out
+    const n = low ? 3 : 6, sp = calm ? 0 : 1 + 2.5 * b;
+    for (let i = 0; i < n; i++) {
+      const ph = calm ? 0.5 : ((t * sp + i * 0.37) % 1 + 1) % 1, bx = (((i * 0.61) % 1) - 0.5) * rx * 1.4, by = ph * 0.35 * s, br = 0.05 * s * (0.6 + ph) * (1 - (ph > 0.85 ? (ph - 0.85) / 0.15 : 0));
+      ctx.fillStyle = `rgba(255,${190 - 80 * ph},60,${0.9 - 0.4 * ph})`; ctx.beginPath(); ctx.arc(bx, by, Math.max(0.005, br), 0, TAU); ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 // ---------- 0.8.18 the powers' pictures
 const backOut = (u) => { u = clamp(u, 0, 1); const c = 1.7; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };

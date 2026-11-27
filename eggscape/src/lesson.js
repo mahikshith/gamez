@@ -113,6 +113,8 @@ function path(spec, q, p, ri) {
       d = Math.max(-Math.max(sw, 3.2 / r.r), Math.min(Math.max(sw, 3.2 / r.r), d));
       a1 = sa; a0 = sa - d;
     }
+  } else if (spec.g === 'shake') { // 0.8.19 (aggroB): a short swing to and fro (the frozen egg: shake its ice off)
+    a1 = a0 + Math.min(0.4, 1.2 / r.r);
   } else { // spin
     const b = q.key.startsWith('bandit') ? banditLesson(sim) : null;
     dir = b && b.dir ? b.dir : q.key.startsWith('creep_') && q.ev.away ? q.ev.away : 0; // 0.8.18 creeper: the way that carries it off the egg
@@ -275,6 +277,7 @@ function drawTurn(ctx, m, hq, show, u, calm) {
   else if (hq < 0.3) f = -0.08 * Math.sin(((hq - 0.2) / 0.1) * Math.PI / 2); // the small pull back
   else if (hq < 0.72) f = -0.08 + 1.16 * ss((hq - 0.3) / 0.42); // the drag, a touch past the end
   else f = 1.08 - 0.08 * ss((hq - 0.72) / 0.13); // settles on the end
+  if (m.spec.g === 'shake' && !calm) f = hq < 0.2 ? 0 : hq > 0.85 ? 1 : (1 - Math.cos(((hq - 0.2) / 0.65) * 3 * Math.PI)) / 2; // (aggroB) to, fro, to
   const press = !calm && hq > 0.16 && hq < 0.86;
   const fa = calm ? 1 : ss(hq / 0.12) * (1 - ss((hq - 0.88) / 0.12));
   // the arc and its head
@@ -291,6 +294,12 @@ function drawTurn(ctx, m, hq, show, u, calm) {
   ctx.beginPath(); ctx.moveTo(e.x + Math.cos(ang) * hs, e.y + Math.sin(ang) * hs);
   ctx.lineTo(e.x + Math.cos(ang + 2.4) * hs, e.y + Math.sin(ang + 2.4) * hs); ctx.lineTo(e.x + Math.cos(ang - 2.4) * hs, e.y + Math.sin(ang - 2.4) * hs); ctx.closePath();
   ctx.stroke(); ctx.fill();
+  if (m.spec.g === 'shake') { // (aggroB) a head at both ends: to and fro
+    const b = pts[0], b0 = pts[2], ab = Math.atan2(b.y - b0.y, b.x - b0.x);
+    ctx.beginPath(); ctx.moveTo(b.x + Math.cos(ab) * hs, b.y + Math.sin(ab) * hs);
+    ctx.lineTo(b.x + Math.cos(ab + 2.4) * hs, b.y + Math.sin(ab + 2.4) * hs); ctx.lineTo(b.x + Math.cos(ab - 2.4) * hs, b.y + Math.sin(ab - 2.4) * hs); ctx.closePath();
+    ctx.stroke(); ctx.fill();
+  }
   ctx.restore();
   const h = at(a0 + span * f);
   K.hand(ctx, h.x, h.y, 46 * u, press, fa * show);

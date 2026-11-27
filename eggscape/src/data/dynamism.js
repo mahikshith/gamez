@@ -33,7 +33,23 @@ export const DYN = {
   penguin: { tempo: 1.08, rest: 0.85, tell: 1, snatch: 0.85, chase: 0.6, threat: 3, moves: ['waddle', 'windup', 'slide', 'tuck', 'shove'] },
   urchin: { tempo: 1, rest: 1, tell: 1, snatch: 1, chase: 0.5, threat: 3, moves: ['puff', 'roll', 'dash', 'nap'] },
   crab: { tempo: 1.05, rest: 0.9, tell: 0.9, snatch: 0.9, chase: 0.7, threat: 6, moves: ['reach', 'snap', 'pull', 'bubble', 'whirl', 'bar'] },
-  owl: { tempo: 1, rest: 1, tell: 0.9, snatch: 1, chase: 0, threat: 6, moves: ['wind', 'grab', 'gearbomb'] },
+  owl: { tempo: 1, rest: 1, tell: 0.9, snatch: 1, chase: 0, threat: 6, moves: ['wind', 'grab', 'gearbomb'] },  // --- crawlers, the frog and the volcano (aggroB). These rows are ABSOLUTE (abs: true): tempo is x the sim's hunting
+  // speed, rest / tell / snatch are SECONDS; DYN_MODE_ABS scales them per mode; a level's `dyn` MULTIPLIES their fields;
+  // tell never ends under TELL_MIN. (The rows above are multipliers on their sims' own Medium numbers.)
+  // the lava salamander: hunts the leading egg, tongue lash in line, lava dive to a far channel, bite at the snout, breath at a wall
+  salamander: { abs: true, tempo: 1.15, rest: 0.6, tell: 0.7, snatch: 1.3, chase: 1, threat: 6, moves: ['walk', 'climb', 'breath', 'lash', 'dive', 'bite', 'fireup'] },
+  // the frost salamander (L28, L29): the fire one's walk and climb, an icing breath and the frost bite (no tongue, no dive)
+  salFrost: { abs: true, tempo: 1.1, rest: 1.3, tell: 0.85, snatch: 1.0, chase: 0.7, threat: 4, moves: ['walk', 'climb', 'icebreath', 'frostbite'] },
+  // the frost gecko (L18 boss body): walks the ring tops, icy feet, a lick freezes an egg to its ring, then a nip cracks it
+  gecko: { abs: true, tempo: 1.1, rest: 1.0, tell: 1.4, snatch: 2.15, chase: 0.8, threat: 5, moves: ['rimwalk', 'icyfeet', 'lick', 'nip'] },
+  // the thorn-backs (L24: Duke Quartz and Spike): drop thorns behind, hip-check at the snout, spike roll down the channel
+  thornback: { abs: true, tempo: 1.15, rest: 1.2, tell: 0.9, snatch: 1.4, chase: 0.6, threat: 5, moves: ['drop', 'hip', 'roll'] },
+  // the chameleon (L31, L34): orbs only; vanishes, crosses unseen, pops up by the orb, tongue
+  chameleon: { abs: true, tempo: 2.2, rest: 2.2, tell: 0.6, snatch: 0.6, chase: 1, threat: 3, moves: ['ghost', 'pop', 'tongue'] },
+  // the frog (L9, L49, L52): hops between channels, licks orbs, snatches an egg into its cheeks and spits it
+  frog: { abs: true, tempo: 1.2, rest: 3.2, tell: 0.7, snatch: 0.95, chase: 0.7, threat: 4, moves: ['hop', 'lick', 'snatch', 'spit'] },
+  // the volcano (lava world weather and the salamander boss's volley): bombs on marked ring sections
+  volcano: { abs: true, tempo: 0.67, rest: 9, tell: 1.8, snatch: 0, chase: 0, threat: 2, moves: ['bomb', 'volley'] },
 };
 
 export const DYN_MODE = {
@@ -41,12 +57,26 @@ export const DYN_MODE = {
   medium: { tokens: 1, breather: 3.5 },
   hard: { tempo: 1.12, rest: 0.85, tell: 0.85, snatch: 0.9, chase: 1, tokens: 2, breather: 2.5 },
 };
+// the absolute rows' own mode scale (tokens and the breather are DYN_MODE's)
+export const DYN_MODE_ABS = {
+  easy: { tempo: 0.85, rest: 1.3, tell: 1.25, snatch: 1.25 },
+  medium: {},
+  hard: { tempo: 1.1, rest: 0.85, tell: 0.9, snatch: 0.9 },
+};
 const ONE = { tempo: 1, rest: 1, tell: 1, snatch: 1, chase: 1, threat: 1, moves: [] };
 const SCALED = ['tempo', 'rest', 'tell', 'snatch', 'chase'];
 
 // the temper of kind on mode, with a level's own overrides (over = level.dyn?.[kind])
 export function dyn(kind, mode = 'medium', over) {
-  const row = { ...ONE, ...(DYN[kind] || {}), ...(over || {}) }, m = DYN_MODE[mode] || {};
+  const r = DYN[kind];
+  if (r && r.abs) { // an absolute row: DYN x DYN_MODE_ABS x the level's multipliers
+    const M = DYN_MODE_ABS[mode] || DYN_MODE_ABS.medium, out = { ...r };
+    for (const f of ['tempo', 'rest', 'tell', 'snatch']) out[f] = r[f] * (M[f] ?? 1) * ((over && over[f]) ?? 1);
+    for (const f of ['chase', 'threat']) if (over && over[f] != null) out[f] = r[f] * over[f];
+    out.tell = Math.max(TELL_MIN, out.tell);
+    return out;
+  }
+  const row = { ...ONE, ...(r || {}), ...(over || {}) }, m = DYN_MODE[mode] || {};
   for (const k of SCALED) row[k] *= m[k] ?? 1;
   row.chase = Math.min(1, Math.max(0, row.chase));
   return row;

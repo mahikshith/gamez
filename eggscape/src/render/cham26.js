@@ -134,7 +134,7 @@ function eggLook(sim, sn, hd) {
   return { x: Math.cos(rel), y: Math.sin(rel) };
 }
 // ctx: world space (meters, y up). k: pixels per meter.
-export function drawCham26(ctx, sim, C, k, t) {
+export function drawCham26(ctx, sim, C, k, t, calm = false) {
   const S = stateOf(sim, C, t);
   const dt = clamp(t - S.t, 0, 0.05);
   S.t = t;
@@ -167,11 +167,15 @@ export function drawCham26(ctx, sim, C, k, t) {
   if (C.ph === 'walk' && !(S.hunt > 0.3)) { const el2 = eggLook(sim, sn, S.hd); if (el2) o.look = { x: lerp(S.look.x, el2.x, 0.85), y: lerp(S.look.y, el2.y, 0.85) }; }
   if (nap) o.blink = 1;
   else if (C.ph === 'miss') { const el = C.dur - C.t; o.blink = el > 0.4 && el < 0.95 ? (Math.sin((el - 0.4) * 22) > 0 ? 0.85 : 0.35) : undefined; } // annoyed blinks
+  const gk = ghostK(C); // (aggroB) vanish: he fades to a faint glassy ripple and creeps, then pops back in a flourish
+  if (gk > 0) ctx.globalAlpha = alpha * (1 - 0.86 * gk);
   ctx.scale(1 / k, -1 / k);
   drawCrawler(ctx, sn.x * k, -sn.y * k, L * k, frozen ? st.hold : t, o, 'chameleon');
   // the orb rides the tongue's tip back in
   if (C.ph === 'reel' && C.held && out.tongue) drawOrb(ctx, C.held.type, out.tongue.x, out.tongue.y, 0.2 * k * (0.75 + 0.25 * out.tongue.k), t, true);
   ctx.scale(k, -k);
+  ctx.globalAlpha = alpha;
+  if (gk > 0) ghost(ctx, C, S, L, gk, t, calm);
   if (S.shim > 0) shimmer(ctx, S, L, t);
   if (C.ph === 'digest' && t - S.gulpT < 0.75) gulp(ctx, S, L, (t - S.gulpT) / 0.75, C);
   if (C.ph === 'lock') throat(ctx, S, clamp(1 - C.t / CHAM.lock, 0, 1), t);
@@ -182,6 +186,26 @@ export function drawCham26(ctx, sim, C, k, t) {
     const f = C.dur / 0.7, n = sim.rings.length, ring = sim.rings[n - 1], ga = ring.body.getAngle() + C.ent.la, r = ring.r + 0.1;
     ctx.globalAlpha = 0.7 * (1 - f); ctx.fillStyle = '#9fe07a';
     for (let i = 0; i < 6; i++) { const aa = ga + (hash(i + 1) - 0.5) * 0.25, rr = r + (hash(i + 7) - 0.3) * 0.5 * f; ctx.beginPath(); ctx.ellipse(rr * Math.cos(aa), rr * Math.sin(aa), 0.05 + 0.08 * f, 0.03, aa + f * 3, 0, TAU); ctx.fill(); }
+  }
+  ctx.restore();
+}
+
+// (aggroB) the vanish: 0 = seen, 1 = a ghost (fade in, ghost walk, pop out)
+function ghostK(C) {
+  if (C.ph === 'fade') return sstep(1 - clamp(C.t / (C.dur || 1), 0, 1));
+  if (C.ph === 'pop') return 1 - sstep((C.dur - C.t) / (C.dur || 1));
+  return C.gh ? 1 : 0;
+}
+// a ghost is still fair to track: a faint heat-ripple runs along his back; the pop is a ring of leaf-green colour
+function ghost(ctx, C, S, L, gk, t, calm) {
+  ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#e8fff4'; ctx.lineWidth = 0.025;
+  for (let i = 0; i < 6; i++) {
+    const d = L * (0.1 + 0.22 * i), c = bodyAt(S, d), w = (calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 7 - i * 1.3));
+    ctx.globalAlpha = 0.35 * gk * w; ctx.beginPath(); ctx.arc(c.x, c.y, 0.07 + 0.03 * w, 0, TAU); ctx.stroke();
+  }
+  if (C.ph === 'pop') {
+    const f = clamp((C.dur - C.t) / (C.dur || 1), 0, 1), h = bodyAt(S, L * 0.3), cols = ['#9fe07a', '#ffd34d', '#ff7aa8', '#7ad7ff'];
+    for (let i = 0; i < 8; i++) { const a = (i * TAU) / 8 + (calm ? 0 : f), r = 0.15 + 0.45 * f; ctx.globalAlpha = 0.9 * (1 - f); ctx.fillStyle = cols[i % 4]; ctx.beginPath(); ctx.arc(h.x + Math.cos(a) * r, h.y + Math.sin(a) * r, 0.06 * (1 - f * 0.5), 0, TAU); ctx.fill(); }
   }
   ctx.restore();
 }

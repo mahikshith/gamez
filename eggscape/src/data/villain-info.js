@@ -32,7 +32,7 @@ export const VILLAIN_INFO = {
   },
   'boss:blizzard': {
     group: 'boss', name: 'Baron von Brr',
-    does: 'A frost gecko in the vault: his lick cracks an egg and freezes it.',
+    does: 'A frost gecko: his lick freezes an egg, then he nips it. Shake it free.', // 0.8.19
     beat: 'Strikes and stone stop him. Each saved egg cancels his wind-up.',
     attacks: {
       gale: 'His wind shoves eggs and turns free rings. Hold a ring; stone eggs stay put.',
@@ -54,15 +54,15 @@ export const VILLAIN_INFO = {
   },
   'boss:salamander': {
     group: 'boss', name: 'Lava Salamander',
-    does: 'Spits lava rocks at your eggs and heats whole rings red-hot.',
+    does: 'Roars up volcano rocks at your eggs and heats whole rings red-hot.', // 0.8.19
     beat: 'Use the holes its rocks melt. Each saved egg staggers it.',
     attacks: {
-      rock: 'Roll the egg off the glowing mark. A water egg cools rocks.',
-      rock2: 'Two rocks at once. Roll eggs off the glowing marks.',
+      rock: 'He roars, the crater throws: roll the egg off the glowing mark.', // 0.8.19
+      rock2: 'More rocks at once. Roll eggs off the glowing marks.',
       magma: 'Get your eggs off the glowing ring in time. Its thorns burn.',
       whip: 'Hold that ring as the whip lands and it barely moves.',
       heat: 'An egg that waits ~9 s in one channel cracks. Keep moving.',
-      spit: 'He glows and spits an ember through a gap: turn that gap away.', // 0.8.18
+      spit: 'His eyes lock on, his tongue flies: turn the egg out of his line.', // 0.8.19
       fire: 'A red flame orb or lava makes him white-hot. Water cools him.', // 0.8.18
     },
   },
@@ -180,14 +180,14 @@ export const VILLAIN_INFO = {
   },
   salamander: {
     group: 'creature', name: 'Lava salamander',
-    does: 'Coils, then snaps: it eats an egg at its snout. Its fire heats walls.',
+    does: 'Its tongue reels in eggs in line; far off it dives through lava.', // 0.8.19 (aggroB)
     beat: 'Turn its ring to carry it off. A stone egg breaks its bite. Water cools it.',
   },
-  emberspit: { // 0.8.18 lava: the salamander's ember spit
-    group: 'creature', name: 'Ember spit',
-    does: 'He glows, a spark runs up his back, and he spits an ember at an egg.',
-    beat: 'Turn the gap out of his line: it splats on the wall. Water douses it.',
-    more: 'The ember pool cracks an egg once. It burns thorns away.',
+  emberspit: { // 0.8.19 (aggroB): the Tongue Lash replaced the ember spit (the key stays)
+    group: 'creature', name: 'Tongue lash',
+    does: 'His eyes lock on an egg, then his tongue flies through a gap.',
+    beat: 'Turn the egg out of his line. Pull it away while he reels: it snaps.',
+    more: 'Stone snaps it, water douses him. Far off he dives and pops up near.',
   },
   fireup: { // 0.8.18 lava: the salamander's fire-up
     group: 'creature', name: 'White-hot',
@@ -207,7 +207,7 @@ export const VILLAIN_INFO = {
   },
   spike: {
     group: 'creature', name: 'Spike the thorn-back',
-    does: 'Drops thorns behind him and rams eggs: every ram cracks the shell.',
+    does: 'Drops thorns, rams eggs, and curls into a spiky ball to roll at them.', // 0.8.19
     beat: 'A stone egg flips him. Turn the ring under a thorn fast to shake it.',
     more: 'He duels the Duke on sight. Weaken one first to pick the winner.',
   },
@@ -215,7 +215,7 @@ export const VILLAIN_INFO = {
     group: 'creature', name: 'Sly the chameleon',
     does: 'Crawls in and steals power orbs with his tongue. Never eggs.',
     beat: 'Grab orbs first. Feed him the black flame: he coughs one back up.',
-    more: 'Strikes, stuns and a Stone egg stop him. Sitting still, he fades.',
+    more: 'Strikes, stuns and Stone eggs stop him. He fades, then pops up by orbs.', // 0.8.19
   },
   hermit: {
     group: 'creature', name: 'Hermit crab',
@@ -278,6 +278,7 @@ export const VILLAIN_INFO = {
     group: 'hazard', name: 'Lava rocks',
     does: 'Crash onto a ring, blast nearby eggs, then melt a hole for 5 s.',
     beat: 'Move eggs off the glow, then use the hole. Water eggs cool them.',
+    more: 'With a salamander: the volcano rumbles first; they heat the floor.', // 0.8.19
   },
   lightning: {
     group: 'hazard', name: 'Lightning',
@@ -386,7 +387,7 @@ export function villainKinds(L, sim = null) {
       if (n - fr > 0) set.add('salamander');
       if (fr) set.add('frostsal');
       if (fr && n - fr > 0 && !boss) set.add('faceoff');
-      if (listOf(L[k]).some((S) => S && S.kind !== 'frost' && S.spit)) set.add('emberspit'); // 0.8.18
+      if (listOf(L[k]).some((S) => S && S.kind !== 'frost') && !(boss === 'salamander' && n === 1)) set.add('emberspit'); // 0.8.19: every fire salamander lashes
       if (listOf(L[k]).some((S) => S && S.kind !== 'frost' && S.fireup)) set.add('fireup');
       continue;
     }
@@ -404,7 +405,7 @@ export function villainKinds(L, sim = null) {
     if (live(sim.cocos)) set.add('monkey'); // 0.8.17 coco
     if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp === 'sal' && C.kind !== 'frost')) set.add('salamander'); // L15's frost gecko and L20's thorn-backs are not salamanders
     if ((sim.sals || []).some((C) => C.sp === 'sal' && C.kind === 'frost')) set.add('frostsal');
-    if ((sim.sals || []).some((C) => C.sp === 'sal' && !C.boss && C.spit)) set.add('emberspit'); // 0.8.18 (the boss's are attack lines)
+    if ((sim.sals || []).some((C) => C.sp === 'sal' && !C.boss && C.kind !== 'frost')) set.add('emberspit'); // 0.8.19 every fire salamander lashes (the boss's are attack lines)
     if ((sim.sals || []).some((C) => C.sp === 'sal' && !C.boss && C.fu)) set.add('fireup');
     if ((sim.sals || []).some((C) => C.role === 'spike')) set.add('spike');
     if (live(sim.hermits)) set.add('hermit');
