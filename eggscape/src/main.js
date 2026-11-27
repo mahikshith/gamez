@@ -7973,8 +7973,14 @@ function pageScroll2(L, R, S, V, xl, xr, w, s) {
     if (S.y < S.max - 1) { fade(V.y + V.h, false);
       const cx2 = Math.min(V.x + V.w - 22 * s, xr + w + 2 * s), cy2 = V.y + V.h - 22 * s, cid = S.cid || (S.cid = ++CHEV_N);
       chevron(cx2, cy2 + (save.calm ? 0 : 3 * s * Math.sin(G.t * 4)), 17 * s, 'd', 1);
-      CHEV[cid] = { S, h: V.h }; ui.buttons.push({ id: 'pgdn:' + cid, x: cx2 - 26 * s, y: cy2 - 26 * s, w: 52 * s, h: 52 * s }); }
+      CHEV[cid] = { S, h: V.h }; ui.buttons.push(pgdnBox(cid, cx2, cy2, s)); }
   }
+}
+// the "more below" arrow's tap box: a thumb's size (48 px at least) and inside the safe rect (lint819: it hung 3 px
+// under the gesture bar and was 43 px on a small phone)
+function pgdnBox(cid, cx, cy, s) {
+  const A = ui.A, d = Math.max(52 * s, 48);
+  return { id: 'pgdn:' + cid, x: clamp(cx - d / 2, A.x, A.x1 - d), y: clamp(cy - d / 2, A.y, A.y1 - d), w: d, h: d };
 }
 function pageScroll(blocks, S, V, x, w, s, top) {
   const H = pageColH(blocks, s) + 18 * s;
@@ -7995,7 +8001,7 @@ function pageScroll(blocks, S, V, x, w, s, top) {
       // the "more below" arrow is a button too (0.8.7, mykee: "I click on that arrow and it leads nowhere"): one tap, most of a page down
       const cx2 = Math.min(V.x + V.w - 22 * s, x + w + 2 * s), cy2 = V.y + V.h - 22 * s, cid = S.cid || (S.cid = ++CHEV_N);
       chevron(cx2, cy2 + (save.calm ? 0 : 3 * s * Math.sin(G.t * 4)), 17 * s, 'd', 1);
-      CHEV[cid] = { S, h: V.h }; ui.buttons.push({ id: 'pgdn:' + cid, x: cx2 - 26 * s, y: cy2 - 26 * s, w: 52 * s, h: 52 * s }); }
+      CHEV[cid] = { S, h: V.h }; ui.buttons.push(pgdnBox(cid, cx2, cy2, s)); }
   }
 }
 
@@ -11001,17 +11007,9 @@ function drawFailPage() {
   if (rew && coinR && hl >= 2 && save.wallet.coins >= price && !G.rewBuy) SC.push({ id: 'streak', kind: 'tag', slot: 'rewind', key: 'rewind:' + G.level.id + ':' + hl, price, tagArt: (c, x, y, h) => pictoFlame(c, x, y, h) });
   const build = (stH) => (s) => {
     const B = [];
-    { const R = (sd ? 22 : 34) * s; B.push({ h: 2.85 * R + 10 * s, gap: sd ? 0 : 2 * s, draw: (x, y, w) => { // 0.8.19: the win page's star arc, all dull, so the two pages match
-      const sp = R * 2.35, mx = x + w / 2;
-      for (let q = 0; q < 3; q++) { const px = mx + (q - 1) * sp, py = y + 4 * s + (q === 1 ? 1.1 * R : 1.85 * R); ctx.save(); ctx.translate(px, py); ctx.rotate((q - 1) * 0.24); drawStar(ctx, 0, 0, q === 1 ? 1.1 * R : R, false, 1, true); ctx.restore(); }
-      ui.record({ x: mx - sp - R, y: y + 2 * s, w: 2 * (sp + R), h: 2.85 * R + 6 * s }, 'fail:stars');
-    } }); }
+    if (!sd) { const R = 34 * s; B.push({ h: 2.85 * R + 10 * s, gap: 2 * s, draw: (x, y, w) => failStars(x + w / 2, y, R, s) }); } // 0.8.19: the win page's star arc, all dull, so the two pages match (lint819: on its side they stand in the sky over the hen, so the card fits without a scroll)
     // why it failed: an icon and two or three words (the ribbon above says the same)
-    B.push({ h: 30 * s, gap: sd ? 2 * s : 4 * s, draw: (x, y, w) => {
-      const t = near ? 'Just one egg short' : timeout ? 'No time left' : 'Too many eggs lost', tw = ui.measure(t, 19 * s) + 34 * s, x0 = x + w / 2 - tw / 2;
-      if (near) drawEggIcon(ctx, x0 + 12 * s, y + 15 * s, 24 * s, 'alive'); else if (timeout) pictoClock(ctx, x0 + 12 * s, y + 15 * s, 28 * s); else pictoBroken(ctx, x0 + 12 * s, y + 15 * s, 28 * s);
-      ui.text(t, x0 + 30 * s, y + 15 * s, { size: 19 * s, color: C.warn, maxW: w - 34 * s, tag: 'fail:cheer' });
-    } });
+    if (!sd) B.push({ h: 30 * s, gap: 4 * s, draw: (x, y, w) => failWhy(x + w / 2, y, w, s) }); // (on its side: in the sky over the hen, under the stars)
     if (!sd && stH > 0) B.push({ h: stH * s, gap: 8 * s, draw: (x, y, w) => {
       const box = { x, y, w, h: stH * s };
       henStage(box, s, false);
@@ -11036,12 +11034,12 @@ function drawFailPage() {
         } else drawEggIcon(ctx, ex, ey, es, 'slot');
       }
       ui.record({ x: mid - n * sp / 2, y: y + (sd ? EH / 2 - 13 : 7) * s, w: n * sp, h: 26 * s }, 'fail:eggs');
-      if (sd) ui.text(lab, mid + n * sp / 2 + 10 * s, y + EH / 2 * s, { size: 17 * s, maxW: lw, color: C.ink, tag: 'fail:stat' });
-      else ui.text(lab, x + w / 2, y + 47 * s, { size: 17 * s, align: 'center', maxW: w - 16 * s, color: C.ink, tag: 'fail:stat' });
+      if (sd) ui.text(lab, mid + n * sp / 2 + 10 * s, y + EH / 2 * s, { size: 17 * s, maxW: lw, color: C.ink, tag: 'fail:stat', group: 'fail:eggs' });
+      else ui.text(lab, x + w / 2, y + 47 * s, { size: 17 * s, align: 'center', maxW: w - 16 * s, color: C.ink, tag: 'fail:stat', group: 'fail:eggs' }); // (the count is the eggs' own caption: one group)
     } });
     if (SP.banked(save) > 0) B.push(spinRowBlock(s, { cheer, quiet: top !== 'spin' })); // 0.8.15: a spin that waits (the cheer-up spin after three losses lands here)
     else if (prog) B.push({ h: 26 * s, gap: 4 * s, draw: (x, y, w) => leadLine(prog, x + w / 2, y + 13 * s, s, { size: 15, ink: C.info, maxW: w, tag: 'fail:near' }) });
-    if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: (sd ? 3 : 6) * s }));
+    if (G.sim.ally && G.sim.ally.avail.length) B.push(lineBlock('A farm friend can help', 14 * s, { color: C.info, tag: 'fail:ally', gap: (sd ? 7 : 6) * s }));
     const TH3 = sd ? 66 : 100;
     if (three) B.push({ h: TH3 * s, gap: (sd ? 6 : 10) * s, draw: (x, y, w) => { // 0.8.19 the stuck player's choices: one row of kid-size pictures
       const T = [];
@@ -11074,25 +11072,30 @@ function drawFailPage() {
       const bw = Math.min(124 * s, w * 0.34), tx = x + 68 * s, tw = x + w - bw - 16 * s - tx;
       ui.text(Hp.label, tx, y + 35 * s, { size: 16 * s, color: ui.C.ink, maxW: tw, tag: 'fail:help' });
       const lab = free ? 'FREE' : ad ? 'Watch' : String(Hp.price);
-      ui.button('help:go', lab, x + w - bw - 8 * s, y + 10 * s, bw, 50 * s, free ? { kind: 'primary', shimmer: top === 'help', size: 21 * s } : ad ? { kind: 'ad', ad: true, size: 19 * s } : { kind: save.wallet.coins >= Hp.price || Hp.bought ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s, ...(Hp.bought ? { disabled: true, keepFace: true } : {}) });
-      spendFx.at('failhelp:btn', { x: x + w - bw - 8 * s, y: y + 10 * s, w: bw, h: 50 * s });
+      const hbh = Math.max(50 * s, 48); ui.button('help:go', lab, x + w - bw - 8 * s, y + (70 * s - hbh) / 2, bw, hbh, free ? { kind: 'primary', shimmer: top === 'help', size: 21 * s } : ad ? { kind: 'ad', ad: true, size: 19 * s } : { kind: save.wallet.coins >= Hp.price || Hp.bought ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 19 * s, ...(Hp.bought ? { disabled: true, keepFace: true } : {}) });
+      spendFx.at('failhelp:btn', { x: x + w - bw - 8 * s, y: y + (70 * s - hbh) / 2, w: bw, h: hbh });
       ui.record({ x, y, w, h: 70 * s }, 'panel:failhelp'); // (a panel: its own words and button sit on it)
     } });
     // row A: RETRY, the whole width, the biggest (one egg short with a Rewind to offer: Rewind takes that place, RETRY the row under it)
     const RH = sd ? 62 : 68;
-    const retryRow = () => B.push(lead ? { h: BH * s, gap: 10 * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, BH * s, { kind: 'primary', icon: ICON.retry, size: 22 * s }) }
-      : { h: RH * s, gap: (sd ? 10 : 14) * s, draw: (x, y, w) => ui.button('retry', 'RETRY', x, y, w, RH * s, { kind: 'primary', shimmer: top !== 'spin' && top !== 'help', icon: ICON.retry, size: 27 * s }) });
+    // lint819: on its side the row C buttons (Skip, Levels) stand beside RETRY as square picture buttons, so nothing
+    // scrolls under the screen's edge (RETRY was a 5 px sliver at 853x384)
+    const sqBtns = (x, y, h) => { let bx = x; if (!three && ways.length) { skipSq(ways[0], bx, y, h); bx += (ways[0] === 'coins' ? 1.9 : 1) * h + 10 * s; } ui.button('levels', '', bx, y, h, h, { kind: 'tertiary', icon: ICON.grid, iconS: 1.4 }); return bx + h + 10 * s - x; };
+    const retryBtn = (x, y, w, h, o) => { const dx = sd ? sqBtns(x, y, h) : 0; ui.button('retry', 'RETRY', x + dx, y, w - dx, h, o); };
+    const RTH = Math.max(lead ? BH * s : RH * s, 56); // (a kid's thumb: RETRY never under 56 px)
+    const retryRow = () => B.push(lead ? { h: RTH, gap: (sd ? 8 : 10) * s, draw: (x, y, w) => retryBtn(x, y, w, RTH, { kind: 'primary', icon: ICON.retry, size: 22 * s }) }
+      : { h: RTH, gap: (sd ? 8 : 14) * s, draw: (x, y, w) => retryBtn(x, y, w, RTH, { kind: 'primary', shimmer: top !== 'spin' && top !== 'help', icon: ICON.retry, size: 27 * s }) });
     // row B: Rewind 12 s, a Free rewind booster or a video, beside Rewind for coins (dearer each time on this level). It keeps the win streak.
     const rewRows = () => {
       const h = (lead ? RH : BH) * s, fs = (lead ? 20 : 18) * s;
       if (hl >= 2) B.push({ h: 26 * s, gap: (lead ? (sd ? 8 : 12) : 10) * s, draw: (x, y, w) => { // the streak, and the boosters it was giving at every start
         const t = `Rewind keeps your ${hl}-win streak`, iw = hotB.length * 24 * s + (hotB.length ? 6 * s : 0), tm = Math.min(ui.measure(t, 15 * s), w - 30 * s - iw), tw = tm + 30 * s + iw, x0 = x + w / 2 - tw / 2;
         pictoFlame(ctx, x0 + 11 * s, y + 13 * s, 24 * s);
-        ui.text(t, x0 + 26 * s, y + 13 * s, { size: 15 * s, color: C.warn, maxW: tm, tag: 'fail:hot' });
+        ui.text(t, x0 + 26 * s, y + 13 * s, { size: 15 * s, color: C.warn, maxW: tm, tag: 'fail:hot', group: 'fail:hot' });
         hotB.forEach((id, i) => drawBoosterIcon(ctx, id, x0 + 26 * s + tm + 18 * s + i * 24 * s, y + 13 * s, 24 * s, G.t));
-        if (hotB.length) ui.record({ x: x0 + 26 * s + tm + 6 * s, y: y + s, w: iw - 6 * s, h: 24 * s }, 'fail:hotb');
+        if (hotB.length) ui.record({ x: x0 + 26 * s + tm + 6 * s, y: y + s, w: iw - 6 * s, h: 24 * s }, 'fail:hotb', 'fail:hot'); // (one line: the words and the boosters they keep)
       } });
-      B.push({ h, gap: hl >= 2 ? 4 * s : (lead ? (sd ? 10 : 14) : 12) * s, draw: (x, y, w) => {
+      B.push({ h, gap: hl >= 2 ? 7 * s : (lead ? (sd ? 10 : 14) : 12) * s, draw: (x, y, w) => {
         const hw = coinR ? (w - 10 * s) / 2 : w;
         ui.button('rewind', G.freeRewind ? 'Free rewind' : `Rewind ${REWIND_S}s`, x, y, hw, h, G.freeRewind || ads.premium ? { kind: 'secondary', icon: ICON.rewind, size: fs, shimmer: lead && top === 'rewind' } : { kind: 'ad', ad: true, size: fs, shimmer: lead && top === 'rewind' });
         if (coinR) { ui.button('rewind:coins', 'Rewind ' + price, x + hw + 10 * s, y, hw, h, { kind: save.wallet.coins >= price || G.rewBuy ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: fs, ...(G.rewBuy ? { disabled: true, keepFace: true } : {}) }); spendFx.at('rewind', { x: x + hw + 10 * s, y, w: hw, h }); }
@@ -11106,8 +11109,13 @@ function drawFailPage() {
       else ui.button('skip:coins', 'Skip ' + SKIP_COINS, x, y, w, h, { kind: save.wallet.coins >= SKIP_COINS ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 18 * s }); // too few coins: the tap opens Get more
     };
     const lvBtn = (x, y, w, h) => ui.button('levels', 'Levels', x, y, w, h, { kind: 'tertiary', icon: ICON.grid, size: 18 * s });
+    function skipSq(way, x, y, h) { // the same three ways as a picture button (on its side, beside RETRY)
+      if (way === 'ticket') ui.button('skip:ticket', '', x, y, h, h, { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3 });
+      else if (way === 'ad') ui.button('skip:ad', '', x, y, h, h, ads.premium ? { kind: 'secondary', icon: ICON.next, iconS: 1.3 } : { kind: 'ad', ad: true, icon: ICON.next, iconS: 1.1 });
+      else ui.button('skip:coins', String(SKIP_COINS), x, y, 1.9 * h, h, { kind: save.wallet.coins >= SKIP_COINS ? 'gold' : 'off', dim: 1, icon: (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t), size: 18 * s });
+    }
     const gC = (sd ? 8 : 12) * s; // (0.8.17: on its side 4 px less, so the page fits without a 5 px scroll and Levels is whole)
-    if (three) B.push({ h: BH * s, gap: gC, draw: (x, y, w) => lvBtn(x, y, w, BH * s) }); // (the skip is in the choices row)
+    if (sd) { /* (on its side Skip and Levels stand beside RETRY) */ } else if (three) B.push({ h: BH * s, gap: gC, draw: (x, y, w) => lvBtn(x, y, w, BH * s) }); // (the skip is in the choices row)
     else if (ways.length) B.push({ h: BH * s, gap: gC, draw: (x, y, w) => { const hw = (w - 10 * s) / 2; skipBtn(ways[0], x, y, hw, BH * s); lvBtn(x + hw + 10 * s, y, hw, BH * s); } });
     else B.push({ h: BH * s, gap: gC, draw: (x, y, w) => lvBtn(x, y, w, BH * s) });
     return B;
@@ -11123,10 +11131,27 @@ function drawFailPage() {
   const title = near ? 'So close!' : timeout ? 'Out of time!' : 'Too many eggs broke';
   const card = stackCard(title, build(stH), { ...(sd ? sd.cardO : { full: true }), ribbon: near ? '#e0882a' : '#5a82c8', minS: u, scroll: G.fscroll, grow: 1.2, evening: true });
   if (sd) {
-    const { box, henH } = sideStage(sd, card);
+    const { box, henH } = sideStage(sd, { y: card.y, h: ui.A.y1 - card.y }); // (lint819: her stage runs to the screen's foot whatever the card holds, so her size and the sky over her never change)
     drawCelebration(ctx, 'encourage', G.screenT, box, { henH, calm: save.calm, pw: 0.5 });
     ui.record({ x: box.x + box.w / 2 - henH * 0.6, y: box.y + box.h - henH * 1.5, w: henH * 1.2, h: henH * 1.5 }, 'fail:hen');
+    // lint819: the dull stars and why it failed in the sky over her, so the card's rows fit without a scroll
+    const cs = card.s, sky = box.h - henH * 1.5, R = clamp((sky - 46 * cs) / 2.85, 17 * cs, 30 * cs), sh = 2.85 * R + 10 * cs, y0 = box.y + Math.max(0, (sky - sh - 32 * cs) * 0.45);
+    failStars(box.x + box.w / 2, y0, R, cs);
+    failWhy(box.x + box.w / 2, y0 + sh, box.w - 8 * cs, cs);
   }
+}
+// why it failed: an icon and two or three words, centred on cx (the ribbon says the same); 30 * s tall from y
+function failWhy(cx, y, w, s) {
+  const st = G.sim.stats(), near = st.target >= 2 && st.saved === st.target - 1, timeout = !!G.sim.timeLimit && G.sim.timeLeft <= 0;
+  const t = near ? 'Just one egg short' : timeout ? 'No time left' : 'Too many eggs lost', tw = Math.min(w, ui.measure(t, 19 * s) + 34 * s), x0 = cx - tw / 2;
+  if (near) drawEggIcon(ctx, x0 + 12 * s, y + 15 * s, 24 * s, 'alive'); else if (timeout) pictoClock(ctx, x0 + 12 * s, y + 15 * s, 28 * s); else pictoBroken(ctx, x0 + 12 * s, y + 15 * s, 28 * s);
+  ui.text(t, x0 + 30 * s, y + 15 * s, { size: 19 * s, color: ui.C.warn, maxW: tw - 34 * s, tag: 'fail:cheer' });
+}
+// the fail page's three dull stars in the win page's arc (top at y)
+function failStars(mx, y, R, s) {
+  const sp = R * 2.35;
+  for (let q = 0; q < 3; q++) { const px = mx + (q - 1) * sp, py = y + 4 * s + (q === 1 ? 1.1 * R : 1.85 * R); ctx.save(); ctx.translate(px, py); ctx.rotate((q - 1) * 0.24); drawStar(ctx, 0, 0, q === 1 ? 1.1 * R : R, false, 1, true); ctx.restore(); }
+  ui.record({ x: mx - sp - R, y: y + 2 * s, w: 2 * (sp + R), h: 2.85 * R + 6 * s }, 'fail:stars');
 }
 
 // Home. One job: get the player playing. The logo, the toy vault (never the hen in the middle), and at thumb height
