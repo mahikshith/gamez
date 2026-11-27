@@ -170,12 +170,12 @@ export function lint(ui, o = {}) {
   if (want.has('FONTS') && TX.length) {
     const sz = [...new Set(TX.map((t) => Math.round(t.size)))].sort((a, b) => a - b), cl = [];
     for (const s of sz) if (!cl.length || s - cl[cl.length - 1][0] > 1) cl.push([s]); else cl[cl.length - 1].push(s);
-    if (cl.length > TOL.fonts) add('FONTS', 'page', `${cl.length} font sizes: ${cl.map((c) => c.join('/')).join(', ')}`, 20 + 3 * cl.length);
+    if (cl.length > TOL.fonts) add('FONTS', 'page', `${cl.length} font sizes: ${cl.map((c) => c.join('/')).join(', ')}`, 20 + Math.min(30, 3 * cl.length));
   }
   if (want.has('WORDS') && TX.length) {
     const ws = [], seenS = new Set();
     for (const t of TX) { const k = t.str + '@' + Math.round(t.x) + ',' + Math.round(t.y); if (seenS.has(k)) continue; seenS.add(k); for (const w of t.str.split(/\s+/)) if (/[A-Za-z].*[A-Za-z]/.test(w) || /^[A-Za-z]$/.test(w)) ws.push(w); }
-    if (ws.length > TOL.words) add('WORDS', 'page', `${ws.length} words: ${ws.slice(0, 14).join(' ')}${ws.length > 14 ? ' ...' : ''}`, 25 + ws.length);
+    if (ws.length > TOL.words) add('WORDS', 'page', `${ws.length} words: ${ws.slice(0, 14).join(' ')}${ws.length > 14 ? ' ...' : ''}`, 25 + Math.min(40, ws.length));
   }
   // 8. THUMB: the primary button of a portrait level-flow page in the lower 45 % of the safe height
   if (want.has('THUMB') && flow && !o.play && A.h > A.w) {

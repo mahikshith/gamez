@@ -54,6 +54,7 @@ const srv = http.createServer((q, r) => {
     const n = await p.evaluate(() => __egg.LEVELS.length);
     const check = async (label, fn, arg, shoot) => {
       if (ONLY && !ONLY.test(label)) return;
+      if (RULES) await LAYOUT.armHere(p, label);
       let ov = await p.evaluate(fn, arg);
       if (SAFE) ov = ov.concat(await p.evaluate(([W, H, I]) => { // hit boxes against the inset bands
         const bad = [], big = W * H * 0.6;

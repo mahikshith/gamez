@@ -7,16 +7,35 @@ const fs = require('fs');
 const path = require('path');
 const ALLOW = require('./layout-allow.cjs');
 
+// in the page, before a state runs: every E.overlaps() the state's own script calls (its sampled moments, and the
+// overlays it closes again before it ends) also runs the rules; inPage() takes those findings in with at = 'sample'
+function arm() {
+  const E = __egg, G = E.G, ui = E.ui;
+  window.__lintBuf = [];
+  if (E.__lintArmed) return;
+  E.__lintArmed = true;
+  const MODS = ['settingsOpen', 'detail', 'got', 'party', 'treasure', 'stuckAsk', 'leaveAsk', 'remAsk', 'skipAsk', 'waitList', 'getMore', 'offer', 'chickBuy', 'album', 'setSub', 'nudge', 'ageAsk', 'card', 'lesson'];
+  const o = E.overlaps;
+  E.overlaps = function (...a) {
+    const r = o.apply(this, a);
+    try { const pg = G.screen + (G.screen === 'intro' && G.itab === 'chicks' ? '+chicks' : '') + MODS.filter((k) => G[k]).map((k) => '+' + k).join('');
+      if (window.__lintBuf.length < 400) for (const f of ui.lint({ screen: G.screen, play: G.screen === 'play' || !!window.__lintPlay })) window.__lintBuf.push({ ...f, at: 'sample', page: pg }); } catch (e) { /* the rules never break a QA state */ }
+    return r;
+  };
+}
+
 // in the page: the state's findings. a: { label, play: bool, taps: bool }
 function inPage(a) {
   const E = __egg, G = E.G, ui = E.ui, out = [];
   ui.guardOff = true; // the QA reads the rules itself: no console noise from the dev guard
-  const MODS = ['settingsOpen', 'detail', 'got', 'party', 'treasure', 'stuckAsk', 'leaveAsk', 'remAsk', 'skipAsk', 'waitList', 'getMore', 'offer', 'chickBuy', 'album', 'setSub', 'mapTravel', 'nudge', 'ageAsk', 'card', 'lesson'];
+  const MODS = ['settingsOpen', 'detail', 'got', 'party', 'treasure', 'stuckAsk', 'leaveAsk', 'remAsk', 'skipAsk', 'waitList', 'getMore', 'offer', 'chickBuy', 'album', 'setSub', 'nudge', 'ageAsk', 'card', 'lesson'];
   const page = () => G.screen + (G.screen === 'intro' && G.itab === 'chicks' ? '+chicks' : '') + MODS.filter((k) => G[k]).map((k) => '+' + k).join('');
   const play = () => a.play || G.screen === 'play';
   const had = new Set(); // the same break seen again (after a tap, at a strip's end) is the same break
   const run = (at) => { for (const f of ui.lint({ screen: G.screen, play: play() })) { const k = f.rule + '|' + f.tag + '|' + f.msg; if (!had.has(k)) { had.add(k); out.push({ ...f, at, page: page() }); } } };
   const fr = (n) => { for (let i = 0; i < n; i++) E.frame(1 / 60); };
+  for (const f of window.__lintBuf || []) { const k = f.rule + '|' + f.tag + '|' + f.msg; if (!had.has(k)) { had.add(k); out.push(f); } }
+  window.__lintBuf = [];
   run('rest');
   // every strip that scrolled this frame (glide() stamps S.t), at both ends
   const live = Object.keys(G).filter((k, i, K) => { const S = G[k]; return S && typeof S === 'object' && typeof S.y === 'number' && typeof S.max === 'number' && S.max > 1 && S.t === G.t && K.findIndex((j) => G[j] === S) === i; }); // (one strip under two names once)
@@ -39,8 +58,10 @@ function inPage(a) {
 }
 
 // the findings of the state the page is in now (allow list applied: allowed ones come back with .allowed = reason)
+const PLAY_RE = /(-play$|-zoom$|^wonder-[a-z]+$|^bandit$|^urchin-play$|^lesson-|^star-lost$|^scarecrow$|^power-card$|^strip-attn$)/;
+async function armHere(p, label) { try { await p.evaluate(arm); await p.evaluate((pl) => { window.__lintPlay = pl; }, PLAY_RE.test(label)); } catch (e) { /* page not ready */ } }
 async function lintHere(p, label, size, o = {}) {
-  const play = /(-play$|-zoom$|^wonder-[a-z]+$|^bandit$|^urchin-play$|^lesson-|^star-lost$|^scarecrow$|^power-card$|^strip-attn$)/.test(label);
+  const play = PLAY_RE.test(label);
   let f;
   try { f = await p.evaluate(inPage, { label, play, taps: o.taps !== false }); } catch (e) { return [{ rule: 'ERROR', tag: label, msg: String(e).split('\n')[0], sev: 0, state: label, size }]; }
   return f.map((q) => ({ ...q, state: label, size, allowed: allowed(q, label) }));
@@ -90,7 +111,7 @@ function report(all, title = 'Layout rule breaks') {
   return md;
 }
 
-module.exports = { lintHere, allowed, report, inPage };
+module.exports = { lintHere, armHere, allowed, report, inPage };
 
 if (require.main === module && process.argv[2] === 'report') {
   const args = process.argv.slice(3), outMd = args.pop();
