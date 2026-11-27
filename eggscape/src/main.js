@@ -3633,7 +3633,7 @@ function drawStuckAsk() {
 const purse = createPurse({ clock: () => G.t, calm: () => !!save.calm, wallet: () => (save && save.wallet ? save.wallet.coins || 0 : 0), screen: () => G.screen, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k) });
 // 0.8.17 (ui/landing.js): a reward page's own purse and bag chips, and the prize pop after a video. land.start / land.draw
 // are what any reward page calls (the Lucky Spin too); landItems turns a page's "what was inside" into things that fly.
-const land = createLanding({ clock: () => G.t, calm: () => !!save.calm, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k), hold: (v) => purse.hold(v), release: () => purse.release() });
+const land = createLanding({ clock: () => G.t, calm: () => !!save.calm, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k), hold: (v) => purse.hold(v), release: () => { purse.release(); winHoldPurse(); } }); // (0.8.19: on the win page the purse stays at the total before the win's own coins fly)
 const prizePop = createPrizePop({ clock: () => G.t, calm: () => !!save.calm, sound: (n, o) => audio.play(n, o), buzz: (k) => buzz(k) });
 const LAND_KIT = { ui: null, coin: (c, x, y, r, t) => drawCoin(c, x, y, r, t), art: (c, a, x, y, s, t) => drawPart(c, a, x, y, s, t), bag: (c, x, y, s, b) => CB.bag(c, x, y, s, b), shop: (c, x, y, s) => shopIcon(c, x, y, s),
   sadHen: (c, x, y, h, t) => drawHenAnim(c, 'sad', x, y, h, t, { key: 'pop', face: 1, n: 0, calm: save.calm, shadow: 0 }),
@@ -9624,6 +9624,7 @@ function winSkipEnd(r) {
   // next frame); before, a tap here settled the purse at once, so a player who tapped through a boss's rewards never
   // saw a single coin move.
 }
+function winHoldPurse() { const r = G.result; if (G.screen === 'win' && r && r.purse0 != null && !r.purseGo) purse.hold(r.purse0 + (r.trFlown && r.treasure ? r.treasure.coins : 0)); }
 // the page is still telling its story (the offers and questions that may open over it wait: main's offerMoments)
 function winBusy(r) {
   if (!r || save.calm) return false;
@@ -9864,7 +9865,7 @@ function drawWinPage() {
   // 0.8.19 the coin fix: from the win's first frame, through her show and every reward reveal, every counter says the
   // purse BEFORE this win (plus a boss treasure's coins once they have flown). Before, between two reveals it jumped to
   // the final total (the win's own coins counted before they flew), then dropped back when the page came.
-  if (r.purse0 != null && !r.purseGo && !land.busy()) purse.hold(r.purse0 + (r.trFlown && r.treasure ? r.treasure.coins : 0));
+  if (!land.busy()) winHoldPurse();
   const side = A.w > A.h * 1.15; // a phone on its side: the stars and her on the left, the score, the coins and the buttons right
   const pw = routinePower(r.stars);
   const title = G.level.boss && G.li >= 0 ? 'Boss beaten!' : r.stars === 3 ? 'Perfect clutch!' : r.stars === 2 ? 'Great job!' : 'Vault cracked!';
