@@ -159,6 +159,34 @@ function kitAt(ctx, x, y, rot, k, t, st, u, face, o) {
 const LEADER = { look: -1, looky: -0.2, hr: -0.22, a0x: 22, a0y: -30, smile: 1, mouth: 0.45, brow: 0.5 };
 // the leader looks back and beckons most of the time, and now and then faces the way he is going
 const leaderAdd = (t) => { const k = ss(-0.25, 0.1, Math.sin(t * 0.8 + 1)); return { look: 1 - 2 * k, looky: -0.2 * k, hr: -0.2 - 0.02 * k, a0x: 6 + 16 * k, a0y: -9 - (21 + 3 * Math.sin(t * 9)) * k, smile: 1, mouth: 0.15 + 0.3 * k, brow: 0.5 }; };
+// 0.8.19 THE CARRY (the owner: "one of them is always idle when carrying the eggs ... they are moving way too smooth"): TWO
+// carry the egg, the clumsy one in front hauling it backwards, the sleepy one heaving from behind, each on his own beat
+// (out of step); on the sim's check beat (sim.kitScamp: the carry's heave and stagger) they stagger and bob under the
+// weight, and now and then one REGRIPS (a dip into the lift pose and up: the near drop and the catch). The keen one is the
+// LOOKOUT, never idle and never a copy: he darts ahead, waves them on, runs back, looks about; every third dash he trips;
+// and when the player turns their ring he plants himself and hisses back at it (sim.menaceTurned). All from the clock and
+// the sim's state (deterministic); Calm: the plain steady carry, the lookout walking ahead beckoning.
+const LOOK_T = 3.4; // s one lookout round: dash out, wave, run back, look about
+function carryRole(i, t, G, sim, calm) {
+  if (i !== 0) {
+    if (calm) return { st: i === 1 ? 'pull' : 'push', off: i === 1 ? CO : -CO, h: 0, u: null, add: null, back: 0 };
+    const ph = t + i * 1.9, rg = ph % 5.2 < 0.5, slow = sim.kitScamp ? sim.kitScamp() < 1 : false;
+    const bob = slow ? 0.05 * Math.abs(Math.sin(t * (i === 1 ? 7 : 8.5) + i)) : 0;
+    if (rg) return { st: 'lift', off: i === 1 ? CO : -CO, h: 0, u: 0.5 + 0.4 * Math.sin(((ph % 5.2) / 0.5) * Math.PI), add: { brow: -0.7, mouth: 0.5 }, back: 0, rate: 1 };
+    return { st: i === 1 ? 'pull' : 'push', off: (i === 1 ? CO : -CO) + (slow ? (i === 1 ? -0.05 : 0.05) : 0), h: bob, u: null, add: slow ? { brow: -0.6, mouth: 0.45, ear: 0.5 } : null, back: 0, rate: i === 1 ? 1 : 1.27 };
+  }
+  if (calm) return { st: 'walk', off: LEAD, h: 0, u: null, add: leaderAdd(t), back: 0 };
+  if (sim.menaceTurned && G.c >= 0 && sim.menaceTurned(G.c, 0.8)) return { st: 'wait', off: LEAD * 0.75, h: 0, u: 0, add: { mouth: 0.9, brow: -1, ear: -0.9, look: -1, smile: -0.6 }, back: 1 }; // hiss!
+  const c = (t % LOOK_T) / LOOK_T, n = Math.floor(t / LOOK_T);
+  if (c < 0.26) { const trip = n % 3 === 2 && c > 0.19; return trip ? { st: 'tumble', off: lerp(0.9, 2.3, ss(0, 0.26, 0.19)), h: 0, u: 0.15 + ((c - 0.19) / 0.07) * 0.5, add: null, back: 0 } : { st: 'run', off: lerp(0.9, 2.3, ss(0, 0.26, c)), h: 0.06 * Math.abs(Math.sin(c * 40)), u: null, add: null, back: 0, rate: 1.8 }; }
+  if (c < 0.52) return { st: 'walk', off: 2.3, h: 0, u: 0, add: leaderAdd(t * 2.2), back: 0 }; // waving them on
+  if (c < 0.76) return { st: 'run', off: lerp(2.3, 0.95, ss(0.52, 0.76, c)), h: 0, u: null, add: null, back: 1, rate: 1.8 };
+  return { st: 'wait', off: 0.95, h: 0, u: 0, add: { look: Math.sin(t * 3) > 0 ? 1 : -1, looky: 0.3, brow: 0.4 }, back: 0 }; // looks about
+}
+function drawCarry(draw, i, t, G, sim, calm, gait, d) {
+  const R = carryRole(sim.kit && sim.kit.n === 2 && i === 0 ? 2 : i, t, G, sim, calm); // (two kits: both carry, no lookout)
+  draw(R.off * d, R.h, R.st, R.u != null ? R.u : gait * (R.rate || 1) + i * 0.21, R.back ? -d : d, R.add);
+}
 function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
   const G = K.g, n = K.n, low = !!PERF.low, base = { costume, calm, low };
   const ord = [0, 1, 2].slice(0, n);
@@ -185,7 +213,7 @@ function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
     case 'run': case 'yard': {
       const carry = G.ph === 'yard';
       ord.forEach((i) => {
-        if (carry) { const R = ROLE(i), x = G.x + (R.off + (R.lead ? 0.12 * Math.sin(t * 1.1) : 0)) * d; kitAt(ctx, x, sim.groundY, 0, k, t, R.st, gait + i * 0.3, d, { ...base, who: i, add: R.lead ? leaderAdd(t) : null }); }
+        if (carry) drawCarry((off, h, st, u, face, add) => kitAt(ctx, G.x + off, sim.groundY + h, 0, k, t, st, u, face, { ...base, who: i, add }), i, t, G, sim, calm, gait, d);
         else kitAt(ctx, G.x - d * (0.55 * i + drift(i, t, calm)), sim.groundY, 0, k, t, 'run', gait + i * 0.37, d, { ...base, who: i });
       });
       return;
@@ -207,7 +235,7 @@ function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
     }
     case 'up': case 'down': case 'hop': {
       const P = G.p || sim.kitBody(G), a = Math.atan2(P.y, P.x), rP = Math.hypot(P.x, P.y);
-      ord.forEach((i) => { if (G.eid && G.ph !== 'up') { const R = ROLE(i), off = R.off * d / Math.max(1, rP); kitOnFloor(ctx, rP + 0.2, a + off, 0, k, t, R.st, gait, d, { ...base, who: i, add: R.lead ? leaderAdd(t) : null }); } else kitOnFloor(ctx, rP + 0.2, a - d * (sp(i) * 0.6 * i + drift(i, t, calm) * 0.5 / Math.max(1, rP)), 0.05 * i, k, t, G.ph === 'up' ? 'climb' : 'run', t * 2 + i, d, { ...base, who: i }); });
+      ord.forEach((i) => { if (G.eid && G.ph !== 'up') drawCarry((off, h, st, u, face, add) => kitOnFloor(ctx, rP + 0.2, a + off / Math.max(1, rP), h, k, t, st, u, face, { ...base, who: i, add }), i, t, G, sim, calm, gait, d); else kitOnFloor(ctx, rP + 0.2, a - d * (sp(i) * 0.6 * i + drift(i, t, calm) * 0.5 / Math.max(1, rP)), 0.05 * i, k, t, G.ph === 'up' ? 'climb' : 'run', t * 2 + i, d, { ...base, who: i }); });
       return;
     }
     case 'dangle': { // hanging by their tails from the edge of the hole, upside down, flailing
@@ -219,7 +247,7 @@ function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
       const above = sim.rings[G.c - 1];
       if (above && !o.unclipped) { drawInChannel(ctx, above.r - RING_TH / 2, false, 0.32, () => drawCrew(ctx, sim, K, t, k, calm, costume, { unclipped: 1 })); return; }
       if (G.ph === 'carry') {
-        ord.forEach((i) => { const R = ROLE(i), off = (R.off + (R.lead && !G.wait && !calm ? 0.12 * Math.sin(t * 1.1) : 0)) * d / fl; kitOnFloor(ctx, fl, G.a + off, 0, k, t, G.wait && R.lead ? 'wait' : R.st, G.wait ? 0 : gait + i * 0.21, d, { ...base, who: i, add: G.wait ? (R.lead ? null : { looky: -0.8, brow: -0.3 }) : R.lead ? leaderAdd(t) : null }); });
+        ord.forEach((i) => { if (G.wait) { const R = ROLE(i); kitOnFloor(ctx, fl, G.a + (R.off * d) / fl, 0, k, t, R.lead ? 'wait' : R.st, 0, d, { ...base, who: i, add: R.lead ? null : { looky: -0.8, brow: -0.3 } }); } else drawCarry((off, h, st, u, face, add) => kitOnFloor(ctx, fl, G.a + off / fl, h, k, t, st, u, face, { ...base, who: i, add }), i, t, G, sim, calm, gait, d); });
         return;
       }
       if (G.ph === 'lift') {

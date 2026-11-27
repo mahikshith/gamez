@@ -30,6 +30,7 @@
 //     eggs left outside her sack could no longer make the target); the target saved and only sack eggs left ends the
 //     level as a win (sim.finish).
 import { RING_TH, EGG_W, wrap, clamp } from './geom.js';
+import { dynOf, tellS } from '../data/dynamism.js';
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 const D2R = Math.PI / 180;
@@ -47,10 +48,10 @@ export const KITS = {
   walk: m3(0.42, 0.5, 0.58), // m/s along a floor, empty-handed
   carry: m3(0.2, 0.25, 0.3), // m/s with an egg (slowly)
   up: 0.75, down: 0.9, hop: 0.6, // s a crossing up through a gap / down through one / a hop over a hole
-  lift: m3(1.5, 1.25, 1.1), // s gathering round the egg and heaving (the telegraph)
+  lift: 1.25, // s gathering round the egg and heaving (the telegraph; 0.8.19: x DYN.kits tell, see kitTell)
   out: 1.8, // s over the rim with the egg and down to the yard
   smug: 2.0, comfort: 2.6, scold: 2.0, // s (comfort: a held hug the player can see)
-  rest: m3(4.0, 3.2, 2.6), // s mama waits before she sends them again
+  rest: 3.2, // s mama waits before she sends them again (0.8.19: x DYN.kits rest / the menace heat)
   tumble: 2.0, dangle: 1.6, dive: 0.8, flee: 1.3, // s (tumble: a roll, a held dizzy sit, up again)
   wail: 0.55, // s a crying kit stands and wails before he runs home (after a tumble or a dangle)
   shake: m3(0.4, 0.55, 0.65), // their ring turned either way (a leaky sum) past this share of what a full-speed turn of it
@@ -64,10 +65,12 @@ export const KITS = {
   ride: 0.08, // m the carried egg's centre over its floor-lying spot
 };
 export const UNTIE_POP = 0.45;
+export const SCAMP = [0.62, 0.7, 1.3, 0.33];
 const EXIT = -122 * D2R; // the spot on the outer floor at mama's side (over the rim from her yard)
 const MAMA_PH = new Set(['watch', 'smug', 'comfort', 'scold', 'rest', 'untie']); // she is at her spot with the sack
 const FLOOR = new Set(['go', 'lift', 'carry', 'tumble', 'dangle']);
 const WORK = new Set(['go', 'lift', 'carry']);
+const KSKIP = 1.6; // s 0.8.19: they shun the egg they wanted after the player turned their floor under them
 
 export const kitMethods = {
   kitInit(L) {
@@ -125,12 +128,21 @@ export const kitMethods = {
   kitOut(G) { return G.ph !== 'sack' && G.ph !== 'pop'; },
   // the egg they fetch: the outermost loose egg in the vault (they come in from outside), then the nearest along the floor
   kitFit(e) { return this.reefFit(e) && !(e.fire > 0) && !(e.stone > 0) && this.channelOf(e) < this.rings.length; },
+  // 0.8.19 their temper (data/dynamism.js) and the menace engine (sim/menace.js)
+  kitD() { return dynOf(this, 'kits'); },
+  kitRest(v) { return (v * this.kitD().rest) / this.menaceHeat(); },
+  kitTell(v) { return tellS(v, this.kitD().tell) * this.menaceTell(); },
+  kitQuick(v) { return v / (this.kitD().tempo * this.menaceHeat()); },
+  // scampers, not a glide: a dart (SCAMP[1] of every SCAMP[0] s at SCAMP[2]x), then a check (SCAMP[3]x); the mean about 1x.
+  // From the clock only (deterministic); the carry staggers on the same beat
+  kitScamp() { const u = (this.t / SCAMP[0]) % 1; return u < SCAMP[1] ? SCAMP[2] : SCAMP[3]; },
   kitPick(G) {
     let best = null, bc = -1, bd = 1e9;
     for (const e of this.aliveEggs()) {
       if (!this.kitFit(e)) continue;
       const c = this.channelOf(e), p = e.body.getPosition(), d = Math.abs(wrap(Math.atan2(p.y, p.x) - G.a));
-      if (c > bc || (c === bc && d < bd - 1e-9)) { best = e; bc = c; bd = d; }
+      if (G.skipT > 0 && e.id === G.skip && best) continue; // (shunned while another will do)
+      if (c > bc || (c === bc && d < bd - 1e-9) || (best && G.skipT > 0 && best.id === G.skip)) { best = e; bc = c; bd = d; }
     }
     return best;
   },
@@ -154,8 +166,13 @@ export const kitMethods = {
     }
     // the target is saved and only eggs in her sack are left: the level ends as a win
     if (K.sack.length && this.savedLog.length >= (this.level.target || 1) && this.aliveEggs().every((e) => e.hc === 3 || e.thf === 2)) { this.finish(); return; }
+    if (G.skipT > 0) G.skipT -= dt;
+    if (G.pace > 0) G.pace -= dt;
+    // 0.8.19 the player's last move: their floor ring turned while they go for an egg: they switch egg (KSKIP s)
+    if (G.ph === 'go' && G.tgt && !(G.skipT > 0) && this.menaceTurned(G.c, 0.25)) { G.skip = G.tgt; G.skipT = KSKIP; G.tgt = 0; this.emit('kitSwitch', this.kitBody(G)); }
     this.kitMama(K, dt);
     this.kitCrew(K, G, dt);
+    if (!(G.ph === 'lift' || G.eid) && this.menaceHolds('kits')) this.menaceDone('kits', 'fetch', 0); // the fetch is over
     if (MAMA_PH.has(K.ph)) this.kitCatch(K);
   },
   // ---------- mama
@@ -192,9 +209,9 @@ export const kitMethods = {
     const saved = this.savedLog.length, loose = this.kitLoose(), tg = this.level.target || 1;
     const fair = K.sack.length && saved + loose < tg; // the eggs outside her sack can no longer make the target
     if (K.fails >= K.max || fair || (!loose && K.sack.length)) { this.kitSulk(K, fair ? 'fair' : K.fails >= K.max ? 'fails' : 'empty'); return; }
-    if (!go) { this.kitSet(K, 'rest', this.kitM(KITS.rest)); return; }
+    if (!go) { this.kitSet(K, 'rest', this.kitRest(KITS.rest)); return; }
     if (!loose) { K.t = 1.0; return; } // nothing to fetch: she waits
-    this.kitSet(K, 'untie', KITS.untie2); this.emit('kitUntie', this.kitHead());
+    this.kitSet(K, 'untie', this.kitRest(KITS.untie2)); this.emit('kitUntie', this.kitHead());
   },
   kitSulk(K, why) { K.why = why; K.spilled = 0; this.kitSet(K, 'sulk', KITS.sulk); this.emit('kitSulk', { ...this.kitHead(), why, n: K.sack.length }); },
   kitHead() { const K = this.kit; return { x: K.x, y: this.groundY + 1.7 }; },
@@ -202,7 +219,7 @@ export const kitMethods = {
   kitPop(K) {
     const G = K.g, g = this.kitGeo();
     G.x = g.sack; G.y = this.groundY; G.c = -1; G.eid = 0; G.tgt = 0; G.why = ''; G.p = null; K.trips++;
-    this.kitSet(G, 'pop', KITS.pop);
+    this.kitSet(G, 'pop', this.kitRest(KITS.pop));
     this.emit('kitPop', { x: g.sack, y: this.groundY + 0.4, n: K.n });
   },
   // ---------- the crew
@@ -216,9 +233,9 @@ export const kitMethods = {
     switch (G.ph) {
       case 'pop': if ((G.t -= dt) <= 0) { this.kitSet(G, 'run'); this.emit('kitRun', { x: G.x, y: G.y }); } break;
       case 'run': {
-        const P = this.kitPt(n - 1, EXIT), gx = clamp(P.x - 0.15, g.x0, g.x1 + 0.4), d = gx - G.x, v = KITS.run * dt;
+        const P = this.kitPt(n - 1, EXIT), gx = clamp(P.x - 0.15, g.x0, g.x1 + 0.4), d = gx - G.x, v = KITS.run * this.kitD().tempo * this.menaceHeat() * dt;
         G.x += clamp(d, -v, v); G.odo += Math.min(Math.abs(d), v); G.y = this.groundY; G.dir = d >= 0 ? 1 : -1;
-        if (Math.abs(gx - G.x) < 1e-3) { G.from = { x: G.x, y: G.y }; this.kitSet(G, 'climbIn', KITS.climbIn); this.emit('kitClimb', { ...P, ring: n - 1 }); }
+        if (Math.abs(gx - G.x) < 1e-3) { G.from = { x: G.x, y: G.y }; this.kitSet(G, 'climbIn', this.kitQuick(KITS.climbIn)); this.emit('kitClimb', { ...P, ring: n - 1 }); }
         break;
       }
       case 'climbIn': {
@@ -231,7 +248,8 @@ export const kitMethods = {
       case 'carry': this.kitCarry(K, G, dt); break;
       case 'lift': {
         const e = this.eggs.find((q) => q.id === G.tgt);
-        if (!e || !this.kitFit(e) || this.channelOf(e) !== G.c || this.kitDist(G, e) > 0.9) { G.tgt = 0; this.kitSet(G, 'go'); this.emit('kitMiss', this.kitBody(G)); break; }
+        // (0.8.19 a near miss on the edge of a run: as they heave, the reach closes to menaceNear of itself)
+        if (!e || !this.kitFit(e) || this.channelOf(e) !== G.c || this.kitDist(G, e) > (G.t <= dt ? 0.9 * this.menaceNear() : 0.9)) { G.tgt = 0; this.kitSet(G, 'go'); this.emit('kitMiss', this.kitBody(G)); break; }
         if ((G.t -= dt) <= 0) {
           const p = e.body.getPosition();
           this.reefTake(e, 2); G.eid = e.id; G.tgt = 0; G.sx = p.x; G.sy = p.y;
@@ -290,21 +308,22 @@ export const kitMethods = {
       const q = G.a + s * (k * 0.05) / r;
       if (this.kitSolid(G.c, q, 0.1)) {
         if (!this.kitArcOk(q) || Math.abs(wrap(goal - G.a)) < Math.abs(wrap(q - G.a))) return false;
-        G.from = { c: G.c, a: G.a }; G.to = q; this.kitSet(G, 'hop', KITS.hop); this.emit('kitHop', { ...this.kitBody(G), ring: G.c }); return true;
+        G.from = { c: G.c, a: G.a }; G.to = q; this.kitSet(G, 'hop', this.kitQuick(KITS.hop)); this.emit('kitHop', { ...this.kitBody(G), ring: G.c }); return true;
       }
     }
     return false;
   },
   kitGo(K, G, dt) {
-    const e = this.kitPick(G), v = this.kitM(KITS.walk);
+    const e = this.kitPick(G), v = this.kitM(KITS.walk) * this.kitD().tempo * this.menaceHeat() * this.kitScamp();
     G.wait = 0;
     if (!e) { this.kitFlee(G, 'none'); return; } // nothing left to fetch: home (not a failed fetch)
     G.tgt = e.id;
     const ce = this.channelOf(e);
     if (ce === G.c) {
       const p = e.body.getPosition(), ae = Math.atan2(p.y, p.x), sp = Math.hypot(e.body.getLinearVelocity().x, e.body.getLinearVelocity().y);
-      if (this.kitDist(G, e) <= KITS.lean && sp < 0.8) { this.kitSet(G, 'lift', this.kitM(KITS.lift)); this.emit('kitLift', { x: p.x, y: p.y, egg: e, ring: G.c }); return; }
-      const goal = this.kitClampArc(ae), w = this.kitWalk(G, goal, v, dt);
+      if (this.kitDist(G, e) <= KITS.lean && sp < 0.8 && (this.menaceMay('kits', 'lift') || ((G.pace = 0.9), false))) { this.kitSet(G, 'lift', this.kitTell(KITS.lift)); this.emit('kitLift', { x: p.x, y: p.y, egg: e, ring: G.c }); return; }
+      // (refused a token: they pace about the egg, a step back and forth, eyes on it)
+      const goal = this.kitClampArc(ae + (G.pace > 0 ? (0.5 * Math.sin(this.t * 2.6)) / Math.max(0.5, this.rings[G.c].r) : 0)), w = this.kitWalk(G, goal, v, dt);
       if (w === 'hole' && !this.kitHopOver(G, goal)) G.wait = 1;
       else if (w === 'there') G.wait = 1;
       return;
@@ -312,7 +331,7 @@ export const kitMethods = {
     this.kitRoute(G, ce < G.c ? -1 : 1, v, dt);
   },
   kitCarry(K, G, dt) {
-    const n = this.rings.length, v = this.kitM(KITS.carry);
+    const n = this.rings.length, v = this.kitM(KITS.carry) * (0.55 + 0.45 * this.kitScamp()); // heave, stagger, heave
     G.wait = 0;
     if (G.c === n - 1) {
       const w = this.kitWalk(G, EXIT, v, dt);
@@ -349,7 +368,7 @@ export const kitMethods = {
     const w = this.kitWalk(G, goal, v, dt);
     if (w === 'there') {
       G.from = { c: G.c, a: G.a }; G.gi = best.gi; G.gr = ri;
-      this.kitSet(G, way < 0 ? 'up' : 'down', way < 0 ? KITS.up : KITS.down);
+      this.kitSet(G, way < 0 ? 'up' : 'down', this.kitQuick(way < 0 ? KITS.up : KITS.down));
       this.emit(way < 0 ? 'kitUp' : 'kitDrop', { ...this.kitBody(G), ring: ri, egg: G.eid ? 1 : 0 });
     } else if (w === 'hole') this.kitHopOver(G, goal);
   },
