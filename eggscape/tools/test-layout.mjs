@@ -81,8 +81,10 @@ const key = (q) => `${q.size} ${q.state} ${q.rule} ${q.tag}`; // (not where in t
 if (process.argv.includes('--baseline')) {
   if (ONLY_S) { console.log('--baseline needs every state (no LAYOUT_ONLY)'); process.exit(1); }
   const open = all.filter((q) => !q.allowed && q.rule !== 'ERROR');
-  const txt = `// lint819: the layout breaks already open when the checker came in (2026-11-27), on tools/test-layout.mjs's key states.
-// NOT exemptions: this is the worklist the pages are being fixed against (the full one: scratchpad lint819/report-now.md).
+  const txt = `// lint819: the layout breaks still open on tools/test-layout.mjs's key states. NOT exemptions: a worklist.
+// Every ONSCREEN, TAPSIZE, CROWD, EVENGAP, ALIGN and BALANCE break here was fixed (2026-11-27); what is left is
+// FONTS (more than 3 type sizes on a page) and WORDS (more words than a glance reads). Fixing those means merging
+// text roles or cutting words, which changes what a page says: the owner's call, not a layout fix.
 // test-layout fails on any break not here and not in tools/layout-allow.cjs, and names entries here that no longer
 // happen (fixed: delete them). Written by \`node tools/test-layout.mjs --baseline\`; never add a line by hand to get green.
 module.exports = [
