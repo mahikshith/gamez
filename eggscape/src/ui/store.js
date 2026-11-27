@@ -1192,7 +1192,8 @@ function drawTile(ui, ctx, item, x, y, w, h, s, t) {
   const chipH = 26 * s, nameS = 13 * s, TG = TILE_GAP * s, top = item.why ? 30 * s : item.badgeCol ? 18 * s : 0;
   // (a tile with no power in a grid of powers: its name stands in the middle of the chip room and its art takes the rest)
   const cy0 = y + fh - 8 * s - chipH, pky = cy0 - (pkH ? TG + pkH : 0), nameY = pkH && !item.perk ? cy0 - TG - pkH / 2 : pky - TG - nameS * 0.55; // the price chip's top, the power chip's top, the name's centre line
-  const ah = nameY - nameS * 0.6 - 4 * s - (y + 6 * s + top), acx = x + w / 2, acy = y + 6 * s + top + ah / 2; // a Save pill gets its own room above the art
+  const ah = nameY - nameS * 0.6 - Math.max(4 * s, 6.5 - nameS * 0.1) - (y + 6 * s + top), // (lint819: the name 6 px under the art on a small screen too)
+    acx = x + w / 2, acy = y + 6 * s + top + ah / 2; // a Save pill gets its own room above the art
   const lg = ctx.createRadialGradient(acx, acy, 0, acx, acy, Math.min(w, ah) * 0.55); lg.addColorStop(0, 'rgba(255,255,255,0.75)'); lg.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = lg; ctx.fillRect(x, y, w, ah + 12 * s);
   const bounce = item.flash < 0.6 ? 1 + 0.2 * Math.sin((item.flash / 0.6) * Math.PI) : 1;
@@ -1350,7 +1351,7 @@ export function drawStore(ui, ctx, W, H, state) {
   } } });
 
   // ---- tabs: the same left and right edge as the cards under them
-  const tg = 6 * s, tabW = Math.min(130 * s, (cw - tg * (TABS.length - 1)) / TABS.length), tabH = (D.tabH + 2) * s;
+  const tg = Math.max(6 * s, 7), tabW = Math.min(130 * s, (cw - tg * (TABS.length - 1)) / TABS.length), tabH = Math.max((D.tabH + 2) * s, 44); // (lint819: a thumb's 44 px and 7 px apart on a small screen too)
   const tabX = OX + AW / 2 - (tabW * TABS.length + tg * (TABS.length - 1)) / 2, tabY = P.bottom + 8 * s;
   // one label size for every tab, the largest at which the longest label fits
   const tabS = Math.min(17 * s, ...TABS.map(([, l]) => (tabW - 18 * s) * 17 * s / ui.measure(l, 17 * s)));
@@ -1482,7 +1483,7 @@ export function drawStore(ui, ctx, W, H, state) {
 
   // a long list scrolls between the tabs and the bottom; cards cut by the edge keep a tap area only inside the list and
   // record nothing for the overlap check
-  const SC = state.scroll || { y: 0, v: 0, max: 0 }, vt = bodyTop - 4 * s, vb = OY + AH;
+  const SC = state.scroll || { y: 0, v: 0, max: 0 }, vt = Math.max(bodyTop - 4 * s, tabY + tabH + 6.5), vb = OY + AH; // (lint819: a row scrolled up stops 6 px under the tabs)
   const dt = Math.min(0.1, Math.max(0, t - (SC.t || t))); SC.t = t;
   const lim = ui.calm ? 0 : 110 * s; // 0.8.7: the one scroll feel (scroll.js): a fling glides, the ends stretch and settle
   if (!state.dragging) glideStep(SC, dt, lim);
@@ -1508,7 +1509,7 @@ export function drawStore(ui, ctx, W, H, state) {
     draw();
     if (y < vt || y + h > vb) {
       ui.rects.length = n0;
-      for (let k = ui.buttons.length - 1; k >= nb; k--) { const b = ui.buttons[k], t2 = Math.max(b.y, vt), b2 = Math.min(b.y + b.h, vb); if (b2 - t2 < 8 * s) ui.buttons.splice(k, 1); else { b.y = t2; b.h = b2 - t2; } }
+      for (let k = ui.buttons.length - 1; k >= nb; k--) { const b = ui.buttons[k], t2 = Math.max(b.y, vt), b2 = Math.min(b.y + b.h, vb); if (b2 - t2 < 8 * s) ui.buttons.splice(k, 1); else { b.r0 = b.r0 || { x: b.x, y: b.y, w: b.w, h: b.h }; b.y = t2; b.h = b2 - t2; } } // (r0: its size before the window cut it, for the layout checker)
     }
   };
   const x0 = OX + AW / 2 - cw / 2;

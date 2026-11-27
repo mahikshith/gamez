@@ -536,7 +536,7 @@ export class UI {
     }
     ctx.restore();
     const r = o.hit || { x, y, w, h }; // o.hit: a larger tap/record rect than the drawn face (segmented rows)
-    this.record(r, 'btn:' + id, 'btn:' + id, (typeof __DEV__ !== 'undefined' && __DEV__) ? { ui: 1, kind: 'btn', set: o.group } : null); // o.group (lint819): the row / column it lines up with
+    this.record(r, 'btn:' + id, 'btn:' + id, (typeof __DEV__ !== 'undefined' && __DEV__) ? { ui: 1, kind: 'btn', set: o.group, ghost: !!o.ghost } : null); // o.group (lint819): the row / column it lines up with
     if (!o.disabled) this.buttons.push({ id, ...r });
     return { x, y, w, h, dy, cy };
   }

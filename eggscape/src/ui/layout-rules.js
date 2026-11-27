@@ -45,8 +45,8 @@ export function lint(ui, o = {}) {
   // same geometry under its own tag) and its full size before a scrolling strip cut it (r0)
   const B = ui.buttons.map((b) => {
     const rec = R.find((q) => q.tag === 'btn:' + b.id && geo(q, b)) || R.find((q) => geo(q, b));
-    const full = rec && rec.r0 ? rec.r0 : b;
-    return { id: b.id, x: b.x, y: b.y, w: b.w, h: b.h, x1: b.x + b.w, y1: b.y + b.h, cx: b.x + b.w / 2, cy: b.y + b.h / 2, full, rec, ui: !!(rec && rec.ui), set: rec && rec.set, cut: full.w > 0 && (b.w < full.w * TOL.cut || b.h < full.h * TOL.cut) };
+    const full = b.r0 || (rec && rec.r0) || b; // (a page that trims its own tap boxes to a window keeps the size before in b.r0)
+    return { id: b.id, trim: full !== b, x: b.x, y: b.y, w: b.w, h: b.h, x1: b.x + b.w, y1: b.y + b.h, cx: b.x + b.w / 2, cy: b.y + b.h / 2, full, rec, ui: !!(rec && rec.ui), set: rec && rec.set, cut: full.w > 0 && (b.w < full.w * TOL.cut || b.h < full.h * TOL.cut) };
   });
   // a segmented control (lint819 fix: the ring-speed slider's twelve 16 px ticks): three or more tap boxes of one family
   // touching edge to edge on one line are one control; tap size is judged on the whole, and its parts never crowd each other
@@ -68,7 +68,10 @@ export function lint(ui, o = {}) {
       const out1 = Math.max(A.x - q.x, A.y - q.y, q.x + q.w - A.x1, q.y + q.h - A.y1);
       const tag = q.id != null ? 'btn:' + q.id : q.tag;
       if (out1 > 1 && once('on' + tag)) add('ONSCREEN', tag, `leaves the safe rect by ${r1(out1)} px`, 200 + out1);
-      if (q.cut && once('cut' + tag)) add('ONSCREEN', tag, `cut by its strip: ${Math.round((100 * q.w * q.h) / (q.full.w * q.full.h))} % shown (${Math.round(q.w)}x${Math.round(q.h)} of ${Math.round(q.full.w)}x${Math.round(q.full.h)})`, 150 + 50 * (1 - (q.w * q.h) / (q.full.w * q.full.h)));
+      // a list's row peeking out of its scroll window is the "more this way" cue, not a break (lint819 fix: the shop's
+      // tiles): a cut tap box breaks the rule when what shows is a sliver under 44 px, or it is a button the level flow needs
+      const sliver = q.cut && (Math.min(q.w, q.h) < TOL.tap || (q.id != null && FLOW_IDS.test(q.id)));
+      if (sliver && once('cut' + tag)) add('ONSCREEN', tag, `cut by its strip: ${Math.round((100 * q.w * q.h) / (q.full.w * q.full.h))} % shown (${Math.round(q.w)}x${Math.round(q.h)} of ${Math.round(q.full.w)}x${Math.round(q.full.h)})`, 150 + 50 * (1 - (q.w * q.h) / (q.full.w * q.full.h)));
     }
   }
   // 2. TAP SIZE: 44 px both ways; 56 for what a level-flow page needs
@@ -134,8 +137,17 @@ export function lint(ui, o = {}) {
           if (dc > TOL.edge) add('ALIGN', name(k, r), `row off one centre line by ${r1(dc)} px`, 55 + Math.min(30, dc));
           // centring is judged on the whole line the row stands in (lint819 fix: a family that shares its line with other
           // buttons, the booster strip's shop tiles beside its video tile and its arrows, is not off centre by itself)
-          const cy0 = r[0].cy, line = [...r, ...B.filter((q) => !huge(q) && !r.includes(q) && Math.abs(q.cy - cy0) <= 0.3 * q.h && Math.min(q.y1, r[0].y1) - Math.max(q.y, r[0].y) > 0.5 * Math.min(q.h, r[0].h))];
-          const x0 = Math.min(...line.map((q) => q.x)), x1 = Math.max(...line.map((q) => q.x1)), dx = (x0 + x1) / 2 - A.cx;
+          const cy0 = r[0].cy, onLine = (q) => Math.abs(q.y + q.h / 2 - cy0) <= 0.3 * q.h && Math.min(q.y + q.h, r[0].y1) - Math.max(q.y, r[0].y) > 0.5 * Math.min(q.h, r[0].h);
+          // (and what is recorded on it, a header row with the stars chip at its end; only what joins on, a gap no wider than
+          // the row's items, not the other column's pictures)
+          const cand = [...B.filter((q) => !huge(q) && !r.includes(q) && onLine(q)), ...R.filter((q) => !String(q.tag).startsWith('panel') && !/^btn:/.test(q.tag) && q.w * q.h < 0.3 * SA && onLine(q)).map((q) => ({ ...q, x1: q.x + q.w }))];
+          const line = [...r], reach = Math.max(...r.map((q) => q.w));
+          for (let more = true; more;) { more = false; const lx0 = Math.min(...line.map((q) => q.x)), lx1 = Math.max(...line.map((q) => q.x1)); for (const q of cand) if (!line.includes(q) && q.x1 >= lx0 - reach && q.x <= lx1 + reach) { line.push(q); more = true; } }
+          // its column (lint819 fix: a two-column landscape page): the widest wide button standing over or under the row
+          // across most of it (PLAY over Levels | Daily | Shop); else the safe rect's middle
+          const x0 = Math.min(...line.map((q) => q.x)), x1 = Math.max(...line.map((q) => q.x1));
+          const colB = B.filter((q) => q.ui && !q.ghost && !huge(q) && !line.includes(q) && q.w >= 0.35 * A.w && Math.abs(q.cy - cy0) < 2.5 * Math.max(q.h, r[0].h) && Math.min(q.x1, x1) - Math.max(q.x, x0) > 0.5 * (x1 - x0)).sort((a, b) => b.w - a.w)[0];
+          const dx = (x0 + x1) / 2 - (colB ? colB.cx : A.cx);
           if (!line.some((q) => q.cut) && x1 - x0 > 0.5 * A.w && Math.abs(dx) > TOL.centre && !o.offCentre) add('ALIGN', name(k, r), `row ${r1(dx)} px off the column's centre`, 50 + Math.min(30, Math.abs(dx)));
         }
       }
@@ -149,7 +161,7 @@ export function lint(ui, o = {}) {
     }
   }
   // the things a page shows: recorded rects (no panels) and tap boxes without a rect, cut to the safe rect
-  const things = [...R.filter((q) => !String(q.tag).startsWith('panel')), ...B.filter((q) => !q.rec && !huge(q))].map((q) => ({ tag: q.tag || 'btn:' + q.id, group: q.group || 'btn:' + q.id, set: q.set || (q.id && seg.has(q.id) ? 'seg:' + seg.get(q.id).key : undefined), container: q.container, kind: q.kind, x: q.x, y: q.y, w: q.w, h: q.h, x1: q.x + q.w, y1: q.y + q.h,
+  const things = [...R.filter((q) => !String(q.tag).startsWith('panel')), ...B.filter((q) => !q.rec && !huge(q)).map((q) => ({ ...q, r0: q.trim ? q.full : null }))].map((q) => ({ tag: q.tag || 'btn:' + q.id, group: q.group || 'btn:' + q.id, set: q.set || (q.id && seg.has(q.id) ? 'seg:' + seg.get(q.id).key : undefined), container: q.container, kind: q.kind, ghost: q.ghost, x: q.x, y: q.y, w: q.w, h: q.h, x1: q.x + q.w, y1: q.y + q.h,
     cut: q.r0 ? { l: q.x - q.r0.x > 0.5, t: q.y - q.r0.y > 0.5, r: q.r0.x + q.r0.w - (q.x + q.w) > 0.5, b: q.r0.y + q.r0.h - (q.y + q.h) > 0.5 } : null }));
   for (const t of things) { const b = B.find((q) => q.rec && t.tag === 'btn:' + q.id); if (b && seg.has(b.id)) t.set = 'seg:' + seg.get(b.id).key; }
   // 5. BALANCE: no empty band over 22 % of the height between the first and the last thing; top / bottom margins within 2x
@@ -164,7 +176,9 @@ export function lint(ui, o = {}) {
       for (const [a, b] of iv) { if (a - end > band) { band = a - end; at = end; } end = Math.max(end, b); }
       if (band > TOL.band * A.h) add('BALANCE', 'page', `empty band ${Math.round(band)} px (${Math.round((100 * band) / A.h)} % of the height) from y ${Math.round(at)}`, 80 + (100 * band) / A.h);
       const top = iv[0][0] - A.y, bot = A.y1 - end, lo = Math.max(Math.min(top, bot), 0.03 * A.h);
-      if (Math.max(top, bot) > TOL.margin * lo) add('BALANCE', 'page', `margins top ${Math.round(top)} px, bottom ${Math.round(bot)} px`, 70 + Math.min(30, 5 * Math.max(top, bot) / lo));
+      // (lint819 fix: a page header hugs the top by design, so a bottom margin is "half empty" only when it is also over
+      // an eighth of the height; a top margin over twice the bottom one is the "pinned to the bottom" complaint)
+      if ((top > TOL.margin * lo) || (bot > TOL.margin * lo && bot > A.h / 8)) add('BALANCE', 'page', `margins top ${Math.round(top)} px, bottom ${Math.round(bot)} px`, 70 + Math.min(30, 5 * Math.max(top, bot) / lo));
     }
   }
   // 6. CROWDING: nothing closer than 6 px unless one group; text over a button it does not belong to
@@ -184,6 +198,7 @@ export function lint(ui, o = {}) {
       // shop's tiles scrolled up to its tab bar)
       const atCut = (p, q) => p.cut && ((p.cut.t && q.y1 <= p.y + 1) || (p.cut.b && q.y >= p.y1 - 1) || (p.cut.l && q.x1 <= p.x + 1) || (p.cut.r && q.x >= p.x1 - 1));
       if (atCut(a, b) || atCut(b, a)) continue;
+      if (a.ghost && b.ghost) continue; // (two tap squares with no face of their own, the map's stops: nothing drawn to crowd)
       const gap = dx > 0 && dy > 0 ? Math.hypot(dx, dy) : Math.max(dx, dy, 0);
       if (gap < TOL.crowd && once('cr' + a.tag + b.tag)) add('CROWD', a.tag + ' x ' + b.tag, `${r1(gap)} px apart`, 30 + 5 * (TOL.crowd - gap));
     }

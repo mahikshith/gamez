@@ -2901,10 +2901,10 @@ function drawDetail() {
       } }] : it.sub ? [lineBlock(it.sub.text, 14 * s, { color: it.sub.color, tag: 'dt:sub', gap: 5 * s })] /* 0.8.16: stays with the words above it when the page shares out its air */ : []),
       { right: true, h: 56 * s, gap: 14 * s, draw: (x, y, w) => ui.button(B.id, B.label, x, y, w, 56 * s, { kind: B.kind, disabled: B.disabled, keepFace: B.keepFace, dim: B.keepFace ? 1 : undefined, icon: B.coin ? (c, X, Y, S) => drawCoin(c, X, Y, S * 0.5, G.t) : B.icon || null, size: 22 * s, shimmer: !B.disabled && B.kind !== 'off' }) },
       ...(tryK && it.perk && !it.trying ? [{ ...lineBlock('The power comes with it.', 14 * s, { color: C.ink2, tag: 'dt:perkfree', gap: 8 * s }), right: true }] : []),
-      ...(tryK ? [{ right: true, h: 50 * s, gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
-        ? ui.button('try:on', `Trying: ${DR.trials(save)[tryK[0]].left} level${DR.trials(save)[tryK[0]].left > 1 ? 's' : ''} left`, x, y, w, 50 * s, { kind: 'secondary', disabled: true, keepFace: true, dim: 1, size: 18 * s })
-        : ui.button('try:' + tryK.join(':'), 'Try it free', x, y, w, 50 * s, { kind: 'secondary', size: 20 * s }) }] : []),
-      { right: true, h: 50 * s, gap: 10 * s, draw: (x, y, w) => ui.button('dt:close', 'Close', x, y, w, 50 * s, { kind: 'tertiary', size: 20 * s }) },
+      ...(tryK ? [{ right: true, h: Math.max(50 * s, 46), gap: 10 * s, draw: (x, y, w) => it.trying // 2026-11-20: "Try it free" (worn for the next levels)
+        ? ui.button('try:on', `Trying: ${DR.trials(save)[tryK[0]].left} level${DR.trials(save)[tryK[0]].left > 1 ? 's' : ''} left`, x, y, w, Math.max(50 * s, 46), { kind: 'secondary', disabled: true, keepFace: true, dim: 1, size: 18 * s })
+        : ui.button('try:' + tryK.join(':'), 'Try it free', x, y, w, Math.max(50 * s, 46), { kind: 'secondary', size: 20 * s }) }] : []),
+      { right: true, h: Math.max(50 * s, 46), gap: 10 * s, draw: (x, y, w) => ui.button('dt:close', 'Close', x, y, w, Math.max(50 * s, 46), { kind: 'tertiary', size: 20 * s }) }, // (lint819: Try it free and Close never under 46 px)
     ];
   };
   let artH = 140;
@@ -2923,8 +2923,8 @@ const perkRow = (P, s, gap) => ({ h: 44 * s, gap, draw: (x, y, w) => {
   ui.roundRect(x + 2 * s, y, w - 4 * s, 44 * s, 11 * s); ctx.fillStyle = 'rgba(122,72,232,0.14)'; ctx.fill();
   ui.roundRect(x + 6 * s, y + 4 * s, 36 * s, 36 * s, 9 * s); ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fill();
   pictoPerk(ctx, P.icon, x + 24 * s, y + 22 * s, 30 * s, G.t);
-  ui.text(P.name, x + 50 * s, y + 15 * s, { size: 16 * s, maxW: w - 58 * s, color: ui.C.ink, tag: 'dt:perkname' });
-  ui.text(P.line, x + 50 * s, y + 33 * s, { size: 13.5 * s, maxW: w - 58 * s, color: '#5a2ea8', tag: 'dt:perkline' });
+  ui.text(P.name, x + 50 * s, y + 15 * s, { size: 16 * s, maxW: w - 58 * s, color: ui.C.ink, tag: 'dt:perkname', group: 'dt:perk' });
+  ui.text(P.line, x + 50 * s, y + 33 * s, { size: 13.5 * s, maxW: w - 58 * s, color: '#5a2ea8', tag: 'dt:perkline', group: 'dt:perk' }); // (a name and its line: one label)
 } });
 // one "what you get" row: the part's art in a small cell, then its words (a kit's boosts, a set's outfit and egg)
 const partRow = (P, s, tag, gap, o = {}) => ({ h: 40 * s, gap, draw: (x, y, w) => {
@@ -11708,18 +11708,19 @@ function drawLevels() {
   hb.addColorStop(0, 'rgba(26,16,48,0.94)'); hb.addColorStop(Math.max(0, (vt - 4 * u) / (vt + 10 * u)), 'rgba(26,16,48,0.88)'); hb.addColorStop(1, 'rgba(26,16,48,0)');
   ctx.fillStyle = hb; ctx.fillRect(0, 0, W_, vt + 10 * u);
   const X0 = A.x + pad, X1 = A.x1 - pad, Y0 = A.y + pad, hy = Y0 + 23 * u;
-  ui.button('back', '', X0, Y0, 46 * u, 46 * u, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
-  const remB = remChipOn() ? 46 * u + 8 * u : 0; if (remB) drawRemChip(X0 + 54 * u, Y0, 46 * u); // 0.8.17: reminders are off: the bell with a slash, beside back
+  const HB = Math.max(46 * u, 48); // (lint819: the header's buttons a thumb's size on a small screen: back 48, the row 46)
+  ui.button('back', '', X0, Y0, HB, HB, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: 15 * u });
+  const remB = remChipOn() ? HB + 8 * u : 0; if (remB) drawRemChip(X0 + HB + 8 * u, Y0, HB); // 0.8.17: reminders are off: the bell with a slash, beside back
   const starTxt = `${totalStars} / ${LEVELS.length * 3 + SQ.SIDE_MAX}`, stw = ui.measure(starTxt, 17 * u); // (0.8.17: the side quests' bonus stars count too)
   const chipW = 9 * u + 22 * u + 4 * u + stw + 12 * u, chipX = X1 - chipW;
-  ui.glass(chipX, hy - 18 * u, chipW, 36 * u);
+  ui.glass(chipX, hy - 18 * u, chipW, 36 * u); ui.record({ x: chipX, y: hy - 18 * u, w: chipW, h: 36 * u }, 'levels:chip', 'levels:stars'); // (the chip itself: the header row's right end)
   drawStar(ctx, chipX + 9 * u + 11 * u, hy, 9.5 * u, true);
   ui.record({ x: chipX + 9 * u, y: hy - 11 * u, w: 22 * u, h: 22 * u }, 'levels:staricon', 'levels:stars');
   ui.text(starTxt, X1 - 12 * u, hy + 0.5 * u, { size: 17 * u, align: 'right', color: '#fff', stroke: 'rgba(30,14,4,0.7)', strokeW: 3 * u, tag: 'levels:stars', group: 'levels:stars' });
   // shop and the next star chest: their own row on a phone, beside the stars in landscape
   const chest = E.chestFor(totalStars, save.wallet.chests);
   const spinOn = SP.open(save), nb = spinOn ? 3 : 2; // 0.8.15: the Lucky Spin joins the row once it exists (level 3 won)
-  const bw4 = wide ? (spinOn ? 108 : 120) * u : 0, rowY = wide ? Y0 + 1 * u : Y0 + 46 * u + 12 * u, rh = 44 * u;
+  const bw4 = wide ? (spinOn ? 108 : 120) * u : 0, rh = Math.max(44 * u, 46), rowY = wide ? Y0 + (HB - rh) / 2 : Y0 + HB + 12 * u;
   const midW = wide ? bw4 * nb + 10 * u * (nb - 1) : Math.min(A.w - 2 * pad, 440 * u), mx = wide ? chipX - 14 * u - midW : A.cx - midW / 2, half = (midW - 10 * u * (nb - 1)) / nb;
   purseBtn(mx, rowY, half, rh, 17 * u);
   if (chest) ui.button('chest', chest.ready ? 'Open!' : `${totalStars}/${chest.at}`, mx + half + 10 * u, rowY, half, rh, { kind: chest.ready ? 'primary' : 'off', shimmer: chest.ready, disabled: !chest.ready, dim: 1, iconS: 1.25, icon: (c, x, y, s2) => { drawChest(c, x, y, s2, G.t, chest.ready ? 'ready' : 'locked'); if (chest.reward.skin && !E.ownsSkin(save.wallet, chest.reward.skin)) drawSkinPreview(c, chest.reward.skin, x - s2 * 0.55, y - s2 * 0.08, s2 * 0.8, G.t); }, size: 15 * u });
@@ -11732,12 +11733,12 @@ function drawLevels() {
   let wv = 0;
   for (let w = L.nw - 1; w >= 0; w--) if (midY >= L.bandTop(w) - L.BH * 0.02) { wv = w; break; }
   for (let w = 0; w < L.nw; w++) if (midY >= L.bandTop(w)) { wv = w; break; }
-  const titleL = X0 + 46 * u + remB + 18 * u, titleR = (wide ? mx : chipX) - 18 * u, wname = WORLDS[wv] || 'Levels';
+  const titleL = X0 + HB + remB + 18 * u, titleR = (wide ? mx : chipX) - 18 * u, wname = WORLDS[wv] || 'Levels';
   const rbw = clamp(ui.measure(wname, 20 * u) + 36 * u, Math.min(120 * u, titleR - titleL), titleR - titleL);
   ui.ribbon(wname, (titleL + titleR) / 2, hy - 18 * u, rbw, 36 * u, { color: MS.WORLD_LOOK[wv].accent, size: 20 * u, tag: 'levels:title' });
   // how far along: a thin bar of the whole journey and the levels still to play
   const cleared = LEVELS.reduce((a, Lv) => a + (bestStarsOf(Lv.id) > 0 ? 1 : 0), 0), left = LEVELS.length - cleared;
-  const py = wide ? Y0 + 46 * u + 12 * u : rowY + rh + 10 * u + 10 * u, pw = Math.min(A.w - 2 * pad, (wide ? 340 : 440) * u), px0 = A.cx - pw / 2;
+  const py = wide ? Y0 + HB + 12 * u : rowY + rh + 10 * u + 10 * u, pw = Math.min(A.w - 2 * pad, (wide ? 340 : 440) * u), px0 = A.cx - pw / 2;
   const lt = left ? `${left} level${left === 1 ? '' : 's'} to go` : 'Every level cleared!', ltw = ui.measure(lt, 13 * u), bw3 = pw - ltw - 12 * u;
   ui.roundRect(px0, py - 4 * u, bw3, 8 * u, 4 * u); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
   if (cleared) { ui.roundRect(px0, py - 4 * u, Math.max(8 * u, bw3 * cleared / LEVELS.length), 8 * u, 4 * u); ctx.fillStyle = '#f6c454'; ctx.fill(); }
