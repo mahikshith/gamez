@@ -34,6 +34,7 @@ const SKY = new Set(['none', 'fireflies', 'leaves', 'snow', 'fog', 'ghosts', 'as
 const ORB = { curse: 'curse', thorn: 'thornorb' };
 const listOf = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
 
+let COSTUME = () => 'bow'; // (set from src/render/costume.js before the scan)
 function scan(L, where, INFO) {
   const want = new Set();
   const F = L.bossFight, boss = F && (F.kind || L.boss);
@@ -53,6 +54,7 @@ function scan(L, where, INFO) {
       if (n) want.add(k);
     } else if (HAZARD_KEY[k]) want.add(HAZARD_KEY[k]);
     else if (k === 'raccoon') want.add('boss:raccoon'); // 0.8.17 bandit: the raccoon boss's own key
+    else if (k === 'kits') want.add('kits:' + ((L.kits && L.kits.costume) || COSTUME(L.theme))); // 0.8.18 mama raccoon, in her world's costume
     else bad(`${where}: level key "${k}" is neither a villain/hazard nor known board furniture`);
   }
   if (L.weather && !SKY.has(L.weather)) { if (WEATHER[L.weather]) want.add(WEATHER[L.weather]); else bad(`${where}: weather "${L.weather}" not in the table`); }
@@ -74,6 +76,7 @@ function scan(L, where, INFO) {
 (async () => {
   const imp = (f) => import(path.join(root, 'src/data', f));
   const { VILLAIN_INFO: INFO } = await imp('villain-info.js');
+  COSTUME = (await import(path.join(root, 'src/render/costume.js'))).costumeOf;
   const { LEVELS } = await imp('levels.js');
   const { DAILY } = await imp('daily.js');
   const { WONDER_LEVELS } = await imp('wonder-levels.js');

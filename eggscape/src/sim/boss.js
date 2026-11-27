@@ -135,6 +135,7 @@ export function animalsHit(sim, kind, o = {}) {
   if (sim.pipHit) n += sim.pipHit(kind, o); // 0.8.17 pip
   if (sim.cocoHit) n += sim.cocoHit(kind, o); // 0.8.17 coco
   if (sim.band) n += sim.bandHit(kind, o); // 0.8.17 bandit: lightning on his paw hurts, a quake or a rock makes him reel
+  if (sim.kit && (kind === 'bolt' || kind === 'quake' || kind === 'rock')) n += sim.kitHit(kind, o); // 0.8.18 kits: back into the sack
   if (kind === 'quake' || kind === 'bolt') {
     const B = sim.bx && sim.bx.boss;
     if (B && B.den && B.atk && B.atk.ph === 'warn') { B.atk = null; B.t = 1.5; B.flinch = 0.8; sim.emit('bossFlinch', { x: B.x, y: B.y }); }
@@ -212,6 +213,8 @@ function iceStep(sim, dt) {
       const p = e.body.getPosition();
       if (Math.hypot(p.x - I.x, p.y - tip) < (I.big ? 0.36 : 0.3)) {
         gone = true;
+        // 0.8.18 kits: an egg the kits carry has a kit riding on top: the ice bonks HIM, they tumble and the egg is spared
+        if (sim.kit && sim.kit.g && sim.kit.g.eid === e.id && (sim.kit.g.ph === 'carry' || sim.kit.g.ph === 'lift')) { sim.emit('icicleShatter', { x: I.x, y: tip, big: I.big }); sim.kitTumble(sim.kit.g, 'ice'); break; }
         sim.emit('icicleHit', { egg: e, x: I.x, y: tip, big: I.big });
         sim.crack(e, 0, 'icicle', I.big ? 2 : 1);
       }

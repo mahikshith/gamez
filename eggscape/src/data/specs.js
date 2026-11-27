@@ -133,7 +133,7 @@ export const SPECS = [
     tip: 'Turn a wall into its tongue: bonk! A flaming egg scares the frog off.',
     rings: [{ gaps: 1, thorns: 1 }, { gaps: 2, gapX: [2], thorns: 1, size: [2, 3], barriers: 1 }, { gaps: 2, thorns: 1, size: [2, 3], barriers: 1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3], blunt: 1, gear: true }, { gaps: 2, thorns: 2, size: [1, 2] }] },
   // 0.8.17 coco: Coco the monkey (src/sim/coco.js) rides ring 1 over channel 2, snatches eggs with his tail and tosses banana peels; a hard flick throws him off
-  { id: 10, world: 2, theme: 'jungle', name: 'Monkey Business', eggs: 3, target: 2, spacing: 1.0, material: 'wood', minMoves: 5,
+  { id: 10, world: 2, theme: 'jungle', name: 'Monkey Business', eggs: 3, target: 2, spacing: 1.0, material: 'wood', kits: {delay: 8}, minMoves: 5,
     monkey: { ch: 2, a: -100, delay: 5 }, nest: { w: 2.8 }, bonus: { kind: 'turns' },
     orbs: [{ type: 'fire_red', ch: 1 }, { type: 'rockskin', ch: 3 }],
     intro: { title: 'Coco the Monkey', line: 'Coco grabs eggs with his tail and throws banana peels. Flick his ring hard: whoa, off he flies!' },
@@ -160,8 +160,8 @@ export const SPECS = [
     orbs: [{ type: 'hourglass', ch: 1 }, { type: 'stone', ch: 2 }],
     intro: { title: 'Frozen Lake', line: 'Arrow rings turn only one way, and ice is slippery. The hourglass slows the world and stops the fuse.' },
     tip: 'Arrow rings only turn one way: sometimes the long way round is the safe one.',
-    rings: [{ gaps: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1, pads: 1 }, { gaps: 2, thorns: 2, size: [2, 3], pads: 1, creep: { len: 0.9, v: 0.3, rest: 1.8, form: 'frost' } }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], oneway: -1, pads: 1 }, { gaps: 2, thorns: 2, size: [1, 2], pads: 1 }] },
-  { id: 14, gid: 12, world: 3, theme: 'blizzard', name: 'Icicle Hollow', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 5,
+    rings: [{ gaps: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1, pads: 1 }, { gaps: 2, thorns: 2, size: [2, 3], pads: 1 }, { mat: 'ice', gaps: 2, gapX: [3], thorns: 2, size: [2, 3], oneway: -1, pads: 1 }, { gaps: 2, thorns: 2, size: [1, 2], pads: 1 }] },
+  { id: 14, gid: 12, world: 3, theme: 'blizzard', name: 'Icicle Hollow', eggs: 3, target: 2, spacing: 1.0, material: 'stone', kits: {delay: 9}, minMoves: 5,
     nest: { w: 2.8 }, bonus: { kind: 'time' }, icicles: { every: 5, delay: 4, big: 3 }, snake: { delay: 10, speed: 0.35 }, // M4: a chaser in every world
     orbs: [{ type: 'stone', ch: 1 }, { type: 'fire_green', ch: 3 }, { type: 'frost', ch: 2 }],
     intro: { title: 'Falling ice', line: 'An icicle grows over an egg and shakes before it drops: turn the ring above to swing it away. Big chunks freeze a ring.' },
@@ -202,7 +202,7 @@ export const SPECS = [
     rings: [{ gaps: 1, thorns: 1 }, { mat: 'ice', gaps: 1, gapX: [2], thorns: 2, size: [2, 3], oneway: 1 }, { gaps: 2, thorns: 2, size: [2, 3], blunt: 1 }, { mat: 'ice', gaps: 2, thorns: 2, size: [2, 3], oneway: -1 }, { gaps: 2, gapX: [3], thorns: 2, size: [2, 3] }, { gaps: 2, thorns: 2, size: [1, 2], oneway: 1 }] },
 
   // ---------------- 4 Crystal Caves: portals that suck and spit orbs, grates, quail and ostrich eggs, glass
-  { id: 19, gid: 16, world: 4, theme: 'crystal', name: 'Crystal Caves', eggs: 3, target: 2, spacing: 1.0, material: 'stone', minMoves: 4, eggKinds: ['quail'],
+  { id: 19, gid: 16, world: 4, theme: 'crystal', name: 'Crystal Caves', eggs: 3, target: 2, spacing: 1.0, material: 'stone', kits: {delay: 16, n: 2}, minMoves: 4, eggKinds: ['quail'],
     nest: { w: 2.8 }, bonus: { kind: 'orbs' }, icicles: { every: 7, delay: 8, big: 4 },
     orbs: [{ type: 'fire_red', ch: 2 }, { type: 'twin', ch: 3 }],
     portals: [{ from: [2, 90], to: [2, 90], emit: ['fire_red'], every: 7, pull: 0 }, { from: [3, -150], to: [4, -40], emit: ['fire_green', 'bubble'], every: 9 }],
@@ -507,8 +507,8 @@ export const SPECS = [
     orbs: [{ type: 'shrink', ch: 1 }, { type: 'iron', ch: 3 }, { type: 'shock', ch: 4 }],
     intro: { title: 'Wind-up beetle', cw: 'beetle', line: "Turn the beetle's ring to wind him: he marches the way you turned it, shoves eggs ahead and crushes thorns. Unwound, he is a wall." },
     tip: 'Shrink ray: small eggs slip through grates, but they crack easier.',
-    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, thorns: 2, size: [2, 3], creep: { len: 1.3, v: 0.8, rest: 1.4, form: 'saw' } }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
-  { id: 57, gid: 48, world: 10, theme: 'lab', name: 'Spiral Spring', eggs: 3, target: 2, spacing: 1.05, material: 'metal', minMoves: 4,
+    rings: [{ gaps: 1, thorns: 1 }, { gaps: 1, gapX: [2], thorns: 2, size: [2, 3], grate: 1 }, { gaps: 2, thorns: 2, size: [2, 3] }, { gaps: 2, gapX: [3], thorns: 2, size: [1, 2] }, { gaps: 2, thorns: 1, size: [1, 2] }] },
+  { id: 57, gid: 48, world: 10, theme: 'lab', name: 'Spiral Spring', eggs: 3, target: 2, spacing: 1.05, material: 'metal', kits: {delay: 7}, minMoves: 4,
     nest: { w: 2.7 }, bonus: { kind: 'turns' }, jack: [{ ch: 1 }], beetle: { ch: 3, delay: 6 },
     orbs: [{ type: 'shrink', ch: 1 }, { type: 'iron', ch: 2 }, { type: 'spin', ch: 3 }],
     intro: { title: 'Spring jack', cw: 'jack', line: 'Roll an egg over the jack and it bounces back up: time it to jump a gap. An iron egg jams it. The spiral ring has no gap: roll down its step.' },

@@ -11,6 +11,8 @@
 import { RACCOON_M, raccoonPose, raccoonBlend, raccoonHold, drawRaccoon, CRANK_PULL } from './raccoon.js';
 import { drawEgg } from './world.js';
 import { RING_TH } from '../sim/geom.js';
+import { PERF } from '../perf.js'; // 0.8.18 the stand-off's cloud
+import { DUEL } from '../sim/bandit.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -71,6 +73,21 @@ function lookPerch(sim, B, t) {
     case 'whistle': st = 'whistle'; u = P; break;
     case 'perchStun': Object.assign(add, { spiral: 1, stars: 3, lid: 0, jaw: 0.35, tongue: 1, ta: 1.3, smile: -0.3 }); break;
     case 'cower': Object.assign(add, { ear: 1, sweat: 1, brow: -0.8, pup: 0.6, smile: -0.5, by: 21 }); o.eye = 'wide'; break;
+    // 0.8.18 the stand-off: he sees it coming, FREEZES (ears up, eyes wide), a beat, the eyes NARROW, they CIRCLE (a slow
+    // sway, chin down, a paw flexing), then the dust cloud (drawDuel); after it he DUSTS his paws (won) or stares at the rip
+    case 'duel': {
+      const D = B.duel || {}, q = D.ph === 'come' ? 0 : D.t; // (s since the freeze)
+      if (D.ph === 'come') { o.eye = 'lock'; Object.assign(add, { brow: 0.4, smile: 0.2 }); }
+      else if (D.ph === 'freeze') { o.eye = 'wide'; Object.assign(add, { ear: -0.4, pup: 0.55, jaw: 0.2 * ss(0, 0.15, q), smile: -0.2, by: 23 + 2 * ss(0, 0.1, q) }); }
+      else if (D.ph === 'stare' || D.ph === 'circle') {
+        const sw = D.ph === 'circle' ? Math.sin(t * 3.2) : 0, n = ss(0, 0.5, q - DUEL.freeze);
+        o.eye = n > 0.5 ? 'lock' : 'normal';
+        Object.assign(add, { brow: lerp(0.2, -1, n), lid: lerp(0.1, 0.5, n), lidLo: 0.25 * n, smile: lerp(0, -0.35, n), ear: -0.3 * n, rot: 0.08 * sw, hr: 0.1 * sw, a1x: 25 + 3 * sw, a1y: -19 + 4 * Math.abs(sw), tw: sw * 0.8, tail: 0.6 + 0.3 * n });
+      }
+      break;
+    }
+    case 'dust': { const r = spitPose(0.62 + 0.38 * ss(0, 0.7, P), t); Object.assign(add, r, { happy: P > 0.15 && P < 0.7 ? 1 : 0, smile: 1, brow: -0.3, lid: 0.35, look: -0.5, hr: -0.15 }); break; } // brushing one paw off with the other, smug
+    case 'huh': o.eye = 'wide'; Object.assign(add, { hr: 0.25, jaw: 0.35, smile: -0.3, brow: 0.9, ear: 0.6, look: -0.8, looky: 0.9, pup: 0.7 }); break; // he stares down at the ripped sack
   }
   if (B.end === 'win') { st = 'sit'; Object.assign(add, { brow: -0.8, smile: -0.6, ear: 0.6, lid: 0.4 }); }
   if (B.end === 'lose') { st = 'sit'; Object.assign(add, { happy: 1, jaw: 0.7, teeth: 1, smile: 1 }); }
@@ -126,7 +143,7 @@ export function drawBandit(ctx, sim, t, k, calm, layer = 'back') {
   if (YARD_PH.has(B.ph)) { if (layer === 'front') drawYard(ctx, sim, B, tt, k, calm, frozen); return; } // in front of the rim
   const P = clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1), ring = sim.rings[B.ri];
   if (!ring) return;
-  const base = { face: B.face, inner: true, layer, frozen, calm, id: 'bandit', rate: 14, eye: 'normal' };
+  const base = { face: B.face, inner: true, layer, frozen, calm, id: 'bandit', rate: 14, eye: 'normal', rip: B.rip };
   if (B.ph === 'climb') { // a leap from the yard to the outside of the rim, then the haul over it onto the floor
     const g = sim.groundY, F = B.from || { x: B.x, y: g }, thP = -Math.PI / 2 - B.pa, L = 0.34;
     if (P < L) {
@@ -152,11 +169,14 @@ export function drawBandit(ctx, sim, t, k, calm, layer = 'back') {
     drawBanditPerch(ctx, ring.r, B.pa, tt, k, 'fall', P, { ...base, at, th: (-Math.PI / 2 - B.pa) * (1 - v), id: null, layer: layer === 'back' ? 'back' : 'front' });
     return;
   }
+  if (B.ph === 'duel' && B.duel && B.duel.ph === 'fight') { if (layer === 'front') drawDuel(ctx, sim, B, t, k, calm); return; } // 0.8.18: both inside the dust cloud
   const Lk = lookPerch(sim, B, t);
+  if (layer === 'front' && B.ph === 'duel' && B.duel && B.duel.ph === 'stare' && !calm) duelLeaf(ctx, sim, B, k);
   if (layer === 'front' && (B.ph === 'spit' || B.ph === 'crank') && !sim.state.startsWith('w') && !frozen) crankArrow(ctx, sim, B, t, k, calm);
   // his eyes follow the egg nearest him on his floor while he sits
   let eyeW = null;
-  if (Lk.st === 'sit') { let bd = 9; for (const e of sim.aliveEggs()) { if (e.hc || sim.channelOf(e) !== B.ri) continue; const p = e.body.getPosition(), q = sim.bandPerchPt(B), d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; eyeW = { x: p.x, y: p.y }; } } }
+  if (B.ph === 'duel' || B.ph === 'huh') { const T = sim.bandWeaselT && sim.bandWeaselT(); eyeW = B.ph === 'huh' ? sim.bandSackPt(B, 0) : T ? sim.thBody(T) : null; }
+  else if (Lk.st === 'sit') { let bd = 9; for (const e of sim.aliveEggs()) { if (e.hc || sim.channelOf(e) !== B.ri) continue; const p = e.body.getPosition(), q = sim.bandPerchPt(B), d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; eyeW = { x: p.x, y: p.y }; } } }
   const o = { ...base, add: Lk.add, eye: frozen ? 'normal' : Lk.o.eye, toW: Lk.o.toW, eyeW, egg: false, under: (c, p, u, face) => sackEggs(c, B, p, u, face) };
   // 0.8.18 the egg he reaches for / holds is the REAL one where the sim has it: his paws close on it, and while he holds it
   // he draws it himself between his paws (bandHides keeps the game from drawing it again)
@@ -167,6 +187,35 @@ export function drawBandit(ctx, sim, t, k, calm, layer = 'back') {
   drawBanditPerch(ctx, ring.r, B.pa, tt, k, Lk.st, Lk.u, { ...o, blended: MEMP.t === t ? MEMP.p : null });
 }
 const MEMP = { p: null, t: -1 };
+// 0.8.18 the stand-off's scuffle: a rolling ball of dust between them (world space, metres), with a striped tail, a brown
+// one, a fist, a foot and stars popping out of it in turn; calm: a still cloud. PERF.low: fewer puffs, no pop-outs.
+function drawDuel(ctx, sim, B, t, k, calm) {
+  const P = sim.bandDuelPt(B), q = B.duel.t - DUEL.freeze - DUEL.stare - DUEL.circle, R = 0.95 * (0.85 + 0.15 * ss(0, 0.3, q)) * (1 - 0.3 * ss(0.85, 1, q / DUEL.fight)), low = !!PERF.low, n = low ? 7 : 12;
+  const tt = calm ? 0.6 : t, puff = (x, y, r, c) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); };
+  ctx.save(); ctx.translate(P.x, P.y + (calm ? 0 : 0.05 * Math.sin(tt * 17)));
+  ctx.lineWidth = 0.05; ctx.strokeStyle = '#5a4632';
+  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + tt * 2.3, rr = R * (0.55 + 0.12 * Math.sin(tt * 9 + i * 2.1)); ctx.beginPath(); ctx.arc(rr * Math.cos(a), rr * 0.8 * Math.sin(a), R * (0.42 + 0.06 * Math.sin(tt * 11 + i)), 0, Math.PI * 2); ctx.fillStyle = i % 2 ? '#d9c6a2' : '#c8b088'; ctx.fill(); ctx.stroke(); }
+  puff(0, 0, R * 0.7, '#e3d2b0');
+  if (!calm && !low) { // what pokes out, one at a time, each a quick in-out
+    const slot = Math.floor(q / 0.38) % 5, u = (q % 0.38) / 0.38, out = Math.sin(u * Math.PI), a = (slot * 2.4 + 0.7) % (Math.PI * 2), ex = Math.cos(a) * R * (0.7 + 0.35 * out), ey = Math.sin(a) * R * 0.8 * (0.7 + 0.35 * out);
+    ctx.save(); ctx.translate(ex, ey); ctx.rotate(a);
+    if (slot === 0 || slot === 3) { // a tail: raccoon rings or the weasel's brown
+      for (let j = 0; j < 4; j++) puff(j * 0.13, 0, 0.11, slot === 0 ? (j % 2 ? '#2a2630' : '#9a98aa') : '#a0623a');
+    } else if (slot === 1) { puff(0, 0, 0.14, '#3b3548'); puff(0.1, 0.08, 0.05, '#3b3548'); puff(0.12, -0.02, 0.05, '#3b3548'); } // his fist
+    else if (slot === 2) { puff(0, 0, 0.12, '#f2e6cc'); puff(0.12, 0, 0.08, '#a0623a'); } // a foot
+    else { ctx.fillStyle = '#ffe14a'; for (let j = 0; j < 3; j++) { const sa = j * 2.1 + tt * 5; ctx.beginPath(); for (let m = 0; m < 10; m++) { const r2 = m % 2 ? 0.05 : 0.12, aa = sa + (m / 10) * Math.PI * 2; ctx.lineTo(0.18 * Math.cos(j * 2.1) + r2 * Math.cos(aa), 0.18 * Math.sin(j * 2.1) + r2 * Math.sin(aa)); } ctx.closePath(); ctx.fill(); } } // stars
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// a single leaf drifting down between them while they stare (the beat before the scuffle)
+function duelLeaf(ctx, sim, B, k) {
+  const P = sim.bandDuelPt(B), q = clamp((B.duel.t - DUEL.freeze) / DUEL.stare, 0, 1), x = P.x + 0.5 * Math.sin(q * 5) * (1 - q * 0.3), y = P.y + 1.1 - 1.4 * q, rot = Math.sin(q * 7) * 0.9;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.globalAlpha *= ss(0, 0.1, q) * (1 - ss(0.85, 1, q));
+  ctx.beginPath(); ctx.moveTo(-0.14, 0); ctx.quadraticCurveTo(0, 0.1, 0.14, 0); ctx.quadraticCurveTo(0, -0.1, -0.14, 0); ctx.fillStyle = '#c9822e'; ctx.fill(); ctx.lineWidth = 0.02; ctx.strokeStyle = '#6a3a10'; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-0.14, 0); ctx.lineTo(0.12, 0); ctx.stroke();
+  ctx.restore();
+}
 // the egg in his paws (grab, stuff) or under them (reach, strain): { e, w (its sim position), a (its drawn turn) }. A held
 // egg turns from how it lay at the touch to upright in his arms (sim/bandit.js pins it at a fixed turn).
 const HOLDA = { id: 0, a: 0 };
@@ -199,7 +248,7 @@ function drawYard(ctx, sim, B, t, k, calm, ice) {
   ctx.save(); ctx.translate(B.x, gY); ctx.scale(1 / k, -1 / k);
   try {
     sackEggs(ctx, B, p, u, B.face);
-    drawRaccoon(ctx, 0, 0, s, t, p, { face: B.face, frozen: ice ? 1 : 0, eye: L.o.eye, egg: false, eggDraw: B.ph === 'stuff' ? eggDraw : null });
+    drawRaccoon(ctx, 0, 0, s, t, p, { rip: B.rip, face: B.face, frozen: ice ? 1 : 0, eye: L.o.eye, egg: false, eggDraw: B.ph === 'stuff' ? eggDraw : null });
     if (B.ph === 'dash' && eggDraw) eggDraw(ctx); // the egg he runs under falls in front of him (bandHides)
     if (B.ph === 'crouch' && B.t / B.dur < 0.8) bubble(ctx, toPx(p, p.hx + 30, p.hy - 58, u, B.face), 13 * u * 1.7, '!'); // (0.8.18: the same size on screen as at his old yard scale)
   } finally { ctx.restore(); }
@@ -231,7 +280,7 @@ export function drawBanditPerch(ctx, r, a, t, k, st, u, o = {}) {
   ctx.save(); ctx.translate(px, py); ctx.scale(1 / k, -1 / k); ctx.rotate(th);
   try {
     if (o.under && o.layer !== 'back') o.under(ctx, p, s / 100, face);
-    drawRaccoon(ctx, 0, 0, s, t, p, { face, frozen: o.frozen ? 1 : 0, eye: o.eye || 'normal', egg: o.egg, layer: o.layer, out: o.out, eggDraw: o.eggDraw });
+    drawRaccoon(ctx, 0, 0, s, t, p, { face, frozen: o.frozen ? 1 : 0, eye: o.eye || 'normal', egg: o.egg, layer: o.layer, out: o.out, eggDraw: o.eggDraw, rip: o.rip });
   } finally { ctx.restore(); }
   return p; // pass it back as o.blended for the second layer, so both layers show the same pose
 }
@@ -280,6 +329,13 @@ export function banditEvent(ev, fx, U) {
       popup(ev.x, ev.y + 0.5, ev.why === 'hot' ? 'HOT!' : ev.why === 'zap' ? 'ZAP!' : 'OUCH!', { color: '#ff6a4a', size: 24, life: 1.1 });
       break;
     }
+    // 0.8.18 the stand-off
+    case 'bandDuel':
+      if (ev.ph === 'freeze') { audio.play('weasel_sniff', { vol: 0.5, pitch: 1.0 }); popup(ev.x, ev.y + 0.9, '!', { color: '#ffe680', size: 22, life: 0.6 }); }
+      else if (ev.ph === 'fight') { audio.play('egg_bump', { vol: 0.6, pitch: 0.7 }); audio.play('weasel_yelp', { vol: 0.5, pitch: 1.2 }); if (!calm) fx.shake = Math.max(fx.shake || 0, 0.12); }
+      break;
+    case 'bandDuelWin': audio.play('rock_hit', { vol: 0.5, pitch: 1.3 }); audio.play('weasel_yelp', { vol: 0.6, pitch: 1.5 }); fx.sparkle(ev.x, ev.y, 10, '#ffe08a'); break; // the bonk with his sack
+    case 'bandDuelRip': audio.play('thorn_snap', { vol: 0.6, pitch: 1.4 }); audio.play('release', { vol: 0.6, pitch: 0.9 }); popup(ev.x, ev.y + 0.9, '?', { color: '#ffe680', size: 26, life: 1.2 }); break; // the sack rips: "Huh?"
     case 'bandFall': audio.play('creature_hurt', { vol: 0.8, pitch: 0.7 }); audio.play('wind_gust', { vol: 0.4, pitch: 1.4 }); break;
     case 'bandDefeat':
       audio.play('rock_hit', { vol: 0.6, pitch: 0.6 }); audio.play('tada', { vol: 0.6 });

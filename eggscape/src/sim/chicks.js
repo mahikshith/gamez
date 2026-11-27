@@ -193,6 +193,7 @@ export const chickMethods = {
     this.chickGain += 2 * (this.cocoHit?.('flash', { x: p.x, y: p.y, r: R }) || 0); // 0.8.17 coco
     this.creepBurnAt?.(p.x, p.y, R); // 0.8.18 creeper: the flash burns it back to a stump
     if (this.band) this.chickGain += 2 * this.bandHit('flash', { x: p.x, y: p.y, r: R }); // 0.8.17 bandit: the flash on his paw hurts it
+    if (this.kit) this.chickGain += 2 * this.kitHit('flash', { x: p.x, y: p.y, r: R }); // 0.8.18 kits: they dive back into the sack
     const E = this.eagle;
     if (E && E.phase !== 'away' && E.phase !== 'up' && (Math.hypot(E.x - p.x, E.y - p.y) < R + 1.6 || E.tid === egg.id)) {
       if (this.hitEagle) this.hitEagle('flash', { x: p.x, y: p.y });

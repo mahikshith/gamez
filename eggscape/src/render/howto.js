@@ -16,6 +16,7 @@ import { drawVillainPortrait } from './villain-art.js';
 import { drawHand } from './wonder.js';
 import { drawStrikeChick, drawStrikeButton } from './strike.js'; // 0.8.10: the chick scenes show the real HUD badge
 import { drawKindChick } from './chicks.js'; // the bulk chick's own art (L18's card)
+import { kitsHarmEgg } from './kitsplay.js'; // 0.8.18 kits
 import { actorFor, harmActor, BREATH_AT, CHAM_ORB, BUMP_A, BITE_AT, FACE_T, bandHarmEgg } from './howact.js'; // 2026-11-20: the villain's own game rig acts the scene (snake, weasel, rats, crawlers) // 0.8.17 bandit: bandHarmEgg
 import { statusDraw } from './status.js';
 import { beamSparks, scorchStub, drawPepperCloud, drawTwister, drawSneeze, drawDecoyAt, TWIST_T } from './powers2.js'; // 2026-11-20: Practice content in the campaign
@@ -129,6 +130,7 @@ export const THREAT = {
 };
 SHOW.penguin = P('turn', 'Turn a wall into his slide: BONK!', { fx: 'bonk' }); THREAT.penguin = 'Shoves eggs'; // 0.8.17 pip
 SHOW.monkey = P('turn', 'Flick his ring hard: whoa, he lets go!', { fx: 'bonk' }); THREAT.monkey = 'Grabs eggs'; // 0.8.17 coco
+for (const c of ['ice', 'woods', 'sea', 'cave', 'goggles', 'bow', '']) { const k = c ? 'kits:' + c : 'kits'; SHOW[k] = P('turn', 'Turn their ring hard: they tumble!', { fx: 'bonk' }); THREAT[k] = 'Carry eggs off'; HARM[k] = ['kits', 'TAKEN!']; } // 0.8.18 kits: mama raccoon's kits (howact.js kitsActor acts both beats)
 SHOW.emberspit = P('turn', 'Turn the gap out of his line', { fx: 'bonk' }); THREAT.emberspit = 'Spits embers'; HARM.emberspit = ['fall', 'CRACK!']; // 0.8.18 lava
 SHOW.fireup = P('turn', 'Turn its ring: he rides away', { fx: 'bonk' }); THREAT.fireup = 'Goes white-hot'; // 0.8.18 lava (the info panel and the lesson teach the water)
 SHOW.creeper = P('turn', 'Pass when it curls up'); THREAT.creeper = 'Crawls, cracks'; HARM.creeper = ['creep', 'CRACK!'];
@@ -855,7 +857,8 @@ function harmBeat(ctx, plan, T, t, S, set) {
   const E0 = at(0, eggS * 0.5), egg = (X, Y, look) => S.drawE(X, Y, eggS, false, true, look);
   const turnGap = (t0, t1) => { const d = ease(seg(T, t0, t1)); q.th = -gap0 * d; q.hand = dragHand(at, T, t0, t1, 0.5, 0.5 - gap0); return d; };
   const ty = H.t;
-  if (ty === 'sack') { Object.assign(q, bandHarmEgg({ band, floor, eggS, g0: gap0, k: Wd ? kW : Z / 2.5 }, T)); say(1.9); lost(2.1, at(q.eA, eggS * 0.5)); } // 0.8.17 bandit (0.8.18: cranked up to him, grabbed, into his sack)
+  if (ty === 'kits') { q.eA = kitsHarmEgg(T); q.eLift = eggS * 0.12 * seg(T, 0.35, 0.5); q.eAlpha = 1 - seg(T, 2.0, 2.4); say(1.5); lost(1.9, E0); } // 0.8.18 kits: carried out to mama's sack (howact.js draws the crew)
+  else if (ty === 'sack') { Object.assign(q, bandHarmEgg({ band, floor, eggS, g0: gap0, k: Wd ? kW : Z / 2.5 }, T)); say(1.9); lost(2.1, at(q.eA, eggS * 0.5)); } // 0.8.17 bandit (0.8.18: cranked up to him, grabbed, into his sack)
   else if (ty === 'steal') { // it comes along the floor, takes the egg and goes off with it
     const walk = ease(seg(T, 0.2, 1.0)), go = ease(seg(T, 1.3, 2.3)), up = kind === 'octopus' ? 1 : 0;
     const vA = vEnd - 0.55 * (1 - walk) - 0.9 * go, v = at(vA, vD * 0.3 + up * go * U * 0.45);

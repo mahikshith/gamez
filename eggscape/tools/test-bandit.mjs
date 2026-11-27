@@ -184,6 +184,64 @@ for (const mode of ['easy', 'medium', 'hard']) {
   ok(sim2.bandWeaselT().ph === 'wait', 'without the whistle the weasel never comes out');
 }
 
+// ---------------------------------------------------------------- 0.8.18 the stand-off: the whistled weasel comes for its share
+{
+  const { DUEL } = await import('../src/sim/bandit.js');
+  const egg0 = (sim) => sim.eggs.map((e) => `${e.id}:${e.hc}:${e.alive}:${e.cracks}`).join(' ');
+  // he sits on his first perch; the weasel is whistled up with a short hunt left; bag = an egg in his sack first
+  const duelSim = (mode, bag) => {
+    const sim = setup({ mode }), B = sim.band;
+    until(sim, 'sit');
+    if (bag) { const e = sim.eggs[0]; e.hc = 3; B.sack.push(e.id); e.body.setActive(false); }
+    B.whistled = 1; sim.bandCall(B); B.wz = 1.0;
+    return sim;
+  };
+  const duelRun = (sim, secs = 40) => {
+    const L = [];
+    run(sim, secs, (s, ev) => { if (/^bandDuel/.test(ev.type)) L.push({ t: s.t, type: ev.type, ph: ev.ph, eggs: egg0(s), W: s.bandWeaselT().ph }); }, (s) => s.band.dueled && !s.band.duel && s.bandWeaselT().ph === 'hide');
+    return L;
+  };
+  for (const mode of ['easy', 'medium', 'hard']) {
+    const sim = duelSim(mode, false), B = sim.band, W = sim.bandWeaselT(), eggsAt = egg0(sim);
+    const evs = [], L = [];
+    run(sim, 40, (s, ev) => { evs.push({ t: s.t, type: ev.type }); if (/^bandDuel/.test(ev.type)) L.push({ t: s.t, type: ev.type, ph: ev.ph }); }, (s) => s.band.dueled && !s.band.duel && W.ph === 'hide');
+    const at = (ph) => (L.find((e) => e.ph === ph) || {}).t, win = L.find((e) => e.type === 'bandDuelWin');
+    const order = ['come', 'freeze', 'stare', 'circle', 'fight'].map(at);
+    ok(order.every((x) => x != null) && order.every((x, i) => !i || x > order[i - 1]) && win && win.t > order[4], `${mode}: the stand-off plays out: it comes, they freeze, stare, circle, scuffle (${order.map((x) => x && x.toFixed(1)).join(', ')}; ${win ? win.t.toFixed(1) : '-'} s)`);
+    ok(win && Math.abs(win.t - order[4] - DUEL.fight) < 0.05 && Math.abs(order[2] - order[1] - DUEL.freeze) < 0.05, `${mode}: the scuffle lasts ${win ? (win.t - order[4]).toFixed(2) : '-'} s (DUEL.fight ${DUEL.fight})`);
+    const mid = evs.filter((e) => e.t >= order[0] && e.t <= (win ? win.t : 1e9));
+    ok(!mid.some((e) => /^(bandReach|bandGrab|bandCrank|thiefGrab|thiefPounce|thiefCarry)/.test(e.type)) && egg0(sim) === eggsAt, `${mode}: neither bothers an egg while it lasts`);
+    ok(win && W.ph === 'hide' && W.t > 1e8 && (B.ph === 'sit' || B.ph === 'spit' || B.ph === 'crank'), `${mode}: his sack empty, he wins: the weasel slinks home for good (${W.ph}) and he goes back to work (${B.ph})`);
+  }
+  { // the slink and the dust, mid-scene
+    const sim = duelSim('medium', false), B = sim.band, W = sim.bandWeaselT();
+    run(sim, 40, null, (s) => s.band.ph === 'dust');
+    ok(B.ph === 'dust' && W.ph === 'home' && W.k === 'slink' && B.duel && B.duel.win === 'band', 'he dusts his paws while the weasel slinks off dizzy');
+    ok(!B.rip, 'his sack is whole when he wins');
+  }
+  { // an egg in his sack: the weasel grabs the sack, it rips, the egg rolls free into the vault
+    const sim = duelSim('medium', true), B = sim.band, W = sim.bandWeaselT(), e = sim.eggs[0];
+    const L = []; let spill = null;
+    run(sim, 40, (s, ev) => { if (ev.type === 'bandDuelRip') L.push(ev); if (ev.type === 'bandSpill' && !spill) spill = s.t; }, (s) => spill != null && s.t > spill + 0.5);
+    ok(L.length === 1 && L[0].n === 1 && B.ph !== 'duel' && W.k !== 'slink', `with an egg in his sack the sack rips (${L.length ? L[0].n : 0} egg rolls free) and the weasel bolts`);
+    ok(spill != null && e.alive && e.cracks === 0 && !e.hc && sim.channelOf(e) === sim.rings.length - 1, 'the egg rolls back onto the outer floor, uncracked');
+    run(sim, 20, null, (s) => W.ph === 'hide');
+    ok(W.ph === 'hide' && W.t > 1e8, 'and the weasel stays home');
+    ok(B.rip === 1 && Sim.fromState(sim.level, sim.fullState(), { mode: 'medium' }).band.rip === 1, 'his sack stays torn (the rip is in the saved state)');
+  }
+  { // rewind and the planner: a snapshot mid-scuffle carries on exactly
+    const a = duelSim('medium', true);
+    run(a, 40, null, (s) => s.band.duel && s.band.duel.ph === 'fight' && s.band.duel.t > DUEL.freeze + DUEL.stare + DUEL.circle + 1);
+    const b = Sim.fromState(L6, a.fullState());
+    run(a, 6); run(b, 6);
+    const key = (s) => JSON.stringify([s.band.ph, s.band.duel, s.band.sack, s.band.spill.length, s.bandWeaselT().ph, +s.bandWeaselT().a.toFixed(6), s.eggs.map((e) => e.hc)]);
+    ok(key(a) === key(b), 'a snapshot mid-scuffle carries on exactly (rewind, the planner)');
+    const c = duelSim('medium', true), d = duelSim('medium', true);
+    run(c, 25); run(d, 25);
+    ok(key(c) === key(d), 'the stand-off is deterministic');
+  }
+}
+
 // ---------------------------------------------------------------- the other counters
 // his paw on the egg: returns the sim mid-grab (the egg in his paw)
 function grabbing(o = {}) { const sim = setup(o); until(sim, 'grab'); run(sim, 0.2); return sim; }
@@ -343,6 +401,159 @@ function cranking(o = {}) { const sim = setup(o); until(sim, 'crank'); run(sim, 
   for (const e of sim.eggs) if (e !== e0 && e.alive) { sim.savedLog.push({ id: e.id, cracks: 0 }); e.saved = true; e.alive = false; if (e.body) e.body.setActive(false); }
   run(sim, 1);
   ok(sim.state !== 'play' && sim.savedLog.length >= L6.target && sim.state !== 'lost', `the target home and only his bagged egg left: the level is won (${sim.state})`);
+}
+
+
+// ================================================================ 0.8.18 MAMA RACCOON AND HER KITS (sim/kits.js)
+{
+  const { KITS } = await import('../src/sim/kits.js');
+  const { costumeOf } = await import('../src/render/costume.js');
+  const KL = LEVELS.filter((L) => L.kits);
+  const banned = new Set([1, 2, 3, 4, 5, 6, 9, 25, 26, 27, 28, 29, 30, 49, 52]);
+  const worlds = KL.map((L) => L.world);
+  ok(KL.length >= 1 && KL.length <= 5 && new Set(worlds).size === worlds.length && KL.every((L) => !banned.has(L.id) && !L.water && !L.shape && !L.raccoon), `the kits play in ${KL.map((L) => 'L' + L.id).join(', ')}: at most five, one per world, never L1-6, the frog's, Volcano, underwater or shaped vaults`);
+  ok(KL.every((L) => costumeOf(L.theme) !== 'bow') && new Set(KL.map((L) => costumeOf(L.theme))).size === KL.length, `each wears its world's costume (${KL.map((L) => costumeOf(L.theme)).join(', ')})`);
+  const KLV = KL.find((L) => L.id === 19) || KL[0];
+  const lvK = { ...KLV, icicles: undefined, kits: { ...KLV.kits, n: undefined, delay: 1 } }; // (no falling ice: the kits alone; the mode's own number of kits)
+  ok(KL.every((L) => new Sim(L, { mode: 'medium' }).kit.n === (L.kits.n || KITS.n.medium)), `a level may set its number of kits (${KL.map((L) => 'L' + L.id + ' ' + new Sim(L, { mode: 'medium' }).kit.n).join(', ')})`);
+  // the outer ring turned so no gap is near the bottom; egg 0 resting on the outer floor at angle egg (deg)
+  const kset = ({ mode = 'medium', egg = -100, gap = 90, lv = lvK } = {}) => {
+    const sim = new Sim(lv, { mode }), outer = sim.rings[sim.rings.length - 1];
+    outer.body.setTransform({ x: 0, y: 0 }, deg(gap) - outer.gaps[0].a);
+    for (const g of outer.gaps.slice(1)) { /* every other gap of the outer ring goes with it */ }
+    for (const r of sim.rings) r.target = r.body.getAngle();
+    if (egg != null) { const e = sim.eggs[0], r = sim.kitFloor(sim.rings.length - 1) - 0.3; e.body.setTransform({ x: r * Math.cos(deg(egg)), y: r * Math.sin(deg(egg)) }, 0); e.body.setLinearVelocity({ x: 0, y: 0 }); e.body.setAwake(true); e.ch = sim.channelOf(e); }
+    return sim;
+  };
+  const krun = (sim, secs, each = null, stop = null) => {
+    const log = [];
+    for (let i = 0, n = Math.round(secs / DT); i < n && sim.state === 'play'; i++) {
+      sim.step();
+      for (const ev of sim.events) { if (/^kit|^break|^crack/.test(ev.type)) log.push({ t: +sim.t.toFixed(3), type: ev.type, why: ev.why, ring: ev.ring, n: ev.n, egg: ev.egg && ev.egg.id }); if (each) each(sim, ev); }
+      sim.events.length = 0;
+      if (stop && stop(sim)) break;
+    }
+    return log;
+  };
+  const kuntil = (sim, f, secs = 60) => { krun(sim, secs, null, f); return f(sim); };
+  const cracked = (log) => log.some((e) => e.type === 'break' || e.type === 'crack');
+  for (const mode of ['easy', 'medium', 'hard']) {
+    const sim = kset({ mode }), log = krun(sim, 90, null, (s) => s.kit.ph === 'smug');
+    const pop = first(log, 'kitPop'), lift = first(log, 'kitLift'), car = first(log, 'kitCarry'), home = first(log, 'kitHome'), e = sim.eggs[0];
+    ok(first(log, 'kitWalk') && first(log, 'kitUntie') && pop && pop.n === M(KITS.n, mode), `${mode}: mama walks in, unties her sack and ${pop && pop.n} kits tumble out`);
+    ok(first(log, 'kitClimb') && first(log, 'kitIn') && first(log, 'kitIn').ring === sim.rings.length - 1, `${mode}: they climb over the rim onto the outer floor at her side`);
+    ok(lift && car && car.t - lift.t >= M(KITS.lift, mode) - 0.05, `${mode}: they gather round the egg and heave ${car && lift ? (car.t - lift.t).toFixed(2) : '-'} s (the telegraph) before it moves`);
+    ok(home && e.hc === 3 && sim.kit.sack.includes(e.id) && !cracked(log) && e.cracks === 0, `${mode}: untouched, they carry it home into her sack (${home ? home.t.toFixed(1) : '-'} s), not a crack`);
+    const sp = M(KITS.carry, mode);
+    ok(home && home.t - car.t > 2.0, `${mode}: the carry is slow (${home ? (home.t - car.t).toFixed(1) : '-'} s at ${sp} m/s)`);
+  }
+  // the counters, each during the carry
+  const carrying = (o = {}) => { const sim = kset(o); kuntil(sim, (s) => s.kit.g.ph === 'carry' && s.kit.g.eid && s.t > 0); krun(sim, 0.4); return sim; };
+  {
+    const sim = carrying(), G = sim.kit.g, r = sim.rings[G.c], e = sim.eggs[0];
+    const gs = r.gaps.map((g) => Math.atan2(Math.sin(r.body.getAngle() + g.a - G.a), Math.cos(r.body.getAngle() + g.a - G.a))).sort((x, y) => Math.abs(x) - Math.abs(y));
+    r.target += Math.sign(gs[0]) * deg(35); // (the way that takes the nearest gap away from them)
+    const log = krun(sim, 2.0, null, (s2) => s2.kit.g.ph === 'tumble');
+    ok(has(log, 'kitTumble') && !e.hc && e.alive && e.cracks === 0 && sim.channelOf(e) < sim.rings.length, 'their floor turned briskly: they tumble and the egg drops back on the floor, uncracked');
+    const more = krun(sim, 8, null, (s) => s.kit.ph === 'comfort');
+    ok(has(more, 'kitFlee') && sim.kit.fails === 1 && sim.kit.ph === 'comfort', 'they run home crying (a failed fetch) and mama comforts them');
+    const sim2 = carrying(), r2 = sim2.rings[sim2.kit.g.c];
+    const slow = krun(sim2, 3, () => {}, (s) => { r2.target += deg(3) * DT; return false; });
+    ok(!has(slow, 'kitTumble') && !has(slow, 'kitDangle'), 'a slow turn of their floor (3 deg/s) only carries them along');
+  }
+  {
+    const sim = carrying({ gap: 154, egg: -85 }), G = sim.kit.g, ring = sim.rings[G.c], e = sim.eggs[0]; // (a gap waits to their right)
+    // turn the floor gently (about 9 deg/s: no tumble) so its nearest gap slides under them
+    const gs = ring.gaps.map((g) => Math.atan2(Math.sin(ring.body.getAngle() + g.a - G.a), Math.cos(ring.body.getAngle() + g.a - G.a))).sort((x, y) => Math.abs(x) - Math.abs(y)), way = -Math.sign(gs[0]);
+    const log = krun(sim, 12, null, (s2) => { if (s2.kit.g.ph !== 'dangle' && s2.kit.g.ph !== 'flee') ring.target = ring.body.getAngle() + way * deg(9) / 14; return s2.kit.g.ph === 'flee'; });
+    ok(has(log, 'kitDangle') && e.alive && e.cracks === 0 && !cracked(log) && (e.saved || e.hc === 0 || e.hc === 3), `a gap turned under them: they dangle, and the egg drops on safely (${e.saved ? 'into the basket' : e.hc === 3 ? 'caught in her sack' : 'on solid floor'})`);
+    krun(sim, 8, null, (s) => s.kit.ph === 'scold');
+    ok(sim.kit.fails === 1 && sim.kit.ph === 'scold', 'home again, mama scolds them');
+  }
+  {
+    const sim = carrying(), e = sim.eggs[0];
+    const n = sim.kitHit('crow');
+    const log = krun(sim, 0.3);
+    ok(n === 1 && has(log, 'kitDive') && !e.hc && e.cracks === 0, "Papa Rooster's crow: they drop the egg and dive back into the sack");
+    const s2 = carrying(), P = s2.kitBody(s2.kit.g);
+    ok(s2.kitHit('flash', { x: P.x, y: P.y, r: 1 }) === 1 && s2.kitHit('flash', { x: 99, y: 99, r: 1 }) === 0, 'a glow flash by them sends them diving; one far away does not');
+  }
+  {
+    // three failed fetches (Easy two): she gives up, scoops them up, the eggs in her sack spill back, she trudges off
+    for (const mode of ['easy', 'medium']) {
+      const sim = kset({ mode }), max = M(KITS.fails, mode);
+      kuntil(sim, (s) => s.kit.ph === 'smug', 90);
+      const bag = sim.kit.sack.slice();
+      let guard = 0;
+      while (sim.kit.fails < max && guard++ < 30 && sim.state === 'play') { kuntil(sim, (s) => s.kit.g.ph === 'go' || s.kit.g.ph === 'carry' || s.kit.ph === 'sulk', 40); if (sim.kit.ph === 'sulk') break; sim.kitHit('crow'); krun(sim, 0.2); kuntil(sim, (s) => s.kit.g.ph === 'sack', 20); }
+      const log = krun(sim, 20, null, (s) => s.kit.done);
+      const e = sim.eggs.find((q) => q.id === bag[0]);
+      ok(sim.kit.fails === max && has(log, 'kitSulk') && has(log, 'kitSpill') && sim.kit.done && sim.kit.sack.length === 0, `${mode}: ${max} failed fetches and she gives up: the eggs pop out of her sack and she trudges off`);
+      ok(bag.length === 1 && e && e.alive && !e.hc && e.cracks === 0 && sim.channelOf(e) === sim.rings.length - 1, `${mode}: her egg is back on the outer floor, uncracked`);
+    }
+  }
+  {
+    // never unwinnable: with the target saved and only her sack's eggs left the level is won; when the eggs outside her
+    // sack can no longer make the target she gives up at once
+    const sim = kset();
+    kuntil(sim, (s) => s.kit.ph === 'smug', 90);
+    for (const e of sim.eggs) if (e.alive && e.hc !== 3) { sim.savedLog.push({ id: e.id, cracks: 0 }); e.saved = true; e.alive = false; if (e.body) e.body.setActive(false); }
+    krun(sim, 1);
+    ok(sim.state !== 'play' && sim.state !== 'lost' && sim.state !== 'failing', `target home and only her egg left: the level is won (${sim.state})`);
+    const s2 = kset();
+    kuntil(s2, (s) => s.kit.ph === 'smug', 90);
+    const others = s2.eggs.filter((e) => e.alive && e.hc !== 3);
+    others.slice(0, others.length - (s2.level.target - 1) + 0).forEach((e) => { e.alive = false; if (e.body) e.body.setActive(false); }); // broken by something else
+    const lg = krun(s2, 6);
+    ok(has(lg, 'kitSulk') && lg.find((e) => e.type === 'kitSulk').why === 'fair' && has(lg, 'kitSpill'), 'the eggs outside her sack can no longer make the target: she gives up at once and spills them back');
+  }
+  {
+    // an egg falling out of the vault by her sack is caught, not broken
+    const sim = kset({ egg: null });
+    kuntil(sim, (s) => s.kit.ph === 'watch' || s.kit.ph === 'untie', 30);
+    const e = sim.eggs[0], S = sim.kitSackPt(sim.kit);
+    e.body.setTransform({ x: S.x, y: sim.groundY + 2.4 }, 0); e.body.setLinearVelocity({ x: 0, y: -1 }); e.ch = sim.rings.length; e.body.setAwake(true);
+    const log = krun(sim, 2);
+    ok(has(log, 'kitCatch') && e.alive && e.hc === 3, 'an egg falling by her sack is caught in it, not broken');
+  }
+  {
+    const sim = kset({ egg: null });
+    sim.scareT = 30;
+    const log = krun(sim, 25);
+    ok(!has(log, 'kitClimb') && sim.kit.fails === 0, 'the Scarecrow: she keeps them in the sack while it stands (no fetch, no failure)');
+  }
+  {
+    const sim = carrying(), L = sim.kitLesson();
+    ok(L && L.ring === sim.kit.g.c && L.carrying === 1, `kitLesson(): the ring they carry the egg on (ring ${L && L.ring})`);
+    // determinism: the same run twice; a snapshot taken mid-carry resumes exactly
+    const a = krun(kset(), 60), b = krun(kset(), 60);
+    ok(a.length > 8 && JSON.stringify(a) === JSON.stringify(b), `the same fetch twice is the same fetch (${a.length} events)`);
+    const S = sim.fullState(), s2 = Sim.fromState(lvK, S, { mode: 'medium' });
+    const l1 = krun(sim, 12), l2 = krun(s2, 12);
+    ok(has(l1, 'kitHome') && JSON.stringify(l1) === JSON.stringify(l2) && JSON.stringify(sim.kitState()) === JSON.stringify(s2.kitState()), `a snapshot taken mid-carry resumes exactly to the sack (${l1.length} events)`);
+  }
+  {
+    // never cracks an egg, whatever the rings do (random-free sweep of brisk turns)
+    let broke = 0, runs = 0;
+    for (const mode of ['easy', 'medium', 'hard']) for (const step of [0, 1, 2]) {
+      const sim = kset({ mode, egg: -95 + step * 10 }); runs++;
+      const freed = {};
+      for (let i = 0; i < 70 / DT && sim.state === 'play'; i++) {
+        if (i % Math.round((3 + step) / DT) === 0) { const G = sim.kit.g; if (G.c >= 0) sim.rings[G.c].target += deg(step % 2 ? 40 : -25); }
+        sim.step();
+        for (const ev of sim.events) { if (/^kit(Fumble|Drop|Spill)/.test(ev.type) && ev.egg) freed[ev.egg.id] = sim.t; if ((ev.type === 'break' || ev.type === 'crack') && ev.egg && (ev.egg.hc || sim.t - (freed[ev.egg.id] ?? -9) < 1.2)) broke++; }
+        sim.events.length = 0;
+      }
+    }
+    ok(broke === 0, `the kits never crack an egg (${runs} runs of brisk turning, all modes)`);
+    { // falling ice on the egg they carry: it bonks the kit riding on top, they tumble, the egg is spared
+      const sim = carrying(), G = sim.kit.g, e = sim.eggs[0], p = e.body.getPosition(), c0 = e.cracks;
+      const okX = !!(sim.bx && sim.bx.ice);
+      if (okX) sim.bx.ice.push({ ri: -1, la: 0, rad: 0, ph: 'fall', t: 0, dur: 1, x: p.x, y: p.y + 0.62, vy: 0, big: 0, eid: e.id, fell: 1 });
+      const log = krun(sim, 0.5);
+      ok(okX && has(log, 'kitTumble') && log.find((q) => q.type === 'kitTumble').why === 'ice' && e.alive && e.cracks === c0 && !cracked(log), 'falling ice on the egg they carry bonks the kit on top: they tumble, the egg is not cracked');
+    }
+  }
 }
 
 console.log(bad ? `\n${bad} FAILED` : '\nall bandit checks passed');

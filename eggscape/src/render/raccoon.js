@@ -34,6 +34,7 @@
 // drawRaccoon o.layer: 'back' draws only the tail (it hangs behind the ring), 'front' everything else, default both.
 import { spline, blinkAt, hash, clamp, lerp, ss, back, ik } from './castkit.js';
 import { dizzyStars, spiralEye } from './status.js';
+import { costumeHead, costumeNeck, costumeFace } from './costume.js'; // 0.8.18 kits: world costumes (mama, and Bandit if a level asks)
 
 const TAU = Math.PI * 2;
 export const RACCOON_M = 1.05; // metres per 100 rig units
@@ -70,6 +71,7 @@ function fin(p, w) {
   return p;
 }
 const P = (o) => Object.assign({}, REST, o);
+export const raccoonFin = (p, w) => fin(p, w); // 0.8.18 kits: world (floor-frame) targets into a pose's torso frame
 const fract = (x) => x - Math.floor(x);
 const PERCH = new Set(['climb', 'hop', 'sit', 'crank', 'shaken', 'fall', 'perchReach', 'perchGrab']);
 export function raccoonPose(state, t, u = 0, opt = {}) {
@@ -309,6 +311,16 @@ function perchPose(state, t, u, opt) {
     default: return perchFin(sit, opt);
   }
 }
+// 0.8.18 kits: three lashes flicking out of each upper lid (mama)
+function lashes(c, e, C, lw) {
+  const lid = clamp(e.lid, 0, 1);
+  c.save(); c.lineCap = 'round'; c.beginPath();
+  for (const [x, y, rx, ry, d] of [[-9, -3, 8.6, 8.8, -1], [14.5, -3.5, 6.2, 7.6, 1]]) {
+    const ly = y - ry + 2 * ry * lid * 0.9;
+    for (let i = 0; i < 3; i++) { const a = (0.35 + i * 0.28) * d, bx = x + d * rx * (0.35 + 0.22 * i), by = ly + Math.abs(bx - x) * 0.25 * (1 - lid); c.moveTo(bx, by); c.lineTo(bx + Math.sin(a) * 5.5, by - Math.cos(a) * 5.5); }
+  }
+  c.lineWidth = lw * 2.2; c.strokeStyle = C.line; c.stroke(); c.lineWidth = lw * 1.0; c.strokeStyle = C.cream; c.stroke(); c.restore();
+}
 function twitch(t) { const k = Math.floor(t / 2.1), f = fract(t / 2.1); return hash(k) > 0.4 ? Math.sin(clamp((f - 0.3) / 0.09, 0, 1) * Math.PI) : 0; }
 
 const MEM = {};
@@ -334,7 +346,7 @@ function hose(c, pts, w, col, line, lw) {
 }
 
 // the sack in its own frame (centre 0,0; the neck at the top): open 0 = tied shut, 1 = gaping
-function sackShape(c, C, lw, open, t, mid) {
+function sackShape(c, C, lw, open, t, mid, rip = 0) {
   const n = lerp(5, 17, open), body = [[0, 20], [13, 17], [19, 6], [17, -7], [n + 1, -15], [-n - 1, -15], [-17, -7], [-19, 6], [-13, 17]];
   const top = open > 0.5 ? [[-n - 2, -15], [-n - 3, -21], [-n * 0.4, -19], [0, -22], [n * 0.4, -19], [n + 3, -21], [n + 2, -15], [0, -12]] : [[-6, -15], [-11, -25], [-3, -22], [2, -27], [6, -22], [12, -24], [6, -15]];
   ink(c, blobP(top), C.sackLo, C.line, lw);
@@ -346,6 +358,13 @@ function sackShape(c, C, lw, open, t, mid) {
   c.save(); c.translate(5, 5); c.rotate(0.25); c.fillStyle = C.patchA; c.strokeStyle = C.stitch; c.lineWidth = lw * 0.55; c.beginPath(); c.rect(-5.5, -5, 11, 10); c.fill(); c.stroke();
   c.beginPath(); for (const [a, b] of [[-7.5, -2], [-7.5, 3], [7.5, -2], [7.5, 3]]) { c.moveTo(a - 1.6, b); c.lineTo(a + 1.6, b); } c.stroke(); c.restore();
   c.save(); c.translate(-9, 10); c.rotate(-0.4); c.fillStyle = C.patchB; c.beginPath(); c.rect(-3.5, -3, 7, 6); c.fill(); c.lineWidth = lw * 0.5; c.strokeStyle = C.stitch; c.stroke(); c.restore();
+  if (rip) { // 0.8.18 the stand-off lost: a jagged hole on the sack's outer bulge (the side he does not cover), a flap hanging out, loose threads
+    const J = [[-19, -8], [-14, -11], [-11, -5], [-6, -10], [-3, -3], [-7, 1], [-4, 6], [-10, 4], [-13, 9], [-18, 3]];
+    c.beginPath(); c.moveTo(J[0][0], J[0][1]); for (const q of J.slice(1)) c.lineTo(q[0], q[1]); c.closePath();
+    c.fillStyle = '#2a1a10'; c.fill(); c.lineWidth = lw * 1.2; c.strokeStyle = C.line; c.stroke();
+    c.beginPath(); c.moveTo(-13, 9); c.lineTo(-10, 4); c.lineTo(-9, 15); c.lineTo(-12, 13); c.lineTo(-15, 18); c.closePath(); c.lineWidth = lw * 1.6; c.strokeStyle = C.line; c.stroke(); c.fillStyle = C.sackLo; c.fill();
+    c.beginPath(); for (const [x0, y0, x1, y1] of [[-18, 3, -22, 9], [-4, 6, -1, 12], [-19, -8, -24, -10]]) { c.moveTo(x0, y0); c.quadraticCurveTo(x0 - 1, (y0 + y1) / 2 + 1, x1, y1); } c.lineWidth = lw * 0.7; c.strokeStyle = C.stitch; c.stroke();
+  }
   if (open <= 0.5) { c.beginPath(); c.moveTo(-7, -15.5); c.quadraticCurveTo(0, -13.5, 7, -15.5); c.lineCap = 'round'; c.lineWidth = lw * 2.2; c.strokeStyle = C.line; c.stroke(); c.lineWidth = lw * 1.1; c.strokeStyle = C.rope; c.stroke(); }
 }
 // the loot sack as a prop standing on the floor at (x, y). o: { rot, open 0..1, squash, frozen }
@@ -455,7 +474,7 @@ export function drawRaccoon(ctx, x, y, s, t, pose, o = {}) {
   try {
     ctx.translate(x, y); ctx.scale(u * face, u); ctx.scale(sx, sy); ctx.translate(p.dx, -p.by); ctx.rotate(p.rot);
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    const sack = (mid) => { ctx.save(); ctx.translate(p.skx, p.sky); ctx.rotate(p.skr); ctx.scale(p.sks, p.sks); sackShape(ctx, C, lw / p.sks, p.sko, t, mid); ctx.restore(); };
+    const sack = (mid) => { ctx.save(); ctx.translate(p.skx, p.sky); ctx.rotate(p.skr); ctx.scale(p.sks, p.sks); sackShape(ctx, C, lw / p.sks, p.sko, t, mid, o.rip ? 1 : 0); ctx.restore(); };
     const layer = o.layer;
     // ---- tail: a fat ringed brush, behind everything
     if (layer !== 'front') {
@@ -474,7 +493,7 @@ export function drawRaccoon(ctx, x, y, s, t, pose, o = {}) {
       if (p.puff > 0.3) { ctx.strokeStyle = C.line; ctx.lineWidth = lw * 0.8; ctx.beginPath(); for (let i = 2; i < n; i += 2) { const nx = Math.sin(ctr[i][2]), ny = Math.cos(ctr[i][2]); for (const sgn of [1, -1]) { const q = sgn > 0 ? L[i] : R[i]; ctx.moveTo(q[0], q[1]); ctx.lineTo(q[0] + nx * sgn * 5 * p.puff, q[1] + ny * sgn * 5 * p.puff); } } ctx.stroke(); }
     }
     if (layer === 'back') return;
-    if (p.skf <= 0.5) sack();
+    if (p.skf <= 0.5 && !o.noSack) sack(); // (0.8.18 o.noSack: the sack stands beside her as a prop)
     // ---- legs and feet
     const leg = (hx0, hy0, fx, fy, far, fr) => { // thigh to ankle as one tapered shape, then the paw
       const ax = fx - 1.5 * Math.sin(fr), ay = fy - 2.5, d = Math.hypot(ax - hx0, ay - hy0), l = Math.max(11.5, d * 0.51), k = ik(hx0, hy0, ax, ay, l, l, -1);
@@ -534,6 +553,7 @@ export function drawRaccoon(ctx, x, y, s, t, pose, o = {}) {
     browS(-11, -17, 6.5, 1); browS(14, -16.5, 5, -1);
     eyeDraw(ctx, 14.5, -3.5, 6.2, 7.6, e, C, lw, t, -1);
     eyeDraw(ctx, -9, -3, 8.6, 8.8, e, C, lw, t, 1);
+    if (o.lashes && !(e.happy > 0.5 || e.squeeze > 0.5 || e.spiral > 0.5)) lashes(ctx, e, C, lw); // 0.8.18 kits: mama's lashes
     const mz = [[-3, 9], [2, 2.5], [11, 0.5], [20, 2], [24.5 + 2 * ck, 8], [21 + 2 * ck, 15.5], [11, 18.5 + ck], [1, 16]];
     ink(ctx, blobP(mz), C.creamLo, C.line, lw * 0.55); fillP(ctx, blobP(inset(mz, 0.84, -0.8, -1.2)), C.cream);
     // mouth
@@ -555,6 +575,7 @@ export function drawRaccoon(ctx, x, y, s, t, pose, o = {}) {
     if (p.sweat > 0.05) { // drops flying off the brow
       for (let i = 0; i < 3; i++) { const f = fract(t * 1.7 + i / 3), a = -2.2 + i * 0.55, r0 = 30 + f * 16, dx2 = Math.cos(a) * r0, dy2 = Math.sin(a) * r0 + f * f * 8; ctx.save(); ctx.translate(dx2, dy2); ctx.rotate(a + Math.PI / 2); ctx.globalAlpha = p.sweat * (1 - f * f); const dp = (c) => { c.beginPath(); c.moveTo(0, -5); c.quadraticCurveTo(3.4, 0, 0, 3); c.quadraticCurveTo(-3.4, 0, 0, -5); c.closePath(); }; ink(ctx, dp, C.sweat, C.line, lw * 0.6); ctx.restore(); }
     }
+    if (o.costume) { costumeFace(ctx, o.costume, { nose: [19.5, 3.4], cheek: [26, 9], tips: [[35, 7], [34, 14], [-12, 11], [-11, 17]] }, lw, t); costumeHead(ctx, o.costume, { top: -25, cx: -3, w: 27, ear: [-15, -18], s: 1 }, lw, t, { calm: o.calm, low: o.low }); } // 0.8.18 kits
     if (stars > 0) dizzyStars(ctx, 0, -33, 25, 7, t, { n: Math.round(stars), layer: 'front', size: Math.max(6, 3.4 / u) });
     // the whistle: sound arcs and a note leaving the mouth
     if (p.note > 0.05) {
@@ -565,9 +586,10 @@ export function drawRaccoon(ctx, x, y, s, t, pose, o = {}) {
     }
     ctx.restore();
     // ---- the near arm, over the head; the sack when it is in front
+    if (o.costume && o.costume !== 'woods' && o.costume !== 'bow') costumeNeck(ctx, o.costume, { x: p.hx + 1, y: p.hy + 20, w: 17, s: 1 }, lw, t, { calm: o.calm }); // 0.8.18 kits
     const near = () => arm(-7, -13, p.a0x, p.a0y, false, p.hand, p.throb, p.g0, p.pa0, p.hw0);
     if (!into) near();
-    if (p.skf > 0.5) sack(into ? () => { const m = ctx.getTransform(); ctx.setTransform(Mt); eggNow(); ctx.setTransform(m); } : null);
+    if (p.skf > 0.5 && !o.noSack) sack(into ? () => { const m = ctx.getTransform(); ctx.setTransform(Mt); eggNow(); ctx.setTransform(m); } : null);
     if (into) near(); // pushing the egg in: his paw over the sack's mouth
   } finally { ctx.restore(); }
   if (o.out) {

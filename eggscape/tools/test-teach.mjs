@@ -159,5 +159,41 @@ const ctx = (o = {}) => ({ now: 100, timeLeft: 60, held: null, ring: 2, adapt: t
   for (let i = 0; i < 6; i++) { const run = T.newRun(); T.meet(save, run, 'snake'); const p = T.want(save, run, 'snake', ctx()); if (p) life += T.TEACH.clockCap; }
   ok(life <= 2 * 1.5 + 1e-9, `a subject gives back at most ${life} s of clock in a player's life (cap 2 x 1.5 s)`);
 }
+{ // 0.8.18 mama raccoon's kits: the first carry is the meeting; the moment points at the floor they carry the egg on, holds
+  // only the clock, and the kits do exactly what they do with no moment (same phase, same egg, same spot, same sack)
+  ok(T.LESSONS.kits && T.LESSONS.kits.g === 'spin', 'the kits lesson is a spin of their ring (no words)');
+  const KL = LEVELS.find((l) => l.id === 19), lv = { ...KL, icicles: undefined, kits: { ...KL.kits, delay: 1 } };
+  const stage = () => {
+    const sim = new Sim(lv, { mode: 'medium' }), outer = sim.rings[sim.rings.length - 1], d = (a) => (a * Math.PI) / 180;
+    outer.body.setTransform({ x: 0, y: 0 }, d(90) - outer.gaps[0].a);
+    for (const r of sim.rings) r.target = r.body.getAngle();
+    const e = sim.eggs[0], r = sim.kitFloor(sim.rings.length - 1) - 0.3;
+    e.body.setTransform({ x: r * Math.cos(d(-100)), y: r * Math.sin(d(-100)) }, 0); e.body.setLinearVelocity({ x: 0, y: 0 }); e.body.setAwake(true); e.ch = sim.channelOf(e);
+    return sim;
+  };
+  const run = (moments) => {
+    const sim = stage(), save = {}, R = T.newRun();
+    let wall = 0, held = 0, acc = 0, at = null, ringOk = null;
+    for (let f = 0; f < 60 * 40 && sim.state === 'play'; f++) {
+      const dt = 1 / 60; wall += dt;
+      for (const ev of sim.events) if (moments && ev.type === 'kitCarry') { T.meet(save, R, 'kits'); at = sim.t; }
+      if (moments && !R.active && R.n.kits) { const p = T.want(save, R, 'kits', { now: wall, timeLeft: sim.timeLeft, held: null, ring: null }); if (p) { T.begin(R, p, wall); const K = sim.kitLesson(); ringOk = !!K && K.ring === sim.rings.length - 1 && K.carrying === 1; } }
+      const m = R.active; sim.events.length = 0; acc += dt * (m ? T.scaleAt(m) : 1);
+      while (acc >= DT * 0.75) { sim.clockHold = T.holdsClock(m); const live = sim.state === 'play'; sim.step(); acc -= DT; if (sim.clockHold && live) held += DT; }
+      sim.clockHold = false;
+      if (m && T.tick(m, dt)) T.end(save, R, m, wall);
+    }
+    return { sim, held, at, ringOk, moments: R.moments, used: sim.timeLimit - sim.timeLeft };
+  };
+  const A = run(true);
+  ok(A.at != null && A.moments === 1 && A.ringOk, `the first carry (${A.at && A.at.toFixed(1)} s) is the meeting: one moment, on the outer floor they carry the egg on`);
+  ok(A.held > 0 && A.held <= T.TEACH.clockCap + 1e-9 && Math.abs(A.used - (A.sim.t - A.held)) < 1e-6, `it holds the clock ${A.held.toFixed(2)} s (cap ${T.TEACH.clockCap}); fuse = sim time - held time`);
+  const steps = Math.round(A.sim.t / DT), C = stage(), H = stage();
+  for (let i = 0; i < steps && C.state === 'play'; i++) C.step();
+  for (let i = 0; i < steps && H.state === 'play'; i++) { H.clockHold = i % 5 === 0; H.step(); }
+  const kpos = (s) => { const G = s.kit.g, e = s.eggs[0], p = e.body.getPosition(); return `${s.kit.ph}/${G.ph}/${s.kit.sack.join()}/${e.cracks}:${p.x.toFixed(4)},${p.y.toFixed(4)}`; };
+  ok(kpos(H) === kpos(C) && JSON.stringify(H.kitState()) === JSON.stringify(C.kitState()), `holding the clock changes nothing the kits do (${kpos(C)})`);
+  ok(A.sim.eggs.every((e) => !e.cracks), 'no egg cracked by the kits in the lesson run');
+}
 console.log(bad ? `${bad} FAILED` : 'all ok');
 process.exit(bad ? 1 : 0);

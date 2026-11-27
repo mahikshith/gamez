@@ -1,6 +1,6 @@
 // Eggscape: game shell. Screens, input, camera, events -> VFX/SFX/score, HUD.
 import { Sim, DT, LEGACY_ORB, EAGLE_LEN, REWIND_S, SCARE_S, isHardLevel } from './sim/sim.js';
-import { hintSearch, actSteps } from './sim/search.js';
+import { hintSearch, actSteps, value as searchValue, actions as searchActions, act as searchAct } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
 import { curtainFront, vineFront, drawEagle as devEagle } from './render/v3art.js'; // where a burning thorn curtain's fire has got to; the eagle rig (dev face strips)
 import { LEVELS } from './data/levels.js';
@@ -74,6 +74,7 @@ import { drawReefUnder, drawReefOver, reefEvent, drawSurface, drawBoat, boatSeat
 import { drawUrchins, urchinEvent } from './render/urchinplay.js'; // 0.8.17 urchin: Spike the sea urchin (level 46)
 import { drawDenAlone, drawThiefDens, eggInDen, drawThieves, drawThievesOver, thiefEvent, drawThief, thiefPose, thiefBlend, drawThiefCard, drawThiefEmblem } from './render/thieves.js'; // v3.6 the weasel and the rats
 import { drawBandit, bandHides, banditEvent } from './render/banditplay.js'; // 0.8.17 bandit
+import { drawKits, kitsEvent } from './render/kitsplay.js'; // 0.8.18 kits: mama raccoon and her kits
 import { RIG as THIEF_RIG } from './sim/thieves.js';
 import { THIEF_DEMOS } from './data/thief-demo.js'; // v3.6 thief studio levels (dev)
 import { LAB_DEMOS } from './data/lab-demos.js'; // v4 Shape Lab studio levels: the clockwork cast and the owl
@@ -208,7 +209,7 @@ const WORLDS = ['The Farm', 'Wild Woods', 'Frozen Lake', 'Crystal Caves', 'Volca
 const LAB = [
   { name: 'Chicks', items: CHICK_DEMOS.map((d) => [d.kind, d.kind[0].toUpperCase() + d.kind.slice(1)]) },
   { name: 'Creatures', items: [['frog', 'Frog'], ['octopus', 'Octo'], ['octoden', 'Puddle'], ['fish', 'Fish'], ['reef', 'Reef'], ['penguin', 'Pip']] }, // 0.8.17 pip
-  { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King'], ['bandit', 'Bandit']] }, // 0.8.17 bandit
+  { name: 'Thieves', items: [['weasel', 'Weasel'], ['rats', 'Rats'], ['weaselboss', 'Raid'], ['ratking', 'King'], ['bandit', 'Bandit'], ['kits', 'Kits']] }, // 0.8.17 bandit; 0.8.18 kits
   { name: 'Bayou', items: [['gator', 'Gator'], ['turtle', 'Turtle'], ['mosquito', 'Bugs'], ['grandpa', 'Grandpa']] },
   { name: 'Allies', items: [['rooster', 'Rooster'], ['goose', 'Goose']] },
   { name: 'Coral Reef', items: [['hermit', 'Hermit'], ['puffer', 'Puffer'], ['jelly', 'Jelly'], ['kingcrab', 'King'], ['urchin', 'Urchin']] }, // 0.8.17 urchin
@@ -824,6 +825,7 @@ function frameOf(all, maxCh) {
   }
   for (const T of sim.thieves || []) if (T.ph !== 'gone' && T.ph !== 'wait' && T.ph !== 'hide') hds.push(sim.thBody(T)); // v3.6 thieves
   if (sim.band) hds.push(sim.bandHead(sim.band)); // 0.8.17 bandit
+  if (sim.kit && sim.kit.ph !== 'wait' && sim.kit.ph !== 'gone') hds.push(sim.kitHead()); // 0.8.18 kits: mama on her yard
   if (sim.kc && all) { R = Math.max(R, sim.outerR + 0.72); yMin = Math.min(yMin, sim.kc.by - 0.95); yMax = Math.max(yMax, sim.kc.by + 0.95); } // world 8: the King Crab's arms hug the vault
   const BQ = bossPose(sim, false); // bosses (v3.1): keep the boss over the vault in frame
   // the big Blizzard cloud only when framing the whole vault (portrait screens have the height to spare); a zoomed-in
@@ -4804,6 +4806,8 @@ function handleEvents() {
         p2Event(ev, fx, P2_API); // v3.4 powers and combos
         bayouEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.7 Gator Bayou
         thiefEvent(ev, fx, { popup: denPopup, audio, hitStop, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // v3.6 the weasel and the rats
+        if (ev.type === 'kitCarry') lessonAsk('kits', null, ev); // 0.8.18 kits: the first carry is the meeting
+        kitsEvent(ev, fx, { popup, audio }); // 0.8.18 kits
         banditEvent(ev, fx, { popup, audio, hitStop, calm: save.calm, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // 0.8.17 bandit
         reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // world 8 reef
         urchinEvent(ev, fx, { popup, audio, buzz, calm: save.calm }); // 0.8.17 urchin
@@ -6062,6 +6066,7 @@ function render() {
   blastXf(() => drawThievesOver(ctx, sim, t, k), 9.1); // v3.6: the weasel's jaws over a held egg, the trap ring
   SL(['coco'], (c) => drawCocoOver(c, sim, t, k)); // 0.8.17 coco: his tail's curl over the egg he holds, a peel in flight
   if (sim.band) blastXf(() => drawBandit(ctx, sim, t, k, save.calm, 'front'), 2.6); // 0.8.18 bandit: on a ring, in front of it and the eggs (the crank arrow, his body and paws)
+  if (sim.kit) blastXf(() => drawKits(ctx, sim, t, k, save.calm, 'front'), 2.6); // 0.8.18 kits: mama on the yard, the kits on the floors (over the egg they carry)
   SL(['mosq'], (c) => drawBayouOver(c, sim, t, k)); // v3.7: a turtle's beak round its egg, mosquito swarms
   SL(['snake'], (c) => W.drawSnakes(c, sim, t, k)); // predators (v3)
   for (const m of sim.embers) W.drawEmber(ctx, m, t);
@@ -7545,7 +7550,7 @@ function introPlans(L) {
   if (I && I.id === L.id && I.li === G.li) return I.P;
   let P = [];
   if (G.li >= 0 && !L.intro.chick && !L.intro.cw) {
-    const ks = (INTRO_KINDS[L.id] || villainKinds(L).filter((k) => kindFirst(k) === L.id)).filter((k) => !L.boss || /^boss:/.test(k));
+    const ks = (INTRO_KINDS[L.id] || villainKinds(L).filter((k) => kindFirst(k) === L.id && !/^kits/.test(k))).filter((k) => !L.boss || /^boss:/.test(k)); // (mama raccoon's kits have their own lesson in play: the card stays on its own subject)
     P = ks.slice(0, 3).map((k) => howToPlan(k, { harm: true }));
     if (!P.length) {
       const foeOf = L.salamander ? 'salamander' : L.eagle ? 'eagle' : 'snake';
@@ -11349,6 +11354,7 @@ const TAU = Math.PI * 2;
 const spinSlices = () => SP.wheel(save);
 // the thieves that can come up on the reels, with the voice each has in the game; only ones this player has met
 const SPIN_VILLAINS = { weasel: 'weasel_snicker', snake: 'snake_hiss', rats: 'rat_squeak', octopus: 'ink_squirt', frog: 'tongue_lick', eagle: 'eagle_screech', salamander: 'sal_huff', chameleon: 'tongue_lick', hermit: 'crab_snap', gator: 'gator_snap', spider: 'gear_whir', 'boss:raccoon': 'weasel_snicker', monkey: 'gecko_chirp', penguin: 'squish', urchin: 'stun_stars' }; // 0.8.18: Bandit, Coco, Pip and Spike
+for (const c of ['ice', 'woods', 'sea', 'cave', 'goggles', 'bow']) SPIN_VILLAINS['kits:' + c] = 'weasel_snicker'; // 0.8.18 kits: mama in the costume of the world she was met in (only once met: save.seen)
 function spinVillain(not) {
   const met = Object.keys(SPIN_VILLAINS).filter((k) => save.seen['v:' + k] && hasPortrait(k)), pool = met.length > 1 ? met.filter((k) => k !== not) : met;
   return pool.length ? pool[Math.floor(Math.random() * pool.length)] : 'weasel'; // (which villain is looks only: the roll was made before this)
@@ -12630,6 +12636,7 @@ if (DEV) window.__egg = {
   lessonAsk, lessonLevel, // 0.8.18 QA: lessonAsk(key, null, {x, y}) asks for a teaching moment; lessonLevel() the level's opening demo
   frame(dt = 1 / 60) { update(dt); renderAll(); tallyFrame(); }, fxStats: menuFxStats,
   actSteps, // film strips replay planner moves through this
+  search: { value: searchValue, actions: searchActions, act: searchAct }, // clips: a closed-loop player picks each move from the live game
   snakeArt: drawSnake, // palette strips
   allyIconDraw: (c, x, y, s, live = true) => { allyIconLive = live; try { allyIcon(c, x, y, s); } finally { allyIconLive = false; } }, // faces3 QA: the call button's rooster
   hen: { anim: drawHenAnim, legacy: drawHenLegacy, events: henIdleEvents, reset: resetHen }, // M7 strips

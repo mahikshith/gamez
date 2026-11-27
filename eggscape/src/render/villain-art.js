@@ -26,6 +26,7 @@ import { penguinPose, drawPenguin } from './penguin.js'; // 0.8.17 pip
 import { drawUrchin, urchinPose } from './urchin.js'; // 0.8.17 urchin
 import { monkeyPose, drawMonkey } from './monkey.js'; // 0.8.17 coco
 import { drawRaccoon, raccoonPose } from './raccoon.js'; // 0.8.17 bandit
+import { kitsPortrait } from './kitsplay.js'; // 0.8.18 kits
 import { drawCreeperPortrait } from './creeper.js'; // 0.8.18 creeper
 
 const TAU = Math.PI * 2;
@@ -124,6 +125,7 @@ const ART = {
     drawRaccoon(ctx, x - d * 0.08, fy, s, t, raccoonPose('crank', t, 0, { R: 235 }), { egg: false });
   },
   bandit(ctx, x, y, d, t) { ART['boss:raccoon'](ctx, x, y, d, t); }, // 0.8.17 bandit: the practice tile
+  kits(ctx, x, y, d, t) { kitsPortrait(ctx, x, y, d, t, 'bow'); }, // 0.8.18 kits: the practice tile (her own bow)
   'boss:owl'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y - d * 0.06); drawOwlEmblem(ctx, d * 0.3, t); ctx.restore(); },
   // the boss-bar emblems (render/boss.js drawBossEmblem; that function is not exported, so the two shapes are redrawn here)
   'boss:blizzard'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawGeckoEmblem(ctx, d * 0.23, t); ctx.restore(); }, // Baron von Brr, the frost gecko
@@ -249,6 +251,7 @@ function badge(ctx, kind, x, y, d) {
   ctx.fillText(kind.replace('boss:', '')[0].toUpperCase(), x, y + d * 0.02);
 }
 
+for (const c of ['ice', 'woods', 'sea', 'cave', 'goggles', 'bow']) ART['kits:' + c] = (ctx, x, y, d, t) => kitsPortrait(ctx, x, y, d, t, c); // 0.8.18 kits: mama in the level's world costume
 export const hasPortrait = (kind) => !!ART[kind];
 
 // the portrait of `kind` centred at (x, y) in a d x d box (the caller clips it)

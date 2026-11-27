@@ -30,6 +30,14 @@
 //     on the OTHER side of the bottom, so the fight moves into the vault and he cranks the other way.
 //   WHISTLE: once, after the second hurt, two fingers in his mouth: the level's waiting weasel (level.weasel with a long
 //     delay) comes out for a short hunt (BAND.hunt s), then is sent home to its den for good.
+//   THE STAND-OFF (0.8.18, the owner: "a real little scene, not a swap"): when the whistled weasel's hunt is over it does
+//     not slink home at once: it comes along its run to below his perch for its share (COME), they FREEZE and look at
+//     each other, a beat, eyes narrow (STARE, a leaf drifts between them), they CIRCLE, then a comic dust-cloud SCUFFLE
+//     (DUEL.fight s) in which neither bothers an egg. The OUTCOME is the state, not a dice roll: his sack empty, he wins:
+//     a bonk with his sack, the weasel slinks home dizzy with a flat ear for good, he dusts his paws (DUST). An egg in his
+//     sack: the weasel grabs the sack, it RIPS, every egg in it rolls free back into the vault, the weasel bolts home and
+//     he stares at the rip (HUH). Times in DUEL (like RIVAL_T, sim/salamander.js); events bandDuel { ph }, bandDuelWin,
+//     bandDuelRip { n }. A shake, a stun or the Scarecrow do not break into it; a weasel knocked out of it ends it.
 //   CATCH: while he is still on the yard, an egg falling out of the vault on his side he scurries under and catches in his
 //     sack: lost to the player until he is beaten, but never broken.
 //   Never unwinnable: he cranks every cycle (BAND.tease s of sitting when there is nothing to take), so there is always a
@@ -38,6 +46,7 @@
 // Teaching (a later slow-motion lesson): events bandSpit / bandCrank { ring, dir } (dir: +1 counter-clockwise, -1
 // clockwise, world), bandShake { ring, dir, hurt } (the counter was done), bandHurt; and bandLesson() for the live state.
 import { RING_TH, wrap, clamp } from './geom.js';
+const HUNT_SPEED = 2.0; // m/s the weasel scurrying for its share (sim/thieves.js HUNT.speed is its prowl)
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 const D2R = Math.PI / 180;
@@ -77,7 +86,11 @@ export const BAND = {
   tall: 1.22, // m on the yard
   room: 0.55, // m he keeps from the basket's left rim
 };
-const PERCH = new Set(['sit', 'spit', 'crank', 'reach', 'grab', 'strain', 'shaken', 'whistle', 'perchStun', 'cower']);
+const PERCH = new Set(['sit', 'spit', 'crank', 'reach', 'grab', 'strain', 'shaken', 'whistle', 'perchStun', 'cower', 'duel', 'dust', 'huh']);
+// the stand-off's clock (s): COME (at most; the weasel runs along its run to below his perch), FREEZE, STARE, CIRCLE,
+// SCUFFLE (the dust cloud), then his DUST (he won) or HUH (the sack ripped)
+export const DUEL = { come: 7.0, near: 0.1, gap: 1.6, sidle: 0.22, freeze: 0.6, stare: 1.3, circle: 1.1, fight: 4.0, dust: 1.6, huh: 1.8, wait: 4.0 };
+const DUEL_PH = ['freeze', 'stare', 'circle', 'fight'];
 const HURTABLE = new Set(['spit', 'crank', 'reach', 'grab', 'strain', 'perchStun']); // a shake now is a real hurt
 const CATCH = new Set(['idle', 'sneak', 'crouch']); // on the yard he can run to catch a falling egg
 
@@ -90,7 +103,7 @@ export const banditMethods = {
     this.band = {
       ph: 'idle', t: R.delay ?? 3, dur: 1, x: g.x0 - 0.7, face: 1, goal: g.x0, odo: 0, ri: -1, pa: 0, side: -1, dir: -1, n: 0, from: null,
       fl: 0, cr: 0, ct: 0, tgt: 0, eid: 0, px: 0, py: 0, sack: [], hits: 0, hp, hurt: 0, whistled: 0, wz: 0, wid: -1,
-      fz: 0, hitCD: 0, why: '', spill: [], done: 0, end: '', held: 0, t0: 0, sx: null, sy: null,
+      fz: 0, hitCD: 0, why: '', spill: [], done: 0, end: '', held: 0, t0: 0, sx: null, sy: null, duel: null, dueled: 0, dw: 0, rip: 0,
     };
   },
   bandM(o) { return o[this.mode] ?? o.medium; },
@@ -151,7 +164,7 @@ export const banditMethods = {
     // the counter: how far the ring has been turned against his crank lately (the player, a power: anything but him)
     const own = (ring.omega || 0) * dt, k = Math.exp(-dt / BAND.shakeTau);
     B.fl = Math.max(0, B.fl * k - B.dir * own);
-    if (B.fl > this.bandM(BAND.shake) * D2R && B.ph !== 'shaken' && B.hitCD <= 0) { B.fl = 0; this.bandShake(B); return; }
+    if (B.fl > this.bandM(BAND.shake) * D2R && B.ph !== 'shaken' && B.ph !== 'duel' && B.hitCD <= 0) { B.fl = 0; this.bandShake(B); return; }
     if (B.ph !== 'crank' || !free || B.held || B.fz > 0) return;
     const w = B.dir * this.bandM(BAND.crank) * D2R * ss(0, BAND.crankIn, B.dur - B.t);
     ring.omega += w; ring.target += w * dt; // a turn of his own: the target goes with it (no tug of war with a held ring)
@@ -190,11 +203,11 @@ export const banditMethods = {
     }
     if (B.held) { B.held = 0; this.emit('bandThaw', this.bandHead(B)); if (perched && B.ph !== 'shaken') this.bandSet(B, 'sit', 0.6); }
     // dizzy (the rooster's crow, a strike, a quake, a rock): he lets go and reels
-    if (X && X.dizzy > 0 && B.ph !== 'stun' && B.ph !== 'perchStun' && B.ph !== 'shaken' && B.ph !== 'hop' && B.ph !== 'climb' && B.ph !== 'whistle') {
+    if (X && X.dizzy > 0 && B.ph !== 'stun' && B.ph !== 'perchStun' && B.ph !== 'shaken' && B.ph !== 'hop' && B.ph !== 'climb' && B.ph !== 'whistle' && B.ph !== 'duel') {
       this.bandLetGo(B, 'daze'); this.bandSet(B, perched ? 'perchStun' : 'stun', X.dizzy); this.emit('bandStun', this.bandHead(B));
     }
     // the Scarecrow: on the yard he keeps well away; on a ring he cowers and leaves the ring and the eggs alone
-    if (this.scareT > 0 && B.ph !== 'scared' && B.ph !== 'cower' && B.ph !== 'shaken' && B.ph !== 'hop' && B.ph !== 'climb') {
+    if (this.scareT > 0 && B.ph !== 'scared' && B.ph !== 'cower' && B.ph !== 'shaken' && B.ph !== 'hop' && B.ph !== 'climb' && B.ph !== 'duel') {
       if (perched) { this.bandLetGo(B, 'scare'); this.bandSet(B, 'cower'); } else { this.bandSet(B, 'scared'); B.tgt = 0; }
       this.emit('bandScared', this.bandHead(B));
     }
@@ -280,6 +293,8 @@ export const banditMethods = {
         if ((B.t -= dt) <= 0) { if (!B.wz) this.bandCall(B); this.bandSet(B, 'sit', this.bandM(BAND.tease)); }
         break;
       case 'perchStun': if ((B.t -= dt) <= 0 && !(X && X.dizzy > 0)) this.bandSet(B, 'sit', 0.8); break;
+      case 'duel': this.bandDuelStep(B, dt); break; // 0.8.18 the stand-off
+      case 'dust': case 'huh': if ((B.t -= dt) <= 0) { B.duel = null; this.bandSet(B, 'sit', this.bandM(BAND.tease)); } break;
       case 'cower': if (!(this.scareT > 0)) this.bandSet(B, 'sit', 0.8); break;
     }
   },
@@ -446,16 +461,19 @@ export const banditMethods = {
     B.done = 1; B.t0 = this.t; B.x = B.lx ?? this.bandGeo().home; B.face = 1; this.bandSet(B, 'defeated', 1e9); B.ri = -1;
     const X = this.bx && this.bx.boss;
     if (X) { X.atk = null; X.t = 1e9; }
+    this.bandSpillSack(B, this.bandSackPt(B, 0));
+    this.emit('bandDefeat', { ...this.bandHead(B), n: B.spill.length });
+  },
+  // every egg in his sack flies back into the outer channel from S (nearest the bottom first, onto floor clear of a gap)
+  bandSpillSack(B, S) {
     const ring = this.bandOuter(), ra = ring.body.getAngle(), ri = this.bandEggR(), used = [];
     const free = (a) => !ring.gaps.some((g) => Math.abs(wrap(ra + g.a - a)) * ring.r < g.len / 2 + 0.42) && !used.some((u) => Math.abs(wrap(u - a)) * ri < 0.62);
-    const S = this.bandSackPt(B, 0);
     B.sack.splice(0).forEach((id) => {
       let a = -Math.PI / 2;
       for (let k = 0; k < 40; k++) { const c = -Math.PI / 2 + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 6 * D2R; if (free(c)) { a = c; break; } }
       used.push(a);
       B.spill.push({ id, t: 0, x0: S.x, y0: S.y, x1: ri * Math.cos(a), y1: ri * Math.sin(a) });
     });
-    this.emit('bandDefeat', { ...this.bandHead(B), n: B.spill.length });
   },
   bandSpillStep(B, dt) {
     if (!B.spill.length) return;
@@ -486,7 +504,69 @@ export const banditMethods = {
     if (B.wz > 0) { if (T.ph !== 'wait') B.wz -= dt; if (B.wz <= 0) B.wz = -1; return; }
     // its hunt is over: sent home (once it has nothing in its jaws), and it stays there
     if (T.ph === 'hide' || T.ph === 'wait') { T.t = Math.max(T.t, 1e9); return; }
-    if (['prowl', 'stalk', 'idle', 'in', 'laugh'].includes(T.ph) && !T.eid && this.state === 'play') this.thGoHome(T);
+    if (T.ph === 'duel' || B.ph === 'duel') return;
+    if (['prowl', 'stalk', 'idle', 'in', 'laugh'].includes(T.ph) && !T.eid && this.state === 'play') {
+      // 0.8.18 the stand-off: first it comes for its share (once; he waits for it a little while he is busy on his perch)
+      if (!B.dueled && !B.done && T.ch === T.run && this.bandPerched(B) && !B.held && !(B.fz > 0)) {
+        if (B.ph === 'sit' || B.ph === 'spit' || B.ph === 'crank') { this.bandDuel(B, T); return; }
+        if ((B.dw += dt) < DUEL.wait) return;
+      }
+      this.thGoHome(T);
+    }
+  },
+  // ---------- 0.8.18 the stand-off (see the top): B.duel = { ph, t, wid, a (where the weasel stops on its run, world) }
+  // where the weasel stops on its run: on his own floor a step short of him on its side, else straight below his perch
+  bandDuelA(B, T) { if (T.run !== B.ri) return wrap(B.pa); const s = wrap(T.a - B.pa) >= 0 ? 1 : -1; return wrap(B.pa + (s * DUEL.gap) / Math.max(0.5, T.r)); },
+  bandDuel(B, T) {
+    B.dueled = 1; this.bandLetGo(B, 'duel');
+    B.duel = { ph: 'come', t: 0, wid: T.id, a: this.bandDuelA(B, T), win: '' };
+    this.bandSet(B, 'duel', 1e9);
+    T.tgt = 0; T.k = 'come'; this.thSet(T, 'duel', 1e9);
+    this.emit('bandDuel', { ph: 'come', ...this.bandHead(B) });
+  },
+  bandDuelStep(B, dt) {
+    const D = B.duel, T = D && (this.thieves || []).find((q) => q.id === D.wid);
+    if (!D || !T || T.ph !== 'duel') { B.duel = null; this.bandSet(B, 'sit', 0.8); return; } // knocked out of it: it is over
+    D.t += dt;
+    if (D.ph === 'come') { // along its run to below his perch, then it stops dead: FREEZE
+      const left = this.thToward(T, D.a, HUNT_SPEED, dt);
+      if (left > DUEL.near && D.t < DUEL.come) return;
+      D.t = 0; D.ph = 'freeze'; T.k = 'freeze';
+      T.face = wrap(B.pa - T.a) >= 0 ? 1 : -1; // facing him
+      this.emit('bandDuel', { ph: 'freeze', ...this.bandDuelPt(B) });
+      return;
+    }
+    let el = D.t, i = 0;
+    for (; i < DUEL_PH.length; i++) { const d = DUEL[DUEL_PH[i]]; if (el < d) break; el -= d; }
+    if (i < DUEL_PH.length) {
+      if (DUEL_PH[i] !== D.ph) { D.ph = DUEL_PH[i]; T.k = D.ph; this.emit('bandDuel', { ph: D.ph, ...this.bandDuelPt(B) }); }
+      if (D.ph === 'circle') { // it sidles: a step back and forth, never taking its eyes off him
+        const a = wrap(D.a + (DUEL.sidle * Math.sin((el / DUEL.circle) * Math.PI * 2)) / Math.max(0.5, T.r));
+        T.odo += Math.abs(wrap(a - T.a)) * T.r; T.a = a; T.face = wrap(B.pa - T.a) >= 0 ? 1 : -1;
+      }
+      return;
+    }
+    // the dust settles: the outcome is the state of his sack
+    const P = this.bandDuelPt(B);
+    if (B.sack.length) {
+      D.win = 'weasel'; D.ph = 'rip'; B.rip = 1; // (his sack stays torn: render/raccoon.js draws the hole)
+      this.bandSpillSack(B, this.bandSackPt(B, 0));
+      this.emit('bandDuelRip', { ...P, n: B.spill.length });
+      T.k = 'scare'; this.thGoHome(T);
+      this.bandSet(B, 'huh', DUEL.huh);
+    } else {
+      D.win = 'band'; D.ph = 'won';
+      this.emit('bandDuelWin', P);
+      T.k = 'slink'; this.thGoHome(T);
+      this.bandSet(B, 'dust', DUEL.dust);
+    }
+    B.wz = -1; // its hunt is over for good: home it goes and there it stays (bandWeasel)
+  },
+  bandDuelPt(B) { // the middle of the scuffle: between his perch and the weasel below it
+    const D = B.duel, T = D && (this.thieves || []).find((q) => q.id === D.wid), h = this.bandHead(B);
+    if (!T) return { x: h.x, y: h.y };
+    const w = this.thBody(T);
+    return { x: (h.x + w.x) / 2, y: (h.y + w.y) / 2 };
   },
 
   // ---------- hooks: boss.js (pose, bar), animalsHit, the glow flash

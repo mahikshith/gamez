@@ -11,6 +11,7 @@ import { p2Methods, P2_TYPES, P2_KEYS } from './powers2.js'; // v3.4 powers and 
 import { warpMethods } from './warp.js'; // v3.4 warp gate
 import { thiefMethods } from './thieves.js';
 import { banditMethods } from './bandit.js'; // 0.8.17 bandit: the raccoon boss of L6
+import { kitMethods } from './kits.js'; // 0.8.18 kits: mama raccoon and her kits
 import { reefMethods } from './reef.js'; // world 8: hermit crab, pufferfish, jellyfish
 import { urchinMethods } from './urchin.js'; // 0.8.17 urchin: Spike the sea urchin (level 46)
 import { kcMethods } from './kingcrab.js'; // world 8 boss: the King Crab // v3.6 the egg thieves: weasel, rats, their bosses
@@ -316,6 +317,7 @@ export class Sim {
     this.pipInit(L); // 0.8.17 pip
     this.cocoInit(L); // 0.8.17 coco
     this.bandInit(L); // 0.8.17 bandit (sim/bandit.js)
+    this.kitInit(L); // 0.8.18 kits (sim/kits.js)
     this.creepInit(L); // 0.8.18 creeper (sim/creeper.js)
     this.reefInit(L); if (L.bossFight && L.bossFight.kind === 'kingcrab') this.kcInit(L); // world 8 (sim/reef.js, sim/kingcrab.js)
     this.cwInit(L); this.owlInit(L); // v4: the clockwork cast and the Clockwork Owl
@@ -1410,6 +1412,7 @@ export class Sim {
     this.seaStep(dt, end); // v3.3: octopus and fish schools
     this.thiefStep(dt); // v3.6: the weasel and the rats (sim/thieves.js)
     this.bandStep(dt); // 0.8.17 bandit
+    this.kitStep(dt); // 0.8.18 kits
     this.reefStep(dt, end); // world 8: hermit crabs, puffers, jellyfish, the King Crab
     for (const b of this.barriers) if (b.alive && b.fire && (b.burn += dt / BURN_T) >= 1) this.removeBarrier(b, 'burn');
     if (this.eagle) this.eagleStep(dt); // after the level ends it flees (win) or gloats (loss)
@@ -2307,6 +2310,7 @@ export class Sim {
     if (this.sals && this.sals.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.7 * this.salThreat(e)); // v3.2: a breath aimed at an egg
     if (this.thieves.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.thiefThreat(e)); // v3.6: the thieves
     if (this.band) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.bandThreat(e)); // 0.8.17 bandit
+    if (this.kit) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.kitThreat(e)); // 0.8.18 kits
     if (this.gators && (this.gators.length || this.mosqs.length)) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.9 * this.bayouThreat(e)); // v3.7
     if (this.pips && this.pips.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.5 * this.pipThreat(e)); // 0.8.17 pip: not wicked, a mild cue
     if (this.cocos && this.cocos.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.5 * this.cocoThreat(e)); // 0.8.17 coco: cheeky, a mild cue
@@ -2516,6 +2520,7 @@ export class Sim {
       coco: this.cocoState(), // 0.8.17 coco
       creep: this.creepState(), // 0.8.18 creeper
       band: this.bandState(), // 0.8.17 bandit
+      kit: this.kitState(), // 0.8.18 kits
       reef: this.reefState(), // world 8
       cw: this.cwState(), owl: this.owlState(), // v4 the clockwork cast and the Clockwork Owl
       bayou: this.bayouState(), // v3.7 Gator Bayou
@@ -2582,6 +2587,7 @@ export class Sim {
     sim.cocoLoad(S.coco); // 0.8.17 coco
     sim.creepLoad(S.creep); // 0.8.18 creeper
     sim.bandLoad(S.band); // 0.8.17 bandit
+    sim.kitLoad(S.kit); // 0.8.18 kits
     sim.reefLoad(S.reef); // world 8
     sim.cwLoad(S.cw); sim.owlLoad(S.owl); // v4
     sim.bayouLoad(S.bayou); // v3.7 Gator Bayou
@@ -2998,6 +3004,7 @@ Object.assign(Sim.prototype, pipMethods); // 0.8.17 pip
 Object.assign(Sim.prototype, creepMethods); // 0.8.18 creeper
 Object.assign(Sim.prototype, cocoMethods); // 0.8.17 coco
 Object.assign(Sim.prototype, banditMethods); // 0.8.17 bandit (sim/bandit.js)
+Object.assign(Sim.prototype, kitMethods); // 0.8.18 kits: mama raccoon and her kits (sim/kits.js)
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
 Object.assign(Sim.prototype, urchinMethods); // 0.8.17 urchin (sim/urchin.js; built, stepped and saved through reef.js)
 Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl

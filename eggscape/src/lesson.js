@@ -64,6 +64,7 @@ function where(q) {
   if (k === 'urchin') { const U = find(sim.urchins, ev.id); if (U) return { x: U.x, y: U.y }; }
   if (k.startsWith('creep_')) { const C = find(sim.creeps, ev.id); if (C && sim.creepHead) return sim.creepHead(C); } // 0.8.18 creeper: follow it
   if (k.startsWith('bandit')) { const b = banditLesson(sim); if (b) return b; }
+  if (k === 'kits') { const L = sim.kitLesson && sim.kitLesson(); if (L) return { x: L.at.x, y: L.at.y }; } // 0.8.18 kits
   if (k === 'salFireUp') { const C = find(sim.sals, ev.id); const h = C && C.pts && C.pts[0]; if (h) return { x: h.x, y: h.y }; } // 0.8.18: the white-hot salamander, live
   return Number.isFinite(ev.x) && Number.isFinite(ev.y) ? { x: ev.x, y: ev.y } : null;
 }
@@ -77,6 +78,7 @@ function ringOf(spec, q, p) {
   const sim = K.G.sim, n = sim.rings.length, d = Math.hypot(p.x, p.y);
   const floor = Math.max(0, Math.min(n - 1, sim.chAt(d)));
   if (q.key.startsWith('bandit')) { const b = banditLesson(sim); return b ? b.ring : n - 1; }
+  if (q.key === 'kits') { const L = sim.kitLesson && sim.kitLesson(); return L ? L.ring : n - 1; } // 0.8.18 kits: the floor they walk on
   if (q.key === 'coco') { const C = find(sim.cocos, q.ev.id); if (C && Number.isInteger(C.ch)) return Math.max(0, Math.min(n - 1, C.at === 'ceil' ? C.ch - 1 : C.ch)); }
   switch (spec.ring) {
     case 'outer': return n - 1;
