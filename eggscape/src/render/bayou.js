@@ -448,12 +448,12 @@ export function drawBayou(ctx, sim, t, k) {
     const stun = st && (st.k === 'stun');
     if (stun) { eye = 'spiral'; jaw = 0.25; }
     // faces3: its eyes on the nearest egg (in its own frame: x along its facing, y down), the eyes snap open as a log wakes
-    let look = 0.35, lookY = 0.1;
-    if (!G.boss && eye === 'open') { const F = sim.byFrame(G); let bd = 9; for (const e of sim.eggs) { if (!e.alive || e.saved) continue; const p = e.body.getPosition(), dx = p.x - F.x, dy = p.y - F.y, d = Math.hypot(dx, dy); if (d < bd) { bd = d; const l = Math.max(0.5, d); look = clamp(((dx * F.tx + dy * F.ty) * (A.f >= 0 ? 1 : -1)) / l * 1.3, -1.3, 1.3); lookY = clamp(-(dx * F.nx + dy * F.ny) / l, -1, 1); } } }
+    let gLook = 0.35, lookY = 0.1;
+    if (!G.boss && eye === 'open') { const F = sim.byFrame(G); let bd = 9; for (const e of sim.eggs) { if (!e.alive || e.saved) continue; const p = e.body.getPosition(), dx = p.x - F.x, dy = p.y - F.y, d = Math.hypot(dx, dy); if (d < bd) { bd = d; const l = Math.max(0.5, d); gLook = clamp(((dx * F.tx + dy * F.ty) * (A.f >= 0 ? 1 : -1)) / l * 1.3, -1.3, 1.3); lookY = clamp(-(dx * F.nx + dy * F.ny) / l, -1, 1); } } }
     if (WAKE.ph[G.id] === 'log' && G.ph !== 'log') WAKE.t[G.id] = t;
     WAKE.ph[G.id] = G.ph;
     const wk = t - (WAKE.t[G.id] ?? -9), wake = wk >= 0 && wk < 0.7 ? Math.sin(Math.min(1, wk / 0.08) * Math.PI / 2) * (1 - ss(0.35, 0.7, wk)) : 0;
-    const o = { jaw, eye, tail, smug, miss, wake, lookY, boss: G.boss, baby: G.call && !G.boss, gait: (A.g / 9 / (0.121 * GATOR.L * G.s)) * TAU, walk: clamp(A.sp / 0.07, 0, 1), chomp: G.ph === 'after' ? clamp(1 - G.t / 0.32, 0, 1) : 0, bend: rf * k, roll: G.roll > 0 ? 1 - G.roll / 0.9 : 0, sneeze: G.sneeze > 0 ? G.sneeze / 0.8 : 0, stars: G.ph === 'dizzy' || stun ? 1 : 0, alpha, id: G.id, look, noZ: !!st };
+    const o = { jaw, eye, tail, smug, miss, wake, lookY, boss: G.boss, baby: G.call && !G.boss, gait: (A.g / 9 / (0.121 * GATOR.L * G.s)) * TAU, walk: clamp(A.sp / 0.07, 0, 1), chomp: G.ph === 'after' ? clamp(1 - G.t / 0.32, 0, 1) : 0, bend: rf * k, roll: G.roll > 0 ? 1 - G.roll / 0.9 : 0, sneeze: G.sneeze > 0 ? G.sneeze / 0.8 : 0, stars: G.ph === 'dizzy' || stun ? 1 : 0, alpha, id: G.id, look: gLook, noZ: !!st };
     // the telegraph: a red bite mark over the jaws while they open at an egg
     if (G.ph === 'warn') biteMark(ctx, sim.gJaw(G), t, k, ss(0, 1, G.t / G.dur), G.s);
     if (G.lu && G.ph !== 'warp' && !st) { const J = sim.gJaw(G), F = sim.byFrame(G); luredHearts(ctx, J.x + F.nx * 0.25 - F.tx * G.face * 0.25, J.y + F.ny * 0.25 - F.ty * G.face * 0.25, k, t, G.id); drool(ctx, J.x + F.tx * G.face * 0.1 - F.nx * 0.2, J.y + F.ty * G.face * 0.1 - F.ny * 0.2, k, t + G.id); o.look = 0.9; if (o.eye !== 'spiral') o.eye = 'open'; if (!o.jaw) o.jaw = 0.18 + 0.05 * Math.sin(t * 5); }
