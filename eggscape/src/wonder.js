@@ -218,7 +218,10 @@ export function createWonder(env) {
     const d = -(px * dy - py * dx) / (rr * rr);
     g.turn(h.si, h.ring.i, d);
     if (g.kind === 'twin') S.arrows[h.ring.i] = { dir: Math.sign(d) || 1, si: h.si, t: S.t };
-    if (g.kind === 'plan' && Math.abs(d) > 0.02 && S.t - (S.tickT || 0) > 0.09) { S.tickT = S.t; audio.play('ring_tick', { vol: 0.35 }); }
+    // 0.8.19: the same ratchet as the levels, in every kind of vault (it used to tick in the planning vaults only, on the
+    // finger's movement): a soft tick per 6 degrees turned, pitched by the ring, and a light flick in the hand (not in Calm)
+    S.tickAcc = (S.tickAcc || 0) + Math.abs(d);
+    if (S.tickAcc >= Math.PI / 30 && S.t - (S.tickT || 0) > 0.035) { S.tickAcc = 0; S.tickT = S.t; audio.play('ring_tick', { pitch: 0.8 + 0.07 * h.ring.i, intensity: Math.min(1, Math.abs(d) / 0.08), vol: 0.75 }); if (env.buzz && !env.save().calm) env.buzz('flick'); }
     h.x = x; h.y = y;
   }
   function pointerUp(e) {

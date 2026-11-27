@@ -4201,18 +4201,46 @@ function drawRingPulse(ring) {
   ctx.restore();
 }
 // rings click through detents while a hand turns them (pitch by ring, loudness by speed)
-const DETENT = Math.PI / 12;
+// 0.8.19 (the owner: "the ring turning effect, sound or haptic, is not properly handled. The sound was introduced in the
+// bonus level but not in the actual levels"). Measured: a detent was 15 degrees of the RING's own travel, so the usual
+// nudge of a campaign ring (a thumb's 5 to 12 degrees) passed no detent and made no sound at all, and no ring ever ticked
+// in the hand; the bonus vaults tick on the finger's own movement (every 0.09 s it moves), so there every drag was heard.
+// Now, in every level: a soft tick per 6 degrees of travel while a hand turns the ring (audio.js keeps it to about 12 a
+// second and thins a fast spin), its pitch rising with the speed, and a firmer, lower one the moment a gap of that ring
+// lines up (under an egg lying on it, or with a gap of the next ring out). The hand feels the same two: a light flick per
+// step (a running tick: Calm drops it, as on a scrolled list) and one firmer tick on the line-up. Not louder than before.
+const DETENT = Math.PI / 30;
 let lastRingTick = 0;
+function ringLined(sim, r, ra) {
+  if (!r.gaps || !r.gaps.length) return 0;
+  const out = sim.rings[r.i + 1], oa = out ? out.body.getAngle() : 0;
+  const near = (a, b, w) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < w;
+  for (const g of r.gaps) {
+    const ga = ra + g.a, w = Math.max(0.05, ((g.len || 0.5) / r.r) * 0.22);
+    for (const e of sim.aliveEggs()) if (sim.channelOf(e) === r.i) { const p = e.body.getPosition(); if (near(ga, Math.atan2(p.y, p.x), w)) return 1; }
+    if (out && out.gaps) for (const g2 of out.gaps) if (near(ga, oa + g2.a, 0.045)) return 1;
+  }
+  return 0;
+}
 function ringTicks(sim) {
   for (const r of sim.rings) {
-    const a = Math.floor(r.body.getAngle() / DETENT);
+    const ra = r.body.getAngle(), a = Math.floor(ra / DETENT), hand = (r.held || r.keyHeld) && G.screen === 'play';
+    const lined = hand ? ringLined(sim, r, ra) : 0, click = lined && r.lined === 0;
+    r.lined = hand ? lined : undefined; // (undefined: a ring just taken with its gap already lined up does not click)
     if (r.tk === undefined) r.tk = a;
-    if (a === r.tk) continue;
+    const step = a !== r.tk;
     r.tk = a;
-    if (!(r.held || r.keyHeld) || G.screen !== 'play' || G.t - lastRingTick < 0.035) continue;
-    lastRingTick = G.t;
-    r.tickT = G.t;
-    audio.play('ring_tick', { pitch: 0.8 + 0.07 * r.i, intensity: clamp(Math.abs(r.omega) / (sim.maxOmega(r) || 1), 0, 1), vol: 0.75 });
+    if (!hand) continue;
+    const sp = clamp(Math.abs(r.omega) / (sim.maxOmega(r) || 1), 0, 1);
+    if (click) { // the gap lines up: firmer and lower
+      lastRingTick = G.t; r.tickT = G.t;
+      audio.play('ring_tick', { pitch: 0.62 + 0.05 * r.i, intensity: 1, vol: 0.9, firm: true });
+      buzz('tick');
+    } else if (step && G.t - lastRingTick >= 0.035) {
+      lastRingTick = G.t; r.tickT = G.t;
+      audio.play('ring_tick', { pitch: 0.8 + 0.07 * r.i + 0.22 * sp, intensity: sp, vol: 0.75 });
+      if (!save.calm) buzz('flick');
+    }
   }
 }
 // Per frame, per egg: run the squash spring, remember the velocity, and call a near miss when an egg that came
