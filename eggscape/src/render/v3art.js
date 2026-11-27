@@ -5,6 +5,7 @@ import { dizzyStars, spiralEye } from './status.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, k) => a + (b - a) * k;
 const mod = (a, b) => ((a % b) + b) % b;
 const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 const safe = (ctx, f) => { ctx.save(); try { f(); } catch (e) { /* never break the frame */ } ctx.restore(); };
@@ -363,8 +364,9 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     // 0.8.18 faces (weasel818): the head drawn 1.22x about the neck and the eye a further 1.25x, so the face reads at
     // play size; smug 0..1 (a held egg, a gloat: half-moon lids, the brow up) and shock 0..1 (a strike that missed: wide,
     // pin pupil, brow high, beak dropped) act on the eye
-    const HS = opts.hs ?? 1.22, ES = 1.25, smug = clamp(opts.smug || 0, 0, 1), shock = clamp(opts.shock || 0, 0, 1) * (1 - clamp(P.wide, 0, 1));
-    P.beak = Math.max(P.beak, shock * 0.6);
+    // faces3: at play size (under ~180 px) the eye grows a further 1.2x; opts.look {x, y} (-1..1, x = forward) aims the pupil at the egg
+    const HS = opts.hs ?? 1.22, ES = 1.25 * (1 + 0.2 * clamp((180 - s) / 80, 0, 1)), lkx = clamp(opts.look ? opts.look.x : 0.6, -1, 1), lky = clamp(opts.look ? opts.look.y : 0, -1, 1), smug = clamp(opts.smug || 0, 0, 1), shock = clamp(opts.shock || 0, 0, 1) * (1 - clamp(P.wide, 0, 1));
+    P.beak = Math.max(P.beak, shock * 0.85);
     const pitch = (opts.pitch || 0) + P.pitch * D2R, bank = clamp(opts.roll || 0, -1, 1), roll = bank * 30;
     P.eF -= Math.abs(bank) * 34; P.eN -= Math.abs(bank) * 14;
     const ow = clamp(s * 0.021, 1.15, 3.4) / k; // outline in body units: about 1.2..3.4 px whatever the size
@@ -528,7 +530,8 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     ctx.clip(eye);
     ctx.fillStyle = EG.iris; ctx.fill(eye);
     ctx.fillStyle = EG.pupil;
-    ctx.beginPath(); ctx.arc(0.9 + sq * 0.5 + smug * 0.6, 0.2, er * (wide ? 0.32 : 0.56 * (1 - 0.5 * shock)), 0, TAU); ctx.fill();
+    const pxp = lerp(lkx * er * 0.42, -er * 0.35, smug * 0.8) + sq * 0.5, pyp = 0.2 + lky * er * 0.38 * (1 - smug); // faces3: on the egg; smug: a sidelong look back at you
+    ctx.beginPath(); ctx.arc(pxp, pyp, er * (wide ? 0.32 : 0.56 * (1 - 0.6 * shock)), 0, TAU); ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(-0.4, -1.3, er * 0.24, 0, TAU); ctx.fill();
     // lids close from the top (blink, squint)
@@ -552,6 +555,11 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     ctx.fillStyle = EG.white; ctx.fill(brow);
     ctx.lineWidth = eo * 1.15; ctx.strokeStyle = EG.line;
     ctx.beginPath(); ctx.moveTo(-er * 1.55, bt - 0.2); ctx.quadraticCurveTo(0, bt - 0.8, er * 1.5, bt + 2.0 + sq * 1.8); ctx.stroke();
+    if (shock > 0.15) { // faces3: the take: three snap lines off the brow
+      ctx.save(); ctx.globalAlpha *= clamp((shock - 0.15) * 2, 0, 1); ctx.lineCap = 'round';
+      for (const [w, c] of [[eo * 2.2, EG.line], [eo * 1.0, '#fff6d0']]) { ctx.lineWidth = w; ctx.strokeStyle = c; ctx.beginPath(); for (const a of [-2.3, -1.75, -1.2]) { ctx.moveTo(Math.cos(a) * er * 2.1, bt - 1 + Math.sin(a) * er * 1.2); ctx.lineTo(Math.cos(a) * er * 3, bt - 1 + Math.sin(a) * er * 2.1); } ctx.stroke(); }
+      ctx.restore();
+    }
     ctx.restore();
 
     // near wing: in front of the body; its root disappears under the scapular feathers
