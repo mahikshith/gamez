@@ -15,8 +15,9 @@
 //   The player's own zoom wins for SHOTS.user s after a touch. Calm: no establishing move, no push, slower easing, the
 //   containment only. Low: the same frames without the zoom part of the moves (pans only).
 export const SHOTS = {
-  pad: 0.3, // m of air round a body
+  pad: 0.5, // m of air round a body
   eggPad: 0.45,
+  ahead: 0.4, // s a fast body is looked ahead
   linger: 1.6, // s the widened frame is held after the last act
   estIn: 0.55, estHold: 0.9, estOut: 0.7, estPull: 0.55, estZoom: 1.1, // the entrance: toward it this far, this much closer
   hitIn: 0.22, hitHold: 0.95, hitOut: 0.45, hitZoom: 1.22,
@@ -81,6 +82,13 @@ export function direct(S, base, cast, eggs, view, o) {
   // contain: every acting body and its target, and the eggs
   const acting = cast.filter(ACTING);
   let boxes = acting.flatMap((a) => boxesOf(a));
+  // a body thrown or leaping fast: where it will be in SHOTS.ahead s is in the frame too (the camera is there first)
+  const P = S.pos || (S.pos = {});
+  for (const a of cast) {
+    const q = P[a.key];
+    if (q && dt > 0 && ACTING(a)) { let dx = ((a.x - q.x) / dt) * SHOTS.ahead, dy = ((a.y - q.y) / dt) * SHOTS.ahead; const d = Math.hypot(dx, dy); if (d > 0.3) { if (d > 3) { dx *= 3 / d; dy *= 3 / d; } boxes.push(...boxesOf({ x: a.x + dx, y: a.y + dy, r: a.r })); } }
+    P[a.key] = { x: a.x, y: a.y };
+  }
   if (boxes.length) { S.keep = boxes; S.keepT = SHOTS.linger; } else if (S.keep && (S.keepT -= dt) > 0) boxes = S.keep; else S.keep = null;
   const demo = o.demo && o.demo !== 1 ? o.demo : 1;
   if (!boxes.length && !S.est && !S.hit && demo === 1) { S.on = false; S.last = null; return null; }

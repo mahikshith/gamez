@@ -15,8 +15,11 @@ const PH = {
   // mama raccoon (sim/kits.js K.ph) and her crew of kits (K.g.ph)
   mama: { enter: S('walk'), tell: S('untie'), strike: S() },
   kits: { enter: S('run', 'climbIn'), tell: S('pop', 'lift'), strike: S('go', 'up', 'hop', 'down', 'carry', 'out', 'yard', 'tumble', 'dangle', 'flee') },
+  // the crawlers (sim/salamander.js C.ph: salamander, gecko, thorn-back, chameleon): out of the floor they are always
+  // in the shot (walking is 'tell': it is on its way to an egg)
+  sal: { enter: S('in'), tell: S('walk', 'settle', 'retreat', 'daze', 'miss', 'brake', 'face'), strike: S('atk', 'lick', 'spit', 'fire', 'chew', 'beat', 'grin') },
   // every other family (sim/strike.js stkTargets): the phase words the sims share
-  any: { enter: S('in', 'enter', 'rise', 'arrive', 'walk', 'sneak', 'surface', 'emerge'), tell: S('warn', 'tell', 'aim', 'windup', 'wind', 'crouch', 'coil', 'charge', 'brace', 'spit', 'look'), strike: S('strike', 'leap', 'grab', 'tongue', 'snatch', 'hold', 'carry', 'eat', 'bite', 'lunge', 'toss', 'push', 'pull', 'reach', 'dash', 'swipe', 'gulp', 'hug', 'drag') },
+  any: { enter: S('in', 'enter', 'rise', 'arrive', 'sneak', 'surface', 'emerge'), tell: S('warn', 'tell', 'aim', 'windup', 'wind', 'crouch', 'coil', 'charge', 'brace', 'spit', 'look'), strike: S('strike', 'leap', 'grab', 'tongue', 'snatch', 'hold', 'carry', 'eat', 'bite', 'lunge', 'toss', 'push', 'pull', 'reach', 'dash', 'swipe', 'gulp', 'hug', 'drag') },
 };
 const R = { thief: 0.45, bandit: 0.6, mama: 0.65, kits: 0.4, boss: 0.8, any: 0.4 };
 const actOf = (fam, ph) => { const P = PH[fam] || PH.any; return P.enter.has(ph) ? 'enter' : P.tell.has(ph) ? 'tell' : P.strike.has(ph) ? 'strike' : 'idle'; };
@@ -30,6 +33,7 @@ export function castOf(sim) {
     let act = actOf(fam, ph), tx, ty, bd = 1e9;
     for (const q of eggs) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; tx = q.x; ty = q.y; } }
     if (act === 'idle' && bd < NEAR) act = 'strike';
+    if (act === 'idle' && (fam === 'sal' || fam === 'thief' || fam === 'kits' || (fam === 'bandit' && !lead && ph !== 'idle'))) act = 'tell'; // out of its door, it is always in the shot (stunned, hurt, going home)
     const a = { key, fam, x: p.x, y: p.y, r: r || R[fam] || R.any, act, ph };
     if (lead) a.lead = 1; // not out yet: the camera goes to its door ahead of it (the audit does not count these frames as acting)
     if ((act === 'tell' || act === 'strike') && bd < 4) { a.tx = tx; a.ty = ty; } // its target: the egg it is closest to
@@ -51,6 +55,11 @@ export function castOf(sim) {
     add('mama', 'mama', { x: K.x, y: sim.groundY + 0.7 }, K.ph === 'wait' ? 'walk' : K.ph, 0, K.ph === 'wait' ? 1 : 0);
     if (K.g && sim.kitOut(K.g)) add('kits', 'kits', sim.kitBody(K.g), K.g.ph);
   }
+  // ---- the crawlers (sim/salamander.js): one that is under the floor (about to come up, or diving to come up somewhere
+  // else) can surface anywhere, so the shot holds the whole vault until it is out
+  for (const C of sim.sals || []) if (C.ph === 'dive' || C.ph === 'in' || (C.ph === 'wait' && C.t < LEAD && sim.state === 'play')) add('sa' + C.id + ':under', 'any', { x: 0, y: 0 }, 'in', sim.outerR, 1);
+  // ---- any other creature about to come in (ph 'wait', its delay nearly over): the shot holds the whole vault for it
+  for (const k of ['octos', 'hermits', 'puffs', 'jellies', 'pips', 'cocos', 'frogs', 'gators', 'turtles', 'urchins']) for (const C of sim[k] || []) if (C && C.ph === 'wait' && C.t < LEAD && sim.state === 'play') { add(k + ':door', 'any', { x: 0, y: 0 }, 'in', sim.outerR, 1); break; }
   // ---- everyone else, from the strike's own list of live villains
   if (sim.stkTargets) for (const V of sim.stkTargets()) {
     if (seen.has(V.key) || V.type === 'thief') continue;
