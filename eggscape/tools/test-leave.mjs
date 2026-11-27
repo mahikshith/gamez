@@ -1,0 +1,21 @@
+// The leave scenes' one line (src/leave.js): node tools/test-leave.mjs
+import { leaveLine, exitLine } from '../src/leave.js';
+let bad = 0;
+const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
+const words = (s) => s.split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
+ok(leaveLine({ villain: 'snake', short: 1, streak: 5, bossLeft: 0.1 }).id === 'villain', 'a villain in the level comes first');
+ok(leaveLine({ villain: 'snake' }).villain === 'snake', '... and the scene is told which one peeks in');
+ok(leaveLine({ short: 1, streak: 5, bossLeft: 0.1 }).id === 'short', 'one egg short, before the streak and the boss');
+ok(leaveLine({ short: 2, streak: 2 }).id === 'streak' && /of 2 /.test(leaveLine({ short: 2, streak: 2 }).line), 'a streak of 2 or more: it says the number');
+ok(leaveLine({ short: 2, streak: 1 }).id === 'eggs', 'a streak of 1 is not a streak');
+ok(leaveLine({ short: 3, bossLeft: 0.3 }).id === 'boss' && leaveLine({ short: 3, bossLeft: 0.5 }).id === 'eggs', 'a boss only in the last third of his bar');
+ok(leaveLine({ short: 3, bossLeft: 0 }).id === 'eggs' && leaveLine({ short: 3, bossLeft: null }).id === 'eggs', 'a beaten boss or no boss: the plain line');
+ok(leaveLine().id === 'eggs' && leaveLine({ short: 0 }).id === 'eggs', 'nothing known: the plain line');
+ok(exitLine({ gift: true, day: 4 }).id === 'gift', 'home: a gift or a free spin first');
+ok(exitLine({ day: 4 }).id === 'day' && /day 4$/.test(exitLine({ day: 4 }).line), 'home: else the day streak, with its number');
+ok(exitLine({ day: 1 }).id === 'bye' && exitLine().id === 'bye', 'home: else See you soon');
+const all = [leaveLine({ villain: 'x' }), leaveLine({ short: 1 }), leaveLine({ streak: 12 }), leaveLine({ bossLeft: 0.2 }), leaveLine(), exitLine({ gift: 1 }), exitLine({ day: 30 }), exitLine()];
+ok(all.every((l) => words(l.line) <= 5), 'every line is at most five words: ' + all.map((l) => words(l.line)).join(' '));
+ok(new Set(all.map((l) => l.id)).size === 8, 'eight different lines');
+console.log(bad ? bad + ' FAILED' : 'all leave checks pass');
+process.exit(bad ? 1 : 0);

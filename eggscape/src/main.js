@@ -35,6 +35,7 @@ import * as E from './economy.js';
 import ads, { SKIP_COINS, PREMIUM_SKU } from './ads.js'; // 2026-11-15: rewarded/interstitial policy; 2026-11-16: every in-app product
 import { drawStore, drawCoin, drawBoosterStrip, drawChest, drawGlassEgg, storeItem, drawOfferArt, drawBoosterIcon, drawSkinPreview, drawHenSkinPreview, iapRows, iapValueLine, drawIapBanner, drawPart, drawItemArt, PROMISE, valueBadge } from './ui/store.js';
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
+import * as LV from './leave.js'; // 0.8.19: the leave scenes' one line
 import * as SK from './skip.js'; // 2026-11-23: the pause page's Skip level (one rewarded video)
 import { createSpendFx } from './ui/spendfx.js'; // 0.8.17: the spend moments' one family of animations (the Brain picks the moment)
 import { createPurse } from './ui/purse.js'; // 2026-11-23: one coin-gain effect for every place the purse grows
@@ -54,7 +55,7 @@ import fontUrl from '../assets/fonts/fredoka-600-latin.woff2';
 import { botTick } from './dev/bot.js';
 import { geckoStrikeEv, drawGeckoCard, geckoAnchor } from './render/gecko15.js'; // L15: the frost gecko boss
 import { drawBossRings, drawBossUnder, drawBossOver, drawBossActor, drawBossBar, drawMagnetField, bossPose, setBossView } from './render/boss.js'; // bosses (v3.1)
-import { galeNow, BOSS_TITLE, ATTACK_NAME, BOSS_MODE } from './sim/boss.js';
+import { galeNow, BOSS_TITLE, ATTACK_NAME, BOSS_MODE, bossProgress } from './sim/boss.js';
 import { magnetEvent, magnetLean } from './render/magnet.js'; // 2026-11-20: the magnet's look
 import { drawChickEgg, drawChickFX, drawHardIce, chickEvent, chickLabel, drawKindChick, drawReady } from './render/chicks.js'; // v3.2 chick kinds
 import { drawP2Back, drawP2Front, p2Event, drawLiveRing } from './render/powers2.js'; // v3.4 powers and combos
@@ -1382,6 +1383,11 @@ function wheel(e) {
 function backPress() {
   if (speedTest.active) { speedTest.back(); return true; }
   if (G.adBusy) { ads.cancelWait(); return true; } // a pending ad that never reported back: Back returns to the game
+  if (G.leaveAsk) { // 0.8.19 the leave scene is up: a second Back leaves (it never holds the player)
+    const b = appBridge();
+    if (G.leaveAsk.exit && !(b && typeof b.exitApp === 'function')) { G.leaveAsk = null; return false; } // (a shell without exitApp: its own "press again")
+    press('leave:go'); return true;
+  }
   if (modalOpen()) { // a sheet closes first
     if (G.got) press('got:tap'); else if (G.party) press(G.party.phase === 'show' ? 'party:tap' : 'party:close');
     else if (G.parent) G.parent = null; else if (G.waitList) G.waitList = null; else if (G.getMore) G.getMore = null; else if (G.chickBuy) G.chickBuy = null;
@@ -1393,7 +1399,7 @@ function backPress() {
   if (G.settingsOpen) { press('set:close'); return true; } // Settings (its privacy / reset page first: set:close goes back to Settings)
   switch (G.screen) {
     case 'play': if (G.sim && G.sim.state === 'play') press('pause'); return true; // (a decided level: its end card is on its way)
-    case 'pause': press('resume'); return true;
+    case 'pause': press('levels'); return true; // 0.8.19: Back during a level asks once (the leave scene), then the map
     case 'info': press('info:close'); return true;
     case 'store': case 'practice': case 'extras': case 'levels': press('back'); return true; // (the album: back to Extras)
     case 'spin': press('spin:back'); return true;
@@ -1404,7 +1410,8 @@ function backPress() {
       if (G.itab === 'chicks') { press('itab:level'); return true; } // 0.8.18: the chick picker (opened from the chick's face) closes
       press('levels'); return true; // the level card -> the map (a practice vault's -> Practice)
     case 'win': case 'fail': if (G.adBusy) return true; press('levels'); return true; // the end pages -> the map, never a retry or the next level by a Back
-    default: return false; // home: the shell's "press again to leave"
+    case 'title': G.leaveAsk = { exit: true, t0: G.t, L: LV.exitLine({ gift: SP.banked(save) > 0 || !!E.chestFor(bestTotal(), save.wallet.chests), day: 0 }) }; audio.play('cluck', { vol: 0.5 }); return true; // 0.8.19 home: the hen waves, STAY or LEAVE (in the shell's "press again" place)
+    default: return false;
   }
 }
 function keyDown(e) {
@@ -1508,7 +1515,12 @@ async function press(id) {
       break;
     }
     case 'leave:stay': G.leaveAsk = null; if (G.screen === 'pause') await press('resume'); break;
-    case 'leave:go': { const to = G.leaveAsk && G.leaveAsk.to; G.leaveAsk = null; if (to) await press(to); break; }
+    case 'leave:go': { // one tap leaves: no second question
+      const R = G.leaveAsk, to = R && R.to; G.leaveAsk = null;
+      if (R && R.exit) { const b = appBridge(); if (b && typeof b.exitApp === 'function') b.exitApp(); break; }
+      if (to) { G.leaveOk = true; try { await press(to); } finally { G.leaveOk = false; } }
+      break;
+    }
     case 'levels':
       if (leaveAsk('levels')) break;
       portal.gameplayStop();
@@ -2062,7 +2074,7 @@ async function press(id) {
       setScreen('practice');
       break;
     case 'spin': openSpin(); break;
-    case 'spin:back': closeSpin(); break;
+    case 'spin:back': case 'spin:next': closeSpin(); break;
     case 'spin:go': case 'spin:lever': await spinGo('free'); break; // (the lever also pulls a Try again that costs nothing; one that takes a video is asked for by its own button)
     case 'spin:ad': await spinGo('ad'); break;
     case 'spin:retry': await spinGo('retry'); break;
@@ -8688,7 +8700,7 @@ function pictoHare(c, x, y, S) {
 // (press ids rs:<i>, rs:-, rs:+, as Settings). It applies at once.
 function pauseRingRow(x, y, w, s, h) {
   const sp = ringSpeed(), n = RING_SPEEDS.length, k = RING_SPEEDS.indexOf(sp), dfl = RING_SPEEDS.indexOf(RING_SPEED_DEFAULT);
-  const e = h, tx = x + e + 6 * s, tw = w - 2 * e - 12 * s, cw = tw / n, cy = y + h / 2, th = 14 * s, kx = tx + cw * (k + 0.5);
+  const e = h, tx = x + e + 6 * s, tw = w - 2 * e - 12 * s, cw = tw / n, cy = y + h / 2, th = 20 * s, kx = tx + cw * (k + 0.5);
   const col = k === dfl ? '#58c83c' : k < dfl ? '#4a9cf0' : RING_SPEEDS[k] >= 3.5 ? '#f0553a' : '#f59a2c';
   ctx.save();
   ui.roundRect(tx, cy - th / 2, tw, th, th / 2); ctx.fillStyle = 'rgba(20,10,4,0.62)'; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = 'rgba(255,240,210,0.55)'; ctx.stroke();
@@ -8738,7 +8750,7 @@ function drawPause() {
   ui.calm = save.calm;
   const A = ui.A, sim = G.sim, st = sim.stats(), L = G.level;
   if (!G.frzActive) { // the level itself, dimmed (no blur: the player never left it), darker where the controls stand
-    dim(0.5);
+    dim(0.58);
     const g = ctx.createLinearGradient(0, 0, 0, H_);
     g.addColorStop(0, 'rgba(10,5,2,0.5)'); g.addColorStop(0.22, 'rgba(10,5,2,0)'); g.addColorStop(0.62, 'rgba(10,5,2,0)'); g.addColorStop(1, 'rgba(10,5,2,0.62)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W_, H_);
@@ -8768,10 +8780,12 @@ function drawPause() {
   const SH = 46 * q, RS = 62 * q, D = 84 * q, RH = 98 * q, PH = 62 * q, pg2 = 18 * q, pills = canHelp || sk;
   const blockH = RH + (pills ? pg2 + PH : 0), y0 = top + T, y1 = A.y1 - (wide ? 14 * q : Math.max(26 * q, A.h * 0.05));
   // where the level stands: eggs home, the clock, the three stars (pictures and numbers only)
+  const shade = (cx, cy, rw) => { const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, rw); g2.addColorStop(0, 'rgba(14,7,3,0.62)'); g2.addColorStop(0.6, 'rgba(14,7,3,0.36)'); g2.addColorStop(1, 'rgba(14,7,3,0)'); ctx.save(); ctx.translate(cx, cy); ctx.scale(1, 0.3); ctx.translate(-cx, -cy); ctx.fillStyle = g2; ctx.fillRect(cx - rw, cy - rw, rw * 2, rw * 2); ctx.restore(); }; // a soft shade under the floating things (no box)
   const status = (x, y, w) => {
     const EDGE = 'rgba(30,14,4,0.9)', fs = 27 * q, a = `${st.saved}/${st.target}`, b = sim.timeLimit ? fmtTime(sim.timeLeft) : '', ok = G.li >= 0 && G.goals && play ? goalsLive(sim) : null;
     const aw = 38 * q + ui.measure(a, fs), bw = b ? 40 * q + ui.measure(b, fs) : 0, sw = ok ? 3 * 34 * q : 0, gp = 24 * q, tot = aw + (b ? gp + bw : 0) + (ok ? gp + sw : 0), cy = y + SH / 2;
     let gx = x + w / 2 - tot / 2;
+    shade(x + w / 2, cy, tot * 0.5 + 70 * q);
     drawEggIcon(ctx, gx + 14 * q, cy, 36 * q, 'alive'); ui.text(a, gx + 36 * q, cy, { size: fs, color: st.saved >= st.target ? '#a8f07a' : '#fff6e0', stroke: EDGE, strokeW: 4 * q, tag: 'pause:goal' });
     gx += aw + gp;
     if (b) { pictoClock(ctx, gx + 15 * q, cy, 34 * q); ui.text(b, gx + 38 * q, cy, { size: fs, color: sim.timeLeft <= 10 ? '#ff8a70' : '#ffd36a', stroke: EDGE, strokeW: 4 * q, tag: 'pause:time' }); gx += bw + gp; }
@@ -8803,12 +8817,12 @@ function drawPause() {
   if (!wide) { // one column: the thumb's block low, the level and the slider share the room above it as even gaps
     const by = y1 - blockH, gap = (by - y0 - SH - RS) / 3;
     status(lx, y0 + gap, iw);
-    pauseRingRow(lx, y0 + gap * 2 + SH, iw, q, RS); R.rs = { x: lx, y: y0 + gap * 2 + SH, w: iw, h: RS };
+    shade(lx + iw / 2, y0 + gap * 2 + SH + RS / 2, iw * 0.5 + 60 * q); pauseRingRow(lx, y0 + gap * 2 + SH, iw, q, RS); R.rs = { x: lx, y: y0 + gap * 2 + SH, w: iw, h: RS };
     block(lx, by, iw);
   } else { // on its side: the level and the slider left, the thumb's block right
     const gap = (y1 - y0 - SH - RS) / 3;
     status(lx, y0 + gap, iw);
-    pauseRingRow(lx, y0 + gap * 2 + SH, iw, q, RS); R.rs = { x: lx, y: y0 + gap * 2 + SH, w: iw, h: RS };
+    shade(lx + iw / 2, y0 + gap * 2 + SH + RS / 2, iw * 0.5 + 60 * q); pauseRingRow(lx, y0 + gap * 2 + SH, iw, q, RS); R.rs = { x: lx, y: y0 + gap * 2 + SH, w: iw, h: RS };
     block(rx, y0 + (y1 - y0 - blockH) / 2, iw);
   }
   tourPausePage(q);
@@ -11791,10 +11805,14 @@ function drawSpin() {
     ui.record({ x: x0, y: my - 10 * u, w: pw, h: 20 * u }, 'spin:pips', 'spin:meter');
     ui.text(txt, x0 + pw + 8 * u, my, { size: fs, color: short ? '#ffb0a0' : '#ffe8b0', stroke: 'rgba(20,8,30,0.7)', strokeW: 3 * u, maxW: tw, tag: 'spin:meter', group: 'spin:meter' });
     const by = y + 36 * u, opts = [W.ad && 'ad', W.coin != null && 'coin'].filter(Boolean);
-    if (W.free) ui.button('spin:go', M.bank > 1 ? `SPIN  x${M.bank}` : 'SPIN', x, by, w, bh, { kind: 'primary', shimmer: idle, size: 29 * u, iconS: 1.15, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, calm ? 0 : G.t), ...off });
-    else if (!opts.length) ui.button('spin:back', 'Win levels to spin again', x, by, w, bh, { kind: 'secondary', size: 19 * u, ...off });
+    // 0.8.19 (mykee: "users are quite confused, they have to depend on the back button"): once a pull is over, and whenever
+    // no free spin is left, NEXT stands in the row at thumb level (it leaves as Back does; the back button stays)
+    const nextOn = !!(S.doneT || S.st !== 'idle' || !W.free), solo = nextOn && !W.free && !opts.length, nw = nextOn ? (solo ? w : Math.max(w * 0.34, 104 * u)) : 0, w2 = nextOn && !solo ? w - nw - 10 * u : w;
+    if (nextOn) ui.button('spin:next', 'NEXT', x + w - nw, by, nw, bh, { kind: W.free ? 'secondary' : 'primary', shimmer: idle && !W.free, icon: ICON.next, size: (solo ? 27 : 22) * u, ...off });
+    if (W.free) ui.button('spin:go', M.bank > 1 ? `SPIN  x${M.bank}` : 'SPIN', x, by, w2, bh, { kind: 'primary', shimmer: idle, size: 29 * u, iconS: 1.15, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, calm ? 0 : G.t), ...off });
+    else if (!opts.length) { /* NEXT alone, the whole row */ }
     else opts.forEach((k, i) => {
-      const bw = (w - 10 * u * (opts.length - 1)) / opts.length, bx = x + i * (bw + 10 * u), rich = W.coin != null && save.wallet.coins >= W.coin;
+      const bw = (w2 - 10 * u * (opts.length - 1)) / opts.length, bx = x + i * (bw + 10 * u), rich = W.coin != null && save.wallet.coins >= W.coin;
       const sh = k === 'coin' && !calm && G.t - (S.shortT || -9) < 0.4 ? Math.sin((G.t - S.shortT) * 40) * 4 * u : 0; // too few coins: the button shakes its head
       if (k === 'retry') ui.button('spin:retry', 'Try again', bx, by, bw, bh, W.retry === 'free' || ads.premium ? { kind: 'primary', shimmer: idle, size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, shimmer: idle, size: 22 * u, ...off });
       else if (k === 'ad') ui.button('spin:ad', ads.premium ? 'Free spin' : 'Spin', bx, by, bw, bh, ads.premium ? { kind: 'secondary', size: 22 * u, icon: (c, X, Y, S2) => drawSlotIcon(c, X, Y, S2 * 0.46, 0), ...off } : { kind: 'ad', ad: true, size: 22 * u, ...off });
@@ -11883,21 +11901,71 @@ function leadLine(c, cx, y, s, o = {}) {
 const leadBlock = (c, s, o = {}) => (c.id === 'spin' ? spinRowBlock(s, o) : { h: 28 * s, gap: o.gap ?? 10 * s, draw: (x, y, w) => leadLine(c, x + w / 2, y + 14 * s, s, { ...o, maxW: w }) });
 // Leaving a level that is being played, with something close: one card, once a session, no clock on it. "Keep playing"
 // goes back to the level, "Leave" leaves. (mykee: "anticipatory unlock ... when they quit, remind them")
-function leaveAsk(to) {
-  if (G.leftAsked || G.screen !== 'pause' || G.li < 0 || !G.sim || G.sim.state !== 'play' || earlyDays()) return false;
-  const L = pageLead('leaving'), c = L.lead;
-  if (!c || !(c.kind === 'gift' || (c.near || 0) >= 0.5)) return false;
-  G.leftAsked = true; G.leaveAsk = { to, c, t0: G.t };
+function leaveAsk(to) { // 0.8.19: every leave from a level in play asks once, with a small scene (src/leave.js picks its line from the run)
+  if (G.leaveOk || G.leaveAsk || G.screen !== 'pause' || !G.sim || G.sim.state !== 'play') return false;
+  const sim = G.sim, st = sim.stats(), bp = sim.bx && sim.bx.boss ? bossProgress(sim) : null;
+  const vk = (G.pauseKinds || []).find((k) => hasPortrait(k) && (VILLAIN_INFO[k] || {}).group !== 'hazard') || null;
+  G.leaveAsk = { to, t0: G.t, short: Math.max(0, st.target - st.saved), L: LV.leaveLine({ villain: vk, short: st.target - st.saved, streak: G.li >= 0 && sim.t > 1 ? save.streak | 0 : 0, bossLeft: typeof bp === 'number' ? 1 - bp : null }) };
+  audio.play('cluck', { pitch: 0.82, vol: 0.55 });
   return true;
 }
+// the leave scene: no card, no frame. The hen steps into the dimmed level (worried, the eggs still out at her feet; a
+// villain peeks in behind her, or the streak's flame flickers), one line, and STAY / LEAVE at thumb level. Leaving the
+// app from home: she waves from her nest. Calm: a still picture.
 function drawLeaveAsk() {
-  const R = G.leaveAsk;
-  dim(0.55);
-  stackCard('So close', (s) => [
-    { h: 54 * s, gap: 10 * s, draw: (x, y, w) => { ui.well(x, y, w, 54 * s, { s, a: '#ffe9b0', b: '#fff6dc' }); leadLine(R.c, x + w / 2, y + 27 * s, s, { size: 17, ink: ui.C.ink, maxW: w - 20 * s, tag: 'leave:t' }); ui.record({ x, y, w, h: 54 * s }, 'panel:leave'); } },
-    { h: 60 * s, gap: 14 * s, draw: (x, y, w) => ui.button('leave:stay', 'Keep playing', x, y, w, 60 * s, { kind: 'primary', shimmer: true, icon: ICON.play, size: 23 * s }) },
-    { h: 52 * s, gap: 10 * s, draw: (x, y, w) => ui.button('leave:go', 'Leave', x, y, w, 52 * s, { kind: 'tertiary', size: 20 * s }) },
-  ], { ribbon: '#e8a020' });
+  const R = G.leaveAsk, L = R.L || { id: 'eggs', line: '' }, A = ui.A, calm = save.calm, wide = A.w > A.h * 1.15;
+  const q = clamp((wide ? Math.min(A.w / 2, A.h * 1.15) : A.w) / 450, 0.78, 1.12), el = G.t - R.t0;
+  const ez = (k) => { const p = clamp(k, 0, 1), c1 = 1.7; return 1 + (c1 + 1) * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); }; // ease out, a little past, settle
+  const e = calm ? 1 : ez(el / 0.5);
+  dim(0.72 * Math.min(1, calm ? 1 : el / 0.3));
+  const BH = 86 * q, pad = 16 * q, bw = wide ? Math.min(A.w / 2 - 2 * pad, 420 * q) : Math.min(A.w - 2 * pad, 440 * q);
+  const by = wide ? A.cy + 24 * q : A.y1 - Math.max(26 * q, A.h * 0.05) - BH - 40 * q, bx = wide ? A.cx + (A.w / 2 - bw) / 2 : A.cx - bw / 2;
+  const cx = wide ? A.x + A.w / 4 : A.cx, hh = wide ? Math.min(A.h * 0.56, A.w * 0.3) : Math.min(A.h * 0.3, A.w * 0.66), cy = wide ? A.cy - 4 * q : A.y + A.h * 0.36;
+  const ly = wide ? A.cy - 46 * q : (cy + hh * 0.62 + by) / 2, lx = wide ? bx + bw / 2 : A.cx;
+  ctx.save();
+  const g = ctx.createRadialGradient(cx, cy, hh * 0.1, cx, cy, hh * 1.05); // a warm pool of light she stands in
+  g.addColorStop(0, R.exit ? 'rgba(255,226,150,0.5)' : 'rgba(255,214,150,0.4)'); g.addColorStop(1, 'rgba(255,214,150,0)');
+  ctx.fillStyle = g; ctx.fillRect(cx - hh * 1.1, cy - hh * 1.1, hh * 2.2, hh * 2.2);
+  if (L.id === 'villain' && L.villain) { // he peeks in behind her, late, and ducks a little
+    const k2 = calm ? 1 : ez((el - 0.45) / 0.5), d = hh * 0.62, bob = calm ? 0 : Math.sin(G.t * 2.2) * 3 * q;
+    ctx.save(); ctx.globalAlpha = clamp(k2 * 1.5, 0, 1);
+    drawVillainPortrait(ctx, L.villain, cx + hh * 0.56 + (1 - k2) * hh * 0.5, cy - hh * 0.34 + bob, d, G.t);
+    ctx.restore();
+  }
+  const hy = cy + (1 - e) * 70 * q, hs = 0.6 + 0.4 * e;
+  if (R.exit) { // her nest
+    ctx.save(); ctx.translate(cx, hy + hh * 0.36); ctx.scale(hs, hs);
+    ctx.beginPath(); ctx.ellipse(0, 0, hh * 0.52, hh * 0.17, 0, 0, 7); ctx.fillStyle = '#6b4320'; ctx.fill(); ctx.restore();
+  }
+  drawHenAnim(ctx, R.exit ? 'happy' : 'worried', cx, hy, hh * hs, G.t, { key: 'leave', face: 1, calm, shadow: 0 });
+  if (R.exit) { // the nest's straw rim in front of her
+    ctx.save(); ctx.translate(cx, hy + hh * 0.4); ctx.scale(hs, hs); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.ellipse(0, 0, hh * 0.56, hh * 0.16, 0, 0, Math.PI); ctx.lineTo(-hh * 0.56, 0); ctx.fillStyle = '#c98a3a'; ctx.fill(); ctx.lineWidth = 3 * q; ctx.strokeStyle = '#6b3f17'; ctx.stroke();
+    ctx.strokeStyle = '#f2c668'; ctx.lineWidth = 2.5 * q;
+    for (let i = 0; i < 9; i++) { const a = 0.25 + i * 0.33, x0 = Math.cos(a) * hh * 0.5, y0 = Math.sin(a) * hh * 0.1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + (i % 2 ? 10 : -9) * q, y0 + 9 * q); ctx.stroke(); }
+    ctx.restore();
+  } else { // the eggs still out, close at her feet
+    const n = clamp(R.short || 1, 1, 5), es = hh * 0.24;
+    for (let i = 0; i < n; i++) {
+      const k2 = calm ? 1 : ez((el - 0.2 - i * 0.07) / 0.4), ex = cx + (i - (n - 1) / 2) * es * 0.92, ey = hy + hh * 0.42 - Math.abs(i - (n - 1) / 2) * es * 0.12;
+      if (k2 > 0) drawEggIcon(ctx, ex, ey + (1 - k2) * 20 * q, es * (0.5 + 0.5 * k2), 'alive');
+    }
+    if (L.id === 'streak') { // the flame, about to go out
+      const f = calm ? 1 : 0.82 + 0.18 * Math.sin(G.t * 9) * Math.sin(G.t * 2.3), fx = cx - hh * 0.62, fy = cy - hh * 0.2;
+      pictoFlame(ctx, fx, fy + (1 - f) * 8 * q, 86 * q * f);
+      ui.text(String(L.n), fx, fy + 62 * q, { size: 30 * q, align: 'center', color: '#ffd36a', stroke: 'rgba(30,14,4,0.9)', strokeW: 4 * q, noRecord: true });
+    }
+  }
+  ui.record({ x: cx - hh * 0.5, y: cy - hh * 0.5, w: hh, h: hh }, 'leave:hen');
+  ctx.globalAlpha = calm ? 1 : clamp((el - 0.15) / 0.25, 0, 1);
+  { const tw2 = Math.min(ui.measure(L.line, 30 * q), wide ? bw : A.w - 32 * q) * 0.75 + 60 * q, g2 = ctx.createRadialGradient(lx, ly, 0, lx, ly, tw2); // a soft shade the words stand on (no box)
+    g2.addColorStop(0, 'rgba(14,7,3,0.78)'); g2.addColorStop(0.55, 'rgba(14,7,3,0.5)'); g2.addColorStop(1, 'rgba(14,7,3,0)');
+    ctx.save(); ctx.translate(lx, ly); ctx.scale(1, 0.24); ctx.translate(-lx, -ly); ctx.fillStyle = g2; ctx.fillRect(lx - tw2, ly - tw2, tw2 * 2, tw2 * 2); ctx.restore(); }
+  ui.text(L.line, lx, ly, { size: 30 * q, align: 'center', color: '#fff6e0', stroke: 'rgba(30,14,4,0.92)', strokeW: 5 * q, maxW: (wide ? bw : A.w - 32 * q), tag: 'leave:t' });
+  ctx.restore();
+  const lw = (bw - 14 * q) * 0.4, sw = bw - 14 * q - lw;
+  ui.button('leave:go', '', bx, by, lw, BH, { kind: 'tertiary', icon: R.exit ? ICON.left : ICON.home, iconS: 1.5, size: 26 * q, round: BH / 2 });
+  ui.button('leave:stay', '', bx + lw + 14 * q, by, sw, BH, { kind: 'primary', shimmer: true, icon: ICON.play, iconS: 1.8, size: 28 * q, round: BH / 2 });
 }
 // the machine's entry on other pages: a row with its small picture, how many spins wait, and SPIN
 function spinRowBlock(s, o = {}) {
