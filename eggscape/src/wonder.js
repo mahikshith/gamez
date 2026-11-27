@@ -620,7 +620,7 @@ export function createWonder(env) {
     return clamp((A.h - 30 * u) / u - rest - 4, lo, hi);
   }
   // the vault's picture on a stage of its own colour with slow rays (the card and the pause page)
-  function picStage(x, y, w, h, s, big) {
+  function picStage(x, y, w, h, s, big, keep) { // keep { x1, y1 }: the corner button's far edges; the picture stays clear of it
     const L = S.level, col = TILE[L.wonder.kind] || '#5a6ad8', t = env.save().calm ? 0 : S.t + S.cardT;
     // frame818 (mykee: no frames): no well around it; the picture floats on the page's scene, its own colour glowing
     // behind it and slow rays (the art a size up into the room the frame took)
@@ -628,7 +628,13 @@ export function createWonder(env) {
     gl.addColorStop(0, tint(col, 0.35) + 'cc'); gl.addColorStop(1, tint(col, 0.35) + '00');
     ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, R0, 0, Math.PI * 2); ctx.fill();
     K.sunburst(x + w / 2, y + h / 2, Math.max(w, h) * (big ? 0.7 : 0.62), 'rgba(255,255,255,0.22)');
-    const pic = Math.min(h * (big ? 0.86 : 0.86), w * (big ? 0.86 : 0.8)), px = x + w / 2, py = y + h / 2;
+    let pic = Math.min(h * (big ? 0.86 : 0.86), w * (big ? 0.86 : 0.8)), px = x + w / 2, py = y + h / 2;
+    if (keep) { // (0.8.18, a short screen on its side: the picture slid under the back button) down, then across, then smaller
+      const hit = () => px - pic / 2 < keep.x1 && py - pic / 2 < keep.y1;
+      if (hit()) py = Math.max(py, Math.min(keep.y1 + pic / 2, y + h - pic / 2));
+      if (hit()) px = Math.max(px, Math.min(keep.x1 + pic / 2, x + w - pic / 2));
+      if (hit()) { const d = Math.min(keep.x1 - (px - pic / 2), keep.y1 - (py - pic / 2)); pic -= d; px += d / 2; py += d / 2; }
+    }
     drawExtraIcon(ctx, L.wonder.kind, px, py, pic, t, { calm: env.save().calm, bare: true });
     ui.record({ x: px - pic / 2, y: py - pic / 2, w: pic, h: pic }, 'wv:introPic', 'wv:introPic');
     if (/2$/.test(L.key)) { // the II badge on the picture's corner
@@ -663,7 +669,7 @@ export function createWonder(env) {
     if (sd) {
       const card = K.page(L.name, build(0), { ...sd.cardO, ribbon: RIB });
       const { box } = K.stage(sd, card);
-      picStage(box.x, box.y, box.w, box.h, u, false);
+      picStage(box.x, box.y, box.w, box.h, u, false, { x1: A.x + 8 * u + 46 * u + 4 * u, y1: A.y + 6 * u + 46 * u + 4 * u });
     } else K.page(L.name, build(roomFor(build, 120, 420)), { full: true, ribbon: RIB });
     const bs = 46 * u; // back to the map: the header's corner (on the page's top edge, level with the ribbon)
     ui.button('wv:map', '', A.x + 8 * u, A.y + 6 * u, bs, bs, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: bs / 2 });

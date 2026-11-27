@@ -10792,7 +10792,11 @@ function drawTitle() {
   if (wide) {
     const top = subY + 18 * u, bot = ground - eggH * 2.2;
     R = Math.min((bot - top) / 2, A.w * 0.2);
-    vx = lx; vy = (top + bot) / 2;
+    // (0.8.18, a 4:3 tablet on its side: the button block reaches further left than on a phone, so the vault steps left of
+    // it, and only if there is no room left does it get smaller)
+    const edge = bx - bw / 2 - 16 * u, left = A.x + 10 * u;
+    if (lx + R > edge) { R = Math.min(R, (edge - left) / 2); vx = edge - R; } else vx = lx;
+    vy = (top + bot) / 2;
   } else {
     const top = subY + 22 * u, bot = ground - eggH * 2.4;
     R = Math.min((bot - top) / 2, A.w * 0.4);
@@ -11152,6 +11156,9 @@ function drawLevels() {
     }
     const rect = { x: cx - cr, y: cy - cr, w: 2 * cr, h: cr * 1.9 };
     if (rect.y >= vt && rect.y + rect.h <= tapBot && !(ctaOn && wide && rect.x + rect.w > ctaX - 6 * u && rect.y + rect.h > ctaY - 6 * u)) {
+      // (a side road's tap squares give way to the chest: one tap is one thing)
+      const over = (o) => o.x < rect.x + rect.w && o.x + o.w > rect.x && o.y < rect.y + rect.h && o.y + o.h > rect.y;
+      ui.buttons = ui.buttons.filter((o) => !(/^sq:\d+:path$/.test(o.id) && over(o))); ui.rects = ui.rects.filter((o) => !(/^btn:sq:\d+:path$/.test(o.tag) && over(o)));
       ui.record(rect, 'btn:tr:boss:' + Lv.id, 'btn:tr:boss:' + Lv.id); ui.buttons.push({ id: 'tr:boss:' + Lv.id, ...rect });
     }
   }
