@@ -273,8 +273,8 @@ export const KCARD = { carry: [0.2, 1.35], tumble: 1.55, home: [2.1, 2.8], out: 
 export const kitsCardEgg = (T) => -0.3 * ss(KCARD.carry[0], KCARD.carry[1], T) * (1 - ss(1.6, 2.2, T));
 export const kitsHarmEgg = (T) => -0.95 * ss(KCARD.out[0], KCARD.out[1], T);
 export function drawKitsCard(ctx, S, costume) {
-  const { T, t, k, at, eggS } = S, harm = S.m === 'harm', sk = KIT_M * KS * k, n = 3, eA = S.eA ?? 0, fl = S.floor;
-  const ms = Math.min(PLAY_M * k * 0.82, S.h * 0.27), mx = S.x + ms * 0.62, my = S.ground; // (small, in the corner under the ring's left: the ring and the egg stay clear)
+  const { T, t, k, at, eggS } = S, harm = S.m === 'harm', n = 3, eA = S.eA ?? 0, fl = S.floor;
+  const ms = Math.min(PLAY_M * k * 0.9, S.h * 0.36), mx = S.x + ms * 0.62, my = S.ground, sk = KIT_M * KS * k * 0.8; // (about an egg tall, as in play; she is a little bigger here than before) // (small, in the corner under the ring's left: the ring and the egg stay clear)
   // mama on the yard, her face on the beat
   let ph = 'watch', gph = 'carry', gt = 0.5;
   if (harm) { if (T > 2.2) ph = 'smug', gph = 'sack'; }
