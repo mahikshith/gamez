@@ -294,7 +294,7 @@ for (const mode of ['easy', 'medium', 'hard']) {
   ok(Object.keys(DYN).every((k) => ['easy', 'medium', 'hard'].every((md) => tellS(1, dyn(k, md).tell) >= TELL_MIN && tellS(0.3, dyn(k, md).tell) >= 0.3)), `no telegraph under ${TELL_MIN} s (one already shorter keeps its length)`);
   ok(dyn('raccoon', 'medium', { tempo: 2 }).tempo === 2 && dyn('raccoon', 'easy', { tempo: 2 }).tempo === 2 * DYN_MODE.easy.tempo, 'a level\'s own dyn override replaces the row before the mode');
   const s1 = new Sim({ ...L6, dyn: { raccoon: { rest: 0.2 } } }, { mode: 'medium' });
-  ok(s1.bandRest(BAND.sit) === BAND.sit * 0.2 && DUEL.meet > 0, 'a level carrying dyn: { raccoon: { rest } } changes his sits');
+  ok(Math.abs(s1.bandRest(BAND.sit) - (BAND.sit * 0.2) / s1.menaceHeat()) < 1e-9 && DUEL.meet > 0, 'a level carrying dyn: { raccoon: { rest } } changes his sits');
 }
 
 // ---------------------------------------------------------------- the other counters
@@ -497,7 +497,7 @@ function cranking(o = {}) { const sim = setup(o); until(sim, 'crank'); run(sim, 
     const pop = first(log, 'kitPop'), lift = first(log, 'kitLift'), car = first(log, 'kitCarry'), home = first(log, 'kitHome'), e = sim.eggs[0];
     ok(first(log, 'kitWalk') && first(log, 'kitUntie') && pop && pop.n === M(KITS.n, mode), `${mode}: mama walks in, unties her sack and ${pop && pop.n} kits tumble out`);
     ok(first(log, 'kitClimb') && first(log, 'kitIn') && first(log, 'kitIn').ring === sim.rings.length - 1, `${mode}: they climb over the rim onto the outer floor at her side`);
-    ok(lift && car && car.t - lift.t >= M(KITS.lift, mode) - 0.05, `${mode}: they gather round the egg and heave ${car && lift ? (car.t - lift.t).toFixed(2) : '-'} s (the telegraph) before it moves`);
+    ok(lift && car && car.t - lift.t >= tellS(KITS.lift, dyn('kits', mode).tell) - 0.05, `${mode}: they gather round the egg and heave ${car && lift ? (car.t - lift.t).toFixed(2) : '-'} s (the telegraph) before it moves`);
     ok(home && e.hc === 3 && sim.kit.sack.includes(e.id) && !cracked(log) && e.cracks === 0, `${mode}: untouched, they carry it home into her sack (${home ? home.t.toFixed(1) : '-'} s), not a crack`);
     const sp = M(KITS.carry, mode);
     ok(home && home.t - car.t > 2.0, `${mode}: the carry is slow (${home ? (home.t - car.t).toFixed(1) : '-'} s at ${sp} m/s)`);
