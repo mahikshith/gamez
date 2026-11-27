@@ -26,7 +26,7 @@
 //         of the vault for a while, warp gate = swallowed as he dashes and spat out across his channel, decoy = he
 //         dashes at the decoy first and pops it.
 import { RING_TH, wrap, clamp } from './geom.js';
-import { dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
+import { dynRowOf as dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 export const URCHIN = {

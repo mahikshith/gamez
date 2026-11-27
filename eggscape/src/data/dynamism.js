@@ -30,7 +30,7 @@ export const DYN = {
   rat: { tempo: 1.15, rest: 0.75, tell: 0.8, snatch: 0.85, chase: 0.8, threat: 3, moves: ['scurry', 'brace', 'roll', 'stash', 'squabble'] },
   kits: { tempo: 1.3, rest: 0.7, tell: 0.8, snatch: 0.8, chase: 1, threat: 4, moves: ['pop', 'scamper', 'climb', 'cross', 'lift', 'carry', 'lookout'] },
   monkey: { tempo: 1.08, rest: 0.85, tell: 0.85, snatch: 0.85, chase: 0.6, threat: 4, moves: ['swing', 'aim', 'snatch', 'ride', 'peel'] },
-  penguin: { tempo: 1.08, rest: 0.85, tell: 0.85, snatch: 0.85, chase: 0.6, threat: 3, moves: ['waddle', 'windup', 'slide', 'tuck', 'shove'] },
+  penguin: { tempo: 1.08, rest: 0.85, tell: 1, snatch: 0.85, chase: 0.6, threat: 3, moves: ['waddle', 'windup', 'slide', 'tuck', 'shove'] },
   urchin: { tempo: 1.08, rest: 0.85, tell: 0.85, snatch: 1, chase: 0.5, threat: 3, moves: ['puff', 'roll', 'dash', 'nap'] },
   crab: { tempo: 1.05, rest: 0.9, tell: 0.9, snatch: 0.9, chase: 0.7, threat: 6, moves: ['reach', 'snap', 'pull', 'bubble', 'whirl', 'bar'] },
   owl: { tempo: 1, rest: 1, tell: 0.9, snatch: 1, chase: 0, threat: 6, moves: ['wind', 'grab', 'gearbomb'] },
@@ -55,6 +55,12 @@ export function dyn(kind, mode = 'medium', over) {
 export function dynOf(sim, kind) {
   const c = sim._dyn || (sim._dyn = {});
   return c[kind] || (c[kind] = dyn(kind, sim.mode || 'medium', sim.level && sim.level.dyn && sim.level.dyn[kind]));
+}
+// the row without the mode, for a sim whose own tables are already per mode (monkey, penguin, urchin, crab: their m3
+// tables stay the mode's say, the row is the temper on top)
+export function dynRowOf(sim, kind) {
+  const c = sim._dynRow || (sim._dynRow = {});
+  return c[kind] || (c[kind] = dyn(kind, 'medium', sim.level && sim.level.dyn && sim.level.dyn[kind]));
 }
 // a telegraph of base seconds under factor f: never under TELL_MIN (one that was already shorter keeps its length)
 export const tellS = (base, f) => Math.max(Math.min(base, TELL_MIN), base * f);

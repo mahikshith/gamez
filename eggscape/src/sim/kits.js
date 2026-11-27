@@ -70,7 +70,7 @@ const EXIT = -122 * D2R; // the spot on the outer floor at mama's side (over the
 const MAMA_PH = new Set(['watch', 'smug', 'comfort', 'scold', 'rest', 'untie']); // she is at her spot with the sack
 const FLOOR = new Set(['go', 'lift', 'carry', 'tumble', 'dangle']);
 const WORK = new Set(['go', 'lift', 'carry']);
-const KSKIP = 1.6; // s 0.8.19: they shun the egg they wanted after the player turned their floor under them
+const KSKIP = 1.0; // s 0.8.19: they shun the egg they wanted after the player turned their floor under them
 
 export const kitMethods = {
   kitInit(L) {
@@ -169,7 +169,12 @@ export const kitMethods = {
     if (G.skipT > 0) G.skipT -= dt;
     if (G.pace > 0) G.pace -= dt;
     // 0.8.19 the player's last move: their floor ring turned while they go for an egg: they switch egg (KSKIP s)
-    if (G.ph === 'go' && G.tgt && !(G.skipT > 0) && this.menaceTurned(G.c, 0.25)) { G.skip = G.tgt; G.skipT = KSKIP; G.tgt = 0; this.emit('kitSwitch', this.kitBody(G)); }
+    // (only when that pays: another egg on their floor now lies nearer than the one they wanted)
+    if (G.ph === 'go' && G.tgt && !(G.skipT > 0) && this.menaceTurned(G.c, 0.25)) {
+      const cur = this.eggs.find((q) => q.id === G.tgt), dc = cur && this.channelOf(cur) === G.c ? this.kitDist(G, cur) : 1e9;
+      const alt = this.aliveEggs().find((e) => e.id !== G.tgt && this.kitFit(e) && this.channelOf(e) === G.c && this.kitDist(G, e) < dc - 0.3);
+      if (alt) { G.skip = G.tgt; G.skipT = KSKIP; G.tgt = 0; this.emit('kitSwitch', this.kitBody(G)); }
+    }
     this.kitMama(K, dt);
     this.kitCrew(K, G, dt);
     if (!(G.ph === 'lift' || G.eid) && this.menaceHolds('kits')) this.menaceDone('kits', 'fetch', 0); // the fetch is over
@@ -405,7 +410,7 @@ export const kitMethods = {
     const e = G.eid ? this.eggs.find((q) => q.id === G.eid && q.alive) : null;
     G.eid = 0; G.ph = 'sack'; G.c = -1; G.p = null;
     if (e) { e.hc = 3; K.sack.push(e.id); K.home++; this.emit('kitHome', { ...this.kitSackPt(K), egg: e, n: K.sack.length }); }
-    this.kitSet(K, 'smug', KITS.smug);
+    this.kitSet(K, 'smug', this.kitRest(KITS.smug));
   },
   // ---------- the counters
   kitTumble(G, why) { G.why = why; this.kitLetGo(G, 'tumble'); this.kitSet(G, 'tumble', KITS.tumble); this.emit('kitTumble', { ...this.kitBody(G), ring: G.c, why }); },
@@ -474,8 +479,8 @@ export const kitMethods = {
     if (failed) K.fails++;
     this.emit('kitBack', { ...this.kitHead(), why, fails: K.fails, max: K.max });
     if (K.ph === 'sulk' || K.ph === 'leave' || K.ph === 'gone') return;
-    if (why === 'dangle') this.kitSet(K, 'scold', KITS.scold);
-    else if (failed) this.kitSet(K, 'comfort', KITS.comfort);
+    if (why === 'dangle') this.kitSet(K, 'scold', this.kitRest(KITS.scold));
+    else if (failed) this.kitSet(K, 'comfort', this.kitRest(KITS.comfort));
     else this.kitNext(K);
   },
   // an egg falling out of the vault by her sack: caught in it, not broken

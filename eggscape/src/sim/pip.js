@@ -29,7 +29,7 @@
 //   leaves eggs alone for a while | scare (the Scarecrow, the laser): he stays out of the vault | quake: knocked onto his
 //   belly into a slide | gust: a shove along his channel.
 import { RING_TH, EGG_W, EGG_H, wrap, clamp } from './geom.js';
-import { dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
+import { dynRowOf as dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 export const PIP = {

@@ -7,6 +7,8 @@
 // move, and the planner clears level 10.
 import { Sim, DT } from '../src/sim/sim.js';
 import { COCO } from '../src/sim/coco.js';
+import { dyn, tellS } from '../src/data/dynamism.js'; // 0.8.19 his aim's length comes from the dynamism table
+const WARN = tellS(COCO.warn.medium, dyn('monkey', 'medium').tell); // (his m3 table keeps the mode; the row is on top)
 import { animalsHit } from '../src/sim/boss.js';
 import { actions } from '../src/sim/search.js';
 import { LEVELS } from '../src/data/levels.js';
@@ -116,7 +118,7 @@ const until = (sim, ph, max = 30) => { for (let i = 0; i < max / DT && sim.cocos
   putEgg(sim, 2, -86);
   const ev = run(sim, 4);
   const a = first(ev, 'cocoAim'), s = first(ev, 'cocoSnatch'), g = first(ev, 'cocoGrab');
-  ok(a && s && Math.abs(s.t - a.t - COCO.warn.medium) < 0.05, `snatch: an egg resting in reach: his eyes lock on, the tail wiggles ${COCO.warn.medium} s (the telegraph), then it curls down`);
+  ok(a && s && Math.abs(s.t - a.t - WARN) < 0.05, `snatch: an egg resting in reach: his eyes lock on, the tail wiggles ${WARN.toFixed(2)} s (the telegraph), then it curls down`);
   ok(g && C.eid === e.id && Math.abs(g.t - s.t - COCO.snatch) < 0.05, `snatch: ${COCO.snatch} s later he holds it dangling from his tail`);
   const p = e.body.getPosition(), h = sim.cocoFloorR(C) - Math.hypot(p.x, p.y);
   ok(h > 0.35 && e.cracks === 0, `snatch: it is lifted off the floor (its middle ${h.toFixed(2)} m up), whole`);

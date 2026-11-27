@@ -4312,6 +4312,7 @@ const EVENT_SFX = {
   // the weasel, the rats and the Rat King
   thiefIn: (ev) => [thiefVoice(ev), { vol: 0.7 }],
   thiefWarn: (ev) => [thiefVoice(ev, 'weasel_sniff'), { vol: 0.7 }],
+  thiefSwitch: (ev) => [thiefVoice(ev, 'weasel_sniff'), { vol: 0.45, pitch: 1.25 }], // 0.8.19 its floor turned under it: another egg
   thiefGrab: (ev) => [thiefVoice(ev), { vol: 0.7, pitch: 1.1 }, 'hit'],
   thiefHit: (ev) => ['creature_hurt', { pitch: ev.kind === 'rat' ? 1.5 : ev.boss ? 0.75 : 1.1 }],
   thiefFlinch: (ev) => ['creature_hurt', { vol: 0.6, pitch: ev.kind === 'rat' ? 1.6 : 1.2 }],

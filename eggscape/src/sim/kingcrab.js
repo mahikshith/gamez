@@ -25,7 +25,7 @@
 // Downside: an egg it drags out is lost until you hit it.
 import { Vec2, Circle } from 'planck';
 import { RING_TH, TAU, wrap, clamp } from './geom.js';
-import { dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
+import { dynRowOf as dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
 const KC_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING, as the puffer's plug
 const up0 = (sim) => sim.gy || 1;
 

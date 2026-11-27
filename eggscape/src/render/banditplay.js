@@ -315,6 +315,8 @@ export function banditEvent(ev, fx, U) {
     case 'bandCrouch': audio.play('weasel_sniff', { vol: 0.55, pitch: 0.75 }); break;
     case 'bandClimb': audio.play('hen_hop', { vol: 0.6, pitch: 0.7 }); break;
     case 'bandHop': audio.play('hen_hop', { vol: 0.6, pitch: 0.8 }); break;
+    case 'bandEye': audio.play('weasel_sniff', { vol: 0.5, pitch: 0.7 }); break; // 0.8.19 the pursuit's telegraph
+    case 'bandBrace': audio.play('weasel_snicker', { vol: 0.35, pitch: 0.7 }); break; // 0.8.19 he felt the player fight his ring
     case 'bandPerch': audio.play('hen_land', { vol: 0.55, pitch: 0.75 }); break;
     case 'bandSpit': audio.play('squish', { vol: 0.35, pitch: 1.7 }); break;
     case 'bandCrank': audio.play('gear_whir', { vol: 0.4, pitch: 0.6 }); break;

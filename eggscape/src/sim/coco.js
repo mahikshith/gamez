@@ -28,7 +28,7 @@
 //   pepper: ah-CHOO, knocked off, and he leaves eggs alone while it lasts | out (a blast) and scare (the Scarecrow, the
 //   laser): out of the vault for a while | gust: nothing (he holds on). He always lets go of an egg first.
 import { RING_TH, EGG_W, EGG_H, wrap, clamp } from './geom.js';
-import { dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
+import { dynRowOf as dynOf, tellS } from '../data/dynamism.js'; // 0.8.19 its temper (the dynamism table)
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 export const COCO = {

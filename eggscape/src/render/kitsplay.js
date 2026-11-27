@@ -351,6 +351,7 @@ export function kitsEvent(ev, fx, U) {
     case 'kitClimb': audio.play('hen_hop', { vol: 0.45, pitch: 1.6 }); break;
     case 'kitUp': case 'kitHop': audio.play('hen_hop', { vol: 0.35, pitch: 1.8 }); break;
     case 'kitLift': audio.play('squish', { vol: 0.45, pitch: 1.5 }); break;
+    case 'kitSwitch': audio.play('weasel_sniff', { vol: 0.35, pitch: 1.7 }); break; // 0.8.19 their floor turned: another egg
     case 'kitCarry': audio.play('grab', { vol: 0.6, pitch: 1.4 }); if (ev.golden) fx.sparkle(ev.x, ev.y, 10, '#ffd63c'); break;
     case 'kitOut': audio.play('hen_hop', { vol: 0.45, pitch: 1.5 }); break;
     case 'kitHome': audio.play('squish', { vol: 0.5, pitch: 0.8 }); audio.play('weasel_snicker', { vol: 0.35, pitch: 1.1 }); break;
