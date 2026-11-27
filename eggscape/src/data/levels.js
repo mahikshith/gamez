@@ -214,8 +214,8 @@ export const LEVELS = [
     rings: [
       {gaps: [{a: 177}], thorns: [{a: 48, n: 1}]},
       {gaps: [{a: 20, x: 2},{a: 173, grate: 1}], thorns: [{a: 82, n: 2},{a: 107, n: 2, side: "out", h: 0.26}], pads: [{a: -139, len: 1.03}]},
-      {mat: "glass", gaps: [{a: 81},{a: -25}], thorns: [{a: 14, n: 3},{a: 150, n: 3}], pads: [{a: -123, len: 1.11}], creep: {a0: -60, a1: -37, v: 0.7, rest: 1.4}},
-      {gaps: [{a: -142, x: 3, len: 0.7},{a: 116}], thorns: [{a: 33, n: 2},{a: 167, n: 2, kind: "blunt"}], pads: [{a: 90, len: 1.02}]},
+      {mat: "glass", gaps: [{a: 81},{a: -25}], thorns: [{a: 14, n: 3},{a: 150, n: 3}], pads: [{a: -123, len: 1.11}]},
+      {gaps: [{a: -142, x: 3, len: 0.7},{a: 116}], thorns: [{a: 33, n: 2},{a: 167, n: 2, kind: "blunt"}], pads: [{a: 90, len: 1.02}], creep: {a0: -150, a1: -125, v: 0.4, rest: 2}},
       {gaps: [{a: 5},{a: -174}], thorns: [{a: -26, n: 2},{a: 39, n: 1}], pads: [{a: -125, len: 1.86}]},
     ],
   },
@@ -404,12 +404,12 @@ export const LEVELS = [
     ],
   },
   {
-    id: 40, theme: "vault", name: "Den of Thieves", eggs: 3, target: 2, time: 95, spacing: 1, material: "metal", nest: {w: 2.7, amp: 1, period: 9, pattern: "stopgo"}, bonus: {kind: "turns", n: 13}, weasel: {a: 150, delay: 7}, rats: {a: -60, n: 2, ch: 2, delay: 10}, tip: "Water and light send the rats home. Shut the weasel out behind a door.", orbs: [{type: "water", ch: 2, a: -174},{type: "hatch_glow", ch: 1, a: 176},{type: "fire_red", ch: 4, a: -161}], seed: 1108661, world: 7,
+    id: 40, theme: "vault", name: "Den of Thieves", eggs: 3, target: 2, time: 100, spacing: 1, material: "metal", nest: {w: 2.7, amp: 1, period: 9, pattern: "stopgo"}, bonus: {kind: "turns", n: 15}, weasel: {a: 150, delay: 7}, rats: {a: -60, n: 2, ch: 2, delay: 10}, tip: "Water and light send the rats home. Shut the weasel out behind a door.", orbs: [{type: "water", ch: 2, a: -174},{type: "hatch_glow", ch: 1, a: 176},{type: "fire_red", ch: 4, a: -161}], seed: 1108661, world: 7,
     rings: [
       {gaps: [{a: 103}], thorns: [{a: -176, n: 1}]},
       {gaps: [{a: -11, x: 2, shut: {period: 4, open: 0.5, phase: 0.94}}], thorns: [{a: 146, n: 2},{a: -162, n: 2, side: "out", h: 0.26}], pads: [{a: 62, len: 1.45}]},
-      {gaps: [{a: 147},{a: 27}], thorns: [{a: 71, n: 2},{a: -12, n: 3}], pads: [{a: -109, len: 1.44}], creep: {a0: 159, a1: 172, v: 0.4, rest: 2, form: "saw"}},
-      {gaps: [{a: 101, x: 3, len: 0.7, shut: {period: 4.5, open: 0.5, phase: 2.92}},{a: -3, shut: {period: 4.5, open: 0.5, phase: 4.36}}], thorns: [{a: 59, n: 2},{a: 167, n: 2, kind: "blunt"}], pads: [{a: -88, len: 1.3}]},
+      {gaps: [{a: 147},{a: 27}], thorns: [{a: 71, n: 2},{a: -12, n: 3}], pads: [{a: -109, len: 1.44}]},
+      {gaps: [{a: 101, x: 3, len: 0.7, shut: {period: 4.5, open: 0.5, phase: 2.92}},{a: -3, shut: {period: 4.5, open: 0.5, phase: 4.36}}], thorns: [{a: 59, n: 2},{a: 167, n: 2, kind: "blunt"}], pads: [{a: -88, len: 1.3}], creep: {a0: -176, a1: -166, v: 0.4, rest: 2}},
       {gaps: [{a: 141},{a: -44}], thorns: [{a: 41, n: 1},{a: -168, n: 2}], pads: [{a: 7, len: 1.5}]},
     ],
   },
@@ -571,12 +571,12 @@ export const LEVELS = [
     ],
   },
   {
-    id: 56, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 110, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 60}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30},{type: "shock", ch: 4, a: -167}], beetle: {ch: 2, delay: 3, a: -86}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "Turn the beetle's ring to wind him: he marches the way you turned it, shoves eggs ahead and crushes thorns. Unwound, he is a wall."},
+    id: 56, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 85, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 45}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30},{type: "shock", ch: 4, a: -167}], beetle: {ch: 2, delay: 3, a: -86}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "Turn the beetle's ring to wind him: he marches the way you turned it, shoves eggs ahead and crushes thorns. Unwound, he is a wall."},
     rings: [
       {gaps: [{a: 124}], thorns: [{a: 45, n: 1}]},
       {gaps: [{a: 164, x: 2},{a: 31, grate: 1}], thorns: [{a: -6, n: 2},{a: -113, n: 2, side: "out", h: 0.26}], pads: [{a: -135, len: 1.03}]},
-      {gaps: [{a: -41},{a: 88}], thorns: [{a: 12, n: 3},{a: 149, n: 2}], pads: [{a: -67, len: 1.48}], creep: {a0: -77, a1: -53, v: 0.8, rest: 1.4, form: "saw"}},
-      {gaps: [{a: 44, x: 3, len: 0.7},{a: 123}], thorns: [{a: 73, n: 1},{a: -175, n: 2}], pads: [{a: 143, len: 1.07}]},
+      {gaps: [{a: -41},{a: 88}], thorns: [{a: 12, n: 3},{a: 149, n: 2}], pads: [{a: -67, len: 1.48}]},
+      {gaps: [{a: 44, x: 3, len: 0.7},{a: 123}], thorns: [{a: 73, n: 1},{a: -175, n: 2}], pads: [{a: 143, len: 1.07}], creep: {a0: 16, a1: 34, v: 0.8, rest: 1.4}},
       {gaps: [{a: 176},{a: 13}], thorns: [{a: 111, n: 2}], pads: [{a: -89, len: 1.27}]},
     ],
   },
