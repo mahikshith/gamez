@@ -552,7 +552,7 @@ export function orbScene(id, K) {
     }
     case 'decoy': { // a big wooden egg pops out: what hunts goes for it
       const k = calm ? 1 : back(seg(T, 1.0, 1.4)), d = at(-0.38, 0);
-      toy.over = T > 1.0 && H.decoy ? () => { const c = ctx0(); c.save(); c.translate(K.C.x, K.C.y); c.scale(K.kW, -K.kW); H.decoy(c, (d.x - K.C.x) / K.kW, -(d.y - K.C.y) / K.kW + 0.4 * k, 0.62 * 1.3 * k, 1, t, 0); c.restore(); } : null;
+      toy.over = T > 1.0 && H.decoy ? () => { const c = ctx0(); c.save(); c.translate(K.C.x, K.C.y); c.scale(K.kW, -K.kW); H.decoy(c, (d.x - K.C.x) / K.kW, -(d.y - K.C.y) / K.kW + 0.4 * k, 0.62 * 1.3 * k, K.kW, t, 0); c.restore(); } : null;
       home(1.8); break;
     }
     case 'shrink': toy.look = T > 0.95 ? { shrink: 1 } : null; if (T > 0.95 && T < 1.4) toy.burst = { x: e0.x, y: e0.y, k: seg(T, 0.95, 1.4), col: '#c49bff' }; home(1.6); break;
