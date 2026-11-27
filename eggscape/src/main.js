@@ -1,6 +1,6 @@
 // Eggscape: game shell. Screens, input, camera, events -> VFX/SFX/score, HUD.
 import { Sim, DT, LEGACY_ORB, EAGLE_LEN, REWIND_S, SCARE_S, isHardLevel } from './sim/sim.js';
-import { hintSearch, actSteps } from './sim/search.js';
+import { hintSearch, actSteps, value as searchValue, actions as searchActions, act as searchAct } from './sim/search.js';
 import { RING_TH, clamp, lerp } from './sim/geom.js';
 import { curtainFront, vineFront, drawEagle as devEagle } from './render/v3art.js'; // where a burning thorn curtain's fire has got to; the eagle rig (dev face strips)
 import { LEVELS } from './data/levels.js';
@@ -12443,6 +12443,7 @@ if (DEV) window.__egg = {
   lessonAsk, lessonLevel, // 0.8.18 QA: lessonAsk(key, null, {x, y}) asks for a teaching moment; lessonLevel() the level's opening demo
   frame(dt = 1 / 60) { update(dt); renderAll(); tallyFrame(); }, fxStats: menuFxStats,
   actSteps, // film strips replay planner moves through this
+  search: { value: searchValue, actions: searchActions, act: searchAct }, // clips: a closed-loop player picks each move from the live game
   snakeArt: drawSnake, // palette strips
   hen: { anim: drawHenAnim, legacy: drawHenLegacy, events: henIdleEvents, reset: resetHen }, // M7 strips
   cheer: { draw: drawCelebration, routine, ROUTINES, pick: pickRoutine, power: routinePower }, // the hen's win routines (strips)
