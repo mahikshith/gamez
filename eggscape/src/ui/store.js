@@ -1128,7 +1128,7 @@ function freeTiles(st, state) {
     { key: 'free:coins', name: 'Free coins', hue: '#c7a0ff', tap: 'ad:coins', flash: state.flash && state.flash.id === 'ad' ? state.flash.t : 99, num: '+' + AD_NOW,
       icon: (c, cx, cy, it, tt, b) => coinPile(c, cx, cy - it * 0.06, it * 0.86 * b, 3, tt),
       btn: cd >= 3600 ? DONE : cd > 0 ? { label: fmtTime(cd), kind: 'off', disabled: true } : prem ? { label: 'Free', kind: 'primary' } : { label: adOff ? 'Soon' : 'Free', kind: adOff ? 'off' : 'ad', ad: !adOff, disabled: adOff } },
-  ];
+  ].filter((t) => !(state.early && !prem && (t.key === 'free:coins' || (t.key === 'free:sample' && S.video)))); // 0.8.19: before level 3 is won no video is offered (the shop is open from the second opening)
 }
 
 // coin bundles: a kit of boosts, a set of hen + egg
