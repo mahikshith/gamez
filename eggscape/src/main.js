@@ -38,6 +38,7 @@ import { drawStore, drawCoin, drawBoosterStrip, drawChest, drawGlassEgg, storeIt
 import * as GL from './goals.js'; // 2026-11-20: the three star goals of each level
 import * as LV from './leave.js'; // 0.8.19: the leave scenes' one line
 import * as SK from './skip.js'; // 2026-11-23: the pause page's Skip level (one rewarded video)
+import { playNudge } from './ui/nudge.js'; // card819: PLAY with no booster ticked
 import { createSpendFx } from './ui/spendfx.js'; // 0.8.17: the spend moments' one family of animations (the Brain picks the moment)
 import { createPurse } from './ui/purse.js'; // 2026-11-23: one coin-gain effect for every place the purse grows
 import { createLanding, createPrizePop } from './ui/landing.js'; // 0.8.17: every reward lands on its page (the purse and the bag), every video says what it gave
@@ -108,7 +109,7 @@ import { stampStats, stampSweep } from './render/stamp.js';
 import { cvStats, freeCanvas } from './render/cvfree.js';
 import * as CB from './render/celebrate.js'; // 0.8.15 the celebration kit: rays, bursts, confetti, arcs, the gift box, the bag
 import { REC, recInit, recWindow, recProbe, recDue, recPre, recGo, recIll } from './recover.js';
-import { drawHowTo, howToPlan, chickPlan, toyPlan, floorPlan, chickTeach, threatWords, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
+import { drawHowTo, howToPlan, chickPlan, toyPlan, floorPlan, orbPlan, chickTeach, threatWords, BASIC as HOWTO_BASIC, ROOSTER as HOWTO_ROOSTER, LOOP as HOWTO_LOOP } from './render/howto.js'; // 2026-11-20: show, don't tell
 import { createWonder } from './wonder.js'; // WONDER: the bonus world (own screen, own loop) and the Extras menu screen
 import * as SQ from './side.js'; // 0.8.17: the side quests (a Wonder Vault a world, off the road on the map)
 import * as MSIDE from './render/mapside.js'; // 0.8.17: their doors and trails on the map
@@ -1045,7 +1046,7 @@ function scrollHaptics() {
     if (sc === 'practice') add(G.pscroll, 90 * u); else if (sc === 'extras') add(G.escroll, 110 * u); else if (sc === 'info') add(G.iscroll, 90 * u);
     else if (sc === 'store') add(G.sscroll, 110 * u); else if (sc === 'levels') add(G.mscroll, 120 * u); else if (sc === 'fail') add(G.fscroll, 90 * u);
     else if (sc === 'pause') { add(G.ppage, 90 * u); add(G.ppageR, 90 * u); }
-    else if (sc === 'intro') { add(G.ipage, 90 * u); add(G.ipageR, 90 * u); if (G.carS) add(G.carS, G.carS.step, G.carS === G.car); }
+    else if (sc === 'intro') { add(G.ipage, 90 * u); add(G.ipageR, 90 * u); if (G.carS) add(G.carS, G.carS.step, G.carS === G.car); if (G.stripS) add(G.stripS, G.stripS.step, true); }
   }
   for (const [S, step, snap] of L) {
     const pd = G.pdrag, held = !!(pd && pd.moved && pd.sc === S);
@@ -1202,7 +1203,7 @@ function pointerDown(e) {
   if (SC && (G.settingsOpen || G.screen === 'pause') && /^rs:\d+$/.test(id || '')) Object.assign(G.pdrag, { bar: true, x0: x }); // the ring speed bar (Settings, the pause page): a sideways drag slides it, an up/down one scrolls the page
   if (G.screen === 'intro') { // 2026-11-19 level page: the page scrolls up/down, the chick row left/right (the first clear move picks)
     const inR = (R) => R && x >= R.x && x <= R.x + R.w && y >= R.y && y <= R.y + R.h;
-    const land = ui.A.w > ui.A.h * 1.15, cx = inR(G.carRect) && G.carS && G.carS.max > 0 ? G.carS : null; // (0.8.18: the chick row, or the card's row of faces)
+    const land = ui.A.w > ui.A.h * 1.15, cx = inR(G.carRect) && G.carS && G.carS.max > 0 ? G.carS : inR(G.stripRect) && G.stripS && G.stripS.max > 0 ? G.stripS : null; // (0.8.18: the chick row, or the card's row of faces; card819: the booster strip)
     const cy = inR(G.ipRect) && G.ipage && G.ipage.max > 0 ? G.ipage : land && inR(G.ipRectR) && G.ipageR && G.ipageR.max > 0 ? G.ipageR : null;
     if (cx || cy) G.pdrag = { pid: e.pointerId, cand: { x: cx, y: cy }, x0: x, y0: y, s0: 0, moved: false, last: y, lt: performance.now(), v: 0, smp: [] };
   }
@@ -1550,6 +1551,10 @@ async function press(id) {
         G.toasts = []; G.toast = null; // (the nudge's own toast goes with it)
         G.stkSel = { lid: G.level.id, id: S.id }; G.introPick = { id: S.id, t: G.t, lid: G.level.id };
         G.sim.stkEquip(strikeFor(G.level, G.li));
+      }
+      if (G.screen === 'intro' && G.li >= 0 && save.wallet) { // card819: owned boosters that fit, none ticked: the first tap shows them (ui/nudge.js)
+        const U = boostUse(G.level), nid = playNudge({ won3: !earlyDays(), owned: save.wallet.owned || {}, order: E.BOOSTER_ORDER, first: U.first, last: U.last, hide: G.golden ? ['golden'] : [], ticked: G.boostSel ? G.boostSel.size : 0, nudged: !!(G.goNudge && G.goNudge.lid === G.level.id && G.goNudge.seq === G.scrSeq) });
+        if (nid) { G.goNudge = { lid: G.level.id, seq: G.scrSeq, t0: G.t, id: nid }; audio.play('hud_pop', { vol: 0.5 }); buzz('settle'); break; }
       }
       { const T = introChicks(); if (T.id) { save.lastStk = T.id; if (T.choice) save.seen.pickN = (save.seen.pickN || 0) + 1; persist(); } }
       if (worldOpener(G.level)) { save.intro[G.level.id] = 1; persist(); }
@@ -2140,7 +2145,7 @@ async function press(id) {
         }
       } else if (id && id.startsWith('boost:')) {
         const b = id.slice(6);
-        if (G.boostSel.has(b)) G.boostSel.delete(b); else { G.boostSel.add(b); if (!(save.seen || {})['bu:' + b]) { save.seen = { ...(save.seen || {}), ['bu:' + b]: 1 }; persist(); } }
+        if (G.boostSel.has(b)) G.boostSel.delete(b); else { G.boostSel.add(b); if (!(save.seen || {})['bu:' + b]) { save.seen = { ...(save.seen || {}), ['bu:' + b]: 1 }; persist(); } if (G.screen === 'intro' && G.lcHero) G.lcBoostDemo = { lid: G.lcHero.lid, id: b }; } // card819: ticked, it plays its own scene on the stage
         G.boostLast = b;
       } else if (id === 'car:prev' || id === 'car:next') { // the chick picker's arrows: one chick back / on (the row glides, the stage plays it)
         const R = G.car; if (R && R.step) { const k = clamp(Math.round((R.to != null ? R.to : R.y) / R.step) + (id === 'car:next' ? 1 : -1), 0, Math.round(R.max / R.step)); R.v = 0; R.to = k * R.step; audio.play('ui_tap'); }
@@ -7946,10 +7951,13 @@ function howWorld() {
     },
     egg(c, X, Y, stone, worry, C, k, t, look = null) {
       try { egg.body.setTransform({ x: (X - C.x) / k, y: -(Y - C.y) / k }, (look && look.rot) || (worry ? Math.sin(t * 22) * 0.08 : 0)); } catch (e) { return; }
-      egg.stone = stone || (look && look.iron) ? 1 : 0; egg.iron = look && look.iron ? 1 : 0; // iron: the Electromagnet card
-      egg.fire = look && look.fire ? 6 : 0; egg.fireKind = look && look.fire ? 'fire_red' : null; egg.chick = !!(look && look.chick); egg.cracks = (look && look.cracks) || 0;
+      egg.stone = stone || (look && (look.iron || look.stone)) ? 1 : 0; egg.iron = look && look.iron ? 1 : 0; // iron: the Electromagnet card
+      egg.fire = look && look.fire ? 6 : 0; egg.fireKind = look && look.fire ? (typeof look.fire === 'string' ? look.fire : 'fire_red') : null; egg.chick = !!(look && look.chick); egg.cracks = (look && look.cracks) || 0;
+      // card819: every orb's and booster's own look on the card's egg (world.js drawEgg's power fields)
+      const L2 = look || {}; egg.chickKind = typeof L2.chick === 'string' ? L2.chick : undefined; if (L2.rockskin) { egg.stone = 1; egg.rockskin = 6; }
+      egg.kind = L2.kind || undefined; egg.golden = !!L2.golden; egg.guard = L2.guard ? 6 : 0; egg.bubbleFix = !!L2.bubble; egg.water = L2.water ? 6 : 0; egg.zap = !!L2.zap; egg.shrink = L2.shrink ? 6 : 0;
       c.save(); c.translate(C.x, C.y); c.scale(k, -k);
-      try { W.drawEgg(c, egg, t, k); } finally { c.restore(); egg.fire = 0; egg.chick = false; egg.iron = 0; egg.cracks = 0; }
+      try { if (!(egg.chickKind && drawChickEgg(c, egg, t, k))) W.drawEgg(c, egg, t, k); } finally { c.restore(); egg.fire = 0; egg.chick = false; egg.iron = 0; egg.cracks = 0; egg.chickKind = undefined; egg.kind = undefined; egg.rockskin = 0; egg.golden = false; egg.guard = 0; egg.bubbleFix = false; egg.water = 0; egg.zap = false; egg.shrink = 0; }
     },
     live(c, C, k, t, a) { c.save(); c.translate(C.x, C.y); c.scale(k, -k); try { drawLiveRing(c, ring, k, t, a); } finally { c.restore(); } }, // the shock ring (Electromagnet card)
     orb(c, type, X, Y, r, t) { drawOrb(c, type, X, Y, r, t, true); },
@@ -8063,9 +8071,15 @@ function lcKeys(L) {
   const kinds = villainKinds(L).filter((k) => hasPortrait(k) || VILLAIN_INFO[k]);
   for (const k of kinds) ks.add('v:' + k);
   if (lcThief(kinds) && L.id >= 5) ks.add('rooster');
+  for (const k of lcExtras(L)) ks.add(k); // card819: the ring's thorns, the egg kinds
   ks.add('basic');
   return ks;
 }
+// card819 (mykee: "proper animation for all the power-ups, stone eggs and everything"): the ring's thorns and each egg kind
+// have a face and a scene of their own too
+const lcExtras = (L) => [...((L.rings || []).some((r) => r.thorns && r.thorns.length) ? ['haz:thorns'] : []), ...[...new Set((L.eggKinds || []).filter(Boolean))].map((k) => 'egg:' + k)];
+function eggKindArt(kind) { return (c, X, Y, r) => { const z = r * (kind === 'ostrich' ? 1.25 : kind === 'quail' ? 0.85 : 1.05); drawEggIcon(c, X, Y + r * 0.05, z, 'alive'); c.save(); if (kind === 'duck') { c.globalAlpha = 0.45; c.fillStyle = '#7fd0ff'; c.beginPath(); c.ellipse(X, Y + r * 0.05, z * 0.36, z * 0.47, 0, 0, TAU); c.fill(); } else if (kind === 'quail') { c.fillStyle = 'rgba(110,70,30,0.75)'; for (const [dx, dy, q] of [[-0.12, -0.12, 0.06], [0.1, 0.02, 0.07], [-0.04, 0.18, 0.05], [0.13, -0.2, 0.04]]) { c.beginPath(); c.arc(X + dx * z, Y + dy * z, q * z, 0, TAU); c.fill(); } } c.restore(); }; }
+function thornArt(c, X, Y, r) { c.save(); c.fillStyle = '#6b4526'; c.fillRect(X - r * 0.7, Y + r * 0.2, r * 1.4, r * 0.3); for (const dx of [-0.35, 0.05, 0.42]) { c.beginPath(); c.moveTo(X + (dx - 0.17) * r, Y + r * 0.22); c.lineTo(X + dx * r, Y - r * 0.45); c.lineTo(X + (dx + 0.17) * r, Y + r * 0.22); c.closePath(); c.fillStyle = '#d23a3a'; c.fill(); c.lineWidth = Math.max(1.5, r * 0.06); c.strokeStyle = '#3a0d0d'; c.stroke(); } c.restore(); }
 let LC_IDX = null; // key -> the road level ids that hold it
 // how many OTHER road levels holding this thing the player has won: 2 or more and it is known (no demo of its own)
 function lcKnown(key, L) {
@@ -8088,9 +8102,10 @@ function lcThings(L, li, kinds) {
     const [kind, id] = k.split(':');
     if (kind === 'toy') { const p = toyPlan(id, foeOf); add({ key: k, type: 'power', name: p.name, words: LC_WORDS[id] || '', plan: p, art: orbArt(TOY_ORB[id] || 'fire_red') }); }
     else if (kind === 'floor') { const p = floorPlan(id), C = teachChip(k); add({ key: k, type: 'floor', name: p.name, words: (p.cap.split(': ')[1] || p.cap).replace(/^./, (q) => q.toUpperCase()), plan: p, art: (c, X, Y, r) => C.art(c, X, Y - r * 0.45, r * 0.8) }); }
-    else if (kind === 'orb') { const C = teachChip(k); add({ key: k, type: 'orb', name: C.name, words: '', plan: null, art: orbArt(id) }); }
+    else if (kind === 'orb') { const C = teachChip(k); add({ key: k, type: 'orb', name: C.name, words: '', plan: orbPlan(k), art: orbArt(id) }); } // card819: every orb acts its own scene
     else if (kind === 'chick' && chickId && strikesOpen().length) add({ key: 'chick', type: 'teach', hidden: true, name: (STRIKE[chickId] || {}).name || 'Your chick', words: 'Full? Tap your chick', plan: chickTeach(chickId, foe in VILLAIN_INFO ? foe : 'snake') }); // (the chick's own face stands for it in the row)
   }
+  if (road) for (const k of lcExtras(L)) add(k === 'haz:thorns' ? { key: k, type: 'hazard', name: 'Thorns', words: '', plan: orbPlan('orb:thorns'), art: thornArt } : { key: k, type: 'orb', name: k.slice(4), words: '', plan: orbPlan(k), art: eggKindArt(k.slice(4)) });
   for (const k of kinds) {
     const I = VILLAIN_INFO[k] || { name: k }, type = /^boss:/.test(k) || I.group === 'boss' ? 'boss' : I.group === 'hazard' || LC_HAZ.test(k) ? 'hazard' : 'villain';
     add({ key: 'v:' + k, type, kind: k, name: I.name, words: threatWords(k), plan: howToPlan(k, { harm: true }), art: (c, X, Y, r) => drawVillainPortrait(c, k, X, Y + r * 0.06, r * 2.15, G.t) });
@@ -8192,22 +8207,23 @@ function lcTipDraw(s) {
 }
 // a tap on the card's pictures (main.js press): a face plays its demo in the hero (again: back to the vault), the hero
 // spins the vault (or puts the demo away), a star, a perk or a face without a scene says what it is
+function lcSwap(H, to) { H.prev = H.cur; H.pt0 = H.t0; H.cur = { ...to }; H.tx = G.t; H.t0 = G.t; }
 function lcPress(id) {
   const H = G.lcHero, b = ui.buttons.find((q) => q.id === id), tip = (G.lcTips || {})[id];
   const say = () => { if (tip && b) G.lcTip = { id, text: tip, x: b.x + b.w / 2, y: b.y, h: b.h, t0: G.t }; };
-  if (id === 'face:chick') { buzz('settle'); press('itab:chicks'); return; }
-  if (id === 'hero:tap') {
-    if (!H) return;
-    if (H.cur.plan) { H.prev = H.cur; H.cur = { key: 'vault' }; H.tx = G.t; H.t0 = G.t; H.pin = 'vault'; }
-    else if (!save.calm && !PERF.low) { H.kv = Math.min(5, (H.kv || 0) + 2.6); audio.play('ring_tick', { vol: 0.6 }); buzz('settle'); }
+  if (id === 'face:chick') { buzz('settle'); G.howC = null; press('itab:chicks'); return; } // (card819: its power's scene from the start, at once)
+  if (id === 'hero:tap') { // card819: a tap on the stage: the next thing's scene
+    if (!H || !H.cyc || H.cyc.length < 2) return;
+    H.pin = null; H.reps++; H.i = (H.i + 1) % H.cyc.length; lcSwap(H, H.cyc[H.i]); audio.play('ui_tap', { vol: 0.5 });
     return;
   }
-  if (id.startsWith('face:')) {
+  if (id.startsWith('star:')) { G.lcPop = { id, t0: G.t }; if (G.lcGoals) G.lcGoals.tap = { i: +id.slice(5), t0: G.t }; audio.play('ui_tap', { vol: 0.5 }); return; } // card819: a goal plays its picture again (no words)
+  if (id.startsWith('face:')) { // card819: a face plays its own scene at once (twice, then the turn goes on from it)
     const key = id.slice(5), F = ((G.lcT && G.lcT.faces) || []).find((q) => q.key === key);
     audio.play('ui_tap'); G.lcPop = { id, t0: G.t };
-    if (!F || !F.plan || !H) { say(); return; }
-    H.prev = H.cur; H.tx = G.t; H.t0 = G.t;
-    if (H.pin === key) { H.cur = { key: 'vault' }; H.pin = 'vault'; } else { H.cur = { key, plan: F.plan, name: F.name, words: F.words, ts: G.t }; H.pin = key; }
+    if (!F || !F.plan || !H) return;
+    const k = (H.cyc || []).findIndex((q) => q.key === key); if (k >= 0) H.i = k;
+    lcSwap(H, F); H.pin = key; H.reps++;
     return;
   }
   audio.play('ui_tap'); G.lcPop = { id, t0: G.t };
@@ -8240,20 +8256,21 @@ function drawLevelIntro(L, acc) {
   const newChick = T.open.some((S) => !S.premium && S.unlock === L.id && G.li >= 0);
   const chickMark = T.need || newChick || (!early && locked.some((c) => c.canAfford));
 
-  // ---- the hero's state: the vault, or a demo (the new things take turns with the vault; a tapped face holds its demo)
-  const H = G.lcHero && G.lcHero.lid === LT.lid ? G.lcHero : (G.lcHero = { lid: LT.lid, cur: { key: 'vault' }, prev: null, tx: -9, t0: G.t, i: 0, pin: null, ang: 0, kv: 0, last: G.t });
-  if (calm && !H.pin && demos.length && !H.cur.plan) H.cur = { ...demos[0], ts: G.t }; // Calm: the new thing's scene, still; no taking turns
-  if (!calm && !H.pin && demos.length) {
-    const el = G.t - H.t0, swap = (to) => { H.prev = H.cur; H.cur = { ...to, ts: G.t }; H.tx = G.t; H.t0 = G.t; };
-    if (!H.cur.plan && el >= (H.i ? 3.2 : 1.3)) swap(demos[H.i % demos.length]); // the vault first: a moment to look, then what is new
-    else if (H.cur.plan && el >= (H.cur.plan.loop || HOWTO_LOOP) * (demos.length > 1 ? 1 : 2)) { H.i++; swap(H.i % demos.length ? demos[H.i % demos.length] : { key: 'vault' }); } // (one new thing plays twice, then the vault; two take turns)
+  // ---- the stage's state (card819, mykee: "We don't have to show the preview of the level. You could completely remove
+  // it"): no vault. Every thing the level holds acts its own scene, one at a time, big: the new ones first, then each face
+  // in the row's order (the one playing lit in the row); a tapped face plays at once (twice, then the turn goes on from
+  // it); a booster just ticked plays its own scene; a tap on the stage moves on. A level with nothing in it: the basic move.
+  const cyc = (() => { const seen = new Set(), out = []; for (const q of [...demos, ...faces]) if (q.plan && !seen.has(q.key)) { seen.add(q.key); out.push(q); } return out.length ? out : [{ key: 'basic', type: 'teach', plan: HOWTO_BASIC, n: 0 }]; })();
+  const H = G.lcHero && G.lcHero.lid === LT.lid ? G.lcHero : (G.lcHero = { lid: LT.lid, i: 0, cur: { ...cyc[0] }, prev: null, tx: G.t - 9, t0: G.t, pt0: G.t, pin: null, reps: 0 });
+  H.cyc = cyc;
+  { const BD = G.lcBoostDemo; if (BD && BD.lid === LT.lid && !BD.taken) { BD.taken = true; lcSwap(H, { key: 'boost:' + BD.id, plan: orbPlan('boost:' + BD.id), boost: 1 }); H.pin = 'boost:' + BD.id; } }
+  if (!calm) {
+    const reps = H.pin ? 2 : H.reps === 0 && (H.cur.n ?? 0) < 2 ? 2 : 1; // a new thing (and a tapped one) plays twice
+    if (G.t - H.t0 >= (H.cur.plan.loop || HOWTO_LOOP) * reps && (cyc.length > 1 || H.pin)) { H.reps++; H.pin = null; H.i = (H.i + 1) % cyc.length; lcSwap(H, cyc[H.i]); }
   }
-  if (H.pin && H.pin !== 'vault' && H.cur.plan && G.t - H.t0 >= (H.cur.plan.loop || HOWTO_LOOP) * 2) { H.prev = H.cur; H.cur = { key: 'vault' }; H.tx = G.t; H.t0 = G.t; H.pin = 'vault'; } // a tapped face's scene: twice, then back to the vault by itself
-  { const dt = Math.min(0.05, Math.max(0, G.t - H.last)); H.last = G.t; // the rings: in slowly (eased), then a slow turn; a tap's spin runs down
-    if (!calm && !low) { H.kv *= Math.exp(-dt * 1.8); H.ang += dt * (0.16 * clamp(st / 0.7, 0, 1) ** 2 + H.kv); } }
 
   // ---- the header: back, the level ribbon (its number and name), the coins; floating on the scene
-  const HDR = 52 * s;
+  const HDR = 56 * s; // (card819: a kid's thumb: 56 px)
   const header = (x, y, w) => {
     const ha = calm ? 1 : clamp(st / 0.18, 0, 1), dy = calm ? 0 : -10 * s * (1 - ease01(clamp(st / 0.25, 0, 1)));
     ctx.save(); ctx.globalAlpha *= ha; ctx.translate(0, dy);
@@ -8277,7 +8294,7 @@ function drawLevelIntro(L, acc) {
   const BTN = (land ? 56 : 64) * s, BC0 = 49 * s, bcFull = Math.min((Math.min(W0, 520 * s) - 5 * 8 * s) / 6, 72 * s);
   const STRIP = 19 * s + (land ? BC0 : Math.max(BC0, BC0 + (bcFull - BC0) * clamp((A.h / s - 640) / 160, 0, 1)));
   const bigButton = (x, y, w) => {
-    const bs = (land ? 27 : 30) * s, k = calm ? 1 : 1 + 0.022 * (0.5 - 0.5 * Math.cos((G.t * Math.PI * 2) / 1.7)); // breathing: the eye lands here
+    const nb0 = G.goNudge && G.goNudge.lid === L.id && G.goNudge.seq === G.scrSeq && !G.goNudge.done, bs = (land ? 27 : 30) * s, k = calm ? 1 : nb0 ? 1 + 0.06 * Math.abs(Math.sin((G.t - G.goNudge.t0) * Math.PI * 1.6)) : 1 + 0.022 * (0.5 - 0.5 * Math.cos((G.t * Math.PI * 2) / 1.7)); // breathing: the eye lands here (card819: it beats while the nudge waits)
     ctx.save(); if (k !== 1) { ctx.translate(x + w / 2, y + BTN / 2); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + BTN / 2)); }
     if (!pick && T.need) ui.button('inext', 'NEXT', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: ICON.next, size: bs }); // a chick to pick first: on to the picker
     else ui.button('go', pick && T.need ? 'PICK A CHICK' : 'PLAY', x, y, w, BTN, pick && T.need ? { kind: 'off', size: bs * 0.89 } : { kind: 'primary', shimmer: true, icon: ICON.play, size: bs }); // need: the button says what is missing (it still takes the tap and nudges)
@@ -8290,15 +8307,53 @@ function drawLevelIntro(L, acc) {
   const boostState = () => ({ wallet: G.golden ? { ...save.wallet, owned: { ...save.wallet.owned, golden: 0 } } : save.wallet, hide: G.golden ? ['golden'] : [], selected: G.boostSel, lastTapped: G.boostLast, t: G.t,
     ad: adOn ? AD_BOOST[Math.abs(L.id) % AD_BOOST.length] : null, mark: null, attn: spendFx.on('strip') ? null : stripAttn(L), s, scroll: G.boostPg && G.boostPg.lid === L.id ? G.boostPg : (G.boostPg = { lid: L.id, k: 0 }), ...boostUse(L), teach: boostTeach(L), spot: stripSpot(L) });
   const gp = (land ? 10 : 12) * s, mb = land ? 10 * s : clamp(A.h * 0.02, 10 * s, 22 * s);
-  const bottom = (x, w) => { // from the bottom of the safe rect up; returns the top of what it drew
+  // card819: the strip follows a finger (a drag never ticks), glides on with the fling and settles on a whole tile; its
+  // arrows still page it. P: the drag's scroller in pixels (main.js pdrag / glide); the strip's own S.y is in tiles.
+  const stripDrag = (S) => {
+    const P = G.stripP && G.stripP.lid === S.lid ? G.stripP : (G.stripP = { lid: S.lid, y: 0, v: 0, max: 0, t: G.t, step: 1, on: false });
+    if (!(S.step > 0) || S.max == null) return P; // (measured by the strip's first frame)
+    P.step = S.step; P.max = S.max * S.step;
+    const held = !!(G.pdrag && G.pdrag.moved && G.pdrag.sc === P);
+    glide(P);
+    if (held || Math.abs(P.v) > 1 || P.to != null) P.on = true;
+    if (P.on && !held && P.to == null && Math.abs(P.v) < 260) { const k = clamp(Math.round(P.y / P.step), 0, S.max); if (Math.abs(P.y - k * P.step) > 0.5) { P.v = 0; P.to = k * P.step; } else { P.y = k * P.step; P.on = false; S.k = k; S.y = k; S.hold = false; } }
+    if (P.on) { S.hold = true; S.y = P.y / P.step; S.k = clamp(Math.round(S.y), 0, S.max); } else { S.hold = false; P.y = (S.y ?? 0) * P.step; }
+    return P;
+  };
+  const bottom = (x, w, g = gp) => { // from the bottom of the safe rect up; returns the top of what it drew
     let y = A.y1 - mb - BTN;
     bigButton(x, y, w);
-    if (showBoost) { y -= gp + STRIP; drawBoosterStrip(ui, ctx, x, y, w, STRIP, boostState()); }
+    G.stripRect = null; G.stripS = null;
+    if (showBoost) {
+      y -= g + STRIP; const st0 = boostState(), P = stripDrag(st0.scroll);
+      drawBoosterStrip(ui, ctx, x, y, w, STRIP, st0);
+      if (P.max > 0) { G.stripRect = { x, y, w, h: STRIP }; G.stripS = P; }
+      nudgeDraw(y + STRIP);
+    }
     const rh = ringStripH(x, w, s);
-    if (rh > 0) { y -= gp + rh; ringSpeedStrip(x, y, w, s); }
+    if (rh > 0) { y -= g + rh; ringSpeedStrip(x, y, w, s); }
     return y;
   };
-  const bottomH = (w) => mb + BTN + (showBoost ? gp + STRIP : 0) + (ringStripH(x0, w, s) > 0 ? gp + ringStripH(x0, w, s) : 0);
+  const bottomH = (w, g = gp) => mb + BTN + (showBoost ? g + STRIP : 0) + (ringStripH(x0, w, s) > 0 ? g + ringStripH(x0, w, s) : 0);
+  // card819: PLAY with no booster ticked (press 'go', ui/nudge.js): the owned ones' tick boxes pulse, a ghost finger taps the
+  // best one (1.2 s), PLAY beats until a tick or the next tap. Calm: a steady gold rim, no finger.
+  const NG = G.goNudge && G.goNudge.lid === L.id && G.goNudge.seq === G.scrSeq && !G.goNudge.done ? G.goNudge : null;
+  if (NG && G.boostSel && G.boostSel.size) NG.done = true;
+  const nudgeDraw = () => {
+    if (!NG || NG.done) return;
+    const el = G.t - NG.t0, own = ui.buttons.filter((b) => /^boost:/.test(b.id) && E.ownedCount(save.wallet, b.id.slice(6)) > 0);
+    for (const b of own) {
+      const k = calm ? 0.8 : 0.5 + 0.5 * Math.sin(el * 9), grow = calm ? 0 : 3 * s * k;
+      ctx.save(); ui.roundRect(b.x - 3 * s - grow, b.y - 3 * s - grow, b.w + 6 * s + 2 * grow, b.h + 6 * s + 2 * grow, 16 * s + grow); ctx.lineWidth = (3 + 2.5 * k) * s; ctx.strokeStyle = `rgba(255,${Math.round(200 + 50 * k)},${Math.round(40 + 160 * k)},${(0.65 + 0.35 * k).toFixed(3)})`; ctx.stroke();
+      if (!calm && !low) { ctx.lineWidth = 10 * s; ctx.strokeStyle = `rgba(255,170,0,${(0.25 * k).toFixed(3)})`; ctx.stroke(); }
+      ctx.restore();
+    }
+    const B = own.find((b) => b.id === 'boost:' + NG.id) || own[0];
+    if (B && !calm && el < 1.6) { // the ghost finger: in, a tap with a press (anticipation, press, settle), away
+      const a = clamp(el / 0.2, 0, 1) * (1 - clamp((el - 1.25) / 0.3, 0, 1)), q = clamp((el - 0.25) / 0.9, 0, 1), down = q > 0.4 && q < 0.65, lift = down ? 0 : (q < 0.4 ? 1 - backK(q / 0.4) * 0.6 : 0.4 + (q - 0.65) * 1.2) * B.h * 0.35;
+      ctx.save(); ctx.globalAlpha *= a * 0.92; teachHand(ctx, B.x + B.w * 0.62, B.y + B.h * 0.55 - lift, Math.min(B.w * 0.68, 44 * s), down, 1); ctx.restore();
+    }
+  };
 
   // ---- the perks in force: small badges on the goal's corner, each with a pop as the card opens
   const perks = [];
@@ -8309,7 +8364,7 @@ function drawLevelIntro(L, acc) {
   { const P = eggPerk(); if (P) perks.push({ id: 'perk', col: '#4a2a78', rim: '#e2ceff', tip: P.line, art: (X, Y, r) => pictoPerk(ctx, P.icon, X, Y, r * 1.45, G.t) }); }
   if (perks.length && !calm && !G.lcPerkSnd && st > 0.22) { G.lcPerkSnd = true; audio.play('hud_pop', { vol: 0.4 }); }
   if (st < 0.05) G.lcPerkSnd = false;
-  const PR = 24 * s, PG = 7 * s; // (a crowded foot: the goal and the badges a size down together, never under 0.82)
+  const PR = 28 * s, PG = 8 * s; // (a crowded foot: the goal and the badges a size down together, never under 0.82)
   const perkRow = (x, cy, f = 1) => perks.forEach((P, i) => {
     const X = x + PR * f + i * (PR * 2 + PG) * f, k = popK(0.18 + i * 0.07, 0.24), tp = G.lcPop && G.lcPop.id === 'perk:' + P.id ? G.t - G.lcPop.t0 : 9, kk = k * (tp < 0.3 && !calm ? 1 + 0.16 * Math.sin((tp / 0.3) * Math.PI) : 1);
     if (kk <= 0.01) return;
@@ -8326,93 +8381,19 @@ function drawLevelIntro(L, acc) {
     if (P.id === 'dare' && fx && G.lcDareT !== fx.t0 && G.t - fx.t0 < 0.25) { G.lcDareT = fx.t0; G.lcPop = { id: 'perk:dare', t0: fx.t0 }; G.lcTip = { id: bid, text: P.tip, x: X, y: r.y, h: r.h, t0: fx.t0 }; }
   });
 
-  // ---- the goal on the hero: the eggs to bring home (the target ones whole, the rest faint) and the clock
-  const tl = G.sim && G.sim.timeLimit;
-  const GH = 52 * s; // the goal's height (its eggs and clock big enough to read at a glance)
-  const goalW = (f = 1) => { const es = 31 * s; return (23 * s + L.eggs * es + (tl ? 18 * s + 34 * s + ui.measure(`${Math.round(tl)}s`, 25 * s) : 0) + 16 * s) * f; };
-  const goalPill = (cx, cy, f = 1) => { // returns its right edge (f: a crowded foot's size)
-    const es = 31 * s * f, gw = goalW(f), gh = GH * f, x = cx - gw / 2, y = cy - gh / 2, k = popK(0.1, 0.26);
-    ctx.save(); if (k !== 1) { ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); }
-    ui.glass(x, y, gw, gh, { r: gh / 2, a: 'rgba(40,24,12,0.72)', b: 'rgba(20,12,6,0.78)' });
-    for (let i = 0; i < L.eggs; i++) { ctx.globalAlpha = i < L.target ? 1 : 0.36; drawEggIcon(ctx, x + 21 * s * f + es * (i + 0.5), cy, es * 0.92, 'alive'); }
-    ctx.globalAlpha = 1;
-    ui.record({ x: x + 21 * s * f, y: cy - es / 2, w: L.eggs * es, h: es }, 'intro:eggs');
-    if (tl) { const tx = x + 21 * s * f + L.eggs * es + 18 * s * f; pictoClock(ctx, tx + 15 * s * f, cy, 31 * s * f); ui.text(`${Math.round(tl)}s`, tx + 36 * s * f, cy + 0.5 * s, { size: 25 * s * f, color: '#fff3cf', tag: 'intro:time' }); }
-    ctx.restore();
-    tips['perk:goal'] = L.target === L.eggs ? `All ${L.eggs} eggs home` : `${L.target} of ${L.eggs} home`;
-    ui.buttons.push({ id: 'perk:goal', x, y, w: gw, h: gh });
-    return x + gw;
-  };
-
-  // ---- the hero: the vault (or a demo) in the rect V, the goal and the perks on its foot
-  // its geometry (the vault and its nest fitted into V above the goal's line) and the backdrop under it, painted first
-  // whichever view is up, so the frozen picture is the same for the card and its chick picker
-  const hd = (() => { const sim = G.sim, R0 = sim ? sim.outerR : 3, n = sim && !sim.water ? sim.nest.getPosition() : null; return { R0, n, top: R0 * 1.14, bot: n ? Math.min(-R0 - 0.1, n.y - 0.55) : -R0 - 0.1, half: R0 * 1.06 }; })();
-  const heroK = (w, h) => Math.max(4, Math.min((w - 8 * s) / (2 * hd.half), (h - GH - 10 * s) / (hd.top - hd.bot))); // the vault as big as the room lets it: the width first
-  const heroNeed = (k) => (hd.top - hd.bot) * k + 10 * s + GH; // the vault, its nest and the goal under them
-  const heroGeom = (V, shade) => {
-    const sim = G.sim, { R0, n, top, bot } = hd, gh = GH;
-    const k = heroK(V.w, V.h);
-    // the vault, its nest and the goal under it as one group, in the middle of the room (a tall phone: sky above, earth below)
-    const grp = (top - bot) * k + 10 * s + gh, off = Math.max(0, (V.h - grp) * 0.42), roomH = Math.min(V.h, off + (top - bot) * k + 6 * s);
-    const HV = { w: V.w, h: roomH, k, cx: V.w / 2, cy: off + top * k }, footY = V.y + off + (top - bot) * k + 10 * s + gh / 2; // footY: the goal's line
-    const gyS = sim && !sim.water ? V.y + HV.cy - sim.groundY * k : null;
-    heroBackdrop(gyS != null && gyS > V.y + HV.cy ? gyS : null, n ? { x: V.x + HV.cx + n.x * k, k, nw: sim.nestW } : null, shade);
-    return { V, HV, R0, k, roomH, footY };
-  };
-  const drawHero = (Gm) => {
-    const { V, HV, R0, k, roomH, footY } = Gm, vx = V.x, vy = V.y;
-    heroBake(HV, low);
-    ui.buttons.push({ id: 'hero:tap', x: V.x, y: V.y, w: V.w, h: roomH });
-    ui.record({ x: V.x, y: V.y, w: V.w, h: roomH }, 'panel:hero');
-    // the cross-fade between the vault and a demo (0.35 s, eased; the vault steps back a little as it goes)
-    const fa = calm ? 1 : ease01(clamp((G.t - H.tx) / 0.35, 0, 1));
-    const layers = [[H.cur, fa], ...(H.prev && fa < 1 ? [[H.prev, 1 - fa]] : [])];
-    const ho = howOpts(); G.howO = ho;
-    for (const [Q, a] of layers.reverse()) {
-      if (!Q.plan) { // the vault
-        const pk = popK(0, 0.4), sc = (0.82 + 0.18 * pk) * (0.92 + 0.08 * a), al = Math.min(1, st / 0.12 + (calm ? 1 : 0)) * a;
-        if (al <= 0.01) continue;
-        ctx.save(); ctx.globalAlpha *= al; ctx.translate(vx + HV.cx, vy + HV.cy); ctx.scale(sc, sc); ctx.translate(-HV.cx, -HV.cy);
-        if (HB.still) ctx.drawImage(HB.still, 0, 0, HV.w, HV.h);
-        else if (HB.under) {
-          ctx.drawImage(HB.under, 0, 0, HV.w, HV.h);
-          HB.rings.forEach((Rg, i) => {
-            const ang = calm ? 0 : Rg.rock ? 0.1 * Math.sin(H.ang * 1.6 + i) : (i % 2 ? -1 : 1) * H.ang * (1 + 0.22 * i);
-            ctx.save(); ctx.translate(HV.cx, HV.cy); ctx.rotate(ang); ctx.drawImage(Rg.cv, -Rg.hs, -Rg.hs, Rg.hs * 2, Rg.hs * 2); ctx.restore();
-          });
-          ctx.drawImage(HB.over, 0, 0, HV.w, HV.h);
-        }
-        // the level's villain on the rim, prowling to and fro (still under Calm and on Low graphics)
-        const foe = kinds.find((q) => !LC_HAZ.test(q));
-        if (foe) {
-          const tt = calm || low ? 1.2 : G.t, Rp = R0 * k, d = clamp(Rp * 0.7, 54 * s, 120 * s), ph = calm ? 0 : Math.sin(tt * 0.5);
-          const phi = 0.62 + 0.3 * ph, rr = Rp + d * 0.12, X = Math.min(HV.cx + Math.sin(phi) * rr, HV.w - d * 0.42), Y = HV.cy - Math.cos(phi) * rr - (calm ? 0 : Math.abs(Math.sin(tt * 3.2)) * 3 * s);
-          ctx.beginPath(); ctx.ellipse(X, Y + d * 0.34, d * 0.3, d * 0.07, 0, 0, TAU); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill();
-          drawVillainPortrait(ctx, foe, X, Y, d, tt);
-        }
-        ctx.restore();
-      } else { // a demo, its edges melting into the scene; under its words, so nothing it drops in runs through them
-        const nfs = 22 * s, wfs = 18 * s, capH = nfs + (Q.words ? wfs + 6 * s : 0) + 20 * s, dy0 = vy + capH, dh = roomH - capH;
-        const sc = calm ? 1 : 0.94 + 0.06 * backK(clamp((G.t - H.tx) / 0.4, 0, 1));
-        ctx.save(); ctx.translate(vx + V.w / 2, dy0 + dh / 2); ctx.scale(sc, sc); ctx.translate(-(vx + V.w / 2), -(dy0 + dh / 2));
-        heroDemo(Q.plan, calm ? 0 : G.t - (Q.ts ?? H.t0), vx, dy0, V.w, dh, a, ho);
-        ctx.restore();
-        // its name and at most four words in their own place at the top of the hero (red while the harm plays)
-        if (a > 0.5) {
-          const harm = Q.plan.kind && Q.words && !calm && (ho._phase === 'harm' || (!Q.plan.harm && ho._pt < 1.6)), ty = vy + 8 * s;
-          ctx.save(); ctx.globalAlpha *= (a - 0.5) * 2;
-          ui.text(Q.name, vx + V.w / 2, ty + nfs * 0.5, { size: nfs, align: 'center', maxW: V.w - 24 * s, color: '#fff', stroke: INK, strokeW: 5 * s, shadow: 'rgba(0,0,0,0.3)', tag: 'intro:capname' });
-          if (Q.words) ui.text(harm ? threatWords(Q.plan.kind) : Q.words, vx + V.w / 2, ty + nfs + 6 * s + wfs * 0.5, { size: wfs, align: 'center', maxW: V.w - 24 * s, color: harm ? '#ff8a6a' : '#c8f59a', stroke: INK, strokeW: 4.5 * s, tag: 'intro:cap0' });
-          ctx.restore();
-        }
-      }
+  // ---- the stage (card819): the scene playing now, its edges melting into the page's own world; under it the page's
+  // ground lines up with the scene's. Painted first, so the frozen backdrop is the same for the card and its picker.
+  const stageBack = (V, shade) => heroBackdrop(V ? V.y + V.h * 0.9 : null, null, shade);
+  const drawStage = (V) => {
+    ui.buttons.push({ id: 'hero:tap', ...V }); ui.record(V, 'panel:hero');
+    const fa = calm ? 1 : ease01(clamp((G.t - H.tx) / 0.3, 0, 1)), op = popK(0.05, 0.4), ho = howOpts({ boost: drawBoosterIcon }); G.howO = ho;
+    const layers = [...(H.prev && fa < 1 ? [[H.prev, 1 - fa, H.pt0, true]] : []), [H.cur, fa, H.t0, false]];
+    for (const [Q, a, t0, old] of layers) { // the new scene comes in with a small pop (overshoot, settle); the old one steps back
+      const sc = (calm ? 1 : old ? 1 - 0.05 * (1 - a) : 0.92 + 0.08 * backK(clamp((G.t - H.tx) / 0.45, 0, 1))) * (0.86 + 0.14 * op), cx = V.x + V.w / 2, cy = V.y + V.h * 0.6;
+      ctx.save(); ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.translate(-cx, -cy);
+      heroDemo(Q.plan, calm ? 0 : G.t - t0, V.x, V.y, V.w, V.h, a * Math.min(1, st / 0.12 + (calm ? 1 : 0)), ho);
+      ctx.restore();
     }
-    // the goal and the perks on the hero's foot, as one centred group
-    const pw0 = perks.length ? perks.length * (PR * 2 + PG) + 4 * s : 0, f = clamp((V.w - 12 * s) / (goalW() + pw0), 0.82, 1), pw = pw0 * f, gw = goalW(f), gx = V.x + V.w / 2 - pw / 2;
-    const right = goalPill(gx, footY, f);
-    perkRow(right + 4 * s * f, footY, f);
-    return { gw: gw + pw };
   };
 
   // ---- the faces: one row of round pictures, the chick first; tap: its demo in the hero (the chick: the picker)
@@ -8421,6 +8402,8 @@ function drawLevelIntro(L, acc) {
     const n = fcs.length, g = Math.max(8 * s, D * 0.16), tot = n * D + (n - 1) * g, r = D / 2;
     const S = G.faceS && G.faceS.lid === pg.lid ? G.faceS : (G.faceS = { lid: pg.lid, y: 0, v: 0, max: 0, t: G.t });
     S.max = Math.max(0, tot - w); S.step = D + g; glide(S);
+    { const pi = fcs.findIndex((F) => F.key === H.cur.key), X0 = pi * (D + g); // card819: the face playing now glides into view
+      if (S.max > 0 && pi >= 0 && H.auto !== H.tx && !(G.pdrag && G.pdrag.moved && G.pdrag.sc === S)) { H.auto = H.tx; if (X0 < S.y || X0 + D > S.y + w) { S.v = 0; S.to = clamp(X0 - (w - D) / 2, 0, S.max); } } }
     const V = { x: x - 6 * s, y, w: w + 12 * s, h: D + 16 * s }, off = S.max > 0 ? x - snapPx(S.y, DPR) : x + (w - tot) / 2;
     if (S.max > 0) { G.carRect = V; G.carS = S; }
     const r0 = ui.rects.length, b0 = ui.buttons.length;
@@ -8428,7 +8411,7 @@ function drawLevelIntro(L, acc) {
     fcs.forEach((F, i) => {
       const X = off + i * (D + g) + r, Y = y + 8 * s + r;
       if (X + r < V.x - 4 * s || X - r > V.x + V.w + 4 * s) return;
-      const playing = !!(H.cur.plan && H.cur.key === F.key), demo = !F.plan ? false : demos.some((q) => q.key === F.key);
+      const playing = H.cur.key === F.key, demo = !F.plan ? false : demos.some((q) => q.key === F.key);
       const isNew = F.type !== 'chick' && F.n < 2, tp = G.lcPop && G.lcPop.id === 'face:' + F.key ? G.t - G.lcPop.t0 : 9;
       const k = popK(0.08 + Math.min(i, 8) * 0.035, 0.26) * (tp < 0.3 && !calm ? 1 + 0.12 * Math.sin((tp / 0.3) * Math.PI) : 1) * (playing ? 1.08 : 1);
       if (k <= 0.01) return;
@@ -8449,7 +8432,6 @@ function drawLevelIntro(L, acc) {
       ctx.restore();
       const rect = { x: X - r, y: Y - r, w: D, h: D };
       ui.record(rect, 'intro:face' + i, 'intro:faces'); ui.buttons.push({ id: 'face:' + F.key, ...rect });
-      if (F.type !== 'chick') tips['face:' + F.key] = F.words ? `${F.name}: ${F.words}` : F.name;
     });
     ctx.restore();
     clipRecorded(r0, b0, V);
@@ -8460,25 +8442,67 @@ function drawLevelIntro(L, acc) {
   };
   const faceH = (D) => D + 16 * s;
 
-  // ---- the three stars: each with the win page's goal icon and at most a number; a tap says what it asks
-  const goals = G.li >= 0 ? G.goals || GL.levelGoals(L, 1, true, save.mode) : null;
-  const starRow = (x, y, w, h) => {
-    const cw = w / 3, sr = Math.min(25 * s, h * 0.38), br = sr, fs = Math.round(sr * 1.12);
-    goals.slice(0, 3).forEach((g, i) => {
-      const kd = goalKind(g), num = kd === 'home' ? String(g.n || L.target) : kd === 'turns' ? String((g.b || g).n || '') : kd === 'time' ? `${(g.b || g).s || ''}s` : '';
-      const iw = sr * 2 + 2 * s + br * 2 + (num ? 6 * s + ui.measure(num, fs) : 0), cx = x + cw * i + cw / 2, cy = y + h / 2, ix = cx - iw / 2, k = popK(0.14 + i * 0.05, 0.26);
-      const tp = G.lcPop && G.lcPop.id === 'star:' + i ? G.t - G.lcPop.t0 : 9, kk = k * (tp < 0.3 && !calm ? 1 + 0.14 * Math.sin((tp / 0.3) * Math.PI) : 1) * Math.min(1, (cw - 18 * s) / iw); // (a narrow phone: one that would not fit its third a little smaller)
-      ctx.save(); if (kk !== 1) { ctx.translate(cx, cy); ctx.scale(kk, kk); ctx.translate(-cx, -cy); }
-      drawStar(ctx, ix + sr, cy, sr, true);
-      goalBadge(g, ix + sr * 2 + 2 * s + br, cy, br, true, 0);
-      if (num) ui.text(num, ix + sr * 2 + 2 * s + br * 2 + 6 * s, cy + 0.5 * s, { size: fs, color: '#fff3cf', stroke: INK, strokeW: 4 * s, tag: 'intro:star' + i });
+  // ---- the three goals (card819, mykee: "we should show the goals clearer rather than letting the user click on them ...
+  // a proper animation of what exactly needs to be done"): each plays a small picture by itself, in turn, and lights its
+  // star: eggs dropping into the basket, an egg's crack struck out, a clock sweeping to its mark, a ring turning with the
+  // count; then they rest in a row with their numbers, and play again slowly. Calm: the resting row. A tap plays one again.
+  const goals = G.li >= 0 ? G.goals || GL.levelGoals(L, 1, true, save.mode) : null, tl = G.sim && G.sim.timeLimit;
+  const GP = G.lcGoals && G.lcGoals.lid === LT.lid ? G.lcGoals : (G.lcGoals = { lid: LT.lid, t0: G.t, lit: 0, tap: null });
+  const G_AT = 0.5, G_BEAT = 1.1, G_REST = 7.5;
+  const goalPic = (kd, g, cx, cy, P, p) => { // the picture at progress p (0..1; 1: at rest)
+    const e = (a, b) => ease01(clamp((p - a) / (b - a), 0, 1));
+    if (kd === 'home') { // eggs drop one by one into a little basket
+      const n = Math.max(1, Math.min(3, g.n || L.target || 1)), bw = P * 0.92, by = cy + P * 0.26;
+      for (let j = 0; j < n; j++) { const q = e(0.1 + j * 0.22, 0.32 + j * 0.22), ex = cx + (j - (n - 1) / 2) * P * 0.26, ey = by - P * 0.12 - (1 - q) * P * 0.62 - (q > 0.98 ? 0 : Math.sin(q * Math.PI) * P * 0.04); ctx.save(); ctx.globalAlpha *= Math.min(1, q * 4); drawEggIcon(ctx, ex, ey, P * 0.36, 'alive'); ctx.restore(); }
+      ctx.save(); ctx.beginPath(); ctx.moveTo(cx - bw / 2, by - P * 0.08); ctx.quadraticCurveTo(cx - bw * 0.46, by + P * 0.2, cx, by + P * 0.22); ctx.quadraticCurveTo(cx + bw * 0.46, by + P * 0.2, cx + bw / 2, by - P * 0.08); ctx.closePath();
+      ctx.fillStyle = '#c98f3a'; ctx.fill(); ctx.lineWidth = Math.max(1.5, P * 0.045); ctx.strokeStyle = '#4a2a0a'; ctx.stroke(); ctx.lineWidth = Math.max(2, P * 0.06); ctx.strokeStyle = '#e8b45a'; ctx.beginPath(); ctx.moveTo(cx - bw / 2, by - P * 0.08); ctx.lineTo(cx + bw / 2, by - P * 0.08); ctx.stroke(); ctx.restore();
+      return String(Math.round((g.n || L.target) * Math.min(1, p / 0.8)));
+    }
+    if (kd === 'clean' || kd === 'perfect' || kd === 'prize' || kd === 'all') { // an egg with a crack, the crack struck out
+      drawEggIcon(ctx, cx, cy, P * 0.74, 'alive');
+      const c1 = e(0.1, 0.4); if (c1 > 0) { ctx.save(); ctx.strokeStyle = '#5a3416'; ctx.lineWidth = Math.max(1.5, P * 0.05); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); const pts = [[-0.02, -0.3], [0.08, -0.14], [-0.06, -0.02], [0.07, 0.12]], m = Math.max(1, Math.round(c1 * 3)); ctx.moveTo(cx + pts[0][0] * P, cy + pts[0][1] * P); for (let j = 1; j <= m; j++) ctx.lineTo(cx + pts[j][0] * P, cy + pts[j][1] * P); ctx.stroke(); ctx.restore(); }
+      const x1 = e(0.45, 0.75); if (x1 > 0) { const r = P * 0.44 * (calm ? 1 : backK(x1)); ctx.save(); ctx.lineWidth = Math.max(3, P * 0.1); ctx.strokeStyle = '#e0362a'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx - r * 0.7, cy - r * 0.7); ctx.lineTo(cx + r * 0.7, cy + r * 0.7); ctx.stroke(); ctx.restore(); }
+      return '';
+    }
+    if (kd === 'time') { // a clock: its hand sweeps round to the mark
+      const r = P * 0.4, lim = (g.b || g).s || Math.round(tl || 0), sw = e(0.05, 0.8), a0 = -Math.PI / 2, a1 = a0 + TAU * 0.8;
+      ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fillStyle = '#fffaf0'; ctx.fill(); ctx.lineWidth = Math.max(2, r * 0.16); ctx.strokeStyle = '#4a2c10'; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r * 0.82, a0, a0 + (a1 - a0) * sw); ctx.closePath(); ctx.fillStyle = 'rgba(80,190,60,0.45)'; ctx.fill();
+      ctx.lineWidth = Math.max(2, r * 0.12); ctx.strokeStyle = '#e0362a'; ctx.beginPath(); ctx.moveTo(cx + Math.cos(a1) * r * 0.72, cy + Math.sin(a1) * r * 0.72); ctx.lineTo(cx + Math.cos(a1) * r, cy + Math.sin(a1) * r); ctx.stroke();
+      const ah = a0 + (a1 - a0) * sw; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(2, r * 0.13); ctx.strokeStyle = '#2a1608'; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(ah) * r * 0.7, cy + Math.sin(ah) * r * 0.7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.1, 0, TAU); ctx.fillStyle = '#2a1608'; ctx.fill(); ctx.restore();
+      return lim ? `${Math.round(lim * Math.min(1, p / 0.8))}s` : '';
+    }
+    if (kd === 'turns') { // the ring-turn arrow goes round, the count ticks up
+      const n = (g.b || g).n || 0, q = e(0.05, 0.8);
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(calm ? 0 : q * TAU * (p < 1 ? 1 : 0)); ctx.translate(-cx, -cy); goalGlyph('turns', cx, cy, P * 1.02); ctx.restore();
+      return n ? String(Math.round(n * Math.min(1, p / 0.8))) : '';
+    }
+    const k = calm ? 1 : backK(e(0.05, 0.5)); ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); goalGlyph(kd, cx, cy, P * 0.95); ctx.restore();
+    return '';
+  };
+  const goalRow = (x, y, w, h) => {
+    const gs = goals.slice(0, 3), n = gs.length, cw = w / n, P = Math.min(h * 0.86, cw * 0.46), sr = Math.min(17 * s, P * 0.34), fs = Math.round(Math.min(26 * s, h * 0.42));
+    const per = G_AT + n * G_BEAT + G_REST, el = G.t - GP.t0, run = Math.floor(el / per), ph = el - run * per;
+    gs.forEach((g, i) => {
+      const kd = goalKind(g), tp = GP.tap && GP.tap.i === i ? G.t - GP.tap.t0 : -1;
+      let p = calm ? 1 : clamp((ph - G_AT - i * G_BEAT) / G_BEAT, 0, 1);
+      if (!calm && tp >= 0 && tp < G_BEAT * 1.2) p = clamp(tp / G_BEAT, 0, 1);
+      const lit = p >= 0.85, lk = calm ? 1 : clamp((p - 0.85) / 0.15, 0, 1);
+      if (lit && run === 0 && tp < 0 && !(GP.lit & (1 << i))) { GP.lit |= 1 << i; audio.play('star', { vol: 0.35, pitch: 1 + i * 0.12 }); }
+      const numW = fs * 1.9, gx = x + cw * i + cw / 2 - (P + 6 * s + numW) / 2 + P / 2, cy = y + h / 2, k = popK(0.14 + i * 0.05, 0.26);
+      ctx.save(); if (k !== 1) { ctx.translate(gx, cy); ctx.scale(k, k); ctx.translate(-gx, -cy); }
+      ctx.beginPath(); ctx.ellipse(gx, cy + P * 0.46, P * 0.42, P * 0.08, 0, 0, TAU); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill();
+      const num = goalPic(kd, g, gx, cy, P, p);
+      const sx = gx - P * 0.46, sy = cy - P * 0.42, sk = lit && !calm ? 1 + 0.35 * Math.sin(lk * Math.PI) : 1; // its star on the picture's corner: a socket, then lit with a pop
+      drawStar(ctx, sx, sy, sr * sk, lit);
+      if (num) ui.text(num, gx + P / 2 + 6 * s, cy + 0.5 * s, { size: fs, color: '#fff3cf', stroke: INK, strokeW: 4.5 * s, tag: 'intro:star' + i });
       ctx.restore();
-      const words = String(g.short || '').split(' ').length <= 4 ? g.short : g.long;
-      const rect = { x: cx - cw / 2 + 4 * s, y, w: cw - 8 * s, h };
-      ui.buttons.push({ id: 'star:' + i, ...rect }); tips['star:' + i] = words;
+      const rect = { x: x + cw * i + 3 * s, y, w: cw - 6 * s, h };
+      ui.buttons.push({ id: 'star:' + i, ...rect });
     });
   };
-  const STARH = 56 * s;
+  const STARH = 64 * s;
 
   // ---- the chick picker (the chick's face): its power on the hero, the row of chicks, its way in; Back closes it
   const nI = items.length;
@@ -8579,58 +8603,64 @@ function drawLevelIntro(L, acc) {
   const hdrY = A.y + 6 * s;
   // the faces' size: big, bigger still when there are few (five or more: they scroll sideways past what fits)
   const nF = fcs.length, fgap = (D) => Math.max(8 * s, D * 0.16);
-  const faceD = (w, grow = 1) => { if (!nF) return 0; const D = (nF >= 5 ? 62 : nF === 4 ? 70 : 78) * s * grow; return nF <= 5 ? Math.max(54 * s, Math.min(D, (w - 8 * s + fgap(D)) / nF - fgap(D))) : D; };
+  const faceD = (w, grow = 1) => { if (!nF) return 0; const D = (nF >= 5 ? 64 : nF === 4 ? 76 : 86) * s * grow; return nF <= 5 ? Math.max(62 * s, Math.min(D, (w - 8 * s + fgap(D)) / nF - fgap(D))) : D; }; // (card819: bigger; never under a kid's thumb)
+  // card819 (mykee: "Always maintain equal spacing between the boosters and the pre-level animations and everything. Don't
+  // make it too congested"): title, faces, stage, goals, boosters, PLAY top to bottom with one gap between every two; the
+  // stage takes the room the rest leaves (never taller than a little over its width); what is left grows the faces and
+  // the goals a little, then goes to the gaps, all alike.
   if (!land) {
-    // the height shared out: the bottom blocks, then the vault as wide as the page lets it, then the stars and the faces
-    // grow a little, then what is left as even gaps; short of room, the vault tucks a little under the header
-    const iw = W0, y0 = A.y1 - bottomH(iw), top = hdrY + hdrH + 2 * s; // y0: the bottom blocks' top (drawn last, over the shade)
-    const nb = 1 + (goals ? 1 : 0) + (nF ? 1 : 0), gmin = 10 * s, Vw = A.w - 8 * s;
-    let D = faceD(iw), SH = goals ? STARH : 0;
-    const fixed = () => SH + (nF ? faceH(D) : 0), room = () => y0 - top - fixed() - gmin * (nb + 1);
-    let k = heroK(Vw, room()), lift = 0;
-    const kW = heroK(Vw, 1e6);
-    if (k < kW) { lift = Math.min(hdrH * 0.5, heroNeed(kW) - room()); k = heroK(Vw, room() + lift); }
-    let slack = room() + lift - heroNeed(k);
-    if (slack > 0 && fixed() > 0) { const gr = 1 + clamp((slack * 0.3) / fixed(), 0, 0.22), f0 = fixed(); SH *= gr; D = faceD(iw, gr); slack -= fixed() - f0; }
-    const gap = gmin + Math.max(0, slack) / (nb + 1);
-    let y = top - lift + gap;
-    const HVr = { x: A.x + 4 * s, y, w: Vw, h: heroNeed(k) };
-    y += HVr.h + gap;
-    const sy = goals ? y : null; if (goals) y += SH + gap;
-    const fy = nF ? y : null;
-    const Gm = heroGeom(HVr, { y: y0 - gap });
+    const iw = W0, top = hdrY + hdrH, Vw = A.w - 8 * s;
     if (pick) {
-      y = y0 - gp - WAYH; const wy = y; y -= gp + carH(iw); const cy = y;
+      const y0 = A.y1 - bottomH(iw);
+      stageBack(null, { y: y0 - gp });
+      let y = y0 - gp - WAYH; const wy = y; y -= gp + carH(iw); const cy = y;
       pickHero({ x: x0, y: top + 2 * s, w: iw, h: y - gp * 0.5 - top - 2 * s }); carRow(x0, cy, iw); wayRow(x0, wy, iw);
+      header(x0, hdrY, iw); bottom(x0, iw);
     } else {
-      drawHero(Gm);
-      if (goals) starRow(x0, sy, iw, SH);
+      const nbk = 1 + (nF ? 1 : 0) + (goals ? 1 : 0) + (showBoost ? 1 : 0) + (ringStripH(x0, iw, s) > 0 ? 1 : 0) + 1; // the blocks; a gap above each
+      const avail = A.y1 - mb - top, gmin = 12 * s;
+      let D = faceD(iw), SH = goals ? STARH : 0;
+      const fixed = () => (nF ? faceH(D) : 0) + SH + bottomH(iw, 0) - mb;
+      const stMax = Math.min(Vw * 1.05, 520 * s), stMin = 150 * s;
+      let stH = clamp(avail - fixed() - nbk * gmin, stMin, stMax);
+      let slack = avail - fixed() - stH - nbk * gmin;
+      if (slack > 0) { const gr = 1 + clamp((slack * 0.35) / Math.max(1, (nF ? faceH(D) : 0) + SH), 0, 0.16), f0 = fixed(); SH *= gr; D = faceD(iw, gr); slack -= fixed() - f0; }
+      const g = Math.max(6 * s, gmin + Math.max(0, slack) / nbk);
+      let y = top + g;
+      const fy = nF ? y : null; if (nF) y += faceH(D) + g;
+      const V = { x: A.x + 4 * s, y, w: Vw, h: stH }; y += stH + g;
+      const sy = goals ? y : null;
+      stageBack(V, { y: (goals ? sy : y) - g * 0.5 });
+      drawStage(V);
+      if (goals) goalRow(x0, sy, iw, SH);
       if (nF) faceRow(x0, fy, iw, D);
+      header(x0, hdrY, iw);
+      bottom(x0, iw, g);
     }
-    header(x0, hdrY, iw);
-    bottom(x0, iw);
-  } else { // a phone on its side: the hero on the left at the full height, the rest on the right
+  } else { // a phone on its side: the stage on the left at the full height, the rest on the right with even gaps
     const gap2 = 20 * s, lw = Math.min((W0 - gap2) * 0.5, 640 * s), rw = W0 - gap2 - lw, lx = x0, rx = x0 + lw + gap2;
     const top = hdrY + hdrH + 4 * s, V = { x: lx, y: top, w: lw, h: A.y1 - 8 * s - top };
-    let y = A.y1 - bottomH(rw);
-    const Gm = heroGeom(V, { x: rx - gap2 / 2 });
+    stageBack(V, { x: rx - gap2 / 2 });
     if (pick) {
+      let y = A.y1 - bottomH(rw);
       pickHero(V);
       y -= gp + WAYH; const wy = y; y -= gp + carH(rw);
       const cy = Math.max(top, y - Math.max(0, (y - top) * 0.5));
       carRow(rx, cy, rw); wayRow(rx, wy, rw);
+      header(x0, hdrY, W0); bottom(rx, rw);
     } else {
-      const nb = (nF ? 1 : 0) + (goals ? 1 : 0), want = (nF ? faceH(faceD(rw)) : 0) + (goals ? STARH : 0);
-      const fit = want > 0 ? clamp((y - top - gp * 0.5 * (nb + 1)) / want, 0.72, 1) : 1; // (the ring speed strip too: the faces and stars only as much smaller as the room needs)
-      const D = faceD(rw, fit), SH = STARH * fit, used = (nF ? faceH(D) : 0) + (goals ? SH : 0);
-      const g2 = Math.max(gp * 0.5, (y - top - used) / (nb + 1)); // the room left shared out as even gaps
-      let by = top + g2;
-      drawHero(Gm);
-      if (nF) { faceRow(rx, by, rw, D); by += faceH(D) + g2; }
-      if (goals) starRow(rx, by, rw, SH);
+      const nb = (nF ? 1 : 0) + (goals ? 1 : 0) + (showBoost ? 1 : 0) + (ringStripH(x0, rw, s) > 0 ? 1 : 0) + 1, avail = A.y1 - mb - top;
+      const want = (nF ? faceH(faceD(rw)) : 0) + (goals ? STARH : 0), rest = bottomH(rw, 0) - mb;
+      const fit = want > 0 ? clamp((avail - rest - 8 * s * nb) / want, 0.82, 1) : 1;
+      const D = faceD(rw, fit), SH = STARH * fit, used = (nF ? faceH(D) : 0) + (goals ? SH : 0) + rest;
+      const g = Math.max(4 * s, (avail - used) / nb);
+      let by = top + g;
+      drawStage(V);
+      if (nF) { faceRow(rx, by, rw, D); by += faceH(D) + g; }
+      if (goals) goalRow(rx, by, rw, SH);
+      header(x0, hdrY, W0);
+      bottom(rx, rw, g);
     }
-    header(x0, hdrY, W0);
-    bottom(rx, rw);
   }
   if (handLater) handLater();
   lcTipDraw(s);

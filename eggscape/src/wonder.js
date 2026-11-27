@@ -655,7 +655,7 @@ export function createWonder(env) {
     const build = (stH) => (s) => {
       const B = [];
       if (stH > 0) B.push({ h: stH * s, gap: 4 * s, draw: (x, y, w) => picStage(x, y, w, stH * s, s, true) });
-      B.push(inkLine(L.pitch, 20 * s, 'wv:introLine', { gap: 12 * s }));
+      // (card819, mykee: no explaining text under the title: the picture plays the vault's trick by itself)
       B.push({ h: 40 * s, gap: 8 * s, draw: (x, y, w) => { // the stars it has (sockets until won) and the coins its next win pays
         const sr = 17 * s, pw = pay ? ui.measure('+' + pay, 19 * s) + 22 * s + 32 * s : 0, gp = pay ? 22 * s : 0, sw = 6.6 * sr, x0 = x + w / 2 - (sw + gp + pw) / 2, cy = y + 20 * s;
         for (let i = 0; i < 3; i++) drawStar(ctx, x0 + sw / 2 + (i - 1) * 2.3 * sr, cy, sr, i < best);
@@ -670,7 +670,7 @@ export function createWonder(env) {
       const card = K.page(L.name, build(0), { ...sd.cardO, ribbon: RIB });
       const { box } = K.stage(sd, card);
       picStage(box.x, box.y, box.w, box.h, u, false, { x1: A.x + 8 * u + 46 * u + 4 * u, y1: A.y + 6 * u + 46 * u + 4 * u });
-    } else K.page(L.name, build(roomFor(build, 120, 420)), { full: true, ribbon: RIB });
+    } else K.page(L.name, build(roomFor(build, 120, 520)), { full: true, ribbon: RIB }); // (card819: the line under the title is gone: the picture takes its room)
     const bs = 46 * u; // back to the map: the header's corner (on the page's top edge, level with the ribbon)
     ui.button('wv:map', '', A.x + 8 * u, A.y + 6 * u, bs, bs, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: bs / 2 });
   }

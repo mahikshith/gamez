@@ -1933,7 +1933,9 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   if (S) { // the scroller: k (whole items) is where it is going, S.y (items, eased) where it is drawn
     V = stripView(all.length, fit, S.k); S.k = V.k; S.n = all.length; S.fit = fit;
     const dt = Math.max(0, Math.min(0.1, t - (S.t ?? t))); S.t = t;
-    if (S.y == null || ui.calm) S.y = V.k; else { S.y += (V.k - S.y) * (1 - Math.exp(-11 * dt)); if (Math.abs(V.k - S.y) < 0.004) S.y = V.k; }
+    // card819: S.hold (the caller's finger or its fling has the row): S.y is where the finger put it; else it eases to k
+    if (S.hold) S.y = Math.max(-0.4, Math.min(V.max + 0.4, S.y)); else if (S.y == null || ui.calm) S.y = V.k; else { S.y += (V.k - S.y) * (1 - Math.exp(-14 * dt)); if (Math.abs(V.k - S.y) < 0.004) S.y = V.k; }
+    S.step = c + jg; S.max = V.max; // (the caller's drag works in pixels)
     win = { x: x0 + (V.L ? c + jg : 0) - 1, x1: x0 + tw - (V.R ? c + jg : 0) + 1 };
     ctx.save(); ctx.beginPath(); ctx.rect(win.x, ty - 8 * s, win.x1 - win.x, c + 16 * s); ctx.clip();
   }
