@@ -166,6 +166,11 @@ const srv = http.createServer((q, r) => {
       ['3star', { lv: 10, ex: { goals: G818([]), prevBest: 5200, online: 4, dblOk: true }, tap: 2 }], ['calm', { lv: 10, calm: true, stars: 1, coins: 12, tap: 2, ex: { goals: G818([1, 2]), streak: 0, streakMult: 1 } }],
       ['boss', { lv: 11, stars: 2, coins: 60, ex: { goals: G818(['s']), prevBest: 0, online: 4, streak: 0, streakMult: 1, treasure: { id: 12, coins: 150, booster: 'stone', charges: 2 } }, end: 1300 }]])
       await check(`win818-${lab}`, ([sv, run, end, tap]) => { eval(sv); return eval(`(${run})`)({ k: 0, end, tap }); }, [W817(o), W818run.toString(), o.end || 800, o.tap ?? null], lab === '1star' || lab === 'boss');
+    // 0.8.19 win819: the goals' chips flying into the stars on their arc, the streak's flame lighting in the middle and
+    // flying to its badge, the big Double coins button, the Bonus chest on it, a missed goal's blink and its tap
+    for (const [lab, o] of [['flame', { lv: 10, ex: { goals: G818([]), prevBest: 5200, online: 4, dblOk: true, hot: 3, hotB: [] }, tap: 2 }], ['2star', { lv: 10, stars: 2, coins: 30, tap: 1, ex: { goals: G818([1]), prevBest: 6000, online: 4, dblOk: true, streak: 0, streakMult: 1, hot: 2, hotB: [], saved: 2 } }],
+      ['chest', { lv: 10, ex: { goals: G818([]), prevBest: 5200, online: 4, dblOk: true, hot: 5, hotB: [], chest: { coins: 40, booster: 'stone' } } }]])
+      await check(`win819-${lab}`, ([sv, run, end, tap]) => { eval(sv); return eval(`(${run})`)({ k: 0, end, tap }); }, [W817(o), W818run.toString(), o.end || 800, o.tap ?? null], true);
     await check('fail', () => { const E = __egg; E.start(4); E.press('go'); E.frame(1 / 60); E.showResult('fail'); for (let k = 0; k < 120; k++) E.frame(1 / 60); return E.overlaps(); }, 0, true);
     // 0.8.14: the fail page's rows (stuck with the coin way, a help offer, a Skip Ticket, a level with no skip), the shop
     // mark (map hand, level card, pause banner, win chip), the ring speed strip (levels 2 to 5, before and after a change)
