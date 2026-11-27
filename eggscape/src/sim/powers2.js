@@ -456,7 +456,6 @@ export const p2Methods = {
       const q = ringPoint(this, W.ri, W.la, this.rings[W.ri].r - RING_TH / 2 - 0.25);
       if (test(q.x, q.y, W.w / 2 + 0.05)) { removeWall(this, W, 'laser'); n++; }
     }
-    n += this.creepBurnTest?.(test) || 0; // 0.8.18 creeper: the beam burns it back to a stump
     this.p2LaserFoes(test); // v0.8.9: every villain on the line reacts
     return n;
   },

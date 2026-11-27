@@ -29,7 +29,7 @@ import { drawGator } from './bayou.js';
 import { GATOR } from '../sim/bayou.js';
 import { drawEagle, drawLavaRock, drawMeltHole, drawIcicle } from './v3art.js';
 import { drawSalHeat, drawEmberBall } from './salamander.js'; // the game's own red-hot wall (the salamander's harm beat)
-import { CREEP_HIT } from './creeper.js'; // 0.8.18 creeper
+import { CREEP_HIT } from './movethorn.js'; // 0.8.18 the moving thorn
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -133,9 +133,7 @@ SHOW.monkey = P('turn', 'Flick his ring hard: whoa, he lets go!', { fx: 'bonk' }
 for (const c of ['ice', 'woods', 'sea', 'cave', 'goggles', 'bow', '']) { const k = c ? 'kits:' + c : 'kits'; SHOW[k] = P('turn', 'Turn their ring hard: they tumble!', { fx: 'bonk' }); THREAT[k] = 'Carry eggs off'; HARM[k] = ['kits', 'TAKEN!']; } // 0.8.18 kits: mama raccoon's kits (howact.js kitsActor acts both beats)
 SHOW.emberspit = P('turn', 'Turn the gap out of his line', { fx: 'bonk' }); THREAT.emberspit = 'Spits embers'; HARM.emberspit = ['fall', 'CRACK!']; // 0.8.18 lava
 SHOW.fireup = P('turn', 'Turn its ring: he rides away', { fx: 'bonk' }); THREAT.fireup = 'Goes white-hot'; // 0.8.18 lava (the info panel and the lesson teach the water)
-SHOW.creeper = P('turn', 'Pass when it curls up'); THREAT.creeper = 'Crawls, cracks'; HARM.creeper = ['creep', 'CRACK!'];
-// the family's other forms: the same two beats in their own look (render/creeper.js creeperActorFor)
-for (const [kind, show, threat] of [['swampvine', 'Pass when it curls up', 'Crawls, cracks'], ['frostcrawler', 'Pass when it rests', 'Crawls, cracks'], ['lavaflow', 'Roll across, never stop', 'Hot: do not rest'], ['anemone', 'Pass when it shuts', 'Drifts, stings'], ['spark', 'Pass when it rests', 'Races, zaps'], ['sawtooth', 'Pass when it stops', 'Rolls, cracks'], ['shard', 'Pass when it rests', 'Crawls, cracks']]) { SHOW[kind] = P('turn', show); THREAT[kind] = threat; HARM[kind] = ['creep', 'CRACK!']; } // 0.8.18 creeper (its rig acts both beats: render/creeper.js)
+SHOW.creeper = P('turn', 'Turn it away'); THREAT.creeper = 'Slides, pops'; HARM.creeper = ['creep', 'POP!']; // 0.8.18 the moving thorn
 export const threatWords = (kind) => THREAT[kind] || THREAT[String(kind).replace(/^boss:/, '')] || 'Hunts eggs';
 // the first-five ladder (2026-11-20, owner: every level from 2 on hands over a new toy, shown on its level card with the
 // game's own art): the red flame, the twin orb, the thorn curtain, the portal, the glow chick. move 'toy', plan.toy names it.

@@ -87,8 +87,7 @@ import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render
 import { drawPips, pipEvent, pipCalm } from './render/pip.js'; // 0.8.17 pip
 import { PIP_DEMO } from './data/pip-demo.js'; // 0.8.17 pip: his practice vault (joins LAB_DEMOS below)
 import { drawCocos, drawCocoOver, cocoEvent, cocoCalm } from './render/coco.js'; // 0.8.17 coco
-import { drawCreepers, creeperEvent } from './render/creeper.js'; // 0.8.18 creeper
-import { drawCreeperOver } from './render/creeper-forms.js'; // 0.8.18 creeper family: the lava's heat on an egg
+import { moverEvent } from './render/movethorn.js'; // 0.8.18 the moving thorn
 import { COCO_DEMO } from './data/coco-demo.js'; // 0.8.17 coco: his practice vault (joins LAB_DEMOS below)
 import { drawBayou, drawBayouOver, bayouEvent, drawGator, drawTurtle, drawSwarm, drawGatorCard, drawGatorEmblem } from './render/bayou.js'; // v3.7 Gator Bayou
 import { ringReach, ringPt } from './sim/shapes.js'; // v3.3 M10 vault shapes
@@ -4811,7 +4810,7 @@ function handleEvents() {
         banditEvent(ev, fx, { popup, audio, hitStop, calm: save.calm, once: (key, text) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // 0.8.17 bandit
         reefEvent(ev, fx, { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }); // world 8 reef
         urchinEvent(ev, fx, { popup, audio, buzz, calm: save.calm }); // 0.8.17 urchin
-        creeperEvent(ev, fx, { audio, calm: save.calm }); if (ev.type === 'creeperNear') lessonAsk('creep_' + (ev.form || 'thorn'), null, ev); // 0.8.18 creeper: its first approach is the meeting
+        moverEvent(ev, { audio, calm: save.calm }); if (ev.type === 'creeperNear') lessonAsk('creep_thorn', null, ev); // 0.8.18 the moving thorn: its first approach is the meeting
         { const U = { popup, audio, once: (key, text, d = 3.2) => { if (!G.predToast[key]) { G.predToast[key] = 1; lessonAsk(key, text, ev); } } }; cwEvent(ev, fx, U); owlEvent(ev, fx, U); movesEvent(ev, fx, U); } // v4 the clockwork cast, the owl
         break;
       case 'won':
@@ -6030,7 +6029,6 @@ function render() {
   }
   if (sim.wx.bolt) { const b = sim.boltPoint(sim.wx.bolt); W.drawBoltWarn(ctx, b.x, b.y, t); }
   blastXf(() => W.drawBarriers(ctx, sim, t, k), 3.1); // predators (v3)
-  blastXf(() => drawCreepers(ctx, sim, t, k, save.calm), 3.4); // 0.8.18 creeper: on its ring's rim, under the eggs
   // floating orbs: mystery until discovered (F19)
   blastXf(() => { for (const o of sim.orbs) if (o.alive) flipped(o.x, o.y, (k) => drawOrb(ctx, o.type, 0, 0, 0.2 * k, t, !!save.seen[o.type])); }, 18.3); // a re-spawned orb can outlive the burst: it leaves with the rings
   if (DEV && G.probe) G.probe('mid');
@@ -6057,7 +6055,6 @@ function render() {
   if (DEV && G.probe) G.probe('creatures');
   for (const e of sim.aliveEggs()) if (!overNest(sim, e) && !eggInDen(sim, e) && !bandHides(sim, e) && e.hc !== 4) drawEggFelt(e, t, k); /* 0.8.18 frog: hc 4 = in its cheeks (render/frog.js draws it there) */ /* 0.8.17 bandit: not his sack */ // v3.2: chick kinds, tinted eggs; game feel: through the egg's squash (an egg dropping into the basket was drawn with the nest, behind its front wall)
   drawChickFX(ctx, sim, t, k);
-  blastXf(() => drawCreeperOver(ctx, sim, t, k, save.calm), 3.4); // 0.8.18 creeper family: the lava's heat creeping up a resting egg
   drawMagnetField(ctx, sim, t, k, save.calm); // v3.1 magnet; 2026-11-20: over the eggs (the two poles, the field lines, the pull)
   blastXf(() => { const wx = warpXfBegin(ctx, sim, 'o'); drawSeaOver(ctx, sim, t, k); warpXfEnd(ctx, wx); }, 10.4); // v3.3: the arms wrapped over a held egg
   blastXf(() => drawReefOver(ctx, sim, t, k), 8.2); // world 8: claws over a held egg, the silt cloud

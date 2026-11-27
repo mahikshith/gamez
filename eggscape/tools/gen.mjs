@@ -291,7 +291,7 @@ function layRing(spec, i, r, R, prev) {
 }
 
 // 0.8.18 the thorn creeper (sim/creeper.js): rs.creep = { len (m of rim), v (m/s), rest (s coil, Medium), side 'in'|'out',
-// delay, at 'gap' | 'bottom', a0 + a1 (by hand, ring-local deg) }. at 'bottom': the stretch lies over the bottom at the start (where an egg that drops into the
+// delay, at 'gap' | 'bottom' | 'thorn', a0 + a1 (by hand, ring-local deg) }. at 'thorn': beside a standing thorn cluster (see below). at 'bottom': the stretch lies over the bottom at the start (where an egg that drops into the
 // channel comes to rest), cut short by a gap or floor thorn either side. Otherwise (at 'gap'): its stretch starts just past the edge of an open gap and runs away from it along free rim: up to the nearest
 // gap, floor thorn (on its face) or wooden wall, never over the eggs' start on the centre ring. Of every gap edge, the one
 // with the most free rim wins (the gap it guards is a way out the eggs want). Deterministic: no rng.
@@ -301,8 +301,6 @@ function layCreep(spec, i, r, o, gaps, thorns, bars) {
     const out = { a0: o.a0, a1: o.a1, v: o.v, rest: o.rest };
     if (side === 'out') out.side = 'out';
     if (o.delay != null) out.delay = o.delay;
-    if (o.form && o.form !== 'thorn') out.form = o.form;
-    if (o.w) out.w = o.w;
     if (o.baby) out.baby = 1;
     return out;
   }
@@ -318,6 +316,23 @@ function layCreep(spec, i, r, o, gaps, thorns, bars) {
     if (side === 'in') for (const b of bars) cut(b, 8);
     if (i === 0 || hi - lo < want * 0.6) return null;
     best = { a0: lo, a1: hi };
+  }
+  if (o.at === 'thorn') { // beside a standing thorn cluster of its face: one of the ring's thorns that goes for a walk. Its groove
+    // starts just past the cluster and runs away from it along free rim; of every such start the one with the most free rim wins
+    // (the thorn never walls a gap in: it stays clear of every gap by more than an egg)
+    for (const t of sideTh) for (const s of [1, -1]) {
+      const e = t.a + s * (span(t.n) + 4);
+      let free = 300;
+      const block = (a, w) => { const d = (((s * (a - e)) % 360) + 360) % 360 - w; if (d < free) free = d; };
+      for (const q of gaps) block(q.a, halfDeg(q.len || (q.grate ? 0.7 : GAP_LEN), r) + 16);
+      for (const t2 of sideTh) if (t2 !== t) block(t2.a, span(t2.n) + 6);
+      if (side === 'in') for (const b of bars) block(b, 8);
+      if (i === 0) block(BOTTOM, 40);
+      const len = Math.min(want, free);
+      if (len < want * 0.7) continue;
+      if (!best || free > best.free) best = { free, a0: s > 0 ? e : e - len, a1: s > 0 ? e + len : e };
+    }
+    if (!best) return null;
   }
   for (const g of best ? [] : doors) for (const s of [1, -1]) {
     const e = g.a + s * (halfDeg(g.len || GAP_LEN, r) + M);
@@ -336,9 +351,7 @@ function layCreep(spec, i, r, o, gaps, thorns, bars) {
   out.a1 = out.a0 + Math.round(best.a1 - best.a0);
   if (side === 'out') out.side = 'out';
   if (o.delay != null) out.delay = o.delay;
-  if (o.form && o.form !== 'thorn') out.form = o.form; // the world's form of the creeper family (sim/creeper.js FORMS)
-  if (o.w) out.w = o.w; // the lava flow's own length (m)
-  if (o.baby) out.baby = 1; // the first meeting: it only shoves (sim/creeper.js creepBite)
+  if (o.baby) out.baby = 1; // the first meeting: a young thorn that only shoves (sim/creeper.js)
   return out;
 }
 

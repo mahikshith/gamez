@@ -191,7 +191,6 @@ export const chickMethods = {
     this.chickGain += 2 * (this.thiefHit?.('flash', { x: p.x, y: p.y, r: R }) || 0); // v3.6: rats run from the light, the weasel is dazed
     this.chickGain += 2 * (this.pipHit?.('flash', { x: p.x, y: p.y, r: R }) || 0); // 0.8.17 pip
     this.chickGain += 2 * (this.cocoHit?.('flash', { x: p.x, y: p.y, r: R }) || 0); // 0.8.17 coco
-    this.creepBurnAt?.(p.x, p.y, R); // 0.8.18 creeper: the flash burns it back to a stump
     if (this.band) this.chickGain += 2 * this.bandHit('flash', { x: p.x, y: p.y, r: R }); // 0.8.17 bandit: the flash on his paw hurts it
     if (this.kit) this.chickGain += 2 * this.kitHit('flash', { x: p.x, y: p.y, r: R }); // 0.8.18 kits: they dive back into the sack
     const E = this.eagle;
