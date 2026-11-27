@@ -15,12 +15,10 @@ export function leaveLine(run = {}) {
   if (run.bossLeft != null && run.bossLeft > 0 && run.bossLeft <= 1 / 3) return { id: 'boss', line: 'He is almost beaten!' };
   return { id: 'eggs', line: "Eggs are not home yet" };
 }
-// leaving the app from the home page. st: { gift (a gift or a free spin waits), day (the day streak tomorrow would
-//   be; 0 for none) } -> { id, line, n }
+// leaving the app from the home page. st: { gift (a gift or a free spin waits) } -> { id, line }
+// (no day-streak line: the save keeps no day streak, and a line must be true)
 export function exitLine(st = {}) {
-  const day = Math.max(0, st.day | 0);
   if (st.gift) return { id: 'gift', line: 'A gift is waiting!' };
-  if (day >= 2) return { id: 'day', line: `Come back tomorrow: day ${day}`, n: day };
   return { id: 'bye', line: 'See you soon!' };
 }
-export const LEAVE_LINES = ['villain', 'short', 'streak', 'boss', 'eggs'], EXIT_LINES = ['gift', 'day', 'bye'];
+export const LEAVE_LINES = ['villain', 'short', 'streak', 'boss', 'eggs'], EXIT_LINES = ['gift', 'bye'];

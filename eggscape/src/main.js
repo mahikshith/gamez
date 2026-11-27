@@ -1410,7 +1410,7 @@ function backPress() {
       if (G.itab === 'chicks') { press('itab:level'); return true; } // 0.8.18: the chick picker (opened from the chick's face) closes
       press('levels'); return true; // the level card -> the map (a practice vault's -> Practice)
     case 'win': case 'fail': if (G.adBusy) return true; press('levels'); return true; // the end pages -> the map, never a retry or the next level by a Back
-    case 'title': G.leaveAsk = { exit: true, t0: G.t, L: LV.exitLine({ gift: SP.banked(save) > 0 || !!E.chestFor(bestTotal(), save.wallet.chests), day: 0 }) }; audio.play('cluck', { vol: 0.5 }); return true; // 0.8.19 home: the hen waves, STAY or LEAVE (in the shell's "press again" place)
+    case 'title': G.leaveAsk = { exit: true, t0: G.t, L: LV.exitLine({ gift: SP.banked(save) > 0 || !!E.chestFor(bestTotal(), save.wallet.chests) }) }; audio.play('cluck', { vol: 0.5 }); return true; // 0.8.19 home: the hen waves, STAY or LEAVE (in the shell's "press again" place)
     default: return false;
   }
 }
@@ -3532,9 +3532,17 @@ function pacerRestart() {
 // ... and "ready": one soft ring opens round every egg still out while the world eases in (wordless; Calm: the same)
 function resumePulse() {
   if (G.resumeAt == null || !G.sim || G.sim.state !== 'play') return;
-  const k = clamp((G.t - G.resumeAt) / RESUME_S, 0, 1), o = 1 - Math.pow(1 - k, 3), u = ui.u;
-  ctx.save(); ctx.lineWidth = (5 - 3 * o) * u; ctx.strokeStyle = `rgba(255,246,200,${0.85 * (1 - k)})`;
-  for (const e of G.sim.aliveEggs()) { const p = e.body.getPosition(), q = toScreen(p.x, p.y); ctx.beginPath(); ctx.arc(q.x, q.y, (14 + 26 * o) * u, 0, 7); ctx.stroke(); }
+  const k = clamp((G.t - G.resumeAt) / RESUME_S, 0, 1), o = 1 - Math.pow(1 - k, 3), u = ui.u, er = Math.max(13 * u, 0.3 * G.cam.k);
+  const sq = Math.sin(Math.min(1, k * 2.2) * Math.PI) * (1 - k); // a small squash: down, up a little past, settle
+  ctx.save();
+  for (const e of G.sim.aliveEggs()) {
+    const p = e.body.getPosition(), q = toScreen(p.x, p.y);
+    const g = ctx.createRadialGradient(q.x, q.y, er * 0.6, q.x, q.y, er * (1.6 + 2.6 * o)); g.addColorStop(0, `rgba(255,244,190,${0.55 * (1 - k)})`); g.addColorStop(1, 'rgba(255,244,190,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, er * (1.6 + 2.6 * o), 0, 7); ctx.fill();
+    ctx.lineWidth = (7 - 4 * o) * u; ctx.strokeStyle = `rgba(255,250,215,${0.95 * (1 - k * k)})`; ctx.beginPath(); ctx.arc(q.x, q.y, er * (1.2 + 2.4 * o), 0, 7); ctx.stroke();
+    ctx.lineWidth = 2.5 * u; ctx.strokeStyle = `rgba(255,214,90,${0.8 * (1 - k)})`; ctx.beginPath(); ctx.arc(q.x, q.y, er * (1.2 + 2.4 * o) + 6 * u, 0, 7); ctx.stroke();
+    if (sq > 0.01) { ctx.save(); ctx.translate(q.x, q.y + er); ctx.scale(1 + 0.16 * sq, 1 - 0.14 * sq); drawEggIcon(ctx, 0, -er, er * 2.5, 'alive'); ctx.restore(); }
+  }
   ctx.restore();
 }
 // 0.8.19 "Easy for this level" (the fail card's turtle): save.easyBack holds the player's own mode while the level is
@@ -3552,7 +3560,8 @@ function easyMark(x, y, bs) {
   pictoTurtle(ctx, cx - r * 0.12, cy - r * 0.05, r * 1.75);
 }
 // 0.8.19 Resume is gentle: the world comes back to speed over RESUME_S (slow first: an ease in), so the player is never
-// thrown back in cold. 0..1, the share of real time the world gets this frame (the clock is the world's: it eases too).
+// thrown back in cold. 0..1, the share of real time the world gets this frame. The level clock does not run meanwhile
+// (update: sim.clockHold, the lessons' own hold).
 const RESUME_S = 0.8;
 function resumeEase() {
   if (G.resumeAt == null || G.screen !== 'play') return 1;
@@ -5786,7 +5795,7 @@ function update(dt) {
     // frames (at most 8 steps in one) instead of in one heavy frame that makes the next one late as well
     G.acc = Math.min(G.acc + Math.min(sdt, 0.1), 0.1);
     let n = 0;
-    while (G.acc >= DT * 0.75 && n < 8) { if (DEV && G.autoplay) botTick(sim, G.botMem || (G.botMem = {})); sim.clockHold = lessonHoldsClock(); sim.step(); if (sim.clockHold) lessonStepped(); G.acc -= DT; n++; } // (the fuse stands still while a teaching moment holds)
+    while (G.acc >= DT * 0.75 && n < 8) { if (DEV && G.autoplay) botTick(sim, G.botMem || (G.botMem = {})); { const lh = lessonHoldsClock(); sim.clockHold = lh || G.resumeAt != null; sim.step(); if (lh) lessonStepped(); } /* 0.8.19: the level clock stands still while the world eases back after Resume */ G.acc -= DT; n++; } // (the fuse stands still while a teaching moment holds)
     sim.clockHold = false;
     handleEvents();
   }
@@ -8720,7 +8729,7 @@ function pauseRingRow(x, y, w, s, h) {
   ctx.beginPath(); ctx.arc(kx, cy, rr + 3 * s, 0, 7); ctx.fillStyle = '#fff6e0'; ctx.fill(); ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#6b3f17'; ctx.stroke();
   ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(kx, cy, rr - 3 * s, ang + 0.55, ang + Math.PI * 2 - 0.55); ctx.lineWidth = 4.5 * s; ctx.strokeStyle = col; ctx.stroke();
   drawEggIcon(ctx, kx, cy, rr * 0.95, 'alive');
-  pictoTurtle(ctx, x + e / 2 - 2 * s, cy, e * 0.86); pictoHare(ctx, x + w - e / 2 + 2 * s, cy + 2 * s, e * 0.86);
+  pictoTurtle(ctx, x + e / 2 - 2 * s, cy, e * 1.04); pictoHare(ctx, x + w - e / 2 + 2 * s, cy + 2 * s, e * 1.04);
   ctx.restore();
   if (k > 0) ui.buttons.push({ id: 'rs:-', x, y, w: e, h });
   if (k < n - 1) ui.buttons.push({ id: 'rs:+', x: x + w - e, y, w: e, h });
@@ -8767,6 +8776,7 @@ function drawPause() {
   const pg = G.ppage || (G.ppage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
   if (pg.lid !== G.scrSeq) { pg.lid = G.scrSeq; pg.y = 0; pg.v = 0; pg.max = 0; G.pauseKinds = sim.state === 'play' && G.li >= 0 ? villainKinds(L, sim).filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 8) : []; tourPauseOpened(); }
   G.ppRect = null; G.ppRectR = null;
+  if (G.leaveAsk) { G.ppTiles = {}; G.ppTourR = {}; return; } // the leave scene has the screen: none of this page's controls behind its STAY / LEAVE
   const wide = A.w > A.h * 1.15, q = clamp((wide ? Math.min(A.w / 2, A.h * 1.15) : A.w) / 450, 0.78, 1.12), pad = 16 * q;
   const k = ui.pop(G.screenT, 0.25);
   ctx.save();
@@ -8785,15 +8795,15 @@ function drawPause() {
   const lx = wide ? A.x + (A.w / 2 - iw) / 2 + pad / 4 : A.cx - iw / 2, rx = wide ? A.cx + (A.w / 2 - iw) / 2 - pad / 4 : lx;
   const sold = !earlyDays() && G.li >= 0, play = sim.state === 'play';
   const canHelp = sold && play, sk = sold && skipNow(), HP = G.pauseHelp && G.pauseHelp.run === G.run ? G.pauseHelp : null;
-  const SH = 46 * q, RS = 62 * q, D = 84 * q, RH = 98 * q, PH = 62 * q, pg2 = 18 * q, pills = canHelp || sk;
-  const blockH = RH + (pills ? pg2 + PH : 0), y0 = top + T, y1 = A.y1 - (wide ? 14 * q : Math.max(26 * q, A.h * 0.05));
+  const SH = 46 * q, RS = 68 * q, D = 84 * q, RH = 98 * q, PH = 70 * q, pg2 = wide ? clamp((A.y1 - top - T - RS - RH - 70 * q) / 4, 8 * q, 20 * q) : clamp(A.h * 0.026, 16 * q, 26 * q), pills = canHelp || sk; // pg2: the one gap (slider, thumb row, pills, and under them)
+  const blockH = RH + (pills ? pg2 + PH : 0), y0 = top + T, y1 = A.y1 - pg2;
   // where the level stands: eggs home, the clock, the three stars (pictures and numbers only)
   const shade = (cx, cy, rw) => { const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, rw); g2.addColorStop(0, 'rgba(14,7,3,0.62)'); g2.addColorStop(0.6, 'rgba(14,7,3,0.36)'); g2.addColorStop(1, 'rgba(14,7,3,0)'); ctx.save(); ctx.translate(cx, cy); ctx.scale(1, 0.3); ctx.translate(-cx, -cy); ctx.fillStyle = g2; ctx.fillRect(cx - rw, cy - rw, rw * 2, rw * 2); ctx.restore(); }; // a soft shade under the floating things (no box)
   const status = (x, y, w) => {
     const EDGE = 'rgba(30,14,4,0.9)', fs = 27 * q, a = `${st.saved}/${st.target}`, b = sim.timeLimit ? fmtTime(sim.timeLeft) : '', ok = G.li >= 0 && G.goals && play ? goalsLive(sim) : null;
     const aw = 38 * q + ui.measure(a, fs), bw = b ? 40 * q + ui.measure(b, fs) : 0, sw = ok ? 3 * 34 * q : 0, gp = 24 * q, tot = aw + (b ? gp + bw : 0) + (ok ? gp + sw : 0), cy = y + SH / 2;
     let gx = x + w / 2 - tot / 2;
-    shade(x + w / 2, cy, tot * 0.5 + 70 * q);
+    ui.roundRect(x + w / 2 - tot / 2 - 20 * q, cy - SH / 2 - 4 * q, tot + 40 * q, SH + 8 * q, SH / 2 + 4 * q); ctx.fillStyle = 'rgba(14,7,3,0.62)'; ctx.fill(); // a soft dark pill: it reads on any backdrop
     drawEggIcon(ctx, gx + 14 * q, cy, 36 * q, 'alive'); ui.text(a, gx + 36 * q, cy, { size: fs, color: st.saved >= st.target ? '#a8f07a' : '#fff6e0', stroke: EDGE, strokeW: 4 * q, tag: 'pause:goal' });
     gx += aw + gp;
     if (b) { pictoClock(ctx, gx + 15 * q, cy, 34 * q); ui.text(b, gx + 38 * q, cy, { size: fs, color: sim.timeLeft <= 10 ? '#ff8a70' : '#ffd36a', stroke: EDGE, strokeW: 4 * q, tag: 'pause:time' }); gx += bw + gp; }
@@ -8816,23 +8826,19 @@ function drawPause() {
     let px = n === 2 ? x : x + (w - pw) / 2;
     if (canHelp) {
       const id = HP ? HP.id : pauseHelpPick(), art = (c, X, Y, S) => drawBoosterIcon(c, id, X, Y, S, G.t);
-      if (HP) { const B = ui.button('pause:help', '', px, py, pw, PH, { kind: 'primary', disabled: true, keepFace: true, icon: art, iconS: 1.9, size: 21 * q, round: PH / 2 }); pictoCheck(ctx, px + pw / 2 + 30 * q, B.cy, 26 * q, '#fff'); }
-      else ui.button('pause:help', 'Help', px, py, pw, PH, { kind: 'ad', ad: !ads.premium, icon: art, iconS: 1.75, size: 21 * q, round: PH / 2 });
+      if (HP) { const B = ui.button('pause:help', '', px, py, pw, PH, { kind: 'primary', disabled: true, keepFace: true, icon: art, iconS: 2.2, size: 22 * q, round: PH / 2 }); pictoCheck(ctx, px + pw / 2 + 34 * q, B.cy, 30 * q, '#fff'); }
+      else ui.button('pause:help', 'Help', px, py, pw, PH, { kind: 'ad', ad: !ads.premium, icon: art, iconS: 2.1, size: 23 * q, round: PH / 2 });
       px += pw + 12 * q;
     }
-    if (sk) ui.button('pause:skip', 'Skip', px, py, pw, PH, { ...(tk ? { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.3 } : { face: ui.faceOf('#5a6ee0'), ad: !ads.premium, icon: ICON.next, iconS: 1.15 }), size: 21 * q, round: PH / 2 });
+    if (sk) ui.button('pause:skip', 'Skip', px, py, pw, PH, { ...(tk ? { kind: 'orange', icon: (c, X, Y, S) => drawItemArt(c, 'skip', X, Y, S * 1.5, G.t), iconS: 1.6 } : { face: ui.faceOf('#5a6ee0'), ad: !ads.premium, icon: ICON.next, iconS: 1.5 }), size: 23 * q, round: PH / 2 });
   };
-  if (!wide) { // one column: the thumb's block low, the level and the slider share the room above it as even gaps
-    const by = y1 - blockH, gap = (by - y0 - SH - RS) / 3;
-    status(lx, y0 + gap, iw);
-    shade(lx + iw / 2, y0 + gap * 2 + SH + RS / 2, iw * 0.5 + 60 * q); pauseRingRow(lx, y0 + gap * 2 + SH, iw, q, RS); R.rs = { x: lx, y: y0 + gap * 2 + SH, w: iw, h: RS };
-    block(lx, by, iw);
-  } else { // on its side: the level and the slider left, the thumb's block right
-    const gap = (y1 - y0 - SH - RS) / 3;
-    status(lx, y0 + gap, iw);
-    shade(lx + iw / 2, y0 + gap * 2 + SH + RS / 2, iw * 0.5 + 60 * q); pauseRingRow(lx, y0 + gap * 2 + SH, iw, q, RS); R.rs = { x: lx, y: y0 + gap * 2 + SH, w: iw, h: RS };
-    block(rx, y0 + (y1 - y0 - blockH) / 2, iw);
-  }
+  // the level's numbers at the top (a phone on its side: in the top row, between Home and the switches); the vault clear
+  // in the middle; every control in one cluster at the bottom: the slider, the thumb's row, the pills, one gap between
+  // them and the same gap under them
+  if (wide) status(A.cx - iw / 2, top + (T - SH) / 2, iw); else status(lx, y0 + 14 * q, iw);
+  const by = wide ? Math.max(y0 + pg2 + RS + pg2, y1 - blockH) : y1 - blockH, ry = by - pg2 - RS;
+  shade(rx + iw / 2, ry + RS / 2, iw * 0.5 + 60 * q); pauseRingRow(rx, ry, iw, q, RS); R.rs = { x: rx, y: ry, w: iw, h: RS };
+  block(rx, by, iw);
   tourPausePage(q);
   ctx.restore();
 }
@@ -11914,7 +11920,7 @@ function leaveAsk(to) { // 0.8.19: every leave from a level in play asks once, w
   if (G.leaveOk || G.leaveAsk || G.screen !== 'pause' || !G.sim || G.sim.state !== 'play') return false;
   const sim = G.sim, st = sim.stats(), bp = sim.bx && sim.bx.boss ? bossProgress(sim) : null;
   const vk = (G.pauseKinds || []).find((k) => hasPortrait(k) && (VILLAIN_INFO[k] || {}).group !== 'hazard') || null;
-  G.leaveAsk = { to, t0: G.t, short: Math.max(0, st.target - st.saved), L: LV.leaveLine({ villain: vk, short: st.target - st.saved, streak: G.li >= 0 && sim.t > 1 ? save.streak | 0 : 0, bossLeft: typeof bp === 'number' ? 1 - bp : null }) };
+  G.leaveAsk = { to, t0: G.t, short: Math.max(0, st.target - st.saved), L: LV.leaveLine({ villain: vk, short: st.target - st.saved, streak: G.li >= 0 && sim.t > 1 ? save.streak | 0 : 0, bossLeft: typeof bp === 'number' ? 1 - bp : null }), boss: G.level && G.level.boss, bossLeft: typeof bp === 'number' ? 1 - bp : 0.2 };
   audio.play('cluck', { pitch: 0.82, vol: 0.55 });
   return true;
 }
@@ -11926,7 +11932,7 @@ function drawLeaveAsk() {
   const q = clamp((wide ? Math.min(A.w / 2, A.h * 1.15) : A.w) / 450, 0.78, 1.12), el = G.t - R.t0;
   const ez = (k) => { const p = clamp(k, 0, 1), c1 = 1.7; return 1 + (c1 + 1) * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); }; // ease out, a little past, settle
   const e = calm ? 1 : ez(el / 0.5);
-  dim((R.exit ? 0.88 : 0.72) * Math.min(1, calm ? 1 : el / 0.3)); // (the bright home page needs more shade than a paused level)
+  dim((R.exit ? 0.94 : 0.8) * Math.min(1, calm ? 1 : el / 0.3)); // (the bright home page needs more shade than a paused level)
   const BH = 86 * q, pad = 16 * q, bw = wide ? Math.min(A.w / 2 - 2 * pad, 420 * q) : Math.min(A.w - 2 * pad, 440 * q);
   const by = wide ? A.cy + 24 * q : A.y1 - Math.max(26 * q, A.h * 0.05) - BH - 40 * q, bx = wide ? A.cx + (A.w / 2 - bw) / 2 : A.cx - bw / 2;
   const cx = wide ? A.x + A.w / 4 : A.cx, hh = wide ? Math.min(A.h * 0.56, A.w * 0.3) : Math.min(A.h * 0.3, A.w * 0.66), cy = wide ? A.cy - 4 * q : A.y + A.h * 0.36;
@@ -11939,6 +11945,16 @@ function drawLeaveAsk() {
     const k2 = calm ? 1 : ez((el - 0.45) / 0.5), d = hh * 0.62, bob = calm ? 0 : Math.sin(G.t * 2.2) * 3 * q;
     ctx.save(); ctx.globalAlpha = clamp(k2 * 1.5, 0, 1);
     drawVillainPortrait(ctx, L.villain, cx + hh * 0.56 + (1 - k2) * hh * 0.5, cy - hh * 0.34 + bob, d, G.t);
+    ctx.restore();
+  }
+  if (L.id === 'boss') { // the boss peeks in behind her, dizzy (stars turn over his head), his bar nearly empty
+    const k2 = calm ? 1 : ez((el - 0.45) / 0.5), d = hh * 0.6, px = cx + hh * 0.5 + (1 - k2) * hh * 0.5, py = cy - hh * 0.4 + (calm ? 0 : Math.sin(G.t * 1.6) * 4 * q), bid = R.boss || (G.level && G.level.boss);
+    ctx.save(); ctx.globalAlpha = clamp(k2 * 1.5, 0, 1);
+    if (bid) { ctx.save(); ctx.beginPath(); ctx.arc(px, py, d / 2, 0, 7); ctx.clip(); ctx.translate(px, py); ctx.rotate(calm ? 0.12 : 0.12 + Math.sin(G.t * 1.6) * 0.07); bossPortrait(ctx, bid, -d / 2, -d / 2, d, d, G.t); ctx.restore(); ctx.beginPath(); ctx.arc(px, py, d / 2, 0, 7); ctx.lineWidth = 4 * q; ctx.strokeStyle = '#3a1410'; ctx.stroke(); }
+    for (let i = 0; i < 3; i++) { const a = (calm ? 0.4 : G.t * 2.4) + i * 2.094; drawStar(ctx, px + Math.cos(a) * d * 0.42, py - d * 0.56 + Math.sin(a) * d * 0.1, 9 * q, true); }
+    const bw2 = d * 1.05, bx2 = px - bw2 / 2, by2 = py + d * 0.58, bh2 = 14 * q, left = clamp(R.bossLeft ?? 0.2, 0.06, 1);
+    ui.roundRect(bx2, by2, bw2, bh2, bh2 / 2); ctx.fillStyle = 'rgba(20,10,30,0.85)'; ctx.fill(); ctx.lineWidth = 2 * q; ctx.strokeStyle = '#ffe8b0'; ctx.stroke();
+    ui.roundRect(bx2 + 2.5 * q, by2 + 2.5 * q, Math.max(bh2 - 5 * q, (bw2 - 5 * q) * left), bh2 - 5 * q, (bh2 - 5 * q) / 2); ctx.fillStyle = '#e8402e'; ctx.fill();
     ctx.restore();
   }
   const hy = cy + (1 - e) * 70 * q, hs = 0.6 + 0.4 * e;

@@ -12,10 +12,9 @@ ok(leaveLine({ short: 3, bossLeft: 0.3 }).id === 'boss' && leaveLine({ short: 3,
 ok(leaveLine({ short: 3, bossLeft: 0 }).id === 'eggs' && leaveLine({ short: 3, bossLeft: null }).id === 'eggs', 'a beaten boss or no boss: the plain line');
 ok(leaveLine().id === 'eggs' && leaveLine({ short: 0 }).id === 'eggs', 'nothing known: the plain line');
 ok(exitLine({ gift: true, day: 4 }).id === 'gift', 'home: a gift or a free spin first');
-ok(exitLine({ day: 4 }).id === 'day' && /day 4$/.test(exitLine({ day: 4 }).line), 'home: else the day streak, with its number');
-ok(exitLine({ day: 1 }).id === 'bye' && exitLine().id === 'bye', 'home: else See you soon');
-const all = [leaveLine({ villain: 'x' }), leaveLine({ short: 1 }), leaveLine({ streak: 12 }), leaveLine({ bossLeft: 0.2 }), leaveLine(), exitLine({ gift: 1 }), exitLine({ day: 30 }), exitLine()];
+ok(exitLine({ day: 4 }).id === 'bye' && exitLine().id === 'bye', 'home: else See you soon (no day-streak line: the save keeps none)');
+const all = [leaveLine({ villain: 'x' }), leaveLine({ short: 1 }), leaveLine({ streak: 12 }), leaveLine({ bossLeft: 0.2 }), leaveLine(), exitLine({ gift: 1 }), exitLine()];
 ok(all.every((l) => words(l.line) <= 5), 'every line is at most five words: ' + all.map((l) => words(l.line)).join(' '));
-ok(new Set(all.map((l) => l.id)).size === 8, 'eight different lines');
+ok(new Set(all.map((l) => l.id)).size === 7, 'seven different lines');
 console.log(bad ? bad + ' FAILED' : 'all leave checks pass');
 process.exit(bad ? 1 : 0);
