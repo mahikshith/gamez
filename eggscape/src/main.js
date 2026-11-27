@@ -2053,6 +2053,7 @@ async function press(id) {
       persist();
       break;
     }
+    case 'ppfan': G.ppFan = { open: !(G.ppFan && G.ppFan.open), t0: G.t }; break;
     case 'sfx':
       save.sfx = !save.sfx;
       applyAudioSettings();
@@ -5977,7 +5978,7 @@ function render() {
     ctx.fillRect(0, 0, W_, H_);
     return;
   }
-  if (G.screen === 'levels') { drawLevels(); menuFx(); drawToast(); drawModals(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the map covers the screen: no vault drawn under it
+  if (G.screen === 'levels') { drawLevels(); menuFx(); drawToast(); if (G.settingsOpen) drawSettings(); drawModals(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // the map covers the screen: no vault drawn under it
   if (G.screen === 'spin') { drawSpin(); drawToast(); drawModals(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // 0.8.15: the Lucky Spin paints its own room too
   if (G.screen === 'store') { drawStoreScreen(); drawModals(); if (DEV || G.checkOverlaps) G.overlaps = ui.overlaps(); return; } // 2026-11-19: the shop paints its whole room edge to edge, so no vault is drawn under it (it was, every frame)
   // 2026-11-19 speed (older phones): behind the level page (blurred) and the win page (shaded, once its card is in) the
@@ -8780,7 +8781,7 @@ function drawPause() {
     if (G.screenT > 0.25) captureBack();
   }
   const pg = G.ppage || (G.ppage = { y: 0, v: 0, max: 0, t: G.t, lid: null });
-  if (pg.lid !== G.scrSeq) { pg.lid = G.scrSeq; pg.y = 0; pg.v = 0; pg.max = 0; G.pauseKinds = sim.state === 'play' && G.li >= 0 ? villainKinds(L, sim).filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 8) : []; tourPauseOpened(); }
+  if (pg.lid !== G.scrSeq) { pg.lid = G.scrSeq; pg.y = 0; pg.v = 0; pg.max = 0; G.ppFan = null; G.pauseKinds = sim.state === 'play' && G.li >= 0 ? villainKinds(L, sim).filter((k) => hasPortrait(k) || VILLAIN_INFO[k]).slice(0, 8) : []; tourPauseOpened(); }
   G.ppRect = null; G.ppRectR = null;
   if (G.leaveAsk) { G.ppTiles = {}; G.ppTourR = {}; return; } // the leave scene has the screen: none of this page's controls behind its STAY / LEAVE
   const wide = A.w > A.h * 1.15, q = clamp((wide ? Math.min(A.w / 2, A.h * 1.15) : A.w) / 450, 0.78, 1.12), pad = 16 * q;
@@ -8794,8 +8795,10 @@ function drawPause() {
   ui.button('home', '', A.x + pad, top, T, T, { face: ui.faceOf('#e0507e'), icon: ICON.home, iconS: 1.45, round: T / 2 });
   const tb = portal.showMuteButton, vib = __APP__ || (typeof navigator !== 'undefined' && !!navigator.vibrate);
   const TG = [...(tb ? [['sfx', ICON.sound(save.sfx), !!save.sfx], ['music', ICON.note(save.music), !!save.music]] : []), ...(vib ? [['vibe', vibeIcon(save.vibe !== false), save.vibe !== false]] : [])];
-  TG.forEach(([id, icon, on], i) => ui.button(id, '', A.x1 - pad - T - (TG.length - 1 - i) * (T + tg), top, T, T, { ...(on ? { face: ui.faceOf('#3a80ea') } : { kind: 'off' }), icon, iconS: 1.45, round: T / 2 }));
-  if (TG.length) R.snd = { x: A.x1 - pad - TG.length * T - (TG.length - 1) * tg - 4 * q, y: top - 4 * q, w: TG.length * T + (TG.length - 1) * tg + 8 * q, h: T + 8 * q };
+  // 2026-11-27 16:25 (mykee: the switches at the top edge are a reach for the thumb; "one single icon ... tap it and the
+  // rest pop up from there; tap it again and they all go back into it"): ONE gear beside the ring speed, at thumb level.
+  // It opens sound, music, vibration and the whole Settings page (graphics, shake, calm motion and every other row).
+  TG.push(['settings', (c, x, y, sz) => slidersIcon(c, x, y, sz, '#fff4dc'), null]);
   // ---- the columns
   const iw = wide ? Math.min((A.w - 3 * pad) / 2, 440 * q) : Math.min(A.w - 2 * pad, 440 * q);
   const lx = wide ? A.x + (A.w / 2 - iw) / 2 + pad / 4 : A.cx - iw / 2, rx = wide ? A.cx + (A.w / 2 - iw) / 2 - pad / 4 : lx;
@@ -8841,14 +8844,45 @@ function drawPause() {
   // the level's numbers at the top (a phone on its side: in the top row, between Home and the switches); the vault clear
   // in the middle; every control in one cluster at the bottom: the slider, the thumb's row, the pills, one gap between
   // them and the same gap under them
-  if (wide) status(A.cx - iw / 2, top + (T - SH) / 2, iw); else status(lx, y0 + 14 * q, iw);
+  const GS = 64 * q, fo = pauseFanOpen();
+  if (wide) { if (fo < 0.98) { ctx.save(); ctx.globalAlpha *= 1 - fo; status(A.cx - iw / 2, top + (T - SH) / 2, iw); ctx.restore(); } } else status(lx, y0 + 14 * q, iw);
   const by = wide ? Math.max(y0 + pg2 + RS + pg2, y1 - blockH) : y1 - blockH, ry = by - pg2 - RS;
-  shade(rx + iw / 2, ry + RS / 2, iw * 0.5 + 60 * q); pauseRingRow(rx, ry, iw, q, RS); R.rs = { x: rx, y: ry, w: iw, h: RS };
+  shade(rx + iw / 2, ry + RS / 2, iw * 0.5 + 60 * q); pauseRingRow(rx, ry, iw - GS - 8 * q, q, RS); R.rs = { x: rx, y: ry, w: iw - GS - 8 * q, h: RS };
+  { const gx = rx + iw - GS, gy = ry + (RS - GS) / 2, cx = gx + GS / 2; // the gear, and where its icons stand when out: a column over it (a phone on its side: the top row, from the right)
+    pauseFan(TG, gx, gy, GS, T, q, (i) => (wide ? { x: A.x1 - pad - T / 2 - i * (T + tg), y: top + T / 2 } : { x: cx, y: gy - tg - T / 2 - i * (T + tg) }));
+    R.snd = { x: gx - 4 * q, y: gy - 4 * q, w: GS + 8 * q, h: GS + 8 * q }; }
   block(rx, by, iw);
   tourPausePage(q);
   ctx.restore();
 }
 
+// the pause page's gear: 0 (its icons are inside it) .. 1 (they are out)
+function pauseFanOpen() { const F = G.ppFan; if (!F) return 0; const p = save.calm ? 1 : clamp((G.t - F.t0) / 0.3, 0, 1); return F.open ? p : 1 - p; }
+function slidersIcon(c, x, y, sz, col) { // three little sliders: "all the settings"
+  c.save(); c.translate(x, y); c.lineCap = 'round'; c.strokeStyle = col; c.fillStyle = col; c.lineWidth = sz * 0.09;
+  [[-0.24, 0.18], [0, -0.16], [0.24, 0.08]].forEach(([dy, kx]) => { c.beginPath(); c.moveTo(-sz * 0.34, dy * sz); c.lineTo(sz * 0.34, dy * sz); c.stroke(); c.beginPath(); c.arc(kx * sz, dy * sz, sz * 0.105, 0, 7); c.fill(); });
+  c.restore();
+}
+// TG: [id, icon, on (null: it opens a page)], nearest the gear first. slot(i): where icon i stands when out. One tap on
+// the gear: they pop out of it one after another; a tap on it again: they go back in. Out of the gear they can be tapped.
+function pauseFan(TG, gx, gy, GS, T, q, slot) {
+  const F = G.ppFan, open = !!(F && F.open), el = F ? G.t - F.t0 : 9, calm = save.calm, cx = gx + GS / 2, cy = gy + GS / 2, o = pauseFanOpen(), n = TG.length;
+  if (n > 1 && o > 0) {
+    const P = TG.map((_, i) => slot(i)), x0 = Math.min(cx, ...P.map((p) => p.x)), x1 = Math.max(...P.map((p) => p.x)), y0 = Math.min(...P.map((p) => p.y)), y1 = Math.max(...P.map((p) => p.y)), m = T / 2 + 7 * q;
+    ctx.save(); ctx.globalAlpha *= o; ui.roundRect(x0 - m, y0 - m, x1 - x0 + 2 * m, y1 - y0 + 2 * m, m); ctx.fillStyle = 'rgba(14,7,3,0.55)'; ctx.fill(); ctx.restore(); // a soft shade they stand on (no edge)
+    TG.forEach(([id, icon, on], i) => {
+      const p = calm ? 1 : clamp((el - (open ? i : n - 1 - i) * 0.045) / 0.22, 0, 1), k = open ? backK(p) : 1 - p * p;
+      if (k <= 0.03) return;
+      const x = lerp(cx, P[i].x, k), y = lerp(cy, P[i].y, k), sz = T * Math.min(k, 1.06);
+      ctx.save(); ctx.globalAlpha *= clamp(k * 1.6, 0, 1);
+      ui.button(id, '', x - sz / 2, y - sz / 2, sz, sz, { ...(on == null ? { face: ui.faceOf('#7a48e8') } : on ? { face: ui.faceOf('#3a80ea') } : { kind: 'off' }), icon, iconS: 1.45, round: sz / 2 });
+      ctx.restore();
+      if (!open) { const j = ui.buttons.findIndex((b) => b.id === id); if (j >= 0) ui.buttons.splice(j, 1); } // going back in: not for tapping
+    });
+  }
+  const ang = o * Math.PI / 2;
+  ui.button(n > 1 ? 'ppfan' : 'settings', '', gx, gy, GS, GS, { face: ui.faceOf(o > 0.5 ? '#9a6cf0' : '#7a48e8'), icon: (c, x, y, sz) => { c.save(); c.translate(x, y); c.rotate(ang); settingsIcon(c, 0, 0, sz * 1.1, '#fff4dc'); c.restore(); }, iconS: 1.5, round: GS / 2 });
+}
 // the Settings and Shop icons follow the skin: a snowflake and a gift box in the winter outfits
 function settingsIcon(c, x, y, sz, col, hole) {
   if (!(ui.skin && ui.skin.icons && ui.skin.icons.settings === 'snowflake')) return gearIcon(c, x, y, sz, col, hole);
@@ -11543,8 +11577,11 @@ function drawLevels() {
   // the big PLAY at the foot of the screen (the map runs on under it)
   if (ctaOn) {
     if (!wide) { const fb = ctx.createLinearGradient(0, ctaY - 30 * u, 0, H_); fb.addColorStop(0, 'rgba(20,10,30,0)'); fb.addColorStop(1, 'rgba(20,10,30,0.5)'); ctx.fillStyle = fb; ctx.fillRect(0, ctaY - 30 * u, W_, H_ - ctaY + 30 * u); }
-    ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, ctaX, ctaY, ctaW, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: (wide ? 20 : 23) * u, round: 18 * u });
-  }
+    // 2026-11-27 (mykee: "we will make the settings available from the world map page"): the gear at the thumb, left of PLAY
+    const gw = ctaH + 10 * u;
+    ui.button('settings', '', ctaX, ctaY, ctaH, ctaH, { face: ui.faceOf('#7a48e8'), icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), iconS: 1.5, round: 18 * u });
+    ui.button('lv:' + nx, `PLAY  Level ${LEVELS[nx].id}`, ctaX + gw, ctaY, ctaW - gw, ctaH, { kind: 'primary', shimmer: true, icon: ICON.play, size: (wide ? 20 : 23) * u, round: 18 * u });
+  } else ui.button('settings', '', A.x + pad, A.y1 - pad - 56 * u, 56 * u, 56 * u, { face: ui.faceOf('#7a48e8'), icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), iconS: 1.5, round: 18 * u });
   waitMark(X1, wmY, 46 * u); // 0.8.17: rewards that waited for a connection, over PLAY's right end
   drawShopTour(G.shopBtnAny && G.shopBtnAny.t === G.t ? G.shopBtnAny : null); // 0.8.17: once level 3 is won, where the shop is (tour.js)
   drawShopHand(); // 0.8.14: once, the first time the shop mark turns on
@@ -12115,46 +12152,9 @@ function drawLeaveAsk() {
   const g = ctx.createRadialGradient(cx, cy, hh * 0.1, cx, cy, hh * 1.05); // a warm pool of light she stands in
   g.addColorStop(0, R.exit ? 'rgba(255,226,150,0.5)' : 'rgba(255,214,150,0.4)'); g.addColorStop(1, 'rgba(255,214,150,0)');
   ctx.fillStyle = g; ctx.fillRect(cx - hh * 1.1, cy - hh * 1.1, hh * 2.2, hh * 2.2);
-  if (L.id === 'villain' && L.villain) { // he peeks in behind her, late, and ducks a little
-    const k2 = calm ? 1 : ez((el - 0.45) / 0.5), d = hh * 0.62, bob = calm ? 0 : Math.sin(G.t * 2.2) * 3 * q;
-    ctx.save(); ctx.globalAlpha = clamp(k2 * 1.5, 0, 1);
-    drawVillainPortrait(ctx, L.villain, Math.min(cx + hh * 0.56, A.x1 - d / 2 - 10 * q) + (1 - k2) * hh * 0.5, cy - hh * 0.34 + bob, d, G.t);
-    ctx.restore();
-  }
-  if (L.id === 'boss') { // the boss peeks in behind her, dizzy (stars turn over his head), his bar nearly empty
-    const k2 = calm ? 1 : ez((el - 0.45) / 0.5), d = hh * 0.52, px = Math.min(cx + hh * 0.52, A.x1 - d * 0.56 - 10 * q) + (1 - k2) * hh * 0.5, py = cy - hh * 0.52 + (calm ? 0 : Math.sin(G.t * 1.6) * 4 * q), bid = R.boss || (G.level && G.level.boss);
-    ctx.save(); ctx.globalAlpha = clamp(k2 * 1.5, 0, 1);
-    if (bid) { ctx.save(); ctx.beginPath(); ctx.arc(px, py, d / 2, 0, 7); ctx.clip(); ctx.translate(px, py); ctx.rotate(calm ? 0.12 : 0.12 + Math.sin(G.t * 1.6) * 0.07); bossPortrait(ctx, bid, -d * 0.95, -d * 0.7, d * 1.9, d * 1.9, G.t); ctx.restore(); } // (his card drawn large: the round window shows him, not the card's edge)
-    for (let i = 0; i < 3; i++) { const a = (calm ? 0.4 : G.t * 2.4) + i * 2.094; drawStar(ctx, px + Math.cos(a) * d * 0.42, py - d * 0.56 + Math.sin(a) * d * 0.1, 9 * q, true); }
-    const bw2 = d * 1.05, bx2 = px - bw2 / 2, by2 = py + d * 0.58, bh2 = 14 * q, left = clamp(R.bossLeft ?? 0.2, 0.06, 1);
-    ui.roundRect(bx2, by2, bw2, bh2, bh2 / 2); ctx.fillStyle = 'rgba(20,10,30,0.85)'; ctx.fill(); ctx.lineWidth = 2 * q; ctx.strokeStyle = '#ffe8b0'; ctx.stroke();
-    ui.roundRect(bx2 + 2.5 * q, by2 + 2.5 * q, Math.max(bh2 - 5 * q, (bw2 - 5 * q) * left), bh2 - 5 * q, (bh2 - 5 * q) / 2); ctx.fillStyle = '#e8402e'; ctx.fill();
-    ctx.restore();
-  }
+  // 0.8.19 (mykee: "remove all those snakes and all the stuff from the exit page"): the hen, one line, two buttons. Nothing else.
   const hy = cy + (1 - e) * 70 * q, hs = 0.6 + 0.4 * e;
-  if (R.exit) { // her nest
-    ctx.save(); ctx.translate(cx, hy + hh * 0.36); ctx.scale(hs, hs);
-    ctx.beginPath(); ctx.ellipse(0, 0, hh * 0.52, hh * 0.17, 0, 0, 7); ctx.fillStyle = '#6b4320'; ctx.fill(); ctx.restore();
-  }
   drawHenAnim(ctx, R.exit ? 'happy' : 'worried', cx, hy, hh * hs, G.t, { key: 'leave', face: 1, calm, shadow: 0 });
-  if (R.exit) { // the nest's straw rim in front of her
-    ctx.save(); ctx.translate(cx, hy + hh * 0.4); ctx.scale(hs, hs); ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.ellipse(0, 0, hh * 0.56, hh * 0.16, 0, 0, Math.PI); ctx.lineTo(-hh * 0.56, 0); ctx.fillStyle = '#c98a3a'; ctx.fill(); ctx.lineWidth = 3 * q; ctx.strokeStyle = '#6b3f17'; ctx.stroke();
-    ctx.strokeStyle = '#f2c668'; ctx.lineWidth = 2.5 * q;
-    for (let i = 0; i < 9; i++) { const a = 0.25 + i * 0.33, x0 = Math.cos(a) * hh * 0.5, y0 = Math.sin(a) * hh * 0.1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + (i % 2 ? 10 : -9) * q, y0 + 9 * q); ctx.stroke(); }
-    ctx.restore();
-  } else { // the eggs still out, close at her feet
-    const n = clamp(R.short || 1, 1, 5), es = hh * 0.24;
-    for (let i = 0; i < n; i++) {
-      const k2 = calm ? 1 : ez((el - 0.2 - i * 0.07) / 0.4), ex = cx + (i - (n - 1) / 2) * es * 0.92, ey = hy + hh * 0.42 - Math.abs(i - (n - 1) / 2) * es * 0.12;
-      if (k2 > 0) drawEggIcon(ctx, ex, ey + (1 - k2) * 20 * q, es * (0.5 + 0.5 * k2), 'alive');
-    }
-    if (L.id === 'streak') { // the flame, about to go out
-      const f = calm ? 1 : 0.82 + 0.18 * Math.sin(G.t * 9) * Math.sin(G.t * 2.3), fx = cx - hh * 0.62, fy = cy - hh * 0.2;
-      pictoFlame(ctx, fx, fy + (1 - f) * 8 * q, 86 * q * f);
-      ui.text(String(L.n), fx, fy + 62 * q, { size: 30 * q, align: 'center', color: '#ffd36a', stroke: 'rgba(30,14,4,0.9)', strokeW: 4 * q, noRecord: true });
-    }
-  }
   ui.record({ x: cx - hh * 0.5, y: cy - hh * 0.5, w: hh, h: hh }, 'leave:hen');
   ctx.globalAlpha = calm ? 1 : clamp((el - 0.15) / 0.25, 0, 1);
   { const tw2 = Math.min(ui.measure(L.line, 30 * q), wide ? bw : A.w - 32 * q) * 0.75 + 60 * q, g2 = ctx.createRadialGradient(lx, ly, 0, lx, ly, tw2); // a soft shade the words stand on (no box)
