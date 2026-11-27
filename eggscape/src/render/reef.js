@@ -138,7 +138,7 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     for (const [ex, len, sd] of [[0.105, 0.125, -1], [0.215, 0.11, 1]]) {
       const bx = ex * s, by = cy - 0.07 * s, sway = Math.sin(t * 2 + ex * 20) * 0.08 - rear * 1.2 + lunge * 0.3, tx = bx + Math.sin(sway) * len * s, ty = by - Math.cos(sway) * len * s;
       limb(ctx, [[bx, by], [tx, ty]], [0.022 * s, 0.018 * s], HC.body, HC.line, lw * 0.75);
-      const er = 0.052 * s;
+      const er = 0.064 * s; // faces3: 1.23x, the eyes on stalks read at play size
       if (o.stun) { ctx.beginPath(); ctx.arc(tx, ty, er, 0, TAU); fillStroke(ctx, HC.white, HC.line, lw * 0.8); spiralEye(ctx, tx, ty, er * 0.8, t, sd, HC.line); }
       else eye(ctx, tx, ty, { r: er, white: HC.white, iris: HC.eye, irisR: 0.5, pupilR: 0.2, look: { x: look, y: pinch ? 0.25 : 0.1 }, lid: Math.max(pinch ? 0.3 : carry ? 0.42 : 0.08, o.ice ? 0 : blinkAt(t, 2)), mad: pinch ? sd * -0.5 + 0.25 : carry ? sd * 0.2 : 0, lidCol: HC.body, line: HC.line, lw: lw * 0.75 });
       { const ix = tx - sd * er * 0.75, ox = tx + sd * er * 0.95, by0 = ty - er * (1.32 + (mood < 0 ? 0.12 : 0)), m = mood * er * 0.42;
@@ -223,7 +223,7 @@ export function drawPuffer(ctx, x, y, s, t, o = {}) {
   const ex = rx * 0.5, ey = -ry * 0.3, er = (0.088 - 0.008 * sw) * s; // a big eye even when small: the face reads at phone size
   const swelling = (o.sw ?? 0) > 0.05 && (o.sw ?? 0) < 0.95;
   if (o.stun) { ctx.beginPath(); ctx.arc(ex, ey, er, 0, TAU); fillStroke(ctx, PF.white, PF.line, lw * 0.9); spiralEye(ctx, ex, ey, er * 0.8, t, 1, PF.line); }
-  else eye(ctx, ex, ey, { r: er * (swelling ? 1.15 : 1), white: PF.white, iris: PF.eye, irisR: 0.55, pupilR: 0.22, look: { x: 0.5, y: 0.15 }, lid: Math.max(sw > 0.5 ? 0.22 : 0, o.ice ? 0 : blinkAt(t, 4)), mad: sw > 0.5 ? 0.35 : 0, lidCol: PF.body, line: PF.line, lw: lw * 0.85 });
+  else eye(ctx, ex, ey, { r: er * (swelling ? 1.4 : 1), white: PF.white, iris: PF.eye, irisR: swelling ? 0.42 : 0.55, pupilR: swelling ? 0.14 : 0.22, look: { x: 0.5, y: 0.15 }, lid: swelling ? 0 : Math.max(sw > 0.5 ? 0.22 : 0, o.ice ? 0 : blinkAt(t, 4)), mad: sw > 0.5 ? 0.35 : 0, lidCol: PF.body, line: PF.line, lw: lw * 0.85 }); // faces3: a startled pop as it swells
   if (sw > 0.5 && !o.stun) { ctx.strokeStyle = PF.line; ctx.lineWidth = lw * 1.2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(ex - er * 1.1, ey - er * 1.5); ctx.lineTo(ex + er * 0.9, ey - er * 1.0); ctx.stroke(); }
   if (sw < 0.3 && !swelling) { // small: a fat pout, two lips pushed out, smacking now and then
     const pk = 1 + 0.18 * Math.max(0, Math.sin(t * 2.3)), mx = rx * 1.0, my = ry * 0.2;
@@ -282,7 +282,8 @@ export function drawJelly(ctx, x, y, s, t, o = {}) {
   // a little face
   const fy = -bh * 0.02;
   if (o.stun) { spiralEye(ctx, -bw * 0.3, fy, 0.04 * s, t, 1, JF.line); spiralEye(ctx, bw * 0.3, fy, 0.04 * s, t, -1, JF.line); }
-  else { const bl = o.ice ? 0 : blinkAt(t, 9); for (const sx of [-1, 1]) { ctx.fillStyle = JF.line; ctx.beginPath(); ctx.ellipse(sx * bw * 0.3, fy, 0.032 * s, 0.044 * s * (1 - bl * 0.85), 0, 0, TAU); ctx.fill(); if (bl < 0.5) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx * bw * 0.3 - 0.01 * s, fy - 0.014 * s, 0.011 * s, 0, TAU); ctx.fill(); } }
+  else if (o.sting > 0) { ctx.strokeStyle = JF.line; ctx.lineWidth = lw * 1.2; ctx.lineCap = 'round'; for (const sx of [-1, 1]) { const ex = sx * bw * 0.3, w = 0.034 * s; ctx.beginPath(); ctx.moveTo(ex - sx * w, fy - w); ctx.lineTo(ex + sx * w * 0.6, fy); ctx.lineTo(ex - sx * w, fy + w); ctx.stroke(); } } // faces3: a gleeful > < as it stings
+  else { const bl = o.ice ? 0 : blinkAt(t, 9); for (const sx of [-1, 1]) { ctx.fillStyle = JF.line; ctx.beginPath(); ctx.ellipse(sx * bw * 0.3, fy, 0.04 * s, 0.055 * s * (1 - bl * 0.85), 0, 0, TAU); ctx.fill(); if (bl < 0.5) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx * bw * 0.3 - 0.01 * s, fy - 0.014 * s, 0.011 * s, 0, TAU); ctx.fill(); } }
     if (!(o.sting > 0)) { ctx.strokeStyle = JF.line; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(-bw * 0.1, fy + 0.045 * s); ctx.quadraticCurveTo(0, fy + 0.085 * s, bw * 0.1, fy + 0.045 * s); ctx.stroke(); } }
   if (o.sting > 0) { ctx.strokeStyle = JF.line; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(-bw * 0.15, fy + 0.07 * s); ctx.lineTo(0, fy + 0.04 * s); ctx.lineTo(bw * 0.15, fy + 0.07 * s); ctx.stroke(); }
   ctx.restore();
