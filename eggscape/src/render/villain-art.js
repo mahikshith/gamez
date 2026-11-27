@@ -26,7 +26,7 @@ import { penguinPose, drawPenguin } from './penguin.js'; // 0.8.17 pip
 import { drawUrchin, urchinPose } from './urchin.js'; // 0.8.17 urchin
 import { monkeyPose, drawMonkey } from './monkey.js'; // 0.8.17 coco
 import { drawRaccoon, raccoonPose } from './raccoon.js'; // 0.8.17 bandit
-import { drawCreeperPortrait } from './creeper.js'; // 0.8.18 creeper
+import { drawMoverPortrait } from './movethorn.js'; // 0.8.18 the moving thorn
 
 const TAU = Math.PI * 2;
 const INK = '#2a1606';
@@ -230,14 +230,7 @@ const ART = {
     if (dw > 0.5) for (const sd of [-1, 1]) { const x0 = sd < 0 ? x - gw / 2 : x + gw / 2 - dw; ctx.fillStyle = '#b8432f'; ctx.fillRect(x0, y0, dw, h); ctx.strokeStyle = '#4a140c'; ctx.strokeRect(x0, y0, dw, h); }
     ctx.fillStyle = '#fff4dc'; ctx.beginPath(); ctx.ellipse(x, y0 - d * 0.16, d * 0.12, d * 0.15, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = INK; ctx.stroke();
   },
-  creeper(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t); }, // 0.8.18 creeper: its own head on a strip of rim
-  swampvine(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'vine'); }, // 0.8.18 the creeper family: each form on its own bed
-  frostcrawler(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'frost'); },
-  lavaflow(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'lava'); },
-  anemone(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'anemone'); },
-  spark(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'spark'); },
-  sawtooth(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'saw'); },
-  shard(ctx, x, y, d, t) { drawCreeperPortrait(ctx, x, y, d, t, 'shard'); },
+  creeper(ctx, x, y, d, t) { drawMoverPortrait(ctx, x, y, d, t); }, // 0.8.18 the moving thorn: the game's thorn in its groove
   curse(ctx, x, y, d, t) { drawOrb(ctx, 'curse', x, y, d * 0.3, t, true); },
   thornorb(ctx, x, y, d, t) { drawOrb(ctx, 'thorn', x, y, d * 0.3, t, true); },
 };

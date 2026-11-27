@@ -921,7 +921,7 @@ export class Sim {
         // one crack per touch (never the breaking one), and the spike shoves the egg off
         if (!egg.spk.has(th.key)) {
           egg.spk.add(th.key);
-          if (th.mv) this.creepBit(th);
+          if (th.mv) { this.creepBit(th); egg.safeT = Math.max(egg.safeT || 0, 1.5); } // (a moving thorn comes after the egg it shoved: time to get clear before it can crack again)
           this.defer(() => {
             if (!egg.alive || egg.saved) return;
             if (egg.cracks < 2 && !th.baby) this.crack(egg, 0, 'spike'); // blunt: cracks, never breaks

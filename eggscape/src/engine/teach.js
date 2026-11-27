@@ -80,10 +80,9 @@ export const LESSONS = {
   // 0.8.18 words818: texts that used to pop up in play
   portal: L('look', 'own', 'Purple to orange'), // the portal tip: on the purple swirl
   chick: L('tap', 'own'), // a hatched chick: "tap it to use its power" (the finger taps the chick)
-  // 0.8.18 the creeper family (sim/creeper.js creeperNear: one form per world): turn its ring so it is carried off the egg
+  // 0.8.18 the moving thorn (sim/creeper.js creeperNear): turn its ring so it is carried off the egg
   // (the way that does it is the event's away; lesson.js). The rule of each form is in its look, not in words.
-  creep_thorn: L('spin', 'ev'), creep_vine: L('spin', 'ev'), creep_frost: L('spin', 'ev'), creep_shard: L('spin', 'ev'),
-  creep_spark: L('spin', 'ev'), creep_saw: L('spin', 'ev'), creep_anemone: L('spin', 'ev'), creep_lava: L('spin', 'ev'),
+  creep_thorn: L('spin', 'ev'),
   // a level's opening caption: the finger brings a gap to the egg it is about (main.js lessonLevel)
   lv: L('open'),
 };

@@ -300,8 +300,6 @@ function layCreep(spec, i, r, o, gaps, thorns, bars) {
     const out = { a0: o.a0, a1: o.a1, v: o.v, rest: o.rest };
     if (side === 'out') out.side = 'out';
     if (o.delay != null) out.delay = o.delay;
-    if (o.form && o.form !== 'thorn') out.form = o.form;
-    if (o.w) out.w = o.w;
     if (o.baby) out.baby = 1;
     return out;
   }
@@ -335,9 +333,7 @@ function layCreep(spec, i, r, o, gaps, thorns, bars) {
   out.a1 = out.a0 + Math.round(best.a1 - best.a0);
   if (side === 'out') out.side = 'out';
   if (o.delay != null) out.delay = o.delay;
-  if (o.form && o.form !== 'thorn') out.form = o.form; // the world's form of the creeper family (sim/creeper.js FORMS)
-  if (o.w) out.w = o.w; // the lava flow's own length (m)
-  if (o.baby) out.baby = 1; // the first meeting: it only shoves (sim/creeper.js creepBite)
+  if (o.baby) out.baby = 1; // the first meeting: a young thorn that only shoves (sim/creeper.js)
   return out;
 }
 

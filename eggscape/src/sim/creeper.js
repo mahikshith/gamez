@@ -10,7 +10,7 @@
 // What a moving thorn adds to a standing one:
 //   REST   at each end of its groove it stands for `rest` s (still a thorn: it hurts). The last CREEP.wind s are the
 //          wind-up (the render's shiver and hot tip).
-//   SLIDE  to the other end: slow off the mark, fastest past the middle, a firm stop.
+//   SLIDE  to the other end: slow off the mark, fastest past the middle, a firm stop against the end of the groove.
 //   BITE   after it harms an egg it holds where it is for a beat, then goes on.
 //   STUB   burnt, snapped or pecked, it is cut back to the retracted stub (ext 0: harmless, as a retracting thorn's) for
 //          CREEP.regrow s, then springs back out (it waits while an egg sits right on it) and rests before it moves on.
@@ -45,7 +45,9 @@ export const CREEP = {
 };
 const sstep = (u) => { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); };
 // where it is along one slide (0..1) at s (0..1 of the slide's time): slow off the mark, fastest past the middle, a firm stop
-export const creepEase = (s) => sstep(Math.pow(clamp(s, 0, 1), 1.3));
+// (the last stretch is not eased out to nothing: it runs into its end stop at about 40% of its top speed and stops dead)
+const E_CUT = 0.88, E_N = sstep(E_CUT);
+export const creepEase = (s) => sstep(E_CUT * Math.pow(clamp(s, 0, 1), 1.3)) / E_N;
 
 export const creepMethods = {
   creepInit(L) {
@@ -128,6 +130,7 @@ export const creepMethods = {
         const u = C.from + (C.to - C.from) * creepEase(C.s);
         C.spd = (Math.abs(u - C.u) * th.ring.r) / Math.max(1e-6, dt);
         this.creepPlace(C, u);
+        this.creepWake(C);
         if (C.s >= 1) { C.dir = -C.dir; C.spd = 0; C.near = 0; this.creepSet(C, 'rest', this.creepRest(C)); this.emit('creepStop', { id: C.id, ...this.creepHead(C) }); }
         return;
       }
@@ -143,6 +146,11 @@ export const creepMethods = {
         return;
     }
   },
+  // an egg asleep in its way is woken as it comes (a sleeping body and a ring that is not turning make no contact)
+  creepWake(C) {
+    const H = this.creepHead(C);
+    for (const e of this.eggs) { if (!e.alive || e.saved || !e.body || e.body.isAwake()) continue; const p = e.body.getPosition(); if (Math.hypot(p.x - H.x, p.y - H.y) < 0.75) e.body.setAwake(true); }
+  },
   creepEggOn(C) {
     const H = this.creepHead(C);
     for (const e of this.eggs) { if (!e.alive || e.saved || !e.body) continue; const p = e.body.getPosition(); if (Math.hypot(p.x - H.x, p.y - H.y) < 0.42) return true; }
@@ -152,7 +160,9 @@ export const creepMethods = {
   creepBit(th) {
     const C = th.mv;
     if (!C || C.ph === 'bite' || !this.creepLive(C)) return;
-    C.hits++; C.back = C.ph; C.backT = C.t; C.backDur = C.dur;
+    C.hits++;
+    if (this.t - (C.bitT ?? -9) < 1.5) return; // (an egg it is shoving along: one beat, not a stutter)
+    C.bitT = this.t; C.back = C.ph; C.backT = C.t; C.backDur = C.dur;
     C.ph = 'bite'; C.t = CREEP.bite; C.spd = 0;
   },
   // sim.js removeThorn: burnt, snapped or pecked, a moving thorn is cut back to its stub where it is, and grows back.

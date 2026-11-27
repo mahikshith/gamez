@@ -14,6 +14,7 @@ import { drawSkinPreview } from '../ui/store.js';
 import { ringPt, ringSpd, ringNormal, ringReach } from '../sim/shapes.js'; // v3.3 M10 vault shapes
 import { LIGHT, WALL, mix, lighten, darken, rgbOf, drawRingBody, drawRingBurn, drawPads, ringLine, ringBand } from './ringart.js';
 import { drawHoney, drawShutters } from './boardart.js';
+import { moverPose, drawGroove, drawMoverFx, bitKind } from './movethorn.js'; // 0.8.18 the moving thorn: one of these thorns, sliding in a groove
 
 let skin = 'classic';
 export function setSkin(id) { skin = id || 'classic'; }
@@ -538,6 +539,34 @@ function thornSprite(ctx, art, blunt, litA, look, x1, y1, x2, y2, bx, by, Lf, sd
   return true;
 }
 
+// the facet colours of a look (worked out once per look and theme thorn colour, not per thorn per frame)
+function thornCols(look, c, blunt) {
+  const ck = blunt ? 'b' : 'n', cc = look.cols || (look.cols = {}), fill = blunt ? look.blunt[0] : look.fill;
+  let cl = cc[ck];
+  if (!cl || cl.c !== c) cl = cc[ck] = { c, tipLit: look.tip ? lighten(look.tip, 0.35) : null, lit: blunt || look.tip ? lighten(fill, blunt ? 0.4 : 0.6) : mix(fill, '#ff8a5c', 0.55), shade: look.tint && !blunt ? mix(darken(fill, 0.3), c, look.tint) : mix(fill, look.tip && !blunt ? '#8a6f52' : '#000000', look.tip && !blunt ? 0.55 : 0.36) };
+  return cl;
+}
+// 0.8.18 the standing thorn's own art outside a ring (the moving thorn's pictures: the "i" panel, the level card): one
+// sharp thorn painted by paintThornArt, its root's middle at (x, y) in ctx space (screen px, y down), its axis turned by
+// ang (0 = pointing up the screen), k px per metre. o: { h (m, 0.24), lean (the sway: tip sideways by lean x its length),
+// stretch (x length), hot (0..1 the hot tip of a wind-up), steady (calm: the glow does not flicker), theme }
+export function drawThornIcon(ctx, x, y, ang, k, t, o = {}) {
+  const look = thornLook(o.theme, undefined), c = o.theme?.palette?.thorn || '#3a2a2a', cl = thornCols(look, c, false);
+  const h = (o.h || 0.24) * (o.stretch ?? 1), half = 0.13, px = 1 / k, ca = Math.cos(-ang), sa = Math.sin(-ang);
+  const x2 = h * (o.lean || 0), y2 = -h;
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(ang); ctx.scale(k, k);
+  if (o.hot > 0) {
+    const gl = ctx.createRadialGradient(x2, y2, 0, x2, y2, 0.16);
+    gl.addColorStop(0, `rgba(255,120,60,${(0.75 * o.hot * (o.steady ? 0.8 : 0.65 + 0.35 * Math.sin(t * 24))).toFixed(3)})`);
+    gl.addColorStop(1, 'rgba(255,60,30,0)');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x2, y2, 0.16, 0, TAU); ctx.fill();
+  }
+  const lx = -0.6 * ca + 0.8 * sa, sdx = 0.035 * ca - 0.07 * sa, sdy = 0.035 * sa + 0.07 * ca; // the light (top-left) and the shadow (down-right), in the thorn's frame
+  paintThornArt(ctx, -half, 0, half, 0, x2, y2, 0, -h * 0.45, 0, 0, 0, 0, 0, 0, sdx, sdy, -lx > 0, false, look.fill, look.edge, cl.lit, cl.shade, look, cl, px, 3);
+  ctx.restore();
+}
+
 function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
   const c = theme?.palette?.thorn || '#3a2a2a', look = thornLook(theme, ring.mat);
   const A = ring.body.getAngle(), eggs = opts.eggs || [];
@@ -551,6 +580,8 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
     const { period, on, phase = 0 } = ring.retract, ph = ((((opts.simT + phase) % period) + period) % period) / period;
     if (ph >= on) comeback = (1 - ph) * period;
   }
+  let movers = 0;
+  for (const th of ring.thorns) if (th.mv) { movers++; drawGroove(ctx, ring, th, ringColors(ring, theme), px); } // 0.8.18: a moving thorn's road, under every thorn (it stays when the thorn is snipped)
   for (const th of ring.thorns) {
     if (!th.alive) continue;
     // an egg close by: the thorn bristles (reaches a little further) and quivers
@@ -560,20 +591,23 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
       for (const p of eggs) near = Math.max(near, clamp01(1 - (Math.hypot(p.x - tx, p.y - ty) - 0.35) / 0.9));
     }
     const bt = TH_BITE.get(th.key), bite = bt != null ? clamp01(1 - (t - bt) / 0.4) : 0;
-    const shiver = ring.retract && th.ext < 0.5 && comeback < 0.5 ? 1 - comeback / 0.5 : 0;
+    // 0.8.18 a moving thorn (th.mv) speaks the same language: its wind-up is this shiver and hot tip, its slide and stop a lean and a stretch
+    const mp = th.mv ? moverPose(th, t, calm) : null;
+    const shiver = mp ? mp.pop : ring.retract && th.ext < 0.5 && comeback < 0.5 ? 1 - comeback / 0.5 : 0;
+    const hot = mp ? Math.max(mp.pop, mp.hot) : shiver, quiv = mp && mp.steady ? 0 : hot;
     const k0 = th.key * 0.73;
-    const sway = (soft ? 0.07 : 0.04) * Math.sin(t * 1.6 + k0) + near * 0.07 * Math.sin(t * 31 + k0) + shiver * 0.1 * Math.sin(t * 45 + k0) + bite * 0.12 * Math.sin(t * 60);
-    const e = Math.min(1.25, 0.25 + 0.75 * th.ext + 0.1 * near + 0.3 * bite * Math.sin(Math.PI * Math.min(1, (t - (bt || 0)) / 0.2)) + 0.3 * shiver);
+    const sway = (soft ? 0.07 : 0.04) * Math.sin(t * 1.6 + k0) + near * 0.07 * Math.sin(t * 31 + k0) + quiv * 0.1 * Math.sin(t * 45 + k0) + bite * 0.12 * Math.sin(t * 60) + (mp ? mp.lean : 0);
+    const e = Math.min(1.25, 0.25 + 0.75 * th.ext + 0.1 * near + 0.3 * bite * Math.sin(Math.PI * Math.min(1, (t - (bt || 0)) / 0.2)) + 0.3 * shiver) * (mp ? mp.stretch : 1);
     const half = 0.13 / ringSpd(ring, th.a);
     const tip = th.base + (th.tip - th.base) * e;
     const a = th.a, na = ringNormal(ring, a); // v3.3 M10: a shaped ring's thorn stands on the surface normal
     const P = (rad, an) => ringPt(ring, an, rad);
     const [x0, y0] = P(th.base, a - half), [x1, y1] = P(th.base, a + half);
     let [x2, y2] = P(tip, a);
-    if (shiver > 0) {
-      // about to spring out: the stub's tip glows hot so the player sees the warning, not just a twitch
+    if (hot > 0) {
+      // about to spring out (a moving thorn: about to set off): the tip glows hot so the player sees the warning, not just a twitch
       const gl = ctx.createRadialGradient(x2, y2, 0, x2, y2, 0.16);
-      gl.addColorStop(0, `rgba(255,120,60,${(0.75 * shiver * (0.65 + 0.35 * Math.sin(t * 24 + k0))).toFixed(3)})`);
+      gl.addColorStop(0, `rgba(255,120,60,${(0.75 * hot * (mp && mp.steady ? 0.8 : 0.65 + 0.35 * Math.sin(t * 24 + k0))).toFixed(3)})`);
       gl.addColorStop(1, 'rgba(255,60,30,0)');
       ctx.fillStyle = gl;
       ctx.beginPath();
@@ -589,10 +623,7 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
     const litA = (x0 - x1) * lcx + (y0 - y1) * lcy > 0;
     const blunt = th.kind === 'blunt';
     const fill = blunt ? look.blunt[0] : look.fill, edge = blunt ? look.blunt[1] : look.edge;
-    // the facet colours only depend on the look + theme thorn colour: work them out once, not per thorn per frame
-    const ck = blunt ? 'b' : 'n', cc = look.cols || (look.cols = {});
-    let cl = cc[ck];
-    if (!cl || cl.c !== c) cl = cc[ck] = { c, tipLit: look.tip ? lighten(look.tip, 0.35) : null, lit: blunt || look.tip ? lighten(fill, blunt ? 0.4 : 0.6) : mix(fill, '#ff8a5c', 0.55), shade: look.tint && !blunt ? mix(darken(fill, 0.3), c, look.tint) : mix(fill, look.tip && !blunt ? '#8a6f52' : '#000000', look.tip && !blunt ? 0.55 : 0.36) };
+    const cl = thornCols(look, c, blunt);
     const lit = cl.lit, shade = cl.shade;
     let t0x, t0y, t1x, t1y;
     if (blunt) { [t0x, t0y] = P(tip, a - half * 0.35); [t1x, t1y] = P(tip, a + half * 0.35); }
@@ -610,6 +641,7 @@ function drawThorns(ctx, ring, theme, px, t = 0, opts = {}) {
       }
     }
   }
+  if (movers) for (const th of ring.thorns) if (th.mv && th.alive) drawMoverFx(ctx, ring, th, t, ringColors(ring, theme), bitKind(ring.mat || theme?.material, ringLook(ring, theme)), calm);
   if (crumbles.length) drawCrumbles(ctx, ring, t, px);
 }
 
