@@ -670,7 +670,7 @@ export function createWonder(env) {
       const card = K.page(L.name, build(0), { ...sd.cardO, ribbon: RIB });
       const { box } = K.stage(sd, card);
       picStage(box.x, box.y, box.w, box.h, u, false, { x1: A.x + 8 * u + 46 * u + 4 * u, y1: A.y + 6 * u + 46 * u + 4 * u });
-    } else K.page(L.name, build(roomFor(build, 120, 420)), { full: true, ribbon: RIB });
+    } else K.page(L.name, build(roomFor(build, 120, 520)), { full: true, ribbon: RIB }); // (card819: the line under the title is gone: the picture takes its room)
     const bs = 46 * u; // back to the map: the header's corner (on the page's top edge, level with the ribbon)
     ui.button('wv:map', '', A.x + 8 * u, A.y + 6 * u, bs, bs, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: bs / 2 });
   }
