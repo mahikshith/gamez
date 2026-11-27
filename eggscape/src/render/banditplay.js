@@ -248,7 +248,7 @@ function drawYard(ctx, sim, B, t, k, calm, ice) {
   ctx.save(); ctx.translate(B.x, gY); ctx.scale(1 / k, -1 / k);
   try {
     sackEggs(ctx, B, p, u, B.face);
-    drawRaccoon(ctx, 0, 0, s, t, p, { face: B.face, frozen: ice ? 1 : 0, eye: L.o.eye, egg: false, eggDraw: B.ph === 'stuff' ? eggDraw : null });
+    drawRaccoon(ctx, 0, 0, s, t, p, { rip: B.rip, face: B.face, frozen: ice ? 1 : 0, eye: L.o.eye, egg: false, eggDraw: B.ph === 'stuff' ? eggDraw : null });
     if (B.ph === 'dash' && eggDraw) eggDraw(ctx); // the egg he runs under falls in front of him (bandHides)
     if (B.ph === 'crouch' && B.t / B.dur < 0.8) bubble(ctx, toPx(p, p.hx + 30, p.hy - 58, u, B.face), 13 * u * 1.7, '!'); // (0.8.18: the same size on screen as at his old yard scale)
   } finally { ctx.restore(); }

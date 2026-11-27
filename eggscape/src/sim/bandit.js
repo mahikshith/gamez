@@ -103,7 +103,7 @@ export const banditMethods = {
     this.band = {
       ph: 'idle', t: R.delay ?? 3, dur: 1, x: g.x0 - 0.7, face: 1, goal: g.x0, odo: 0, ri: -1, pa: 0, side: -1, dir: -1, n: 0, from: null,
       fl: 0, cr: 0, ct: 0, tgt: 0, eid: 0, px: 0, py: 0, sack: [], hits: 0, hp, hurt: 0, whistled: 0, wz: 0, wid: -1,
-      fz: 0, hitCD: 0, why: '', spill: [], done: 0, end: '', held: 0, t0: 0, sx: null, sy: null, duel: null, dueled: 0, dw: 0,
+      fz: 0, hitCD: 0, why: '', spill: [], done: 0, end: '', held: 0, t0: 0, sx: null, sy: null, duel: null, dueled: 0, dw: 0, rip: 0,
     };
   },
   bandM(o) { return o[this.mode] ?? o.medium; },
@@ -549,7 +549,7 @@ export const banditMethods = {
     // the dust settles: the outcome is the state of his sack
     const P = this.bandDuelPt(B);
     if (B.sack.length) {
-      D.win = 'weasel'; D.ph = 'rip';
+      D.win = 'weasel'; D.ph = 'rip'; B.rip = 1; // (his sack stays torn: render/raccoon.js draws the hole)
       this.bandSpillSack(B, this.bandSackPt(B, 0));
       this.emit('bandDuelRip', { ...P, n: B.spill.length });
       T.k = 'scare'; this.thGoHome(T);

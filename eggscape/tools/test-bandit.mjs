@@ -217,6 +217,7 @@ for (const mode of ['easy', 'medium', 'hard']) {
     const sim = duelSim('medium', false), B = sim.band, W = sim.bandWeaselT();
     run(sim, 40, null, (s) => s.band.ph === 'dust');
     ok(B.ph === 'dust' && W.ph === 'home' && W.k === 'slink' && B.duel && B.duel.win === 'band', 'he dusts his paws while the weasel slinks off dizzy');
+    ok(!B.rip, 'his sack is whole when he wins');
   }
   { // an egg in his sack: the weasel grabs the sack, it rips, the egg rolls free into the vault
     const sim = duelSim('medium', true), B = sim.band, W = sim.bandWeaselT(), e = sim.eggs[0];
@@ -226,6 +227,7 @@ for (const mode of ['easy', 'medium', 'hard']) {
     ok(spill != null && e.alive && e.cracks === 0 && !e.hc && sim.channelOf(e) === sim.rings.length - 1, 'the egg rolls back onto the outer floor, uncracked');
     run(sim, 20, null, (s) => W.ph === 'hide');
     ok(W.ph === 'hide' && W.t > 1e8, 'and the weasel stays home');
+    ok(B.rip === 1 && Sim.fromState(sim.level, sim.fullState(), { mode: 'medium' }).band.rip === 1, 'his sack stays torn (the rip is in the saved state)');
   }
   { // rewind and the planner: a snapshot mid-scuffle carries on exactly
     const a = duelSim('medium', true);
