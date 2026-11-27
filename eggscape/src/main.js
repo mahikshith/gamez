@@ -2603,7 +2603,7 @@ function offerMoments() {
     if (sc === 'title' && OF.needsAge(save, ads.moneyShop) && !G.ageLater) { G.ageAsk = true; return; } // first launch, once the home is up
     if (earlyDays()) return; // nothing sold before L3 is won
     if (BR.gate(save, 'home').nudge && homeNudge(Date.now())) return; // the Director's nudge comes first; the paid offer can wait for another visit
-  } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0 && !(sc === 'win' && revealing(G.result))) { G.offerTried = true; if ((sc === 'fail' && G.failHelp) || earlyDays()) return; } // one help on a fail card, never two
+  } else if ((sc === 'win' || sc === 'fail') && G.screenT > 1 && G.li >= 0 && !(sc === 'win' && (revealing(G.result) || winBusy(G.result)))) { G.offerTried = true; if ((sc === 'fail' && G.failHelp) || earlyDays()) return; } // one help on a fail card, never two
   else if (sc === 'intro' && G.screenT > 0.3 && G.li >= 0) { G.offerTried = true; G.introTip = null; if (earlyDays()) return; } // the intro's gentle chick line
   else return;
   if (sc === 'win' && G.remDue) { // the reminder question (free): it takes this card's one ask
@@ -9513,11 +9513,17 @@ const SLAM = 0.22, TOK_FLY = 0.34, ROLL = 0.22, PURSE_DUR = 0.5;
 const winPT = (r) => r.t - winShow(r); // the page's own clock (held at 0 through the reveals)
 const fmtN = (n) => Math.round(n).toLocaleString('en-US');
 // star q is goal q's: lit when that goal was met (one star, one goal: the badge under it tells which)
-function litStar(r, q) {
-  const g = r.goals;
-  if (g && g.length >= 3 && g.slice(0, 3).filter((x) => x.ok).length === r.stars) return !!g[q].ok;
-  return q < r.stars;
+// 0.8.19 (mykee: "always push the off-coloured stars to the right-hand side rather than the centre"): the stars fill
+// from the LEFT (socket q is lit when q < stars); a goal still earns its own star (goalOk), and its chip flies to the
+// next free socket: the reached goals take the left sockets in goal order, the missed ones the rest (slotOf / goalAt)
+function goalOk(r, g) {
+  const L = r.goals;
+  if (L && L.length >= 3 && L.slice(0, 3).filter((x) => x.ok).length === r.stars) return !!L[g].ok;
+  return g < r.stars;
 }
+function litStar(r, q) { return q < r.stars; }
+function slotOf(r, g) { let a = 0, b = 0; for (let i = 0; i < g; i++) { if (goalOk(r, i)) a++; else b++; } return goalOk(r, g) ? a : r.stars + b; }
+function goalAt(r, q) { for (let g = 0; g < 3; g++) if (slotOf(r, g) === q) return g; return q; }
 // what joins the win's own coins as a small burst (its own icon, no words): the online share, a dare met, the egg's power
 function winExtras(r) {
   if (r.exList) return r.exList;
@@ -9536,23 +9542,34 @@ function winExtras(r) {
 // words, holds, then shrinks back under its star with a grey dash). All three won: a quick beat, then the finish.
 // Then the points come in from the sides of the score: the eggs from the left, the saved time's clock from the right,
 // the streak's stamp; the coins; the tiles.
+const CHIP_ANT = 0.16, CHIP_FLY = 0.34, FL_IN = 0.34, FL_FLY = 0.56; // a chip's crouch and its flight to its star; the flame's lighting and its flight to her side
 const WHY_LEN = 1.5, WON_LEN = 0.55, ALL_LEN = 0.28, WHY_K = 2.2; // WHY_K: how big a goal's icon grows in the middle
 function winSeq(r) {
   if (r.seq) return r.seq;
   winShow(r);
   const o = r.direct ? 0 : WIN_IN + 0.05, all = [0, 1, 2].every((q) => litStar(r, q));
-  let t = r.direct ? 0.18 : o + 0.12;
-  const slots = [0, 1, 2].map((q) => { // (with rewards first the stars landed in her show: the page's beat is the badges')
-    const miss = !litStar(r, q), len = miss ? WHY_LEN : all ? ALL_LEN : r.direct ? WON_LEN : 0.3;
-    const sl = { q, miss, at: t, land: t + (r.direct && !miss ? SLAM : 0), len };
+  // 0.8.19: the goals' chips sit low on the page; socket by socket (left to right) a reached goal's chip crouches,
+  // flies up a curved path and stamps into its star (land), a missed one greys and shakes its head (at). With rewards
+  // first all of that played in her show (winChips on the big stage): the page comes with it done.
+  let t = r.direct ? 0.42 : o + 0.12;
+  const slots = [0, 1, 2].map((q) => {
+    const miss = !litStar(r, q), len = !r.direct ? 0 : miss ? 0.45 : 0.46;
+    const sl = { q, miss, at: r.direct ? t : -9, land: !r.direct ? -9 : miss ? t + 0.08 : t + CHIP_ANT + CHIP_FLY, len };
     t += len;
     return sl;
   });
-  const badge = slots.map((sl) => (sl.miss ? sl.at + WHY_LEN - 0.14 : sl.land + 0.02)); // the tick, or the dash once its icon is home
-  const side0 = t + (all && r.direct ? 0.4 : 0.06); // (three of three: the finish has its moment first)
+  const badge = slots.map((sl) => sl.land);
+  // the win streak (from 2): one big flame lights in the middle with its number, burns for a beat, then flies in an arc
+  // to her top left and settles as the badge (a streak whose own reveal just played burns only a moment)
+  let flame = null;
+  if (r.hot >= 2 && G.li >= 0) {
+    const seen = !!(r.rv && r.rv.list.some((x) => x.kind === 'hot')), at = t + (all && r.direct ? 0.3 : 0.08), fly = at + FL_IN + (seen ? 0.2 : 0.6);
+    flame = { at, fly, land: fly + FL_FLY, seen };
+  }
+  const side0 = flame ? flame.at + 0.3 : t + (all && r.direct ? 0.4 : 0.06); // (the score gathers in the meadow while the flame burns over her) // (three of three: the finish has its moment first)
   const mult = r.streakMult > 1 ? r.streakMult : 0, egg = r.eggScore || 0, tb = r.timeBonus || 0, toks = [];
   const nEgg = clamp(r.saved || 3, 1, 5);
-  let f = side0 + 0.5; // the eggs stand beside the score, then go into it one by one
+  let f = side0 + 0.34; // the eggs stand beside the score, then go into it one by one
   for (let i = 0; i < nEgg; i++) {
     const last = i === nEgg - 1;
     toks.push({ k: 'egg', i, at: f, land: f + TOK_FLY, from: Math.round((egg * i) / nEgg), to: last && !mult && !tb ? r.total : Math.round((egg * (i + 1)) / nEgg) });
@@ -9564,14 +9581,15 @@ function winSeq(r) {
   if (mult) end = stamp + 0.14 + ROLL;
   const pill = end - 0.32, pillEnd = pill + 0.3, ex = winExtras(r).map((q, i) => ({ ...q, at: pillEnd + 0.06 + 0.26 * i }));
   const fly = ex.length ? ex[ex.length - 1].at + 0.3 : pillEnd + 0.06, land = fly + TOK_FLY * 0.8 + PURSE_DUR + 0.05;
-  const tiles = land + 0.02;
-  const S = { o, slots, all, badge, side0, nEgg, toks, mult, stamp, scoreEnd: end, best: end + 0.04, pill, pillEnd, ex, fly, land, tiles, done: tiles + 0.5 };
+  const tiles = land + 0.3; // (the purse's landing pop is seen before it hands over to the Shop tile)
+  const S = { o, slots, all, badge, flame, side0, nEgg, toks, mult, stamp, scoreEnd: end, best: end + 0.04, pill, pillEnd, ex, fly, land, tiles, done: Math.max(tiles + 0.5, flame ? flame.land + 0.4 : 0) };
   const cues = [];
-  slots.forEach((sl, q) => {
-    if (!sl.miss) { cues.push([badge[q] + 0.02, () => audio.play('hud_pop', { vol: 0.45, pitch: 1.1 + 0.15 * q })]); return; }
-    // a missed goal: gentle sounds only (a soft bump as its star wobbles, a flutter as the icon comes, a pop as it goes home)
-    cues.push([sl.at + 0.02, () => audio.play('egg_bump', { vol: 0.35 })], [sl.at + 0.14, () => audio.play('flap', { vol: 0.3, pitch: 1.3 })], [sl.at + 1.14, () => audio.play('bubble_pop', { vol: 0.32 })]);
+  if (r.direct) for (let g = 0; g < 3; g++) cues.push([0.1 + 0.09 * g, () => audio.play('hud_pop', { vol: 0.3, pitch: 0.9 + 0.1 * g })]); // the chips pop in
+  if (r.direct) slots.forEach((sl, q) => {
+    if (!sl.miss) cues.push([sl.at + CHIP_ANT, () => audio.play('flap', { vol: 0.35, pitch: 1.2 + 0.12 * q })]); // lift-off (its star's bell rings as it stamps, each a note higher: update())
+    else cues.push([sl.at + 0.03, () => audio.play('egg_bump', { vol: 0.35 })]); // a missed goal: one soft bump as it shakes its head
   });
+  if (flame) cues.push([flame.at + 0.02, () => { audio.play('combo', { intensity: Math.min(1, r.hot / 5), vol: flame.seen ? 0.45 : 0.9 }); buzz('star'); }], [flame.fly + 0.1, () => audio.play('flap', { vol: 0.4, pitch: 0.85 })], [flame.land, () => { audio.play('hud_pop', { vol: 0.7, pitch: 0.85 }); buzz('tick'); }]);
   for (let i = 0; i < nEgg; i++) cues.push([side0 + 0.06 * i + 0.1, () => audio.play('hud_pop', { vol: 0.3, pitch: 1.3 + 0.08 * i })]); // the eggs pop up beside the score
   if (tb) cues.push([side0 + 0.2, () => audio.play('ring_tick', { vol: 0.5 })]); // the clock
   toks.forEach((k, i) => { cues.push([k.at, () => audio.play('flap', { vol: 0.25, pitch: 1.2 + 0.08 * i })], [k.land, () => { audio.play('hud_pop', { vol: 0.6, pitch: 1.1 + 0.1 * i }); buzz('tick'); }]); });
@@ -9601,7 +9619,16 @@ function winCues(r, a, b) {
 // everything at its end: the score whole, the coins in the purse, the tiles in
 function winSkipEnd(r) {
   r.skipped = true; r.shownTotal = r.total;
-  if (!r.purseGo && r.purse0 != null) { r.purseGo = true; purse.settle(); purse.release(); }
+  // 0.8.19 (mykee: "the coin animations do not show properly after a boss"): a tap skips the show, never the pay. The
+  // coins this win paid still fly from the pill into the purse and its count rolls up (drawWinCoinRow starts it on the
+  // next frame); before, a tap here settled the purse at once, so a player who tapped through a boss's rewards never
+  // saw a single coin move.
+}
+// the page is still telling its story (the offers and questions that may open over it wait: main's offerMoments)
+function winBusy(r) {
+  if (!r || save.calm) return false;
+  if (revealing(r) || winIn(r) < 1) return true;
+  return (!r.skipped && winPT(r) < winSeq(r).done) || (r.purse0 != null && !r.purseGo) || purse.active();
 }
 
 // a goal's icon (the game's own pictures): eggs home, the shield (lose none), the shiny egg (no cracks), the clock, the
@@ -9670,9 +9697,11 @@ function goalBadge(g, x, y, br, ok, p) {
   const gr = ctx.createLinearGradient(0, y - br, 0, y + br); gr.addColorStop(0, '#fffbf0'); gr.addColorStop(1, ok && p > 0 ? '#e2f2c8' : '#efdcb4');
   ctx.fillStyle = gr; ctx.fill();
   ctx.lineWidth = Math.max(1.5, br * 0.12); ctx.strokeStyle = p > 0 && ok ? '#3a9a2c' : 'rgba(110,66,24,0.55)'; ctx.stroke();
-  ctx.globalAlpha = p > 0 && !ok ? 0.42 : 1;
+  const ga = ctx.globalAlpha;
+  ctx.globalAlpha = ga * (p > 0 && !ok ? 1 - 0.58 * Math.min(1, p * 2) : 1);
   goalGlyph(goalKind(g), x, y, br * 1.5);
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = ga;
+  if (p > 0 && !ok) { ctx.beginPath(); ctx.arc(x, y, br, 0, TAU); ctx.fillStyle = `rgba(112,116,134,${0.3 * Math.min(1, p * 2)})`; ctx.fill(); } // off colour: a grey wash
   if (p > 0) {
     const k = backK(clamp(p, 0, 1)), mx = x + br * 0.72, my = y + br * 0.64, mr = br * 0.48 * k;
     ctx.beginPath(); ctx.arc(mx, my, mr, 0, TAU); ctx.fillStyle = ok ? '#3fb62e' : '#b8a68c'; ctx.fill();
@@ -9832,10 +9861,19 @@ function drawWinPage() {
     ctx.restore();
     winFeathers(0.35 + 0.5 * de);
   }
+  // 0.8.19 the coin fix: from the win's first frame, through her show and every reward reveal, every counter says the
+  // purse BEFORE this win (plus a boss treasure's coins once they have flown). Before, between two reveals it jumped to
+  // the final total (the win's own coins counted before they flew), then dropped back when the page came.
+  if (r.purse0 != null && !r.purseGo && !land.busy()) purse.hold(r.purse0 + (r.trFlown && r.treasure ? r.treasure.coins : 0));
   const side = A.w > A.h * 1.15; // a phone on its side: the stars and her on the left, the score, the coins and the buttons right
   const pw = routinePower(r.stars);
   const title = G.level.boss && G.li >= 0 ? 'Boss beaten!' : r.stars === 3 ? 'Perfect clutch!' : r.stars === 2 ? 'Great job!' : 'Vault cracked!';
   const BIG = r.direct ? null : bigStage(side);
+  if (BIG) { // her show: the goals' chips wait under the title (landscape: under the stars) and fly up into the big stars
+    const br = Math.min(26 * u, BIG.R * 0.62), ts = Math.min(34 * u, A.w * 0.085);
+    BIG.br = br;
+    BIG.chips = [0, 1, 2].map((g) => (side ? { x: BIG.stars[g].x, y: BIG.stars[0].y + BIG.R * 1.5 + br * 1.5 } : { x: A.cx + (g - 1) * br * 3.3, y: Math.min(BIG.titleY + ts * 0.85 + 14 * u + br * 1.2, A.y1 - br * 1.6) + (g === 1 ? br * 0.4 : 0) }));
+  }
   // confetti fired during the show keeps the show's geometry (full screen), so it does not jump when she flies to the page
   const fxBig = BIG ? { cx: BIG.box.x + BIG.box.w / 2, gy: BIG.box.y + BIG.box.h - BIG.henH * 0.05, S: BIG.henH / 100, clip: BIG.full, until: SH + WIN_IN } : undefined;
   const T = {}; // where things sit on the page: her flight's targets, the tokens' ends
@@ -9845,41 +9883,33 @@ function drawWinPage() {
   if (r.mark === undefined) { const M = shopMarkNow(); r.mark = tilesOn && M.on && M.pick ? M.pick.key : null; }
   const dblOn = !first && !earlyDays() && (r.chest || r.dblOk !== false || G.doubled); // nothing advertised before L3 is won; none once the day's win-video pot is spent
   const last = G.li < 0 || G.li === LEVELS.length - 1;
-  let D = side ? { R: 27, sp: 72, br: 16, num: 48, scoreH: 76, coinH: 42, tileH: 66, dblH: 46, btnH: 60, g: 7 } : { R: 38, sp: 100, br: 20, num: 66, scoreH: 96, coinH: 48, tileH: 84, dblH: 52, btnH: 70, g: 10 };
-  let starH = 10 + 2 * D.R + 8 + 2 * D.br + 4;
+  // 0.8.19: the stars stand on an arc (a shallow parabola, the middle one highest and a little bigger), larger than
+  // before; the goals' chips have their own row low on the page, under her; Double coins is a big button over NEXT
+  let D = side ? { R: 30, sp: 74, br: 21, num: 48, scoreH: dblOn ? 54 : 76, noBest: dblOn, coinH: 40, tileH: 64, dblH: 92, btnH: 56, g: 6 } : { R: 46, sp: 108, br: 28, num: 66, scoreH: 96, coinH: 48, tileH: 84, dblH: 104, btnH: 70, g: 10 };
+  const starH = () => 6 + 2.45 * D.R + 6, chipH = () => 2.4 * D.br + 6;
   let stH = 0;
+  const BL = inCard && (done || pt > S.done) && !revealing(r) ? (calm ? 1 : 0.5 + 0.5 * Math.sin(G.t * 4.2)) : null; // all settled: what was missed blinks softly (Calm: a steady outline)
   const build = (s) => {
     const B = [];
-    B.push({ h: starH * s, gap: 0, // the stars, and under each its goal's badge (a tap on either: that goal's moment again)
+    B.push({ h: starH() * s, gap: 0, // the stars on their arc (a tap on a dull one: why)
       at: (x, y, w) => {
         const R = D.R * s, sp = D.sp * s, mx = x + w / 2;
         T.R = R; T.br = D.br * s;
-        T.stars = [0, 1, 2].map((q) => ({ x: mx + (q - 1) * sp, y: y + 10 * s + R - (q === 1 ? 8 * s : 0) }));
-        T.badges = [0, 1, 2].map((q) => ({ x: mx + (q - 1) * sp, y: y + 10 * s + 2 * R + 8 * s + D.br * s }));
-        T.row = { x: mx - sp - R, y: y + 2 * s, w: 2 * (sp + R), h: 2 * R + 10 * s };
+        T.stars = [0, 1, 2].map((q) => ({ x: mx + (q - 1) * sp, y: y + 6 * s + (q === 1 ? 1.1 * R : 1.45 * R), R: q === 1 ? 1.1 * R : R, tilt: (q - 1) * 0.2 }));
+        T.row = { x: mx - sp - R, y: y + 4 * s, w: 2 * (sp + R), h: 2.45 * R + 6 * s };
       },
       draw: () => {
-        r.starHit = inCard && r.goals ? T.stars.map((p, q) => ({ x: p.x, y: p.y, R: T.R, bx: T.badges[q].x, by: T.badges[q].y, br: T.br })) : null;
+        r.starHit = inCard && r.goals ? T.stars.map((p) => ({ x: p.x, y: p.y, R: p.R })) : null;
         T.stars.forEach((p, q) => {
           const wob = inCard ? winWobble(r, S, q, pt, done) : 0;
-          if (wob) { ctx.save(); ctx.translate(p.x, p.y + T.R * 0.5); ctx.rotate(wob); ctx.translate(-p.x, -(p.y + T.R * 0.5)); }
-          if (inCard) drawWinStar(r, q, p.x, p.y, T.R, calm);
-          else drawStar(ctx, p.x, p.y, T.R, false, 1, true); // the sockets wait for the flying stars
-          if (wob) ctx.restore();
-        });
-        T.badges.forEach((p, q) => {
-          const g = r.goals && r.goals[q];
-          if (inCard && whyAt(r, S, q, pt, done) != null) { // its icon is out in the middle of the page: its place waits, dotted
-            ctx.save(); ctx.beginPath(); ctx.arc(p.x, p.y, T.br * 0.92, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fill();
-            ctx.setLineDash([4 * s, 4 * s]); ctx.lineWidth = 1.6 * s; ctx.strokeStyle = 'rgba(110,66,24,0.45)'; ctx.stroke(); ctx.restore();
-            return;
-          }
-          goalBadge(g, p.x, p.y, T.br, litStar(r, q), !inCard ? 0 : done ? 1 : clamp((pt - S.badge[q]) / 0.28, 0, 1));
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.tilt + wob); ctx.translate(-p.x, -p.y);
+          if (inCard) drawWinStar(r, q, p.x, p.y, p.R, calm, BL);
+          else drawStar(ctx, p.x, p.y, p.R, false, 1, true); // the sockets wait for the flying stars
+          ctx.restore();
         });
         ui.record(T.row, 'win:stars');
-        ui.record({ x: T.badges[0].x - T.br, y: T.badges[0].y - T.br, w: T.badges[2].x - T.badges[0].x + 2 * T.br, h: 2 * T.br }, 'win:badges');
       } });
-    B.push({ h: stH * s, gap: 6 * s, // her place on the knoll, as large as the room allows; the win streak's flame beside her
+    B.push({ h: stH * s, gap: 6 * s, // her place on the knoll, as large as the room allows; the win streak's flame at her top left
       at: (x, y, w) => { T.box = { x, y, w, h: stH * s }; T.henH = Math.min(0.685 * stH, side ? 160 : first ? 250 : 215) * s; T.clip = { x: 0, y: 0, w: ui.w, h: ui.h }; T.mid = { x: x + w / 2, y: y + stH * s * 0.34 }; },
       draw: () => {
         const RX = inCard ? winReact(r, S, pt, done) : null, ft = sceneAt(T.box, T.henH); // (each goal's moment: she leans, or hops)
@@ -9887,12 +9917,14 @@ function drawWinPage() {
         if (inCard) drawCelebration(ctx, r.cheer, r.t, T.box, { pw, calm, henH: T.henH, seed, clip: T.clip, fxBig });
         if (RX) ctx.restore();
         ui.record(T.box, 'win:hen');
-        if (r.hot >= 2) { // the win streak: its flame and how many, a chip floating at her top left
-          const ch = 34 * s, nt = String(r.hot), cw = ch * 0.95 + ui.measure(nt, 19 * s) + 12 * s, cx0 = T.box.x + 4 * s, cy0 = T.box.y + 8 * s;
-          ui.glass(cx0, cy0, cw, ch, { border: 'rgba(255,200,120,0.8)' });
-          streakFlame(ctx, 'hot:win', cx0 + ch * 0.5, cy0 + ch * 0.5, ch * 0.78, r.hot, G.t, calm);
-          ui.text(nt, cx0 + ch * 0.95, cy0 + ch / 2 + 0.5 * s, { size: 19 * s, color: '#fff', stroke: 'rgba(40,16,4,0.9)', strokeW: 3 * s, tag: 'win:hot', group: 'win:hen' }); // (on her place: one group)
-        }
+        if (inCard) winFlame(r, S, T, s, pt, done);
+      } });
+    B.push({ h: chipH() * s, gap: 2 * s, // the goals: three picture chips on the meadow under her (a reached one flew up into its star and is ticked; a missed one is grey: a tap tells why)
+      at: (x, y, w) => { const br = D.br * s, mx = x + w / 2; T.chips = [0, 1, 2].map((g) => ({ x: mx + (g - 1) * D.sp * s, y: y + br + 2 * s + (g === 1 ? 0.4 * br : 0) })); },
+      draw: () => {
+        r.chipHit = inCard && r.goals ? T.chips.map((c) => ({ x: c.x, y: c.y, br: T.br })) : null;
+        winChips(r, { chips: T.chips, br: T.br, stars: T.stars, R: T.R }, done || !r.direct || !inCard, BL);
+        ui.record({ x: T.chips[0].x - T.br, y: T.chips[0].y - T.br, w: T.chips[2].x - T.chips[0].x + 2 * T.br, h: 2.4 * T.br }, 'win:badges');
       } });
     if (!first) {
       B.push({ h: D.scoreH * s, gap: D.g * s, right: true, // one big score; NEW BEST! or the best so far under it; the points come in from its sides
@@ -9908,7 +9940,7 @@ function drawWinPage() {
           ctx.save(); if (pk !== 1) { ctx.translate(cx, ny); ctx.scale(pk, pk); ctx.translate(-cx, -ny); } ctx.globalAlpha *= Math.min(1, ka * 2);
           ui.num(fmtN(done ? r.total : r.shownTotal), cx, ny, { size: ns, align: 'center', maxW: w - 20 * s, tag: 'win:total' });
           ctx.restore();
-          if (r.prevBest == null) return; // (the Daily Vault, a lab vault)
+          if (r.prevBest == null || D.noBest) return; // (the Daily Vault, a lab vault; a phone on its side with the big Double button)
           const by = T.bestY, nb = r.total > r.prevBest, a = done ? 9 : pt - S.best;
           if (a < 0) return;
           if (nb) { // NEW BEST! bursts in under the number: rays, a pop, a little confetti
@@ -9942,21 +9974,7 @@ function drawWinPage() {
             ctx.fillStyle = gg; ctx.fillRect(bx - 50 * s, y, 100 * s, h); ctx.restore();
           }
         } });
-      if (dblOn) B.push({ h: D.dblH * s, gap: D.g * s, right: true, draw: (x, y, w) => { // the rewarded video (its rules unchanged): Double coins, or the Bonus chest
-        if (!inCard) return;
-        const bh = D.dblH * s;
-        if (r.chest && !G.doubled) { // the Bonus chest: one video, the chest, its coins and its boost shown as art on the button
-          const ch = r.chest, B2 = ui.button('bonus', '', x, y, w, bh, { kind: 'ad', shimmer: true });
-          let cx = x + 14 * s;
-          const cy = B2.cy;
-          if (!ads.premium) { drawAdBadge(ctx, cx, cy, 24 * s, 17 * s); cx += 30 * s; } // Premium: no video, the chest opens at once
-          drawChest(ctx, cx + 17 * s, cy + 3 * s, 34 * s, G.t, 'ready'); cx += 40 * s;
-          const ax = x + w - 16 * s; // what is inside, as art: a boost and coins
-          drawBoosterIcon(ctx, ch.booster, ax - 14 * s, cy, 30 * s, G.t); drawCoin(ctx, ax - 40 * s, cy + 6 * s, 9 * s, G.t); drawCoin(ctx, ax - 48 * s, cy - 3 * s, 9 * s, G.t + 1);
-          ui.text('Bonus chest', cx, cy, { size: 17 * s, maxW: ax - 60 * s - cx, color: '#fff', stroke: '#2b1566', strokeW: 3 * s, tag: 'win:bonus', group: 'btn:bonus' });
-        } else if (!G.doubled) ui.button('double', (r.coins || 0) > 0 ? `Double coins: +${r.coins}` : 'Double', x, y, w, bh, { kind: 'ad', ad: true, size: 17 * s });
-        else ui.text(r.chestOpen ? 'Bonus chest opened!' : 'Coins doubled!', x + w / 2, y + bh / 2, { size: 19 * s, align: 'center', color: '#fff', stroke: '#1f6b12', strokeW: 4 * s, tag: 'win:doubled' });
-      } });
+      if (dblOn) B.push({ h: D.dblH * s, gap: D.g * s, right: true, draw: (x, y, w) => { if (inCard) winDouble(r, x, y, w, D.dblH * s, s); } }); // the rewarded video (its rules unchanged), big, right over NEXT
     }
     B.push({ h: D.btnH * s, gap: (D.g + 2) * s, right: true, draw: (x, y, w) => { // NEXT, big and thick, in the thumb zone; Retry small beside it
       if (!inCard) return;
@@ -9969,10 +9987,11 @@ function drawWinPage() {
     return B;
   };
   const RIB = '#f0542e', sum = (L) => L.reduce((a, b) => a + (b.gap ?? 10) + b.h, 0), room0 = (A.y1 - 12 * u - A.y - 6 * u) / u;
-  if (side) stH = Math.max(80, room0 - starH - 16); // her column takes the whole height (the ribbon stands over the other one)
+  if (side) stH = Math.max(80, room0 - starH() - chipH() - 18); // her column takes the whole height (the ribbon stands over the other one)
   else { // her place takes what the rest leaves (a short phone: the rows tighten a little first, so she is not a thumbnail)
     const room = () => room0 - BARE_HEAD - 8 - sum(build(1));
-    if (room() < 150) { D = { ...D, R: 31, sp: 90, br: 18, num: 58, scoreH: 88, tileH: 74, dblH: 48 }; starH = 10 + 2 * D.R + 8 + 2 * D.br + 4; }
+    if (room() < 170) D = { ...D, R: 40, sp: 98, br: 26, num: 60, scoreH: 88, tileH: 76, dblH: 100, btnH: 66 };
+    if (room() < 120) D = { ...D, R: 36, sp: 92, br: 24, num: 54, scoreH: 84, coinH: 44, tileH: 68, dblH: 96, btnH: 62, g: 8 };
     stH = clamp(room(), 90, first ? 470 : 320); // (level 1: the stars, her and NEXT: she takes the page)
   }
   const bo = side ? { twoCol: true, maxW: Math.min(A.w - 32 * u, 900 * u) } : {};
@@ -10007,15 +10026,19 @@ function drawWinPage() {
   drawCelebration(ctx, r.cheer, r.t, box, { pw, calm, henH, seed, clip: BIG.full, fxBig });
   // the stars: big over her in the show; small at the top of the page through the reward reveals; then onto the page
   const rvOn = revealing(r) && r.t >= SH, MINI = rvOn || r.rvDone != null ? miniStars() : null;
-  const m = !MINI ? 0 : rvOn && !calm && r.rv.i === 0 ? ss01(r.rv.t / 0.4) : 1, from = { x: box.x + box.w / 2, y: box.y + box.h - henH * 0.62 };
+  const m = !MINI ? 0 : rvOn && !calm && r.rv.i === 0 ? ss01(r.rv.t / 0.4) : 1;
   const stars = () => BIG.stars.forEach((p, q) => {
     const x0 = m ? lerp(p.x, MINI.stars[q].x, m) : p.x, y0 = m ? lerp(p.y, MINI.stars[q].y, m) : p.y, R0 = m ? lerp(BIG.R, MINI.R, m) : BIG.R;
-    drawWinStar(r, q, L(x0, T.stars[q].x + dx), L(y0, T.stars[q].y + dy), L(R0, T.R), calm, from);
+    const X = L(x0, T.stars[q].x + dx), Y = L(y0, T.stars[q].y + dy);
+    ctx.save(); ctx.translate(X, Y); ctx.rotate(T.stars[q].tilt * e); ctx.translate(-X, -Y);
+    drawWinStar(r, q, X, Y, L(R0, T.stars[q].R), calm, null);
+    ctx.restore();
   });
   if (rvOn) { drawReveal(r, stars); return; }
   if (r.rvDone != null && !calm) { const q = (G.t - r.rvDone) / 0.3; if (q < 1) revealBack(ui.A.cx, ui.A.cy, 1 - q); } // the reveals' shade lifts as the page comes
   winFinish(r, BIG, calm);
   stars();
+  if (r.rvDone == null && ta > 0.01) { ctx.save(); ctx.globalAlpha = ta; winChips(r, { chips: BIG.chips, br: BIG.br, stars: BIG.stars, R: BIG.R }, false, null); ctx.restore(); } // the chips fly up into them (they leave with the title)
 }
 // the coin row: the pill counts up as the score ends, the small bursts join it, the coins fly into the purse; once the
 // tiles come the purse hands over to the Shop tile (its own count). With a doubling: a big x2 stamps beside the pill and
@@ -10035,7 +10058,7 @@ function drawWinCoinRow(r, S, T, D, s, pt, done, tilesOn) {
   if (r.perkGold && !calm && kp > 0) goldGlints(R.pill.x, R.pill.y, s); // Midas (the Golden egg): the coin shimmers
   const p0 = r.purse0 != null ? r.purse0 + (r.trFlown && r.treasure ? r.treasure.coins : 0) : null;
   if (!r.purseGo && p0 != null) {
-    if (done || pt >= S.fly) { r.purseGo = true; purse.gain({ from: p0, src: r.coinAt, dur: PURSE_DUR }); if (done) { purse.settle(); purse.release(); } }
+    if (done || pt >= S.fly) { r.purseGo = true; purse.gain({ from: p0, src: r.coinAt, dur: PURSE_DUR }); if (calm) { purse.settle(); purse.release(); } } // (0.8.19: after a skip tap they still fly and the count still rolls; Calm: the total at once)
     else purse.hold(p0); // the purse shows the total before this win until its coins land
   }
   if (!done && !Db) ex.forEach((q) => { // each small burst: its icon and "+N" pop beside the pill, then slide into it
@@ -10073,6 +10096,147 @@ function drawWinCoinRow(r, S, T, D, s, pt, done, tilesOn) {
     }
     CB.confetti(ctx, vx, vy, t - R1, { n: 26, speed: 260 * s, g: 420 * s, life: 1.4, seed: 7, size: 6 * s });
   }
+}
+// 0.8.19 (mykee: "when they reached a goal, from the bottom it goes to the top and forms a star there ... where they
+// did not reach, show an off colour ... then show the off colour in a blinking format so the user knows to click on
+// it"): the goals as three picture chips. P: { chips (by goal), br, stars (by socket), R }. On the clock of the stars
+// (starAt: when socket q's star stamps) a reached goal's chip crouches (anticipation), leaps up a curved path with a
+// tail of glints, turning into a gold star on the way, and its star stamps as it arrives; back in its place the chip
+// re-forms with a green tick. A missed goal's chip turns grey and shakes its head, and stays. rest: the end state
+// (Calm, a skip, a page that comes after the reveals). bl: all settled, the grey ones blink (Calm: a steady outline).
+function winChips(r, P, rest, bl) {
+  const calm = save.calm, br = P.br, t = r.t, late = [];
+  rest = rest || calm;
+  for (let g = 0; g < 3; g++) {
+    const c = P.chips[g], gl = r.goals && r.goals[g], ok = goalOk(r, g), q = slotOf(r, g), land = starAt(r, q);
+    const a = rest ? 9 : ok ? t - (land - CHIP_ANT - CHIP_FLY) : t - (land - 0.08), pin = rest || !r.direct ? 1 : clamp((t - 0.1 - 0.09 * g) / 0.3, 0, 1);
+    if (pin <= 0) continue;
+    ctx.save(); ctx.globalAlpha *= Math.min(1, pin * 2); ctx.beginPath(); ctx.ellipse(c.x, c.y + br * 0.14, br * 1.1, br * 1.04, 0, 0, TAU); ctx.fillStyle = 'rgba(24,60,14,0.2)'; ctx.fill(); ctx.restore(); // its place in the grass
+    if (!calm && r.why && r.why.q === g && G.t - r.why.t0 < WHY_LEN) continue; // out in the meadow, telling why (winWhy)
+    const face = (x, y, k, rot, okLook, p, kx = 1, ky = 1) => { ctx.save(); ctx.translate(x, y + br * (1 - ky)); ctx.rotate(rot); ctx.scale(k * kx, k * ky); goalBadge(gl, 0, 0, br, okLook, p); ctx.restore(); };
+    if (a < 0) { face(c.x, c.y + (calm ? 0 : Math.sin(G.t * 3 + g * 1.3) * br * 0.05), backK(pin), 0, true, 0); continue; } // it waits its turn, bobbing
+    if (!ok) { // missed: grey, a shake of the head, and it stays
+      const sh = a < 0.6 ? 0.36 * Math.sin(a * 21) * (1 - a / 0.6) ** 2 : 0;
+      if (bl != null) { ctx.save(); ctx.beginPath(); ctx.arc(c.x, c.y, br * (calm ? 1.16 : 1.14 + 0.13 * bl), 0, TAU); ctx.lineWidth = br * 0.13; ctx.strokeStyle = `rgba(255,255,255,${calm ? 0.9 : 0.25 + 0.6 * bl})`; ctx.stroke(); ctx.restore(); }
+      face(c.x, c.y + br * 0.06 * Math.min(1, a / 0.15), bl != null && !calm ? 1 + 0.05 * bl : 1, sh, false, clamp(a / 0.25, 0.001, 1));
+      continue;
+    }
+    if (a < CHIP_ANT) { // the crouch: it gathers itself, glowing
+      const e = Math.sin((a / CHIP_ANT) * Math.PI * 0.5);
+      ctx.save(); ctx.globalAlpha *= 0.8 * e; CB.glint(ctx, c.x, c.y, br * 2.1); ctx.restore();
+      face(c.x, c.y, 1, 0, true, 0, 1 + 0.18 * e, 1 - 0.22 * e);
+      continue;
+    }
+    if (a < CHIP_ANT + CHIP_FLY) { // the flight: a curved path up to its socket, stretching, a gold star by the time it lands
+      const st = P.stars[q], p = (a - CHIP_ANT) / CHIP_FLY, ez = (k) => 0.45 * k + 0.55 * k * k, side = (g - 1 || (st.x < c.x - 1 ? 1 : -1)) * br * 2.3, lift = br * 1.2;
+      const at = (k) => CB.arcPt(c.x, c.y, st.x, st.y, ez(clamp(k, 0, 1)), lift, side), R1 = st.R || P.R;
+      late.push(() => {
+        for (let j = PERF.low ? 2 : 5; j >= 1; j--) { const pj = p - j * 0.075; if (pj <= 0) continue; const [tx, ty] = at(pj); ctx.save(); ctx.globalAlpha *= 0.8 - 0.13 * j; CB.glint(ctx, tx, ty, br * (0.8 - 0.1 * j)); ctx.restore(); }
+        const [x, y] = at(p), m = ss01((p - 0.3) / 0.5), k = lerp(1, R1 / br, p) * (1 + 0.22 * Math.sin(p * Math.PI));
+        ctx.save(); ctx.globalAlpha *= 0.7; CB.glint(ctx, x, y, br * k * 1.9); ctx.restore();
+        if (m < 1) { ctx.save(); ctx.globalAlpha *= 1 - m; face(x, y, k, 0, true, 0, 1 - 0.1 * Math.sin(p * Math.PI), 1 + 0.14 * Math.sin(p * Math.PI)); ctx.restore(); }
+        if (m > 0) { ctx.save(); ctx.globalAlpha *= m; ctx.translate(x, y); ctx.rotate(-2.6 * (1 - p)); drawStar(ctx, 0, 0, br * k, true, 1); ctx.restore(); }
+      });
+      continue;
+    }
+    const b = a - CHIP_ANT - CHIP_FLY; // its star has stamped: the chip is back in its place, ticked
+    face(c.x, c.y, rest ? 1 : backK(clamp(b / 0.3, 0, 1)), 0, true, rest ? 1 : clamp(b / 0.3, 0.001, 1));
+  }
+  for (const f of late) f(); // (in flight over everything)
+}
+// 0.8.19 (mykee: "the streak is not properly celebrated ... first a proper animation, then it animates into the streak
+// on the left-hand side, and on the side make it a bit bigger"): from a streak of 2 one big flame lights in the middle
+// of her stage with its number (the count ticks up to it with a pop), burns for a beat, gathers itself, and flies in an
+// arc to her top left, where it settles with a pop as the badge (1.5x the old one). Calm or skipped: the badge.
+function winFlame(r, S, T, s, pt, done) {
+  if (!(r.hot >= 2) || !T.box) return;
+  const F = S.flame, calm = save.calm, ch = 51 * s, nt = String(r.hot), nfs = 28 * s, cw = ch * 0.95 + ui.measure(nt, nfs) + 14 * s, cx0 = T.box.x + 2 * s, cy0 = T.box.y + 4 * s;
+  const Bd = { x: cx0 + ch * 0.5, y: cy0 + ch * 0.5, S: ch * 0.78 }, a = done || calm || !F ? 99 : pt - F.at, la = done || calm || !F ? 99 : pt - F.land;
+  if (a < 0) return;
+  if (la >= 0) { // the badge
+    const k = la < 0.34 ? backK(la / 0.34) : 1, mx = cx0 + cw / 2, my = cy0 + ch / 2;
+    ctx.save(); if (k !== 1) { ctx.translate(mx, my); ctx.scale(0.6 + 0.4 * k, 0.6 + 0.4 * k); ctx.translate(-mx, -my); }
+    ui.glass(cx0, cy0, cw, ch, { border: 'rgba(255,200,120,0.85)' });
+    streakFlame(ctx, 'hot:win', Bd.x, Bd.y, Bd.S, r.hot, G.t, calm);
+    ui.text(nt, cx0 + ch * 0.95, cy0 + ch / 2 + 0.5 * s, { size: nfs, color: '#fff', stroke: 'rgba(40,16,4,0.9)', strokeW: 3.5 * s, tag: 'win:hot', group: 'win:hen' }); // (on her place: one group)
+    ctx.restore();
+    if (la < 0.45) CB.landFlash(ctx, Bd.x, Bd.y, ch * 1.1, la / 0.45, '#ffd9a0');
+    return;
+  }
+  const SB = Math.min(T.box.h * 0.62, T.box.w * 0.4, 180 * s), C = { x: T.box.x + T.box.w / 2 - SB * 0.22, y: T.box.y + T.box.h * 0.46 }, fl = (pt - F.fly) / FL_FLY;
+  let x = C.x, y = C.y, S1 = SB, e = 0;
+  if (fl <= 0) S1 = SB * (0.15 + 0.85 * backK(clamp(a / FL_IN, 0, 1))) * (a > FL_IN ? 1 + 0.035 * Math.sin((a - FL_IN) * 10) : 1); // it lights: up from a spark, past its size, back
+  else if (fl < 0.24) { const c = Math.sin((fl / 0.24) * Math.PI * 0.5); S1 = SB * (1 - 0.14 * c); x += 12 * s * c; y += 9 * s * c; } // it gathers itself, leaning away from where it will go
+  else { e = ss01((fl - 0.24) / 0.76); [x, y] = CB.arcPt(C.x + 12 * s, C.y + 9 * s, Bd.x, Bd.y, e, SB * 0.3, SB * 0.1); S1 = lerp(SB * 0.86, Bd.S, e * e); }
+  const ga = Math.min(1, a / 0.2) * (1 - e);
+  if (ga > 0.01) { // a warm dusk round it, so it reads over her and the sky; rays turning behind
+    ctx.save(); ctx.globalAlpha = ga;
+    const gr = ctx.createRadialGradient(x, y, 0, x, y, SB * 1.5); gr.addColorStop(0, 'rgba(70,24,0,0.5)'); gr.addColorStop(0.55, 'rgba(70,24,0,0.28)'); gr.addColorStop(1, 'rgba(70,24,0,0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, SB * 1.5, 0, TAU); ctx.fill();
+    if (!PERF.low) CB.rays(ctx, x, y, SB * (0.9 + 0.5 * CB.easeOut(Math.min(1, a / 0.5))), G.t * 0.5, 'rgba(255,214,130,0.3)', 12, 0.4);
+    ctx.restore();
+  }
+  if (e > 0 && e < 1) for (let j = PERF.low ? 2 : 5; j >= 1; j--) { // embers behind it
+    const ej = e - j * 0.07; if (ej <= 0) continue;
+    const [tx, ty] = CB.arcPt(C.x + 12 * s, C.y + 9 * s, Bd.x, Bd.y, ej, SB * 0.3, SB * 0.1);
+    ctx.save(); ctx.globalAlpha = 0.75 - 0.13 * j; ctx.fillStyle = j % 2 ? '#ffb347' : '#ffe27a'; ctx.beginPath(); ctx.arc(tx, ty + S1 * 0.15, S1 * (0.16 - 0.02 * j), 0, TAU); ctx.fill(); ctx.restore();
+  }
+  streakFlame(ctx, 'hot:win', x, y, S1, r.hot, G.t, calm);
+  const up = a - FL_IN - 0.12, n = up < 0 && r.hot > 2 ? r.hot - 1 : r.hot, pk = up > 0 && up < 0.3 ? 1 + 0.4 * Math.sin((up / 0.3) * Math.PI) : 1;
+  const nsz = lerp(S1 * 0.62, S1 * 0.7, e) * pk * Math.min(1, a / 0.2), nx = x + lerp(S1 * 0.66, S1 * 0.95, e), ny = y + S1 * 0.06 * (1 - e);
+  ui.text(String(n), nx, ny, { size: nsz, align: 'center', color: '#fff', stroke: 'rgba(40,16,4,0.92)', strokeW: Math.max(3, nsz * 0.16), noRecord: true });
+  if (!calm && a > FL_IN - 0.05 && a < FL_IN + 0.35) CB.landFlash(ctx, C.x, C.y, SB * 0.9, (a - FL_IN + 0.05) / 0.4, '#ffd9a0');
+}
+// 0.8.19 (mykee: "Double the coins should always be bigger. Find a way to make it bigger rather than a horizontal strip.
+// It is too small and the user won't be able to click it"): the rewarded video as a big, juicy button right over NEXT,
+// no sentence on it: the video mark, a heap of coins that jumps and becomes two heaps in a loop, a big "x2", and this
+// win's coins turning into twice as many. It beats gently. Still a chosen reward (never forced, never before level 3 is
+// won, its daily pot unchanged); with the Bonus chest due it is the chest's button, as big. Once paid: the two heaps, ticked.
+function winHeap(x, y, R, t, n = 5) {
+  const P = [[-1.05, 0], [1.05, 0], [0, 0.12], [-0.52, -0.82], [0.52, -0.8], [0, -1.6]];
+  for (let i = 0; i < Math.min(n, P.length); i++) drawCoin(ctx, x + P[i][0] * R * 0.92, y + P[i][1] * R * 0.92, R, t + i * 0.9);
+}
+function winDouble(r, x, y, w, bh, s) {
+  const calm = save.calm, t = calm ? 0 : G.t, mx = x + w / 2, my = y + bh / 2, n = r.coins || 0, R = Math.min(20 * s, bh * 0.19);
+  if (G.doubled) { // paid: what it gave stays where the button was
+    const hx = mx - 86 * s;
+    winHeap(hx - R * 1.9, my + R * 0.9, R, t); winHeap(hx + R * 1.9, my + R * 0.9, R, t + 2);
+    const tr = R * 0.8; ctx.beginPath(); ctx.arc(hx + R * 4.3, my - R * 1.2, tr, 0, TAU); ctx.fillStyle = '#3fb62e'; ctx.fill(); ctx.lineWidth = 1.6 * s; ctx.strokeStyle = '#134f0f'; ctx.stroke(); pictoCheck(ctx, hx + R * 4.3, my - R * 1.2, tr * 1.5, '#fff');
+    ui.text(r.chestOpen ? 'Bonus chest opened!' : 'Coins doubled!', mx - 14 * s, my, { size: 19 * s, color: '#fff', stroke: '#1f6b12', strokeW: 4 * s, maxW: w / 2 + 4 * s, tag: 'win:doubled' });
+    return;
+  }
+  const beat = calm ? 1 : 1 + 0.016 * Math.sin(G.t * 3.2) + (Math.sin(G.t * 3.2) > 0.94 ? 0.006 : 0);
+  ctx.save(); ctx.translate(mx, y + bh); ctx.scale(beat, beat); ctx.translate(-mx, -(y + bh));
+  if (r.chest) { // the Bonus chest: one video, the chest, its coins and its boost shown as art on the button
+    const ch = r.chest, B2 = ui.button('bonus', '', x, y, w, bh, { kind: 'ad', shimmer: true, round: 22 * s }), cy = B2.cy;
+    let cx = x + 18 * s;
+    if (!ads.premium) { drawAdBadge(ctx, cx, cy, 34 * s, 24 * s); cx += 44 * s; } // Premium: no video, the chest opens at once
+    drawChest(ctx, cx + 30 * s, cy + 5 * s, 60 * s, G.t, 'ready'); cx += 68 * s;
+    const ax = x + w - 18 * s; // what is inside, as art: a boost and coins
+    drawBoosterIcon(ctx, ch.booster, ax - 24 * s, cy, 50 * s, G.t); winHeap(ax - 74 * s, cy + R * 0.8, R * 0.9, t);
+    ui.text('Bonus chest', cx, cy, { size: 21 * s, maxW: ax - 100 * s - cx, color: '#fff', stroke: '#2b1566', strokeW: 3.5 * s, tag: 'win:bonus', group: 'btn:bonus' });
+    ctx.restore();
+    return;
+  }
+  const B = ui.button('double', '', x, y, w, bh, { kind: 'ad', shimmer: true, round: 22 * s }), cy = B.cy, grp = 'btn:double';
+  // the loop (2.8 s): one heap waits, crouches, jumps and comes down as two; "x2" stamps; the number rolls to twice; a rest
+  const ph = calm ? 0.7 : (G.t % 2.8) / 2.8, cr = !calm && ph > 0.2 && ph < 0.3 ? Math.sin(((ph - 0.2) / 0.1) * Math.PI) : 0;
+  const sp = calm ? 1 : ph < 0.3 ? 0 : ph < 0.48 ? backK((ph - 0.3) / 0.18) : ph < 0.9 ? 1 : 1 - ss01((ph - 0.9) / 0.1), hopY = !calm && ph > 0.3 && ph < 0.48 ? Math.sin(((ph - 0.3) / 0.18) * Math.PI) * R * 1.4 : 0;
+  let cx = x + 18 * s;
+  if (!ads.premium) { drawAdBadge(ctx, cx, cy, 36 * s, 26 * s); ui.record({ x: cx, y: cy - 13 * s, w: 36 * s, h: 26 * s }, 'win:dblad', grp); cx += 46 * s; }
+  const hx = cx + (x + w * 0.56 - cx) / 2, hy = cy + R * 0.95, d = R * 2.1 * sp;
+  ctx.save(); ctx.translate(hx, hy + R); ctx.scale(1 + 0.12 * cr, 1 - 0.16 * cr); ctx.translate(-hx, -(hy + R));
+  if (sp > 0.02) { ctx.save(); ctx.globalAlpha *= Math.min(1, sp * 1.5); winHeap(hx + d, hy - hopY, R, t + 2); ctx.restore(); }
+  winHeap(hx - d, hy - hopY, R, t);
+  ctx.restore();
+  ui.record({ x: hx - R * 4.2, y: hy - R * 2.6, w: R * 8.4, h: R * 3.7 }, 'win:dblpile', grp);
+  const tx = x + w * 0.56 + (x + w - 14 * s - (x + w * 0.56)) / 2, k2 = calm ? 1 : 0.86 + 0.14 * sp + (ph > 0.42 && ph < 0.56 ? 0.22 * Math.sin(((ph - 0.42) / 0.14) * Math.PI) : 0);
+  ctx.save(); ctx.translate(tx, cy - 14 * s); ctx.rotate(-0.1); ctx.scale(k2, k2);
+  ui.text('x2', 0, 0, { size: 40 * s, align: 'center', color: '#ffe45c', stroke: '#3a1a7a', strokeW: 6 * s, noRecord: true });
+  ctx.restore();
+  ui.record({ x: tx - 30 * s, y: cy - 34 * s, w: 60 * s, h: 40 * s }, 'win:dblx2', grp);
+  if (n > 0) { const v = Math.round(n * (1 + clamp(sp, 0, 1))); ui.text('+' + v, tx, cy + 22 * s, { size: 22 * s, align: 'center', color: '#fff', stroke: '#2b1566', strokeW: 4 * s, maxW: w * 0.4, noRecord: true }); ui.record({ x: tx - 30 * s, y: cy + 11 * s, w: 60 * s, h: 22 * s }, 'win:dbln', grp); }
+  ctx.restore();
 }
 // what moves over the page during its sequence: the points coming in from the score's sides (then soft sparkles there),
 // a goal's moment in the middle of the page
@@ -10158,17 +10322,17 @@ function sideSparkles(bands, cy, s, a) {
   });
 }
 // a goal's moment: seconds into it (its slot in the sequence, or a tap on its star replaying it), else null
-function whyAt(r, S, q, pt, done) {
+function whyAt(r, S, q, pt, done) { // (0.8.19: q is the goal; only a tap plays it now: in the sequence a missed goal's chip just shakes its head)
   if (save.calm) return null;
-  if (r.why && r.why.q === q && G.t - r.why.t0 < WHY_LEN) return G.t - r.why.t0;
-  const sl = S.slots[q];
-  return !done && sl.miss && pt >= sl.at && pt < sl.at + WHY_LEN ? pt - sl.at : null;
+  return r.why && r.why.q === q && G.t - r.why.t0 < WHY_LEN ? G.t - r.why.t0 : null;
 }
-// a missed goal's grey star wobbles as its moment starts (gentle: a damped sway, no shake)
+// a dull star wobbles as its goal is missed, and again when it is asked why (gentle: a damped sway, no shake)
 function winWobble(r, S, q, pt, done) {
-  const a = whyAt(r, S, q, pt, done);
-  if (a == null || a > 0.6 || litStar(r, q)) return 0;
-  return 0.24 * Math.sin(a * 19) * (1 - a / 0.6) ** 2 * Math.min(1, a / 0.04);
+  if (litStar(r, q) || save.calm) return 0;
+  let a = whyAt(r, S, goalAt(r, q), pt, done);
+  if (a == null && !done && r.direct) a = pt - S.slots[q].at;
+  if (a == null || a < 0 || a > 0.6) return 0;
+  return 0.2 * Math.sin(a * 19) * (1 - a / 0.6) ** 2 * Math.min(1, a / 0.04);
 }
 // 0.8.18 review: a goal's moment plays in the meadow under her, where the score comes later (never over her): the goal's
 // icon flies down from under its star, grows big there, its reason stands beside it in large outlined words on the
@@ -10193,35 +10357,23 @@ function winWhy(r, S, T, s, pt, done) {
     ui.text(txt, 0, 0.5 * s, { size: fs, color: ok ? '#f2ffe0' : '#fff', stroke: 'rgba(34,20,6,0.95)', strokeW: Math.max(3, fs * 0.24), shadow: 'rgba(10,30,5,0.45)', shadowD: fs * 0.09, noRecord: true });
     ctx.restore(); ui.aBase = 1;
   };
-  const txtOf = (q) => { const g = r.goals && r.goals[q]; return litStar(r, q) ? goalNum(g, r) : goalWhy(g); };
+  const txtOf = (q) => { const g = r.goals && r.goals[q]; return goalOk(r, q) ? goalNum(g, r) : goalWhy(g); };
   if (save.calm) { // still: one row per reason, stacked in the meadow
-    const tap = r.why && G.t - r.why.t0 < WHY_LEN ? r.why.q : null, qs = tap != null ? [tap] : G.screenT < 2 && r.goals ? [0, 1, 2].filter((q) => !litStar(r, q)) : [];
+    const tap = r.why && G.t - r.why.t0 < WHY_LEN ? r.why.q : null, qs = tap != null ? [tap] : [];
     if (!qs.length) return;
-    const a = tap != null ? 1 : 1 - clamp((G.screenT - 1.75) / 0.25, 0, 1), k = Math.min(WHY_BIG, (M.h / qs.length - 10 * s) / (2 * br)), rowH = 2 * br * k + 10 * s, y0 = M.y - ((qs.length - 1) * rowH) / 2;
+    const a = 1, k = Math.min(WHY_BIG, (M.h / qs.length - 10 * s) / (2 * br)), rowH = 2 * br * k + 10 * s, y0 = M.y - ((qs.length - 1) * rowH) / 2;
     qs.forEach((q, i) => {
-      const y = y0 + i * rowH, ok = litStar(r, q), L = lay(txtOf(q), k, Math.min(29 * s, br * k * 0.9));
+      const y = y0 + i * rowH, ok = goalOk(r, q), L = lay(txtOf(q), k, Math.min(29 * s, br * k * 0.9));
       glow(L.ix, y, L.R * 1.6, a * 0.8);
       ctx.save(); ctx.globalAlpha = a; ctx.translate(L.ix, y); ctx.scale(k, k); ctx.translate(-L.ix, -y); goalBadge(r.goals[q], L.ix, y, br, ok, 1); ctx.restore();
       words(txtOf(q), L.tx, y, L.fs, ok, a);
     });
     return;
   }
-  if (!done) S.slots.forEach((sl, q) => { // a won goal: a gold "+" pops up in the meadow, with a few sparks, and fades
-    if (sl.miss) return;
-    const a = pt - S.badge[q];
-    if (a < 0 || a > 0.62) return;
-    const k = backK(clamp(a / 0.24, 0, 1)), fade = 1 - clamp((a - 0.36) / 0.26, 0, 1), x = M.x + (q - 1) * 46 * s, y = M.y - 14 * s * CB.easeOut(a / 0.62), L = 15 * s * k, th = 7 * s * k;
-    CB.sparks(ctx, x, y, 14 * s, clamp(a / 0.5, 0, 1), PERF.low ? 5 : 8, q + 2);
-    ctx.save(); ctx.globalAlpha = fade;
-    for (const [w, h] of [[2 * L, th], [th, 2 * L]]) { ui.roundRect(x - w / 2, y - h / 2, w, h, th / 2); ctx.fillStyle = '#ffd23f'; ctx.fill(); ctx.lineWidth = 2 * s; ctx.strokeStyle = '#9a5a08'; ctx.stroke(); }
-    ui.roundRect(x - th / 2, y - th / 2, th, th, th / 2); ctx.fillStyle = '#ffd23f'; ctx.fill(); // (the cross's middle, over the two outlines)
-    CB.glint(ctx, x + L * 0.6, y - L * 0.7, 6 * s * k);
-    ctx.restore();
-  });
   for (let q = 0; q < 3; q++) {
     const a = whyAt(r, S, q, pt, done);
     if (a == null) continue;
-    const g = r.goals && r.goals[q], ok = litStar(r, q), B = T.badges[q], replay = !!(r.why && r.why.q === q && G.t - r.why.t0 < WHY_LEN), txt = txtOf(q);
+    const g = r.goals && r.goals[q], ok = goalOk(r, q), B = T.chips[q], replay = !!(r.why && r.why.q === q && G.t - r.why.t0 < WHY_LEN), txt = txtOf(q);
     const k = Math.min(WHY_BIG, (M.h * 0.47) / br), L = lay(txt, k), iy = M.y;
     const k1 = clamp((a - 0.12) / 0.38, 0, 1), k2 = ss01((a - 1.12) / 0.32), out = ss01(k1) * (1 - k2);
     const [x, y] = k2 > 0 ? CB.arcPt(L.ix, iy, B.x, B.y, k2, 30 * s, 0) : CB.arcPt(B.x, B.y, L.ix, iy, ss01(k1), 26 * s, 0); // a little lift, then down into the meadow
@@ -10238,21 +10390,22 @@ function winWhy(r, S, T, s, pt, done) {
 // how much a goal's moment hides what stands in the meadow at the time (the score, the coins: a replay, or Calm's 2 s)
 function whyCover(r, pt, done) {
   if (r.why && G.t - r.why.t0 < WHY_LEN) { const a = G.t - r.why.t0; return save.calm ? 1 : ss01(a / 0.2) * (1 - ss01((a - 1.3) / 0.2)); }
-  if (save.calm && G.screenT < 2 && r.goals && [0, 1, 2].some((q) => !litStar(r, q))) return 1 - clamp((G.screenT - 1.75) / 0.25, 0, 1);
   return 0;
 }
 // she reacts to each goal's moment (her whole figure, no new art): a missed one, a sympathetic lean with her shoulders
 // down; a won one, a little hop with a squash as she lands. null: she just plays her routine
 function winReact(r, S, pt, done) {
   if (save.calm) return null;
-  for (let q = 0; q < 3; q++) {
-    const a = whyAt(r, S, q, pt, done);
+  const lean = (a, len) => { const e = ss01(a / 0.3) * (1 - ss01((a - len + 0.4) / 0.35)); return { rot: -0.11 * e + 0.03 * e * Math.sin(a * 5), sy: 1 - 0.06 * e, dy: 0 }; };
+  for (let g = 0; g < 3; g++) {
+    const a = whyAt(r, S, g, pt, done);
     if (a == null) continue;
-    if (!litStar(r, q)) { const e = ss01(a / 0.3) * (1 - ss01((a - 1.1) / 0.35)); return { rot: -0.11 * e + 0.03 * e * Math.sin(a * 5), sy: 1 - 0.06 * e, dy: 0 }; }
-    return hop(a - 0.12);
+    return goalOk(r, g) ? hop(a - 0.12) : lean(a, 1.5);
   }
-  if (done) return null;
-  for (let q = 0; q < 3; q++) if (!S.slots[q].miss) { const a = pt - S.badge[q]; if (a > 0 && a < 0.5) return hop(a); }
+  if (done || !r.direct) return null;
+  for (const sl of S.slots) { // the sequence: a hop as each star stamps, a small lean as a goal is missed
+    if (!sl.miss) { const a = pt - sl.land; if (a > 0 && a < 0.5) return hop(a); } else { const a = pt - sl.at; if (a > 0 && a < 0.6) return lean(a, 0.6); }
+  }
   return null;
   function hop(a) {
     if (a <= 0 || a >= 0.5) return null;
@@ -10261,11 +10414,11 @@ function winReact(r, S, pt, done) {
   }
 }
 // a tap on a star or its badge (any time on the page): that goal's moment again
-function winStarTap(r, x, y) {
+function winStarTap(r, x, y) { // (0.8.19: a chip, or the star it made / the dull star it left)
   if (!r.starHit || winIn(r) < 1) return false;
-  const q = r.starHit.findIndex((h) => Math.hypot(x - h.x, y - h.y) < h.R * 1.15 || Math.hypot(x - h.bx, y - h.by) < h.br * 1.4);
-  if (q < 0) return false;
-  r.why = { q, t0: G.t };
+  let g = (r.chipHit || []).findIndex((h) => Math.hypot(x - h.x, y - h.y) < Math.max(h.br * 1.4, 30 * ui.u));
+  if (g < 0) { const q = r.starHit.findIndex((h) => Math.hypot(x - h.x, y - h.y) < h.R * 1.1); if (q < 0) return false; g = goalAt(r, q); }
+  r.why = { q: g, t0: G.t };
   if (!save.calm) audio.play('flap', { vol: 0.3, pitch: 1.3 });
   return true;
 }
@@ -10345,7 +10498,11 @@ function rvNext(r) {
 function rvTap(r) {
   const RV = r.rv, it = RV.list[RV.i], P = rvPlan(r, it);
   if (it.claimed && land.busy()) { land.finish(); return; } // coins in the air: the first tap lands them all, the next moves on
-  if (save.calm || RV.t >= P.set) { rvNext(r); return; }
+  if (save.calm) { rvNext(r); return; }
+  if (RV.t >= P.set) { // 0.8.19: all of it is out; this tap sends it off (the coins fly to the purse and count), the next moves on. Before, it moved on at once and a boss treasure's coins landed unseen.
+    if (!it.claimed && RV.t < P.claim && (it.kind === 'treasure' || (it.kind === 'gift' && r.gift.kind === 'boost'))) { RV.t = P.claim; rvClaim(r, it); return; }
+    rvNext(r); return;
+  }
   if (RV.t < P.open) { audio.play(...REVEAL_SND[it.kind]); buzz('win'); }
   RV.t = P.set;
 }
@@ -10539,22 +10696,13 @@ const DBL_LEN = 1.05; // s from the end of the Double coins video to the purse's
 // glints, growing and spinning, and lands in its socket on its beat (starAt); on the page's own show (r.direct) it
 // slams down onto its socket from above the screen. Either way the landing is a squash, a flash, a ring and sparks,
 // then a spring back to size (slamStar, shared with the side quests' win page).
-function drawWinStar(r, q, sx, sy, rad, calm, from) {
-  drawStar(ctx, sx, sy, rad, false, 1, true);
-  const fly = r.direct ? SLAM : STAR_FLY, v = r.t - starAt(r, q) + fly;
-  if (!litStar(r, q) || v < 0) return;
-  if (r.direct || v >= STAR_FLY || calm) { slamStar(sx, sy, rad, r.direct ? v : SLAM + v - STAR_FLY, calm, q); return; }
-  const p = v / STAR_FLY, f = from || { x: sx, y: sy + rad * 5 }, side = (q - 1) * rad * 2.4, lift = rad * 3; // in flight
-  for (let j = 3; j >= 1; j--) { // its tail
-    const pj = p - j * 0.1;
-    if (pj <= 0) continue;
-    const [tx, ty] = CB.arcPt(f.x, f.y, sx, sy, pj * pj, lift, side);
-    ctx.globalAlpha = 0.75 - 0.18 * j; CB.glint(ctx, tx, ty, rad * (0.62 - 0.12 * j));
+function drawWinStar(r, q, sx, sy, rad, calm, bl) { // 0.8.19: its goal's chip is what flies (winChips); the star stamps as the chip arrives. bl: a dull one blinks (all settled)
+  const lit = litStar(r, q), v = r.t - starAt(r, q);
+  if (!lit && bl != null) { // "tap me": a soft ring breathing round the dull star (Calm: a steady outline)
+    ctx.save(); ctx.beginPath(); ctx.arc(sx, sy, rad * (calm ? 1.14 : 1.1 + 0.1 * bl), 0, TAU); ctx.lineWidth = rad * 0.09; ctx.strokeStyle = `rgba(255,255,255,${calm ? 0.85 : 0.2 + 0.6 * bl})`; ctx.stroke(); ctx.restore();
   }
-  ctx.globalAlpha = 1;
-  const [x, y] = CB.arcPt(f.x, f.y, sx, sy, p * p, lift, side);
-  ctx.save(); ctx.globalAlpha = Math.min(1, p * 4); ctx.translate(x, y); ctx.rotate(-2.8 * (1 - p));
-  drawStar(ctx, 0, 0, rad, true, 0.45 + 0.85 * p + 0.45 * Math.sin(p * Math.PI)); ctx.restore();
+  drawStar(ctx, sx, sy, rad, false, !lit && bl != null && !calm ? 1 + 0.04 * bl : 1, true);
+  if (lit && (v >= 0 || calm)) slamStar(sx, sy, rad, calm ? 9 : SLAM + v, calm, q);
 }
 // a gold star slamming onto its socket: v seconds since it started to fall (SLAM s down from big and tilted, then the hit)
 function slamStar(sx, sy, rad, v, calm, q = 0) {
@@ -10621,6 +10769,11 @@ function drawFailPage() {
   if (rew && coinR && hl >= 2 && save.wallet.coins >= price && !G.rewBuy) SC.push({ id: 'streak', kind: 'tag', slot: 'rewind', key: 'rewind:' + G.level.id + ':' + hl, price, tagArt: (c, x, y, h) => pictoFlame(c, x, y, h) });
   const build = (stH) => (s) => {
     const B = [];
+    { const R = (sd ? 22 : 34) * s; B.push({ h: 2.45 * R + 10 * s, gap: sd ? 0 : 2 * s, draw: (x, y, w) => { // 0.8.19: the win page's star arc, all dull, so the two pages match
+      const sp = R * 2.35, mx = x + w / 2;
+      for (let q = 0; q < 3; q++) { const px = mx + (q - 1) * sp, py = y + 4 * s + (q === 1 ? 1.1 * R : 1.45 * R); ctx.save(); ctx.translate(px, py); ctx.rotate((q - 1) * 0.2); drawStar(ctx, 0, 0, q === 1 ? 1.1 * R : R, false, 1, true); ctx.restore(); }
+      ui.record({ x: mx - sp - R, y: y + 2 * s, w: 2 * (sp + R), h: 2.45 * R + 6 * s }, 'fail:stars');
+    } }); }
     // why it failed: an icon and two or three words (the ribbon above says the same)
     B.push({ h: 30 * s, gap: sd ? 2 * s : 4 * s, draw: (x, y, w) => {
       const t = near ? 'Just one egg short' : timeout ? 'No time left' : 'Too many eggs lost', tw = ui.measure(t, 19 * s) + 34 * s, x0 = x + w / 2 - tw / 2;
