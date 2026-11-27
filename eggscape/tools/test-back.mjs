@@ -69,8 +69,7 @@ ok(await p.evaluate(() => __egg.G.sim === SIM0.s && __egg.G.sim.state === 'play'
 await row('info panel ("i")', 'play', () => { const E = __egg; E.press('resume'); F(5); E.press('info'); F(10); return WHERE(); }, { screen: 'play' });
 await row('win page', 'a won level', () => { PLAYING(9); __egg.showResult('win'); F(30); return WHERE(); }, { screen: 'levels' });
 await row('fail page', 'a lost level', () => { PLAYING(9); __egg.showResult('fail'); F(30); __egg.G.stuckAsk = null; return WHERE(); }, { screen: 'levels' });
-await row('"Stuck?" pop-up', 'fail page (the third loss)', () => { const E = __egg; SAVE(12); for (let n = 0; n < 3; n++) { if (n && E.G.screen === 'fail') E.press('retry'); else PLAYING(11); F(30); E.G.sim.state = 'failed'; E.endRun(false); for (let k = 0; k < 300 && E.G.screen !== 'fail'; k++) F(1); } F(100); return WHERE(); }, { screen: 'fail', modal: false });
-ok(await p.evaluate(() => !__egg.G.stuckAsk), '"Stuck?" pop-up: it was up, and Back closed it ("Keep trying")');
+await row('fail page with the three choices', 'the third loss in a row (0.8.19: a row on the card, no pop-up)', () => { const E = __egg; SAVE(12); for (let n = 0; n < 3; n++) { if (n && E.G.screen === 'fail') E.press('retry'); else PLAYING(11); F(30); E.G.sim.state = 'failed'; E.endRun(false); for (let k = 0; k < 300 && E.G.screen !== 'fail'; k++) F(1); } F(100); return { ...WHERE(), three: ['fail:easy', 'fail:skip'].every((id) => E.ui.buttons.some((b) => b.id === id)), pop: !!E.G.stuckAsk }; }, { screen: (v, got, at) => v === 'levels' && at.three && !at.pop && at.modal === false });
 await row('Settings', 'home', () => { HOME(); __egg.press('settings'); F(10); return WHERE(); }, { screen: 'title', settings: false });
 await row('privacy page', 'Settings', () => { const E = __egg; E.press('settings'); F(5); E.press('xs:privacy'); F(10); return WHERE(); }, { settings: true, sub: false });
 await row('shop', 'home', () => { HOME(); __egg.press('shop'); F(30); return WHERE(); }, { screen: 'title' });
@@ -100,13 +99,13 @@ await p.close();
 
 // the phone's Back (the Android shell calls window.__eggBack): the same press; false only on the home page
 const q = await open(true);
-const r = await q.evaluate(() => { const E = __egg, out = {}; SAVE(20); HOME(); out.homeFn = typeof window.__eggBack; out.home = window.__eggBack(); out.homeStays = E.G.screen;
+const r = await q.evaluate(() => { const E = __egg, out = {}; SAVE(20); HOME(); out.homeFn = typeof window.__eggBack; out.home = window.__eggBack(); out.homeScene = !!(E.G.leaveAsk && E.G.leaveAsk.exit); out.home2 = window.__eggBack(); out.homeStays = E.G.screen; out.homeClosed = !E.G.leaveAsk;
   E.press('levels'); F(20); out.map = window.__eggBack(); F(10); out.mapTo = E.G.screen;
-  PLAYING(10); out.play = window.__eggBack(); F(5); out.playTo = E.G.screen; out.pause = window.__eggBack(); F(5); out.pauseTo = E.G.screen;
+  PLAYING(10); out.play = window.__eggBack(); F(5); out.playTo = E.G.screen; out.pause = window.__eggBack(); F(5); out.pauseTo = E.G.screen; out.pauseScene = !!E.G.leaveAsk; out.leave = window.__eggBack(); F(10); out.leaveTo = E.G.screen;
   return out; });
-ok(r.homeFn === 'function' && r.home === false && r.homeStays === 'title', 'phone Back on home: the game lets the shell ask "Press back again to leave" (returns false, stays home)');
+ok(r.homeFn === 'function' && r.home === true && r.homeScene && r.home2 === false && r.homeClosed && r.homeStays === 'title', 'phone Back on home: the leave scene once (true), then never held: the second press is the shell\'s (false)');
 ok(r.map === true && r.mapTo === 'title', 'phone Back on the map: home');
-ok(r.play === true && r.playTo === 'pause' && r.pause === true && r.pauseTo === 'play', 'phone Back in play pauses, on the pause page resumes');
+ok(r.play === true && r.playTo === 'pause' && r.pause === true && r.pauseTo === 'pause' && r.pauseScene && r.leave === true && r.leaveTo === 'levels', 'phone Back in play pauses; on the pause page it asks once (the leave scene); once more leaves to the map');
 const javaToast = fs.readFileSync(path.join(root, 'android/app/src/main/java/com/eggscape/game/MainActivity.java'), 'utf8');
 ok(/Press back again to leave/.test(javaToast) && /now - lastBack < 2000/.test(javaToast), 'the Android shell: a second Back within 2 s leaves, the first says "Press back again to leave"');
 ok(!p.errs.length && !q.errs.length, 'no page errors' + (p.errs.length || q.errs.length ? ': ' + [...p.errs, ...q.errs].join(' | ') : ''));
