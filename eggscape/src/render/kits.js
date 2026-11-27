@@ -16,7 +16,8 @@ import { dizzyStars, spiralEye } from './status.js';
 import { costumeHead, costumeNeck } from './costume.js';
 
 const TAU = Math.PI * 2;
-export const KIT_M = 0.55; // metres per 100 rig units in play (he stands about 0.44 m)
+export const KIT_M = 0.55; // metres per 100 rig units (the rig stands about 77 units: 0.42 m at KIT_M; play draws him KS bigger)
+export const HEAD = 1.2; // the head drawn this much bigger than the rig's (2026-11-27: faces must read at phone size)
 const PAL = {
   line: '#221622', fur: '#a2a2b8', furLo: '#7a7894', furHi: '#c6c7d8', cream: '#f4efe6', creamLo: '#d4cbc8', mask: '#3b3548', maskHi: '#575068',
   paw: '#40394e', nose: '#1a1118', earIn: '#efa5a5', eyeW: '#fffdf4', iris: '#8a4a12', irisHi: '#e6a232', pupil: '#150a06', mouth: '#5a1420', tongue: '#f0707c',
@@ -175,6 +176,7 @@ export function drawKit(ctx, x, y, s, t, p, o = {}) {
     // ---- head (in the body's frame: it turns with the lean)
     body(() => {
       c.save(); c.translate(p.hx, p.hy); c.rotate(p.hr);
+      const HS = o.hs ?? HEAD; c.translate(0, 14); c.scale(HS, HS); c.translate(0, -14); // (round 2: a baby's big head, scaled about the neck)
       const er = 1 - 0.3 * clamp(p.ear, 0, 1);
       const ear = (bx, by, far, rot) => { c.save(); c.translate(bx, by); c.rotate(rot + (far ? 0.3 : -0.4) * p.ear); c.scale(1, er); c.beginPath(); spline(c, [[-7, 2], [-6, -8], [0, -14], [6, -8], [7, 2]], true); inkF(c, far ? C.furLo : C.fur, C.line, lw); c.beginPath(); spline(c, [[-3.5, 0], [-3, -6], [0, -9.5], [3, -6], [3.5, 0]], true); c.fillStyle = far ? C.mask : C.earIn; c.fill(); c.restore(); };
       ear(11, -15, true, 0.35); ear(-10, -14, false, -0.35);
