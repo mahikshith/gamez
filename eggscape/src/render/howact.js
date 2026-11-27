@@ -518,7 +518,7 @@ export function orbScene(id, K) {
     }
     case 'hourglass': { // everything slows: a big glass over the stage, the turn takes its time
       const on = seg(T, 0.95, 1.3) * (1 - seg(T, 3.9, 4.3));
-      toy.under = on > 0 ? () => { const c = ctx0(); c.save(); c.globalAlpha *= on * 0.35; c.fillStyle = '#9fd0ff'; c.fillRect(x, y, w, h); c.restore(); if (K.Wd && K.Wd.orb) { c.save(); c.globalAlpha *= on * 0.55; K.Wd.orb(c, 'hourglass', x + w / 2, y + h * 0.24, eggS * 0.9, calm ? 0 : t * 0.25); c.restore(); } } : null;
+      toy.under = on > 0 ? () => { const c = ctx0(); if (K.Wd && K.Wd.orb) { c.save(); c.globalAlpha *= on * 0.55; K.Wd.orb(c, 'hourglass', x + w * 0.24, y + h * 0.06, eggS * 0.75, calm ? 0 : t * 0.25); c.restore(); } } : null;
       home(1.5, 1.7); break;
     }
     case 'frost': { // the ring freezes solid: the finger pulls, nothing moves; it thaws, then it turns
@@ -570,8 +570,7 @@ export function orbScene(id, K) {
       const off = ease(seg(T, 0.5, 1.3)), bk = ease(seg(T, 1.7, 2.5));
       R.eA = -0.75 * off * (1 - bk); R.miss = T > 1.2 && T < 1.75 ? seg(T, 1.2, 1.75) : 0;
       toy.look = off > 0.95 && bk < 0.05 ? { cracks: 3 } : null;
-      toy.over = chain(pop((c, X, Y, S) => K.boost && K.boost(c, 'rewind', X, Y, S, calm ? 0 : -t * 3), 1.55, 2.65, x + w / 2, y + h * 0.22, eggS * 1.3),
-        bk > 0 && bk < 1 ? () => { const c = ctx0(); c.save(); c.globalAlpha *= 0.25 * Math.sin(bk * Math.PI); c.fillStyle = '#7ab8ff'; c.fillRect(x, y, w, h); c.restore(); } : null);
+      toy.over = chain(pop((c, X, Y, S) => K.boost && K.boost(c, 'rewind', X, Y, S, calm ? 0 : -t * 3), 1.55, 2.65, x + w / 2, y + h * 0.22, eggS * 1.3));
       if (T > 2.6) home(2.7); break;
     }
     case 'sponge': { // a soft pad on the basket: the egg lands with a squash and a bounce
@@ -588,7 +587,7 @@ export function orbScene(id, K) {
       home(1.8); break;
     }
     case 'scare': { // the scarecrow pops up: the snake comes, sees it, and runs off
-      const k = calm ? 1 : back(seg(T, 0.3, 0.7)), sx = x + w * 0.8, sy = K.nest.y - eggS * 0.2, run = ease(seg(T, 1.5, 2.3)), vx = x + w * 0.05 + ease(seg(T, 0.5, 1.4)) * w * 0.22 - run * w * 0.4;
+      const k = calm ? 1 : back(seg(T, 0.3, 0.7)), sx = x + w * 0.88, sy = K.nest.y - eggS * 0.35, run = ease(seg(T, 1.5, 2.3)), vx = x + w * 0.05 + ease(seg(T, 0.5, 1.4)) * w * 0.22 - run * w * 0.4;
       toy.over = chain(K.boost ? () => { const c = ctx0(); c.save(); c.translate(sx, sy); c.scale(k, k); K.boost(c, 'scare', 0, -eggS * 0.8, eggS * 1.7, calm ? 0 : t); c.restore(); } : null,
         H.portrait && T < 2.3 ? () => { const c = ctx0(); c.save(); c.globalAlpha *= 1 - seg(T, 1.9, 2.3); c.translate(vx, e0.y - eggS * 0.2); if (T > 1.5) c.scale(-1, 1); H.portrait(c, 'snake', 0, 0, eggS * 1.6, t); c.restore(); if (T > 1.3 && T < 2.0 && H.word) { c.save(); c.globalAlpha *= 1 - seg(T, 1.7, 2.0); H.word(c, '!', vx, e0.y - eggS * 1.2, Z * 0.18, '#fff', '#c9342c'); c.restore(); } } : null);
       home(2.2); break;
