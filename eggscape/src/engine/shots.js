@@ -95,7 +95,7 @@ export function direct(S, base, cast, eggs, view, o) {
     const w = bell(E.t, SHOTS.estIn, SHOTS.estHold, SHOTS.estOut);
     if (E.t >= SHOTS.estIn + SHOTS.estHold + SHOTS.estOut || !a) S.est = null;
     else {
-      const to = fit({ x: lerp(T.x, E.x, SHOTS.estPull), y: lerp(T.y, E.y, SHOTS.estPull), k: T.k * (low ? 1 : SHOTS.estZoom) }, boxesOf({ x: E.x, y: E.y, r: E.r }), view, kMin);
+      const to = fit({ x: lerp(T.x, E.x, SHOTS.estPull), y: lerp(T.y, E.y, SHOTS.estPull), k: T.k * (low ? 1 : SHOTS.estZoom) }, [...boxes, ...boxesOf({ x: E.x, y: E.y, r: E.r })], view, kMin); // (whoever else is acting stays in it)
       T = { x: lerp(T.x, to.x, w), y: lerp(T.y, to.y, w), k: lerp(T.k, to.k, w) };
       smooth = lerp(smooth, SHOTS.smoothEst, w);
     }

@@ -433,8 +433,8 @@ export function drawRingFocus(ctx, W, H, ri, show, calm) {
   const Ro = (ring.r + RING_TH / 2 + 0.07) * k, Ri = ri > 0 ? (sim.rings[ri - 1].r + RING_TH / 2 + 0.05) * k : 0;
   const hole = () => { ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.moveTo(c.x + Ro, c.y); ctx.arc(c.x, c.y, Ro, 0, Math.PI * 2); if (Ri > 0) { ctx.moveTo(c.x + Ri, c.y); ctx.arc(c.x, c.y, Ri, 0, Math.PI * 2); } };
   ctx.save();
-  if (!calm && !low) { ctx.globalCompositeOperation = 'saturation'; ctx.globalAlpha = 0.82 * show; ctx.fillStyle = '#808080'; hole(); ctx.fill('evenodd'); ctx.globalCompositeOperation = 'source-over'; }
-  ctx.globalAlpha = 1; ctx.fillStyle = `rgba(26,30,52,${(calm ? 0.3 : low ? 0.5 : 0.4) * show})`; hole(); ctx.fill('evenodd');
+  if (!calm && !low) { ctx.globalCompositeOperation = 'saturation'; ctx.globalAlpha = 0.72 * show; ctx.fillStyle = '#808080'; hole(); ctx.fill('evenodd'); ctx.globalCompositeOperation = 'source-over'; }
+  ctx.globalAlpha = 1; ctx.fillStyle = `rgba(26,30,52,${(calm ? 0.28 : low ? 0.46 : 0.32) * show})`; hole(); ctx.fill('evenodd');
   // the glow: soft and warm on the ring's own band, breathing slowly
   const br = calm ? 1 : 0.8 + 0.2 * Math.sin(G.t * 2.6), Rm = ring.r * k, bw = RING_TH * k;
   for (const [lw, al] of [[bw + 22 * u, 0.1], [bw + 12 * u, 0.14], [bw + 4 * u, 0.2]]) { ctx.globalAlpha = al * br * show; ctx.strokeStyle = '#ffe9a0'; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(c.x, c.y, Rm, 0, Math.PI * 2); ctx.stroke(); }

@@ -25,6 +25,9 @@ ok(direct(newShots(), base, [{ key: 'a', x: 9, y: 0, r: 0.4, act: 'idle' }], egg
   for (let i = 0; i < 200; i++) { const D = direct(S, base, [a], eggs, view, O()); if (!D) break; far = Math.max(far, D.x); jump = Math.max(jump, Math.abs(D.x - prev.x)); prev = D; last = D; ok(inFrame(a, D), 'the entrant stays in frame'); }
   ok(far > D0.x + 0.5, 'the establishing move goes toward the entrant'); ok(jump < 0.12, 'and never jumps'); ok(S.est === null && Math.abs(last.x - D0.x) < 0.05, 'and comes back');
   a.act = 'idle'; run(S, [a], {}, 200); a.act = 'strike'; run(S, [a], {}, 1); ok(S.est === null, 'no second entrance for the same villain'); }
+// a second villain's entrance never pushes the first one out
+{ const S = newShots(), a = { key: 'a', x: -5, y: 1, r: 0.6, act: 'strike' }, b = { key: 'b', x: 5, y: -2, r: 0.5, act: 'enter' }; run(S, [a], { live: 0.2 }, 5);
+  for (let i = 0; i < 150; i++) { const D = direct(S, base, [a, b], eggs, view, O()); ok(inFrame(a, D) && inFrame(b, D), 'both stay in frame through the entrance'); } }
 // it lingers after the last act, then lets go
 { const S = newShots(), a = { key: 'v', x: 6, y: 0, r: 0.5, act: 'strike' }; run(S, [a], { live: 0.2 }, 2); a.act = 'idle';
   ok(run(S, [a], {}, 30) !== null, 'the frame lingers'); ok(run(S, [a], {}, 120) === null, 'then the base frame is back'); }
