@@ -12,11 +12,17 @@
 import { RACCOON_M, raccoonPose, raccoonBlend, raccoonFin, drawRaccoon, drawSack } from './raccoon.js';
 import { BANDIT_SCALE } from './banditplay.js';
 import { kitPose, kitBlend, drawKit, KIT_M } from './kits.js';
+// who does what on a carry (by kit: 0 keen, 1 clumsy, 2 sleepy): the keen one walks ahead beckoning, the clumsy one hauls
+// in front, the sleepy one leans on the egg from behind. off: m from the egg's middle, + ahead
+const ROLE = (i) => (i === 0 ? { st: 'walk', off: LEAD, lead: 1 } : i === 1 ? { st: 'pull', off: CO } : { st: 'push', off: -CO });
+// each keeps his own distance in a line (m, + further back): the keen one out in front, the clumsy one drifting about, the
+// sleepy one falling behind and scurrying to catch up
+const drift = (i, t, calm) => (calm ? 0 : i === 0 ? 0.05 * Math.sin(t * 1.3) : i === 1 ? 0.12 * Math.sin(t * 0.9 + 2) + 0.05 * Math.sin(t * 2.7) : 0.3 * (0.5 + 0.5 * Math.sin(t * 0.7 + 4)) + 0.04 * Math.sin(t * 2.1));
 const KS = 2.0; // the kits in play two sizes up from the rig's metres (2026-11-27 review: each kit at least 0.85 of an egg, a third of mama;
 // standing he is about 0.89 m with his big head, the egg 0.59 m drawn). Anything past the ring above is a faint ghost (ringclip.js)
 const SP = 0.62; // m between kits in a line (they stand about 0.6 m wide with the tail)
 const CO = 0.66; // m from the egg's middle to the puller in front and the pusher behind; the leader walks LEAD ahead
-const LEAD = 1.35;
+const LEAD = 1.6; // (2026-11-27: was 1.35, the leader stood half inside the puller)
 import { costumeOf } from './costume.js';
 import { RING_TH } from '../sim/geom.js';
 import { PERF } from '../perf.js';
@@ -150,9 +156,9 @@ function kitAt(ctx, x, y, rot, k, t, st, u, face, o) {
   finally { ctx.restore(); }
 }
 // the leader: walks ahead, looking back over his shoulder, one paw beckoning ("this way!")
-// the wail: feet planted, both paws up by the face, mouth wide, tears
-const WAIL = { by: 0, rot: 0.05, f0x: -4, f0y: 0, f1x: 6, f1y: 0, a0x: -4, a0y: -30, a1x: 16, a1y: -32, mouth: 0.95, brow: -1, squeeze: 1, tear: 1, ear: 0.9, hr: -0.25 };
 const LEADER = { look: -1, looky: -0.2, hr: -0.22, a0x: 22, a0y: -30, smile: 1, mouth: 0.45, brow: 0.5 };
+// the leader looks back and beckons most of the time, and now and then faces the way he is going
+const leaderAdd = (t) => { const k = ss(-0.25, 0.1, Math.sin(t * 0.8 + 1)); return { look: 1 - 2 * k, looky: -0.2 * k, hr: -0.2 - 0.02 * k, a0x: 6 + 16 * k, a0y: -9 - (21 + 3 * Math.sin(t * 9)) * k, smile: 1, mouth: 0.15 + 0.3 * k, brow: 0.5 }; };
 function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
   const G = K.g, n = K.n, low = !!PERF.low, base = { costume, calm, low };
   const ord = [0, 1, 2].slice(0, n);
@@ -179,13 +185,13 @@ function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
     case 'run': case 'yard': {
       const carry = G.ph === 'yard';
       ord.forEach((i) => {
-        if (carry) { const x = G.x + (i === 0 ? CO : i === 1 ? -CO : LEAD) * d; kitAt(ctx, x, sim.groundY, 0, k, t, i === 0 ? 'pull' : i === 1 ? 'push' : 'walk', gait + i * 0.3, d, { ...base, who: i, add: i === 2 ? LEADER : null }); }
-        else kitAt(ctx, G.x - d * 0.5 * i, sim.groundY, 0, k, t, 'run', gait + i * 0.37, d, { ...base, who: i });
+        if (carry) { const R = ROLE(i), x = G.x + (R.off + (R.lead ? 0.12 * Math.sin(t * 1.1) : 0)) * d; kitAt(ctx, x, sim.groundY, 0, k, t, R.st, gait + i * 0.3, d, { ...base, who: i, add: R.lead ? leaderAdd(t) : null }); }
+        else kitAt(ctx, G.x - d * (0.55 * i + drift(i, t, calm)), sim.groundY, 0, k, t, 'run', gait + i * 0.37, d, { ...base, who: i });
       });
       return;
     }
     case 'climbIn': { // the kit tower: they scramble up one on another, the top one hauling over the rim
-      ord.forEach((i) => { const lift = (n - 1 - i) * 0.46 * ss(0, 0.5, gu), y = G.y - 0.2 + lift - (G.y - sim.groundY) * 0.0, x = G.x + 0.04 * Math.sin(t * 9 + i); kitAt(ctx, x, y, 0, k, t, 'climb', 0, 1, { ...base, who: i }); });
+      ord.forEach((i) => { const lift = (n - 1 - i) * 0.46 * ss(0, 0.5, gu), y = G.y - 0.2 + lift - (G.y - sim.groundY) * 0.0, x = G.x + 0.05 * Math.sin(t * (9 - 2.5 * i) + i * 2); kitAt(ctx, x, y, 0, k, t, 'climb', 0, i === 1 ? -1 : 1, { ...base, who: i }); });
       return;
     }
     case 'out': { // over the rim with the egg and down to the yard
@@ -195,16 +201,17 @@ function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
     case 'flee': { // home: crying (a tumble, a dangle), diving (a crow, a flash), or just running
       const cry = G.why === 'tumble' || G.why === 'dangle', st = G.why === 'dive' || G.why === 'scare' ? 'dive' : cry ? 'cry' : 'run';
       const hold = cry ? clamp(KITS.wail / Math.max(1e-3, G.dur), 0, 0.6) : 0; // the held wail where they fell, then the run
-      ord.forEach((i) => { const lag = i * 0.07, q = clamp((gu - hold) / (1 - hold) - lag, 0, 1), F = G.from, S = sim.kitSackPt(K), x = F.x + (S.x - F.x) * ss(0, 1, q), h = Math.max(0.8, (F.y - S.y) * 0.3 + 0.8), y = F.y + (S.y - F.y) * ss(0, 1, q) + h * Math.sin(q * Math.PI); const wl = gu < hold; kitAt(ctx, x + (i - 1) * 0.6 * (1 - ss(0, 0.35, q)), y - 0.15, st === 'dive' ? -0.6 * (S.x < F.x ? -1 : 1) : 0, k, t, st, wl ? 0 : t * 3 + i, wl ? (i % 2 ? 1 : -1) : S.x < F.x ? -1 : 1, { ...base, who: i, add: wl ? WAIL : null }); });
+      // (each leaves when he is ready: the cross one storms off first, the bawler after him, the sniffler last and slowest, each on his own arc)
+      ord.forEach((i) => { const lag = [0, 0.09, 0.2][i], q = clamp(((gu - hold) / (1 - hold) - lag) / (1 - lag) * [1.25, 1.08, 1][i], 0, 1), F = G.from, S = sim.kitSackPt(K), x = F.x + (S.x - F.x) * ss(0, 1, q), h = Math.max(0.8, (F.y - S.y) * 0.3 + 0.8) * [1, 1.25, 0.8][i], y = F.y + (S.y - F.y) * ss(0, 1, q) + h * Math.sin(q * Math.PI); const wl = q <= 0 && cry; kitAt(ctx, x + (i - 1) * 0.6 * (1 - ss(0, 0.35, q)), y - 0.15, st === 'dive' ? -0.6 * (S.x < F.x ? -1 : 1) : 0, k, t, wl ? 'wail' : st, wl ? 0 : t * 3 + i, wl ? (i % 2 ? 1 : -1) : S.x < F.x ? -1 : 1, { ...base, who: i }); });
       return;
     }
     case 'up': case 'down': case 'hop': {
       const P = G.p || sim.kitBody(G), a = Math.atan2(P.y, P.x), rP = Math.hypot(P.x, P.y);
-      ord.forEach((i) => { if (G.eid && G.ph !== 'up') { const st = i === 0 ? 'pull' : i === 1 ? 'push' : 'walk', off = (i === 0 ? CO : i === 1 ? -CO : LEAD) * d / Math.max(1, rP); kitOnFloor(ctx, rP + 0.2, a + off, 0, k, t, st, gait, d, { ...base, who: i, add: i === 2 ? LEADER : null }); } else kitOnFloor(ctx, rP + 0.2, a - d * sp(i) * 0.6 * i, 0.05 * i, k, t, G.ph === 'up' ? 'climb' : 'run', t * 2 + i, d, { ...base, who: i }); });
+      ord.forEach((i) => { if (G.eid && G.ph !== 'up') { const R = ROLE(i), off = R.off * d / Math.max(1, rP); kitOnFloor(ctx, rP + 0.2, a + off, 0, k, t, R.st, gait, d, { ...base, who: i, add: R.lead ? leaderAdd(t) : null }); } else kitOnFloor(ctx, rP + 0.2, a - d * (sp(i) * 0.6 * i + drift(i, t, calm) * 0.5 / Math.max(1, rP)), 0.05 * i, k, t, G.ph === 'up' ? 'climb' : 'run', t * 2 + i, d, { ...base, who: i }); });
       return;
     }
     case 'dangle': { // hanging by their tails from the edge of the hole, upside down, flailing
-      ord.forEach((i) => { const a = G.a + (i - (n - 1) / 2) * sp(i) * 0.8, r = fl + RING_TH + 0.04, sw = calm ? 0 : 0.12 * Math.sin(t * 4 + i * 1.7), th = Math.PI / 2 - (a + Math.PI) + Math.PI + sw; ctx.save(); ctx.translate(r * Math.cos(a), r * Math.sin(a)); ctx.scale(1 / k, -1 / k); ctx.rotate(th); const p = kitPose('dangle', t, 0, { who: i }); p.tail = -1.3; drawKit(ctx, 0, 0, KIT_M * KS * k, t, p, { ...base, who: i, face: i % 2 ? -1 : 1 }); ctx.restore(); });
+      ord.forEach((i) => { const a = G.a + (i - (n - 1) / 2) * sp(i) * 0.8, r = fl + RING_TH + 0.04, sw = calm ? 0 : [0.08, 0.2, 0.1][i] * Math.sin(t * [5.5, 4, 1.8][i] + i * 1.7), th = Math.PI / 2 - (a + Math.PI) + Math.PI + sw; ctx.save(); ctx.translate(r * Math.cos(a), r * Math.sin(a)); ctx.scale(1 / k, -1 / k); ctx.rotate(th); const p = kitPose('dangle', t, 0, { who: i }); p.tail = -1.3; drawKit(ctx, 0, 0, KIT_M * KS * k, t, p, { ...base, who: i, face: i % 2 ? -1 : 1 }); ctx.restore(); });
       return;
     }
     default: { // on a floor: go, wait, lift, carry, tumble (drawn inside their channel: past the ring above only a ghost)
@@ -212,16 +219,17 @@ function drawCrew(ctx, sim, K, t, k, calm, costume, o = {}) {
       const above = sim.rings[G.c - 1];
       if (above && !o.unclipped) { drawInChannel(ctx, above.r - RING_TH / 2, false, 0.32, () => drawCrew(ctx, sim, K, t, k, calm, costume, { unclipped: 1 })); return; }
       if (G.ph === 'carry') {
-        ord.forEach((i) => { const st = i === 0 ? 'pull' : i === 1 ? 'push' : 'walk', off = (i === 0 ? CO : i === 1 ? -CO : LEAD) * d / fl; kitOnFloor(ctx, fl, G.a + off, 0, k, t, st, G.wait ? 0 : gait + i * 0.21, d, { ...base, who: i, add: G.wait ? { looky: -0.8, brow: -0.3 } : i === 2 ? LEADER : null }); });
+        ord.forEach((i) => { const R = ROLE(i), off = (R.off + (R.lead && !G.wait && !calm ? 0.12 * Math.sin(t * 1.1) : 0)) * d / fl; kitOnFloor(ctx, fl, G.a + off, 0, k, t, G.wait && R.lead ? 'wait' : R.st, G.wait ? 0 : gait + i * 0.21, d, { ...base, who: i, add: G.wait ? (R.lead ? null : { looky: -0.8, brow: -0.3 }) : R.lead ? leaderAdd(t) : null }); });
         return;
       }
       if (G.ph === 'lift') {
         const e = sim.eggs.find((q) => q.id === G.tgt), ea = e ? Math.atan2(e.body.getPosition().y, e.body.getPosition().x) : G.a;
-        ord.forEach((i) => { const off = (i === 0 ? 0.44 : i === 1 ? -0.44 : -0.95) / fl, a = ea + off; kitOnFloor(ctx, fl, a, 0, k, t, 'lift', clamp(gu * 1.1 - i * 0.05, 0, 1), i === 0 ? -1 : 1, { ...base, who: i }); });
+        // (they came in from the way out, so the carry will go back that way: the puller and the leader take that side of the egg, the pusher the far side)
+        ord.forEach((i) => { const off = (i === 1 ? -0.5 : i === 2 ? 0.48 : -1.25) * d / fl, a = ea + off; kitOnFloor(ctx, fl, a, 0, k, t, 'lift', clamp(gu * 1.1, 0, 1), i === 2 ? -d : d, { ...base, who: i }); });
         return;
       }
       ord.forEach((i) => {
-        const a = G.ph === 'tumble' ? G.a + (i - (n - 1) / 2) * sp(i) : G.a - d * sp(i) * i;
+        const a = G.ph === 'tumble' ? G.a + (i - (n - 1) / 2) * sp(i) * 1.1 : G.a - d * (sp(i) * i + (G.wait ? 0 : drift(i, t, calm) / fl));
         const st = G.ph === 'tumble' ? 'tumble' : G.wait ? 'wait' : 'walk';
         kitOnFloor(ctx, fl, a, 0, k, t, st, G.ph === 'tumble' ? uOf(G) : G.wait ? 0 : gait + i * 0.29, G.ph === 'tumble' ? (i % 2 ? -1 : 1) : d, { ...base, who: i, beat: G.ph === 'tumble' });
       });
@@ -287,7 +295,7 @@ export function drawKitsCard(ctx, S, costume) {
     const a = kitsHarmEgg(T), al = 1 - ss(2.0, 2.4, T), gait = T * 5;
     if (al <= 0) return { threat: true, x: at(a, 0).x, y: at(a, 0).y, own: true };
     ctx.save(); ctx.globalAlpha *= al;
-    [0, 1, 2].forEach((i) => { const lf = T < KCARD.out[0], st = lf ? 'lift' : i === 0 ? 'pull' : i === 1 ? 'push' : 'walk', aa = a + (i === 0 ? -off : i === 1 ? off : lf ? off * 1.7 : -lead), P = at(aa, 0); drawKitPx(ctx, P.x, P.y, sk, t, st, lf ? ss(0, KCARD.out[0], T) : gait + i * 0.2, -1, { ...base, who: i, rot: -aa, add: !lf && i === 2 ? LEADER : null }); });
+    [0, 1, 2].forEach((i) => { const lf = T < KCARD.out[0], R = ROLE(i), aa = a + (R.lead ? (lf ? -lead * 0.85 : -lead) : R.st === 'pull' ? -off : off), P = at(aa, 0); drawKitPx(ctx, P.x, P.y, sk, t, lf ? 'lift' : R.st, lf ? ss(0, KCARD.out[0], T) : gait + i * 0.2, -1, { ...base, who: i, rot: -aa, add: !lf && R.lead ? LEADER : null }); });
     ctx.restore();
     return { threat: true, x: at(a, 0).x, y: at(a, 0).y - sk * 0.4, own: true };
   }
@@ -295,8 +303,9 @@ export function drawKitsCard(ctx, S, costume) {
   const a0 = -0.3 * ss(KCARD.carry[0], KCARD.carry[1], Math.min(T, KCARD.tumble)) + (S.th || 0) * 0.5; // where they fell
   ctx.save(); ctx.globalAlpha *= 1 - ss(KCARD.home[1] - 0.3, KCARD.home[1], T);
   [0, 1, 2].slice(0, n).forEach((i) => {
-    if (car) { const st = i === 0 ? 'pull' : i === 1 ? 'push' : 'walk', aa = eA + (i === 0 ? -off : i === 1 ? off : -lead), P = at(aa, 0); drawKitPx(ctx, P.x, P.y, sk, t, st, gait + i * 0.2, -1, { ...base, who: i, rot: -aa, add: i === 2 ? LEADER : null }); return; }
+    if (car) { const R = ROLE(i), aa = eA + (R.lead ? -lead : R.st === 'pull' ? -off : off), P = at(aa, 0); drawKitPx(ctx, P.x, P.y, sk, t, R.st, gait + i * 0.2, -1, { ...base, who: i, rot: -aa, add: R.lead ? LEADER : null }); return; }
     if (home <= 0) { const aa = a0 + (i - 1) * off * 1.2, P = at(aa, 0); drawKitPx(ctx, P.x, P.y, sk, t, 'tumble', 0, i % 2 ? -1 : 1, { ...base, who: i, rot: -aa }); return; }
+    if (home < [0.02, 0.12, 0.25][i]) { const aa = a0 + (i - 1) * off * 1.2, P = at(aa, 0); drawKitPx(ctx, P.x, P.y, sk, t, 'wail', 0, i % 2 ? -1 : 1, { ...base, who: i, rot: -aa }); return; }
     const aa = a0 + (i - 1) * off * 1.2 - 0.7 * home, P = at(aa, 0); drawKitPx(ctx, P.x, P.y, sk, t, 'cry', t * 2.4 + i * 0.3, -1, { ...base, who: i, rot: -aa });
   });
   ctx.restore();
