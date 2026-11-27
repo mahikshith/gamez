@@ -25,7 +25,7 @@
 // groove with it coming: the teaching hook, main.js lessonAsk('creep_thorn'); one per approach). Burnt / snapped / a hit
 // are the thorn's own events (thornBurn, thornSnap, break with why 'thorn', graze).
 import { Vec2, testOverlap } from 'planck';
-import { RING_TH, clamp, wrap } from './geom.js';
+import { clamp, wrap } from './geom.js';
 import { ringPt, ringSpd } from './shapes.js';
 
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
@@ -262,4 +262,3 @@ export const creepMethods = {
   creepState() { return (this.creeps || []).map((C) => ({ ...C })); },
   creepLoad(S) { if (S && this.creeps) S.forEach((c, i) => { const C = this.creeps[i]; if (C) { Object.assign(C, c); this.creepPlace(C, C.u); } }); },
 };
-export const RING_FACE = (ring, side) => (side === 'in' ? ring.r - RING_TH / 2 : ring.r + RING_TH / 2); // the rim face a groove is cut in
