@@ -79,8 +79,11 @@ function plan(c, s, t) {
 
 // Mama's Call: the hen calling, sound arcs and a heart
 function mama(c, s, t, o) {
-  c.fillStyle = 'rgba(70,30,10,0.35)'; c.fillRect(-s / 2, s * 0.3, s, s * 0.2); // the ground
-  c.fillStyle = 'rgba(255,230,160,0.55)'; c.fillRect(-s / 2, s * 0.3, s, s * 0.02);
+  if (o.bare) { c.beginPath(); c.ellipse(0, s * 0.32, s * 0.3, s * 0.045, 0, 0, TAU); c.fillStyle = 'rgba(70,30,10,0.28)'; c.fill(); } // (bare: a soft shadow on the page instead of the tile's floor)
+  else {
+    c.fillStyle = 'rgba(70,30,10,0.35)'; c.fillRect(-s / 2, s * 0.3, s, s * 0.2); // the ground
+    c.fillStyle = 'rgba(255,230,160,0.55)'; c.fillRect(-s / 2, s * 0.3, s, s * 0.02);
+  }
   const hh = s * 0.68;
   drawHenAnim(c, 'idle', -s * 0.12, s * 0.3 - hh * 0.5, hh, t, { key: 'extras', face: 1, calm: !!o.calm, shadow: 0 });
   c.lineCap = 'round';
@@ -155,7 +158,7 @@ export function drawExtraIcon(c, key, cx, cy, s, t = 0, o = {}) {
   const f = SCENE[key];
   if (!f || !(s > 0)) return false;
   c.save(); c.translate(cx, cy); c.lineJoin = 'round'; c.lineCap = 'round';
-  const done = well(c, key, s);
+  const done = o.bare ? () => {} : well(c, key, s); // o.bare (frame818): no tile, the scene's things on the page itself
   try { f(c, s, o.calm ? 0 : t, o); } catch (_) { /* art must never break the page */ }
   done();
   c.restore();

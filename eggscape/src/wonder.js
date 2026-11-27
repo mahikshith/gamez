@@ -577,8 +577,8 @@ export function createWonder(env) {
     const a = clamp(S.cardT / 0.25, 0, 1);
     ctx.fillStyle = `rgba(10,6,20,${0.5 * a})`; ctx.fillRect(0, 0, z.W, z.H);
     const w = Math.min(330 * u, A.w - 28 * u), h = (win ? 268 : 220) * u, x = A.cx - w / 2, y = Math.max(A.y + 24 * u, A.cy - h / 2) + (1 - a) * 20 * u;
+    K.scene({ cx: A.cx, gy: y + h - 78 * u, hh: 120 * u, sy: y + h * 0.4 }, a, win); // frame818 (mykee: no frames): the road's frameless scene edge to edge, the buttons on its meadow
     ctx.save(); ctx.globalAlpha = a; ui.aBase = a;
-    ui.frame(x, y, w, h, {});
     ui.ribbon(win ? L.name : 'So close!', A.cx, y - 16 * u, Math.min(w - 20 * u, 270 * u), 40 * u, { color: win ? '#e8503a' : '#6c7aa0', size: 21 * u, tag: 'wv:cardtitle' });
     let cy = y + 62 * u;
     if (win) {
@@ -622,10 +622,14 @@ export function createWonder(env) {
   // the vault's picture on a stage of its own colour with slow rays (the card and the pause page)
   function picStage(x, y, w, h, s, big) {
     const L = S.level, col = TILE[L.wonder.kind] || '#5a6ad8', t = env.save().calm ? 0 : S.t + S.cardT;
-    if (big) ui.well(x, y, w, h, { s, r: 16 * s, a: tint(col, -0.25), b: tint(col, -0.55), border: 'rgba(40,24,10,0.7)', shade: 'rgba(0,0,10,0.4)', paint: () => K.sunburst(x + w / 2, y + h / 2, Math.max(w, h) * 0.8, 'rgba(255,255,255,0.1)') });
-    else K.sunburst(x + w / 2, y + h / 2, Math.min(w, h) * 0.62, 'rgba(255,236,170,0.12)');
-    const pic = Math.min(h * (big ? 0.8 : 0.86), w * (big ? 0.8 : 0.8)), px = x + w / 2, py = y + h / 2;
-    drawExtraIcon(ctx, L.wonder.kind, px, py, pic, t, { calm: env.save().calm });
+    // frame818 (mykee: no frames): no well around it; the picture floats on the page's scene, its own colour glowing
+    // behind it and slow rays (the art a size up into the room the frame took)
+    const R0 = Math.min(w, h) * 0.62, gl = ctx.createRadialGradient(x + w / 2, y + h / 2, 0, x + w / 2, y + h / 2, R0);
+    gl.addColorStop(0, tint(col, 0.35) + 'cc'); gl.addColorStop(1, tint(col, 0.35) + '00');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, R0, 0, Math.PI * 2); ctx.fill();
+    K.sunburst(x + w / 2, y + h / 2, Math.max(w, h) * (big ? 0.7 : 0.62), 'rgba(255,255,255,0.22)');
+    const pic = Math.min(h * (big ? 0.86 : 0.86), w * (big ? 0.86 : 0.8)), px = x + w / 2, py = y + h / 2;
+    drawExtraIcon(ctx, L.wonder.kind, px, py, pic, t, { calm: env.save().calm, bare: true });
     ui.record({ x: px - pic / 2, y: py - pic / 2, w: pic, h: pic }, 'wv:introPic', 'wv:introPic');
     if (/2$/.test(L.key)) { // the II badge on the picture's corner
       const k = pic / 150, tw = 30 * k, th = 20 * k, tx = px + pic / 2 - tw + 6 * k, ty = py - pic / 2 - 6 * k;
@@ -790,17 +794,17 @@ export function createWonder(env) {
     const AL = env.album ? env.album() : null, nSec = AL ? 3 : 2;
     // 0.8.17: the vaults are side quests on the map now; one row leads there (main.js 'xs:side': the first open one)
     const n = 1, wvRows = 1, nRows = wvRows + 1 + (AL ? 1 : 0);
-    const rowH0 = clamp((vb - vt - pad - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - 4 * u) / nRows, 84 * u, wide ? 108 * u : 216 * u); // (0.8.17 polish: three rows on a tall phone grow, so the page is not half empty)
-    // a tall screen with room to spare: the rows stand a little further apart (up to 12 units each), not one hole at the bottom
-    const spare = Math.max(0, vb - vt - pad - 4 * u - (nSec * headH + (nSec - 1) * 14 * u + (wvRows - 1) * 10 * u) - nRows * rowH0), air = Math.min(wide ? 12 * u : 36 * u, spare / (wvRows + nSec - 1));
-    const gap = 10 * u + air, secGap = 14 * u + air;
-    const fixedH = nSec * headH + (nSec - 1) * secGap + (wvRows - 1) * gap;
-    const total = wide ? vb - vt : 4 * u + fixedH + nRows * rowH0 + pad;
+    // frame818 (owner: no empty bands, even gaps): upright, the rows share the whole safe height, one equal gap g0 above the
+    // first heading, between the sections and under the last row; a short phone that cannot fit them at 84 units scrolls
+    const g0 = clamp((vb - vt) * 0.028, 12 * u, 24 * u);
+    const rowH0 = wide ? 108 * u : Math.max(84 * u, (vb - vt - nSec * headH - (nSec + 1) * g0) / nRows);
+    const gap = g0, secGap = g0;
+    const total = wide ? vb - vt : (nSec + 1) * g0 + nSec * headH + nRows * rowH0;
     SC.max = Math.max(0, total - (vb - vt));
     env.glide(SC, dt);
     // the list, clipped under the header
     ctx.save(); ctx.beginPath(); ctx.rect(0, vt, z.W, vb - vt); ctx.clip();
-    let y = vt - SC.y + 4 * u;
+    let y = vt - SC.y + (wide ? 4 * u : g0);
     const out = (yy, hh) => yy < vt || yy + hh > vb;
     const head = (txt, yy, tag, chip, hx = lx) => {
       const tw = ui.measure(txt, 18 * u), cw2 = chip ? ui.measure(chip, 11 * u) + 16 * u : 0, nr = out(yy, headH);
@@ -811,7 +815,7 @@ export function createWonder(env) {
       const prac = !!L.practice || !!L.album || !!L.side, s = prac ? 0 : starsOf(L.key), key = L.side ? 'twin' : L.album ? 'album' : prac ? 'practice' : L.key, face = ui.faceOf(L.side ? '#8a5ad8' : TILE[key] || '#8a5ad8');
       const part = out(ry, rowH), n0 = ui.rects.length, nb = ui.buttons.length, id = L.side ? 'sq:bonus' : L.album ? 'xs:album' : prac ? 'practice' : 'wv:play:' + L.key, grp = 'btn:' + id;
       const b = ui.button(id, '', x, ry, rowW, rowH, { face, keepFace: true, round: 18 * u });
-      const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, 140 * u, rowW * 0.3), tx = x + Math.min(8 * u + (fh - ts) / 2 - 3 * u, 20 * u);
+      const fy = ry + b.dy, fh = rowH - Math.min(6 * u, rowH * 0.13), ts = Math.min(fh - 14 * u, Math.max(140 * u, rowW * 0.36), rowW * 0.36) /* frame818: a tall row's picture grows with it */, tx = x + Math.min(8 * u + (fh - ts) / 2 - 3 * u, 20 * u);
       if (vert) { // 0.8.17 landscape: a tall tile per section, the picture big on top, the words and the stars (or the arrow) under it
         const ns = clamp(rowW * 0.08, 19 * u, 25 * u), ps = clamp(rowW * 0.055, 13 * u, 16 * u), lines = wrapText(L.pitch, ps, rowW - 28 * u).slice(0, 2), foot = 34 * u;
         const wordsH = ns * 1.2 + 4 * u + lines.length * ps * 1.2, vts = Math.max(40 * u, Math.min(rowW * 0.62, fh - wordsH - foot - 34 * u, 190 * u)), blk = vts + 12 * u + wordsH + 10 * u + foot, y0 = fy + (fh - blk) / 2, cx = x + rowW / 2;
