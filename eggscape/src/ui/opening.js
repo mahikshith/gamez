@@ -65,18 +65,20 @@ export function createOpening(env) {
       // ---- the camera: in with an overshoot, a small pull back (anticipation), then through
       const zin = 1 + B.zin * backOut((t - B.in0) / (B.in1 - B.in0), 2.4);
       const pull = 1 - 0.05 * smooth((t - (B.go - 0.16)) / 0.16);
+      // (a low screen: the egg rises as it grows, to keep room for the word under it)
+      const ws = wordSize(W, H, S, 1 + B.zin), ey = cy - Math.max(0, S * 0.36 * (1 + B.zin) + ws * 1.8 - H / 2) * c01((zin - 1) / B.zin);
       const zEnd = Math.max(9, (Math.hypot(W, H) * 0.62) / (S * 0.27));
       const Z = zin * pull * Math.exp(Math.log(zEnd) * k ** 2.4);
-      const hole = easeOut(k * 1.7), hx = S * 0.27 * hole * Z, hy = S * 0.31 * hole * Z, hcy = cy + S * 0.02 * Z;
+      const hole = easeOut(k * 1.7), hx = S * 0.27 * hole * Z, hy = S * 0.31 * hole * Z, hcy = ey + S * 0.02 * Z;
       const wob = B.wob, we = t < wob ? Math.sin(Math.PI * t / wob) : 0;
       const rot = we * 0.12 * Math.sin(t * 21), sq = we * 0.035 * Math.sin(t * 42) + (k <= 0 ? 0.03 * (1 - pull) / 0.05 : 0);
       const light = smooth((t - wob * 0.45) / 0.4);
-      const ws = wordSize(W, H, S, 1 + B.zin), wy = cy + S * 0.36 * zin * pull + ws * 0.8, // (the word stands on the screen, under the egg as it grows)
+      const wy = ey + S * 0.36 * zin * pull + ws * 0.8, // (the word stands on the screen, under the egg as it grows)
          enter = skipped ? 9 : (t - B.word) * B.pace;
       ctx.save();
       if (k > 0) { ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.ellipse(cx, hcy, Math.max(0.01, hx), Math.max(0.01, hy), 0, 0, 7); ctx.clip('evenodd'); }
       sky();
-      ctx.translate(cx, cy); ctx.scale(Z, Z); ctx.translate(-cx, -cy);
+      ctx.translate(cx, ey); ctx.scale(Z, Z); ctx.translate(-cx, -cy);
       if (light > 0) { // light breaks out behind the egg
         ctx.save(); ctx.globalAlpha = light;
         if (!low) { // soft beams that fade out with distance (no hard ends)
@@ -91,7 +93,7 @@ export function createOpening(env) {
       if (!low && light > 0.2 && k < 0.5) sparkleRing(ctx, cx, cy, S * 0.5, S * 0.46, t, 7, S * 0.045);
       ctx.restore();
       const hand = !!logoAt && k > 0; // the word flies to the page's title; with no title to go to it is left behind by the camera
-      if (!hand) { ctx.save(); if (k > 0) { ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.ellipse(cx, hcy, Math.max(0.01, hx), Math.max(0.01, hy), 0, 0, 7); ctx.clip('evenodd'); } const zz = Z / (zin * pull); env.logo(ctx, cx, cy + (wy - cy) * zz, ws * zz, enter); ctx.restore(); }
+      if (!hand) { ctx.save(); if (k > 0) { ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.ellipse(cx, hcy, Math.max(0.01, hx), Math.max(0.01, hy), 0, 0, 7); ctx.clip('evenodd'); } const zz = Z / (zin * pull); env.logo(ctx, cx, ey + (wy - ey) * zz, ws * zz, enter); ctx.restore(); }
       if (k > 0 && k < 1) { // the rim of the hole: light from the page side
         ctx.save(); ctx.globalAlpha = (1 - k) * 0.9;
         for (const [w, a] of [[0.2, 0.25], [0.1, 0.45], [0.035, 0.9]]) { ctx.strokeStyle = `rgba(255,250,220,${a})`; ctx.lineWidth = Math.max(2, hx * w); ctx.beginPath(); ctx.ellipse(cx, hcy, hx, hy, 0, 0, 7); ctx.stroke(); }
@@ -115,5 +117,5 @@ export function createOpening(env) {
 }
 // the word under the egg: as wide as the screen lets it be at the camera's closest (zMax), and clear of the bottom edge
 function wordSize(W, H, S, zMax) {
-  return Math.max(14, Math.min((W * 0.86) / 5.02, (H / 2 - S * 0.36 * zMax) / 1.5, 80));
+  return Math.max(14, Math.min((W * 0.86) / 5.02, Math.max((H / 2 - S * 0.36 * zMax) / 1.5, H * 0.12), 80));
 }
