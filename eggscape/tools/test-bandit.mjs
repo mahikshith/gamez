@@ -10,6 +10,11 @@
 import { Sim, DT } from '../src/sim/sim.js';
 import { LEVELS } from '../src/data/levels.js';
 import { BAND } from '../src/sim/bandit.js';
+import { dyn, tellS, TELL_MIN } from '../src/data/dynamism.js';
+// 0.8.19 his telegraphs come from the dynamism table (data/dynamism.js): each lasts exactly its tellS, never under TELL_MIN
+const TELL = (base, mode) => tellS(base, dyn('raccoon', mode).tell);
+const tellOk = (d, base, mode) => d >= TELL_MIN - 1e-6 && Math.abs(d - TELL(base, mode)) < 0.04;
+const CRANK = (mode) => M(BAND.crank, mode) * (1 + (dyn('raccoon', mode).tempo - 1) / 2);
 import { bossStun } from '../src/sim/boss.js';
 import { BOOSTERS, bossTreasure } from '../src/economy.js';
 import { STRIKES } from '../src/data/strikes.js';
@@ -66,18 +71,18 @@ for (const mode of ['easy', 'medium', 'hard']) {
   const sim = setup({ mode, egg: null }), outer = sim.rings[sim.rings.length - 1]; // nothing on his floor: the crank alone
   const log = run(sim, 24, null, (s) => s.band.ph === 'crank');
   const cr = first(log, 'bandCrouch'), cl = first(log, 'bandClimb'), pe = first(log, 'bandPerch'), sp = first(log, 'bandSpit'), ck = first(log, 'bandCrank');
-  ok(cr && cl && cl.t - cr.t >= 0.95, `${mode}: he tiptoes in on the yard and crouches ${cl && cr ? (cl.t - cr.t).toFixed(2) : '-'} s (the telegraph) before the leap`);
+  ok(cr && cl && tellOk(cl.t - cr.t, BAND.crouch, mode), `${mode}: he tiptoes in on the yard and crouches ${cl && cr ? (cl.t - cr.t).toFixed(2) : '-'} s (the telegraph) before the leap`);
   const B = sim.band;
   ok(pe && B.ri === sim.rings.length - 1 && B.pa < deg(-100) && B.pa > deg(-140) && B.side === -1, `${mode}: he hauls himself onto the outer ring's floor low on his side (at ${(B.pa / deg(1)).toFixed(0)} deg)`);
-  ok(sp && ck && ck.t - sp.t >= 1.0 && ck.ring === B.ri && ck.dir === -1, `${mode}: he spits in his paws ${ck && sp ? (ck.t - sp.t).toFixed(2) : '-'} s (the telegraph), then cranks his ring clockwise`);
+  ok(sp && ck && tellOk(ck.t - sp.t, BAND.spit, mode) && ck.ring === B.ri && ck.dir === -1, `${mode}: he spits in his paws ${ck && sp ? (ck.t - sp.t).toFixed(2) : '-'} s (the telegraph), then cranks his ring clockwise`);
   // the crank turns the ring through ring.omega / ring.target: about BAND.crank deg/s, and the target goes along (no tug)
   const a0 = outer.body.getAngle();
   run(sim, 1.5);
   const a1 = outer.body.getAngle(), w = ((a0 - a1) / deg(1)) / 1.5;
-  ok(sim.band.ph === 'crank' && Math.abs(w - M(BAND.crank, mode)) < 0.25 * M(BAND.crank, mode) && Math.abs(outer.target - a1) < deg(1.5), `${mode}: his ring turns ${w.toFixed(1)} deg/s his way (BAND ${M(BAND.crank, mode)}), its target with it`);
+  ok(sim.band.ph === 'crank' && Math.abs(w - CRANK(mode)) < 0.25 * CRANK(mode) && Math.abs(outer.target - a1) < deg(1.5), `${mode}: his ring turns ${w.toFixed(1)} deg/s his way (BAND ${CRANK(mode).toFixed(1)}), its target with it`);
   const sim2 = setup({ mode }), more = run(sim2, 40, null, (s) => s.band.ph === 'sit' && s.eggs[0].hc === 3);
   const rc = first(more, 'bandReach'), gr = first(more, 'bandGrab'), st = first(more, 'bandStuff');
-  ok(rc && gr && gr.t - rc.t >= 1.0, `${mode}: the floor drags the egg up to him; he stretches for it ${gr && rc ? (gr.t - rc.t).toFixed(2) : '-'} s (the telegraph), then grabs it`);
+  ok(rc && gr && tellOk(gr.t - rc.t, BAND.reach, mode), `${mode}: the floor drags the egg up to him; he stretches for it ${gr && rc ? (gr.t - rc.t).toFixed(2) : '-'} s (the telegraph), then grabs it`);
   ok(st && sim2.eggs[0].hc === 3 && sim2.band.sack.includes(sim2.eggs[0].id), `${mode}: untouched, he stuffs the egg in his sack`);
   ok(!has(log.concat(more), 'bandShake') && !has(log.concat(more), 'bandHurt'), `${mode}: no shake and no hurt without a turn`);
 }
@@ -89,7 +94,7 @@ for (const mode of ['easy', 'medium', 'hard']) {
   r.target += deg(10) * sim.band.dir; // a turn WITH him (it never shakes him)
   const log = run(sim, 1.0);
   const turned = (r.body.getAngle() - a0) * sim.band.dir / deg(1);
-  ok(Math.abs(turned - (10 + BAND.crank.medium)) < 1.5 && !has(log, 'bandShake'), `a turn of 10 deg with him adds to his crank (${turned.toFixed(1)} deg in 1 s) and does not shake him`);
+  ok(Math.abs(turned - (10 + CRANK('medium'))) < 1.5 && !has(log, 'bandShake'), `a turn of 10 deg with him adds to his crank (${turned.toFixed(1)} deg in 1 s) and does not shake him`);
 }
 
 // ---------------------------------------------------------------- the counter: his ring turned briskly against him
@@ -240,6 +245,56 @@ for (const mode of ['easy', 'medium', 'hard']) {
     run(c, 25); run(d, 25);
     ok(key(c) === key(d), 'the stand-off is deterministic');
   }
+  // 0.8.19 (the owner: "the face-off ... is happening at two different levels [rings]"): the scene only ever starts on ONE
+  // ring with the two close; rings apart he eyes the weasel's ring and hops over to it first while it runs his way
+  for (const mode of ['easy', 'medium', 'hard']) {
+    const sim = setup({ mode }), B = sim.band, n = sim.rings.length;
+    until(sim, 'sit');
+    sim.bandSit(B, n - 2, -1); // he sits one ring in; the weasel's run is the outer channel
+    B.whistled = 1; sim.bandCall(B); B.wz = 1.0;
+    const W = sim.bandWeaselT(), seen = [];
+    run(sim, 40, (s, ev) => {
+      if (/^bandDuel$|^bandEye$|^bandHop$/.test(ev.type)) seen.push({ type: ev.type, ph: ev.ph, ri: s.band.ri, run: W.run, gap: Math.abs(((W.a - s.band.pa + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * W.r });
+    }, (s) => s.band.dueled && !s.band.duel && W.ph === 'hide');
+    const fr = seen.find((e) => e.ph === 'freeze'), eye = seen.findIndex((e) => e.type === 'bandEye'), hop = seen.findIndex((e) => e.type === 'bandHop');
+    ok(W.run === n - 1 && eye >= 0 && hop > eye && fr && seen.indexOf(fr) > hop, `${mode}: rings apart, he eyes the weasel's ring, hops to it, and only then they freeze (${seen.map((e) => e.ph || e.type).join(' ')})`);
+    ok(fr && fr.ri === fr.run && fr.gap <= DUEL.meet, `${mode}: the stand-off starts on one ring (his ${fr ? fr.ri : '-'}, its ${fr ? fr.run : '-'}) ${fr ? fr.gap.toFixed(2) : '-'} m apart (DUEL.meet ${DUEL.meet})`);
+    ok(seen.some((e) => e.type === 'bandDuel' && e.ph === 'fight') && W.ph === 'hide' && W.t > 1e8, `${mode}: and plays out to the end; the weasel goes home for good`);
+  }
+  { // every stand-off in a whole level 6 fight (the real whistle after the second hurt) starts on one ring
+    const { botTick } = await import('../src/dev/bot.js');
+    for (const mode of ['easy', 'medium', 'hard']) {
+      const sim = new Sim(L6, { mode }), mem = {}, bad = [];
+      for (let i = 0; i < Math.round(95 / DT) && sim.state === 'play'; i++) {
+        botTick(sim, mem); sim.step();
+        for (const ev of sim.events) if (ev.type === 'bandDuel' && ev.ph === 'freeze') { const W = sim.bandWeaselT(); if (W.run !== sim.band.ri) bad.push(`${W.run}/${sim.band.ri}`); }
+      }
+      ok(!bad.length, `${mode}: a bot-played level 6: no stand-off across rings (${bad.join(' ') || 'none'})`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- 0.8.19 the pursuit and the dynamism table
+{
+  const { DUEL } = await import('../src/sim/bandit.js');
+  const { DYN, DYN_MODE } = await import('../src/data/dynamism.js');
+  for (const mode of ['easy', 'medium']) { // every egg on the next ring in: after a crank bout for nothing he goes after them
+    const sim = setup({ mode, egg: null }), B = sim.band, n = sim.rings.length, ri = n - 2, r = sim.bandFloor(ri) - 0.3;
+    sim.eggs.forEach((e, i) => { const a = deg(-90 + (i - 1) * 14); e.body.setTransform({ x: r * Math.cos(a), y: r * Math.sin(a) }, 0); e.body.setLinearVelocity({ x: 0, y: 0 }); e.ch = sim.channelOf(e); });
+    const log = [];
+    run(sim, 40, (s, ev) => { if (/^band(Eye|Hop|Reach|Crank)$/.test(ev.type)) log.push({ t: s.t, type: ev.type, ring: ev.ring }); }, (s) => s.band.ph === 'reach' || s.band.ph === 'grab');
+    const eye = log.find((e) => e.type === 'bandEye'), hop = log.find((e) => e.type === 'bandHop'), rc = log.find((e) => e.type === 'bandReach');
+    ok(eye && hop && eye.ring === ri && hop.ring === ri && tellOk(hop.t - eye.t, BAND.eye, mode), `${mode}: he eyes ring ${eye ? eye.ring : '-'} ${eye && hop ? (hop.t - eye.t).toFixed(2) : '-'} s (the telegraph), then hops onto it`);
+    ok(rc && rc.ring === ri, `${mode}: and goes for an egg there (${rc ? rc.t.toFixed(1) : '-'} s)`);
+  }
+  // the table: every row has every field, Easy is softer than Medium, Hard meaner; no telegraph under TELL_MIN
+  const F = ['tempo', 'rest', 'tell', 'snatch', 'chase', 'threat', 'moves'];
+  ok(Object.values(DYN).every((r) => F.every((k) => r[k] != null) && r.threat >= 1 && r.threat <= 10 && r.chase >= 0 && r.chase <= 1), `every DYN row has ${F.join(', ')} (threat 1..10, chase 0..1)`);
+  ok(Object.keys(DYN).every((k) => { const e = dyn(k, 'easy'), m = dyn(k, 'medium'), h = dyn(k, 'hard'); return e.tempo < m.tempo && m.tempo < h.tempo && e.rest > m.rest && m.rest > h.rest && e.tell > m.tell && m.tell > h.tell; }), 'Easy is softer than Medium, Hard meaner, for every villain');
+  ok(Object.keys(DYN).every((k) => ['easy', 'medium', 'hard'].every((md) => tellS(1, dyn(k, md).tell) >= TELL_MIN && tellS(0.3, dyn(k, md).tell) >= 0.3)), `no telegraph under ${TELL_MIN} s (one already shorter keeps its length)`);
+  ok(dyn('raccoon', 'medium', { tempo: 2 }).tempo === 2 && dyn('raccoon', 'easy', { tempo: 2 }).tempo === 2 * DYN_MODE.easy.tempo, 'a level\'s own dyn override replaces the row before the mode');
+  const s1 = new Sim({ ...L6, dyn: { raccoon: { rest: 0.2 } } }, { mode: 'medium' });
+  ok(s1.bandRest(BAND.sit) === BAND.sit * 0.2 && DUEL.meet > 0, 'a level carrying dyn: { raccoon: { rest } } changes his sits');
 }
 
 // ---------------------------------------------------------------- the other counters
