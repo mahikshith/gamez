@@ -21,13 +21,15 @@ they run the same without it.
 `DYN_MODE` scales tempo, rest, tell and snatch per mode (Easy: tempo 0.85, rest 1.3, tell 1.25, snatch 1.25; Hard: 1.1,
 0.85, 0.9, 0.9) and carries the director's `tokens` (Easy 1, Medium 1, Hard 2 costly moves at once) and `breather`
 (5 / 3.5 / 2.5 s of no new costly move after an egg is lost). A level may carry `dyn: { salamander: { tempo: 1.2 } }`:
-multipliers on its row (softens or sharpens one level without touching the creature).
+multipliers on its row (softens or sharpens one level without touching the creature). In use: L24
+`dyn: { thornback: { tell: 1.3, snatch: 1.3, rest: 3.4 } }` (longer curl, slower roll, longer rests: the planner wins Medium
+and Hard again with the livelier thorn-backs).
 
 ## Crawler rows (aggroB)
 
 | kind | tempo | rest | tell | snatch | chase | threat |
 |---|---|---|---|---|---|---|
-| salamander | 1.15 | 0.9 | 0.7 | 1.3 | 1 | 6 |
+| salamander | 1.15 | 0.6 | 0.7 | 1.3 | 1 | 6 |
 | salFrost | 1.1 | 1.3 | 0.85 | 1.0 | 0.7 | 4 |
 | gecko | 1.1 | 1.0 | 1.4 | 2.15 | 0.8 | 5 |
 | thornback | 1.15 | 1.2 | 0.9 | 1.4 | 0.6 | 5 |
@@ -65,8 +67,8 @@ multipliers on its row (softens or sharpens one level without touching the creat
 
 A level's pressure is the sum of its villains' `threat`, scaled by its mode. To make a level harder or softer, a
 constructor (or the level-making tool) does, in order: pick the villains (their rows), then the level's `dyn` multipliers
-(for example `{ salamander: { tell: 1.2 } }` on a first-meeting level), then the time. The creature's row is never
-loosened to save a level: soften the level (its multipliers, its egg spots, its time), not the creature. The planner
+(for example `{ salamander: { tell: 1.2 } }` on a first-meeting level), then the egg spots. The creature's row is never
+loosened to save a level: soften the level (its multipliers, its egg spots), not the creature, and never loosen its time. The planner
 proof must still pass on every mode.
 
 ## The menace director (sim/menace.js, aggroA)
