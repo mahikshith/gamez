@@ -1604,6 +1604,7 @@ async function press(id) {
       goHome();
       break;
     case 'store:coins': // the balance's "+": the coin packs on Deals
+      if (earlyDays()) break; // (no "+" before level 3 is won)
       openStore('deals', 'coins');
       break;
     case 'home:bank': // the glass egg on home: the Golden Egg Bank card
