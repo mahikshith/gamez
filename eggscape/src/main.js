@@ -8146,7 +8146,7 @@ function lcSwap(H, to) { H.prev = H.cur; H.pt0 = H.t0; H.cur = { ...to }; H.tx =
 function lcPress(id) {
   const H = G.lcHero, b = ui.buttons.find((q) => q.id === id), tip = (G.lcTips || {})[id];
   const say = () => { if (tip && b) G.lcTip = { id, text: tip, x: b.x + b.w / 2, y: b.y, h: b.h, t0: G.t }; };
-  if (id === 'face:chick') { buzz('settle'); press('itab:chicks'); return; }
+  if (id === 'face:chick') { buzz('settle'); G.howC = null; press('itab:chicks'); return; } // (card819: its power's scene from the start, at once)
   if (id === 'hero:tap') { // card819: a tap on the stage: the next thing's scene
     if (!H || !H.cyc || H.cyc.length < 2) return;
     H.pin = null; H.reps++; H.i = (H.i + 1) % H.cyc.length; lcSwap(H, H.cyc[H.i]); audio.play('ui_tap', { vol: 0.5 });
