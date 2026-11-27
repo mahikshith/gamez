@@ -309,6 +309,13 @@ function drawBody(ctx, name, x0, y0, s, t, opts) {
   ctx.globalAlpha = 1;
   E.hcx = hcx; E.hcy = hcy;
   if (D.after) D.after(ctx, E);
+  // faces3: a puzzled "?" over the head (opts.mood 'huh', opts.moodK 0..1), upright on screen whatever the heading
+  const mq = opts.mood === 'huh' ? clamp(opts.moodK ?? 1, 0, 1) : 0;
+  if (mq > 0.03 && (name === 'chameleon' || name === 'thornback')) {
+    ctx.save(); ctx.translate(hcx + 8 * U, hcy - (26 + 5 * mq) * U); ctx.rotate(0.18 + Math.sin(t * 3) * 0.08); ctx.globalAlpha *= mq; const fz = 25 * U;
+    ctx.font = `900 ${fz.toFixed(1)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(2, fz * 0.22); ctx.strokeStyle = rgb(K.line); ctx.strokeText('?', 0, 0); ctx.fillStyle = '#fff6d0'; ctx.fillText('?', 0, 0); ctx.restore();
+  }
   if (P.steam > 0.01) drawSteam(ctx, U, t, P.steam * (opts.steam !== undefined ? opts.steam : 1));
   if (stars) dizzyStars(ctx, hcx, hcy - 12 * U, 30 * U, 10.5 * U, t, { ...stars, layer: 'front' });
 }
@@ -615,18 +622,21 @@ function thornHead(ctx, E) {
     ctx.fillStyle = rgb(K.blotHi); for (const [x, y] of [[-9.5, -3.6], [-9.5, 3.6], [-3, 0]]) { ctx.beginPath(); ctx.arc(x + lx * 0.6, y + ly * 0.6, 1.7, 0, TAU); ctx.fill(); }
   });
   nostrils(ctx, E, fx - 2.4, 3.6, 0.95);
+  const md = opts.mood, mk = clamp(opts.moodK ?? 1, 0, 1), smugT = md === 'smug' ? mk : 0, huhT = md === 'huh' ? mk : 0; // faces3
   if (m <= 0.03) {
-    lip(ctx, E, fx, 17.2, 0, 2);
+    lip(ctx, E, fx, 17.2, 3.5 * smugT, 2); // smug: one corner curls back (a smirk)
     ctx.fillStyle = rgb(K.tooth); ctx.strokeStyle = rgb(K.line); ctx.lineWidth = lwH * 0.7; // the underbite: two tusks over the lip
     for (const sd of [-1, 1]) { ctx.beginPath(); poly(ctx, [[fx - 6, sd * 4.8], [fx + 1.4, sd * 6.6], [fx - 6, sd * 8.6]]); ctx.fill(); ctx.stroke(); }
     if (P.dazed > 0.4) lolling(ctx, E, fx);
   }
-  const blink = opts.blink !== undefined ? opts.blink : blinkAt(t, id + 1), look = opts.look || { x: 0.75, y: 0 };
+  const blink = opts.blink !== undefined ? opts.blink : blinkAt(t, id + 1), look0 = opts.look || { x: 0.75, y: 0 };
   for (const sd of [-1, 1]) {
-    const r = 6.4, ex = 3.5, ey = sd * 10.6, dz = Math.max(P.dazed, belly ? 1 : 0);
-    let lid = 0.5 + 0.1 * P.angry - 0.05 * P.walk; lid = lerp(lid, sd === fu ? 0.6 : 0.36, dz); lid = Math.max(lid, blink);
-    const th = lerp(0.66, 0.9, P.angry) * (1 - dz);
-    lidEye(ctx, ex, ey, r, sd, { K, lx, ly, lw: lwH, lid, th, t, look, spin: dz > 0.5, pr: r * 0.42, heavy: 1.4 });
+    const r = 7.6, ex = 3.5, ey = sd * 10.9, dz = Math.max(P.dazed, belly ? 1 : 0); // faces3: eyes 1.19x (they read as dots in play)
+    let lid = 0.5 + 0.1 * P.angry - 0.05 * P.walk; lid = lerp(lid, sd === fu ? 0.6 : 0.36, dz);
+    lid = lerp(lid, 0.62, smugT); lid = lerp(lid, sd === fu ? 0.02 : 0.58, huhT); lid = Math.max(lid, blink); // smug: heavy lids; huh: one eye wide, one squinting
+    const th = lerp(lerp(0.66, 0.9, P.angry), 0.2, Math.max(smugT, huhT * (sd === fu ? 1 : 0))) * (1 - dz);
+    const look = huhT > 0.3 ? { x: lerp(look0.x, sd === fu ? -0.6 : 0.3, huhT), y: lerp(look0.y, -sd * 0.8, huhT) } : look0;
+    lidEye(ctx, ex, ey, r, sd, { K, lx, ly, lw: lwH, lid, th, t, look, spin: dz > 0.5, pr: r * 0.46, heavy: 1.4 });
     if (lid < 0.8) { // the brow: a bony slab along the lid, sticking out past the eye
       const dx = Math.cos(th), dy = sd * Math.sin(th), h = -r + 2 * r * lid - 1.6, cx = ex + dx * h, cy = ey + dy * h, e = r + 1.4;
       ctx.beginPath(); ctx.moveTo(cx - dy * e, cy + dx * e); ctx.lineTo(cx + dy * e, cy - dx * e);
@@ -679,7 +689,7 @@ function chamCrest(ctx, E) { // saw teeth down the spine, leaning out of the lig
 // a turret eye: a scaly cone with a pinhole; ang / amt = where it points, in head space
 function turret(ctx, E, sd, ang, amt, lid, spin) {
   const { K, lx, ly, lwH, P, t } = E, ex = 3.5, ey = sd * 10.9, r = 8.3 + 0.6 * P.swell, ring = rgb(mixA(K.blot, K.line, 0.45));
-  const ca = Math.cos(ang) * amt, sa = Math.sin(ang) * amt, ax = ex + ca * r * 0.4, ay = ey + sa * r * 0.4, ar = 3.9;
+  const ca = Math.cos(ang) * amt, sa = Math.sin(ang) * amt, ax = ex + ca * r * 0.4, ay = ey + sa * r * 0.4, ar = 4.7; // faces3: the pinhole 1.2x
   ctx.beginPath(); ctx.arc(ex, ey, r + 0.9, 0, TAU); ctx.fillStyle = ring; ctx.fill();
   ctx.save();
   ctx.beginPath(); ctx.arc(ex, ey, r, 0, TAU); ctx.fillStyle = rgb(K.lo); ctx.fill(); ctx.clip();
@@ -697,7 +707,7 @@ function turret(ctx, E, sd, ang, amt, lid, spin) {
     ctx.stroke();
   } else {
     const px = ax + ca * 1.1, py = ay + sa * 1.1;
-    ctx.beginPath(); ctx.arc(px, py, 2.25, 0, TAU); ctx.fillStyle = rgb(K.pupil); ctx.fill();
+    ctx.beginPath(); ctx.arc(px, py, 2.7, 0, TAU); ctx.fillStyle = rgb(K.pupil); ctx.fill();
     ctx.beginPath(); ctx.arc(px + lx * 0.9, py + ly * 0.9, 0.75, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill();
   }
   if (lid > 0.01) { // the smug lid: a flat skin edge over the back of the pinhole
@@ -723,16 +733,18 @@ function chamHead(ctx, E) {
   });
   ctx.beginPath(); ctx.arc(fx - 2.4, 0, 1.7, 0, TAU); ctx.fillStyle = rgb(K.top); ctx.fill(); // nose bump
   nostrils(ctx, E, fx - 3.4, 2.3, 0.6);
-  if (m <= 0.03) { lip(ctx, E, fx, 11.6, 1.8, 1.5); if (P.dazed > 0.4) lolling(ctx, E, fx); }
+  const md = opts.mood, mk = clamp(opts.moodK ?? 1, 0, 1), smugT = md === 'smug' ? mk : 0, huhT = md === 'huh' ? mk : 0; // faces3
+  if (m <= 0.03) { lip(ctx, E, fx, 11.6, 1.8 + 3.2 * smugT, 1.5 + 0.6 * smugT); if (P.dazed > 0.4) lolling(ctx, E, fx); }
   // the eyes: one keeps watch ahead, the other goes sightseeing; they only agree when there is something to eat
   const blink = opts.blink !== undefined ? opts.blink : blinkAt(t, id + 1), hunt = clamp(Math.max(P.snatch * 4, m * 2, opts.hunt || 0), 0, 1), spin = P.dazed > 0.5;
   const q = t / 1.6 + id * 0.31, n = Math.floor(q), f = sstep((q - n) / 0.22);
   let aA = opts.look ? Math.atan2(opts.look.y, opts.look.x) : 0.3 * Math.sin(t * 0.6 + id), aB = lerp(hash(n * 7.3 + id - 7.3), hash(n * 7.3 + id), f) * TAU;
   if (Math.cos(aB - aA) > 0.3) aB += 2; // never the same way
   aA = lerp(aA, -fu * 0.25, hunt); aB = lerp(aB, fu * 0.25, hunt);
+  if (huhT > 0.3) { aA = Math.PI * 0.85 + Math.sin(t * 2.2) * 0.4; aB = -0.4 + Math.sin(t * 3.1 + 1) * 0.5; } // huh: the eyes roll off in two directions, hunting for what went
   for (const sd of [-1, 1]) {
     const main = sd === fu;
-    turret(ctx, E, sd, main ? aA : aB, 1, Math.max(blink, lerp(main ? 0.52 : 0.36, 0.05, hunt) + 0.3 * P.dazed), spin);
+    turret(ctx, E, sd, main ? aA : aB, 1, Math.max(blink, lerp(lerp(main ? 0.52 : 0.36, 0.05, hunt), 0.7, smugT) * (1 - 0.8 * huhT) + 0.3 * P.dazed), spin);
   }
 }
 function chamTongue(ctx, E) { // 'snatch': the tongue fires at opts.target, sticks, and reels back in

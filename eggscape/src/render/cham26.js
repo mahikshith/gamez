@@ -125,6 +125,14 @@ function beaten(S, dt, t) {
   return el;
 }
 
+// faces3: where the nearest egg is, as a look in the head's frame (x ahead, y to its right on screen), or null
+function eggLook(sim, sn, hd) {
+  let best = null, bd = 6;
+  for (const e of sim.eggs) { if (!e.alive || e.saved) continue; const p = e.body.getPosition(), d = Math.hypot(p.x - sn.x, p.y - sn.y); if (d < bd) { bd = d; best = p; } }
+  if (!best) return null;
+  const rel = hd - Math.atan2(best.y - sn.y, best.x - sn.x);
+  return { x: Math.cos(rel), y: Math.sin(rel) };
+}
 // ctx: world space (meters, y up). k: pixels per meter.
 export function drawCham26(ctx, sim, C, k, t) {
   const S = stateOf(sim, C, t);
@@ -151,6 +159,12 @@ export function drawCham26(ctx, sim, C, k, t) {
     trail: (d) => { const q = bodyAt(S, d / k); return { x: q.x * k, y: -q.y * k }; }, status: st, out, target: tgt || undefined,
     camo: S.camo, camoColor: S.col || undefined,
   };
+  // faces3: smug while he digests a stolen orb (and grins at the end), "huh?" when the tongue snaps on nothing; on the
+  // prowl his main eye swivels to the nearest egg
+  const wantM = C.ph === 'digest' || C.ph === 'grin' ? 'smug' : C.ph === 'miss' ? 'huh' : '';
+  if (wantM) { S.mood = wantM; S.mk = Math.min(1, (S.mk || 0) + dt * 6); } else S.mk = Math.max(0, (S.mk || 0) - dt * 2.5);
+  if (S.mk > 0.01 && S.mood) { o.mood = S.mood; o.moodK = S.mk; }
+  if (C.ph === 'walk' && !(S.hunt > 0.3)) { const el2 = eggLook(sim, sn, S.hd); if (el2) o.look = { x: lerp(S.look.x, el2.x, 0.85), y: lerp(S.look.y, el2.y, 0.85) }; }
   if (nap) o.blink = 1;
   else if (C.ph === 'miss') { const el = C.dur - C.t; o.blink = el > 0.4 && el < 0.95 ? (Math.sin((el - 0.4) * 22) > 0 ? 0.85 : 0.35) : undefined; } // annoyed blinks
   ctx.scale(1 / k, -1 / k);
