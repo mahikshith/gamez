@@ -1536,8 +1536,8 @@ async function press(id) {
         G.sim.stkEquip(strikeFor(G.level, G.li));
       }
       if (G.screen === 'intro' && G.li >= 0 && save.wallet) { // card819: owned boosters that fit, none ticked: the first tap shows them (ui/nudge.js)
-        const U = boostUse(G.level), nid = playNudge({ won3: !earlyDays(), owned: save.wallet.owned || {}, order: E.BOOSTER_ORDER, first: U.first, last: U.last, hide: G.golden ? ['golden'] : [], ticked: G.boostSel ? G.boostSel.size : 0, nudged: !!(G.nudge && G.nudge.lid === G.level.id && G.nudge.seq === G.scrSeq) });
-        if (nid) { G.nudge = { lid: G.level.id, seq: G.scrSeq, t0: G.t, id: nid }; audio.play('hud_pop', { vol: 0.5 }); buzz('settle'); break; }
+        const U = boostUse(G.level), nid = playNudge({ won3: !earlyDays(), owned: save.wallet.owned || {}, order: E.BOOSTER_ORDER, first: U.first, last: U.last, hide: G.golden ? ['golden'] : [], ticked: G.boostSel ? G.boostSel.size : 0, nudged: !!(G.goNudge && G.goNudge.lid === G.level.id && G.goNudge.seq === G.scrSeq) });
+        if (nid) { G.goNudge = { lid: G.level.id, seq: G.scrSeq, t0: G.t, id: nid }; audio.play('hud_pop', { vol: 0.5 }); buzz('settle'); break; }
       }
       { const T = introChicks(); if (T.id) { save.lastStk = T.id; if (T.choice) save.seen.pickN = (save.seen.pickN || 0) + 1; persist(); } }
       if (worldOpener(G.level)) { save.intro[G.level.id] = 1; persist(); }
@@ -8229,7 +8229,7 @@ function drawLevelIntro(L, acc) {
   const BTN = (land ? 56 : 64) * s, BC0 = 49 * s, bcFull = Math.min((Math.min(W0, 520 * s) - 5 * 8 * s) / 6, 72 * s);
   const STRIP = 19 * s + (land ? BC0 : Math.max(BC0, BC0 + (bcFull - BC0) * clamp((A.h / s - 640) / 160, 0, 1)));
   const bigButton = (x, y, w) => {
-    const nb0 = G.nudge && G.nudge.lid === L.id && G.nudge.seq === G.scrSeq && !G.nudge.done, bs = (land ? 27 : 30) * s, k = calm ? 1 : nb0 ? 1 + 0.06 * Math.abs(Math.sin((G.t - G.nudge.t0) * Math.PI * 1.6)) : 1 + 0.022 * (0.5 - 0.5 * Math.cos((G.t * Math.PI * 2) / 1.7)); // breathing: the eye lands here (card819: it beats while the nudge waits)
+    const nb0 = G.goNudge && G.goNudge.lid === L.id && G.goNudge.seq === G.scrSeq && !G.goNudge.done, bs = (land ? 27 : 30) * s, k = calm ? 1 : nb0 ? 1 + 0.06 * Math.abs(Math.sin((G.t - G.goNudge.t0) * Math.PI * 1.6)) : 1 + 0.022 * (0.5 - 0.5 * Math.cos((G.t * Math.PI * 2) / 1.7)); // breathing: the eye lands here (card819: it beats while the nudge waits)
     ctx.save(); if (k !== 1) { ctx.translate(x + w / 2, y + BTN / 2); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + BTN / 2)); }
     if (!pick && T.need) ui.button('inext', 'NEXT', x, y, w, BTN, { kind: 'primary', shimmer: true, icon: ICON.next, size: bs }); // a chick to pick first: on to the picker
     else ui.button('go', pick && T.need ? 'PICK A CHICK' : 'PLAY', x, y, w, BTN, pick && T.need ? { kind: 'off', size: bs * 0.89 } : { kind: 'primary', shimmer: true, icon: ICON.play, size: bs }); // need: the button says what is missing (it still takes the tap and nudges)
@@ -8272,7 +8272,7 @@ function drawLevelIntro(L, acc) {
   const bottomH = (w, g = gp) => mb + BTN + (showBoost ? g + STRIP : 0) + (ringStripH(x0, w, s) > 0 ? g + ringStripH(x0, w, s) : 0);
   // card819: PLAY with no booster ticked (press 'go', ui/nudge.js): the owned ones' tick boxes pulse, a ghost finger taps the
   // best one (1.2 s), PLAY beats until a tick or the next tap. Calm: a steady gold rim, no finger.
-  const NG = G.nudge && G.nudge.lid === L.id && G.nudge.seq === G.scrSeq && !G.nudge.done ? G.nudge : null;
+  const NG = G.goNudge && G.goNudge.lid === L.id && G.goNudge.seq === G.scrSeq && !G.goNudge.done ? G.goNudge : null;
   if (NG && G.boostSel && G.boostSel.size) NG.done = true;
   const nudgeDraw = () => {
     if (!NG || NG.done) return;
