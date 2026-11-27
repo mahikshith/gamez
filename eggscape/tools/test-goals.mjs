@@ -57,6 +57,13 @@ ok(Object.keys(kinds).length >= 4, 'the third goal changes from level to level: 
   }
   ok(WONDER_LEVELS.length >= 10 && side.length === 0, `${WONDER_LEVELS.length} side quests: a lost egg never shows three stars (${side.join(', ') || 'none'})`);
   const F = { won: true, saved: 2, target: 2, total: 3, broken: 1, crackedHome: 0, crackedLive: 0, used: 1, turns: 1, prizeHome: true, prizeGone: false, orbs: 0, orbsAll: 0 };
+  { // an egg that is neither broken nor home (carried off, or left out when the player ends the level early) is not "lose none"
+    const Fo = { won: true, saved: 2, target: 2, total: 3, broken: 0, fled: 0, crackedHome: 0, crackedLive: 0, used: 1, turns: 1, prizeHome: true, prizeGone: false, orbs: 0, orbsAll: 0 };
+    ok(GL.judge({ kind: 'all' }, Fo) === 'lost' && GL.judge({ kind: 'perfect' }, Fo) === 'lost' && GL.judge({ kind: 'all' }, { ...Fo, saved: 3 }) === 'met', '2 of 3 home, none broken (one left out): "Lose none" is not met; 3 of 3: met');
+    ok(GL.outcome({ kind: 'all' }, Fo) === '1 egg lost' && GL.judge({ kind: 'all' }, { ...Fo, won: false, fled: 1 }) === 'lost', 'its words: "1 egg lost"; an egg carried off loses the star at once');
+    const bad2 = LEVELS.filter((L) => (L.target || 1) < (L.eggs || 1)).filter((L) => ['easy', 'medium', 'hard'].some((m) => GL.score(GL.levelGoals(L, 1, true, m), { ...Fo, saved: L.eggs - 1, target: L.target, total: L.eggs }).stars === 3));
+    ok(bad2.length === 0, `no level gives three stars with an egg left out unbroken (${bad2.map((L) => L.id).join(',') || 'none'})`);
+  }
   const L8 = LEVELS.find((L) => L.id === 8), g8 = GL.levelGoals(L8, 1, true);
   ok(GL.score(g8, F).stars === 2 && g8[2].kind === L8.bonus.kind, 'L8, 2 of 3 home with the prize: two stars, its own challenge still third: ' + g8.map((x) => x.short).join(' | '));
   ok(GL.score([{ kind: 'home' }, { kind: 'clean' }, { kind: 'prize' }], F).stars === 3, 'the old trio (home, no cracks, prize) did show three stars with an egg lost: the check sees it');

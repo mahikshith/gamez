@@ -47,12 +47,12 @@ export function levelGoals(L, fuse = 1, campaign = true, mode = 'medium') {
 // Three stars always means every egg came home: true when no outcome with a lost egg can meet all three goals of this
 // level on this mode. Not a look at the goal names: the kindest run with a lost egg (nothing cracked, no turns, no
 // time, the prize home, every orb) is judged by the same judge() the game uses, for every count of eggs home from the
-// target up, and with the extra eggs a twin orb can make.
+// target up, lost by breaking or not (carried off, left out), and with the extra eggs a twin orb can make.
 export function starsSound(L, mode = 'medium', campaign = true) {
   const n = L.eggs || 1, t = L.target || 1, fuse = mode === 'easy' ? 1.6 : 1; // (the fuse only scales a time goal's number)
   const goals = levelGoals(L, fuse, campaign, mode), twins = JSON.stringify(L).split('twin').length - 1;
-  for (let extra = 0; extra <= twins; extra++) for (let broken = 1; broken <= n + extra - t; broken++) {
-    const F = { won: true, saved: n + extra - broken, target: t, total: n + extra, broken, crackedHome: 0, crackedLive: 0, used: 0, turns: 0, prizeHome: true, prizeGone: false, orbs: 99, orbsAll: 99 };
+  for (let extra = 0; extra <= twins; extra++) for (let out = 1; out <= n + extra - t; out++) for (const broken of [0, out]) { // not home: broken, or carried off / left out (not broken)
+    const F = { won: true, saved: n + extra - out, target: t, total: n + extra, broken, fled: 0, crackedHome: 0, crackedLive: 0, used: 0, turns: 0, prizeHome: true, prizeGone: false, orbs: 99, orbsAll: 99 };
     if (score(goals, F).stars === 3) return false;
   }
   return true;
@@ -94,17 +94,20 @@ export function facts(sim) {
     used, turns: sim.turns || 0,
     prizeHome: log.some((q) => q.prize), prizeGone: !!prizeEgg && !prizeEgg.alive && !log.some((q) => q.prize),
     orbs: sim.orbsTaken || 0, orbsAll: sim.orbsStart || 0,
+    fled: sim.eggs.filter((e) => e.fled && !e.saved).length, // carried off: neither broken nor home
   };
 }
 
+// the eggs that did not come home: broken, carried off by a creature, or still out when the level was ended
+const notHome = (F) => Math.max(F.broken || 0, (F.total || 0) - (F.saved || 0));
 // one goal against the facts: 'met' | 'lost' | 'open' (open: still possible, decided at the end)
 export function judge(g, F) {
   const done = F.won;
   switch (g.kind) {
     case 'home': return F.saved >= (g.n || F.target) ? 'met' : done ? 'lost' : 'open'; // n: a count of its own (L1: 1, 2, all 3 home)
-    case 'all': return F.broken > 0 ? 'lost' : done ? 'met' : 'open';
+    case 'all': return F.broken > 0 || F.fled > 0 ? 'lost' : done ? (notHome(F) ? 'lost' : 'met') : 'open'; // 0.8.19: every egg HOME (an egg carried off, or left out when the player ends the level early, is not home)
     case 'clean': return F.crackedHome > 0 || (!done && F.crackedLive > 0) ? 'lost' : done ? 'met' : 'open'; // in play a cracked egg already counts
-    case 'perfect': return F.broken > 0 || F.crackedHome > 0 || (!done && F.crackedLive > 0) ? 'lost' : done ? 'met' : 'open';
+    case 'perfect': return F.broken > 0 || F.fled > 0 || F.crackedHome > 0 || (!done && F.crackedLive > 0) ? 'lost' : done ? (notHome(F) ? 'lost' : 'met') : 'open';
     case 'turns': return F.turns > g.n ? 'lost' : done ? 'met' : 'open';
     case 'time': return F.used > g.s ? 'lost' : done ? 'met' : 'open';
     case 'prize': return F.prizeHome ? 'met' : F.prizeGone || done ? 'lost' : 'open';
@@ -123,9 +126,9 @@ export function outcome(g, F, ok) {
   const eggs = (k) => k + (k === 1 ? ' egg' : ' eggs');
   switch (g.kind) {
     case 'home': return `${F.saved} home`;
-    case 'all': return F.broken ? `${eggs(F.broken)} lost` : 'None lost';
+    case 'all': return notHome(F) ? `${eggs(notHome(F))} lost` : 'None lost';
     case 'clean': return F.crackedHome ? `${eggs(F.crackedHome)} cracked` : 'No cracks';
-    case 'perfect': return F.broken ? `${eggs(F.broken)} lost` : F.crackedHome ? `${eggs(F.crackedHome)} cracked` : 'Perfect';
+    case 'perfect': return notHome(F) ? `${eggs(notHome(F))} lost` : F.crackedHome ? `${eggs(F.crackedHome)} cracked` : 'Perfect';
     case 'turns': return `${F.turns} turns`;
     case 'time': return `${Math.round(F.used)} s`;
     case 'prize': return ok ? 'It is home' : 'It was lost';
