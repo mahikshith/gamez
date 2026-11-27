@@ -41,7 +41,7 @@ function inPage(a) {
   const live = Object.keys(G).filter((k, i, K) => { const S = G[k]; return S && typeof S === 'object' && typeof S.y === 'number' && typeof S.max === 'number' && S.max > 1 && S.t === G.t && K.findIndex((j) => G[j] === S) === i; }); // (one strip under two names once)
   for (const k of live) {
     const S = G[k], y0 = S.y;
-    for (const [nm, y] of [['start', 0], ['end', S.max]]) { if (Math.abs(y - y0) < 1) continue; S.y = y; S.v = 0; S.to = null; fr(3); run(k + '@' + nm); }
+    for (const [nm, y] of [['start', 0], ['end', S.max]]) { if (Math.abs(y - y0) < 1) continue; S.y = y; S.v = 0; S.to = null; if (typeof S.k === 'number') S.k = Math.round(y); /* (a paged strip keeps its page in k) */ fr(20); /* (20 frames: a strip that snaps or pages settles first) */ run(k + '@' + nm); }
     S.y = y0; S.v = 0; S.to = null; fr(1);
   }
   // one tap on each icon / tile that shows something in place (a face's demo, a star's goal, a shop tile's sheet)
@@ -50,7 +50,7 @@ function inPage(a) {
     for (const id of ids) {
       if (G.screen !== scr) break;
       const d0 = G.detail;
-      E.press(id); fr(24); run('tap ' + id);
+      E.press(id); fr(45); /* (45 frames: what the tap starts, a glide to the face, has landed) */ run('tap ' + id);
       if (G.detail !== d0) { G.detail = d0; fr(2); }
     }
   }

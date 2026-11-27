@@ -1907,7 +1907,7 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   const rank = (id) => (first.includes(id) ? 0 : last.includes(id) ? 2 : 1);
   const owned = BOOSTER_ORDER.filter((id) => ownedCount(wallet, id) > 0 && !hide.includes(id)).sort((a, b) => rank(a) - rank(b));
   const toGet = BOOSTER_ORDER.filter((id) => !owned.includes(id) && !hide.includes(id) && BOOSTERS[id] && BOOSTERS[id].price > 0).sort((a, b) => BOOSTERS[a].price - BOOSTERS[b].price);
-  const lab = 14.5 * s, labH = 17 * s, c = Math.min(h - labH - 2 * s, 64 * s), gap = 8 * s;
+  const lab = 14.5 * s, labH = 17 * s, tg = Math.max(2 * s, 6.5 - (labH - lab) / 2), c = Math.min(h - labH - tg, 64 * s), gap = 8 * s; // tg (lint819): the tiles stand at least 6 px under the BOOSTERS label
   const all = [...(ad && BOOSTERS[ad] ? [{ id: ad, ad: true }] : []), ...owned.map((id) => ({ id, own: true })), ...toGet.map((id) => ({ id }))];
   // 0.8.15: there are eight boosters now and the row holds six tiles. Every booster owned must be within reach (a
   // Scarecrow won on the Lucky Spin that cannot be picked is a broken promise), and no tile shrinks: when they do not
@@ -1928,7 +1928,7 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   if (!tapped && lw < w - 40 * s) { const ly = y + labH / 2, sw = (w - lw) / 2 - 12 * s; ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x, ly, sw, 1.5 * s); ctx.fillRect(x + w - sw, ly, sw, 1.5 * s); }
   ui.text(str, x + w / 2, y + labH / 2, { size: lab, align: 'center', maxW: w, color: tapped ? C.ink : '#9a5a1c', tag: 'strip:label' });
   // 0.8.16: a full row runs edge to edge (the same left and right edges as the button under it): the room is shared between the tiles
-  const jg = n === fit && n > 1 ? (w - n * c) / (n - 1) : gap, ty = y + labH + 2 * s, tw = n * c + (n - 1) * jg, x0 = x + w / 2 - tw / 2;
+  const jg = n === fit && n > 1 ? (w - n * c) / (n - 1) : gap, ty = y + labH + tg, tw = n * c + (n - 1) * jg, x0 = x + w / 2 - tw / 2;
   let V = null, win = null;
   if (S) { // the scroller: k (whole items) is where it is going, S.y (items, eased) where it is drawn
     V = stripView(all.length, fit, S.k); S.k = V.k; S.n = all.length; S.fit = fit;

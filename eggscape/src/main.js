@@ -8403,8 +8403,8 @@ function drawLevelIntro(L, acc) {
   const hdrH = HDR + (hardLv ? 22 * s : 0);
 
   // ---- the bottom: the big button (it breathes), the boosters strip right above it, the ring speed strip above that
-  const BTN = (land ? 56 : 64) * s, BC0 = 49 * s, bcFull = Math.min((Math.min(W0, 520 * s) - 5 * 8 * s) / 6, 72 * s);
-  const STRIP = 19 * s + (land ? BC0 : Math.max(BC0, BC0 + (bcFull - BC0) * clamp((A.h / s - 640) / 160, 0, 1)));
+  const BTN = Math.max((land ? 56 : 64) * s, 56), BC0 = Math.max(49 * s, 56), bcFull = Math.min((Math.min(W0, 520 * s) - 5 * 8 * s) / 6, 72 * s); // (lint819: PLAY and the booster ticks never under a kid's 56 px; the strip pages when fewer fit)
+  const STRIP = 17 * s + Math.max(2 * s, 6.5 - 1.25 * s) + (land ? BC0 : Math.max(BC0, BC0 + (bcFull - BC0) * clamp((A.h / s - 640) / 160, 0, 1)));
   const bigButton = (x, y, w) => {
     const nb0 = G.goNudge && G.goNudge.lid === L.id && G.goNudge.seq === G.scrSeq && !G.goNudge.done, bs = (land ? 27 : 30) * s, k = calm ? 1 : nb0 ? 1 + 0.06 * Math.abs(Math.sin((G.t - G.goNudge.t0) * Math.PI * 1.6)) : 1 + 0.022 * (0.5 - 0.5 * Math.cos((G.t * Math.PI * 2) / 1.7)); // breathing: the eye lands here (card819: it beats while the nudge waits)
     ctx.save(); if (k !== 1) { ctx.translate(x + w / 2, y + BTN / 2); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + BTN / 2)); }
@@ -8510,12 +8510,15 @@ function drawLevelIntro(L, acc) {
 
   // ---- the faces: one row of round pictures, the chick first; tap: its demo in the hero (the chick: the picker)
   const fcs = [...(hasCh ? [{ key: 'chick', type: 'chick' }] : []), ...faces];
-  const faceRow = (x, y, w, D) => {
+  const faceRow = (x0, y, w0, D) => {
     const n = fcs.length, g = Math.max(8 * s, D * 0.16), tot = n * D + (n - 1) * g, r = D / 2;
+    // lint819: a row too long for the column scrolls in a window of whole faces (centred; the arrows in the margins
+    // beside it), so at rest and at either end no face is cut to a sliver (it was 11 px of 56 at 853x384)
+    const fit = Math.max(1, Math.floor((w0 + g) / (D + g))), w = n > fit ? fit * D + (fit - 1) * g : w0, x = x0 + (w0 - w) / 2, mg = (w0 - w) / 2;
     const S = G.faceS && G.faceS.lid === pg.lid ? G.faceS : (G.faceS = { lid: pg.lid, y: 0, v: 0, max: 0, t: G.t });
     S.max = Math.max(0, tot - w); S.step = D + g; glide(S);
     { const pi = fcs.findIndex((F) => F.key === H.cur.key), X0 = pi * (D + g); // card819: the face playing now glides into view
-      if (S.max > 0 && pi >= 0 && H.auto !== H.tx && !(G.pdrag && G.pdrag.moved && G.pdrag.sc === S)) { H.auto = H.tx; if (X0 < S.y || X0 + D > S.y + w) { S.v = 0; S.to = clamp(X0 - (w - D) / 2, 0, S.max); } } }
+      if (S.max > 0 && pi >= 0 && H.auto !== H.tx && !(G.pdrag && G.pdrag.moved && G.pdrag.sc === S)) { H.auto = H.tx; if (X0 < S.y || X0 + D > S.y + w) { S.v = 0; S.to = clamp(Math.round((X0 - (w - D) / 2) / S.step) * S.step, 0, S.max); } } } // (to a whole face)
     const V = { x: x - 6 * s, y, w: w + 12 * s, h: D + 16 * s }, off = S.max > 0 ? x - snapPx(S.y, DPR) : x + (w - tot) / 2;
     if (S.max > 0) { G.carRect = V; G.carS = S; }
     const r0 = ui.rects.length, b0 = ui.buttons.length;
@@ -8548,8 +8551,9 @@ function drawLevelIntro(L, acc) {
     ctx.restore();
     clipRecorded(r0, b0, V);
     if (S.max > 0) { // more this way: the round arrows the page's other rows use
-      if (S.y > 2) chevron(V.x + 12 * s, y + 8 * s + r, 13 * s, 'l', 0.9);
-      if (S.y < S.max - 2) chevron(V.x + V.w - 12 * s, y + 8 * s + r, 13 * s, 'r', 0.9);
+      const out = mg >= 14 * s; // (in the margins beside the window when there are any; else over its ends, as before)
+      if (S.y > 2) chevron(out ? x - mg / 2 : x + 6 * s, y + 8 * s + r, 13 * s, 'l', 0.9);
+      if (S.y < S.max - 2) chevron(out ? x + w + mg / 2 : x + w - 6 * s, y + 8 * s + r, 13 * s, 'r', 0.9);
     }
   };
   const faceH = (D) => D + 16 * s;
@@ -8610,7 +8614,7 @@ function drawLevelIntro(L, acc) {
       drawStar(ctx, sx, sy, sr * sk, lit);
       if (num) ui.text(num, gx + P / 2 + 6 * s, cy + 0.5 * s, { size: fs, color: '#fff3cf', stroke: INK, strokeW: 4.5 * s, tag: 'intro:star' + i });
       ctx.restore();
-      const rect = { x: x + cw * i + 3 * s, y, w: cw - 6 * s, h };
+      const rect = { x: x + cw * i + 4 * s, y, w: cw - 8 * s, h }; // (lint819: 8 units between the tap boxes: 6 px at least on its side)
       ui.buttons.push({ id: 'star:' + i, ...rect });
     });
   };
@@ -12121,7 +12125,7 @@ function drawSpin() {
   }
   ui.record({ x: mx, y: GM.bodyY, w: mw, h: GM.bodyH }, 'spin:machine');
   if (idle) { // the lever's grip: the knob's whole travel, at least 56 px wide for a thumb (a drag pulls it, a tap is the SPIN button's tap)
-    const Lv = GM.lever, gw = Math.max(56, Lv.h * 0.95), gx = Math.min(Lv.x - Lv.h * 0.35, A.x1 + 4 * u - gw);
+    const Lv = GM.lever, gw = Math.max(56, Lv.h * 0.95), gx = Math.min(Lv.x - Lv.h * 0.35, A.x1 - gw); // (lint819: inside the safe rect; it hung 4 px under the edge)
     ui.buttons.push({ id: 'spin:lever', x: gx, y: Lv.y - Lv.h * 1.3, w: gw, h: Lv.h * 2.3 });
   }
   if (HN && HN.a > 0) { // the hand on the knob (Calm: still, with an arrow down beside the lever)

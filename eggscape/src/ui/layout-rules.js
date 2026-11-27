@@ -120,8 +120,11 @@ export function lint(ui, o = {}) {
         if (want.has('ALIGN')) {
           const dc = Math.max(...r.map((q) => q.cy)) - Math.min(...r.map((q) => q.cy));
           if (dc > TOL.edge) add('ALIGN', name(k, r), `row off one centre line by ${r1(dc)} px`, 55 + Math.min(30, dc));
-          const x0 = Math.min(...r.map((q) => q.x)), x1 = Math.max(...r.map((q) => q.x1)), dx = (x0 + x1) / 2 - A.cx;
-          if (!r.some((q) => q.cut) && x1 - x0 > 0.5 * A.w && Math.abs(dx) > TOL.centre && !o.offCentre) add('ALIGN', name(k, r), `row ${r1(dx)} px off the column's centre`, 50 + Math.min(30, Math.abs(dx)));
+          // centring is judged on the whole line the row stands in (lint819 fix: a family that shares its line with other
+          // buttons, the booster strip's shop tiles beside its video tile and its arrows, is not off centre by itself)
+          const cy0 = r[0].cy, line = [...r, ...B.filter((q) => !huge(q) && !r.includes(q) && Math.abs(q.cy - cy0) <= 0.3 * q.h && Math.min(q.y1, r[0].y1) - Math.max(q.y, r[0].y) > 0.5 * Math.min(q.h, r[0].h))];
+          const x0 = Math.min(...line.map((q) => q.x)), x1 = Math.max(...line.map((q) => q.x1)), dx = (x0 + x1) / 2 - A.cx;
+          if (!line.some((q) => q.cut) && x1 - x0 > 0.5 * A.w && Math.abs(dx) > TOL.centre && !o.offCentre) add('ALIGN', name(k, r), `row ${r1(dx)} px off the column's centre`, 50 + Math.min(30, Math.abs(dx)));
         }
       }
       for (const c of cols(L)) {
@@ -137,7 +140,9 @@ export function lint(ui, o = {}) {
   const things = [...R.filter((q) => !String(q.tag).startsWith('panel')), ...B.filter((q) => !q.rec && !huge(q))].map((q) => ({ tag: q.tag || 'btn:' + q.id, group: q.group || 'btn:' + q.id, set: q.set, container: q.container, kind: q.kind, x: q.x, y: q.y, w: q.w, h: q.h, x1: q.x + q.w, y1: q.y + q.h }));
   // 5. BALANCE: no empty band over 22 % of the height between the first and the last thing; top / bottom margins within 2x
   if (want.has('BALANCE') && !o.play) {
-    const SW = ui.w * ui.h, pics = B.filter((q) => !q.rec && huge(q) && q.w * q.h < 0.6 * SW); // a big tap picture (the card's hero) is content; a tap-anywhere catcher is not
+    // content for balance: every tap box but a tap-anywhere catcher (lint819 fix: a tappable picture recorded as a panel,
+    // the level card's hero stage, is content, not a hole), and any picture area a page records as 'panel:art...'
+    const SW = ui.w * ui.h, pics = [...B.filter((q) => q.w * q.h < 0.6 * SW), ...R.filter((q) => /^panel:art/.test(q.tag))];
     const iv = [...things, ...pics].map((q) => [Math.max(A.y, q.y), Math.min(A.y1, q.y1)]).filter((v) => v[1] > v[0]).sort((a, b) => a[0] - b[0]);
     if (iv.length >= 2) {
       let end = iv[0][1], band = 0, at = 0;
