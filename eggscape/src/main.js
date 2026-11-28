@@ -84,7 +84,7 @@ import { LAB_DEMOS } from './data/lab-demos.js'; // v4 Shape Lab studio levels: 
 import { drawClockwork, drawClockworkTele, cwEvent, drawCwIntro } from './render/clockwork.js'; // v4 clockwork spider, wind-up beetle, spring jack
 import { owlEvent, drawOwlArt } from './render/owl.js'; // v4 the Clockwork Owl
 import { movesEvent } from './render/bossmoves.js'; // the boss variety moves
-import { drawSalamanders, drawSalHeat, drawSalamander, salAnim } from './render/salamander.js'; // v3.2 lava salamander
+import { drawSalamanders, drawSalHeat, drawSalamander, salAnim, drawSalTop } from './render/salamander.js'; // v3.2 lava salamander
 import { drawCrawler, SPECIES as CRAWLER_SPECIES, crawlerAnim } from './render/crawlers.js'; // the salamander's cousins (dev strips; not in a level yet)
 import { drawFrogs, drawFrogTele, frogEvent, frogAnim, drawFrog } from './render/frog.js'; // v3.3 frog
 import { drawPips, pipEvent, pipCalm } from './render/pip.js'; // 0.8.17 pip
@@ -6364,7 +6364,7 @@ function render() {
   if (G.screen === 'play') {
     // the power card owns the top of the screen while it shows
     if (G.card) drawCard();
-    else if (!fuseIntroOn()) { drawPopups(); drawToast(); } // the fuse intro holds the tips back
+    else if (!fuseIntroOn()) { drawPopups(); drawSalTop(ctx); drawToast(); } // the fuse intro holds the tips back (0.8.19: a lashing tongue over the labels)
     drawKeyHint();
     drawFuseIntro();
   }
